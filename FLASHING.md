@@ -30,7 +30,8 @@ The stock U-Boot env needs to be patched once to add `usb start` to the
 boot command (needed for USB PHY initialization before the kernel):
 
 ```bash
-python3 scripts/patch_env.py
+# See: https://github.com/well0nez/sunxi-env-patcher
+python3 sunxi-env-patcher/patch_env.py
 ```
 
 This patches `env_a` (mmcblk0p3) with correct CRC32 checksum.

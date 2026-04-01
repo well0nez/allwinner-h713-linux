@@ -10,7 +10,7 @@
 
 - Stock U-Boot only accepts **Android Boot v3** format (magic header `ANDROID!`)
 - Separate DTB loading is NOT supported — stock U-Boot crashes if DTB is passed separately
-- `CONFIG_ARM_APPENDED_DTB=y` is required; DTB must be appended to zImage via `repack_with_dtb.py`
+- `CONFIG_ARM_APPENDED_DTB=y` is required; DTB must be appended to zImage via `repack_boot.py`
 - U-Boot **ignores** the boot image header cmdline; DTS `bootargs` are authoritative
 
 ## eMMC Layout (relevant partitions)
@@ -48,4 +48,4 @@ rootwait        # wait for USB stick rootfs to appear
 
 ## Repack Requirement
 
-**NEVER inline-repack boot images.** Always use `repack_with_dtb.py` which appends the DTB to zImage before packing the Android Boot v3 image.
+**NEVER inline-repack boot images.** Always use `repack_boot.py` which appends the DTB to zImage before packing the Android Boot v3 image.
