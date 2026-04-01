@@ -103,6 +103,8 @@ These subsystems boot and function reliably:
   Used for fan speed and backlight control.
 - **I2C** — TWI1 with STK8BA58 accelerometer detected.
 - **GPADC** — 2-channel general purpose ADC via IIO subsystem.
+- **LRADC** — Low-resolution ADC via IIO. Board manager reads NTC temperature
+  through IIO consumer API (clean architecture, no MMIO conflicts).
 - **Reboot + Poweroff** — Both working reliably.
 
 ### Partially Working
@@ -141,7 +143,6 @@ These subsystems have stock hardware addresses documented but no driver work don
 | GPU (Mali-G31) | 0x01800000 | Needs Panfrost + IOMMU + power domain |
 | IOMMU | 0x02010000 | DTS node present but disabled (ARM32 compat issue) |
 
-| LRADC Keyboard | 0x02009800 | 6 keys + power key |
 | SPI | 0x04025000 | SPI0 + SPI1 |
 | Crypto Engine | 0x03040000 | Hardware AES/SHA |
 | HW Spinlock | 0x03004000 | Multi-core sync |

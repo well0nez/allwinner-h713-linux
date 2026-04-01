@@ -28,7 +28,8 @@
 | **GPU** | Not started | — | Mali-G31 @ 0x01800000, needs Panfrost + IOMMU |
 | **IOMMU** | Blocked | sun50i-iommu (disabled) | ARM_DMA_USE_IOMMU breaks ARM32 platform probing |
 | **GPADC** | Working | sun20i-gpadc (IIO) | 2 ADC channels via /sys/bus/iio/ |
-| **LRADC Keyboard** | Not started | — | @ 0x02009800, 6 keys + power |
+| **LRADC** | Working | sun50i-h713-lradc (IIO, built-in) | NTC temp sensing for board-mgr via IIO consumer |
+| **LRADC Keyboard** | Unclear | — | @ 0x02009800, 6 keys + power |
 | **SPI** | Not started | — | SPI0 @ 0x04025000, SPI1 @ 0x04026000 |
 | **Crypto Engine** | Not started | — | @ 0x03040000 |
 | **HW Spinlock** | Not started | — | @ 0x03004000 |

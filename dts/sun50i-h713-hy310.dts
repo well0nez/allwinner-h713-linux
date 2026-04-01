@@ -909,61 +909,14 @@
 		};
 
 
-		/* === LRADC Keyboard === */
+		/* === LRADC (IIO provider for NTC + keyboard) === */
 		lradc: lradc@2009800 {
-			compatible = "allwinner,sun50i-r329-lradc",
-				     "allwinner,sun4i-a10-lradc-keys";
+			compatible = "allwinner,sun50i-h713-lradc";
 			reg = <0x02009800 0x400>;
-			interrupts = <GIC_SPI 22 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&ccu CLK_BUS_LRADC>;
 			resets = <&ccu RST_BUS_LRADC>;
-			vref-supply = <&reg_vcc_3v3>;
-			wakeup-source;
-			/* FIXME: conflicts with hy310-board-mgr which uses same LRADC MMIO.
-			 * Keyboard support needs to be integrated into board-mgr driver. */
-			status = "disabled";
-
-			button-back {
-				label = "Back";
-				linux,code = <158>;  /* KEY_BACK */
-				channel = <0>;
-				voltage = <0>;
-			};
-
-			button-down {
-				label = "Down";
-				linux,code = <108>;  /* KEY_DOWN */
-				channel = <0>;
-				voltage = <177000>;
-			};
-
-			button-up {
-				label = "Up";
-				linux,code = <103>;  /* KEY_UP */
-				channel = <0>;
-				voltage = <344000>;
-			};
-
-			button-enter {
-				label = "Enter";
-				linux,code = <28>;   /* KEY_ENTER */
-				channel = <0>;
-				voltage = <516000>;
-			};
-
-			button-right {
-				label = "Right";
-				linux,code = <106>;  /* KEY_RIGHT */
-				channel = <0>;
-				voltage = <690000>;
-			};
-
-			button-left {
-				label = "Left";
-				linux,code = <105>;  /* KEY_LEFT */
-				channel = <0>;
-				voltage = <861000>;
-			};
+			#io-channel-cells = <1>;
+			status = "okay";
 		};
 
 		/* === GPADC (General Purpose ADC) === */
@@ -1482,24 +1435,70 @@
 	};
 
 	/*
+	 * ADC-based keyboard (6 buttons on LRADC channel 0).
+	 * Uses mainline adc-keys driver with LRADC IIO provider.
+	 * Voltage thresholds from stock DTS keyboard@2009800 node.
+	 * Reference voltage: ~1.8V (AVCC), 6-bit ADC resolution.
+	 */
+	adc-keys {
+		compatible = "adc-keys";
+		io-channels = <&lradc 0>;
+		io-channel-names = "buttons";
+		keyup-threshold-microvolt = <1600000>;
+
+		button-back {
+			label = "Back";
+			linux,code = <158>;	/* KEY_BACK */
+			press-threshold-microvolt = <0>;
+		};
+
+		button-down {
+			label = "Down";
+			linux,code = <108>;	/* KEY_DOWN */
+			press-threshold-microvolt = <177000>;
+		};
+
+		button-up {
+			label = "Up";
+			linux,code = <103>;	/* KEY_UP */
+			press-threshold-microvolt = <344000>;
+		};
+
+		button-enter {
+			label = "Enter";
+			linux,code = <28>;	/* KEY_ENTER */
+			press-threshold-microvolt = <516000>;
+		};
+
+		button-right {
+			label = "Right";
+			linux,code = <106>;	/* KEY_RIGHT */
+			press-threshold-microvolt = <690000>;
+		};
+
+		button-left {
+			label = "Left";
+			linux,code = <105>;	/* KEY_LEFT */
+			press-threshold-microvolt = <861000>;
+		};
+	};
+
+	/*
 	 * Board management driver (hy310-board-mgr).
 	 * U-Boot also reads this node for USB power + fan power init.
 	 * Dual compatible: our driver matches "allwinner,hy310-board-mgr",
 	 * falls back to "pwm-fan" with pwm_ids guard.
 	 *
-	 * reg = LRADC @ 0x02009800 (for NTC temperature sensing).
-	 * Root has #address-cells=<1>, #size-cells=<1>, so reg uses 1-cell format.
+	 * NTC temperature sensing via IIO consumer (LRADC channel 0).
+	 * LRADC hardware is owned by the sun50i-h713-lradc IIO driver.
 	 */
 	fan {
 		compatible = "allwinner,hy310-board-mgr", "pwm-fan";
 		status = "okay";
-		reg = <0x2009800 0x400>;
+		io-channels = <&lradc 0>;
+		io-channel-names = "ntc";
 		pwms = <&pwm 0 40000 0>;	/* PWM channel 0, 40000ns period, normal polarity */
 		pwm-names = "fan0";
-		interrupts = <GIC_SPI 22 IRQ_TYPE_EDGE_RISING>;
-		clocks = <&ccu CLK_BUS_LRADC>;
-		clock-names = "bus";
-		resets = <&ccu RST_BUS_LRADC>;
 		lradc-table = <0x12 0x41A 0x14 0x3F0 0x16 0x3B1 0x18 0x3DB 0x1A 0x35C 0x1C 0x33E 0x1E 0x320 0x20 0x309 0x22 0x2E2 0x24 0x2BE 0x26 0x2A0 0x28 0x28A 0x2A 0x271 0x2C 0x258 0x2E 0x24C 0x30 0x20D 0x32 0x1F8 0x34 0x1EF 0x36 0x1D6 0x38 0x1A5 0x3A 0x18F 0x3C 0x16F 0x3E 0x14F 0x40 0x13B 0x42 0x130 0x44 0x126 0x46 0x111 0x48 0xFC 0x4A 0xE7 0x4C 0xD2 0x4E 0xBC 0x50 0xAF>;
 		gpadc-table = <0x0 0x5E6 0x5 0x5B4 0x14 0x4F8 0x15 0x4EA 0x16 0x4DC 0x17 0x4CD 0x18 0x4BF 0x19 0x4B0 0x1A 0x4A1 0x1B 0x492 0x1C 0x483 0x1D 0x474 0x1E 0x464 0x1F 0x455 0x20 0x446 0x21 0x437 0x22 0x427 0x23 0x418 0x24 0x408 0x25 0x3F9 0x26 0x3E9 0x27 0x3D9 0x28 0x3CA 0x29 0x3BA 0x2A 0x3AB 0x2B 0x39B 0x2C 0x38C 0x2D 0x37D 0x2E 0x36D 0x2F 0x35E 0x30 0x34F 0x31 0x340 0x32 0x331 0x33 0x323 0x34 0x314 0x35 0x306 0x36 0x2F8 0x37 0x2E9 0x38 0x2DB 0x39 0x2CD 0x3A 0x2BF 0x3B 0x2B2 0x3C 0x2A4 0x3D 0x297 0x3E 0x28A 0x3F 0x27D 0x40 0x270 0x41 0x263 0x42 0x257 0x43 0x24A 0x44 0x23E 0x45 0x232 0x46 0x227 0x47 0x21B 0x48 0x210 0x49 0x204 0x4A 0x1F9 0x4B 0x1EE 0x4C 0x1E3 0x4D 0x1D9 0x4E 0x1CF 0x4F 0x1C5 0x50 0x1BB>;
 		temp_poweroff = <60>;
