@@ -209,13 +209,21 @@ docs/           Per-subsystem documentation (25 files covering all HW blocks)
 reference/      Stock firmware analysis (extracted DTS, kallsyms, GPIO map, env, etc.)
 ```
 
+## Acknowledgments
+
+Special thanks to the [shift/sun50iw12p1-research](https://github.com/shift/sun50iw12p1-research)
+project for the early H713 research and inspiration. Their work on the HY300
+(same SoC, different board) provided a valuable starting point for understanding
+the H713 architecture and gave us confidence that a mainline port was feasible.
+While many of their driver implementations needed substantial rework or complete
+rewrites for the HY310 hardware, the initial exploration of the SoC register
+space and MIPS co-processor architecture was genuinely helpful in guiding our
+own reverse engineering efforts.
+
 ## Related Projects
 
 - [sunxi-env-patcher](https://github.com/well0nez/sunxi-env-patcher) — Tool to
   patch the U-Boot environment partition with correct CRC32 checksums.
-- [shift/sun50iw12p1-research](https://github.com/shift/sun50iw12p1-research) —
-  HY300 research (same SoC, different board). Used as reference, but all drivers
-  were independently verified and adapted for HY310 hardware.
 
 ## Contributing
 

@@ -2,7 +2,7 @@
 r"""
 U-Boot Interrupt & Recovery Script for HY310.
 
-Connects to the UART bridge (OrangePi TCP:9999) and:
+Connects to a UART-TCP bridge (configurable via UART_HOST/UART_PORT env vars) and:
 1. Sends rapid keypresses to interrupt U-Boot during bootdelay (5s window)
 2. Once at U-Boot prompt, can execute recovery commands
 
@@ -25,14 +25,15 @@ Typical recovery flow:
 """
 
 import socket
+import os
 import time
 import sys
 import argparse
 import threading
 from typing import Optional
 
-UART_HOST = "192.168.8.179"
-UART_PORT = 9999
+UART_HOST = os.environ.get("UART_HOST", "192.168.8.179")
+UART_PORT = int(os.environ.get("UART_PORT", "9999"))
 
 # U-Boot USB boot commands (loads known-good kernel from USB stick FAT32)
 USB_BOOT_CMDS = [
