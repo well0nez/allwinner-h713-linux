@@ -52,7 +52,7 @@ The process involved:
    to discover H713-specific register layouts that differ from documented Allwinner
    SoCs (H6, H616, D1).
 5. **Iterative driver development** — Writing each driver, flashing via eMMC,
-   verifying via SSH and UART, reading dmesg, fixing, reflashing. Over 50 boot
+   verifying via SSH and UART, reading dmesg, fixing, reflashing. Hundreds of boot
    cycles during development.
 
 Key discoveries that required RE and are not documented anywhere:
