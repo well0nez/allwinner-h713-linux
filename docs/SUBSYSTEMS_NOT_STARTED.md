@@ -14,18 +14,6 @@ This file documents subsystems that have not been brought up yet (or are working
 
 ---
 
-## GPADC
-
-- **Status**: not started
-- **MMIO**: `0x02070000`
-- **Compatible**: `allwinner,sun20i-gpadc` (stock DTS)
-- **IRQ**: SPI 57
-- **Clocks**: `gpadc` (CCU)
-- **Required**: DTS node, verify IIO driver compatibility with H713 ADC block
-- **Note**: Used by board manager for battery voltage measurement
-
----
-
 ## LRADC
 
 - **Status**: not started
@@ -65,7 +53,10 @@ This file documents subsystems that have not been brought up yet (or are working
 - **MMIO**: `0x030f0000`
 - **Compatible**: `allwinner,sun50i-h616-iommu` (stock DTS)
 - **IRQ**: SPI 61
-- **Required**: DTS node; upstream `sun50i-iommu` driver; needed for VE/CE DMA safety
+- **Required**: DTS node present with correct address (0x02010000).
+- **BLOCKED**: CONFIG_SUN50I_IOMMU selects ARM_DMA_USE_IOMMU on ARM32, which corrupts
+  platform device of_node pointers causing kernel crashes in all module probes.
+  Needs investigation: may require ARM64 or a workaround for the DMA-IOMMU layer.
 
 ---
 
