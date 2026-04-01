@@ -39,6 +39,12 @@ hardware probing on a live device.
 ## How we got here
 
 This port was built from zero with no vendor source code or documentation.
+
+> **If you have access to an Allwinner H713 SDK (or any sun50iw12p1 BSP), please
+> reach out!** Vendor documentation and source code would massively accelerate
+> this port. Everything here was reverse engineered from binaries — even basic
+> register documentation would help.
+
 The process involved:
 
 1. **Firmware extraction** — Unpacking the stock update.img to get the kernel,
