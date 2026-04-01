@@ -1,5 +1,7 @@
 # HY310 Projector — Mainline Linux Port
 
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/well0nez)
+
 > **Work in Progress** — This project is under active development. Many subsystems
 > work reliably, but several are still being brought up and nothing has been submitted
 > upstream yet. Contributions, testing, and reverse engineering help are very welcome.
