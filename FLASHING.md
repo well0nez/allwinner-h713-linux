@@ -1,5 +1,10 @@
 # Flashing the HY310
 
+> **Note:** All flashing is done over the network (SSH/SCP) — either via a
+> USB-Ethernet adapter plugged into the single USB-A port, or via WiFi.
+> The HY310 has no USB data connection to a PC and no native Ethernet.
+> Power is supplied via a dedicated DC barrel jack, not USB.
+
 ## Boot Architecture
 
 The HY310 uses a **stock Allwinner U-Boot** that cannot be easily replaced.

@@ -37,12 +37,12 @@ hardware probing on a live device.
 | Bluetooth | AIC8800 BT 5.4 via UART1 |
 | Display | MIPS co-processor driven, 1920x1080 DLP via DLPC3435 |
 | Audio | Internal codec @ 0x02030000 + TridentALSA audio bridge |
-| USB | 3x EHCI + 3x OHCI, USB-C (power + data) |
+| USB | 3x EHCI + 3x OHCI, 1 external USB-A port |
 | IR | NEC protocol IR receiver on PL9 |
 | Motor | 4-phase stepper for keystone correction |
 | Fan | PWM-controlled cooling fan with tachometer + NTC thermal |
 | Sensors | STK8BA58 accelerometer (TWI1), DA228EC, LSM6DSR |
-| Power | Reboot + poweroff working, watchdog @ 0x02051000 |
+| Power | DC barrel jack (dedicated), reboot + poweroff working |
 
 ## How we got here
 
@@ -89,8 +89,9 @@ These subsystems boot and function reliably:
 - **Boot chain** — Stock U-Boot loads our kernel from eMMC boot_a in Android Boot v3
   format. Auto-boots in ~15 seconds to a Debian rootfs on USB stick.
 - **eMMC** — Full read/write at DDR High-Speed. 26 partitions mapped.
-- **USB** — All 3 host controllers working. USB-Ethernet (RTL8153) provides primary
-  SSH access.
+- **USB** — All 3 host controllers working. The HY310 has one accessible USB-A port.
+  Network access (SSH, flashing) is via USB-Ethernet adapter (e.g. RTL8153) or WiFi
+  — there is no native Ethernet port and no USB data connection to a PC.
 - **WiFi** — AIC8800D80 SDIO fully stable. 10MB+ transfers at ~1MB/s, no errors.
   Required custom MMC v5p3x driver patches and R_PIO register layout fix.
 - **Bluetooth** — BT 5.4 via UART1, scans and pairs. Manual hciattach required
