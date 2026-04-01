@@ -102,6 +102,7 @@ These subsystems boot and function reliably:
 - **PWM** — New 8-channel driver (pwm-sun8i) for the H713 PWM controller.
   Used for fan speed and backlight control.
 - **I2C** — TWI1 with STK8BA58 accelerometer detected.
+- **GPADC** — 2-channel general purpose ADC via IIO subsystem.
 - **Reboot + Poweroff** — Both working reliably.
 
 ### Partially Working
@@ -138,8 +139,8 @@ These subsystems have stock hardware addresses documented but no driver work don
 | Subsystem | Address | Notes |
 |-----------|---------|-------|
 | GPU (Mali-G31) | 0x01800000 | Needs Panfrost + IOMMU + power domain |
-| IOMMU | 0x02010000 | Required for GPU |
-| GPADC | 0x02009000 | 2-channel general ADC |
+| IOMMU | 0x02010000 | DTS node present but disabled (ARM32 compat issue) |
+
 | LRADC Keyboard | 0x02009800 | 6 keys + power key |
 | SPI | 0x04025000 | SPI0 + SPI1 |
 | Crypto Engine | 0x03040000 | Hardware AES/SHA |
@@ -246,7 +247,7 @@ This is an active WIP project. If you have an H713-based device and want to help
 - **Reverse Engineering** — The MIPS audio DSP firmware loading and display pipeline
   are the biggest unsolved challenges. IDA Pro analysis of `libmspsound.so` and
   `display.bin` would be extremely valuable.
-- **GPU** — Mali-G31 Panfrost bring-up needs IOMMU and power domain work.
+- **GPU** — Mali-G31 Panfrost bring-up needs IOMMU (currently disabled on ARM32) and power domain work.
 - **Documentation** — Stock register dumps, clock trees, and GPIO maps from other
   H713 devices help verify our findings.
 
