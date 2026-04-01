@@ -20,3 +20,9 @@ are not part of the build — they serve as hardware reference for development.
 
 The HY310 runs a modified Android TV based on Allwinner H713 SDK V1.3.
 Stock kernel: Linux 5.4.99 ARM32.
+
+## Additional Stock Files
+
+- `sys_config.fex` — Allwinner FEX hardware configuration (pin assignments, DRAM params, etc.)
+- `uboot_dtb.dts` — Decompiled U-Boot device tree (shows U-Boot HW config + boot sequence)
+- `env.fex` — Stock U-Boot environment variables (original, unpatched)
