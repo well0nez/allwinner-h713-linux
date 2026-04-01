@@ -1,4 +1,4 @@
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/Kconfig b/drivers/misc/sunxi_tvtop/Kconfig
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/Kconfig b/drivers/misc/sunxi_tvtop/Kconfig
 --- a/drivers/misc/sunxi_tvtop/Kconfig	1970-01-01 01:00:00.000000000 +0100
 +++ b/drivers/misc/sunxi_tvtop/Kconfig	2026-03-22 20:31:01.416722570 +0100
 @@ -0,0 +1,16 @@
@@ -18,7 +18,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +	  H713 SDK V1.3 firmware.
 +
 +	  If unsure, say Y.
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/Makefile b/drivers/misc/sunxi_tvtop/Makefile
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/Makefile b/drivers/misc/sunxi_tvtop/Makefile
 --- a/drivers/misc/sunxi_tvtop/Makefile	1970-01-01 01:00:00.000000000 +0100
 +++ b/drivers/misc/sunxi_tvtop/Makefile	2026-03-22 20:30:59.164721188 +0100
 @@ -0,0 +1,8 @@
@@ -30,7 +30,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +	sunxi_tvtop_power.o \
 +	sunxi_tvtop_sysfs.o \
 +	sunxi_tvtop_data.o
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c
 --- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c	1970-01-01 01:00:00.000000000 +0100
 +++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c	2026-03-27 11:19:48.808560959 +0100
 @@ -0,0 +1,307 @@
@@ -341,7 +341,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +	return ret;
 +}
 +EXPORT_SYMBOL(sunxi_tvtop_clk_put);
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c
 --- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c	1970-01-01 01:00:00.000000000 +0100
 +++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c	2026-03-22 20:30:57.952720458 +0100
 @@ -0,0 +1,137 @@
@@ -482,7 +482,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +		{ 0x84, 0xFFF000FF },
 +	},
 +};
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c
 --- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c	1970-01-01 01:00:00.000000000 +0100
 +++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c	2026-03-22 23:20:18.054833553 +0100
 @@ -0,0 +1,451 @@
@@ -937,7 +937,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +MODULE_AUTHOR("Allwinner");
 +MODULE_DESCRIPTION("Sunxi tv subsystem top module driver");
 +MODULE_LICENSE("GPL v2");
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop.h b/drivers/misc/sunxi_tvtop/sunxi_tvtop.h
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/sunxi_tvtop.h b/drivers/misc/sunxi_tvtop/sunxi_tvtop.h
 --- a/drivers/misc/sunxi_tvtop/sunxi_tvtop.h	1970-01-01 01:00:00.000000000 +0100
 +++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop.h	2026-03-22 20:40:23.017814062 +0100
 @@ -0,0 +1,189 @@
@@ -1130,7 +1130,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +extern const struct attribute_group tvtop_attribute_group;
 +
 +#endif /* _SUNXI_TVTOP_H */
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c
 --- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c	1970-01-01 01:00:00.000000000 +0100
 +++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c	2026-03-24 22:05:52.837248609 +0100
 @@ -0,0 +1,448 @@
@@ -1582,7 +1582,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +out:
 +	mutex_unlock(&sub->lock);
 +}
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c
 --- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c	1970-01-01 01:00:00.000000000 +0100
 +++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c	2026-03-22 20:37:04.121294225 +0100
 @@ -0,0 +1,74 @@
