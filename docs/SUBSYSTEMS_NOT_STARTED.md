@@ -14,17 +14,6 @@ This file documents subsystems that have not been brought up yet (or are working
 
 ---
 
-## LRADC
-
-- **Status**: not started
-- **MMIO**: `0x07090000`
-- **Compatible**: `allwinner,sun50i-r329-lradc` (stock DTS)
-- **IRQ**: SPI 216
-- **Required**: DTS node, input-keys or IIO driver for NTC thermistor and button matrix
-- **Note**: Used by board manager for NTC temperature sensing
-
----
-
 ## SPI
 
 - **Status**: not started
