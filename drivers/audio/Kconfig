@@ -1,0 +1,37 @@
+config SND_SOC_SUNXI_H713_CODEC
+	tristate "Allwinner H713 Internal Audio Codec"
+	depends on SND_SOC && ARCH_SUNXI && REGMAP_MMIO
+	help
+	  Enable support for the internal audio codec found in the
+	  Allwinner H713 (sun50iw12) SoC. This codec provides stereo
+	  DAC output with speaker PA control and stereo ADC input with
+	  line-in PGA. Used on the HY310 projector platform.
+
+	  This driver was reverse-engineered from the stock kernel using
+	  IDA Pro and verified register-by-register.
+
+	  Say Y or M if you have an Allwinner H713-based device.
+
+config SND_SOC_SUNXI_H713_MACHINE
+	tristate "Allwinner H713 Audio Machine Driver"
+	depends on SND_SOC
+	select SND_SOC_SUNXI_H713_CODEC
+	select SND_SOC_SUNXI_H713_CPUDAI
+	help
+	  Enable the ASoC machine driver that connects the H713 internal
+	  audio codec to the CPU-DAI. Creates the ALSA sound card with
+	  speaker PA control and clock management per sample rate.
+
+	  Say Y or M if you have an Allwinner H713-based device.
+
+config SND_SOC_SUNXI_H713_CPUDAI
+	tristate "Allwinner H713 CPU-DAI / DMA Platform"
+	depends on SND_SOC && ARCH_SUNXI
+	select SND_SOC_GENERIC_DMAENGINE_PCM
+	help
+	  Enable the CPU-DAI and DMA platform driver for the Allwinner H713.
+	  This provides the PCM data path (DMA channel 7) between ALSA and
+	  the internal codec FIFOs at 0x02030020 (DAC TX) and 0x02030040
+	  (ADC RX). Uses the kernel's generic dmaengine PCM framework.
+
+	  Say Y or M if you have an Allwinner H713-based device.

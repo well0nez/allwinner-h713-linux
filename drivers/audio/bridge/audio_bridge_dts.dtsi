@@ -1,0 +1,39 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+
+/*
+ * HY310 / H713 Trident audio-bridge fragment.
+ *
+ * This is intentionally more explicit than the historical single-reg stock
+ * node because IDA shows the driver touching several disjoint MMIO windows.
+ * The out-of-tree port can still hard-map these windows, but the correct DTS
+ * representation should describe them explicitly.
+ */
+
+/ {
+	trid_audio_bridge: audio-bridge@203042c {
+		compatible = "vs,trid-audio-bridge";
+		reg = <0x0 0x0203042c 0x0 0x4>,
+		      <0x0 0x06146000 0x0 0x88>,
+		      <0x0 0x06148000 0x0 0x394>,
+		      <0x0 0x0614a000 0x0 0x10>,
+		      <0x0 0x06142044 0x0 0x4>,
+		      <0x0 0x02031078 0x0 0x4>,
+		      <0x0 0x02032078 0x0 0x4>,
+		      <0x0 0x06e00020 0x0 0x4>,
+		      <0x0 0x02000158 0x0 0x4>;
+		reg-names = "logic",
+			    "audif",
+			    "audbrg",
+			    "audio-top-clk",
+			    "high-addr-ctl",
+			    "sw-reg1",
+			    "sw-reg2",
+			    "arc-src",
+			    "msp-owa-out";
+		interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>;
+		iommus = <&iommu 6 1>;
+		dma-coherent;
+		status = "okay";
+	};
+};

@@ -1,0 +1,13 @@
+config SND_HY310_TRID_AUDIO_BRIDGE
+	tristate "HY310 Trident audio bridge"
+	depends on SOUND && SND && OF && ARCH_SUNXI
+	select DMA_SHARED_BUFFER
+	help
+	  Raw ALSA audio-bridge driver for the HY310 projector on Allwinner H713.
+	  This is a port of the stock snd_alsa_trid module used for speaker,
+	  bridge, delayline and S/PDIF routing.
+
+	  The implementation is reverse-engineered from stock snd_alsa_trid.ko
+	  with IDA Pro and adapted for Linux 6.16 without vendor ION APIs.
+
+	  Say Y or M if you have an HY310-class H713 device.

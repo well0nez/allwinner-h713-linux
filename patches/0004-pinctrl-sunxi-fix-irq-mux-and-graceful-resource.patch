@@ -1,0 +1,96 @@
+--- a/drivers/pinctrl/sunxi/pinctrl-sunxi.c	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/pinctrl/sunxi/pinctrl-sunxi.c	2026-03-21 03:42:08.332484418 +0100
+@@ -1052,8 +1052,13 @@
+ 		return ret;
+ 	}
+ 
+-	/* Change muxing to INT mode */
+-	sunxi_pmx_set(pctl->pctl_dev, pctl->irq_array[d->hwirq], func->muxval);
++	/* Change muxing to INT mode.
++	 * Some SoCs (e.g. H713) can detect edges in GPIO mode and setting
++	 * the IRQ mux function actually disconnects the input path.
++	 * Skip mux change when irq_read_needs_mux is false.
++	 */
++	if (pctl->desc->irq_read_needs_mux)
++		sunxi_pmx_set(pctl->pctl_dev, pctl->irq_array[d->hwirq], func->muxval);
+ 
+ 	return 0;
+ }
+@@ -1646,45 +1651,54 @@
+ 	for (i = 0; i < pctl->desc->irq_banks; i++) {
+ 		pctl->irq[i] = platform_get_irq(pdev, i);
+ 		if (pctl->irq[i] < 0) {
++			if (pctl->irq[i] == -ENXIO) {
++				dev_warn(&pdev->dev,
++					 "GPIO IRQ resources missing, continuing without IRQ support\n");
++				pctl->irq = NULL;
++				break;
++			}
++
+ 			ret = pctl->irq[i];
+ 			goto gpiochip_error;
+ 		}
+ 	}
+ 
+-	pctl->domain = irq_domain_create_linear(of_fwnode_handle(node),
++	if (pctl->irq) {
++		pctl->domain = irq_domain_create_linear(of_fwnode_handle(node),
+ 						pctl->desc->irq_banks * IRQ_PER_BANK,
+ 						&sunxi_pinctrl_irq_domain_ops, pctl);
+-	if (!pctl->domain) {
+-		dev_err(&pdev->dev, "Couldn't register IRQ domain\n");
+-		ret = -ENOMEM;
+-		goto gpiochip_error;
+-	}
++		if (!pctl->domain) {
++			dev_err(&pdev->dev, "Couldn't register IRQ domain\n");
++			ret = -ENOMEM;
++			goto gpiochip_error;
++		}
+ 
+-	for (i = 0; i < (pctl->desc->irq_banks * IRQ_PER_BANK); i++) {
+-		int irqno = irq_create_mapping(pctl->domain, i);
++		for (i = 0; i < (pctl->desc->irq_banks * IRQ_PER_BANK); i++) {
++			int irqno = irq_create_mapping(pctl->domain, i);
+ 
+-		irq_set_lockdep_class(irqno, &sunxi_pinctrl_irq_lock_class,
++			irq_set_lockdep_class(irqno, &sunxi_pinctrl_irq_lock_class,
+ 				      &sunxi_pinctrl_irq_request_class);
+-		irq_set_chip_and_handler(irqno, &sunxi_pinctrl_edge_irq_chip,
++			irq_set_chip_and_handler(irqno, &sunxi_pinctrl_edge_irq_chip,
+ 					 handle_edge_irq);
+-		irq_set_chip_data(irqno, pctl);
+-	}
++			irq_set_chip_data(irqno, pctl);
++		}
+ 
+-	for (i = 0; i < pctl->desc->irq_banks; i++) {
+-		/* Mask and clear all IRQs before registering a handler */
+-		writel(0, pctl->membase +
++		for (i = 0; i < pctl->desc->irq_banks; i++) {
++			/* Mask and clear all IRQs before registering a handler */
++			writel(0, pctl->membase +
+ 			  sunxi_irq_ctrl_reg_from_bank(pctl->desc, i));
+-		writel(0xffffffff,
+-		       pctl->membase +
+-		       sunxi_irq_status_reg_from_bank(pctl->desc, i));
++			writel(0xffffffff,
++			       pctl->membase +
++			       sunxi_irq_status_reg_from_bank(pctl->desc, i));
++
++			irq_set_chained_handler_and_data(pctl->irq[i],
++					 sunxi_pinctrl_irq_handler,
++					 pctl);
++		}
+ 
+-		irq_set_chained_handler_and_data(pctl->irq[i],
+-						 sunxi_pinctrl_irq_handler,
+-						 pctl);
++		sunxi_pinctrl_setup_debounce(pctl, node);
+ 	}
+ 
+-	sunxi_pinctrl_setup_debounce(pctl, node);
+-
+ 	dev_info(&pdev->dev, "initialized sunXi PIO driver\n");
+ 
+ 	return 0;

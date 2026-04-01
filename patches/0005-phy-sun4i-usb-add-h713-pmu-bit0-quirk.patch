@@ -1,0 +1,46 @@
+--- a/drivers/phy/allwinner/phy-sun4i-usb.c	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/phy/allwinner/phy-sun4i-usb.c	2026-03-18 22:28:15.685069425 +0100
+@@ -107,6 +107,7 @@
+ 	bool needs_phy2_siddq;
+ 	bool siddq_in_base;
+ 	bool poll_vbusen;
++	bool pmu_enable_bit0;
+ 	int missing_phys;
+ };
+ 
+@@ -327,6 +328,10 @@
+ 		writel(val, phy->pmu + REG_HCI_PHY_CTL);
+ 	}
+ 
++	/* H713: PMU base register bit 0 must be set to enable PHY */
++	if (phy->pmu && data->cfg->pmu_enable_bit0)
++		writel(readl(phy->pmu) | BIT(0), phy->pmu);
++
+ 	if (data->cfg->siddq_in_base) {
+ 		if (phy->index == 0) {
+ 			val = readl(data->base + data->cfg->phyctl_offset);
+@@ -1025,6 +1030,16 @@
+ 	.siddq_in_base = true,
+ };
+ 
++
++static const struct sun4i_usb_phy_cfg sun50i_h713_cfg = {
++	.num_phys = 3,
++	.phyctl_offset = REG_PHYCTL_A33,
++	.dedicated_clocks = true,
++	.phy0_dual_route = true,
++	.siddq_in_base = true,
++	.pmu_enable_bit0 = true,
++};
++
+ static const struct of_device_id sun4i_usb_phy_of_match[] = {
+ 	{ .compatible = "allwinner,sun4i-a10-usb-phy", .data = &sun4i_a10_cfg },
+ 	{ .compatible = "allwinner,sun5i-a13-usb-phy", .data = &sun5i_a13_cfg },
+@@ -1041,6 +1056,7 @@
+ 	  .data = &sun50i_a64_cfg},
+ 	{ .compatible = "allwinner,sun50i-h6-usb-phy", .data = &sun50i_h6_cfg },
+ 	{ .compatible = "allwinner,sun50i-h616-usb-phy", .data = &sun50i_h616_cfg },
++	{ .compatible = "allwinner,sun50i-h713-usb-phy", .data = &sun50i_h713_cfg },
+ 	{ .compatible = "allwinner,suniv-f1c100s-usb-phy",
+ 	  .data = &suniv_f1c100s_cfg },
+ 	{ },
