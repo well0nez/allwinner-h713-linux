@@ -1,0 +1,39 @@
+# HY310 Stock GPIO Pin Assignment
+# Extracted from stock Android running system + IDA RE
+
+## Critical GPIO Assignments
+
+| Pin  | Function          | Notes                                      |
+|------|-------------------|--------------------------------------------|
+| PB2  | Speaker PA enable | Active HIGH, controlled by codec driver     |
+| PB4  | PWM2 (backlight)  | 25kHz PWM for projector backlight           |
+| PB5  | Panel BL + Fan    | SHARED LINE — never set LOW                 |
+| PG0-5| MMC1 / SDIO WiFi  | AIC8800 WiFi, mux function 4               |
+| PG6-9| UART1 (BT)        | AIC8800 Bluetooth transport                 |
+| PH2  | TWI1 SCL          | I2C bus for accelerometers                  |
+| PH3  | TWI1 SDA          | I2C bus for accelerometers                  |
+| PH14 | Motor limit switch| Always reads LOW (suspect HW issue)         |
+| PL9  | IR receiver       | NEC protocol, active LOW                    |
+| PM0  | WLAN host-wake    | AIC8800 WiFi wake interrupt                 |
+| PM1  | WLAN regon        | AIC8800 power control (regulator-fixed)     |
+| PM2  | BT wake           | AIC8800 BT wake                             |
+| PM3  | BT host-wake      | AIC8800 BT wake interrupt                   |
+| PM4  | BT reset          | AIC8800 BT reset                            |
+
+## I2C Devices on TWI1 (0x02502400)
+
+| Address | Device    | Compatible | Status   |
+|---------|-----------|------------|----------|
+| 0x18    | STK8BA58  | —          | okay     |
+| 0x0E    | DA228EC   | mir3da     | okay     |
+| 0x6A    | LSM6DSR   | —          | disabled |
+
+## Reserved Memory Layout
+
+| Region      | Start      | Size  | Purpose                    |
+|-------------|------------|-------|----------------------------|
+| BL31        | 0x48000000 | 1.5MB | ARM Trusted Firmware       |
+| OP-TEE      | 0x48600000 | 1MB   | Secure OS                  |
+| MIPS FW     | 0x4B100000 | 42MB  | display.bin + config + TSE |
+| Framebuffer | 0x4BF41000 | 26MB  | Display scanout            |
+| CPU Comm    | 0x4E300000 | 5MB   | ARM-MIPS shared memory     |
