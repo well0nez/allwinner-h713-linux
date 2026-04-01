@@ -30,7 +30,6 @@
 | **GPADC** | Not started | — | @ 0x02009000, 2 channels |
 | **LRADC Keyboard** | Not started | — | @ 0x02009800, 6 keys + power |
 | **SPI** | Not started | — | SPI0 @ 0x04025000, SPI1 @ 0x04026000 |
-| **Ethernet** | Not started | — | GMAC @ 0x04500000 (RMII, stock disabled) |
 | **Crypto Engine** | Not started | — | @ 0x03040000 |
 | **HW Spinlock** | Not started | — | @ 0x03004000 |
 | **TV Demodulator** | Not started | — | DTMB @ 0x06600000 |
