@@ -211,6 +211,9 @@ bootm 45000000
 
 ### UART Access
 
-The HY310 serial console is at 115200 8N1. If you have an OrangePi or similar
-UART bridge, see [tools/README.md](tools/README.md) for the `uboot_interrupt.py`
-tool that automates U-Boot interruption and recovery.
+The HY310 serial console is at 115200 8N1. See [docs/UART.md](docs/UART.md) for
+hardware connection details, U-Boot interrupt instructions, and recovery commands.
+
+> **NOTE:** The stock U-Boot has `bootdelay=0` — you cannot interrupt boot without
+> first patching the environment. Use [sunxi-env-patcher](https://github.com/well0nez/sunxi-env-patcher)
+> to set `bootdelay=5` before attempting any UART-based recovery.
