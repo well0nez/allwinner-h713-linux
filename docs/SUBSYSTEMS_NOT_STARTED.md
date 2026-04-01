@@ -48,18 +48,6 @@ This file documents subsystems that have not been brought up yet (or are working
 
 ---
 
-## ETHERNET (EMAC)
-
-- **Status**: not started
-- **MMIO**: `0x04500000`
-- **Compatible**: `allwinner,sun50i-h616-emac0` (stock DTS)
-- **IRQ**: SPI 46
-- **Clocks**: `emac`, `ephy` (CCU)
-- **Required**: DTS node with PHY reference, RMII/RGMII strap configuration
-- **Note**: Board uses USB-Ethernet (RTL8153) for primary connectivity; on-die EMAC is secondary
-
----
-
 ## CRYPTO (CE)
 
 - **Status**: not started

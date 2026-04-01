@@ -134,7 +134,6 @@ These subsystems have stock hardware addresses documented but no driver work don
 | GPADC | 0x02009000 | 2-channel general ADC |
 | LRADC Keyboard | 0x02009800 | 6 keys + power key |
 | SPI | 0x04025000 | SPI0 + SPI1 |
-| Ethernet (GMAC) | 0x04500000 | RMII mode, disabled in stock |
 | Crypto Engine | 0x03040000 | Hardware AES/SHA |
 | HW Spinlock | 0x03004000 | Multi-core sync |
 | TV Demodulator | 0x06600000 | DTMB |
