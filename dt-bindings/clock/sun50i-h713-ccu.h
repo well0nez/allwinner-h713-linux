@@ -1,0 +1,155 @@
+/* SPDX-License-Identifier: (GPL-2.0-only OR MIT) */
+/*
+ * Copyright (c) 2024 Project HY310
+ *
+ * Allwinner H713 CCU clock IDs
+ * Extracted from stock kernel (sun50iw12p1) via kallsyms + binary analysis
+ */
+
+#ifndef _DT_BINDINGS_CLK_SUN50I_H713_CCU_H_
+#define _DT_BINDINGS_CLK_SUN50I_H713_CCU_H_
+
+#define CLK_PLL_CPUX		0
+#define CLK_PLL_DDR		1
+#define CLK_PLL_PERIPH0		2
+#define CLK_PLL_PERIPH1		3
+#define CLK_PLL_GPU		4
+#define CLK_PLL_VIDEO0		5
+#define CLK_PLL_VIDEO1		6
+#define CLK_PLL_VIDEO2		7
+#define CLK_PLL_VE		8
+#define CLK_PLL_ADC		9
+#define CLK_PLL_VIDEO3		10
+#define CLK_PLL_AUDIO_BASE	11
+#define CLK_PLL_AUDIO		139
+
+#define CLK_CPUX		12
+#define CLK_AXI			13
+#define CLK_CPUX_APB		14
+#define CLK_AHB			15
+#define CLK_APB0		16
+#define CLK_APB1		17
+#define CLK_MBUS		18
+#define CLK_MIPS		19
+#define CLK_BUS_MIPS		20
+#define CLK_GPU			21
+#define CLK_BUS_GPU		22
+#define CLK_CE			23
+#define CLK_BUS_CE		24
+#define CLK_BUS_CE_SYS		25
+#define CLK_VE_CORE		26
+#define CLK_BUS_VE		27
+#define CLK_BUS_AV1		28
+#define CLK_BUS_VE3		29
+#define CLK_BUS_DMA		30
+#define CLK_BUS_MSGBOX		31
+#define CLK_BUS_SPINLOCK	32
+#define CLK_TIMER0		33
+#define CLK_TIMER1		34
+#define CLK_TIMER2		35
+#define CLK_TIMER3		36
+#define CLK_TIMER4		37
+#define CLK_TIMER5		38
+#define CLK_BUS_TIMER0		39
+#define CLK_BUS_DBG		40
+#define CLK_BUS_PWM		41
+#define CLK_BUS_IOMMU		42
+#define CLK_DRAM		43
+#define CLK_MBUS_DMA		44
+#define CLK_MBUS_VE3		45
+#define CLK_MBUS_CE		46
+#define CLK_MBUS_AV1		47
+#define CLK_MBUS_NAND		48
+#define CLK_BUS_DRAM		49
+#define CLK_NAND0		50
+#define CLK_NAND1		51
+#define CLK_BUS_NAND		52
+#define CLK_MMC0		53
+#define CLK_MMC1		54
+#define CLK_MMC2		55
+#define CLK_BUS_MMC0		56
+#define CLK_BUS_MMC1		57
+#define CLK_BUS_MMC2		58
+#define CLK_BUS_UART0		59
+#define CLK_BUS_UART1		60
+#define CLK_BUS_UART2		61
+#define CLK_BUS_UART3		62
+#define CLK_BUS_TWI0		63
+#define CLK_BUS_TWI1		64
+#define CLK_BUS_TWI2		65
+#define CLK_BUS_TWI3		66
+#define CLK_SPI0		67
+#define CLK_SPI1		68
+#define CLK_BUS_SPI0		69
+#define CLK_BUS_SPI1		70
+#define CLK_EMAC_25M		71
+#define CLK_BUS_EMAC		72
+#define CLK_BUS_GPADC		73
+#define CLK_BUS_THS		74
+#define CLK_I2S0		75
+#define CLK_I2S1		76
+#define CLK_I2S2		77
+#define CLK_BUS_I2S0		78
+#define CLK_BUS_I2S1		79
+#define CLK_BUS_I2S2		80
+#define CLK_OWA0_RX		81
+#define CLK_OWA0_TX		82
+#define CLK_OWA1_RX		83
+#define CLK_OWA1_TX		84
+#define CLK_BUS_OWA0		85
+#define CLK_BUS_OWA1		86
+#define CLK_BUS_AUDIO_HUB	87
+#define CLK_AUDIO_CODEC_DAC	88
+#define CLK_AUDIO_CODEC_ADC	89
+#define CLK_BUS_AUDIO_CODEC	90
+#define CLK_USB_OHCI0		91
+#define CLK_USB_OHCI1		92
+#define CLK_USB_OHCI2		93
+#define CLK_BUS_OHCI0		94
+#define CLK_BUS_OHCI1		95
+#define CLK_BUS_OHCI2		96
+#define CLK_BUS_EHCI0		97
+#define CLK_BUS_EHCI1		98
+#define CLK_BUS_EHCI2		99
+#define CLK_BUS_OTG0		100
+#define CLK_BUS_LRADC		101
+
+/* TV/Display clocks */
+#define CLK_ADC			102
+#define CLK_DTMB_120M		103
+#define CLK_TVFE_1296M		104
+#define CLK_I2H		105
+#define CLK_CIP_TSX		106
+#define CLK_CIP_MCX		107
+#define CLK_CIP_TSP		108
+#define CLK_TSA_TSP		109
+#define CLK_CIP27		110
+#define CLK_CIP_MTS0		111
+#define CLK_AUDIO_CPU		112
+#define CLK_AUDIO_UMAC		113
+#define CLK_AUDIO_IHB		114
+#define CLK_TSA432		115
+#define CLK_MPG0		116
+#define CLK_MPG1		117
+#define CLK_BUS_DEMOD		118
+#define CLK_TCD3		119
+#define CLK_VINCAP_DMA		120
+#define CLK_BUS_HDMI_AUDIO	121
+#define CLK_BUS_CAP_300M	122
+#define CLK_HDMI_AUDIO		123
+#define CLK_BUS_TVCAP		124
+#define CLK_DEINT		125
+#define CLK_PANEL		126
+#define CLK_SVP_DTL		127
+#define CLK_AFBD		128
+#define CLK_BUS_DISP		129
+
+#define CLK_PLL_PERIPH0_2X	130
+#define CLK_PLL_PERIPH0_4X	131
+#define CLK_PLL_PERIPH1_2X	132
+#define CLK_PLL_PERIPH1_4X	133
+#define CLK_OSC12M		134
+
+#define CLK_NUMBER		135
+
+#endif /* _DT_BINDINGS_CLK_SUN50I_H713_CCU_H_ */

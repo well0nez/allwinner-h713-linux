@@ -1,0 +1,18 @@
+config SUNXI_GE2D
+	tristate "Allwinner H713 GE2D display controller"
+	depends on OF && ARCH_SUNXI
+	select BACKLIGHT_CLASS_DEVICE
+	select I2C
+	select PWM
+	help
+	  Phase-1 bring-up driver for the HY310 GE2D display block.
+
+	  Covers: DTS parsing, shared clock/reset ownership, SVP char device
+	  (/dev/ge2d), OSD interrupt init, optional backlight and DLPC3435
+	  plumbing, and a guarded fbdev scaffold for later hardware validation.
+
+	  fbdev support is conditional on CONFIG_FB at compile time;
+	  the module builds and loads cleanly without it.
+
+	  Stock IDA metadata: OF compatible string `trix,ge2d`,
+	  platform driver name `ge2d_dev`.

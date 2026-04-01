@@ -1,0 +1,18 @@
+# Build artifacts
+*.o
+*.ko
+*.cmd
+*.mod
+*.mod.c
+*.order
+*.symvers
+.module-common*
+.*.cmd
+*.tmp
+output/
+staging/
+
+# Editor
+*.swp
+*~
+.vscode/

@@ -1,0 +1,180 @@
+#!/bin/sh
+# Copyright 2022-2023 Alkis Georgopoulos <github.com/alkisg>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Substituted at build time by dh_install
+PKG=aic8800
+MOD=aic8800
+VER=1.0.5
+
+help() {
+    cat <<EOF
+Usage: $0 <dh_install | make | postinst | postrm | troubleshoot>
+
+Handle BrosTrend driver installation and support tasks.
+EOF
+}
+
+cmd_dh_install() {
+    local lpkg lversion lmod
+
+    lpkg=$1
+    lversion=$2
+    case "$lpkg" in
+    rtl*) lmod=${lpkg#rtl} ;;
+    aic*) lmod=$lpkg ;;
+    esac
+    re test -n "$lpkg"
+    re test -n "$lversion"
+    re cd "$(dirname "$0")"
+    re find . -type d -exec chmod 755 {} \;
+    re find . -type f -not -name driverctl -exec chmod 644 {} \;
+    # All of driverctl is already loaded so we can sed it
+    re sed "s/$PKG/$lpkg/" -i driverctl
+    re sed "s/$MOD/$lmod/" -i driverctl
+    re sed "s/$VER/$lversion/" -i driverctl
+    if [ "$lpkg" = "aic8800" ]; then
+        re cd -
+        return 0
+    elif [ "$lmod" = "8852bu" ]; then
+        re sed 's/^options.*/&\n#\n# Disable the Virtual CD-ROM mode\noptions usb-storage quirks=0bda:1a2b:i/' -i "$lmod.conf"
+    elif [ -f "$lmod.conf" ]; then
+        re sed 's/^options/# &/' -i "$lmod.conf"
+    fi
+    test -f hal/phydm/phydm_debug.h &&
+        re sed 's/\bprintk/_RTW_DBG/' -i hal/phydm/phydm_debug.h
+    re sed 's/.*-Werror$/EXTRA_CFLAGS += -Wno-error/' -i Makefile
+    re sed 's|^EXTRA_CFLAGS += -Wimplicit-fallthrough=3$|#&|' -i Makefile
+    re sed 's|^\(CONFIG_RTW_DEBUG =\).*|\1 n|' -i Makefile
+    re sed 's|^\(CONFIG_WIFI_MONITOR =\).*|\1 y|' -i Makefile
+    re sed 's|^\(CONFIG_RTW_LOG_LEVEL =\).*|\1 0|' -i Makefile
+    re sed 's|uname -m[^)]*|uname -m \| sed -e s/i.86/i386/ -e s/armv.l/arm/ -e s/aarch64/arm64/|' -i Makefile
+    re cd -
+}
+
+cmd_make() {
+    local memavail nproc
+
+    memavail=$(LANG=C free | awk '/Mem:/ { print $2 }')
+    memavail=${memavail:-400000}
+    nproc=$(($(nproc) - 1))
+    test "$nproc" -ge 1 || nproc=1
+    if [ "$memavail" -lt 400000 ] && [ "$nproc" -gt 1 ]; then
+        # In low-RAM systems, use a single process to avoid OOM
+        echo "Free RAM=$memavail Kb, limiting compilation processes from $nproc to 1"
+        nproc=1
+    fi
+    # arch and kernelver are set by dkms, when it's used
+    arch=${arch:-$(uname -m)}
+    case "$arch" in
+    i?86) arch=i386 ;;
+    armv?l) arch=arm ;;
+    aarch64) arch=arm64 ;;
+    esac
+    export ARCH="$arch"
+    kernelver=${kernelver:-$(uname -r)}
+    # Logs at e.g. /var/lib/dkms/rtl88???u/1.15.11/5.15.76-v8+/aarch64/log/make.log
+    make all "ARCH=$ARCH" "-j$nproc" "KVER=$kernelver" "KSRC=/lib/modules/$kernelver/build"
+}
+
+# Cloned to postinst
+cmd_postinst() {
+    local link
+
+    # Remove all links, both legacy and new ones
+    for link in /etc/apt/trusted.gpg.d/brostrend.gpg \
+        /etc/apt/trusted.gpg.d/trendtechcn.gpg \
+        /etc/apt/sources.list.d/brostrend.list \
+        /etc/apt/sources.list.d/trendtechcn.list \
+        "/etc/modprobe.d/$MOD.conf"; do
+        if [ -L "$link" ]; then
+            rm -f "$link"
+        fi
+    done
+    # Symlink our modprobe options/blacklist file
+    link="/usr/src/$PKG-$VER/$MOD.conf"
+    if [ -f "$link" ] &&
+        [ -d /etc/modprobe.d ] &&
+        [ ! -e "/etc/modprobe.d/$MOD.conf" ]; then
+        ln -s "$link" /etc/modprobe.d/
+    fi
+    # Assume this package is the newest; link to that
+    link=/usr/share/$PKG-dkms/brostrend.gpg
+    if [ -d /etc/apt/trusted.gpg.d ] &&
+        [ ! -e /etc/apt/trusted.gpg.d/brostrend.gpg ]; then
+        ln -s "$link" /etc/apt/trusted.gpg.d/
+    fi
+    link=/usr/share/$PKG-dkms/brostrend.list
+    if [ -d /etc/apt/sources.list.d ] &&
+        [ ! -e /etc/apt/sources.list.d/brostrend.list ]; then
+        ln -s "$link" /etc/apt/sources.list.d/
+    fi
+}
+
+# Cloned to postrm
+cmd_postrm() {
+    local link
+
+    # Remove all links, both legacy and new ones
+    for link in /etc/apt/trusted.gpg.d/brostrend.gpg \
+        /etc/apt/trusted.gpg.d/trendtechcn.gpg \
+        /etc/apt/sources.list.d/brostrend.list \
+        /etc/apt/sources.list.d/trendtechcn.list \
+        "/etc/modprobe.d/$MOD.conf"; do
+        if [ -L "$link" ]; then
+            rm -f "$link"
+        fi
+    done
+    # Symlink to the first remaining brostrend package
+    for link in /usr/share/*-dkms/brostrend.gpg; do
+        if [ -f "$link" ] &&
+            [ -d /etc/apt/trusted.gpg.d ] &&
+            [ ! -e /etc/apt/trusted.gpg.d/brostrend.gpg ]; then
+            ln -s "$link" /etc/apt/trusted.gpg.d/
+            break
+        fi
+    done
+    for link in /usr/share/*-dkms/brostrend.list; do
+        if [ -f "$link" ] &&
+            [ -d /etc/apt/sources.list.d ] &&
+            [ ! -e /etc/apt/sources.list.d/brostrend.list ]; then
+            ln -s "$link" /etc/apt/sources.list.d/
+            break
+        fi
+    done
+}
+
+die() {
+    echo "$*" >&2
+    exit 1
+}
+
+re() {
+    "$@" || die "Aborting, command failed: $*"
+}
+
+main() {
+    local cmd
+
+    while :; do
+        case "$1" in
+        /usr/src/*/driverctl)
+            # Allow wildcard invocation e.g. /usr/src/*/driverctl troubleshoot
+            shift
+            continue
+            ;;
+        dh_install | make | postinst | postrm | troubleshoot)
+            cmd="cmd_$1"
+            shift
+            "$cmd" "$@"
+            exit $?
+            ;;
+        *)
+            help >&2
+            exit 1
+            ;;
+        esac
+    done
+}
+
+main "$@"

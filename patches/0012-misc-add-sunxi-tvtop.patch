@@ -1,0 +1,1662 @@
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/Kconfig b/drivers/misc/sunxi_tvtop/Kconfig
+--- a/drivers/misc/sunxi_tvtop/Kconfig	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/sunxi_tvtop/Kconfig	2026-03-22 20:31:01.416722570 +0100
+@@ -0,0 +1,16 @@
++config SUNXI_TVTOP
++	tristate "Allwinner H713 TV Subsystem Top Module"
++	depends on OF && ARCH_SUNXI
++	select RESET_CONTROLLER
++	help
++	  Clock gating, reset control and power domain management for the
++	  Allwinner H713 TV subsystem (tvdisp, tvcap, tvfe blocks).
++
++	  Required for display output on the HY310 projector. Manages
++	  clocks and power for the display engine, TV capture (HDMI input),
++	  and TV front-end (demodulator) subsystems.
++
++	  Based on reverse engineering of stock sunxi_tvtop.ko from
++	  H713 SDK V1.3 firmware.
++
++	  If unsure, say Y.
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/Makefile b/drivers/misc/sunxi_tvtop/Makefile
+--- a/drivers/misc/sunxi_tvtop/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/sunxi_tvtop/Makefile	2026-03-22 20:30:59.164721188 +0100
+@@ -0,0 +1,8 @@
++obj-$(CONFIG_SUNXI_TVTOP) += sunxi-tvtop.o
++
++sunxi-tvtop-y := \
++	sunxi_tvtop_drv.o \
++	sunxi_tvtop_clk.o \
++	sunxi_tvtop_power.o \
++	sunxi_tvtop_sysfs.o \
++	sunxi_tvtop_data.o
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c
+--- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_clk.c	2026-03-27 11:19:48.808560959 +0100
+@@ -0,0 +1,307 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Allwinner H713 TV Subsystem Top — Clock Management
++ *
++ * Implements reference-counted clock enable/disable for the three
++ * TV subsystem blocks. Exported symbols used by decd.ko and others.
++ *
++ * Ported from: sunxi_tvtop_clk_get (0x00c0), sunxi_tvtop_clk_put (0x0e08),
++ *              clk_prepare_enable (0x0164), sunxi_tvtop_clock_enable (0x0198)
++ */
++#include <linux/clk.h>
++#include <linux/clk-provider.h>
++#include <linux/export.h>
++#include <linux/mutex.h>
++#include <linux/printk.h>
++#include "sunxi_tvtop.h"
++
++/*
++ * Select the best parent for a clock given a desired parent rate.
++ *
++ * Problem: tvtop clk_set_rate(parent, rate) blindly changes whatever parent
++ * the mux currently points to. If two clocks share a PLL parent but need
++ * different rates (e.g. cip27 needs pll-video0@324MHz, adc needs pll-adc@1296MHz),
++ * the second clk_set_rate destroys the first clock's rate.
++ *
++ * Fix: Before setting the parent rate, iterate all possible parents and pick
++ * the one whose current rate already matches (or can match) the desired rate.
++ * Then call clk_set_parent() to switch the mux before touching the PLL rate.
++ */
++static void tvtop_select_best_parent(struct clk *clk, unsigned long parent_rate)
++{
++	struct clk_hw *hw = __clk_get_hw(clk);
++	unsigned int i, num_parents;
++	struct clk *current_parent;
++	unsigned long current_parent_rate;
++
++	if (!hw)
++		return;
++
++	current_parent = clk_get_parent(clk);
++	if (current_parent) {
++		current_parent_rate = clk_get_rate(current_parent);
++		if (current_parent_rate == parent_rate)
++			return;
++	}
++
++	num_parents = clk_hw_get_num_parents(hw);
++	for (i = 0; i < num_parents; i++) {
++		struct clk_hw *candidate_hw = clk_hw_get_parent_by_index(hw, i);
++		struct clk *candidate;
++		unsigned long rate;
++
++		if (!candidate_hw)
++			continue;
++
++		candidate = candidate_hw->clk;
++		if (!candidate || candidate == current_parent)
++			continue;
++
++		rate = clk_get_rate(candidate);
++		if (rate == parent_rate) {
++			pr_info("tvtop: parent-select: %s: switch %s (%lu) -> %s (%lu)\n",
++				__clk_get_name(clk),
++				current_parent ? __clk_get_name(current_parent) : "none",
++				current_parent ? current_parent_rate : 0,
++				__clk_get_name(candidate), rate);
++			clk_set_parent(clk, candidate);
++			return;
++		}
++	}
++
++	for (i = 0; i < num_parents; i++) {
++		struct clk_hw *candidate_hw = clk_hw_get_parent_by_index(hw, i);
++		struct clk *candidate;
++		long rounded;
++
++		if (!candidate_hw)
++			continue;
++
++		candidate = candidate_hw->clk;
++		if (!candidate || candidate == current_parent)
++			continue;
++
++		rounded = clk_round_rate(candidate, parent_rate);
++		if (rounded > 0 && (unsigned long)rounded == parent_rate) {
++			pr_info("tvtop: parent-select: %s: switch to %s (can round to %lu)\n",
++				__clk_get_name(clk),
++				__clk_get_name(candidate), parent_rate);
++			clk_set_parent(clk, candidate);
++			return;
++		}
++	}
++
++	pr_info("tvtop: parent-select: %s: no better parent for rate %lu, keeping %s\n",
++		__clk_get_name(clk), parent_rate,
++		current_parent ? __clk_get_name(current_parent) : "none");
++}
++/*
++ * Internal helper: prepare + enable a clock, undo prepare on enable failure.
++ * Matches stock clk_prepare_enable at 0x0164 (52 bytes).
++ *
++ * Disasm logic:
++ *   clk_prepare(clk) → if fail, return error
++ *   clk_enable(clk)  → if fail, clk_unprepare(clk), return error
++ *   return 0
++ */
++static int tvtop_clk_prepare_enable(struct clk *clk)
++{
++	int ret;
++	ret = clk_prepare(clk);
++	if (ret)
++		return ret;
++	ret = clk_enable(clk);
++	if (ret) {
++		clk_unprepare(clk);
++		return ret;
++	}
++	return 0;
++}
++/*
++ * Enable all clocks in a submodule's clock list.
++ * Matches stock sunxi_tvtop_clock_enable at 0x0198 (260 bytes).
++ *
++ * Disasm logic:
++ *   For each clk_entry in sub->clk_list:
++ *     1. If entry->clk exists and not yet enabled:
++ *        clk_prepare_enable(entry->clk), mark enabled
++ *     2. If entry->parent_rate != 0:
++ *        Get parent clk, if not yet enabled: prepare+enable parent
++ *        clk_set_rate(parent, parent_rate)
++ *        Store parent handle
++ *     3. If entry->target_rate != 0:
++ *        clk_set_rate(entry->clk, target_rate)
++ */
++void sunxi_tvtop_clock_enable(struct tvtop_submodule *sub)
++{
++	struct tvtop_clk_entry *entry;
++	int ret;
++	pr_info("tvtop: %s: clock_enable enter\n", sub->hw_data->name);
++	list_for_each_entry(entry, &sub->clk_list, list) {
++		pr_info("tvtop: %s: entry clk=%p enabled=%d target=%lu parent_rate=%lu\n",
++			sub->hw_data->name, entry->clk, entry->clk_enabled,
++			entry->target_rate, entry->parent_rate);
++		if (entry->clk && !entry->clk_enabled) {
++			pr_info("tvtop: %s: enable clock start\n", sub->hw_data->name);
++			ret = tvtop_clk_prepare_enable(entry->clk);
++			pr_info("tvtop: %s: enable clock done ret=%d\n",
++				sub->hw_data->name, ret);
++			if (ret == 0) {
++				entry->clk_enabled = true;
++			} else {
++				pr_err("tvtop: %s: failed to enable clock!\n",
++				       sub->hw_data->name);
++				continue;
++			}
++		}
++		if (entry->parent_rate == 0) {
++			pr_info("tvtop: %s: no parent rate, go set_rate\n",
++				sub->hw_data->name);
++			goto set_rate;
++		}
++		/* Select correct parent mux BEFORE getting/enabling it */
++		tvtop_select_best_parent(entry->clk, entry->parent_rate);
++
++		entry->parent_clk = clk_get_parent(entry->clk);
++		pr_info("tvtop: %s: parent clk=%p (%s) enabled=%d\n",
++			sub->hw_data->name, entry->parent_clk,
++			entry->parent_clk ? __clk_get_name(entry->parent_clk) : "null",
++			entry->parent_clk_enabled);
++		if (!entry->parent_clk)
++			goto set_rate;
++		if (entry->parent_clk_enabled) {
++			pr_info("tvtop: %s: parent already enabled\n",
++				sub->hw_data->name);
++			goto set_rate;
++		}
++		pr_info("tvtop: %s: enable parent start rate=%lu\n",
++			sub->hw_data->name, entry->parent_rate);
++		ret = tvtop_clk_prepare_enable(entry->parent_clk);
++		pr_info("tvtop: %s: enable parent done ret=%d\n",
++			sub->hw_data->name, ret);
++		if (ret == 0) {
++			entry->parent_clk_enabled = true;
++		} else {
++			pr_err("tvtop: %s: failed to enable parent clock!\n",
++			       sub->hw_data->name);
++		}
++		/*
++		 * SAFETY: Skip clk_set_rate for tvcap parent clocks.
++		 * The tvcap parent rates (1296MHz, 600MHz, 1152MHz) cause
++		 * a SoC bus fault / freeze because the mainline CCU driver
++		 * doesn't support those PLL configurations. The clocks are
++		 * still enabled, only the rate change is skipped.
++		 * See WORKLOG.md 2026-03-25 for root cause analysis.
++		 */
++		if (sub->hw_data && sub->hw_data->name &&
++		    !strcmp(sub->hw_data->name, "tvcap")) {
++			pr_info("tvtop: tvcap: skip parent clk_set_rate %lu (freeze workaround)\n",
++				entry->parent_rate);
++		} else {
++			clk_set_rate(entry->parent_clk, entry->parent_rate);
++			pr_info("tvtop: %s: set parent rate %lu done\n",
++				sub->hw_data->name, entry->parent_rate);
++		}
++set_rate:
++		if (entry->target_rate) {
++			pr_info("tvtop: %s: set target rate=%lu start\n",
++				sub->hw_data->name, entry->target_rate);
++			clk_set_rate(entry->clk, entry->target_rate);
++			pr_info("tvtop: %s: set target rate done\n",
++				sub->hw_data->name);
++		}
++	}
++	pr_info("tvtop: %s: clock_enable exit\n", sub->hw_data->name);
++}
++/*
++ * Acquire a clock reference for a submodule.
++ * Matches stock sunxi_tvtop_clk_get at 0x00c0 (164 bytes).
++ *
++ * Disasm logic:
++ *   if type > 2: error
++ *   lock clk_ctrl[type].lock
++ *   refcount++
++ *   if refcount == 1 (first user):
++ *     call enable_fn(tvtopdev->dev)
++ *     if type == 0: also call sunxi_tvtop_clk_get(1) recursively
++ *   unlock
++ *   return result
++ *
++ * EXPORTED: Used by decd.ko and other display modules.
++ */
++int sunxi_tvtop_clk_get(unsigned int type)
++{
++	struct tvtop_clk_ctrl *ctrl;
++	int ret = 0;
++	if (type > 2) {
++		pr_err("tvtop: %s: unknown module type %d\n",
++		       __func__, type);
++		return -EINVAL;
++	}
++	ctrl = &tvtopdev->clk_ctrl[type];
++	mutex_lock(&ctrl->lock);
++	ctrl->refcount++;
++	pr_emerg("tvtopdbg:01 clk_get type=%u refcount=%u\n", type, ctrl->refcount);
++	if (ctrl->refcount == 1) {
++		pr_emerg("tvtopdbg:01b enable_fn_start type=%u\n", type);
++		ret = ctrl->enable_fn(tvtopdev->dev);
++		pr_emerg("tvtopdbg:01c enable_fn_done type=%u ret=%d\n", type, ret);
++		/* tvdisp (type 0) also enables tvcap (type 1) */
++		if (type == TVTOP_SUB_TVDISP) {
++			int ret_tvcap;
++			pr_emerg("tvtopdbg:01d recurse_get_tvcap start\n");
++			ret_tvcap = sunxi_tvtop_clk_get(TVTOP_SUB_TVCAP);
++			pr_emerg("tvtopdbg:01e recurse_get_tvcap done ret=%d\n", ret_tvcap);
++			if (!ret)
++				ret = ret_tvcap;
++		}
++	}
++	mutex_unlock(&ctrl->lock);
++	return ret;
++}
++EXPORT_SYMBOL(sunxi_tvtop_clk_get);
++/*
++ * Release a clock reference for a submodule.
++ * Matches stock sunxi_tvtop_clk_put at 0x0e08 (220 bytes).
++ *
++ * Disasm logic:
++ *   if type > 2: error
++ *   lock clk_ctrl[type].lock
++ *   if refcount == 0: WARN, return -1
++ *   refcount--
++ *   if refcount == 0 (last user):
++ *     tvtop_submodule_disable(dev, type)
++ *     if type == 0: also call sunxi_tvtop_clk_put(1) recursively
++ *   unlock
++ *   return result
++ */
++int sunxi_tvtop_clk_put(unsigned int type)
++{
++	struct tvtop_clk_ctrl *ctrl;
++	int ret = 0;
++	if (type > 2) {
++		pr_err("tvtop: %s: unknown module type %d\n",
++		       __func__, type);
++		return -EINVAL;
++	}
++	ctrl = &tvtopdev->clk_ctrl[type];
++	mutex_lock(&ctrl->lock);
++	if (ctrl->refcount == 0) {
++		pr_err("tvtop: %s: unbalance clk operation\n", __func__);
++		WARN_ON(1);
++		ret = -1;
++		goto out;
++	}
++	ctrl->refcount--;
++	if (ctrl->refcount == 0) {
++		/* Last user — disable the submodule */
++		tvtop_submodule_disable(tvtopdev->dev, type);
++		/* tvdisp (type 0) also disables tvcap (type 1) */
++		if (type == TVTOP_SUB_TVDISP)
++			sunxi_tvtop_clk_put(TVTOP_SUB_TVCAP);
++	}
++out:
++	mutex_unlock(&ctrl->lock);
++	return ret;
++}
++EXPORT_SYMBOL(sunxi_tvtop_clk_put);
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c
+--- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_data.c	2026-03-22 20:30:57.952720458 +0100
+@@ -0,0 +1,137 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Allwinner H713 TV Subsystem Top — Static Hardware Data Tables
++ *
++ * Clock rates, register values, and hardware descriptions extracted
++ * from stock sunxi_tvtop.ko binary (.data/.rodata sections).
++ */
++
++#include "sunxi_tvtop.h"
++
++/* ================================================================
++ * Clock descriptor arrays (per submodule)
++ * Each entry: { name, { rate_1080p, rate_generic, rate_360p, rate_720p }, parent }
++ * NULL name terminates array.
++ * ================================================================ */
++
++static const struct tvtop_clk_desc tvdisp_clks[] = {
++	{ "svp_dtl_clk",  { 200000000, 200000000, 200000000,         0 }, 1200000000 },
++	{ "deint_clk",    { 1032000000, 1032000000, 516000000, 516000000 }, 1032000000 },
++	{ "panel_clk",    { 1032000000, 516000000, 516000000, 516000000 }, 1032000000 },
++	{ NULL, {0}, 0 },
++};
++
++static const struct tvtop_clk_desc tvcap_clks[] = {
++	{ "tcd3_clk",         {  27000000,  27000000, 0, 0 }, 1296000000 },
++	{ "vincap_dma_clk",   { 300000000, 300000000, 0, 0 },  600000000 },
++	{ "hdmi_audio_clk",   { 1152000000, 1152000000, 0, 0 }, 1152000000 },
++	{ "cap_300m",         { 0, 0, 0, 0 }, 0 },
++	{ "hdmi_audio_bus",   { 0, 0, 0, 0 }, 0 },
++	{ NULL, {0}, 0 },
++};
++
++static const struct tvtop_clk_desc tvfe_clks[] = {
++	{ "cip_tsp_clk",      { 333000000, 333000000, 0, 0 }, 1296000000 },
++	{ "cip_tsx_clk",      { 200000000, 200000000, 0, 0 },  600000000 },
++	{ "cip_mcx_clk",      { 100000000, 100000000, 0, 0 },  600000000 },
++	{ "tsa_tsp_clk",      { 333000000, 333000000, 0, 0 }, 1296000000 },
++	{ "tsa432_clk",       { 432000000, 432000000, 0, 0 }, 1296000000 },
++	{ "audio_ihb_clk",    { 200000000, 200000000, 0, 0 },  600000000 },
++	{ "i2h_clk",          { 200000000, 200000000, 0, 0 }, 1200000000 },
++	{ "cip_mts0_clk",     {  27000000,  27000000, 0, 0 }, 1296000000 },
++	{ "cip27_clk",        {  27000000,  27000000, 0, 0 },  324000000 },
++	{ "tvfe_1296M_clk",   { 1296000000, 1296000000, 0, 0 }, 1296000000 },
++	{ "audio_cpu",        { 400000000, 400000000, 0, 0 }, 1200000000 },
++	{ "audio_umac",       { 200000000, 200000000, 0, 0 },  600000000 },
++	{ "mpg0",             {  27000000,  27000000, 0, 0 }, 1296000000 },
++	{ "mpg1",             {  27000000,  27000000, 0, 0 }, 1296000000 },
++	{ "adc",              {  54000000,  54000000, 0, 0 }, 1296000000 },
++	{ NULL, {0}, 0 },
++};
++
++/* ================================================================
++ * Per-submodule hardware descriptions
++ * Order: [0]=tvdisp, [1]=tvcap, [2]=tvfe
++ * ================================================================ */
++
++const struct tvtop_hw_data tvtop_hw_data[TVTOP_SUB_COUNT] = {
++	[TVTOP_SUB_TVDISP] = {
++		.name      = "tvdisp",
++		.iomap_idx = 0,
++		.rst_name  = "reset_bus_disp",
++		.clk_name  = "clk_bus_disp",
++		.pm_domain = NULL,
++		.clk_descs = tvdisp_clks,
++	},
++	[TVTOP_SUB_TVCAP] = {
++		.name      = "tvcap",
++		.iomap_idx = 1,
++		.rst_name  = "reset_bus_tvcap",
++		.clk_name  = "clk_bus_tvcap",
++		.pm_domain = "pd_tvcap",
++		.clk_descs = tvcap_clks,
++	},
++	[TVTOP_SUB_TVFE] = {
++		.name      = "tvfe",
++		.iomap_idx = 2,
++		.rst_name  = "reset_bus_demod",
++		.clk_name  = "clk_bus_demod",
++		.pm_domain = "pd_tvfe",
++		.clk_descs = tvfe_clks,
++	},
++};
++
++/* ================================================================
++ * Display register table (tvdisp subsystem)
++ *
++ * Written to tvdisp iobase on enable (after first init).
++ * 7 register writes per resolution type.
++ * Indexed as: tvtop_disp_regs[resolution_type][entry_index]
++ *
++ * Only difference: type 0 (1080p) has 0xFFF000EF for reg 0x84,
++ * all others have 0xFFF000FF.
++ * ================================================================ */
++
++const struct tvtop_reg_entry
++tvtop_disp_regs[TVTOP_RES_TYPE_COUNT][TVTOP_DISP_REG_COUNT] = {
++	/* Resolution type 0: 1920×1080 */
++	[TVTOP_RES_1080P] = {
++		{ 0x04, 0x00000001 },
++		{ 0x44, 0x11111111 },
++		{ 0x88, 0xFFFFFFFF },
++		{ 0x00, 0x00011111 },
++		{ 0x40, 0x00011111 },
++		{ 0x80, 0x00001111 },
++		{ 0x84, 0xFFF000EF },
++	},
++	/* Resolution type 1: (same as type 2/3 in stock) */
++	[1] = {
++		{ 0x04, 0x00000001 },
++		{ 0x44, 0x11111111 },
++		{ 0x88, 0xFFFFFFFF },
++		{ 0x00, 0x00011111 },
++		{ 0x40, 0x00011111 },
++		{ 0x80, 0x00001111 },
++		{ 0x84, 0xFFF000FF },
++	},
++	/* Resolution type 2: 640×360 */
++	[TVTOP_RES_360P] = {
++		{ 0x04, 0x00000001 },
++		{ 0x44, 0x11111111 },
++		{ 0x88, 0xFFFFFFFF },
++		{ 0x00, 0x00011111 },
++		{ 0x40, 0x00011111 },
++		{ 0x80, 0x00001111 },
++		{ 0x84, 0xFFF000FF },
++	},
++	/* Resolution type 3: 1280×720 / 1366×768 / generic */
++	[TVTOP_RES_720P] = {
++		{ 0x04, 0x00000001 },
++		{ 0x44, 0x11111111 },
++		{ 0x88, 0xFFFFFFFF },
++		{ 0x00, 0x00011111 },
++		{ 0x40, 0x00011111 },
++		{ 0x80, 0x00001111 },
++		{ 0x84, 0xFFF000FF },
++	},
++};
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c
+--- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c	2026-03-22 23:20:18.054833553 +0100
+@@ -0,0 +1,451 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Allwinner H713 TV Subsystem Top — Platform Driver
++ *
++ * Ported from: sunxi_tvtop_probe (0x03a4), sunxi_tvtop_remove (0x0fa4),
++ *              sunxi_tvtop_resume (0x0000), sunxi_tvtop_suspend (0x0020),
++ *              sunxi_tvtop_complete (0x0084),
++ *              sunxi_tvtop_client_register (0x0040)
++ */
++
++#include <linux/clk.h>
++#include <linux/device.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/platform_device.h>
++#include <linux/pm.h>
++#include <linux/pm_domain.h>
++#include <linux/reset.h>
++#include <linux/slab.h>
++#include <linux/sysfs.h>
++
++#include "sunxi_tvtop.h"
++
++/* Global device pointer — used by exported clk_get/clk_put */
++struct tvtop_device *tvtopdev;
++
++/*
++ * External: HDCP key refresh (provided by sunxi secure monitor or stub).
++ * Declared weak so the driver works without the secure monitor.
++ */
++int sunxi_smc_refresh_hdcp(void);
++int __weak sunxi_smc_refresh_hdcp(void)
++{
++	return 0;
++}
++
++/* ================================================================
++ * Resolution detection — reads panel DT node
++ * Matches stock probe at 0x0530-0x0638
++ * ================================================================ */
++
++static int tvtop_detect_resolution(struct device_node *tvtop_node)
++{
++	struct device_node *panel_node;
++	u32 width = 0, height = 0, dual_port = 0;
++
++	/*
++	 * Stock searches for a "tvtop@1" FEX-style panel config node.
++	 * In our mainline DTS this node doesn't exist as a separate device.
++	 * Try reading panel properties from the tvtop node itself first,
++	 * then fall back to TVTOP_RES_1080P (HY310 has a 1080p panel).
++	 */
++	panel_node = of_get_child_by_name(tvtop_node, "tvtop@1");
++	if (!panel_node)
++		panel_node = of_node_get(tvtop_node);
++	if (!panel_node) {
++		pr_info("tvtop: no panel node found, defaulting to 1080p\n");
++		return TVTOP_RES_1080P;
++	}
++
++	of_property_read_u32(panel_node, "panel_width", &width);
++	of_property_read_u32(panel_node, "panel_height", &height);
++	of_property_read_u32(panel_node, "panel_dual_port", &dual_port);
++	of_node_put(panel_node);
++
++	/* Resolution mapping — extracted from stock binary */
++	if (width == 1920 && height == 1080)
++		return TVTOP_RES_1080P;		/* 0 */
++
++	if (width == 1366 && height == 768)
++		return TVTOP_RES_720P;		/* 3 */
++
++	if (width == 1280 && height == 720)
++		return TVTOP_RES_720P;		/* 3 */
++
++	if (width == 640 && height == 360)
++		return TVTOP_RES_360P;		/* 2 */
++
++	if (width == 0 || height == 0)
++		return TVTOP_RES_1080P;	/* default for HY310 */
++
++	/* Unknown resolution: interlace → type 0, otherwise type 3 */
++	return (dual_port == 1) ? TVTOP_RES_1080P : TVTOP_RES_720P;
++}
++
++/* ================================================================
++ * Probe — main initialization
++ * Matches stock sunxi_tvtop_probe at 0x03a4 (1432 bytes)
++ * ================================================================ */
++
++static int sunxi_tvtop_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct device_node *np = dev->of_node;
++	struct tvtop_device *tdev;
++	int i, ret;
++
++	/*
++	 * Stock driver checks strstr(pdev->name, "tvtop_pm"):
++	 * If the device is probed via the "allwinner,sunxi-tvtop-pm"
++	 * compatible, it only does power domain attachment for existing
++	 * tvtopdev, then returns.
++	 */
++	if (tvtopdev && strstr(pdev->name, "tvtop_pm")) {
++		for (i = 0; i < TVTOP_SUB_COUNT; i++) {
++			struct tvtop_submodule *sub = &tvtopdev->sub[i];
++			const struct tvtop_hw_data *hw = &tvtop_hw_data[i];
++
++			sub->hw_data = hw;
++			if (hw->pm_domain) {
++				sub->pm_dev = dev_pm_domain_attach_by_name(
++					dev, hw->pm_domain);
++				if (IS_ERR_OR_NULL(sub->pm_dev)) {
++					dev_err(dev,
++						"failed to get power domain: %s!\n",
++						hw->pm_domain);
++					sub->pm_dev = NULL;
++				}
++			}
++		}
++		return 0;
++	}
++
++	/* --- Normal probe path --- */
++
++	tdev = kzalloc(sizeof(*tdev), GFP_KERNEL);
++	if (!tdev) {
++		dev_err(dev, "kzalloc failed, out of memory!\n");
++		return -ENOMEM;
++	}
++
++	/* Create device class and child device */
++	tdev->cls = class_create("tvtop");
++	if (IS_ERR_OR_NULL(tdev->cls)) {
++		dev_err(dev, "class_create 'tvtop' failed!\n");
++		kfree(tdev);
++		return -ENOMEM;
++	}
++
++	tdev->dev = device_create(tdev->cls, dev, 0, tdev, "tvtop");
++	tdev->first_init = 1;
++	tdev->pdev_dev = dev;
++	platform_set_drvdata(pdev, tdev);
++
++	/* Initialize each submodule */
++	for (i = 0; i < TVTOP_SUB_COUNT; i++) {
++		struct tvtop_submodule *sub = &tdev->sub[i];
++		const struct tvtop_hw_data *hw = &tvtop_hw_data[i];
++		const struct tvtop_clk_desc *desc;
++
++		sub->hw_data = hw;
++
++		/* Resolution detection only for tvdisp (index 0) */
++		if (i == TVTOP_SUB_TVDISP)
++			sub->config_val = tvtop_detect_resolution(np);
++		else
++			sub->config_val = 0;
++
++		/* Init clock list */
++		INIT_LIST_HEAD(&sub->clk_list);
++		mutex_init(&sub->lock);
++
++		/* Validate DT node */
++		if (!np) {
++			dev_err(dev, "invalid of_node!\n");
++			ret = -EINVAL;
++			goto err_cleanup;
++		}
++
++		/* Map I/O registers */
++		sub->iobase = of_iomap(np, hw->iomap_idx);
++		if (!sub->iobase) {
++			dev_err(dev, "%s: invalid io memory!\n", hw->name);
++			ret = -ENOMEM;
++			goto err_cleanup;
++		}
++
++		/* Get reset control — stock uses shared=1, optional=0 */
++		sub->rst = of_reset_control_get_shared(np, hw->rst_name);
++		if (IS_ERR(sub->rst)) {
++			dev_err(dev, "%s: Could not get reset control!\n",
++				hw->name);
++			ret = PTR_ERR(sub->rst);
++			sub->rst = NULL;
++			iounmap(sub->iobase);
++			sub->iobase = NULL;
++			if (ret == 0)
++				goto init_clk_ctrl;
++			goto err_cleanup;
++		}
++
++		/* Get bus clock */
++		sub->bus_clk = of_clk_get_by_name(np, hw->clk_name);
++
++		/* Parse and allocate sub-clock entries */
++		for (desc = hw->clk_descs; desc->name; desc++) {
++			struct tvtop_clk_entry *entry;
++			struct clk *clk;
++
++			clk = of_clk_get_by_name(np, desc->name);
++			if (IS_ERR(clk)) {
++				dev_err(dev,
++					"%s: failed to get clk '%s'!\n",
++					hw->name, desc->name);
++				continue;
++			}
++
++			entry = kzalloc(sizeof(*entry), GFP_KERNEL);
++			if (!entry) {
++				dev_err(dev,
++					"%s: kzalloc clk node error!\n",
++					hw->name);
++				clk_put(clk);
++				continue;
++			}
++
++			entry->clk = clk;
++			entry->target_rate = desc->rates[sub->config_val >= 0 ?
++							  sub->config_val : 0];
++			entry->parent_rate = desc->parent_rate;
++
++			list_add_tail(&entry->list, &sub->clk_list);
++		}
++
++		/* Power domain attachment */
++		sub->pm_dev = NULL;
++		sub->enabled = 0;
++
++init_clk_ctrl:
++		/* Initialize clock control (ref counting) */
++		mutex_init(&tdev->clk_ctrl[i].lock);
++		tdev->clk_ctrl[i].refcount = 0;
++
++		/* Assign enable function */
++		switch (i) {
++		case TVTOP_SUB_TVDISP:
++			tdev->clk_ctrl[i].enable_fn = tvtop_tvdisp_enable;
++			break;
++		case TVTOP_SUB_TVCAP:
++			tdev->clk_ctrl[i].enable_fn = tvtop_tvcap_enable;
++			break;
++		case TVTOP_SUB_TVFE:
++			tdev->clk_ctrl[i].enable_fn = tvtop_tvfe_enable;
++			break;
++		}
++	}
++
++	/* Store global pointer */
++	tvtopdev = tdev;
++
++	/* Create sysfs attributes */
++	if (tdev->dev) {
++		ret = sysfs_create_group(&tdev->dev->kobj,
++					 &tvtop_attribute_group);
++		if (ret < 0) {
++			dev_warn(tdev->dev,
++				 "failed to create attr group \"reset_reason\": %d\n",
++				 ret);
++		}
++	}
++
++	return 0;
++
++err_cleanup:
++	/* On error during normal probe: partial cleanup */
++	dev_err(dev, "tvtop_driver_data_init error, type=%d!\n", i);
++	/* Fall through to init_clk_ctrl for remaining submodules */
++	goto init_clk_ctrl;
++}
++
++/* ================================================================
++ * Remove
++ * Matches stock sunxi_tvtop_remove at 0x0fa4 (312 bytes)
++ * ================================================================ */
++
++static void sunxi_tvtop_remove(struct platform_device *pdev)
++{
++	struct tvtop_device *tdev = tvtopdev;
++	int i;
++
++	if (!tdev)
++		return;
++
++	/* Remove sysfs group */
++	if (tdev->dev)
++		sysfs_remove_group(&tdev->dev->kobj, &tvtop_attribute_group);
++
++	/* Disable and cleanup each submodule */
++	for (i = 0; i < TVTOP_SUB_COUNT; i++) {
++		struct tvtop_submodule *sub = &tdev->sub[i];
++		struct tvtop_clk_entry *entry, *tmp;
++
++		/* Disable submodule */
++		tvtop_submodule_disable(tdev->dev, i);
++
++		/* Skip cleanup if no config */
++		if (!sub->enabled && !sub->iobase)
++			goto detach_pm;
++
++		/* Unmap I/O */
++		if (sub->iobase) {
++			iounmap(sub->iobase);
++			sub->iobase = NULL;
++		}
++
++		/* Release reset control */
++		if (sub->rst) {
++			reset_control_put(sub->rst);
++			sub->rst = NULL;
++		}
++
++		/* Release bus clock */
++		if (sub->bus_clk) {
++			clk_put(sub->bus_clk);
++			sub->bus_clk = NULL;
++		}
++
++		/* Free all clock entries */
++		list_for_each_entry_safe(entry, tmp, &sub->clk_list, list) {
++			list_del(&entry->list);
++			if (entry->clk)
++				clk_put(entry->clk);
++			if (entry->parent_clk)
++				clk_put(entry->parent_clk);
++			kfree(entry);
++		}
++
++detach_pm:
++		/* Detach power domain */
++		if (sub->pm_dev) {
++			dev_pm_domain_detach(sub->pm_dev, false);
++			sub->pm_dev = NULL;
++		}
++		sub->enabled = 0;
++	}
++
++	/* Destroy device and class */
++	if (tdev->dev)
++		device_destroy(tdev->cls, 0);
++	if (tdev->cls)
++		class_destroy(tdev->cls);
++
++	kfree(tdev);
++	tvtopdev = NULL;
++	platform_set_drvdata(pdev, NULL);
++}
++
++/* ================================================================
++ * PM callbacks
++ * Matches stock at 0x0000-0x00bc
++ * ================================================================ */
++
++/*
++ * sunxi_tvtop_resume (0x0000, 32 bytes)
++ * Just logs "sunxi tvtop resume"
++ */
++static int sunxi_tvtop_resume(struct device *dev)
++{
++	dev_info(dev, "sunxi tvtop resume\n");
++	return 0;
++}
++
++/*
++ * sunxi_tvtop_suspend (0x0020, 32 bytes)
++ * Just logs "sunxi tvtop suspend"
++ */
++static int sunxi_tvtop_suspend(struct device *dev)
++{
++	dev_info(dev, "sunxi tvtop suspend\n");
++	return 0;
++}
++
++/*
++ * sunxi_tvtop_complete (0x0084, 60 bytes)
++ *
++ * Disasm logic:
++ *   ret = sunxi_smc_refresh_hdcp()
++ *   if ret != 0: printk("tvtop: refresh hdcp key failed!!!")
++ *   dev_info(dev, "sunxi tvtop resume complete")
++ */
++static void sunxi_tvtop_complete(struct device *dev)
++{
++	int ret;
++
++	ret = sunxi_smc_refresh_hdcp();
++	if (ret)
++		pr_err("tvtop: refresh hdcp key failed!!!\n");
++
++	dev_info(dev, "sunxi tvtop resume complete\n");
++}
++
++static const struct dev_pm_ops tvtop_runtime_pm_ops = {
++	.suspend  = sunxi_tvtop_suspend,
++	.resume   = sunxi_tvtop_resume,
++	.complete = sunxi_tvtop_complete,
++};
++
++/* ================================================================
++ * Client registration (exported)
++ * Matches stock sunxi_tvtop_client_register at 0x0040 (68 bytes)
++ *
++ * Disasm logic:
++ *   if tvtopdev == NULL: return -ENODEV
++ *   if tvtopdev->pdev_dev == NULL: return -ENODEV
++ *   device_link_add(client_dev, tvtopdev->pdev_dev, DL_FLAG_STATELESS)
++ *   return 0
++ * ================================================================ */
++
++int sunxi_tvtop_client_register(struct device *client_dev)
++{
++	if (!tvtopdev)
++		return -EINVAL;
++	if (!tvtopdev->pdev_dev)
++		return -EINVAL;
++
++	/* Stock passes flag value 2 = DL_FLAG_AUTOREMOVE_CONSUMER */
++	device_link_add(client_dev, tvtopdev->pdev_dev,
++			DL_FLAG_AUTOREMOVE_CONSUMER);
++
++	return 0;
++}
++EXPORT_SYMBOL(sunxi_tvtop_client_register);
++
++/* ================================================================
++ * OF match table and platform driver
++ * ================================================================ */
++
++static const struct of_device_id sunxi_tvtop_of_match[] = {
++	{ .compatible = "allwinner,sunxi-tvtop" },
++	{ .compatible = "allwinner,sunxi-tvtop-pm" },
++	{ /* sentinel */ },
++};
++MODULE_DEVICE_TABLE(of, sunxi_tvtop_of_match);
++
++static struct platform_driver sunxi_tvtop_driver = {
++	.probe  = sunxi_tvtop_probe,
++	.remove = sunxi_tvtop_remove,
++	.driver = {
++		.name           = "sunxi-tvtop",
++		.pm             = &tvtop_runtime_pm_ops,
++		.of_match_table = sunxi_tvtop_of_match,
++	},
++};
++
++module_platform_driver(sunxi_tvtop_driver);
++
++MODULE_AUTHOR("Allwinner");
++MODULE_DESCRIPTION("Sunxi tv subsystem top module driver");
++MODULE_LICENSE("GPL v2");
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop.h b/drivers/misc/sunxi_tvtop/sunxi_tvtop.h
+--- a/drivers/misc/sunxi_tvtop/sunxi_tvtop.h	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop.h	2026-03-22 20:40:23.017814062 +0100
+@@ -0,0 +1,189 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Allwinner H713 TV Subsystem Top Module Driver
++ *
++ * Ported from stock sunxi_tvtop.ko (H713 SDK V1.3, Linux 5.4)
++ * Original path: drivers/misc/sunxi-tvutils/sunxi_tvtop.c
++ *
++ * This driver manages clock gating, reset control and power domains
++ * for the three TV subsystem blocks: tvdisp, tvcap, tvfe.
++ */
++
++#ifndef _SUNXI_TVTOP_H
++#define _SUNXI_TVTOP_H
++
++#include <linux/clk.h>
++#include <linux/device.h>
++#include <linux/list.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/reset.h>
++#include <linux/types.h>
++
++/* Submodule indices — order matches hw_data[] array */
++#define TVTOP_SUB_TVDISP	0
++#define TVTOP_SUB_TVCAP		1
++#define TVTOP_SUB_TVFE		2
++#define TVTOP_SUB_COUNT		3
++
++/* Resolution types — used to select clock rates and register tables */
++#define TVTOP_RES_1080P		0	/* 1920×1080 */
++#define TVTOP_RES_UNKNOWN	(-1)	/* Undetected */
++#define TVTOP_RES_360P		2	/* 640×360 */
++#define TVTOP_RES_720P		3	/* 1280×720, 1366×768, or generic */
++
++/* Maximum resolution types in clock rate tables */
++#define TVTOP_RES_TYPE_COUNT	4
++
++/* Number of register write entries per resolution type (tvdisp) */
++#define TVTOP_DISP_REG_COUNT	7
++
++/* INCAP power register physical address (tvcap enable) */
++#define TVTOP_INCAP_REG_PHYS	0x06940000
++#define TVTOP_INCAP_REG_SIZE	0x100
++
++/**
++ * struct tvtop_clk_desc - Clock descriptor in hardware data tables
++ * @name:        DT clock name (NULL terminates the array)
++ * @rates:       Target clock rates per resolution type (Hz)
++ * @parent_rate: Parent clock rate (Hz), 0 = don't set
++ */
++struct tvtop_clk_desc {
++	const char *name;
++	unsigned long rates[TVTOP_RES_TYPE_COUNT];
++	unsigned long parent_rate;
++};
++
++/**
++ * struct tvtop_reg_entry - Register offset + value pair
++ * @offset: Register offset from iobase
++ * @value:  Value to write
++ */
++struct tvtop_reg_entry {
++	u32 offset;
++	u32 value;
++};
++
++/**
++ * struct tvtop_hw_data - Per-submodule hardware description
++ * @name:       Submodule name ("tvdisp", "tvcap", "tvfe")
++ * @iomap_idx:  Index for of_iomap()
++ * @rst_name:   Reset control name in DT
++ * @clk_name:   Bus clock name in DT
++ * @pm_domain:  Power domain name (NULL = none)
++ * @clk_descs:  Array of clock descriptors (NULL-terminated)
++ */
++struct tvtop_hw_data {
++	const char *name;
++	int iomap_idx;
++	const char *rst_name;
++	const char *clk_name;
++	const char *pm_domain;
++	const struct tvtop_clk_desc *clk_descs;
++};
++
++/**
++ * struct tvtop_clk_entry - Runtime clock list entry
++ * @list:               Linked into submodule clk_list
++ * @clk:                Clock handle
++ * @parent_clk:         Cached parent clock handle
++ * @target_rate:        Target rate for this clock (Hz)
++ * @parent_rate:        Target rate for parent clock (Hz)
++ * @clk_enabled:        Whether clk has been prepared+enabled
++ * @parent_clk_enabled: Whether parent_clk has been prepared+enabled
++ */
++struct tvtop_clk_entry {
++	struct list_head list;
++	struct clk *clk;
++	struct clk *parent_clk;
++	unsigned long target_rate;
++	unsigned long parent_rate;
++	bool clk_enabled;
++	bool parent_clk_enabled;
++};
++
++/**
++ * struct tvtop_submodule - Per-submodule runtime state
++ * @hw_data:           Pointer to static hardware description
++ * @iobase:            Memory-mapped register base
++ * @rst:               Reset control handle
++ * @bus_clk:           Bus clock handle
++ * @bus_clk_enabled:   Whether bus_clk has been prepared+enabled
++ * @clk_list:          List of tvtop_clk_entry (runtime clocks)
++ * @pm_link:           Device link for power domain (NULL = none)
++ * @config_val:        Resolution type for submodule 0, 0 for others
++ * @lock:              Mutex protecting enable/disable
++ * @enabled:           Whether this submodule is currently enabled
++ */
++struct tvtop_submodule {
++	const struct tvtop_hw_data *hw_data;
++	void __iomem *iobase;
++	struct reset_control *rst;
++	struct clk *bus_clk;
++	bool bus_clk_enabled;
++	struct list_head clk_list;
++	struct device *pm_dev;		/* virtual device for power domain */
++	int config_val;
++	struct mutex lock;
++	int enabled;
++};
++
++/**
++ * struct tvtop_clk_ctrl - Per-submodule clock reference counting
++ * @lock:       Mutex protecting refcount and enable/disable
++ * @refcount:   Number of active clock users
++ * @enable_fn:  Function to call on first enable
++ */
++struct tvtop_clk_ctrl {
++	struct mutex lock;
++	int refcount;
++	int (*enable_fn)(struct device *dev);
++};
++
++/**
++ * struct tvtop_device - Main driver private data (allocated in probe)
++ * @name:        Device name (NULL in normal probe)
++ * @dev:         Child device created by device_create
++ * @cls:         Device class
++ * @sub:         Per-submodule data [tvdisp, tvcap, tvfe]
++ * @first_init:  Flag: skip register writes on first tvdisp enable
++ * @clk_ctrl:    Per-submodule clock reference control
++ * @pdev_dev:    Platform device's struct device pointer
++ */
++struct tvtop_device {
++	const char *name;
++	struct device *dev;
++	struct class *cls;
++	struct tvtop_submodule sub[TVTOP_SUB_COUNT];
++	int first_init;
++	struct tvtop_clk_ctrl clk_ctrl[TVTOP_SUB_COUNT];
++	struct device *pdev_dev;
++};
++
++/* Global device pointer (needed by clk_get/clk_put exports) */
++extern struct tvtop_device *tvtopdev;
++
++/* ---- Data tables (sunxi_tvtop_data.c) ---- */
++extern const struct tvtop_hw_data tvtop_hw_data[TVTOP_SUB_COUNT];
++extern const struct tvtop_reg_entry
++	tvtop_disp_regs[TVTOP_RES_TYPE_COUNT][TVTOP_DISP_REG_COUNT];
++
++/* ---- Clock management (sunxi_tvtop_clk.c) ---- */
++int sunxi_tvtop_clk_get(unsigned int type);
++int sunxi_tvtop_clk_put(unsigned int type);
++int sunxi_tvtop_client_register(struct device *client_dev);
++void sunxi_tvtop_clock_enable(struct tvtop_submodule *sub);
++
++/* ---- Power / subsystem enable/disable (sunxi_tvtop_power.c) ---- */
++int tvtop_tvdisp_enable(struct device *dev);
++int tvtop_tvfe_enable(struct device *dev);
++int tvtop_tvcap_enable(struct device *dev);
++int tvtop_pm_domain_enable(struct tvtop_submodule *sub);
++void tvtop_pm_domain_disable(struct tvtop_submodule *sub);
++void tvtop_submodule_disable(struct device *dev, unsigned int index);
++
++/* ---- Sysfs (sunxi_tvtop_sysfs.c) ---- */
++extern const struct attribute_group tvtop_attribute_group;
++
++#endif /* _SUNXI_TVTOP_H */
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c
+--- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_power.c	2026-03-24 22:05:52.837248609 +0100
+@@ -0,0 +1,448 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Allwinner H713 TV Subsystem Top — Power Domains & Subsystem Enable/Disable
++ *
++ * Ported from: tvtop_pm_domain_enable (0x093c), tvtop_pm_domain_disable (0x0c80),
++ *              tvtop_tvdisp_enable (0x029c), tvtop_tvfe_enable (0x09dc),
++ *              tvtop_tvcap_enable (0x0ac4), tvtop_submodule_disable (0x0cb8)
++ */
++
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/device.h>
++#include <linux/io.h>
++#include <linux/mutex.h>
++#include <linux/pm_domain.h>
++#include <linux/pm_runtime.h>
++#include <linux/reset.h>
++
++#include "sunxi_tvtop.h"
++
++/* Global power-on flag for tvcap INCAP register sequence */
++static int is_power_on;
++
++/*
++ * Enable power domain for a submodule.
++ * Matches stock tvtop_pm_domain_enable at 0x093c (160 bytes).
++ *
++ * Disasm logic:
++ *   if sub->pm_link == NULL: return 0
++ *   dev_pm_genpd_set_performance_state(pm_link, INT_MAX)
++ *   pm_runtime_resume(pm_link)
++ *   if resume fails:
++ *     atomic_dec(pm_link->device.power.usage_count) [inline runtime]
++ *     dev_pm_genpd_set_performance_state(pm_link, 0)
++ *     dev_err(pm_link, "tvtop pm domain enable failed, ret=%d!")
++ *   return ret
++ */
++int tvtop_pm_domain_enable(struct tvtop_submodule *sub)
++{
++	int ret;
++
++	if (!sub->pm_dev)
++		return 0;
++
++	dev_pm_genpd_set_performance_state(sub->pm_dev, INT_MAX);
++
++	/*
++	 * Stock uses __pm_runtime_resume(pm_dev, RPM_GET_PUT=4).
++	 * pm_runtime_resume_and_get() is the mainline equivalent.
++	 */
++	ret = pm_runtime_resume_and_get(sub->pm_dev);
++	if (ret < 0) {
++		/*
++		 * Stock does inline atomic_dec_if_positive on usage_count.
++		 * pm_runtime_put_noidle is the clean equivalent.
++		 */
++		pm_runtime_put_noidle(sub->pm_dev);
++		dev_pm_genpd_set_performance_state(sub->pm_dev, 0);
++		dev_err(sub->pm_dev,
++			"tvtop pm domain enable failed, ret=%d!\n", ret);
++	}
++
++	return ret;
++}
++
++/*
++ * Disable power domain for a submodule.
++ * Matches stock tvtop_pm_domain_disable at 0x0c80 (56 bytes).
++ *
++ * Disasm logic:
++ *   if sub->pm_link == NULL: return
++ *   dev_pm_genpd_set_performance_state(pm_link, 0)
++ *   pm_runtime_idle(pm_link)
++ */
++void tvtop_pm_domain_disable(struct tvtop_submodule *sub)
++{
++	if (!sub->pm_dev)
++		return;
++
++	dev_pm_genpd_set_performance_state(sub->pm_dev, 0);
++	/* Stock uses flags value 5 = RPM_ASYNC | RPM_GET_PUT */
++	__pm_runtime_idle(sub->pm_dev, RPM_ASYNC | RPM_GET_PUT);
++}
++
++/*
++ * Enable tvdisp (display) subsystem.
++ * Matches stock tvtop_tvdisp_enable at 0x029c (264 bytes).
++ *
++ * Disasm logic:
++ *   lock sub[0].lock
++ *   if already enabled: unlock, return 0
++ *   clock_enable(sub[0])
++ *   enable bus_clk if present and not yet enabled
++ *   reset_control_deassert(rst) — if fail, error + unlock
++ *   if first_init:
++ *     dev_info "tvdisp skip first initialized."
++ *     clear first_init, set enabled, unlock, return 0
++ *   else:
++ *     write 7 register entries from disp_regs[resolution_type]
++ *     set enabled, unlock, return 0
++ */
++int tvtop_tvdisp_enable(struct device *dev)
++{
++	struct tvtop_device *tdev = dev_get_drvdata(dev);
++	struct tvtop_submodule *sub = &tdev->sub[TVTOP_SUB_TVDISP];
++	int ret = 0;
++	int i;
++
++	dev_info(tdev->dev,
++		 "tvdisp: enter enabled=%d first_init=%d bus_clk_enabled=%d config=%d iobase=%p\n",
++		 sub->enabled, tdev->first_init, sub->bus_clk_enabled,
++		 sub->config_val, sub->iobase);
++
++	mutex_lock(&sub->lock);
++	pr_emerg("tvtopdbg:02 mutex_locked\n");
++
++	if (sub->enabled) {
++		dev_info(tdev->dev, "tvdisp: already enabled\n");
++		goto out;
++	}
++
++	pr_emerg("tvtopdbg:03 clock_enable_start\n");
++	sunxi_tvtop_clock_enable(sub);
++	pr_emerg("tvtopdbg:04 clock_enable_done\n");
++
++	if (sub->bus_clk && !sub->bus_clk_enabled) {
++		pr_emerg("tvtopdbg:05 bus_clk_start\n");
++		ret = clk_prepare_enable(sub->bus_clk);
++		pr_emerg("tvtopdbg:06 bus_clk_done ret=%d\n", ret);
++		if (ret == 0)
++			sub->bus_clk_enabled = true;
++	} else {
++		dev_info(tdev->dev,
++			 "tvdisp: bus_clk skip present=%d enabled=%d\n",
++			 !!sub->bus_clk, sub->bus_clk_enabled);
++	}
++
++	pr_emerg("tvtopdbg:07 reset_start\n");
++	ret = reset_control_deassert(sub->rst);
++	pr_emerg("tvtopdbg:08 reset_done ret=%d\n", ret);
++	if (ret) {
++		dev_err(tdev->dev,
++			"tvdisp bus reset deassert fail: %d!\n", ret);
++		goto out;
++	}
++
++	dev_info(tdev->dev, "tvdisp: first_init check=%d\n", tdev->first_init);
++	if (tdev->first_init) {
++		pr_emerg("tvtopdbg:09 first_init_skip_forced_write\n");
++		tdev->first_init = 0;
++		pr_emerg("tvtopdbg:10 first_init_cleared\n");
++	}
++
++	{
++		int res_type = sub->config_val;
++
++		pr_emerg("tvtopdbg:10b write_table_start res_type=%d\n", res_type);
++		if (res_type >= 0 && res_type < TVTOP_RES_TYPE_COUNT) {
++			for (i = 0; i < TVTOP_DISP_REG_COUNT; i++) {
++				pr_emerg("tvtopdbg:10c write idx=%d off=0x%x val=0x%08x\n",
++					 i, tvtop_disp_regs[res_type][i].offset,
++					 tvtop_disp_regs[res_type][i].value);
++				writel(tvtop_disp_regs[res_type][i].value,
++				       sub->iobase +
++				       tvtop_disp_regs[res_type][i].offset);
++			}
++		} else {
++			pr_emerg("tvtopdbg:10d invalid_res_type=%d\n", res_type);
++		}
++		pr_emerg("tvtopdbg:10e write_table_done\n");
++	}
++
++	sub->enabled = 1;
++	pr_emerg("tvtopdbg:11 enabled_set\n");
++
++out:
++	dev_info(tdev->dev, "tvdisp: unlock ret=%d enabled=%d\n", ret, sub->enabled);
++	mutex_unlock(&sub->lock);
++	pr_emerg("tvtopdbg:12 return ret=%d\n", ret);
++	return ret;
++}
++
++/*
++ * Enable tvfe (TV front-end / demodulator) subsystem.
++ * Matches stock tvtop_tvfe_enable at 0x09dc (232 bytes).
++ *
++ * Disasm logic:
++ *   lock sub[2].lock
++ *   if already enabled: unlock, return 0
++ *   reset_control_deassert(rst)   [first deassert]
++ *   usleep_range(10000, 15000)
++ *   clock_enable(sub[2])
++ *   enable bus_clk if present
++ *   usleep_range(10000, 15000)
++ *   reset_control_deassert(rst)   [second deassert]
++ *   if fail: error, unlock
++ *   tvtop_pm_domain_enable(sub[2])
++ *   usleep_range(10000, 15000)
++ *   writel(0x003003FF, iobase)    [tvfe init register]
++ *   set enabled, unlock, return 0
++ */
++int tvtop_tvfe_enable(struct device *dev)
++{
++	struct tvtop_device *tdev = dev_get_drvdata(dev);
++	struct tvtop_submodule *sub = &tdev->sub[TVTOP_SUB_TVFE];
++	int ret = 0;
++
++	mutex_lock(&sub->lock);
++	pr_emerg("tvtopdbg:20 tvcap_mutex_locked\n");
++
++	if (sub->enabled)
++		goto out;
++
++	/* First reset deassert */
++	reset_control_deassert(sub->rst);
++	usleep_range(10000, 15000);
++
++	/* Enable clocks */
++	pr_emerg("tvtopdbg:21 tvcap_clock_enable_start\n");
++	sunxi_tvtop_clock_enable(sub);
++	pr_emerg("tvtopdbg:22 tvcap_clock_enable_done\n");
++
++	/* Enable bus clock if present */
++	if (sub->bus_clk && !sub->bus_clk_enabled) {
++		pr_emerg("tvtopdbg:25 tvcap_bus_clk_start\n");
++		ret = clk_prepare_enable(sub->bus_clk);
++		pr_emerg("tvtopdbg:26 tvcap_bus_clk_done ret=%d\n", ret);
++		if (ret == 0)
++			sub->bus_clk_enabled = true;
++	}
++
++	usleep_range(10000, 15000);
++
++	/* Second reset deassert */
++	ret = reset_control_deassert(sub->rst);
++	if (ret) {
++		dev_err(tdev->dev,
++			"tvfe bus reset deassert fail: %d!\n", ret);
++		goto out;
++	}
++
++	/* Enable power domain */
++	tvtop_pm_domain_enable(sub);
++
++	usleep_range(10000, 15000);
++
++	/* Write tvfe init register */
++	writel(0x003003FF, sub->iobase);
++
++	sub->enabled = 1;
++
++out:
++	pr_emerg("tvtopdbg:36 tvcap_return ret=%d enabled=%d\n", ret, sub->enabled);
++	mutex_unlock(&sub->lock);
++	return ret;
++}
++
++/*
++ * Enable tvcap (TV capture / HDMI input) subsystem.
++ * Matches stock tvtop_tvcap_enable at 0x0ac4 (444 bytes).
++ *
++ * Disasm logic:
++ *   lock sub[1].lock
++ *   if already enabled: unlock, return 0
++ *   clock_enable(sub[1])
++ *   usleep_range(10000, 15000)
++ *   enable bus_clk if present
++ *   reset_control_deassert(rst) — if fail, error + unlock
++ *   usleep_range(10000, 15000)
++ *   tvtop_pm_domain_enable(sub[1])
++ *   usleep_range(10000, 15000)
++ *   if is_power_on:
++ *     Magic register write sequence to tvcap iobase
++ *     ioremap(0x06940000, 0x100) — INCAP power register
++ *     dsb(st); arm_heavy_mb(); writel(1, reg); iounmap(reg)
++ *   set is_power_on = 1, enabled = 1
++ *   unlock, return 0
++ */
++int tvtop_tvcap_enable(struct device *dev)
++{
++	struct tvtop_device *tdev = dev_get_drvdata(dev);
++	struct tvtop_submodule *sub = &tdev->sub[TVTOP_SUB_TVCAP];
++	int ret = 0;
++
++	mutex_lock(&sub->lock);
++
++	if (sub->enabled)
++		goto out;
++
++	/* Enable clocks */
++	sunxi_tvtop_clock_enable(sub);
++
++	pr_emerg("tvtopdbg:23 tvcap_sleep1_start\n");
++	usleep_range(10000, 15000);
++	pr_emerg("tvtopdbg:24 tvcap_sleep1_done\n");
++
++	/* Enable bus clock if present */
++	if (sub->bus_clk && !sub->bus_clk_enabled) {
++		ret = clk_prepare_enable(sub->bus_clk);
++		if (ret == 0)
++			sub->bus_clk_enabled = true;
++	}
++
++	/* Deassert reset */
++	pr_emerg("tvtopdbg:27 tvcap_reset_start\n");
++	ret = reset_control_deassert(sub->rst);
++	pr_emerg("tvtopdbg:28 tvcap_reset_done ret=%d\n", ret);
++	if (ret) {
++		dev_err(tdev->dev,
++			"tvcap bus reset deassert fail: %d!\n", ret);
++		goto out;
++	}
++
++	pr_emerg("tvtopdbg:29 tvcap_sleep2_start\n");
++	usleep_range(10000, 15000);
++	pr_emerg("tvtopdbg:30 tvcap_sleep2_done\n");
++
++	/* Enable power domain */
++	pr_emerg("tvtopdbg:31 tvcap_pm_domain_start\n");
++	tvtop_pm_domain_enable(sub);
++	pr_emerg("tvtopdbg:32 tvcap_pm_domain_done\n");
++
++	pr_emerg("tvtopdbg:33 tvcap_sleep3_start\n");
++	usleep_range(10000, 15000);
++	pr_emerg("tvtopdbg:34 tvcap_sleep3_done\n");
++
++	/*
++	 * Magic INCAP register sequence: only on subsequent enables
++	 * (is_power_on is 0 on first boot, set to 1 after first enable)
++	 */
++	if (1) {
++		void __iomem *iobase = sub->iobase;
++		void __iomem *incap_reg;
++
++		pr_emerg("tvtopdbg:50 tvcap_magic_phase1_start\n");
++		/* Phase 1: write magic values */
++		writel(0x01111117, iobase + 4);
++		writel(0x00000404, iobase + 8);
++		writel(0x00111111, iobase + 0);
++		usleep_range(10000, 15000);
++
++		pr_emerg("tvtopdbg:51 tvcap_magic_phase2_start\n");
++		/* Phase 2: clear all */
++		writel(0, iobase + 4);
++		usleep_range(10000, 15000);
++		writel(0, iobase + 8);
++		writel(0, iobase + 0);
++		usleep_range(10000, 15000);
++
++		pr_emerg("tvtopdbg:52 tvcap_magic_phase3_start\n");
++		/* Phase 3: re-write magic values */
++		writel(0x01111117, iobase + 4);
++		usleep_range(10000, 15000);
++		writel(0x00000404, iobase + 8);
++		writel(0x00111111, iobase + 0);
++		usleep_range(10000, 15000);
++
++		pr_emerg("tvtopdbg:53 tvcap_magic_phase4_start\n");
++		/* Phase 4: INCAP power register — enable capture block */
++		incap_reg = ioremap(TVTOP_INCAP_REG_PHYS,
++				    TVTOP_INCAP_REG_SIZE);
++		if (incap_reg && !IS_ERR(incap_reg)) {
++			wmb(); /* dsb(st) + arm_heavy_mb() in stock */
++			writel(1, incap_reg);
++			pr_emerg("tvtopdbg:54 tvcap_incap_write_done\n");
++			iounmap(incap_reg);
++		} else {
++			pr_err("tvtop: ioremap INCAP REG error: %pK\n",
++			       incap_reg);
++		}
++	}
++
++	pr_emerg("tvtopdbg:35 tvcap_set_enabled\n");
++	is_power_on = 1;
++	sub->enabled = 1;
++
++out:
++	mutex_unlock(&sub->lock);
++	return ret;
++}
++
++/*
++ * Disable a submodule: clocks, reset, power domain.
++ * Matches stock tvtop_submodule_disable at 0x0cb8 (336 bytes).
++ *
++ * Disasm logic:
++ *   lock sub[index].lock
++ *   if not enabled: unlock, return
++ *   For each clk_entry in sub->clk_list:
++ *     if clk_enabled: clk_disable + clk_unprepare, clear flag
++ *     if parent_clk_enabled: clk_disable + clk_unprepare parent, clear flag
++ *   reset_control_assert(rst)
++ *   if bus_clk enabled: clk_disable + clk_unprepare bus_clk, clear flag
++ *   tvtop_pm_domain_disable(sub)
++ *   set enabled = 0
++ *   dev_info "submodule disable [%d]"
++ *   unlock
++ */
++void tvtop_submodule_disable(struct device *dev, unsigned int index)
++{
++	struct tvtop_device *tdev = dev_get_drvdata(dev);
++	struct tvtop_submodule *sub;
++	struct tvtop_clk_entry *entry;
++
++	if (index >= TVTOP_SUB_COUNT)
++		return;
++
++	sub = &tdev->sub[index];
++
++	mutex_lock(&sub->lock);
++
++	if (!sub->enabled)
++		goto out;
++
++	/* Disable all clocks in the list */
++	list_for_each_entry(entry, &sub->clk_list, list) {
++		if (entry->clk && entry->clk_enabled) {
++			clk_disable(entry->clk);
++			clk_unprepare(entry->clk);
++			entry->clk_enabled = false;
++		}
++		if (entry->parent_clk && entry->parent_clk_enabled) {
++			clk_disable(entry->parent_clk);
++			clk_unprepare(entry->parent_clk);
++			entry->parent_clk_enabled = false;
++		}
++	}
++
++	/* Assert reset */
++	reset_control_assert(sub->rst);
++
++	/* Disable bus clock */
++	if (sub->bus_clk && sub->bus_clk_enabled) {
++		clk_disable(sub->bus_clk);
++		clk_unprepare(sub->bus_clk);
++		sub->bus_clk_enabled = false;
++	}
++
++	/* Disable power domain */
++	tvtop_pm_domain_disable(sub);
++
++	sub->enabled = 0;
++
++	dev_info(tdev->dev, "submodule disable [%d]\n", index);
++
++out:
++	mutex_unlock(&sub->lock);
++}
+diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c
+--- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_sysfs.c	2026-03-22 20:37:04.121294225 +0100
+@@ -0,0 +1,74 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Allwinner H713 TV Subsystem Top — Sysfs Interface
++ *
++ * Ported from: sunxi_tvtop_store_tvdisp (0x0f64),
++ *              sunxi_tvtop_store_tvfe (0x0f24),
++ *              sunxi_tvtop_store_tvcap (0x0ee4)
++ *
++ * Write "1" to enable (clk_get), "0" to disable (clk_put).
++ */
++
++#include <linux/device.h>
++#include <linux/sysfs.h>
++
++#include "sunxi_tvtop.h"
++
++/*
++ * Common sysfs store handler pattern.
++ * Matches the three identical 64-byte functions in stock.
++ *
++ * Disasm logic (all three):
++ *   val = simple_strtoul(buf, NULL, 0)
++ *   if val != 0: sunxi_tvtop_clk_get(index)
++ *   else:        sunxi_tvtop_clk_put(index)
++ *   return count
++ */
++static ssize_t tvtop_sysfs_store(unsigned int index,
++				 const char *buf, size_t count)
++{
++	unsigned long val;
++
++	/* Stock uses simple_strtoul — invalid input becomes 0 (→ clk_put) */
++	val = simple_strtoul(buf, NULL, 0);
++
++	if (val)
++		sunxi_tvtop_clk_get(index);
++	else
++		sunxi_tvtop_clk_put(index);
++
++	return count;
++}
++
++static ssize_t tvdisp_store(struct device *dev, struct device_attribute *attr,
++			    const char *buf, size_t count)
++{
++	return tvtop_sysfs_store(TVTOP_SUB_TVDISP, buf, count);
++}
++
++static ssize_t tvcap_store(struct device *dev, struct device_attribute *attr,
++			   const char *buf, size_t count)
++{
++	return tvtop_sysfs_store(TVTOP_SUB_TVCAP, buf, count);
++}
++
++static ssize_t tvfe_store(struct device *dev, struct device_attribute *attr,
++			  const char *buf, size_t count)
++{
++	return tvtop_sysfs_store(TVTOP_SUB_TVFE, buf, count);
++}
++
++static DEVICE_ATTR(tvdisp, 0200, NULL, tvdisp_store);
++static DEVICE_ATTR(tvcap, 0200, NULL, tvcap_store);
++static DEVICE_ATTR(tvfe, 0200, NULL, tvfe_store);
++
++static struct attribute *tvtop_sysfs_entries[] = {
++	&dev_attr_tvdisp.attr,
++	&dev_attr_tvfe.attr,
++	&dev_attr_tvcap.attr,
++	NULL,
++};
++
++const struct attribute_group tvtop_attribute_group = {
++	.attrs = tvtop_sysfs_entries,
++};

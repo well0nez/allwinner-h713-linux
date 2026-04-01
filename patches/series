@@ -1,0 +1,16 @@
+0001-clk-sunxi-ng-add-h713-ccu-driver.patch
+0002-pinctrl-sunxi-add-h713-pio-driver.patch
+0003-pinctrl-sunxi-add-h713-r-pio-driver.patch
+0004-pinctrl-sunxi-fix-irq-mux-and-graceful-resource.patch
+0005-phy-sun4i-usb-add-h713-pmu-bit0-quirk.patch
+0006-mmc-sunxi-add-h713-v5p3x-support.patch
+0007-pwm-add-sun8i-8channel-driver.patch
+0008-misc-add-hy310-board-mgr.patch
+0009-misc-add-hy310-keystone-motor.patch
+0010-misc-add-sunxi-mipsloader.patch
+0011-misc-add-sunxi-nsi.patch
+0012-misc-add-sunxi-tvtop.patch
+0013-misc-add-sunxi-decd.patch
+0014-soc-sunxi-add-cpu-comm-ipc.patch
+0015-misc-add-h713-driver-kconfig.patch
+0016-dt-bindings-add-h713-clock-reset-ids.patch

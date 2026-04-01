@@ -1,0 +1,928 @@
+--- a/drivers/misc/hy310-keystone-motor.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/misc/hy310-keystone-motor.c	2026-03-21 15:40:00.643487005 +0100
+@@ -0,0 +1,925 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * HY310 Keystone Motor Driver
++ *
++ * Stepper motor driver for projector keystone correction.
++ * Controls 4-phase stepper motor via GPIO with up to 2 limit switches.
++ * Architecture based on Allwinner stock motor-control.c driver
++ * (RE from stock vmlinux, author: JingyanLiang @ Allwinner).
++ *
++ * Key design decisions:
++ *  - GPIO polling for limit switches (no EINT — H713 PH11+ EINT is broken)
++ *  - Work-queue based movement (non-blocking sysfs interface)
++ *  - CW/CCW step tables loaded from DTS (not hardcoded)
++ *  - Edge tracking prevents motor overtravel
++ *  - back_step parameter: reverse N steps after hitting limit
++ *
++ * Timing note: DTS property "motor-phase-udelay" is misleadingly named —
++ *  stock driver calls delay_ms_func() with this value, i.e. MILLISECONDS.
++ *  We match stock behavior: mdelay(phase_udelay) between phase changes.
++ *
++ * Stock DTB values (from hy310-board.dtb extraction):
++ *  motor-phase-num = 4, motor-step-num = 8, motor-cycle = 2
++ *  motor-phase-udelay = 1 (ms), motor-step-mdelay = 1 (ms)
++ *  active_level = 1 (active HIGH), motor_type = 0 (stepper)
++ *  CW:  01 09 08 0A 02 06 04 05
++ *  CCW: 05 04 06 02 0A 08 09 01
++ *
++ * DTS binding: compatible = "allwinner,hy310-keystone-motor"
++ * GPIO: PH4-PH7 (phases), PH14 (limiter-up)
++ */
++
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/of.h>
++#include <linux/of_gpio.h>
++#include <linux/gpio.h>
++#include <linux/gpio/consumer.h>
++#include <linux/slab.h>
++#include <linux/mutex.h>
++#include <linux/workqueue.h>
++#include <linux/delay.h>
++#include <linux/spinlock.h>
++#include <linux/list.h>
++
++#define DRIVER_NAME		"hy310-keystone-motor"
++#define MAX_PHASES		8
++#define MAX_STEPS		32
++#define DEFAULT_STEP_TOTAL	800
++#define DEFAULT_BACK_STEP	5
++#define QUEUE_MAX_LEN		64
++#define MOVE_CLAMP_MAX		18
++#define HOMING_UP_MAX		100
++#define HOMING_DN_MAX		250
++#define RECOVERY_MAX		40
++
++/* Direction constants for motor_limiter_status() */
++#define DIR_DN			1
++#define DIR_UP			2
++
++/* ── Queue entry for async movement ────────────────────────── */
++struct motor_cmd {
++	struct list_head list;
++	int direction;		/* 0 = UP, 1 = DOWN */
++};
++
++/* ── Per-device state ──────────────────────────────────────── */
++struct hy310_motor {
++	struct platform_device	*pdev;
++	struct device		*dev;
++
++	/* GPIO */
++	int			*phase_gpios;
++	int			phase_num;
++	int			limiter_up_pin;
++	int			limiter_dn_pin;
++	int			limiter_num;
++	int			active_level;
++
++	/* Step tables (from DTS) */
++	u8			*cw_table;
++	u8			*ccw_table;
++	int			step_num;
++
++	/* Timing */
++	u32			phase_udelay;	/* ms between phase changes (stock: 1) */
++	u32			step_mdelay;	/* ms between steps (stock: 1) */
++	u32			motor_cycle;	/* cycles per mstep */
++	u32			motor_type;	/* 0=stepper, 1=bipolar */
++
++	/* State */
++	int			step_cur;	/* current position */
++	int			step_total;	/* max steps */
++	int			edge_up;	/* 1 = at UP limit */
++	int			edge_dn;	/* 1 = at DOWN limit */
++	int			last_dir;	/* last movement direction */
++	int			step_inc;	/* step increment counter */
++	int			back_step;	/* steps to reverse after limit */
++	int			no_limit;	/* bypass limit checking */
++
++	/* Async movement */
++	struct workqueue_struct	*wq;
++	struct work_struct	work;
++	struct delayed_work	homing_work;
++	struct list_head	cmd_queue;
++	spinlock_t		queue_lock;
++	int			queue_len;
++	int			work_running;
++
++	/* Synchronization */
++	struct mutex		run_mutex;
++};
++
++static struct hy310_motor *g_motor;
++
++/* ── GPIO helpers ──────────────────────────────────────────── */
++
++static void motor_set_phase(struct hy310_motor *m, int pattern)
++{
++	int i;
++
++	for (i = 0; i < m->phase_num; i++)
++		gpio_set_value(m->phase_gpios[i], (pattern >> i) & 1);
++}
++
++static void motor_set_stop(struct hy310_motor *m)
++{
++	int i;
++
++	for (i = 0; i < m->phase_num; i++)
++		gpio_set_value(m->phase_gpios[i], 0);
++}
++
++/*
++ * Check limit switch status.
++ *   dir = DIR_UP (2): check up limiter
++ *   dir = DIR_DN (1): check down limiter
++ *   dir = 0:          check any/single limiter
++ * Returns 1 if limiter is active (at mechanical limit), 0 otherwise.
++ */
++static int motor_limiter_status(struct hy310_motor *m, int dir)
++{
++	int pin;
++	struct gpio_desc *desc;
++	int val;
++
++	if (m->limiter_num == 0)
++		return 0;
++
++	if (m->limiter_num == 1) {
++		/* Single limiter — use whichever is available */
++		pin = m->limiter_up_pin ? m->limiter_up_pin : m->limiter_dn_pin;
++		if (!pin)
++			return 0;
++	} else {
++		/* Two limiters — select by direction */
++		if (dir == DIR_UP) {
++			pin = m->limiter_up_pin;
++			if (!pin)
++				return 1; /* no pin → assume at limit (safe) */
++		} else if (dir == DIR_DN) {
++			pin = m->limiter_dn_pin;
++			if (!pin)
++				return 1;
++		} else {
++			pin = m->limiter_up_pin;
++			if (!pin)
++				return 0;
++		}
++	}
++
++	desc = gpio_to_desc(pin);
++	if (!desc)
++		return 0;
++
++	val = gpiod_get_raw_value(desc);
++	return (val == m->active_level) ? 1 : 0;
++}
++
++/* ── Single micro-step execution ───────────────────────────── */
++
++/*
++ * Execute one "mstep" in UP direction.
++ * For stepper motors: iterates through ccw_table motor_cycle times.
++ * For bipolar motors: pulse IN1/IN2.
++ */
++static void motor_run_up_mstep(struct hy310_motor *m)
++{
++	int i, j;
++
++	if (m->motor_type == 1 && m->phase_num >= 2) {
++		/* Bipolar: pulse IN1=0,IN2=1 then both off */
++		gpio_set_value(m->phase_gpios[0], 0);
++		gpio_set_value(m->phase_gpios[1], 1);
++		mdelay(m->step_mdelay);
++		gpio_set_value(m->phase_gpios[0], 0);
++		gpio_set_value(m->phase_gpios[1], 0);
++		mdelay(m->step_mdelay);
++		return;
++	}
++
++	for (i = 0; i < m->motor_cycle; i++) {
++		for (j = 0; j < m->step_num; j++) {
++			motor_set_phase(m, m->ccw_table[j]);
++			mdelay(m->phase_udelay);
++		}
++	}
++	motor_set_stop(m);
++}
++
++/* Execute one "mstep" in DOWN direction. */
++static void motor_run_dn_mstep(struct hy310_motor *m)
++{
++	int i, j;
++
++	if (m->motor_type == 1 && m->phase_num >= 2) {
++		gpio_set_value(m->phase_gpios[0], 1);
++		gpio_set_value(m->phase_gpios[1], 0);
++		mdelay(m->step_mdelay);
++		gpio_set_value(m->phase_gpios[0], 0);
++		gpio_set_value(m->phase_gpios[1], 0);
++		mdelay(m->step_mdelay);
++		return;
++	}
++
++	for (i = 0; i < m->motor_cycle; i++) {
++		for (j = 0; j < m->step_num; j++) {
++			motor_set_phase(m, m->cw_table[j]);
++			mdelay(m->phase_udelay);
++		}
++	}
++	motor_set_stop(m);
++}
++
++/* ── Movement with limit control ───────────────────────────── */
++
++/*
++ * Move motor UP with limit switch checking.
++ * Returns 1 on success, 0 if already at limit.
++ */
++static int motor_run_up_control(struct hy310_motor *m, int long_flag)
++{
++	int i;
++
++	/* Edge check — skip when no_limit is active */
++	if (m->edge_up && !m->no_limit)
++		return 0;
++
++	mutex_lock(&m->run_mutex);
++
++	motor_run_up_mstep(m);
++
++	if (!m->no_limit && motor_limiter_status(m, DIR_UP)) {
++		/* At limit after move — set edge and optionally back off */
++		if (m->back_step > 0) {
++			for (i = 0; i < m->back_step; i++) {
++				motor_run_dn_mstep(m);
++				if (!motor_limiter_status(m, DIR_UP) && i > 3)
++					i--;
++			}
++		}
++		m->edge_up = 1;
++	}
++
++	m->last_dir = (m->edge_up != 0) ? 1 : 0;
++	m->step_cur++;
++	m->edge_dn = 0;
++	if (m->step_inc < 10)
++		m->step_inc++;
++	else
++		m->step_inc = 0;
++
++	mutex_unlock(&m->run_mutex);
++	return 1;
++}
++
++/* Move motor DOWN with limit switch checking. Mirror of UP. */
++static int motor_run_dn_control(struct hy310_motor *m, int long_flag)
++{
++	int i;
++
++	/* Edge check — skip when no_limit is active */
++	if (m->edge_dn && !m->no_limit)
++		return 0;
++
++	mutex_lock(&m->run_mutex);
++
++	motor_run_dn_mstep(m);
++
++	if (!m->no_limit && motor_limiter_status(m, DIR_DN)) {
++		/* At limit after move — set edge and optionally back off */
++		if (m->back_step > 0) {
++			for (i = 0; i < m->back_step; i++) {
++				motor_run_up_mstep(m);
++				if (!motor_limiter_status(m, DIR_DN) && i > 3)
++					i--;
++			}
++		}
++		m->edge_dn = 1;
++	}
++
++	m->last_dir = (m->edge_dn == 0) ? 1 : 0;
++	m->step_cur--;
++	m->edge_up = 0;
++	if (m->step_inc < 10)
++		m->step_inc++;
++	else
++		m->step_inc = 0;
++
++	mutex_unlock(&m->run_mutex);
++	return 1;
++}
++
++/* ── Queue management ──────────────────────────────────────── */
++
++static int motor_enqueue(struct hy310_motor *m, int dir)
++{
++	struct motor_cmd *cmd;
++	unsigned long flags;
++
++	if (m->queue_len >= QUEUE_MAX_LEN)
++		return 0;
++
++	cmd = kzalloc(sizeof(*cmd), GFP_KERNEL);
++	if (!cmd)
++		return 0;
++
++	cmd->direction = dir;
++
++	spin_lock_irqsave(&m->queue_lock, flags);
++	list_add_tail(&cmd->list, &m->cmd_queue);
++	m->queue_len++;
++	spin_unlock_irqrestore(&m->queue_lock, flags);
++
++	return 1;
++}
++
++static struct motor_cmd *motor_dequeue(struct hy310_motor *m)
++{
++	struct motor_cmd *cmd = NULL;
++	unsigned long flags;
++
++	spin_lock_irqsave(&m->queue_lock, flags);
++	if (!list_empty(&m->cmd_queue)) {
++		cmd = list_first_entry(&m->cmd_queue, struct motor_cmd, list);
++		list_del(&cmd->list);
++		m->queue_len--;
++	}
++	spin_unlock_irqrestore(&m->queue_lock, flags);
++
++	return cmd;
++}
++
++static void motor_flush_queue(struct hy310_motor *m)
++{
++	struct motor_cmd *cmd;
++
++	while ((cmd = motor_dequeue(m)) != NULL)
++		kfree(cmd);
++}
++
++/* Work handler — processes queued movement commands */
++static void motor_work_handler(struct work_struct *work)
++{
++	struct hy310_motor *m = container_of(work, struct hy310_motor, work);
++	struct motor_cmd *cmd;
++
++	while ((cmd = motor_dequeue(m)) != NULL) {
++		if (cmd->direction == 0)
++			motor_run_up_control(m, 1);
++		else
++			motor_run_dn_control(m, 1);
++
++		kfree(cmd);
++	}
++
++	m->work_running = 0;
++}
++
++/* Enqueue movement and start work if needed */
++static void motor_run_up_dn(struct hy310_motor *m, int dir, int steps,
++			     int full_limit)
++{
++	int n, i;
++
++	if (steps <= 0)
++		n = 1;
++	else if (steps > MOVE_CLAMP_MAX)
++		n = MOVE_CLAMP_MAX;
++	else
++		n = steps;
++
++	/* Check edge flag */
++	if (dir == 0 && m->edge_up)
++		return;
++	if (dir == 1 && m->edge_dn)
++		return;
++
++	/* Rate-limit queue */
++	if (full_limit && m->queue_len > 3)
++		return;
++	if (full_limit && m->queue_len == 3)
++		n = 1;
++
++	for (i = 0; i < n; i++) {
++		if (!motor_enqueue(m, dir))
++			break;
++	}
++
++	if (!m->work_running) {
++		m->work_running = 1;
++		queue_work(m->wq, &m->work);
++	}
++}
++
++/* ── Sysfs attributes ──────────────────────────────────────── */
++
++/*
++ * motor_ctrl — main control interface
++ * Write: 0xCCSSFF (CC=command, SS=steps, FF=flags)
++ *   cmd 1: move UP (steps, full_limit=bit7)
++ *   cmd 2: move DOWN
++ *   cmd 3: flush queue
++ *   cmd 4: set position
++ *   cmd 7: goto absolute step
++ * Read: "position step_inc limiter_status"
++ */
++static ssize_t motor_ctrl_show(struct device *dev,
++			       struct device_attribute *attr, char *buf)
++{
++	struct hy310_motor *m = g_motor;
++	int lim;
++
++	if (!m)
++		return -ENODEV;
++
++	lim = motor_limiter_status(m, 0);
++	return sysfs_emit(buf, "%d %d %d\n",
++			  m->step_cur, m->step_inc % 10, lim ? 1 : 0);
++}
++
++static ssize_t motor_ctrl_store(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	struct hy310_motor *m = g_motor;
++	unsigned long val;
++	int cmd, steps, full_limit;
++
++	if (!m)
++		return -ENODEV;
++	if (kstrtoul(buf, 10, &val))
++		return -EINVAL;
++
++	cmd = (val >> 8) & 0xFF;
++	steps = val & 0x7F;
++	full_limit = val & 0x80;
++
++	switch (cmd) {
++	case 1: /* UP */
++	case 2: /* DOWN */
++		motor_run_up_dn(m, cmd - 1, steps, full_limit);
++		break;
++	case 3: /* Flush queue */
++		motor_flush_queue(m);
++		break;
++	case 4: /* Set position */
++		m->step_cur = val & 0xFFFF;
++		break;
++	case 7: /* Goto step */
++		/* TODO: implement absolute positioning */
++		break;
++	}
++
++	return count;
++}
++static DEVICE_ATTR_RW(motor_ctrl);
++
++/* motor_ctrl_no_limit — bypass limit checking */
++static ssize_t motor_ctrl_no_limit_show(struct device *dev,
++					struct device_attribute *attr,
++					char *buf)
++{
++	return sysfs_emit(buf, "%d\n", g_motor ? g_motor->no_limit : 0);
++}
++
++static ssize_t motor_ctrl_no_limit_store(struct device *dev,
++					 struct device_attribute *attr,
++					 const char *buf, size_t count)
++{
++	int val;
++
++	if (!g_motor || kstrtoint(buf, 10, &val))
++		return -EINVAL;
++
++	g_motor->no_limit = !!val;
++	dev_info(dev, "no_limit = %d\n", g_motor->no_limit);
++	return count;
++}
++static DEVICE_ATTR_RW(motor_ctrl_no_limit);
++
++/* motor_limit — show limiter status */
++static ssize_t motor_limit_show(struct device *dev,
++				struct device_attribute *attr, char *buf)
++{
++	struct hy310_motor *m = g_motor;
++
++	if (!m)
++		return -ENODEV;
++	return sysfs_emit(buf, "up=%d dn=%d num=%d\n",
++			  motor_limiter_status(m, DIR_UP),
++			  motor_limiter_status(m, DIR_DN),
++			  m->limiter_num);
++}
++
++static ssize_t motor_limit_store(struct device *dev,
++				 struct device_attribute *attr,
++				 const char *buf, size_t count)
++{
++	/* Write to limit resets edge flags (allows re-homing) */
++	if (g_motor) {
++		g_motor->edge_up = 0;
++		g_motor->edge_dn = 0;
++		dev_info(dev, "edge flags cleared\n");
++	}
++	return count;
++}
++static DEVICE_ATTR_RW(motor_limit);
++
++/* motor_step_delay — step delay in ms */
++static ssize_t motor_step_delay_show(struct device *dev,
++				     struct device_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%u\n", g_motor ? g_motor->step_mdelay : 0);
++}
++
++static ssize_t motor_step_delay_store(struct device *dev,
++				      struct device_attribute *attr,
++				      const char *buf, size_t count)
++{
++	unsigned int val;
++
++	if (!g_motor || kstrtouint(buf, 10, &val))
++		return -EINVAL;
++	g_motor->step_mdelay = val;
++	return count;
++}
++static DEVICE_ATTR_RW(motor_step_delay);
++
++/* motor_step_num — step count per sequence */
++static ssize_t motor_step_num_show(struct device *dev,
++				   struct device_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%d\n", g_motor ? g_motor->step_num : 0);
++}
++
++static ssize_t motor_step_num_store(struct device *dev,
++				    struct device_attribute *attr,
++				    const char *buf, size_t count)
++{
++	int val;
++
++	if (!g_motor || kstrtoint(buf, 10, &val))
++		return -EINVAL;
++	if (val > 0 && val <= MAX_STEPS)
++		g_motor->step_num = val;
++	return count;
++}
++static DEVICE_ATTR_RW(motor_step_num);
++
++/* motor_cycle — cycles per movement */
++static ssize_t motor_cycle_show(struct device *dev,
++				struct device_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%u\n", g_motor ? g_motor->motor_cycle : 0);
++}
++
++static ssize_t motor_cycle_store(struct device *dev,
++				 struct device_attribute *attr,
++				 const char *buf, size_t count)
++{
++	unsigned int val;
++
++	if (!g_motor || kstrtouint(buf, 10, &val))
++		return -EINVAL;
++	if (val > 0)
++		g_motor->motor_cycle = val;
++	return count;
++}
++static DEVICE_ATTR_RW(motor_cycle);
++
++/* motor_back_step — steps to reverse after limit contact */
++static ssize_t motor_back_step_show(struct device *dev,
++				    struct device_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%d\n", g_motor ? g_motor->back_step : 0);
++}
++
++static ssize_t motor_back_step_store(struct device *dev,
++				     struct device_attribute *attr,
++				     const char *buf, size_t count)
++{
++	int val;
++
++	if (!g_motor || kstrtoint(buf, 10, &val))
++		return -EINVAL;
++	if (val >= 0)
++		g_motor->back_step = val;
++	return count;
++}
++static DEVICE_ATTR_RW(motor_back_step);
++
++/* motor_ctrl_time — phase udelay timing */
++static ssize_t motor_ctrl_time_show(struct device *dev,
++				    struct device_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%u\n", g_motor ? g_motor->phase_udelay : 0);
++}
++
++static ssize_t motor_ctrl_time_store(struct device *dev,
++				     struct device_attribute *attr,
++				     const char *buf, size_t count)
++{
++	unsigned int val;
++
++	if (!g_motor || kstrtouint(buf, 10, &val))
++		return -EINVAL;
++	g_motor->phase_udelay = val;
++	return count;
++}
++static DEVICE_ATTR_RW(motor_ctrl_time);
++
++static struct attribute *motor_attrs[] = {
++	&dev_attr_motor_ctrl.attr,
++	&dev_attr_motor_ctrl_no_limit.attr,
++	&dev_attr_motor_limit.attr,
++	&dev_attr_motor_step_delay.attr,
++	&dev_attr_motor_step_num.attr,
++	&dev_attr_motor_cycle.attr,
++	&dev_attr_motor_back_step.attr,
++	&dev_attr_motor_ctrl_time.attr,
++	NULL,
++};
++ATTRIBUTE_GROUPS(motor);
++
++/* ── DTS parsing ───────────────────────────────────────────── */
++
++static int motor_parse_dt(struct hy310_motor *m, struct device_node *np)
++{
++	struct device *dev = m->dev;
++	int i, ret, gpio;
++	struct gpio_desc *desc;
++	char name[32];
++
++	/* Required: active-level */
++	ret = of_property_read_u32(np, "active-level", &m->active_level);
++	if (ret) {
++		dev_warn(dev, "no active-level, defaulting to 0 (active-low)\n");
++		m->active_level = 0;
++	}
++
++	/* Required: phase count and step count */
++	ret = of_property_read_u32(np, "motor-phase-num", &m->phase_num);
++	if (ret || m->phase_num == 0 || m->phase_num > MAX_PHASES) {
++		dev_err(dev, "invalid motor-phase-num\n");
++		return -EINVAL;
++	}
++
++	ret = of_property_read_u32(np, "motor-step-num", &m->step_num);
++	if (ret || m->step_num == 0 || m->step_num > MAX_STEPS) {
++		dev_err(dev, "invalid motor-step-num\n");
++		return -EINVAL;
++	}
++
++	/* Required: timing */
++	ret = of_property_read_u32(np, "motor-phase-udelay", &m->phase_udelay);
++	if (ret) {
++		dev_err(dev, "missing motor-phase-udelay\n");
++		return -EINVAL;
++	}
++
++	ret = of_property_read_u32(np, "motor-step-mdelay", &m->step_mdelay);
++	if (ret) {
++		dev_err(dev, "missing motor-step-mdelay\n");
++		return -EINVAL;
++	}
++
++	/* Optional: motor-type (default 0 = stepper) */
++	of_property_read_u32(np, "motor-type", &m->motor_type);
++
++	/* Optional: motor-cycle (default 1) */
++	m->motor_cycle = 1;
++	of_property_read_u32(np, "motor-cycle", &m->motor_cycle);
++	if (m->motor_cycle == 0)
++		m->motor_cycle = 1;
++
++	/* Allocate phase GPIO array and step tables */
++	m->phase_gpios = devm_kcalloc(dev, m->phase_num,
++				      sizeof(*m->phase_gpios), GFP_KERNEL);
++	m->cw_table = devm_kcalloc(dev, m->step_num, sizeof(u8), GFP_KERNEL);
++	m->ccw_table = devm_kcalloc(dev, m->step_num, sizeof(u8), GFP_KERNEL);
++
++	if (!m->phase_gpios || !m->cw_table || !m->ccw_table)
++		return -ENOMEM;
++
++	/* Request phase GPIOs */
++	for (i = 0; i < m->phase_num; i++) {
++		snprintf(name, sizeof(name), "motor-gpio-phase%d", i);
++		gpio = of_get_named_gpio(np, name, 0);
++		if (gpio < 0) {
++			dev_err(dev, "failed to get %s\n", name);
++			return gpio;
++		}
++
++		ret = devm_gpio_request(dev, gpio, name);
++		if (ret) {
++			dev_err(dev, "failed to request %s (gpio %d)\n",
++				name, gpio);
++			return ret;
++		}
++
++		desc = gpio_to_desc(gpio);
++		gpiod_direction_output_raw(desc, 0);
++		m->phase_gpios[i] = gpio;
++	}
++
++	/* Optional: limiter-up-gpio */
++	m->limiter_num = 0;
++	gpio = of_get_named_gpio(np, "limiter-up-gpio", 0);
++	if (gpio >= 0) {
++		ret = devm_gpio_request(dev, gpio, "limiter-up-gpio");
++		if (ret == 0) {
++			desc = gpio_to_desc(gpio);
++			gpiod_direction_input(desc);
++			m->limiter_up_pin = gpio;
++			m->limiter_num++;
++			dev_info(dev, "limiter UP: gpio %d\n", gpio);
++		} else {
++			dev_warn(dev, "failed to request limiter-up-gpio\n");
++		}
++	}
++
++	/* Optional: limiter-dn-gpio */
++	gpio = of_get_named_gpio(np, "limiter-dn-gpio", 0);
++	if (gpio >= 0) {
++		ret = devm_gpio_request(dev, gpio, "limiter-dn-gpio");
++		if (ret == 0) {
++			desc = gpio_to_desc(gpio);
++			gpiod_direction_input(desc);
++			m->limiter_dn_pin = gpio;
++			m->limiter_num++;
++			dev_info(dev, "limiter DN: gpio %d\n", gpio);
++		} else {
++			dev_warn(dev, "failed to request limiter-dn-gpio\n");
++		}
++	}
++
++	dev_info(dev, "limiter_num = %d\n", m->limiter_num);
++
++	/* Read CW/CCW step tables from DTS */
++	ret = of_property_read_u8_array(np, "motor-cw-table",
++					m->cw_table, m->step_num);
++	if (ret)
++		dev_warn(dev, "failed to read motor-cw-table\n");
++
++	ret = of_property_read_u8_array(np, "motor-ccw-table",
++					m->ccw_table, m->step_num);
++	if (ret)
++		dev_warn(dev, "failed to read motor-ccw-table\n");
++
++	dev_info(dev, "phases=%d steps=%d cycle=%u type=%u "
++		 "phase_udelay=%u step_mdelay=%u\n",
++		 m->phase_num, m->step_num, m->motor_cycle,
++		 m->motor_type, m->phase_udelay, m->step_mdelay);
++
++	return 0;
++}
++
++/* ── Homing at probe ───────────────────────────────────────── */
++
++static void motor_initial_homing(struct hy310_motor *m)
++{
++	int i;
++
++	if (m->limiter_num < 1) {
++		dev_info(m->dev, "no limiter — skipping homing\n");
++		return;
++	}
++
++	/* Check if already at limit */
++	if (motor_limiter_status(m, 0)) {
++		dev_info(m->dev, "already at limit — homing done\n");
++		return;
++	}
++
++	/* Try moving UP to find limit */
++	for (i = 0; i < HOMING_UP_MAX; i++) {
++		motor_run_up_mstep(m);
++		if (motor_limiter_status(m, 0)) {
++			dev_info(m->dev, "homing: found limit after %d UP steps\n", i);
++			m->edge_dn = 1;
++			return;
++		}
++	}
++
++	/* Not found UP — try DOWN */
++	for (i = 0; i < HOMING_DN_MAX; i++) {
++		motor_run_dn_mstep(m);
++		if (motor_limiter_status(m, 0)) {
++			dev_info(m->dev, "homing: found limit after %d DN steps\n", i);
++			m->edge_up = 1;
++			return;
++		}
++	}
++
++	dev_warn(m->dev, "homing: could not find limit switch!\n");
++}
++
++/* ── Async homing work ─────────────────────────────────────── */
++
++static void motor_homing_work_handler(struct work_struct *work)
++{
++	struct hy310_motor *m = container_of(work, struct hy310_motor,
++					     homing_work.work);
++
++	dev_info(m->dev, "homing: starting async...\n");
++	motor_initial_homing(m);
++	dev_info(m->dev, "homing: complete\n");
++}
++
++/* ── Platform driver ───────────────────────────────────────── */
++
++static int motor_probe(struct platform_device *pdev)
++{
++	struct hy310_motor *m;
++	int ret;
++
++	m = devm_kzalloc(&pdev->dev, sizeof(*m), GFP_KERNEL);
++	if (!m)
++		return -ENOMEM;
++
++	m->pdev = pdev;
++	m->dev = &pdev->dev;
++	platform_set_drvdata(pdev, m);
++
++	mutex_init(&m->run_mutex);
++	INIT_LIST_HEAD(&m->cmd_queue);
++	spin_lock_init(&m->queue_lock);
++
++	/* Parse DTS */
++	ret = motor_parse_dt(m, pdev->dev.of_node);
++	if (ret)
++		return ret;
++
++	/* Defaults */
++	m->step_total = DEFAULT_STEP_TOTAL;
++	m->back_step = DEFAULT_BACK_STEP;
++
++	/* Create work queue */
++	m->wq = alloc_workqueue(DRIVER_NAME, WQ_UNBOUND, 1);
++	if (!m->wq)
++		return -ENOMEM;
++
++	INIT_WORK(&m->work, motor_work_handler);
++	INIT_DELAYED_WORK(&m->homing_work, motor_homing_work_handler);
++
++	/* Create sysfs attributes */
++	ret = sysfs_create_groups(&pdev->dev.kobj, motor_groups);
++	if (ret) {
++		dev_err(&pdev->dev, "failed to create sysfs\n");
++		destroy_workqueue(m->wq);
++		return ret;
++	}
++
++	g_motor = m;
++
++	/* Async homing — doesn't block probe, runs in work queue */
++	queue_delayed_work(m->wq, &m->homing_work, msecs_to_jiffies(500));
++
++	dev_info(&pdev->dev, "probed: %d phases, %d limiters, %d steps\n",
++		 m->phase_num, m->limiter_num, m->step_total);
++
++	return 0;
++}
++
++static void motor_remove(struct platform_device *pdev)
++{
++	struct hy310_motor *m = platform_get_drvdata(pdev);
++
++	if (!m)
++		return;
++
++	/* Stop homing and all movement */
++	cancel_delayed_work_sync(&m->homing_work);
++	cancel_work_sync(&m->work);
++	motor_flush_queue(m);
++	motor_set_stop(m);
++
++	sysfs_remove_groups(&pdev->dev.kobj, motor_groups);
++	destroy_workqueue(m->wq);
++
++	g_motor = NULL;
++
++	dev_info(&pdev->dev, "removed\n");
++}
++
++static const struct of_device_id motor_of_match[] = {
++	{ .compatible = "allwinner,hy310-keystone-motor" },
++	{ .compatible = "motor-control" },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, motor_of_match);
++
++static struct platform_driver motor_driver = {
++	.probe	= motor_probe,
++	.remove	= motor_remove,
++	.driver	= {
++		.name		= DRIVER_NAME,
++		.of_match_table	= motor_of_match,
++	},
++};
++module_platform_driver(motor_driver);
++
++MODULE_DESCRIPTION("HY310 Keystone Motor Driver");
++MODULE_AUTHOR("HY310 Mainline Port");
++MODULE_LICENSE("GPL");
