@@ -1,0 +1,22 @@
+# HY310 eMMC Partition Map
+# Samsung KLM8G1GETF-B041, 7.31 GiB, 26 partitions
+# Extracted via: fdisk -l /dev/mmcblk0
+
+| Part | Start    | Size  | Content                              |
+|------|----------|-------|--------------------------------------|
+| p1   | 73728    | 32M   | Boot logos (FAT16)                   |
+| p2   | 139264   | 32M   | Boot logos backup                    |
+| p3   | 204800   | 256K  | env_a (U-Boot env, CRC32 signed)     |
+| p4   | 205312   | 256K  | env_b                                |
+| p5   | 205824   | 64M   | boot_a (MAINLINE KERNEL)             |
+| p6   | 336896   | 64M   | boot_b (stock Android kernel backup) |
+| p7   | 467968   | 32M   | vendor_boot_a                        |
+| p8   | 533504   | 32M   | vendor_boot_b                        |
+| p9   | 599040   | 2G    | system (Android)                     |
+| p23  | 4932608  | 272M  | vendor (FAT32)                       |
+| p26  | 5555200  | 4.7G  | userdata (f2fs)                      |
+
+# env_a format:
+#   [CRC32 (4 bytes)] [flags (1 byte)] [null-terminated key=value pairs]
+#   CRC calculated over data[4:0x20000] (first 128KB from offset 4)
+#   Current bootcmd: usb start;run setargs_nand boot_normal
