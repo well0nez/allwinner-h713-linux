@@ -4,6 +4,12 @@
 > work reliably, but several are still being brought up and nothing has been submitted
 > upstream yet. Contributions, testing, and reverse engineering help are very welcome.
 
+<p align="center">
+  <img src="docs/images/hyfetch-projection.jpg" alt="Mainline Linux 6.16.7 running on HY310 — Debian Trixie via fbterm projected onto a wall" width="720">
+  <br>
+  <em>Mainline Linux 6.16.7 running on the HY310 projector — Debian Trixie with hyfetch via fbterm</em>
+</p>
+
 ## What is this?
 
 Mainline Linux 6.16.7 port for the **HY310 portable projector** based on the
