@@ -1,5 +1,5 @@
 --- a/drivers/pinctrl/sunxi/pinctrl-sunxi.c	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/pinctrl/sunxi/pinctrl-sunxi.c	2026-03-21 03:42:08.332484418 +0100
++++ b/drivers/pinctrl/sunxi/pinctrl-sunxi.c	2026-04-01 20:47:17.141460828 +0200
 @@ -1052,8 +1052,13 @@
  		return ret;
  	}
@@ -16,13 +16,19 @@
  
  	return 0;
  }
-@@ -1646,45 +1651,54 @@
+@@ -1644,47 +1649,59 @@
+ 	}
+ 
  	for (i = 0; i < pctl->desc->irq_banks; i++) {
- 		pctl->irq[i] = platform_get_irq(pdev, i);
+-		pctl->irq[i] = platform_get_irq(pdev, i);
++		u32 hw_bank = sunxi_irq_hw_bank_num(pctl->desc, i);
++
++		pctl->irq[i] = platform_get_irq(pdev, hw_bank);
  		if (pctl->irq[i] < 0) {
 +			if (pctl->irq[i] == -ENXIO) {
 +				dev_warn(&pdev->dev,
-+					 "GPIO IRQ resources missing, continuing without IRQ support\n");
++					 "GPIO IRQ resources missing for bank %u, continuing without IRQ support",
++					 hw_bank);
 +				pctl->irq = NULL;
 +				break;
 +			}
