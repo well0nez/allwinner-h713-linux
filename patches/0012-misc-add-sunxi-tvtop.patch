@@ -484,8 +484,8 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +};
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c b/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c
 --- a/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c	2026-03-22 23:20:18.054833553 +0100
-@@ -0,0 +1,451 @@
++++ b/drivers/misc/sunxi_tvtop/sunxi_tvtop_drv.c	2026-04-01 11:27:16.339096671 +0200
+@@ -0,0 +1,455 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Allwinner H713 TV Subsystem Top — Platform Driver
@@ -632,6 +632,16 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +	tdev->pdev_dev = dev;
 +	platform_set_drvdata(pdev, tdev);
 +
++	/* Validate DT node early - must check before any of_* calls.
++	 * With CONFIG_OF_IOMMU enabled, of_node can be non-NULL but invalid
++	 * (e.g. 0x1) during probe deferral. Guard against this.
++	 */
++	if (!np || (unsigned long)np < PAGE_SIZE) {
++		dev_err(dev, "invalid of_node (%pe), cannot probe\n", np);
++		ret = -ENODEV;
++		goto err_cleanup;
++	}
++
 +	/* Initialize each submodule */
 +	for (i = 0; i < TVTOP_SUB_COUNT; i++) {
 +		struct tvtop_submodule *sub = &tdev->sub[i];
@@ -650,12 +660,6 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +		INIT_LIST_HEAD(&sub->clk_list);
 +		mutex_init(&sub->lock);
 +
-+		/* Validate DT node */
-+		if (!np) {
-+			dev_err(dev, "invalid of_node!\n");
-+			ret = -EINVAL;
-+			goto err_cleanup;
-+		}
 +
 +		/* Map I/O registers */
 +		sub->iobase = of_iomap(np, hw->iomap_idx);

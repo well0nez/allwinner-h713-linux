@@ -1,5 +1,5 @@
 --- a/drivers/misc/hy310-board-mgr.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/hy310-board-mgr.c	2026-03-24 13:56:12.579977946 +0100
++++ b/drivers/misc/hy310-board-mgr.c	2026-04-01 11:09:53.339507583 +0200
 @@ -0,0 +1,1321 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -59,7 +59,7 @@
 +/* LRADC register offsets (from base) */
 +#define LRADC_CTRL			0x00
 +#define LRADC_INTC			0x04
-+#define LRADC_DATA0			0x08	/* channel 0 data (reg_base[2]) */
++#define LRADC_DATA0			0x0c	/* channel 0 data */
 +
 +/* LRADC_CTRL init value: sample rate bits + enable */
 +#define LRADC_CTRL_INIT			0x45

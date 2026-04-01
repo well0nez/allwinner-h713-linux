@@ -974,7 +974,18 @@
 			clocks = <&ccu CLK_BUS_GPADC>;
 			resets = <&ccu RST_BUS_GPADC>;
 			#io-channel-cells = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 			status = "okay";
+
+			/* Stock uses channel_num=2, channel_select=2 (channels 0+1) */
+			channel@0 {
+				reg = <0>;
+			};
+
+			channel@1 {
+				reg = <1>;
+			};
 		};
 
 		/* === Watchdog === */
