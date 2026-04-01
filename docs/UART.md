@@ -66,8 +66,14 @@ s.close()
 
 ## Interrupting U-Boot
 
-U-Boot waits 5 seconds before auto-booting. During this window, send any
-keypress to drop to the U-Boot command prompt.
+> **IMPORTANT:** The stock U-Boot environment has `bootdelay=0`, which means
+> there is **no window to interrupt boot** by default. You must first patch
+> the U-Boot environment to set `bootdelay=5` using the
+> [sunxi-env-patcher](https://github.com/well0nez/sunxi-env-patcher).
+> Without this patch, none of the UART interrupt methods below will work.
+
+After patching, U-Boot waits 5 seconds before auto-booting. During this
+window, send any keypress to drop to the U-Boot command prompt.
 
 ### Automated (via our tool)
 
