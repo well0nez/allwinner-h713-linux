@@ -1,3 +1,10 @@
+#!/bin/bash
+set -e
+
+KDIR=/opt/captcha/kernel/linux-6.16.7
+OUTDIR=/opt/captcha/kernel/output_arm32
+
+cat > /tmp/sun50i-h713-hy310-v7.dts << 'DTSEOF'
 /dts-v1/;
 
 #include <dt-bindings/clock/sun50i-h713-ccu.h>
@@ -1648,3 +1655,16 @@
 		pmukey_used = <0>;
 	};
 };
+DTSEOF
+
+echo "Compiling H713 DTB v7..."
+cpp -nostdinc \
+    -I $KDIR/include \
+    -I $KDIR/scripts/dtc/include-prefixes \
+    -undef -x assembler-with-cpp \
+    /tmp/sun50i-h713-hy310-v7.dts | \
+$KDIR/scripts/dtc/dtc -I dts -O dtb \
+    -o $OUTDIR/sun50i-h713-hy310-v7.dtb -
+
+echo "Done: v7 DTB"
+ls -la $OUTDIR/sun50i-h713-hy310-v7.dtb

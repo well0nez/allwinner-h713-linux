@@ -1,6 +1,6 @@
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_decd/decd_core.c b/drivers/misc/sunxi_decd/decd_core.c
 --- a/drivers/misc/sunxi_decd/decd_core.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_decd/decd_core.c	2026-03-23 00:58:38.048918489 +0100
++++ b/drivers/misc/sunxi_decd/decd_core.c	2026-04-03 21:07:08.077699016 +0200
 @@ -0,0 +1,252 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
@@ -256,7 +256,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +MODULE_LICENSE("GPL");
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_decd/decd_fence.c b/drivers/misc/sunxi_decd/decd_fence.c
 --- a/drivers/misc/sunxi_decd/decd_fence.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_decd/decd_fence.c	2026-03-22 22:30:52.251671161 +0100
++++ b/drivers/misc/sunxi_decd/decd_fence.c	2026-04-03 21:07:08.077699016 +0200
 @@ -0,0 +1,105 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
@@ -365,7 +365,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +}
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_decd/decd_frame.c b/drivers/misc/sunxi_decd/decd_frame.c
 --- a/drivers/misc/sunxi_decd/decd_frame.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_decd/decd_frame.c	2026-03-22 22:53:15.895309939 +0100
++++ b/drivers/misc/sunxi_decd/decd_frame.c	2026-04-03 21:07:08.077699016 +0200
 @@ -0,0 +1,1621 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
@@ -1990,7 +1990,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +}
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_decd/decd_hw.c b/drivers/misc/sunxi_decd/decd_hw.c
 --- a/drivers/misc/sunxi_decd/decd_hw.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_decd/decd_hw.c	2026-03-23 00:58:39.852966596 +0100
++++ b/drivers/misc/sunxi_decd/decd_hw.c	2026-04-03 21:07:08.077699016 +0200
 @@ -0,0 +1,532 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
@@ -2526,7 +2526,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +}
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_decd/decd_ioctl.c b/drivers/misc/sunxi_decd/decd_ioctl.c
 --- a/drivers/misc/sunxi_decd/decd_ioctl.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_decd/decd_ioctl.c	2026-03-23 01:45:36.006195752 +0100
++++ b/drivers/misc/sunxi_decd/decd_ioctl.c	2026-04-03 21:07:08.077699016 +0200
 @@ -0,0 +1,194 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
@@ -2724,7 +2724,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +}
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_decd/decd_types.h b/drivers/misc/sunxi_decd/decd_types.h
 --- a/drivers/misc/sunxi_decd/decd_types.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_decd/decd_types.h	2026-03-23 00:07:45.843463999 +0100
++++ b/drivers/misc/sunxi_decd/decd_types.h	2026-04-03 21:07:08.081699046 +0200
 @@ -0,0 +1,345 @@
 +// SPDX-License-Identifier: GPL-2.0
 +#pragma once
@@ -3073,7 +3073,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +void dec_exit(struct dec_device *dec);
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_decd/Kconfig b/drivers/misc/sunxi_decd/Kconfig
 --- a/drivers/misc/sunxi_decd/Kconfig	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_decd/Kconfig	2026-03-22 22:37:29.418842726 +0100
++++ b/drivers/misc/sunxi_decd/Kconfig	2026-04-03 21:07:08.081699046 +0200
 @@ -0,0 +1,17 @@
 +config SUNXI_DECD
 +	tristate "Allwinner H713 Display Engine Controller (decd)"
@@ -3094,7 +3094,7 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' 
 +	  If unsure, say M.
 diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=*.cmd' '--exclude=*.mod*' '--exclude=*.order' '--exclude=*.symvers' '--exclude=.config*' '--exclude=*.dtb' '--exclude=built-in*' '--exclude=*.a' '--exclude=.tmp*' '--exclude=*.bak*' '--exclude=source' a/drivers/misc/sunxi_decd/Makefile b/drivers/misc/sunxi_decd/Makefile
 --- a/drivers/misc/sunxi_decd/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/misc/sunxi_decd/Makefile	2026-03-22 22:31:10.347757612 +0100
++++ b/drivers/misc/sunxi_decd/Makefile	2026-04-03 21:07:08.081699046 +0200
 @@ -0,0 +1,8 @@
 +obj-$(CONFIG_SUNXI_DECD) += sunxi-decd.o
 +
