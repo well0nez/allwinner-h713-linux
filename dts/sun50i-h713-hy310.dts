@@ -488,7 +488,7 @@
 				stk,swipe_xy = <0>;
 			};
 
-			kxttj3@18 {
+			kxttj3@e {
 				compatible = "kxtj3";
 				reg = <0x0e>;  /* stock: name @18 but reg=0x0e */
 				status = "disabled";
@@ -1310,7 +1310,7 @@
 		 * Sets PB3 as output LOW during boot.
 		 * Format: <phandle port pin mux drive pull data>
 		 */
-		boot_init_gpio@4 {
+		boot_init_gpio@104 {
 			device_type = "boot_init_gpio";
 			logical_start = <0xa000>;
 			gpio0 = <&pio 1 3 1 0 0 0>;  /* PB3 output LOW */
