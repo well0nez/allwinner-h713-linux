@@ -33,7 +33,7 @@
 | **LRADC Keyboard** | Unclear | — | @ 0x02009800, 6 keys + power |
 | **SPI** | Not started | — | SPI0 @ 0x04025000, SPI1 @ 0x04026000 |
 | **Crypto Engine** | Not started | — | @ 0x03040000 |
-| **HW Spinlock** | Not started | — | @ 0x03004000 |
+| **HW Spinlock** | Working | sun6i-hwspinlock (built-in) | Used by cpu_comm for ARM↔MIPS sync |
 | **TV Demodulator** | Not started | — | DTMB @ 0x06600000 |
 
 ## Display Pipeline (DRM/KMS) — New
