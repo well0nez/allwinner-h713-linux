@@ -133,6 +133,7 @@ echo "=== Step 2: H713 options ==="
 ./scripts/config --enable CONFIG_DRM
 ./scripts/config --module CONFIG_DRM_PANFROST
 ./scripts/config --enable CONFIG_SUN50I_H713_PPU
+./scripts/config --enable CONFIG_PM_GENERIC_DOMAINS
 ./scripts/config --disable CONFIG_SUN50I_H6_PRCM_PPU
 ./scripts/config --enable CONFIG_SUN50I_IOMMU
 ./scripts/config --enable CONFIG_IOMMU_SUPPORT
@@ -201,6 +202,9 @@ echo "=== Step 2: H713 options ==="
 # Bluetooth
 ./scripts/config --enable CONFIG_BT
 ./scripts/config --module CONFIG_BT_HCIUART
+./scripts/config --enable CONFIG_BT_HCIUART_H4
+./scripts/config --enable CONFIG_BT_HCIUART_3WIRE
+./scripts/config --enable CONFIG_BT_HCIUART_SERDEV
 
 # Dynamic debug (required by AIC8800 WiFi/BT modules)
 ./scripts/config --enable CONFIG_DYNAMIC_DEBUG

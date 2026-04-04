@@ -94,8 +94,7 @@ These subsystems boot and function reliably:
   — there is no native Ethernet port and no USB data connection to a PC.
 - **WiFi** — AIC8800D80 SDIO fully stable. 10MB+ transfers at ~1MB/s, no errors.
   Required custom MMC v5p3x driver patches and R_PIO register layout fix.
-- **Bluetooth** — BT 5.4 via UART1, scans and pairs. Manual hciattach required
-  (autostart at boot has cold-start baud rate issue).
+- **Bluetooth** — BT 5.4 via UART1, auto-starts at boot via systemd service.
 - **Thermal + Fan** — THS sensors (tachometer via hrtimer GPIO polling, IRQ not viable on H713), (CPU ~65C, GPU ~66C), PWM fan control with
   tachometer monitoring, NTC thermistor via board management driver.
 - **IR Remote** — NEC protocol, sunxi-cir driver, works out of the box.

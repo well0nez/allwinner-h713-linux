@@ -11,7 +11,7 @@
 | **eMMC** | Working | sunxi-mmc (patched) | DDR HS @ 100MHz, 7.3GB |
 | **USB** | Working | ehci/ohci + phy-sun4i-usb (patched) | 3x EHCI + 3x OHCI |
 | **WiFi** | Working | aic8800_bsp + aic8800_fdrv (out-of-tree) | AIC8800D80 SDIO, stable |
-| **Bluetooth** | Working | hci_uart H4 + aic8800_btlpm | Manual hciattach, autostart WIP |
+| **Bluetooth** | Working | hci_uart H4 + aic8800_btlpm | Auto-start via systemd, 1.5Mbaud flow control |
 | **IR Remote** | Working | sunxi-cir | NEC protocol, PL9 |
 | **RTC** | Working | sun6i-rtc | @ 0x07090000 |
 | **Thermal** | Working | sun8i-thermal | 2 zones (CPU ~65C, GPU ~66C) |
@@ -21,7 +21,7 @@
 | **Watchdog** | Working | sunxi-wdt | @ 0x02051000 |
 | **Reboot** | Working | sunxi-wdt | via watchdog reset |
 | **Poweroff** | Working | — | Confirmed functional |
-| **Keystone Motor** | Partial | hy310-keystone-motor | Sysfs works, physical movement inconsistent |
+| **Keystone Motor** | Untested | hy310-keystone-motor | Sysfs works, limit switch defective on test unit |
 | **Audio** | Partial | codec + cpudai + machine + bridge (out-of-tree) | Card probes, no sound output (MIPS DSP dependency) |
 | **Display (DRM/KMS)** | Working | h713_drm (out-of-tree) | DRM/GEM scanout, PRIME, Weston starts (CMA alloc WIP) |
 | **Display (legacy)** | Working | ge2d + tvtop + mipsloader (in-tree) | Stock display pipeline, MIPS-initialized |
@@ -31,7 +31,7 @@
 | **GPADC** | Working | sun20i-gpadc (IIO) | 2 ADC channels via /sys/bus/iio/ |
 | **LRADC** | Working | sun50i-h713-lradc (IIO, built-in) | NTC temp sensing for board-mgr via IIO consumer |
 | **LRADC Keyboard** | Unclear | — | @ 0x02009800, 6 keys + power |
-| **SPI** | Not started | — | SPI0 @ 0x04025000, SPI1 @ 0x04026000 |
+| **SPI** | N/A | — | Both ports disabled in stock, no devices connected |
 | **Crypto Engine** | Not started | — | @ 0x03040000 |
 | **HW Spinlock** | Working | sun6i-hwspinlock (built-in) | Used by cpu_comm for ARM↔MIPS sync |
 
@@ -58,10 +58,6 @@ See [docs/DISPLAY_BRINGUP.md](docs/DISPLAY_BRINGUP.md).
 
 ## Known Issues
 
-- **Weston CMA/ENOMEM** — Weston starts and enables output but fails at buffer
-  allocation (EGL_BAD_ALLOC). Likely needs `cma=128M` bootarg or reserved-memory
-  cleanup. DTS already has `cma=128M` but actual allocation may be limited.
-
 - **Audio: No sound output** — The internal codec probes and ALSA card registers,
   but speaker audio on this SoC goes through the MIPS co-processor's audio DSP.
   The DSP firmware must be loaded via `msp_download_sxl()` before audio works.
@@ -73,9 +69,7 @@ See [docs/DISPLAY_BRINGUP.md](docs/DISPLAY_BRINGUP.md).
   fundamental blocker for bidirectional ARM-MIPS communication.
   See [docs/CPU_COMM.md](docs/CPU_COMM.md).
 
-- **BT autostart** — hciattach at 1500000 baud fails on cold boot (HCI Reset
-  timeout). Works when run manually after system is fully up. Likely needs
-  initial 115200 baud before speed switch.
+
 
 - **Motor** — Position tracking works via sysfs, but physical movement after
   boot homing is inconsistent. Limit switch (PH14) always reads LOW.
