@@ -1,6 +1,6 @@
 --- a/drivers/pmdomain/sunxi/Kconfig	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/pmdomain/sunxi/Kconfig	2026-04-04 02:25:08.520578756 +0200
-@@ -18,3 +18,12 @@
++++ b/drivers/pmdomain/sunxi/Kconfig	2026-04-04 23:44:32.124757879 +0200
+@@ -18,3 +18,13 @@
  	  Say y to enable the Allwinner H6/H616 PRCM power domain driver.
  	  This is required to enable the Mali GPU in the H616 SoC, it is
  	  optional for the H6.
@@ -9,6 +9,7 @@
 +	bool "Allwinner H713 PPU power domain driver"
 +	depends on ARCH_SUNXI || COMPILE_TEST
 +	depends on PM
++	select PM_GENERIC_DOMAINS
 +	help
 +	  Power domain driver for the Allwinner H713 SoC.
 +	  Manages 5 power domains (CPUS, SYS, GPU, VE, DE)

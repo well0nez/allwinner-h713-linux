@@ -1,5 +1,5 @@
 --- a/drivers/iommu/Kconfig	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/iommu/Kconfig	2026-04-04 23:39:41.799282495 +0200
++++ b/drivers/iommu/Kconfig	2026-04-04 23:45:40.445112327 +0200
 @@ -227,7 +227,6 @@
  	bool "Rockchip IOMMU Support"
  	depends on ARCH_ROCKCHIP || COMPILE_TEST
@@ -8,7 +8,7 @@
  	help
  	  Support for IOMMUs found on Rockchip rk32xx SOCs.
  	  These IOMMUs allow virtualization of the address space used by most
-@@ -239,10 +238,14 @@
+@@ -239,11 +238,11 @@
  	bool "Allwinner H6 IOMMU Support"
  	depends on HAS_DMA
  	depends on ARCH_SUNXI || COMPILE_TEST
@@ -16,15 +16,12 @@
  	select IOMMU_API
  	help
  	  Support for the IOMMU introduced in the Allwinner H6 SoCs.
-+n	  Note: On ARM32, this option is intentionally decoupled from
-+	  ARM_DMA_USE_IOMMU for staged bring-up on H713.
-+
-+	  Note: On ARM32, this option is intentionally decoupled from
-+	  ARM_DMA_USE_IOMMU for staged bring-up on H713.
  
++
  config TEGRA_IOMMU_SMMU
  	bool "NVIDIA Tegra SMMU Support"
-@@ -259,7 +262,6 @@
+ 	depends on ARCH_TEGRA
+@@ -259,7 +258,6 @@
  	depends on ARCH_EXYNOS || COMPILE_TEST
  	depends on !CPU_BIG_ENDIAN # revisit driver if we can enable big-endian ptes
  	select IOMMU_API
@@ -32,7 +29,7 @@
  	help
  	  Support for the IOMMU (System MMU) of Samsung Exynos application
  	  processor family. This enables H/W multimedia accelerators to see
-@@ -284,7 +286,6 @@
+@@ -284,7 +282,6 @@
  	depends on !GENERIC_ATOMIC64	# for IOMMU_IO_PGTABLE_LPAE
  	select IOMMU_API
  	select IOMMU_IO_PGTABLE_LPAE
@@ -40,7 +37,7 @@
  	help
  	  Support for the Renesas VMSA-compatible IPMMU found in the R-Mobile
  	  APE6, R-Car Gen{2,3} and RZ/G{1,2} SoCs.
-@@ -324,7 +325,6 @@
+@@ -324,7 +321,6 @@
  config MTK_IOMMU
  	tristate "MediaTek IOMMU Support"
  	depends on ARCH_MEDIATEK || COMPILE_TEST
@@ -48,7 +45,7 @@
  	select IOMMU_API
  	select IOMMU_IO_PGTABLE_ARMV7S
  	select MEMORY
-@@ -339,7 +339,6 @@
+@@ -339,7 +335,6 @@
  config MTK_IOMMU_V1
  	tristate "MediaTek IOMMU Version 1 (M4U gen1) Support"
  	depends on (ARCH_MEDIATEK && ARM) || COMPILE_TEST
