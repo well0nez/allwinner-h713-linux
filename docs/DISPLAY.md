@@ -1,46 +1,93 @@
 # HY310 Display Subsystem
 
-## Status: PARTIAL — framebuffer working via MIPS scanout, pipeline compositor dead
+## Status: WORKING — DRM/KMS driver with GEM scanout, Weston launches
+
+## Architecture
+
+The H713 uses a **custom display pipeline** that is NOT standard Allwinner
+DE2/DE3/TCON. The pipeline looks like:
+
+```
+CCU clocks → TVTOP (bus fabric) → VBlender (timing) → OSD (plane) → AFBD → LVDS → DLPC3435 → DLP
+```
+
+The MIPS co-processor (loaded from display.bin by U-Boot) initializes VBlender
+timing and LVDS PHY at boot. Our DRM driver programs TVTOP bus routing, enables
+clocks, and handles framebuffer scanout via the AFBD controller.
 
 ## Hardware Map
 
-| Block         | Address      | Notes                              |
-|---------------|--------------|------------------------------------|
-| GE2D          | 0x05240000   | Graphics engine, `trix,ge2d`       |
-| TVTOP         | 0x05700000   | Display clock/power management     |
-| VBlender      | 0x05200000   | **DEAD** — reads zero, writes ignored |
-| DECD          | 0x05600000   | Video decoder (MIPS dependent)     |
+| Block    | Address      | Size  | Notes                                    |
+|----------|-------------|-------|------------------------------------------|
+| TVTOP    | 0x05700000  | 0xA0  | Bus fabric routing — MUST program first  |
+| VBlender | 0x05200000  | 0x100 | Timing controller (MIPS-initialized)     |
+| OSD      | 0x05248000  | 0x200 | Plane control, commit bit                |
+| AFBD     | 0x05600000  | 0x200 | Framebuffer controller, scanout addr     |
+| GE2D     | 0x05240000  | 0x20  | Graphics engine core (minimal init)      |
+| LVDS     | 0x051C0000  | 0x100 | LVDS PHY (MIPS-initialized)              |
+| DLPC3435 | I2C @ 0x1B  | —     | TI DLP controller (optional I2C init)    |
 
-- IRQ: VBlender = SPI 101, AFBD = SPI 112
+- Scanout address register: AFBD_CTRL + 0x78 (physical 0x05600178)
+- IRQ: VBlender = GIC SPI 101, AFBD = GIC SPI 112
 
-## Framebuffer
+## Root Cause: VBlender Reads Zero
 
-- `/dev/ge2d` chardev
-- `/dev/fb0` — 1920x1080 ARGB8888
-- Framebuffer base: `0x78541000` (FB writes go here directly for MIPS scanout)
-- U-Boot initializes the display; MIPS continues scanout after hand-off
+The initial bringup problem was that all display sub-blocks read zeros. Root
+cause: **TVTOP bus fabric routing registers** at 0x05700000 must be programmed
+with a specific 7-register sequence before any display sub-block responds to
+MMIO reads. See [DISPLAY_BRINGUP.md](DISPLAY_BRINGUP.md) for the full analysis.
 
-## MIPS Scanout Dependency
+## DRM/KMS Driver
 
-U-Boot loads `display.bin` to `0x4b100000` before the kernel starts. The MIPS co-processor handles the actual display scanout pipeline. The ARM side only writes to the framebuffer; the MIPS side drives the physical display.
+The new DRM driver (`drivers/display/drm/h713_drm.c`) replaces the legacy
+ge2d framebuffer path:
 
-## Known Issues
+- Out-of-tree module (`h713_drm.ko`)
+- Binds to `trix,ge2d` compatible string in DTS
+- Uses `drm_simple_display_pipe` (single CRTC + plane + encoder)
+- Fixed mode: 1920x1080@60Hz LVDS (148.5 MHz pixel clock)
+- GEM DMA buffer management with DRM_GEM_DMA_DRIVER_OPS_VMAP
+- PRIME buffer sharing (dma-buf export/import) for Panfrost GPU
+- Warm-disable strategy: clocks/reset kept alive during disable/reopen cycles
 
-- **VBlender block** at `0x05200000` is completely dead (zero reads, silent write drops) — ARM-side compositing not possible until this is resolved
-- **OSD firmware** (`LogRegData.bin`) not loaded yet
-- **DLPC3435** projector I2C address unknown; `0x27` is `mir3da` accelerometer, not DLPC
-- **afbd clock**: currently running at 150 MHz, should be 200 MHz
-- **PWM dimming**: `sun4i-pwm` has `npwm=2`; H713 needs `npwm=8` to reach channel 2
+### Enable Sequence
+
+1. Enable display clocks (svp_dtl, deint, panel, bus_disp, afbd)
+2. Deassert reset (rst_bus_disp)
+3. Program TVTOP 7-register routing sequence
+4. Verify VBlender is alive (read ctrl/hact/vact)
+5. Program scanout address to AFBD_CTRL + 0x78
+6. Latch: AFBD_CTRL + 0x44 = 1, OSD_CTRL |= BIT(0)
+
+### Module Parameters
+
+- `use_safe_scanout` — Point scanout at known-good U-Boot buffer (debug)
+- `fill_test_pattern` — Draw gradient+checkerboard test pattern (debug)
+- `enable_dlpc3435` — Experimental DLPC3435 I2C init sequence
+
+## DRM Device Layout
+
+| Device       | Card    | Function              |
+|-------------|---------|------------------------|
+| Panfrost    | card0   | GPU render (renderD128)|
+| h713_drm    | card1   | Display scanout (KMS)  |
+
+PRIME buffer sharing between card0 and card1 is verified and working.
+
+## Weston Compositor
+
+Weston launches with GL renderer (Panfrost) and recognizes the LVDS output.
+Current blocker: CMA pool too small for Weston's buffer allocation needs
+(EGL_BAD_ALLOC on CREATE_DUMB). Needs CMA pool increase or reserved-memory
+cleanup.
+
+## Legacy GE2D Path
+
+The old ge2d framebuffer driver is kept in `drivers/display/ge2d/` for
+reference but is superseded by the DRM driver. Both bind to the same
+`trix,ge2d` compatible — only one should be loaded at a time.
 
 ## Critical GPIO Warning
 
 **PB5 = panel backlight enable AND fan power (shared hardware line)**
-**NEVER set PB5 LOW** — doing so will cut fan power in addition to disabling the backlight.
-
-## Next Steps
-
-1. Determine why VBlender registers read as zero (clock gating? power domain? MIPS lock?)
-2. Load `LogRegData.bin` OSD firmware
-3. Find DLPC3435 I2C address via bus scan on live board
-4. Fix afbd clock parent to reach 200 MHz
-5. Fix `sun4i-pwm` npwm in DTS for backlight PWM channel 2
+**NEVER set PB5 LOW** — doing so will cut fan power AND disable the backlight.
