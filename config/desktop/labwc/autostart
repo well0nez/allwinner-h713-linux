@@ -1,0 +1,14 @@
+#!/bin/sh
+export XCURSOR_THEME=Adwaita
+export XCURSOR_SIZE=36
+export WAYLAND_DISPLAY=wayland-0
+
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+  eval "$(dbus-launch --sh-syntax)"
+fi
+
+(sleep 1; wlr-randr --output LVDS-1 --scale 1.5) >/tmp/wlr-randr.log 2>&1 &
+
+swaybg -c '#00aaff' >/tmp/swaybg.log 2>&1 &
+waybar >/tmp/waybar.log 2>&1 &
+thunar --daemon >/tmp/thunar.log 2>&1 &

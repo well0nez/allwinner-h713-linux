@@ -123,9 +123,20 @@ echo "=== Step 2: H713 options ==="
 ./scripts/config --enable CONFIG_CRYPTO_DEV_ALLWINNER
 ./scripts/config --enable CONFIG_CRYPTO_DEV_SUN8I_CE
 
-# GPU/IOMMU (Mali Bifrost + H6/H713 IOMMU)
+# Framebuffer (kept for stock ge2d compatibility)
 ./scripts/config --enable CONFIG_FB
 ./scripts/config --enable CONFIG_FB_VIRTUAL
+
+# Phase 0: Panfrost GPU (Mali-G31 Bifrost, render-only /dev/dri/renderD128)
+# Decoupled IOMMU strategy: enable the SUN50I provider plus API/support
+# while keeping ARM_DMA_USE_IOMMU off so the global ARM32 DMA path stays disabled.
+./scripts/config --enable CONFIG_DRM
+./scripts/config --module CONFIG_DRM_PANFROST
+./scripts/config --enable CONFIG_SUN50I_H713_PPU
+./scripts/config --disable CONFIG_SUN50I_H6_PRCM_PPU
+./scripts/config --enable CONFIG_SUN50I_IOMMU
+./scripts/config --enable CONFIG_IOMMU_SUPPORT
+./scripts/config --enable CONFIG_IOMMU_API
 
 # Watchdog / RTC / PWM / IR / Input
 ./scripts/config --enable CONFIG_WATCHDOG

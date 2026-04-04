@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+  <menu id="root-menu" label="Menu">
+    <item label="Terminal (foot)">
+      <action name="Execute"><command>foot</command></action>
+    </item>
+    <item label="Dateimanager (Thunar)">
+      <action name="Execute"><command>thunar</command></action>
+    </item>
+    <item label="Browser (Chromium Lite)">
+      <action name="Execute"><command>/usr/local/bin/chromium-lite</command></action>
+    </item>
+    <item label="Browser (Falkon)">
+      <action name="Execute"><command>/usr/local/bin/falkon-wayland</command></action>
+    </item>
+    <item label="App Launcher (Wofi)">
+      <action name="Execute"><command>wofi --show drun</command></action>
+    </item>
+    <item label="Firefox (heavy)">
+      <action name="Execute"><command>firefox-esr</command></action>
+    </item>
+    <separator/>
+    <item label="Labwc neu laden">
+      <action name="Reconfigure"/>
+    </item>
+    <item label="System neu starten">
+      <action name="Execute"><command>systemctl reboot</command></action>
+    </item>
+    <item label="Beenden">
+      <action name="Exit"/>
+    </item>
+  </menu>
+</openbox_menu>

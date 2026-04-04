@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+MOTOR=/sys/devices/platform/motor_ctr/motor_ctrl
+LIMIT=/sys/devices/platform/motor_ctr/motor_limit
+
+usage() {
+  echo "Usage:"
+  echo "  focus up <steps>"
+  echo "  focus down <steps>"
+  echo "  focus flush"
+  echo "  focus status"
+  echo
+  echo "Examples:"
+  echo "  focus up 20"
+  echo "  focus down 10"
+}
+
+encode_move() {
+  dir="$1"; steps="$2"
+  [ "$steps" -ge 0 ] && [ "$steps" -le 127 ] || {
+    echo "steps must be 0..127" >&2; exit 2;
+  }
+  if [ "$dir" = "up" ]; then
+    echo $(( (1 << 8) | steps ))
+  else
+    echo $(( (2 << 8) | steps ))
+  fi
+}
+
+[ -e "$MOTOR" ] || { echo "motor sysfs not found: $MOTOR" >&2; exit 1; }
+
+cmd="${1:-}"
+case "$cmd" in
+  up)
+    steps="${2:-}"; [ -n "$steps" ] || { usage; exit 2; }
+    val="$(encode_move up "$steps")"
+    echo "$val" > "$MOTOR"
+    ;;
+  down)
+    steps="${2:-}"; [ -n "$steps" ] || { usage; exit 2; }
+    val="$(encode_move down "$steps")"
+    echo "$val" > "$MOTOR"
+    ;;
+  flush)
+    echo 768 > "$MOTOR"
+    ;;
+  status)
+    echo -n "motor_ctrl: "; cat "$MOTOR"
+    echo -n "motor_limit: "; cat "$LIMIT" 2>/dev/null || true
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

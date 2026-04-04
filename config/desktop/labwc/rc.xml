@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<labwc_config>
+  <keyboard>
+    <default />
+
+    <!-- Custom launcher shortcuts -->
+    <keybind key="W-d">
+      <action name="Execute" command="wofi --show drun" />
+    </keybind>
+    <keybind key="W-Return">
+      <action name="Execute" command="foot" />
+    </keybind>
+    <keybind key="W-e">
+      <action name="Execute" command="thunar" />
+    </keybind>
+  </keyboard>
+
+  <mouse>
+    <default />
+
+    <!-- Keep desktop right-click menu -->
+    <context name="Root">
+      <mousebind button="Right" action="Press">
+        <action name="ShowMenu" menu="root-menu" />
+      </mousebind>
+    </context>
+  </mouse>
+</labwc_config>
