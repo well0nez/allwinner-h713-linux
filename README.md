@@ -146,8 +146,6 @@ These subsystems have stock hardware addresses documented but no driver work don
 
 | SPI | 0x04025000 | SPI0 + SPI1 |
 | Crypto Engine | 0x03040000 | Hardware AES/SHA |
-| HW Spinlock | 0x03004000 | Multi-core sync |
-| TV Demodulator | 0x06600000 | DTMB |
 
 See [docs/SUBSYSTEMS_NOT_STARTED.md](docs/SUBSYSTEMS_NOT_STARTED.md) for stock
 register addresses and what needs to be done for each.
