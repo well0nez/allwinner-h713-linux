@@ -114,9 +114,9 @@ gen_patch "0015-misc-add-h713-driver-kconfig.patch" \
     "drivers/misc/Kconfig" \
     "drivers/misc/Makefile"
 
-gen_patch "0016-dt-bindings-add-h713-clock-reset-ids.patch" \
-    "include/dt-bindings/clock/sun50i-h713-ccu.h" \
-    "include/dt-bindings/reset/sun50i-h713-ccu.h"
+gen_patch "0016-dt-bindings-add-h713-clock-reset-ids.patch"     "include/dt-bindings/clock/sun50i-h713-ccu.h"     "include/dt-bindings/reset/sun50i-h713-ccu.h"
+
+gen_patch "0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch"     "drivers/iommu/Kconfig"
 
 # Also sync DTS if it exists in kernel tree
 echo ""
