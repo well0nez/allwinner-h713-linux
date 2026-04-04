@@ -25,7 +25,7 @@
 | **Audio** | Partial | codec + cpudai + machine + bridge (out-of-tree) | Card probes, no sound output (MIPS DSP dependency) |
 | **Display** | Partial | ge2d + tvtop + mipsloader (in-tree) | FB writes work, no OSD scanout |
 | **ARM-MIPS IPC** | Partial | cpu_comm (in-tree, out-of-tree) | Protocol works, MIPS Msgbox IRQ not routed |
-| **GPU** | Not started | — | Mali-G31 @ 0x01800000, needs Panfrost + IOMMU |
+| **GPU** | Working (Panfrost render-only) | panfrost | Mali-G31 @ 0x01800000, /dev/dri/card0 + renderD128 present |
 | **IOMMU** | Blocked | sun50i-iommu (disabled) | ARM_DMA_USE_IOMMU breaks ARM32 platform probing |
 | **GPADC** | Working | sun20i-gpadc (IIO) | 2 ADC channels via /sys/bus/iio/ |
 | **LRADC** | Working | sun50i-h713-lradc (IIO, built-in) | NTC temp sensing for board-mgr via IIO consumer |

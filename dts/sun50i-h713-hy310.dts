@@ -888,7 +888,14 @@
 			status = "okay";
 		};
 
-		/* === IOMMU (required for GPU) === */
+		/*
+		 * IOMMU — disabled and NOT used by Panfrost.
+		 * Panfrost uses the Mali GPU's internal MMU via io-pgtable.
+		 * Do NOT enable CONFIG_SUN50I_IOMMU — selects ARM_DMA_USE_IOMMU
+		 * on ARM32, which corrupts of_node pointers and crashes all
+		 * module probes. This is a confirmed, tested showstopper.
+		 * Address 0x02010000 is the H713 IOMMU MMIO base (unverified).
+		 */
 		iommu: iommu@2010000 {
 			compatible = "allwinner,sun50i-h6-iommu";
 			reg = <0x02010000 0x1000>;
@@ -900,9 +907,9 @@
 
 		/* === GPU (Mali-G31 Bifrost, Panfrost driver) === */
 		gpu: gpu@1800000 {
-			compatible = "allwinner,sun50i-h6-mali",
+			compatible = "allwinner,sun50i-h616-mali",
 				     "arm,mali-bifrost";
-			reg = <0x01800000 0x10000>;
+			reg = <0x01800000 0x40000>;
 			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
@@ -910,13 +917,16 @@
 			clocks = <&ccu CLK_GPU>, <&ccu CLK_BUS_GPU>;
 			clock-names = "core", "bus";
 			resets = <&ccu RST_BUS_GPU>;
-			#cooling-cells = <2>;
 			/*
-			 * Disabled until Panfrost CONFIG is enabled and
-			 * power domain driver is verified working.
-			 * Stock uses: power-domains = <&power_domains 0>;
+			 * Power domain index 2 = GPU (always-on in H713 PPU).
+			 * IDA RE confirmed: domain_info[2] is all-zeros in stock binary,
+			 * meaning no hardware power sequencer for GPU. The sun50i-h713-ppu
+			 * driver marks index 2 as GENPD_FLAG_ALWAYS_ON.
+			 * GPU is powered on at boot; Panfrost uses runtime PM via genpd.
 			 */
-			status = "disabled";
+			power-domains = <&ppu 2>;
+			#cooling-cells = <2>;
+			status = "okay";
 		};
 
 
@@ -985,7 +995,13 @@
 		 */
 		r_ccu: clock-controller@7010000 {
 			compatible = "allwinner,sun20i-d1-r-ccu";
-			reg = <0x07010000 0x400>;
+			/*
+			 * D1 R_CCU highest register: 0x22C (RST_BUS_R_CPUCFG).
+			 * Size 0x240 covers all CCU registers and stays below
+			 * the PPU register area (starts at 0x14 but uses offsets
+			 * that are distinct from actual CCU clock/reset registers).
+			 */
+			reg = <0x07010000 0x240>;
 			clocks = <&osc24M>,
 				 <&rtc CLK_OSC32K>,
 				 <&rtc CLK_IOSC>,
@@ -993,6 +1009,35 @@
 			clock-names = "hosc", "losc", "iosc", "pll-periph";
 			#clock-cells = <1>;
 			#reset-cells = <1>;
+		};
+
+		/*
+		 * H713 PRCM PPU — power domain controller (IDA RE from stock kernel).
+		 *
+		 * The PPU register block is embedded within the R_CCU physical
+		 * address range (0x07010000). The driver uses of_iomap() (no
+		 * resource request) to avoid EBUSY conflict with the R_CCU driver.
+		 *
+		 * 5 domains (DT indices 0-4):
+		 *   0: CPUS (hw domain_id=0, registers at 0x07010020/24)
+		 *   1: SYS  (hw domain_id=1, registers at 0x070100A0/A4)
+		 *   2: GPU  (always-on; domain_info[2] is all-zeros in stock binary)
+		 *   3: VE   (hw domain_id=3, registers at 0x070101A0/A4)
+		 *   4: DE   (hw domain_id=4, registers at 0x07010220/24)
+		 *
+		 * Source: IDA analysis of vmlinux.fex, sunxi_pmu_info @ 0xC0EA3D90,
+		 *         compatible "allwinner,tv303-power-controller".
+		 */
+		ppu: power-controller@7010000 {
+			compatible = "allwinner,sun50i-h713-ppu";
+			/* Same physical range as R_CCU; driver uses of_iomap (no request) */
+			reg = <0x07010000 0x240>;
+			clocks = <&r_ccu CLK_BUS_R_PPU>;
+			clock-names = "ppu";
+			resets = <&r_ccu RST_BUS_R_PPU>;
+			reset-names = "ppu_rst";
+			#power-domain-cells = <1>;
+			status = "okay";
 		};
 
 		/* R-domain pinctrl for PL/PM banks (IR, S_PWM, WLAN/BT GPIOs) */
