@@ -122,7 +122,7 @@ gen_patch 0018-pinctrl-sunxi-add-h713-pb-bank-to-h616.patch     drivers/pinctrl/
 
 gen_patch 0019-iio-adc-add-h713-lradc-driver.patch     drivers/iio/adc/sun50i-h713-lradc-iio.c     drivers/iio/adc/Kconfig     drivers/iio/adc/Makefile
 
-gen_patch 0020-pmdomain-add-h713-ppu-kconfig.patch     drivers/pmdomain/sunxi/Kconfig     drivers/pmdomain/sunxi/Makefile
+gen_patch 0020-pmdomain-add-h713-ppu-driver.patch     drivers/pmdomain/sunxi/sun50i-h713-ppu.c     drivers/pmdomain/sunxi/Kconfig     drivers/pmdomain/sunxi/Makefile
 
 # Also sync DTS if it exists in kernel tree
 echo ""

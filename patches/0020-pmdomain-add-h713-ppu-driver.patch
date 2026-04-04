@@ -1,0 +1,313 @@
+--- a/drivers/pmdomain/sunxi/sun50i-h713-ppu.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/pmdomain/sunxi/sun50i-h713-ppu.c	2026-04-04 23:55:42.608615559 +0200
+@@ -0,0 +1,287 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Allwinner H713 R_CCU-embedded power domain (PPU) driver.
++ *
++ * Reverse-engineered from Allwinner stock H713 kernel (vmlinux.fex) via IDA:
++ *   - sunxi_pm_domain_probe  @ 0xc05700dc
++ *   - sunxi_pm_add_one_domain @ 0xc056fd90
++ *   - sunxi_pd_power          @ 0xc056fb88
++ *   - sunxi_pmu_domain_is_on  @ 0xc056fa88
++ *   - sunxi_pmu_domain_is_idle    @ 0xc056fa14
++ *   - sunxi_pmu_domain_is_complete@ 0xc056fb08
++ *   - sunxi_pmu_info          @ 0xC0EA3D90
++ *   - sunxi_domain_info[]     @ 0xC0EA3DAC
++ *
++ * Register layout (base = R_CCU = 0x07010000):
++ *   For hardware domain_id d:
++ *     wait_mode    = base + 0x14 + d*0x80   (init: 0x08)
++ *     pwr_off_dly  = base + 0x18 + d*0x80   (init: 0x00080808)
++ *     pwr_on_dly   = base + 0x1C + d*0x80   (init: 0x00080808)
++ *     pwr_ctrl     = base + 0x20 + d*0x80   (1=on, 2=off)
++ *     status       = base + 0x24 + d*0x80
++ *
++ *   status register bits:
++ *     bit 3  (0x08):        idle  (0 = idle, safe to switch power)
++ *     bit 1  (0x02):        transition complete
++ *     bits[17:16] (0x30000): power state (0x10000 = 01b = ON)
++ *
++ * Domain map (from stock domain_info[]):
++ *   DT index 0 -> hw domain_id 0   (CPUS subsystem)
++ *   DT index 1 -> hw domain_id 1   (SYS)
++ *   DT index 2 -> always-on        (GPU - stock binary has domain_id=0/zeros,
++ *                                    i.e. no sequencer; GPU powered at boot)
++ *   DT index 3 -> hw domain_id 3   (VE)
++ *   DT index 4 -> hw domain_id 4   (DE)
++ *
++ * Note: PPU registers are embedded in the R_CCU physical range (0x07010000).
++ * This driver uses of_iomap() (no resource request) to avoid conflict with
++ * the R_CCU clock driver which already owns that resource via
++ * devm_platform_ioremap_resource(). This is an explicit out-of-tree
++ * workaround; a proper upstream solution would make R_CCU an MFD/syscon
++ * parent and have this driver consume its regmap.
++ */
++
++#include <linux/clk.h>
++#include <linux/io.h>
++#include <linux/iopoll.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/platform_device.h>
++#include <linux/pm_domain.h>
++#include <linux/reset.h>
++
++/* Register offsets (relative to R_CCU base) */
++#define H713_PPU_WAIT_MODE_OFF	0x14
++#define H713_PPU_PWR_OFF_DELAY	0x18
++#define H713_PPU_PWR_ON_DELAY	0x1C
++#define H713_PPU_PWR_CTRL	0x20
++#define H713_PPU_STATUS		0x24
++#define H713_PPU_STRIDE		0x80	/* bytes between domains */
++
++/* Power control commands */
++#define H713_PPU_CMD_ON		1
++#define H713_PPU_CMD_OFF	2
++
++/* Status register masks (same register for all three state checks) */
++#define H713_PPU_IDLE_MASK	BIT(3)		/* 0 = idle */
++#define H713_PPU_DONE_MASK	BIT(1)		/* 1 = transition complete */
++#define H713_PPU_STATE_MASK	GENMASK(17, 16)	/* power state field */
++#define H713_PPU_STATE_ON	BIT(16)		/* bits[17:16]=01 = powered on */
++
++/* Init values from stock binary domain_info[] */
++#define H713_PPU_WAIT_MODE_INIT		0x00000008
++#define H713_PPU_PWR_ON_DLY_INIT	0x00080808
++#define H713_PPU_PWR_OFF_DLY_INIT	0x00080808
++
++#define H713_PPU_TIMEOUT_US	10000
++
++#define H713_PPU_NUM_DOMAINS	5
++
++/* DT domain index -> hardware domain_id (-1 = always-on, no hardware) */
++static const int h713_ppu_hw_ids[H713_PPU_NUM_DOMAINS] = { 0, 1, -1, 3, 4 };
++
++static const char * const h713_ppu_names[H713_PPU_NUM_DOMAINS] = {
++	"CPUS", "SYS", "GPU", "VE", "DE",
++};
++
++struct h713_ppu_pd {
++	struct generic_pm_domain	genpd;
++	void __iomem			*base;
++	int				hw_id;
++};
++
++#define to_h713_ppu_pd(g) container_of(g, struct h713_ppu_pd, genpd)
++
++static void __iomem *h713_ppu_reg(struct h713_ppu_pd *pd, u32 offset)
++{
++	return pd->base + offset + (pd->hw_id * H713_PPU_STRIDE);
++}
++
++static bool h713_ppu_is_on(struct h713_ppu_pd *pd)
++{
++	u32 val = readl(h713_ppu_reg(pd, H713_PPU_STATUS));
++
++	return (val & H713_PPU_STATE_MASK) == H713_PPU_STATE_ON;
++}
++
++static int h713_ppu_set_power(struct h713_ppu_pd *pd, bool on)
++{
++	void __iomem *status_reg = h713_ppu_reg(pd, H713_PPU_STATUS);
++	void __iomem *pwr_reg    = h713_ppu_reg(pd, H713_PPU_PWR_CTRL);
++	u32 val;
++	int ret;
++
++	/* Wait for domain idle before switching */
++	ret = readl_poll_timeout(status_reg, val,
++				 !(val & H713_PPU_IDLE_MASK),
++				 10, H713_PPU_TIMEOUT_US);
++	if (ret)
++		return ret;
++
++	writel(on ? H713_PPU_CMD_ON : H713_PPU_CMD_OFF, pwr_reg);
++
++	/* Wait for transition to complete */
++	ret = readl_poll_timeout(status_reg, val,
++				 (val & H713_PPU_DONE_MASK),
++				 10, H713_PPU_TIMEOUT_US);
++	if (ret)
++		return ret;
++
++	/* Clear status bits */
++	val = readl(status_reg);
++	writel(val, status_reg);
++
++	/* Confirm final power state */
++	ret = readl_poll_timeout(status_reg, val,
++				 (bool)((val & H713_PPU_STATE_MASK) == H713_PPU_STATE_ON) == on,
++				 10, H713_PPU_TIMEOUT_US);
++	return ret;
++}
++
++static int h713_ppu_power_on(struct generic_pm_domain *genpd)
++{
++	return h713_ppu_set_power(to_h713_ppu_pd(genpd), true);
++}
++
++static int h713_ppu_power_off(struct generic_pm_domain *genpd)
++{
++	return h713_ppu_set_power(to_h713_ppu_pd(genpd), false);
++}
++
++static void h713_ppu_init_domain(struct h713_ppu_pd *pd)
++{
++	writel(H713_PPU_WAIT_MODE_INIT,    h713_ppu_reg(pd, H713_PPU_WAIT_MODE_OFF));
++	writel(H713_PPU_PWR_ON_DLY_INIT,  h713_ppu_reg(pd, H713_PPU_PWR_ON_DELAY));
++	writel(H713_PPU_PWR_OFF_DLY_INIT, h713_ppu_reg(pd, H713_PPU_PWR_OFF_DELAY));
++}
++
++static int h713_ppu_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct genpd_onecell_data *ppu;
++	struct h713_ppu_pd *pds;
++	struct reset_control *rst;
++	struct clk *clk;
++	void __iomem *base;
++	int ret, i;
++
++	/*
++	 * Use of_iomap() rather than devm_platform_ioremap_resource() to
++	 * avoid EBUSY: the R_CCU clock driver has already exclusively claimed
++	 * this physical range. of_iomap() does ioremap without request_mem_region.
++	 */
++	base = of_iomap(dev->of_node, 0);
++	if (!base)
++		return -ENOMEM;
++
++	/* Clock and reset come from the parent R_CCU */
++	clk = devm_clk_get(dev, "ppu");
++	if (IS_ERR(clk)) {
++		ret = PTR_ERR(clk);
++		goto err_unmap;
++	}
++
++	rst = devm_reset_control_get(dev, "ppu_rst");
++	if (IS_ERR(rst)) {
++		ret = PTR_ERR(rst);
++		goto err_unmap;
++	}
++
++	ret = reset_control_deassert(rst);
++	if (ret)
++		goto err_unmap;
++
++	ret = clk_prepare_enable(clk);
++	if (ret)
++		goto err_assert_reset;
++
++	pds = devm_kcalloc(dev, H713_PPU_NUM_DOMAINS, sizeof(*pds), GFP_KERNEL);
++	if (!pds) {
++		ret = -ENOMEM;
++		goto err_clk;
++	}
++
++	ppu = devm_kzalloc(dev, sizeof(*ppu), GFP_KERNEL);
++	if (!ppu) {
++		ret = -ENOMEM;
++		goto err_clk;
++	}
++
++	ppu->num_domains = H713_PPU_NUM_DOMAINS;
++	ppu->domains = devm_kcalloc(dev, H713_PPU_NUM_DOMAINS,
++				    sizeof(*ppu->domains), GFP_KERNEL);
++	if (!ppu->domains) {
++		ret = -ENOMEM;
++		goto err_clk;
++	}
++
++	for (i = 0; i < H713_PPU_NUM_DOMAINS; i++) {
++		struct h713_ppu_pd *pd = &pds[i];
++		bool always_on = (h713_ppu_hw_ids[i] < 0);
++
++		pd->base    = base;
++		pd->hw_id   = h713_ppu_hw_ids[i];
++		pd->genpd.name      = h713_ppu_names[i];
++		pd->genpd.power_on  = h713_ppu_power_on;
++		pd->genpd.power_off = h713_ppu_power_off;
++
++		if (always_on) {
++			pd->genpd.flags = GENPD_FLAG_ALWAYS_ON;
++			ret = pm_genpd_init(&pd->genpd, NULL, false);
++		} else {
++			h713_ppu_init_domain(pd);
++			ret = pm_genpd_init(&pd->genpd, NULL, !h713_ppu_is_on(pd));
++		}
++
++		if (ret) {
++			dev_warn(dev, "Failed to init domain %s: %d\n",
++				 h713_ppu_names[i], ret);
++			goto err_remove_domains;
++		}
++
++		ppu->domains[i] = &pd->genpd;
++	}
++
++	ret = of_genpd_add_provider_onecell(dev->of_node, ppu);
++	if (ret) {
++		dev_err(dev, "Failed to add genpd provider: %d\n", ret);
++		goto err_remove_domains;
++	}
++
++	dev_info(dev, "H713 PPU: %d power domains registered\n",
++		 H713_PPU_NUM_DOMAINS);
++	return 0;
++
++err_remove_domains:
++	for (i--; i >= 0; i--)
++		pm_genpd_remove(&pds[i].genpd);
++err_clk:
++	clk_disable_unprepare(clk);
++err_assert_reset:
++	reset_control_assert(rst);
++err_unmap:
++	iounmap(base);
++	return ret;
++}
++
++static const struct of_device_id h713_ppu_of_match[] = {
++	{ .compatible = "allwinner,sun50i-h713-ppu" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, h713_ppu_of_match);
++
++static struct platform_driver h713_ppu_driver = {
++	.probe	= h713_ppu_probe,
++	.driver	= {
++		.name			= "sun50i-h713-ppu",
++		.of_match_table		= h713_ppu_of_match,
++		/* Power domains cannot be removed while in use */
++		.suppress_bind_attrs	= true,
++	},
++};
++module_platform_driver(h713_ppu_driver);
++
++MODULE_AUTHOR("HY310 Project <re@allwinner-h713>");
++MODULE_DESCRIPTION("Allwinner H713 PRCM power domain driver (RE from stock kernel)");
++MODULE_LICENSE("GPL");
+--- a/drivers/pmdomain/sunxi/Kconfig	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/pmdomain/sunxi/Kconfig	2026-04-04 23:44:32.124757879 +0200
+@@ -18,3 +18,13 @@
+ 	  Say y to enable the Allwinner H6/H616 PRCM power domain driver.
+ 	  This is required to enable the Mali GPU in the H616 SoC, it is
+ 	  optional for the H6.
++
++config SUN50I_H713_PPU
++	bool "Allwinner H713 PPU power domain driver"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	depends on PM
++	select PM_GENERIC_DOMAINS
++	help
++	  Power domain driver for the Allwinner H713 SoC.
++	  Manages 5 power domains (CPUS, SYS, GPU, VE, DE)
++	  embedded in the R_CCU register space.
+--- a/drivers/pmdomain/sunxi/Makefile	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/pmdomain/sunxi/Makefile	2026-04-04 02:25:08.544578850 +0200
+@@ -1,3 +1,4 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ obj-$(CONFIG_SUN20I_PPU)		+= sun20i-ppu.o
+ obj-$(CONFIG_SUN50I_H6_PRCM_PPU)	+= sun50i-h6-prcm-ppu.o
++obj-$(CONFIG_SUN50I_H713_PPU)	+= sun50i-h713-ppu.o
