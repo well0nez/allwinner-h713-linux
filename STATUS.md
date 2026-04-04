@@ -12,7 +12,7 @@
 | **USB** | Working | ehci/ohci + phy-sun4i-usb (patched) | 3x EHCI + 3x OHCI |
 | **WiFi** | Working | aic8800_bsp + aic8800_fdrv (out-of-tree) | AIC8800D80 SDIO, stable |
 | **Bluetooth** | Working | hci_uart H4 + aic8800_btlpm | Auto-start via systemd, 1.5Mbaud flow control |
-| **IR Remote** | Working | sunxi-cir + rc-core decoders | NEC/RC5/RC6, /dev/lirc0, PL9 |
+| **IR Remote** | Partial | sunxi-cir + rc-core decoders | Probes ok, decoders active, but no IRQ — IR receiver is on PB21 (not PL9), PB21 missing from pinctrl driver |
 | **RTC** | Working | sun6i-rtc | @ 0x07090000 |
 | **Thermal** | Working | sun8i-thermal | 2 zones (CPU ~65C, GPU ~66C) |
 | **I2C** | Working | mv64xxx | TWI1, STK8BA58 accelerometer |
