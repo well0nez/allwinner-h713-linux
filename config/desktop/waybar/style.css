@@ -1,0 +1,11 @@
+* {
+  font-family: sans-serif;
+  font-size: 18px;
+}
+window#waybar {
+  background: rgba(0, 0, 0, 0.72);
+  color: #ffffff;
+}
+#clock, #cpu, #memory, #network, #tray {
+  padding: 0 10px;
+}

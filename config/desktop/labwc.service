@@ -1,0 +1,22 @@
+[Unit]
+Description=Labwc Wayland Desktop
+After=network.target systemd-user-sessions.service systemd-modules-load.service
+Wants=systemd-user-sessions.service
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=/run/user/0
+Environment=HOME=/root
+Environment=WLR_BACKENDS=drm,libinput
+Environment=XCURSOR_THEME=Adwaita
+Environment=XCURSOR_SIZE=24
+ExecStartPre=/bin/mkdir -p /run/user/0
+ExecStartPre=/bin/chmod 700 /run/user/0
+ExecStartPre=-/usr/bin/pkill -x weston
+ExecStartPre=/sbin/modprobe h713_drm
+ExecStart=/usr/bin/labwc -V
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

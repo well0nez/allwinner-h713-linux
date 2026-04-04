@@ -211,7 +211,7 @@ See [ROOTFS.md](ROOTFS.md) for creating a Debian rootfs with all modules install
 ```
 dts/            Standalone device tree source (sun50i-h713-hy310.dts)
 dt-bindings/    Clock and reset ID headers for H713 CCU
-config/         Kernel defconfig (hy310_defconfig) + stock reference
+config/         Kernel defconfig, module autoload, optional desktop configs
 patches/        16 patches against vanilla linux-6.16.7 (with series file)
 drivers/        Out-of-tree kernel modules
   audio/          Internal codec, CPU-DAI, machine driver, TridentALSA bridge
