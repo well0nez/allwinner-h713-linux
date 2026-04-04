@@ -520,6 +520,9 @@ static void h713_log_frame_geometry(struct h713_drm *h713,
 				    const struct h713_frame_geometry *geo,
 				    const char *stage)
 {
+	if (stage && !strcmp(stage, "update"))
+		return;
+
 	dev_info(h713->drm.dev,
 		 "%s geom: src=%ux%u+%u+%u dst=%ux%u+%u+%u stride=%u buf_h=%u fb=0x%08x crop=[0x%08x..0x%08x] dst_start=0x%08x\n",
 		 stage,
