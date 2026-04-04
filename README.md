@@ -142,7 +142,7 @@ These subsystems have stock hardware addresses documented but no driver work don
 | Subsystem | Address | Notes |
 |-----------|---------|-------|
 
-| IOMMU | 0x02010000 | Disabled (ARM32 compat issue) |
+| IOMMU | 0x030f0000 | Provider active, no consumers yet |
 
 | SPI | 0x04025000 | SPI0 + SPI1 |
 | Crypto Engine | 0x03040000 | Hardware AES/SHA |

@@ -21,7 +21,7 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
-		bootargs = "console=tty0 console=ttyS0,115200 earlycon loglevel=8 root=/dev/sda2 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M";
+		bootargs = "console=tty0 console=ttyS0,115200 earlycon loglevel=8 initcall_debug root=/dev/sda2 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M";
 	};
 
 	aliases {
@@ -896,13 +896,14 @@
 		 * module probes. This is a confirmed, tested showstopper.
 		 * Address 0x02010000 is the H713 IOMMU MMIO base (unverified).
 		 */
-		iommu: iommu@2010000 {
+		iommu: iommu@30f0000 {
 			compatible = "allwinner,sun50i-h6-iommu";
-			reg = <0x02010000 0x1000>;
+			reg = <0x030f0000 0x10000>;
 			interrupts = <GIC_SPI 24 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&ccu CLK_BUS_IOMMU>;
-			#iommu-cells = <2>;
-			status = "disabled";
+			resets = <&ccu 11>;
+			#iommu-cells = <1>;
+			status = "okay";
 		};
 
 		/* === GPU (Mali-G31 Bifrost, Panfrost driver) === */

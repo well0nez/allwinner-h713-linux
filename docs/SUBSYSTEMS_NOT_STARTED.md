@@ -46,14 +46,16 @@ compatible string, IRQ, clock/reset IDs, and required work.
 
 ## IOMMU
 
-- **Status**: BLOCKED (cannot enable on ARM32)
-- **MMIO**: `0x030f0000` / `0x02010000`
-- **Compatible**: `allwinner,sun50i-h616-iommu` (stock DTS)
-- **IRQ**: SPI 61
-- **Blocker**: CONFIG_SUN50I_IOMMU selects ARM_DMA_USE_IOMMU on ARM32, which corrupts
-  platform device of_node pointers (set to 0x1) causing kernel crashes in all module probes.
-  Would require ARM64 port or kernel framework fix. Panfrost uses GPU internal MMU instead.
-
+- **Status**: WORKING (provider only, no consumers attached)
+- **MMIO**: 0x030f0000 (confirmed from stock HY300 DTS + live probe)
+- **Compatible**: allwinner,sun50i-h6-iommu
+- **IRQ**: SPI 24 (extracted from stock eMMC DTB; SPI 57 was H6, collides with pinctrl)
+- **Clocks**: CLK_BUS_IOMMU
+- **Resets**: index 11 (RST_BUS_IOMMU symbol not resolved by DTS compiler, used numeric)
+- **Fix**: Removed select ARM_DMA_USE_IOMMU from SUN50I_IOMMU Kconfig entry.
+  The global ARM32 DMA-IOMMU layer corrupted of_node pointers. Without it, the IOMMU
+  provider probes cleanly as a standalone IOMMU API provider.
+- **Next**: Attach consumers via iommus phandle in DTS (Cedar VE, Display blocks)
 ---
 
 ## Confirmed Working (moved from "not started")
