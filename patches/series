@@ -15,3 +15,5 @@
 0015-misc-add-h713-driver-kconfig.patch
 0016-dt-bindings-add-h713-clock-reset-ids.patch
 0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch
+0018-pinctrl-sunxi-add-h713-pb-bank-to-h616.patch
+0019-iio-adc-add-h713-lradc-driver.patch

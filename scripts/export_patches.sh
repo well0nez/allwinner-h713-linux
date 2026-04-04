@@ -118,6 +118,10 @@ gen_patch "0016-dt-bindings-add-h713-clock-reset-ids.patch"     "include/dt-bind
 
 gen_patch "0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch"     "drivers/iommu/Kconfig"
 
+gen_patch 0018-pinctrl-sunxi-add-h713-pb-bank-to-h616.patch     drivers/pinctrl/sunxi/pinctrl-sun50i-h616.c
+
+gen_patch 0019-iio-adc-add-h713-lradc-driver.patch     drivers/iio/adc/sun50i-h713-lradc-iio.c     drivers/iio/adc/Kconfig     drivers/iio/adc/Makefile
+
 # Also sync DTS if it exists in kernel tree
 echo ""
 if [ -f "$M/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts" ]; then
