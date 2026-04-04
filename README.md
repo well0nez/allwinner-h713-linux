@@ -118,11 +118,11 @@ Active development, functional but not complete:
   requires firmware loading via `msp_download_sxl()` (not yet reverse engineered).
   See [docs/AUDIO.md](docs/AUDIO.md).
 
-- **Display** — Framebuffer at /dev/fb0 (1920x1080 ARGB8888) works — you can write
+- **Display (DRM/KMS)** — Custom DRM driver with GEM DMA scanout via the H713
   pixels and see them on the projector. But the OSD/VBlender hardware block is
-  unresponsive (reads zero), so proper display pipeline control is not possible yet.
-  Display currently relies on the MIPS scanout initialized by U-Boot.
-  See [docs/DISPLAY.md](docs/DISPLAY.md).
+  display pipeline (TVTOP bus fabric + AFBD controller). PRIME buffer sharing with
+  Panfrost GPU verified. Weston compositor launches with GL renderer but hits CMA
+  allocation limits. See [docs/DISPLAY.md](docs/DISPLAY.md).
 
 - **ARM-MIPS IPC** — The full IPC protocol stack works from ARM side: routine lookup,
   semaphore acquire, shared memory write, Msgbox TX. MIPS reads the FIFO and processes
@@ -141,8 +141,8 @@ These subsystems have stock hardware addresses documented but no driver work don
 
 | Subsystem | Address | Notes |
 |-----------|---------|-------|
-| GPU (Mali-G31) | 0x01800000 | Needs Panfrost + IOMMU + power domain |
-| IOMMU | 0x02010000 | DTS node present but disabled (ARM32 compat issue) |
+
+| IOMMU | 0x02010000 | Disabled (ARM32 compat issue) |
 
 | SPI | 0x04025000 | SPI0 + SPI1 |
 | Crypto Engine | 0x03040000 | Hardware AES/SHA |
@@ -217,7 +217,8 @@ config/         Kernel defconfig (hy310_defconfig) + stock reference
 patches/        16 patches against vanilla linux-6.16.7 (with series file)
 drivers/        Out-of-tree kernel modules
   audio/          Internal codec, CPU-DAI, machine driver, TridentALSA bridge
-  display/ge2d/   Graphics engine + framebuffer
+  display/drm/    DRM/KMS display driver (h713_drm)
+  display/ge2d/   Legacy graphics engine (superseded by DRM)
   wifi/           AIC8800D80 SDIO WiFi + Bluetooth (3 modules)
 scripts/        Build, flash, and module install scripts
 tools/          Debug tools (U-Boot interrupt, MIPS elog reader, env analyzer, etc.)
@@ -249,7 +250,7 @@ This is an active WIP project. If you have an H713-based device and want to help
 - **Reverse Engineering** — The MIPS audio DSP firmware loading and display pipeline
   are the biggest unsolved challenges. IDA Pro analysis of `libmspsound.so` and
   `display.bin` would be extremely valuable.
-- **GPU** — Mali-G31 Panfrost bring-up needs IOMMU (currently disabled on ARM32) and power domain work.
+- **GPU** — Mali-G31 Panfrost working (card0/renderD128). PRIME to h713_drm verified.
 - **Documentation** — Stock register dumps, clock trees, and GPIO maps from other
   H713 devices help verify our findings.
 

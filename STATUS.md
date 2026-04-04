@@ -1,6 +1,6 @@
 # HY310 Mainline Linux Port — Status
 
-> Last updated: 2026-04-01
+> Last updated: 2026-04-04
 
 ## Subsystem Status Overview
 
@@ -23,9 +23,10 @@
 | **Poweroff** | Working | — | Confirmed functional |
 | **Keystone Motor** | Partial | hy310-keystone-motor | Sysfs works, physical movement inconsistent |
 | **Audio** | Partial | codec + cpudai + machine + bridge (out-of-tree) | Card probes, no sound output (MIPS DSP dependency) |
-| **Display** | Partial | ge2d + tvtop + mipsloader (in-tree) | FB writes work, no OSD scanout |
+| **Display (DRM/KMS)** | Working | h713_drm (out-of-tree) | DRM/GEM scanout, PRIME, Weston starts (CMA alloc WIP) |
+| **Display (legacy)** | Working | ge2d + tvtop + mipsloader (in-tree) | Stock display pipeline, MIPS-initialized |
 | **ARM-MIPS IPC** | Partial | cpu_comm (in-tree, out-of-tree) | Protocol works, MIPS Msgbox IRQ not routed |
-| **GPU** | Working (Panfrost render-only) | panfrost | Mali-G31 @ 0x01800000, /dev/dri/card0 + renderD128 present |
+| **GPU** | Working | panfrost + sun50i-h713-ppu | Mali-G31 864MHz, card0/renderD128, PRIME to h713_drm |
 | **IOMMU** | Blocked | sun50i-iommu (disabled) | ARM_DMA_USE_IOMMU breaks ARM32 platform probing |
 | **GPADC** | Working | sun20i-gpadc (IIO) | 2 ADC channels via /sys/bus/iio/ |
 | **LRADC** | Working | sun50i-h713-lradc (IIO, built-in) | NTC temp sensing for board-mgr via IIO consumer |
@@ -35,17 +36,37 @@
 | **HW Spinlock** | Not started | — | @ 0x03004000 |
 | **TV Demodulator** | Not started | — | DTMB @ 0x06600000 |
 
+## Display Pipeline (DRM/KMS) — New
+
+The H713 uses a custom display pipeline (NOT standard Allwinner DE2/DE3/TCON):
+
+```
+TVTOP (bus fabric) -> VBlender (timing) -> OSD (plane) -> AFBD -> LVDS -> DLPC3435 -> DLP
+```
+
+**Root cause of initial VBlender-reads-zero problem**: TVTOP bus fabric routing
+registers at 0x05700000 must be programmed before any display sub-blocks respond.
+See [docs/DISPLAY_BRINGUP.md](docs/DISPLAY_BRINGUP.md).
+
+**Current DRM driver** (`drivers/display/drm/h713_drm.c`):
+- Out-of-tree module, binds to `trix,ge2d` compatible
+- `drm_simple_display_pipe` with fixed 1920x1080@60 LVDS mode
+- GEM DMA scanout via AFBD controller (scanout addr at AFBD_CTRL+0x78)
+- Warm-disable strategy (clocks kept alive, MIPS owns timing/PHY init)
+- PRIME buffer sharing with Panfrost verified (bidirectional roundtrip)
+- Weston launches with GL renderer (Panfrost), LVDS output enabled
+- **Blocker**: CMA pool too small for Weston buffer allocation (ENOMEM on CREATE_DUMB)
+
 ## Known Issues
+
+- **Weston CMA/ENOMEM** — Weston starts and enables output but fails at buffer
+  allocation (EGL_BAD_ALLOC). Likely needs `cma=128M` bootarg or reserved-memory
+  cleanup. DTS already has `cma=128M` but actual allocation may be limited.
 
 - **Audio: No sound output** — The internal codec probes and ALSA card registers,
   but speaker audio on this SoC goes through the MIPS co-processor's audio DSP.
   The DSP firmware must be loaded via `msp_download_sxl()` before audio works.
   See [docs/AUDIO.md](docs/AUDIO.md).
-
-- **Display: No OSD scanout** — The framebuffer exists and FB writes are visible
-  (noise via `dd if=/dev/urandom of=/dev/fb0`), but the OSD/VBlender hardware
-  block at 0x05200000 is dead (reads zero). Display output currently relies on
-  the U-Boot-initialized MIPS scanout. See [docs/DISPLAY.md](docs/DISPLAY.md).
 
 - **MIPS IPC: Msgbox IRQ blocked** — ARM can send to MIPS (Msgbox TX works,
   MIPS reads FIFO), but MIPS cannot interrupt ARM because HW IRQ 25 at the MIPS
@@ -67,5 +88,6 @@ This repository has been tested with the following workflow:
 2. All 16 patches applied cleanly (0 failures)
 3. Kernel zImage built successfully (4m52s)
 4. 20 in-tree kernel modules built
-5. All out-of-tree modules built (audio 3x, bridge, ge2d, wifi 3x)
+5. All out-of-tree modules built (audio 3x, bridge, ge2d, wifi 3x, h713_drm)
 6. DTB from standalone DTS is SHA256-identical to production DTB
+7. H713 DRM regression gates pass (reopen, reload, modetest, PRIME)

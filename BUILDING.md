@@ -45,17 +45,19 @@ This produces:
 ## Step 5: Build Out-of-Tree Modules
 
 ```bash
+KDIR=/path/to/linux-6.16.7
+
+# DRM display driver (h713_drm.ko)
+make -C $KDIR M=/path/to/hy310-linux/drivers/display/drm ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
+
 # Audio (codec + cpudai + machine)
-make -C . M=/path/to/hy310-linux/drivers/audio ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
+make -C $KDIR M=/path/to/hy310-linux/drivers/audio ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
 
 # Audio bridge (TridentALSA)
-make -C . M=/path/to/hy310-linux/drivers/audio/bridge ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
-
-# GE2D display engine
-make -C . M=/path/to/hy310-linux/drivers/display/ge2d ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
+make -C $KDIR M=/path/to/hy310-linux/drivers/audio/bridge ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
 
 # WiFi AIC8800 (bsp + fdrv + btlpm)
-make -C . M=/path/to/hy310-linux/drivers/wifi ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
+make -C $KDIR M=/path/to/hy310-linux/drivers/wifi ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
 ```
 
 Or use: `../hy310-linux/scripts/build_modules.sh .`
@@ -73,7 +75,9 @@ is hardcoded in the DTS (`chosen/bootargs`) because U-Boot ignores the boot
 image header cmdline.
 
 ```bash
-python3 ../hy310-linux/scripts/repack_boot.py     --zimage arch/arm/boot/zImage     --dtb ../hy310-linux/output/sun50i-h713-hy310.dtb
+python3 ../hy310-linux/scripts/repack_boot.py \
+    --zimage arch/arm/boot/zImage \
+    --dtb ../hy310-linux/output/sun50i-h713-hy310.dtb
 ```
 
 This produces `mboot32.00` + `mboot32.01` (4MB chunks for U-Boot fatload).

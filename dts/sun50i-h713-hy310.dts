@@ -21,7 +21,7 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
-		bootargs = "console=tty0 console=ttyS0,115200 earlycon loglevel=8 root=/dev/sda2 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1";
+		bootargs = "console=tty0 console=ttyS0,115200 earlycon loglevel=8 root=/dev/sda2 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M";
 	};
 
 	aliases {
