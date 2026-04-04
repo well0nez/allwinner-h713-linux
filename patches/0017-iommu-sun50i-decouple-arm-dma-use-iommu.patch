@@ -1,0 +1,17 @@
+--- a/drivers/iommu/Kconfig	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/iommu/Kconfig	2026-04-04 19:29:51.005291796 +0200
+@@ -239,11 +239,13 @@
+ 	bool "Allwinner H6 IOMMU Support"
+ 	depends on HAS_DMA
+ 	depends on ARCH_SUNXI || COMPILE_TEST
+-	select ARM_DMA_USE_IOMMU
+ 	select IOMMU_API
+ 	help
+ 	  Support for the IOMMU introduced in the Allwinner H6 SoCs.
+ 
++	  Note: On ARM32, this option is intentionally decoupled from
++	  ARM_DMA_USE_IOMMU for staged bring-up on H713.
++
+ config TEGRA_IOMMU_SMMU
+ 	bool "NVIDIA Tegra SMMU Support"
+ 	depends on ARCH_TEGRA

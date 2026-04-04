@@ -27,7 +27,7 @@
 | **Display (legacy)** | Working | ge2d + tvtop + mipsloader (in-tree) | Stock display pipeline, MIPS-initialized |
 | **ARM-MIPS IPC** | Partial | cpu_comm (in-tree, out-of-tree) | Protocol works, MIPS Msgbox IRQ not routed |
 | **GPU** | Working | panfrost + sun50i-h713-ppu | Mali-G31 864MHz, card0/renderD128, PRIME to h713_drm |
-| **IOMMU** | Blocked | sun50i-iommu (disabled) | ARM_DMA_USE_IOMMU breaks ARM32 platform probing |
+| **IOMMU** | Working (provider only) | sun50i-iommu (built-in) | Provider at 0x030f0000, no consumers attached yet |
 | **GPADC** | Working | sun20i-gpadc (IIO) | 2 ADC channels via /sys/bus/iio/ |
 | **LRADC** | Working | sun50i-h713-lradc (IIO, built-in) | NTC temp sensing for board-mgr via IIO consumer |
 | **LRADC Keyboard** | Unclear | — | @ 0x02009800, 6 keys + power |

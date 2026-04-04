@@ -14,3 +14,4 @@
 0014-soc-sunxi-add-cpu-comm-ipc.patch
 0015-misc-add-h713-driver-kconfig.patch
 0016-dt-bindings-add-h713-clock-reset-ids.patch
+0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch
