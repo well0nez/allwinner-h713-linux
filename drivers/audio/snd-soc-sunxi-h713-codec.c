@@ -75,6 +75,11 @@
 #define I2S_RXCHMAP2		0x70
 #define I2S_RXCHMAP3		0x74
 
+/* I2S_CTL bits */
+#define I2S_CTL_TXGE		BIT(1)	/* TX global enable — IDA: sunxi_codec_set_dacsrc_mode */
+#define I2S_CTL_BIT17		BIT(17)	/* IDA: cleared in dacsrc I2S mode */
+#define I2S_CTL_BIT18		BIT(18)	/* IDA: cleared in dacsrc I2S mode */
+
 /* ===== Bit Definitions (from IDA decompilation) ===== */
 
 /* SUNXI_DAC_DPC bits */
@@ -82,6 +87,8 @@
 #define DAC_DIG_VOL_SHIFT	12	/* IDA: sunxi_codec_init, mask 0x3F000 */
 #define DAC_DIG_VOL_MASK	GENMASK(17, 12)
 #define DAC_EN			BIT(31)	/* IDA: sunxi_codec_dac_route_enable */
+#define DAC_SRC_I2S_SEL		BIT(30)	/* IDA: sunxi_codec_set_dacsrc_mode */
+#define DAC_SRC_I2S_EN		BIT(29)	/* IDA: sunxi_codec_set_dacsrc_mode */
 
 /* SUNXI_DAC_VOL_CTRL bits */
 #define DAC_VOL_CTRL_BIT16	BIT(16)	/* IDA: sunxi_codec_init */
@@ -378,7 +385,9 @@ static void sunxi_codec_init(struct snd_soc_component *component)
 	/* #12: DAC route enable */
 	sunxi_codec_dac_route_enable(component, true);
 	/* DAC_DPC bits 30+29: required by stock for DAC analog output */
-	regmap_update_bits(regmap, SUNXI_DAC_DPC, BIT(30) | BIT(29), BIT(30) | BIT(29));
+	regmap_update_bits(regmap, SUNXI_DAC_DPC,
+			   DAC_SRC_I2S_SEL | DAC_SRC_I2S_EN,
+			   DAC_SRC_I2S_SEL | DAC_SRC_I2S_EN);
 	/* #13-14: DAC_REG bit12, bit10 */
 	regmap_update_bits(regmap, SUNXI_DAC_REG, DAC_BIT12, DAC_BIT12);
 	regmap_update_bits(regmap, SUNXI_DAC_REG, DAC_BIT10, DAC_BIT10);
@@ -447,6 +456,10 @@ static void sunxi_codec_i2s_init(struct snd_soc_component *component)
 	regmap_update_bits(regmap, I2S_CHCFG, 0xF, 0x1);
 	/* #21: TX0CHSEL: bits[15:0] = 3 */
 	regmap_update_bits(regmap, I2S_TX0CHSEL, 0xFFFF, 0x3);
+	/* Fix D: DAC src = I2S — IDA: sunxi_codec_set_dacsrc_mode I2S path */
+	regmap_update_bits(regmap, I2S_CTL, I2S_CTL_BIT17, 0);
+	regmap_update_bits(regmap, I2S_CTL, I2S_CTL_BIT18, 0);
+	regmap_update_bits(regmap, I2S_CTL, I2S_CTL_TXGE, I2S_CTL_TXGE);
 }
 
 /* ===== DAI Operations ===== */
@@ -817,31 +830,77 @@ static int sunxi_codec_set_hp_status(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+/* IDA: sunxi_codec_get_dacsrc_mode @ 0xc08457b0 */
+static int sunxi_codec_get_dacsrc_mode(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct sunxi_codec_data *sdata = dev_get_drvdata(component->dev);
+	unsigned int val;
+
+	regmap_read(sdata->codec_regmap, SUNXI_DAC_DPC, &val);
+	ucontrol->value.integer.value[0] = (val >> 29) & 1;
+	return 0;
+}
+
+/* IDA: sunxi_codec_set_dacsrc_mode @ 0xc0844fbc */
+static int sunxi_codec_set_dacsrc_mode(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct sunxi_codec_data *sdata = dev_get_drvdata(component->dev);
+	int val = ucontrol->value.integer.value[0];
+
+	if (val == 0) {
+		/* APB path: DAC_DPC[29] = 0 */
+		regmap_update_bits(sdata->codec_regmap, SUNXI_DAC_DPC,
+				   DAC_SRC_I2S_EN, 0);
+	} else if (val == 1) {
+		/* I2S path: clear I2S_CTL[18:17], set I2S_CTL[1], DAC_DPC[30:29] */
+		regmap_update_bits(sdata->i2s_regmap, I2S_CTL, I2S_CTL_BIT17, 0);
+		regmap_update_bits(sdata->i2s_regmap, I2S_CTL, I2S_CTL_BIT18, 0);
+		regmap_update_bits(sdata->i2s_regmap, I2S_CTL,
+				   I2S_CTL_TXGE, I2S_CTL_TXGE);
+		regmap_update_bits(sdata->codec_regmap, SUNXI_DAC_DPC,
+				   DAC_SRC_I2S_SEL, DAC_SRC_I2S_SEL);
+		regmap_update_bits(sdata->codec_regmap, SUNXI_DAC_DPC,
+				   DAC_SRC_I2S_EN, DAC_SRC_I2S_EN);
+		/* Allow I2S path to settle before stream opens */
+		msleep(5);
+	} else {
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /* IDA: sunxi_codec_controls @ 0xc0ee7e3c — 12 controls */
 static const struct snd_kcontrol_new sunxi_codec_controls[] = {
 	/* #0: Audio Hub Output (on/off) */
 	SOC_SINGLE_BOOL_EXT("Audio Hub Output", 0,
 			    sunxi_codec_get_hub_mode,
 			    sunxi_codec_set_hub_mode),
-	/* #1-2: DAC/ADC Volume — SOC_SINGLE via DAC_REG */
-	SOC_SINGLE("DAC Volume", SUNXI_DAC_REG, 0, 0x1F, 0),
-	SOC_SINGLE("ADC Volume", SUNXI_DAC_REG, 0, 0x1F, 0),
+	/* #1-2: DAC/ADC Volume — IDA: reg 0x004 shift 8 max 0xFF / reg 0x034 shift 8 max 0xFF */
+	SOC_SINGLE("DAC Volume", SUNXI_DAC_VOL_CTRL, 8, 0xFF, 0),
+	SOC_SINGLE("ADC Volume", SUNXI_ADC_VOL_CTRL, 8, 0xFF, 0),
 	/* #3-4: DAC/ADC Swap */
 	SOC_SINGLE("DAC Swap", SUNXI_DAC_DG, 6, 1, 0),
 	SOC_SINGLE("ADC Swap", SUNXI_ADC_DG, 24, 1, 0),
 	/* #5-6: DAC Src / ADC Dest select */
-	SOC_SINGLE("DAC Src Select", SUNXI_DAC_DPC, 0, 1, 0),
+	SOC_SINGLE_BOOL_EXT("DAC Src Select", 0,
+			    sunxi_codec_get_dacsrc_mode,
+			    sunxi_codec_set_dacsrc_mode),
 	SOC_SINGLE("ADC Dest Select", SUNXI_ADC_FIFOC, 28, 1, 0),
 	/* #7: Digital volume */
-	SOC_SINGLE("digital volume", SUNXI_DAC_DPC, 12, 0x3F, 0),
+	SOC_SINGLE("digital volume", SUNXI_DAC_DPC, 12, 0x3F, 1),
 	/* #8-9: Speaker / Headphone volume */
 	SOC_SINGLE("Speaker Volume", SUNXI_DAC_REG, 0, 0x1F, 0),
-	SOC_SINGLE("Headphone Volume", SUNXI_DAC_REG, 28, 0x7, 0),
+	SOC_SINGLE("Headphone Volume", SUNXI_DAC_REG, 28, 0x7, 1),
 	/* #10-11: Speaker / Headphone switch */
-	SOC_SINGLE_BOOL_EXT("Speaker Switch", 0,
+	SOC_SINGLE_BOOL_EXT("Speaker", 0,
 			    sunxi_codec_get_spk_status,
 			    sunxi_codec_set_spk_status),
-	SOC_SINGLE_BOOL_EXT("Headphone Switch", 0,
+	SOC_SINGLE_BOOL_EXT("Headphone", 0,
 			    sunxi_codec_get_hp_status,
 			    sunxi_codec_set_hp_status),
 };
