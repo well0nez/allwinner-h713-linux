@@ -133,10 +133,9 @@ These subsystems have stock hardware addresses documented but no driver work don
 | Subsystem | Address | Notes |
 |-----------|---------|-------|
 
-| IOMMU | 0x030f0000 | Provider active, no consumers yet |
+| IOMMU | 0x030f0000 | Provider active, ready for Cedar VPU |
 
-| SPI | 0x04025000 | SPI0 + SPI1 |
-| Crypto Engine | 0x03040000 | Hardware AES/SHA |
+| Cedar/VPU | 0x01C0E000 | Video decode (needs IOMMU consumer + RE) |
 
 See [docs/SUBSYSTEMS_NOT_STARTED.md](docs/SUBSYSTEMS_NOT_STARTED.md) for stock
 register addresses and what needs to be done for each.

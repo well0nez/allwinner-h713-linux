@@ -31,8 +31,8 @@
 | **GPADC** | Working | sun20i-gpadc (IIO) | 2 ADC channels via /sys/bus/iio/ |
 | **LRADC** | Working | sun50i-h713-lradc (IIO, built-in) | NTC temp sensing for board-mgr via IIO consumer |
 | **LRADC Keyboard** | Unclear | — | @ 0x02009800, 6 keys + power |
-| **SPI** | N/A | — | Both ports disabled in stock, no devices connected |
-| **Crypto Engine** | Not started | — | @ 0x03040000 |
+| **SPI** | N/A | — | No devices connected on HY310 |
+| **Crypto Engine** | Working | sun8i-ce (built-in) | HW AES/SHA, 33 algorithms registered |
 | **HW Spinlock** | Working | sun6i-hwspinlock (built-in) | Used by cpu_comm for ARM↔MIPS sync |
 
 ## Display Pipeline (DRM/KMS) — New

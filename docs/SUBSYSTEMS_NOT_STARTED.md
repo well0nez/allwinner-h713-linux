@@ -8,23 +8,18 @@ compatible string, IRQ, clock/reset IDs, and required work.
 
 ## SPI
 
-- **Status**: not started
+- **Status**: N/A
 - **MMIO**: SPI0 `0x04025000`, SPI1 `0x04026000`
-- **Compatible**: `allwinner,sun50i-h313-spi` (stock DTS)
-- **IRQs**: SPI0 = SPI 12, SPI1 = SPI 13
-- **Clocks**: `spi0`, `spi1` (CCU); resets: `rst-spi0`, `rst-spi1`
-- **Required**: DTS nodes, verify upstream spi-sun6i driver compatibility
+- **Notes**: Both ports disabled in stock DTS, no SPI devices connected on HY310
 
 ---
 
 ## CRYPTO (CE)
 
-- **Status**: not started
+- **Status**: WORKING (built-in)
 - **MMIO**: `0x03040000`
-- **Compatible**: `allwinner,sun50i-h616-ce` (stock DTS)
-- **IRQ**: SPI 52
-- **Clocks**: `ce`, `ce-mod` (CCU); reset: `rst-ce`
-- **Required**: DTS node; upstream `sun8i-ce` driver should work with minor compatible addition
+- **Driver**: sun8i-ce (CONFIG_CRYPTO_DEV_SUN8I_CE=y)
+- **Notes**: 33 crypto algorithms registered, DTS node present, probes cleanly
 
 ---
 
