@@ -392,11 +392,13 @@
 				drive-strength = <10>;
 			};
 
-			/* IR on PB21 (alternate to PL9, from U-Boot DTB) */
+			/* IR on PB21 (vendor-like path from U-Boot DTB) */
 			s_cir0_pb_pins: s-cir0-pb-pins {
 				pins = "PB21";
 				function = "s_cir0";
-				drive-strength = <10>;
+				bias-pull-up;
+				drive-strength = <30>;
+				input-enable;
 			};
 		};
 
@@ -1043,6 +1045,7 @@
 				 <&rtc CLK_OSC32K>;
 			clock-names = "apb", "hosc", "losc";
 			vcc-pm-supply = <&reg_vcc_3v3>;
+			vcc-pl-supply = <&reg_vcc_3v3>;
 			gpio-controller;
 			#gpio-cells = <3>;
 			interrupt-controller;
@@ -1052,21 +1055,25 @@
 
 			r_ir_rx_pin: r-ir-rx-pin {
 				pins = "PL9";
-				function = "s_cir_rx";
+				function = "s_cir";
 				bias-pull-up;
+				drive-strength = <30>;
+				input-enable;
 			};
 
 		};
 
-		/* IR Receiver on PL9 */
+		/* IR Receiver on PL9 (stock-like route) */
 		r_ir: ir@7040000 {
-			compatible = "allwinner,sun50i-h6-ir",
+			compatible = "allwinner,sun50i-h713-ir",
+				     "allwinner,sun50i-h6-ir",
 				     "allwinner,sun6i-a31-ir";
 			reg = <0x07040000 0x400>;
 			interrupts = <GIC_SPI 155 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&r_ccu CLK_BUS_R_IR_RX>,
 				 <&r_ccu CLK_R_IR_RX>;
 			clock-names = "apb", "ir";
+			clock-frequency = <24000000>;
 			resets = <&r_ccu RST_BUS_R_IR_RX>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&r_ir_rx_pin>;
