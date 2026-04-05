@@ -75,8 +75,10 @@ compatible string, IRQ, clock/reset IDs, and required work.
 ### CIR (IR Receiver)
 - **Status**: WORKING
 - **MMIO**: `0x07040000`
-- **Driver**: sunxi-cir (upstream)
-- **Notes**: NEC protocol, PL9, no custom patches required
+- **Driver**: sunxi-cir (patched for H713)
+- **Notes**: NEC/RC5/RC6 decoders, /dev/lirc0, PL9 with mux 3 (s_cir).
+  Key fix: stock H713 uses mux 3 for IR on PL9, not mux 2 as assumed from H616.
+  Confirmed via IDA RE of stock sun50iw12 R_PIO pinctrl driver.
 
 ### RTC
 - **Status**: WORKING

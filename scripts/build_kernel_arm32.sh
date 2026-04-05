@@ -146,6 +146,7 @@ echo "=== Step 2: H713 options ==="
 ./scripts/config --enable CONFIG_PWM_SUN8I
 ./scripts/config --disable CONFIG_PWM_SUN4I
 ./scripts/config --enable CONFIG_RC_CORE
+./scripts/config --enable CONFIG_RC_DECODERS
 ./scripts/config --enable CONFIG_IR_NEC_DECODER
 ./scripts/config --enable CONFIG_IR_RC5_DECODER
 ./scripts/config --enable CONFIG_IR_RC6_DECODER

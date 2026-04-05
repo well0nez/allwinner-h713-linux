@@ -97,7 +97,8 @@ These subsystems boot and function reliably:
 - **Bluetooth** — BT 5.4 via UART1, auto-starts at boot via systemd service.
 - **Thermal + Fan** — THS sensors (tachometer via hrtimer GPIO polling, IRQ not viable on H713), (CPU ~65C, GPU ~66C), PWM fan control with
   tachometer monitoring, NTC thermistor via board management driver.
-- **IR Remote** — NEC protocol, sunxi-cir driver, works out of the box.
+- **IR Remote** — NEC protocol via sunxi-cir + rc-core decoders. /dev/lirc0 available.
+  PL9 pin mux corrected from IDA RE (mux 3, not 2). ir-keytable mapping ready.
 - **RTC** — sun6i-rtc, timekeeping across reboots, NTP synced.
 - **PWM** — New 8-channel driver (pwm-sun8i) for the H713 PWM controller.
   Used for fan speed and backlight control.
