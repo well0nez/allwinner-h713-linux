@@ -2,14 +2,18 @@
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/well0nez)
 
-> **Work in Progress** — This project is under active development. Many subsystems
-> work reliably, but several are still being brought up and nothing has been submitted
-> upstream yet. Contributions, testing, and reverse engineering help are very welcome.
+> **Milestone: Fully functional Linux desktop on a portable projector!**
+> GPU-accelerated Wayland desktop (Labwc + Panfrost Mali-G31), speaker audio,
+> WiFi, Bluetooth, IR remote — all running on mainline Linux 6.16.7.
+> Next target: hardware video decoding (Cedar/Cedrus VPU).
+>
+> This project is under active development. Contributions, testing, and
+> reverse engineering help are very welcome.
 
 <p align="center">
   <img src="docs/images/hyfetch-projection.jpg" alt="Mainline Linux 6.16.7 running on HY310 — Debian Trixie via fbterm projected onto a wall" width="720">
   <br>
-  <em>Mainline Linux 6.16.7 running on the HY310 projector — Debian Trixie with hyfetch via fbterm</em>
+  <em>Mainline Linux 6.16.7 on HY310 — GPU-accelerated Wayland desktop with audio, WiFi, and Bluetooth</em>
 </p>
 
 ## What is this?
