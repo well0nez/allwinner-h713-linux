@@ -18,3 +18,4 @@
 0018-pinctrl-sunxi-add-h713-pb-bank-to-h616.patch
 0019-iio-adc-add-h713-lradc-driver.patch
 0020-pmdomain-add-h713-ppu-driver.patch
+0021-media-sunxi-cir-add-h713-vendor-init.patch

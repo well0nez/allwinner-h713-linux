@@ -124,6 +124,8 @@ gen_patch 0019-iio-adc-add-h713-lradc-driver.patch     drivers/iio/adc/sun50i-h7
 
 gen_patch 0020-pmdomain-add-h713-ppu-driver.patch     drivers/pmdomain/sunxi/sun50i-h713-ppu.c     drivers/pmdomain/sunxi/Kconfig     drivers/pmdomain/sunxi/Makefile
 
+gen_patch "0021-media-sunxi-cir-add-h713-vendor-init.patch"     "drivers/media/rc/sunxi-cir.c"
+
 # Also sync DTS if it exists in kernel tree
 echo ""
 if [ -f "$M/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts" ]; then
