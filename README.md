@@ -107,20 +107,14 @@ These subsystems boot and function reliably:
 - **LRADC** — Low-resolution ADC via IIO. Board manager reads NTC temperature
   through IIO consumer API (clean architecture, no MMIO conflicts).
 - **Reboot + Poweroff** — Both working reliably.
+- **Display (DRM/KMS)** — Custom DRM driver with GEM DMA scanout, PRIME buffer
+  sharing with Panfrost GPU. Labwc Wayland desktop runs. See [docs/DISPLAY.md](docs/DISPLAY.md).
+- **Audio** — Internal codec speaker output via Audio Hub path. Digital volume
+  control (0-63) via ALSA, auto-loads at boot. See [docs/AUDIO.md](docs/AUDIO.md).
 
 ### Partially Working
 
 Active development, functional but not complete:
-
-- **Audio** — Internal codec with speaker output working. Digital volume control
-  (0-63) via ALSA. Auto-loads at boot via systemd modules-load.
-  See [docs/AUDIO.md](docs/AUDIO.md).
-
-- **Display (DRM/KMS)** — Custom DRM driver with GEM DMA scanout via the H713
-  pixels and see them on the projector. But the OSD/VBlender hardware block is
-  display pipeline (TVTOP bus fabric + AFBD controller). PRIME buffer sharing with
-  Panfrost GPU verified. Weston compositor launches with GL renderer but hits CMA
-  allocation limits. See [docs/DISPLAY.md](docs/DISPLAY.md).
 
 - **ARM-MIPS IPC** — The full IPC protocol stack works from ARM side: routine lookup,
   semaphore acquire, shared memory write, Msgbox TX. MIPS reads the FIFO and processes
@@ -129,9 +123,8 @@ Active development, functional but not complete:
   fundamental blocker for bidirectional communication.
   See [docs/CPU_COMM.md](docs/CPU_COMM.md).
 
-- **Keystone Motor** — Sysfs interface works, position tracking is correct, but
-  physical movement is inconsistent after boot homing. Limit switch (PH14) always
-  reads LOW. See [docs/MOTOR.md](docs/MOTOR.md).
+- **Keystone Motor** — Sysfs interface works, limit switch defective on test unit.
+  See [docs/MOTOR.md](docs/MOTOR.md).
 
 ### Not Yet Started
 
