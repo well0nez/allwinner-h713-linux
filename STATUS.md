@@ -58,6 +58,14 @@ See [docs/DISPLAY_BRINGUP.md](docs/DISPLAY_BRINGUP.md).
 
 ## Known Issues
 
+- **IR Remote: NEC kernel decoder unreliable** — LIRC raw data is correct but
+  the kernel NEC decoder does not reliably match timings. Root cause: the stock
+  H713 IR driver uses 3 R_CCU clocks (bus/pclk/mclk) with clk_set_parent 
+  which configures a different prescaler than our D1-based R_CCU (2 clocks only).
+  This makes rx_resolution ~25% off. Fix requires adding H713-specific clock
+  indices to the R_CCU driver or implementing the 3-clock setup in sunxi-cir.
+  Workaround: use lircd with raw timing config for remote control decoding.
+
 - **Audio: No sound output** — The internal codec probes and ALSA card registers,
   but speaker audio on this SoC goes through the MIPS co-processor's audio DSP.
   The DSP firmware must be loaded via `msp_download_sxl()` before audio works.
