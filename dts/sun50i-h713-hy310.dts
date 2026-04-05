@@ -553,7 +553,7 @@
 				 <&ccu RST_BUS_AUDIO_HUB>;
 			dmas = <&dma 7>, <&dma 7>;
 			dma-names = "rx", "tx";
-			digital_vol = <0x0>;
+			digital_vol = <0x1f>; /* 50% default: reg=31 -> ALSA=32/63 */
 			speaker_vol = <0x1a>;
 			headphone_vol = <0x0>;
 			spk_used = <0x1>;

@@ -36,7 +36,7 @@ hardware probing on a live device.
 | WiFi | AIC8800D80 SDIO (802.11ac, 2.4/5GHz, onboard) |
 | Bluetooth | AIC8800 BT 5.4 via UART1 |
 | Display | MIPS co-processor driven, 1920x1080 DLP via DLPC3435 |
-| Audio | Internal codec @ 0x02030000 + TridentALSA audio bridge |
+| Audio | Internal codec @ 0x02030000 (speaker output working) |
 | USB | 3x EHCI + 3x OHCI, 1 external USB-A port |
 | IR | NEC protocol IR receiver on PL9 |
 | Motor | 4-phase stepper for keystone correction |
@@ -73,7 +73,7 @@ Key discoveries that required RE and are not documented anywhere:
 - H713 pinctrl uses D1-style 0x30 bank spacing (not H6-style 0x24)
 - H713 MMC controller is v5.4 variant requiring stock-specific DMA reset sequence
 - H713 has a 3-user Msgbox layout (not 2-user like documented Allwinner SoCs)
-- Speaker audio routes through the MIPS co-processor, not the ARM codec alone
+- Speaker audio works directly through the internal codec (MIPS DSP not required for basic playback)
 - USB PHY requires bit 0 set at PMU base register (undocumented quirk)
 - R_PIO PM bank GPIO requires `SUNXI_PINCTRL_NEW_REG_LAYOUT` flag — without it,
   `gpio_direction_output()` silently fails (writes go to wrong registers)
@@ -112,10 +112,8 @@ These subsystems boot and function reliably:
 
 Active development, functional but not complete:
 
-- **Audio** — The internal codec probes, ALSA card registers with 14 mixer controls,
-  DMA is active, FIFO fills during playback. But **no audible speaker output** because
-  speaker audio on this SoC routes through the MIPS co-processor's audio DSP, which
-  requires firmware loading via `msp_download_sxl()` (not yet reverse engineered).
+- **Audio** — Internal codec with speaker output working. Digital volume control
+  (0-63) via ALSA. Auto-loads at boot via systemd modules-load.
   See [docs/AUDIO.md](docs/AUDIO.md).
 
 - **Display (DRM/KMS)** — Custom DRM driver with GEM DMA scanout via the H713
@@ -245,8 +243,8 @@ own reverse engineering efforts.
 This is an active WIP project. If you have an H713-based device and want to help:
 
 - **Testing** — Try the patches on your device, report what works and what doesn't.
-- **Reverse Engineering** — The MIPS audio DSP firmware loading and display pipeline
-  are the biggest unsolved challenges. IDA Pro analysis of `libmspsound.so` and
+- **Reverse Engineering** — The display pipeline and VPU (Cedar) are the biggest
+  remaining challenges for full hardware support. IDA Pro analysis of `libmspsound.so` and
   `display.bin` would be extremely valuable.
 - **GPU** — Mali-G31 Panfrost working (card0/renderD128). PRIME to h713_drm verified.
 - **Documentation** — Stock register dumps, clock trees, and GPIO maps from other

@@ -22,7 +22,7 @@
 | **Reboot** | Working | sunxi-wdt | via watchdog reset |
 | **Poweroff** | Working | — | Confirmed functional |
 | **Keystone Motor** | Untested | hy310-keystone-motor | Sysfs works, limit switch defective on test unit |
-| **Audio** | Partial | codec + cpudai + machine + bridge (out-of-tree) | Card probes, no sound output (MIPS DSP dependency) |
+| **Audio** | Working | codec + cpudai + machine (out-of-tree) | Speaker output, digital volume control, auto-start at boot |
 | **Display (DRM/KMS)** | Working | h713_drm (out-of-tree) | DRM/GEM scanout, PRIME, Weston starts (CMA alloc WIP) |
 | **Display (legacy)** | Working | ge2d + tvtop + mipsloader (in-tree) | Stock display pipeline, MIPS-initialized |
 | **ARM-MIPS IPC** | Partial | cpu_comm (in-tree, out-of-tree) | Protocol works, MIPS Msgbox IRQ not routed |
@@ -65,11 +65,6 @@ See [docs/DISPLAY_BRINGUP.md](docs/DISPLAY_BRINGUP.md).
   This makes rx_resolution ~25% off. Fix requires adding H713-specific clock
   indices to the R_CCU driver or implementing the 3-clock setup in sunxi-cir.
   Workaround: use lircd with raw timing config for remote control decoding.
-
-- **Audio: No sound output** — The internal codec probes and ALSA card registers,
-  but speaker audio on this SoC goes through the MIPS co-processor's audio DSP.
-  The DSP firmware must be loaded via `msp_download_sxl()` before audio works.
-  See [docs/AUDIO.md](docs/AUDIO.md).
 
 - **MIPS IPC: Msgbox IRQ blocked** — ARM can send to MIPS (Msgbox TX works,
   MIPS reads FIFO), but MIPS cannot interrupt ARM because HW IRQ 25 at the MIPS

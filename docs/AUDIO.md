@@ -1,56 +1,66 @@
 # HY310 Audio Subsystem
 
-## Status: PARTIAL — ARM codec working, speaker path blocked by MIPS DSP
+## Status: WORKING — Speaker output via internal codec
 
-## Hardware
+## Architecture
 
-- **Internal codec**: `0x02030000`
-  - Register window 1: `0x02030000` / `0x32c`
-  - Register window 2: `0x02031000` / `0x7c`
-- **Audio bridge (TridentALSA)**: `0x0203042C`, compatible `"vs,trid-audio-bridge"`
+The H713 has an internal audio codec at 0x02030000 with DAC, ADC, and analog
+mixer. Speaker output uses the **Audio Hub** path (APB DMA → DAC → Analog Mixer
+→ PA Amplifier → Speaker), NOT the I2S path and NOT the MIPS co-processor.
 
-## Drivers (out-of-tree)
+Previous assumption that audio required the MIPS DSP was **incorrect** for basic
+playback. The TridentALSA Audio Bridge is only needed for DSP effects.
 
-- `snd-soc-sunxi-h713-codec.c`
-- `cpudai.c`
-- `machine.c`
+## Signal Chain
 
-## ALSA Card 0 ("audiocodec")
 
-- 14 mixer controls
-- Speaker PA GPIO: **PB2**
-- PLL-Audio SDM working: 98.304 MHz
-- codec-dac / codec-adc clock: 24.576 MHz
 
-## Known Register Issue
+## Drivers (out-of-tree modules)
 
-- `HP_REG` (offset `0x324`):
-  - Stock value: `0x80808F8C`
-  - Mainline value: `0x0000038C`
-  - BIT31 / BIT23 / BIT15 likely control analog power — investigate before enabling headphone output
+| Module | Compatible | Function |
+|--------|-----------|----------|
+| snd-soc-sunxi-h713-codec.ko | allwinner,sunxi-internal-codec | Codec + analog mixer |
+| snd-soc-sunxi-h713-cpudai.ko | allwinner,sunxi-dummy-cpudai | DMA platform driver |
+| snd-soc-sunxi-h713-machine.ko | allwinner,sunxi-codec-machine | ALSA sound card |
 
-## CCU / Clock Note
+Auto-loaded at boot via /etc/modules-load.d/audio.conf.
 
-- `bus-audio-hub` (CCU offset `0xA5C`) **cannot be written** on H713 — register is non-functional; do not attempt to gate/ungate it
+## ALSA Controls
 
-## BLOCKER: Speaker Path
+| Control | Range | Default | Function |
+|---------|-------|---------|----------|
+| digital volume | 0-63 (inverted: 63=max) | 32 (50%) | Master volume |
+| Speaker | on/off | on | PA amplifier enable (GPIO PL2) |
 
-Speaker audio on this board does **not** go through the ARM codec output directly. The stock path is:
+## Key Register Configuration (set in sunxi_codec_init)
 
-```
-AudioServer
-  -> audio.primary.ares.so
-    -> libmspsound.so
-      -> MIPS DSP (TridentALSA card 4 in stock firmware)
-        -> speaker
-```
+| Register | Value | Purpose |
+|----------|-------|---------|
+| DAC_DPC bit0 | 1 | Audio Hub Output ON (required!) |
+| DAC_DPC bit29 | 0 | DAC Src = APB (not I2S) |
+| DAC_VOL_CTRL[15:8] | 90 | Calibrated DAC volume (max without clipping) |
+| HP_REG | HP_EN_L + HP_EN_R + HP_AMP_EN | HP amp drives internal mixing bus |
+| DAC_REG 0x310 | 0x0B15FC7F | Full analog output path enabled |
 
-- MIPS audio DSP requires `msp_download_sxl()` firmware load — **not yet implemented** in the mainline driver
-- Stock ALSA card 4 corresponds to the MIPS-side audio engine
-- Stock libs dumped for reverse engineering: `libmspsound.so`, `libUtility.so`, `audio.primary.ares.so`
+## Critical Findings
 
-## Next Steps
+- **Audio Hub Output = ON is mandatory** for speaker sound via APB path
+- **Headphone amp must be ON** even without headphones — it drives the internal
+  mixing bus that feeds the speaker. Without it, volume is ~50% reduced.
+- **DAC Volume > 90 causes no additional gain** but values < 68 reduce output.
+  Capped at 90 to prevent clipping.
+- **DAC Src Select must be OFF (APB)** — the I2S path does not produce sound
+  (stock uses it differently with 3-clock setup we don't replicate).
 
-1. Reverse `libmspsound.so` to understand `msp_download_sxl()` firmware protocol
-2. Implement firmware download from ARM side (requires CPU_COMM IPC — see `CPU_COMM.md`)
-3. Determine HP_REG analog power bits before enabling headphone output
+## GPIO
+
+- PL2 (R_PIO): PA amplifier enable (active HIGH)
+- Controlled by Speaker on/off ALSA control
+- 160ms delay after enable for amplifier settle
+
+## Known Limitations
+
+- No HDMI audio (separate subsystem, not implemented)
+- No microphone/capture tested
+- TridentALSA DSP effects not available (would need MIPS IPC)
+- Stock audio_mixer_paths.xml partially implemented (Speaker + HP paths only)
