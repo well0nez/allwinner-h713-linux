@@ -775,7 +775,8 @@
 			non-removable;
 			cap-mmc-highspeed;
 			mmc-ddr-1_8v;
-			max-frequency = <52000000>;
+			mmc-hs200-1_8v;
+			max-frequency = <200000000>;
 			status = "okay";
 		};
 
@@ -956,6 +957,22 @@
 		 * Mainline expects allwinner,sram = <&ve_sram 1> reference.
 		 * Testing without SRAM property first - may be optional on H713.
 		 */
+
+		/*
+		 * H713 AV1 decoder block (separate address from Cedrus VE to avoid 0x01c0e000 conflict)
+		 */
+		av1_decoder: av1-decoder@1c0d000 {
+			compatible = "allwinner,sunxi-google-ve", "allwinner,sun50i-h713-av1-decoder";
+			reg = <0x01c0d000 0x1000>, <0x02001000 0x1000>;
+			interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_BUS_VE3>, <&ccu CLK_BUS_AV1>, <&ccu CLK_MBUS_VE3>;
+			clock-names = "bus_ve", "bus_ve3", "av1", "mbus_ve3";
+			resets = <&ccu RST_BUS_VE>, <&ccu RST_BUS_VE3>;
+			reset-names = "reset_ve", "reset_ve3";
+			memory-region = <&decd_reserved>;
+			status = "okay";
+		};
+
 		ve: video-codec@1c0e000 {
 			compatible = "allwinner,sun50i-h6-video-engine";
 			reg = <0x01c0e000 0x2000>;

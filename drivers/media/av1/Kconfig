@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config VIDEO_SUN50I_H713_AV1
+	tristate "Allwinner H713 AV1 Hardware Decoder"
+	depends on ARCH_SUNXI || COMPILE_TEST
+	depends on VIDEO_DEV
+	select VIDEOBUF2_DMA_CONTIG
+	select V4L2_MEM2MEM_DEV
+	help
+	  Enable support for the Allwinner H713 SoC AV1 hardware decoder.
+	  This driver provides V4L2 stateless decoder interface for AV1
+	  video streams with hardware acceleration.
+
+	  The H713 is the first Allwinner SoC with dedicated AV1 hardware
+	  decoding capability, supporting 10-bit YUV420P AV1 streams up to
+	  4K resolution with significant power efficiency improvements over
+	  software decoding.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called sun50i-h713-av1.
