@@ -1,6 +1,18 @@
 --- a/drivers/mmc/host/sunxi-mmc.c	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/mmc/host/sunxi-mmc.c	2026-03-23 20:58:24.523477598 +0100
-@@ -264,6 +264,15 @@
++++ b/drivers/mmc/host/sunxi-mmc.c	2026-04-06 20:36:03.687870512 +0200
+@@ -73,6 +73,11 @@
+ #define SDXC_REG_DRV_DL		0x140 /* Drive Delay Control Register */
+ #define SDXC_REG_SAMP_DL_REG	0x144 /* SMC sample delay control */
+ #define SDXC_REG_DS_DL_REG	0x148 /* SMC data strobe delay control */
++#define SDXC_REG_DS_CLK_CTRL	0x10C /* HS400: DS clock enable (v4p5x+) */
++#define SDXC_DS_CLK_ENABLE	BIT(31)
++#define SDXC_REG_CLK_MODE_CTRL	0x054 /* HS400: clock mode select (v4p5x+) */
++#define SDXC_CLK_MODE_SDR	3U    /* SDR / HS200 mode */
++#define SDXC_CLK_MODE_HS400	6U    /* HS400 DDR strobe mode */
+ 
+ #define mmc_readl(host, reg) \
+ 	readl((host)->reg_base + SDXC_##reg)
+@@ -264,6 +269,21 @@
  
  	/* clock hardware can switch between old and new timing modes */
  	bool ccu_has_timings_switch;
@@ -13,10 +25,16 @@
 +	 * card unpowered or still initialising after a power cycle).
 +	 */
 +	bool no_wait_pre_over;
++
++	/*
++	 * Controller has DS clock and delay registers for HS400.
++	 * When false, HS400 caps are masked out in probe.
++	 */
++	bool supports_hs400;
  };
  
  struct sunxi_mmc_host {
-@@ -301,8 +310,27 @@
+@@ -301,8 +321,27 @@
  
  	/* timings */
  	bool		use_new_timings;
@@ -44,7 +62,7 @@
  static int sunxi_mmc_reset_host(struct sunxi_mmc_host *host)
  {
  	unsigned long expire = jiffies + msecs_to_jiffies(250);
-@@ -329,6 +357,38 @@
+@@ -329,6 +368,38 @@
  		return -EIO;
  
  	/*
@@ -83,7 +101,7 @@
  	 * Burst 8 transfers, RX trigger level: 7, TX trigger level: 8
  	 *
  	 * TODO: sun9i has a larger FIFO and supports higher trigger values
-@@ -361,32 +421,49 @@
+@@ -361,32 +432,49 @@
  {
  	struct sunxi_idma_des *pdes = (struct sunxi_idma_des *)host->sg_cpu;
  	dma_addr_t next_desc = host->sg_dma;
@@ -157,7 +175,7 @@
  
  	/*
  	 * Avoid the io-store starting the idmac hitting io-mem before the
-@@ -424,20 +501,47 @@
+@@ -424,20 +512,47 @@
  				struct mmc_data *data)
  {
  	u32 rval;
@@ -194,10 +212,10 @@
 +		;
 +	if (timeout <= 0)
 +		dev_warn(mmc_dev(host->mmc), "DMA reset timeout\n");
-+
+ 
 +	/* Step 3: IDMA soft reset */
 +	sunxi_mmc_reset_dmactl(host);
- 
++
 +	/* Step 4: Enable DMA in GCTRL */
 +	rval = mmc_readl(host, REG_GCTRL);
 +	mmc_writel(host, REG_GCTRL, rval | SDXC_DMA_ENABLE_BIT);
@@ -210,7 +228,7 @@
  	mmc_writel(host, REG_DMAC,
  		   SDXC_IDMAC_FIX_BURST | SDXC_IDMAC_IDMA_ON);
  }
-@@ -517,7 +621,25 @@
+@@ -517,7 +632,25 @@
  	mmc_writel(host, REG_IMASK, host->sdio_imask);
  	mmc_writel(host, REG_IDIE, 0);
  
@@ -237,7 +255,7 @@
  		sunxi_mmc_dump_errinfo(host);
  		mrq->cmd->error = -ETIMEDOUT;
  
-@@ -552,17 +674,25 @@
+@@ -552,17 +685,25 @@
  		mmc_writel(host, REG_GCTRL, rval);
  		rval |= SDXC_FIFO_RESET;
  		mmc_writel(host, REG_GCTRL, rval);
@@ -266,7 +284,7 @@
  }
  
  static irqreturn_t sunxi_mmc_irq(int irq, void *dev_id)
-@@ -588,15 +718,22 @@
+@@ -588,15 +729,22 @@
  			host->wait_dma = false;
  
  		host->int_sum |= msk_int;
@@ -291,7 +309,7 @@
  		else if ((host->int_sum & SDXC_INTERRUPT_DONE_BIT) &&
  				!host->wait_dma)
  			finalize = true;
-@@ -628,7 +765,151 @@
+@@ -628,7 +776,151 @@
  	struct mmc_request *mrq;
  	unsigned long iflags;
  
@@ -443,7 +461,7 @@
  	mrq = host->manual_stop_mrq;
  	spin_unlock_irqrestore(&host->lock, iflags);
  
-@@ -637,7 +918,29 @@
+@@ -637,7 +929,29 @@
  		return IRQ_HANDLED;
  	}
  
@@ -474,7 +492,7 @@
  
  	/*
  	 * We will never have more than one outstanding request,
-@@ -676,7 +979,9 @@
+@@ -676,7 +990,9 @@
  
  	mmc_writel(host, REG_CLKCR, rval);
  
@@ -485,7 +503,7 @@
  	mmc_writel(host, REG_CMDR, rval);
  
  	do {
-@@ -775,6 +1080,10 @@
+@@ -775,6 +1091,10 @@
  	if (!ios->clock)
  		return 0;
  
@@ -496,7 +514,7 @@
  	/*
  	 * Under the old timing mode, 8 bit DDR requires the module
  	 * clock to be double the card clock. Under the new timing
-@@ -825,6 +1134,9 @@
+@@ -825,6 +1145,9 @@
  
  	/* update card clock rate to account for internal divider */
  	rate /= div;
@@ -506,10 +524,89 @@
  
  	/*
  	 * Configure the controller to use the new timing mode if needed.
-@@ -1199,6 +1511,15 @@
+@@ -849,12 +1172,35 @@
+ 		return ret;
+ 
+ 	/*
+-	 * FIXME:
+-	 *
+-	 * In HS400 we'll also need to calibrate the data strobe
+-	 * signal. This should only happen on the MMC2 controller (at
+-	 * least on the A64).
++	 * HS400: configure data strobe clock and delay registers.
++	 * Derived from IDA analysis of H713 stock vmlinux (v4p5x driver):
++	 *   0x10C bit31 = DS clock enable
++	 *   0x054 bits[3:0] = clock mode (3=SDR, 6=HS400)
++	 *   0x148 = DS delay (bit7=override, bits[5:0]=delay value)
++	 * Stock uses DS delay=4 for HS400 at 150-200MHz.
+ 	 */
++	if (host->cfg->supports_hs400) {
++		u32 ds_rval;
++
++		if (ios->timing == MMC_TIMING_MMC_HS400) {
++			ds_rval = readl(host->reg_base + SDXC_REG_DS_CLK_CTRL);
++			writel(ds_rval | SDXC_DS_CLK_ENABLE,
++			       host->reg_base + SDXC_REG_DS_CLK_CTRL);
++			ds_rval = readl(host->reg_base + SDXC_REG_CLK_MODE_CTRL);
++			writel((ds_rval & ~0xfU) | SDXC_CLK_MODE_HS400,
++			       host->reg_base + SDXC_REG_CLK_MODE_CTRL);
++			/* DS delay=4, override-enable=bit7 (stock sdc_tm4_sm4_freq1=0x4) */
++			writel(0x84U, host->reg_base + SDXC_REG_DS_DL_REG);
++		} else {
++			/* Not HS400: disable DS clock, restore SDR mode */
++			ds_rval = readl(host->reg_base + SDXC_REG_DS_CLK_CTRL);
++			writel(ds_rval & ~SDXC_DS_CLK_ENABLE,
++			       host->reg_base + SDXC_REG_DS_CLK_CTRL);
++			ds_rval = readl(host->reg_base + SDXC_REG_CLK_MODE_CTRL);
++			writel((ds_rval & ~0xfU) | SDXC_CLK_MODE_SDR,
++			       host->reg_base + SDXC_REG_CLK_MODE_CTRL);
++		}
++	}
+ 
+ 	ret = sunxi_mmc_oclk_onoff(host, 1);
+ 	if (ret)
+@@ -1109,6 +1455,20 @@
+ 	return !!(mmc_readl(host, REG_STAS) & SDXC_CARD_DATA_BUSY);
+ }
+ 
++static void sunxi_mmc_hs400_downgrade(struct mmc_host *mmc)
++{
++	struct sunxi_mmc_host *host = mmc_priv(mmc);
++	u32 rval;
++
++	if (!host->cfg->supports_hs400)
++		return;
++
++	rval = readl(host->reg_base + SDXC_REG_DS_CLK_CTRL);
++	writel(rval & ~SDXC_DS_CLK_ENABLE, host->reg_base + SDXC_REG_DS_CLK_CTRL);
++	rval = readl(host->reg_base + SDXC_REG_CLK_MODE_CTRL);
++	writel((rval & ~0xfU) | SDXC_CLK_MODE_SDR, host->reg_base + SDXC_REG_CLK_MODE_CTRL);
++}
++
+ static const struct mmc_host_ops sunxi_mmc_ops = {
+ 	.request	 = sunxi_mmc_request,
+ 	.set_ios	 = sunxi_mmc_set_ios,
+@@ -1118,6 +1478,7 @@
+ 	.start_signal_voltage_switch = sunxi_mmc_volt_switch,
+ 	.card_hw_reset	 = sunxi_mmc_hw_reset,
+ 	.card_busy	 = sunxi_mmc_card_busy,
++	.hs400_downgrade = sunxi_mmc_hs400_downgrade,
+ };
+ 
+ static const struct sunxi_mmc_clk_delay sunxi_mmc_clk_delays[] = {
+@@ -1199,6 +1560,25 @@
  	.needs_new_timings = true,
  };
  
++static const struct sunxi_mmc_cfg sun50i_h713_emmc_cfg = {
++	.idma_des_size_bits = 13,
++	.idma_des_shift = 2,
++	.can_calibrate = true,
++	.mask_data0 = true,
++	.needs_new_timings = true,
++	.supports_hs400 = true,
++};
++
 +static const struct sunxi_mmc_cfg sun50i_h713_cfg = {
 +	.idma_des_size_bits = 12,
 +	.idma_des_shift = 2,
@@ -517,16 +614,33 @@
 +	.mask_data0 = true,
 +	.needs_new_timings = true,
 +	.no_wait_pre_over = true,
++	.supports_hs400 = true,
 +};
 +
  static const struct sunxi_mmc_cfg sun50i_a100_emmc_cfg = {
  	.idma_des_size_bits = 13,
  	.idma_des_shift = 2,
-@@ -1219,6 +1540,7 @@
+@@ -1219,6 +1599,8 @@
  	{ .compatible = "allwinner,sun50i-a100-mmc", .data = &sun20i_d1_cfg },
  	{ .compatible = "allwinner,sun50i-a100-emmc", .data = &sun50i_a100_emmc_cfg },
  	{ .compatible = "allwinner,sun50i-h616-mmc", .data = &sun50i_h616_cfg },
 +	{ .compatible = "allwinner,sun50i-h713-mmc", .data = &sun50i_h713_cfg },
++	{ .compatible = "allwinner,sun50i-h713-emmc", .data = &sun50i_h713_emmc_cfg },
  	{ /* sentinel */ }
  };
  MODULE_DEVICE_TABLE(of, sunxi_mmc_of_match);
+@@ -1457,8 +1839,12 @@
+ 		mmc->caps2 &= ~MMC_CAP2_HS200;
+ 	}
+ 
+-	/* TODO: This driver doesn't support HS400 mode yet */
+-	mmc->caps2 &= ~MMC_CAP2_HS400;
++	/*
++	 * HS400 requires DS clock + delay registers (v4p5x+ controllers).
++	 * Only enable when the cfg explicitly declares support.
++	 */
++	if (!host->cfg->supports_hs400)
++		mmc->caps2 &= ~MMC_CAP2_HS400;
+ 
+ 	ret = sunxi_mmc_init_host(host);
+ 	if (ret)

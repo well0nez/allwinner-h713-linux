@@ -153,6 +153,7 @@ int sun50i_av1_hw_enable(struct sun50i_av1_dev *dev)
 	/* Clear any pending interrupts */
 	av1_write(dev, AV1_REG_INT_STATUS, 0xFFFFFFFF);
 
+	dev->hw_enabled = true;
 	dev_dbg(dev->dev, "AV1 hardware enabled successfully\n");
 	return 0;
 
@@ -168,6 +169,7 @@ err_assert_resets:
 	reset_control_assert(dev->reset_ve3);
 err_assert_reset_ve:
 	reset_control_assert(dev->reset_ve);
+	dev->hw_enabled = false;
 	return ret;
 }
 
@@ -178,6 +180,11 @@ err_assert_reset_ve:
 void sun50i_av1_hw_disable(struct sun50i_av1_dev *dev)
 {
 	dev_dbg(dev->dev, "Disabling AV1 hardware\n");
+
+	if (!dev->hw_enabled) {
+		dev_dbg(dev->dev, "AV1 hardware already disabled, skip\n");
+		return;
+	}
 
 	/* Disable interrupts */
 	av1_write(dev, AV1_REG_INT_ENABLE, 0);
@@ -198,6 +205,7 @@ void sun50i_av1_hw_disable(struct sun50i_av1_dev *dev)
 	reset_control_assert(dev->reset_ve3);
 	reset_control_assert(dev->reset_ve);
 
+	dev->hw_enabled = false;
 	dev_dbg(dev->dev, "AV1 hardware disabled\n");
 }
 
@@ -288,7 +296,9 @@ bool sun50i_av1_hw_wait_idle(struct sun50i_av1_dev *dev, unsigned int timeout_ms
 
 	do {
 		status = av1_read(dev, AV1_REG_STATUS);
-		if (status & AV1_STATUS_IDLE)
+
+		/* Accept both explicit IDLE bit and STATUS==0 idle semantics seen on sunxi variants */
+		if ((status & AV1_STATUS_IDLE) || status == 0)
 			return true;
 
 		if (time_after(jiffies, timeout))

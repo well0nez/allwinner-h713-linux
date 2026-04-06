@@ -172,6 +172,8 @@ static int sun50i_av1_probe(struct platform_device *pdev)
 	mutex_init(&dev->dev_mutex);
 	init_completion(&dev->decode_complete);
 	atomic_set(&dev->num_inst, 0);
+	dev->suspended = false;
+	dev->hw_enabled = false;
 
 	/* Get AV1 register resource */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -288,7 +290,7 @@ static int sun50i_av1_probe(struct platform_device *pdev)
 err_hw_cleanup:
 	sun50i_av1_hw_deinit(dev);
 err_pm_put:
-	pm_runtime_put_sync(&pdev->dev);
+	pm_runtime_put_noidle(&pdev->dev);
 err_pm_disable:
 	pm_runtime_disable(&pdev->dev);
 	v4l2_device_unregister(&dev->v4l2_dev);
@@ -336,16 +338,20 @@ static int __maybe_unused sun50i_av1_suspend(struct device *dev)
 static int __maybe_unused sun50i_av1_resume(struct device *dev)
 {
 	struct sun50i_av1_dev *av1_dev = dev_get_drvdata(dev);
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&av1_dev->dev_mutex);
+	if (!av1_dev->suspended)
+		goto out_unlock;
+
 	ret = sun50i_av1_hw_enable(av1_dev);
 	if (ret)
 		dev_err(dev, "Failed to re-enable hardware\n");
 	else
 		av1_dev->suspended = false;
-	mutex_unlock(&av1_dev->dev_mutex);
 
+out_unlock:
+	mutex_unlock(&av1_dev->dev_mutex);
 	return ret;
 }
 

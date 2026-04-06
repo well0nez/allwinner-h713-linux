@@ -758,7 +758,7 @@
 
 		/* === eMMC === */
 		mmc2: mmc@4022000 {
-			compatible = "allwinner,sun20i-d1-mmc";
+			compatible = "allwinner,sun50i-h713-emmc", "allwinner,sun20i-d1-mmc";
 			reg = <0x04022000 0x1000>;
 			interrupts = <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&ccu CLK_BUS_MMC2>, <&ccu CLK_MMC2>;
@@ -776,6 +776,7 @@
 			cap-mmc-highspeed;
 			mmc-ddr-1_8v;
 			mmc-hs200-1_8v;
+			mmc-hs400-1_8v;
 			max-frequency = <200000000>;
 			status = "okay";
 		};

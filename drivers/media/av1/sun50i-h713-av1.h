@@ -160,6 +160,7 @@ struct sun50i_av1_dev {
 	/* Runtime state */
 	atomic_t			num_inst;
 	bool				suspended;
+	bool				hw_enabled;
 };
 
 /* Hardware interface functions */
