@@ -8,7 +8,7 @@
 |-----------|--------|--------|-------|
 | **Boot** | Working | Stock U-Boot + patched env | Android Boot v3, cmdline in DTS |
 | **Serial Console** | Working | 8250_dw | ttyS0 @ 115200 |
-| **eMMC** | Working | sunxi-mmc (patched) | HS400 @ 200MHz DDR, 107 MB/s, 7.3GB |
+| **eMMC** | Working | sunxi-mmc (patched) | HS400 @ 200MHz DDR, 103 MB/s, 7.3GB |
 | **USB** | Working | ehci/ohci + phy-sun4i-usb (patched) | 3x EHCI + 3x OHCI |
 | **WiFi** | Working | aic8800_bsp + aic8800_fdrv (out-of-tree) | AIC8800D80 SDIO, stable |
 | **Bluetooth** | Working | hci_uart H4 + aic8800_btlpm | Auto-start via systemd, 1.5Mbaud flow control |

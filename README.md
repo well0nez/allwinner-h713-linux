@@ -5,7 +5,7 @@
 > **Milestone: Full Linux desktop with hardware video decoding and HS400 eMMC!**
 > GPU-accelerated Wayland desktop (Labwc + Panfrost Mali-G31), hardware video
 > decode (Cedrus VPU: H.264/H.265/MPEG-2/VP8), speaker audio, WiFi, Bluetooth,
-> IR remote, HS400 eMMC @ 107 MB/s — all on mainline Linux 6.16.7, no proprietary drivers.
+> IR remote, HS400 eMMC @ 103 MB/s — all on mainline Linux 6.16.7, no proprietary drivers.
 >
 > This project is under active development. Contributions, testing, and
 > reverse engineering help are very welcome.
@@ -36,7 +36,7 @@ hardware probing on a live device.
 |-----------|---------|
 | SoC | Allwinner H713 (sun50iw12p1), 4x Cortex-A53 @ 1.5GHz |
 | RAM | 1GB DDR3 |
-| Storage | 7.3GB eMMC (Samsung KLM8G1GETF-B041), HS400 @ 200MHz DDR (107 MB/s) |
+| Storage | 7.3GB eMMC (Samsung KLM8G1GETF-B041), HS400 @ 200MHz DDR (103 MB/s) |
 | WiFi | AIC8800D80 SDIO (802.11ac, 2.4/5GHz, onboard) |
 | Bluetooth | AIC8800 BT 5.4 via UART1 |
 | Display | MIPS co-processor driven, 1920x1080 DLP via DLPC3435 |
