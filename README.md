@@ -2,10 +2,10 @@
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/well0nez)
 
-> **Milestone: Fully functional Linux desktop on a portable projector!**
-> GPU-accelerated Wayland desktop (Labwc + Panfrost Mali-G31), speaker audio,
-> WiFi, Bluetooth, IR remote — all running on mainline Linux 6.16.7.
-> Next target: hardware video decoding (Cedar/Cedrus VPU).
+> **Milestone: Full Linux desktop with hardware video decoding!**
+> GPU-accelerated Wayland desktop (Labwc + Panfrost Mali-G31), hardware video
+> decode (Cedrus VPU: H.264/H.265/MPEG-2/VP8), speaker audio, WiFi, Bluetooth,
+> IR remote — all running on mainline Linux 6.16.7 with no proprietary drivers.
 >
 > This project is under active development. Contributions, testing, and
 > reverse engineering help are very welcome.
@@ -115,6 +115,9 @@ These subsystems boot and function reliably:
   sharing with Panfrost GPU. Labwc Wayland desktop runs. See [docs/DISPLAY.md](docs/DISPLAY.md).
 - **Audio** — Internal codec speaker output via Audio Hub path. Digital volume
   control (0-63) via ALSA, auto-loads at boot. See [docs/AUDIO.md](docs/AUDIO.md).
+- **Video Decode (Cedrus)** — Hardware H.264/H.265/MPEG-2/VP8 decode via V4L2
+  stateless API. Patched sunxi-cedrus with H713 VE3 clock/reset support.
+  77% less CPU, 87% less thermal load vs software decode.
 
 ### Partially Working
 
@@ -139,7 +142,6 @@ These subsystems have stock hardware addresses documented but no driver work don
 
 | IOMMU | 0x030f0000 | Provider active, ready for Cedar VPU |
 
-| Cedar/VPU | 0x01C0E000 | Video decode (needs IOMMU consumer + RE) |
 
 See [docs/SUBSYSTEMS_NOT_STARTED.md](docs/SUBSYSTEMS_NOT_STARTED.md) for stock
 register addresses and what needs to be done for each.

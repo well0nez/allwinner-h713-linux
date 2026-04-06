@@ -139,6 +139,9 @@ echo "=== Step 2: H713 options ==="
 ./scripts/config --enable CONFIG_IOMMU_SUPPORT
 ./scripts/config --enable CONFIG_IOMMU_API
 
+# Cedrus VPU decode must stay modular for bring-up/debugging
+./scripts/config --module CONFIG_VIDEO_SUNXI_CEDRUS
+
 # Watchdog / RTC / PWM / IR / Input
 ./scripts/config --enable CONFIG_WATCHDOG
 ./scripts/config --enable CONFIG_RTC_CLASS

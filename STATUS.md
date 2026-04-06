@@ -24,6 +24,7 @@
 | **Keystone Motor** | Untested | hy310-keystone-motor | Sysfs works, limit switch defective on test unit |
 | **Audio** | Working | codec + cpudai + machine (out-of-tree) | Speaker output, digital volume control, auto-start at boot |
 | **Display (DRM/KMS)** | Working | h713_drm (out-of-tree) | DRM/GEM scanout, PRIME, Labwc desktop runs |
+| **Video Decode (Cedrus)** | Working | sunxi-cedrus (patched, module) | H.264/H.265/MPEG2/VP8 HW decode, V4L2 stateless API |
 | **Display (legacy)** | Working | ge2d + tvtop + mipsloader (in-tree) | Stock display pipeline, MIPS-initialized |
 | **ARM-MIPS IPC** | Partial | cpu_comm (in-tree, out-of-tree) | Protocol works, MIPS Msgbox IRQ not routed |
 | **GPU** | Working | panfrost + sun50i-h713-ppu | Mali-G31 864MHz, card0/renderD128, PRIME to h713_drm |

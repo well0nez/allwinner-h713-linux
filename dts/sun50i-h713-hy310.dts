@@ -246,6 +246,43 @@
 			#dma-cells = <1>;
 		};
 
+		syscon: syscon@3000000 {
+			compatible = "allwinner,sun50i-h6-system-control",
+				     "allwinner,sun50i-a64-system-control";
+			reg = <0x03000000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+
+			sram_c: sram@28000 {
+				compatible = "mmio-sram";
+				reg = <0x00028000 0x1e000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges = <0 0x00028000 0x1e000>;
+
+				de2_sram: sram-section@0 {
+					compatible = "allwinner,sun50i-h6-sram-c",
+						     "allwinner,sun50i-a64-sram-c";
+					reg = <0x0000 0x1e000>;
+				};
+			};
+
+			sram_c1: sram@1a00000 {
+				compatible = "mmio-sram";
+				reg = <0x01a00000 0x200000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges = <0 0x01a00000 0x200000>;
+
+				ve_sram: sram-section@0 {
+					compatible = "allwinner,sun50i-h6-sram-c1",
+						     "allwinner,sun4i-a10-sram-c1";
+					reg = <0x000000 0x200000>;
+				};
+			};
+		};
+
 		/* === Main domain clocks & pinctrl === */
 
 		ccu: clock-controller@2001000 {
@@ -899,6 +936,36 @@
 			clocks = <&ccu CLK_BUS_IOMMU>;
 			resets = <&ccu 11>;
 			#iommu-cells = <1>;
+			status = "okay";
+		};
+
+		/*
+		 * Video Engine (Cedrus V4L2 stateless decoder)
+		 * H713 VE block at 0x01C0E000 - same hardware as H6.
+		 * Stock DTS uses "allwinner,sunxi-cedar-ve" with proprietary driver.
+		 * Mainline Cedarus driver expects "allwinner,sun50i-h6-video-engine".
+		 *
+		 * H713 specific differences from H6:
+		 * - IRQ: SPI 75 (H6 uses SPI 89)
+		 * - 4 clocks: bus_ve, bus_ve3, ve_core, mbus_ve3
+		 * - 2 resets: reset_ve, reset_ve3 (we try with just RST_BUS_VE first)
+		 * - Power domain: PPU index 3 = VE
+		 * - IOMMU: Master ID 0
+		 *
+		 * SRAM: Stock has SRAM controller at 0x03000000 inline in reg[1].
+		 * Mainline expects allwinner,sram = <&ve_sram 1> reference.
+		 * Testing without SRAM property first - may be optional on H713.
+		 */
+		ve: video-codec@1c0e000 {
+			compatible = "allwinner,sun50i-h6-video-engine";
+			reg = <0x01c0e000 0x2000>;
+			interrupts = <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>;
+			allwinner,sram = <&ve_sram 1>;
+			clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_VE_CORE>, <&ccu CLK_MBUS_VE3>, <&ccu CLK_BUS_VE3>;
+			clock-names = "ahb", "mod", "ram", "bus_ve3";
+			resets = <&ccu RST_BUS_VE>, <&ccu RST_BUS_VE3>;
+			reset-names = "ve", "ve3";
+			iommus = <&iommu 0>;
 			status = "okay";
 		};
 

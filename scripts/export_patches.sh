@@ -126,6 +126,8 @@ gen_patch 0020-pmdomain-add-h713-ppu-driver.patch     drivers/pmdomain/sunxi/sun
 
 gen_patch "0021-media-sunxi-cir-add-h713-vendor-init.patch"     "drivers/media/rc/sunxi-cir.c"
 
+gen_patch "0022-staging-cedrus-add-h713-ve3-clock-reset.patch"     "drivers/staging/media/sunxi/cedrus/cedrus.h"     "drivers/staging/media/sunxi/cedrus/cedrus_hw.c"
+
 # Also sync DTS if it exists in kernel tree
 echo ""
 if [ -f "$M/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts" ]; then

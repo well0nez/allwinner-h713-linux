@@ -1,0 +1,133 @@
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h	2026-04-06 04:33:35.667573865 +0200
+@@ -189,8 +189,10 @@
+ 	struct clk		*mod_clk;
+ 	struct clk		*ahb_clk;
+ 	struct clk		*ram_clk;
++	struct clk		*ve3_clk;
+ 
+ 	struct reset_control	*rstc;
++	struct reset_control	*rstc_ve3;
+ 
+ 	unsigned int		capabilities;
+ 
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c	2026-04-06 04:33:35.667573865 +0200
+@@ -174,8 +174,12 @@
+ 
+ 	clk_disable_unprepare(dev->ram_clk);
+ 	clk_disable_unprepare(dev->mod_clk);
++	if (dev->ve3_clk)
++		clk_disable_unprepare(dev->ve3_clk);
+ 	clk_disable_unprepare(dev->ahb_clk);
+ 
++	if (dev->rstc_ve3)
++		reset_control_assert(dev->rstc_ve3);
+ 	reset_control_assert(dev->rstc);
+ 
+ 	return 0;
+@@ -186,40 +190,58 @@
+ 	struct cedrus_dev *dev = dev_get_drvdata(device);
+ 	int ret;
+ 
+-	ret = reset_control_reset(dev->rstc);
++	ret = reset_control_deassert(dev->rstc);
+ 	if (ret) {
+-		dev_err(dev->dev, "Failed to apply reset\n");
+-
++		dev_err(dev->dev, "Failed to deassert VE reset\n");
+ 		return ret;
+ 	}
+ 
++	if (dev->rstc_ve3) {
++		ret = reset_control_deassert(dev->rstc_ve3);
++		if (ret) {
++			dev_err(dev->dev, "Failed to deassert VE3 reset\n");
++			goto err_rst;
++		}
++	}
++
+ 	ret = clk_prepare_enable(dev->ahb_clk);
+ 	if (ret) {
+ 		dev_err(dev->dev, "Failed to enable AHB clock\n");
+-
+-		goto err_rst;
++		goto err_rst_ve3;
+ 	}
+ 
+-	ret = clk_prepare_enable(dev->mod_clk);
+-	if (ret) {
+-		dev_err(dev->dev, "Failed to enable MOD clock\n");
+-
+-		goto err_ahb_clk;
++	if (dev->ve3_clk) {
++		ret = clk_prepare_enable(dev->ve3_clk);
++		if (ret) {
++			dev_err(dev->dev, "Failed to enable VE3 bus clock\n");
++			goto err_ahb_clk;
++		}
+ 	}
+ 
+ 	ret = clk_prepare_enable(dev->ram_clk);
+ 	if (ret) {
+ 		dev_err(dev->dev, "Failed to enable RAM clock\n");
++		goto err_ve3_clk;
++	}
+ 
+-		goto err_mod_clk;
++	ret = clk_prepare_enable(dev->mod_clk);
++	if (ret) {
++		dev_err(dev->dev, "Failed to enable MOD clock\n");
++		goto err_ram_clk;
+ 	}
+ 
+ 	return 0;
+ 
+-err_mod_clk:
+-	clk_disable_unprepare(dev->mod_clk);
++err_ram_clk:
++	clk_disable_unprepare(dev->ram_clk);
++err_ve3_clk:
++	if (dev->ve3_clk)
++		clk_disable_unprepare(dev->ve3_clk);
+ err_ahb_clk:
+ 	clk_disable_unprepare(dev->ahb_clk);
++err_rst_ve3:
++	if (dev->rstc_ve3)
++		reset_control_assert(dev->rstc_ve3);
+ err_rst:
+ 	reset_control_assert(dev->rstc);
+ 
+@@ -287,14 +309,30 @@
+ 		goto err_sram;
+ 	}
+ 
+-	dev->rstc = devm_reset_control_get(dev->dev, NULL);
++	dev->ve3_clk = devm_clk_get_optional(dev->dev, "bus_ve3");
++	if (IS_ERR(dev->ve3_clk)) {
++		dev_err(dev->dev, "Failed to get VE3 bus clock\n");
++
++		ret = PTR_ERR(dev->ve3_clk);
++		goto err_sram;
++	}
++
++	dev->rstc = devm_reset_control_get(dev->dev, "ve");
+ 	if (IS_ERR(dev->rstc)) {
+-		dev_err(dev->dev, "Failed to get reset control\n");
++		dev_err(dev->dev, "Failed to get VE reset control\n");
+ 
+ 		ret = PTR_ERR(dev->rstc);
+ 		goto err_sram;
+ 	}
+ 
++	dev->rstc_ve3 = devm_reset_control_get_optional_exclusive(dev->dev, "ve3");
++	if (IS_ERR(dev->rstc_ve3)) {
++		dev_err(dev->dev, "Failed to get VE3 reset control\n");
++
++		ret = PTR_ERR(dev->rstc_ve3);
++		goto err_sram;
++	}
++
+ 	dev->base = devm_platform_ioremap_resource(dev->pdev, 0);
+ 	if (IS_ERR(dev->base)) {
+ 		dev_err(dev->dev, "Failed to map registers\n");

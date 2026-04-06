@@ -25,19 +25,17 @@ compatible string, IRQ, clock/reset IDs, and required work.
 
 ## CEDAR / VPU (Video Engine)
 
-- **Status**: not started
-- **MMIO**: `0x01C0E000`
-- **Compatible (stock)**: `allwinner,sunxi-cedar-ve`
-- **Compatible (mainline)**: `allwinner,sun50i-h6-video-engine` (closest match)
-- **IRQ**: SPI 75
-- **Clocks**: bus_ve (CLK_BUS_VE=27), bus_ve3 (CLK_BUS_VE3=29), ve (CLK_VE_CORE=26), mbus_ve3 (CLK_MBUS_VE3=45)
-- **Resets**: reset_ve (RST_BUS_VE=7), reset_ve3 (RST_BUS_VE3=9)
-- **Power domain**: PPU domain 3 (pd_ve)
-- **Driver**: `sunxi-cedrus` (staging, built as module in current config)
-- **Blocker**: Stock VE uses IOMMU which cannot be enabled on ARM32. Needs testing without IOMMU.
-- **Required**: DTS node, compatible string matching, IOMMU workaround, VE SRAM allocation
+- **Status**: WORKING (patched module)
+- **MMIO**: 0x01C0E000
+- **Driver**: sunxi-cedrus (staging, patched for H713 VE3 clock/reset)
+- **Capabilities**: H.264, H.265 (10-bit), MPEG-2, VP8 hardware decode
+- **DTS**: video-codec@1c0e000 with syscon/SRAM, IOMMU, 4 clocks, 2 resets
+- **Patch**: 0022-staging-cedrus-add-h713-ve3-clock-reset.patch
+- **Known issue**: power-domains = <&ppu 3> causes EPROBE_DEFER, currently
+  disabled. VE power domain activation needs further investigation.
+- **FFmpeg**: Custom v4l2-request build at /root/ffmpeg-v4l2request/ on target
+- **Benchmark**: 1080p60 H.264 decode: 141 fps, 48% CPU (vs 117 fps, 215% CPU software)
 
----
 
 ## IOMMU
 
