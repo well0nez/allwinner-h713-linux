@@ -964,7 +964,7 @@
 		 */
 		av1_decoder: av1-decoder@1c0d000 {
 			compatible = "allwinner,sunxi-google-ve", "allwinner,sun50i-h713-av1-decoder";
-			reg = <0x01c0d000 0x1000>, <0x02001000 0x1000>;
+			reg = <0x01c0d000 0x1000>, <0x03000000 0x10>;
 			interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_BUS_VE3>, <&ccu CLK_BUS_AV1>, <&ccu CLK_MBUS_VE3>;
 			clock-names = "bus_ve", "bus_ve3", "av1", "mbus_ve3";
