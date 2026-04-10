@@ -12,7 +12,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-KERNEL_SRC="${1:-$(dirname "$REPO_DIR")/linux-6.16.7}"
+KERNEL_SRC="${1:-$(dirname "$REPO_DIR")/linux-6.16.7-build}"
 STAGING="${2:-$REPO_DIR/staging}"
 CROSS_COMPILE="${CROSS_COMPILE:-arm-linux-gnueabi-}"
 

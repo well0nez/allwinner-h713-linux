@@ -101,16 +101,8 @@ gen_patch "0010-misc-add-sunxi-mipsloader.patch" \
 gen_patch "0011-misc-add-sunxi-nsi.patch" \
     "drivers/misc/sunxi-nsi.c"
 
-gen_patch "0012-misc-add-sunxi-tvtop.patch" \
-    "drivers/misc/sunxi_tvtop"
-
-gen_patch "0013-misc-add-sunxi-decd.patch" \
-    "drivers/misc/sunxi_decd"
-
-gen_patch "0014-soc-sunxi-add-cpu-comm-ipc.patch" \
-    "drivers/soc/sunxi/cpu_comm" \
-    "drivers/soc/sunxi/Kconfig" \
-    "drivers/soc/sunxi/Makefile"
+# NOTE: TVTOP, DECD, CPU_COMM are now out-of-tree modules (drivers/ in repo)
+# They are no longer generated as patches.
 
 gen_patch "0015-misc-add-h713-driver-kconfig.patch" \
     "drivers/misc/Kconfig" \
