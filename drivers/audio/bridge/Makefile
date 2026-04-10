@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-obj-$(CONFIG_SND_HY310_TRID_AUDIO_BRIDGE) += snd-hy310-trid-audio-bridge.o
+obj-m += snd-hy310-trid-audio-bridge.o
 
 snd-hy310-trid-audio-bridge-y := \
 	audio_bridge_core.o \

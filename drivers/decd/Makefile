@@ -1,4 +1,4 @@
-obj-$(CONFIG_SUNXI_DECD) += sunxi-decd.o
+obj-m += sunxi-decd.o
 
 sunxi-decd-y := \
 	decd_core.o \

@@ -1,4 +1,4 @@
-obj-$(CONFIG_SUNXI_TVTOP) += sunxi-tvtop.o
+obj-m += sunxi-tvtop.o
 
 sunxi-tvtop-y := \
 	sunxi_tvtop_drv.o \
