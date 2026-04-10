@@ -71,22 +71,23 @@ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j$(nproc) zImage modules dtbs
 ### Step 3: Build Out-of-Tree Modules
 
 ```bash
-KDIR=/path/to/linux-6.16.7
-
-# DRM display driver (h713_drm.ko)
-make -C $KDIR M=/path/to/hy310-linux/drivers/display/drm ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
-
-# Audio (codec + cpudai + machine)
-make -C $KDIR M=/path/to/hy310-linux/drivers/audio ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
-
-# Audio bridge (TridentALSA)
-make -C $KDIR M=/path/to/hy310-linux/drivers/audio/bridge ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
-
-# WiFi AIC8800 (bsp + fdrv + btlpm)
-make -C $KDIR M=/path/to/hy310-linux/drivers/wifi ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
+export KDIR=/path/to/linux-6.16.7
+./scripts/build_modules.sh
 ```
 
-Or use: `./scripts/build_modules.sh .`
+This builds all out-of-tree modules in dependency order:
+1. TVTOP (display bus fabric)
+2. DECD (video decoder)
+3. CPU_COMM (ARM↔MIPS IPC)
+4. Audio (codec + cpudai + machine)
+5. Audio bridge (TridentALSA)
+6. GE2D (legacy display, depends on TVTOP)
+7. WiFi AIC8800 (bsp + fdrv + btlpm)
+
+Or build individually:
+```bash
+make -C $KDIR M=$PWD/drivers/tvtop ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
+```
 
 ### Step 4: Build Device Tree
 
