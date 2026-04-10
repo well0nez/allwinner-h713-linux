@@ -178,25 +178,25 @@ See [BUILDING.md](BUILDING.md) for full build instructions.
 wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.16.7.tar.xz
 tar xf linux-6.16.7.tar.xz
 
-# 2. Apply patches (16 patches, all verified clean)
+# 2. Apply patches (optional — repo source already includes all changes)
 cd linux-6.16.7
-for p in $(cat ../allwinner-h713-linux/patches/series); do
-    patch -p1 < ../allwinner-h713-linux/patches/$p
+for p in $(cat ../hy310-linux/patches/series); do
+    patch -p1 < ../hy310-linux/patches/$p
 done
 
 # 3. Configure and build
-cp ../allwinner-h713-linux/config/hy310_defconfig arch/arm/configs/
+cp ../hy310-linux/config/hy310_defconfig arch/arm/configs/
 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- hy310_defconfig
 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j$(nproc) zImage modules
 
 # 4. Build out-of-tree modules (audio, display, wifi)
-../allwinner-h713-linux/scripts/build_modules.sh .
+../hy310-linux/scripts/build_modules.sh .
 
 # 5. Build device tree
-../allwinner-h713-linux/scripts/build_dtb.sh .
+../hy310-linux/build_h713_dtb_v8.sh .
 
 # 6. Create Android Boot v3 image
-python3 ../allwinner-h713-linux/scripts/repack_boot.py
+python3 ../hy310-linux/scripts/repack_boot.py
 ```
 
 See [FLASHING.md](FLASHING.md) for how to flash the image to eMMC or boot from USB.
@@ -208,7 +208,7 @@ See [ROOTFS.md](ROOTFS.md) for creating a Debian rootfs with all modules install
 dts/            Standalone device tree source (sun50i-h713-hy310.dts)
 dt-bindings/    Clock and reset ID headers for H713 CCU
 config/         Kernel defconfig, module autoload, optional desktop configs
-patches/        16 patches against vanilla linux-6.16.7 (with series file)
+patches/        Patches against vanilla linux-6.16.7 (with series file, optional)
 drivers/        Out-of-tree kernel modules
   audio/          Internal codec, CPU-DAI, machine driver, TridentALSA bridge
   display/drm/    DRM/KMS display driver (h713_drm)

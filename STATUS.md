@@ -82,7 +82,7 @@ See [docs/DISPLAY_BRINGUP.md](docs/DISPLAY_BRINGUP.md).
 
 This repository has been tested with the following workflow:
 1. Fresh vanilla linux-6.16.7 extracted from tarball
-2. All 16 patches applied cleanly (0 failures)
+2. All patches applied cleanly (0 failures)
 3. Kernel zImage built successfully (4m52s)
 4. 20 in-tree kernel modules built
 5. All out-of-tree modules built (audio 3x, bridge, ge2d, wifi 3x, h713_drm)

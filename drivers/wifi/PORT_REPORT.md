@@ -4,8 +4,8 @@
 **Date**: 2026-03-23  
 **Upstream Commit**: `445a655fc5fb8deb3f0a558e39c8f9da295c0831` (radxa-pkg/aic8800 main)  
 **Verification Scope**: Build-only (Port+Build, no runtime smoke/stress)  
-**Build Host**: `lan` (192.168.8.218), `/opt/captcha/kernel/linux-6.16.7`, `arm-linux-gnueabi-gcc`  
-**Build Command**: `make -C /opt/captcha/kernel/linux-6.16.7 M=<ported-tree> ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- CONFIG_PLATFORM_MAINLINE_SUNXI=y modules`
+**Build Host**: `build`, `$HY310_ROOT/kernel/source/linux-6.16.7`, `arm-linux-gnueabi-gcc`  
+**Build Command**: `make -C $HY310_ROOT/kernel/source/linux-6.16.7 M=<ported-tree> ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- CONFIG_PLATFORM_MAINLINE_SUNXI=y modules`
 
 ---
 
@@ -94,7 +94,7 @@
 
 ## Build Log Summary
 
-**Final Build**: 2026-03-23 on `lan` (192.168.8.218)  
+**Final Build**: 2026-03-23 on `build`  
 **Exit Code**: 0  
 **Errors**: 0  
 **Warnings**: ~100 (inherited baseline: `-Wmissing-prototypes`, `-Wimplicit-fallthrough`, `-Wunused-variable`)
@@ -131,9 +131,9 @@
 
 ## Kernel Tree Integrity
 
-The kernel source tree at `/opt/captcha/kernel/linux-6.16.7` (remote build host `lan`) was used **read-only** throughout the port.
+The kernel source tree at `$HY310_ROOT/kernel/source/linux-6.16.7` (remote build host `lan`) was used **read-only** throughout the port.
 
-- The build command uses `-C /opt/captcha/kernel/linux-6.16.7` (read-only reference) and `M=<out-of-tree>` (write path)
+- The build command uses `-C $HY310_ROOT/kernel/source/linux-6.16.7` (read-only reference) and `M=<out-of-tree>` (write path)
 - No driver source files were added under `include/`, `arch/`, `drivers/`, or `net/` in the kernel tree
 - No `aic8800` files exist under `drivers/net/wireless/` in the kernel tree (verified: grep returns empty)
 - The kernel `Module.symvers` timestamp (`23 Mär 00:13`) predates the driver build (`03:18`), confirming no kernel-tree writes occurred during the build
@@ -148,7 +148,7 @@ The kernel source tree at `/opt/captcha/kernel/linux-6.16.7` (remote build host 
 | `CONFIG_PLATFORM_MAINLINE_SUNXI` | `y` (exported) | H713 Allwinner mainline kernel platform |
 | `CONFIG_SDIO_PWRCTRL` | `y` | H713 SDIO power control required |
 | `CONFIG_AIC_FW_PATH` | `/usr/lib/firmware/aic8800_sdio/aic8800` | BSP firmware path |
-| `KDIR` | `/opt/captcha/kernel/linux-6.16.7` | Target kernel tree |
+| `KDIR` | `$HY310_ROOT/kernel/source/linux-6.16.7` | Target kernel tree |
 | `ARCH` | `arm` | Allwinner H713 ARM32 mode |
 | `CROSS_COMPILE` | `arm-linux-gnueabi-` | ARM32 cross-compiler |
 | Module load order | `bsp → fdrv → btlpm` | Dependency chain preserved |

@@ -25,16 +25,15 @@ aplay -l
 # List mixer controls (14 controls expected)
 amixer -c 0 contents
 
-# Test playback (fills DAC FIFO, DMA active — but no sound yet due to MIPS DSP)
+# Test playback
 speaker-test -c 2 -t wav
 ```
 
-## Known Limitation
+## Speaker Audio
 
-Speaker audio on this SoC routes through the MIPS co-processor audio DSP.
-The ARM codec alone cannot produce audible output. The MIPS DSP firmware
-must be loaded via `msp_download_sxl()` (not yet implemented).
-See [docs/AUDIO.md](../../docs/AUDIO.md) for full analysis.
+Speaker audio works directly through the internal codec via the Audio Hub path.
+The MIPS DSP is **not** required for basic playback — it is only needed for
+DSP effects. See [docs/AUDIO.md](../../docs/AUDIO.md) for full analysis.
 
 ## Audio Bridge
 
