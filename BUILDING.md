@@ -31,29 +31,47 @@ for p in $(cat /path/to/hy310-linux/patches/series); do
 done
 ```
 
-Or use the build script: `../hy310-linux/scripts/build_kernel.sh .`
+## Quick Build (End-to-End)
 
-## Step 1: Configure
+The `scripts/build_kernel_arm32.sh` script handles the entire pipeline:
+defconfig → zImage → DTBs → modules → Android Boot v3 image (4MB chunks).
+
+```bash
+# Set paths (defaults shown)
+export KDIR=/path/to/linux-6.16.7          # vanilla or patched kernel tree
+export OUTDIR=./output_arm32                # build output directory
+export ROOTFS=/path/to/debian-armhf         # optional: modules install target
+
+./scripts/build_kernel_arm32.sh
+```
+
+This produces in `$OUTDIR/`:
+- `zImage` — compressed kernel image
+- `sun50i-h713-hy310.dtb` — device tree blob
+- `hy310-mainline-arm32-boot.img` — Android Boot v3 image
+- `mboot32.00`, `mboot32.01` — 4MB chunks for U-Boot fatload
+- Kernel modules (installed to `$ROOTFS` if it exists)
+
+## Manual Build Steps
+
+### Step 1: Configure
 
 ```bash
 cp /path/to/hy310-linux/config/hy310_defconfig arch/arm/configs/
 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- hy310_defconfig
+make olddefconfig
 ```
 
-## Step 2: Build Kernel + In-Tree Modules
+### Step 2: Build Kernel + In-Tree Modules
 
 ```bash
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j$(nproc) zImage modules
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j$(nproc) zImage modules dtbs
 ```
 
-This produces:
-- `arch/arm/boot/zImage` — compressed kernel image
-- ~20 kernel modules (.ko files)
-
-## Step 3: Build Out-of-Tree Modules
+### Step 3: Build Out-of-Tree Modules
 
 ```bash
-KDIR=/path/to/linux-6.16.7  # or $HY310_ROOT/kernel/source/linux-6.16.7
+KDIR=/path/to/linux-6.16.7
 
 # DRM display driver (h713_drm.ko)
 make -C $KDIR M=/path/to/hy310-linux/drivers/display/drm ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
@@ -68,40 +86,31 @@ make -C $KDIR M=/path/to/hy310-linux/drivers/audio/bridge ARCH=arm CROSS_COMPILE
 make -C $KDIR M=/path/to/hy310-linux/drivers/wifi ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- modules
 ```
 
-Or use: `../hy310-linux/scripts/build_modules.sh .`
+Or use: `./scripts/build_modules.sh .`
 
-## Step 4: Build Device Tree
+### Step 4: Build Device Tree
 
 ```bash
 # Canonical DTB build script (v8):
 build_h713_dtb_v8.sh
-# Output: output_arm32/sun50i-h713-hy310-v7.dtb
 ```
 
 > **Note:** `build_h713_dtb_v8.sh` is the only correct DTB build script.
 > Legacy scripts (`build_dtb.sh`, `build_h713_dtb_v7.sh`) are deprecated.
 
-## Step 5: Create Boot Image
-
-The HY310 stock U-Boot only accepts Android Boot v3 format. The kernel cmdline
-is hardcoded in the DTS (`chosen/bootargs`) because U-Boot ignores the boot
-image header cmdline.
+### Step 5: Create Boot Image
 
 ```bash
-python3 ../hy310-linux/scripts/repack_boot.py \
+python3 scripts/repack_boot.py \
     --zimage arch/arm/boot/zImage \
-    --dtb ../hy310-linux/output_arm32/sun50i-h713-hy310-v7.dtb
+    --dtb output_arm32/sun50i-h713-hy310-v7.dtb
 ```
 
-This produces `mboot32.00` + `mboot32.01` (4MB chunks for U-Boot fatload).
-
-## Step 6: Install Modules to Staging
+### Step 6: Install Modules to Staging
 
 ```bash
-../hy310-linux/scripts/install_modules.sh . ./staging
+./scripts/install_modules.sh . ./staging
 ```
-
-This creates a `staging/lib/modules/6.16.7/` directory ready to copy into a rootfs.
 
 ## Next
 
