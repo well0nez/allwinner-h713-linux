@@ -1,6 +1,6 @@
 --- a/drivers/misc/Kconfig	2025-09-11 17:23:23.000000000 +0200
 +++ b/drivers/misc/Kconfig	2026-03-22 22:31:57.335983906 +0100
-@@ -660,4 +660,57 @@
+@@ -660,4 +660,40 @@
  source "drivers/misc/mchp_pci1xxxx/Kconfig"
  source "drivers/misc/keba/Kconfig"
  source "drivers/misc/amd-sbi/Kconfig"
@@ -24,17 +24,6 @@
 +	  Provides shared memory command/response protocol between the
 +	  ARM cores and the MIPS display co-processor.
 +
-+config SUNXI_CPU_COMM
-+	tristate "Allwinner ARM-MIPS CPU Communication"
-+	depends on ARCH_SUNXI || COMPILE_TEST
-+	depends on SUNXI_NSI
-+	help
-+	  High-level ARM-MIPS communication framework for Allwinner H713.
-+	  Provides HDMI control commands (detect, EDID, format, capture)
-+	  on top of the NSI transport layer.
-+
-+
-+
 +config HY310_BOARD_MGR
 +	tristate "HY310 Projector Board Management Driver"
 +	depends on OF && PWM && THERMAL
@@ -44,7 +33,6 @@
 +	  Handles fan PWM control, fan tachometer monitoring, USB power GPIO,
 +	  and NTC temperature sensing via LRADC.
 +	  Based on reverse engineering of the stock Allwinner H713 firmware.
-+
 +
 +config HY310_KEYSTONE_MOTOR
 +	tristate "HY310 Keystone Motor Driver"
@@ -56,18 +44,13 @@
 +	  driver. Uses work-queue based async movement and DTS-configurable
 +	  step tables.
  endmenu
-+source "drivers/misc/sunxi_tvtop/Kconfig"
-+source "drivers/misc/sunxi_decd/Kconfig"
 --- a/drivers/misc/Makefile	2025-09-11 17:23:23.000000000 +0200
 +++ b/drivers/misc/Makefile	2026-03-22 22:31:56.023977554 +0100
-@@ -75,3 +75,10 @@
+@@ -75,3 +75,8 @@
  obj-$(CONFIG_MCHP_LAN966X_PCI)	+= lan966x-pci.o
  obj-y				+= keba/
  obj-y				+= amd-sbi/
 +obj-$(CONFIG_SUNXI_MIPSLOADER)	+= sunxi-mipsloader.o
 +obj-$(CONFIG_SUNXI_NSI)		+= sunxi-nsi.o
-+obj-$(CONFIG_SUNXI_CPU_COMM)	+= sunxi-cpu-comm.o
 +obj-$(CONFIG_HY310_BOARD_MGR)	+= hy310-board-mgr.o
 +obj-$(CONFIG_HY310_KEYSTONE_MOTOR)	+= hy310-keystone-motor.o
-+obj-$(CONFIG_SUNXI_TVTOP)	+= sunxi_tvtop/
-+obj-$(CONFIG_SUNXI_DECD)	+= sunxi_decd/
