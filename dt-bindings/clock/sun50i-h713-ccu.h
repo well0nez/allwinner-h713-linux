@@ -118,7 +118,7 @@
 #define CLK_ADC			102
 #define CLK_DTMB_120M		103
 #define CLK_TVFE_1296M		104
-#define CLK_I2H		105
+#define CLK_I2H			105
 #define CLK_CIP_TSX		106
 #define CLK_CIP_MCX		107
 #define CLK_CIP_TSP		108
@@ -149,7 +149,25 @@
 #define CLK_PLL_PERIPH1_2X	132
 #define CLK_PLL_PERIPH1_4X	133
 #define CLK_OSC12M		134
+#define CLK_PLL_VIDEO0_4X	140
+#define CLK_PLL_VIDEO1_4X	143
+#define CLK_PLL_VIDEO2_4X	144
+#define CLK_PLL_VIDEO3_4X	152
 
-#define CLK_NUMBER		135
+/* HDMI / TCON clocks */
+#define CLK_BUS_TCON_TOP	135
+#define CLK_TCON_LCD0		136
+#define CLK_TCON_TV0		137
+#define CLK_BUS_TCON_TV0	138
+#define CLK_PLL_AUDIO_2X	141
+#define CLK_PLL_AUDIO_4X	142
+#define CLK_HDMI		145
+#define CLK_HDMI_SLOW		146
+#define CLK_HDMI_CEC		147
+#define CLK_BUS_HDMI		148
+#define CLK_HDCP		149
+#define CLK_BUS_HDCP		150
+
+#define CLK_NUMBER		153
 
 #endif /* _DT_BINDINGS_CLK_SUN50I_H713_CCU_H_ */

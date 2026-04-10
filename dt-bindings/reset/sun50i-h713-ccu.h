@@ -68,6 +68,13 @@
 #define RST_BUS_TVCAP		56
 #define RST_BUS_DISP		57
 
-#define RST_NUMBER		58
+/* HDMI / TCON resets */
+#define RST_BUS_TCON_TOP	58
+#define RST_BUS_TCON_TV0	59
+#define RST_BUS_HDMI		60
+#define RST_BUS_HDMI_SUB	61
+#define RST_BUS_HDCP		62
+
+#define RST_NUMBER		63
 
 #endif /* _DT_BINDINGS_RST_SUN50I_H713_CCU_H_ */
