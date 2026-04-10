@@ -141,13 +141,7 @@ This patches `env_a` (mmcblk0p3) with the correct CRC32 checksum.
 
 ### Flash the Boot Image
 
-Use the hash-chain verified flash workflow:
-
-```bash
-scripts/flash.sh output/hy310-mainline-arm32-boot.img 192.168.8.141
-```
-
-Or manually:
+Use the manual hash-chain verified flash workflow (only boot_a, `/dev/mmcblk0p5`):
 
 ```bash
 # 1. Hash on build machine
