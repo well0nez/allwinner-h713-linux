@@ -1,6 +1,6 @@
---- a/drivers/misc/Kconfig	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/misc/Kconfig	2026-03-22 22:31:57.335983906 +0100
-@@ -660,4 +660,40 @@
+--- a/drivers/misc/Kconfig	2025-09-11 15:23:23.000000000 +0000
++++ b/drivers/misc/Kconfig	2026-04-10 20:41:32.694793475 +0000
+@@ -660,4 +660,43 @@
  source "drivers/misc/mchp_pci1xxxx/Kconfig"
  source "drivers/misc/keba/Kconfig"
  source "drivers/misc/amd-sbi/Kconfig"
@@ -44,9 +44,9 @@
 +	  driver. Uses work-queue based async movement and DTS-configurable
 +	  step tables.
  endmenu
---- a/drivers/misc/Makefile	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/misc/Makefile	2026-03-22 22:31:56.023977554 +0100
-@@ -75,3 +75,8 @@
+--- a/drivers/misc/Makefile	2025-09-11 15:23:23.000000000 +0000
++++ b/drivers/misc/Makefile	2026-04-10 20:41:59.503030973 +0000
+@@ -75,3 +75,7 @@
  obj-$(CONFIG_MCHP_LAN966X_PCI)	+= lan966x-pci.o
  obj-y				+= keba/
  obj-y				+= amd-sbi/
