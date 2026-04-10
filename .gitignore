@@ -16,3 +16,5 @@ staging/
 *.swp
 *~
 .vscode/
+
+.agents_sandbox/
