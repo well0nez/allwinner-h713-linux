@@ -21,7 +21,7 @@ set -e
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_DIR=$(dirname "$SCRIPT_DIR")
-KERNEL_SRC=${1:-$(dirname "$REPO_DIR")/linux-6.16.7-build}
+KERNEL_SRC="${KDIR:-$(dirname "$REPO_DIR")/linux-6.16.7}"
 CROSS_COMPILE=${CROSS_COMPILE:-arm-linux-gnueabi-}
 JOBS=${JOBS:-$(nproc)}
 MAKE="make -C $KERNEL_SRC ARCH=arm CROSS_COMPILE=$CROSS_COMPILE -j$JOBS"
