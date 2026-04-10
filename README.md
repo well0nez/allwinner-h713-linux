@@ -174,29 +174,9 @@ See [docs/BOOT.md](docs/BOOT.md) for the full boot flow and
 See [BUILDING.md](BUILDING.md) for full build instructions.
 
 ```bash
-# 1. Get vanilla kernel
-wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.16.7.tar.xz
-tar xf linux-6.16.7.tar.xz
-
-# 2. Apply patches (optional — repo source already includes all changes)
-cd linux-6.16.7
-for p in $(cat ../hy310-linux/patches/series); do
-    patch -p1 < ../hy310-linux/patches/$p
-done
-
-# 3. Configure and build
-cp ../hy310-linux/config/hy310_defconfig arch/arm/configs/
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- hy310_defconfig
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j$(nproc) zImage modules
-
-# 4. Build out-of-tree modules (audio, display, wifi)
-../hy310-linux/scripts/build_modules.sh .
-
-# 5. Build device tree
-../hy310-linux/build_h713_dtb_v8.sh .
-
-# 6. Create Android Boot v3 image
-python3 ../hy310-linux/scripts/repack_boot.py
+# End-to-end build (defconfig → zImage → DTBs → modules → boot image)
+export KDIR=/path/to/linux-6.16.7
+./scripts/build_kernel_arm32.sh
 ```
 
 See [FLASHING.md](FLASHING.md) for how to flash the image to eMMC or boot from USB.
