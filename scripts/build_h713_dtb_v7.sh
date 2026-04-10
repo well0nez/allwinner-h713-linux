@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
-KDIR=/opt/captcha/kernel/linux-6.16.7
-OUTDIR=/opt/captcha/kernel/output_arm32
+HY310_ROOT="${HY310_ROOT:-/home/openclaw/.openclaw/workspace-controller/hy310}"
+
+KDIR="${KDIR:-$HY310_ROOT/kernel/source/linux-6.16.7}"
+OUTDIR="${OUTDIR:-$HY310_ROOT/kernel/build/output_arm32}"
 
 cat > /tmp/sun50i-h713-hy310-v7.dts << 'DTSEOF'
 /dts-v1/;

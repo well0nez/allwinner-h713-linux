@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
-KDIR=/opt/captcha/kernel/linux-6.16.7
-OUTDIR=/opt/captcha/kernel/output_arm32
+HY310_ROOT="${HY310_ROOT:-/home/openclaw/.openclaw/workspace-controller/hy310}"
+
+KDIR="${KDIR:-$HY310_ROOT/kernel/source/linux-6.16.7}"
+OUTDIR="${OUTDIR:-$HY310_ROOT/kernel/build/output_arm32}"
 
 export ARCH=arm
 export CROSS_COMPILE=arm-linux-gnueabi-
@@ -251,7 +253,7 @@ elif [ -f arch/arm/boot/dts/sun50i-h713-hy310.dtb ]; then
 fi
 
 # Install modules to rootfs if it exists
-ROOTFS=/opt/captcha/debian-armhf
+ROOTFS="${ROOTFS:-$HY310_ROOT/rootfs/debian-armhf}"
 if [ -d "$ROOTFS" ]; then
     echo ""
     echo "=== Step 5b: Install modules to rootfs ==="

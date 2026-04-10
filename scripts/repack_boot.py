@@ -4,7 +4,7 @@
 Usage:
     python3 repack_with_dtb.py [--outdir DIR] [--zimage PATH] [--dtb PATH] [--cmdline STR]
 
-Defaults assume build server paths (/opt/captcha/kernel/output_arm32/).
+Defaults assume HY310 workspace paths (../kernel/build/output_arm32).
 """
 
 import argparse
@@ -12,7 +12,9 @@ import struct
 import os
 import sys
 
-DEFAULT_OUTDIR = "/opt/captcha/kernel/output_arm32"
+DEFAULT_OUTDIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "build", "output_arm32")
+)
 DEFAULT_CMDLINE = (
     "console=ttyS0,115200 earlycon earlyprintk loglevel=8 "
     "root=/dev/sda2 rootwait rootfstype=ext4 clk_ignore_unused"
