@@ -4,8 +4,8 @@
 # Run this after making changes to the kernel tree to update the repo patches.
 #
 # Usage: ./export_patches.sh [KERNEL_SRC] [VANILLA_SRC]
-#   KERNEL_SRC:  Modified kernel tree (default: $HY310_ROOT/kernel/source/linux-6.16.7)
-#   VANILLA_SRC: Vanilla kernel tree (default: $HY310_ROOT/kernel/source/linux-6.16.7-vanilla)
+#   KERNEL_SRC:  Modified kernel tree (default: $HY310_ROOT/kernels/working)
+#   VANILLA_SRC: Vanilla kernel tree (default: $HY310_ROOT/kernels/vanilla)
 #
 # Workflow:
 #   1. Edit code in the kernel tree as usual
@@ -18,12 +18,12 @@
 
 set -e
 
-HY310_ROOT="${HY310_ROOT:-/home/openclaw/.openclaw/workspace-controller/hy310}"
+HY310_ROOT="${HY310_ROOT:-/opt/hy310}"
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_DIR=$(dirname "$SCRIPT_DIR")
-M=${1:-"$HY310_ROOT/kernel/source/linux-6.16.7"}
-V=${2:-"$HY310_ROOT/kernel/source/linux-6.16.7-vanilla"}
+M=${1:-"$HY310_ROOT/kernels/working"}
+V=${2:-"$HY310_ROOT/kernels/vanilla"}
 P=$REPO_DIR/patches
 
 if [ ! -d "$V" ]; then

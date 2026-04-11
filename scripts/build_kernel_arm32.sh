@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-HY310_ROOT="${HY310_ROOT:-/home/openclaw/.openclaw/workspace-controller/hy310}"
+HY310_ROOT="${HY310_ROOT:-/opt/hy310}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
-KDIR="${KDIR:-$HY310_ROOT/kernel/source/linux-6.16.7}"
-OUTDIR="${OUTDIR:-$HY310_ROOT/kernel/build/output_arm32}"
+KDIR="${KDIR:-$HY310_ROOT/kernels/working}"
+OUTDIR="${OUTDIR:-$HY310_ROOT/build-output}"
 DEFCONFIG_SRC="${DEFCONFIG_SRC:-$REPO_DIR/config/hy310_defconfig}"
 
 export ARCH=arm
