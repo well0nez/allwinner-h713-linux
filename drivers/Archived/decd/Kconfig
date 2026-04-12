@@ -1,0 +1,17 @@
+config SUNXI_DECD
+	tristate "Allwinner H713 Display Engine Controller (decd)"
+	depends on OF && ARCH_SUNXI
+	select RESET_CONTROLLER
+	help
+	  Display engine controller driver for the Allwinner H713 SoC.
+
+	  Provides frame submission, VSync-driven scheduling, DMA-BUF
+	  import/export, and dma-fence synchronization for the AFBD
+	  (ARM Frame Buffer Decoder) display path.
+
+	  Required for video output on the HY310 projector platform.
+	  Depends on sunxi_tvtop for shared display-top resource management.
+
+	  Based on reverse engineering of stock decd.ko from H713 SDK.
+
+	  If unsure, say M.

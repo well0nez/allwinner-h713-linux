@@ -1,0 +1,16 @@
+config SUNXI_TVTOP
+	tristate "Allwinner H713 TV Subsystem Top Module"
+	depends on OF && ARCH_SUNXI
+	select RESET_CONTROLLER
+	help
+	  Clock gating, reset control and power domain management for the
+	  Allwinner H713 TV subsystem (tvdisp, tvcap, tvfe blocks).
+
+	  Required for display output on the HY310 projector. Manages
+	  clocks and power for the display engine, TV capture (HDMI input),
+	  and TV front-end (demodulator) subsystems.
+
+	  Based on reverse engineering of stock sunxi_tvtop.ko from
+	  H713 SDK V1.3 firmware.
+
+	  If unsure, say Y.

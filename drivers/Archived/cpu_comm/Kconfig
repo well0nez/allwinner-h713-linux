@@ -1,0 +1,12 @@
+config HY310_CPU_COMM
+	tristate "HY310 CPU_COMM — ARM/MIPS IPC Framework"
+	depends on OF
+	help
+	  Inter-processor communication framework for the HY310 projector.
+	  Enables ARM ↔ MIPS display co-processor communication via shared
+	  memory and hardware mailbox. Required for display output control.
+
+	  Based on reverse engineering of Allwinner HAL_SX6 cpu_comm framework
+	  from the stock H713 firmware.
+
+	  If unsure, say Y.
