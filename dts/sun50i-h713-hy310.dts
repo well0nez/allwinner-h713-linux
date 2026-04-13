@@ -1382,7 +1382,16 @@
 		cpu_comm: cpu-comm {
 			compatible = "allwinner,sunxi-cpu-comm";
 			reg = <0x03003000 0x400>;
-			interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
+			/*
+			 * Msgbox IRQs from stock DTS mailbox@3003000:
+			 * 46 (0x2E), 109 (0x6D), 108 (0x6C).
+			 * Stock had these on a separate mailbox node; our
+			 * cpu_comm drives the msgbox hardware directly.
+			 * IRQ 46 is shared with the watchdog.
+			 */
+			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&ccu CLK_BUS_MSGBOX>;
 			resets = <&ccu RST_BUS_MSGBOX>;
 			mips-loader = <&mipsloader>;

@@ -173,7 +173,7 @@ extern const struct tvtop_reg_entry
 int sunxi_tvtop_clk_get(unsigned int type);
 int sunxi_tvtop_clk_put(unsigned int type);
 int sunxi_tvtop_client_register(struct device *client_dev);
-void sunxi_tvtop_clock_enable(struct tvtop_submodule *sub);
+int sunxi_tvtop_clock_enable(struct tvtop_submodule *sub);
 
 /* ---- Power / subsystem enable/disable (sunxi_tvtop_power.c) ---- */
 int tvtop_tvdisp_enable(struct device *dev);

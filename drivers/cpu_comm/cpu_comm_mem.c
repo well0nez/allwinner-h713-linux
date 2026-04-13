@@ -291,7 +291,7 @@ void setCPUAppReady(u32 cpu_id)
 	 * For ARM (cpu_id=0) this exits immediately since we just set it.
 	 * For MIPS (cpu_id=1) this would wait for ARM.
 	 */
-	other_flag = (u32 *)(ShMemAddrBase + CPU_FLAG_OFFSET(CPU_ID_ARM));
+	other_flag = (u32 *)(ShMemAddrBase + CPU_FLAG_OFFSET(cpu_id ^ 1));
 
 	pr_debug("cpu_comm: setCPUAppReady(%u) — other_flag @ %px = 0x%x\n",
 		cpu_id, other_flag, *other_flag);

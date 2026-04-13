@@ -5,6 +5,12 @@
  * Ported from: tvtop_pm_domain_enable (0x093c), tvtop_pm_domain_disable (0x0c80),
  *              tvtop_tvdisp_enable (0x029c), tvtop_tvfe_enable (0x09dc),
  *              tvtop_tvcap_enable (0x0ac4), tvtop_submodule_disable (0x0cb8)
+ *
+ * PATCH: TVTOP Freeze Fix — Reset-Ordering + msleep + PM Error Handling (2026-04-13)
+ * - tvfe: Remove first reset_deassert (was before clocks = undefined behavior)
+ *   (KNOW-20260413-040938-645)
+ * - Replace all usleep_range with msleep for stability
+ * - Check pm_domain_enable return values, fail fast on error
  */
 
 #include <linux/clk.h>
@@ -120,8 +126,12 @@ int tvtop_tvdisp_enable(struct device *dev)
 	}
 
 	pr_emerg("tvtopdbg:03 clock_enable_start\n");
-	sunxi_tvtop_clock_enable(sub);
-	pr_emerg("tvtopdbg:04 clock_enable_done\n");
+	ret = sunxi_tvtop_clock_enable(sub);
+	pr_emerg("tvtopdbg:04 clock_enable_done ret=%d\n", ret);
+	if (ret) {
+		dev_err(tdev->dev, "tvdisp: clock_enable failed: %d\n", ret);
+		goto out;
+	}
 
 	if (sub->bus_clk && !sub->bus_clk_enabled) {
 		pr_emerg("tvtopdbg:05 bus_clk_start\n");
@@ -129,6 +139,8 @@ int tvtop_tvdisp_enable(struct device *dev)
 		pr_emerg("tvtopdbg:06 bus_clk_done ret=%d\n", ret);
 		if (ret == 0)
 			sub->bus_clk_enabled = true;
+		else
+			goto out;
 	} else {
 		dev_info(tdev->dev,
 			 "tvdisp: bus_clk skip present=%d enabled=%d\n",
@@ -184,15 +196,21 @@ out:
  * Enable tvfe (TV front-end / demodulator) subsystem.
  * Matches stock tvtop_tvfe_enable at 0x09dc (232 bytes).
  *
- * Disasm logic:
+ * PATCH: Remove first reset_deassert — it was called BEFORE clocks,
+ *   causing undefined behavior. Only keep the second one after clocks.
+ *   (KNOW-20260413-040938-645)
+ * PATCH: Replace usleep_range with msleep for stability.
+ * PATCH: Check pm_domain_enable return value.
+ *
+ * Disasm logic (original stock):
  *   lock sub[2].lock
  *   if already enabled: unlock, return 0
- *   reset_control_deassert(rst)   [first deassert]
- *   usleep_range(10000, 15000)
+ *   reset_control_deassert(rst)   [first deassert — REMOVED]
+ *   usleep_range(10000, 15000)    [REMOVED]
  *   clock_enable(sub[2])
  *   enable bus_clk if present
  *   usleep_range(10000, 15000)
- *   reset_control_deassert(rst)   [second deassert]
+ *   reset_control_deassert(rst)   [second deassert — KEPT]
  *   if fail: error, unlock
  *   tvtop_pm_domain_enable(sub[2])
  *   usleep_range(10000, 15000)
@@ -211,14 +229,21 @@ int tvtop_tvfe_enable(struct device *dev)
 	if (sub->enabled)
 		goto out;
 
-	/* First reset deassert */
-	reset_control_deassert(sub->rst);
-	usleep_range(10000, 15000);
+	/*
+	 * PATCH: Removed first reset_deassert + usleep_range.
+	 * The stock code called reset_deassert BEFORE clocks were enabled,
+	 * which is undefined behavior and likely contributes to instability.
+	 * (KNOW-20260413-040938-645)
+	 */
 
 	/* Enable clocks */
 	pr_emerg("tvtopdbg:21 tvcap_clock_enable_start\n");
-	sunxi_tvtop_clock_enable(sub);
-	pr_emerg("tvtopdbg:22 tvcap_clock_enable_done\n");
+	ret = sunxi_tvtop_clock_enable(sub);
+	pr_emerg("tvtopdbg:22 tvcap_clock_enable_done ret=%d\n", ret);
+	if (ret) {
+		dev_err(tdev->dev, "tvfe: clock_enable failed: %d\n", ret);
+		goto out;
+	}
 
 	/* Enable bus clock if present */
 	if (sub->bus_clk && !sub->bus_clk_enabled) {
@@ -227,11 +252,14 @@ int tvtop_tvfe_enable(struct device *dev)
 		pr_emerg("tvtopdbg:26 tvcap_bus_clk_done ret=%d\n", ret);
 		if (ret == 0)
 			sub->bus_clk_enabled = true;
+		else
+			goto out;
 	}
 
-	usleep_range(10000, 15000);
+	/* PATCH: usleep_range → msleep for stability */
+	msleep(15);
 
-	/* Second reset deassert */
+	/* Reset deassert — this is the ONLY one now (was the second in stock) */
 	ret = reset_control_deassert(sub->rst);
 	if (ret) {
 		dev_err(tdev->dev,
@@ -239,10 +267,15 @@ int tvtop_tvfe_enable(struct device *dev)
 		goto out;
 	}
 
-	/* Enable power domain */
-	tvtop_pm_domain_enable(sub);
+	/* Enable power domain — check return value */
+	ret = tvtop_pm_domain_enable(sub);
+	if (ret < 0) {
+		dev_err(tdev->dev, "tvfe: pm_domain_enable failed: %d\n", ret);
+		goto out;
+	}
 
-	usleep_range(10000, 15000);
+	/* PATCH: usleep_range → msleep for stability */
+	msleep(15);
 
 	/* Write tvfe init register */
 	writel(0x003003FF, sub->iobase);
@@ -259,22 +292,8 @@ out:
  * Enable tvcap (TV capture / HDMI input) subsystem.
  * Matches stock tvtop_tvcap_enable at 0x0ac4 (444 bytes).
  *
- * Disasm logic:
- *   lock sub[1].lock
- *   if already enabled: unlock, return 0
- *   clock_enable(sub[1])
- *   usleep_range(10000, 15000)
- *   enable bus_clk if present
- *   reset_control_deassert(rst) — if fail, error + unlock
- *   usleep_range(10000, 15000)
- *   tvtop_pm_domain_enable(sub[1])
- *   usleep_range(10000, 15000)
- *   if is_power_on:
- *     Magic register write sequence to tvcap iobase
- *     ioremap(0x06940000, 0x100) — INCAP power register
- *     dsb(st); arm_heavy_mb(); writel(1, reg); iounmap(reg)
- *   set is_power_on = 1, enabled = 1
- *   unlock, return 0
+ * PATCH: Replace usleep_range with msleep for stability.
+ * PATCH: Check pm_domain_enable return value.
  */
 int tvtop_tvcap_enable(struct device *dev)
 {
@@ -288,10 +307,15 @@ int tvtop_tvcap_enable(struct device *dev)
 		goto out;
 
 	/* Enable clocks */
-	sunxi_tvtop_clock_enable(sub);
+	ret = sunxi_tvtop_clock_enable(sub);
+	if (ret) {
+		dev_err(tdev->dev, "tvcap: clock_enable failed: %d\n", ret);
+		goto out;
+	}
 
 	pr_emerg("tvtopdbg:23 tvcap_sleep1_start\n");
-	usleep_range(10000, 15000);
+	/* PATCH: usleep_range → msleep for stability */
+	msleep(15);
 	pr_emerg("tvtopdbg:24 tvcap_sleep1_done\n");
 
 	/* Enable bus clock if present */
@@ -299,6 +323,8 @@ int tvtop_tvcap_enable(struct device *dev)
 		ret = clk_prepare_enable(sub->bus_clk);
 		if (ret == 0)
 			sub->bus_clk_enabled = true;
+		else
+			goto out;
 	}
 
 	/* Deassert reset */
@@ -312,16 +338,22 @@ int tvtop_tvcap_enable(struct device *dev)
 	}
 
 	pr_emerg("tvtopdbg:29 tvcap_sleep2_start\n");
-	usleep_range(10000, 15000);
+	/* PATCH: usleep_range → msleep for stability */
+	msleep(15);
 	pr_emerg("tvtopdbg:30 tvcap_sleep2_done\n");
 
-	/* Enable power domain */
+	/* Enable power domain — check return value */
 	pr_emerg("tvtopdbg:31 tvcap_pm_domain_start\n");
-	tvtop_pm_domain_enable(sub);
-	pr_emerg("tvtopdbg:32 tvcap_pm_domain_done\n");
+	ret = tvtop_pm_domain_enable(sub);
+	pr_emerg("tvtopdbg:32 tvcap_pm_domain_done ret=%d\n", ret);
+	if (ret < 0) {
+		dev_err(tdev->dev, "tvcap: pm_domain_enable failed: %d\n", ret);
+		goto out;
+	}
 
 	pr_emerg("tvtopdbg:33 tvcap_sleep3_start\n");
-	usleep_range(10000, 15000);
+	/* PATCH: usleep_range → msleep for stability */
+	msleep(15);
 	pr_emerg("tvtopdbg:34 tvcap_sleep3_done\n");
 
 	/*
@@ -337,23 +369,28 @@ int tvtop_tvcap_enable(struct device *dev)
 		writel(0x01111117, iobase + 4);
 		writel(0x00000404, iobase + 8);
 		writel(0x00111111, iobase + 0);
-		usleep_range(10000, 15000);
+		/* PATCH: usleep_range → msleep for stability */
+		msleep(15);
 
 		pr_emerg("tvtopdbg:51 tvcap_magic_phase2_start\n");
 		/* Phase 2: clear all */
 		writel(0, iobase + 4);
-		usleep_range(10000, 15000);
+		/* PATCH: usleep_range → msleep for stability */
+		msleep(15);
 		writel(0, iobase + 8);
 		writel(0, iobase + 0);
-		usleep_range(10000, 15000);
+		/* PATCH: usleep_range → msleep for stability */
+		msleep(15);
 
 		pr_emerg("tvtopdbg:52 tvcap_magic_phase3_start\n");
 		/* Phase 3: re-write magic values */
 		writel(0x01111117, iobase + 4);
-		usleep_range(10000, 15000);
+		/* PATCH: usleep_range → msleep for stability */
+		msleep(15);
 		writel(0x00000404, iobase + 8);
 		writel(0x00111111, iobase + 0);
-		usleep_range(10000, 15000);
+		/* PATCH: usleep_range → msleep for stability */
+		msleep(15);
 
 		pr_emerg("tvtopdbg:53 tvcap_magic_phase4_start\n");
 		/* Phase 4: INCAP power register — enable capture block */
