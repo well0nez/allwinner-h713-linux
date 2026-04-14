@@ -1014,6 +1014,7 @@ int cpu_comm_init(int mode)
 	 *   0x0200160c: bus_mips_reset — bits 16-18 (RST_MIPS, RST_MIPS_DBG, RST_MIPS_CFG)
 	 *   0x0200171c: msgbox_reset — bit 16
 	 *
+	 * Allwinner convention: bit=1 means deasserted (out of reset).
 	 * We ensure clocks are enabled and resets are deasserted so the
 	 * MIPS can boot properly when loaded by U-Boot.
 	 */
@@ -1032,29 +1033,36 @@ int cpu_comm_init(int mode)
 				pr_info("cpu_comm: MIPS CLK enabled\n");
 			}
 
-			/* Ensure bus MIPS clock is enabled (0x604 offset) */
-			val = readl(ccu + 0x604);
-			pr_info("cpu_comm: BUS MIPS CLK before: 0x%08x\n", val);
+			/* Ensure bus MIPS clock is enabled (0x60c offset, BIT(0))
+			 * NOTE: 0x60c contains BOTH the bus gate (bit 0) AND
+			 * reset control (bits 16-18). Same register!
+			 * CCU driver: bus_mips_clk @ 0x60c BIT(0).
+			 * Previous code WRONGLY used 0x604 (non-existent register).
+			 */
+			val = readl(ccu + 0x60c);
+			pr_info("cpu_comm: BUS MIPS GATE+RESET before: 0x%08x\n", val);
 			if (!(val & 0x1)) {
-				val |= 0x1; /* Set AHB gate enable */
-				writel(val, ccu + 0x604);
-				pr_info("cpu_comm: BUS MIPS CLK enabled\n");
+				val |= 0x1; /* Set bus gate enable (BIT 0) */
+				writel(val, ccu + 0x60c);
+				pr_info("cpu_comm: BUS MIPS CLK gate enabled\n");
 			}
 
 			/* Deassert MIPS reset bits (0x60c offset, bits 16-18) */
+			/* Allwinner: bit=1 = deasserted. Set bits to deassert. */
 			val = readl(ccu + 0x60c);
 			pr_info("cpu_comm: BUS MIPS RESET before: 0x%08x\n", val);
-			if (val & 0x00070000) {
-				val &= ~0x00070000; /* Clear RST_MIPS, RST_MIPS_DBG, RST_MIPS_CFG */
+			if (!(val & 0x00070000)) {
+				val |= 0x00070000; /* SET bits = deassert RST_MIPS, RST_MIPS_DBG, RST_MIPS_CFG */
 				writel(val, ccu + 0x60c);
 				pr_info("cpu_comm: MIPS resets deasserted\n");
 			}
 
 			/* Deassert msgbox reset (0x71c offset, bit 16) */
+			/* Allwinner: bit=1 = deasserted. Set bit to deassert. */
 			val = readl(ccu + 0x71c);
 			pr_info("cpu_comm: MSGBOX RESET before: 0x%08x\n", val);
-			if (val & 0x00010000) {
-				val &= ~0x00010000;
+			if (!(val & 0x00010000)) {
+				val |= 0x00010000; /* SET bit = deassert msgbox reset */
 				writel(val, ccu + 0x71c);
 				pr_info("cpu_comm: MSGBOX reset deasserted\n");
 			}
@@ -1111,30 +1119,27 @@ int cpu_comm_init(int mode)
 		readl(vaddr + 0x90), readl(vaddr + 0x75B8));
 
 	/*
-	 * FIX: Conditional wipe — only memset_io if magics are NOT already set.
+	 * NO WIPE. U-Boot + MIPS firmware have already initialized SharedMem
+	 * before Linux boots. Any memset_io here destroys:
+	 *   - MIPS SMM heap pointers (trid_smm ShStartAddr → 0x0)
+	 *   - MIPS CPU flags (READY, APP_READY)
+	 *   - FusionDale state registrations
+	 *   - TSE data lookup tables
 	 *
-	 * Root cause of MIPS APP_READY=0: memset_io wipes the entire shared
-	 * memory region including magic markers and MIPS flags BEFORE the MIPS
-	 * has a chance to call setCPUAppReady. Since MIPS only calls
-	 * setCPUAppReady once during its init, a wipe after MIPS has already
-	 * set its flags permanently destroys MIPS APP_READY.
+	 * MIPS elog showed: "ShStartAddr=0x0, size=0x0" after wipe.
+	 * Stock ARM driver (cpu_comm_dev.ko) does NOT wipe SharedMem
+	 * when magics are already set (DEADBEEF check in InitCommMem).
 	 *
-	 * Stock firmware checks magic1+magic2 in InitCommMem master path
-	 * and takes a lightweight reinit if both are DEADBEEF.
-	 * We replicate this: if magics are already set, skip the full wipe.
+	 * We preserve the entire SharedMem content and only re-init
+	 * our ARM-side structures (spinlocks, routing table, etc.)
+	 * in the code below.
 	 */
 	{
 		u32 magic1 = readl(vaddr + SHMEM_OFF_MAGIC1);
 		u32 magic2 = readl(vaddr + SHMEM_OFF_MAGIC2);
 
-		if (magic1 == CPU_COMM_MAGIC && magic2 == CPU_COMM_MAGIC) {
-			pr_info("cpu_comm: magics already set (0x%x/0x%x) — skipping memset_io wipe to preserve MIPS flags\n",
-				magic1, magic2);
-		} else {
-			pr_info("cpu_comm: magics not set (0x%x/0x%x) — performing full memset_io wipe\n",
-				magic1, magic2);
-			memset_io(vaddr, 0, SHMEM_OFF_SMM_HEAP + 8);
-		}
+		pr_info("cpu_comm: SHMEM preserved (magic1=0x%x magic2=0x%x) — NO wipe\n",
+			magic1, magic2);
 	}
 
 	ret = cpu_comm_hw_init();
@@ -1142,10 +1147,38 @@ int cpu_comm_init(int mode)
 		goto err_unmap;
 
 	if (getCurCPUID(0) == CPU_ID_ARM) {
+		/* Log what U-Boot left in share regs BEFORE we overwrite.
+		 * U-Boot writes these before MIPS boot, but the kernel's clock
+		 * framework disables BUS_MIPS_CLK during boot, making the MIPS
+		 * control block (0x03061xxx) lose its register contents.
+		 * We re-enable the clock above, then re-write here.
+		 */
+		u32 old_addr = comm_ReadShareReg(SHARE_REG_ADDR);
+		u32 old_size = comm_ReadShareReg(SHARE_REG_SIZE);
+		pr_info("cpu_comm: share regs BEFORE write: addr=0x%x size=0x%x\n",
+			old_addr, old_size);
+
 		comm_WriteShareReg(SHARE_REG_ADDR, ShMemAddr);
 		comm_WriteShareReg(SHARE_REG_SIZE, ShMemSize);
-		pr_info("cpu_comm: wrote ShMemAddr=0x%x to MIPS share regs\n",
-			ShMemAddr);
+		pr_info("cpu_comm: wrote ShMemAddr=0x%x size=0x%x to MIPS share regs\n",
+			ShMemAddr, ShMemSize);
+
+		/*
+		 * MIPS firmware reads share regs only once at boot and sees 0x0
+		 * (because BUS_CLK was disabled by kernel clock framework).
+		 * MIPS enters a polling loop with ShStartAddr=0x0.
+		 *
+		 * Send a doorbell via msgbox to trigger MIPS to re-read.
+		 * Msgbox base: 0x03003000, User2 TX FIFO: offset 0x70.
+		 */
+		{
+			void __iomem *mbox = ioremap(0x03003000, 0x200);
+			if (mbox) {
+				writel(0x0001, mbox + 0x70);
+				pr_info("cpu_comm: sent doorbell to MIPS via msgbox (re-read share regs)\n");
+				iounmap(mbox);
+			}
+		}
 	}
 
 	/* Register /dev/cpu_comm character device */
@@ -1268,12 +1301,11 @@ int cpu_comm_init(int mode)
 			pr_info("cpu_comm: MIPS elog BEFORE: mode=%u en2=%u wp2=%u\n",
 				old_mode, old_en2, old_wp2);
 
-			/* Switch to Mode 2 (2MB linear buffer) */
-			/* writeb(2, elog_ctl + 0x9B); -- keep Mode 1 ring buffer */   /* mode = 2 */
-			/* writeb(1, elog_ctl + 0x4AD); */  /* mode2 enable = 1 */
-			/* writel(0, elog_ctl + 0x4B8); */  /* mode2 write ptr = 0 */
-
-			pr_info("cpu_comm: MIPS elog staying on Mode 1 (ring buffer) (2MB buffer)\n");
+			/* Keep Mode 1 (ring buffer) — MIPS only logs in Mode 1.
+			 * Mode 2 capture buffer stays empty (MIPS ignores mode switch).
+			 * Ring buffer at 0x4B272D9C, ~100KB.
+			 */
+			pr_info("cpu_comm: MIPS elog staying on Mode 1 (ring buffer at 0x4B272D9C)\n");
 			iounmap(elog_ctl);
 		} else {
 			pr_warn("cpu_comm: failed to ioremap MIPS elog control\n");
@@ -1406,9 +1438,9 @@ int cpu_comm_init(int mode)
 		 * See also: cpu_comm_mem.c setCPUAppReady() 2s timeout on the
 		 * other-CPU wait (replacing the stock infinite msleep loop).
 		 */
-		if (!(*mips_flag & 0x5)) {
+		if ((*mips_flag & 0x5) != 0x5) {
 			comm_SpinLock(3);
-			*mips_flag |= 0x5;  /* CPU_FLAG_READY | CPU_FLAG_APP_READY */
+			*mips_flag = (*mips_flag & ~0xFF) | 0x5;  /* Clean low byte, set READY + APP_READY */
 			comm_SpinUnLock(3, 0);
 			pr_info("cpu_comm: MIPS READY+APP_READY force-set from ARM (stock never sets it). flag=0x%x\n",
 				*mips_flag);
@@ -1438,41 +1470,44 @@ int cpu_comm_init(int mode)
 		}
 	}
 
-	/* Dump MIPS elog Mode 2 buffer */
+	/* Dump MIPS elog Mode 1 ring buffer (100KB at 0x4B272D9C) */
 	{
 		void __iomem *elog_ctl, *elog_buf;
-		u32 wp2;
 
 		elog_ctl = ioremap(0x4B48BE00, 0x500);
-		elog_buf = ioremap(0x4B28BD9C, 0x200000);
+		elog_buf = ioremap(0x4B272000, 0x20000);  /* 128KB covering ring buffer */
 
 		if (elog_ctl && elog_buf) {
 			u8 cur_mode = readb(elog_ctl + 0x9B);
-			wp2 = readl(elog_ctl + 0x4B8);
+			u32 wp2 = readl(elog_ctl + 0x4B8);
 
 			pr_info("cpu_comm: MIPS elog AFTER: mode=%u wp2=%u\n",
 				cur_mode, wp2);
 
-			if (wp2 > 0 && wp2 <= 0x200000) {
-				/* Dump in chunks to dmesg (max ~800 bytes per pr_info) */
+			/* Dump Mode 1 ring buffer content */
+			{
 				char line[256];
-				u32 pos = 0;
-				u32 len = min_t(u32, wp2, 0x10000); /* cap at 64KB for dmesg */
+				u32 pos = 0x0D9C;  /* 0x4B272D9C - 0x4B272000 = offset into mapping */
+				u32 end = 0x1D9C0; /* ~100KB */
 				int lpos = 0;
+				int lines_printed = 0;
 
-				pr_info("cpu_comm: === MIPS ELOG DUMP (%u bytes) ===\n", wp2);
-				while (pos < len) {
+				pr_info("cpu_comm: === MIPS ELOG DUMP (Mode 1 ring buffer) ===\n");
+				while (pos < end && lines_printed < 200) {
 					u8 c = readb(elog_buf + pos);
 					pos++;
 					if (c == '\n' || lpos >= 250) {
 						line[lpos] = '\0';
-						pr_info("MIPS: %s\n", line);
+						if (lpos > 0) {
+							pr_info("MIPS: %s\n", line);
+							lines_printed++;
+						}
 						lpos = 0;
 					} else if (c >= 0x20 && c < 0x7F) {
 						line[lpos++] = c;
 					} else if (c == '\x1B') {
 						/* Skip ANSI escape sequences */
-						while (pos < len) {
+						while (pos < end) {
 							c = readb(elog_buf + pos);
 							pos++;
 							if ((c >= 'A' && c <= 'Z') ||
@@ -1485,9 +1520,7 @@ int cpu_comm_init(int mode)
 					line[lpos] = '\0';
 					pr_info("MIPS: %s\n", line);
 				}
-				pr_info("cpu_comm: === END MIPS ELOG ===\n");
-			} else {
-				pr_info("cpu_comm: MIPS elog Mode 2 buffer empty (wp2=%u)\n", wp2);
+				pr_info("cpu_comm: === END MIPS ELOG (%d lines) ===\n", lines_printed);
 			}
 		}
 

@@ -1439,6 +1439,12 @@
 			ports {
 				#address-cells = <1>;
 				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					hdmi_in: endpoint {
+						remote-endpoint = <&de_out_hdmi>;
+					};
+				};
 				port@1 {
 					reg = <1>;
 					hdmi_out: endpoint {
@@ -1858,5 +1864,28 @@
 		start_type = <0>;
 		irkey_used = <1>;
 		pmukey_used = <0>;
+	};
+
+	/*
+	 * Display Engine — required for HDMI CRTC binding.
+	 * port@0 connects to the primary display pipeline (LVDS/TVTOP).
+	 * port@1 connects to HDMI via hdmi_in endpoint.
+	 */
+	display-engine {
+		compatible = "allwinner,sun50i-h713-display-engine";
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				/* Primary output → TVTOP/LVDS pipeline (TODO: connect when TVTOP endpoint defined) */
+			};
+			port@1 {
+				reg = <1>;
+				de_out_hdmi: endpoint {
+					remote-endpoint = <&hdmi_in>;
+				};
+			};
+		};
 	};
 };

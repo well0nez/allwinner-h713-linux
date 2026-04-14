@@ -259,7 +259,7 @@ void setCPUAppReady(u32 cpu_id)
 	if (WARN_ON(!ShMemAddrBase || cpu_id > 1))
 		return;
 
-	/* Verify magic markers — graceful error instead of BUG() */
+	/* Verify magic markers — graceful error handling */
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC1) != CPU_COMM_MAGIC) {
 		pr_err("cpu_comm: setCPUAppReady: magic1 not set! Skipping APP_READY.\n");
 		return;

@@ -148,12 +148,12 @@ void Comm_Add2NewCallFifo(void *pool_ptr, u32 *cmd_fifo, u32 call_entry)
 	wr_slot = (u32 *)fifo_getItemWr(cmd_fifo);
 	if (!wr_slot) {
 		pr_err("cpu_comm: Comm_Add2NewCallFifo: cmd_fifo full!\n");
-		BUG();
+		return;
 	}
 	*wr_slot = call_entry;
 	if (!fifo_requestItemWr(cmd_fifo)) {
 		pr_err("cpu_comm: Comm_Add2NewCallFifo: requestItemWr failed!\n");
-		BUG();
+		return;
 	}
 
 	/* Set "dispatched" flag at entry + 10 (u16 flags2) */
@@ -174,15 +174,15 @@ void Comm_Add2NewCallFifo(void *pool_ptr, u32 *cmd_fifo, u32 call_entry)
 	/* Validate channel fields match the call entry */
 	if (*(u16 *)(channel_ptr + 2) != *(u16 *)call_entry) {
 		pr_err("cpu_comm: Comm_Add2NewCallFifo: channel comp mismatch!\n");
-		BUG();
+		return;
 	}
 	if (*(u32 *)(channel_ptr + 8) != *(u32 *)(call_entry + 16)) {
 		pr_err("cpu_comm: Comm_Add2NewCallFifo: channel cpu mismatch!\n");
-		BUG();
+		return;
 	}
 	if (*(u32 *)(channel_ptr + 12) != channel_id) {
 		pr_err("cpu_comm: Comm_Add2NewCallFifo: channel id mismatch!\n");
-		BUG();
+		return;
 	}
 
 	/* Signal the channel's semaphore to wake processing thread */
@@ -253,7 +253,7 @@ int GetFreeWaitComm(void *fifo, u32 **result)
 	u32 *item;
 
 	if (!result)
-		BUG();
+		return -EINVAL;
 
 	item = (u32 *)fifo_getItemRd(f);
 	if (item) {
@@ -455,7 +455,7 @@ void ReleaseWaitComm(u32 cpu_id, u32 wait_entry)
 	wr_slot = (u32 *)fifo_getItemWr(fifo);
 	if (!wr_slot) {
 		pr_err("cpu_comm: ReleaseWaitComm: FreeWait FIFO full!\n");
-		BUG();
+		return;
 	}
 
 	*wr_slot = wait_entry;
@@ -537,14 +537,14 @@ int Comm_GetFreeCall(void *share_seq)
 
 	if (!entry_vir) {
 		pr_err("cpu_comm: Comm_GetFreeCall: null entry_phy in slot!\n");
-		BUG();
+		return 0;
 	}
 
 	/* Validate slot index (u16 at entry + 4) */
 	if (*(u16 *)(entry_vir + 4) > 19) {
 		pr_err("cpu_comm: Comm_GetFreeCall: slot index %u out of range!\n",
 		       *(u16 *)(entry_vir + 4));
-		BUG();
+		return 0;
 	}
 
 	/* Clear the call entry flags (u16 at entry + 10) */
@@ -580,20 +580,20 @@ void Comm_ReleaseFreeCall(void *share_seq, void *call)
 
 	if (!share_seq) {
 		pr_err("cpu_comm: Comm_ReleaseFreeCall: null share_seq!\n");
-		BUG();
+		return;
 	}
 
 	/* Validate local_cpu matches current CPU */
 	if (seq[0] != getCurCPUID(0)) {
 		pr_err("cpu_comm: Comm_ReleaseFreeCall: cpu mismatch!\n");
-		BUG();
+		return;
 	}
 
 	remote_cpu = seq[1];
 	if (remote_cpu > 1) {
 		pr_err("cpu_comm: Comm_ReleaseFreeCall: invalid remote cpu %u\n",
 		       remote_cpu);
-		BUG();
+		return;
 	}
 
 	fifo = (u32 *)(seq + 120);
@@ -604,14 +604,14 @@ void Comm_ReleaseFreeCall(void *share_seq, void *call)
 	wr_slot_phy = fifo_getItemWr(fifo);
 	if (!wr_slot_phy) {
 		pr_err("cpu_comm: Comm_ReleaseFreeCall: FIFO full!\n");
-		BUG();
+		return;
 	}
 
 	/* Convert physical write slot to virtual for writing */
 	wr_slot_vir = (u32 *)(wr_slot_phy + ShMemAddrBase - ShMemAddr);
 	if (!wr_slot_vir) {
 		pr_err("cpu_comm: Comm_ReleaseFreeCall: null wr_slot_vir!\n");
-		BUG();
+		return;
 	}
 
 	/* Clear flags on the call entry before returning to pool */
@@ -624,7 +624,7 @@ void Comm_ReleaseFreeCall(void *share_seq, void *call)
 
 	if (!fifo_requestItemWr(fifo)) {
 		pr_err("cpu_comm: Comm_ReleaseFreeCall: requestItemWr failed!\n");
-		BUG();
+		return;
 	}
 
 	cpu_comm_sem_up((void *)sem);
@@ -644,7 +644,7 @@ void Comm_ReleaseFreeCall(void *share_seq, void *call)
  *
  * IDA pseudocode:
  *   ItemWr = fifo_getItemWr(a1);
- *   if (!ItemWr) BUG();
+ *   if (!ItemWr) return;  // was infinite loop in stock
  *   *ItemWr = a2;
  *   *(u16 *)(a2 + 10) |= 0x10;   // set "return queued" flag
  *   fifo_requestItemWr(a1);
@@ -661,7 +661,7 @@ int AddReturn2Fifo(u32 *fifo, void *data)
 	wr_slot = (u32 *)fifo_getItemWr(fifo);
 	if (!wr_slot) {
 		pr_err("cpu_comm: AddReturn2Fifo: FIFO full!\n");
-		BUG();
+		return 0;
 	}
 
 	*wr_slot = (u32)data;
@@ -671,7 +671,7 @@ int AddReturn2Fifo(u32 *fifo, void *data)
 
 	if (!fifo_requestItemWr(fifo)) {
 		pr_err("cpu_comm: AddReturn2Fifo: requestItemWr failed!\n");
-		BUG();
+		return 0;
 	}
 
 	return 1;
@@ -709,7 +709,7 @@ int GetReturnbySessionId(u32 session_id, u32 cpu, u32 *result)
 
 	if (cpu > 1) {
 		pr_err("cpu_comm: GetReturnbySessionId: invalid cpu %u\n", cpu);
-		BUG();
+		return 0;
 	}
 
 	/* Drain the staging FIFO into the linked list first */
@@ -751,7 +751,7 @@ int GetReturnbySessionId(u32 session_id, u32 cpu, u32 *result)
 			/* Decrement count, BUG if it goes negative */
 			if ((int)--fifo_hdr[13] < 0) {
 				pr_err("cpu_comm: GetReturnbySessionId: count underflow!\n");
-				BUG();
+    return 0;
 			}
 
 			if (result)
@@ -801,7 +801,7 @@ void returnPipeLine(void *data)
 
 	if (cpu > 1) {
 		pr_err("cpu_comm: returnPipeLine: invalid cpu %u\n", cpu);
-		BUG();
+		return;
 	}
 
 	share_seq_r = getShareSeqR(cpu, 1);	/* return direction */
@@ -824,7 +824,7 @@ void returnPipeLine(void *data)
 		if (*(u16 *)(entry_vir + 4) > 19) {
 			pr_err("cpu_comm: returnPipeLine: slot index %u out of range!\n",
 			       *(u16 *)(entry_vir + 4));
-			BUG();
+			return;
 		}
 
 		/* Set "in return list" flag at entry + 10 */

@@ -141,7 +141,13 @@ void cpu_comm_msgbox_free_irq(void)
 {
 	if (msgbox_poll_active) {
 		msgbox_poll_active = false;
-		cancel_delayed_work_sync(&msgbox_poll_work);
+		/*
+		 * Use cancel_delayed_work (non-sync) to avoid blocking
+		 * during shutdown. The poll_fn checks msgbox_poll_active
+		 * at entry and returns immediately when false.
+		 * _sync variant hangs if MMIO is already dead during reboot.
+		 */
+		cancel_delayed_work(&msgbox_poll_work);
 		msgbox_rx_callback = NULL;
 		pr_info("cpu_comm: msgbox RX poll stopped\n");
 	}
