@@ -108,7 +108,7 @@ struct.pack_into('<I', header, 12, 0)  # no ramdisk
 struct.pack_into('<I', header, 16, 0x16000162)
 struct.pack_into('<I', header, 20, HEADER_SIZE)
 struct.pack_into('<I', header, 40, 3)  # v3
-cmdline = b'console=ttyS0,115200 earlycon earlyprintk loglevel=8 root=/dev/sda2 rootwait rootfstype=ext4 clk_ignore_unused'
+cmdline = b'console=tty0 console=ttyS0,115200 earlycon loglevel=8 root=/dev/sda2 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M'
 header[44:44+len(cmdline)] = cmdline
 
 def page_align(size):
