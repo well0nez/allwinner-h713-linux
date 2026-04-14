@@ -1,12 +1,44 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * cpu_comm_dev.c — Kernel interface for CPU_COMM
+ * cpu_comm_dev.c — Kernel interface for CPU_COMM (ARM ↔ MIPS IPC)
  *
  * Platform driver, /dev/cpu_comm chardev, ioctl handler,
  * mmap for shared memory access, procfs debug interface,
  * suspend/resume, and module init/cleanup.
  *
  * RE source: HAL_SX6/Kernel_Driver/cpu_comm/cpu_comm.c
+ *
+ * === MIPS SharedMem Init — Critical Timing Notes ===
+ *
+ * The H713 has a MIPS coprocessor running display.bin firmware.
+ * ARM and MIPS communicate via 5MB SharedMem at 0x4e300000.
+ * MIPS needs the SharedMem base address written to share registers
+ * at 0x03061024 (addr) and 0x03061028 (size) BEFORE it can init IPC.
+ *
+ * Boot sequence:
+ *   T+0.0s  U-Boot loads display.bin, writes share regs, starts MIPS
+ *   T+0.5s  MIPS reads share regs → gets SharedMem address
+ *   T+0.9s  Kernel: sunxi-mipsloader probes (built-in, CONFIG_SUNXI_MIPSLOADER=y)
+ *           → RE-WRITES share regs (kernel clock framework may have gated
+ *             BUS_MIPS_CLK, losing U-Boot's register values)
+ *   T+2.0s  MIPS: cpu_comm init done, APP_READY set
+ *   T+15s   Kernel: cpu_comm module loads, finds MIPS already initialized
+ *
+ * CRITICAL: If mipsloader is not built-in (or not compiled at all),
+ * the share regs stay 0x0 after clock gating, MIPS never gets the
+ * SharedMem address, and all IPC fails. This was the root cause of
+ * months of "MIPS APP_READY=0" debugging — solved by enabling
+ * CONFIG_SUNXI_MIPSLOADER=y and patching mipsloader to write share regs.
+ *
+ * CRITICAL: SharedMem must NOT be wiped (memset_io). MIPS initializes
+ * its SMM heap, FusionDale states, and TSE data lookups in SharedMem
+ * before this module loads. Any wipe destroys MIPS state and causes
+ * "ShStartAddr=0x0" in MIPS elog (trid_smm.c:1141).
+ *
+ * Stock Allwinner driver (cpu_comm_dev.ko) had BUG()/while(1) infinite
+ * loops as error handling. All replaced with graceful returns.
+ * Stock setCPUAppReady had a hardcoded wait-loop bug (checked own flag
+ * instead of other CPU). See cpu_comm_mem.c for details.
  */
 
 #include <linux/module.h>
