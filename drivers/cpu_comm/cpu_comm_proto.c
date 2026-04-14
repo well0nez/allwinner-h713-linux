@@ -191,7 +191,7 @@ int SendComm2CPUEx(u32 msg_ptr, u32 target_cpu, int from_user)
 	if (!msg_ptr || target_cpu > 1) {
 		pr_err("cpu_comm: SendComm2CPUEx: invalid args msg=%08x cpu=%u\n",
 		       msg_ptr, target_cpu);
-		BUG();
+		return -EINVAL;
 	}
 
 	/* ── Step 2: resolve dst_cpu ── */
@@ -317,7 +317,7 @@ int SendComm2CPUEx(u32 msg_ptr, u32 target_cpu, int from_user)
 	/* ── Step 13: verify slot address matches FIFO table ── */
 	if (call_slot != (share_seq_w + 104 * (u32)slot_idx + 360)) {
 		pr_err("cpu_comm: SendComm2CPUEx: slot address mismatch!\n");
-		BUG();
+		return -EINVAL;
 	}
 
 	/* ── Step 14: direction from share_seq header byte [2] ── */
@@ -494,7 +494,7 @@ void SendAckLow(void *data, u32 a2, u8 a3, u32 a4, u32 a5)
 	/* Validate: ACK sent flag must not already be set */
 	if (seq[105] & 4) {
 		pr_err("cpu_comm: SendAckLow: ACK sent flag already set!\n");
-		BUG();
+		return;
 	}
 
 	/* Write ACK metadata to ACK-specific offsets */
@@ -601,7 +601,7 @@ void comm_Action(int type, int cpu)
 		break;
 	default:
 		pr_err("cpu_comm: comm_Action: unknown type %d\n", type);
-		BUG();
+		return;
 	}
 }
 
@@ -648,7 +648,7 @@ void command_action(u32 remote_cpu, u32 direction)
 	/* Check: sent flag (bit 2) must not be set on read side */
 	if (*(u8 *)(share_seq_r + 8) & 4) {
 		pr_err("cpu_comm: command_action: sent flag on read sequence!\n");
-		BUG();
+		return;
 	}
 
 	/* Get the call entry at the current sequence index */
@@ -724,13 +724,13 @@ void command_action(u32 remote_cpu, u32 direction)
 			if (!wait_obj) {
 				pr_err("cpu_comm: command_action: wait not found for session 0x%x\n",
 				       session_id);
-				BUG();
+    return;
 			}
 
 			/* Verify session match */
 			if (*(u32 *)(entry_base + 12) != *(u32 *)wait_obj) {
 				pr_err("cpu_comm: command_action: session mismatch\n");
-				BUG();
+    return;
 			}
 
 			dmb(ish);
@@ -742,13 +742,13 @@ void command_action(u32 remote_cpu, u32 direction)
 
 			if (!wait_ptr) {
 				pr_err("cpu_comm: command_action: no wait pointer\n");
-				BUG();
+    return;
 			}
 
 			/* Verify session match */
 			if (*(u32 *)(entry_base + 12) != *(u32 *)(u32)wait_ptr) {
 				pr_err("cpu_comm: command_action: session mismatch (embedded)\n");
-				BUG();
+    return;
 			}
 
 			dmb(ish);
@@ -796,7 +796,7 @@ void ack_action(u32 cpu, u32 direction)
 	if (*(u8 *)(share_seq + 105) & 4) {
 		pr_err("cpu_comm: ack_action: status2 bit 2 set (cpu=%u dir=%u)\n",
 		       cpu, direction);
-		BUG();
+		return;
 	}
 
 	/* Signal the semaphore at offset 112 in the share sequence.

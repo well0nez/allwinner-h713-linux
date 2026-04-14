@@ -611,7 +611,7 @@ void cpu_comm_proc_term(void);
 void setCPUReady(u32 cpu_id);
 void setCPUnotReady(u32 cpu_id);
 void setCPUAppReady(u32 cpu_id);
-void setCPUReset(u32 cpu_id, const char *phase);  /* phase: NULL=flags, (char*)1=cleanup */
+void setCPUReset(u32 cpu_id, unsigned int phase);  /* phase: NULL=flags, (char*)1=cleanup */
 int  isCPUReady(u32 cpu_id);
 int  isCPUAppReady(u32 cpu_id);
 int  IsCPUReset(u32 cpu_id);

@@ -126,9 +126,9 @@ int AddInRoutine(void *data)
 	if (WARN_ON(!ShMemAddrBase || !data))
 		return -EINVAL;
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC1) != CPU_COMM_MAGIC)
-		return -EINVAL; /* was BUG() */
+		return -EINVAL;
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC2) != CPU_COMM_MAGIC)
-		return -EINVAL; /* was BUG() */
+		return -EINVAL;
 
 	/* Keep cpu_id from user buffer (allows registering routes to MIPS) */
 	/* Was: *(u16 *)((u8 *)data + RT_CPU_OFF) = (u16)getCurCPUID(0); */
@@ -136,7 +136,7 @@ int AddInRoutine(void *data)
 	comp_id = *(u32 *)((u8 *)data + RT_COMP_ID_OFF);
 	if (*(int *)rt_count_ptr() > RT_MAX_INDEX) {
 		pr_err("cpu_comm: AddInRoutine: table count > %d\n", RT_MAX_INDEX);
-		return -EINVAL; /* was BUG() */
+		return -EINVAL;
 	}
 
 	/* Check for duplicate */
@@ -164,7 +164,7 @@ int AddInRoutine(void *data)
 			if (*(u16 *)(rt_entry(cur_idx) + RT_CPU_OFF) > 1) {
 				pr_err("cpu_comm: AddInRoutine: corrupt entry at %d\n",
 				       cur_idx);
-				return -EINVAL; /* was BUG() */
+				return -EINVAL;
 			}
 			prev_idx = cur_idx;
 			cur_idx = rt_next(cur_idx);
@@ -173,7 +173,7 @@ int AddInRoutine(void *data)
 			if (cur_idx > RT_MAX_INDEX) {
 				pr_err("cpu_comm: AddInRoutine: chain index %d > max\n",
 				       cur_idx);
-				return -EINVAL; /* was BUG() */
+				return -EINVAL;
 			}
 		}
 
@@ -198,7 +198,7 @@ int AddInRoutine(void *data)
 						       "overflow %d has next!=%d\n",
 						       overflow_idx,
 						       rt_next(overflow_idx));
-						return -EINVAL; /* was BUG() */
+						return -EINVAL;
 					}
 					entry = rt_entry(overflow_idx);
 					mmiocpy(entry, data, RT_ENTRY_SIZE);
@@ -253,13 +253,13 @@ int RemoveRoutine(void *data)
 	if (WARN_ON(!ShMemAddrBase || !data))
 		return -EINVAL;
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC1) != CPU_COMM_MAGIC)
-		BUG();
+		return -EINVAL;
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC2) != CPU_COMM_MAGIC)
-		BUG();
+		return -EINVAL;
 
 	comp_id = *(u32 *)((u8 *)data + RT_COMP_ID_OFF);
 	if (*(int *)rt_count_ptr() > RT_MAX_INDEX)
-		BUG();
+		return -EINVAL;
 
 	comm_SpinLock(2);
 	(*rt_version_ptr())++;
@@ -278,7 +278,7 @@ int RemoveRoutine(void *data)
 			goto out;
 		}
 		if (next_idx > RT_MAX_INDEX)
-			BUG();
+			return -EFAULT;
 
 		prev_idx = cur_idx;
 		cur_idx = next_idx;
@@ -287,7 +287,7 @@ int RemoveRoutine(void *data)
 	cur_entry = rt_entry(cur_idx);
 
 	if (*(u16 *)(cur_entry + RT_CPU_OFF) > 1)
-		BUG();
+		return -EFAULT;
 
 	/* Clear the entry */
 	*(u32 *)(cur_entry + RT_COMP_ID_OFF) = 0;
@@ -522,15 +522,15 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
 	u16 *return_entry = NULL;
 
 	if (!params)
-		BUG();
+		return -EINVAL;
 	if (!result)
-		BUG();
+		return -EINTR;
 
 	param_count = params[0];
 	if (param_count > 10) {
 		pr_err("cpu_comm: CPUComm_CallEx: param_count %d > 10\n",
 		       param_count);
-		BUG();
+		return -EINVAL;
 	}
 
 	/* Build local comm_msg on stack */
@@ -575,7 +575,7 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
 	if (!wait_obj) {
 		pr_err("cpu_comm: CPUComm_CallEx: wait obj not found (session=0x%x)\n",
 		       session_ptr);
-		BUG();
+		return -EINVAL;
 	}
 
 	/* Wait for MIPS to respond (blocks until up() is called) */
@@ -583,7 +583,7 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
 	if (ret) {
 		pr_err("cpu_comm: CPUComm_CallEx: interrupted waiting (session=0x%x)\n",
 		       session_ptr);
-		BUG();
+		return -EINVAL;
 	}
 
 	/* Get the return message from the return FIFO */
@@ -591,7 +591,7 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
 	if (ret) {
 		pr_err("cpu_comm: CPUComm_CallEx: return not found (session=0x%x)\n",
 		       session_ptr);
-		BUG();
+		return -EFAULT;
 	}
 
 	/* Copy results from return entry to caller's result buffer */
@@ -626,7 +626,7 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
 		GetWaitbySessionId((void *)(seq_base + 40),
 				   session_ptr, (u8 *)&wait_cleanup);
 		if (!wait_cleanup)
-			BUG();
+			return -EINVAL;
 		ReleaseWaitComm(dst_cpu, wait_cleanup);
 	}
 
@@ -661,13 +661,13 @@ int CPUComm_Notify(void *name, void *params)
 	int i;
 
 	if (!params)
-		BUG();
+		return -EINVAL;
 
 	param_count = p[0];
 	if (param_count > 10) {
 		pr_err("cpu_comm: CPUComm_Notify: param_count %d > 10\n",
 		       param_count);
-		BUG();
+		return -EINVAL;
 	}
 
 	/* Format component name: name_cpuhint_subid */
@@ -843,25 +843,25 @@ void comm_CallWorkAction(void *data)
 	u8 *share_seq;
 
 	if (!data)
-		BUG();
+		return;
 
 	/* The call entry pointer is stored in our comm_work_item struct */
 	call_entry = ((struct comm_work_item *)data)->call_entry;
 	if (!call_entry)
-		BUG();
+		return;
 
 	/* Validate: component_id > 4 (high-priority calls only) */
 	if (*call_entry <= 4) {
 		pr_err("cpu_comm: comm_CallWorkAction: comp_id %u <= 4!\n",
 		       *call_entry);
-		BUG();
+		return;
 	}
 
 	/* Validate: source CPU */
 	if (call_entry[1] > 1) {
 		pr_err("cpu_comm: comm_CallWorkAction: invalid src CPU %u\n",
 		       call_entry[1]);
-		BUG();
+		return;
 	}
 
 	/* Copy the 104-byte message locally before releasing the slot */
@@ -887,7 +887,7 @@ void comm_CallWorkAction(void *data)
 		if (dst_cpu != cur_cpu) {
 			pr_err("cpu_comm: comm_CallWorkAction: dst %u != cur %u\n",
 			       dst_cpu, cur_cpu);
-			BUG();
+			return;
 		}
 	}
 
@@ -959,7 +959,7 @@ void Comm_Add2Call2WQ(void *data)
 
 	if (!call_entry || *call_entry <= 4) {
 		pr_err("cpu_comm: Comm_Add2Call2WQ: invalid call entry\n");
-		BUG();
+		return;
 	}
 
 	/* Allocate comm_work_item (work_struct + call_entry pointer).
@@ -971,7 +971,7 @@ void Comm_Add2Call2WQ(void *data)
 		item = kmalloc(sizeof(*item), GFP_ATOMIC);
 		if (!item) {
 			pr_err("cpu_comm: Comm_Add2Call2WQ: OOM!\n");
-			BUG();
+			return;
 		}
 
 		item->call_entry = data;
