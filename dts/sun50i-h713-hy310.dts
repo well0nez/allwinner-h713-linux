@@ -437,6 +437,13 @@
 				drive-strength = <30>;
 				input-enable;
 			};
+
+			/* HDMI pins on PH8, PH9, PH10 */
+			hdmi_pins: hdmi-pins {
+				pins = "PH8", "PH9", "PH10";
+				function = "hdmi";
+				drive-strength = <40>;
+			};
 		};
 
 		/* === SID (efuse) — provides THS calibration === */
@@ -1398,6 +1405,70 @@
 			shared-memory = <&cpu_comm_reserved>;
 			hwlocks = <&hwspinlock 0>;
 			status = "okay";
+		};
+
+		/*
+		 * HDMI Display Output
+		 * DW-HDMI controller + PHY + connector.
+		 * Clock/Reset IDs from sun50i-h713-ccu.h bindings.
+		 * pinctrl-0 references hdmi_pins defined inside &pio.
+		 */
+		hdmi: hdmi@5010000 {
+			compatible = "allwinner,sun50i-h713-dw-hdmi",
+				     "allwinner,sun50i-h6-dw-hdmi";
+			reg = <0x05010000 0x10000>;
+			reg-io-width = <1>;
+			interrupts = <GIC_SPI 64 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_HDMI>,
+				 <&ccu CLK_HDMI>,
+				 <&ccu CLK_HDMI_SLOW>,
+				 <&ccu CLK_HDMI_CEC>,
+				 <&ccu CLK_HDCP>,
+				 <&ccu CLK_BUS_HDCP>;
+			clock-names = "iahb", "isfr", "tmds",
+				      "cec", "hdcp", "hdcp-bus";
+			resets = <&ccu RST_BUS_HDMI_SUB>,
+				 <&ccu RST_BUS_HDCP>;
+			reset-names = "ctrl", "hdcp";
+			phys = <&hdmi_phy>;
+			phy-names = "phy";
+			pinctrl-names = "default";
+			pinctrl-0 = <&hdmi_pins>;
+			status = "okay";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@1 {
+					reg = <1>;
+					hdmi_out: endpoint {
+						remote-endpoint = <&hdmi_con_in>;
+					};
+				};
+			};
+		};
+
+		hdmi_phy: hdmi-phy@5040300 {
+			compatible = "allwinner,sun50i-h713-hdmi-phy",
+				     "allwinner,sun50i-h6-hdmi-phy";
+			reg = <0x05040300 0x100>;
+			clocks = <&ccu CLK_BUS_HDMI>,
+				 <&ccu CLK_HDMI>;
+			clock-names = "bus", "mod";
+			resets = <&ccu RST_BUS_HDMI>;
+			reset-names = "phy";
+			#phy-cells = <0>;
+			status = "okay";
+		};
+
+		hdmi_connector: hdmi-connector {
+			compatible = "hdmi-connector";
+			type = "a";
+			port {
+				hdmi_con_in: endpoint {
+					remote-endpoint = <&hdmi_out>;
+				};
+			};
 		};
 
 		/*
