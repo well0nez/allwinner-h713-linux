@@ -174,7 +174,7 @@ long cpu_comm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		u32 val;
 		if (copy_from_user(&val, (void __user *)arg, 4))
 			return -EFAULT;
-		setCPUReset(val & 0xFFFF, (const char *)(unsigned long)(val >> 16));
+		setCPUReset(val & 0xFFFF, val >> 16);
 		break;
 	}
 
@@ -479,15 +479,15 @@ static long comm_fd_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 			u32  comp_spin;
 
 			if (comp_idx >= COMP_POOL_MAX_SLOTS)
-				BUG();
+				return -EINVAL;
 
 			base = comp_pool + COMP_POOL_ENTRY_SIZE * comp_idx;
 			if (!base[8])
-				BUG();
+				return -EINVAL;
 
 			comp_spin = *(u32 *)(base + 32);
 			if (comp_spin == 255)
-				BUG();
+				return -EINVAL;
 
 			comm_SpinLockMutex(pool32[0]);
 			comm_SpinLockMutex(comp_spin);
@@ -548,11 +548,11 @@ fd_comp_copyout:
 		if (buf[0] == 0) {
 			/* Component pool: per-entry spinlock */
 			if (buf[1] >= COMP_POOL_MAX_SLOTS)
-				BUG();
+				return -EINVAL;
 
 			spinlock_id = *(u32 *)(comp_pool + COMP_POOL_ENTRY_SIZE * buf[1] + 32);
 			if (spinlock_id > 11)
-				BUG();
+				return -EINVAL;
 		} else if (buf[0] == 1) {
 			/* Message pool: pool-level spinlock at msg_pool+4 */
 			spinlock_id = *(u32 *)((u8 *)getMsgPool() + 4);
@@ -584,7 +584,7 @@ fd_comp_copyout:
 		if (buf[0] == 0) {
 			/* Component pool: return pointer to entry data start (+8) */
 			if (buf[1] >= COMP_POOL_MAX_SLOTS)
-				BUG();
+				return -EINVAL;
 
 			ptr = comp_pool + COMP_POOL_ENTRY_SIZE * buf[1] + 8;
 		} else if (buf[0] == 1) {
@@ -624,7 +624,7 @@ fd_comp_copyout:
 
 		comp_idx = *(u32 *)buf;
 		if (comp_idx >= COMP_POOL_MAX_SLOTS)
-			BUG();
+			return -EINVAL;
 
 		base      = comp_pool + COMP_POOL_ENTRY_SIZE * comp_idx;
 		comp_spin = *(u32 *)(base + 32);
@@ -709,7 +709,7 @@ addlistener_out:
 
 		comp_idx = buf[0];
 		if (comp_idx >= COMP_POOL_MAX_SLOTS)
-			BUG();
+			return -EINVAL;
 
 		base      = comp_pool + COMP_POOL_ENTRY_SIZE * comp_idx;
 		comp_spin = *(u32 *)(base + 32);
@@ -1001,6 +1001,71 @@ int cpu_comm_init(int mode)
 	int ret;
 
 	/*
+	 * MIPS CCU Clock + Reset Initialization.
+	 *
+	 * Before accessing any MIPS-related hardware or shared memory,
+	 * ensure the MIPS clock domain is properly enabled. This is the
+	 * first step in the MIPS boot sequence (Phase 2 of the 6-phase
+	 * boot chain).
+	 *
+	 * CCU registers (from ccu-sun50i-h713.c):
+	 *   0x02001600: mips_clk — osc24M/pll-periph0-2x, M-Divider, Gate
+	 *   0x02001604: bus_mips_clk — AHB gate
+	 *   0x0200160c: bus_mips_reset — bits 16-18 (RST_MIPS, RST_MIPS_DBG, RST_MIPS_CFG)
+	 *   0x0200171c: msgbox_reset — bit 16
+	 *
+	 * We ensure clocks are enabled and resets are deasserted so the
+	 * MIPS can boot properly when loaded by U-Boot.
+	 */
+	{
+		void __iomem *ccu = ioremap(0x02001000, 0x800);
+
+		if (ccu) {
+			u32 val;
+
+			/* Ensure MIPS clock is enabled (0x600 offset from CCU base) */
+			val = readl(ccu + 0x600);
+			pr_info("cpu_comm: MIPS CLK before: 0x%08x\n", val);
+			if (!(val & 0x80000000)) {
+				val |= 0x80000000; /* Set gate enable bit */
+				writel(val, ccu + 0x600);
+				pr_info("cpu_comm: MIPS CLK enabled\n");
+			}
+
+			/* Ensure bus MIPS clock is enabled (0x604 offset) */
+			val = readl(ccu + 0x604);
+			pr_info("cpu_comm: BUS MIPS CLK before: 0x%08x\n", val);
+			if (!(val & 0x1)) {
+				val |= 0x1; /* Set AHB gate enable */
+				writel(val, ccu + 0x604);
+				pr_info("cpu_comm: BUS MIPS CLK enabled\n");
+			}
+
+			/* Deassert MIPS reset bits (0x60c offset, bits 16-18) */
+			val = readl(ccu + 0x60c);
+			pr_info("cpu_comm: BUS MIPS RESET before: 0x%08x\n", val);
+			if (val & 0x00070000) {
+				val &= ~0x00070000; /* Clear RST_MIPS, RST_MIPS_DBG, RST_MIPS_CFG */
+				writel(val, ccu + 0x60c);
+				pr_info("cpu_comm: MIPS resets deasserted\n");
+			}
+
+			/* Deassert msgbox reset (0x71c offset, bit 16) */
+			val = readl(ccu + 0x71c);
+			pr_info("cpu_comm: MSGBOX RESET before: 0x%08x\n", val);
+			if (val & 0x00010000) {
+				val &= ~0x00010000;
+				writel(val, ccu + 0x71c);
+				pr_info("cpu_comm: MSGBOX reset deasserted\n");
+			}
+
+			iounmap(ccu);
+		} else {
+			pr_warn("cpu_comm: failed to ioremap CCU for MIPS clock init\n");
+		}
+	}
+
+	/*
 	 * Stock has NO startup delay here. The MIPS boots independently
 	 * and polls SharedMem address at 0x03061024. Any delay risks
 	 * the MIPS timing out on its side.
@@ -1046,17 +1111,31 @@ int cpu_comm_init(int mode)
 		readl(vaddr + 0x90), readl(vaddr + 0x75B8));
 
 	/*
-	 * Stock "not 1st APP" path: if magics are already set (by U-Boot
-	 * or previous boot), skip the full wipe. The MIPS may have already
-	 * completed init (including setCPUAppReady) using the existing
-	 * shared memory state. A full wipe would destroy MIPS flags,
-	 * causing MIPS APP_READY to be lost permanently since the MIPS
-	 * thread only calls setCPUAppReady once.
+	 * FIX: Conditional wipe — only memset_io if magics are NOT already set.
+	 *
+	 * Root cause of MIPS APP_READY=0: memset_io wipes the entire shared
+	 * memory region including magic markers and MIPS flags BEFORE the MIPS
+	 * has a chance to call setCPUAppReady. Since MIPS only calls
+	 * setCPUAppReady once during its init, a wipe after MIPS has already
+	 * set its flags permanently destroys MIPS APP_READY.
 	 *
 	 * Stock firmware checks magic1+magic2 in InitCommMem master path
 	 * and takes a lightweight reinit if both are DEADBEEF.
+	 * We replicate this: if magics are already set, skip the full wipe.
 	 */
-	memset_io(vaddr, 0, SHMEM_OFF_SMM_HEAP + 8);
+	{
+		u32 magic1 = readl(vaddr + SHMEM_OFF_MAGIC1);
+		u32 magic2 = readl(vaddr + SHMEM_OFF_MAGIC2);
+
+		if (magic1 == CPU_COMM_MAGIC && magic2 == CPU_COMM_MAGIC) {
+			pr_info("cpu_comm: magics already set (0x%x/0x%x) — skipping memset_io wipe to preserve MIPS flags\n",
+				magic1, magic2);
+		} else {
+			pr_info("cpu_comm: magics not set (0x%x/0x%x) — performing full memset_io wipe\n",
+				magic1, magic2);
+			memset_io(vaddr, 0, SHMEM_OFF_SMM_HEAP + 8);
+		}
+	}
 
 	ret = cpu_comm_hw_init();
 	if (ret)
@@ -1237,7 +1316,28 @@ int cpu_comm_init(int mode)
 		u32 *mips_flag = (u32 *)(ShMemAddrBase + 0x4CE0);
 		u32 *arm_flag = (u32 *)(ShMemAddrBase + 0x4CDC);
 
-		setCPUAppReady(getCurCPUID(0));
+		/*
+		 * FIX: ARM sets only its READY flag (BIT(0)), NOT APP_READY (BIT(2)).
+		 * Only MIPS sets its own APP_READY flag via setCPUAppReady.
+		 * ARM was previously calling setCPUAppReady(getCurCPUID(0)) which
+		 * set ARM's own APP_READY flag and then waited for MIPS — but ARM
+		 * should not participate in the APP_READY handshake.
+		 *
+		 * ARM still needs to set READY (BIT(0)) so MIPS knows the ARM
+		 * side of the shared memory is initialized.
+		 * Flag bits: BIT(0)=READY, BIT(1)=NOT_READY, BIT(2)=APP_READY, BIT(3)=RESET/NOTICE_REQ
+		 */
+		{
+			u32 tmp;
+			comm_SpinLock(3);
+			tmp = *arm_flag;
+			tmp |= BIT(0);   /* READY */
+			tmp &= ~BIT(1);  /* clear NOT_READY */
+			tmp &= ~BIT(3);  /* clear RESET/NOTICE_REQ */
+			*arm_flag = tmp;
+			comm_SpinUnLock(3, 0);
+			pr_info("cpu_comm: ARM READY set (no APP_READY — MIPS sets its own)\n");
+		}
 
 		pr_info("cpu_comm: POST-INIT: magic1=0x%x magic2=0x%x ARM=0x%x MIPS=0x%x\n",
 			*(u32 *)(ShMemAddrBase + 0x90),
@@ -1265,6 +1365,53 @@ int cpu_comm_init(int mode)
 		if (!mips_app_ready_assumed && (*mips_flag & 0x1)) {
 			mips_app_ready_assumed = 1;
 			pr_info("cpu_comm: MIPS app-ready assumed (MIPS READY seen after wait)\n");
+		}
+
+		/*
+		 * Force-set MIPS READY + APP_READY from ARM side.
+		 *
+		 * Background: In the stock Allwinner H713 firmware, the MIPS
+		 * coprocessor (running display.bin) NEVER sets APP_READY (BIT2)
+		 * on its own CPU flag word at SharedMem + 0x4CE0.
+		 *
+		 * Evidence from stock binary analysis (display.bin, 1.2MB MIPS32-LE):
+		 *
+		 *   1. display.bin setCPUAppReady equivalent (file offset 0x1a440):
+		 *      - LW/ORI/SW at offset 0x4CDC (= CPU_FLAG_OFFSET(0) = ARM flag)
+		 *      - Sets BIT(0) READY, clears BIT(1) NOT_READY, clears BIT(3) NOTICE_REQ
+		 *      - All writes go to 0x4CDC (ARM flag), NOT 0x4CE0 (MIPS flag)
+		 *      - BIT(2) APP_READY is NEVER set anywhere in display.bin
+		 *
+		 *   2. display.bin only reads 0x4CE0 (MIPS flag) ONCE (offset 0x1af04):
+		 *      - LW + ANDI 0x8 = checks NOTICE_REQ (BIT3) only
+		 *      - No writes to 0x4CE0 exist in the entire 1.2MB binary
+		 *
+		 *   3. Stock ARM driver setCPUAppReady (cpu_comm_dev.ko @ 0x4f28):
+		 *      - Sets BIT(2) on own flag, then waits on other CPU's BIT(2)
+		 *      - BUG: wait loop reads [r5+0xcdc] = hardcoded ARM flag (0x4CDC)
+		 *        regardless of cpu_id. ARM waits on ITS OWN flag, not MIPS.
+		 *      - For ARM (cpu_id=0): sets APP_READY, waits on self = returns
+		 *        immediately. MIPS APP_READY is never actually checked.
+		 *      - Stock error paths: 6x while(1) infinite loops (not BUG())
+		 *      - Stock APP_READY wait: while(!flag) msleep(1) with NO timeout
+		 *
+		 * Conclusion: MIPS APP_READY was never functional in stock firmware.
+		 * The stock system worked because ARM never checked MIPS APP_READY
+		 * (due to the hardcoded 0x4CDC bug in the wait loop). Our mainline
+		 * driver correctly checks the other CPU's flag (cpu_id ^ 1), which
+		 * means isCPUAppReady(MIPS) would always return false without this
+		 * force-set. Setting both READY and APP_READY here matches the
+		 * effective stock behavior where MIPS readiness was always assumed.
+		 *
+		 * See also: cpu_comm_mem.c setCPUAppReady() 2s timeout on the
+		 * other-CPU wait (replacing the stock infinite msleep loop).
+		 */
+		if (!(*mips_flag & 0x5)) {
+			comm_SpinLock(3);
+			*mips_flag |= 0x5;  /* CPU_FLAG_READY | CPU_FLAG_APP_READY */
+			comm_SpinUnLock(3, 0);
+			pr_info("cpu_comm: MIPS READY+APP_READY force-set from ARM (stock never sets it). flag=0x%x\n",
+				*mips_flag);
 		}
 
 		/* Auto-register known MIPS VP routes */

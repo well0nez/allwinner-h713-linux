@@ -239,7 +239,6 @@ int getShareRegbyID(int reg_id)
 		return 0x03061028;
 	default:
 		pr_err("cpu_comm: unknown share reg %d\n", reg_id);
-		BUG();
 		return 0;
 	}
 }
@@ -266,7 +265,7 @@ static int getRegbySpinID(int id)
 {
 	if (id < 0 || id > 13) {
 		pr_err("cpu_comm: invalid spinlock ID %d\n", id);
-		BUG();
+		return -1;
 	}
 	return id + 8;	/* hardware spinlock offset */
 }
@@ -512,10 +511,14 @@ static int spinLock(int lock_id, int mode)
 	u8 *entry = base + SPINLOCK_ENTRY_SIZE * lock_id;
 	u8 cur_cpu;
 
-	if (lock_id > SPINLOCK_MAX_ID)
-		BUG();
-	if (*(int *)(entry + 4) < 0) /* ref_count sanity */
-		BUG();
+	if (lock_id > SPINLOCK_MAX_ID) {
+		pr_err("cpu_comm: spinLock: invalid lock_id %d\n", lock_id);
+		return -EINVAL;
+	}
+	if (*(int *)(entry + 4) < 0) { /* ref_count sanity */
+		pr_err("cpu_comm: spinLock: negative ref_count on lock %d\n", lock_id);
+		return -EIO;
+	}
 
 	while (1) {
 		enterCritical(lock_id);
@@ -593,8 +596,10 @@ void comm_SpinUnLock(int lock_id, int dummy)
 	u8 *base = getSpinLockMemArea();
 	u8 *entry = base + SPINLOCK_ENTRY_SIZE * lock_id;
 
-	if (lock_id > SPINLOCK_MAX_ID)
-		BUG();
+	if (lock_id > SPINLOCK_MAX_ID) {
+		pr_err("cpu_comm: SpinUnLock: invalid lock_id %d\n", lock_id);
+		return;
+	}
 
 	enterCritical(lock_id);
 
@@ -604,10 +609,16 @@ void comm_SpinUnLock(int lock_id, int dummy)
 		return;
 	}
 
-	if (entry[SPINLOCK_OFF_OWNER] == SPINLOCK_FREE)
-		BUG(); /* unlocking a free lock */
-	if (*(u32 *)(entry + 8) == SPINLOCK_HWID_NONE)
-		BUG(); /* unlocking with no thread_id */
+	if (entry[SPINLOCK_OFF_OWNER] == SPINLOCK_FREE) {
+		pr_warn("cpu_comm: SpinUnLock(%d): unlocking a free lock, skipping\n", lock_id);
+		leaveCritical(lock_id);
+		return;
+	}
+	if (*(u32 *)(entry + 8) == SPINLOCK_HWID_NONE) {
+		pr_warn("cpu_comm: SpinUnLock(%d): no thread_id, skipping\n", lock_id);
+		leaveCritical(lock_id);
+		return;
+	}
 
 	/* Decrement ref_count */
 	if (--(*(u32 *)(entry + 4)) == 0) {
@@ -667,12 +678,18 @@ int comm_ReqestSpinLock(void)
 	for (id = HW_SPINLOCK_APP_START; id <= HW_SPINLOCK_APP_END; id++) {
 		entry = base + SPINLOCK_ENTRY_SIZE * id;
 		if (entry[SPINLOCK_OFF_OWNER] == SPINLOCK_FREE) {
-			if (*(u32 *)(entry + 4) != 0)
-				BUG();
-			if (entry[0] != SPINLOCK_FREE)
-				BUG();
-			if (*(u32 *)(entry + 8) != SPINLOCK_HWID_NONE)
-				BUG();
+			if (*(u32 *)(entry + 4) != 0) {
+				pr_warn("cpu_comm: AssignSpinLock(%d): free lock has non-zero ref_count\n", id);
+				continue;
+			}
+			if (entry[0] != SPINLOCK_FREE) {
+				pr_warn("cpu_comm: AssignSpinLock(%d): inconsistent mutex state\n", id);
+				continue;
+			}
+			if (*(u32 *)(entry + 8) != SPINLOCK_HWID_NONE) {
+				pr_warn("cpu_comm: AssignSpinLock(%d): free lock has thread_id set\n", id);
+				continue;
+			}
 			entry[SPINLOCK_OFF_MUTEX] = 0;
 			entry[SPINLOCK_OFF_OWNER] = getCurCPUID(0);
 			spinUnlockhwReg(1);
@@ -693,7 +710,7 @@ int comm_ReleaseSpinLock(int lock_id)
 
 	if (lock_id < HW_SPINLOCK_APP_START || lock_id > HW_SPINLOCK_APP_END) {
 		pr_err("cpu_comm: release invalid spinlock %d\n", lock_id);
-		BUG();
+		return -EINVAL;
 	}
 
 	base = getSpinLockMemArea();
@@ -726,7 +743,7 @@ int getInterruptRegChannel(u32 cpu, u32 channel)
 	if (cpu > 1 || channel > 1) {
 		pr_err("cpu_comm: invalid IRQ channel cpu=%u ch=%u\n",
 		       cpu, channel);
-		BUG();
+		return -EINVAL;
 	}
 	return 0; /* stub — actual interrupt routing is in sunxi_cpu_comm */
 }
