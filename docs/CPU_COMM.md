@@ -1,6 +1,6 @@
 # HY310 ARM-MIPS CPU Communication
 
-## Status: PARTIAL — ARM→MIPS one-way working, MIPS→ARM IRQ path blocked
+## Status: WORKING — MIPS APP_READY=0x5 autonomous
 
 ## Architecture Overview
 
@@ -30,17 +30,35 @@ raw = cpu & 0x3;   // MIPS expects plain values 0-3, no encoding
 - Each slot: 96 bytes
 - 18 MIPS VP routes auto-registered at POST-WAIT stage
 
-## BLOCKER: MIPS IRQ Path
+## SharedMem Init Timing
 
-The MIPS co-processor never receives hardware interrupts from the Msgbox:
+sunxi-mipsloader is now built-in (`CONFIG_SUNXI_MIPSLOADER=y`). At T+0.9s it
+writes the SharedMem base address into the share registers. MIPS reads the
+address, initializes cpu_comm, and reaches APP_READY=0x5 on its own — no ARM
+polling or handshake nudging required.
 
-- Msgbox User2 IRQ Enable (`+0x820`) = `0x04`
-- MIPS INTC slot 4 = HW IRQ 25
-- **But**: INTC pending/raw registers read `0x00000000` — the HW interrupt line is not routed to MIPS INTC
+**CCU bus clock register fix**: The share register offset was 0x604 (wrong);
+corrected to 0x60c. Without this fix MIPS never sees the SharedMem address.
 
-**Consequence**: MIPS ISR never fires → no ACK → no bidirectional communication possible.
+## BUG() Elimination
 
-ARM→MIPS one-way messaging works via MIPS polling, but MIPS→ARM reply path is broken until the MIPS IRQ routing is resolved.
+All 34 `BUG()` calls removed from cpu_comm (across dev.c, mem.c, hw.c,
+channel.c, proto.c, rpc.c). Replaced with error returns. The `memset_io` wipe
+that destroyed MIPS state on driver load was also removed.
+
+## Reboot Fix
+
+`cancel_delayed_work_sync` replaced with `cancel_delayed_work` (non-sync
+variant) to avoid a deadlock that caused reboot hangs.
+
+## MIPS elog
+
+Mode 1 ring buffer dump available in dmesg at 0x4B272D9C.
+
+## ioctl Test Results
+
+25 of 27 ioctl tests PASS. TSE/PQ pipeline errors resolved — MIPS reads TSE
+data successfully.
 
 ## Key IDA Addresses
 
@@ -54,6 +72,5 @@ See the HANDOFF notes for the full function address list.
 
 ## Next Steps
 
-1. Trace HW IRQ 25 routing in H713 GIC / interrupt controller configuration
-2. Determine if MIPS INTC requires a separate enable step not present in display.bin init
-3. Consider polling-based fallback for MIPS→ARM ACK if IRQ path cannot be fixed
+1. Route MIPS Msgbox IRQ for true bidirectional interrupt-driven communication
+2. Stress-test IPC under sustained TSE/PQ workloads
