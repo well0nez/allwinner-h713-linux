@@ -7,6 +7,14 @@
 - Device tree compiler: built automatically with the kernel
 - Python 3: for `repack_boot.py`
 
+## Important Build Settings
+
+- **MIPS IPC**: `CONFIG_SUNXI_MIPSLOADER=y` must be set (built-in, not module)
+  for ARM-MIPS shared memory IPC to work. Without it, MIPS never receives the
+  SharedMem address and cannot reach APP_READY.
+- **Cross-compile**: `ARCH=arm CROSS_COMPILE=arm-linux-gnueabi-` with `-j2`
+  recommended on memory-constrained build hosts (`JOBS=2`).
+
 ## Overview
 
 This repo uses a **commit-based workflow** — the kernel source tree already

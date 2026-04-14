@@ -87,6 +87,21 @@ The old ge2d framebuffer driver is kept in `drivers/display/ge2d/` for
 reference but is superseded by the DRM driver. Both bind to the same
 `trix,ge2d` compatible — only one should be loaded at a time.
 
+## HDMI Output
+
+Status: **DTS ready, driver integration in progress.**
+
+DTS nodes added for HDMI output path:
+
+| Block          | Address / Compatible | Notes                          |
+|----------------|---------------------|--------------------------------|
+| HDMI Controller | 0x05010000          | DW-HDMI IP core                |
+| HDMI PHY       | 0x05040300          | Allwinner-specific PHY         |
+| HDMI Connector | —                   | `hdmi-connector` type-a node   |
+| HDMI Pinctrl   | —                   | `hdmi_pins` mux group          |
+
+TVCAP DTS node also added. DW-HDMI driver binding and PHY init are next.
+
 ## Critical GPIO Warning
 
 **PB5 = panel backlight enable AND fan power (shared hardware line)**

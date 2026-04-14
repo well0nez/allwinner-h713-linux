@@ -1,6 +1,6 @@
 # HY310 Mainline Linux Port — Status
 
-> Last updated: 2026-04-04
+> Last updated: 2026-04-14
 
 ## Subsystem Status Overview
 
@@ -26,7 +26,9 @@
 | **Display (DRM/KMS)** | Working | h713_drm (out-of-tree) | DRM/GEM scanout, PRIME, Labwc desktop runs |
 | **Video Decode (Cedrus)** | Working | sunxi-cedrus (patched, module) | H.264/H.265/MPEG2/VP8 HW decode, V4L2 stateless API |
 | **Display (legacy)** | Working | ge2d + tvtop (out-of-tree) | Stock display pipeline, MIPS-initialized |
-| **ARM-MIPS IPC** | Partial | cpu_comm (out-of-tree) | Protocol works, MIPS Msgbox IRQ not routed |
+| **ARM-MIPS IPC** | Working | cpu_comm (out-of-tree) | ARM=0x5 MIPS=0x5, autonomous handshake |
+| **MIPS Coprocessor** | Working | sunxi-mipsloader (built-in) | APP_READY=0x5 autonomous, elog ring buffer at 0x4B272D9C |
+| **HDMI** | In Progress | dw-hdmi (DTS only) | DTS nodes in place, driver integration pending |
 | **GPU** | Working | panfrost + sun50i-h713-ppu | Mali-G31 864MHz, card0/renderD128, PRIME to h713_drm |
 | **IOMMU** | Working (provider only) | sun50i-iommu (built-in) | Provider at 0x030f0000, no consumers attached yet |
 | **GPADC** | Working | sun20i-gpadc (IIO) | 2 ADC channels via /sys/bus/iio/ |
