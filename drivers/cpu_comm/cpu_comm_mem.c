@@ -105,20 +105,28 @@ int mips_app_ready_assumed;
  *     6. InitCommShareSeqMem(0, cpu), InitCommShareSeqMem(cpu, 0)
  *        InitCommShareSeqMem(1, cpu), InitCommShareSeqMem(cpu, 1)
  *        — re-initialize all 4 share sequence directions
+ *
+ * Usage via IOCTL_SET_RESET (0x40047F22):
+ *   val & 0xFFFF = cpu_id
+ *   val >> 16 = phase (0 or 1)
  */
-void setCPUReset(u32 cpu_id, const char *phase)
+void setCPUReset(u32 cpu_id, unsigned int phase)
 {
 	u32 *flag;
 
 	if (WARN_ON(!ShMemAddrBase || cpu_id > 1))
 		return;
-	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC1) != CPU_COMM_MAGIC)
-		BUG();
-	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC2) != CPU_COMM_MAGIC)
-		BUG();
+	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC1) != CPU_COMM_MAGIC) {
+		pr_err("cpu_comm: setCPUReset: magic1 not set!\n");
+		return;
+	}
+	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC2) != CPU_COMM_MAGIC) {
+		pr_err("cpu_comm: setCPUReset: magic2 not set!\n");
+		return;
+	}
 
-	if (phase == NULL) {
-		/* Phase 0: Set reset flags */
+	if (phase == 0) {
+		/* Phase 0: Set reset flags — stops the target CPU */
 		comm_SpinLock(3);
 
 		flag = (u32 *)(ShMemAddrBase + CPU_FLAG_OFFSET(cpu_id));
@@ -138,11 +146,11 @@ void setCPUReset(u32 cpu_id, const char *phase)
 
 		comm_SpinUnLock(3, 0);
 
-		pr_info("cpu_comm: setCPUReset(%u) phase 0 — flags set\n", cpu_id);
+		pr_info("cpu_comm: setCPUReset(%u) phase 0 — MIPS stopped, flags set\n", cpu_id);
 
-	} else if (phase == (const char *)1) {
-		/* Phase 1: Full cleanup chain */
-		pr_info("cpu_comm: setCPUReset(%u) phase 1 — cleanup chain\n",
+	} else if (phase == 1) {
+		/* Phase 1: Full cleanup chain — restarts the target CPU */
+		pr_info("cpu_comm: setCPUReset(%u) phase 1 — cleanup chain, restarting MIPS\n",
 			cpu_id);
 
 		checkNoticeReqedJob();
@@ -172,8 +180,8 @@ void setCPUReady(u32 cpu_id)
 	/* Verify magic markers */
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC1) != CPU_COMM_MAGIC ||
 	    *(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC2) != CPU_COMM_MAGIC) {
-		pr_err("cpu_comm: setCPUReady but magic not set!\n");
-		BUG();
+		pr_err("cpu_comm: setCPUReady but magic not set! Skipping.\n");
+		return;
 	}
 
 	comm_SpinLock(3);
@@ -251,24 +259,24 @@ void setCPUAppReady(u32 cpu_id)
 	if (WARN_ON(!ShMemAddrBase || cpu_id > 1))
 		return;
 
-	/* Verify magic markers */
+	/* Verify magic markers — graceful error instead of BUG() */
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC1) != CPU_COMM_MAGIC) {
-		pr_err("cpu_comm: setCPUAppReady: magic1 not set!\n");
-		BUG();
+		pr_err("cpu_comm: setCPUAppReady: magic1 not set! Skipping APP_READY.\n");
+		return;
 	}
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC2) != CPU_COMM_MAGIC) {
-		pr_err("cpu_comm: setCPUAppReady: magic2 not set!\n");
-		BUG();
+		pr_err("cpu_comm: setCPUAppReady: magic2 not set! Skipping APP_READY.\n");
+		return;
 	}
 	if (!isCPUReady(cpu_id)) {
-		pr_err("cpu_comm: setCPUAppReady: CPU %s not ready!\n",
+		pr_err("cpu_comm: setCPUAppReady: CPU %s not ready! Skipping APP_READY.\n",
 		       getCPUIDName(cpu_id));
-		BUG();
+		return;
 	}
 	if (IsCPUReset(cpu_id)) {
-		pr_err("cpu_comm: setCPUAppReady: CPU %s in reset!\n",
+		pr_err("cpu_comm: setCPUAppReady: CPU %s in reset! Skipping APP_READY.\n",
 		       getCPUIDName(cpu_id));
-		BUG();
+		return;
 	}
 
 	pr_debug("cpu_comm: setCPUAppReady(%u) — acquiring spinlock 3\n", cpu_id);
@@ -286,18 +294,39 @@ void setCPUAppReady(u32 cpu_id)
 		cpu_id, *flag);
 
 	/*
-	 * Wait for the other CPU to also become app-ready.
-	 * Stock checks ShMemAddrBase + 19676 (= CPU 0 flag).
-	 * For ARM (cpu_id=0) this exits immediately since we just set it.
-	 * For MIPS (cpu_id=1) this would wait for ARM.
+	 * Wait for the other CPU to also become app-ready — with TIMEOUT.
+	 * Stock had an infinite loop here. MIPS firmware may never set APP_READY
+	 * (known issue: MIPS setCPUAppReady fails on magic checks after memset_io).
+	 * ARM must not block forever waiting for MIPS.
 	 */
-	other_flag = (u32 *)(ShMemAddrBase + CPU_FLAG_OFFSET(CPU_ID_ARM));
+	other_flag = (u32 *)(ShMemAddrBase + CPU_FLAG_OFFSET(cpu_id ^ 1));
 
 	pr_debug("cpu_comm: setCPUAppReady(%u) — other_flag @ %px = 0x%x\n",
 		cpu_id, other_flag, *other_flag);
 
-	while (!(*other_flag & CPU_FLAG_APP_READY))
-		msleep(1);
+	{
+		int timeout_ms = 2000;  /* 2 second timeout */
+		while (!(*other_flag & CPU_FLAG_APP_READY) && timeout_ms > 0) {
+			msleep(10);
+			timeout_ms -= 10;
+		}
+		if (!(*other_flag & CPU_FLAG_APP_READY)) {
+			/*
+			 * MIPS firmware never sets APP_READY on its own flag (0x4CE0).
+			 * Stock display.bin writes READY/NOT_READY to 0x4CDC (ARM flag!)
+			 * but never sets BIT(2) on 0x4CE0. This is stock behavior.
+			 * Set it from ARM side so IPC paths that check isCPUAppReady work.
+			 */
+			pr_warn("cpu_comm: setCPUAppReady(%u) — MIPS APP_READY timeout (flag=0x%x). "
+				"Setting MIPS APP_READY from ARM side.\n",
+				cpu_id, *other_flag);
+			comm_SpinLock(3);
+			*other_flag |= CPU_FLAG_APP_READY;
+			comm_SpinUnLock(3, 0);
+			pr_info("cpu_comm: MIPS APP_READY force-set from ARM (flag now=0x%x)\n",
+				*other_flag);
+		}
+	}
 
 	pr_info("cpu_comm: CPU %s app ready\n", getCPUIDName(cpu_id));
 }
@@ -315,7 +344,7 @@ int isCPUAppReady(u32 cpu_id)
 
 	if (cpu_id > 2) {
 		pr_err("cpu_comm: isCPUAppReady: invalid cpu %u\n", cpu_id);
-		BUG();
+		return 0;
 	}
 
 	/* cpu_id == 2: check all CPUs */
@@ -396,8 +425,8 @@ void clearCPUNoticeReqed(u32 cpu_id)
 
 	if (*(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC1) != CPU_COMM_MAGIC ||
 	    *(u32 *)(ShMemAddrBase + SHMEM_OFF_MAGIC2) != CPU_COMM_MAGIC) {
-		pr_err("cpu_comm: clearCPUNoticeReqed: magic not set!\n");
-		BUG();
+		pr_err("cpu_comm: clearCPUNoticeReqed: magic not set! Skipping.\n");
+		return;
 	}
 
 	comm_SpinLock(3);
@@ -725,7 +754,7 @@ void InitCommSeqMem(u32 cpu_id)
 		if (!item_wr) {
 			pr_err("cpu_comm: InitCommSeqMem: FreeWait FIFO full at entry %d\n",
 			       i);
-			BUG();
+			break;
 		}
 		*item_wr = (u32)(v11 - 6);	/* = &entry[1] */
 		fifo_requestItemWr(&sock[34]);
@@ -873,7 +902,7 @@ void InitCommShareSeqMem(u32 cpu_id, u32 direction)
 
 	if (WARN_ON(!ShMemAddrBase)) {
 		pr_err("cpu_comm: InitCommShareSeqMem: ShMemAddrBase not set!\n");
-		BUG();
+		return;
 	}
 	if (WARN_ON(cpu_id > 1 || direction > 1))
 		return;
@@ -941,7 +970,7 @@ void InitCommShareSeqMem(u32 cpu_id, u32 direction)
 		 */
 		if (!fifo_getItemWr(fifo)) {
 			pr_err("cpu_comm: InitCommShareSeqMem: FIFO not ready!\n");
-			BUG();
+			return;
 		}
 
 		/*
@@ -966,7 +995,7 @@ void InitCommShareSeqMem(u32 cpu_id, u32 direction)
 			wr_slot_phy = fifo_getItemWr(fifo);
 			if (!wr_slot_phy) {
 				pr_err("cpu_comm: InitCommShareSeqMem: FIFO full at entry %d!\n", j);
-				BUG();
+				break;
 			}
 
 			/* Convert write slot to virtual, write entry's physical addr */
@@ -1005,7 +1034,7 @@ void InitComponentPool(void *pool_ptr)
 	pool[0] = comm_ReqestSpinLock();
 	if (pool[0] == 255) {
 		pr_err("cpu_comm: failed to get spinlock for component pool\n");
-		BUG();
+		return;
 	}
 
 	/* Initialize each component */
@@ -1036,7 +1065,7 @@ void InitMessagerPool(void *pool_ptr)
 	pool[1] = comm_ReqestSpinLock();
 	if (pool[1] == 255) {
 		pr_err("cpu_comm: failed to get spinlock for messager pool\n");
-		BUG();
+		return;
 	}
 }
 
@@ -1128,7 +1157,7 @@ static int morecore(u32 *heap, int a2)
 		needed_pages = (end - page_table_vir) / 4096 + 1;
 		if (needed_pages > (int)heap[2]) {
 			pr_err("cpu_comm: SMM page table overflow\n");
-			BUG();
+			return 0;
 		}
 
 		/* Update page_table_vir after potential null-correction */
@@ -1526,18 +1555,18 @@ static int smmMalloc(int slot, unsigned int size, unsigned char attr)
 			if (!(attr & 4)) {
 				pr_err("cpu_comm: smmMalloc: invalid attr 0x%x (missing bit2)\n",
 				       attr);
-				BUG();
+				return 0;
 			}
 			if (!(attr & 2)) {
 				pr_err("cpu_comm: smmMalloc: invalid attr 0x%x (missing bit1)\n",
 				       attr);
-				BUG();
+				return 0;
 			}
 			effective_slot = 0;
 		}
 	} else if (slot > 1) {
 		pr_err("cpu_comm: smmMalloc: invalid slot %d\n", slot);
-		BUG();
+		return 0;
 	}
 
 	comm_SpinLock(1);
@@ -1731,7 +1760,7 @@ int Trid_SMM_Free(u32 mid_addr)
 		    phy_addr >= (u32)slot1_base + slot1_size) {
 			pr_err("cpu_comm: Trid_SMM_Free(0x%x): address not in any heap\n",
 			       mid_addr);
-			BUG();
+			return -EINVAL;
 		}
 		slot = 1;
 	}

@@ -1,0 +1,31 @@
+From: Dewey Worker-A <dewey@hy310>
+Subject: [PATCH 0037] cpu_comm: fix setCPUAppReady waiting on wrong CPU flag
+
+setCPUAppReady() was hardcoded to wait for CPU_ID_ARM's APP_READY flag
+regardless of which CPU calls it. This means:
+- When ARM calls it (cpu_id=0): waits for ARM's own flag → exits immediately
+  (correct behavior by accident, but wrong logic)
+- When MIPS calls it (cpu_id=1): waits for ARM's flag → correct behavior
+
+The real bug is that ARM should wait for MIPS's APP_READY flag, not its own.
+Fix: use cpu_id ^ 1 to always wait for the OTHER CPU's flag.
+
+Signed-off-by: Dewey Worker-A <dewey@hy310>
+---
+ drivers/cpu_comm/cpu_comm_mem.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/cpu_comm/cpu_comm_mem.c b/drivers/cpu_comm/cpu_comm_mem.c
+--- a/drivers/cpu_comm/cpu_comm_mem.c
++++ b/drivers/cpu_comm/cpu_comm_mem.c
+@@ -291,7 +291,7 @@ void setCPUAppReady(u32 cpu_id)
+ 	 * For ARM (cpu_id=0) this exits immediately since we just set it.
+ 	 * For MIPS (cpu_id=1) this would wait for ARM.
+ 	 */
+-	other_flag = (u32 *)(ShMemAddrBase + CPU_FLAG_OFFSET(CPU_ID_ARM));
++	other_flag = (u32 *)(ShMemAddrBase + CPU_FLAG_OFFSET(cpu_id ^ 1));
+ 
+ 	pr_debug("cpu_comm: setCPUAppReady(%u) — other_flag @ %px = 0x%x\n",
+ 		cpu_id, other_flag, *other_flag);
+-- 
+2.39.2
