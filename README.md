@@ -1,5 +1,15 @@
 # HY310 Projector — Mainline Linux Port
 
+> **⏸️ Development paused (August 2026)**
+>
+> The server that held the reverse-engineering notes and the cached
+> research for this project was wiped — snapshots included. Rebuilding
+> that groundwork isn't something I can do right now, so work on the port
+> is on hold until further notice.
+>
+> Everything that is committed here stays as it is. The repo remains
+> public; forks and pickups are welcome.
+
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/well0nez)
 
 Mainline Linux 6.16.7 for the **HY310 portable projector** (Allwinner H713
