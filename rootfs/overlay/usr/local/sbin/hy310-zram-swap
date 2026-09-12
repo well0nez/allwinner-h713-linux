@@ -1,0 +1,68 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+#
+# zram-Swap an/aus. Aufgerufen von hy310-zram-swap.service (107 §4.2).
+#
+# Drei Werte, mehr ist es nicht:
+#   Algorithmus  zstd       bestes Verhaeltnis Kompression/CPU auf diesem A53
+#   Groesse      halber RAM zram belegt seinerseits RAM; mehr als die Haelfte
+#                           als Swap anzubieten dreht sich um
+#   Prioritaet   100        hoeher als jeder spaetere Swap auf Blockgeraeten,
+#                           damit zuerst in den RAM ausgelagert wird
+#
+# vm.swappiness und vm.page-cluster stehen in /etc/sysctl.d/99-hy310-zram.conf
+# und werden nicht hier gesetzt -- ein Wert, ein Ort.
+set -eu
+
+DEV_NODE=/dev/zram0
+SYS=/sys/block/zram0
+ALGO=zstd
+PRIO=100
+
+fail_soft() {
+	# Kein Swap ist unangenehm, aber kein Grund, den Start scheitern zu
+	# lassen: das Geraet soll auch mit einem Kernel ohne CONFIG_ZRAM
+	# vollstaendig hochkommen.
+	echo "hy310-zram-swap: $1 -- weiter ohne zram" >&2
+	exit 0
+}
+
+start() {
+	[ -e "$SYS" ] || modprobe zram num_devices=1 2>/dev/null \
+		|| fail_soft "zram-Modul nicht ladbar (CONFIG_ZRAM fehlt?)"
+	[ -e "$SYS" ] || fail_soft "$SYS erscheint nicht"
+
+	# Schon aktiv? Dann nichts tun (die Unit ist RemainAfterExit, aber ein
+	# Neustart von Hand soll nicht in einen Fehler laufen).
+	if grep -q "^$DEV_NODE " /proc/swaps 2>/dev/null; then
+		echo "hy310-zram-swap: $DEV_NODE ist bereits Swap"
+		return 0
+	fi
+
+	# Halber RAM, in Byte. MemTotal steht in kB.
+	mem_kb=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)
+	[ -n "${mem_kb:-}" ] || fail_soft "MemTotal nicht lesbar"
+	size=$(( mem_kb / 2 * 1024 ))
+
+	# Reihenfolge zaehlt: comp_algorithm laesst sich nur setzen, solange
+	# disksize 0 ist.
+	echo "$ALGO" > "$SYS/comp_algorithm" 2>/dev/null \
+		|| echo "hy310-zram-swap: $ALGO nicht verfuegbar, Kernel-Vorgabe bleibt" >&2
+	echo "$size" > "$SYS/disksize"
+
+	mkswap -U clear "$DEV_NODE" >/dev/null
+	swapon --priority "$PRIO" --discard "$DEV_NODE"
+	echo "hy310-zram-swap: $DEV_NODE, $(( size / 1024 / 1024 )) MiB, $(cat "$SYS/comp_algorithm" 2>/dev/null || echo '?')"
+}
+
+stop() {
+	grep -q "^$DEV_NODE " /proc/swaps 2>/dev/null && swapoff "$DEV_NODE" || true
+	[ -e "$SYS/reset" ] && echo 1 > "$SYS/reset" 2>/dev/null || true
+	return 0
+}
+
+case "${1:-}" in
+	start) start ;;
+	stop)  stop ;;
+	*) echo "Aufruf: ${0##*/} start|stop" >&2; exit 2 ;;
+esac

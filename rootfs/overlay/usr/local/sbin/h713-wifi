@@ -1,0 +1,331 @@
+#!/bin/sh
+# h713-wifi -- das WLAN des Geraets nach /etc/h713/wifi.env hochfahren.
+#
+#   h713-wifi up            lesen, pruefen, Modul laden, AP oder Station starten
+#   h713-wifi down          Daemons beenden, wlan0 herunternehmen
+#   h713-wifi status        was gerade laeuft
+#   h713-wifi check [DATEI] nur lesen und pruefen -- das benutzt build-rootfs.sh
+#                           auf dem Bau-Rechner, bevor eine Datei ins Abbild geht
+#
+# Gerufen von h713-wifi.service (oneshot, RemainAfterExit). Ein Dienst, drei
+# Betriebsarten, eine Datei -- damit derselbe Weg fuer den gilt, der das Abbild
+# nur flasht, wie fuer den, der es baut.
+#
+# Was hier bewusst NICHT passiert:
+#  * Die Datei wird nicht mit '.' eingelesen. Sie kommt vom Nutzer; ein Tippfehler
+#    darf eine Fehlermeldung sein, kein ausgefuehrtes Kommando.
+#  * Kein offener Zugangspunkt. mode=ap ohne Passwort ist ein Fehler.
+#  * Die Passphrase steht nur in /etc/h713/wifi.env (0600) und in den erzeugten
+#    Konfigurationen unter /run (tmpfs, 0600). Nirgends sonst, nie im Journal.
+#  * Der Chip wird nur eingeschaltet, wenn er gebraucht wird: mode=off laedt das
+#    Modul gar nicht erst -- aic8800_bsp bestromt den Chip erst, wenn fdrv ihn
+#    anfordert (analyse/boot/wlan-aic8800-messung-20260912.txt, Befund 1).
+
+set -u
+
+ENV_DATEI=${H713_WIFI_ENV:-/etc/h713/wifi.env}
+LAUF=/run/h713-wifi
+IFACE=wlan0
+MODUL=aic8800_fdrv
+FIRMWARE=/lib/firmware/aic8800_fw/SDIO/aic8800D80
+
+log()  { printf 'h713-wifi: %s\n' "$*"; }
+fail() { printf 'h713-wifi: FEHLER: %s\n' "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Lesen und pruefen
+# ---------------------------------------------------------------------------
+mode= ssid= password= band= channel= country= ap_ip= ap_dhcp_start= ap_dhcp_end=
+
+lies_env() { # $1 = Datei
+	[ -r "$1" ] || fail "$1 nicht lesbar"
+	zeile=0
+	while IFS= read -r roh || [ -n "$roh" ]; do
+		zeile=$((zeile + 1))
+		z=${roh%$(printf '\r')}                 # CRLF aus einem Windows-Editor
+		case "$z" in ''|'#'*) continue ;; esac
+		case "$z" in
+		*=*) k=${z%%=*}; v=${z#*=} ;;
+		*)   fail "$1 Zeile $zeile: kein 'schluessel=wert': $z" ;;
+		esac
+		case "$k" in
+		mode|ssid|password|band|channel|country|ap_ip|ap_dhcp_start|ap_dhcp_end) ;;
+		*) fail "$1 Zeile $zeile: unbekannter Schluessel '$k' (Tippfehler?)" ;;
+		esac
+		# Kein '.'-Sourcing, also von Hand zuweisen -- die Schluessel sind oben
+		# auf eine feste Liste geprueft, deshalb ist eval hier ungefaehrlich.
+		eval "$k=\$v"
+	done < "$1"
+}
+
+bytes()  { printf %s "$1" | wc -c; }
+# Steuerzeichen (0x00-0x1f, 0x7f) sind in keinem Feld erlaubt; Umlaute schon.
+hat_steuerzeichen() { [ -n "$(printf %s "$1" | LC_ALL=C tr -d '\040-\176\200-\377')" ]; }
+ist_ipv4() {
+	printf %s "$1" | LC_ALL=C grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || return 1
+	IFS=. read -r a b c d <<EOF
+$1
+EOF
+	[ "$a" -le 255 ] && [ "$b" -le 255 ] && [ "$c" -le 255 ] && [ "$d" -le 255 ]
+}
+
+pruefe_env() {
+	case "$mode" in ap|sta|off) ;; *) fail "mode muss ap, sta oder off sein (ist: '$mode')" ;; esac
+	[ "$mode" = off ] && return 0
+
+	n=$(bytes "$ssid")
+	[ "$n" -ge 1 ] && [ "$n" -le 32 ] || fail "ssid muss 1..32 Byte lang sein (ist: $n)"
+	hat_steuerzeichen "$ssid" && fail "ssid enthaelt Steuerzeichen"
+	case "$ssid" in *'"'*|*'\'*) fail "ssid darf kein \" und kein \\ enthalten" ;; esac
+
+	n=$(bytes "$password")
+	if [ "$mode" = ap ] || [ "$n" -gt 0 ]; then
+		[ "$n" -ge 8 ] && [ "$n" -le 63 ] || {
+			[ "$mode" = ap ] && [ "$n" -eq 0 ] && \
+				fail "password fehlt -- ein offener Zugangspunkt wird nicht aufgespannt"
+			fail "password muss 8..63 Zeichen lang sein (ist: $n)"
+		}
+		hat_steuerzeichen "$password" && fail "password enthaelt Steuerzeichen"
+		case "$password" in *'"'*|*'\'*) fail "password darf kein \" und kein \\ enthalten" ;; esac
+	fi
+
+	case "$country" in [A-Z][A-Z]) ;; *) fail "country muss ein Laenderkuerzel aus zwei Grossbuchstaben sein (ist: '$country')" ;; esac
+
+	[ "$mode" = sta ] && return 0
+
+	case "$band" in
+	2.4) case "$channel" in [1-9]|1[0-3]) ;; *) fail "band=2.4 erlaubt channel 1..13 (ist: '$channel')" ;; esac ;;
+	5)   case "$channel" in 36|40|44|48) ;; *) fail "band=5 erlaubt nur die radarfreien Kanaele 36, 40, 44, 48 (ist: '$channel')" ;; esac ;;
+	*)   fail "band muss 2.4 oder 5 sein (ist: '$band')" ;;
+	esac
+	for f in ap_ip ap_dhcp_start ap_dhcp_end; do
+		eval "w=\$$f"
+		ist_ipv4 "$w" || fail "$f ist keine IPv4-Adresse (ist: '$w')"
+	done
+	[ "${ap_ip%.*}" = "${ap_dhcp_start%.*}" ] && [ "${ap_ip%.*}" = "${ap_dhcp_end%.*}" ] || \
+		fail "ap_ip, ap_dhcp_start und ap_dhcp_end muessen im selben /24 liegen"
+	return 0
+}
+
+zusammenfassung() {
+	case "$mode" in
+	off) log "mode=off -- Funk bleibt aus" ;;
+	ap)  log "mode=ap  ssid='$ssid'  band=$band channel=$channel  country=$country  $ap_ip ($ap_dhcp_start..$ap_dhcp_end)" ;;
+	sta) log "mode=sta ssid='$ssid'  $( [ -n "$password" ] && echo WPA2 || echo offen )  country=$country" ;;
+	esac
+}
+
+# ---------------------------------------------------------------------------
+# Treiber und Schnittstelle
+# ---------------------------------------------------------------------------
+firmware_pruefen() {
+	# Im Release-Abbild liegen die 13 Dateien als Platzhalter fester Groesse;
+	# hy310-install fuellt sie aus dem Abzug des Nutzers. Ein Geraet ohne Chip
+	# bekommt sie GENULLT -- die Datei ist da, aber leer. Deshalb nicht nur auf
+	# das Verzeichnis sehen, sondern in die Datei.
+	[ -d "$FIRMWARE" ] || fail "Firmware fehlt: $FIRMWARE -- sie kommt aus dem Abzug des Geraets (h713-extract, Schritt WLAN). Ohne sie startet der Chip nicht."
+	set -- "$FIRMWARE"/fmacfw_*.bin
+	[ -f "$1" ] || fail "Firmware fehlt: keine fmacfw_*.bin in $FIRMWARE"
+	if [ "$(head -c 16 "$1" | LC_ALL=C tr -d '\000' | wc -c)" -eq 0 ]; then
+		fail "$1 ist ein genullter Platzhalter -- dieses Geraet hat keinen WLAN-Chip, oder der Installer lief ohne den WLAN-Teil des Abzugs. mode=off in $ENV_DATEI beendet diese Meldung."
+	fi
+}
+
+lade_modul() {
+	firmware_pruefen
+	if [ -d /sys/module/$MODUL ]; then
+		ist=$(cat /sys/module/$MODUL/parameters/default_ccode 2>/dev/null || echo '?')
+		if [ "$ist" != "$country" ]; then
+			# Die Regulierungsdomaene ist ein Ladeparameter des self-managed
+			# wiphy; zur Laufzeit stellt sie niemand um. Also neu laden.
+			log "Regulierungsdomaene $ist -> $country: Modul wird neu geladen"
+			modprobe -r $MODUL || fail "modprobe -r $MODUL"
+		fi
+	fi
+	if ! [ -d /sys/module/$MODUL ]; then
+		modprobe $MODUL default_ccode="$country" || fail "modprobe $MODUL (dmesg | grep -i aic)"
+	fi
+	i=0
+	while [ ! -e /sys/class/net/$IFACE ]; do
+		i=$((i + 1))
+		[ "$i" -le 30 ] || fail "$IFACE ist nach 30 s nicht erschienen (dmesg | grep -i aic)"
+		sleep 1
+	done
+	rfkill unblock wifi 2>/dev/null || true
+	iw reg set "$country" 2>/dev/null || true
+}
+
+toete() { # $1 = Pidfile
+	[ -f "$1" ] || return 0
+	pid=$(cat "$1" 2>/dev/null)
+	[ -n "$pid" ] && kill "$pid" 2>/dev/null
+	i=0
+	while [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ "$i" -lt 20 ]; do i=$((i + 1)); sleep 0.1; done
+	rm -f "$1"
+}
+
+runter() {
+	if [ -f "$LAUF/dhclient.pid" ]; then
+		dhclient -4 -r -pf "$LAUF/dhclient.pid" -lf "$LAUF/dhclient.leases" "$IFACE" 2>/dev/null || true
+		toete "$LAUF/dhclient.pid"
+	fi
+	toete "$LAUF/dnsmasq.pid"
+	toete "$LAUF/hostapd.pid"
+	toete "$LAUF/wpa_supplicant.pid"
+	rm -f "$LAUF/hostapd.conf" "$LAUF/wpa_supplicant.conf"
+	if [ -e /sys/class/net/$IFACE ]; then
+		ip addr flush dev $IFACE 2>/dev/null || true
+		ip link set $IFACE down 2>/dev/null || true
+	fi
+}
+
+# ---------------------------------------------------------------------------
+# Zugangspunkt
+# ---------------------------------------------------------------------------
+starte_ap() {
+	# Die hostapd-Zeilen sind die am Geraet gemessenen aus cstengers Rootfs-Bau
+	# (mainline/tools/rootfs/customize.sh): 2,4 GHz HT40 4,85/7,65 MB/s,
+	# 5 GHz VHT80 13,25/14,41 MB/s. MAX-MPDU-11454 kann dieser Treiber nicht
+	# (meldet 7991); wer es verlangt, bekommt "Unable to setup interface".
+	# HT40 braucht einen Nachbarkanal: unten fuer die niedrigen Kanaele (+),
+	# oben fuer die hohen (-), sonst startet hostapd nicht.
+	case "$band" in
+	5)
+		hw=a
+		case "$channel" in 36|44) seite=+ ;; *) seite=- ;; esac
+		modi="ieee80211n=1
+ieee80211ac=1
+ht_capab=[HT40$seite][SHORT-GI-20][SHORT-GI-40]
+vht_capab=[SHORT-GI-80][MAX-MPDU-7991]
+vht_oper_chwidth=1
+vht_oper_centr_freq_seg0_idx=42"
+		;;
+	*)
+		hw=g
+		[ "$channel" -le 7 ] && seite=+ || seite=-
+		modi="ieee80211n=1
+ht_capab=[HT40$seite][SHORT-GI-20][SHORT-GI-40][MAX-AMSDU-7935]"
+		;;
+	esac
+	umask 077
+	cat > "$LAUF/hostapd.conf" <<EOF
+interface=$IFACE
+driver=nl80211
+ssid=$ssid
+utf8_ssid=1
+hw_mode=$hw
+channel=$channel
+$modi
+wmm_enabled=1
+auth_algs=1
+wpa=2
+wpa_key_mgmt=WPA-PSK
+rsn_pairwise=CCMP
+wpa_passphrase=$password
+EOF
+	umask 022
+	ip link set $IFACE down 2>/dev/null || true
+	ip addr flush dev $IFACE 2>/dev/null || true
+	hostapd -B -P "$LAUF/hostapd.pid" "$LAUF/hostapd.conf" || fail "hostapd startet nicht (journalctl -u h713-wifi)"
+	ip addr add "$ap_ip/24" dev $IFACE || fail "ip addr add $ap_ip/24"
+	ip link set $IFACE up
+	# DHCP fuer die Clients, dazu ein Name fuer das Geraet selbst, damit
+	# 'ssh root@h713' vom Telefon aus geht. Kein Weiterreichen von DNS -- es
+	# gibt hinter dem AP nichts, wohin. Nur wlan0, damit eth0 unberuehrt bleibt.
+	dnsmasq --pid-file="$LAUF/dnsmasq.pid" --dhcp-leasefile="$LAUF/leases" \
+		--interface=$IFACE --bind-interfaces --except-interface=lo \
+		--no-resolv --no-hosts \
+		--address=/h713/"$ap_ip" --address=/"$(cat /etc/hostname 2>/dev/null || echo hy310)"/"$ap_ip" \
+		--dhcp-range="$ap_dhcp_start,$ap_dhcp_end,255.255.255.0,12h" \
+		--dhcp-authoritative \
+		|| fail "dnsmasq startet nicht"
+	log "Zugangspunkt '$ssid' steht auf $IFACE, $ap_ip"
+}
+
+# ---------------------------------------------------------------------------
+# Station
+# ---------------------------------------------------------------------------
+starte_sta() {
+	umask 077
+	if [ -n "$password" ]; then
+		netz="ssid=\"$ssid\"
+	psk=\"$password\"
+	key_mgmt=WPA-PSK"
+	else
+		netz="ssid=\"$ssid\"
+	key_mgmt=NONE"
+	fi
+	cat > "$LAUF/wpa_supplicant.conf" <<EOF
+ctrl_interface=/run/wpa_supplicant
+country=$country
+network={
+	$netz
+}
+EOF
+	umask 022
+	ip link set $IFACE up || fail "ip link set $IFACE up"
+	wpa_supplicant -B -D nl80211 -i $IFACE -c "$LAUF/wpa_supplicant.conf" -P "$LAUF/wpa_supplicant.pid" \
+		|| fail "wpa_supplicant startet nicht"
+	# -nw: nicht auf eine Adresse warten. Der Dienst gilt als gestartet, sobald
+	# die Anmeldung laeuft; ob das Netz da ist, zeigt 'h713-wifi status'.
+	dhclient -4 -nw -pf "$LAUF/dhclient.pid" -lf "$LAUF/dhclient.leases" $IFACE \
+		|| fail "dhclient startet nicht"
+	log "Station meldet sich an '$ssid' an; Adresse per DHCP"
+}
+
+# ---------------------------------------------------------------------------
+# Unterbefehle
+# ---------------------------------------------------------------------------
+befehl_check() {
+	lies_env "${1:-$ENV_DATEI}"
+	pruefe_env
+	zusammenfassung
+	if [ "$mode" = ap ] && [ "$ssid" = h713 ] && [ "$password" = magcubic ]; then
+		log "HINWEIS: das ist die oeffentlich bekannte Vorgabe. Wer sie nicht aendert, laesst jeden in Funkreichweite herein."
+	fi
+}
+
+befehl_up() {
+	lies_env "$ENV_DATEI"
+	pruefe_env
+	zusammenfassung
+	[ "$mode" = off ] && exit 0
+	install -d -m 0700 "$LAUF"
+	runter
+	lade_modul
+	case "$mode" in ap) starte_ap ;; sta) starte_sta ;; esac
+}
+
+befehl_down() {
+	install -d -m 0700 "$LAUF"
+	runter
+	log "$IFACE ist unten"
+}
+
+befehl_status() {
+	if lies_env "$ENV_DATEI" 2>/dev/null && pruefe_env 2>/dev/null; then
+		zusammenfassung
+	else
+		log "$ENV_DATEI: fehlerhaft -- 'h713-wifi check' sagt, was"
+	fi
+	[ -d /sys/module/$MODUL ] && log "Modul geladen, Regulierungsdomaene $(cat /sys/module/$MODUL/parameters/default_ccode 2>/dev/null)" || log "Modul nicht geladen (Chip aus)"
+	[ -e /sys/class/net/$IFACE ] || { log "$IFACE gibt es nicht"; return 0; }
+	for d in hostapd dnsmasq wpa_supplicant dhclient; do
+		if [ -f "$LAUF/$d.pid" ] && kill -0 "$(cat "$LAUF/$d.pid")" 2>/dev/null; then
+			log "$d laeuft (PID $(cat "$LAUF/$d.pid"))"
+		fi
+	done
+	ip -4 -brief addr show dev $IFACE 2>/dev/null
+	iw dev $IFACE link 2>/dev/null | sed 's/^/    /'
+	if [ -s "$LAUF/leases" ]; then
+		log "Clients:"; sed 's/^/    /' "$LAUF/leases"
+	fi
+}
+
+case "${1:-}" in
+up)     befehl_up ;;
+down)   befehl_down ;;
+status) befehl_status ;;
+check)  befehl_check "${2:-}" ;;
+*)      echo "Aufruf: h713-wifi up|down|status|check [DATEI]" >&2; exit 2 ;;
+esac

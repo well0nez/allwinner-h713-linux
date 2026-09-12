@@ -1,0 +1,111 @@
+# packages.txt -- Paketliste fuer das schlanke HY310-Rootfs (Debian trixie/arm64)
+#
+# Grundlage: doku/107-plan-rootfs.md §6 (Entwurf) und §8 (Entschieden).
+# Basis ist `mmdebstrap --variant=minbase`; hier steht nur, was DARUEBER kommt.
+#
+# Format: eine Zeile je Paket. Alles ab '#' ist Kommentar, Leerzeilen erlaubt.
+# build-rootfs.sh liest die Datei und macht daraus die --include-Liste.
+#
+# Regel fuer diese Liste: jede Zeile muss sich auf einen Bedarf zurueckfuehren
+# lassen, der im Projekt belegt ist -- kein Paket "fuer alle Faelle".
+
+# --- Init, Geraete, Bus ------------------------------------------------------
+systemd-sysv        # /sbin/init; minbase bringt systemd als Bibliothek, nicht als Init
+udev                # Geraeteerkennung; traegt 99-h713-tv.rules, ohne udev startet h713-tv nie
+dbus                # von systemd (logind, hostnamed) und udev-Regeln mit TAG+="systemd" erwartet
+
+# --- Netz (wie heute im Netboot-Root, S41 §1) --------------------------------
+ifupdown            # /etc/network/interfaces: allow-hotplug eth0 / iface eth0 inet dhcp
+isc-dhcp-client     # der DHCP-Client, den ifupdown aufruft; schreibt /etc/resolv.conf
+iproute2            # ip(8); ifupdown und jede Fehlersuche am Netz brauchen es
+
+# --- Fernzugang --------------------------------------------------------------
+openssh-server      # Fernzugang. KEIN Schluessel im Abbild (107 §3) -- der Installer legt einen,
+                    # sonst kommt man nur ueber die serielle Konsole herein.
+
+# --- Dateisystem, Module, Blockgeraete ---------------------------------------
+e2fsprogs           # mkfs.ext4/e2fsck/resize2fs; x-systemd.growfs in der fstab braucht resize2fs
+kmod                # modprobe/depmod fuer die 28 Module des GUT-Standes
+util-linux-extra    # agetty (in trixie NICHT mehr in util-linux!) -- ohne das kein Autologin auf
+                    # ttyS0; dazu fstrim(8) fuer die eMMC und lsblk-Nachbarn
+
+# --- Ton ---------------------------------------------------------------------
+alsa-utils          # amixer/aplay: der Audioweg von h713-tv wird darueber geprueft (S25/S32)
+
+# --- Laufzeitbibliotheken von h713-tv ---------------------------------------
+# `readelf -d h713-tv.aarch64-linux-gnu` nennt genau drei: libdrm.so.2,
+# libasound.so.2, libc.so.6. libc kommt aus minbase, die anderen zwei hier.
+libdrm2             # libdrm.so.2 -- DRM/KMS-Plane
+libasound2t64       # libasound.so.2 -- ALSA-Control-API (t64-Umbenennung in trixie)
+
+# --- h713-pq ----------------------------------------------------------------
+python3             # h713-pq rechnet Gamma/Presets zur Laufzeit aus /etc/hy310/tvconfig
+                    # (108 §6). Nur Standardbibliothek, ausdruecklich OHNE python3-dev.
+
+# --- WLAN (Marco, 12.09.: "wird mit den gaengigen Tools ausgestattet") --------
+# Der Treiber laeuft seit dem 12.09. auf diesem Kernel, die Firmware zieht
+# h713-extract aus dem Abzug des Nutzers (analyse/boot/wlan-aic8800-messung-
+# 20260912.txt). Beides waren die Gruende, aus denen WLAN draussen war -- weg.
+# Betrieb: /etc/h713/wifi.env, ausgewertet von h713-wifi.service (overlay/).
+wpasupplicant       # Station (mode=sta): WPA2-Anmeldung an ein fremdes Netz
+hostapd             # Zugangspunkt (mode=ap, die Vorgabe): SSID h713 / magcubic
+dnsmasq-base        # DHCP fuer die AP-Clients. -base: nur das Programm, KEIN
+                    # dnsmasq.service, der sonst Port 53 auf allen Schnittstellen
+                    # belegt -- h713-wifi startet es selbst auf wlan0
+iw                  # iw(8): Scan, Verbindungsstand, Regulierungsdomaene -- die
+                    # Fehlersuche am Funk ohne v4l2-ctl-artige Umwege
+rfkill              # rfkill unblock wifi vor dem Hochfahren; ohne das bleibt ein
+                    # weich gesperrtes Funkteil stumm und keiner sieht warum
+wireless-regdb      # regulatory.db fuer cfg80211. Der aic8800 ist self-managed und
+                    # nimmt seine Tabelle aus dem Treiber (default_ccode), aber das
+                    # globale Reich soll trotzdem stimmen, falls custregd je faellt
+
+# --- U-Boot-Umgebung aus Linux ---------------------------------------------
+libubootenv-tool    # fw_printenv/fw_setenv nach /etc/fw_env.config (0x700000, 64 KiB).
+                    # Ohne das gab es die Konfigurationsdatei, aber kein Werkzeug dazu;
+                    # h713_boot, h713_gate, h713_project sind sonst nur am U-Boot-Prompt
+                    # erreichbar. Klein (~100 KiB), kein u-boot-tools noetig.
+
+# --- Uhr (107 §8) ------------------------------------------------------------
+systemd-timesyncd   # ohne gepufferte RTC startet das System 1970: apt scheitert an der
+                    # Signaturpruefung, Logs sind unbrauchbar, jedes TLS bricht ab. ~1 MiB.
+                    # Ohne Netz bleibt es beim Startwert, dann weiter `date -u -s`.
+
+# --- apt bleibt benutzbar (107 §8) -------------------------------------------
+ca-certificates     # TLS-Wurzeln fuer deb.debian.org und alles andere ueber https
+debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg -- ohne das ist die
+                    # eingetragene Quelle nicht verifizierbar und `apt update` waere wertlos.
+                    # ACHTUNG: `apt update` findet beim BAU nicht statt (~40 MiB Listen, am
+                    # ersten Tag veraltet); build-rootfs.sh raeumt /var/lib/apt/lists.
+
+# =============================================================================
+# Bewusst NICHT enthalten -- als Liste, damit die Entscheidung nachlesbar ist
+# und nicht beim naechsten Bau still zurueckwandert.
+# =============================================================================
+#
+# build-essential, gcc, *-dev, meson, ninja, gdb, strace
+#     107 §3: gebaut wird quer (userspace/h713-tv/Makefile, Ziel install-cross).
+#     Das Geraet compiliert nichts.
+# gstreamer1.0-*, libgles2, libegl1, libgl1-mesa-dri, mpv, ffmpeg, v4l-utils
+#     cstengers Video-Runtime (mainline/tools/rootfs/build.sh, VIDEO_RUNTIME_PACKAGES).
+#     Zieht GTK3, x265, aom, libllvm nach -- 107 §1: der groesste Einzelposten des
+#     heutigen Netboot-Roots. Der Beamer schiebt HDMI-Eingang auf eine DRM-Plane,
+#     er decodiert nichts.
+# bluez
+#     Bluetooth bleibt draussen. Nicht wegen des Treibers -- der ist derselbe
+#     aic8800 --, sondern weil die BT-Firmware (fmacfwbt_*) NICHT im Vendor-Abzug
+#     liegt, nur im SDK-Satz mit ungeklaerter Lizenz (S42, 60-offen §WLAN und
+#     Bluetooth). Ohne Firmware ist bluez ein Daemon ohne Funk.
+#     (Bis 12.09. stand hier auch WLAN, mit der Begruendung "auf diesem Kernel
+#     ungeprueft, Firmware ohne Lizenzangabe". Beides ist seitdem erledigt.)
+# dnsmasq (das volle Paket)
+#     bringt dnsmasq.service mit, der Port 53 auf allen Schnittstellen belegt.
+#     dnsmasq-base reicht; h713-wifi startet es selbst und nur auf wlan0.
+# busybox
+#     zweite Werkzeugkiste ohne Aufgabe; util-linux und coreutils sind da.
+# zram-tools
+#     107 §6/§4.2: eigene Unit ist kleiner und macht genau die drei Einstellungen,
+#     die wir wollen. Siehe overlay/usr/local/sbin/hy310-zram-swap.
+# firmware-*, alle Blob-Pakete
+#     107 §5: keine proprietaeren Blobs im Abbild. Firmware und PQ-Daten spielt der
+#     Installer aus h713-extract ein.

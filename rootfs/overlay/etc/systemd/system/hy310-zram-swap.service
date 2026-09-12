@@ -1,0 +1,32 @@
+# 107 §4.2 -- zram als SWAP, nicht fuer Logs.
+#
+# Armbians Weg (zram-Blockgeraet, ext4 darauf, /var/log dorthin, beim
+# Herunterfahren nach /var/log.hdd sichern) loest dasselbe Problem, ist aber
+# eine Konstruktion aus drei beweglichen Teilen. Wir loesen die Logs mit
+# Storage=volatile (10-hy310.conf) und benutzen zram nur fuer das, wofuer es
+# hier wirklich gebraucht wird: den tmpfs-Druck abfangen und das Geraet bei
+# knappem Speicher traege statt tot machen.
+#
+# Warum eine eigene Unit statt zram-tools (107 §6): zram-tools bringt ein
+# init-Skript, eine Konfigurationsdatei und eine Abhaengigkeitskette mit, um
+# drei Werte zu setzen. Die drei Werte stehen hier.
+
+[Unit]
+Description=HY310: zram-Swap (zstd, halber RAM)
+Documentation=file:/usr/local/share/doc/hy310/rootfs.md
+DefaultDependencies=no
+Before=swap.target
+After=systemd-modules-load.service
+# Ohne CONFIG_ZRAM gibt es /sys/class/zram-control nicht. Dann startet die
+# Unit gar nicht erst, statt zu scheitern -- der Kernel kann das heute noch
+# nicht (siehe modules-load.d/hy310-zram.conf).
+ConditionPathExists=/sys/class/zram-control
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/hy310-zram-swap start
+ExecStop=/usr/local/sbin/hy310-zram-swap stop
+
+[Install]
+WantedBy=swap.target

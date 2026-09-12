@@ -1,0 +1,11 @@
+# Netz wie heute (S41 §1: der Umzug auf die eMMC aendert daran nichts).
+# ifupdown + isc-dhcp-client, kein NetworkManager, kein systemd-networkd.
+#
+# allow-hotplug statt auto: eth0 kommt ueber sun8i-emac erst mit dem
+# PHY-Probe, ein "auto" wuerde beim Start ins Leere greifen.
+
+auto lo
+iface lo inet loopback
+
+allow-hotplug eth0
+iface eth0 inet dhcp

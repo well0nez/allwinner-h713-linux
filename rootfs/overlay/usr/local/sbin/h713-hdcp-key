@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""h713-hdcp-key -- den HDCP-2.2-Schluessel vom eigenen Geraet an den Treiber geben.
+
+Der Schluessel liegt im sunxi Secure Storage auf der eMMC (Partition hy310-keys,
+auf einem Stock-Geraet roh bei 0x600000). Er verlaesst das Geraet nie: das
+Werkzeug liest ihn in den Speicher, legt ihn kurz in ein tmpfs, laedt den
+hdmirx-Treiber, der ihn per request_firmware() holt und an den MIPS gibt, und
+loescht die Datei wieder.
+
+Aufbau (doku/68): Slots a 4 KiB, jedes Item doppelt (Original + Kopie).
+  store_object_t: magic u32 (0x17253948) | id u32 | name[64] | 6 x u32 |
+                  actual_len u32 | data[3072] | crc u32          = 3176 Byte
+  data:           name[64] | len u32 | 0x10000001 | 1 | Nutzdaten[len]
+
+  h713-hdcp-key            Schluessel setzen und Treiber laden
+  h713-hdcp-key --pruefen  nur suchen und pruefen, nichts schreiben
+"""
+import os
+import struct
+import subprocess
+import sys
+import zlib
+
+MAGIC = 0x17253948
+SLOT = 4096
+OBJ = 3176
+KOPF = 4 + 4 + 64 + 24 + 4              # bis zu data[]
+DATA = 3072
+ITEM = "hdcpkeyV22"
+ERWARTET = 912
+MODUL = "sun50i-h713-hdmirx"
+FW_NAME = "hy310-hdcp22.bin"
+FW_DIR = "/run/hy310/firmware"
+FW_PATH_PARAM = "/sys/module/firmware_class/parameters/path"
+PARTLABEL = "/dev/disk/by-partlabel/hy310-keys"
+ROH = "/dev/mmcblk0"
+ROH_SUCHE = 16 << 20                    # Stock-Geraet: Block liegt in den ersten 16 MiB
+
+
+def sag(s):
+    print("h713-hdcp-key: " + s, flush=True)
+
+
+def slots(quelle, laenge):
+    """Alle 4-KiB-Slots mit gueltigem Magic liefern: (offset, objekt)."""
+    with open(quelle, "rb") as fh:
+        pos = 0
+        while pos < laenge:
+            fh.seek(pos)
+            b = fh.read(SLOT)
+            if len(b) < OBJ:
+                break
+            if struct.unpack_from("<I", b, 0)[0] == MAGIC:
+                yield pos, b[:OBJ]
+            pos += SLOT
+
+
+def objekt_lesen(obj):
+    """(name, actual_len, crc_ok, data) aus einem store_object_t."""
+    name = obj[8:72].split(b"\0")[0].decode("ascii", "replace")
+    actual_len = struct.unpack_from("<I", obj, KOPF - 4)[0]
+    crc_da = struct.unpack_from("<I", obj, OBJ - 4)[0]
+    crc_ist = zlib.crc32(obj[:OBJ - 4]) & 0xffffffff
+    return name, actual_len, crc_da == crc_ist, obj[KOPF:KOPF + DATA]
+
+
+def nutzdaten(data, actual_len):
+    """Den inneren Kopf pruefen und die Nutzdaten zurueckgeben, sonst None."""
+    innen_name = data[0:64].split(b"\0")[0].decode("ascii", "replace")
+    laenge, k1, k2 = struct.unpack_from("<III", data, 64)
+    if innen_name != ITEM or k1 != 0x10000001 or k2 != 1:
+        return None, "innerer Kopf passt nicht (%r, 0x%x, %d)" % (innen_name, k1, k2)
+    if laenge != ERWARTET or 76 + laenge != actual_len:
+        return None, "Laenge %d, erwartet %d (actual_len %d)" % (laenge, ERWARTET, actual_len)
+    return data[76:76 + laenge], "ok"
+
+
+def finden():
+    """Den Schluessel finden. Erst die benannte Partition, sonst roh suchen."""
+    if os.path.exists(PARTLABEL):
+        quelle, laenge = PARTLABEL, os.path.getsize(PARTLABEL) or (1 << 20)
+        with open(PARTLABEL, "rb") as fh:
+            fh.seek(0, 2)
+            laenge = fh.tell()
+        sag("Secure Storage: %s (%d KiB)" % (PARTLABEL, laenge // 1024))
+    else:
+        quelle, laenge = ROH, ROH_SUCHE
+        sag("keine Partition hy310-keys -- suche roh in den ersten %d MiB von %s"
+            % (ROH_SUCHE >> 20, ROH))
+    treffer = []
+    for off, obj in slots(quelle, laenge):
+        name, actual_len, crc_ok, data = objekt_lesen(obj)
+        if name != ITEM:
+            continue
+        nutz, grund = nutzdaten(data, actual_len)
+        treffer.append((off, crc_ok, nutz, grund))
+    if not treffer:
+        return None, "kein Item %r gefunden" % ITEM
+    # Erst ein Slot, dessen CRC stimmt; die Kopie ist der Rueckfall.
+    for off, crc_ok, nutz, grund in treffer:
+        if crc_ok and nutz is not None:
+            sag("Item %s bei Offset 0x%x, CRC stimmt, %d Byte" % (ITEM, off, len(nutz)))
+            return nutz, "ok"
+    for off, crc_ok, nutz, grund in treffer:
+        if nutz is not None:
+            sag("WARNUNG: Item %s bei 0x%x nur mit falscher CRC -- nehme es trotzdem"
+                % (ITEM, off))
+            return nutz, "crc"
+    return None, "; ".join(g for _, _, _, g in treffer)
+
+
+def modul_geladen():
+    with open("/proc/modules") as fh:
+        return any(z.split()[0] == MODUL.replace("-", "_") for z in fh)
+
+
+def main():
+    nur_pruefen = "--pruefen" in sys.argv
+    nutz, grund = finden()
+    if nutz is None:
+        sag("FEHLER: " + grund)
+        return 1
+    if nur_pruefen:
+        sag("Pruefung bestanden -- nichts geschrieben")
+        return 0
+
+    os.makedirs(FW_DIR, mode=0o700, exist_ok=True)
+    os.chmod(FW_DIR, 0o700)
+    ziel = os.path.join(FW_DIR, FW_NAME)
+    fd = os.open(ziel, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, nutz)
+    finally:
+        os.close(fd)
+    try:
+        with open(FW_PATH_PARAM, "w") as fh:
+            fh.write(FW_DIR)
+        if modul_geladen():
+            # Nur beim Nachladen von Hand: beim Start laeuft h713-tv noch
+            # nicht, und der Treiber wird hier zum ersten Mal geladen.
+            sag("Treiber laeuft schon -- halte h713-tv an und lade ihn neu")
+            subprocess.run(["systemctl", "stop", "h713-tv@video1.service"],
+                           check=False)
+            subprocess.run(["modprobe", "-r", MODUL], check=True)
+        subprocess.run(["modprobe", MODUL], check=True)
+        sag("Treiber geladen, Schluessel uebergeben")
+    finally:
+        # Der Schluessel gehoert nicht ins Dateisystem, auch nicht in ein tmpfs.
+        try:
+            os.unlink(ziel)
+        except OSError:
+            pass
+        try:
+            with open(FW_PATH_PARAM, "w") as fh:
+                fh.write("\n")
+        except OSError:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

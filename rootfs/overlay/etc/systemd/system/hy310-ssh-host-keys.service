@@ -1,0 +1,20 @@
+# Host-Schluessel beim ersten Start erzeugen.
+#
+# Ohne das haetten ALLE aus demselben Abbild bespielten Geraete dieselben
+# SSH-Host-Schluessel: das Postinst von openssh-server erzeugt sie im Chroot,
+# also beim Bau. build-rootfs.sh loescht sie wieder; diese Unit legt sie beim
+# ersten Start am Geraet an. Vorbild ist h713-ssh-host-keys.service aus dem
+# heutigen Netboot-Root.
+
+[Unit]
+Description=HY310: fehlende SSH-Host-Schluessel erzeugen
+Before=ssh.service
+ConditionPathExists=|!/etc/ssh/ssh_host_ed25519_key
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=ssh.service

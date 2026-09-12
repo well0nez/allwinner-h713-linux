@@ -1,0 +1,21 @@
+[Unit]
+Description=H713 WLAN nach /etc/h713/wifi.env (Zugangspunkt, Station oder aus)
+Documentation=file:/etc/h713/wifi.env
+# Firmware liegt auf dem Rootfs, das Modul im Modulbaum -- beides braucht das
+# Dateisystem. Vor network.target, damit "network-online" nicht auf eth0
+# allein wartet, wenn das Geraet als Station laeuft.
+After=local-fs.target systemd-modules-load.service
+Before=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/h713-wifi up
+ExecStop=/usr/local/sbin/h713-wifi down
+# Ein fehlerhaftes wifi.env ist ein Fehler dieses Dienstes, kein Grund fuer
+# eine Schleife: die Meldung steht im Journal, der Nutzer korrigiert und
+# startet neu. Kein Restart.
+
+[Install]
+WantedBy=multi-user.target

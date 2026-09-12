@@ -1,0 +1,28 @@
+# /etc/fstab -- HY310, Layout v3 (doku/109-plan-layout-v3.md §2.2)
+#
+# Genau zwei Eintraege. Adressiert wird ueber PARTLABEL, nicht ueber
+# /dev/mmcblk0pN: die Nummer haengt daran, wie viele Partitionen die GPT
+# gerade fuehrt, das Etikett nicht. Der Kernel kann das auch fuer die Wurzel
+# (block/early-lookup.c: strncmp(name, "PARTLABEL=", 10)), die Kommandozeile
+# traegt root=PARTLABEL=hy310-rootfs.
+#
+# /data ist ein VERZEICHNIS im Rootfs, keine eigene Partition mehr (109 §2.2:
+# hy310-data ist ersatzlos entfallen, das Rootfs hat 7,15 GiB). Deshalb steht
+# hier keine dritte Zeile.
+#
+# x-systemd.growfs: das Abbild wird klein gebaut (Vorgabe 1 GiB) und waechst
+# beim ersten Start auf die volle Partition. Ein 7,15-GiB-Abbild zu bauen und
+# zu uebertragen, waere reine Verschwendung.
+
+PARTLABEL=hy310-rootfs  /      ext4  defaults,noatime,x-systemd.growfs        0  1
+
+# hy310-boot traegt mips/, h713-kernel.fit -- U-Boot liest sie selbst, Linux
+# braucht sie nur zum Aktualisieren. nofail + kurzer Timeout: ein Geraet, das
+# per NFS gestartet ist oder eine leere Bootpartition hat, soll trotzdem
+# hochkommen und nicht in die Notfall-Shell fallen.
+PARTLABEL=hy310-boot    /boot  ext4  defaults,noatime,nofail,x-systemd.device-timeout=10s  0  2
+
+# /tmp und /var/tmp sind tmpfs (107 §4.4). Dafuer braucht es keine Zeile:
+# systemd bringt tmp.mount mit, und /var/tmp haengt an
+# systemd-tmpfiles. Eine eigene Zeile hier wuerde nur beides doppelt
+# beschreiben. Was zaehlt, ist dass die eMMC davon nichts sieht.

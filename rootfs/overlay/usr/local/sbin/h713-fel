@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+"""h713-fel -- das laufende Linux in den FEL-Modus schicken.
+
+Tut genau das, was `run fel` am U-Boot-Prompt tut (doku/nachtlog/S48, Nachtrag
+11.09.2026, uboot-h713/0032):
+
+    RTC-GP2 (0x07090108) := 0x5aa5a55a   -- in einer Schleife, bis der Wert
+                                            zurücklesbar ist (die RTC-Register
+                                            hängen an einem langsamen Takt)
+    mindestens 1 s warten                -- der Hersteller wartet 500 ms
+    Reset                                -- hier `systemctl reboot`, das über
+                                            PSCI im Watchdog endet, derselbe Weg
+                                            wie U-Boots `reset`
+
+Beim nächsten Start liest unser SPL (LBA 16) das Flag als erstes, löscht es und
+springt nach 0x20 in den FEL-Einstieg des BROM. Das Gerät meldet sich dann in
+etwa 10 s am USB-Port als 1f3a:efe8 -- ohne Netz, ohne Konsole-Login, ohne
+Linux. Zurück kommt man mit
+
+    sunxi-fel uboot mainline/build/uboot-v7-efex/u-boot-sunxi-with-spl.bin
+
+oder mit einem Stromzyklus (das Flag überlebt keinen; danach startet das Gerät
+normal).
+
+Der Zugriff geht über /dev/mem. Der Kernel hat CONFIG_STRICT_DEVMEM=y (blockt
+nur RAM) und kein CONFIG_IO_STRICT_DEVMEM (das würde belegte MMIO-Bereiche
+sperren -- die RTC-Seite gehört dem Treiber 7090000.rtc), MMIO ist also
+erreichbar. `--check` zeigt das, ohne etwas zu schreiben.
+
+NIE 0x5aa55aa5 schreiben: das ist der Crashdump-Handshake des Hersteller-Boot0,
+der ohne Gegenstelle hängen bliebe. Dieses Programm kennt nur die drei Werte
+unten und nimmt keinen Wert von der Kommandozeile.
+"""
+
+import argparse
+import mmap
+import os
+import struct
+import sys
+import time
+
+RTC_BASE = 0x07090000          # Seite; GP-Register liegen ab +0x100
+GP_OFFSET = 0x100
+GP2 = 2                        # GP2 = 0x07090108
+FEL_FLAG = 0x5AA5A55A          # von Boot0/SPL erkannt -> BROM 0x20
+PROBE_VALUE = 0x11111111       # harmlos, von niemandem gelesen (S48 Gegenprobe)
+CLEAR_VALUE = 0x00000000
+
+WRITE_TRIES = 500              # je 1 ms -> höchstens 0,5 s
+SETTLE_S = 1.0                 # Wartezeit vor dem Reset (Hersteller: 0,5 s)
+
+
+def gp_addr(n):
+    return RTC_BASE + GP_OFFSET + 4 * n
+
+
+class Rtc:
+    """Die RTC-Seite über /dev/mem, 32-Bit-Zugriffe auf die GP-Register."""
+
+    def __init__(self, writable):
+        flags = (os.O_RDWR if writable else os.O_RDONLY) | os.O_SYNC | os.O_CLOEXEC
+        try:
+            self.fd = os.open("/dev/mem", flags)
+        except PermissionError:
+            raise SystemExit("/dev/mem: keine Berechtigung -- als root ausführen")
+        except FileNotFoundError:
+            raise SystemExit("/dev/mem gibt es nicht (CONFIG_DEVMEM fehlt?)")
+        prot = mmap.PROT_READ | (mmap.PROT_WRITE if writable else 0)
+        try:
+            self.m = mmap.mmap(self.fd, mmap.PAGESIZE, mmap.MAP_SHARED, prot,
+                               offset=RTC_BASE)
+        except OSError as e:
+            os.close(self.fd)
+            raise SystemExit("mmap /dev/mem @0x%08x: %s -- sperrt der Kernel MMIO "
+                             "(CONFIG_IO_STRICT_DEVMEM)?" % (RTC_BASE, e))
+        # memoryview-Cast: ein Element = ein 32-Bit-Zugriff, kein Byteweises
+        self.w = memoryview(self.m).cast("I")
+
+    def read(self, n):
+        return self.w[(GP_OFFSET + 4 * n) // 4]
+
+    def write(self, n, val):
+        self.w[(GP_OFFSET + 4 * n) // 4] = val
+
+    def write_verified(self, n, val):
+        """Schreiben, bis der Wert zurücklesbar ist (wie rtc_set_fel_flag im
+        Hersteller-U-Boot). Gibt die Zahl der Versuche zurück oder wirft."""
+        for i in range(1, WRITE_TRIES + 1):
+            self.write(n, val)
+            if self.read(n) == val:
+                # noch einmal nach einer Weile: es muss auch stehen bleiben
+                time.sleep(0.01)
+                if self.read(n) == val:
+                    return i
+            time.sleep(0.001)
+        raise SystemExit("GP%d nimmt 0x%08x nicht an (zuletzt 0x%08x nach %d Versuchen)"
+                         % (n, val, self.read(n), WRITE_TRIES))
+
+    def close(self):
+        self.w.release()
+        self.m.close()
+        os.close(self.fd)
+
+
+def show_gp(rtc):
+    for n in range(8):
+        v = rtc.read(n)
+        note = ""
+        if n == GP2:
+            note = "  <- FEL-Flag (0x%08x)" % FEL_FLAG
+            if v == FEL_FLAG:
+                note += "  STEHT: der nächste Reset geht in FEL"
+            elif v == PROBE_VALUE:
+                note += "  Probewert von --probe, mit --clear entfernen"
+        elif n == 5:
+            note = "  (Einschalt-Gate, doku/103)"
+        elif n == 7:
+            note = "  (reboot-mode fastboot/bootloader/vendor, U-Boot)"
+        print("  GP%d  0x%08x = 0x%08x%s" % (n, gp_addr(n), v, note))
+
+
+def iomem_owner():
+    """Wer die RTC-Seite laut /proc/iomem hält -- nur zur Auskunft."""
+    try:
+        with open("/proc/iomem") as f:
+            for line in f:
+                rng, _, name = line.strip().partition(" : ")
+                a, _, b = rng.partition("-")
+                if int(a, 16) <= RTC_BASE <= int(b, 16):
+                    return name
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def do_check(rtc):
+    print("h713-fel --check: nur lesen")
+    own = iomem_owner()
+    print("  /proc/iomem: 0x%08x gehört %s" % (RTC_BASE, own or "niemandem (nicht eingetragen)"))
+    show_gp(rtc)
+    print("  Lesen über /dev/mem funktioniert; Schreibprobe: --probe")
+    return 0
+
+
+def do_probe(rtc):
+    print("h713-fel --probe: harmlosen Wert schreiben, zurücklesen, alten Wert zurück")
+    alt = rtc.read(GP2)
+    print("  GP2 vorher            0x%08x" % alt)
+    if alt == FEL_FLAG:
+        print("  GP2 trägt schon das FEL-Flag -- keine Probe darüber; --clear oder Neustart")
+        return 1
+    t0 = time.monotonic()
+    n = rtc.write_verified(GP2, PROBE_VALUE)
+    dt = (time.monotonic() - t0) * 1000
+    print("  0x%08x geschrieben    zurücklesbar nach %d Versuch(en), %.1f ms" % (PROBE_VALUE, n, dt))
+    t0 = time.monotonic()
+    n = rtc.write_verified(GP2, alt)
+    dt = (time.monotonic() - t0) * 1000
+    print("  0x%08x zurück         zurücklesbar nach %d Versuch(en), %.1f ms" % (alt, n, dt))
+    print("  GP2 nachher           0x%08x -- Schreibweg in Ordnung" % rtc.read(GP2))
+    return 0
+
+
+def do_clear(rtc):
+    alt = rtc.read(GP2)
+    if alt == CLEAR_VALUE:
+        print("GP2 ist schon 0x%08x -- nichts zu tun" % CLEAR_VALUE)
+        return 0
+    n = rtc.write_verified(GP2, CLEAR_VALUE)
+    print("GP2 0x%08x -> 0x%08x (nach %d Versuch(en)); der nächste Reset startet normal"
+          % (alt, CLEAR_VALUE, n))
+    return 0
+
+
+def do_fel(rtc, yes):
+    host = os.uname().nodename
+    print("h713-fel: %s wird in den FEL-Modus geschickt.\n" % host)
+    print("  Was gleich passiert:")
+    print("    1. RTC-GP2 (0x%08x) := 0x%08x, geschrieben bis es zurücklesbar ist" % (gp_addr(GP2), FEL_FLAG))
+    print("    2. %.0f s warten (die RTC-Register hängen an einem langsamen Takt)" % SETTLE_S)
+    print("    3. systemctl reboot -- PSCI -> Watchdog, wie U-Boots `reset`")
+    print("    4. der SPL sieht das Flag, löscht es und springt in den FEL-Einstieg des BROM")
+    print()
+    print("  VORHER PRUEFEN: haengt das A-auf-A-Kabel am USB-Anschluss des")
+    print("  Geraets und am PC? FEL spricht nur ueber dieses Kabel. Ohne es")
+    print("  sitzt das Geraet danach dunkel im FEL-Modus, ohne Netz und ohne")
+    print("  Bild -- erreichbar erst, wenn das Kabel steckt (das Geraet bleibt")
+    print("  dort stehen und wartet, es geht nichts kaputt).")
+    print()
+    print("  Danach: in ~10 s meldet sich das Gerät am USB-Port als 1f3a:efe8.")
+    print("  Kein Netz, keine ssh, kein Linux. Zurück nur per")
+    print("      sunxi-fel uboot mainline/build/uboot-v7-efex/u-boot-sunxi-with-spl.bin")
+    print("  oder Stromzyklus (das Flag überlebt keinen; danach normaler Start).")
+    print()
+    print("  Merke: eine schaltbare Steckdose allein startet das Geraet NICHT")
+    print("  neu, solange das USB-Kabel steckt -- es zieht darueber Strom.")
+    print()
+    if not yes:
+        if not sys.stdin.isatty():
+            raise SystemExit("kein Terminal -- ohne --yes wird nichts geschrieben")
+        try:
+            antwort = input("  Weiter? Tippe FEL: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            antwort = ""
+        if antwort != "FEL":
+            print("  Abgebrochen, nichts geschrieben.")
+            return 1
+
+    alt = rtc.read(GP2)
+    n = rtc.write_verified(GP2, FEL_FLAG)
+    print("  GP2 0x%08x -> 0x%08x (zurücklesbar nach %d Versuch(en))" % (alt, FEL_FLAG, n))
+    sys.stdout.flush()
+    time.sleep(SETTLE_S)
+    if rtc.read(GP2) != FEL_FLAG:
+        raise SystemExit("das Flag steht nach %.0f s nicht mehr (0x%08x) -- kein Reset"
+                         % (SETTLE_S, rtc.read(GP2)))
+    print("  Flag steht. Neustart jetzt -- bis gleich am USB.")
+    sys.stdout.flush()
+    rtc.close()
+    try:
+        os.execvp("systemctl", ["systemctl", "reboot"])
+    except OSError as e:
+        print("systemctl reboot: %s" % e, file=sys.stderr)
+        print("Das Flag STEHT. Jetzt `reboot` von Hand -- oder `h713-fel --clear`, um es "
+              "zurückzunehmen.", file=sys.stderr)
+        return 1
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        prog="h713-fel",
+        description="das laufende Linux in den FEL-Modus schicken (RTC-GP2 := FEL-Flag, Reset)",
+        epilog="Ohne Option: Flag setzen und neu starten, nach Rückfrage.")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--check", action="store_true",
+                   help="nur lesen: /dev/mem-Zugriff prüfen, GP0..GP7 zeigen")
+    g.add_argument("--probe", action="store_true",
+                   help="Schreibprobe mit dem harmlosen Wert 0x%08x, danach alten Wert zurück" % PROBE_VALUE)
+    g.add_argument("--clear", action="store_true",
+                   help="GP2 auf 0 setzen (ein gesetztes Flag zurücknehmen)")
+    p.add_argument("--yes", action="store_true",
+                   help="keine Rückfrage vor dem Neustart in FEL")
+    a = p.parse_args(argv)
+
+    if a.check:
+        rtc = Rtc(writable=False)
+        try:
+            return do_check(rtc)
+        finally:
+            rtc.close()
+
+    if os.geteuid() != 0:
+        raise SystemExit("h713-fel: schreibt nach /dev/mem -- als root ausführen")
+    rtc = Rtc(writable=True)
+    try:
+        if a.probe:
+            return do_probe(rtc)
+        if a.clear:
+            return do_clear(rtc)
+        return do_fel(rtc, a.yes)
+    finally:
+        try:
+            rtc.close()
+        except (ValueError, OSError):
+            pass
+
+
+if __name__ == "__main__":
+    sys.exit(main())
