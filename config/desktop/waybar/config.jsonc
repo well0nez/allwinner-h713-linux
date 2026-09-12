@@ -1,8 +1,0 @@
-{
-  "layer": "top",
-  "position": "top",
-  "height": 36,
-  "modules-left": ["clock"],
-  "modules-center": ["cpu", "memory"],
-  "modules-right": ["network", "tray"]
-}
