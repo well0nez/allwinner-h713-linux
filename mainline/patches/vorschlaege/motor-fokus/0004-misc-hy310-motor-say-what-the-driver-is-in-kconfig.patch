@@ -1,0 +1,42 @@
+misc: hy310-motor: say what the driver is in Kconfig
+
+The menu entry still describes the driver as keystone correction. The stock
+firmware has one motor node (hy310-board.dts:2635), one motor driver
+(kallsyms c05d5c1c..c05d7d14) and no motor GPIOs beyond PH4..PH7 and PH14
+(re/captures/HY310-DEV/stock_gpio_debug.txt), so there is no keystone motor
+next to a focus motor -- this is the focus drive. The "EINT" rationale that
+used to accompany the polling claim is dropped as well: the stock driver has
+no interrupt path for the limiter at all, so polling was never a workaround
+for anything.
+
+The symbol name HY310_KEYSTONE_MOTOR is deliberately left alone so existing
+defconfigs keep matching.
+
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -696,14 +696,19 @@
+ 
+ 
+ config HY310_KEYSTONE_MOTOR
+-	tristate "HY310 Keystone Motor Driver"
++	tristate "HY310 projector stepper motor (focus drive)"
+ 	depends on OF && GPIOLIB
+ 	help
+-	  Stepper motor driver for HY310 projector keystone correction.
+-	  Controls 4-phase stepper motor via GPIO with limit switch polling.
+-	  Based on reverse engineering of the stock Allwinner H713 motor-control
+-	  driver. Uses work-queue based async movement and DTS-configurable
+-	  step tables.
++	  Driver for the single 4-phase GPIO stepper on the HY310 projector,
++	  which is its focus drive: the stock device tree has one motor node
++	  and the stock kernel one motor driver. Ported from the stock
++	  Allwinner motor-control driver. Movement runs in a work queue and
++	  the limit input is polled, as it is in stock; the step tables come
++	  from the device tree.
++
++	  The symbol keeps its old name so existing defconfigs still match.
++
++	  If unsure, say N.
+ endmenu
+ source "drivers/misc/sunxi_tvtop/Kconfig"
+ source "drivers/misc/sunxi_decd/Kconfig"

@@ -1,0 +1,191 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] misc: decd: fix the release fence lifetime
+
+FRAME_SUBMIT hands userspace a sync_file wrapping the frame item's dma_fence,
+and sync_file_create() keeps a reference to that fence until the FD is closed.
+frame_item_release() then signals the fence and kfree()s the object outright:
+
+	dec_fence_signal(item->fence);
+	kfree(item->fence);
+
+so every returned fence FD refers to freed memory from the moment its frame
+retires. Polling it, waiting on it, or merely closing it walks a dangling
+dma_fence. The IDA reconstruction this driver came from does show a bare free
+at that point, but stock's fence object is not the one being wrapped here.
+
+Drop the frame item's reference with dma_fence_put() instead and let the
+existing dec_fence_ops.release() callback be the only thing that frees the
+fence. The retirement semantics are unchanged: the fence still signals when the
+item's last reference goes away, which happens on the display side when the
+frame is displaced from the four-slot ring and drained through
+q->last_released, the release FIFO and release_work.
+
+This is what makes the fence usable, and it is the only correct retirement
+signal a client has. Until now a player had to close the FD immediately and
+guess a retention depth instead, which mixes decoder surfaces on screen.
+
+Two related defects in the same path:
+
+  - Nothing freed the fence context. Now that a fence can outlive the frame
+    item, it can also outlive dec_exit(), and ctx->lock is the fence's lock
+    (dma_fence_init() is passed &ctx->lock). A sync_file FD does not pin this
+    module, so unbind or rmmod with an outstanding fence freed a live fence's
+    spinlock. Reference-count the context and hold one per fence.
+
+  - dec_fence_alloc() returns NULL on allocation failure and frame_item_create()
+    only calls it when dec->fence_ctx is set, so item->fence is legitimately
+    NULL, but dec_frame_submit() passed it to dec_fence_fd_create()
+    unconditionally, which dereferenced it. Check at the call site and reject
+    NULL in dec_fence_fd_create() as well.
+
+diff --git a/drivers/misc/sunxi_decd/decd_core.c b/drivers/misc/sunxi_decd/decd_core.c
+--- a/drivers/misc/sunxi_decd/decd_core.c
++++ b/drivers/misc/sunxi_decd/decd_core.c
+@@ -144,7 +144,8 @@ void dec_exit(struct dec_device *dec)
+ 			iounmap(dec->regs->afbd);
+ 	}
+ 	video_info_memory_block_exit();
+-	kfree(dec->fence_ctx);
++	dec_fence_context_put(dec->fence_ctx);
++	dec->fence_ctx = NULL;
+ }
+ 
+ static int dec_probe(struct platform_device *pdev)
+diff --git a/drivers/misc/sunxi_decd/decd_fence.c b/drivers/misc/sunxi_decd/decd_fence.c
+--- a/drivers/misc/sunxi_decd/decd_fence.c
++++ b/drivers/misc/sunxi_decd/decd_fence.c
+@@ -1,6 +1,8 @@
+ // SPDX-License-Identifier: GPL-2.0
+ 
++#include <linux/err.h>
+ #include <linux/file.h>
++#include <linux/kref.h>
+ #include <linux/slab.h>
+ #include <linux/sync_file.h>
+ 
+@@ -25,11 +27,28 @@ static bool dec_fence_signaled_internal(struct dma_fence *f)
+ 	return df->signaled;
+ }
+ 
++static void dec_fence_context_release(struct kref *kref)
++{
++	struct dec_fence_context *ctx =
++		container_of(kref, struct dec_fence_context, refcount);
++
++	kfree(ctx);
++}
++
++void dec_fence_context_put(struct dec_fence_context *ctx)
++{
++	if (!IS_ERR_OR_NULL(ctx))
++		kref_put(&ctx->refcount, dec_fence_context_release);
++}
++
+ static void dec_fence_release_internal(struct dma_fence *f)
+ {
+ 	struct dec_fence *df = container_of(f, struct dec_fence, base);
++	struct dec_fence_context *ctx = df->ctx;
+ 
++	/* ctx owns fence->lock, so it must outlive the fence object. */
+ 	kfree(df);
++	dec_fence_context_put(ctx);
+ }
+ 
+ static const struct dma_fence_ops dec_fence_ops = {
+@@ -50,6 +69,7 @@ struct dec_fence_context *dec_fence_context_alloc(const char *name)
+ 	strscpy(ctx->name, name, sizeof(ctx->name));
+ 	ctx->context = dma_fence_context_alloc(1);
+ 	spin_lock_init(&ctx->lock);
++	kref_init(&ctx->refcount);
+ 	return ctx;
+ }
+ 
+@@ -62,6 +82,7 @@ struct dec_fence *dec_fence_alloc(struct dec_fence_context *ctx)
+ 	if (!df)
+ 		return NULL;
+ 
++	kref_get(&ctx->refcount);
+ 	spin_lock(&ctx->lock);
+ 	seqno = ++ctx->seqno;
+ 	dma_fence_init(&df->base, &dec_fence_ops, &ctx->lock, ctx->context,
+@@ -90,6 +111,14 @@ int dec_fence_fd_create(struct dec_fence *df)
+ 	struct sync_file *sync;
+ 	int fd;
+ 
++	/*
++	 * frame_item_create() leaves item->fence NULL when the device has no
++	 * fence context and when the allocation fails, so a caller can legally
++	 * reach here with nothing to wrap.
++	 */
++	if (!df)
++		return -EINVAL;
++
+ 	fd = get_unused_fd_flags(O_CLOEXEC);
+ 	if (fd < 0)
+ 		return fd;
+diff --git a/drivers/misc/sunxi_decd/decd_frame.c b/drivers/misc/sunxi_decd/decd_frame.c
+--- a/drivers/misc/sunxi_decd/decd_frame.c
++++ b/drivers/misc/sunxi_decd/decd_frame.c
+@@ -873,8 +873,13 @@ void frame_item_release(void *payload)
+ 
+ 	if (item->fence) {
+ 		dec_fence_signal(item->fence);
+-		/* IDA: dec_fence_free then clear pointer */
+-		kfree(item->fence);
++		/*
++		 * IDA shows a bare free here, but this driver hands the same
++		 * dma_fence to a sync_file, which keeps its own reference
++		 * until userspace closes the FD. Drop only our reference and
++		 * let dec_fence_ops.release() do the freeing.
++		 */
++		dma_fence_put(&item->fence->base);
+ 		item->fence = NULL;
+ 	}
+ 	/* IDA: trace unmap with (image_map, image_map->dma_addr) */
+diff --git a/drivers/misc/sunxi_decd/decd_ioctl.c b/drivers/misc/sunxi_decd/decd_ioctl.c
+--- a/drivers/misc/sunxi_decd/decd_ioctl.c
++++ b/drivers/misc/sunxi_decd/decd_ioctl.c
+@@ -71,8 +71,9 @@ int dec_frame_submit(struct dec_device *dec,
+ 					item, frame_item_release);
+ 			} while (repeat-- > 1);
+ 
+-			if (release_fence_fd)
+-				*release_fence_fd = dec_fence_fd_create(item->fence);
++			if (release_fence_fd && item->fence)
++				*release_fence_fd =
++					dec_fence_fd_create(item->fence);
+ 			frame_item_release(item);
+ 		}
+ 	}
+diff --git a/drivers/misc/sunxi_decd/decd_types.h b/drivers/misc/sunxi_decd/decd_types.h
+--- a/drivers/misc/sunxi_decd/decd_types.h
++++ b/drivers/misc/sunxi_decd/decd_types.h
+@@ -10,6 +10,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
+ #include <linux/kfifo.h>
++#include <linux/kref.h>
+ #include <linux/list.h>
+ #include <linux/mutex.h>
+ #include <linux/platform_device.h>
+@@ -126,6 +127,12 @@ struct dec_fence_context {
+ 	u64 context;
+ 	spinlock_t lock;
+ 	u32 seqno;
++	/*
++	 * A fence handed to userspace outlives the frame item, and ctx->lock
++	 * is that fence's lock. Hold a reference per live fence so the context
++	 * cannot be freed while one is still reachable through its FD.
++	 */
++	struct kref refcount;
+ };
+ 
+ struct dec_fence {
+@@ -291,6 +298,7 @@ int dec_frame_manager_set_stream_type(struct dec_frame_manager *fmgr, int type);
+ void dec_frame_manager_handle_vsync(struct dec_frame_manager *fmgr);
+ 
+ struct dec_fence_context *dec_fence_context_alloc(const char *name);
++void dec_fence_context_put(struct dec_fence_context *ctx);
+ struct dec_fence *dec_fence_alloc(struct dec_fence_context *ctx);
+ void dec_fence_signal(struct dec_fence *df);
+ int dec_fence_fd_create(struct dec_fence *df);

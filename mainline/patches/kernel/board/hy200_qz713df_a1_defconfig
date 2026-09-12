@@ -32,8 +32,18 @@ CONFIG_MAC80211=y
 CONFIG_RFKILL=y
 CONFIG_DEVTMPFS=y
 CONFIG_DEVTMPFS_MOUNT=y
-# CONFIG_HY310_BOARD_MGR is not set
-# CONFIG_HY310_KEYSTONE_MOTOR is not set
+# Board manager: NTC temperature (via the LRADC IIO provider) and fan
+# tachometer on PH17, exported through hwmon. Module, not built-in, so it can
+# be unloaded if it misbehaves. The fan itself does not depend on it -- it
+# runs off the PB5 gpio-hog (patch 0030); this only makes the device's
+# temperature and fan speed visible at all. The thermal poweroff stays
+# disarmed (thermal_shutdown=0) until the NTC curve is verified; see 0141.
+CONFIG_HY310_BOARD_MGR=m
+CONFIG_HWMON=y
+# The projector's focus stepper (motor_ctr). Module, not built-in: probe
+# arms a homing run that moves the mechanism, so it should be loaded
+# deliberately and can be unloaded again.
+CONFIG_HY310_FOCUS_MOTOR=m
 # CONFIG_SUNXI_NSI is not set
 # CONFIG_SUNXI_TVTOP is not set
 # DECD: the vendor AFBD frame-submission path. Built as a MODULE on purpose
@@ -62,7 +72,25 @@ CONFIG_STMMAC_ETH=y
 # CONFIG_NET_VENDOR_WIZNET is not set
 CONFIG_MICREL_PHY=y
 CONFIG_REALTEK_PHY=y
-CONFIG_USB_RTL8152=m
+# zram als Swap (doku/107 §4.2). Gehoert in den Auslieferungskernel, nicht in
+# ein Fragment: das Release-Rootfs bringt die zram-Unit mit, und ohne diese
+# vier Optionen laeuft sie ins Leere. Am Geraet gemessen: 461,8 MiB Swap mit
+# zstd, swappiness=180, page-cluster=0. Stand bis 11.09. nur im Fragment
+# patches/kernel/board/zram.config -- dadurch fehlte zram in jedem Bau ohne
+# KERNEL_CONFIG, also gerade im Auslieferungskernel.
+CONFIG_ZSMALLOC=y
+CONFIG_ZRAM=y
+CONFIG_ZRAM_BACKEND_ZSTD=y
+CONFIG_ZRAM_DEF_COMP_ZSTD=y
+
+# Der USB-Gigabit-Adapter des Geraets eingebaut, nicht als Modul: er ist die
+# einzige Netzanbindung, und ein Netztreiber, der erst aus dem Rootfs geladen
+# werden muss, ist ein Henne-Ei, das man sich sparen kann. usbnet selbst bleibt
+# Modul -- seine Untertreiber (Zaurus, NET1080, CDC-Subset ...) braucht hier
+# niemand eingebaut. (Eine frueher hier notierte getrandom-Begruendung war
+# falsch und ist am 11.09. widerlegt: der Boot-Hang kam von hy310-board-mgr,
+# siehe doku/60-offen.md.)
+CONFIG_USB_RTL8152=y
 CONFIG_USB_USBNET=m
 CONFIG_USB_NET_SMSC95XX=m
 CONFIG_USB_NET_RNDIS_HOST=m
@@ -70,6 +98,7 @@ CONFIG_RTL8XXXU=m
 CONFIG_RTL8XXXU_UNTESTED=y
 CONFIG_INPUT_EVDEV=y
 CONFIG_KEYBOARD_ADC=m
+CONFIG_KEYBOARD_GPIO=y
 CONFIG_KEYBOARD_SUN4I_LRADC=y
 # CONFIG_INPUT_MOUSE is not set
 CONFIG_INPUT_TOUCHSCREEN=y
@@ -115,6 +144,14 @@ CONFIG_RC_DEVICES=y
 CONFIG_IR_SUNXI=y
 CONFIG_MEDIA_SUPPORT=y
 CONFIG_MEDIA_PLATFORM_SUPPORT=y
+# Die interne Kamera des Beamers (Realtek 0bda:5803 "Generic HD camera" am
+# USB-Port 1, Schnittstellenklasse 0x0e = UVC, zwei Schnittstellen). Sie wird
+# vom Bus erkannt, aber ohne diese drei Schalter bindet nichts daran: uvcvideo
+# wurde gar nicht gebaut. Stock benutzt genau diese Kamera fuer den Autofokus
+# (doku/94). Modul, damit sie nur laeuft wenn sie gebraucht wird.
+CONFIG_MEDIA_CAMERA_SUPPORT=y
+CONFIG_MEDIA_USB_SUPPORT=y
+CONFIG_USB_VIDEO_CLASS=m
 CONFIG_V4L_PLATFORM_DRIVERS=y
 CONFIG_V4L_MEM2MEM_DRIVERS=y
 CONFIG_VIDEO_SUN4I_CSI=y
@@ -144,10 +181,14 @@ CONFIG_SOUND=y
 CONFIG_SND=y
 CONFIG_SND_SOC=y
 CONFIG_SND_SUN4I_CODEC=y
+CONFIG_SND_SUN50I_H713_MSP=m
 CONFIG_SND_SUN8I_CODEC=y
 CONFIG_SND_SUN8I_CODEC_ANALOG=y
 CONFIG_SND_SUN4I_I2S=m
 CONFIG_SND_SUN4I_SPDIF=m
+CONFIG_SND_SOC_SUNXI_H713_CODEC=m
+CONFIG_SND_SOC_SUNXI_H713_CPUDAI=m
+CONFIG_SND_SOC_SUNXI_H713_MACHINE=m
 CONFIG_USB=y
 CONFIG_USB_EHCI_HCD=y
 CONFIG_USB_EHCI_HCD_PLATFORM=y
@@ -191,7 +232,9 @@ CONFIG_HWSPINLOCK=y
 CONFIG_HWSPINLOCK_SUN6I=y
 CONFIG_MAILBOX=y
 CONFIG_SUN50I_IOMMU=y
-# CONFIG_HY310_CPU_COMM is not set
+CONFIG_HY310_CPU_COMM=m
+CONFIG_SUN50I_H713_ARISC=m
+CONFIG_VIDEO_SUN50I_H713_HDMIRX=m
 CONFIG_SUN50I_H713_PPU=y
 CONFIG_IIO=y
 CONFIG_AXP20X_ADC=y
@@ -222,12 +265,44 @@ CONFIG_NLS_ISO8859_1=y
 # allwinner,sunxi-ce driver (source unavailable); the A53 has ARMv8 AES/SHA
 # (software crypto ~2 GB/s, faster than this CE) so there is no benefit.
 # See docs/status.md and docs/roadmap.md.
+# Crypto Engine deliberately off, do not "complete" this. mainline sun8i-ce
+# cannot drive the H713 CE: it uses a different task-descriptor format (the
+# vendor two-bank block with 5-byte address fields), so every algorithm fails
+# its known-answer test, and there is no TRNG. The A53s have the ARMv8 crypto
+# extensions anyway, which are faster than this engine. The one thing the CE
+# can do that software cannot -- read the RSSK efuse key for HDCP 1.4 -- needs
+# a dedicated path, not this driver. See doku/114-plan-crypto-engine.md.
 # CONFIG_CRYPTO_DEV_SUN8I_CE is not set
 CONFIG_DMA_CMA=y
 CONFIG_PRINTK_TIME=y
-CONFIG_DYNAMIC_DEBUG=y
-CONFIG_DEBUG_FS=y
+# No debugfs in the release kernel (Marco, 12.09.2026: "kein Debug im Release").
+# What this closes: /sys/kernel/debug/cpu_comm/call, a prompt that sends any
+# RPC by name straight to the display firmware, the writable tx_delay_* knobs
+# next to it, and the write side of cpu_comm/watch, which claims callback
+# slots. All of it sits under #ifdef CONFIG_DEBUG_FS in cpu_comm_api.c with an
+# empty #else, so the driver is untouched -- the switch alone does it. The
+# read-only status files of hdmirx and cpu_comm go with it; h713-tv reports
+# the missing path in "status" instead of failing, and "ctl rpc" says why it
+# cannot. Nothing in the release rootfs reads debugfs. No enabled symbol
+# selects DEBUG_FS, so "is not set" holds through olddefconfig (checked
+# 12.09.2026 against lib/Kconfig.debug and friends). DYNAMIC_DEBUG only has a
+# control file through debugfs; without it the pr_debug sites are dead weight.
+# Development builds put both back with a fragment, not by editing this file.
+# CONFIG_DYNAMIC_DEBUG is not set
+# CONFIG_DEBUG_FS is not set
 # Reboot-to-fastboot handoff over the RTC GP7 nvmem cell (see the RTC section and
 # the reboot-mode node in sun50i-h713.dtsi). Replaces the earlier syscon window
 # that overlapped the RTC register region.
 CONFIG_NVMEM_REBOOT_MODE=y
+
+# Messmodul fuer das Deskriptorformat der CE, ausdruecklich KEIN Ersatz fuer
+# sun8i-ce: es registriert nichts beim Krypto-Kern, setzt genau einen Task im
+# Vendorformat ab (AES-128, ECB oder CBC mit IV 0, Key-Select 0, Schluessel
+# aus dem Speicher, 16 Byte, Ziel DRAM) und vergleicht mit dem FIPS-197-
+# Vektor. Es fasst kein Geraeteschluesselmaterial und keine Schluesselsenke
+# an. Es laedt beim Start ueber den Geraetebaum-Knoten, laeuft aber erst,
+# wenn man es ueber /sys/kernel/debug/h713-ce-test/starten anstoesst. Nur als
+# Modul (m), damit ein Messlauf eine Entscheidung bleibt. Siehe
+# doku/114-plan-crypto-engine.md Paragraph 7 Schritt 3 und die README neben
+# diesem Patch. Fuer ein Release kann die Zeile wieder raus.
+CONFIG_H713_CE_TEST=m

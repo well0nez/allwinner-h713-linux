@@ -1,0 +1,560 @@
+clk: sunxi-ng: h713: model pll-periph0 and the audio clocks
+
+The H713 CCU driver was written from the H6 layout and never checked
+against the SoC. Four groups of clocks are described wrongly, and all
+four block the HDMI audio path (doku/101 packet A).
+
+1. pll-periph0/1 are ccu_nkmp with both dividers in use, like the H616
+   and like the vendor: .m = _SUNXI_CCU_DIV(1, 1),
+   .p = _SUNXI_CCU_DIV(0, 1), fixed_post_div = 2 (S27 sections 5 and 6,
+   from the typed structures in the stock vmlinux's own DWARF info).
+   Without .m/.p and with fixed_post_div = 4 the arithmetic was right
+   only for the stock register value 0xb8006301. Our SPL programs the
+   upstream CCM_PLL6_DEFAULT 0xa8003100, and for that value the model
+   was short by a factor of two: 300 MHz where the hardware runs 600.
+   The hardware is not halved, only the model was (S27 section 6, three
+   independent confirmations: U-Boot's clock_get_pll6(), the H616
+   driver, and the boot dividers of the TVFE clocks).
+
+   Two consumers had to be corrected in the same patch, because their
+   own parent lists were wrong in a way that the halved pll-periph0 had
+   been hiding: mbus (entry [18], the list had pll-ddr and pll-periph0
+   swapped and named a -4x tap the register cannot select, and the
+   divider is five bits) and mmc2 (entry [55], which does not share the
+   parent list of mmc0/mmc1 but has a three bit mux over the 800 MHz
+   taps). mips is corrected as well; its list was pure H6 inheritance
+   and made a 400 MHz core show up as 8 MHz.
+
+2. 0xd80 carries two gates, in bits 31 and 30, not 0 and 1 (entries
+   [121] and [122]). The register reads 0xc0000000 out of the boot
+   loader, so both clocks were running while the clock tree called them
+   off, and enabling either one wrote a bit the vendor's table leaves
+   unassigned.
+
+3. The TV frontend and audio island clocks 0xd10...0xd84 are
+   ccu_div/ccu_mp with a mux on the PLLs, not bare gates on "ahb"
+   (entries [102]-[123], S17 section 1). Modelled as gates the whole
+   block reported the AHB rate, clk_set_rate() had no divider to act
+   on, and the mux of audio-ihb, which stock parks on pll-periph0 and
+   we boot on pll-video0-4x, was invisible.
+
+4. bus-demod (0xd64) hangs on pll-video0-4x, not on "ahb". It is the
+   bus gate for the whole Trident frontend 0x06000000...0x067fffff,
+   the audio island at 0x0614xxxx included; with bit 0 clear every
+   register in that range reads 0 (S17 section 0, measured pair in
+   doku/72: 0x06700000 reads 0 without it and 0x7ff with it). Its
+   reset in bit 16 was already right.
+
+Register evidence throughout is the vendor clock table
+sun50iw12_ccu_clks @0xc1460d70 from the stock vmlinux
+(analyse/hdmi-seq/vendor-ccu-table.txt) against the board's own
+register dump after boot
+(analyse/hdmi-seq/ccu-dump-after-prep-20260907.txt).
+
+No clock gains CLK_SET_RATE_PARENT: the parents of this block are the
+TV PLLs and clk_set_rate() on a TV PLL is the documented SoC freeze
+(KNOW-20260413-031149-493). No H713 driver calls clk_set_rate() or
+clk_round_rate() on any of the clocks converted here, so giving them
+dividers does not by itself program anything.
+
+The one place where the corrected arithmetic reaches a register at
+boot is mmc2: sun50i-h713.dtsi asks for
+assigned-clock-rates = <100000000>, which the old model met from a
+parent it believed ran at 600 MHz and which in fact runs at 800. The
+eMMC therefore ran at 133 MHz where the device tree asked for 100;
+with both the PLL and the parent list corrected it now gets the
+100 MHz it asks for. Every other clk_set_rate() consumer below
+pll-periph0 (mmc0/1, spi, nand) was likewise programmed to twice the
+requested rate and now gets what it asks for. That is a real change in
+behaviour, and the reason this patch wants a boot from the eMMC before
+anything else (S27 section 8).
+---
+diff -Nur a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
+--- a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c	2026-09-08 10:01:54.658365265 +0200
++++ b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c	2026-09-08 18:30:55.688800978 +0200
+@@ -57,12 +57,37 @@
+ 	},
+ };
+ 
++/*
++ * PLL_PERIPH0/1 are ccu_nkmp with both dividers in use, exactly as on the
++ * H616 (ccu-sun50i-h616.c) and exactly as the vendor models them:
++ * pll_periph0_clk @0xc1464a30 in the stock vmlinux has m = {shift 1, width 1,
++ * offset 1}, p = {shift 0, width 1, offset 1} and fixed_post_div = 2
++ * (doku/nachtlog/S27 §5, read with the stock DWARF types). So
++ *
++ *	rate = 24 MHz * N / 2^reg[0] / (reg[1] + 1) / 2
++ *
++ * Without .m/.p and with fixed_post_div = 4 the arithmetic only happened to
++ * come out right for the stock register value 0xb8006301 (N = 100, reg[0] = 1).
++ * Our SPL programs the upstream default CCM_PLL6_DEFAULT = 0xa8003100
++ * (N = 50, reg[0] = 0, clock_sun50i_h6.h), and for that value the old model
++ * was short by a factor of two: 300 MHz instead of the 600 MHz the hardware
++ * really runs (S27 §6, three independent confirmations -- U-Boot's
++ * clock_get_pll6(), the H616 driver, and the boot dividers of the TVFE
++ * clocks). Every clk_set_rate() below pll-periph0 therefore programmed twice
++ * the requested rate.
++ *
++ * pll-periph1 keeps the stock register value on our board, so its rate does
++ * not change; it is corrected together with pll-periph0 because the hardware
++ * is the same and the next boot loader may not be.
++ */
+ #define SUN50I_H713_PLL_PERIPH0_REG	0x020
+ static struct ccu_nkmp pll_periph0_clk = {
+ 	.enable		= BIT(31),
+ 	.lock		= BIT(28),
+ 	.n		= _SUNXI_CCU_MULT_MIN(8, 8, 12),
+-	.fixed_post_div	= 4,
++	.m		= _SUNXI_CCU_DIV(1, 1), /* input divider */
++	.p		= _SUNXI_CCU_DIV(0, 1), /* output divider */
++	.fixed_post_div	= 2,
+ 	.common		= {
+ 		.reg		= 0x020,
+ 		.features	= CCU_FEATURE_FIXED_POSTDIV,
+@@ -77,7 +102,9 @@
+ 	.enable		= BIT(31),
+ 	.lock		= BIT(28),
+ 	.n		= _SUNXI_CCU_MULT_MIN(8, 8, 12),
+-	.fixed_post_div	= 4,
++	.m		= _SUNXI_CCU_DIV(1, 1), /* input divider */
++	.p		= _SUNXI_CCU_DIV(0, 1), /* output divider */
++	.fixed_post_div	= 2,
+ 	.common		= {
+ 		.reg		= 0x028,
+ 		.features	= CCU_FEATURE_FIXED_POSTDIV,
+@@ -259,18 +286,44 @@
+ 			     24, 2,	/* mux */
+ 			     0);
+ 
+-static const char * const mbus_parents[] = { "osc24M", "pll-periph0-2x",
+-					     "pll-ddr", "pll-periph0-4x" };
++/*
++ * MBUS: the vendor table (entry [18], reg 0x540) lists the parents as
++ * { dcxo24M, pll-ddr, pll-periph0, pll-periph0-2x } and the divider as five
++ * bits wide. Entries 1 and 2 were swapped here and entry 3 named the 4x tap,
++ * which the register cannot select. That did not show while pll-periph0 was
++ * modelled half its real rate -- 0x540 reads 0xc3000002, mux 3, M + 1 = 3, and
++ * the wrong parent (pll-periph0-4x = 4 * 300 MHz) and the right one
++ * (pll-periph0-2x = 2 * 600 MHz) were the same 1200 MHz. With pll-periph0
++ * corrected they are not, so the list has to be corrected in the same patch or
++ * clk_summary would start reporting 800 MHz for a bus that runs at 400 MHz.
++ * MBUS is critical and nothing calls clk_set_rate() on it, so this changes no
++ * register.
++ */
++static const char * const mbus_parents[] = { "osc24M", "pll-ddr",
++					     "pll-periph0", "pll-periph0-2x" };
+ static SUNXI_CCU_M_WITH_MUX_GATE(mbus_clk, "mbus", mbus_parents, 0x540,
+-				 0, 3,		/* M */
++				 0, 5,		/* M */
+ 				 24, 2,		/* mux */
+ 				 BIT(31),	/* gate */
+ 				 CLK_IS_CRITICAL);
+ 
+-static const char * const mips_parents[] = { "osc24M", "pll-periph0-2x",
+-					     "pll-periph1-2x", "pll-cpux" };
++/*
++ * MIPS: the co-processor that runs the HDMI receiver firmware. The vendor
++ * table (entry [19], reg 0x600) gives the parents as
++ * { dcxo24M, pll-video0-4x, ... } in a different order and a three bit
++ * divider: { pll-periph0-2x, pll-video0-4x, dcxo24M }, M[2:0]. The list here
++ * started from the H6 layout and was never checked against the H713. With the
++ * old list the boot value 0x80000002 decoded as osc24M / 3 = 8 MHz for a core
++ * that in fact runs at 1200 MHz / 3 = 400 MHz -- a factor of fifty in
++ * clk_summary, on the one clock whose real rate we keep wanting to know
++ * (doku/nachtlog/S17 §1 for the register format, vendor-ccu-table.txt [19]
++ * for the list). No device tree node claims CLK_MIPS and nothing calls
++ * clk_set_rate() on it, so this changes no register.
++ */
++static const char * const mips_parents[] = { "pll-periph0-2x",
++					     "pll-video0-4x", "osc24M" };
+ static SUNXI_CCU_M_WITH_MUX_GATE(mips_clk, "mips", mips_parents, 0x600,
+-				 0, 4,		/* M */
++				 0, 3,		/* M */
+ 				 24, 2,		/* mux */
+ 				 BIT(31),	/* gate */
+ 				 0);
+@@ -391,8 +444,30 @@
+ 					  0, 4, 8, 2, 24, 2, BIT(31), 2, 0);
+ static SUNXI_CCU_MP_WITH_MUX_GATE(mmc1_clk, "mmc1", mmc_parents, 0x834,
+ 				  0, 4, 8, 2, 24, 2, BIT(31), 0);
+-static SUNXI_CCU_MP_WITH_MUX_GATE_POSTDIV(mmc2_clk, "mmc2", mmc_parents, 0x838,
+-					  0, 4, 8, 2, 24, 2, BIT(31), 2, 0);
++/*
++ * MMC2 (the eMMC) does not share the parent list of MMC0/MMC1: the vendor
++ * table (entry [55], reg 0x838) gives it five parents and a three bit mux,
++ * { dcxo24M, pll-periph0-800M, pll-periph1-800M, pll-periph0-2x,
++ *   pll-periph1-2x }. Index 1 and 2 are the 800 MHz taps, which the list here
++ * did not have at all, so index 2 -- the value the boot loader leaves in the
++ * register, 0x838 = 0x02000002 -- was read as pll-periph1-2x.
++ *
++ * This matters for this patch because sun50i-h713.dtsi asks for
++ * assigned-clock-rates = <100000000> on CLK_MMC2, so the divider really is
++ * programmed from the modelled parent rate: with the old model the clock came
++ * out at 800/3/2 = 133 MHz, and correcting pll-periph0/1 alone would have
++ * moved it to 800/6/2 = 67 MHz. With the parent named correctly the divider
++ * lands on M + 1 = 4 and the eMMC finally runs at the 100 MHz the device tree
++ * asks for. The mux stays reparentable (no CLK_SET_RATE_NO_REPARENT, unlike
++ * the vendor): the MMC core asks for 400 kHz during card identification, and
++ * only osc24M can reach that.
++ */
++static const char * const mmc2_parents[] = { "osc24M", "pll-periph0-800M",
++					     "pll-periph1-800M",
++					     "pll-periph0-2x",
++					     "pll-periph1-2x" };
++static SUNXI_CCU_MP_WITH_MUX_GATE_POSTDIV(mmc2_clk, "mmc2", mmc2_parents, 0x838,
++					  0, 4, 8, 2, 24, 3, BIT(31), 2, 0);
+ 
+ static SUNXI_CCU_GATE(bus_mmc0_clk, "bus-mmc0", "ahb", 0x84c, BIT(0), 0);
+ static SUNXI_CCU_GATE(bus_mmc1_clk, "bus-mmc1", "ahb", 0x84c, BIT(1), 0);
+@@ -552,51 +627,256 @@
+ static SUNXI_CCU_GATE(bus_otg0_clk, "bus-otg0", "ahb", 0xa8c, BIT(8), 0);
+ static SUNXI_CCU_GATE(bus_lradc_clk, "bus-lradc", "ahb", 0xa9c, BIT(0), 0);
+ 
+-/* TV/Display clocks - each needs unique clk_hw */
+-static SUNXI_CCU_GATE(adc_clk, "adc", "ahb",
+-		      0xd10, BIT(31), 0);
+-static SUNXI_CCU_GATE(dtmb_120m_clk, "dtmb-120m", "ahb",
+-		      0xd18, BIT(31), 0);
+-static SUNXI_CCU_GATE(tvfe_1296m_clk, "tvfe-1296m", "ahb",
+-		      0xd20, BIT(31), 0);
+-static SUNXI_CCU_GATE(i2h_clk, "i2h", "ahb",
+-		      0xd24, BIT(31), 0);
+-static SUNXI_CCU_GATE(cip_tsx_clk, "cip-tsx", "ahb",
+-		      0xd28, BIT(31), 0);
+-static SUNXI_CCU_GATE(cip_mcx_clk, "cip-mcx", "ahb",
+-		      0xd2c, BIT(31), 0);
+-static SUNXI_CCU_GATE(cip_tsp_clk, "cip-tsp", "ahb",
+-		      0xd30, BIT(31), 0);
+-static SUNXI_CCU_GATE(tsa_tsp_clk, "tsa-tsp", "ahb",
+-		      0xd34, BIT(31), 0);
+-static SUNXI_CCU_GATE(cip27_clk, "cip27", "ahb",
+-		      0xd38, BIT(31), 0);
+-static SUNXI_CCU_GATE(cip_mts0_clk, "cip-mts0", "ahb",
+-		      0xd40, BIT(31), 0);
+-static SUNXI_CCU_GATE(audio_cpu_clk, "audio-cpu", "ahb",
+-		      0xd48, BIT(31), 0);
+-static SUNXI_CCU_GATE(audio_umac_clk, "audio-umac", "ahb",
+-		      0xd4c, BIT(31), 0);
+-static SUNXI_CCU_GATE(audio_ihb_clk, "audio-ihb", "ahb",
+-		      0xd50, BIT(31), 0);
+-static SUNXI_CCU_GATE(tsa432_clk, "tsa432", "ahb",
+-		      0xd58, BIT(31), 0);
+-static SUNXI_CCU_GATE(mpg0_clk, "mpg0", "ahb",
+-		      0xd5c, BIT(31), 0);
+-static SUNXI_CCU_GATE(mpg1_clk, "mpg1", "ahb",
+-		      0xd60, BIT(31), 0);
+-static SUNXI_CCU_GATE(bus_demod_clk, "bus-demod", "ahb",
++/*
++ * TV frontend, audio island and TV capture clocks, 0xd10 ... 0xd88.
++ *
++ * These were modelled as bare gates on "ahb". They are not. The vendor clock
++ * table (sun50iw12_ccu_clks @0xc1460d70 in the stock vmlinux, read with its
++ * own DWARF types; dump analyse/hdmi-seq/vendor-ccu-table.txt entries
++ * [102]-[124], doku/nachtlog/S17 §1) types all of them as ccu_div or ccu_mp
++ * with a mux on the PLLs, and only the four bus gates as gates. The register
++ * layout is uniform:
++ *
++ *	[31]	gate -- except 0xd80, which carries two gates in [31] and [30],
++ *		and the bus gates 0xd64/0xd88, whose gate is [0]
++ *	[16]	reset, only in 0xd64 and 0xd88 (already described in the reset
++ *		table, RST_BUS_DEMOD and RST_BUS_TVCAP)
++ *	[26:24]	mux, or [24] where the mux is one bit wide
++ *	[9:8]	P, an extra 2^P divider, ccu_mp only
++ *	[n:0]	M, divides by M + 1
++ *
++ * Modelled as gates on "ahb" the whole block reported the AHB rate, so
++ * clk_summary was wrong for every one of them, clk_set_rate() had no divider
++ * to act on, and the mux of audio-ihb was invisible.
++ *
++ * None of them gets CLK_SET_RATE_PARENT. Their parents are the TV PLLs, and
++ * clk_set_rate() on a TV PLL is the documented SoC freeze
++ * (KNOW-20260413-031149-493; the stock tvtop does it, our port skips it).
++ * A rate request has to be satisfied by the divider of the clock itself or
++ * not at all. No rate is changed here either: the boot values already carry
++ * the stock rates for the clocks that matter (audio-cpu 1200/3 = 400 MHz,
++ * audio-umac 600/3 = 200 MHz).
++ */
++static const char * const adc_parents[] = { "pll-adc", "pll-video0" };
++static SUNXI_CCU_MP_WITH_MUX_GATE(adc_clk, "adc", adc_parents, 0xd10,
++				  0, 5,		/* M */
++				  8, 2,		/* P */
++				  24, 1,	/* mux */
++				  BIT(31),	/* gate */
++				  0);
++
++static const char * const dtmb_120m_parents[] = { "pll-adc", "pll-periph0" };
++static SUNXI_CCU_MP_WITH_MUX_GATE(dtmb_120m_clk, "dtmb-120m",
++				  dtmb_120m_parents, 0xd18,
++				  0, 3,		/* M */
++				  8, 2,		/* P */
++				  24, 1,	/* mux */
++				  BIT(31),	/* gate */
++				  0);
++
++/* Shared by tvfe-1296m, cip-tsp, tsa-tsp, tsa432 and tcd3. */
++static const char * const tvfe_video0_parents[] = { "pll-video0-4x",
++						    "pll-adc" };
++static SUNXI_CCU_MP_WITH_MUX_GATE(tvfe_1296m_clk, "tvfe-1296m",
++				  tvfe_video0_parents, 0xd20,
++				  0, 5,		/* M */
++				  8, 2,		/* P */
++				  24, 1,	/* mux */
++				  BIT(31),	/* gate */
++				  0);
++
++static const char * const i2h_parents[] = { "pll-video0-4x",
++					    "pll-periph0-2x",
++					    "pll-periph1-2x" };
++static SUNXI_CCU_M_WITH_MUX_GATE(i2h_clk, "i2h", i2h_parents, 0xd24,
++				 0, 5,		/* M */
++				 24, 3,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++/* Shared by cip-tsx, cip-mcx and audio-umac. */
++static const char * const tvfe_periph_parents[] = { "pll-periph0",
++						    "pll-periph1" };
++static SUNXI_CCU_M_WITH_MUX_GATE(cip_tsx_clk, "cip-tsx",
++				 tvfe_periph_parents, 0xd28,
++				 0, 3,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++static SUNXI_CCU_M_WITH_MUX_GATE(cip_mcx_clk, "cip-mcx",
++				 tvfe_periph_parents, 0xd2c,
++				 0, 3,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++static SUNXI_CCU_M_WITH_MUX_GATE(cip_tsp_clk, "cip-tsp",
++				 tvfe_video0_parents, 0xd30,
++				 0, 3,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++static SUNXI_CCU_M_WITH_MUX_GATE(tsa_tsp_clk, "tsa-tsp",
++				 tvfe_video0_parents, 0xd34,
++				 0, 3,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++static const char * const cip27_parents[] = { "pll-video0", "pll-adc" };
++static SUNXI_CCU_MP_WITH_MUX_GATE(cip27_clk, "cip27", cip27_parents, 0xd38,
++				  0, 4,		/* M */
++				  8, 2,		/* P */
++				  24, 1,	/* mux */
++				  BIT(31),	/* gate */
++				  0);
++
++static const char * const cip_mts0_parents[] = { "pll-video1-4x",
++						 "pll-video0-4x",
++						 "pll-video3-4x",
++						 "pll-adc",
++						 "pll-periph0-2x" };
++static SUNXI_CCU_MP_WITH_MUX_GATE(cip_mts0_clk, "cip-mts0",
++				  cip_mts0_parents, 0xd40,
++				  0, 5,		/* M */
++				  8, 2,		/* P */
++				  24, 3,	/* mux */
++				  BIT(31),	/* gate */
++				  0);
++
++/*
++ * The three clocks of the audio island on the demod bus (doku/nachtlog/S17 §1
++ * and §4a). Their boot values decode only under this reading:
++ *
++ *	0xd48 audio-cpu  = 0x00000002 -> mux 0 = pll-periph0-2x, M + 1 = 3
++ *	0xd4c audio-umac = 0x00000002 -> mux 0 = pll-periph0,    M + 1 = 3
++ *	0xd50 audio-ihb  = 0x00000007 -> mux 0 = pll-video0-4x,  M + 1 = 8
++ *
++ * which is 400, 200 and 162 MHz. The first two are the stock rates, so their
++ * dividers are already right. audio-ihb is not: stock parks it on
++ * pll-periph0 for 200 MHz (register 0x81000002) where we boot on
++ * pll-video0-4x for 162 MHz. Whether that difference matters to the island is
++ * still open (S17 §5.5); nothing here changes it, this only makes it visible
++ * and settable through clk_set_parent()/clk_set_rate().
++ *
++ * The gate really is bit 31 on all three: the vendor table gives
++ * enable = 0x80000000 for entries [112]-[114], and the by-hand bring-up
++ * (re/captures/weltneuheit/s16-audio-20260908/dsp_island2.py) sets exactly
++ * that bit on 0xd10 ... 0xd60 before the island answers.
++ */
++static const char * const audio_cpu_parents[] = { "pll-periph0-2x",
++						  "pll-periph1-2x" };
++static SUNXI_CCU_M_WITH_MUX_GATE(audio_cpu_clk, "audio-cpu",
++				 audio_cpu_parents, 0xd48,
++				 0, 3,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++static SUNXI_CCU_M_WITH_MUX_GATE(audio_umac_clk, "audio-umac",
++				 tvfe_periph_parents, 0xd4c,
++				 0, 3,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++static const char * const audio_ihb_parents[] = { "pll-video0-4x",
++						  "pll-periph0",
++						  "pll-periph1" };
++static SUNXI_CCU_M_WITH_MUX_GATE(audio_ihb_clk, "audio-ihb",
++				 audio_ihb_parents, 0xd50,
++				 0, 4,		/* M */
++				 24, 3,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++static SUNXI_CCU_M_WITH_MUX_GATE(tsa432_clk, "tsa432",
++				 tvfe_video0_parents, 0xd58,
++				 0, 3,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++static const char * const mpg_parents[] = { "pll-video1-4x", "osc24M",
++					    "pll-adc" };
++static SUNXI_CCU_MP_WITH_MUX_GATE(mpg0_clk, "mpg0", mpg_parents, 0xd5c,
++				  0, 4,		/* M */
++				  8, 2,		/* P */
++				  24, 3,	/* mux */
++				  BIT(31),	/* gate */
++				  0);
++
++static SUNXI_CCU_MP_WITH_MUX_GATE(mpg1_clk, "mpg1", mpg_parents, 0xd60,
++				  0, 4,		/* M */
++				  8, 2,		/* P */
++				  24, 3,	/* mux */
++				  BIT(31),	/* gate */
++				  0);
++
++/*
++ * The bus gate of the whole Trident frontend: 0x06000000 ... 0x067fffff --
++ * CIP, demux, the audio island at 0x0614xxxx, CI, DTMB and the TVFE router at
++ * 0x06700000. With bit 0 clear every register in that range reads 0; the
++ * measured pair is 0x06700000 = 0 without it and 0x7ff with it (doku/72,
++ * doku/nachtlog/S17 §0 and §2c). Its parent is pll-video0-4x, not "ahb"
++ * (vendor entry [118]). The reset in bit 16 is RST_BUS_DEMOD and was already
++ * right.
++ */
++static SUNXI_CCU_GATE(bus_demod_clk, "bus-demod", "pll-video0-4x",
+ 		      0xd64, BIT(0), 0);
+-static SUNXI_CCU_GATE(tcd3_clk, "tcd3", "ahb",
+-		      0xd6c, BIT(31), 0);
+-static SUNXI_CCU_GATE(vincap_dma_clk, "vincap-dma", "ahb",
+-		      0xd74, BIT(31), 0);
++
++static SUNXI_CCU_MP_WITH_MUX_GATE(tcd3_clk, "tcd3", tvfe_video0_parents,
++				  0xd6c,
++				  0, 3,		/* M */
++				  8, 2,		/* P */
++				  24, 1,	/* mux */
++				  BIT(31),	/* gate */
++				  0);
++
++static const char * const vincap_dma_parents[] = { "pll-video2-4x",
++						   "pll-periph0" };
++static SUNXI_CCU_M_WITH_MUX_GATE(vincap_dma_clk, "vincap-dma",
++				 vincap_dma_parents, 0xd74,
++				 0, 5,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
++/*
++ * 0xd80 carries two gates and they are bits 31 and 30, not 0 and 1 (vendor
++ * entries [121] and [122]; there is no reset in this register). The register
++ * reads 0xc0000000 out of the boot loader, so both clocks were already
++ * running while the clock tree reported them as off, and enabling either one
++ * wrote a bit the vendor's own table leaves unassigned.
++ *
++ * Note for whoever boots without clk_ignore_unused: with the bits correct,
++ * clk_disable_unused() can now see these two as enabled and unclaimed and
++ * will switch them off. Both board device trees pass clk_ignore_unused, and
++ * the capture path needs bus-cap-300m.
++ */
+ static SUNXI_CCU_GATE(bus_hdmi_audio_clk, "bus-hdmi-audio", "ahb",
+-		      0xd80, BIT(0), 0);
++		      0xd80, BIT(31), 0);
+ static SUNXI_CCU_GATE(bus_cap_300m_clk, "bus-cap-300m", "ahb",
+-		      0xd80, BIT(1), 0);
+-static SUNXI_CCU_GATE(hdmi_audio_clk, "hdmi-audio", "ahb",
+-		      0xd84, BIT(31), 0);
++		      0xd80, BIT(30), 0);
++
++/*
++ * hdmi-audio is a divider with a mux as well. The boot value 0x80000000 is
++ * mux 0 (pll-video3-4x) undivided. Stock reaches its 1152 MHz by calling
++ * clk_set_rate() on pll-video3, which is the freeze above, so the rate is
++ * left alone here; if it ever has to be brought down, 0xd84 = 0x80000001 or
++ * mux 1 (pll-periph0-2x) do it without touching a PLL (S17 §5.4).
++ */
++static const char * const hdmi_audio_parents[] = { "pll-video3-4x",
++						   "pll-periph0-2x" };
++static SUNXI_CCU_M_WITH_MUX_GATE(hdmi_audio_clk, "hdmi-audio",
++				 hdmi_audio_parents, 0xd84,
++				 0, 5,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
++
+ static SUNXI_CCU_GATE(bus_tvcap_clk, "bus-tvcap", "ahb",
+ 		      0xd88, BIT(0), 0);
+ /*
+@@ -675,6 +955,14 @@
+ 			    pll_periph0_parents, 1, 2, 0);
+ static CLK_FIXED_FACTOR_HWS(pll_periph0_4x_clk, "pll-periph0-4x",
+ 			    pll_periph0_parents, 1, 4, 0);
++/*
++ * The divide-by-three tap off the 2400 MHz output, called
++ * pll-periph0-800M/pll-periph1-800M in the vendor tree (hw_clks idx 137/138)
++ * where our -4x is its "2400M". Only mmc2 selects them; they are not exported
++ * to the device tree.
++ */
++static CLK_FIXED_FACTOR_HWS(pll_periph0_800m_clk, "pll-periph0-800M",
++			    pll_periph0_parents, 3, 4, 0);
+ 
+ static const struct clk_hw *pll_periph1_parents[] = {
+ 	&pll_periph1_clk.common.hw
+@@ -683,6 +971,8 @@
+ 			    pll_periph1_parents, 1, 2, 0);
+ static CLK_FIXED_FACTOR_HWS(pll_periph1_4x_clk, "pll-periph1-4x",
+ 			    pll_periph1_parents, 1, 4, 0);
++static CLK_FIXED_FACTOR_HWS(pll_periph1_800m_clk, "pll-periph1-800M",
++			    pll_periph1_parents, 3, 4, 0);
+ 
+ static CLK_FIXED_FACTOR_HW(pll_video0_4x_clk, "pll-video0-4x",
+ 			   &pll_video0_clk.common.hw, 1, 4, CLK_SET_RATE_PARENT);
+@@ -965,6 +1255,8 @@
+ 		[CLK_PLL_PERIPH0_4X]	= &pll_periph0_4x_clk.hw,
+ 		[CLK_PLL_PERIPH1_2X]	= &pll_periph1_2x_clk.hw,
+ 		[CLK_PLL_PERIPH1_4X]	= &pll_periph1_4x_clk.hw,
++		[CLK_PLL_PERIPH0_800M]	= &pll_periph0_800m_clk.hw,
++		[CLK_PLL_PERIPH1_800M]	= &pll_periph1_800m_clk.hw,
+ 		[CLK_PLL_VIDEO0_4X]	= &pll_video0_4x_clk.hw,
+ 		[CLK_PLL_VIDEO1_4X]	= &pll_video1_4x_clk.hw,
+ 		[CLK_PLL_VIDEO2_4X]	= &pll_video2_4x_clk.hw,
+diff -Nur a/drivers/clk/sunxi-ng/ccu-sun50i-h713.h b/drivers/clk/sunxi-ng/ccu-sun50i-h713.h
+--- a/drivers/clk/sunxi-ng/ccu-sun50i-h713.h	2026-09-08 10:01:54.619771358 +0200
++++ b/drivers/clk/sunxi-ng/ccu-sun50i-h713.h	2026-09-08 18:32:19.560863170 +0200
+@@ -22,7 +22,15 @@
+ #define CLK_PLL_AUDIO_BASE	11
+ #define CLK_PLL_AUDIO_2X	141
+ #define CLK_PLL_AUDIO_4X	142
++/*
++ * The vendor's pll-periphX-800M: the divide-by-three tap off pll-periphX-4x
++ * (which the vendor calls pll-periphX-2400M). Only mmc2 selects them. Appended
++ * behind the existing numbers -- 139 and 140 are not free, 139 is the exported
++ * CLK_PLL_AUDIO.
++ */
++#define CLK_PLL_PERIPH0_800M	143
++#define CLK_PLL_PERIPH1_800M	144
+ 
+-#define CLK_NUMBER_INTERNAL	143
++#define CLK_NUMBER_INTERNAL	145
+ 
+ #endif /* _CCU_SUN50I_H713_H_ */

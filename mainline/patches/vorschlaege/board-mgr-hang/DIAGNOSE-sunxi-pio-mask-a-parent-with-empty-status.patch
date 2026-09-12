@@ -1,0 +1,55 @@
+DIAGNOSE, NICHT FUER DIE SERIE -- pinctrl: sunxi: mask a PIO parent
+interrupt that asserts with an empty status register
+
+This is a measuring instrument, not a fix. Apply it only if the device
+still hangs with 0143, and take it out again afterwards.
+
+What it buys: today a PIO bank interrupt that fires while the bank's own
+status register reads zero is an unrecoverable live-lock. The GIC is a
+fasteoi chip, so chained_irq_enter() masks nothing and chained_irq_exit()
+only EOIs; if the demux finds no status bit to clear, the line stays high
+and the CPU re-enters the same handler forever. Nothing is logged, no
+counter in /proc/interrupts moves, and the console goes quiet -- which is
+exactly the picture in analyse/boot/board-mgr-hang-20260911.txt.
+
+With this hunk the same event masks the offending parent once and prints
+
+    sunxi-pio: parent irq N (bank index B, hw bank H, status reg 0xR)
+    asserted with an empty status register -- masking it
+
+so the device stays alive and the console names the GIC line that
+actually carries the PH bank's EINT. That number is the one open question
+behind 0143: 0143 asserts PH = GIC SPI 60 on the strength of the vendor
+driver's own index-based lookup, not on a register read of this SoC.
+
+Price: the bank whose parent gets masked loses its interrupts for the
+rest of the boot, and a genuinely spurious single assert would cost a
+bank the same way. That is acceptable for one measurement run and not
+acceptable in the series -- which is why this is a separate file.
+
+Applies with or without 0143 (it touches a different part of the file).
+
+--- a/drivers/pinctrl/sunxi/pinctrl-sunxi.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sunxi.c
+@@ -1266,6 +1266,21 @@
+ 		for_each_set_bit(irqoffset, &val, IRQ_PER_BANK)
+ 			generic_handle_domain_irq(pctl->domain,
+ 						  bank * IRQ_PER_BANK + irqoffset);
++	} else {
++		/*
++		 * DIAGNOSIS ONLY -- do not merge into the series.
++		 *
++		 * The parent line asserted, but this bank's status register is
++		 * empty, so nothing here can clear the source. The GIC is a
++		 * fasteoi chip, so chained_irq_enter() does not mask and
++		 * chained_irq_exit() only EOIs: the line stays high and the
++		 * CPU takes the same interrupt again immediately, forever.
++		 * Mask it at the parent instead and name the line -- that
++		 * number is the measurement we are after.
++		 */
++		pr_err("sunxi-pio: parent irq %u (bank index %lu, hw bank %u, status reg 0x%lx) asserted with an empty status register -- masking it\n",
++		       irq, bank, sunxi_irq_hw_bank_num(pctl->desc, bank), reg);
++		chip->irq_mask(&desc->irq_data);
+ 	}
+ 
+ 	chained_irq_exit(chip, desc);

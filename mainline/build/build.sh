@@ -64,7 +64,7 @@ kernel_inputs_digest() {
       printf 'fragment %s %s\n' "$p" "$(hash_file "$ROOT/patches/kernel/board/$p.config")"
     done
     while IFS= read -r p || [ -n "$p" ]; do
-      [ -n "$p" ] || continue
+      case "$p" in ''|'#'*) continue ;; esac   # blank or section comment
       printf '%s %s\n' "$p" "$(hash_file "$ROOT/patches/kernel/$p")"
     done < "$ROOT/patches/kernel/series"
   } | sha256sum | awk '{print $1}'
@@ -146,7 +146,7 @@ prepare_kernel() {
   tar -C "$tmp" --strip-components=1 -xf "$tarball"
   local n=0 p
   while read -r p; do
-    [ -n "$p" ] || continue
+    case "$p" in ''|'#'*) continue ;; esac   # blank or section comment
     if ! patch -s -d "$tmp" -p1 < "$ROOT/patches/kernel/$p"; then
       rm -rf "$tmp"
       return 1
@@ -228,7 +228,7 @@ aic8800_inputs_digest() {
     printf 'commit %s\n' "$AIC8800_COMMIT"
     printf 'series %s\n' "$(hash_file "$ROOT/patches/aic8800/series")"
     while IFS= read -r p || [ -n "$p" ]; do
-      [ -n "$p" ] || continue
+      case "$p" in ''|'#'*) continue ;; esac   # blank or section comment
       printf '%s %s\n' "$p" "$(hash_file "$ROOT/patches/aic8800/$p")"
     done < "$ROOT/patches/aic8800/series"
   } | sha256sum | awk '{print $1}'
@@ -303,7 +303,7 @@ prepare_aic8800() {
     "aic8800 vendor $AIC8800_COMMIT + vendor compat series"
   local m=0
   while IFS= read -r p || [ -n "$p" ]; do
-    [ -n "$p" ] || continue
+    case "$p" in ''|'#'*) continue ;; esac   # blank or section comment
     if ! git -C "$stage" -c user.email=build@h713 -c user.name=h713 \
            am -3 --keep-non-patch "$ROOT/patches/aic8800/$p" >/dev/null 2>&1; then
       git -C "$stage" am --abort >/dev/null 2>&1 || true

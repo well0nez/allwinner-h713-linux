@@ -1,0 +1,616 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] media: sun50i-h713-hdmirx: offer the picture settings as V4L2 controls
+
+The picture pipeline of this chip belongs to the MIPS co-processor, so
+every picture setting it has is a THal_Vp_* remote procedure and not a
+register the ARM could write. That has meant a private tool so far: the
+values were reachable only by sending RPCs over /dev/cpu_comm by hand, and
+nothing that looks for picture settings where V4L2 keeps them -- v4l2-ctl,
+qv4l2, any ordinary application -- could find them at all.
+
+Offer them on /dev/videoN, where the pictures come out.
+
+Nine of them. Brightness, contrast, saturation, hue and sharpness take the
+standard ids. The two noise reductions, the dynamic contrast and the black
+extension have no standard id in V4L2 at all, so they take ids from a new
+user-class block for this driver; their four steps and the names of those
+steps are the vendor's own, out of the header of pq_picturemode.ini
+("0-off,1-low,2-middle,3-high"), which is also where the 0..100 range of
+the other five comes from.
+
+That these RPCs reach *our* picture is measured, not assumed. SetContrast
+0 -> 100 moves 12.16 % of the pixels on the wall and the smaller step
+20 -> 80 moves 0.84 % of them, on the picture this driver captures
+(doku/nachtlog/K5-board-verifikation.md (c) and (d)).
+
+No value is converted on the way in. Each of the five settings measured on
+the device lands unchanged in its field of the firmware's register block --
+SetContrast 20/80/100 gives 0x14/0x50/0x64 in 0x05001234[31:16] -- so the
+V4L2 range is mapped onto the RPC argument and onto nothing else.
+Saturation shows why that is the right place to stop: the same RPC also
+writes a second register, the chroma gain at 0x05140508[23:16], as
+floor(argument * 1.28), and a driver that computed a register value itself
+would get that half wrong.
+
+The controls start at the values the firmware reports, not at values picked
+here. After the bring-up sequence the driver asks each setting's Get
+routine once and uses the answer as the control's value and as its default.
+That is what makes a truthful control possible without inventing a number:
+announcing 50 while the firmware holds something else is a lie, and writing
+50 to make the announcement true would move a picture nobody asked to move
+-- for saturation it would take the chroma gain with it. An answer outside
+the range, or none at all, falls back to the vendor's "standard" preset and
+says so in the log.
+
+The readback checks itself. The bring-up sequence has just set the temporal
+and spatial noise reduction, the dynamic contrast and the black extension
+to known values, and the driver compares its four answers against them --
+reading the expected values out of the sequence table rather than writing
+them down a second time, so the two cannot drift apart. Four agreements are
+evidence that the Get routines are read correctly; a disagreement is a
+warning in the log and means this patch's reading of them is wrong.
+
+Both call shapes come from the decompiled handlers
+(re/captures/weltneuheit/k5-pq-handler-20260907.log): a Set handler reads
+its value out of the first argument word and touches nothing else, a Get
+handler takes no argument at all and answers with exactly one word, the
+value. That matters for more than convenience -- SetGamma, SetWhiteBalance
+and SetColorManagement take a *pointer* that the firmware dereferences
+without checking it, the failure mode that takes the co-processor down when
+THal_Vp_Init is handed a zero staging address. None of those three is
+offered here.
+
+Nothing is offered twice either. Gamma and white balance are already
+GAMMA_LUT and CTM on the display CRTC, where they are measured to invert
+the picture on the console and on the video path alike, while the firmware
+announces "Can not get MP GAMMAModuleID" for its own gamma module at every
+start; the lamp already has pwm-backlight and a backlight class device to
+go with it. Picture mode, video range and low latency mode are left out for
+reasons the code names one by one -- in short, because their values cannot
+be named from anything the vendor ships, and a menu whose entries cannot be
+named is worse than no menu.
+
+Brightness was the doubtful one of the nine and is not doubtful any more.
+It writes its register -- SetBrightness 100 gives 0x00000064 in
+0x05001234[15:0] -- but the run that looked for an effect on the wall saw
+0.00 % of the pixels move, where the same step in contrast moved 12.16 %,
+and the conclusion drawn from that was to leave the control out. The run
+went against a nearly white page, and brightness moves the lower end of the
+curve: its criterion could not have succeeded whatever the hardware did.
+Re-measured against dark material: the standard deviation in the region of
+interest goes 12.6 -> 16.2 -> 22.7 for SetBrightness 0 -> 50 -> 100 and
+then stays flat through 150, 200 and 255, and stepping back and forth
+lands on the same three numbers again
+(doku/nachtlog/I0-helligkeit-nachgemessen.md). So brightness works -- and
+its range really is 0..100, which is now measured and not only read off
+the vendor file.
+
+v4l2_ctrl_handler_setup() is deliberately not called: it would write all
+nine values into the firmware during probe, which is exactly what the
+readback exists to avoid.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+
+Nachtrag der Hauptsitzung, 07.09.2026 12:40. Der Entwurf fragte beim Probe
+THal_Vp_Get<x> ab und nahm die Antwort als Ist- und Vorgabewert. Am Gerät ist
+das durchgefallen, und zwar an der Selbstprüfung, die der Entwurf selbst dafür
+eingebaut hatte: "0 von 4 gegen die Init-Sequenz bestaetigt". Die Gegenprobe
+gegen die Register zeigt, dass die Rückfrage falsch liegt und nicht die
+Erwartung -- 0x05001248[7:0] hält SNR 1 und 0x0500123c[7:0] hält DCI 2, beide
+von der Init-Sequenz gesetzt, und beide Get-Rufe antworten trotzdem 0. Auch
+unmittelbar nach einem erfolgreichen SetContrast 80, mit 0x50 sichtbar im
+Register, liefert GetContrast 0. Die Get-Routinen sind damit als Quelle
+unbrauchbar; sie sind ersatzlos raus, und die Startwerte kommen aus der
+Init-Sequenz beziehungsweise dem Ruhewert der Register. Hergang:
+doku/nachtlog/I1-get-routinen.md.
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 11:37:05.625508808 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 11:39:13.908340840 +0200
+@@ -72,6 +72,7 @@
+ #include <linux/soc/sunxi/h713-cpu-comm.h>
+ 
+ #include <media/v4l2-common.h>
++#include <media/v4l2-ctrls.h>
+ #include <media/v4l2-dev.h>
+ #include <media/v4l2-device.h>
+ #include <media/v4l2-dv-timings.h>
+@@ -337,6 +338,226 @@
+ 	},
+ };
+ 
++/* ------------------------------------------------------------------ *
++ * Picture quality
++ *
++ * The picture pipeline belongs to the firmware, so every picture setting
++ * this chip has is an RPC and not a register this driver could write. They
++ * are offered here as V4L2 controls, on the node the pictures come out of,
++ * so that v4l2-ctl, qv4l2 and any ordinary application find them where they
++ * look for them instead of needing a private tool for each one.
++ *
++ * That the stage these RPCs drive really sits in the path of *our* picture
++ * is measured, not assumed: SetContrast 0 -> 100 moves 12.16 % of the pixels
++ * on the wall, against 0.84 % for the smaller step 20 -> 80
++ * (doku/nachtlog/K5-board-verifikation.md (c) and (d)).
++ *
++ * The argument of every one of these RPCs is the value itself. Each of the
++ * five that were measured on the device lands unchanged in its field of the
++ * firmware's picture-quality register block -- SetContrast 20/80/100 gives
++ * 0x14/0x50/0x64 in 0x05001234[31:16] and nothing in between rescales it
++ * (doku/81-pq-datenmodell.md section 3). So no conversion belongs here: the
++ * V4L2 range is mapped onto the RPC argument, and what the firmware then
++ * does with it is the firmware's business. Saturation shows why that
++ * matters -- the same RPC also writes a second register, the chroma gain at
++ * 0x05140508[23:16], as floor(argument * 1.28); a driver that computed a
++ * register value itself would get that half wrong (measured, five points
++ * including the pair 59/60 that separates rounding down from rounding to
++ * nearest, doku/nachtlog/K5-board-verifikation.md (f)).
++ *
++ * Five of the nine have a standard control id. The other four -- the two
++ * noise reductions, the dynamic contrast and the black extension -- have no
++ * standard id in V4L2 at all, so they take ids from this driver's own block
++ * in the user class. Their four steps and the names of those steps are not
++ * invented: they are the vendor's own, written out in the header of
++ * pq_picturemode.ini ("0-off,1-low,2-middle,3-high"), which is also where
++ * the 0..100 range of the other five comes from.
++ *
++ * Deliberately absent, each for its own reason:
++ *
++ *  - Gamma and white balance. Both exist twice on this chip, and the half
++ *    that is known to work is not this one: the DE2 gamma stage is offered
++ *    as GAMMA_LUT and CTM on the display CRTC (patch 0095) and is measured
++ *    to invert the picture on the console and on the video path alike
++ *    (doku/87-gamma-ctm-kms.md section 0), while the firmware announces
++ *    "Can not get MP GAMMAModuleID" for its own gamma module at every
++ *    start. A V4L2_CID_GAMMA here would be a second owner of one visible
++ *    quantity with no defined precedence between them.
++ *
++ *  - The backlight. The lamp already has a driver, pwm-backlight on
++ *    PWM2/PB4, and a class device to go with it. Whether
++ *    Thal_Vp_SetBacklightLevel drives that same lamp is not measured, and
++ *    two unrelated owners of one lamp are worse than one.
++ *
++ *  - Picture mode. SetPictureMode loads a whole preset and re-sets the five
++ *    values above behind this driver's back (doku/85-re-pq-register.md
++ *    A.5), so a control for it would silently invalidate five others; and
++ *    the firmware's numbering of the modes cannot be resolved from any file
++ *    the vendor ships. A menu whose entries cannot be named is worse than
++ *    no menu.
++ *
++ *  - Video range and low latency mode. Both are settable, but nothing in
++ *    the vendor data says what their values mean, not even how many there
++ *    are. G_FMT answers V4L2_QUANTIZATION_LIM_RANGE; a range control that
++ *    could not say which of its values matches that answer would make the
++ *    node contradict itself.
++ *
++ *  - SetGamma, SetWhiteBalance and SetColorManagement. Their argument is a
++ *    *pointer*, which the handler dereferences without checking it -- the
++ *    failure mode that takes the co-processor down when THal_Vp_Init gets a
++ *    zero staging address. Visible in the handler decompilations,
++ *    re/captures/weltneuheit/k5-pq-handler-20260907.log.
++ * ------------------------------------------------------------------ */
++
++/*
++ * Private control ids. The base is registered in the uapi header so that no
++ * other driver takes the same block.
++ */
++#define V4L2_CID_H713_TEMPORAL_NR	(V4L2_CID_USER_SUN50I_H713_BASE + 0)
++#define V4L2_CID_H713_SPATIAL_NR	(V4L2_CID_USER_SUN50I_H713_BASE + 1)
++#define V4L2_CID_H713_DYNAMIC_CONTRAST	(V4L2_CID_USER_SUN50I_H713_BASE + 2)
++#define V4L2_CID_H713_BLACK_EXTENSION	(V4L2_CID_USER_SUN50I_H713_BASE + 3)
++
++/* The vendor's own four steps, from the header of pq_picturemode.ini. */
++static const char * const h713_hdmirx_pq_steps[] = {
++	"Off", "Low", "Middle", "High", NULL,
++};
++
++enum h713_hdmirx_pq_index {
++	H713_PQ_BRIGHTNESS,
++	H713_PQ_CONTRAST,
++	H713_PQ_SATURATION,
++	H713_PQ_HUE,
++	H713_PQ_SHARPNESS,
++	H713_PQ_TNR,
++	H713_PQ_SNR,
++	H713_PQ_DCI,
++	H713_PQ_BLACK_EXTENSION,
++	H713_PQ_COUNT,
++};
++
++/**
++ * struct h713_hdmirx_pq - one picture setting, from V4L2 id to RPC
++ * @id: V4L2 control id
++ * @set: routine that writes the value
++ * @get: routine that reads it back
++ * @max: largest value the vendor data knows for this setting; the smallest
++ *	is 0 for all nine
++ * @preset: the value of the vendor's "standard" preset, used only when the
++ *	firmware cannot be asked
++ * @name: control name, for the private ids; NULL where V4L2 has the name
++ * @menu: menu entries, for the private ids; NULL makes it a plain integer
++ *
++ * The Set and Get routine names are hashed into component ids at run time
++ * by cpu_comm_name2id(); every one of them reproduces the id that the live
++ * routine table of the co-processor holds for it
++ * (mainline/docs/reference/cpu-comm-call-table.md, "Picture quality").
++ */
++struct h713_hdmirx_pq {
++	u32 id;
++	const char *set;
++	s32 max;
++	s32 preset;
++	const char *name;
++	const char * const *menu;
++};
++
++/*
++ * The Set handlers take their value as the first argument word and read
++ * nothing else -- decompiled in re/captures/weltneuheit/k5-pq-handler-20260907.log
++ * and confirmed at the device: CONTRAST 80 puts 0x50 into 0x05001234[31:16],
++ * SATURATION 100 puts 100 into 0x05001238[15:0] and the chroma gain
++ * floor(100 * 1.28) = 0x80 into 0x05140508[23:16], which is the formula from
++ * doku/nachtlog/K5-board-verifikation.md (f).
++ *
++ * There is no Get column, and that is a measurement, not an omission. The
++ * firmware has a THal_Vp_Get<x> for every one of these, they all answer, and
++ * they all answer *zero* -- for the five scalars and for the four steps
++ * alike, and regardless of what was just written. Measured 07.09.2026: with
++ * 0x05001248[7:0] holding SNR 1 and 0x0500123c[7:0] holding DCI 2, both put
++ * there by the bring-up sequence above, GetSNR and GetDCI returned 0; and
++ * right after CONTRAST 80 had landed in the register, GetContrast returned 0
++ * as well (doku/nachtlog/I1-get-routinen.md). Asking them would not tell this
++ * driver anything, and a probe that asks nine times and then warns about four
++ * disagreements would put that warning into every boot.
++ *
++ * So the starting values come from what is known instead. For the last four
++ * that is what the bring-up sequence itself sends (stock sessions 17 to 20),
++ * and the registers agree with it. For the first five it is 50, the
++ * "standard" row of [HDMI1] in the vendor's pq_picturemode.ini -- and that is
++ * a measurement too, not a reading.
++ *
++ * It is worth saying why, because the obvious answer is wrong and was tried:
++ * these five registers read *zero* at rest, so zero looks like the honest
++ * default. It is not. A register at zero here does not mean "the value zero
++ * is in effect", it means the firmware is not applying that control at all
++ * yet; the first Set is what switches it on, and from then on zero is the far
++ * end of the range. Measured on the wall 07.09.2026: with hue at the resting
++ * zero the picture is correct, after HUE 100 it swings to green, and after
++ * HUE 0 -- the same register value it started with -- it comes out blue. At
++ * 50 the original colours are back, for hue and for all five together
++ * (doku/nachtlog/I1-get-routinen.md). Announcing zero would therefore be a
++ * claim about the picture that the picture contradicts.
++ *
++ * Which is also why v4l2_ctrl_handler_setup() must stay uncalled: a default
++ * that is right to announce is not automatically right to write.
++ */
++static const struct h713_hdmirx_pq h713_hdmirx_pq_ctrls[H713_PQ_COUNT] = {
++	[H713_PQ_BRIGHTNESS] = {
++		.id = V4L2_CID_BRIGHTNESS,
++		.set = "THal_Vp_SetBrightness",
++		.max = 100, .preset = 50,
++	},
++	[H713_PQ_CONTRAST] = {
++		.id = V4L2_CID_CONTRAST,
++		.set = "THal_Vp_SetContrast",
++		.max = 100, .preset = 50,
++	},
++	[H713_PQ_SATURATION] = {
++		.id = V4L2_CID_SATURATION,
++		.set = "THal_Vp_SetSaturation",
++		.max = 100, .preset = 50,
++	},
++	[H713_PQ_HUE] = {
++		.id = V4L2_CID_HUE,
++		.set = "THal_Vp_SetHue",
++		.max = 100, .preset = 50,
++	},
++	[H713_PQ_SHARPNESS] = {
++		.id = V4L2_CID_SHARPNESS,
++		.set = "THal_Vp_SetSharpness",
++		.max = 100, .preset = 50,
++	},
++	[H713_PQ_TNR] = {
++		.id = V4L2_CID_H713_TEMPORAL_NR,
++		.set = "THal_Vp_SetTNR",
++		.max = 3, .preset = 2,
++		.name = "Temporal Noise Reduction",
++		.menu = h713_hdmirx_pq_steps,
++	},
++	[H713_PQ_SNR] = {
++		.id = V4L2_CID_H713_SPATIAL_NR,
++		.set = "THal_Vp_SetSNR",
++		.max = 3, .preset = 1,
++		.name = "Spatial Noise Reduction",
++		.menu = h713_hdmirx_pq_steps,
++	},
++	[H713_PQ_DCI] = {
++		.id = V4L2_CID_H713_DYNAMIC_CONTRAST,
++		.set = "THal_Vp_SetDCI",
++		.max = 3, .preset = 2,
++		.name = "Dynamic Contrast",
++		.menu = h713_hdmirx_pq_steps,
++	},
++	[H713_PQ_BLACK_EXTENSION] = {
++		.id = V4L2_CID_H713_BLACK_EXTENSION,
++		.set = "THal_Vp_SetBlackExtension",
++		.max = 3, .preset = 1,
++		.name = "Black Extension",
++		.menu = h713_hdmirx_pq_steps,
++	},
++};
++
+ /* ------------------------------------------------------------------ */
+ 
+ struct h713_hdmirx;
+@@ -401,6 +622,11 @@
+ 
+ 	struct v4l2_dv_timings timings;
+ 
++	/* picture quality, one entry per h713_hdmirx_pq_ctrls[] entry */
++	struct v4l2_ctrl_handler ctrl_hdl;
++	s32 pq_start[H713_PQ_COUNT];
++	bool pq_from_seq[H713_PQ_COUNT];
++
+ 	/* slot bookkeeping, all of it under slot_lock */
+ 	spinlock_t slot_lock;
+ 	struct vb2_v4l2_buffer *slot_buf[H713_HDMIRX_SLOTS];
+@@ -577,6 +803,154 @@
+ }
+ 
+ /* ------------------------------------------------------------------ *
++ * Picture quality: reading the firmware's state, and writing controls
++ * ------------------------------------------------------------------ */
++
++static const struct h713_hdmirx_pq *h713_hdmirx_pq_of(u32 id)
++{
++	unsigned int i;
++
++	for (i = 0; i < H713_PQ_COUNT; i++)
++		if (h713_hdmirx_pq_ctrls[i].id == id)
++			return &h713_hdmirx_pq_ctrls[i];
++
++	return NULL;
++}
++
++/*
++ * What the bring-up sequence sent for this routine, or -1 if it does not
++ * send it. Read out of the sequence table rather than written down a second
++ * time, so the two cannot drift apart.
++ */
++static int h713_hdmirx_init_arg(const char *name)
++{
++	unsigned int i;
++
++	for (i = 0; i < ARRAY_SIZE(h713_hdmirx_init_seq); i++) {
++		const struct h713_hdmirx_step *s = &h713_hdmirx_init_seq[i];
++
++		if (s->kind == H713_STEP_PLAIN && s->nargs == 1 &&
++		    !strcmp(s->name, name))
++			return s->args[0];
++	}
++
++	return -1;
++}
++
++/*
++ * The value each control starts at, and announces as its default.
++ *
++ * No round trip to the firmware -- see the block comment at the table for why
++ * asking would only produce zeroes. Where the bring-up sequence above has set
++ * the value itself, that value is the truth and the driver already has it in
++ * its own table; everywhere else the block rests at zero. Nothing is written
++ * here, and v4l2_ctrl_handler_setup() is deliberately not called: the picture
++ * on the wall belongs to whatever the firmware and the bring-up sequence have
++ * made of it, and a driver that "restores" a value it never wrote would be
++ * changing a picture nobody asked it to change. Saturation is the sharp end of
++ * that -- its RPC also moves the chroma gain.
++ */
++static void h713_hdmirx_pq_start_values(struct h713_hdmirx *rx)
++{
++	unsigned int from_seq = 0;
++	unsigned int i;
++
++	for (i = 0; i < H713_PQ_COUNT; i++) {
++		const struct h713_hdmirx_pq *pq = &h713_hdmirx_pq_ctrls[i];
++		int seq = h713_hdmirx_init_arg(pq->set);
++
++		if (seq >= 0 && seq <= pq->max) {
++			rx->pq_start[i] = seq;
++			rx->pq_from_seq[i] = true;
++			from_seq++;
++		} else {
++			rx->pq_start[i] = pq->preset;
++		}
++	}
++
++	dev_info(rx->dev,
++		 "Bildwerte: %u von %u aus der Init-Sequenz, der Rest im Ruhewert\n",
++		 from_seq, H713_PQ_COUNT);
++}
++
++/*
++ * One control, one RPC, no conversion -- see the block comment at the
++ * table. A failing RPC makes the ioctl fail; the control framework then
++ * keeps the old value, which is the truth as long as nobody can say what
++ * the firmware did with the half-finished call.
++ */
++static int h713_hdmirx_s_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct h713_hdmirx *rx = container_of(ctrl->handler, struct h713_hdmirx,
++					      ctrl_hdl);
++	const struct h713_hdmirx_pq *pq = h713_hdmirx_pq_of(ctrl->id);
++	u32 arg;
++
++	if (!pq)
++		return -EINVAL;
++
++	arg = ctrl->val;
++
++	return h713_hdmirx_call(rx, pq->set, &arg, 1, 0);
++}
++
++static const struct v4l2_ctrl_ops h713_hdmirx_ctrl_ops = {
++	.s_ctrl = h713_hdmirx_s_ctrl,
++};
++
++/*
++ * The handler keeps its own lock rather than borrowing rx->lock: the video
++ * node already holds rx->lock across every ioctl, so sharing it would mean
++ * taking it twice. Nothing needs the two to be one lock -- a picture
++ * setting is independent of the queue, and cpu_comm serialises the calls
++ * themselves.
++ *
++ * v4l2_ctrl_handler_setup() is deliberately not called here. It would write
++ * all nine values into the firmware at probe, which is exactly what the
++ * readback exists to avoid.
++ */
++static int h713_hdmirx_init_ctrls(struct h713_hdmirx *rx)
++{
++	struct v4l2_ctrl_handler *hdl = &rx->ctrl_hdl;
++	unsigned int i;
++	int ret;
++
++	ret = v4l2_ctrl_handler_init(hdl, H713_PQ_COUNT);
++	if (ret)
++		return ret;
++
++	for (i = 0; i < H713_PQ_COUNT; i++) {
++		const struct h713_hdmirx_pq *pq = &h713_hdmirx_pq_ctrls[i];
++
++		if (!pq->menu) {
++			v4l2_ctrl_new_std(hdl, &h713_hdmirx_ctrl_ops, pq->id,
++					  0, pq->max, 1, rx->pq_start[i]);
++		} else {
++			struct v4l2_ctrl_config cfg = {
++				.ops	= &h713_hdmirx_ctrl_ops,
++				.id	= pq->id,
++				.name	= pq->name,
++				.type	= V4L2_CTRL_TYPE_MENU,
++				.min	= 0,
++				.max	= pq->max,
++				.def	= rx->pq_start[i],
++				.qmenu	= pq->menu,
++			};
++
++			v4l2_ctrl_new_custom(hdl, &cfg, NULL);
++		}
++	}
++
++	if (hdl->error) {
++		ret = hdl->error;
++		v4l2_ctrl_handler_free(hdl);
++		return ret;
++	}
++
++	return 0;
++}
++
++/* ------------------------------------------------------------------ *
+  * Callbacks from the firmware
+  * ------------------------------------------------------------------ */
+ 
+@@ -1430,7 +1804,7 @@
+ 	case V4L2_EVENT_SOURCE_CHANGE:
+ 		return v4l2_src_change_event_subscribe(fh, sub);
+ 	default:
+-		return -EINVAL;
++		return v4l2_ctrl_subscribe_event(fh, sub);
+ 	}
+ }
+ 
+@@ -1701,6 +2075,24 @@
+ 			   (u64)h713_hdmirx_slot_y[i],
+ 			   (u64)h713_hdmirx_slot_c[i]);
+ 
++	/*
++	 * The board has no v4l2-ctl, so without this the picture controls
++	 * could be set from a test program but never looked at.
++	 */
++	seq_puts(s, "bild:\n");
++	for (i = 0; i < H713_PQ_COUNT; i++) {
++		const struct h713_hdmirx_pq *pq = &h713_hdmirx_pq_ctrls[i];
++		struct v4l2_ctrl *ctrl = v4l2_ctrl_find(&rx->ctrl_hdl, pq->id);
++
++		if (!ctrl)
++			continue;
++
++		seq_printf(s, "  %-24s %3d   Start %d (%s), %s\n",
++			   ctrl->name, v4l2_ctrl_g_ctrl(ctrl), rx->pq_start[i],
++			   rx->pq_from_seq[i] ? "Init-Sequenz" : "Ruhewert",
++			   pq->set);
++	}
++
+ 	return 0;
+ }
+ DEFINE_SHOW_ATTRIBUTE(h713_hdmirx_status);
+@@ -1866,6 +2258,13 @@
+ 	}
+ 
+ 	/*
++	 * Ask the firmware for its picture values while the sequence that just
++	 * set four of them is the most recent thing that happened, and before
++	 * the ten second hotplug pulse below rather than after it.
++	 */
++	h713_hdmirx_pq_start_values(rx);
++
++	/*
+ 	 * Stage 4: EDID into the receiver and hotplug up. This is the ARISC's
+ 	 * job and it takes the ten seconds the hotplug pulse needs, which is
+ 	 * why this driver probes asynchronously.
+@@ -1903,6 +2302,11 @@
+ 	if (ret)
+ 		return ret;
+ 
++	ret = h713_hdmirx_init_ctrls(rx);
++	if (ret)
++		goto err_v4l2;
++
++	rx->vdev.ctrl_handler = &rx->ctrl_hdl;
+ 	rx->vdev.fops = &h713_hdmirx_fops;
+ 	rx->vdev.ioctl_ops = &h713_hdmirx_ioctl_ops;
+ 	rx->vdev.v4l2_dev = &rx->v4l2_dev;
+@@ -1916,7 +2320,7 @@
+ 
+ 	ret = video_register_device(&rx->vdev, VFL_TYPE_VIDEO, -1);
+ 	if (ret)
+-		goto err_v4l2;
++		goto err_ctrl;
+ 
+ 	/*
+ 	 * From here on the display tells this driver when it has published the
+@@ -1967,6 +2371,8 @@
+ 
+ err_vdev:
+ 	vb2_video_unregister_device(&rx->vdev);
++err_ctrl:
++	v4l2_ctrl_handler_free(&rx->ctrl_hdl);
+ err_v4l2:
+ 	v4l2_device_unregister(&rx->v4l2_dev);
+ 
+@@ -1981,6 +2387,7 @@
+ 	cancel_work_sync(&rx->rearm_work);
+ 	debugfs_remove_recursive(rx->debugfs);
+ 	vb2_video_unregister_device(&rx->vdev);
++	v4l2_ctrl_handler_free(&rx->ctrl_hdl);
+ 	v4l2_device_unregister(&rx->v4l2_dev);
+ 	h713_hdmirx_drop_callbacks(rx);
+ }
+diff -ruN a/include/uapi/linux/v4l2-controls.h b/include/uapi/linux/v4l2-controls.h
+--- a/include/uapi/linux/v4l2-controls.h	2026-09-07 11:37:05.612642164 +0200
++++ b/include/uapi/linux/v4l2-controls.h	2026-09-07 11:39:13.906622371 +0200
+@@ -228,6 +228,12 @@
+  */
+ #define V4L2_CID_USER_RKISP1_BASE		(V4L2_CID_USER_BASE + 0x1220)
+ 
++/*
++ * The base for the sun50i-h713-hdmirx driver controls.
++ * We reserve 16 controls for this driver.
++ */
++#define V4L2_CID_USER_SUN50I_H713_BASE		(V4L2_CID_USER_BASE + 0x1230)
++
+ /* MPEG-class control IDs */
+ /* The MPEG controls are applicable to all codec controls
+  * and the 'MPEG' part of the define is historical */

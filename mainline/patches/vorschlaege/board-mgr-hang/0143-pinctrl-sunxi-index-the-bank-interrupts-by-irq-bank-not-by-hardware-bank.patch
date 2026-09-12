@@ -1,0 +1,145 @@
+pinctrl: sunxi: index the bank interrupts by IRQ bank, not by hardware bank
+
+This is what hangs the device when hy310-board-mgr asks for the fan
+tachometer interrupt on PH17.
+
+Patch 0004 changed the parent-interrupt lookup from
+
+	pctl->irq[i] = platform_get_irq(pdev, i);
+
+to
+
+	u32 hw_bank = sunxi_irq_hw_bank_num(pctl->desc, i);
+	pctl->irq[i] = platform_get_irq(pdev, hw_bank);
+
+which reads the DT "interrupts" list as one entry per *hardware* bank.
+It is one entry per *IRQ bank*, in irq_bank_map order. The SoC wires a
+GIC line only to the banks that have an EINT block and numbers them
+consecutively; it does not leave a gap for a bank that has none.
+
+On the H713 the IRQ banks are PA PB PC PD PF PG PH -- irq_bank_map
+{0, 1, 2, 3, 5, 6, 7}, which skips 4 (PE, no pins on this SoC). So the
+seven lines GIC SPI 54..60 belong to PA..PH, and every bank behind the
+gap ends up one line too high with the hw_bank lookup:
+
+	bank      wanted   0004 gives
+	PA  (0)   SPI 54   SPI 54    ok
+	PB  (1)   SPI 55   SPI 55    ok
+	PC  (2)   SPI 56   SPI 56    ok
+	PD  (3)   SPI 57   SPI 57    ok
+	PF  (5)   SPI 58   SPI 59    = PG's line
+	PG  (6)   SPI 59   SPI 60    = PH's line
+	PH  (7)   SPI 60   SPI 61    = nothing
+
+That is not a cosmetic mix-up. The parent interrupt is level-triggered
+and the chained handler is what clears the source:
+
+	reg = sunxi_irq_status_reg_from_bank(pctl->desc, bank);
+	val = readl(pctl->membase + reg);
+	if (val) { ...demux, the child's irq_ack clears the bit... }
+
+When PH17 raises its EINT, the PIO asserts SPI 60. The handler sitting
+on SPI 60 believes it is bank index 5 = PG and reads PG's status
+register at 0x2D4, which is zero. It clears nothing, returns, and the
+PIO still holds SPI 60 high -- so the CPU takes the same interrupt
+again, forever. CPU 0 never makes progress past the idle loop, RCU
+grace periods stop completing and the machine dies. Neither counter in
+/proc/interrupts moves: the child (IRQ 230) is never reached, and a
+chained parent is not counted at all.
+
+What it is measured against:
+
+* Stock vmlinux (re/vendor/HY310/extracted/vmlinux.elf, ARM32 with
+  DWARF). sun50iw12_irq_bank_map at c0e9d894 is {0, 1, 2, 3, 5, 6, 7},
+  byte for byte ours, and sun50iw12_pinctrl_data at c0e9d814 has
+  irq_banks = 7. The vendor's sunxi_pinctrl_init_with_variant does the
+  lookup at c0548548:
+
+	c0548548  ldr r8, [r4, #0x90]       ; pctl->irq
+	c054854c  mov r1, sb                ; r1 = i, the loop counter
+	c0548550  mov r0, r7                ; pdev
+	c0548554  bl  #0xc05abd38           ; platform_get_irq
+	c0548558  str r0, [r8, sb, lsl #2]  ; pctl->irq[i] = ret
+
+  -- the plain bank index, exactly like upstream. Twenty instructions
+  further down, at c0548640..c0548688, the same loop *does* call the
+  hw-bank helper (c05475a0) before computing the 0x210 / 0x214 register
+  offsets. The vendor distinguishes the two numbers; 0004 merged them.
+
+* The stock fan driver really uses this path: pwm_fan_probe
+  (c05d9738) calls gpiod_to_irq at c05d9ff4 and hands the result to
+  request_threaded_irq with flags = 3 (both edges) at c05da034. PH17 is
+  the only main-PIO EINT user on the stock system -- no vendor DT node
+  has interrupt-parent = <&pio>. So the stock kernel takes exactly this
+  route with platform_get_irq(pdev, 6) = SPI 60, and it works.
+
+* Upstream does the same and its DTs match: the H616 has irq_bank_map
+  {1, 2, 3, 5, 6, 7, 8} -- a gap at 4 as well -- and its pio node lists
+  seven consecutive lines, GIC SPI 51..57, for those seven banks.
+
+Why it went unnoticed until now: the only GPIO interrupts this tree ever
+requested are on r_pio -- the power key on PL4 (patch 0139) and the SDIO
+host-wake on PM0. sun50i_h713_r_pinctrl_data has no irq_bank_map at all,
+so sunxi_irq_hw_bank_num() returns the index unchanged and both lookups
+agree. The bug only bites on the main PIO, only behind the PE gap, and
+PH17 is the first pin we have ever asked for there.
+
+The second hunk only replaces a comment that has been wrong since 0140:
+irq_read_needs_mux is read by sunxi_pinctrl_gpio_get() alone, the IRQ
+request path switches the mux unconditionally now, and the vendor sets
+the same flag to 0 (sun50iw12_pinctrl_data word 5).
+
+--- a/drivers/pinctrl/sunxi/pinctrl-sunxi.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sunxi.c
+@@ -1653,15 +1653,26 @@
+ 		goto gpiochip_error;
+ 	}
+ 
++	/*
++	 * One entry in "interrupts" per IRQ bank, in irq_bank_map order --
++	 * NOT one per hardware bank. The SoC only wires a parent interrupt
++	 * to the banks that have an EINT block, and they are numbered
++	 * consecutively: on the H713 the seven banks PA PB PC PD PF PG PH
++	 * (irq_bank_map 0 1 2 3 5 6 7) are GIC SPI 54..60, with no line for
++	 * the gap at PE. Indexing the DT list by the hardware bank number
++	 * shifts every bank past the gap onto its neighbour's line, and a
++	 * chained handler on the wrong line reads a status register that is
++	 * always zero, never clears the source and live-locks the CPU.
++	 * Only sunxi_irq_hw_bank_num() -- the register offsets -- uses the
++	 * hardware bank number.
++	 */
+ 	for (i = 0; i < pctl->desc->irq_banks; i++) {
+-		u32 hw_bank = sunxi_irq_hw_bank_num(pctl->desc, i);
+-
+-		pctl->irq[i] = platform_get_irq(pdev, hw_bank);
++		pctl->irq[i] = platform_get_irq(pdev, i);
+ 		if (pctl->irq[i] < 0) {
+ 			if (pctl->irq[i] == -ENXIO) {
+ 				dev_warn(&pdev->dev,
+ 					 "GPIO IRQ resources missing for bank %u, continuing without IRQ support",
+-					 hw_bank);
++					 sunxi_irq_hw_bank_num(pctl->desc, i));
+ 				pctl->irq = NULL;
+ 				break;
+ 			}
+--- a/drivers/pinctrl/sunxi/pinctrl-sun50i-h713.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun50i-h713.c
+@@ -724,7 +724,17 @@
+ 	.npins = ARRAY_SIZE(h713_pins),
+ 	.irq_banks = ARRAY_SIZE(h713_irq_bank_map),
+ 	.irq_bank_map = h713_irq_bank_map,
+-	.irq_read_needs_mux = false,	/* H713: IRQ works in GPIO mode, mux to func6 kills input */
++	/*
++	 * Only sunxi_pinctrl_gpio_get() looks at this: false means the DAT
++	 * register reflects the pad even while the pin is muxed to the EINT
++	 * function, which is what the vendor driver assumes too
++	 * (sun50iw12_pinctrl_data, stock vmlinux, irq_read_needs_mux = 0).
++	 * The IRQ request path switches the mux unconditionally, see
++	 * sunxi_pinctrl_irq_request_resources() and patch 0140 -- the old
++	 * comment here ("IRQ works in GPIO mode, mux to func6 kills input")
++	 * described the H616 mux value 0x6, not this SoC.
++	 */
++	.irq_read_needs_mux = false,
+ 	.io_bias_cfg_variant = BIAS_VOLTAGE_PIO_POW_MODE_SEL,
+ };
+ 

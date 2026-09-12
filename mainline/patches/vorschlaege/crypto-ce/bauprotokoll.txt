@@ -1,0 +1,381 @@
+Bauprotokoll crypto-ce, 11.09.2026 19:00
+Alles im Container h713-build, nie auf dem Host.
+
+############################################################
+# 1  Wegwerfbaum anlegen (die Serie bleibt unangetastet)
+############################################################
+$ cp -a mainline/build/linux-6.18.38-61d37af9.../ agenten/crypto-ce/wegwerfbaum
+$ cd agenten/crypto-ce/wegwerfbaum
+$ for p in .../000{1,2,3}*.patch; do patch -p1 -i "$p"; done
+patching file Documentation/devicetree/bindings/crypto/allwinner,sun50i-h713-crypto.yaml
+patching file arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+patching file drivers/crypto/allwinner/Kconfig
+patching file drivers/crypto/allwinner/Makefile
+patching file drivers/crypto/allwinner/h713-ce-test.c
+
+############################################################
+# 2  Kconfig-Symbol aufnehmen
+############################################################
+$ echo "CONFIG_H713_CE_TEST=m" >> .config
+$ podman exec h713-build bash -lc "cd /work/agenten/crypto-ce/wegwerfbaum && make ARCH=arm64 LLVM=1 olddefconfig"
+#
+# No change to .config
+#
+5941:CONFIG_H713_CE_TEST=m
+
+############################################################
+# 3  Modul und Geraetebaeume bauen (W=1, also mit den
+#    zusaetzlichen Warnungen)
+############################################################
+$ podman exec -e JOBS=16 h713-build bash -lc "cd /work/agenten/crypto-ce/wegwerfbaum && make ARCH=arm64 LLVM=1 W=1 -j16 drivers/crypto/allwinner/ dtbs"
+  CC [M]  drivers/crypto/allwinner/h713-ce-test.o
+  DTC     arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dtb
+  DTC     arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dtb
+(keine Warnung und keine Fehlermeldung aus h713-ce-test.c und aus den
+ beiden Geraetebaeumen. Die einzige W=1-Warnung im ganzen Baum kommt aus
+ drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c:256 und ist alt.)
+
+$ podman exec h713-build bash -lc "cd /work/agenten/crypto-ce/wegwerfbaum && make ARCH=arm64 LLVM=1 -j16 modules"
+  CC [M]  drivers/crypto/allwinner/h713-ce-test.o
+  LD [M]  drivers/crypto/allwinner/h713-ce-test.ko
+
+############################################################
+# 4  Was dabei herauskommt
+############################################################
+$ modinfo drivers/crypto/allwinner/h713-ce-test.ko
+description:    H713 Crypto Engine: ein Task im Vendor-Deskriptorformat (Known-Answer-Test)
+license:        GPL
+name:           h713_ce_test
+intree:         Y
+depends:        
+alias:          of:N*T*Callwinner,sun50i-h713-crypto
+alias:          of:N*T*Callwinner,sun50i-h713-cryptoC*
+vermagic:       6.18.38 SMP mod_unload aarch64
+parm:           autostart:Beim Laden sofort einen Task absetzen (Vorgabe: nein) (bool)
+parm:           bank:Registerbank fuer den Lauf beim Laden: 0 = NS (Vorgabe), 1 = CE_S (int)
+
+$ scripts/dtc/dtc -I dtb -O dts arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dtb | grep -A 10 crypto@3040000
+		crypto@3040000 {
+			compatible = "allwinner,sun50i-h713-crypto";
+			reg = <0x3040000 0xa0 0x3040800 0xa0>;
+			reg-names = "ns", "s";
+			interrupts = <0x00 0x49 0x04 0x00 0x4a 0x04>;
+			interrupt-names = "ns", "s";
+			clocks = <0x03 0x18 0x03 0x17 0x03 0x2e>;
+			clock-names = "bus", "mod", "ram";
+			resets = <0x03 0x05>;
+			status = "okay";
+		};
+
+  0x49 = SPI 73, 0x4a = SPI 74. Beide Fenster 0xa0, beide Interrupts da.
+
+############################################################
+# 5  Stilpruefung
+############################################################
+$ scripts/checkpatch.pl --no-tree --file drivers/crypto/allwinner/h713-ce-test.c
+
+drivers/crypto/allwinner/h713-ce-test.c has no obvious style problems and is ready for submission.
+
+############################################################
+# 6  Deskriptorlage gegen die Tabelle in S49 geprueft
+############################################################
+  (agenten/crypto-ce/layoutpruefung.c, offsetof gegen die Sollwerte)
+  chan_id    ist 0x00  soll 0x00  ok
+  comm_ctl   ist 0x04  soll 0x04  ok
+  sym_ctl    ist 0x08  soll 0x08  ok
+  asym_ctl   ist 0x0c  soll 0x0c  ok
+  key_addr   ist 0x10  soll 0x10  ok
+  iv_addr    ist 0x15  soll 0x15  ok
+  ctr_addr   ist 0x1a  soll 0x1a  ok
+  data_len   ist 0x20  soll 0x20  ok
+  src_addr   ist 0x24  soll 0x24  ok
+  dst_addr   ist 0x29  soll 0x29  ok
+  src_len    ist 0x30  soll 0x30  ok
+  dst_len    ist 0x34  soll 0x34  ok
+  sizeof      = 0x100 soll 0x100 ok
+
+############################################################
+# 7  Gegenprobe: die Patches greifen auch sauber einzeln
+############################################################
+$ patch -p1 --dry-run -i <jede Patchdatei>   -> alle sauber
+
+Der Wegwerfbaum (agenten/crypto-ce/wegwerfbaum) ist eine Kopie von
+mainline/build/linux-6.18.38-61d37af9... . Die Serie, der
+vorhandene Baum und mainline/patches/kernel/series sind nicht
+angefasst worden.
+
+
+############################################################
+############################################################
+# ZWEITER DURCHGANG, 11.09.2026 19:30 -- Pruefung des
+# Vorgaengerstands und Neubau nach den Korrekturen.
+# Wieder alles im Container h713-build, nie auf dem Host.
+############################################################
+
+############################################################
+# 8  Was der Vorgaenger stehen liess (Ausgangslage)
+############################################################
+  Wegwerfbaum war vorhanden und deckungsgleich mit seinen vier
+  Patchdateien (Diff gegen eine frische Kopie von
+  mainline/build/linux-6.18.38-61d37af9... plus seinen Patches:
+  h713-ce-test.c, sun50i-h713.dtsi, Kconfig und die Bindung alle
+  identisch). Es lag also kein ungesicherter Arbeitsstand herum.
+
+############################################################
+# 9  Was an seinem Stand geaendert wurde und warum
+############################################################
+  a) sym_ctl war als reine Analogie gefuehrt. Es ist mehr:
+     sunxi_aes_do_crypt (OP-TEE 0x4860c730) baut es bei
+     0x4860c79c-0x4860c7a8 als
+        (key_type << 20) | (aes_mode << 8) | schluessellaenge[1:0]
+     und nennt es im eigenen Debug-Text "alg_cfg". 0x48626214 ruft
+     sunxi_aes_with_hardware mit einem echten 16-Byte-Schluessel,
+     Laenge 0x10 und mode 0x100 auf -- key_type ist dort 0. Damit ist
+     "Key-Select 0 = Schluessel aus key_addr" belegt, nicht geraten.
+     Analogie bleibt nur aes_mode 0 = ECB / 1 = CBC.
+
+  b) Zweiter Modus dazu. OP-TEE benutzt aes_mode 0 nur mit dem
+     Hardwareschluessel (0x300000) und aes_mode 1 nur mit einem
+     Softwareschluessel (0x100). Meldet der ECB-Lauf nur
+     "Algorithmus nicht unterstuetzt", war bisher offen, ob das
+     Format oder nur die Moduskodierung falsch ist. Jetzt laesst
+     sich derselbe Task mit aes_mode 1 (CBC, IV = 0) absetzen -- fuer
+     einen einzelnen Block mit IV 0 ist der Erwartungswert derselbe,
+     der KAT bleibt also gueltig. Ein Stromzyklus beantwortet damit
+     beide Fragen. "echo ns cbc > starten", Modulparameter aes_mode.
+
+  c) bus_ce_sys und RST_BUS_CE_SYS fehlten ganz. Der Stock-Bootloader
+     schaltet vor dem ersten CE-Zugriff ZWEI Gates ein und hebt ZWEI
+     Resets auf, nicht je eines: u-boot.fex 0x4a028848 schreibt CCU
+     0x680 (CE-Takt), dann 0x68c |= 3 (0x4a028898) und
+     0x68c |= 0x30000 (0x4a0288ba). Bit 1/17 heissen im H713-CCU
+     bus_ce_sys / RST_BUS_CE_SYS; mainline kennt sie (ccu-sun50i-h713.c
+     Zeile 353 und 1276), benutzt sie nirgends. Unser eigener SPL setzt
+     sie beim DRAM-Init ebenfalls (dram_sun50iw12.c). Dass CE_S daran
+     haengt, ist Vermutung -- aber ohne sie saehe ein CE_S-Lauf gegen
+     einen abgeschalteten Block genauso aus wie "aus NS unsichtbar",
+     und genau das soll der Test unterscheiden. Jetzt im DT als
+     vierter Takt "sys" und zweiter Reset "sys", im Treiber optional,
+     in der Bindung mit minItems. Der Bericht sagt, ob der Reset beim
+     Laden noch gesetzt war -- damit ist auch belegt, ob der
+     Bootloader ihn schon aufgehoben hatte.
+
+  d) TDA wird nach dem Schreiben zurueckgelesen, als Messwert. Eine
+     Bank, die Schreibzugriffe verwirft (RAZ/WI statt Bus-Abort),
+     fiele sonst erst als Zeitueberschreitung auf und waere von "Task
+     nie fertig" nicht zu unterscheiden. ABGEBROCHEN wird deswegen
+     nicht: weder OP-TEE noch sun8i-ce lesen TDA je zurueck, es
+     koennte auch schlicht nur schreibbar sein. Der NS-Lauf zuerst
+     zeigt, was ein lesbares TDA liefert; erst damit ist der Wert des
+     CE_S-Laufs deutbar. (Ein erster Entwurf brach bei Abweichung mit
+     -ENXIO ab -- das waere eine Annahme ueber unbekannte Hardware
+     gewesen und ist wieder raus.)
+
+  e) ESR wird jetzt roh UND maskiert berichtet. Vorher ging alles
+     verloren, was ausserhalb der unteren acht Bits steht. Die
+     Maskierung folgt OP-TEE (0x4860c354: 0xff << kanal); fuer den
+     einzigen benutzten Kanal 0 ist das dasselbe wie sun8i-ces
+     ESR_H6-Formel.
+
+  f) Der IRQ-Zaehlerstand steht jetzt in JEDER Ergebniszeile, nicht
+     nur bei Zeitueberschreitung. Welche der beiden Leitungen feuert,
+     ist Teil der Messung -- cstengers Befund sagt nur, dass es ohne
+     die zweite haengt, nicht welche wozu gehoert. Beim Erfolgsfall
+     fehlte die Angabe bisher.
+
+  g) static_assert auf die krummen Offsets (0x15, 0x24, 0x29, 0x30,
+     0x34) dazu, nicht nur auf sizeof == 0x100. Ein falsch gesetztes
+     __packed oder ein eingefuegtes Feld faellt jetzt beim Uebersetzen
+     auf, nicht erst am Geraet.
+
+  h) Praezisierung im Kommentar: die Adressfelder sind 5 Byte
+     ABSTAND, nicht 5 Byte Schreibbreite. OP-TEE schreibt in jedes
+     Feld 4 Byte, das fuenfte bleibt aus dem memset null. Wir
+     schreiben Bits 32..39 hinein, die auf diesem Board (DRAM
+     0x40000000..0x80000000) immer null sind -- im Speicherbild
+     dasselbe. Der Vorgaengertext las sich so, als habe OP-TEE 40 Bit
+     geschrieben; das steht so nicht im Disassemblat.
+
+  i) Reset wird jetzt ueber den Namen geholt
+     (devm_reset_control_get_exclusive(dev, "bus")) statt ueber NULL,
+     weil der Knoten zwei Resets hat.
+
+  j) maintainers in der Bindung auf die Projektkonvention gebracht
+     (HY310 Mainline Port <hy310@example.invalid>, wie in Patch 0137);
+     eine GitHub-URL ist kein gueltiger Eintrag fuer das Meta-Schema.
+
+  k) Der Interrupttyp bleibt bei Pegel (Typ 4), obwohl der Vendor-DT
+     Typ 1 (steigende Flanke) angibt. Begruendung steht jetzt in 0002:
+     mit Pegel hat cstenger Fertigmeldungen bekommen, und der
+     Messtreiber maskiert die Leitung am GIC, solange das ISR steht.
+     Vorher war die Abweichung nirgends erwaehnt.
+
+  l) NICHT geaendert, weil geprueft und richtig:
+     - der Referenzvektor. FIPS-197 Anhang C.1 ist
+       Schluessel  000102030405060708090a0b0c0d0e0f
+       Klartext    00112233445566778899aabbccddeeff
+       Chiffretext 69c4e0d86a7b0430d8cdb78070b4c55a
+       Zweimal unabhaengig nachgerechnet:
+         $ printf '\x00\x11...\xff' | openssl enc -aes-128-ecb \
+             -K 000102030405060708090a0b0c0d0e0f -nopad | xxd -p
+         69c4e0d86a7b0430d8cdb78070b4c55a
+         python-cryptography, AES/ECB: dasselbe.
+       (Derselbe Vektor steht in SP 800-38A F.1.1 als erster
+        ECB-Block.)
+     - die Feldlage des Deskriptors, Feld fuer Feld gegen die
+       S49-Tabelle (siehe Abschnitt 11);
+     - dass beide Registerfenster gemappt und beide Interrupts
+       angefordert werden;
+     - dass nirgends auf 0x03041400 gezielt wird, Key-Select 3
+       nirgends geschrieben wird (CE_SYM_KEYSEL(0) ist die einzige
+       Stelle) und kein Schluesselmaterial vorkommt;
+     - dmam_alloc_coherent fuer alle DMA-Puffer, also keine
+       Cache-Pflege noetig, plus Pruefung auf 64-Byte-Ausrichtung;
+     - Takte und Reset wie sun8i_ce_pm_resume fuer die H6-Variante
+       (bus, mod auf 300 MHz, ram, Reset nach den Takten).
+
+############################################################
+# 10  Neubau
+############################################################
+$ # Wegwerfbaum auf den Referenzstand zurueckgesetzt (die vier
+$ # betroffenen Dateien aus mainline/build/linux-6.18.38-61d37af9...
+$ # zurueckkopiert, die Bindung und h713-ce-test.c geloescht),
+$ # dann die korrigierten Patches angewendet:
+$ for p in .../000{1,2,3}*.patch; do patch -p1 -i "$p"; done
+patching file Documentation/devicetree/bindings/crypto/allwinner,sun50i-h713-crypto.yaml
+patching file arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+patching file drivers/crypto/allwinner/Kconfig
+patching file drivers/crypto/allwinner/Makefile
+patching file drivers/crypto/allwinner/h713-ce-test.c
+
+$ podman exec h713-build bash -lc "cd /work/agenten/crypto-ce/wegwerfbaum && make ARCH=arm64 LLVM=1 olddefconfig"
+#
+# No change to .config
+#
+  (CONFIG_H713_CE_TEST=m stand schon drin, Zeile 5941)
+
+$ podman exec h713-build bash -lc "cd /work/agenten/crypto-ce/wegwerfbaum && make ARCH=arm64 LLVM=1 W=1 -j16 drivers/crypto/allwinner/ dtbs"
+  CC [M]  drivers/crypto/allwinner/h713-ce-test.o
+  DTC     arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dtb
+  DTC     arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dtb
+  (keine Warnung, keine Fehlermeldung -- weder aus h713-ce-test.c
+   noch aus den beiden Geraetebaeumen.)
+
+$ podman exec h713-build bash -lc "cd /work/agenten/crypto-ce/wegwerfbaum && make ARCH=arm64 LLVM=1 -j16 modules"
+  LD [M]  drivers/crypto/allwinner/h713-ce-test.ko
+
+$ modinfo drivers/crypto/allwinner/h713-ce-test.ko
+description:    H713 Crypto Engine: ein Task im Vendor-Deskriptorformat (Known-Answer-Test)
+license:        GPL
+name:           h713_ce_test
+intree:         Y
+depends:        
+alias:          of:N*T*Callwinner,sun50i-h713-crypto
+alias:          of:N*T*Callwinner,sun50i-h713-cryptoC*
+vermagic:       6.18.38 SMP mod_unload aarch64
+parm:           autostart:Beim Laden sofort einen Task absetzen (Vorgabe: nein) (bool)
+parm:           aes_mode:sym_ctl-Bits [11:8] fuer den Lauf beim Laden: 0 = ECB (Vorgabe), 1 = CBC mit IV 0 (int)
+parm:           bank:Registerbank fuer den Lauf beim Laden: 0 = NS (Vorgabe), 1 = CE_S (int)
+
+$ scripts/dtc/dtc -I dtb -O dts arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dtb | grep -A 11 crypto@3040000
+		crypto@3040000 {
+			compatible = "allwinner,sun50i-h713-crypto";
+			reg = <0x3040000 0xa0 0x3040800 0xa0>;
+			reg-names = "ns", "s";
+			interrupts = <0x00 0x49 0x04 0x00 0x4a 0x04>;
+			interrupt-names = "ns", "s";
+			clocks = <0x03 0x18 0x03 0x17 0x03 0x2e 0x03 0x19>;
+			clock-names = "bus", "mod", "ram", "sys";
+			resets = <0x03 0x05 0x03 0x06>;
+			reset-names = "bus", "sys";
+			status = "okay";
+		};
+
+  0x49 = SPI 73, 0x4a = SPI 74, beide Fenster 0xa0.
+  Takte 0x18/0x17/0x2e/0x19 = CLK_BUS_CE 24, CLK_CE 23,
+  CLK_MBUS_CE 46, CLK_BUS_CE_SYS 25.
+  Resets 5/6 = RST_BUS_CE, RST_BUS_CE_SYS.
+
+$ scripts/checkpatch.pl --no-tree --file drivers/crypto/allwinner/h713-ce-test.c
+total: 0 errors, 0 warnings, 959 lines checked
+drivers/crypto/allwinner/h713-ce-test.c has no obvious style problems and is ready for submission.
+
+############################################################
+# 11  Deskriptor Feld fuer Feld gegen die S49-Tabelle
+############################################################
+  (agenten/crypto-ce/deskriptorpruefung.c -- prueft jetzt nicht nur
+   offsetof, sondern auch den erzeugten Bytestrom)
+
+  == Feldlage ==
+  chan_id    ist 0x00  soll 0x00  ok
+  comm_ctl   ist 0x04  soll 0x04  ok
+  sym_ctl    ist 0x08  soll 0x08  ok
+  asym_ctl   ist 0x0c  soll 0x0c  ok
+  key_addr   ist 0x10  soll 0x10  ok
+  iv_addr    ist 0x15  soll 0x15  ok
+  ctr_addr   ist 0x1a  soll 0x1a  ok
+  data_len   ist 0x20  soll 0x20  ok
+  src_addr   ist 0x24  soll 0x24  ok
+  dst_addr   ist 0x29  soll 0x29  ok
+  src_len    ist 0x30  soll 0x30  ok
+  dst_len    ist 0x34  soll 0x34  ok
+  sizeof      = 0x100 soll 0x100 ok
+
+  == Bytestrom eines KAT-Tasks (Puffer beispielhaft bei 0x4a000000) ==
+  +0x00 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00
+  +0x10 00 01 00 4a 00 40 01 00 4a 00 00 00 00 00 00 00
+  +0x20 10 00 00 00 80 01 00 4a 00 c0 01 00 4a 00 00 00
+  +0x30 10 00 00 00 10 00 00 00 00 00 00 00 00 00 00 00
+  Zu lesen: +0x04 = 0x80000000 (INT, encrypt, AES), +0x08 = 0
+  (Key-Select 0, aes_mode 0, AES-128), die vier Adressfelder bei
+  0x10/0x15/0x24/0x29 je 5 Byte mit null im hoechsten,
+  data_len/src_len/dst_len je 16.
+
+  == Gegenprobe mit den RSSK-Werten (nur gerechnet, NICHT abgesetzt) ==
+  comm_ctl = 0x80000100 soll 0x80000100 ok
+  sym_ctl  = 0x00300000 soll 0x00300000 ok
+  -> dieselbe Struktur erzeugt exakt die Werte, die S49 fuer den
+     Stock-Task nennt. Das Modul selbst setzt sie nie.
+
+  Zusaetzlich prueft der Uebersetzer die krummen Offsets per
+  static_assert, siehe Abschnitt 9 g.
+
+############################################################
+# 12  Gegenprobe: greifen die Patches einzeln
+############################################################
+$ patch -p1 --dry-run -i <jede der drei Kernel-Patchdateien>
+  gegen eine frische Kopie von linux-6.18.38-61d37af9...: alle sauber.
+$ cd mainline && patch -p1 --dry-run -i .../0004-build-...patch
+  checking file patches/kernel/board/hy200_qz713df_a1_defconfig  -> sauber
+
+############################################################
+# 13  Bindung
+############################################################
+$ python3 -c "import yaml; yaml.safe_load(open('...allwinner,sun50i-h713-crypto.yaml'))"
+  YAML ok, Schluessel: $id $schema title maintainers description
+                       properties required additionalProperties examples
+
+$ # das examples-Stueck wortgleich in ein Testgeruest kopiert
+$ # (agenten/crypto-ce/dtsprobe/beispiel.dts) und uebersetzt:
+$ cpp -nostdinc -I <baum>/include -undef -x assembler-with-cpp beispiel.dts | dtc -I dts -O dtb
+  dtc: uebersetzt
+  (die einzige Warnung, "Missing interrupt-parent", gehoert dem
+   Testgeruest ohne GIC-Knoten, nicht dem Beispiel)
+
+  dt-schema ist im Baucontainer weiterhin nicht installiert, und dort
+  wird nichts nachinstalliert. Gegen das Meta-Schema ist die Datei
+  also nach wie vor NICHT geprueft.
+
+############################################################
+# 14  Was nicht angefasst wurde
+############################################################
+  mainline/patches/kernel/series, die vorhandenen Kernel-Patches, das
+  Board-defconfig im Repo und mainline/build/linux-6.18.38-61d37af9...
+  sind unveraendert (nachgesehen: der Referenzbaum hat weiterhin kein
+  h713-ce-test.c und im DTS kein h713-crypto; das defconfig im Repo
+  enthaelt CONFIG_H713_CE_TEST nicht -- das macht erst Patch 0004 beim
+  Zusammenfuehren). Gebaut wurde ausschliesslich im Wegwerfbaum
+  agenten/crypto-ce/wegwerfbaum, ausschliesslich im Container
+  h713-build.
+
+  Kein Geraetetest. Das Modul ist nie geladen worden.

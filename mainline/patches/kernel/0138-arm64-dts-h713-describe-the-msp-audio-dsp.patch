@@ -1,0 +1,99 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: h713: describe the MSP audio DSP and the TVFE router
+
+Node text from package B (analyse/audio/arbeit/t-b-msp/patches/0138-fragment-dts.txt,
+doku/nachtlog/S29): the four register windows of the audio island, the
+TVFE gate clocks dsp_island2.py switches, bus-demod gate + reset, pd_tvfe,
+the router as a 4-byte syscon, and the firmware name h713/msp-patch.bin.
+Applies on top of 0135b (codec I2S window in the same file).
+---
+diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:37:49.876474001 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:37:49.886049833 +0200
+@@ -1591,6 +1591,86 @@
+ 		 * section 0, rule 6). It lives in the TVFE/TVCAP power
+ 		 * domain; while that is off the whole block reads zero.
+ 		 */
++		/*
++		 * MSP-Audio-DSP — der Weg, den HDMI-Ton bei diesem SoC nimmt:
++		 * HDMI-RX --I2S--> MSP --I2SOUT1--> Codec-I2S --> DAC --> Lautsprecher.
++		 * Der ARM streamt nichts; der Treiber laedt nur den Patch, baut den
++		 * Graphen und stellt Schalter, Lautstaerke und Stumm (doku/101 §2).
++		 *
++		 * Die vier Fenster gehoeren diesem Knoten allein: 0x0614xxxx wird
++		 * heute von keinem anderen Treiber abgebildet (der Knoten
++		 * `audio_bridge` traegt `vs,trid-audio-bridge` ohne Treiber im Baum).
++		 *
++		 * Takte: `bus-demod` (Gate + Reset der ganzen Trident-Frontend-Insel)
++		 * und die 16 TVFE-Gates, die dsp_island2.py `TVFE_CLKS` einschaltet —
++		 * mit einer Teilmenge kam die Insel nicht zuverlaessig hoch, und Stocks
++		 * tvtop schaltet dieselbe Liste. `assigned-clock-rates` sind die
++		 * Stock-Raten aus S16 15:45; wirksam werden sie erst mit Paket A
++		 * (0134), das audio-cpu/umac/ihb als Div+Mux modelliert — bis dahin
++		 * sind es reine Gates und `clk_set_rate` ist folgenlos.
++		 *
++		 * Leistungsbereich: pd_tvfe (`&ppu 1`). pd_tvcap ist ohnehin an und
++		 * wird nicht beansprucht (S17 §4a: nur eine Domaene je Knoten).
++		 */
++		msp: audio-dsp@6144000 {
++			compatible = "allwinner,sun50i-h713-msp";
++			reg = <0x06144000 0x20>,
++			      <0x0614a000 0x10>,
++			      <0x06142000 0x80>,
++			      <0x06146000 0x90>;
++			reg-names = "mailbox", "audio-top", "ctrl", "audif";
++			clocks = <&ccu CLK_BUS_DEMOD>,
++				 <&ccu CLK_ADC>,
++				 <&ccu CLK_DTMB_120M>,
++				 <&ccu CLK_TVFE_1296M>,
++				 <&ccu CLK_I2H>,
++				 <&ccu CLK_CIP_TSX>,
++				 <&ccu CLK_CIP_MCX>,
++				 <&ccu CLK_CIP_TSP>,
++				 <&ccu CLK_TSA_TSP>,
++				 <&ccu CLK_CIP27>,
++				 <&ccu CLK_CIP_MTS0>,
++				 <&ccu CLK_AUDIO_CPU>,
++				 <&ccu CLK_AUDIO_UMAC>,
++				 <&ccu CLK_AUDIO_IHB>,
++				 <&ccu CLK_TSA432>,
++				 <&ccu CLK_MPG0>,
++				 <&ccu CLK_MPG1>;
++			clock-names = "bus-demod", "adc", "dtmb-120m",
++				      "tvfe-1296m", "i2h", "cip-tsx", "cip-mcx",
++				      "cip-tsp", "tsa-tsp", "cip27", "cip-mts0",
++				      "audio-cpu", "audio-umac", "audio-ihb",
++				      "tsa432", "mpg0", "mpg1";
++			assigned-clocks = <&ccu CLK_AUDIO_CPU>,
++					  <&ccu CLK_AUDIO_UMAC>,
++					  <&ccu CLK_AUDIO_IHB>;
++			assigned-clock-rates = <400000000>, <200000000>,
++					       <200000000>;
++			resets = <&ccu RST_BUS_DEMOD>;
++			reset-names = "bus-demod";
++			power-domains = <&ppu 1>;
++			allwinner,tvfe-router = <&tvfe_router>;
++			firmware-name = "h713/msp-patch.bin";
++			status = "okay";
++		};
++
++		/*
++		 * TVFE-Router, ein einziges Wort. `tvtop_tvfe_enable` schreibt hier
++		 * 0x003003FF; ohne `bus-demod` liest es 0, mit `bus-demod` 0x7ff
++		 * (S17 §2c/§3). Der MSP-Treiber liest es als Torkontrolle und
++		 * schreibt den Wert.
++		 *
++		 * Syscon und kein eigenes Geraet, aus demselben Grund wie bei
++		 * `incap` weiter unten: es gibt keinen Treiber fuer den Block, und
++		 * die Adresse liegt im zweiten `reg`-Eintrag von `tvtop@5700000`
++		 * (siehe §2). Ein Phandle schreibt diese Teilung ins Geraetebaum-
++		 * dokument, statt sie in zwei `ioremap`s zu verstecken.
++		 */
++		tvfe_router: syscon@6700000 {
++			compatible = "allwinner,sun50i-h713-tvfe-router", "syscon";
++			reg = <0x06700000 0x4>;
++		};
++
+ 		incap: syscon@6940000 {
+ 			compatible = "allwinner,sun50i-h713-incap", "syscon";
+ 			reg = <0x06940000 0x1000>;

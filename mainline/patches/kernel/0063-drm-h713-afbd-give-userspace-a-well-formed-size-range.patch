@@ -1,0 +1,89 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] drm: h713-afbd: give userspace a well-formed size range
+
+GStreamer's kmssink aborts every caps query against this driver:
+
+    GStreamer-CRITICAL: gst_value_collect_int_range:
+        assertion 'collect_values[0].v_int < collect_values[1].v_int' failed
+    GStreamer-CRITICAL: range start is not smaller than end for `GstIntRange'
+
+It builds its caps from drmModeRes before it has chosen a mode:
+
+    "width", GST_TYPE_INT_RANGE, res->min_width, res->max_width
+
+and GstIntRange requires start < end. This driver reported min == max ==
+the panel size, so width and height never made it into the caps at all and
+the sink was left advertising formats with no geometry.
+
+min == max is the obvious way to say "fixed-size scanout" and it is what the
+other fixed-panel tiny drivers do -- sharp-memory, repaper, pixpaper -- so
+kmssink is broken for all of them, not just for this one. Patching GStreamer
+is out of scope for this project by standing constraint, and the driver can
+give the same guarantee in a form userspace parses.
+
+Open the MAXIMUM rather than lowering the minimum, and the ordering matters:
+lowering the minimum to 0 was tried first, on hardware. It makes the range
+well-formed and the criticals go away, but it also lets a source negotiate
+320x240, which this plane cannot scale -- so an un-sized pipeline stopped
+failing at negotiation and started failing with -EIO at commit, which is later
+and less legible. With the minimum at the panel size, anything smaller is
+excluded while caps are still being negotiated, and fixation lands on the
+panel size by itself.
+
+These bounds constrain framebuffer CREATION, not scanout: an oversized
+framebuffer can be allocated and simply cannot be used, because
+drm_atomic_helper_check_plane_state rejects a plane that would have to scale.
+4096 is the ceiling h713_afbd_read_mode() already applies to the adopted
+geometry.
+
+Measured before and after on the panel, 1000 frames of 720p HEVC decoded on
+the VE and displayed through the stock pipeline
+(v4l2slh265dec ! videoconvert ! kmssink): identical 24 fps, and the criticals
+are gone.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -356,10 +356,39 @@
+ 	ret = drmm_mode_config_init(drm);
+ 	if (ret)
+ 		return ret;
++	/*
++	 * The scanout is fixed-size, and the obvious way to say so is
++	 * min == max -- what the other fixed-panel tiny drivers do
++	 * (sharp-memory, repaper, pixpaper). It is legal, and it breaks stock
++	 * userspace: GStreamer's kmssink builds caps from drmModeRes before it
++	 * has chosen a mode,
++	 *
++	 *     "width", GST_TYPE_INT_RANGE, res->min_width, res->max_width
++	 *
++	 * and GstIntRange requires start < end. With min == max every caps
++	 * query aborts with "range start is not smaller than end", width and
++	 * height never reach the caps, and the sink advertises formats with no
++	 * geometry at all.
++	 *
++	 * The minimum stays at the panel size and only the maximum opens up.
++	 * That ordering matters and the other way round was tried first:
++	 * lowering the minimum to 0 makes the range well-formed, but it also
++	 * lets a source negotiate 320x240, which this plane cannot scale, so
++	 * the failure merely moves from negotiation to a -EIO at commit. With
++	 * the minimum at the panel size, anything smaller is excluded while
++	 * the caps are still being negotiated, and range fixation lands on the
++	 * panel size by itself.
++	 *
++	 * These bounds constrain framebuffer CREATION, not scanout: an
++	 * oversized framebuffer can be allocated and simply cannot be used,
++	 * because drm_atomic_helper_check_plane_state rejects a plane that
++	 * would have to scale. 4096 is the same ceiling h713_afbd_read_mode()
++	 * already applies when it sanity-checks the adopted geometry.
++	 */
+ 	drm->mode_config.min_width = h->mode.hdisplay;
+-	drm->mode_config.max_width = h->mode.hdisplay;
++	drm->mode_config.max_width = 4096;
+ 	drm->mode_config.min_height = h->mode.vdisplay;
+-	drm->mode_config.max_height = h->mode.vdisplay;
++	drm->mode_config.max_height = 4096;
+ 	drm->mode_config.funcs = &h713_afbd_mode_config_funcs;
+ 
+ 	ret = drm_vblank_init(drm, 1);

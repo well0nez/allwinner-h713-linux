@@ -1,0 +1,128 @@
+media: sun50i-h713-hdmirx: do not switch the source on a republished descriptor
+
+Since 0117 the driver publishes the VidDec record again when the source
+geometry changes, and the firmware answers by rebuilding its whole window
+chain. Read out of the firmware's own log at level 5, that first rebuild is
+completely correct for 1280x720 -> 1920x1080:
+
+    capture_cfg  [1280,720][1280,720]   display_cfg [1920,1080][1920,1080]
+    CapWinNode   ratio 1:1, rowbyte 80, line_num 720
+    ProcWinNode  in [1280,720] out [1920,1080]  ratio [43690 x 43690]
+    PanelWinNode out [0,0,1920,1080]
+
+Then this driver destroys it. Publication clears the INCAP output enable, this
+re-arm answers with a source switch, and the switch makes the firmware run
+SetSignalInfo -> SetCaptureCfg -> SetDisplayCfg a second time. That pass loses
+the geometry: the capture comes out 2/3 short, 853x480 instead of 1280x720,
+0x06940928 reads 0x1E0 and the rowbyte 0x36. The wall shows a smeared band.
+Cycling 1080p/720p a second time leaves the capture wedged entirely.
+
+The switch is right for the FIRST publication -- a single SetSource does not
+bring the capture back there, the switch away and back does, after 536..544 ms
+(doku/86 section 4). It is not needed for a later one: poking a descriptor and
+pointing the slot registers at it drives the firmware's own chain all the way
+to memory_agent ENABLE, device-verified 2026-06-13
+(re/notes/color-csc-blocker.md), and memory_agent_onoff's mask 0x008 is exactly
+this enable bit.
+
+So on a republication, wait for the firmware first. Keep the switch as the
+fallback: a capture that never returns is worse than a geometry that is wrong,
+and this way the log says which of the two happened -- either "Firmware hat
+selbst freigegeben" or the warning that the fallback had to run.
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 22:26:53.277447733 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 22:26:53.284216542 +0200
+@@ -757,6 +757,7 @@
+ 	/* re-arming the capture after the display published the descriptor */
+ 	struct notifier_block desc_nb;
+ 	struct work_struct rearm_work;
++	bool desc_seen;			/* eine Descriptor-Veroeffentlichung lag schon an */
+ 
+ 	/* last callback payloads, for debugfs and the source change event */
+ 	spinlock_t event_lock;
+@@ -1524,24 +1525,74 @@
+ 			 arg, ret);
+ }
+ 
++/*
++ * Wait for the firmware to hand the capture back by itself.
++ * Returns true if it did.
++ */
++static bool h713_hdmirx_wait_enable(struct h713_hdmirx *rx, const char *why)
++{
++	ktime_t start = ktime_get();
++
++	do {
++		if (h713_hdmirx_signal_present(rx)) {
++			dev_info(rx->dev,
++				 "Freigabe: %s, nach %lld ms\n",
++				 why, ktime_ms_delta(ktime_get(), start));
++			return true;
++		}
++	} while (ktime_ms_delta(ktime_get(), start) < H713_REARM_TIMEOUT_MS);
++
++	return false;
++}
++
+ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ {
+-	ktime_t start;
++	bool erste = !rx->desc_seen;
++
++	rx->desc_seen = true;
++
++	/*
++	 * The source switch below is right for the FIRST publication and wrong
++	 * for every one after it.
++	 *
++	 * Right for the first: the descriptor write is a VideoDec signal event,
++	 * the firmware answers it by clearing the INCAP output enable, and
++	 * measurement says a single SetSource does not bring it back -- the
++	 * switch away and back does, after 536..544 ms (doku/86 4, E2).
++	 *
++	 * Wrong for a later one: the switch makes the firmware run
++	 * SetSignalInfo -> SetCaptureCfg -> SetDisplayCfg a SECOND time, and
++	 * that pass loses the geometry. Measured with the firmware's own log at
++	 * level 5: pass one computes the whole chain correctly for 1280x720 ->
++	 * 1920x1080 (ratio [43690 x 43690], capture 1:1, rowbyte 80), and pass
++	 * two shrinks the capture by 2/3 to 853x480 and overwrites it. The
++	 * picture is then a smeared band (doku/nachtlog/S7).
++	 *
++	 * And it is not needed there: poking a descriptor and pointing the slot
++	 * registers at it drives the firmware's own chain all the way to
++	 * memory_agent ENABLE, device-verified 13.06.2026
++	 * (re/notes/color-csc-blocker.md).
++	 *
++	 * So on a republication, wait first. The switch stays as the fallback,
++	 * because a capture that never comes back is worse than a geometry that
++	 * is wrong -- and the log says which of the two happened.
++	 */
++	if (!erste) {
++		if (h713_hdmirx_wait_enable(rx, "Firmware hat selbst freigegeben, kein Quellenwechsel noetig"))
++			return;
++
++		dev_warn(rx->dev,
++			 "Freigabe: Firmware hat nach %u ms nicht selbst freigegeben; Quellenwechsel als Rueckfall -- der baut die Fensterkette neu und verliert dabei die Geometrie (doku/nachtlog/S7)\n",
++			 H713_REARM_TIMEOUT_MS);
++	}
+ 
+ 	if (h713_hdmirx_switch_source(rx))
+ 		return;
+ 
+ 	h713_hdmirx_reapply_saturation(rx);
+ 
+-	start = ktime_get();
+-	do {
+-		if (h713_hdmirx_signal_present(rx)) {
+-			dev_info(rx->dev,
+-				 "Freigabe: Capture laeuft wieder nach %lld ms\n",
+-				 ktime_ms_delta(ktime_get(), start));
+-			return;
+-		}
+-	} while (ktime_ms_delta(ktime_get(), start) < H713_REARM_TIMEOUT_MS);
++	if (h713_hdmirx_wait_enable(rx, "Capture laeuft wieder"))
++		return;
+ 
+ 	/*
+ 	 * Not an error return: there is nobody to return it to, and the most

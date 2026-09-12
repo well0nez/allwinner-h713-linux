@@ -1,0 +1,252 @@
+diff --git a/drivers/misc/sunxi_decd/decd_frame.c b/drivers/misc/sunxi_decd/decd_frame.c
+index 52742e7..948f706 100644
+--- a/drivers/misc/sunxi_decd/decd_frame.c
++++ b/drivers/misc/sunxi_decd/decd_frame.c
+@@ -493,11 +493,6 @@ int video_buffer_unmap(u32 dma_addr)
+ 	return -ENOENT;
+ }
+ 
+-u32 video_info_buffer_init(struct dec_frame_submit_desc *desc)
+-{
+-	return lower_32_bits(desc->y_phys) + 4096;
+-}
+-
+ static void clean_video_info_free_list(void)
+ {
+ 	struct dec_video_info_page *page;
+@@ -626,8 +626,8 @@ u32 video_info_buffer_init_dmabuf(struct dec_frame_item *item)
+ 	memcpy(page->vaddr, map.vaddr + 4096, 0x104);
+ 	((u32 *)page->vaddr)[25] = page->paddr + 144;
+ 	((u32 *)page->vaddr)[26] = page->paddr + 172;
+-	/* IDA: magic validation 0x61766b40 = "@kva" */
+-	if (((u32 *)page->vaddr)[0] != 0x61766b40)
++	/* Stock decd.ko 0x4c18 and VideoInfo::VideoInfo(): 0x61770000. */
++	if (((u32 *)page->vaddr)[0] != 0x61770000)
+ 		pr_warn("video_info magic mismatch: 0x%x\n",
+ 			((u32 *)page->vaddr)[0]);
+ 	dma_buf_vunmap(item->info_map->dbuf, &map);
+@@ -718,7 +718,7 @@ size_t dec_dma_buf_size(struct dec_dma_map *map)
+  * fmt_attr_tbl — IDA global at 0x81a0
+  * 8 entries × 10 dwords each. Entry[0]=format_id, Entry[1]=bpp_class.
+  * If entry[1]==8 → multiplier=1, else multiplier=2.
+- * Stride = width * multiplier, aligned to desc->align.
++ * Stride = width * multiplier, aligned to desc->stride_align.
+  * C-addr = Y-DMA-addr + height * stride.
+  */
+ static const u32 fmt_attr_tbl[8][10] = {
+@@ -735,7 +735,7 @@ static const u32 fmt_attr_tbl[8][10] = {
+ /*
+  * frame_item_create — IDA 0x202c
+  *
+- * Two paths: linear (desc->linear != 0) and DMA-buf.
++ * Stock HWC uses the DMA-buf path. Descriptor byte +0x68 is zero there.
+  *
+  * DMA-buf path:
+  *   1. validate format (search fmt_attr_tbl)
+@@ -745,15 +745,16 @@ static const u32 fmt_attr_tbl[8][10] = {
+  *   5. video_info_buffer_init_dmabuf(item)
+  *   6. compute Y/C addresses from format table:
+  *      - multiplier = (entry[1]==8) ? 1 : 2
+- *      - stride = width * multiplier, aligned to desc->align
++ *      - stride = width * multiplier, aligned to desc->stride_align
+  *      - C_addr = Y_dma + height * stride
+  *   7. handle split-field mode
+  *   8. alloc fence
+  *   9. trace dma-buf map
+  *
+- * Linear path:
+- *   - no dma-buf, Y/C from desc->y_phys/c_phys
+- *   - video_info_buffer_init(desc)
++ * The old reconstruction invented y_phys/c_phys fields beyond the 112-byte
++ * ioctl payload. They are not part of the ABI. Stock's non-zero +0x68 branch
++ * does not provide image addresses and is not used by Android HWC, so reject
++ * it instead of manufacturing a physical-address interface.
+  */
+ struct dec_frame_item *frame_item_create(struct dec_device *dec,
+ 					 struct dec_frame_submit_desc *desc)
+@@ -763,17 +764,9 @@ struct dec_frame_item *frame_item_create(struct dec_device *dec,
+ 	u32 stride, multiplier;
+ 	int i;
+ 
+-	/* IDA: linear path check at byte offset 104 */
+-	if (desc->linear) {
+-		item = kzalloc(sizeof(*item), GFP_KERNEL);
+-		if (!item)
+-			return NULL;
+-		refcount_set(&item->refcount, 1);
+-		item->video_info_addr = video_info_buffer_init(desc);
+-		item->y_addr = desc->y_phys;
+-		item->c_addr = desc->c_phys;
+-		goto setup_fields;
+-	}
++	/* Byte +0x68 is never set by stock HWC. Its vendor branch is unusable. */
++	if (desc->legacy_direct)
++		return NULL;
+ 
+ 	/* IDA: format validation — search table, reject if format > 0x14 */
+ 	if (desc->format > 0x14)
+@@ -802,18 +795,16 @@ struct dec_frame_item *frame_item_create(struct dec_device *dec,
+ 	y_dma = item->image_map->dma_addr;
+ 	c_offset = 0;
+ 
+-	if (!desc->linear) {
+-		for (i = 0; i < 8; i++) {
+-			if (fmt_attr_tbl[i][0] == desc->format)
+-				break;
+-		}
+-		if (i < 8) {
+-			multiplier = (fmt_attr_tbl[i][1] == 8) ? 1 : 2;
+-			stride = desc->width * multiplier;
+-			if (desc->align)
+-				stride = ALIGN(stride, desc->align);
+-			c_offset = desc->height * stride;
+-		}
++	for (i = 0; i < 8; i++) {
++		if (fmt_attr_tbl[i][0] == desc->format)
++			break;
++	}
++	if (i < 8) {
++		multiplier = (fmt_attr_tbl[i][1] == 8) ? 1 : 2;
++		stride = desc->width * multiplier;
++		if (desc->stride_align)
++			stride = ALIGN(stride, desc->stride_align);
++		c_offset = desc->height * stride;
+ 	}
+ 
+ 	item->y_addr = y_dma;
+@@ -833,16 +824,15 @@ setup_fields:
+-setup_fields:
+ 	/* IDA: split-field handling at desc byte 96 */
+ 	if (desc->split_fields) {
+ 		u64 field_offset = item->y_addr;
+ 		u64 field_c_offset = item->c_addr;
+ 
+ 		item->alt_y_valid = true;
+ 		item->alt_c_valid = true;
+ 		item->y_addr_alt = field_offset;
+ 		item->c_addr_alt = field_c_offset;
+ 
+-		/* IDA: if desc->field_sel1 == 0 → swap primary/alt */
+-		if (!desc->field_sel1) {
++		/* IDA: if the word at descriptor +0x64 is zero, swap fields. */
++		if (!desc->field_select) {
+ 			item->alt_c_valid = false;
+ 			item->y_addr = item->y_addr_alt;
+ 			item->y_addr_alt = field_offset;
+diff --git a/drivers/misc/sunxi_decd/decd_ioctl.c b/drivers/misc/sunxi_decd/decd_ioctl.c
+index 19173cd..a41766e 100644
+--- a/drivers/misc/sunxi_decd/decd_ioctl.c
++++ b/drivers/misc/sunxi_decd/decd_ioctl.c
+@@ -35,7 +35,7 @@ int dec_stop_video_stream(struct dec_device *dec)
+  * IDA shows:
+  *   - mutex_lock(a1) at entry
+  *   - check dec_is_enabled via callback at a1+724
+- *   - blue_en byte at a2+1 (= desc->reserved0[0])
++ *   - blue_en byte at a2+1
+  *   - loop: refcount_inc + enqueue while a4-- > 1
+  *   - fence_fd = dec_fence_fd_create(item+52)
+  *   - frame_item_release(item)
+@@ -62,7 +62,7 @@ int dec_frame_submit(struct dec_device *dec,
+ 		goto out;
+ 	}
+ 
+-	if (!desc->reserved0[0]) {
++	if (!desc->blue_en) {
+ 		item = frame_item_create(dec, desc);
+ 		if (item) {
+ 			do {
+@@ -76,7 +76,7 @@ int dec_frame_submit(struct dec_device *dec,
+ 			frame_item_release(item);
+ 		}
+ 	}
+-	dec_reg_blue_en(dec->regs, desc->reserved0[0]);
++	dec_reg_blue_en(dec->regs, desc->blue_en);
+ 	dec_reg_enable(dec->regs, true);
+ out:
+ 	mutex_unlock(&dec->lock);
+@@ -104,7 +104,7 @@ int dec_interlace_setup(struct dec_device *dec,
+ 		goto out;
+ 	}
+ 
+-	if (!desc->top.reserved0[0]) {
++	if (!desc->top.blue_en) {
+ 		/* IDA 0x22b4: set stream type to interlace BEFORE creating items */
+ 		dec_frame_manager_set_stream_type(dec->fmgr, 1);
+ 		top = frame_item_create(dec, &desc->top);
+@@ -118,7 +118,7 @@ int dec_interlace_setup(struct dec_device *dec,
+ 						  bottom, frame_item_release);
+ 	}
+ skip:
+-	dec_reg_blue_en(dec->regs, desc->top.reserved0[0]);
++	dec_reg_blue_en(dec->regs, desc->top.blue_en);
+ 	dec_reg_enable(dec->regs, true);
+ out:
+ 	mutex_unlock(&dec->lock);
+@@ -175,7 +175,8 @@ long dec_ioctl_file(struct file *file, unsigned int cmd, unsigned long arg)
+ 		if (copy_from_user(&submit, (void __user *)(uintptr_t)hdr.user_ptr,
+ 				   sizeof(submit)))
+ 			return -EFAULT;
+-		ret = dec_frame_submit(dec, &submit, &fence_fd, hdr.arg1);
++		/* Stock HWC puts the repeat count at wrapper offset +0x10. */
++		ret = dec_frame_submit(dec, &submit, &fence_fd, hdr.arg0);
+ 		if (ret)
+ 			return ret;
+ 		if (copy_to_user((void __user *)(uintptr_t)hdr.user_ptr2, &fence_fd,
+diff --git a/drivers/misc/sunxi_decd/decd_types.h b/drivers/misc/sunxi_decd/decd_types.h
+index 5c69ef9..8868058 100644
+--- a/drivers/misc/sunxi_decd/decd_types.h
++++ b/drivers/misc/sunxi_decd/decd_types.h
+@@ -47,26 +47,32 @@ struct dec_linear_map_req {
+ };
+ 
+ struct dec_frame_submit_desc {
+-	__u8 linear;
+-	__u8 reserved0[3];
++	/* Exact 112-byte stock ABI, recovered from HWC and decd.ko. */
++	__u8 compressed;
++	__u8 blue_en;
++	__u8 reserved00[2];
+ 	__s32 image_fd;
+ 	__u32 format;
+-	__u32 reserved1[7];
++	__u32 reserved0c[7];
+ 	__u32 width;
+ 	__u32 height;
+-	__u32 reserved2[4];
+-	__u32 align;
+-	__u32 reserved3[2];
++	__u32 chroma_width;
++	__u32 chroma_height;
++	__u32 chroma_width2;
++	__u32 chroma_height2;
++	__u32 stride_align;
++	__u32 stride_align2;
++	__u32 stride_align3;
+ 	__s32 info_fd;
+-	__u32 reserved4[4];
++	__u32 info_size;
++	__u32 info_align;
++	__u32 legacy_info_phys;
++	__u32 reserved5c;
+ 	__u8 split_fields;
+-	__u8 invert_field;
+-	__u8 field_mode;
+-	__u8 field_repeat;
+-	__u32 field_sel0;
+-	__u32 field_sel1;
+-	__u64 y_phys;
+-	__u64 c_phys;
++	__u8 reserved61[3];
++	__u32 field_select;
++	__u8 legacy_direct;
++	__u8 reserved69[7];
+ };
+ 
+ struct dec_interlace_setup_desc {
+@@ -352,7 +358,6 @@ int dec_debug_init(struct dec_device *dec);
+ int video_info_memory_block_init(struct device *dev);
+ void video_info_memory_block_exit(void);
+-u32 video_info_buffer_init(struct dec_frame_submit_desc *desc);
+ u32 video_info_buffer_init_dmabuf(struct dec_frame_item *item);
+ void video_info_buffer_deinit(struct dec_frame_item *item);
+ struct dec_frame_item *frame_item_create(struct dec_device *dec,

@@ -1,0 +1,2389 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] soc: sunxi: run the H713 ARISC from Linux and give it a HDMI API
+
+The H713 carries an OpenRISC core next to the ARM cluster -- ARISC, AR100,
+"cpus" in the vendor sources -- and it owns the R_ peripherals. Among those
+are the HDMI hotplug pin, the EDID store and the DDC RAM, so nothing about
+this SoC's HDMI input works until firmware is running on that core. On a
+vendor system the secure monitor loads it; mainline TF-A does not, and up to
+now the gap was papered over from userspace: a Python loader wrote the image
+through /dev/mem and a shell script played the EDID sequence.
+
+This driver takes both jobs. request_firmware() fetches h713-arisc.bin, the
+image goes into SRAM A2, the core is released, and the startup handshake the
+firmware waits for is completed before anything else happens. The HDMI
+sub-commands become an in-kernel interface in
+include/linux/soc/sunxi/h713-arisc.h for the V4L2 receive driver to build
+VIDIOC_S_EDID/G_EDID and hotplug handling on, and the whole stock EDID
+sequence can be triggered from debugfs so a bring-up needs no userspace
+helper at all.
+
+It replaces the earlier debugfs-only hotplug module. That one carried three
+things that turned out to be symptoms of one cause, and all three are gone
+here: a doorbell pulse on TX_IRQ_EN, a "main loop alive" probe, and an
+"unstick" that pushed zero words at the standby dispatcher to free a wedged
+main loop. The cause is the startup handshake below -- unstick worked because
+its zero words happened to be exactly the acknowledgement the firmware was
+waiting for.
+
+Loading follows the vendor monitor's sunxi_arisc_probe, confirmed against the
+vendor 3.4 kernel driver and against crust: enable the three R_PRCM CPUS
+timer gates that boot0 turns on, hold the core in reset (R_CPUCFG bit 0),
+copy the first 140 KiB of the image to 0x00100000, write struct arisc_para,
+release the core. The image is copied a word at a time, because a wide or
+unaligned store into that window faults, and it is copied verbatim: the
+AR100's data bus swaps every 32-bit word and the vendor image is stored
+pre-swapped, so byte-identical is correct and swapping again would destroy
+the firmware silently. It is read back afterwards -- strictly from SRAM A2
+on, and in the vector area only on the 0x100 boundaries, since the hardware
+accepts one word per boundary there.
+
+The vendor also copies a 32 KiB tail of the image to DRAM 0x48100000. That
+address is inside kernel text on this memory map, and the firmware has come
+up without the tail across every cold start we have measured, so the tail is
+not copied. If a service ever needs it, it needs a reserved-memory region
+first; the devicetree comment says so.
+
+The startup handshake is the reason this driver exists in the shape it does.
+After the reset is released the firmware pushes a notify onto ARM-RX channel
+3 -- header, count, then its version string -- and then waits for the ARM to
+answer on user1 port 3. Until that answer arrives it sits in front of its
+main loop and serves no HDMI command, and without a reader the notify itself
+stalls at word 9 because the FIFO is eight deep. Measured: no reader, ~100 s
+of nothing; reader but no answer, ~100 s; answer, first command served 0.2 s
+later. Only a notify is answered, and only one with result 0 and a non-zero
+count: replying to anything else -- for instance the standby dispatcher's own
+"unknown type" answer -- starts a ping-pong at 100 ms that never stops.
+
+Nothing knocks. The firmware's main loop polls the FIFO status of user1
+port 0 and of port 3, and the startup waiter polls port 3 as well, so the
+TX_IRQ_EN pulse the old module used had nothing to wake.
+
+A sub-command goes in through the receive pump on user1 port 0, and its shape
+is dictated by one quirk: the pump keeps the frame length in a register
+rather than in its context, and its poller wakes it as soon as the first word
+lands, so a frame that arrives in two pieces loses its length. The pump's
+classifier reads the sub-command out of its payload buffer instead, so the
+payload is written into that buffer and the frame carries length 0. That is
+immune to the race rather than hoping to win it.
+
+Every command is confirmed, and every wait ends in an error rather than in
+optimism:
+
+  - the 0x11 group copies 65 bytes of the payload into its scratch area
+    before dispatching, so the driver primes that area with the complement
+    of the payload and waits for it to match. That is exact for every
+    command in the group, including the EDID fragments; the predecessor
+    counted zeroed words, which only worked while the payload was zeros.
+  - the 0x15 group answers with a frame on ARM-RX channel 1, and that frame
+    carries a header the reader has to skip. The framed sender 0x118e4 wraps
+    the payload (0xff in front, a checksum at [len - 2], 0xfe at [len - 1])
+    and hands it to 0x81c8, which pushes eight header bytes of its own first:
+    a5 | seq << 8 | type << 16 | length << 24, then a word of zeros. That is
+    the same BOP header this driver sends on user1 port 0, so the payload
+    starts at word 2 and is <length> bytes long. CheckEDIDUpdateStatus
+    answers ff f8 01 01 <ready>, built at 0x125a0..0x125c0, and <ready> is
+    [0x1723e] -- the firmware's own g_Data.bEdidDataReady, cleared by every
+    UpdateEDID fragment 0..6 and set by fragment 7 before it publishes the
+    store. It is therefore the answer to the question the command asks, and
+    the driver fails the upload without it. RequestEDID uses the same sender
+    and replies with four such frames, one per 64-byte fragment of the block.
+  - PullHotPlug is checked against the firmware's own two-stage counter: a
+    ~100 Hz timer walks it down to 1 and only the main loop takes it to 0 and
+    raises the pin, so the counter reaching 0 is proof the pin moved, and a
+    RESET has to pass through ~84 on the way. The counter alone is not proof
+    of a rising edge, though: the routine that drives the pin, 0x121e4, reads
+    [0x1723f] first and, while that byte is clear, prints "EDID-HPD %d LOW"
+    and overwrites its own value argument with 0 -- the pin stays low while
+    the main loop still walks the counter down. [0x1723f] is set at the very
+    end of the publish routine 0x11d88, right after "edid updated", so a
+    clear byte means no EDID was ever published and there is nothing for a
+    sink to read. UP and RESET refuse rather than report a rise that did not
+    happen.
+
+EDID upload sends both versions in one go, fragments 0..3 for the HDMI 1.4
+block and 4..7 for the HDMI 2.0 block, because the firmware only publishes an
+EDID once fragment 7 has arrived: every earlier fragment clears the data-ready
+byte and only the last one sets it and calls the output routine. That is also
+why arisc_hdmi_set_edid() takes no port -- the store is global.
+
+One ordering rule is enforced rather than documented. Reading anything in
+0x0709xxxx from the ARM before the firmware has processed ResetEDIDModule
+hangs the SoC hard: the block has no clock yet, and it took three dead boards
+to establish that. This driver maps no register in that range, and every
+entry point except arisc_hdmi_reset_edid() fails with -EAGAIN until that
+command has been acknowledged, so a consumer cannot reach the aux block
+through this interface out of order.
+
+Devicetree binding (this tree carries no YAML schemas, so it is described
+here and in the node's comment):
+
+  compatible	"allwinner,sun50i-h713-arisc"
+  reg		five windows, named through reg-names:
+		  "sram"	SRAM A2 as the ARM sees it, 0x00100000 +
+				0x23000. The image goes to the start of it;
+				the running firmware keeps its message
+				buffer, HDMI port state and hotplug counters
+				in the same window.
+		  "msgbox-rx"	msgbox bank user0, first sub-block: the
+				channels the ARISC answers on.
+		  "msgbox-tx"	msgbox bank user1, first sub-block: port 0
+				is the HDMI receive pump, port 3 the standby
+				dispatcher.
+		  "reset"	R_CPUCFG; bit 0 holds or runs the core.
+		  "cpus-clk"	the three R_PRCM gates boot0 enables.
+  firmware-name	index 0 the ARISC image, index 1 the default EDID (both
+		blocks, 512 bytes).
+
+Two of those windows overlap a block another node describes, and the driver
+therefore maps them without claiming the region: the msgbox banks lie inside
+cpu_comm@3003000, which uses +0x164/+0x174 and +0x864/+0x874 and shares no
+register with this driver, and the CPUS clock gates lie inside the r_ccu
+register file, whose D1 model starts at +0x11c and does not describe them.
+
+What is measured on a HY310 projector with firmware TV-303 00.00.00.09 is the
+sequence itself and every rule above: the loader sequence, the startup
+handshake and its timings, the payload-buffer trick, the fragment ordering,
+the status reply, the hotplug counter, and the aux-block hang.
+
+The bring-up run on 07.09.2026 confirmed the loader, the reset release and
+the startup handshake -- including that no doorbell pulse is needed -- and
+then walked the EDID sequence through ResetEDIDModule, HostHDMIMAP,
+SetEDIDVersion and all eight fragments. It stopped at the status check with
+
+    Antwort auf 0x0215: 4 Woerter, 2 uebernommen
+    CheckEDIDUpdateStatus antwortet a5 00 01 08 00 00 00 00 statt ff f8 01 01
+
+and that line is the frame header, not the payload: a5 is the marker, 00 the
+sequence number of the first framed reply after a fresh start, 01 the type
+0x81c8 stamps on, 08 the payload length, and the zero word is the header's
+mandatory second word. The eight payload bytes were in words 2 and 3 and were
+dropped, because the status buffer is eight bytes wide and the old reader
+counted the header into it -- the same run's "4 Woerter" is exactly the two
+header words plus the two payload words. Nothing about that measurement says
+the firmware refused the EDID; the driver simply never looked at the answer.
+Reading the frame is what this revision adds. The steps after the status
+check have not run yet.
+
+Board run 07.09.2026, 06:45: the sequence runs to the end and returns 0 --
+notify acked, EDID uploaded, status ff f8 01 01 01 00 07 fe, publish gate
+set, EDID read back -- and the sink still says disconnected, while the same
+commands with the same arguments and the same order from the userspace
+script leave it connected. The aux register the hotplug pin sits in ended at
+0x03 instead of the 0x06 a stock run shows: the pulse moved bit 2, not bit
+0. Bit 2 is what the pin driver picks when the port map says port 0 has pin
+2, and the map the firmware ended up with is the payload of the *next*
+command. HostHDMIMAP is the only sub-command of the 0x11 group that reads
+its arguments out of the receive pump's buffer after the memset this driver
+waits for, and it does so on the far side of a log call. The script's 600 ms
+between sub-commands hides that; this driver's next payload lands about a
+millisecond later. So arisc_hdmi_set_portmap() waits for the port map
+records themselves and fails loudly when they do not carry the pins that
+were asked for.
+
+That wait only means something if it can fail, and its first form could not.
+The map the stock sequence asks for is 0,1,2, and 0,1,2 is what the records
+already contain: the firmware's own init copies them out of a ROM table at
+0x15edc -- 01 10 00 01 | 02 20 01 02 | 04 30 02 04, i.e. mask, tag, pin,
+1 << pin -- and nothing but HostHDMIMAP writes them afterwards. A wait for
+"the records carry 0,1,2" therefore returned in its first pass on every
+freshly started firmware and reported success whether the handler had run or
+not; the board run on 07.09.2026 08:27 duly showed portmap: 0,1,2, which
+proved nothing. So the two bytes are primed with 0xff before the command
+goes out, a value no pin (0..2) and no 1 << pin (1, 2, 4) can be and no
+payload of the next command can leave behind, and the priming is read back
+before anything is sent -- if it did not land the command is not sent at all,
+because a check that cannot fail is worse than no check. A match is then
+only reachable through a firmware write, a timeout is a real failure, and the
+two failures read differently: priming still in place means the handler never
+reached its stores, a plausible but wrong pin means it reached them after the
+buffer had been overwritten. On failure the records are put back the way they
+were found, so a failed command leaves the firmware as it was.
+
+0xff is safe to leave in those two bytes for the ~1 ms the handler needs, and
+this is the argument, not an assumption: every reader of them is in the
+image. Byte 3 is read only from the publish routine and the module reset,
+both of which run under a sub-command and are serialised by the driver's own
+mutex -- and 0x11cac cannot even tell the difference, it ORs the byte in and
+tests bit 0. Byte 2 is read by the pin driver 0x121e4, whose dispatch knows
+0, 1 and 2 and sends everything else to 0x12304, which writes the aux
+register back with the value it just read: a pulse landing inside the window
+would be dropped, never misdirected. The one path that can reach 0x121e4
+without a command of ours is the main loop walking a hotplug counter down to
+1, so the command is refused outright while any counter is non-zero. Byte 4
+is left alone because the reverse lookup at 0x11c64 walks it, and the same
+three stores write it.
+
+debugfs status still prints the map the firmware holds, with a comment saying
+what it is worth: it is state, not a verdict -- 0,1,2 there means nothing on
+its own, but anything else, 2,0,0 above all, names the payload the firmware
+read instead.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:02:26.614214570 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:02:47.521528457 +0200
+@@ -1387,6 +1387,63 @@
+ 		};
+ 
+ 		/*
++		 * ARISC co-processor (OpenRISC "AR100", "cpus") -- OURS, not in
++		 * cstenger's tree. It owns the R_ peripherals, among them the
++		 * HDMI hotplug pin and the EDID/DDC block, so the HDMI input
++		 * cannot come up without firmware running on it. The vendor
++		 * secure monitor loads that firmware; mainline TF-A does not, so
++		 * sun50i-h713-arisc does it from Linux.
++		 *
++		 * Binding:
++		 *   compatible    "allwinner,sun50i-h713-arisc"
++		 *   reg/reg-names five windows, in this order:
++		 *     "sram"       SRAM A2 as the ARM sees it. The firmware image
++		 *                  goes to the start of it (140 KiB); the running
++		 *                  firmware keeps its message buffer, its HDMI
++		 *                  port state and its hotplug counters in the
++		 *                  same window.
++		 *     "msgbox-rx"  msgbox bank user0, first sub-block: the
++		 *                  channels the ARISC answers on (startup notify
++		 *                  on ch3, EDID and status on ch1).
++		 *     "msgbox-tx"  msgbox bank user1, first sub-block: port 0
++		 *                  reaches the HDMI receive pump, port 3 the
++		 *                  standby dispatcher that wants the startup
++		 *                  acknowledgement.
++		 *     "reset"      R_CPUCFG. Bit 0 holds (0) or runs (1) the core.
++		 *     "cpus-clk"   the three R_PRCM gates boot0 turns on before
++		 *                  the image is copied ("prcm cpus timer clock
++		 *                  enable").
++		 *   firmware-name index 0 the ARISC image, index 1 the default
++		 *                 EDID (both blocks, 512 bytes) the driver hands
++		 *                 to the firmware.
++		 *
++		 * Two of the windows deliberately overlap a block another node
++		 * already describes, so the driver maps them without claiming the
++		 * region: the msgbox banks sit inside cpu_comm@3003000 (which
++		 * uses +0x164/+0x174 and +0x864/+0x874 -- no register is shared),
++		 * and the CPUS clock gates sit inside the r_ccu register file
++		 * (whose D1 model starts at +0x11c and does not describe them).
++		 *
++		 * The vendor loader also copies a 32 KiB tail of the image to
++		 * DRAM 0x48100000, which is kernel text here. The firmware runs
++		 * without it, so there is no reserved-memory region for it; if a
++		 * service ever turns out to need the tail, it needs a carveout
++		 * first.
++		 */
++		arisc: arisc@100000 {
++			compatible = "allwinner,sun50i-h713-arisc";
++			reg = <0x00100000 0x23000>,
++			      <0x03003000 0x100>,
++			      <0x03003400 0x100>,
++			      <0x07000400 0x4>,
++			      <0x07010110 0xc>;
++			reg-names = "sram", "msgbox-rx", "msgbox-tx",
++				    "reset", "cpus-clk";
++			firmware-name = "h713-arisc.bin", "hy310-edid.bin";
++			status = "okay";
++		};
++
++		/*
+ 		 * H713 PPU — power domain controller.
+ 		 *
+ 		 * Source is now the STOCK DTB (local/stock-boot/sunxi.fex), which
+diff -ruN a/drivers/soc/sunxi/Kconfig b/drivers/soc/sunxi/Kconfig
+--- a/drivers/soc/sunxi/Kconfig	2026-09-06 22:02:26.611547783 +0200
++++ b/drivers/soc/sunxi/Kconfig	2026-09-06 22:05:34.027398447 +0200
+@@ -21,3 +21,21 @@
+ 	  whether to the CPU/DMA, or to the devices.
+ 
+ source "drivers/soc/sunxi/cpu_comm/Kconfig"
++
++config SUN50I_H713_ARISC
++	tristate "Allwinner H713 ARISC co-processor and HDMI front end"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	depends on OF
++	help
++	  The H713 carries an OpenRISC core ("ARISC", "AR100") that owns the
++	  R_ peripherals, among them the HDMI hotplug pin, the EDID store and
++	  the DDC RAM. On a vendor system the secure monitor loads its
++	  firmware; mainline TF-A does not, so without this driver nothing
++	  runs on the core and the HDMI input stays dead.
++
++	  Say m here to load the firmware, complete the startup handshake it
++	  waits for, and export the HDMI services the receive driver needs.
++	  A module, not built in: the image comes out of /lib/firmware, which
++	  is not there yet when a built-in driver probes.
++
++	  If unsure, say N.
+diff -ruN a/drivers/soc/sunxi/Makefile b/drivers/soc/sunxi/Makefile
+--- a/drivers/soc/sunxi/Makefile	2026-09-06 22:02:26.612547794 +0200
++++ b/drivers/soc/sunxi/Makefile	2026-09-06 22:02:58.644883172 +0200
+@@ -2,3 +2,4 @@
+ obj-$(CONFIG_SUNXI_MBUS) +=	sunxi_mbus.o
+ obj-$(CONFIG_SUNXI_SRAM) +=	sunxi_sram.o
+ obj-$(CONFIG_HY310_CPU_COMM) += cpu_comm/
++obj-$(CONFIG_SUN50I_H713_ARISC) += sun50i-h713-arisc.o
+diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c	2026-09-07 08:53:03.000000000 +0200
+@@ -0,0 +1,1952 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * sun50i-h713-arisc.c -- ARISC co-processor of the Allwinner H713: firmware
++ * loader, startup handshake, and the HDMI front-end services the receive
++ * path needs.
++ *
++ * The H713 carries an OpenRISC-1000 core ("ARISC", "AR100", "cpus") next to
++ * the ARM cluster, and it owns the R_ peripherals -- among them the HDMI
++ * hotplug pin, the EDID store and the DDC RAM. On a vendor system the
++ * secure monitor loads its firmware; mainline TF-A does not, so nothing runs
++ * on the core and the HDMI input stays dead. This driver takes that job:
++ * it loads the image, releases the core, completes the startup handshake the
++ * firmware waits for, and exposes the HDMI sub-commands as an in-kernel
++ * interface (include/linux/soc/sunxi/h713-arisc.h).
++ *
++ * Everything below is either read out of the firmware image itself
++ * (disassembly of the vendor blob, TV-303 00.00.00.09) or measured on a
++ * HY310 projector. Nothing here is a workaround: there is no doorbell pulse,
++ * no retry loop and no "wait a bit longer" -- every wait ends in an error.
++ *
++ * Loading (vendor BL31 sunxi_arisc_probe, independently confirmed by the
++ * vendor 3.4 kernel driver and by crust):
++ *
++ *   1. enable the CPUS timer clocks   R_PRCM 0x110/0x114/0x118, bit 0
++ *   2. assert reset                   R_CPUCFG 0x07000400, clear bit 0
++ *   3. copy the first 140 KiB of the image to SRAM A2 at 0x00100000
++ *   4. write struct arisc_para (128 B) to 0x00104008
++ *   5. release reset                  R_CPUCFG 0x07000400, set bit 0
++ *
++ * The vendor also copies a 32 KiB tail from the image to DRAM 0x48100000.
++ * That address is inside kernel text on our memory map, and the firmware
++ * runs without it (measured over several cold starts), so this driver does
++ * not copy it. Should a service ever need it, the destination has to become
++ * a proper reserved-memory region first -- see the DT binding.
++ *
++ * Startup handshake (firmware 0xc4b0..0xc548, sender 0x75e0, waiter 0x756c):
++ * after reset release the firmware pushes a notify onto ARM-RX channel 3 of
++ * msgbox bank user0 -- header word state|attr|type=0x90|result, then a count,
++ * then <count> words holding its version string -- and then waits for the
++ * ARM to answer on bank user1 port 3 with a header word and a count. Until
++ * that answer arrives it sits in front of its main loop and serves no HDMI
++ * command. Without a reader the notify itself already stalls at word 9 (the
++ * FIFO is 8 deep) for ~100 s. So the acknowledgement is not politeness, it
++ * is what starts the firmware.
++ *
++ * Sending a HDMI sub-command: the receive pump on user1 port 0 keeps the
++ * frame length in a register rather than in its context and its poller wakes
++ * it as soon as the first word lands, so a frame that arrives in two pieces
++ * loses its length. The pump's classifier reads the sub-command out of its
++ * payload buffer (0x115f59), not out of the length -- so the payload goes
++ * straight into that buffer and the frame carries length 0. That is immune
++ * to the race instead of hoping to win it.
++ *
++ * No doorbell: the firmware's main loop polls the FIFO status of user1
++ * port 0 (rpm_poll at 0xc5d0, poller 0x7bbc) and of port 3 (0xc5b4), and the
++ * startup waiter 0x756c polls port 3 as well. Pulsing TX_IRQ_EN is what the
++ * old diagnosis module did; it is not needed and it is gone.
++ *
++ * Ordering rule for the aux block: reading anything in 0x0709xxxx from the
++ * ARM before the firmware has processed ResetEDIDModule hangs the SoC (the
++ * block is unclocked; measured three times). This driver maps no register in
++ * that range at all, and every entry point except arisc_hdmi_reset_edid()
++ * refuses with -EAGAIN until that command has been acknowledged, so a
++ * consumer cannot reach the aux block through this interface out of order.
++ */
++
++#define pr_fmt(fmt) "h713-arisc: " fmt
++
++#include <linux/bitops.h>
++#include <linux/debugfs.h>
++#include <linux/delay.h>
++#include <linux/errno.h>
++#include <linux/firmware.h>
++#include <linux/io.h>
++#include <linux/ktime.h>
++#include <linux/math.h>
++#include <linux/minmax.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/seq_file.h>
++#include <linux/slab.h>
++#include <linux/stdarg.h>
++#include <linux/string.h>
++#include <linux/uaccess.h>
++#include <linux/unaligned.h>
++
++#include <linux/soc/sunxi/h713-arisc.h>
++
++/* ---- msgbox bank user0: ARISC -> ARM ------------------------------------ */
++/*
++ * Offsets inside the first sub-block of the bank at 0x03003000. cpu_comm
++ * talks to the display MIPS through the same 4 KiB block but through
++ * different registers (+0x164/+0x174 and +0x864/+0x874), so the two drivers
++ * do not share a single register; this one maps 0x100 bytes of each bank.
++ * Reading MSG_DATA pops the FIFO, so it is only ever read when a reply is
++ * expected. FIFO_STAT is not a word count -- only "0 means empty" is
++ * reliable.
++ */
++#define U0_FIFO_STAT(ch)	(0x60 + 4 * (ch))
++#define U0_MSG_DATA(ch)		(0x70 + 4 * (ch))
++
++#define CH_NOTIFY		3	/* startup notify from the firmware */
++#define CH_REPLY		1	/* status and EDID replies */
++
++/* ---- msgbox bank user1: ARM -> ARISC ------------------------------------ */
++#define U1_FIFO_STAT(port)	(0x60 + 4 * (port))
++#define U1_MSG_DATA(port)	(0x70 + 4 * (port))
++
++#define PORT_HDMI		0	/* receive pump: the HDMI sub-commands */
++#define PORT_STANDBY		3	/* standby dispatcher: startup reply only */
++
++/* ---- SRAM A2 window (ARM address = ARISC address + 0x100000) ------------ */
++#define SRAM_IMAGE_SIZE		0x23000	/* what goes into SRAM, vendor BL31 */
++#define SRAM_VECTORS_END	0x02000	/* one writable word per 0x100 here */
++#define SRAM_BODY_START		0x04000	/* SRAM A2 proper, fully verifiable */
++
++#define SRAM_PARA		0x04008	/* struct arisc_para, 128 bytes */
++#define SRAM_PARA_WORDS		32
++#define SRAM_RPM_STATE		0x15f54	/* receive pump context, 0 = idle */
++#define SRAM_RPM_BUF		0x15f59	/* payload the classifier reads */
++#define SRAM_HPD_COUNTER	0x1722c	/* one tick counter per HDMI port */
++#define SRAM_EDID_READY		0x1723e	/* g_Data.bEdidDataReady, see below */
++#define SRAM_EDID_GATE		0x1723f	/* publish routine done, see below */
++#define SRAM_PORTMAP		0x17248	/* one record per port, see below */
++#define SRAM_SCRATCH		0x17320	/* the 0x11 handler's working copy */
++
++/*
++ * The port map records at SRAM offset 0x17248 -- 0x00117248 seen from the
++ * ARM, which is worth writing down because reading it as an address lands in
++ * a page of zeroes and looks like a contradiction. Eight bytes apart, one
++ * record per HDMI port.
++ * Byte 2 is the hotplug *pin* of that port and it is the byte the pin driver
++ * at 0x121e4 reads (0x12220) to decide which of the three bits of the aux
++ * register it touches; byte 3 is 1 << pin; byte 4 is the reverse map, the
++ * lookup at 0x11c64 walks it to turn a pin back into a port.
++ *
++ * Exactly two pieces of code in the image write these bytes, and `grep 0x7248
++ * 0x724a 0x724b` over the disassembly finds no third one:
++ *
++ *   0x11e88  runs once, from the firmware's own init at 0x10f0c, and copies
++ *            byte 0..4 of every record out of the ROM table at 0x15edc
++ *   0x11f94  the tail of the HostHDMIMAP handler, byte 2, 3 and 4
++ *
++ * That ROM table is the whole reason the check below has to prime the
++ * records first. Its three records read
++ *
++ *   0x15edc  01 10 00 01 | 0x15ee4  02 20 01 02 | 0x15eec  04 30 02 04
++ *
++ * -- mask, an unused tag, pin, 1 << pin -- so the firmware comes up with
++ * port 0 on pin 0, port 1 on pin 1, port 2 on pin 2. That is the identity,
++ * and it is exactly the map the stock sequence asks HostHDMIMAP for.
++ */
++#define PORTMAP_STRIDE		8
++#define PORTMAP_PIN		2	/* +2: hotplug pin of this port */
++#define PORTMAP_PIN_BIT		3	/* +3: 1 << pin */
++
++/*
++ * What the two bytes above are set to before HostHDMIMAP is sent. It has to
++ * be a value the firmware cannot store there -- the pin is 0, 1 or 2 and the
++ * bit is 1, 2 or 4 -- and it has to be harmless for every reader of those
++ * bytes, see arisc_arm_portmap_probe().
++ */
++#define PORTMAP_POISON		0xff
++
++/*
++ * struct arisc_para from the vendor 3.4 kernel: machine, oz_scale_delay,
++ * oz_onoff_delay, message_pool_phys, message_pool_size, uart_pin_used,
++ * services_used, power_regu_tree[15], reserved[10]. Everything the firmware
++ * needs from us is the message pool; the rest is zero, which is what the
++ * board has been running with.
++ */
++#define PARA_POOL_PHYS		0x00123000	/* right behind the image */
++#define PARA_POOL_SIZE		0x00001000
++
++/* ---- reset and clocks --------------------------------------------------- */
++#define R_CPUCFG_RESET		BIT(0)		/* 0 = held, 1 = running */
++#define R_PRCM_CPUS_CLKS	3		/* three gates, 4 bytes apart */
++
++/* ---- the wire format ---------------------------------------------------- */
++#define BOP_MARKER		0xa5	/* header: marker | seq << 8, type 0 */
++#define SUB_CMD_LO_MIN		0x10	/* the classifier accepts 0x10..0x15 */
++#define SUB_CMD_LO_MAX		0x15
++
++#define SUB_RESET_EDID		0x2011	/* ResetEDIDModule                    */
++#define SUB_HOST_HDMI_MAP	0x0011	/* HostHDMIMAP, one value per port    */
++#define SUB_UPDATE_EDID		0x0111	/* UpdateEDID, fragment 0..7          */
++#define SUB_PULL_HOTPLUG	0x0211	/* PullHotPlug, case 7                */
++#define SUB_SET_EDID_VERSION	0x0311	/* SetEDIDVersion                     */
++#define SUB_SET_5V_FLAG		0x0411	/* SET5VFlag                          */
++#define SUB_SET_EDID_AUDIO	0x0511	/* SetEDIDAudioMode                   */
++#define SUB_CHECK_EDID_STATUS	0x0215	/* CheckEDIDUpdateStatus, replies     */
++#define SUB_REQUEST_EDID	0x0315	/* RequestEDID, replies                */
++
++/*
++ * The payload buffer holds sub_cmd_lo, sub_cmd_hi, arg1, arg2 and up to 63
++ * further data bytes. The 0x11 group handler copies 65 bytes starting at
++ * payload[2] into its scratch area, which is how this driver knows a command
++ * was picked up; see arisc_wait_handler().
++ */
++#define PAYLOAD_DATA_MAX	63
++#define PAYLOAD_MAX		(4 + PAYLOAD_DATA_MAX)
++#define SCRATCH_LEN		65
++
++#define EDID_FRAGMENTS		8
++#define EDID_FRAGMENT_LEN	64
++
++/* PullHotPlug, firmware case 7 */
++#define HPD_RESET_COUNTER	84	/* ticks the RESET case loads          */
++#define HPD_RESET_PEAK_MIN	70	/* measured 80..84 when it arrived     */
++#define HPD_TICK_MS		10	/* the counter's timer runs at ~100 Hz */
++
++/* ---- deadlines. Every one of them is a failure, never a remedy ---------- */
++#define NOTIFY_WAIT_MS		3000	/* reset release -> first notify word  */
++#define NOTIFY_GAP_MS		200	/* the firmware sends word by word     */
++#define REPLY_WAIT_MS		2000	/* command -> first reply word on ch1  */
++#define REPLY_GAP_MS		200
++#define HANDLER_TIMEOUT_MS	500	/* command -> handler took the payload */
++#define FIFO_EMPTY_TIMEOUT_MS	100	/* the pump must have drained port 0   */
++#define HPD_SETTLE_TIMEOUT_MS	2000	/* 84 ticks at ~10 ms plus reserve     */
++
++/*
++ * HPD low time. HDMI requires the source to see the pin low for at least
++ * 100 ms before it re-reads the EDID.
++ *
++ * This used to be 10 s, inherited from the diagnostic shell script, with no
++ * evidence for that particular duration -- and unlike in the script it sits
++ * in the driver's probe path, where it delayed the capture device coming up
++ * by ten seconds. Measured on the device 07.09.2026 (see
++ * doku/nachtlog/A2-hpd-dauer-edid.md): the source logs a clean
++ * disconnect/reconnect for every low time from 200 ms upwards, and after a
++ * 200 ms cycle it holds a valid EDID (header 00 ff ff ff ff ff ff 00,
++ * manufacturer 5e 78) and its full mode list. 200 ms is also what the stock
++ * firmware programs -- HDMI_SetHPDTimeInterval(0xc8), and the stock elog
++ * records "SetHPDTimeInterval from 200 to 200". Measured minimum and stock
++ * value agree, so that is the value; a longer one would need its own reason.
++ */
++#define HPD_DOWN_MS		200
++
++#define NOTIFY_TYPE		0x90
++#define NOTIFY_MAX_WORDS	16
++
++/*
++ * ---- the reply frame on ARM-RX channel 1 --------------------------------
++ *
++ * The 0x15 group does not answer through the scratch area, it answers with a
++ * frame, and that frame has a header the driver has to skip. The firmware's
++ * framed sender 0x118e4 wraps the payload (0xff in front, a checksum byte at
++ * [len - 2], 0xfe at [len - 1]) and hands buffer and length to 0x8254, which
++ * forwards to 0x81c8. That routine builds eight header bytes on its own
++ * stack and pushes them as a message of their own before the payload:
++ *
++ *	0x081e8   [sp + 4] = 0			second word, always zero
++ *	0x081f4   [sp + 0] = 0xa5		marker
++ *	0x081f8   [sp + 2] = type		1 for this sender
++ *	0x08200   [sp + 1] = seq		[0x15bc4], post-incremented
++ *	0x08220   [sp + 3] = length		payload bytes that follow
++ *	0x0821c   send(chan, sp, 8)
++ *	0x08230   send(chan, payload, length)
++ *
++ * and 0x7d7c packs bytes into words least significant byte first, so on the
++ * ARM the stream reads
++ *
++ *	word 0	a5 | seq << 8 | type << 16 | length << 24
++ *	word 1	00 00 00 00
++ *	word 2	the payload, <length> bytes, DIV_ROUND_UP(length, 4) words
++ *
++ * -- the same BOP header shape this driver sends on user1 port 0. An earlier
++ * revision compared from word 0 and therefore matched the header against the
++ * payload constants; measured 07.09.2026, CheckEDIDUpdateStatus answered
++ * "a5 00 01 08 00 00 00 00" and was rejected, while the payload it was
++ * looking for sat unread in words 2 and 3. The zero word is the header's
++ * second word, not an empty payload.
++ *
++ * Payloads of the two commands that use this sender:
++ *
++ *	CheckEDIDUpdateStatus	0x1257c ("Request EDID Status"), length 8:
++ *				ff f8 01 01 <ready> 00 <cks> fe, where the
++ *				constants come from 0x125a0..0x125b8 and
++ *				<ready> is [0x1723e] (0x125c0, stored by the
++ *				shared tail 0x127a4).
++ *	RequestEDID		0x12618 ("Read EDID. MSG="), four frames of
++ *				length 0x48: ff f8 02 41 <index> <64 bytes of
++ *				DDC RAM> 00 <cks> fe, index 0..3 -- see
++ *				arisc_hdmi_get_edid().
++ *
++ * [0x1723e] is the firmware's own g_Data.bEdidDataReady (it prints the name
++ * at 0x11dcc): every UpdateEDID fragment 0..6 clears it in the delay slot at
++ * 0x1256c, fragment 7 sets it at 0x12570 and only then calls the publish
++ * routine 0x11d88, which returns immediately while the byte is zero. So the
++ * status reply is the firmware answering "fragment 7 arrived and the store
++ * is complete", and this driver now judges it instead of only printing it.
++ */
++#define REPLY_MAX		512
++#define REPLY_HDR_WORDS		2	/* marker word plus the zero word     */
++#define REPLY_TYPE		1	/* 0x81c8 stamps it on every frame    */
++#define FRAME_HEAD		0xff	/* 0x118e4 writes it at payload[0]    */
++#define FRAME_TAIL		0xfe	/* ... and this at payload[len - 1]   */
++#define FRAME_MIN_LEN		3	/* head, checksum, tail               */
++
++#define EDID_STATUS_PREFIX_LEN	4
++#define EDID_STATUS_LEN		8	/* 0x127ac passes this length         */
++#define EDID_STATUS_READY_BYTE	4	/* payload[4] = [0x1723e]             */
++#define EDID_DATA_READY		1	/* what fragment 7 leaves there       */
++
++static const u8 edid_status_prefix[EDID_STATUS_PREFIX_LEN] = {
++	0xff, 0xf8, 0x01, 0x01
++};
++
++/* RequestEDID: four frames, each one fragment of one 256-byte EDID block. */
++#define REQ_EDID_PREFIX_LEN	5	/* ff f8 02 41 <index>                */
++#define REQ_EDID_FRAGMENTS	4	/* loop bound at 0x12714              */
++
++static const u8 req_edid_prefix[] = { 0xff, 0xf8, 0x02, 0x41 };
++
++/* The port map the stock host sends: one value per HDMI port. */
++static const u8 default_portmap[ARISC_HDMI_PORTS] = { 0, 1, 2 };
++
++#define FW_NAME_ARISC		"h713-arisc.bin"
++#define FW_NAME_EDID		"hy310-edid.bin"
++
++struct h713_arisc {
++	struct device		*dev;
++	void __iomem		*sram;
++	void __iomem		*rx;		/* msgbox bank user0 */
++	void __iomem		*tx;		/* msgbox bank user1 */
++	void __iomem		*reset;		/* R_CPUCFG */
++	void __iomem		*cpus_clk;	/* R_PRCM CPUS timer gates */
++
++	struct mutex		lock;		/* one exchange at a time */
++	u8			seq;		/* rolling sequence number */
++
++	bool			running;	/* handshake completed */
++	bool			edid_module_ready;	/* ResetEDIDModule done */
++	int			notify_result;
++	char			notify_version[64];
++
++	u8			edid[ARISC_HDMI_EDID_SIZE];
++	bool			edid_valid;
++
++	u8			edid_status[EDID_STATUS_LEN];	/* last 0x0215 reply */
++	size_t			edid_status_len;
++
++	struct dentry		*debugfs;
++	char			last_cmd[160];
++};
++
++/*
++ * One ARISC per SoC and one HDMI front end behind it, so the in-kernel
++ * interface does not carry a handle. Set once the handshake succeeded,
++ * cleared before the core is stopped.
++ */
++static struct h713_arisc *h713_arisc;
++
++/* ---- small helpers ------------------------------------------------------ */
++
++static void __iomem *sram_at(struct h713_arisc *a, unsigned long off)
++{
++	return a->sram + off;
++}
++
++static u8 hpd_counter(struct h713_arisc *a, unsigned int port)
++{
++	return readb(sram_at(a, SRAM_HPD_COUNTER) + port);
++}
++
++static void arisc_report(struct h713_arisc *a, const char *fmt, ...)
++{
++	va_list args;
++
++	va_start(args, fmt);
++	vscnprintf(a->last_cmd, sizeof(a->last_cmd), fmt, args);
++	va_end(args);
++}
++
++/* ---- bringing the core up ----------------------------------------------- */
++
++static void arisc_enable_cpus_clocks(struct h713_arisc *a)
++{
++	unsigned int i;
++
++	/*
++	 * boot0 prints "prcm cpus timer clock enable" and sets bit 0 in three
++	 * consecutive R_PRCM registers before the monitor loads the image.
++	 * The D1 R-CCU model this SoC borrows does not describe them (its
++	 * lowest gate is at 0x11c), so they are poked here rather than
++	 * requested as clocks; the DT reg entry documents the overlap with
++	 * the r_ccu node.
++	 */
++	for (i = 0; i < R_PRCM_CPUS_CLKS; i++) {
++		void __iomem *reg = a->cpus_clk + 4 * i;
++
++		writel(readl(reg) | BIT(0), reg);
++	}
++}
++
++static void arisc_set_reset(struct h713_arisc *a, bool held)
++{
++	u32 val = readl(a->reset);
++
++	if (held)
++		val &= ~R_CPUCFG_RESET;
++	else
++		val |= R_CPUCFG_RESET;
++	writel(val, a->reset);
++}
++
++/*
++ * Copy the image word by word. A wide or unaligned copy into this mapping
++ * faults (bus error, FSC 0x21) -- the SRAM behaves like device memory, so
++ * memcpy_toio() and its 8-byte stores are not an option here.
++ *
++ * The file already holds the words in the order the SRAM wants them (the
++ * AR100's data bus swaps every 32-bit word, and the vendor image is stored
++ * pre-swapped): read each word little-endian, write it back little-endian,
++ * and the bytes in SRAM are the bytes of the file. Swapping again would
++ * destroy the firmware silently.
++ */
++static int arisc_load_image(struct h713_arisc *a, const u8 *data)
++{
++	unsigned int off, bad = 0;
++
++	for (off = 0; off < SRAM_IMAGE_SIZE; off += 4)
++		writel_relaxed(get_unaligned_le32(data + off),
++			       sram_at(a, off));
++
++	/*
++	 * Read back. In the exception vector area only one word per 0x100
++	 * boundary is writable -- the hardware drops the rest, and the image
++	 * carries a jump on every boundary -- so only those are checked; from
++	 * SRAM A2 on, every word must match.
++	 */
++	for (off = 0; off < SRAM_VECTORS_END; off += 0x100) {
++		u32 want = get_unaligned_le32(data + off);
++
++		if (readl_relaxed(sram_at(a, off)) != want)
++			bad++;
++	}
++	for (off = SRAM_BODY_START; off < SRAM_IMAGE_SIZE; off += 4) {
++		u32 want = get_unaligned_le32(data + off);
++
++		if (readl_relaxed(sram_at(a, off)) != want)
++			bad++;
++	}
++
++	if (bad) {
++		dev_err(a->dev,
++			"Firmware-Abbild stimmt nach dem Schreiben nicht (%u Woerter weichen ab) -- ARISC bleibt im Reset\n",
++			bad);
++		return -EIO;
++	}
++	return 0;
++}
++
++static void arisc_write_para(struct h713_arisc *a)
++{
++	unsigned int i;
++
++	for (i = 0; i < SRAM_PARA_WORDS; i++)
++		writel_relaxed(0, sram_at(a, SRAM_PARA) + 4 * i);
++	writel_relaxed(PARA_POOL_PHYS, sram_at(a, SRAM_PARA) + 3 * 4);
++	writel_relaxed(PARA_POOL_SIZE, sram_at(a, SRAM_PARA) + 4 * 4);
++}
++
++/*
++ * Empty one ARM-RX channel. The FIFO is eight words deep; the bound is there
++ * so a firmware that keeps pushing cannot spin this forever.
++ */
++static void arisc_drain_channel(struct h713_arisc *a, unsigned int ch)
++{
++	unsigned int guard;
++
++	for (guard = 0; guard < 16; guard++) {
++		if (!readl(a->rx + U0_FIFO_STAT(ch)))
++			return;
++		readl(a->rx + U0_MSG_DATA(ch));
++	}
++}
++
++/* Drop whatever a previous life of the firmware left in the RX FIFOs. */
++static void arisc_drain_rx(struct h713_arisc *a)
++{
++	unsigned int ch;
++
++	for (ch = 0; ch < 4; ch++)
++		arisc_drain_channel(a, ch);
++}
++
++/* ---- receiving ---------------------------------------------------------- */
++
++/*
++ * Collect a frame from an ARM-RX channel. The firmware pushes word by word
++ * and the FIFO is eight words deep, so the end of a frame is a gap, not a
++ * length: return once no further word has arrived for @gap_ms. Nothing at
++ * all within @wait_ms is -ETIMEDOUT.
++ *
++ * Every word is popped, including those that no longer fit into @words --
++ * leaving them behind would stall the next exchange. The return value is
++ * the number of words the firmware sent, which may exceed @max.
++ */
++static int arisc_read_frame(struct h713_arisc *a, unsigned int ch, u32 *words,
++			    unsigned int max, unsigned int wait_ms,
++			    unsigned int gap_ms)
++{
++	ktime_t start = ktime_get(), last = start;
++	unsigned int n = 0;
++
++	for (;;) {
++		if (readl(a->rx + U0_FIFO_STAT(ch))) {
++			u32 word = readl(a->rx + U0_MSG_DATA(ch));
++
++			if (n < max)
++				words[n] = word;
++			n++;
++			last = ktime_get();
++			continue;
++		}
++		if (ktime_ms_delta(ktime_get(), n ? last : start) >
++		    (n ? gap_ms : wait_ms))
++			break;
++		usleep_range(500, 1000);
++	}
++
++	return n ? (int)n : -ETIMEDOUT;
++}
++
++/*
++ * Decode the version string out of the notify. The firmware sends the words
++ * from an address that is off by one byte, so in bus order the text appears
++ * shifted by one and reversed within every group of four.
++ */
++static void arisc_notify_version(struct h713_arisc *a, const u32 *words,
++				 unsigned int n)
++{
++	u8 raw[4 * NOTIFY_MAX_WORDS];
++	unsigned int i, nb = 0, m;
++	char *p = a->notify_version;
++
++	for (i = 2; i < n; i++) {
++		put_unaligned_le32(words[i], raw + nb);
++		nb += 4;
++	}
++
++	for (m = 0; m + 1 < nb &&
++	     p < a->notify_version + sizeof(a->notify_version) - 1; m++) {
++		unsigned int idx = 1 + 4 * (m / 4) + (3 - m % 4);
++		char c = idx < nb ? raw[idx] : 0;
++
++		if (c < 0x20 || c >= 0x7f)
++			break;
++		*p++ = c;
++	}
++	*p = '\0';
++}
++
++/*
++ * Read the startup notify and answer it. Only a notify is answered: a reply
++ * to anything else -- for instance the standby dispatcher's own "unknown
++ * type" answer, result -3 -- starts a ping-pong that never ends.
++ *
++ * Returns 0 when the acknowledgement went out, -ETIMEDOUT when no notify
++ * appeared, -EPROTO when what appeared was not one.
++ */
++static int arisc_startup_handshake(struct h713_arisc *a)
++{
++	u32 words[NOTIFY_MAX_WORDS];
++	unsigned int count;
++	int n;
++
++	n = arisc_read_frame(a, CH_NOTIFY, words, NOTIFY_MAX_WORDS,
++			     NOTIFY_WAIT_MS, NOTIFY_GAP_MS);
++	if (n < 0)
++		return n;
++	if (n < 2 || n > NOTIFY_MAX_WORDS)
++		return -EPROTO;
++
++	/* header: state | attr << 8 | type << 16 | result << 24 */
++	if (((words[0] >> 16) & 0xff) != NOTIFY_TYPE || (words[0] >> 24) != 0)
++		return -EPROTO;
++
++	count = words[1] & 0xff;
++	if (!count || count > NOTIFY_MAX_WORDS - 2 || (unsigned int)n < 2 + count)
++		return -EPROTO;
++
++	arisc_notify_version(a, words, 2 + count);
++
++	/*
++	 * The answer the waiter at 0x756c expects: the header with result 0,
++	 * then a count of zero. It polls the FIFO status, so there is nothing
++	 * to knock on.
++	 */
++	writel(words[0] & 0x00ffffffU, a->tx + U1_MSG_DATA(PORT_STANDBY));
++	writel(0, a->tx + U1_MSG_DATA(PORT_STANDBY));
++	return 0;
++}
++
++/* ---- sending ------------------------------------------------------------ */
++
++/*
++ * Wait until the 0x11 group handler has taken the payload. It copies 65
++ * bytes starting at payload[2] into its scratch area, so the scratch area
++ * matching those 65 bytes is proof that the command was classified and
++ * dispatched. The scratch is primed with the complement of the payload
++ * beforehand, which makes a false match impossible.
++ *
++ * What the handler leaves in the scratch depends on the sub-command, and an
++ * earlier revision of this driver got that wrong: it assumed all 65 bytes of
++ * the payload are copied, waited for exactly that, and therefore timed out on
++ * the second call of the EDID sequence (measured 07.09.2026: HostHDMIMAP ->
++ * -ETIMEDOUT, the sink stays disconnected).
++ *
++ * The disassembly (analyse/arisc-frame/full-disasm.txt) says otherwise. The
++ * group handler at 0x11550 unconditionally runs memset(0x17320, 0, 0x41) and
++ * only then branches on the high byte of the sub-command:
++ *
++ *   hi == 1  UpdateEDID        copies the payload back, all 65 bytes.  The
++ *                              disassembly reads as 0x40 bytes at 0x1160c,
++ *                              but the device says otherwise: with 64 the
++ *                              wait fails at byte 64 with the EDID's own
++ *                              content (measured 07.09.2026: "got 0x2c, want
++ *                              0x00", and 0x2c is EDID[63] of fragment 0).
++ *                              Trust the measurement.
++ *   hi == 2  PullHotPlug       stores payload[2] and payload[3] (0x1164c)
++ *   hi == 3  SetEDIDVersion    stores payload[2] (0x11678)
++ *   otherwise                  the scratch stays zeroed -- this covers
++ *                              HostHDMIMAP (hi == 0), SET5VFlag (hi == 4) and
++ *                              SetEDIDAudioMode (hi == 5)
++ *
++ * `grep 0x7320` over the whole image finds exactly three writers, all inside
++ * this handler, so the list is complete.
++ *
++ * For the three copying branches this doubles as proof that the firmware is
++ * finished with the payload buffer, because they dispatch from the scratch.
++ * For hi == 0 it is not: HostHDMIMAP reads the buffer after the memset, so
++ * arisc_hdmi_set_portmap() waits for the port map itself instead. hi == 4
++ * and hi == 5 never reach a branch of their own -- the sub-dispatch at
++ * 0x11568 only decodes 0, 1, 2, 3 and 0x20 and returns at 0x117f8 for
++ * everything else -- so for those two the memset is the whole effect and
++ * there is nothing left to be raced.
++ */
++static void arisc_expected_scratch(const u8 *payload, u8 *out)
++{
++	memset(out, 0, SCRATCH_LEN);
++
++	switch (payload[1]) {
++	case 1:				/* UpdateEDID: the full 65 bytes */
++		memcpy(out, payload + 2, SCRATCH_LEN);
++		break;
++	case 2:				/* PullHotPlug: two arguments */
++		out[0] = payload[2];
++		out[1] = payload[3];
++		break;
++	case 3:				/* SetEDIDVersion: one argument */
++		out[0] = payload[2];
++		break;
++	default:			/* handler only zeroes the scratch */
++		break;
++	}
++}
++
++static int arisc_wait_handler(struct h713_arisc *a, const u8 *payload)
++{
++	u8 expected[SCRATCH_LEN];
++	ktime_t start = ktime_get();
++	unsigned int i;
++
++	arisc_expected_scratch(payload, expected);
++
++	do {
++		for (i = 0; i < SCRATCH_LEN; i++)
++			if (readb(sram_at(a, SRAM_SCRATCH) + i) != expected[i])
++				break;
++		if (i == SCRATCH_LEN)
++			return 0;
++		usleep_range(500, 1000);
++	} while (ktime_ms_delta(ktime_get(), start) < HANDLER_TIMEOUT_MS);
++
++	dev_dbg(a->dev, "scratch mismatch at byte %u: got 0x%02x, want 0x%02x\n",
++		i, readb(sram_at(a, SRAM_SCRATCH) + i), expected[i]);
++
++	return -ETIMEDOUT;
++}
++
++/*
++ * Seed the scratch with the complement of what the handler is expected to
++ * leave behind, so that "unchanged" can never be mistaken for "handled" --
++ * not even for the commands whose expected result is all zeros.
++ */
++static void arisc_arm_handler_probe(struct h713_arisc *a, const u8 *payload)
++{
++	u8 expected[SCRATCH_LEN];
++	unsigned int i;
++
++	arisc_expected_scratch(payload, expected);
++
++	for (i = 0; i < SCRATCH_LEN; i++)
++		writeb((u8)~expected[i], sram_at(a, SRAM_SCRATCH) + i);
++}
++
++/*
++ * Hand one sub-command to the receive pump:
++ *
++ *   1. payload into the pump's own buffer at 0x115f59
++ *   2. header word 0xa5 | seq << 8 (type 0, length 0) into MSG_DATA port 0
++ *   3. one filler word
++ *
++ * Length 0 is deliberate, see the file header. The payload is always written
++ * in full, zero padded, so no command inherits the tail of the last one.
++ * writel() carries the write barrier that orders the SRAM stores before the
++ * message.
++ */
++static int arisc_send(struct h713_arisc *a, u16 sub_cmd, u8 arg1, u8 arg2,
++		      const u8 *data, size_t data_len)
++{
++	u8 payload[PAYLOAD_MAX] = { };
++	ktime_t start;
++	size_t i;
++
++	if ((sub_cmd & 0xff) < SUB_CMD_LO_MIN || (sub_cmd & 0xff) > SUB_CMD_LO_MAX)
++		return -EINVAL;
++	if (data_len > PAYLOAD_DATA_MAX)
++		return -EINVAL;
++
++	payload[0] = sub_cmd & 0xff;
++	payload[1] = sub_cmd >> 8;
++	payload[2] = arg1;
++	payload[3] = arg2;
++	if (data_len)
++		memcpy(payload + 4, data, data_len);
++
++	/*
++	 * A word still sitting in the FIFO means the pump is not draining it.
++	 * Adding to that would only hide the problem.
++	 */
++	start = ktime_get();
++	while (readl(a->tx + U1_FIFO_STAT(PORT_HDMI))) {
++		if (ktime_ms_delta(ktime_get(), start) > FIFO_EMPTY_TIMEOUT_MS) {
++			dev_err(a->dev,
++				"Msgbox user1 Port 0 wird nicht geleert -- Unterbefehl 0x%04x nicht gesendet\n",
++				sub_cmd);
++			return -EBUSY;
++		}
++		usleep_range(1000, 2000);
++	}
++
++	arisc_arm_handler_probe(a, payload);
++	for (i = 0; i < PAYLOAD_MAX; i++)
++		writeb(payload[i], sram_at(a, SRAM_RPM_BUF) + i);
++
++	writel(BOP_MARKER | ((u32)a->seq << 8), a->tx + U1_MSG_DATA(PORT_HDMI));
++	writel(0, a->tx + U1_MSG_DATA(PORT_HDMI));
++	a->seq = a->seq % 255 + 1;
++
++	/*
++	 * Only the 0x11 group copies the payload into the scratch area. The
++	 * 0x15 group answers on ARM-RX channel 1 instead, and its caller
++	 * waits for that reply.
++	 */
++	if ((sub_cmd & 0xff) != 0x11)
++		return 0;
++
++	return arisc_wait_handler(a, payload);
++}
++
++/*
++ * The checksum the framed sender computes at 0x11990..0x119d4: the low byte
++ * of the negated sum over payload[1] .. payload[len - 6], stored at
++ * payload[len - 2]. It covers neither the two bytes in front of it nor the
++ * whole payload, which is why a mismatch is reported and not acted upon --
++ * a check that does not cover the interesting bytes must not be allowed to
++ * reject a reply that is otherwise well formed.
++ */
++static u8 arisc_frame_checksum(const u8 *payload, unsigned int len)
++{
++	unsigned int i, sum = 0;
++
++	for (i = 1; i + 6 <= len; i++)
++		sum += payload[i];
++
++	return (u8)-sum;
++}
++
++/*
++ * Split what channel 1 delivered into frames and copy their payloads, back
++ * to back and without the eight header bytes, into @reply. The frame layout
++ * is documented at REPLY_HDR_WORDS.
++ *
++ * Returns the number of payload bytes stored, -EPROTO for a stream that is
++ * not made of this sender's frames, and -EMSGSIZE when @reply is too small
++ * to hold all of them -- a silently cut reply is what broke the caller of
++ * the previous revision, so it is an error here and not a debug line.
++ */
++static int arisc_unframe(struct h713_arisc *a, u16 sub_cmd, const u32 *words,
++			 unsigned int nwords, u8 *reply, size_t reply_max)
++{
++	unsigned int pos = 0, n = 0, frames = 0, i;
++	u8 raw[REPLY_MAX];
++
++	for (i = 0; i < nwords; i++)
++		put_unaligned_le32(words[i], raw + 4 * i);
++
++	for (i = 0; i < nwords; i++)
++		dev_dbg(a->dev, "Antwort 0x%04x Wort %2u: %08x  %*ph\n",
++			sub_cmd, i, words[i], 4, raw + 4 * i);
++
++	while (pos + 4 * REPLY_HDR_WORDS <= 4 * nwords) {
++		const u8 *hdr = raw + pos;
++		const u8 *payload = hdr + 4 * REPLY_HDR_WORDS;
++		unsigned int avail = 4 * nwords - pos - 4 * REPLY_HDR_WORDS;
++		unsigned int len = hdr[3];
++		u8 cks;
++
++		if (hdr[0] != BOP_MARKER || hdr[2] != REPLY_TYPE) {
++			dev_err(a->dev,
++				"Antwort auf 0x%04x: Wort %u ist kein Rahmenkopf (%*ph)\n",
++				sub_cmd, pos / 4, 4, hdr);
++			return -EPROTO;
++		}
++		/*
++		 * 0x7d7c pushes the last, partly filled word too, so a frame
++		 * always occupies DIV_ROUND_UP(len, 4) words. Demanding that
++		 * many keeps @pos on a word boundary and lets the check after
++		 * the loop mean "nothing left over".
++		 */
++		if (len < FRAME_MIN_LEN || round_up(len, 4) > avail) {
++			dev_err(a->dev,
++				"Antwort auf 0x%04x: Rahmen meldet %u Nutzlastbytes, vorhanden sind %u\n",
++				sub_cmd, len, avail);
++			return -EPROTO;
++		}
++		if (payload[0] != FRAME_HEAD || payload[len - 1] != FRAME_TAIL) {
++			dev_err(a->dev,
++				"Antwort auf 0x%04x: Rahmen beginnt %02x und endet %02x statt %02x/%02x\n",
++				sub_cmd, payload[0], payload[len - 1],
++				FRAME_HEAD, FRAME_TAIL);
++			return -EPROTO;
++		}
++
++		cks = arisc_frame_checksum(payload, len);
++		if (cks != payload[len - 2])
++			dev_dbg(a->dev,
++				"Antwort auf 0x%04x: Pruefsumme %02x, erwartet %02x\n",
++				sub_cmd, payload[len - 2], cks);
++
++		if (n + len > reply_max) {
++			dev_err(a->dev,
++				"Antwort auf 0x%04x: %u Byte Nutzlast passen nicht in %zu Byte Puffer\n",
++				sub_cmd, n + len, reply_max);
++			return -EMSGSIZE;
++		}
++		memcpy(reply + n, payload, len);
++		n += len;
++		frames++;
++		pos += 4 * REPLY_HDR_WORDS + round_up(len, 4);
++	}
++
++	if (!frames || pos != 4 * nwords) {
++		dev_err(a->dev,
++			"Antwort auf 0x%04x: %u Rahmen, danach %u Byte Rest\n",
++			sub_cmd, frames, 4 * nwords - pos);
++		return -EPROTO;
++	}
++
++	dev_dbg(a->dev, "Antwort auf 0x%04x: %u Rahmen, %u Byte Nutzlast\n",
++		sub_cmd, frames, n);
++	return n;
++}
++
++/*
++ * Send a 0x15 sub-command and collect its reply from channel 1. Returns the
++ * number of payload bytes stored in @reply -- the frame headers are gone by
++ * then, so a caller compares against what the firmware built, not against
++ * what the transport wrapped around it.
++ */
++static int arisc_send_and_reply(struct h713_arisc *a, u16 sub_cmd, u8 arg1,
++				u8 arg2, u8 *reply, size_t reply_max)
++{
++	u32 words[REPLY_MAX / 4];
++	int ret;
++
++	if (!reply || !reply_max)
++		return -EINVAL;
++
++	/* An older answer left in the channel would be read as this one's. */
++	arisc_drain_channel(a, CH_REPLY);
++
++	ret = arisc_send(a, sub_cmd, arg1, arg2, NULL, 0);
++	if (ret)
++		return ret;
++
++	ret = arisc_read_frame(a, CH_REPLY, words, ARRAY_SIZE(words),
++			       REPLY_WAIT_MS, REPLY_GAP_MS);
++	if (ret < 0) {
++		dev_err(a->dev,
++			"Unterbefehl 0x%04x: keine Antwort auf ARM-RX ch1 (%d)\n",
++			sub_cmd, ret);
++		return ret;
++	}
++
++	/*
++	 * arisc_read_frame() pops every word but only stores what fits, so a
++	 * larger count means the tail is gone and the stream can no longer be
++	 * split into frames. That is a protocol failure, not a truncation.
++	 */
++	if ((unsigned int)ret > ARRAY_SIZE(words)) {
++		dev_err(a->dev,
++			"Antwort auf 0x%04x: %d Woerter, der Puffer fasst %zu\n",
++			sub_cmd, ret, ARRAY_SIZE(words));
++		return -EMSGSIZE;
++	}
++
++	return arisc_unframe(a, sub_cmd, words, ret, reply, reply_max);
++}
++
++/* ---- the sub-commands --------------------------------------------------- */
++
++static struct h713_arisc *arisc_get(bool need_edid_module)
++{
++	struct h713_arisc *a = h713_arisc;
++
++	if (!a || !a->running)
++		return ERR_PTR(-ENODEV);
++	/*
++	 * The aux block at 0x0709xxxx has no clock until the firmware has
++	 * processed ResetEDIDModule, and reading it before that hangs the
++	 * SoC. Refusing here is the ordering guarantee, not a comment.
++	 */
++	if (need_edid_module && !a->edid_module_ready)
++		return ERR_PTR(-EAGAIN);
++	return a;
++}
++
++int arisc_hdmi_reset_edid(void)
++{
++	struct h713_arisc *a = arisc_get(false);
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++
++	mutex_lock(&a->lock);
++	ret = arisc_send(a, SUB_RESET_EDID, 0, 0, NULL, 0);
++	if (!ret)
++		a->edid_module_ready = true;
++	else
++		dev_err(a->dev, "ResetEDIDModule nicht verarbeitet (%d) -- HDMI-Aux-Block bleibt gesperrt\n",
++			ret);
++	arisc_report(a, "reset-edid rc=%d\n", ret);
++	mutex_unlock(&a->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_reset_edid);
++
++/*
++ * HostHDMIMAP is the one sub-command of the 0x11 group whose handler reads
++ * its arguments out of the receive pump's buffer *after* the memset that
++ * arisc_wait_handler() uses as the "command was picked up" signal, so for
++ * this one command that signal comes too early and the next command's
++ * payload can overwrite the map before the firmware has read it.
++ *
++ * The group handler at 0x11550 runs memset(0x17320, 0, 0x41) first and only
++ * then branches on the high byte. Where the other branches go, they take
++ * their arguments with them:
++ *
++ *   hi == 1 UpdateEDID     copies all 65 bytes into the scratch (0x1160c)
++ *   hi == 2 PullHotPlug    copies payload[2] and payload[3] (0x1164c)
++ *   hi == 3 SetEDIDVersion copies payload[2] (0x11678)
++ *   hi == 0x20 ResetEDID   does not look at the payload at all
++ *
++ * and every one of them then dispatches with a pointer to the *scratch*.
++ * The wait therefore ends after the last read of the pump buffer.
++ *
++ *   hi == 0 HostHDMIMAP    reads payload[2..4] at 0x115bc..0x115d4 for its
++ *                          log line, calls the log function at 0x115d8 and
++ *                          only then tail-jumps to 0x11f94, which reads the
++ *                          same three bytes again (0x11fac, 0x11fb4, 0x11fc0,
++ *                          source pointer advanced at 0x11fdc) and stores
++ *                          them into the port map records.
++ *
++ * Between the memset and those stores sits a log call, and this driver
++ * polls the scratch every 500 us: it hands the next command's payload to the
++ * same buffer roughly a millisecond after the memset. The userspace script
++ * this sequence comes from waits 600 ms between sub-commands and therefore
++ * never sees it -- which is exactly why the two runs differed with identical
++ * commands, arguments and order (doku/nachtlog/B-hpd-luecke.md).
++ *
++ * If the overwrite wins, the firmware reads the *next* command's bytes as
++ * the map. With the stock order that next command is SetEDIDVersion 2, whose
++ * payload is 11 03 02 00 ..., so the map becomes 2,0,0: port 0 gets pin 2.
++ * Everything downstream still reports success -- and the hotplug pulse then
++ * drives the wrong pin, which is what left the sink disconnected while every
++ * step of the sequence returned 0.
++ *
++ * So wait for the command's own effect instead: the three port map records
++ * carry the requested pin in byte 2 and 1 << pin in byte 3, they live in
++ * SRAM A2, and only the handler's tail at 0x11f94 writes them while the
++ * firmware is running. Once they read back correctly the firmware is provably
++ * done with the payload buffer -- 0x11fdc is the last instruction in the
++ * image that reads it, the publish routine the handler tail-jumps to
++ * afterwards does not touch it. This is not a delay and not a retry; it
++ * replaces a completion signal that does not cover this command with the one
++ * that does.
++ *
++ * Reading those records is not enough on its own, and the first revision of
++ * this check made exactly that mistake. The map the stock sequence asks for
++ * is 0,1,2, and 0,1,2 is what the ROM table at 0x15edc already put there when
++ * the firmware started (see SRAM_PORTMAP). A wait for "the records carry
++ * 0,1,2" therefore returns in its first pass on any freshly started firmware,
++ * whether the handler ran or not: it cannot fail, so it proves nothing, and
++ * "portmap: 0,1,2" in debugfs after a run is not evidence either.
++ *
++ * The records are primed with a value the firmware cannot produce instead, so
++ * that a match is only reachable by a firmware write:
++ *
++ *   pin (+2) is 0, 1 or 2 -- everything else lands in the pin driver's error
++ *   arm at 0x12304 -- and 1 << pin (+3) is 1, 2 or 4, so 0xff is out of reach
++ *   for both. It is also out of reach of the race this check is about: the
++ *   bytes the next command could leave in the map are payload bytes, and the
++ *   payload of SetEDIDVersion 2 is 11 03 02 00 ...
++ *
++ * Priming firmware state is what this driver already does one level up --
++ * arisc_arm_handler_probe() writes the complement of the expected scratch for
++ * the same reason -- and the two bytes are safe to hold a foreign value for
++ * the ~1 ms the handler needs, because every reader of them in the image is
++ * accounted for:
++ *
++ *   +2  0x121e4, the pin driver. Its dispatch at 0x12240..0x12260 knows pin
++ *       0, 1 and 2; anything else falls to 0x12304, which logs and then
++ *       writes 0x07091014 back with the value it read at 0x12248 -- the pin
++ *       is not moved, in either direction. A pulse that arrived inside the
++ *       window would be dropped, not misdirected.
++ *   +3  0x11cac (0x11cc8) and 0x11a04 (0x11a4c), both reachable only from
++ *       the publish routine 0x11d88 and from the module reset at 0x120f0 --
++ *       that is, only from a sub-command, and a->lock serialises those. For
++ *       0x11cac 0xff is not even distinguishable: it ORs the byte into an
++ *       accumulator and looks at bit 0 (0x11d28), which a healthy map sets
++ *       just the same.
++ *
++ * The one reader that can run without a command of ours is 0x121e4, reached
++ * from the main loop at 0x10f7c when a hotplug counter has walked down to 1.
++ * arisc_hdmi_set_portmap() waits until every counter has landed rather than
++ * rely on that arm being harmless.
++ *
++ * Byte 4 is deliberately left alone: 0x11c64 walks it to turn a pin back
++ * into a port, and a value that is in no record would make that lookup
++ * answer "no such port". It is written by the same three stores as the other
++ * two (0x11fc4), so the two primed bytes cover it.
++ */
++static int arisc_arm_portmap_probe(struct h713_arisc *a, u8 *saved)
++{
++	unsigned int i;
++
++	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
++		void __iomem *rec = sram_at(a, SRAM_PORTMAP) +
++				    i * PORTMAP_STRIDE;
++
++		saved[2 * i] = readb(rec + PORTMAP_PIN);
++		saved[2 * i + 1] = readb(rec + PORTMAP_PIN_BIT);
++		writeb(PORTMAP_POISON, rec + PORTMAP_PIN);
++		writeb(PORTMAP_POISON, rec + PORTMAP_PIN_BIT);
++	}
++
++	/*
++	 * If the priming did not land, the wait would compare the map against
++	 * whatever was there before and could pass without the firmware having
++	 * done anything -- the very hole this is here to close. Say so and
++	 * send nothing, rather than run a check that cannot fail. @saved is
++	 * complete by now, so the caller can undo whatever did land.
++	 */
++	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
++		void __iomem *rec = sram_at(a, SRAM_PORTMAP) +
++				    i * PORTMAP_STRIDE;
++		u8 pin = readb(rec + PORTMAP_PIN);
++		u8 bit = readb(rec + PORTMAP_PIN_BIT);
++
++		if (pin != PORTMAP_POISON || bit != PORTMAP_POISON) {
++			dev_err(a->dev,
++				"HostHDMIMAP: Satz %u laesst sich nicht vorbelegen (gelesen 0x%02x 0x%02x, geschrieben 0x%02x) -- die Pruefung waere blind, es wurde nichts gesendet\n",
++				i, pin, bit, PORTMAP_POISON);
++			return -EIO;
++		}
++	}
++
++	return 0;
++}
++
++/*
++ * Put the records back the way they were. Used when the command failed: the
++ * primed bytes are this driver's, not the firmware's, and leaving them behind
++ * would make every later PullHotPlug take the pin driver's error arm while
++ * the hotplug counter still walks to 0 -- a second silent success, of exactly
++ * the kind this check exists to remove.
++ */
++static void arisc_restore_portmap(struct h713_arisc *a, const u8 *saved)
++{
++	unsigned int i;
++
++	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
++		void __iomem *rec = sram_at(a, SRAM_PORTMAP) +
++				    i * PORTMAP_STRIDE;
++
++		writeb(saved[2 * i], rec + PORTMAP_PIN);
++		writeb(saved[2 * i + 1], rec + PORTMAP_PIN_BIT);
++	}
++}
++
++static int arisc_wait_portmap(struct h713_arisc *a, const u8 *map)
++{
++	ktime_t start = ktime_get();
++	unsigned int i;
++	u8 pin, bit, want;
++
++	do {
++		for (i = 0; i < ARISC_HDMI_PORTS; i++) {
++			void __iomem *rec = sram_at(a, SRAM_PORTMAP) +
++					    i * PORTMAP_STRIDE;
++
++			pin = readb(rec + PORTMAP_PIN);
++			bit = readb(rec + PORTMAP_PIN_BIT);
++			if (pin != map[i] || bit != BIT(map[i]))
++				break;
++		}
++		if (i == ARISC_HDMI_PORTS)
++			return 0;
++		usleep_range(500, 1000);
++	} while (ktime_ms_delta(ktime_get(), start) < HANDLER_TIMEOUT_MS);
++
++	/*
++	 * Two different failures, and they need different next steps, so they
++	 * get different lines: the priming still standing means the handler
++	 * never reached its stores, anything else means it reached them with a
++	 * payload buffer that had already been overwritten.
++	 */
++	want = BIT(map[i]);
++	if (pin == PORTMAP_POISON && bit == PORTMAP_POISON)
++		dev_err(a->dev,
++			"HostHDMIMAP: Satz %u traegt nach %d ms noch die Vorbelegung 0x%02x -- die Firmware hat die Karte nie geschrieben, erwartet war Pin %u (Bit 0x%02x)\n",
++			i, HANDLER_TIMEOUT_MS, PORTMAP_POISON, map[i], want);
++	else
++		dev_err(a->dev,
++			"HostHDMIMAP: Satz %u traegt Pin %u (Bit 0x%02x) statt Pin %u (Bit 0x%02x) -- die Firmware hat die Karte aus einem ueberschriebenen Puffer geschrieben\n",
++			i, pin, bit, map[i], want);
++
++	return -ETIMEDOUT;
++}
++
++/*
++ * Wait until no hotplug pulse is outstanding on any port.
++ *
++ * "Until it has landed" is meant literally, and the difference matters at
++ * probe time. The counter is a countdown the firmware ticks at roughly 10 ms;
++ * an outstanding pulse is therefore over in well under a second, and on a cold
++ * start there is regularly one in flight. On 07.09.2026 the port map ran into
++ * port 0 at 5, the V4L2 probe died with -EBUSY, and the same counter read 0 in
++ * the shell moments later (doku/nachtlog/B3-hpd-rennen.md) -- a 50 ms wait had
++ * been turned into a driver that does not come up.
++ *
++ * The deadline is the one already measured for this counter one function down,
++ * in arisc_hpd_locked(): 84 ticks plus reserve. Past it the firmware really is
++ * stuck, and only then is -EBUSY the truth. The budget is for all three ports
++ * together, because it bounds one firmware, not one port.
++ */
++static int arisc_wait_hpd_idle(struct h713_arisc *a)
++{
++	ktime_t start = ktime_get();
++	unsigned int i;
++	s64 waited;
++	u8 cur;
++
++	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
++		while ((cur = hpd_counter(a, i))) {
++			if (ktime_ms_delta(ktime_get(), start) >
++			    HPD_SETTLE_TIMEOUT_MS) {
++				dev_err(a->dev,
++					"HostHDMIMAP: Hotplug-Zaehler Port %u steht nach %u ms noch auf %u -- die Karte wird nicht angefasst\n",
++					i, HPD_SETTLE_TIMEOUT_MS, cur);
++				return -EBUSY;
++			}
++			usleep_range(1000, 2000);
++		}
++	}
++
++	/*
++	 * Said out loud rather than under dev_dbg: a wait here is the only
++	 * visible sign that the firmware was mid-pulse when the map was asked
++	 * for, and that is worth having in the log of a boot that went wrong.
++	 */
++	waited = ktime_ms_delta(ktime_get(), start);
++	if (waited)
++		dev_info(a->dev,
++			 "HostHDMIMAP: %lld ms auf das Landen eines Hotplug-Pulses gewartet\n",
++			 waited);
++
++	return 0;
++}
++
++int arisc_hdmi_set_portmap(const u8 *map, size_t count)
++{
++	struct h713_arisc *a = arisc_get(true);
++	u8 saved[2 * ARISC_HDMI_PORTS];
++	unsigned int i;
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (!map || count != ARISC_HDMI_PORTS)
++		return -EINVAL;
++	for (i = 0; i < ARISC_HDMI_PORTS; i++)
++		if (map[i] >= ARISC_HDMI_PORTS)
++			return -EINVAL;
++
++	mutex_lock(&a->lock);
++
++	/*
++	 * a->lock keeps our own sub-commands out of the window in which the
++	 * records hold the priming value; the firmware's main loop is the one
++	 * thing it does not cover, and it drives the pin exactly when a
++	 * hotplug counter has reached 1 (0x10f50..0x10f7c). A counter that is
++	 * still walking therefore means a pulse is outstanding, and the
++	 * honest answer is to leave the map alone until it has landed.
++	 */
++	ret = arisc_wait_hpd_idle(a);
++	if (ret)
++		goto out;
++
++	ret = arisc_arm_portmap_probe(a, saved);
++	if (!ret) {
++		ret = arisc_send(a, SUB_HOST_HDMI_MAP, map[0], map[1],
++				 &map[2], 1);
++		if (!ret)
++			ret = arisc_wait_portmap(a, map);
++	}
++	if (ret)
++		arisc_restore_portmap(a, saved);
++out:
++	arisc_report(a, "portmap %u,%u,%u rc=%d\n", map[0], map[1], map[2], ret);
++	mutex_unlock(&a->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_set_portmap);
++
++/*
++ * Upload the EDID. Both versions go up together and in this order because
++ * the firmware only publishes anything once fragment 7 has arrived: every
++ * fragment 0..6 clears the "data ready" byte (delay slot at 0x1256c) and
++ * only fragment 7 sets it and calls the output routine for all ports
++ * (0x12608). That is also why this takes no port argument -- the store is
++ * global; the port a fragment would name is not part of the command.
++ *
++ * Layout of a fragment: arg1 is the index, arg2 carries data byte 0 and the
++ * remaining 63 bytes ride in the payload, plain, no swapping.
++ */
++int arisc_hdmi_set_edid(const void *edid, size_t len)
++{
++	struct h713_arisc *a = arisc_get(true);
++	const u8 *bytes = edid;
++	unsigned int frag;
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (!edid || len != ARISC_HDMI_EDID_SIZE)
++		return -EINVAL;
++
++	mutex_lock(&a->lock);
++
++	ret = arisc_send(a, SUB_SET_EDID_VERSION, 2, 0, NULL, 0);
++	if (ret) {
++		dev_err(a->dev, "SetEDIDVersion nicht verarbeitet (%d)\n", ret);
++		goto out;
++	}
++
++	for (frag = 0; frag < EDID_FRAGMENTS; frag++) {
++		const u8 *p = bytes + frag * EDID_FRAGMENT_LEN;
++
++		ret = arisc_send(a, SUB_UPDATE_EDID, frag, p[0], p + 1,
++				 EDID_FRAGMENT_LEN - 1);
++		if (ret) {
++			dev_err(a->dev,
++				"UpdateEDID Fragment %u nicht verarbeitet (%d)\n",
++				frag, ret);
++			goto out;
++		}
++	}
++
++	/*
++	 * CheckEDIDUpdateStatus is the firmware's own confirmation that the
++	 * store is complete: payload ff f8 01 01 <ready> on channel 1, with
++	 * <ready> = [0x1723e] = g_Data.bEdidDataReady. Fragments 0..6 clear
++	 * that byte and only fragment 7 sets it and publishes the store, so
++	 * "1" is the answer to the question this command asks and the driver
++	 * fails the upload without it. No answer is an error too; the driver
++	 * does not carry on regardless.
++	 */
++	ret = arisc_send_and_reply(a, SUB_CHECK_EDID_STATUS, 0, 0,
++				   a->edid_status, sizeof(a->edid_status));
++	if (ret < 0)
++		goto out;
++	a->edid_status_len = ret;
++
++	if (ret != EDID_STATUS_LEN ||
++	    memcmp(a->edid_status, edid_status_prefix, EDID_STATUS_PREFIX_LEN)) {
++		dev_err(a->dev,
++			"CheckEDIDUpdateStatus antwortet %*ph statt ff f8 01 01 <ready> ...\n",
++			min(ret, EDID_STATUS_LEN), a->edid_status);
++		ret = -EPROTO;
++		goto out;
++	}
++	if (a->edid_status[EDID_STATUS_READY_BYTE] != EDID_DATA_READY) {
++		dev_err(a->dev,
++			"EDID nicht uebernommen: bEdidDataReady = %u statt %u, SRAM [0x1723e]=%u [0x1723f]=%u -- Fragment 7 hat die Ausgabe nicht ausgeloest\n",
++			a->edid_status[EDID_STATUS_READY_BYTE], EDID_DATA_READY,
++			readb(sram_at(a, SRAM_EDID_READY)),
++			readb(sram_at(a, SRAM_EDID_GATE)));
++		ret = -EPROTO;
++		goto out;
++	}
++	dev_info(a->dev, "EDID uebernommen, Status %*ph, Ausgabe-Gate [0x1723f]=%u\n",
++		 (int)min_t(size_t, a->edid_status_len, EDID_STATUS_LEN),
++		 a->edid_status, readb(sram_at(a, SRAM_EDID_GATE)));
++	ret = 0;
++out:
++	arisc_report(a, "set-edid rc=%d\n", ret);
++	mutex_unlock(&a->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_set_edid);
++
++/*
++ * Read the EDID back out of the DDC RAM. This is not one of the six services
++ * the integration plan lists, but VIDIOC_G_EDID needs it and the stock
++ * sequence issues it, so it is here.
++ *
++ * This uses the same framed sender as the status reply, and it answers with
++ * four frames rather than one: 0x12618 loops over fragment 0..3 (bound at
++ * 0x12714), reads 64 bytes per fragment out of the DDC RAM at 0x07091c00 +
++ * port * 0x100 + fragment * 0x40 (0x126c4..0x126f8) and sends each of them
++ * as ff f8 02 41 <fragment> <64 bytes> 00 <checksum> fe. So the reply is
++ * 4 * 72 payload bytes carrying one 256-byte EDID block, and this function
++ * puts the fragments back together in the order the firmware numbers them.
++ *
++ * The bytes themselves are handed over unchanged. Before the upload worked
++ * this read back the word-swapped ROM default, which is what made the
++ * attached laptop report a corrupt EDID header; deciding what a valid
++ * read-back looks like belongs to the caller and to a measurement that has
++ * not been taken yet.
++ */
++int arisc_hdmi_get_edid(unsigned int port, void *buf, size_t len)
++{
++	struct h713_arisc *a = arisc_get(true);
++	u8 frames[REQ_EDID_FRAGMENTS *
++		  (REQ_EDID_PREFIX_LEN + EDID_FRAGMENT_LEN + 3)];
++	unsigned int i, stride, nframes, got = 0;
++	u8 *out = buf;
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (port >= ARISC_HDMI_PORTS || !buf || !len)
++		return -EINVAL;
++
++	stride = sizeof(frames) / REQ_EDID_FRAGMENTS;
++
++	mutex_lock(&a->lock);
++	ret = arisc_send_and_reply(a, SUB_REQUEST_EDID, port, 0, frames,
++				   sizeof(frames));
++	if (ret < 0)
++		goto out;
++
++	nframes = ret / stride;
++	if (ret % stride || !nframes) {
++		dev_err(a->dev,
++			"RequestEDID Port %u: %d Byte Nutzlast, kein Vielfaches von %u\n",
++			port, ret, stride);
++		ret = -EPROTO;
++		goto out;
++	}
++	if (nframes < REQ_EDID_FRAGMENTS)
++		dev_warn(a->dev,
++			 "RequestEDID Port %u: nur %u von %u Fragmenten angekommen\n",
++			 port, nframes, REQ_EDID_FRAGMENTS);
++
++	/*
++	 * 0x12618 counts the fragments up from 0 and sends them in that
++	 * order, so fragment i belongs at offset i * 64. Anything else means
++	 * the stream was not this command's answer.
++	 */
++	for (i = 0; i < nframes; i++) {
++		const u8 *f = frames + i * stride;
++		size_t off = (size_t)i * EDID_FRAGMENT_LEN, copy;
++
++		if (memcmp(f, req_edid_prefix, sizeof(req_edid_prefix)) ||
++		    f[REQ_EDID_PREFIX_LEN - 1] != i) {
++			dev_err(a->dev,
++				"RequestEDID Port %u: Rahmen %u beginnt %*ph statt ff f8 02 41 %02x\n",
++				port, i, REQ_EDID_PREFIX_LEN, f, i);
++			ret = -EPROTO;
++			goto out;
++		}
++
++		if (off >= len)
++			break;
++		copy = min_t(size_t, len - off, EDID_FRAGMENT_LEN);
++		memcpy(out + off, f + REQ_EDID_PREFIX_LEN, copy);
++		got = off + copy;
++	}
++	ret = got;
++out:
++	arisc_report(a, "get-edid port=%u rc=%d\n", port, ret);
++	mutex_unlock(&a->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_get_edid);
++
++/*
++ * Only (port 0, mode 0) is what the stock sequence sends and what has been
++ * measured; the arguments are passed through so the receive driver can use
++ * the command as the firmware defines it.
++ */
++int arisc_hdmi_audio_mode(unsigned int port, u8 mode)
++{
++	struct h713_arisc *a = arisc_get(true);
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (port >= ARISC_HDMI_PORTS)
++		return -EINVAL;
++
++	mutex_lock(&a->lock);
++	ret = arisc_send(a, SUB_SET_EDID_AUDIO, port, mode, NULL, 0);
++	arisc_report(a, "audio-mode port=%u mode=%u rc=%d\n", port, mode, ret);
++	mutex_unlock(&a->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_audio_mode);
++
++int arisc_hdmi_5v(unsigned int port, bool on)
++{
++	struct h713_arisc *a = arisc_get(true);
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (port >= ARISC_HDMI_PORTS)
++		return -EINVAL;
++
++	mutex_lock(&a->lock);
++	ret = arisc_send(a, SUB_SET_5V_FLAG, port, on ? 1 : 0, NULL, 0);
++	arisc_report(a, "5v port=%u %s rc=%d\n", port, on ? "on" : "off", ret);
++	mutex_unlock(&a->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_5v);
++
++/*
++ * PullHotPlug. The firmware works the counter in two stages: a ~100 Hz timer
++ * walks it down to 1, and only the main loop takes it to 0 and raises the
++ * pin. So for UP and RESET the counter reaching 0 is the proof that the pin
++ * actually moved, and for RESET the counter has to pass through ~84 on the
++ * way. DOWN pulls the pin low inside the handler and leaves the counter
++ * alone, so the handler acknowledgement is all there is.
++ *
++ * The counter is necessary but not sufficient for a rising edge, and that is
++ * the one hole this check had. The routine that drives the pin, 0x121e4,
++ * reads [0x1723f] first (0x12210) and, while that byte is zero, prints
++ * "EDID-HPD %d LOW" and overwrites its own value argument with 0 (0x12238) --
++ * the pin stays low no matter what was asked. The main loop still runs the
++ * counter down to 0 in that case, so without looking at the byte the driver
++ * would report a rise that never happened. [0x1723f] is set at the very end
++ * of the publish routine 0x11d88 (0x11e6c, right after "edid updated"), so a
++ * closed gate means the EDID was never published and there is nothing for a
++ * sink to read anyway. Refusing is the honest answer; waiting for it would
++ * be a pause dressed up as a condition.
++ */
++static int arisc_hpd_locked(struct h713_arisc *a, unsigned int port,
++			    enum arisc_hdmi_hpd_action action)
++{
++	ktime_t start;
++	u8 peak = 0, cur = 0;
++	int ret;
++
++	if (action != ARISC_HDMI_HPD_DOWN &&
++	    !readb(sram_at(a, SRAM_EDID_GATE))) {
++		dev_err(a->dev,
++			"PullHotPlug Port %u: Ausgabe-Gate [0x1723f] ist 0 -- die Firmware zwingt den Pin low, EDID wurde nie ausgegeben\n",
++			port);
++		return -EIO;
++	}
++
++	ret = arisc_send(a, SUB_PULL_HOTPLUG, port, action, NULL, 0);
++	if (ret)
++		return ret;
++	if (action == ARISC_HDMI_HPD_DOWN)
++		return 0;
++
++	start = ktime_get();
++	do {
++		cur = hpd_counter(a, port);
++		peak = max(peak, cur);
++		if (cur == 0 &&
++		    (action != ARISC_HDMI_HPD_RESET || peak >= HPD_RESET_PEAK_MIN))
++			return 0;
++		usleep_range(1000, 2000);
++	} while (ktime_ms_delta(ktime_get(), start) < HPD_SETTLE_TIMEOUT_MS);
++
++	if (action == ARISC_HDMI_HPD_RESET && peak < HPD_RESET_PEAK_MIN) {
++		dev_err(a->dev,
++			"PullHotPlug RESET Port %u: Zaehler kam nur auf %u statt %u\n",
++			port, peak, HPD_RESET_COUNTER);
++		return -EIO;
++	}
++	dev_err(a->dev, "PullHotPlug Port %u: Zaehler blieb auf %u stehen\n",
++		port, cur);
++	return -ETIMEDOUT;
++}
++
++int arisc_hdmi_hpd(unsigned int port, enum arisc_hdmi_hpd_action action)
++{
++	struct h713_arisc *a = arisc_get(true);
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (port >= ARISC_HDMI_PORTS)
++		return -EINVAL;
++	if (action != ARISC_HDMI_HPD_UP && action != ARISC_HDMI_HPD_DOWN &&
++	    action != ARISC_HDMI_HPD_RESET)
++		return -EINVAL;
++
++	mutex_lock(&a->lock);
++	ret = arisc_hpd_locked(a, port, action);
++	arisc_report(a, "hpd port=%u action=%u rc=%d\n", port, action, ret);
++	mutex_unlock(&a->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_hpd);
++
++/*
++ * The whole stock bring-up in one call, in the order that has been proven on
++ * hardware (doku/75, doku/82): reset the EDID module, hand it the port map,
++ * select EDID version 2, upload both blocks, confirm, read back, set the
++ * audio mode and the +5V flag, then pulse the hotplug pin.
++ *
++ * It is exported because the HDMI receive driver has to run exactly this at
++ * probe time and splitting it across the callers would invite reordering --
++ * the order is not a convention, it is what the firmware accepts.
++ */
++int arisc_hdmi_edid_init(unsigned int port, const void *edid, size_t len)
++{
++	struct h713_arisc *a = arisc_get(false);
++	u8 readback[EDID_FRAGMENT_LEN];
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (port >= ARISC_HDMI_PORTS)
++		return -EINVAL;
++
++	if (!edid) {
++		if (!a->edid_valid) {
++			dev_err(a->dev,
++				"kein EDID vorhanden -- " FW_NAME_EDID " fehlt\n");
++			return -ENOENT;
++		}
++		edid = a->edid;
++		len = sizeof(a->edid);
++	}
++
++	ret = arisc_hdmi_reset_edid();
++	if (ret)
++		return ret;
++	ret = arisc_hdmi_set_portmap(default_portmap, ARISC_HDMI_PORTS);
++	if (ret)
++		return ret;
++	ret = arisc_hdmi_set_edid(edid, len);
++	if (ret)
++		return ret;
++	ret = arisc_hdmi_get_edid(port, readback, sizeof(readback));
++	if (ret < 0)
++		return ret;
++	dev_info(a->dev, "EDID zurueckgelesen (%d B): %*ph\n", ret,
++		 min(ret, 16), readback);
++
++	ret = arisc_hdmi_audio_mode(port, 0);
++	if (ret)
++		return ret;
++	ret = arisc_hdmi_5v(port, true);
++	if (ret)
++		return ret;
++
++	ret = arisc_hdmi_hpd(port, ARISC_HDMI_HPD_DOWN);
++	if (ret)
++		return ret;
++	msleep(HPD_DOWN_MS);
++	ret = arisc_hdmi_hpd(port, ARISC_HDMI_HPD_UP);
++	if (ret)
++		return ret;
++
++	dev_info(a->dev, "EDID/HPD-Sequenz auf Port %u abgeschlossen\n", port);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_edid_init);
++
++/* ---- debugfs ------------------------------------------------------------ */
++
++static int h713_arisc_status_show(struct seq_file *s, void *unused)
++{
++	struct h713_arisc *a = s->private;
++
++	mutex_lock(&a->lock);
++	seq_printf(s, "startup_notify: %s\n",
++		   a->notify_result == 0 ? "acked" :
++		   a->notify_result == -ETIMEDOUT ? "not seen" : "malformed");
++	seq_printf(s, "firmware_version: %s\n", a->notify_version);
++	seq_printf(s, "arisc: %s\n", a->running ? "running" : "not running");
++	seq_printf(s, "edid_module: %s\n",
++		   a->edid_module_ready ? "ready" : "not reset");
++	seq_printf(s, "edid_firmware: %s\n",
++		   a->edid_valid ? FW_NAME_EDID " loaded" : "missing");
++	if (a->edid_status_len)
++		seq_printf(s, "edid_status: %*ph\n",
++			   (int)min_t(size_t, a->edid_status_len,
++				      EDID_STATUS_LEN),
++			   a->edid_status);
++	/*
++	 * The two bytes the EDID path turns on: g_Data.bEdidDataReady, which
++	 * fragment 7 sets, and the gate the publish routine sets after it has
++	 * written the DDC RAM. Both live in SRAM A2 -- no aux register is
++	 * touched, so this file stays safe to read at any time.
++	 */
++	seq_printf(s, "edid_ready: %u\nedid_gate: %u\n",
++		   readb(sram_at(a, SRAM_EDID_READY)),
++		   readb(sram_at(a, SRAM_EDID_GATE)));
++	/*
++	 * The port map as the firmware holds it, not as the driver asked for
++	 * it: byte 2 of each record is the pin the hotplug driver at 0x121e4
++	 * will touch for that port.
++	 *
++	 * Read it as state, never as a verdict. 0,1,2 is also what the ROM
++	 * table leaves here when the firmware starts, so this line looks the
++	 * same whether HostHDMIMAP was processed or never got that far. What
++	 * says which is the return code of the command; see
++	 * arisc_wait_portmap(). The line is worth having for the other case:
++	 * anything that is *not* the requested map, 2,0,0 above all, names the
++	 * payload the firmware read instead.
++	 */
++	seq_printf(s, "portmap: %u,%u,%u\n",
++		   readb(sram_at(a, SRAM_PORTMAP) + PORTMAP_PIN),
++		   readb(sram_at(a, SRAM_PORTMAP) + PORTMAP_STRIDE + PORTMAP_PIN),
++		   readb(sram_at(a, SRAM_PORTMAP) + 2 * PORTMAP_STRIDE + PORTMAP_PIN));
++	seq_printf(s, "hpd_counter: %u %u %u\n", hpd_counter(a, 0),
++		   hpd_counter(a, 1), hpd_counter(a, 2));
++	seq_printf(s, "rpm_state: %u\n", readl(sram_at(a, SRAM_RPM_STATE)));
++	seq_printf(s, "fifo_tx: port0=%u port3=%u\n",
++		   readl(a->tx + U1_FIFO_STAT(PORT_HDMI)),
++		   readl(a->tx + U1_FIFO_STAT(PORT_STANDBY)));
++	seq_printf(s, "fifo_rx: ch0=%u ch1=%u ch2=%u ch3=%u\n",
++		   readl(a->rx + U0_FIFO_STAT(0)), readl(a->rx + U0_FIFO_STAT(1)),
++		   readl(a->rx + U0_FIFO_STAT(2)), readl(a->rx + U0_FIFO_STAT(3)));
++	seq_printf(s, "last_command: %s", a->last_cmd);
++	mutex_unlock(&a->lock);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(h713_arisc_status);
++
++/*
++ * cmd: the whole HDMI interface from the shell, so a bring-up needs no
++ * userspace helper at all.
++ *
++ *	edid [port]		full EDID/HPD sequence (~13 s, includes the
++ *				10 s the hotplug pin stays low)
++ *	reset-edid		ResetEDIDModule, unlocks the rest
++ *	portmap a b c		HostHDMIMAP
++ *	hpd <port> up|down|reset
++ *	5v <port> on|off
++ *	get-edid <port>		read back, result goes to the kernel log
++ */
++static ssize_t h713_arisc_cmd_write(struct file *file, const char __user *ubuf,
++				    size_t count, loff_t *ppos)
++{
++	struct h713_arisc *a = file_inode(file)->i_private;
++	unsigned int port = 0, m0, m1, m2;
++	u8 readback[EDID_FRAGMENT_LEN];
++	char buf[64], word[8], *cmd;
++	u8 map[ARISC_HDMI_PORTS];
++	int ret;
++
++	if (!count || count >= sizeof(buf))
++		return -EINVAL;
++	if (copy_from_user(buf, ubuf, count))
++		return -EFAULT;
++	buf[count] = '\0';
++	cmd = strim(buf);
++
++	if (!strcmp(cmd, "edid") || sscanf(cmd, "edid %u", &port) == 1)
++		ret = arisc_hdmi_edid_init(port, NULL, 0);
++	else if (!strcmp(cmd, "reset-edid"))
++		ret = arisc_hdmi_reset_edid();
++	else if (!strcmp(cmd, "portmap"))
++		ret = arisc_hdmi_set_portmap(default_portmap, ARISC_HDMI_PORTS);
++	else if (sscanf(cmd, "portmap %u %u %u", &m0, &m1, &m2) == 3) {
++		map[0] = m0;
++		map[1] = m1;
++		map[2] = m2;
++		ret = arisc_hdmi_set_portmap(map, ARISC_HDMI_PORTS);
++	} else if (sscanf(cmd, "hpd %u %7s", &port, word) == 2) {
++		if (!strcmp(word, "up"))
++			ret = arisc_hdmi_hpd(port, ARISC_HDMI_HPD_UP);
++		else if (!strcmp(word, "down"))
++			ret = arisc_hdmi_hpd(port, ARISC_HDMI_HPD_DOWN);
++		else if (!strcmp(word, "reset"))
++			ret = arisc_hdmi_hpd(port, ARISC_HDMI_HPD_RESET);
++		else
++			ret = -EINVAL;
++	} else if (sscanf(cmd, "5v %u %7s", &port, word) == 2) {
++		ret = arisc_hdmi_5v(port, !strcmp(word, "on"));
++	} else if (sscanf(cmd, "get-edid %u", &port) == 1) {
++		ret = arisc_hdmi_get_edid(port, readback, sizeof(readback));
++		if (ret > 0) {
++			dev_info(a->dev, "RequestEDID Port %u (%d B): %*ph\n",
++				 port, ret, min(ret, 16), readback);
++			ret = 0;
++		}
++	} else {
++		ret = -EINVAL;
++	}
++
++	return ret ? ret : count;
++}
++
++static int h713_arisc_cmd_show(struct seq_file *s, void *unused)
++{
++	struct h713_arisc *a = s->private;
++
++	mutex_lock(&a->lock);
++	seq_printf(s, "%s", a->last_cmd);
++	mutex_unlock(&a->lock);
++	return 0;
++}
++
++static int h713_arisc_cmd_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, h713_arisc_cmd_show, inode->i_private);
++}
++
++static const struct file_operations h713_arisc_cmd_fops = {
++	.owner		= THIS_MODULE,
++	.open		= h713_arisc_cmd_open,
++	.read		= seq_read,
++	.write		= h713_arisc_cmd_write,
++	.llseek		= seq_lseek,
++	.release	= single_release,
++};
++
++/* ---- driver ------------------------------------------------------------- */
++
++static int h713_arisc_map(struct platform_device *pdev, const char *name,
++			  void __iomem **out)
++{
++	struct resource *res;
++	void __iomem *base;
++
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
++	if (!res)
++		return dev_err_probe(&pdev->dev, -EINVAL,
++				     "reg-Eintrag \"%s\" fehlt\n", name);
++
++	/*
++	 * devm_ioremap(), not devm_ioremap_resource(): two of these windows
++	 * sit inside blocks another node already claims -- the msgbox banks
++	 * inside cpu_comm's 0x03003000 page, and the CPUS timer gates inside
++	 * the r_ccu register file. The registers themselves are disjoint (see
++	 * the binding); requesting the regions exclusively would only make
++	 * one of the two drivers fail to probe.
++	 */
++	base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
++	if (!base)
++		return dev_err_probe(&pdev->dev, -ENOMEM,
++				     "\"%s\" nicht abbildbar\n", name);
++	*out = base;
++	return 0;
++}
++
++static int h713_arisc_start(struct h713_arisc *a)
++{
++	const struct firmware *fw;
++	const char *name = FW_NAME_ARISC;
++	int ret;
++
++	of_property_read_string_index(a->dev->of_node, "firmware-name", 0,
++				      &name);
++
++	ret = request_firmware(&fw, name, a->dev);
++	if (ret)
++		return dev_err_probe(a->dev, ret,
++				     "ARISC-Firmware \"%s\" nicht ladbar\n",
++				     name);
++
++	if (fw->size < SRAM_IMAGE_SIZE) {
++		dev_err(a->dev, "\"%s\" ist %zu Byte, mindestens %u noetig\n",
++			name, fw->size, SRAM_IMAGE_SIZE);
++		release_firmware(fw);
++		return -EINVAL;
++	}
++
++	arisc_enable_cpus_clocks(a);
++	arisc_set_reset(a, true);
++	arisc_drain_rx(a);
++
++	ret = arisc_load_image(a, fw->data);
++	release_firmware(fw);
++	if (ret)
++		return ret;
++
++	arisc_write_para(a);
++	arisc_set_reset(a, false);
++
++	a->notify_result = arisc_startup_handshake(a);
++	if (a->notify_result) {
++		/*
++		 * Not fatal for the bind -- debugfs is the only way to find
++		 * out why -- but nothing works: every service checks
++		 * ->running and answers -ENODEV.
++		 */
++		dev_err(a->dev,
++			"ARISC-Startup-Notify %s (%d) -- die Firmware steht vor ihrer Hauptschleife und bedient keinen HDMI-Befehl\n",
++			a->notify_result == -ETIMEDOUT ? "nicht gesehen"
++						       : "fehlerhaft",
++			a->notify_result);
++		return 0;
++	}
++
++	a->running = true;
++	dev_info(a->dev, "ARISC-Startup-Notify quittiert: %s\n",
++		 a->notify_version);
++	return 0;
++}
++
++static void h713_arisc_load_edid(struct h713_arisc *a)
++{
++	const struct firmware *fw;
++	const char *name = FW_NAME_EDID;
++	int ret;
++
++	of_property_read_string_index(a->dev->of_node, "firmware-name", 1,
++				      &name);
++
++	ret = request_firmware(&fw, name, a->dev);
++	if (ret) {
++		dev_warn(a->dev,
++			 "EDID \"%s\" nicht geladen (%d) -- die EDID-Sequenz braucht ein EDID vom Aufrufer\n",
++			 name, ret);
++		return;
++	}
++	if (fw->size != ARISC_HDMI_EDID_SIZE) {
++		dev_warn(a->dev, "\"%s\" ist %zu Byte statt %u -- ignoriert\n",
++			 name, fw->size, ARISC_HDMI_EDID_SIZE);
++		release_firmware(fw);
++		return;
++	}
++	memcpy(a->edid, fw->data, ARISC_HDMI_EDID_SIZE);
++	a->edid_valid = true;
++	release_firmware(fw);
++}
++
++static int h713_arisc_probe(struct platform_device *pdev)
++{
++	struct h713_arisc *a;
++	int ret;
++
++	if (h713_arisc)
++		return -EBUSY;
++
++	a = devm_kzalloc(&pdev->dev, sizeof(*a), GFP_KERNEL);
++	if (!a)
++		return -ENOMEM;
++
++	a->dev = &pdev->dev;
++	a->seq = 1;
++	a->notify_result = -ENODATA;
++	strscpy(a->notify_version, "-", sizeof(a->notify_version));
++	strscpy(a->last_cmd, "noch kein Befehl\n", sizeof(a->last_cmd));
++	mutex_init(&a->lock);
++
++	ret = h713_arisc_map(pdev, "sram", &a->sram);
++	if (ret)
++		return ret;
++	ret = h713_arisc_map(pdev, "msgbox-rx", &a->rx);
++	if (ret)
++		return ret;
++	ret = h713_arisc_map(pdev, "msgbox-tx", &a->tx);
++	if (ret)
++		return ret;
++	ret = h713_arisc_map(pdev, "reset", &a->reset);
++	if (ret)
++		return ret;
++	ret = h713_arisc_map(pdev, "cpus-clk", &a->cpus_clk);
++	if (ret)
++		return ret;
++
++	platform_set_drvdata(pdev, a);
++	h713_arisc_load_edid(a);
++
++	ret = h713_arisc_start(a);
++	if (ret)
++		return ret;
++
++	a->debugfs = debugfs_create_dir("h713-arisc", NULL);
++	debugfs_create_file("status", 0400, a->debugfs, a,
++			    &h713_arisc_status_fops);
++	debugfs_create_file("cmd", 0600, a->debugfs, a, &h713_arisc_cmd_fops);
++
++	h713_arisc = a;
++	return 0;
++}
++
++static void h713_arisc_remove(struct platform_device *pdev)
++{
++	struct h713_arisc *a = platform_get_drvdata(pdev);
++
++	h713_arisc = NULL;
++	debugfs_remove_recursive(a->debugfs);
++	/*
++	 * Leave the core running. Stopping it would drop the hotplug pin of a
++	 * live HDMI input, and the reset is only safe to assert together with
++	 * a fresh image, which is what probe does.
++	 */
++}
++
++static const struct of_device_id h713_arisc_of_match[] = {
++	{ .compatible = "allwinner,sun50i-h713-arisc" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, h713_arisc_of_match);
++
++static struct platform_driver h713_arisc_driver = {
++	.probe	= h713_arisc_probe,
++	.remove	= h713_arisc_remove,
++	.driver	= {
++		.name		= "sun50i-h713-arisc",
++		.of_match_table	= h713_arisc_of_match,
++	},
++};
++module_platform_driver(h713_arisc_driver);
++
++MODULE_DESCRIPTION("Allwinner H713 ARISC co-processor and HDMI front end");
++MODULE_AUTHOR("HY310 Mainline Port");
++MODULE_LICENSE("GPL");
++MODULE_FIRMWARE(FW_NAME_ARISC);
++MODULE_FIRMWARE(FW_NAME_EDID);
+diff -ruN a/include/linux/soc/sunxi/h713-arisc.h b/include/linux/soc/sunxi/h713-arisc.h
+--- a/include/linux/soc/sunxi/h713-arisc.h	1970-01-01 01:00:00.000000000 +0100
++++ b/include/linux/soc/sunxi/h713-arisc.h	2026-09-06 22:09:50.635015733 +0200
+@@ -0,0 +1,106 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * In-kernel interface to the ARISC co-processor of the Allwinner H713.
++ *
++ * The HDMI receiver front end of this SoC -- hotplug pin, EDID store, the
++ * +5V detect flag and the DDC RAM -- belongs to the ARISC, a small OpenRISC
++ * core that owns the R_ peripherals. The ARM cannot drive any of it
++ * directly; reading the hotplug register 0x07091014 from the ARM hangs the
++ * SoC hard while the block is unclocked. The only supported path is to ask
++ * the firmware running on the ARISC, which is what sun50i-h713-arisc does.
++ *
++ * These functions exist for the HDMI receive path (sun50i-h713-hdmirx) to
++ * implement VIDIOC_S_EDID/G_EDID and its hotplug handling on top of. They
++ * may sleep, they take a driver-internal mutex, and they return a real
++ * error when the co-processor does not answer -- never a silent success.
++ *
++ * Ordering rule that this interface enforces: the aux register block at
++ * 0x0709xxxx does not exist for the ARM until the ARISC has processed
++ * ResetEDIDModule; a read before that hangs the SoC. Every function below
++ * except arisc_hdmi_reset_edid() therefore fails with -EAGAIN until that
++ * command has been acknowledged, and a consumer that wants to touch the
++ * aux block has to call arisc_hdmi_reset_edid() first and honour its
++ * return value.
++ */
++#ifndef __LINUX_SOC_SUNXI_H713_ARISC_H
++#define __LINUX_SOC_SUNXI_H713_ARISC_H
++
++#include <linux/errno.h>
++#include <linux/types.h>
++
++/* The firmware knows three HDMI ports; this board has one socket (port 0). */
++#define ARISC_HDMI_PORTS		3
++
++/*
++ * The EDID the firmware expects is both versions back to back: fragments
++ * 0..3 are the HDMI 1.4 block, fragments 4..7 the HDMI 2.0 block. It only
++ * publishes an EDID once fragment 7 has arrived, so the two halves cannot
++ * be uploaded separately.
++ */
++#define ARISC_HDMI_EDID_SIZE		512
++
++/* PullHotPlug values, firmware case 7 */
++enum arisc_hdmi_hpd_action {
++	ARISC_HDMI_HPD_UP	= 1,	/* raise the pin (via the tick counter) */
++	ARISC_HDMI_HPD_DOWN	= 2,	/* pull the pin low immediately */
++	ARISC_HDMI_HPD_RESET	= 3,	/* pin low, then raise after ~840 ms */
++};
++
++#if IS_ENABLED(CONFIG_SUN50I_H713_ARISC)
++
++int arisc_hdmi_reset_edid(void);
++int arisc_hdmi_set_portmap(const u8 *map, size_t count);
++int arisc_hdmi_set_edid(const void *edid, size_t len);
++int arisc_hdmi_get_edid(unsigned int port, void *buf, size_t len);
++int arisc_hdmi_audio_mode(unsigned int port, u8 mode);
++int arisc_hdmi_5v(unsigned int port, bool on);
++int arisc_hdmi_hpd(unsigned int port, enum arisc_hdmi_hpd_action action);
++int arisc_hdmi_edid_init(unsigned int port, const void *edid, size_t len);
++
++#else
++
++static inline int arisc_hdmi_reset_edid(void)
++{
++	return -ENODEV;
++}
++
++static inline int arisc_hdmi_set_portmap(const u8 *map, size_t count)
++{
++	return -ENODEV;
++}
++
++static inline int arisc_hdmi_set_edid(const void *edid, size_t len)
++{
++	return -ENODEV;
++}
++
++static inline int arisc_hdmi_get_edid(unsigned int port, void *buf, size_t len)
++{
++	return -ENODEV;
++}
++
++static inline int arisc_hdmi_audio_mode(unsigned int port, u8 mode)
++{
++	return -ENODEV;
++}
++
++static inline int arisc_hdmi_5v(unsigned int port, bool on)
++{
++	return -ENODEV;
++}
++
++static inline int arisc_hdmi_hpd(unsigned int port,
++				 enum arisc_hdmi_hpd_action action)
++{
++	return -ENODEV;
++}
++
++static inline int arisc_hdmi_edid_init(unsigned int port, const void *edid,
++				       size_t len)
++{
++	return -ENODEV;
++}
++
++#endif /* CONFIG_SUN50I_H713_ARISC */
++
++#endif /* __LINUX_SOC_SUNXI_H713_ARISC_H */

@@ -1,0 +1,152 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] soc: sunxi: cpu_comm: stop advancing the MIPS's NewCall ring after the CALL_ACK
+
+SendComm2CPUEx did one thing after a successful CALL_ACK that no other
+part of the driver does: it advanced the read index of a ring it does not
+own.
+
+    fifo_ItemRdNext((u32 *)(share_seq_w + 32));
+
+share_seq_w here is getShareSeqW(1, 0), the ring at 0x4E3026B8 whose
+local_cpu is the MIPS. Its FIFO at +32 is the MIPS's NewCall ring: the
+MIPS ISR side pushes the pointer to our CALL slot there
+(Comm_Add2NewCallFifo, display.bin 0x8b11d418) and then sends the
+CALL_ACK; the MIPS BG thread pops it later (Comm_GetCallbyChannel,
+0x8b11d81c, fifo_getItemRd @0x8b11dae0). One writer, one reader -- and we
+were a second reader, racing the BG thread for the very entry we had just
+sent.
+
+When our rd++ landed first, the BG thread found the ring empty
+(0x8b11dae8), returned NULL (0x8b11dfc4) and went back to sleep
+(BG_Thread 0x8b123c0c). Nothing else ran for that call: no
+Comm_ReleaseFreeCall (0x8b123cc0 -- hence one FreeCall slot lost per
+lost answer, permanently), no handler, no RETURN, no elog line. When the
+BG thread popped first, our rd++ hit an empty ring and was a no-op. That
+is exactly the picture in doku/nachtlog/C3 and C4: ~30 % of dense calls
+acknowledged but never answered, the outgoing ring leaking one slot each,
+the incoming ring untouched, nothing in the msgbox.
+
+It also explains the only knob that ever changed the loss. Our rd++ runs
+the moment the ACK semaphore wakes us. tx_delay_post_us moves that moment
+(100 us: 7/8 lost, 200: 4/40, 1000: 0/40); tx_delay_pre_us moves the
+doorbell instead and changes nothing (11/20, 15/20); the three console
+lines before the semaphore moved it by ~8 ms, which is why the console
+was the accidental settle; the legacy daemon's CALL_GAP_MS and the
+"FreeCall pool symptom" it throttled against were the same leak.
+
+The comment justifying the line ("MIPS's update via KSEG0 cache never
+propagates to ARM DDR view") does not hold: in every run with the console
+on, our rd++ came milliseconds after the BG thread's and was a no-op, yet
+500 (C2) and 40 (C3) calls went through without a single "FIFO nearly
+full" from the step-7 check on the same ring. The MIPS drains its ring
+itself, and we see it. The line had already been recorded as "no effect"
+when it was tried (re/notes/DEAD-ENDS.md:228, HANDOFF-PQD-…-F.md:151) and
+survived into 0014 with a new justification.
+
+Replaced by a read-only observation: if the entry is still in the ring
+when we wake, count it. That number, shown in watch as
+"newcall N mal beim CALL_ACK noch ungelesen", is how many calls the old
+line would have stolen. With dense calls and a silent console it has to
+sit near the old loss rate while "ohne Antwort" stays at 0 -- if it does
+not, this explanation is wrong and the patch must go.
+
+Not compiled. Dry-run against the 77-patch series only. Analysis in
+mainline/patches/vorschlaege/mips-return/BEFUND.md.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+diff -ruN inst-a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c inst-b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	2026-09-07 17:23:04.975137106 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	2026-09-07 17:26:44.140657797 +0200
+@@ -526,6 +526,13 @@
+ atomic_t cpu_comm_timeouts = ATOMIC_INIT(0);
+ 
+ /*
++ * How often the MIPS had not yet taken our CALL out of its NewCall ring when
++ * the CALL_ACK woke us. Read-only observation in SendComm2CPUEx; every one of
++ * these is a call the removed fifo_ItemRdNext() would have stolen.
++ */
++atomic_t cpu_comm_newcall_pending_at_ack = ATOMIC_INIT(0);
++
++/*
+  * Measuring knobs, /sys/kernel/debug/cpu_comm/tx_delay_{pre,post}_us. Default
+  * 0 = one comparison per call. See SendComm2CPUEx for what each one separates.
+  */
+@@ -1038,6 +1045,7 @@
+ 		       "rtable    version %u count %u\n"
+ 		       "spinlock2 owner=%u refcnt=%u thread=0x%08x %s\n"
+ 		       "calls_out %u, davon %u ohne Antwort\n"
++		       "newcall   %u mal beim CALL_ACK noch ungelesen\n"
+ 		       "freecall  rd=%u wr=%u cap=%u, belegt %u\n"
+ 		       "handlers  %u\n",
+ 		       atomic_read(&cpu_comm_rx_calls),
+@@ -1049,6 +1057,7 @@
+ 		       lock.owner, lock.ref_count, lock.thread_id,
+ 		       cpu_comm_rt_lock_idle(&lock) ? "frei" : "BELEGT",
+ 		       atomic_read(&cpu_comm_calls_out), atomic_read(&cpu_comm_timeouts),
++		       atomic_read(&cpu_comm_newcall_pending_at_ack),
+ 		       fc_rd, fc_wr, fc_cap, fc_used,
+ 		       n_snap);
+ 
+diff -ruN inst-a/drivers/soc/sunxi/cpu_comm/cpu_comm.h inst-b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-07 17:23:04.975272687 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-07 17:26:44.140734677 +0200
+@@ -691,6 +691,7 @@
+ 
+ extern atomic_t cpu_comm_calls_out;
+ extern atomic_t cpu_comm_timeouts;
++extern atomic_t cpu_comm_newcall_pending_at_ack;
+ extern u32 cpu_comm_tx_delay_pre_us;
+ extern u32 cpu_comm_tx_delay_post_us;
+ int  AddReturn2Fifo(u32 *fifo, void *data);
+diff -ruN inst-a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c inst-b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 17:23:04.975353727 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 17:26:44.140343564 +0200
+@@ -597,9 +597,44 @@
+ 			ReleaseWaitComm(dst_cpu, (unsigned long)wait_ptr);
+ 		}
+ 	} else {
+-		/* Advance CMD-FIFO Rd on ARM side — MIPS's update via KSEG0 cache
+-		 * never propagates to ARM DDR view. Without this: -EBUSY at 19. */
+-		fifo_ItemRdNext((u32 *)(share_seq_w + 32));
++		/*
++		 * Kein fifo_ItemRdNext() auf share_seq_w + 32 mehr.
++		 *
++		 * Diese FIFO ist die NewCall-FIFO des MIPS, nicht unsere. Seine
++		 * ISR-Seite legt den Eintrag dort ab (Comm_Add2NewCallFifo,
++		 * display.bin 0x8b11d418: fifo_getItemWr @0x8b11d478, Eintrag
++		 * @0x8b11d48c, fifo_requestItemWr @0x8b11d488), sein BG-Thread
++		 * holt ihn wieder heraus (Comm_GetCallbyChannel 0x8b11d81c:
++		 * fifo_getItemRd @0x8b11dae0, fifo_ItemRdNext @0x8b11ddc0). Ein
++		 * Ring mit einem Schreiber und einem Leser -- und wir waren der
++		 * zweite Leser. Kam unser rd++ vor dem des BG-Threads, sah der
++		 * den Ring leer (0x8b11dae8), gab NULL zurueck (0x8b11dfc4) und
++		 * legte sich wieder schlafen (BG_Thread 0x8b123c0c). Der Ruf war
++		 * quittiert, aber nie bearbeitet: kein Comm_ReleaseFreeCall
++		 * (0x8b123cc0, deshalb der dauerhaft belegte Slot), kein Handler,
++		 * kein RETURN, kein elog. Kam der BG-Thread zuerst, war unser
++		 * rd++ ein Leerlauf (rd == wr). Genau das Bild aus
++		 * doku/nachtlog/C3 und C4 -- und der Zeitpunkt unseres rd++ ist
++		 * das Aufwachen aus der ACK-Semaphore, also genau die Groesse, die
++		 * tx_delay_post_us, die Konsolenzeilen und der Settle des
++		 * Legacy-Daemons verschoben haben.
++		 *
++		 * Die alte Begruendung ("MIPS's update via KSEG0 cache never
++		 * propagates") traegt nicht: in jedem Lauf mit eingeschalteter
++		 * Konsole kam unser rd++ Millisekunden nach dem des BG-Threads
++		 * und war ein Leerlauf, und die Rufe liefen trotzdem ohne "FIFO
++		 * nearly full" durch (C2: 500/500, C3: 40/40). Den Ring raeumt der
++		 * MIPS selbst, fuer uns sichtbar.
++		 *
++		 * Was bleibt, ist ein Blick ohne Schreibzugriff: liegt der Eintrag
++		 * in diesem Moment noch im Ring, haette die alte Zeile ihn
++		 * gestohlen. Der Zaehler steht in watch und muss bei dichten
++		 * Rufen ungefaehr die fruehere Verlustrate zeigen, waehrend
++		 * "ohne Antwort" bei 0 bleibt -- sonst stimmt diese Erklaerung
++		 * nicht. mainline/patches/vorschlaege/mips-return/BEFUND.md.
++		 */
++		if (fifo_getCount((u32 *)(share_seq_w + 32)) > 0)
++			atomic_inc(&cpu_comm_newcall_pending_at_ack);
+ 	}
+ 
+ out_cleanup_wait:

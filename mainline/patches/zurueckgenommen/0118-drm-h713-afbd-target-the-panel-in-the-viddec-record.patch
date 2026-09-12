@@ -1,0 +1,87 @@
+drm: sun50i-h713-afbd: tell the firmware the target is the panel, not the source
+
+0117 got the firmware to rebuild its window chain on a geometry change, and it
+does -- but it rebuilds onto the wrong target. With a 1280x720 source it put
+852x480 through the nodes and out at 1280x720, and the wall showed torn
+content. Asked directly, through the firmware's own debug shell (win wm, win
+wi), it says what it thinks it is doing:
+
+    m_src_cfg        : [0, 0, 20480, 11520]     /16 = 1280x720
+    m_dst_cfg        : [0, 0, 20480, 11520]     /16 = 1280x720
+    m_src_active_win : [0, 0,  853,  480]
+    m_dst_active_win : [0, 0, 1280,  720]
+    node 3           : 852x480 -> 1280x720
+
+The panel has dropped out of the chain entirely. Before the republication those
+same fields read 30720x17280, which is 1920x1080 in the same 1/16 units.
+
+The reason is here. This record carries a source half and a target half --
+doku/86 4 calls words 2..5 "Quell- und Zielgroesse" -- and this function wrote
+the source geometry into both halves, and again into both of the 1/16-pixel
+window pairs at 28/30 and 32/34. So the firmware was told, literally, that the
+target is 1280x720, and it built exactly that.
+
+Put the panel in the target half. In ring mode that is the display mode the
+driver already drives; outside ring mode target stays source, because there the
+record describes the plane's own frame and there is no second geometry.
+
+The mapping is not inferred from the disassembly but read back out of the
+running firmware: 20480 is 1280*16, and it appeared in m_src_cfg the moment
+this driver published w = 1280.
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 21:42:37.109274624 +0200
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 21:42:37.115278840 +0200
+@@ -288,7 +288,8 @@
+  * firmware was not measured against is left at zero.
+  */
+ static void h713_afbd_build_video_info(u32 *rec, unsigned int w,
+-				       unsigned int h, unsigned int stride)
++				       unsigned int h, unsigned int stride,
++				       unsigned int dst_w, unsigned int dst_h)
+ {
+ 	memset(rec, 0, H713_VIDEO_INFO_WORDS * sizeof(*rec));
+ 
+@@ -296,8 +297,8 @@
+ 	rec[1] = 2;			/* record type: video decoder frame */
+ 	rec[2] = w;
+ 	rec[3] = h;
+-	rec[4] = w;
+-	rec[5] = h;
++	rec[4] = dst_w;
++	rec[5] = dst_h;
+ 	rec[6] = 0;
+ 	rec[7] = h;
+ 	rec[8] = 0;
+@@ -311,10 +312,17 @@
+ 	rec[24] = 0;			/* SDR */
+ 	rec[25] = 0;			/* no HDR metadata buffers */
+ 	rec[26] = 0;
+-	rec[28] = w * 16;		/* display window, 1/16 pixel */
++	/*
++	 * The window manager reads these four straight into m_src_cfg and
++	 * m_dst_cfg, measured through the firmware's own shell (win wm): with
++	 * w = 1280 they came back as [0, 0, 20480, 11520], which is 1280 and
++	 * 720 in 1/16 pixel. So the first pair is what the firmware is being
++	 * handed as the source and the second is what it takes as the target.
++	 */
++	rec[28] = w * 16;		/* source window, 1/16 pixel */
+ 	rec[30] = h * 16;
+-	rec[32] = w * 16;
+-	rec[34] = h * 16;
++	rec[32] = dst_w * 16;		/* target window, 1/16 pixel */
++	rec[34] = dst_h * 16;
+ }
+ 
+ /*
+@@ -423,7 +431,9 @@
+ 	unsigned int i;
+ 
+ 	new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr;
+-	h713_afbd_build_video_info(rec, w, hgt, stride);
++	h713_afbd_build_video_info(rec, w, hgt, stride,
++				   ring ? h->mode.hdisplay : w,
++				   ring ? h->mode.vdisplay : hgt);
+ 	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
+ 	write_record = differs && (!h->video_info_published || ring);
+ 	if (differs && h->video_info_published && !ring)

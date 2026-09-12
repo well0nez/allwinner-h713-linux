@@ -1,0 +1,67 @@
+arm64: dts: h713: die WLAN-Einschaltleitung in den Geraetebaum
+
+Der AIC8800-Treiber sucht die Einschaltleitung des WLAN-Chips bisher unter
+einer fest eingetragenen absoluten GPIO-Nummer. Absolute Nummern beschreiben
+keine Hardware, sondern nur den Zustand der gpiolib-Registrierung: sie haengen
+davon ab, welcher GPIO-Controller in welcher Reihenfolge und mit wie vielen
+Leitungen registriert wurde. Das steht nirgends im Schaltplan und aendert sich
+bei jeder Anpassung an der pinctrl. Die Leitung gehoert in den Geraetebaum.
+
+Der Knoten dafuer ist bereits da: mmc@4021000/wifi@1 beschreibt den Chip am
+SDIO-Bus und traegt schon den host-wake-Eingang PM0 als Interrupt. Die
+Einschaltleitung PM1 steht im Stock-Geraetebaum unmittelbar daneben
+(re/vendor/HY310/hy310_factory.dts, Knoten rfkill/wlan):
+
+    wlan_regon    = <0x18 0x01 0x01 0x00>;   phandle r_pio, Bank 1 = M, Pin 1
+    wlan_hostwake = <0x18 0x01 0x00 0x00>;   phandle r_pio, Bank 1 = M, Pin 0
+
+Unser Eintrag uebersetzt sich Zelle fuer Zelle in genau dasselbe:
+wlan-enable-gpios = <0x12 0x01 0x01 0x00> im uebersetzten DTB geprueft.
+
+Warum kein mmc-pwrseq
+---------------------
+mmc-pwrseq-simple mit reset-gpios waere der andere mainline-uebliche Weg, und
+er haette den Reiz, dass der MMC-Kern den Chip schon beim ersten Scan
+einschaltet. Dagegen spricht der Besitz der Leitung: der AIC-Treiber schaltet
+selbst, taktet den Chip aus und wieder ein und nimmt ihm den Strom wieder weg,
+wenn er nicht hochkommt (aicbsp_platform_power_on/-off). Gehoert die Leitung
+dem pwrseq, scheitert die Anforderung des Treibers mit -EBUSY und genau diese
+Sequenz faellt aus. Zwei Besitzer fuer eine Leitung ist die Art Fehler, die
+spaeter niemand mehr findet. Der pwrseq bleibt als Plan B beschrieben, falls
+wir die Stromsteuerung eines Tages ganz aus dem Treiber herausnehmen.
+
+Der Knoten mmc1 selbst bleibt unveraendert: weiterhin kein non-removable und
+kein vqmmc-supply, beides bewusst und mit Stock uebereinstimmend.
+
+Geprueft: das Board-DTB uebersetzt (cpp + dtc), der Knoten kommt mit den
+erwarteten vier Zellen an. Am Geraet nicht getestet.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1083,6 +1083,26 @@
+ 				interrupt-parent = <&r_pio>;
+ 				interrupts = <1 0 IRQ_TYPE_LEVEL_LOW>; /* PM0 = host-wake */
+ 				interrupt-names = "host-wake";
++				/*
++				 * PM1 = wlan_regon, the chip's enable line.
++				 * Stock describes the same pin in its
++				 * rfkill/wlan node as
++				 *   wlan_regon = <&r_pio 1 1 0>
++				 * (bank 1 = M, pin 1, active high), right next
++				 * to the PM0 host-wake above.
++				 *
++				 * The aic8800_bsp driver picks this up with
++				 * fwnode_gpiod_get_index() and power-cycles it
++				 * before it asks the MMC core to rescan.  It
++				 * is deliberately NOT an mmc-pwrseq: the chip
++				 * has to be powered *by the driver*, which
++				 * sequences the power cycle and the rescan
++				 * together and drops power again when the
++				 * chip does not come up.  A pwrseq would own
++				 * the line instead, and the driver's own
++				 * request would then fail with -EBUSY.
++				 */
++				wlan-enable-gpios = <&r_pio 1 1 GPIO_ACTIVE_HIGH>;
+ 			};
+ 		};
+ 

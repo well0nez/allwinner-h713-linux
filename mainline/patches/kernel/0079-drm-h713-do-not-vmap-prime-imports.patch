@@ -1,0 +1,47 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Tue, 2 Sep 2026 01:20:00 -0700
+Subject: [PATCH] drm: h713-afbd: do not vmap PRIME imports
+
+The driver declares DRM_GEM_DMA_DRIVER_OPS_VMAP, whose only effect over the
+plain variant is to use drm_gem_dma_prime_import_sg_table_vmap() -- so every
+imported dma-buf is CPU-vmapped and the pointer stored in dma_obj->vaddr.
+drm_gem_dma_free() then vunmaps it when the handle is closed.
+
+Nothing imported PRIME buffers into this driver until the NV12 video plane, so
+that was inert. With the plane it is a kernel BUG. Importing a dma-buf exported
+by sunxi-scanout-dmabuf and closing the handle gives:
+
+  kernel BUG at drivers/dma-buf/dma-buf.c:1589!
+    dma_buf_vunmap_unlocked
+    drm_gem_dma_free
+    drm_gem_object_handle_put_unlocked
+    drm_gem_handle_delete
+    drm_gem_close_ioctl
+
+Line 1589 is BUG_ON(!iosys_map_is_equal(&dmabuf->vmap_ptr, map)): the exporter
+does not record a vmap matching the vaddr the importer cached.
+
+A scanout plane needs the buffer's DMA address, not a CPU mapping, so the vmap
+was never wanted. Drop it. dumb_create is identical between the two macros, so
+fbdev/fbcon on the primary plane is unaffected -- those buffers are allocated
+rather than imported and get their vaddr from drm_gem_dma_create().
+
+Fixes the crash without touching the exporter, which is the smaller and more
+correct half of the contract.
+
+Applies after 0078.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -506,7 +506,7 @@
+ static const struct drm_driver h713_afbd_driver = {
+ 	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
+ 	.fops			= &h713_afbd_fops,
+-	DRM_GEM_DMA_DRIVER_OPS_VMAP,
++	DRM_GEM_DMA_DRIVER_OPS,
+ 	DRM_FBDEV_DMA_DRIVER_OPS,
+ 	.name			= "sun50i-h713-afbd",
+ 	.desc			= "Allwinner H713 AFBD scanout",

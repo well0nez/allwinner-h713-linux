@@ -1,0 +1,210 @@
+soc: sunxi: cpu_comm: drop the unread channel ring, the double delivery and fix the PID match
+
+Three leftovers, none of them load-bearing any more after 0124, all of
+them named in doku/00-STATUS or doku/nachtlog/S10 as things to clean up.
+
+Comm_Add2NewCallFifo() and Comm_GetCallbyChannel() were the stock way of
+handing an incoming call to a channel reader through the CallCmd ring at
+share_seq + 32. This driver never had that reader, feeding the ring
+without one is what leaked the call slots (0124), and the reader side was
+a misport on top (it took channel_ptr + 32 for the ring). Since 0124 no
+one calls either; remove both and their prototypes. A comment at the spot
+says where they went and why.
+
+comm_CallWorkAction() delivered the message to userspace a second time.
+command_action() already does that for both priority classes before it
+queues the work, so every high-priority call reached /dev/cpu_comm twice.
+Drop the second copy.
+
+RemovePidRoutines() compared the PID against entry + 28, which lies inside
+the routine's name string, so it never matched and a closed /dev/cpu_comm
+left its routines in the shared table for the rest of the boot. The PID is
+the u32 at entry + 4: that is the field of the userspace descriptor
+(struct RoutineDesc, "+4 process id" in the hdmird/pqd headers) and the
+one CPUComm_InstallRoutine() folds into the channel key. Compare that.
+
+The remaining old note -- the channel check in Comm_Add2NewCallFifo() only
+holding for pids below 4096 -- goes with the function.
+
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c	2026-09-08 01:38:07.020811324 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c	2026-09-08 01:38:07.035260077 +0200
+@@ -136,114 +136,16 @@
+ }
+ 
+ /*
+- * Comm_Add2NewCallFifo — Add a call entry to a staging FIFO and signal channel.
+- *
+- * From IDA @ 0x7e48.  Three arguments:
+- *   1. Write call_entry pointer into cmd_fifo
+- *   2. Set "dispatched" flag (0x10) on the call entry
+- *   3. Look up channel by component_id and signal it via up()
+- *
+- * @pool_ptr:    pointer to channel_pool (pcpu_comm_dev + 0x30)
+- * @cmd_fifo:    pointer to the staging FIFO (CallCmd FIFO at share_seq + 32)
+- * @call_entry:  virtual address of the call entry (comm_msg) to enqueue
++ * There used to be two functions here, Comm_Add2NewCallFifo() and
++ * Comm_GetCallbyChannel(): the stock way of handing an incoming call to a
++ * channel reader through the CallCmd ring at share_seq + 32. This driver has
++ * no channel reader -- delivery works on copies, in command_action() -- and
++ * feeding the ring without one leaked a call slot per callback until the
++ * firmware hung (0124, doku/nachtlog/S10). The reader side had been a
++ * misport as well (it read channel_ptr + 32 as the ring; stock reads the
++ * share sequence's). Both gone; if the stock reader ioctl is ever wanted,
++ * take both from the stock driver together.
+  */
+-void Comm_Add2NewCallFifo(void *pool_ptr, u32 *cmd_fifo, unsigned long call_entry)
+-{
+-	u32 *wr_slot;
+-	u16 comp_id;
+-	u32 channel_id;
+-	unsigned long channel_ptr = 0;
+-
+-	/* Write call entry pointer to cmd FIFO */
+-	wr_slot = (u32 *)fifo_getItemWr(cmd_fifo);
+-	if (!wr_slot) {
+-		pr_err("cpu_comm: Comm_Add2NewCallFifo: cmd_fifo full!\n");
+-		return;
+-	}
+-	*wr_slot = cc_ref((void *)call_entry);
+-	if (!fifo_requestItemWr(cmd_fifo)) {
+-		pr_err("cpu_comm: Comm_Add2NewCallFifo: requestItemWr failed!\n");
+-		return;
+-	}
+-
+-	/* Set "dispatched" flag at entry + 10 (u16 flags2) */
+-	*(u16 *)(call_entry + 10) |= 0x10;
+-
+-	/* Look up channel by component_id from the call entry */
+-	comp_id = *(u16 *)(call_entry + 2);
+-	channel_id = (comp_id & 0xF) | (*(u32 *)(call_entry + 16) << 4);
+-
+-	channel_ptr = 0;
+-	Comm_QueryChannel(pool_ptr, channel_id, &channel_ptr);
+-	if (!channel_ptr) {
+-		pr_warn("cpu_comm: Comm_Add2NewCallFifo: no channel for id 0x%x\n",
+-			channel_id);
+-		/* DBG-CALL-ENTRY-DUMP — temporary 2026-05-06 */
+-		print_hex_dump(KERN_WARNING, "  call_entry: ", DUMP_PREFIX_OFFSET,
+-			       16, 4, (const u8 *)call_entry, 64, false);
+-		return;
+-	}
+-
+-	/* Validate channel fields match the call entry */
+-	if (*(u16 *)(channel_ptr + 2) != *(u16 *)call_entry) {
+-		pr_err("cpu_comm: Comm_Add2NewCallFifo: channel comp mismatch!\n");
+-		return;
+-	}
+-	if (*(u32 *)(channel_ptr + 8) != *(u32 *)(call_entry + 16)) {
+-		pr_err("cpu_comm: Comm_Add2NewCallFifo: channel cpu mismatch!\n");
+-		return;
+-	}
+-	if (*(u32 *)(channel_ptr + 12) != channel_id) {
+-		pr_err("cpu_comm: Comm_Add2NewCallFifo: channel id mismatch!\n");
+-		return;
+-	}
+-
+-	/* Signal the channel's semaphore to wake processing thread */
+-	cpu_comm_sem_up((void *)(channel_ptr + 16));
+-}
+-
+-/*
+- * Comm_GetCallbyChannel — Dequeue a call from a channel's cmd FIFO.
+- *
+- * Looks up the channel by channel_id, then reads and removes the oldest
+- * call entry from its embedded FIFO.
+- *
+- * @pool_ptr:   pointer to channel_pool
+- * @channel_id: channel identifier (comp_id | (cpu << 4))
+- * @result:     output — receives virtual address of the call entry
+- *
+- * Returns 0 on success (result set), 0 with result=0 if FIFO empty,
+- * negative on error.
+- */
+-int Comm_GetCallbyChannel(void *pool_ptr, u32 channel_id, unsigned long *result)
+-{
+-	unsigned long channel_ptr = 0;
+-	u32 *cmd_fifo;
+-	u32 *item;
+-
+-	if (!result)
+-		return -EINVAL;
+-
+-	*result = 0;
+-
+-	if (!pool_ptr)
+-		return -EINVAL;
+-
+-	Comm_QueryChannel(pool_ptr, channel_id, &channel_ptr);
+-	if (!channel_ptr)
+-		return 0;	/* channel not found, result stays 0 */
+-
+-	/* cmd_fifo embedded in channel at byte offset 32 */
+-	cmd_fifo = (u32 *)(channel_ptr + 32);
+-
+-	item = (u32 *)fifo_getItemRd(cmd_fifo);
+-	if (!item)
+-		return 0;	/* FIFO empty */
+-
+-	*result = cc_deref(*item);
+-	fifo_ItemRdNext(cmd_fifo);
+-	return 0;
+-}
+ 
+ /* ── Wait/Session Management ───────────────────────────────── */
+ 
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-08 01:38:07.023462383 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-08 01:38:07.035491569 +0200
+@@ -415,7 +415,13 @@
+  * RemovePidRoutines — Remove all routines registered by a given PID.
+  *
+  * From IDA @ 0x65d4. Walks the entire routine table and removes entries
+- * matching the PID (stored at entry + 28 = process info field).
++ * matching the PID. The PID is the u32 at entry + 4: that is where the
++ * userspace descriptor carries it (struct RoutineDesc in the hdmird/pqd
++ * headers, "+4 process id"), and it is the field CPUComm_InstallRoutine()
++ * folds into the channel key (pid << 4). The old comparison at entry + 28
++ * landed inside the name string and never matched, so a closed /dev/cpu_comm
++ * left its routines in the table for the rest of the boot (doku/00-STATUS,
++ * "zwei Altfehler").
+  */
+ void RemovePidRoutines(pid_t pid)
+ {
+@@ -434,8 +440,7 @@
+ 		if (*(u32 *)(entry + RT_COMP_ID_OFF) == 0)
+ 			continue;
+ 
+-		/* PID is stored at entry + 28 (from IDA: *(entry + 7*4)) */
+-		if (*(u32 *)(entry + 28) == pid_val) {
++		if (*(u32 *)(entry + 4) == pid_val) {
+ 			*(u32 *)(entry + RT_COMP_ID_OFF) = 0;
+ 			(*rt_count_ptr())--;
+ 		}
+@@ -1064,11 +1069,12 @@
+ 		}
+ 	}
+ 
+-	/* 2026-05-06 CC-night: also deliver this CALL to any open
+-	 * /dev/cpu_comm fd so userspace can observe MIPS->ARM callbacks
+-	 * (MipsHalCallback_SignalChange, HotPlug, etc). The kernel-side
+-	 * dispatch below still ACKs MIPS — userspace cannot inhibit it. */
+-	cpu_comm_userspace_deliver(local_msg);
++	/*
++	 * Not delivered to userspace again here: command_action() already
++	 * handed this message to every open /dev/cpu_comm and to the kernel
++	 * handlers before it queued the work, for both priority classes. A
++	 * second copy from here was a duplicate (doku/nachtlog/S10, Nebenbefunde).
++	 */
+ 
+ 	/*
+ 	 * Acknowledge, and that is all this function does with the message.
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-08 01:38:07.026100252 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-08 01:38:07.035393198 +0200
+@@ -676,8 +676,6 @@
+ int  Comm_AddNewChannel(void *pool, u16 comp_id, u32 cpu);
+ int  Comm_RemoveChannel(void *pool, u16 comp_id, u32 cpu);
+ int  Comm_QueryChannel(void *pool, u32 channel_id, unsigned long *result);
+-void Comm_Add2NewCallFifo(void *pool, u32 *cmd_fifo, unsigned long call_entry);
+-int  Comm_GetCallbyChannel(void *pool, u32 channel_id, unsigned long *result);
+ 
+ /* cpu_comm_channel.c — wait/session management */
+ int  AddtoWaitComm(void *list, unsigned long wait_entry);

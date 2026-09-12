@@ -1,0 +1,129 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Tue, 2 Sep 2026 04:00:00 -0700
+Subject: [PATCH] arm64: dts: h713: enable the internal audio codec
+
+The dtsi has carried a codec@2030000 node with the stock register layout and a
+comment saying "mainline does not have this driver yet". That premise is out of
+date: sun4i-codec drives allwinner,sun50i-h616-codec, and H616 (sun50iw9) is the
+near relative of H713 (sun50iw12). The register blocks look like the same one
+relocated -- H616 is 0x31c at 0x05096000, H713 is 0x32c at 0x02030000, sixteen
+bytes apart on an ~800-byte block.
+
+Everything else the binding needs already exists in our CCU, which was the
+expected blocker and is not one: CLK_BUS_AUDIO_CODEC, CLK_AUDIO_CODEC_DAC,
+CLK_AUDIO_CODEC_ADC, CLK_PLL_AUDIO and RST_BUS_AUDIO_CODEC are all defined and
+implemented.
+
+So reshape the node for the mainline driver and enable it on the board. Stock's
+architecture is deliberately not reproduced: it uses sunxi-internal-codec plus a
+sunxi-dummy-cpudai owning the DMA plus a sunxi-codec-machine tying them
+together, while sun4i-codec is self-contained and registers its own DAI and
+card, so those two nodes have no mainline equivalent.
+
+Measured values from the stock DTB are kept in comments rather than discarded --
+the second reg range at 0x02031000 (0x7c, probably the analog block), the
+volumes, and the amp's active-high level with its 160 ms settle. H616 needs only
+one reg range so this tries one. Stock also lists a pll_tvfe clock on the codec,
+which is unexplained and deliberately not copied.
+
+The speaker amp GPIO stays PL2 on r_pio, which the dtsi already had right and
+which the stock blob independently confirms -- phandle 0x18 resolves to
+pinctrl@7022000, not the main pio.
+
+The resulting driver probes, registers the ALSA card and exposes a working
+playback PCM. Board routing and the H713-specific analog path are added by the
+following patches.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -741,37 +741,44 @@
+ 		 * documented here instead of fake H6/A23 assumptions.
+ 		 */
+ 		codec: codec@2030000 {
+-			compatible = "allwinner,sunxi-internal-codec";
+-			reg = <0x02030000 0x32c>,
+-			      <0x02031000 0x7c>;
+-			interrupts = <GIC_SPI 29 IRQ_TYPE_LEVEL_HIGH>;
+-			clocks = <&ccu CLK_PLL_AUDIO>,
+-				 <&ccu CLK_PLL_VIDEO3>,
+-				 <&ccu CLK_AUDIO_CODEC_DAC>,
+-				 <&ccu CLK_AUDIO_CODEC_ADC>,
+-				 <&ccu CLK_BUS_AUDIO_CODEC>,
+-				 <&ccu CLK_BUS_AUDIO_HUB>;
+-			clock-names = "pll_audio", "pll_tvfe", "codec_dac", "codec_adc", "codec_bus", "audio_hub_bus";
+-			resets = <&ccu RST_BUS_AUDIO_CODEC>,
+-				 <&ccu RST_BUS_AUDIO_HUB>;
+-			dmas = <&dma 7>, <&dma 7>;
+-			dma-names = "rx", "tx";
+-			digital_vol = <0x1f>; /* 50% default: reg=31 -> ALSA=32/63 */
+-			speaker_vol = <0x1a>;
+-			headphone_vol = <0x0>;
+-			spk_used = <0x1>;
+-			pa_level = <0x1>;
+-			pa_always_on = <0x0>;
+-			pa_msleep_time = <0xa0>;
+-			/* Stock: PL2 on R_PIO (gpio-354), NOT PB2 on PIO (gpio-34) */
+-			gpio-spk = <&r_pio 0 2 GPIO_ACTIVE_HIGH>;
+-			dacdrc_used = <0x0>;
+-			adcdrc_used = <0x0>;
+-			dachpf_used = <0x0>;
+-			adchpf_used = <0x0>;
+-			dac_swap_en = <0x0>;
+-			adc_swap_en = <0x0>;
+-			status = "okay";
++			#sound-dai-cells = <0>;
++			/*
++			 * H616's codec, relocated: H616 is 0x31c at 0x05096000,
++			 * H713 is 0x32c at 0x02030000. sun4i-codec drives it,
++			 * via an H713 variant added later in this series -- the
++			 * H616 compatible brings the card up but cannot reach
++			 * the analog path, because two of H616's registers do
++			 * not exist here.
++			 *
++			 * Stock's own shape is NOT reproduced here. It uses
++			 * sunxi-internal-codec plus a sunxi-dummy-cpudai that
++			 * owns the DMA plus a sunxi-codec-machine to tie them
++			 * together; sun4i-codec is self-contained and registers
++			 * its own DAI and card, so those two nodes have no
++			 * mainline equivalent.
++			 *
++			 * Values taken from the stock DTB and kept here because
++			 * they are measured, not guessed:
++			 *   second reg range 0x02031000 len 0x7c, probably the
++			 *     analog block -- H616 needs only one range, so try
++			 *     one first
++			 *   speaker_vol 0x1a, digital_vol 0x00, headphone unused
++			 *   pa_level 1 (active high), pa_msleep_time 160 ms
++			 *   stock also lists a pll_tvfe clock on the codec,
++			 *     which is unexplained -- deliberately not copied
++			 */
++			compatible = "allwinner,sun50i-h616-codec";
++			reg = <0x02030000 0x32c>;
++			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&ccu CLK_BUS_AUDIO_CODEC>,
++				 <&ccu CLK_AUDIO_CODEC_DAC>;
++			clock-names = "apb", "codec";
++			resets = <&ccu RST_BUS_AUDIO_CODEC>;
++			dmas = <&dma 7>;
++			dma-names = "tx";
++			/* PL2 on r_pio, NOT PB2 on the main pio. Active high. */
++			allwinner,pa-gpios = <&r_pio 0 2 GPIO_ACTIVE_HIGH>;
++			status = "disabled";
+ 		};
+ 
+ 		dummy_cpudai: dummy-cpudai@203032c {
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -16,7 +16,7 @@
+ &mips_framebuf { status = "okay"; };
+ &framebuf_reserved { status = "okay"; };
+ &twi1 { status = "disabled"; };
+-&codec { status = "disabled"; };
++&codec { status = "okay"; };
+ &dummy_cpudai { status = "disabled"; };
+ &codec_machine { status = "disabled"; };
+ &i2s0 { status = "disabled"; };

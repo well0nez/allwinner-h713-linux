@@ -1,0 +1,1565 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] soc: sunxi: give the H713 cpu_comm IPC an in-kernel API
+
+The MIPS co-processor of this SoC owns the HDMI receiver and the whole
+picture pipeline; everything it can do is a THal_Vp_* remote procedure
+over the shared-memory IPC this driver implements. Until now the only way
+to reach it was the /dev/cpu_comm character device, so the drivers that
+actually need the co-processor -- the HDMI-RX V4L2 driver, the ARISC HDMI
+driver -- would have had to be driven from a userspace daemon, which is
+also where the callbacks the co-processor sends back would have to be
+turned around and pushed into the kernel again.
+
+Add the two calls those drivers need:
+
+    int cpu_comm_call(comp_id, args, nargs, ret, nret, timeout_ms);
+    int cpu_comm_register_callback(name, fn, ctx);
+
+plus cpu_comm_unregister_callback() and cpu_comm_name2id(), in
+<linux/soc/sunxi/h713-cpu-comm.h>.
+
+Four things are worth saying about the shape of it.
+
+The timeout is real. CPUComm_CallEx waits 500 ms for the RETURN and then
+carries on regardless, because GetReturnbySessionId reports "no matching
+session" as success -- so a co-processor that never answered is
+indistinguishable from a routine that returns nothing. That is the stock
+semantic and IOCTL_CALL keeps it; a kernel caller gets -ETIMEDOUT
+instead. The call engine is the same function in both cases, with the
+policy passed in, so there is one implementation of the protocol and not
+two. The 32-bit result words are still read the way that function
+already reads them: the shared region is an ioremap() mapping, and a
+64-bit load from a 4-byte-aligned address in it is an alignment fault.
+
+Callback delivery is added next to the existing one, not instead of it.
+command_action() already hands every incoming call to each open
+/dev/cpu_comm fd; one line below, it now also hands it to a registered
+kernel handler. Both see the same 104-byte message and neither can
+inhibit the other or the acknowledgement. That point is above the split
+between the FIFO path (channel field <= 4) and the workqueue path (> 4),
+so a handler sees both classes of callback exactly once -- which matters
+because which class a callback falls into is not something to rely on:
+every SignalChange and HdmiHotPlugByPortHandler captured on the bench so
+far arrived with channel field 0, the FIFO path.
+
+Registering a handler also registers a routine, and that is the half an
+earlier version of this patch left out. The hook point above is
+independent of the routine table, which is true and says nothing about
+the other end of the link: the firmware resolves a MipsHalCallback_* by
+its descriptor in the routine table in shared memory. SendComm2CPUEx --
+the same function this driver ports for the ARM -- fails the FindRoutine
+lookup with -3 before it touches the message FIFO, so a callback nobody
+installed a descriptor for is never put on the wire. The handler then
+never runs and its counter stays at zero while the co-processor's own log
+shows the callback firing, which is exactly what the HDMI-RX driver saw.
+Every incoming call captured on the bench carries the proof that the
+lookup does happen: the message's +0x10 word is the descriptor's owner
+field, copied there from routine_find_buf + 4 by SendComm2CPUEx step 14,
+and that field exists nowhere but in the table.
+
+So cpu_comm_register_callback() installs the descriptor the way
+IOCTL_INSTALL_RT does, and takes the routine's name rather than its id --
+the descriptor carries the name, and the id is only its hash, which there
+is no way back from. The owner field is 0: it has to be a value no task
+can carry, because cpu_comm_release() hands the closing task's pid to
+RemovePidRoutines(), and it has to keep the derived channel key below
+0x10000, because Comm_Add2NewCallFifo() checks the key's upper half
+against the call entry. Unregistering removes the descriptor again, but
+only when it is still the one this API installed, so a userspace daemon
+that registered the same routine keeps its own entry -- and only when the
+lookup in front of it says the entry's cpu field is 0, because
+RemoveRoutine() has two arms that return while still holding hardware
+spinlock 2 and this is its first in-kernel caller. The other arm, an
+out-of-range chain link, is already excluded by the same lookup having
+walked that chain.
+
+Registering has an immediate effect on the other processor, and that is a
+rule for callers rather than an implementation detail, so it is written
+into the header: the descriptor is what arms the sender, and the first
+call can arrive as soon as cpu_comm_register_callback() returns, on the
+receive work item and in parallel with whatever the registering driver
+does next. A driver registers when it is ready to be called, not at the
+top of a probe that then runs a chain of outgoing calls. The HDMI-RX
+driver did the latter, and one single delivered callback landing inside
+that chain broke its probe in two different places on two cold starts.
+
+The broken kernel-callback mechanism goes at the same time.
+comm_CallWorkAction() read a function pointer out of routine_info + 88 and
+jumped to it, but FindRoutineEx never fills bytes 88..95, so the target was
+whatever was on the stack -- and even at the offset the vendor really uses,
+that table holds MIPS handler addresses and userspace-registered names, never
+an ARM kernel function pointer. Nothing there was ever worth calling. Now that
+kernel-side receipt has a mechanism of its own, the jump is removed rather than
+guarded; the acknowledgement the co-processor waits for stays exactly as it
+was, which is also how the module that ran on the bench behaved (there the
+jump was disabled by a module parameter).
+
+Outgoing calls from the kernel and from IOCTL_CALL take the same mutex.
+Uncontended that costs nothing and leaves the ioctl behaving exactly as
+before; what it prevents is two calls interleaving inside SendComm2CPUEx,
+whose own per-sequence semaphore gives up after 100 ms and proceeds
+anyway. Now that there can be a second caller, that guard is not enough
+on its own.
+
+Routines are addressed by a 32-bit id, and the id turns out to be
+derivable after all: a CRC-32 (0xedb88320, LSB-first, no inversion) over
+the full routine name, seeded with 0x00123456 -- the vendor's
+Trid_Util_Name2ID. It reproduces every named entry of the dumped call
+table, the two with the vendor's inconsistent lower-case "Thal_"
+included, so cpu_comm_name2id("THal_Vp_SetSource", 1) is 0xeaf13de5 and
+no table has to be carried in the driver.
+
+A debugfs consumer of both halves comes with it, so the path can be
+exercised on the bench without a userspace program:
+
+    echo THal_Vp_SetSource 3           > /sys/kernel/debug/cpu_comm/call
+    cat                                  /sys/kernel/debug/cpu_comm/call
+    echo MipsHalCallback_SignalChange   > /sys/kernel/debug/cpu_comm/watch
+    cat                                  /sys/kernel/debug/cpu_comm/watch
+
+Reading "watch" is also the instrument for the failure above. It counts
+every incoming call that reached the delivery hook, whether or not
+anything was registered for it, counts the ones no handler claimed, names
+the last of those, and prints for each handler what the routine table
+really says about its id. "rt none" on a line is the state in which the
+firmware cannot find the receiver; rx_calls staying at zero while the
+firmware logs the callback says the call is not on the wire at all. A
+per-driver event counter cannot tell those two apart, which is how this
+took a night to find.
+
+The character devices, the ioctls and the shared-memory protocol are
+otherwise untouched.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	2026-09-07 09:41:19.818544878 +0200
+@@ -0,0 +1,871 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * cpu_comm_api.c -- in-kernel API for the ARM <-> MIPS IPC.
++ *
++ * Three things live here:
++ *
++ *   cpu_comm_call()			a synchronous THal_Vp_* call with an
++ *					honest timeout,
++ *   cpu_comm_register_callback()	kernel-side receipt of the calls the
++ *					MIPS makes back into the ARM,
++ *   a debugfs consumer of both		so the path can be exercised on the
++ *					bench without a userspace program.
++ *
++ * The character devices are not touched. Outgoing calls from here and
++ * from IOCTL_CALL take the same mutex, so a kernel driver and a userspace
++ * tool cannot interleave two calls inside SendComm2CPUEx -- which they
++ * would otherwise do, because the per-sequence semaphore in there gives up
++ * after 100 ms and continues anyway.
++ *
++ * Callback delivery is hooked in command_action() (cpu_comm_proto.c), one
++ * line below the existing cpu_comm_userspace_deliver(). Order is: every
++ * open /dev/cpu_comm fd first, then the kernel handler. Both see the same
++ * 104-byte message; neither can inhibit the other or the acknowledgement
++ * that follows. That hook point is before the split between the FIFO path
++ * (channel field <= 4) and the workqueue path (> 4), so a kernel handler
++ * sees both classes exactly once. Which class a given callback belongs to
++ * is not a thing to rely on: every MipsHalCallback_SignalChange and
++ * MipsHalCallback_HdmiHotPlugByPortHandler captured on the bench so far
++ * arrived with channel field 0, the FIFO path, contrary to what doku/72
++ * assumed about SignalChange.
++ *
++ * That hook point being independent of the routine table is what made an
++ * earlier version of this file believe the table did not matter. It does,
++ * on the other side of the link: registering a handler here does not make
++ * the co-processor send anything. The firmware resolves MipsHalCallback_*
++ * through the routine table in shared memory -- SendComm2CPUEx() calls
++ * FindRoutine() and returns -3 when the id is not in the table, before it
++ * touches the message FIFO -- so a callback with no descriptor is never
++ * put on the wire, and the hook never runs. Every incoming call captured
++ * on the bench proves the lookup happened: the message carries the
++ * descriptor's owner field back at +0x10, copied from routine_find_buf+4
++ * by SendComm2CPUEx() step 14, and that field only exists in the table.
++ * cpu_comm_register_callback() therefore installs the descriptor as
++ * IOCTL_INSTALL_RT does, and takes the routine's name to build it.
++ *
++ * Which makes registering an act with an immediate effect on the other
++ * processor, and that is a rule for callers rather than a detail of this
++ * file: from the moment the descriptor is in the table the MIPS can send,
++ * and delivery runs on the receive work item, in parallel with whatever
++ * the registering driver does next. The HDMI-RX driver registered at the
++ * top of its probe and then ran twenty-two outgoing calls plus the ARISC
++ * EDID sequence; on 07.09. exactly one delivered callback landed inside
++ * that chain and broke the probe, in a different place on each of two
++ * cold starts. Register when ready to be called -- see the header.
++ */
++
++#include <linux/build_bug.h>
++#include <linux/crc32.h>
++#include <linux/debugfs.h>
++#include <linux/io.h>
++#include <linux/kernel.h>
++#include <linux/mutex.h>
++#include <linux/slab.h>
++#include <linux/stddef.h>
++#include <linux/string.h>
++#include <linux/uaccess.h>
++
++#include <linux/soc/sunxi/h713-cpu-comm.h>
++
++#include "cpu_comm.h"
++
++/* ── Routine name -> component id ───────────────────────────── */
++
++/*
++ * The vendor's Trid_Util_Name2ID (libUtility.so @0x1DC61) is a CRC-32 with
++ * the usual reflected 0xedb88320 polynomial, no pre- or post-inversion,
++ * seeded with 0x00123456 instead of ~0 -- which is exactly what the
++ * kernel's crc32_le() computes. The string it hashes is the full routine
++ * name including the "_<cpu>_<pid>" suffix; every stock routine uses pid 0.
++ */
++/*
++ * Spell out the name that is hashed and that goes into the routine
++ * descriptor: "<base>_<cpu>_<pid>", pid 0 for every stock routine.
++ *
++ * Return: the length written, or -EINVAL if it does not fit @out_len.
++ */
++static int cpu_comm_full_name(char *out, size_t out_len, const char *base_name,
++			      unsigned int target_cpu)
++{
++	int len;
++
++	if (!base_name || !*base_name)
++		return -EINVAL;
++
++	len = snprintf(out, out_len, "%s_%1x_%3.3x",
++		       base_name, target_cpu & 0xf, 0);
++	if (len <= 0 || len >= (int)out_len)
++		return -EINVAL;
++
++	return len;
++}
++
++u32 cpu_comm_name2id(const char *base_name, unsigned int target_cpu)
++{
++	char name[CPU_COMM_NAME_MAX + 8];
++	int len;
++
++	len = cpu_comm_full_name(name, sizeof(name), base_name, target_cpu);
++	if (len < 0)
++		return 0;
++
++	return crc32_le(CPU_COMM_NAME2ID_SEED, name, len);
++}
++EXPORT_SYMBOL_GPL(cpu_comm_name2id);
++
++/* ── Outgoing calls ─────────────────────────────────────────── */
++
++DEFINE_MUTEX(cpu_comm_call_mutex);
++
++/*
++ * SendComm2CPUEx and CPUComm_CallEx return the vendor's error numbers.
++ * Two of them are actively dangerous to hand out unchanged: -1 is
++ * -EPERM and -512 is -ERESTARTSYS, and neither means what it says.
++ * IOCTL_CALL hides all of this behind a flat -EFAULT; a kernel caller
++ * wants to be able to tell "not there yet" from "gone".
++ */
++static int cpu_comm_map_err(int err)
++{
++	switch (err) {
++	case -1:	/* isCPUAppReady() == 0: co-processor still starting */
++		return -EAGAIN;
++	case -3:	/* FindRoutine() found no entry for this comp_id */
++		return -ENODEV;
++	case -512:	/* IsCPUReset(): the co-processor is held in reset */
++		return -ENODEV;
++	default:
++		return err;
++	}
++}
++
++int cpu_comm_call(u32 comp_id, const u32 *args, unsigned int nargs,
++		  u32 *ret, unsigned int nret, unsigned int timeout_ms)
++{
++	int params[CPU_COMM_MAX_ARGS + 1];
++	u32 result[CPU_COMM_MAX_ARGS + 1];
++	unsigned int i, count;
++	int err;
++
++	if (nargs > CPU_COMM_MAX_ARGS || nret > CPU_COMM_MAX_ARGS)
++		return -EINVAL;
++	if ((nargs && !args) || (nret && !ret))
++		return -EINVAL;
++	if (!ShMemAddrBase || !pcpu_comm_dev)
++		return -ENODEV;
++
++	memset(params, 0, sizeof(params));
++	memset(result, 0, sizeof(result));
++
++	/* params[0] is the count, the values follow -- the layout the
++	 * vendor wrapper and IOCTL_CALL both use. */
++	params[0] = (int)nargs;
++	for (i = 0; i < nargs; i++)
++		params[i + 1] = (int)args[i];
++
++	mutex_lock(&cpu_comm_call_mutex);
++	err = cpu_comm_call_ex((int)comp_id, params, result, timeout_ms, true);
++	mutex_unlock(&cpu_comm_call_mutex);
++
++	if (err)
++		return cpu_comm_map_err(err);
++
++	if (nret) {
++		memset(ret, 0, nret * sizeof(*ret));
++		count = min_t(unsigned int, result[0], nret);
++		for (i = 0; i < count; i++)
++			ret[i] = result[i + 1];
++	} else {
++		count = 0;
++	}
++
++	return (int)count;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_call);
++
++/* ── Incoming calls: the routine table ──────────────────────── */
++
++/*
++ * The 96-byte routine descriptor, exactly as IOCTL_INSTALL_RT takes it
++ * from userspace and as AddInRoutine() copies it into the table in shared
++ * memory. The field names are the vendor's (cpucomm.h); the layout is
++ * pinned by what the rest of this driver reads back out of it:
++ * FindRoutineEx() copies +0, +2, +4, +8, +12..75 and +80, and
++ * SendComm2CPUEx() puts the +4 word into every outgoing call at +0x10.
++ */
++struct cpu_comm_routine_desc {
++	u16	channel;	/* +0x00 low nibble is the channel key */
++	u16	target_cpu;	/* +0x02 CPU that implements the routine */
++	u32	owner;		/* +0x04 owner tag, echoed into every call */
++	u32	comp_id;	/* +0x08 hash of the full routine name */
++	char	name[64];	/* +0x0c */
++	u8	reserved[16];	/* +0x4c */
++	s32	next_index;	/* +0x5c hash-chain link */
++};
++static_assert(sizeof(struct cpu_comm_routine_desc) == 96,
++	      "routine descriptor must match a shared-table entry");
++
++/*
++ * What goes into the owner field, and why it is zero.
++ *
++ * Userspace writes its pid there. cpu_comm_release() then hands the
++ * closing task's pid to RemovePidRoutines(), which drops every entry
++ * carrying it, so the kernel's entries must be tagged with something no
++ * task can ever be: pid 0 belongs to the idle task, which never opens a
++ * file, so no close() can take these entries away.
++ *
++ * The tag comes back in every incoming call at +0x10, where
++ * Comm_Add2NewCallFifo() turns it into the channel key
++ * CPU_COMM_CPU_MIPS | owner << 4 -- one key for every kernel callback,
++ * registered once. That is the second reason for zero and the reason a
++ * value above PID_MAX_LIMIT does not work: the same function then checks
++ * the channel's own fields against the call entry, and the first of the
++ * three reads the key's upper 16 bits (Comm_AddNewChannel() stores the
++ * whole key in one word, so channel + 2 is key >> 16) against the call
++ * entry's channel field. That only holds while the key stays below
++ * 0x10000, which for a pid-derived key means a pid below 4096 -- an
++ * accident the character-device path lives on. Zero makes it exact
++ * rather than lucky: key 1, upper half 0, and 1 is a key no
++ * IOCTL_INSTALL_RT can produce (theirs is 1 | pid << 4, never below 17).
++ */
++#define CPU_COMM_KERNEL_OWNER	0u
++#define CPU_COMM_KERNEL_CHANNEL	(CPU_COMM_CPU_MIPS | (CPU_COMM_KERNEL_OWNER << 4))
++
++/* The channel pool, spelled the way the ioctl path spells it. */
++#define cpu_comm_channel_pool()	((u8 *)pcpu_comm_dev + 0x30)
++
++/*
++ * @base_name may be NULL when the descriptor is only used as a key, as it
++ * is for RemoveRoutine(). When it is given, the name field gets the same
++ * *full* name that was hashed, suffix included, because that is what
++ * IOCTL_INSTALL_RT puts there and the descriptor is read by the other
++ * processor.
++ */
++static int cpu_comm_fill_desc(struct cpu_comm_routine_desc *desc, u32 comp_id,
++			      const char *base_name)
++{
++	memset(desc, 0, sizeof(*desc));
++	desc->channel = 0;
++	desc->target_cpu = CPU_COMM_CPU_ARM;
++	desc->owner = CPU_COMM_KERNEL_OWNER;
++	desc->comp_id = comp_id;
++	desc->next_index = -1;
++
++	if (base_name && cpu_comm_full_name(desc->name, sizeof(desc->name),
++					    base_name, CPU_COMM_CPU_ARM) < 0)
++		return -EINVAL;
++
++	return 0;
++}
++
++/*
++ * cpu_comm_routine_owner -- what the shared table says about @comp_id.
++ *
++ * Return: 0 and fill @owner/@target_cpu if there is an entry, -ENOENT if
++ * there is none, -ENODEV if the shared region is not mapped yet.
++ */
++static int cpu_comm_routine_owner(u32 comp_id, u32 *owner, u16 *target_cpu)
++{
++	u8 buf[96] __aligned(8);
++
++	if (!ShMemAddrBase)
++		return -ENODEV;
++
++	if (FindRoutineEx(comp_id, buf, NULL))
++		return -ENOENT;
++
++	*owner = *(u32 *)(buf + 4);
++	*target_cpu = *(u16 *)(buf + 2);
++	return 0;
++}
++
++/*
++ * cpu_comm_install_routine -- put @name where the co-processor looks.
++ *
++ * Without this the firmware's SendComm2CPUEx() fails the FindRoutine()
++ * lookup for @comp_id and returns -3 before it touches the message FIFO:
++ * the callback is never sent, and no amount of handler registration on
++ * this side changes that. Same two steps as IOCTL_INSTALL_RT, for the
++ * same reason.
++ */
++static int cpu_comm_install_routine(u32 comp_id, const char *name)
++{
++	struct cpu_comm_routine_desc desc;
++	unsigned long existing = 0;
++	int ret;
++
++	if (!ShMemAddrBase || !pcpu_comm_dev)
++		return -ENODEV;
++
++	ret = cpu_comm_fill_desc(&desc, comp_id, name);
++	if (ret)
++		return ret;
++
++	ret = AddInRoutine(&desc);
++	if (ret)
++		return ret == -2 ? -ENOSPC : ret;
++
++	/*
++	 * AddInRoutine() treats an id that is already in the table as
++	 * success and leaves that entry alone -- one a userspace daemon
++	 * installed, or one it left behind. Either is fine here: what
++	 * matters is that the co-processor can resolve the name, and
++	 * delivery below does not care whose owner tag the entry carries.
++	 * The debugfs listing prints the owner that is really in the table
++	 * so the difference stays visible.
++	 */
++
++	if (Comm_QueryChannel(cpu_comm_channel_pool(), CPU_COMM_KERNEL_CHANNEL,
++			      &existing) == 0 && !existing)
++		Comm_AddNewChannel(cpu_comm_channel_pool(), CPU_COMM_CPU_MIPS,
++				   CPU_COMM_KERNEL_OWNER);
++
++	return 0;
++}
++
++/*
++ * The reverse. Only an entry this API installed is removed: a daemon that
++ * registered the same routine keeps its own, and a stale entry left by a
++ * dead process is not ours to clean up here.
++ *
++ * The channel stays registered. It is shared by every kernel callback,
++ * costs one of 32 pool slots, and the character-device path does not
++ * remove its channels on close either.
++ *
++ * The lookup in front of RemoveRoutine() is not only an ownership test.
++ * RemoveRoutine() has two arms that return without releasing hardware
++ * spinlock 2 -- an out-of-range chain link, and a found entry whose cpu
++ * field is above 1 (cpu_comm_rpc.c) -- and this is the first caller of it
++ * in the kernel, so leaving that reachable would mean a failed teardown
++ * could wedge the routine table for the co-processor as well as for
++ * IOCTL_INSTALL_RT. Both arms are ruled out here rather than there,
++ * because cpu_comm_rpc.c belongs to the base port:
++ *
++ *   - the chain: FindRoutineEx() has just walked the same chain to the
++ *     same entry, and it bails out on a link above RT_MAX_INDEX before
++ *     following it, so every link on the way is in range;
++ *   - the cpu field: it comes back from that same lookup and is checked
++ *     below, so RemoveRoutine() cannot meet a value it refuses.
++ */
++static void cpu_comm_remove_routine(u32 comp_id)
++{
++	struct cpu_comm_routine_desc desc;
++	u16 target_cpu = 0xffff;
++	u32 owner = 0;
++
++	if (cpu_comm_routine_owner(comp_id, &owner, &target_cpu) ||
++	    owner != CPU_COMM_KERNEL_OWNER)
++		return;
++
++	if (target_cpu != CPU_COMM_CPU_ARM) {
++		pr_warn("cpu_comm: routine 0x%08x carries cpu %u, left in the table\n",
++			comp_id, target_cpu);
++		return;
++	}
++
++	if (cpu_comm_fill_desc(&desc, comp_id, NULL))
++		return;
++	RemoveRoutine(&desc);
++}
++
++/* ── Incoming calls: kernel handlers ────────────────────────── */
++
++#define CPU_COMM_MAX_KERNEL_CB	16
++
++struct cpu_comm_kcb {
++	u32		comp_id;
++	cpu_comm_cb_t	fn;
++	void		*ctx;
++	unsigned long	hits;
++	char		name[CPU_COMM_NAME_MAX];
++};
++
++static struct cpu_comm_kcb cpu_comm_kcbs[CPU_COMM_MAX_KERNEL_CB];
++static DEFINE_MUTEX(cpu_comm_kcb_mutex);
++
++/*
++ * Instrumentation. @cpu_comm_rx_calls counts every incoming call that
++ * reached this file, whether or not anything was registered for it, and
++ * @cpu_comm_rx_unmatched counts the ones no handler claimed. The pair is
++ * what tells "the co-processor sends nothing" (rx stays 0) apart from
++ * "it sends and we drop it" (rx rises, unmatched rises with it) -- the
++ * two failure modes that look identical in a per-driver event counter.
++ */
++static atomic_t cpu_comm_rx_calls = ATOMIC_INIT(0);
++static atomic_t cpu_comm_rx_unmatched = ATOMIC_INIT(0);
++static u32 cpu_comm_rx_last_unmatched;	/* under cpu_comm_kcb_mutex */
++
++/* How many slots are in use; only read for the debugfs listing. */
++static atomic_t cpu_comm_kcb_count = ATOMIC_INIT(0);
++
++static struct cpu_comm_kcb *cpu_comm_kcb_find(u32 comp_id)
++{
++	int i;
++
++	lockdep_assert_held(&cpu_comm_kcb_mutex);
++
++	for (i = 0; i < CPU_COMM_MAX_KERNEL_CB; i++)
++		if (cpu_comm_kcbs[i].fn && cpu_comm_kcbs[i].comp_id == comp_id)
++			return &cpu_comm_kcbs[i];
++	return NULL;
++}
++
++int cpu_comm_register_callback(const char *base_name, cpu_comm_cb_t fn,
++			       void *ctx)
++{
++	char full[sizeof_field(struct cpu_comm_routine_desc, name)];
++	struct cpu_comm_kcb *slot = NULL;
++	u32 comp_id;
++	int i, ret;
++
++	if (!base_name || !fn)
++		return -EINVAL;
++
++	/*
++	 * The full name goes into the descriptor's 64-byte name field, so
++	 * the base name has to leave room for the "_<cpu>_<pid>" suffix
++	 * and the terminator. Refuse rather than hand the firmware a name
++	 * it would see truncated.
++	 */
++	if (cpu_comm_full_name(full, sizeof(full), base_name,
++			       CPU_COMM_CPU_ARM) < 0)
++		return -EINVAL;
++
++	comp_id = cpu_comm_name2id(base_name, CPU_COMM_CPU_ARM);
++	if (!comp_id)
++		return -EINVAL;
++
++	mutex_lock(&cpu_comm_kcb_mutex);
++
++	if (cpu_comm_kcb_find(comp_id)) {
++		ret = -EBUSY;
++		goto out;
++	}
++
++	for (i = 0; i < CPU_COMM_MAX_KERNEL_CB; i++) {
++		if (!cpu_comm_kcbs[i].fn) {
++			slot = &cpu_comm_kcbs[i];
++			break;
++		}
++	}
++	if (!slot) {
++		ret = -ENOSPC;
++		goto out;
++	}
++
++	/*
++	 * Routine first: if the co-processor cannot be told about the
++	 * name, a handler for it would be a handler that can never run,
++	 * and the caller is better off seeing the error.
++	 */
++	ret = cpu_comm_install_routine(comp_id, base_name);
++	if (ret)
++		goto out;
++
++	slot->comp_id = comp_id;
++	slot->ctx = ctx;
++	slot->hits = 0;
++	strscpy(slot->name, base_name, sizeof(slot->name));
++	/* fn last: delivery treats it as the slot's valid marker. */
++	slot->fn = fn;
++	atomic_inc(&cpu_comm_kcb_count);
++	ret = 0;
++
++	pr_info("cpu_comm: kernel handler registered for comp=0x%08x %s\n",
++		comp_id, base_name);
++out:
++	mutex_unlock(&cpu_comm_kcb_mutex);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_register_callback);
++
++int cpu_comm_unregister_callback(const char *base_name, cpu_comm_cb_t fn)
++{
++	struct cpu_comm_kcb *slot;
++	u32 comp_id;
++	int ret = -ENOENT;
++
++	if (!base_name)
++		return -EINVAL;
++
++	comp_id = cpu_comm_name2id(base_name, CPU_COMM_CPU_ARM);
++	if (!comp_id)
++		return -EINVAL;
++
++	/* Taking the same mutex that delivery holds around the handler
++	 * call is what makes it safe to free the context afterwards. */
++	mutex_lock(&cpu_comm_kcb_mutex);
++
++	slot = cpu_comm_kcb_find(comp_id);
++	if (slot && (!fn || slot->fn == fn)) {
++		memset(slot, 0, sizeof(*slot));
++		atomic_dec(&cpu_comm_kcb_count);
++		cpu_comm_remove_routine(comp_id);
++		ret = 0;
++	}
++
++	mutex_unlock(&cpu_comm_kcb_mutex);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_unregister_callback);
++
++/*
++ * cpu_comm_kernel_deliver -- hand an incoming MIPS->ARM call to the
++ * registered kernel handler, if there is one.
++ *
++ * @msg points into the shared region, which is an ioremap() mapping, so
++ * the copy goes through memcpy_fromio() rather than memcpy().
++ *
++ * Called from command_action() in process context (the receive work item),
++ * right after the message has been offered to the character devices.
++ *
++ * The message is copied and counted even when nothing is registered: the
++ * counters are the instrument that says whether calls arrive at all, and
++ * an instrument that only works once the thing it measures is already
++ * working is no instrument.
++ */
++void cpu_comm_kernel_deliver(const void *msg)
++{
++	u8 local[COMM_MSG_SIZE] __aligned(8);
++	u32 args[CPU_COMM_MAX_ARGS];
++	struct cpu_comm_kcb *slot;
++	unsigned int nargs, i;
++	u32 comp_id;
++
++	if (!msg)
++		return;
++
++	memcpy_fromio(local, (__force const void __iomem *)msg, COMM_MSG_SIZE);
++
++	comp_id = *(u32 *)(local + 40);		/* +0x28 */
++	nargs = *(u16 *)(local + 8);		/* +0x08 ParaCount */
++	if (nargs > CPU_COMM_MAX_ARGS)
++		nargs = CPU_COMM_MAX_ARGS;
++	for (i = 0; i < nargs; i++)
++		args[i] = *(u32 *)(local + 44 + 4 * i);	/* +0x2c.. */
++
++	atomic_inc(&cpu_comm_rx_calls);
++
++	mutex_lock(&cpu_comm_kcb_mutex);
++	slot = cpu_comm_kcb_find(comp_id);
++	if (slot) {
++		slot->hits++;
++		slot->fn(comp_id, nargs ? args : NULL, nargs, slot->ctx);
++	} else {
++		cpu_comm_rx_last_unmatched = comp_id;
++		atomic_inc(&cpu_comm_rx_unmatched);
++	}
++	mutex_unlock(&cpu_comm_kcb_mutex);
++}
++
++/*
++ * Module teardown. The descriptors have to go with the handlers: an entry
++ * left behind points the co-processor at a receiver that is no longer
++ * there, and the next module to load would find the id already taken.
++ */
++static void cpu_comm_drop_all_handlers(void)
++{
++	int i;
++
++	mutex_lock(&cpu_comm_kcb_mutex);
++	for (i = 0; i < CPU_COMM_MAX_KERNEL_CB; i++) {
++		if (!cpu_comm_kcbs[i].fn)
++			continue;
++		cpu_comm_remove_routine(cpu_comm_kcbs[i].comp_id);
++	}
++	memset(cpu_comm_kcbs, 0, sizeof(cpu_comm_kcbs));
++	atomic_set(&cpu_comm_kcb_count, 0);
++	mutex_unlock(&cpu_comm_kcb_mutex);
++}
++
++/* ── debugfs: a consumer of both halves ─────────────────────── */
++
++#ifdef CONFIG_DEBUG_FS
++
++static struct dentry *cpu_comm_debug_dir;
++static char cpu_comm_debug_result[192];
++static DEFINE_MUTEX(cpu_comm_debug_mutex);
++
++/*
++ * "THal_Vp_SetSource", "THal_Vp_SetSource@1" or "0xeaf13de5" -- a routine
++ * name with an optional CPU suffix, or a raw component id. The default
++ * CPU is 1 (MIPS), which is what every THal_Vp_* routine wants;
++ * MipsHalCallback_* routines live on the ARM and need "@0".
++ */
++static u32 cpu_comm_parse_id(char *token)
++{
++	unsigned int cpu = CPU_COMM_CPU_MIPS;
++	char *at;
++	u32 id;
++
++	at = strchr(token, '@');
++	if (at) {
++		*at++ = '\0';
++		if (kstrtouint(at, 0, &cpu))
++			return 0;
++	}
++
++	if (!strncmp(token, "0x", 2) || !strncmp(token, "0X", 2)) {
++		if (kstrtou32(token, 16, &id))
++			return 0;
++		return id;
++	}
++
++	return cpu_comm_name2id(token, cpu);
++}
++
++static void cpu_comm_debug_cb(u32 comp_id, const u32 *args,
++			      unsigned int nargs, void *ctx)
++{
++	char buf[96];
++	int n = 0;
++	unsigned int i;
++
++	buf[0] = '\0';
++	for (i = 0; i < nargs && n < (int)sizeof(buf) - 12; i++)
++		n += scnprintf(buf + n, sizeof(buf) - n, "%s0x%08x",
++			       i ? " " : "", args[i]);
++
++	pr_info("cpu_comm: kernel callback comp=0x%08x nargs=%u args=[%s]\n",
++		comp_id, nargs, buf);
++}
++
++static ssize_t cpu_comm_debug_call_write(struct file *file,
++					 const char __user *ubuf,
++					 size_t len, loff_t *ppos)
++{
++	char kbuf[160], *cur, *tok;
++	u32 args[CPU_COMM_MAX_ARGS];
++	u32 res[CPU_COMM_MAX_ARGS];
++	unsigned int nargs = 0;
++	u32 comp_id;
++	int ret, n, i;
++
++	if (len == 0 || len >= sizeof(kbuf))
++		return -EINVAL;
++	if (copy_from_user(kbuf, ubuf, len))
++		return -EFAULT;
++	kbuf[len] = '\0';
++
++	cur = strim(kbuf);
++	tok = strsep(&cur, " \t\n");
++	if (!tok || !*tok)
++		return -EINVAL;
++
++	comp_id = cpu_comm_parse_id(tok);
++	if (!comp_id)
++		return -EINVAL;
++
++	while ((tok = strsep(&cur, " \t\n")) != NULL) {
++		if (!*tok)
++			continue;
++		if (nargs >= CPU_COMM_MAX_ARGS)
++			return -E2BIG;
++		if (kstrtou32(tok, 0, &args[nargs]))
++			return -EINVAL;
++		nargs++;
++	}
++
++	ret = cpu_comm_call(comp_id, args, nargs, res, CPU_COMM_MAX_ARGS, 0);
++
++	mutex_lock(&cpu_comm_debug_mutex);
++	if (ret < 0) {
++		scnprintf(cpu_comm_debug_result, sizeof(cpu_comm_debug_result),
++			  "comp=0x%08x nargs=%u -> error %d\n",
++			  comp_id, nargs, ret);
++	} else {
++		n = scnprintf(cpu_comm_debug_result,
++			      sizeof(cpu_comm_debug_result),
++			      "comp=0x%08x nargs=%u -> ok, %d value(s)",
++			      comp_id, nargs, ret);
++		for (i = 0; i < ret; i++)
++			n += scnprintf(cpu_comm_debug_result + n,
++				       sizeof(cpu_comm_debug_result) - n,
++				       " 0x%08x", res[i]);
++		scnprintf(cpu_comm_debug_result + n,
++			  sizeof(cpu_comm_debug_result) - n, "\n");
++	}
++	pr_info("cpu_comm: debugfs call %s", cpu_comm_debug_result);
++	mutex_unlock(&cpu_comm_debug_mutex);
++
++	if (ret < 0)
++		return ret;
++
++	*ppos += len;
++	return len;
++}
++
++static ssize_t cpu_comm_debug_call_read(struct file *file, char __user *ubuf,
++					size_t len, loff_t *ppos)
++{
++	ssize_t ret;
++
++	mutex_lock(&cpu_comm_debug_mutex);
++	ret = simple_read_from_buffer(ubuf, len, ppos, cpu_comm_debug_result,
++				      strlen(cpu_comm_debug_result));
++	mutex_unlock(&cpu_comm_debug_mutex);
++	return ret;
++}
++
++static const struct file_operations cpu_comm_debug_call_fops = {
++	.owner	= THIS_MODULE,
++	.open	= simple_open,
++	.read	= cpu_comm_debug_call_read,
++	.write	= cpu_comm_debug_call_write,
++	.llseek	= default_llseek,
++};
++
++/*
++ * "MipsHalCallback_SignalChange" installs the logging handler above for
++ * that routine, descriptor and all; a leading '-' removes it again. Only
++ * a name is accepted, not a raw id: the descriptor the co-processor looks
++ * the callback up by carries the name, and there is no way back from the
++ * hash to it.
++ */
++static ssize_t cpu_comm_debug_watch_write(struct file *file,
++					  const char __user *ubuf,
++					  size_t len, loff_t *ppos)
++{
++	char kbuf[96], *tok;
++	bool remove = false;
++	int ret;
++
++	if (len == 0 || len >= sizeof(kbuf))
++		return -EINVAL;
++	if (copy_from_user(kbuf, ubuf, len))
++		return -EFAULT;
++	kbuf[len] = '\0';
++	tok = strim(kbuf);
++
++	if (*tok == '-') {
++		remove = true;
++		tok++;
++	}
++	if (!*tok)
++		return -EINVAL;
++
++	if (remove)
++		ret = cpu_comm_unregister_callback(tok, cpu_comm_debug_cb);
++	else
++		ret = cpu_comm_register_callback(tok, cpu_comm_debug_cb, NULL);
++	if (ret)
++		return ret;
++
++	*ppos += len;
++	return len;
++}
++
++#define CPU_COMM_WATCH_BUF	2048
++
++/*
++ * Everything needed to say where an expected callback got stuck, in one
++ * read:
++ *
++ *   rx_calls	 how many MIPS->ARM calls reached cpu_comm_kernel_deliver()
++ *		 at all. Zero while the firmware logs the callback means the
++ *		 call is not on the wire -- look at the routine table, not
++ *		 at the handler.
++ *   unmatched	 of those, how many no handler claimed, and the id of the
++ *		 last one. Non-zero means calls arrive and are dropped here.
++ *   channel	 the key Comm_Add2NewCallFifo() looks up for kernel
++ *		 callbacks, and whether it is in the pool.
++ *   one line per handler: id, events delivered to it, what the shared
++ *		 routine table says about the id ("rt none" is the state
++ *		 in which the firmware cannot find the receiver), and the
++ *		 name the descriptor was built from.
++ */
++static ssize_t cpu_comm_debug_watch_read(struct file *file, char __user *ubuf,
++					 size_t len, loff_t *ppos)
++{
++	unsigned long channel = 0;
++	bool have_pool;
++	char *buf;
++	int i, n = 0;
++	ssize_t ret;
++
++	buf = kzalloc(CPU_COMM_WATCH_BUF, GFP_KERNEL);
++	if (!buf)
++		return -ENOMEM;
++
++	have_pool = pcpu_comm_dev &&
++		    Comm_QueryChannel(cpu_comm_channel_pool(),
++				      CPU_COMM_KERNEL_CHANNEL, &channel) == 0;
++
++	mutex_lock(&cpu_comm_kcb_mutex);
++
++	n += scnprintf(buf + n, CPU_COMM_WATCH_BUF - n,
++		       "rx_calls  %u\nunmatched %u last 0x%08x\n"
++		       "channel   0x%08x %s\nhandlers  %u\n",
++		       atomic_read(&cpu_comm_rx_calls),
++		       atomic_read(&cpu_comm_rx_unmatched),
++		       cpu_comm_rx_last_unmatched,
++		       (u32)CPU_COMM_KERNEL_CHANNEL,
++		       (have_pool && channel) ? "registered" : "missing",
++		       atomic_read(&cpu_comm_kcb_count));
++
++	for (i = 0; i < CPU_COMM_MAX_KERNEL_CB; i++) {
++		char rt[48];
++		u16 target_cpu = 0;
++		u32 owner = 0;
++
++		if (!cpu_comm_kcbs[i].fn)
++			continue;
++
++		if (cpu_comm_routine_owner(cpu_comm_kcbs[i].comp_id,
++					   &owner, &target_cpu))
++			scnprintf(rt, sizeof(rt), "rt none");
++		else
++			scnprintf(rt, sizeof(rt), "rt cpu=%u owner=%u%s",
++				  target_cpu, owner,
++				  owner == CPU_COMM_KERNEL_OWNER ? "" : " (foreign)");
++
++		n += scnprintf(buf + n, CPU_COMM_WATCH_BUF - n,
++			       "0x%08x %6lu %-28s %s\n",
++			       cpu_comm_kcbs[i].comp_id,
++			       cpu_comm_kcbs[i].hits, rt,
++			       cpu_comm_kcbs[i].name);
++	}
++	mutex_unlock(&cpu_comm_kcb_mutex);
++
++	ret = simple_read_from_buffer(ubuf, len, ppos, buf, n);
++	kfree(buf);
++	return ret;
++}
++
++static const struct file_operations cpu_comm_debug_watch_fops = {
++	.owner	= THIS_MODULE,
++	.open	= simple_open,
++	.read	= cpu_comm_debug_watch_read,
++	.write	= cpu_comm_debug_watch_write,
++	.llseek	= default_llseek,
++};
++
++void cpu_comm_api_init(void)
++{
++	if (cpu_comm_debug_dir)
++		return;
++
++	cpu_comm_debug_dir = debugfs_create_dir("cpu_comm", NULL);
++	debugfs_create_file("call", 0600, cpu_comm_debug_dir, NULL,
++			    &cpu_comm_debug_call_fops);
++	debugfs_create_file("watch", 0600, cpu_comm_debug_dir, NULL,
++			    &cpu_comm_debug_watch_fops);
++}
++
++void cpu_comm_api_exit(void)
++{
++	debugfs_remove_recursive(cpu_comm_debug_dir);
++	cpu_comm_debug_dir = NULL;
++
++	cpu_comm_drop_all_handlers();
++}
++
++#else /* !CONFIG_DEBUG_FS */
++
++void cpu_comm_api_init(void) { }
++
++void cpu_comm_api_exit(void)
++{
++	cpu_comm_drop_all_handlers();
++}
++
++#endif /* CONFIG_DEBUG_FS */
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c	2026-09-07 09:22:25.479506384 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c	2026-09-07 09:22:32.008639480 +0200
+@@ -192,8 +192,18 @@
+ 
+ 		if (copy_from_user(call_buf, (void __user *)arg, 168))
+ 			return -EFAULT;
++		/*
++		 * Same mutex the in-kernel API takes. Uncontended this costs
++		 * nothing and the behaviour of this ioctl is unchanged; what
++		 * it buys is that a driver calling the co-processor and a
++		 * userspace tool doing the same cannot end up interleaved
++		 * inside SendComm2CPUEx, whose own guard gives up after
++		 * 100 ms and continues anyway.
++		 */
++		mutex_lock(&cpu_comm_call_mutex);
+ 		ret = CPUComm_Call(call_buf, &call_buf[64],
+ 				   (void *)&call_buf[120]);
++		mutex_unlock(&cpu_comm_call_mutex);
+ 		if (ret)
+ 			return -EFAULT;
+ 		if (copy_to_user((void __user *)arg, call_buf, 168))
+@@ -1740,6 +1750,7 @@
+ 
+ 	/* Create proc entries */
+ 	cpu_comm_proc_init();
++	cpu_comm_api_init();
+ 
+ 	/* Y2 2026-05-04: pre-init queueAction work_structs so the lazy-init
+ 	 * race in IRQ-context can't happen. */
+@@ -1803,6 +1814,7 @@
+ 
+ void cpu_comm_cleanup(void)
+ {
++	cpu_comm_api_exit();
+ 	cpu_comm_proc_term();
+ 
+ 	if (pcpu_comm_dev) {
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-07 09:22:25.479800335 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-07 09:22:32.008772540 +0200
+@@ -17,6 +17,7 @@
+ 
+ #include <linux/types.h>
+ #include <linux/list.h>
++#include <linux/mutex.h>
+ #include <linux/semaphore.h>
+ #include <linux/workqueue.h>
+ #include <linux/cdev.h>
+@@ -781,4 +782,44 @@
+                                 struct poll_table_struct *wait);
+ void    cpu_comm_userspace_deliver(const void *msg);
+ 
++/* ══════════════════════════════════════════════════════════════
++ * In-kernel API — cpu_comm_api.c
++ *
++ * The public half lives in <linux/soc/sunxi/h713-cpu-comm.h>. What is
++ * declared here is what the rest of the driver needs to reach it.
++ * ══════════════════════════════════════════════════════════════ */
++
++/* Longest routine name we hash or print, "_<cpu>_<pid>" suffix included. */
++#define CPU_COMM_NAME_MAX	64
++
++/*
++ * Serialises outgoing CALLs. Held by cpu_comm_call() and by IOCTL_CALL,
++ * so a kernel driver and a userspace tool take turns instead of racing
++ * inside SendComm2CPUEx -- whose own per-sequence semaphore times out
++ * after 100 ms and then proceeds regardless (cpu_comm_proto.c, step 5).
++ *
++ * The receive path deliberately does NOT take it: an incoming call must
++ * not have to wait for an outgoing one to finish.
++ */
++extern struct mutex cpu_comm_call_mutex;
++
++/*
++ * The engine behind both CPUComm_CallEx() and cpu_comm_call().
++ *
++ * @timeout_ms: how long to wait for the RETURN, 0 for the 500 ms default.
++ * @strict:     when true, a call that produced no return entry fails with
++ *              -ETIMEDOUT (wait ran out) or -ENODATA (nothing in the
++ *              return FIFO) instead of reporting success with no values.
++ *              The character-device path passes false and keeps the
++ *              behaviour it has always had.
++ */
++int  cpu_comm_call_ex(int comp_id, int *params, u32 *result,
++		      unsigned int timeout_ms, bool strict);
++
++/* Hand an incoming MIPS→ARM CALL to a registered kernel handler. */
++void cpu_comm_kernel_deliver(const void *msg);
++
++void cpu_comm_api_init(void);
++void cpu_comm_api_exit(void);
++
+ #endif /* _CPU_COMM_H_ */
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 09:22:25.515527462 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 09:22:32.008847000 +0200
+@@ -941,6 +941,14 @@
+ 		 * FIFO unread. Direct deliver bypasses that path entirely. */
+ 		cpu_comm_userspace_deliver((const void *)entry_base);
+ 
++		/* Then the in-kernel handlers. Same message, same event, no
++		 * priority between the two: the character devices are served
++		 * first because they were here first, and neither side can
++		 * stop the other or the ACK below. This is the only kernel
++		 * delivery point, and it sits above the FIFO/workqueue split,
++		 * so a handler sees both message classes exactly once. */
++		cpu_comm_kernel_deliver((const void *)entry_base);
++
+ 		if (entry_cmd <= 4)
+ 			Comm_Add2NewCallFifo(
+ 				(void *)((u8 *)pcpu_comm_dev + 48),
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-07 09:22:25.515646973 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-07 09:22:32.008929191 +0200
+@@ -15,6 +15,7 @@
+ #include <linux/list.h>
+ #include <linux/string.h>
+ #include <linux/io.h>
++#include <linux/soc/sunxi/h713-cpu-comm.h>
+ 
+ /* Stock uses mmiocpy() for shared-memory copies; mainline equivalent */
+ #define mmiocpy(dst, src, len) memcpy_toio((void __iomem *)(dst), (src), (len))
+@@ -505,19 +506,36 @@
+ }
+ 
+ /*
+- * CPUComm_CallEx — Full synchronous RPC: send, wait, receive, return.
++ * CPUComm_CallEx — the vendor entry point, unchanged in behaviour.
++ *
++ * Everything it ever did now lives in cpu_comm_call_ex() below; this keeps
++ * the 500 ms wait and the lenient result handling that IOCTL_CALL and the
++ * /dev/cpu_comm users have always seen.
++ */
++int CPUComm_CallEx(int comp_id, int *params, u32 *result)
++{
++	return cpu_comm_call_ex(comp_id, params, result, 0, false);
++}
++
++/*
++ * cpu_comm_call_ex — Full synchronous RPC: send, wait, receive, return.
+  *
+  * From IDA @ 0x10614. This is NOT just a wrapper for SendComm2CPUEx.
+  * It builds a comm_msg from the component_id + params, sends it,
+  * waits for the MIPS response, copies the result, and cleans up.
+  *
+- * @comp_id:  component identifier (determines routing to MIPS handler)
+- * @params:   int array: params[0]=count (max 10), params[1..n]=values
+- * @result:   u32 array: result[0]=count on return, result[1..n]=values
++ * @comp_id:    component identifier (determines routing to MIPS handler)
++ * @params:     int array: params[0]=count (max 10), params[1..n]=values
++ * @result:     u32 array: result[0]=count on return, result[1..n]=values
++ * @timeout_ms: how long to wait for the RETURN; 0 selects the 500 ms that
++ *              this function has always used
++ * @strict:     report a missing RETURN as an error instead of as success
++ *              with no values -- see the tail of the function
+  *
+  * Returns 0 on success, negative on error.
+  */
+-int CPUComm_CallEx(int comp_id, int *params, u32 *result)
++int cpu_comm_call_ex(int comp_id, int *params, u32 *result,
++		     unsigned int timeout_ms, bool strict)
+ {
+ 	u8 local_msg[COMM_MSG_SIZE];
+ 	int ret;
+@@ -528,6 +546,11 @@
+ 	u32 *wait_obj = NULL;
+ 	u32 session_ptr;
+ 	u16 *return_entry = NULL;
++	int wait_ret = 0;
++	bool have_return = false;
++
++	if (!timeout_ms)
++		timeout_ms = CPU_COMM_CALL_TIMEOUT_MS;
+ 
+ 	if (!params)
+ 		return -EINVAL;
+@@ -630,8 +653,9 @@
+ 	 */
+ 	if (FindWaitBySessionId((void *)(seq_base + 40),
+ 				session_ptr, &wait_obj) == 0 && wait_obj) {
+-		cpu_comm_sem_down_timeout((void *)((u8 *)wait_obj + 8),
+-					  msecs_to_jiffies(500));
++		wait_ret = cpu_comm_sem_down_timeout(
++				(void *)((u8 *)wait_obj + 8),
++				msecs_to_jiffies(timeout_ms));
+ 	}
+ 
+ 	/* Get the return message from the return FIFO.
+@@ -664,6 +688,8 @@
+ 
+ 	/* Copy results from return entry to caller's result buffer */
+ 	if (return_entry) {
++		have_return = true;
++
+ 		/* Increment return counter in pcpu_comm_dev */
+ 		if (pcpu_comm_dev)
+ 			*(u32 *)((u8 *)pcpu_comm_dev + 1632) += 1;
+@@ -724,6 +750,24 @@
+ 			ReleaseWaitComm(dst_cpu, (unsigned long)*(u8 **)tmp_buf);
+ 	}
+ 
++	/*
++	 * A call whose RETURN never arrived leaves *result untouched and
++	 * falls out of here with ret == 0, because GetReturnbySessionId
++	 * reports "nothing matched" as success -- that is the stock
++	 * semantic and the character-device path keeps it.
++	 *
++	 * For an in-kernel caller that is the wrong answer: a routine that
++	 * legitimately returns nothing and a co-processor that never
++	 * answered look identical, so a wedged MIPS reads as a working one.
++	 * Strict callers get the distinction.
++	 */
++	if (strict && !have_return) {
++		pr_warn("cpu_comm: call comp=0x%08x session=0x%x: no RETURN (%s)\n",
++			(u32)comp_id, session_ptr,
++			wait_ret ? "wait timed out" : "return FIFO empty");
++		return wait_ret ? -ETIMEDOUT : -ENODATA;
++	}
++
+ 	return ret;
+ }
+ 
+@@ -1015,57 +1059,30 @@
+ 	 * dispatch below still ACKs MIPS — userspace cannot inhibit it. */
+ 	cpu_comm_userspace_deliver(local_msg);
+ 
+-	/* Call the registered routine callback.
++	/*
++	 * Acknowledge, and that is all this function does with the message.
+ 	 *
+-	 * The routine_info structure contains the callback function pointer.
+-	 * From IDA: callback is at routine_info + 0x58 (offset 88 in the
+-	 * 96-byte routine structure). It receives (params, result).
++	 * It used to read a function pointer out of routine_info + 88 and
++	 * jump to it. Two things are wrong with that. FindRoutineEx fills
++	 * the entry at +0/+2/+4/+8, +12..76 and +80 and leaves 88..95 as
++	 * whatever was on the stack, so the jump had no defined target --
++	 * that is the uninitialised-pointer finding from doku/72, and it
++	 * is why runs sometimes survived and sometimes did not. And even
++	 * at the offset the vendor really uses, the routine table holds
++	 * MIPS handler addresses (kseg0, 0x8b10...) and the names
++	 * userspace registered; an ARM kernel function pointer has never
++	 * been in it, so there is nothing here worth calling.
+ 	 *
+-	 * For now, we just extract the callback and call it.
+-	 * The full parameter marshalling is complex — we simplify by
+-	 * passing the raw message payload.
++	 * Kernel-side receipt has its own mechanism now --
++	 * cpu_comm_register_callback(), served from command_action() --
++	 * so the broken one goes rather than being patched around. The
++	 * acknowledgement stays: the MIPS waits for it either way, and
++	 * that is exactly what the module ran on the bench on 06.09.,
++	 * where the pointer call was disabled by a module parameter.
+ 	 */
+-	{
+-		void (*callback)(u32 *, u32 *) =
+-			*(void (**)(u32 *, u32 *))(routine_info + 88);
+-
+-		if (callback) {
+-			u32 params[11];
+-			u32 result[11];
+-
+-			/* Extract params from local_msg payload (offset 44..84) */
+-			memcpy(params, local_msg + 44, 10 * sizeof(u32));
+-			params[0] = *(u16 *)(local_msg + 4); /* slot index */
+-			memset(result, 0, sizeof(result));
+-			result[0] = 15; /* max result count */
+-
+-			callback(params, result);
+-
+-			/* If response needed (not notify-only), send back */
+-			if (!(local_msg[6] & 1) || (local_msg[6] & 2)) {
+-				/* Copy result back into local_msg */
+-				*(u16 *)(local_msg + 4) = (u16)result[0];
+-
+-				if (result[0] != 15) {
+-					int i;
+-
+-					for (i = 0; i < (int)result[0] && i < 10; i++)
+-						*(u32 *)(local_msg + 44 + i * 4) =
+-							result[i + 1];
+-				}
+-
+-				/* Send response back to caller */
+-				if (SendComm2CPUEx((unsigned long)local_msg, 1, 0))
+-					pr_warn("cpu_comm: comm_CallWorkAction: "
+-						"SendComm2CPUEx failed\n");
+-			}
+-		} else {
+-			/* No callback registered — send empty ack so MIPS doesn't hang */
+-			if (!(local_msg[6] & 1) || (local_msg[6] & 2)) {
+-				if (SendComm2CPUEx((unsigned long)local_msg, 1, 0))
+-					pr_warn_ratelimited("cpu_comm: null-cb ack failed\n");
+-			}
+-		}
++	if (!(local_msg[6] & 1) || (local_msg[6] & 2)) {
++		if (SendComm2CPUEx((unsigned long)local_msg, 1, 0))
++			pr_warn_ratelimited("cpu_comm: comm_CallWorkAction: ack failed\n");
+ 	}
+ 
+ out_free:
+diff -ruN a/drivers/soc/sunxi/cpu_comm/Kconfig b/drivers/soc/sunxi/cpu_comm/Kconfig
+--- a/drivers/soc/sunxi/cpu_comm/Kconfig	2026-09-07 09:22:25.480776408 +0200
++++ b/drivers/soc/sunxi/cpu_comm/Kconfig	2026-09-07 09:22:32.008999401 +0200
+@@ -1,6 +1,7 @@
+ config HY310_CPU_COMM
+ 	tristate "HY310 CPU_COMM — ARM/MIPS IPC Framework"
+ 	depends on OF
++	select CRC32
+ 	help
+ 	  Inter-processor communication framework for the HY310 projector.
+ 	  Enables ARM ↔ MIPS display co-processor communication via shared
+diff -ruN a/drivers/soc/sunxi/cpu_comm/Makefile b/drivers/soc/sunxi/cpu_comm/Makefile
+--- a/drivers/soc/sunxi/cpu_comm/Makefile	2026-09-07 09:22:25.480793698 +0200
++++ b/drivers/soc/sunxi/cpu_comm/Makefile	2026-09-07 09:22:32.009023501 +0200
+@@ -1,2 +1,2 @@
+ obj-$(CONFIG_HY310_CPU_COMM) += hy310-cpu-comm.o
+-hy310-cpu-comm-objs := cpu_comm_dev.o cpu_comm_mem.o cpu_comm_hw.o cpu_comm_proto.o cpu_comm_fifo.o cpu_comm_channel.o cpu_comm_rpc.o cpu_comm_user.o cpu_comm_sem.o
++hy310-cpu-comm-objs := cpu_comm_dev.o cpu_comm_mem.o cpu_comm_hw.o cpu_comm_proto.o cpu_comm_fifo.o cpu_comm_channel.o cpu_comm_rpc.o cpu_comm_user.o cpu_comm_sem.o cpu_comm_api.o
+diff -ruN a/include/linux/soc/sunxi/h713-cpu-comm.h b/include/linux/soc/sunxi/h713-cpu-comm.h
+--- a/include/linux/soc/sunxi/h713-cpu-comm.h	1970-01-01 01:00:00.000000000 +0100
++++ b/include/linux/soc/sunxi/h713-cpu-comm.h	2026-09-07 09:23:57.496360999 +0200
+@@ -0,0 +1,232 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * In-kernel API for the H713 ARM <-> MIPS IPC (cpu_comm).
++ *
++ * The MIPS co-processor of the H713 owns the whole HDMI-RX and picture
++ * pipeline. Everything it can do is reachable as a THal_Vp_* remote
++ * procedure over the shared-memory IPC that drivers/soc/sunxi/cpu_comm
++ * implements. Until now the only way in was the /dev/cpu_comm character
++ * device, so a kernel driver that needed the co-processor -- the HDMI-RX
++ * V4L2 driver, the ARISC HDMI driver -- had to be driven from userspace.
++ *
++ * This header is the way in from the kernel. The character devices keep
++ * working unchanged; both interfaces talk to the same protocol state and
++ * are serialised against each other.
++ *
++ *
++ * Component IDs
++ * =============
++ *
++ * A routine is addressed by a 32-bit @comp_id, not by name. The id is a
++ * CRC-32 (LSB-first, polynomial 0xedb88320, no pre- or post-inversion)
++ * over the full routine name, seeded with 0x00123456:
++ *
++ *	"<base name>_<cpu that implements it, 1 hex digit>_<pid, 3 hex digits>"
++ *
++ * so THal_Vp_SetSource, implemented on the MIPS (cpu 1), with the pid
++ * field 0 that every stock routine uses, hashes "THal_Vp_SetSource_1_000"
++ * to 0xeaf13de5. cpu_comm_name2id() does exactly this. The seed comes from
++ * Trid_Util_Name2ID in the vendor libUtility.so; the derivation reproduces
++ * every named entry in Documentation-side docs/reference/cpu-comm-call-table.md.
++ *
++ * Callbacks that the MIPS makes back into the ARM (MipsHalCallback_*) are
++ * hashed the same way with cpu 0.
++ *
++ *
++ * Registering a callback registers a routine
++ * ==========================================
++ *
++ * A MipsHalCallback_* routine only exists for the co-processor once its
++ * descriptor sits in the routine table in shared memory. The firmware
++ * resolves the callback by that table -- SendComm2CPUEx() looks the
++ * component id up with FindRoutine() and gives up with -3 when there is
++ * no entry, so a callback nobody registered is never put on the wire at
++ * all. That is why cpu_comm_register_callback() takes the routine's
++ * *name*: the descriptor carries the name, and the id is only its hash.
++ *
++ * The other side of that coin is a rule for the caller, and it was
++ * learned the expensive way. Registering is not a passive act: writing
++ * the descriptor is what makes the co-processor start sending, so the
++ * first call can arrive the moment cpu_comm_register_callback() returns.
++ * A driver must therefore register *last* -- when it is done bringing the
++ * co-processor up and can take a call -- and not first. Registering at
++ * the top of a probe that then runs a chain of outgoing calls means the
++ * incoming call lands in the middle of that chain, and on 07.09. one
++ * single delivered callback was enough to break the HDMI-RX probe, in
++ * two different places on two cold starts.
++ *
++ *
++ * Argument passing
++ * ================
++ *
++ * Arguments and results are arrays of 32-bit words, at most
++ * CPU_COMM_MAX_ARGS of them -- that limit is the protocol's, the vendor's
++ * own wrapper checks it too. There is no type information on the wire: a
++ * routine that takes a buffer takes the *physical* address of that buffer
++ * as a plain u32, and the buffer has to live somewhere the MIPS can see
++ * it (the cpu_comm reserved region, or another carveout it has been told
++ * about). See the THal_Vp_Init staging buffer or the HDCP key for
++ * examples.
++ *
++ * Results come back the same way: a count plus that many words.
++ *
++ *
++ * Timeouts
++ * ========
++ *
++ * cpu_comm_call() is synchronous. It returns only when the MIPS has
++ * answered, when the wait ran out, or when the message could not be sent
++ * at all. A call that timed out returns -ETIMEDOUT. It never reports
++ * success with an empty result -- that failure mode cost this project a
++ * lot of debugging on the character-device path, where a missing RETURN
++ * looks exactly like a routine that returns nothing.
++ *
++ * Do not call cpu_comm_call() from a callback: callbacks run on the
++ * receive path that also delivers your answer.
++ */
++
++#ifndef __LINUX_SOC_SUNXI_H713_CPU_COMM_H
++#define __LINUX_SOC_SUNXI_H713_CPU_COMM_H
++
++#include <linux/errno.h>
++#include <linux/types.h>
++
++/* Maximum number of argument or result words in one call. */
++#define CPU_COMM_MAX_ARGS		10
++
++/* Seed of the routine-name hash (Trid_Util_Name2ID). */
++#define CPU_COMM_NAME2ID_SEED		0x00123456u
++
++/* Used when cpu_comm_call() is given timeout_ms == 0. */
++#define CPU_COMM_CALL_TIMEOUT_MS	500
++
++/* The CPU that implements a routine, for cpu_comm_name2id(). */
++#define CPU_COMM_CPU_ARM		0
++#define CPU_COMM_CPU_MIPS		1
++
++/**
++ * typedef cpu_comm_cb_t - handler for a call the MIPS makes into the ARM
++ * @comp_id: component id the MIPS addressed, as registered
++ * @args: argument words, @nargs of them, or NULL if there are none
++ * @nargs: number of valid words in @args, at most CPU_COMM_MAX_ARGS
++ * @ctx: the context pointer passed to cpu_comm_register_callback()
++ *
++ * Runs in process context on the cpu_comm receive workqueue. It may
++ * sleep, but it delays the acknowledgement the MIPS is waiting for while
++ * it does, so keep it short and hand real work to your own queue. It must
++ * not call cpu_comm_call().
++ */
++typedef void (*cpu_comm_cb_t)(u32 comp_id, const u32 *args,
++			      unsigned int nargs, void *ctx);
++
++#if IS_ENABLED(CONFIG_HY310_CPU_COMM)
++
++/**
++ * cpu_comm_call() - run a routine on the MIPS and wait for its answer
++ * @comp_id: component id of the routine, see cpu_comm_name2id()
++ * @args: argument words, or NULL when @nargs is 0
++ * @nargs: number of argument words, at most CPU_COMM_MAX_ARGS
++ * @ret: buffer for the result words, or NULL when @nret is 0
++ * @nret: capacity of @ret in words, at most CPU_COMM_MAX_ARGS
++ * @timeout_ms: how long to wait for the answer, 0 for
++ *	CPU_COMM_CALL_TIMEOUT_MS
++ *
++ * Sends one call, waits for the acknowledgement and then for the return,
++ * and copies up to @nret result words into @ret. Words of @ret that the
++ * MIPS did not fill are zeroed. May sleep; must not be called from
++ * interrupt context or from a cpu_comm callback.
++ *
++ * Return: the number of result words written to @ret (0..@nret), or a
++ * negative errno: -ETIMEDOUT if the co-processor did not answer in time,
++ * -ENODEV if the IPC is not up or the routine is not registered,
++ * -EAGAIN if the co-processor has not reached application readiness,
++ * -EBUSY if the call-slot pool is exhausted, -EINVAL on bad arguments.
++ */
++int cpu_comm_call(u32 comp_id, const u32 *args, unsigned int nargs,
++		  u32 *ret, unsigned int nret, unsigned int timeout_ms);
++
++/**
++ * cpu_comm_register_callback() - receive calls the MIPS makes into the ARM
++ * @base_name: routine name without the "_<cpu>_<pid>" suffix, e.g.
++ *	"MipsHalCallback_SignalChange". At most 58 characters, so that the
++ *	full name still fits the descriptor's 64-byte name field.
++ * @fn: handler, see cpu_comm_cb_t
++ * @ctx: opaque pointer handed back to @fn
++ *
++ * Installs a routine descriptor for @base_name in the shared routine
++ * table -- without it the co-processor cannot resolve the callback and
++ * never sends it -- and registers @fn for the component id that name
++ * hashes to. One handler per component id. The handler is called in
++ * addition to the existing /dev/cpu_comm delivery, which is left
++ * untouched: a reader of the character device and a kernel handler both
++ * see the same event.
++ *
++ * Call this when the caller is ready to be called, not before: the
++ * descriptor is what arms the sender, so the first call can arrive as
++ * soon as this returns. See "Registering a callback registers a routine"
++ * above for what that cost once.
++ *
++ * Return: 0 on success, -EBUSY if the id already has a handler, -ENOSPC
++ * if the handler table or the routine table is full, -ENODEV if the IPC
++ * is not up yet, -EINVAL on bad arguments.
++ */
++int cpu_comm_register_callback(const char *base_name, cpu_comm_cb_t fn,
++			       void *ctx);
++
++/**
++ * cpu_comm_unregister_callback() - drop a handler again
++ * @base_name: the name the handler was registered under
++ * @fn: the same handler that was registered
++ *
++ * Removes the routine descriptor again -- but only if it is still the one
++ * this API installed, so a userspace daemon that registered the same
++ * routine keeps its entry -- and drops the handler. Waits for a handler
++ * that is currently running to return, so it is safe to free @ctx
++ * afterwards. Call this before unloading a module that registered a
++ * handler.
++ *
++ * Return: 0 on success, -ENOENT if no such handler is registered.
++ */
++int cpu_comm_unregister_callback(const char *base_name, cpu_comm_cb_t fn);
++
++/**
++ * cpu_comm_name2id() - hash a routine name into its component id
++ * @base_name: routine name without the "_<cpu>_<pid>" suffix, e.g.
++ *	"THal_Vp_SetSource"
++ * @target_cpu: CPU_COMM_CPU_MIPS for a THal_Vp_* routine,
++ *	CPU_COMM_CPU_ARM for a MipsHalCallback_* one
++ *
++ * Return: the component id, or 0 if the name is unusable.
++ */
++u32 cpu_comm_name2id(const char *base_name, unsigned int target_cpu);
++
++#else /* !CONFIG_HY310_CPU_COMM */
++
++static inline int cpu_comm_call(u32 comp_id, const u32 *args,
++				unsigned int nargs, u32 *ret,
++				unsigned int nret, unsigned int timeout_ms)
++{
++	return -ENODEV;
++}
++
++static inline int cpu_comm_register_callback(const char *base_name,
++					     cpu_comm_cb_t fn, void *ctx)
++{
++	return -ENODEV;
++}
++
++static inline int cpu_comm_unregister_callback(const char *base_name,
++					       cpu_comm_cb_t fn)
++{
++	return -ENODEV;
++}
++
++static inline u32 cpu_comm_name2id(const char *base_name,
++				   unsigned int target_cpu)
++{
++	return 0;
++}
++
++#endif /* CONFIG_HY310_CPU_COMM */
++
++#endif /* __LINUX_SOC_SUNXI_H713_CPU_COMM_H */

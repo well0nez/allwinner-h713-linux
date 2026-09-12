@@ -1,0 +1,29 @@
+arm64: dts: h713: Rueckfall-Bootargs ohne earlycon, mit loglevel=4
+
+Diese Zeile gilt nur, wenn U-Boot keine bootargs setzt -- im Release setzt es
+sie immer (hy310.env, bootargs_base). Sie soll trotzdem dasselbe sagen wie der
+Release-Pfad, sonst verhaelt sich ein Notstart anders als ein normaler, und
+genau dann will man keine Ueberraschung.
+
+earlycon ist eine Entwicklerkonsole: sie schreibt auf die UART, bevor der
+eigentliche Konsolentreiber steht, und ist nur dann von Wert, wenn der Kernel
+davor haengen bleibt. Das ist seit 20/20 Kaltstarts nicht mehr der Fall.
+
+loglevel=4 laesst Warnungen und Fehler auf die Konsole und behaelt den Rest im
+Kernelring. Mit console=tty0 hiesse loglevel 7 sonst: der komplette
+Startmitschnitt ueber dem projizierten Bild. dmesg zeigt weiterhin alles.
+
+Marco, 12.09.2026: "wir wollen kein debug in release".
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -7,7 +7,7 @@
+ 	compatible = "cstenger,hy200-qz713df-a1", "allwinner,sun50i-h713";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 rw net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
++		bootargs = "console=ttyS0,115200 console=tty0 loglevel=4 root=/dev/mmcblk0p26 rootwait rootfstype=ext4 rw net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
+ 	};
+ };
+ 

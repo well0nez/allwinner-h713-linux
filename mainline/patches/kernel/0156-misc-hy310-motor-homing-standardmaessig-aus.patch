@@ -1,0 +1,53 @@
+misc: hy310-motor: Homing standardmaessig aus
+
+Patch 0116 hat homing=0 als Moeglichkeit eingebaut und ausdruecklich geschrieben
+"Default is unchanged."  Das war richtig, solange ueber den Bereichswaechter
+nichts bekannt war.  Jetzt ist etwas bekannt, und es kehrt die Abwaegung um.
+
+Am 12.09.2026 am Geraet gemessen (analyse/boot/motor-bereichswaechter-20260912.txt):
+der Waechter auf PH14 arbeitet, aber gemessen wurde nur die UNTERE Kante --
+raw faellt bei step=-206 weg, der Treiber kehrt um und merkt edge_dn.  Ob es in
+der Gegenrichtung ueberhaupt eine Kante gibt, ist ungeprueft; homing faehrt als
+erstes bis zu 100 msteps genau dorthin (HOMING_UP_MAX).  Ein Waechter, der in
+dieser Richtung schweigt, laesst den Treiber nicht umkehren, und dann endet der
+Lauf im mechanischen Anschlag.
+
+Dazu kommt, wann das passiert.  Das Modul ist =m und der Geraetebaumknoten wird
+mit dem naechsten Patch aktiv; damit laedt udev es ueber modalias beim Booten.
+Der Vorgabewert entscheidet also nicht darueber, was ein Entwickler beim
+Experimentieren bekommt, sondern darueber, was auf jedem ausgelieferten Geraet
+bei jedem Start passiert.  Ein Fokus braucht dafuer keine Kalibrierung -- er
+wird nach Augenschein eingestellt, und der Zaehlerstand ist ohnehin keine
+Position (nach jedem Randereignis laufen Zaehler und Mechanik auseinander).
+
+Wer homing braucht, bekommt es mit homing=1 und weiss dann, was er tut.
+
+Kein Codepfad aendert sich, nur der Vorgabewert und der Text daneben.
+
+diff -ruN a/drivers/misc/hy310-focus-motor.c b/drivers/misc/hy310-focus-motor.c
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -813,10 +813,21 @@
+  *
+  * With homing=0 the driver probes, configures the pads and exposes sysfs
+  * without touching the mechanism. It then has no calibration, and says so.
++ *
++ * The default is off, and that is a decision about shipped devices rather than
++ * about benches: the module is =m and the node is enabled, so udev loads it at
++ * every boot. Homing drives up to HOMING_UP_MAX msteps upwards first, and only
++ * the LOWER limiter edge has ever been observed on this board (measured
++ * 12.09.2026, analyse/boot/motor-bereichswaechter-20260912.txt). If the watcher
++ * stays silent in that direction the driver never reverses and the run ends in
++ * the mechanical stop -- once per boot. A focus needs no calibration to be
++ * useful; step_cur is a counter and not a position anyway, since counter and
++ * mechanism drift apart at every edge event.
+  */
+-static bool homing = true;
++static bool homing;
+ module_param(homing, bool, 0444);
+-MODULE_PARM_DESC(homing, "run the homing sequence at probe (default yes)");
++MODULE_PARM_DESC(homing,
++		 "run the homing sequence at probe (default no, it drives into an unverified upper end)");
+ 
+ /*
+  * Diagnostic override for the limiter pad bias. The switch on this board

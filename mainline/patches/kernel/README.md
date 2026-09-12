@@ -23,7 +23,7 @@ the 32-bit port also builds on arm64. Six were adapted from their original
 | 0005 | phy: sun4i-usb H713 PMU bit0 quirk |
 | 0006 | mmc: sunxi H713 (v5p3x) |
 | 0007 | pwm: sun8i 8-channel |
-| 0008–0009 | misc: HY310 board-mgr / keystone-motor |
+| 0008–0009 | misc: HY310 board-mgr / focus-motor |
 | 0011–0014 | misc/soc: nsi, tvtop, decd, cpu-comm IPC |
 | 0015–0016 | H713 driver Kconfig + clock/reset dt-binding IDs |
 | 0017 | iommu: sun50i decouple ARM_DMA_USE_IOMMU |
@@ -36,7 +36,7 @@ the 32-bit port also builds on arm64. Six were adapted from their original
 
 - **`board/hy200_qz713df_a1_defconfig`** — the bench arm64 defconfig (base
   arm64 defconfig slimmed, plus the SoC-general H713 drivers + PPU/LRADC/R-CCU).
-  Projector-only vendor drivers (`board-mgr`, keystone motor, `tvtop`, `decd`,
+  Projector-only vendor drivers (`board-mgr`, focus motor, `tvtop`, `decd`,
   and `cpu-comm`) are deliberately disabled here; they need a separate,
   hardware-tested projector configuration. In particular, `cpu-comm` retains
   the vendor 32-bit shared-pointer ABI and is not safe to enable in an arm64

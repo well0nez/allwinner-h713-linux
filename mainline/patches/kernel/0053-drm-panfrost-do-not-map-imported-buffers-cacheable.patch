@@ -1,0 +1,80 @@
+drm/panfrost: do not map imported buffers cacheable
+
+panfrost_mmu_map() sets IOMMU_CACHE unconditionally, for every buffer
+object it maps, including ones imported from another driver over dma-buf.
+That is an assumption panfrost is not entitled to make: the memory
+attributes of an imported buffer belong to whoever allocated it, and
+nothing in the dma-buf interface reports what they are.
+
+On ARM_MALI_LPAE, IOMMU_CACHE selects ARM_LPAE_MAIR_ATTR_IDX_CACHE, which
+the Mali MAIR (arm_mali_lpae_alloc_pgtable) defines as
+ARM_MALI_LPAE_MEMATTR_WRITE_ALLOC -- Normal, write-back, write-allocate.
+Meanwhile any drm_gem_dma exporter on a non-coherent platform allocated
+that memory with dma_alloc_wc(), so the CPU has it mapped Normal
+Non-cacheable, and the display engine reading it snoops nothing at all.
+
+Aliasing one physical address with mismatched cacheability is CONSTRAINED
+UNPREDICTABLE on ARM rather than merely slow. The two views are not
+coherent, and a dirty line belonging to the cacheable view can be written
+back over data the non-cacheable agent wrote, at a moment neither of them
+controls.
+
+This is reachable on any "split renderer" system -- a display-only KMS
+device with no render node, paired with a separate GPU -- which is the
+whole reason kmsro exists. It is how this board runs: mesa allocates the
+scanout buffer as a dumb buffer on the display device (drm_gem_dma, CMA,
+write-combine), exports it, and imports it into panfrost, which then maps
+it write-back. Confirmed on hardware from /sys/kernel/debug/dma_buf/bufinfo:
+four 3,723,264-byte buffers exported by drm and attached only to
+1800000.gpu, while neither the GPU nor the display node declares
+dma-coherent.
+
+Drop IOMMU_CACHE for imported objects. That selects ATTRINDX 0, which the
+Mali MAIR defines as MEMATTR_IMP_DEF, matching the non-cacheable view the
+exporter and the CPU already have. Natively allocated buffers keep
+IOMMU_CACHE and are entirely unaffected, so the tiler heap and ordinary
+render targets are not slowed down; the only buffers that change are
+imports, which on this path are written once per frame and read by
+scanout hardware that was never going to see a cache anyway.
+
+Being strictly correct would mean asking the exporter for its coherency
+rather than assuming either answer, but dma-buf has no such query today,
+and non-cacheable is the safe assumption: getting it wrong that way costs
+performance, while getting it wrong the other way is undefined behaviour.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/drivers/gpu/drm/panfrost/panfrost_mmu.c
++++ b/drivers/gpu/drm/panfrost/panfrost_mmu.c
+@@ -438,6 +438,31 @@
+ 	if (bo->noexec)
+ 		prot |= IOMMU_NOEXEC;
+ 
++	/*
++	 * An imported buffer's memory attributes belong to whoever allocated
++	 * it, and nothing in the dma-buf interface reports what they are. We
++	 * must not assume they are cacheable.
++	 *
++	 * IOMMU_CACHE on ARM_MALI_LPAE selects ARM_LPAE_MAIR_ATTR_IDX_CACHE,
++	 * which the Mali MAIR defines as MEMATTR_WRITE_ALLOC -- Normal,
++	 * write-back, write-allocate. Exporters that allocated with
++	 * dma_alloc_wc() -- every drm_gem_dma driver on a non-coherent
++	 * platform, which is what a display engine feeding a panel typically
++	 * is -- have the same physical pages mapped Normal Non-cacheable by
++	 * the CPU, and the display reads them without snooping anything.
++	 *
++	 * Aliasing one physical address with mismatched cacheability is
++	 * CONSTRAINED UNPREDICTABLE on ARM, not merely slow: the two views
++	 * are not coherent, and a dirty line can be written back over data
++	 * the other agent wrote, at a time neither agent controls.
++	 *
++	 * So drop IOMMU_CACHE for imports, which selects ATTRINDX 0 and
++	 * MEMATTR_IMP_DEF, matching the non-cacheable view the exporter and
++	 * the CPU already have. Native BOs are unaffected and stay cached.
++	 */
++	if (drm_gem_is_imported(obj))
++		prot &= ~IOMMU_CACHE;
++
+ 	sgt = drm_gem_shmem_get_pages_sgt(shmem);
+ 	if (WARN_ON(IS_ERR(sgt)))
+ 		return PTR_ERR(sgt);

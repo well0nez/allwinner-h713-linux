@@ -1,0 +1,25 @@
+arm64: dts: h713: cpu_comm-Knoten -- Registerfenster 0x1000, Interrupt 46 statt 21
+
+Der Knoten aus 0024 nennt reg = <0x03003000 0x400> und GIC_SPI 21. Beides
+stimmt nicht: die Msgbox belegt 0x1000, und SPI 21 ist der S/PDIF-Interrupt;
+die Msgbox-Interrupts sind 46/109/108 (Stock-DTB; doku/69: "derselbe April-
+Commit hatte die Msgbox-IRQs 46/109/108 schon korrekt"). Mit 21 kam kein
+einziger MIPS-Rueckruf an.
+
+Bis zum 12.09. stand die Korrektur in-place in 0024; jetzt als eigener Patch,
+damit sie cstenger als Fix angeboten werden kann (doku/116 P8).
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1499,8 +1499,8 @@
+ 
+ 		cpu_comm: cpu-comm@3003000 {
+ 			compatible = "allwinner,sunxi-cpu-comm";
+-			reg = <0x03003000 0x400>;
+-			interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
++			reg = <0x03003000 0x1000>;
++			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;	/* 46, nicht 21 -- 21 ist S/PDIF */
+ 			clocks = <&ccu CLK_BUS_MSGBOX>;
+ 			resets = <&ccu RST_BUS_MSGBOX>;
+ 			shared-memory = <&cpu_comm_reserved>;

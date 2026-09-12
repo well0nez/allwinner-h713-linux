@@ -1,0 +1,143 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Wed, 2 Sep 2026 00:10:00 -0700
+Subject: [PATCH] ASoC: h713: fix the audio clock, which never leaves 172 MHz
+
+All playback runs 4.8 % slow. A 440 Hz tone comes out of the speaker at
+418.97 Hz -- 84.8 cents flat, nearly a semitone -- stable to 0.01 Hz across
+every segment of a recording.
+
+The module clock does not respond to the requested sample rate at all:
+
+  hw_params                    rate: 44100 (44100/1)
+  audio-codec-dac  playing     43,000,000 Hz
+  audio-codec-dac  at 48 kHz   43,000,000 Hz    <- unchanged
+  pll-audio-base               172,000,000 Hz
+  0x02001078 = 0x280B5501      N=86, M=12, 24 MHz * 86/12 = 172 MHz exactly
+
+172 MHz is not an audio rate. It is whatever the PLL booted with, and nothing
+ever reprograms it, because audio-codec-dac is a bare gate: the only rate
+control in this path is PLL_AUDIO itself, and without CLK_SET_RATE_PARENT the
+request cannot reach it. clk_set_rate() then rounds to the current rate and
+returns 0, so sun4i_codec_hw_params sees success and no error is ever reported.
+
+Two nominal rates against one stuck clock over-determine the divisor:
+
+  nominal 44100  ->  418.97 Hz measured   (440 * 41992/44100 = 418.97)
+  nominal 48000  ->  384.93 Hz measured   (440 * 41992/48000 = 384.93)
+
+Both fit rate = audio-codec-dac / 1024 = 43e6/1024 = 41,992 Hz to 0.01 Hz. So
+this codec divides its module clock by 1024, not by the 512 the shared
+sun4i_codec_get_mod_freq() table assumes, and it needs 45,158,400 for the
+44.1 kHz family and 49,152,000 for the 48 kHz family. audio-codec-dac is
+pll-audio-2x, which is pll-audio-base / 4, so the PLL rates required are
+180,633,600 and 196,608,000 -- and both are already in pll_audio_sdm_table as
+its two largest entries. The CCU port had the divisor chain right all along;
+nothing could reach those entries.
+
+The two halves cannot be split, and the order matters if anyone tries. The flag
+alone is worse than the bug: the driver would ask for 22,579,200, that rate is
+also in the table, the PLL would obediently go to 90,316,800, and playback
+would run at 22,050 Hz -- half speed instead of 4.8 % slow. The multiplier
+alone is inert, because the request still cannot propagate.
+
+Confirmed on hardware before writing this, by poking the PLL to the table's own
+180,633,600 entry (0x02001078 = 0x29021501, pattern 0x02001178 = 0xC001288D)
+and restoring 0x280B5501 afterwards:
+
+  44.1 kHz, PLL as found     418.97 Hz    -84.8 cents
+  48   kHz, PLL as found     384.93 Hz   -231.5 cents
+  44.1 kHz, PLL poked        440.00 Hz      0.0 cents
+
+Exactly on pitch. That run proved the diagnosis and the target rate; this patch
+is what reaches them from the driver, and booting it confirms both halves:
+
+  nominal 44100    pll-audio-base 180,633,600    audio-codec-dac 45,158,400
+  nominal 48000    pll-audio-base 196,608,000    audio-codec-dac 49,152,000
+
+45,158,400 / 1024 is 44,100 exactly. Re-measured at the speaker, the 440 Hz
+tone now reads 440.01 Hz at nominal 44.1 kHz and 440.00 Hz at nominal 48 kHz,
+against 418.97 and 384.93 before -- 0.1 cents and 0.0 cents from correct.
+
+The ADC gate gets the same flag. Capture is unimplemented, so this is untested
+there, but leaving the two halves of one block inconsistent would be a trap for
+whoever brings capture up.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+diff --git a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
+--- a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
++++ b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
+@@ -522,10 +522,17 @@
+ static SUNXI_CCU_GATE(bus_owa1_clk, "bus-owa1", "apb1", 0xa2c, BIT(1), 0);
+ static SUNXI_CCU_GATE(bus_audio_hub_clk, "bus-audio-hub", "apb1",
+ 		      0xa5c, BIT(0), 0);
++/*
++ * These are bare gates: the only rate control in the audio path is PLL_AUDIO
++ * itself, so a rate request has to reach it or nothing moves. Without
++ * CLK_SET_RATE_PARENT, clk_set_rate() on the codec clock rounds to the current
++ * rate and returns 0, and PLL_AUDIO keeps whatever it booted with -- measured
++ * as 172 MHz, giving 43 MHz here for every sample rate and playback 4.8 % slow.
++ */
+ static SUNXI_CCU_GATE(audio_codec_dac_clk, "audio-codec-dac", "pll-audio-2x",
+-		      0xa60, BIT(31), 0);
++		      0xa60, BIT(31), CLK_SET_RATE_PARENT);
+ static SUNXI_CCU_GATE(audio_codec_adc_clk, "audio-codec-adc", "pll-audio-2x",
+-		      0xa64, BIT(31), 0);
++		      0xa64, BIT(31), CLK_SET_RATE_PARENT);
+ static SUNXI_CCU_GATE(bus_audio_codec_clk, "bus-audio-codec", "apb1",
+ 		      0xa6c, BIT(0), 0);
+ 
+diff --git a/sound/soc/sunxi/sun4i-codec.c b/sound/soc/sunxi/sun4i-codec.c
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -347,6 +347,8 @@
+ 	struct regmap_field *reg_adc_fifoc;
+ 	/* DAC_FIFOC register is at different offset on different SoCs */
+ 	struct regmap_field *reg_dac_fifoc;
++	/* Multiplier on the module clock, for SoCs that divide it further */
++	unsigned int mod_freq_mult;
+ 
+ 	struct snd_dmaengine_dai_dma_data	capture_dma_data;
+ 	struct snd_dmaengine_dai_dma_data	playback_dma_data;
+@@ -670,6 +672,15 @@
+ 	if (!clk_freq)
+ 		return -EINVAL;
+ 
++	/*
++	 * The table above gives the rate this codec family wants for a 512x
++	 * module clock. H713 divides by 1024 instead, measured two ways: a
++	 * 440 Hz tone at nominal 44100 came out at 418.97 Hz and at nominal
++	 * 48000 at 384.93 Hz, both matching rate = module_clk / 1024 to
++	 * 0.01 Hz against the 43 MHz the clock was stuck at.
++	 */
++	clk_freq *= scodec->mod_freq_mult;
++
+ 	ret = clk_set_rate(scodec->clk_module, clk_freq);
+ 	if (ret)
+ 		return ret;
+@@ -2233,6 +2244,8 @@
+ 	bool has_reset;
+ 	bool playback_only;
+ 	u32 dma_max_burst;
++	/* Module clock multiple, when not the family default of 512x. 0 = 1x */
++	unsigned int mod_freq_mult;
+ };
+ 
+ static const struct sun4i_codec_quirks sun4i_codec_quirks = {
+@@ -2381,6 +2394,7 @@
+ 	.reg_dac_txdata	= SUN8I_H3_CODEC_DAC_TXDATA,
+ 	.has_reset	= true,
+ 	.dma_max_burst	= SUN4I_DMA_MAX_BURST,
++	.mod_freq_mult	= 2,
+ };
+ 
+ static const struct sun4i_codec_quirks sun50i_h616_codec_quirks = {
+@@ -2535,6 +2549,8 @@
+ 		return ret;
+ 	}
+ 
++	scodec->mod_freq_mult = quirks->mod_freq_mult ?: 1;
++
+ 	/* DMA configuration for TX FIFO */
+ 	scodec->playback_dma_data.addr = res->start + quirks->reg_dac_txdata;
+ 	scodec->playback_dma_data.maxburst = quirks->dma_max_burst;

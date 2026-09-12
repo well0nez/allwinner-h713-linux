@@ -1,0 +1,1531 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] drm: h713: show the HDMI capture ring on the video plane
+
+The video plane this driver gained with the fullscreen NV12 overlay is
+nailed to 1280x720 NV12 with a chroma stride equal to the luma stride. That
+is the right description of a Cedrus frame. It is not a description of
+anything this projector can actually show today: the one live video source
+is the HDMI receiver, the MIPS firmware captures it as NV16 at the panel's
+1920x1080, and on a 1920x1080 board the plane's atomic_check rejects every
+framebuffer, so the plane is listed and unusable.
+
+Four things change.
+
+Geometry comes from the framebuffer instead of from a constant. The two
+geometry words are computed, and both formulas reproduce the two register
+sets that are known good byte for byte: 0x02cf04ff/0x002c004f at 1280x720,
+which this driver wrote before, and 0x043f077f/0x00420077 at 1920x1080,
+which the firmware programs for the HDMI capture on the HY310. The crop
+registers +0x048/+0x04c are now written too; they used to be left at
+whatever the firmware had put there, which happened to be right on one
+board and is not a description.
+
+NV16 is added to the format list, and it is fed to the hardware without
+switching the format code. Source 0 has a linear NV12 reader: for output
+line r it fetches chroma line r/2. NV16 carries one chroma line per picture
+line, so the colour comes out stretched 2x vertically -- anchored at the
+top, colour from the upper half of the picture lying over the lower half.
+Doubling the chroma stride puts chroma line r/2 at offset r/2 * 2 * pitch,
+which is picture line r: exact 4:2:2 out of an NV12 reader, one register,
+no format switch. Switching the format code instead (0x03000213) breaks the
+luma geometry and turns the picture green. Everything else follows: the
+format field in CTRL stays 0 and the chroma crop keeps the NV12 height h/2,
+because that is what the reader is being told it is reading.
+
+The plane can source the capture ring itself, under a new "hdmi-ring"
+property. This is transitional -- it goes away when the capture driver hands
+the three ring slots out as dma-bufs -- but without it the plane has nothing
+to show. The firmware rotates a pair of flip pointers at +0x320/+0x324
+through the ring at the capture's 60 Hz, and the pair always names one slot
+index, so the vsync handler reads it and hands it to the scanout queue. The
+pointers are read, never written; the pool-2 control words next to them
+ignore CPU writes anyway.
+
+The VidDec frame descriptor is published on enable, exactly once, and is not
+withdrawn on disable. Every change to that record is a signal event to the
+firmware: it re-runs its WCE path and reprograms stride and mode registers
+behind the driver's back. Writing it a second time froze the picture and
+left the capture wedged until the next cold start; why it does not recover
+is still open. A content comparison makes the publish idempotent, so a
+module reload does not re-arm it either, and the pointer is left in the
+queue while source 0 is off so that re-enabling needs no second publish.
+
+That signal event is also the reason the chroma stride has to be programmed
+after the descriptor rather than before it. The WCE reprograms source 0 out of
+the record, and everything it computes there is what this plane writes anyway:
+geometry 0x043f077f/0x00420077, crop 0x04380780/0x021c0780, luma stride 0x780.
+The record carries a single stride, though, so it puts the luma pitch into the
+chroma stride as well -- and that is the one value this plane deliberately does
+not take from the record. On hardware the plane therefore came up with a halved
+chroma stride out of exactly the two prior states in which the pointer was not
+already standing, a cold start and a run after the bring-up script had cleared
+it, and with the right one out of every state in which it was standing --
+including a chroma stride poked to the same wrong value by hand immediately
+before the enable. Six runs, three outcomes, one variable; nothing else in the
+register set differs, because nothing else in the register set disagrees with
+the record.
+
+So the pointer words move into the publish, where they are written once instead
+of on every commit, and the enable brackets the event: it parks a zero in the
+chroma stride, which is not a stride the WCE can produce, and waits for the WCE
+to replace it before programming source 0. That is for NV16 only -- for NV12
+the WCE computes the stride the plane wants anyway, so there is nothing to lose
+and nothing to wait for. The bring-up recipe has always had this separation,
+publishing the descriptor and configuring source 0 as two separate steps, which
+is why the same chroma stride sticks there.
+
+The wait is one second, which is the bound the board actually gave: on the cold
+start that produced the trace above, the descriptor write, the firmware's
+answer and the driver's source-0 programming all fell into a single one-second
+sampling interval, and nothing has been measured more finely than that. Sixty
+hertz suggests the answer really arrives in about seventeen milliseconds, but a
+budget picked from what the firmware ought to do rather than from what it was
+seen to do would end the wait while the firmware is still entitled to answer,
+and the result would be precisely the halved chroma stride this bracket is for.
+It is at most one wait per boot, because the publication is only ever new once.
+Running out is reported as an error by the caller rather than swallowed inside
+the wait: the caller is the one that knows source 0 is about to be programmed
+regardless, and the acceptance run reads that line.
+
+Disable puts the chroma stride back to the value read at probe. Every other
+piece of source-0 state this plane changes is restored there from a remembered
+value, CTRL and the chroma gain and the RGB channel and the downstream
+selector, and this one was not. Nothing downstream reads it while RGB owns the
+output, but a plane that failed to program it inherited the previous cycle's
+doubled value and looked correct -- which is how a broken first enable passed
+an acceptance run.
+
+The descriptor page moves out of the DMA pool for the same reason. It has a
+second reader that is not a bus master: the MIPS reads it through its own
+DRAM window, where ARM 0x4bxxxxxx appears at 0x8bxxxxxx. System CMA sits at
+0x7dc00000 on this board and does not appear in that window at all. So the
+page comes from a reserved region named in DT, split off the vendor's
+128 KiB decoder buffer at the address stock parks the record at, and the
+capture ring is named there as well -- the driver needs its bounds to be
+sure a pointer it read out of the hardware really is a capture slot before
+it hands it to scanout. Neither region is a DMA pool, so the existing
+scanout override is looked up by name now; with no "scanout" entry present,
+framebuffers keep coming from system CMA exactly as before.
+
+Finally the chroma gain in PROC +0x508 becomes a "saturation" plane
+property. 0x4c is the value the stock picture pipeline calibrates for user
+saturation 50, and it stays the default; only bits [23:16] of the register
+are replaced, the rest of the word is the stock HDMI value as before.
+
+Last, and not about this plane at all: the flip pointers become a kernel
+interface. They are the only "a capture slot is finished" event the ARM can
+observe on this SoC -- there is no capture interrupt on this side, only the
+MIPS has one (doku/84, RE question K2) -- so the V4L2 capture driver needs
+them too, and it had asked for them with a reg of its own: eight bytes at
+0x05600320, inside the 0x400 window this node claims. That does not work.
+/proc/iomem reads "05600000-056003ff : 5600000.display afbd", so
+devm_ioremap_resource() on those eight bytes returns -EBUSY, and it would be
+the wrong shape even where it did work: two drivers sampling one rotating
+pointer pair, each with its own torn-pair handling, one of them from a timer
+that knows nothing about the vsync.
+
+So the pair is handed out from here instead, as
+include/linux/soc/sunxi/h713-afbd.h: h713_afbd_register_flip_notifier() puts
+a consumer on an atomic notifier chain that the vsync handler calls with the
+pair it has just seen change, and h713_afbd_read_flip() answers the questions
+that cannot wait for a vsync -- "is there a signal at all", which V4L2 asks
+while nothing is streaming. The chain is atomic and static: the handler runs
+in hard interrupt context, so the path allocates nothing and takes no mutex,
+and a consumer can still unregister after this driver has been unbound. The
+event carries the raw pair and no slot index, because the slot table is
+measured knowledge of the capture, while this driver knows only the bounds of
+the region the ring lives in.
+
+The vsync interrupt therefore has two users now, DRM's vblank machinery and
+the notifier, and the mask is derived from both instead of from vblank alone.
+With neither, nothing changes: the vsync handler does not so much as read the
+pointer pair, and an idle system pays exactly what it paid before.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -80,9 +80,27 @@
+ 			no-map;
+ 		};
+ 
+-		/* Video decoder buffer (128KB) */
++		/*
++		 * Video decoder buffer, 120KB of the vendor's 128KB. The last
++		 * 8KB are split off below because they hold something with a
++		 * different owner and a much longer life than a decoder frame.
++		 */
+ 		decd_reserved: decoder@4d941000 {
+-			reg = <0x4d941000 0x20000>;
++			reg = <0x4d941000 0x1e000>;
++			no-map;
++		};
++
++		/*
++		 * VidDec frame descriptor. AFBD +0x098 points here, and the
++		 * MIPS firmware follows that pointer (GetFrameInfo) to learn
++		 * what the video source is; on stock the ARM side parks the
++		 * record at exactly this address (decd dec_reg_set_address).
++		 * It has to stay in the low reservation: the MIPS sees ARM
++		 * DRAM 0x4bxxxxxx..0x4exxxxxx through its own window and
++		 * cannot address the system CMA pool at all.
++		 */
++		viddec_info: viddec-info@4d95f000 {
++			reg = <0x4d95f000 0x2000>;
+ 			no-map;
+ 		};
+ 
+@@ -1813,6 +1831,18 @@
+ 			clocks = <&ccu CLK_AFBD>,
+ 				 <&ccu CLK_BUS_DISP>;
+ 			clock-names = "clk_afbd", "clk_bus_disp";
++			/*
++			 * The video plane's two firmware-shared regions.
++			 * Neither is a DMA pool: "hdmi-ring" is the capture
++			 * ring the MIPS writes -- the driver only needs its
++			 * bounds to sanity-check the flip pointers it reads
++			 * out of the hardware -- and "viddec-info" holds the
++			 * frame descriptor both the AFBD and the MIPS read.
++			 * There is deliberately no "scanout" entry: ordinary
++			 * framebuffers come from the system CMA pool.
++			 */
++			memory-region = <&mips_framebuf>, <&viddec_info>;
++			memory-region-names = "hdmi-ring", "viddec-info";
+ 			status = "okay";
+ 		};
+ 
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -30,18 +30,41 @@
+  * both be bound; the DT patch that adds this driver's node disables dec@5600000
+  * and hands the window here.
+  *
++ * The second plane, "video-0", is AFBD source 0. It exists for the projector's
++ * one real video source, the HDMI receiver: the MIPS firmware captures HDMI as
++ * NV16 into a ring of three slots in the mips_framebuf carveout and rotates its
++ * flip pointers through them at 60 Hz. Source 0 has a linear NV12 reader, so
++ * NV16 is fed to it with a doubled chroma stride rather than a format switch,
++ * and the plane picks up the finished slot on every vsync. That path is
++ * transitional and named by the "hdmi-ring" property; it disappears when the
++ * capture driver hands the slots out as dma-bufs.
++ *
++ * The flip pointers are not only this driver's business, though. They are the
++ * only ARM-visible "a capture slot is finished" event on this SoC, and they
++ * live inside a register window this node owns and claims. So this driver
++ * publishes them, as the flip notifier of include/linux/soc/sunxi/h713-afbd.h:
++ * one reader of the pair, on the vsync interrupt it services anyway, instead
++ * of a second driver mapping the same two words behind its back.
++ *
+  * Copyright (C) 2026 Christopher Stenger
+  */
+ 
++#include <linux/bitfield.h>
+ #include <linux/clk.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/interrupt.h>
++#include <linux/io.h>
+ #include <linux/iopoll.h>
+ #include <linux/mm.h>
+ #include <linux/module.h>
++#include <linux/notifier.h>
+ #include <linux/of.h>
++#include <linux/of_address.h>
+ #include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
++#include <linux/spinlock.h>
++
++#include <linux/soc/sunxi/h713-afbd.h>
+ 
+ #include <drm/clients/drm_client_setup.h>
+ #include <drm/drm_atomic.h>
+@@ -58,16 +81,19 @@
+ #include <drm/drm_plane.h>
+ #include <drm/drm_plane_helper.h>
+ #include <drm/drm_probe_helper.h>
++#include <drm/drm_property.h>
+ #include <drm/drm_simple_kms_helper.h>
+ #include <drm/drm_vblank.h>
+ 
+-/* AFBD source 0 (linear NV12 video). */
++/* AFBD source 0 (linear NV12/NV16 video). */
+ #define AFBD_VIDEO_CTRL		0x010
+ #define AFBD_VIDEO_READY	0x014
+ #define AFBD_VIDEO_SIZE_M1	0x020
+ #define AFBD_VIDEO_BLOCK_M1	0x024
+ #define AFBD_VIDEO_Y_STRIDE	0x040
+ #define AFBD_VIDEO_C_STRIDE	0x044
++#define AFBD_VIDEO_CROP_Y	0x048
++#define AFBD_VIDEO_CROP_C	0x04c
+ #define AFBD_VIDEO_GATE		0x060
+ #define AFBD_VIDEO_FIELD	0x064
+ #define AFBD_VIDEO_RING_MUX	0x068
+@@ -79,6 +105,16 @@
+ #define AFBD_VIDEO_INFO0	0x098
+ #define AFBD_VIDEO_AUX_INFO	0x0a8
+ 
++/*
++ * Pool 2. The MIPS firmware owns this block: it rotates the two pointers below
++ * through the three HDMI capture ring slots at the capture's 60 Hz, and the
++ * three control words at +0x300/+0x304/+0x310 ignore CPU writes entirely
++ * (verified by write-then-read-back, doku/76 11.4). This driver only ever
++ * READS these two registers.
++ */
++#define AFBD_RING_Y		0x320
++#define AFBD_RING_C		0x324
++
+ /* AFBD channel 1 block. Offsets from the 0x05600000 window. */
+ #define AFBD_IRQ_STATUS		0x0c0	/* byte, bit 0, write-1-to-clear */
+ #define AFBD_IRQ_ENABLE		0x0c4	/* byte, bit 0 */
+@@ -93,18 +129,36 @@
+ #define AFBD_IRQ_VSYNC		BIT(0)
+ #define AFBD_STATUS_DONE	BIT(1)
+ 
+-#define H713_VIDEO_WIDTH	1280u
+-#define H713_VIDEO_HEIGHT	720u
+-#define H713_VIDEO_STRIDE	1280u
+-#define H713_VIDEO_SIZE_M1	0x02cf04ff
+-#define H713_VIDEO_BLOCK_M1	0x002c004f
+ #define H713_VIDEO_CTRL_ACTIVE	0x03000013
++/*
++ * Format selector, written by the firmware's NRWinNode_AfbdConfigure() from
++ * the VideoInfo record's color_format word. Stock runs code 0 -- the NV12
++ * reader -- and so does this driver for both of its formats; see the NV16
++ * note at h713_afbd_video_atomic_update().
++ */
++#define H713_VIDEO_CTRL_FORMAT	GENMASK(14, 8)
+ #define H713_VIDEO_GAIN		0x144c0000
++#define H713_VIDEO_GAIN_SAT	GENMASK(23, 16)
++#define H713_VIDEO_SAT_DEFAULT	0x4c
+ #define H713_VIDEO_SELECTOR	0x39000000
+ 
++/* The AFBD consumes the picture in 16x16 blocks. */
++#define H713_VIDEO_BLOCK	16u
++
+ /* The four queue slots are 4 bytes apart in each address ring. */
+ #define H713_VIDEO_SLOTS	4
+ 
++/* VidDec frame descriptor: 36 words, magic in word 0. */
++#define H713_VIDEO_INFO_WORDS	36
++#define H713_VIDEO_INFO_MAGIC	0x61770000
++
++/*
++ * How long the firmware gets to answer a descriptor publication. This is the
++ * bound the board has measured, and deliberately not a shorter one that would
++ * merely feel right; see h713_afbd_wait_wce().
++ */
++#define H713_WCE_TIMEOUT_US	1000000
++
+ struct h713_afbd {
+ 	struct drm_device drm;
+ 	struct drm_simple_display_pipe pipe;
+@@ -119,60 +173,211 @@
+ 	unsigned int stride;
+ 	void *video_info;
+ 	dma_addr_t video_info_dma;
++	bool video_info_published;
++	struct drm_property *prop_hdmi_ring;
++	struct drm_property *prop_saturation;
++	u32 ring_base;
++	u32 ring_size;
++	/* Serialises the pool-1 address queue against the vsync handler. */
++	spinlock_t ring_lock;
++	bool ring_follow;
++	bool ring_vblank_ref;
++	u32 ring_y;
++	/* Under h713_afbd_flip_lock: it gates the same interrupt bit. */
++	bool vblank_on;
+ 	u32 rgb_ctrl_active;
+ 	u32 video_ctrl_idle;
++	u32 video_c_stride_idle;
+ 	u32 gain_idle;
+ 	u32 selector_rgb;
+ 	bool video_active;
+ };
+ 
++/*
++ * Plane state. "hdmi-ring" and "saturation" are driver-private plane
++ * properties; both must survive duplicate/reset like any other atomic state.
++ */
++struct h713_plane_state {
++	struct drm_plane_state base;
++	bool hdmi_ring;
++	u8 saturation;
++};
++
+ static inline struct h713_afbd *to_h713(struct drm_device *drm)
+ {
+ 	return container_of(drm, struct h713_afbd, drm);
+ }
+ 
+-static void h713_afbd_init_video_info(struct h713_afbd *h)
++static inline struct h713_plane_state *
++to_h713_plane_state(struct drm_plane_state *state)
+ {
+-	u32 *v = h->video_info;
+-	u32 info = lower_32_bits(h->video_info_dma);
++	return container_of(state, struct h713_plane_state, base);
++}
+ 
+-	memset(v, 0, PAGE_SIZE);
++/*
++ * AFBD geometry words. Both formulas reproduce the two register sets that are
++ * known good byte for byte: the 1280x720 pair this driver shipped with
++ * (0x02cf04ff / 0x002c004f) and the 1920x1080 pair the MIPS firmware programs
++ * for the HDMI capture on the HY310 (0x043f077f / 0x00420077, register dump
++ * re/captures/weltneuheit/ours-20260906-source0/03_source0.txt). SIZE_M1
++ * rounds the height up to a whole block row, BLOCK_M1 counts the whole block
++ * rows only -- 1080 is not a multiple of 16, and the firmware truncates there.
++ */
++static u32 h713_video_size_m1(unsigned int w, unsigned int h)
++{
++	return ((ALIGN(h, H713_VIDEO_BLOCK) - 1) << 16) | (w - 1);
++}
++
++static u32 h713_video_block_m1(unsigned int w, unsigned int h)
++{
++	return ((h / H713_VIDEO_BLOCK - 1) << 16) |
++	       (w / H713_VIDEO_BLOCK - 1);
++}
+ 
+-	/* Vendor VideoInfo constructor plus linear 1280x720 SDR setters. */
+-	v[0x00 / 4] = 0x61770000;
+-	v[0x04 / 4] = 2;
+-	v[0x08 / 4] = H713_VIDEO_WIDTH;
+-	v[0x0c / 4] = H713_VIDEO_HEIGHT;
+-	v[0x10 / 4] = H713_VIDEO_WIDTH;
+-	v[0x14 / 4] = H713_VIDEO_HEIGHT;
+-	v[0x18 / 4] = 0;
+-	v[0x1c / 4] = H713_VIDEO_HEIGHT;
+-	v[0x20 / 4] = 0;
+-	v[0x24 / 4] = H713_VIDEO_WIDTH;
+-	v[0x34 / 4] = 30000;
+-	v[0x38 / 4] = 30000;
+-	v[0x40 / 4] = 0;
+-	v[0x44 / 4] = 1;
+-	v[0x48 / 4] = 0;
+-	v[0x4c / 4] = 0xffff0000;
+-	v[0x50 / 4] = 1;
+-	v[0x54 / 4] = 0xffff0000;
+-	v[0x58 / 4] = H713_VIDEO_WIDTH;
+-	v[0x5c / 4] = 0;
+-	v[0x60 / 4] = 0;
+-	v[0x64 / 4] = info + 144;
+-	v[0x68 / 4] = info + 172;
+-	v[0x6c / 4] = 0;
+-	v[0x70 / 4] = 1920 << 4;
+-	v[0x74 / 4] = 0;
+-	v[0x78 / 4] = 1080 << 4;
+-	v[0x7c / 4] = 0;
+-	v[0x80 / 4] = 1920 << 4;
+-	v[0x84 / 4] = 0;
+-	v[0x88 / 4] = 1080 << 4;
+-	v[0x8c / 4] = 2;
++/*
++ * Build the VidDec frame descriptor, byte for byte as
++ * analyse/hdmi-seq/viddec_descriptor.py writes it -- the record that has
++ * driven the projector state machine into state 4 on three cold starts.
++ *
++ * It deliberately differs from the record this driver used to write for
++ * Cedrus in four words: the HDR metadata pointers at +0x64/+0x68 stay NULL
++ * and +0x48..+0x54 and +0x8c stay zero. Those words only matter to the AFBD;
++ * the record has a second reader here. The MIPS firmware follows the pointer
++ * in AFBD +0x098 (GetFrameInfo), validates the magic and rebuilds NR, PROC
++ * and the capture node from it (ConvertFrameInfo2SignalInfo), so anything the
++ * firmware was not measured against is left at zero.
++ */
++static void h713_afbd_build_video_info(u32 *rec, unsigned int w,
++				       unsigned int h, unsigned int stride)
++{
++	memset(rec, 0, H713_VIDEO_INFO_WORDS * sizeof(*rec));
+ 
+-	dma_wmb();
++	rec[0] = H713_VIDEO_INFO_MAGIC;
++	rec[1] = 2;			/* record type: video decoder frame */
++	rec[2] = w;
++	rec[3] = h;
++	rec[4] = w;
++	rec[5] = h;
++	rec[6] = 0;
++	rec[7] = h;
++	rec[8] = 0;
++	rec[9] = w;
++	rec[13] = 30000;		/* frame rate, stock recipe for 60 Hz */
++	rec[14] = 30000;
++	rec[15] = 0;			/* progressive */
++	rec[16] = 0;			/* color_format: keep 0, see 11.3 */
++	rec[17] = 1;			/* BT.709 */
++	rec[22] = stride;
++	rec[24] = 0;			/* SDR */
++	rec[25] = 0;			/* no HDR metadata buffers */
++	rec[26] = 0;
++	rec[28] = w * 16;		/* display window, 1/16 pixel */
++	rec[30] = h * 16;
++	rec[32] = w * 16;
++	rec[34] = h * 16;
++}
++
++/*
++ * Wait out the firmware's answer to a descriptor publication.
++ *
++ * A descriptor the MIPS has not seen before is a VideoDec signal event: it runs
++ * HandleSignalEvent/WCE and programs the source-0 geometry, stride and mode
++ * registers from the record itself (doku/76 11.3, measured 06.09.2026). Almost
++ * everything it computes there is what this driver writes anyway -- geometry
++ * 0x043f077f/0x00420077, crop 0x04380780/0x021c0780, luma stride 0x780 -- with
++ * one exception: the record carries a single stride, so the WCE puts the luma
++ * pitch into the chroma stride as well and undoes the NV16 doubling that is the
++ * point of this plane. That is the whole of the cold-start bug: the plane came
++ * up with a halved chroma stride and every other register correct, out of
++ * exactly the two prior states in which the pointer was not already standing --
++ * a cold start, and a run after the bring-up script had cleared it
++ * (doku/nachtlog/D-cstride-befund.md).
++ *
++ * The event is asynchronous and the ARM side has no completion signal for it,
++ * so it is bracketed instead: the caller parks a value in the chroma stride
++ * that the WCE cannot produce -- zero is not a legal stride -- and this waits
++ * for the WCE to replace it. That is also the proven ordering: the bring-up
++ * recipe publishes the descriptor and configures source 0 as two separate
++ * steps, and its chroma stride has always stuck (doku/78 A, stage 7a before
++ * 7b).
++ *
++ * Source 0 is not selected downstream while this runs and the caller programs
++ * the register for real afterwards, so the parked value never reaches the
++ * panel.
++ *
++ * The budget is the only bound the board has given and nothing narrower. On
++ * the cold start of 07.09.2026 the descriptor write, the firmware's answer and
++ * the driver's source-0 programming all fell into a single 1 s sampling
++ * interval (doku/nachtlog/D-abnahme-board.md, the 06:15 table), so "inside one
++ * second" is the whole of what has been measured. A 60 Hz capture loop makes
++ * ~17 ms the expected latency, but expecting is not measuring, and a budget
++ * shorter than the measured bound would end the wait while the firmware is
++ * still entitled to answer -- and then produce exactly the halved chroma
++ * stride this bracket exists to prevent. It costs at most one wait per boot,
++ * because the caller only gets here when the publication was new. Narrowing it
++ * needs the measurement in doku/nachtlog/D-cstride-fix.md section 4 C.
++ *
++ * Return: 0 once the firmware has replaced the marker, -ETIMEDOUT if it has
++ * not by the deadline. What that means is the caller's to say, because only
++ * the caller knows what it is about to program.
++ */
++static int h713_afbd_wait_wce(struct h713_afbd *h)
++{
++	u32 c_stride;
++
++	return readl_poll_timeout(h->regs + AFBD_VIDEO_C_STRIDE, c_stride,
++				  c_stride, 100, H713_WCE_TIMEOUT_US);
++}
++
++/*
++ * Publish the descriptor and hand the firmware the pointer to it -- ONCE per
++ * boot, and never withdraw it.
++ *
++ * Every change to this record is a signal event to the firmware: it re-runs
++ * HandleSignalEvent/WCE and reprograms stride and mode registers behind the
++ * driver's back. Doing that a second time froze the picture and left the
++ * capture wedged until the next cold start (doku/76 11.3); why it does not
++ * recover is open (RE question K3). The content comparison below makes this
++ * idempotent even across a module reload, because the reserved page keeps the
++ * record across one.
++ *
++ * The four pointer words belong to the same publication and are written here
++ * for the same reason. They used to be rewritten on every commit, so any commit
++ * could be a signal event -- and the one that mattered was the first, where the
++ * pointer went from nothing to the record. They are per-boot state, which is
++ * also why the disable path leaves them standing.
++ *
++ * Returns true if the firmware has something new to look at here, i.e. if the
++ * record or the pointer changed. See h713_afbd_wait_wce().
++ */
++static bool h713_afbd_publish_video_info(struct h713_afbd *h, unsigned int w,
++					 unsigned int hgt, unsigned int stride)
++{
++	u32 rec[H713_VIDEO_INFO_WORDS];
++	u32 ptr = lower_32_bits(h->video_info_dma);
++	bool differs, write_record, new_ptr;
++	unsigned int i;
++
++	new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr;
++	h713_afbd_build_video_info(rec, w, hgt, stride);
++	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
++	write_record = differs && !h->video_info_published;
++	if (differs && h->video_info_published)
++		drm_warn(&h->drm,
++			 "refusing to rewrite the VidDec descriptor for %ux%u; the capture does not survive a second signal event\n",
++			 w, hgt);
++
++	if (write_record) {
++		memcpy(h->video_info, rec, sizeof(rec));
++		/* The AFBD and the MIPS both fetch this page; publish before use. */
++		wmb();
++	}
++	h->video_info_published = true;
++
++	for (i = 0; i < H713_VIDEO_SLOTS; i++)
++		writel(ptr, h->regs + AFBD_VIDEO_INFO0 + i * 4);
++
++	return write_record || new_ptr;
+ }
+ 
+ static void h713_afbd_wait_ready(struct h713_afbd *h, u32 reg,
+@@ -188,6 +393,200 @@
+ }
+ 
+ /*
++ * The flip notifier (include/linux/soc/sunxi/h713-afbd.h).
++ *
++ * One display, one chain, so chain and user count are static rather than
++ * per-device: a consumer must be able to unregister after this driver has been
++ * unbound, and the vsync handler must be able to ask "is anybody listening"
++ * without touching the device at all.
++ */
++static DEFINE_SPINLOCK(h713_afbd_flip_lock);
++static ATOMIC_NOTIFIER_HEAD(h713_afbd_flip_chain);
++static struct h713_afbd *h713_afbd_flip_dev;
++static unsigned int h713_afbd_flip_users;
++
++/*
++ * Unmask the vsync interrupt while somebody needs it. It has two independent
++ * users -- DRM's vblank machinery and the flip notifier -- and either one is
++ * enough to keep it on.
++ *
++ * The caller holds h713_afbd_flip_lock. enable_vblank()/disable_vblank() run
++ * under DRM's vbl_lock, so this lock nests inside that one; nothing takes them
++ * in the other order.
++ */
++static void h713_afbd_vsync_irq_update(struct h713_afbd *h)
++{
++	u8 v = readb(h->regs + AFBD_IRQ_ENABLE);
++
++	if (h->vblank_on || h713_afbd_flip_users)
++		v |= AFBD_IRQ_VSYNC;
++	else
++		v &= ~AFBD_IRQ_VSYNC;
++	writeb(v, h->regs + AFBD_IRQ_ENABLE);
++}
++
++static bool h713_afbd_in_ring(struct h713_afbd *h, u32 addr)
++{
++	return h->ring_size && addr >= h->ring_base &&
++	       addr < h->ring_base + h->ring_size;
++}
++
++/* Fill the whole pool-1 queue with one Y/C pair. Caller holds ring_lock. */
++static void h713_afbd_queue_pair(struct h713_afbd *h, u32 y, u32 c)
++{
++	unsigned int i;
++
++	for (i = 0; i < H713_VIDEO_SLOTS; i++) {
++		writel(y, h->regs + AFBD_VIDEO_Y0 + i * 4);
++		writel(c, h->regs + AFBD_VIDEO_C0 + i * 4);
++	}
++	writel(1, h->regs + AFBD_VIDEO_DIRTY);
++}
++
++/*
++ * Read the firmware's pair of ring pointers. They always name the same slot
++ * index -- Y 0x4c3ef000 goes with C 0x4c9ec000, 0x4c5ee000 with 0x4cbeb000,
++ * 0x4c7ed000 with 0x4cdea000 in every dump taken so far -- so the pair can be
++ * taken as it stands and no slot table is needed. The firmware updates both
++ * words at 60 Hz, though, so a read can fall between them: take Y twice around
++ * C and discard the sample if Y moved. A discarded sample repeats the previous
++ * frame for one vsync; there is nothing to spin for.
++ */
++static bool h713_afbd_read_ring(struct h713_afbd *h, u32 *y, u32 *c)
++{
++	u32 y1, y2;
++
++	y1 = readl(h->regs + AFBD_RING_Y);
++	*c = readl(h->regs + AFBD_RING_C);
++	y2 = readl(h->regs + AFBD_RING_Y);
++	if (y1 != y2)
++		return false;
++	*y = y1;
++
++	return h713_afbd_in_ring(h, *y) && h713_afbd_in_ring(h, *c);
++}
++
++int h713_afbd_register_flip_notifier(struct notifier_block *nb)
++{
++	unsigned long flags;
++	int ret;
++
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	ret = h713_afbd_flip_dev ? 0 : -EPROBE_DEFER;
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
++	if (ret)
++		return ret;
++
++	ret = atomic_notifier_chain_register(&h713_afbd_flip_chain, nb);
++	if (ret)
++		return ret;
++
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	h713_afbd_flip_users++;
++	if (h713_afbd_flip_dev)
++		h713_afbd_vsync_irq_update(h713_afbd_flip_dev);
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(h713_afbd_register_flip_notifier);
++
++int h713_afbd_unregister_flip_notifier(struct notifier_block *nb)
++{
++	unsigned long flags;
++	int ret;
++
++	ret = atomic_notifier_chain_unregister(&h713_afbd_flip_chain, nb);
++	if (ret)
++		return ret;
++
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	if (!WARN_ON(!h713_afbd_flip_users))
++		h713_afbd_flip_users--;
++	if (h713_afbd_flip_dev)
++		h713_afbd_vsync_irq_update(h713_afbd_flip_dev);
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(h713_afbd_unregister_flip_notifier);
++
++int h713_afbd_read_flip(struct h713_afbd_flip *flip)
++{
++	struct h713_afbd *h;
++	unsigned long flags;
++	int ret;
++	u32 y, c;
++
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	h = h713_afbd_flip_dev;
++	if (!h)
++		ret = -EPROBE_DEFER;
++	else if (!h713_afbd_read_ring(h, &y, &c))
++		ret = -EAGAIN;
++	else
++		ret = 0;
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
++
++	if (ret)
++		return ret;
++
++	flip->y = y;
++	flip->c = c;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(h713_afbd_read_flip);
++
++/*
++ * The vsync handler's look at the capture ring. Stock points its own channel
++ * at exactly these two registers (channel 1's bit 31 means "use the page flip
++ * pointers", doku/64), so they name a slot the capture has finished, not the
++ * one it is filling.
++ *
++ * The pair is sampled once, here, and then serves both of its users: the plane
++ * in passthrough, and whoever registered a flip notifier. That is the whole
++ * point of the notifier -- the torn-pair handling and the "has it moved" test
++ * exist once, in the driver that owns the window, and no consumer repeats
++ * them.
++ *
++ * Runs in hard interrupt context. The chain is atomic, the payload is on this
++ * stack, and nothing on the path allocates, sleeps or takes a mutex; a handler
++ * is held to the same rules (see the header). With nobody following the ring
++ * and nobody registered, not even the register pair is read, so an idle system
++ * pays exactly what it paid before.
++ */
++static void h713_afbd_vsync_flip(struct h713_afbd *h)
++{
++	struct h713_afbd_flip flip;
++	unsigned long flags;
++	bool notify;
++	u32 y, c;
++
++	if (!h->ring_follow && !READ_ONCE(h713_afbd_flip_users))
++		return;
++
++	spin_lock_irqsave(&h->ring_lock, flags);
++	if (!h713_afbd_read_ring(h, &y, &c) || y == h->ring_y) {
++		spin_unlock_irqrestore(&h->ring_lock, flags);
++		return;
++	}
++	h->ring_y = y;
++	if (h->ring_follow)
++		h713_afbd_queue_pair(h, y, c);
++	notify = READ_ONCE(h713_afbd_flip_users) != 0;
++	spin_unlock_irqrestore(&h->ring_lock, flags);
++
++	if (!notify)
++		return;
++
++	flip.y = y;
++	flip.c = c;
++	atomic_notifier_call_chain(&h713_afbd_flip_chain,
++				   H713_AFBD_EVENT_FLIP, &flip);
++}
++
++/*
+  * Point AFBD at a buffer and latch it. Identical in order and content to
+  * gles-play's commit path, minus its 50 ms poll for STATUS_DONE: here the
+  * vblank interrupt reports completion, so nothing spins.
+@@ -222,11 +621,20 @@
+ 
+ static void h713_afbd_video_stop(struct h713_afbd *h)
+ {
++	unsigned long flags;
+ 	unsigned int i;
+ 
+ 	if (!h->video_active)
+ 		return;
+ 
++	spin_lock_irqsave(&h->ring_lock, flags);
++	h->ring_follow = false;
++	spin_unlock_irqrestore(&h->ring_lock, flags);
++	if (h->ring_vblank_ref) {
++		drm_crtc_vblank_put(&h->pipe.crtc);
++		h->ring_vblank_ref = false;
++	}
++
+ 	/* Stop source 0 before removing any address from its queue. */
+ 	writel(h->video_ctrl_idle, h->regs + AFBD_VIDEO_CTRL);
+ 	writel(1, h->regs + AFBD_VIDEO_READY);
+@@ -235,11 +643,30 @@
+ 	for (i = 0; i < H713_VIDEO_SLOTS; i++) {
+ 		writel(0, h->regs + AFBD_VIDEO_Y0 + i * 4);
+ 		writel(0, h->regs + AFBD_VIDEO_C0 + i * 4);
+-		writel(0, h->regs + AFBD_VIDEO_INFO0 + i * 4);
++		/*
++		 * The VideoInfo pointers stay. Clearing them takes the frame
++		 * descriptor away from the firmware, which then has to be
++		 * re-published to enable the plane again -- and a second
++		 * publish is the one thing this hardware does not survive
++		 * (see h713_afbd_publish_video_info()). The pointer costs
++		 * nothing while source 0 is off.
++		 */
+ 	}
+ 	writel(0, h->regs + AFBD_VIDEO_AUX_Y);
+ 	writel(0, h->regs + AFBD_VIDEO_AUX_C);
+ 	writel(0, h->regs + AFBD_VIDEO_AUX_INFO);
++	/*
++	 * Put the chroma stride back the way the handoff had it. Every other
++	 * piece of source-0 state this plane changes is restored here from the
++	 * value read at probe -- CTRL, the chroma gain, the RGB channel, the
++	 * downstream selector -- and the doubled NV16 stride was the one that
++	 * was not. Nothing downstream reads it while RGB owns the output, but
++	 * it is state left behind: a plane that came up without programming it
++	 * inherited the previous cycle's doubled value and looked correct,
++	 * which is how a broken first enable passed an acceptance
++	 * (doku/nachtlog/D-cstride-befund.md).
++	 */
++	writel(h->video_c_stride_idle, h->regs + AFBD_VIDEO_C_STRIDE);
+ 	writel(0, h->regs + AFBD_VIDEO_DIRTY);
+ 	writel(h->gain_idle, h->route_regs + 0x508);
+ 
+@@ -254,6 +681,8 @@
+ static int h713_afbd_video_atomic_check(struct drm_plane *plane,
+ 					struct drm_atomic_state *state)
+ {
++	struct h713_afbd *h = to_h713(plane->dev);
++	const struct drm_display_mode *mode;
+ 	struct drm_plane_state *new_state;
+ 	struct drm_crtc_state *crtc_state;
+ 	struct drm_framebuffer *fb;
+@@ -275,21 +704,37 @@
+ 	if (ret)
+ 		return ret;
+ 
++	mode = &crtc_state->mode;
+ 	fb = new_state->fb;
+-	if (!new_state->visible || fb->format->format != DRM_FORMAT_NV12 ||
++	if (!new_state->visible ||
++	    (fb->format->format != DRM_FORMAT_NV12 &&
++	     fb->format->format != DRM_FORMAT_NV16) ||
+ 	    fb->modifier != DRM_FORMAT_MOD_LINEAR ||
+-	    fb->width != H713_VIDEO_WIDTH ||
+-	    fb->height != H713_VIDEO_HEIGHT ||
+-	    fb->pitches[0] != H713_VIDEO_STRIDE ||
+-	    fb->pitches[1] != H713_VIDEO_STRIDE ||
++	    fb->width != mode->hdisplay ||
++	    fb->height != mode->vdisplay ||
++	    fb->pitches[1] != fb->pitches[0] ||
++	    fb->width % H713_VIDEO_BLOCK || fb->height % 2 ||
++	    fb->height < H713_VIDEO_BLOCK ||
+ 	    new_state->src_x || new_state->src_y ||
+-	    new_state->src_w != H713_VIDEO_WIDTH << 16 ||
+-	    new_state->src_h != H713_VIDEO_HEIGHT << 16 ||
++	    new_state->src_w != mode->hdisplay << 16 ||
++	    new_state->src_h != mode->vdisplay << 16 ||
+ 	    new_state->crtc_x || new_state->crtc_y ||
+-	    new_state->crtc_w != H713_VIDEO_WIDTH ||
+-	    new_state->crtc_h != H713_VIDEO_HEIGHT)
++	    new_state->crtc_w != mode->hdisplay ||
++	    new_state->crtc_h != mode->vdisplay)
+ 		return -EINVAL;
+ 
++	if (to_h713_plane_state(new_state)->hdmi_ring) {
++		/*
++		 * In HDMI passthrough the framebuffer only describes format
++		 * and geometry; the addresses come from the capture ring, so
++		 * the ring has to be described in DT and the descriptor page
++		 * has to be somewhere the MIPS can read.
++		 */
++		if (!h->ring_size)
++			return -EOPNOTSUPP;
++		return 0;
++	}
++
+ 	y = drm_fb_dma_get_gem_addr(fb, new_state, 0);
+ 	c = drm_fb_dma_get_gem_addr(fb, new_state, 1);
+ 	if (!y || !c || upper_32_bits(y) || upper_32_bits(c))
+@@ -301,14 +746,22 @@
+ static void h713_afbd_video_atomic_update(struct drm_plane *plane,
+ 					  struct drm_atomic_state *state)
+ {
+-	struct drm_plane_state *new_state;
+ 	struct h713_afbd *h = to_h713(plane->dev);
+-	dma_addr_t y, c;
+-	unsigned int i;
++	struct h713_plane_state *s;
++	struct drm_plane_state *new_state;
++	struct drm_framebuffer *fb;
++	unsigned int w, hgt, c_stride;
++	unsigned long flags;
++	bool ring, nv16;
++	u32 y, c;
+ 
+ 	new_state = drm_atomic_get_new_plane_state(state, plane);
+-	y = drm_fb_dma_get_gem_addr(new_state->fb, new_state, 0);
+-	c = drm_fb_dma_get_gem_addr(new_state->fb, new_state, 1);
++	s = to_h713_plane_state(new_state);
++	fb = new_state->fb;
++	w = fb->width;
++	hgt = fb->height;
++	nv16 = fb->format->format == DRM_FORMAT_NV16;
++	ring = s->hdmi_ring;
+ 
+ 	/* The hardware mux is exclusive: quiesce RGB before source 0. */
+ 	if (!h->video_active) {
+@@ -316,36 +769,93 @@
+ 		       h->regs + AFBD_CTRL);
+ 		writel(1, h->regs + AFBD_READY);
+ 		h713_afbd_wait_ready(h, AFBD_READY, "RGB disable");
++
++		/*
++		 * Park the marker before the firmware can see the descriptor,
++		 * and only for NV16. For NV12 the chroma stride the WCE
++		 * computes from the record is the one this plane wants anyway,
++		 * so there is nothing to lose there and nothing to wait for.
++		 */
++		if (nv16)
++			writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
++		if (h713_afbd_publish_video_info(h, w, hgt, fb->pitches[0]) &&
++		    nv16 && h713_afbd_wait_wce(h))
++			drm_err(&h->drm,
++				"firmware did not reprogram the chroma stride within %u ms of the descriptor; source 0 is programmed anyway, so this enable may come up with a halved chroma stride\n",
++				H713_WCE_TIMEOUT_US / 1000);
+ 	}
+ 
+-	writel(H713_VIDEO_SIZE_M1, h->regs + AFBD_VIDEO_SIZE_M1);
+-	writel(H713_VIDEO_BLOCK_M1, h->regs + AFBD_VIDEO_BLOCK_M1);
+-	writel(H713_VIDEO_STRIDE, h->regs + AFBD_VIDEO_Y_STRIDE);
+-	writel(H713_VIDEO_STRIDE, h->regs + AFBD_VIDEO_C_STRIDE);
++	writel(h713_video_size_m1(w, hgt), h->regs + AFBD_VIDEO_SIZE_M1);
++	writel(h713_video_block_m1(w, hgt), h->regs + AFBD_VIDEO_BLOCK_M1);
++	writel(fb->pitches[0], h->regs + AFBD_VIDEO_Y_STRIDE);
++
++	/*
++	 * Source 0 has one linear reader and it is an NV12 reader: for output
++	 * line r it fetches chroma line r/2. NV16 carries a chroma line per
++	 * picture line, so with the plain pitch the colour comes out stretched
++	 * 2x vertically. Doubling the chroma stride puts chroma line r/2 at
++	 * offset r/2 * 2 * pitch, which is picture line r -- exact 4:2:2 out of
++	 * the NV12 reader, one register, no format switch. Switching the format
++	 * code instead (0x03000213) breaks the luma geometry and turns the
++	 * picture green; measured 06.09.2026, doku/76 13.
++	 *
++	 * Everything else follows from that: the format field in CTRL stays 0
++	 * and the chroma crop keeps the NV12 height h/2, because that is what
++	 * the reader is being told it is reading.
++	 */
++	c_stride = nv16 ? fb->pitches[1] * 2 : fb->pitches[1];
++	writel(c_stride, h->regs + AFBD_VIDEO_C_STRIDE);
++	writel((hgt << 16) | w, h->regs + AFBD_VIDEO_CROP_Y);
++	writel(((hgt / 2) << 16) | w, h->regs + AFBD_VIDEO_CROP_C);
++
+ 	writel(1, h->regs + AFBD_VIDEO_GATE);
+ 	writel(0, h->regs + AFBD_VIDEO_FIELD);
+ 	writel(0x00000122, h->regs + AFBD_VIDEO_RING_MUX);
+ 
+-	/*
+-	 * The live display service consumes a complete four-entry queue. A
+-	 * repeated frame is the proven static representation of one KMS buffer.
+-	 */
+-	for (i = 0; i < H713_VIDEO_SLOTS; i++) {
+-		writel(lower_32_bits(y), h->regs + AFBD_VIDEO_Y0 + i * 4);
+-		writel(lower_32_bits(c), h->regs + AFBD_VIDEO_C0 + i * 4);
+-		writel(lower_32_bits(h->video_info_dma),
+-		       h->regs + AFBD_VIDEO_INFO0 + i * 4);
+-	}
+ 	writel(0, h->regs + AFBD_VIDEO_AUX_Y);
+ 	writel(0, h->regs + AFBD_VIDEO_AUX_C);
+ 	writel(0, h->regs + AFBD_VIDEO_AUX_INFO);
+-	writel(1, h->regs + AFBD_VIDEO_DIRTY);
+ 
+-	writel(H713_VIDEO_GAIN, h->route_regs + 0x508);
+-	writel(H713_VIDEO_CTRL_ACTIVE, h->regs + AFBD_VIDEO_CTRL);
++	spin_lock_irqsave(&h->ring_lock, flags);
++	h->ring_follow = false;
++	if (!ring || !h713_afbd_read_ring(h, &y, &c)) {
++		/*
++		 * The live display service consumes a complete four-entry
++		 * queue. A repeated frame is the proven static representation
++		 * of one KMS buffer.
++		 */
++		y = lower_32_bits(drm_fb_dma_get_gem_addr(fb, new_state, 0));
++		c = lower_32_bits(drm_fb_dma_get_gem_addr(fb, new_state, 1));
++		h->ring_y = 0;
++	} else {
++		h->ring_y = y;
++	}
++	h713_afbd_queue_pair(h, y, c);
++	h->ring_follow = ring;
++	spin_unlock_irqrestore(&h->ring_lock, flags);
++
++	writel((H713_VIDEO_GAIN & ~H713_VIDEO_GAIN_SAT) |
++	       FIELD_PREP(H713_VIDEO_GAIN_SAT, s->saturation),
++	       h->route_regs + 0x508);
++	writel(H713_VIDEO_CTRL_ACTIVE & ~H713_VIDEO_CTRL_FORMAT,
++	       h->regs + AFBD_VIDEO_CTRL);
+ 	writel(1, h->regs + AFBD_VIDEO_READY);
+ 	h713_afbd_wait_ready(h, AFBD_VIDEO_READY, "video enable");
+ 	writel(H713_VIDEO_SELECTOR, h->lvds_regs + 0x06c);
++
++	/*
++	 * Following the ring needs the vsync interrupt, which is otherwise
++	 * masked until a client asks for vblanks. Hold a reference for as long
++	 * as the plane is in passthrough.
++	 */
++	if (ring && !h->ring_vblank_ref &&
++	    drm_crtc_vblank_get(&h->pipe.crtc) == 0)
++		h->ring_vblank_ref = true;
++	if (!ring && h->ring_vblank_ref) {
++		drm_crtc_vblank_put(&h->pipe.crtc);
++		h->ring_vblank_ref = false;
++	}
++
+ 	h->video_active = true;
+ }
+ 
+@@ -363,15 +873,131 @@
+ 	.atomic_disable = h713_afbd_video_atomic_disable,
+ };
+ 
++static void h713_afbd_video_destroy_state(struct drm_plane *plane,
++					  struct drm_plane_state *state)
++{
++	__drm_atomic_helper_plane_destroy_state(state);
++	kfree(to_h713_plane_state(state));
++}
++
++static void h713_afbd_video_reset(struct drm_plane *plane)
++{
++	struct h713_plane_state *s;
++
++	if (plane->state)
++		h713_afbd_video_destroy_state(plane, plane->state);
++	plane->state = NULL;
++
++	s = kzalloc(sizeof(*s), GFP_KERNEL);
++	if (!s)
++		return;
++	s->saturation = H713_VIDEO_SAT_DEFAULT;
++	__drm_atomic_helper_plane_reset(plane, &s->base);
++}
++
++static struct drm_plane_state *
++h713_afbd_video_duplicate_state(struct drm_plane *plane)
++{
++	struct h713_plane_state *old, *s;
++
++	if (WARN_ON(!plane->state))
++		return NULL;
++
++	s = kzalloc(sizeof(*s), GFP_KERNEL);
++	if (!s)
++		return NULL;
++	__drm_atomic_helper_plane_duplicate_state(plane, &s->base);
++	old = to_h713_plane_state(plane->state);
++	s->hdmi_ring = old->hdmi_ring;
++	s->saturation = old->saturation;
++
++	return &s->base;
++}
++
++static int h713_afbd_video_set_property(struct drm_plane *plane,
++					struct drm_plane_state *state,
++					struct drm_property *property,
++					u64 val)
++{
++	struct h713_afbd *h = to_h713(plane->dev);
++	struct h713_plane_state *s = to_h713_plane_state(state);
++
++	if (property == h->prop_hdmi_ring) {
++		s->hdmi_ring = !!val;
++		return 0;
++	}
++	if (property == h->prop_saturation) {
++		s->saturation = val;
++		return 0;
++	}
++
++	return -EINVAL;
++}
++
++static int h713_afbd_video_get_property(struct drm_plane *plane,
++					const struct drm_plane_state *state,
++					struct drm_property *property,
++					u64 *val)
++{
++	struct h713_afbd *h = to_h713(plane->dev);
++	const struct h713_plane_state *s =
++		to_h713_plane_state((struct drm_plane_state *)state);
++
++	if (property == h->prop_hdmi_ring) {
++		*val = s->hdmi_ring;
++		return 0;
++	}
++	if (property == h->prop_saturation) {
++		*val = s->saturation;
++		return 0;
++	}
++
++	return -EINVAL;
++}
++
+ static const struct drm_plane_funcs h713_afbd_video_funcs = {
+ 	.update_plane = drm_atomic_helper_update_plane,
+ 	.disable_plane = drm_atomic_helper_disable_plane,
+ 	.destroy = drm_plane_cleanup,
+-	.reset = drm_atomic_helper_plane_reset,
+-	.atomic_duplicate_state = drm_atomic_helper_plane_duplicate_state,
+-	.atomic_destroy_state = drm_atomic_helper_plane_destroy_state,
++	.reset = h713_afbd_video_reset,
++	.atomic_duplicate_state = h713_afbd_video_duplicate_state,
++	.atomic_destroy_state = h713_afbd_video_destroy_state,
++	.atomic_set_property = h713_afbd_video_set_property,
++	.atomic_get_property = h713_afbd_video_get_property,
+ };
+ 
++/*
++ * Two driver-private plane properties:
++ *
++ * "hdmi-ring"  -- transitional. Until the V4L2 capture driver hands the ring
++ *                 slots out as dma-bufs, the plane can source the HDMI capture
++ *                 ring itself: the framebuffer then only carries format and
++ *                 geometry and the addresses come from the firmware's flip
++ *                 pointers. It goes away once dma-buf import exists.
++ * "saturation" -- the chroma gain in PROC +0x508, bits [23:16]. 0x4c is the
++ *                 value the stock PQ calibrates for user saturation 50;
++ *                 userspace/hy310-pq computes the rest of the picture modes.
++ */
++static int h713_afbd_video_create_properties(struct h713_afbd *h)
++{
++	struct drm_plane *plane = &h->video_plane;
++
++	h->prop_hdmi_ring = drm_property_create_range(&h->drm, 0,
++						      "hdmi-ring", 0, 1);
++	if (!h->prop_hdmi_ring)
++		return -ENOMEM;
++	drm_object_attach_property(&plane->base, h->prop_hdmi_ring, 0);
++
++	h->prop_saturation = drm_property_create_range(&h->drm, 0,
++						      "saturation", 0, 255);
++	if (!h->prop_saturation)
++		return -ENOMEM;
++	drm_object_attach_property(&plane->base, h->prop_saturation,
++				   H713_VIDEO_SAT_DEFAULT);
++
++	return 0;
++}
++
+ static void h713_afbd_pipe_enable(struct drm_simple_display_pipe *pipe,
+ 				  struct drm_crtc_state *crtc_state,
+ 				  struct drm_plane_state *plane_state)
+@@ -437,18 +1063,29 @@
+ static int h713_afbd_enable_vblank(struct drm_simple_display_pipe *pipe)
+ {
+ 	struct h713_afbd *h = to_h713(pipe->crtc.dev);
+-	u8 v = readb(h->regs + AFBD_IRQ_ENABLE);
++	unsigned long flags;
++
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	h->vblank_on = true;
++	h713_afbd_vsync_irq_update(h);
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
+ 
+-	writeb(v | AFBD_IRQ_VSYNC, h->regs + AFBD_IRQ_ENABLE);
+ 	return 0;
+ }
+ 
+ static void h713_afbd_disable_vblank(struct drm_simple_display_pipe *pipe)
+ {
+ 	struct h713_afbd *h = to_h713(pipe->crtc.dev);
+-	u8 v = readb(h->regs + AFBD_IRQ_ENABLE);
++	unsigned long flags;
+ 
+-	writeb(v & ~AFBD_IRQ_VSYNC, h->regs + AFBD_IRQ_ENABLE);
++	/*
++	 * Only DRM is done with it. A registered flip notifier keeps the
++	 * interrupt on -- the capture has no other event.
++	 */
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	h->vblank_on = false;
++	h713_afbd_vsync_irq_update(h);
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
+ }
+ 
+ static const struct drm_simple_display_pipe_funcs h713_afbd_pipe_funcs = {
+@@ -472,6 +1109,7 @@
+ 	/* Write-1-to-clear, exactly as the vendor's dec_irq_query() acks it. */
+ 	writeb(status | AFBD_IRQ_VSYNC, h->regs + AFBD_IRQ_STATUS);
+ 
++	h713_afbd_vsync_flip(h);
+ 	drm_crtc_handle_vblank(&h->pipe.crtc);
+ 	return IRQ_HANDLED;
+ }
+@@ -519,8 +1157,13 @@
+ 	DRM_FORMAT_ARGB8888,
+ };
+ 
++/*
++ * NV16 is what the HDMI capture writes -- chroma at full height, 4:2:2.
++ * NV12 stays for buffers that really are 4:2:0 (Cedrus output).
++ */
+ static const u32 h713_afbd_video_formats[] = {
+ 	DRM_FORMAT_NV12,
++	DRM_FORMAT_NV16,
+ };
+ 
+ /*
+@@ -557,17 +1200,34 @@
+ 	return 0;
+ }
+ 
++/* Look a reserved region up by its memory-region-names entry. */
++static struct device_node *h713_afbd_region(struct device *dev,
++					    const char *name)
++{
++	int idx = of_property_match_string(dev->of_node, "memory-region-names",
++					   name);
++
++	if (idx < 0)
++		return NULL;
++
++	return of_parse_phandle(dev->of_node, "memory-region", idx);
++}
++
+ static int h713_afbd_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
++	struct device_node *np;
+ 	struct h713_afbd *h;
+ 	struct drm_device *drm;
++	struct resource res;
++	unsigned long flags;
+ 	int irq, ret;
+ 
+ 	h = devm_drm_dev_alloc(dev, &h713_afbd_driver, struct h713_afbd, drm);
+ 	if (IS_ERR(h))
+ 		return PTR_ERR(h);
+ 	drm = &h->drm;
++	spin_lock_init(&h->ring_lock);
+ 
+ 	h->regs = devm_platform_ioremap_resource_byname(pdev, "afbd");
+ 	if (IS_ERR(h->regs))
+@@ -611,10 +1271,12 @@
+ 	 * neither rounds a buffer up to the next power of two nor imposes that
+ 	 * ceiling, and there is room for both this and cedrus.
+ 	 *
+-	 * Point memory-region at a carveout to override that, e.g. to keep
+-	 * scanout inside a known-good region; the ceiling comes with it.
++	 * Name a region "scanout" in memory-region-names to override that, e.g.
++	 * to keep scanout inside a known-good region; the ceiling comes with
++	 * it. The other names below are looked up the same way, so the node can
++	 * carry several regions without any of them claiming the DMA pool.
+ 	 */
+-	ret = of_reserved_mem_device_init(dev);
++	ret = of_reserved_mem_device_init_by_name(dev, dev->of_node, "scanout");
+ 	if (ret && ret != -ENODEV)
+ 		return dev_err_probe(dev, ret, "bad scanout memory-region\n");
+ 	dev_info(dev, "framebuffers from %s\n",
+@@ -625,22 +1287,76 @@
+ 		return ret;
+ 
+ 	/*
++	 * The HDMI capture ring. The firmware writes the capture into this
++	 * region and rotates its flip pointers through the slots; the driver
++	 * only needs the bounds, to be sure a pointer it reads out of the
++	 * hardware really is a capture slot before handing it to the scanout
++	 * queue. Without the region, HDMI passthrough is simply unavailable.
++	 */
++	np = h713_afbd_region(dev, "hdmi-ring");
++	if (np) {
++		ret = of_address_to_resource(np, 0, &res);
++		of_node_put(np);
++		if (ret)
++			return dev_err_probe(dev, ret, "bad hdmi-ring region\n");
++		if (upper_32_bits(res.end))
++			return dev_err_probe(dev, -ERANGE,
++					     "hdmi-ring region is above 4 GiB\n");
++		h->ring_base = res.start;
++		h->ring_size = resource_size(&res);
++	}
++
++	/*
+ 	 * Source 0's VideoInfo record is fetched by the same 32-bit DMA master
+ 	 * as its Y/C planes. When the display is later attached to an IOMMU,
+ 	 * video_info_dma and the framebuffer DMA addresses naturally become
+ 	 * IOVAs; no physical-address special case is baked into the ABI.
++	 *
++	 * The record has a second reader, though, and that one is not a bus
++	 * master: the MIPS co-processor reads it through its own DRAM window,
++	 * where ARM 0x4bxxxxxx appears at 0x8bxxxxxx. System CMA sits at
++	 * 0x7dc00000 on this board, which does not appear in that window at
++	 * all, so when the descriptor has to reach the firmware it must come
++	 * from a low reserved region -- hence "viddec-info". A page mapped
++	 * write-combining, not cached: nothing here is worth a cache flush,
++	 * and the firmware's view must not depend on one.
+ 	 */
+-	h->video_info = dmam_alloc_coherent(dev, PAGE_SIZE, &h->video_info_dma,
+-					    GFP_KERNEL | __GFP_ZERO);
+-	if (!h->video_info)
+-		return -ENOMEM;
+-	if (upper_32_bits(h->video_info_dma))
+-		return dev_err_probe(dev, -ERANGE,
+-				     "VideoInfo DMA address is above 4 GiB\n");
+-	h713_afbd_init_video_info(h);
++	np = h713_afbd_region(dev, "viddec-info");
++	if (np) {
++		ret = of_address_to_resource(np, 0, &res);
++		of_node_put(np);
++		if (ret)
++			return dev_err_probe(dev, ret, "bad viddec-info region\n");
++		if (upper_32_bits(res.end) ||
++		    resource_size(&res) < sizeof(u32) * H713_VIDEO_INFO_WORDS)
++			return dev_err_probe(dev, -ERANGE,
++					     "unusable viddec-info region\n");
++		h->video_info = devm_memremap(dev, res.start,
++					      resource_size(&res), MEMREMAP_WC);
++		if (IS_ERR(h->video_info))
++			return dev_err_probe(dev, PTR_ERR(h->video_info),
++					     "cannot map the viddec-info region\n");
++		h->video_info_dma = res.start;
++	} else {
++		h->video_info = dmam_alloc_coherent(dev, PAGE_SIZE,
++						    &h->video_info_dma,
++						    GFP_KERNEL | __GFP_ZERO);
++		if (!h->video_info)
++			return -ENOMEM;
++		if (upper_32_bits(h->video_info_dma))
++			return dev_err_probe(dev, -ERANGE,
++					     "VideoInfo DMA address is above 4 GiB\n");
++	}
+ 
+ 	h->rgb_ctrl_active = readl(h->regs + AFBD_CTRL);
+ 	h->video_ctrl_idle = readl(h->regs + AFBD_VIDEO_CTRL);
++	/*
++	 * Remembered, not validated: it is the value the disable path puts
++	 * back, and unlike CTRL and the selector it is a stride, so it is a
++	 * property of the source the firmware last configured rather than of
++	 * the handoff this driver requires.
++	 */
++	h->video_c_stride_idle = readl(h->regs + AFBD_VIDEO_C_STRIDE);
+ 	h->gain_idle = readl(h->route_regs + 0x508);
+ 	h->selector_rgb = readl(h->lvds_regs + 0x06c);
+ 	if (h->video_ctrl_idle != 0x03000010 ||
+@@ -714,10 +1430,16 @@
+ 	if (ret)
+ 		return ret;
+ 	drm_plane_helper_add(&h->video_plane, &h713_afbd_video_helper_funcs);
++	ret = h713_afbd_video_create_properties(h);
++	if (ret)
++		return ret;
+ 
+ 	drm_mode_config_reset(drm);
+ 
+-	/* Vsync is masked until a client asks for vblanks. */
++	/*
++	 * Vsync is masked until somebody asks for it -- a DRM client through
++	 * the vblank machinery, or a flip-notifier consumer.
++	 */
+ 	writeb(readb(h->regs + AFBD_IRQ_ENABLE) & ~AFBD_IRQ_VSYNC,
+ 	       h->regs + AFBD_IRQ_ENABLE);
+ 	ret = devm_request_irq(dev, irq, h713_afbd_irq, 0, "h713-afbd", h);
+@@ -731,12 +1453,34 @@
+ 		return ret;
+ 
+ 	drm_client_setup(drm, NULL);
++
++	/*
++	 * Last, and deliberately so: from here a capture driver can register a
++	 * flip notifier and unmask the vsync interrupt, so everything it can
++	 * reach has to be up. No failure path follows, so nothing can leave a
++	 * stale pointer behind.
++	 */
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	h713_afbd_flip_dev = h;
++	h713_afbd_vsync_irq_update(h);
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
++
+ 	return 0;
+ }
+ 
+ static void h713_afbd_remove(struct platform_device *pdev)
+ {
+ 	struct h713_afbd *h = platform_get_drvdata(pdev);
++	unsigned long flags;
++
++	/*
++	 * Stop answering the flip interface first. Consumers that are still
++	 * registered keep working against the static chain -- it just stops
++	 * being fed -- and their unregister still succeeds.
++	 */
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	h713_afbd_flip_dev = NULL;
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
+ 
+ 	drm_dev_unplug(&h->drm);
+ 	h713_afbd_video_stop(h);
+--- a/include/linux/soc/sunxi/h713-afbd.h
++++ b/include/linux/soc/sunxi/h713-afbd.h
+@@ -0,0 +1,129 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Capture-ring flip notifier of the H713 display engine.
++ *
++ * The MIPS co-processor captures HDMI into a ring of slots and rotates a pair
++ * of pointers at AFBD +0x320/+0x324 through them. A change of that pair is the
++ * hardware saying "this slot is finished", and it is the only capture event
++ * the ARM can observe at all: three independent searches of the firmware image
++ * found the frame-done interrupt inside the MIPS interrupt controller only,
++ * and the stock device tree wires no capture interrupt to the ARM (doku/84, RE
++ * question K2).
++ *
++ * The pair lives inside the register window of display@5600000, which
++ * sun50i-h713-afbd owns, clocks, and already reads on every vsync (GIC 142)
++ * for its own passthrough plane. A second driver mapping the same two words
++ * would be a second owner of one register pair -- and it does not even work,
++ * because the region is claimed and devm_ioremap_resource() on it returns
++ * -EBUSY. So the display driver hands the pair out instead: the read, with the
++ * torn-pair handling that belongs to it, stays in one place, and a consumer
++ * gets the event phase-correct on the vsync interrupt that is serviced anyway.
++ *
++ * This header sits next to h713-cpu-comm.h and h713-arisc.h because that is
++ * where this SoC's cross-driver interfaces are collected. That the producer
++ * happens to be a DRM driver is an accident of the hardware: the same block
++ * does scanout.
++ */
++
++#ifndef __LINUX_SOC_SUNXI_H713_AFBD_H
++#define __LINUX_SOC_SUNXI_H713_AFBD_H
++
++#include <linux/errno.h>
++#include <linux/types.h>
++
++struct notifier_block;
++
++/* The only event on the chain today: a capture slot has been finished. */
++#define H713_AFBD_EVENT_FLIP		1
++
++/**
++ * struct h713_afbd_flip - the capture ring flip pointers, sampled at one vsync
++ * @y: AFBD +0x320, physical address of the luma slot the capture just finished
++ * @c: AFBD +0x324, physical address of the matching chroma slot
++ *
++ * The pair names the finished slot by its address, which is why there is no
++ * index in here: the slot table is measured knowledge of the capture, not of
++ * the display, and the display driver knows only the bounds of the reserved
++ * region the ring lives in. Y and C always name the same index.
++ *
++ * Both words are guaranteed to belong to the same sample: the producer reads Y
++ * twice around C and discards the sample if Y moved, so a consumer never sees
++ * a Y from one slot with a C from the next.
++ */
++struct h713_afbd_flip {
++	u32 y;
++	u32 c;
++};
++
++#if IS_ENABLED(CONFIG_DRM_SUN50I_H713_AFBD)
++
++/**
++ * h713_afbd_register_flip_notifier() - be told when a capture slot is finished
++ * @nb: notifier block; its handler is called with action
++ *	%H713_AFBD_EVENT_FLIP and a pointer to a struct h713_afbd_flip
++ *
++ * The handler runs in hard interrupt context, on the display's vsync
++ * interrupt, and it must behave accordingly: it must not sleep, it must not
++ * call back into this interface, and it must be short -- everything it does
++ * delays the next scanout commit. The payload is on the interrupt stack and is
++ * not valid after the handler returns.
++ *
++ * The handler is called only when the pointer pair actually changed, so a
++ * consumer needs no "has it moved" test of its own. While at least one
++ * notifier is registered the display keeps the vsync interrupt unmasked; with
++ * none registered and the plane not following the ring, the vsync handler does
++ * not so much as read the register pair.
++ *
++ * May sleep; call from process context.
++ *
++ * Return: 0 on success, -EPROBE_DEFER if the display device has not bound yet,
++ * -ENODEV if the display driver is not in this kernel at all.
++ */
++int h713_afbd_register_flip_notifier(struct notifier_block *nb);
++
++/**
++ * h713_afbd_unregister_flip_notifier() - stop being told
++ * @nb: the notifier block that was registered
++ *
++ * Waits for a handler that is currently running to return, so no event can
++ * arrive after this has returned. May sleep; call from process context.
++ *
++ * Return: 0 on success, -ENOENT if @nb was not registered.
++ */
++int h713_afbd_unregister_flip_notifier(struct notifier_block *nb);
++
++/**
++ * h713_afbd_read_flip() - read the flip pointer pair right now
++ * @flip: filled in on success
++ *
++ * For the questions that cannot wait for a vsync -- "is a signal present at
++ * all", "what does the ring look like at this instant". Ordinary frame
++ * delivery uses the notifier; this is the poll for everything else, and it
++ * exists so that no second driver has to map the register pair for it.
++ *
++ * Return: 0 and the pair, -EAGAIN if the pair could not be sampled cleanly or
++ * does not point into the capture ring, -EPROBE_DEFER if the display device
++ * has not bound yet, -ENODEV if the display driver is not in this kernel.
++ */
++int h713_afbd_read_flip(struct h713_afbd_flip *flip);
++
++#else /* !CONFIG_DRM_SUN50I_H713_AFBD */
++
++static inline int h713_afbd_register_flip_notifier(struct notifier_block *nb)
++{
++	return -ENODEV;
++}
++
++static inline int h713_afbd_unregister_flip_notifier(struct notifier_block *nb)
++{
++	return -ENODEV;
++}
++
++static inline int h713_afbd_read_flip(struct h713_afbd_flip *flip)
++{
++	return -ENODEV;
++}
++
++#endif /* CONFIG_DRM_SUN50I_H713_AFBD */
++
++#endif /* __LINUX_SOC_SUNXI_H713_AFBD_H */

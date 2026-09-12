@@ -1,0 +1,104 @@
+misc: hy310-motor: add the stock manual-move commands to motor_ctrl
+
+The focus drive on this board is the motor already described by the
+motor_ctr node -- there is no second motor.  The stock device tree has one
+motor node (re/vendor/HY310/extracted/dtb_extracted/hy310-board.dts:2635),
+the stock kernel has one motor driver with one set of globals (motor_ctl,
+pMotordev, kallsyms c05d5c1c..c05d7d14), and the stock GPIO dump lists no
+motor lines beyond PH4..PH7 and PH14
+(re/captures/HY310-DEV/stock_gpio_debug.txt).  This project's own
+legacy/tools/focus already drives /sys/devices/platform/motor_ctr/motor_ctrl
+as the focus control.
+
+What was missing to use it manually is the other half of the stock sysfs
+protocol.  motor_ctrl_store (0xc05d7d14) decodes
+(cmd << 8) | (steps & 0x7f) | (full_limit ? 0x80 : 0) and has two move
+paths, not one:
+
+	cmd 1 / 2   autofocus = 1, then motor_run_up_dn(cmd - 1, ...)
+	cmd 8 / 9   autofocus = 0, then motor_run_up_dn(cmd - 8, ...)
+
+and the flag is not cosmetic: delay_ms_func (0xc05d6b00) busy-waits while
+autofocus is set and sleeps otherwise.  Only cmd 1/2 were ported, so every
+manual move ran with the autofocus timing.  Add cmd 8/9, and cmd 6, which
+sets step_low with stock's floor of 10.
+
+cmd 7 ("goto step") is deliberately left unimplemented and now reports
+-EOPNOTSUPP instead of silently accepting the write.  Stock's
+motor_goto_step (0xc05d7cbc) only stores g_goto_step and starts the work.
+g_goto_step is read in exactly one place, func_motor_run at 0xc05d7a88 and
+0xc05d7ab4, and there only as a loop-continuation condition; nothing
+consumes, decrements or clears it, so a stock goto-step would leave the
+work loop spinning.  The feature does not exist in stock and cannot be
+reconstructed from it, so it is not invented here.
+
+Manual focus control after this patch, with no camera and no autofocus
+involved:
+
+	echo $(( (8 << 8) | 5 )) > .../motor_ctr/motor_ctrl   # 5 msteps up
+	echo $(( (9 << 8) | 5 )) > .../motor_ctr/motor_ctrl   # 5 msteps down
+	cat .../motor_ctr/motor_ctrl                          # pos inc in_range
+
+Note for later, not acted on here: the stock autofocus reaches the motor
+through this same sysfs file from user space -- the in-kernel entry points
+init_motor_step (0xc05d7310) and android_motor_step_init (0xc05d73a4) have
+no callers in the stock vmlinux, and shake_for_vafocus (0xc06bea8c) is
+accelerometer code that never touches the motor.  Whatever drives the
+autofocus writes cmd 1/2 here.
+
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -52,6 +52,10 @@
+  *	         timing); this is the path the stock autofocus uses
+  *	cmd 3    flush the queue
+  *	cmd 4    set the current step counter
++ *	cmd 6    set step_low
++ *	cmd 7    goto step -- see motor_goto_step below, not implemented
++ *	cmd 8/9  move up/down, clears autofocus (sleeping timing); this is the
++ *	         path for manual control
+  *
+  * DTS binding: compatible = "allwinner,hy310-focus-motor", "motor-control"
+  */
+@@ -122,6 +126,7 @@
+ 	/* State */
+ 	int			step_cur;	/* current position */
+ 	int			step_total;	/* max steps */
++	int			step_low;	/* stock g_motor_step_low */
+ 	int			edge_up;	/* 1 = upper edge latched */
+ 	int			edge_dn;	/* 1 = lower edge latched */
+ 	int			last_dir;	/* last movement direction */
+@@ -571,8 +576,24 @@
+ 	case 4: /* set position: low byte plus byte 2 */
+ 		m->step_cur = (val & 0xFF) | ((val & 0xFF0000) >> 8);
+ 		break;
+-	case 7: /* goto step */
+-		/* TODO: implement absolute positioning */
++	case 6: /* set step_low, stock clamps to at least 10 */
++		m->step_low = (steps < 10) ? 10 : steps;
++		break;
++	case 7:
++		/*
++		 * Stock motor_goto_step @ c05d7cbc only stores g_goto_step and
++		 * starts the work. g_goto_step is read in exactly one place,
++		 * func_motor_run @ c05d7a88/c05d7ab4, and only as a loop
++		 * continuation condition -- nothing ever consumes or clears
++		 * it, so the stock work loop would spin forever. The feature
++		 * is not implemented in stock and cannot be reconstructed from
++		 * it, so it is not implemented here either.
++		 */
++		return -EOPNOTSUPP;
++	case 8: /* UP, manual timing */
++	case 9: /* DOWN, manual timing */
++		m->autofocus = 0;
++		motor_run_up_dn(m, cmd - 8, steps, full_limit);
+ 		break;
+ 	default:
+ 		return -EINVAL;
+@@ -1063,6 +1084,7 @@
+ 	/* Defaults */
+ 	m->step_total = DEFAULT_STEP_TOTAL;
+ 	m->back_step = DEFAULT_BACK_STEP;
++	m->step_low = 10;
+ 
+ 	/* Create work queue */
+ 	m->wq = alloc_workqueue(DRIVER_NAME, WQ_UNBOUND, 1);

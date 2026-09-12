@@ -1,0 +1,222 @@
+media: sun50i-h713-hdmirx: repeat a failed first switch slowly and more than once
+
+0128 repeated the first source switch the moment the firmware reported the
+HDMI source again, with SetSource 1 and 3 back to back as the ordinary
+switch sends them. Provoked on 08.09.2026 (source toggling HDMI during
+boot): the repeat hit a port that had locked 50 ms earlier, the port fell
+to state 3 and stayed there -- no relock, no SwitchState, no callback --
+and the wall stayed on the console. A switch by hand with a second between
+the two calls brought it back; so did nothing else.
+
+So the repeat now waits two seconds after the callback for the firmware to
+settle, pauses a second between away and back, gives the relock three
+seconds, and if the capture still does not come tries again five seconds
+later, five times at most, saying so each time. It also checks first
+whether the firmware brought the capture back by itself meanwhile. The
+ordinary switch of a first publication is unchanged: it meets a port that
+has been locked for a while and has been measured to work.
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 09:27:26.089705073 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 09:27:51.702534091 +0200
+@@ -307,6 +307,21 @@
+  * would only delay the log line that says so.
+  */
+ #define H713_SOURCE_RETRIES	3
++
++/*
++ * The repeat of a failed first switch (h713_hdmirx_rearm_retry_work). Measured
++ * 08.09.2026: a switch sent 50 ms after the port had locked, with SetSource 1
++ * and 3 two milliseconds apart, left the firmware's HDMI port in state 3 for
++ * good -- no relock, no callback, until a switch by hand with a pause between
++ * the two calls. So the repeat waits for the firmware to settle, pauses
++ * between away and back, allows the relock more time, and tries again a few
++ * times if the capture still does not come.
++ */
++#define H713_RETRY_SETTLE_MS	2000
++#define H713_RETRY_GAP_MS	1000
++#define H713_RETRY_WAIT_MS	3000
++#define H713_RETRY_AGAIN_MS	5000
++#define H713_RETRY_MAX		5
+ #define H713_HDMI_PORT		0
+ 
+ /*
+@@ -839,6 +854,8 @@
+ 	/* re-arming the capture after the display published the descriptor */
+ 	struct notifier_block desc_nb;
+ 	struct work_struct rearm_work;
++	struct delayed_work rearm_retry_work;	/* the repeat of a failed first switch */
++	unsigned int rearm_retries;
+ 	bool desc_seen;			/* eine Descriptor-Veroeffentlichung lag schon an */
+ 	bool rearm_pending;		/* der Quellenwechsel fand kein Signal: beim naechsten wiederholen */
+ 
+@@ -1213,7 +1230,8 @@
+ 	 */
+ 	if (READ_ONCE(rx->rearm_pending) && nargs && args &&
+ 	    args[0] == H713_SOURCE_HDMI1)
+-		schedule_work(&rx->rearm_work);
++		mod_delayed_work(system_wq, &rx->rearm_retry_work,
++				 msecs_to_jiffies(H713_RETRY_SETTLE_MS));
+ 
+ 	h713_hdmirx_src_change(rx);
+ }
+@@ -1765,28 +1783,7 @@
+ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ {
+ 	bool erste = !rx->desc_seen;
+-	bool wechsel = erste || rx->rearm_pending;
+-
+-	/*
+-	 * A repeat after a failed switch (see the end of this function): only
+-	 * worth it once the firmware reports the HDMI source with a signal.
+-	 * Otherwise this would switch back and forth on every callback while
+-	 * the source is still negotiating, or nothing is plugged in.
+-	 */
+-	if (!erste && rx->rearm_pending) {
+-		struct h713_hdmirx_signal_info sig;
+-
+-		if (h713_hdmirx_read_signal_info(rx, &sig) ||
+-		    sig.signal_id == H713_SIGNAL_ID_NONE ||
+-		    sig.signal_id == H713_SIGNAL_ID_UNKNOWN ||
+-		    !sig.h_size || !sig.v_size) {
+-			dev_dbg(rx->dev, "Freigabe: Wiederholung wartet auf ein Signal\n");
+-			return;
+-		}
+-		dev_info(rx->dev,
+-			 "Freigabe: Signal ist zurueck (%ux%u), der Quellenwechsel wird wiederholt\n",
+-			 sig.h_size, sig.v_size);
+-	}
++	bool wechsel = erste;
+ 
+ 	rx->desc_seen = true;
+ 
+@@ -1869,6 +1866,7 @@
+ 						 "Freigabe: Capture direkt freigegeben, kein Quellenwechsel, nach %lld ms\n",
+ 						 ktime_ms_delta(ktime_get(), start));
+ 					rx->rearm_pending = false;
++					cancel_delayed_work(&rx->rearm_retry_work);
+ 					/*
+ 					 * Should be a no-op. It is not only if the
+ 					 * firmware's rebuild came later than the
+@@ -1905,6 +1903,7 @@
+ 
+ 	if (h713_hdmirx_wait_enable(rx, "Capture laeuft wieder")) {
+ 		rx->rearm_pending = false;
++		cancel_delayed_work(&rx->rearm_retry_work);
+ 		/* the source switch ends on the HDMI signal; this only checks */
+ 		h713_hdmirx_restore_icsc(rx, "nach dem Quellenwechsel");
+ 		return;
+@@ -1923,11 +1922,98 @@
+ 	 * back (h713_hdmirx_signal_cb).
+ 	 */
+ 	rx->rearm_pending = true;
++	rx->rearm_retries = 0;
+ 	dev_info(rx->dev,
+ 		 "Freigabe: nach %u ms bewegen sich die Flip-Zeiger nicht; liegt ein Signal an? Der Quellenwechsel wird wiederholt, sobald eines da ist\n",
+ 		 H713_REARM_TIMEOUT_MS);
+ }
+ 
++/*
++ * The repeat of a failed first switch. Runs H713_RETRY_SETTLE_MS after the
++ * firmware reported the HDMI source again (h713_hdmirx_signal_cb), or
++ * H713_RETRY_AGAIN_MS after a repeat that did not bring the capture back.
++ *
++ * Slowly, on purpose. The first version of this repeat switched the moment the
++ * callback arrived, with SetSource 1 and 3 back to back as the ordinary switch
++ * does; measured 08.09.2026 that hit a port that had locked 50 ms earlier,
++ * the port fell to state 3 and never came back -- no relock, no callback --
++ * until a switch by hand with a second between the two calls. The ordinary
++ * switch of a first publication meets a port that has been locked for a
++ * while and is left as it is.
++ */
++static void h713_hdmirx_rearm_retry_work(struct work_struct *work)
++{
++	struct h713_hdmirx *rx = container_of(to_delayed_work(work),
++					      struct h713_hdmirx,
++					      rearm_retry_work);
++	struct h713_hdmirx_signal_info sig;
++	u32 arg = H713_SOURCE_VIDEODEC;
++	ktime_t start;
++	unsigned int val;
++	int ret;
++
++	if (!rx->rearm_pending)
++		return;
++
++	/* did the firmware bring the capture back by itself meanwhile? */
++	if (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val) &&
++	    (val & H713_INCAP_ENABLE_BIT)) {
++		dev_info(rx->dev, "Freigabe: Capture laeuft inzwischen von selbst\n");
++		rx->rearm_pending = false;
++		h713_hdmirx_restore_icsc(rx, "nach der Wiederholung");
++		return;
++	}
++
++	if (h713_hdmirx_read_signal_info(rx, &sig) ||
++	    sig.signal_id == H713_SIGNAL_ID_NONE ||
++	    sig.signal_id == H713_SIGNAL_ID_UNKNOWN ||
++	    !sig.h_size || !sig.v_size) {
++		dev_dbg(rx->dev, "Freigabe: Wiederholung wartet auf ein Signal\n");
++		return;
++	}
++
++	rx->rearm_retries++;
++	dev_info(rx->dev,
++		 "Freigabe: Signal da (%ux%u), Quellenwechsel wird wiederholt (%u. Mal, mit %u ms Pause)\n",
++		 sig.h_size, sig.v_size, rx->rearm_retries, H713_RETRY_GAP_MS);
++
++	ret = cpu_comm_call(rx->id_setsource, &arg, 1, NULL, 0, 0);
++	if (ret)
++		dev_warn(rx->dev, "Freigabe: SetSource(VideoDec) fehlgeschlagen: %d\n", ret);
++	msleep(H713_RETRY_GAP_MS);
++	ret = h713_hdmirx_set_source(rx);
++	if (ret)
++		dev_warn(rx->dev, "Freigabe: SetSource(HDMI-1) fehlgeschlagen: %d\n", ret);
++	h713_hdmirx_reapply_saturation(rx);
++
++	start = ktime_get();
++	do {
++		if (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val) &&
++		    (val & H713_INCAP_ENABLE_BIT)) {
++			dev_info(rx->dev,
++				 "Freigabe: Capture laeuft wieder, nach %lld ms (Wiederholung)\n",
++				 ktime_ms_delta(ktime_get(), start));
++			rx->rearm_pending = false;
++			h713_hdmirx_restore_icsc(rx, "nach der Wiederholung");
++			return;
++		}
++		msleep(20);
++	} while (ktime_ms_delta(ktime_get(), start) < H713_RETRY_WAIT_MS);
++
++	if (rx->rearm_retries >= H713_RETRY_MAX) {
++		dev_warn(rx->dev,
++			 "Freigabe: auch nach %u Wiederholungen keine Capture -- aufgegeben; hy310-tv ctl resync oder Kaltstart\n",
++			 rx->rearm_retries);
++		rx->rearm_pending = false;
++		return;
++	}
++	dev_info(rx->dev,
++		 "Freigabe: Wiederholung %u ohne Erfolg, naechster Versuch in %u ms\n",
++		 rx->rearm_retries, H713_RETRY_AGAIN_MS);
++	queue_delayed_work(system_wq, &rx->rearm_retry_work,
++			   msecs_to_jiffies(H713_RETRY_AGAIN_MS));
++}
++
+ static void h713_hdmirx_rearm_work(struct work_struct *work)
+ {
+ 	struct h713_hdmirx *rx = container_of(work, struct h713_hdmirx,
+@@ -3071,6 +3157,7 @@
+ 	rx->flip_nb.notifier_call = h713_hdmirx_flip_notify;
+ 	rx->desc_nb.notifier_call = h713_hdmirx_desc_notify;
+ 	INIT_WORK(&rx->rearm_work, h713_hdmirx_rearm_work);
++	INIT_DELAYED_WORK(&rx->rearm_retry_work, h713_hdmirx_rearm_retry_work);
+ 	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings);
+ 	rx->last_slot = -1;
+ 	mutex_init(&rx->lock);
+@@ -3298,6 +3385,7 @@
+ 	struct h713_hdmirx *rx = platform_get_drvdata(pdev);
+ 
+ 	h713_afbd_unregister_descriptor_notifier(&rx->desc_nb);
++	cancel_delayed_work_sync(&rx->rearm_retry_work);
+ 	cancel_work_sync(&rx->rearm_work);
+ 	debugfs_remove_recursive(rx->debugfs);
+ 	vb2_video_unregister_device(&rx->vdev);

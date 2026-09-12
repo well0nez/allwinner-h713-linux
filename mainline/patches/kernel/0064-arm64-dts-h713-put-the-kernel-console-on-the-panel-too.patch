@@ -1,0 +1,49 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] arm64: dts: h713: put the kernel console on the panel too
+
+The panel has been able to show the kernel console since the AFBD driver
+landed -- fbcon binds to it, `/sys/class/vtconsole/vtcon1` reports "frame
+buffer device" bound -- and nothing has ever been printed there, because the
+command line names only the serial port:
+
+    console=ttyS0,115200 earlycon ...
+
+so printk goes to UART0 and the panel shows whatever U-Boot left behind.
+Adding console=tty0 registers the virtual console as a second printk
+destination. Serial stays first and stays the default for a bare `console=`
+consumer, so nothing that currently reads the UART changes.
+
+When a console registers late the kernel replays the log buffer to it, so the
+panel shows the boot from the beginning rather than from the moment the
+display driver probed -- which is 6.2 s in, well after the interesting part.
+
+This is half of what is needed. The other half is U-Boot bringing the panel up
+before Linux starts: the driver adopts a running framebuffer and refuses to
+probe otherwise, so without that the console has nowhere to go. See
+CONFIG_PREBOOT in the board defconfig.
+
+Both boards get it; the two command lines differ in other respects already.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -7,7 +7,7 @@
+ 	compatible = "cstenger,hy200-qz713df-a1", "allwinner,sun50i-h713";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 rw net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
++		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 rw net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
+ 	};
+ };
+ 
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts
+@@ -7,6 +7,6 @@
+ 	compatible = "cstenger,hy200-qz713-v2", "allwinner,sun50i-h713";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M";
++		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M";
+ 	};
+ };

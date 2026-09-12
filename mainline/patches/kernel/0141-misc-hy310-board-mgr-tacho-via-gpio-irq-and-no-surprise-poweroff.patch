@@ -1,0 +1,566 @@
+misc: hy310-board-mgr: tachometer via GPIO IRQ, no surprise poweroff
+
+Three changes that have to land before this driver can be enabled on the
+HY310.
+
+1. The tachometer stops bypassing gpiolib and pinctrl. The driver ioremap'd
+   0x02000000 itself, wrote the PIO CFG register behind pinctrl's back and
+   polled the DAT register from a 100 us hrtimer -- 10000 wakeups per second,
+   forever, which keeps the CPU out of any deep idle state. Its stated reason
+   was "H713 EINT does not work for extended PH pins (PH11-PH19); function 6
+   disconnects the input path". That was never a property of the SoC: the pin
+   tables carried the H616 EINT mux value 0x6, which is not the EINT function
+   here. Patch 0140 set the correct value 0xe and restored the mux switch on
+   IRQ request (measured on PL4: mux 0 never raised EINT, mux 0xe raised it on
+   every edge). PH17 carries SUNXI_FUNCTION_IRQ_BANK(0xe, 6, 17) and PH is an
+   IRQ bank, so a plain GPIO interrupt works. Use devm_fwnode_gpiod_get() +
+   gpiod_to_irq() + devm_request_irq() on the rising edge and count there.
+   If the pin has no interrupt, say so and leave fan1_input unavailable
+   rather than falling back to a poll.
+
+   Pulses per revolution becomes the common "pulses-per-revolution" property
+   (the name pwm-fan uses), defaulting to 2 -- rising edges only on a standard
+   3-wire fan. The old hard-coded 4 contradicted its own comment ("both edges")
+   while the code counted rising edges only. The absolute RPM is still
+   unverified against a reference tachometer.
+
+2. The thermal emergency poweroff is disarmed by default. hy310_ntc_work_fn()
+   called kernel_power_off() after 50 cycles above temp_poweroff, and the DTS
+   sets that to 60 C. The lradc-table behind the conversion comes from the
+   vendor DTS of a board whose thermal design we have not verified; a
+   mis-calibrated curve powers the device off at random. It is now behind the
+   thermal_shutdown module parameter, default off: the driver reports and
+   warns, and arming it is a deliberate act once temp1_input is known to be
+   truthful. This is not a regression -- today the driver is not built at all,
+   so the device runs with no thermal reporting whatsoever.
+
+   The dead, fully commented-out fan-stall shutdown and its no_rpm_shutdown
+   parameter go away with it. A stall is now reported once per crossing and
+   never acted on: this board's fan is an unregulated on/off load on the
+   shared PB5 rail (see patch 0030), so the driver cannot restart it, and
+   powering the device off would trade a warning for an outage.
+
+3. A fan without a PWM is a supported configuration. duty-array-policy1
+   becomes optional, hwmon stops exposing pwmN when there is no PWM behind it,
+   and the thermal cooling device is only registered when a fan can actually
+   be throttled -- an unregulated fan's set_cur_state does nothing, and a
+   cooling device that does nothing lies to the thermal core. The HY310's fan
+   is exactly that case.
+
+Not hardware-tested yet: the tachometer IRQ on the PH bank. Only PL4 (bank L)
+has ever raised a GPIO interrupt on this board. If PH turns out not to work,
+the driver degrades to temperature-only and says so in the log.
+
+--- a/drivers/misc/hy310-board-mgr.c	2026-09-11 18:15:37.291117517 +0200
++++ b/drivers/misc/hy310-board-mgr.c	2026-09-11 18:15:37.292981053 +0200
+@@ -25,7 +25,6 @@
+ #include <linux/hwmon.h>
+ #include <linux/iio/consumer.h>
+ #include <linux/hwmon-sysfs.h>
+-#include <linux/hrtimer.h>
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
+ #include <linux/irq.h>
+@@ -52,7 +51,14 @@
+ #define HY310_MAX_FANS			4
+ #define HY310_MAX_MODES			8	/* max entries in duty-array-policy1 */
+ #define HY310_MAX_TABLE_ENTRIES		64	/* max gpadc/lradc table pairs */
+-#define HY310_PULSES_PER_REV		4	/* both edges × 2 magnets per revolution */
++/*
++ * Tachometer pulses per revolution. We count rising edges only, and a
++ * standard 3-wire fan emits two pulses per revolution, so 2 is the default.
++ * Overridable per fan node via the common "pulses-per-revolution" property
++ * (same name pwm-fan uses). NOT verified against a reference tachometer on
++ * the HY310 -- treat the absolute RPM as indicative until it is.
++ */
++#define HY310_DEFAULT_PULSES_PER_REV	2
+ 
+ /* LRADC register defines removed — NTC reads now go through IIO consumer API
+  * (sun50i-h713-lradc-iio driver owns the LRADC hardware exclusively) */
+@@ -66,10 +72,17 @@
+ #define NTC_WARN_CYCLES			30
+ #define NTC_POWEROFF_CYCLES		50
+ 
+-/* Module parameter: disable RPM stall shutdown (for debugging only!) */
+-static bool no_rpm_shutdown;
+-module_param(no_rpm_shutdown, bool, 0644);
+-MODULE_PARM_DESC(no_rpm_shutdown, "Disable fan stall emergency shutdown (DEBUG ONLY)");
++/*
++ * Thermal emergency shutdown. OFF by default: the NTC conversion table comes
++ * from the vendor DTS of a board whose thermal design we have not verified,
++ * and a mis-calibrated curve would power the device off at random. Until the
++ * curve is measured against a reference, the driver only reports and warns.
++ * Set thermal_shutdown=1 once temp1_input is known to be truthful.
++ */
++static bool thermal_shutdown;
++module_param(thermal_shutdown, bool, 0644);
++MODULE_PARM_DESC(thermal_shutdown,
++		 "Power off when the NTC exceeds temp_poweroff (default: off, report only)");
+ 
+ /* Default configuration values */
+ #define DEFAULT_PWM_PERIOD_NS		40000	/* 25 kHz */
+@@ -90,8 +103,9 @@
+  * @duty_array:      Per-mode duty percentages from duty-array-policy1
+  * @num_modes:       Number of entries in duty_array
+  * @power_gpio:      GPIO for fan power enable
+- * @fg_gpio:         GPIO for tachometer input
+- * @fg_irq:          IRQ number for tachometer
++ * @fg_desc:         GPIO descriptor for the tachometer input
++ * @fg_irq:          IRQ number for tachometer (< 0 = no tachometer)
++ * @fg_ppr:          Tachometer pulses per revolution
+  * @fg_count:        Raw pulse counter (incremented in ISR)
+  * @fg_count_lock:   Spinlock protecting fg_count
+  * @rpm:             Last measured RPM
+@@ -108,22 +122,10 @@
+ 	u32			 duty_array[HY310_MAX_MODES];
+ 	u32			 num_modes;
+ 	int			 power_gpio;
+-	int			 fg_gpio;
++	struct gpio_desc	*fg_desc;	/* tachometer input */
+ 	int			 fg_irq;
++	u32			 fg_ppr;	/* tach pulses per revolution */
+ 	atomic_t		 fg_count;
+-	/*
+-	 * GPIO polling for tachometer (hrtimer-based).
+-	 * H713 EINT controller does not work for extended PH pins (PH11+):
+-	 * Function 6 (EINT mux) disconnects the input path, and Function 0
+-	 * (GPIO) doesn't trigger the EINT hardware. As a workaround, we poll
+-	 * the GPIO DAT register via hrtimer to count edges.
+-	 * TODO (Prio 3): Investigate proper H713 EINT support or use PWM
+-	 * input capture mode for tachometer reading.
+-	 */
+-	struct hrtimer		 fg_poll_timer;
+-	void __iomem		*fg_dat_reg;	/* direct PIO DAT register for polling */
+-	u32			 fg_dat_bit;	/* bit mask for this pin in DAT register */
+-	int			 fg_last_val;
+ 	u32			 rpm;
+ 	u32			 rpm_warn_speed;
+ 	u32			 rpm_warn_cnt;
+@@ -150,7 +152,6 @@
+  */
+ struct hy310_board_mgr {
+ 	struct device		*dev;
+-	void __iomem		*pio_base;	/* PIO register base for direct DAT reads */
+ 
+ 	/* Fan instances */
+ 	struct hy310_fan	 fans[HY310_MAX_FANS];
+@@ -247,7 +248,7 @@
+ 	for (i = 0; i < priv->num_fans; i++) {
+ 		struct hy310_fan *fan = &priv->fans[i];
+ 
+-		if (!fan->valid)
++		if (!fan->valid || fan->num_modes == 0)
+ 			continue;
+ 
+ 		if (priv->current_mode < fan->num_modes)
+@@ -308,43 +309,29 @@
+ }
+ 
+ /* -------------------------------------------------------------------------
+- * Fan tachometer GPIO polling (hrtimer)
++ * Fan tachometer (GPIO interrupt)
+  *
+- * H713 EINT does not work for extended PH pins (PH11-PH19). The EINT
+- * mux (function 6) disconnects the input path entirely. GPIO-IRQ also
+- * fails because the EINT controller ignores edges in GPIO mode.
+- * Workaround: poll the GPIO value via hrtimer and count transitions.
+- * At 100µs interval (~10kHz), this captures fan speeds up to 150000 RPM
+- * with negligible CPU overhead (<0.1%).
+- * TODO (Prio 3): Investigate proper H713 EINT support or use PWM
+- * input capture mode for tachometer reading.
++ * The original version of this driver polled the PIO DAT register from a
++ * 100 us hrtimer, bypassing gpiolib and pinctrl with its own ioremap of
++ * 0x02000000, because "H713 EINT does not work for extended PH pins". That
++ * was never a property of the SoC: the pin tables carried the H616 EINT mux
++ * value 0x6, which is not the EINT function here and disconnects the input.
++ * Patch 0140 set the correct value 0xe and restored the mux switch on IRQ
++ * request, so a plain GPIO interrupt works and the workaround -- a 10 kHz
++ * wakeup that keeps the CPU out of deep idle forever, plus a second writer on
++ * registers pinctrl owns -- is gone.
+  * ------------------------------------------------------------------------- */
+ 
+-#define FG_POLL_INTERVAL_NS	(100 * 1000)	/* 100 µs */
+-
+-static enum hrtimer_restart fg_poll_callback(struct hrtimer *timer)
++static irqreturn_t hy310_fg_isr(int irq, void *data)
+ {
+-	struct hy310_fan *fan = container_of(timer, struct hy310_fan,
+-					     fg_poll_timer);
+-	int val;
+-
+-	if (!fan->fg_dat_reg)
+-		return HRTIMER_NORESTART;
+-
+-	val = (readl(fan->fg_dat_reg) & fan->fg_dat_bit) ? 1 : 0;
+-
+-	/* Count rising edges (transition from 0 to 1) */
+-	if (val && !fan->fg_last_val)
+-		atomic_inc(&fan->fg_count);
++	struct hy310_fan *fan = data;
+ 
+-	fan->fg_last_val = val;
+-
+-	hrtimer_forward_now(timer, ns_to_ktime(FG_POLL_INTERVAL_NS));
+-	return HRTIMER_RESTART;
++	atomic_inc(&fan->fg_count);
++	return IRQ_HANDLED;
+ }
+ 
+ /* -------------------------------------------------------------------------
+- * Fan tachometer work (RPM calculation from hrtimer pulse counts)
++ * Fan tachometer work (RPM calculation from the interrupt pulse count)
+  * ------------------------------------------------------------------------- */
+ 
+ /**
+@@ -365,50 +352,37 @@
+ 		int count;
+ 		u32 rpm;
+ 
+-		if (!fan->valid || !fan->fg_dat_reg)
++		if (!fan->valid || fan->fg_irq < 0)
+ 			continue;
+ 
+ 		/* Atomically read and reset the pulse count */
+ 		count = atomic_xchg(&fan->fg_count, 0);
+ 
+-		/* RPM = (counts / pulses_per_rev) * 60 seconds
+-		 * We sampled over 1 second, so:
+-		 *   rpm = (count / PULSES_PER_REV) * 60
+-		 */
+-		rpm = (count * 60) / HY310_PULSES_PER_REV;
++		/* Sampled over one second: rpm = count / ppr * 60 */
++		rpm = (count * 60) / fan->fg_ppr;
+ 		fan->rpm = rpm;
+ 
+-		/* Only check RPM once the system is fully booted */
++		/* Only judge the reading once the system is fully booted */
+ 		if (system_state < SYSTEM_RUNNING)
+ 			continue;
+ 
+-		if (fan->duty_pct == 0)
+-			/* Fan intentionally off, skip RPM check */
+-			continue;
+-
+-//		if (rpm < fan->rpm_warn_speed) {
+-//			fan->rpm_warn_cycles++;
+-//			dev_warn(priv->dev,
+-//				 "fan%d: low RPM %u (warn cnt %u/%u)\n",
+-//				 i, rpm, fan->rpm_warn_cycles,
+-//				 fan->rpm_warn_cnt);
+-//
+-//			if (fan->rpm_warn_cycles > fan->rpm_warn_cnt) {
+-//				if (no_rpm_shutdown) {
+-//					dev_warn(priv->dev,
+-//						 "fan%d: stalled! (shutdown disabled by debug param)\n",
+-//						 i);
+-//				} else {
+-//					dev_err(priv->dev,
+-//						"fan%d: stalled! initiating emergency poweroff\n",
+-//						i);
+-//					kernel_power_off();
+-//					return;
+-//				}
+-//			}
+-//		} else {
+-//			fan->rpm_warn_cycles = 0;
+-//		}
++		/*
++		 * A stall is reported, never acted on. The fan on this board is
++		 * an unregulated on/off load on the shared PB5 rail (see the
++		 * fan-power gpio-hog): the driver cannot restart it, so powering
++		 * the device off would trade a warning for an outage. The RPM is
++		 * in fan1_input; userspace decides what a stall means.
++		 */
++		if (rpm < fan->rpm_warn_speed) {
++			fan->rpm_warn_cycles++;
++			if (fan->rpm_warn_cycles == fan->rpm_warn_cnt)
++				dev_warn(priv->dev,
++					 "fan%d: %u RPM below %u for %u cycles -- check the fan\n",
++					 i, rpm, fan->rpm_warn_speed,
++					 fan->rpm_warn_cnt);
++		} else {
++			fan->rpm_warn_cycles = 0;
++		}
+ 	}
+ 
+ 	schedule_delayed_work(&priv->fan_work,
+@@ -522,10 +496,17 @@
+ 			priv->ntc.poweroff_cycles, NTC_POWEROFF_CYCLES);
+ 
+ 		if (priv->ntc.poweroff_cycles >= NTC_POWEROFF_CYCLES) {
+-			dev_err(priv->dev,
+-				"NTC: thermal emergency, initiating poweroff\n");
+-			kernel_power_off();
+-			return;
++			if (!thermal_shutdown) {
++				/* Report once per crossing, then keep counting. */
++				if (priv->ntc.poweroff_cycles == NTC_POWEROFF_CYCLES)
++					dev_err(priv->dev,
++						"NTC: thermal emergency (shutdown disabled, set thermal_shutdown=1 to arm)\n");
++			} else {
++				dev_err(priv->dev,
++					"NTC: thermal emergency, initiating poweroff\n");
++				kernel_power_off();
++				return;
++			}
+ 		}
+ 	} else {
+ 		priv->ntc.poweroff_cycles = 0;
+@@ -607,8 +588,17 @@
+ 			return 0444;
+ 		break;
+ 	case hwmon_pwm:
+-		if (attr == hwmon_pwm_input)
+-			return 0444;
++		/*
++		 * Only expose pwmN when the fan really has a PWM. On a plain
++		 * on/off fan the value would be a fiction.
++		 */
++		if (attr == hwmon_pwm_input) {
++			const struct hy310_board_mgr *priv = data;
++
++			if (channel < priv->num_fans &&
++			    priv->fans[channel].valid && priv->fans[channel].pwm)
++				return 0444;
++		}
+ 		break;
+ 	case hwmon_temp:
+ 		if (attr == hwmon_temp_input)
+@@ -756,31 +746,34 @@
+ 	atomic_set(&fan->fg_count, 0);
+ 	fan->fg_irq = -1;
+ 	fan->power_gpio = -EINVAL;
+-	fan->fg_gpio = -EINVAL;
+ 
+-	/* --- duty-array-policy1 --- */
++	/*
++	 * duty-array-policy1 is optional: a fan that is a plain on/off load
++	 * has no duty to set. Without it the fan has no speed control and the
++	 * driver reports RPM and temperature only.
++	 */
+ 	num_u32 = of_property_count_u32_elems(fan_np, "duty-array-policy1");
+-	if (num_u32 <= 0) {
+-		dev_err(dev, "%s: missing duty-array-policy1\n",
+-			fan_np->name);
+-		return -EINVAL;
+-	}
+-	if (num_u32 > HY310_MAX_MODES)
+-		num_u32 = HY310_MAX_MODES;
++	if (num_u32 > 0) {
++		if (num_u32 > HY310_MAX_MODES)
++			num_u32 = HY310_MAX_MODES;
+ 
+-	ret = of_property_read_u32_array(fan_np, "duty-array-policy1",
+-					 arr, num_u32);
+-	if (ret) {
+-		dev_err(dev, "%s: failed to read duty-array-policy1: %d\n",
+-			fan_np->name, ret);
+-		return ret;
+-	}
++		ret = of_property_read_u32_array(fan_np, "duty-array-policy1",
++						 arr, num_u32);
++		if (ret) {
++			dev_err(dev, "%s: failed to read duty-array-policy1: %d\n",
++				fan_np->name, ret);
++			return ret;
++		}
+ 
+-	memcpy(fan->duty_array, arr, num_u32 * sizeof(u32));
+-	fan->num_modes = num_u32;
++		memcpy(fan->duty_array, arr, num_u32 * sizeof(u32));
++		fan->num_modes = num_u32;
+ 
+-	/* Set initial duty from current mode (mode 0 at probe) */
+-	fan->duty_pct = fan->duty_array[0];
++		/* Set initial duty from current mode (mode 0 at probe) */
++		fan->duty_pct = fan->duty_array[0];
++	} else {
++		fan->num_modes = 0;
++		fan->duty_pct = 0;
++	}
+ 
+ 	/* --- fan-power-gpio --- */
+ 	fan->power_gpio = of_get_named_gpio(fan_np, "fan-power-gpio", 0);
+@@ -802,61 +795,42 @@
+ 		}
+ 	}
+ 
+-	/* --- fg-gpio (tachometer via direct DAT register polling) --- */
+-	fan->fg_gpio = of_get_named_gpio(fan_np, "fg-gpio", 0);
+-	if (gpio_is_valid(fan->fg_gpio)) {
+-		/*
+-		 * Do NOT request the GPIO through the GPIO subsystem!
+-		 * On H713, gpio_request → pinctrl sets the pin to a function
+-		 * that blocks the physical input (even function 0 through
+-		 * pinctrl differs from the hardware reset state).
+-		 * Instead, read the PIO DAT register directly via ioremap.
+-		 */
+-
+-		/*
+-		 * Set up direct DAT register access for hrtimer polling.
+-		 * PIO base is ioremap'd once in probe; DAT offset per bank
+-		 * is bank * 0x30 + 0x10 (H713 NEW_REG_LAYOUT).
+-		 */
+-		{
+-			int gpio_num = fan->fg_gpio;
+-			int bank = gpio_num / 32;
+-			int pin = gpio_num % 32;
+-			void __iomem *cfg_reg;
+-			u32 cfg_val;
+-			int cfg_idx = (pin % 8) * 4; /* 4 bits per pin in CFG register */
+-
+-			fan->fg_dat_reg = priv->pio_base + bank * 0x30 + 0x10;
+-			fan->fg_dat_bit = BIT(pin);
+-
+-			/*
+-			 * Set pin to function 0 (GPIO input) directly via PIO
+-			 * CFG register. At boot, the pin may be in function 15
+-			 * (disabled). We bypass the GPIO/pinctrl subsystem
+-			 * because on H713 the pinctrl mux change can block the
+-			 * physical input path for extended PH pins.
+-			 */
+-			cfg_reg = priv->pio_base + bank * 0x30 + (pin / 8) * 4;
+-			cfg_val = readl(cfg_reg);
+-			cfg_val &= ~(0xF << cfg_idx);
+-			/* function 0 = gpio_in, no bits to set */
+-			writel(cfg_val, cfg_reg);
++	/* --- fg-gpio: tachometer input, counted by a GPIO interrupt --- */
++	if (of_property_read_u32(fan_np, "pulses-per-revolution", &fan->fg_ppr) ||
++	    fan->fg_ppr == 0)
++		fan->fg_ppr = HY310_DEFAULT_PULSES_PER_REV;
++
++	fan->fg_desc = devm_fwnode_gpiod_get(dev, of_fwnode_handle(fan_np),
++					     "fg", GPIOD_IN, "fan-tach");
++	if (IS_ERR(fan->fg_desc)) {
++		ret = PTR_ERR(fan->fg_desc);
++		fan->fg_desc = NULL;
++		if (ret == -EPROBE_DEFER)
++			return ret;
++		if (ret != -ENOENT)
++			dev_warn(dev, "%s: no tachometer input (%d)\n",
++				 fan_np->name, ret);
++	} else {
++		fan->fg_irq = gpiod_to_irq(fan->fg_desc);
++		if (fan->fg_irq < 0) {
++			dev_warn(dev, "%s: tachometer GPIO has no interrupt (%d), RPM unavailable\n",
++				 fan_np->name, fan->fg_irq);
++			fan->fg_irq = -1;
++		} else {
++			ret = devm_request_irq(dev, fan->fg_irq, hy310_fg_isr,
++					       IRQF_TRIGGER_RISING,
++					       "hy310-fan-tach", fan);
++			if (ret) {
++				dev_warn(dev, "%s: cannot request tachometer IRQ %d (%d), RPM unavailable\n",
++					 fan_np->name, fan->fg_irq, ret);
++				fan->fg_irq = -1;
++			} else {
++				dev_info(dev, "%s: tachometer IRQ %d, %u pulses/rev\n",
++					 fan_np->name, fan->fg_irq, fan->fg_ppr);
++			}
+ 		}
+-		fan->fg_last_val = (readl(fan->fg_dat_reg) & fan->fg_dat_bit) ? 1 : 0;
+-		fan->fg_irq = -1; /* not using IRQ */
+-
+-		/* Start hrtimer for GPIO edge polling */
+-		hrtimer_setup(&fan->fg_poll_timer, fg_poll_callback,
+-			      CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+-		hrtimer_start(&fan->fg_poll_timer,
+-			      ns_to_ktime(FG_POLL_INTERVAL_NS),
+-			      HRTIMER_MODE_REL);
+-
+-		dev_info(dev, "%s: tachometer on GPIO %d (hrtimer polling)\n",
+-			 fan_np->name, fan->fg_gpio);
+ 	}
+ 
+-skip_tacho:
+ 	/* --- RPM warn thresholds --- */
+ 	if (of_property_read_u32(fan_np, "fg-warn-speed",
+ 				 &fan->rpm_warn_speed))
+@@ -869,9 +843,8 @@
+ 	fan->rpm_warn_cycles = 0;
+ 	fan->valid = true;
+ 
+-	dev_info(dev, "fan%d: modes=%u, power_gpio=%d, fg_gpio=%d, fg_irq=%d\n",
+-		 idx, fan->num_modes, fan->power_gpio, fan->fg_gpio,
+-		 fan->fg_irq);
++	dev_info(dev, "fan%d: modes=%u, power_gpio=%d, fg_irq=%d\n",
++		 idx, fan->num_modes, fan->power_gpio, fan->fg_irq);
+ 	return 0;
+ }
+ 
+@@ -937,13 +910,6 @@
+ 	priv->usb_power_gpio = -EINVAL;
+ 	priv->current_mode = 0;
+ 
+-	/* Map PIO registers for direct GPIO DAT reads (tachometer polling) */
+-	priv->pio_base = ioremap(0x02000000, 0x400);
+-	if (!priv->pio_base) {
+-		dev_err(dev, "failed to ioremap PIO base\n");
+-		return -ENOMEM;
+-	}
+-
+ 	platform_set_drvdata(pdev, priv);
+ 
+ 	/* ---- fan_policy: we only support policy 1 ---- */
+@@ -1100,7 +1066,15 @@
+ 	mutex_unlock(&priv->lock);
+ 
+ 	/* ---- Register thermal cooling device ---- */
+-	if (priv->num_fans > 0) {
++	/*
++	 * Only when a fan can actually be throttled. A cooling device whose
++	 * set_cur_state does nothing -- which is what an unregulated on/off
++	 * fan gives you -- lies to the thermal core.
++	 */
++	for (i = 0; i < priv->num_fans; i++)
++		if (priv->fans[i].valid && priv->fans[i].pwm)
++			break;
++	if (i < priv->num_fans) {
+ 		priv->cdev = devm_thermal_of_cooling_device_register(
+ 			dev, np, "hy310-fan", priv, &hy310_cooling_ops);
+ 		if (IS_ERR(priv->cdev)) {
+@@ -1127,9 +1101,9 @@
+ 	INIT_DELAYED_WORK(&priv->fan_work, hy310_fan_work_fn);
+ 	INIT_DELAYED_WORK(&priv->ntc_work, hy310_ntc_work_fn);
+ 
+-	/* Start tacho work if at least one fan has tachometer (hrtimer or IRQ) */
++	/* Start tacho work if at least one fan has a working tachometer IRQ */
+ 	for (i = 0; i < priv->num_fans; i++) {
+-		if (priv->fans[i].valid && priv->fans[i].fg_dat_reg) {
++		if (priv->fans[i].valid && priv->fans[i].fg_irq >= 0) {
+ 			schedule_delayed_work(
+ 				&priv->fan_work,
+ 				msecs_to_jiffies(FAN_TACHO_INTERVAL_MS));
+@@ -1151,13 +1125,6 @@
+ static void hy310_board_mgr_remove(struct platform_device *pdev)
+ {
+ 	struct hy310_board_mgr *priv = platform_get_drvdata(pdev);
+-	int i;
+-
+-	/* Cancel hrtimers for tachometer polling */
+-	for (i = 0; i < priv->num_fans; i++) {
+-		if (gpio_is_valid(priv->fans[i].fg_gpio))
+-			hrtimer_cancel(&priv->fans[i].fg_poll_timer);
+-	}
+ 
+ 	cancel_delayed_work_sync(&priv->fan_work);
+ 	cancel_delayed_work_sync(&priv->ntc_work);
+@@ -1169,8 +1136,7 @@
+ 
+ 	/* NTC IIO channel is devm-managed, no manual cleanup needed */
+ 
+-	if (priv->pio_base)
+-		iounmap(priv->pio_base);
++	/* Tachometer GPIO and IRQ are devm-managed */
+ }
+ 
+ /* Reboot notifier removed: power-hold not used on HY310 (battery.enable=0) */
+@@ -1201,7 +1167,7 @@
+ 
+ 	/* Restart periodic work */
+ 	for (i = 0; i < priv->num_fans; i++) {
+-		if (priv->fans[i].valid && priv->fans[i].fg_dat_reg) {
++		if (priv->fans[i].valid && priv->fans[i].fg_irq >= 0) {
+ 			schedule_delayed_work(
+ 				&priv->fan_work,
+ 				msecs_to_jiffies(FAN_TACHO_INTERVAL_MS));

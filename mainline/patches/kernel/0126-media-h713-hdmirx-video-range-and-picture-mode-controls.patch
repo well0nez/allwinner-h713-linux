@@ -1,0 +1,150 @@
+media: sun50i-h713-hdmirx: video range and picture mode as controls, converter state in status
+
+Two firmware settings that the picture depends on were reachable only
+through the debugfs RPC prompt: THal_Vp_SetVideoRange and
+THal_Vp_SetPictureMode. Give them the same shape as the nine picture
+controls of 0101 -- one control, one RPC, the bring-up value as the
+default. Video Range is a menu (Auto, Limited, Full: 0, 1, 2 as the
+firmware counts them); Picture Mode is an integer 0..7, because the
+vendor's ini names eight modes but which number is which has not been
+measured, and a menu with guessed names would be a claim.
+
+The converter restore of 0123 used to toggle full range and back to auto.
+With a range control that would silently reset a user's choice on every
+resolution change; now it steps away from the chosen value and back to it.
+
+The status file gains the two lines this session kept reading by hand:
+the capture enable (0x928 bit 31) and the input converter (0x824 bit 31,
+BYPASS is the green picture). The board has no v4l2-ctl; this is where a
+userspace tool looks.
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 01:42:03.067220536 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 01:42:03.073523113 +0200
+@@ -548,12 +548,29 @@
+ #define V4L2_CID_H713_SPATIAL_NR	(V4L2_CID_USER_SUN50I_H713_BASE + 1)
+ #define V4L2_CID_H713_DYNAMIC_CONTRAST	(V4L2_CID_USER_SUN50I_H713_BASE + 2)
+ #define V4L2_CID_H713_BLACK_EXTENSION	(V4L2_CID_USER_SUN50I_H713_BASE + 3)
++/*
++ * The two below are the picture-path settings that were only reachable over
++ * the debugfs RPC prompt until now. Video Range is THal_Vp_SetVideoRange:
++ * 0 follows the signal's own range flag, 1 forces limited, 2 forces full
++ * (the firmware treats every value other than 0 and 2 as limited). Picture
++ * Mode is THal_Vp_SetPictureMode with the number the firmware expects; the
++ * vendor's ini lists standard, cinema, vivid, game, energy_saving and the
++ * special modes computer, hdr, custom, but which number is which has not
++ * been measured, so this is an integer and not a menu with guessed names.
++ * The bring-up sequence sends 1.
++ */
++#define V4L2_CID_H713_VIDEO_RANGE	(V4L2_CID_USER_SUN50I_H713_BASE + 4)
++#define V4L2_CID_H713_PICTURE_MODE	(V4L2_CID_USER_SUN50I_H713_BASE + 5)
+ 
+ /* The vendor's own four steps, from the header of pq_picturemode.ini. */
+ static const char * const h713_hdmirx_pq_steps[] = {
+ 	"Off", "Low", "Middle", "High", NULL,
+ };
+ 
++static const char * const h713_hdmirx_range_menu[] = {
++	"Auto", "Limited", "Full", NULL,
++};
++
+ enum h713_hdmirx_pq_index {
+ 	H713_PQ_BRIGHTNESS,
+ 	H713_PQ_CONTRAST,
+@@ -564,6 +581,8 @@
+ 	H713_PQ_SNR,
+ 	H713_PQ_DCI,
+ 	H713_PQ_BLACK_EXTENSION,
++	H713_PQ_VIDEO_RANGE,
++	H713_PQ_PICTURE_MODE,
+ 	H713_PQ_COUNT,
+ };
+ 
+@@ -694,6 +713,19 @@
+ 		.name = "Black Extension",
+ 		.menu = h713_hdmirx_pq_steps,
+ 	},
++	[H713_PQ_VIDEO_RANGE] = {
++		.id = V4L2_CID_H713_VIDEO_RANGE,
++		.set = "THal_Vp_SetVideoRange",
++		.max = 2, .preset = 0,
++		.name = "Video Range",
++		.menu = h713_hdmirx_range_menu,
++	},
++	[H713_PQ_PICTURE_MODE] = {
++		.id = V4L2_CID_H713_PICTURE_MODE,
++		.set = "THal_Vp_SetPictureMode",
++		.max = 7, .preset = 1,
++		.name = "Picture Mode",
++	},
+ };
+ 
+ /* ------------------------------------------------------------------ */
+@@ -1075,17 +1107,20 @@
+ 	for (i = 0; i < H713_PQ_COUNT; i++) {
+ 		const struct h713_hdmirx_pq *pq = &h713_hdmirx_pq_ctrls[i];
+ 
+-		if (!pq->menu) {
++		if (!pq->name) {
+ 			v4l2_ctrl_new_std(hdl, &h713_hdmirx_ctrl_ops, pq->id,
+ 					  0, pq->max, 1, rx->pq_start[i]);
+ 		} else {
++			/* a control of our own: a menu where the steps have names, an integer otherwise */
+ 			struct v4l2_ctrl_config cfg = {
+ 				.ops	= &h713_hdmirx_ctrl_ops,
+ 				.id	= pq->id,
+ 				.name	= pq->name,
+-				.type	= V4L2_CTRL_TYPE_MENU,
++				.type	= pq->menu ? V4L2_CTRL_TYPE_MENU
++						   : V4L2_CTRL_TYPE_INTEGER,
+ 				.min	= 0,
+ 				.max	= pq->max,
++				.step	= pq->menu ? 0 : 1,
+ 				.def	= rx->pq_start[i],
+ 				.qmenu	= pq->menu,
+ 			};
+@@ -1657,8 +1692,9 @@
+  */
+ static void h713_hdmirx_restore_icsc(struct h713_hdmirx *rx, const char *wann)
+ {
++	struct v4l2_ctrl *range;
+ 	ktime_t start;
+-	u32 arg;
++	u32 arg, cur;
+ 	int ret;
+ 
+ 	if (!h713_hdmirx_icsc_bypassed(rx))
+@@ -1671,10 +1707,18 @@
+ 		return;
+ 	}
+ 
+-	arg = H713_VIDEO_RANGE_FULL;
++	/*
++	 * Away from the range the user has chosen and back to it, so that the
++	 * setting survives every resolution change. Without the control (it
++	 * exists whenever the handler was set up) the bring-up value, auto.
++	 */
++	range = v4l2_ctrl_find(&rx->ctrl_hdl, V4L2_CID_H713_VIDEO_RANGE);
++	cur = range ? (u32)v4l2_ctrl_g_ctrl(range) : H713_VIDEO_RANGE_AUTO;
++	arg = cur == H713_VIDEO_RANGE_FULL ? H713_VIDEO_RANGE_AUTO
++					   : H713_VIDEO_RANGE_FULL;
+ 	ret = cpu_comm_call(rx->id_setvideorange, &arg, 1, NULL, 0, 0);
+ 	if (!ret) {
+-		arg = H713_VIDEO_RANGE_AUTO;
++		arg = cur;
+ 		ret = cpu_comm_call(rx->id_setvideorange, &arg, 1, NULL, 0, 0);
+ 	}
+ 	if (ret) {
+@@ -2819,6 +2863,13 @@
+ 			   y >> 16, y & 0xffff, c & 0xffff, c >> 16);
+ 	else
+ 		seq_puts(s, "incap:        nicht lesbar\n");
++	if (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &y))
++		seq_printf(s, "capture:      %s (0x928 = %#010x)\n",
++			   (y & H713_INCAP_ENABLE_BIT) ? "freigegeben" : "aus", y);
++	if (!regmap_read(rx->incap, H713_INCAP_ICSC, &y))
++		seq_printf(s, "farbwandler:  %s (0x824 = %#010x)\n",
++			   (y & H713_INCAP_ICSC_BYPASS) ? "BYPASS -- das Bild waere gruen"
++						       : "BT.709", y);
+ 	seq_printf(s, "streaming:    %s\n",
+ 		   vb2_is_streaming(&rx->queue) ? "ja" : "nein");
+ 

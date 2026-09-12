@@ -1,0 +1,74 @@
+media: sun50i-h713-hdmirx: hold the capture enable until it sticks
+
+0121 sets the capture enable after a republished descriptor, and the first
+resolution change works: capture 1280x720, scaler 0x3200AAAA, PROC 1280x720 ->
+1920x1080, full picture on the panel. The second change comes up black, and the
+log says why -- "Capture direkt freigegeben, nach 0 ms" while 0x06940928 reads
+0x60020438 a moment later. The write lands and the firmware clears it again in
+its own sequence.
+
+So keep setting it until it holds. Three reads 50 ms apart, up to the same
+timeout as before; when the write takes, the bit is stable from the first read,
+and when it does not, it is clear again within 100 ms. The source switch stays
+as the fallback for the case where it never holds.
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 23:00:28.686632183 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 23:00:28.693923580 +0200
+@@ -1622,18 +1622,49 @@
+ 	 * is wrong -- and the log says which of the two happened.
+ 	 */
+ 	if (!erste) {
+-		int ret = h713_hdmirx_capture_enable(rx);
++		/*
++		 * Setting the bit once is not enough: the firmware clears it
++		 * again a little later in its own sequence, so a write that is
++		 * only a few milliseconds early is undone and the capture stays
++		 * off. Keep setting it until it has held for a while, then stop.
++		 *
++		 * "Held" is three reads across 150 ms. Measured: when the write
++		 * takes, the bit is stable from the first read; when it does
++		 * not, it is clear again within 100 ms.
++		 */
++		ktime_t start = ktime_get();
++		unsigned int stabil = 0;
++		unsigned int val;
++		int ret = 0;
++
++		do {
++			if (regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val))
++				break;
++
++			if (val & H713_INCAP_ENABLE_BIT) {
++				if (++stabil >= 3) {
++					dev_info(rx->dev,
++						 "Freigabe: Capture direkt freigegeben, kein Quellenwechsel, nach %lld ms\n",
++						 ktime_ms_delta(ktime_get(), start));
++					return;
++				}
++			} else {
++				stabil = 0;
++				ret = h713_hdmirx_capture_enable(rx);
++				if (ret)
++					break;
++			}
++			msleep(50);
++		} while (ktime_ms_delta(ktime_get(), start) < H713_REARM_TIMEOUT_MS);
+ 
+ 		if (ret)
+ 			dev_warn(rx->dev,
+ 				 "Freigabe: Capture-Freigabe nicht schreibbar: %d\n",
+ 				 ret);
+-		else if (h713_hdmirx_wait_enable(rx, "Capture direkt freigegeben, kein Quellenwechsel"))
+-			return;
+-
+-		dev_warn(rx->dev,
+-			 "Freigabe: direkte Freigabe hat nach %u ms nicht gegriffen; Quellenwechsel als Rueckfall -- der baut die Fensterkette neu und verliert dabei die Geometrie (doku/nachtlog/S7)\n",
+-			 H713_REARM_TIMEOUT_MS);
++		else
++			dev_warn(rx->dev,
++				 "Freigabe: direkte Freigabe hat nach %u ms nicht gehalten; Quellenwechsel als Rueckfall -- der baut die Fensterkette neu und verliert dabei die Geometrie (doku/nachtlog/S7)\n",
++				 H713_REARM_TIMEOUT_MS);
+ 	}
+ 
+ 	if (h713_hdmirx_switch_source(rx))

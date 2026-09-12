@@ -1,0 +1,56 @@
+media: sun50i-h713-hdmirx: do not take the frame rate from our own VidDec record
+
+After a resolution change the display side republishes the VidDec
+descriptor and the firmware answers with a VideoDec signal event. From
+then on the signal record at sig_phys carries that descriptor's values,
+yuv420_888 and the constant frame rate 30.00 the descriptor has always
+carried (rec[13]/rec[14] = 30000, the stock recipe), and not the HDMI
+signal's. detect_timings() believed it: after every change the status
+file read "30.00 Hz, color_format 0" for a 60 Hz 1080p source and
+QUERY_DV_TIMINGS answered with the 30 Hz preset, 74.25 MHz, while the
+capture ran at 60 Hz. Measured 08.09.2026 in hy310-tv's status.
+
+The geometry in that record is still right and keeps its cross-check
+against INCAP; only the rate is not a measurement. So when the record is
+recognisably ours -- yuv420_888 and exactly 30.00 -- take the rate from
+the ring, the way a missing record is handled, with the wider tolerance
+that path already has.
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 08:14:42.934610303 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 08:14:42.940713764 +0200
+@@ -157,6 +157,13 @@
+  * geometry is in the record itself.
+  */
+ #define H713_SIGNAL_ID_NONE	0
++/*
++ * The frame rate the display side writes into the VidDec descriptor
++ * (sun50i-h713-afbd, rec[13]/rec[14] = 30000, the stock recipe); the
++ * firmware echoes it as 30.00 Hz in its signal record after every rebuild
++ * triggered by that descriptor. Used to tell that record from the HDMI one.
++ */
++#define H713_OWN_RECORD_FPS_X100	3000
+ #define H713_SIGNAL_ID_UNKNOWN	1
+ #define H713_SIGNAL_ID_NOCHANGE	2
+ 
+@@ -2358,6 +2365,21 @@
+ 	if (have_sig && (sig.h_size != width || sig.v_size != height))
+ 		return -ENOLCK;
+ 
++	/*
++	 * Whose record is this? After a resolution change the display side
++	 * republishes the VidDec descriptor (0117) and the firmware answers with
++	 * a VideoDec signal event; from then on the record at sig_phys carries
++	 * that descriptor's values -- yuv420_888 and the constant frame rate of
++	 * 30.00 -- and not the HDMI signal's. Measured 08.09.2026: after every
++	 * change the status file read "30.00 Hz, color_format 0" for a 60 Hz
++	 * 1080p source, and QUERY_DV_TIMINGS reported the 30 Hz preset
++	 * (74.25 MHz). The geometry in that record is still right, the rate is
++	 * not; take the rate from the ring instead, as for a missing record.
++	 */
++	if (have_sig && sig.color_format == 0 &&
++	    sig.frame_rate_x100 == H713_OWN_RECORD_FPS_X100)
++		have_sig = false;
++
+ 	if (have_sig) {
+ 		fps_x100 = sig.frame_rate_x100;
+ 		tolerance = 1;

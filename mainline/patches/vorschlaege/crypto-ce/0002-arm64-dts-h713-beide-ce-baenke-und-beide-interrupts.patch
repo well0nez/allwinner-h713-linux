@@ -1,0 +1,106 @@
+arm64: dts: h713: beide CE-Baenke und beide Interrupts abbilden
+
+Der Knoten crypto@3040000 beschrieb bisher ein Fenster (0x03040000,
+0x1000) und einen Interrupt (SPI 73).  Der Geraetebaum des Herstellers
+beschreibt zwei Fenster (0x03040000 und 0x03040800, je 0xa0) und zwei
+Interrupts (SPI 73 und 74).  Beides fehlte.
+
+Das zweite Fenster ist der sichere Kanal CE_S.  Im Stock programmiert
+OP-TEE ausschliesslich diesen Kanal, auch fuer den HDCP-1.4-Schluessel
+(sunxi_aes_with_hardware, 0x4860c578; alle Registerzugriffe der
+Hilfsfunktionen 0x4860c2ac bis 0x4860c3a8 liegen in 0x030408xx).  Ob er
+aus der Non-Secure-Welt ueberhaupt sichtbar ist, weiss niemand -- das
+laesst sich nur am Geraet beantworten, und ohne Abbildung im
+Geraetebaum kann man es gar nicht erst versuchen.
+
+Der zweite Interrupt ist nicht Kosmetik: cstenger hat am Geraet
+gemessen, dass die erste CE-Operation haengt, wenn nur SPI 73
+angefordert ist, und durchlaeuft, wenn beide angefordert sind
+(wip/crypto-ce-tooling, bb44dc8).
+
+Die Groesse des ersten Fensters muss dabei von 0x1000 auf 0xa0 sinken.
+0x03040000 + 0x1000 reicht bis 0x03041000 und haette die zweite Bank
+mit ueberdeckt; zwei Fenster, die sich ueberlappen, nimmt kein Treiber
+entgegen.  0xa0 ist die Groesse, die der Hersteller angibt, und die
+hoechste Registeradresse, die im Stock-Code vorkommt, ist 0x18.
+
+Dazu ein vierter Takt und ein zweiter Reset, beide "sys": bus_ce_sys
+und RST_BUS_CE_SYS (CCU 0x68c Bit 1 und 17, neben bus_ce Bit 0 und
+16).  Der Stock-Bootloader schaltet beide Paare zusammen ein, bevor
+OP-TEE die sichere Bank je benutzt (u-boot.fex 0x4a028898: 0x68c |= 3;
+0x4a0288ba: |= 0x30000); unser SPL tut es beim DRAM-Init genauso.  Dass
+CE_S daran haengt, ist Vermutung, der Vendor-DT nennt das Gate nicht.
+Der Treiber behandelt beide als optional; sie stehen hier, damit ein
+CE_S-Lauf nicht an einem abgeschalteten Block scheitert.
+
+Das compatible wird allwinner,sun50i-h713-crypto, ohne H6-Rueckfall.
+Begruendung steht in der Bindung: der Task-Deskriptor dieser Maschine
+hat 5-Byte-Adressfelder, sun8i-ce baut 32-Bit-Felder, und das Ergebnis
+ist am Geraet gemessen "address invalid" fuer Standard-AES.  Ein
+Rueckfall wuerde sun8i-ce wieder anbinden, sobald jemand den Treiber
+einschaltet.  Solange kein Treiber das neue compatible fuehrt, bleibt
+der Knoten inert -- genau wie vorher, nur richtig beschrieben.
+
+Der Vendor-DT gibt beide Interrupts mit Typ 1 (steigende Flanke) an,
+mainline-H6/H616 und cstengers Messung benutzen Pegel (Typ 4).  Es
+bleibt bei Pegel: damit hat cstenger Fertigmeldungen bekommen, und der
+Messtreiber maskiert die Leitung am GIC, solange das ISR steht.
+
+Geprueft: beide DTBs des Boards uebersetzen, und im uebersetzten DTB
+stehen reg = <0x3040000 0xa0 0x3040800 0xa0>,
+interrupts = <0 0x49 4 0 0x4a 4> (SPI 73 und 74), vier Takte und zwei
+Resets.
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -408,14 +408,44 @@
+ 		#size-cells = <1>;
+ 		ranges;
+ 
+-		/* === Crypto Engine (sun8i-ce) === */
++		/*
++		 * Crypto Engine.  Zwei Registerbaenke und zwei Interrupts, wie
++		 * der Geraetebaum des Herstellers sie beschreibt (ce@03040000:
++		 * 0x03040000 und 0x03040800, je 0xa0, SPI 73 und 74).  Die
++		 * zweite Bank ist der sichere Kanal CE_S; OP-TEE programmiert
++		 * im Stock ausschliesslich ihn.
++		 *
++		 * Das erste Fenster war hier 0x1000 gross und haette die
++		 * zweite Bank ueberdeckt; deshalb stehen jetzt beide auf den
++		 * 0xa0 des Herstellers.
++		 *
++		 * Kein H6-Rueckfall im compatible: der Deskriptor dieser
++		 * Maschine hat 5-Byte-Adressfelder, sun8i-ce baut 32-Bit-
++		 * Felder, und das Ergebnis ist am Geraet gemessen
++		 * "address invalid".  Ohne Treiber ist der Knoten inert.
++		 * Siehe doku/114-plan-crypto-engine.md.
++		 *
++		 * Viertes Taktgate und zweiter Reset: bus_ce_sys und
++		 * RST_BUS_CE_SYS (CCU 0x68c Bit 1 und 17, neben bus_ce Bit 0
++		 * und 16).  Der Stock-Bootloader schaltet beide Paare
++		 * zusammen ein, bevor OP-TEE die sichere Bank benutzt
++		 * (u-boot.fex 0x4a028898: 0x68c |= 3; 0x4a0288ba:
++		 * |= 0x30000); unser SPL tut es beim DRAM-Init ebenso.
++		 * Dass CE_S daran haengt, ist Vermutung; der Vendor-DT nennt
++		 * das Gate nicht.  Beide sind fuer den Treiber optional.
++		 */
+ 		crypto: crypto@3040000 {
+-			compatible = "allwinner,sun50i-h6-crypto";
+-			reg = <0x03040000 0x1000>;
+-			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
+-			clocks = <&ccu CLK_BUS_CE>, <&ccu CLK_CE>, <&ccu CLK_MBUS_CE>;
+-			clock-names = "bus", "mod", "ram";
+-			resets = <&ccu RST_BUS_CE>;
++			compatible = "allwinner,sun50i-h713-crypto";
++			reg = <0x03040000 0xa0>, <0x03040800 0xa0>;
++			reg-names = "ns", "s";
++			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "ns", "s";
++			clocks = <&ccu CLK_BUS_CE>, <&ccu CLK_CE>,
++				 <&ccu CLK_MBUS_CE>, <&ccu CLK_BUS_CE_SYS>;
++			clock-names = "bus", "mod", "ram", "sys";
++			resets = <&ccu RST_BUS_CE>, <&ccu RST_BUS_CE_SYS>;
++			reset-names = "bus", "sys";
+ 			status = "okay";
+ 		};
+ 

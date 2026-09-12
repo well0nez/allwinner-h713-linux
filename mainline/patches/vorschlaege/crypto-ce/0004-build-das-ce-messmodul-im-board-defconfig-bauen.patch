@@ -1,0 +1,42 @@
+build: das CE-Messmodul im Board-defconfig bauen
+
+REPO-Datei, nicht Kernelbaum: anwenden mit -p1 aus mainline/.
+
+Baut h713-ce-test als Modul mit.  Das ist die einzige Aenderung an der
+Krypto-Einstellung; CONFIG_CRYPTO_DEV_SUN8I_CE bleibt aus und
+CONFIG_HW_RANDOM bleibt aus, aus den Gruenden, die direkt darueber
+stehen (cstengers Befund, Plan 114 Frage A).  Der Kommentar sagt
+ausdruecklich, dass das Modul kein Ersatz fuer sun8i-ce ist, damit
+niemand das eine fuer das andere haelt.
+
+Als Modul (m), nicht fest (y): der Lauf muss eine Entscheidung bleiben.
+Das Modul laedt beim Start ueber den Geraetebaum-Knoten, misst aber
+erst, wenn man ueber /sys/kernel/debug/h713-ce-test/starten anstoesst.
+
+CONFIG_DEBUG_FS steht in diesem defconfig bereits auf y (Zeile 261),
+CONFIG_CRYPTO_HW und CONFIG_CRYPTO_DEV_ALLWINNER sind Vorgabe y -- es
+sind also keine weiteren Schalter noetig.
+
+Fuer ein Release kann die Zeile wieder raus; dann bleibt nur der
+Geraetebaum-Knoten, und der ist ohne Treiber inert.
+
+--- a/patches/kernel/board/hy200_qz713df_a1_defconfig
++++ b/patches/kernel/board/hy200_qz713df_a1_defconfig
+@@ -255,6 +255,17 @@
+ # can do that software cannot -- read the RSSK efuse key for HDCP 1.4 -- needs
+ # a dedicated path, not this driver. See doku/114-plan-crypto-engine.md.
+ # CONFIG_CRYPTO_DEV_SUN8I_CE is not set
++# Messmodul fuer das Deskriptorformat der CE, ausdruecklich KEIN Ersatz fuer
++# sun8i-ce: es registriert nichts beim Krypto-Kern, setzt genau einen Task im
++# Vendorformat ab (AES-128, ECB oder CBC mit IV 0, Key-Select 0, Schluessel
++# aus dem Speicher, 16 Byte, Ziel DRAM) und vergleicht mit dem FIPS-197-
++# Vektor. Es fasst kein Geraeteschluesselmaterial und keine Schluesselsenke
++# an. Es laedt beim Start ueber den Geraetebaum-Knoten, laeuft aber erst,
++# wenn man es ueber /sys/kernel/debug/h713-ce-test/starten anstoesst. Nur als
++# Modul (m), damit ein Messlauf eine Entscheidung bleibt. Siehe
++# doku/114-plan-crypto-engine.md Paragraph 7 Schritt 3 und die README neben
++# diesem Patch. Fuer ein Release kann die Zeile wieder raus.
++CONFIG_H713_CE_TEST=m
+ CONFIG_DMA_CMA=y
+ CONFIG_PRINTK_TIME=y
+ CONFIG_DYNAMIC_DEBUG=y

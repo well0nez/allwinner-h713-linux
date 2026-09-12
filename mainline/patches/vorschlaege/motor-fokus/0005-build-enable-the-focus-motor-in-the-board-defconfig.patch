@@ -1,0 +1,27 @@
+build: enable the focus motor driver in the board defconfig
+
+Note: this diff is against a REPO file, not the kernel tree. Apply it with
+-p1 from mainline/, not from the kernel build tree like the other patches
+in this directory.
+
+CONFIG_HY310_KEYSTONE_MOTOR has been "not set" since the driver was written,
+so nothing in the shipping kernel has ever loaded it and none of its
+behaviour has been exercised on the current tree. Build it, as a module
+rather than built-in: its probe queues a homing run that physically moves
+the mechanism, so it should be loaded on purpose and be removable again.
+That also makes the bench procedure in TESTPLAN.md possible at all.
+
+--- a/patches/kernel/board/hy200_qz713df_a1_defconfig
++++ b/patches/kernel/board/hy200_qz713df_a1_defconfig
+@@ -33,7 +33,10 @@
+ CONFIG_DEVTMPFS=y
+ CONFIG_DEVTMPFS_MOUNT=y
+ # CONFIG_HY310_BOARD_MGR is not set
+-# CONFIG_HY310_KEYSTONE_MOTOR is not set
++# The projector's focus stepper (motor_ctr). Module, not built-in: probe
++# arms a homing run that moves the mechanism, so it should be loaded
++# deliberately and can be unloaded again.
++CONFIG_HY310_KEYSTONE_MOTOR=m
+ # CONFIG_SUNXI_NSI is not set
+ # CONFIG_SUNXI_TVTOP is not set
+ # DECD: the vendor AFBD frame-submission path. Built as a MODULE on purpose

@@ -1,0 +1,175 @@
+soc: sunxi: cpu_comm: hand the MIPS its call slot back after a callback
+
+Every MipsHalCallback_* the firmware sends us cost one call slot for the
+life of the boot, and at the 20th the firmware hung.
+
+The receive path (command_action, entry_cmd <= 4) delivered the message to
+the kernel handlers and to any open /dev/cpu_comm, then parked a reference
+in the CallCmd ring at share_seq + 32 for a channel reader -- the stock
+ARM driver's ioctl 0xC0087F03, BG_Thread on the MIPS -- which copies the
+entry and hands the slot back with Comm_ReleaseFreeCall(). This driver
+has no such reader. So the ring grew by one per callback, the sender's
+FreeCall pool shrank by one, and with 19 references the MIPS's
+SendComm2CPUEx spun in fifo_isNearlyFull() before it even asked for a
+slot: elog full of "cmdfifo.type=0, target cpu=0" (cpu_comm_core.c:473),
+tick counter frozen, debug shell dead, every RPC -110.
+
+Measured 08.09.2026 on the device: CallCmd(0,1,0) rd=0 wr=19, FreeCall
+one slot free, watch counting 19 SignalChange callbacks -- one short of
+the hang; the earlier post mortem had the same numbers after it. With
+about three callbacks per resolution change that is the "state tips after
+four or five changes" of doku/97 3b. The firmware side and the numbers:
+doku/nachtlog/S10; the device run: S11.
+
+So do what the reader would do: copy the entry, and after the ACK give
+the slot back with Comm_ReleaseFreeCall() on the sender's share sequence
+-- the call comm_CallWorkAction() already makes for the high-priority
+class. A RETURN only where the sender waits for one, the same condition
+as there; both known callbacks are NOTIFY and get none, the MIPS keeps no
+wait object for them. Nothing goes into the CallCmd ring any more.
+
+And make it visible: `watch` now shows the incoming pool too. With the
+fix the ring must read "ungelesen 0" and the FreeCall side keep its 19 or
+20 free slots across any number of callbacks; without it "ungelesen" grew
+by one per callback.
+
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-08 00:57:18.853035543 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-08 00:59:09.408969571 +0200
+@@ -898,6 +898,8 @@
+ 	unsigned long entry_base;		/* virtual address of the call entry */
+ 	u16 component_id;
+ 	u32 session_id;
++	u8 local_msg[COMM_MSG_SIZE] __aligned(8);
++	bool release_call = false;
+ 
+ 	if (WARN_ON(remote_cpu > 1))
+ 		return;
+@@ -996,13 +998,35 @@
+ 		 * so a handler sees both message classes exactly once. */
+ 		cpu_comm_kernel_deliver((const void *)entry_base);
+ 
+-		if (entry_cmd <= 4)
+-			Comm_Add2NewCallFifo(
+-				(void *)((u8 *)pcpu_comm_dev + 48),
+-				(u32 *)(share_seq_r + 32),
+-				entry_base);
+-		else
++		if (entry_cmd <= 4) {
++			/*
++			 * Stock parks a reference to the entry in the CallCmd ring
++			 * at share_seq_r + 32 here and wakes the channel; a reader
++			 * picks it up later, copies it, hands the slot back with
++			 * Comm_ReleaseFreeCall() and only then the sender's pool
++			 * has it again. That reader is the channel ioctl of the
++			 * stock ARM driver (0xC0087F03) and BG_Thread on the MIPS.
++			 * This driver has neither: delivery above works on copies,
++			 * nobody drains the ring and nobody releases the slot.
++			 *
++			 * The cost was one slot per callback, for the life of the
++			 * boot. With 19 references in the ring the MIPS sender
++			 * spins in fifo_isNearlyFull() before it even asks for a
++			 * slot (SendComm2CPUEx, cpu_comm_core.c:473) and the
++			 * firmware is gone: no callback, no RPC answer, no shell.
++			 * Measured 08.09.2026 -- ring rd=0 wr=19, one free slot,
++			 * exactly at the 20th SignalChange; on the wall it was the
++			 * "state tips after four or five resolution changes"
++			 * (doku/nachtlog/S10, S11).
++			 *
++			 * So do what the reader would do: copy, and release after
++			 * the ACK below. Nothing goes into the ring any more.
++			 */
++			memcpy(local_msg, (const void *)entry_base, COMM_MSG_SIZE);
++			release_call = true;
++		} else {
+ 			Comm_Add2Call2WQ((void *)entry_base);
++		}
+ 
+ 		/* Increment incoming call counter */
+ 		if (pcpu_comm_dev)
+@@ -1087,6 +1111,34 @@
+ 		   *(u8 *)(share_seq_r + 8),
+ 		   *(u32 *)(share_seq_r + 20),
+ 		   *(u32 *)(share_seq_r + 24));
++
++	if (release_call) {
++		/*
++		 * The receiver's duty: the slot goes back into the sender's
++		 * pool. share_seq_r is getShareSeqR(remote_cpu, 0), whose local
++		 * cpu is this one, so Comm_ReleaseFreeCall()'s owner check lets
++		 * it through -- the same call comm_CallWorkAction() makes for the
++		 * high-priority class. After the ACK, as in stock, where the
++		 * release comes from the reader thread; the sender holds its
++		 * send semaphore until the ACK, so nobody else touches the pool
++		 * in between.
++		 */
++		Comm_ReleaseFreeCall((void *)share_seq_r, (void *)entry_base);
++
++		/*
++		 * A RETURN only if the sender waits for one -- the condition
++		 * comm_CallWorkAction() uses. Both known callbacks are NOTIFY
++		 * (+6 = 0x0001): the MIPS keeps no wait object for them and
++		 * asserts in its command_action if one is answered.
++		 */
++		if (!(local_msg[6] & MSG_FLAG_NOTIFY) ||
++		    (local_msg[6] & MSG_FLAG_RETURN_ACK)) {
++			*(u16 *)(local_msg + 8) = 0;	/* no return values */
++			if (SendComm2CPUEx((unsigned long)local_msg, remote_cpu, 0))
++				pr_warn_ratelimited("cpu_comm: command_action: RETURN fuer comp=0x%08x fehlgeschlagen\n",
++						    *(u32 *)(local_msg + 40));
++		}
++	}
+ }
+ 
+ /* ── ack_action — Process ACK from MIPS ────────────────────── */
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	2026-09-08 00:57:18.855641479 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	2026-09-08 00:59:09.409135191 +0200
+@@ -991,6 +991,8 @@
+ 	unsigned int n_snap = 0;
+ 	u32 version = 0, count = 0;
+ 	u32 fc_rd = 0, fc_wr = 0, fc_cap = 0, fc_used = 0;
++	u32 in_rd = 0, in_wr = 0, in_cap = 0, in_pend = 0;
++	u32 ifc_rd = 0, ifc_wr = 0, ifc_cap = 0, ifc_free = 0;
+ 	bool have_pool;
+ 	char *buf;
+ 	int i, n = 0;
+@@ -1036,6 +1038,24 @@
+ 		fc_rd = fifo[0]; fc_wr = fifo[1]; fc_cap = fifo[4];
+ 		if (fc_cap && fc_rd < fc_cap && fc_wr < fc_cap)
+ 			fc_used = (fc_rd + fc_cap - fc_wr) % fc_cap;
++
++		/*
++		 * The incoming side, the pool the MIPS draws from for its
++		 * callbacks to us (share sequence local=ARM, remote=MIPS). The
++		 * CallCmd ring at +32 is where stock parks the references for a
++		 * reader; with the kernel releasing directly it must stay empty
++		 * ("ungelesen 0"), and the FreeCall ring at +120 must keep its
++		 * slots ("frei" 19 or 20). Before that fix "ungelesen" grew by
++		 * one per callback and the MIPS hung at 19 (doku/nachtlog/S10).
++		 */
++		fifo = (u32 *)(getShareSeqR(1, 0) + 32);
++		in_rd = fifo[0]; in_wr = fifo[1]; in_cap = fifo[4];
++		if (in_cap && in_rd < in_cap && in_wr < in_cap)
++			in_pend = (in_wr + in_cap - in_rd) % in_cap;
++		fifo = (u32 *)(getShareSeqR(1, 0) + 120);
++		ifc_rd = fifo[0]; ifc_wr = fifo[1]; ifc_cap = fifo[4];
++		if (ifc_cap && ifc_rd < ifc_cap && ifc_wr < ifc_cap)
++			ifc_free = (ifc_wr + ifc_cap - ifc_rd) % ifc_cap;
+ 	}
+ 	cpu_comm_read_rt_lock(&lock);
+ 
+@@ -1047,6 +1067,7 @@
+ 		       "calls_out %u, davon %u ohne Antwort\n"
+ 		       "newcall   %u mal beim CALL_ACK noch ungelesen\n"
+ 		       "freecall  rd=%u wr=%u cap=%u, belegt %u\n"
++		       "eingehend CallCmd rd=%u wr=%u cap=%u, ungelesen %u; FreeCall rd=%u wr=%u cap=%u, frei %u\n"
+ 		       "handlers  %u\n",
+ 		       atomic_read(&cpu_comm_rx_calls),
+ 		       atomic_read(&cpu_comm_rx_unmatched),
+@@ -1059,6 +1080,7 @@
+ 		       atomic_read(&cpu_comm_calls_out), atomic_read(&cpu_comm_timeouts),
+ 		       atomic_read(&cpu_comm_newcall_pending_at_ack),
+ 		       fc_rd, fc_wr, fc_cap, fc_used,
++		       in_rd, in_wr, in_cap, in_pend, ifc_rd, ifc_wr, ifc_cap, ifc_free,
+ 		       n_snap);
+ 
+ 	for (i = 0; i < (int)n_snap; i++) {

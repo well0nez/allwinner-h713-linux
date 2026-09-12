@@ -49,13 +49,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
 
-#define FB_FRONT 0x6c100000UL
-#define FB_BACK  0x6c500000UL
+/*
+ * The carveout is resolved at run time, not compiled in. The original
+ * FB_FRONT 0x6c100000 / FB_BACK 0x6c500000 put the slots 4 MiB apart, which
+ * is exactly one 1280x720 ARGB8888 frame -- board B's panel. At 1920x1080 a
+ * frame is 7.91 MiB, so the back slot would start inside the front one and
+ * run past the end of the 8 MiB reservation, and the exporter rejects it.
+ *
+ * Both the base and the size are module parameters of sunxi_scanout_dmabuf
+ * and readable through sysfs, so ask the kernel instead of guessing. The slot
+ * size follows the decoded frame. If two slots do not fit we say so and run
+ * single-buffered rather than silently scribbling outside the reservation.
+ */
+#define FB_FALLBACK_PHYS 0x6c100000UL
+#define FB_FALLBACK_SIZE 0x800000UL
+#define SCANOUT_PARAM_DIR "/sys/module/sunxi_scanout_dmabuf/parameters/"
 #define DRM_FORMAT_NV12     0x3231564e
 #define DRM_FORMAT_ARGB8888 0x34325241
 
@@ -64,6 +78,8 @@
 #define AFBD_READY  0x144
 #define AFBD_STATUS 0x168
 #define AFBD_SRC    0x178
+#define AFBD_SIZE   0x160	/* height << 16 | width, as U-Boot left it */
+#define AFBD_STRIDE 0x170
 #define CCU_AFBD_CLK 0x02001dc0UL
 
 #define SCANOUT_IOC_GET_FD _IOWR('S', 1, struct scanout_req)
@@ -82,15 +98,53 @@ static EGLDisplay dpy;
 static volatile uint32_t *regs;
 static int width, height;
 
-static const char *VS =
+/*
+ * Two vertex shaders, differing only in the sign of the texture Y axis.
+ *
+ * GL renders into an FBO bottom-up while AFBD scans the buffer top-down, so
+ * one flip belongs in here. Which one is right is a property of the panel,
+ * not of the code: measured on this board with a clip that is red on top and
+ * blue on the bottom, the original `0.5 - p.y*0.5` puts blue in row 0, which
+ * AFBD emits first and the panel shows at the top. So it came out inverted.
+ * A projector's firmware can mirror for ceiling mounting, which is the likely
+ * reason the same shader looked right on board B.
+ *
+ * Default is upright for this board; GLES_FLIP_Y=1 restores the old sign.
+ */
+static const char *VS_UPRIGHT =
+	"attribute vec2 p;\nvarying vec2 uv;\n"
+	"void main(){ uv = vec2(p.x*0.5+0.5, p.y*0.5+0.5);\n"
+	"             gl_Position = vec4(p,0.0,1.0); }\n";
+static const char *VS_FLIPPED =
 	"attribute vec2 p;\nvarying vec2 uv;\n"
 	"void main(){ uv = vec2(p.x*0.5+0.5, 0.5-p.y*0.5);\n"
 	"             gl_Position = vec4(p,0.0,1.0); }\n";
+#define VS (getenv("GLES_FLIP_Y") ? VS_FLIPPED : VS_UPRIGHT)
 static const char *FS =
 	"#extension GL_OES_EGL_image_external : require\n"
 	"precision mediump float;\n"
 	"uniform samplerExternalOES tex;\nvarying vec2 uv;\n"
 	"void main(){ gl_FragColor = texture2D(tex, uv); }\n";
+
+/* A module parameter as an unsigned long, or the fallback if unreadable. */
+static unsigned long scanout_param(const char *name, unsigned long fallback)
+{
+	char path[256], buf[64];
+	unsigned long v;
+	FILE *f;
+
+	snprintf(path, sizeof(path), SCANOUT_PARAM_DIR "%s", name);
+	f = fopen(path, "r");
+	if (!f)
+		return fallback;
+	if (!fgets(buf, sizeof(buf), f)) {
+		fclose(f);
+		return fallback;
+	}
+	fclose(f);
+	v = strtoul(buf, NULL, 0);
+	return v ? v : fallback;
+}
 
 static double now_ms(void)
 {
@@ -219,7 +273,10 @@ int main(int argc, char **argv)
 	EGLint n, major, minor;
 	int sfd, mfd, frames = 0, slot = 0, timeouts = 0, nondma = 0;
 	double t_start, conv_tot = 0, commit_tot = 0;
-	char desc[512];
+	char desc[1400];
+	const char *ext, *vdec, *caps, *demux = NULL;
+	GstClock *clock = NULL;
+	GstClockTime base_time = 0;
 	uint32_t gate;
 
 	static const EGLint cfg_attr[] = {
@@ -247,7 +304,8 @@ int main(int argc, char **argv)
 		gate = ccu[(CCU_AFBD_CLK & 0xfff) / 4];
 		if (!(gate & (1u << 31))) {
 			fprintf(stderr, "AFBD clock gated (%08x): run "
-				"'h713_disp auto 0x34 logo' in U-Boot first\n", gate);
+				"'h713_disp auto <projectid> logo' in U-Boot first "
+				"(0x30 here, 0x34 on board B)\n", gate);
 			return 1;
 		}
 	}
@@ -269,13 +327,54 @@ int main(int argc, char **argv)
 	 * `format` field is the literal token DMA_DRM; asking for
 	 * format=NV12 here fails to link with "can't handle caps".
 	 */
-	snprintf(desc, sizeof(desc),
-		 "filesrc location=\"%s\" ! h264parse ! v4l2slh264dec ! "
-		 "%s ! "
-		 "appsink name=out max-buffers=2 drop=false sync=false",
-		 argv[1],
-		 getenv("GLES_CAPS") ? getenv("GLES_CAPS") :
-		 "video/x-raw,format=NV12");
+	caps = getenv("GLES_CAPS") ? getenv("GLES_CAPS")
+				   : "video/x-raw(memory:DMABuf),format=DMA_DRM";
+
+	/*
+	 * Two shapes, chosen by file extension.
+	 *
+	 * An elementary stream has no audio and no clock, so it runs
+	 * sync=false and goes as fast as the panel will take it -- that is the
+	 * benchmark path, and the fps number means something there.
+	 *
+	 * A container gets a demuxer, and its audio track goes to ALSA.  Then
+	 * sync=true, because with a soundcard in the pipeline the audio sink
+	 * provides the clock and the video has to wait for it; without that the
+	 * picture would run at 59 fps against 30 fps of sound.
+	 */
+	ext = strrchr(argv[1], '.');
+	if (ext && (!strcasecmp(ext, ".mp4") || !strcasecmp(ext, ".m4v") ||
+		    !strcasecmp(ext, ".mov")))
+		demux = "qtdemux";
+	else if (ext && (!strcasecmp(ext, ".mkv") || !strcasecmp(ext, ".webm")))
+		demux = "matroskademux";
+
+	/* HEVC needs its own parser and decoder; default to H.264. */
+	vdec = getenv("GLES_VDEC");
+	if (!vdec)
+		vdec = (ext && !strcasecmp(ext, ".h265")) ?
+			"h265parse ! v4l2slh265dec" : "h264parse ! v4l2slh264dec";
+
+	if (demux)
+		snprintf(desc, sizeof(desc),
+			 "filesrc location=\"%s\" ! %s name=d "
+			 "d.video_0 ! queue max-size-buffers=0 max-size-bytes=0 "
+			 "max-size-time=2000000000 ! %s ! %s ! "
+			 "appsink name=out emit-signals=true max-buffers=6 "
+			 "drop=false sync=true "
+			 "d.audio_0 ! queue max-size-buffers=0 max-size-bytes=0 "
+			 "max-size-time=3000000000 ! decodebin ! audioconvert ! "
+			 "audioresample ! alsasink",
+			 argv[1], demux, vdec, caps);
+	else
+		snprintf(desc, sizeof(desc),
+			 "filesrc location=\"%s\" ! %s ! %s ! "
+			 "appsink name=out emit-signals=true max-buffers=2 "
+			 "drop=false sync=false",
+			 argv[1], vdec, caps);
+
+	if (getenv("GLES_VERBOSE"))
+		fprintf(stderr, "pipeline: %s\n", desc);
 	pipeline = gst_parse_launch(desc, NULL);
 	if (!pipeline) {
 		fprintf(stderr, "pipeline build failed\n");
@@ -289,6 +388,17 @@ int main(int argc, char **argv)
 		fprintf(stderr, "pipeline will not play\n");
 		return 1;
 	}
+	/*
+	 * Wait for the state change so the clock and base time are the ones
+	 * the pipeline actually settled on -- with an audio sink present that
+	 * is the ALSA clock, not the system clock.
+	 */
+	gst_element_get_state(pipeline, NULL, NULL, 5 * GST_SECOND);
+	clock = gst_element_get_clock(pipeline);
+	base_time = gst_element_get_base_time(pipeline);
+	if (clock)
+		printf("clock: %s\n", GST_OBJECT_NAME(clock));
+	(void)base_time;
 
 	dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	if (!eglInitialize(dpy, &major, &minor)) {
@@ -379,10 +489,26 @@ int main(int argc, char **argv)
 
 		if (!frames) {
 			caps = gst_sample_get_caps(sample);
-			if (!gst_video_info_from_caps(&vinfo, caps)) {
-				fprintf(stderr, "unusable caps: %s\n",
-					gst_caps_to_string(caps));
-				return 1;
+			{
+				GstVideoInfoDmaDrm dinfo;
+
+				/*
+				 * DMA_DRM caps do not parse with
+				 * gst_video_info_from_caps(): `format` is the
+				 * literal token DMA_DRM and the real pixel
+				 * format lives in the drm-format field. Left
+				 * unhandled this reads back as format DMA_DRM
+				 * with zero planes, and the NV12 check below
+				 * rejects the decoder's own output. Resolving
+				 * it is what video-info-dma.h is included for.
+				 */
+				if (gst_video_info_dma_drm_from_caps(&dinfo, caps)) {
+					vinfo = dinfo.vinfo;
+				} else if (!gst_video_info_from_caps(&vinfo, caps)) {
+					fprintf(stderr, "unusable caps: %s\n",
+						gst_caps_to_string(caps));
+					return 1;
+				}
 			}
 			width = GST_VIDEO_INFO_WIDTH(&vinfo);
 			height = GST_VIDEO_INFO_HEIGHT(&vinfo);
@@ -395,9 +521,63 @@ int main(int argc, char **argv)
 				fprintf(stderr, "expected NV12\n");
 				return 1;
 			}
-			if (target_init(&tgt[0], sfd, FB_FRONT) ||
-			    target_init(&tgt[1], sfd, FB_BACK))
-				return 1;
+			{
+				unsigned long base, csize, slot;
+				uint32_t asize, astride;
+
+				/*
+				 * This program never reprograms AFBD's size or
+				 * stride -- it only moves SRC -- so the frame
+				 * has to match what U-Boot left in the block.
+				 * On board B video and panel were both 1280x720
+				 * and the assumption was invisible. Here it is
+				 * checked, because the failure it produces is a
+				 * skewed picture rather than an error.
+				 */
+				asize = rd(AFBD_SIZE);
+				astride = rd(AFBD_STRIDE);
+				if ((int)(asize & 0xffff) != width ||
+				    (int)(asize >> 16) != height) {
+					fprintf(stderr,
+						"frame is %dx%d but the panel is "
+						"%ux%u (AFBD_SIZE %08x) -- this "
+						"path cannot scale; encode at the "
+						"panel size\n",
+						width, height, asize & 0xffff,
+						asize >> 16, asize);
+					return 1;
+				}
+				if (astride != (uint32_t)width * 4)
+					fprintf(stderr,
+						"warning: AFBD stride %u, frame "
+						"stride %u\n",
+						astride, width * 4);
+
+				base = scanout_param("scanout_phys", FB_FALLBACK_PHYS);
+				csize = scanout_param("scanout_size", FB_FALLBACK_SIZE);
+				slot = ((unsigned long)width * height * 4 + 0xfff) & ~0xfffUL;
+
+				printf("carveout %#lx + %lu KiB, slot %lu KiB\n",
+				       base, csize / 1024, slot / 1024);
+
+				if (target_init(&tgt[0], sfd, base))
+					return 1;
+				if (2 * slot <= csize) {
+					if (target_init(&tgt[1], sfd, base + slot))
+						return 1;
+				} else {
+					fprintf(stderr,
+						"carveout holds %lu KiB, two %lu KiB "
+						"slots need %lu KiB -- running SINGLE "
+						"BUFFERED, expect tearing. Grow "
+						"uboot-scanout in the devicetree and "
+						"sunxi_scanout_dmabuf's scanout_size "
+						"to fix.\n",
+						csize / 1024, slot / 1024,
+						2 * slot / 1024);
+					tgt[1] = tgt[0];
+				}
+			}
 			glViewport(0, 0, width, height);
 		}
 		/*
@@ -499,9 +679,15 @@ int main(int argc, char **argv)
 			printf("REFUSED: %d buffer(s) were not dma-buf backed\n", nondma);
 	}
 
-	/* Leave the panel on the front slot, as every other tool here does. */
-	wr(AFBD_SRC, (uint32_t)FB_FRONT);
-	commit_frame();
+	/*
+	 * Leave the panel on the front slot, as every other tool here does --
+	 * but only if it was ever set up. tgt[0].phys is the resolved carveout
+	 * base now, not a compile-time constant.
+	 */
+	if (frames) {
+		wr(AFBD_SRC, (uint32_t)tgt[0].phys);
+		commit_frame();
+	}
 	gst_element_set_state(pipeline, GST_STATE_NULL);
 	return frames && !nondma ? 0 : 1;
 }

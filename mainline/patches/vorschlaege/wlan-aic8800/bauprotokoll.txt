@@ -1,0 +1,66 @@
+=== Bauprotokoll — Vorschlaege wlan-aic8800, 12.09.2026 ===
+
+Container: h713-build (Projekt unter /work)
+Kernelbaum: mainline/build/linux-6.18.38-41db1941f6c82e1b7a50f852707ef6a0a2f22bb16e23521a86246208862d8312
+Toolchain:  clang 20.1.8, LLVM=1, ARCH=arm64
+
+--- 1. Treibermodule (Patches 0002 + 0003) ---
+Wegwerfbaum: mainline/build/wegwerf-wlan-aic8800  (Kopie des gebauten
+aic8800-df4c783b663e-..., beide Patches angewandt; nach dem Bau geloescht).
+Referenzbaum zum Vergleich: mainline/build/wegwerf-wlan-referenz (unveraendert,
+ebenfalls geloescht).
+
+  make -C $K M=<baum>/aic8800_bsp   ARCH=arm64 LLVM=1 CONFIG_PLATFORM_MAINLINE_SUNXI=y modules
+  make -C $K M=<baum>/aic8800_fdrv  ... KBUILD_EXTRA_SYMBOLS=<baum>/aic8800_bsp/Module.symvers modules
+  make -C $K M=<baum>/aic8800_btlpm ... KBUILD_EXTRA_SYMBOLS=<baum>/aic8800_bsp/Module.symvers modules
+
+Ergebnis (Neubau nach 'make clean', beide Baeume):
+
+  wegwerf-wlan-referenz: 31 Warnungen, 0 Fehler
+  wegwerf-wlan-aic8800:  31 Warnungen, 0 Fehler
+  Mengenvergleich der Warnungstexte: IDENTISCH  -> keine neue Warnung.
+
+  aic8800_bsp.ko    189064 Bytes
+  aic8800_fdrv.ko   905696 Bytes
+  aic8800_btlpm.ko   10560 Bytes
+  vermagic: 6.18.38 SMP mod_unload aarch64
+
+  modinfo aic8800_bsp.ko:
+    parm: wlan_regon:override: absolute GPIO number for WLAN regon
+          (default: -1 = take wlan-enable-gpios from the device tree) (int)
+    parm: chipup_timeout_ms:how long to wait for the chip to appear on SDIO
+          (default: 20000) (int)
+    parm: rescan_ms:repeat mmc_detect_change() every N ms while waiting
+          (0 = scan only once) (int)
+
+--- 2. Geraetebaum (Patch 0001) ---
+Ohne Kernel-Neubau geprueft: dts/dtsi + include/dt-bindings in ein
+Wegwerfverzeichnis kopiert, dann
+
+  cpp -nostdinc -I. -undef -D__DTS__ -x assembler-with-cpp \
+      -o neu.dts.pp sun50i-h713-hy200-qz713df-a1.dts
+  dtc -I dts -O dtb -o neu.dtb neu.dts.pp
+
+Uebersetzt. Einzige Warnung ist die schon vorher vorhandene
+"duplicate unit-address /soc/dec@5600000". Der Knoten kommt so an:
+
+  wifi@1 {
+          reg = <0x01>;
+          interrupt-parent = <0x12>;
+          interrupts = <0x01 0x00 0x08>;
+          interrupt-names = "host-wake";
+          wlan-enable-gpios = <0x12 0x01 0x01 0x00>;
+  };
+
+Zellenweise identisch mit dem Stock-Eintrag wlan_regon = <0x18 0x01 0x01 0x00>
+(hy310_factory.dts, Knoten rfkill/wlan) bis auf den phandle des r_pio.
+
+--- 3. Anwendbarkeit der Patchdateien ---
+Auf frische Kopien angewandt (patch -p1), alle drei sauber, und das Ergebnis
+ist byteweise identisch mit den oben gebauten Baeumen:
+
+  0001 -> arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi     ok
+  0002 -> aic8800_bsp/aicsdio.c                              ok
+  0003 -> aic8800_bsp/aicsdio.c                              ok
+
+Am Geraet wurde nichts getestet.

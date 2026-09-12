@@ -1,0 +1,64 @@
+arm64: dts: h713: der NTC haengt am GPADC, nicht am LRADC
+
+Der board-mgr las die Temperatur ueber io-channels = <&lradc 0> und bekam
+dauerhaft 0 °C geliefert (am Geraet gemessen, 11.09.).
+
+Der Grund ist eine Verwechslung der beiden Wandler des SoC. Der LRADC ist der
+grobe: 6 Bit, Maske 0x3f, Vollausschlag 63 -- gedacht fuer Tastenleitern, nicht
+fuer Messwerte. Der GPADC ist der feine mit 12 Bit. Die Umrechnungstabelle, die
+der Treiber fuer den NTC waehlt, ist die gpadc-table, und deren kleinster
+Eintrag ist 0x1BB = 443. Ein LRADC-Wert kann diese Schwelle nie erreichen, also
+traf in hy310_ntc_adc_to_temp kein einziger Eintrag zu, die Suche fiel auf ihren
+Standardwert zurueck, und der ist 0.
+
+Der Knoten sagt selbst, wohin er gehoert: ntc0 traegt source = <1> (GPADC).
+Nur io-channels zeigte woandershin -- uebernommen aus dem Vendor-DTS, wo der
+Hersteller-Treiber source/channel auswertet und io-channels gar nicht benutzt.
+Unser Treiber geht den Linux-Weg ueber io-channels, also muss dort der richtige
+Kanal stehen.
+
+Welcher der beiden GPADC-Kanaele es ist, sagt die Hardware selbst (am Geraet
+gelesen, 11.09.):
+
+  CS_EN   = 0x00000002   nur Kanal 1 ist freigeschaltet
+  DATA[0] = 0            Kanal 0 ist gar nicht aktiv
+  DATA[1] = 1766         konstant ueber 120 Abtastungen, Spanne 0
+
+Kanal 1 ist also der Fuehler. Ueber die IIO-sysfs-Knoten sieht das anders aus --
+dort schwankt ch1 zwischen 680 und 1777 und ch0 steht scheinbar ruhig bei 1141.
+Beides ist ein Messartefakt: sun20i_gpadc_adc_read schreibt bei jedem Wechsel der
+Kanalnummer CS_EN neu, und wer abwechselnd beide sysfs-Knoten liest, misst jedes
+Mal einen Eingang, der noch nicht eingeschwungen ist. Das Datenregister direkt
+gelesen steht vollkommen still.
+
+Der LRADC stand auf beiden Kanaelen am Anschlag 63.
+
+ACHTUNG, offen: 1766 liegt oberhalb des groessten Tabelleneintrags (0x5E6 = 1510
+bei 0 Grad), die Umrechnung stimmt also noch nicht. Der Hersteller skaliert den
+Rohwert in sunxi_gpadc_read_channel_data vor der Tabellensuche (raw * 0x1b7,
+entspricht Mikrovolt bei 12 Bit an 1,8 V); hy310-board-mgr sucht dagegen mit dem
+Rohwert. Dieser Patch stellt nur den richtigen Kanal her -- die Skalierung und
+damit ein belastbarer Temperaturwert sind noch zu klaeren. Bis dahin ist
+temp1_input NICHT vertrauenswuerdig und die Abschaltung bleibt aus.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-11 21:34:46.227386654 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-11 21:34:46.239647197 +0200
+@@ -2424,7 +2424,17 @@
+ 	board_mgr: fan {
+ 		compatible = "allwinner,hy310-board-mgr";
+ 		status = "okay";
+-		io-channels = <&lradc 0>;
++		/*
++		 * Der NTC haengt am GPADC, nicht am LRADC: der ntc0-Unterknoten
++		 * sagt source = <1> (GPADC) channel = <1>, und die Tabelle, die
++		 * der Treiber daraufhin waehlt, ist die 12-bittige gpadc-table.
++		 * Mit <&lradc 0> las der Treiber den 6-Bit-LRADC (Maske 0x3f,
++		 * Vollausschlag 63) gegen eine Tabelle, deren kleinster Eintrag
++		 * 0x1BB = 443 ist -- kein Eintrag traf je zu, die Suche fiel auf
++		 * ihren Standardwert und temp1_input blieb bei 0 (am Geraet
++		 * gemessen 11.09.). GPADC Kanal 1 liefert ~674 und schwankt.
++		 */
++		io-channels = <&gpadc 1>;
+ 		io-channel-names = "ntc";
+ 		lradc-table = <0x12 0x41A 0x14 0x3F0 0x16 0x3B1 0x18 0x3DB 0x1A 0x35C 0x1C 0x33E 0x1E 0x320 0x20 0x309 0x22 0x2E2 0x24 0x2BE 0x26 0x2A0 0x28 0x28A 0x2A 0x271 0x2C 0x258 0x2E 0x24C 0x30 0x20D 0x32 0x1F8 0x34 0x1EF 0x36 0x1D6 0x38 0x1A5 0x3A 0x18F 0x3C 0x16F 0x3E 0x14F 0x40 0x13B 0x42 0x130 0x44 0x126 0x46 0x111 0x48 0xFC 0x4A 0xE7 0x4C 0xD2 0x4E 0xBC 0x50 0xAF>;
+ 		gpadc-table = <0x0 0x5E6 0x5 0x5B4 0x14 0x4F8 0x15 0x4EA 0x16 0x4DC 0x17 0x4CD 0x18 0x4BF 0x19 0x4B0 0x1A 0x4A1 0x1B 0x492 0x1C 0x483 0x1D 0x474 0x1E 0x464 0x1F 0x455 0x20 0x446 0x21 0x437 0x22 0x427 0x23 0x418 0x24 0x408 0x25 0x3F9 0x26 0x3E9 0x27 0x3D9 0x28 0x3CA 0x29 0x3BA 0x2A 0x3AB 0x2B 0x39B 0x2C 0x38C 0x2D 0x37D 0x2E 0x36D 0x2F 0x35E 0x30 0x34F 0x31 0x340 0x32 0x331 0x33 0x323 0x34 0x314 0x35 0x306 0x36 0x2F8 0x37 0x2E9 0x38 0x2DB 0x39 0x2CD 0x3A 0x2BF 0x3B 0x2B2 0x3C 0x2A4 0x3D 0x297 0x3E 0x28A 0x3F 0x27D 0x40 0x270 0x41 0x263 0x42 0x257 0x43 0x24A 0x44 0x23E 0x45 0x232 0x46 0x227 0x47 0x21B 0x48 0x210 0x49 0x204 0x4A 0x1F9 0x4B 0x1EE 0x4C 0x1E3 0x4D 0x1D9 0x4E 0x1CF 0x4F 0x1C5 0x50 0x1BB>;

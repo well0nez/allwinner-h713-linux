@@ -1,0 +1,468 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Tue, 2 Sep 2026 00:30:00 -0700
+Subject: [PATCH] drm: h713: add the validated fullscreen NV12 plane
+
+Expose AFBD source 0 as a second DRM plane under the same driver that owns
+the RGB primary. Hardware has only demonstrated an exclusive downstream
+mux, not alpha blending, so the overlay is deliberately constrained to one
+linear, opaque, fullscreen 1280x720 NV12 framebuffer.
+
+The transition reproduces the hardware-verified handoff exactly: commit RGB
+off, fill all four Y/C/VideoInfo queue slots and the dirty latch, commit
+source 0, then select it downstream. Disable performs the inverse and
+restores the latest KMS RGB framebuffer. A coherent VideoInfo page follows
+the display device's DMA address space, which also makes its embedded
+pointers ready to become IOVAs when runtime IOMMU translation is added.
+
+This is the driver-owned implementation of the source-0 programming sequence
+validated by the static register test. With the follow-up IOMMU attachment it
+has also been validated end to end with Cedrus: physically fragmented capture
+buffers import as contiguous IOVAs and scan out at the panel's vsync ceiling
+without drops. The base dtsi already assigns AFBD to this KMS driver, so no
+board-level ownership patch is needed.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -36,12 +36,15 @@
+ #include <linux/clk.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/interrupt.h>
++#include <linux/iopoll.h>
++#include <linux/mm.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
+ 
+ #include <drm/clients/drm_client_setup.h>
++#include <drm/drm_atomic.h>
+ #include <drm/drm_atomic_helper.h>
+ #include <drm/drm_drv.h>
+ #include <drm/drm_fb_dma_helper.h>
+@@ -52,10 +55,30 @@
+ #include <drm/drm_gem_dma_helper.h>
+ #include <drm/drm_gem_framebuffer_helper.h>
+ #include <drm/drm_managed.h>
++#include <drm/drm_plane.h>
++#include <drm/drm_plane_helper.h>
+ #include <drm/drm_probe_helper.h>
+ #include <drm/drm_simple_kms_helper.h>
+ #include <drm/drm_vblank.h>
+ 
++/* AFBD source 0 (linear NV12 video). */
++#define AFBD_VIDEO_CTRL		0x010
++#define AFBD_VIDEO_READY	0x014
++#define AFBD_VIDEO_SIZE_M1	0x020
++#define AFBD_VIDEO_BLOCK_M1	0x024
++#define AFBD_VIDEO_Y_STRIDE	0x040
++#define AFBD_VIDEO_C_STRIDE	0x044
++#define AFBD_VIDEO_GATE		0x060
++#define AFBD_VIDEO_FIELD	0x064
++#define AFBD_VIDEO_RING_MUX	0x068
++#define AFBD_VIDEO_DIRTY	0x06c
++#define AFBD_VIDEO_Y0		0x070
++#define AFBD_VIDEO_AUX_Y	0x080
++#define AFBD_VIDEO_C0		0x084
++#define AFBD_VIDEO_AUX_C	0x094
++#define AFBD_VIDEO_INFO0	0x098
++#define AFBD_VIDEO_AUX_INFO	0x0a8
++
+ /* AFBD channel 1 block. Offsets from the 0x05600000 window. */
+ #define AFBD_IRQ_STATUS		0x0c0	/* byte, bit 0, write-1-to-clear */
+ #define AFBD_IRQ_ENABLE		0x0c4	/* byte, bit 0 */
+@@ -70,15 +93,37 @@
+ #define AFBD_IRQ_VSYNC		BIT(0)
+ #define AFBD_STATUS_DONE	BIT(1)
+ 
++#define H713_VIDEO_WIDTH	1280u
++#define H713_VIDEO_HEIGHT	720u
++#define H713_VIDEO_STRIDE	1280u
++#define H713_VIDEO_SIZE_M1	0x02cf04ff
++#define H713_VIDEO_BLOCK_M1	0x002c004f
++#define H713_VIDEO_CTRL_ACTIVE	0x03000013
++#define H713_VIDEO_GAIN		0x144c0000
++#define H713_VIDEO_SELECTOR	0x39000000
++
++/* The four queue slots are 4 bytes apart in each address ring. */
++#define H713_VIDEO_SLOTS	4
++
+ struct h713_afbd {
+ 	struct drm_device drm;
+ 	struct drm_simple_display_pipe pipe;
++	struct drm_plane video_plane;
+ 	struct drm_connector connector;
+ 	void __iomem *regs;
++	void __iomem *route_regs;
++	void __iomem *lvds_regs;
+ 	struct clk *clk_afbd;
+ 	struct clk *clk_bus;
+ 	struct drm_display_mode mode;
+ 	unsigned int stride;
++	void *video_info;
++	dma_addr_t video_info_dma;
++	u32 rgb_ctrl_active;
++	u32 video_ctrl_idle;
++	u32 gain_idle;
++	u32 selector_rgb;
++	bool video_active;
+ };
+ 
+ static inline struct h713_afbd *to_h713(struct drm_device *drm)
+@@ -86,6 +131,62 @@
+ 	return container_of(drm, struct h713_afbd, drm);
+ }
+ 
++static void h713_afbd_init_video_info(struct h713_afbd *h)
++{
++	u32 *v = h->video_info;
++	u32 info = lower_32_bits(h->video_info_dma);
++
++	memset(v, 0, PAGE_SIZE);
++
++	/* Vendor VideoInfo constructor plus linear 1280x720 SDR setters. */
++	v[0x00 / 4] = 0x61770000;
++	v[0x04 / 4] = 2;
++	v[0x08 / 4] = H713_VIDEO_WIDTH;
++	v[0x0c / 4] = H713_VIDEO_HEIGHT;
++	v[0x10 / 4] = H713_VIDEO_WIDTH;
++	v[0x14 / 4] = H713_VIDEO_HEIGHT;
++	v[0x18 / 4] = 0;
++	v[0x1c / 4] = H713_VIDEO_HEIGHT;
++	v[0x20 / 4] = 0;
++	v[0x24 / 4] = H713_VIDEO_WIDTH;
++	v[0x34 / 4] = 30000;
++	v[0x38 / 4] = 30000;
++	v[0x40 / 4] = 0;
++	v[0x44 / 4] = 1;
++	v[0x48 / 4] = 0;
++	v[0x4c / 4] = 0xffff0000;
++	v[0x50 / 4] = 1;
++	v[0x54 / 4] = 0xffff0000;
++	v[0x58 / 4] = H713_VIDEO_WIDTH;
++	v[0x5c / 4] = 0;
++	v[0x60 / 4] = 0;
++	v[0x64 / 4] = info + 144;
++	v[0x68 / 4] = info + 172;
++	v[0x6c / 4] = 0;
++	v[0x70 / 4] = 1920 << 4;
++	v[0x74 / 4] = 0;
++	v[0x78 / 4] = 1080 << 4;
++	v[0x7c / 4] = 0;
++	v[0x80 / 4] = 1920 << 4;
++	v[0x84 / 4] = 0;
++	v[0x88 / 4] = 1080 << 4;
++	v[0x8c / 4] = 2;
++
++	dma_wmb();
++}
++
++static void h713_afbd_wait_ready(struct h713_afbd *h, u32 reg,
++				 const char *name)
++{
++	u32 ready;
++	int ret;
++
++	ret = readl_poll_timeout(h->regs + reg, ready, !ready, 100, 50000);
++	if (ret)
++		drm_warn(&h->drm, "%s READY did not clear (%08x)\n",
++			 name, ready);
++}
++
+ /*
+  * Point AFBD at a buffer and latch it. Identical in order and content to
+  * gles-play's commit path, minus its 50 ms poll for STATUS_DONE: here the
+@@ -103,6 +204,14 @@
+ 
+ 	writel(lower_32_bits(addr), h->regs + AFBD_SRC);
+ 
++	/*
++	 * Keep the next RGB framebuffer current while video owns the output,
++	 * but do not re-enable the hidden RGB fetch path. The video-plane
++	 * disable callback commits this address before routing the panel back.
++	 */
++	if (h->video_active)
++		return;
++
+ 	pending = readl(h->regs + AFBD_STATUS);
+ 	if (pending)
+ 		writel(pending, h->regs + AFBD_STATUS);
+@@ -111,6 +220,158 @@
+ 	writel(1, h->regs + AFBD_READY);
+ }
+ 
++static void h713_afbd_video_stop(struct h713_afbd *h)
++{
++	unsigned int i;
++
++	if (!h->video_active)
++		return;
++
++	/* Stop source 0 before removing any address from its queue. */
++	writel(h->video_ctrl_idle, h->regs + AFBD_VIDEO_CTRL);
++	writel(1, h->regs + AFBD_VIDEO_READY);
++	h713_afbd_wait_ready(h, AFBD_VIDEO_READY, "video disable");
++
++	for (i = 0; i < H713_VIDEO_SLOTS; i++) {
++		writel(0, h->regs + AFBD_VIDEO_Y0 + i * 4);
++		writel(0, h->regs + AFBD_VIDEO_C0 + i * 4);
++		writel(0, h->regs + AFBD_VIDEO_INFO0 + i * 4);
++	}
++	writel(0, h->regs + AFBD_VIDEO_AUX_Y);
++	writel(0, h->regs + AFBD_VIDEO_AUX_C);
++	writel(0, h->regs + AFBD_VIDEO_AUX_INFO);
++	writel(0, h->regs + AFBD_VIDEO_DIRTY);
++	writel(h->gain_idle, h->route_regs + 0x508);
++
++	/* Restore and commit RGB before selecting it downstream. */
++	writel(h->rgb_ctrl_active, h->regs + AFBD_CTRL);
++	writel(1, h->regs + AFBD_READY);
++	h713_afbd_wait_ready(h, AFBD_READY, "RGB enable");
++	writel(h->selector_rgb, h->lvds_regs + 0x06c);
++	h->video_active = false;
++}
++
++static int h713_afbd_video_atomic_check(struct drm_plane *plane,
++					struct drm_atomic_state *state)
++{
++	struct drm_plane_state *new_state;
++	struct drm_crtc_state *crtc_state;
++	struct drm_framebuffer *fb;
++	dma_addr_t y, c;
++	int ret;
++
++	new_state = drm_atomic_get_new_plane_state(state, plane);
++	if (!new_state->crtc)
++		return 0;
++
++	crtc_state = drm_atomic_get_crtc_state(state, new_state->crtc);
++	if (IS_ERR(crtc_state))
++		return PTR_ERR(crtc_state);
++
++	ret = drm_atomic_helper_check_plane_state(new_state, crtc_state,
++						  DRM_PLANE_NO_SCALING,
++						  DRM_PLANE_NO_SCALING,
++						  false, false);
++	if (ret)
++		return ret;
++
++	fb = new_state->fb;
++	if (!new_state->visible || fb->format->format != DRM_FORMAT_NV12 ||
++	    fb->modifier != DRM_FORMAT_MOD_LINEAR ||
++	    fb->width != H713_VIDEO_WIDTH ||
++	    fb->height != H713_VIDEO_HEIGHT ||
++	    fb->pitches[0] != H713_VIDEO_STRIDE ||
++	    fb->pitches[1] != H713_VIDEO_STRIDE ||
++	    new_state->src_x || new_state->src_y ||
++	    new_state->src_w != H713_VIDEO_WIDTH << 16 ||
++	    new_state->src_h != H713_VIDEO_HEIGHT << 16 ||
++	    new_state->crtc_x || new_state->crtc_y ||
++	    new_state->crtc_w != H713_VIDEO_WIDTH ||
++	    new_state->crtc_h != H713_VIDEO_HEIGHT)
++		return -EINVAL;
++
++	y = drm_fb_dma_get_gem_addr(fb, new_state, 0);
++	c = drm_fb_dma_get_gem_addr(fb, new_state, 1);
++	if (!y || !c || upper_32_bits(y) || upper_32_bits(c))
++		return -ERANGE;
++
++	return 0;
++}
++
++static void h713_afbd_video_atomic_update(struct drm_plane *plane,
++					  struct drm_atomic_state *state)
++{
++	struct drm_plane_state *new_state;
++	struct h713_afbd *h = to_h713(plane->dev);
++	dma_addr_t y, c;
++	unsigned int i;
++
++	new_state = drm_atomic_get_new_plane_state(state, plane);
++	y = drm_fb_dma_get_gem_addr(new_state->fb, new_state, 0);
++	c = drm_fb_dma_get_gem_addr(new_state->fb, new_state, 1);
++
++	/* The hardware mux is exclusive: quiesce RGB before source 0. */
++	if (!h->video_active) {
++		writel((h->rgb_ctrl_active | BIT(31)) & ~BIT(0),
++		       h->regs + AFBD_CTRL);
++		writel(1, h->regs + AFBD_READY);
++		h713_afbd_wait_ready(h, AFBD_READY, "RGB disable");
++	}
++
++	writel(H713_VIDEO_SIZE_M1, h->regs + AFBD_VIDEO_SIZE_M1);
++	writel(H713_VIDEO_BLOCK_M1, h->regs + AFBD_VIDEO_BLOCK_M1);
++	writel(H713_VIDEO_STRIDE, h->regs + AFBD_VIDEO_Y_STRIDE);
++	writel(H713_VIDEO_STRIDE, h->regs + AFBD_VIDEO_C_STRIDE);
++	writel(1, h->regs + AFBD_VIDEO_GATE);
++	writel(0, h->regs + AFBD_VIDEO_FIELD);
++	writel(0x00000122, h->regs + AFBD_VIDEO_RING_MUX);
++
++	/*
++	 * The live display service consumes a complete four-entry queue. A
++	 * repeated frame is the proven static representation of one KMS buffer.
++	 */
++	for (i = 0; i < H713_VIDEO_SLOTS; i++) {
++		writel(lower_32_bits(y), h->regs + AFBD_VIDEO_Y0 + i * 4);
++		writel(lower_32_bits(c), h->regs + AFBD_VIDEO_C0 + i * 4);
++		writel(lower_32_bits(h->video_info_dma),
++		       h->regs + AFBD_VIDEO_INFO0 + i * 4);
++	}
++	writel(0, h->regs + AFBD_VIDEO_AUX_Y);
++	writel(0, h->regs + AFBD_VIDEO_AUX_C);
++	writel(0, h->regs + AFBD_VIDEO_AUX_INFO);
++	writel(1, h->regs + AFBD_VIDEO_DIRTY);
++
++	writel(H713_VIDEO_GAIN, h->route_regs + 0x508);
++	writel(H713_VIDEO_CTRL_ACTIVE, h->regs + AFBD_VIDEO_CTRL);
++	writel(1, h->regs + AFBD_VIDEO_READY);
++	h713_afbd_wait_ready(h, AFBD_VIDEO_READY, "video enable");
++	writel(H713_VIDEO_SELECTOR, h->lvds_regs + 0x06c);
++	h->video_active = true;
++}
++
++static void h713_afbd_video_atomic_disable(struct drm_plane *plane,
++					   struct drm_atomic_state *state)
++{
++	struct h713_afbd *h = to_h713(plane->dev);
++
++	h713_afbd_video_stop(h);
++}
++
++static const struct drm_plane_helper_funcs h713_afbd_video_helper_funcs = {
++	.atomic_check = h713_afbd_video_atomic_check,
++	.atomic_update = h713_afbd_video_atomic_update,
++	.atomic_disable = h713_afbd_video_atomic_disable,
++};
++
++static const struct drm_plane_funcs h713_afbd_video_funcs = {
++	.update_plane = drm_atomic_helper_update_plane,
++	.disable_plane = drm_atomic_helper_disable_plane,
++	.destroy = drm_plane_cleanup,
++	.reset = drm_atomic_helper_plane_reset,
++	.atomic_duplicate_state = drm_atomic_helper_plane_duplicate_state,
++	.atomic_destroy_state = drm_atomic_helper_plane_destroy_state,
++};
++
+ static void h713_afbd_pipe_enable(struct drm_simple_display_pipe *pipe,
+ 				  struct drm_crtc_state *crtc_state,
+ 				  struct drm_plane_state *plane_state)
+@@ -258,6 +519,10 @@
+ 	DRM_FORMAT_ARGB8888,
+ };
+ 
++static const u32 h713_afbd_video_formats[] = {
++	DRM_FORMAT_NV12,
++};
++
+ /*
+  * Read back the geometry U-Boot left in the hardware rather than hardcoding a
+  * panel size. Only hdisplay/vdisplay here are real: the porches and pixel clock
+@@ -304,9 +569,15 @@
+ 		return PTR_ERR(h);
+ 	drm = &h->drm;
+ 
+-	h->regs = devm_platform_ioremap_resource(pdev, 0);
++	h->regs = devm_platform_ioremap_resource_byname(pdev, "afbd");
+ 	if (IS_ERR(h->regs))
+ 		return PTR_ERR(h->regs);
++	h->route_regs = devm_platform_ioremap_resource_byname(pdev, "route");
++	if (IS_ERR(h->route_regs))
++		return PTR_ERR(h->route_regs);
++	h->lvds_regs = devm_platform_ioremap_resource_byname(pdev, "lvds");
++	if (IS_ERR(h->lvds_regs))
++		return PTR_ERR(h->lvds_regs);
+ 
+ 	irq = platform_get_irq(pdev, 0);
+ 	if (irq < 0)
+@@ -326,7 +597,7 @@
+ 		return dev_err_probe(dev, PTR_ERR(h->clk_afbd), "no clk_afbd\n");
+ 
+ 	/* AFBD's source register is 32-bit, so scanout must live below 4 GiB. */
+-	ret = dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
++	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
+ 	if (ret)
+ 		return ret;
+ 
+@@ -353,6 +624,33 @@
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * Source 0's VideoInfo record is fetched by the same 32-bit DMA master
++	 * as its Y/C planes. When the display is later attached to an IOMMU,
++	 * video_info_dma and the framebuffer DMA addresses naturally become
++	 * IOVAs; no physical-address special case is baked into the ABI.
++	 */
++	h->video_info = dmam_alloc_coherent(dev, PAGE_SIZE, &h->video_info_dma,
++					    GFP_KERNEL | __GFP_ZERO);
++	if (!h->video_info)
++		return -ENOMEM;
++	if (upper_32_bits(h->video_info_dma))
++		return dev_err_probe(dev, -ERANGE,
++				     "VideoInfo DMA address is above 4 GiB\n");
++	h713_afbd_init_video_info(h);
++
++	h->rgb_ctrl_active = readl(h->regs + AFBD_CTRL);
++	h->video_ctrl_idle = readl(h->regs + AFBD_VIDEO_CTRL);
++	h->gain_idle = readl(h->route_regs + 0x508);
++	h->selector_rgb = readl(h->lvds_regs + 0x06c);
++	if (h->mode.hdisplay != H713_VIDEO_WIDTH ||
++	    h->mode.vdisplay != H713_VIDEO_HEIGHT ||
++	    h->video_ctrl_idle != 0x03000010 ||
++	    h->rgb_ctrl_active != 0x03001901 ||
++	    h->selector_rgb != 0x29000000)
++		return dev_err_probe(dev, -ENODEV,
++			"video handoff state is not the validated 1280x720 configuration\n");
++
+ 	ret = drmm_mode_config_init(drm);
+ 	if (ret)
+ 		return ret;
+@@ -408,6 +706,17 @@
+ 	if (ret)
+ 		return ret;
+ 
++	ret = drm_universal_plane_init(drm, &h->video_plane,
++				       drm_crtc_mask(&h->pipe.crtc),
++				       &h713_afbd_video_funcs,
++				       h713_afbd_video_formats,
++				       ARRAY_SIZE(h713_afbd_video_formats),
++				       NULL, DRM_PLANE_TYPE_OVERLAY,
++				       "video-0");
++	if (ret)
++		return ret;
++	drm_plane_helper_add(&h->video_plane, &h713_afbd_video_helper_funcs);
++
+ 	drm_mode_config_reset(drm);
+ 
+ 	/* Vsync is masked until a client asks for vblanks. */
+@@ -432,6 +741,7 @@
+ 	struct h713_afbd *h = platform_get_drvdata(pdev);
+ 
+ 	drm_dev_unplug(&h->drm);
++	h713_afbd_video_stop(h);
+ 	drm_atomic_helper_shutdown(&h->drm);
+ }
+ 
+@@ -439,6 +749,7 @@
+ {
+ 	struct h713_afbd *h = platform_get_drvdata(pdev);
+ 
++	h713_afbd_video_stop(h);
+ 	drm_atomic_helper_shutdown(&h->drm);
+ }
+ 
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1693,7 +1693,10 @@
+ 		 */
+ 		display: display@5600000 {
+ 			compatible = "allwinner,sun50i-h713-afbd";
+-			reg = <0x05600000 0x400>;
++			reg = <0x05600000 0x400>,
++			      <0x05140000 0x1000>,
++			      <0x051c0000 0x100>;
++			reg-names = "afbd", "route", "lvds";
+ 			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_AFBD>,
+ 				 <&ccu CLK_BUS_DISP>;

@@ -1,0 +1,237 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] drm/media: h713: give the chroma gain one owner
+
+PROC +0x508 had three writers and the V4L2 control lied about it. Measured
+07.09.2026 (doku/nachtlog/I2, I3):
+
+  plane on          0x144C0000   gain 0x4C  (display driver's default)
+  saturation=100    0x14800000   gain 0x80  (RPC, floor(100*1.28) -- correct)
+  plane off         0x04000000   gain 0x00  (display driver restores "idle")
+  plane on          0x144C0000   gain 0x4C  <- the V4L2 value is gone
+  --get-ctrl        100                     <- and the control still says so
+
+And gain 0x00 is not a neutral value: the picture is grey. Logo grey, image
+grey, measured by looking at it -- the greyscale wall metric could not tell
+(132.2 vs 131.5 for full colour vs no colour).
+
+Stock has exactly one writer for that byte, THal_Vp_SetSaturation, which sets
+0x05001238[15:0] and 0x05140508[23:16] together (K5 f). Stock has no plane
+property for it -- ours was an invention -- and stock only ever does masked
+read-modify-write on that word; we wrote all 32 bits, putting 0x14 into
+[31:26] where no stock DCTI state has it.
+
+So: the display driver stops touching +0x508, on enable and on disable, and the
+"saturation" plane property goes with it. The capture driver applies the
+control's value over the RPC when it re-arms the capture after a plane enable
+(the descriptor notifier from 0099 is exactly that moment) -- so the first
+picture after boot is not grey, the register and G_CTRL agree, and the value
+survives plane off/on because nothing resets the register any more.
+
+The control's default becomes 60: the register a stock device was observed with
+is 0x4c = floor(60 * 1.28), and that is the picture this driver has been
+accepted with all day. The ini's "standard" row says 50; the observed register
+weighs more. H713_VIDEO_SAT_DEFAULT was documented as "user saturation 50" --
+that was the error doku/91 Punkt 3.4 names.
+
+Not measured: whether SetSource touches the gain. If it does, re-applying after
+the switch covers it; if not, the re-apply is one harmless RPC per plane enable.
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 17:05:19.716992138 +0200
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 17:05:19.730334502 +0200
+@@ -139,9 +139,6 @@
+  * note at h713_afbd_video_atomic_update().
+  */
+ #define H713_VIDEO_CTRL_FORMAT	GENMASK(14, 8)
+-#define H713_VIDEO_GAIN		0x144c0000
+-#define H713_VIDEO_GAIN_SAT	GENMASK(23, 16)
+-#define H713_VIDEO_SAT_DEFAULT	0x4c
+ #define H713_VIDEO_SELECTOR	0x39000000
+ 
+ /* The AFBD consumes the picture in 16x16 blocks. */
+@@ -214,7 +211,6 @@
+ 	dma_addr_t video_info_dma;
+ 	bool video_info_published;
+ 	struct drm_property *prop_hdmi_ring;
+-	struct drm_property *prop_saturation;
+ 	u32 ring_base;
+ 	u32 ring_size;
+ 	/* Serialises the pool-1 address queue against the vsync handler. */
+@@ -227,7 +223,6 @@
+ 	u32 rgb_ctrl_active;
+ 	u32 video_ctrl_idle;
+ 	u32 video_c_stride_idle;
+-	u32 gain_idle;
+ 	u32 selector_rgb;
+ 	bool video_active;
+ 	/*
+@@ -246,7 +241,6 @@
+ struct h713_plane_state {
+ 	struct drm_plane_state base;
+ 	bool hdmi_ring;
+-	u8 saturation;
+ };
+ 
+ static inline struct h713_afbd *to_h713(struct drm_device *drm)
+@@ -744,7 +738,6 @@
+ 	 */
+ 	writel(h->video_c_stride_idle, h->regs + AFBD_VIDEO_C_STRIDE);
+ 	writel(0, h->regs + AFBD_VIDEO_DIRTY);
+-	writel(h->gain_idle, h->route_regs + 0x508);
+ 
+ 	/* Restore and commit RGB before selecting it downstream. */
+ 	writel(h->rgb_ctrl_active, h->regs + AFBD_CTRL);
+@@ -912,9 +905,19 @@
+ 	h->ring_follow = ring;
+ 	spin_unlock_irqrestore(&h->ring_lock, flags);
+ 
+-	writel((H713_VIDEO_GAIN & ~H713_VIDEO_GAIN_SAT) |
+-	       FIELD_PREP(H713_VIDEO_GAIN_SAT, s->saturation),
+-	       h->route_regs + 0x508);
++	/*
++	 * PROC +0x508 -- the chroma gain -- is not written here any more, and
++	 * not restored on disable either. It has exactly one owner, the
++	 * firmware's SetSaturation RPC, which writes this byte together with
++	 * 0x05001238 (doku/nachtlog/K5-board-verifikation.md f). Stock has no
++	 * plane-side writer for it. Ours wrote the whole word with 0x14 in
++	 * bits [31:26], a combination no stock DCTI state produces, clobbered
++	 * whatever V4L2_CID_SATURATION had set on every enable, and left the
++	 * control lying about it (doku/nachtlog/I2). At handover the gain byte
++	 * is 0x00, which is a grey picture (I3) -- so the capture driver
++	 * applies the control's value over the RPC when it re-arms the
++	 * capture after this enable (see h713_hdmirx_rearm()).
++	 */
+ 	writel(H713_VIDEO_CTRL_ACTIVE & ~H713_VIDEO_CTRL_FORMAT,
+ 	       h->regs + AFBD_VIDEO_CTRL);
+ 	writel(1, h->regs + AFBD_VIDEO_READY);
+@@ -980,7 +983,6 @@
+ 	s = kzalloc(sizeof(*s), GFP_KERNEL);
+ 	if (!s)
+ 		return;
+-	s->saturation = H713_VIDEO_SAT_DEFAULT;
+ 	__drm_atomic_helper_plane_reset(plane, &s->base);
+ }
+ 
+@@ -998,7 +1000,6 @@
+ 	__drm_atomic_helper_plane_duplicate_state(plane, &s->base);
+ 	old = to_h713_plane_state(plane->state);
+ 	s->hdmi_ring = old->hdmi_ring;
+-	s->saturation = old->saturation;
+ 
+ 	return &s->base;
+ }
+@@ -1015,10 +1016,6 @@
+ 		s->hdmi_ring = !!val;
+ 		return 0;
+ 	}
+-	if (property == h->prop_saturation) {
+-		s->saturation = val;
+-		return 0;
+-	}
+ 
+ 	return -EINVAL;
+ }
+@@ -1036,10 +1033,6 @@
+ 		*val = s->hdmi_ring;
+ 		return 0;
+ 	}
+-	if (property == h->prop_saturation) {
+-		*val = s->saturation;
+-		return 0;
+-	}
+ 
+ 	return -EINVAL;
+ }
+@@ -1063,9 +1056,6 @@
+  *                 ring itself: the framebuffer then only carries format and
+  *                 geometry and the addresses come from the firmware's flip
+  *                 pointers. It goes away once dma-buf import exists.
+- * "saturation" -- the chroma gain in PROC +0x508, bits [23:16]. 0x4c is the
+- *                 value the stock PQ calibrates for user saturation 50;
+- *                 userspace/hy310-pq computes the rest of the picture modes.
+  */
+ static int h713_afbd_video_create_properties(struct h713_afbd *h)
+ {
+@@ -1077,13 +1067,6 @@
+ 		return -ENOMEM;
+ 	drm_object_attach_property(&plane->base, h->prop_hdmi_ring, 0);
+ 
+-	h->prop_saturation = drm_property_create_range(&h->drm, 0,
+-						      "saturation", 0, 255);
+-	if (!h->prop_saturation)
+-		return -ENOMEM;
+-	drm_object_attach_property(&plane->base, h->prop_saturation,
+-				   H713_VIDEO_SAT_DEFAULT);
+-
+ 	return 0;
+ }
+ 
+@@ -1732,7 +1715,6 @@
+ 	 * the handoff this driver requires.
+ 	 */
+ 	h->video_c_stride_idle = readl(h->regs + AFBD_VIDEO_C_STRIDE);
+-	h->gain_idle = readl(h->route_regs + 0x508);
+ 	h->selector_rgb = readl(h->lvds_regs + 0x06c);
+ 	if (h->video_ctrl_idle != 0x03000010 ||
+ 	    h->rgb_ctrl_active != 0x03001901 ||
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 17:05:19.717560043 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 17:05:19.730891637 +0200
+@@ -525,7 +525,14 @@
+ 	[H713_PQ_SATURATION] = {
+ 		.id = V4L2_CID_SATURATION,
+ 		.set = "THal_Vp_SetSaturation",
+-		.max = 100, .preset = 50,
++		/*
++		 * 60, not the 50 of the other four: the register a stock device
++		 * was observed with is 0x4c = floor(60 * 1.28) (cstenger 5718e4c),
++		 * and that is the picture this driver has been accepted with all
++		 * along. The ini's "standard" row says 50; the observed register
++		 * weighs more (doku/nachtlog/I3-gain-null-ist-grau.md).
++		 */
++		.max = 100, .preset = 60,
+ 	},
+ 	[H713_PQ_HUE] = {
+ 		.id = V4L2_CID_HUE,
+@@ -1274,6 +1281,32 @@
+  * "are frames arriving" -- and it is the only question this driver can ask
+  * without mapping a block that belongs to the capture.
+  */
++/*
++ * Put the picture's saturation back over the RPC. Called after the plane came
++ * up and the source was switched: the display driver no longer writes the
++ * chroma gain (it was the second writer of a register the firmware owns), and
++ * at handover the gain byte is 0x00 -- a grey picture, measured
++ * (doku/nachtlog/I3-gain-null-ist-grau.md). The value is the control's, so
++ * G_CTRL and the register agree, and it survives plane off/on because nothing
++ * resets the register on disable any more.
++ */
++static void h713_hdmirx_reapply_saturation(struct h713_hdmirx *rx)
++{
++	struct v4l2_ctrl *ctrl = v4l2_ctrl_find(&rx->ctrl_hdl, V4L2_CID_SATURATION);
++	const struct h713_hdmirx_pq *pq = h713_hdmirx_pq_of(V4L2_CID_SATURATION);
++	u32 arg;
++	int ret;
++
++	if (!ctrl || !pq)
++		return;
++
++	arg = v4l2_ctrl_g_ctrl(ctrl);
++	ret = h713_hdmirx_call(rx, pq->set, &arg, 1, 0);
++	if (ret)
++		dev_warn(rx->dev, "Saettigung %u nach dem Einschalten nicht gesetzt: %d\n",
++			 arg, ret);
++}
++
+ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ {
+ 	ktime_t start;
+@@ -1281,6 +1314,8 @@
+ 	if (h713_hdmirx_switch_source(rx))
+ 		return;
+ 
++	h713_hdmirx_reapply_saturation(rx);
++
+ 	start = ktime_get();
+ 	do {
+ 		if (h713_hdmirx_signal_present(rx)) {

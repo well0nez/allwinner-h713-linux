@@ -1,0 +1,535 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] hy310-tv: build the framebuffer from the source geometry, rebuild it on a change
+
+Companion to 0107-media-drm-h713-follow-source-geometry.patch; applies with
+-p1 from the project root (userspace/hy310-tv/main.c, README.md).
+
+The framebuffer handed to the plane described the panel: CREATE_DUMB with the
+CRTC mode's width and height, SRC_W/SRC_H the mode, and a check that refused
+any source geometry other than the mode's (main.c, display_create_fb() and
+evaluate()). In hdmi-ring mode that buffer carries nothing but format,
+geometry and stride, and all three are the ring's -- which the firmware lays
+out for the signal it detected (1280 byte lines at 720p, doku/nachtlog/E4).
+
+Now the geometry comes from the capture device. evaluate() asks
+QUERY_DV_TIMINGS as before (signal, timings) and then G_FMT (how the capture
+lays the picture out); the framebuffer is built from G_FMT and rebuilt when it
+changes, with the plane off in between: picture off, buffer new, picture on.
+The off is deliberate -- the firmware mutes its output over its own
+re-detection ("hdmirx set AV mute:1 1" first, "AV mute:0 0" last, doku/91
+Punkt 2), and what stood on the wall while this program did nothing of the
+kind was the old geometry's plane reading the new geometry's ring (A6-4).
+SRC_W/SRC_H are the source's, CRTC_W/CRTC_H the panel's; 0107's atomic_check
+accepts that in hdmi-ring mode and the composition behind the plane scales.
+
+What the plane cannot do is said and the console stays: a source larger than
+the panel, a width not divisible by 16, an odd height, and a timing the
+driver refuses (-ERANGE: interlaced, or outside its cap) -- said once, not
+per sample. bytesperline must equal the width (the plane programs the ring
+stride from the pitch, and a dumb buffer is as wide as its pitch); anything
+else is refused rather than approximated.
+
+The startup line "offen ... Aufloesungswechsel ..." goes: the statement it made
+about 0094 (a constant behind QUERY_DV_TIMINGS) is no longer true. What is
+still open moves to the README: this program learns of a change only through
+SOURCE_CHANGE, and whether the firmware fires it on a pure geometry change is
+the measurement doku/91 Punkt 2.2 asks for. No second, polling detection is
+built here for it.
+
+Not measured: the whole path, on the board. This diff has been applied with
+--dry-run against the tree and read against the V4L2/DRM API; it has not been
+compiled (no build in this session).
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+diff -ruN a/userspace/hy310-tv/main.c b/userspace/hy310-tv/main.c
+--- a/userspace/hy310-tv/main.c	2026-09-07 17:42:17.055641770 +0200
++++ b/userspace/hy310-tv/main.c	2026-09-07 17:42:17.056172314 +0200
+@@ -34,10 +34,21 @@
+  *
+  * NV16 and NV16M are two different statements about the same pixels and both
+  * are correct: the capture device offers V4L2_PIX_FMT_NV16M, two *separate*
+- * planes of 2073600 bytes, because Y and C sit 0x5FD000 apart in the ring.
+- * The KMS framebuffer here is DRM_FORMAT_NV16, which is a two-plane fourcc in
+- * one buffer object -- and in "hdmi-ring" mode it carries nothing but format,
+- * geometry and stride anyway. There is no conversion and no contradiction.
++ * planes of width x height bytes each (2073600 at 1080p), because Y and C sit
++ * 0x5FD000 apart in the ring. The KMS framebuffer here is DRM_FORMAT_NV16,
++ * which is a two-plane fourcc in one buffer object -- and in "hdmi-ring" mode
++ * it carries nothing but format, geometry and stride anyway. There is no
++ * conversion and no contradiction.
++ *
++ * The geometry is the source's, not the panel's. The capture device says what
++ * the source sends (QUERY_DV_TIMINGS) and how the capture lays it out in the
++ * ring (G_FMT); the framebuffer handed to the plane is built to that size, and
++ * the plane shows it full screen -- the composition block behind the plane
++ * scales, programmed by the firmware for the signal it detected (doku/91
++ * Punkt 2). A resolution change is therefore an ordinary SOURCE_CHANGE here:
++ * picture off, framebuffer rebuilt, picture on. The "off" in between is this
++ * program's counterpart of the firmware's AV mute over the same change; what
++ * it replaces is the torn picture of doku/nachtlog/A6-4-aufloesungswechsel.md.
+  *
+  * Why the frames do not travel through this program at all: the capture
+  * driver hands out the three ring slots as V4L2 buffers, but it has no
+@@ -133,9 +144,9 @@
+  * RING_WATCH_PERIOD_MS is the resolution of that statement, not a threshold:
+  * nothing is decided by it, it only says how narrowly the moment can be named.
+  * Its floor is the measurement itself -- every QUERY_DV_TIMINGS costs the
+- * driver 20-25 ms of flip-pointer watching (0094,
+- * h713_hdmirx_signal_present()) -- so 200 ms keeps that at about a tenth of
+- * the time and brackets the transition to a fifth of a second.
++ * driver up to three frame periods of flip-pointer watching, some 50 ms at
++ * 60 Hz (0094, h713_hdmirx_detect_timings()) -- so 200 ms keeps that at about
++ * a quarter of the time and brackets the transition to a fifth of a second.
+  *
+  * RING_WATCH_LIMIT_MS is an abort and nothing else. Looking cannot go on for
+  * ever; twice the only measured bound (< 1 s, above) is where this program
+@@ -335,31 +346,88 @@
+ 
+ /*
+  * "Is there a signal" is a measurement in the driver, not a register bit: it
+- * reads the ring's flip pointers, waits 20 ms and reads them again, and
+- * answers -ENOLINK when they did not move (0094,
+- * h713_hdmirx_signal_present()). That costs about 20 ms per call, which is
+- * why it is only called on an event.
++ * watches the ring's flip pointers for up to three frame periods and answers
++ * -ENOLINK when they did not move, or when the firmware's signal record says
++ * "none"; -ENOLCK while the record and the capture block do not agree yet, or
++ * before the first record of a boot has arrived (0094,
++ * h713_hdmirx_detect_timings()). Both mean "nothing to show right now" here.
++ * -ERANGE is different: a signal the driver can see but will not describe --
++ * interlaced, or larger than the panel -- and the console stays for it, said
++ * once rather than every sample.
+  *
+  * The measurement cannot tell *why* the pointers stand still. A pulled cable
+  * and a capture the descriptor switched off look exactly the same from here.
+  * That ambiguity is real and is named in the README; it is not papered over
+  * with a guess.
+  *
+- * Returns 1 with *t filled in, 0 for "no signal", -1 for a broken device.
++ * Returns 1 with *t filled in, 0 for "nothing to show", -1 for a broken device.
+  */
+ static int capture_signal(struct capture *cap, struct v4l2_dv_timings *t)
+ {
++	static bool said_range;
++
+ 	memset(t, 0, sizeof(*t));
+-	if (!ioctl(cap->fd, VIDIOC_QUERY_DV_TIMINGS, t))
++	if (!ioctl(cap->fd, VIDIOC_QUERY_DV_TIMINGS, t)) {
++		said_range = false;
+ 		return 1;
++	}
+ 	if (errno == ENOLINK || errno == ENOLCK || errno == ENODATA)
+ 		return 0;
++	if (errno == ERANGE) {
++		if (!said_range)
++			warn("die Quelle sendet ein Timing, das der Treiber nicht annimmt (Zeilensprung, oder groesser als das Panel) -- Konsole bleibt");
++		said_range = true;
++		return 0;
++	}
+ 
+ 	warn("QUERY_DV_TIMINGS: %s", strerror(errno));
+ 
+ 	return -1;
+ }
+ 
++/*
++ * The geometry the framebuffer has to have. Asked for separately from the
++ * timings because the two answer different questions: QUERY_DV_TIMINGS says
++ * what the source sends, G_FMT says how the capture lays it out in the ring --
++ * and the ring is what the plane reads. Today the two agree by construction
++ * (0094 derives the format from the timings); the framebuffer still follows
++ * the format, because that is the statement about the ring.
++ *
++ * bytesperline has to equal the width: the plane programs the ring stride
++ * from the framebuffer pitch, and a dumb buffer is exactly as wide as its
++ * pitch. A padded format would need a padded buffer, which CREATE_DUMB does
++ * not promise -- so it is refused rather than approximated.
++ */
++static bool capture_format(struct capture *cap, unsigned int *w,
++			   unsigned int *h)
++{
++	struct v4l2_format f;
++	const struct v4l2_pix_format_mplane *pix = &f.fmt.pix_mp;
++
++	memset(&f, 0, sizeof(f));
++	f.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
++	if (ioctl(cap->fd, VIDIOC_G_FMT, &f)) {
++		warn("G_FMT: %s", strerror(errno));
++		return false;
++	}
++	if (pix->pixelformat != V4L2_PIX_FMT_NV16M || pix->num_planes != 2) {
++		warn("das Aufnahmegeraet liefert nicht NV16M in zwei Ebenen (%.4s, %u Ebenen)",
++		     (const char *)&pix->pixelformat, pix->num_planes);
++		return false;
++	}
++	if (pix->plane_fmt[0].bytesperline != pix->width ||
++	    pix->plane_fmt[1].bytesperline != pix->width) {
++		warn("Zeilenabstand %u/%u passt nicht zur Breite %u -- die Plane kann nur einen Ring lesen, dessen Zeilen genau eine Breite auseinanderliegen",
++		     pix->plane_fmt[0].bytesperline, pix->plane_fmt[1].bytesperline,
++		     pix->width);
++		return false;
++	}
++	*w = pix->width;
++	*h = pix->height;
++
++	return true;
++}
++
+ /* ------------------------------------------------------------------ *
+  * The display: one overlay plane, driven in "hdmi-ring" mode
+  * ------------------------------------------------------------------ */
+@@ -429,10 +497,15 @@
+ 	uint32_t crtc_id;
+ 	unsigned int crtc_index;	/* bit position in possible_crtcs */
+ 	uint32_t plane_id;
+-	unsigned int width;
++	unsigned int width;		/* the panel: CRTC mode */
+ 	unsigned int height;
+ 	struct props plane_props;
+-	/* framebuffer: geometry and format carrier only, never shown */
++	/*
++	 * framebuffer: geometry and format carrier only, never read. Its
++	 * size is the source's (src_w x src_h, from G_FMT), not the panel's.
++	 */
++	unsigned int src_w;
++	unsigned int src_h;
+ 	uint32_t fb_handle;
+ 	uint32_t fb_id;
+ 	uint64_t fb_size;
+@@ -566,19 +639,25 @@
+ }
+ 
+ /*
+- * A dumb buffer the size of the mode. In hdmi-ring mode the plane takes the
+- * addresses from the capture ring and never reads this memory; the
+- * framebuffer only states format, geometry and stride. NV16 has a
+- * full-height chroma plane, so the allocation is twice the height of one
+- * 8 bit plane and the second plane starts one picture below the first.
++ * A dumb buffer the size of the *source*. In hdmi-ring mode the plane takes
++ * the addresses from the capture ring and never reads this memory; the
++ * framebuffer only states format, geometry and stride -- and all three are
++ * the ring's, which the firmware lays out for the signal it detected: 1280
++ * byte lines for a 720p source, 1920 for a 1080p one (INCAP rowbyte, measured
++ * doku/nachtlog/E4-geometrie-vollstaendig.md). So the buffer is built from
++ * what G_FMT says and rebuilt when that changes (evaluate()); it is not tied
++ * to the panel. NV16 has a full-height chroma plane, so the allocation is
++ * twice the height of one 8 bit plane and the second plane starts one picture
++ * below the first.
+  *
+  * Two things about this buffer are load-bearing:
+  *
+- *  - The pitch must be exactly the mode width. The plane programs Y_STRIDE
++ *  - The pitch must be exactly the source width. The plane programs Y_STRIDE
+  *    from fb->pitches[0] and the chroma stride from 2 * fb->pitches[1]
+- *    (0093), and those strides describe the *ring*, whose lines are the mode
+- *    width apart. A padded dumb pitch would mis-program the hardware for
+- *    data this buffer does not own. Hence the hard check.
++ *    (0093), and those strides describe the *ring*, whose lines are the
++ *    source width apart. A padded dumb pitch would mis-program the hardware
++ *    for data this buffer does not own. Hence the hard check -- and 0093
++ *    refuses a padded pitch in hdmi-ring mode on its side as well.
+  *
+  *  - Its content stays as the kernel hands it over, that is all zero. That
+  *    is deliberate. If the plane cannot read a valid flip pair when it comes
+@@ -588,31 +667,34 @@
+  *    known fingerprint for one condition, "nothing wrote any pixels",
+  *    instead of inventing a second colour for the same fact.
+  */
+-static void display_create_fb(struct display *d)
++static void display_create_fb(struct display *d, unsigned int w,
++			      unsigned int h)
+ {
+ 	struct drm_mode_create_dumb creq;
+ 	uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
+ 
+ 	memset(&creq, 0, sizeof(creq));
+-	creq.width = d->width;
+-	creq.height = d->height * 2;
++	creq.width = w;
++	creq.height = h * 2;
+ 	creq.bpp = 8;
+ 	if (drmIoctl(d->fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq))
+-		fail("CREATE_DUMB %ux%u: %s", d->width, d->height * 2,
+-		     strerror(errno));
+-	if (creq.pitch != d->width)
++		fail("CREATE_DUMB %ux%u: %s", w, h * 2, strerror(errno));
++	if (creq.pitch != w)
+ 		fail("der Dumb-Puffer hat Zeilenabstand %u statt %u -- die Plane programmiert daraus den Ring-Stride, ein aufgefuellter Puffer wuerde die Hardware falsch einstellen",
+-		     creq.pitch, d->width);
++		     creq.pitch, w);
+ 
+ 	d->fb_handle = creq.handle;
+ 	d->fb_size = creq.size;
+ 
+ 	handles[0] = handles[1] = creq.handle;
+ 	pitches[0] = pitches[1] = creq.pitch;
+-	offsets[1] = creq.pitch * d->height;
+-	if (drmModeAddFB2(d->fd, d->width, d->height, DRM_FORMAT_NV16, handles,
+-			  pitches, offsets, &d->fb_id, 0))
+-		fail("AddFB2: %s", strerror(errno));
++	offsets[1] = creq.pitch * h;
++	if (drmModeAddFB2(d->fd, w, h, DRM_FORMAT_NV16, handles, pitches,
++			  offsets, &d->fb_id, 0))
++		fail("AddFB2 %ux%u: %s", w, h, strerror(errno));
++	d->src_w = w;
++	d->src_h = h;
++	info("puffer      %ux%u NV16, Zeilenabstand %u", w, h, creq.pitch);
+ }
+ 
+ static void display_destroy_fb(struct display *d)
+@@ -628,6 +710,8 @@
+ 	}
+ 	d->fb_id = 0;
+ 	d->fb_handle = 0;
++	d->src_w = 0;
++	d->src_h = 0;
+ }
+ 
+ static bool add(drmModeAtomicReq *req, const struct display *d,
+@@ -701,8 +785,8 @@
+ 	ok &= add(req, d, "CRTC_ID", d->crtc_id);
+ 	ok &= add(req, d, "SRC_X", 0);
+ 	ok &= add(req, d, "SRC_Y", 0);
+-	ok &= add(req, d, "SRC_W", (uint64_t)d->width << 16);
+-	ok &= add(req, d, "SRC_H", (uint64_t)d->height << 16);
++	ok &= add(req, d, "SRC_W", (uint64_t)d->src_w << 16);
++	ok &= add(req, d, "SRC_H", (uint64_t)d->src_h << 16);
+ 	ok &= add(req, d, "CRTC_X", 0);
+ 	ok &= add(req, d, "CRTC_Y", 0);
+ 	ok &= add(req, d, "CRTC_W", d->width);
+@@ -730,14 +814,14 @@
+ 		if (errno == EOPNOTSUPP)
+ 			warn("  dem Display-Knoten fehlt memory-region-names = \"hdmi-ring\", \"viddec-info\" (DTB pruefen)");
+ 		if (errno == EINVAL)
+-			warn("  Geometrie != Modus, nichtlinearer Modifier, ungleiche Zeilenabstaende oder Breite nicht durch 16 teilbar");
++			warn("  Quelle groesser als das Panel, nichtlinearer Modifier, Zeilenabstand != Breite, Breite nicht durch 16 teilbar oder Hoehe ungerade");
+ 		display_release_master(d);
+ 		return false;
+ 	}
+ 
+ 	d->on = true;
+-	info("bild        Plane %u an, %ux%u aus dem Capture-Ring", d->plane_id,
+-	     d->width, d->height);
++	info("bild        Plane %u an, %ux%u aus dem Capture-Ring auf %ux%u",
++	     d->plane_id, d->src_w, d->src_h, d->width, d->height);
+ 
+ 	return true;
+ }
+@@ -914,8 +998,9 @@
+ 
+ 	if (sig == 0) {
+ 		/*
+-		 * signal_present() watched the pointers for the whole 20 ms of
+-		 * this call and saw no movement, so the transition is over
++		 * The driver watched the pointers for the whole of this call
++		 * (0094, h713_hdmirx_detect_timings()) and saw no movement,
++		 * so the transition is over
+ 		 * before this sample began: the window ends at "started", not
+ 		 * at "done".
+ 		 */
+@@ -939,22 +1024,38 @@
+  * One evaluation: ask the capture device, then make the display agree with
+  * the answer. Called once at startup and once per SOURCE_CHANGE -- never on
+  * a timer.
++ *
++ * A change of the source's geometry goes through here like any other event:
++ * the plane goes off, the framebuffer is rebuilt to the new size, the plane
++ * goes on again. The "off" in between is deliberate. The firmware mutes its
++ * output over the whole of its own re-detection ("hdmirx set AV mute:1 1"
++ * first, "AV mute:0 0" last, stock elog in doku/91 Punkt 2); what stood on
++ * the wall while this program did nothing of the kind was the old geometry's
++ * plane reading the new geometry's ring -- the torn picture of
++ * doku/nachtlog/A6-4-aufloesungswechsel.md. Console for a moment is this
++ * program's mute. How early that moment comes depends on when the firmware's
++ * callback arrives relative to its own re-detection; that is the measurement
++ * doku/91 Punkt 2.2 asks for, and this program cannot make it earlier than
++ * the event.
+  */
+ static void evaluate(struct capture *cap, struct display *d,
+-		     struct watch *w)
++		     const struct opts *o, struct watch *w)
+ {
+ 	struct v4l2_dv_timings t;
++	unsigned int sw, sh;
+ 	uint64_t t_running;
+ 	bool have_clock, was_on;
+ 	int sig;
+ 
++	(void)o;
++
+ 	sig = capture_signal(cap, &t);
+ 	/* Taken here, because this is the last proof that the ring was alive. */
+ 	have_clock = monotonic_ms(&t_running);
+ 
+ 	if (sig <= 0) {
+ 		if (sig == 0)
+-			info("signal      kein Signal (Flip-Zeiger stehen)");
++			info("signal      nichts zu zeigen (Flip-Zeiger stehen, oder die Geometrie ist noch nicht eingerastet)");
+ 		watch_stop(w);
+ 		display_hide(d);
+ 		return;
+@@ -964,21 +1065,37 @@
+ 	     t.bt.interlaced ? "i" : "p",
+ 	     (unsigned long long)t.bt.pixelclock);
+ 
+-	if (t.bt.width != d->width || t.bt.height != d->height) {
++	if (!capture_format(cap, &sw, &sh)) {
++		watch_stop(w);
++		display_hide(d);
++		return;
++	}
++
++	if (sw > d->width || sh > d->height || sw % 16 || sh % 2) {
+ 		/*
+-		 * The plane can neither scale nor change its source geometry
+-		 * within a boot: the VidDec descriptor survives exactly one
+-		 * publish, and 0093 refuses to rewrite it (doku/86 section 8
+-		 * item 1). So this is reported instead of being quietly worked
+-		 * around.
++		 * The plane does not scale down -- never measured to, so
++		 * 0093 refuses it -- and the ring is laid out in 16 pixel
++		 * blocks. Reported, and the console stays: a defined
++		 * fallback, not a torn picture.
+ 		 */
+-		warn("Quellgeometrie %ux%u passt nicht zum Panel-Modus %ux%u -- kein Bild; das ist offener Punkt K3, kein Fehler dieses Programms",
+-		     t.bt.width, t.bt.height, d->width, d->height);
++		warn("Quellgeometrie %ux%u kann die Plane nicht zeigen (Panel %ux%u; Breite durch 16 teilbar, Hoehe gerade) -- Konsole bleibt",
++		     sw, sh, d->width, d->height);
+ 		watch_stop(w);
+ 		display_hide(d);
+ 		return;
+ 	}
+ 
++	if (d->fb_id && (sw != d->src_w || sh != d->src_h)) {
++		info("geometrie   %ux%u -> %ux%u: Plane aus, Puffer neu",
++		     d->src_w, d->src_h, sw, sh);
++		watch_stop(w);
++		if (!display_hide(d))
++			return;
++		display_destroy_fb(d);
++	}
++	if (!d->fb_id)
++		display_create_fb(d, sw, sh);
++
+ 	was_on = d->on;
+ 	if (!display_show(d))
+ 		return;
+@@ -1075,11 +1192,11 @@
+ 		return sig > 0 ? 0 : 1;
+ 	}
+ 
+-	display_create_fb(&d);
+ 	/*
+ 	 * Opening the card made this process the master, because the only
+ 	 * other client is the kernel's console. Hand it back until there is
+-	 * something to show.
++	 * something to show. The framebuffer is not built here: its size is
++	 * the source's, and evaluate() learns that from the capture device.
+ 	 */
+ 	display_release_master(&d);
+ 
+@@ -1090,19 +1207,6 @@
+ 	if (w.fd < 0)
+ 		fail("timerfd_create: %s", strerror(errno));
+ 
+-	/*
+-	 * What this run cannot see, said once and out loud rather than only in
+-	 * the README: a source that changes its resolution while the signal
+-	 * stays up does not produce a SOURCE_CHANGE, and QUERY_DV_TIMINGS keeps
+-	 * answering the old geometry -- measured on the board,
+-	 * doku/nachtlog/A6-4-aufloesungswechsel.md. A second criterion for it
+-	 * cannot be built here today: 0094 answers QUERY_DV_TIMINGS from a
+-	 * constant (h713_hdmirx_query_dv_timings()), so comparing two queries
+-	 * could never show anything, and a check that can never fire is worse
+-	 * than no check. The trigger belongs in 0094.
+-	 */
+-	info("offen       ein Aufloesungswechsel der Quelle erzeugt kein SOURCE_CHANGE und laesst QUERY_DV_TIMINGS auf der alten Geometrie stehen (am Geraet gemessen, doku/nachtlog/A6-4-aufloesungswechsel.md). Dieses Programm bemerkt ihn deshalb nicht: die Wand zeigt dann zerrissenen Inhalt, ohne dass hier eine Zeile faellt. Ein zweites Kriterium dafuer gehoert in 0094, es ist ueber V4L2 heute nicht zu haben.");
+-
+ 	/* The state at startup counts as much as any later change. */
+ 	evaluate(&cap, &d, &w);
+ 
+diff -ruN a/userspace/hy310-tv/README.md b/userspace/hy310-tv/README.md
+--- a/userspace/hy310-tv/README.md	2026-09-07 17:42:17.055669641 +0200
++++ b/userspace/hy310-tv/README.md	2026-09-07 17:42:17.056234655 +0200
+@@ -132,8 +132,8 @@
+ `M4-hpd-dauer.md`). Bewertet wird der Sprung, nicht die Rückkehr auf die Nachkommastelle.
+ 
+ Umgekehrt gilt dasselbe für den Ring: die Flip-Zeiger drehen sich mit 60 Hz **unabhängig vom Inhalt**.
+-Genau darauf beruht die Signalerkennung in 0094 (`QUERY_DV_TIMINGS` misst 20 ms lang die Zeiger und
+-antwortet `-ENOLINK`, wenn sie stehen) — und deshalb ist „das Bild sieht gleich aus" **kein** Beleg für
++Genau darauf beruht die Signalerkennung in 0094 (`QUERY_DV_TIMINGS` beobachtet die Zeiger bis zu drei
++Bildperioden lang und antwortet `-ENOLINK`, wenn sie stehen) — und deshalb ist „das Bild sieht gleich aus" **kein** Beleg für
+ Signalverlust und „der Ring läuft" **kein** Beleg dafür, dass sich am Inhalt etwas tut.
+ 
+ ---
+@@ -221,9 +221,9 @@
+ anzeige     /dev/dri/card1 (sun50i-h713-afbd)
+ crtc        36, Modus 1920x1080
+ plane       38, NV16, Betriebsart hdmi-ring
+-offen       ein Aufloesungswechsel der Quelle erzeugt kein SOURCE_CHANGE ... (siehe unten)
+ signal      1920x1080p, 148500000 Hz Pixeltakt
+-bild        Plane 38 an, 1920x1080 aus dem Capture-Ring
++puffer      1920x1080 NV16, Zeilenabstand 1920
++bild        Plane 38 an, 1920x1080 aus dem Capture-Ring auf 1920x1080
+ ring        laeuft: 10 Abtastungen bis +2043 ms nach dem Einschalten, jede hat wandernde
+             Flip-Zeiger gesehen. Beobachtungsfrist von 2000 ms erreicht, Beobachtung beendet --
+             ueber die Zeit danach sagt diese Zeile nichts.
+@@ -300,8 +300,8 @@
+ 
+ * **200 ms ist die Auflösung der Aussage.** Entschieden wird damit nichts; sie sagt nur, wie eng das
+   Journal den Moment benennen kann. Nach unten begrenzt sie die Messung selbst — jedes
+-  `QUERY_DV_TIMINGS` kostet den Treiber 20–25 ms Zeigerbeobachtung
+-  (0094, `h713_hdmirx_signal_present()`), 200 ms hält das bei rund einem Zehntel.
++  `QUERY_DV_TIMINGS` kostet den Treiber bis zu drei Bildperioden Zeigerbeobachtung, rund 50 ms bei
++  60 Hz (0094, `h713_hdmirx_detect_timings()`), 200 ms hält das bei rund einem Viertel.
+ * **2000 ms ist ein Abbruchkriterium, sonst nichts.** Es ist das Doppelte der einzigen gemessenen
+   Schranke (< 1 s, oben). Erreicht wird es *als Frist gemeldet* — „kein Stillstand gesehen" ist eine
+   Aussage über diese zwei Sekunden und über nichts danach.
+@@ -337,26 +337,26 @@
+ 
+ ## 8. Grenzen
+ 
+-* **Eine Quellgeometrie pro Boot.** Der Descriptor wird einmal geschrieben; meldet die Quelle etwas
+-  anderes als die Panel-Auflösung, sagt `hy310-tv` das und bleibt in der Bereitschaft, statt heimlich
+-  umzuschalten (offener Punkt K3, doku/86 §8).
+-* **Ein Auflösungswechsel der laufenden Quelle wird NICHT bemerkt.** Am Gerät gemessen
+-  ([A6-4-aufloesungswechsel.md](../../doku/nachtlog/A6-4-aufloesungswechsel.md)): wechselt der Zuspieler
+-  bei stehendem Signal von 1080p auf 720p, feuert **kein** `SignalChange` und damit **kein**
+-  `SOURCE_CHANGE`; die Flip-Zeiger wandern weiter, Bilder werden weiter geliefert, und
+-  `QUERY_DV_TIMINGS` antwortet **unverändert** `1920x1080p`. Der Ring enthält dann zerrissenen Inhalt
+-  (das 720p-Bild dreifach nebeneinander über dem alten 1080p-Rest), und die Wand zeigt das, ohne dass
+-  hier eine Zeile fällt.
+-
+-  **Warum es dafür heute kein zweites Kriterium im Programm gibt:** 0094 beantwortet
+-  `QUERY_DV_TIMINGS` aus einer **Konstanten** (`h713_hdmirx_query_dv_timings()` gibt
+-  `h713_hdmirx_timings` zurück, die einzige Zeile aus `h713_hdmirx_timings_cap`). Zwei Abfragen zu
+-  vergleichen könnte also nie etwas zeigen — das wäre eine Prüfung, die nie auslöst, und die ist
+-  schlechter als keine. Der Auslöser gehört in 0094 (Kandidaten in A6-4: die INCAP-Timing-Register,
+-  die die Firmware bei jedem Lock neu rechnet, und der Composition-Block `0x05000224`/`0x05000844`).
+-  Bis dahin **sagt das Programm den offenen Punkt beim Start ausdrücklich ins Journal** (`offen …`),
+-  damit er nicht nur hier im README steht. Der Rückweg ist sauber: zurück auf 1920x1080 liefert
+-  wieder ein einwandfreies Bild, ohne Zutun.
++* **Die Geometrie ist die der Quelle, nicht die des Panels.** Der Puffer für die Plane wird aus
++  `G_FMT` gebaut (Breite, Höhe, Zeilenabstand = Breite) und bei jedem `SOURCE_CHANGE` neu geprüft:
++  meldet der Treiber eine andere Geometrie, geht die Plane aus, der Puffer wird neu angelegt, die
++  Plane geht wieder an (`geometrie 1920x1080 -> 1280x720: Plane aus, Puffer neu` im Journal). Das
++  kurze „aus" ist das Gegenstück zum `AV mute`, mit dem die Firmware ihren eigenen Umbau überbrückt
++  (doku/91 Punkt 2). Was die Plane nicht kann, wird gesagt und die Konsole bleibt: Quellen größer als
++  das Panel (kein Herunterskalieren gemessen), Breiten nicht durch 16 teilbar, ungerade Höhen, und
++  Timings, die der Treiber nicht annimmt (`-ERANGE`: Zeilensprung, außerhalb der `timings_cap`).
++* **Ein Auflösungswechsel der laufenden Quelle hängt am Callback der Firmware.** Die Firmware zieht
++  ihre Capture bei einem Wechsel selbst nach — bei 720p schreibt sie 1280-Byte-Zeilen in den Ring
++  ([E4-geometrie-vollstaendig.md](../../doku/nachtlog/E4-geometrie-vollstaendig.md)) — und 0094 liest
++  die Geometrie aus ihrem Signal-Info-Record und aus dem INCAP-Block, nicht mehr aus einer Konstanten.
++  Dieses Programm erfährt vom Wechsel aber nur über `SOURCE_CHANGE`, also über
++  `MipsHalCallback_SignalChange`. Ob die Firmware den bei einem **reinen** Geometriewechsel ohne
++  Quellenwechsel schickt, ist am Gerät noch nicht gemessen (doku/91 Punkt 2.2); kommt er nicht, bleibt
++  das zerrissene Bild aus [A6-4](../../doku/nachtlog/A6-4-aufloesungswechsel.md) stehen, bis ein
++  anderes Ereignis eintrifft, und dieses Programm merkt es nicht — mit Absicht: eine zweite,
++  pollende Erkennung im Userspace ist genau die Krücke, die dieses Projekt nicht baut. Wie früh die
++  Konsole kommt, hängt davon ab, wann der Callback relativ zur Neuerkennung eintrifft; Stock schaltet
++  bei der **ersten** erkannten Änderung stumm, wir können nicht früher als das Ereignis.
+ * **Kein Overlay.** Der Mux ist exklusiv, es gibt kein Menü über dem Bild (RE-Frage K6).
+ * **Kein Audio.** Der HDMI-Ton ist ein eigenes Kapitel (doku/77 §1).
+ * **Kein `DQBUF`-Pfad.** Sobald 0094 `VIDIOC_EXPBUF` hat, kann die Plane einen importierten dma-buf

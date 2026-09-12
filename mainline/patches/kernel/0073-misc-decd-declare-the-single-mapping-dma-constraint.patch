@@ -1,0 +1,56 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] misc: decd: declare the single-mapping DMA constraint
+
+DECD has no scatter-gather. It is programmed with one base address and a
+stride, and derives the chroma address arithmetically, so an import has to
+resolve to a single mapping spanning the whole buffer or patch 0072 rejects it.
+
+The driver never told the DMA core that. With no dma_parms set,
+dma_get_max_seg_size() returns the 64 KiB default and the IOMMU layer stops
+coalescing there, so whether an import collapsed to one segment came down to how
+fragmented physical memory happened to be at the time. Measured on the bench,
+the same binary on the same boot:
+
+    run 1   1 segment, whole buffer, 0x05600070 = 0xFDC00000
+    run 2   14 segment(s), first 20480 of 1384448 bytes -- rejected
+
+With the constraint declared, five consecutive runs mapped as a single IOVA with
+zero rejections, and throughput went from 27.16 to ~29.8 fps against a 29.97 fps
+clip -- the unexplained ~1 s deficit over 300 frames was the fragmented mapping.
+
+Note this makes the *mapping* deterministic; it does not by itself put video on
+the panel. See docs/handoff-2026-08-31.md.
+
+--- a/drivers/misc/sunxi_decd/decd_core.c
++++ b/drivers/misc/sunxi_decd/decd_core.c
+@@ -3,6 +3,7 @@
+ #include <linux/cdev.h>
+ #include <linux/clk.h>
+ #include <linux/device.h>
++#include <linux/dma-mapping.h>
+ #include <linux/fs.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+@@ -122,6 +123,22 @@
+ 	if (IS_ERR(dec->rst_bus_disp))
+ 		return PTR_ERR(dec->rst_bus_disp);
+ 
++	/*
++	 * DECD has no scatter-gather: it is programmed with one base address
++	 * and a stride, and derives the chroma address arithmetically. An
++	 * import must therefore resolve to a single mapping spanning the whole
++	 * buffer.
++	 *
++	 * Without dma_parms the DMA core assumes the 64 KiB default maximum
++	 * segment size and stops coalescing there, so a physically scattered
++	 * buffer comes back as many segments even behind a working IOMMU --
++	 * measured on the bench as 14 segments with a 20480-byte first one,
++	 * against the same buffer that mapped as a single IOVA when memory
++	 * happened to be less fragmented. Say what the hardware actually needs
++	 * instead of depending on the allocator's luck.
++	 */
++	dma_set_max_seg_size(dev, UINT_MAX);
++
+ 	dec->fence_ctx = dec_fence_context_alloc("dec");
+ 	if (IS_ERR(dec->fence_ctx))
+ 		return PTR_ERR(dec->fence_ctx);

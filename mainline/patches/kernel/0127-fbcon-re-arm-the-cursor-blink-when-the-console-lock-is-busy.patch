@@ -1,0 +1,38 @@
+fbcon: re-arm the cursor blink when the console lock is busy
+
+fb_flashcursor() gives up when console_trylock() fails and does not queue
+itself again. From then on the cursor stands still until the next write to
+that console re-arms the work through fbcon_cursor(). On a machine that is
+driven over ssh, whose serial console is a legacy 8250 holding console_lock
+for the length of every printk, and whose drivers print a few lines
+whenever the picture is handed back to fbcon, that next write may never
+come: the HY310 came back to a console with a frozen cursor after every
+handback (doku/nachtlog/S12 section B, measured 08.09.2026 with the frame
+buffer hash standing still until "\e[?25h" was written to the tty).
+
+Queue the work again for the next blink interval instead. The lock is
+still not waited for, so the unbind case the FIXME is about is unchanged.
+
+--- a/drivers/video/fbdev/core/fbcon.c	2026-09-08 01:50:21.520200298 +0200
++++ b/drivers/video/fbdev/core/fbcon.c	2026-09-08 01:50:21.526101226 +0200
+@@ -382,8 +382,19 @@
+ 	/* instead we just fail to flash the cursor if we can't get
+ 	 * the lock instead of blocking fbcon deinit */
+ 	ret = console_trylock();
+-	if (ret == 0)
++	if (ret == 0) {
++		/*
++		 * Try again next blink. Returning without re-arming leaves the
++		 * cursor standing until something is written to the console --
++		 * on a box driven over ssh, with a slow serial console that holds
++		 * console_lock for the length of every printk, that can be
++		 * forever: measured on the HY310 after every picture handback
++		 * (doku/nachtlog/S12 B).
++		 */
++		queue_delayed_work(system_power_efficient_wq, &par->cursor_work,
++				   par->cur_blink_jiffies);
+ 		return;
++	}
+ 
+ 	/* protected by console_lock */
+ 	info = par->info;

@@ -1,3 +1,14 @@
+# ============================================================================
+# Serie fuer Linux 6.18.38 (Tarball, config/versions.env). build.sh wendet sie
+# der Reihe nach an; Zeilen mit '#' und Leerzeilen ueberliest es (12.09.2026).
+# Die Nummern sind Geschichte, nicht Reihenfolge: die a/b/c-Nachtraege gehoeren
+# direkt hinter ihr Original, weil spaetere Patches ihren Kontext brauchen.
+# Herkunft und Begruendung: doku/116-plan-release-repo.md P1, doku/80.
+#
+# --- 1. Basis: cstenger/allwinner-h713-mainline@8860991, patches/kernel ------
+#     46 Patches, byteidentisch (geprueft 12.09.: cmp gegen origin/main).
+#     0001-0022 stammen urspruenglich aus well0nez/allwinner-h713-linux
+#     (Namensnennung in cstengers PROVENANCE.md).
 0001-clk-sunxi-ng-add-h713-ccu-driver.patch
 0002-pinctrl-sunxi-add-h713-pio-driver.patch
 0003-pinctrl-sunxi-add-h713-r-pio-driver.patch
@@ -11,6 +22,8 @@
 0012-misc-add-sunxi-tvtop.patch
 0013-misc-add-sunxi-decd.patch
 0014-soc-sunxi-add-cpu-comm-ipc.patch
+#   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
+0014a-soc-sunxi-cpu-comm-der-h713-stand-vom-04-09.patch
 0015-misc-add-h713-driver-kconfig.patch
 0016-dt-bindings-add-h713-clock-reset-ids.patch
 0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch
@@ -21,6 +34,11 @@
 0022-staging-cedrus-add-h713-ve3-clock-reset.patch
 0023-clk-sunxi-ng-enable-d1-r-ccu-on-arm64.patch
 0024-arm64-dts-add-sun50i-h713-hy200-qz713df-a1-board.patch
+#   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
+0024a-arm64-dts-h713-cpu-comm-reg-0x1000-und-irq-46.patch
+#   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
+0024b-misc-hy310-keystone-motor-ist-der-fokusmotor.patch
+0024c-arm64-dts-h713-cpu-comm-einschalten-motor-kommentieren.patch
 0025-clk-sunxi-ng-h713-register-cpu-clock-notifiers.patch
 0026-arm64-dts-h713-add-cpu-opp-table-for-cpufreq.patch
 0027-clk-sunxi-ng-d1-r-add-r-pwm-gate-and-reset.patch
@@ -44,3 +62,130 @@
 0045-mmc-sunxi-use-validated-sdr25-for-h713-wifi.patch
 0046-mmc-sunxi-use-v5p3x-max-idma-descriptor-size.patch
 0048-mmc-sunxi-h713-run-sdio-at-stock-sdr104-50mhz.patch
+#
+# --- 2. Eigener Zusatz zwischen Basis und Zweig ------------------------------
+0049-h713-size-the-scanout-carveout-for-a-1080p-panel.patch
+#
+# --- 3. cstengers Zweig h713-display-video-path -------------------------------
+#     17 Patches, byteidentisch zum Zweig (geprueft 12.09.; die frühere Angabe 16 war falsch gezählt). Scanout, DECD-
+#     Fixes, IOMMU, MMC, HDMI-Video-Plane. 0078a ist unser Nachtrag dazu.
+0051-iommu-sun50i-rate-limit-fault-reporting.patch
+0053-drm-panfrost-do-not-map-imported-buffers-cacheable.patch
+0055-arm64-dts-h713-drop-the-1416-mhz-opp-it-corrupts-memory.patch
+0059-media-cedrus-do-not-disarm-the-watchdog-before-claiming-the-irq.patch
+0063-drm-h713-afbd-give-userspace-a-well-formed-size-range.patch
+0064-arm64-dts-h713-put-the-kernel-console-on-the-panel-too.patch
+0067-misc-decd-match-stock-frame-submit-abi.patch
+0071-misc-decd-fix-release-fence-lifetime.patch
+0072-misc-decd-refuse-a-non-contiguous-dma-buf-import.patch
+0073-misc-decd-declare-the-single-mapping-dma-constraint.patch
+0078-drm-h713-add-fullscreen-nv12-overlay.patch
+#   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
+0078a-drm-h713-afbd-probe-zusicherung-ohne-1280x720.patch
+0079-drm-h713-do-not-vmap-prime-imports.patch
+0082-arm64-dts-h713-enable-the-internal-audio-codec.patch
+0083-arm64-dts-h713-route-lineout-to-the-speaker.patch
+0084-asoc-sun4i-codec-add-the-h713-variant.patch
+0085-asoc-h713-drive-the-speaker-from-the-hp-amp.patch
+0086-asoc-h713-fix-the-audio-clock.patch
+#
+# --- 4. HY310 (well0nez): ARISC, cpu_comm-Kernel-API, HDMI-RX-Callbacks -------
+#     doku/82, 83, 88, 91, nachtlog/S1-S13. Abgenommen 07./08.09.
+0091-soc-sunxi-h713-arisc.patch
+0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
+0097-soc-sunxi-cpu-comm-fix-the-call-argument-abi-and-the-callwq-pointer.patch
+0092-soc-sunxi-h713-cpu-comm-kernel-api.patch
+0093-drm-h713-afbd-nv16-hdmi-ring.patch
+0094-media-sun50i-h713-hdmirx.patch
+0095-drm-h713-afbd-color-mgmt.patch
+0098-revert-cpu-comm-kernel-callback-registration.patch
+0099-media-drm-h713-rearm-capture-after-descriptor.patch
+0100-soc-sunxi-cpu-comm-register-callbacks-off-the-bring-up-path.patch
+0101-media-sun50i-h713-hdmirx-pq-controls.patch
+0102-soc-sunxi-cpu-comm-count-calls-show-the-ring-add-delay-knobs.patch
+0104-drm-media-h713-give-the-chroma-gain-one-owner.patch
+0105-soc-sunxi-cpu-comm-stop-reading-the-mips-newcall-ring.patch
+0106-soc-sunxi-cpu-comm-quiet-the-per-call-log.patch
+0107-media-drm-h713-follow-source-geometry.patch
+#
+# --- 5. HY310: Fokusmotor, erster Durchgang (Endschalter-Lesepfad, Handbefehle)
+#     doku/94 -- die Stilllegung von damals beruhte auf einem Fehler, s. Abschnitt 10.
+0111-misc-hy310-motor-fix-the-limit-switch-read-path.patch
+0112-misc-hy310-motor-add-the-stock-manual-move-commands.patch
+0113-arm64-dts-h713-use-the-stock-property-names-on-the-motor-node.patch
+0114-misc-hy310-motor-say-what-the-driver-is-in-kconfig.patch
+0115-misc-hy310-motor-add-a-bias-override-to-test-the-limiter-pad.patch
+0116-misc-hy310-motor-let-probe-skip-homing.patch
+#
+# --- 6. HY310: Bildpfad -- Geometrie, Republish, Capture, Regler, Einpassung ---
+#     doku/91-93, 96, 99, nachtlog/S13-S20, K4. Paket A-J aus Plan 77.
+0117-drm-h713-afbd-republish-the-viddec-record-on-geometry-change.patch
+0119-media-h713-hdmirx-no-source-switch-on-a-republished-descriptor.patch
+0120-drm-h713-afbd-keep-the-panel-in-the-record-window-words.patch
+0121-media-h713-hdmirx-enable-the-capture-instead-of-switching-the-source.patch
+0122-media-h713-hdmirx-hold-the-capture-enable-until-it-sticks.patch
+0123-media-h713-hdmirx-restore-the-capture-input-converter-after-a-republish.patch
+0124-soc-sunxi-cpu-comm-release-the-call-slot-after-a-callback.patch
+0125-soc-sunxi-cpu-comm-drop-the-unread-channel-ring-and-fix-the-pid-match.patch
+0126-media-h713-hdmirx-video-range-and-picture-mode-controls.patch
+0127-fbcon-re-arm-the-cursor-blink-when-the-console-lock-is-busy.patch
+0128-media-h713-hdmirx-repeat-the-first-re-arm-when-the-signal-comes-back.patch
+0129-media-h713-hdmirx-measure-the-rate-when-the-record-is-our-own.patch
+0130-media-h713-hdmirx-repeat-a-failed-first-switch-slowly.patch
+0131-media-drm-h713-follow-the-ring-pitch-for-widths-that-are-not-a-multiple-of-16.patch
+0132-media-h713-hdmirx-name-the-picture-modes.patch
+0133-drm-h713-afbd-expose-the-display-aspect-mode.patch
+#
+# --- 7. HY310: HDMI-Audio -- Takte, Codec-I2S, MSP-DSP-Treiber -----------------
+#     doku/100, 101, nachtlog/S16. Abgenommen 08.09. (Lippensynchronitaet Marco).
+0134-clk-sunxi-ng-h713-model-pll-periph0-and-the-audio-clocks.patch
+0135-ASoC-sun4i-codec-h713-add-the-i2s-input-path-for-the-msp-dsp.patch
+0135b-arm64-dts-h713-describe-the-codec-s-i2s-window.patch
+0136-media-h713-hdmirx-expose-the-audio-status.patch
+0137-ASoC-sunxi-add-the-h713-msp-audio-dsp-driver.patch
+0138-arm64-dts-h713-describe-the-msp-audio-dsp.patch
+0136b-arm64-dts-h713-describe-the-hdmi-receiver-link-window.patch
+0139-arm64-dts-h713-power-key-on-pl4.patch
+#
+# --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------
+#     doku/103.
+0140-pinctrl-sunxi-h713-use-eint-function-0xe-and-mux-irq-pins.patch
+#
+# --- 9. HY310: board-mgr (Luefter-Tacho per IRQ), pinctrl-IRQ-Bank-Fix, NTC-Phantom
+#     doku/60 §board-mgr, §Aufhaenger, §NTC; analyse/boot/*20260911*. 0143/0144
+#     ist ein generischer Fix der Basis-Patches 0004 (PR-Kandidat, doku/116 P8).
+0141-misc-hy310-board-mgr-tacho-via-gpio-irq-and-no-surprise-poweroff.patch
+0142-arm64-dts-h713-fit-the-board-mgr-node-to-this-board-s-fan.patch
+0143-pinctrl-sunxi-index-the-bank-interrupts-by-irq-bank-not-by-hardware-bank.patch
+0144-arm64-dts-h713-the-pio-has-seven-bank-interrupts-not-nine.patch
+0146-misc-hy310-board-mgr-den-ntc-rohwert-in-millivolt-umrechnen.patch
+0147-iio-adc-sun20i-gpadc-zwoelf-bit-maskieren-und-nach-kanalwechsel-verwerfen.patch
+0152-misc-hy310-board-mgr-ntc-num-ist-bindend-dieses-geraet-hat-keinen-fuehler.patch
+#
+# --- 10. H713: Crypto Engine -- Binding, DTS, Messmodul (Vendor-Deskriptorformat)
+#     doku/112, 114. Das Messmodul laedt automatisch und bleibt (Marco, 12.09.).
+0148-dt-bindings-crypto-crypto-engine-des-h713.patch
+0149-arm64-dts-h713-beide-ce-baenke-und-beide-interrupts.patch
+0150-crypto-allwinner-h713-ce-test-ein-task-im-vendorformat.patch
+#
+# --- 11. HY310: Fokusmotor, zweiter Durchgang -- PH14 ist ein Bereichswaechter -
+#     doku/94 Nachtrag, analyse/boot/motor-bereichswaechter-20260912.txt.
+#     homing standardmaessig aus, Knoten aktiv. Bedienung: userspace/h713-focus.
+0153-misc-hy310-motor-pad-bias-des-endschalters-nicht-mehr-erzwingen.patch
+0154-misc-hy310-motor-rohpegel-des-endschalters-in-motor-limit-zeigen.patch
+0156-misc-hy310-motor-homing-standardmaessig-aus.patch
+0157-arm64-dts-h713-den-motorknoten-aktivieren.patch
+#
+# --- 12. HY310: WLAN -- Einschaltleitung im Geraetebaum (Treiber: patches/aic8800)
+#     analyse/boot/wlan-aic8800-messung-20260912.txt.
+0155-arm64-dts-h713-die-wlan-einschaltleitung-in-den-geraetebaum.patch
+#
+# --- 13. Release: kein Debug im Auslieferungszustand ---------------------------
+#     doku/60 §Kein Debug im Release. Zusammen mit board/hy200_qz713df_a1_defconfig
+#     (DEBUG_FS aus) und U-Boot 0033 (uboot-h713/).
+0158-arm64-dts-h713-rueckfall-bootargs-ohne-earlycon-mit-loglevel-4.patch
+#
+# --- 14. HY310: Schutz -- der Notaus bei Luefterstillstand -------------------
+#     doku/60 §board-mgr; Marco 12.09.: der Tacho ist der Schutz, den dieses
+#     Geraet hat, und er ist belegt. thermal_shutdown bleibt aus (kein NTC).
+0159-misc-hy310-board-mgr-den-notaus-bei-luefterstillstand-scharf-schalten.patch

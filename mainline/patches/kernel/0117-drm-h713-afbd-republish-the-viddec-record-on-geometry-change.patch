@@ -1,0 +1,86 @@
+drm: sun50i-h713-afbd: republish the VidDec record when the geometry changes
+
+The scaler never follows the source. With a 1280x720 signal the capture block
+is rebuilt -- INCAP 0x06940874 reads 0x050002D0 -- while the scale ratio at
+0x05180008 stays 0x43010000, exactly unity, and bit 27 of 0x05180014, the
+firmware's "no scaling" flag, stays set. Every register in the chain behind
+AFBD keeps the panel geometry. Sweeping the source, re-sending Wce_SetWindow,
+running stock's full source-switch sequence and re-probing with the source
+already present all changed nothing.
+
+The reason is in this driver. Read out of the live firmware through its own
+debug shell, over the monitor ring in DRAM: the VideoDec signal detector's
+working copy at +0xb0 and its latch at +0x140 are byte-identical to the record
+this function publishes -- 0x61770000, 0x780, 0x438 -- and they hold the
+geometry that was current when the plane was first enabled. They are identical
+to each other, so the firmware concludes nothing changed and never runs
+UpdateWce, so WCETop::SetWindow never runs, so nothing reprograms the window
+nodes. Stock's own log shows the other side of it: UpdateWce appears exactly
+twice in six minutes of runtime, both at timestamp 0, and each time it walks
+Cap, NR, DETN, Proc and Panel and computes a ratio with CalcScaleRatio.
+
+The comment this patch replaces had it half right and half wrong, and the
+wrong half sent this project chasing RPCs for a day. The HDMI capture really
+does not read the record. The window layer does, and the window layer is what
+owns the scaler.
+
+So publish it again when the geometry changes, in ring mode only. The cost is
+known and already handled: publication switches the capture off, which is why
+the descriptor notifier exists and why the capture owner answers it with a
+source switch away and back. A first publication already depends on that path;
+this uses it a second time. Outside ring mode nothing changes -- the refusal
+and its warning stand, because there the record is the plane's own frame format
+and a silent change would be a lie.
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 21:11:40.896565998 +0200
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 21:11:40.902451553 +0200
+@@ -387,17 +387,28 @@
+  * pointer went from nothing to the record. They are per-boot state, which is
+  * also why the disable path leaves them standing.
+  *
+- * In HDMI passthrough (@ring) the record is published once per boot with the
+- * geometry of the first enable and then left alone, whatever geometry later
+- * enables bring. That is not a refusal and does not warn: the record describes
+- * the *VideoDec* source and is read by the firmware's VideoDec detector alone
+- * (GetFrameInfo/ConvertFrameInfo2SignalInfo). The HDMI capture and the WCE
+- * behind it never look at it -- the firmware's own chain for an HDMI signal
+- * change, from "AV mute" to NotifySignalChange, has no descriptor in it at all
+- * (stock elog, doku/91 Punkt 2). The plane takes its geometry from the
+- * framebuffer, the firmware takes its geometry from the signal, and the record
+- * stands as first published for as long as the boot lasts -- the one thing the
+- * firmware is known to survive.
++ * In HDMI passthrough (@ring) the record used to be published once per boot and
++ * then left alone whatever geometry later enables brought, on the reasoning
++ * that the HDMI capture and the WCE behind it never look at it. Half of that
++ * is right and the half that is wrong cost this project a long hunt.
++ *
++ * Right: the HDMI *capture* does not read it. INCAP is reconfigured on an HDMI
++ * signal change without any descriptor involved, measured -- with a 1280x720
++ * source 0x06940874 reads 0x050002D0 while the record still says 1920x1080.
++ *
++ * Wrong: the *window layer* reads it, and the window layer is what programs
++ * the scaler. Read out of the live firmware on 07.09.2026 through its own debug
++ * shell: the VideoDec detector's working copy at +0xb0 and its latch at +0x140
++ * are byte-identical to this record, both holding the geometry of the boot, and
++ * because they are identical the firmware concludes nothing changed and never
++ * runs UpdateWce. The scaler ratio at 0x05180008 then stays at unity through
++ * every source change -- which is exactly the symptom, and it is ours.
++ *
++ * So on a geometry change in ring mode the record is republished, deliberately.
++ * The known cost is that publication switches the capture off; the descriptor
++ * notifier below exists for precisely that and the capture owner answers it
++ * with a source switch. That is the same mechanism a first publication already
++ * relies on, now used a second time.
+  *
+  * Returns true if the firmware has something new to look at here, i.e. if the
+  * record or the pointer changed. See h713_afbd_wait_wce().
+@@ -414,7 +425,7 @@
+ 	new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr;
+ 	h713_afbd_build_video_info(rec, w, hgt, stride);
+ 	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
+-	write_record = differs && !h->video_info_published;
++	write_record = differs && (!h->video_info_published || ring);
+ 	if (differs && h->video_info_published && !ring)
+ 		drm_warn(&h->drm,
+ 			 "refusing to rewrite the VidDec descriptor for %ux%u; the capture does not survive a second signal event\n",

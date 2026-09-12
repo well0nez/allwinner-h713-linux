@@ -1,0 +1,87 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] misc: decd: refuse a non-contiguous dma-buf import
+
+dec_dma_map() keeps sg_dma_address(sgt->sgl) and throws the rest of the
+scatterlist away. There is no scatter-gather anywhere in this hardware path:
+DECD is programmed with one base address and a stride, and the chroma address
+is derived from that base arithmetically. So when an import maps to more than
+one segment, the hardware reads segment 0 and then keeps walking into whatever
+physical memory happens to follow.
+
+That is not theoretical. Submitting Cedrus's own decoded NV12 dma-buf, measured
+on the bench:
+
+    PHYS pages=338 first=0x46f7a000 contiguous=NO breaks=31 longest-run=16(64KiB)
+    0x05600070 = 0x46F7A000
+
+The base is correct -- it is exactly the buffer's first page -- but only the
+first 64 KiB of the frame is really there, which is 51 of 720 luma lines. The
+chroma base, computed as y + 0xE1000, lands 924 KiB past the start and so is
+unrelated memory entirely, which is why such a frame scans out overwhelmingly
+green. The buffer itself is perfect: dumped through the same FD and compared
+against a host software decode, it is bit-exact.
+
+The failure is therefore silent and looks exactly like decoder corruption, which
+cost this investigation a fence-lifetime fix, a frozen-buffer test and a byte
+dump to tell apart. Refuse the import and say why instead, printing the whole
+segment layout -- the first segment alone does not distinguish "coalescing was
+capped at a limit" from "coalescing never happened", and that is the difference
+between a device constraint to fix and an allocator to work around.
+
+Contiguous importers are unaffected: the scanout carveout and any CMA
+allocation map as a single segment spanning the whole buffer, which is why
+static carveout frames have always displayed correctly.
+
+This is a guard, not the fix, and it earned its place immediately: the first
+apparently-successful IOMMU run produced a single IOVA, and the next run of the
+same binary on the same boot came back as 14 segments. Without this the former
+would have been reported as a fix.
+
+--- a/drivers/misc/sunxi_decd/decd_frame.c
++++ b/drivers/misc/sunxi_decd/decd_frame.c
+@@ -672,9 +672,45 @@
+ 	map->sgt = dma_buf_map_attachment(map->attach, DMA_BIDIRECTIONAL);
+ 	if (IS_ERR(map->sgt))
+ 		goto err_detach;
++
++	/*
++	 * There is no scatter-gather anywhere in this hardware path: DECD is
++	 * programmed with one base address and a stride, and the chroma address
++	 * is derived from it arithmetically. Honouring only sgl[0] of a
++	 * multi-segment import therefore does not read a slightly wrong buffer,
++	 * it reads segment 0 and then walks off the end into whatever else is
++	 * resident -- silently, and looking exactly like decoder corruption.
++	 *
++	 * Refuse instead. A contiguous import (the scanout carveout, and CMA)
++	 * is unaffected: it maps as a single segment spanning the whole buffer.
++	 */
++	if (map->sgt->nents != 1 ||
++	    sg_dma_len(map->sgt->sgl) < map->dbuf->size) {
++		struct scatterlist *s;
++		unsigned int i;
++
++		dev_err(dev,
++			"dma-buf import is not contiguous: %u segment(s), first %u of %zu bytes; DECD fetches from a single base and would scan unrelated memory\n",
++			map->sgt->nents, sg_dma_len(map->sgt->sgl),
++			map->dbuf->size);
++		/*
++		 * Print the whole layout. The first segment alone does not say
++		 * whether coalescing was capped at a limit or never happened at
++		 * all, and that distinction is the difference between a device
++		 * constraint to fix and an allocator to work around.
++		 */
++		for_each_sgtable_dma_sg(map->sgt, s, i)
++			dev_err(dev, "  seg %u: %pad + %u\n", i,
++				&s->dma_address, sg_dma_len(s));
++		goto err_unmap;
++	}
++
+ 	map->dma_addr = sg_dma_address(map->sgt->sgl);
+ 	return map;
+ 
++err_unmap:
++	dma_buf_unmap_attachment(map->attach, map->sgt, DMA_BIDIRECTIONAL);
++
+ err_detach:
+ 	dma_buf_detach(map->dbuf, map->attach);
+ err_put:

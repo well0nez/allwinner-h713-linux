@@ -1,0 +1,108 @@
+aic8800: den SDIO-Scan wiederholen, solange auf den Chip gewartet wird
+
+Optional und unabhaengig von 0001/0002 anwendbar. Behebt eine Luecke, die erst
+auffaellt, wenn die Einschaltleitung stimmt.
+
+Die Einschaltsequenz stoesst genau ein mmc_detect_change() an und wartet danach
+bis zu 20 s auf den chip-up (aic8800-0003 hat den Wert von 2 s heraufgesetzt).
+Diese 20 s koennen aber nur von jenem einen Scan bedient werden:
+mmc_rescan() plant sich am Label "out:" nur dann neu ein, wenn
+MMC_CAP_NEEDS_POLL gesetzt ist (drivers/mmc/core/core.c). Gesetzt wird das von
+mmc_of_parse() ausschliesslich bei "broken-cd", und das steht in unserem mmc1
+nicht -- zu Recht, Stock hat es auch nicht. Ohne non-removable und ohne
+cd-gpios gibt es auch keine Karten-Erkennung, die von sich aus nachlegen
+wuerde.
+
+Der einzige Suchversuch liegt damit rund 250 ms nach dem Einschalten
+(mdelay(50) + 200 ms Verzoegerung in mmc_detect_change). Ist der Chip dann noch
+nicht ansprechbar, laeuft der 20-s-Timeout ins Leere, weil niemand mehr sucht.
+Die Wartezeit wird in dieser Form nie zu einer zweiten Chance.
+
+Ob der Chip laenger als 250 ms braucht, ist NICHT gemessen. Der Hersteller-BSP
+haelt dieselben Zeiten ein (sunxi_wlan_set_power(0); mdelay(50);
+sunxi_wlan_set_power(1); mdelay(50); sunxi_mmc_rescan_card()), was dafuer
+spricht, dass 250 ms reichen. Der Patch behauptet also nicht, hier liege der
+Fehler -- er sorgt nur dafuer, dass die vorhandene Wartezeit tatsaechlich
+benutzt wird, und macht den einen Geraetetest aussagekraeftiger: jede
+Wiederholung erscheint im Log mit ihrer Zeit.
+
+Der Scan laeuft jetzt alle rescan_ms (Standard 1000) erneut an, bis der Chip da
+ist oder chipup_timeout_ms abgelaufen sind. rescan_ms=0 stellt das alte
+Verhalten wieder her. Erneutes Anstossen waehrend eines laufenden Scans ist
+harmlos: mmc_detect_change() reiht nur die verzoegerte Arbeit ein, und sobald
+eine Karte registriert ist, kehrt mmc_rescan() ueber host->bus_ops sofort
+zurueck.
+
+ACHTUNG beim Zusammenfuehren: dieser Patch fasst dieselbe Zeile an wie
+aic8800-0003 (down_timeout ... 20000). Der zweite Teil von aic8800-0003,
+FEATURE_SDIO_CLOCK_V3 = 0, bleibt unberuehrt und muss bleiben -- 0 heisst "die
+vom MMC-Kern ausgehandelte Rate behalten", und die ist seit Kernel-Patch 0048
+die geprueften 50 MHz.
+
+Geprueft: baut im Container h713-build gegen 6.18.38 (arm64, LLVM=1,
+CONFIG_PLATFORM_MAINLINE_SUNXI=y). Am Geraet nicht getestet.
+
+--- a/aic8800_bsp/aicsdio.c
++++ b/aic8800_bsp/aicsdio.c
+@@ -78,6 +78,13 @@
+ module_param_named(mmc_bus, aicbsp_mmc_bus_index, int, 0644);
+ MODULE_PARM_DESC(mmc_bus, "MMC bus index for SDIO WiFi (default: 1)");
+ 
++static int aicbsp_chipup_timeout_ms = 20000;
++module_param_named(chipup_timeout_ms, aicbsp_chipup_timeout_ms, int, 0644);
++MODULE_PARM_DESC(chipup_timeout_ms, "how long to wait for the chip to appear on SDIO (default: 20000)");
++static int aicbsp_rescan_ms = 1000;
++module_param_named(rescan_ms, aicbsp_rescan_ms, int, 0644);
++MODULE_PARM_DESC(rescan_ms, "repeat mmc_detect_change() every N ms while waiting (0 = scan only once)");
++
+ static struct mmc_host *aicbsp_cached_mmc_host = NULL;
+ 
+ /*
+@@ -188,6 +195,35 @@
+ 	pr_info("aicbsp: mmc_detect_change returned\n");
+ }
+ 
++/*
++ * Auf das Hochlaufen des Chips warten und den SDIO-Scan dabei wiederholen.
++ *
++ * mmc_rescan() ist ein Einzelschuss: ohne MMC_CAP_NEEDS_POLL plant es sich am
++ * Label "out:" nicht selbst neu ein (drivers/mmc/core/core.c). Ein einzelnes
++ * mmc_detect_change() heisst also genau ein Scan, rund 250 ms nach dem
++ * Einschalten. Braucht der Chip laenger, wartet der Timeout unten ins Leere,
++ * weil niemand mehr sucht. Darum den Scan wiederholt anstossen, solange
++ * gewartet wird.
++ */
++static int aicbsp_mainline_wait_chipup(struct semaphore *sem)
++{
++	int waited = 0, step;
++
++	if (aicbsp_rescan_ms <= 0)
++		return down_timeout(sem, msecs_to_jiffies(aicbsp_chipup_timeout_ms));
++
++	while (waited < aicbsp_chipup_timeout_ms) {
++		step = min(aicbsp_rescan_ms, aicbsp_chipup_timeout_ms - waited);
++		if (down_timeout(sem, msecs_to_jiffies(step)) == 0)
++			return 0;
++		waited += step;
++		pr_info("aicbsp: no SDIO card after %d ms, rescanning mmc\n", waited);
++		aicbsp_mainline_rescan();
++	}
++
++	return -ETIME;
++}
++
+ static int aicbsp_mainline_gpio_init(void)
+ {
+ 	struct device_node *np;
+@@ -869,7 +905,11 @@
+ 	aicbsp_mainline_rescan();
+ #endif //CONFIG_PLATFORM_MAINLINE_SUNXI
+ 
++#ifdef CONFIG_PLATFORM_MAINLINE_SUNXI
++	if (aicbsp_mainline_wait_chipup(&aic_chipup_sem) == 0) {
++#else
+ 	if (down_timeout(&aic_chipup_sem, msecs_to_jiffies(20000)) == 0) {
++#endif
+ 		aicbsp_unreg_sdio_notify();
+ 		if(aicbsp_load_fw_in_fdrv){
+ 			printk("%s load fw in fdrv\r\n", __func__);

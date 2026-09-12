@@ -1,0 +1,120 @@
+misc: hy310-board-mgr: arm the fan-stall poweroff again
+
+Patch 0141 removed the fan-stall shutdown together with the NTC one. For the
+NTC that was right -- this unit has no thermistor (ntc_num = 0), and the curve
+behind temp1_input is a vendor table for a board whose thermal design we never
+verified. For the fan it was wrong, and Marco says so plainly (12.09.): the
+tachometer is the protection this board actually has, and it is proven.
+
+What 0141 argued -- "the driver cannot restart the fan, so powering off trades
+a warning for an outage" -- is exactly backwards for a projector. The lamp and
+the DLP keep producing heat whether or not the fan turns; an outage is the
+cheap outcome. The vendor firmware calls kernel_power_off() after a prolonged
+stall for the same reason.
+
+Measured on this device (11.09.2026, doku/60 board-mgr): tacho by GPIO IRQ,
+4860 RPM in normal operation; PB5 off -> 0 RPM; PB5 on -> 4770 RPM. So the
+signal that triggers the shutdown is the one signal on this board that has
+been switched on and off deliberately and answered correctly both times.
+
+  - fan_stall_shutdown, bool, 0644, default on. Off restores the 0141
+    behaviour (report only) without a rebuild -- do that before deliberately
+    cutting the fan rail on a bench, or the measurement ends in a poweroff.
+  - Trigger: rpm below fg-warn-speed (DT, default 1000) for fg-warn-cnt
+    consecutive one-second samples (DT, default 8). The existing warning is
+    kept and now precedes the shutdown.
+  - orderly_poweroff(true), not kernel_power_off(): userspace gets its
+    shutdown, and the force flag covers a wedged userspace. Requested once per
+    boot (poweroff_started).
+  - Only after system_state == SYSTEM_RUNNING (unchanged) and only for a fan
+    whose tacho IRQ exists (unchanged) -- without a reading there is nothing
+    to judge, and the driver still refuses to guess.
+
+thermal_shutdown stays off. Nothing here reads temperature.
+
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -133,6 +133,23 @@
+ MODULE_PARM_DESC(thermal_shutdown,
+ 		 "Power off when the NTC exceeds temp_poweroff (default: off, report only)");
+ 
++/*
++ * The fan is the only working heat protection this board has. It has no NTC
++ * (ntc_num = 0 in the vendor configuration), so temperature never becomes a
++ * trigger here -- but the tachometer does, and it is proven: PB5 off gives
++ * 0 RPM, PB5 on gives ~4800 RPM again (measured 11.09.2026). A projector whose
++ * fan has stopped must not keep running; the vendor firmware powers the device
++ * off on a prolonged stall for exactly that reason, and so do we.
++ *
++ * Disarm it (fan_stall_shutdown=0) before deliberately cutting the fan rail on
++ * a bench, otherwise the measurement ends in a poweroff after fg-warn-cnt
++ * seconds.
++ */
++static bool fan_stall_shutdown = true;
++module_param(fan_stall_shutdown, bool, 0644);
++MODULE_PARM_DESC(fan_stall_shutdown,
++		 "Power off when the fan stays below fg-warn-speed for fg-warn-cnt cycles (default: on)");
++
+ /* Default configuration values */
+ #define DEFAULT_PWM_PERIOD_NS		40000	/* 25 kHz */
+ #define DEFAULT_TEMP_POWEROFF_C		60
+@@ -242,6 +259,9 @@
+ 	int			 temp_poweroff_c;
+ 	int			 temp_warn_c;
+ 
++	/* Set once a poweroff has been requested, so it is requested only once */
++	bool			 poweroff_started;
++
+ 	/* Delayed work for fan RPM and NTC polling */
+ 	struct delayed_work	 fan_work;
+ 	struct delayed_work	 ntc_work;
+@@ -400,9 +420,10 @@
+ /**
+  * hy310_fan_work_fn - periodic fan RPM measurement (runs every 1 second)
+  *
+- * Reads and resets the pulse counter, calculates RPM, checks against
+- * the warn threshold.  If RPM is consistently below warn_speed, the
+- * system is powered off (indicating a stalled fan in a hot projector).
++ * Reads and resets the pulse counter, calculates RPM, checks against the warn
++ * threshold. If the RPM stays below warn_speed for warn_cnt consecutive
++ * seconds, the system is powered off: a stalled fan in a projector is not a
++ * condition to keep running through (fan_stall_shutdown, default on).
+  */
+ static void hy310_fan_work_fn(struct work_struct *work)
+ {
+@@ -430,19 +451,29 @@
+ 			continue;
+ 
+ 		/*
+-		 * A stall is reported, never acted on. The fan on this board is
+-		 * an unregulated on/off load on the shared PB5 rail (see the
+-		 * fan-power gpio-hog): the driver cannot restart it, so powering
+-		 * the device off would trade a warning for an outage. The RPM is
+-		 * in fan1_input; userspace decides what a stall means.
++		 * A stall is the one condition this board can detect and must
++		 * act on: the fan is an unregulated on/off load on the shared
++		 * PB5 rail, so the driver cannot restart it, and there is no
++		 * temperature sensor to fall back on. Warn at the threshold,
++		 * then hand over to orderly_poweroff() -- userspace gets its
++		 * shutdown, and the force flag makes sure a wedged userspace
++		 * does not keep a projector running with a dead fan.
+ 		 */
+ 		if (rpm < fan->rpm_warn_speed) {
+ 			fan->rpm_warn_cycles++;
+-			if (fan->rpm_warn_cycles == fan->rpm_warn_cnt)
++			if (fan->rpm_warn_cycles == fan->rpm_warn_cnt) {
+ 				dev_warn(priv->dev,
+ 					 "fan%d: %u RPM below %u for %u cycles -- check the fan\n",
+ 					 i, rpm, fan->rpm_warn_speed,
+ 					 fan->rpm_warn_cnt);
++				if (fan_stall_shutdown && !priv->poweroff_started) {
++					priv->poweroff_started = true;
++					dev_emerg(priv->dev,
++						  "fan%d stalled -- powering off to protect the optics\n",
++						  i);
++					orderly_poweroff(true);
++				}
++			}
+ 		} else {
+ 			fan->rpm_warn_cycles = 0;
+ 		}

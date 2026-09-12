@@ -1,0 +1,37 @@
+drm: h713-afbd: die Probe-Zusicherung prueft nicht mehr auf 1280x720
+
+cstengers 0078 (Zweig h713-display-video-path) weist den Treiber beim Probe
+ab, wenn der von U-Boot uebernommene Modus nicht 1280x720 ist. Unser HY310
+uebernimmt von U-Boot 1920x1080 (re/captures/autoboot-display.log: "adopting
+1920x1080, stride 7680") -- die Zusicherung haette den GESAMTEN Display-
+Treiber mit -ENODEV abgewiesen: keine Konsole auf der Wand, kein DRM-Knoten,
+keine zweite Plane, keine Abnahme von Paket A (Nacht 07.09.2026).
+
+Die drei Registerbedingungen bleiben stehen und sind auf unserem Board exakt
+erfuellt (re/captures/weltneuheit/ours-20260906-source0/01_lock.txt:
+0x05600010 = 0x03000010, 0x05600140 = 0x03001901, 0x051c006c = 0x29000000).
+Nur hdisplay/vdisplay fallen aus der Pruefung, und die Meldung sagt nicht mehr
+"1280x720". Die Geometrie der Plane selbst zog spaeter Paket D nach (0107 ff.).
+
+Bis zum 12.09. stand das in-place in 0078; jetzt getrennt, 0078 ist wieder
+byteidentisch mit cstengers Zweig (doku/116 P1).
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -643,13 +643,11 @@
+ 	h->video_ctrl_idle = readl(h->regs + AFBD_VIDEO_CTRL);
+ 	h->gain_idle = readl(h->route_regs + 0x508);
+ 	h->selector_rgb = readl(h->lvds_regs + 0x06c);
+-	if (h->mode.hdisplay != H713_VIDEO_WIDTH ||
+-	    h->mode.vdisplay != H713_VIDEO_HEIGHT ||
+-	    h->video_ctrl_idle != 0x03000010 ||
++	if (h->video_ctrl_idle != 0x03000010 ||
+ 	    h->rgb_ctrl_active != 0x03001901 ||
+ 	    h->selector_rgb != 0x29000000)
+ 		return dev_err_probe(dev, -ENODEV,
+-			"video handoff state is not the validated 1280x720 configuration\n");
++			"video handoff state is not the validated register configuration\n");
+ 
+ 	ret = drmm_mode_config_init(drm);
+ 	if (ret)

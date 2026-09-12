@@ -1,0 +1,75 @@
+media: sun50i-h713-hdmirx: hand Wce_SetWindow the full window, as stock does
+
+The driver told the firmware that source and destination were both exactly
+1920x1080 and never touched it again. That is not what stock sends. Its own
+log, captured on the device and kept in re/ida/IDA_hy310/elog_after_hdmird.txt,
+shows what UpdateWce gets handed:
+
+    win_mgr  src_cfg     : [ 0, 0, 7680, 4320][ 0, 0, 7680, 4320]
+    win_mgr  dst_cfg     : [ 0, 0, 7680, 4320][ 0, 0, 7680, 4320]
+    win_mgr  capture_cfg : [ 0, 0,  720,  240][ 0, 0,  720,  240]
+    win_mgr  display_cfg : [ 0, 0, 1920, 1080][ 0, 0, 1920, 1080]
+
+7680x4320 is not a mode, it is the "no crop" sentinel. Stock leaves both
+configurable windows wide open and lets the firmware map what it captured onto
+what the panel is; the next lines of that same log show it doing exactly that
+for a 720x480 source:
+
+    wce_proc in_win_size : [  720,  480]
+    wce_proc out_win_size: [ 1920, 1080]
+    wce_proc ratio [24576 x 29127]
+
+720 * 65536 / 1920 = 24576 and 480 * 65536 / 1080 = 29127 -- CalcScaleRatio
+(sub_8B1A56B8) computing small over large in 16.16 fixed point. The scaler is
+reached through this path and nowhere else.
+
+Our 1920x1080 pinned both ends of that mapping together, and the hardware shows
+it: with a 1280x720 source the capture block is rebuilt (INCAP 0x06940874 reads
+0x050002D0 = 1280x720) while the scale ratio at 0x05180008 stays 0x43010000,
+exactly 1:1, and 0x05180014 keeps bit 27, the firmware's "no scaling" flag. The
+picture is then read at 1920 bytes per line out of 1280-byte lines, which is the
+tearing on the wall.
+
+Send the sentinel instead. This does not decide a geometry in the driver, it
+stops the driver from deciding one -- the firmware measured the capture size and
+drives the panel, so it is the one that knows both.
+
+Measured on the device, and stated plainly: this alone does not fix the
+tearing. With the sentinel in place, a 1280x720 source still leaves
+0x05180008 at 0x43010000 and bit 27 of 0x05180014 set. What is missing is the
+rebuild itself -- the register programming sits behind UpdateWce, which is
+ticked by a hardware interrupt we cannot raise (re/notes/DEAD-ENDS.md section 81,
+re-confirmed here: the full stock source-switch sequence -- Wce_SetWindow,
+SetSource(1), SetSource(3), DisableBlackScreen -- runs clean and moves nothing).
+Re-sending Wce_SetWindow after probe does nothing at all for the same reason.
+
+The patch is kept because the value it replaces is wrong on its own terms: it
+was a geometry the driver had no business choosing, it contradicts the only
+capture we have of what stock sends, and it pins the two ends of the mapping
+together -- so it would fight whatever eventually makes the rebuild run.
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 19:43:52.416235525 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 19:43:52.422128910 +0200
+@@ -798,11 +798,20 @@
+  * and hand back their addresses. The shared memory is mapped write combining;
+  * it is written word by word because a wide unaligned access into this region
+  * has faulted before (doku/67).
++ *
++ * The rectangle is the "no crop" sentinel, not a mode: stock puts
++ * [0, 0, 7680, 4320] into both windows and lets the firmware map the capture
++ * size it measured onto the panel size it drives. A real geometry here pins
++ * source and destination together, and the firmware then settles on 1:1 no
++ * matter what the source does.
+  */
++#define H713_WCE_ANY_WIDTH	7680
++#define H713_WCE_ANY_HEIGHT	4320
++
+ static void h713_hdmirx_wce_args(struct h713_hdmirx *rx, u32 *args)
+ {
+ 	static const u32 window[4] = {
+-		0, H713_HDMIRX_WIDTH, 0, H713_HDMIRX_HEIGHT,
++		0, H713_WCE_ANY_WIDTH, 0, H713_WCE_ANY_HEIGHT,
+ 	};
+ 	unsigned int i;
+ 

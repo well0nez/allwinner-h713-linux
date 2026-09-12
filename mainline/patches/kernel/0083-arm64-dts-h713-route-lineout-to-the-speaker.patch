@@ -1,0 +1,51 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Tue, 2 Sep 2026 04:40:00 -0700
+Subject: [PATCH] arm64: dts: h713: route LINEOUT to the speaker
+
+With 0082 the H616 codec driver binds and registers an ALSA card, and mpv opens
+the PCM and writes audio -- but nothing is heard, and /sys/kernel/debug/gpio
+shows the amp enable still low during playback:
+
+  gpio-2   (                    |allwinner,pa        ) out lo
+
+sun4i-codec's H616 card provides SND_SOC_DAPM_SPK("Speaker",
+sun4i_codec_spk_event), and that event handler is what drives the PA GPIO. Its
+built-in routes end at LINEOUT and nothing reaches Speaker, so with
+card->fully_routed set DAPM powers the output path down and the event never
+fires.
+
+Supplying the board half of the routing connects them. This is why the driver
+only warns rather than fails when allwinner,audio-routing is missing -- the
+property is board-specific by design. The warning at probe was not cosmetic,
+which is worth stating because it was initially read that way.
+
+With this route, gpio-2 reads "out hi" during playback and returns low after
+the stream closes. The H713 headphone-amplifier stage required for normal
+speaker gain is enabled by the following codec patch.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -776,6 +776,20 @@
+ 			dma-names = "tx";
+ 			/* PL2 on r_pio, NOT PB2 on the main pio. Active high. */
+ 			allwinner,pa-gpios = <&r_pio 0 2 GPIO_ACTIVE_HIGH>;
++			/*
++			 * Without this the amp never turns on. The card carries
++			 * a "Speaker" widget whose event handler toggles the PA
++			 * GPIO above, but its built-in routes stop at LINEOUT
++			 * and nothing reaches Speaker. The card is fully_routed,
++			 * so DAPM powers down the whole output path and the
++			 * event never fires -- measured: playback opened the
++			 * PCM and wrote audio while gpio-2 stayed "out lo".
++			 *
++			 * This is the board-specific half of the routing, which
++			 * is why the driver only warns when it is absent rather
++			 * than failing. The warning is not cosmetic.
++			 */
++			allwinner,audio-routing = "Speaker", "LINEOUT";
+ 			status = "disabled";
+ 		};
+ 

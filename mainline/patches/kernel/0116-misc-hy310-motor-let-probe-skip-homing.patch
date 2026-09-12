@@ -1,0 +1,56 @@
+misc: hy310-motor: let probe skip homing
+
+Probe arms a homing run, and homing starts by driving up to 100 msteps in one
+direction. That is fine on a machine whose position is unknown but free -- and
+wrong on one that is already parked against its end stop, which is exactly the
+state this driver has to be able to diagnose. Loading the module to look at the
+limiter then pushes the mechanism into the stop, once per load.
+
+That happened here: with the focus driven to its upper end by hand, reloading
+the module to read the limiter would have driven it further up, three times in
+a row.
+
+Add homing=0. The driver still probes, configures the pads and exposes sysfs;
+it just does not move anything, and it says plainly that it has no calibration.
+Default is unchanged.
+
+    insmod hy310-focus-motor.ko homing=0 limiter_bias=1   # look, do not move
+
+diff -ruN a/drivers/misc/hy310-focus-motor.c b/drivers/misc/hy310-focus-motor.c
+--- a/drivers/misc/hy310-focus-motor.c	2026-09-07 20:33:31.054882654 +0200
++++ b/drivers/misc/hy310-focus-motor.c	2026-09-07 20:33:51.976259658 +0200
+@@ -805,6 +805,20 @@
+  * PH14 (stock_pinconf_pio.txt: "pin 238 (PH14): input bias pull down").
+  */
+ /*
++ * Probe arms a homing run, and homing starts by driving up to 100 msteps in
++ * one direction. If the mechanism is already parked against its end stop --
++ * which is exactly the state this driver has to be able to diagnose -- that
++ * run pushes into the stop. Loading the module merely to look at the limiter
++ * must therefore not move anything at all.
++ *
++ * With homing=0 the driver probes, configures the pads and exposes sysfs
++ * without touching the mechanism. It then has no calibration, and says so.
++ */
++static bool homing = true;
++module_param(homing, bool, 0444);
++MODULE_PARM_DESC(homing, "run the homing sequence at probe (default yes)");
++
++/*
+  * Diagnostic override for the limiter pad bias. The switch on this board
+  * sources 3.3 V when it is active and is open otherwise, so an open switch and
+  * a broken connection look identical on a pull-down. A pull-up does not tell
+@@ -1143,7 +1157,12 @@
+ 	g_motor = m;
+ 
+ 	/* Async homing — doesn't block probe, runs in work queue */
+-	queue_delayed_work(m->wq, &m->homing_work, msecs_to_jiffies(500));
++	if (homing)
++		queue_delayed_work(m->wq, &m->homing_work,
++				   msecs_to_jiffies(500));
++	else
++		dev_warn(&pdev->dev,
++			 "homing disabled by module parameter — position unknown and uncalibrated\n");
+ 
+ 	dev_info(&pdev->dev, "probed: %d phases, %d limiters, %d steps\n",
+ 		 m->phase_num, m->limiter_num, m->step_total);

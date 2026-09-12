@@ -1,0 +1,84 @@
+arm64: dts: h713: use the stock property names on the motor node
+
+motor_control_fdt_parse (stock vmlinux 0xc05d62c8) looks up its properties
+by name, and two of them are spelled with underscores: "active_level"
+(string at 0xc11618ec, read at 0xc05d6314) and "motor_type" (0xc1161a03,
+read at 0xc05d6434).  Everything else is hyphenated: motor-phase-num,
+motor-step-num, motor-step-type, motor-cycle, motor-phase-udelay,
+motor-step-mdelay, motor-gpio-phase%d, limiter-up-gpio, limiter-dn-gpio,
+motor-cw-table, motor-ccw-table.  The stock DTB spells them the same way
+(hy310-board.dts:2635).
+
+This port invented "active-level" and "motor-type" and taught only its own
+driver to read them, so the node did not satisfy the "motor-control"
+binding it claims in its second compatible.  Use the names the binding
+actually defines.  The driver accepts both spellings, stock name first, so
+this patch and the driver patch are independent of each other.
+
+The comment above the node is corrected at the same time.  The stock DTB
+has exactly one motor node and the stock kernel exactly one motor driver
+(kallsyms c05d5c1c..c05d7d14, globals motor_ctl / pMotordev), and the stock
+GPIO dump lists no motor lines besides PH4..PH7 and PH14 -- so this is the
+projector's focus drive, not a keystone motor sitting next to one.  It also
+records what PH14 actually is: a range gate that reads active across the
+allowed travel, with a pull-down on stock, not an end-stop contact.
+
+No values change; the built DTB differs only in those two property names.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1915,10 +1915,27 @@
+ 	 */
+ 
+ 	/*
+-	 * Focus motor driver (hy310-focus-motor).
+-	 * Stepper motor for projector focus adjustment.
+-	 * 4-phase half-step sequence, 1 limit switch (PH14, active HIGH).
+-	 * Values extracted from stock hy310-board.dtb via raw FDT parsing.
++	 * The projector's single stepper motor: the focus drive.
++	 *
++	 * Every value below is the stock DTB's, node "motor_ctr" in
++	 * re/vendor/HY310/extracted/dtb_extracted/hy310-board.dts:2635.
++	 * That DTB has exactly one motor node and the stock kernel has
++	 * exactly one motor driver, so this is not a keystone motor
++	 * beside a focus motor -- it is the focus motor.  The old name
++	 * came from the HY300 tree, not from this firmware.
++	 *
++	 * The property names are the ones motor_control_fdt_parse
++	 * (stock vmlinux 0xc05d62c8) actually looks up, including the
++	 * two spelled with underscores.
++	 *
++	 * PH14 is a range gate, not an end stop: it reads active over
++	 * the whole allowed travel, and the driver reverses when it
++	 * goes inactive (motor_run_up_control 0xc05d6ea0).  On stock it
++	 * is a GPIO input with a pull-down, which is the idle level for
++	 * active_level = 1 (re/captures/HY310-DEV/stock_pinconf_pio.txt,
++	 * "pin 238 (PH14): input bias pull down").  The driver sets that
++	 * bias itself, so no pinctrl group is needed here.
++	 *
+ 	 * GPIO format: <&pio bank pin flags>  bank 7 = PH
+ 	 */
+ 	motor_ctr: motor-ctr {
+@@ -1932,9 +1949,9 @@
+ 		motor-gpio-phase3 = <&pio 7 7 0>;	/* PH7 */
+ 
+ 		limiter-up-gpio = <&pio 7 14 0>;	/* PH14 */
+-		active-level = <1>;			/* active HIGH */
++		active_level = <1>;			/* limiter active HIGH */
+ 
+-		motor-type = <0>;			/* 0 = stepper */
++		motor_type = <0>;			/* 0 = stepper */
+ 		motor-step-num = <8>;			/* 8 half-steps per sequence */
+ 		motor-cycle = <2>;			/* 2 cycles per mstep */
+ 		motor-step-type = <8>;
+@@ -1943,8 +1960,8 @@
+ 		motor-cw-table = [01 09 08 0A 02 06 04 05];
+ 		motor-ccw-table = [05 04 06 02 0A 08 09 01];
+ 
+-		motor-phase-udelay = <1>;		/* 1ms between phases */
+-		motor-step-mdelay = <1>;		/* 1ms between steps */
++		motor-phase-udelay = <1>;		/* ms between phases */
++		motor-step-mdelay = <1>;		/* ms between steps */
+ 	};
+ 
+ 	/*

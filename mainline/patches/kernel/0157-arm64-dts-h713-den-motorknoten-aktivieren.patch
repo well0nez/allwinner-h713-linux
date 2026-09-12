@@ -1,0 +1,33 @@
+arm64: dts: h713: den Motorknoten aktivieren
+
+Der Knoten steht seit 0024 auf "disabled", mit der Begruendung "Endschalter
+liefert nichts".  Diese Begruendung ist widerlegt.
+
+Am 12.09.2026 am Geraet gemessen
+(analyse/boot/motor-bereichswaechter-20260912.txt):
+
+    raw=1 ... step=-204
+    raw=0 ... step=-206            <== Rand
+    raw=1 ... edge_dn=1 step=-207  (Treiber kehrt um, merkt die Kante, haelt)
+
+PH14 ist kein Endschalter, sondern ein BEREICHSWAECHTER: er liefert
+active_level, SOLANGE die Mechanik im Fahrbereich steht, und der Rand wird am
+Wegfall des Pegels erkannt.  Nichts geliefert hat er nur, weil der Treiber den
+Pad-Bias erzwungen hat (0153) und weil motor_limit den Rohpegel gar nicht
+ausgab (0154).  Beides ist behoben, und doku/94 ist entsprechend berichtigt.
+
+Mit 0156 (homing standardmaessig aus) faehrt das Laden des Moduls nichts mehr
+an, also kann der Knoten aktiv sein.  Bedient wird der Motor von Hand mit
+userspace/h713-focus, das vor und nach jeder Bewegung motor_limit liest.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -35,6 +35,6 @@
+  * up the panel. TVTOP stays disabled -- see patch 0033.
+  */
+ &cpu_comm { status = "okay"; };	/* Treiber wird seit 01.09. gebaut */
+-&motor_ctr { status = "disabled"; };	/* Endschalter liefert nichts, siehe doku/94 */
++&motor_ctr { status = "okay"; };	/* Bereichswaechter PH14 vermessen 12.09., siehe doku/94 */
+ &adc_keys { status = "disabled"; };
+ &board_mgr { status = "okay"; };	/* Temperatur + Luefterdrehzahl, siehe doku/60 */

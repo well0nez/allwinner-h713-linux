@@ -1,0 +1,61 @@
+misc: hy310-motor: Rohpegel des Endschalters in motor_limit zeigen
+
+motor_limit gibt bisher nur die Auslegung aus (in-Bereich ja/nein).  Fuer die
+Frage, die offen ist -- liefert der Geber ueberhaupt etwas --, braucht man den
+Pegel selbst.  Beim NTC hat uns genau das gefehlt: der abgeleitete Wert sah
+plausibel aus, waehrend das Datenregister still stand
+(analyse/boot/ntc-gpadc-messung-20260911.txt).
+
+Ausgegeben werden zusaetzlich der Rohpegel des Limiter-Pins, active_level, die
+beiden gemerkten Kanten und der Schrittzaehler.  Das erste Feld bleibt
+unveraendert, damit die Zeile weiter zu Stocks motor_limit_show (0xc05d69d4)
+passt.
+
+Damit reicht eine Schleife aus der Shell, um den Waechter ueber den Fahrweg
+abzutasten, ohne den Treiber dafuer zu erweitern:
+
+    for i in $(seq 1 20); do
+        cat motor_limit
+        echo $(( (9 << 8) | 2 )) > motor_ctrl   # 2 msteps abwaerts
+        sleep 0.2
+    done
+
+Nur lesende Aenderung, kein Verhalten am Motor.
+
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -645,13 +645,32 @@
+ {
+ 	struct hy310_motor *m = g_motor;
+ 
++	struct gpio_desc *desc;
++	int raw = -1;
++
+ 	if (!m)
+ 		return -ENODEV;
+-	return sysfs_emit(buf, "%d up=%d dn=%d num=%d\n",
++
++	/*
++	 * Zusaetzlich zum Stock-Feld wird der ROHPEGEL ausgegeben. Beim NTC
++	 * hat uns genau das gefehlt: der abgeleitete Wert sah plausibel aus,
++	 * waehrend der Eingang selbst still stand. Wer den Bereichswaechter
++	 * ueber den Fahrweg abtastet, braucht den Pegel, nicht nur die
++	 * Auslegung davon.
++	 */
++	if (m->limiter_num >= 1) {
++		desc = gpio_to_desc(m->limiter_pin);
++		if (desc)
++			raw = gpiod_get_raw_value(desc);
++	}
++
++	return sysfs_emit(buf,
++			  "%d up=%d dn=%d num=%d raw=%d act=%d edge_up=%d edge_dn=%d step=%d\n",
+ 			  motor_limiter_status(m, 0) ? 1 : 0,
+ 			  motor_limiter_status(m, DIR_UP),
+ 			  motor_limiter_status(m, DIR_DN),
+-			  m->limiter_num);
++			  m->limiter_num, raw, m->active_level,
++			  m->edge_up, m->edge_dn, m->step_cur);
+ }
+ 
+ static ssize_t motor_limit_store(struct device *dev,

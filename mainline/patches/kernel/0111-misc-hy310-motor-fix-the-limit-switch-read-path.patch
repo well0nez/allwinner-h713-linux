@@ -1,0 +1,1020 @@
+misc: hy310-motor: stop driving the limit switch and read it the way stock does
+
+Homing on this board never finds the limit switch: PH14 reads LOW on every
+poll, the run walks its full 100 UP + 250 DN mstep budget and ends in
+"could not find limit switch!" (re/notes/WORKLOG.md, session 2026-03-21).
+The conclusion drawn at the time -- a broken switch on the test unit --
+does not survive the project's own stock captures.
+
+Stock reads the same pin on the same board and gets a signal:
+
+  * motor_control_probe (stock vmlinux 0xc05d753c) runs the homing block
+    synchronously.  In the stock boot log the motor driver's own message is
+    at 0.475418 s and the next kernel message at 0.483916 s
+    (re/captures/HY310-DEV/boot.log:284).  8.5 ms is far too short for even
+    one of the 100 mstep iterations (2 cycles x 8 phases x 1 ms each), so
+    the loop provably did not run, so motor_limiter_status() returned 1 on
+    the first read.  PH14 was HIGH.
+  * limiter_num is 1, not 0: the stock GPIO dump lists
+    "gpio-238 (limiter-up-gpio) in lo" and the log carries exactly one
+    "failed to get property limiter-gpio" -- the one for the absent
+    limiter-dn-gpio (re/captures/HY310-DEV/stock_gpio_debug.txt).
+
+Three differences between that driver and this one, all in the read path:
+
+1. The line was requested as an output.  devm_gpio_request_one() with flags
+   == 0 is GPIOF_OUT_INIT_LOW, so the switch input is driven low by the
+   SoC's output driver before gpiod_direction_input() corrects it, and that
+   return value was discarded.  Stock claims the line with a bare
+   gpio_request() and never gives it an output direction
+   (motor_control_fdt_parse 0xc05d62c8, call sites 0xc05d65b4..0xc05d6620).
+   Request it as GPIOF_IN, check the direction call, and fail the probe
+   rather than home a motor whose limit input could not be made readable.
+
+2. The pad bias was left to whatever the boot chain happened to leave.  On
+   the running stock system PH14 is "input bias pull down"
+   (re/captures/HY310-DEV/stock_pinconf_pio.txt), the defined idle level
+   for active_level = 1.  Set the bias explicitly to the complement of
+   active_level instead of inheriting an unspecified pad state.
+
+3. The meaning of the limiter was inverted.  Stock's motor_run_up_control
+   (0xc05d6ea0) backs off when the limiter reads INACTIVE, not active: the
+   limit input is a range gate, active over the whole allowed travel, and
+   leaving it is what makes stock reverse -- up to 40 msteps back until the
+   limiter is active again, then back_step further steps, then latch the
+   edge.  This driver backed off on the opposite condition, so with a
+   limiter that never reads active it never backed off at all and simply
+   kept stepping.  That is the path that drives the mechanism into its
+   mechanical stop.  Mirror stock's condition.
+
+Two further stock behaviours that were lost in the port and are restored
+here, because both silently break movement:
+
+  * Timing.  delay_ms_func (0xc05d6b00) is
+    "autofocus ? n x const_udelay(0x1ffffc70) : usleep_range(800*n,1000*n)".
+    Only the autofocus path busy-waits; a manual move sleeps.  This driver
+    used mdelay() unconditionally and burned a CPU for the whole 5.6 s
+    homing run.
+  * Work handshake.  func_motor_run (0xc05d7a3c) keeps polling the queue for
+    120 x 5 ms after it runs dry and only then clears work_is_running.  That
+    grace period is what makes the "enqueue, then start the work only if it
+    is not already running" handshake safe.  Draining the queue once and
+    returning, as this driver did, loses every command enqueued between the
+    last dequeue and clearing the flag -- which matches the parked report
+    that sysfs moves stop working after boot.  motor_run_up_dn also has to
+    start the work even when it rate-limits the enqueue away, as stock does.
+    Beyond stock, the handler re-checks the queue after clearing the flag and
+    restarts itself if something is waiting; stock leaves that last narrow
+    window open, and remove() now empties the queue before cancelling so the
+    re-arm cannot fight teardown.
+
+The 100/250 mstep budget in homing stays.  It is not a workaround added
+here: those counts are stock's own (0xc05d7758..0xc05d77c8).  They are a
+bound, not the mechanism -- and when the limiter never reports in range the
+driver now stops the phases, leaves both edge flags clear and says so,
+instead of reporting an edge it did not observe.
+
+The header comment is rewritten: stock has no interrupt path for the
+limiter at all, so "H713 PH11+ EINT is broken" was never the reason for
+polling, and the driver's own name is corrected in the description -- the
+stock firmware has exactly one motor node and one motor driver, and it is
+the focus drive.
+
+Not verified: which of the three read-path defects the hardware will
+actually clear.  The measurement that produced "PH14 always LOW" is from
+2026-03-21, before patch 0030 fixed the malformed fan_power_hog, so at that
+time the PB5 rail -- the board's shared backlight/fan power enable, which
+stock holds high -- was provably off in our port.  Whether the limit sensor
+hangs on that rail is unknown; TESTPLAN.md checks it first, before anything
+moves.
+
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -1,32 +1,59 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * HY310 Focus Motor Driver
++ * HY310 projector stepper motor driver (focus drive)
+  *
+- * Stepper motor driver for projector focus adjustment.
+- * Controls 4-phase stepper motor via GPIO with up to 2 limit switches.
+- * Architecture based on Allwinner stock motor-control.c driver
+- * (RE from stock vmlinux, author: JingyanLiang @ Allwinner).
+- *
+- * Key design decisions:
+- *  - GPIO polling for limit switches (no EINT — H713 PH11+ EINT is broken)
+- *  - Work-queue based movement (non-blocking sysfs interface)
+- *  - CW/CCW step tables loaded from DTS (not hardcoded)
+- *  - Edge tracking prevents motor overtravel
+- *  - back_step parameter: reverse N steps after hitting limit
+- *
+- * Timing note: DTS property "motor-phase-udelay" is misleadingly named —
+- *  stock driver calls delay_ms_func() with this value, i.e. MILLISECONDS.
+- *  We match stock behavior: mdelay(phase_udelay) between phase changes.
+- *
+- * Stock DTB values (from hy310-board.dtb extraction):
+- *  motor-phase-num = 4, motor-step-num = 8, motor-cycle = 2
+- *  motor-phase-udelay = 1 (ms), motor-step-mdelay = 1 (ms)
+- *  active_level = 1 (active HIGH), motor_type = 0 (stepper)
+- *  CW:  01 09 08 0A 02 06 04 05
+- *  CCW: 05 04 06 02 0A 08 09 01
++ * Port of the Allwinner stock driver motor-control.c (author JingyanLiang,
++ * reversed from the stock vmlinux, symbols and addresses below refer to
++ * re/ida/HY310/extracted/vmlinux.elf.i64, ARM32).
+  *
+- * DTS binding: compatible = "allwinner,hy310-focus-motor"
+- * GPIO: PH4-PH7 (phases), PH14 (limiter-up)
++ * What the hardware is
++ * --------------------
++ * One 4-phase stepper on PH4..PH7 plus one limit input on PH14. The stock
++ * device tree (re/vendor/HY310/extracted/dtb_extracted/hy310-board.dts:2635)
++ * contains exactly one motor node, "motor_ctr"; the stock kernel contains
++ * exactly one motor driver (kallsyms c05d5c1c..c05d7d14) and one set of
++ * globals (motor_ctl, pMotordev). There is no second motor anywhere in the
++ * stock firmware, and the stock GPIO dump lists no further motor lines
++ * (re/captures/HY310-DEV/stock_gpio_debug.txt). This is the focus drive; the
++ * earlier "keystone" name in this port was inherited from the HY300 tree and
++ * is not backed by anything in the stock firmware.
++ *
++ * How stock reads the limit input  (motor_limiter_status @ c05d6930)
++ * ------------------------------------------------------------------
++ *	gpio_to_desc(pin); gpiod_get_raw_value(desc) == active_level -> 1
++ * The pin is claimed with a bare gpio_request() and then switched to input
++ * with gpiod_direction_input(); stock never gives that line an output
++ * direction (motor_control_fdt_parse @ c05d62c8, c05d65b4..c05d6620).
++ * On the running stock system the pad is a GPIO input with a pull-down
++ * (re/captures/HY310-DEV/stock_pinconf_pio.txt: "pin 238 (PH14): input bias
++ * pull down"), which is the defined idle level for active_level = 1.
++ *
++ * What the value means  (motor_run_up_control @ c05d6ea0)
++ * -------------------------------------------------------
++ * Stock treats limiter == active as "inside the allowed travel", not as "at
++ * the mechanical stop". After every mstep it re-reads the limiter; when the
++ * limiter has gone INACTIVE it immediately reverses (up to 40 msteps) until
++ * the limiter is active again, then adds back_step further steps and latches
++ * the edge flag. The limit input is a range gate, and losing it is what makes
++ * stock back off. An implementation that only backs off when the limiter
++ * becomes ACTIVE never backs off at all on this hardware.
++ *
++ * Timing  (delay_ms_func @ c05d6b00)
++ * ----------------------------------
++ *	autofocus ? n x const_udelay(0x1ffffc70) : usleep_range(800*n, 1000*n)
++ * so "motor-phase-udelay"/"motor-step-mdelay" are milliseconds, and a normal
++ * (non-autofocus) move sleeps rather than busy-waits. The autofocus path
++ * busy-waits; the exact constant is CONFIG_HZ dependent and was not verified.
++ *
++ * sysfs protocol  (motor_ctrl_store @ c05d7d14)
++ * ---------------------------------------------
++ *	value = (cmd << 8) | (steps & 0x7f) | (full_limit ? 0x80 : 0)
++ *	cmd 1/2  move up/down, sets the driver's autofocus flag (busy-wait
++ *	         timing); this is the path the stock autofocus uses
++ *	cmd 3    flush the queue
++ *	cmd 4    set the current step counter
++ *
++ * DTS binding: compatible = "allwinner,hy310-focus-motor", "motor-control"
+  */
+ 
+ #include <linux/module.h>
+@@ -35,6 +62,7 @@
+ #include <linux/of_gpio.h>
+ #include <linux/gpio.h>
+ #include <linux/gpio/consumer.h>
++#include <linux/pinctrl/pinconf-generic.h>
+ #include <linux/slab.h>
+ #include <linux/mutex.h>
+ #include <linux/workqueue.h>
+@@ -45,13 +73,16 @@
+ #define DRIVER_NAME		"hy310-focus-motor"
+ #define MAX_PHASES		8
+ #define MAX_STEPS		32
+-#define DEFAULT_STEP_TOTAL	800
++#define DEFAULT_STEP_TOTAL	800	/* stock: MOTOR_STEP_TOTAL = 800 */
+ #define DEFAULT_BACK_STEP	5
+ #define QUEUE_MAX_LEN		64
+-#define MOVE_CLAMP_MAX		18
+-#define HOMING_UP_MAX		100
+-#define HOMING_DN_MAX		250
+-#define RECOVERY_MAX		40
++#define MOVE_CLAMP_MAX		18	/* stock motor_run_up_dn @ c05d7b90 */
++#define HOMING_UP_MAX		100	/* stock motor_control_probe @ c05d753c */
++#define HOMING_DN_MAX		150	/* stock counts on to i == 250 */
++#define RECOVERY_MAX		40	/* stock motor_run_up_control @ c05d6ea0 */
++#define IDLE_POLL_START		120	/* stock func_motor_run @ c05d7a3c */
++#define IDLE_POLL_REARM		100
++#define IDLE_POLL_MS		5
+ 
+ /* Direction constants for motor_limiter_status() */
+ #define DIR_DN			1
+@@ -73,6 +104,7 @@
+ 	int			phase_num;
+ 	int			limiter_up_pin;
+ 	int			limiter_dn_pin;
++	int			limiter_pin;	/* stock MOTOR_LIMITER_PIN */
+ 	int			limiter_num;
+ 	int			active_level;
+ 
+@@ -90,12 +122,13 @@
+ 	/* State */
+ 	int			step_cur;	/* current position */
+ 	int			step_total;	/* max steps */
+-	int			edge_up;	/* 1 = at UP limit */
+-	int			edge_dn;	/* 1 = at DOWN limit */
++	int			edge_up;	/* 1 = upper edge latched */
++	int			edge_dn;	/* 1 = lower edge latched */
+ 	int			last_dir;	/* last movement direction */
+ 	int			step_inc;	/* step increment counter */
+ 	int			back_step;	/* steps to reverse after limit */
+ 	int			no_limit;	/* bypass limit checking */
++	int			autofocus;	/* stock: selects busy-wait timing */
+ 
+ 	/* Async movement */
+ 	struct workqueue_struct	*wq;
+@@ -112,6 +145,24 @@
+ 
+ static struct hy310_motor *g_motor;
+ 
++/* ── Timing ────────────────────────────────────────────────── */
++
++/*
++ * Stock delay_ms_func() @ c05d6b00. The unit is milliseconds in both
++ * branches. Only the autofocus path busy-waits; everything else sleeps, so
++ * every caller of this helper must run in a sleepable context.
++ */
++static void motor_delay_ms(struct hy310_motor *m, unsigned int ms)
++{
++	if (!ms)
++		return;
++
++	if (m->autofocus)
++		mdelay(ms);
++	else
++		usleep_range(800 * ms, 1000 * ms);
++}
++
+ /* ── GPIO helpers ──────────────────────────────────────────── */
+ 
+ static void motor_set_phase(struct hy310_motor *m, int pattern)
+@@ -131,49 +182,45 @@
+ }
+ 
+ /*
+- * Check limit switch status.
+- *   dir = DIR_UP (2): check up limiter
+- *   dir = DIR_DN (1): check down limiter
+- *   dir = 0:          check any/single limiter
+- * Returns 1 if limiter is active (at mechanical limit), 0 otherwise.
++ * Read the limit input. Faithful port of motor_limiter_status @ c05d6930.
++ *
++ * Returns 1 when the input reads active_level. Stock's movement paths read
++ * that as "the mechanism is inside the allowed travel"; 0 means it has left
++ * the allowed travel and has to be driven back. The no-pin cases return 1 for
++ * the same reason stock does: without a usable limit input there is nothing
++ * that could report "out of range", so nothing must trigger a reversal.
++ *
++ *   dir = DIR_UP (2): up limiter
++ *   dir = DIR_DN (1): down limiter
++ *   dir = 0:          single-limiter case / status readout
+  */
+ static int motor_limiter_status(struct hy310_motor *m, int dir)
+ {
+-	int pin;
+ 	struct gpio_desc *desc;
+-	int val;
+-
+-	if (m->limiter_num == 0)
+-		return 0;
++	int pin;
+ 
+ 	if (m->limiter_num == 1) {
+-		/* Single limiter — use whichever is available */
+-		pin = m->limiter_up_pin ? m->limiter_up_pin : m->limiter_dn_pin;
++		pin = m->limiter_pin;
+ 		if (!pin)
+-			return 0;
++			return 1;
++	} else if (dir == DIR_UP) {
++		pin = m->limiter_up_pin;
++		if (!pin)
++			return 1;
++	} else if (dir == DIR_DN) {
++		pin = m->limiter_dn_pin;
++		if (!pin)
++			return 1;
+ 	} else {
+-		/* Two limiters — select by direction */
+-		if (dir == DIR_UP) {
+-			pin = m->limiter_up_pin;
+-			if (!pin)
+-				return 1; /* no pin → assume at limit (safe) */
+-		} else if (dir == DIR_DN) {
+-			pin = m->limiter_dn_pin;
+-			if (!pin)
+-				return 1;
+-		} else {
+-			pin = m->limiter_up_pin;
+-			if (!pin)
+-				return 0;
+-		}
++		/* stock LABEL_5: no single limiter and no direction given */
++		return 1;
+ 	}
+ 
+ 	desc = gpio_to_desc(pin);
+ 	if (!desc)
+-		return 0;
++		return 1;
+ 
+-	val = gpiod_get_raw_value(desc);
+-	return (val == m->active_level) ? 1 : 0;
++	return gpiod_get_raw_value(desc) == m->active_level;
+ }
+ 
+ /* ── Single micro-step execution ───────────────────────────── */
+@@ -182,6 +229,7 @@
+  * Execute one "mstep" in UP direction.
+  * For stepper motors: iterates through ccw_table motor_cycle times.
+  * For bipolar motors: pulse IN1/IN2.
++ * Stock: motor_run_up_mstep @ c05d6b6c.
+  */
+ static void motor_run_up_mstep(struct hy310_motor *m)
+ {
+@@ -191,23 +239,23 @@
+ 		/* Bipolar: pulse IN1=0,IN2=1 then both off */
+ 		gpio_set_value(m->phase_gpios[0], 0);
+ 		gpio_set_value(m->phase_gpios[1], 1);
+-		mdelay(m->step_mdelay);
++		motor_delay_ms(m, m->step_mdelay);
+ 		gpio_set_value(m->phase_gpios[0], 0);
+ 		gpio_set_value(m->phase_gpios[1], 0);
+-		mdelay(m->step_mdelay);
++		motor_delay_ms(m, m->step_mdelay);
+ 		return;
+ 	}
+ 
+ 	for (i = 0; i < m->motor_cycle; i++) {
+ 		for (j = 0; j < m->step_num; j++) {
+ 			motor_set_phase(m, m->ccw_table[j]);
+-			mdelay(m->phase_udelay);
++			motor_delay_ms(m, m->phase_udelay);
+ 		}
+ 	}
+ 	motor_set_stop(m);
+ }
+ 
+-/* Execute one "mstep" in DOWN direction. */
++/* Execute one "mstep" in DOWN direction. Stock: motor_run_dn_mstep @ c05d6c90. */
+ static void motor_run_dn_mstep(struct hy310_motor *m)
+ {
+ 	int i, j;
+@@ -215,17 +263,17 @@
+ 	if (m->motor_type == 1 && m->phase_num >= 2) {
+ 		gpio_set_value(m->phase_gpios[0], 1);
+ 		gpio_set_value(m->phase_gpios[1], 0);
+-		mdelay(m->step_mdelay);
++		motor_delay_ms(m, m->step_mdelay);
+ 		gpio_set_value(m->phase_gpios[0], 0);
+ 		gpio_set_value(m->phase_gpios[1], 0);
+-		mdelay(m->step_mdelay);
++		motor_delay_ms(m, m->step_mdelay);
+ 		return;
+ 	}
+ 
+ 	for (i = 0; i < m->motor_cycle; i++) {
+ 		for (j = 0; j < m->step_num; j++) {
+ 			motor_set_phase(m, m->cw_table[j]);
+-			mdelay(m->phase_udelay);
++			motor_delay_ms(m, m->phase_udelay);
+ 		}
+ 	}
+ 	motor_set_stop(m);
+@@ -234,30 +282,45 @@
+ /* ── Movement with limit control ───────────────────────────── */
+ 
+ /*
+- * Move motor UP with limit switch checking.
+- * Returns 1 on success, 0 if already at limit.
++ * One guarded mstep upwards. Port of motor_run_up_control @ c05d6ea0.
++ *
++ * The limiter is a range gate: as long as it reads active the mechanism is
++ * inside the allowed travel. If a step takes it out of range, drive back down
++ * until the limiter reports in-range again (at most RECOVERY_MAX msteps), add
++ * back_step more, and latch the upper edge.
++ *
++ * Returns 1 when a step was executed, 0 when the edge is already latched.
+  */
+ static int motor_run_up_control(struct hy310_motor *m, int long_flag)
+ {
+-	int i;
++	int i, n = 0;
+ 
+-	/* Edge check — skip when no_limit is active */
+-	if (m->edge_up && !m->no_limit)
++	if (m->edge_up)
+ 		return 0;
+ 
+ 	mutex_lock(&m->run_mutex);
+ 
+ 	motor_run_up_mstep(m);
+ 
+-	if (!m->no_limit && motor_limiter_status(m, DIR_UP)) {
+-		/* At limit after move — set edge and optionally back off */
+-		if (m->back_step > 0) {
+-			for (i = 0; i < m->back_step; i++) {
+-				motor_run_dn_mstep(m);
+-				if (!motor_limiter_status(m, DIR_UP) && i > 3)
+-					i--;
++	if (!m->no_limit && !motor_limiter_status(m, DIR_UP)) {
++		while (1) {
++			motor_run_dn_mstep(m);
++			if (motor_limiter_status(m, DIR_UP))
++				break;
++			if (++n == RECOVERY_MAX) {
++				dev_warn(m->dev,
++					 "up: limiter did not return in range within %d msteps\n",
++					 RECOVERY_MAX);
++				goto latch_edge;
+ 			}
+ 		}
++
++		for (i = 0; i < m->back_step; i++) {
++			motor_run_dn_mstep(m);
++			if (!motor_limiter_status(m, DIR_UP) && i > 3)
++				i--;
++		}
++latch_edge:
+ 		m->edge_up = 1;
+ 	}
+ 
+@@ -273,28 +336,37 @@
+ 	return 1;
+ }
+ 
+-/* Move motor DOWN with limit switch checking. Mirror of UP. */
++/* One guarded mstep downwards. Port of motor_run_dn_control @ c05d70d4. */
+ static int motor_run_dn_control(struct hy310_motor *m, int long_flag)
+ {
+-	int i;
++	int i, n = 0;
+ 
+-	/* Edge check — skip when no_limit is active */
+-	if (m->edge_dn && !m->no_limit)
++	if (m->edge_dn)
+ 		return 0;
+ 
+ 	mutex_lock(&m->run_mutex);
+ 
+ 	motor_run_dn_mstep(m);
+ 
+-	if (!m->no_limit && motor_limiter_status(m, DIR_DN)) {
+-		/* At limit after move — set edge and optionally back off */
+-		if (m->back_step > 0) {
+-			for (i = 0; i < m->back_step; i++) {
+-				motor_run_up_mstep(m);
+-				if (!motor_limiter_status(m, DIR_DN) && i > 3)
+-					i--;
++	if (!m->no_limit && !motor_limiter_status(m, DIR_DN)) {
++		while (1) {
++			motor_run_up_mstep(m);
++			if (motor_limiter_status(m, DIR_DN))
++				break;
++			if (++n == RECOVERY_MAX) {
++				dev_warn(m->dev,
++					 "dn: limiter did not return in range within %d msteps\n",
++					 RECOVERY_MAX);
++				goto latch_edge;
+ 			}
+ 		}
++
++		for (i = 0; i < m->back_step; i++) {
++			motor_run_up_mstep(m);
++			if (!motor_limiter_status(m, DIR_DN) && i > 3)
++				i--;
++		}
++latch_edge:
+ 		m->edge_dn = 1;
+ 	}
+ 
+@@ -358,27 +430,62 @@
+ 		kfree(cmd);
+ }
+ 
+-/* Work handler — processes queued movement commands */
++/*
++ * Work handler. Port of func_motor_run @ c05d7a3c.
++ *
++ * Stock keeps polling the queue for IDLE_POLL_START * IDLE_POLL_MS after it
++ * runs dry and only then clears work_running. That grace period is what makes
++ * the "enqueue, then start the work only if it is not already running"
++ * handshake safe: a writer that enqueues while the handler is between its
++ * last dequeue and clearing the flag is still served. Draining once and
++ * exiting immediately loses those commands.
++ */
+ static void motor_work_handler(struct work_struct *work)
+ {
+ 	struct hy310_motor *m = container_of(work, struct hy310_motor, work);
+ 	struct motor_cmd *cmd;
++	int idle = IDLE_POLL_START;
++	int long_flag = 1;
++	int last_dir = 0;
++
++	while ((idle > 1 || m->queue_len) && m->work_running) {
++		cmd = motor_dequeue(m);
++		if (!cmd) {
++			idle--;
++			msleep(IDLE_POLL_MS);
++			long_flag = 1;
++			continue;
++		}
+ 
+-	while ((cmd = motor_dequeue(m)) != NULL) {
+-		if (cmd->direction == 0)
+-			motor_run_up_control(m, 1);
+-		else
+-			motor_run_dn_control(m, 1);
+-
++		if (cmd->direction == 0) {
++			motor_run_up_control(m, (last_dir == 0) ? long_flag : 1);
++			last_dir = 0;
++		} else {
++			motor_run_dn_control(m, (last_dir == 1) ? long_flag : 1);
++			last_dir = 1;
++		}
++		long_flag = 0;
+ 		kfree(cmd);
++		idle = IDLE_POLL_REARM;
+ 	}
+ 
+ 	m->work_running = 0;
++
++	/*
++	 * Stock's grace period leaves one narrow window: a writer that
++	 * enqueues between the loop test above and the store still sees
++	 * work_running == 1 and does not restart us. Close it here. This part
++	 * is not stock's; stock simply clears the flag.
++	 */
++	if (m->queue_len) {
++		m->work_running = 1;
++		queue_work(m->wq, &m->work);
++	}
+ }
+ 
+-/* Enqueue movement and start work if needed */
++/* Enqueue movement and start the work if needed. Stock: motor_run_up_dn @ c05d7b90. */
+ static void motor_run_up_dn(struct hy310_motor *m, int dir, int steps,
+-			     int full_limit)
++			    int full_limit)
+ {
+ 	int n, i;
+ 
+@@ -389,15 +496,18 @@
+ 	else
+ 		n = steps;
+ 
+-	/* Check edge flag */
++	/* Edge flag: this direction is already blocked. */
+ 	if (dir == 0 && m->edge_up)
+ 		return;
+ 	if (dir == 1 && m->edge_dn)
+ 		return;
+ 
+-	/* Rate-limit queue */
++	/*
++	 * Rate limit. Stock skips the enqueue but still (re)starts the work,
++	 * so a full queue never leaves entries stranded.
++	 */
+ 	if (full_limit && m->queue_len > 3)
+-		return;
++		goto start_work;
+ 	if (full_limit && m->queue_len == 3)
+ 		n = 1;
+ 
+@@ -406,6 +516,7 @@
+ 			break;
+ 	}
+ 
++start_work:
+ 	if (!m->work_running) {
+ 		m->work_running = 1;
+ 		queue_work(m->wq, &m->work);
+@@ -415,27 +526,20 @@
+ /* ── Sysfs attributes ──────────────────────────────────────── */
+ 
+ /*
+- * motor_ctrl — main control interface
+- * Write: 0xCCSSFF (CC=command, SS=steps, FF=flags)
+- *   cmd 1: move UP (steps, full_limit=bit7)
+- *   cmd 2: move DOWN
+- *   cmd 3: flush queue
+- *   cmd 4: set position
+- *   cmd 7: goto absolute step
+- * Read: "position step_inc limiter_status"
++ * motor_ctrl — main control interface, protocol from motor_ctrl_store
++ * @ c05d7d14. Write: (cmd << 8) | (steps & 0x7f) | (full_limit ? 0x80 : 0).
++ * Read: "step_cur step_inc limiter_in_range".
+  */
+ static ssize_t motor_ctrl_show(struct device *dev,
+ 			       struct device_attribute *attr, char *buf)
+ {
+ 	struct hy310_motor *m = g_motor;
+-	int lim;
+ 
+ 	if (!m)
+ 		return -ENODEV;
+ 
+-	lim = motor_limiter_status(m, 0);
+-	return sysfs_emit(buf, "%d %d %d\n",
+-			  m->step_cur, m->step_inc % 10, lim ? 1 : 0);
++	return sysfs_emit(buf, "%d %d %d\n", m->step_cur, m->step_inc % 10,
++			  motor_limiter_status(m, 0) ? 1 : 0);
+ }
+ 
+ static ssize_t motor_ctrl_store(struct device *dev,
+@@ -456,19 +560,22 @@
+ 	full_limit = val & 0x80;
+ 
+ 	switch (cmd) {
+-	case 1: /* UP */
+-	case 2: /* DOWN */
++	case 1: /* UP, autofocus timing */
++	case 2: /* DOWN, autofocus timing */
++		m->autofocus = 1;
+ 		motor_run_up_dn(m, cmd - 1, steps, full_limit);
+ 		break;
+-	case 3: /* Flush queue */
++	case 3: /* flush queue */
+ 		motor_flush_queue(m);
+ 		break;
+-	case 4: /* Set position */
+-		m->step_cur = val & 0xFFFF;
++	case 4: /* set position: low byte plus byte 2 */
++		m->step_cur = (val & 0xFF) | ((val & 0xFF0000) >> 8);
+ 		break;
+-	case 7: /* Goto step */
++	case 7: /* goto step */
+ 		/* TODO: implement absolute positioning */
+ 		break;
++	default:
++		return -EINVAL;
+ 	}
+ 
+ 	return count;
+@@ -498,7 +605,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_ctrl_no_limit);
+ 
+-/* motor_limit — show limiter status */
++/* motor_limit — limiter readout; first field matches stock motor_limit_show */
+ static ssize_t motor_limit_show(struct device *dev,
+ 				struct device_attribute *attr, char *buf)
+ {
+@@ -506,7 +613,8 @@
+ 
+ 	if (!m)
+ 		return -ENODEV;
+-	return sysfs_emit(buf, "up=%d dn=%d num=%d\n",
++	return sysfs_emit(buf, "%d up=%d dn=%d num=%d\n",
++			  motor_limiter_status(m, 0) ? 1 : 0,
+ 			  motor_limiter_status(m, DIR_UP),
+ 			  motor_limiter_status(m, DIR_DN),
+ 			  m->limiter_num);
+@@ -516,7 +624,11 @@
+ 				 struct device_attribute *attr,
+ 				 const char *buf, size_t count)
+ {
+-	/* Write to limit resets edge flags (allows re-homing) */
++	/*
++	 * Stock motor_limit_store @ c05d5c1c is a no-op. Clearing the latched
++	 * edges here is a deliberate addition so a latched edge can be re-armed
++	 * for a bench test without unbinding the driver.
++	 */
+ 	if (g_motor) {
+ 		g_motor->edge_up = 0;
+ 		g_motor->edge_dn = 0;
+@@ -588,7 +700,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_cycle);
+ 
+-/* motor_back_step — steps to reverse after limit contact */
++/* motor_back_step — steps to reverse after the limiter drops out */
+ static ssize_t motor_back_step_show(struct device *dev,
+ 				    struct device_attribute *attr, char *buf)
+ {
+@@ -609,7 +721,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_back_step);
+ 
+-/* motor_ctrl_time — phase udelay timing */
++/* motor_ctrl_time — phase delay in ms */
+ static ssize_t motor_ctrl_time_show(struct device *dev,
+ 				    struct device_attribute *attr, char *buf)
+ {
+@@ -644,19 +756,93 @@
+ 
+ /* ── DTS parsing ───────────────────────────────────────────── */
+ 
++/* Stock spells these with underscores; the hyphen forms are this port's. */
++static int motor_read_u32(struct device_node *np, const char *stock_name,
++			  const char *alias, u32 *out)
++{
++	int ret;
++
++	ret = of_property_read_u32(np, stock_name, out);
++	if (!ret)
++		return 0;
++
++	return of_property_read_u32(np, alias, out);
++}
++
++/*
++ * Claim one limit input.
++ *
++ * The line is requested as an input and never as an output: stock claims it
++ * with a bare gpio_request() (motor_control_fdt_parse @ c05d65e0) and only
++ * then calls gpiod_direction_input(). Requesting it with flags == 0 means
++ * GPIOF_OUT_INIT_LOW, which drives the switch line low with the SoC's output
++ * driver before the direction is corrected.
++ *
++ * The pad bias is set explicitly to the complement of active_level, so the
++ * input has a defined idle level no matter what the boot chain left behind.
++ * For this board that is a pull-down, which is what the stock system shows on
++ * PH14 (stock_pinconf_pio.txt: "pin 238 (PH14): input bias pull down").
++ */
++static int motor_request_limiter(struct hy310_motor *m, struct device_node *np,
++				 const char *prop, int *pin_out)
++{
++	struct device *dev = m->dev;
++	struct gpio_desc *desc;
++	unsigned long bias;
++	int gpio, ret;
++
++	gpio = of_get_named_gpio(np, prop, 0);
++	if (gpio < 0)
++		return gpio;
++
++	ret = devm_gpio_request_one(dev, gpio, GPIOF_IN, prop);
++	if (ret) {
++		dev_err(dev, "failed to request gpio %d as %s: %d\n",
++			gpio, prop, ret);
++		return ret;
++	}
++
++	desc = gpio_to_desc(gpio);
++	if (!desc) {
++		dev_err(dev, "no descriptor for gpio %d (%s)\n", gpio, prop);
++		return -ENODEV;
++	}
++
++	ret = gpiod_direction_input(desc);
++	if (ret) {
++		dev_err(dev, "%s: gpio %d cannot be made an input: %d\n",
++			prop, gpio, ret);
++		return ret;
++	}
++
++	bias = PIN_CONF_PACKED(m->active_level ? PIN_CONFIG_BIAS_PULL_DOWN
++					       : PIN_CONFIG_BIAS_PULL_UP, 1);
++	ret = gpiod_set_config(desc, bias);
++	if (ret && ret != -ENOTSUPP && ret != -EOPNOTSUPP)
++		dev_warn(dev, "%s: cannot set pad bias: %d\n", prop, ret);
++
++	*pin_out = gpio;
++	dev_info(dev, "%s: gpio %d, input, bias pull-%s, active %s\n",
++		 prop, gpio, m->active_level ? "down" : "up",
++		 m->active_level ? "high" : "low");
++	return 0;
++}
++
+ static int motor_parse_dt(struct hy310_motor *m, struct device_node *np)
+ {
+ 	struct device *dev = m->dev;
+ 	int i, ret, gpio;
+ 	struct gpio_desc *desc;
+ 	char name[32];
++	u32 val;
+ 
+-	/* Required: active-level */
+-	ret = of_property_read_u32(np, "active-level", &m->active_level);
++	/* Required: active level of the limit input */
++	ret = motor_read_u32(np, "active_level", "active-level", &val);
+ 	if (ret) {
+-		dev_warn(dev, "no active-level, defaulting to 0 (active-low)\n");
+-		m->active_level = 0;
++		dev_err(dev, "missing active_level\n");
++		return -EINVAL;
+ 	}
++	m->active_level = !!val;
+ 
+ 	/* Required: phase count and step count */
+ 	ret = of_property_read_u32(np, "motor-phase-num", &m->phase_num);
+@@ -671,7 +857,7 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	/* Required: timing */
++	/* Required: timing, in milliseconds (stock delay_ms_func @ c05d6b00) */
+ 	ret = of_property_read_u32(np, "motor-phase-udelay", &m->phase_udelay);
+ 	if (ret) {
+ 		dev_err(dev, "missing motor-phase-udelay\n");
+@@ -684,8 +870,8 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	/* Optional: motor-type (default 0 = stepper) */
+-	of_property_read_u32(np, "motor-type", &m->motor_type);
++	/* Optional: motor type (default 0 = stepper) */
++	motor_read_u32(np, "motor_type", "motor-type", &m->motor_type);
+ 
+ 	/* Optional: motor-cycle (default 1) */
+ 	m->motor_cycle = 1;
+@@ -711,7 +897,8 @@
+ 			return gpio;
+ 		}
+ 
+-		ret = devm_gpio_request_one(dev, gpio, 0, name);
++		ret = devm_gpio_request_one(dev, gpio, GPIOF_OUT_INIT_LOW,
++					    name);
+ 		if (ret) {
+ 			dev_err(dev, "failed to request %s (gpio %d)\n",
+ 				name, gpio);
+@@ -719,40 +906,41 @@
+ 		}
+ 
+ 		desc = gpio_to_desc(gpio);
+-		gpiod_direction_output_raw(desc, 0);
++		if (!desc)
++			return -ENODEV;
++		ret = gpiod_direction_output_raw(desc, 0);
++		if (ret) {
++			dev_err(dev, "%s: gpio %d cannot be made an output: %d\n",
++				name, gpio, ret);
++			return ret;
++		}
+ 		m->phase_gpios[i] = gpio;
+ 	}
+ 
+-	/* Optional: limiter-up-gpio */
++	/* Optional limit inputs */
+ 	m->limiter_num = 0;
+-	gpio = of_get_named_gpio(np, "limiter-up-gpio", 0);
+-	if (gpio >= 0) {
+-		ret = devm_gpio_request_one(dev, gpio, 0, "limiter-up-gpio");
+-		if (ret == 0) {
+-			desc = gpio_to_desc(gpio);
+-			gpiod_direction_input(desc);
+-			m->limiter_up_pin = gpio;
+-			m->limiter_num++;
+-			dev_info(dev, "limiter UP: gpio %d\n", gpio);
+-		} else {
+-			dev_warn(dev, "failed to request limiter-up-gpio\n");
+-		}
+-	}
+ 
+-	/* Optional: limiter-dn-gpio */
+-	gpio = of_get_named_gpio(np, "limiter-dn-gpio", 0);
+-	if (gpio >= 0) {
+-		ret = devm_gpio_request_one(dev, gpio, 0, "limiter-dn-gpio");
+-		if (ret == 0) {
+-			desc = gpio_to_desc(gpio);
+-			gpiod_direction_input(desc);
+-			m->limiter_dn_pin = gpio;
+-			m->limiter_num++;
+-			dev_info(dev, "limiter DN: gpio %d\n", gpio);
+-		} else {
+-			dev_warn(dev, "failed to request limiter-dn-gpio\n");
+-		}
+-	}
++	if (motor_request_limiter(m, np, "limiter-up-gpio",
++				  &m->limiter_up_pin) == 0) {
++		m->limiter_pin = m->limiter_up_pin;
++		m->limiter_num++;
++	}
++
++	if (motor_request_limiter(m, np, "limiter-dn-gpio",
++				  &m->limiter_dn_pin) == 0)
++		m->limiter_num++;
++
++	/*
++	 * Stock only ever assigns MOTOR_LIMITER_PIN from the up limiter
++	 * (motor_control_fdt_parse @ c05d6610), so a board wired with only a
++	 * down limiter would take the limiter_num == 1 path in
++	 * motor_limiter_status() with no pin and report "in range" forever.
++	 * This board has the up limiter; say so rather than fail silently if a
++	 * future one does not.
++	 */
++	if (m->limiter_num == 1 && !m->limiter_pin)
++		dev_warn(dev,
++			 "only a down limiter: stock has no path for that, limiting is inactive\n");
+ 
+ 	dev_info(dev, "limiter_num = %d\n", m->limiter_num);
+ 
+@@ -768,15 +956,26 @@
+ 		dev_warn(dev, "failed to read motor-ccw-table\n");
+ 
+ 	dev_info(dev, "phases=%d steps=%d cycle=%u type=%u "
+-		 "phase_udelay=%u step_mdelay=%u\n",
++		 "phase_udelay=%u step_mdelay=%u active_level=%d\n",
+ 		 m->phase_num, m->step_num, m->motor_cycle,
+-		 m->motor_type, m->phase_udelay, m->step_mdelay);
++		 m->motor_type, m->phase_udelay, m->step_mdelay,
++		 m->active_level);
+ 
+ 	return 0;
+ }
+ 
+ /* ── Homing at probe ───────────────────────────────────────── */
+ 
++/*
++ * Port of the homing block in motor_control_probe @ c05d753c.
++ *
++ * The limiter tells us whether the mechanism is inside the allowed travel. If
++ * it already is, there is nothing to do. If it is not, stock walks up to 100
++ * msteps up and, failing that, on to a total step count of 250 downwards,
++ * re-reading the limiter after every mstep. Those counts are stock's, not a
++ * safety net invented here -- but they are only a bound: the switch is what is
++ * supposed to end the run.
++ */
+ static void motor_initial_homing(struct hy310_motor *m)
+ {
+ 	int i;
+@@ -786,33 +985,43 @@
+ 		return;
+ 	}
+ 
+-	/* Check if already at limit */
+ 	if (motor_limiter_status(m, 0)) {
+-		dev_info(m->dev, "already at limit — homing done\n");
++		dev_info(m->dev, "limiter in range — nothing to do\n");
+ 		return;
+ 	}
+ 
+-	/* Try moving UP to find limit */
++	dev_info(m->dev, "limiter out of range — walking back\n");
++
+ 	for (i = 0; i < HOMING_UP_MAX; i++) {
+ 		motor_run_up_mstep(m);
+ 		if (motor_limiter_status(m, 0)) {
+-			dev_info(m->dev, "homing: found limit after %d UP steps\n", i);
++			dev_info(m->dev,
++				 "back in range after %d UP msteps\n", i + 1);
+ 			m->edge_dn = 1;
+ 			return;
+ 		}
+ 	}
+ 
+-	/* Not found UP — try DOWN */
+ 	for (i = 0; i < HOMING_DN_MAX; i++) {
+ 		motor_run_dn_mstep(m);
+ 		if (motor_limiter_status(m, 0)) {
+-			dev_info(m->dev, "homing: found limit after %d DN steps\n", i);
++			dev_info(m->dev,
++				 "back in range after %d DN msteps\n", i + 1);
+ 			m->edge_up = 1;
+ 			return;
+ 		}
+ 	}
+ 
+-	dev_warn(m->dev, "homing: could not find limit switch!\n");
++	/*
++	 * The limiter never reported in-range in either direction. Do not
++	 * pretend an edge was found: leave both edge flags clear, stop the
++	 * phases and say so. Anything that keeps stepping from here runs the
++	 * mechanism into its stop.
++	 */
++	motor_set_stop(m);
++	dev_err(m->dev,
++		"limiter never read active (%d UP + %d DN msteps) — motor left uncalibrated\n",
++		HOMING_UP_MAX, HOMING_DN_MAX);
+ }
+ 
+ /* ── Async homing work ─────────────────────────────────────── */
+@@ -822,7 +1031,7 @@
+ 	struct hy310_motor *m = container_of(work, struct hy310_motor,
+ 					     homing_work.work);
+ 
+-	dev_info(m->dev, "homing: starting async...\n");
++	dev_info(m->dev, "homing: starting\n");
+ 	motor_initial_homing(m);
+ 	dev_info(m->dev, "homing: complete\n");
+ }
+@@ -889,7 +1098,12 @@
+ 	if (!m)
+ 		return;
+ 
+-	/* Stop homing and all movement */
++	/*
++	 * Stop homing and all movement. The queue is emptied before the work
++	 * is cancelled so the handler's re-arm check cannot queue it again.
++	 */
++	m->work_running = 0;
++	motor_flush_queue(m);
+ 	cancel_delayed_work_sync(&m->homing_work);
+ 	cancel_work_sync(&m->work);
+ 	motor_flush_queue(m);
+@@ -920,6 +1134,6 @@
+ };
+ module_platform_driver(motor_driver);
+ 
+-MODULE_DESCRIPTION("HY310 Focus Motor Driver");
++MODULE_DESCRIPTION("HY310 projector stepper motor driver (focus drive)");
+ MODULE_AUTHOR("HY310 Mainline Port");
+ MODULE_LICENSE("GPL");

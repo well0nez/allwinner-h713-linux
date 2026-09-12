@@ -1,0 +1,167 @@
+iio: adc: sun20i-gpadc: zwoelf Bit maskieren und die erste Wandlung nach einem Kanalwechsel verwerfen
+
+Zwei Dinge am Leseweg, getrennt nach dem, was belegt ist, und dem, was nur
+begruendet ist.
+
+1) Die Maske ist belegt.
+
+sun20i_gpadc_adc_read gibt zurueck, was im Datenregister steht:
+
+	*val = readl(info->regs + SUN20I_GPADC_CH_DATA(chan->channel));
+
+Der Wandler hat zwoelf Bit. Was darueber im Register steht, gehoert uns
+nicht. Der Hersteller maskiert (Stock-vmlinux, sunxi_gpadc_read_data,
+c06b9090):
+
+	c06b90d0  ldr   r0, [r0, #0x84]
+	c06b90d8  ubfx  r0, r0, #0, #0xc
+
+Am H713 aendert das heute nichts: die oberen Bits waren bei der Messung am
+11.09. null (0x84 las sich als glatte 1766). Es nimmt aber eine ganze
+Fehlerklasse weg, und der Wert geht bei uns in eine Abschaltschwelle.
+
+2) Das Verwerfen nach einem Kanalwechsel ist begruendet, nicht belegt.
+
+Der Treiber schreibt CS_EN neu, sobald die angeforderte Kanalnummer von
+last_channel abweicht, und startet danach sofort die Wandlung. Der
+Analogeingang ist gemultiplext; die erste Wandlung nach dem Umschalten
+tastet einen Haltekondensator ab, der noch vom vorigen Eingang geladen ist.
+Der Hersteller kommt dem aus dem Weg, indem er ueberhaupt nicht je Messung
+umschaltet: er gibt die benutzten Kanaele einmal beim Einrichten frei und
+liest danach nur noch die Datenregister
+(sunxi_gpadc_read_channel_data, c06b93f8, prueft bloss die Freigabemaske und
+liest). Das ist ein Schluss aus dem Herstellerverhalten, keine Messung.
+
+Ehrlich dazugesagt: die Zahlen vom 11.09. stuetzen die Vermutung NICHT,
+der Kanalwechsel sei die Ursache der Ausreisser. Nur Kanal 1 gelesen ergab
+min 680, max 1777, Standardabweichung 115,35; Kanal 1 im Wechsel mit Kanal 0
+gelesen ergab min 680, max 1772, Standardabweichung 115. Beim reinen
+Kanal-1-Lesen findet gar kein Umschalten statt (last_channel bleibt stehen),
+und die Ausreisser sind trotzdem da. Die Ursache dafuer ist offen -- sie
+liegt nicht in dem, was dieser Patch aendert. Wer die Ausreisser wegbekommen
+will, muss sie ausfiltern; hy310-board-mgr tut das mit einem Median aus fuenf
+Abtastungen.
+
+Was dieser Punkt trotzdem bringt: sobald jemand den anderen sysfs-Knoten
+anfasst, ist die naechste Messung des board-mgr eine erste Messung nach
+einem Umschalten. Diese eine faellt weg. Der Preis ist eine zusaetzliche
+Wandlung (unter 3 ms) und nur dann, wenn wirklich umgeschaltet wurde.
+
+Die Umstellung auf sun20i_gpadc_convert() aendert am Ablauf sonst nichts:
+dieselbe Freigabe des ADC, dieselben 10 ms Wartezeit, dieselbe Rueckgabe
+IIO_VAL_INT. reinit_completion() wandert mit in die Schleifenfunktion, damit
+jede der beiden Wandlungen ihre eigene Vollzugsmeldung abwartet.
+
+Nicht angefasst: das Register SR (0x00) mit dem Feld TACQ. Der Hersteller
+schreibt es (sunxi_gpadc_sample_rate_set, c06ba388: (clk/rate)-1 in Bit
+31:16), der Mainline-Treiber nie. Ob der Ruecksetzwert fuer die
+Quellimpedanz des NTC-Teilers ausreicht, laesst sich ohne Datenblatt und
+ohne Geraet nicht sagen, und ein geratener Wert wuerde D1 und T113 mit
+treffen.
+
+--- a/drivers/iio/adc/sun20i-gpadc-iio.c
++++ b/drivers/iio/adc/sun20i-gpadc-iio.c
+@@ -37,6 +37,9 @@
+ #define SUN20I_GPADC_CH_CMP_DATA(x)	(0x40 + (x) * 4)
+ #define SUN20I_GPADC_CH_DATA(x)		(0x80 + (x) * 4)
+ 
++/* The converter is 12 bit; the rest of CH_DATA is not ours to interpret. */
++#define SUN20I_GPADC_CH_DATA_MASK	GENMASK(11, 0)
++
+ #define SUN20I_GPADC_CTRL_ADC_AUTOCALI_EN_MASK		BIT(23)
+ #define SUN20I_GPADC_CTRL_WORK_MODE_MASK		GENMASK(19, 18)
+ #define SUN20I_GPADC_CTRL_ADC_EN_MASK			BIT(16)
+@@ -60,16 +63,44 @@
+ 	struct mutex		lock;
+ };
+ 
++/* Run one conversion on the currently selected channel. info->lock is held. */
++static int sun20i_gpadc_convert(struct sun20i_gpadc_iio *info,
++				struct iio_chan_spec const *chan, int *val)
++{
++	u32 ctrl;
++
++	reinit_completion(&info->completion);
++
++	/* enable the ADC function */
++	ctrl = readl(info->regs + SUN20I_GPADC_CTRL);
++	ctrl |= FIELD_PREP(SUN20I_GPADC_CTRL_ADC_EN_MASK, 1);
++	writel(ctrl, info->regs + SUN20I_GPADC_CTRL);
++
++	/*
++	 * According to the datasheet maximum acquire time(TACQ) can be
++	 * (65535+1)/24Mhz and conversion time(CONV_TIME) is always constant
++	 * and equal to 14/24Mhz, so (TACQ+CONV_TIME) <= 2.73125ms.
++	 * A 10ms delay should be enough to make sure an interrupt occurs in
++	 * normal conditions. If it doesn't occur, then there is a timeout.
++	 */
++	if (!wait_for_completion_timeout(&info->completion, msecs_to_jiffies(10)))
++		return -ETIMEDOUT;
++
++	/* read the ADC data */
++	*val = readl(info->regs + SUN20I_GPADC_CH_DATA(chan->channel)) &
++	       SUN20I_GPADC_CH_DATA_MASK;
++
++	return 0;
++}
++
+ static int sun20i_gpadc_adc_read(struct sun20i_gpadc_iio *info,
+ 				 struct iio_chan_spec const *chan, int *val)
+ {
+-	u32 ctrl;
+-	int ret = IIO_VAL_INT;
++	bool switched = false;
++	int ret;
+ 
+ 	mutex_lock(&info->lock);
+ 
+-	reinit_completion(&info->completion);
+-
+ 	if (info->last_channel != chan->channel) {
+ 		info->last_channel = chan->channel;
+ 
+@@ -80,27 +111,29 @@
+ 		/* enable the data irq for input channel */
+ 		writel(SUN20I_GPADC_DATA_INTC_CH_DATA_IRQ_EN(chan->channel),
+ 		       info->regs + SUN20I_GPADC_DATA_INTC);
+-	}
+ 
+-	/* enable the ADC function */
+-	ctrl = readl(info->regs + SUN20I_GPADC_CTRL);
+-	ctrl |= FIELD_PREP(SUN20I_GPADC_CTRL_ADC_EN_MASK, 1);
+-	writel(ctrl, info->regs + SUN20I_GPADC_CTRL);
++		switched = true;
++	}
+ 
+ 	/*
+-	 * According to the datasheet maximum acquire time(TACQ) can be
+-	 * (65535+1)/24Mhz and conversion time(CONV_TIME) is always constant
+-	 * and equal to 14/24Mhz, so (TACQ+CONV_TIME) <= 2.73125ms.
+-	 * A 10ms delay should be enough to make sure an interrupt occurs in
+-	 * normal conditions. If it doesn't occur, then there is a timeout.
++	 * The analog input is multiplexed: the first conversion after the
++	 * mux has moved samples a hold capacitor that is still charged from
++	 * the previous input, so it does not describe the new one. Throw it
++	 * away and keep the next one.
+ 	 */
+-	if (!wait_for_completion_timeout(&info->completion, msecs_to_jiffies(10))) {
+-		ret = -ETIMEDOUT;
+-		goto err_unlock;
++	if (switched) {
++		ret = sun20i_gpadc_convert(info, chan, val);
++		if (ret)
++			goto err_unlock;
+ 	}
+ 
+-	/* read the ADC data */
+-	*val = readl(info->regs + SUN20I_GPADC_CH_DATA(chan->channel));
++	ret = sun20i_gpadc_convert(info, chan, val);
++	if (ret)
++		goto err_unlock;
++
++	mutex_unlock(&info->lock);
++
++	return IIO_VAL_INT;
+ 
+ err_unlock:
+ 	mutex_unlock(&info->lock);

@@ -1,0 +1,182 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] soc: sunxi: cpu_comm: count outgoing calls, show the FreeCall ring, add two delay knobs
+
+Instrumentation only. Nothing here changes what the driver does on a call.
+
+Three things, each measured for on 07.09.2026 and found missing:
+
+1. A denominator. The driver counted incoming calls but not outgoing ones and
+   not timeouts, so "no timeout in this run" could not be told from "no
+   calls in this run". watch now shows calls_out and how many got no answer.
+
+2. The outgoing FreeCall ring as state. Every answer that never comes costs
+   one slot of that ring, permanently for the boot, and at 21 the channel is
+   dead with -EBUSY on every call (doku/nachtlog/C3). The ring belongs to the
+   MIPS -- getShareSeqW(1, 0) has local_cpu = 1 and Comm_ReleaseFreeCall
+   refuses it, correctly -- so this side cannot repair it, only see it.
+   "belegt" is the number to watch.
+
+3. Two knobs, tx_delay_pre_us and tx_delay_post_us, a udelay before the SENT
+   flag and one after the doorbell. Default 0. They separate "the message
+   needs time to become visible" from "the co-processor needs time after
+   being told". The answer they gave: pre changes nothing, post ends the loss
+   at 1000 us (doku/nachtlog/C4-rpc-verlust-flanke.md). They stay because the
+   question they answer is not closed on the MIPS side.
+
+The console output on the send and receive paths is left exactly as it was.
+Moving it to pr_debug was tried in this series and withdrawn: those lines
+were, by accident, the settle that keeps the MIPS answering. That finding and
+its consequences are the subject of C4 and doku/91 Punkt 1.
+
+diff -ruN inst-a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c inst-b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	2026-09-07 16:56:27.303483088 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	2026-09-07 16:56:27.312241407 +0200
+@@ -516,6 +516,21 @@
+  * two failure modes that look identical in a per-driver event counter.
+  */
+ static atomic_t cpu_comm_rx_calls = ATOMIC_INIT(0);
++
++/*
++ * Outgoing calls and how many got no answer. Raised in cpu_comm_rpc.c, shown
++ * in the watch file. A timeout count without the calls it is drawn from says
++ * nothing -- doku/91 makes the denominator an acceptance rule.
++ */
++atomic_t cpu_comm_calls_out = ATOMIC_INIT(0);
++atomic_t cpu_comm_timeouts = ATOMIC_INIT(0);
++
++/*
++ * Measuring knobs, /sys/kernel/debug/cpu_comm/tx_delay_{pre,post}_us. Default
++ * 0 = one comparison per call. See SendComm2CPUEx for what each one separates.
++ */
++u32 cpu_comm_tx_delay_pre_us;
++u32 cpu_comm_tx_delay_post_us;
+ static atomic_t cpu_comm_rx_unmatched = ATOMIC_INIT(0);
+ static u32 cpu_comm_rx_last_unmatched;	/* diagnostic only, WRITE_ONCE */
+ 
+@@ -968,6 +983,7 @@
+ 	unsigned long channel = 0;
+ 	unsigned int n_snap = 0;
+ 	u32 version = 0, count = 0;
++	u32 fc_rd = 0, fc_wr = 0, fc_cap = 0, fc_used = 0;
+ 	bool have_pool;
+ 	char *buf;
+ 	int i, n = 0;
+@@ -1000,8 +1016,19 @@
+ 				      CPU_COMM_KERNEL_CHANNEL, &channel) == 0;
+ 
+ 	if (ShMemAddrBase) {
++		u32 *fifo = (u32 *)(getShareSeqW(1, 0) + 120);
++
+ 		version = *(u32 *)(ShMemAddrBase + CPU_COMM_RT_VERSION_OFF);
+ 		count = *(u32 *)(ShMemAddrBase + CPU_COMM_RT_COUNT_OFF);
++		/*
++		 * The outgoing FreeCall ring as state. "belegt" sits at a small
++		 * constant while nothing is lost and grows by one for every
++		 * answer that never came; at the ring capacity the pool is empty
++		 * and every call fails with -EBUSY (measured, C3).
++		 */
++		fc_rd = fifo[0]; fc_wr = fifo[1]; fc_cap = fifo[4];
++		if (fc_cap && fc_rd < fc_cap && fc_wr < fc_cap)
++			fc_used = (fc_rd + fc_cap - fc_wr) % fc_cap;
+ 	}
+ 	cpu_comm_read_rt_lock(&lock);
+ 
+@@ -1010,6 +1037,8 @@
+ 		       "channel   0x%08x %s\n"
+ 		       "rtable    version %u count %u\n"
+ 		       "spinlock2 owner=%u refcnt=%u thread=0x%08x %s\n"
++		       "calls_out %u, davon %u ohne Antwort\n"
++		       "freecall  rd=%u wr=%u cap=%u, belegt %u\n"
+ 		       "handlers  %u\n",
+ 		       atomic_read(&cpu_comm_rx_calls),
+ 		       atomic_read(&cpu_comm_rx_unmatched),
+@@ -1019,6 +1048,8 @@
+ 		       version, count,
+ 		       lock.owner, lock.ref_count, lock.thread_id,
+ 		       cpu_comm_rt_lock_idle(&lock) ? "frei" : "BELEGT",
++		       atomic_read(&cpu_comm_calls_out), atomic_read(&cpu_comm_timeouts),
++		       fc_rd, fc_wr, fc_cap, fc_used,
+ 		       n_snap);
+ 
+ 	for (i = 0; i < (int)n_snap; i++) {
+@@ -1061,6 +1092,8 @@
+ 	cpu_comm_debug_dir = debugfs_create_dir("cpu_comm", NULL);
+ 	debugfs_create_file("call", 0600, cpu_comm_debug_dir, NULL,
+ 			    &cpu_comm_debug_call_fops);
++	debugfs_create_u32("tx_delay_pre_us", 0644, cpu_comm_debug_dir, &cpu_comm_tx_delay_pre_us);
++	debugfs_create_u32("tx_delay_post_us", 0644, cpu_comm_debug_dir, &cpu_comm_tx_delay_post_us);
+ 	debugfs_create_file("watch", 0600, cpu_comm_debug_dir, NULL,
+ 			    &cpu_comm_debug_watch_fops);
+ }
+diff -ruN inst-a/drivers/soc/sunxi/cpu_comm/cpu_comm.h inst-b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-07 16:56:27.303495348 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-07 16:56:27.312255307 +0200
+@@ -688,6 +688,11 @@
+ int  HasInList(void *list, void *item);
+ unsigned long Comm_GetFreeCall(void *share_seq);
+ void Comm_ReleaseFreeCall(void *share_seq, void *call);
++
++extern atomic_t cpu_comm_calls_out;
++extern atomic_t cpu_comm_timeouts;
++extern u32 cpu_comm_tx_delay_pre_us;
++extern u32 cpu_comm_tx_delay_post_us;
+ int  AddReturn2Fifo(u32 *fifo, void *data);
+ void returnPipeLine(void *data);
+ int  GetReturnbySessionId(u32 session_id, u32 cpu, unsigned long *result);
+diff -ruN inst-a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c inst-b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 16:56:27.303507698 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 16:56:27.312270497 +0200
+@@ -538,6 +538,15 @@
+ 			(*(u32 *)(m + 0x10) << 4) | (*(u16 *)(m + 0x00) & 0xf));
+ 	}
+ 
++	/*
++	 * Measuring knob, not a fix: "pre" separates "the message needs time to
++	 * land" from "post" = "the co-processor needs time after the doorbell".
++	 * Measured 07.09.2026: pre changes nothing (11/20 lost at 200 us), post
++	 * ends the loss (0/40 at 1000 us) -- doku/nachtlog/C4.
++	 */
++	if (cpu_comm_tx_delay_pre_us)
++		udelay(cpu_comm_tx_delay_pre_us);
++
+ 	/* ── Step 17: mark "sent" in flags2 ── */
+ 	*(u16 *)(call_slot + 10) |= MSG_FLAG_SENT;
+ 
+@@ -566,6 +575,9 @@
+ 			spin, share_seq_w[8]);
+ 	}
+ 
++	if (cpu_comm_tx_delay_post_us)
++		udelay(cpu_comm_tx_delay_post_us);
++
+ 	/* ── Step 19: wait for ACK (500 jiffies) ── */
+ 	ret = cpu_comm_sem_down_timeout((void *)(sem_ptr + 16),
+ 			   SEND_TIMEOUT_JIFFIES);
+diff -ruN inst-a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c inst-b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-07 16:56:27.303462727 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-07 16:56:27.312216526 +0200
+@@ -607,6 +607,7 @@
+ 	*(u16 *)(local_msg + 6) &= ~MSG_FLAG_NOTIFY;
+ 
+ 	/* Send via SendComm2CPUEx (target_cpu=0 = auto-detect via FindRoutine) */
++	atomic_inc(&cpu_comm_calls_out);
+ 	ret = SendComm2CPUEx((unsigned long)local_msg, 0, 0);
+ 	if (ret) {
+ 		pr_err("cpu_comm: CPUComm_CallEx: SendComm2CPUEx failed (%d)\n",
+@@ -721,6 +722,16 @@
+ 			(void *)getShareSeqR(return_entry[1], 1),
+ 			(void *)return_entry);
+ 	} else if (!IsCPUReset(dst_cpu)) {
++		/*
++		 * Counted, not repaired. The call slot this leaves behind lives
++		 * in the outgoing pool, and that pool belongs to the MIPS
++		 * (getShareSeqW(1, 0) has local_cpu = 1; Comm_ReleaseFreeCall
++		 * refuses it, correctly). One slot per lost answer, permanent
++		 * for the boot; at COMM_SLOT_COUNT + 1 the channel is dead. The
++		 * counter is what says whether it is happening.
++		 * doku/nachtlog/C3-rpc-verlust-reproduziert.md, C4.
++		 */
++		atomic_inc(&cpu_comm_timeouts);
+ 		pr_warn("cpu_comm: CPUComm_CallEx: null return (cpu=%u session=0x%x)\n",
+ 			dst_cpu, session_ptr);
+ 	}

@@ -1,0 +1,116 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] soc: sunxi: cpu_comm: quiet the per-call log now the race is gone
+
+The per-call console lines cost about 120 ms per RPC (median round trip 94 ms
+with them, 0.6 ms without) and, until the previous patch, were load-bearing:
+they were the accidental settle that kept the ARM from advancing the MIPS's
+NewCall read pointer before the BG-thread had read it. That race is fixed at
+its source now (the driver no longer touches share_seq + 32), so the lines are
+free to go where they belong.
+
+Every per-call line moves to pr_debug: the IPC trace, the TX FreeCall/slot/chan
+lines, the doorbell SENT line, the msgbox rx/tx words, and the return-FIFO
+lines. dynamic debug brings any of them back by name when a problem needs them.
+Verified after the fix with the console muted: 100 back-to-back calls, 0 lost,
+median 0.46 ms -- the throughput the logging was hiding.
+
+What stays at pr_info/pr_warn: probe, ready, firmware, reset, the timeout
+warning, and everything that fires at most a handful of times a boot. The
+counters and the FreeCall ring are in /sys/kernel/debug/cpu_comm/watch, not on
+the console.
+
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c	2026-09-07 17:42:50.564233564 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c	2026-09-07 17:43:18.441812094 +0200
+@@ -787,7 +787,7 @@
+ 
+ 	cur_node = cc_deref(fifo_hdr[14]);	/* head.next */
+ 
+-	pr_info_ratelimited("cpu_comm: GetReturnbySessionId session=0x%x cpu=%u: list head.next=0x%lx sentinel=0x%lx count=%d\n",
++	pr_debug("cpu_comm: GetReturnbySessionId session=0x%x cpu=%u: list head.next=0x%lx sentinel=0x%lx count=%d\n",
+ 		session_id, cpu, cur_node, sentinel, fifo_hdr[13]);
+ 
+ 	while (cur_node && cur_node != sentinel) {
+@@ -894,13 +894,13 @@
+ 	sock = &s_CommSockt[1248 * cpu];
+ 	sem = &sock[283];			/* MsgFIFO semaphore */
+ 
+-	pr_info_ratelimited("cpu_comm: returnPipeLine cpu=%u: share_seq_r=0x%lx fifo[rd=%u wr=%u peak=%u sem=%u cap=%u itemsz=%u base=0x%x]\n",
++	pr_debug("cpu_comm: returnPipeLine cpu=%u: share_seq_r=0x%lx fifo[rd=%u wr=%u peak=%u sem=%u cap=%u itemsz=%u base=0x%x]\n",
+ 		cpu, share_seq_r, fifo[0], fifo[1], fifo[2], fifo[3], fifo[4], fifo[5], fifo[6]);
+ 
+ 	cpu_comm_sem_down((void *)sem);
+ 
+ 	item_addr = fifo_getItemRd(fifo);
+-	pr_info_ratelimited("cpu_comm: returnPipeLine first_item_addr=0x%lx\n", item_addr);
++	pr_debug("cpu_comm: returnPipeLine first_item_addr=0x%lx\n", item_addr);
+ 
+ 	while (item_addr) {
+ 		/* Read the entry pointer from the FIFO slot */
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-07 17:42:50.563490858 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-07 17:43:18.441279550 +0200
+@@ -232,7 +232,7 @@
+ 	while (readl(msgbox_ctrl_base + H713_MSGBOX_RX_FIFO)) {
+ 		raw = readl(msgbox_ctrl_base + H713_MSGBOX_RX_DATA);
+ 
+-		pr_info_ratelimited("cpu_comm: msgbox rx raw=0x%08x (%s)\n",
++		pr_debug("cpu_comm: msgbox rx raw=0x%08x (%s)\n",
+ 				    raw, cpu_comm_msgbox_type_name(raw));
+ 
+ 		if (raw > MSG_TYPE_RETURN_ACK)
+@@ -1201,7 +1201,7 @@
+ 	udelay(10);
+ 	writel(0, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
+ 
+-	pr_info_ratelimited("cpu_comm: msgbox tx raw=0x%08x (%s), fifo now %u\n",
++	pr_debug("cpu_comm: msgbox tx raw=0x%08x (%s), fifo now %u\n",
+ 			    raw, cpu_comm_msgbox_type_name(raw),
+ 			    readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO));
+ 	writel(raw, msgbox_ctrl_base + H713_MSGBOX_TX_DATA);
+@@ -1209,7 +1209,7 @@
+ 	udelay(10);
+ 	writel(0, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
+ 
+-	pr_info_ratelimited("cpu_comm: msgbox tx raw=0x%08x (%s), fifo now %u\n",
++	pr_debug("cpu_comm: msgbox tx raw=0x%08x (%s), fifo now %u\n",
+ 			    raw, cpu_comm_msgbox_type_name(raw),
+ 			    readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO));
+ }
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 17:42:50.562973575 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 17:43:18.440617425 +0200
+@@ -71,7 +71,7 @@
+ 	 * "callbacks suppressed" message confirmed the limiter was hiding
+ 	 * events. Revert to pr_info_ratelimited once RETURN-path bug is
+ 	 * understood. */
+-	pr_info("cpu_comm: IPC[%s] type=%d(%s) dir=%d(%s) cpu=%d ARM=0x%x MIPS=0x%x\n",
++	pr_debug("cpu_comm: IPC[%s] type=%d(%s) dir=%d(%s) cpu=%d ARM=0x%x MIPS=0x%x\n",
+ 		stage,
+ 		type, cpu_comm_type_name(type),
+ 		direction, cpu_comm_dir_name(direction),
+@@ -525,12 +525,12 @@
+ 		u32 *dbg = (u32 *)(share_seq_w + 0x78);
+ 		u8  *m   = call_slot;
+ 
+-		pr_info("cpu_comm: TX FreeCall rd=%u wr=%u cap=%u isz=%u base=0x%08x\n",
++		pr_debug("cpu_comm: TX FreeCall rd=%u wr=%u cap=%u isz=%u base=0x%08x\n",
+ 			dbg[0], dbg[1], dbg[4], dbg[5], dbg[6]);
+-		pr_info("cpu_comm: TX slot idx=%u @%p (erwartet %p)\n",
++		pr_debug("cpu_comm: TX slot idx=%u @%p (erwartet %p)\n",
+ 			slot_idx, call_slot,
+ 			share_seq_w + 104 * (u32)slot_idx + 360);
+-		pr_info("cpu_comm: TX chan=0x%04x dst_cpu=%u pid=0x%08x comp_id=0x%08x "
++		pr_debug("cpu_comm: TX chan=0x%04x dst_cpu=%u pid=0x%08x comp_id=0x%08x "
+ 			"nparams=%u (key 0x%08x)\n",
+ 			*(u16 *)(m + 0x00), *(u16 *)(m + 0x02),
+ 			*(u32 *)(m + 0x10), *(u32 *)(m + 0x28),
+@@ -568,7 +568,7 @@
+ 				break;
+ 			udelay(100);
+ 		}
+-		pr_info("cpu_comm: TX nach Doorbell: SENT-Bit %s (nach %d x 100us), "
++		pr_debug("cpu_comm: TX nach Doorbell: SENT-Bit %s (nach %d x 100us), "
+ 			"share_seq+0x08=0x%02x\n",
+ 			(share_seq_w[8] & MSG_FLAG_SENT) ? "STEHT NOCH -- Firmware hat nicht zugegriffen"
+ 							 : "geloescht -- Firmware hat gelesen",

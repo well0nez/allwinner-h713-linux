@@ -1,0 +1,308 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Fri, 12 Sep 2026 01:30:00 +0200
+Subject: [PATCH] aic8800: die Einschaltleitung aus dem Geraetebaum holen
+
+Ersetzt in aic8800-0002 die fest eingetragene Zahl
+
+    if (aicbsp_wlan_regon_gpio < 0)
+            aicbsp_wlan_regon_gpio = 385;  /* PM1 default */
+
+durch eine Abfrage des Geraetebaums. Der Modulparameter wlan_regon= bleibt als
+Uebersteuerung erhalten, hat aber keinen Standardwert mehr: ohne Parameter gilt
+der Geraetebaum.
+
+Warum nicht einfach eine andere Zahl
+------------------------------------
+385 war auf diesem Kernel NICHT falsch. Die sunxi-pinctrl vergibt statische
+GPIO-Basen (pinctrl-sunxi.c: pctl->chip->base = pctl->desc->pin_base), und
+pinctrl-sun50i-h713-r.c setzt .pin_base = PL_BASE = 352. Der R-PIO-Chip deckt
+damit 352..415 ab, PM1 liegt bei 352 + 1*32 + 1 = 385. Die Haupt-PIO hat
+pin_base 0 und 256 Leitungen, also 0..255. Beide Groessen stimmen mit der
+Messung vom 12.09. ueberein ("gpiochip0: 256 GPIOs", "gpiochip1: 64 GPIOs").
+
+Die Messung selbst belegt das Modell mit ihrem eigenen Datenpunkt: GPIO 289
+lieferte -517 (-EPROBE_DEFER). Genau das gibt gpio_request() zurueck, wenn
+ueberhaupt kein gpiochip die Nummer abdeckt (gpiolib-legacy.c) -- und 289 faellt
+in die Luecke zwischen 256 und 352.
+
+Die am Geraet ersatzweise verwendete 225 ist deshalb nicht PM1, sondern
+225 = 7*32 + 1 = PH1 auf der Haupt-PIO. PH1 ist UART0_RX, die Empfangsleitung
+der Debug-Konsole (pinctrl-sun50i-h713.c: PH1 Funktion 0x2 = "uart0";
+Stock-DTS uart0@0: pins = "PH0", "PH1"). Sie liess sich anfordern, weil in
+unserem DTB niemand sie beansprucht: die Gruppe uart0-ph-pins hat kein phandle
+und serial@2500000 hat gar kein pinctrl-0, der Mux stammt noch vom Bootloader.
+gpio_direction_output() hat die Leitung dann als GPIO-Ausgang umgehaengt. Die
+Sequenz lief also vollstaendig durch, ohne PM1 jemals anzufassen.
+
+Was der Patch macht
+-------------------
+* wlan-enable-gpios wird ueber fwnode_gpiod_get_index() aus dem DT-Knoten
+  geholt, den of_find_node_with_property() findet. Polaritaet und Bank kommen
+  damit aus dem Geraetebaum, nicht aus dem Code.
+* Derselbe Knoten ankert den MMC-Host: sein Elternknoten IST der Controller.
+  Damit faellt auch der zweite fest verdrahtete Wert weg, der Plattformname
+  "4021000.mmc"; er bleibt nur noch als Rueckfall stehen.
+* aicbsp_mainline_gpio_init() wird idempotent. Bisher forderte jeder Anlauf von
+  aicbsp_platform_power_on() die Leitung erneut an, obwohl sie erst beim
+  Entladen des Moduls freigegeben wird -- der zweite Versuch scheiterte
+  zwangslaeufig mit -EBUSY. Das ist die wahrscheinlichste Erklaerung fuer
+  "failed to request wlan_regon GPIO 385" bei einem Wiederholungsversuch;
+  belegen laesst es sich nicht, weil die Fehlernummer zu dieser Zeile nicht
+  protokolliert wurde.
+* Die Logzeile heisst jetzt "wlan_regon set to N" statt "wlan_regon PM1 set to
+  N" und nennt beim Einrichten Knoten und Nummer. Damit ist im Log sofort zu
+  sehen, welche Leitung wirklich geschaltet wird -- und ob ueberhaupt das neue
+  Modul laeuft.
+
+Geprueft: baut im Container h713-build gegen 6.18.38 (arm64, LLVM=1,
+CONFIG_PLATFORM_MAINLINE_SUNXI=y), keine neuen Warnungen. Am Geraet nicht
+getestet.
+---
+--- a/aic8800_bsp/aicsdio.c
++++ b/aic8800_bsp/aicsdio.c
+@@ -37,31 +37,105 @@
+ 
+ #ifdef CONFIG_PLATFORM_MAINLINE_SUNXI
+ #include <linux/gpio.h>
++#include <linux/gpio/consumer.h>
+ #include <linux/platform_device.h>
++#include <linux/of.h>
+ #include <linux/of_gpio.h>
++#include <linux/of_platform.h>
+ #include <linux/clk.h>
+ #include <linux/of_clk.h>
+-static int aicbsp_wlan_regon_gpio = -1;
+-static bool aicbsp_wlan_regon_requested;  /* true if wlan_regon GPIO was successfully requested */
++
++/*
++ * Die Einschaltleitung des WLAN-Chips (PM1, "wlan_regon") wird aus dem
++ * Geraetebaum geholt, nicht aus einer absoluten GPIO-Nummer.
++ *
++ * Absolute Nummern haengen davon ab, wie und in welcher Reihenfolge die
++ * GPIO-Controller registriert werden; sie sind bei jeder Aenderung an der
++ * pinctrl ungueltig und auf einem anderen System ohnehin eine andere Leitung.
++ * Der Knoten, der die Leitung traegt, ist der SDIO-Unterknoten des Hosts
++ * (mmc@4021000/wifi@1), derselbe, der schon den host-wake-Interrupt auf PM0
++ * beschreibt.
++ *
++ * Derselbe Knoten dient als Anker fuer den MMC-Host: sein Elternknoten IST
++ * der Controller, an dem der Chip haengt. Damit faellt auch der fest
++ * verdrahtete Plattformname "4021000.mmc" weg (er bleibt nur als Rueckfall).
++ */
++#define AICBSP_REGON_PROP	"wlan-enable-gpios"
++#define AICBSP_REGON_CONID	"wlan-enable"
++
++static int aicbsp_wlan_regon_gpio = -1;	  /* nur Uebersteuerung per Modulparameter */
++static bool aicbsp_wlan_regon_requested;  /* true, sobald die Leitung uns gehoert */
++static struct gpio_desc *aicbsp_wlan_regon_desc;  /* Regelweg: aus dem Geraetebaum */
+ static int aicbsp_wlan_hostwake_gpio = -1;
+ static int aicbsp_mmc_bus_index = 1;
+ static struct clk *aicbsp_wlan_clk = NULL;
+ 
+ /* Module parameters for GPIO and bus index */
+ module_param_named(wlan_regon, aicbsp_wlan_regon_gpio, int, 0644);
+-MODULE_PARM_DESC(wlan_regon, "GPIO number for WLAN regon (default: auto from R_PIO PM1)");
++MODULE_PARM_DESC(wlan_regon, "override: absolute GPIO number for WLAN regon (default: -1 = take wlan-enable-gpios from the device tree)");
+ module_param_named(wlan_hostwake, aicbsp_wlan_hostwake_gpio, int, 0644);
+-MODULE_PARM_DESC(wlan_hostwake, "GPIO number for WLAN hostwake (default: auto from R_PIO PM0)");
++MODULE_PARM_DESC(wlan_hostwake, "GPIO number for WLAN hostwake (default: -1 = unused, the DT describes PM0 as an interrupt)");
+ module_param_named(mmc_bus, aicbsp_mmc_bus_index, int, 0644);
+ MODULE_PARM_DESC(mmc_bus, "MMC bus index for SDIO WiFi (default: 1)");
+ 
+ static struct mmc_host *aicbsp_cached_mmc_host = NULL;
+ 
++/*
++ * Den Geraetebaumknoten finden, der die Einschaltleitung beschreibt.
++ * Rueckgabe mit erhoehtem Referenzzaehler -- der Aufrufer gibt ihn frei.
++ */
++static struct device_node *aicbsp_find_wlan_node(void)
++{
++	struct device_node *np;
++
++	np = of_find_node_with_property(NULL, AICBSP_REGON_PROP);
++	if (!np)
++		pr_err("aicbsp: no device-tree node carries %s "
++		       "(expected in the wifi@1 sub-node of the SDIO host)\n",
++		       AICBSP_REGON_PROP);
++	return np;
++}
++
+ static struct mmc_host *aicbsp_find_mmc_host(int index)
+ {
++	struct device_node *wifi_np, *mmc_np;
++	struct platform_device *pdev;
+ 	struct device *dev;
+ 
+-	/* sunxi-mmc stores mmc_host directly as platform drvdata */
++	if (aicbsp_cached_mmc_host)
++		return aicbsp_cached_mmc_host;
++
++	/*
++	 * Regelweg: der Elternknoten des WLAN-Knotens ist der SDIO-Host.
++	 * sunxi-mmc legt den mmc_host direkt als platform drvdata ab.
++	 */
++	wifi_np = of_find_node_with_property(NULL, AICBSP_REGON_PROP);
++	if (wifi_np) {
++		mmc_np = of_get_parent(wifi_np);
++		of_node_put(wifi_np);
++		if (mmc_np) {
++			pdev = of_find_device_by_node(mmc_np);
++			if (pdev) {
++				aicbsp_cached_mmc_host =
++					(struct mmc_host *)platform_get_drvdata(pdev);
++				if (aicbsp_cached_mmc_host)
++					pr_info("aicbsp: found mmc_host mmc%d via %pOF\n",
++						aicbsp_cached_mmc_host->index, mmc_np);
++				else
++					pr_warn("aicbsp: %pOF has no mmc_host drvdata yet\n",
++						mmc_np);
++				put_device(&pdev->dev);
++			} else {
++				pr_warn("aicbsp: no platform device for %pOF\n", mmc_np);
++			}
++			of_node_put(mmc_np);
++		}
++	}
++
++	if (aicbsp_cached_mmc_host)
++		return aicbsp_cached_mmc_host;
++
++	/* Rueckfall: der feste Plattformname, wie bisher. */
+ 	dev = bus_find_device_by_name(&platform_bus_type, NULL, "4021000.mmc");
+ 	if (!dev) {
+ 		pr_err("aicbsp: platform device 4021000.mmc not found\n");
+@@ -73,19 +147,24 @@
+ 		pr_err("aicbsp: no mmc_host drvdata on 4021000.mmc\n");
+ 		return NULL;
+ 	}
+-	pr_info("aicbsp: found mmc_host mmc%d\n", aicbsp_cached_mmc_host->index);
++	pr_info("aicbsp: found mmc_host mmc%d (fallback by name)\n",
++		aicbsp_cached_mmc_host->index);
+ 	return aicbsp_cached_mmc_host;
+ }
+ 
+ static void aicbsp_mainline_set_power(int on)
+ {
+ 	if (!aicbsp_wlan_regon_requested) {
+-		pr_err("aicbsp: wlan_regon GPIO not available\n");
++		pr_err("aicbsp: wlan_regon not available\n");
+ 		return;
+ 	}
+ 
+-	gpio_set_value(aicbsp_wlan_regon_gpio, on);
+-	pr_info("aicbsp: wlan_regon PM1 set to %d\n", on);
++	if (aicbsp_wlan_regon_desc)
++		gpiod_set_value_cansleep(aicbsp_wlan_regon_desc, on);
++	else
++		gpio_set_value(aicbsp_wlan_regon_gpio, on);
++
++	pr_info("aicbsp: wlan_regon set to %d\n", on);
+ }
+ 
+ static void aicbsp_mainline_rescan(void)
+@@ -111,33 +190,66 @@
+ 
+ static int aicbsp_mainline_gpio_init(void)
+ {
++	struct device_node *np;
+ 	int ret;
+ 
+ 	/*
+-	 * Request wlan_regon GPIO (PM1 = GPIO 385 on H713).
+-	 * The R_PIO pinctrl driver handles the register layout;
+-	 * we just use the standard GPIO API here.
++	 * Idempotent: aicbsp_platform_power_on() laeuft bei jedem Anlauf neu,
++	 * und die Leitung wird erst beim Entladen des Moduls freigegeben. Ohne
++	 * diese Abfrage scheitert jeder zweite Versuch an -EBUSY, obwohl uns
++	 * die Leitung bereits gehoert.
+ 	 */
+-	if (aicbsp_wlan_regon_gpio < 0)
+-		aicbsp_wlan_regon_gpio = 385;  /* PM1 default */
++	if (aicbsp_wlan_regon_requested)
++		return 0;
+ 
+-	ret = gpio_request(aicbsp_wlan_regon_gpio, "wlan_regon");
+-	if (ret) {
+-		pr_err("aicbsp: failed to request wlan_regon GPIO %d: %d\n",
+-		       aicbsp_wlan_regon_gpio, ret);
+-		return ret;
+-	}
+-	ret = gpio_direction_output(aicbsp_wlan_regon_gpio, 0);
+-	if (ret) {
+-		pr_err("aicbsp: failed to set wlan_regon GPIO %d as output: %d\n",
+-		       aicbsp_wlan_regon_gpio, ret);
+-		gpio_free(aicbsp_wlan_regon_gpio);
++	if (aicbsp_wlan_regon_gpio >= 0) {
++		/*
++		 * Uebersteuerung per Modulparameter. Absichtlich die alte
++		 * Zahlen-API: wer hier eine Nummer setzt, will genau diese
++		 * Nummer. Zum Aendern des Parameters muss aic8800_bsp neu
++		 * geladen werden.
++		 */
++		ret = gpio_request(aicbsp_wlan_regon_gpio, "wlan_regon");
++		if (ret) {
++			pr_err("aicbsp: failed to request wlan_regon GPIO %d: %d\n",
++			       aicbsp_wlan_regon_gpio, ret);
++			return ret;
++		}
++		ret = gpio_direction_output(aicbsp_wlan_regon_gpio, 0);
++		if (ret) {
++			pr_err("aicbsp: failed to set wlan_regon GPIO %d as output: %d\n",
++			       aicbsp_wlan_regon_gpio, ret);
++			gpio_free(aicbsp_wlan_regon_gpio);
++			return ret;
++		}
++		aicbsp_wlan_regon_requested = true;
++		pr_warn("aicbsp: wlan_regon FORCED to GPIO %d by module parameter "
++			"- the device tree is ignored\n", aicbsp_wlan_regon_gpio);
++		goto hostwake;
++	}
++
++	/* Regelweg: die Leitung steht im Geraetebaum. */
++	np = aicbsp_find_wlan_node();
++	if (!np)
++		return -ENODEV;
++
++	aicbsp_wlan_regon_desc = fwnode_gpiod_get_index(of_fwnode_handle(np),
++						       AICBSP_REGON_CONID, 0,
++						       GPIOD_OUT_LOW, "wlan_regon");
++	if (IS_ERR(aicbsp_wlan_regon_desc)) {
++		ret = PTR_ERR(aicbsp_wlan_regon_desc);
++		aicbsp_wlan_regon_desc = NULL;
++		pr_err("aicbsp: cannot get %s from %pOF: %d\n",
++		       AICBSP_REGON_PROP, np, ret);
++		of_node_put(np);
+ 		return ret;
+ 	}
++	pr_info("aicbsp: wlan_regon from %pOF -> gpio %d, output low\n",
++		np, desc_to_gpio(aicbsp_wlan_regon_desc));
++	of_node_put(np);
+ 	aicbsp_wlan_regon_requested = true;
+-	pr_info("aicbsp: wlan_regon GPIO %d configured as output\n",
+-		aicbsp_wlan_regon_gpio);
+ 
++hostwake:
+ 	/* Set up hostwake as input if configured */
+ 	if (aicbsp_wlan_hostwake_gpio >= 0) {
+ 		if (!gpio_request(aicbsp_wlan_hostwake_gpio, "wlan_hostwake")) {
+@@ -152,11 +264,15 @@
+ void aicbsp_mainline_cleanup(void)
+ {
+ 	if (aicbsp_wlan_regon_requested) {
+-		gpio_set_value(aicbsp_wlan_regon_gpio, 0);
+-		gpio_free(aicbsp_wlan_regon_gpio);
++		aicbsp_mainline_set_power(0);
++		if (aicbsp_wlan_regon_desc) {
++			gpiod_put(aicbsp_wlan_regon_desc);
++			aicbsp_wlan_regon_desc = NULL;
++		} else {
++			gpio_free(aicbsp_wlan_regon_gpio);
++		}
+ 		aicbsp_wlan_regon_requested = false;
+-		pr_info("aicbsp: wlan_regon GPIO %d released\n",
+-			aicbsp_wlan_regon_gpio);
++		pr_info("aicbsp: wlan_regon released\n");
+ 	}
+ 	if (aicbsp_wlan_hostwake_gpio >= 0)
+ 		gpio_free(aicbsp_wlan_hostwake_gpio);

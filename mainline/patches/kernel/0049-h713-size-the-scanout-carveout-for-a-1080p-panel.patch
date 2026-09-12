@@ -1,0 +1,67 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] h713: size the scanout carveout for the panel, not for 720p
+
+uboot-scanout is 8 MiB because two 1280x720 ARGB8888 frames are 7.03 MiB.
+That is board B's panel. This board's is 1920x1080, where one frame is
+7.91 MiB: the front slot fits with 92 KiB to spare and there is no room at
+all for a back slot, so the only thing that can be built on this carveout is
+single-buffered scanout, which tears.
+
+Measured on hardware, gles-play at 1920x1080 through the VE and the GPU:
+
+    carveout 0x6c100000 + 8192 KiB, slot 8100 KiB
+    carveout holds 8192 KiB, two 8100 KiB slots need 16200 KiB
+    2411 frames in 40581 ms (59.41 fps), 0 commit timeouts
+
+so decode and present already run at the panel's vsync ceiling; what is
+missing is somewhere to put the second buffer. 16 MiB covers two 1080p slots
+with 184 KiB left over, and costs 8 MiB of a gibibyte.
+
+The exporter's default size moves with it. It is a module parameter and could
+be overridden at load time, but a default that disagrees with the reservation
+it describes is a trap: that bound is the only thing between a userspace
+ioctl and memory the page allocator has handed to something else.
+
+A 720p board keeps working; it reserves 8 MiB it does not need. Sizing the
+reservation from the panel would be better, but the panel size is not known
+until the MIPS co-processor has run, which is long after the devicetree is
+parsed.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-01 00:01:19.339927690 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-01 00:01:31.042980668 +0200
+@@ -110,9 +110,17 @@
+ 		 * CMA instead, because a dma-coherent pool allocates in
+ 		 * power-of-two page orders -- a 3.6 MiB framebuffer takes a
+ 		 * 4 MiB slot, so 16 MiB yielded exactly four and mpv ran out.
++		 *
++		 * 16 MiB, not 8: a slot is one full ARGB8888 frame at the
++		 * panel's size, and this panel is 1920x1080, so a slot is
++		 * 7.91 MiB and two of them need 15.82 MiB. At 8 MiB only the
++		 * front slot fits, which forces single-buffered scanout and
++		 * tears. Keep this in step with sunxi_scanout_dmabuf's
++		 * scanout_size default -- that is the bound its ioctl checks
++		 * a userspace request against.
+ 		 */
+ 		framebuf_reserved: uboot-scanout@6c100000 {
+-			reg = <0x6c100000 0x800000>;
++			reg = <0x6c100000 0x1000000>;
+ 			no-map;
+ 		};
+ 	};
+--- a/drivers/misc/sunxi-scanout-dmabuf.c	2026-09-01 00:01:19.340643872 +0200
++++ b/drivers/misc/sunxi-scanout-dmabuf.c	2026-09-01 00:01:31.043103428 +0200
+@@ -47,7 +47,11 @@
+ };
+ 
+ static u64 scanout_phys = 0x6c100000ULL;
+-static u64 scanout_size = 0x800000ULL;          /* both buffers */
++/*
++ * Both buffers. A slot is one full ARGB8888 frame at panel size: 3.52 MiB
++ * at 1280x720, 7.91 MiB at 1920x1080. Must match uboot-scanout in the DT.
++ */
++static u64 scanout_size = 0x1000000ULL;
+ module_param(scanout_phys, ullong, 0444);
+ MODULE_PARM_DESC(scanout_phys, "physical base of the scanout carveout");
+ module_param(scanout_size, ullong, 0444);

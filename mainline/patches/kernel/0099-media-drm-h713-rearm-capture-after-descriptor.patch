@@ -1,0 +1,497 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] media, drm: h713: re-arm the capture after the descriptor is published
+
+Until today the picture froze the moment the video plane came up, and the
+only way back was a source switch issued from userspace by someone who
+happened to know that publishing the descriptor had stopped the capture.
+That knowledge does not belong in a userspace recipe.
+
+The chain of facts, all of them measured on the board:
+
+1. Writing the VidDec descriptor stops the capture. The firmware reads the
+   write as a VideoDec signal event, sets MemoryAgent +8 and lets
+   memory_agent_onoff clear the INCAP output enable, because the capture is
+   not in the source mask of VideoDec. INCAP +0x104 goes on counting at 60/s
+   and nothing is written -- the wall keeps the last frame it took. Cold-start
+   counter-test, doku/nachtlog/A-abnahme-board.md 22:26.
+
+2. A source *change* makes it run again; setting the source it is already on
+   does not. On 07.09.2026 three THal_Vp_SetSource(HDMI-1) calls in a row left
+   +0x928 bit 31 clear, while VideoDec-then-HDMI-1 set it every time.
+
+3. The firmware answers the second call about half a second before the capture
+   is actually running: 539 ms, 536 ms and 544 ms over three cycles, from the
+   return of the RPC to the bit going up. Whoever waits for it has to wait for
+   the ring, not for the reply.
+
+4. After a cold start the capture is not running at all -- +0x104 does not
+   count -- and it took a VIDIOC_S_INPUT to get it going. A device that comes
+   up not delivering and waits to be asked is a device with a manual.
+
+So: the display driver announces the publication on a chain of its own, and
+the capture driver answers it by switching the source away and back and
+waiting for the ring. The same worker runs once at the end of probe, which
+covers point 4.
+
+The chain is separate from the flip chain on purpose. The flip chain is the
+vsync interrupt: its members are counted and holding one keeps the interrupt
+unmasked. A listener for the descriptor event wants neither -- it wants to be
+told once, whenever it happens, whether or not anything is streaming. The new
+chain is blocking and is called from the atomic commit tail, so a handler may
+sleep; this one does not, it hands the half second to a worker.
+
+This also corrects a comment. h713_hdmirx_set_source() claimed that "a real
+change away and back does not make the capture run again by itself", citing
+doku/78 appendix A.5. That was written before the source switch was measured
+(doku/nachtlog/B2-quellenwechsel.md) and re-measured today; it is wrong, and a
+wrong comment next to the function that needs it is worse than none.
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 11:01:17.229896365 +0200
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 11:10:56.544777188 +0200
+@@ -512,6 +512,36 @@
+ 	return h713_afbd_in_ring(h, *y) && h713_afbd_in_ring(h, *c);
+ }
+ 
++/*
++ * The descriptor chain. Separate from the flip chain on purpose: the flip
++ * chain is the vsync interrupt and its members are counted, because holding a
++ * member there keeps the vsync interrupt unmasked. A consumer of the
++ * descriptor event wants neither -- it wants to be told once, whenever the
++ * event happens, whether or not anything is streaming.
++ */
++static BLOCKING_NOTIFIER_HEAD(h713_afbd_desc_chain);
++
++int h713_afbd_register_descriptor_notifier(struct notifier_block *nb)
++{
++	unsigned long flags;
++	int ret;
++
++	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
++	ret = h713_afbd_flip_dev ? 0 : -EPROBE_DEFER;
++	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
++	if (ret)
++		return ret;
++
++	return blocking_notifier_chain_register(&h713_afbd_desc_chain, nb);
++}
++EXPORT_SYMBOL_GPL(h713_afbd_register_descriptor_notifier);
++
++int h713_afbd_unregister_descriptor_notifier(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_unregister(&h713_afbd_desc_chain, nb);
++}
++EXPORT_SYMBOL_GPL(h713_afbd_unregister_descriptor_notifier);
++
+ int h713_afbd_register_flip_notifier(struct notifier_block *nb)
+ {
+ 	unsigned long flags;
+@@ -799,6 +829,7 @@
+ 	unsigned int w, hgt, c_stride;
+ 	unsigned long flags;
+ 	bool ring, nv16;
++	bool published = false;
+ 	u32 y, c;
+ 
+ 	new_state = drm_atomic_get_new_plane_state(state, plane);
+@@ -824,8 +855,9 @@
+ 		 */
+ 		if (nv16)
+ 			writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
+-		if (h713_afbd_publish_video_info(h, w, hgt, fb->pitches[0]) &&
+-		    nv16 && h713_afbd_wait_wce(h))
++		published = h713_afbd_publish_video_info(h, w, hgt,
++							 fb->pitches[0]);
++		if (published && nv16 && h713_afbd_wait_wce(h))
+ 			drm_err(&h->drm,
+ 				"firmware did not reprogram the chroma stride within %u ms of the descriptor; source 0 is programmed anyway, so this enable may come up with a halved chroma stride\n",
+ 				H713_WCE_TIMEOUT_US / 1000);
+@@ -903,6 +935,17 @@
+ 	}
+ 
+ 	h->video_active = true;
++
++	/*
++	 * Last, and only if the firmware really got something new: the
++	 * publication above has switched the capture off, and whoever owns the
++	 * capture has to be told so it can switch it back on. Announced after
++	 * the plane is fully programmed, so a listener that reacts at once
++	 * finds source 0 in its final state and not half of it.
++	 */
++	if (published)
++		blocking_notifier_call_chain(&h713_afbd_desc_chain,
++					     H713_AFBD_EVENT_DESCRIPTOR, NULL);
+ }
+ 
+ static void h713_afbd_video_atomic_disable(struct drm_plane *plane,
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 11:01:17.231792126 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 11:10:56.546422263 +0200
+@@ -60,6 +60,7 @@
+ #include <linux/spinlock.h>
+ #include <linux/unaligned.h>
+ #include <linux/v4l2-dv-timings.h>
++#include <linux/workqueue.h>
+ 
+ #include <linux/soc/sunxi/h713-afbd.h>
+ #include <linux/soc/sunxi/h713-arisc.h>
+@@ -145,6 +146,32 @@
+ 
+ /* THal_Vp_SetSource: 3 is HDMI-1, the board's only socket (hardware port 0). */
+ #define H713_SOURCE_HDMI1	3
++/*
++ * The source the firmware is switched to and away from to make the capture
++ * run again. Any source other than HDMI-1 would do -- what the firmware
++ * reacts to is the change, not the destination -- and VideoDec is the one
++ * that was measured (doku/nachtlog/B2-quellenwechsel.md).
++ */
++#define H713_SOURCE_VIDEODEC	1
++
++/*
++ * How long the capture gets to come back after the source has been switched
++ * away and back. Measured on 07.09.2026 over three cycles: 539 ms, 536 ms and
++ * 544 ms from the return of the second RPC until INCAP +0x928 bit 31 was set
++ * again (doku/nachtlog/E2-freigabe.md). The budget carries the same reserve
++ * the ARISC driver already gives its own firmware waits, and like every
++ * deadline in this tree it is a failure report, never a remedy.
++ */
++#define H713_REARM_TIMEOUT_MS	2000
++
++/*
++ * How often the way back to HDMI-1 is tried before giving up. Three, because
++ * the failure it covers is a single lost RETURN and not a state the
++ * co-processor is stuck in -- if three deadlines of two seconds each pass
++ * without an answer, the problem is not one this loop can fix, and going on
++ * would only delay the log line that says so.
++ */
++#define H713_SOURCE_RETRIES	3
+ #define H713_HDMI_PORT		0
+ 
+ /*
+@@ -395,6 +422,10 @@
+ 	const struct h713_hdmirx_slot_source *slot_source;
+ 	struct notifier_block flip_nb;
+ 
++	/* re-arming the capture after the display published the descriptor */
++	struct notifier_block desc_nb;
++	struct work_struct rearm_work;
++
+ 	/* last callback payloads, for debugfs and the source change event */
+ 	spinlock_t event_lock;
+ 	u32 signal_args[CPU_COMM_MAX_ARGS];
+@@ -535,11 +566,10 @@
+ }
+ 
+ /*
+- * Stage 5 of the source change. Two things about it are worth knowing and
+- * both are measured: if the firmware's active source already is HDMI-1 this
+- * is a null change and moves nothing, which is normal and not an error; and
+- * a real change away and back does not make the capture run again by itself
+- * (doku/78 appendix A.5, open point A.6 item 1).
++ * Stage 5 of the source change. If the firmware's active source already is
++ * HDMI-1 this is a null change and moves nothing, which is normal and not an
++ * error -- and it is exactly why setting HDMI-1 once is not enough to bring a
++ * stopped capture back. See h713_hdmirx_rearm().
+  */
+ static int h713_hdmirx_set_source(struct h713_hdmirx *rx)
+ {
+@@ -785,6 +815,145 @@
+ 	return a.y != b.y;
+ }
+ 
++/*
++ * Switch the firmware's source away from HDMI-1 and back.
++ *
++ * The firmware re-runs its V_INCAP group on a source *change*, which is why
++ * this goes away and back instead of setting HDMI-1 once. Both halves are
++ * needed: measured on 07.09.2026, three THal_Vp_SetSource(HDMI-1) calls in a
++ * row left INCAP +0x928 bit 31 clear, while away and back set it every time
++ * (doku/nachtlog/E2-freigabe.md). That also corrects the note that stood at
++ * h713_hdmirx_set_source() until today; doku/78 appendix A.5 was written
++ * before B2 measured the source switch.
++ *
++ * Sleeps in both calls; process context only.
++ */
++static int h713_hdmirx_switch_source(struct h713_hdmirx *rx)
++{
++	u32 arg = H713_SOURCE_VIDEODEC;
++	unsigned int try;
++	int ret;
++
++	ret = cpu_comm_call(rx->id_setsource, &arg, 1, NULL, 0, 0);
++	if (ret) {
++		dev_err(rx->dev,
++			"Freigabe: SetSource(VideoDec) fehlgeschlagen: %d -- die Quelle steht unveraendert\n",
++			ret);
++		return ret;
++	}
++
++	/*
++	 * From here the source is *not* HDMI-1 any more, and a return without
++	 * having put it back leaves the device showing nothing. That is why
++	 * this half is retried and the first half is not.
++	 *
++	 * What is retried is a lost RETURN, not a rejected call: -110 means
++	 * the co-processor acknowledged the message and then did not answer
++	 * within the deadline -- a missing acknowledgement would be -ETIME,
++	 * because that is what down_timeout() returns. It happened once at
++	 * probe on 07.09.2026 and left the source on VideoDec with no picture,
++	 * which is the failure this loop exists for. SetSource is idempotent,
++	 * so sending it again costs nothing if the first one did arrive after
++	 * all.
++	 */
++	for (try = 1; try <= H713_SOURCE_RETRIES; try++) {
++		ret = h713_hdmirx_set_source(rx);
++		if (!ret) {
++			if (try > 1)
++				dev_info(rx->dev,
++					 "Freigabe: SetSource(HDMI-1) im %u. Anlauf angekommen\n",
++					 try);
++			return 0;
++		}
++
++		dev_warn(rx->dev,
++			 "Freigabe: SetSource(HDMI-1) Anlauf %u von %u fehlgeschlagen: %d\n",
++			 try, H713_SOURCE_RETRIES, ret);
++	}
++
++	dev_err(rx->dev,
++		"Freigabe: SetSource(HDMI-1) blieb nach %u Anlaeufen aus -- die Quelle steht auf VideoDec, es kommt kein Bild\n",
++		H713_SOURCE_RETRIES);
++
++	return ret;
++}
++
++/*
++ * Make the capture run again and say whether it worked.
++ *
++ * The wait is not politeness: the firmware answers the second RPC before the
++ * capture is running again, so a caller that returns at once would report
++ * success while the ring still stands still. On the descriptor path it takes
++ * about 25 ms; on a warm bench the INCAP output-enable bit itself came back
++ * 536 to 544 ms after the second reply over three cycles.
++ *
++ * What this criterion cannot separate: a ring that is running again from one
++ * that had not finished draining. It answers the question that matters --
++ * "are frames arriving" -- and it is the only question this driver can ask
++ * without mapping a block that belongs to the capture.
++ */
++static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
++{
++	ktime_t start;
++
++	if (h713_hdmirx_switch_source(rx))
++		return;
++
++	start = ktime_get();
++	do {
++		if (h713_hdmirx_signal_present(rx)) {
++			dev_info(rx->dev,
++				 "Freigabe: Capture laeuft wieder nach %lld ms\n",
++				 ktime_ms_delta(ktime_get(), start));
++			return;
++		}
++	} while (ktime_ms_delta(ktime_get(), start) < H713_REARM_TIMEOUT_MS);
++
++	/*
++	 * Not an error return: there is nobody to return it to, and the most
++	 * ordinary reason for it is the most boring one -- nothing is plugged
++	 * in. Said out loud all the same, because if a picture is expected and
++	 * none arrives, this line is where the search starts.
++	 */
++	dev_info(rx->dev,
++		 "Freigabe: nach %u ms bewegen sich die Flip-Zeiger nicht; liegt ein Signal an?\n",
++		 H713_REARM_TIMEOUT_MS);
++}
++
++static void h713_hdmirx_rearm_work(struct work_struct *work)
++{
++	struct h713_hdmirx *rx = container_of(work, struct h713_hdmirx,
++					      rearm_work);
++
++	h713_hdmirx_rearm(rx);
++}
++
++/*
++ * The display driver has just published the VidDec descriptor. The firmware
++ * takes that write as a VideoDec signal event and answers it by clearing the
++ * INCAP output enable: the capture goes on counting frames and writes none,
++ * so the wall keeps the last picture it took. Measured, not deduced
++ * (doku/nachtlog/A-abnahme-board.md, cold-start counter-test 22:26) -- and it
++ * is why the picture used to freeze the moment the video plane came up, which
++ * userspace then had to undo with a source switch it had no way of knowing
++ * about.
++ *
++ * Handing this to a worker is not a detail: the notifier runs in the display
++ * driver's atomic commit tail, and the re-arm takes about half a second.
++ */
++static int h713_hdmirx_desc_notify(struct notifier_block *nb,
++				   unsigned long action, void *data)
++{
++	struct h713_hdmirx *rx = container_of(nb, struct h713_hdmirx, desc_nb);
++
++	if (action != H713_AFBD_EVENT_DESCRIPTOR)
++		return NOTIFY_DONE;
++
++	schedule_work(&rx->rearm_work);
++
++	return NOTIFY_OK;
++}
++
+ /* ------------------------------------------------------------------ *
+  * Buffers: buffer i is slot i, for the whole life of the queue
+  * ------------------------------------------------------------------ */
+@@ -1557,6 +1726,8 @@
+ 	rx->dev = dev;
+ 	rx->slot_source = &h713_hdmirx_vsync;
+ 	rx->flip_nb.notifier_call = h713_hdmirx_flip_notify;
++	rx->desc_nb.notifier_call = h713_hdmirx_desc_notify;
++	INIT_WORK(&rx->rearm_work, h713_hdmirx_rearm_work);
+ 	rx->timings = h713_hdmirx_timings;
+ 	rx->last_slot = -1;
+ 	mutex_init(&rx->lock);
+@@ -1682,6 +1853,21 @@
+ 	if (ret)
+ 		goto err_v4l2;
+ 
++	/*
++	 * From here on the display tells this driver when it has published the
++	 * descriptor, so the capture is switched back on without anyone in
++	 * userspace having to know that publishing it switched the capture
++	 * off. -EPROBE_DEFER cannot happen at this point: the flip read near
++	 * the top of this function already established that the display has
++	 * bound.
++	 */
++	ret = h713_afbd_register_descriptor_notifier(&rx->desc_nb);
++	if (ret) {
++		dev_err_probe(dev, ret,
++			      "Descriptor-Notifier nicht anmeldbar\n");
++		goto err_vdev;
++	}
++
+ 	rx->debugfs = debugfs_create_dir(H713_HDMIRX_NAME, NULL);
+ 	debugfs_create_file("status", 0444, rx->debugfs, rx,
+ 			    &h713_hdmirx_status_fops);
+@@ -1690,8 +1876,32 @@
+ 	dev_info(dev, "/dev/video%d, Slot-Quelle: %s\n", rx->vdev.num,
+ 		 rx->slot_source->name);
+ 
++	/*
++	 * And once for the state this driver was just booted into. After a
++	 * cold start the capture is not running -- INCAP +0x104 does not count
++	 * at all -- and until today it took a VIDIOC_S_INPUT from userspace to
++	 * get it going (measured 07.09.2026, doku/nachtlog/E2-freigabe.md).
++	 * There is no reason for a device to come up not delivering and wait
++	 * to be asked.
++	 *
++	 * The switch, but not the wait that h713_hdmirx_rearm() does. The two
++	 * cases are not the same question. After the descriptor this driver
++	 * knows the capture was running and knows what stopped it, so a ring
++	 * that stays still is news. Here it knows neither: the hotplug pulse a
++	 * second earlier has just told the source to re-negotiate, and the
++	 * source is entitled to take its time -- on this bench it needs longer
++	 * than the whole re-arm budget. Waiting for it would put a line about
++	 * a missing signal into every normal boot, and a warning that fires
++	 * when nothing is wrong stops being read. The capture comes up on its
++	 * own once the source is back; ENUM_INPUT answers the question for
++	 * anyone who wants it.
++	 */
++	h713_hdmirx_switch_source(rx);
++
+ 	return 0;
+ 
++err_vdev:
++	vb2_video_unregister_device(&rx->vdev);
+ err_v4l2:
+ 	v4l2_device_unregister(&rx->v4l2_dev);
+ err_callbacks:
+@@ -1704,6 +1914,8 @@
+ {
+ 	struct h713_hdmirx *rx = platform_get_drvdata(pdev);
+ 
++	h713_afbd_unregister_descriptor_notifier(&rx->desc_nb);
++	cancel_work_sync(&rx->rearm_work);
+ 	debugfs_remove_recursive(rx->debugfs);
+ 	vb2_video_unregister_device(&rx->vdev);
+ 	v4l2_device_unregister(&rx->v4l2_dev);
+diff -ruN a/include/linux/soc/sunxi/h713-afbd.h b/include/linux/soc/sunxi/h713-afbd.h
+--- a/include/linux/soc/sunxi/h713-afbd.h	2026-09-07 11:01:17.228381775 +0200
++++ b/include/linux/soc/sunxi/h713-afbd.h	2026-09-07 11:10:56.543054012 +0200
+@@ -33,8 +33,9 @@
+ 
+ struct notifier_block;
+ 
+-/* The only event on the chain today: a capture slot has been finished. */
++/* Events. FLIP travels the vsync chain, DESCRIPTOR the descriptor chain. */
+ #define H713_AFBD_EVENT_FLIP		1
++#define H713_AFBD_EVENT_DESCRIPTOR	2
+ 
+ /**
+  * struct h713_afbd_flip - the capture ring flip pointers, sampled at one vsync
+@@ -107,6 +108,46 @@
+  */
+ int h713_afbd_read_flip(struct h713_afbd_flip *flip);
+ 
++/**
++ * h713_afbd_register_descriptor_notifier() - be told when the VidDec
++ *	descriptor has been published to the firmware
++ * @nb: notifier block; its handler is called with action
++ *	%H713_AFBD_EVENT_DESCRIPTOR and a NULL payload
++ *
++ * Publishing the descriptor is not a private matter of the display driver,
++ * and that is the whole reason this chain exists. The firmware reads the
++ * write as a VideoDec signal event: MemoryAgent +8 goes to 1 and
++ * memory_agent_onoff clears the INCAP output enable, because the capture is
++ * not in the source mask of VideoDec. The capture then keeps counting frames
++ * and writes none -- the wall shows the last one it took
++ * (doku/nachtlog/A-abnahme-board.md, cold-start counter-test 22:26).
++ *
++ * So the one action that stops the capture happens in this driver, and the
++ * one driver that can start it again is the capture driver. Without this
++ * chain that knowledge lives in a userspace recipe, which is where it was
++ * until 07.09.2026 and where it does not belong.
++ *
++ * This is a blocking chain and the handler runs in the atomic commit tail:
++ * it may sleep, but everything it does delays the scanout commit, so a
++ * handler that has real work to do should hand it to a worker.
++ *
++ * May sleep; call from process context.
++ *
++ * Return: 0 on success, -EPROBE_DEFER if the display device has not bound
++ * yet, -ENODEV if the display driver is not in this kernel at all.
++ */
++int h713_afbd_register_descriptor_notifier(struct notifier_block *nb);
++
++/**
++ * h713_afbd_unregister_descriptor_notifier() - stop being told
++ * @nb: the notifier block that was registered
++ *
++ * Waits for a handler that is currently running to return. May sleep.
++ *
++ * Return: 0 on success, -ENOENT if @nb was not registered.
++ */
++int h713_afbd_unregister_descriptor_notifier(struct notifier_block *nb);
++
+ #else /* !CONFIG_DRM_SUN50I_H713_AFBD */
+ 
+ static inline int h713_afbd_register_flip_notifier(struct notifier_block *nb)
+@@ -123,6 +164,18 @@
+ {
+ 	return -ENODEV;
+ }
++
++static inline int
++h713_afbd_register_descriptor_notifier(struct notifier_block *nb)
++{
++	return -ENODEV;
++}
++
++static inline int
++h713_afbd_unregister_descriptor_notifier(struct notifier_block *nb)
++{
++	return -ENODEV;
++}
+ 
+ #endif /* CONFIG_DRM_SUN50I_H713_AFBD */
+ 

@@ -1,0 +1,1261 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] media, drm: h713: follow the source geometry instead of a constant
+
+When the source changes its resolution the wall shows the new picture torn
+across the top and the old one underneath (doku/nachtlog/A6-4). The firmware
+is not the reason. It re-detects the timing, rewrites its capture and lays
+the ring out for the new picture on its own: at 1280x720 INCAP +0x924 reads
+0x50 = 80 = 1280/16 where it read 0x78 = 120 = 1920/16 before, +0x874 reads
+0x050002d0 and +0x548 0x02ee0672 (doku/nachtlog/E4, register dumps of both
+modes). The ring really holds 720 lines of 1280 bytes; the 480 rows of new
+content in A6-4's reconstruction are exactly 921600 = 720 * 1280 bytes read
+with a 1920 byte stride, and the "three copies side by side" are the 1.5
+source lines that fit into one such row. Everything that reads the ring on
+our side did so with a compile-time constant: H713_HDMIRX_WIDTH/HEIGHT at
+three places in sun50i-h713-hdmirx.c (the format, the timings cap, the
+answer to QUERY_DV_TIMINGS), a plane that refused any framebuffer other than
+the panel size, and a userspace that built its framebuffer from the CRTC mode.
+The firmware writes with 80, we read with 120; that is the tearing.
+
+What the firmware tells us, and what it does not
+------------------------------------------------
+
+MipsHalCallback_SignalChange carries two words -- ParaCount 2 in the
+firmware's own cpu_comm trace, "Para[] 0x00000003 0x4e332000" in our debugfs.
+Para[0] is the source id, Para[1] the physical address of a 44 byte record in
+the cpu_comm shared memory. The record has never been read; its layout is now
+taken from display.bin rather than assumed:
+
+  - The function that prints the elog lines "thal_display_source.cpp 204..214"
+    (0x8b14b544) has the record at sp+0x20 and prints one word per line, in
+    order, from +0x00 to +0x28: signal_id, frame_rate_x100, b_interlace,
+    color_format, color_space, resolution.h_size, resolution.v_size, hdr_mode,
+    b_full_range, b_dvi_mode, atv_uid. Eleven words, 44 bytes. source_id
+    (line 203) comes from the function's first argument and is not in it.
+  - The SignalChange adapter it then calls (0x8b109fb0) copies exactly 0x2c
+    bytes of it into sgp_hal_signal_info, sets ParaCount 2, Para[0] = source
+    id, and puts (ptr & 0x0fffffff | 0x80000000) + 0xc0000000 into Para[1]:
+    0xae332000 becomes 0x4e332000, the address in our debugfs.
+  - kHalSignalID_NONE is 0, _UNKNOWN 1, _NOCHANGE 2 (name table 0x8b14adc0);
+    in the stock trace the "no signal" record also carries h_size 0.
+
+So the record gives the active size, the frame rate to 1/100 Hz, the scan
+type and the firmware's verdict. It does NOT give the totals or the sync
+positions. Those appear in the firmware's log too (h_total 2200, v_total
+1125, hde_start 192, vde_start 41) but from a different, 172 byte structure
+that never leaves the MIPS. The totals are readable elsewhere: INCAP +0x548
+holds v_total/h_total and +0x874 the active size, exact in both measured
+modes (E4). The sync positions are readable nowhere on the ARM (E4 searched
+the block for them; the record has none).
+
+Two corrections fall out of the disassembly. The debugfs code read the
+record's address from Para[2] and never showed it -- there is no third word.
+doku/83 and doku/88 say "Para[2]" as well; that is the one-based count of
+hdmi_seq.py's trace, not the zero-based args[] of the kernel API. And
+doku/84's reading of "+16 = the descriptor's colour format plus one" does
+not match the layout: +0x10 is color_space, and the value 1 seen there is
+kHalColorSpace_BT709, which is what the firmware reports for this source.
+
+What changes
+------------
+
+sun50i-h713-hdmirx:
+
+  - struct h713_hdmirx_signal_info, the record as laid out above, with the
+    static_assert on its size. The callback stores Para[1]; the record is
+    read on demand (QUERY_DV_TIMINGS, debugfs) through a mapping made on
+    first use, so the callback stays a spinlock and the reader always sees
+    the newest state, which is what a client wants after a source change.
+
+  - INCAP as a read-only syscon behind a new "allwinner,incap" phandle. Only
+    two words are read, +0x874 and +0x548. Writing INCAP from the ARM wedges
+    the capture until a cold start (doku/78 section 0, rule 6); a regmap
+    that nobody writes is the form in which that rule needs no discipline.
+
+  - h713_hdmirx_detect_timings(): frames must be arriving (flip pointers);
+    the record must not say "none"; the record's active size must equal the
+    block's, otherwise the change is still in flight and the answer is
+    -ENOLCK; the pixel clock is h_total * v_total * frame rate; and a preset
+    with the same active and total geometry and the clock within 1 % is
+    taken whole, which is the step the firmware itself takes when it maps a
+    timing onto its mode table ("detect new timing, signal ID=0x20000
+    index=14"). Without a preset the blanking is reported as tc358743 reports
+    it -- whole in hsync/vsync, porches 0 -- the convention
+    v4l2_valid_dv_timings() spells out for receivers that cannot split it.
+    Before the first callback of a boot the geometry comes from INCAP alone
+    and the frame rate from the flip pointers, coarsely, and only a preset the
+    two agree on is reported: the first QUERY of a boot may otherwise find
+    no record, because the callbacks are armed by open() (0100) and the
+    firmware pushes the record only on a change.
+
+  - The format follows the timings, computed by v4l2_fill_pixfmt_mp() from
+    NV16M and the active size, so bytesperline is the width -- which is the
+    ring's pitch. QUERY_DV_TIMINGS makes what it found the current timing
+    unless buffers are in flight; a streaming queue keeps its geometry and
+    the client that got the source change event stops and asks again.
+
+  - timings_cap opens to 640x480..1920x1080, 25.175..148.5 MHz, progressive,
+    CEA-861/DMT plus custom. The upper bound is the panel and the largest
+    source seen through the chain; the two sources above 1080 lines that
+    were tried never reached the ring (E3). The lower bound is the smallest
+    mode in the EDID this driver presents (VIC 1). Between the two only
+    1280x720p60 has been captured; the range says what is accepted, not
+    what has been measured. Interlaced is refused rather than described.
+
+sun50i-h713-afbd:
+
+  - In HDMI passthrough atomic_check accepts a framebuffer smaller than the
+    panel, shown full screen: src the framebuffer, dst the CRTC, upscaling
+    unbounded, downscaling refused (never seen to happen), pitch equal to the
+    width (the ring's). The six geometry registers were always computed from
+    the framebuffer; now the framebuffer may say 1280x720. The plane itself
+    does not scale; the composition block behind it does, and the firmware
+    programs it in the same UpdateWce that lays out the ring (doku/91 Punkt
+    2, stock chain step 6). That the composition follows on our board is
+    inferred from that chain and from INCAP following; it is not measured
+    on the wall yet, and doku/91's acceptance for Punkt 2 is where it is.
+    Memory mode keeps the old rule, panel size or nothing.
+
+  - The VidDec descriptor is not rewritten for a new passthrough geometry
+    and no longer warns about it. The record describes the VideoDec source
+    and is read by the VideoDec detector alone; the firmware's own chain for
+    an HDMI signal change has no descriptor in it (stock elog, doku/91). It
+    stays as first published for the boot, which is the one thing the
+    firmware is known to survive.
+
+Device tree: syscon@6940000 for INCAP, the phandle on hdmi-rx, and the
+binding comment. Kconfig: depends on MFD_SYSCON (=y in the build).
+
+The userspace half -- hy310-tv builds its framebuffer from G_FMT and rebuilds
+it on a SOURCE_CHANGE with the plane off in between, its counterpart of the
+firmware's AV mute -- is hy310-tv.diff next to this patch.
+
+What this patch does not establish, and where it gets decided
+-------------------------------------------------------------
+
+  - Whether MipsHalCallback_SignalChange fires on a pure geometry change
+    without a source switch. A6-4 counted 0 before the callbacks were armed
+    at all (0100 came later); the firmware-side re-detection is inferred
+    from the ring contents. doku/91 Punkt 2.2 is the measurement.
+  - Whether the composition block follows the source (0x05000174 scale,
+    0x05000444/0x05000544 geometry, 0x05000844 pitch at 720p).
+  - Whether the firmware's HDMI-side UpdateWce writes AFBD source-0
+    registers -- in particular the chroma stride at 0x05600044, which this
+    plane doubles for NV16 -- after the plane has programmed them.
+  - Whether the first record of a boot arrives without a source switch; the
+    INCAP-plus-flip-rate path covers that case, but it is a path, not a
+    measurement.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 17:25:58.738846727 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 17:40:13.949384856 +0200
+@@ -1570,6 +1570,26 @@
+ 			status = "okay";
+ 		};
+ 
++		/*
++		 * INCAP, the MIPS firmware's HDMI capture block. Nothing on
++		 * the ARM drives it: the firmware programs it for every
++		 * signal it locks, including the line pitch of the capture
++		 * ring (doku/nachtlog/E4-geometrie-vollstaendig.md). But its
++		 * active and total geometry are the one place where the size
++		 * of what lands in the ring can be read, so the HDMI receiver
++		 * node looks at two of its words, +0x874 and +0x548.
++		 *
++		 * A syscon and not a device on purpose: there is no driver
++		 * for the block and there must be no writer -- writing INCAP
++		 * from the ARM wedges the capture until a cold start (doku/78
++		 * section 0, rule 6). It lives in the TVFE/TVCAP power
++		 * domain; while that is off the whole block reads zero.
++		 */
++		incap: syscon@6940000 {
++			compatible = "allwinner,sun50i-h713-incap", "syscon";
++			reg = <0x06940000 0x1000>;
++		};
++
+ 		/* R-domain pinctrl for PL/PM banks (IR, S_PWM, WLAN/BT GPIOs) */
+ 		r_pio: pinctrl@7022000 {
+ 			compatible = "allwinner,sun50i-h713-r-pinctrl";
+@@ -1900,7 +1920,8 @@
+ 	 * from the flip notifier of display@5600000 -- that node owns the
+ 	 * register pair, claims it, and reads it on every vsync anyway. All
+ 	 * three are dependencies in Kconfig, not resources here. What is left
+-	 * to describe is the memory the capture lands in.
++	 * to describe is the memory the capture lands in, and the one block
++	 * the driver looks at without owning it.
+ 	 *
+ 	 * Binding:
+ 	 *   compatible     "allwinner,sun50i-h713-hdmirx"
+@@ -1915,6 +1936,14 @@
+ 	 *                       rectangles, the Vp_Init staging area -- have to
+ 	 *                       live where the MIPS can address them, and this
+ 	 *                       is that place. Named, not hard coded.
++	 *   allwinner,incap  the syscon over the firmware's capture block
++	 *                    (INCAP, syscon@6940000 above). Read only, two
++	 *                    words: the active and the total size of what the
++	 *                    capture is writing, which is where the driver
++	 *                    gets the pixel clock and the blanking of the
++	 *                    timing it reports -- the firmware's own signal
++	 *                    record has the active size and the frame rate
++	 *                    but no totals (doku/nachtlog/E4).
+ 	 *
+ 	 * No interrupt: three independent searches of the firmware image found
+ 	 * the capture interrupt only inside the MIPS interrupt controller, and
+@@ -1925,6 +1954,7 @@
+ 		compatible = "allwinner,sun50i-h713-hdmirx";
+ 		memory-region = <&mips_framebuf>, <&cpu_comm_reserved>;
+ 		memory-region-names = "hdmi-ring", "cpu-comm-shmem";
++		allwinner,incap = <&incap>;
+ 		status = "okay";
+ 	};
+ 
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 17:25:58.737835219 +0200
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 17:39:52.266610685 +0200
+@@ -387,11 +387,24 @@
+  * pointer went from nothing to the record. They are per-boot state, which is
+  * also why the disable path leaves them standing.
+  *
++ * In HDMI passthrough (@ring) the record is published once per boot with the
++ * geometry of the first enable and then left alone, whatever geometry later
++ * enables bring. That is not a refusal and does not warn: the record describes
++ * the *VideoDec* source and is read by the firmware's VideoDec detector alone
++ * (GetFrameInfo/ConvertFrameInfo2SignalInfo). The HDMI capture and the WCE
++ * behind it never look at it -- the firmware's own chain for an HDMI signal
++ * change, from "AV mute" to NotifySignalChange, has no descriptor in it at all
++ * (stock elog, doku/91 Punkt 2). The plane takes its geometry from the
++ * framebuffer, the firmware takes its geometry from the signal, and the record
++ * stands as first published for as long as the boot lasts -- the one thing the
++ * firmware is known to survive.
++ *
+  * Returns true if the firmware has something new to look at here, i.e. if the
+  * record or the pointer changed. See h713_afbd_wait_wce().
+  */
+ static bool h713_afbd_publish_video_info(struct h713_afbd *h, unsigned int w,
+-					 unsigned int hgt, unsigned int stride)
++					 unsigned int hgt, unsigned int stride,
++					 bool ring)
+ {
+ 	u32 rec[H713_VIDEO_INFO_WORDS];
+ 	u32 ptr = lower_32_bits(h->video_info_dma);
+@@ -402,7 +415,7 @@
+ 	h713_afbd_build_video_info(rec, w, hgt, stride);
+ 	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
+ 	write_record = differs && !h->video_info_published;
+-	if (differs && h->video_info_published)
++	if (differs && h->video_info_published && !ring)
+ 		drm_warn(&h->drm,
+ 			 "refusing to rewrite the VidDec descriptor for %ux%u; the capture does not survive a second signal event\n",
+ 			 w, hgt);
+@@ -747,6 +760,33 @@
+ 	h->video_active = false;
+ }
+ 
++/*
++ * In HDMI passthrough the framebuffer describes the *source*: its size and
++ * stride are the ring's, and the ring holds whatever the firmware's capture
++ * writes -- 1920x1080 for a 1080p source, 720 lines of 1280 bytes for a 720p
++ * source (INCAP rowbyte 80 = 1280/16, doku/nachtlog/E4). Refusing a
++ * framebuffer that is not the panel size refuses the picture that is really
++ * there; that is what this check did until 07.09.2026, and it is why a 720p
++ * source stood torn on the wall (A6-4): the plane kept reading a 1280-byte
++ * ring with a 1920-byte stride.
++ *
++ * The plane itself does not scale. What scales is the composition block
++ * behind it (0x05000000, doku/89), and that block is the firmware's: it
++ * programs it for the signal it detected, in the same UpdateWce that lays the
++ * ring out (doku/91 Punkt 2, step 6 of the stock chain). So in passthrough a
++ * source smaller than the panel is accepted and, as far as KMS is concerned,
++ * shown full screen -- src is the whole framebuffer, dst the whole CRTC -- and
++ * the plane programs source 0 for the framebuffer's size and nothing else.
++ * That the composition really follows is inferred from the stock chain and
++ * from INCAP following, not yet measured on the wall; the acceptance in
++ * doku/91 Punkt 2 is where that gets measured. A source larger than the panel
++ * is refused: scaling down has never been seen, and no source above 1080
++ * lines has ever reached the ring (E3).
++ *
++ * Without the ring the buffer is fetched from memory, and there the old rule
++ * stands: the buffer has to be the panel size, because nothing behind the
++ * reader gets reprogrammed for it.
++ */
+ static int h713_afbd_video_atomic_check(struct drm_plane *plane,
+ 					struct drm_atomic_state *state)
+ {
+@@ -756,18 +796,25 @@
+ 	struct drm_crtc_state *crtc_state;
+ 	struct drm_framebuffer *fb;
+ 	dma_addr_t y, c;
++	bool ring;
+ 	int ret;
+ 
+ 	new_state = drm_atomic_get_new_plane_state(state, plane);
+ 	if (!new_state->crtc)
+ 		return 0;
++	ring = to_h713_plane_state(new_state)->hdmi_ring;
+ 
+ 	crtc_state = drm_atomic_get_crtc_state(state, new_state->crtc);
+ 	if (IS_ERR(crtc_state))
+ 		return PTR_ERR(crtc_state);
+ 
++	/*
++	 * A minimum scale of 1 means "any amount of upscaling": the bounds
++	 * that matter are the geometry checks below, which are about the
++	 * ring, not about a scaler whose limits nobody has measured.
++	 */
+ 	ret = drm_atomic_helper_check_plane_state(new_state, crtc_state,
+-						  DRM_PLANE_NO_SCALING,
++						  ring ? 1 : DRM_PLANE_NO_SCALING,
+ 						  DRM_PLANE_NO_SCALING,
+ 						  false, false);
+ 	if (ret)
+@@ -779,31 +826,40 @@
+ 	    (fb->format->format != DRM_FORMAT_NV12 &&
+ 	     fb->format->format != DRM_FORMAT_NV16) ||
+ 	    fb->modifier != DRM_FORMAT_MOD_LINEAR ||
+-	    fb->width != mode->hdisplay ||
+-	    fb->height != mode->vdisplay ||
++	    fb->width > mode->hdisplay ||
++	    fb->height > mode->vdisplay ||
+ 	    fb->pitches[1] != fb->pitches[0] ||
+ 	    fb->width % H713_VIDEO_BLOCK || fb->height % 2 ||
++	    fb->width < H713_VIDEO_BLOCK ||
+ 	    fb->height < H713_VIDEO_BLOCK ||
+ 	    new_state->src_x || new_state->src_y ||
+-	    new_state->src_w != mode->hdisplay << 16 ||
+-	    new_state->src_h != mode->vdisplay << 16 ||
++	    new_state->src_w != fb->width << 16 ||
++	    new_state->src_h != fb->height << 16 ||
+ 	    new_state->crtc_x || new_state->crtc_y ||
+ 	    new_state->crtc_w != mode->hdisplay ||
+ 	    new_state->crtc_h != mode->vdisplay)
+ 		return -EINVAL;
+ 
+-	if (to_h713_plane_state(new_state)->hdmi_ring) {
++	if (ring) {
+ 		/*
+ 		 * In HDMI passthrough the framebuffer only describes format
+ 		 * and geometry; the addresses come from the capture ring, so
+ 		 * the ring has to be described in DT and the descriptor page
+-		 * has to be somewhere the MIPS can read.
++		 * has to be somewhere the MIPS can read. And the stride has
++		 * to be the ring's: lines are exactly one width apart there
++		 * (INCAP rowbyte = width / 16), so a padded pitch would
++		 * program a stride for data this buffer does not own.
+ 		 */
+ 		if (!h->ring_size)
+ 			return -EOPNOTSUPP;
++		if (fb->pitches[0] != fb->width)
++			return -EINVAL;
+ 		return 0;
+ 	}
+ 
++	if (fb->width != mode->hdisplay || fb->height != mode->vdisplay)
++		return -EINVAL;
++
+ 	y = drm_fb_dma_get_gem_addr(fb, new_state, 0);
+ 	c = drm_fb_dma_get_gem_addr(fb, new_state, 1);
+ 	if (!y || !c || upper_32_bits(y) || upper_32_bits(c))
+@@ -849,7 +905,7 @@
+ 		if (nv16)
+ 			writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
+ 		published = h713_afbd_publish_video_info(h, w, hgt,
+-							 fb->pitches[0]);
++							 fb->pitches[0], ring);
+ 		if (published && nv16 && h713_afbd_wait_wce(h))
+ 			drm_err(&h->drm,
+ 				"firmware did not reprogram the chroma stride within %u ms of the descriptor; source 0 is programmed anyway, so this enable may come up with a halved chroma stride\n",
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig	2026-09-07 17:40:13.942481713 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig	2026-09-07 17:40:13.949474656 +0200
+@@ -8,6 +8,7 @@
+ 	depends on HY310_CPU_COMM
+ 	depends on SUN50I_H713_ARISC
+ 	depends on DRM_SUN50I_H713_AFBD
++	depends on MFD_SYSCON
+ 	select VIDEOBUF2_CORE
+ 	select VIDEOBUF2_MEMOPS
+ 	help
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 17:25:58.736822692 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 17:44:56.784678773 +0200
+@@ -35,7 +35,9 @@
+  *  - "Signal present" is a measurement, not a register bit we can read: on
+  *    signal loss the flip pointers stop moving and the last picture stays
+  *    (measured 07.09.2026, doku/nachtlog/K4-hotplug.md). QUERY_DV_TIMINGS
+- *    samples them for one frame period rather than trusting a cached flag.
++ *    watches them for a few frame periods rather than trusting a cached
++ *    flag, and takes the geometry from what the firmware reports and from
++ *    its capture block -- see h713_hdmirx_detect_timings().
+  *
+  *  - The firmware announces signal loss and signal return on its own through
+  *    the MipsHalCallback_SignalChange callback (same measurement). The V4L2
+@@ -50,16 +52,21 @@
+  * appendix A (the seven stages of a source change).
+  */
+ 
++#include <linux/build_bug.h>
+ #include <linux/delay.h>
+ #include <linux/debugfs.h>
+ #include <linux/firmware.h>
+ #include <linux/io.h>
++#include <linux/ktime.h>
++#include <linux/math64.h>
++#include <linux/mfd/syscon.h>
+ #include <linux/module.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/notifier.h>
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/platform_device.h>
++#include <linux/regmap.h>
+ #include <linux/seq_file.h>
+ #include <linux/slab.h>
+ #include <linux/spinlock.h>
+@@ -85,18 +92,91 @@
+ #define H713_HDMIRX_NAME	"sun50i-h713-hdmirx"
+ 
+ /*
+- * Geometry. The whole chain -- the firmware's window computation, the frame
+- * descriptor the display driver publishes, the AFBD crop -- is set up for
+- * 1920x1080p60 and nothing else has ever been measured on this board. A
+- * resolution change is an open point (doku/78 appendix A.6 item 4), which is
+- * why there is exactly one entry in the timings table below.
++ * Geometry. Nothing about the picture size is a constant of this driver: the
++ * firmware detects the source timing, reports it through the SignalChange
++ * callback (struct h713_hdmirx_signal_info below) and rewrites its capture
++ * for it -- for a 1280x720 source the ring holds 720 lines of 1280 bytes,
++ * measured 07.09.2026 (doku/nachtlog/E4-geometrie-vollstaendig.md, INCAP
++ * +0x924 = 80 = 1280/16). What is fixed is the pixel format the capture
++ * writes, NV16 in two planes, and the three slots it writes into.
++ *
++ * 1920x1080 is the panel. It is the window the bring-up sequence hands to
++ * Wce_SetWindow, and it is the initial timing -- what G_FMT answers before
++ * the first QUERY_DV_TIMINGS of a boot has replaced it. A default, not a
++ * measurement.
+  */
+ #define H713_HDMIRX_WIDTH	1920
+ #define H713_HDMIRX_HEIGHT	1080
+ 
+ /* NV16: chroma at full height, so both planes are width * height bytes. */
+ #define H713_HDMIRX_PLANES	2
+-#define H713_HDMIRX_PLANE_SIZE	(H713_HDMIRX_WIDTH * H713_HDMIRX_HEIGHT)
++
++/*
++ * The signal information record. MipsHalCallback_SignalChange carries two
++ * words: Para[0] is the source id (3 = HDMI-1), Para[1] the physical address
++ * of this record in the cpu_comm shared memory (ParaCount 2 in the firmware's
++ * own trace; "Para[] 0x00000003 0x4e332000" in debugfs).
++ *
++ * Layout from display.bin, not from the elog alone. The function that prints
++ * the elog lines "thal_display_source.cpp 204..214" (0x8b14b544) has the
++ * record at sp+0x20 and reads one word per line, in this order, at +0, +4,
++ * ... +0x28; source_id (line 203) is printed from its first argument and is
++ * not part of the record. The SignalChange adapter it then calls (0x8b109fb0,
++ * "_TSignalChangeCallback") copies exactly 0x2c bytes of it into
++ * sgp_hal_signal_info, sets ParaCount 2, Para[0] = source id, and puts the
++ * record's address converted to ARM physical -- (p & 0x0fffffff | 0x80000000)
++ * + 0xc0000000, 0xae332000 -> 0x4e332000 -- into Para[1]. Field names are the
++ * elog's; enumerator values as far as the name tables in the image give them.
++ *
++ * What is NOT in it: the total sizes and the sync positions. Those appear in
++ * the firmware's log too (h_total, v_total, hde_start, vde_start), but from a
++ * different, 172 byte structure that stays inside the MIPS. See
++ * h713_hdmirx_detect_timings() for where the totals come from instead.
++ */
++struct h713_hdmirx_signal_info {
++	u32 signal_id;		/* kHalSignalID_*, see below */
++	u32 frame_rate_x100;	/* 6000 = 60.00 Hz */
++	u32 b_interlace;
++	u32 color_format;	/* kHalColorFormat_* (RGB_888 for a PC source) */
++	u32 color_space;	/* kHalColorSpace_* (BT709 seen) */
++	u32 h_size;		/* active width  ("resolution.h_size") */
++	u32 v_size;		/* active height ("resolution.v_size") */
++	u32 hdr_mode;		/* kHalHdrScheme_* (Sdr seen) */
++	u32 b_full_range;
++	u32 b_dvi_mode;
++	u32 atv_uid;
++};
++
++static_assert(sizeof(struct h713_hdmirx_signal_info) == 44);
++
++/*
++ * kHalSignalID_* as far as the name table in display.bin (0x8b14adc0) is
++ * decoded: the first three are the ones that mean "nothing to report". The
++ * mode ids above them (kHalSignalID_XGA19201080 for a 1080p source, ..._720P,
++ * and so on) are the firmware's mode table and are not needed here -- the
++ * geometry is in the record itself.
++ */
++#define H713_SIGNAL_ID_NONE	0
++#define H713_SIGNAL_ID_UNKNOWN	1
++#define H713_SIGNAL_ID_NOCHANGE	2
++
++/*
++ * INCAP, the firmware's capture block at 0x06940000, reached through a syscon
++ * regmap and only ever READ: writing INCAP from the ARM wedges the capture
++ * until a cold start (doku/78 section 0, rule 6). Two words of it, found by
++ * diffing full register dumps between a 1920x1080 and a 1280x720 source on
++ * 07.09.2026 (doku/nachtlog/E4-geometrie-vollstaendig.md), exact in both:
++ *
++ *   +0x874  0x07800438 / 0x050002d0   width [31:16], height [15:0]
++ *   +0x548  0x04650898 / 0x02ee0672   v_total [31:16], h_total [15:0]
++ *
++ * These are the only totals the ARM can see -- the record above has none --
++ * so the pixel clock and the blanking of a reported timing come from here.
++ * The sync positions are in neither place (E4 searched the block for them
++ * and found nothing).
++ */
++#define H713_INCAP_ACTIVE	0x874
++#define H713_INCAP_TOTAL	0x548
+ 
+ /*
+  * The capture ring. Three Y slots and three C slots, fixed by the firmware;
+@@ -637,6 +717,18 @@
+ 	u32 id_setsource;
+ 
+ 	struct v4l2_dv_timings timings;
++	u32 plane_size;			/* bytes per plane of the current format */
++
++	/*
++	 * The capture block, read-only, and the mapping of the firmware's
++	 * signal information record. Where the record is comes with every
++	 * SignalChange callback (sig_phys, under event_lock); the record is
++	 * read on demand, under sig_lock, through a mapping made on first use.
++	 */
++	struct regmap *incap;
++	struct mutex sig_lock;
++	void __iomem *sig_map;
++	phys_addr_t sig_map_base;
+ 
+ 	/* picture quality, one entry per h713_hdmirx_pq_ctrls[] entry */
+ 	struct v4l2_ctrl_handler ctrl_hdl;
+@@ -671,6 +763,7 @@
+ 	u32 signal_args[CPU_COMM_MAX_ARGS];
+ 	unsigned int signal_nargs;
+ 	u32 signal_count;
++	u32 sig_phys;			/* Para[1] of the last SignalChange */
+ 	u32 hotplug_args[CPU_COMM_MAX_ARGS];
+ 	unsigned int hotplug_nargs;
+ 	u32 hotplug_count;
+@@ -997,11 +1090,15 @@
+  * firmware fires this by itself both when the signal goes away and when it
+  * comes back, so the V4L2 source change event can hang straight off it.
+  *
+- * Para[0] is the source id, 3 for HDMI-1. Para[2] is a physical pointer to a
+- * 44 byte signal information record in shared memory. Only one field of that
+- * record is decoded so far (+16 is the frame descriptor's colour format plus
+- * one, doku/84), which is why this handler stores the raw words for debugfs
+- * instead of pretending to parse them.
++ * Para[0] is the source id, 3 for HDMI-1; Para[1] the physical address of the
++ * record described at struct h713_hdmirx_signal_info. Only the address is
++ * taken here. The record itself is read by whoever asks for it: the firmware
++ * keeps it at one address for the whole boot (smmMalloc'ed once in
++ * hal_adapter_init, "sgp_hal_signal_info: 0xae332000" in its log) and rewrites
++ * it in place before every call, so a reader always sees the newest state --
++ * which is what a V4L2 client wants after a source change event anyway. It
++ * also keeps this handler down to a spinlock: it runs on the cpu_comm receive
++ * work and delays the acknowledgement to the MIPS for as long as it runs.
+  */
+ static void h713_hdmirx_signal_cb(u32 comp_id, const u32 *args,
+ 				  unsigned int nargs, void *ctx)
+@@ -1013,11 +1110,13 @@
+ 	rx->signal_nargs = min_t(unsigned int, nargs, CPU_COMM_MAX_ARGS);
+ 	if (args)
+ 		memcpy(rx->signal_args, args, rx->signal_nargs * sizeof(*args));
++	if (args && nargs > 1 && args[1])
++		rx->sig_phys = args[1];
+ 	rx->signal_count++;
+ 	spin_unlock_irqrestore(&rx->event_lock, flags);
+ 
+-	dev_dbg(rx->dev, "SignalChange source=%u nargs=%u\n",
+-		nargs ? args[0] : 0, nargs);
++	dev_dbg(rx->dev, "SignalChange source=%u info=%#010x nargs=%u\n",
++		nargs ? args[0] : 0, nargs > 1 ? args[1] : 0, nargs);
+ 
+ 	h713_hdmirx_src_change(rx);
+ }
+@@ -1042,6 +1141,67 @@
+ 	h713_hdmirx_src_change(rx);
+ }
+ 
++/*
++ * Read the firmware's signal information record.
++ *
++ * -ENOENT until the first SignalChange callback of this boot has said where
++ * it is. The firmware pushes the record only when something changes, and the
++ * callback is armed by the first open() (h713_hdmirx_register_callbacks()),
++ * so a record written before that is not lost -- it sits in shared memory --
++ * but its address is. The address has been the same in every trace
++ * (0x4e332000); nothing here depends on that, the mapping follows whatever
++ * Para[1] says and is remade if it moves.
++ *
++ * Uncached on both ends: the MIPS writes the record through kseg1, this reads
++ * it through a write-combining mapping, so no cache maintenance is involved
++ * and no stale line can be read.
++ */
++static int h713_hdmirx_read_signal_info(struct h713_hdmirx *rx,
++					struct h713_hdmirx_signal_info *sig)
++{
++	u32 *words = (u32 *)sig;
++	unsigned long flags;
++	phys_addr_t base;
++	unsigned int i;
++	int ret = 0;
++	u32 phys;
++
++	spin_lock_irqsave(&rx->event_lock, flags);
++	phys = rx->sig_phys;
++	spin_unlock_irqrestore(&rx->event_lock, flags);
++
++	if (!phys)
++		return -ENOENT;
++	if (phys < rx->shm_base ||
++	    phys + sizeof(*sig) > rx->shm_base + rx->shm_size) {
++		dev_warn_ratelimited(rx->dev,
++				     "Signal-Info %#010x liegt nicht im cpu_comm-Shmem\n",
++				     phys);
++		return -EFAULT;
++	}
++
++	mutex_lock(&rx->sig_lock);
++	base = phys & PAGE_MASK;
++	if (rx->sig_map && rx->sig_map_base != base) {
++		iounmap(rx->sig_map);
++		rx->sig_map = NULL;
++	}
++	if (!rx->sig_map) {
++		rx->sig_map = ioremap_wc(base, ALIGN((phys - base) + sizeof(*sig),
++						     PAGE_SIZE));
++		rx->sig_map_base = base;
++	}
++	if (!rx->sig_map) {
++		ret = -ENOMEM;
++	} else {
++		for (i = 0; i < sizeof(*sig) / sizeof(u32); i++)
++			words[i] = readl(rx->sig_map + (phys - base) + i * 4);
++	}
++	mutex_unlock(&rx->sig_lock);
++
++	return ret;
++}
++
+ /* ------------------------------------------------------------------ *
+  * The ring: which slot has just been finished
+  * ------------------------------------------------------------------ */
+@@ -1122,8 +1282,18 @@
+ 	vbuf->vb2_buf.timestamp = ktime_get_ns();
+ 	vbuf->sequence = rx->sequence++;
+ 	vbuf->field = V4L2_FIELD_NONE;
+-	vb2_set_plane_payload(&vbuf->vb2_buf, 0, H713_HDMIRX_PLANE_SIZE);
+-	vb2_set_plane_payload(&vbuf->vb2_buf, 1, H713_HDMIRX_PLANE_SIZE);
++	/*
++	 * The format cannot change under a streaming queue (see
++	 * h713_hdmirx_query_dv_timings()), so the payload is the buffer's
++	 * plane size; the min() is for the one way it could still differ, a
++	 * client that asked for more than it needed.
++	 */
++	vb2_set_plane_payload(&vbuf->vb2_buf, 0,
++			      min_t(unsigned long, READ_ONCE(rx->plane_size),
++				    vb2_plane_size(&vbuf->vb2_buf, 0)));
++	vb2_set_plane_payload(&vbuf->vb2_buf, 1,
++			      min_t(unsigned long, READ_ONCE(rx->plane_size),
++				    vb2_plane_size(&vbuf->vb2_buf, 1)));
+ 	rx->stat.delivered++;
+ 
+ 	spin_unlock_irqrestore(&rx->slot_lock, flags);
+@@ -1189,19 +1359,66 @@
+  * so it asks the display driver for the pair instead of reading it. Same two
+  * registers, same owner, no second mapping.
+  */
+-static bool h713_hdmirx_signal_present(struct h713_hdmirx *rx)
+-{
+-	struct h713_afbd_flip a, b;
++/*
++ * How long the pointers are watched at most, and how many changes end the
++ * watch early. Four changes are three frame periods -- 50 ms at 60 Hz, 125 ms
++ * at 24 Hz -- and the rate they give is good to about one sampling interval
++ * over those three periods, roughly 2 % at 60 Hz. That is coarse next to the
++ * firmware's frame_rate_x100, which is why it only stands in while the record
++ * has not arrived yet (h713_hdmirx_detect_timings()), and it is enough for
++ * what it has to decide there: which of two presets with the same totals,
++ * 1080p60 or 1080p30, the source is running.
++ */
++#define H713_RING_WATCH_MS	150
++#define H713_RING_WATCH_FLIPS	4
++#define H713_RING_PRESENT_MS	60
++
++struct h713_hdmirx_ring_sample {
++	unsigned int flips;	/* pointer changes seen */
++	u64 period_ns;		/* mean distance between them; 0 below two */
++};
+ 
+-	if (h713_afbd_read_flip(&a))
+-		return false;
++static void h713_hdmirx_watch_ring(struct h713_hdmirx *rx,
++				   struct h713_hdmirx_ring_sample *s,
++				   unsigned int want_flips, unsigned int max_ms)
++{
++	struct h713_afbd_flip f;
++	ktime_t start, first = 0, last = 0;
++	bool have = false;
++	u32 y = 0;
+ 
+-	usleep_range(20000, 25000);
++	memset(s, 0, sizeof(*s));
++	start = ktime_get();
++	do {
++		if (!h713_afbd_read_flip(&f)) {
++			if (!have) {
++				y = f.y;
++				have = true;
++			} else if (f.y != y) {
++				y = f.y;
++				last = ktime_get();
++				if (!s->flips)
++					first = last;
++				s->flips++;
++				if (s->flips >= want_flips)
++					break;
++			}
++		}
++		usleep_range(500, 1000);
++	} while (ktime_ms_delta(ktime_get(), start) < max_ms);
+ 
+-	if (h713_afbd_read_flip(&b))
+-		return false;
++	if (s->flips >= 2)
++		s->period_ns = div_u64(ktime_to_ns(ktime_sub(last, first)),
++				       s->flips - 1);
++}
++
++static bool h713_hdmirx_signal_present(struct h713_hdmirx *rx)
++{
++	struct h713_hdmirx_ring_sample s;
+ 
+-	return a.y != b.y;
++	h713_hdmirx_watch_ring(rx, &s, 1, H713_RING_PRESENT_MS);
++
++	return s.flips > 0;
+ }
+ 
+ /*
+@@ -1481,6 +1698,9 @@
+ 				   unsigned int *nplanes, unsigned int sizes[],
+ 				   struct device *alloc_devs[])
+ {
++	struct h713_hdmirx *rx = vb2_get_drv_priv(q);
++	u32 size = READ_ONCE(rx->plane_size);
++
+ 	/*
+ 	 * Three buffers, never more and never fewer: there are three slots and
+ 	 * buffer i is slot i. A smaller queue would throw away every frame
+@@ -1491,28 +1711,28 @@
+ 
+ 	if (*nplanes) {
+ 		if (*nplanes != H713_HDMIRX_PLANES ||
+-		    sizes[0] < H713_HDMIRX_PLANE_SIZE ||
+-		    sizes[1] < H713_HDMIRX_PLANE_SIZE)
++		    sizes[0] < size || sizes[1] < size)
+ 			return -EINVAL;
+ 		return 0;
+ 	}
+ 
+ 	*nplanes = H713_HDMIRX_PLANES;
+-	sizes[0] = H713_HDMIRX_PLANE_SIZE;
+-	sizes[1] = H713_HDMIRX_PLANE_SIZE;
++	sizes[0] = size;
++	sizes[1] = size;
+ 
+ 	return 0;
+ }
+ 
+ static int h713_hdmirx_buf_prepare(struct vb2_buffer *vb)
+ {
++	struct h713_hdmirx *rx = vb2_get_drv_priv(vb->vb2_queue);
+ 	unsigned int i;
+ 
+ 	if (vb->index >= H713_HDMIRX_SLOTS)
+ 		return -EINVAL;
+ 
+ 	for (i = 0; i < H713_HDMIRX_PLANES; i++)
+-		if (vb2_plane_size(vb, i) < H713_HDMIRX_PLANE_SIZE)
++		if (vb2_plane_size(vb, i) < READ_ONCE(rx->plane_size))
+ 			return -EINVAL;
+ 
+ 	return 0;
+@@ -1600,23 +1820,217 @@
+  * ioctls
+  * ------------------------------------------------------------------ */
+ 
++/*
++ * The initial timing: the panel's native mode, which is also the mode the
++ * whole chain was accepted with. G_DV_TIMINGS and G_FMT answer it until the
++ * first QUERY_DV_TIMINGS of a boot has replaced it -- a default, not a claim
++ * about the source.
++ */
+ static const struct v4l2_dv_timings h713_hdmirx_timings =
+ 	V4L2_DV_BT_CEA_1920X1080P60;
+ 
++/*
++ * What QUERY_DV_TIMINGS may answer and S_DV_TIMINGS may accept.
++ *
++ * The upper bound is the panel, which is also the largest source that has
++ * gone through the whole chain (1920x1080p60, doku/nachtlog/E-v4l2.md, E4).
++ * Downstream cannot show more: the plane does not scale down
++ * (sun50i-h713-afbd, atomic_check), and the two sources above 1080 lines
++ * that were tried never reached the ring (E3: 1600x1200 and 1920x1200 --
++ * INCAP kept the old height and the output enable dropped). The lower bound
++ * is the smallest mode in the EDID this driver presents: VIC 1, 640x480p60,
++ * 25.175 MHz (analyse/arisc/hy310-edid.bin). Between the bounds only
++ * 1280x720p60 has actually been captured so far; the range is what is
++ * accepted, not a list of what is measured.
++ *
++ * Interlaced is not accepted. How the capture lays fields out in the ring
++ * has never been looked at, and a timing this driver cannot describe is
++ * better refused (-ERANGE) than described wrongly. CUSTOM, because a source
++ * with a non-standard blanking is reported as measured rather than snapped
++ * to the nearest standard.
++ */
+ static const struct v4l2_dv_timings_cap h713_hdmirx_timings_cap = {
+ 	.type = V4L2_DV_BT_656_1120,
+ 	.bt = {
+-		.min_width	= H713_HDMIRX_WIDTH,
++		.min_width	= 640,
+ 		.max_width	= H713_HDMIRX_WIDTH,
+-		.min_height	= H713_HDMIRX_HEIGHT,
++		.min_height	= 480,
+ 		.max_height	= H713_HDMIRX_HEIGHT,
+-		.min_pixelclock	= 148500000,
++		.min_pixelclock	= 25175000,
+ 		.max_pixelclock	= 148500000,
+-		.standards	= V4L2_DV_BT_STD_CEA861,
+-		.capabilities	= V4L2_DV_BT_CAP_PROGRESSIVE,
++		.standards	= V4L2_DV_BT_STD_CEA861 | V4L2_DV_BT_STD_DMT,
++		.capabilities	= V4L2_DV_BT_CAP_PROGRESSIVE |
++				  V4L2_DV_BT_CAP_CUSTOM,
+ 	},
+ };
+ 
++/*
++ * Snap a measured timing to a preset when one describes the same signal:
++ * same active and total geometry, same scan type, pixel clock within
++ * @tolerance percent. Active and total sizes are exact in INCAP, so the clock
++ * is the only quantity with slack, and where it came from decides how much:
++ * 1 % when the frame rate is the firmware's frame_rate_x100, 5 % when it was
++ * measured on the flip pointers. A hit takes the preset whole -- porches,
++ * sync widths, polarities and flags are then the standard's. That is the same
++ * step the firmware takes when it maps a detected timing onto its mode table
++ * ("port1 detect new timing, signal ID=0x20000 index=14" in its log), not a
++ * guess of this driver's.
++ */
++static bool h713_hdmirx_match_preset(struct v4l2_dv_timings *t,
++				     unsigned int htotal, unsigned int vtotal,
++				     unsigned int fps_x100,
++				     unsigned int tolerance)
++{
++	const struct v4l2_bt_timings *bt = &t->bt;
++	unsigned int i;
++
++	for (i = 0; v4l2_dv_timings_presets[i].bt.width; i++) {
++		const struct v4l2_bt_timings *p = &v4l2_dv_timings_presets[i].bt;
++		u64 delta = div_u64(p->pixelclock * tolerance, 100);
++		u64 nominal_x100;
++
++		if (p->width != bt->width || p->height != bt->height ||
++		    p->interlaced != bt->interlaced ||
++		    V4L2_DV_BT_FRAME_WIDTH(p) != htotal ||
++		    V4L2_DV_BT_FRAME_HEIGHT(p) != vtotal ||
++		    bt->pixelclock + delta < p->pixelclock ||
++		    bt->pixelclock > p->pixelclock + delta)
++			continue;
++
++		*t = v4l2_dv_timings_presets[i];
++		/*
++		 * 59.94 against 60: the firmware's rate is exact enough to
++		 * tell (5994 against 6000), a rate measured here is not, and
++		 * the caller's tolerance says which of the two this is.
++		 */
++		nominal_x100 = div_u64(p->pixelclock * 100,
++				       (u32)(htotal * vtotal));
++		if ((p->flags & V4L2_DV_FL_CAN_REDUCE_FPS) && tolerance <= 1 &&
++		    (u64)fps_x100 * 1001 <= nominal_x100 * 1000 + 50)
++			t->bt.flags |= V4L2_DV_FL_REDUCED_FPS;
++
++		return true;
++	}
++
++	return false;
++}
++
++/*
++ * What the source is sending, from the three things the ARM can see:
++ *
++ *  - The flip pointers: are frames arriving at all, and at what rate. Without
++ *    movement there is no timing to report, whatever any register says
++ *    (-ENOLINK).
++ *
++ *  - The firmware's record (struct h713_hdmirx_signal_info): its verdict
++ *    (signal_id NONE or an empty size is "no signal", -ENOLINK), the active
++ *    size, the frame rate to 1/100 Hz and the scan type. It is absent until
++ *    the first callback of the boot has arrived; then the geometry comes from
++ *    INCAP alone and the rate from the pointers, and only a preset the two
++ *    agree on is reported (-ENOLCK otherwise), because a timing with an
++ *    assumed scan type would be a guess.
++ *
++ *  - INCAP +0x874 and +0x548: active and total size of what the capture is
++ *    writing right now (doku/nachtlog/E4). The record has no totals, so the
++ *    pixel clock and the blanking come from here -- and the block is the
++ *    cross-check: a record that names another active size than the block is
++ *    a change in flight, and the answer is "not locked yet" (-ENOLCK), not
++ *    one of the two.
++ *
++ * The blanking is known as a whole, not split: neither the record nor the
++ * block carries the sync positions. A preset that matches settles that; a
++ * timing without one is reported the way tc358743 reports its detected
++ * timings, the whole blanking in hsync/vsync and zero porches -- the
++ * convention v4l2_valid_dv_timings() spells out for receivers that cannot
++ * separate the three, not a number of this driver's making.
++ */
++static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
++				      struct v4l2_dv_timings *t)
++{
++	struct h713_hdmirx_signal_info sig;
++	struct h713_hdmirx_ring_sample ring;
++	struct v4l2_bt_timings *bt = &t->bt;
++	unsigned int width, height, htotal, vtotal, fps_x100, tolerance;
++	u32 active, total;
++	bool have_sig;
++	int ret;
++
++	h713_hdmirx_watch_ring(rx, &ring, H713_RING_WATCH_FLIPS,
++			       H713_RING_WATCH_MS);
++	if (!ring.flips)
++		return -ENOLINK;
++
++	ret = h713_hdmirx_read_signal_info(rx, &sig);
++	if (ret && ret != -ENOENT)
++		return ret;
++	have_sig = !ret;
++	if (have_sig && (sig.signal_id == H713_SIGNAL_ID_NONE ||
++			 !sig.h_size || !sig.v_size))
++		return -ENOLINK;
++
++	ret = regmap_read(rx->incap, H713_INCAP_ACTIVE, &active);
++	if (!ret)
++		ret = regmap_read(rx->incap, H713_INCAP_TOTAL, &total);
++	if (ret)
++		return ret;
++	width = active >> 16;
++	height = active & 0xffff;
++	vtotal = total >> 16;
++	htotal = total & 0xffff;
++	if (!width || !height || htotal <= width || vtotal <= height) {
++		/*
++		 * The whole block reads zero while the TVFE/TVCAP power
++		 * domain is off (doku/78 section 0). No capture runs in that
++		 * state either, so this deserves a line, not silence.
++		 */
++		dev_warn_ratelimited(rx->dev,
++				     "INCAP meldet keine Geometrie (aktiv %#010x, total %#010x)\n",
++				     active, total);
++		return -ENOLCK;
++	}
++	if (have_sig && (sig.h_size != width || sig.v_size != height))
++		return -ENOLCK;
++
++	if (have_sig) {
++		fps_x100 = sig.frame_rate_x100;
++		tolerance = 1;
++	} else {
++		if (ring.flips < 2)
++			return -ENOLCK;
++		fps_x100 = div64_u64(100ULL * NSEC_PER_SEC, ring.period_ns);
++		tolerance = 5;
++	}
++	if (!fps_x100)
++		return -ENOLCK;
++
++	memset(t, 0, sizeof(*t));
++	t->type = V4L2_DV_BT_656_1120;
++	bt->width = width;
++	bt->height = height;
++	bt->interlaced = have_sig && sig.b_interlace ? V4L2_DV_INTERLACED
++						     : V4L2_DV_PROGRESSIVE;
++	bt->pixelclock = div_u64((u64)htotal * vtotal * fps_x100, 100);
++	bt->hsync = htotal - width;
++	bt->vsync = vtotal - height;
++
++	if (!h713_hdmirx_match_preset(t, htotal, vtotal, fps_x100, tolerance) &&
++	    !have_sig)
++		return -ENOLCK;
++
++	if (!v4l2_valid_dv_timings(t, &h713_hdmirx_timings_cap, NULL, NULL))
++		return -ERANGE;
++
++	return 0;
++}
++
++static void h713_hdmirx_set_timings(struct h713_hdmirx *rx,
++				    const struct v4l2_dv_timings *t)
++{
++	rx->timings = *t;
++	/* Read without a lock in the vsync path, hence the explicit store. */
++	WRITE_ONCE(rx->plane_size, t->bt.width * t->bt.height);
++}
++
+ static int h713_hdmirx_querycap(struct file *file, void *priv,
+ 				struct v4l2_capability *cap)
+ {
+@@ -1626,23 +2040,22 @@
+ 	return 0;
+ }
+ 
+-static void h713_hdmirx_fill_fmt(struct v4l2_pix_format_mplane *pix)
++/*
++ * The format follows the timings: NV16M, two planes of width * height bytes,
++ * lines exactly width bytes apart -- which is how the capture writes the ring
++ * (INCAP +0x924, rowbyte = width / 16, measured for 1920 and 1280 in E4).
++ * v4l2_fill_pixfmt_mp() derives the same from the format description; it is
++ * used so that the numbers are the core's and not this driver's.
++ */
++static void h713_hdmirx_fill_fmt(struct h713_hdmirx *rx,
++				 struct v4l2_pix_format_mplane *pix)
+ {
+-	unsigned int i;
+-
+ 	memset(pix, 0, sizeof(*pix));
+-	pix->width = H713_HDMIRX_WIDTH;
+-	pix->height = H713_HDMIRX_HEIGHT;
+-	pix->pixelformat = V4L2_PIX_FMT_NV16M;
++	v4l2_fill_pixfmt_mp(pix, V4L2_PIX_FMT_NV16M, rx->timings.bt.width,
++			    rx->timings.bt.height);
+ 	pix->field = V4L2_FIELD_NONE;
+ 	pix->colorspace = V4L2_COLORSPACE_REC709;
+ 	pix->quantization = V4L2_QUANTIZATION_LIM_RANGE;
+-	pix->num_planes = H713_HDMIRX_PLANES;
+-
+-	for (i = 0; i < H713_HDMIRX_PLANES; i++) {
+-		pix->plane_fmt[i].bytesperline = H713_HDMIRX_WIDTH;
+-		pix->plane_fmt[i].sizeimage = H713_HDMIRX_PLANE_SIZE;
+-	}
+ }
+ 
+ static int h713_hdmirx_enum_fmt(struct file *file, void *priv,
+@@ -1659,7 +2072,9 @@
+ static int h713_hdmirx_g_fmt(struct file *file, void *priv,
+ 			     struct v4l2_format *f)
+ {
+-	h713_hdmirx_fill_fmt(&f->fmt.pix_mp);
++	struct h713_hdmirx *rx = video_drvdata(file);
++
++	h713_hdmirx_fill_fmt(rx, &f->fmt.pix_mp);
+ 
+ 	return 0;
+ }
+@@ -1677,7 +2092,7 @@
+ 	if (vb2_is_busy(&rx->queue))
+ 		return -EBUSY;
+ 
+-	h713_hdmirx_fill_fmt(&f->fmt.pix_mp);
++	h713_hdmirx_fill_fmt(rx, &f->fmt.pix_mp);
+ 
+ 	return 0;
+ }
+@@ -1803,12 +2218,11 @@
+ static int h713_hdmirx_enum_dv_timings(struct file *file, void *priv,
+ 				       struct v4l2_enum_dv_timings *t)
+ {
+-	if (t->pad || t->index)
++	if (t->pad)
+ 		return -EINVAL;
+ 
+-	t->timings = h713_hdmirx_timings;
+-
+-	return 0;
++	return v4l2_enum_dv_timings_cap(t, &h713_hdmirx_timings_cap, NULL,
++					NULL);
+ }
+ 
+ static int h713_hdmirx_dv_timings_cap(struct file *file, void *priv,
+@@ -1842,29 +2256,29 @@
+ 	if (vb2_is_busy(&rx->queue))
+ 		return -EBUSY;
+ 
+-	rx->timings = *t;
++	h713_hdmirx_set_timings(rx, t);
+ 
+ 	return 0;
+ }
+ 
+ /*
+- * What the firmware detected is not readable from the ARM: the signal
+- * information record it hands to the SignalChange callback is 44 bytes of
+- * which exactly one field is decoded so far (doku/84). Until that record is
+- * decoded -- the raw words are in debugfs so that one board run is enough --
+- * this reports the one timing the whole pipeline is built for, and it reports
+- * it only while the capture is actually running, which is a measurement.
++ * QUERY_DV_TIMINGS reports what is being captured right now, see
++ * h713_hdmirx_detect_timings(). It also makes that the current timing -- and
++ * with it the format -- unless buffers are in flight: a streaming queue keeps
++ * its geometry, as V4L2 wants, and the client that got the source change
++ * event stops it and asks again.
+  */
+ static int h713_hdmirx_query_dv_timings(struct file *file, void *priv,
+ 					struct v4l2_dv_timings *t)
+ {
+ 	struct h713_hdmirx *rx = video_drvdata(file);
++	int ret;
+ 
+-	if (!h713_hdmirx_signal_present(rx))
+-		return -ENOLINK;
+-
+-	*t = h713_hdmirx_timings;
+-	rx->timings = *t;
++	ret = h713_hdmirx_detect_timings(rx, t);
++	if (ret)
++		return ret;
++	if (!vb2_is_busy(&rx->queue))
++		h713_hdmirx_set_timings(rx, t);
+ 
+ 	return 0;
+ }
+@@ -2059,29 +2473,33 @@
+  * ------------------------------------------------------------------ */
+ 
+ static void h713_hdmirx_show_signal_info(struct seq_file *s,
+-					 struct h713_hdmirx *rx, u32 phys)
++					 struct h713_hdmirx *rx)
+ {
+-	const u32 *info;
++	struct h713_hdmirx_signal_info sig;
++	const u32 *words = (const u32 *)&sig;
+ 	unsigned int i;
++	int ret;
+ 
+-	if (phys < rx->shm_base || phys + 44 > rx->shm_base + rx->shm_size) {
+-		seq_printf(s, "signal-info: %#010x liegt nicht im cpu_comm-Shmem\n",
+-			   phys);
++	ret = h713_hdmirx_read_signal_info(rx, &sig);
++	if (ret == -ENOENT) {
++		seq_puts(s, "signal-info:  noch kein SignalChange in diesem Boot\n");
+ 		return;
+ 	}
+-
+-	info = memremap(phys, 44, MEMREMAP_WC);
+-	if (!info) {
+-		seq_printf(s, "signal-info: %#010x nicht abbildbar\n", phys);
++	if (ret) {
++		seq_printf(s, "signal-info:  nicht lesbar (%d)\n", ret);
+ 		return;
+ 	}
+ 
+-	seq_printf(s, "signal-info %#010x:", phys);
+-	for (i = 0; i < 11; i++)
+-		seq_printf(s, " %08x", info[i]);
+-	seq_puts(s, "\n");
+-
+-	memunmap((void *)info);
++	seq_puts(s, "signal-info: ");
++	for (i = 0; i < sizeof(sig) / sizeof(u32); i++)
++		seq_printf(s, " %08x", words[i]);
++	seq_printf(s,
++		   "\n              signal_id %u, %u.%02u Hz, %s, %ux%u, color_format %u, color_space %u, hdr %u, full_range %u, dvi %u\n",
++		   sig.signal_id, sig.frame_rate_x100 / 100,
++		   sig.frame_rate_x100 % 100,
++		   sig.b_interlace ? "interlaced" : "progressive",
++		   sig.h_size, sig.v_size, sig.color_format, sig.color_space,
++		   sig.hdr_mode, sig.b_full_range, sig.b_dvi_mode);
+ }
+ 
+ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
+@@ -2091,13 +2509,13 @@
+ 	unsigned long flags;
+ 	unsigned int i;
+ 	int ret;
+-	u32 y;
++	u32 y, c;
+ 
+ 	seq_printf(s, "input:        HDMI-1 (SetSource %u)\n",
+ 		   H713_SOURCE_HDMI1);
+ 	seq_printf(s, "format:       NV16M %ux%u, 2 Ebenen a %u Byte\n",
+-		   H713_HDMIRX_WIDTH, H713_HDMIRX_HEIGHT,
+-		   H713_HDMIRX_PLANE_SIZE);
++		   rx->timings.bt.width, rx->timings.bt.height,
++		   rx->plane_size);
+ 	seq_printf(s, "slot-quelle:  %s\n", rx->slot_source->name);
+ 
+ 	ret = h713_afbd_read_flip(&flip);
+@@ -2110,9 +2528,16 @@
+ 	seq_printf(s, "signal:       %s\n",
+ 		   h713_hdmirx_signal_present(rx) ? "vorhanden (Flip-Zeiger wandern)"
+ 						  : "kein Signal (Flip-Zeiger stehen)");
+-	seq_printf(s, "timings:      %ux%u%s\n",
++	seq_printf(s, "timings:      %ux%u%s, %llu Hz Pixeltakt\n",
+ 		   rx->timings.bt.width, rx->timings.bt.height,
+-		   rx->timings.bt.interlaced ? "i" : "p");
++		   rx->timings.bt.interlaced ? "i" : "p",
++		   rx->timings.bt.pixelclock);
++	if (!regmap_read(rx->incap, H713_INCAP_ACTIVE, &y) &&
++	    !regmap_read(rx->incap, H713_INCAP_TOTAL, &c))
++		seq_printf(s, "incap:        aktiv %ux%u, total %ux%u\n",
++			   y >> 16, y & 0xffff, c & 0xffff, c >> 16);
++	else
++		seq_puts(s, "incap:        nicht lesbar\n");
+ 	seq_printf(s, "streaming:    %s\n",
+ 		   vb2_is_streaming(&rx->queue) ? "ja" : "nein");
+ 
+@@ -2136,11 +2561,9 @@
+ 	for (i = 0; i < rx->hotplug_nargs; i++)
+ 		seq_printf(s, " %#010x", rx->hotplug_args[i]);
+ 	seq_puts(s, "\n");
+-	y = rx->signal_nargs > 2 ? rx->signal_args[2] : 0;
+ 	spin_unlock_irqrestore(&rx->event_lock, flags);
+ 
+-	if (y)
+-		h713_hdmirx_show_signal_info(s, rx, y);
++	h713_hdmirx_show_signal_info(s, rx);
+ 
+ 	for (i = 0; i < H713_HDMIRX_SLOTS; i++)
+ 		seq_printf(s, "slot %u:       y=%#010llx c=%#010llx\n", i,
+@@ -2252,10 +2675,11 @@
+ 	rx->flip_nb.notifier_call = h713_hdmirx_flip_notify;
+ 	rx->desc_nb.notifier_call = h713_hdmirx_desc_notify;
+ 	INIT_WORK(&rx->rearm_work, h713_hdmirx_rearm_work);
+-	rx->timings = h713_hdmirx_timings;
++	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings);
+ 	rx->last_slot = -1;
+ 	mutex_init(&rx->lock);
+ 	mutex_init(&rx->cb_lock);
++	mutex_init(&rx->sig_lock);
+ 	spin_lock_init(&rx->slot_lock);
+ 	spin_lock_init(&rx->event_lock);
+ 
+@@ -2306,6 +2730,18 @@
+ 				     "cpu_comm-Shmem-Fenster nicht abbildbar\n");
+ 
+ 	/*
++	 * The capture block, read-only, as a syscon behind a phandle rather
++	 * than a resource of this node: the block is the firmware's, no ARM
++	 * driver owns it, and a regmap is the form in which "look, never
++	 * write" is the natural thing to do. See H713_INCAP_ACTIVE.
++	 */
++	rx->incap = syscon_regmap_lookup_by_phandle(dev->of_node,
++						    "allwinner,incap");
++	if (IS_ERR(rx->incap))
++		return dev_err_probe(dev, PTR_ERR(rx->incap),
++				     "kein Zugriff auf den INCAP-Block (allwinner,incap)\n");
++
++	/*
+ 	 * Stage 3: the firmware bring-up sequence.
+ 	 *
+ 	 * Nothing above this line has touched the routine table, and nothing
+@@ -2462,6 +2898,8 @@
+ 	v4l2_ctrl_handler_free(&rx->ctrl_hdl);
+ 	v4l2_device_unregister(&rx->v4l2_dev);
+ 	h713_hdmirx_drop_callbacks(rx);
++	if (rx->sig_map)
++		iounmap(rx->sig_map);
+ }
+ 
+ static const struct of_device_id h713_hdmirx_of_match[] = {

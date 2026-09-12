@@ -1,0 +1,265 @@
+media/drm: h713: follow the ring pitch for widths that are not a multiple of 16
+
+1366x768 was refused by the plane ("not 16-aligned") and by hy310-tv's copy
+of that rule, while the firmware itself locks the mode without complaint
+(elog: AI_SIGNAL_MODE_1366_768, port1 new timing HActive:0x556) and the
+ring runs. Measured 08.09.2026: INCAP +0x924 reads 0x00560056 for it,
+rowbyte 86 -- the capture lays a 1366-byte line out 1376 bytes apart, the
+width divided by 16 and rounded up. So the rule was never "the width is a
+multiple of 16"; it is "lines are one rowbyte apart", and for 1920 and 1280
+the two happen to coincide.
+
+The capture driver now reads rowbyte with the geometry, keeps it as the
+stride of the current timing, reports it as bytesperline/sizeimage of the
+format (and in the status file), and falls back to the rounding rule with a
+warning if the register does not fit the width. The plane accepts any
+width and requires the pitch to be the width rounded up to a block, which
+is the same check as before for 1920 and 1280 and 1376 for 1366. hy310-tv
+takes the pitch from G_FMT and allocates the dumb buffer with it.
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -186,6 +186,19 @@
+ #define H713_INCAP_TOTAL	0x548
+ 
+ /*
++ * The capture's own line pitch, in units of 16 bytes: luma in bits [15:0],
++ * chroma in [31:16]. It is the width divided by 16 and rounded *up*: 120 for
++ * 1920, 80 for 1280 (doku/nachtlog/E4) -- and 86 for 1366, measured
++ * 08.09.2026 (0x00560056): 1366 is not a multiple of 16, and the firmware
++ * lays that ring out with 1376 bytes per line, ten bytes of padding after
++ * each. So lines are not "one width apart", they are one rowbyte apart, and
++ * that is what the format reports as bytesperline and what the plane
++ * programs as the stride. Both take it from here, so they agree.
++ */
++#define H713_INCAP_ROWBYTE	0x924
++#define H713_INCAP_ROWBYTE_UNIT	16
++
++/*
+  * The capture output enables, one for luma and one for chroma. Bit 31 of each
+  * is what the firmware's memory_agent_onoff clears for its mask 0x008
+  * (re/notes/color-csc-blocker.md), and clearing it is how a descriptor
+@@ -814,6 +827,7 @@
+ 	u32 id_setvideorange;
+ 
+ 	struct v4l2_dv_timings timings;
++	u32 stride;			/* bytes per ring line, INCAP rowbyte * 16 */
+ 	u32 plane_size;			/* bytes per plane of the current format */
+ 
+ 	/*
+@@ -2405,13 +2419,15 @@
+  * separate the three, not a number of this driver's making.
+  */
+ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+-				      struct v4l2_dv_timings *t)
++				      struct v4l2_dv_timings *t,
++				      unsigned int *stride)
+ {
+ 	struct h713_hdmirx_signal_info sig;
+ 	struct h713_hdmirx_ring_sample ring;
+ 	struct v4l2_bt_timings *bt = &t->bt;
+ 	unsigned int width, height, htotal, vtotal, fps_x100, tolerance;
+-	u32 active, total;
++	unsigned int pitch;
++	u32 active, total, rowbyte;
+ 	bool have_sig;
+ 	int ret;
+ 
+@@ -2431,6 +2447,8 @@
+ 	ret = regmap_read(rx->incap, H713_INCAP_ACTIVE, &active);
+ 	if (!ret)
+ 		ret = regmap_read(rx->incap, H713_INCAP_TOTAL, &total);
++	if (!ret)
++		ret = regmap_read(rx->incap, H713_INCAP_ROWBYTE, &rowbyte);
+ 	if (ret)
+ 		return ret;
+ 	width = active >> 16;
+@@ -2452,6 +2470,22 @@
+ 		return -ENOLCK;
+ 
+ 	/*
++	 * The line pitch of the ring, from the capture itself. The rounding
++	 * rule (width / 16, rounded up) is what has been measured for every
++	 * width so far; it is the fallback for a register that does not fit
++	 * the width, with a line in the log, because a pitch below the width
++	 * or a luma pitch that differs from the chroma pitch is not a ring
++	 * this driver knows how to describe.
++	 */
++	pitch = (rowbyte & 0xffff) * H713_INCAP_ROWBYTE_UNIT;
++	if (pitch < width || (rowbyte >> 16) != (rowbyte & 0xffff)) {
++		dev_warn_ratelimited(rx->dev,
++				     "INCAP-Zeilenabstand %#010x passt nicht zur Breite %u; es gilt die Aufrundung auf 16\n",
++				     rowbyte, width);
++		pitch = ALIGN(width, H713_INCAP_ROWBYTE_UNIT);
++	}
++
++	/*
+ 	 * Whose record is this? After a resolution change the display side
+ 	 * republishes the VidDec descriptor (0117) and the firmware answers with
+ 	 * a VideoDec signal event; from then on the record at sig_phys carries
+@@ -2495,15 +2529,19 @@
+ 	if (!v4l2_valid_dv_timings(t, &h713_hdmirx_timings_cap, NULL, NULL))
+ 		return -ERANGE;
+ 
++	*stride = pitch;
++
+ 	return 0;
+ }
+ 
+ static void h713_hdmirx_set_timings(struct h713_hdmirx *rx,
+-				    const struct v4l2_dv_timings *t)
++				    const struct v4l2_dv_timings *t,
++				    unsigned int stride)
+ {
+ 	rx->timings = *t;
++	rx->stride = stride;
+ 	/* Read without a lock in the vsync path, hence the explicit store. */
+-	WRITE_ONCE(rx->plane_size, t->bt.width * t->bt.height);
++	WRITE_ONCE(rx->plane_size, stride * t->bt.height);
+ }
+ 
+ static int h713_hdmirx_querycap(struct file *file, void *priv,
+@@ -2516,18 +2554,25 @@
+ }
+ 
+ /*
+- * The format follows the timings: NV16M, two planes of width * height bytes,
+- * lines exactly width bytes apart -- which is how the capture writes the ring
+- * (INCAP +0x924, rowbyte = width / 16, measured for 1920 and 1280 in E4).
+- * v4l2_fill_pixfmt_mp() derives the same from the format description; it is
+- * used so that the numbers are the core's and not this driver's.
++ * The format follows the timings: NV16M, two planes, lines one ring pitch
++ * apart -- which is how the capture writes the ring (INCAP +0x924, rowbyte =
++ * width / 16 rounded up: 1920 for 1920, 1280 for 1280, 1376 for 1366).
++ * v4l2_fill_pixfmt_mp() lays the planes out for the width; the pitch is then
++ * the capture's, not the core's, because the core cannot know about the
++ * padding the firmware puts after a 1366-byte line.
+  */
+ static void h713_hdmirx_fill_fmt(struct h713_hdmirx *rx,
+ 				 struct v4l2_pix_format_mplane *pix)
+ {
++	unsigned int i;
++
+ 	memset(pix, 0, sizeof(*pix));
+ 	v4l2_fill_pixfmt_mp(pix, V4L2_PIX_FMT_NV16M, rx->timings.bt.width,
+ 			    rx->timings.bt.height);
++	for (i = 0; i < pix->num_planes; i++) {
++		pix->plane_fmt[i].bytesperline = rx->stride;
++		pix->plane_fmt[i].sizeimage = rx->stride * pix->height;
++	}
+ 	pix->field = V4L2_FIELD_NONE;
+ 	pix->colorspace = V4L2_COLORSPACE_REC709;
+ 	pix->quantization = V4L2_QUANTIZATION_LIM_RANGE;
+@@ -2731,7 +2776,9 @@
+ 	if (vb2_is_busy(&rx->queue))
+ 		return -EBUSY;
+ 
+-	h713_hdmirx_set_timings(rx, t);
++	/* a timing set by hand: the pitch follows the measured rounding rule */
++	h713_hdmirx_set_timings(rx, t,
++				ALIGN(t->bt.width, H713_INCAP_ROWBYTE_UNIT));
+ 
+ 	return 0;
+ }
+@@ -2747,13 +2794,14 @@
+ 					struct v4l2_dv_timings *t)
+ {
+ 	struct h713_hdmirx *rx = video_drvdata(file);
++	unsigned int stride;
+ 	int ret;
+ 
+-	ret = h713_hdmirx_detect_timings(rx, t);
++	ret = h713_hdmirx_detect_timings(rx, t, &stride);
+ 	if (ret)
+ 		return ret;
+ 	if (!vb2_is_busy(&rx->queue))
+-		h713_hdmirx_set_timings(rx, t);
++		h713_hdmirx_set_timings(rx, t, stride);
+ 
+ 	return 0;
+ }
+@@ -2988,8 +3036,8 @@
+ 
+ 	seq_printf(s, "input:        HDMI-1 (SetSource %u)\n",
+ 		   H713_SOURCE_HDMI1);
+-	seq_printf(s, "format:       NV16M %ux%u, 2 Ebenen a %u Byte\n",
+-		   rx->timings.bt.width, rx->timings.bt.height,
++	seq_printf(s, "format:       NV16M %ux%u, Zeilenabstand %u, 2 Ebenen a %u Byte\n",
++		   rx->timings.bt.width, rx->timings.bt.height, rx->stride,
+ 		   rx->plane_size);
+ 	seq_printf(s, "slot-quelle:  %s\n", rx->slot_source->name);
+ 
+@@ -3007,6 +3055,9 @@
+ 		   rx->timings.bt.width, rx->timings.bt.height,
+ 		   rx->timings.bt.interlaced ? "i" : "p",
+ 		   rx->timings.bt.pixelclock);
++	if (!regmap_read(rx->incap, H713_INCAP_ROWBYTE, &y))
++		seq_printf(s, "zeilen:       %u Byte Abstand (0x924 = %#010x)\n",
++			   rx->stride, y);
+ 	if (!regmap_read(rx->incap, H713_INCAP_ACTIVE, &y) &&
+ 	    !regmap_read(rx->incap, H713_INCAP_TOTAL, &c))
+ 		seq_printf(s, "incap:        aktiv %ux%u, total %ux%u\n",
+@@ -3158,7 +3209,7 @@
+ 	rx->desc_nb.notifier_call = h713_hdmirx_desc_notify;
+ 	INIT_WORK(&rx->rearm_work, h713_hdmirx_rearm_work);
+ 	INIT_DELAYED_WORK(&rx->rearm_retry_work, h713_hdmirx_rearm_retry_work);
+-	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings);
++	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings, H713_HDMIRX_WIDTH);
+ 	rx->last_slot = -1;
+ 	mutex_init(&rx->lock);
+ 	mutex_init(&rx->cb_lock);
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -268,6 +268,13 @@
+ 	return ((ALIGN(h, H713_VIDEO_BLOCK) - 1) << 16) | (w - 1);
+ }
+ 
++/*
++ * For a width that is not a multiple of 16 (1366) this truncates the columns
++ * as the firmware truncates the rows for 1080; whether the firmware itself
++ * counts 84 or 85 block columns for 1366 is measured against the register
++ * after its own reprogramming (it rewrites these from the descriptor, see
++ * h713_afbd_publish_video_info()), not assumed here.
++ */
+ static u32 h713_video_block_m1(unsigned int w, unsigned int h)
+ {
+ 	return ((h / H713_VIDEO_BLOCK - 1) << 16) |
+@@ -855,7 +862,7 @@
+ 	    fb->width > mode->hdisplay ||
+ 	    fb->height > mode->vdisplay ||
+ 	    fb->pitches[1] != fb->pitches[0] ||
+-	    fb->width % H713_VIDEO_BLOCK || fb->height % 2 ||
++	    fb->pitches[0] % H713_VIDEO_BLOCK || fb->height % 2 ||
+ 	    fb->width < H713_VIDEO_BLOCK ||
+ 	    fb->height < H713_VIDEO_BLOCK ||
+ 	    new_state->src_x || new_state->src_y ||
+@@ -872,18 +879,24 @@
+ 		 * and geometry; the addresses come from the capture ring, so
+ 		 * the ring has to be described in DT and the descriptor page
+ 		 * has to be somewhere the MIPS can read. And the stride has
+-		 * to be the ring's: lines are exactly one width apart there
+-		 * (INCAP rowbyte = width / 16), so a padded pitch would
+-		 * program a stride for data this buffer does not own.
++		 * to be the ring's: the capture lays lines out one INCAP
++		 * rowbyte apart, and rowbyte is the width divided by 16 and
++		 * rounded up (0x924: 120 for 1920, 80 for 1280, 86 for 1366,
++		 * measured 08.09.2026) -- so a 1366-wide ring has 1376-byte
++		 * lines. That rounding is the rule here: the width itself may
++		 * be anything, the pitch must be the width rounded up to a
++		 * block, and a pitch padded any further would program a
++		 * stride for data this buffer does not own.
+ 		 */
+ 		if (!h->ring_size)
+ 			return -EOPNOTSUPP;
+-		if (fb->pitches[0] != fb->width)
++		if (fb->pitches[0] != ALIGN(fb->width, H713_VIDEO_BLOCK))
+ 			return -EINVAL;
+ 		return 0;
+ 	}
+ 
+-	if (fb->width != mode->hdisplay || fb->height != mode->vdisplay)
++	if (fb->width != mode->hdisplay || fb->height != mode->vdisplay ||
++	    fb->pitches[0] != fb->width)
+ 		return -EINVAL;
+ 
+ 	y = drm_fb_dma_get_gem_addr(fb, new_state, 0);

@@ -1,0 +1,12 @@
+[submodule "mainline/external/arm-trusted-firmware"]
+	path = mainline/external/arm-trusted-firmware
+	url = ../arm-trusted-firmware.git
+	branch = sun50i-h713
+[submodule "mainline/external/sunxi-tools"]
+	path = mainline/external/sunxi-tools
+	url = ../sunxi-tools.git
+	branch = h713
+[submodule "mainline/external/u-boot"]
+	path = mainline/external/u-boot
+	url = ../u-boot.git
+	branch = h713-hy310

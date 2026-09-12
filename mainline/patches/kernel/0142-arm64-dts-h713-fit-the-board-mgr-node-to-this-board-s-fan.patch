@@ -1,0 +1,163 @@
+arm64: dts: h713: fit the board-mgr node to this board's fan, and enable it
+
+The board_mgr node was copied from the vendor DTS of a board with a
+PWM-controlled fan. On this one the fan is a plain 3-wire on/off load -- red
++V, black GND, yellow tach -- on the shared PB5 rail, established by bench
+instrumentation in patch 0030. Three things had to go before the driver could
+be switched on:
+
+- PH17 was claimed twice in one node: as "pwms = <&pwm 0 40000 0>" (PWM
+  channel 0 muxes out on PH17) and as "fg-gpio" for the tachometer. The
+  driver really does devm_pwm_get(), so enabling it as-is would have muxed
+  PH17 to an output and driven it against the fan's open-collector tach line
+  -- destroying the only speed feedback the board has. All PWM properties are
+  dropped: pwms, pwm-names, pwm_ids, pwm_period_ns, default-duty, and the
+  temp-array/duty-array tables that feed them. "pwm-fan" leaves the
+  compatible list with them; a pwm-fan node without pwms is not one.
+
+- fan1 is dropped. It had duty tables and no tachometer; this board has one
+  fan, and keeping the subnode would add a permanently-zero fan2_input.
+
+- The "gpios" subnode is dropped. It mapped usb-power-gpio to PL3, but PL3 is
+  cam-usb-power-gpio in the stock GPIO map -- the stock HY310 kernel DTS puts
+  usb-power-gpio on PL5, a different rail. U-Boot already drives both PB5 and
+  PL3 high by name in h713_poweron_lines(), so Linux has nothing to add here,
+  and driving an unverified PL5 from the kernel is not a thing to do blind.
+  The mapping wants resolving before this comes back.
+
+fan0 gains "pulses-per-revolution = <2>": the driver counts rising edges only
+(patch 0141), where the stock driver requests both edges and divides by 4.
+Same fan, same RPM, counted once per pulse.
+
+The temperature thresholds stay as the vendor set them (warn 55 C, poweroff
+60 C), but the lradc-table behind the conversion is unverified on this
+hardware, so the driver reports and does not act -- see patch 0141. That also
+matches the stock kernel, which at this threshold escalates the fan mode and
+sends a TEMP_STATE=SHUTDOWN uevent rather than calling kernel_power_off().
+
+With that the node is switched on for the qz713df-a1 board (the DTB in the
+FIT), so temperature and fan speed become readable under /sys/class/hwmon.
+The stale hy310_board_mgr.no_rpm_shutdown=1 in the qz713-v2 bootargs goes too:
+the module was never built, and 0141 removes that parameter.
+
+diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-11 18:24:53.285079403 +0200
++++ dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-11 18:24:53.299594353 +0200
+@@ -2393,35 +2393,47 @@
+ 	};
+ 
+ 	/*
+-	 * Board management driver (hy310-board-mgr).
+-	 * U-Boot also reads this node for USB power + fan power init.
+-	 * Dual compatible: our driver matches "allwinner,hy310-board-mgr",
+-	 * falls back to "pwm-fan" with pwm_ids guard.
++	 * Board management driver (hy310-board-mgr): NTC temperature via the
++	 * LRADC IIO provider (channel 0) and fan tachometer on PH17.
+ 	 *
+-	 * NTC temperature sensing via IIO consumer (LRADC channel 0).
+-	 * LRADC hardware is owned by the sun50i-h713-lradc IIO driver.
++	 * This board's cooling fan is a plain 3-wire on/off load -- red +V,
++	 * black GND, yellow tach -- on the shared PB5 rail (see the fan-power
++	 * gpio-hog). Its speed is NOT PWM-controlled. The vendor node this was
++	 * copied from described a PWM fan and claimed PH17 twice: once as
++	 * "pwms = <&pwm 0 ...>" (PWM channel 0 muxes out on PH17) and once as
++	 * "fg-gpio" for the tachometer. Driving a PWM onto PH17 would push an
++	 * output against the fan's open-collector tach line and destroy the
++	 * only speed feedback this board has, so every PWM property is gone:
++	 * pwms, pwm-names, pwm_ids, pwm_period_ns, default-duty and the
++	 * duty-array tables.
++	 *
++	 * The "gpios" subnode is gone too. It mapped usb-power-gpio to PL3,
++	 * but PL3 is cam-usb-power-gpio in the stock GPIO map (the stock HY310
++	 * kernel DTS puts usb-power-gpio on PL5). U-Boot already drives both
++	 * PB5 and PL3 high by name in h713_poweron_lines(), so nothing here
++	 * needs to repeat it -- and driving the unverified PL5 from Linux is
++	 * not something to do blind. Resolve the mapping before re-adding it.
+ 	 */
+ 	board_mgr: fan {
+-		compatible = "allwinner,hy310-board-mgr", "pwm-fan";
++		compatible = "allwinner,hy310-board-mgr";
+ 		status = "okay";
+ 		io-channels = <&lradc 0>;
+ 		io-channel-names = "ntc";
+-		pwms = <&pwm 0 40000 0>;	/* PWM channel 0, 40000ns period, normal polarity */
+-		pwm-names = "fan0";
+ 		lradc-table = <0x12 0x41A 0x14 0x3F0 0x16 0x3B1 0x18 0x3DB 0x1A 0x35C 0x1C 0x33E 0x1E 0x320 0x20 0x309 0x22 0x2E2 0x24 0x2BE 0x26 0x2A0 0x28 0x28A 0x2A 0x271 0x2C 0x258 0x2E 0x24C 0x30 0x20D 0x32 0x1F8 0x34 0x1EF 0x36 0x1D6 0x38 0x1A5 0x3A 0x18F 0x3C 0x16F 0x3E 0x14F 0x40 0x13B 0x42 0x130 0x44 0x126 0x46 0x111 0x48 0xFC 0x4A 0xE7 0x4C 0xD2 0x4E 0xBC 0x50 0xAF>;
+ 		gpadc-table = <0x0 0x5E6 0x5 0x5B4 0x14 0x4F8 0x15 0x4EA 0x16 0x4DC 0x17 0x4CD 0x18 0x4BF 0x19 0x4B0 0x1A 0x4A1 0x1B 0x492 0x1C 0x483 0x1D 0x474 0x1E 0x464 0x1F 0x455 0x20 0x446 0x21 0x437 0x22 0x427 0x23 0x418 0x24 0x408 0x25 0x3F9 0x26 0x3E9 0x27 0x3D9 0x28 0x3CA 0x29 0x3BA 0x2A 0x3AB 0x2B 0x39B 0x2C 0x38C 0x2D 0x37D 0x2E 0x36D 0x2F 0x35E 0x30 0x34F 0x31 0x340 0x32 0x331 0x33 0x323 0x34 0x314 0x35 0x306 0x36 0x2F8 0x37 0x2E9 0x38 0x2DB 0x39 0x2CD 0x3A 0x2BF 0x3B 0x2B2 0x3C 0x2A4 0x3D 0x297 0x3E 0x28A 0x3F 0x27D 0x40 0x270 0x41 0x263 0x42 0x257 0x43 0x24A 0x44 0x23E 0x45 0x232 0x46 0x227 0x47 0x21B 0x48 0x210 0x49 0x204 0x4A 0x1F9 0x4B 0x1EE 0x4C 0x1E3 0x4D 0x1D9 0x4E 0x1CF 0x4F 0x1C5 0x50 0x1BB>;
++		/*
++		 * Thresholds inherited from the vendor node. The conversion
++		 * behind them (lradc-table) is NOT verified on this hardware,
++		 * which is why the driver's poweroff is disarmed by default
++		 * (thermal_shutdown=0) and only reports. The stock kernel does
++		 * the same at this threshold: it escalates the fan mode and
++		 * sends a TEMP_STATE=SHUTDOWN uevent, and leaves the decision
++		 * to userspace -- it never calls kernel_power_off() here.
++		 */
+ 		temp_poweroff = <60>;
+ 		temp_warn = <55>;
+-		pwm_ids = <0>;
+-		pwm_period_ns = <40000>;
+-		default-duty = <50>;
+ 		fan_policy = <1>;
+ 
+-		gpios {
+-			usb-power-gpio = <&r_pio 0 3 GPIO_ACTIVE_HIGH>;   /* PL3 = USB power */
+-			cam-usb-power-gpio = <&r_pio 0 3 GPIO_ACTIVE_HIGH>; /* PL3 */
+-		};
+-
+ 		battery {
+ 			enable = <0>;
+ 			source = <1>;
+@@ -2457,20 +2469,22 @@
+ 			};
+ 		};
+ 
++		/*
++		 * One fan. The vendor node also carried a fan1 with duty
++		 * tables and no tachometer; this board has no second fan, and
++		 * keeping it would add an fan2_input that is always zero.
++		 */
+ 		fan0 {
+-			temp-array = <30 40 50 55 60>;
+-			duty-array = <70 80 90 95 100>;
+-			duty-array-policy1 = <75 75 100 100>;
+-			fg-gpio = <&pio 7 17 GPIO_ACTIVE_HIGH>;        /* PH17 = PWM0 fan tacho */
++			fg-gpio = <&pio 7 17 GPIO_ACTIVE_HIGH>;	/* PH17 = fan tachometer */
++			/*
++			 * Rising edges only. The stock driver counts both edges
++			 * and divides by 4; two pulses per revolution is the
++			 * same fan, counted once per pulse.
++			 */
++			pulses-per-revolution = <2>;
+ 			fg-warn-speed = <1000>;
+ 			fg-warn-cnt = <8>;
+ 		};
+-
+-		fan1 {
+-			temp-array = <30 40 50 55 60>;
+-			duty-array = <55 66 77 93 100>;
+-			duty-array-policy1 = <65 70 90 100>;
+-		};
+ 	};
+ 
+ 	/*
+diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+--- dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts	2026-09-11 18:24:53.286926178 +0200
++++ dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts	2026-09-11 18:24:53.299766054 +0200
+@@ -37,4 +37,4 @@
+ &cpu_comm { status = "okay"; };	/* Treiber wird seit 01.09. gebaut */
+ &motor_ctr { status = "disabled"; };	/* Endschalter liefert nichts, siehe doku/94 */
+ &adc_keys { status = "disabled"; };
+-&board_mgr { status = "disabled"; };
++&board_mgr { status = "okay"; };	/* Temperatur + Luefterdrehzahl, siehe doku/60 */
+diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts
+--- dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts	2026-09-11 18:24:53.288478539 +0200
++++ dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts	2026-09-11 18:24:53.299830112 +0200
+@@ -7,6 +7,6 @@
+ 	compatible = "cstenger,hy200-qz713-v2", "allwinner,sun50i-h713";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M";
++		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
+ 	};
+ };

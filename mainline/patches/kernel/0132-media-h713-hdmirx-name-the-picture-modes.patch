@@ -1,0 +1,88 @@
+media: sun50i-h713-hdmirx: name the picture modes
+
+The Picture Mode control was an integer 0..7 because the firmware's
+numbering could not be resolved from the vendor's files, and the driver
+comment feared that a mode switch re-sets the nine picture values behind
+the driver's back. Both were settled by reading the firmware on 08.09.2026
+(doku/nachtlog/S14): the numbering is the firmware's own table -- 0 Vivid,
+1 Standard, 2 Mild, 3 Game, 4 Calibrated, 5 Calibrated Dark, 6 Computer,
+7 Cinema, 8 Home, 9 Sports, 10 Shop, 11 Animation, 12 HDR, 13 Graphic --
+and the switch writes none of the nine values and no PQ register; the
+vendor presets are sent from the ARM side as ordinary Set RPCs, and the
+Get RPCs for the nine values are stubs that return 0.
+
+So the control becomes a menu with those names and the range 0..13, the
+comments say what a mode switch does, and the presets stay where they
+belong: userspace.
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -555,12 +555,16 @@
+  *    Thal_Vp_SetBacklightLevel drives that same lamp is not measured, and
+  *    two unrelated owners of one lamp are worse than one.
+  *
+- *  - Picture mode. SetPictureMode loads a whole preset and re-sets the five
+- *    values above behind this driver's back (doku/85-re-pq-register.md
+- *    A.5), so a control for it would silently invalidate five others; and
+- *    the firmware's numbering of the modes cannot be resolved from any file
+- *    the vendor ships. A menu whose entries cannot be named is worse than
+- *    no menu.
++ *  - The picture mode's *presets*. SetPictureMode does not load one: read
++ *    against the firmware on 08.09.2026 (doku/nachtlog/S14), the mode
++ *    switch sets a filter attribute, rewrites the V_INCAP group, tells the
++ *    memory agent and -- for Game and Computer -- the window manager, and
++ *    writes none of the nine values above and no PQ register. The
++ *    brightness/contrast/... a vendor preset stands for come from
++ *    pq_picturemode.ini on the ARM side, sent as the ordinary Set RPCs; so
++ *    a preset is a userspace rule (hy310-tv "preset"), not a kernel one,
++ *    and the nine controls stay true across a mode switch. The mode itself
++ *    is a control, see V4L2_CID_H713_PICTURE_MODE.
+  *
+  *  - Video range and low latency mode. Both are settable, but nothing in
+  *    the vendor data says what their values mean, not even how many there
+@@ -588,11 +592,15 @@
+  * the debugfs RPC prompt until now. Video Range is THal_Vp_SetVideoRange:
+  * 0 follows the signal's own range flag, 1 forces limited, 2 forces full
+  * (the firmware treats every value other than 0 and 2 as limited). Picture
+- * Mode is THal_Vp_SetPictureMode with the number the firmware expects; the
+- * vendor's ini lists standard, cinema, vivid, game, energy_saving and the
+- * special modes computer, hdr, custom, but which number is which has not
+- * been measured, so this is an integer and not a menu with guessed names.
+- * The bring-up sequence sends 1.
++ * Mode is THal_Vp_SetPictureMode with the number the firmware expects, and
++ * those numbers are the firmware's own table (dword_8B1F2120, read on
++ * 08.09.2026, doku/nachtlog/S14 section 1.2): 0 Vivid, 1 Standard, 2 Mild,
++ * 3 Game, 4 Calibrated, 5 Calibrated Dark, 6 Computer, 7 Cinema, 8 Home,
++ * 9 Sports, 10 Shop, 11 Animation, 12 HDR, 13 Graphic; 14 and 15 fall back
++ * to Standard and 16 up is refused by the handler. The vendor's ini names
++ * standard, cinema, vivid, game, computer and hdr (1, 7, 0, 3, 6, 12);
++ * energy_saving and custom have no mode of their own. The bring-up
++ * sequence sends 1, which is also the firmware's own start value.
+  */
+ #define V4L2_CID_H713_VIDEO_RANGE	(V4L2_CID_USER_SUN50I_H713_BASE + 4)
+ #define V4L2_CID_H713_PICTURE_MODE	(V4L2_CID_USER_SUN50I_H713_BASE + 5)
+@@ -606,6 +614,13 @@
+ 	"Auto", "Limited", "Full", NULL,
+ };
+ 
++/* The firmware's picture modes, in its own numbering (S14 section 1.2). */
++static const char * const h713_hdmirx_picture_mode_menu[] = {
++	"Vivid", "Standard", "Mild", "Game", "Calibrated", "Calibrated Dark",
++	"Computer", "Cinema", "Home", "Sports", "Shop", "Animation", "HDR",
++	"Graphic", NULL,
++};
++
+ enum h713_hdmirx_pq_index {
+ 	H713_PQ_BRIGHTNESS,
+ 	H713_PQ_CONTRAST,
+@@ -758,8 +773,9 @@
+ 	[H713_PQ_PICTURE_MODE] = {
+ 		.id = V4L2_CID_H713_PICTURE_MODE,
+ 		.set = "THal_Vp_SetPictureMode",
+-		.max = 7, .preset = 1,
++		.max = 13, .preset = 1,
+ 		.name = "Picture Mode",
++		.menu = h713_hdmirx_picture_mode_menu,
+ 	},
+ };
+ 

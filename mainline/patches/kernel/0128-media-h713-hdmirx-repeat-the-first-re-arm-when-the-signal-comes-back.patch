@@ -1,0 +1,124 @@
+media: sun50i-h713-hdmirx: repeat the first re-arm when the signal comes back
+
+With hy310-tv started by udev, the first publication of the boot falls
+into the source's re-negotiation after our hot plug. The re-arm then does
+what it always did -- switch the source away and back and wait -- and
+finds nothing: "nach 2000 ms bewegen sich die Flip-Zeiger nicht". That
+was meant as the harmless case of nothing plugged in. It is not harmless:
+the switch ended on "no signal", the firmware's memory agent stays
+disabled, and when the HDMI signal locks again a moment later nothing
+switches the capture on. Measured 08.09.2026 on the first autostart:
+INCAP locked at 1920x1080, enable bit clear, converter on bypass, the
+wall on the console -- until a switch by hand brought everything back.
+
+So remember the failed re-arm, and when the firmware's SignalChange
+callback reports the HDMI source again, run the switch once more. The
+work checks the signal record first and stays quiet while the source is
+still negotiating, so a source that is unplugged for good costs nothing.
+A repeat takes the switch path even though the record has been published
+before: the direct enable of 0121 needs the state machine in the valid
+state, which is exactly what the failed switch did not reach.
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 01:59:24.442107850 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 01:59:24.448446927 +0200
+@@ -833,6 +833,7 @@
+ 	struct notifier_block desc_nb;
+ 	struct work_struct rearm_work;
+ 	bool desc_seen;			/* eine Descriptor-Veroeffentlichung lag schon an */
++	bool rearm_pending;		/* der Quellenwechsel fand kein Signal: beim naechsten wiederholen */
+ 
+ 	/* last callback payloads, for debugfs and the source change event */
+ 	spinlock_t event_lock;
+@@ -1197,6 +1198,16 @@
+ 	dev_dbg(rx->dev, "SignalChange source=%u info=%#010x nargs=%u\n",
+ 		nargs ? args[0] : 0, nargs > 1 ? args[1] : 0, nargs);
+ 
++	/*
++	 * A re-arm that found no signal is repeated when the HDMI source
++	 * reports again; the work itself checks the record and does nothing
++	 * if the signal is still not there. Kept off this handler on purpose:
++	 * it delays the acknowledgement to the MIPS for as long as it runs.
++	 */
++	if (READ_ONCE(rx->rearm_pending) && nargs && args &&
++	    args[0] == H713_SOURCE_HDMI1)
++		schedule_work(&rx->rearm_work);
++
+ 	h713_hdmirx_src_change(rx);
+ }
+ 
+@@ -1747,6 +1758,28 @@
+ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ {
+ 	bool erste = !rx->desc_seen;
++	bool wechsel = erste || rx->rearm_pending;
++
++	/*
++	 * A repeat after a failed switch (see the end of this function): only
++	 * worth it once the firmware reports the HDMI source with a signal.
++	 * Otherwise this would switch back and forth on every callback while
++	 * the source is still negotiating, or nothing is plugged in.
++	 */
++	if (!erste && rx->rearm_pending) {
++		struct h713_hdmirx_signal_info sig;
++
++		if (h713_hdmirx_read_signal_info(rx, &sig) ||
++		    sig.signal_id == H713_SIGNAL_ID_NONE ||
++		    sig.signal_id == H713_SIGNAL_ID_UNKNOWN ||
++		    !sig.h_size || !sig.v_size) {
++			dev_dbg(rx->dev, "Freigabe: Wiederholung wartet auf ein Signal\n");
++			return;
++		}
++		dev_info(rx->dev,
++			 "Freigabe: Signal ist zurueck (%ux%u), der Quellenwechsel wird wiederholt\n",
++			 sig.h_size, sig.v_size);
++	}
+ 
+ 	rx->desc_seen = true;
+ 
+@@ -1776,7 +1809,7 @@
+ 	 * because a capture that never comes back is worse than a geometry that
+ 	 * is wrong -- and the log says which of the two happened.
+ 	 */
+-	if (!erste) {
++	if (!wechsel) {
+ 		/*
+ 		 * Setting the bit once is not enough: the firmware clears it
+ 		 * again a little later in its own sequence, so a write that is
+@@ -1828,6 +1861,7 @@
+ 					dev_info(rx->dev,
+ 						 "Freigabe: Capture direkt freigegeben, kein Quellenwechsel, nach %lld ms\n",
+ 						 ktime_ms_delta(ktime_get(), start));
++					rx->rearm_pending = false;
+ 					/*
+ 					 * Should be a no-op. It is not only if the
+ 					 * firmware's rebuild came later than the
+@@ -1863,6 +1897,7 @@
+ 	h713_hdmirx_reapply_saturation(rx);
+ 
+ 	if (h713_hdmirx_wait_enable(rx, "Capture laeuft wieder")) {
++		rx->rearm_pending = false;
+ 		/* the source switch ends on the HDMI signal; this only checks */
+ 		h713_hdmirx_restore_icsc(rx, "nach dem Quellenwechsel");
+ 		return;
+@@ -1871,11 +1906,18 @@
+ 	/*
+ 	 * Not an error return: there is nobody to return it to, and the most
+ 	 * ordinary reason for it is the most boring one -- nothing is plugged
+-	 * in. Said out loud all the same, because if a picture is expected and
+-	 * none arrives, this line is where the search starts.
++	 * in, or the source is still negotiating after hot plug. But the state
++	 * it leaves is not harmless: the switch ended on "no signal", the
++	 * firmware's memory agent stays disabled, and no later re-lock of the
++	 * HDMI signal switches the capture on again -- measured 08.09.2026 at
++	 * the first autostart of the boot (INCAP locked at 1920x1080, enable
++	 * clear, picture gone until a switch by hand). So remember it, and let
++	 * the SignalChange callback run the switch again when the source is
++	 * back (h713_hdmirx_signal_cb).
+ 	 */
++	rx->rearm_pending = true;
+ 	dev_info(rx->dev,
+-		 "Freigabe: nach %u ms bewegen sich die Flip-Zeiger nicht; liegt ein Signal an?\n",
++		 "Freigabe: nach %u ms bewegen sich die Flip-Zeiger nicht; liegt ein Signal an? Der Quellenwechsel wird wiederholt, sobald eines da ist\n",
+ 		 H713_REARM_TIMEOUT_MS);
+ }
+ 

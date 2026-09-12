@@ -1,0 +1,562 @@
+From: Paket D (Agent, abgeschlossen von der Hauptsitzung) <well0nez@users.noreply.github.com>
+Subject: [PATCH] media: h713: hdmirx: expose the audio status as V4L2 controls
+
+Three read-only, volatile controls (H713 Audio Present / Rate / Compressed)
+derived from the RX wrapper bytes (+0x40 output/mute nibble, +0x45..0x4a N/CTS,
++0x56 channel-status fs, +0x15f measured fs code, +0x160 raw/PCM), polled
+with the existing periodic work, V4L2_EVENT_CTRL on change, plus a debugfs
+line. Sources: doku/nachtlog/S18, S16 (measured 48/44.1/32 kHz), plan doku/101
+§2. The agent stalled before writing the patch file; diff taken from its b/ copy.
+---
+diff -Nur a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 17:59:09.496211423 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 18:30:30.439636658 +0200
+@@ -52,6 +52,7 @@
+  * appendix A (the seven stages of a source change).
+  */
+ 
++#include <linux/bitfield.h>
+ #include <linux/build_bug.h>
+ #include <linux/delay.h>
+ #include <linux/debugfs.h>
+@@ -226,6 +227,78 @@
+ #define H713_INCAP_ICSC_BYPASS	BIT(31)
+ 
+ /*
++ * LINK, the HDMI receiver's own port window at 0x06840000. The MIPS firmware
++ * owns it and runs the whole audio side of the receiver out of it without
++ * asking the ARM for anything: a ten millisecond poll of the interrupt bytes,
++ * and on "N/CTS new" it reads N, CTS and the sample rate, programmes the
++ * audio PLL at 0x06880000 and unmutes the audio output itself
++ * (doku/nachtlog/S18-re-mips-hdmi-audio.md sections 3.3 and 3.4). There is no
++ * RPC and no callback for any of it -- vtable slot 17, GetAudioSampleRate,
++ * returns a constant zero -- so reading these bytes is the only way the ARM
++ * can learn whether there is sound in the stream and at which rate.
++ *
++ * Read only, and byte wise. Both matter:
++ *
++ *  - The firmware writes these registers on its own schedule. A write from
++ *    here would race it, and the audio bits are exactly the ones it rewrites
++ *    every ten milliseconds.
++ *  - The window answers byte registers. A 32 bit read returns the byte of the
++ *    aligned address four times over (0x06840040 reads 0x07070707, S18
++ *    section 4.4), so a word read cannot deliver 0x45..0x47 at all. The
++ *    syscon behind allwinner,hdmirx-link therefore carries reg-io-width = 1,
++ *    which makes regmap-mmio use readb() for every access.
++ */
++#define H713_LINK_ACTL		0x040
++#define H713_LINK_ACTL_OUT	GENMASK(2, 0)	/* 7 = audio output on */
++#define H713_LINK_ACTL_OUT_ON	7
++#define H713_LINK_ACTL_STATUS	GENMASK(7, 4)	/* status nibble */
++#define H713_LINK_ACTL_NONPCM	BIT(7)		/* vermutet, see below */
++#define H713_LINK_ACR_N		0x045		/* 20 bit, three bytes */
++#define H713_LINK_ACR_CTS	0x048		/* 20 bit, three bytes */
++#define H713_LINK_ACR_HIGH	GENMASK(3, 0)	/* [19:16] in the third byte */
++#define H713_LINK_CS_FS		0x056
++#define H713_LINK_CS_FS_MASK	GENMASK(3, 0)	/* IEC 60958 byte 3 */
++#define H713_LINK_FS		0x15f
++#define H713_LINK_FS_MASK	GENMASK(6, 4)	/* the receiver's own measurement */
++#define H713_LINK_RAW		0x160		/* 0xff raw / 0x00 PCM, vermutet */
++#define H713_LINK_RAW_ON	0xff
++
++/*
++ * The receiver's measured sample rate, code to hertz. The codes come out of
++ * the firmware's own jump table (sub_8B13C1D8, S18 section 3.4), which turns
++ * them into 32, 44, 48, 88, 96, 176 and 192 kHz.
++ *
++ * Code 0 is the one place where this table deliberately says something else
++ * than the firmware's. The firmware maps 0 and 1 both to 32 kHz; the board
++ * says code 0 is "nothing measured": with a locked 1080p signal whose source
++ * sent no audio packets the byte read 0x00, and a real 32 kHz stream made it
++ * read 0x10, that is code 1 (doku/nachtlog/S16-hdmi-audio.md, 13:15 and 13:31
++ * against 20:30). Reporting 32000 for code 0 would mean claiming a rate for
++ * silence, so code 0 is 0 here and it is what makes "Audio Present" false.
++ */
++static const u32 h713_hdmirx_audio_rates[] = {
++	0, 32000, 44100, 48000, 88200, 96000, 176400, 192000,
++};
++
++/*
++ * The rate the *source* declares in the channel status, LINK +0x56 [3:0].
++ * This is IEC 60958-3 byte 3 and it is decoded with the IEC table -- the one
++ * in include/sound/asoundef.h -- and not with the firmware's, which has 0xa
++ * at 88200 and an 82000 that is a typo for 88200 (S18 section 3.4). Zero
++ * stands for 1, "not indicated", for 11, which is a rate only together with
++ * bit 7 of the byte (128 kHz), and for 7 and 15, which asoundef.h does not
++ * define at all; 13 is 352.4 kHz here because bit 7 is what would make it
++ * 705.6 kHz. A cross check for debugfs only:
++ * the controls report the measurement, because that is the rate the receiver
++ * really clocks the samples out with. Measured agreement at 48 kHz: +0x56
++ * reads 2 while +0x15f reads 0x30 (S16 13:45).
++ */
++static const u32 h713_hdmirx_audio_cs_rates[] = {
++	44100, 0, 48000, 32000, 22050, 384000, 24000, 0,
++	88200, 768000, 96000, 0, 176400, 352400, 192000, 0,
++};
++
++/*
+  * The capture ring. Three Y slots and three C slots, fixed by the firmware;
+  * the slot pitch is 0x1ff000 and C slot i is Y slot i plus 0x5fd000. Y and C
+  * always name the same index in every dump taken so far. Measured on the
+@@ -604,6 +677,32 @@
+  */
+ #define V4L2_CID_H713_VIDEO_RANGE	(V4L2_CID_USER_SUN50I_H713_BASE + 4)
+ #define V4L2_CID_H713_PICTURE_MODE	(V4L2_CID_USER_SUN50I_H713_BASE + 5)
++/*
++ * The audio status of the incoming stream, read out of LINK by
++ * h713_hdmirx_read_audio(). Read only, and set from the poll below rather
++ * than from userspace.
++ *
++ * doku/101-plan-audio-treiber.md section 2 asks for these three at
++ * V4L2_CID_USER_BASE + 0x1090. That block is not free: it is
++ * V4L2_CID_USER_MAX217X_BASE (include/uapi/linux/v4l2-controls.h), and this
++ * driver has a reserved block of sixteen of its own at + 0x1230
++ * (V4L2_CID_USER_SUN50I_H713_BASE) of which six were in use, so the three go
++ * there. The names, which are what userspace matches on, are the ones the
++ * plan gives.
++ */
++#define V4L2_CID_H713_AUDIO_PRESENT	(V4L2_CID_USER_SUN50I_H713_BASE + 6)
++#define V4L2_CID_H713_AUDIO_RATE	(V4L2_CID_USER_SUN50I_H713_BASE + 7)
++#define V4L2_CID_H713_AUDIO_COMPRESSED	(V4L2_CID_USER_SUN50I_H713_BASE + 8)
++
++enum h713_hdmirx_audio_index {
++	H713_AUDIO_PRESENT,
++	H713_AUDIO_RATE,
++	H713_AUDIO_COMPRESSED,
++	H713_AUDIO_COUNT,
++};
++
++/* How often the three above are re-read, plan section 1 D. */
++#define H713_AUDIO_POLL_MS	100
+ 
+ /* The vendor's own four steps, from the header of pq_picturemode.ini. */
+ static const char * const h713_hdmirx_pq_steps[] = {
+@@ -808,6 +907,35 @@
+ };
+ 
+ /**
++ * struct h713_hdmirx_audio - one reading of the receiver's audio status
++ * @present: there is audio in the stream: output on, N delivered, rate known
++ * @rate: the measured sample rate in hertz, 0 when there is no measurement
++ * @compressed: the stream is not linear PCM -- vermutet, see the poll
++ * @n: ACR N, LINK +0x45..0x47
++ * @cts: ACR CTS, LINK +0x48..0x4a
++ * @actl: LINK +0x40 as read, output state in [2:0] and status nibble in [7:4]
++ * @fs: LINK +0x15f as read
++ * @cs_fs: LINK +0x56 as read, the source's own channel status
++ * @raw: LINK +0x160 as read
++ *
++ * The raw bytes are kept beside the decoded values so that debugfs can show
++ * both: on a board without v4l2-ctl the raw bytes are what a measurement is
++ * checked against, and the decoding is exactly what is under suspicion when
++ * the two disagree.
++ */
++struct h713_hdmirx_audio {
++	bool present;
++	u32 rate;
++	bool compressed;
++	u32 n;
++	u32 cts;
++	u8 actl;
++	u8 fs;
++	u8 cs_fs;
++	u8 raw;
++};
++
++/**
+  * struct h713_hdmirx_plane - one plane of one buffer, permanently a ring slot
+  * @rx: back pointer
+  * @phys: physical address of the slot
+@@ -857,10 +985,22 @@
+ 	void __iomem *sig_map;
+ 	phys_addr_t sig_map_base;
+ 
++	/*
++	 * The receiver's own port window, byte wide and read only, and the
++	 * hundred millisecond poll that turns it into the three audio
++	 * controls. NULL when the device tree has no allwinner,hdmirx-link:
++	 * the node worked without one until now and a kernel that has this
++	 * driver but not the new node must still probe.
++	 */
++	struct regmap *link;
++	struct delayed_work audio_work;
++	struct h713_hdmirx_audio audio_last;
++
+ 	/* picture quality, one entry per h713_hdmirx_pq_ctrls[] entry */
+ 	struct v4l2_ctrl_handler ctrl_hdl;
+ 	s32 pq_start[H713_PQ_COUNT];
+ 	bool pq_from_seq[H713_PQ_COUNT];
++	struct v4l2_ctrl *audio_ctrl[H713_AUDIO_COUNT];
+ 
+ 	/* slot bookkeeping, all of it under slot_lock */
+ 	spinlock_t slot_lock;
+@@ -1139,6 +1279,62 @@
+ };
+ 
+ /*
++ * The three audio controls, in the order of enum h713_hdmirx_audio_index.
++ *
++ * No .ops, on purpose and not by omission. Nothing writes them from
++ * userspace -- they are READ_ONLY -- and the only writer is the poll, which
++ * goes through v4l2_ctrl_s_ctrl(). That call still runs the handler's s_ctrl
++ * operation, and h713_hdmirx_s_ctrl() answers -EINVAL for every id that is
++ * not a picture setting, which would make every update fail. A control
++ * without ops has none to run (call_op() in v4l2-ctrls-priv.h returns 0),
++ * which is exactly right for a control whose value only ever comes from the
++ * hardware.
++ *
++ * V4L2_CTRL_FLAG_VOLATILE is deliberately *not* set, although the plan
++ * (section 2) asks for READ_ONLY | VOLATILE together with an event on every
++ * change. The two cannot both be had: cluster_changed() in
++ * drivers/media/v4l2-core/v4l2-ctrls-core.c clears has_changed for every
++ * volatile control precisely "to avoid generating the event
++ * V4L2_EVENT_CTRL_CH_VALUE", so a volatile control never sends one and
++ * v4l2_ctrl_s_ctrl() on it turns into a no-op. The event is the half that
++ * userspace cannot emulate; freshness it can, and does not have to here --
++ * the poll is 100 ms old at worst. This is the same shape tc358743 uses for
++ * its own "Audio present" and "Audio sampling rate".
++ */
++static const struct v4l2_ctrl_config h713_hdmirx_audio_ctrls[] = {
++	[H713_AUDIO_PRESENT] = {
++		.id	= V4L2_CID_H713_AUDIO_PRESENT,
++		.name	= "H713 Audio Present",
++		.type	= V4L2_CTRL_TYPE_BOOLEAN,
++		.min	= 0,
++		.max	= 1,
++		.step	= 1,
++		.def	= 0,
++		.flags	= V4L2_CTRL_FLAG_READ_ONLY,
++	},
++	[H713_AUDIO_RATE] = {
++		.id	= V4L2_CID_H713_AUDIO_RATE,
++		.name	= "H713 Audio Rate",
++		.type	= V4L2_CTRL_TYPE_INTEGER,
++		.min	= 0,
++		.max	= 192000,
++		.step	= 1,
++		.def	= 0,
++		.flags	= V4L2_CTRL_FLAG_READ_ONLY,
++	},
++	[H713_AUDIO_COMPRESSED] = {
++		.id	= V4L2_CID_H713_AUDIO_COMPRESSED,
++		.name	= "H713 Audio Compressed",
++		.type	= V4L2_CTRL_TYPE_BOOLEAN,
++		.min	= 0,
++		.max	= 1,
++		.step	= 1,
++		.def	= 0,
++		.flags	= V4L2_CTRL_FLAG_READ_ONLY,
++	},
++};
++
++/*
+  * The handler keeps its own lock rather than borrowing rx->lock: the video
+  * node already holds rx->lock across every ioctl, so sharing it would mean
+  * taking it twice. Nothing needs the two to be one lock -- a picture
+@@ -1155,7 +1351,7 @@
+ 	unsigned int i;
+ 	int ret;
+ 
+-	ret = v4l2_ctrl_handler_init(hdl, H713_PQ_COUNT);
++	ret = v4l2_ctrl_handler_init(hdl, H713_PQ_COUNT + H713_AUDIO_COUNT);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -1184,6 +1380,19 @@
+ 		}
+ 	}
+ 
++	/*
++	 * The audio status. They are registered even when there is no LINK
++	 * window: a node that answers "no audio" is a truthful answer to
++	 * VIDIOC_QUERYCTRL, and a control that appears and disappears with a
++	 * device tree property would make userspace guess.
++	 */
++	for (i = 0; i < H713_AUDIO_COUNT; i++) {
++		const struct v4l2_ctrl_config *cfg;
++
++		cfg = &h713_hdmirx_audio_ctrls[i];
++		rx->audio_ctrl[i] = v4l2_ctrl_new_custom(hdl, cfg, NULL);
++	}
++
+ 	if (hdl->error) {
+ 		ret = hdl->error;
+ 		v4l2_ctrl_handler_free(hdl);
+@@ -1194,6 +1403,170 @@
+ }
+ 
+ /* ------------------------------------------------------------------ *
++ * The audio status of the incoming stream
++ *
++ * Everything here only reads LINK. The receiver's audio side belongs to the
++ * MIPS firmware, which locks onto the stream, programmes the audio PLL and
++ * unmutes the output on its own; the ARM has no say in it and no callback
++ * from it (S18 section 0). What the ARM needs is to be told, because the
++ * codec's sample rate has to follow the source: measured on 08.09.2026, a
++ * 32 kHz stream is silent until the codec is told 32 kHz (S16 20:45).
++ * ------------------------------------------------------------------ */
++
++static bool h713_hdmirx_audio_out_on(u8 actl)
++{
++	return FIELD_GET(H713_LINK_ACTL_OUT, actl) == H713_LINK_ACTL_OUT_ON;
++}
++
++/* Three bytes little endian, and only the low four bits of the third. */
++static int h713_hdmirx_read_20bit(struct h713_hdmirx *rx, unsigned int reg,
++				  u32 *out)
++{
++	unsigned int b[3];
++	unsigned int i;
++	int ret;
++
++	for (i = 0; i < ARRAY_SIZE(b); i++) {
++		ret = regmap_read(rx->link, reg + i, &b[i]);
++		if (ret)
++			return ret;
++	}
++
++	*out = b[0] | b[1] << 8 | (b[2] & H713_LINK_ACR_HIGH) << 16;
++
++	return 0;
++}
++
++static int h713_hdmirx_read_audio(struct h713_hdmirx *rx,
++				  struct h713_hdmirx_audio *a)
++{
++	unsigned int actl, fs, cs_fs, raw;
++	int ret;
++
++	memset(a, 0, sizeof(*a));
++
++	if (!rx->link)
++		return -ENODEV;
++
++	ret = regmap_read(rx->link, H713_LINK_ACTL, &actl);
++	if (!ret)
++		ret = regmap_read(rx->link, H713_LINK_FS, &fs);
++	if (!ret)
++		ret = regmap_read(rx->link, H713_LINK_CS_FS, &cs_fs);
++	if (!ret)
++		ret = regmap_read(rx->link, H713_LINK_RAW, &raw);
++	if (!ret)
++		ret = h713_hdmirx_read_20bit(rx, H713_LINK_ACR_N, &a->n);
++	if (!ret)
++		ret = h713_hdmirx_read_20bit(rx, H713_LINK_ACR_CTS, &a->cts);
++	if (ret)
++		return ret;
++
++	a->actl = actl;
++	a->fs = fs;
++	a->cs_fs = cs_fs;
++	a->raw = raw;
++	a->rate = h713_hdmirx_audio_rates[FIELD_GET(H713_LINK_FS_MASK, fs)];
++
++	/*
++	 * Three conditions, and each one of them has been seen alone on the
++	 * board (S16, 08.09.2026):
++	 *
++	 *  - the output is on. SetMute(0) writes 7 into [2:0] and the firmware
++	 *    does it by itself once a signal stands; 0 is muted.
++	 *  - N is delivered. Without a stream N holds its reset value 2, and
++	 *    CTS 0x18.
++	 *  - a rate was measured. This is the one that carries the case that
++	 *    cost a day: with the source's IEC958 switch off, the link locked,
++	 *    the output was on (+0x40 = 0x07) and N was a perfectly ordinary
++	 *    6144 -- but +0x15f read 0 and there was no sound anywhere. Only
++	 *    when the source really sent audio did the byte become 0x30 and
++	 *    the status nibble 1 (+0x40 = 0x17).
++	 */
++	a->present = h713_hdmirx_audio_out_on(a->actl) && a->n && a->rate;
++
++	/*
++	 * Vermutet, both halves of it. The firmware reads +0x40 [7] and, when
++	 * it is set, writes 0xff into +0x160 and 1 into +0x15e [6:4], which
++	 * reads as "raw route" against "PCM route" (sub_8B13C5B0, S18 section
++	 * 3.4) -- but the name of the bit is nowhere in the image, and no
++	 * compressed stream has been put through this board yet. The one
++	 * measurement there is agrees: linear PCM at 48 kHz left both at zero
++	 * (+0x40 = 0x17, +0x160 = 0). Wrong in the safe direction if it is
++	 * wrong at all -- hy310-tv mutes on "compressed", it does not unmute.
++	 */
++	a->compressed = (actl & H713_LINK_ACTL_NONPCM) ||
++			(raw == H713_LINK_RAW_ON);
++
++	return 0;
++}
++
++/*
++ * Publish one reading, and only when it says something new. The framework
++ * would filter it anyway -- new_to_cur() in v4l2-ctrls-api.c compares the new
++ * value against the current one and sends V4L2_EVENT_CTRL_CH_VALUE only if
++ * they differ -- but there is no reason to take the handler's mutex thirty
++ * times a second to be told that nothing happened. The same comparison
++ * carries the log line, which is what a board without v4l2-ctl has.
++ *
++ * The three controls and rx->audio_last are written from here only, from the
++ * one work item, so the two cannot drift apart: what audio_last holds is what
++ * the controls were last set to.
++ */
++static void h713_hdmirx_audio_publish(struct h713_hdmirx *rx,
++				      const struct h713_hdmirx_audio *a)
++{
++	const struct h713_hdmirx_audio *old = &rx->audio_last;
++	bool changed = a->present != old->present || a->rate != old->rate ||
++		       a->compressed != old->compressed;
++
++	rx->audio_last = *a;
++
++	if (!changed)
++		return;
++
++	if (a->present)
++		dev_info(rx->dev,
++			 "Audio: %u Hz, %s (N %u, CTS %u, +0x40 = 0x%02x)\n",
++			 a->rate, a->compressed ? "nicht PCM" : "PCM",
++			 a->n, a->cts, a->actl);
++	else
++		dev_info(rx->dev,
++			 "Audio: keins (+0x40 = 0x%02x, +0x15f = 0x%02x, N %u)\n",
++			 a->actl, a->fs, a->n);
++
++	v4l2_ctrl_s_ctrl(rx->audio_ctrl[H713_AUDIO_PRESENT], a->present);
++	v4l2_ctrl_s_ctrl(rx->audio_ctrl[H713_AUDIO_RATE], a->rate);
++	v4l2_ctrl_s_ctrl(rx->audio_ctrl[H713_AUDIO_COMPRESSED], a->compressed);
++}
++
++/*
++ * The poll. A hundred milliseconds, which is the plan's number and is fast
++ * enough for what waits on it: hy310-tv has to change the codec's rate
++ * between two tracks, not between two samples.
++ *
++ * It is its own delayed work and not a passenger on one of the driver's
++ * others, because the driver has none that runs all the time -- the re-arm
++ * retry is armed by a failure and the vsync notifier only ticks while the
++ * capture streams, and the audio status has to be right when nothing is
++ * streaming as well. Ten byte reads every tenth of a second, and the reads
++ * are safe while the block is asleep: a powered down TVFE answers zero,
++ * which decodes to "no audio".
++ */
++static void h713_hdmirx_audio_work(struct work_struct *work)
++{
++	struct h713_hdmirx *rx = container_of(to_delayed_work(work),
++					      struct h713_hdmirx, audio_work);
++	struct h713_hdmirx_audio a;
++
++	if (!h713_hdmirx_read_audio(rx, &a))
++		h713_hdmirx_audio_publish(rx, &a);
++
++	queue_delayed_work(system_wq, &rx->audio_work,
++			   msecs_to_jiffies(H713_AUDIO_POLL_MS));
++}
++
++/* ------------------------------------------------------------------ *
+  * Callbacks from the firmware
+  * ------------------------------------------------------------------ */
+ 
+@@ -3041,6 +3414,38 @@
+ 		   sig.hdr_mode, sig.b_full_range, sig.b_dvi_mode);
+ }
+ 
++/*
++ * Read afresh rather than shown from the poll's last reading: the raw bytes
++ * are here so that a measurement can be checked against them, and a
++ * measurement is taken by looking at this file twice.
++ */
++static void h713_hdmirx_show_audio(struct seq_file *s, struct h713_hdmirx *rx)
++{
++	struct h713_hdmirx_audio a;
++	unsigned int cs;
++	int ret;
++
++	ret = h713_hdmirx_read_audio(rx, &a);
++	if (ret == -ENODEV) {
++		seq_puts(s, "audio:        kein LINK-Fenster (allwinner,hdmirx-link fehlt)\n");
++		return;
++	}
++	if (ret) {
++		seq_printf(s, "audio:        nicht lesbar (%d)\n", ret);
++		return;
++	}
++
++	seq_printf(s,
++		   "audio:        present=%u rate=%u compressed=%u n=%u cts=%u\n",
++		   a.present, a.rate, a.compressed, a.n, a.cts);
++	cs = FIELD_GET(H713_LINK_CS_FS_MASK, a.cs_fs);
++	seq_printf(s,
++		   "              0x40=0x%02x (Ausgang %s, Nibble %lu) 0x15f=0x%02x 0x56=0x%02x (%u Hz gemeldet) 0x160=0x%02x\n",
++		   a.actl, h713_hdmirx_audio_out_on(a.actl) ? "an" : "stumm",
++		   FIELD_GET(H713_LINK_ACTL_STATUS, a.actl), a.fs, a.cs_fs,
++		   h713_hdmirx_audio_cs_rates[cs], a.raw);
++}
++
+ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
+ {
+ 	struct h713_hdmirx *rx = s->private;
+@@ -3087,6 +3492,7 @@
+ 		seq_printf(s, "farbwandler:  %s (0x824 = %#010x)\n",
+ 			   (y & H713_INCAP_ICSC_BYPASS) ? "BYPASS -- das Bild waere gruen"
+ 						       : "BT.709", y);
++	h713_hdmirx_show_audio(s, rx);
+ 	seq_printf(s, "streaming:    %s\n",
+ 		   vb2_is_streaming(&rx->queue) ? "ja" : "nein");
+ 
+@@ -3225,6 +3631,7 @@
+ 	rx->desc_nb.notifier_call = h713_hdmirx_desc_notify;
+ 	INIT_WORK(&rx->rearm_work, h713_hdmirx_rearm_work);
+ 	INIT_DELAYED_WORK(&rx->rearm_retry_work, h713_hdmirx_rearm_retry_work);
++	INIT_DELAYED_WORK(&rx->audio_work, h713_hdmirx_audio_work);
+ 	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings, H713_HDMIRX_WIDTH);
+ 	rx->last_slot = -1;
+ 	mutex_init(&rx->lock);
+@@ -3302,6 +3709,22 @@
+ 				     "kein Zugriff auf den INCAP-Block (allwinner,incap)\n");
+ 
+ 	/*
++	 * The receiver's port window, in the same shape and for the same
++	 * reason -- and optional, because a device tree from before this
++	 * property has none and everything except the three audio controls
++	 * works without it. The syscon node carries reg-io-width = 1, so the
++	 * regmap reads it with readb(); see H713_LINK_ACTL.
++	 */
++	rx->link = syscon_regmap_lookup_by_phandle_optional(dev->of_node,
++							    "allwinner,hdmirx-link");
++	if (IS_ERR(rx->link))
++		return dev_err_probe(dev, PTR_ERR(rx->link),
++				     "kein Zugriff auf das LINK-Fenster (allwinner,hdmirx-link)\n");
++	if (!rx->link)
++		dev_warn(dev,
++			 "kein allwinner,hdmirx-link -- der Audiostatus des Empfaengers bleibt leer\n");
++
++	/*
+ 	 * Stage 3: the firmware bring-up sequence.
+ 	 *
+ 	 * Nothing above this line has touched the routine table, and nothing
+@@ -3409,6 +3832,15 @@
+ 	debugfs_create_file("status", 0444, rx->debugfs, rx,
+ 			    &h713_hdmirx_status_fops);
+ 
++	/*
++	 * The audio poll starts here, after the controls exist and after the
++	 * node is registered, so that the first reading can already send an
++	 * event to whoever subscribed. Without a LINK window it is not armed
++	 * at all: it would read nothing forever.
++	 */
++	if (rx->link)
++		queue_delayed_work(system_wq, &rx->audio_work, 0);
++
+ 	platform_set_drvdata(pdev, rx);
+ 	dev_info(dev, "/dev/video%d, Slot-Quelle: %s\n", rx->vdev.num,
+ 		 rx->slot_source->name);
+@@ -3452,6 +3884,12 @@
+ 	struct h713_hdmirx *rx = platform_get_drvdata(pdev);
+ 
+ 	h713_afbd_unregister_descriptor_notifier(&rx->desc_nb);
++	/*
++	 * Before the control handler goes, not after: the poll writes the
++	 * controls, and it re-arms itself, so it has to be stopped rather
++	 * than merely waited for.
++	 */
++	cancel_delayed_work_sync(&rx->audio_work);
+ 	cancel_delayed_work_sync(&rx->rearm_retry_work);
+ 	cancel_work_sync(&rx->rearm_work);
+ 	debugfs_remove_recursive(rx->debugfs);

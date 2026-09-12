@@ -1,0 +1,266 @@
+media: sun50i-h713-hdmirx: put the capture's input converter back after a republished descriptor
+
+Since 0117 a resolution change republishes the VidDec record, and the
+picture that comes back is green. Measured in the ring, not on the wall:
+grey areas read Cb ~ Cr ~ Y (taskbar 40/43/40, white 225/226/225) where a
+clean cold start reads Cb ~ Cr ~ 128. The capture writes the HDMI
+receiver's RGB into the NV16 ring without converting it, and the plane
+reads it as YCbCr.
+
+The switch that does it is the capture's input converter, MP_ICSC_VINCAP,
+INCAP 0x06940824 bit 31 (1 = bypass). The firmware picks its state from
+the colour format of the signal that caused the last signal event
+(TFD attribute Signal_Format -> colorspace_config_mp: YUV -> bypass, RGB ->
+the signal's colour space). Our record says yuv420_888, because that is
+the only value that keeps the AFBD reader on NV16 -- so every republish
+ends in bypass. The HDMI receiver's own re-lock sets BT.709 90 ms earlier,
+and loses. The first publication does not show it only because it ends in
+a source switch: the re-lock that follows is then the last word.
+(Firmware side: doku/nachtlog/S9; device: S11, elog level 5.)
+
+Ruled out: the record's colour format. rgb_888 there does give RGB_888 and
+BT.709, but it also moves NRWinNode_ColorFormatConvert to AFBD format 4,
+the chroma stride to 1280 and the picture to a much stronger green --
+measured, and a dead end already listed in re/notes/DEAD-ENDS.md.
+
+What works is THal_Vp_SetVideoRange with a changed value: the firmware
+then evaluates its picture path for the VideoDec record (bypass) and once
+more for the HDMI signal it still has cached (RGB -> BT.709), and the last
+one writes the register. Full range and back to auto is two such changes
+and leaves the range where the init sequence put it. No window rebuild,
+no capture enable, no state machine; measured at 1080p and 720p, scaler
+0x3200AAAA and strides untouched, 0x824 back to 0x0000000B, ring back to
+YCbCr, taskbar grey on the wall.
+
+Order matters, because Marco saw the green picture first and the fix a
+moment later. The publication's rebuild ends by switching the capture
+off; wait for that, restore the converter while the capture is off (the
+ring keeps the previous picture, no green frame is ever written), then
+enable. Checked once more after the enable holds and after the first
+publication's source switch -- both should be no-ops and say so in the
+log if they are not.
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 00:57:18.850604646 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-08 00:58:15.841710976 +0200
+@@ -195,6 +195,17 @@
+ #define H713_INCAP_ENABLE_BIT	BIT(31)
+ 
+ /*
++ * The capture's input colour converter, MP_ICSC_VINCAP in the firmware's own
++ * terms. Bit 31 set is "bypass": the HDMI receiver's RGB goes into the NV16
++ * ring unconverted, the plane reads it as YCbCr and the picture is green.
++ * Read here only -- the firmware is asked to rewrite it, see
++ * h713_hdmirx_restore_icsc(). Polarity from the firmware's own module table
++ * (doku/nachtlog/S9 section 4), confirmed on the device (S11).
++ */
++#define H713_INCAP_ICSC		0x824
++#define H713_INCAP_ICSC_BYPASS	BIT(31)
++
++/*
+  * The capture ring. Three Y slots and three C slots, fixed by the firmware;
+  * the slot pitch is 0x1ff000 and C slot i is Y slot i plus 0x5fd000. Y and C
+  * always name the same index in every dump taken so far. Measured on the
+@@ -257,6 +268,21 @@
+ #define H713_SOURCE_VIDEODEC	1
+ 
+ /*
++ * THal_Vp_SetVideoRange: 0 follows the signal, 2 forces full range, anything
++ * else forces limited range. The value matters less than the change: a call
++ * with a new value makes the firmware re-evaluate its picture path for the
++ * VideoDec record AND for the HDMI signal, in that order, and the HDMI one is
++ * the one that puts the input converter back to the signal's colour space.
++ */
++#define H713_VIDEO_RANGE_AUTO	0
++#define H713_VIDEO_RANGE_FULL	2
++
++/* how long the firmware may take to switch the capture off after a record */
++#define H713_REBUILD_TIMEOUT_MS	1500
++/* and how long SetVideoRange may take to reach the converter register */
++#define H713_ICSC_TIMEOUT_MS	500
++
++/*
+  * How long the capture gets to come back after the source has been switched
+  * away and back. Measured on 07.09.2026 over three cycles: 539 ms, 536 ms and
+  * 544 ms from the return of the second RPC until INCAP +0x928 bit 31 was set
+@@ -731,6 +757,7 @@
+ 	phys_addr_t ring_size;
+ 
+ 	u32 id_setsource;
++	u32 id_setvideorange;
+ 
+ 	struct v4l2_dv_timings timings;
+ 	u32 plane_size;			/* bytes per plane of the current format */
+@@ -1589,6 +1616,90 @@
+ 	return ret;
+ }
+ 
++static bool h713_hdmirx_icsc_bypassed(struct h713_hdmirx *rx)
++{
++	unsigned int val;
++
++	if (regmap_read(rx->incap, H713_INCAP_ICSC, &val))
++		return false;
++
++	return val & H713_INCAP_ICSC_BYPASS;
++}
++
++/*
++ * Put the capture's input converter back to the HDMI signal's colour space.
++ *
++ * Why it is ever wrong: the VidDec record this driver's display side publishes
++ * says yuv420_888, because that is the only value that keeps the AFBD reader
++ * on NV16. The firmware builds its picture-path filter from the record that
++ * caused the last signal event, and for a YUV source it switches the capture's
++ * input converter to bypass -- correct for a decoder frame, which is already
++ * YCbCr, wrong for this capture, which is fed RGB by the HDMI receiver. From
++ * then on RGB goes into the NV16 ring unconverted and the wall is green. The
++ * first publication does not show it only because it ends in a source switch,
++ * which makes the firmware re-lock the HDMI signal and evaluate that instead.
++ * Measured on the ring: grey with the converter bypassed reads Cb ~ Cr ~ Y
++ * (40/43/40), with it on Cb ~ Cr ~ 128 (doku/nachtlog/S11; the rule and the
++ * register from the firmware, doku/nachtlog/S9).
++ *
++ * How it is put right without a source switch: THal_Vp_SetVideoRange with a
++ * CHANGED value. Same value, nothing happens. A new value makes the firmware
++ * evaluate the picture path twice, first for the VideoDec record (bypass) and
++ * then for the HDMI signal it still has cached (RGB, BT.709) -- and the last
++ * one writes the register. Full range and back to auto is two such changes
++ * and leaves the range setting where the init sequence put it. Nothing else
++ * moves: no window rebuild, no capture enable, no state machine. Measured at
++ * 1080p and 720p, scaler and strides untouched, ring back to YCbCr.
++ *
++ * Called with the capture switched OFF, so no green frame ever reaches the
++ * ring; the wall holds the previous picture until the capture is enabled
++ * after this. Also called as a check where the state should already be right.
++ */
++static void h713_hdmirx_restore_icsc(struct h713_hdmirx *rx, const char *wann)
++{
++	ktime_t start;
++	u32 arg;
++	int ret;
++
++	if (!h713_hdmirx_icsc_bypassed(rx))
++		return;
++
++	if (!rx->id_setvideorange) {
++		dev_warn_once(rx->dev,
++			      "Farbwandler: steht auf Bypass (%s) und SetVideoRange fehlt -- das Bild bleibt gruen\n",
++			      wann);
++		return;
++	}
++
++	arg = H713_VIDEO_RANGE_FULL;
++	ret = cpu_comm_call(rx->id_setvideorange, &arg, 1, NULL, 0, 0);
++	if (!ret) {
++		arg = H713_VIDEO_RANGE_AUTO;
++		ret = cpu_comm_call(rx->id_setvideorange, &arg, 1, NULL, 0, 0);
++	}
++	if (ret) {
++		dev_warn(rx->dev,
++			 "Farbwandler: SetVideoRange fehlgeschlagen: %d (%s) -- das Bild ist gruen\n",
++			 ret, wann);
++		return;
++	}
++
++	start = ktime_get();
++	do {
++		if (!h713_hdmirx_icsc_bypassed(rx)) {
++			dev_info(rx->dev,
++				 "Farbwandler: wieder BT.709 (%s), nach %lld ms\n",
++				 wann, ktime_ms_delta(ktime_get(), start));
++			return;
++		}
++		usleep_range(2000, 4000);
++	} while (ktime_ms_delta(ktime_get(), start) < H713_ICSC_TIMEOUT_MS);
++
++	dev_warn(rx->dev,
++		 "Farbwandler: bleibt nach SetVideoRange auf Bypass (%s) -- das Bild ist gruen\n",
++		 wann);
++}
++
+ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ {
+ 	bool erste = !rx->desc_seen;
+@@ -1634,9 +1745,36 @@
+ 		 */
+ 		ktime_t start = ktime_get();
+ 		unsigned int stabil = 0;
+-		unsigned int val;
++		unsigned int val = 0;
+ 		int ret = 0;
+ 
++		/*
++		 * First let the firmware finish. The publication makes it rebuild
++		 * the window chain, and the last thing that rebuild does is switch
++		 * the capture off (memory_agent_onoff, right after the NR/Proc/
++		 * Panel WriteReg -- elog level 5, doku/nachtlog/S11). Its picture-
++		 * path write, the one that puts the input converter on bypass,
++		 * comes before that. So "capture off" is the moment from which a
++		 * correction holds; applied earlier it would be overwritten.
++		 */
++		while (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val) &&
++		       (val & H713_INCAP_ENABLE_BIT) &&
++		       ktime_ms_delta(ktime_get(), start) < H713_REBUILD_TIMEOUT_MS)
++			usleep_range(5000, 10000);
++		if (val & H713_INCAP_ENABLE_BIT)
++			dev_info(rx->dev,
++				 "Freigabe: Firmware hat die Capture nach %u ms nicht abgeschaltet -- kein Neubau gesehen\n",
++				 H713_REBUILD_TIMEOUT_MS);
++
++		/*
++		 * Now the converter, while the capture is still off: the ring
++		 * keeps the previous picture and no green frame is ever written.
++		 * This is the order that makes the change invisible; converter
++		 * after enable shows one green picture until the fix lands.
++		 */
++		h713_hdmirx_restore_icsc(rx, "vor der Freigabe");
++
++		start = ktime_get();
+ 		do {
+ 			if (regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val))
+ 				break;
+@@ -1646,6 +1784,14 @@
+ 					dev_info(rx->dev,
+ 						 "Freigabe: Capture direkt freigegeben, kein Quellenwechsel, nach %lld ms\n",
+ 						 ktime_ms_delta(ktime_get(), start));
++					/*
++					 * Should be a no-op. It is not only if the
++					 * firmware's rebuild came later than the
++					 * wait above allowed for; then this costs
++					 * one green picture instead of a green
++					 * boot, and the log says so.
++					 */
++					h713_hdmirx_restore_icsc(rx, "nach der Freigabe");
+ 					return;
+ 				}
+ 			} else {
+@@ -1672,8 +1818,11 @@
+ 
+ 	h713_hdmirx_reapply_saturation(rx);
+ 
+-	if (h713_hdmirx_wait_enable(rx, "Capture laeuft wieder"))
++	if (h713_hdmirx_wait_enable(rx, "Capture laeuft wieder")) {
++		/* the source switch ends on the HDMI signal; this only checks */
++		h713_hdmirx_restore_icsc(rx, "nach dem Quellenwechsel");
+ 		return;
++	}
+ 
+ 	/*
+ 	 * Not an error return: there is nobody to return it to, and the most
+@@ -2821,6 +2970,16 @@
+ 		return -EINVAL;
+ 
+ 	/*
++	 * Not fatal: without it the capture still runs, only the colour after
++	 * a resolution change cannot be put right (h713_hdmirx_restore_icsc).
++	 */
++	rx->id_setvideorange = cpu_comm_name2id("THal_Vp_SetVideoRange",
++						CPU_COMM_CPU_MIPS);
++	if (!rx->id_setvideorange)
++		dev_warn(dev,
++			 "THal_Vp_SetVideoRange unbekannt -- der Farbwandler der Capture kann nach einem Aufloesungswechsel nicht zurueckgesetzt werden\n");
++
++	/*
+ 	 * The display driver is where the finished-slot events come from, and
+ 	 * it is the only place they can come from on this SoC. Ask it for the
+ 	 * flip pair once, before anything is registered: -EPROBE_DEFER means

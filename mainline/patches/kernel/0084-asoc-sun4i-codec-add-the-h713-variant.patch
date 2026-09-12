@@ -1,0 +1,194 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Tue, 2 Sep 2026 05:30:00 -0700
+Subject: [PATCH] ASoC: sun4i-codec: add the H713 variant
+
+Using allwinner,sun50i-h616-codec on H713 gets a working card, a playback PCM
+and a speaker amp that asserts, but no audio can reach it: "DAC Playback Switch"
+accepts a write and reads back zero.
+
+That is hardware, not the driver. A direct write to 0x02030314 is also dropped,
+while 0x02030310 visibly takes ALSA's line-out writes at exactly the bits the
+H616 definitions predict (0x0015000F -> 0x0015280F, LINEOUTL_EN and LINEOUTR_EN
+at 13 and 11). The vendor driver's register map explains it -- H713 has
+
+  0x300 ADCL  0x304 ADCR  0x310 DAC  0x318 MICBIAS  0x320 BIAS  0x324 HP
+  0x328 HMIC
+
+and no 0x314 at all. H616 puts DAC_AC_MIXER_REG there. Writes to a register that
+does not exist are silently dropped, and a mixer input switch that always reads
+zero leaves DAPM believing the path is disconnected, so the output never powers.
+
+H616's line-out ramp controller at 0x31c is missing from that map too, so this
+drops both stages: no Left/Right Mixer widgets, no mixer controls, no ramp
+controller, and the DACs route straight at the line-out mux.
+
+Everything else is shared with H616 unchanged, because it lives in registers
+H713 does have -- the controls and the line-out source enum are all in
+DAC_AC_DAC_REG (0x310) and the digital DAC_DPC.
+
+On H713 the nonexistent "DAC Playback Switch" disappears, the remaining
+controls update their hardware fields, and playback reaches the analog path.
+The following patch powers the headphone amplifier that drives the speaker.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+diff --git a/sound/soc/sunxi/sun4i-codec.c b/sound/soc/sunxi/sun4i-codec.c
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -1961,6 +1961,58 @@
+ 	.endianness   = 1,
+ };
+ 
++/*
++ * H713 (sun50iw12) is H616's codec with the DAC mixer stage absent.
++ *
++ * The vendor's own register map has no 0x314 and no 0x31c:
++ *
++ *   0x300 ADCL  0x304 ADCR  0x310 DAC  0x318 MICBIAS  0x320 BIAS
++ *   0x324 HP    0x328 HMIC
++ *
++ * H616 puts DAC_AC_MIXER_REG at 0x314 and the line-out ramp at 0x31c, and on
++ * H713 writes to both are dropped silently -- measured: "DAC Playback Switch"
++ * accepts a write and reads back zero, and so does a direct write to
++ * 0x02030314, while 0x02030310 visibly takes ALSA's line-out writes at exactly
++ * the bits the H616 definitions predict. A mixer input switch that always reads
++ * zero leaves DAPM believing the path is disconnected, so the output never
++ * powers up and audio never reaches the speaker amp.
++ *
++ * So drop both stages and route the DACs straight at the line-out mux. Controls
++ * and the mux itself are shared with H616 unchanged: they live in DAC_AC_DAC_REG
++ * (0x310) and the digital DAC_DPC, both of which exist here.
++ */
++static const struct snd_soc_dapm_widget sun50i_h713_codec_codec_widgets[] = {
++	/* Digital parts of the DACs */
++	SND_SOC_DAPM_SUPPLY("DAC Enable", SUN4I_CODEC_DAC_DPC,
++			    SUN4I_CODEC_DAC_DPC_EN_DA, 0,
++			    NULL, 0),
++
++	/* Analog parts of the DACs */
++	SND_SOC_DAPM_DAC("Left DAC", "Codec Playback",
++			 SUN50I_H616_DAC_AC_DAC_REG,
++			 SUN50I_H616_DAC_LEN, 0),
++	SND_SOC_DAPM_DAC("Right DAC", "Codec Playback",
++			 SUN50I_H616_DAC_AC_DAC_REG,
++			 SUN50I_H616_DAC_REN, 0),
++
++	/* No mixer stage on H713: DAC_AC_MIXER_REG (0x314) does not exist. */
++
++	/* Line Out path, without H616's ramp controller at 0x31c */
++	SND_SOC_DAPM_MUX("Line Out Source Playback Route",
++			 SND_SOC_NOPM, 0, 0, sun50i_h616_codec_lineout_src),
++	SND_SOC_DAPM_OUTPUT("LINEOUT"),
++};
++
++static const struct snd_soc_component_driver sun50i_h713_codec_codec = {
++	.controls		= sun50i_h616_codec_codec_controls,
++	.num_controls		= ARRAY_SIZE(sun50i_h616_codec_codec_controls),
++	.dapm_widgets		= sun50i_h713_codec_codec_widgets,
++	.num_dapm_widgets	= ARRAY_SIZE(sun50i_h713_codec_codec_widgets),
++	.idle_bias_on		= 1,
++	.use_pmdown_time	= 1,
++	.endianness		= 1,
++};
++
+ static const struct snd_kcontrol_new sun50i_h616_card_controls[] = {
+ 	SOC_DAPM_PIN_SWITCH("Speaker"),
+ };
+@@ -2229,6 +2281,74 @@
+ 	.dma_max_burst	= SUN4I_DMA_MAX_BURST,
+ };
+ 
++static const struct snd_soc_dapm_route sun50i_h713_codec_card_routes[] = {
++	/* DAC Routes */
++	{ "Left DAC", NULL, "DAC Enable" },
++	{ "Right DAC", NULL, "DAC Enable" },
++
++	/* Line Out Routes -- straight from the DACs, no mixer stage */
++	{ "Line Out Source Playback Route", "Stereo", "Left DAC" },
++	{ "Line Out Source Playback Route", "Stereo", "Right DAC" },
++	{ "Line Out Source Playback Route", "Mono Differential", "Left DAC" },
++	{ "Line Out Source Playback Route", "Mono Differential", "Right DAC" },
++	{ "LINEOUT", NULL, "Line Out Source Playback Route" },
++};
++
++static struct snd_soc_card *sun50i_h713_codec_create_card(struct device *dev)
++{
++	struct snd_soc_card *card;
++	int ret;
++
++	card = devm_kzalloc(dev, sizeof(*card), GFP_KERNEL);
++	if (!card)
++		return ERR_PTR(-ENOMEM);
++
++	card->dai_link = sun4i_codec_create_link(dev, &card->num_links);
++	if (!card->dai_link)
++		return ERR_PTR(-ENOMEM);
++
++	card->dai_link->playback_only = true;
++	card->dai_link->capture_only = false;
++
++	card->dev		= dev;
++	card->owner		= THIS_MODULE;
++	card->name		= "H713 Audio Codec";
++	card->long_name		= "h713-audio-codec";
++	card->driver_name	= "sun4i-codec";
++	card->controls		= sun50i_h616_card_controls;
++	card->num_controls	= ARRAY_SIZE(sun50i_h616_card_controls);
++	card->dapm_widgets	= sun50i_h616_codec_card_dapm_widgets;
++	card->num_dapm_widgets	= ARRAY_SIZE(sun50i_h616_codec_card_dapm_widgets);
++	card->dapm_routes	= sun50i_h713_codec_card_routes;
++	card->num_dapm_routes	= ARRAY_SIZE(sun50i_h713_codec_card_routes);
++	card->fully_routed	= true;
++
++	ret = snd_soc_of_parse_audio_routing(card, "allwinner,audio-routing");
++	if (ret)
++		dev_warn(dev, "failed to parse audio-routing: %d\n", ret);
++
++	return card;
++};
++
++/* Analog block ends at HMIC (0x328) here, past H616's ramp register. */
++static const struct regmap_config sun50i_h713_codec_regmap_config = {
++	.reg_bits	= 32,
++	.reg_stride	= 4,
++	.val_bits	= 32,
++	.max_register	= 0x328,
++	.cache_type	= REGCACHE_NONE,
++};
++
++static const struct sun4i_codec_quirks sun50i_h713_codec_quirks = {
++	.regmap_config	= &sun50i_h713_codec_regmap_config,
++	.codec		= &sun50i_h713_codec_codec,
++	.create_card	= sun50i_h713_codec_create_card,
++	.reg_dac_fifoc	= REG_FIELD(SUN50I_H616_CODEC_DAC_FIFOC, 0, 31),
++	.reg_dac_txdata	= SUN8I_H3_CODEC_DAC_TXDATA,
++	.has_reset	= true,
++	.dma_max_burst	= SUN4I_DMA_MAX_BURST,
++};
++
+ static const struct sun4i_codec_quirks sun50i_h616_codec_quirks = {
+ 	.regmap_config	= &sun50i_h616_codec_regmap_config,
+ 	.codec		= &sun50i_h616_codec_codec,
+@@ -2281,6 +2401,10 @@
+ 		.data = &sun50i_h616_codec_quirks,
+ 	},
+ 	{
++		.compatible = "allwinner,sun50i-h713-codec",
++		.data = &sun50i_h713_codec_quirks,
++	},
++	{
+ 		.compatible = "allwinner,suniv-f1c100s-codec",
+ 		.data = &suniv_f1c100s_codec_quirks,
+ 	},
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -765,7 +765,7 @@
+ 			 *   stock also lists a pll_tvfe clock on the codec,
+ 			 *     which is unexplained -- deliberately not copied
+ 			 */
+-			compatible = "allwinner,sun50i-h616-codec";
++			compatible = "allwinner,sun50i-h713-codec";
+ 			reg = <0x02030000 0x32c>;
+ 			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_BUS_AUDIO_CODEC>,

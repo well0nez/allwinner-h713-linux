@@ -1,0 +1,61 @@
+From: Paket D (Agent), rebased by well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: h713: describe the HDMI receiver link window for the audio status
+
+A byte-wide syscon (reg-io-width = 1) for the receiver port window at
+0x06840000 and the allwinner,hdmirx-link phandle the hdmirx driver (0136) uses
+to read the audio status bytes. Applies after 0135b and 0138.
+---
+diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:54:57.499444516 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:54:57.503659213 +0200
+@@ -1676,6 +1676,30 @@
+ 			reg = <0x06940000 0x1000>;
+ 		};
+ 
++		/*
++		 * LINK, the HDMI receiver's port window. Like INCAP above it
++		 * belongs to the MIPS firmware and has no ARM driver: the
++		 * firmware detects the audio in the stream, programmes the
++		 * audio PLL and unmutes the receiver's audio output all by
++		 * itself, and it offers the ARM neither an RPC nor a callback
++		 * to ask about any of it (doku/nachtlog/S18-re-mips-hdmi-audio.md).
++		 * The HDMI receiver node reads four bytes of it -- +0x40,
++		 * +0x56, +0x15f, +0x160 -- plus the six of N and CTS, and
++		 * writes none.
++		 *
++		 * reg-io-width = <1> is not decoration. These are byte
++		 * registers: a 32 bit read of this window returns the byte of
++		 * the aligned address four times over, so a word access
++		 * cannot reach +0x45..0x47 at all (S18 section 4.4). With
++		 * reg-io-width = 1 the syscon's regmap uses readb().
++		 */
++		hdmirx_link: syscon@6840000 {
++			compatible = "allwinner,sun50i-h713-hdmirx-link",
++				     "syscon";
++			reg = <0x06840000 0x1000>;
++			reg-io-width = <1>;
++		};
++
+ 		/* R-domain pinctrl for PL/PM banks (IR, S_PWM, WLAN/BT GPIOs) */
+ 		r_pio: pinctrl@7022000 {
+ 			compatible = "allwinner,sun50i-h713-r-pinctrl";
+@@ -2030,6 +2054,11 @@
+ 	 *                    timing it reports -- the firmware's own signal
+ 	 *                    record has the active size and the frame rate
+ 	 *                    but no totals (doku/nachtlog/E4).
++	 *   allwinner,hdmirx-link  the syscon over the receiver's own port
++	 *                    window (LINK, syscon@6840000 above). Optional,
++	 *                    read only, byte wide: without it everything
++	 *                    works except the three audio status controls,
++	 *                    which stay at zero.
+ 	 *
+ 	 * No interrupt: three independent searches of the firmware image found
+ 	 * the capture interrupt only inside the MIPS interrupt controller, and
+@@ -2041,6 +2070,7 @@
+ 		memory-region = <&mips_framebuf>, <&cpu_comm_reserved>;
+ 		memory-region-names = "hdmi-ring", "cpu-comm-shmem";
+ 		allwinner,incap = <&incap>;
++		allwinner,hdmirx-link = <&hdmirx_link>;
+ 		status = "okay";
+ 	};
+ 

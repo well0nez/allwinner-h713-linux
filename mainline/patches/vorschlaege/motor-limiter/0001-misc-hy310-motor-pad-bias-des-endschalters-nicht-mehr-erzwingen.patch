@@ -1,0 +1,192 @@
+misc: hy310-motor: Pad-Bias des Endschalters nicht mehr erzwingen
+
+Der Treiber setzt den Bias von PH14 beim Probe fest auf das Gegenstueck von
+active_level, also bei active_level = 1 auf Pull-down.  Diese Regel steht
+nirgends im Herstellercode.  Sie stammt aus Patch 0111 und aus der Annahme,
+der Endschalter treibe im aktiven Fall aktiv 3,3 V und sei sonst offen.
+
+Stock setzt keinen Bias.  In motor_control_fdt_parse (Stock-vmlinux
+0xc05d62c8) folgt auf das erfolgreiche gpio_request() der Leitung genau
+
+    c05d6610  ldr r0, [r5, #0x10]      ; limter_up_pin
+    c05d6614  bl  gpio_to_desc
+    c05d6618  bl  gpiod_direction_input
+    c05d661c  ldr r3, [r5, #0x10]
+    c05d6620  str r3, [r5, #0x14]      ; MOTOR_LIMITER_PIN = limter_up_pin
+    c05d6624  ldr r3, [r5, #0x18]      ; limiter_num
+    c05d6628  add r3, r3, #1
+    c05d662c  str r3, [r5, #0x18]
+
+Kein gpiod_set_config(), kein pinctrl_select_state().  Der Herstellerknoten
+"motor_ctr" hat auch keine pinctrl-Gruppe (hy310_factory.dts:2636..2652,
+extracted/bootpkg-full.dts:2909..2927 -- beide vom Geraet dekompiliert).  Was
+der Abzug des laufenden Stock-Systems zeigt ("pin 238 (PH14): input bias pull
+down", re/captures/HY310-DEV/stock_pinconf_pio.txt), ist der Zustand, den die
+Bootkette hinterlaesst, nicht der, den der Treiber herstellt.
+
+Warum das kein Schoenheitsfehler ist: der Waechter an PH14 ist ein
+Bereichswaechter, kein Anschlagkontakt.  motor_limiter_status (0xc05d6930)
+liefert 1, solange der Rohpegel gleich active_level ist; motor_run_up_control
+(0xc05d6ea0) und motor_run_dn_control (0xc05d70d4) kehren um, wenn er 0 wird,
+und motor_control_probe nennt den 1-Zustand woertlich "limited normal,no need
+to check postion" (check_motor_position, motor-control.c:721, inline im Probe,
+DWARF aus vmlinux.elf).  In-Bereich ist also HIGH.  Ein interner Pull-down
+zieht die Leitung damit an JEDER Position auf "ausserhalb", sobald der Geber
+nicht selbst aktiv Strom liefert -- und genau das ist gemessen worden:
+doku/94-fokusmotor-endschalter.md, "Pull-down (wie Stock) -> in lo", an jeder
+Position, ueber den ganzen gefahrenen Weg.  Ein hochohmiger Geber oder ein
+Open-Drain-Ausgang ist unter dieser Einstellung grundsaetzlich unsichtbar.
+
+Also: Vorgabe ist ab jetzt "Pad nicht anfassen", wie Stock.  limiter_bias
+behaelt seine Diagnosewerte und bekommt zusaetzlich die 3 fuer das alte
+Verhalten, damit nichts verlorengeht.  Die Probe-Meldung nennt jetzt den
+Rohpegel und die Auslegung dazu, damit man beim Laden sofort sieht, was der
+Eingang wirklich liefert statt nur, was der Treiber daraus macht.
+
+Nicht belegt und ausdruecklich offen: ob der Geber auf diesem Geraet
+ueberhaupt etwas liefert.  Das entscheidet erst eine Fahrt bis an einen
+Bereichsrand, siehe README.md in diesem Verzeichnis.
+
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -24,9 +24,22 @@
+  * The pin is claimed with a bare gpio_request() and then switched to input
+  * with gpiod_direction_input(); stock never gives that line an output
+  * direction (motor_control_fdt_parse @ c05d62c8, c05d65b4..c05d6620).
+- * On the running stock system the pad is a GPIO input with a pull-down
+- * (re/captures/HY310-DEV/stock_pinconf_pio.txt: "pin 238 (PH14): input bias
+- * pull down"), which is the defined idle level for active_level = 1.
++ * Einen Bias setzt Stock NICHT. Der Abzug des laufenden Stock-Systems zeigt
++ * zwar "pin 238 (PH14): input bias pull down"
++ * (re/captures/HY310-DEV/stock_pinconf_pio.txt), aber das ist der Zustand,
++ * den die Bootkette hinterlaesst, nicht der, den der Treiber herstellt --
++ * im Herstellercode steht zwischen gpio_request() und dem ersten Lesen kein
++ * einziger gpiod_set_config()-Aufruf, und der Knoten "motor_ctr" hat keine
++ * pinctrl-Gruppe. Dieser Treiber setzt deshalb ebenfalls keinen (Vorgabe
++ * limiter_bias = -1).
++ *
++ * Wo Stock den Anschlag erkennt  (check_motor_position, inline in
++ * motor_control_probe, motor-control.c:716..751)
++ * ---------------------------------------------------------------
++ * Beim Probe liest Stock den Waechter einmal. Liest er active_level, meldet
++ * Stock woertlich "limited normal,no need to check postion" und faehrt gar
++ * nicht. Sonst sucht es bis zu 100 msteps aufwaerts und danach bis zu 250
++ * msteps abwaerts, bis der Waechter wieder active_level liest.
+  *
+  * What the value means  (motor_run_up_control @ c05d6ea0)
+  * -------------------------------------------------------
+@@ -799,10 +812,20 @@
+  * GPIOF_OUT_INIT_LOW, which drives the switch line low with the SoC's output
+  * driver before the direction is corrected.
+  *
+- * The pad bias is set explicitly to the complement of active_level, so the
+- * input has a defined idle level no matter what the boot chain left behind.
+- * For this board that is a pull-down, which is what the stock system shows on
+- * PH14 (stock_pinconf_pio.txt: "pin 238 (PH14): input bias pull down").
++ * Der Pad-Bias wird per Vorgabe NICHT gesetzt. Stock setzt keinen: in
++ * motor_control_fdt_parse @ c05d6610 folgt auf das gpio_request() genau
++ * gpio_to_desc() + gpiod_direction_input(), kein gpiod_set_config(), keine
++ * pinctrl-Gruppe im Herstellerknoten "motor_ctr". Der Pad behaelt also das,
++ * was die Bootkette hinterlassen hat.
++ *
++ * Die frueher hier vorgegebene Regel "Bias = Gegenstueck zu active_level"
++ * (also Pull-down bei active_level = 1) stammt nicht aus dem Herstellercode,
++ * sondern aus der Annahme, der Endschalter treibe im aktiven Fall aktiv
++ * 3,3 V. Diese Annahme ist unbelegt, und sie ist genau die Einstellung, die
++ * einen hochohmigen oder Open-Drain-Geber unsichtbar macht: der interne
++ * Pull-down zieht die Leitung dann an JEDER Position auf LOW, und der
++ * Bereichswaechter meldet dauerhaft "ausserhalb". Siehe README in
++ * mainline/patches/vorschlaege/motor-limiter/.
+  */
+ /*
+  * Probe arms a homing run, and homing starts by driving up to 100 msteps in
+@@ -819,24 +842,27 @@
+ MODULE_PARM_DESC(homing, "run the homing sequence at probe (default yes)");
+ 
+ /*
+- * Diagnostic override for the limiter pad bias. The switch on this board
+- * sources 3.3 V when it is active and is open otherwise, so an open switch and
+- * a broken connection look identical on a pull-down. A pull-up does not tell
+- * those two apart either -- but it does say whether the input stage itself is
+- * healthy: with a pull-up an undriven, working pad reads high, while a pad that
+- * is shorted or damaged stays low. That is the one thing about this pin that
+- * can still be established without a meter, and the limiter has never once read
+- * active on this unit.
+- *
+- *   -1 (default) bias as the board wants it, the complement of active_level
+- *    0            no bias at all
+- *    1            pull-up   -- the diagnostic case
+- *    2            pull-down -- this board's normal case, forced
++ * Pad-Bias des Endschalter-Eingangs.
++ *
++ * Die Vorgabe ist "gar nicht anfassen", weil Stock ihn auch nicht anfasst
++ * (siehe Kommentar ueber motor_request_limiter()). Alles andere ist eine
++ * Diagnoseeinstellung und muss ausdruecklich gesetzt werden:
++ *
++ *   -1 (Vorgabe)  Pad so lassen, wie die Bootkette ihn hinterlassen hat  = Stock
++ *    0            Bias ausdruecklich abschalten (hochohmiger Eingang)
++ *    1            Pull-up   -- macht einen Open-Drain-/hochohmigen Geber sichtbar
++ *    2            Pull-down -- erzwungen
++ *    3            Gegenstueck zu active_level (das alte, unbelegte Verhalten)
++ *
++ * Warnung zur Mechanik: mit Pull-up liest der Bereichswaechter auch dann
++ * dauerhaft "innerhalb", wenn ueberhaupt kein Geber angeschlossen ist. Eine
++ * Fahrt in dieser Einstellung wird NICHT von der Elektronik gestoppt. Nur mit
++ * kleiner, ausdruecklich begrenzter Schrittzahl fahren.
+  */
+ static int limiter_bias = -1;
+ module_param(limiter_bias, int, 0444);
+ MODULE_PARM_DESC(limiter_bias,
+-		 "limiter pad bias: -1 auto, 0 none, 1 pull-up, 2 pull-down");
++		 "Bias des Endschalter-Pads: -1 wie Stock (unveraendert), 0 keiner, 1 Pull-up, 2 Pull-down, 3 Gegenstueck zu active_level");
+ 
+ static int motor_request_limiter(struct hy310_motor *m, struct device_node *np,
+ 				 const char *prop, int *pin_out)
+@@ -880,24 +906,37 @@
+ 	case 2:
+ 		bias = PIN_CONF_PACKED(PIN_CONFIG_BIAS_PULL_DOWN, 1);
+ 		break;
+-	default:
++	case 3:
+ 		bias = PIN_CONF_PACKED(m->active_level ? PIN_CONFIG_BIAS_PULL_DOWN
+ 						       : PIN_CONFIG_BIAS_PULL_UP, 1);
+ 		break;
++	default:
++		/* -1 und alles andere: wie Stock, Pad unveraendert lassen. */
++		bias = 0;
++		break;
++	}
++
++	if (bias) {
++		ret = gpiod_set_config(desc, bias);
++		if (ret && ret != -ENOTSUPP && ret != -EOPNOTSUPP)
++			dev_warn(dev, "%s: Pad-Bias nicht setzbar: %d\n",
++				 prop, ret);
+ 	}
+-	ret = gpiod_set_config(desc, bias);
+-	if (ret && ret != -ENOTSUPP && ret != -EOPNOTSUPP)
+-		dev_warn(dev, "%s: cannot set pad bias: %d\n", prop, ret);
+ 
+ 	*pin_out = gpio;
+-	dev_info(dev, "%s: gpio %d, input, bias %s, active %s, reads %d\n",
++	dev_info(dev,
++		 "%s: gpio %d, Eingang, Bias %s, aktiv %s, liest roh %d (%s)\n",
+ 		 prop, gpio,
+-		 limiter_bias == 0 ? "none" :
+-		 limiter_bias == 1 ? "pull-up (override)" :
+-		 limiter_bias == 2 ? "pull-down (override)" :
+-		 m->active_level ? "pull-down" : "pull-up",
++		 limiter_bias == 0 ? "aus (erzwungen)" :
++		 limiter_bias == 1 ? "Pull-up (erzwungen)" :
++		 limiter_bias == 2 ? "Pull-down (erzwungen)" :
++		 limiter_bias == 3 ? (m->active_level ? "Pull-down (act-level)"
++						      : "Pull-up (act-level)") :
++		 "unveraendert (wie Stock)",
+ 		 m->active_level ? "high" : "low",
+-		 gpiod_get_raw_value(desc));
++		 gpiod_get_raw_value(desc),
++		 gpiod_get_raw_value(desc) == m->active_level
++			 ? "im Bereich" : "ausserhalb");
+ 	return 0;
+ }
+ 

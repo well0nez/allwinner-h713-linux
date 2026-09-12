@@ -1,0 +1,100 @@
+misc: hy310-motor: add a bias override to test the limiter pad
+
+The limiter has never once read active on this unit, not at probe, not during
+homing, and not while sweeping the mechanism by hand through a position where
+the picture is sharp. The pad is configured exactly as stock has it --
+verified on the running board:
+
+    stock  pin 238 (PH14): input bias pull down, output drive strength (20 mA)
+    ours   pin 238 (PH14): input bias pull down (1 ohms), drive strength (20 mA)
+
+so the configuration is no longer the difference between us and stock. What is
+left is either the mechanism sitting outside the switch's range, or the input
+being electrically dead.
+
+Those two cannot be told apart by a read: the switch sources 3.3 V when active
+and is open otherwise, so an open switch and a severed wire both leave a
+pull-down reading low. A pull-up does not separate them either -- but it does
+answer a different question, the one that is still open: whether the input
+stage works at all. An undriven, healthy pad follows a pull-up and reads high;
+a pad that is shorted or damaged stays low. Since our own earlier driver drove
+this line as an output against a switch that sources 3.3 V, on every boot,
+damage is a real possibility and worth ruling in or out.
+
+Add the override as a read-only module parameter, and log the raw value right
+after the bias is applied so the answer is in dmesg without any further poking.
+Default -1 keeps the current behaviour exactly.
+
+    insmod hy310-focus-motor.ko limiter_bias=1   # pull-up, the diagnostic
+    insmod hy310-focus-motor.ko                  # unchanged
+
+diff -ruN a/drivers/misc/hy310-focus-motor.c b/drivers/misc/hy310-focus-motor.c
+--- a/drivers/misc/hy310-focus-motor.c	2026-09-07 20:29:59.184496008 +0200
++++ b/drivers/misc/hy310-focus-motor.c	2026-09-07 20:30:23.375639048 +0200
+@@ -804,6 +804,26 @@
+  * For this board that is a pull-down, which is what the stock system shows on
+  * PH14 (stock_pinconf_pio.txt: "pin 238 (PH14): input bias pull down").
+  */
++/*
++ * Diagnostic override for the limiter pad bias. The switch on this board
++ * sources 3.3 V when it is active and is open otherwise, so an open switch and
++ * a broken connection look identical on a pull-down. A pull-up does not tell
++ * those two apart either -- but it does say whether the input stage itself is
++ * healthy: with a pull-up an undriven, working pad reads high, while a pad that
++ * is shorted or damaged stays low. That is the one thing about this pin that
++ * can still be established without a meter, and the limiter has never once read
++ * active on this unit.
++ *
++ *   -1 (default) bias as the board wants it, the complement of active_level
++ *    0            no bias at all
++ *    1            pull-up   -- the diagnostic case
++ *    2            pull-down -- this board's normal case, forced
++ */
++static int limiter_bias = -1;
++module_param(limiter_bias, int, 0444);
++MODULE_PARM_DESC(limiter_bias,
++		 "limiter pad bias: -1 auto, 0 none, 1 pull-up, 2 pull-down");
++
+ static int motor_request_limiter(struct hy310_motor *m, struct device_node *np,
+ 				 const char *prop, int *pin_out)
+ {
+@@ -836,16 +856,34 @@
+ 		return ret;
+ 	}
+ 
+-	bias = PIN_CONF_PACKED(m->active_level ? PIN_CONFIG_BIAS_PULL_DOWN
+-					       : PIN_CONFIG_BIAS_PULL_UP, 1);
++	switch (limiter_bias) {
++	case 0:
++		bias = PIN_CONF_PACKED(PIN_CONFIG_BIAS_DISABLE, 0);
++		break;
++	case 1:
++		bias = PIN_CONF_PACKED(PIN_CONFIG_BIAS_PULL_UP, 1);
++		break;
++	case 2:
++		bias = PIN_CONF_PACKED(PIN_CONFIG_BIAS_PULL_DOWN, 1);
++		break;
++	default:
++		bias = PIN_CONF_PACKED(m->active_level ? PIN_CONFIG_BIAS_PULL_DOWN
++						       : PIN_CONFIG_BIAS_PULL_UP, 1);
++		break;
++	}
+ 	ret = gpiod_set_config(desc, bias);
+ 	if (ret && ret != -ENOTSUPP && ret != -EOPNOTSUPP)
+ 		dev_warn(dev, "%s: cannot set pad bias: %d\n", prop, ret);
+ 
+ 	*pin_out = gpio;
+-	dev_info(dev, "%s: gpio %d, input, bias pull-%s, active %s\n",
+-		 prop, gpio, m->active_level ? "down" : "up",
+-		 m->active_level ? "high" : "low");
++	dev_info(dev, "%s: gpio %d, input, bias %s, active %s, reads %d\n",
++		 prop, gpio,
++		 limiter_bias == 0 ? "none" :
++		 limiter_bias == 1 ? "pull-up (override)" :
++		 limiter_bias == 2 ? "pull-down (override)" :
++		 m->active_level ? "pull-down" : "pull-up",
++		 m->active_level ? "high" : "low",
++		 gpiod_get_raw_value(desc));
+ 	return 0;
+ }
+ 

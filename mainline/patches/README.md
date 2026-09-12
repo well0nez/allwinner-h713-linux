@@ -1,14 +1,19 @@
 # Patch series index
 
-This directory holds **two independent series**. They target different source
-trees, are applied by different build stages, and must never be mixed.
+This directory holds **independent series**. They target different source trees,
+are applied by different build stages, and must never be mixed.
 
 | Directory | Applies to | Filenames | Count |
 |-----------|-----------|-----------|-------|
-| [`kernel/`](kernel/README.md) | mainline Linux tarball, `config/versions.env` → `KERNEL_VERSION` | `0001-…` … `00NN-…` | 38 |
-| [`aic8800/`](aic8800/README.md) | AIC8800 vendor driver tarball, `radxa-pkg/aic8800` @ pinned commit | `aic8800-0001-…` | 4 |
+| [`kernel/`](kernel/README.md) | mainline Linux tarball, `config/versions.env` → `KERNEL_VERSION` | `0001-…` … `0159-…` | 133 |
+| [`aic8800/`](aic8800/README.md) | AIC8800 vendor driver tarball, `radxa-pkg/aic8800` @ pinned commit | `aic8800-0001-…` | 7 |
+| [`libva-v4l2-request/`](libva-v4l2-request/) | the VA-API backend, built only when the video tooling is wanted | `0001-…` | 3 |
 
-Both follow the same philosophy — a curated series on a pinned upstream tarball
+Not series, but next door: `zurueckgenommen/` holds patches that were dropped
+from the kernel series and kept for the record, and `vorschlaege/` holds work in
+progress that is not applied by any build.
+
+They follow the same philosophy — a curated series on a pinned upstream tarball
 rather than a fork — so each can be rebased onto a newer upstream by replaying
 the series.
 

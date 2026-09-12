@@ -1,0 +1,59 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: h713: add the TVFE/TVCAP bring-up node
+
+Without power on the TVFE and TVCAP domains every access to an HDMI-RX
+window hangs the bus -- no abort, no watchdog. h713-tvcap (analyse/tvcap/,
+a module rather than cstenger's builtin, so a failure costs a reboot instead
+of a reflash) claims both domains and ungates the TV clocks, which is what
+makes the INCAP window at 0x06940000 readable at all.
+
+The node deliberately claims no interrupt: tvtop's GIC_SPI 110 (hwirq 142)
+belongs to h713-afbd, proven on the device with 615 triggers. And no panel
+properties: tvtop's panel_bl_en is PB5, which is the backlight AND the fan.
+
+Origin: cstenger's EXPERIMENT patch 0087, on his board proven 02.09.2026.
+
+This node was already live on our board, but only as a hand edit inside a
+build tree -- it was never part of the series, so it disappeared the moment
+a new tree was built (night 07.09.2026, package A: the whole INCAP block
+read 0x00000000, TVCAP/TVFE showed "off" in pm_genpd_summary, and the
+capture ring stayed empty -- a uniform green wall). Carrying it as a patch
+is the fix; the series is the only thing that survives a rebuild.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:09:53.442215090 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:09:53.449104951 +0200
+@@ -1469,6 +1469,32 @@
+ 			status = "okay";
+ 		};
+ 
++		/*
++		 * TVFE/TVCAP-Inbetriebnahme. Ohne Strom auf diesen beiden Bereichen
++		 * haengt JEDER Zugriff auf ein HDMI-RX-Fenster den Bus -- ohne Abort,
++		 * ohne Watchdog. Beansprucht bewusst KEINEN Interrupt: tvtops
++		 * GIC_SPI 110 (hwirq 142) gehoert h713-afbd, am Geraet mit 615
++		 * Ausloesungen belegt. Und bewusst keine Panel-Eigenschaften:
++		 * tvtops panel_bl_en ist PB5, Hintergrundbeleuchtung UND Luefter.
++		 *
++		 * Herkunft: cstengers Patch 0087, bei ihm am 02.09.2026 belegt.
++		 * Der Treiber ist bei uns ein Modul, nicht builtin -- siehe
++		 * analyse/tvcap/h713-tvcap.c.
++		 */
++		tvcap_bringup: tvcap@50c0000 {
++			compatible = "allwinner,h713-tvcap";
++			reg = <0x050c0000 0x1000>;
++			clocks = <&ccu CLK_BUS_TVCAP>,
++				 <&ccu CLK_BUS_CAP_300M>,
++				 <&ccu CLK_VINCAP_DMA>,
++				 <&ccu CLK_TVFE_1296M>;
++			clock-names = "bus_tvcap", "cap_300m", "vincap_dma",
++				      "tvfe_1296m";
++			power-domains = <&ppu 1>, <&ppu 2>;
++			power-domain-names = "tvfe", "tvcap";
++			status = "okay";
++		};
++
+ 		/* R-domain pinctrl for PL/PM banks (IR, S_PWM, WLAN/BT GPIOs) */
+ 		r_pio: pinctrl@7022000 {
+ 			compatible = "allwinner,sun50i-h713-r-pinctrl";

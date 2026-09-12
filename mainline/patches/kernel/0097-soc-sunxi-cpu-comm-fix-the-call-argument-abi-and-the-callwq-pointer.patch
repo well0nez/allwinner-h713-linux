@@ -1,0 +1,125 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] soc: sunxi: cpu_comm: fix the CALL argument ABI and the callwq pointer
+
+Three fixes that were live on the board but existed only as a hand edit
+inside one build tree, so they vanished the moment a new tree was built
+(found the same night as the tvcap node, see 0096).
+
+1. Do not write current->tgid to local_msg + 0x34.
+
+   The payload starts at +0x28 (comp_id); the adapter is handed a pointer
+   there and reads its arguments at +4/+8/+12, i.e. msg+0x2c/+0x30/+0x34.
+   So +0x34 is *parameter 3*, not a PID field, and the tgid overwrote the
+   third argument before the copy loop below could set it. Harmless for two
+   arguments, fatal for three -- Wce_GetWindow loses its third output
+   pointer. The sender pid is already at +0x1c, set in SendComm2CPUEx.
+   Proven against cstenger's Linux capture (commit ec53910); the bogus
+   offset came from the arm32 template, which placed the payload one slot
+   later. See doku/67-cpu-comm-linux.md, "Argument-ABI".
+
+2. Zero routine_info before use.
+
+   comm_CallWorkAction calls a function pointer taken from routine_info+88
+   for incoming MIPS->ARM CALLs (entry_cmd > 4, e.g.
+   MipsHalCallback_SignalChange during SetSource). FindRoutineEx never
+   fills those bytes, so the pointer was uninitialised stack. That is the
+   ROOT CAUSE recorded in doku/72. The memset is the whole fix: with the
+   bytes zeroed the pointer is NULL, the call is not made, and the branch
+   that acknowledges the MIPS without calling anything is taken -- which is
+   the state the module ran in on the bench on 06.09. 0092 then removes the
+   dereference entirely and replaces it with cpu_comm_register_callback().
+
+3. Print the RX-CALL trace at the right offsets.
+
+   The old trace read +0x34 as "pid" and then skipped to +0x38/+0x3c, so it
+   showed parameters 1, 2, 4, 5 and labelled parameter 3 as a pid. We read
+   the MIPS->ARM callbacks off exactly this trace; a measuring instrument
+   shifted by one field is worse there than none.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 07:30:00.000000000 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 07:45:00.000000000 +0200
+@@ -907,17 +907,32 @@
+ 		 */
+ 		u16 entry_cmd = *(u16 *)(entry_base);
+ 		{
+-			u32 comp_id = *(u32 *)(entry_base + 40);
+-			u32 pid     = *(u32 *)(entry_base + 52);
+-			u16 param_cnt = *(u16 *)(entry_base + 8);
+-			u32 p0 = *(u32 *)(entry_base + 44);
+-			u32 p1 = *(u32 *)(entry_base + 48);
+-			u32 p2 = *(u32 *)(entry_base + 56);
+-			u32 p3 = *(u32 *)(entry_base + 60);
++			/*
++			 * Offsets wie im ausgehenden Pfad (CPUComm_CallEx): die
++			 * Nutzlast beginnt bei +0x28 (comp_id), die Argumente folgen
++			 * lückenlos ab +0x2c. Der frühere Druck las +0x34 als "pid"
++			 * und sprang dann auf +0x38/+0x3c weiter -- er zeigte also die
++			 * Parameter 1, 2, 4, 5 und beschriftete Parameter 3 als pid.
++			 *
++			 * Auf genau diesem Druck lesen wir die MIPS->ARM-Callbacks ab
++			 * (MipsHalCallback_*). Ein um ein Feld verschobenes Messgerät
++			 * ist dort schlimmer als gar keins. Die Absender-pid steht
++			 * nicht in der Nutzlast; die Kanal-pid bei +0x10 ist das Feld,
++			 * das den Aufruf überhaupt zuordnet (Schlüssel pid<<4 | chan).
++			 */
++			u32 comp_id   = *(u32 *)(entry_base + 40);	/* +0x28 */
++			u16 dst_cpu   = *(u16 *)(entry_base +  2);	/* +0x02 */
++			u32 chan_pid  = *(u32 *)(entry_base + 16);	/* +0x10 */
++			u16 param_cnt = *(u16 *)(entry_base +  8);	/* +0x08 */
++			u32 p1 = *(u32 *)(entry_base + 44);		/* +0x2c Para 1 */
++			u32 p2 = *(u32 *)(entry_base + 48);		/* +0x30 Para 2 */
++			u32 p3 = *(u32 *)(entry_base + 52);		/* +0x34 Para 3 */
++			u32 p4 = *(u32 *)(entry_base + 56);		/* +0x38 Para 4 */
++
+ 			pr_info_ratelimited(
+-				"cpu_comm: RX-CALL from cpu=%u cmd=0x%x comp_id=0x%08x pid=%u params=%u [%08x %08x %08x %08x]\n",
+-				remote_cpu, entry_cmd, comp_id, pid, param_cnt,
+-				p0, p1, p2, p3);
++				"cpu_comm: RX-CALL from cpu=%u chan=0x%x comp_id=0x%08x dst_cpu=%u chan_pid=0x%08x params=%u p[1..4]=[%08x %08x %08x %08x]\n",
++				remote_cpu, entry_cmd, comp_id, dst_cpu,
++				chan_pid, param_cnt, p1, p2, p3, p4);
+ 		}
+ 		/* DELIVER-USERSPACE-PROTO 2026-05-07: copy CALL to any open
+ 		 * /dev/cpu_comm fd before kernel-side dispatch. Mainline has
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-07 07:30:00.000000000 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-07 07:45:00.000000000 +0200
+@@ -547,8 +547,23 @@
+ 	/* Store component_id in payload area (offset 40 = 0x28) */
+ 	*(u32 *)(local_msg + 40) = (u32)comp_id;
+ 
+-	/* Store caller's PID (offset 52 = 0x34) */
+-	*(u32 *)(local_msg + 52) = (u32)current->tgid;
++	/*
++	 * KEIN tgid nach +0x34.
++	 *
++	 * Die Nutzlast beginnt bei +0x28 (comp_id): der Adapter bekommt einen
++	 * Zeiger dorthin und liest seine Argumente bei +4/+8/+12, also
++	 * msg+0x2c/+0x30/+0x34. +0x34 ist damit **Parameter 3**, nicht ein
++	 * PID-Feld. Ein tgid an dieser Stelle überschreibt das dritte Argument,
++	 * bevor die Kopierschleife unten es setzen kann — für zwei Argumente
++	 * folgenlos, für drei (Wce_GetWindow) genau der dritte Ausgabezeiger.
++	 *
++	 * Die Absender-pid steht ohnehin schon bei +0x1c, gesetzt in
++	 * SendComm2CPUEx (cpu_comm_proto.c, `call_slot + 28`).
++	 *
++	 * Belegt per Linux-Mitschnitt von cstenger (Commit ec53910); die
++	 * Herkunft hier ist die arm32-Vorlage, die die Nutzlast eine Stelle
++	 * später vermutete. Siehe doku/67-cpu-comm-linux.md, „Argument-ABI".
++	 */
+ 
+ 	/* Store param count in cmd_type field (offset 8) */
+ 	*(u16 *)(local_msg + 8) = (u16)param_count;
+@@ -931,6 +946,9 @@
+ 	u8 routine_info[96];
+ 	u8 *share_seq;
+ 
++	/* TEST 06.09.: FindRoutineEx fuellt +88..95 nie -- vorher Stack-Muell. */
++	memset(routine_info, 0, sizeof(routine_info));
++
+ 	if (!work)
+ 		return;
+ 

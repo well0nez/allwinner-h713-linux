@@ -1,0 +1,702 @@
+misc: hy310-board-mgr: den NTC-Rohwert in Millivolt umrechnen
+
+Der Treiber suchte mit dem Rohwert des Wandlers in der gpadc-table. Die
+Tabelle steht aber in Millivolt. Deshalb traf am 11.09. kein Eintrag zu
+(Rohwert 1766, groesster Tabelleneintrag 0x5E6 = 1510), die Suche fiel auf
+ihren Standardwert zurueck, und temp1_input meldete 0 Grad.
+
+Die Einheit ist belegt, nicht geraten. Im Stock-vmlinux (ARM32, mit DWARF,
+Quelldatei pwm_fan.c) laeuft die Kette so:
+
+  ntc_read              c05db9a0   alle 500 Jiffies (HZ=250 -> 2 s)
+    get_adc_data        c05db32c   source==1 -> Tailcall
+      sunxi_gpadc_read_channel_data  c06b93f8
+        sunxi_gpadc_read_data        c06b9090
+    get_temp_data       c05db970   source==1 -> Tailcall
+      search_table_gpadc c05db898
+
+sunxi_gpadc_read_data liest das Datenregister des Kanals (0x80 + 4*ch, also
+genau das 0x84, das am Geraet mit 1766 gemessen wurde) und maskiert zwoelf
+Bit:
+
+  c06b90d0  ldr   r0, [r0, #0x84]      ; Kanal 1
+  c06b90d8  ubfx  r0, r0, #0, #0xc
+
+sunxi_gpadc_read_channel_data rechnet das Ergebnis um:
+
+  c06b9434  movw  r3, #0x1b7           ; 439
+  c06b9438  mul   r0, r3, r0
+  c06b943c  ldr   r3, [pc, #0x14]      ; 0x10624dd3 = 274877907
+  c06b9440  umull r0, r1, r0, r3
+  c06b9444  lsr   r0, r1, #6           ; zusammen: >> 38
+
+umull mit 274877907 und Schieben um 38 ist die uebliche Division durch 1000
+(2^38/1000 = 274877906,944). Uebrig bleibt
+
+  mv = raw * 439 / 1000
+
+439 ist 1800000/4095, also die Mikrovolt je LSB bei zwoelf Bit an 1,8 V.
+Durch 1000 geteilt sind das Millivolt.
+
+gpadc_table_init (c05d8f84) kopiert die DTS-Werte unveraendert in den
+Suchbaum -- es liest die Paare mit of_property_read_u32_array und schreibt
+sie ohne jede Rechnung in ein Feld aus 8-Byte-Eintraegen:
+
+  c05d9038  add   r2, r8, r4          ; r8 = Rohfeld, r4 = i*8
+  c05d903c  ldr   r2, [r2, #4]        ; Element 2i+1 = Wert
+  c05d9048  str   r2, [r3, #4]        ;   -> Eintrag[i].wert
+  c05d904c  ldr   r2, [r8, r6, lsl #3]; Element 2i   = Temperatur
+  c05d9058  str   r2, [r3, r4]        ;   -> Eintrag[i].temp
+
+search_table_gpadc vergleicht genau diese Werte mit dem Ergebnis der
+Umrechnung. Also steht die Tabelle in Millivolt.
+
+Zwei unabhaengige Gegenproben:
+
+  - search_table_gpadc verwirft alles ueber 0x6cc = 1740 (c05db8a4) und die
+    0. Der Vollausschlag waere 4095*439/1000 = 1797. In Mikrovolt waere eine
+    Schranke von 1740 sinnlos.
+  - Fuer source==0 rechnet get_adc_data "mov r0, #0x15 ; mul r0, r0, r4",
+    also 21 mV je LSB des 6-bittigen LRADC. Der groesste Eintrag der
+    lradc-table ist 0x41A = 1050 = 50 * 21, und 50 ist ein glatter
+    6-Bit-Rohwert. Beide Tabellen des Knotens stehen in derselben Einheit.
+
+Mit der Umrechnung wird aus dem gemessenen Rohwert 1766
+
+  1766 * 439 / 1000 = 775 mV
+
+und 775 mV liegt zwischen 0x306 = 774 mV (0x35 = 53 Grad) und 0x314 = 788 mV
+(0x34 = 52 Grad). Der Hersteller liefert das ganze Grad des unteren Randes,
+also 52. Wir rechnen zwischen den Stuetzstellen linear weiter und kommen auf
+52,9 Grad. Beides passt zu dem, was daneben gemessen wurde: CPU und GPU lagen
+bei derselben Messung bei 53 bis 54 Grad, der Beamer lief mit Bild und der
+Luefter bei etwa 4800 U/min. temp_warn ist 55, temp_poweroff ist 60 -- das
+Geraet liegt im Normalbetrieb darunter, wie es soll.
+
+Was dieser Patch sonst noch aendert:
+
+  - Die Tabelle wird nach ntc0/source gewaehlt, nicht nach der Reihenfolge,
+    in der der Treiber sucht. Der Knoten traegt beide, und die Werte der
+    einen sind in der anderen sinnlos.
+  - Die Tabelle wird auf Sortierung geprueft. Ist sie es nicht, wird sie
+    verworfen, statt eine Zahl aus der falschen Zeile zu liefern.
+  - Je Messung werden fuenf Abtastungen genommen und der Median verwendet.
+    Ueber die IIO-sysfs-Knoten schwankte derselbe Kanal am 11.09. zwischen
+    680 und 1777 (120 Messungen, Mittel 1747,6, Standardabweichung 115),
+    waehrend das Datenregister direkt gelesen vollkommen still stand: das
+    sind einzelne Ausreisser, keine Streuung. Ein Ausreisser nach unten
+    bedeutet nach der Tabelle mehr Temperatur -- 680 sind 298 mV und damit
+    die 80 Grad am unteren Tabellenrand. Genau die Richtung, in der eine
+    Abschaltschwelle haengt.
+  - temp1_input wird gar nicht erst angelegt, wenn NTC aus ist, kein
+    IIO-Kanal da ist oder keine brauchbare Tabelle geladen wurde, und meldet
+    -ENODATA, solange die letzte Messung ausserhalb der Tabelle lag. Vorher
+    stand dort in all diesen Faellen der Standardwert 0. Eine fehlende
+    Temperatur ist besser als eine falsche, an dieser Zahl haengt eine
+    Abschaltschwelle.
+  - Eine unbrauchbare Messung setzt die Zaehler fuer Warnung und Abschaltung
+    zurueck, statt sie weiterzuzaehlen.
+  - Ein Rohwert ausserhalb von 0..4095 gilt als ungueltig, statt in der
+    Multiplikation ueberzulaufen. Der Mainline-GPADC-Treiber maskiert das
+    Datenregister nicht (Patch 0147 holt das nach); dieser Patch soll auch
+    ohne ihn nichts Unsinniges rechnen.
+  - temp_mc statt temp_c: hwmon meldet ohnehin Milligrad, und die lineare
+    Zwischenrechnung spart das Springen um ein ganzes Grad, sobald der
+    Rohwert um ein LSB wandert (ein Grad sind hier rund 14 mV, also etwa
+    33 LSB -- der gemessene Rohwert 1766 liegt genau am Rand zwischen 52
+    und 53 Grad).
+
+Nicht geaendert: thermal_shutdown bleibt aus. Die Umrechnung ist jetzt
+belegt, der Abgleich der Kurve gegen ein Referenzthermometer am Geraet steht
+weiter aus.
+
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -3,7 +3,7 @@
+  * HY310 Projector Board Management Driver
+  *
+  * Handles fan PWM control, fan tachometer monitoring, USB power GPIO,
+- * and NTC temperature sensing via LRADC for the HY310 projector platform.
++ * and NTC temperature sensing via GPADC (or LRADC) for the HY310 platform.
+  *
+  * Compatible with DTS nodes using:
+  *   compatible = "allwinner,hy310-board-mgr"
+@@ -40,6 +40,7 @@
+ #include <linux/pwm.h>
+ #include <linux/reboot.h>
+ #include <linux/reset.h>
++#include <linux/sort.h>
+ #include <linux/spinlock.h>
+ #include <linux/thermal.h>
+ #include <linux/workqueue.h>
+@@ -60,8 +61,55 @@
+  */
+ #define HY310_DEFAULT_PULSES_PER_REV	2
+ 
+-/* LRADC register defines removed — NTC reads now go through IIO consumer API
+- * (sun50i-h713-lradc-iio driver owns the LRADC hardware exclusively) */
++/* Die NTC-Rohwerte kommen ueber die IIO-Verbraucher-API; welcher Wandler das
++ * ist, sagt der ntc0-Unterknoten ueber "source". */
++#define HY310_NTC_SOURCE_LRADC		0
++#define HY310_NTC_SOURCE_GPADC		1
++
++/*
++ * Rohwert -> Millivolt. Beide Umrechnungen stammen aus dem Stock-vmlinux
++ * (ARM32, mit DWARF, Quelldatei pwm_fan.c bzw. sunxi_gpadc.c):
++ *
++ *   source = 1 (GPADC): get_adc_data (c05db32c) ruft
++ *       sunxi_gpadc_read_channel_data (c06b93f8) auf; die liest die 12 Bit
++ *       des Datenregisters (sunxi_gpadc_read_data, c06b9090: "ubfx r0, r0,
++ *       #0, #12") und rechnet
++ *           mul r0, #0x1b7          ; 439 = 1800000/4095, Mikrovolt je LSB
++ *           umull ..., #0x10624dd3  ; Magie fuer die Division durch 1000
++ *           lsr   r0, r1, #6
++ *       also mv = raw * 439 / 1000.
++ *
++ *   source = 0 (LRADC): get_adc_data rechnet "mov r0, #0x15; mul r0, r0, r4",
++ *       also mv = raw * 21. Gegenprobe: der groesste lradc-table-Eintrag ist
++ *       0x41A = 1050 = 50 * 21, und 50 ist ein glatter 6-Bit-Rohwert.
++ *
++ * Damit stehen beide Tabellen im DTS in Millivolt -- gpadc_table_init
++ * (c05d8f84) kopiert die DTS-Werte unveraendert in den Suchbaum, es wird
++ * nichts skaliert, und search_table_gpadc (c05db898) vergleicht genau diese
++ * Werte mit dem Ergebnis der obigen Umrechnung.
++ */
++#define HY310_GPADC_UV_PER_LSB		439
++#define HY310_LRADC_MV_PER_LSB		21
++
++/*
++ * search_table_gpadc verwirft alles ueber 0x6cc = 1740 mV (und die 0). Der
++ * Vollausschlag waere 4095 * 439 / 1000 = 1797 mV; oberhalb 1740 mV kann der
++ * Teiler mit einem angeschlossenen NTC nicht mehr landen, das ist der
++ * "Fuehler fehlt / Vorwiderstand offen"-Fall.
++ */
++#define HY310_NTC_MV_MAX		1740
++
++/*
++ * Zahl der Abtastungen je Messung. Ueber die IIO-sysfs-Knoten schwankte
++ * derselbe Kanal am 11.09. zwischen 680 und 1777 (120 Messungen, Mittel
++ * 1747,6, Standardabweichung 115), waehrend das Datenregister direkt gelesen
++ * vollkommen still stand -- es sind einzelne Ausreisser, keine Streuung.
++ * Ein Ausreisser nach unten bedeutet nach der Tabelle *mehr* Temperatur
++ * (680 Rohwert -> 298 mV -> 80 Grad), also genau die Richtung, in der eine
++ * Abschaltschwelle haengt. Der Median von fuenf Abtastungen raeumt bis zu
++ * zwei solche Ausreisser weg.
++ */
++#define HY310_NTC_SAMPLES		5
+ 
+ /* Fan tachometer work interval: 1 second in jiffies */
+ #define FAN_TACHO_INTERVAL_MS		1000
+@@ -73,11 +121,12 @@
+ #define NTC_POWEROFF_CYCLES		50
+ 
+ /*
+- * Thermal emergency shutdown. OFF by default: the NTC conversion table comes
+- * from the vendor DTS of a board whose thermal design we have not verified,
+- * and a mis-calibrated curve would power the device off at random. Until the
+- * curve is measured against a reference, the driver only reports and warns.
+- * Set thermal_shutdown=1 once temp1_input is known to be truthful.
++ * Thermal emergency shutdown. OFF by default. Die Umrechnung selbst ist
++ * inzwischen aus dem Stock-vmlinux belegt (siehe HY310_GPADC_UV_PER_LSB), und
++ * temp1_input wird nur noch gemeldet, wenn die Messung wirklich in der
++ * Tabelle liegt. Was weiter fehlt, ist der Abgleich der Kurve gegen ein
++ * Referenzthermometer am Geraet; bis dahin meldet und warnt der Treiber nur.
++ * thermal_shutdown=1 erst setzen, wenn temp1_input am Geraet nachgemessen ist.
+  */
+ static bool thermal_shutdown;
+ module_param(thermal_shutdown, bool, 0644);
+@@ -136,13 +185,19 @@
+ /**
+  * struct hy310_ntc - NTC temperature sensor state
+  * @enabled:         True if an NTC is configured and enabled
+- * @temp_c:          Last measured temperature in degrees Celsius
++ * @valid:           True if @temp_mc comes from a reading inside the table
++ * @temp_mc:         Last measured temperature in millidegrees Celsius
+  * @warn_cycles:     Consecutive cycles above temp_warn threshold
+  * @poweroff_cycles: Consecutive cycles above temp_poweroff threshold
++ *
++ * @valid ist der Kern der Sache: solange keine brauchbare Messung vorliegt,
++ * meldet temp1_input -ENODATA statt einer Zahl. Eine fehlende Temperatur ist
++ * besser als eine falsche, an ihr haengt eine Abschaltschwelle.
+  */
+ struct hy310_ntc {
+ 	bool			 enabled;
+-	int			 temp_c;
++	bool			 valid;
++	int			 temp_mc;
+ 	u32			 warn_cycles;
+ 	u32			 poweroff_cycles;
+ };
+@@ -167,12 +222,20 @@
+ 	/* USB power GPIO (from gpios subnode) */
+ 	int			 usb_power_gpio;
+ 
+-	/* NTC temperature sensing via IIO (LRADC channel 0) */
++	/* NTC temperature sensing via IIO (GPADC or LRADC channel) */
+ 	struct iio_channel	*ntc_iio_chan;
+ 
+-	/* NTC lookup table: pairs of (temp_decidegC, adc_value), sorted desc adc */
++	/* ntc0/source und ntc0/channel aus dem DTS */
++	u32			 ntc_source;
++	u32			 ntc_channel;
++
++	/*
++	 * NTC lookup table: Paare (temp_degC, millivolt), nach Temperatur
++	 * aufsteigend und nach Spannung streng absteigend sortiert.
++	 */
+ 	u32			 ntc_table[HY310_MAX_TABLE_ENTRIES * 2];
+ 	int			 ntc_table_len;		/* number of pairs */
++	const char		*ntc_table_name;
+ 	struct hy310_ntc	 ntc;
+ 
+ 	/* Temperature thresholds */
+@@ -390,85 +453,189 @@
+ }
+ 
+ /* -------------------------------------------------------------------------
+- * LRADC / NTC temperature
++ * NTC temperature
+  * ------------------------------------------------------------------------- */
+ 
++static int hy310_ntc_cmp_raw(const void *a, const void *b)
++{
++	int x = *(const int *)a;
++	int y = *(const int *)b;
++
++	return (x > y) - (x < y);
++}
++
+ /**
+- * hy310_lradc_read - read a single sample from LRADC channel 0
++ * hy310_ntc_read_raw_median - Median aus HY310_NTC_SAMPLES Abtastungen
+  * @priv: driver private data
+  *
+- * Returns the 12-bit ADC value or negative error.
++ * Gibt den Rohwert des Wandlers zurueck oder einen negativen Fehler.
+  */
+-static int hy310_lradc_read(struct hy310_board_mgr *priv)
++static int hy310_ntc_read_raw_median(struct hy310_board_mgr *priv)
+ {
+-	int val, ret;
++	int samples[HY310_NTC_SAMPLES];
++	int n = 0;
++	int i, val, ret;
+ 
+ 	if (!priv->ntc_iio_chan)
+ 		return -ENODEV;
+ 
+-	ret = iio_read_channel_raw(priv->ntc_iio_chan, &val);
+-	if (ret < 0)
+-		return ret;
++	for (i = 0; i < HY310_NTC_SAMPLES; i++) {
++		ret = iio_read_channel_raw(priv->ntc_iio_chan, &val);
++		if (ret < 0)
++			continue;
++		samples[n++] = val;
++	}
++
++	if (n == 0)
++		return -EIO;
++
++	sort(samples, n, sizeof(samples[0]), hy310_ntc_cmp_raw, NULL);
++
++	return samples[n / 2];
++}
++
++/**
++ * hy310_ntc_raw_to_mv - Rohwert des Wandlers in Millivolt umrechnen
++ * @priv: driver private data
++ * @raw:  Rohwert
++ *
++ * Siehe die Herleitung bei HY310_GPADC_UV_PER_LSB.
++ */
++static int hy310_ntc_raw_to_mv(struct hy310_board_mgr *priv, int raw)
++{
++	/*
++	 * Der GPADC hat zwoelf Bit, der LRADC sechs. Ein Rohwert darueber kann
++	 * nicht stimmen -- die 0 laeuft in hy310_ntc_mv_to_temp_mc in den
++	 * Ungueltig-Zweig, statt hier die Multiplikation ueberlaufen zu lassen.
++	 */
++	if (raw < 0 || raw > 4095)
++		return 0;
++
++	if (priv->ntc_source == HY310_NTC_SOURCE_LRADC)
++		return raw * HY310_LRADC_MV_PER_LSB;
+ 
+-	return val;
++	return (raw * HY310_GPADC_UV_PER_LSB) / 1000;
+ }
+ 
+ /**
+- * hy310_ntc_adc_to_temp - convert ADC reading to temperature in °C
++ * hy310_ntc_mv_to_temp_mc - Millivolt in Milligrad Celsius umrechnen
+  * @priv:    driver private data
+- * @adc_val: raw 12-bit ADC value
++ * @mv:      Spannung am NTC-Teiler in Millivolt
++ * @temp_mc: Ergebnis in Milligrad Celsius
++ *
++ * Die Tabelle steht in Millivolt. Der Hersteller liefert ganze Grad: in
++ * search_table_gpadc (c05db898) den Eintrag i mit
+  *
+- * The lookup table stores pairs of (temp_decidegC, adc_value) sorted in
+- * descending order of adc_value (higher adc = lower temperature for NTC).
+- * We find the first entry where adc_val >= table_adc and return that temp.
++ *	table[i + 1].mv  <  mv  <=  table[i].mv
+  *
+- * Returns temperature in degrees Celsius, or a safe default (0°C) if the
+- * table is empty or the value is out of range.
++ * mit den Randfaellen "mv >= table[0].mv" -> table[0].temp und
++ * "mv <= table[n-1].mv" -> table[n-1].temp. Wir tun dasselbe, rechnen aber
++ * zwischen zwei Stuetzstellen linear weiter: an jeder Stuetzstelle kommt
++ * derselbe Wert heraus wie beim Hersteller, dazwischen entfaellt das
++ * Springen um ein ganzes Grad, sobald der Rohwert um ein LSB wandert. Ein
++ * Grad sind hier rund 14 mV, also etwa 33 LSB.
++ *
++ * Rueckgabe: 0 und *temp_mc gesetzt, oder ein negativer Fehler.
+  */
+-static int hy310_ntc_adc_to_temp(struct hy310_board_mgr *priv, int adc_val)
++static int hy310_ntc_mv_to_temp_mc(struct hy310_board_mgr *priv, int mv,
++				   int *temp_mc)
+ {
++	int n = priv->ntc_table_len;
+ 	int i;
+-	int best_temp_dc = 0;	/* decidegrees Celsius */
+ 
+-	if (priv->ntc_table_len == 0)
++	if (n < 2)
++		return -ENODATA;
++
++	if (mv <= 0 || mv > HY310_NTC_MV_MAX)
++		return -ERANGE;
++
++	if (mv >= (int)priv->ntc_table[1]) {
++		*temp_mc = (int)priv->ntc_table[0] * 1000;
+ 		return 0;
++	}
+ 
+-	for (i = 0; i < priv->ntc_table_len; i++) {
+-		u32 temp_dc = priv->ntc_table[i * 2];
+-		u32 table_adc = priv->ntc_table[i * 2 + 1];
++	if (mv <= (int)priv->ntc_table[(n - 1) * 2 + 1]) {
++		*temp_mc = (int)priv->ntc_table[(n - 1) * 2] * 1000;
++		return 0;
++	}
+ 
+-		if ((u32)adc_val >= table_adc) {
+-			best_temp_dc = (int)temp_dc;
+-			break;
++	for (i = 0; i < n - 1; i++) {
++		int t_lo = (int)priv->ntc_table[i * 2];
++		int v_hi = (int)priv->ntc_table[i * 2 + 1];
++		int t_hi = (int)priv->ntc_table[(i + 1) * 2];
++		int v_lo = (int)priv->ntc_table[(i + 1) * 2 + 1];
++
++		if (mv > v_lo && mv <= v_hi) {
++			*temp_mc = t_lo * 1000 +
++				DIV_ROUND_CLOSEST((v_hi - mv) * (t_hi - t_lo) * 1000,
++						  v_hi - v_lo);
++			return 0;
+ 		}
+ 	}
+ 
+-	/* Table values are already in degrees Celsius (not deci-degrees) */
+-	return best_temp_dc;
++	return -ERANGE;
++}
++
++/**
++ * hy310_ntc_mark_invalid - letzte Messung als unbrauchbar verbuchen
++ * @priv: driver private data
++ *
++ * temp1_input meldet danach -ENODATA, und die Zaehler fuer Warnung und
++ * Abschaltung fangen wieder bei null an: eine Messung, die wir nicht
++ * einordnen koennen, darf keine Schwelle ausloesen.
++ */
++static void hy310_ntc_mark_invalid(struct hy310_board_mgr *priv)
++{
++	priv->ntc.valid = false;
++	priv->ntc.warn_cycles = 0;
++	priv->ntc.poweroff_cycles = 0;
+ }
+ 
+ /**
+  * hy310_ntc_work_fn - periodic NTC temperature poll (every 2.5 seconds)
+  *
+- * Reads the LRADC, converts to temperature, and takes protective action
+- * if the temperature exceeds the configured thresholds.
++ * Liest den Wandler, rechnet ueber Millivolt in die Tabelle und greift ein,
++ * wenn die Temperatur die Schwellen ueberschreitet.
+  */
+ static void hy310_ntc_work_fn(struct work_struct *work)
+ {
+ 	struct hy310_board_mgr *priv =
+ 		container_of(work, struct hy310_board_mgr, ntc_work.work);
+ 	int adc_val;
++	int temp_mc;
+ 	int temp_c;
++	int mv;
++	int ret;
+ 
+ 	if (!priv->ntc.enabled)
+ 		goto reschedule;
+ 
+-	adc_val = hy310_lradc_read(priv);
+-	if (adc_val < 0)
++	adc_val = hy310_ntc_read_raw_median(priv);
++	if (adc_val < 0) {
++		hy310_ntc_mark_invalid(priv);
++		dev_warn_ratelimited(priv->dev,
++				     "NTC: Wandler nicht lesbar (%d), keine Temperatur\n",
++				     adc_val);
+ 		goto reschedule;
++	}
++
++	mv = hy310_ntc_raw_to_mv(priv, adc_val);
++	ret = hy310_ntc_mv_to_temp_mc(priv, mv, &temp_mc);
++	if (ret) {
++		hy310_ntc_mark_invalid(priv);
++		dev_warn_ratelimited(priv->dev,
++				     "NTC: Rohwert %d = %d mV liegt ausserhalb der Tabelle '%s' (%d), keine Temperatur\n",
++				     adc_val, mv, priv->ntc_table_name ?: "?",
++				     ret);
++		goto reschedule;
++	}
+ 
+-	temp_c = hy310_ntc_adc_to_temp(priv, adc_val);
+-	priv->ntc.temp_c = temp_c;
++	priv->ntc.temp_mc = temp_mc;
++	priv->ntc.valid = true;
++	temp_c = temp_mc / 1000;
++
++	dev_dbg(priv->dev, "NTC: Rohwert %d -> %d mV -> %d.%03d Grad\n",
++		adc_val, mv, temp_mc / 1000, temp_mc % 1000);
+ 
+ 	if (temp_c > priv->temp_warn_c) {
+ 		priv->ntc.warn_cycles++;
+@@ -601,8 +768,19 @@
+ 		}
+ 		break;
+ 	case hwmon_temp:
+-		if (attr == hwmon_temp_input)
+-			return 0444;
++		/*
++		 * temp1_input nur anlegen, wenn wirklich gemessen werden kann:
++		 * NTC freigegeben, ein Wandlerkanal da und eine brauchbare
++		 * Tabelle geladen. Sonst gibt es gar keine Temperatur statt
++		 * einer erfundenen.
++		 */
++		if (attr == hwmon_temp_input) {
++			const struct hy310_board_mgr *priv = data;
++
++			if (priv->ntc.enabled && priv->ntc_iio_chan &&
++			    priv->ntc_table_len >= 2)
++				return 0444;
++		}
+ 		break;
+ 	default:
+ 		break;
+@@ -641,7 +819,9 @@
+ 	case hwmon_temp:
+ 		/* temp1_input: NTC temperature in millidegrees */
+ 		if (attr == hwmon_temp_input) {
+-			*val = (long)priv->ntc.temp_c * 1000;
++			if (!priv->ntc.valid)
++				return -ENODATA;
++			*val = priv->ntc.temp_mc;
+ 			return 0;
+ 		}
+ 		break;
+@@ -677,52 +857,71 @@
+  * ------------------------------------------------------------------------- */
+ 
+ /**
+- * hy310_parse_ntc_table - parse gpadc-table or lradc-table from DTS
++ * hy310_parse_ntc_table - gpadc-table oder lradc-table aus dem DTS lesen
+  * @priv:  driver private data
+  * @node:  device node to search
+  *
+- * Tries "gpadc-table" first, then "lradc-table".
+- * Table format: flat array of u32 pairs <temp_decidegC adc_val ...>
+- * sorted descending by adc_val.
++ * Welche der beiden Tabellen gilt, sagt ntc0/source -- nicht die Reihenfolge,
++ * in der wir suchen. Der Knoten traegt beide, und die Werte der einen sind in
++ * der anderen sinnlos: die gpadc-table ist auf 439/1000 mV je LSB gerechnet,
++ * die lradc-table auf 21 mV je LSB.
++ *
++ * Format: flaches u32-Feld aus Paaren <temp_degC millivolt ...>, nach
++ * Temperatur aufsteigend und nach Spannung streng absteigend.
+  */
+ static void hy310_parse_ntc_table(struct hy310_board_mgr *priv,
+ 				  struct device_node *node)
+ {
+-	const char *prop_names[] = { "gpadc-table", "lradc-table", NULL };
+-	int pi;
++	const char *name = priv->ntc_source == HY310_NTC_SOURCE_LRADC ?
++			   "lradc-table" : "gpadc-table";
++	int len, num_pairs, i;
++	const __be32 *prop;
++
++	prop = of_get_property(node, name, &len);
++	if (!prop) {
++		dev_warn(priv->dev, "NTC: '%s' fehlt im DTS\n", name);
++		return;
++	}
+ 
+-	for (pi = 0; prop_names[pi]; pi++) {
+-		int len;
+-		int num_u32;
+-		int num_pairs;
+-		int i;
+-		const __be32 *prop;
++	num_pairs = (len / sizeof(u32)) / 2;
+ 
+-		prop = of_get_property(node, prop_names[pi], &len);
+-		if (!prop)
+-			continue;
++	if (num_pairs < 2 || num_pairs > HY310_MAX_TABLE_ENTRIES) {
++		dev_warn(priv->dev,
++			 "NTC: Tabelle '%s' unbrauchbar (%d Paare, erlaubt 2..%d)\n",
++			 name, num_pairs, HY310_MAX_TABLE_ENTRIES);
++		return;
++	}
+ 
+-		num_u32 = len / sizeof(u32);
+-		num_pairs = num_u32 / 2;
++	for (i = 0; i < num_pairs * 2; i++)
++		priv->ntc_table[i] = be32_to_cpup(prop + i);
+ 
+-		if (num_pairs == 0 || num_pairs > HY310_MAX_TABLE_ENTRIES) {
++	/*
++	 * Die Suche setzt die Sortierung voraus. Eine Tabelle, die nicht so
++	 * aussieht, wie der Hersteller sie baut, rechnen wir lieber gar nicht
++	 * aus, als eine Zahl zu liefern, die aus der falschen Zeile stammt.
++	 */
++	for (i = 0; i < num_pairs - 1; i++) {
++		if (priv->ntc_table[i * 2] >= priv->ntc_table[(i + 1) * 2] ||
++		    priv->ntc_table[i * 2 + 1] <= priv->ntc_table[(i + 1) * 2 + 1]) {
+ 			dev_warn(priv->dev,
+-				 "NTC table '%s': ignoring (%d pairs, max %d)\n",
+-				 prop_names[pi], num_pairs,
+-				 HY310_MAX_TABLE_ENTRIES);
+-			continue;
++				 "NTC: Tabelle '%s' ist bei Paar %d nicht sortiert (%u Grad/%u mV vor %u Grad/%u mV)\n",
++				 name, i,
++				 priv->ntc_table[i * 2],
++				 priv->ntc_table[i * 2 + 1],
++				 priv->ntc_table[(i + 1) * 2],
++				 priv->ntc_table[(i + 1) * 2 + 1]);
++			return;
+ 		}
+-
+-		for (i = 0; i < num_pairs * 2; i++)
+-			priv->ntc_table[i] = be32_to_cpup(prop + i);
+-
+-		priv->ntc_table_len = num_pairs;
+-		dev_info(priv->dev, "NTC: loaded %d-entry table from '%s'\n",
+-			 num_pairs, prop_names[pi]);
+-		return;
+ 	}
+ 
+-	dev_warn(priv->dev, "NTC: no temperature table found in DTS\n");
++	priv->ntc_table_len = num_pairs;
++	priv->ntc_table_name = name;
++	dev_info(priv->dev,
++		 "NTC: Tabelle '%s' mit %d Paaren geladen, %u mV (%u Grad) bis %u mV (%u Grad)\n",
++		 name, num_pairs,
++		 priv->ntc_table[1], priv->ntc_table[0],
++		 priv->ntc_table[(num_pairs - 1) * 2 + 1],
++		 priv->ntc_table[(num_pairs - 1) * 2]);
+ }
+ 
+ /**
+@@ -950,22 +1149,8 @@
+ 	if (of_property_read_u32(np, "temp_warn", &priv->temp_warn_c))
+ 		priv->temp_warn_c = DEFAULT_TEMP_WARN_C;
+ 
+-	/* ---- NTC via IIO (LRADC channel) ---- */
+-	priv->ntc_iio_chan = devm_iio_channel_get(dev, "ntc");
+-	if (IS_ERR(priv->ntc_iio_chan)) {
+-		ret = PTR_ERR(priv->ntc_iio_chan);
+-		if (ret == -EPROBE_DEFER)
+-			return ret;	/* LRADC driver not yet loaded, retry later */
+-		dev_warn(dev, "NTC IIO channel not available (%d), NTC disabled\n", ret);
+-		priv->ntc_iio_chan = NULL;
+-	} else {
+-		dev_info(dev, "NTC via IIO channel acquired\n");
+-	}
+-
+-	/* ---- NTC table ---- */
+-	hy310_parse_ntc_table(priv, np);
+-
+-	/* ---- ntc subnode: check if NTC is enabled ---- */
++	/* ---- ntc subnode: Freigabe, Quelle und Kanal ---- */
++	priv->ntc_source = HY310_NTC_SOURCE_GPADC;
+ 	ntc_np = of_get_child_by_name(np, "ntc");
+ 	if (ntc_np) {
+ 		u32 ntc_num = 0;
+@@ -982,6 +1167,8 @@
+ 			u32 ntc0_en = 0;
+ 
+ 			of_property_read_u32(ntc0_np, "enable", &ntc0_en);
++			of_property_read_u32(ntc0_np, "source", &priv->ntc_source);
++			of_property_read_u32(ntc0_np, "channel", &priv->ntc_channel);
+ 			if (ntc0_en == 1 || ntc_num > 0) {
+ 				priv->ntc.enabled = true;
+ 				dev_info(dev, "NTC enabled (ntc_num=%u, ntc0.enable=%u)\n",
+@@ -996,6 +1183,47 @@
+ 		of_node_put(ntc_np);
+ 	}
+ 
++	if (priv->ntc_source != HY310_NTC_SOURCE_LRADC &&
++	    priv->ntc_source != HY310_NTC_SOURCE_GPADC) {
++		dev_warn(dev,
++			 "NTC: source = %u ist weder LRADC (0) noch GPADC (1), NTC aus\n",
++			 priv->ntc_source);
++		priv->ntc.enabled = false;
++	}
++
++	/* ---- NTC via IIO (GPADC- oder LRADC-Kanal) ---- */
++	priv->ntc_iio_chan = devm_iio_channel_get(dev, "ntc");
++	if (IS_ERR(priv->ntc_iio_chan)) {
++		ret = PTR_ERR(priv->ntc_iio_chan);
++		if (ret == -EPROBE_DEFER)
++			return ret;	/* ADC driver not yet loaded, retry later */
++		dev_warn(dev, "NTC IIO channel not available (%d), NTC disabled\n", ret);
++		priv->ntc_iio_chan = NULL;
++	} else {
++		dev_info(dev, "NTC: IIO-Kanal geholt (DTS: source=%u -> %s, channel=%u)\n",
++			 priv->ntc_source,
++			 priv->ntc_source == HY310_NTC_SOURCE_LRADC ?
++				"LRADC, 21 mV/LSB" : "GPADC, 439/1000 mV/LSB",
++			 priv->ntc_channel);
++	}
++
++	/* ---- NTC table ---- */
++	if (priv->ntc.enabled)
++		hy310_parse_ntc_table(priv, np);
++
++	/*
++	 * Ohne Kanal oder ohne brauchbare Tabelle gibt es keine Temperatur.
++	 * Das steht hier laut im Log, damit niemand spaeter ein fehlendes
++	 * temp1_input fuer einen Treiberfehler haelt.
++	 */
++	if (priv->ntc.enabled && (!priv->ntc_iio_chan || priv->ntc_table_len < 2)) {
++		dev_warn(dev,
++			 "NTC: Auswertung abgeschaltet (%s) -- temp1_input wird nicht angelegt\n",
++			 !priv->ntc_iio_chan ? "kein IIO-Kanal" :
++					       "keine brauchbare Tabelle");
++		priv->ntc.enabled = false;
++	}
++
+ 	/* ---- gpios subnode: USB power GPIO ---- */
+ 	gpios_np = of_get_child_by_name(np, "gpios");
+ 	if (gpios_np) {
+@@ -1111,7 +1339,7 @@
+ 		}
+ 	}
+ 
+-	/* Start NTC work if LRADC is available and NTC is enabled */
++	/* Start NTC work if a converter channel is available and NTC is enabled */
+ 	if (priv->ntc.enabled && priv->ntc_iio_chan)
+ 		schedule_delayed_work(&priv->ntc_work,
+ 				      msecs_to_jiffies(NTC_POLL_INTERVAL_MS));

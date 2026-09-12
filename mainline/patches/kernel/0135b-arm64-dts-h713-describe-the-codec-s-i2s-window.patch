@@ -1,0 +1,45 @@
+arm64: dts: allwinner: h713: describe the codec's I2S window
+
+The codec node has always carried a note that the stock device tree
+gives it a second reg range at 0x02031000, 0x7c long, and that nobody
+knew what it was. It is the I2S receiver that feeds the DAC: the
+register names and the length both come out of the stock kernel's
+i2s_reg_labels table @0xc149ce98 and sunxi_i2s_regmap_config
+@0xc0ee8a54 (S25 §1), and the path through it was measured on the
+board on 08.09.2026, carrying HDMI audio from the MSP DSP to the
+speaker (S16 20:30).
+
+Name both ranges, because the driver asks for the second one by name
+and has to be able to tell an old device tree apart from a new one.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -782,18 +782,24 @@
+ 			 * its own DAI and card, so those two nodes have no
+ 			 * mainline equivalent.
+ 			 *
++			 * The second reg range is the I2S receiver that feeds
++			 * the DAC: the vendor's own register names for it, and
++			 * its length, come out of the stock kernel's
++			 * i2s_reg_labels table and sunxi_i2s_regmap_config.
++			 * It is what carries the decoded HDMI audio from the
++			 * audio DSP to the speaker.
++			 *
+ 			 * Values taken from the stock DTB and kept here because
+ 			 * they are measured, not guessed:
+-			 *   second reg range 0x02031000 len 0x7c, probably the
+-			 *     analog block -- H616 needs only one range, so try
+-			 *     one first
+ 			 *   speaker_vol 0x1a, digital_vol 0x00, headphone unused
+ 			 *   pa_level 1 (active high), pa_msleep_time 160 ms
+ 			 *   stock also lists a pll_tvfe clock on the codec,
+ 			 *     which is unexplained -- deliberately not copied
+ 			 */
+ 			compatible = "allwinner,sun50i-h713-codec";
+-			reg = <0x02030000 0x32c>;
++			reg = <0x02030000 0x32c>,
++			      <0x02031000 0x7c>;
++			reg-names = "codec", "i2s";
+ 			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_BUS_AUDIO_CODEC>,
+ 				 <&ccu CLK_AUDIO_CODEC_DAC>;

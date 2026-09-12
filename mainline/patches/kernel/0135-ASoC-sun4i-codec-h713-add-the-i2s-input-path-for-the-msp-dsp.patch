@@ -1,0 +1,790 @@
+ASoC: sun4i-codec: h713: add the I2S input path for the MSP DSP
+
+H713's DAC can take its samples from somewhere other than the APB
+FIFO. A second register window sits right behind the codec, at
+0x02031000 and 0x7c long, and holds an I2S receiver wired to the DAC.
+That receiver is how the audio the SoC's MSP DSP decodes from HDMI
+reaches the speaker: the DSP is an island of its own with no path into
+DRAM, so its output is an I2S stream and nothing else, and there is no
+PCM anywhere for ALSA to open.
+
+Everything the vendor kernel does with that window was read out of the
+stock 5.4 vmlinux, which carries full symbols and DWARF --
+sunxi_codec_i2s_init() @0xc0845230 with its 21 writes,
+sunxi_codec_set_dacsrc_mode() @0xc0844fbc for the switch-over, and the
+i2s_reg_labels table @0xc149ce98 plus sunxi_i2s_regmap_config
+@0xc0ee8a54, which name every field and put the end of the map at 0x7c
+(S25 §1, §2, §3, §4.2). The block turns out to be an ordinary
+sunxi-daudio register map, and the codec is its clock master while the
+DSP follows.
+
+The whole path was then run by hand on the board on 08.09.2026: with
+the window programmed this way, the DAC switched over and the analog
+side held up by a silent APB stream, a 1 kHz tone from an HDMI source
+came out of the speaker at 80.2 dB (S16 20:30). That measurement is
+what this patch turns into driver code, and it decides two design
+points.
+
+First, the analog side. The vendor's mixer path writes DAC_DPC's
+DAC_EN, both halves of DAC_REG, the headphone amplifier the speaker
+hangs off and the PA GPIO by hand. All four already have DAPM widgets
+here, and DAPM only powers them for a running PCM. So instead of
+writing them a second time -- and having to decide by hand what to do
+when a PCM and the I2S input want them at the same time -- the path
+gets a signal generator in front of the DACs, which "DAC Source"
+forces on. DAPM then powers up exactly what it powers up for playback
+and, because it counts every reason a widget is needed, it keeps the
+analog side alive for whichever of the two still wants it when the
+other goes away. The generator is disconnected in the card's late
+probe, before the first sync, or a source with no off switch would
+power the DAC from boot.
+
+Second, the rate. The receiver is the clock master with fixed
+dividers, so nothing about it follows the incoming stream: the DAC's
+own rate has to be set to the rate of the HDMI source. Getting it
+wrong is silent rather than merely detuned -- a 32 kHz source stayed
+inaudible with the codec left at 48 kHz and came back at 79.6 dB once
+the codec was moved to 32 kHz as well (S16 20:45). "I2S Rate"
+therefore offers the three rates that were measured end to end, and
+programs them exactly as hw_params() and prepare() do for an APB
+stream: the 44.1 kHz family on a 45.1584 MHz module clock and the rest
+on 49.152 MHz, both read back from the clock tree while the tone was
+audible.
+
+The two paths share the module clock and the DAC's rate field and
+cannot be given different rates at once. Rather than let one silently
+retune the other, hw_params() refuses an APB stream whose rate differs
+from the armed I2S path, and the two controls refuse to change a rate
+out from under a stream that is already open. Nothing else about the
+APB path changes: the I2S path holds the module clock through the
+clock framework's own reference count, so a stream that starts or
+stops while HDMI audio is playing neither gates the clock nor powers
+the amplifier down.
+
+Old device trees describe only the DAC window. That is not an error
+here, it just means there is no I2S input: the driver warns, leaves
+both controls out, and the APB path works as before.
+
+Register values carry their source in the comments. The sequence has
+no delays anywhere, and going back to the APB FIFO clears the selector
+bit alone, both as in the vendor's code.
+
+Hauptsitzung 08.09. 23:45: I2S-Regmap ohne Geraetebindung (regmap_init_mmio(NULL)) --
+dev_get_regmap(dev, NULL) lieferte sonst die I2S-Karte an die ASoC-Komponente
+(-EIO auf 0x310, Analogseite blieb aus).
+---
+diff -Nur a/sound/soc/sunxi/sun4i-codec.c b/sound/soc/sunxi/sun4i-codec.c
+--- a/sound/soc/sunxi/sun4i-codec.c	2026-09-08 19:20:20.361747989 +0200
++++ b/sound/soc/sunxi/sun4i-codec.c	2026-09-08 19:20:20.369493475 +0200
+@@ -10,9 +10,11 @@
+  * Based on the Allwinner SDK driver, released under the GPL.
+  */
+ 
++#include <linux/bitfield.h>
+ #include <linux/init.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/platform_device.h>
+ #include <linux/delay.h>
+ #include <linux/slab.h>
+@@ -274,6 +276,68 @@
+ #define SUN50I_H616_RAMP_STEP			(4)
+ #define SUN50I_H616_RDEN			(0)
+ 
++/*
++ * H713 specific registers
++ *
++ * DAC_DPC selects where the DAC reads its samples from. Bit 29 is the
++ * selector, 1 = the I2S receiver below and 0 = the APB FIFO; bit 30 is a
++ * companion the vendor sets together with it and never clears again. Both are
++ * read out of sunxi_codec_set_dacsrc_mode() @0xc0844fbc and
++ * sunxi_codec_get_dacsrc_mode() @0xc08457b0 of the stock 5.4 kernel, whose
++ * "DAC Src Select" enum is {APB, I2S} (S25 §3).
++ */
++#define SUN50I_H713_DAC_DPC_SRC_I2S		(29)
++#define SUN50I_H713_DAC_DPC_SRC_I2S_MASK	BIT(SUN50I_H713_DAC_DPC_SRC_I2S)
++#define SUN50I_H713_DAC_DPC_SRC_I2S_PREP	(30)
++#define SUN50I_H713_DAC_DPC_SRC_I2S_PREP_MASK	\
++	BIT(SUN50I_H713_DAC_DPC_SRC_I2S_PREP)
++
++/*
++ * The second register window, 0x02031000 and 0x7c long: an I2S receiver wired
++ * to the DAC. The vendor calls it INTER_I2S and drives it with the register
++ * map of sunxi-daudio -- its i2s_reg_labels table @0xc149ce98 and
++ * sunxi_i2s_regmap_config @0xc0ee8a54 (max_register 0x7c) name every field
++ * used here, and sunxi_daudio_{init,set_fmt,set_clkdiv,rxctrl_enable}() give
++ * their meaning (S25 §1).
++ */
++#define SUN50I_H713_I2S_CTL			(0x00)
++#define SUN50I_H713_I2S_CTL_GEN				BIT(0)
++#define SUN50I_H713_I2S_CTL_RXEN			BIT(1)
++#define SUN50I_H713_I2S_CTL_MODE_SEL			GENMASK(5, 4)
++#define SUN50I_H713_I2S_CTL_MODE_SEL_I2S		1
++/* Set means the pin is an input, i.e. the block is the clock slave. */
++#define SUN50I_H713_I2S_CTL_BCLK_IN			BIT(17)
++#define SUN50I_H713_I2S_CTL_LRCK_IN			BIT(18)
++#define SUN50I_H713_I2S_FMT0			(0x04)
++#define SUN50I_H713_I2S_FMT0_SLOT_WIDTH			GENMASK(2, 0)
++#define SUN50I_H713_I2S_FMT0_SAMPLE_RES			GENMASK(6, 4)
++#define SUN50I_H713_I2S_FMT0_BCLK_POLARITY		BIT(7)
++#define SUN50I_H713_I2S_FMT0_LRCK_PERIOD		GENMASK(17, 8)
++#define SUN50I_H713_I2S_FMT0_LRCK_POLARITY		BIT(19)
++#define SUN50I_H713_I2S_FMT0_FRAME_TYPE			BIT(30)
++#define SUN50I_H713_I2S_FMT1			(0x08)
++#define SUN50I_H713_I2S_FMT1_SIGN_EXTEND		GENMASK(5, 4)
++#define SUN50I_H713_I2S_FMT1_TX_MSB_FIRST		BIT(6)
++#define SUN50I_H713_I2S_FMT1_RX_MSB_FIRST		BIT(7)
++#define SUN50I_H713_I2S_CLKDIV			(0x24)
++/* Divider codes, not dividers: 4 means /6 and 8 means /24 (S25 §1). */
++#define SUN50I_H713_I2S_CLKDIV_MCLK			GENMASK(3, 0)
++#define SUN50I_H713_I2S_CLKDIV_MCLK_DIV6		4
++#define SUN50I_H713_I2S_CLKDIV_BCLK			GENMASK(7, 4)
++#define SUN50I_H713_I2S_CLKDIV_BCLK_DIV24		8
++#define SUN50I_H713_I2S_CLKDIV_MCLK_OUT			BIT(8)
++#define SUN50I_H713_I2S_CHCFG			(0x30)
++#define SUN50I_H713_I2S_CHCFG_TX_SLOT_NUM		GENMASK(3, 0)
++#define SUN50I_H713_I2S_CHCFG_RX_SLOT_NUM		GENMASK(7, 4)
++#define SUN50I_H713_I2S_TX0CHSEL		(0x34)
++#define SUN50I_H713_I2S_TX0CHMAP1		(0x48)
++#define SUN50I_H713_I2S_RXCHSEL			(0x64)
++#define SUN50I_H713_I2S_RXCHMAP3		(0x74)
++/* Shared by TX0CHSEL and RXCHSEL */
++#define SUN50I_H713_I2S_CHSEL_SLOT_EN			GENMASK(15, 0)
++#define SUN50I_H713_I2S_CHSEL_CHAN_NUM			GENMASK(19, 16)
++#define SUN50I_H713_I2S_MAX_REG			(0x7c)
++
+ /* TODO H3 DAP (Digital Audio Processing) bits */
+ 
+ #define SUN4I_DMA_MAX_BURST			(8)
+@@ -350,6 +414,17 @@
+ 	/* Multiplier on the module clock, for SoCs that divide it further */
+ 	unsigned int mod_freq_mult;
+ 
++	/* H713's second register window: the DAC's own I2S receiver */
++	struct regmap	*regmap_i2s;
++	/* Serialises the two controls that drive the I2S input path */
++	struct mutex	i2s_lock;
++	/* Rate the I2S input path runs at, or will run at once armed */
++	unsigned int	i2s_rate;
++	/* "DAC Source" is I2S: the path is armed and holds the analog side */
++	bool		i2s_armed;
++	/* Rate of the open APB stream, 0 while none is configured */
++	unsigned int	pcm_rate;
++
+ 	struct snd_dmaengine_dai_dma_data	capture_dma_data;
+ 	struct snd_dmaengine_dai_dma_data	playback_dma_data;
+ };
+@@ -502,10 +577,8 @@
+ 	return sun4i_codec_prepare_capture(substream, dai);
+ }
+ 
+-static unsigned long sun4i_codec_get_mod_freq(struct snd_pcm_hw_params *params)
++static unsigned long sun4i_codec_get_mod_freq(unsigned int rate)
+ {
+-	unsigned int rate = params_rate(params);
+-
+ 	switch (rate) {
+ 	case 176400:
+ 	case 88200:
+@@ -532,10 +605,8 @@
+ 	}
+ }
+ 
+-static int sun4i_codec_get_hw_rate(struct snd_pcm_hw_params *params)
++static int sun4i_codec_get_hw_rate(unsigned int rate)
+ {
+-	unsigned int rate = params_rate(params);
+-
+ 	switch (rate) {
+ 	case 192000:
+ 	case 176400:
+@@ -668,7 +739,16 @@
+ 	unsigned long clk_freq;
+ 	int ret, hwrate;
+ 
+-	clk_freq = sun4i_codec_get_mod_freq(params);
++	/*
++	 * While the DAC is fed from H713's I2S input, that path owns the
++	 * module clock and the DAC's rate field, and both have to match the
++	 * rate of the HDMI source or nothing comes out (S16 20:45). Refuse an
++	 * APB stream at another rate rather than retune the two under it.
++	 */
++	if (scodec->i2s_armed && params_rate(params) != scodec->i2s_rate)
++		return -EBUSY;
++
++	clk_freq = sun4i_codec_get_mod_freq(params_rate(params));
+ 	if (!clk_freq)
+ 		return -EINVAL;
+ 
+@@ -685,10 +765,13 @@
+ 	if (ret)
+ 		return ret;
+ 
+-	hwrate = sun4i_codec_get_hw_rate(params);
++	hwrate = sun4i_codec_get_hw_rate(params_rate(params));
+ 	if (hwrate < 0)
+ 		return hwrate;
+ 
++	/* Remembered for the interlock above and for the I2S controls. */
++	scodec->pcm_rate = params_rate(params);
++
+ 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+ 		return sun4i_codec_hw_params_playback(scodec, params,
+ 						      hwrate);
+@@ -720,6 +803,7 @@
+ 	struct sun4i_codec *scodec = snd_soc_card_get_drvdata(rtd->card);
+ 
+ 	clk_disable_unprepare(scodec->clk_module);
++	scodec->pcm_rate = 0;
+ }
+ 
+ static const struct snd_soc_dai_ops sun4i_codec_dai_ops = {
+@@ -2019,6 +2103,451 @@
+ 	return 0;
+ }
+ 
++/*
++ * The DAC can also be fed from the second register window instead of from the
++ * APB FIFO: an I2S receiver that the SoC's audio DSP writes into. That is how
++ * the HDMI audio reaches the speaker, and it carries no PCM of its own -- the
++ * DSP is a separate island with no path into DRAM, so there is nothing for
++ * ALSA to open. Two controls drive it:
++ *
++ *   "DAC Source"  {APB, I2S}             which side the DAC listens to
++ *   "I2S Rate"    {32000, 44100, 48000}  the rate the receiver is clocked for
++ *
++ * The rate cannot be recovered from the incoming stream: this block is the
++ * clock master (S25 §1) and its dividers are fixed, so whoever knows the rate
++ * of the HDMI source has to say so. Getting it wrong is silent, not merely
++ * detuned -- on 08.09.2026 a 32 kHz source stayed inaudible while the codec
++ * was left at 48 kHz, and came back at 79.6 dB once the codec was moved to
++ * 32 kHz as well (S16 20:45).
++ */
++struct sun50i_h713_i2s_write {
++	unsigned int reg;
++	unsigned int mask;
++	unsigned int val;
++};
++
++/*
++ * sunxi_codec_i2s_init() @0xc0845230, all 21 writes in the vendor's order and
++ * with the vendor's values (S25 §2). There are no delays in the sequence. The
++ * values are constants here for the same reason they are constants there: the
++ * vendor's probe reads none of the DT properties that would describe them,
++ * and two of them disagree with its own device tree anyway (24 bit slots, not
++ * 32; MCLK /6, not /4).
++ */
++static const struct sun50i_h713_i2s_write sun50i_h713_i2s_init_seq[] = {
++	/* 1: leave reset */
++	{ SUN50I_H713_I2S_CTL, SUN50I_H713_I2S_CTL_GEN,
++	  SUN50I_H713_I2S_CTL_GEN },
++	/* 2: one frame per LRCK edge pair */
++	{ SUN50I_H713_I2S_FMT0, SUN50I_H713_I2S_FMT0_FRAME_TYPE, 0 },
++	/* 3: LRCK period 32 BCLKs */
++	{ SUN50I_H713_I2S_FMT0, SUN50I_H713_I2S_FMT0_LRCK_PERIOD,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_FMT0_LRCK_PERIOD, 32 - 1) },
++	/* 4: 24 bit slots, encoded as slot_width / 4 - 1 */
++	{ SUN50I_H713_I2S_FMT0, SUN50I_H713_I2S_FMT0_SLOT_WIDTH,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_FMT0_SLOT_WIDTH, 24 / 4 - 1) },
++	/* 5: MCLK = module clock / 6 */
++	{ SUN50I_H713_I2S_CLKDIV, SUN50I_H713_I2S_CLKDIV_MCLK,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_CLKDIV_MCLK,
++			   SUN50I_H713_I2S_CLKDIV_MCLK_DIV6) },
++	/* 6: drive MCLK out */
++	{ SUN50I_H713_I2S_CLKDIV, SUN50I_H713_I2S_CLKDIV_MCLK_OUT,
++	  SUN50I_H713_I2S_CLKDIV_MCLK_OUT },
++	/* 7: I2S/left-justified framing */
++	{ SUN50I_H713_I2S_CTL, SUN50I_H713_I2S_CTL_MODE_SEL,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_CTL_MODE_SEL,
++			   SUN50I_H713_I2S_CTL_MODE_SEL_I2S) },
++	/* 8: LRCK inverted */
++	{ SUN50I_H713_I2S_FMT0, SUN50I_H713_I2S_FMT0_LRCK_POLARITY,
++	  SUN50I_H713_I2S_FMT0_LRCK_POLARITY },
++	/* 9: BCLK not inverted */
++	{ SUN50I_H713_I2S_FMT0, SUN50I_H713_I2S_FMT0_BCLK_POLARITY, 0 },
++	/* 10: BCLK = module clock / 24 */
++	{ SUN50I_H713_I2S_CLKDIV, SUN50I_H713_I2S_CLKDIV_BCLK,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_CLKDIV_BCLK,
++			   SUN50I_H713_I2S_CLKDIV_BCLK_DIV24) },
++	/* 11, 12: MSB first both ways */
++	{ SUN50I_H713_I2S_FMT1, SUN50I_H713_I2S_FMT1_TX_MSB_FIRST, 0 },
++	{ SUN50I_H713_I2S_FMT1, SUN50I_H713_I2S_FMT1_RX_MSB_FIRST, 0 },
++	/* 13: sign extend short samples */
++	{ SUN50I_H713_I2S_FMT1, SUN50I_H713_I2S_FMT1_SIGN_EXTEND,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_FMT1_SIGN_EXTEND, 3) },
++	/* 14: 24 bit samples, encoded as bits / 4 - 1 */
++	{ SUN50I_H713_I2S_FMT0, SUN50I_H713_I2S_FMT0_SAMPLE_RES,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_FMT0_SAMPLE_RES, 24 / 4 - 1) },
++	/* 15: RX slot to channel map, written whole by the vendor */
++	{ SUN50I_H713_I2S_RXCHMAP3, U32_MAX, 0x00000100 },
++	/* 16, 17: receive two channels in two slots */
++	{ SUN50I_H713_I2S_RXCHSEL, SUN50I_H713_I2S_CHSEL_CHAN_NUM,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_CHSEL_CHAN_NUM, 2 - 1) },
++	{ SUN50I_H713_I2S_CHCFG, SUN50I_H713_I2S_CHCFG_RX_SLOT_NUM,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_CHCFG_RX_SLOT_NUM, 2 - 1) },
++	/* 18: TX slot to channel map, written whole by the vendor */
++	{ SUN50I_H713_I2S_TX0CHMAP1, U32_MAX, 0x00003210 },
++	/* 19, 20, 21: transmit two channels in the first two slots */
++	{ SUN50I_H713_I2S_TX0CHSEL, SUN50I_H713_I2S_CHSEL_CHAN_NUM,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_CHSEL_CHAN_NUM, 2 - 1) },
++	{ SUN50I_H713_I2S_CHCFG, SUN50I_H713_I2S_CHCFG_TX_SLOT_NUM,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_CHCFG_TX_SLOT_NUM, 2 - 1) },
++	{ SUN50I_H713_I2S_TX0CHSEL, SUN50I_H713_I2S_CHSEL_SLOT_EN,
++	  FIELD_PREP_CONST(SUN50I_H713_I2S_CHSEL_SLOT_EN, 0x3) },
++};
++
++static int sun50i_h713_codec_i2s_init(struct sun4i_codec *scodec)
++{
++	size_t i;
++	int ret;
++
++	for (i = 0; i < ARRAY_SIZE(sun50i_h713_i2s_init_seq); i++) {
++		const struct sun50i_h713_i2s_write *w =
++			&sun50i_h713_i2s_init_seq[i];
++
++		ret = regmap_update_bits(scodec->regmap_i2s, w->reg, w->mask,
++					 w->val);
++		if (ret)
++			return ret;
++	}
++
++	return 0;
++}
++
++/*
++ * Map the second window and leave the receiver in the shape the vendor's own
++ * probe leaves it in. A device tree that describes only the DAC window is not
++ * an error: it just has no I2S input, and the two controls stay away.
++ */
++static void sun50i_h713_codec_i2s_regmap_exit(void *data)
++{
++	regmap_exit(data);
++}
++
++static int sun50i_h713_codec_i2s_probe(struct platform_device *pdev,
++				       struct sun4i_codec *scodec,
++				       const struct regmap_config *config)
++{
++	struct regmap *regmap;
++	void __iomem *base;
++	int ret;
++
++	mutex_init(&scodec->i2s_lock);
++	scodec->i2s_rate = 48000;
++
++	base = devm_platform_ioremap_resource_byname(pdev, "i2s");
++	if (IS_ERR(base)) {
++		dev_warn(&pdev->dev,
++			 "No \"i2s\" register window, no I2S input path\n");
++		return 0;
++	}
++
++	/*
++	 * Deliberately not devm_regmap_init_mmio(&pdev->dev, ...): ASoC finds
++	 * the component's regmap with dev_get_regmap(dev, NULL), which returns
++	 * the *newest* regmap attached to the device -- a second one, even a
++	 * named one, would silently replace the codec map (max_register 0x328)
++	 * with this 0x7c window. Measured on 08.09.2026: every DAPM write above
++	 * 0x7c failed with -EIO and the analog side never came up. So the I2S
++	 * map lives without a device and is torn down by a devm action.
++	 */
++	regmap = regmap_init_mmio(NULL, base, config);
++	if (IS_ERR(regmap)) {
++		dev_err(&pdev->dev, "Failed to create the I2S regmap\n");
++		return PTR_ERR(regmap);
++	}
++
++	ret = devm_add_action_or_reset(&pdev->dev,
++				       sun50i_h713_codec_i2s_regmap_exit, regmap);
++	if (ret)
++		return ret;
++
++	scodec->regmap_i2s = regmap;
++
++	return sun50i_h713_codec_i2s_init(scodec);
++}
++
++/*
++ * Set the codec up for one rate exactly as hw_params() and prepare() do it
++ * for an APB stream, minus everything that only concerns the FIFO. The 44.1
++ * kHz family runs the module clock at 45.1584 MHz and the rest at 49.152 MHz;
++ * both were read back from the clock tree while a tone from the HDMI source
++ * was audible at 32000, 44100 and 48000 (S16 20:45). The I2S dividers do not
++ * change with the rate -- CLKDIV stayed at 0x184 throughout.
++ */
++static int sun50i_h713_codec_i2s_set_rate(struct sun4i_codec *scodec,
++					  unsigned int rate)
++{
++	unsigned long clk_freq;
++	int hwrate, ret;
++
++	clk_freq = sun4i_codec_get_mod_freq(rate);
++	if (!clk_freq)
++		return -EINVAL;
++
++	hwrate = sun4i_codec_get_hw_rate(rate);
++	if (hwrate < 0)
++		return hwrate;
++
++	ret = clk_set_rate(scodec->clk_module,
++			   clk_freq * scodec->mod_freq_mult);
++	if (ret)
++		return ret;
++
++	regmap_field_update_bits(scodec->reg_dac_fifoc,
++				 7 << SUN4I_CODEC_DAC_FIFOC_DAC_FS,
++				 hwrate << SUN4I_CODEC_DAC_FIFOC_DAC_FS);
++
++	/* The FIR choice sun4i_codec_prepare_playback() makes. */
++	regmap_field_update_bits(scodec->reg_dac_fifoc,
++				 BIT(SUN4I_CODEC_DAC_FIFOC_FIR_VERSION),
++				 rate > 32000 ? 0 :
++				 BIT(SUN4I_CODEC_DAC_FIFOC_FIR_VERSION));
++
++	/*
++	 * The receiver always delivers two channels, so undo the mono mode a
++	 * one-channel APB stream may have left behind.
++	 */
++	regmap_field_clear_bits(scodec->reg_dac_fifoc,
++				BIT(SUN4I_CODEC_DAC_FIFOC_MONO_EN));
++
++	return 0;
++}
++
++/*
++ * Point the DAC at the I2S receiver, in the order the vendor's
++ * media-speaker-i2s mixer path uses (S25 §4.2): clocks and rate, then the
++ * receiver, then the selector, and the analog side last.
++ *
++ * The analog side is not written here. DAC_DPC's DAC_EN, the two halves of
++ * the DAC, the amplifier the speaker hangs off and the PA GPIO all have DAPM
++ * widgets already, and DAPM only powers them for a running PCM. So the path
++ * gets a signal generator in front of the DACs which this forces on: DAPM
++ * then brings up exactly what it brings up for playback, and -- because it
++ * counts every reason a widget is needed -- it keeps the path alive for
++ * whichever of the two, PCM or I2S input, still wants it when the other ends.
++ */
++static int sun50i_h713_codec_i2s_arm(struct snd_soc_component *component,
++				     struct sun4i_codec *scodec)
++{
++	struct snd_soc_dapm_context *dapm =
++		snd_soc_component_get_dapm(component);
++	int ret;
++
++	/*
++	 * The module clock is the one thing the two paths cannot share: a
++	 * stream that is already running would have its pitch pulled along.
++	 */
++	if (snd_soc_component_active(component) && scodec->pcm_rate &&
++	    scodec->pcm_rate != scodec->i2s_rate)
++		return -EBUSY;
++
++	ret = clk_prepare_enable(scodec->clk_module);
++	if (ret)
++		return ret;
++
++	ret = sun50i_h713_codec_i2s_set_rate(scodec, scodec->i2s_rate);
++	if (ret) {
++		clk_disable_unprepare(scodec->clk_module);
++		return ret;
++	}
++
++	/* This block drives BCLK and LRCK; the DSP on the far side follows. */
++	regmap_update_bits(scodec->regmap_i2s, SUN50I_H713_I2S_CTL,
++			   SUN50I_H713_I2S_CTL_BCLK_IN, 0);
++	regmap_update_bits(scodec->regmap_i2s, SUN50I_H713_I2S_CTL,
++			   SUN50I_H713_I2S_CTL_LRCK_IN, 0);
++	regmap_update_bits(scodec->regmap_i2s, SUN50I_H713_I2S_CTL,
++			   SUN50I_H713_I2S_CTL_RXEN,
++			   SUN50I_H713_I2S_CTL_RXEN);
++
++	regmap_update_bits(scodec->regmap, SUN4I_CODEC_DAC_DPC,
++			   SUN50I_H713_DAC_DPC_SRC_I2S_PREP_MASK,
++			   SUN50I_H713_DAC_DPC_SRC_I2S_PREP_MASK);
++	regmap_update_bits(scodec->regmap, SUN4I_CODEC_DAC_DPC,
++			   SUN50I_H713_DAC_DPC_SRC_I2S_MASK,
++			   SUN50I_H713_DAC_DPC_SRC_I2S_MASK);
++
++	scodec->i2s_armed = true;
++
++	snd_soc_dapm_force_enable_pin(dapm, "I2S In");
++	snd_soc_dapm_sync(dapm);
++
++	return 0;
++}
++
++static void sun50i_h713_codec_i2s_disarm(struct snd_soc_component *component,
++					 struct sun4i_codec *scodec)
++{
++	struct snd_soc_dapm_context *dapm =
++		snd_soc_component_get_dapm(component);
++
++	/*
++	 * Going back to the FIFO clears the selector and nothing else. The
++	 * vendor leaves its companion bit and the whole receiver standing
++	 * (S25 §4.2), and there is no reason found so far to differ.
++	 */
++	regmap_update_bits(scodec->regmap, SUN4I_CODEC_DAC_DPC,
++			   SUN50I_H713_DAC_DPC_SRC_I2S_MASK, 0);
++
++	scodec->i2s_armed = false;
++
++	/* Powers the analog side down only if no PCM is holding it up. */
++	snd_soc_dapm_disable_pin(dapm, "I2S In");
++	snd_soc_dapm_sync(dapm);
++
++	clk_disable_unprepare(scodec->clk_module);
++}
++
++static const char * const sun50i_h713_codec_dac_src_text[] = { "APB", "I2S" };
++
++static SOC_ENUM_SINGLE_EXT_DECL(sun50i_h713_codec_dac_src_enum,
++				sun50i_h713_codec_dac_src_text);
++
++/*
++ * The three rates the HDMI receiver hands on as PCM and the three that were
++ * measured end to end (S16 18:10 and 20:45). Higher rates are not refused by
++ * anything in the codec; they are simply not part of what has been shown to
++ * work, so they are left out until they are.
++ */
++static const char * const sun50i_h713_codec_i2s_rate_text[] = {
++	"32000", "44100", "48000"
++};
++
++static const unsigned int sun50i_h713_codec_i2s_rates[] = {
++	32000, 44100, 48000
++};
++
++static SOC_ENUM_SINGLE_EXT_DECL(sun50i_h713_codec_i2s_rate_enum,
++				sun50i_h713_codec_i2s_rate_text);
++
++static int sun50i_h713_codec_dac_src_get(struct snd_kcontrol *kcontrol,
++					 struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component =
++		snd_soc_kcontrol_component(kcontrol);
++	struct sun4i_codec *scodec =
++		snd_soc_card_get_drvdata(component->card);
++
++	ucontrol->value.enumerated.item[0] = scodec->i2s_armed;
++
++	return 0;
++}
++
++static int sun50i_h713_codec_dac_src_put(struct snd_kcontrol *kcontrol,
++					 struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component =
++		snd_soc_kcontrol_component(kcontrol);
++	struct sun4i_codec *scodec =
++		snd_soc_card_get_drvdata(component->card);
++	unsigned int item = ucontrol->value.enumerated.item[0];
++	int ret = 0;
++
++	if (item >= ARRAY_SIZE(sun50i_h713_codec_dac_src_text))
++		return -EINVAL;
++
++	mutex_lock(&scodec->i2s_lock);
++
++	if (item == scodec->i2s_armed)
++		goto out;
++
++	if (item)
++		ret = sun50i_h713_codec_i2s_arm(component, scodec);
++	else
++		sun50i_h713_codec_i2s_disarm(component, scodec);
++
++	if (!ret)
++		ret = 1;
++out:
++	mutex_unlock(&scodec->i2s_lock);
++
++	return ret;
++}
++
++static int sun50i_h713_codec_i2s_rate_get(struct snd_kcontrol *kcontrol,
++					  struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component =
++		snd_soc_kcontrol_component(kcontrol);
++	struct sun4i_codec *scodec =
++		snd_soc_card_get_drvdata(component->card);
++	unsigned int i;
++
++	for (i = 0; i < ARRAY_SIZE(sun50i_h713_codec_i2s_rates) - 1; i++)
++		if (sun50i_h713_codec_i2s_rates[i] == scodec->i2s_rate)
++			break;
++
++	ucontrol->value.enumerated.item[0] = i;
++
++	return 0;
++}
++
++static int sun50i_h713_codec_i2s_rate_put(struct snd_kcontrol *kcontrol,
++					  struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component =
++		snd_soc_kcontrol_component(kcontrol);
++	struct sun4i_codec *scodec =
++		snd_soc_card_get_drvdata(component->card);
++	unsigned int item = ucontrol->value.enumerated.item[0];
++	unsigned int rate;
++	int ret = 0;
++
++	if (item >= ARRAY_SIZE(sun50i_h713_codec_i2s_rates))
++		return -EINVAL;
++
++	rate = sun50i_h713_codec_i2s_rates[item];
++
++	mutex_lock(&scodec->i2s_lock);
++
++	if (rate == scodec->i2s_rate)
++		goto out;
++
++	/* Only the armed path is programmed; otherwise this just takes note. */
++	if (scodec->i2s_armed) {
++		if (snd_soc_component_active(component) && scodec->pcm_rate &&
++		    scodec->pcm_rate != rate) {
++			ret = -EBUSY;
++			goto out;
++		}
++
++		ret = sun50i_h713_codec_i2s_set_rate(scodec, rate);
++		if (ret)
++			goto out;
++	}
++
++	scodec->i2s_rate = rate;
++	ret = 1;
++out:
++	mutex_unlock(&scodec->i2s_lock);
++
++	return ret;
++}
++
++static const struct snd_kcontrol_new sun50i_h713_codec_i2s_controls[] = {
++	SOC_ENUM_EXT("DAC Source", sun50i_h713_codec_dac_src_enum,
++		     sun50i_h713_codec_dac_src_get,
++		     sun50i_h713_codec_dac_src_put),
++	SOC_ENUM_EXT("I2S Rate", sun50i_h713_codec_i2s_rate_enum,
++		     sun50i_h713_codec_i2s_rate_get,
++		     sun50i_h713_codec_i2s_rate_put),
++};
++
++/*
++ * The controls describe a register window that an older device tree does not
++ * mention, so they appear only when that window is really there.
++ */
++static int sun50i_h713_codec_add_controls(struct snd_soc_component *component)
++{
++	struct sun4i_codec *scodec =
++		snd_soc_card_get_drvdata(component->card);
++
++	if (!scodec->regmap_i2s)
++		return 0;
++
++	return snd_soc_add_component_controls(component,
++			sun50i_h713_codec_i2s_controls,
++			ARRAY_SIZE(sun50i_h713_codec_i2s_controls));
++}
++
+ static const struct snd_soc_dapm_widget sun50i_h713_codec_codec_widgets[] = {
+ 	/* Digital parts of the DACs */
+ 	SND_SOC_DAPM_SUPPLY("DAC Enable", SUN4I_CODEC_DAC_DPC,
+@@ -2044,10 +2573,19 @@
+ 			    sun50i_h713_codec_hp_amp_event,
+ 			    SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+ 
++	/*
++	 * The audio DSP's side of the I2S window. There is no stream behind
++	 * it, so DAPM gets told about it as a signal generator that
++	 * "DAC Source" forces on and off; the card's late probe disconnects
++	 * it before the first sync, or it would power the DAC from boot.
++	 */
++	SND_SOC_DAPM_SIGGEN("I2S In"),
++
+ 	SND_SOC_DAPM_OUTPUT("LINEOUT"),
+ };
+ 
+ static const struct snd_soc_component_driver sun50i_h713_codec_codec = {
++	.probe			= sun50i_h713_codec_add_controls,
+ 	.controls		= sun50i_h616_codec_codec_controls,
+ 	.num_controls		= ARRAY_SIZE(sun50i_h616_codec_codec_controls),
+ 	.dapm_widgets		= sun50i_h713_codec_codec_widgets,
+@@ -2235,6 +2773,8 @@
+ 
+ struct sun4i_codec_quirks {
+ 	const struct regmap_config *regmap_config;
++	/* Second register window, for SoCs whose DAC has an I2S input */
++	const struct regmap_config *i2s_regmap_config;
+ 	const struct snd_soc_component_driver *codec;
+ 	struct snd_soc_card * (*create_card)(struct device *dev);
+ 	struct reg_field reg_adc_fifoc;	/* used for regmap_field */
+@@ -2339,8 +2879,22 @@
+ 	{ "Line Out Source Playback Route", "Mono Differential", "Right DAC" },
+ 	{ "LINEOUT", NULL, "Line Out Source Playback Route" },
+ 	{ "LINEOUT", NULL, "HP Amp" },
++
++	/* The I2S receiver feeds the same DACs, with no PCM behind it */
++	{ "Left DAC", NULL, "I2S In" },
++	{ "Right DAC", NULL, "I2S In" },
+ };
+ 
++/*
++ * "I2S In" is a source and sources are connected by default, which would keep
++ * the DAC and the amplifier powered from the moment the card comes up. Take it
++ * out of the graph before the card's first sync; "DAC Source" puts it back.
++ */
++static int sun50i_h713_codec_late_probe(struct snd_soc_card *card)
++{
++	return snd_soc_dapm_disable_pin(&card->dapm, "I2S In");
++}
++
+ static struct snd_soc_card *sun50i_h713_codec_create_card(struct device *dev)
+ {
+ 	struct snd_soc_card *card;
+@@ -2362,6 +2916,7 @@
+ 	card->name		= "H713 Audio Codec";
+ 	card->long_name		= "h713-audio-codec";
+ 	card->driver_name	= "sun4i-codec";
++	card->late_probe	= sun50i_h713_codec_late_probe;
+ 	card->controls		= sun50i_h616_card_controls;
+ 	card->num_controls	= ARRAY_SIZE(sun50i_h616_card_controls);
+ 	card->dapm_widgets	= sun50i_h616_codec_card_dapm_widgets;
+@@ -2386,8 +2941,19 @@
+ 	.cache_type	= REGCACHE_NONE,
+ };
+ 
++/* The vendor's map for the second window ends at 0x7c (S25 §1). */
++static const struct regmap_config sun50i_h713_i2s_regmap_config = {
++	.name		= "i2s",
++	.reg_bits	= 32,
++	.reg_stride	= 4,
++	.val_bits	= 32,
++	.max_register	= SUN50I_H713_I2S_MAX_REG,
++	.cache_type	= REGCACHE_NONE,
++};
++
+ static const struct sun4i_codec_quirks sun50i_h713_codec_quirks = {
+ 	.regmap_config	= &sun50i_h713_codec_regmap_config,
++	.i2s_regmap_config = &sun50i_h713_i2s_regmap_config,
+ 	.codec		= &sun50i_h713_codec_codec,
+ 	.create_card	= sun50i_h713_codec_create_card,
+ 	.reg_dac_fifoc	= REG_FIELD(SUN50I_H616_CODEC_DAC_FIFOC, 0, 31),
+@@ -2551,6 +3117,15 @@
+ 
+ 	scodec->mod_freq_mult = quirks->mod_freq_mult ?: 1;
+ 
++	if (quirks->i2s_regmap_config) {
++		ret = sun50i_h713_codec_i2s_probe(pdev, scodec,
++						  quirks->i2s_regmap_config);
++		if (ret) {
++			dev_err(&pdev->dev, "Failed to set up the I2S input\n");
++			return ret;
++		}
++	}
++
+ 	/* DMA configuration for TX FIFO */
+ 	scodec->playback_dma_data.addr = res->start + quirks->reg_dac_txdata;
+ 	scodec->playback_dma_data.maxburst = quirks->dma_max_burst;

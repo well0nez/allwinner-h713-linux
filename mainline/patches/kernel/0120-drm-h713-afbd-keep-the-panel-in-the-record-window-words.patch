@@ -1,0 +1,78 @@
+drm: sun50i-h713-afbd: keep the panel in the record's window words
+
+With 0117 the firmware rebuilds its window chain on a geometry change, and it
+runs the rebuild twice. Read out of its own log at level 5, the first pass is
+correct and the second is not:
+
+    pass 1   capture_cfg [1280,720][1280,720]  display_cfg [1920,1080][1920,1080]
+             ProcWinNode in [1280,720] out [1920,1080]  ratio [43690 x 43690]
+    pass 2   capture_cfg [ 853,480][1280, 720]  display_cfg [1280, 720][1920,1080]
+             ProcWinNode in [ 852,480] out [1280, 720]
+
+The difference between them is which record they saw. Pass 1 still ran against
+the old record, whose window words held the panel, so the capture size came
+from the signal and everything lined up. Pass 2 ran against the new one, whose
+window words held the source -- and the window manager reads those words
+straight into m_src_cfg, then maps the capture into them with CalcPropRect.
+1280 * (1280/1920) = 853, 720 * (720/1080) = 480. That is the smeared band on
+the wall, and the 0x1E0 and 0x36 in the INCAP registers.
+
+So words 2..5 follow the source, because they are the frame the AFBD hands
+over; words 28..34 stay the panel, because they are the window manager's
+configuration and not a geometry at all. Outside ring mode both stay the plane's
+own size, where there is no second geometry to confuse them.
+
+The mapping is read back out of the running firmware, not inferred: publishing
+w = 1280 made m_src_cfg read [0, 0, 20480, 11520], and 20480 is 1280 * 16.
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 22:48:35.517800337 +0200
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 22:48:35.524593254 +0200
+@@ -288,7 +288,8 @@
+  * firmware was not measured against is left at zero.
+  */
+ static void h713_afbd_build_video_info(u32 *rec, unsigned int w,
+-				       unsigned int h, unsigned int stride)
++				       unsigned int h, unsigned int stride,
++				       unsigned int win_w, unsigned int win_h)
+ {
+ 	memset(rec, 0, H713_VIDEO_INFO_WORDS * sizeof(*rec));
+ 
+@@ -311,10 +312,22 @@
+ 	rec[24] = 0;			/* SDR */
+ 	rec[25] = 0;			/* no HDR metadata buffers */
+ 	rec[26] = 0;
+-	rec[28] = w * 16;		/* display window, 1/16 pixel */
+-	rec[30] = h * 16;
+-	rec[32] = w * 16;
+-	rec[34] = h * 16;
++	/*
++	 * These four are NOT the frame geometry -- they are the window manager's
++	 * configuration, and it reads them straight into m_src_cfg and m_dst_cfg
++	 * (measured through the firmware's shell: publishing w = 1280 put
++	 * [0, 0, 20480, 11520] there, which is 1280 and 720 in 1/16 pixel).
++	 *
++	 * They have to stay the panel. When they carried the source instead, the
++	 * firmware's proportional mapping (CalcPropRect) shrank the capture by
++	 * the ratio between them and the panel: a 1280x720 source came out as
++	 * 853x480 and the picture was a smeared band. With the panel here, the
++	 * capture size comes from the signal, which is where it belongs.
++	 */
++	rec[28] = win_w * 16;		/* window config, 1/16 pixel */
++	rec[30] = win_h * 16;
++	rec[32] = win_w * 16;
++	rec[34] = win_h * 16;
+ }
+ 
+ /*
+@@ -423,7 +436,9 @@
+ 	unsigned int i;
+ 
+ 	new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr;
+-	h713_afbd_build_video_info(rec, w, hgt, stride);
++	h713_afbd_build_video_info(rec, w, hgt, stride,
++				   ring ? h->mode.hdisplay : w,
++				   ring ? h->mode.vdisplay : hgt);
+ 	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
+ 	write_record = differs && (!h->video_info_published || ring);
+ 	if (differs && h->video_info_published && !ring)

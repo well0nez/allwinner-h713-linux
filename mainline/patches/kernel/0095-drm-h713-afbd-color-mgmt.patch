@@ -1,0 +1,494 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] drm: h713-afbd: colour management on the CRTC
+
+This display has a gamma stage the driver has been ignoring: three
+1024-entry 12-bit lookup tables, one per colour channel, sitting between
+the AFBD scanout and the panel. Nothing in Linux could reach it, so a
+client that wanted a different transfer curve -- or any white balance at
+all -- had no way to ask.
+
+Wire it up as what it is: GAMMA_LUT and CTM on the CRTC.
+
+GAMMA_LUT is a straight fit. The property carries 1024 entries per channel,
+which is exactly one hardware bank; the driver packs two adjacent 12-bit
+samples into each of the 512 words the write port takes and writes the R, G
+and B banks. A cleared GAMMA_LUT writes the identity ramp, which is this
+stage's bypass.
+
+CTM is the interesting half. This stage has three independent curves and
+nothing that mixes channels, so it can express a diagonal matrix and only a
+diagonal matrix -- and that is precisely the shape of the vendor's white
+balance, whose per-channel gain is folded into the curve before the three
+banks are written, which is the only reason the banks ever differ from each
+other. So the diagonal is applied as a per-channel gain on the LUT, and an
+off-diagonal or negative entry is rejected in atomic_check rather than
+silently dropped at commit time.
+
+The write sequence is not invented and not simplified. It is what the stock
+picture-quality HAL does, step for step: wait for the frame counter to move
+on, remember the control word, arm the write port, latch the channel, open
+the commit gate, write the three banks, then close the gate, flip the
+stage's double buffer, apply both latches and kick scanout. The five writes
+at the end are the whole point -- without them the samples reach the
+staging buffer and the panel keeps showing the old curve, which is exactly
+the failure that looks like "the LUT does not work". The two control bits
+that arm the port clear themselves, so each step is its own read-modify-
+write instead of one composed word.
+
+The wait for the frame counter keeps stock's forty milliseconds and
+stock's verdict that running out is not an error -- but it says so at
+warning level. Forty milliseconds is two and a half frames of a panel
+that scans at sixty hertz, so there are only two ways to reach the end
+of it: a stage that has stopped scanning, which is the documented way
+for a gamma write to land in the registers and never on the panel, or a
+status word whose upper half is not the frame counter the vendor code
+took it for, which nothing on this board has measured yet. Both belong
+in the log of a run that ended with an unchanged picture, and neither
+was reachable without turning DRM debugging on first.
+
+Two register windows come with it. The frame-status word lives at the end
+of the LVDS block, four bytes past the 0x100 the binding described, so that
+window grows to 0x200; the LUT banks are a separate range in the display
+engine and get their own "gamma" entry. Both are optional in the driver: an
+older device tree yields a CRTC without colour properties rather than a
+probe failure, because this is the only driver that can put anything on
+this panel and a dark projector is not an acceptable way to report a
+missing property.
+
+The colour write hangs off the existing pipe callbacks. A commit that only
+changes CRTC colour properties still reaches them, because the simple-pipe
+CRTC check pulls every attached plane into the state; the plane update then
+runs with an unchanged plane state and the colour commit is the only work.
+
+Removing the driver deliberately leaves the last curve in the hardware, for
+the same reason it leaves the last frame there: this driver adopts a
+display it cannot bring back up, so it does not undo things on the way out.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 21:48:34.044856137 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:11:22.787409772 +0200
+@@ -1724,8 +1724,9 @@
+ 			compatible = "allwinner,sun50i-h713-afbd";
+ 			reg = <0x05600000 0x400>,
+ 			      <0x05140000 0x1000>,
+-			      <0x051c0000 0x100>;
+-			reg-names = "afbd", "route", "lvds";
++			      <0x051c0000 0x200>,
++			      <0x05208000 0x2000>;
++			reg-names = "afbd", "route", "lvds", "gamma";
+ 			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_AFBD>,
+ 				 <&ccu CLK_BUS_DISP>;
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-06 21:48:34.042586260 +0200
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-06 22:23:49.876357232 +0200
+@@ -37,6 +37,7 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/interrupt.h>
+ #include <linux/iopoll.h>
++#include <linux/math64.h>
+ #include <linux/mm.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+@@ -46,6 +47,7 @@
+ #include <drm/clients/drm_client_setup.h>
+ #include <drm/drm_atomic.h>
+ #include <drm/drm_atomic_helper.h>
++#include <drm/drm_color_mgmt.h>
+ #include <drm/drm_drv.h>
+ #include <drm/drm_fb_dma_helper.h>
+ #include <drm/drm_fbdev_dma.h>
+@@ -105,6 +107,43 @@
+ /* The four queue slots are 4 bytes apart in each address ring. */
+ #define H713_VIDEO_SLOTS	4
+ 
++/*
++ * DE2 colour stage. The three gamma banks are write ports, 512 u32 each, and
++ * every u32 carries two adjacent 12-bit samples -- 1024 samples per channel.
++ * They are staged behind a commit gate in the LVDS/PQ block and only reach
++ * scanout through the activation writes in h713_afbd_gamma_write().
++ *
++ * Register numbers and bit meanings are libhaldisplay.so::WriteGammaLUTByColor
++ * (sub_0xB881), the routine the stock picture-quality HAL uses; it writes
++ * these registers directly rather than going through the MIPS co-processor.
++ */
++#define H713_LVDS_GAMMA_CTRL	0x0e8	/* 0x051c00e8 */
++#define H713_LVDS_GAMMA_STAT	0x174	/* 0x051c0174, high 16 bits = frame state */
++
++#define H713_GAMMA_BANK_R	0x0000	/* 0x05208000 */
++#define H713_GAMMA_BANK_G	0x0800	/* 0x05208800 */
++#define H713_GAMMA_BANK_B	0x1000	/* 0x05209000 */
++
++#define H713_GAMMA_WRITE_EN	BIT(23)	/* arms the write port, self-clearing */
++#define H713_GAMMA_CHAN_LATCH	BIT(22)	/* channel-write latch, self-clearing */
++#define H713_GAMMA_LATCH_B	BIT(20)
++#define H713_GAMMA_LATCH_A	BIT(21)
++#define H713_GAMMA_SCAN_KICK	BIT(26)	/* make scanout resample the banks */
++#define H713_GAMMA_DBUF_FLIP	BIT(28)	/* front/back buffer of the gamma stage */
++#define H713_GAMMA_COMMIT	BIT(30)	/* write transaction open */
++#define H713_GAMMA_STAT_FRAME	0xffff0000
++
++#define H713_GAMMA_CHANNELS	3
++#define H713_GAMMA_LUT_SIZE	1024	/* samples per channel, what KMS sees */
++#define H713_GAMMA_DWORDS	512	/* packed words per bank, what HW sees */
++#define H713_GAMMA_SAMPLE_BITS	12
++#define H713_GAMMA_SAMPLE_MAX	((1u << H713_GAMMA_SAMPLE_BITS) - 1)
++
++/* CTM diagonal entries are carried as 16.16 gains. */
++#define H713_GAIN_SHIFT		16
++#define H713_GAIN_ONE		(1u << H713_GAIN_SHIFT)
++#define H713_GAIN_MAX		(256u << H713_GAIN_SHIFT)
++
+ struct h713_afbd {
+ 	struct drm_device drm;
+ 	struct drm_simple_display_pipe pipe;
+@@ -124,6 +163,13 @@
+ 	u32 gain_idle;
+ 	u32 selector_rgb;
+ 	bool video_active;
++	/*
++	 * Colour management. A NULL gamma_regs means the device tree did not
++	 * offer the gamma windows; the CRTC then has no colour properties.
++	 */
++	void __iomem *gamma_regs;
++	u32 gamma_stat_frame;
++	u32 gamma_words[H713_GAMMA_DWORDS];
+ };
+ 
+ static inline struct h713_afbd *to_h713(struct drm_device *drm)
+@@ -372,12 +418,257 @@
+ 	.atomic_destroy_state = drm_atomic_helper_plane_destroy_state,
+ };
+ 
++/*
++ * Read-modify-write one bit group of the gamma control register, which is how
++ * the stock HAL drives it. That matters here: WRITE_EN and CHAN_LATCH clear
++ * themselves, so folding several steps into one word would re-set bits the
++ * hardware has already retired and lose the ones it has not.
++ */
++static void h713_afbd_gamma_rmw(struct h713_afbd *h, u32 mask, u32 value)
++{
++	void __iomem *ctrl = h->lvds_regs + H713_LVDS_GAMMA_CTRL;
++
++	writel((readl(ctrl) & ~mask) | (value & mask), ctrl);
++}
++
++/*
++ * One KMS LUT entry as a 12-bit hardware sample. A NULL LUT is the identity
++ * ramp: KMS defines a cleared GAMMA_LUT as bypass, and the identity curve is
++ * what the vendor tooling documents as restoring normal output on this stage.
++ */
++static u32 h713_afbd_gamma_sample(const struct drm_color_lut *lut,
++				  unsigned int i, unsigned int channel,
++				  u32 gain)
++{
++	u32 sample;
++	u16 value;
++
++	if (!lut)
++		value = DIV_ROUND_CLOSEST(i * 65535u, H713_GAMMA_LUT_SIZE - 1);
++	else if (channel == 0)
++		value = lut[i].red;
++	else if (channel == 1)
++		value = lut[i].green;
++	else
++		value = lut[i].blue;
++
++	sample = drm_color_lut_extract(value, H713_GAMMA_SAMPLE_BITS);
++	if (gain != H713_GAIN_ONE)
++		sample = DIV_ROUND_CLOSEST_ULL((u64)sample * gain, H713_GAIN_ONE);
++
++	return min_t(u32, sample, H713_GAMMA_SAMPLE_MAX);
++}
++
++/* Two adjacent samples per word, low half first. */
++static void h713_afbd_gamma_pack(struct h713_afbd *h,
++				 const struct drm_color_lut *lut,
++				 unsigned int channel, u32 gain)
++{
++	unsigned int i;
++
++	for (i = 0; i < H713_GAMMA_DWORDS; i++)
++		h->gamma_words[i] =
++			h713_afbd_gamma_sample(lut, 2 * i, channel, gain) |
++			h713_afbd_gamma_sample(lut, 2 * i + 1, channel, gain)
++				<< H713_GAMMA_SAMPLE_BITS;
++}
++
++/*
++ * Turn a CTM blob into three per-channel gains.
++ *
++ * This colour stage is three independent curves, one per channel, with nothing
++ * that mixes channels -- and that is exactly the shape of the vendor's white
++ * balance, whose per-channel gain is folded into the curve before the three
++ * banks are written. So a diagonal CTM maps onto the hardware one to one, and
++ * anything off-diagonal has nowhere to go: reject it here rather than drop it
++ * without a word at commit time.
++ *
++ * Matrix entries are S31.32 sign-magnitude, not two's complement.
++ */
++static int h713_afbd_ctm_gains(struct drm_device *drm,
++			       const struct drm_property_blob *blob,
++			       u32 gain[H713_GAMMA_CHANNELS])
++{
++	const struct drm_color_ctm *ctm;
++	unsigned int i;
++
++	for (i = 0; i < H713_GAMMA_CHANNELS; i++)
++		gain[i] = H713_GAIN_ONE;
++
++	if (!blob)
++		return 0;
++
++	ctm = blob->data;
++	for (i = 0; i < 9; i++) {
++		unsigned int row = i / 3, column = i % 3;
++		u64 magnitude = ctm->matrix[i] & ~BIT_ULL(63);
++		u64 q16_16;
++
++		if (row != column) {
++			if (!magnitude)
++				continue;
++			drm_dbg_kms(drm,
++				    "CTM [%u][%u] is set: this stage cannot mix channels\n",
++				    row, column);
++			return -EINVAL;
++		}
++
++		if (magnitude && (ctm->matrix[i] & BIT_ULL(63))) {
++			drm_dbg_kms(drm, "CTM gain [%u] is negative\n", row);
++			return -EINVAL;
++		}
++
++		q16_16 = drm_color_ctm_s31_32_to_qm_n(ctm->matrix[i], 16, 16);
++		if (q16_16 > H713_GAIN_MAX) {
++			drm_dbg_kms(drm, "CTM gain [%u] is out of range\n", row);
++			return -EINVAL;
++		}
++		gain[row] = q16_16;
++	}
++
++	return 0;
++}
++
++/*
++ * Write the three gamma banks and make them live.
++ *
++ * The order is the stock picture-quality HAL's, step for step
++ * (legacy/userspace/hy310-pqd/BACKGROUND.md section 5.3). The five writes
++ * after the banks are not decoration: without them the samples sit in the
++ * staging buffer and the panel keeps showing the old curve.
++ */
++static void h713_afbd_gamma_write(struct h713_afbd *h,
++				  const struct drm_color_lut *lut,
++				  const u32 gain[H713_GAMMA_CHANNELS])
++{
++	static const u32 bank[H713_GAMMA_CHANNELS] = {
++		H713_GAMMA_BANK_R, H713_GAMMA_BANK_G, H713_GAMMA_BANK_B,
++	};
++	void __iomem *stat = h->lvds_regs + H713_LVDS_GAMMA_STAT;
++	unsigned int channel, i;
++	u32 ctrl, frame;
++	int ret;
++
++	/*
++	 * 1. Let the frame counter move on before touching the write port.
++	 *    This is a frame boundary, not a ready flag, so a value that never
++	 *    changes is not an error -- stock gives up after the same 40 ms
++	 *    and writes anyway (hy310-pqd/BACKGROUND.md 5.3, step 1, which is
++	 *    where both the sequence and the 40 ms come from).
++	 *
++	 *    Not an error, but not nothing either, so it is said out loud
++	 *    instead of only under drm.debug. The panel scans at 60 Hz, so
++	 *    40 ms is two and a half frames, and this can only run out in one
++	 *    of two states: the stage has stopped scanning, which is the
++	 *    documented way for a gamma write to reach the registers and never
++	 *    reach the panel (BACKGROUND.md 5.5), or the upper half of this
++	 *    word is not the frame counter the vendor code took it for, which
++	 *    is still unmeasured on this board (doku/87 section 9). Both are
++	 *    what one wants in the log of a run that ended in "the picture did
++	 *    not change", and neither was visible at the default log level.
++	 */
++	ret = readl_poll_timeout(stat, frame,
++				 (frame & H713_GAMMA_STAT_FRAME) !=
++					h->gamma_stat_frame,
++				 1000, 40000);
++	if (ret)
++		drm_warn_once(&h->drm,
++			      "gamma: frame counter stuck at %08x; writing the curve anyway as stock does, but a stage that is not scanning will not show it\n",
++			      frame);
++
++	/* 2. The double-buffer flip below is relative to what is in there now. */
++	ctrl = readl(h->lvds_regs + H713_LVDS_GAMMA_CTRL);
++
++	/* 3. Arm the write port, latch the channel, open the transaction. */
++	h713_afbd_gamma_rmw(h, H713_GAMMA_WRITE_EN, H713_GAMMA_WRITE_EN);
++	h713_afbd_gamma_rmw(h, H713_GAMMA_CHAN_LATCH, H713_GAMMA_CHAN_LATCH);
++	h713_afbd_gamma_rmw(h, H713_GAMMA_COMMIT, H713_GAMMA_COMMIT);
++
++	/* 4-6. One bank per channel, in R, G, B order. */
++	for (channel = 0; channel < H713_GAMMA_CHANNELS; channel++) {
++		h713_afbd_gamma_pack(h, lut, channel, gain[channel]);
++		for (i = 0; i < H713_GAMMA_DWORDS; i++)
++			writel(h->gamma_words[i],
++			       h->gamma_regs + bank[channel] + i * 4);
++	}
++
++	/* 7-11. The activation sequence. */
++	h713_afbd_gamma_rmw(h, H713_GAMMA_COMMIT, 0);
++	h713_afbd_gamma_rmw(h, H713_GAMMA_DBUF_FLIP,
++			    ctrl ^ H713_GAMMA_DBUF_FLIP);
++	h713_afbd_gamma_rmw(h, H713_GAMMA_LATCH_A, H713_GAMMA_LATCH_A);
++	h713_afbd_gamma_rmw(h, H713_GAMMA_LATCH_B, H713_GAMMA_LATCH_B);
++	h713_afbd_gamma_rmw(h, H713_GAMMA_SCAN_KICK, H713_GAMMA_SCAN_KICK);
++
++	h->gamma_stat_frame = readl(stat) & H713_GAMMA_STAT_FRAME;
++}
++
++static void h713_afbd_color_commit(struct h713_afbd *h,
++				   struct drm_crtc_state *crtc_state)
++{
++	const struct drm_color_lut *lut = NULL;
++	u32 gain[H713_GAMMA_CHANNELS];
++
++	if (!h->gamma_regs)
++		return;
++
++	if (crtc_state->gamma_lut)
++		lut = crtc_state->gamma_lut->data;
++
++	/* Already accepted by h713_afbd_atomic_check(); it cannot fail now. */
++	if (h713_afbd_ctm_gains(&h->drm, crtc_state->ctm, gain))
++		return;
++
++	h713_afbd_gamma_write(h, lut, gain);
++}
++
++/*
++ * The simple-pipe helper owns the CRTC's own atomic_check, so the CRTC-level
++ * colour checks go on top of the generic device check instead.
++ */
++static int h713_afbd_atomic_check(struct drm_device *drm,
++				  struct drm_atomic_state *state)
++{
++	struct drm_crtc_state *crtc_state;
++	struct drm_crtc *crtc;
++	u32 gain[H713_GAMMA_CHANNELS];
++	int i, ret;
++
++	ret = drm_atomic_helper_check(drm, state);
++	if (ret)
++		return ret;
++
++	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
++		if (!crtc_state->color_mgmt_changed)
++			continue;
++
++		if (crtc_state->gamma_lut &&
++		    drm_color_lut_size(crtc_state->gamma_lut) !=
++			    H713_GAMMA_LUT_SIZE) {
++			drm_dbg_kms(drm,
++				    "GAMMA_LUT has %d entries, this CRTC takes %u\n",
++				    drm_color_lut_size(crtc_state->gamma_lut),
++				    H713_GAMMA_LUT_SIZE);
++			return -EINVAL;
++		}
++
++		ret = h713_afbd_ctm_gains(drm, crtc_state->ctm, gain);
++		if (ret)
++			return ret;
++	}
++
++	return 0;
++}
++
+ static void h713_afbd_pipe_enable(struct drm_simple_display_pipe *pipe,
+ 				  struct drm_crtc_state *crtc_state,
+ 				  struct drm_plane_state *plane_state)
+ {
+ 	struct h713_afbd *h = to_h713(pipe->crtc.dev);
+ 
++	if (crtc_state->color_mgmt_changed)
++		h713_afbd_color_commit(h, crtc_state);
++
+ 	/*
+ 	 * The panel is already lit; there is nothing to turn on. Show the
+ 	 * buffer the client handed us so the first commit is not a no-op.
+@@ -410,6 +701,14 @@
+ 	struct drm_pending_vblank_event *event;
+ 	unsigned long flags;
+ 
++	/*
++	 * A commit that only changes CRTC colour properties still lands here:
++	 * the simple-pipe CRTC check pulls every attached plane into the state,
++	 * so this runs with an unchanged plane state and nothing else to do.
++	 */
++	if (crtc->state->color_mgmt_changed)
++		h713_afbd_color_commit(h, crtc->state);
++
+ 	if (state->fb)
+ 		h713_afbd_set_source(h,
+ 				     drm_fb_dma_get_gem_addr(state->fb, state, 0),
+@@ -497,7 +796,7 @@
+ 
+ static const struct drm_mode_config_funcs h713_afbd_mode_config_funcs = {
+ 	.fb_create	= drm_gem_fb_create,
+-	.atomic_check	= drm_atomic_helper_check,
++	.atomic_check	= h713_afbd_atomic_check,
+ 	.atomic_commit	= drm_atomic_helper_commit,
+ };
+ 
+@@ -557,6 +856,39 @@
+ 	return 0;
+ }
+ 
++/*
++ * The gamma stage needs two windows the first version of this binding did not
++ * describe: the frame-status word at the end of the LVDS block, and the LUT
++ * banks in the display engine. Both are optional here. An older device tree
++ * gets a CRTC without colour properties, which is a great deal better than a
++ * probe failure on the only driver that can put anything on this panel.
++ */
++static int h713_afbd_map_gamma(struct h713_afbd *h, struct platform_device *pdev)
++{
++	struct resource *lvds, *gamma;
++
++	lvds = platform_get_resource_byname(pdev, IORESOURCE_MEM, "lvds");
++	gamma = platform_get_resource_byname(pdev, IORESOURCE_MEM, "gamma");
++	if (!lvds || !gamma ||
++	    resource_size(lvds) < H713_LVDS_GAMMA_STAT + sizeof(u32)) {
++		drm_info(&h->drm,
++			 "no gamma window in the device tree -- colour management off\n");
++		return 0;
++	}
++
++	h->gamma_regs = devm_ioremap_resource(&pdev->dev, gamma);
++	if (IS_ERR(h->gamma_regs)) {
++		int ret = PTR_ERR(h->gamma_regs);
++
++		h->gamma_regs = NULL;
++		return ret;
++	}
++
++	h->gamma_stat_frame = readl(h->lvds_regs + H713_LVDS_GAMMA_STAT) &
++			      H713_GAMMA_STAT_FRAME;
++	return 0;
++}
++
+ static int h713_afbd_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -715,6 +1047,13 @@
+ 		return ret;
+ 	drm_plane_helper_add(&h->video_plane, &h713_afbd_video_helper_funcs);
+ 
++	ret = h713_afbd_map_gamma(h, pdev);
++	if (ret)
++		return ret;
++	if (h->gamma_regs)
++		drm_crtc_enable_color_mgmt(&h->pipe.crtc, 0, true,
++					   H713_GAMMA_LUT_SIZE);
++
+ 	drm_mode_config_reset(drm);
+ 
+ 	/* Vsync is masked until a client asks for vblanks. */

@@ -1,0 +1,183 @@
+dt-bindings: crypto: die Crypto Engine des H713 beschreiben
+
+Die CE des H713 ist nicht die des H6, auch wenn unser Geraetebaum sie
+bisher so genannt hat.  Zwei Unterschiede, beide belegt:
+
+1. Sie hat zwei Registerbaenke.  Der Geraetebaum des Herstellers
+   (re/vendor/HY310, Knoten ce@03040000) beschreibt 0x03040000 und
+   0x03040800, je 0xa0 Byte.  Die zweite ist der sichere Kanal CE_S; im
+   Stock programmiert ausschliesslich OP-TEE ihn (sunxi_aes_with_hardware,
+   0x4860c578, Registerzugriffe 0x4860c2ac bis 0x4860c3a8 -- alle
+   absoluten Adressen dort liegen in 0x030408xx).
+
+2. Sie hat zwei Interrupts, SPI 73 und 74.  Das steht ebenfalls im
+   Hersteller-Geraetebaum, und cstenger hat es am Geraet nachgemessen
+   (Zweig wip/crypto-ce-tooling, bb44dc8): mit nur dem ersten
+   Interrupt haengt die erste Operation, mit beiden laeuft sie durch.
+
+Die Registerbelegung ist in beiden Baenken dieselbe und stimmt mit der
+von sun8i-ce ueberein: TDA 0x00, CTR 0x04, ICR 0x08, ISR 0x0c, TLR 0x10,
+TSR 0x14, ESR 0x18.  Der Unterschied liegt nicht in den Registern,
+sondern im Task-Deskriptor, den die Maschine aus dem Speicher liest --
+seine Adressfelder sind 5 Byte (40 Bit) breit und liegen deshalb
+unausgerichtet.  Genau daran scheitert sun8i-ce: es legt 32-Bit-Felder
+an dieselben Offsets, die Maschine liest Muell und meldet fuer
+Standard-AES "address invalid" (ebenfalls bb44dc8, am Geraet gemessen).
+
+Ein drittes, beim ersten Entwurf uebersehen: der Stock-Bootloader
+schaltet vor dem ersten CE-Zugriff zwei Taktgates ein und hebt zwei
+Resets auf, nicht je eines.  u-boot.fex 0x4a028848 (sunxi_ce_init)
+schreibt CCU 0x680 (CE-Takt, pll_periph0_2x / 4 = 300 MHz), dann
+0x68c |= 3 (0x4a028898) und 0x68c |= 0x30000 (0x4a0288ba).  Bit 1 und
+17 heissen im H713-CCU bus_ce_sys und RST_BUS_CE_SYS; mainline kennt
+sie, benutzt sie aber nirgends.  Unser SPL setzt sie beim DRAM-Init
+ebenfalls (dram_sun50iw12.c, Replay des BT0-Endes).  Die Bindung fuehrt
+sie als optionalen vierten Takt "sys" und zweiten Reset "sys".  Dass
+sie die sichere Bank versorgen, ist Vermutung -- der Vendor-DT nennt
+sie nicht, und OP-TEE fasst die CCU nie an.  Aber ein Messlauf auf
+CE_S soll nicht an einem abgeschalteten Block scheitern und das dann
+fuer "aus NS unsichtbar" halten.
+
+Deshalb bekommt der Block ein eigenes compatible ohne H6-Rueckfall.  Mit
+einem Rueckfall wuerde sich sun8i-ce anbinden, sobald jemand den Treiber
+einschaltet, und wieder Deskriptoren im falschen Format absetzen.
+
+Nichts hiervon ist Datenblattwissen.  Die Registerlage stammt aus dem
+Disassemblat von OP-TEE 3.7 und aus dem Geraetebaum des Herstellers;
+die Bedeutung einzelner Bits ist Analogieschluss.  Belege und
+Einordnung: doku/nachtlog/S49-hdcp14-schluesselpfad.md und
+doku/114-plan-crypto-engine.md.
+
+Der Schemaentwurf ist nicht gegen das Meta-Schema geprueft worden --
+dt-schema ist im Baucontainer nicht installiert, und dort wird nichts
+nachinstalliert.  Geprueft ist: die Datei ist gueltiges YAML, und der
+Knoten aus dem Beispiel uebersetzt mit dtc.
+--- /dev/null
++++ b/Documentation/devicetree/bindings/crypto/allwinner,sun50i-h713-crypto.yaml
+@@ -0,0 +1,126 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/crypto/allwinner,sun50i-h713-crypto.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Allwinner H713 Crypto Engine
++
++maintainers:
++  - HY310 Mainline Port <hy310@example.invalid>
++
++description: |
++  Die Crypto Engine des H713 sieht von aussen aus wie die des H6, ist es
++  aber nicht.  Sie hat zwei Registerbaenke - eine bei 0x03040000, die aus
++  der Non-Secure-Welt erreichbar ist, und eine bei 0x03040800 fuer die
++  sichere Welt - und zwei Interrupts.  Die Baenke haben dieselbe
++  Registerbelegung (TDA 0x00, ICR 0x08, ISR 0x0c, TLR 0x10, ESR 0x18)
++  und sind je 0xa0 Byte gross.  Beides steht so im Geraetebaum des
++  Herstellers (re/vendor/HY310, Knoten ce@03040000).
++
++  Der Task-Deskriptor, den diese Maschine liest, ist nicht der von
++  sun8i-ce: seine Adressfelder sind 5 Byte (40 Bit) breit und liegen
++  deshalb unausgerichtet.  Deshalb bekommt der Block ein eigenes
++  compatible und ausdruecklich keinen H6-Rueckfall - mit einem Rueckfall
++  wuerde sich sun8i-ce anbinden und Deskriptoren im falschen Format
++  absetzen (am Geraet gemessen: "address invalid" fuer Standard-AES).
++  Siehe doku/114-plan-crypto-engine.md und
++  doku/nachtlog/S49-hdcp14-schluesselpfad.md.
++
++  Der Stock-Bootloader schaltet vor dem ersten CE-Zugriff zwei Taktgates
++  (CCU 0x68c Bit 0 und 1) ein und hebt zwei Resets (Bit 16 und 17) auf;
++  das zweite Paar heisst im H713-CCU bus_ce_sys / RST_BUS_CE_SYS und ist
++  hier als "sys" optional angebbar.  Dass es die sichere Bank versorgt,
++  ist Vermutung.
++
++  Nichts davon stammt aus einem Datenblatt; die Registerlage ist aus
++  OP-TEE und dem Hersteller-Geraetebaum rekonstruiert.
++
++properties:
++  compatible:
++    const: allwinner,sun50i-h713-crypto
++
++  reg:
++    items:
++      - description: Non-Secure-Bank (0x03040000)
++      - description: Secure-Bank CE_S (0x03040800)
++
++  reg-names:
++    items:
++      - const: ns
++      - const: s
++
++  interrupts:
++    items:
++      - description: Interrupt der Non-Secure-Bank (SPI 73)
++      - description: zweiter CE-Interrupt (SPI 74)
++
++  interrupt-names:
++    items:
++      - const: ns
++      - const: s
++
++  clocks:
++    minItems: 3
++    items:
++      - description: Bus clock (bus_ce, CCU 0x68c Bit 0)
++      - description: Module clock
++      - description: MBus clock
++      - description: |
++          Bus clock des zweiten Blocks (bus_ce_sys, CCU 0x68c Bit 1).
++          Der Stock-Bootloader schaltet es zusammen mit bus_ce ein, bevor
++          die sichere Bank benutzt wird (u-boot.fex 0x4a028898).  Dass
++          CE_S daran haengt, ist Vermutung.
++
++  clock-names:
++    minItems: 3
++    items:
++      - const: bus
++      - const: mod
++      - const: ram
++      - const: sys
++
++  resets:
++    minItems: 1
++    items:
++      - description: Bus reset (RST_BUS_CE, CCU 0x68c Bit 16)
++      - description: |
++          Reset des zweiten Blocks (RST_BUS_CE_SYS, CCU 0x68c Bit 17).
++          Der Stock-Bootloader hebt ihn zusammen mit RST_BUS_CE auf
++          (u-boot.fex 0x4a0288ba).
++
++  reset-names:
++    minItems: 1
++    items:
++      - const: bus
++      - const: sys
++
++required:
++  - compatible
++  - reg
++  - reg-names
++  - interrupts
++  - interrupt-names
++  - clocks
++  - clock-names
++  - resets
++  - reset-names
++
++additionalProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/interrupt-controller/arm-gic.h>
++
++    crypto@3040000 {
++      compatible = "allwinner,sun50i-h713-crypto";
++      reg = <0x03040000 0xa0>, <0x03040800 0xa0>;
++      reg-names = "ns", "s";
++      interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>,
++                   <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
++      interrupt-names = "ns", "s";
++      clocks = <&ccu 24>, <&ccu 23>, <&ccu 46>, <&ccu 25>;
++      clock-names = "bus", "mod", "ram", "sys";
++      resets = <&ccu 5>, <&ccu 6>;
++      reset-names = "bus", "sys";
++    };

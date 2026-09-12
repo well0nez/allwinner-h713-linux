@@ -1,0 +1,61 @@
+arm64: dts: h713: the pio has seven bank interrupts, not nine
+
+The list was copied from the vendor DTS, which carries nine
+(GIC_SPI 54..62), with the comment "Stock: GIC_SPI 54-62 for PA-PI
+banks". There are no PA-PI banks on this SoC. The stock pin table
+sun50iw12_pins (vmlinux.elf, c0e9d8b0, 132 pins) ends at PH19 and has
+no PE and no PI pin at all, and sun50iw12_irq_bank_map (c0e9d894) is
+{0, 1, 2, 3, 5, 6, 7} with irq_banks = 7: seven IRQ banks, PA PB PC PD
+PF PG PH. The vendor's own driver reads the first seven entries of the
+list by bank index and never looks at the last two.
+
+So the seven lines that exist are SPI 54..60, one per IRQ bank, in
+irq_bank_map order -- the same shape upstream uses for the H616, which
+has the same gap and lists seven consecutive lines for it. SPI 61 and
+62 belong to nothing here, and leaving them in invites exactly the
+mistake patch 0143 undoes: reading the list as if it were indexed by
+hardware bank number, which puts the chained handler of one bank on
+another bank's line and live-locks the CPU on the first edge.
+
+This patch is documentation, not the fix. 0143 alone makes the device
+boot; with 0143 applied the first seven entries are the ones used
+either way. Applying this one *without* 0143 does not help -- the
+hw_bank lookup would then ask for index 7, get -ENXIO and silently
+switch off GPIO interrupts on the whole main PIO. Apply 0143 first.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -493,16 +493,23 @@
+ 			#gpio-cells = <3>;
+ 			interrupt-controller;
+ 			#interrupt-cells = <3>;
+-			/* Stock: GIC_SPI 54-62 for PA-PI banks */
+-			interrupts = <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 55 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 57 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 58 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 59 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 60 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 61 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>;
++			/*
++			 * One line per IRQ bank, in irq_bank_map order, not
++			 * one per hardware bank: PA PB PC PD PF PG PH.
++			 * PE has no pins and no EINT block on this SoC
++			 * (sun50iw12_pins / sun50iw12_irq_bank_map in the
++			 * stock vmlinux), so there is no line for it and the
++			 * numbers do not skip. The vendor DTS lists nine
++			 * (SPI 54..62) and its driver reads only the first
++			 * seven -- the last two belong to nothing here.
++			 */
++			interrupts = <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>,	/* PA */
++				     <GIC_SPI 55 IRQ_TYPE_LEVEL_HIGH>,	/* PB */
++				     <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>,	/* PC */
++				     <GIC_SPI 57 IRQ_TYPE_LEVEL_HIGH>,	/* PD */
++				     <GIC_SPI 58 IRQ_TYPE_LEVEL_HIGH>,	/* PF */
++				     <GIC_SPI 59 IRQ_TYPE_LEVEL_HIGH>,	/* PG */
++				     <GIC_SPI 60 IRQ_TYPE_LEVEL_HIGH>;	/* PH */
+ 
+ 			mmc2_pins: mmc2-pins {
+ 				pins = "PC0", "PC1", "PC5", "PC6",

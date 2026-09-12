@@ -1,0 +1,1991 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] media: sunxi: add the H713 HDMI receiver as a V4L2 capture device
+
+The H713 has an HDMI input, and nothing in the kernel can reach it. There
+is no HDMI receiver register block for the ARM: the receiver, the picture
+pipeline behind it and the capture DMA all belong to the SoC's MIPS
+co-processor, which is asked over the cpu_comm IPC, while the hotplug pin
+and the EDID store belong to a second co-processor, the ARISC. Bringing
+the input up has so far meant running a sequence of shell and python
+scripts against /dev/cpu_comm and /dev/mem by hand.
+
+Add sun50i-h713-hdmirx: /dev/videoN, with the bring-up sequence in the
+probe and the three capture slots as buffers.
+
+The bring-up sequence is a table, not code. It is the stock initialisation
+in stock order -- twenty-two calls, with the stock RPC session number of
+each one next to it -- because the order is not a convention, it is what
+the firmware accepts, and prose invites reordering. One stock call is
+deliberately missing: SetWhiteBalance takes a pointer to three factory
+calibrated doubles that are not available, and the sequence works without
+it.
+
+Three properties of this hardware shape the rest:
+
+The capture target is not programmable. The firmware writes NV16 into
+three fixed slot pairs inside its own framebuffer reservation and rotates
+a pair of pointers through them. A buffer therefore cannot be allocated:
+buffer i *is* slot i, handed to userspace by mmap through a small memory
+operations set, and QBUF/DQBUF only pass ownership. Nothing is copied.
+The slot addresses are checked against the reserved region the device tree
+names, rather than being trusted.
+
+There is no capture interrupt on the ARM side. Three independent searches
+through the firmware image found the "frame done" interrupt only inside
+the MIPS interrupt controller, and the stock device tree wires no capture
+interrupt to the ARM either; the two ring pointers are advanced by
+hardware, not by firmware code. What the ARM does have is the display's
+vsync, GIC 142, which sun50i-h713-afbd services and where it already reads
+that pointer pair for its own passthrough plane. This driver takes its
+"slot finished" events from there, through that driver's flip notifier,
+behind a small slot-source interface, so a real capture interrupt could
+still take the job over one day without touching the queue handling.
+
+That the display driver is the one to read the pair is not a convenience,
+it is the only thing that works: the pair lives at 0x05600320, eight bytes
+inside the 0x400 register window display@5600000 owns and claims, and
+/proc/iomem reads "05600000-056003ff : 5600000.display afbd". A reg of its
+own here plus devm_of_iomap() -- which calls devm_ioremap_resource() and
+does claim the region, whatever a comment saying "mapped, not claimed"
+promised -- returns -EBUSY and the probe fails outright. So the mapping is
+gone, and with it the reg property and the node's unit address; what is
+left has no registers at all and therefore sits beside sound rather than in
+the soc bus, where a node without reg draws a dtc simple_bus_reg warning.
+
+Gone with it is the 120 Hz timer that used to sample the pair, and it is
+not kept as a fallback behind a module parameter. It sampled at a rate
+unrelated to the event it was looking for: half its wakeups found nothing
+and the other half found a slot that had been finished up to 8 ms earlier.
+A sampling clock ticking quietly beside the real event is a quirk, and
+there is no configuration in which it would be the better of the two --
+without the display driver there is no plane, no frame descriptor and no
+ring bounds either, so there is nothing to fall back to. Kconfig says so
+too, and the probe reports it: -EPROBE_DEFER while display@5600000 has not
+bound yet, a real error if the driver is not there at all.
+
+Signal loss and signal return are announced by the firmware itself,
+through its SignalChange callback; that is measured, both directions. The
+V4L2 source change event hangs off that callback and nothing polls for it.
+The two callbacks are registered by name, not by hashed id, because
+registering them is what puts their descriptors into the cpu_comm routine
+table -- and until the descriptor is there the firmware's own name lookup
+fails and it sends nothing, whatever the receiver has armed.
+
+The same fact says when to register, and the answer is the opposite of
+what the userspace bring-up script does: last, not first. The descriptor
+is what arms the sender, so from the moment it is in the table the
+firmware can call in on the cpu_comm receive work item, in parallel with
+whatever the driver does next. Registering at the top of the probe puts
+that call in the middle of the bring-up chain -- twenty-two synchronous
+RPCs to the MIPS, then the ARISC EDID and hotplug sequence -- and one
+delivered callback in there was enough to break the probe on 07.09., in a
+different place on each of two cold starts. So the registration happens
+after video_register_device(), where the driver is idle again. Nothing is
+lost by that: both handlers end in a V4L2 source-change event, events go
+to subscribed file handles, and before the video node exists there is no
+handle to subscribe.
+
+What the firmware detected, though, is not readable: the signal record it
+points at is 44 bytes of which one field is decoded so far, so
+QUERY_DV_TIMINGS reports the one timing the whole pipeline is built for
+and reports it only while the ring pointers are actually moving, which is
+a measurement rather than a cached flag. It asks the display driver for
+the pointers for that, too. The raw record is in debugfs so that decoding
+it takes one run on hardware, and so is a count of the vsync events this
+driver has been handed, which is what says on the device that the notifier
+is carrying.
+
+The driver has been compile-checked in a test build of the whole series,
+with W=1 and no warnings, and the device tree compiles with no new
+warnings. On hardware it needs the ARISC driver and the cpu_comm
+in-kernel API on the board beside it; the acceptance run is written out in
+doku/88-v4l2-hdmirx.md.
+
+Signed-off-by: well0nez <well0nez@users.noreply.github.com>
+---
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 09:22:33.397102793 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 09:22:34.642673757 +0200
+@@ -1886,6 +1886,47 @@
+ 		};
+ 	};
+ 
++	/*
++	 * HDMI receiver, exposed as a V4L2 capture device. OURS, not in
++	 * cstenger's tree.
++	 *
++	 * The node has no registers, which is why it sits here beside sound and
++	 * not in the soc bus: there is no HDMI receiver register block for the
++	 * ARM on this SoC. The receiver, the picture pipeline behind it and the
++	 * capture DMA belong to the MIPS co-processor; the driver reaches the
++	 * pipeline over cpu_comm (THal_Vp_* calls) and the hotplug pin and EDID
++	 * store over the ARISC, and it learns which capture slot is finished
++	 * from the flip notifier of display@5600000 -- that node owns the
++	 * register pair, claims it, and reads it on every vsync anyway. All
++	 * three are dependencies in Kconfig, not resources here. What is left
++	 * to describe is the memory the capture lands in.
++	 *
++	 * Binding:
++	 *   compatible     "allwinner,sun50i-h713-hdmirx"
++	 *   memory-region  two regions, by name:
++	 *     "hdmi-ring"       the firmware's framebuffer reservation. The
++	 *                       three Y and three C capture slots live inside
++	 *                       it; the driver checks its slot addresses
++	 *                       against the region at probe instead of
++	 *                       trusting them.
++	 *     "cpu-comm-shmem"  the IPC shared memory. Call arguments that are
++	 *                       pointers -- the HDCP key, the two window
++	 *                       rectangles, the Vp_Init staging area -- have to
++	 *                       live where the MIPS can address them, and this
++	 *                       is that place. Named, not hard coded.
++	 *
++	 * No interrupt: three independent searches of the firmware image found
++	 * the capture interrupt only inside the MIPS interrupt controller, and
++	 * the stock device tree wires none to the ARM either (doku/84, RE
++	 * question K2).
++	 */
++	hdmirx: hdmi-rx {
++		compatible = "allwinner,sun50i-h713-hdmirx";
++		memory-region = <&mips_framebuf>, <&cpu_comm_reserved>;
++		memory-region-names = "hdmi-ring", "cpu-comm-shmem";
++		status = "okay";
++	};
++
+ 	codec_machine: sound {
+ 		compatible = "allwinner,sunxi-codec-machine";
+ 		interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+diff -ruN a/drivers/media/platform/sunxi/Kconfig b/drivers/media/platform/sunxi/Kconfig
+--- a/drivers/media/platform/sunxi/Kconfig	2026-07-04 13:44:22.000000000 +0200
++++ b/drivers/media/platform/sunxi/Kconfig	2026-09-07 09:22:34.642856057 +0200
+@@ -3,6 +3,7 @@
+ comment "Sunxi media platform drivers"
+ 
+ source "drivers/media/platform/sunxi/sun4i-csi/Kconfig"
++source "drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig"
+ source "drivers/media/platform/sunxi/sun6i-csi/Kconfig"
+ source "drivers/media/platform/sunxi/sun6i-mipi-csi2/Kconfig"
+ source "drivers/media/platform/sunxi/sun8i-a83t-mipi-csi2/Kconfig"
+diff -ruN a/drivers/media/platform/sunxi/Makefile b/drivers/media/platform/sunxi/Makefile
+--- a/drivers/media/platform/sunxi/Makefile	2026-07-04 13:44:22.000000000 +0200
++++ b/drivers/media/platform/sunxi/Makefile	2026-09-07 09:22:34.642892998 +0200
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0
+ 
+ obj-y		+= sun4i-csi/
++obj-y		+= sun50i-h713-hdmirx/
+ obj-y		+= sun6i-csi/
+ obj-y		+= sun6i-mipi-csi2/
+ obj-y		+= sun8i-a83t-mipi-csi2/
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig	2026-09-07 09:22:34.642945438 +0200
+@@ -0,0 +1,24 @@
++# SPDX-License-Identifier: GPL-2.0-only
++
++config VIDEO_SUN50I_H713_HDMIRX
++	tristate "Allwinner H713 HDMI receiver"
++	depends on V4L_PLATFORM_DRIVERS
++	depends on VIDEO_DEV
++	depends on ARCH_SUNXI || COMPILE_TEST
++	depends on HY310_CPU_COMM
++	depends on SUN50I_H713_ARISC
++	depends on DRM_SUN50I_H713_AFBD
++	select VIDEOBUF2_CORE
++	select VIDEOBUF2_MEMOPS
++	help
++	  V4L2 capture support for the HDMI receiver of the Allwinner H713.
++
++	  The receiver itself, the picture pipeline behind it and the capture
++	  DMA belong to the SoC's MIPS co-processor. This driver runs the
++	  firmware bring-up sequence over cpu_comm, drives EDID and hotplug
++	  through the ARISC, takes its "slot finished" events from the display
++	  driver's vsync, and hands the three capture slots the firmware fills
++	  out as V4L2 buffers without copying them.
++
++	  To compile this driver as a module, choose M here: the module will
++	  be called sun50i-h713-hdmirx.
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Makefile b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Makefile
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Makefile	2026-09-07 09:22:34.642964588 +0200
+@@ -0,0 +1,3 @@
++# SPDX-License-Identifier: GPL-2.0
++
++obj-$(CONFIG_VIDEO_SUN50I_H713_HDMIRX) += sun50i-h713-hdmirx.o
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 09:26:56.884438342 +0200
+@@ -0,0 +1,1774 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * V4L2 capture driver for the HDMI receiver of the Allwinner H713.
++ *
++ * The H713 has no HDMI receiver the ARM can drive. The receiver, the whole
++ * picture pipeline behind it and the capture DMA belong to a MIPS
++ * co-processor that runs vendor firmware; the ARM reaches it through the
++ * cpu_comm IPC as a set of THal_Vp_* remote procedures, and it reaches the
++ * hotplug pin and the EDID store through a second co-processor, the ARISC.
++ * This driver owns neither the receiver nor the DMA. What it owns is the
++ * sequence that brings the firmware into the state in which it captures, and
++ * the bookkeeping that turns the ring the firmware writes into V4L2 buffers.
++ *
++ * Consequences that shape everything below:
++ *
++ *  - The capture target is not programmable. The firmware writes NV16 into
++ *    three fixed slot pairs inside its own framebuffer reservation and
++ *    rotates a pair of pointers through them. So a buffer cannot be
++ *    allocated: buffer i *is* slot i, handed to userspace by mmap, and
++ *    QBUF/DQBUF only pass ownership. Nothing is ever copied.
++ *
++ *  - There is no capture interrupt on the ARM. Three independent searches
++ *    through the firmware image found the "frame done" interrupt only inside
++ *    the MIPS interrupt controller; the stock device tree wires no capture
++ *    interrupt to the ARM at all, and the flip pointers are written by
++ *    hardware, not by firmware code (doku/84, RE question K2). What the ARM
++ *    does have is the display's vsync (GIC 142), where sun50i-h713-afbd reads
++ *    the flip pointers for its own passthrough plane. This driver takes its
++ *    "slot finished" events from there, through that driver's flip notifier,
++ *    and does not go near the register pair itself: the pair sits inside a
++ *    window display@5600000 owns and claims. The event still arrives behind
++ *    struct h713_hdmirx_slot_source, so a real capture interrupt could take
++ *    over one day without touching the queue handling.
++ *
++ *  - "Signal present" is a measurement, not a register bit we can read: on
++ *    signal loss the flip pointers stop moving and the last picture stays
++ *    (measured 07.09.2026, doku/nachtlog/K4-hotplug.md). QUERY_DV_TIMINGS
++ *    samples them for one frame period rather than trusting a cached flag.
++ *
++ *  - The firmware announces signal loss and signal return on its own through
++ *    the MipsHalCallback_SignalChange callback (same measurement). The V4L2
++ *    source change event hangs off that callback; nothing polls for it.
++ *
++ * Documentation: doku/88-v4l2-hdmirx.md, doku/78-nachtplan-hdmi-switch.md
++ * appendix A (the seven stages of a source change).
++ */
++
++#include <linux/delay.h>
++#include <linux/debugfs.h>
++#include <linux/firmware.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/mod_devicetable.h>
++#include <linux/notifier.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/platform_device.h>
++#include <linux/seq_file.h>
++#include <linux/slab.h>
++#include <linux/spinlock.h>
++#include <linux/unaligned.h>
++#include <linux/v4l2-dv-timings.h>
++
++#include <linux/soc/sunxi/h713-afbd.h>
++#include <linux/soc/sunxi/h713-arisc.h>
++#include <linux/soc/sunxi/h713-cpu-comm.h>
++
++#include <media/v4l2-common.h>
++#include <media/v4l2-dev.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-dv-timings.h>
++#include <media/v4l2-event.h>
++#include <media/v4l2-fh.h>
++#include <media/v4l2-ioctl.h>
++#include <media/videobuf2-memops.h>
++#include <media/videobuf2-v4l2.h>
++
++#define H713_HDMIRX_NAME	"sun50i-h713-hdmirx"
++
++/*
++ * Geometry. The whole chain -- the firmware's window computation, the frame
++ * descriptor the display driver publishes, the AFBD crop -- is set up for
++ * 1920x1080p60 and nothing else has ever been measured on this board. A
++ * resolution change is an open point (doku/78 appendix A.6 item 4), which is
++ * why there is exactly one entry in the timings table below.
++ */
++#define H713_HDMIRX_WIDTH	1920
++#define H713_HDMIRX_HEIGHT	1080
++
++/* NV16: chroma at full height, so both planes are width * height bytes. */
++#define H713_HDMIRX_PLANES	2
++#define H713_HDMIRX_PLANE_SIZE	(H713_HDMIRX_WIDTH * H713_HDMIRX_HEIGHT)
++
++/*
++ * The capture ring. Three Y slots and three C slots, fixed by the firmware;
++ * the slot pitch is 0x1ff000 and C slot i is Y slot i plus 0x5fd000. Y and C
++ * always name the same index in every dump taken so far. Measured on the
++ * device, doku/76 sections 12 and 13; the addresses are checked against the
++ * "hdmi-ring" reserved region at probe, they are not trusted blindly.
++ */
++#define H713_HDMIRX_SLOTS	3
++
++/* Distance between two Y slots, and between Y slot i and C slot i. */
++#define H713_HDMIRX_SLOT_PITCH	0x1ff000
++#define H713_HDMIRX_SLOT_YC	0x5fd000
++
++static const phys_addr_t h713_hdmirx_slot_y[H713_HDMIRX_SLOTS] = {
++	0x4c3ef000, 0x4c5ee000, 0x4c7ed000,
++};
++
++static const phys_addr_t h713_hdmirx_slot_c[H713_HDMIRX_SLOTS] = {
++	0x4c9ec000, 0x4cbeb000, 0x4cdea000,
++};
++
++/*
++ * Offsets inside the cpu_comm shared memory. The MIPS dereferences whatever
++ * physical address it is handed; these two are where the stock tvserver puts
++ * the same things, so they are what this driver uses as well.
++ *
++ *   +0x036000  HDCP 2.2 key, 912 bytes  (stock session 32, Para[0] on the
++ *              wire is 0x4e336000)
++ *   +0x037000  the three Wce_SetWindow argument structures
++ *   +0x400000  staging area for THal_Vp_Init: its handler copies 55296 bytes
++ *              of its own .bss to the address in Para[2] without checking it,
++ *              so a zero there is a memcpy to NULL and takes the firmware
++ *              with it.
++ */
++#define H713_SHM_HDCP22		0x00036000
++#define H713_SHM_WCE		0x00037000
++#define H713_SHM_VP_INIT	0x00400000
++#define H713_SHM_WINDOW		0x00002000	/* covers HDCP22 and WCE */
++
++/* The same two, as offsets into the window that starts at H713_SHM_HDCP22. */
++#define H713_MAP_HDCP22		(H713_SHM_HDCP22 - H713_SHM_HDCP22)
++#define H713_MAP_WCE		(H713_SHM_WCE - H713_SHM_HDCP22)
++
++#define H713_HDCP22_SIZE	912
++#define H713_FW_HDCP22		"hy310-hdcp22.bin"
++
++/* Wce_SetWindow argument layout: src{4}, dst{4}, aspect{1}, each a pointer. */
++#define H713_WCE_SRC		0x000
++#define H713_WCE_DST		0x020
++#define H713_WCE_ASPECT		0x040
++#define H713_WCE_ASPECT_16_9	2
++
++/* THal_Vp_SetSource: 3 is HDMI-1, the board's only socket (hardware port 0). */
++#define H713_SOURCE_HDMI1	3
++#define H713_HDMI_PORT		0
++
++/*
++ * cpu_comm call timeouts. 0 means the API default of 500 ms, which is enough
++ * for every setter; the two calls that make the firmware move real data get
++ * their own budget. A call that runs out returns -ETIMEDOUT and the probe
++ * fails -- it is never retried, because a retry would hide the reason.
++ */
++#define H713_CALL_SLOW_MS	2000
++
++enum h713_step_kind {
++	H713_STEP_PLAIN,	/* arguments are the literals in the table */
++	H713_STEP_VP_INIT,	/* argument 2 is the staging address */
++	H713_STEP_WCE,		/* three shared-memory pointers */
++	H713_STEP_HDCP,		/* key address and key length */
++};
++
++/**
++ * struct h713_hdmirx_step - one call of the firmware bring-up sequence
++ * @name: routine name, hashed into the component id at run time
++ * @kind: how @args is turned into the argument words
++ * @nargs: number of argument words
++ * @args: the literal argument words for H713_STEP_PLAIN
++ * @session: session number of this call in the stock RPC trace, 0 if the call
++ *	is not part of the traced init (the three phase-2 calls)
++ * @timeout_ms: call timeout, 0 for the cpu_comm default
++ * @why: why the call is here and what its arguments mean
++ */
++struct h713_hdmirx_step {
++	const char *name;
++	enum h713_step_kind kind;
++	u8 nargs;
++	u32 args[3];
++	u16 session;
++	u16 timeout_ms;
++	const char *why;
++};
++
++/*
++ * The bring-up sequence, in stock order. This is stage 3 of the source change
++ * (doku/78 appendix A.2) and it is a table on purpose: the order is not a
++ * convention, it is what the firmware accepts, and prose invites reordering.
++ * The source is the stock RPC trace (re/captures/weltneuheit/stock-rpc-LIVE.txt,
++ * session numbers below) by way of analyse/hdmi-seq/hdmi_seq.py, which has run
++ * this sequence on the device.
++ *
++ * Stock session 16, SetWhiteBalance, is missing on purpose: it takes a pointer
++ * to three factory-calibrated doubles that this project does not have. The
++ * userspace tool skips it for the same reason and the sequence works without
++ * it.
++ */
++static const struct h713_hdmirx_step h713_hdmirx_init_seq[] = {
++	/* ---- phase 2: init and callback wiring ---------------------- */
++	{
++		.name = "THal_Vp_Init", .kind = H713_STEP_VP_INIT, .nargs = 3,
++		.timeout_ms = H713_CALL_SLOW_MS,
++		.why = "ParaCount 3. Para[2] must be a valid staging address: "
++		       "the handler copies 55296 bytes of its own .bss there "
++		       "and does not check the pointer. Para[0] and Para[1] "
++		       "are not read.",
++	},
++	{
++		.name = "THal_Vp_RegisterSignalChangeCallback",
++		.kind = H713_STEP_PLAIN, .nargs = 1, .args = { 11 },
++		.why = "ParaCount 1, the source id; 11 means all sources. The "
++		       "callback itself is found by the name hash of "
++		       "MipsHalCallback_SignalChange, not by an argument.",
++	},
++	{
++		.name = "THal_Vp_SetHDMIHotPlugByPortCallback",
++		.kind = H713_STEP_PLAIN, .nargs = 1, .args = { 1 },
++		.why = "ParaCount 1, an enable flag -- 1 because this driver "
++		       "registers a handler for the hotplug callback.",
++	},
++	/* ---- phase 3: picture pipeline defaults --------------------- */
++	{
++		.name = "Thal_Vp_SetBacklightLevel", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 0x64 }, .session = 14,
++		.why = "Lower case 'h' is the vendor's typo and part of the "
++		       "hashed name.",
++	},
++	{
++		.name = "THal_Vp_SetBacklightWorkMode", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 0 }, .session = 15,
++	},
++	{
++		.name = "THal_Vp_SetTNR", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 2 }, .session = 17,
++	},
++	{
++		.name = "THal_Vp_SetSNR", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 1 }, .session = 18,
++	},
++	{
++		.name = "THal_Vp_SetDCI", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 2 }, .session = 19,
++	},
++	{
++		.name = "THal_Vp_SetBlackExtension", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 1 }, .session = 20,
++	},
++	{
++		.name = "THal_Vp_SetPictureMode", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 1 }, .session = 21,
++	},
++	{
++		.name = "THal_Vp_SetVideoRange", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 0 }, .session = 22,
++	},
++	{
++		.name = "THal_Vp_Wce_SetWindow", .kind = H713_STEP_WCE,
++		.nargs = 3, .session = 23,
++		.why = "Three physical pointers: source window, destination "
++		       "window (both {h_start, h_size, v_start, v_size}) and "
++		       "the aspect selector, 2 for 16:9.",
++	},
++	{
++		.name = "THal_Vp_CvbsSetPedestalMode", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 1 }, .session = 24,
++	},
++	{
++		.name = "THal_Vp_HDMI_SetPortMap", .kind = H713_STEP_PLAIN,
++		.nargs = 2, .args = { 3, 0 }, .session = 25,
++		.why = "Stock port map, as seen on the wire: Para[0] is the "
++		       "source id (3, 4, 5 = HDMI 1..3), Para[1] the hardware "
++		       "port. Called three times.",
++	},
++	{
++		.name = "THal_Vp_HDMI_SetPortMap", .kind = H713_STEP_PLAIN,
++		.nargs = 2, .args = { 4, 1 }, .session = 26,
++	},
++	{
++		.name = "THal_Vp_HDMI_SetPortMap", .kind = H713_STEP_PLAIN,
++		.nargs = 2, .args = { 5, 2 }, .session = 27,
++	},
++	{
++		.name = "THal_Vp_Wce_SetWindow", .kind = H713_STEP_WCE,
++		.nargs = 3, .session = 28,
++		.why = "The same windows once more, after the port map. Stock "
++		       "does it, so this does it.",
++	},
++	{
++		.name = "THal_Vp_DisableBlackScreen", .kind = H713_STEP_PLAIN,
++		.nargs = 0, .session = 29,
++		.why = "ParaCount 0, not 1 -- the vendor wrapper sends no "
++		       "argument at all.",
++	},
++	{
++		.name = "THal_Vp_TurnOnARCAudioPath", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 1 }, .session = 30,
++	},
++	{
++		.name = "THal_Vp_SwitchARCTXPath", .kind = H713_STEP_PLAIN,
++		.nargs = 1, .args = { 0 }, .session = 31,
++	},
++	{
++		.name = "THal_Vp_SetHDCP22Key", .kind = H713_STEP_HDCP,
++		.nargs = 2, .session = 32, .timeout_ms = H713_CALL_SLOW_MS,
++		.why = "ParaCount 2: the physical address of the 912 byte key "
++		       "and its length. Skipped when the key firmware file is "
++		       "absent; an unencrypted source does not need it.",
++	},
++	{
++		.name = "THal_Vp_HDMI_SetHPDTimeInterval",
++		.kind = H713_STEP_PLAIN, .nargs = 1, .args = { 0xc8 },
++		.session = 33, .why = "0xc8 = 200 ms.",
++	},
++};
++
++/* ------------------------------------------------------------------ */
++
++struct h713_hdmirx;
++
++/**
++ * struct h713_hdmirx_slot_source - where "this slot is finished" comes from
++ * @name: shown in the log and in debugfs, so a run says which one was used
++ * @start: begin delivering events, called from start_streaming()
++ * @stop: stop delivering them, called from stop_streaming(); after it returns
++ *	no further event may arrive
++ *
++ * Every implementation funnels into h713_hdmirx_slot_event(), which is where
++ * all of the queue handling lives; a slot source is nothing but the clock.
++ * Today there is exactly one, the display driver's vsync notifier. The seam
++ * stays because a real capture interrupt could still turn up on the MIPS side
++ * (RE question K2, doku/84) and would need nothing from the rest of this
++ * driver but its own start/stop.
++ */
++struct h713_hdmirx_slot_source {
++	const char *name;
++	int (*start)(struct h713_hdmirx *rx);
++	void (*stop)(struct h713_hdmirx *rx);
++};
++
++struct h713_hdmirx_buffer {
++	struct vb2_v4l2_buffer vb;
++};
++
++/**
++ * struct h713_hdmirx_plane - one plane of one buffer, permanently a ring slot
++ * @rx: back pointer
++ * @phys: physical address of the slot
++ * @size: usable length of the slot
++ * @refcount: number of live mmaps, tracked by vb2_common_vm_ops
++ * @handler: what vb2_common_vm_ops needs to do that
++ */
++struct h713_hdmirx_plane {
++	struct h713_hdmirx *rx;
++	phys_addr_t phys;
++	unsigned long size;
++	refcount_t refcount;
++	struct vb2_vmarea_handler handler;
++};
++
++struct h713_hdmirx {
++	struct device *dev;
++	struct v4l2_device v4l2_dev;
++	struct video_device vdev;
++	struct vb2_queue queue;
++	struct mutex lock;		/* serialises ioctl and queue */
++	struct dentry *debugfs;
++
++	void __iomem *shm;		/* cpu_comm shared memory window */
++	phys_addr_t shm_base;		/* base of the whole shared memory */
++	phys_addr_t shm_size;
++	phys_addr_t ring_base;		/* the firmware's framebuffer region */
++	phys_addr_t ring_size;
++
++	u32 id_setsource;
++
++	struct v4l2_dv_timings timings;
++
++	/* slot bookkeeping, all of it under slot_lock */
++	spinlock_t slot_lock;
++	struct vb2_v4l2_buffer *slot_buf[H713_HDMIRX_SLOTS];
++	u32 last_flip_y;
++	u32 last_flip_c;
++	int last_slot;
++	u32 sequence;
++	struct {
++		u32 events;
++		u32 delivered;
++		u32 no_buffer;
++		u32 unchanged;
++		u32 skipped;
++		u32 stray;
++	} stat;
++
++	const struct h713_hdmirx_slot_source *slot_source;
++	struct notifier_block flip_nb;
++
++	/* last callback payloads, for debugfs and the source change event */
++	spinlock_t event_lock;
++	u32 signal_args[CPU_COMM_MAX_ARGS];
++	unsigned int signal_nargs;
++	u32 signal_count;
++	u32 hotplug_args[CPU_COMM_MAX_ARGS];
++	unsigned int hotplug_nargs;
++	u32 hotplug_count;
++
++	u8 edid[ARISC_HDMI_EDID_SIZE];
++	bool edid_valid;
++};
++
++/* ------------------------------------------------------------------ *
++ * The firmware bring-up sequence
++ * ------------------------------------------------------------------ */
++
++static int h713_hdmirx_call(struct h713_hdmirx *rx, const char *name,
++			    const u32 *args, unsigned int nargs,
++			    unsigned int timeout_ms)
++{
++	u32 id = cpu_comm_name2id(name, CPU_COMM_CPU_MIPS);
++	int ret;
++
++	if (!id)
++		return -EINVAL;
++
++	ret = cpu_comm_call(id, args, nargs, NULL, 0, timeout_ms);
++	if (ret < 0)
++		return ret;
++
++	return 0;
++}
++
++/*
++ * Write the two window rectangles and the aspect selector into shared memory
++ * and hand back their addresses. The shared memory is mapped write combining;
++ * it is written word by word because a wide unaligned access into this region
++ * has faulted before (doku/67).
++ */
++static void h713_hdmirx_wce_args(struct h713_hdmirx *rx, u32 *args)
++{
++	static const u32 window[4] = {
++		0, H713_HDMIRX_WIDTH, 0, H713_HDMIRX_HEIGHT,
++	};
++	unsigned int i;
++
++	for (i = 0; i < ARRAY_SIZE(window); i++) {
++		writel(window[i], rx->shm + H713_MAP_WCE + H713_WCE_SRC + i * 4);
++		writel(window[i], rx->shm + H713_MAP_WCE + H713_WCE_DST + i * 4);
++	}
++	writel(H713_WCE_ASPECT_16_9, rx->shm + H713_MAP_WCE + H713_WCE_ASPECT);
++
++	args[0] = rx->shm_base + H713_SHM_WCE + H713_WCE_SRC;
++	args[1] = rx->shm_base + H713_SHM_WCE + H713_WCE_DST;
++	args[2] = rx->shm_base + H713_SHM_WCE + H713_WCE_ASPECT;
++}
++
++/*
++ * Put the HDCP 2.2 key where the firmware expects it. The key itself is
++ * vendor material and is not in this tree; it is loaded as firmware, and
++ * without it the step is skipped. Copied as words for the same reason as
++ * above.
++ */
++static int h713_hdmirx_load_hdcp_key(struct h713_hdmirx *rx, u32 *args)
++{
++	const struct firmware *fw;
++	unsigned int i;
++	int ret;
++
++	ret = request_firmware(&fw, H713_FW_HDCP22, rx->dev);
++	if (ret)
++		return ret;
++
++	if (fw->size != H713_HDCP22_SIZE) {
++		dev_err(rx->dev, "%s ist %zu Byte gross, erwartet sind %d\n",
++			H713_FW_HDCP22, fw->size, H713_HDCP22_SIZE);
++		release_firmware(fw);
++		return -EINVAL;
++	}
++
++	for (i = 0; i < H713_HDCP22_SIZE / 4; i++)
++		writel(get_unaligned_le32(fw->data + i * 4),
++		       rx->shm + H713_MAP_HDCP22 + i * 4);
++
++	release_firmware(fw);
++
++	args[0] = rx->shm_base + H713_SHM_HDCP22;
++	args[1] = H713_HDCP22_SIZE;
++
++	return 0;
++}
++
++static int h713_hdmirx_run_init_seq(struct h713_hdmirx *rx)
++{
++	unsigned int i;
++	int ret;
++
++	for (i = 0; i < ARRAY_SIZE(h713_hdmirx_init_seq); i++) {
++		const struct h713_hdmirx_step *s = &h713_hdmirx_init_seq[i];
++		u32 args[3] = { 0, 0, 0 };
++
++		switch (s->kind) {
++		case H713_STEP_PLAIN:
++			memcpy(args, s->args, sizeof(args));
++			break;
++		case H713_STEP_VP_INIT:
++			args[2] = rx->shm_base + H713_SHM_VP_INIT;
++			break;
++		case H713_STEP_WCE:
++			h713_hdmirx_wce_args(rx, args);
++			break;
++		case H713_STEP_HDCP:
++			ret = h713_hdmirx_load_hdcp_key(rx, args);
++			if (ret) {
++				dev_warn(rx->dev,
++					 "Schritt %u %s uebersprungen: %s nicht ladbar (%d)\n",
++					 i, s->name, H713_FW_HDCP22, ret);
++				continue;
++			}
++			break;
++		}
++
++		ret = h713_hdmirx_call(rx, s->name, args, s->nargs,
++				       s->timeout_ms);
++		if (ret) {
++			dev_err(rx->dev,
++				"Schritt %u %s (Stock-Session %u) fehlgeschlagen: %d\n",
++				i, s->name, s->session, ret);
++			return ret;
++		}
++	}
++
++	dev_info(rx->dev, "Init-Sequenz vollstaendig (%zu Aufrufe)\n",
++		 ARRAY_SIZE(h713_hdmirx_init_seq));
++
++	return 0;
++}
++
++/*
++ * Stage 5 of the source change. Two things about it are worth knowing and
++ * both are measured: if the firmware's active source already is HDMI-1 this
++ * is a null change and moves nothing, which is normal and not an error; and
++ * a real change away and back does not make the capture run again by itself
++ * (doku/78 appendix A.5, open point A.6 item 1).
++ */
++static int h713_hdmirx_set_source(struct h713_hdmirx *rx)
++{
++	u32 arg = H713_SOURCE_HDMI1;
++
++	return cpu_comm_call(rx->id_setsource, &arg, 1, NULL, 0, 0);
++}
++
++/* ------------------------------------------------------------------ *
++ * Callbacks from the firmware
++ * ------------------------------------------------------------------ */
++
++static void h713_hdmirx_src_change(struct h713_hdmirx *rx)
++{
++	static const struct v4l2_event ev = {
++		.type = V4L2_EVENT_SOURCE_CHANGE,
++		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
++	};
++
++	/*
++	 * video_register_device() is what initialises vdev->fh_list and
++	 * vdev->fh_lock, so queueing an event before it walks a list whose
++	 * head is still NULL. The callbacks are registered after that call
++	 * for exactly this reason among others, which leaves this guard for
++	 * the other end: h713_hdmirx_remove() takes the video node down
++	 * before it unregisters the callbacks, so a call the firmware had
++	 * already put on the wire can still arrive here afterwards.
++	 */
++	if (!video_is_registered(&rx->vdev))
++		return;
++
++	v4l2_event_queue(&rx->vdev, &ev);
++}
++
++/*
++ * MipsHalCallback_SignalChange. Measured behaviour (doku/nachtlog/K4): the
++ * firmware fires this by itself both when the signal goes away and when it
++ * comes back, so the V4L2 source change event can hang straight off it.
++ *
++ * Para[0] is the source id, 3 for HDMI-1. Para[2] is a physical pointer to a
++ * 44 byte signal information record in shared memory. Only one field of that
++ * record is decoded so far (+16 is the frame descriptor's colour format plus
++ * one, doku/84), which is why this handler stores the raw words for debugfs
++ * instead of pretending to parse them.
++ */
++static void h713_hdmirx_signal_cb(u32 comp_id, const u32 *args,
++				  unsigned int nargs, void *ctx)
++{
++	struct h713_hdmirx *rx = ctx;
++	unsigned long flags;
++
++	spin_lock_irqsave(&rx->event_lock, flags);
++	rx->signal_nargs = min_t(unsigned int, nargs, CPU_COMM_MAX_ARGS);
++	if (args)
++		memcpy(rx->signal_args, args, rx->signal_nargs * sizeof(*args));
++	rx->signal_count++;
++	spin_unlock_irqrestore(&rx->event_lock, flags);
++
++	dev_dbg(rx->dev, "SignalChange source=%u nargs=%u\n",
++		nargs ? args[0] : 0, nargs);
++
++	h713_hdmirx_src_change(rx);
++}
++
++/* MipsHalCallback_HdmiHotPlugByPortHandler. Para[0] is the port. */
++static void h713_hdmirx_hotplug_cb(u32 comp_id, const u32 *args,
++				   unsigned int nargs, void *ctx)
++{
++	struct h713_hdmirx *rx = ctx;
++	unsigned long flags;
++
++	spin_lock_irqsave(&rx->event_lock, flags);
++	rx->hotplug_nargs = min_t(unsigned int, nargs, CPU_COMM_MAX_ARGS);
++	if (args)
++		memcpy(rx->hotplug_args, args,
++		       rx->hotplug_nargs * sizeof(*args));
++	rx->hotplug_count++;
++	spin_unlock_irqrestore(&rx->event_lock, flags);
++
++	dev_dbg(rx->dev, "HdmiHotPlugByPort port=%u\n", nargs ? args[0] : 0);
++
++	h713_hdmirx_src_change(rx);
++}
++
++/* ------------------------------------------------------------------ *
++ * The ring: which slot has just been finished
++ * ------------------------------------------------------------------ */
++
++static bool h713_hdmirx_in_ring(struct h713_hdmirx *rx, u32 addr)
++{
++	return addr >= rx->ring_base && addr < rx->ring_base + rx->ring_size;
++}
++
++static int h713_hdmirx_slot_of(u32 y)
++{
++	unsigned int i;
++
++	for (i = 0; i < H713_HDMIRX_SLOTS; i++)
++		if (h713_hdmirx_slot_y[i] == y)
++			return i;
++
++	return -1;
++}
++
++/**
++ * h713_hdmirx_slot_event() - a slot has been finished, hand it on
++ * @rx: the device
++ * @flip: the flip pointer pair the producer sampled, already whole and already
++ *	known to point into the capture ring
++ *
++ * The single entry point every slot source funnels into. Safe from atomic
++ * context -- it runs in the display's vsync interrupt today. Counts what it
++ * could not do rather than dropping it silently: a rate mismatch has to be
++ * visible.
++ */
++static void h713_hdmirx_slot_event(struct h713_hdmirx *rx,
++				   const struct h713_afbd_flip *flip)
++{
++	struct vb2_v4l2_buffer *vbuf;
++	unsigned long flags;
++	u32 y = flip->y;
++	int slot;
++
++	spin_lock_irqsave(&rx->slot_lock, flags);
++
++	rx->stat.events++;
++	rx->last_flip_c = flip->c;
++
++	/*
++	 * The producer only reports a pair that changed, so this is a
++	 * belt-and-braces test: it firing means the two ends disagree about
++	 * what "changed" is, and that is worth seeing in debugfs.
++	 */
++	if (y == rx->last_flip_y) {
++		rx->stat.unchanged++;
++		goto out;
++	}
++
++	slot = h713_hdmirx_slot_of(y);
++	if (slot < 0) {
++		rx->stat.stray++;
++		goto out;
++	}
++
++	if (rx->last_slot >= 0) {
++		int gap = slot - rx->last_slot;
++
++		if (gap <= 0)
++			gap += H713_HDMIRX_SLOTS;
++		rx->stat.skipped += gap - 1;
++	}
++	rx->last_flip_y = y;
++	rx->last_slot = slot;
++
++	vbuf = rx->slot_buf[slot];
++	if (!vbuf) {
++		rx->stat.no_buffer++;
++		goto out;
++	}
++	rx->slot_buf[slot] = NULL;
++
++	vbuf->vb2_buf.timestamp = ktime_get_ns();
++	vbuf->sequence = rx->sequence++;
++	vbuf->field = V4L2_FIELD_NONE;
++	vb2_set_plane_payload(&vbuf->vb2_buf, 0, H713_HDMIRX_PLANE_SIZE);
++	vb2_set_plane_payload(&vbuf->vb2_buf, 1, H713_HDMIRX_PLANE_SIZE);
++	rx->stat.delivered++;
++
++	spin_unlock_irqrestore(&rx->slot_lock, flags);
++	vb2_buffer_done(&vbuf->vb2_buf, VB2_BUF_STATE_DONE);
++	return;
++
++out:
++	spin_unlock_irqrestore(&rx->slot_lock, flags);
++}
++
++/*
++ * The one slot source: the display driver's vsync.
++ *
++ * There used to be a 120 Hz timer here that sampled the flip pair itself. It
++ * is gone rather than kept as a fallback. It sampled a register pair this
++ * driver had no business mapping, at a rate unrelated to the event it was
++ * looking for -- half of its wakeups found nothing and the other half found a
++ * slot that had been finished up to 8 ms earlier. A sampling clock running
++ * quietly beside the real event is exactly the kind of quirk this tree does
++ * not keep, and there is no configuration in which it would be the better of
++ * the two: without sun50i-h713-afbd there is no display, no plane, no
++ * descriptor and no ring bounds either, so the driver has nothing to fall
++ * back to.
++ */
++static int h713_hdmirx_flip_notify(struct notifier_block *nb,
++				   unsigned long action, void *data)
++{
++	struct h713_hdmirx *rx = container_of(nb, struct h713_hdmirx, flip_nb);
++
++	if (action != H713_AFBD_EVENT_FLIP)
++		return NOTIFY_DONE;
++
++	h713_hdmirx_slot_event(rx, data);
++
++	return NOTIFY_OK;
++}
++
++static int h713_hdmirx_vsync_start(struct h713_hdmirx *rx)
++{
++	return h713_afbd_register_flip_notifier(&rx->flip_nb);
++}
++
++static void h713_hdmirx_vsync_stop(struct h713_hdmirx *rx)
++{
++	h713_afbd_unregister_flip_notifier(&rx->flip_nb);
++}
++
++static const struct h713_hdmirx_slot_source h713_hdmirx_vsync = {
++	.name = "AFBD vsync notifier (GIC 142)",
++	.start = h713_hdmirx_vsync_start,
++	.stop = h713_hdmirx_vsync_stop,
++};
++
++/*
++ * Is there a signal? On signal loss the flip pointers stop moving and the
++ * last picture stays on screen -- measured, doku/nachtlog/K4-hotplug.md. So
++ * this looks at them for a bit more than one frame period instead of trusting
++ * a cached flag. A still picture is not a still ring: the pointers rotate at
++ * 60 Hz whatever the content is.
++ *
++ * This is the one question that cannot wait for the next notifier call --
++ * ENUM_INPUT and QUERY_DV_TIMINGS are answered while nothing is streaming --
++ * so it asks the display driver for the pair instead of reading it. Same two
++ * registers, same owner, no second mapping.
++ */
++static bool h713_hdmirx_signal_present(struct h713_hdmirx *rx)
++{
++	struct h713_afbd_flip a, b;
++
++	if (h713_afbd_read_flip(&a))
++		return false;
++
++	usleep_range(20000, 25000);
++
++	if (h713_afbd_read_flip(&b))
++		return false;
++
++	return a.y != b.y;
++}
++
++/* ------------------------------------------------------------------ *
++ * Buffers: buffer i is slot i, for the whole life of the queue
++ * ------------------------------------------------------------------ */
++
++static void h713_hdmirx_plane_put(void *arg)
++{
++	struct h713_hdmirx_plane *p = arg;
++
++	if (refcount_dec_and_test(&p->refcount))
++		kfree(p);
++}
++
++/*
++ * vb2 does not tell an allocator which plane it is being called for: it walks
++ * the planes of one buffer in order and stores each result in
++ * vb->planes[plane].mem_priv as it goes (__vb2_buf_mem_alloc()). The plane
++ * being allocated is therefore the first one that still has none.
++ */
++static int h713_hdmirx_plane_index(struct vb2_buffer *vb)
++{
++	unsigned int i;
++
++	for (i = 0; i < vb->num_planes; i++)
++		if (!vb->planes[i].mem_priv)
++			return i;
++
++	return -EINVAL;
++}
++
++static void *h713_hdmirx_alloc(struct vb2_buffer *vb, struct device *dev,
++			       unsigned long size)
++{
++	struct h713_hdmirx *rx = vb2_get_drv_priv(vb->vb2_queue);
++	struct h713_hdmirx_plane *p;
++	int plane;
++
++	plane = h713_hdmirx_plane_index(vb);
++	if (plane < 0)
++		return ERR_PTR(plane);
++
++	/*
++	 * vb2 rounds the plane length up to a page, so the check is against
++	 * the slot pitch and not against the payload size.
++	 */
++	if (vb->index >= H713_HDMIRX_SLOTS || plane >= H713_HDMIRX_PLANES ||
++	    size > H713_HDMIRX_SLOT_PITCH)
++		return ERR_PTR(-EINVAL);
++
++	p = kzalloc(sizeof(*p), GFP_KERNEL);
++	if (!p)
++		return ERR_PTR(-ENOMEM);
++
++	p->rx = rx;
++	p->phys = plane ? h713_hdmirx_slot_c[vb->index]
++			: h713_hdmirx_slot_y[vb->index];
++	p->size = size;
++	refcount_set(&p->refcount, 1);
++	p->handler.refcount = &p->refcount;
++	p->handler.put = h713_hdmirx_plane_put;
++	p->handler.arg = p;
++
++	return p;
++}
++
++static void h713_hdmirx_put(void *buf_priv)
++{
++	h713_hdmirx_plane_put(buf_priv);
++}
++
++static unsigned int h713_hdmirx_num_users(void *buf_priv)
++{
++	struct h713_hdmirx_plane *p = buf_priv;
++
++	return refcount_read(&p->refcount);
++}
++
++/*
++ * Hand the slot itself to userspace. Write combining, not cached: the writer
++ * is a co-processor whose stores never pass through this CPU's caches, so a
++ * cached mapping would show whatever was in the cache line.
++ */
++static int h713_hdmirx_mmap(void *buf_priv, struct vm_area_struct *vma)
++{
++	struct h713_hdmirx_plane *p = buf_priv;
++	int ret;
++
++	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
++
++	ret = vm_iomap_memory(vma, p->phys, p->size);
++	if (ret)
++		return ret;
++
++	vma->vm_ops = &vb2_common_vm_ops;
++	vma->vm_private_data = &p->handler;
++	vma->vm_ops->open(vma);
++
++	return 0;
++}
++
++static const struct vb2_mem_ops h713_hdmirx_mem_ops = {
++	.alloc		= h713_hdmirx_alloc,
++	.put		= h713_hdmirx_put,
++	.num_users	= h713_hdmirx_num_users,
++	.mmap		= h713_hdmirx_mmap,
++};
++
++static int h713_hdmirx_queue_setup(struct vb2_queue *q, unsigned int *nbuffers,
++				   unsigned int *nplanes, unsigned int sizes[],
++				   struct device *alloc_devs[])
++{
++	/*
++	 * Three buffers, never more and never fewer: there are three slots and
++	 * buffer i is slot i. A smaller queue would throw away every frame
++	 * that lands in a slot with no buffer behind it, and there is nothing
++	 * a larger one could point at.
++	 */
++	*nbuffers = H713_HDMIRX_SLOTS;
++
++	if (*nplanes) {
++		if (*nplanes != H713_HDMIRX_PLANES ||
++		    sizes[0] < H713_HDMIRX_PLANE_SIZE ||
++		    sizes[1] < H713_HDMIRX_PLANE_SIZE)
++			return -EINVAL;
++		return 0;
++	}
++
++	*nplanes = H713_HDMIRX_PLANES;
++	sizes[0] = H713_HDMIRX_PLANE_SIZE;
++	sizes[1] = H713_HDMIRX_PLANE_SIZE;
++
++	return 0;
++}
++
++static int h713_hdmirx_buf_prepare(struct vb2_buffer *vb)
++{
++	unsigned int i;
++
++	if (vb->index >= H713_HDMIRX_SLOTS)
++		return -EINVAL;
++
++	for (i = 0; i < H713_HDMIRX_PLANES; i++)
++		if (vb2_plane_size(vb, i) < H713_HDMIRX_PLANE_SIZE)
++			return -EINVAL;
++
++	return 0;
++}
++
++static void h713_hdmirx_buf_queue(struct vb2_buffer *vb)
++{
++	struct h713_hdmirx *rx = vb2_get_drv_priv(vb->vb2_queue);
++	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
++	unsigned long flags;
++
++	spin_lock_irqsave(&rx->slot_lock, flags);
++	rx->slot_buf[vb->index] = vbuf;
++	spin_unlock_irqrestore(&rx->slot_lock, flags);
++}
++
++static int h713_hdmirx_start_streaming(struct vb2_queue *q, unsigned int count)
++{
++	struct h713_hdmirx *rx = vb2_get_drv_priv(q);
++	unsigned long flags;
++	unsigned int i;
++	int ret;
++
++	spin_lock_irqsave(&rx->slot_lock, flags);
++	rx->sequence = 0;
++	rx->last_slot = -1;
++	rx->last_flip_y = 0;
++	rx->last_flip_c = 0;
++	memset(&rx->stat, 0, sizeof(rx->stat));
++	spin_unlock_irqrestore(&rx->slot_lock, flags);
++
++	ret = rx->slot_source->start(rx);
++	if (ret)
++		goto err;
++
++	return 0;
++
++err:
++	spin_lock_irqsave(&rx->slot_lock, flags);
++	for (i = 0; i < H713_HDMIRX_SLOTS; i++) {
++		struct vb2_v4l2_buffer *vbuf = rx->slot_buf[i];
++
++		rx->slot_buf[i] = NULL;
++		if (vbuf)
++			vb2_buffer_done(&vbuf->vb2_buf, VB2_BUF_STATE_QUEUED);
++	}
++	spin_unlock_irqrestore(&rx->slot_lock, flags);
++
++	return ret;
++}
++
++static void h713_hdmirx_stop_streaming(struct vb2_queue *q)
++{
++	struct h713_hdmirx *rx = vb2_get_drv_priv(q);
++	unsigned long flags;
++	unsigned int i;
++
++	rx->slot_source->stop(rx);
++
++	spin_lock_irqsave(&rx->slot_lock, flags);
++	for (i = 0; i < H713_HDMIRX_SLOTS; i++) {
++		struct vb2_v4l2_buffer *vbuf = rx->slot_buf[i];
++
++		rx->slot_buf[i] = NULL;
++		if (vbuf)
++			vb2_buffer_done(&vbuf->vb2_buf, VB2_BUF_STATE_ERROR);
++	}
++	spin_unlock_irqrestore(&rx->slot_lock, flags);
++
++	dev_dbg(rx->dev,
++		"Streaming beendet: %u Vsync-Ereignisse, %u geliefert, %u ohne Puffer, %u uebersprungen, %u unveraendert, %u fremd\n",
++		rx->stat.events, rx->stat.delivered, rx->stat.no_buffer,
++		rx->stat.skipped, rx->stat.unchanged, rx->stat.stray);
++}
++
++static const struct vb2_ops h713_hdmirx_qops = {
++	.queue_setup		= h713_hdmirx_queue_setup,
++	.buf_prepare		= h713_hdmirx_buf_prepare,
++	.buf_queue		= h713_hdmirx_buf_queue,
++	.start_streaming	= h713_hdmirx_start_streaming,
++	.stop_streaming		= h713_hdmirx_stop_streaming,
++};
++
++/* ------------------------------------------------------------------ *
++ * ioctls
++ * ------------------------------------------------------------------ */
++
++static const struct v4l2_dv_timings h713_hdmirx_timings =
++	V4L2_DV_BT_CEA_1920X1080P60;
++
++static const struct v4l2_dv_timings_cap h713_hdmirx_timings_cap = {
++	.type = V4L2_DV_BT_656_1120,
++	.bt = {
++		.min_width	= H713_HDMIRX_WIDTH,
++		.max_width	= H713_HDMIRX_WIDTH,
++		.min_height	= H713_HDMIRX_HEIGHT,
++		.max_height	= H713_HDMIRX_HEIGHT,
++		.min_pixelclock	= 148500000,
++		.max_pixelclock	= 148500000,
++		.standards	= V4L2_DV_BT_STD_CEA861,
++		.capabilities	= V4L2_DV_BT_CAP_PROGRESSIVE,
++	},
++};
++
++static int h713_hdmirx_querycap(struct file *file, void *priv,
++				struct v4l2_capability *cap)
++{
++	strscpy(cap->driver, H713_HDMIRX_NAME, sizeof(cap->driver));
++	strscpy(cap->card, "H713 HDMI receiver", sizeof(cap->card));
++
++	return 0;
++}
++
++static void h713_hdmirx_fill_fmt(struct v4l2_pix_format_mplane *pix)
++{
++	unsigned int i;
++
++	memset(pix, 0, sizeof(*pix));
++	pix->width = H713_HDMIRX_WIDTH;
++	pix->height = H713_HDMIRX_HEIGHT;
++	pix->pixelformat = V4L2_PIX_FMT_NV16M;
++	pix->field = V4L2_FIELD_NONE;
++	pix->colorspace = V4L2_COLORSPACE_REC709;
++	pix->quantization = V4L2_QUANTIZATION_LIM_RANGE;
++	pix->num_planes = H713_HDMIRX_PLANES;
++
++	for (i = 0; i < H713_HDMIRX_PLANES; i++) {
++		pix->plane_fmt[i].bytesperline = H713_HDMIRX_WIDTH;
++		pix->plane_fmt[i].sizeimage = H713_HDMIRX_PLANE_SIZE;
++	}
++}
++
++static int h713_hdmirx_enum_fmt(struct file *file, void *priv,
++				struct v4l2_fmtdesc *f)
++{
++	if (f->index)
++		return -EINVAL;
++
++	f->pixelformat = V4L2_PIX_FMT_NV16M;
++
++	return 0;
++}
++
++static int h713_hdmirx_g_fmt(struct file *file, void *priv,
++			     struct v4l2_format *f)
++{
++	h713_hdmirx_fill_fmt(&f->fmt.pix_mp);
++
++	return 0;
++}
++
++/*
++ * The format is not negotiable: it is what the firmware writes into the ring.
++ * S_FMT and TRY_FMT answer with it instead of failing, which is what V4L2
++ * asks a driver with a single format to do.
++ */
++static int h713_hdmirx_s_fmt(struct file *file, void *priv,
++			     struct v4l2_format *f)
++{
++	struct h713_hdmirx *rx = video_drvdata(file);
++
++	if (vb2_is_busy(&rx->queue))
++		return -EBUSY;
++
++	h713_hdmirx_fill_fmt(&f->fmt.pix_mp);
++
++	return 0;
++}
++
++static int h713_hdmirx_enum_input(struct file *file, void *priv,
++				  struct v4l2_input *inp)
++{
++	struct h713_hdmirx *rx = video_drvdata(file);
++
++	if (inp->index)
++		return -EINVAL;
++
++	strscpy(inp->name, "HDMI-1", sizeof(inp->name));
++	inp->type = V4L2_INPUT_TYPE_CAMERA;
++	inp->capabilities = V4L2_IN_CAP_DV_TIMINGS;
++	inp->status = h713_hdmirx_signal_present(rx) ? 0 : V4L2_IN_ST_NO_SIGNAL;
++
++	return 0;
++}
++
++static int h713_hdmirx_g_input(struct file *file, void *priv, unsigned int *i)
++{
++	*i = 0;
++
++	return 0;
++}
++
++/*
++ * Stage 5. The board has one socket, so there is one input, and selecting it
++ * is what tells the firmware which source is active.
++ */
++static int h713_hdmirx_s_input(struct file *file, void *priv, unsigned int i)
++{
++	struct h713_hdmirx *rx = video_drvdata(file);
++
++	if (i)
++		return -EINVAL;
++
++	return h713_hdmirx_set_source(rx);
++}
++
++/*
++ * The EDID store behind this is not a plain EDID: the firmware wants the
++ * HDMI 1.4 block and the HDMI 2.0 block back to back, 512 bytes in total, and
++ * publishes nothing until the last of its eight fragments has arrived. V4L2
++ * sees that as one four-block EDID. It also patches the physical address byte
++ * and the checksum itself, so a read-back is not byte-identical to what was
++ * written.
++ */
++static int h713_hdmirx_g_edid(struct file *file, void *priv,
++			      struct v4l2_edid *edid)
++{
++	struct h713_hdmirx *rx = video_drvdata(file);
++	u8 buf[ARISC_HDMI_EDID_SIZE];
++	unsigned int blocks;
++	int ret;
++
++	if (edid->pad)
++		return -EINVAL;
++
++	blocks = ARISC_HDMI_EDID_SIZE / 128;
++
++	if (!edid->start_block && !edid->blocks) {
++		edid->blocks = blocks;
++		return 0;
++	}
++	if (edid->start_block >= blocks)
++		return -EINVAL;
++	if (edid->start_block + edid->blocks > blocks)
++		edid->blocks = blocks - edid->start_block;
++
++	ret = arisc_hdmi_get_edid(H713_HDMI_PORT, buf, sizeof(buf));
++	if (ret < (int)((edid->start_block + edid->blocks) * 128)) {
++		/*
++		 * The read-back is short or the co-processor did not answer.
++		 * What was written last is still the truth about the store,
++		 * so serve that rather than a half record.
++		 */
++		if (!rx->edid_valid)
++			return ret < 0 ? ret : -ENODATA;
++		memcpy(buf, rx->edid, sizeof(buf));
++	}
++
++	memcpy(edid->edid, buf + edid->start_block * 128, edid->blocks * 128);
++
++	return 0;
++}
++
++static int h713_hdmirx_s_edid(struct file *file, void *priv,
++			      struct v4l2_edid *edid)
++{
++	struct h713_hdmirx *rx = video_drvdata(file);
++	int ret;
++
++	if (edid->pad)
++		return -EINVAL;
++	if (edid->start_block)
++		return -EINVAL;
++
++	/* blocks == 0 means "no EDID": pull the hotplug pin low and stop. */
++	if (!edid->blocks) {
++		rx->edid_valid = false;
++		return arisc_hdmi_hpd(H713_HDMI_PORT, ARISC_HDMI_HPD_DOWN);
++	}
++
++	if (edid->blocks != ARISC_HDMI_EDID_SIZE / 128) {
++		edid->blocks = ARISC_HDMI_EDID_SIZE / 128;
++		return -E2BIG;
++	}
++
++	memcpy(rx->edid, edid->edid, ARISC_HDMI_EDID_SIZE);
++
++	ret = arisc_hdmi_edid_init(H713_HDMI_PORT, rx->edid,
++				   ARISC_HDMI_EDID_SIZE);
++	if (ret)
++		return ret;
++
++	rx->edid_valid = true;
++
++	return 0;
++}
++
++static int h713_hdmirx_enum_dv_timings(struct file *file, void *priv,
++				       struct v4l2_enum_dv_timings *t)
++{
++	if (t->pad || t->index)
++		return -EINVAL;
++
++	t->timings = h713_hdmirx_timings;
++
++	return 0;
++}
++
++static int h713_hdmirx_dv_timings_cap(struct file *file, void *priv,
++				      struct v4l2_dv_timings_cap *cap)
++{
++	if (cap->pad)
++		return -EINVAL;
++
++	*cap = h713_hdmirx_timings_cap;
++
++	return 0;
++}
++
++static int h713_hdmirx_g_dv_timings(struct file *file, void *priv,
++				    struct v4l2_dv_timings *t)
++{
++	struct h713_hdmirx *rx = video_drvdata(file);
++
++	*t = rx->timings;
++
++	return 0;
++}
++
++static int h713_hdmirx_s_dv_timings(struct file *file, void *priv,
++				    struct v4l2_dv_timings *t)
++{
++	struct h713_hdmirx *rx = video_drvdata(file);
++
++	if (!v4l2_valid_dv_timings(t, &h713_hdmirx_timings_cap, NULL, NULL))
++		return -ERANGE;
++	if (vb2_is_busy(&rx->queue))
++		return -EBUSY;
++
++	rx->timings = *t;
++
++	return 0;
++}
++
++/*
++ * What the firmware detected is not readable from the ARM: the signal
++ * information record it hands to the SignalChange callback is 44 bytes of
++ * which exactly one field is decoded so far (doku/84). Until that record is
++ * decoded -- the raw words are in debugfs so that one board run is enough --
++ * this reports the one timing the whole pipeline is built for, and it reports
++ * it only while the capture is actually running, which is a measurement.
++ */
++static int h713_hdmirx_query_dv_timings(struct file *file, void *priv,
++					struct v4l2_dv_timings *t)
++{
++	struct h713_hdmirx *rx = video_drvdata(file);
++
++	if (!h713_hdmirx_signal_present(rx))
++		return -ENOLINK;
++
++	*t = h713_hdmirx_timings;
++	rx->timings = *t;
++
++	return 0;
++}
++
++static int h713_hdmirx_subscribe_event(struct v4l2_fh *fh,
++				       const struct v4l2_event_subscription *sub)
++{
++	switch (sub->type) {
++	case V4L2_EVENT_SOURCE_CHANGE:
++		return v4l2_src_change_event_subscribe(fh, sub);
++	default:
++		return -EINVAL;
++	}
++}
++
++static const struct v4l2_ioctl_ops h713_hdmirx_ioctl_ops = {
++	.vidioc_querycap		= h713_hdmirx_querycap,
++
++	.vidioc_enum_fmt_vid_cap	= h713_hdmirx_enum_fmt,
++	.vidioc_g_fmt_vid_cap_mplane	= h713_hdmirx_g_fmt,
++	.vidioc_s_fmt_vid_cap_mplane	= h713_hdmirx_s_fmt,
++	.vidioc_try_fmt_vid_cap_mplane	= h713_hdmirx_g_fmt,
++
++	.vidioc_enum_input		= h713_hdmirx_enum_input,
++	.vidioc_g_input			= h713_hdmirx_g_input,
++	.vidioc_s_input			= h713_hdmirx_s_input,
++
++	.vidioc_g_edid			= h713_hdmirx_g_edid,
++	.vidioc_s_edid			= h713_hdmirx_s_edid,
++
++	.vidioc_enum_dv_timings		= h713_hdmirx_enum_dv_timings,
++	.vidioc_dv_timings_cap		= h713_hdmirx_dv_timings_cap,
++	.vidioc_g_dv_timings		= h713_hdmirx_g_dv_timings,
++	.vidioc_s_dv_timings		= h713_hdmirx_s_dv_timings,
++	.vidioc_query_dv_timings	= h713_hdmirx_query_dv_timings,
++
++	/*
++	 * No CREATE_BUFS: the buffer set is the ring, three buffers, and
++	 * there is nothing to add to it.
++	 */
++	.vidioc_reqbufs			= vb2_ioctl_reqbufs,
++	.vidioc_querybuf		= vb2_ioctl_querybuf,
++	.vidioc_qbuf			= vb2_ioctl_qbuf,
++	.vidioc_dqbuf			= vb2_ioctl_dqbuf,
++	.vidioc_prepare_buf		= vb2_ioctl_prepare_buf,
++	.vidioc_streamon		= vb2_ioctl_streamon,
++	.vidioc_streamoff		= vb2_ioctl_streamoff,
++
++	.vidioc_subscribe_event		= h713_hdmirx_subscribe_event,
++	.vidioc_unsubscribe_event	= v4l2_event_unsubscribe,
++};
++
++static const struct v4l2_file_operations h713_hdmirx_fops = {
++	.owner		= THIS_MODULE,
++	.open		= v4l2_fh_open,
++	.release	= vb2_fop_release,
++	.poll		= vb2_fop_poll,
++	.unlocked_ioctl	= video_ioctl2,
++	.mmap		= vb2_fop_mmap,
++};
++
++/* ------------------------------------------------------------------ *
++ * debugfs
++ *
++ * One file. It exists because the board has neither v4l2-ctl nor modetest,
++ * so an acceptance run needs a way to see the state that does not depend on
++ * userspace tooling -- and because the signal information record still has to
++ * be decoded, and its raw words have to come from somewhere.
++ * ------------------------------------------------------------------ */
++
++static void h713_hdmirx_show_signal_info(struct seq_file *s,
++					 struct h713_hdmirx *rx, u32 phys)
++{
++	const u32 *info;
++	unsigned int i;
++
++	if (phys < rx->shm_base || phys + 44 > rx->shm_base + rx->shm_size) {
++		seq_printf(s, "signal-info: %#010x liegt nicht im cpu_comm-Shmem\n",
++			   phys);
++		return;
++	}
++
++	info = memremap(phys, 44, MEMREMAP_WC);
++	if (!info) {
++		seq_printf(s, "signal-info: %#010x nicht abbildbar\n", phys);
++		return;
++	}
++
++	seq_printf(s, "signal-info %#010x:", phys);
++	for (i = 0; i < 11; i++)
++		seq_printf(s, " %08x", info[i]);
++	seq_puts(s, "\n");
++
++	memunmap((void *)info);
++}
++
++static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
++{
++	struct h713_hdmirx *rx = s->private;
++	struct h713_afbd_flip flip;
++	unsigned long flags;
++	unsigned int i;
++	int ret;
++	u32 y;
++
++	seq_printf(s, "input:        HDMI-1 (SetSource %u)\n",
++		   H713_SOURCE_HDMI1);
++	seq_printf(s, "format:       NV16M %ux%u, 2 Ebenen a %u Byte\n",
++		   H713_HDMIRX_WIDTH, H713_HDMIRX_HEIGHT,
++		   H713_HDMIRX_PLANE_SIZE);
++	seq_printf(s, "slot-quelle:  %s\n", rx->slot_source->name);
++
++	ret = h713_afbd_read_flip(&flip);
++	if (!ret)
++		seq_printf(s, "flip:         y=%#010x c=%#010x slot=%d\n",
++			   flip.y, flip.c, h713_hdmirx_slot_of(flip.y));
++	else
++		seq_printf(s, "flip:         nicht lesbar (%d)\n", ret);
++
++	seq_printf(s, "signal:       %s\n",
++		   h713_hdmirx_signal_present(rx) ? "vorhanden (Flip-Zeiger wandern)"
++						  : "kein Signal (Flip-Zeiger stehen)");
++	seq_printf(s, "timings:      %ux%u%s\n",
++		   rx->timings.bt.width, rx->timings.bt.height,
++		   rx->timings.bt.interlaced ? "i" : "p");
++	seq_printf(s, "streaming:    %s\n",
++		   vb2_is_streaming(&rx->queue) ? "ja" : "nein");
++
++	spin_lock_irqsave(&rx->slot_lock, flags);
++	seq_printf(s,
++		   "vsync:        %u Ereignisse, zuletzt y=%#010x c=%#010x slot=%d\n",
++		   rx->stat.events, rx->last_flip_y, rx->last_flip_c,
++		   rx->last_slot);
++	seq_printf(s,
++		   "frames:       %u geliefert, %u ohne Puffer, %u uebersprungen, %u unveraendert, %u fremd\n",
++		   rx->stat.delivered, rx->stat.no_buffer, rx->stat.skipped,
++		   rx->stat.unchanged, rx->stat.stray);
++	spin_unlock_irqrestore(&rx->slot_lock, flags);
++
++	spin_lock_irqsave(&rx->event_lock, flags);
++	seq_printf(s, "SignalChange: %u mal, Para[]", rx->signal_count);
++	for (i = 0; i < rx->signal_nargs; i++)
++		seq_printf(s, " %#010x", rx->signal_args[i]);
++	seq_puts(s, "\n");
++	seq_printf(s, "HotPlug:      %u mal, Para[]", rx->hotplug_count);
++	for (i = 0; i < rx->hotplug_nargs; i++)
++		seq_printf(s, " %#010x", rx->hotplug_args[i]);
++	seq_puts(s, "\n");
++	y = rx->signal_nargs > 2 ? rx->signal_args[2] : 0;
++	spin_unlock_irqrestore(&rx->event_lock, flags);
++
++	if (y)
++		h713_hdmirx_show_signal_info(s, rx, y);
++
++	for (i = 0; i < H713_HDMIRX_SLOTS; i++)
++		seq_printf(s, "slot %u:       y=%#010llx c=%#010llx\n", i,
++			   (u64)h713_hdmirx_slot_y[i],
++			   (u64)h713_hdmirx_slot_c[i]);
++
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(h713_hdmirx_status);
++
++/* ------------------------------------------------------------------ *
++ * Probe
++ * ------------------------------------------------------------------ */
++
++static struct device_node *h713_hdmirx_region(struct device *dev,
++					      const char *name)
++{
++	int idx = of_property_match_string(dev->of_node, "memory-region-names",
++					   name);
++
++	if (idx < 0)
++		return NULL;
++
++	return of_parse_phandle(dev->of_node, "memory-region", idx);
++}
++
++static int h713_hdmirx_get_region(struct device *dev, const char *name,
++				  phys_addr_t *base, phys_addr_t *size)
++{
++	struct device_node *np;
++	struct resource res;
++	int ret;
++
++	np = h713_hdmirx_region(dev, name);
++	if (!np)
++		return dev_err_probe(dev, -EINVAL,
++				     "memory-region \"%s\" fehlt\n", name);
++
++	ret = of_address_to_resource(np, 0, &res);
++	of_node_put(np);
++	if (ret)
++		return dev_err_probe(dev, ret,
++				     "memory-region \"%s\" unbrauchbar\n",
++				     name);
++	if (upper_32_bits(res.end))
++		return dev_err_probe(dev, -ERANGE,
++				     "memory-region \"%s\" liegt oberhalb 4 GiB -- der MIPS sieht sie nicht\n",
++				     name);
++
++	*base = res.start;
++	*size = resource_size(&res);
++
++	return 0;
++}
++
++/* Every ring slot has to lie inside the region the device tree named. */
++static int h713_hdmirx_check_ring(struct h713_hdmirx *rx)
++{
++	unsigned int i;
++
++	for (i = 0; i < H713_HDMIRX_SLOTS; i++) {
++		phys_addr_t y = h713_hdmirx_slot_y[i];
++		phys_addr_t c = h713_hdmirx_slot_c[i];
++
++		if (!h713_hdmirx_in_ring(rx, y) ||
++		    !h713_hdmirx_in_ring(rx, y + H713_HDMIRX_SLOT_PITCH - 1) ||
++		    !h713_hdmirx_in_ring(rx, c) ||
++		    !h713_hdmirx_in_ring(rx, c + H713_HDMIRX_SLOT_PITCH - 1))
++			return dev_err_probe(rx->dev, -ERANGE,
++					     "Slot %u (%pa/%pa) liegt nicht in der hdmi-ring-Region\n",
++					     i, &y, &c);
++	}
++
++	return 0;
++}
++
++/*
++ * The two routines the firmware calls back into. Registering them is not
++ * only a matter of this driver: cpu_comm_register_callback() installs a
++ * descriptor for the name in the routine table in shared memory, and
++ * without that descriptor the firmware's own name lookup fails and it
++ * never sends the call.
++ *
++ * Which is also why this is the *last* thing the probe does. The
++ * descriptor is what arms the sender, so from the moment it is in the
++ * table the firmware can call in, on the cpu_comm receive work item, in
++ * parallel with whatever this driver is doing. Registering first -- which
++ * is what the first version of this did, and what the userspace bring-up
++ * script does -- puts that incoming call in the middle of the bring-up
++ * chain: twenty-two synchronous RPCs to the MIPS, then the ARISC EDID and
++ * hotplug sequence. On 07.09. one delivered callback was enough to break
++ * that chain, in a different place on each of two cold starts (step 15
++ * timed out on one, the ARISC refused the port map on the other).
++ *
++ * Nothing is lost by registering late, and that is not a judgement call:
++ * both handlers end in h713_hdmirx_src_change(), which queues a V4L2
++ * source-change event, and a V4L2 event goes to subscribed file handles.
++ * Before video_register_device() there is no video node, so there is no
++ * handle and no subscription, and every event queued until then would be
++ * dropped anyway. The window that is really given up is the few
++ * microseconds between video_register_device() and here.
++ */
++#define H713_HDMIRX_CB_SIGNAL	"MipsHalCallback_SignalChange"
++#define H713_HDMIRX_CB_HOTPLUG	"MipsHalCallback_HdmiHotPlugByPortHandler"
++
++static int h713_hdmirx_register_callbacks(struct h713_hdmirx *rx)
++{
++	int ret;
++
++	ret = cpu_comm_register_callback(H713_HDMIRX_CB_SIGNAL,
++					 h713_hdmirx_signal_cb, rx);
++	if (ret)
++		return ret;
++
++	ret = cpu_comm_register_callback(H713_HDMIRX_CB_HOTPLUG,
++					 h713_hdmirx_hotplug_cb, rx);
++	if (ret) {
++		cpu_comm_unregister_callback(H713_HDMIRX_CB_SIGNAL,
++					     h713_hdmirx_signal_cb);
++		return ret;
++	}
++
++	return 0;
++}
++
++static void h713_hdmirx_unregister_callbacks(struct h713_hdmirx *rx)
++{
++	cpu_comm_unregister_callback(H713_HDMIRX_CB_SIGNAL,
++				     h713_hdmirx_signal_cb);
++	cpu_comm_unregister_callback(H713_HDMIRX_CB_HOTPLUG,
++				     h713_hdmirx_hotplug_cb);
++}
++
++static int h713_hdmirx_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct h713_afbd_flip flip;
++	struct h713_hdmirx *rx;
++	struct vb2_queue *q;
++	int ret;
++
++	rx = devm_kzalloc(dev, sizeof(*rx), GFP_KERNEL);
++	if (!rx)
++		return -ENOMEM;
++
++	rx->dev = dev;
++	rx->slot_source = &h713_hdmirx_vsync;
++	rx->flip_nb.notifier_call = h713_hdmirx_flip_notify;
++	rx->timings = h713_hdmirx_timings;
++	rx->last_slot = -1;
++	mutex_init(&rx->lock);
++	spin_lock_init(&rx->slot_lock);
++	spin_lock_init(&rx->event_lock);
++
++	rx->id_setsource = cpu_comm_name2id("THal_Vp_SetSource",
++					    CPU_COMM_CPU_MIPS);
++	if (!rx->id_setsource)
++		return -EINVAL;
++
++	/*
++	 * The display driver is where the finished-slot events come from, and
++	 * it is the only place they can come from on this SoC. Ask it for the
++	 * flip pair once, before anything is registered: -EPROBE_DEFER means
++	 * display@5600000 has not bound yet, -ENODEV that the driver is not in
++	 * this kernel at all, and -EAGAIN only that there is no signal on the
++	 * input right now, which is none of this driver's business at probe.
++	 */
++	ret = h713_afbd_read_flip(&flip);
++	if (ret == -EPROBE_DEFER || ret == -ENODEV)
++		return dev_err_probe(dev, ret,
++				     "kein AFBD-Vsync-Notifier -- ohne sun50i-h713-afbd gibt es kein Slot-Ereignis\n");
++
++	ret = h713_hdmirx_get_region(dev, "hdmi-ring", &rx->ring_base,
++				     &rx->ring_size);
++	if (ret)
++		return ret;
++
++	ret = h713_hdmirx_check_ring(rx);
++	if (ret)
++		return ret;
++
++	ret = h713_hdmirx_get_region(dev, "cpu-comm-shmem", &rx->shm_base,
++				     &rx->shm_size);
++	if (ret)
++		return ret;
++	if (rx->shm_size < H713_SHM_VP_INIT)
++		return dev_err_probe(dev, -ERANGE,
++				     "cpu-comm-shmem ist zu klein fuer den Vp_Init-Puffer\n");
++
++	/*
++	 * Only the two pages that hold call arguments are mapped. Write
++	 * combining, and written word by word: this region is shared with a
++	 * co-processor and a wide unaligned store into it has faulted before.
++	 */
++	rx->shm = devm_ioremap_wc(dev, rx->shm_base + H713_SHM_HDCP22,
++				  H713_SHM_WINDOW);
++	if (!rx->shm)
++		return dev_err_probe(dev, -ENOMEM,
++				     "cpu_comm-Shmem-Fenster nicht abbildbar\n");
++
++	/* Stage 3: the firmware bring-up sequence. */
++	ret = h713_hdmirx_run_init_seq(rx);
++	if (ret) {
++		/*
++		 * -EAGAIN means the co-processor has not reached application
++		 * readiness yet, -ENODEV that cpu_comm has not bound its own
++		 * device yet -- this node has no phandle to it, so nothing
++		 * orders the two probes. Both are a reason to come back, not
++		 * to fail.
++		 */
++		if (ret == -EAGAIN || ret == -ENODEV)
++			ret = -EPROBE_DEFER;
++		return dev_err_probe(dev, ret,
++				     "Init-Sequenz fehlgeschlagen\n");
++	}
++
++	/*
++	 * Stage 4: EDID into the receiver and hotplug up. This is the ARISC's
++	 * job and it takes the ten seconds the hotplug pulse needs, which is
++	 * why this driver probes asynchronously.
++	 */
++	ret = arisc_hdmi_edid_init(H713_HDMI_PORT, NULL, 0);
++	if (ret) {
++		if (ret == -ENODEV)
++			ret = -EPROBE_DEFER;
++		return dev_err_probe(dev, ret,
++				     "EDID/HPD-Sequenz fehlgeschlagen\n");
++	}
++
++	q = &rx->queue;
++	q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
++	q->io_modes = VB2_MMAP;
++	q->drv_priv = rx;
++	q->buf_struct_size = sizeof(struct h713_hdmirx_buffer);
++	q->ops = &h713_hdmirx_qops;
++	q->mem_ops = &h713_hdmirx_mem_ops;
++	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
++	q->lock = &rx->lock;
++	q->dev = dev;
++	/*
++	 * Not max_num_buffers: vb2_core_queue_init() refuses any value below
++	 * VB2_MAX_FRAME. The count is pinned to the three slots in
++	 * h713_hdmirx_queue_setup() and h713_hdmirx_alloc() instead.
++	 */
++	q->min_queued_buffers = 1;
++
++	ret = vb2_queue_init(q);
++	if (ret)
++		return ret;
++
++	ret = v4l2_device_register(dev, &rx->v4l2_dev);
++	if (ret)
++		return ret;
++
++	rx->vdev.fops = &h713_hdmirx_fops;
++	rx->vdev.ioctl_ops = &h713_hdmirx_ioctl_ops;
++	rx->vdev.v4l2_dev = &rx->v4l2_dev;
++	rx->vdev.queue = q;
++	rx->vdev.lock = &rx->lock;
++	rx->vdev.release = video_device_release_empty;
++	rx->vdev.device_caps = V4L2_CAP_VIDEO_CAPTURE_MPLANE |
++			       V4L2_CAP_STREAMING;
++	strscpy(rx->vdev.name, H713_HDMIRX_NAME, sizeof(rx->vdev.name));
++	video_set_drvdata(&rx->vdev, rx);
++
++	ret = video_register_device(&rx->vdev, VFL_TYPE_VIDEO, -1);
++	if (ret)
++		goto err_v4l2;
++
++	/*
++	 * Stage 5, and deliberately the last one: tell the firmware where to
++	 * call. Everything above talks to the two co-processors and cannot
++	 * take a call from one of them while it does; from here on the driver
++	 * is idle and there is a video node for the events to reach. See
++	 * h713_hdmirx_register_callbacks().
++	 *
++	 * -ENODEV cannot mean "cpu_comm has not bound yet" at this point --
++	 * twenty-two calls have just gone through it -- so there is nothing
++	 * to defer for and the probe fails instead.
++	 */
++	ret = h713_hdmirx_register_callbacks(rx);
++	if (ret) {
++		dev_err_probe(dev, ret, "Callbacks nicht registrierbar\n");
++		goto err_vdev;
++	}
++
++	rx->debugfs = debugfs_create_dir(H713_HDMIRX_NAME, NULL);
++	debugfs_create_file("status", 0444, rx->debugfs, rx,
++			    &h713_hdmirx_status_fops);
++
++	platform_set_drvdata(pdev, rx);
++	dev_info(dev, "/dev/video%d, Slot-Quelle: %s\n", rx->vdev.num,
++		 rx->slot_source->name);
++
++	return 0;
++
++err_vdev:
++	vb2_video_unregister_device(&rx->vdev);
++err_v4l2:
++	v4l2_device_unregister(&rx->v4l2_dev);
++
++	return ret;
++}
++
++static void h713_hdmirx_remove(struct platform_device *pdev)
++{
++	struct h713_hdmirx *rx = platform_get_drvdata(pdev);
++
++	debugfs_remove_recursive(rx->debugfs);
++	vb2_video_unregister_device(&rx->vdev);
++	v4l2_device_unregister(&rx->v4l2_dev);
++	h713_hdmirx_unregister_callbacks(rx);
++}
++
++static const struct of_device_id h713_hdmirx_of_match[] = {
++	{ .compatible = "allwinner,sun50i-h713-hdmirx" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, h713_hdmirx_of_match);
++
++static struct platform_driver h713_hdmirx_driver = {
++	.probe	= h713_hdmirx_probe,
++	.remove	= h713_hdmirx_remove,
++	.driver	= {
++		.name		= H713_HDMIRX_NAME,
++		.of_match_table	= h713_hdmirx_of_match,
++		/*
++		 * The EDID/hotplug part of the bring-up holds the pin low for
++		 * ten seconds. That must not sit in the middle of the boot.
++		 */
++		.probe_type	= PROBE_PREFER_ASYNCHRONOUS,
++	},
++};
++module_platform_driver(h713_hdmirx_driver);
++
++MODULE_DESCRIPTION("Allwinner H713 HDMI receiver");
++MODULE_AUTHOR("well0nez <well0nez@users.noreply.github.com>");
++MODULE_LICENSE("GPL");
++MODULE_FIRMWARE(H713_FW_HDCP22);

@@ -1,0 +1,112 @@
+arm64: dts: h713: drop the 1416 MHz OPP, it corrupts memory
+
+Running the CPU at 1416 MHz corrupts kernel memory under sustained load.
+Removing the OPP fixes it, and the vendor never uses that point at any
+voltage.
+
+This closes an investigation that spent a long time in the wrong subsystem
+(docs/vaapi-scope.md). The symptom was that mpv rendering on the GPU to the
+panel killed the board in 40-90 s, with a different victim every run -- a
+task_struct's cpu_context.sp with its top half zeroed, a pool_workqueue in
+pwq_dec_nr_in_flight, the CCU's ioremapped register pointer, a userspace
+libavcodec thread faulting in the same microsecond as the kernel. It was
+chased through cedrus, the IOMMU, panfrost's dma-buf import path and CMA,
+all of which were excluded by experiment. The clue that redirected it was
+that two consecutive crashes landed *inside* the CPU DVFS path
+(sugov_work -> __cpufreq_driver_target -> clk_set_rate ->
+ccu_pll_notifier_cb -> ccu_helper_wait_for_lock), which had been dismissed
+as a hot path, and that `ffff` -> `faef` in a corrupted pointer is
+XOR 0x0510 -- three flipped bits, not an overwrite.
+
+Measured on the bench, mpv --vo=gpu to the panel via
+tools/video/soak-display-only.sh, GPU at ~490 IRQ/s and the panel at 59
+commits/s throughout:
+
+  ceiling 1416 MHz   crash at 40 s, ~60-90 s, 75 s          (n=3)
+  ceiling 1296 MHz   20 min clean, 581k GPU IRQs, khz=1296000 seen 16x
+  ceiling 1200 MHz   20 min clean, 578k GPU IRQs
+
+Frequency *transitions* are not the problem: the 1200 and 1296 arms ran
+schedutil with transitions happening throughout. Only the top point matters.
+
+The vendor does not use 1416. Its table is
+`allwinner,sun50i-operating-points`, whose driver (disassembled from the
+stock 32-bit ARM kernel at 0xc074f808) reads the `speed` nvmem cell,
+assembles it little-endian with no shift or mask, and formats it with
+"0x%8.8x" as the OPP prop name so the core looks up opp-microvolt-<key>.
+That cell is vf-table@00, reg = <0x00 0x02> -- two bytes. Every key in the
+stock CPU table exceeds 0xFFFF, so none can ever match, every die falls
+back to plain opp-microvolt, and there 1416 MHz reads <0x00>: no voltage.
+The vendor's top usable point is 1392 MHz at 1100 mV.
+
+Our 480-1296 MHz voltages match the vendor's exactly and are untouched.
+
+Worth recording why this was not caught when DVFS was brought up: 1416 MHz
+was qualified with a 2-minute 4-core CPU load that peaked at 68 C. The
+failing workload is tens of minutes of GPU + display + scanout at 78 C.
+The DMM voltage measurements were correct; the frequency point was never
+in the vendor's table to begin with.
+
+Validated on the BUILT kernel, not merely as a runtime sysfs cap. The GPU
+display arm ran 45 min / 2707 s with deaths=0, gpu_delta=1,316,959 and
+afbd_delta=161,473, zero crash patterns on the console, 90 heartbeats with
+no gaps, and the board up 52 minutes without a reboot
+(docs/reference/expS-0055-validation-45min-clean.log). Both validity gates
+hold: khz= shows 1104/1200/1296 and never 1416, so transitions were
+happening and the ceiling was genuinely in force, and afbd_rate held 59/s
+throughout, so the panel was driven for the whole run rather than the soak
+going quietly idle. That is 3.2x the longest crash latency ever recorded
+for this bug (848 s) and ~30-65x the latency this configuration used to die
+at. VA-API decode is still 5/5 bit-exact on the same kernel.
+
+1392 MHz at 1100 mV would recover most of the lost headroom and is what
+the vendor ships, but it is untested on this board and is deliberately not
+added here.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -216,11 +216,37 @@
+ 			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 
+-		opp-1416000000 {
+-			opp-hz = /bits/ 64 <1416000000>;
+-			opp-microvolt = <1100000>;
+-			clock-latency-ns = <244144>; /* 8 32k periods */
+-		};
++		/*
++		 * NO 1416 MHz OPP. It corrupts memory under sustained load, and
++		 * the vendor does not use this point at any voltage.
++		 *
++		 * The stock table (allwinner,sun50i-operating-points) gives 1416
++		 * a nonzero voltage only under efuse keys that can never be
++		 * selected -- the `speed` cell is vf-table@00, 2 bytes, so every
++		 * key above 0xFFFF is unreachable and every die falls back to
++		 * plain opp-microvolt, where 1416 reads <0x00>. The vendor's top
++		 * usable point there is 1392 MHz at 1100 mV.
++		 *
++		 * Measured on the bench with mpv rendering on the GPU to the
++		 * panel (tools/video/soak-display-only.sh, docs/vaapi-scope.md):
++		 *   ceiling 1416  -> kernel corruption in 40-90 s, n=3
++		 *   ceiling 1296  -> 20 min clean, 581k GPU IRQs, 1296 exercised
++		 *   ceiling 1200  -> 20 min clean
++		 * The victim differed every time -- a task_struct's cpu_context.sp,
++		 * a pool_workqueue, the CCU's ioremap pointer -- with no IOMMU or
++		 * GPU MMU fault anywhere, which is what bit flips look like and is
++		 * why this was chased through cedrus, the IOMMU, panfrost and CMA
++		 * before landing here.
++		 *
++		 * 1416 was originally qualified by a 2-minute 4-core CPU load at
++		 * 68 C. The failing workload is tens of minutes of GPU + display
++		 * at 78 C. The DMM voltages were right; the frequency point was
++		 * never in the vendor's table.
++		 *
++		 * 1392 MHz at 1100 mV is the vendor's top default and would be the
++		 * obvious way to claw back the last 7%, but it is UNTESTED here --
++		 * do not add it without its own soak.
++		 */
+ 	};
+ 
+ 	timer {

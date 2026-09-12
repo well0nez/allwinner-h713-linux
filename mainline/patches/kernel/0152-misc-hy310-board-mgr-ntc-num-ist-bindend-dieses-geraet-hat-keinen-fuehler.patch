@@ -1,0 +1,109 @@
+misc: hy310-board-mgr: ntc_num ist bindend -- dieses Geraet hat keinen Fuehler
+
+Der Treiber hat aus einem offenen ADC-Eingang eine Temperatur gebaut und sie
+ueber hwmon gemeldet. Je nach Abtastzeitpunkt kamen 0, 60 oder 71 Grad heraus,
+alle drei falsch, und die 71 lagen ueber der Abschaltschwelle.
+
+Die Ursache stand die ganze Zeit im Quelltext:
+
+	/*
+	 * Tolerant parsing: stock DTS has ntc_num=0 but ntc0.enable=1.
+	 * We treat this as "1 NTC enabled" if ntc0.enable == 1.
+	 */
+	if (ntc0_en == 1 || ntc_num > 0)
+
+Die 0 wurde fuer einen Widerspruch gehalten und bewusst uebergangen. Sie ist
+aber keiner. ntc_num zaehlt die bestueckten Fuehler und ist beim Hersteller
+bindend:
+
+- ntc_read() (c05db9a0) fuehrt seine Messschleife ueber ntc_num und springt bei
+  0 sofort ans Ende, ohne einen einzigen Wandler zu lesen.
+- avdtemp_read() (c05d9700) und ledtemp_read() (c05d8ef4) pruefen ntc_num und
+  geben bei 0 den Wert 0x63 = 99 zurueck -- "kein Fuehler".
+- Die ntc0/ntc1-Unterknoten werden dabei nie erreicht; ihr enable = 1 ist eine
+  Karteileiche aus der Vorlage.
+
+Und der Geraetebaum dieses Beamers sagt genau das: ntc_num = 0, uebereinstimmend
+in hy310_factory.dts (Zeile 2696) und bootpkg-full.dts (2975), beide vom Geraet
+dekompiliert. Der HY310 hat keinen NTC bestueckt.
+
+Dazu passt jede Messung (analyse/boot/ntc-gpadc-messung-20260911.txt):
+
+- GPADC ch1 laeuft mit steigender Abtastzeit auf Vollausschlag (TACQ 2 us: 1442,
+  170 us: 1777, 2,7 ms: 4044) -- das Verhalten eines offenen, hochohmigen
+  Eingangs, dessen Haltekondensator sich ueber Leckstrom auflaedt. Ein Fuehler
+  wuerde konvergieren.
+- Der Wert folgt der CPU-Last (Ruhe 1445, Volllast 1514) und springt nach dem
+  Lastende in 2 Sekunden zurueck, waehrend die CPU Minuten zum Abkuehlen
+  braucht. Keine thermische Masse verhaelt sich so.
+- GPADC ch0 ist gar nicht freigeschaltet (CS_EN = 0x02, DATA[0] = 0).
+- Beide LRADC-Kanaele stehen auf 63: dieser Block ist am HY310 die Tastatur
+  (allwinner,keyboard_1350mv, sechs Tasten), Vollausschlag heisst "keine Taste".
+
+Der Ueberhitzungsschutz des Geraets haengt nicht am NTC, sondern am Tachometer:
+fan_io_status_read() ruft bei anhaltendem Stillstand kernel_power_off(), der
+NTC-Pfad meldet dagegen nur per Uevent. Deshalb schaltet ein Stock-Geraet ab,
+wenn man den Luefter entfernt -- auch ohne Fuehler. Die Drehzahlmessung ist auf
+diesem Geraet nachgewiesen (PB5 aus: 0 RPM, wieder an: 4770 RPM).
+
+Also wird ntc_num respektiert. Ist es 0, bleibt die Auswertung aus und
+temp1_input wird gar nicht erst angelegt -- den Weg dafuer gibt es seit 0146.
+Eine fehlende Temperatur ist besser als eine erfundene; an dieser Zahl haengt
+eine Abschaltschwelle.
+
+--- a/drivers/misc/hy310-board-mgr.c	2026-09-11 23:39:37.734333304 +0200
++++ b/drivers/misc/hy310-board-mgr.c	2026-09-11 23:39:59.098152858 +0200
+@@ -1159,25 +1159,41 @@
+ 		of_property_read_u32(ntc_np, "ntc_num", &ntc_num);
+ 
+ 		/*
+-		 * Tolerant parsing: stock DTS has ntc_num=0 but ntc0.enable=1.
+-		 * We treat this as "1 NTC enabled" if ntc0.enable == 1.
++		 * ntc_num zaehlt die bestueckten Fuehler und ist bindend. Der
++		 * Hersteller wertet genau darueber aus: ntc_read() laeuft seine
++		 * Messschleife ueber ntc_num und bricht bei 0 sofort ab, und
++		 * avdtemp_read()/ledtemp_read() geben dann 99 zurueck -- den
++		 * Wert fuer "kein Fuehler". Die ntc0/ntc1-Unterknoten werden bei
++		 * ntc_num = 0 nie erreicht; ihr enable = 1 ist eine Karteileiche.
++		 *
++		 * Genau so steht es im Geraetebaum dieses Beamers (ntc_num = 0
++		 * in hy310_factory.dts und bootpkg-full.dts): er hat KEINEN NTC.
++		 * Der Ueberhitzungsschutz laeuft hier ueber den Tachometer --
++		 * fan_io_status_read() ruft bei Stillstand kernel_power_off(),
++		 * der NTC-Pfad dagegen meldet nur per Uevent.
++		 *
++		 * Eine fruehere Fassung hat die 0 fuer einen Widerspruch zu
++		 * ntc0.enable = 1 gehalten und sie bewusst uebergangen
++		 * ("tolerant parsing"). Das Ergebnis war eine erfundene
++		 * Temperatur aus einem offenen ADC-Eingang: am Geraet gemessen
++		 * lief GPADC ch1 bei langer Abtastzeit auf Vollausschlag und
++		 * folgte ansonsten der CPU-Last -- siehe
++		 * analyse/boot/ntc-gpadc-messung-20260911.txt. An dieser Zahl
++		 * haengt eine Abschaltschwelle; sie wird nicht geraten.
+ 		 */
+ 		ntc0_np = of_get_child_by_name(ntc_np, "ntc0");
+ 		if (ntc0_np) {
+-			u32 ntc0_en = 0;
+-
+-			of_property_read_u32(ntc0_np, "enable", &ntc0_en);
+ 			of_property_read_u32(ntc0_np, "source", &priv->ntc_source);
+ 			of_property_read_u32(ntc0_np, "channel", &priv->ntc_channel);
+-			if (ntc0_en == 1 || ntc_num > 0) {
+-				priv->ntc.enabled = true;
+-				dev_info(dev, "NTC enabled (ntc_num=%u, ntc0.enable=%u)\n",
+-					 ntc_num, ntc0_en);
+-			}
+ 			of_node_put(ntc0_np);
+-		} else if (ntc_num > 0) {
++		}
++
++		if (ntc_num > 0) {
+ 			priv->ntc.enabled = true;
+-			dev_info(dev, "NTC enabled (ntc_num=%u)\n", ntc_num);
++			dev_info(dev, "NTC: %u Fuehler bestueckt (Quelle %u, Kanal %u)\n",
++				 ntc_num, priv->ntc_source, priv->ntc_channel);
++		} else {
++			dev_info(dev, "NTC: ntc_num = 0, kein Fuehler bestueckt -- keine Temperatur, kein temp1_input\n");
+ 		}
+ 
+ 		of_node_put(ntc_np);

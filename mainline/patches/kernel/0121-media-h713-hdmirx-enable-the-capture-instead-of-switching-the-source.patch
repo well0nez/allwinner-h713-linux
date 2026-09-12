@@ -1,0 +1,124 @@
+media: sun50i-h713-hdmirx: switch the capture back on instead of switching the source
+
+Two things were wrong in the re-arm that 0119 left behind.
+
+The wait used h713_hdmirx_signal_present(), which watches the AFBD flip
+pointers. Those move from the plane side too, so the driver reported "the
+firmware released it" 12 ms after a republication while the capture enable was
+still clear and the wall stayed black. Watch the enable itself.
+
+And waiting is not enough: measured over 30 s after a republication, bit 31 of
+0x06940928 never comes back on its own. So set it -- both enables, luma and
+chroma, which is exactly what the firmware's memory_agent_onoff does for its
+mask 0x008. Doing that from the ARM was measured on 2026-09-07: the bits stay
+set, the flip pointers move, the picture comes up, and the window chain keeps
+the geometry the first rebuild computed.
+
+That is the whole point. The source switch also brings the capture back, and it
+is still there as the fallback, but it makes the firmware rebuild its window
+chain a second time and that pass shrinks the capture by two thirds
+(doku/nachtlog/S7). Writing two bits does not.
+
+The block stays read-only otherwise. These two enables are named and commented
+as the exception, with the measurement that justifies it.
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 22:54:21.503730618 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 22:54:21.511438316 +0200
+@@ -179,6 +179,22 @@
+ #define H713_INCAP_TOTAL	0x548
+ 
+ /*
++ * The capture output enables, one for luma and one for chroma. Bit 31 of each
++ * is what the firmware's memory_agent_onoff clears for its mask 0x008
++ * (re/notes/color-csc-blocker.md), and clearing it is how a descriptor
++ * publication stops the capture: the frame counter at +0x104 keeps running and
++ * nothing is written, so the wall holds its last picture.
++ *
++ * These two are the exception to the read-only rule above, and it is measured,
++ * not assumed: setting bit 31 from the ARM on 07.09.2026 brought the capture
++ * back, the bits stayed set, the flip pointers moved and the picture came up.
++ * Nothing else in the block is written.
++ */
++#define H713_INCAP_ENABLE_Y	0x928
++#define H713_INCAP_ENABLE_C	0x968
++#define H713_INCAP_ENABLE_BIT	BIT(31)
++
++/*
+  * The capture ring. Three Y slots and three C slots, fixed by the firmware;
+  * the slot pitch is 0x1ff000 and C slot i is Y slot i plus 0x5fd000. Y and C
+  * always name the same index in every dump taken so far. Measured on the
+@@ -1528,15 +1544,21 @@
+ /*
+  * Wait for the firmware to hand the capture back by itself.
+  * Returns true if it did.
++ *
++ * The criterion is the capture enable, not the flip pointers: those move from
++ * the plane side as well and say nothing about whether the capture is writing.
++ * Using them here cost a debugging round -- the driver reported success while
++ * the picture stayed black.
+  */
+ static bool h713_hdmirx_wait_enable(struct h713_hdmirx *rx, const char *why)
+ {
+ 	ktime_t start = ktime_get();
++	unsigned int val;
+ 
+ 	do {
+-		if (h713_hdmirx_signal_present(rx)) {
+-			dev_info(rx->dev,
+-				 "Freigabe: %s, nach %lld ms\n",
++		if (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val) &&
++		    (val & H713_INCAP_ENABLE_BIT)) {
++			dev_info(rx->dev, "Freigabe: %s, nach %lld ms\n",
+ 				 why, ktime_ms_delta(ktime_get(), start));
+ 			return true;
+ 		}
+@@ -1545,6 +1567,28 @@
+ 	return false;
+ }
+ 
++/*
++ * Switch the capture output back on, the way the firmware's own memory_agent
++ * does it: bit 31 in both enables. Measured to work from the ARM and to stick.
++ *
++ * This is what a republished descriptor needs instead of a source switch. The
++ * switch also brings the capture back, but it makes the firmware run its whole
++ * window rebuild a second time, and that pass loses the geometry -- the capture
++ * ends up 2/3 short and the picture is a smeared band (doku/nachtlog/S7).
++ */
++static int h713_hdmirx_capture_enable(struct h713_hdmirx *rx)
++{
++	int ret;
++
++	ret = regmap_update_bits(rx->incap, H713_INCAP_ENABLE_Y,
++				 H713_INCAP_ENABLE_BIT, H713_INCAP_ENABLE_BIT);
++	if (!ret)
++		ret = regmap_update_bits(rx->incap, H713_INCAP_ENABLE_C,
++					 H713_INCAP_ENABLE_BIT,
++					 H713_INCAP_ENABLE_BIT);
++	return ret;
++}
++
+ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ {
+ 	bool erste = !rx->desc_seen;
+@@ -1578,11 +1622,17 @@
+ 	 * is wrong -- and the log says which of the two happened.
+ 	 */
+ 	if (!erste) {
+-		if (h713_hdmirx_wait_enable(rx, "Firmware hat selbst freigegeben, kein Quellenwechsel noetig"))
++		int ret = h713_hdmirx_capture_enable(rx);
++
++		if (ret)
++			dev_warn(rx->dev,
++				 "Freigabe: Capture-Freigabe nicht schreibbar: %d\n",
++				 ret);
++		else if (h713_hdmirx_wait_enable(rx, "Capture direkt freigegeben, kein Quellenwechsel"))
+ 			return;
+ 
+ 		dev_warn(rx->dev,
+-			 "Freigabe: Firmware hat nach %u ms nicht selbst freigegeben; Quellenwechsel als Rueckfall -- der baut die Fensterkette neu und verliert dabei die Geometrie (doku/nachtlog/S7)\n",
++			 "Freigabe: direkte Freigabe hat nach %u ms nicht gegriffen; Quellenwechsel als Rueckfall -- der baut die Fensterkette neu und verliert dabei die Geometrie (doku/nachtlog/S7)\n",
+ 			 H713_REARM_TIMEOUT_MS);
+ 	}
+ 

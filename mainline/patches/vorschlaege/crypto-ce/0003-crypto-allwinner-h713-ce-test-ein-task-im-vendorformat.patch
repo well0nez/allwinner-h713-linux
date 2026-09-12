@@ -1,0 +1,1156 @@
+crypto: allwinner: h713-ce-test -- ein Task im Vendor-Deskriptorformat
+
+Ein Messmodul, kein Krypto-Treiber.  Es registriert nichts beim
+Krypto-Kern, ersetzt sun8i-ce nicht und laeuft nur, wenn man es
+ausdruecklich anstoesst.  Es beantwortet eine einzige Frage: liest die
+Crypto Engine des H713 den Task-Deskriptor so, wie wir ihn aus OP-TEE
+rekonstruiert haben?
+
+WARUM DIESE FRAGE OFFEN IST
+
+cstenger hat die CE am Geraet durchgemessen (wip/crypto-ce-tooling,
+bb44dc8) und mainline sun8i-ce zu Recht abgeschaltet: kein
+Geschwindigkeitsgewinn gegenueber den ARMv8-Krypto-Erweiterungen der
+A53, jeder Algorithmus faellt durch seinen Selbsttest, keine TRNG.  Sein
+Fehlerbild ist aber genauer, als es zunaechst aussieht: die Maschine
+meldet fuer *Standard*-AES "address invalid" und fuer *Standard*-SHA
+"algorithm not supported".  Das passiert nur, wenn sie eine unsinnige
+Algorithmus-ID und unsinnige Pufferadressen aus dem Deskriptor liest --
+also bei einem anderen Deskriptorformat, nicht bei falschem Takt,
+falschem Interrupt oder Wort- statt Byte-Adressierung.
+
+Sein Blocker war, dass es den Vendor-Kerneltreiber allwinner,sunxi-ce
+nicht als Quelltext gibt.  Das stimmt -- aber das Format steht an einer
+anderen Stelle: in OP-TEE.  sunxi_aes_with_hardware (OP-TEE 3.7,
+Ladeadresse 0x48600000, Funktion 0x4860c578) baut denselben Deskriptor
+fuer den sicheren Kanal.  Aus dem Disassemblat
+(analyse/release/arbeit/r0-fel/s49-dis/optee-4860c578.txt, ausgewertet
+in doku/nachtlog/S49-hdcp14-schluesselpfad.md):
+
+  +0x00 chan_id   u32   0                 memset bei 0x4860c578
+  +0x04 comm_ctl  u32   INT | decrypt<<8  str    bei 0x4860c5ec
+  +0x08 sym_ctl   u32   Modus             str    bei 0x4860c5f2
+  +0x0c asym_ctl  u32   0
+  +0x10 key_addr  5 B                     str    bei 0x4860c5f8
+  +0x15 iv_addr   5 B                     memcpy bei 0x4860c60a
+  +0x1a ctr_addr  5 B   (Vermutung, nie beschrieben)
+  +0x20 data_len  u32                     str    bei 0x4860c616
+  +0x24 src_addr  5 B                     str    bei 0x4860c618
+  +0x29 dst_addr  5 B                     memcpy bei 0x4860c61c
+  +0x30 src_len   u32                     str    bei 0x4860c620
+  +0x34 dst_len   u32                     str    bei 0x4860c626
+
+Der Beweis fuer die 5 Byte steht in der Form der Zugriffe: OP-TEE
+schreibt iv_addr und dst_addr mit memcpy auf die krummen Offsets 0x15
+und 0x29.  Ein Wortzugriff ginge dort gar nicht.  Mainline legt an
+dieselben Stellen 32-Bit-Felder; ab dem IV verschiebt sich damit alles,
+und die Maschine liest genau den Muell, der "address invalid" ausloest.
+cstengers Messung und unsere statische Analyse sagen dasselbe, von zwei
+Seiten.
+
+Die 5 Byte sind Abstand, nicht Schreibbreite: OP-TEE schreibt in jedes
+Adressfeld 4 Byte, das fuenfte bleibt aus dem memset null.  Wir
+schreiben Bits 32..39 hinein, die auf diesem Board (DRAM unter 4 GiB)
+immer null sind -- im Speicherbild dasselbe.
+
+sym_ctl ist mehr als Analogie.  sunxi_aes_do_crypt (0x4860c730) baut
+es bei 0x4860c79c..0x4860c7a8 als
+
+  (key_type << 20) | (aes_mode << 8) | schluessellaenge[1:0]
+
+und nennt es im eigenen Debug-Text "alg_cfg".  Und 0x48626214 ruft
+sunxi_aes_with_hardware mit einem echten 16-Byte-Schluessel, Laenge
+0x10 und mode 0x100 auf: key_type 0 heisst also "Schluessel aus
+key_addr".  Analogie bleibt nur, dass aes_mode 0 ECB und 1 CBC
+bedeutet (mainline sun8i-ce kodiert es so; OP-TEE benutzt 0 mit RSSK
+und 1 mit Softwareschluessel).
+
+WAS DAS MODUL TUT
+
+Genau einen Task, nach doku/114-plan-crypto-engine.md Paragraph 7
+Schritt 3: AES-128, verschluesseln, Key-Select 0 mit einem Schluessel
+aus dem Arbeitsspeicher, 16 Byte, Quelle und Ziel in DRAM.  Verglichen
+wird mit dem AES-128-Vektor aus FIPS-197 Anhang C.1 (nachgerechnet mit
+OpenSSL und python-cryptography) -- ein echter Known-Answer-Test, kein
+Blick auf das selftest-Feld in /proc/crypto (das war, wie cstenger
+selbst schreibt, ein Vorgabewert ohne Test).
+
+Vorgabe ist aes_mode 0 (ECB, wie der RSSK-Pfad).  Wahlweise laeuft
+derselbe Task mit aes_mode 1 (CBC, IV = 0) -- das ist OP-TEEs eigene
+Softwareschluessel-Konfiguration 0x100, und fuer einen Block mit IV 0
+ist der Erwartungswert derselbe.  Meldet ECB nur "Algorithmus nicht
+unterstuetzt", zeigt der CBC-Lauf im selben Stromzyklus, ob das Format
+stimmt und nur die Moduskodierung nicht.
+
+Es fasst kein Schluesselmaterial des Geraets an.  Key-Select 3 (RSSK)
+kommt nicht vor, die Schluesselsenke 0x03041400 kommt nicht vor.  Beides
+kaeme erst nach diesem Test in Frage, und ein falscher Deskriptor mit
+dst = 0x03041400 wuerde per DMA in die Key-Ladder schreiben.
+
+Start und Auswertung folgen OP-TEE Schritt fuer Schritt: TDA setzen
+(0x4860c334), ICR-Kanalbit setzen (0x4860c2ac), auf das TLR-Kanalbit
+warten und es setzen (0x4860c2d0), ISR pollen (0x4860c3a8), quittieren
+(0x4860c360), TLR und TDA zuruecksetzen, ESR lesen (0x4860c348).  Anders
+als OP-TEE wartet dieses Modul nirgends ohne Zeitschranke.
+
+Die beiden Interrupts werden beide angefordert -- cstenger hat gemessen,
+dass es ohne den zweiten haengt --, aber der Behandler fasst kein
+CE-Register an: er zaehlt nur und maskiert seine Leitung.  Zwei Gruende.
+Erstens ist unbekannt, welche Leitung zu welcher Bank gehoert; dass wir
+mitzaehlen, welche feuert, ist Teil der Messung.  Zweitens ist die
+Frage, ob die sichere Bank aus der Non-Secure-Welt lesbar ist, der halbe
+Zweck des Moduls -- sie im Interruptkontext zu beantworten waere
+unhoeflich.  Fertig gemeldet wird ueber das gepollte ISR.
+
+Der zweite Durchlauf geht ueber CE_S 0x03040800 statt ueber den
+NS-Kanal.  Damit laesst sich beantworten, ob CE_S aus der Non-Secure-
+Welt ueberhaupt sichtbar ist -- die letzte offene Frage aus S49
+Schritt 2.  Er wird ausdruecklich angestossen, nie von allein.
+
+Takte und Reset wie in sun8i-ce fuer die H6-Variante: bus, mod auf
+300 MHz, ram, Reset nach den Takten aufheben.  Dazu, optional aus dem
+Geraetebaum, bus_ce_sys und RST_BUS_CE_SYS: der Stock-Bootloader
+schaltet sie zusammen mit bus_ce ein, bevor OP-TEE die sichere Bank
+benutzt (u-boot.fex 0x4a028898, 0x4a0288ba).  Ob der Reset beim Laden
+noch gesetzt war, wird gemeldet.
+
+TDA wird nach dem Schreiben zurueckgelesen, nur als Messwert: eine Bank,
+die Schreibzugriffe verwirft, faellt sonst erst als Zeitueberschreitung
+auf.  Abgebrochen wird deshalb nicht -- weder OP-TEE noch sun8i-ce
+lesen TDA zurueck, es koennte auch nur schreibbar sein; der NS-Lauf
+zuerst zeigt, was ein lesbares TDA liefert.
+
+WAS BELEGT IST UND WAS NICHT
+
+Belegt sind die Feldlage, die Deskriptorgroesse, die Ausrichtung, die
+Registeroffsets, die Reihenfolge, die Aufteilung von sym_ctl und dass
+Key-Select 0 der Softwareschluessel ist -- alles mit Fundstelle im
+Kommentar am Feld.  Analogieschluss sind: dass aes_mode 0 ECB und 1 CBC
+heisst; dass die ESR-Bits so kodiert sind wie in sun8i-ce.h; dass das
+Feld bei +0x1a der Zaehler-Zeiger ist -- OP-TEE beschreibt es nie, die
+Lage folgt nur aus der Luecke; und dass bus_ce_sys die sichere Bank
+versorgt.  Das steht so im Quelltext, mit dem Wort "Vermutung"
+beziehungsweise "Analogie" daneben.
+
+WAS DER TEST ZEIGT
+
+  sauberes ESR und passender Chiffretext -> Format bestaetigt;
+  ESR ungleich 0                         -> Format oder Kanal falsch,
+                                            Fehlerwert im Klartext,
+                                            roh und maskiert;
+  Zeitueberschreitung                    -> nie fertig geworden; lesen
+                                            sich dabei alle Register
+                                            leer und hat TDA den Wert
+                                            nicht behalten, ignoriert
+                                            die Bank Schreibzugriffe;
+  Busabbruch                             -> NS darf diese Bank nicht.
+
+Bit 5 im ESR ist dabei genau cstengers Signatur; das Modul sagt das im
+Protokoll ausdruecklich dazu.
+
+Das Modul wird nur als Modul gebaut, nicht fest eingebaut, und startet
+nichts von allein: der Geraetebaum-Knoten traegt unser compatible, also
+laedt udev es beim Start, aber der Lauf muss ueber debugfs oder
+"modprobe h713-ce-test autostart=1" angestossen werden.  Ein Messlauf,
+der den Bus haengen lassen kann, darf nicht bei jedem Start passieren.
+--- a/drivers/crypto/allwinner/Kconfig
++++ b/drivers/crypto/allwinner/Kconfig
+@@ -137,3 +137,29 @@
+ 	select CRYPTO_SHA256
+ 	help
+ 	  Say y to enable support for hash algorithms.
++
++config H713_CE_TEST
++	tristate "H713 Crypto Engine: vendor task-descriptor test"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	depends on OF
++	depends on CRYPTO_DEV_ALLWINNER
++	help
++	  Messmodul, kein Krypto-Treiber.  Es setzt genau einen Task an der
++	  Crypto Engine des H713 ab, im Task-Deskriptorformat des
++	  Herstellers (0x100 Byte, Adressfelder 5 Byte breit), und
++	  vergleicht das Ergebnis mit dem AES-128-Vektor aus FIPS-197
++	  Anhang C.1.  AES-128, ECB (wahlweise CBC mit IV 0, gleicher
++	  Erwartungswert), Key-Select 0 mit einem Schluessel aus dem
++	  Arbeitsspeicher, 16 Byte, Quelle und Ziel in DRAM.  Es fasst
++	  kein Schluesselmaterial des Geraets und keine Schluesselsenke an.
++
++	  Es registriert nichts beim Krypto-Kern und ersetzt sun8i-ce
++	  nicht; sun8i-ce kann diese Maschine nicht fahren (siehe
++	  doku/114-plan-crypto-engine.md).  Das Ergebnis steht im
++	  Kernelprotokoll und unter /sys/kernel/debug/h713-ce-test/.
++
++	  Als Modul bauen (M), nicht fest einbauen.  Der Test laeuft nicht
++	  von allein, sondern erst nach einem Anstoss ueber debugfs oder
++	  mit autostart=1; wenn das Deskriptorformat falsch ist, kann er
++	  die Maschine oder den Bus haengen lassen.  Sagen Sie N, wenn Sie
++	  das Format nicht gerade untersuchen.
+--- a/drivers/crypto/allwinner/Makefile
++++ b/drivers/crypto/allwinner/Makefile
+@@ -1,3 +1,4 @@
+ obj-$(CONFIG_CRYPTO_DEV_SUN4I_SS) += sun4i-ss/
+ obj-$(CONFIG_CRYPTO_DEV_SUN8I_CE) += sun8i-ce/
+ obj-$(CONFIG_CRYPTO_DEV_SUN8I_SS) += sun8i-ss/
++obj-$(CONFIG_H713_CE_TEST) += h713-ce-test.o
+--- /dev/null
++++ b/drivers/crypto/allwinner/h713-ce-test.c
+@@ -0,0 +1,959 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * h713-ce-test - ein einziger Task an der Crypto Engine des H713,
++ * im Task-Deskriptorformat des Herstellers, als Known-Answer-Test.
++ *
++ * WOZU
++ * ----
++ * Der mainline-Treiber sun8i-ce kann diese CE nicht fahren.  Am Geraet
++ * gemessen (cstenger, 23.07.2026, Zweig wip/crypto-ce-tooling): mit
++ * mainline-Deskriptoren meldet die Maschine fuer Standard-AES
++ * "address invalid" und fuer Standard-SHA "algorithm not supported".
++ * Das ist die Signatur eines anderen Deskriptorformats, nicht eines
++ * Takt-, Interrupt- oder Adressierungsfehlers.
++ *
++ * Das richtige Format ist aus OP-TEE rekonstruiert, nicht aus einem
++ * Datenblatt und nicht aus dem Vendor-Kerneltreiber (den gibt es als
++ * Quelltext nicht): sunxi_aes_with_hardware, OP-TEE 3.7, Ladeadresse
++ * 0x48600000, Funktion bei 0x4860c578.  Die Disassemblate liegen unter
++ * analyse/release/arbeit/r0-fel/s49-dis/, die Auswertung in
++ * doku/nachtlog/S49-hdcp14-schluesselpfad.md.
++ *
++ * Dieses Modul setzt genau einen Task ab: AES-128, verschluesseln,
++ * Key-Select 0 (Schluessel aus dem Arbeitsspeicher), 16 Byte, Quelle und
++ * Ziel in DRAM.  Es vergleicht das Ergebnis mit dem AES-128-Vektor aus
++ * FIPS-197 Anhang C.1.  Es fasst weder Schluesselmaterial des Geraets
++ * noch die Schluesselsenke bei 0x03041400 an; Key-Select 3 (RSSK) kommt
++ * hier nicht vor.  Siehe doku/114-plan-crypto-engine.md Paragraph 7,
++ * Schritt 3.
++ *
++ * WAS BELEGT IST UND WAS NICHT
++ * ----------------------------
++ * Belegt (aus dem OP-TEE-Disassemblat, Adressen im Kommentar am Feld):
++ *   - der Deskriptor ist 0x100 Byte gross, 64-Byte-ausgerichtet, genullt;
++ *   - die Lage von chan_id, comm_ctl, sym_ctl, key_addr, iv_addr,
++ *     data_len, src_addr, dst_addr, src_len, dst_len;
++ *   - dass die Adressfelder nicht ausgerichtet liegen (0x15, 0x24, 0x29)
++ *     und damit 5 Byte Abstand haben - genau das, woran mainline scheitert.
++ *     OP-TEE schreibt in jedes Feld nur 4 Byte, das fuenfte bleibt aus dem
++ *     memset null; wir schreiben Bits 32..39 hinein, die auf diesem Board
++ *     (DRAM 0x40000000..0x80000000) immer null sind.  Im Speicherbild ist
++ *     das dasselbe;
++ *   - die Aufteilung von sym_ctl: OP-TEE baut es in sunxi_aes_do_crypt
++ *     (0x4860c79c..0x4860c7a8) als
++ *         (key_type << 20) | (aes_mode << 8) | schluessellaenge[1:0]
++ *     und nennt es im Debug-Text "alg_cfg";
++ *   - dass key_type 0 "Schluessel aus key_addr" heisst: 0x48626214 ruft
++ *     sunxi_aes_with_hardware mit einem echten 16-Byte-Schluessel,
++ *     Schluessellaenge 0x10 und mode 0x100 auf - key_type ist dort 0;
++ *   - die Registerreihenfolge TDA, ICR, TLR, ISR, ESR und ihre Offsets;
++ *   - dass die Fertigmeldung im ISR zwei Bits je Kanal belegt (Bit 2n =
++ *     fertig, Bit 2n+1 = Fehler; 0x4860c376 vergleicht mit 2);
++ *   - dass der Stock-Bootloader vor dem ersten CE-Zugriff neben bus_ce
++ *     auch bus_ce_sys einschaltet und beide Resets aufhebt
++ *     (u-boot.fex 0x4a028898: CCU 0x68c |= 3, 0x4a0288ba: |= 0x30000).
++ * Analogieschluss oder Vermutung (so auch in S49 gekennzeichnet):
++ *   - dass aes_mode 0 ECB heisst und 1 CBC.  OP-TEE benutzt 0 nur mit
++ *     Hardware-Schluessel (RSSK, 0x300000) und 1 nur mit Software-
++ *     Schluessel (0x100); mainline sun8i-ce kodiert ECB = 0, CBC = 1<<8.
++ *     Fuer diesen Test ist das gleichgueltig: ein Block mit IV = 0 ergibt
++ *     in CBC dasselbe wie in ECB.  Deshalb laesst sich der Lauf in beiden
++ *     Modi absetzen, mit demselben Erwartungswert;
++ *   - dass die ESR-Bits so kodiert sind wie in sun8i-ce.h (ESR_H6);
++ *     cstengers Messung passt dazu (mainline-Deskriptoren lieferten Bit 5);
++ *   - dass das Feld bei +0x1a der Zaehler-Zeiger (ctr_addr) ist.  OP-TEE
++ *     beschreibt es nie; die Lage folgt nur aus der Luecke zwischen
++ *     iv_addr und data_len.  Wir lassen es null;
++ *   - dass bus_ce_sys / RST_BUS_CE_SYS die zweite Registerbank versorgen.
++ *     Belegt ist nur, dass der Stock-Bootloader sie einschaltet und dass
++ *     mainline sun8i-ce ohne sie die NS-Bank fahren konnte;
++ *   - dass die zweite Registerbank bei 0x03040800 aus der Non-Secure-Welt
++ *     ueberhaupt lesbar ist.  Genau das soll der zweite Durchlauf klaeren.
++ *
++ * WAS DER TEST ZEIGT
++ * ------------------
++ *   sauberes ESR und passender Chiffretext -> das Format stimmt;
++ *   ESR ungleich 0 -> Format oder Kanal falsch, Fehlerwert im Klartext;
++ *   Zeitueberschreitung -> der Task wurde nie fertig; lesen sich dabei
++ *                          alle Register leer und hat TDA den Wert nicht
++ *                          behalten, ignoriert die Bank Schreibzugriffe
++ *                          (aus der Non-Secure-Welt unsichtbar);
++ *   Busabbruch (Oops) -> die Non-Secure-Welt darf diese Bank nicht.
++ *
++ * Copyright (C) 2026 h713-Portierung
++ */
++
++#include <linux/bitops.h>
++#include <linux/build_bug.h>
++#include <linux/clk.h>
++#include <linux/debugfs.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
++#include <linux/fs.h>
++#include <linux/interrupt.h>
++#include <linux/io.h>
++#include <linux/iopoll.h>
++#include <linux/kernel.h>
++#include <linux/ktime.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/reset.h>
++#include <linux/seq_file.h>
++#include <linux/string.h>
++#include <linux/uaccess.h>
++
++#define DRV_NAME "h713-ce-test"
++
++/*
++ * Registeroffsets.  Beide Baenke haben dieselbe Belegung; OP-TEE fasst
++ * ausschliesslich die sichere Bank 0x03040800 an, daher stehen dort die
++ * absoluten Adressen aus dem Disassemblat:
++ *   TDA 0x03040800 (0x4860c334), ICR 0x03040808 (0x4860c2ac),
++ *   ISR 0x0304080c (0x4860c360), TLR 0x03040810 (0x4860c2d0),
++ *   ESR 0x03040818 (0x4860c348).
++ * Dieselben Offsets benutzt mainline sun8i-ce fuer die NS-Bank, das ist
++ * also der einzige Teil, an dem sich beide Welten einig sind.
++ */
++#define CE_TDA		0x00	/* Task Descriptor Address */
++#define CE_CTR		0x04	/* (vom Vendor nicht angefasst) */
++#define CE_ICR		0x08	/* Interrupt Control */
++#define CE_ISR		0x0c	/* Interrupt Status */
++#define CE_TLR		0x10	/* Task Load */
++#define CE_TSR		0x14	/* Task Status */
++#define CE_ESR		0x18	/* Error Status */
++
++#define CE_KANAL	0	/* wir benutzen nur Kanal 0, wie der Vendor */
++
++/* comm_ctl, Deskriptor +0x04 (0x4860c5e6 bis 0x4860c5ec) */
++#define CE_COMM_INT		BIT(31)	/* Fertigmeldung anfordern */
++#define CE_COMM_DECRYPT		BIT(8)	/* 0 = verschluesseln */
++#define CE_COMM_ALG_AES		0
++
++/*
++ * sym_ctl, Deskriptor +0x08.  Aufteilung belegt durch sunxi_aes_do_crypt
++ * (0x4860c79c: key_type << 20; 0x4860c7a0: | aes_mode << 8;
++ * 0x4860c7a8: | schluessellaenge).  Die Schluessellaenge kodiert OP-TEE
++ * bei 0x4860c752..0x4860c764 als 0/1/2 fuer 16/24/32 Byte.
++ */
++#define CE_SYM_AES_128		0		/* Bits [1:0] */
++#define CE_SYM_MODE(m)		((m) << 8)	/* Bits [11:8]: aes_mode */
++#define CE_SYM_KEYSEL(n)	((n) << 20)	/* Bits [23:20]: key_type */
++
++/*
++ * aes_mode.  0 benutzt OP-TEE fuer den RSSK-Pfad (0x300000), 1 fuer den
++ * Software-Schluesselpfad (0x100, 0x48626216).  Dass 0 ECB und 1 CBC
++ * heisst, ist Analogie zu sun8i-ce.h; fuer einen Block mit IV = 0 ist
++ * das Ergebnis in beiden Modi gleich.
++ */
++#define AES_MODE_ECB		0
++#define AES_MODE_CBC		1
++
++/*
++ * ESR-Bits.  Namen und Lage aus mainline sun8i-ce.h (Variante ESR_H6);
++ * dass diese Kodierung auch fuer den H713 gilt, ist nicht belegt, aber
++ * cstengers Messung passt dazu: mainline-Deskriptoren lieferten Bit 5.
++ */
++#define CE_ERR_ALGO_NOTSUP	BIT(0)
++#define CE_ERR_DATALEN		BIT(1)
++#define CE_ERR_KEYSRAM		BIT(2)
++#define CE_ERR_ADDR_INVALID	BIT(5)
++#define CE_ERR_KEYLADDER	BIT(6)
++
++/*
++ * Der Task-Deskriptor im Vendorformat.
++ *
++ * Jede Zeile mit einer Fundstelle ist aus dem Disassemblat von
++ * sunxi_aes_with_hardware (0x4860c578) abgelesen.  Der entscheidende
++ * Unterschied zu mainline: die Adressfelder liegen 5 Byte auseinander
++ * und deshalb ab +0x15 unausgerichtet.  OP-TEE schreibt sie mit memcpy
++ * von 4 Byte auf krumme Offsets - ein Wortzugriff ginge dort gar nicht.
++ * mainline legt an dieselben Stellen 32-Bit-Felder (t_iv bei +0x14,
++ * t_ctr +0x18, t_dlen +0x1c, dann SG-Listen) und verschiebt damit alles
++ * ab dem IV; die Maschine liest dann Muell und meldet "address invalid".
++ */
++struct h713_ce_task {
++	__le32	chan_id;	/* +0x00 = 0            (memset, 0x4860c578) */
++	__le32	comm_ctl;	/* +0x04                (str,    0x4860c5ec) */
++	__le32	sym_ctl;	/* +0x08                (str,    0x4860c5f2) */
++	__le32	asym_ctl;	/* +0x0c = 0            (nur memset)         */
++	u8	key_addr[5];	/* +0x10                (str,    0x4860c5f8) */
++	u8	iv_addr[5];	/* +0x15                (memcpy, 0x4860c60a) */
++	u8	ctr_addr[5];	/* +0x1a  VERMUTUNG, bleibt null             */
++	u8	fuell1;		/* +0x1f                                     */
++	__le32	data_len;	/* +0x20                (str,    0x4860c616) */
++	u8	src_addr[5];	/* +0x24                (str,    0x4860c618) */
++	u8	dst_addr[5];	/* +0x29                (memcpy, 0x4860c61c) */
++	u8	fuell2[2];	/* +0x2e                                     */
++	__le32	src_len;	/* +0x30                (str,    0x4860c620) */
++	__le32	dst_len;	/* +0x34                (str,    0x4860c626) */
++	u8	rest[0x100 - 0x38];	/* bis 0x100, genullt                */
++} __packed;
++
++static_assert(sizeof(struct h713_ce_task) == 0x100);
++static_assert(offsetof(struct h713_ce_task, iv_addr) == 0x15);
++static_assert(offsetof(struct h713_ce_task, data_len) == 0x20);
++static_assert(offsetof(struct h713_ce_task, src_addr) == 0x24);
++static_assert(offsetof(struct h713_ce_task, dst_addr) == 0x29);
++static_assert(offsetof(struct h713_ce_task, src_len) == 0x30);
++static_assert(offsetof(struct h713_ce_task, dst_len) == 0x34);
++
++/*
++ * Ein einziger kohaerenter Block fuer alles, was die Maschine per DMA
++ * anfasst.  Der Deskriptor liegt am Anfang und ist damit mindestens
++ * seitenausgerichtet, also auch 64-Byte-ausgerichtet, wie der Vendor es
++ * verlangt (0x4860c58c: bic #0x3f).  Kohaerent heisst: keine Cache-Pflege
++ * noetig.  OP-TEE macht sie (0x486061a8) nur deshalb, weil es mit
++ * gecachtem Speicher arbeitet.
++ */
++#define PUF_DESC	0x000
++#define PUF_KEY		0x100	/* 64 Byte, davon 16 benutzt (0x4860c5b4) */
++#define PUF_IV		0x140	/* 16 Byte Nullen (0x4860c598) */
++#define PUF_SRC		0x180
++#define PUF_DST		0x1c0
++#define PUF_GROESSE	0x200
++
++#define KAT_LEN		16
++
++/*
++ * AES-128, FIPS-197 Anhang C.1.  Oeffentlicher Testvektor, nachgerechnet
++ * mit OpenSSL (enc -aes-128-ecb -nopad) und python-cryptography.
++ * Gilt fuer ECB und fuer den ersten CBC-Block mit IV = 0.
++ */
++static const u8 kat_schluessel[KAT_LEN] = {
++	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
++	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
++};
++static const u8 kat_klartext[KAT_LEN] = {
++	0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
++	0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
++};
++static const u8 kat_erwartet[KAT_LEN] = {
++	0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30,
++	0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5, 0x5a,
++};
++
++enum h713_ce_bank {
++	BANK_NS = 0,	/* 0x03040000, SPI 73 */
++	BANK_S  = 1,	/* 0x03040800, SPI 74 */
++	BANK_ANZ
++};
++
++static const char * const bank_name[BANK_ANZ] = { "ns", "s" };
++static const char * const bank_text[BANK_ANZ] = {
++	"NS-Kanal 0x03040000",
++	"CE_S 0x03040800",
++};
++static const char * const mode_text[2] = {
++	"aes_mode 0 (ECB, wie der RSSK-Pfad 0x300000)",
++	"aes_mode 1 (CBC mit IV 0, wie OP-TEEs Softwareschluesselpfad 0x100)",
++};
++
++struct h713_ce_leitung {
++	unsigned int	gefeuert;
++	bool		maskiert;
++	int		irq;
++};
++
++struct h713_ce {
++	struct device		*dev;
++	void __iomem		*bank[BANK_ANZ];
++	struct h713_ce_leitung	leitung[BANK_ANZ];
++	struct clk		*takt_bus;
++	struct clk		*takt_sys;	/* bus_ce_sys, optional */
++	struct clk		*takt_mod;
++	struct clk		*takt_ram;
++	struct reset_control	*reset;
++	struct reset_control	*reset_sys;	/* RST_BUS_CE_SYS, optional */
++	int			reset_sys_vorher;	/* 1 = war noch gesetzt */
++
++	void			*puf;
++	dma_addr_t		puf_phys;
++
++	struct mutex		sperre;		/* schuetzt Puffer und Bericht */
++	struct dentry		*dbg;
++
++	/* Bericht des letzten Laufs */
++	bool			gelaufen;
++	int			letzte_bank;
++	int			letzter_modus;
++	int			fehler;
++	u32			tda_rueck;
++	u32			isr;
++	u32			esr_roh;
++	u32			esr;
++	u32			tlr_nach;
++	u32			tsr_nach;
++	u64			dauer_us;
++	bool			stimmt;
++	u8			ergebnis[KAT_LEN];
++	unsigned int		irq_gefeuert[BANK_ANZ];
++};
++
++static int bank_param = BANK_NS;
++module_param_named(bank, bank_param, int, 0444);
++MODULE_PARM_DESC(bank, "Registerbank fuer den Lauf beim Laden: 0 = NS (Vorgabe), 1 = CE_S");
++
++static int modus_param = AES_MODE_ECB;
++module_param_named(aes_mode, modus_param, int, 0444);
++MODULE_PARM_DESC(aes_mode, "sym_ctl-Bits [11:8] fuer den Lauf beim Laden: 0 = ECB (Vorgabe), 1 = CBC mit IV 0");
++
++/*
++ * Vorgabe: nein.  Der Knoten im Geraetebaum traegt unser compatible, also
++ * laedt udev dieses Modul beim Start von allein.  Ein Messlauf, der den
++ * Bus haengen lassen kann, darf nicht bei jedem Start von allein
++ * passieren - er wird ausdruecklich angestossen, ueber debugfs oder
++ * "modprobe h713-ce-test autostart=1".
++ */
++static bool autostart;
++module_param(autostart, bool, 0444);
++MODULE_PARM_DESC(autostart, "Beim Laden sofort einen Task absetzen (Vorgabe: nein)");
++
++/* Eine 40-Bit-Adresse little-endian in ein 5-Byte-Feld schreiben. */
++static void adr40_setzen(u8 feld[5], dma_addr_t phys)
++{
++	u64 v = phys;
++
++	feld[0] = v;
++	feld[1] = v >> 8;
++	feld[2] = v >> 16;
++	feld[3] = v >> 24;
++	feld[4] = v >> 32;
++}
++
++static void esr_klartext(u32 esr, char *puf, size_t n)
++{
++	size_t p = 0;
++
++	if (!esr) {
++		strscpy(puf, "keiner", n);
++		return;
++	}
++
++	puf[0] = '\0';
++#define MELDE(bit, text)						\
++	do {								\
++		if (esr & (bit))					\
++			p += scnprintf(puf + p, n - p, "%s%s",		\
++				       p ? ", " : "", (text));		\
++	} while (0)
++
++	MELDE(CE_ERR_ALGO_NOTSUP, "Algorithmus nicht unterstuetzt (Bit 0)");
++	MELDE(CE_ERR_DATALEN,     "Datenlaenge ungueltig (Bit 1)");
++	MELDE(CE_ERR_KEYSRAM,     "Key-SRAM-Fehler (Bit 2)");
++	MELDE(CE_ERR_ADDR_INVALID, "Adresse ungueltig (Bit 5)");
++	MELDE(CE_ERR_KEYLADDER,   "Key-Ladder-Fehler (Bit 6)");
++#undef MELDE
++
++	if (esr & ~(CE_ERR_ALGO_NOTSUP | CE_ERR_DATALEN | CE_ERR_KEYSRAM |
++		    CE_ERR_ADDR_INVALID | CE_ERR_KEYLADDER))
++		p += scnprintf(puf + p, n - p, "%sunbekannte Bits",
++			       p ? ", " : "");
++}
++
++static irqreturn_t h713_ce_irq(int irq, void *data)
++{
++	struct h713_ce_leitung *l = data;
++
++	/*
++	 * Der Behandler fasst absichtlich kein CE-Register an.  Erstens
++	 * wissen wir nicht, welche Leitung zu welcher Bank gehoert -
++	 * cstenger hat gemessen, dass die erste Operation ohne die zweite
++	 * Leitung haengt, was genau das offenlaesst.  Zweitens ist die
++	 * Frage, ob die sichere Bank aus der Non-Secure-Welt ueberhaupt
++	 * lesbar ist, der halbe Zweck dieses Moduls; sie im
++	 * Interruptkontext zu beantworten waere unhoeflich.
++	 *
++	 * Also nur zaehlen und die Leitung stilllegen.  Der Hauptpfad
++	 * pollt das ISR ohnehin und quittiert es; danach gibt er die
++	 * Leitung wieder frei.  Bei einem pegelgesteuerten Interrupt ist
++	 * das Maskieren am GIC das einzige, was einen Sturm verhindert,
++	 * solange das ISR noch steht.
++	 */
++	l->gefeuert++;
++	if (!l->maskiert) {
++		l->maskiert = true;
++		disable_irq_nosync(irq);
++	}
++	return IRQ_HANDLED;
++}
++
++static void leitungen_freigeben(struct h713_ce *ce)
++{
++	int i;
++
++	for (i = 0; i < BANK_ANZ; i++) {
++		if (ce->leitung[i].maskiert) {
++			ce->leitung[i].maskiert = false;
++			enable_irq(ce->leitung[i].irq);
++		}
++	}
++}
++
++/*
++ * Einen Task absetzen.  Aufrufer haelt ce->sperre.
++ * Rueckgabe 0 = die Maschine hat gemeldet (ob mit oder ohne Fehler steht
++ * in ce->esr), -ETIMEDOUT = keine Meldung, -EBUSY = TLR bleibt belegt.
++ */
++static int h713_ce_task_absetzen(struct h713_ce *ce, int bank, int modus)
++{
++	void __iomem *b = ce->bank[bank];
++	struct h713_ce_task *t = ce->puf + PUF_DESC;
++	u32 tda_soll;
++	ktime_t t0;
++	u32 wert;
++	int ret;
++	int i;
++
++	memset(ce->puf, 0, PUF_GROESSE);
++	memcpy(ce->puf + PUF_KEY, kat_schluessel, KAT_LEN);
++	memcpy(ce->puf + PUF_SRC, kat_klartext, KAT_LEN);
++
++	/*
++	 * comm_ctl = INT | (decrypt << 8) | Algorithmus.
++	 * OP-TEE baut genau das: 0x4860c5e6 schiebt das decrypt-Argument um
++	 * 8 und verodert 0x80000000; der Algorithmuscode AES ist 0 und
++	 * bleibt deshalb im Disassemblat unsichtbar.  Wir verschluesseln,
++	 * also kein CE_COMM_DECRYPT - so wie sunxi_aes_encrypt_with_
++	 * hardware_rssk (0x4862626c, decrypt = 0) im Einbrennpfad.
++	 */
++	t->chan_id  = cpu_to_le32(CE_KANAL);
++	t->comm_ctl = cpu_to_le32(CE_COMM_INT | CE_COMM_ALG_AES);
++	t->sym_ctl  = cpu_to_le32(CE_SYM_KEYSEL(0) | CE_SYM_MODE(modus) |
++				  CE_SYM_AES_128);
++	adr40_setzen(t->key_addr, ce->puf_phys + PUF_KEY);
++	adr40_setzen(t->iv_addr, ce->puf_phys + PUF_IV);
++	/* ctr_addr bleibt null, wie bei OP-TEE */
++	t->data_len = cpu_to_le32(KAT_LEN);	/* Bytes: 0x4860c5d4 rundet auf 4 */
++	adr40_setzen(t->src_addr, ce->puf_phys + PUF_SRC);
++	adr40_setzen(t->dst_addr, ce->puf_phys + PUF_DST);
++	t->src_len = cpu_to_le32(KAT_LEN);
++	t->dst_len = cpu_to_le32(KAT_LEN);
++
++	/* Deskriptor steht, bevor die Maschine ihn holen darf. */
++	wmb();
++
++	for (i = 0; i < BANK_ANZ; i++)
++		ce->leitung[i].gefeuert = 0;
++
++	ce->dauer_us = 0;
++	ce->tda_rueck = 0;
++	ce->isr = 0;
++	ce->esr_roh = 0;
++	ce->esr = 0;
++	ce->tlr_nach = 0;
++	ce->tsr_nach = 0;
++
++	t0 = ktime_get();
++
++	/*
++	 * Startfolge wie OP-TEE: TDA, ICR, TLR.  0x4860c334 schreibt die
++	 * Deskriptoradresse als ein Wort - ein Register fuer die oberen 8
++	 * Adressbits gibt es im Vendorcode nicht.  Auf diesem Board liegt
++	 * der Arbeitsspeicher ohnehin vollstaendig unter 4 GiB.
++	 *
++	 * Das Ruecklesen von TDA ist unsere Zutat, nur als Messwert: eine
++	 * Bank, die aus der Non-Secure-Welt zwar erreichbar ist, aber
++	 * Schreibzugriffe verwirft (RAZ/WI), faellt sonst erst als
++	 * Zeitueberschreitung auf und ist von "Task nie fertig" nicht zu
++	 * unterscheiden.  Abgebrochen wird deshalb nicht - weder OP-TEE
++	 * noch sun8i-ce lesen TDA je zurueck, es koennte auch schlicht nur
++	 * schreibbar sein.  Der NS-Lauf zuerst zeigt, was ein lesbares TDA
++	 * zurueckgibt; erst damit ist der Wert des CE_S-Laufs deutbar.
++	 */
++	tda_soll = lower_32_bits(ce->puf_phys + PUF_DESC);
++	writel(tda_soll, b + CE_TDA);
++	ce->tda_rueck = readl(b + CE_TDA);
++	writel(readl(b + CE_ICR) | BIT(CE_KANAL), b + CE_ICR);
++
++	/*
++	 * TLR: 0x4860c2d0 wartet, bis das Kanalbit frei ist, und setzt es
++	 * dann.  Der Vendor wartet ohne Zeitschranke; wir nicht.
++	 * (sun8i-ce schreibt beim H6 zusaetzlich den Algorithmuscode in
++	 * TLR[14:8]; fuer AES ist der 0, beide Wege schreiben dasselbe.)
++	 */
++	ret = readl_poll_timeout(b + CE_TLR, wert, !(wert & BIT(CE_KANAL)),
++				 10, 10000);
++	if (ret) {
++		ce->tlr_nach = readl(b + CE_TLR);
++		writel(0, b + CE_ICR);
++		writel(0, b + CE_TDA);
++		return -EBUSY;
++	}
++	writel(readl(b + CE_TLR) | BIT(CE_KANAL), b + CE_TLR);
++
++	/*
++	 * Fertig melden tut die Maschine im ISR, zwei Bits je Kanal:
++	 * Bit 2*n = fertig, Bit 2*n+1 = Fehler (0x4860c360, 0x4860c3a8).
++	 * Wir pollen, statt auf den Interrupt zu warten - der Interrupt
++	 * ist hier Messgroesse, nicht Mechanismus.
++	 */
++	ret = readl_poll_timeout(b + CE_ISR, wert,
++				 wert & (3u << (2 * CE_KANAL)),
++				 50, 200000);
++
++	ce->dauer_us = ktime_us_delta(ktime_get(), t0);
++	ce->isr = readl(b + CE_ISR);
++	/*
++	 * ESR: OP-TEE maskiert mit (0xff << kanal), 0x4860c354..0x4860c358.
++	 * Fuer Kanal 0 ist das 0xff; sun8i-ce (ESR_H6) nimmt 0xff << 8*n.
++	 * Wir merken uns zusaetzlich das rohe Register, damit nichts
++	 * verlorengeht, was in anderen Bits steht.
++	 */
++	ce->esr_roh = readl(b + CE_ESR);
++	ce->esr = ce->esr_roh & (0xffu << CE_KANAL);
++	ce->tsr_nach = readl(b + CE_TSR);
++	ce->tlr_nach = readl(b + CE_TLR);
++
++	/*
++	 * Quittieren wie 0x4860c360: die beiden Kanalbits schreiben und
++	 * das untere Byte des alten ISR mitnehmen, dann ICR ganz loeschen.
++	 * Danach TLR und TDA zuruecksetzen (0x4860c2fc, 0x4860c334).
++	 */
++	writel((3u << (2 * CE_KANAL)) | (ce->isr & 0xff), b + CE_ISR);
++	writel(0, b + CE_ICR);
++	writel(0, b + CE_TLR);
++	writel(0, b + CE_TDA);
++
++	/* Was die Maschine geschrieben hat, ist jetzt sichtbar. */
++	rmb();
++	memcpy(ce->ergebnis, ce->puf + PUF_DST, KAT_LEN);
++
++	return ret ? -ETIMEDOUT : 0;
++}
++
++static int h713_ce_lauf(struct h713_ce *ce, int bank, int modus)
++{
++	char esrtext[160];
++	int ret;
++	int i;
++
++	if (bank < 0 || bank >= BANK_ANZ || !ce->bank[bank])
++		return -EINVAL;
++	if (modus != AES_MODE_ECB && modus != AES_MODE_CBC)
++		return -EINVAL;
++
++	mutex_lock(&ce->sperre);
++
++	if (bank == BANK_S)
++		dev_warn(ce->dev,
++			 "Lauf auf %s, %s. Ob die Non-Secure-Welt diese Bank lesen darf, ist unbekannt; ein Busabbruch ist moeglich.\n",
++			 bank_text[bank], mode_text[modus]);
++	else
++		dev_info(ce->dev, "Lauf auf %s, %s, AES-128, Key-Select 0, 16 Byte, Ziel DRAM.\n",
++			 bank_text[bank], mode_text[modus]);
++
++	ce->letzte_bank = bank;
++	ce->letzter_modus = modus;
++	ret = h713_ce_task_absetzen(ce, bank, modus);
++	ce->fehler = ret;
++	ce->gelaufen = true;
++	ce->stimmt = (ret == 0 && ce->esr == 0 &&
++		      memcmp(ce->ergebnis, kat_erwartet, KAT_LEN) == 0);
++
++	for (i = 0; i < BANK_ANZ; i++)
++		ce->irq_gefeuert[i] = ce->leitung[i].gefeuert;
++
++	leitungen_freigeben(ce);
++
++	esr_klartext(ce->esr, esrtext, sizeof(esrtext));
++
++	if (ret == -EBUSY) {
++		dev_err(ce->dev,
++			"ERGEBNIS: TLR bleibt belegt (0x%08x), der Task wurde nie geladen. Takt, Reset oder falsche Bank.\n",
++			ce->tlr_nach);
++		if (ce->tlr_nach == 0xffffffff)
++			dev_err(ce->dev,
++				"  Lauter Einsen: diese Bank antwortet nicht. Aus der Non-Secure-Welt vermutlich nicht sichtbar.\n");
++	} else if (ret == -ETIMEDOUT) {
++		dev_err(ce->dev,
++			"ERGEBNIS: Zeitueberschreitung, keine Fertigmeldung. ISR 0x%08x, ESR roh 0x%08x (%s), TSR 0x%08x, TDA zurueckgelesen 0x%08x. IRQ %d: %ux, IRQ %d: %ux.\n",
++			ce->isr, ce->esr_roh, esrtext, ce->tsr_nach,
++			ce->tda_rueck,
++			ce->leitung[BANK_NS].irq, ce->irq_gefeuert[BANK_NS],
++			ce->leitung[BANK_S].irq, ce->irq_gefeuert[BANK_S]);
++		if (ce->tda_rueck != lower_32_bits(ce->puf_phys) && !ce->isr &&
++		    !ce->tsr_nach && !ce->tlr_nach)
++			dev_err(ce->dev,
++				"  Alle Register lesen sich leer und TDA hat den Wert nicht behalten: die Bank ignoriert Schreibzugriffe - falls der NS-Lauf TDA zurueckgelesen hat, heisst das: aus der Non-Secure-Welt unsichtbar.\n");
++	} else if (ce->esr) {
++		dev_err(ce->dev,
++			"ERGEBNIS: ESR-Fehler 0x%08x (roh 0x%08x): %s. Deskriptorformat oder Kanal falsch. ISR 0x%08x. IRQ %d: %ux, IRQ %d: %ux.\n",
++			ce->esr, ce->esr_roh, esrtext, ce->isr,
++			ce->leitung[BANK_NS].irq, ce->irq_gefeuert[BANK_NS],
++			ce->leitung[BANK_S].irq, ce->irq_gefeuert[BANK_S]);
++		if (ce->esr & CE_ERR_ADDR_INVALID)
++			dev_err(ce->dev,
++				"  Bit 5 ist genau cstengers Signatur des falschen Formats - dann hilft auch dieser Deskriptor nicht.\n");
++		if (ce->esr == CE_ERR_ALGO_NOTSUP && modus == AES_MODE_ECB)
++			dev_err(ce->dev,
++				"  Nur Bit 0: das Format wurde gelesen, aber der Modus nicht angenommen. Als naechstes 'echo %s cbc > starten' - das ist OP-TEEs eigene Softwareschluessel-Konfiguration.\n",
++				bank_name[bank]);
++	} else if (!ce->stimmt) {
++		dev_err(ce->dev,
++			"ERGEBNIS: kein ESR-Fehler, aber der Chiffretext stimmt nicht: %*phN erwartet %*phN.\n",
++			KAT_LEN, ce->ergebnis, KAT_LEN, kat_erwartet);
++	} else {
++		dev_info(ce->dev,
++			 "ERGEBNIS: bestanden. Vendor-Deskriptorformat auf %s bestaetigt (%s), ESR sauber, KAT stimmt (%llu us). IRQ %d: %ux, IRQ %d: %ux.\n",
++			 bank_text[bank], mode_text[modus], ce->dauer_us,
++			 ce->leitung[BANK_NS].irq, ce->irq_gefeuert[BANK_NS],
++			 ce->leitung[BANK_S].irq, ce->irq_gefeuert[BANK_S]);
++	}
++
++	mutex_unlock(&ce->sperre);
++	return ret;
++}
++
++static int h713_ce_bericht_show(struct seq_file *s, void *unused)
++{
++	struct h713_ce *ce = s->private;
++	char esrtext[160];
++	int i;
++
++	mutex_lock(&ce->sperre);
++
++	seq_puts(s, "h713-ce-test: ein Task im Vendor-Deskriptorformat, AES-128,\n");
++	seq_puts(s, "Key-Select 0 (Schluessel aus dem Speicher), 16 Byte, Ziel DRAM.\n");
++	seq_puts(s, "Kein Geraeteschluessel, keine Schluesselsenke.\n\n");
++
++	for (i = 0; i < BANK_ANZ; i++)
++		seq_printf(s, "Bank %-3s %-22s abgebildet: %-4s  IRQ %d\n",
++			   bank_name[i], bank_text[i],
++			   ce->bank[i] ? "ja" : "nein", ce->leitung[i].irq);
++	seq_printf(s, "bus_ce_sys/RST_BUS_CE_SYS: %s\n",
++		   !ce->reset_sys ? "nicht im Geraetebaum" :
++		   ce->reset_sys_vorher > 0 ? "Reset war beim Laden noch gesetzt, jetzt aufgehoben" :
++		   ce->reset_sys_vorher == 0 ? "Reset war beim Laden schon aufgehoben (Bootloader)" :
++		   "Status nicht lesbar");
++	seq_putc(s, '\n');
++
++	if (!ce->gelaufen) {
++		seq_puts(s, "Noch kein Lauf. Starten mit:  echo ns > starten      (NS-Bank, ECB)\n");
++		seq_puts(s, "                      oder:  echo ns cbc > starten  (NS-Bank, CBC, IV 0)\n");
++		seq_puts(s, "                      oder:  echo s > starten       (CE_S, erst nach ns)\n");
++		goto raus;
++	}
++
++	esr_klartext(ce->esr, esrtext, sizeof(esrtext));
++
++	seq_printf(s, "letzter Lauf auf   : %s\n", bank_text[ce->letzte_bank]);
++	seq_printf(s, "Modus              : %s\n", mode_text[ce->letzter_modus]);
++	seq_printf(s, "Dauer              : %llu us\n", ce->dauer_us);
++	seq_printf(s, "TDA zurueckgelesen : 0x%08x (geschrieben %pad)\n",
++		   ce->tda_rueck, &ce->puf_phys);
++	seq_printf(s, "ISR                : 0x%08x\n", ce->isr);
++	seq_printf(s, "ESR                : 0x%08x (roh 0x%08x; %s)\n",
++		   ce->esr, ce->esr_roh, esrtext);
++	seq_printf(s, "TSR danach         : 0x%08x\n", ce->tsr_nach);
++	seq_printf(s, "TLR danach         : 0x%08x\n", ce->tlr_nach);
++	for (i = 0; i < BANK_ANZ; i++)
++		seq_printf(s, "IRQ %-3d (%s)       : %ux ausgeloest\n",
++			   ce->leitung[i].irq, bank_name[i],
++			   ce->irq_gefeuert[i]);
++
++	seq_puts(s, "\nBefund             : ");
++	if (ce->fehler == -EBUSY)
++		seq_printf(s, "TLR bleibt belegt (0x%08x) - der Task wurde nie\n"
++			      "                     geladen. Takt, Reset oder falsche Bank;\n"
++			      "                     lauter Einsen heisst: die Bank antwortet nicht.\n",
++			   ce->tlr_nach);
++	else if (ce->fehler == -ETIMEDOUT)
++		seq_printf(s, "Zeitueberschreitung - keine Fertigmeldung.%s\n",
++			   (ce->tda_rueck != lower_32_bits(ce->puf_phys) &&
++			    !ce->isr && !ce->tsr_nach && !ce->tlr_nach) ?
++			   "\n                     Alle Register leer, TDA nicht behalten:\n"
++			   "                     die Bank ignoriert Schreibzugriffe (vgl. NS-Lauf)." : "");
++	else if (ce->esr)
++		seq_puts(s, "ESR-Fehler. Deskriptorformat oder Kanal falsch.\n");
++	else if (!ce->stimmt)
++		seq_printf(s, "ESR sauber, aber falscher Chiffretext:\n"
++			      "                     %*phN\n"
++			      "                     erwartet %*phN\n",
++			   KAT_LEN, ce->ergebnis, KAT_LEN, kat_erwartet);
++	else
++		seq_puts(s, "BESTANDEN - Vendor-Deskriptorformat bestaetigt.\n");
++
++raus:
++	mutex_unlock(&ce->sperre);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(h713_ce_bericht);
++
++/*
++ * Eingabe: "<bank> [<modus>]".  bank = ns|0|s|1, modus = ecb|0|cbc|1
++ * (Vorgabe ecb).  Beispiele: "ns", "s", "ns cbc", "1 1".
++ */
++static ssize_t h713_ce_starten_schreiben(struct file *datei,
++					 const char __user *puf,
++					 size_t len, loff_t *pos)
++{
++	struct h713_ce *ce = file_inode(datei)->i_private;
++	char eingabe[16];
++	char *wort, *rest;
++	int bank, modus;
++	int ret;
++
++	if (len >= sizeof(eingabe))
++		return -EINVAL;
++	if (copy_from_user(eingabe, puf, len))
++		return -EFAULT;
++	eingabe[len] = '\0';
++	rest = strim(eingabe);
++
++	wort = strsep(&rest, " \t");
++	if (!wort)
++		return -EINVAL;
++	if (!strcmp(wort, "ns") || !strcmp(wort, "0"))
++		bank = BANK_NS;
++	else if (!strcmp(wort, "s") || !strcmp(wort, "1"))
++		bank = BANK_S;
++	else
++		return -EINVAL;
++
++	modus = AES_MODE_ECB;
++	if (rest) {
++		wort = strim(rest);
++		if (!strcmp(wort, "ecb") || !strcmp(wort, "0") || !*wort)
++			modus = AES_MODE_ECB;
++		else if (!strcmp(wort, "cbc") || !strcmp(wort, "1"))
++			modus = AES_MODE_CBC;
++		else
++			return -EINVAL;
++	}
++
++	ret = h713_ce_lauf(ce, bank, modus);
++	if (ret == -EINVAL)
++		return ret;
++
++	/* Ein ESR-Fehler ist ein Messergebnis, kein Schreibfehler. */
++	return len;
++}
++
++static const struct file_operations h713_ce_starten_fops = {
++	.owner	= THIS_MODULE,
++	.write	= h713_ce_starten_schreiben,
++	.llseek	= noop_llseek,
++};
++
++static int h713_ce_takte_an(struct h713_ce *ce)
++{
++	int ret;
++
++	/*
++	 * Takte und Reset wie in sun8i-ce fuer die H6-Variante: bus, mod
++	 * (300 MHz), ram; der Reset wird nach den Takten aufgehoben
++	 * (sun8i_ce_pm_resume).
++	 *
++	 * Dazu bus_ce_sys und RST_BUS_CE_SYS (CCU 0x68c Bit 1 und 17,
++	 * direkt neben bus_ce Bit 0 und 16).  Der Stock-Bootloader
++	 * schaltet beide Paare zusammen ein (u-boot.fex 0x4a028898:
++	 * 0x68c |= 3; 0x4a0288ba: |= 0x30000), bevor OP-TEE je die
++	 * sichere Bank anfasst; unser eigener SPL tut dasselbe beim
++	 * DRAM-Init (dram_sun50iw12.c).  Dass CE_S daran haengt, ist
++	 * Vermutung - aber ein CE_S-Lauf gegen einen abgeschalteten Block
++	 * saehe genauso aus wie "aus NS unsichtbar", und das wollen wir
++	 * unterscheiden koennen.  Reihenfolge wie im Stock: erst die
++	 * Gates, dann die Resets.
++	 */
++	ret = clk_set_rate(ce->takt_mod, 300000000);
++	if (ret)
++		dev_warn(ce->dev, "mod-Takt laesst sich nicht auf 300 MHz setzen: %d\n",
++			 ret);
++
++	ret = clk_prepare_enable(ce->takt_bus);
++	if (ret)
++		return ret;
++	ret = clk_prepare_enable(ce->takt_sys);
++	if (ret)
++		goto aus_bus;
++	ret = clk_prepare_enable(ce->takt_mod);
++	if (ret)
++		goto aus_sys;
++	ret = clk_prepare_enable(ce->takt_ram);
++	if (ret)
++		goto aus_mod;
++
++	ret = reset_control_deassert(ce->reset);
++	if (ret)
++		goto aus_ram;
++
++	ce->reset_sys_vorher = -1;
++	if (ce->reset_sys) {
++		ce->reset_sys_vorher = reset_control_status(ce->reset_sys);
++		ret = reset_control_deassert(ce->reset_sys);
++		if (ret)
++			goto reset_bus;
++	}
++
++	dev_info(ce->dev, "Takte an: bus %lu Hz, mod %lu Hz, ram %lu Hz; bus_ce_sys %s, RST_BUS_CE_SYS %s\n",
++		 clk_get_rate(ce->takt_bus), clk_get_rate(ce->takt_mod),
++		 clk_get_rate(ce->takt_ram),
++		 ce->takt_sys ? "an" : "nicht im Geraetebaum",
++		 !ce->reset_sys ? "nicht im Geraetebaum" :
++		 ce->reset_sys_vorher > 0 ? "war noch gesetzt, jetzt aufgehoben" :
++		 ce->reset_sys_vorher == 0 ? "war schon aufgehoben" :
++		 "Status nicht lesbar, aufgehoben");
++	return 0;
++
++reset_bus:
++	reset_control_assert(ce->reset);
++aus_ram:
++	clk_disable_unprepare(ce->takt_ram);
++aus_mod:
++	clk_disable_unprepare(ce->takt_mod);
++aus_sys:
++	clk_disable_unprepare(ce->takt_sys);
++aus_bus:
++	clk_disable_unprepare(ce->takt_bus);
++	return ret;
++}
++
++static void h713_ce_takte_aus(struct h713_ce *ce)
++{
++	reset_control_assert(ce->reset_sys);
++	reset_control_assert(ce->reset);
++	clk_disable_unprepare(ce->takt_ram);
++	clk_disable_unprepare(ce->takt_mod);
++	clk_disable_unprepare(ce->takt_sys);
++	clk_disable_unprepare(ce->takt_bus);
++}
++
++static int h713_ce_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct h713_ce *ce;
++	int ret;
++	int i;
++
++	ce = devm_kzalloc(dev, sizeof(*ce), GFP_KERNEL);
++	if (!ce)
++		return -ENOMEM;
++
++	ce->dev = dev;
++	mutex_init(&ce->sperre);
++	platform_set_drvdata(pdev, ce);
++
++	for (i = 0; i < BANK_ANZ; i++) {
++		ce->bank[i] = devm_platform_ioremap_resource_byname(pdev,
++								   bank_name[i]);
++		if (IS_ERR(ce->bank[i]))
++			return dev_err_probe(dev, PTR_ERR(ce->bank[i]),
++					     "Registerfenster \"%s\" fehlt\n",
++					     bank_name[i]);
++	}
++
++	ce->takt_bus = devm_clk_get(dev, "bus");
++	if (IS_ERR(ce->takt_bus))
++		return dev_err_probe(dev, PTR_ERR(ce->takt_bus), "Takt bus\n");
++	ce->takt_mod = devm_clk_get(dev, "mod");
++	if (IS_ERR(ce->takt_mod))
++		return dev_err_probe(dev, PTR_ERR(ce->takt_mod), "Takt mod\n");
++	ce->takt_ram = devm_clk_get(dev, "ram");
++	if (IS_ERR(ce->takt_ram))
++		return dev_err_probe(dev, PTR_ERR(ce->takt_ram), "Takt ram\n");
++	ce->takt_sys = devm_clk_get_optional(dev, "sys");
++	if (IS_ERR(ce->takt_sys))
++		return dev_err_probe(dev, PTR_ERR(ce->takt_sys), "Takt sys\n");
++
++	ce->reset = devm_reset_control_get_exclusive(dev, "bus");
++	if (IS_ERR(ce->reset))
++		return dev_err_probe(dev, PTR_ERR(ce->reset), "Reset bus\n");
++	ce->reset_sys = devm_reset_control_get_optional_exclusive(dev, "sys");
++	if (IS_ERR(ce->reset_sys))
++		return dev_err_probe(dev, PTR_ERR(ce->reset_sys), "Reset sys\n");
++
++	/*
++	 * Die Adressfelder im Deskriptor sind 40 Bit breit.  Der
++	 * Arbeitsspeicher dieses Boards liegt zwar vollstaendig zwischen
++	 * 0x40000000 und 0x80000000, die oberen acht Bits sind also immer
++	 * null - aber die Maske sagt, was das Format kann.
++	 */
++	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(40));
++	if (ret) {
++		ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
++		if (ret)
++			return dev_err_probe(dev, ret, "DMA-Maske\n");
++	}
++
++	ce->puf = dmam_alloc_coherent(dev, PUF_GROESSE, &ce->puf_phys,
++				      GFP_KERNEL);
++	if (!ce->puf)
++		return -ENOMEM;
++
++	if (ce->puf_phys & 0x3f)
++		return dev_err_probe(dev, -EINVAL,
++				     "Deskriptorpuffer nicht 64-Byte-ausgerichtet (%pad)\n",
++				     &ce->puf_phys);
++
++	/*
++	 * Beide Interrupts anfordern.  cstenger hat gemessen, dass die
++	 * erste Operation haengt, wenn nur der erste angefordert ist, und
++	 * mit beiden durchlaeuft; welche Leitung wozu gehoert, ist damit
++	 * nicht geklaert.  Genau deshalb zaehlen wir beide mit.
++	 */
++	for (i = 0; i < BANK_ANZ; i++) {
++		ret = platform_get_irq_byname(pdev, bank_name[i]);
++		if (ret < 0)
++			return ret;
++		ce->leitung[i].irq = ret;
++		ret = devm_request_irq(dev, ce->leitung[i].irq, h713_ce_irq, 0,
++				       bank_name[i], &ce->leitung[i]);
++		if (ret)
++			return dev_err_probe(dev, ret, "IRQ %d\n",
++					     ce->leitung[i].irq);
++	}
++
++	ret = h713_ce_takte_an(ce);
++	if (ret)
++		return dev_err_probe(dev, ret, "Takte/Reset\n");
++
++	ce->dbg = debugfs_create_dir(DRV_NAME, NULL);
++	debugfs_create_file("ergebnis", 0444, ce->dbg, ce,
++			    &h713_ce_bericht_fops);
++	debugfs_create_file("starten", 0200, ce->dbg, ce,
++			    &h713_ce_starten_fops);
++
++	dev_info(dev, "bereit. Baenke 0x03040000 (IRQ %d) und 0x03040800 (IRQ %d), Puffer bei %pad\n",
++		 ce->leitung[BANK_NS].irq, ce->leitung[BANK_S].irq,
++		 &ce->puf_phys);
++
++	if (autostart) {
++		h713_ce_lauf(ce, bank_param, modus_param);
++	} else {
++		dev_info(dev,
++			 "kein Lauf. Starten mit: echo ns > /sys/kernel/debug/%s/starten\n",
++			 DRV_NAME);
++	}
++
++	return 0;
++}
++
++static void h713_ce_remove(struct platform_device *pdev)
++{
++	struct h713_ce *ce = platform_get_drvdata(pdev);
++
++	debugfs_remove_recursive(ce->dbg);
++	leitungen_freigeben(ce);
++	h713_ce_takte_aus(ce);
++}
++
++static const struct of_device_id h713_ce_of_match[] = {
++	{ .compatible = "allwinner,sun50i-h713-crypto" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, h713_ce_of_match);
++
++static struct platform_driver h713_ce_driver = {
++	.probe	= h713_ce_probe,
++	.remove	= h713_ce_remove,
++	.driver	= {
++		.name		= DRV_NAME,
++		.of_match_table	= h713_ce_of_match,
++	},
++};
++module_platform_driver(h713_ce_driver);
++
++MODULE_DESCRIPTION("H713 Crypto Engine: ein Task im Vendor-Deskriptorformat (Known-Answer-Test)");
++MODULE_LICENSE("GPL");
