@@ -1,0 +1,80 @@
+From 7f29b078203988b77f501c53f5d71430ba9f319f Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 9 Sep 2026 21:35:24 +0200
+Subject: [PATCH 21/33] sunxi: h713: default environment for the HY310, eMMC
+ first with netboot fallback
+
+Until now the whole boot flow lived in the saved environment of one
+device. Put it into the image: board/sunxi/hy310.env carries h713_boot
+(emmc|net), the shared bootargs_base, boot_emmc (h713-kernel.fit from the
+ext4 partition 5, root=PARTLABEL=hy310-rootfs) and boot_net (dhcp, tftp,
+NFS root), and CONFIG_BOOTCOMMAND runs the selected path with the network
+path as the fallback. Hush expands one level only, so the bootargs are
+assembled where they are used. Layout and names: doku/105 section 1.2.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ board/sunxi/hy310.env                | 21 +++++++++++++++++++++
+ configs/hy310_netboot_defconfig      |  2 ++
+ configs/hy310_netboot_gate_defconfig |  2 ++
+ configs/hy310_qz713_v3_1_defconfig   |  2 ++
+ 4 files changed, 27 insertions(+)
+ create mode 100644 board/sunxi/hy310.env
+
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+new file mode 100644
+index 00000000000..b70c28f2cee
+--- /dev/null
++++ b/board/sunxi/hy310.env
+@@ -0,0 +1,21 @@
++/* HY310 projector -- default environment (plan doku/105 section 1.2).
++ * eMMC first, netboot as the fallback; h713_boot=net forces the network path.
++ * The saved environment on a device overrides all of this. Hush expands one
++ * level only, so bootargs are assembled where they are used. */
++h713_boot=emmc
++h713_gate=1
++bootfile=h713-kernel-netboot.fit
++serverip=192.168.8.104
++nfsroot=/srv/h713-rootfs
++bootargs_base=console=ttyS0,115200 earlycon rootwait clk_ignore_unused pd_ignore_unused cma=128M
++boot_emmc=
++	if ext4load mmc 1:5 0x60000000 h713-kernel.fit; then
++		setenv bootargs "${bootargs_base} root=PARTLABEL=hy310-rootfs rw";
++		bootm 0x60000000;
++	fi
++boot_net=
++	dhcp;
++	setenv bootargs "${bootargs_base} root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp";
++	tftpboot 0x60000000 ${serverip}:${bootfile};
++	bootm 0x60000000
++bootcmd=h713_disp init 0x30; run boot_${h713_boot}; run boot_net
+diff --git a/configs/hy310_netboot_defconfig b/configs/hy310_netboot_defconfig
+index 27ae9a52ba9..415766810ad 100644
+--- a/configs/hy310_netboot_defconfig
++++ b/configs/hy310_netboot_defconfig
+@@ -68,3 +68,5 @@ CONFIG_CMD_NFS=y
+ CONFIG_NET_RANDOM_ETHADDR=y
+ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_RTL8152=y
++CONFIG_ENV_SOURCE_FILE="hy310"
++CONFIG_BOOTCOMMAND="h713_disp init 0x30; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/hy310_netboot_gate_defconfig b/configs/hy310_netboot_gate_defconfig
+index dcdffde612a..ba97c5ed9c7 100644
+--- a/configs/hy310_netboot_gate_defconfig
++++ b/configs/hy310_netboot_gate_defconfig
+@@ -68,3 +68,5 @@ CONFIG_CMD_NFS=y
+ CONFIG_NET_RANDOM_ETHADDR=y
+ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_RTL8152=y
++CONFIG_ENV_SOURCE_FILE="hy310"
++CONFIG_BOOTCOMMAND="h713_disp init 0x30; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/hy310_qz713_v3_1_defconfig b/configs/hy310_qz713_v3_1_defconfig
+index 22cc333c536..40b15233efa 100644
+--- a/configs/hy310_qz713_v3_1_defconfig
++++ b/configs/hy310_qz713_v3_1_defconfig
+@@ -62,3 +62,5 @@ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+ CONFIG_CMD_GPIO=y
++CONFIG_ENV_SOURCE_FILE="hy310"
++CONFIG_BOOTCOMMAND="h713_disp init 0x30; run boot_${h713_boot}; run boot_net"

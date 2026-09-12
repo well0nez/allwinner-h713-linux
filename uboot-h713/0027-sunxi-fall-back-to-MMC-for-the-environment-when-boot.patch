@@ -1,0 +1,36 @@
+From 14927d8e5fcae5f69de8f21b8e2582d4ef12b7df Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Fri, 11 Sep 2026 09:35:16 +0200
+Subject: [PATCH 27/33] sunxi: fall back to MMC for the environment when booted
+ over FEL
+
+env_get_location() derives the location from the boot medium. Booting
+over FEL there is none: the SoC came up over USB, and a defconfig that
+keeps its environment solely in MMC matched no case, so env_init() hung.
+The on-board MMC is present either way - use it.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ board/sunxi/board.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index 5c6b544d487..7a81a5a257f 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -209,6 +209,15 @@ enum env_location env_get_location(enum env_operation op, int prio)
+ 			return ENVL_FAT;
+ 		if (IS_ENABLED(CONFIG_ENV_IS_IN_UBI))
+ 			return ENVL_UBI;
++		/*
++		 * Booting over FEL lands here: the SoC came up over USB, so
++		 * there is no boot medium to derive a location from, and a
++		 * defconfig keeping its environment solely in MMC matches
++		 * none of the cases above. The on-board MMC is still present
++		 * either way, so use it rather than hanging.
++		 */
++		if (IS_ENABLED(CONFIG_ENV_IS_IN_MMC))
++			return ENVL_MMC;
+ 	}
+ 
+ 	return ENVL_UNKNOWN;

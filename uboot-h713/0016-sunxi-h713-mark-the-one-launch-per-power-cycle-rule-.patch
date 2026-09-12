@@ -1,0 +1,38 @@
+From cbcbf10af046666c77e2f1645c8db1e188ab56c0 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 20:19:14 +0200
+Subject: [PATCH 16/33] sunxi: h713: mark the one-launch-per-power-cycle rule
+ in init too
+
+panel-test and auto set h713_panel_test_ran; h713_disp_init_only() does
+not, although it releases the coprocessor just the same. A following `auto`
+then finds the flag clear, skips the teardown, and loads display.bin over a
+running MIPS.
+
+The firmware keeps writing into that memory while the new image is being
+hashed, so the digest matches no build -- which reads as a corrupt file
+rather than as the sequencing error it is.
+---
+ arch/arm/mach-sunxi/h713_mips.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index a334a1b2e8c..bc53b7bcfb0 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -10244,6 +10244,15 @@ static int h713_disp_init_only(u32 project, bool release_mips, bool quiesce)
+ {
+ 	int ret;
+ 
++	/*
++	 * This path launches the firmware too, so it owes the same one-launch
++	 * marker that panel-test and auto set. Without it a following `auto`
++	 * finds the flag clear, skips the teardown, and loads display.bin on
++	 * top of a running coprocessor -- which keeps writing into the image
++	 * while it is being hashed, so the digest matches no build at all.
++	 */
++	h713_panel_test_ran = true;
++
+ 	ret = h713_disp_load(project);
+ 	if (ret)
+ 		return h713_disp_fail(ret);

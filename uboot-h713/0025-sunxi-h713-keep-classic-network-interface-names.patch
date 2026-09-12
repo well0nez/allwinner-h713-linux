@@ -1,0 +1,32 @@
+From 310e56389c09ee868ac0742419695fa3a995fc8d Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Thu, 10 Sep 2026 16:45:35 +0200
+Subject: [PATCH 25/33] sunxi: h713: keep classic network interface names
+
+The default bootargs left net.ifnames at its default, which is fine
+while the kernel configures the network itself over NFS root. Booting
+from eMMC hands that job to ifupdown, and there the USB adapter comes
+up as enx00e0fc6824cb -- so /etc/network/interfaces, which names eth0,
+never matched and the device had no network at all.
+
+The board has exactly one adapter, so the classic name is the right
+one, and a MAC-derived name would be wrong in a release image anyway.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ board/sunxi/hy310.env | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index 883da9da584..c2bf148266e 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -16,7 +16,7 @@ h713_mips_path=mips
+ bootfile=h713-kernel-netboot.fit
+ serverip=192.168.8.123
+ nfsroot=/srv/h713-rootfs
+-bootargs_base=console=ttyS0,115200 earlycon rootwait clk_ignore_unused pd_ignore_unused cma=128M
++bootargs_base=console=ttyS0,115200 earlycon rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0
+ boot_emmc=
+ 	if ext4load mmc 1:5 0x60000000 h713-kernel.fit; then
+ 		setenv bootargs "${bootargs_base} root=PARTLABEL=hy310-rootfs rw";

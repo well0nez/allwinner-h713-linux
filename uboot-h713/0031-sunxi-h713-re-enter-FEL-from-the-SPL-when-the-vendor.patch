@@ -1,0 +1,77 @@
+From 70f2c44adc33833badd554d49e68b5c5ff1f1aef Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Fri, 11 Sep 2026 11:21:16 +0200
+Subject: [PATCH 31/33] sunxi: h713: re-enter FEL from the SPL when the vendor
+ efex flag is set
+
+The vendor boot0 checks RTC general purpose register 2 for 0x5aa5a55a,
+clears it and jumps to the BROM's FEL entry at 0x20; the vendor U-Boot
+sets that flag for "reboot efex". The BROM of the H713 does not read the
+flag itself - flag set, reset, normal boot - so a boot chain that replaces
+boot0 has to carry the check or the flag does nothing.
+
+Do the check first thing in the ARM32 entry stub, before the PLLs are
+touched and with MMU and caches still off, so the state at the jump is the
+one fel-sdboot jumps from. The RTC block sits on a slow clock: read the
+flag twice and require both reads to agree, clear it and read back until
+it sticks, as boot0 does. The stub is self-contained with its own literals
+and moves no other PC-relative offset.
+
+Verified statically (doku/nachtlog/S48) and at the device: with the flag
+the SPL never prints its banner, the device re-enumerates as FEL within
+ten seconds and GP2 reads back zero; with any other value it boots
+normally and leaves the register alone. Five consecutive rounds without a
+power cycle, and "sunxi-fel uboot" works from the FEL state this produces.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ arch/arm/include/asm/arch-sunxi/boot0.h | 36 +++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/arch/arm/include/asm/arch-sunxi/boot0.h b/arch/arm/include/asm/arch-sunxi/boot0.h
+index d79aea97a40..7ea7229d9c6 100644
+--- a/arch/arm/include/asm/arch-sunxi/boot0.h
++++ b/arch/arm/include/asm/arch-sunxi/boot0.h
+@@ -32,6 +32,42 @@
+ 	.word	0xe580e00c	// str     lr, [r0, #12]
+ 	.word	0xee1cef10	// mrc     15, 0, lr, cr12, cr0, {0}
+ 	.word	0xe580e010	// str     lr, [r0, #16]
++#ifdef CONFIG_MACH_SUN50I_H713
++/*
++ * Re-enter FEL on request. The vendor boot0 checks RTC general purpose
++ * register 2 for 0x5aa5a55a, clears it and jumps to the BROM's FEL entry
++ * at 0x20; the vendor U-Boot sets that flag for "reboot efex". The BROM of
++ * the H713 does not read the flag itself (tested: flag set, reset, normal
++ * boot), so a boot chain that replaces boot0 has to carry the check, or
++ * "run fel" does nothing.
++ *
++ * Placed here, before the PLLs are touched and with MMU and caches still
++ * off, so the state at the jump is the one fel-sdboot jumps from too. The
++ * RTC block sits on a slow clock, so the flag is read twice and both reads
++ * have to agree, and it is cleared before the jump and read back until it
++ * sticks, as boot0 does. Self-contained: own literals, no other PC-relative
++ * offset moves.
++ */
++	.word	0xe59f2038	// ldr     r2, [pc, #56] ; RTC GP2 0x07090108
++	.word	0xe59f1038	// ldr     r1, [pc, #56] ; 0x5aa5a55a
++	.word	0xe5923000	// ldr     r3, [r2]
++	.word	0xe1530001	// cmp     r3, r1
++	.word	0x1a00000c	// bne     @skip
++	.word	0xe5923000	// ldr     r3, [r2]      ; read again, must agree
++	.word	0xe1530001	// cmp     r3, r1
++	.word	0x1a000009	// bne     @skip
++	.word	0xe3a03000	// mov     r3, #0
++	.word	0xe5823000	// str     r3, [r2]      ; @clear
++	.word	0xf57ff04f	// dsb     sy
++	.word	0xe5921000	// ldr     r1, [r2]
++	.word	0xe1510003	// cmp     r1, r3
++	.word	0x1afffffa	// bne     @clear
++	.word	0xe3a00020	// mov     r0, #0x20
++	.word	0xe12fff10	// bx      r0            ; BROM FEL entry, ARM state
++	.word	0x07090108	// RTC GP2
++	.word	0x5aa5a55a	// efex flag
++				// @skip
++#endif
+ #ifdef CONFIG_MACH_SUN55I_A523
+ 	.word	0xee1cefbc	// mrc     15, 0, lr, cr12, cr12, {5}
+ 	.word	0xe31e0001	// tst     lr, #1

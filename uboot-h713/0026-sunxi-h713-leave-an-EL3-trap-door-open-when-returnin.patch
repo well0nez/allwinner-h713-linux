@@ -1,0 +1,120 @@
+From dedd25660eca70ee2c5a2939be2bd4f55f10a4cc Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Fri, 11 Sep 2026 09:35:16 +0200
+Subject: [PATCH 26/33] sunxi: h713: leave an EL3 trap door open when returning
+ to FEL
+
+The H713 cannot return to FEL through the H616/H6 RMR hotplug mailbox;
+it exception-returns straight into the AArch32 FEL restore stub. That
+leaves EL3 in AArch64, so the BROM's FEL loop resumes at EL1 where the
+AArch32 RMR register is undefined. Every later attempt to enter AArch64
+the usual way - sunxi-fel's "uboot" and "reset64" included - wedged the
+core instead of booting it.
+
+Install a minimal EL3 vector table in DRAM before leaving. Its slot for
+"synchronous exception from a lower EL in AArch32" jumps to an address
+deposited in a mailbox, so FEL can re-enter AArch64 with a plain
+"smc #0": no RMR, no warm reset, no help from the BROM. An empty mailbox
+parks the core instead of jumping into nowhere.
+
+With this, "sunxi-fel uboot" brings the device to the U-Boot prompt in
+three seconds without touching the eMMC (doku/nachtlog/S44).
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ arch/arm/cpu/armv8/fel_utils.S | 73 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 73 insertions(+)
+
+diff --git a/arch/arm/cpu/armv8/fel_utils.S b/arch/arm/cpu/armv8/fel_utils.S
+index aab13f2f63e..092579c123a 100644
+--- a/arch/arm/cpu/armv8/fel_utils.S
++++ b/arch/arm/cpu/armv8/fel_utils.S
+@@ -12,6 +12,15 @@
+ #include <linux/linkage.h>
+ #include <asm/arch/cpu.h>
+ 
++/*
++ * Where the H713 FEL trap door lives (see return_to_fel below). DRAM, clear of
++ * BL31 at 0x40000000 and of U-Boot at CONFIG_TEXT_BASE. VBAR_EL3 needs 2 KiB
++ * alignment; the vector slot and the mailbox are fixed offsets into it.
++ */
++#define H713_FEL_DOOR_BASE	0x48000000
++#define H713_FEL_DOOR_VEC	0x600		/* sync, lower EL, AArch32 */
++#define H713_FEL_DOOR_MBOX	0x700		/* jump target, 64-bit */
++
+ /*
+  * We don't overwrite save_boot_params() here, to save the FEL state upon
+  * entry, since this would run *after* the RMR reset, which clobbers that
+@@ -44,8 +53,72 @@ ENTRY(return_to_fel)
+ 	/*
+ 	 * H713 cannot return via the H616/H6 RMR hotplug mailbox; it
+ 	 * exception-returns directly into the AArch32 FEL restore stub.
++	 *
++	 * That return leaves EL3 in AArch64, so the AArch32 RMR register is
++	 * out of reach for whatever runs next: the BROM's FEL loop resumes at
++	 * EL1, where "mcr p15, 0, rX, c12, c0, 2" is undefined. Any later
++	 * attempt to enter AArch64 the usual way - sunxi-fel's "uboot" and
++	 * "reset64", for instance - therefore wedges the core instead of
++	 * booting it.
++	 *
++	 * Leave a door open on the way out. EL3 being AArch64 is exactly what
++	 * makes an "smc" from AArch32 a trap door back into AArch64/EL3, so
++	 * install a minimal EL3 vector table whose "synchronous exception from
++	 * a lower EL in AArch32" slot jumps to an address deposited in a
++	 * mailbox. FEL can then re-enter AArch64 with a plain "smc #0", with
++	 * no RMR, no warm reset and no help from the BROM.
++	 *
++	 * The table lives in DRAM, which is up by the time the FEL boot path
++	 * calls us (this is only reached for BOOT_DEVICE_BOARD). A mailbox of
++	 * zero parks the core rather than jumping into nowhere.
+ 	 */
++	mrs	x0, CurrentEL
++	cmp	x0, #0xc
++	b.ne	4f				// only EL3 owns VBAR_EL3
++
++	movz	x0, #(H713_FEL_DOOR_BASE >> 16), lsl #16
++	adr	x1, h713_fel_door_stub
++	add	x2, x0, #H713_FEL_DOOR_VEC
++	ldp	x3, x4, [x1]
++	stp	x3, x4, [x2]
++	ldr	x3, [x1, #16]
++	str	x3, [x2, #16]
++	str	xzr, [x0, #H713_FEL_DOOR_MBOX]	// no target yet: park
++
++	/* publish the freshly written code to the instruction side */
++	add	x4, x2, #16
++	dc	cvau, x2
++	dc	cvau, x4
++	dsb	ish
++	ic	ivau, x2
++	ic	ivau, x4
++	dsb	ish
++	isb
++
++	msr	VBAR_EL3, x0
++	isb
++4:
+ 	b	return_to_fel_eret
++
++	/*
++	 * The stub is copied to H713_FEL_DOOR_BASE + 0x600, so its literal
++	 * offsets have to be relative to *that* address, not to this one.
++	 * Hand-encoded for that reason:
++	 *
++	 *   ldr  x0, [pc, #0x100]   ; mailbox at H713_FEL_DOOR_BASE + 0x700
++	 *   cbz  x0, .+8            ; empty mailbox: park instead of jumping
++	 *   br   x0
++	 *   wfi
++	 *   b    .-4
++	 */
++	.align	3
++h713_fel_door_stub:
++	.word	0x58000800
++	.word	0xb4000040
++	.word	0xd61f0000
++	.word	0xd503207f
++	.word	0x17ffffff
++	.word	0xd503207f			// pad to a 24-byte copy
+ #else
+ 	ldr	w0, =0xfa50392f		// CPU hotplug magic
+ #if defined(CONFIG_MACH_SUN50I_H616) || defined(CONFIG_MACH_SUN50I_A133) || \

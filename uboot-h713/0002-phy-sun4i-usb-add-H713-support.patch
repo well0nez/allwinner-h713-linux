@@ -1,0 +1,93 @@
+From e4ab8f511fb681074c6bd2486b0baddaca4fc03d Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 17:00:26 +0200
+Subject: [PATCH 02/33] phy: sun4i-usb: add H713 support
+
+The driver has no H713 entry at all, so nothing binds the PHYs when the
+board DT names allwinner,sun50i-h713-usb-phy.
+
+Two things are specific to this SoC:
+
+pmu_enable_bit0 -- BIT(0) at the PMU base has to be set or the PHY stays
+down. This is the quirk from the well0nez kernel series (their patch
+0005, "phy-sun4i-usb: add h713 pmu bit0 quirk"), ported over as-is.
+
+hci_phy_ctl_clear = PHY_CTL_SIDDQ -- the HCI PHYs come out of reset with
+SIDDQ set and nothing else clears it. Their kernel config can leave this
+out because on that stack the vendor U-Boot runs first and has already
+cleared it; their usb.md says as much, "the kernel doesn't re-init from
+scratch". Once our SPL replaces the vendor first stage there is no such
+predecessor, so U-Boot has to do it. Confirmed against the vendor
+U-Boot, which does `bic r3, r3, #8` on pmu+REG_HCI_PHY_CTL at
+0x4a045ee8; without it a device is detected on the port but the reset
+never completes ("cannot reset port 1!?") and nothing enumerates.
+
+num_phys is 2 rather than the SoC's 3, because our H713 CCU only reaches
+port 1. Raising it needs the port-2 clock IDs first.
+---
+ drivers/phy/allwinner/phy-sun4i-usb.c | 31 +++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/drivers/phy/allwinner/phy-sun4i-usb.c b/drivers/phy/allwinner/phy-sun4i-usb.c
+index 3acffb40b0b..079ef629671 100644
+--- a/drivers/phy/allwinner/phy-sun4i-usb.c
++++ b/drivers/phy/allwinner/phy-sun4i-usb.c
+@@ -82,6 +82,7 @@ struct sun4i_usb_phy_cfg {
+ 	bool phy0_dual_route;
+ 	bool siddq_in_base;
+ 	bool needs_phy2_siddq;
++	bool pmu_enable_bit0;
+ 	int missing_phys;
+ };
+ 
+@@ -291,6 +292,10 @@ static int sun4i_usb_phy_init(struct phy *phy)
+ 		writel(val, usb_phy->pmu + REG_HCI_PHY_CTL);
+ 	}
+ 
++	/* H713: PMU base register bit 0 must be set to enable PHY */
++	if (usb_phy->pmu && data->cfg->pmu_enable_bit0)
++		writel(readl(usb_phy->pmu) | BIT(0), usb_phy->pmu);
++
+ 	if (data->cfg->siddq_in_base) {
+ 		if (phy->id == 0) {
+ 			val = readl(data->base + data->cfg->phyctl_offset);
+@@ -639,6 +644,31 @@ static const struct sun4i_usb_phy_cfg sun50i_h6_cfg = {
+ 	.missing_phys = BIT(1) | BIT(2),
+ };
+ 
++/*
++ * H713 has three USB PHYs, but U-Boot's H713 CCU reuses the D1 gate/reset
++ * tables, which only reach port 1.  Describe two here; port 2 needs CCU work
++ * first.  pmu_enable_bit0 is the H713 quirk from the well0nez kernel series
++ * (patch 0005): BIT(0) of the PMU base must be set or the PHY stays down.
++ */
++static const struct sun4i_usb_phy_cfg sun50i_h713_cfg = {
++	.num_phys = 2,
++	.phyctl_offset = REG_PHYCTL_A33,
++	.dedicated_clocks = true,
++	.phy0_dual_route = true,
++	.siddq_in_base = true,
++	.pmu_enable_bit0 = true,
++	/*
++	 * The HCI PHYs come out of reset with SIDDQ (power-down) set, and
++	 * nothing else clears it once the vendor boot0 is gone: the stock
++	 * U-Boot does `bic r3, r3, #8` on pmu+REG_HCI_PHY_CTL, confirmed by
++	 * disassembling it at 0x4a045ee8.  The well0nez kernel cfg can omit
++	 * this because on that stack the vendor U-Boot ran first and had
++	 * already cleared it -- their own usb.md says the kernel relies on
++	 * U-Boot's PHY init.  Here U-Boot *is* the first stage, so it has to.
++	 */
++	.hci_phy_ctl_clear = PHY_CTL_SIDDQ,
++};
++
+ static const struct sun4i_usb_phy_cfg sun50i_h616_cfg = {
+ 	.num_phys = 4,
+ 	.disc_thresh = 3,
+@@ -672,6 +702,7 @@ static const struct udevice_id sun4i_usb_phy_ids[] = {
+ 	{ .compatible = "allwinner,sun50i-a64-usb-phy", .data = (ulong)&sun50i_a64_cfg},
+ 	{ .compatible = "allwinner,sun50i-h6-usb-phy", .data = (ulong)&sun50i_h6_cfg},
+ 	{ .compatible = "allwinner,sun50i-h616-usb-phy", .data = (ulong)&sun50i_h616_cfg },
++	{ .compatible = "allwinner,sun50i-h713-usb-phy", .data = (ulong)&sun50i_h713_cfg },
+ 	{ .compatible = "allwinner,suniv-f1c100s-usb-phy", .data = (ulong)&suniv_f1c100s_cfg },
+ 	{ }
+ };

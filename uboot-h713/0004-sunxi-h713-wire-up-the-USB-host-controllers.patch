@@ -1,0 +1,78 @@
+From 70ca71f06624456c9d748f73df6e935bcec8ef58 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 17:00:56 +0200
+Subject: [PATCH 04/33] sunxi: h713: wire up the USB host controllers
+
+The build already has CONFIG_USB_EHCI_HCD, CONFIG_USB_OHCI_HCD and
+CONFIG_USB_HOST, but the DT has no EHCI or OHCI nodes -- only the musb
+at usb@4100000 and the PHY. So "usb start" prints "No USB controllers
+found" and there is no USB host at all.
+
+Add ports 0 and 1, both EHCI and OHCI. Node definitions taken from the
+well0nez H713 board DTS, where all three of each are hardware-verified
+under Linux. Port 2 is left out until the CCU carries its clock IDs.
+
+The PHY node grows to allwinner,sun50i-h713-usb-phy so it picks up the
+H713 config added in the previous commit.
+
+Verified on an HY260_QZ713_V3.1: all four controllers register, the
+internal camera on port 1 (Realtek 0bda:5803) enumerates at 480 Mb/s,
+and with the socket switched to host a stick on port 0 is read fine
+(fatload off a FAT partition at ~37 MB/s).
+---
+ .../sun50i-h713-hy200-qz713df-a1.dts          | 42 +++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+index 721c5c8fd80..d719b03ca38 100644
+--- a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -254,6 +254,48 @@
+ 			#phy-cells = <1>;
+ 		};
+ 
++		ehci0: usb@4101000 {
++			compatible = "allwinner,sun50i-h6-ehci", "generic-ehci";
++			reg = <0x04101000 0x100>;
++			clocks = <&ccu CLK_BUS_EHCI0>;
++			resets = <&ccu RST_BUS_EHCI0>;
++			phys = <&usbphy 0>;
++			phy-names = "usb";
++			status = "okay";
++		};
++
++		ohci0: usb@4101400 {
++			compatible = "allwinner,sun50i-h6-ohci", "generic-ohci";
++			reg = <0x04101400 0x100>;
++			clocks = <&ccu CLK_BUS_OHCI0>, <&ccu CLK_USB_OHCI0>;
++			resets = <&ccu RST_BUS_OHCI0>;
++			phys = <&usbphy 0>;
++			phy-names = "usb";
++			status = "okay";
++		};
++
++		/* The case's USB-A socket is on port 1 -- stock Android
++		 * enumerates devices under 4200000.ehci1-controller. */
++		ehci1: usb@4200000 {
++			compatible = "allwinner,sun50i-h6-ehci", "generic-ehci";
++			reg = <0x04200000 0x100>;
++			clocks = <&ccu CLK_BUS_EHCI1>;
++			resets = <&ccu RST_BUS_EHCI1>;
++			phys = <&usbphy 1>;
++			phy-names = "usb";
++			status = "okay";
++		};
++
++		ohci1: usb@4200400 {
++			compatible = "allwinner,sun50i-h6-ohci", "generic-ohci";
++			reg = <0x04200400 0x100>;
++			clocks = <&ccu CLK_BUS_OHCI1>, <&ccu CLK_USB_OHCI1>;
++			resets = <&ccu RST_BUS_OHCI1>;
++			phys = <&usbphy 1>;
++			phy-names = "usb";
++			status = "okay";
++		};
++
+ 		watchdog: watchdog@2051000 {
+ 			/*
+ 			 * Key-protected sun55i register layout (ctrl 0x0c,

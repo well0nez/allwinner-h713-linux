@@ -1,0 +1,46 @@
+From 10c4783cf5f61d44e0732935a7b5f58695c80804 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Fri, 11 Sep 2026 09:35:16 +0200
+Subject: [PATCH 30/33] sunxi: h713: the display artifacts live on hy310-boot
+
+h713_mips_dev defaulted to "1:2", the stock vendor FAT partition, on the
+assumption that an installation would override it with saveenv. The
+release image ships an empty environment, so the built-in default is
+what boots - and in the v3 layout partition 2 is the raw U-Boot window.
+The display firmware was never found and the projector came up blind.
+
+Point the default at the partition by name, "1#hy310-boot", which the
+loader supports and which survives renumbering. A stock device still
+needs "1:2"; that remains the fallback compiled into h713_mips.c.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ board/sunxi/hy310.env | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index c2bf148266e..3e5c4500ccd 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -4,14 +4,16 @@
+  * level only, so bootargs are assembled where they are used.
+  *
+  * h713_project picks the vendor ProjectID_0x*.TSE group; h713_mips_dev and
+- * h713_mips_path say where the display artifacts live. The defaults are the
+- * stock vendor FAT partition, so a device that still has it behaves as before;
+- * an installation that owns that space points them at its own filesystem, for
+- * example "1#hy310-boot" and "mips". See doku/108. */
++ * h713_mips_path say where the display artifacts live. These defaults describe
++ * the layout this environment boots from (doku/109): the artifacts sit in
++ * "mips" on the hy310-boot partition, addressed by name so that renumbering
++ * cannot break it. A stock device that still has the vendor FAT partition
++ * needs h713_mips_dev=1:2 instead -- that is also the built-in fallback in
++ * h713_mips.c for the case where no environment is set at all. See doku/108. */
+ h713_boot=emmc
+ h713_gate=1
+ h713_project=0x30
+-h713_mips_dev=1:2
++h713_mips_dev=1#hy310-boot
+ h713_mips_path=mips
+ bootfile=h713-kernel-netboot.fit
+ serverip=192.168.8.123

@@ -1,0 +1,54 @@
+From f992ea51e6286d6475203287799ffbd4bea285ab Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Thu, 10 Sep 2026 00:11:41 +0200
+Subject: [PATCH 22/33] env: mmc: keep a default offset of 2 GiB or more intact
+
+mmc_offset() hands the Kconfig default to ofnode_conf_read_int(), whose
+default parameter and return value are int. An offset of 2 GiB or more
+comes back negative, and mmc_get_env_addr() then treats it as relative
+to the end of the device. On the HY310 (7.28 GiB eMMC) this turned
+CONFIG_ENV_OFFSET=0x93d80000 into 0x65d80000: the saved environment
+landed 771 MiB below the configured place, inside a data partition, while
+saveenv/printenv kept working and hid the problem.
+
+Read the DT property directly and return the Kconfig value untouched
+when it is absent. The DT value keeps its previous int semantics.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ env/mmc.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/env/mmc.c b/env/mmc.c
+index 1eddba3b0f8..18d1c9f4307 100644
+--- a/env/mmc.c
++++ b/env/mmc.c
+@@ -162,6 +162,8 @@ static inline s64 mmc_offset(struct mmc *mmc, int copy)
+ 	s64 val = 0, defvalue;
+ 	const char *propname;
+ 	const char *str;
++	ofnode node;
++	u32 dtval;
+ 	int hwpart = 0;
+ 	int err;
+ 
+@@ -199,7 +201,18 @@ static inline s64 mmc_offset(struct mmc *mmc, int copy)
+ 		propname = dt_prop.offset_redund;
+ 	}
+ 
+-	return ofnode_conf_read_int(propname, defvalue);
++	/*
++	 * ofnode_conf_read_int() carries its default through an int. An
++	 * offset of 2 GiB or more would come back negative and be taken as
++	 * relative to the end of the device: on the HY310 (7.28 GiB eMMC)
++	 * CONFIG_ENV_OFFSET=0x93d80000 turned into 0x65d80000 that way. Read
++	 * the DT property directly and keep the Kconfig value as it is.
++	 */
++	node = ofnode_path("/config");
++	if (ofnode_valid(node) && !ofnode_read_u32(node, propname, &dtval))
++		return (int)dtval;
++
++	return defvalue;
+ }
+ #else
+ static inline s64 mmc_offset(struct mmc *mmc, int copy)

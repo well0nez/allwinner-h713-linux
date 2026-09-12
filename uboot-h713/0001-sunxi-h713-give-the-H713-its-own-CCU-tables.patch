@@ -1,0 +1,161 @@
+From 90cf5bc8da14e086624f76300e6f055a136ef066 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 17:00:14 +0200
+Subject: [PATCH 01/33] sunxi: h713: give the H713 its own CCU tables
+
+The H713 currently reuses d1_ccu_desc. That is fine for the blocks the
+comment there names as verified -- MMC 0x84c/0x830, UART 0x90c, and the
+USB bus gates at 0xa8c -- but it is wrong for the per-port USB clock and
+reset words.
+
+On the D1 those are 4 bytes apart, so port 1 lands at 0xa74. On the H713
+they are 8 bytes apart: port 0 at 0xa70, port 1 at 0xa78, port 2 at
+0xa80. With the D1 spacing CLK_USB_OHCI1 and RST_USB_PHY1 address
+nothing, OHCI1 never gets its clock, and the first register access in
+its probe hangs the board hard -- the three earlier controllers print
+their banner and then it stops.
+
+The offsets are from the well0nez H713 CCU driver (their kernel patch
+0001), which is hardware-verified, and independently confirmed in the
+vendor's own U-Boot: at 0x4a045e12 it branches on the port index and
+loads 0x02001a78 for port 1.
+
+Copy the D1 tables into an h713 variant rather than editing them in
+place, so real D1 boards are untouched.
+---
+ drivers/clk/sunxi/Makefile    |  1 +
+ drivers/clk/sunxi/clk_h713.c  | 91 +++++++++++++++++++++++++++++++++++
+ drivers/clk/sunxi/clk_sunxi.c |  3 +-
+ 3 files changed, 94 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/clk/sunxi/clk_h713.c
+
+diff --git a/drivers/clk/sunxi/Makefile b/drivers/clk/sunxi/Makefile
+index 93b542cebcd..caa8f4e9ec5 100644
+--- a/drivers/clk/sunxi/Makefile
++++ b/drivers/clk/sunxi/Makefile
+@@ -20,6 +20,7 @@ obj-$(CONFIG_CLK_SUN8I_V3S) += clk_v3s.o
+ obj-$(CONFIG_CLK_SUN9I_A80) += clk_a80.o
+ obj-$(CONFIG_CLK_SUN8I_H3) += clk_h3.o
+ obj-$(CONFIG_CLK_SUN20I_D1) += clk_d1.o
++obj-$(CONFIG_CLK_SUN20I_D1) += clk_h713.o
+ obj-$(CONFIG_CLK_SUN50I_H6) += clk_h6.o
+ obj-$(CONFIG_CLK_SUN50I_H6_R) += clk_h6_r.o
+ obj-$(CONFIG_CLK_SUN50I_H616) += clk_h616.o
+diff --git a/drivers/clk/sunxi/clk_h713.c b/drivers/clk/sunxi/clk_h713.c
+new file mode 100644
+index 00000000000..6d0934ba2cc
+--- /dev/null
++++ b/drivers/clk/sunxi/clk_h713.c
+@@ -0,0 +1,91 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (C) 2021 Samuel Holland <samuel@sholland.org>
++ *
++ * H713 (sun50iw12) variant of the D1 CCU tables.  Everything the H713 shares
++ * with the D1 was verified live (MMC 0x84c/0x830, UART 0x90c, USB 0xa8c), but
++ * the per-port USB clock/reset words are 8 bytes apart on the H713 and only 4
++ * on the D1: port 1 lives at 0xa78, not 0xa74, and there is a third port at
++ * 0xa80.  Offsets taken from the well0nez H713 CCU driver (kernel patch 0001),
++ * which is hardware-verified; with the D1 spacing OHCI1 never gets its clock
++ * and the first register access hangs.
++ */
++
++#include <clk-uclass.h>
++#include <dm.h>
++#include <errno.h>
++#include <clk/sunxi.h>
++#include <dt-bindings/clock/sun20i-d1-ccu.h>
++#include <dt-bindings/reset/sun20i-d1-ccu.h>
++#include <linux/bitops.h>
++
++static struct ccu_clk_gate h713_gates[] = {
++	[CLK_APB0]		= GATE_DUMMY,
++
++	[CLK_BUS_MMC0]		= GATE(0x84c, BIT(0)),
++	[CLK_BUS_MMC1]		= GATE(0x84c, BIT(1)),
++	[CLK_BUS_MMC2]		= GATE(0x84c, BIT(2)),
++	[CLK_BUS_UART0]		= GATE(0x90c, BIT(0)),
++	[CLK_BUS_UART1]		= GATE(0x90c, BIT(1)),
++	[CLK_BUS_UART2]		= GATE(0x90c, BIT(2)),
++	[CLK_BUS_UART3]		= GATE(0x90c, BIT(3)),
++	[CLK_BUS_UART4]		= GATE(0x90c, BIT(4)),
++	[CLK_BUS_UART5]		= GATE(0x90c, BIT(5)),
++	[CLK_BUS_I2C0]		= GATE(0x91c, BIT(0)),
++	[CLK_BUS_I2C1]		= GATE(0x91c, BIT(1)),
++	[CLK_BUS_I2C2]		= GATE(0x91c, BIT(2)),
++	[CLK_BUS_I2C3]		= GATE(0x91c, BIT(3)),
++	[CLK_SPI0]		= GATE(0x940, BIT(31)),
++	[CLK_SPI1]		= GATE(0x944, BIT(31)),
++	[CLK_BUS_SPI0]		= GATE(0x96c, BIT(0)),
++	[CLK_BUS_SPI1]		= GATE(0x96c, BIT(1)),
++
++	[CLK_BUS_EMAC]		= GATE(0x97c, BIT(0)),
++
++	[CLK_USB_OHCI0]		= GATE(0xa70, BIT(31)),
++	[CLK_USB_OHCI1]		= GATE(0xa78, BIT(31)),
++	[CLK_BUS_OHCI0]		= GATE(0xa8c, BIT(0)),
++	[CLK_BUS_OHCI1]		= GATE(0xa8c, BIT(1)),
++	[CLK_BUS_EHCI0]		= GATE(0xa8c, BIT(4)),
++	[CLK_BUS_EHCI1]		= GATE(0xa8c, BIT(5)),
++	[CLK_BUS_OTG]		= GATE(0xa8c, BIT(8)),
++	[CLK_BUS_LRADC]		= GATE(0xa9c, BIT(0)),
++
++	[CLK_RISCV]		= GATE(0xd04, BIT(31)),
++};
++
++static struct ccu_reset h713_resets[] = {
++	[RST_BUS_MMC0]		= RESET(0x84c, BIT(16)),
++	[RST_BUS_MMC1]		= RESET(0x84c, BIT(17)),
++	[RST_BUS_MMC2]		= RESET(0x84c, BIT(18)),
++	[RST_BUS_UART0]		= RESET(0x90c, BIT(16)),
++	[RST_BUS_UART1]		= RESET(0x90c, BIT(17)),
++	[RST_BUS_UART2]		= RESET(0x90c, BIT(18)),
++	[RST_BUS_UART3]		= RESET(0x90c, BIT(19)),
++	[RST_BUS_UART4]		= RESET(0x90c, BIT(20)),
++	[RST_BUS_UART5]		= RESET(0x90c, BIT(21)),
++	[RST_BUS_I2C0]		= RESET(0x91c, BIT(16)),
++	[RST_BUS_I2C1]		= RESET(0x91c, BIT(17)),
++	[RST_BUS_I2C2]		= RESET(0x91c, BIT(18)),
++	[RST_BUS_I2C3]		= RESET(0x91c, BIT(19)),
++	[RST_BUS_SPI0]		= RESET(0x96c, BIT(16)),
++	[RST_BUS_SPI1]		= RESET(0x96c, BIT(17)),
++
++	[RST_BUS_EMAC]		= RESET(0x97c, BIT(16)),
++
++	[RST_USB_PHY0]		= RESET(0xa70, BIT(30)),
++	[RST_USB_PHY1]		= RESET(0xa78, BIT(30)),
++	[RST_BUS_OHCI0]		= RESET(0xa8c, BIT(16)),
++	[RST_BUS_OHCI1]		= RESET(0xa8c, BIT(17)),
++	[RST_BUS_EHCI0]		= RESET(0xa8c, BIT(20)),
++	[RST_BUS_EHCI1]		= RESET(0xa8c, BIT(21)),
++	[RST_BUS_OTG]		= RESET(0xa8c, BIT(24)),
++	[RST_BUS_LRADC]		= RESET(0xa9c, BIT(16)),
++};
++
++const struct ccu_desc h713_ccu_desc = {
++	.gates	= h713_gates,
++	.resets	= h713_resets,
++	.num_gates = ARRAY_SIZE(h713_gates),
++	.num_resets = ARRAY_SIZE(h713_resets),
++};
+diff --git a/drivers/clk/sunxi/clk_sunxi.c b/drivers/clk/sunxi/clk_sunxi.c
+index 7e8c88da0c2..64397069f75 100644
+--- a/drivers/clk/sunxi/clk_sunxi.c
++++ b/drivers/clk/sunxi/clk_sunxi.c
+@@ -118,6 +118,7 @@ extern const struct ccu_desc a80_ccu_desc;
+ extern const struct ccu_desc a80_mmc_clk_desc;
+ extern const struct ccu_desc a83t_ccu_desc;
+ extern const struct ccu_desc d1_ccu_desc;
++extern const struct ccu_desc h713_ccu_desc;
+ extern const struct ccu_desc f1c100s_ccu_desc;
+ extern const struct ccu_desc h3_ccu_desc;
+ extern const struct ccu_desc h6_ccu_desc;
+@@ -208,7 +209,7 @@ static const struct udevice_id sunxi_clk_ids[] = {
+ 	 * dedicated binding exists.
+ 	 */
+ 	{ .compatible = "allwinner,sun50i-h713-ccu",
+-	  .data = (ulong)&d1_ccu_desc },
++	  .data = (ulong)&h713_ccu_desc },
+ #endif
+ #ifdef CONFIG_CLK_SUN50I_H6
+ 	{ .compatible = "allwinner,sun50i-h6-ccu",

@@ -1,0 +1,41 @@
+From 0b21feeeee4155f8badf40b7dc734b11b84bf3cb Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Fri, 11 Sep 2026 11:21:16 +0200
+Subject: [PATCH 32/33] sunxi: h713: "run fel" reboots into FEL without the
+ reset button
+
+Set the vendor's efex flag in RTC GP2 and reset; the SPL answers by
+jumping into the BROM's FEL entry. RTC registers sit on a slow clock, so
+write until the value reads back and wait a second before the reset - the
+vendor writes in a loop and waits 500 ms, and a single store right before
+"reset" was lost once in four tries here.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ board/sunxi/hy310.env | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index 3e5c4500ccd..b79932fb35f 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -3,6 +3,13 @@
+  * The saved environment on a device overrides all of this. Hush expands one
+  * level only, so bootargs are assembled where they are used.
+  *
++ * "run fel" reboots into FEL without touching the reset button: it sets the
++ * vendor's efex flag in RTC GP2, which our SPL checks first thing and answers
++ * by jumping into the BROM's FEL entry (arch-sunxi/boot0.h, doku/nachtlog/S48).
++ * RTC registers sit on a slow clock: the vendor writes the flag until it reads
++ * back and then waits 500 ms before the watchdog reset. A single store right
++ * before "reset" was lost once in four tries, so do the same here.
++ *
+  * h713_project picks the vendor ProjectID_0x*.TSE group; h713_mips_dev and
+  * h713_mips_path say where the display artifacts live. These defaults describe
+  * the layout this environment boots from (doku/109): the artifacts sit in
+@@ -29,4 +36,5 @@ boot_net=
+ 	setenv bootargs "${bootargs_base} root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp";
+ 	tftpboot 0x60000000 ${serverip}:${bootfile};
+ 	bootm 0x60000000
++fel=while itest.l *0x07090108 != 0x5aa5a55a; do mw.l 0x07090108 0x5aa5a55a; done; sleep 1; reset
+ bootcmd=h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net

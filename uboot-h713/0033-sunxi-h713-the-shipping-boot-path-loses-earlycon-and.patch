@@ -1,0 +1,64 @@
+From 4091ea68c0620c590ad9af583c074a6bab463dad Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Sat, 12 Sep 2026 07:44:45 +0200
+Subject: [PATCH 33/33] sunxi: h713: the shipping boot path loses earlycon and
+ gains loglevel=4
+
+Marco, 12.09.2026: "wir wollen kein debug in release". The eMMC path is the
+one a user boots; the network path is the bench. Until now both shared
+bootargs_base and with it earlycon, and neither said a loglevel, so the
+kernel's default of 7 put the whole start-up transcript on the console.
+
+earlycon writes to the UART before the real console driver is up. It is
+worth having when the kernel dies before that point, and worthless after --
+and the eMMC path has not died there in 20 of 20 cold starts. It stays on
+the network path, where a kernel under development can still do that.
+
+loglevel=4 keeps warnings and errors on the console and everything else in
+the kernel ring; dmesg still shows all of it. It goes on the eMMC path only,
+so a bench boot is as talkative as before.
+
+This changes the built-in default. A device with a saved environment keeps
+its own bootargs_base until "env default -a; saveenv", or until the release
+image writes a fresh environment -- which is what a shipped device gets.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ board/sunxi/hy310.env | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index b79932fb35f..d53ddd96754 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -1,7 +1,10 @@
+ /* HY310 projector -- default environment (plan doku/105 section 1.2).
+  * eMMC first, netboot as the fallback; h713_boot=net forces the network path.
+  * The saved environment on a device overrides all of this. Hush expands one
+- * level only, so bootargs are assembled where they are used.
++ * level only, so bootargs are assembled where they are used. The eMMC path
++ * is the shipping path and boots with loglevel=4 and without earlycon; the
++ * network path is the bench and keeps earlycon, so a kernel that dies before
++ * its console driver still says where. Nothing else differs between them.
+  *
+  * "run fel" reboots into FEL without touching the reset button: it sets the
+  * vendor's efex flag in RTC GP2, which our SPL checks first thing and answers
+@@ -25,15 +28,15 @@ h713_mips_path=mips
+ bootfile=h713-kernel-netboot.fit
+ serverip=192.168.8.123
+ nfsroot=/srv/h713-rootfs
+-bootargs_base=console=ttyS0,115200 earlycon rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0
++bootargs_base=console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0
+ boot_emmc=
+ 	if ext4load mmc 1:5 0x60000000 h713-kernel.fit; then
+-		setenv bootargs "${bootargs_base} root=PARTLABEL=hy310-rootfs rw";
++		setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw";
+ 		bootm 0x60000000;
+ 	fi
+ boot_net=
+ 	dhcp;
+-	setenv bootargs "${bootargs_base} root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp";
++	setenv bootargs "${bootargs_base} earlycon root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp";
+ 	tftpboot 0x60000000 ${serverip}:${bootfile};
+ 	bootm 0x60000000
+ fel=while itest.l *0x07090108 != 0x5aa5a55a; do mw.l 0x07090108 0x5aa5a55a; done; sleep 1; reset

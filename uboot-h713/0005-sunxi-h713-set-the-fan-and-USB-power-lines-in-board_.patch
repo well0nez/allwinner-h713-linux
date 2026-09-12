@@ -1,0 +1,131 @@
+From a5eefc15a6175be8118003ed93c736a318a628bf Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 17:00:56 +0200
+Subject: [PATCH 05/33] sunxi: h713: set the fan and USB power lines in
+ board_late_init
+
+Two problems with doing this in board_init.
+
+The GPIO uclass is not up that early, so gpio_request() fails and both
+lines stay unconfigured -- "gpio status PB5" shows func with no output
+value, the fan never spins and the panel stays dark. Nothing said so,
+because the return values were discarded.
+
+And the legacy linear numbering does not match the DT-registered banks:
+SUNXI_GPB(5) resolved to some other pin (the request succeeded and the
+fan still did not run) while SUNXI_GPL(3) did not resolve at all
+(-ENOENT), R_PIO being a separate controller outside that scheme. Going
+through dm_gpio_lookup_name() is what "gpio set PB5" on the console does,
+and that always worked.
+
+Also add PL3 next to PB5. It is the USB-A socket's VBUS enable; without
+it a device is detected but the port reset fails.
+
+Errors are now printed with the pin name rather than swallowed.
+---
+ board/sunxi/board.c | 83 +++++++++++++++++++++++++++++++--------------
+ 1 file changed, 57 insertions(+), 26 deletions(-)
+
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index c4b92fba8a9..b5122f937ee 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -251,32 +251,6 @@ int board_init(void)
+ 	if (ret)
+ 		return ret;
+ 
+-#ifdef CONFIG_H713_POWERON_LIGHT_FAN
+-	/*
+-	 * Bring up the cooling fan and LED backlight at power-on so the panel is
+-	 * lit and cooled immediately -- the projector shows the boot process like
+-	 * a monitor -- rather than waiting for Linux to apply its gpio-hog.
+-	 *
+-	 * PB5 is the shared fan-power / backlight-enable line: driving it high
+-	 * powers the cooling fan and enables the LED backlight together. Keeping
+-	 * it unconditionally high makes the fan a hard interlock -- the backlight
+-	 * cannot be lit without the fan already running.
+-	 */
+-	gpio_request(SUNXI_GPB(5), "fan-bl-power");
+-	gpio_direction_output(SUNXI_GPB(5), 1);
+-
+-	/*
+-	 * TODO: backlight BRIGHTNESS is not controlled here yet, and needs to be.
+-	 * The projector DTS's panel_pwm_ch=2 (PB4 / PWM channel 2) was verified
+-	 * NOT to drive this board's LED: a correct, running 25 kHz PWM on PB4
+-	 * (counter advancing, pin muxed) changed the brightness not at all. So the
+-	 * LED level is set elsewhere -- most likely an LED-driver IC or a separate
+-	 * rail, part of the display/LED pipeline -- and must be reverse-engineered.
+-	 * Do NOT re-attempt PB4/PWM2. For now the light comes up at a fixed (dim)
+-	 * level; full brightness belongs at this U-Boot stage once the real
+-	 * control is found. See docs/roadmap.md.
+-	 */
+-#endif
+ 
+ 	eth_init_board();
+ 
+@@ -999,8 +973,65 @@ int misc_init_r(void)
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_H713_POWERON_LIGHT_FAN
++/*
++ * Drive the two power-enable lines the board needs.  This has to happen in
++ * board_late_init, not board_init: at board_init time the GPIO uclass is not
++ * up yet, gpio_request() fails silently, and both lines stay unconfigured --
++ * visible as "func" with no output value in `gpio status`.  Neither the fan
++ * nor the USB socket came up that way.
++ *
++ * PB5 is the shared fan-power / backlight-enable line: driving it high powers
++ * the cooling fan and enables the LED backlight together, which makes the fan
++ * a hard interlock -- the backlight cannot be lit without the fan running.
++ * Never drive it low.
++ *
++ * PL3 is the USB-A socket's VBUS enable ("cam-usb-power-gpio" in the stock
++ * GPIO map; the vendor bootloader DT carries it as
++ * prj/usb0 = <.. 0x0b 0x03 0x01 .. 0x01>, i.e. PL3 output high).  It lives in
++ * R_PIO, so the r_pio node must be present in the DT or the request fails.
++ */
++static void h713_poweron_lines(void)
++{
++	static const char * const pins[] = { "PB5", "PL3" };
++	static const char * const labels[] = { "fan-bl-power", "usb-vbus-power" };
++	struct gpio_desc desc;
++	int i, ret;
++
++	for (i = 0; i < ARRAY_SIZE(pins); i++) {
++		/*
++		 * By name, not by legacy linear number.  The legacy numbering
++		 * assumes 32-pin banks from PA=0, which does not survive the
++		 * DT-registered banks here: SUNXI_GPB(5) resolved to some other
++		 * pin (request succeeded, fan stayed off) and SUNXI_GPL(3) did
++		 * not resolve at all (-ENOENT), because R_PIO is a separate
++		 * controller outside that scheme.
++		 */
++		ret = dm_gpio_lookup_name(pins[i], &desc);
++		if (ret) {
++			printf("%s (%s): lookup failed: %d\n",
++			       labels[i], pins[i], ret);
++			continue;
++		}
++		ret = dm_gpio_request(&desc, labels[i]);
++		if (ret && ret != -EBUSY) {
++			printf("%s (%s): request failed: %d\n",
++			       labels[i], pins[i], ret);
++			continue;
++		}
++		ret = dm_gpio_set_dir_flags(&desc, GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
++		if (ret)
++			printf("%s (%s): set output failed: %d\n",
++			       labels[i], pins[i], ret);
++	}
++}
++#endif
++
+ int board_late_init(void)
+ {
++#ifdef CONFIG_H713_POWERON_LIGHT_FAN
++	h713_poweron_lines();
++#endif
+ #ifdef CONFIG_USB_ETHER
+ 	usb_ether_init();
+ #endif

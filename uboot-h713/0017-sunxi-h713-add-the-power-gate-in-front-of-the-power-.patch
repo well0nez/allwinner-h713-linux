@@ -1,0 +1,540 @@
+From 7879d9bdc8f2121fd6c7b3845d80e1ab38e1cc3e Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 9 Sep 2026 18:04:01 +0200
+Subject: [PATCH 17/33] sunxi: h713: add the power gate in front of the
+ power-on lines
+
+Stock keeps the projector in standby until the power key is pressed; our
+U-Boot switched fan, backlight and USB power on unconditionally. Add
+CONFIG_H713_POWER_GATE: before h713_poweron_lines(), read RTC GP5
+(0x07090114) -- 0 is a cold start and "GATE" a power-off request from
+TF-A, both wait for the power key on PL4 (active low, external pull-up,
+50 ms debounce, release starts the boot); "RUN1" is a warm start and
+boots straight through. U-Boot stamps RUN1 on every path before powering
+up, so reboot, crash and watchdog reset never land in the gate. A key
+held for 3 s at power-on bypasses the gate once; the env variable
+h713_gate=0 disables it without a rebuild. The status LED follows PB5,
+so no LED code is needed. Gate on in hy310_qz713_v3_1 and the new test
+defconfig hy310_netboot_gate, off in netboot, host and felmmc.
+
+Measured on the HY310 2026-09-08/09; plan doku/103, report doku/nachtlog/S36.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/Kconfig          |  19 +++
+ board/sunxi/board.c                  | 208 +++++++++++++++++++++++++++
+ configs/hy310_felmmc_defconfig       |  64 +++++++++
+ configs/hy310_host_defconfig         |   1 +
+ configs/hy310_netboot_defconfig      |  70 +++++++++
+ configs/hy310_netboot_gate_defconfig |  70 +++++++++
+ configs/hy310_qz713_v3_1_defconfig   |   1 +
+ 7 files changed, 433 insertions(+)
+ create mode 100644 configs/hy310_felmmc_defconfig
+ create mode 100644 configs/hy310_netboot_defconfig
+ create mode 100644 configs/hy310_netboot_gate_defconfig
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index ba417d985a9..4559d025f80 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -69,6 +69,25 @@ config H713_SPL_FORCE_MMC
+ 	  send it. Recovers a board whose first stage was overwritten while
+ 	  U-Boot proper is still intact. Never enable this in a shipping image.
+ 
++config H713_POWER_GATE
++	bool "H713: wait for the power key before powering the board up"
++	depends on H713_POWERON_LIGHT_FAN
++	help
++	  Restore the stock power-button behaviour: on mains-on U-Boot leaves
++	  fan, backlight and USB VBUS off (the LED follows the backlight line,
++	  so the board shows red standby) and waits for a press of the power
++	  key on PL4 before calling the power-on lines and booting.
++
++	  RTC GP5 tells a cold start (gate) from a warm one: U-Boot stamps
++	  "RUN1" there before powering up, so reboot, crash and watchdog reset
++	  come back without a key press, while mains-off clears the word and
++	  TF-A writes "GATE" on poweroff. The env variable h713_gate=0 turns
++	  the gate off without a rebuild, and holding the key for three seconds
++	  while the mains comes on bypasses it for one boot.
++
++	  For shipping images. Leave this off for bench, netboot and recovery
++	  builds, which must come up on mains alone.
++
+ config DRAM_SUN50I_A133
+ 	bool
+ 	help
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index b5122f937ee..a97fd61302e 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -50,7 +50,9 @@
+ #include <net.h>
+ #include <spl.h>
+ #include <sy8106a.h>
++#include <time.h>
+ #include <usb.h>
++#include <watchdog.h>
+ #include <asm/setup.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+@@ -1027,8 +1029,214 @@ static void h713_poweron_lines(void)
+ }
+ #endif
+ 
++#ifdef CONFIG_H713_POWER_GATE
++/*
++ * Power gate: mains-on leaves the board in standby -- dark, silent, LED red --
++ * until the power key is pressed.  There is no PMIC and no power-hold line on
++ * this board, so "off" can only mean "SoC running, nothing else powered":
++ * everything the user can see or hear hangs off PB5 and PL3, and those are
++ * exactly the lines h713_poweron_lines() drives.  Holding that call back is
++ * the whole gate; until then both pins sit at their reset level (low).
++ *
++ * The LED needs no code of its own: it follows PB5 (high = blue, low = red),
++ * measured on the board.  The red standby light therefore appears by itself
++ * while the gate keeps PB5 down.  PL0/PL1, which the vendor device tree calls
++ * the LEDs, have no visible effect here.
++ *
++ * RTC general-purpose word 5 separates a cold start from a warm one.  The RTC
++ * domain has no battery: after mains-off every GP word reads back 0, while a
++ * value written before a reset (U-Boot "reset", Linux "reboot" via PSCI, or a
++ * watchdog reset) survives unchanged.  Hence:
++ *
++ *   0        cold start, mains just came on          -> gate
++ *   "RUN1"   we were already up                      -> boot straight through
++ *   "GATE"   power-off requested (written by TF-A)   -> gate
++ *
++ * GP7 is the fastboot handoff and is consumed and cleared by preboot; GP2, GP3
++ * and GP6 are taken by the vendor firmware and by the ARISC driver.  GP5 is
++ * free, and nothing between SPL and the kernel writes it.
++ */
++#define H713_RTC_GP5_REG	0x07090114UL
++#define H713_GATE_RUN1		0x52554e31UL	/* "RUN1": system is up */
++#define H713_GATE_REQUESTED	0x47415445UL	/* "GATE": TF-A wants standby */
++
++/* 50 ms debounce is what the stock firmware applies to this key. */
++#define H713_GATE_POLL_MS	10
++#define H713_GATE_DEBOUNCE_MS	50
++#define H713_GATE_BYPASS_MS	3000
++#define H713_GATE_NOTE_MS	60000
++
++/*
++ * The power key is PL4 in R_PIO: active low against an external pull-up, so no
++ * bias of ours is needed (measured: reads 1 idle, 0 pressed).  By name for the
++ * same reason h713_poweron_lines() uses names -- the legacy linear numbering
++ * does not reach R_PIO at all.
++ */
++static int h713_gate_key_get(struct gpio_desc *key)
++{
++	int ret;
++
++	ret = dm_gpio_lookup_name("PL4", key);
++	if (ret)
++		return ret;
++
++	ret = dm_gpio_request(key, "power-key");
++	if (ret && ret != -EBUSY)
++		return ret;
++
++	ret = dm_gpio_set_dir_flags(key, GPIOD_IS_IN);
++	if (ret)
++		return ret;
++
++	/* Read once here so a pin we cannot read fails before the loop. */
++	return dm_gpio_get_value(key) < 0 ? -EIO : 0;
++}
++
++/*
++ * Raw level rather than GPIOD_ACTIVE_LOW, so the one inversion this file makes
++ * is written down at the place it happens.
++ */
++static bool h713_gate_key_down(struct gpio_desc *key)
++{
++	return dm_gpio_get_value(key) == 0;
++}
++
++/*
++ * Service back door: a key that is already held when the mains comes on, and
++ * stays held, skips the gate for this boot.  It is the only way to boot a
++ * gated board with no serial console and no working flag.
++ */
++static bool h713_gate_key_held(struct gpio_desc *key, unsigned int ms)
++{
++	unsigned int waited;
++
++	if (!h713_gate_key_down(key))
++		return false;
++
++	for (waited = 0; waited < ms; waited += H713_GATE_POLL_MS) {
++		schedule();
++		mdelay(H713_GATE_POLL_MS);
++		if (!h713_gate_key_down(key))
++			return false;
++	}
++
++	return true;
++}
++
++/*
++ * Wait for one whole key stroke: idle, then low for at least the debounce
++ * time, then idle again.  The release is what starts the boot.  If the press
++ * alone did, a key still held from the back-door check above -- or simply held
++ * a moment too long -- would start the boot the instant the gate opened, and
++ * nobody would ever see the standby state.
++ */
++static void h713_gate_wait(struct gpio_desc *key)
++{
++	unsigned int low_ms = 0, high_ms = 0;
++	bool idle_seen = false, pressed = false, noted = false;
++	ulong last_note = get_timer(0);
++
++	printf("gate: waiting for power key\n");
++
++	for (;;) {
++		if (h713_gate_key_down(key)) {
++			high_ms = 0;
++			if (low_ms < H713_GATE_DEBOUNCE_MS)
++				low_ms += H713_GATE_POLL_MS;
++			if (idle_seen && low_ms >= H713_GATE_DEBOUNCE_MS)
++				pressed = true;
++		} else {
++			low_ms = 0;
++			if (high_ms < H713_GATE_DEBOUNCE_MS)
++				high_ms += H713_GATE_POLL_MS;
++			if (high_ms >= H713_GATE_DEBOUNCE_MS) {
++				if (pressed)
++					break;
++				idle_seen = true;
++			}
++		}
++
++		/* One dot a minute: proof of life without flooding the log. */
++		if (get_timer(last_note) >= H713_GATE_NOTE_MS) {
++			last_note = get_timer(0);
++			noted = true;
++			printf(".");
++		}
++
++		schedule();
++		mdelay(H713_GATE_POLL_MS);
++	}
++
++	if (noted)
++		printf("\n");
++}
++
++static void h713_power_gate(void)
++{
++	struct gpio_desc key;
++	const char *sel;
++	bool gate = true;
++	u32 flag;
++	int ret;
++
++	/* Override without a rebuild; anything but "0" leaves the gate on. */
++	sel = env_get("h713_gate");
++	if (sel && !strcmp(sel, "0")) {
++		printf("gate: off (h713_gate=0)\n");
++		gate = false;
++	}
++
++	if (gate) {
++		flag = readl(H713_RTC_GP5_REG);
++		if (flag == H713_GATE_RUN1) {
++			printf("gate: warm start, booting\n");
++			gate = false;
++		} else if (flag == H713_GATE_REQUESTED) {
++			printf("gate: power-off requested\n");
++		} else {
++			printf("gate: cold start (GP5 %08x)\n", flag);
++		}
++	}
++
++	if (gate) {
++		ret = h713_gate_key_get(&key);
++		if (ret) {
++			/*
++			 * Without a readable key there is no way out of the
++			 * loop, so a board that cannot see PL4 must boot.
++			 */
++			printf("gate: power key PL4 unavailable (%d), booting\n",
++			       ret);
++			gate = false;
++		}
++	}
++
++	if (gate && h713_gate_key_held(&key, H713_GATE_BYPASS_MS)) {
++		printf("gate: key held at power-on, bypass\n");
++		gate = false;
++	}
++
++	if (gate) {
++		h713_gate_wait(&key);
++		printf("gate: power key, booting\n");
++	}
++
++	/*
++	 * Mark the system as up on every path, before anything is powered.
++	 * A reboot, a crash or a watchdog reset from here on finds RUN1 and
++	 * boots through, so a device in the field never ends up waiting for a
++	 * key that nobody is there to press.
++	 */
++	writel(H713_GATE_RUN1, H713_RTC_GP5_REG);
++}
++#endif
++
+ int board_late_init(void)
+ {
++#ifdef CONFIG_H713_POWER_GATE
++	/* Must run before the power lines: the gate is their absence. */
++	h713_power_gate();
++#endif
+ #ifdef CONFIG_H713_POWERON_LIGHT_FAN
+ 	h713_poweron_lines();
+ #endif
+diff --git a/configs/hy310_felmmc_defconfig b/configs/hy310_felmmc_defconfig
+new file mode 100644
+index 00000000000..c21d8a3f71b
+--- /dev/null
++++ b/configs/hy310_felmmc_defconfig
+@@ -0,0 +1,64 @@
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
++CONFIG_DRAM_CLK=792
++CONFIG_SPL=y
++# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
++CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
++CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
++CONFIG_DRAM_SUNXI_ODT_EN=0x1
++CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
++CONFIG_DRAM_SUNXI_PARA1=0x000010f4
++CONFIG_DRAM_SUNXI_PARA2=0x04000000
++CONFIG_DRAM_SUNXI_MR0=0x00001c70
++CONFIG_DRAM_SUNXI_MR1=0x00000040
++CONFIG_DRAM_SUNXI_MR2=0x00000018
++CONFIG_DRAM_SUNXI_MR3=0x00000000
++CONFIG_DRAM_SUNXI_TPR0=0x00482151
++CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
++CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
++CONFIG_DRAM_SUNXI_TPR3=0xb4787896
++CONFIG_DRAM_SUNXI_TPR4=0x00000000
++CONFIG_DRAM_SUNXI_TPR5=0x48484848
++CONFIG_DRAM_SUNXI_TPR6=0x00000048
++CONFIG_DRAM_SUNXI_TPR7=0x1620121e
++CONFIG_DRAM_SUNXI_TPR8=0x00000000
++CONFIG_DRAM_SUNXI_TPR9=0x00000000
++CONFIG_DRAM_SUNXI_TPR10=0x00000000
++CONFIG_DRAM_SUNXI_TPR11=0x44340000
++CONFIG_DRAM_SUNXI_TPR12=0x00006666
++CONFIG_DRAM_SUNXI_TPR13=0xb4016103
++CONFIG_MACH_SUN50I_H713=y
++CONFIG_H713_POWERON_LIGHT_FAN=y
++# CONFIG_H713_POWER_GATE is not set
++CONFIG_H713_MIPS_BOOT=y
++CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
++CONFIG_MMC_SUNXI_SLOT_EXTRA=2
++CONFIG_MMC0_CD_PIN=""
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SUPPORT_EMMC_BOOT=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_OHCI_HCD=y
++# CONFIG_WATCHDOG is not set
++CONFIG_WDT=y
++CONFIG_USB_MUSB_GADGET=y
++CONFIG_CMD_USB_MASS_STORAGE=y
++# CONFIG_USB_ETHER is not set
++CONFIG_CONSOLE_MUX=y
++CONFIG_SYS_CONSOLE_IS_IN_ENV=y
++CONFIG_USB_FUNCTION_ACM=y
++# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
++CONFIG_SYSRESET=y
++CONFIG_SYSRESET_PSCI=y
++CONFIG_CMD_POWEROFF=y
++CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
++# CONFIG_ENV_IS_IN_FAT is not set
++CONFIG_ENV_IS_IN_MMC=y
++CONFIG_ENV_OFFSET=0x400000
++CONFIG_CMD_WDT=y
++CONFIG_CMD_GPIO=y
++CONFIG_H713_SPL_FORCE_MMC=y
++CONFIG_SPL_MMC_WRITE=y
++CONFIG_SPL_MAX_SIZE=0x14000
+diff --git a/configs/hy310_host_defconfig b/configs/hy310_host_defconfig
+index 69d4a57de47..96a50efe845 100644
+--- a/configs/hy310_host_defconfig
++++ b/configs/hy310_host_defconfig
+@@ -31,6 +31,7 @@ CONFIG_DRAM_SUNXI_TPR12=0x00006666
+ CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+ CONFIG_MACH_SUN50I_H713=y
+ CONFIG_H713_POWERON_LIGHT_FAN=y
++# CONFIG_H713_POWER_GATE is not set
+ CONFIG_H713_MIPS_BOOT=y
+ CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+ CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+diff --git a/configs/hy310_netboot_defconfig b/configs/hy310_netboot_defconfig
+new file mode 100644
+index 00000000000..27ae9a52ba9
+--- /dev/null
++++ b/configs/hy310_netboot_defconfig
+@@ -0,0 +1,70 @@
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
++CONFIG_DRAM_CLK=792
++CONFIG_SPL=y
++# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
++CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
++CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
++CONFIG_DRAM_SUNXI_ODT_EN=0x1
++CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
++CONFIG_DRAM_SUNXI_PARA1=0x000010f4
++CONFIG_DRAM_SUNXI_PARA2=0x04000000
++CONFIG_DRAM_SUNXI_MR0=0x00001c70
++CONFIG_DRAM_SUNXI_MR1=0x00000040
++CONFIG_DRAM_SUNXI_MR2=0x00000018
++CONFIG_DRAM_SUNXI_MR3=0x00000000
++CONFIG_DRAM_SUNXI_TPR0=0x00482151
++CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
++CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
++CONFIG_DRAM_SUNXI_TPR3=0xb4787896
++CONFIG_DRAM_SUNXI_TPR4=0x00000000
++CONFIG_DRAM_SUNXI_TPR5=0x48484848
++CONFIG_DRAM_SUNXI_TPR6=0x00000048
++CONFIG_DRAM_SUNXI_TPR7=0x1620121e
++CONFIG_DRAM_SUNXI_TPR8=0x00000000
++CONFIG_DRAM_SUNXI_TPR9=0x00000000
++CONFIG_DRAM_SUNXI_TPR10=0x00000000
++CONFIG_DRAM_SUNXI_TPR11=0x44340000
++CONFIG_DRAM_SUNXI_TPR12=0x00006666
++CONFIG_DRAM_SUNXI_TPR13=0xb4016103
++CONFIG_MACH_SUN50I_H713=y
++CONFIG_H713_POWERON_LIGHT_FAN=y
++# CONFIG_H713_POWER_GATE is not set
++CONFIG_H713_MIPS_BOOT=y
++CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
++CONFIG_MMC_SUNXI_SLOT_EXTRA=2
++CONFIG_MMC0_CD_PIN=""
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SUPPORT_EMMC_BOOT=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_OHCI_HCD=y
++# CONFIG_WATCHDOG is not set
++CONFIG_WDT=y
++# CONFIG_USB_ETHER is not set
++CONFIG_CONSOLE_MUX=y
++CONFIG_SYS_CONSOLE_IS_IN_ENV=y
++# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
++CONFIG_SYSRESET=y
++CONFIG_SYSRESET_PSCI=y
++CONFIG_CMD_POWEROFF=y
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
++# CONFIG_ENV_IS_IN_FAT is not set
++CONFIG_ENV_IS_IN_MMC=y
++CONFIG_ENV_OFFSET=0x93d80000
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x49ac00
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
++CONFIG_H713_VENDOR_CHAINLOAD=y
++CONFIG_CMD_WDT=y
++CONFIG_CMD_GPIO=y
++# CONFIG_USB_MUSB_SUNXI is not set
++# CONFIG_USB_GADGET is not set
++CONFIG_NET=y
++CONFIG_CMD_NET=y
++CONFIG_CMD_DHCP=y
++CONFIG_CMD_PING=y
++CONFIG_CMD_NFS=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_USB_HOST_ETHER=y
++CONFIG_USB_ETHER_RTL8152=y
+diff --git a/configs/hy310_netboot_gate_defconfig b/configs/hy310_netboot_gate_defconfig
+new file mode 100644
+index 00000000000..dcdffde612a
+--- /dev/null
++++ b/configs/hy310_netboot_gate_defconfig
+@@ -0,0 +1,70 @@
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
++CONFIG_DRAM_CLK=792
++CONFIG_SPL=y
++# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
++CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
++CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
++CONFIG_DRAM_SUNXI_ODT_EN=0x1
++CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
++CONFIG_DRAM_SUNXI_PARA1=0x000010f4
++CONFIG_DRAM_SUNXI_PARA2=0x04000000
++CONFIG_DRAM_SUNXI_MR0=0x00001c70
++CONFIG_DRAM_SUNXI_MR1=0x00000040
++CONFIG_DRAM_SUNXI_MR2=0x00000018
++CONFIG_DRAM_SUNXI_MR3=0x00000000
++CONFIG_DRAM_SUNXI_TPR0=0x00482151
++CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
++CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
++CONFIG_DRAM_SUNXI_TPR3=0xb4787896
++CONFIG_DRAM_SUNXI_TPR4=0x00000000
++CONFIG_DRAM_SUNXI_TPR5=0x48484848
++CONFIG_DRAM_SUNXI_TPR6=0x00000048
++CONFIG_DRAM_SUNXI_TPR7=0x1620121e
++CONFIG_DRAM_SUNXI_TPR8=0x00000000
++CONFIG_DRAM_SUNXI_TPR9=0x00000000
++CONFIG_DRAM_SUNXI_TPR10=0x00000000
++CONFIG_DRAM_SUNXI_TPR11=0x44340000
++CONFIG_DRAM_SUNXI_TPR12=0x00006666
++CONFIG_DRAM_SUNXI_TPR13=0xb4016103
++CONFIG_MACH_SUN50I_H713=y
++CONFIG_H713_POWERON_LIGHT_FAN=y
++CONFIG_H713_POWER_GATE=y
++CONFIG_H713_MIPS_BOOT=y
++CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
++CONFIG_MMC_SUNXI_SLOT_EXTRA=2
++CONFIG_MMC0_CD_PIN=""
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SUPPORT_EMMC_BOOT=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_OHCI_HCD=y
++# CONFIG_WATCHDOG is not set
++CONFIG_WDT=y
++# CONFIG_USB_ETHER is not set
++CONFIG_CONSOLE_MUX=y
++CONFIG_SYS_CONSOLE_IS_IN_ENV=y
++# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
++CONFIG_SYSRESET=y
++CONFIG_SYSRESET_PSCI=y
++CONFIG_CMD_POWEROFF=y
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
++# CONFIG_ENV_IS_IN_FAT is not set
++CONFIG_ENV_IS_IN_MMC=y
++CONFIG_ENV_OFFSET=0x93d80000
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x49ac00
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
++CONFIG_H713_VENDOR_CHAINLOAD=y
++CONFIG_CMD_WDT=y
++CONFIG_CMD_GPIO=y
++# CONFIG_USB_MUSB_SUNXI is not set
++# CONFIG_USB_GADGET is not set
++CONFIG_NET=y
++CONFIG_CMD_NET=y
++CONFIG_CMD_DHCP=y
++CONFIG_CMD_PING=y
++CONFIG_CMD_NFS=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_USB_HOST_ETHER=y
++CONFIG_USB_ETHER_RTL8152=y
+diff --git a/configs/hy310_qz713_v3_1_defconfig b/configs/hy310_qz713_v3_1_defconfig
+index e4b771d16b8..22cc333c536 100644
+--- a/configs/hy310_qz713_v3_1_defconfig
++++ b/configs/hy310_qz713_v3_1_defconfig
+@@ -31,6 +31,7 @@ CONFIG_DRAM_SUNXI_TPR12=0x00006666
+ CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+ CONFIG_MACH_SUN50I_H713=y
+ CONFIG_H713_POWERON_LIGHT_FAN=y
++CONFIG_H713_POWER_GATE=y
+ CONFIG_H713_MIPS_BOOT=y
+ CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+ CONFIG_MMC_SUNXI_SLOT_EXTRA=2

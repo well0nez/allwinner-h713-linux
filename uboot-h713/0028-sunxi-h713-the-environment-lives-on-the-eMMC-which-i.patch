@@ -1,0 +1,63 @@
+From 078d1ce8915e908056ad561ffa33e509a7066b14 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Fri, 11 Sep 2026 09:35:16 +0200
+Subject: [PATCH 28/33] sunxi: h713: the environment lives on the eMMC, which
+ is MMC device 1
+
+CONFIG_ENV_OFFSET already pointed into the eMMC layout, but without
+CONFIG_ENV_MMC_DEVICE_INDEX the lookup defaulted to device 0. Say so
+explicitly in every HY310 defconfig that stores its environment in MMC.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ configs/hy310_host_defconfig         | 1 +
+ configs/hy310_netboot_defconfig      | 1 +
+ configs/hy310_netboot_gate_defconfig | 1 +
+ configs/hy310_qz713_v3_1_defconfig   | 1 +
+ 4 files changed, 4 insertions(+)
+
+diff --git a/configs/hy310_host_defconfig b/configs/hy310_host_defconfig
+index 1881388579f..f43e490669a 100644
+--- a/configs/hy310_host_defconfig
++++ b/configs/hy310_host_defconfig
+@@ -53,6 +53,7 @@ CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; ru
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+ CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_MMC_DEVICE_INDEX=1
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+diff --git a/configs/hy310_netboot_defconfig b/configs/hy310_netboot_defconfig
+index 4fef30f1fed..f959754c7ed 100644
+--- a/configs/hy310_netboot_defconfig
++++ b/configs/hy310_netboot_defconfig
+@@ -53,6 +53,7 @@ CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; ru
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+ CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_MMC_DEVICE_INDEX=1
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+diff --git a/configs/hy310_netboot_gate_defconfig b/configs/hy310_netboot_gate_defconfig
+index 725476ed55d..a28dafff4f2 100644
+--- a/configs/hy310_netboot_gate_defconfig
++++ b/configs/hy310_netboot_gate_defconfig
+@@ -70,3 +70,4 @@ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_RTL8152=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+ CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
++CONFIG_ENV_MMC_DEVICE_INDEX=1
+diff --git a/configs/hy310_qz713_v3_1_defconfig b/configs/hy310_qz713_v3_1_defconfig
+index 77dbc1bd59a..a95a05b31cf 100644
+--- a/configs/hy310_qz713_v3_1_defconfig
++++ b/configs/hy310_qz713_v3_1_defconfig
+@@ -57,6 +57,7 @@ CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; ru
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+ CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_MMC_DEVICE_INDEX=1
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y

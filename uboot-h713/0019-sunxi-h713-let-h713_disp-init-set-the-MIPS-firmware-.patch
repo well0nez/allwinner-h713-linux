@@ -1,0 +1,173 @@
+From 2661414f37ede99820248d850b3d6634fb18da48 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 9 Sep 2026 19:26:22 +0200
+Subject: [PATCH 19/33] sunxi: h713: let h713_disp init set the MIPS firmware
+ log level
+
+Diagnostic option from the SetSource nights (doku/74): `h713_disp init
+... elog=N` patches the <output>, <mode> and <level> tags of the loaded
+display_cfg.xml so the MIPS firmware writes its elog into the ring
+(ring mode 1) at level N; tools/uart-uboot.py elog reads it back. Off by
+default; flashed since 2026-09-07 together with the SMM heap fix.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 114 ++++++++++++++++++++++++++++++--
+ 1 file changed, 107 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 4eef9359dcf..68b72e39b81 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -6063,6 +6063,57 @@ static int h713_cfg_set(ulong off, char want, const char *what)
+ 	return 0;
+ }
+ 
++/*
++ * Set one <tag val='N' /> in display_cfg.xml by NAME, not by byte offset.
++ *
++ * The fixed offsets this file used to carry were wrong for this board: on
++ * 2026-09-01 they landed on route/mode/level instead of mode/level/async --
++ * off by one field and a few bytes, because the XML moves between firmware
++ * revisions. The digit guard caught it and skipped, which is why nothing was
++ * corrupted, but nothing was set either. Searching for the tag survives a
++ * reflow of the file; a byte offset does not.
++ *
++ * Deliberately not a real parser: find "<tag", then the next "val=", then the
++ * quote, then one digit. That is the shape every entry in this file has.
++ */
++static int h713_cfg_set_tag(const char *tag, char want, const char *what)
++{
++	ulong base = H713_MIPS_CFG_ADDR;
++	ulong end = base + H713_MIPS_CFG_SIZE;
++	size_t taglen = strlen(tag);
++	ulong a;
++
++	for (a = base; a + taglen + 12 < end; a++) {
++		ulong p;
++		uint i;
++
++		if (readb(a) != '<')
++			continue;
++		for (i = 0; i < taglen; i++)
++			if (readb(a + 1 + i) != (u8)tag[i])
++				break;
++		if (i != taglen)
++			continue;
++		/* Only a full tag, not a prefix of a longer one. */
++		if (readb(a + 1 + taglen) != ' ' && readb(a + 1 + taglen) != '\t')
++			continue;
++
++		for (p = a + taglen; p + 6 < end && readb(p) != '>'; p++) {
++			if (readb(p) != 'v' || readb(p + 1) != 'a' ||
++			    readb(p + 2) != 'l' || readb(p + 3) != '=')
++				continue;
++			p += 4;
++			if (readb(p) == '\'' || readb(p) == '"')
++				p++;
++			return h713_cfg_set(p - base, want, what);
++		}
++	}
++
++	printf("H713 disp: %s -- <%s val='N'> not found in display_cfg.xml\n",
++	       what, tag);
++	return -ENOENT;
++}
++
+ static void h713_disp_sample(void)
+ {
+ 	static const uint at_ms[] = { 0, 100, 500, 1000, 2000, 4000 };
+@@ -10299,7 +10350,18 @@ static int h713_disp_call_table(uint raw_entries)
+  * with the firmware halted, nothing rewrites display registers underneath a
+  * measurement or a perturbation.
+  */
+-static int h713_disp_init_only(u32 project, bool release_mips, bool quiesce)
++/*
++ * elog_level >= 0 turns the coprocessor's own logging on before it is
++ * released. It is opt-in because it is not free: the firmware's ring is
++ * 100 KiB and it stops logging once full, so a raised level without a reader
++ * draining it is worse than the default -- see doku/63-mips-elog.md.
++ *
++ * Mode is forced to 1, the 100 KiB ring, which is the one that can be read
++ * back from Linux. Mode 2 is deliberately not offered: the knowledge base
++ * records that enabling it may break MIPS init.
++ */
++static int h713_disp_init_only(u32 project, bool release_mips, bool quiesce,
++			       int elog_level)
+ {
+ 	int ret;
+ 
+@@ -10316,6 +10378,28 @@ static int h713_disp_init_only(u32 project, bool release_mips, bool quiesce)
+ 	if (ret)
+ 		return h713_disp_fail(ret);
+ 
++	if (elog_level >= 0) {
++		printf("H713 disp: firmware log level %d, ring mode 1\n",
++		       elog_level);
++		/*
++		 * Only two fields are touched, and mode stays at 1 on purpose.
++		 *
++		 * display_cfg.xml documents mode as 0 sync / 1 async / 2 buf,
++		 * but the value goes straight into the firmware's dispatch byte
++		 * at 0x8B48BE9B: 1 selects elog_mode1_ring100k_write, the
++		 * 100 KiB ring at 0x8B272D9C that tools/mipslog.c reads. 0 ends
++		 * up in elog_default_dispatch and a different 120 KiB ring
++		 * whose address we have not located, and 2 is the 2 MiB linear
++		 * buffer the knowledge base says may break MIPS init. "sync"
++		 * does not mean UART here -- every mode writes to memory.
++		 *
++		 * So: make sure output is on, raise the level, leave the rest.
++		 */
++		h713_cfg_set_tag("output", '1', "elog output");
++		h713_cfg_set_tag("mode", '1', "elog mode");
++		h713_cfg_set_tag("level", '0' + elog_level, "elog level");
++	}
++
+ 	ret = h713_disp_run(H713_DISP_LOGO_ADDR, project, true, true, false,
+ 			    false, false, true, release_mips);
+ 	if (ret)
+@@ -10926,14 +11010,28 @@ static int do_h713_disp(struct cmd_tbl *cmdtp, int flag, int argc,
+ 		return CMD_RET_SUCCESS;
+ 	}
+ 
+-	if ((argc == 3 || argc == 4) && !strcmp(argv[1], "init")) {
++	if (argc >= 3 && argc <= 5 && !strcmp(argv[1], "init")) {
+ 		u32 project = hextoul(argv[2], NULL);
+-		bool noboot  = argc == 4 && !strcmp(argv[3], "noboot");
+-		bool quiesce = argc == 4 && !strcmp(argv[3], "quiesce");
++		bool noboot = false, quiesce = false;
++		int elog = -1;
++		int i;
+ 
+-		if (argc == 4 && !noboot && !quiesce)
++		for (i = 3; i < argc; i++) {
++			if (!strcmp(argv[i], "noboot"))
++				noboot = true;
++			else if (!strcmp(argv[i], "quiesce"))
++				quiesce = true;
++			else if (!strncmp(argv[i], "elog=", 5))
++				elog = (int)dectoul(argv[i] + 5, NULL);
++			else
++				return CMD_RET_USAGE;
++		}
++		if (elog > 5) {
++			printf("H713 disp: elog level %d out of range "
++			       "(0 assert .. 5 verbose)\n", elog);
+ 			return CMD_RET_USAGE;
+-		return h713_disp_init_only(project, !noboot, quiesce) ?
++		}
++		return h713_disp_init_only(project, !noboot, quiesce, elog) ?
+ 		       CMD_RET_FAILURE : CMD_RET_SUCCESS;
+ 	}
+ 
+@@ -11197,7 +11295,9 @@ U_BOOT_CMD(h713_disp, 15, 0, do_h713_disp,
+ 	   "h713_disp calltable [raw-entries]   - read the live CPU_COMM call table\n"
+ 	   "h713_disp commstate                 - read the CPU_COMM transports\n"
+ 	   "h713_disp commtrace                 - read the CPU_COMM trace stage\n"
+-	   "h713_disp init <project-id> [noboot|quiesce]\n"
++	   "h713_disp init <project-id> [noboot|quiesce] [elog=<0-5>]\n"
++	   "    elog turns on the coprocessor's own log (ring mode 1).\n"
++	   "    Needs a reader draining it, or it fills and stops.\n"
+ 	   "                                    - bring the display up and stop, ready for diagnostics\n"
+ 	   "                                      quiesce: park the MIPS core (use this for clkfind)\n"
+ 	   "h713_disp teardown                  - stop scanout, park the MIPS, drop the panel rail\n"\

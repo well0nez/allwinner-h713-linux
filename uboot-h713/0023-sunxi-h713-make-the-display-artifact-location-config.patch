@@ -1,0 +1,213 @@
+From e5ca97a3c21311bdc317990c359fc9a0616d054b Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Thu, 10 Sep 2026 10:45:33 +0200
+Subject: [PATCH 23/33] sunxi: h713: make the display artifact location
+ configurable
+
+h713_disp_read() had the vendor FAT partition wired in as "mmc" "1:2" and
+every caller spelled out the "mips/" prefix. That is a property of the
+installation, not of the SoC: a system that has taken that partition for
+its own layout keeps the same files elsewhere, and fs_read() takes
+FS_TYPE_ANY, so ext4 works exactly like FAT.
+
+Read h713_mips_dev and h713_mips_path from the environment, falling back
+to the stock values, and build the path in one place. The load message
+now names the device and directory it actually used. bootcmd takes the
+project id from h713_project for the same reason: it is a property of the
+device, and the vendor partition carries a TSE group per project.
+
+Verified on the HY310: with the defaults the boot is unchanged, and with
+the artifacts copied to an ext4 partition and h713_mips_dev=1:5 the MIPS
+firmware loads from there, identity accepted, panel timing latched.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c      | 52 ++++++++++++++++++++++------
+ board/sunxi/hy310.env                | 13 +++++--
+ configs/hy310_netboot_defconfig      |  2 +-
+ configs/hy310_netboot_gate_defconfig |  2 +-
+ configs/hy310_qz713_v3_1_defconfig   |  2 +-
+ 5 files changed, 55 insertions(+), 16 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 68b72e39b81..79d13b4fda4 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -10,6 +10,7 @@
+ 
+ #include <command.h>
+ #include <bmp_layout.h>
++#include <env.h>
+ #include <console.h>
+ #include <cpu_func.h>
+ #include <fs.h>
+@@ -5880,6 +5881,31 @@ static void h713_disp_dump(bool force)
+  */
+ #define H713_DISP_FS_IF		"mmc"
+ #define H713_DISP_FS_DEV	"1:2"
++#define H713_DISP_FS_PATH	"mips"
++
++/*
++ * Where those files live is a property of the installation, not of the SoC.
++ * On a stock device they sit in the vendor FAT partition; an installation that
++ * has given that partition to something else puts them on its own filesystem
++ * and says so in the environment. fs_read() takes FS_TYPE_ANY, so ext4 works
++ * exactly like FAT, and "1#hy310-boot" addresses a partition by name.
++ *
++ *   h713_mips_dev	device[:part] or device#partname	default "1:2"
++ *   h713_mips_path	directory holding the files		default "mips"
++ */
++static const char *h713_disp_fs_dev(void)
++{
++	const char *s = env_get("h713_mips_dev");
++
++	return s && *s ? s : H713_DISP_FS_DEV;
++}
++
++static const char *h713_disp_fs_path(void)
++{
++	const char *s = env_get("h713_mips_path");
++
++	return s && *s ? s : H713_DISP_FS_PATH;
++}
+ /*
+  * Above the framebuffer window (which ends at 0x4d941000) and below the
+  * CPU_COMM share region at 0x4e300000. Parking it inside the framebuffer
+@@ -5887,14 +5913,18 @@ static void h713_disp_dump(bool force)
+  */
+ #define H713_DISP_LOGO_ADDR	0x4e000000UL
+ 
+-static int h713_disp_read(const char *path, ulong addr, loff_t *len)
++static int h713_disp_read(const char *name, ulong addr, loff_t *len)
+ {
++	const char *dev = h713_disp_fs_dev();
++	char path[64];
+ 	int ret;
+ 
+-	ret = fs_set_blk_dev(H713_DISP_FS_IF, H713_DISP_FS_DEV, FS_TYPE_ANY);
++	snprintf(path, sizeof(path), "%s/%s", h713_disp_fs_path(), name);
++
++	ret = fs_set_blk_dev(H713_DISP_FS_IF, dev, FS_TYPE_ANY);
+ 	if (ret) {
+ 		printf("H713 disp: cannot select %s %s\n",
+-		       H713_DISP_FS_IF, H713_DISP_FS_DEV);
++		       H713_DISP_FS_IF, dev);
+ 		return ret;
+ 	}
+ 
+@@ -5933,8 +5963,8 @@ static int h713_disp_read(const char *path, ulong addr, loff_t *len)
+ static int h713_disp_load_tse(u32 project)
+ {
+ 	static const char *const fixed[] = {
+-		"mips/database.TSE", "mips/pq_custom.TSE",
+-		"mips/projecttable.TSE",
++		"database.TSE", "pq_custom.TSE",
++		"projecttable.TSE",
+ 	};
+ 	char pid[40];
+ 	ulong addr = H713_MIPS_TSE_ADDR;
+@@ -5950,7 +5980,7 @@ static int h713_disp_load_tse(u32 project)
+ 		addr += len;
+ 	}
+ 
+-	snprintf(pid, sizeof(pid), "mips/ProjectID_0x%04x.TSE", project);
++	snprintf(pid, sizeof(pid), "ProjectID_0x%04x.TSE", project);
+ 	ret = h713_disp_read(pid, addr, &len);
+ 	if (ret)
+ 		return ret;
+@@ -5977,14 +6007,14 @@ static int h713_disp_load(u32 project)
+ 	uint i;
+ 	int ret;
+ 
+-	printf("H713 disp: loading vendor artifacts from %s %s\n",
+-	       H713_DISP_FS_IF, H713_DISP_FS_DEV);
++	printf("H713 disp: loading vendor artifacts from %s %s:%s\n",
++	       H713_DISP_FS_IF, h713_disp_fs_dev(), h713_disp_fs_path());
+ 
+ 	/* Clear first: the workspace wipe must not run over what we load. */
+ 	h713_mips_clear_workspace();
+ 	memset((void *)H713_MIPS_CFG_ADDR, 0, H713_MIPS_CFG_SIZE);
+ 
+-	ret = h713_disp_read("mips/display.bin", H713_MIPS_FW_ADDR, &len);
++	ret = h713_disp_read("display.bin", H713_MIPS_FW_ADDR, &len);
+ 	if (ret)
+ 		return ret;
+ 	/*
+@@ -6003,7 +6033,7 @@ static int h713_disp_load(u32 project)
+ 	}
+ 	h713_mips_fw_size = (ulong)len;
+ 
+-	ret = h713_disp_read("mips/display_cfg.xml", H713_MIPS_CFG_ADDR, &len);
++	ret = h713_disp_read("display_cfg.xml", H713_MIPS_CFG_ADDR, &len);
+ 	if (ret)
+ 		return ret;
+ 	if (len > H713_MIPS_CFG_SIZE) {
+@@ -6021,7 +6051,7 @@ static int h713_disp_load(u32 project)
+ 		return ret;
+ 	printf("H713 disp: config/TSE windows published for MIPS\n");
+ 
+-	ret = h713_disp_read("mips/LogoRegData.bin", H713_DISP_LOGO_ADDR, &len);
++	ret = h713_disp_read("LogoRegData.bin", H713_DISP_LOGO_ADDR, &len);
+ 	if (ret)
+ 		return ret;
+ 
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index b70c28f2cee..cdabe46450f 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -1,9 +1,18 @@
+ /* HY310 projector -- default environment (plan doku/105 section 1.2).
+  * eMMC first, netboot as the fallback; h713_boot=net forces the network path.
+  * The saved environment on a device overrides all of this. Hush expands one
+- * level only, so bootargs are assembled where they are used. */
++ * level only, so bootargs are assembled where they are used.
++ *
++ * h713_project picks the vendor ProjectID_0x*.TSE group; h713_mips_dev and
++ * h713_mips_path say where the display artifacts live. The defaults are the
++ * stock vendor FAT partition, so a device that still has it behaves as before;
++ * an installation that owns that space points them at its own filesystem, for
++ * example "1#hy310-boot" and "mips". See doku/108. */
+ h713_boot=emmc
+ h713_gate=1
++h713_project=0x30
++h713_mips_dev=1:2
++h713_mips_path=mips
+ bootfile=h713-kernel-netboot.fit
+ serverip=192.168.8.104
+ nfsroot=/srv/h713-rootfs
+@@ -18,4 +27,4 @@ boot_net=
+ 	setenv bootargs "${bootargs_base} root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp";
+ 	tftpboot 0x60000000 ${serverip}:${bootfile};
+ 	bootm 0x60000000
+-bootcmd=h713_disp init 0x30; run boot_${h713_boot}; run boot_net
++bootcmd=h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net
+diff --git a/configs/hy310_netboot_defconfig b/configs/hy310_netboot_defconfig
+index 415766810ad..dbda2f1a17b 100644
+--- a/configs/hy310_netboot_defconfig
++++ b/configs/hy310_netboot_defconfig
+@@ -69,4 +69,4 @@ CONFIG_NET_RANDOM_ETHADDR=y
+ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_RTL8152=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init 0x30; run boot_${h713_boot}; run boot_net"
++CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/hy310_netboot_gate_defconfig b/configs/hy310_netboot_gate_defconfig
+index ba97c5ed9c7..58d05280612 100644
+--- a/configs/hy310_netboot_gate_defconfig
++++ b/configs/hy310_netboot_gate_defconfig
+@@ -69,4 +69,4 @@ CONFIG_NET_RANDOM_ETHADDR=y
+ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_RTL8152=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init 0x30; run boot_${h713_boot}; run boot_net"
++CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/hy310_qz713_v3_1_defconfig b/configs/hy310_qz713_v3_1_defconfig
+index 40b15233efa..295c1c1c8b6 100644
+--- a/configs/hy310_qz713_v3_1_defconfig
++++ b/configs/hy310_qz713_v3_1_defconfig
+@@ -63,4 +63,4 @@ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+ CONFIG_CMD_GPIO=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init 0x30; run boot_${h713_boot}; run boot_net"
++CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"

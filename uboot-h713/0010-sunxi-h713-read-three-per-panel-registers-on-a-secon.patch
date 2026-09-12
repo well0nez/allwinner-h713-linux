@@ -1,0 +1,157 @@
+From fabb9fb3179931761b7f7eb7d47b3c4c8cb8e65f Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 20:14:31 +0200
+Subject: [PATCH 10/33] sunxi: h713: read three per-panel registers on a second
+ board
+
+An HY310 still runs its stock bootloader, and its boot0 sits in a separate
+place from ours, so both can live on the eMMC and one 32 KiB write switches
+between them. That makes the vendor's own register state readable while its
+logo is on the wall. Three registers this table treats as settled turn out
+to differ between the two panels.
+
+0x0528008c, the layer's X origin, is zero here because test_32 showed that
+puts board B's content at column 0. On an HY310 stock leaves 0x37 = 55.
+Both are measurements, on different panels, and neither generalises.
+
+0x05280084[31:16] is left alone here because stock appears to zero it. An
+HY310's stock bootloader reads 04380780, the active height. Same situation:
+two boards, two observations, no contradiction.
+
+0x05800000[4:3] was fed from color_depth. That one is not board-specific:
+8 & 3 is zero on any board, so the write carried no information at all. The
+field reads as an encoding selector like the XML's lvds_format. What it
+should be on board B is still unknown, so it keeps the zero it has been
+running; 1 is what an HY310 has.
+
+Because two of these carry your own caution -- "do not change it on this
+reasoning alone" -- they are entered with a per-panel mask rather than a
+value, and the applier skips maskless entries. Board B's masks are zero and
+its records are untouched. A reading on one board is not a perturbation on
+another.
+
+The same mechanism carries 0x058c0018, the spread-spectrum waveform, which
+the table never had. The record tables are selected per project ID, so that
+value cannot be inferred from another board's either.
+
+No register on an HY200 QZ713DF_A1 changes value, and none is written that
+was not written before.
+---
+ arch/arm/mach-sunxi/h713_mips.c | 61 +++++++++++++++++++++++++++------
+ 1 file changed, 51 insertions(+), 10 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index a63593afaba..93b2952ac46 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -188,15 +188,29 @@ struct h713_panel_cfg {
+ 	 */
+ 	u32 height;
+ 	/*
+-	 * 0x05800000[4:3]. This used to be fed from color_depth, which is
+-	 * wrong twice over: 8 & 3 is zero, and the field is an encoding
+-	 * selector like the XML's lvds_format rather than a bit count.
++	 * 0x05800000[4:3]. This used to be fed from color_depth, which cannot
++	 * be what the field wants: 8 & 3 is zero on any board, so the write
++	 * carried no information. It reads as an encoding selector like the
++	 * XML's lvds_format. Board B keeps the zero it has been running;
++	 * 1 is what an HY310's stock bootloader leaves there.
+ 	 */
+ 	u32 lvds_bitsel;
+ 	/* 0x0528008c, the layer's pixel X origin. */
+ 	u32 layer_x;
+-	/* 0x058c0018, the spread-spectrum waveform. */
++	/*
++	 * 0x058c0018, the spread-spectrum waveform, and the mask that says
++	 * whether this panel has one at all. A zero mask means the record is
++	 * left exactly as the vendor tables have it, which is the only honest
++	 * default for a board whose value has never been read.
++	 */
++	u32 ssc_mask;
+ 	u32 ssc_reg;
++	/*
++	 * Whether this panel writes the active height into 0x05280084[31:16].
++	 * Zero leaves the record alone, which is what board B's own note asks
++	 * for: "Do not change it on this reasoning alone."
++	 */
++	u32 layer_h_mask;
+ };
+ 
+ static const struct h713_panel_cfg h713_panel_cfg_board_b = {
+@@ -218,7 +232,8 @@ static const struct h713_panel_cfg h713_panel_cfg_board_b = {
+ 	.htotal = 1360, .vtotal = 760, .hsync = 20, .vsync = 2,
+ 	.hbp = 40, .vbp = 20, .width = 1280, .height = 720,
+ 	/* All three chosen so this board's registers do not move. */
+-	.lvds_bitsel = 0, .layer_x = 0, .ssc_reg = 0xc950311e,
++	.lvds_bitsel = 0, .layer_x = 0, .ssc_mask = 0, .ssc_reg = 0,
++	.layer_h_mask = 0,
+ };
+ 
+ /*
+@@ -4887,8 +4902,15 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
+ 		/* LVDS lane/map: protocol, bit width, swap and inversions */
+ 		/* Display PLL N: the panel decodes only near 864 MHz. */
+ 		{ 0x058c0014,  8, 0xff,   c->pll_n_plus_1 - 1 },
++		/*
++		 * The spread-spectrum waveform, if this panel declares one.
++		 * Board B's mask is zero, so the entry is skipped there and
++		 * its record keeps whatever the vendor tables hold -- which
++		 * has never been read on that board and must not be guessed.
++		 */
++		{ 0x058c0018,  0, c->ssc_mask, c->ssc_reg },
+ 		{ 0x05800000,  6, 0x3,    c->mapping },
+-		{ 0x05800000,  3, 0x3,    c->color_depth },
++		{ 0x05800000,  3, 0x3,    c->lvds_bitsel },
+ 		{ 0x05800000, 14, 0x1,    c->odd_even },
+ 		{ 0x05800000, 16, 0x1,    c->inv_hsync },
+ 		{ 0x05800000, 17, 0x1,    c->inv_vsync },
+@@ -4929,11 +4951,27 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
+ 		{ 0x0524c004,  0, 0xffff, c->vsync + c->vbp },
+ 		{ 0x0524c014,  8, 0xff,   c->vsync },
+ 		{ 0x05280084,  0, 0xffff, c->width },
++		/*
++		 * The upper half, which the note above leaves alone because
++		 * stock appears to zero it there. On an HY310 a live stock
++		 * bootloader reads 04380780, i.e. the active height. Those two
++		 * observations are about different boards and need not agree.
++		 *
++		 * The same note asks not to change this on reasoning alone, so
++		 * board B's mask is zero and its record is untouched until a
++		 * perturbation on that hardware says otherwise. Only the panel
++		 * that was measured writes it.
++		 */
++		{ 0x05280084, 16, c->layer_h_mask, c->height },
+ 		{ 0x05280088,  0, 0xffff, c->vsync + c->vbp },
+ 		/*
+-		 * The layer's pixel X origin, restored 2026-08-04. Stock writes
+-		 * a literal zero here and this table omitted it, on the grounds
+-		 * that an unjustifiable zero was worse than the vendor default.
++		 * The layer's pixel X origin, restored 2026-08-04.
++		 *
++		 * The zero above came from board B's own sweep -- test_32
++		 * showed it puts content at column 0 there -- so it is that
++		 * panel's answer and it stays. A live stock bootloader on an
++		 * HY310 reads 0x37 = 55 for its panel. Two boards, two values;
++		 * the register is per-panel and not a constant either way.
+ 		 * The vendor default is another panel's, and it is 123 -- which
+ 		 * is precisely the pale band that sat at the left of every
+ 		 * framebuffer photograph in this bring-up, and, through the
+@@ -4949,7 +4987,7 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
+ 		 * the fact also survives h713_disp_reassert_osd, which replays
+ 		 * DE block 5 from this same blob.
+ 		 */
+-		{ 0x0528008c,  0, 0xffff, 0 },
++		{ 0x0528008c,  0, 0xffff, c->layer_x },
+ 	};
+ 	const struct h713_disp_block *ranges[] = {
+ 		&h713_disp_prologue[sel->prologue - 1],
+@@ -4994,6 +5032,9 @@ static int h713_disp_panel_patch(ulong blob, const struct h713_disp_sel *sel)
+ 
+ 				if (tbl[i].reg != rec.addr)
+ 					continue;
++				/* No field: this panel does not patch it. */
++				if (!tbl[i].fieldmask)
++					continue;
+ 
+ 				window = tbl[i].fieldmask << tbl[i].shift;
+ 				if (window & ~rec.mask) {

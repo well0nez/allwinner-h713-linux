@@ -1,0 +1,162 @@
+From 4ba339a8aa3f4b133b69f26930e62b8e3462f1a7 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Thu, 10 Sep 2026 14:10:18 +0200
+Subject: [PATCH 24/33] sunxi: h713: move the boot chain to the front of the
+ eMMC
+
+U-Boot proper sat at sector 0x49ac00, 2.3 GiB into the device, because
+that is where the vendor left an unused partition and the nook was free.
+The environment sat 2.5 GiB in for the same reason. With the vendor
+layout gone (doku/109) there is no reason to keep either: the only fixed
+address on this board is the SPL at sector 16, which the BootROM
+requires.
+
+Put U-Boot at sector 0x800 with a 5 MiB window, and the environment at
+byte 0x700000, behind the device's HDCP key block at sector 12288 --
+that block is device-specific and unrecoverable, so it stays where it
+is and everything else is arranged around it. The window is 5.9 times
+the current image, which leaves room while the port is still growing.
+
+The fastboot raw targets move with it; vboot0 goes away entirely,
+because there is no second vendor chain left to flash. serverip in the
+default environment names the machine that actually serves this board.
+
+Verified: the rebuilt SPL loads from sector 0x800 (mov w4, #0x800 in
+spl_mmc_load), and the image carries the new defaults.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ board/sunxi/board.c                  | 17 +++++++++--------
+ board/sunxi/hy310.env                |  2 +-
+ configs/hy310_host_defconfig         |  4 ++--
+ configs/hy310_netboot_defconfig      |  4 ++--
+ configs/hy310_netboot_gate_defconfig |  4 ++--
+ configs/hy310_qz713_v3_1_defconfig   |  4 ++--
+ include/configs/sunxi-common.h       |  5 ++---
+ 7 files changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index 8fb54ff3008..5c6b544d487 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -924,11 +924,9 @@ int misc_init_r(void)
+ 			{ "fastboot_raw_partition_uboot",
+ 			  "0x10 0x40",       "0x10 0x1ff0" },
+ 			{ "fastboot_raw_partition_ubootp",
+-			  "0x49ac00 0x2000", "0x12000 0x2000" },
+-			{ "fastboot_raw_partition_vboot0",
+-			  "0x100 0x40",      NULL },
++			  "0x800 0x2800",    "0x49ac00 0x2000" },
+ 			{ "fastboot_raw_partition_splstash",
+-			  "0x49cc00 0x40",   "0x14000 0x40" },
++			  "0x3880 0x40",     "0x49cc00 0x40" },
+ 		};
+ 		int i;
+ 
+@@ -938,10 +936,13 @@ int misc_init_r(void)
+ 			/* Retire defaults that are now actively wrong: the
+ 			 * 0x1ff0-sector first-stage guard is wide enough to
+ 			 * flash the whole concatenated image over the vendor's
+-			 * boot region, and the 0x12000 targets point into
+-			 * bootloader_a, which is the vendor's display-artifact
+-			 * filesystem and not ours to write.  A value someone
+-			 * actually chose is left alone.
++			 * boot region, and the old 0x49ac00/0x49cc00 targets
++			 * sit 2.3 GiB into the device, which under the current
++			 * layout is the middle of the root filesystem.  A value
++			 * someone actually chose is left alone.
++			 *
++			 * vboot0 went with the vendor boot0 copy at LBA 256:
++			 * there is no second vendor chain left to flash.
+ 			 */
+ 			if (!cur ||
+ 			    (raw_parts[i].old && !strcmp(cur, raw_parts[i].old)))
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index cdabe46450f..883da9da584 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -14,7 +14,7 @@ h713_project=0x30
+ h713_mips_dev=1:2
+ h713_mips_path=mips
+ bootfile=h713-kernel-netboot.fit
+-serverip=192.168.8.104
++serverip=192.168.8.123
+ nfsroot=/srv/h713-rootfs
+ bootargs_base=console=ttyS0,115200 earlycon rootwait clk_ignore_unused pd_ignore_unused cma=128M
+ boot_emmc=
+diff --git a/configs/hy310_host_defconfig b/configs/hy310_host_defconfig
+index 96a50efe845..1881388579f 100644
+--- a/configs/hy310_host_defconfig
++++ b/configs/hy310_host_defconfig
+@@ -52,8 +52,8 @@ CONFIG_CMD_POWEROFF=y
+ CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x93d80000
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x49ac00
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+diff --git a/configs/hy310_netboot_defconfig b/configs/hy310_netboot_defconfig
+index dbda2f1a17b..4fef30f1fed 100644
+--- a/configs/hy310_netboot_defconfig
++++ b/configs/hy310_netboot_defconfig
+@@ -52,8 +52,8 @@ CONFIG_CMD_POWEROFF=y
+ CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x93d80000
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x49ac00
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+diff --git a/configs/hy310_netboot_gate_defconfig b/configs/hy310_netboot_gate_defconfig
+index 58d05280612..725476ed55d 100644
+--- a/configs/hy310_netboot_gate_defconfig
++++ b/configs/hy310_netboot_gate_defconfig
+@@ -52,8 +52,8 @@ CONFIG_CMD_POWEROFF=y
+ CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x93d80000
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x49ac00
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+diff --git a/configs/hy310_qz713_v3_1_defconfig b/configs/hy310_qz713_v3_1_defconfig
+index 295c1c1c8b6..77dbc1bd59a 100644
+--- a/configs/hy310_qz713_v3_1_defconfig
++++ b/configs/hy310_qz713_v3_1_defconfig
+@@ -56,8 +56,8 @@ CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+ CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x93d80000
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x49ac00
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+diff --git a/include/configs/sunxi-common.h b/include/configs/sunxi-common.h
+index dc9c57470a3..91edf3b001f 100644
+--- a/include/configs/sunxi-common.h
++++ b/include/configs/sunxi-common.h
+@@ -380,9 +380,8 @@
+ #define H713_FASTBOOT_ENV_SETTINGS \
+ 	"fastboot_raw_partition_bootloader=0x10 0x40\0" \
+ 	"fastboot_raw_partition_uboot=0x10 0x40\0" \
+-	"fastboot_raw_partition_ubootp=0x49ac00 0x2000\0" \
+-	"fastboot_raw_partition_vboot0=0x100 0x40\0" \
+-	"fastboot_raw_partition_splstash=0x49cc00 0x40\0" \
++	"fastboot_raw_partition_ubootp=0x800 0x2800\0" \
++	"fastboot_raw_partition_splstash=0x3880 0x40\0" \
+ 	H713_SWITCH_ENV_SETTINGS \
+ 	H713_FASTBOOT_MODE_ENV_SETTINGS
+ #else

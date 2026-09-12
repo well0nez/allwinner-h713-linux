@@ -1,0 +1,32 @@
+From 82f0ae32131ee5d9d5e256a4bdce4ddee05156d9 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 20:46:57 +0200
+Subject: [PATCH 07/33] sunxi: h713: name this board's defconfigs after the
+ product
+
+The board is sold as an HY310. Its silkscreen reads HY260_QZ713_V3.1 and
+its label CGDD00700507/HY260A, which is where the previous names came
+from, and both are recorded in the commit that added them.
+
+Everything else about this projector -- its vendor dumps, its device
+tree, the reverse-engineering notes it came out of -- calls it an HY310,
+and so does the panel description in the patches that follow. Rather than
+carry two names for one board through a display series, use the one a
+reader can look up.
+
+No content change; the two files are identical.
+---
+ configs/{hy260_host_defconfig => hy310_host_defconfig}            | 0
+ .../{hy260_qz713_v3_1_defconfig => hy310_qz713_v3_1_defconfig}    | 0
+ 2 files changed, 0 insertions(+), 0 deletions(-)
+ rename configs/{hy260_host_defconfig => hy310_host_defconfig} (100%)
+ rename configs/{hy260_qz713_v3_1_defconfig => hy310_qz713_v3_1_defconfig} (100%)
+
+diff --git a/configs/hy260_host_defconfig b/configs/hy310_host_defconfig
+similarity index 100%
+rename from configs/hy260_host_defconfig
+rename to configs/hy310_host_defconfig
+diff --git a/configs/hy260_qz713_v3_1_defconfig b/configs/hy310_qz713_v3_1_defconfig
+similarity index 100%
+rename from configs/hy260_qz713_v3_1_defconfig
+rename to configs/hy310_qz713_v3_1_defconfig

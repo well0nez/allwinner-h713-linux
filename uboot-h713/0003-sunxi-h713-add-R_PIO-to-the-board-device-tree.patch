@@ -1,0 +1,56 @@
+From f04d826bfd3c3534ffcc837dd05ec3cb260f4c5a Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 17:00:41 +0200
+Subject: [PATCH 03/33] sunxi: h713: add R_PIO to the board device tree
+
+The DT only describes pinctrl@2000000, so the PL and PM banks in the
+always-on block have no driver behind them. Any gpio_request() on a PL
+pin then fails with -ENOENT, silently if the caller does not check.
+
+That matters here because PL3 is the USB-A socket's VBUS enable -- the
+stock GPIO map calls it cam-usb-power-gpio and the vendor bootloader DT
+carries it as prj/usb0 = <.. 0x0b 0x03 0x01 .. 0x01>, i.e. PL3 output
+high. Without it the socket is unpowered.
+
+allwinner,sun50i-h713-r-pinctrl is already in pinctrl-sunxi.c and
+CONFIG_PINCTRL_SUN50I_H713_R defaults to y on this machine, so only the
+node was missing.
+---
+ .../allwinner/sun50i-h713-hy200-qz713df-a1.dts  | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+index 1053c0140e9..721c5c8fd80 100644
+--- a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -109,6 +109,21 @@
+ 			#reset-cells = <1>;
+ 		};
+ 
++		/*
++		 * R_PIO, the PL/PM banks in the always-on block.  Needed for
++		 * PL3, the USB-A socket's VBUS enable: without a driver behind
++		 * the bank a gpio_request() on PL just fails and the socket
++		 * stays unpowered, which looks like "cannot reset port 1!?".
++		 */
++		r_pio: pinctrl@7022000 {
++			compatible = "allwinner,sun50i-h713-r-pinctrl";
++			reg = <0x07022000 0x400>;
++			clocks = <&osc24M>;
++			clock-names = "hosc";
++			gpio-controller;
++			#gpio-cells = <3>;
++		};
++
+ 		pio: pinctrl@2000000 {
+ 			compatible = "allwinner,sun50i-h713-pinctrl";
+ 			reg = <0x02000000 0x800>;
+@@ -221,7 +236,7 @@
+ 		};
+ 
+ 		usbphy: phy@4100400 {
+-			compatible = "allwinner,sun20i-d1-usb-phy";
++			compatible = "allwinner,sun50i-h713-usb-phy";
+ 			reg = <0x04100400 0x100>,
+ 			      <0x04101800 0x100>,
+ 			      <0x04200800 0x100>;

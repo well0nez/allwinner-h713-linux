@@ -1,0 +1,168 @@
+From 8165297c30ed0f7d39933b17fa232d1144c8257d Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 20:17:50 +0200
+Subject: [PATCH 14/33] sunxi: h713: stop the diagnostics claiming 720p
+
+Seven test paths announce themselves "at panel 720p timing", the pattern
+publisher prints "1280x720 ARGB8888" whatever it just filled, and the edge
+sweep divides by a literal 720 to turn stripe counts into pixels of pitch
+error. On a 1920x1080 panel each of those is wrong, and the arithmetic ones
+are wrong quietly.
+
+Say the panel's own size, or say nothing about it. The stripe and band
+sweeps now scale by the active height and width, and the help text stops
+promising a 1280x720 custom logo.
+
+H713_DISP_EDGE_SPAN_PX stays at 1360 and is labelled as board B's htotal:
+the edge sweeps were written against that panel and their candidate pitch
+lists are hand-chosen for it. Retargeting those is a separate question from
+not printing a false resolution.
+---
+ arch/arm/mach-sunxi/h713_mips.c | 38 ++++++++++++++++++++-------------
+ 1 file changed, 23 insertions(+), 15 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 25ec1f96409..9845c1b8989 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -6445,6 +6445,7 @@ static bool h713_disp_readable(const char *what)
+  * everything in the memory map -- the next region down ends at 0x4e800000.
+  */
+ #define H713_DISP_EDGE_PITCH		1237
++/* Board B's htotal. The edge sweeps were written against that panel. */
+ #define H713_DISP_EDGE_SPAN_PX		1360
+ #define H713_DISP_EDGE_SPAN_WORDS	(H713_DISP_EDGE_SPAN_PX * \
+ 					 H713_DISP_OSD_HEIGHT)
+@@ -6978,8 +6979,9 @@ static void h713_disp_fill_pattern(uint phase)
+ 
+ 	flush_cache(H713_DISP_OSD_FB_ADDR, H713_DISP_OSD_SIZE);
+ 	printf("H713 panel: pattern %u published at 0x%08lx "
+-	       "(1280x720 ARGB8888, stride 0x%x)\n",
+-	       phase, H713_DISP_OSD_FB_ADDR, (uint)H713_DISP_OSD_STRIDE);
++	       "(%ux%u ARGB8888, stride 0x%x)\n",
++	       phase, H713_DISP_OSD_FB_ADDR, H713_DISP_OSD_WIDTH,
++	       H713_DISP_OSD_HEIGHT, (uint)H713_DISP_OSD_STRIDE);
+ }
+ 
+ /*
+@@ -7969,7 +7971,9 @@ static void h713_disp_hbp_sweep(void)
+ 		printf("H713 hbp: step %u, back porch %u (0x05880028=%08x), "
+ 		       "front porch becomes %d; observe the band\n",
+ 		       i + 1, hbp_val, readl(0x05880028),
+-		       1360 - 1280 - (int)(saved_porch >> 16) - (int)hbp_val);
++		       (int)h713_disp_panel->htotal + 1 -
++		       (int)h713_disp_panel->width -
++		       (int)(saved_porch >> 16) - (int)hbp_val);
+ 		mdelay(H713_DISP_CHROMA_PHASE_MS);
+ 		h713_disp_boardb_tcon_generator_off(saved_ctrl, saved_mode);
+ 	}
+@@ -8272,7 +8276,8 @@ static void h713_disp_edge_sweep(const u16 *list, uint count)
+ 	uint i;
+ 
+ 	printf("H713 edge: COUNT THE DIAGONAL RED/BLUE STRIPES in each step. "
+-	       "N stripes down the frame means the pitch is wrong by N*P/720 px "
++	       "N stripes down the frame means the pitch is wrong by "
++	       "N*P/height px "
+ 	       "-- so every step measures it, and the six must agree. Fewest "
+ 	       "stripes is closest; opposite leans bracket the answer. Several "
+ 	       "stripes is the measurement, not a failed step. The pale band "
+@@ -8286,7 +8291,8 @@ static void h713_disp_edge_sweep(const u16 *list, uint count)
+ 		h713_disp_commit_osd_frame();
+ 		printf("H713 edge: step %u, assumed pitch %u px; each stripe = "
+ 		       "%u.%02u px of error, so |true - %u| = stripes * that\n",
+-		       i + 1, p, p * 100 / 720 / 100, p * 100 / 720 % 100, p);
++		       i + 1, p, p * 100 / H713_DISP_OSD_HEIGHT / 100,
++	       p * 100 / H713_DISP_OSD_HEIGHT % 100, p);
+ 		mdelay(H713_DISP_CHROMA_PHASE_MS);
+ 	}
+ 	printf("H713 edge: sweep complete\n");
+@@ -8363,7 +8369,9 @@ static void h713_disp_stride_sweep(void)
+ 		printf("H713 stride: step %u, register %08x (%u px), reads back "
+ 		       "%08x; predicted %u stripe(s) if live, 0 if inert\n",
+ 		       i + 1, px * 4, px, readl(H713_DISP_AFBD_STRIDE_REG),
+-		       720 * (px > 1280 ? px - 1280 : 1280 - px) /
++		       H713_DISP_OSD_HEIGHT *
++		       (px > H713_DISP_OSD_WIDTH ? px - H713_DISP_OSD_WIDTH
++						 : H713_DISP_OSD_WIDTH - px) /
+ 		       H713_DISP_EDGE_PITCH);
+ 		mdelay(H713_DISP_CHROMA_PHASE_MS);
+ 	}
+@@ -10454,7 +10462,7 @@ static int h713_disp_panel_test(u32 project, bool release_mips, bool full,
+ 				      ARRAY_SIZE(h713_pitch_sweep));
+ 	} else if (vbands) {
+ 		h713_disp_fill_vbands();
+-		printf("H713 panel: VERTICAL BAND PROBE at panel 720p timing; "
++		printf("H713 panel: VERTICAL BAND PROBE at the panel's own timing; "
+ 		       "one frame, holding %u ms\n",
+ 		       H713_DISP_STATIC_FRAME_DWELL_MS);
+ 		h713_disp_commit_osd_frame();
+@@ -10462,21 +10470,21 @@ static int h713_disp_panel_test(u32 project, bool release_mips, bool full,
+ 		mdelay(H713_DISP_STATIC_FRAME_DWELL_MS);
+ 	} else if (quads) {
+ 		h713_disp_fill_quads();
+-		printf("H713 panel: QUADRANT TEST at panel 720p timing; one "
++		printf("H713 panel: QUADRANT TEST at the panel's own timing; one "
+ 		       "frame, holding %u ms\n", H713_DISP_STATIC_FRAME_DWELL_MS);
+ 		h713_disp_commit_osd_frame();
+ 		printf("H713 panel: QUADRANTS COMMITTED; photograph now\n");
+ 		mdelay(H713_DISP_STATIC_FRAME_DWELL_MS);
+ 	} else if (grid) {
+ 		h713_disp_fill_grid();
+-		printf("H713 panel: GEOMETRY GRID at panel 720p timing; one "
++		printf("H713 panel: GEOMETRY GRID at the panel's own timing; one "
+ 		       "frame, holding %u ms\n", H713_DISP_STATIC_FRAME_DWELL_MS);
+ 		h713_disp_commit_osd_frame();
+ 		printf("H713 panel: GRID COMMITTED; photograph now\n");
+ 		mdelay(H713_DISP_STATIC_FRAME_DWELL_MS);
+ 	} else if (hbands) {
+ 		h713_disp_fill_hbands();
+-		printf("H713 panel: HORIZONTAL BAND PROBE at panel 720p timing; "
++		printf("H713 panel: HORIZONTAL BAND PROBE at the panel's own timing; "
+ 		       "one frame, holding %u ms\n",
+ 		       H713_DISP_STATIC_FRAME_DWELL_MS);
+ 		h713_disp_commit_osd_frame();
+@@ -10510,7 +10518,7 @@ static int h713_disp_panel_test(u32 project, bool release_mips, bool full,
+ 		h713_disp_chroma_marker(2);
+ 		/* Bounds measured from the file: rows 343..378, cols 368..912. */
+ 		h713_disp_verify_fb(343, 378, 368, 912, vendor_chroma);
+-		printf("H713 panel: EXACT VENDOR LOGO TEST at panel 720p timing; "
++		printf("H713 panel: EXACT VENDOR LOGO TEST at the panel's own timing; "
+ 		       "one frame, holding %u ms\n",
+ 		       H713_DISP_STATIC_FRAME_DWELL_MS);
+ 		h713_disp_commit_osd_frame();
+@@ -10551,7 +10559,7 @@ static int h713_disp_panel_test(u32 project, bool release_mips, bool full,
+ 		 * Rotating phases add no information until a first bar frame is
+ 		 * visible, and made hand-recorded gate observations ambiguous.
+ 		 */
+-		printf("H713 panel: STATIC BAR TEST at panel 720p timing; "
++		printf("H713 panel: STATIC BAR TEST at the panel's own timing; "
+ 		       "one frame, holding %u ms\n",
+ 		       H713_DISP_STATIC_FRAME_DWELL_MS);
+ 		h713_disp_fill_pattern(0);
+@@ -10561,7 +10569,7 @@ static int h713_disp_panel_test(u32 project, bool release_mips, bool full,
+ 	} else {
+ 		/* Cheap, and its scan column is the only raster-liveness signal. */
+ 		h713_disp_afbd_enable_probe();
+-		printf("H713 panel: moving OSD at panel 720p timing, "
++		printf("H713 panel: moving OSD at the panel's own timing, "
+ 		       "%u frames x %u ms\n",
+ 		       full ? H713_DISP_OSD_FRAMES : 4,
+ 		       full ? H713_DISP_OSD_DWELL_MS : 3000);
+@@ -11105,7 +11113,7 @@ U_BOOT_CMD(h713_disp, 15, 0, do_h713_disp,
+ 	   "h713_disp comm-pq-test chan=<hex> pid=<hex>\n"
+ 	   "                                    - guarded picture-mode get/set-same/get\n"
+ 	   "h713_disp panel-test <project-id> [noboot|full|quiesce|vendor-logo|plane-gate|tcon-checker|tcon-checker-mono|tcon-solid|tcon-solid-native|tcon-dclk|tcon-solid-dclk-normal]\n"
+-	   "                                    - 720p colours, power controls, OSD\n"
++	   "                                    - panel-sized colours, power controls, OSD\n"
+ 	   "                                      noboot: hold MIPS in reset, ARM only\n"
+ 	   "                                      full:   add the settled long-form phases\n"
+ 	   "                                      quiesce: init, reset MIPS core, test OSD\n"
+@@ -11149,7 +11157,7 @@ U_BOOT_CMD(h713_disp, 15, 0, do_h713_disp,
+ 	   "       h713_disp panel-test <id> <mode> <stride>  - same, with AFBD 0x05600170 forced to <stride> bytes (hex)\n"
+ 	   "h713_disp auto <project-id> [nowait] [logo [file.bmp]] - load from eMMC and run\n"
+ 	   "                                      logo: publish the boot logo and leave it up (product boot step)\n"
+-	   "                                            optional file.bmp on mmc 1:2 is a custom 1280x720 24-bit logo (no hash);\n"
++	   "                                            optional file.bmp on mmc 1:2 is a custom 24-bit logo the panel's own size (no hash);\n"
+ 	   "                                            default is the hashed vendor bootlogo.bmp\n"
+ 	   "h713_disp load <project-id>         - load from eMMC only\n"
+ 	   "h713_disp <blob-addr> <project-id> [nowait] - run against a staged blob\n"
