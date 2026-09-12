@@ -1,0 +1,5 @@
+aic8800-0001-add-CONFIG_PLATFORM_MAINLINE_SUNXI-platform-.patch
+aic8800-0002-H713-wlan_regon-GPIO-power-sequencing-and-SD.patch
+aic8800-0003-H713-SDIO-clock-and-chip-up-timeout-tuning.patch
+aic8800-0004-guard-the-firmware-array-blob-include.patch
+aic8800-0006-make-the-regulatory-domain-settable.patch

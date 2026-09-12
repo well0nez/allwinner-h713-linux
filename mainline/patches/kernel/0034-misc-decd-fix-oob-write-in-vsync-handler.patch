@@ -1,0 +1,67 @@
+Fix an out-of-bounds write in DECD's vsync IRQ handler.
+
+dec_vsync_handler() records a jiffies history:
+
+    u32 jiffies_hist[100];
+    u32 jiffies_pos;              /* immediately after the array */
+    struct work_struct work;      /* immediately after that */
+
+    jpos = dec->debug->jiffies_pos;              /* 0..99 */
+    dec->debug->jiffies_hist[jpos + 2] = jiffies;
+
+jpos wraps at 100, so "+ 2" indexes up to 101 and writes two words
+past the end of a 100-entry array:
+
+    jiffies_hist[100] -> jiffies_pos
+    jiffies_hist[101] -> the first word of struct work_struct, its
+                         atomic_long_t data, which carries the flags and
+                         pool pointer the workqueue core dereferences
+
+That work_struct is queued by queue_work_on(4, system_wq, &dbg->work) in
+the debug trace path, so roughly every 100 vsyncs the interrupt handler
+corrupts a work_struct that is later walked.
+
+Observed on hardware: enabling DECD and submitting a frame Oopsed with
+"Kernel panic - not syncing: Oops: Fatal exception in interrupt", with the
+trace showing do_interrupt_handler on an idle CPU. The timing fits — the
+IRQ only starts firing when dec_frame_submit() calls dec_reg_enable(), and
+100 vsyncs at 60 Hz is ~1.7 s, well inside the 15 s hold. "pm on" alone
+never crashed because it does not enable the hardware interrupt.
+
+The "+ 2" is a reconstruction artefact. The IDA note in the source reads
+"debug->jiffies_hist[pos+2] = jiffies", which is an offset from a
+different base in the disassembly rather than an index into this array.
+
+Caveat: the faulting PC was not captured before the board rebooted, so
+this is the strongest supported cause rather than a confirmed one. It is
+an out-of-bounds write into a work_struct either way and wrong on its own
+terms.
+
+--- a/drivers/misc/sunxi_decd/decd_hw.c	2026-08-12 01:33:30.490688980 -0700
++++ b/drivers/misc/sunxi_decd/decd_hw.c	2026-08-12 01:33:30.500263498 -0700
+@@ -513,7 +513,24 @@
+ 	/* IDA: jiffies tracking in debug block */
+ 	if (dec->debug) {
+ 		jpos = dec->debug->jiffies_pos;
+-		dec->debug->jiffies_hist[jpos + 2] = jiffies;
++		/*
++		 * [jpos], not [jpos + 2]. jiffies_hist is u32[100] and jpos
++		 * wraps at 100, so "+ 2" indexes up to 101 and writes two
++		 * words past the end: index 100 lands on jiffies_pos, and
++		 * index 101 lands on the first word of the following
++		 * struct work_struct -- its atomic_long_t data, holding the
++		 * flags and pool pointer the workqueue core dereferences.
++		 * That struct is queued by queue_work_on() in the debug
++		 * trace path, so roughly every 100 vsyncs the handler
++		 * corrupts a work_struct that is later walked, which Oopses
++		 * in interrupt context.
++		 *
++		 * The "+ 2" is a reconstruction artefact: the IDA note reads
++		 * "debug->jiffies_hist[pos+2] = jiffies", which is a byte or
++		 * word offset from a different base in the disassembly, not
++		 * an index into this array.
++		 */
++		dec->debug->jiffies_hist[jpos] = jiffies;
+ 		jpos++;
+ 		if (jpos >= 100)
+ 			jpos = 0;

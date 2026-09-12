@@ -1,0 +1,19 @@
+--- a/drivers/mmc/host/sunxi-mmc.c
++++ b/drivers/mmc/host/sunxi-mmc.c
+@@ -518,7 +518,15 @@ static void sunxi_mmc_init_idma_des(struct sunxi_mmc_host *host,
+ 						     SDXC_IDMAC_DES0_OWN |
+ 						     SDXC_IDMAC_DES0_DIC);
+ 
+-			if (chunk_len == max_len)
++			/*
++			 * Older variants use zero to encode a maximum-sized IDMA
++			 * buffer.  The Allwinner v5p3x driver instead writes 4096
++			 * explicitly for its 12-bit descriptor limit.  SDIO bulk
++			 * reads routinely contain exact 4096-byte SG entries, so a
++			 * zero here leaves the receive FIFO with no DMA destination
++			 * and eventually raises HARD_WARE_LOCKED.
++			 */
++			if (chunk_len == max_len && !host->cfg->v5p3x)
+ 				pdes[n].buf_size = 0;
+ 			else
+ 				pdes[n].buf_size = cpu_to_le32(chunk_len);

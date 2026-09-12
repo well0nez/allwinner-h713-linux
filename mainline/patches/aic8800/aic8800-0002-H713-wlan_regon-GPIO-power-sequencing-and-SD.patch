@@ -1,0 +1,241 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Mon, 17 Aug 2026 11:55:47 -0700
+Subject: [PATCH] aic8800: H713 wlan_regon GPIO, power sequencing and SDIO
+ rescan
+
+---
+ aic8800_bsp/aic_bsp_main.c |   3 +
+ aic8800_bsp/aicsdio.c      | 177 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 180 insertions(+)
+
+diff --git a/aic8800_bsp/aic_bsp_main.c b/aic8800_bsp/aic_bsp_main.c
+index 9a36d28..f959e62 100644
+--- a/aic8800_bsp/aic_bsp_main.c
++++ b/aic8800_bsp/aic_bsp_main.c
+@@ -463,6 +463,9 @@ static void __exit aicbsp_exit(void)
+ 	platform_driver_unregister(&aicbsp_driver);
+ 	mutex_destroy(&aicbsp_power_lock);
+ 	aicbsp_resv_mem_deinit();
++#ifdef CONFIG_PLATFORM_MAINLINE_SUNXI
++	{ extern void aicbsp_mainline_cleanup(void); aicbsp_mainline_cleanup(); }
++#endif
+ #ifdef CONFIG_PREALLOC_TXQ
+     aicwf_prealloc_txq_free();
+ #endif
+diff --git a/aic8800_bsp/aicsdio.c b/aic8800_bsp/aicsdio.c
+index 15e5469..669b7b7 100644
+--- a/aic8800_bsp/aicsdio.c
++++ b/aic8800_bsp/aicsdio.c
+@@ -35,6 +35,135 @@ extern int sunxi_wlan_get_bus_index(void);
+ static int aicbsp_bus_index = -1;
+ #endif
+ 
++#ifdef CONFIG_PLATFORM_MAINLINE_SUNXI
++#include <linux/gpio.h>
++#include <linux/platform_device.h>
++#include <linux/of_gpio.h>
++#include <linux/clk.h>
++#include <linux/of_clk.h>
++static int aicbsp_wlan_regon_gpio = -1;
++static bool aicbsp_wlan_regon_requested;  /* true if wlan_regon GPIO was successfully requested */
++static int aicbsp_wlan_hostwake_gpio = -1;
++static int aicbsp_mmc_bus_index = 1;
++static struct clk *aicbsp_wlan_clk = NULL;
++
++/* Module parameters for GPIO and bus index */
++module_param_named(wlan_regon, aicbsp_wlan_regon_gpio, int, 0644);
++MODULE_PARM_DESC(wlan_regon, "GPIO number for WLAN regon (default: auto from R_PIO PM1)");
++module_param_named(wlan_hostwake, aicbsp_wlan_hostwake_gpio, int, 0644);
++MODULE_PARM_DESC(wlan_hostwake, "GPIO number for WLAN hostwake (default: auto from R_PIO PM0)");
++module_param_named(mmc_bus, aicbsp_mmc_bus_index, int, 0644);
++MODULE_PARM_DESC(mmc_bus, "MMC bus index for SDIO WiFi (default: 1)");
++
++static struct mmc_host *aicbsp_cached_mmc_host = NULL;
++
++static struct mmc_host *aicbsp_find_mmc_host(int index)
++{
++	struct device *dev;
++
++	/* sunxi-mmc stores mmc_host directly as platform drvdata */
++	dev = bus_find_device_by_name(&platform_bus_type, NULL, "4021000.mmc");
++	if (!dev) {
++		pr_err("aicbsp: platform device 4021000.mmc not found\n");
++		return NULL;
++	}
++	aicbsp_cached_mmc_host = (struct mmc_host *)platform_get_drvdata(to_platform_device(dev));
++	put_device(dev);
++	if (!aicbsp_cached_mmc_host) {
++		pr_err("aicbsp: no mmc_host drvdata on 4021000.mmc\n");
++		return NULL;
++	}
++	pr_info("aicbsp: found mmc_host mmc%d\n", aicbsp_cached_mmc_host->index);
++	return aicbsp_cached_mmc_host;
++}
++
++static void aicbsp_mainline_set_power(int on)
++{
++	if (!aicbsp_wlan_regon_requested) {
++		pr_err("aicbsp: wlan_regon GPIO not available\n");
++		return;
++	}
++
++	gpio_set_value(aicbsp_wlan_regon_gpio, on);
++	pr_info("aicbsp: wlan_regon PM1 set to %d\n", on);
++}
++
++static void aicbsp_mainline_rescan(void)
++{
++	struct mmc_host *host = aicbsp_cached_mmc_host;
++
++	if (!host)
++		host = aicbsp_find_mmc_host(aicbsp_mmc_bus_index);
++	if (!host) {
++		pr_err("aicbsp: mmc_host not found for rescan\n");
++		return;
++	}
++
++	/*
++	 * Match stock behavior: trigger mmc_detect_change() on the
++	 * existing warm host.  Do NOT unbind/rebind.
++	 */
++	pr_info("aicbsp: mmc_detect_change on mmc%d host=%px mmc_hostname=%s\n",
++		host->index, host, mmc_hostname(host));
++	mmc_detect_change(host, msecs_to_jiffies(200));
++	pr_info("aicbsp: mmc_detect_change returned\n");
++}
++
++static int aicbsp_mainline_gpio_init(void)
++{
++	int ret;
++
++	/*
++	 * Request wlan_regon GPIO (PM1 = GPIO 385 on H713).
++	 * The R_PIO pinctrl driver handles the register layout;
++	 * we just use the standard GPIO API here.
++	 */
++	if (aicbsp_wlan_regon_gpio < 0)
++		aicbsp_wlan_regon_gpio = 385;  /* PM1 default */
++
++	ret = gpio_request(aicbsp_wlan_regon_gpio, "wlan_regon");
++	if (ret) {
++		pr_err("aicbsp: failed to request wlan_regon GPIO %d: %d\n",
++		       aicbsp_wlan_regon_gpio, ret);
++		return ret;
++	}
++	ret = gpio_direction_output(aicbsp_wlan_regon_gpio, 0);
++	if (ret) {
++		pr_err("aicbsp: failed to set wlan_regon GPIO %d as output: %d\n",
++		       aicbsp_wlan_regon_gpio, ret);
++		gpio_free(aicbsp_wlan_regon_gpio);
++		return ret;
++	}
++	aicbsp_wlan_regon_requested = true;
++	pr_info("aicbsp: wlan_regon GPIO %d configured as output\n",
++		aicbsp_wlan_regon_gpio);
++
++	/* Set up hostwake as input if configured */
++	if (aicbsp_wlan_hostwake_gpio >= 0) {
++		if (!gpio_request(aicbsp_wlan_hostwake_gpio, "wlan_hostwake")) {
++			gpio_direction_input(aicbsp_wlan_hostwake_gpio);
++			pr_info("aicbsp: wlan_hostwake GPIO %d set as input\n",
++				aicbsp_wlan_hostwake_gpio);
++		}
++	}
++
++	return 0;
++}
++void aicbsp_mainline_cleanup(void)
++{
++	if (aicbsp_wlan_regon_requested) {
++		gpio_set_value(aicbsp_wlan_regon_gpio, 0);
++		gpio_free(aicbsp_wlan_regon_gpio);
++		aicbsp_wlan_regon_requested = false;
++		pr_info("aicbsp: wlan_regon GPIO %d released\n",
++			aicbsp_wlan_regon_gpio);
++	}
++	if (aicbsp_wlan_hostwake_gpio >= 0)
++		gpio_free(aicbsp_wlan_hostwake_gpio);
++	aicbsp_cached_mmc_host = NULL;
++}
++#endif /* CONFIG_PLATFORM_MAINLINE_SUNXI */
++
+ #ifdef CONFIG_PLATFORM_AMLOGIC//for AML
+ #include <linux/amlogic/aml_gpio_consumer.h>
+ extern void sdio_reinit(void);
+@@ -554,6 +683,12 @@ static int aicbsp_platform_power_on(void)
+ 		return aicbsp_bus_index;
+ #endif //CONFIG_PLATFORM_ALLWINNER
+ 
++#ifdef CONFIG_PLATFORM_MAINLINE_SUNXI
++	ret = aicbsp_mainline_gpio_init();
++	if (ret)
++		return ret;
++#endif //CONFIG_PLATFORM_MAINLINE_SUNXI
++
+ #ifdef CONFIG_PLATFORM_AMLOGIC
+ 		extern_wifi_set_enable(0);
+ 		mdelay(200);
+@@ -586,6 +721,38 @@ static int aicbsp_platform_power_on(void)
+ 	sunxi_mmc_rescan_card(aicbsp_bus_index);
+ #endif //CONFIG_PLATFORM_ALLWINNER
+ 
++#ifdef CONFIG_PLATFORM_MAINLINE_SUNXI
++	/* 24MHz DCXO output clock for WiFi chip.
++	 * On H713, the DCXO output gate (RTC+0x160 bit 31) is already
++	 * enabled by the bootloader. The osc24M crystal is always-on.
++	 * Stock uses clocks=<&rtc_ccu 9> ("dcxo24m") via the rfkill
++	 * DTS node, but our mainline R_CCU driver doesn't expose that
++	 * clock gate. Since it's already enabled, we just skip this. */
++	pr_info("aicbsp: 24MHz DCXO output already enabled (bootloader)\n");
++	/* 2. Configure hostwake as input */
++	if (aicbsp_wlan_hostwake_gpio >= 0) {
++		if (!gpio_request(aicbsp_wlan_hostwake_gpio, "wlan_hostwake")) {
++			gpio_direction_input(aicbsp_wlan_hostwake_gpio);
++			pr_info("aicbsp: wlan_hostwake GPIO %d set as input\n", aicbsp_wlan_hostwake_gpio);
++		}
++	}
++	/* 3. Disable DDR50 */
++	{
++		struct mmc_host *host = aicbsp_find_mmc_host(aicbsp_mmc_bus_index);
++		if (host) {
++			host->caps &= ~MMC_CAP_UHS_DDR50;
++			pr_info("aicbsp: disabled MMC_CAP_UHS_DDR50 for mmc%d\n", host->index);
++		}
++	}
++	/* 4. Power cycle */
++	mdelay(50);
++	aicbsp_mainline_set_power(0);
++	mdelay(50);
++	aicbsp_mainline_set_power(1);
++	mdelay(50);
++	aicbsp_mainline_rescan();
++#endif //CONFIG_PLATFORM_MAINLINE_SUNXI
++
+ 	if (down_timeout(&aic_chipup_sem, msecs_to_jiffies(2000)) == 0) {
+ 		aicbsp_unreg_sdio_notify();
+ 		if(aicbsp_load_fw_in_fdrv){
+@@ -600,6 +767,10 @@ static int aicbsp_platform_power_on(void)
+ 	sunxi_wlan_set_power(0);
+ #endif //CONFIG_PLATFORM_ALLWINNER
+ 
++#ifdef CONFIG_PLATFORM_MAINLINE_SUNXI
++	aicbsp_mainline_set_power(0);
++#endif //CONFIG_PLATFORM_MAINLINE_SUNXI
++
+ #ifdef CONFIG_PLATFORM_AMLOGIC
+         extern_wifi_set_enable(0);
+ #endif
+@@ -627,6 +798,12 @@ static void aicbsp_platform_power_off(void)
+ 	sunxi_mmc_rescan_card(aicbsp_bus_index);
+ #endif //CONFIG_PLATFORM_ALLWINNER
+ 
++#ifdef CONFIG_PLATFORM_MAINLINE_SUNXI
++	aicbsp_mainline_set_power(0);
++	mdelay(100);
++	aicbsp_mainline_rescan();
++#endif //CONFIG_PLATFORM_MAINLINE_SUNXI
++
+ #ifdef CONFIG_PLATFORM_ROCKCHIP2
+ 	rockchip_wifi_set_carddetect(0);
+ 	mdelay(200);

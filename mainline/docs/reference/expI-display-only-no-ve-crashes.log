@@ -1,0 +1,119 @@
+# Experiment I -- the display-only control, 2026-08-17
+#
+# mpv software-decoding 720p to the panel via KMS/GBM (scanout from CMA),
+# kernel 6.18.38-builtin, cma=128M, oops=panic, no IOMMU, cedrus NEVER OPENED.
+# Every heartbeat carries ve=0: the video engine took zero interrupts from
+# boot to panic. deaths=0: mpv was alive throughout, so the display path was
+# driven continuously for the whole 940 s.
+#
+# Panic at t~940 s (kernel 1008 s) with Workqueue: 0x0 (pan_js) -- the same
+# NULL work function as the very first crash and the retracted soak.
+#
+=== soak-capture start 2026-08-17 11:06:41 (deadline 64 min) ===
+[11:06:52 T+   11.1] SOAK t=30s ve=0 ve_delta=0 gpu=11820 gpu_rate=394/s cma=112544kB deaths=0
+[11:07:22 T+   41.1] SOAK t=60s ve=0 ve_delta=0 gpu=25457 gpu_rate=454/s cma=112544kB deaths=0
+[11:07:52 T+   71.1] SOAK t=90s ve=0 ve_delta=0 gpu=38938 gpu_rate=449/s cma=112544kB deaths=0
+[11:08:22 T+  101.2] SOAK t=120s ve=0 ve_delta=0 gpu=52592 gpu_rate=455/s cma=112544kB deaths=0
+[11:08:52 T+  131.2] SOAK t=150s ve=0 ve_delta=0 gpu=66086 gpu_rate=449/s cma=112544kB deaths=0
+[11:09:22 T+  161.2] SOAK t=180s ve=0 ve_delta=0 gpu=79642 gpu_rate=451/s cma=112544kB deaths=0
+[11:09:52 T+  191.3] SOAK t=210s ve=0 ve_delta=0 gpu=93097 gpu_rate=448/s cma=112544kB deaths=0
+[11:10:22 T+  221.3] SOAK t=240s ve=0 ve_delta=0 gpu=106704 gpu_rate=453/s cma=112544kB deaths=0
+[11:10:52 T+  251.4] SOAK t=270s ve=0 ve_delta=0 gpu=120218 gpu_rate=450/s cma=112544kB deaths=0
+[11:11:22 T+  281.4] SOAK t=300s ve=0 ve_delta=0 gpu=133723 gpu_rate=450/s cma=112544kB deaths=0
+[11:11:52 T+  311.4] SOAK t=330s ve=0 ve_delta=0 gpu=147232 gpu_rate=450/s cma=112544kB deaths=0
+[11:12:22 T+  341.5] SOAK t=360s ve=0 ve_delta=0 gpu=160864 gpu_rate=454/s cma=112544kB deaths=0
+[11:12:52 T+  371.5] SOAK t=390s ve=0 ve_delta=0 gpu=174382 gpu_rate=450/s cma=112544kB deaths=0
+[11:13:22 T+  401.5] SOAK t=420s ve=0 ve_delta=0 gpu=188064 gpu_rate=456/s cma=112544kB deaths=0
+[11:13:52 T+  431.6] SOAK t=450s ve=0 ve_delta=0 gpu=201657 gpu_rate=453/s cma=112544kB deaths=0
+[11:14:22 T+  461.6] SOAK t=480s ve=0 ve_delta=0 gpu=215301 gpu_rate=454/s cma=112544kB deaths=0
+[11:14:52 T+  491.6] SOAK t=510s ve=0 ve_delta=0 gpu=228781 gpu_rate=449/s cma=112544kB deaths=0
+[11:15:22 T+  521.6] SOAK t=540s ve=0 ve_delta=0 gpu=242250 gpu_rate=448/s cma=112544kB deaths=0
+[11:15:52 T+  551.7] SOAK t=570s ve=0 ve_delta=0 gpu=255855 gpu_rate=453/s cma=112544kB deaths=0
+[11:16:22 T+  581.7] SOAK t=600s ve=0 ve_delta=0 gpu=269486 gpu_rate=454/s cma=112544kB deaths=0
+[11:16:52 T+  611.8] SOAK t=630s ve=0 ve_delta=0 gpu=283075 gpu_rate=452/s cma=112544kB deaths=0
+[11:17:22 T+  641.8] SOAK t=660s ve=0 ve_delta=0 gpu=296740 gpu_rate=455/s cma=112544kB deaths=0
+[11:17:52 T+  671.8] SOAK t=690s ve=0 ve_delta=0 gpu=310404 gpu_rate=455/s cma=112544kB deaths=0
+[11:18:22 T+  701.9] SOAK t=720s ve=0 ve_delta=0 gpu=324055 gpu_rate=455/s cma=112544kB deaths=0
+[11:18:52 T+  731.9] SOAK t=750s ve=0 ve_delta=0 gpu=337592 gpu_rate=451/s cma=112544kB deaths=0
+[11:19:22 T+  761.9] SOAK t=780s ve=0 ve_delta=0 gpu=351114 gpu_rate=450/s cma=112544kB deaths=0
+[11:19:52 T+  791.9] SOAK t=810s ve=0 ve_delta=0 gpu=364661 gpu_rate=451/s cma=112544kB deaths=0
+[11:20:23 T+  822.0] SOAK t=840s ve=0 ve_delta=0 gpu=378225 gpu_rate=452/s cma=112544kB deaths=0
+[11:20:53 T+  852.0] SOAK t=870s ve=0 ve_delta=0 gpu=391692 gpu_rate=448/s cma=112544kB deaths=0
+[11:21:23 T+  882.0] SOAK t=901s ve=0 ve_delta=0 gpu=405279 gpu_rate=452/s cma=112544kB deaths=0
+[11:21:53 T+  912.1] SOAK t=931s ve=0 ve_delta=0 gpu=418868 gpu_rate=452/s cma=112544kB deaths=0
+[11:22:07 T+  926.5] [ 1008.405674] Insufficient stack space to handle exception!
+[11:22:07 T+  926.5] [ 1008.405687] ESR: 0x0000000096000044 -- DABT (current EL)
+[11:22:07 T+  926.5] [ 1008.405698] FAR: 0x0000000081350040
+[11:22:07 T+  926.5] [ 1008.405701] Task stack:     [0xffff800081350000..0xffff800081354000]
+[11:22:07 T+  926.5] [ 1008.405705] IRQ stack:      [0xffff800081188000..0xffff80008118c000]
+[11:22:07 T+  926.5] [ 1008.405708] Overflow stack: [0xffff00003fdb7100..0xffff00003fdb8100]
+[11:22:07 T+  926.5] [ 1008.405716] CPU: 2 UID: 0 PID: 41 Comm: kworker/u16:1 Not tainted 6.18.38-builtin #1 NONE 
+[11:22:07 T+  926.5] [ 1008.405725] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[11:22:07 T+  926.5] [ 1008.405737] Workqueue:  0x0 (pan_js)
+[11:22:07 T+  926.5] [ 1008.405756] pstate: 200003c5 (nzCv DAIF -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[11:22:07 T+  926.5] [ 1008.405761] pc : el1h_64_sync+0x0/0x70
+[11:22:07 T+  926.5] [ 1008.405775] lr : process_scheduled_works+0x214/0x300
+[11:22:07 T+  926.5] [ 1008.405784] sp : 0000000081350040
+[11:22:07 T+  926.5] [ 1008.405786] x29: ffff800081353d90 x28: ffff000001ee58e8 x27: 0000000000000000
+[11:22:07 T+  926.5] [ 1008.405794] x26: 0000000000000000 x25: ffff000000689c40 x24: ffff000001ee58e0
+[11:22:07 T+  926.5] [ 1008.405802] x23: ffff00000041c000 x22: ffff000001090a05 x21: ffff000001090a00
+[11:22:07 T+  926.5] [ 1008.405809] x20: 000000007fffffff x19: ffff000000689c00 x18: ffff000001090a68
+[11:22:07 T+  926.5] [ 1008.405816] x17: ffff00000041c028 x16: 0000000000000007 x15: ffff000001090a60
+[11:22:07 T+  926.6] [ 1008.405824] x14: ffff00000041c028 x13: 8080000000000000 x12: 0000736a5f6e6170
+[11:22:07 T+  926.6] [ 1008.405831] x11: 0000736a5f6e6170 x10: 0000000000000080 x9 : 0000000000000000
+[11:22:07 T+  926.6] [ 1008.405839] x8 : ffff00000041c0e8 x7 : 0000000000000000 x6 : 0000000000000000
+[11:22:07 T+  926.6] [ 1008.405846] x5 : ffff000001d15d00 x4 : ffff00003fdc3850 x3 : ffff000001090a00
+[11:22:07 T+  926.6] [ 1008.405853] x2 : 0000000000000020 x1 : ffff000001090a05 x0 : ffff000001090a00
+[11:22:07 T+  926.6] [ 1008.405862] Kernel panic - not syncing: kernel stack overflow
+[11:22:07 T+  926.6] *** stop pattern matched -- capturing 25 s more
+[11:22:07 T+  926.6] [ 1008.405866] CPU: 2 UID: 0 PID: 41 Comm: kworker/u16:1 Not tainted 6.18.38-builtin #1 NONE 
+[11:22:07 T+  926.6] [ 1008.405872] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[11:22:07 T+  926.6] [ 1008.405876] Workqueue:  0x0 (pan_js)
+[11:22:07 T+  926.6] [ 1008.405884] Call trace:
+[11:22:07 T+  926.6] [ 1008.405887]  show_stack+0x18/0x24 (C)
+[11:22:07 T+  926.6] [ 1008.405896]  __dump_stack+0x28/0x38
+[11:22:07 T+  926.6] [ 1008.405903]  dump_stack_lvl+0x24/0x6c
+[11:22:07 T+  926.6] [ 1008.405910]  dump_stack+0x18/0x24
+[11:22:07 T+  926.6] [ 1008.405916]  vpanic+0x10c/0x2f8
+[11:22:07 T+  926.6] [ 1008.405922]  vpanic+0x0/0x2f8
+[11:22:07 T+  926.6] [ 1008.405928]  check_panic_on_warn+0x0/0x90
+[11:22:07 T+  926.6] [ 1008.405935]  panic_bad_stack+0xe0/0xec
+[11:22:07 T+  926.6] [ 1008.405941]  enter_from_kernel_mode+0x0/0x34
+[11:22:07 T+  926.7] [ 1008.405951]  __bad_stack+0x80/0x84
+[11:22:07 T+  926.7] [ 1008.405956]  el1h_64_sync+0x0/0x70 (P)
+[11:22:07 T+  926.7] [ 1008.405962]  worker_thread+0x2fc/0x45c
+[11:22:07 T+  926.7] [ 1008.405969]  kthread+0x198/0x1e4
+[11:22:07 T+  926.7] [ 1008.405978]  ret_from_fork+0x10/0x20
+[11:22:07 T+  926.7] [ 1008.405987] SMP: stopping secondary CPUs
+[11:22:07 T+  926.7] [ 1009.448823] SMP: failed to stop secondary CPUs 0
+[11:22:07 T+  926.7] [ 1009.448829] Kernel Offset: disabled
+[11:22:07 T+  926.7] [ 1009.448831] CPU features: 0x000000,00000000,40004000,0400420b
+[11:22:07 T+  926.7] [ 1009.448836] Memory Limit: none
+# ... board rebooted via panic=5 into the production kernel; boot log elided ...
+
+############################################################
+# First attempt at the same control, kept because it is a second
+# ve=0 failure and because it is why the harness was rebuilt.
+#
+# mpv vanished at ~250 s. The kernel survived. It printed no
+# 'Exiting...' line, which mpv emits on every ordinary termination
+# including errors, and there was no OOM kill and no coredump -- so it
+# died on a signal. WHICH signal was not recoverable: this rootfs has
+# /proc/sys/debug/exception-trace = 0, so the kernel prints nothing for
+# a userspace fault. dmesg being empty was therefore not evidence.
+# The script now sets exception-trace=1, captures mpv's exit status via
+# wait(), and restarts mpv so one death no longer ends the run.
+############################################################
+[10:55:21 T+   15.6] SOAK t=30s ve=0 ve_delta=0 gpu=53011 gpu_rate=464/s cma=112544kB mpv=up
+[10:55:51 T+   45.6] SOAK t=60s ve=0 ve_delta=0 gpu=67680 gpu_rate=488/s cma=112544kB mpv=up
+[10:56:21 T+   75.7] SOAK t=90s ve=0 ve_delta=0 gpu=82408 gpu_rate=490/s cma=112544kB mpv=up
+[10:56:52 T+  105.7] SOAK t=120s ve=0 ve_delta=0 gpu=97241 gpu_rate=494/s cma=112544kB mpv=up
+[10:57:22 T+  135.7] SOAK t=150s ve=0 ve_delta=0 gpu=111865 gpu_rate=487/s cma=112544kB mpv=up
+[10:57:52 T+  165.7] SOAK t=180s ve=0 ve_delta=0 gpu=126498 gpu_rate=487/s cma=112544kB mpv=up
+[10:58:22 T+  195.8] SOAK t=210s ve=0 ve_delta=0 gpu=141109 gpu_rate=487/s cma=112544kB mpv=up
+[10:58:52 T+  225.8] SOAK t=240s ve=0 ve_delta=0 gpu=155866 gpu_rate=491/s cma=112544kB mpv=up
+[10:59:22 T+  255.8] SOAK t=270s ve=0 ve_delta=0 gpu=168402 gpu_rate=417/s cma=127088kB mpv=DEAD
+[10:59:24 T+  257.9] SOAK DONE t=272s mpv=DEAD ve_delta=0 gpu_delta=129330
+[10:59:24 T+  257.9] SOAK mpv: V: 00:00:22 / 00:00:39 (58%)
+[10:59:24 T+  257.9] SOAK mpv: V: 00:00:23 / 00:00:39 (58%)
+[10:59:24 T+  257.9] SOAK mpv: V: 00:00:23 / 00:00:39 (59%)

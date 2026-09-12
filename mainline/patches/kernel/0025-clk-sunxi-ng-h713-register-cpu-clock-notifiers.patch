@@ -1,0 +1,65 @@
+clk: sunxi-ng: h713: register CPU clock notifiers for cpufreq
+
+The H713 CPUX clock is a mux (reg 0x500) whose only useful CPU source is
+PLL_CPUX; unlike the H616 the mux has no PLL_PERIPH0 parent, only
+osc24M/osc32k/iosc/pll-cpux. cpufreq scales the CPU by reprogramming
+PLL_CPUX, which is unsafe while the cluster is still clocked from it.
+
+Register the standard sunxi CPU notifiers (as the H616 CCU does):
+
+  - a ccu_mux_nb that reparents the CPUX mux to osc24M (index 0) for the
+    duration of a PLL_CPUX rate change, then restores pll-cpux, and
+  - a ccu_pll_nb that re-locks PLL_CPUX after the N factor changes.
+
+Without this, the first cpufreq transition runs the core off an unlocked
+PLL and hangs the board. ccu_mux.h is pulled in for the notifier API.
+
+--- a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
++++ b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
+@@ -19,6 +19,7 @@
+ #include "ccu_gate.h"
+ #include "ccu_mp.h"
+ #include "ccu_mult.h"
++#include "ccu_mux.h"
+ #include "ccu_nk.h"
+ #include "ccu_nkm.h"
+ #include "ccu_nkmp.h"
+@@ -1063,6 +1064,25 @@
+ 	0xa80,
+ };
+
++/*
++ * The CPUX clock mux (0x500) has no PLL_PERIPH0 parent on the H713 (only
++ * osc24M/osc32k/iosc/pll-cpux), so reparent the cluster to osc24M while
++ * PLL_CPUX relocks during a cpufreq transition, then switch it back.
++ */
++static struct ccu_mux_nb sun50i_h713_cpu_nb = {
++	.common		= &cpux_clk.common,
++	.cm		= &cpux_clk.mux,
++	.delay_us	= 1,
++	.bypass_index	= 0, /* osc24M */
++};
++
++/* Re-lock PLL_CPUX after any rate change. */
++static struct ccu_pll_nb sun50i_h713_pll_cpu_nb = {
++	.common		= &pll_cpux_clk.common,
++	.enable		= BIT(29),	/* LOCK_ENABLE */
++	.lock		= BIT(28),	/* LOCK */
++};
++
+ static void __init sun50i_h713_ccu_init(struct device_node *node)
+ {
+ 	void __iomem *reg;
+@@ -1100,6 +1120,12 @@
+
+ 	of_sunxi_ccu_probe(node, reg, &sun50i_h713_ccu_desc);
+
++	/* Reparent the CPU cluster while PLL_CPUX changes rate (cpufreq). */
++	ccu_mux_notifier_register(pll_cpux_clk.common.hw.clk,
++				  &sun50i_h713_cpu_nb);
++
++	/* Re-lock the CPU PLL after any rate change. */
++	ccu_pll_notifier_register(&sun50i_h713_pll_cpu_nb);
+ }
+
+ CLK_OF_DECLARE(sun50i_h713_ccu, "allwinner,sun50i-h713-ccu",

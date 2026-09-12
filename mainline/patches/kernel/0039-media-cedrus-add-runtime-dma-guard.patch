@@ -1,0 +1,183 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: add a runtime DMA guard to catch VE overruns
+
+On the H713, decoding into CMA buffers while a KMS/GBM scanout buffer is
+also allocated from CMA corrupts kernel memory. Five reproductions, five
+different victims -- a pool_workqueue, the hrtimer rbtree, a dma_fence, the
+deadline scheduler runqueue, and a kernel stack -- and the symptom moves
+when cma= changes, which is what layout-dependent corruption looks like.
+It reproduces with no VA-API in the picture at all, so it is not a
+userspace bug: GStreamer decode to fakesink plus a software-decoded KMS
+playback is enough.
+
+KASAN sees none of it, and cannot: it instruments CPU accesses, and the
+writer here is a device. On this SoC the VE has no IOMMU -- `iommus` is
+deliberately absent from the ve node because the sun50i-iommu block is
+inert, so cedrus is handed physical addresses and writes them directly.
+Nothing traps a write that no MMU mediates.
+
+What is left is to leave known bytes after the frame and look at them
+afterwards. sunxi_cedrus.dma_guard=<bytes> pads every capture buffer by
+that much, poisons the padding in buf_prepare, and checks it in a new
+buf_finish once the VE has completed the frame. A report names the buffer,
+how many bytes changed and how far past the end the first one is.
+
+Default 0, which is byte-for-byte the previous behaviour: no padding, no
+poison, no check. The capture payload stays at sizeimage either way, so
+decoded output is unchanged and the bit-exactness ladders still pass.
+
+CREATE_BUFS grows rather than rejects, because buffers created while
+streaming are exactly the ones VA-API clients use, and leaving those
+unpadded would have left the most interesting path uninstrumented.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -26,6 +26,33 @@
+ #include "cedrus_dec.h"
+ #include "cedrus_hw.h"
+ 
++/*
++ * DMA overrun detection for the H713 (sunxi_cedrus.dma_guard=<bytes>).
++ *
++ * Zero by default, which compiles to the original behaviour: no padding, no
++ * poisoning, no checking. It exists because on this board decoding into CMA
++ * while a KMS/GBM scanout buffer is also allocated from CMA corrupts kernel
++ * memory -- five different victims across five runs, layout-dependent, and
++ * invisible to KASAN. KASAN instruments CPU accesses; the VE is a device, and
++ * on this SoC it has NO IOMMU (see the arm64 DTS: `iommus` on the ve node is
++ * deliberately absent because the sun50i-iommu block is inert here), so it
++ * writes raw physical addresses and nothing can trap it.
++ *
++ * The only way to see a write that no MMU mediates is to leave poisoned space
++ * after the buffer and look at it afterwards. Set the parameter to e.g. 65536,
++ * reproduce, and watch dmesg: a report means the VE wrote past the frame it
++ * was given, and the offset says how far.
++ *
++ * Note the capture payload stays at sizeimage, so decoded output is unchanged
++ * and the M1/VA1 md5 ladders still score exactly as before.
++ */
++static unsigned int dma_guard;
++module_param(dma_guard, uint, 0644);
++MODULE_PARM_DESC(dma_guard,
++		 "bytes of poisoned padding after each capture buffer, checked on completion (0 = off)");
++
++#define CEDRUS_GUARD_POISON	0x5au
++
+ #define CEDRUS_DECODE_SRC	BIT(0)
+ #define CEDRUS_DECODE_DST	BIT(1)
+ 
+@@ -456,14 +483,79 @@
+ 	if (*nplanes) {
+ 		if (sizes[0] < pix_fmt->sizeimage)
+ 			return -EINVAL;
++		/*
++		 * CREATE_BUFS passes a size in; grow it rather than reject it,
++		 * so buffers created while streaming are padded too. That path
++		 * is the one VA-API clients use.
++		 */
++		if (V4L2_TYPE_IS_CAPTURE(vq->type))
++			sizes[0] = max(sizes[0], pix_fmt->sizeimage + dma_guard);
+ 	} else {
+ 		sizes[0] = pix_fmt->sizeimage;
++		if (V4L2_TYPE_IS_CAPTURE(vq->type))
++			sizes[0] += dma_guard;
+ 		*nplanes = 1;
+ 	}
+ 
+ 	return 0;
+ }
+ 
++/*
++ * Fill the padding after the frame with a known byte, so that anything the VE
++ * writes past the end of the picture it was handed shows up as a change.
++ */
++static void cedrus_guard_poison(struct vb2_buffer *vb, unsigned int payload)
++{
++	unsigned int size = vb2_plane_size(vb, 0);
++	void *vaddr;
++
++	if (!dma_guard || size <= payload)
++		return;
++
++	vaddr = vb2_plane_vaddr(vb, 0);
++	if (!vaddr)
++		return;
++
++	memset(vaddr + payload, CEDRUS_GUARD_POISON, size - payload);
++}
++
++static void cedrus_guard_check(struct vb2_buffer *vb, unsigned int payload)
++{
++	struct cedrus_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
++	unsigned int size = vb2_plane_size(vb, 0);
++	unsigned int i, damaged = 0;
++	int first = -1;
++	u8 *guard;
++
++	if (!dma_guard || size <= payload)
++		return;
++
++	guard = vb2_plane_vaddr(vb, 0);
++	if (!guard)
++		return;
++	guard += payload;
++
++	for (i = 0; i < size - payload; i++) {
++		if (guard[i] != (u8)CEDRUS_GUARD_POISON) {
++			if (first < 0)
++				first = i;
++			damaged++;
++		}
++	}
++
++	if (!damaged)
++		return;
++
++	/*
++	 * Rate-limited rather than once: how far past the end it runs, and
++	 * whether that distance is stable, is the interesting part.
++	 */
++	dev_err_ratelimited(ctx->dev->dev,
++			    "DMA GUARD: buffer %u wrote %u byte(s) past its %u-byte frame, first at +%d (guard %u, value 0x%02x)\n",
++			    vb->index, damaged, payload, first,
++			    size - payload, guard[first]);
++}
++
+ static void cedrus_queue_cleanup(struct vb2_queue *vq, u32 state)
+ {
+ 	struct cedrus_ctx *ctx = vb2_get_drv_priv(vq);
+@@ -511,12 +603,23 @@
+ 	 * (for OUTPUT buffers, if userspace passes 0 bytesused, v4l2-core sets
+ 	 * it to buffer length).
+ 	 */
+-	if (V4L2_TYPE_IS_CAPTURE(vq->type))
++	if (V4L2_TYPE_IS_CAPTURE(vq->type)) {
+ 		vb2_set_plane_payload(vb, 0, pix_fmt->sizeimage);
++		cedrus_guard_poison(vb, pix_fmt->sizeimage);
++	}
+ 
+ 	return 0;
+ }
+ 
++static void cedrus_buf_finish(struct vb2_buffer *vb)
++{
++	struct vb2_queue *vq = vb->vb2_queue;
++	struct cedrus_ctx *ctx = vb2_get_drv_priv(vq);
++
++	if (V4L2_TYPE_IS_CAPTURE(vq->type))
++		cedrus_guard_check(vb, ctx->dst_fmt.sizeimage);
++}
++
+ static int cedrus_start_streaming(struct vb2_queue *vq, unsigned int count)
+ {
+ 	struct cedrus_ctx *ctx = vb2_get_drv_priv(vq);
+@@ -578,6 +681,7 @@
+ static const struct vb2_ops cedrus_qops = {
+ 	.queue_setup		= cedrus_queue_setup,
+ 	.buf_prepare		= cedrus_buf_prepare,
++	.buf_finish		= cedrus_buf_finish,
+ 	.buf_queue		= cedrus_buf_queue,
+ 	.buf_out_validate	= cedrus_buf_out_validate,
+ 	.buf_request_complete	= cedrus_buf_request_complete,

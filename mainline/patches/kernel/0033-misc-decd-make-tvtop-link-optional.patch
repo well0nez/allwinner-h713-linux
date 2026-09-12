@@ -1,0 +1,83 @@
+Make DECD's TVTOP client registration optional, at compile time.
+
+DECD's probe ends with sunxi_tvtop_client_register(), which returns
+-EPROBE_DEFER when TVTOP has not probed, so DECD defers forever without
+it. That call is pure bookkeeping: its entire body is a
+device_link_add(client, tvtop, DL_FLAG_AUTOREMOVE_CONSUMER) for probe and
+suspend ordering. It touches no hardware.
+
+Enabling TVTOP purely to satisfy it is the wrong trade for a first
+bring-up. sunxi_tvtop's probe owns CLK_PANEL, CLK_DEINT, CLK_SVP_DTL,
+CLK_BUS_DISP and RST_BUS_DISP -- exactly the display resources U-Boot
+programs before Linux starts, and which the display depends on surviving
+the handoff (docs/claude-display-handoff.md item 4). Bringing up a second
+owner of those clocks in the same session that first enables DECD would
+confound any failure between the two.
+
+The guard is at COMPILE time, not just at run time. Leaving the call in
+place and merely ignoring its return still emits an undefined reference to
+an EXPORT_SYMBOL owned by the tvtop module, so depmod would record the
+dependency and `modprobe sunxi-decd` would silently load TVTOP anyway --
+exactly what this is trying to avoid. With CONFIG_SUNXI_TVTOP=n the
+declaration becomes a static inline stub and no symbol reference is
+emitted at all.
+
+This is deliberately narrow, and does NOT make TVTOP unnecessary in
+general: the vendor ships both, and a full display stack wants the real
+resource ownership TVTOP provides. It makes DECD independently testable
+first. Milestone 4's "enable TVTOP first, then DECD" assumes both work;
+this allows the harder one to be isolated when neither has ever run.
+
+--- a/drivers/misc/sunxi_decd/decd_core.c	2026-08-12 00:34:11.698113636 -0700
++++ b/drivers/misc/sunxi_decd/decd_core.c	2026-08-12 00:34:11.707155554 -0700
+@@ -191,15 +191,20 @@
+ 		goto err_dev;
+ 	dec->attr_group = (struct attribute_group *)&dec_attr_group;
+ 	pm_runtime_enable(&pdev->dev);
++	/*
++	 * Best-effort: this only adds a device_link for probe/suspend
++	 * ordering and touches no hardware. Without TVTOP there is nothing
++	 * to order against, so failure here is not fatal.
++	 */
+ 	ret = sunxi_tvtop_client_register(&pdev->dev);
+ 	if (ret)
+-		goto err_pm;
++		dev_info(&pdev->dev,
++			 "tvtop link unavailable (%d); continuing unordered\n",
++			 ret);
+ 	g_dec = dec;
+ 	of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
+ 	dev_info(&pdev->dev, "reconstructed decd probed\n");
+ 	return 0;
+-err_pm:
+-	pm_runtime_disable(&pdev->dev);
+ err_dev:
+ 	if (dec->attr_group)
+ 		sysfs_remove_group(&pdev->dev.kobj, dec->attr_group);
+--- a/drivers/misc/sunxi_decd/decd_types.h	2026-08-12 00:34:11.698089381 -0700
++++ b/drivers/misc/sunxi_decd/decd_types.h	2026-08-12 00:34:11.707114387 -0700
+@@ -33,7 +33,24 @@
+ #define DECD_IOC_GET_VSYNC_TS      0x8008640au
+ #define DECD_IOC_MAP_LINEAR_BUFFER 0xc010640bu
+ 
++/*
++ * Provided by the sunxi_tvtop module. The stub keeps DECD buildable and
++ * loadable without TVTOP: the real function only adds a device_link for
++ * probe/suspend ordering, so its absence costs ordering and nothing else.
++ *
++ * A compile-time stub rather than a runtime check, so no undefined reference
++ * to the tvtop EXPORT_SYMBOL is emitted -- otherwise depmod records a
++ * dependency and modprobe pulls TVTOP in regardless, which is what this
++ * avoids.
++ */
++#if IS_ENABLED(CONFIG_SUNXI_TVTOP)
+ extern int sunxi_tvtop_client_register(struct device *dev);
++#else
++static inline int sunxi_tvtop_client_register(struct device *dev)
++{
++	return -ENODEV;
++}
++#endif
+ long dec_ioctl_file(struct file *file, unsigned int cmd, unsigned long arg);
+ 
+ struct dec_device;

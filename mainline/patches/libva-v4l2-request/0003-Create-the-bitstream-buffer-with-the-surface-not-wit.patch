@@ -1,0 +1,216 @@
+From 1b2446fa25828f29bd79f989feb14daec9200e84 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sun, 16 Aug 2026 17:33:59 -0700
+Subject: [PATCH 3/3] Create the bitstream buffer with the surface, not with
+ the context
+
+Decoding died before the first slice with
+
+    v4l2-request: Unable to enable stream: Invalid argument
+    [h264] Failed to create decode context: 1 (operation failed).
+
+which reads like a codec problem and is not. Traced, the sequence is:
+
+    VIDIOC_CREATE_BUFS {count=0, type=VIDEO_OUTPUT} = 0 ({count=0})
+    VIDIOC_STREAMON [V4L2_BUF_TYPE_VIDEO_OUTPUT] = -1 EINVAL
+
+The OUTPUT queue is created with zero buffers, and VIDIOC_STREAMON on an
+empty queue is correctly refused. RequestCreateContext sized that queue
+from the render targets passed to vaCreateContext -- an assumption that
+held when every VA-API client preallocated a fixed surface pool up front.
+ffmpeg allocates surfaces on demand and passes none, so the count was 0.
+(In the same trace the CAPTURE queue gets count=1: one surface, created
+before the context, exactly as the on-demand model implies.)
+
+Create the bitstream buffer where the surface is created instead. That is
+where the OUTPUT format is already set -- a previous fix moved it there
+for the same underlying reason, with a comment saying so -- and it makes
+the ownership symmetric: RequestDestroySurfaces already unmapped
+source_data, so the context had been allocating something it never freed.
+
+Nothing else wanted the context's surface list; it was used only for the
+context's own teardown. While here, do not malloc(0) for an empty list and
+report the failure of an allocation nobody asked for.
+
+Measured after this change on H713 (cedrus, kernel 6.18.38), against the
+M1 ladder's host-generated references:
+
+    v01 320x240 baseline    bit-exact
+    v02 1280x720 baseline   bit-exact
+    v03 1280x720 main       bit-exact
+    v04 1280x720 high       bit-exact
+    v05 1920x1080 high      bit-exact
+
+with the VE's interrupt count rising by exactly 60 over a 60-frame decode.
+---
+ src/context.c | 56 +++++++++------------------------------------------
+ src/surface.c | 43 ++++++++++++++++++++++++++++++++++++---
+ 2 files changed, 49 insertions(+), 50 deletions(-)
+
+diff --git a/src/context.c b/src/context.c
+index 42ad4c2..b4adcaf 100644
+--- a/src/context.c
++++ b/src/context.c
+@@ -53,19 +53,12 @@ VAStatus RequestCreateContext(VADriverContextP context, VAConfigID config_id,
+ {
+ 	struct request_data *driver_data = context->pDriverData;
+ 	struct object_config *config_object;
+-	struct object_surface *surface_object;
+ 	struct object_context *context_object = NULL;
+ 	struct video_format *video_format;
+-	unsigned int length;
+-	unsigned int offset;
+-	void *source_data = MAP_FAILED;
+ 	VASurfaceID *ids = NULL;
+ 	VAContextID id;
+ 	VAStatus status;
+ 	unsigned int output_type, capture_type;
+-	unsigned int index_base;
+-	unsigned int index;
+-	unsigned int i;
+ 	int rc;
+ 
+ 	video_format = driver_data->video_format;
+@@ -89,52 +82,24 @@ VAStatus RequestCreateContext(VADriverContextP context, VAConfigID config_id,
+ 	}
+ 	memset(&context_object->dpb, 0, sizeof(context_object->dpb));
+ 
+-	rc = v4l2_create_buffers(driver_data->video_fd, output_type,
+-				 surfaces_count, &index_base);
+-	if (rc < 0) {
+-		status = VA_STATUS_ERROR_ALLOCATION_FAILED;
+-		goto error;
+-	}
+-
+ 	/*
+ 	 * The surface_ids array has been allocated by the caller and
+ 	 * we don't have any indication wrt its life time. Let's make sure
+ 	 * its life span is under our control.
++	 *
++	 * A caller that allocates surfaces on demand passes none at all, which
++	 * is legal: malloc(0) is then the only thing that could fail here, and
++	 * it would be reported as an allocation failure for a list nobody
++	 * asked for.
+ 	 */
+-	ids = malloc(surfaces_count * sizeof(VASurfaceID));
+-	if (ids == NULL) {
+-		status = VA_STATUS_ERROR_ALLOCATION_FAILED;
+-		goto error;
+-	}
+-
+-	memcpy(ids, surfaces_ids, surfaces_count * sizeof(VASurfaceID));
+-
+-	for (i = 0; i < surfaces_count; i++) {
+-		index = index_base + i;
+-
+-		surface_object = SURFACE(driver_data, surfaces_ids[i]);
+-		if (surface_object == NULL) {
+-			status = VA_STATUS_ERROR_INVALID_SURFACE;
+-			goto error;
+-		}
+-
+-		rc = v4l2_query_buffer(driver_data->video_fd, output_type,
+-				       index, &length, &offset, 1);
+-		if (rc < 0) {
++	if (surfaces_count > 0) {
++		ids = malloc(surfaces_count * sizeof(VASurfaceID));
++		if (ids == NULL) {
+ 			status = VA_STATUS_ERROR_ALLOCATION_FAILED;
+ 			goto error;
+ 		}
+ 
+-		source_data = mmap(NULL, length, PROT_READ | PROT_WRITE,
+-				   MAP_SHARED, driver_data->video_fd, offset);
+-		if (source_data == MAP_FAILED) {
+-			status = VA_STATUS_ERROR_ALLOCATION_FAILED;
+-			goto error;
+-		}
+-
+-		surface_object->source_index = index;
+-		surface_object->source_data = source_data;
+-		surface_object->source_size = length;
++		memcpy(ids, surfaces_ids, surfaces_count * sizeof(VASurfaceID));
+ 	}
+ 
+ 	rc = v4l2_set_stream(driver_data->video_fd, output_type, true);
+@@ -163,9 +128,6 @@ VAStatus RequestCreateContext(VADriverContextP context, VAConfigID config_id,
+ 	goto complete;
+ 
+ error:
+-	if (source_data != MAP_FAILED)
+-		munmap(source_data, length);
+-
+ 	if (ids != NULL)
+ 		free(ids);
+ 
+diff --git a/src/surface.c b/src/surface.c
+index 478f0cc..f82b393 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -65,6 +65,10 @@ VAStatus RequestCreateSurfaces2(VADriverContextP context, unsigned int format,
+ 	unsigned int capture_type;
+ 	unsigned int index_base;
+ 	unsigned int index;
++	unsigned int source_index_base;
++	unsigned int source_length;
++	unsigned int source_offset;
++	void *source_data;
+ 	unsigned int i, j;
+ 	VASurfaceID id;
+ 	bool found;
+@@ -140,6 +144,27 @@ VAStatus RequestCreateSurfaces2(VADriverContextP context, unsigned int format,
+ 	if (rc < 0)
+ 		return VA_STATUS_ERROR_ALLOCATION_FAILED;
+ 
++	/*
++	 * The bitstream buffer that feeds this surface is created here, with
++	 * the surface, rather than in RequestCreateContext.
++	 *
++	 * RequestCreateContext used to size the OUTPUT queue from the render
++	 * targets handed to vaCreateContext. ffmpeg stopped handing over a
++	 * list: it allocates VA surfaces on demand, so it passes none, the
++	 * OUTPUT queue was created with zero buffers, and VIDIOC_STREAMON on
++	 * an empty queue is correctly refused with EINVAL. Decoding died
++	 * before the first slice, in a way that looked like a codec problem
++	 * and was not.
++	 *
++	 * Pairing the buffer with the surface also makes the ownership
++	 * symmetric: RequestDestroySurfaces already unmaps source_data, so the
++	 * context was allocating something it did not free.
++	 */
++	rc = v4l2_create_buffers(driver_data->video_fd, output_type,
++				 surfaces_count, &source_index_base);
++	if (rc < 0)
++		return VA_STATUS_ERROR_ALLOCATION_FAILED;
++
+ 	for (i = 0; i < surfaces_count; i++) {
+ 		index = index_base + i;
+ 
+@@ -210,9 +235,21 @@ VAStatus RequestCreateSurfaces2(VADriverContextP context, unsigned int format,
+ 		surface_object->width = width;
+ 		surface_object->height = height;
+ 
+-		surface_object->source_index = 0;
+-		surface_object->source_data = NULL;
+-		surface_object->source_size = 0;
++		rc = v4l2_query_buffer(driver_data->video_fd, output_type,
++				       source_index_base + i, &source_length,
++				       &source_offset, 1);
++		if (rc < 0)
++			return VA_STATUS_ERROR_ALLOCATION_FAILED;
++
++		source_data = mmap(NULL, source_length, PROT_READ | PROT_WRITE,
++				   MAP_SHARED, driver_data->video_fd,
++				   source_offset);
++		if (source_data == MAP_FAILED)
++			return VA_STATUS_ERROR_ALLOCATION_FAILED;
++
++		surface_object->source_index = source_index_base + i;
++		surface_object->source_data = source_data;
++		surface_object->source_size = source_length;
+ 
+ 		surface_object->destination_index = index;
+ 
+-- 
+2.55.0
+

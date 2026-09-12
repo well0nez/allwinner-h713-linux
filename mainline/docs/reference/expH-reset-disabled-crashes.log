@@ -1,0 +1,54 @@
+[  848.411583] Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000
+[  848.420400] Mem abort info:
+[  848.423192]   ESR = 0x0000000096000004
+[  848.426935]   EC = 0x25: DABT (current EL), IL = 32 bits
+[  848.432239]   SET = 0, FnV = 0
+[  848.435288]   EA = 0, S1PTW = 0
+[  848.438422]   FSC = 0x04: level 0 translation fault
+[  848.443291] Data abort info:
+[  848.446165]   ISV = 0, ISS = 0x00000004, ISS2 = 0x00000000
+[  848.451640]   CM = 0, WnR = 0, TnD = 0, TagAccess = 0
+[  848.456683]   GCS = 0, Overlay = 0, DirtyBit = 0, Xs = 0
+[  848.461986] user pgtable: 4k pages, 48-bit VAs, pgdp=0000000046118000
+[  848.468416] [0000000000000000] pgd=0000000000000000, p4d=0000000000000000
+[  848.475202] Internal error: Oops: 0000000096000004 [#1]  SMP
+[  848.480854] Modules linked in:
+[  848.483909] CPU: 3 UID: 0 PID: 67 Comm: kworker/u16:5 Not tainted 6.18.38-builtin #1 NONE 
+[  848.492163] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[  848.498252] Workqueue:  0x0 (pan_js)
+[  848.501835] pstate: 200000c5 (nzCv daIF -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  848.508787] pc : dequeue_entities+0x12c/0x660
+[  848.513149] lr : dequeue_entities+0xa8/0x660
+[  848.517416] sp : ffff8000817f3cb0
+[  848.520724] x29: ffff8000817f3cc0 x28: ffff800080f69d78 x27: ffff00003fdd4000
+[  848.527854] x26: 00000000ffffffff x25: ffff000001c28f80 x24: ffff800080f51000
+[  848.534982] x23: 0000000000000001 x22: 0000000000000000 x21: 0000000000000009
+[  848.542111] x20: ffff00003fdd4000 x19: ffff000001c29000 x18: ffff00000236c068
+[  848.549241] x17: ffff00000041c028 x16: 0000000000000007 x15: 0000000000000400
+[  848.556370] x14: 0000000000000002 x13: 0000000000000400 x12: 0000000000100000
+[  848.563499] x11: 000000000001c5f0 x10: 0000000000000000 x9 : 000000003fdd4000
+[  848.570627] x8 : 0000000000000000 x7 : 0000000000000000 x6 : 0000000000000000
+[  848.577755] x5 : ffff000002812e80 x4 : ffff00003fdd7850 x3 : ffff00000236c000
+[  848.584884] x2 : 000000000001c5f0 x1 : ffff00003fdd4868 x0 : ffff00003fdd4000
+[  848.592013] Call trace:
+[  848.594455]  dequeue_entities+0x12c/0x660 (P)
+[  848.598812]  dequeue_task_fair+0x9c/0xc4
+[  848.602733]  __schedule+0x168/0x794
+[  848.606221]  schedule+0x48/0xb4
+[  848.609361]  worker_thread+0xb8/0x45c
+[  848.613021]  kthread+0x198/0x1e4
+[  848.616249]  ret_from_fork+0x10/0x20
+[  848.619829] Code: d34afd8d cb0f016b f10009bf 9a8e81ad (f100019f) 
+[  848.625913] ---[ end trace 0000000000000000 ]---
+[  848.630524] Kernel panic - not syncing: Oops: Fatal exception
+[  848.636260] SMP: stopping secondary CPUs
+[  849.683008] SMP: failed to stop secondary CPUs 0-2
+[  849.687794] Kernel Offset: disabled
+[  849.691275] CPU features: 0x000000,00000000,40004000,0400420b
+[  849.697012] Memory Limit: none
+[  849.700062] Rebooting in 5 seconds..
+
+U-Boot SPL 2026.07-rc5-gdbad200ca799-dirty (Aug 07 2026 - 18:26:52 -0700)
+DRAM: 1024 MiB
+Trying to boot from MMC2
+NOTICE:  BL31: v2

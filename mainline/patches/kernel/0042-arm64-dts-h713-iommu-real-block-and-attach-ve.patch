@@ -1,0 +1,152 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] arm64: dts: h713: point the IOMMU at the real block and attach the VE
+
+The iommu node has been sitting at 0x030f0000 -- the H6's base, where this
+SoC has nothing. Every register there reads 0, including ENABLE and TTB,
+which an attached domain would have written. That is why the ve node's
+iommus property was removed on 2026-08-09: pointing cedrus at an inert
+IOMMU is worse than having none, because the DMA layer hands out IOVAs
+believing something will translate them, and the VE writes them as physical
+addresses. It corrupted the printk ringbuffer on the first decode.
+
+The stock DTB on board B's own eMMC says where the block actually is, and
+the block confirms it. With the clock gated on -- CCU 0x7bc bit 0, read
+first because probing an ungated block hangs this interconnect -- writing
+0xdeadb000 to TTB reads back 0xdead8000, so it answers and wants the same
+16 KiB-aligned directory table as the H6. RESET reads 0x8003007f and BYPASS
+0x0000007f: seven masters, 0 through 6, all bypassing at reset.
+
+So the node moves to 0x2010000 with the stock interrupt (SPI 71) and clock,
+gains the two-cell binding, and drops the resets property, which the stock
+node does not have and our CCU does not provide.
+
+The ve node gets both of the engine's master ports, <&iommu 0 1> and
+<&iommu 1 1>, exactly what the stock tree does -- it declares ve@1c0e000 and
+ve1@1c0e000 as separate nodes with the same compatible and the same address
+because the block issues traffic through two ports.
+
+Attaching only master 0 was measured on hardware first, and the failure is
+worth recording because it looks like success: the IOMMU probes, ENABLE reads
+1, a real page table is installed, no faults are ever reported -- and every
+decode comes out corrupt. BYPASS sat at 0x7e, so port 0 was translated while
+port 1 still emitted physical addresses. Half the engine's traffic followed
+the IOVAs the DMA layer handed out and half bypassed them, and nothing ever
+touched an unmapped IOVA, so there was nothing to fault on. Beyond correctness, this is containment:
+untranslated, cedrus writing after its DMA buffers are freed reaches
+arbitrary kernel memory instead of raising a fault, which is the bug patch
+0040 addresses and the reason six unrelated kernel structures were corrupted
+while chasing it.
+
+The display and ge2d are left alone. The stock tree has them on master 2
+with translation OFF, and there is no reason to differ before the video
+decode path is proven with the IOMMU live.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1103,14 +1103,30 @@
+ 		 * dma-direct on CMA instead of being handed IOVAs that nothing
+ 		 * translates.
+ 		 */
+-		iommu: iommu@30f0000 {
+-			compatible = "allwinner,sun50i-h6-iommu";
+-			reg = <0x030f0000 0x10000>;
+-			interrupts = <GIC_SPI 24 IRQ_TYPE_LEVEL_HIGH>;
++		/*
++		 * Every value here is read out of the stock DTB on board B's
++		 * own eMMC (`local/h713-lab/captures/board-b/`), not inferred
++		 * from the H6. The previous node lived at the H6's 0x030f0000,
++		 * where this SoC has nothing: every register read 0, including
++		 * ENABLE and TTB, which an attached domain would have written.
++		 *
++		 * Confirmed on hardware 2026-08-17 after gating the clock on
++		 * (the block is clocked off at reset, and probing it ungated
++		 * hangs this interconnect, so read CCU 0x7bc bit 0 first):
++		 * writing 0xdeadb000 to TTB reads back 0xdead8000, so it
++		 * answers and wants a 16 KiB-aligned table exactly as the H6
++		 * block does. RESET reads 0x8003007f and BYPASS 0x0000007f --
++		 * seven masters, 0-6, all bypassing translation at reset.
++		 *
++		 * No resets property: the stock node has only a clock, and
++		 * there is no IOMMU reset line in our CCU.
++		 */
++		iommu: iommu@2010000 {
++			compatible = "allwinner,sun50i-h713-iommu";
++			reg = <0x02010000 0x1000>;
++			interrupts = <GIC_SPI 71 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_BUS_IOMMU>;
+-			resets = <&ccu 11>;
+-			#iommu-cells = <1>;
+-			status = "disabled";
++			#iommu-cells = <2>;
+ 		};
+ 
+ 		/*
+@@ -1196,27 +1212,47 @@
+ 			 */
+ 			power-domains = <&ppu 3>;
+ 			/*
+-			 * NO iommus PROPERTY -- deliberate, 2026-08-09.
++			 * Master 0, translation on -- exactly what the stock
++			 * DTB does (`iommus = <&mmu_aw 0 1>`).
+ 			 *
+-			 * `iommus = <&iommu 0>` here crashed the kernel on the
+-			 * first decode: rogue VE DMA corrupted the printk
+-			 * ringbuffer, faulting in _prb_read_valid() with a
+-			 * recursive fault storm and a stack-overflow panic,
+-			 * before a single frame was emitted (0-byte output).
+-			 *
+-			 * Cause: the iommu node below is inert. Every register
+-			 * at 0x030f0000 reads 0 on hardware, including ENABLE
+-			 * (+0x20) and TTB (+0x30), which an attached domain
+-			 * would have written. So the DMA layer handed cedrus
+-			 * IOVAs expecting translation, nothing translated them,
+-			 * and the VE wrote them as raw physical addresses.
+-			 *
+-			 * Without the property cedrus uses dma-direct on CMA,
+-			 * where the addresses it programs are real allocations.
+-			 * Restore this only once the IOMMU is verified live --
+-			 * an inert IOMMU is worse than none, because it removes
+-			 * the bounds the DMA layer believes are being enforced.
++			 * This property was deliberately absent from
++			 * 2026-08-09 until 2026-08-17, and the reason it is
++			 * back is worth keeping. It was removed because
++			 * `iommus = <&iommu 0>` crashed the kernel on the first
++			 * decode: rogue VE DMA corrupted the printk ringbuffer
++			 * and panicked in _prb_read_valid() before a frame came
++			 * out. The cause was not the property but the node it
++			 * pointed at -- the H6's 0x030f0000, where this SoC has
++			 * nothing, so the DMA layer handed cedrus IOVAs that
++			 * nothing translated and the VE wrote them as physical
++			 * addresses. An inert IOMMU is worse than none.
++			 *
++			 * The node now points at the real block, which has been
++			 * verified to answer on hardware (see the iommu node),
++			 * so the bounds the DMA layer believes in are actually
++			 * enforced. That matters beyond correctness here:
++			 * without translation, cedrus writing after its buffers
++			 * are freed corrupts arbitrary kernel memory rather
++			 * than raising a fault -- see
++			 * docs/vaapi-scope.md and patch 0040.
++			 *
++			 * BOTH master ports, and that is not optional. The
++			 * stock tree declares two nodes for this one block --
++			 * `ve@1c0e000` as master 0 and `ve1@1c0e000` as master
++			 * 1, same compatible, same address -- because the
++			 * engine issues traffic through two ports.
++			 *
++			 * Attaching only master 0 was measured here on
++			 * 2026-08-17 and is a trap worth describing: the IOMMU
++			 * comes up (ENABLE=1, a real TTB) and reports no faults
++			 * at all, while every decode comes out corrupt. With
++			 * BYPASS left at 0x7e, port 0 was translated and port 1
++			 * still emitted raw physical addresses, so half the
++			 * engine's traffic went to the IOVAs the DMA layer
++			 * handed out and half went straight to memory. No
++			 * fault, because nothing ever touched an unmapped IOVA.
+ 			 */
++			iommus = <&iommu 0 1>, <&iommu 1 1>;
+ 			status = "okay";
+ 		};
+ 

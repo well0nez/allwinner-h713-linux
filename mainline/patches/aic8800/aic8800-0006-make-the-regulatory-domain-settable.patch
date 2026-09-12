@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Fri, 21 Aug 2026 20:30:00 -0700
+Subject: [PATCH] aic8800: make the self-managed regulatory domain settable
+
+The wiphy is self-managed, so cfg80211's regulatory.db never applies to it.
+rwnx_custregd() installs a domain from this driver's own regdb.c instead,
+chosen by default_ccode -- which was a compiled-in "00" with no way to
+change it short of editing the source.
+
+"00" resolves to a permissive world entry: 2380-2520 MHz and 5140-5980 MHz
+at 20 dBm with DFS-UNSET, no NO_IR and no passive-scan.  That is wider than
+the ISM band and covers DFS and weather-radar spectrum with no DFS
+constraint, and it is what the radio actually ran under.
+
+The driver's own table is fine -- 185 countries, 98 distinct rule sets, with
+correct DFS regions, NO_IR/NO_OUTDOOR flags and per-subband power limits.
+Only the selector was stuck.  Expose it as a module parameter so the
+operating domain can be set at load time.
+
+---
+ aic8800_fdrv/rwnx_mod_params.c | 22 +++++++++++++++++++++
+
+--- a/aic8800_fdrv/rwnx_mod_params.c
++++ b/aic8800_fdrv/rwnx_mod_params.c
+@@ -237,6 +237,27 @@
+ char default_ccode[4] = "00";
+ #endif
+ 
++/*
++ * The wiphy is self-managed (custregd), so cfg80211's regulatory.db never
++ * applies to it -- rwnx_custregd() installs a domain from this driver's own
++ * table in regdb.c instead, selected by default_ccode.  That table is real:
++ * 185 countries, 98 distinct rule sets, with correct DFS regions, NO_IR and
++ * NO_OUTDOOR flags and per-subband power limits.
++ *
++ * The compiled-in default is "00", which resolves to a permissive world entry
++ * that advertises 2380-2520 MHz and 5140-5980 MHz at 20 dBm with DFS-UNSET --
++ * wider than the ISM band and covering DFS and weather-radar spectrum with no
++ * DFS or passive-scan constraint.  There was no way to change it without a
++ * rebuild, so every board shipped transmitting under those rules.
++ *
++ * Expose it so the operating domain can be set at module load:
++ *   options aic8800_fdrv default_ccode=US
++ */
++module_param_string(default_ccode, default_ccode, sizeof(default_ccode),
++		    S_IRUGO);
++MODULE_PARM_DESC(default_ccode,
++		 "ISO 3166-1 alpha-2 regulatory domain for the self-managed wiphy (default: 00, permissive world)");
++
+ char country_code[4];
+ module_param_string(country_code, country_code, 4, 0600);
+ 

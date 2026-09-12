@@ -1,0 +1,100 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: halt the VE before freeing its DMA buffers
+
+cedrus_stop_streaming() frees the codec's auxiliary DMA buffers -- for
+H.264, pic_info_buf and neighbor_info_buf -- and returns the capture
+buffers, without ever asserting the engine's reset or waiting for it to go
+idle. The driver's only reset_control_reset() is in the watchdog timeout
+handler, which fires after the fact.
+
+If the VE is still executing when that happens, it keeps writing into pages
+the page allocator has already handed to something else. On this SoC nothing
+can stop it: the H713 has no usable IOMMU (the node at 0x030f0000 reads zero
+in every register and is disabled in DT, and the ve node deliberately has no
+iommus property), so the addresses cedrus programs are physical and go
+straight to memory.
+
+That is the leading explanation for the corruption seen when decode runs
+alongside a CMA-backed KMS scanout: five reproductions, five different
+victims -- a pool_workqueue, the hrtimer rbtree, a dma_fence, the deadline
+runqueue and a kernel stack. Those are slab and stack allocations, which are
+unmovable and therefore never placed in CMA, so a write running off the end
+of a CMA buffer cannot reach them. Stale-address writes can.
+
+Pulse the reset in stop_streaming, before codec->stop() frees anything and
+while the device is still powered. Gated by sunxi_cedrus.stop_reset, default
+on and writable at runtime, so both behaviours can be compared within a
+single boot rather than across two flashes.
+
+Diagnostic before fix, deliberately: a reset is device-wide, so with a second
+m2m context mid-job this would break that job. Making it safe means checking
+that no job is running, or performing the reset from the m2m job context.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -14,6 +14,7 @@
+  */
+ 
+ #include <linux/pm_runtime.h>
++#include <linux/reset.h>
+ 
+ #include <media/videobuf2-dma-contig.h>
+ #include <media/v4l2-device.h>
+@@ -53,6 +54,35 @@
+ 
+ #define CEDRUS_GUARD_POISON	0x5au
+ 
++/*
++ * Halt the VE when streaming stops, before anything it might still be writing
++ * to is freed (sunxi_cedrus.stop_reset, default on; writable at runtime so the
++ * two behaviours can be compared inside one boot).
++ *
++ * cedrus_stop_streaming() frees the codec's auxiliary DMA buffers -- for H.264,
++ * pic_info_buf and neighbor_info_buf -- and returns the capture buffers, all
++ * without asserting the engine's reset or waiting for it to go idle. The
++ * driver's only reset_control_reset() is in the watchdog timeout handler. If
++ * the VE is still executing at that point it goes on writing into pages the
++ * allocator has already handed to somebody else, and on this SoC there is no
++ * IOMMU to stop it (see dma_guard above).
++ *
++ * That is the leading explanation for the kernel memory corruption seen when
++ * decode and a CMA-backed KMS scanout run together: five reproductions, five
++ * different victims, all of them slab or stack allocations that CMA never
++ * hosts -- so the writes are going to stale addresses, not off the end of a
++ * buffer.
++ *
++ * CAVEAT, and why this is a diagnostic before it is a fix: a reset is
++ * device-wide. With a second m2m context mid-job this would break that job.
++ * Making it safe means checking that no job is running, or resetting from the
++ * m2m job context instead.
++ */
++static bool stop_reset = true;
++module_param(stop_reset, bool, 0644);
++MODULE_PARM_DESC(stop_reset,
++		 "halt the VE when streaming stops, before its DMA buffers are freed");
++
+ #define CEDRUS_DECODE_SRC	BIT(0)
+ #define CEDRUS_DECODE_DST	BIT(1)
+ 
+@@ -654,6 +684,19 @@
+ 	struct cedrus_dev *dev = ctx->dev;
+ 
+ 	if (V4L2_TYPE_IS_OUTPUT(vq->type)) {
++		if (stop_reset) {
++			/*
++			 * Order matters: stop the watchdog first so it cannot
++			 * reset the engine underneath us, then pulse the reset
++			 * while the device is still powered -- pm_runtime_put()
++			 * below is what drops it.
++			 */
++			cancel_delayed_work_sync(&dev->watchdog_work);
++			if (dev->rstc_ve3)
++				reset_control_reset(dev->rstc_ve3);
++			reset_control_reset(dev->rstc);
++		}
++
+ 		if (ctx->current_codec->stop)
+ 			ctx->current_codec->stop(ctx);
+ 

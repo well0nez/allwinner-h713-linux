@@ -1,0 +1,96 @@
+From 610884946d52b7cb411d9db7f60795f6da6cb741 Mon Sep 17 00:00:00 2001
+From: h713 <build@h713>
+Date: Fri, 21 Aug 2026 12:00:00 -0700
+Subject: [PATCH] mmc: sunxi: run H713 SDIO at stock SDR104/50MHz
+
+The stock board uses a four-bit UHS-SDR104 link with a 50 MHz ceiling.  Our
+port reported those settings but drove the SDIO link about four times faster:
+CMD53 timing measured 48.6 MHz with ios.clock at 12.5 MHz and 96.9 MHz with
+ios.clock at 25 MHz.
+
+Two compensations were being applied even though neither corresponding divide
+is present on this H713 SDIO path.  The v5p3x host code doubled the requested
+module clock for 2X timing, and the H713 CCU description inherited H616's fixed
+/2 MMC post-divider.  Remove both for MMC1 only.  MMC0/MMC2, including the
+working HS400 eMMC path, are deliberately unchanged until separately measured.
+
+Restore the vendor device tree's UHS modes and 50 MHz ceiling.  The existing
+v5p3x per-speed delay programming selects the stock 104M table at this rate;
+the AIC bring-up code removes DDR50 before the rescan, so SDR104 remains the
+highest mutually advertised mode.
+
+Keep the explicit v5p3x 4096-byte IDMA descriptor encoding from the preceding
+patch in the series; it is required for reliable transfers in both directions.
+
+---
+ arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi |  5 ++++-
+ drivers/clk/sunxi-ng/ccu-sun50i-h713.c         |  4 ++--
+ drivers/mmc/host/sunxi-mmc.c                   |  8 --------
+ 3 files changed, 6 insertions(+), 11 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+index f617719b0f09..e3721487df30 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -942,6 +942,9 @@ mmc1: mmc@4021000 {
+ 			cap-sd-highspeed;
+ 			cap-sdio-irq;
+ 			sd-uhs-sdr25;
++			sd-uhs-sdr50;
++			sd-uhs-sdr104;
++			sd-uhs-ddr50;
+ 			no-mmc;
+ 			no-sd;
+ 			keep-power-in-suspend;
+@@ -953,7 +956,7 @@ mmc1: mmc@4021000 {
+ 			 * read-threshold programming in the host driver is required;
+ 			 * declaring these UHS modes without it stalls SDIO discovery.
+ 			 */
+-			max-frequency = <25000000>;
++			max-frequency = <50000000>;
+ 			#address-cells = <1>;
+ 			#size-cells = <0>;
+ 			status = "okay";
+diff --git a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
+index f59596119dd1..86f8e6a3371b 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
++++ b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
+@@ -389,8 +389,8 @@ static const char * const mmc_parents[] = { "osc24M", "pll-periph0-2x",
+ 					    "pll-periph1-2x" };
+ static SUNXI_CCU_MP_WITH_MUX_GATE_POSTDIV(mmc0_clk, "mmc0", mmc_parents, 0x830,
+ 					  0, 4, 8, 2, 24, 2, BIT(31), 2, 0);
+-static SUNXI_CCU_MP_WITH_MUX_GATE_POSTDIV(mmc1_clk, "mmc1", mmc_parents, 0x834,
+-					  0, 4, 8, 2, 24, 2, BIT(31), 2, 0);
++static SUNXI_CCU_MP_WITH_MUX_GATE(mmc1_clk, "mmc1", mmc_parents, 0x834,
++				  0, 4, 8, 2, 24, 2, BIT(31), 0);
+ static SUNXI_CCU_MP_WITH_MUX_GATE_POSTDIV(mmc2_clk, "mmc2", mmc_parents, 0x838,
+ 					  0, 4, 8, 2, 24, 2, BIT(31), 2, 0);
+ 
+diff --git a/drivers/mmc/host/sunxi-mmc.c b/drivers/mmc/host/sunxi-mmc.c
+index 8c10975971d4..2ca9a5ded269 100644
+--- a/drivers/mmc/host/sunxi-mmc.c
++++ b/drivers/mmc/host/sunxi-mmc.c
+@@ -1439,10 +1439,6 @@ static int sunxi_mmc_clk_set_rate(struct sunxi_mmc_host *host,
+ 	if (!ios->clock)
+ 		return 0;
+ 
+-	/* H713 v5p3x: 2X timing halves output. Double module clock. */
+-	if (host->cfg->no_wait_pre_over)
+-		clock <<= 1;
+-
+ 	/*
+ 	 * Under the old timing mode, 8 bit DDR requires the module
+ 	 * clock to be double the card clock. Under the new timing
+@@ -1493,10 +1489,6 @@ static int sunxi_mmc_clk_set_rate(struct sunxi_mmc_host *host,
+ 
+ 	/* update card clock rate to account for internal divider */
+ 	rate /= div;
+-	/* H713: 2X timing halves output */
+-	if (host->cfg->no_wait_pre_over)
+-		rate >>= 1;
+-
+ 	/*
+ 	 * Configure the controller to use the new timing mode if needed.
+ 	 * On controllers that only support the new timing mode, such as
+-- 
+2.55.0

@@ -1,0 +1,494 @@
+--- a/drivers/pwm/pwm-sun8i.c	1970-01-01 01:00:00.000000000 +0100
++++ b/drivers/pwm/pwm-sun8i.c	2026-03-24 11:44:40.695350520 +0100
+@@ -0,0 +1,462 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Driver for Allwinner sun50i-H713 (sun50iw12) Pulse Width Modulation Controller
++ *
++ * Copyright (C) 2024 BDG Handel GmbH
++ *
++ * This driver supports the second-generation PWM IP block found in the
++ * Allwinner H713 SoC. Channels are paired and each pair shares a clock
++ * configuration register (PCCR).
++ *
++ * Limitations:
++ * - Dead-zone and capture modes are not supported
++ * - IRQ mode is not supported
++ * - Maximum period counter value is 65535 (16-bit)
++ */
++
++#include <linux/bitfield.h>
++#include <linux/clk.h>
++#include <linux/io.h>
++#include <linux/math64.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/pwm.h>
++#include <linux/reset.h>
++
++/* Global registers */
++#define SUN8I_PWM_PIER			0x000	/* IRQ Enable */
++#define SUN8I_PWM_PISR			0x004	/* IRQ Status */
++
++/* Per-pair clock configuration: pairs 0..7, stride 4 from 0x020. */
++#define SUN8I_PWM_PCCR(pair)		(0x020 + (pair) * 4)
++#define SUN8I_PCCR_CLK_SRC		GENMASK(8, 7)	/* 0=hosc, 1=apb */
++#define SUN8I_PCCR_DIV_M		GENMASK(3, 0)	/* 0=div1 .. 8=div256 */
++#define SUN8I_CLK_SRC_HOSC		0
++#define SUN8I_CLK_SRC_APB		1
++
++/* Per-channel clock gate and enable registers: bit N = channel N. */
++#define SUN8I_PWM_CLK_GATE		0x040
++#define SUN8I_PWM_ENABLE		0x080
++
++/* Per-channel registers: stride 0x20 starting at 0x100 */
++#define SUN8I_PWM_CTL(ch)		(0x100 + (ch) * 0x20)
++#define SUN8I_CTL_PRESCALER		GENMASK(7, 0) /* encoded divider - 1 */
++#define SUN8I_CTL_ACT_HIGH		BIT(8)	/* 1=normal, 0=inversed */
++
++#define SUN8I_PWM_PERIOD(ch)		(0x104 + (ch) * 0x20)
++#define SUN8I_PERIOD_ENTIRE		GENMASK(31, 16) /* period cycles - 1 */
++#define SUN8I_PERIOD_ACT		GENMASK(15, 0)	/* active cycles */
++
++#define SUN8I_PWM_CNT(ch)		(0x108 + (ch) * 0x20)	/* RO counter */
++
++/* Keep both 16-bit fields representable, including 100% duty. */
++#define SUN8I_MAX_CYCLES		0xFFFFU
++
++/* Default number of PWM channels */
++#define SUN8I_DEFAULT_NPWM		8
++
++struct sun8i_pwm_chip {
++	void __iomem		*base;
++	struct clk		*bus_clk;	/* register access gate */
++	struct clk		*hosc_clk;	/* 24 MHz oscillator */
++	struct clk		*apb_clk;	/* APB bus clock (optional) */
++	struct reset_control	*rst;
++};
++
++static inline struct sun8i_pwm_chip *to_sun8i_pwm_chip(struct pwm_chip *chip)
++{
++	return pwmchip_get_drvdata(chip);
++}
++
++static inline u32 sun8i_pwm_readl(struct sun8i_pwm_chip *chip, u32 offset)
++{
++	return readl(chip->base + offset);
++}
++
++static inline void sun8i_pwm_writel(struct sun8i_pwm_chip *chip,
++				    u32 val, u32 offset)
++{
++	writel(val, chip->base + offset);
++}
++
++/*
++ * sun8i_pwm_get_state - read back current hardware state
++ *
++ * Called by the PWM core on the first consumer request to learn the
++ * hardware state.  Most importantly this is called after U-Boot has set up
++ * a backlight PWM, and we must not disturb the hardware here.
++ */
++static int sun8i_pwm_get_state(struct pwm_chip *chip,
++			       struct pwm_device *pwm,
++			       struct pwm_state *state)
++{
++	struct sun8i_pwm_chip *sun8ichip = to_sun8i_pwm_chip(chip);
++	unsigned int ch = pwm->hwpwm;
++	unsigned int pair = ch / 2;
++	u32 enable_reg, pccr, ctl, period_reg;
++	u32 clk_src, div_m, prescaler, entire_cycles, active_cycles;
++	u64 clk_rate, tmp;
++
++	enable_reg = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_ENABLE);
++	state->enabled = !!(enable_reg & BIT(ch));
++
++	pccr = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_PCCR(pair));
++	clk_src = FIELD_GET(SUN8I_PCCR_CLK_SRC, pccr);
++	div_m = FIELD_GET(SUN8I_PCCR_DIV_M, pccr);
++
++	/* Determine clock rate for this pair */
++	if (clk_src == SUN8I_CLK_SRC_APB && sun8ichip->apb_clk)
++		clk_rate = clk_get_rate(sun8ichip->apb_clk);
++	else
++		clk_rate = clk_get_rate(sun8ichip->hosc_clk);
++
++	if (!clk_rate)
++		clk_rate = 24000000UL;	/* fallback: hosc 24 MHz */
++
++	ctl = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_CTL(ch));
++	prescaler = FIELD_GET(SUN8I_CTL_PRESCALER, ctl);
++
++	/* PCCR M encodes 2^M; PCR prescaler encodes divider - 1. */
++	clk_rate >>= div_m;
++	clk_rate = div_u64(clk_rate, prescaler + 1);
++
++	if (ctl & SUN8I_CTL_ACT_HIGH)
++		state->polarity = PWM_POLARITY_NORMAL;
++	else
++		state->polarity = PWM_POLARITY_INVERSED;
++
++	period_reg = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_PERIOD(ch));
++
++	/* The upper field stores period cycles - 1; duty is the lower field. */
++	entire_cycles = FIELD_GET(SUN8I_PERIOD_ENTIRE, period_reg) + 1;
++	active_cycles = FIELD_GET(SUN8I_PERIOD_ACT, period_reg);
++
++	/* period_ns = entire_cycles * 1e9 / clk_rate */
++	tmp = (u64)entire_cycles * NSEC_PER_SEC;
++	state->period = div_u64(tmp, clk_rate);
++
++	/* duty_cycle_ns = active_cycles * 1e9 / clk_rate */
++	tmp = (u64)active_cycles * NSEC_PER_SEC;
++	state->duty_cycle = div_u64(tmp, clk_rate);
++
++	return 0;
++}
++
++/*
++ * sun8i_pwm_find_clock - find best clock source and power-of-two divider
++ *
++ * Searches all available clock sources, PCCR dividers (2^M), and the PCR
++ * prescaler for the largest period count that fits in 16 bits. This follows
++ * the two-stage divider model recovered from the shipping H713 driver.
++ *
++ * Returns 0 on success; fills *clk_src_out, *div_m_out, and
++ * *entire_cycles_out.
++ */
++static int sun8i_pwm_find_clock(struct sun8i_pwm_chip *chip,
++				u64 period_ns,
++				u32 *clk_src_out,
++				u32 *div_m_out,
++				u32 *prescaler_out,
++				u32 *entire_cycles_out)
++{
++	static const u32 srcs[] = { SUN8I_CLK_SRC_HOSC, SUN8I_CLK_SRC_APB };
++	u64 best_cycles = 0;
++	u32 best_src = SUN8I_CLK_SRC_HOSC;
++	u32 best_m = 0;
++	u32 best_prescaler = 0;
++	unsigned int i, m, prescaler;
++
++	if (!period_ns)
++		return -EINVAL;
++
++	for (i = 0; i < ARRAY_SIZE(srcs); i++) {
++		u64 rate;
++
++		if (srcs[i] == SUN8I_CLK_SRC_APB) {
++			if (!chip->apb_clk)
++				continue;
++			rate = clk_get_rate(chip->apb_clk);
++		} else {
++			rate = clk_get_rate(chip->hosc_clk);
++		}
++
++		if (!rate)
++			continue;
++
++		for (m = 0; m <= 8; m++) {
++			u64 divided_rate = rate >> m;
++
++			if (!divided_rate)
++				break;
++
++			for (prescaler = 0; prescaler <= 0xff; prescaler++) {
++				u64 cycles;
++
++				cycles = div_u64(divided_rate * period_ns,
++						 NSEC_PER_SEC * (prescaler + 1ULL));
++				if (!cycles)
++					break;
++				if (cycles > SUN8I_MAX_CYCLES)
++					continue;
++
++				if (cycles > best_cycles) {
++					best_cycles = cycles;
++					best_src = srcs[i];
++					best_m = m;
++					best_prescaler = prescaler;
++				}
++
++				/* Later prescalers can only reduce resolution. */
++				break;
++			}
++		}
++	}
++
++	if (!best_cycles)
++		return -EINVAL;
++
++	*clk_src_out = best_src;
++	*div_m_out = best_m;
++	*prescaler_out = best_prescaler;
++	*entire_cycles_out = (u32)best_cycles;
++
++	return 0;
++}
++
++/*
++ * sun8i_pwm_apply - configure and enable/disable a PWM channel
++ *
++ * Only writes hardware registers when a consumer explicitly requests a
++ * state change.  This function is NOT called during probe, so U-Boot's
++ * backlight configuration on channel 2 is preserved until a consumer
++ * explicitly requests a change.
++ */
++static int sun8i_pwm_apply(struct pwm_chip *chip,
++			   struct pwm_device *pwm,
++			   const struct pwm_state *state)
++{
++	struct sun8i_pwm_chip *sun8ichip = to_sun8i_pwm_chip(chip);
++	unsigned int ch = pwm->hwpwm;
++	unsigned int pair = ch / 2;
++	u32 clk_src, div_m, prescaler, entire_cycles, active_cycles;
++	u32 pccr, period_val, ctl_val, gate_val, enable_val;
++	int ret;
++
++	if (!state->enabled) {
++		/* Match the vendor driver's simple-channel disable sequence. */
++		enable_val = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_ENABLE);
++		enable_val &= ~BIT(ch);
++		sun8i_pwm_writel(sun8ichip, enable_val, SUN8I_PWM_ENABLE);
++		gate_val = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_CLK_GATE);
++		gate_val &= ~BIT(ch);
++		sun8i_pwm_writel(sun8ichip, gate_val, SUN8I_PWM_CLK_GATE);
++		return 0;
++	}
++
++	/* Find best clock parameters for the requested period */
++	ret = sun8i_pwm_find_clock(sun8ichip, state->period,
++				   &clk_src, &div_m, &prescaler,
++				   &entire_cycles);
++	if (ret) {
++		dev_err(pwmchip_parent(chip),
++			"PWM%u: cannot find clock config for period %lluns\n",
++			ch, state->period);
++		return ret;
++	}
++
++	/*
++	 * active_cycles = entire_cycles * duty_cycle / period
++	 * duty_cycle <= period so the result fits in 16 bits.
++	 */
++	if (state->duty_cycle >= state->period) {
++		active_cycles = entire_cycles;
++	} else if (!state->duty_cycle) {
++		active_cycles = 0;
++	} else {
++		active_cycles = (u32)div_u64((u64)entire_cycles * state->duty_cycle,
++					     state->period);
++	}
++
++	/* PCCR is shared by the two channels in a pair; preserve other bits. */
++	pccr = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_PCCR(pair));
++	pccr &= ~(SUN8I_PCCR_CLK_SRC | SUN8I_PCCR_DIV_M);
++	pccr |= FIELD_PREP(SUN8I_PCCR_CLK_SRC, clk_src) |
++		FIELD_PREP(SUN8I_PCCR_DIV_M, div_m);
++	sun8i_pwm_writel(sun8ichip, pccr, SUN8I_PWM_PCCR(pair));
++
++	/* The vendor driver gates the channel clock at PCGR +0x40. */
++	gate_val = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_CLK_GATE);
++	gate_val |= BIT(ch);
++	sun8i_pwm_writel(sun8ichip, gate_val, SUN8I_PWM_CLK_GATE);
++
++	/*
++	 * Period register: [31:16]=period_cycles-1, [15:0]=active_cycles.
++	 */
++	period_val = FIELD_PREP(SUN8I_PERIOD_ENTIRE, entire_cycles - 1) |
++		     FIELD_PREP(SUN8I_PERIOD_ACT, active_cycles);
++	sun8i_pwm_writel(sun8ichip, period_val, SUN8I_PWM_PERIOD(ch));
++
++	/* PCR low byte is prescaler-1; bit 8 selects normal polarity. */
++	ctl_val = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_CTL(ch));
++	ctl_val &= ~(SUN8I_CTL_PRESCALER | SUN8I_CTL_ACT_HIGH);
++	ctl_val |= FIELD_PREP(SUN8I_CTL_PRESCALER, prescaler);
++	if (state->polarity == PWM_POLARITY_NORMAL)
++		ctl_val |= SUN8I_CTL_ACT_HIGH;
++	sun8i_pwm_writel(sun8ichip, ctl_val, SUN8I_PWM_CTL(ch));
++
++	/* Enable the channel */
++	enable_val = sun8i_pwm_readl(sun8ichip, SUN8I_PWM_ENABLE);
++	enable_val |= BIT(ch);
++	sun8i_pwm_writel(sun8ichip, enable_val, SUN8I_PWM_ENABLE);
++
++	return 0;
++}
++
++static const struct pwm_ops sun8i_pwm_ops = {
++	.apply		= sun8i_pwm_apply,
++	.get_state	= sun8i_pwm_get_state,
++};
++
++static const struct of_device_id sun8i_pwm_dt_ids[] = {
++	{ .compatible = "allwinner,sun50i-h713-pwm" },
++	{ /* sentinel */ },
++};
++MODULE_DEVICE_TABLE(of, sun8i_pwm_dt_ids);
++
++static int sun8i_pwm_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct pwm_chip *chip;
++	struct sun8i_pwm_chip *sun8ichip;
++	u32 npwm = SUN8I_DEFAULT_NPWM;
++	int ret;
++
++	/* Allow DTS to override the channel count */
++	of_property_read_u32(dev->of_node, "allwinner,npwms", &npwm);
++
++	chip = devm_pwmchip_alloc(dev, npwm, sizeof(*sun8ichip));
++	if (IS_ERR(chip))
++		return PTR_ERR(chip);
++	sun8ichip = to_sun8i_pwm_chip(chip);
++
++	sun8ichip->base = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(sun8ichip->base))
++		return PTR_ERR(sun8ichip->base);
++
++	/* Bus clock: required for register access */
++	sun8ichip->bus_clk = devm_clk_get(dev, "bus");
++	if (IS_ERR(sun8ichip->bus_clk))
++		return dev_err_probe(dev, PTR_ERR(sun8ichip->bus_clk),
++				     "failed to get bus clock\n");
++
++	/* HOSC 24 MHz: primary PWM source clock */
++	sun8ichip->hosc_clk = devm_clk_get(dev, "hosc");
++	if (IS_ERR(sun8ichip->hosc_clk))
++		return dev_err_probe(dev, PTR_ERR(sun8ichip->hosc_clk),
++				     "failed to get hosc clock\n");
++
++	/* APB clock: optional secondary PWM source clock */
++	sun8ichip->apb_clk = devm_clk_get_optional(dev, "apb");
++	if (IS_ERR(sun8ichip->apb_clk))
++		return dev_err_probe(dev, PTR_ERR(sun8ichip->apb_clk),
++				     "failed to get apb clock\n");
++
++	sun8ichip->rst = devm_reset_control_get(dev, NULL);
++	if (IS_ERR(sun8ichip->rst))
++		return dev_err_probe(dev, PTR_ERR(sun8ichip->rst),
++				     "failed to get reset control\n");
++
++	/* Deassert reset to allow register access */
++	ret = reset_control_deassert(sun8ichip->rst);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to deassert reset\n");
++
++	/* Enable bus clock -- kept on for the lifetime of the driver */
++	ret = clk_prepare_enable(sun8ichip->bus_clk);
++	if (ret) {
++		dev_err(dev, "failed to enable bus clock: %d\n", ret);
++		goto err_reset;
++	}
++
++	/* Prepare hosc so clk_get_rate() is reliable in get_state */
++	ret = clk_prepare_enable(sun8ichip->hosc_clk);
++	if (ret) {
++		dev_err(dev, "failed to enable hosc clock: %d\n", ret);
++		goto err_bus_clk;
++	}
++
++	/* Prepare apb if present */
++	if (sun8ichip->apb_clk) {
++		ret = clk_prepare_enable(sun8ichip->apb_clk);
++		if (ret) {
++			dev_err(dev, "failed to enable apb clock: %d\n", ret);
++			goto err_hosc_clk;
++		}
++	}
++
++	/*
++	 * IMPORTANT: We do NOT write any PWM registers here.
++	 *
++	 * U-Boot may have configured a channel (e.g. channel 2 for backlight)
++	 * before the kernel starts.  The get_state callback reads back the
++	 * current hardware state when a consumer first requests the channel.
++	 * The apply callback only writes registers when a consumer explicitly
++	 * requests a state change.  This guarantees the backlight stays on
++	 * throughout the boot process.
++	 */
++
++	chip->ops = &sun8i_pwm_ops;
++
++	ret = devm_pwmchip_add(dev, chip);
++	if (ret) {
++		dev_err(dev, "failed to add PWM chip: %d\n", ret);
++		goto err_apb_clk;
++	}
++
++	platform_set_drvdata(pdev, chip);
++
++	dev_info(dev, "Allwinner H713 PWM controller registered (%u channels)\n",
++		 npwm);
++
++	return 0;
++
++err_apb_clk:
++	if (sun8ichip->apb_clk)
++		clk_disable_unprepare(sun8ichip->apb_clk);
++err_hosc_clk:
++	clk_disable_unprepare(sun8ichip->hosc_clk);
++err_bus_clk:
++	clk_disable_unprepare(sun8ichip->bus_clk);
++err_reset:
++	reset_control_assert(sun8ichip->rst);
++
++	return ret;
++}
++
++static void sun8i_pwm_remove(struct platform_device *pdev)
++{
++	struct pwm_chip *chip = platform_get_drvdata(pdev);
++	struct sun8i_pwm_chip *sun8ichip = to_sun8i_pwm_chip(chip);
++
++	if (sun8ichip->apb_clk)
++		clk_disable_unprepare(sun8ichip->apb_clk);
++	clk_disable_unprepare(sun8ichip->hosc_clk);
++	clk_disable_unprepare(sun8ichip->bus_clk);
++	reset_control_assert(sun8ichip->rst);
++}
++
++static struct platform_driver sun8i_pwm_driver = {
++	.driver = {
++		.name		= "sun8i-pwm",
++		.of_match_table	= sun8i_pwm_dt_ids,
++	},
++	.probe	= sun8i_pwm_probe,
++	.remove	= sun8i_pwm_remove,
++};
++module_platform_driver(sun8i_pwm_driver);
++
++MODULE_ALIAS("platform:sun8i-pwm");
++MODULE_AUTHOR("BDG Handel GmbH");
++MODULE_DESCRIPTION("Allwinner sun50i-H713 PWM driver");
++MODULE_LICENSE("GPL v2");
+--- a/drivers/pwm/Kconfig	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/pwm/Kconfig	2026-03-24 11:45:11.199549528 +0100
+@@ -791,3 +791,16 @@
+ 	  will be called pwm-xilinx.
+ 
+ endif
++
++config PWM_SUN8I
++	tristate "Allwinner sun8i/sun50i PWM support"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	depends on HAS_IOMEM && COMMON_CLK
++	help
++	  PWM driver for the second-generation Allwinner PWM controller found
++	  in H713, D1, T113, H616, A133 and other sun8i/sun50i SoCs. This
++	  controller supports up to 8 paired channels with independent clock
++	  configuration per pair.
++
++	  To compile this driver as a module, choose M here: the module
++	  will be called pwm-sun8i.
+--- a/drivers/pwm/Makefile	2025-09-11 17:23:23.000000000 +0200
++++ b/drivers/pwm/Makefile	2026-03-24 11:45:12.623558805 +0100
+@@ -64,6 +64,7 @@
+ obj-$(CONFIG_PWM_STM32_LP)	+= pwm-stm32-lp.o
+ obj-$(CONFIG_PWM_STMPE)		+= pwm-stmpe.o
+ obj-$(CONFIG_PWM_SUN4I)		+= pwm-sun4i.o
++obj-$(CONFIG_PWM_SUN8I)		+= pwm-sun8i.o
+ obj-$(CONFIG_PWM_SUNPLUS)	+= pwm-sunplus.o
+ obj-$(CONFIG_PWM_TEGRA)		+= pwm-tegra.o
+ obj-$(CONFIG_PWM_TIECAP)	+= pwm-tiecap.o

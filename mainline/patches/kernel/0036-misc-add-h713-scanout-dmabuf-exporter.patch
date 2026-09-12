@@ -1,0 +1,328 @@
+misc: add a dma-buf exporter for the H713 scanout carveout
+
+The GPU video path needs a render target the display can actually scan
+out of. Nothing else in this kernel produces one: /dev/dma_heap and
+/dev/udmabuf are both absent, panfrost's own BOs are shmem-backed and
+scattered, and DECD's MAP_LINEAR_BUFFER hands back a dma_addr rather
+than an fd.
+
+uboot-scanout@6c100000 is a no-map reservation with no struct page, so
+the exporter builds its sg_table with dma_map_resource() rather than
+sg_set_page(). panfrost consumes sg_dma_address() and is content with a
+page-less table.
+
+Verified on hardware: the GPU renders a position-dependent gradient into
+0x6c100000 and the bytes read back correctly through /dev/mem -- an
+independent path from GL, so this is not GL agreeing with itself.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -3,6 +3,18 @@
+ # Misc strange devices
+ #
+ 
++config SUNXI_SCANOUT_DMABUF
++	tristate "H713 scanout carveout dma-buf exporter"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	select DMA_SHARED_BUFFER
++	help
++	  Exports the U-Boot scanout carveout as a dma-buf, so the GPU can
++	  render directly into the region AFBD scans out of and the CPU
++	  never touches a pixel.
++
++	  The carveout is a no-map reservation with no struct page, so the
++	  exporter uses dma_map_resource() instead of page-backed sg.
++
+ menu "Misc devices"
+ 
+ config SENSORS_LIS3LV02D
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -3,6 +3,7 @@
+ # Makefile for misc devices that really don't fit anywhere else.
+ #
+ 
++obj-$(CONFIG_SUNXI_SCANOUT_DMABUF)	+= sunxi-scanout-dmabuf.o
+ obj-$(CONFIG_IBM_ASM)		+= ibmasm/
+ obj-$(CONFIG_IBMVMC)		+= ibmvmc.o
+ obj-$(CONFIG_AD525X_DPOT)	+= ad525x_dpot.o
+--- /dev/null
++++ b/drivers/misc/sunxi-scanout-dmabuf.c
+@@ -0,0 +1,275 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * sunxi-scanout-dmabuf -- export the U-Boot scanout carveout as a dma-buf.
++ *
++ * The GPU video path needs a render target the display can actually scan out
++ * of, which means a dma-buf backed by the physically contiguous region AFBD's
++ * source register points at. Nothing else in this kernel can produce one:
++ * /dev/dma_heap and /dev/udmabuf are both absent, panfrost's own BOs are
++ * shmem-backed and scattered, and DECD's MAP_LINEAR_BUFFER hands back a
++ * dma_addr rather than an fd.
++ *
++ * THE CONSTRAINT THAT SHAPES THIS DRIVER: uboot-scanout@6c100000 is a `no-map`
++ * reservation, so it is carved out of System RAM and has NO struct page. An
++ * sg_table built with sg_set_page() would be invalid, and anything that calls
++ * sg_page() on it gets garbage. dma_map_resource() is the API meant for
++ * exactly this -- a DMA mapping over a physical resource with no page backing
++ * -- and it is what map_dma_buf uses below.
++ *
++ * That also means importers which insist on pages will fail. panfrost does
++ * not: panfrost_mmu_map() walks the sg_table with for_each_sgtable_dma_sg()
++ * and consumes sg_dma_address(), so a page-less table is fine for it.
++ *
++ * Deliberately parameterised rather than DT-wired. Iterating a module on this
++ * board is a 63 KB serial transfer; a DT change is a kernel rebuild plus a
++ * 12-minute FIT transfer. Once the shape is settled this should take its
++ * region from a memory-region phandle like a normal driver.
++ */
++#include <linux/dma-buf.h>
++#include <linux/dma-mapping.h>
++#include <linux/fs.h>
++#include <linux/io.h>
++#include <linux/miscdevice.h>
++#include <linux/module.h>
++#include <linux/scatterlist.h>
++#include <linux/slab.h>
++#include <linux/uaccess.h>
++
++#define SCANOUT_IOC_MAGIC   'S'
++/* arg: struct scanout_req *, filled in with the fd */
++#define SCANOUT_IOC_GET_FD  _IOWR(SCANOUT_IOC_MAGIC, 1, struct scanout_req)
++
++struct scanout_req {
++	__u64 phys;     /* in: 0 = use the module default */
++	__u64 size;     /* in: 0 = use the module default */
++	__s32 fd;       /* out */
++	__u32 pad;
++};
++
++static u64 scanout_phys = 0x6c100000ULL;
++static u64 scanout_size = 0x800000ULL;          /* both buffers */
++module_param(scanout_phys, ullong, 0444);
++MODULE_PARM_DESC(scanout_phys, "physical base of the scanout carveout");
++module_param(scanout_size, ullong, 0444);
++MODULE_PARM_DESC(scanout_size, "size of the scanout carveout");
++
++struct scanout_buf {
++	phys_addr_t phys;
++	size_t size;
++};
++
++struct scanout_map {
++	struct sg_table sgt;
++	dma_addr_t dma;
++	size_t size;
++};
++
++/*
++ * One sg entry describing the whole carveout, with the DMA address filled in
++ * by dma_map_resource() and NO page. Importers that only read
++ * sg_dma_address()/sg_dma_len() -- panfrost among them -- work with this.
++ */
++static struct sg_table *scanout_map_dma_buf(struct dma_buf_attachment *attach,
++					    enum dma_data_direction dir)
++{
++	struct scanout_buf *buf = attach->dmabuf->priv;
++	struct scanout_map *m;
++	int ret;
++
++	m = kzalloc(sizeof(*m), GFP_KERNEL);
++	if (!m)
++		return ERR_PTR(-ENOMEM);
++
++	ret = sg_alloc_table(&m->sgt, 1, GFP_KERNEL);
++	if (ret) {
++		kfree(m);
++		return ERR_PTR(ret);
++	}
++
++	m->dma = dma_map_resource(attach->dev, buf->phys, buf->size, dir,
++				  DMA_ATTR_SKIP_CPU_SYNC);
++	if (dma_mapping_error(attach->dev, m->dma)) {
++		sg_free_table(&m->sgt);
++		kfree(m);
++		return ERR_PTR(-ENOMEM);
++	}
++	m->size = buf->size;
++
++	sg_dma_address(m->sgt.sgl) = m->dma;
++	sg_dma_len(m->sgt.sgl) = buf->size;
++	m->sgt.sgl->length = buf->size;
++	/* No page: sg_set_page() would be a lie for a no-map reservation. */
++
++	attach->priv = m;
++	return &m->sgt;
++}
++
++static void scanout_unmap_dma_buf(struct dma_buf_attachment *attach,
++				  struct sg_table *sgt,
++				  enum dma_data_direction dir)
++{
++	struct scanout_map *m = attach->priv;
++
++	if (!m)
++		return;
++	dma_unmap_resource(attach->dev, m->dma, m->size, dir,
++			   DMA_ATTR_SKIP_CPU_SYNC);
++	sg_free_table(&m->sgt);
++	kfree(m);
++	attach->priv = NULL;
++}
++
++/*
++ * CPU mapping, for filling or inspecting the surface from userspace. Write
++ * combining rather than cached: there is no struct page to invalidate, so a
++ * cached mapping would need explicit maintenance the exporter cannot do.
++ */
++static int scanout_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
++{
++	struct scanout_buf *buf = dmabuf->priv;
++	unsigned long len = vma->vm_end - vma->vm_start;
++
++	if (len > buf->size || vma->vm_pgoff)
++		return -EINVAL;
++
++	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
++	return remap_pfn_range(vma, vma->vm_start,
++			       PHYS_PFN(buf->phys), len, vma->vm_page_prot);
++}
++
++static int scanout_vmap(struct dma_buf *dmabuf, struct iosys_map *map)
++{
++	struct scanout_buf *buf = dmabuf->priv;
++	void __iomem *vaddr;
++
++	vaddr = memremap(buf->phys, buf->size, MEMREMAP_WC);
++	if (!vaddr)
++		return -ENOMEM;
++	iosys_map_set_vaddr_iomem(map, vaddr);
++	return 0;
++}
++
++static void scanout_vunmap(struct dma_buf *dmabuf, struct iosys_map *map)
++{
++	if (map->vaddr_iomem)
++		memunmap((void *)map->vaddr_iomem);
++}
++
++static void scanout_release(struct dma_buf *dmabuf)
++{
++	kfree(dmabuf->priv);
++}
++
++static const struct dma_buf_ops scanout_dmabuf_ops = {
++	.map_dma_buf   = scanout_map_dma_buf,
++	.unmap_dma_buf = scanout_unmap_dma_buf,
++	.release       = scanout_release,
++	.mmap          = scanout_mmap,
++	.vmap          = scanout_vmap,
++	.vunmap        = scanout_vunmap,
++};
++
++static int scanout_export(struct scanout_req *req)
++{
++	DEFINE_DMA_BUF_EXPORT_INFO(einfo);
++	struct scanout_buf *buf;
++	struct dma_buf *dmabuf;
++	int fd;
++
++	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
++	if (!buf)
++		return -ENOMEM;
++
++	buf->phys = req->phys ? (phys_addr_t)req->phys : (phys_addr_t)scanout_phys;
++	buf->size = req->size ? (size_t)req->size : (size_t)scanout_size;
++	buf->size = PAGE_ALIGN(buf->size);
++
++	/*
++	 * Refuse anything outside the configured carveout. This driver hands
++	 * out a DMA mapping of raw physical memory; without this it would be a
++	 * general-purpose "map any physical address" primitive.
++	 */
++	if (buf->phys < scanout_phys ||
++	    buf->phys + buf->size > scanout_phys + scanout_size) {
++		kfree(buf);
++		return -ERANGE;
++	}
++
++	einfo.ops = &scanout_dmabuf_ops;
++	einfo.size = buf->size;
++	einfo.flags = O_RDWR;
++	einfo.priv = buf;
++
++	dmabuf = dma_buf_export(&einfo);
++	if (IS_ERR(dmabuf)) {
++		kfree(buf);
++		return PTR_ERR(dmabuf);
++	}
++
++	fd = dma_buf_fd(dmabuf, O_CLOEXEC);
++	if (fd < 0) {
++		dma_buf_put(dmabuf);          /* frees buf via .release */
++		return fd;
++	}
++	req->fd = fd;
++	return 0;
++}
++
++static long scanout_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	struct scanout_req req;
++	int ret;
++
++	if (cmd != SCANOUT_IOC_GET_FD)
++		return -ENOTTY;
++	if (copy_from_user(&req, (void __user *)arg, sizeof(req)))
++		return -EFAULT;
++
++	ret = scanout_export(&req);
++	if (ret)
++		return ret;
++
++	if (copy_to_user((void __user *)arg, &req, sizeof(req))) {
++		/* The fd is already installed; the caller must close it. */
++		return -EFAULT;
++	}
++	return 0;
++}
++
++static const struct file_operations scanout_fops = {
++	.owner          = THIS_MODULE,
++	.unlocked_ioctl = scanout_ioctl,
++	.compat_ioctl   = compat_ptr_ioctl,
++	.llseek         = noop_llseek,
++};
++
++static struct miscdevice scanout_misc = {
++	.minor = MISC_DYNAMIC_MINOR,
++	.name  = "scanout-dmabuf",
++	.fops  = &scanout_fops,
++	.mode  = 0600,
++};
++
++static int __init scanout_init(void)
++{
++	int ret = misc_register(&scanout_misc);
++
++	if (ret)
++		return ret;
++	pr_info("scanout-dmabuf: carveout %pa + %llu KiB\n",
++		&scanout_phys, (unsigned long long)scanout_size / 1024);
++	return 0;
++}
++
++static void __exit scanout_exit(void)
++{
++	misc_deregister(&scanout_misc);
++}
++
++module_init(scanout_init);
++module_exit(scanout_exit);
++
++MODULE_DESCRIPTION("dma-buf exporter for the H713 U-Boot scanout carveout");
++MODULE_LICENSE("GPL");
++/* dma_buf_export/fd/put live in the DMA_BUF symbol namespace. */
++MODULE_IMPORT_NS("DMA_BUF");

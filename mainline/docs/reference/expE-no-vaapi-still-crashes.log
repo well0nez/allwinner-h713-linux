@@ -1,0 +1,71 @@
+[ 1065.175691] Kernel panic - not syncing: stack-protector: Kernel stack is corrupted in: internal_add_timer+0xd0/0xf8
+[ 1065.186162] CPU: 3 UID: 0 PID: 1533 Comm: kworker/u16:0 Not tainted 6.18.38-builtin #1 NONE 
+[ 1065.194601] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[ 1065.200694] Workqueue: pan_js drm_sched_run_job_work
+[ 1065.205686] Call trace:
+[ 1065.208137]  show_stack+0x18/0x24 (C)
+[ 1065.211813]  __dump_stack+0x28/0x38
+[ 1065.215309]  dump_stack_lvl+0x24/0x6c
+[ 1065.218975]  dump_stack+0x18/0x24
+[ 1065.222294]  vpanic+0x10c/0x2f8
+[ 1065.225442]  vpanic+0x0/0x2f8
+[ 1065.228413]  irqentry_enter_from_user_mode+0x0/0x8
+[ 1065.233207]  internal_add_timer+0xd0/0xf8
+[ 1065.237225]  __mod_timer+0x318/0x434
+[ 1065.240806]  add_timer_global+0x30/0x44
+[ 1065.244646]  __queue_delayed_work+0xd8/0x12c
+[ 1065.248923]  mod_delayed_work_on+0x6c/0xcc
+[ 1065.253023]  drm_sched_run_job_work+0x360/0x504
+[ 1065.257560]  process_scheduled_works+0x170/0x300
+[ 1065.262184]  worker_thread+0x2fc/0x45c
+[ 1065.265936]  kthread+0x198/0x1e4
+[ 1065.269171]  ret_from_fork+0x10/0x20
+[ 1065.272757] SMP: stopping secondary CPUs
+[ 1066.358118] SMP: failed to stop secondary CPUs 2
+[ 1066.362736] Kernel Offset: disabled
+[ 1066.366219] CPU features: 0x000000,00000000,40004000,0400420b
+[ 1066.371958] Memory Limit: none
+[ 1066.375012] Rebooting in 5 seconds..
+
+U-Boot SPL 2026.07-rc5-gdbad200ca799-dirty (Aug 07 2026 - 18:26:52 -0700)
+DRAM: 1024 MiB
+Trying to boot from MMC2
+NOTICE:  BL31: v2.15.0(release):47ee829f7
+NOTICE:  BL31: Built : 03:25:48, Jul 27 2026
+NOTICE:  BL31: Detected Allwinner H713 SoC (1860)
+NOTICE:  BL31: Found U-Boot DTB at 0x4a0d2978, model: HY200 QZ713DF_A1 (Allwinner H713)
+
+
+U-Boot 2026.07-rc5-gdbad200ca799-dirty (Aug 07 2026 - 18:26:52 -0700) Allwinner Technology
+
+CPU:   Allwinner H713 (SUN50I)
+Model: HY200 QZ713DF_A1 (Allwinner H713)
+DRAM:  1 GiB
+Core:  37 devices, 19 uclasses, devicetree: separate
+WDT:   Not starting watchdog@2051000
+MMC:   mmc@4022000: 1
+Loading Environment from MMC... Reading from MMC(1)... OK
+In:    serial
+Out:   serial
+Err:   serial
+Net:   No ethernet found.
+starting USB...
+No USB controllers found
+       scanning usb for storage devices... 0 Storage Device(s) found
+[2KHit any key to stop autoboot: 2[2KHit any key to stop autoboot: 1[2KHit any key to stop autoboot: 0
+7739336 bytes read in 496 ms (14.9 MiB/s)
+## Loading kernel (any) from FIT Image at 50000000 ...
+   Using 'conf-1' configuration
+   Trying 'kernel' kernel subimage
+     Description:  Linux 6.18.38
+     Type:         Kernel Image
+     Compression:  gzip compressed
+     Data Start:   0x500000d0
+     Data Size:    7705928 Bytes = 7.3 MiB
+     Architecture: AArch64
+     OS:           Linux
+     Load Address: 0x48000000
+     Entry Point:  0x48000000
+     Hash algo:    sha256
+     Hash value:   3e30f7cada2762a06640e1a4ec4e3daf1144cc4c2c1634b576eb65b878ef1b89
+   Verifying Hash Integrity ...

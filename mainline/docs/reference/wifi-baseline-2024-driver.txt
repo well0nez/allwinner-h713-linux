@@ -1,0 +1,64 @@
+# Phase 0 baseline -- AIC8800 driver 2024_0109 + firmware Mar 07 2024
+# Captured on the board (h713-arm64, kernel 6.18.38) 2026-08-17 over serial.
+# Board clock is wrong (reads Apr 13); host wall-clock time is authoritative.
+# Read-only capture, before any load. Compare a post-rebase run against this.
+#
+# FIELD RENAME -- do not read a plain diff as a regression. This was captured
+# with the pre-fix script, whose SDIO fault fields were named for register-bit
+# macros that never appear in the kernel log:
+#   fault.fifo_run_error   -> fault.cmd53_fifo_error   (+ .cmd53_phase_error,
+#   fault.hard_ware_locked      .cmd53_retry_limit, .mmc_reset_timeout)
+# The zeros below were correct here (this run had no load and no faults), but
+# they were zero for the wrong reason. A post-rebase capture emits the new
+# names; diff those fields by meaning, not by key. See
+# ../wifi-failure-2026-08-17.md.
+
+ap.hostapd=running
+ap.stations=0
+fault.cmd_timed_out=0
+fault.cmdqueue_drain_timeout=0
+fault.dhdisdown=0
+fault.fifo_run_error=0
+fault.hard_ware_locked=0
+fault.sched_while_atomic=0
+fault.wlan_error_reset=0
+fw.aic_userconfig_8800d80.txt.sha256=995dbb9e4f2e7b19db838291f52be39af9ab673ad51b270c988216ccff1a720e
+fw.fmacfw.build=Mar 07 2024
+fw.fmacfw_8800d80_u02.bin.sha256=6d121e015ff1fb90a90649627d663511804771b37f6cb44c97066cfc313a067a
+fw.fmacfwbt_8800d80_u02.bin.sha256=465106f3bb2945bbdebea99f6cde9465ae00d5829e188499d42449cbdf4fe82c
+fw.fw_adid_8800d80_u02.bin.sha256=a526cbd02fcdc495f049f3ad6b5933cb08cd984b16790c716a060d582fee1a56
+fw.fw_patch_8800d80_u02.bin.sha256=26183182bf07f8f7581e82da8b606d222591a12c56772e75146588eef5196242
+fw.fw_patch_table_8800d80_u02.bin.sha256=a9f663eb7443bc8046f2479cedfcdd93001eb64761f855317dbdbbc077f475cf
+fw.lmacfw_rf_8800d80_u02.bin.sha256=19b2d6b2320b67cb874c5c5c266a8f348cf423d00c0b22d4ad2c737cc603beab
+id.kernel=6.18.38
+id.mod.aic8800_bsp.sha256=3b00a9386428f683a79b6adcb04655f5b39d0b9aabf0f448d03b6c43c066ffbf
+id.mod.aic8800_bsp=loaded
+id.mod.aic8800_btlpm.sha256=3efd66437490569e37507e038faf3e44a35b67097b8c9bf2c7df9a0257bad271
+id.mod.aic8800_btlpm=loaded
+id.mod.aic8800_fdrv.sha256=35eabda7db5bcfd187f70e3abac769664da4a1e15de3cef389ed18448b799c61
+id.mod.aic8800_fdrv=loaded
+link.iface=wlan0
+link.mac=3c:3b:ad:78:f0:28
+link.mode=AP
+link.operstate=up
+link.present=1
+link.rfkill=0
+load.status=NOT_RUN
+logs.readable=1
+meta.host=h713-arm64
+rf.associated=0
+rf.scan_ok=10
+rf.txpower=18.00
+
+# --- observed under load (not machine-generated; see docs/wifi-failure-2026-08-17.md)
+load.observed.method=scp 8 MB workstation -> board over the board's own AP
+load.observed.bytes=261120
+load.observed.bytes_requested=8388608
+load.observed.percent=3.1
+load.observed.seconds=300 (killed by timeout, never completed)
+load.observed.rf_signal_dbm=-71
+load.observed.station_churn_per_min=16
+load.observed.fault_cmd53_fifo_error=1
+load.observed.fault_cmd_timed_out=1
+load.observed.fault_dhdisdown=0
+load.observed.end_state=userspace wedged, AP still beaconing, no IP traffic

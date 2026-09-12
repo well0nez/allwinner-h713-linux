@@ -1,0 +1,535 @@
+drm: add a KMS driver for the H713 AFBD scanout engine
+
+This gives the projector a DRM card node, so any DRM client -- mpv
+--vo=drm, a compositor, fbcon -- can present on the panel. Until now the
+only way to put a frame on screen was a tool that mapped 0x05600000
+through /dev/mem and poked the AFBD registers itself, which meant every
+program that wanted the display had to reimplement the commit sequence and
+no two could share it. (It comes up as card1 in practice: panfrost takes
+minor 0 as a render-only device.)
+
+The driver adopts a display that is ALREADY RUNNING and deliberately keeps
+its hands off everything else. On this board the panel is brought up
+before Linux: U-Boot's h713_disp loads the MIPS co-processor, which
+programs the VBlender timing and the LVDS PHY. Nothing in Linux can do
+that bring-up yet, so this driver never touches timing, the PHY, or
+rst_bus_disp -- asserting that reset would kill a panel it cannot bring
+back. It owns exactly two things: which buffer is scanned out, and when
+the swap happens. Geometry is read back out of the AFBD registers rather
+than hardcoded, and probe fails with a pointed message if it reads zero,
+which is what "you booted without h713_disp" looks like.
+
+The commit sequence is not new work and not guessed. It is the one
+tools/video/gles-play.c uses, which sustained 59.71 fps over 2700 frames
+at a measured 0.00% tearing rate against a 16.94% positive control:
+
+	write SRC = buffer address; clear STATUS; set CTRL bit 0; READY = 1
+
+The one thing dropped from it is gles-play's 50 ms poll of STATUS bit 1.
+READY latches at the next vsync, so the flip completes on the vblank
+interrupt and the page-flip event is armed against it -- no spinning in an
+atomic path, and clients get a present timestamp that corresponds to an
+actual present.
+
+The vsync interrupt protocol (status and enable bytes at +0xc0 and +0xc4,
+write-1-to-clear) comes from the vendor DECD driver's dec_vsync_handler().
+That is inherited RE and this project has been burned by inherited claims,
+but this one carries hardware evidence: an out-of-bounds write in that
+handler crashed the board every ~100 vsyncs, i.e. every ~1.7 s, which only
+happens if the interrupt genuinely fires at 60 Hz.
+
+Framebuffers come from the system CMA pool. A dedicated memory-region is
+supported but optional, and not used by default, because a dma-coherent
+reserved pool allocates in power-of-two page orders: a 3.6 MiB framebuffer
+occupies a 4 MiB slot, so a 16 MiB pool yields exactly four. That is not a
+theoretical limit -- it was measured. With the fbdev console holding one,
+a client can get three, and mpv wants more: it dies at CREATE_DUMB with
+ENOMEM. CMA allocates by range, neither rounding up nor imposing that
+ceiling, and cma=128M on this board leaves room for cedrus as well.
+
+HARDWARE-VERIFIED on the bench board (2026-08-15): probe reads back
+"adopting 1280x720, stride 5120, source 6c100000"; 1320 page flips across
+three runs complete at 59.71 fps -- the panel's exact rate -- with zero
+timeouts; sampling AFBD's source register during a run shows it
+alternating between two client buffers, so scanout really is being
+reprogrammed; and 2254 interrupts on GICv2 142 confirm the vblank bits
+inherited from DECD are right. Operator-confirmed as a Linux login prompt
+on the projector.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/drivers/gpu/drm/tiny/Kconfig
++++ b/drivers/gpu/drm/tiny/Kconfig
+@@ -98,6 +98,25 @@
+ 
+ 	  If M is selected, the module will be built as pixpaper.ko.
+ 
++config DRM_SUN50I_H713_AFBD
++	tristate "DRM support for the Allwinner H713 AFBD scanout engine"
++	depends on DRM && (ARCH_SUNXI || COMPILE_TEST)
++	depends on OF
++	select DRM_CLIENT_SELECTION
++	select DRM_GEM_DMA_HELPER
++	select DRM_KMS_HELPER
++	help
++	  KMS driver for the AFBD scanout engine on the Allwinner H713, as
++	  used in HY200-class projectors.
++
++	  It adopts a display that firmware has already brought up -- the MIPS
++	  co-processor programs the panel timing and LVDS PHY before Linux
++	  starts -- and drives only buffer selection and page flips, so any
++	  DRM client can present on the panel. It never touches timing or the
++	  display reset.
++
++	  If M is selected the module will be called sun50i-h713-afbd.
++
+ config TINYDRM_HX8357D
+ 	tristate "DRM support for HX8357D display panels"
+ 	depends on DRM && SPI
+--- a/drivers/gpu/drm/tiny/Makefile
++++ b/drivers/gpu/drm/tiny/Makefile
+@@ -7,6 +7,7 @@
+ obj-$(CONFIG_DRM_GM12U320)		+= gm12u320.o
+ obj-$(CONFIG_DRM_PANEL_MIPI_DBI)	+= panel-mipi-dbi.o
+ obj-$(CONFIG_DRM_PIXPAPER)              += pixpaper.o
++obj-$(CONFIG_DRM_SUN50I_H713_AFBD)	+= sun50i-h713-afbd.o
+ obj-$(CONFIG_TINYDRM_HX8357D)		+= hx8357d.o
+ obj-$(CONFIG_TINYDRM_ILI9163)		+= ili9163.o
+ obj-$(CONFIG_TINYDRM_ILI9225)		+= ili9225.o
+--- /dev/null
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -0,0 +1,434 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * sun50i-h713-afbd -- KMS for the H713 AFBD scanout engine.
++ *
++ * This driver adopts a display that is ALREADY RUNNING. On this projector the
++ * panel is brought up before Linux: U-Boot's h713_disp loads the MIPS
++ * co-processor, which programs the VBlender timing and the LVDS PHY, and AFBD
++ * then scans out of a reserved carveout. Nothing in Linux can currently do that
++ * bring-up, so this driver deliberately does NOT touch timing, the PHY, or the
++ * display reset -- asserting rst_bus_disp here would kill a panel it cannot
++ * bring back. It takes over exactly one thing: which buffer is scanned out, and
++ * when the swap happens.
++ *
++ * That is enough for /dev/dri/card0, so any DRM client -- mpv --vo=drm, a
++ * compositor, fbcon -- can put pixels on the projector.
++ *
++ * The register sequence below is not guessed. It is the one tools/video's
++ * gles-play uses, which sustained 59.71 fps over 2700 frames with a measured
++ * 0.00% tearing rate against a 16.94% positive control:
++ *
++ *	write SRC   = new buffer physical address
++ *	clear STATUS pending bits (write-1-to-clear)
++ *	set   CTRL bit 0
++ *	write READY = 1                 -- latches at the next vsync
++ *
++ * The vsync interrupt protocol comes from the vendor DECD driver's
++ * dec_vsync_handler(), whose 60 Hz cadence was demonstrated on hardware (an
++ * out-of-bounds write in it crashed the board every ~100 vsyncs, i.e. ~1.7 s).
++ * DECD owns the same register window and the same IRQ line, so the two cannot
++ * both be bound; the DT patch that adds this driver's node disables dec@5600000
++ * and hands the window here.
++ *
++ * Copyright (C) 2026 Christopher Stenger
++ */
++
++#include <linux/clk.h>
++#include <linux/dma-mapping.h>
++#include <linux/interrupt.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/platform_device.h>
++
++#include <drm/clients/drm_client_setup.h>
++#include <drm/drm_atomic_helper.h>
++#include <drm/drm_drv.h>
++#include <drm/drm_fb_dma_helper.h>
++#include <drm/drm_fbdev_dma.h>
++#include <drm/drm_fourcc.h>
++#include <drm/drm_framebuffer.h>
++#include <drm/drm_gem_atomic_helper.h>
++#include <drm/drm_gem_dma_helper.h>
++#include <drm/drm_gem_framebuffer_helper.h>
++#include <drm/drm_managed.h>
++#include <drm/drm_probe_helper.h>
++#include <drm/drm_simple_kms_helper.h>
++#include <drm/drm_vblank.h>
++
++/* AFBD channel 1 block. Offsets from the 0x05600000 window. */
++#define AFBD_IRQ_STATUS		0x0c0	/* byte, bit 0, write-1-to-clear */
++#define AFBD_IRQ_ENABLE		0x0c4	/* byte, bit 0 */
++#define AFBD_CTRL		0x140	/* bit 0 arms the commit */
++#define AFBD_READY		0x144	/* write 1 to latch */
++#define AFBD_SIZE_M1		0x150	/* (height - 1) << 16 | (width - 1) */
++#define AFBD_SIZE		0x160	/* height << 16 | width */
++#define AFBD_STATUS		0x168	/* bit 1 = commit done, write-1-to-clear */
++#define AFBD_STRIDE		0x170	/* bytes per line */
++#define AFBD_SRC		0x178	/* source physical address */
++
++#define AFBD_IRQ_VSYNC		BIT(0)
++#define AFBD_STATUS_DONE	BIT(1)
++
++struct h713_afbd {
++	struct drm_device drm;
++	struct drm_simple_display_pipe pipe;
++	struct drm_connector connector;
++	void __iomem *regs;
++	struct clk *clk_afbd;
++	struct clk *clk_bus;
++	struct drm_display_mode mode;
++	unsigned int stride;
++};
++
++static inline struct h713_afbd *to_h713(struct drm_device *drm)
++{
++	return container_of(drm, struct h713_afbd, drm);
++}
++
++/*
++ * Point AFBD at a buffer and latch it. Identical in order and content to
++ * gles-play's commit path, minus its 50 ms poll for STATUS_DONE: here the
++ * vblank interrupt reports completion, so nothing spins.
++ */
++static void h713_afbd_set_source(struct h713_afbd *h, dma_addr_t addr,
++				 unsigned int stride)
++{
++	u32 pending;
++
++	if (stride != h->stride) {
++		writel(stride, h->regs + AFBD_STRIDE);
++		h->stride = stride;
++	}
++
++	writel(lower_32_bits(addr), h->regs + AFBD_SRC);
++
++	pending = readl(h->regs + AFBD_STATUS);
++	if (pending)
++		writel(pending, h->regs + AFBD_STATUS);
++
++	writel(readl(h->regs + AFBD_CTRL) | 1u, h->regs + AFBD_CTRL);
++	writel(1, h->regs + AFBD_READY);
++}
++
++static void h713_afbd_pipe_enable(struct drm_simple_display_pipe *pipe,
++				  struct drm_crtc_state *crtc_state,
++				  struct drm_plane_state *plane_state)
++{
++	struct h713_afbd *h = to_h713(pipe->crtc.dev);
++
++	/*
++	 * The panel is already lit; there is nothing to turn on. Show the
++	 * buffer the client handed us so the first commit is not a no-op.
++	 */
++	if (plane_state->fb)
++		h713_afbd_set_source(h,
++				     drm_fb_dma_get_gem_addr(plane_state->fb,
++							     plane_state, 0),
++				     plane_state->fb->pitches[0]);
++
++	drm_crtc_vblank_on(&pipe->crtc);
++}
++
++static void h713_afbd_pipe_disable(struct drm_simple_display_pipe *pipe)
++{
++	/*
++	 * Stop delivering vblanks, but leave the panel and its last frame
++	 * alone: this driver cannot bring the display back up, so blanking it
++	 * would strand the board with a dark projector until the next reboot.
++	 */
++	drm_crtc_vblank_off(&pipe->crtc);
++}
++
++static void h713_afbd_pipe_update(struct drm_simple_display_pipe *pipe,
++				  struct drm_plane_state *old_state)
++{
++	struct drm_plane_state *state = pipe->plane.state;
++	struct drm_crtc *crtc = &pipe->crtc;
++	struct h713_afbd *h = to_h713(crtc->dev);
++	struct drm_pending_vblank_event *event;
++	unsigned long flags;
++
++	if (state->fb)
++		h713_afbd_set_source(h,
++				     drm_fb_dma_get_gem_addr(state->fb, state, 0),
++				     state->fb->pitches[0]);
++
++	spin_lock_irqsave(&crtc->dev->event_lock, flags);
++	event = crtc->state->event;
++	if (event) {
++		crtc->state->event = NULL;
++		/*
++		 * READY latches at the next vsync, so the flip completes on the
++		 * vblank interrupt. Arm the event against it when vblanks are
++		 * running, and only fall back to completing immediately if they
++		 * are not -- an immediate event would otherwise report a
++		 * present that has not happened yet.
++		 */
++		if (drm_crtc_vblank_get(crtc) == 0)
++			drm_crtc_arm_vblank_event(crtc, event);
++		else
++			drm_crtc_send_vblank_event(crtc, event);
++	}
++	spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
++}
++
++static int h713_afbd_enable_vblank(struct drm_simple_display_pipe *pipe)
++{
++	struct h713_afbd *h = to_h713(pipe->crtc.dev);
++	u8 v = readb(h->regs + AFBD_IRQ_ENABLE);
++
++	writeb(v | AFBD_IRQ_VSYNC, h->regs + AFBD_IRQ_ENABLE);
++	return 0;
++}
++
++static void h713_afbd_disable_vblank(struct drm_simple_display_pipe *pipe)
++{
++	struct h713_afbd *h = to_h713(pipe->crtc.dev);
++	u8 v = readb(h->regs + AFBD_IRQ_ENABLE);
++
++	writeb(v & ~AFBD_IRQ_VSYNC, h->regs + AFBD_IRQ_ENABLE);
++}
++
++static const struct drm_simple_display_pipe_funcs h713_afbd_pipe_funcs = {
++	.enable		= h713_afbd_pipe_enable,
++	.disable	= h713_afbd_pipe_disable,
++	.update		= h713_afbd_pipe_update,
++	/* No prepare_fb: with neither hook set the simple-pipe helper calls
++	 * drm_gem_plane_helper_prepare_fb() itself, which is what we want. */
++	.enable_vblank	= h713_afbd_enable_vblank,
++	.disable_vblank	= h713_afbd_disable_vblank,
++};
++
++static irqreturn_t h713_afbd_irq(int irq, void *data)
++{
++	struct h713_afbd *h = data;
++	u8 status = readb(h->regs + AFBD_IRQ_STATUS);
++
++	if (!(status & AFBD_IRQ_VSYNC))
++		return IRQ_NONE;
++
++	/* Write-1-to-clear, exactly as the vendor's dec_irq_query() acks it. */
++	writeb(status | AFBD_IRQ_VSYNC, h->regs + AFBD_IRQ_STATUS);
++
++	drm_crtc_handle_vblank(&h->pipe.crtc);
++	return IRQ_HANDLED;
++}
++
++static int h713_afbd_get_modes(struct drm_connector *connector)
++{
++	struct h713_afbd *h = to_h713(connector->dev);
++
++	return drm_connector_helper_get_modes_fixed(connector, &h->mode);
++}
++
++static const struct drm_connector_helper_funcs h713_afbd_connector_helper_funcs = {
++	.get_modes = h713_afbd_get_modes,
++};
++
++static const struct drm_connector_funcs h713_afbd_connector_funcs = {
++	.reset			= drm_atomic_helper_connector_reset,
++	.fill_modes		= drm_helper_probe_single_connector_modes,
++	.destroy		= drm_connector_cleanup,
++	.atomic_duplicate_state	= drm_atomic_helper_connector_duplicate_state,
++	.atomic_destroy_state	= drm_atomic_helper_connector_destroy_state,
++};
++
++static const struct drm_mode_config_funcs h713_afbd_mode_config_funcs = {
++	.fb_create	= drm_gem_fb_create,
++	.atomic_check	= drm_atomic_helper_check,
++	.atomic_commit	= drm_atomic_helper_commit,
++};
++
++DEFINE_DRM_GEM_DMA_FOPS(h713_afbd_fops);
++
++static const struct drm_driver h713_afbd_driver = {
++	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
++	.fops			= &h713_afbd_fops,
++	DRM_GEM_DMA_DRIVER_OPS_VMAP,
++	DRM_FBDEV_DMA_DRIVER_OPS,
++	.name			= "sun50i-h713-afbd",
++	.desc			= "Allwinner H713 AFBD scanout",
++	.major			= 1,
++	.minor			= 0,
++};
++
++static const u32 h713_afbd_formats[] = {
++	DRM_FORMAT_XRGB8888,
++	DRM_FORMAT_ARGB8888,
++};
++
++/*
++ * Read back the geometry U-Boot left in the hardware rather than hardcoding a
++ * panel size. Only hdisplay/vdisplay here are real: the porches and pixel clock
++ * are synthesised, because the MIPS co-processor owns the actual timing and
++ * this driver never programs it.
++ */
++static int h713_afbd_read_mode(struct h713_afbd *h)
++{
++	struct drm_device *drm = &h->drm;
++	struct drm_display_mode *cvt;
++	u32 size = readl(h->regs + AFBD_SIZE);
++	u32 w = size & 0xffff;
++	u32 hgt = size >> 16;
++
++	if (!w || !hgt || w > 4096 || hgt > 4096) {
++		drm_err(drm,
++			"display is not running (AFBD size reads %08x) -- run 'h713_disp auto 0x34 logo' in U-Boot before booting\n",
++			size);
++		return -ENODEV;
++	}
++
++	h->stride = readl(h->regs + AFBD_STRIDE);
++	drm_info(drm, "adopting %ux%u, stride %u, source %08x\n",
++		 w, hgt, h->stride, readl(h->regs + AFBD_SRC));
++
++	cvt = drm_cvt_mode(drm, w, hgt, 60, false, false, false);
++	if (!cvt)
++		return -ENOMEM;
++	drm_mode_init(&h->mode, cvt);
++	drm_mode_destroy(drm, cvt);
++	h->mode.type |= DRM_MODE_TYPE_PREFERRED;
++	return 0;
++}
++
++static int h713_afbd_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct h713_afbd *h;
++	struct drm_device *drm;
++	int irq, ret;
++
++	h = devm_drm_dev_alloc(dev, &h713_afbd_driver, struct h713_afbd, drm);
++	if (IS_ERR(h))
++		return PTR_ERR(h);
++	drm = &h->drm;
++
++	h->regs = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(h->regs))
++		return PTR_ERR(h->regs);
++
++	irq = platform_get_irq(pdev, 0);
++	if (irq < 0)
++		return irq;
++
++	/*
++	 * Take a reference on the clocks U-Boot already enabled. This is not
++	 * ceremony: reading these registers with the AFBD gate closed hangs the
++	 * board, so the gate must be held open before the first read below --
++	 * which is why every step after this point is safe.
++	 */
++	h->clk_bus = devm_clk_get_enabled(dev, "clk_bus_disp");
++	if (IS_ERR(h->clk_bus))
++		return dev_err_probe(dev, PTR_ERR(h->clk_bus), "no clk_bus_disp\n");
++	h->clk_afbd = devm_clk_get_enabled(dev, "clk_afbd");
++	if (IS_ERR(h->clk_afbd))
++		return dev_err_probe(dev, PTR_ERR(h->clk_afbd), "no clk_afbd\n");
++
++	/* AFBD's source register is 32-bit, so scanout must live below 4 GiB. */
++	ret = dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
++	if (ret)
++		return ret;
++
++	/*
++	 * A dedicated memory-region is optional, and deliberately not used by
++	 * default. A dma-coherent reserved pool allocates in power-of-two page
++	 * orders, so a 3.6 MiB framebuffer occupies a 4 MiB slot and a 16 MiB
++	 * pool yields exactly four. The fbdev console holds one, and mpv wants
++	 * more than the three that leaves -- it fails at CREATE_DUMB with
++	 * ENOMEM. The system CMA pool (cma=128M here) allocates by range, so it
++	 * neither rounds a buffer up to the next power of two nor imposes that
++	 * ceiling, and there is room for both this and cedrus.
++	 *
++	 * Point memory-region at a carveout to override that, e.g. to keep
++	 * scanout inside a known-good region; the ceiling comes with it.
++	 */
++	ret = of_reserved_mem_device_init(dev);
++	if (ret && ret != -ENODEV)
++		return dev_err_probe(dev, ret, "bad scanout memory-region\n");
++	dev_info(dev, "framebuffers from %s\n",
++		 ret ? "the system CMA pool" : "a reserved memory-region");
++
++	ret = h713_afbd_read_mode(h);
++	if (ret)
++		return ret;
++
++	ret = drmm_mode_config_init(drm);
++	if (ret)
++		return ret;
++	drm->mode_config.min_width = h->mode.hdisplay;
++	drm->mode_config.max_width = h->mode.hdisplay;
++	drm->mode_config.min_height = h->mode.vdisplay;
++	drm->mode_config.max_height = h->mode.vdisplay;
++	drm->mode_config.funcs = &h713_afbd_mode_config_funcs;
++
++	ret = drm_vblank_init(drm, 1);
++	if (ret)
++		return ret;
++
++	drm_connector_helper_add(&h->connector, &h713_afbd_connector_helper_funcs);
++	ret = drm_connector_init(drm, &h->connector, &h713_afbd_connector_funcs,
++				 DRM_MODE_CONNECTOR_LVDS);
++	if (ret)
++		return ret;
++
++	ret = drm_simple_display_pipe_init(drm, &h->pipe, &h713_afbd_pipe_funcs,
++					   h713_afbd_formats,
++					   ARRAY_SIZE(h713_afbd_formats),
++					   NULL, &h->connector);
++	if (ret)
++		return ret;
++
++	drm_mode_config_reset(drm);
++
++	/* Vsync is masked until a client asks for vblanks. */
++	writeb(readb(h->regs + AFBD_IRQ_ENABLE) & ~AFBD_IRQ_VSYNC,
++	       h->regs + AFBD_IRQ_ENABLE);
++	ret = devm_request_irq(dev, irq, h713_afbd_irq, 0, "h713-afbd", h);
++	if (ret)
++		return ret;
++
++	platform_set_drvdata(pdev, h);
++
++	ret = drm_dev_register(drm, 0);
++	if (ret)
++		return ret;
++
++	drm_client_setup(drm, NULL);
++	return 0;
++}
++
++static void h713_afbd_remove(struct platform_device *pdev)
++{
++	struct h713_afbd *h = platform_get_drvdata(pdev);
++
++	drm_dev_unplug(&h->drm);
++	drm_atomic_helper_shutdown(&h->drm);
++}
++
++static void h713_afbd_shutdown(struct platform_device *pdev)
++{
++	struct h713_afbd *h = platform_get_drvdata(pdev);
++
++	drm_atomic_helper_shutdown(&h->drm);
++}
++
++static const struct of_device_id h713_afbd_of_match[] = {
++	{ .compatible = "allwinner,sun50i-h713-afbd" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, h713_afbd_of_match);
++
++static struct platform_driver h713_afbd_platform_driver = {
++	.probe	= h713_afbd_probe,
++	.remove	= h713_afbd_remove,
++	.shutdown = h713_afbd_shutdown,
++	.driver	= {
++		.name		= "sun50i-h713-afbd",
++		.of_match_table	= h713_afbd_of_match,
++	},
++};
++module_platform_driver(h713_afbd_platform_driver);
++
++MODULE_DESCRIPTION("Allwinner H713 AFBD scanout KMS driver");
++MODULE_LICENSE("GPL");

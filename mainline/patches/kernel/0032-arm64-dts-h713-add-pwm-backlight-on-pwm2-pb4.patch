@@ -1,0 +1,83 @@
+arm64: dts: h713: add pwm-backlight on PWM2/PB4 for panel dimming
+
+The projector panel's backlight comes on (PB5 enables the rail) but sits at a
+fixed, dim, power-on-default level and is not yet brightness-controllable under
+mainline. An earlier bench note concluded "a running 25 kHz PWM on PB4 changed
+brightness not at all, so PB4/PWM2 is not the control" -- but the captured
+stock vendor DTB says otherwise, from three independent directions:
+
+  - the stock tvtop panel block sets panel_pwm_ch = 2 (PB4), panel_pwm_freq =
+    25000 (25 kHz, period 40000 ns), panel_backlight = 75 on a 0..100 duty
+    scale (panel_pwm_min = 0, panel_pwm_max = 100, panel_pwm_pol = 0);
+  - stock U-Boot fastlogo drives exactly this channel: pwm_request(2,
+    "fastlogo"); the boot log prints "Display fastlogo finish!";
+  - the vendor Linux port ships a working backlight-class driver that dims via
+    PWM channel 2 and treats PB5 purely as an on/off enable.
+
+So PB4/PWM2 IS the stock dimmer. The most likely reason poking it in isolation
+did nothing: this is a serially-programmed LED panel whose drive currents
+(panel_de_current, panel_*_data_current) and PWM-dim acceptance are configured
+over the panel's SPI link by fastlogo before Linux runs. On the bench that init
+never happens, so the panel ignores the PWM pin and stays at its default level.
+This patch does not resolve that; it wires the dimmer the mainline way so the
+hypothesis can be tested cleanly: boot, then sweep
+/sys/class/backlight/backlight/brightness (0..100) with a scope/DMM on PB4. If
+brightness tracks duty, the earlier negative was a test artifact and this node
+is the end state. If a full 0..100 sweep still does nothing while PB4 provably
+carries the signal, the panel serial-init gate is confirmed and the work moves
+to extracting fastlogo's panel init sequence.
+
+Model it as a standard pwm-backlight on &pwm channel 2 (PB4), 40000 ns / 25
+kHz, with a linear 0..100 brightness scale (five anchors interpolated in steps
+of 25) and the stock default of 75. PB5 (panel_bl_en) is shared with
+cooling-fan power and is held high by fan_power_hog; it is deliberately NOT
+wired as enable-gpios here, because driving PB5 low to "blank" the backlight
+would also cut the fan. This node varies PWM duty only; the panel rail stays
+powered by the hog. Polarity uses the stock vendor-DTB value (normal, flag 0);
+the board's tvtop_config carries panel_pwm_pol = 1, so if a sweep reads
+inverted, flip the third pwms cell to PWM_POLARITY_INVERTED.
+
+CONFIG_BACKLIGHT_PWM and CONFIG_PWM_SUN8I are already enabled, and the H713 PWM
+controller registers all eight channels, so the node binds without further
+kernel changes. The ge2d node also references <&pwm 2 ...> for future display
+work, but "trix,ge2d" has no mainline driver, so only pwm-backlight actually
+claims the channel at runtime -- no consumer conflict.
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1550,6 +1550,36 @@
+ 		status = "okay";
+ 	};
+ 
++	/*
++	 * Panel backlight dimming (bench bring-up).
++	 *
++	 * Brightness input is PWM channel 2 on PB4 -- the stock dimmer. The
++	 * vendor DTB sets panel_pwm_ch = 2 at 25 kHz (period 40000 ns) on a
++	 * 0..100 duty scale (see tvtop_config below), and stock U-Boot fastlogo
++	 * drives it with pwm_request(2, "fastlogo"). Model it as a standard
++	 * pwm-backlight so brightness is controllable from
++	 * /sys/class/backlight/backlight/brightness for evaluation.
++	 *
++	 * PB5 (panel_bl_en) is shared with cooling-fan power and is held high by
++	 * fan_power_hog; it must never be driven low (that cuts the fan). It is
++	 * therefore deliberately NOT wired here as enable-gpios -- this node
++	 * varies PWM duty only, and the panel stays powered by the hog.
++	 *
++	 * Polarity is the stock vendor-DTB value (normal, flag 0). If a duty
++	 * sweep reads inverted, change the third pwms cell to
++	 * PWM_POLARITY_INVERTED (and #include dt-bindings/pwm/pwm.h) to match
++	 * tvtop_config's panel_pwm_pol = 1.
++	 */
++	backlight: backlight {
++		compatible = "pwm-backlight";
++		pwms = <&pwm 2 40000 0>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&pwm2_pins>;
++		brightness-levels = <0 25 50 75 100>;
++		num-interpolated-steps = <25>;
++		default-brightness-level = <75>;
++	};
++
+ 		/*
+ 		 * U-Boot: early GPIO init.
+ 		 * Sets PB3 as output LOW during boot.

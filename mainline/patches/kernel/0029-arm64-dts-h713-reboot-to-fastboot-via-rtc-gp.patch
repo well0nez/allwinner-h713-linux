@@ -1,0 +1,71 @@
+arm64: dts: h713: reboot-to-fastboot/bootloader handoff via RTC GP nvmem
+
+Wire "reboot fastboot" and "reboot bootloader" from Linux to a fastboot
+re-entry, respectively a U-Boot prompt, with no serial console attached, using
+the RTC's general-purpose register 7 as the handoff word.
+
+GP7 lives in the SoC's always-on RTC domain. A bench experiment wrote distinct
+markers to all eight GP words, issued a warm reboot (PSCI SYSTEM_RESET -> BL31
+-> watchdog), and read every marker back unchanged, so the register survives the
+reset the kernel performs and the SPL does not clobber it. GP7 is the highest
+word, furthest from the low GP words the vendor boot0 is known to touch.
+
+The sun6i-rtc driver (now enabled, "allwinner,sun50i-h6-rtc") exposes the eight
+GP words as a battery-backed nvmem device: SUN6I_GP_DATA is at register offset
+0x100, so GP7 is nvmem byte offset 0x1c -> physical 0x0709011c. A fixed nvmem
+cell child of the rtc node names that word; because devm_rtc_nvmem_register()
+sets add_legacy_fixed_of_cells, the cell is registered against the rtc node's
+of_node and is phandle-referenceable with no driver change.
+
+nvmem-reboot-mode writes a per-mode magic to that cell: mode-fastboot
+(0xfa57b007) on "reboot fastboot", mode-bootloader (0xb007c0de) on "reboot
+bootloader"; a plain reboot writes nothing (the reboot-mode core skips a zero
+magic). U-Boot's preboot reads GP7, clears it on a match, and either runs
+fastboot or sets bootdelay -1 to fall through to its prompt. Clearing on consume
+plus an indeterminate-but-typically-zero cold-boot value keeps a stale magic
+from forcing an unexpected entry.
+
+This replaces the previous single-mode syscon-reboot-mode window at 0x0709011c,
+which overlapped the RTC register region the rtc driver now claims. Pairs with
+CONFIG_RTC_DRV_SUN6I, CONFIG_RTC_NVMEM, and CONFIG_NVMEM_REBOOT_MODE in the bench
+defconfig, and with a U-Boot preboot that dispatches on the two magics.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -30,6 +30,20 @@
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
++	/* Reboot handoff via RTC GP7 (nvmem cell in &rtc; always-on domain,
++	 * survives the warm PSCI/watchdog reset). `reboot fastboot` writes the
++	 * fastboot magic and `reboot bootloader` the bootloader magic; U-Boot's
++	 * preboot reads GP7 and, per magic, enters fastboot or drops to its
++	 * prompt. Magics are unchanged on the U-Boot side. */
++	reboot-mode {
++		compatible = "nvmem-reboot-mode";
++		nvmem-cells = <&reboot_mode_magic>;
++		nvmem-cell-names = "reboot-mode";
++		mode-fastboot = <0xfa57b007>;
++		mode-bootloader = <0xb007c0de>;
++		mode-vendor = <0x001db007>;
++	};
++
+ 	aliases {
+ 		serial0 = &uart0;
+ 		mmc0 = &mmc2;
+@@ -1169,6 +1182,15 @@
+ 			interrupts = <GIC_SPI 147 IRQ_TYPE_LEVEL_HIGH>;
+ 			clock-output-names = "osc32k", "osc32k-out", "iosc";
+ 			#clock-cells = <1>;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			/* GP7 (phys 0x0709011c) holds the reboot-mode magic handed to
++			 * U-Boot. The GP register block is nvmem offset 0, so GP7 is
++			 * byte offset 0x1c. */
++			reboot_mode_magic: reboot-mode-magic@1c {
++				reg = <0x1c 0x4>;
++			};
+ 		};
+ 
+ 		/*

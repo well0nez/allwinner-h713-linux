@@ -1,0 +1,44 @@
+[  198.572416] Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000
+[  198.581305] Mem abort info:
+[  198.584097]   ESR = 0x0000000096000004
+[  198.587840]   EC = 0x25: DABT (current EL), IL = 32 bits
+[  198.593143]   SET = 0, FnV = 0
+[  198.596192]   EA = 0, S1PTW = 0
+[  198.599327]   FSC = 0x04: level 0 translation fault
+[  198.604196] Data abort info:
+[  198.607070]   ISV = 0, ISS = 0x00000004, ISS2 = 0x00000000
+[  198.612544]   CM = 0, WnR = 0, TnD = 0, TagAccess = 0
+[  198.617587]   GCS = 0, Overlay = 0, DirtyBit = 0, Xs = 0
+[  198.622891] user pgtable: 4k pages, 48-bit VAs, pgdp=0000000042a95000
+[  198.629322] [0000000000000000] pgd=0000000000000000, p4d=0000000000000000
+[  198.636110] Internal error: Oops: 0000000096000004 [#1]  SMP
+[  198.641762] Modules linked in:
+[  198.644815] CPU: 3 UID: 0 PID: 42 Comm: kworker/u16:2 Not tainted 6.18.38-builtin #1 NONE 
+[  198.653070] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[  198.659153] Workqueue: pan_js drm_sched_run_job_work
+[  198.664126] pstate: 600000c5 (nZCv daIF -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  198.671079] pc : pwq_tryinc_nr_active+0xfc/0x204
+[  198.675695] lr : __queue_work+0x520/0x648
+[  198.679703] sp : ffff80008135bc30
+[  198.683010] x29: ffff80008135bc60 x28: 0000000000000003 x27: ffff00000228c600
+[  198.690140] x26: 0000000000000001 x25: ffff800080f6a770 x24: ffff800080f49458
+[  198.697268] x23: ffff00000228c668 x22: ffff00000041c000 x21: 0000000000000000
+[  198.704397] x20: ffff000001ee5a20 x19: ffff000001ee5a18 x18: ffff800080f77708
+[  198.711527] x17: 000000007fffffff x16: ffff800080f69d78 x15: 0000000000000010
+[  198.718656] x14: 0000000081099000 x13: 0000000000000001 x12: ffff800081099000
+[  198.725784] x11: ffff00000070daa8 x10: ffff00000070daa0 x9 : 0000000000000000
+[  198.732914] x8 : 0000000000000000 x7 : 0000000000000000 x6 : 0000000000000000
+[  198.740042] x5 : 0000000080100009 x4 : ffff000002a8df00 x3 : ffff00000228c600
+[  198.747170] x2 : ffff8000810eb000 x1 : 0000000000000000 x0 : ffff00000228c600
+[  198.754300] Call trace:
+[  198.756743]  pwq_tryinc_nr_active+0xfc/0x204 (P)
+[  198.761356]  __queue_work+0x520/0x648
+[  198.765017]  queue_work_on+0x3c/0xa0
+[  198.768591]  drm_sched_run_job_work+0x4d8/0x504
+[  198.773117]  process_scheduled_works+0x170/0x300
+[  198.777729]  worker_thread+0x2fc/0x45c
+[  198.781476]  kthread+0x198/0x1e4
+[  198.784705]  ret_from_fork+0x10/0x20
+[  198.788283] Code: 2a1f03e8 5280002c 88e87d6c 350006e8 (f9400128) 
+[  198.794367] ---[ end trace 0000000000000000 ]---
+[  198.798976] note: kworker/u16:2[42] exited with irqs disabled

@@ -1,0 +1,29 @@
+# Firmware embedded as a C array — proprietary blob in disguise, never commit.
+# (Only used when CONFIG_FIRMWARE_ARRAY=y, which we do not set. Deploy firmware
+# to the rootfs at runtime instead.)
+aicwf_firmware_array.c
+aicwf_firmware_array.h
+
+# Editor/vendor backup cruft — never track.
+*.bak
+*.bak.*
+*.orig
+*.rej
+*~
+
+# Kbuild out-of-tree module build artifacts — source is tracked, artifacts are not.
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.cmd
+.*.cmd
+*.symvers
+*.order
+modules.order
+Module.symvers
+.tmp_versions/
+.cache.mk
+built-in.a
+*.a

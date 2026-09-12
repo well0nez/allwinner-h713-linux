@@ -1,0 +1,65 @@
+[  440.654062] ------------[ cut here ]------------
+[  440.658724] WARNING: CPU: 3 PID: 0 at kernel/sched/deadline.c:2158 enqueue_dl_entity+0x440/0x58c
+[  440.667531] Modules linked in:
+[  440.670617] CPU: 3 UID: 0 PID: 0 Comm: swapper/3 Not tainted 6.18.38-builtin #1 NONE 
+[  440.678453] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[  440.684533] pstate: 000000c5 (nzcv daIF -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  440.691487] pc : enqueue_dl_entity+0x440/0x58c
+[  440.695930] lr : enqueue_task_dl+0x118/0x16c
+[  440.700196] sp : ffff800081193d90
+[  440.703505] x29: ffff800081193d90 x28: 0000006690a3bfe7 x27: ffff00003fdd0040
+[  440.710636] x26: 0000000000000000 x25: 0000000000000001 x24: ffff7fffbee83000
+[  440.717766] x23: 0000000000000409 x22: 0000000000000088 x21: ffff000000f3be00
+[  440.724895] x20: ffff00003fdd4000 x19: ffff000000f3bfb0 x18: ffff800080b1ec80
+[  440.732027] x17: ffff7fffbee83000 x16: ffff800081190000 x15: 0000000000000000
+[  440.739161] x14: 0000000000000000 x13: 0000000000000004 x12: 0000000276575fe7
+[  440.746293] x11: 0000000000000015 x10: 0000000000000449 x9 : 0000000000000509
+[  440.753425] x8 : 0000000000000001 x7 : 0000000000000000 x6 : 0000000000000000
+[  440.760554] x5 : 0000000000000002 x4 : 0000000000000000 x3 : ffff800081193e38
+[  440.767684] x2 : 0000000000000409 x1 : 0000000000000409 x0 : ffff000000f3bfb0
+[  440.774813] Call trace:
+[  440.777256]  enqueue_dl_entity+0x440/0x58c (P)
+[  440.781700]  enqueue_task_dl+0x118/0x16c
+[  440.785621]  ttwu_do_activate+0xd0/0x1bc
+[  440.789542]  try_to_wake_up+0x284/0x394
+[  440.793374]  wake_up_process+0x18/0x24
+[  440.797120]  hrtimer_wakeup+0x24/0x80
+[  440.800783]  __hrtimer_run_queues+0xe8/0x1dc
+[  440.805050]  hrtimer_interrupt+0xf8/0x29c
+[  440.809058]  arch_timer_handler_phys+0x38/0x48
+[  440.813500]  handle_percpu_devid_irq+0x80/0x11c
+[  440.818030]  generic_handle_domain_irq+0x40/0x64
+[  440.822643]  gic_handle_irq+0x4c/0xa0
+[  440.826301]  call_on_irq_stack+0x30/0x64
+[  440.830222]  do_interrupt_handler+0x4c/0x6c
+[  440.834404]  el1_interrupt+0x3c/0x60
+[  440.837977]  el1h_64_irq_handler+0x18/0x24
+[  440.842069]  el1h_64_irq+0x6c/0x70
+[  440.845467]  arch_local_irq_enable+0x4/0x8 (P)
+[  440.849906]  do_idle+0xc0/0x108
+[  440.853043]  cpu_startup_entry+0x34/0x38
+[  440.856962]  secondary_start_kernel+0x124/0x144
+[  440.861491]  __secondary_switched+0xc0/0xc4
+[  440.865674] ---[ end trace 0000000000000000 ]---
+[  440.870295] ------------[ cut here ]------------
+[  440.874905] WARNING: CPU: 3 PID: 0 at kernel/sched/deadline.c:2134 enqueue_dl_entity+0x448/0x58c
+[  440.883681] Modules linked in:
+[  440.886737] CPU: 3 UID: 0 PID: 0 Comm: swapper/3 Tainted: G        W           6.18.38-builtin #1 NONE 
+[  440.896118] Tainted: [W]=WARN
+[  440.899078] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[  440.905162] pstate: 000000c5 (nzcv daIF -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  440.912113] pc : enqueue_dl_entity+0x448/0x58c
+[  440.916553] lr : enqueue_dl_entity+0x228/0x58c
+[  440.920991] sp : ffff800081193d90
+[  440.924300] x29: ffff800081193d90 x28: 0000006690a3bfe7 x27: ffff00003fdd0040
+[  440.931430] x26: 0000000000000000 x25: 0000000000000001 x24: ffff7fffbee83000
+[  440.938560] x23: 0000000000000409 x22: 0000000000000088 x21: ffff00003fdd4000
+[  440.945689] x20: ffff00003fdd4000 x19: ffff000000f3bfb0 x18: ffff800080b1ec80
+[  440.952818] x17: ffff7fffbee83000 x16: ffff800081190000 x15: 0000000000000000
+[  440.959948] x14: 0000000000000000 x13: 0000000000000004 x12: 00000000000f4240
+[  440.967076] x11: 0000000000989680 x10: 0000000000000000 x9 : ffff800080f51000
+[  440.974205] x8 : ffff00003fdd4800 x7 : 0000000000000000 x6 : 0000000000000000
+[  440.981334] x5 : 0000000000000002 x4 : 0000000000000000 x3 : ffff800081193e38
+[  440.988463] x2 : 0000000000000409 x1 : ffff00003fdd4000 x0 : ffff000000f3bfb0
+[  440.995592] Call trace:
+[  440.998033]  enqueue_dl_entity+0x448/0x58c (P

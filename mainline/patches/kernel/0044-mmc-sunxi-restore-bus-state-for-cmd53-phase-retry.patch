@@ -1,0 +1,132 @@
+--- a/drivers/mmc/host/sunxi-mmc.c
++++ b/drivers/mmc/host/sunxi-mmc.c
+@@ -376,6 +376,7 @@
+ };
+ 
+ static void sunxi_mmc_retry_timeout(struct timer_list *t);
++static int sunxi_mmc_oclk_onoff(struct sunxi_mmc_host *host, u32 oclk_en);
+ 
+ /*
+  * A FIFO_RUN_ERROR (or hardware-locked) on a CMD53 is a data-path/FIFO stall,
+@@ -699,6 +700,12 @@
+ 	int retry_limit = fifo_err ? SUNXI_MMC_CMD53_FIFO_RETRIES
+ 				   : SUNXI_MMC_CMD53_PHASE_RETRIES;
+ 
++	/* A re-issued request reached an IRQ before its watchdog fired. */
++	if (host->retry_timer_mrq == mrq) {
++		timer_delete(&host->retry_timer);
++		host->retry_timer_mrq = NULL;
++	}
++
+ 	mmc_writel(host, REG_IMASK, host->sdio_imask);
+ 	mmc_writel(host, REG_IDIE, 0);
+ 
+@@ -916,11 +923,17 @@
+ 	 *   6. Give up when this class's retry budget is exhausted.
+ 	 */
+ 
+-	/* Phase-delay table: 9 combinations (cmd_phase, dat_phase).
+-	 * -1 means clear the phase bits (reset to default). */
+-	static const s32 sunxi_phase_table[9][2] = {
+-		{-1, -1}, {1, 1}, {0, 0}, {1, 0}, {0, 1},
+-		{1, 2},   {0, 2}, {1, 3}, {0, 3},
++	/*
++	 * The stock state is command sample 1, data sample 1, data drive 1.
++	 * Keep the known-good command phase and sweep the two data-path
++	 * dimensions: first flip the write-data drive edge, then try the other
++	 * three receive sample phases with each drive edge.
++	 */
++	static const u8 sunxi_phase_table[SUNXI_MMC_CMD53_PHASE_RETRIES][3] = {
++		/* cmd sample, data sample, data drive */
++		{1, 1, 0},
++		{1, 0, 1}, {1, 2, 1}, {1, 3, 1},
++		{1, 0, 0}, {1, 2, 0}, {1, 3, 0},
+ 	};
+ 
+ 	spin_lock_irqsave(&host->lock, iflags);
+@@ -929,6 +942,7 @@
+ 		struct mmc_data *data = mrq->data;
+ 		u32 imask = SDXC_INTERRUPT_ERROR_BIT;
+ 		u32 cmd_val = SDXC_START | (mrq->cmd->opcode & 0x3f);
++		u32 clkcr_saved, width_saved;
+ 		u32 ntsr_saved, drv_dl_saved, samp_dl_saved, ds_dl_saved;
+ 		u32 thld_saved;
+ 		u32 ntsr_new, gctrl;
+@@ -975,6 +989,8 @@
+ 		sunxi_mmc_send_manual_stop(host, mrq);
+ 
+ 		/* Step 2: Bus-clock reset -- save registers, cycle clock */
++		clkcr_saved = mmc_readl(host, REG_CLKCR);
++		width_saved = mmc_readl(host, REG_WIDTH);
+ 		ntsr_saved   = mmc_readl(host, REG_SD_NTSR);
+ 		drv_dl_saved = readl(host->reg_base + SDXC_REG_DRV_DL);
+ 		samp_dl_saved = readl(host->reg_base + SDXC_REG_SAMP_DL_REG);
+@@ -999,6 +1015,30 @@
+ 			return IRQ_HANDLED;
+ 		}
+ 
++		/*
++		 * Restore the bus state erased by reset_control_reset().  Without
++		 * CLKCR and WIDTH the retry is issued with no card clock in 1-bit
++		 * mode and can never produce a completion interrupt.
++		 */
++		mmc_writel(host, REG_CLKCR,
++			   clkcr_saved & ~SDXC_CARD_CLOCK_ON);
++		mmc_writel(host, REG_WIDTH, width_saved);
++		ret = sunxi_mmc_oclk_onoff(host,
++					!!(clkcr_saved & SDXC_CARD_CLOCK_ON));
++		if (ret) {
++			dev_err(mmc_dev(host->mmc),
++				"cmd53 retry %d: restore card clock failed (%d)\n",
++				retry_idx + 1, ret);
++			mrq->cmd->error = ret;
++			data->error = ret;
++			spin_lock_irqsave(&host->lock, iflags);
++			host->retry_cnt = 0;
++			host->fifo_retry_cnt = 0;
++			spin_unlock_irqrestore(&host->lock, iflags);
++			mmc_request_done(host->mmc, mrq);
++			return IRQ_HANDLED;
++		}
++
+ 		/* Restore timing registers after bus-clock reset */
+ 		mmc_writel(host, REG_SD_NTSR, ntsr_saved);
+ 		writel(drv_dl_saved, host->reg_base + SDXC_REG_DRV_DL);
+@@ -1056,16 +1096,29 @@
+ 			 */
+ 			usleep_range(50, 150);
+ 		} else {
+-			/* Step 3 (CRC/timing): apply phase-delay rotation.
+-			 * sunxi_phase_table[retry_idx]: cmd phase [9:8],
+-			 * dat phase [5:4].  A -1 entry clears both fields. */
++			/* Step 3 (CRC/timing): apply the bounded data-path sweep. */
+ 			ntsr_new = mmc_readl(host, REG_SD_NTSR);
+-			ntsr_new &= ~((3u << 8) | (3u << 4));
+-			if (sunxi_phase_table[retry_idx][0] >= 0) {
+-				ntsr_new |= (((u32)sunxi_phase_table[retry_idx][0] & 3u) << 8);
+-				ntsr_new |= (((u32)sunxi_phase_table[retry_idx][1] & 3u) << 4);
+-			}
++			ntsr_new &= ~(SDXC_V5P3X_CMD_PHASE_MASK |
++				      SDXC_V5P3X_DAT_PHASE_MASK);
++			ntsr_new |= ((u32)sunxi_phase_table[retry_idx][0]
++				     << SDXC_V5P3X_CMD_PHASE_SHIFT) &
++				    SDXC_V5P3X_CMD_PHASE_MASK;
++			ntsr_new |= ((u32)sunxi_phase_table[retry_idx][1]
++				     << SDXC_V5P3X_DAT_PHASE_SHIFT) &
++				    SDXC_V5P3X_DAT_PHASE_MASK;
+ 			mmc_writel(host, REG_SD_NTSR, ntsr_new);
++
++			drv_dl_saved &= ~SDXC_V5P3X_DRV_DAT_EN;
++			if (sunxi_phase_table[retry_idx][2])
++				drv_dl_saved |= SDXC_V5P3X_DRV_DAT_EN;
++			writel(drv_dl_saved, host->reg_base + SDXC_REG_DRV_DL);
++
++			dev_warn(mmc_dev(host->mmc),
++				 "cmd53 retry phase: CLKCR=%08x WIDTH=%08x DRV=%08x NTSR=%08x\n",
++				 mmc_readl(host, REG_CLKCR),
++				 mmc_readl(host, REG_WIDTH),
++				 readl(host->reg_base + SDXC_REG_DRV_DL),
++				 mmc_readl(host, REG_SD_NTSR));
+ 		}
+ 
+ 		/* Step 4: Re-map DMA */

@@ -1,0 +1,79 @@
+[  113.319546] Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000
+[  113.328364] Mem abort info:
+[  113.331160]   ESR = 0x0000000096000004
+[  113.334907]   EC = 0x25: DABT (current EL), IL = 32 bits
+[  113.340215]   SET = 0, FnV = 0
+[  113.343268]   EA = 0, S1PTW = 0
+[  113.346407]   FSC = 0x04: level 0 translation fault
+[  113.351279] Data abort info:
+[  113.354157]   ISV = 0, ISS = 0x00000004, ISS2 = 0x00000000
+[  113.359638]   CM = 0, WnR = 0, TnD = 0, TagAccess = 0
+[  113.364693]   GCS = 0, Overlay = 0, DirtyBit = 0, Xs = 0
+[  113.370008] user pgtable: 4k pages, 48-bit VAs, pgdp=00000000413fb000
+[  113.376451] [0000000000000000] pgd=0000000000000000, p4d=0000000000000000
+[  113.383249] Internal error: Oops: 0000000096000004 [#1]  SMP
+[  113.388911] Modules linked in:
+[  113.391977] CPU: 2 UID: 0 PID: 12 Comm: kworker/u16:0 Not tainted 6.18.38-builtin #1 NONE 
+[  113.400249] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[  113.406343] Workqueue: pan_js drm_sched_run_job_work
+[  113.411338] pstate: 800000c5 (Nzcv daIF -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  113.418307] pc : dma_fence_add_callback+0xd4/0xf8
+[  113.423030] lr : drm_sched_run_job_work+0x3b0/0x504
+[  113.427918] sp : ffff8000811f3cf0
+[  113.431235] x29: ffff8000811f3cf0 x28: ffff000001c3e220 x27: ffff00000209b900
+[  113.438391] x26: ffff00000209b908 x25: 0000000000000002 x24: ffff000001c3e1b8
+[  113.445545] x23: ffff000001c3e2c0 x22: ffff000003ca0780 x21: 0000000000000000
+[  113.452699] x20: ffff00001768ac68 x19: ffff000001c3e2c0 x18: ffff00000236c668
+[  113.459853] x17: ffff00000041c028 x16: 0000000000000007 x15: ffff00000236c660
+[  113.467007] x14: 0000000000000000 x13: 0200000000000000 x12: 0000000000000000
+[  113.474160] x11: 0000000000000000 x10: 0000000000000000 x9 : 0000000000000001
+[  113.481313] x8 : 0000000000000000 x7 : 0000000000000000 x6 : 0000000000000000
+[  113.488465] x5 : 0000000000100001 x4 : 0000000000001c06 x3 : 0000000000000003
+[  113.495617] x2 : ffff80008054fedc x1 : ffff00001768ac68 x0 : 0000000000000000
+[  113.502772] Call trace:
+[  113.505223]  dma_fence_add_callback+0xd4/0xf8 (P)
+[  113.509947]  drm_sched_run_job_work+0x3b0/0x504
+[  113.514492]  process_scheduled_works+0x170/0x300
+[  113.519124]  worker_thread+0x2fc/0x45c
+[  113.522887]  kthread+0x198/0x1e4
+[  113.526136]  ret_from_fork+0x10/0x20
+[  113.529739] Code: 17fffff9 aa1f03e8 52800029 f9800011 (885ffc01) 
+[  113.535835] ---[ end trace 0000000000000000 ]---
+[  113.540457] Kernel panic - not syncing: Oops: Fatal exception
+[  113.546204] SMP: stopping secondary CPUs
+[  113.550138] Kernel Offset: disabled
+[  113.553629] CPU features: 0x000000,00000000,40004000,0400420b
+[  113.559380] Memory Limit: none
+[  113.562440] Rebooting in 5 seconds..
+
+U-Boot SPL 2026.07-rc5-gdbad200ca799-dirty (Aug 07 2026 - 18:26:52 -0700)
+DRAM: 1024 MiB
+Trying to boot from MMC2
+NOTICE:  BL31: v2.15.0(release):47ee829f7
+NOTICE:  BL31: Built : 03:25:48, Jul 27 2026
+NOTICE:  BL31: Detected Allwinner H713 SoC (1860)
+NOTICE:  BL31: Found U-Boot DTB at 0x4a0d2978, model: HY200 QZ713DF_A1 (Allwinner H713)
+
+
+U-Boot 2026.07-rc5-gdbad200ca799-dirty (Aug 07 2026 - 18:26:52 -0700) Allwinner Technology
+
+CPU:   Allwinner H713 (SUN50I)
+Model: HY200 QZ713DF_A1 (Allwinner H713)
+DRAM:  1 GiB
+Core:  37 devices, 19 uclasses, devicetree: separate
+WDT:   Not starting watchdog@2051000
+MMC:   mmc@4022000: 1
+Loading Environment from MMC... Reading from MMC(1)... OK
+In:    serial
+Out:   serial
+Err:   serial
+Net:   No ethernet found.
+starting USB...
+No USB controllers found
+       scanning usb for storage devices... 0 Storage Device(s) found
+[2KHit any key to stop autoboot: 2[2KHit any key to stop autoboot: 1[2KHit any key to stop autoboot: 0
+7739336 bytes read in 496 ms (14.9 MiB/s)
+## Loading kernel (any) from FIT Image at 50000000 ...
+   Using 'conf-1' configuration
+   Trying 'kernel' kernel subimage
+    

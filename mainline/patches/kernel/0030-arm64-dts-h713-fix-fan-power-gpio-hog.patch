@@ -1,0 +1,52 @@
+arm64: dts: h713: fix fan-power gpio-hog cell count (3-wire fan)
+
+Bench bring-up of the cooling fan showed the fan never spins even though the
+SoC PWM is provably working. Instrumentation on the fan header (a 3-wire fan:
+Red +V, Black GND, Yellow tach) found the tach line sitting at its 3.3 V
+pull-up -- so the board's fan-sense is wired and the header is meant to be
+driven -- but the +V pin floating at ~1.1 V and decaying, i.e. no supply. The
+fan is a plain on/off load; its speed is not PWM-controlled, and its power
+rail was simply never enabled.
+
+Root cause: the fan_power_hog that is supposed to hold PB5 (the shared
+backlight/fan power enable) high is malformed. sunxi pio is a #gpio-cells=3
+controller whose specifier is <bank pin flags>, but the hog used a single
+linear GPIO number, gpios = <37 ...> (2 cells). gpiolib cannot parse that and
+silently skips the hog, so PB5 was never driven and the fan +V stayed off.
+/sys/kernel/debug/gpio confirmed gpiochip0 had zero claimed lines. Correct it
+to the 3-cell form <1 5 GPIO_ACTIVE_HIGH> (bank B = 1, pin 5 = PB5). This also
+restores the backlight-enable rail on the projector, which shares PB5 and the
+same broken hog.
+
+This supersedes the earlier pwm-fan-on-PWM0 approach staged for this fan. The
+main-PWM channel 0 output on PH17 was verified live (debugfs reported the
+channel enabled with a register read-back of 39958/40000 ns, and pinmux showed
+PH17 muxed to pwm0), which validated the corrected patch-0007 register map on
+real silicon -- but it does nothing to a 3-wire fan, whose PH17 line is the
+tachometer input, not a control output. So the pwm-fan node, its &pwm pinctrl
+override, and CONFIG_HWMON / CONFIG_SENSORS_PWM_FAN are dropped; with the hog
+fixed the fan simply runs whenever powered, which is the intended minimal
+always-on behavior. Tachometer read-back (PH17) is left as possible future
+work and deliberately not modeled here.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -485,10 +485,16 @@
+ 
+ 
+ 
+-			/* PB5 = panel_bl_en AND fan power - must stay HIGH */
++			/*
++			 * PB5 = panel-backlight enable AND cooling-fan power; must stay
++			 * HIGH so the fan's +V rail is driven. sunxi gpio specifiers are
++			 * 3-cell <bank pin flags> (bank B = 1, pin 5); the earlier
++			 * <37 ...> was a linear number on a #gpio-cells=3 controller, so
++			 * gpiolib could not parse the hog and left the rail off.
++			 */
+ 			fan_power_hog: fan-power-hog {
+ 				gpio-hog;
+-				gpios = <37 GPIO_ACTIVE_HIGH>;
++				gpios = <1 5 GPIO_ACTIVE_HIGH>;
+ 				output-high;
+ 				line-name = "pb5-bl-fan-power";
+ 			};

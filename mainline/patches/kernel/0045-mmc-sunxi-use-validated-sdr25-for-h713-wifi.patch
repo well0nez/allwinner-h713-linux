@@ -1,0 +1,83 @@
+--- a/drivers/mmc/host/sunxi-mmc.c
++++ b/drivers/mmc/host/sunxi-mmc.c
+@@ -1332,7 +1332,8 @@
+ 					struct mmc_ios *ios,
+ 					unsigned long rate)
+ {
+-	u32 cmd_drv = 1, dat_drv = 0, sample_phase = 0;
++	u32 cmd_drv = 1, dat_drv = 0;
++	u32 cmd_sample_phase = 0, dat_sample_phase = 0;
+ 	u32 rval;
+ 
+ 	if (!host->cfg->v5p3x)
+@@ -1355,21 +1356,33 @@
+ 	 * The previous experiment forced the 50 MHz result at every rate, so it
+ 	 * never tested the vendor's enumeration-to-UHS transition.
+ 	 */
+-	if (rate > 26000000 && rate <= 52000000) {
++	if (rate <= 26000000 && ios->timing == MMC_TIMING_UHS_SDR25) {
++		/*
++		 * Validated on the H713/AIC8800 board.  The v5p3x 26M default
++		 * produced two DATA_CRC_ERRORs before the CMD53 retry sweep
++		 * reached this state; initialize it directly instead.
++		 */
++		dat_drv = 1;
++		cmd_sample_phase = 1;
++	} else if (rate > 26000000 && rate <= 52000000) {
+ 		if (ios->bus_width == MMC_BUS_WIDTH_4 &&
+ 		    ios->timing == MMC_TIMING_UHS_DDR50) {
+ 			dat_drv = 0;
+-			sample_phase = 2;
++			cmd_sample_phase = 2;
++			dat_sample_phase = 2;
+ 		} else {
+ 			dat_drv = 1;
+-			sample_phase = 1;
++			cmd_sample_phase = 1;
++			dat_sample_phase = 1;
+ 		}
+ 	} else if (rate > 52000000 && rate <= 104000000) {
+ 		dat_drv = 1;
+-		sample_phase = 1;
++		cmd_sample_phase = 1;
++		dat_sample_phase = 1;
+ 	} else if (rate > 104000000) {
+ 		dat_drv = 0;
+-		sample_phase = 1;
++		cmd_sample_phase = 1;
++		dat_sample_phase = 1;
+ 	}
+ 
+ 	rval = readl(host->reg_base + SDXC_REG_DRV_DL);
+@@ -1382,9 +1395,9 @@
+ 
+ 	rval = mmc_readl(host, REG_SD_NTSR);
+ 	rval &= ~(SDXC_V5P3X_CMD_PHASE_MASK | SDXC_V5P3X_DAT_PHASE_MASK);
+-	rval |= (sample_phase << SDXC_V5P3X_CMD_PHASE_SHIFT) &
++	rval |= (cmd_sample_phase << SDXC_V5P3X_CMD_PHASE_SHIFT) &
+ 		SDXC_V5P3X_CMD_PHASE_MASK;
+-	rval |= (sample_phase << SDXC_V5P3X_DAT_PHASE_SHIFT) &
++	rval |= (dat_sample_phase << SDXC_V5P3X_DAT_PHASE_SHIFT) &
+ 		SDXC_V5P3X_DAT_PHASE_MASK;
+ 	mmc_writel(host, REG_SD_NTSR, rval);
+ 
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -944,9 +944,6 @@
+ 			cap-sd-highspeed;
+ 			cap-sdio-irq;
+ 			sd-uhs-sdr25;
+-			sd-uhs-sdr50;
+-			sd-uhs-sdr104;
+-			sd-uhs-ddr50;
+ 			no-mmc;
+ 			no-sd;
+ 			keep-power-in-suspend;
+@@ -961,7 +958,7 @@
+ 			 * declaring these UHS modes without it stalls SDIO discovery.
+ 			 */
+-			max-frequency = <50000000>;
++			max-frequency = <25000000>;
+ 			#address-cells = <1>;
+ 			#size-cells = <0>;
+ 			status = "okay";

@@ -1,0 +1,63 @@
+rtc: sun6i: add H713 (sun50iw12) linear-day RTC variant
+
+The H713 real-time clock keeps time correctly on the bench (the counter runs
+off osc32k and H:M:S advance), but with the mainline sun50i-h6-rtc model the
+year is pinned near 1970 while the month/day/time read back correctly.
+
+Root cause: the H713 stores the calendar date as a linear day count (like the
+H616/R329/A523 generation), not in the H6's packed year[5:0]/month/day form.
+Read through the H6 BCD accessors, the day counter's low 16 bits alias onto the
+month/day fields (so 07-23 round-trips) while the year field reads as zero. The
+H616/R329 variants already set RTC_LINEAR_DAY for this, but they declare no
+clock provider because on those SoCs the RTC is not the 32 kHz source. On the
+H713 board the sun6i-rtc *is* the canonical osc32k/osc32k-out/iosc provider for
+many consumers, so it needs both.
+
+Add a dedicated allwinner,sun50i-h713-rtc compatible that keeps the H6 clock
+provider (sun50i_h6_rtc_clk_init, so the clocks still register) and sets
+RTC_LINEAR_DAY for the timekeeping/alarm path, and point the board DTS at it.
+
+Bench-diagnosed on the HY200 (DDR3); fixes hwclock/timedatectl reading 1970.
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+index 9b9fd69..2292554 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1182,7 +1182,7 @@
+ 		 * Uses H6 RTC driver as clock provider (self-contained, no bus clock input)
+ 		 */
+ 		rtc: rtc@7090000 {
+-			compatible = "allwinner,sun50i-h6-rtc";
++			compatible = "allwinner,sun50i-h713-rtc";
+ 			reg = <0x07090000 0x400>;
+ 			interrupts = <GIC_SPI 147 IRQ_TYPE_LEVEL_HIGH>;
+ 			clock-output-names = "osc32k", "osc32k-out", "iosc";
+diff --git a/drivers/rtc/rtc-sun6i.c b/drivers/rtc/rtc-sun6i.c
+index e5e6013..e0cbf17 100644
+--- a/drivers/rtc/rtc-sun6i.c
++++ b/drivers/rtc/rtc-sun6i.c
+@@ -383,6 +383,15 @@ static void __init sun50i_h6_rtc_clk_init(struct device_node *node)
+ CLK_OF_DECLARE_DRIVER(sun50i_h6_rtc_clk, "allwinner,sun50i-h6-rtc",
+ 		      sun50i_h6_rtc_clk_init);
+ 
++/*
++ * The H713 (sun50iw12) reuses the H6 RTC clock block and is the canonical
++ * osc32k/iosc provider on that SoC, but it stores the calendar date as a
++ * linear day count like the H616/R329 (see the OF match data below), so it
++ * pairs the H6 clock provider with RTC_LINEAR_DAY.
++ */
++CLK_OF_DECLARE_DRIVER(sun50i_h713_rtc_clk, "allwinner,sun50i-h713-rtc",
++		      sun50i_h6_rtc_clk_init);
++
+ /*
+  * The R40 user manual is self-conflicting on whether the prescaler is
+  * fixed or configurable. The clock diagram shows it as fixed, but there
+@@ -868,6 +877,8 @@ static const struct of_device_id sun6i_rtc_dt_ids[] = {
+ 		.data = (void *)RTC_LINEAR_DAY },
+ 	{ .compatible = "allwinner,sun50i-r329-rtc",
+ 		.data = (void *)RTC_LINEAR_DAY },
++	{ .compatible = "allwinner,sun50i-h713-rtc",
++		.data = (void *)RTC_LINEAR_DAY },
+ 	{ /* sentinel */ },
+ };
+ MODULE_DEVICE_TABLE(of, sun6i_rtc_dt_ids);

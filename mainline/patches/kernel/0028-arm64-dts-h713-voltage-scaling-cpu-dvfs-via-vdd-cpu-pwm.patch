@@ -1,0 +1,172 @@
+arm64: dts: h713: add voltage-scaling CPU DVFS via VDD-CPU PWM
+
+Wire the H713 CPU rail exactly as the captured stock device tree does:
+R_PWM channel 1 on PL7, a 5 us inverted PWM, and the stock 0.81-1.16 V
+regulator limits. The R_PWM register layout used by the matching driver was
+recovered from the captured stock kernel's sunxi_pwm_config(), enable(), and
+disable() functions. Bench measurements confirm that active duty increases
+VDD-CPU from approximately 0.819 V at 0% to 1.168 V at 100%.
+
+Bench DMM measurements validate the regulator transfer function: a 0.901 V
+software request measures 0.909 V, and a 0.999 V request measures 1.005 V.
+Controlled transitions through 1200 MHz and a 60-second four-core load at
+1200 MHz also pass without errors, reaching only 59 C. Enable the complete
+recovered stock default-bin table through 1416 MHz. At the peak OPP a 1.1005 V
+software value measures 1.107 V idle; a two-minute four-core run holds the
+peak clock and plateaus at 68 C without errors.
+
+Depends on the R_PWM functional/bus clock and reset exports in the preceding
+patch.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -106,6 +106,7 @@
+ 			enable-method = "psci";
+ 			clocks = <&ccu CLK_CPUX>;
+ 			operating-points-v2 = <&cpu_opp_table>;
++			cpu-supply = <&reg_vdd_cpu>;
+ 			#cooling-cells = <2>;
+ 		};
+ 		cpu@1 {
+@@ -115,6 +116,7 @@
+ 			enable-method = "psci";
+ 			clocks = <&ccu CLK_CPUX>;
+ 			operating-points-v2 = <&cpu_opp_table>;
++			cpu-supply = <&reg_vdd_cpu>;
+ 		};
+ 		cpu@2 {
+ 			compatible = "arm,cortex-a53";
+@@ -123,6 +125,7 @@
+ 			enable-method = "psci";
+ 			clocks = <&ccu CLK_CPUX>;
+ 			operating-points-v2 = <&cpu_opp_table>;
++			cpu-supply = <&reg_vdd_cpu>;
+ 		};
+ 		cpu@3 {
+ 			compatible = "arm,cortex-a53";
+@@ -131,17 +134,14 @@
+ 			enable-method = "psci";
+ 			clocks = <&ccu CLK_CPUX>;
+ 			operating-points-v2 = <&cpu_opp_table>;
++			cpu-supply = <&reg_vdd_cpu>;
+ 		};
+ 	};
+ 
+ 	/*
+-	 * Fixed-voltage CPU DVFS. The CPU rail has no software-controlled
+-	 * regulator wired up yet, so these operating points scale frequency
+-	 * only (no opp-microvolt / cpu-supply). The ceiling is 1008 MHz, the
+-	 * rate U-Boot programs PLL_CPUX to and boots Linux at, so every point
+-	 * is known-stable at the current fixed core voltage. This lets the
+-	 * cpu-thermal passive trips actually throttle instead of relying on
+-	 * the 105 C critical trip alone.
++	 * CPU DVFS with voltage scaling. VDD-CPU is a PWM-controlled buck on
++	 * R_PWM channel 1 / PL7. These are the recovered stock default-bin
++	 * voltage table through the stock 1416 MHz peak.
+ 	 */
+ 	cpu_opp_table: opp-table-cpu {
+ 		compatible = "operating-points-v2";
+@@ -149,31 +149,49 @@
+ 
+ 		opp-480000000 {
+ 			opp-hz = /bits/ 64 <480000000>;
++			opp-microvolt = <900000>;
+ 			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 
+ 		opp-600000000 {
+ 			opp-hz = /bits/ 64 <600000000>;
++			opp-microvolt = <900000>;
+ 			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 
+-		opp-720000000 {
+-			opp-hz = /bits/ 64 <720000000>;
++		opp-792000000 {
++			opp-hz = /bits/ 64 <792000000>;
++			opp-microvolt = <900000>;
+ 			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 
+-		opp-792000000 {
+-			opp-hz = /bits/ 64 <792000000>;
++		opp-1008000000 {
++			opp-hz = /bits/ 64 <1008000000>;
++			opp-microvolt = <940000>;
+ 			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 
+-		opp-936000000 {
+-			opp-hz = /bits/ 64 <936000000>;
++		opp-1104000000 {
++			opp-hz = /bits/ 64 <1104000000>;
++			opp-microvolt = <960000>;
+ 			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 
+-		opp-1008000000 {
+-			opp-hz = /bits/ 64 <1008000000>;
++		opp-1200000000 {
++			opp-hz = /bits/ 64 <1200000000>;
++			opp-microvolt = <1000000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
++		};
++
++		opp-1296000000 {
++			opp-hz = /bits/ 64 <1296000000>;
++			opp-microvolt = <1060000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
++		};
++
++		opp-1416000000 {
++			opp-hz = /bits/ 64 <1416000000>;
++			opp-microvolt = <1100000>;
+ 			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 	};
+@@ -203,6 +222,20 @@
+ 		regulator-always-on;
+ 	};
+ 
++	/* Stock CPU rail: R_PWM channel 1 / PL7, 5 us, inverted. */
++	reg_vdd_cpu: regulator-vdd-cpu {
++		compatible = "pwm-regulator";
++		pwms = <&r_pwm 1 5000 1>;
++		regulator-name = "vdd-cpu";
++		regulator-min-microvolt = <810000>;
++		regulator-max-microvolt = <1160000>;
++		regulator-ramp-delay = <2500>;
++		/* Inverted output: active duty raises VDD-CPU from 0.81 to 1.16 V. */
++		pwm-dutycycle-range = <0 100>;
++		regulator-boot-on;
++		regulator-always-on;
++	};
++
+ 	/* Stock gpu-supply is the always-on 0.96 V vdd_sys rail. */
+ 	reg_vdd_sys: regulator-vdd-sys {
+ 		compatible = "regulator-fixed";
+@@ -1216,6 +1250,24 @@
+ 				input-enable;
+ 			};
+ 
++			s_pwm1_pin: s-pwm1-pin {
++				pins = "PL7";
++				function = "s_pwm1";
++			};
++		};
++
++		/* R-block PWM (3 channels); channel 1 / PL7 drives VDD-CPU. */
++		r_pwm: pwm@7020c00 {
++			compatible = "allwinner,sun50i-h713-pwm";
++			reg = <0x07020c00 0x400>;
++			clocks = <&r_ccu CLK_BUS_R_PWM>, <&r_ccu CLK_R_PWM>;
++			clock-names = "bus", "hosc";
++			resets = <&r_ccu RST_BUS_R_PWM>;
++			#pwm-cells = <3>;
++			allwinner,npwms = <3>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&s_pwm1_pin>;
++			status = "okay";
+ 		};
+ 
+ 		/* IR Receiver on PL9 (stock-like route) */

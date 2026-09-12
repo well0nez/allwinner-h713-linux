@@ -1,0 +1,51 @@
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -661,4 +661,37 @@
+ source "drivers/misc/keba/Kconfig"
+ source "drivers/misc/amd-sbi/Kconfig"
+ source "drivers/misc/rp1/Kconfig"
++
++config SUNXI_NSI
++	tristate "Allwinner ARM-MIPS Network Service Interface"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	select CRC32
++	help
++	  Low-level ARM-MIPS communication driver for Allwinner H713.
++	  Provides shared memory command/response protocol between the
++	  ARM cores and the MIPS display co-processor.
++
++
++config HY310_BOARD_MGR
++	tristate "HY310 Projector Board Management Driver"
++	depends on OF && PWM && THERMAL
++	depends on HWMON
++	help
++	  Board management driver for the HY310 projector platform.
++	  Handles fan PWM control, fan tachometer monitoring, USB power GPIO,
++	  and NTC temperature sensing via LRADC.
++	  Based on reverse engineering of the stock Allwinner H713 firmware.
++
++
++config HY310_KEYSTONE_MOTOR
++	tristate "HY310 Keystone Motor Driver"
++	depends on OF && GPIOLIB
++	help
++	  Stepper motor driver for HY310 projector keystone correction.
++	  Controls 4-phase stepper motor via GPIO with limit switch polling.
++	  Based on reverse engineering of the stock Allwinner H713 motor-control
++	  driver. Uses work-queue based async movement and DTS-configurable
++	  step tables.
+ endmenu
++source "drivers/misc/sunxi_tvtop/Kconfig"
++source "drivers/misc/sunxi_decd/Kconfig"
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -75,3 +75,8 @@
+ obj-y				+= keba/
+ obj-y				+= amd-sbi/
+ obj-$(CONFIG_MISC_RP1)		+= rp1/
++obj-$(CONFIG_SUNXI_NSI)		+= sunxi-nsi.o
++obj-$(CONFIG_HY310_BOARD_MGR)	+= hy310-board-mgr.o
++obj-$(CONFIG_HY310_KEYSTONE_MOTOR)	+= hy310-keystone-motor.o
++obj-$(CONFIG_SUNXI_TVTOP)	+= sunxi_tvtop/
++obj-$(CONFIG_SUNXI_DECD)	+= sunxi_decd/

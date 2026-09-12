@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Mon, 17 Aug 2026 11:55:47 -0700
+Subject: [PATCH] aic8800: add CONFIG_PLATFORM_MAINLINE_SUNXI platform target
+
+---
+ aic8800_bsp/Makefile   | 6 ++++++
+ aic8800_btlpm/Makefile | 6 ++++++
+ aic8800_fdrv/Makefile  | 6 ++++++
+ 3 files changed, 18 insertions(+)
+
+diff --git a/aic8800_bsp/Makefile b/aic8800_bsp/Makefile
+index 1934094..2d18865 100644
+--- a/aic8800_bsp/Makefile
++++ b/aic8800_bsp/Makefile
+@@ -97,6 +97,12 @@ CONFIG_PLATFORM_INGENIC_T20 ?= n
+ CONFIG_PLATFORM_AMLOGIC ?= n
+ CONFIG_PLATFORM_UBUNTU ?= y
+ 
++CONFIG_PLATFORM_MAINLINE_SUNXI ?= n
++
++ifeq ($(CONFIG_PLATFORM_MAINLINE_SUNXI), y)
++ccflags-$(CONFIG_PLATFORM_MAINLINE_SUNXI) += -DCONFIG_PLATFORM_MAINLINE_SUNXI
++endif
++
+ ifeq ($(CONFIG_PLATFORM_ROCKCHIP), y)
+ ccflags-$(CONFIG_PLATFORM_ROCKCHIP) += -DCONFIG_PLATFORM_ROCKCHIP
+ KDIR ?= /home/yaya/E/Rockchip/3566/firefly/Android11.0/Firefly-RK356X_Android11.0_git_20210824/RK356X_Android11.0/kernel
+diff --git a/aic8800_btlpm/Makefile b/aic8800_btlpm/Makefile
+index 6d59301..26d43cb 100644
+--- a/aic8800_btlpm/Makefile
++++ b/aic8800_btlpm/Makefile
+@@ -11,6 +11,12 @@ CONFIG_PLATFORM_ALLWINNER ?= n
+ CONFIG_PLATFORM_AMLOGIC ?= n
+ CONFIG_PLATFORM_UBUNTU ?= y
+ 
++CONFIG_PLATFORM_MAINLINE_SUNXI ?= n
++
++ifeq ($(CONFIG_PLATFORM_MAINLINE_SUNXI), y)
++ccflags-$(CONFIG_PLATFORM_MAINLINE_SUNXI) += -DCONFIG_PLATFORM_MAINLINE_SUNXI
++endif
++
+ 
+ CONFIG_SUPPORT_LPM ?= n
+ CONFIG_AUTO_PM ?= n
+diff --git a/aic8800_fdrv/Makefile b/aic8800_fdrv/Makefile
+index c74d8f1..28b8fd6 100644
+--- a/aic8800_fdrv/Makefile
++++ b/aic8800_fdrv/Makefile
+@@ -365,6 +365,12 @@ CONFIG_PLATFORM_INGENIC_T20 ?= n
+ CONFIG_PLATFORM_AMLOGIC ?= n
+ CONFIG_PLATFORM_UBUNTU ?= y
+ 
++CONFIG_PLATFORM_MAINLINE_SUNXI ?= n
++
++ifeq ($(CONFIG_PLATFORM_MAINLINE_SUNXI), y)
++ccflags-$(CONFIG_PLATFORM_MAINLINE_SUNXI) += -DCONFIG_PLATFORM_MAINLINE_SUNXI
++endif
++
+ ifeq ($(CONFIG_PLATFORM_ROCKCHIP), y)
+ ARCH := arm64
+ KDIR ?= /home/yaya/E/Rockchip/3566/firefly/Android11.0/Firefly-RK356X_Android11.0_git_20210824/RK356X_Android11.0/kernel

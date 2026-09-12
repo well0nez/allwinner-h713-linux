@@ -1,0 +1,74 @@
+[  457.934610] Unable to handle kernel paging request at virtual address 000000003fd945c0
+[  457.934610] Unable to handle kernel NULL pointer dereference at virtual address 0000000000000050
+[  457.934632] Mem abort info:
+[  457.934634]   ESR = 0x0000000096000004
+[  457.934637]   EC = 0x25: DABT (current EL), IL = 32 bits
+[  457.942542] Mem abort info:
+[  457.951308]   SET = 0, FnV = 0
+[  457.954093]   ESR = 0x0000000096000004
+[  457.957832]   EA = 0, S1PTW = 0
+[  457.963130]   EC = 0x25: DABT (current EL), IL = 32 bits
+[  457.965915]   FSC = 0x04: level 0 translation fault
+[  457.968960]   SET = 0, FnV = 0
+[  457.972700] Data abort info:
+[  457.975832]   EA = 0, S1PTW = 0
+[  457.981132]   ISV = 0, ISS = 0x00000004, ISS2 = 0x00000000
+[  457.986000]   FSC = 0x04: level 0 translation fault
+[  457.989050]   CM = 0, WnR = 0, TnD = 0, TagAccess = 0
+[  457.991926] Data abort info:
+[  457.995062]   GCS = 0, Overlay = 0, DirtyBit = 0, Xs = 0
+[  458.000538]   ISV = 0, ISS = 0x00000004, ISS2 = 0x00000000
+[  458.005408] user pgtable: 4k pages, 48-bit VAs, pgdp=0000000041d8e000
+[  458.010450]   CM = 0, WnR = 0, TnD = 0, TagAccess = 0
+[  458.013325] [000000003fd945c0] pgd=0000000000000000
+[  458.018627]   GCS = 0, Overlay = 0, DirtyBit = 0, Xs = 0
+[  458.024104] , p4d=0000000000000000
+[  458.030533] user pgtable: 4k pages, 48-bit VAs, pgdp=0000000041d8e000
+[  458.035575] 
+[  458.040444] [0000000000000050] pgd=0000000000000000
+[  458.045750] Internal error: Oops: 0000000096000004 [#1]  SMP
+[  458.049143] , p4d=0000000000000000
+[  458.055573] Modules linked in:
+[  458.057061] 
+[  458.061932] 
+[  458.077009] CPU: 0 UID: 0 PID: 0 Comm: swapper/0 Not tainted 6.18.38-builtin #1 NONE 
+[  458.084845] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[  458.090939] pstate: 800000c5 (Nzcv daIF -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  458.097906] pc : rb_erase+0x4/0x39c
+[  458.101417] lr : timerqueue_del+0x48/0x70
+[  458.105442] sp : ffff80008117be90
+[  458.108758] x29: ffff80008117be90 x28: 0000006a96879497 x27: ffff00003fd94040
+[  458.115917] x26: 0000000000000000 x25: 0000000000000001 x24: ffff00003fd94000
+[  458.123070] x23: 0000000000000001 x22: ffff00003fd945b8 x21: 0000006a96879497
+[  458.130224] x20: ffff00003fd94060 x19: ffff00003fd945b8 x18: 0000000000000001
+[  458.137377] x17: ffff7fffbee47000 x16: ffff800081178000 x15: 000000000c6eea1d
+[  458.144531] x14: 0000000000000000 x13: 0000000000000000 x12: 0000000000000004
+[  458.151684] x11: ffff00003fd98044 x10: 0000000000000013 x9 : ffff00003fd988c0
+[  458.158838] x8 : ffff000001246d48 x7 : 0000000000000000 x6 : 0000000000000000
+[  458.165990] x5 : 000000008010000b x4 : 0000000000000000 x3 : 000000000000000f
+[  458.173142] x2 : 00000000000000c0 x1 : ffff00003fd94060 x0 : 000000003fd945b8
+[  458.180296] Call trace:
+[  458.182748]  rb_erase+0x4/0x39c (P)
+[  458.186255]  __hrtimer_run_queues+0xb8/0x1dc
+[  458.190547]  hrtimer_interrupt+0xf8/0x29c
+[  458.194576]  arch_timer_handler_phys+0x38/0x48
+[  458.199035]  handle_percpu_devid_irq+0x80/0x11c
+[  458.203589]  generic_handle_domain_irq+0x40/0x64
+[  458.208221]  gic_handle_irq+0x4c/0xa0
+[  458.211897]  call_on_irq_stack+0x30/0x64
+[  458.215838]  do_interrupt_handler+0x4c/0x6c
+[  458.220039]  el1_interrupt+0x3c/0x60
+[  458.223629]  el1h_64_irq_handler+0x18/0x24
+[  458.227737]  el1h_64_irq+0x6c/0x70
+[  458.231151]  arch_local_irq_enable+0x4/0x8 (P)
+[  458.235608]  do_idle+0xc0/0x108
+[  458.238762]  cpu_startup_entry+0x34/0x38
+[  458.242696]  kernel_init+0x0/0x124
+[  458.246114]  start_kernel+0x2a8/0x340
+[  458.249791]  __primary_switched+0x88/0x90
+[  458.253825] Code: f9000808 b5fffcca 17ffffe7 d503245f (a940a808) 
+[  458.259919] ---[ end trace 0000000000000000 ]---
+[  458.264540] Kernel panic - not syncing: Oops: Fatal exception in interrupt
+[  458.271414] SMP: stopping secondary CPUs
+[  459.489480] SMP: failed to stop secondary CPUs 3
+[  459.494106] Kernel Offset: disabled

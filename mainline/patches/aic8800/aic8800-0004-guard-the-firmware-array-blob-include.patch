@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Mon, 17 Aug 2026 11:55:47 -0700
+Subject: [PATCH] aic8800: guard the firmware-array blob include
+
+---
+ aic8800_bsp/aic_bsp_driver.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/aic8800_bsp/aic_bsp_driver.c b/aic8800_bsp/aic_bsp_driver.c
+index 138c8d3..048152b 100644
+--- a/aic8800_bsp/aic_bsp_driver.c
++++ b/aic8800_bsp/aic_bsp_driver.c
+@@ -29,7 +29,9 @@
+ #include "aic8800d80_compat.h"
+ #include "aic8800d80n_compat.h"
+ #include "aic8800d80x2_compat.h"
++#ifdef CONFIG_FIRMWARE_ARRAY
+ #include "aicwf_firmware_array.h"
++#endif
+ #define FW_PATH_MAX 200
+ 
+ extern int adap_test;

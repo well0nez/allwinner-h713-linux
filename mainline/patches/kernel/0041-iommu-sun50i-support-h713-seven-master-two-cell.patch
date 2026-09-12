@@ -1,0 +1,280 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] iommu: sun50i: support the H713's seven-master, two-cell block
+
+The H713 has the same IOMMU IP as the H6, at a different address, with one
+more master and a two-cell device tree binding. Everything below was read
+off board B's own eMMC capture and off the block itself, not inferred.
+
+The register map is the H6's. Disassembling the vendor driver in its 5.4
+vmlinux, sunxi_iommu_irq reads [base+0x108], [base+0x180] and [base+0x184],
+which are INT_STA, L1PG_INT and L2PG_INT here; across the driver the whole
+H6 layout appears -- 0x10 reset, 0x20 enable, 0x30 bypass, 0x40 auto-gating,
+0x60/0x70/0x80 TLB, 0x98/0xa8 invalidate-enable. Confirmed on hardware:
+writing 0xdeadb000 to TTB reads back 0xdead8000, so it answers and masks
+bits [13:12] for the same 16 KiB-aligned directory table.
+
+Two differences need handling.
+
+Seven masters, not six. RESET reads 0x8003007f and BYPASS 0x0000007f at
+reset -- 0x7f is masters 0 through 6, matching the stock device tree, which
+wires ve=0, ve1=1, ge2d=2, dec=2, tvdisp=3, tvcap=4, av1=5 and
+audbrg/demux/dtmb=6. So the per-master masks are computed from a variant's
+master count rather than fixed at six.
+
+And the binding carries a second cell. The vendor's of_xlate booleanises
+args[1] into a per-device flag, and its add_device hands that flag to
+sunxi_enable_device_iommu(master, enable), which clears the master's bits in
+BYPASS when set and sets them when clear. So cell 1 means "translate this
+master". That is not academic: the stock tree translates the video engine
+(<&mmu_aw 0 1>) and deliberately leaves the display and ge2d bypassing
+(<&mmu_aw 2 0>). Writing BYPASS = 0 the way the H6 path does would drag
+masters into translation that the vendor never translates, against a page
+table holding no mappings for them -- so on a two-cell variant the shadow
+starts all-bypass and of_xlate opts each master in.
+
+H6 and H616 behaviour is unchanged: one cell, six masters, BYPASS = 0.
+
+The reset line becomes optional while here: the H713's stock node has only a
+clock, and our CCU exposes no IOMMU reset to point at, so requiring one made
+probe fail with -ENOENT. reset_control_assert/deassert are no-ops on a NULL
+control, so nothing else changes.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -16,6 +16,7 @@
+ #include <linux/ioport.h>
+ #include <linux/log2.h>
+ #include <linux/module.h>
++#include <linux/of.h>
+ #include <linux/of_platform.h>
+ #include <linux/platform_device.h>
+ #include <linux/pm.h>
+@@ -77,15 +78,42 @@
+ #define IOMMU_INT_INVALID_L2PG			BIT(17)
+ #define IOMMU_INT_INVALID_L1PG			BIT(16)
+ #define IOMMU_INT_MASTER_PERMISSION(m)		BIT(m)
+-#define IOMMU_INT_MASTER_MASK			(IOMMU_INT_MASTER_PERMISSION(0) | \
+-						 IOMMU_INT_MASTER_PERMISSION(1) | \
+-						 IOMMU_INT_MASTER_PERMISSION(2) | \
+-						 IOMMU_INT_MASTER_PERMISSION(3) | \
+-						 IOMMU_INT_MASTER_PERMISSION(4) | \
+-						 IOMMU_INT_MASTER_PERMISSION(5))
+-#define IOMMU_INT_MASK				(IOMMU_INT_INVALID_L1PG | \
+-						 IOMMU_INT_INVALID_L2PG | \
+-						 IOMMU_INT_MASTER_MASK)
++/*
++ * The per-master masks are built at runtime from the variant's master count
++ * rather than fixed at six, so replacing the old IOMMU_INT_MASTER_MASK and
++ * IOMMU_INT_MASK constants -- see sun50i_iommu_master_mask().
++ */
++
++/*
++ * The H6 and H616 blocks have six masters and take a single DT cell, the
++ * master ID. The H713's has seven, and its binding carries a second cell.
++ *
++ * The second cell is a boolean, decided by reading the vendor driver: its
++ * of_xlate stores args[1] booleanised into a per-device flag, and add_device
++ * hands that flag to sunxi_enable_device_iommu(master, enable), which
++ * clears the master's bits in IOMMU_BYPASS_REG when set and sets them when
++ * clear. So cell 1 = "translate this master", and 0 leaves it bypassing.
++ *
++ * That distinction is not academic on this SoC: the vendor device tree
++ * translates the video engine (<&mmu_aw 0 1>) but deliberately leaves the
++ * display and ge2d in bypass (<&mmu_aw 2 0>). Writing BYPASS = 0 the way the
++ * H6 path does would switch masters into translation that the vendor never
++ * translates, with page tables they have no mappings in.
++ */
++struct sun50i_iommu_variant {
++	unsigned int num_masters;
++	unsigned int num_dt_cells;
++};
++
++static const struct sun50i_iommu_variant sun50i_iommu_h6 = {
++	.num_masters	= 6,
++	.num_dt_cells	= 1,
++};
++
++static const struct sun50i_iommu_variant sun50i_iommu_h713 = {
++	.num_masters	= 7,
++	.num_dt_cells	= 2,
++};
+ 
+ #define PT_ENTRY_SIZE			sizeof(u32)
+ 
+@@ -108,10 +136,25 @@
+ 	struct reset_control *reset;
+ 	struct clk *clk;
+ 
++	const struct sun50i_iommu_variant *variant;
++	/*
++	 * Shadow of IOMMU_BYPASS_REG: a set bit leaves that master bypassing
++	 * the IOMMU. Starts all-ones on variants with a per-master DT flag, so
++	 * a master is only translated once a device has asked to be, and is
++	 * left at zero elsewhere to preserve the H6 behaviour of translating
++	 * everything.
++	 */
++	u32 bypass;
++
+ 	struct iommu_domain *domain;
+ 	struct kmem_cache *pt_pool;
+ };
+ 
++static u32 sun50i_iommu_master_mask(struct sun50i_iommu *iommu)
++{
++	return GENMASK(iommu->variant->num_masters - 1, 0);
++}
++
+ struct sun50i_iommu_domain {
+ 	struct iommu_domain domain;
+ 
+@@ -446,14 +489,11 @@
+ 
+ 	iommu_write(iommu, IOMMU_TTB_REG, sun50i_domain->dt_dma);
+ 	iommu_write(iommu, IOMMU_TLB_PREFETCH_REG,
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(0) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(1) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(2) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(3) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(4) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(5));
+-	iommu_write(iommu, IOMMU_BYPASS_REG, 0);
+-	iommu_write(iommu, IOMMU_INT_ENABLE_REG, IOMMU_INT_MASK);
++		    sun50i_iommu_master_mask(iommu));
++	iommu_write(iommu, IOMMU_BYPASS_REG, iommu->bypass);
++	iommu_write(iommu, IOMMU_INT_ENABLE_REG,
++		    IOMMU_INT_INVALID_L1PG | IOMMU_INT_INVALID_L2PG |
++		    sun50i_iommu_master_mask(iommu));
+ 	iommu_write(iommu, IOMMU_DM_AUT_CTRL_REG(SUN50I_IOMMU_ACI_NONE),
+ 		    IOMMU_DM_AUT_CTRL_RD_UNAVAIL(SUN50I_IOMMU_ACI_NONE, 0) |
+ 		    IOMMU_DM_AUT_CTRL_WR_UNAVAIL(SUN50I_IOMMU_ACI_NONE, 0) |
+@@ -835,12 +875,38 @@
+ 				 const struct of_phandle_args *args)
+ {
+ 	struct platform_device *iommu_pdev = of_find_device_by_node(args->np);
++	struct sun50i_iommu *iommu;
+ 	unsigned id = args->args[0];
+ 
+-	dev_iommu_priv_set(dev, platform_get_drvdata(iommu_pdev));
++	if (!iommu_pdev)
++		return -ENODEV;
++
++	iommu = platform_get_drvdata(iommu_pdev);
++	dev_iommu_priv_set(dev, iommu);
+ 
+ 	put_device(&iommu_pdev->dev);
+ 
++	if (!iommu)
++		return -ENODEV;
++
++	if (id >= iommu->variant->num_masters) {
++		dev_err(dev, "master %u out of range (%u masters)\n",
++			id, iommu->variant->num_masters);
++		return -EINVAL;
++	}
++
++	/*
++	 * On a two-cell binding the second cell says whether this master is
++	 * translated at all. Leave the ones that ask for bypass bypassing --
++	 * see the comment on struct sun50i_iommu_variant. A one-cell binding
++	 * keeps every master translated, which is what H6 has always done.
++	 */
++	if (iommu->variant->num_dt_cells > 1 && args->args_count > 1 &&
++	    !args->args[1])
++		iommu->bypass |= BIT(id);
++	else
++		iommu->bypass &= ~BIT(id);
++
+ 	return iommu_fwspec_add_ids(dev, &id, 1);
+ }
+ 
+@@ -889,7 +955,7 @@
+ 
+ 	iova = iommu_read(iommu, addr_reg);
+ 	blame = iommu_read(iommu, blame_reg);
+-	master = ilog2(blame & IOMMU_INT_MASTER_MASK);
++	master = ilog2(blame & sun50i_iommu_master_mask(iommu));
+ 
+ 	/*
+ 	 * If the address is not in the page table, we can't get what
+@@ -912,7 +978,7 @@
+ 	assert_spin_locked(&iommu->iommu_lock);
+ 
+ 	blame = iommu_read(iommu, IOMMU_INT_STA_REG);
+-	master = ilog2(blame & IOMMU_INT_MASTER_MASK);
++	master = ilog2(blame & sun50i_iommu_master_mask(iommu));
+ 	iova = iommu_read(iommu, IOMMU_INT_ERR_ADDR_REG(master));
+ 	aci = sun50i_get_pte_aci(iommu_read(iommu,
+ 					    IOMMU_INT_ERR_DATA_REG(master)));
+@@ -964,7 +1030,8 @@
+ 	spin_lock(&iommu->iommu_lock);
+ 
+ 	status = iommu_read(iommu, IOMMU_INT_STA_REG);
+-	if (!(status & IOMMU_INT_MASK)) {
++	if (!(status & (IOMMU_INT_INVALID_L1PG | IOMMU_INT_INVALID_L2PG |
++		        sun50i_iommu_master_mask(iommu)))) {
+ 		spin_unlock(&iommu->iommu_lock);
+ 		return IRQ_NONE;
+ 	}
+@@ -985,7 +1052,8 @@
+ 
+ 	iommu_write(iommu, IOMMU_INT_CLR_REG, status);
+ 
+-	resets = (status | l1_status | l2_status) & IOMMU_INT_MASTER_MASK;
++	resets = (status | l1_status | l2_status) &
++		 sun50i_iommu_master_mask(iommu);
+ 	iommu_write(iommu, IOMMU_RESET_REG, ~resets);
+ 	iommu_write(iommu, IOMMU_RESET_REG, IOMMU_RESET_RELEASE_ALL);
+ 
+@@ -1007,6 +1075,20 @@
+ 	platform_set_drvdata(pdev, iommu);
+ 	iommu->dev = &pdev->dev;
+ 
++	iommu->variant = of_device_get_match_data(&pdev->dev);
++	if (!iommu->variant)
++		return -EINVAL;
++
++	/*
++	 * Where the binding can say which masters to translate, start from
++	 * "none of them" and let of_xlate opt each one in. Getting this
++	 * backwards would put a master into translation against an empty page
++	 * table, which on a block with no fault containment is exactly the
++	 * failure this driver exists to prevent.
++	 */
++	if (iommu->variant->num_dt_cells > 1)
++		iommu->bypass = sun50i_iommu_master_mask(iommu);
++
+ 	iommu->pt_pool = kmem_cache_create(dev_name(&pdev->dev),
+ 					   PT_SIZE, PT_SIZE,
+ 					   SLAB_HWCACHE_ALIGN | SLAB_CACHE_DMA32,
+@@ -1033,7 +1115,13 @@
+ 		goto err_free_cache;
+ 	}
+ 
+-	iommu->reset = devm_reset_control_get(&pdev->dev, NULL);
++	/*
++	 * Optional: the H713's block has no reset line. Its stock device tree
++	 * gives the node a clock and nothing else, and our CCU exposes no
++	 * IOMMU reset to point at. reset_control_assert/deassert are no-ops on
++	 * a NULL control, so the rest of the driver needs no changes.
++	 */
++	iommu->reset = devm_reset_control_get_optional(&pdev->dev, NULL);
+ 	if (IS_ERR(iommu->reset)) {
+ 		dev_err(&pdev->dev, "Couldn't get our reset line.\n");
+ 		ret = PTR_ERR(iommu->reset);
+@@ -1069,8 +1157,12 @@
+ }
+ 
+ static const struct of_device_id sun50i_iommu_dt[] = {
+-	{ .compatible = "allwinner,sun50i-h6-iommu", },
+-	{ .compatible = "allwinner,sun50i-h616-iommu", },
++	{ .compatible = "allwinner,sun50i-h6-iommu",
++	  .data = &sun50i_iommu_h6 },
++	{ .compatible = "allwinner,sun50i-h616-iommu",
++	  .data = &sun50i_iommu_h6 },
++	{ .compatible = "allwinner,sun50i-h713-iommu",
++	  .data = &sun50i_iommu_h713 },
+ 	{ /* sentinel */ },
+ };
+ MODULE_DEVICE_TABLE(of, sun50i_iommu_dt);

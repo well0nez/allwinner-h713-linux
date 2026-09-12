@@ -1,0 +1,95 @@
+arm64: dts: h713: add fixed-voltage CPU OPP table for cpufreq
+
+Wire the four Cortex-A53s to CLK_CPUX and a shared operating-points-v2
+table so cpufreq-dt binds and the cpu-thermal passive trips (75/85 C)
+have a cooling device to throttle. Until now only the 105 C critical
+trip did anything.
+
+No CPU-rail regulator is described yet, so this is frequency-only DVFS
+(no opp-microvolt / cpu-supply). The table is capped at 1008 MHz, the
+rate U-Boot programs PLL_CPUX to and boots Linux at, so every point is
+known-stable at the current fixed core voltage. Frequencies are the
+H616-family PLL_CPUX points at/below that ceiling.
+
+Depends on the CPU clock notifiers added in the preceding patch.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -104,6 +104,8 @@
+ 			device_type = "cpu";
+ 			reg = <0>;
+ 			enable-method = "psci";
++			clocks = <&ccu CLK_CPUX>;
++			operating-points-v2 = <&cpu_opp_table>;
+ 			#cooling-cells = <2>;
+ 		};
+ 		cpu@1 {
+@@ -111,18 +113,68 @@
+ 			device_type = "cpu";
+ 			reg = <1>;
+ 			enable-method = "psci";
++			clocks = <&ccu CLK_CPUX>;
++			operating-points-v2 = <&cpu_opp_table>;
+ 		};
+ 		cpu@2 {
+ 			compatible = "arm,cortex-a53";
+ 			device_type = "cpu";
+ 			reg = <2>;
+ 			enable-method = "psci";
++			clocks = <&ccu CLK_CPUX>;
++			operating-points-v2 = <&cpu_opp_table>;
+ 		};
+ 		cpu@3 {
+ 			compatible = "arm,cortex-a53";
+ 			device_type = "cpu";
+ 			reg = <3>;
+ 			enable-method = "psci";
++			clocks = <&ccu CLK_CPUX>;
++			operating-points-v2 = <&cpu_opp_table>;
++		};
++	};
++
++	/*
++	 * Fixed-voltage CPU DVFS. The CPU rail has no software-controlled
++	 * regulator wired up yet, so these operating points scale frequency
++	 * only (no opp-microvolt / cpu-supply). The ceiling is 1008 MHz, the
++	 * rate U-Boot programs PLL_CPUX to and boots Linux at, so every point
++	 * is known-stable at the current fixed core voltage. This lets the
++	 * cpu-thermal passive trips actually throttle instead of relying on
++	 * the 105 C critical trip alone.
++	 */
++	cpu_opp_table: opp-table-cpu {
++		compatible = "operating-points-v2";
++		opp-shared;
++
++		opp-480000000 {
++			opp-hz = /bits/ 64 <480000000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
++		};
++
++		opp-600000000 {
++			opp-hz = /bits/ 64 <600000000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
++		};
++
++		opp-720000000 {
++			opp-hz = /bits/ 64 <720000000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
++		};
++
++		opp-792000000 {
++			opp-hz = /bits/ 64 <792000000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
++		};
++
++		opp-936000000 {
++			opp-hz = /bits/ 64 <936000000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
++		};
++
++		opp-1008000000 {
++			opp-hz = /bits/ 64 <1008000000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 	};
+

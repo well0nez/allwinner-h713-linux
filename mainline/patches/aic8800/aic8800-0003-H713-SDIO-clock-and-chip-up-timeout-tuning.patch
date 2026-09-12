@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Mon, 17 Aug 2026 11:55:47 -0700
+Subject: [PATCH] aic8800: H713 SDIO clock and chip-up timeout tuning
+
+---
+ aic8800_bsp/aic_bsp_driver.h | 2 +-
+ aic8800_bsp/aicsdio.c        | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/aic8800_bsp/aic_bsp_driver.h b/aic8800_bsp/aic_bsp_driver.h
+index df14e65..24c7875 100644
+--- a/aic8800_bsp/aic_bsp_driver.h
++++ b/aic8800_bsp/aic_bsp_driver.h
+@@ -530,7 +530,7 @@ enum chip_rev {
+ 
+ 
+ #define FEATURE_SDIO_CLOCK          50000000 // 0: default, other: target clock rate
+-#define FEATURE_SDIO_CLOCK_V3       150000000 // 0: default, other: target clock rate
++#define FEATURE_SDIO_CLOCK_V3       0 // 0: keep the MMC core's negotiated rate
+ #define FEATURE_SDIO_PHASE          2        // 0: default, 2: 180°
+ 
+ struct aicbt_patch_table {
+diff --git a/aic8800_bsp/aicsdio.c b/aic8800_bsp/aicsdio.c
+index 669b7b7..a57219d 100644
+--- a/aic8800_bsp/aicsdio.c
++++ b/aic8800_bsp/aicsdio.c
+@@ -753,7 +753,7 @@ static int aicbsp_platform_power_on(void)
+ 	aicbsp_mainline_rescan();
+ #endif //CONFIG_PLATFORM_MAINLINE_SUNXI
+ 
+-	if (down_timeout(&aic_chipup_sem, msecs_to_jiffies(2000)) == 0) {
++	if (down_timeout(&aic_chipup_sem, msecs_to_jiffies(20000)) == 0) {
+ 		aicbsp_unreg_sdio_notify();
+ 		if(aicbsp_load_fw_in_fdrv){
+ 			printk("%s load fw in fdrv\r\n", __func__);

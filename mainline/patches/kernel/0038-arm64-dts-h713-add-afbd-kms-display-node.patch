@@ -1,0 +1,85 @@
+arm64: dts: h713: give the AFBD scanout to a KMS driver
+
+Adds display@5600000 for the AFBD KMS driver, and answers a question the
+video-decode work left open: what DECD is for. DECD probes and works, but
+nothing uses it -- its registers are not in the scanout fetch path -- while
+it holds exactly the two resources a display driver needs: the AFBD
+register window at 0x05600000 and the 60 Hz vsync interrupt on SPI 110.
+Two drivers cannot own those, so dec@5600000 is disabled here and the
+window goes to the driver that puts pixels on the panel. DECD is still
+built (CONFIG_SUNXI_DECD=m) and the node is one word from coming back if a
+job is ever found for it.
+
+The new node takes only the AFBD range. It does NOT take the 0x05700000
+TVTOP range DECD also mapped, and it does not carry `resets`: the panel is
+brought up before Linux by U-Boot's h713_disp and the MIPS co-processor,
+and asserting rst_bus_disp would kill a display this driver cannot bring
+back. Leaving the reset out of the DT makes that a property of the
+hardware description rather than a rule the C code has to remember.
+
+It also does not carry `memory-region`, which is the interesting one.
+uboot-scanout@6c100000 stays a plain no-map reservation: its job is to
+stop Linux scribbling on the buffer AFBD is actively scanning out of
+before the driver takes over, and that is all. Handing it to the driver as
+a shared-dma-pool was tried first and is wrong -- a dma-coherent pool
+allocates in power-of-two page orders, so a 3.6 MiB framebuffer occupies a
+4 MiB slot and a 16 MiB region yields exactly four. Measured on hardware:
+with the fbdev console holding one, a client gets three, and mpv wants
+more than that and dies at CREATE_DUMB with ENOMEM.
+
+So the driver allocates from system CMA (cma=128M in this board's
+bootargs), which allocates by range rather than by order and has room for
+cedrus too. The region reverts to its original 8 MiB, since it no longer
+needs to hold anything but U-Boot's two scanout slots.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -103,6 +103,13 @@
+ 		 * the back at 0x6c500000. Double buffering flips the AFBD
+ 		 * source address (0x05600178) between them, so both are live
+ 		 * scanout targets and the kernel must not use either.
++		 *
++		 * It is a plain reservation, NOT a dma-pool: it exists so Linux
++		 * cannot scribble on the buffer AFBD is scanning out of before
++		 * the KMS driver takes over. The driver allocates from system
++		 * CMA instead, because a dma-coherent pool allocates in
++		 * power-of-two page orders -- a 3.6 MiB framebuffer takes a
++		 * 4 MiB slot, so 16 MiB yielded exactly four and mpv ran out.
+ 		 */
+ 		framebuf_reserved: uboot-scanout@6c100000 {
+ 			reg = <0x6c100000 0x800000>;
+@@ -1597,6 +1604,32 @@
+ 			 * a divider beneath a live panel. Match what is there.
+ 			 */
+ 			clock-frequency = <100000000>;
++			/*
++			 * Disabled: display@5600000 owns this register window
++			 * and SPI 110 now. DECD probes and works but has no
++			 * job -- its registers are not in the scanout fetch
++			 * path -- and two drivers cannot hold one window and
++			 * one interrupt. Still built as a module; this is one
++			 * word from coming back if a use is ever found.
++			 */
++			status = "disabled";
++		};
++
++		/*
++		 * AFBD scanout, driven as KMS. Adopts the display U-Boot's
++		 * h713_disp brought up and drives buffer selection and page
++		 * flips only -- never timing, the LVDS PHY, or the display
++		 * reset. The missing `resets` property is deliberate: asserting
++		 * rst_bus_disp would kill a panel this driver cannot bring
++		 * back, so the hardware description withholds the means.
++		 */
++		display: display@5600000 {
++			compatible = "allwinner,sun50i-h713-afbd";
++			reg = <0x05600000 0x400>;
++			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&ccu CLK_AFBD>,
++				 <&ccu CLK_BUS_DISP>;
++			clock-names = "clk_afbd", "clk_bus_disp";
+ 			status = "okay";
+ 		};
+ 

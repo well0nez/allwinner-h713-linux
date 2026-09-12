@@ -1,0 +1,80 @@
+Fix DECD queueing work to a CPU that does not exist.
+
+The stock driver queues all of its work with queue_work_on(4, ...), in
+three places: the debug exception trace, and the frame release FIFO from
+both dec_frame_queue_enqueue() and the frame manager.
+
+The H713 has four Cortex-A53s, numbered 0..3. CPU 4 does not exist.
+__queue_work() does not validate its cpu argument, so it indexes a
+per-CPU structure out of range and faults.
+
+Observed on hardware, submitting a frame through /dev/decd:
+
+  Unable to handle kernel paging request at virtual address ffff800080f24698
+  Internal error: Oops: 0000000096000007 [#1] SMP
+  CPU: 0 UID: 0 PID: 0 Comm: swapper/0
+  pc : __queue_work+0x1d4/0x648
+  lr : queue_work_on+0x3c/0xa0
+  x0 : 0000000000000004
+  Kernel panic - not syncing: Oops: Fatal exception in interrupt
+
+x0 is the cpu argument, straight from the constant in the source. The
+release_work item is queued from the vsync path, which is why this fires
+on the first interrupt after dec_frame_submit() calls dec_reg_enable().
+
+None of these work items has an affinity requirement — they drain a
+release FIFO and copy debug registers — so queue_work() is used and the
+workqueue core chooses the CPU. Correct and portable.
+
+Where the 4 came from is unknown; the vendor's own SoC may have had more
+cores, or it is a misread constant. Either way it cannot stand here.
+
+This supersedes patch 0034 as the cause of the observed panic. 0034 fixes
+a real out-of-bounds write in the same handler, but that one needs ~100
+interrupts to trigger and this faults on the first, so 0034 was correct
+as a bug fix and wrong as a diagnosis of this crash.
+
+--- a/drivers/misc/sunxi_decd/decd_frame.c	2026-08-12 01:58:30.077748964 -0700
++++ b/drivers/misc/sunxi_decd/decd_frame.c	2026-08-12 01:58:30.087260152 -0700
+@@ -78,7 +78,22 @@
+ 	dbg->dbgdat[262 + pos * 7] = a1;
+ 	dbg->dbgdat[263 + pos * 7] = a2;
+ 	dbg->dbgdat[264 + pos * 7] = jiffies;
+-	return queue_work_on(4, system_wq, &dbg->work);
++/*
++ * The stock driver queues all of its work with queue_work_on(4, ...).
++ * CPU 4 does not exist on the H713: it has four Cortex-A53s, 0..3.
++ * __queue_work() does not validate the cpu argument, so it indexes a
++ * per-CPU structure out of range and faults.
++ *
++ * Observed: submitting a frame Oopsed immediately in interrupt context,
++ * pc = __queue_work+0x1d4, lr = queue_work_on+0x3c, x0 = 4 -- the cpu
++ * argument, straight from the source constant.
++ *
++ * These work items have no affinity requirement; they drain a release
++ * FIFO and copy debug registers. queue_work() lets the workqueue core
++ * choose, which is both correct and portable.
++ */
++	/* queue_work(), not queue_work_on(4, ...): CPU 4 does not exist here. */
++	return queue_work(system_wq, &dbg->work);
+ }
+ 
+ int dec_debug_trace_frame(int addr, int fmt)
+@@ -1009,7 +1024,7 @@
+ 			vf = NULL;
+ 		}
+ 	}
+-	queue_work_on(4, system_wq, &q->release_work);
++	queue_work(system_wq, &q->release_work);
+ }
+ 
+ static int dec_frame_queue_hardware_repeat_ctrl(struct dec_frame_queue *q,
+@@ -1570,7 +1585,7 @@
+ 	fmgr->interlace_pair[1] = bot_vf;
+ 	spin_unlock_irqrestore(&fmgr->ready_lock, flags);
+ 
+-	queue_work_on(4, system_wq, &fmgr->queue->release_work);
++	queue_work(system_wq, &fmgr->queue->release_work);
+ 
+ 	/* IDA 0x6474: dec_frame_queue_resume at end */
+ 	dec_frame_queue_resume(fmgr);

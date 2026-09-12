@@ -1,0 +1,11 @@
+--- a/drivers/clk/sunxi-ng/Kconfig
++++ b/drivers/clk/sunxi-ng/Kconfig
+@@ -20,7 +20,7 @@ config SUN20I_D1_CCU
+ config SUN20I_D1_R_CCU
+ 	tristate "Support for the Allwinner D1/R528/T113 PRCM CCU"
+ 	default ARCH_SUNXI
+-	depends on MACH_SUN8I || RISCV || COMPILE_TEST
++	depends on MACH_SUN8I || RISCV || ARM64 || COMPILE_TEST
+ 
+ config SUN50I_A64_CCU
+ 	tristate "Support for the Allwinner A64 CCU"

@@ -1,0 +1,33 @@
+# Boot WiFi hotspot — example config.
+#
+# Copy this to the path named by HOTSPOT_CONF in config/versions.env
+# (default: local/hotspot.conf, which is gitignored so credentials stay out of
+# git). If that file exists, `tools/rootfs/build.sh` bakes an on-boot AP into the
+# rootfs (hostapd + dnsmasq on wlan0) using these settings, and masks the STA
+# wpa_supplicant + the default dnsmasq so the dedicated AP owns wlan0 and DHCP.
+# Remove the file to build an image with no hotspot.
+#
+# Sourced as shell during the build — KEY=value, no spaces around '='.
+
+HOTSPOT_SSID=my-ssid            # 1-32 chars
+HOTSPOT_PASSPHRASE=change-me    # WPA2, 8-63 chars
+HOTSPOT_CHANNEL=6               # 2.4 GHz channel (1-11)
+HOTSPOT_IP=192.168.4.1          # AP address / DHCP gateway
+HOTSPOT_DHCP_START=192.168.4.10
+HOTSPOT_DHCP_END=192.168.4.100
+
+# Band. The radio is a 1x1 dual-band VHT80 part; the AP is built with HT/VHT
+# enabled either way. Measured on hardware, 128 MiB each direction, SHA-256
+# exact and zero SDIO faults in all three cases:
+#
+#   2.4 GHz, no HT (what this used to emit)   1.33 MB/s in   2.37 MB/s out
+#   2.4 GHz HT40                              4.85 MB/s in   7.65 MB/s out
+#   5 GHz VHT80                              13.25 MB/s in  14.41 MB/s out
+#
+# 5 GHz is roughly 10x the old configuration and removes the in/out asymmetry,
+# but it has shorter range, drops 2.4-only clients, and carries stricter
+# regulatory obligations -- note that regulatory.db is not installed on these
+# images, so the stack runs under permissive rules. Choose deliberately.
+HOTSPOT_BAND=2.4                # 2.4 (HT40) or 5 (VHT80)
+HOTSPOT_CHANNEL_5G=36           # used when HOTSPOT_BAND=5; 36-48 is UNII-1, non-DFS
+HOTSPOT_VHT_SEG0=42             # 80 MHz centre index; 42 covers channels 36-48

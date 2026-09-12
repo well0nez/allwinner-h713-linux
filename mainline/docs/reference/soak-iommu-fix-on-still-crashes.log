@@ -1,0 +1,46 @@
+[ 2704.610294] Internal error: Oops - Undefined instruction: 0000000002000000 [#1]  SMP
+[ 2704.618143] Modules linked in:
+[ 2704.621217] CPU: 3 UID: 0 PID: 3266 Comm: kworker/u16:2 Not tainted 6.18.38-iommu #1 NONE 
+[ 2704.629479] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[ 2704.635582] Workqueue:  0x0 (pan_js)
+[ 2704.639185] pstate: 200000c5 (nzCv daIF -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[ 2704.646153] pc : __schedule+0x284/0x794
+[ 2704.650035] lr : __schedule+0x27c/0x794
+[ 2704.653871] sp : ffff8000888f3d40
+[ 2704.657186] x29: ffff8000888f3d70 x28: 0000000000000402 x27: 0000000000000001
+[ 2704.664332] x26: ffff00001b016218 x25: ffff00001b015d00 x24: ffff800080f69d78
+[ 2704.671544] x23: ffff00001b015d00 x22: ffff000000513e00 x21: ffff800080af96b8
+[ 2704.678683] x20: ffff00001b015d00 x19: ffff00003fdd4000 x18: 0000000000000001
+[ 2704.685824] x17: 0000000000000000 x16: 0000000000000383 x15: 000000006a21a0a5
+[ 2704.692956] x14: 0000000062b7cfbb x13: 000000005386f148 x12: 00000000cf2dcdbc
+[ 2704.700095] x11: 0000000002d93d82 x10: 00000000002aa9c5 x9 : 0000000001553c0f
+[ 2704.707233] x8 : 0000000000000006 x7 : 0000000000000000 x6 : ffff000000400130
+[ 2704.714372] x5 : 000000008010000d x4 : 0000000000000000 x3 : ffff000002282200
+[ 2704.721515] x2 : 0000000000000001 x1 : ffff000000513e00 x0 : ffff00003fdd4000
+[ 2704.728651] Call trace:
+[ 2704.731099]  __schedule+0x284/0x794 (P)
+[ 2704.734944]  schedule+0x48/0xb4
+[ 2704.738092]  worker_thread+0xb8/0x45c
+[ 2704.741759]  kthread+0x198/0x1e4
+[ 2704.744997]  ret_from_fork+0x10/0x20
+[ 2704.748603] Code: f9402508 d63f0100 14000104 528000c8 (f828129f) 
+[ 2704.754694] ---[ end trace 0000000000000000 ]---
+[ 2704.759314] Kernel panic - not syncing: Oops - Undefined instruction: Fatal exception
+[ 2704.767141] SMP: stopping secondary CPUs
+[ 2704.771071] Kernel Offset: disabled
+[ 2704.774555] CPU features: 0x000000,00000000,40004000,0400420b
+[ 2704.780299] Memory Limit: none
+[ 2704.783352] Rebooting in 5 seconds..
+
+U-Boot SPL 2026.07-rc5-gdbad200ca799-dirty (Aug 07 2026 - 18:26:52 -0700)
+DRAM: 1024 MiB
+Trying to boot from MMC2
+NOTICE:  BL31: v2.15.0(release):47ee829f7
+NOTICE:  BL31: Built : 03:25:48, Jul 27 2026
+NOTICE:  BL31: Detected Allwinner H713 SoC (1860)
+NOTICE:  BL31: Found U-Boot DTB at 0x4a0d2978, model: HY200 QZ713DF_A1 (Allwinner H713)
+
+
+U-Boot 2026.07-rc5-gdbad200ca799-dirty (Aug 07 2026 - 18:26:52 -0700) Allwinner Technology
+
+CPU:   Allwinner H713 (SUN50I)
