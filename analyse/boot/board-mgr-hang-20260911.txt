@@ -1,0 +1,82 @@
+[  126.331185] hy310-board-mgr fan: PWM period: 40000 ns
+[  126.336332] hy310-board-mgr fan: NTC via IIO channel acquired
+[  126.342100] hy310-board-mgr fan: NTC: loaded 63-entry table from 'gpadc-table'
+[  126.349346] hy310-board-mgr fan: NTC enabled (ntc_num=0, ntc0.enable=1)
+[  126.356247] hy310-board-mgr fan: fan0: tachometer IRQ 230, 2 pulses/rev
+[  126.362904] hy310-board-mgr fan: fan0: modes=0, power_gpio=-2, fg_irq=230
+[  126.369718] of_pwm_get(): can't parse "pwms" property
+[  126.374782] hy310-board-mgr fan: PWM for fan0 not found: -2
+[  126.380362] hy310-board-mgr fan: fan0: no PWM device, speed control disabled
+[  126.387570] hy310-board-mgr fan: hwmon device registered
+[  126.392959] hy310-board-mgr fan: HY310 board manager probed: 1 fan(s), NTC enabled
+[  134.591946] hy310-board-mgr fan: fan0: 0 RPM below 1000 for 8 cycles -- check the fan
+[  147.408091] rcu: INFO: rcu_sched self-detected stall on CPU
+[  147.413691] rcu: 	0-....: (1 GPs behind) idle=d884/1/0x4000000000000002 softirq=1578/1579 fqs=2428
+[  147.422663] rcu: 	(t=5254 jiffies g=1997 q=145 ncpus=4)
+[  147.427900] CPU: 0 UID: 0 PID: 0 Comm: swapper/0 Tainted: G         C          6.18.38 #1 NONE 
+[  147.427922] Tainted: [C]=CRAP
+[  147.427929] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[  147.427938] pstate: 60000005 (nZCv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  147.427953] pc : arch_local_irq_enable+0x8/0xc
+[  147.427977] lr : default_idle_call+0x24/0x30
+[  147.428000] sp : ffff800081003e00
+[  147.428006] x29: ffff800081003e00 x28: 0000000048000000 x27: 0000000000000000
+[  147.428033] x26: 000000007ffe55b0 x25: 0000000049185200 x24: ffff800081009000
+[  147.428055] x23: ffff8000810099f8 x22: 0000000000000000 x21: ffff800081010ec0
+[  147.428078] x20: 0000000000000001 x19: 0000000000000001 x18: 0000000000000000
+[  147.428098] x17: 00000000f5257d14 x16: 0000000000000077 x15: 000000000eadad2b
+[  147.428120] x14: 0000000000000000 x13: 00000000000094ae x12: 00000000000094ae
+[  147.428140] x11: ffff800081007000 x10: 0000000000000000 x9 : 000000000002d884
+[  147.428162] x8 : 4000000000000000 x7 : 0000000000000000 x6 : ffff80008159be28
+[  147.428182] x5 : ffff80008159be28 x4 : 0000000000000000 x3 : 0000000000000000
+[  147.428202] x2 : 0000000000000001 x1 : 0000000000000000 x0 : 00000000000000c0
+[  147.428223] Call trace:
+[  147.428230]  arch_local_irq_enable+0x8/0xc (P)
+[  147.428249]  do_idle+0xc0/0x108
+[  147.428266]  cpu_startup_entry+0x34/0x38
+[  147.428283]  kernel_init+0x0/0x124
+[  147.428305]  start_kernel+0x2a8/0x358
+[  147.428326]  __primary_switched+0x88/0x90
+[  210.444225] rcu: INFO: rcu_sched self-detected stall on CPU
+[  210.449814] rcu: 	0-....: (1 GPs behind) idle=d884/1/0x4000000000000002 softirq=1578/1579 fqs=9358
+[  210.458784] rcu: 	(t=21013 jiffies g=1997 q=205 ncpus=4)
+[  210.464107] CPU: 0 UID: 0 PID: 0 Comm: swapper/0 Tainted: G         C          6.18.38 #1 NONE 
+[  210.464128] Tainted: [C]=CRAP
+[  210.464134] Hardware name: HY200 QZ713DF_A1 (Allwinner H713) (DT)
+[  210.464143] pstate: 60000005 (nZCv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[  210.464158] pc : arch_local_irq_enable+0x8/0xc
+[  210.464177] lr : default_idle_call+0x24/0x30
+[  210.464200] sp : ffff800081003e00
+[  210.464206] x29: ffff800081003e00 x28: 0000000048000000 x27: 0000000000000000
+[  210.464233] x26: 000000007ffe55b0 x25: 0000000049185200 x24: ffff800081009000
+[  210.464254] x23: ffff8000810099f8 x22: 0000000000000000 x21: ffff800081010ec0
+[  210.464275] x20: 0000000000000001 x19: 0000000000000001 x18: 0000000000000000
+[  210.464296] x17: 00000000f5257d14 x16: 0000000000000077 x15: 000000000eadad2b
+[  210.464317] x14: 0000000000000000 x13: 00000000000094ae x12: 00000000000094ae
+[  210.464338] x11: ffff800081007000 x10: 0000000000000000 x9 : 000000000002d884
+[  210.464358] x8 : 4000000000000000 x7 : 0000000000000000 x6 : ffff80008159be28
+[  210.464379] x5 : ffff80008159be28 x4 : 0000000000000000 x3 : 0000000000000000
+[  210.464399] x2 : 0000000000000001 x1 : 0000000000000000 x0 : 00000000000000c0
+[  210.464420] Call trace:
+[  210.464426]  arch_local_irq_enable+0x8/0xc (P)
+[  210.464445]  do_idle+0xc0/0x108
+[  210.464461]  cpu_startup_entry+0x34/0x38
+[  210.464477]  kernel_init+0x0/0x124
+[  210.464499]  start_kernel+0x2a8/0x358
+[  210.464521]  __primary_switched+0x88/0x90
+
+=== Umstaende (11.09.2026, aufgenommen ueber UART) ===
+Kernel: Baum 9e4e34bc (Serie bis 0142, KERNEL_CONFIG=zram), Geraet HY200 QZ713DF_A1.
+Aufnahme: hy310-board-mgr.ko per insmod in ein LAUFENDES System geladen (Uptime ~126 s),
+das vorher mit modprobe.blacklist=hy310_board_mgr gebootet war und sauber lief
+("random: crng init done" bei t=6,03 s).
+
+Belegt:
+- Boot MIT board-mgr  -> haengt (systemd-random-seed laeuft in den 10-min-Timeout)
+- Boot OHNE board-mgr (blacklist) -> crng init done t=6,03 s, bootet durch
+- board-mgr ins laufende System nachladen -> System stirbt binnen Sekunden
+- IRQ 230 (PH17, sunxi_pio_edge 209 Edge, hy310-fan-tach): registriert, Zaehler 0 0 0 0
+- fan_work lief nach dem Probe noch ~8 s weiter (Meldung bei 134,59 s), dann Stille
+- RCU-Stall t=5254 jiffies vor der Meldung bei 147,41 s -> Beginn 126,4 s = Probe-Ende
+- Geprueft und harmlos: hy310_ntc_adc_to_temp (einfache for-Schleife),
+  sun50i_lradc_read (nur ein readl, kein Warten)

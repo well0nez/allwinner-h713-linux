@@ -1,0 +1,383 @@
+[  OK  ] Stopped run-p498-i499.service - [s…emd-run] /usr/bin/systemctl reboot.
+[  OK  ] Stopped run-p498-i499.timer - [systemd-run] /usr/bin/systemctl reboot.
+[  OK  ] Removed slice system-modprobe.slice - Slice /system/modprobe.
+[  OK  ] Stopped target graphical.target - Graphical Interface.
+[  OK  ] Stopped target multi-user.target - Multi-User System.
+[  OK  ] Stopped target getty.target - Login Prompts.
+[  OK  ] Stopped target sound.target - Sound Card.
+[  OK  ] Stopped target timers.target - Timer Units.
+[  OK  ] Stopped apt-daily-upgrade.timer - …y apt upgrade and clean activities.
+[  OK  ] Stopped apt-daily.timer - Daily apt download activities.
+[  OK  ] Stopped dpkg-db-backup.timer - Daily dpkg database backup timer.
+[  OK  ] Stopped e2scrub_all.timer - Period…Metadata Check for All Filesystems.
+[  OK  ] Stopped fstrim.timer - Discard unused filesystem blocks once a week.
+[  OK  ] Stopped systemd-tmpfiles-clean.tim…y Cleanup of Temporary Directories.
+[  OK  ] Stopped target time-set.target - System Time Set.
+[  OK  ] Closed systemd-rfkill.socket - Loa…ll Switch Status /dev/rfkill Watch.
+         Unmounting boot.mount - /boot...
+         Stopping alsa-restore.service - Save/Restore Sound Card State...
+         Stopping dbus.service - D-Bus System Message Bus...
+         Stopping getty@tty1.service - Getty on tty1...
+         Stopping h713-tv@video3.service - …ang (video3) auf der Video-Plane...
+[?2004l         Stopping serial-getty@ttyS0.service - Serial Getty on ttyS0...
+         Stopping ssh.service - OpenBSD Secure Shell server...
+         Stopping systemd-logind.service - User Login Management...
+         Stopping systemd-random-seed.service - Load/Save OS Random Seed...
+[  OK  ] Stopped systemd-udev-load-credenti…- Load udev Rules from Credentials.
+[  OK  ] Stopped dbus.service - D-Bus System Message Bus.
+[  OK  ] Stopped h713-tv@video3.service - H…ngang (video3) auf der Video-Plane.
+[  OK  ] Stopped getty@tty1.service - Getty on tty1.
+[  OK  ] Stopped ssh.service - OpenBSD Secure Shell server.
+[  OK  ] Unmounted boot.mount - /boot.
+[  OK  ] Stopped alsa-restore.service - Save/Restore Sound Card State.
+[  OK  ] Stopped systemd-random-seed.service - Load/Save OS Random Seed.
+[  OK  ] Stopped systemd-logind.service - User Login Management.
+[  OK  ] Removed slice system-getty.slice - Slice /system/getty.
+[  OK  ] Removed slice system-h713\x2dtv.slice - Slice /system/h713-tv.
+[  OK  ] Stopped systemd-fsck@dev-disk-by\x… /dev/disk/by-partlabel/hy310-boot.
+[  OK  ] Removed slice system-systemd\x2dfs…slice - Slice /system/systemd-fsck.
+[?2004h[?2004l
+[  OK  ] Stopped serial-getty@ttyS0.service - Serial Getty on ttyS0.
+[!p]104[?7h[6n[32766;32766H[6n[  OK  ] Removed slice system-serial\x2dget…slice - Slice /system/serial-getty.
+         Stopping systemd-user-sessions.service - Permit User Sessions...
+[  OK  ] Stopped systemd-user-sessions.service - Permit User Sessions.
+[  OK  ] Stopped target network.target - Network.
+[  OK  ] Stopped target remote-fs.target - Remote File Systems.
+         Stopping h713-wifi.service - H713 …(Zugangspunkt, Station oder aus)...
+         Stopping networking.service - Raise network interfaces...
+[  OK  ] Stopped h713-wifi.service - H713 W…v (Zugangspunkt, Station oder aus).
+[  OK  ] Stopped target basic.target - Basic System.
+[  OK  ] Stopped target paths.target - Path Units.
+[  OK  ] Stopped systemd-ask-password-conso…equests to Console Directory Watch.
+[  OK  ] Stopped systemd-ask-password-wall.…d Requests to Wall Directory Watch.
+[  OK  ] Stopped target slices.target - Slice Units.
+[  OK  ] Removed slice user.slice - User and Session Slice.
+[  OK  ] Stopped target sockets.target - Socket Units.
+[  OK  ] Closed dbus.socket - D-Bus System Message Bus Socket.
+[  OK  ] Closed sshd-unix-local.socket - Op…temd-ssh-generator, AF_UNIX Local).
+[  OK  ] Closed systemd-hostnamed.socket - Hostname Service Socket.
+[  OK  ] Stopped target sysinit.target - System Initialization.
+         Stopping systemd-backlight@backlig…rightness of backlight:backlight...
+         Stopping systemd-timesyncd.service - Network Time Synchronization...
+[  OK  ] Stopped systemd-tmpfiles-setup.ser…reate System Files and Directories.
+[  OK  ] Stopped systemd-timesyncd.service - Network Time Synchronization.
+[  OK  ] Stopped systemd-backlight@backligh… Brightness of backlight:backlight.
+[  OK  ] Removed slice system-systemd\x2dba… - Slice /system/systemd-backlight.
+[  OK  ] Stopped networking.service - Raise network interfaces.
+[  OK  ] Stopped target local-fs.target - Local File Systems.
+[  OK  ] Stopped target local-fs-pre.target…Preparation for Local File Systems.
+         Unmounting run-lock.mount - Legacy Locks Directory /run/lock...
+         Unmounting tmp.mount - Temporary Directory /tmp...
+[  OK  ] Stopped systemd-growfs-root.service - Grow Root File System.
+[  OK  ] Stopped systemd-remount-fs.service…mount Root and Kernel File Systems.
+[  OK  ] Stopped systemd-sysctl.service - Apply Kernel Variables.
+[  OK  ] Stopped systemd-modules-load.service - Load Kernel Modules.
+[  OK  ] Stopped systemd-tmpfiles-setup-dev…Create Static Device Nodes in /dev.
+[  OK  ] Stopped systemd-tmpfiles-setup-dev…ic Device Nodes in /dev gracefully.
+[  OK  ] Unmounted run-lock.mount - Legacy Locks Directory /run/lock.
+[  OK  ] Unmounted tmp.mount - Temporary Directory /tmp.
+[  OK  ] Stopped target swap.target - Swaps.
+[  OK  ] Reached target shutdown.target - System Shutdown.
+         Deactivating swap dev-zram0.swap - /dev/zram0...
+[  OK  ] Deactivated swap dev-zram0.swap - /dev/zram0.
+[  OK  ] Reached target umount.target - Unmount All Filesystems.
+[  OK  ] Reached target final.target - Late Shutdown Services.
+[  OK  ] Finished systemd-reboot.service - System Reboot.
+[  OK  ] Reached target reboot.target - System Reboot.
+[   52.286367] systemd-shutdown[1]: Failed to set watchdog hardware timeout to 10min: Invalid argument
+[   52.474839] reboot: Restarting system
+
+U-Boot SPL 2026.07-rc5-gdf35eded879f (Sep 12 2026 - 06:08:22 +0000)
+DRAM: 1024 MiB
+Trying to boot from MMC2
+NOTICE:  BL31: v2.15.0(release):47ee829f7
+NOTICE:  BL31: Built : 10:44:49, Aug 31 2026
+NOTICE:  BL31: Detected Allwinner H713 SoC (1860)
+NOTICE:  BL31: Found U-Boot DTB at 0x4a0d42c0, model: HY200 QZ713DF_A1 (Allwinner H713)
+
+
+U-Boot 2026.07-rc5-gdf35eded879f (Sep 12 2026 - 06:08:22 +0000) Allwinner Technology
+
+CPU:   Allwinner H713 (SUN50I)
+Model: HY200 QZ713DF_A1 (Allwinner H713)
+DRAM:  1 GiB
+Core:  44 devices, 20 uclasses, devicetree: separate
+WDT:   Not starting watchdog@2051000
+MMC:   mmc@4022000: 1
+Loading Environment from MMC... Reading from MMC(1)... OK
+In:    serial
+Out:   serial
+Err:   serial
+gate: warm start (GP5 52554e31), booting
+Net:   No ethernet found.
+starting USB...
+USB EHCI 1.00
+USB OHCI 1.0
+USB EHCI 1.00
+USB OHCI 1.0
+Bus usb@4101000: 1 USB Device(s) found
+Bus usb@4101400: 1 USB Device(s) found
+Bus usb@4200000: 2 USB Device(s) found
+Bus usb@4200400: 1 USB Device(s) found
+       scanning usb for storage devices... 0 Storage Device(s) found
+[2KHit any key to stop autoboot: 2[2KHit any key to stop autoboot: 1[2KHit any key to stop autoboot: 0
+H713 disp: loading vendor artifacts from mmc 1#hy310-boot:mips
+H713 MIPS: workspace cleared (cfg@0x4be01000, tse@0x4be41000 kept)
+  mips/display.bin             -> 0x4b100000  1256216 bytes
+  mips/display_cfg.xml         -> 0x4be01000  4766 bytes
+  mips/database.TSE            -> 0x4be41000  282464 bytes
+  mips/pq_custom.TSE           -> 0x4be85f60  15016 bytes
+  mips/projecttable.TSE        -> 0x4be89a08  1384 bytes
+  mips/ProjectID_0x0030.TSE    -> 0x4be89f70  19992 bytes
+H713 disp: config/TSE windows published for MIPS
+  mips/LogoRegData.bin         -> 0x4e000000  15652 bytes
+H713 disp: project 0x30 is HY310 (QZ713 V3.1), panel 1920x1080
+H713 disp: project 0x30 -> prologue 1, timing 2, de 0
+H713 disp: note: this board declares project 0x34 (panel_config.ini ProjectID = 52)
+  +0x0e04  058c0014  00002a00 -> 00002800  shift 8 mask 0xff
+  +0x0e14  058c0018  c950311e -> c8d0362f  shift 0 mask 0xffffffff
+  +0x0ea4  058c0014  0000001e -> 0000281e  shift 8 mask 0xff
+  +0x0ee4  058c0014  00002a00 -> 00002800  shift 8 mask 0xff
+  +0x223c  0525c000  04640897 -> 045f0897  shift 16 mask 0xffff
+  +0x223c  0525c000  045f0897 -> 045f084f  shift 0 mask 0xffff
+  +0x224c  0525c004  00001003 -> 00002c03  shift 8 mask 0xff
+  +0x224c  0525c004  00002c03 -> 00002c05  shift 0 mask 0xff
+  +0x22ac  0525c01c  07800054 -> 07800084  shift 0 mask 0xffff
+  +0x22bc  0525c020  04380010 -> 04380019  shift 0 mask 0xffff
+  +0x22fc  0525c030  04380010 -> 04380019  shift 0 mask 0xffff
+  +0x230c  0525c034  07800054 -> 07800084  shift 0 mask 0xffff
+  +0x232c  0524c004  00100010 -> 07800010  shift 16 mask 0xffff
+  +0x232c  0524c004  07800010 -> 07800019  shift 0 mask 0xffff
+  +0x235c  0524c010  04640897 -> 045f0897  shift 16 mask 0xffff
+  +0x235c  0524c010  045f0897 -> 045f084f  shift 0 mask 0xffff
+  +0x236c  0524c014  00000200 -> 00000500  shift 8 mask 0xff
+  +0x241c  05280088  00000011 -> 00000019  shift 0 mask 0xffff
+  +0x242c  0528008c  00000073 -> 00000037  shift 0 mask 0xffff
+H713 panel: config applied, 19 record field(s) patched, 12 guarded by record mask
+H713 logo: applied 32 record(s), 0 pulse(s), 13 delay(s), 0 resync step(s)
+H713 logo: applied 26 record(s), 1 pulse(s), 7 delay(s), 0 resync step(s)
+H713 disp: FIFO status 0x00000002; reset applied
+H713 logo: applied 55 record(s), 0 pulse(s), 0 delay(s), 0 resync step(s)
+H713 panel: stock power pre-delay 550 ms
+H713 panel: vendor panel lines PH19/PH15/PH8/PH9 driven high (PH_DAT=00098300)
+H713 panel: stock GPIO phase complete: PF6 cfg=1 latch=1, PH16 cfg=1 latch=1, PF_DAT=00000040 PH_DAT=00098300
+H713 panel: post-stock GPIO mux: PF6 cfg=1 latch=1, PH16 cfg=1 latch=1
+H713 probe [ARM records applied   ] 051c0014=18000000 051c0028=00000030 05140054=40000000
+H713 MIPS: display.bin SHA-256 16c74a28187f342de657828fab65145b140ac9411c40cccc02eed25047472ee9
+H713 MIPS: firmware identity accepted (HY310 (QZ713 V3.1))
+H713 MIPS: HDCP key-load wait defeated at 0x4b13d0a4
+H713 MIPS: SMM heap prepared (base 0x4e32d000, 1236 pages, slot 0x4e304d00)
+H713 MIPS: readiness probe shared memory prepared (12 spinlocks, 1224 call entries, 8 share_seq, 5 lists, 256 records)
+H713 MIPS: released, status=0x00000001 witness=0x00000000
+H713 MIPS: firmware execution proven (witness overwritten)
+H713 probe [MIPS ready            ] 051c0014=18000005 051c0028=1f300030 05140054=40000080
+H713 disp: LVDS PHY tail applied: 00000000 00000000 08000800 08000000
+H713 disp: sequence complete, LVDS FIFO status=0x00000000
+H713 MIPS: readiness status=0x00000001 witness=0x00000000
+H713 MIPS: CPU_COMM magic=deadbeef/deadbeef ARM=00000005 MIPS=00000005
+H713 MIPS: firmware readiness proven by MIPS READY
+H713 MIPS: application readiness proven
+H713 panel: firmware left 1920x1080 active, 2200x1125 total
+H713 panel: TCON 1c=00000002 20=04650898 24=04380780 28=00290114 2c=8000003e 30=80040007; mixer 045f084f (these differ by design)
+H713 panel: timing latched: 00000002 04650898 04380780 00290114 8000003e 80040007
+H713 disp: display initialised with the firmware running; scanrate, regscan and clkfind can run now. Power-cycle before another init.
+7618576 bytes read in 485 ms (15 MiB/s)
+## Loading kernel (any) from FIT Image at 60000000 ...
+   Using 'conf-1' configuration
+   Trying 'kernel' kernel subimage
+     Description:  Linux 6.18.38
+     Type:         Kernel Image
+     Compression:  gzip compressed
+     Data Start:   0x600000d0
+     Data Size:    7583503 Bytes = 7.2 MiB
+     Architecture: AArch64
+     OS:           Linux
+     Load Address: 0x48000000
+     Entry Point:  0x48000000
+     Hash algo:    sha256
+     Hash value:   67cdecbe5c3fb00ce78be1adbf53be7a6631a8944853c9a887d75640a2f51f62
+   Verifying Hash Integrity ... sha256+ OK
+## Loading fdt (any) from FIT Image at 60000000 ...
+   Using 'conf-1' configuration
+   Trying 'fdt-1' fdt subimage
+     Description:  sun50i-h713-hy200-qz713df-a1
+     Type:         Flat Device Tree
+     Compression:  uncompressed
+     Data Start:   0x6073b8e8
+     Data Size:    34076 Bytes = 33.3 KiB
+     Architecture: AArch64
+     Hash algo:    sha256
+     Hash value:   d683e057f3af3c8535753d3ac4f21e11659df40c7685f664e38e05882fce8ec8
+   Verifying Hash Integrity ... sha256+ OK
+   Booting using the fdt blob at 0x6073b8e8
+Working FDT set to 6073b8e8
+   Uncompressing Kernel Image to 48000000
+   Loading Device Tree to 0000000049ff4000, end 0000000049fff51b ... OK
+Working FDT set to 49ff4000
+
+Starting kernel ...
+
+[!p]104[?7h
+Welcome to Debian GNU/Linux 13 (trixie)!
+
+[  OK  ] Created slice system-getty.slice - Slice /system/getty.
+[  OK  ] Created slice system-modprobe.slice - Slice /system/modprobe.
+[  OK  ] Created slice system-serial\x2dget…slice - Slice /system/serial-getty.
+[  OK  ] Created slice system-systemd\x2dfs…slice - Slice /system/systemd-fsck.
+[  OK  ] Created slice user.slice - User and Session Slice.
+[  OK  ] Started systemd-ask-password-conso…equests to Console Directory Watch.
+[  OK  ] Started systemd-ask-password-wall.…d Requests to Wall Directory Watch.
+         Expecting device dev-disk-by\x2dpa…dev/disk/by-partlabel/hy310-boot...
+         Expecting device dev-disk-by\x2dpa…dev/disk/by-partlabel/hy310-keys...
+         Expecting device dev-ttyS0.device - /dev/ttyS0...
+[  OK  ] Reached target paths.target - Path Units.
+[  OK  ] Reached target remote-fs.target - Remote File Systems.
+[  OK  ] Reached target slices.target - Slice Units.
+[  OK  ] Listening on systemd-creds.socket - Credential Encryption/Decryption.
+[  OK  ] Listening on systemd-initctl.socke…- initctl Compatibility Named Pipe.
+[  OK  ] Listening on systemd-journald-dev-…socket - Journal Socket (/dev/log).
+[  OK  ] Listening on systemd-journald.socket - Journal Sockets.
+[  OK  ] Listening on systemd-udevd-control.socket - udev Control Socket.
+[  OK  ] Listening on systemd-udevd-kernel.socket - udev Kernel Socket.
+         Mounting run-lock.mount - Legacy Locks Directory /run/lock...
+         Starting modprobe@configfs.service - Load Kernel Module configfs...
+         Starting modprobe@drm.service - Load Kernel Module drm...
+         Starting modprobe@efi_pstore.servi… - Load Kernel Module efi_pstore...
+         Starting modprobe@fuse.service - Load Kernel Module fuse...
+         Starting systemd-journald.service - Journal Service...
+         Starting systemd-modules-load.service - Load Kernel Modules...
+         Starting systemd-remount-fs.servic…unt Root and Kernel File Systems...
+         Starting systemd-tmpfiles-setup-de… Device Nodes in /dev gracefully...
+         Starting systemd-udev-load-credent…Load udev Rules from Credentials...
+         Starting systemd-udev-trigger.service - Coldplug All udev Devices...
+[  OK  ] Mounted run-lock.mount - Legacy Locks Directory /run/lock.
+[  OK  ] Finished modprobe@configfs.service - Load Kernel Module configfs.
+[  OK  ] Finished modprobe@drm.service - Load Kernel Module drm.
+[  OK  ] Finished modprobe@efi_pstore.service - Load Kernel Module efi_pstore.
+[  OK  ] Finished modprobe@fuse.service - Load Kernel Module fuse.
+[  OK  ] Started systemd-journald.service - Journal Service.
+[  OK  ] Finished systemd-modules-load.service - Load Kernel Modules.
+[  OK  ] Finished systemd-remount-fs.servic…mount Root and Kernel File Systems.
+[  OK  ] Finished systemd-tmpfiles-setup-de…ic Device Nodes in /dev gracefully.
+[  OK  ] Finished systemd-udev-load-credent…- Load udev Rules from Credentials.
+         Starting hy310-zram-swap.service -…10: zram-Swap (zstd, halber RAM)...
+         Starting systemd-growfs-root.service - Grow Root File System...
+         Starting systemd-journal-flush.ser…sh Journal to Persistent Storage...
+         Starting systemd-random-seed.service - Load/Save OS Random Seed...
+         Starting systemd-sysctl.service - Apply Kernel Variables...
+         Starting systemd-timesyncd.service - Network Time Synchronization...
+         Starting systemd-tmpfiles-setup-de…eate Static Device Nodes in /dev...
+[  OK  ] Finished hy310-zram-swap.service -…Y310: zram-Swap (zstd, halber RAM).
+[  OK  ] Finished systemd-growfs-root.service - Grow Root File System.
+[  OK  ] Finished systemd-journal-flush.ser…lush Journal to Persistent Storage.
+[  OK  ] Finished systemd-sysctl.service - Apply Kernel Variables.
+[  OK  ] Finished systemd-tmpfiles-setup-de…Create Static Device Nodes in /dev.
+[  OK  ] Reached target local-fs-pre.target…Preparation for Local File Systems.
+[  OK  ] Reached target swap.target - Swaps.
+         Starting systemd-udevd.service - R…ager for Device Events and Files...
+[  OK  ] Started systemd-timesyncd.service - Network Time Synchronization.
+[  OK  ] Reached target time-set.target - System Time Set.
+[  OK  ] Finished systemd-udev-trigger.service - Coldplug All udev Devices.
+         Starting ifupdown-pre.service - He…synchronize boot up for ifupdown...
+[  OK  ] Finished ifupdown-pre.service - He…o synchronize boot up for ifupdown.
+[  OK  ] Started systemd-udevd.service - Ru…anager for Device Events and Files.
+         Expecting device sys-subsystem-net… /sys/subsystem/net/devices/eth0...
+[  OK  ] Found device sys-subsystem-net-dev…- RTL8153 Gigabit Ethernet Adapter.
+         Mounting tmp.mount - Temporary Directory /tmp...
+[  OK  ] Found device dev-ttyS0.device - /dev/ttyS0.
+[  OK  ] Mounted tmp.mount - Temporary Directory /tmp.
+[  OK  ] Found device dev-disk-by\x2dpartla… /dev/disk/by-partlabel/hy310-keys.
+[  OK  ] Found device dev-disk-by\x2dpartla… /dev/disk/by-partlabel/hy310-boot.
+[    3.505161] of_pwm_get(): can't parse "pwms" property
+[    3.564933] hy310-cpu-comm 3003000.cpu-comm: error -ENXIO: IRQ index 1 not found
+[    3.572414] hy310-cpu-comm 3003000.cpu-comm: error -ENXIO: IRQ index 2 not found
+[    3.800765] uvcvideo 3-1:1.0: Failed to query (GET_INFO) UVC error code control 3 on unit 1: -32 (exp. 1).
+[  OK  ] Finished systemd-random-seed.service - Load/Save OS Random Seed.
+[  OK  ] Created slice system-systemd\x2dba… - Slice /system/systemd-backlight.
+[  OK  ] Listening on systemd-rfkill.socket…ll Switch Status /dev/rfkill Watch.
+         Starting modprobe@configfs.service - Load Kernel Module configfs...
+         Starting modprobe@efi_pstore.servi… - Load Kernel Module efi_pstore...
+         Starting modprobe@fuse.service - Load Kernel Module fuse...
+         Starting systemd-backlight@backlig…rightness of backlight:backlight...
+[  OK  ] Reached target local-fs.target - Local File Systems.
+[  OK  ] Listening on systemd-sysext.socket… System Extension Image Management.
+         Starting h713-hdcp-key.service - H…aet an den HDMI-RX-Treiber geben...
+[  OK  ] Started ifup@eth0.service - ifup for eth0.
+         Starting networking.service - Raise network interfaces...
+         Starting systemd-fsck@dev-disk-by\…dev/disk/by-partlabel/hy310-boot...
+         Starting systemd-tmpfiles-setup.se…ate System Files and Directories...
+[  OK  ] Finished modprobe@configfs.service - Load Kernel Module configfs.
+[  OK  ] Finished modprobe@efi_pstore.service - Load Kernel Module efi_pstore.
+[  OK  ] Finished modprobe@fuse.service - Load Kernel Module fuse.
+[  OK  ] Finished systemd-backlight@backlig… Brightness of backlight:backlight.
+[  OK  ] Finished systemd-tmpfiles-setup.se…reate System Files and Directories.
+         Starting modprobe@configfs.service - Load Kernel Module configfs...
+         Starting modprobe@efi_pstore.servi… - Load Kernel Module efi_pstore...
+         Starting modprobe@fuse.service - Load Kernel Module fuse...
+[  OK  ] Finished systemd-fsck@dev-disk-by\… /dev/disk/by-partlabel/hy310-boot.
+[  OK  ] Finished modprobe@configfs.service - Load Kernel Module configfs.
+[  OK  ] Finished modprobe@efi_pstore.service - Load Kernel Module efi_pstore.
+[  OK  ] Finished modprobe@fuse.service - Load Kernel Module fuse.
+[  OK  ] Finished networking.service - Raise network interfaces.
+         Mounting boot.mount - /boot...
+[  OK  ] Reached target sysinit.target - System Initialization.
+[  OK  ] Started apt-daily.timer - Daily apt download activities.
+[  OK  ] Started apt-daily-upgrade.timer - …y apt upgrade and clean activities.
+[  OK  ] Started dpkg-db-backup.timer - Daily dpkg database backup timer.
+[  OK  ] Started e2scrub_all.timer - Period…Metadata Check for All Filesystems.
+[  OK  ] Started fstrim.timer - Discard unused filesystem blocks once a week.
+[  OK  ] Started systemd-tmpfiles-clean.tim…y Cleanup of Temporary Directories.
+[  OK  ] Reached target timers.target - Timer Units.
+[  OK  ] Listening on dbus.socket - D-Bus System Message Bus Socket.
+[  OK  ] Listening on sshd-unix-local.socke…temd-ssh-generator, AF_UNIX Local).
+[  OK  ] Listening on systemd-hostnamed.socket - Hostname Service Socket.
+[  OK  ] Reached target sockets.target - Socket Units.
+[  OK  ] Reached target basic.target - Basic System.
+         Starting alsa-restore.service - Save/Restore Sound Card State...
+         Starting dbus.service - D-Bus System Message Bus...
+         Starting e2scrub_reap.service - Re…ne ext4 Metadata Check Snapshots...
+         Starting h713-wifi.service - H713 …(Zugangspunkt, Station oder aus)...
+         Starting systemd-logind.service - User Login Management...
+[  OK  ] Started dbus.service - D-Bus System Message Bus.
+[  OK  ] Mounted boot.mount - /boot.
+[  OK  ] Finished alsa-restore.service - Save/Restore Sound Card State.
+[  OK  ] Finished e2scrub_reap.service - Re…line ext4 Metadata Check Snapshots.
+[  OK  ] Reached target sound.target - Sound Card.
+[  OK  ] Started systemd-logind.service - User Login Management.
+[  OK  ] Created slice system-h713\x2dtv.slice - Slice /system/h713-tv.
+         Starting h713-tv@video3.service - …ang (video3) auf der Video-Plane...
+[  OK  ] Finished h713-hdcp-key.service - H…eraet an den HDMI-RX-Treiber geben.
+[  OK  ] Started h713-tv@video3.service - H…ngang (video3) auf der Video-Plane.
+[    7.282428] aicbsp: sdio_err:<aicwf_sdio_hal_irqhandler,1891>: Interrupt but no data
+[*     ] Job h713-wifi.service/start running (7s / no limit)
+[    9.381808] ieee80211 phy0: 
+[    9.381808] *******************************************************
+[    9.381808] ** CAUTION: USING PERMISSIVE CUSTOM REGULATORY RULES **
+[    9.381808] *******************************************************
+M[K         Starting systemd-rfkill.service - Load/Save RF Kill Switch Status...
+[K[  OK  ] Started systemd-rfkill.service - Load/Save RF Kill Switch Status.
+[  OK  ] Finished h713-wifi.service - H713 …v (Zugangspunkt, Station oder aus).
+[  OK  ] Reached target network.target - Network.
+         Starting ssh.service - OpenBSD Secure Shell server...
+         Starting systemd-user-sessions.service - Permit User Sessions...
+[  OK  ] Finished systemd-user-sessions.service - Permit User Sessions.
+[  OK  ] Started getty@tty1.service - Getty on tty1.
+[  OK  ] Started serial-getty@ttyS0.service - Serial Getty on ttyS0.
+[  OK  ] Reached target getty.target - Login Prompts.
+[  OK  ] Started ssh.service - OpenBSD Secure Shell server.
+[  OK  ] Reached target multi-user.target - Multi-User System.
+[  OK  ] Reached target graphical.target - Graphical Interface.
+[!p]104[?7h[6n[32766;32766H[6n[!p]104[?7h[6n[32766;32766H[6n
+Debian GNU/Linux 13 hy310 ttyS0
+
+hy310 login: root (automatic logi�)
+
+Linux hy310 6.18.38 #1 SMP Sat Sep 12 06:13:48 UTC 2026 aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+[?2004hroot@hy310:~# 

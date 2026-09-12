@@ -1,0 +1,24 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] board: defconfig: enable the gpio keyboard driver
+
+The bench defconfig has CONFIG_KEYBOARD_ADC=m and CONFIG_KEYBOARD_SUN4I_LRADC=y
+but leaves CONFIG_KEYBOARD_GPIO unset (verified in the built tree's .config:
+`# CONFIG_KEYBOARD_GPIO is not set`), so the `gpio-keys` node added by
+0139 would never bind. Built in, not as a module, because the power key has
+to work before any userspace has run.
+
+Note this file is not part of the kernel `series`; the build copies it into
+arch/arm64/configs/. The paths below are therefore relative to the project
+root (/opt/Projekte/h713), apply with `patch -p1` from there.
+---
+diff -Nur a/mainline/patches/kernel/board/hy200_qz713df_a1_defconfig b/mainline/patches/kernel/board/hy200_qz713df_a1_defconfig
+--- a/mainline/patches/kernel/board/hy200_qz713df_a1_defconfig
++++ b/mainline/patches/kernel/board/hy200_qz713df_a1_defconfig
+@@ -73,6 +73,7 @@
+ CONFIG_RTL8XXXU_UNTESTED=y
+ CONFIG_INPUT_EVDEV=y
+ CONFIG_KEYBOARD_ADC=m
++CONFIG_KEYBOARD_GPIO=y
+ CONFIG_KEYBOARD_SUN4I_LRADC=y
+ # CONFIG_INPUT_MOUSE is not set
+ CONFIG_INPUT_TOUCHSCREEN=y

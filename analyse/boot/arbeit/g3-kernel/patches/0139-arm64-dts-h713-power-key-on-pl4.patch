@@ -1,0 +1,66 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: h713: power key on PL4
+
+Measured at the device on 2026-09-08 (Paket G3, doku/nachtlog/S38): the front
+button sits on PL4, active low, idle 1 / pressed 0, with an external pull-up.
+Stock says the same in `standby_param` (`power_key = "PL4"`,
+`key_debounce = <50>`), but that node is only read by U-Boot and the ARISC --
+Linux never saw the key so far.
+
+`gpio-keys` is enough here: PL4 offers gpio_in (mux 0) and PL_EINT4 (mux 6) in
+pinctrl-sun50i-h713-r.c, so gpiod_to_irq() gives the driver a real interrupt
+instead of a poll loop, and the R_PIO irqchip has .irq_set_wake, so the
+`wakeup-source` flag does not make suspend fail.
+
+No LED node: the front LED follows PB5 (fan/backlight power), there is no
+separate LED to drive -- see the measurements in
+analyse/boot/arbeit/REGELN.md.
+
+Needs CONFIG_KEYBOARD_GPIO=y, see the companion defconfig patch
+0139b-board-defconfig-enable-keyboard-gpio.patch.
+---
+diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -15,6 +15,7 @@
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ #include <dt-bindings/interrupt-controller/irq.h>
+ #include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
+ #include <dt-bindings/thermal/thermal.h>
+ 
+ / {
+@@ -2316,6 +2317,33 @@
+ 	};
+ 
+ 	/*
++	 * Power button on PL4 -- the pin stock names in `standby_param`
++	 * (`power_key = "PL4"`, `key_debounce = <50>`). Measured on the
++	 * device 2026-09-08: idle reads 1, pressed reads 0, so the board
++	 * carries an external pull-up and no internal bias is set here.
++	 *
++	 * No pinctrl state on purpose: gpiolib muxes the pin to gpio_in when
++	 * the driver claims it, and the irq path re-muxes it to PL_EINT4
++	 * (mux 6, see pinctrl-sun50i-h713-r.c). A pinctrl-0 on this node
++	 * would only claim the same pin a second time.
++	 *
++	 * `wakeup-source` keeps the key armed across suspend; the R_PIO
++	 * irqchip implements .irq_set_wake, so enable_irq_wake() succeeds.
++	 * Actually waking the SoC out of standby stays the ARISC's job.
++	 */
++	gpio_keys: gpio-keys {
++		compatible = "gpio-keys";
++
++		key-power {
++			label = "power";
++			gpios = <&r_pio 0 4 GPIO_ACTIVE_LOW>;	/* PL4 */
++			linux,code = <KEY_POWER>;
++			debounce-interval = <50>;	/* ms, stock value */
++			wakeup-source;
++		};
++	};
++
++	/*
+ 	 * ADC-based keyboard (6 buttons on LRADC channel 0).
+ 	 * Uses mainline adc-keys driver with LRADC IIO provider.
+ 	 * Voltage thresholds from stock DTS keyboard@2009800 node.

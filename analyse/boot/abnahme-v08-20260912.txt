@@ -1,0 +1,42 @@
+# Abnahme Abbild v0.8 am Geraet -- 12.09.2026, ~10:30
+# Kernel f7dd06d0 (defconfig allein, Serie bis 0158), U-Boot v7 df35eded879 (0033), Rootfs 241 MiB
+# Eingespielt per FEL + ums (hy310-install, --vendor out-hy310-20260912), 3 min, Secure Storage byteweise unveraendert
+
+## Konsole (UART) vom Kaltstart bis zum Login
+# (Der Rohmitschnitt der UART-Wache ging beim Neustart der Sitzung verloren; das hier ist,
+#  was waehrend des Laufs gelesen und in der Sitzung festgehalten wurde.)
+U-Boot 2026.07-rc5-gdf35eded879f (Sep 12 2026 - 06:08:22 +0000) Allwinner Technology
+Loading Environment from MMC... Reading from MMC(1)... *** Warning - bad CRC, using default environment
+gate: cold start (GP5 00000000)
+gate: waiting for power key
+gate: power key, booting
+H713 disp: loading vendor artifacts from mmc 1#hy310-boot:mips
+## Loading kernel (any) from FIT Image at 60000000 ...   Verifying Hash Integrity ... sha256+ OK
+## Loading fdt (any) from FIT Image at 60000000 ...      Verifying Hash Integrity ... sha256+ OK
+Starting kernel ...
+  -- danach KEIN Kernelmitschnitt auf der Konsole (loglevel=4); nur systemd-Statuszeilen und zwei Kernelzeilen:
+[    6.907253] aicbsp: sdio_err:<aicwf_sdio_hal_irqhandler,1891>: Interrupt but no data
+[    9.110070] ieee80211 phy0: ** CAUTION: USING PERMISSIVE CUSTOM REGULATORY RULES **   (cfg80211, Erfolgszweig, cstenger)
+[  OK  ] Finished h713-hdcp-key.service / Started h713-tv@video3.service / Finished h713-wifi.service
+[  OK  ] Reached target multi-user.target
+hy310 login: root (automatic login)
+Linux hy310 6.18.38 #1 SMP Sat Sep 12 06:13:48 UTC 2026 aarch64
+  -- Login < 60 s nach der Taste.
+## Am Geraet (ssh root@192.168.8.142)
+cmdline: console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 loglevel=4 root=PARTLABEL=hy310-rootfs rw
+printk:  4 4 1 7        /sys/kernel/debug: existiert nicht
+Module:  aic8800_bsp aic8800_fdrv h713_ce_test hy310_board_mgr hy310_cpu_comm hy310_focus_motor panfrost sun50i_h713_afbd sun50i_h713_arisc sun50i_h713_hdmirx sun50i_h713_msp sunxi_cedrus uvc uvcvideo
+WLAN:    h713-wifi status -> mode=ap ssid=h713 ch6 country=DE; hostapd+dnsmasq laufen; wlan0 192.168.4.1/24; iw: type AP, 20 MHz, 18 dBm
+         iw reg get: phy#0 (self-managed) country DE: DFS-ETSI   <- default_ccode aus wifi.env wirksam
+         Firmware aus Platzhaltern: rwnx_load_firmware .../aic8800D80/fmacfw_8800d80_h_u02.bin
+Luefter: hy310_board_mgr fan1_input 4770 rpm, kein temp1 (kein NTC, richtig)
+Motor:   h713-focus status -> Knoten motor-ctr gebunden, raw=1 act=1 num=1, step=0, keine Kante; Kernel: 'homing disabled by module parameter'
+Kamera:  h713-cam probe -> /dev/video1 uvcvideo YUYV 640x480; grab 3,4 s, Y=20 (dunkle Wand, kein HDMI-Signal) -- Nachweis mit hellem Bild offen
+h713-tv: laeuft (video3), kein Signal, Konsole, 8 Presets, Gamma 2.20
+systemctl --failed: leer
+
+## Befunde (journal -p warning)
+- h713-ce-test wird per DT-Match automatisch geladen (=m), tut ohne debugfs nichts, schaltet aber CE-Takte an -> fuer Release blacklisten oder aus dem defconfig (Marcos Entscheidung, 'CE erstmal aussen vor')
+- regulatory.db: 'Direct firmware load failed -2' bei 2,0 s -- cfg80211 ist eingebaut und fragt vor dem Rootfs; iw reg get global bleibt 00. Fuer den self-managed aic8800 folgenlos
+- r8152: rtl_nic/rtl8153b-2.fw fehlt (USB-Ethernet-Adapter) -- laeuft ohne den Patch, nur Warnung
+- board-mgr: 'PWM for fan0 not found' -- erwartet (Luefter an/aus), koennte dev_info statt warn sein

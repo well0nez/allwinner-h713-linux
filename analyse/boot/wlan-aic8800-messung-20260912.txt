@@ -1,0 +1,201 @@
+=== AIC8800D80 WLAN am HY310 — Messung 12.09.2026 ===
+Kernel 6.18.38 (Serie bis 0152), Geraet HY200 QZ713DF_A1, eth0 laeuft.
+Module aus mainline/build/aic8800-df4c783b663e-.../ (vermagic passt: 6.18.38).
+
+--- Ausgangslage ---
+mmc1 meldete dauerhaft "0 Karten". Das ist ERWARTBAR und kein Fehler: der
+WLAN-Chip ist beim Booten stromlos. Der DTS-Kommentar sagt es selbst (aus dem
+Legacy uebernommen, mainline/patches/kernel/0024, mmc1-Knoten):
+
+   /* no non-removable! Stock DTS omits it too. With non-removable,
+    * mmc_rescan() blocks all subsequent mmc_detect_change() calls after the
+    * first failed scan at boot (card not powered). Card detection is driven
+    * by the BSP driver via mmc_detect_change() after power-cycling PM1. */
+
+Ebenso bewusst KEIN vqmmc-supply. Beides stimmt mit Stock ueberein.
+
+--- Befund 1: aic8800_bsp allein tut nichts ---
+Der Modul-Init registriert nur einen platform_driver und legt das Device
+"aic-bsp" an. Der probe ist im Vendor-Quelltext AUSKOMMENTIERT:
+
+   static struct platform_driver aicbsp_driver = {
+        .driver = { .name = "aic_bsp" },
+        //.probe = aicbsp_probe,
+        //.remove = aicbsp_remove,
+   };
+
+(Der Treibername "aic_bsp" passt ohnehin nicht zum Device "aic-bsp".) Die
+Einschaltsequenz laeuft erst, wenn ein Subsystem angefordert wird — also beim
+Laden von aic8800_fdrv ueber aicbsp_set_subsys(AIC_WIFI, 1).
+Log nach reinem bsp-Laden: nur "aicbsp_init", "RELEASE_DATE:2026_0123_5f7be68d",
+"aicbsp_resv_mem_init". Sonst nichts.
+
+--- Befund 2: die Einschaltleitung wurde nie gefunden (DIE Ursache) ---
+aicsdio.c (nach unserem Patch aic8800-0002):
+
+   if (aicbsp_wlan_regon_gpio < 0)
+           aicbsp_wlan_regon_gpio = 385;  /* PM1 default */
+
+385 ist eine ABSOLUTE GPIO-Nummer aus einem fremden System. Auf unserem Kernel
+existiert sie nicht:
+   gpiochip0: 256 GPIOs, parent 2000000.pinctrl   (PIO)
+   gpiochip1:  64 GPIOs, parent 7022000.pinctrl   (R_PIO)
+Mit 385:  "failed to request wlan_regon GPIO 385"  -> Sequenz bricht sofort ab.
+Mit 289:  "failed to request wlan_regon GPIO 289: -517" (-EPROBE_DEFER).
+Mit 225:  funktioniert.
+
+Herleitung der 225: gpiolib vergibt dynamische Basen von ARCH_NR_GPIOS (512)
+abwaerts. Zuerst registriert wird 2000000.pinctrl (256 Leitungen) -> Basis 256;
+danach 7022000.pinctrl (64) -> Basis 192. PM1 ist auf dem R_PIO die Bank M
+(lokal 1), Pin 1, also Offset 1*32+1 = 33  ->  192 + 33 = 225.
+ACHTUNG: /sys/kernel/debug/gpio zeigt LOKALE Offsets je Chip (die Einschalt-
+taste auf PL4 erscheint dort als "gpio-4"), nicht die globalen Nummern, die die
+alte gpio_request()-API braucht. Daraus laesst sich die Basis NICHT ablesen.
+
+--- Befund 3: mit wlan_regon=225 laeuft die Sequenz durch ---
+   aicbsp: 24MHz DCXO output already enabled (bootloader)
+   aicbsp: found mmc_host mmc1
+   aicbsp: disabled MMC_CAP_UHS_DDR50 for mmc1
+   aicbsp: wlan_regon PM1 set to 0
+   [+54 ms] aicbsp: wlan_regon PM1 set to 1
+   [+54 ms] aicbsp: mmc_detect_change on mmc1 host=... mmc_hostname=mmc1
+            aicbsp: mmc_detect_change returned
+   [+20,3 s] aicbsp: wlan_regon PM1 set to 0
+            aicbsp: aicbsp_set_subsys, fail to set AIC_WIFI power state to 1
+            AICWFDBG(LOGERROR) rwnx_mod_init, set power on fail!
+   insmod aic8800_fdrv -> "No such device"
+
+Die 20,3 s sind KEIN Raetsel: unser Patch aic8800-0003 setzt den chip-up-Timeout
+auf 20000 ms (down_timeout(&aic_chipup_sem, 20000)). Derselbe Patch setzt
+FEATURE_SDIO_CLOCK_V3 von 150 MHz auf 0 ("keep the MMC core's negotiated rate").
+An diesem Problem hat also schon jemand gearbeitet; es hat nicht gereicht.
+Der zweite Timeout in aicbsp_sdio_init() betraegt 2000 ms
+(down_timeout(&aicbsp_probe_semaphore, 2000)) und meldet "aicbsp_sdio_probe fail".
+
+--- Was OFFEN ist ---
+Der Chip bleibt nach dem Einschalten am SDIO-Bus stumm.
+NICHT geprueft (ehrlich: nicht gemessen, nur aufgefallen):
+  * Ob mmc1 ueberhaupt einen Scan versucht — im gefilterten Log war KEINE
+    einzige Meldung des mmc-Subsystems zu sehen. Naechster Messpunkt.
+  * Die Zeiten der Einschaltsequenz: 54 ms aus, 54 ms bis mmc_detect_change.
+    Ob der Chip in dieser Zeit bootfaehig ist, ist unbekannt.
+  * Pinmux/Takt von mmc1 im laufenden System.
+
+--- Firmware (Marcos eigentliche Frage) ---
+Noch NICHT beantwortbar: die Firmware wird erst nach der SDIO-Enumeration
+geladen, so weit kommen wir nicht.
+Bereitgestellt und am Geraet abgelegt:
+  /lib/firmware/aic8800_fw/SDIO/aic8800D80/   13 Dateien, STOCK-Satz aus
+      re/vendor/HY310/extracted/vendor_a/etc/firmware/aic8800d80/
+  /tmp/fw-sdk/                                 9 Dateien, SDK-Satz aus
+      legacy/drivers/wifi/firmware/aic8800_sdio/aic8800D80/   (der bei Marco lief)
+Vergleich der beiden Saetze: von neun gleichnamigen Dateien stimmt nur EINE
+ueberein (fw_adid_8800d80_u02.bin). Zwei Bluetooth-Dateien (fmacfwbt_*) gibt es
+NUR im SDK-Satz, nicht im Stock-Abzug.
+
+=== Hinweis von Marco (12.09., aus dem Betrieb des Legacy-Standes) ===
+"beim boot war das jedenfalls immer so dass erst dieses init war und dann
+irgendwann danach direkt die mmc1 verfuegbar war bzw das sdio - dafuer gabs
+halt auch irgendeinen patch weil die erkennung nicht klappte in meinem legacy"
+
+Zwei Dinge daraus, beide passen zum heutigen Befund:
+
+1. Die Reihenfolge stimmt mit dem ueberein, was wir messen: erst laeuft der
+   Modul-Init, und ERST DANACH taucht mmc1/das SDIO-Geraet auf. Das ist kein
+   Fehler, sondern der vorgesehene Ablauf (der Chip ist bis dahin stromlos).
+   Unsere Sequenz kommt genau bis dorthin und bleibt dann stehen.
+
+2. Es gab im Legacy einen eigenen Patch, WEIL die Erkennung nicht klappte.
+   Das heisst: das Stummbleiben nach dem Einschalten ist dort schon einmal
+   aufgetreten und geloest worden. Dieser Patch ist der aussichtsreichste
+   Ansatzpunkt fuer Aufgabe B — suchen in:
+     legacy/drivers/wifi/            (Treiberquellen des Legacy-Standes)
+     legacy/dts/sun50i-h713-hy310.dts (mmc1 ab Zeile 806)
+     legacy/ Git-Historie: git -C legacy log --oneline -- drivers/wifi
+     ggf. patches/ oder aehnliche Verzeichnisse im Legacy-Repo
+   Vergleiche den dortigen aicsdio.c / aic_bsp_* gegen den radxa-Stand
+   (mainline/build/aic8800-df4c783b663e-...) — der Unterschied IST vermutlich
+   die Loesung, denn auf demselben Geraet lief WLAN damit nachweislich.
+
+=== KORREKTUR (12.09., nach Pruefung durch den Agenten) ===
+Die GPIO-Herleitung weiter oben ist FALSCH. Richtig:
+
+sunxi-pinctrl vergibt STATISCHE Basen aus den Bank-Konstanten
+(pctl->chip->base = pctl->desc->pin_base), die Baenke sind GLOBAL
+durchnummeriert — nicht je Controller ab null:
+
+    PH_BASE 224   ->  PH1 = 225
+    PL_BASE 352
+    PM_BASE 384   ->  PM1 = 385
+
+Damit gilt:
+  * 385 war die ganze Zeit RICHTIG. Die hartkodierte Zahl im Treiber stimmt
+    auf diesem Kernel.
+  * 225 ist PH1 — eine UART0-Leitung der Debug-Konsole (function 0x2 "uart0").
+    Anfordern liess sie sich nur, weil im DTB niemand sie beansprucht
+    (uart0-ph-pins ohne phandle, serial@2500000 ohne pinctrl-0).
+  * 289 liegt in der LUECKE zwischen 255 und 352 — dort ist gar kein Chip.
+    Das -EPROBE_DEFER (-517) war die korrekte Antwort des Kernels.
+
+Folge: der Lauf mit wlan_regon=225 hat PM1 nie angefasst. Der WLAN-Chip hatte
+durchgehend keinen Strom; die Logzeile "wlan_regon PM1 set to 1" nennt nur
+einen Namen, den der Treiber nicht prueft. Die daraus gezogene Diagnose
+("Chip meldet sich nicht am SDIO-Bus") ist damit GEGENSTANDSLOS.
+
+Der Beleg lag die ganze Zeit vor: board-mgr meldete "gpio-241 (fan-tach)" fuer
+PH17 — das ist 224+17, also genau die Bank-Konstante. Die Zahl wurde gelesen
+und trotzdem die falsche Basis daraus abgeleitet.
+
+WARNUNG: wlan_regon=225 NIE wieder setzen. Der USB-Serial-Adapter treibt
+dieselbe Leitung; die Konsolen-EINGABE ist danach bis zum Neustart tot,
+waehrend die Ausgabe weiterlaeuft — es faellt also nicht auf. Nach den
+Neustarts vom 12.09. ist die Konsole wieder in Ordnung (geprueft).
+
+Offen bleibt, warum gpio_request(385) beim Versuch am 12.09. scheiterte; die
+Fehlernummer wurde nicht protokolliert. Verdacht des Agenten: -EBUSY, weil
+aicbsp_mainline_gpio_init() die Leitung bei jedem Anlauf neu anfordert, aber
+erst beim Modulentladen freigibt. Am 21.08. lief WLAN auf diesem Geraet mit
+genau dieser 385 (docs/handoff-wifi-sdio-2026-08-17.md).
+Naechster Schritt: Stufe 0 aus patches/vorschlaege/wlan-aic8800/README.md —
+altes Modul mit Standardwert 385 laden, Fehlernummer ablesen. Kein Stromzyklus.
+
+=== ERGEBNIS 12.09.: WLAN LAEUFT — mit der STOCK-Firmware ===
+Stufe-0-Test ohne Stromzyklus, beide Module geladen, KEIN Parameter
+(also Standardwert 385 = PM1):
+
+  mmc1: 1 Karte(n)                          <== SDIO-Karte erkannt
+  wlan0   c8:26:e2:e1:1a:68                 <== Schnittstelle da
+  phy0                                      <== cfg80211 registriert
+  rwnx_reg_notifier Enter                   <== Regulatory-Domain gesetzt
+
+Geladene Firmware (der STOCK-Satz aus vendor_a/etc/firmware/aic8800d80/,
+kopiert nach /lib/firmware/aic8800_fw/SDIO/aic8800D80/):
+  fw_patch_table_8800d80_u02.bin
+  fw_adid_8800d80_u02.bin
+  fw_patch_8800d80_u02.bin
+  fmacfw_8800d80_h_u02.bin
+  aicbsp: bt patch version: - Dec 24 2024 19:02:19 - git 6db5c01
+
+**Damit ist Marcos Frage beantwortet: die Firmware vom Geraet selbst
+funktioniert mit dem radxa-Treiber.** Der SDK-Satz aus dem Legacy-Repo wird
+nicht gebraucht — und damit auch die Lizenzfrage entschaerft: h713-extract kann
+den Satz aus dem Abzug des Nutzers ziehen, nichts Proprietaeres muss mitgeliefert
+werden.
+
+Nebenbefund, unkritisch: "invalid cmd: loss_enable / loss_value / ofst2x_enable"
+— der Stock-Satz bringt eine aic_userconfig_8800d80.txt mit Parametern mit, die
+dieser Treiberstand nicht kennt. Er laeuft trotzdem.
+
+--- Die eigentliche Lehre ---
+Der Treiber war die GANZE ZEIT richtig. Der einzige Fehler war der Parameter
+wlan_regon=225 vom selben Tag. Und der erste Versuch (ohne Parameter) scheiterte
+aus einem ganz anderen Grund: es war nur aic8800_bsp geladen, nicht aic8800_fdrv
+— und die Einschaltsequenz startet erst, wenn ein Subsystem angefordert wird,
+also beim Laden von fdrv. Statt das zu pruefen, wurde ein Symptom mit einer
+Aenderung "behoben", die gar nicht das Problem war, und die Zahl dahinter war
+geraten statt gemessen.
+
+--- Was zum Verbinden noch fehlt ---
+Auf dem Rootfs (228 MiB, 154 Pakete) fehlen iw, iwlist und wpa_supplicant.
+Der Treiberstapel selbst ist vollstaendig. Fuer den Betrieb muessen die
+Werkzeuge ins Rootfs-Rezept (analyse/release/arbeit/rootfs/packages.txt).

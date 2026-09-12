@@ -1,0 +1,4 @@
+Gate-Zyklen, 2026-09-12 23:07, Ziel 192.168.8.142, Steckdose 192.168.8.179
+# Zyklus | Bereitschaft gehalten | Sekunden bis SSH nach Tastendruck
+1  GATE HAT NICHT GEHALTEN -- Geraet kam ohne Taste hoch
+Ergebnis: 0 von 20 Zyklen sauber

@@ -1,0 +1,60 @@
+Schreibt Stock-Android in Reserve0? -- Ja. (12.09.2026, P6-Durchlauf)
+
+FRAGE (Marco): Der kleine Abzug holt geraeteeigene Bereiche. Aendern die sich
+ueberhaupt? Wenn nicht, reicht ein Abzug pro Geraet, und der Pflichtabzug vor
+jedem Schreibzugriff kann entfallen.
+
+ABLAUF
+  22:02  kleiner Abzug, Geraet auf unserem Layout      -> hy310-sicherung-20260912-vor-stock
+  22:02  Stock-Android zurueckgespielt (update.img), dabei Reserve0.fex -> Reserve0_a
+  ~22:20 Android gebootet, ca. 10 min gelaufen
+  22:5x  kleiner Abzug, Geraet auf Stock               -> hy310-sicherung-20260912-nach-stock
+
+VERGLEICH DER BEIDEN ABZUEGE
+  private.bin       identisch
+  reserve0-b.bin    identisch
+  secure-storage    identisch  (der Installer prueft das ohnehin byteweise)
+  reserve0-a.bin    unterschiedlich -- aber erklaerbar: davor war er genullt,
+                    danach traegt er die Vendor-FAT aus Reserve0.fex (EB 3C 90).
+                    Der Vergleich der zwei Abzuege beantwortet die Frage also
+                    nicht; unser eigener Restore steht dazwischen.
+
+DIE SAUBERE PROBE: Geraeteinhalt gegen die unberuehrte Vorlage
+  Reserve0.fex aus update.img (16 777 216 Byte) gegen reserve0-a.bin nach dem
+  Android-Lauf:  930 Byte unterschiedlich.
+  Erste Offsets: 37, 528, 530, 531, 64528, 64530, 64531, 128608 ...
+  Das ist das Muster eines gemounteten FAT: Bootsektor-Feld, beide FAT-Kopien
+  (0xFC10 = 64528, 0x1F660 = 128608), Verzeichnisbereich.
+
+BEFUND
+  Stock-Android schreibt in Reserve0_a. Secure Storage und `private` bleiben
+  unangetastet. Streng genommen ist damit belegt: der Inhalt hat sich waehrend
+  des Android-Laufs geaendert -- dass Android der Schreiber war und nicht etwas
+  anderes im Stock-Stapel, ist die naheliegende, aber nicht bewiesene Lesart.
+
+FOLGE FUER DEN INSTALLER (doku/116 §5)
+  Ein vorhandener Abzug bleibt gueltig, solange auf dem Geraet nur unsere
+  Abbilder liefen: dann aendert sich keiner der drei Bereiche. Lief zwischendurch
+  Stock-Android, ist der Reserve0-Teil veraltet. Der Pflichtabzug darf also
+  entfallen, wenn ein Manifest zu diesem Geraet vorliegt UND seither kein
+  Stock-Lauf stattfand -- sonst neu ziehen.
+
+NACHTRAG: WAS GENAU DRIN STEHT (12.09., direkt danach)
+  Vorlage Reserve0.fex aus update.img, gemountet:  panel_config.ini  (2709 B)
+  Geraet nach dem Android-Lauf, gemountet:         panel_config.ini  (identisch)
+                                                   pq_colortemp.ini  (865 B, NEU)
+
+  panel_config.ini ist die Panel-Beschreibung (ProjectID 48, 1920x1080, 16:9)
+  und kommt unveraendert aus der Firmware.
+  pq_colortemp.ini legt Stock beim Lauf selbst an: Farbtemperatur je Modus,
+  Offsets und Gains (hier durchweg neutral, 0/512).
+
+  Damit die Antwort auf Marcos Frage "warum das ueberhaupt sichern":
+   - Secure Storage und `private` sind NICHT in update.img -> nur der Abzug
+     hat sie, sie sind der Grund fuer den Pflichtabzug.
+   - Reserve0 dagegen ist in update.img enthalten. Geht er verloren, stellt die
+     Herstellerfirmware ihn wieder her. Der einzige Zugewinn im Abzug ist
+     pq_colortemp.ini -- auf diesem Geraet Werkseinstellung, aber genau dort
+     laege eine ab Werk eingemessene Weissabgleich-Korrektur.
+   - Kosten: 16 MiB in einem 49-MiB-Abzug. Behalten, aber nicht deswegen jedes
+     Mal neu ziehen.

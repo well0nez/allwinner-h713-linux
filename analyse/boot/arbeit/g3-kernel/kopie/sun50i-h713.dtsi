@@ -1,0 +1,2548 @@
+/*
+ * Shared device tree for the Allwinner H713 SoC and HY200 family.
+ *
+ * arm64 kernel DTS, derived from the 32-bit board DTS by well0nez
+ * (github/allwinner-h713-linux, GPL-2.0). arm64 changes: armv8 timer,
+ * and a secure-bl31 reservation for TF-A BL31 at 0x40000000. Board-specific
+ * bootargs live in the two board DTS overlays. See docs/kernel-bump.md.
+ */
+
+#include <dt-bindings/clock/sun50i-h713-ccu.h>
+#include <dt-bindings/reset/sun50i-h713-ccu.h>
+#include <dt-bindings/clock/sun20i-d1-r-ccu.h>
+#include <dt-bindings/reset/sun20i-d1-r-ccu.h>
+#include <dt-bindings/clock/sun6i-rtc.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/thermal/thermal.h>
+
+/ {
+	model = "Allwinner H713";
+	compatible = "allwinner,sun50i-h713";
+
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	interrupt-parent = <&gic>;
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	/* Reboot handoff via RTC GP7 (nvmem cell in &rtc; always-on domain,
+	 * survives the warm PSCI/watchdog reset). `reboot fastboot` writes the
+	 * fastboot magic and `reboot bootloader` the bootloader magic; U-Boot's
+	 * preboot reads GP7 and, per magic, enters fastboot or drops to its
+	 * prompt. Magics are unchanged on the U-Boot side. */
+	reboot-mode {
+		compatible = "nvmem-reboot-mode";
+		nvmem-cells = <&reboot_mode_magic>;
+		nvmem-cell-names = "reboot-mode";
+		mode-fastboot = <0xfa57b007>;
+		mode-bootloader = <0xb007c0de>;
+		mode-vendor = <0x001db007>;
+	};
+
+	aliases {
+		serial0 = &uart0;
+		mmc0 = &mmc2;
+	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x40000000 0x40000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* TF-A BL31 runs from secure DRAM here; the kernel must not use it */
+		secure_bl31: secure-bl31@40000000 {
+			reg = <0x40000000 0x100000>;
+			no-map;
+		};
+
+		/*
+		 * MIPS co-processor firmware and working memory
+		 * Layout from factory Android analysis:
+		 *   Boot code:    4KB  @ 0x4b100000   debug:  1MB @ 0x4bd01000
+		 *   Firmware:    12MB  @ 0x4b101000   cfg:  256KB @ 0x4be01000
+		 *   TSE:          1MB  @ 0x4be41000   (all from display_cfg.xml)
+		 *   Framebuffer: 26MB  @ 0x4bf41000   -- the mips_framebuf node
+		 *   Total:       40MB, matching the vendor's one mipsloader node
+		 */
+		mips_reserved: mips-firmware@4b100000 {
+			compatible = "shared-dma-pool";
+			reg = <0x4b100000 0x0e41000>;
+			no-map;
+		};
+
+		/*
+		 * Video decoder buffer, 120KB of the vendor's 128KB. The last
+		 * 8KB are split off below because they hold something with a
+		 * different owner and a much longer life than a decoder frame.
+		 */
+		decd_reserved: decoder@4d941000 {
+			reg = <0x4d941000 0x1e000>;
+			no-map;
+		};
+
+		/*
+		 * VidDec frame descriptor. AFBD +0x098 points here, and the
+		 * MIPS firmware follows that pointer (GetFrameInfo) to learn
+		 * what the video source is; on stock the ARM side parks the
+		 * record at exactly this address (decd dec_reg_set_address).
+		 * It has to stay in the low reservation: the MIPS sees ARM
+		 * DRAM 0x4bxxxxxx..0x4exxxxxx through its own window and
+		 * cannot address the system CMA pool at all.
+		 */
+		viddec_info: viddec-info@4d95f000 {
+			reg = <0x4d95f000 0x2000>;
+			no-map;
+		};
+
+		cpu_comm_reserved: cpu-comm@4e300000 {
+			reg = <0x4e300000 0x500000>;
+			no-map;
+		};
+
+		/* The firmware's own framebuffer, per display_cfg.xml frame_buffer */
+		mips_framebuf: framebuf@4bf41000 {
+			reg = <0x4bf41000 0x1a00000>;
+			no-map;
+		};
+
+		/*
+		 * U-Boot's OSD surfaces: AFBD fetches here while the panel is
+		 * on. Two 4 MiB slots, not one -- the front at 0x6c100000 and
+		 * the back at 0x6c500000. Double buffering flips the AFBD
+		 * source address (0x05600178) between them, so both are live
+		 * scanout targets and the kernel must not use either.
+		 *
+		 * It is a plain reservation, NOT a dma-pool: it exists so Linux
+		 * cannot scribble on the buffer AFBD is scanning out of before
+		 * the KMS driver takes over. The driver allocates from system
+		 * CMA instead, because a dma-coherent pool allocates in
+		 * power-of-two page orders -- a 3.6 MiB framebuffer takes a
+		 * 4 MiB slot, so 16 MiB yielded exactly four and mpv ran out.
+		 *
+		 * 16 MiB, not 8: a slot is one full ARGB8888 frame at the
+		 * panel's size, and this panel is 1920x1080, so a slot is
+		 * 7.91 MiB and two of them need 15.82 MiB. At 8 MiB only the
+		 * front slot fits, which forces single-buffered scanout and
+		 * tears. Keep this in step with sunxi_scanout_dmabuf's
+		 * scanout_size default -- that is the bound its ioctl checks
+		 * a userspace request against.
+		 */
+		framebuf_reserved: uboot-scanout@6c100000 {
+			reg = <0x6c100000 0x1000000>;
+			no-map;
+		};
+	};
+
+	psci {
+		compatible = "arm,psci-0.2";
+		method = "smc";
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu0: cpu@0 {
+			compatible = "arm,cortex-a53";
+			device_type = "cpu";
+			reg = <0>;
+			enable-method = "psci";
+			clocks = <&ccu CLK_CPUX>;
+			operating-points-v2 = <&cpu_opp_table>;
+			cpu-supply = <&reg_vdd_cpu>;
+			#cooling-cells = <2>;
+		};
+		cpu@1 {
+			compatible = "arm,cortex-a53";
+			device_type = "cpu";
+			reg = <1>;
+			enable-method = "psci";
+			clocks = <&ccu CLK_CPUX>;
+			operating-points-v2 = <&cpu_opp_table>;
+			cpu-supply = <&reg_vdd_cpu>;
+		};
+		cpu@2 {
+			compatible = "arm,cortex-a53";
+			device_type = "cpu";
+			reg = <2>;
+			enable-method = "psci";
+			clocks = <&ccu CLK_CPUX>;
+			operating-points-v2 = <&cpu_opp_table>;
+			cpu-supply = <&reg_vdd_cpu>;
+		};
+		cpu@3 {
+			compatible = "arm,cortex-a53";
+			device_type = "cpu";
+			reg = <3>;
+			enable-method = "psci";
+			clocks = <&ccu CLK_CPUX>;
+			operating-points-v2 = <&cpu_opp_table>;
+			cpu-supply = <&reg_vdd_cpu>;
+		};
+	};
+
+	/*
+	 * CPU DVFS with voltage scaling. VDD-CPU is a PWM-controlled buck on
+	 * R_PWM channel 1 / PL7. These are the recovered stock default-bin
+	 * voltage table through the stock 1416 MHz peak.
+	 */
+	cpu_opp_table: opp-table-cpu {
+		compatible = "operating-points-v2";
+		opp-shared;
+
+		opp-480000000 {
+			opp-hz = /bits/ 64 <480000000>;
+			opp-microvolt = <900000>;
+			clock-latency-ns = <244144>; /* 8 32k periods */
+		};
+
+		opp-600000000 {
+			opp-hz = /bits/ 64 <600000000>;
+			opp-microvolt = <900000>;
+			clock-latency-ns = <244144>; /* 8 32k periods */
+		};
+
+		opp-792000000 {
+			opp-hz = /bits/ 64 <792000000>;
+			opp-microvolt = <900000>;
+			clock-latency-ns = <244144>; /* 8 32k periods */
+		};
+
+		opp-1008000000 {
+			opp-hz = /bits/ 64 <1008000000>;
+			opp-microvolt = <940000>;
+			clock-latency-ns = <244144>; /* 8 32k periods */
+		};
+
+		opp-1104000000 {
+			opp-hz = /bits/ 64 <1104000000>;
+			opp-microvolt = <960000>;
+			clock-latency-ns = <244144>; /* 8 32k periods */
+		};
+
+		opp-1200000000 {
+			opp-hz = /bits/ 64 <1200000000>;
+			opp-microvolt = <1000000>;
+			clock-latency-ns = <244144>; /* 8 32k periods */
+		};
+
+		opp-1296000000 {
+			opp-hz = /bits/ 64 <1296000000>;
+			opp-microvolt = <1060000>;
+			clock-latency-ns = <244144>; /* 8 32k periods */
+		};
+
+		/*
+		 * NO 1416 MHz OPP. It corrupts memory under sustained load, and
+		 * the vendor does not use this point at any voltage.
+		 *
+		 * The stock table (allwinner,sun50i-operating-points) gives 1416
+		 * a nonzero voltage only under efuse keys that can never be
+		 * selected -- the `speed` cell is vf-table@00, 2 bytes, so every
+		 * key above 0xFFFF is unreachable and every die falls back to
+		 * plain opp-microvolt, where 1416 reads <0x00>. The vendor's top
+		 * usable point there is 1392 MHz at 1100 mV.
+		 *
+		 * Measured on the bench with mpv rendering on the GPU to the
+		 * panel (tools/video/soak-display-only.sh, docs/vaapi-scope.md):
+		 *   ceiling 1416  -> kernel corruption in 40-90 s, n=3
+		 *   ceiling 1296  -> 20 min clean, 581k GPU IRQs, 1296 exercised
+		 *   ceiling 1200  -> 20 min clean
+		 * The victim differed every time -- a task_struct's cpu_context.sp,
+		 * a pool_workqueue, the CCU's ioremap pointer -- with no IOMMU or
+		 * GPU MMU fault anywhere, which is what bit flips look like and is
+		 * why this was chased through cedrus, the IOMMU, panfrost and CMA
+		 * before landing here.
+		 *
+		 * 1416 was originally qualified by a 2-minute 4-core CPU load at
+		 * 68 C. The failing workload is tens of minutes of GPU + display
+		 * at 78 C. The DMM voltages were right; the frequency point was
+		 * never in the vendor's table.
+		 *
+		 * 1392 MHz at 1100 mV is the vendor's top default and would be the
+		 * obvious way to claw back the last 7%, but it is UNTESTED here --
+		 * do not add it without its own soak.
+		 */
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <GIC_PPI 13 0xf08>,
+			     <GIC_PPI 14 0xf08>,
+			     <GIC_PPI 11 0xf08>,
+			     <GIC_PPI 10 0xf08>;
+		clock-frequency = <24000000>;
+	};
+
+	reg_vcc_3v3: regulator-3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+	};
+
+	reg_vcc_1v8: regulator-1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+	};
+
+	/* Stock CPU rail: R_PWM channel 1 / PL7, 5 us, inverted. */
+	reg_vdd_cpu: regulator-vdd-cpu {
+		compatible = "pwm-regulator";
+		pwms = <&r_pwm 1 5000 1>;
+		regulator-name = "vdd-cpu";
+		regulator-min-microvolt = <810000>;
+		regulator-max-microvolt = <1160000>;
+		regulator-ramp-delay = <2500>;
+		/* Inverted output: active duty raises VDD-CPU from 0.81 to 1.16 V. */
+		pwm-dutycycle-range = <0 100>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	/* Stock gpu-supply is the always-on 0.96 V vdd_sys rail. */
+	reg_vdd_sys: regulator-vdd-sys {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd_sys";
+		regulator-min-microvolt = <960000>;
+		regulator-max-microvolt = <960000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	/*
+	 * WiFi power is now handled by the aic8800_bsp.ko module directly
+	 * via GPIO (PM1 = wlan_regon, GPIO 385) + mmc_detect_change().
+	 * No mmc-pwrseq needed — the driver manages power sequencing itself.
+	 */
+
+	clocks {
+		osc24M: osc24M-clk {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <24000000>;
+			clock-output-names = "osc24M";
+		};
+
+		/*
+		 * osc32k and iosc are now provided by the RTC node.
+		 * The sun6i-rtc driver is the canonical clock provider for:
+		 *   CLK_OSC32K (0), CLK_OSC32K_OUT (1), CLK_IOSC (2)
+		 * Do NOT define fixed-clock nodes for these — causes -EEXIST.
+		 */
+	};
+
+	gic: interrupt-controller@3020000 {
+		compatible = "arm,gic-400";
+		reg = <0x03021000 0x1000>,
+		      <0x03022000 0x2000>,
+		      <0x03024000 0x2000>,
+		      <0x03026000 0x2000>;
+		interrupts = <GIC_PPI 9 0xf04>;
+		interrupt-controller;
+		#interrupt-cells = <3>;
+	};
+
+	/* Thermal zones for CPU thermal management */
+	thermal-zones {
+		cpu-thermal {
+			polling-delay-passive = <250>;
+			polling-delay = <1000>;
+			thermal-sensors = <&ths 0>;
+
+			trips {
+				cpu_warm: cpu-warm {
+					temperature = <75000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+				cpu_hot: cpu-hot {
+					temperature = <85000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+				cpu_crit: cpu-crit {
+					temperature = <105000>;
+					hysteresis = <5000>;
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_warm>;
+					cooling-device = <&cpu0 THERMAL_NO_LIMIT 2>;
+				};
+				map1 {
+					trip = <&cpu_hot>;
+					cooling-device = <&cpu0 2 THERMAL_NO_LIMIT>;
+				};
+			};
+		};
+
+		gpu-thermal {
+			polling-delay-passive = <0>;
+			polling-delay = <1000>;
+			thermal-sensors = <&ths 1>;
+		};
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* === Crypto Engine (sun8i-ce) === */
+		crypto: crypto@3040000 {
+			compatible = "allwinner,sun50i-h6-crypto";
+			reg = <0x03040000 0x1000>;
+			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_CE>, <&ccu CLK_CE>, <&ccu CLK_MBUS_CE>;
+			clock-names = "bus", "mod", "ram";
+			resets = <&ccu RST_BUS_CE>;
+			status = "okay";
+		};
+
+		/* === DMA Controller (required for audio, SPI, etc.) === */
+		dma: dma-controller@3002000 {
+			compatible = "allwinner,sun50i-h6-dma";
+			reg = <0x03002000 0x1000>;
+			interrupts = <GIC_SPI 45 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_DMA>, <&ccu CLK_MBUS_DMA>, <&ccu CLK_VINCAP_DMA>;
+			clock-names = "bus", "mbus", "vincap";
+			dma-channels = <16>;
+			dma-requests = <54>;
+			resets = <&ccu RST_BUS_DMA>;
+			#dma-cells = <1>;
+		};
+
+		syscon: syscon@3000000 {
+			compatible = "allwinner,sun50i-h6-system-control",
+				     "allwinner,sun50i-a64-system-control";
+			reg = <0x03000000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+
+			sram_c: sram@28000 {
+				compatible = "mmio-sram";
+				reg = <0x00028000 0x1e000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges = <0 0x00028000 0x1e000>;
+
+				de2_sram: sram-section@0 {
+					compatible = "allwinner,sun50i-h6-sram-c",
+						     "allwinner,sun50i-a64-sram-c";
+					reg = <0x0000 0x1e000>;
+				};
+			};
+
+			sram_c1: sram@1a00000 {
+				compatible = "mmio-sram";
+				reg = <0x01a00000 0x200000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges = <0 0x01a00000 0x200000>;
+
+				ve_sram: sram-section@0 {
+					compatible = "allwinner,sun50i-h6-sram-c1",
+						     "allwinner,sun4i-a10-sram-c1";
+					reg = <0x000000 0x200000>;
+				};
+			};
+		};
+
+		/* === Main domain clocks & pinctrl === */
+
+		ccu: clock-controller@2001000 {
+			compatible = "allwinner,sun50i-h713-ccu";
+			reg = <0x02001000 0x1000>;
+			clocks = <&osc24M>, <&rtc CLK_OSC32K>, <&rtc CLK_IOSC>;
+			clock-names = "hosc", "losc", "iosc";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+		};
+
+		pio: pinctrl@2000000 {
+			compatible = "allwinner,sun50i-h713-pinctrl";
+			reg = <0x02000000 0x800>;
+			clocks = <&ccu CLK_APB0>, <&osc24M>, <&rtc CLK_OSC32K>;
+			clock-names = "apb", "hosc", "losc";
+			vcc-pc-supply = <&reg_vcc_3v3>;
+			vcc-pb-supply = <&reg_vcc_3v3>;
+			vcc-pg-supply = <&reg_vcc_3v3>;
+			vcc-ph-supply = <&reg_vcc_3v3>;
+			gpio-controller;
+			#gpio-cells = <3>;
+			interrupt-controller;
+			#interrupt-cells = <3>;
+			/* Stock: GIC_SPI 54-62 for PA-PI banks */
+			interrupts = <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 55 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 57 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 58 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 59 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 60 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 61 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>;
+
+			mmc2_pins: mmc2-pins {
+				pins = "PC0", "PC1", "PC5", "PC6",
+				       "PC8", "PC9", "PC10", "PC11",
+				       "PC13", "PC14", "PC15", "PC16";
+				function = "mmc2";
+				drive-strength = <30>;
+				bias-pull-up;
+			};
+
+			mmc2_ds_pin: mmc2-ds-pin {
+				pins = "PC0";
+				function = "mmc2";
+				drive-strength = <30>;
+				bias-pull-down;
+			};
+
+			uart0_ph_pins: uart0-ph-pins {
+				pins = "PH0", "PH1";
+				function = "uart0";
+				drive-strength = <10>;
+				bias-pull-up;
+			};
+
+			twi1_pins: twi1-pins {
+				pins = "PH2", "PH3";
+				function = "twi1";
+				drive-strength = <10>;
+				bias-pull-up;
+			};
+
+			mmc1_pins: mmc1-pins {
+				pins = "PG0", "PG1", "PG2",
+				       "PG3", "PG4", "PG5";
+				function = "mmc1c";
+				drive-strength = <40>;
+				bias-pull-up;
+			};
+
+			mmc1_sleep_pins: mmc1-sleep-pins {
+				pins = "PG0", "PG1", "PG2",
+				       "PG3", "PG4", "PG5";
+				function = "gpio_in";
+			};
+
+
+
+			/*
+			 * PB5 = panel-backlight enable AND cooling-fan power; must stay
+			 * HIGH so the fan's +V rail is driven. sunxi gpio specifiers are
+			 * 3-cell <bank pin flags> (bank B = 1, pin 5); the earlier
+			 * <37 ...> was a linear number on a #gpio-cells=3 controller, so
+			 * gpiolib could not parse the hog and left the rail off.
+			 */
+			fan_power_hog: fan-power-hog {
+				gpio-hog;
+				gpios = <1 5 GPIO_ACTIVE_HIGH>;
+				output-high;
+				line-name = "pb5-bl-fan-power";
+			};
+			uart1_pg_pins: uart1-pg-pins {
+				pins = "PG6", "PG7", "PG8", "PG9";
+				function = "uart1";
+				drive-strength = <10>;
+				bias-pull-up;
+			};
+
+			/* PWM pin groups (from U-Boot DTB) */
+			pwm0_pins: pwm0-pins {
+				pins = "PH17";
+				function = "pwm0";
+				drive-strength = <30>;
+				bias-pull-down;
+			};
+
+			pwm1_pins: pwm1-pins {
+				pins = "PH18";
+				function = "pwm1";
+				drive-strength = <30>;
+				bias-pull-down;
+			};
+
+			pwm2_pins: pwm2-pins {
+				pins = "PB4";
+				function = "pwm2";
+				drive-strength = <30>;
+				bias-pull-down;
+			};
+
+			/* Audio I2S pins (from U-Boot DTB) */
+			daudio0_pins: daudio0-pins {
+				pins = "PB29", "PB23", "PB24", "PB25", "PB22";
+				function = "i2s0";
+				drive-strength = <10>;
+			};
+
+			/* S/PDIF OWA pins */
+			owa0_pins: owa0-pins {
+				pins = "PB6", "PB7";
+				function = "owa0";
+				drive-strength = <10>;
+			};
+
+			/* I2C / TWI additional pinctrl (from U-Boot DTB) */
+			twi0_pb_pins: twi0-pb-pins {
+				pins = "PB0", "PB1";
+				function = "twi0";
+			};
+
+			/* GMAC pins (from U-Boot DTB — ethernet if ever needed) */
+			gmac0_pins: gmac0-pins {
+				pins = "PA0", "PA1", "PA2", "PA3", "PA4", "PA5",
+				       "PA6", "PA7", "PA8", "PA10", "PA11", "PA12",
+				       "PA13", "PA17", "PA18", "PA28", "PA29", "PA30", "PA31";
+				function = "gmac0";
+				drive-strength = <10>;
+			};
+
+			/* IR on PB21 (vendor-like path from U-Boot DTB) */
+			s_cir0_pb_pins: s-cir0-pb-pins {
+				pins = "PB21";
+				function = "s_cir0";
+				bias-pull-up;
+				drive-strength = <30>;
+				input-enable;
+			};
+		};
+
+		/* === SID (efuse) — provides THS calibration === */
+		sid: efuse@3006000 {
+			compatible = "allwinner,sun50i-h6-sid";
+			reg = <0x03006000 0x400>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			ths_calibration: thermal-sensor-calibration@14 {
+				/* Stock: calib@14, reg = <0x2c 0x8>
+				 * SID offset 0x14 = SRAM offset 0x2c via readout */
+				reg = <0x14 0x8>;
+			};
+		};
+
+		/* === Thermal Sensor === */
+		ths: thermal-sensor@2009400 {
+			compatible = "allwinner,sun50i-h6-ths";
+			reg = <0x02009400 0x400>;
+			interrupts = <GIC_SPI 22 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_THS>;
+			clock-names = "bus";
+			resets = <&ccu RST_BUS_THS>;
+			nvmem-cells = <&ths_calibration>;
+			nvmem-cell-names = "calibration";
+			#thermal-sensor-cells = <1>;
+		};
+
+		/* === UART === */
+		uart0: serial@2500000 {
+			compatible = "snps,dw-apb-uart";
+			reg = <0x02500000 0x400>;
+			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			clocks = <&ccu CLK_BUS_UART0>;
+			resets = <&ccu RST_BUS_UART0>;
+			clock-frequency = <24000000>;
+			status = "okay";
+		};
+
+		/* === UART1 — Bluetooth HCI transport === */
+		uart1: serial@2500400 {
+			compatible = "snps,dw-apb-uart";
+			reg = <0x02500400 0x400>;
+			interrupts = <GIC_SPI 1 IRQ_TYPE_LEVEL_HIGH>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			clocks = <&ccu CLK_BUS_UART1>;
+			resets = <&ccu RST_BUS_UART1>;
+			clock-frequency = <24000000>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&uart1_pg_pins>;
+			uart-has-rtscts;
+			status = "okay";
+
+		};
+
+		/* === I2C/TWI1 — accelerometer sensors on PH2/PH3 === */
+		twi1: i2c@2502400 {
+			compatible = "allwinner,sun50i-h6-i2c",
+				     "allwinner,sun6i-a31-i2c";
+			reg = <0x02502400 0x400>;
+			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_TWI1>;
+			resets = <&ccu RST_BUS_TWI1>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&twi1_pins>;
+			clock-frequency = <100000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			/* Stock TWI1 children (from live DTS dump) */
+			stk8ba58@18 {
+				compatible = "stk,stk83xx";
+				reg = <0x18>;
+				status = "okay";
+				stk,direction = <2>;
+				stk,prj_pianzhou = <1>;
+				stk,swipe_xy = <0>;
+			};
+
+			kxttj3@e {
+				compatible = "kxtj3";
+				reg = <0x0e>;  /* stock: name @18 but reg=0x0e */
+				status = "disabled";
+			};
+
+			da228ec@27 {
+				compatible = "mir3da";
+				reg = <0x27>;  /* stock: name @0e but reg=0x27 */
+				status = "okay";
+			};
+
+			lsm6dsr@6a {
+				compatible = "lsm6dsr";
+				reg = <0x6a>;
+				status = "disabled";
+			};
+
+			/*
+			 * TI DLPC3435 DLP projector controller.
+			 * I2C address 0x1B (7-bit) = 0x36 (8-bit write).
+			 * Verified from IDA RE of stock ge2d_dev.ko: normal_i2c = { 0x1b }.
+			 * Stock uses I2C_CLASS_DETECT; we use a proper DTS node instead.
+			 * The chip only responds after panel power is on.
+			 */
+			dlpc3435@1b {
+				compatible = "dlpc,dlpc3435";
+				reg = <0x1b>;
+				status = "okay";
+			};
+		};
+
+		/* === PWM controller (8 channels, sun8i generation) === */
+		pwm: pwm@2000c00 {
+			compatible = "allwinner,sun50i-h713-pwm";
+			reg = <0x02000c00 0x400>;
+			clocks = <&ccu CLK_BUS_PWM>, <&osc24M>;
+			clock-names = "bus", "hosc";
+			resets = <&ccu RST_BUS_PWM>;
+			#pwm-cells = <3>;
+			allwinner,npwms = <8>;
+			status = "okay";
+		};
+
+
+		/*
+		 * Audio Codec layout from real hy310-board.dts:
+		 * - compatible = "allwinner,sunxi-internal-codec"
+		 * - reg = 0x02030000 size 0x32c, plus 0x02031000 size 0x7c
+		 * - clocks = pll_audio, pll_tvfe, codec_dac, codec_adc, codec_bus
+		 * Mainline does not have this driver yet, but keep the real register layout
+		 * documented here instead of fake H6/A23 assumptions.
+		 */
+		codec: codec@2030000 {
+			#sound-dai-cells = <0>;
+			/*
+			 * H616's codec, relocated: H616 is 0x31c at 0x05096000,
+			 * H713 is 0x32c at 0x02030000. sun4i-codec drives it,
+			 * via an H713 variant added later in this series -- the
+			 * H616 compatible brings the card up but cannot reach
+			 * the analog path, because two of H616's registers do
+			 * not exist here.
+			 *
+			 * Stock's own shape is NOT reproduced here. It uses
+			 * sunxi-internal-codec plus a sunxi-dummy-cpudai that
+			 * owns the DMA plus a sunxi-codec-machine to tie them
+			 * together; sun4i-codec is self-contained and registers
+			 * its own DAI and card, so those two nodes have no
+			 * mainline equivalent.
+			 *
+			 * The second reg range is the I2S receiver that feeds
+			 * the DAC: the vendor's own register names for it, and
+			 * its length, come out of the stock kernel's
+			 * i2s_reg_labels table and sunxi_i2s_regmap_config.
+			 * It is what carries the decoded HDMI audio from the
+			 * audio DSP to the speaker.
+			 *
+			 * Values taken from the stock DTB and kept here because
+			 * they are measured, not guessed:
+			 *   speaker_vol 0x1a, digital_vol 0x00, headphone unused
+			 *   pa_level 1 (active high), pa_msleep_time 160 ms
+			 *   stock also lists a pll_tvfe clock on the codec,
+			 *     which is unexplained -- deliberately not copied
+			 */
+			compatible = "allwinner,sun50i-h713-codec";
+			reg = <0x02030000 0x32c>,
+			      <0x02031000 0x7c>;
+			reg-names = "codec", "i2s";
+			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_AUDIO_CODEC>,
+				 <&ccu CLK_AUDIO_CODEC_DAC>;
+			clock-names = "apb", "codec";
+			resets = <&ccu RST_BUS_AUDIO_CODEC>;
+			dmas = <&dma 7>;
+			dma-names = "tx";
+			/* PL2 on r_pio, NOT PB2 on the main pio. Active high. */
+			allwinner,pa-gpios = <&r_pio 0 2 GPIO_ACTIVE_HIGH>;
+			/*
+			 * Without this the amp never turns on. The card carries
+			 * a "Speaker" widget whose event handler toggles the PA
+			 * GPIO above, but its built-in routes stop at LINEOUT
+			 * and nothing reaches Speaker. The card is fully_routed,
+			 * so DAPM powers down the whole output path and the
+			 * event never fires -- measured: playback opened the
+			 * PCM and wrote audio while gpio-2 stayed "out lo".
+			 *
+			 * This is the board-specific half of the routing, which
+			 * is why the driver only warns when it is absent rather
+			 * than failing. The warning is not cosmetic.
+			 */
+			allwinner,audio-routing = "Speaker", "LINEOUT";
+			status = "disabled";
+		};
+
+		dummy_cpudai: dummy-cpudai@203032c {
+			compatible = "allwinner,sunxi-dummy-cpudai";
+			reg = <0x0203032c 0x4>;
+			tx_fifo_size = <0x80>;
+			rx_fifo_size = <0x100>;
+			dac_txdata = <0x02030020>;
+			adc_txdata = <0x02030040>;
+			dmas = <&dma 7>, <&dma 7>;
+			dma-names = "tx", "rx";
+			playback_cma = <0x80>;
+			capture_cma = <0x100>;
+			status = "okay";
+		};
+
+		/* === I2S/DAUDIO0 @ 0x02032000 (stock: compatible allwinner,sunxi-daudio) === */
+		/* FIX: Physical address 0x02032000 is I2S2 in the CCU, not I2S0!
+		 * Stock uses CLK_I2S0/RST_I2S0 because their CCU has different numbering.
+		 * On our mainline CCU, 0x02032000 maps to I2S2 clocks/resets.
+		 */
+		i2s0: i2s@2032000 {
+			compatible = "allwinner,sun50i-h6-i2s";
+			reg = <0x02032000 0x7c>;
+			interrupts = <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_I2S2>, <&ccu CLK_I2S2>;
+			clock-names = "apb", "mod";
+			resets = <&ccu RST_BUS_I2S2>;
+			dmas = <&dma 3>, <&dma 3>;
+			dma-names = "rx", "tx";
+			tdm-num = <1>;
+			clk-parent = <1>;
+			capture_cma = <0x80>;
+			playback_cma = <0x80>;
+			mclk-div = <1>;
+			frametype = <0>;
+			tdm-config = <1>;
+			sign-extend = <0>;
+			tx-data-mode = <0>;
+			rx-data-mode = <0>;
+			msb-lsb-first = <0>;
+			pcm-lrck-period = <0x80>;
+			slot-width-select = <0x20>;
+			#sound-dai-cells = <0>;
+			status = "okay";
+		};
+
+		/* === I2S/DAUDIO1 @ 0x02033000 (stock: compatible allwinner,sunxi-daudio) === */
+		i2s1: i2s@2033000 {
+			compatible = "allwinner,sun50i-h6-i2s";
+			reg = <0x02033000 0x7c>;
+			interrupts = <GIC_SPI 27 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_I2S1>, <&ccu CLK_I2S1>;
+			clock-names = "apb", "mod";
+			resets = <&ccu RST_BUS_I2S1>;
+			dmas = <&dma 4>, <&dma 4>;
+			dma-names = "rx", "tx";
+			tdm-num = <1>;
+			clk-parent = <1>;
+			capture_cma = <0x80>;
+			playback_cma = <0x80>;
+			mclk-div = <1>;
+			frametype = <0>;
+			tdm-config = <1>;
+			sign-extend = <0>;
+			tx-data-mode = <0>;
+			rx-data-mode = <0>;
+			msb-lsb-first = <0>;
+			pcm-lrck-period = <0x80>;
+			slot-width-select = <0x20>;
+			#sound-dai-cells = <0>;
+			status = "okay";
+		};
+
+		/* === S/PDIF / OWA layout from real hy310-board.dts === */
+		spdif: spdif@2036000 {
+			compatible = "allwinner,sunxi-owa";
+			reg = <0x02036000 0x58>;
+			interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_PLL_AUDIO>,
+				 <&ccu CLK_BUS_OWA0>,
+				 <&ccu CLK_OWA0_TX>,
+				 <&ccu CLK_HDMI_AUDIO>,
+				 <&ccu CLK_OWA0_RX>,
+				 <&ccu CLK_AUDIO_CODEC_DAC>;
+			clock-names = "pll_audio", "bus", "tx", "pll_tvfe", "rx", "codec";
+			resets = <&ccu RST_BUS_OWA0>;
+			dmas = <&dma 2>, <&dma 2>;
+			dma-names = "tx", "rx";
+			#sound-dai-cells = <0>;
+			status = "disabled";
+		};
+
+		spdif1: spdif@2037000 {
+			compatible = "allwinner,sun50i-h6-spdif";
+			reg = <0x02037000 0x58>;
+			interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_OWA1>, <&ccu CLK_OWA1_TX>;
+			clock-names = "apb", "spdif";
+			resets = <&ccu RST_BUS_OWA1>;
+			dmas = <&dma 9>, <&dma 9>;
+			dma-names = "tx", "rx";
+			#sound-dai-cells = <0>;
+			status = "okay";
+		};
+
+		/*
+		 * Trident Audio Bridge (snd_alsa_trid replacement)
+		 * Stock: compatible = "vs,trid-audio-bridge", reg = 0x0203042c
+		 * The driver hard-maps all MMIO windows (0x06146000, 0x06148000,
+		 * 0x0614a000, etc.) via devm_ioremap with physical addresses.
+		 * Only the "logic" register and IRQs come from DTS.
+		 * IRQs: GIC_SPI 113 = audbrg (bridge core), GIC_SPI 115 = audif (ABP DTV)
+		 */
+		audio_bridge: audio-bridge@203042c {
+			compatible = "vs,trid-audio-bridge";
+			reg = <0x0203042c 0x4>;
+			interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_AUDIO_CPU>,
+				 <&ccu CLK_AUDIO_UMAC>,
+				 <&ccu CLK_AUDIO_IHB>;
+			clock-names = "audio_cpu", "audio_umac", "audio_ihb";
+			status = "okay";
+		};
+
+		i2s2: i2s@2034000 {
+			compatible = "allwinner,sunxi-daudio";
+			reg = <0x02034000 0x7c>;
+			interrupts = <GIC_SPI 28 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_PLL_AUDIO>, <&ccu CLK_I2S2>, <&ccu CLK_BUS_I2S2>, <&ccu CLK_HDMI_AUDIO>;
+			clock-names = "pll_audio", "module", "bus", "pll_tvfe";
+			resets = <&ccu RST_BUS_I2S2>;
+			dmas = <&dma 5>, <&dma 5>;
+			dma-names = "tx", "rx";
+			#sound-dai-cells = <0>;
+			status = "disabled";
+		};
+
+		/* === eMMC === */
+		mmc2: mmc@4022000 {
+			compatible = "allwinner,sun50i-h713-emmc", "allwinner,sun20i-d1-mmc";
+			reg = <0x04022000 0x1000>;
+			interrupts = <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_MMC2>, <&ccu CLK_MMC2>;
+			clock-names = "ahb", "mmc";
+			resets = <&ccu RST_BUS_MMC2>;
+			reset-names = "ahb";
+			pinctrl-names = "default";
+			pinctrl-0 = <&mmc2_pins>, <&mmc2_ds_pin>;
+			vmmc-supply = <&reg_vcc_3v3>;
+			vqmmc-supply = <&reg_vcc_1v8>;
+			assigned-clocks = <&ccu CLK_MMC2>;
+			assigned-clock-rates = <100000000>;
+			bus-width = <8>;
+			non-removable;
+			cap-mmc-highspeed;
+			mmc-ddr-1_8v;
+			mmc-hs200-1_8v;
+			mmc-hs400-1_8v;
+			max-frequency = <200000000>;
+			status = "okay";
+		};
+
+		/* === MMC1 — SDIO WiFi === */
+		/*
+		 * MMC1 — SDIO bus for AIC8800 WiFi module
+		 * AIC8800 needs long power-up time (~17s in stock).
+		 * vmmc-supply is the regulator-fixed controlling PM1 (wlan_regon).
+		 * The MMC core will enable vmmc before scanning, giving the chip time to boot.
+		 */
+		mmc1: mmc@4021000 {
+			compatible = "allwinner,sun50i-h713-mmc";
+			reg = <0x04021000 0x1000>;
+			interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_MMC1>, <&ccu CLK_MMC1>;
+			clock-names = "ahb", "mmc";
+			resets = <&ccu RST_BUS_MMC1>;
+			reset-names = "ahb";
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&mmc1_pins>;
+			pinctrl-1 = <&mmc1_sleep_pins>;
+			vmmc-supply = <&reg_vcc_3v3>;
+			/* no vqmmc-supply! Stock has none either.
+			 * Stock dmesg: "no vqmmc,Check if there is regulator"
+			 * With vqmmc, mainline may attempt signal voltage
+			 * switching that silently fails and blocks init. */
+			bus-width = <4>;
+			/* no non-removable! Stock DTS omits it too.
+			 * With non-removable, mmc_rescan() blocks all
+			 * subsequent mmc_detect_change() calls after the
+			 * first failed scan at boot (card not powered).
+			 * Card detection is driven by the BSP driver via
+			 * mmc_detect_change() after power-cycling PM1. */
+			cap-sd-highspeed;
+			cap-sdio-irq;
+			sd-uhs-sdr25;
+			sd-uhs-sdr50;
+			sd-uhs-sdr104;
+			sd-uhs-ddr50;
+			no-mmc;
+			no-sd;
+			keep-power-in-suspend;
+			sunxi-dly-52M-ddr4 = <1 0 0 0 2>;
+			sunxi-dly-104M = <1 1 0 0 1>;
+			sunxi-dly-208M = <1 0 0 0 1>;
+			/*
+			 * Stock advertises UHS-SDR104 at 50 MHz.  The v5p3x delay and
+			 * read-threshold programming in the host driver is required;
+			 * declaring these UHS modes without it stalls SDIO discovery.
+			 */
+			max-frequency = <50000000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			sdio_wifi: wifi@1 {
+				reg = <1>;
+				interrupt-parent = <&r_pio>;
+				interrupts = <1 0 IRQ_TYPE_LEVEL_LOW>; /* PM0 = host-wake */
+				interrupt-names = "host-wake";
+			};
+		};
+
+		/* === USB PHY === */
+		usbphy: phy@4100400 {
+			compatible = "allwinner,sun50i-h713-usb-phy";
+			reg = <0x04100400 0x100>,
+			      <0x04101800 0x100>,
+			      <0x04200800 0x100>,
+			      <0x04300800 0x100>;
+			reg-names = "phy_ctrl",
+				    "pmu0",
+				    "pmu1",
+				    "pmu2";
+			clocks = <&ccu CLK_USB_OHCI0>,
+				 <&ccu CLK_USB_OHCI1>,
+				 <&ccu CLK_USB_OHCI2>;
+			clock-names = "usb0_phy",
+				      "usb1_phy",
+				      "usb2_phy";
+			resets = <&ccu RST_USB_PHY0>,
+				 <&ccu RST_USB_PHY1>,
+				 <&ccu RST_USB_PHY2>;
+			reset-names = "usb0_reset",
+				      "usb1_reset",
+				      "usb2_reset";
+			#phy-cells = <1>;
+			status = "okay";
+		};
+
+		/* === USB EHCI0 (DRD port) === */
+		ehci0: usb@4101000 {
+			compatible = "allwinner,sun50i-h6-ehci", "generic-ehci";
+			reg = <0x04101000 0x100>;
+			interrupts = <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_EHCI0>;
+			resets = <&ccu RST_BUS_EHCI0>;
+			phys = <&usbphy 0>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		ohci0: usb@4101400 {
+			compatible = "allwinner,sun50i-h6-ohci", "generic-ohci";
+			reg = <0x04101400 0x100>;
+			interrupts = <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_OHCI0>, <&ccu CLK_USB_OHCI0>;
+			resets = <&ccu RST_BUS_OHCI0>;
+			phys = <&usbphy 0>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		ehci1: usb@4200000 {
+			compatible = "allwinner,sun50i-h6-ehci", "generic-ehci";
+			reg = <0x04200000 0x100>;
+			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_EHCI1>;
+			resets = <&ccu RST_BUS_EHCI1>;
+			phys = <&usbphy 1>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		ohci1: usb@4200400 {
+			compatible = "allwinner,sun50i-h6-ohci", "generic-ohci";
+			reg = <0x04200400 0x100>;
+			interrupts = <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_OHCI1>, <&ccu CLK_USB_OHCI1>;
+			resets = <&ccu RST_BUS_OHCI1>;
+			phys = <&usbphy 1>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		ehci2: usb@4300000 {
+			compatible = "allwinner,sun50i-h6-ehci", "generic-ehci";
+			reg = <0x04300000 0x100>;
+			interrupts = <GIC_SPI 35 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_EHCI2>;
+			resets = <&ccu RST_BUS_EHCI2>;
+			phys = <&usbphy 2>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		ohci2: usb@4300400 {
+			compatible = "allwinner,sun50i-h6-ohci", "generic-ohci";
+			reg = <0x04300400 0x100>;
+			interrupts = <GIC_SPI 36 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_OHCI2>, <&ccu CLK_USB_OHCI2>;
+			resets = <&ccu RST_BUS_OHCI2>;
+			phys = <&usbphy 2>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		/*
+		 * IOMMU — disabled and NOT used by Panfrost.
+		 * Panfrost uses the Mali GPU's internal MMU via io-pgtable.
+		 * Do NOT enable CONFIG_SUN50I_IOMMU — selects ARM_DMA_USE_IOMMU
+		 * on ARM32, which corrupts of_node pointers and crashes all
+		 * module probes. This is a confirmed, tested showstopper.
+		 * Address 0x02010000 is the H713 IOMMU MMIO base (unverified).
+		 */
+		/*
+		 * DISABLED 2026-08-09 -- this node is inert on H713 and was
+		 * actively harmful while the VE referenced it.
+		 *
+		 * Read back on hardware with the driver bound and iommu group 0
+		 * created: every register at 0x030f0000 is 0, including ENABLE
+		 * (+0x20) and TTB (+0x30). An attached domain writes both, so
+		 * nothing is responding at this address.
+		 *
+		 * 0x030f0000 is the H6 base and is simply wrong here. The
+		 * stock DTB is unambiguous:
+		 *
+		 *   mmu_aw: iommu@2010000 {
+		 *       compatible = "allwinner,sunxi-iommu";
+		 *       reg = <0x2010000 0x1000>;
+		 *       interrupts = <0 0x47 4>;      // SPI 71
+		 *       clocks = <&ccu 0x30>;
+		 *       #iommu-cells = <2>;
+		 *   };
+		 *
+		 * and its ve@1c0e000 references it as iommus = <&mmu_aw 0 1>
+		 * (master 0), av1@1c0d000 as <&mmu_aw 5 1>.
+		 *
+		 * Two reasons this is not just a reg fix. The vendor binding is
+		 * `allwinner,sunxi-iommu` with #iommu-cells = <2>, while
+		 * mainline's sun50i-iommu is #iommu-cells = <1> -- so the cell
+		 * count and the driver both differ, and whether the H713 block
+		 * is register-compatible with the H6 one is untested. And
+		 * probing it wants the CCU gate checked first (read
+		 * 0x0200169c-style gates; the CCU is always clocked so that
+		 * read is free) because an ungated block hangs this
+		 * interconnect.
+		 *
+		 * Until someone does that deliberately, the honest state is
+		 * "no IOMMU", which is also the safer one: cedrus falls back to
+		 * dma-direct on CMA instead of being handed IOVAs that nothing
+		 * translates.
+		 */
+		/*
+		 * Every value here is read out of the stock DTB on board B's
+		 * own eMMC (`local/h713-lab/captures/board-b/`), not inferred
+		 * from the H6. The previous node lived at the H6's 0x030f0000,
+		 * where this SoC has nothing: every register read 0, including
+		 * ENABLE and TTB, which an attached domain would have written.
+		 *
+		 * Confirmed on hardware 2026-08-17 after gating the clock on
+		 * (the block is clocked off at reset, and probing it ungated
+		 * hangs this interconnect, so read CCU 0x7bc bit 0 first):
+		 * writing 0xdeadb000 to TTB reads back 0xdead8000, so it
+		 * answers and wants a 16 KiB-aligned table exactly as the H6
+		 * block does. RESET reads 0x8003007f and BYPASS 0x0000007f --
+		 * seven masters, 0-6, all bypassing translation at reset.
+		 *
+		 * No resets property: the stock node has only a clock, and
+		 * there is no IOMMU reset line in our CCU.
+		 */
+		iommu: iommu@2010000 {
+			compatible = "allwinner,sun50i-h713-iommu";
+			reg = <0x02010000 0x1000>;
+			interrupts = <GIC_SPI 71 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_IOMMU>;
+			#iommu-cells = <2>;
+		};
+
+		/*
+		 * Video Engine (Cedrus V4L2 stateless decoder)
+		 * H713 VE block at 0x01C0E000 - same hardware as H6.
+		 * Stock DTS uses "allwinner,sunxi-cedar-ve" with proprietary driver.
+		 * Mainline Cedarus driver expects "allwinner,sun50i-h6-video-engine".
+		 *
+		 * H713 specific differences from H6:
+		 * - IRQ: SPI 75 (H6 uses SPI 89)
+		 * - 4 clocks: bus_ve, bus_ve3, ve_core, mbus_ve3
+		 * - 2 resets: reset_ve, reset_ve3 (we try with just RST_BUS_VE first)
+		 * - Power domain: PPU index 3 = VE
+		 * - IOMMU: Master ID 0
+		 *
+		 * SRAM: Stock has SRAM controller at 0x03000000 inline in reg[1].
+		 * Mainline expects allwinner,sram = <&ve_sram 1> reference.
+		 * Testing without SRAM property first - may be optional on H713.
+		 */
+
+		/*
+		 * H713 AV1 decoder block (separate address from Cedrus VE to avoid 0x01c0e000 conflict)
+		 */
+		av1_decoder: av1-decoder@1c0d000 {
+			compatible = "allwinner,sunxi-google-ve", "allwinner,sun50i-h713-av1-decoder";
+			reg = <0x01c0d000 0x1000>, <0x03000000 0x10>;
+			interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_BUS_VE3>, <&ccu CLK_BUS_AV1>, <&ccu CLK_MBUS_VE3>;
+			clock-names = "bus_ve", "bus_ve3", "av1", "mbus_ve3";
+			resets = <&ccu RST_BUS_VE>, <&ccu RST_BUS_VE3>;
+			reset-names = "reset_ve", "reset_ve3";
+			memory-region = <&decd_reserved>;
+			status = "okay";
+		};
+
+		ve: video-codec@1c0e000 {
+			compatible = "allwinner,sun50i-h6-video-engine";
+			/*
+			 * 0x1000, not 0x2000 -- the stock DTB says
+			 * reg = <0x1c0e000 0x1000>, and a hardware dump
+			 * confirms it: the window aliases, 0x1000 mirroring
+			 * 0x000 exactly.
+			 */
+			reg = <0x01c0e000 0x1000>;
+			/*
+			 * SPI 75 is VENDOR-CONFIRMED: the stock DTB's
+			 * ve@1c0e000 carries interrupts = <0 0x4b 4>, and
+			 * 0x4b = 75. Registered as hwirq 107 (75 + 32).
+			 * Do not "fix" this to the H6 value of 89.
+			 */
+			interrupts = <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>;
+			allwinner,sram = <&ve_sram 1>;
+			clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_VE_CORE>, <&ccu CLK_MBUS_VE3>, <&ccu CLK_BUS_VE3>;
+			clock-names = "ahb", "mod", "ram", "bus_ve3";
+			resets = <&ccu RST_BUS_VE>, <&ccu RST_BUS_VE3>;
+			reset-names = "ve", "ve3";
+			/*
+			 * RESTORED 2026-08-15, and now mandatory.
+			 *
+			 * This line was tried and reverted on 2026-08-09 because
+			 * cedrus stopped probing entirely (deferred probe
+			 * pending, no /dev/video0). That revert's own diagnosis
+			 * was right: "the cause is in patch 0020, not here...
+			 * SYS reading off on a running system proves the
+			 * driver's power state is not tracking hardware.
+			 * Restore this line only after the H713 PPU driver can
+			 * actually report and control these domains."
+			 *
+			 * That condition is met. Patch 0020 was pointing at
+			 * 0x07010014 -- a transposition of the PMU base
+			 * 0x07001000 that landed in R_CCU -- so every domain
+			 * register read zero, is_on() always said off, and
+			 * power_on() timed out waiting for a DONE bit that
+			 * could never set. Hence the probe deferral. With the
+			 * base corrected the domain sequences for real:
+			 * writing CMD_ON took VE from status=0x00020000 (off)
+			 * to 0x00010002 (on + done) on hardware.
+			 *
+			 * It is mandatory now rather than optional: once the
+			 * PPU domains are genuinely managed, an unclaimed VE
+			 * domain gets powered off and decode dies with
+			 * "frame processing timed out!". Measured, 2026-08-15.
+			 */
+			power-domains = <&ppu 3>;
+			/*
+			 * Master 0, translation on -- exactly what the stock
+			 * DTB does (`iommus = <&mmu_aw 0 1>`).
+			 *
+			 * This property was deliberately absent from
+			 * 2026-08-09 until 2026-08-17, and the reason it is
+			 * back is worth keeping. It was removed because
+			 * `iommus = <&iommu 0>` crashed the kernel on the first
+			 * decode: rogue VE DMA corrupted the printk ringbuffer
+			 * and panicked in _prb_read_valid() before a frame came
+			 * out. The cause was not the property but the node it
+			 * pointed at -- the H6's 0x030f0000, where this SoC has
+			 * nothing, so the DMA layer handed cedrus IOVAs that
+			 * nothing translated and the VE wrote them as physical
+			 * addresses. An inert IOMMU is worse than none.
+			 *
+			 * The node now points at the real block, which has been
+			 * verified to answer on hardware (see the iommu node),
+			 * so the bounds the DMA layer believes in are actually
+			 * enforced. That matters beyond correctness here:
+			 * without translation, cedrus writing after its buffers
+			 * are freed corrupts arbitrary kernel memory rather
+			 * than raising a fault -- see
+			 * docs/vaapi-scope.md and patch 0040.
+			 *
+			 * BOTH master ports, and that is not optional. The
+			 * stock tree declares two nodes for this one block --
+			 * `ve@1c0e000` as master 0 and `ve1@1c0e000` as master
+			 * 1, same compatible, same address -- because the
+			 * engine issues traffic through two ports.
+			 *
+			 * Attaching only master 0 was measured here on
+			 * 2026-08-17 and is a trap worth describing: the IOMMU
+			 * comes up (ENABLE=1, a real TTB) and reports no faults
+			 * at all, while every decode comes out corrupt. With
+			 * BYPASS left at 0x7e, port 0 was translated and port 1
+			 * still emitted raw physical addresses, so half the
+			 * engine's traffic went to the IOVAs the DMA layer
+			 * handed out and half went straight to memory. No
+			 * fault, because nothing ever touched an unmapped IOVA.
+			 */
+			iommus = <&iommu 0 1>, <&iommu 1 1>;
+			status = "okay";
+		};
+
+		/* === GPU (Mali-G31 Bifrost, Panfrost driver) === */
+		gpu: gpu@1800000 {
+			compatible = "allwinner,sun50i-h616-mali",
+				     "arm,mali-bifrost";
+			reg = <0x01800000 0x40000>;
+			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "job", "mmu", "gpu";
+			clocks = <&ccu CLK_GPU>, <&ccu CLK_BUS_GPU>;
+			clock-names = "core", "bus";
+			resets = <&ccu RST_BUS_GPU>;
+			mali-supply = <&reg_vdd_sys>;
+			/*
+			 * Power domain index 0 = GPU, per the stock DTB's pd_gpu@0.
+			 * The previous <&ppu 2> aimed at what stock calls TVCAP, and
+			 * resolved to a hw_id of -1 (always-on stub), so nothing ever
+			 * touched the GPU domain. It reads ON at boot regardless, which
+			 * is why the GPU's own SHADER_READY/L2_READY are set.
+			 */
+			power-domains = <&ppu 0>;
+			#cooling-cells = <2>;
+			status = "okay";
+		};
+
+
+		/* === LRADC (IIO provider for NTC + keyboard) === */
+		lradc: lradc@2009800 {
+			compatible = "allwinner,sun50i-h713-lradc";
+			reg = <0x02009800 0x400>;
+			clocks = <&ccu CLK_BUS_LRADC>;
+			resets = <&ccu RST_BUS_LRADC>;
+			#io-channel-cells = <1>;
+			status = "okay";
+		};
+
+		/* === GPADC (General Purpose ADC) === */
+		gpadc: gpadc@2009000 {
+			compatible = "allwinner,sun20i-d1-gpadc";
+			reg = <0x02009000 0x400>;
+			interrupts = <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_BUS_GPADC>;
+			resets = <&ccu RST_BUS_GPADC>;
+			#io-channel-cells = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			/* Stock uses channel_num=2, channel_select=2 (channels 0+1) */
+			channel@0 {
+				reg = <0>;
+			};
+
+			channel@1 {
+				reg = <1>;
+			};
+		};
+
+		/* === Watchdog === */
+		watchdog: watchdog@2051000 {
+			compatible = "allwinner,sun50i-h6-wdt",
+				     "allwinner,sun6i-a31-wdt";
+			reg = <0x02051000 0x20>;
+			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&osc24M>;
+		};
+
+		/* === R-domain: RTC, R_CCU, R_PIO, IR === */
+
+		/*
+		 * RTC — clock provider for osc32k and iosc
+		 * H713 RTC at 0x07090000 (unlike H6 @ 0x07000000)
+		 * Uses H6 RTC driver as clock provider (self-contained, no bus clock input)
+		 */
+		rtc: rtc@7090000 {
+			compatible = "allwinner,sun50i-h713-rtc";
+			reg = <0x07090000 0x400>;
+			interrupts = <GIC_SPI 147 IRQ_TYPE_LEVEL_HIGH>;
+			clock-output-names = "osc32k", "osc32k-out", "iosc";
+			#clock-cells = <1>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/* GP7 (phys 0x0709011c) holds the reboot-mode magic handed to
+			 * U-Boot. The GP register block is nvmem offset 0, so GP7 is
+			 * byte offset 0x1c. */
+			reboot_mode_magic: reboot-mode-magic@1c {
+				reg = <0x1c 0x4>;
+			};
+		};
+
+		/*
+		 * R_CCU (PRCM) — R-domain clock controller
+		 * Provides clocks for IR, R_TWI, R_PIO, etc.
+		 * H713 R_CCU at 0x07010000 — use D1 R_CCU driver
+		 * (H6 R_CCU depends on ARM64, D1 R_CCU is architecture-independent
+		 *  and has compatible register layout with H713)
+		 */
+		r_ccu: clock-controller@7010000 {
+			compatible = "allwinner,sun20i-d1-r-ccu";
+			/*
+			 * D1 R_CCU highest register: 0x22C (RST_BUS_R_CPUCFG).
+			 * Size 0x240 covers all CCU registers and stays below
+			 * the PPU register area (starts at 0x14 but uses offsets
+			 * that are distinct from actual CCU clock/reset registers).
+			 */
+			reg = <0x07010000 0x240>;
+			clocks = <&osc24M>,
+				 <&rtc CLK_OSC32K>,
+				 <&rtc CLK_IOSC>,
+				 <&ccu CLK_PLL_PERIPH0>;
+			clock-names = "hosc", "losc", "iosc", "pll-periph";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+		};
+
+		/*
+		 * ARISC co-processor (OpenRISC "AR100", "cpus") -- OURS, not in
+		 * cstenger's tree. It owns the R_ peripherals, among them the
+		 * HDMI hotplug pin and the EDID/DDC block, so the HDMI input
+		 * cannot come up without firmware running on it. The vendor
+		 * secure monitor loads that firmware; mainline TF-A does not, so
+		 * sun50i-h713-arisc does it from Linux.
+		 *
+		 * Binding:
+		 *   compatible    "allwinner,sun50i-h713-arisc"
+		 *   reg/reg-names five windows, in this order:
+		 *     "sram"       SRAM A2 as the ARM sees it. The firmware image
+		 *                  goes to the start of it (140 KiB); the running
+		 *                  firmware keeps its message buffer, its HDMI
+		 *                  port state and its hotplug counters in the
+		 *                  same window.
+		 *     "msgbox-rx"  msgbox bank user0, first sub-block: the
+		 *                  channels the ARISC answers on (startup notify
+		 *                  on ch3, EDID and status on ch1).
+		 *     "msgbox-tx"  msgbox bank user1, first sub-block: port 0
+		 *                  reaches the HDMI receive pump, port 3 the
+		 *                  standby dispatcher that wants the startup
+		 *                  acknowledgement.
+		 *     "reset"      R_CPUCFG. Bit 0 holds (0) or runs (1) the core.
+		 *     "cpus-clk"   the three R_PRCM gates boot0 turns on before
+		 *                  the image is copied ("prcm cpus timer clock
+		 *                  enable").
+		 *   firmware-name index 0 the ARISC image, index 1 the default
+		 *                 EDID (both blocks, 512 bytes) the driver hands
+		 *                 to the firmware.
+		 *
+		 * Two of the windows deliberately overlap a block another node
+		 * already describes, so the driver maps them without claiming the
+		 * region: the msgbox banks sit inside cpu_comm@3003000 (which
+		 * uses +0x164/+0x174 and +0x864/+0x874 -- no register is shared),
+		 * and the CPUS clock gates sit inside the r_ccu register file
+		 * (whose D1 model starts at +0x11c and does not describe them).
+		 *
+		 * The vendor loader also copies a 32 KiB tail of the image to
+		 * DRAM 0x48100000, which is kernel text here. The firmware runs
+		 * without it, so there is no reserved-memory region for it; if a
+		 * service ever turns out to need the tail, it needs a carveout
+		 * first.
+		 */
+		arisc: arisc@100000 {
+			compatible = "allwinner,sun50i-h713-arisc";
+			reg = <0x00100000 0x23000>,
+			      <0x03003000 0x100>,
+			      <0x03003400 0x100>,
+			      <0x07000400 0x4>,
+			      <0x07010110 0xc>;
+			reg-names = "sram", "msgbox-rx", "msgbox-tx",
+				    "reset", "cpus-clk";
+			firmware-name = "h713-arisc.bin", "hy310-edid.bin";
+			status = "okay";
+		};
+
+		/*
+		 * H713 PPU — power domain controller.
+		 *
+		 * Source is now the STOCK DTB (local/stock-boot/sunxi.fex), which
+		 * describes power-management@ff000000, compatible
+		 * "allwinner,tv303-pmu","syscon","simple-mfd", reg = <0x07001000
+		 * 0x400>, carrying a "allwinner,tv303-power-controller" child with
+		 * pd_gpu@0, pd_tvfe@1, pd_tvcap@2, pd_ve@3, pd_av1@4.
+		 *
+		 * 5 domains (DT indices 0-4), all with real hardware sequencers:
+		 *   0: GPU   (registers at 0x07001014 + 0x00)
+		 *   1: TVFE  (+0x80)
+		 *   2: TVCAP (+0x100)
+		 *   3: VE    (+0x180)
+		 *   4: AV1   (+0x200)
+		 *
+		 * The previous version of this node was wrong twice, both from an
+		 * IDA read that the stock DTB overrules: the base was 0x07010014,
+		 * a transposition of 0x07001000 that landed in the R_CCU range so
+		 * every domain register read zero; and the domain names were
+		 * CPUS/SYS/GPU/VE/DE with the GPU marked sequencer-less always-on.
+		 * Verified on hardware at the corrected base: all five domains read
+		 * wait=0x8, delays=0x00080808, ctrl=1, status=0x00010000 (ON).
+		 */
+		ppu: power-controller@7001014 {
+			compatible = "allwinner,sun50i-h713-ppu";
+			/* Inside the PMU block; driver uses of_iomap (no request) */
+			reg = <0x07001014 0x22c>;
+			clocks = <&r_ccu CLK_BUS_R_PPU>;
+			clock-names = "ppu";
+			resets = <&r_ccu RST_BUS_R_PPU>;
+			reset-names = "ppu_rst";
+			#power-domain-cells = <1>;
+			status = "okay";
+		};
+
+		/*
+		 * TVFE/TVCAP-Inbetriebnahme. Ohne Strom auf diesen beiden Bereichen
+		 * haengt JEDER Zugriff auf ein HDMI-RX-Fenster den Bus -- ohne Abort,
+		 * ohne Watchdog. Beansprucht bewusst KEINEN Interrupt: tvtops
+		 * GIC_SPI 110 (hwirq 142) gehoert h713-afbd, am Geraet mit 615
+		 * Ausloesungen belegt. Und bewusst keine Panel-Eigenschaften:
+		 * tvtops panel_bl_en ist PB5, Hintergrundbeleuchtung UND Luefter.
+		 *
+		 * Herkunft: cstengers Patch 0087, bei ihm am 02.09.2026 belegt.
+		 * Der Treiber ist bei uns ein Modul, nicht builtin -- siehe
+		 * analyse/tvcap/h713-tvcap.c.
+		 */
+		tvcap_bringup: tvcap@50c0000 {
+			compatible = "allwinner,h713-tvcap";
+			reg = <0x050c0000 0x1000>;
+			clocks = <&ccu CLK_BUS_TVCAP>,
+				 <&ccu CLK_BUS_CAP_300M>,
+				 <&ccu CLK_VINCAP_DMA>,
+				 <&ccu CLK_TVFE_1296M>;
+			clock-names = "bus_tvcap", "cap_300m", "vincap_dma",
+				      "tvfe_1296m";
+			power-domains = <&ppu 1>, <&ppu 2>;
+			power-domain-names = "tvfe", "tvcap";
+			status = "okay";
+		};
+
+		/*
+		 * INCAP, the MIPS firmware's HDMI capture block. Nothing on
+		 * the ARM drives it: the firmware programs it for every
+		 * signal it locks, including the line pitch of the capture
+		 * ring (doku/nachtlog/E4-geometrie-vollstaendig.md). But its
+		 * active and total geometry are the one place where the size
+		 * of what lands in the ring can be read, so the HDMI receiver
+		 * node looks at two of its words, +0x874 and +0x548.
+		 *
+		 * A syscon and not a device on purpose: there is no driver
+		 * for the block and there must be no writer -- writing INCAP
+		 * from the ARM wedges the capture until a cold start (doku/78
+		 * section 0, rule 6). It lives in the TVFE/TVCAP power
+		 * domain; while that is off the whole block reads zero.
+		 */
+		/*
+		 * MSP-Audio-DSP — der Weg, den HDMI-Ton bei diesem SoC nimmt:
+		 * HDMI-RX --I2S--> MSP --I2SOUT1--> Codec-I2S --> DAC --> Lautsprecher.
+		 * Der ARM streamt nichts; der Treiber laedt nur den Patch, baut den
+		 * Graphen und stellt Schalter, Lautstaerke und Stumm (doku/101 §2).
+		 *
+		 * Die vier Fenster gehoeren diesem Knoten allein: 0x0614xxxx wird
+		 * heute von keinem anderen Treiber abgebildet (der Knoten
+		 * `audio_bridge` traegt `vs,trid-audio-bridge` ohne Treiber im Baum).
+		 *
+		 * Takte: `bus-demod` (Gate + Reset der ganzen Trident-Frontend-Insel)
+		 * und die 16 TVFE-Gates, die dsp_island2.py `TVFE_CLKS` einschaltet —
+		 * mit einer Teilmenge kam die Insel nicht zuverlaessig hoch, und Stocks
+		 * tvtop schaltet dieselbe Liste. `assigned-clock-rates` sind die
+		 * Stock-Raten aus S16 15:45; wirksam werden sie erst mit Paket A
+		 * (0134), das audio-cpu/umac/ihb als Div+Mux modelliert — bis dahin
+		 * sind es reine Gates und `clk_set_rate` ist folgenlos.
+		 *
+		 * Leistungsbereich: pd_tvfe (`&ppu 1`). pd_tvcap ist ohnehin an und
+		 * wird nicht beansprucht (S17 §4a: nur eine Domaene je Knoten).
+		 */
+		msp: audio-dsp@6144000 {
+			compatible = "allwinner,sun50i-h713-msp";
+			reg = <0x06144000 0x20>,
+			      <0x0614a000 0x10>,
+			      <0x06142000 0x80>,
+			      <0x06146000 0x90>;
+			reg-names = "mailbox", "audio-top", "ctrl", "audif";
+			clocks = <&ccu CLK_BUS_DEMOD>,
+				 <&ccu CLK_ADC>,
+				 <&ccu CLK_DTMB_120M>,
+				 <&ccu CLK_TVFE_1296M>,
+				 <&ccu CLK_I2H>,
+				 <&ccu CLK_CIP_TSX>,
+				 <&ccu CLK_CIP_MCX>,
+				 <&ccu CLK_CIP_TSP>,
+				 <&ccu CLK_TSA_TSP>,
+				 <&ccu CLK_CIP27>,
+				 <&ccu CLK_CIP_MTS0>,
+				 <&ccu CLK_AUDIO_CPU>,
+				 <&ccu CLK_AUDIO_UMAC>,
+				 <&ccu CLK_AUDIO_IHB>,
+				 <&ccu CLK_TSA432>,
+				 <&ccu CLK_MPG0>,
+				 <&ccu CLK_MPG1>;
+			clock-names = "bus-demod", "adc", "dtmb-120m",
+				      "tvfe-1296m", "i2h", "cip-tsx", "cip-mcx",
+				      "cip-tsp", "tsa-tsp", "cip27", "cip-mts0",
+				      "audio-cpu", "audio-umac", "audio-ihb",
+				      "tsa432", "mpg0", "mpg1";
+			assigned-clocks = <&ccu CLK_AUDIO_CPU>,
+					  <&ccu CLK_AUDIO_UMAC>,
+					  <&ccu CLK_AUDIO_IHB>;
+			assigned-clock-rates = <400000000>, <200000000>,
+					       <200000000>;
+			resets = <&ccu RST_BUS_DEMOD>;
+			reset-names = "bus-demod";
+			power-domains = <&ppu 1>;
+			allwinner,tvfe-router = <&tvfe_router>;
+			firmware-name = "h713/msp-patch.bin";
+			status = "okay";
+		};
+
+		/*
+		 * TVFE-Router, ein einziges Wort. `tvtop_tvfe_enable` schreibt hier
+		 * 0x003003FF; ohne `bus-demod` liest es 0, mit `bus-demod` 0x7ff
+		 * (S17 §2c/§3). Der MSP-Treiber liest es als Torkontrolle und
+		 * schreibt den Wert.
+		 *
+		 * Syscon und kein eigenes Geraet, aus demselben Grund wie bei
+		 * `incap` weiter unten: es gibt keinen Treiber fuer den Block, und
+		 * die Adresse liegt im zweiten `reg`-Eintrag von `tvtop@5700000`
+		 * (siehe §2). Ein Phandle schreibt diese Teilung ins Geraetebaum-
+		 * dokument, statt sie in zwei `ioremap`s zu verstecken.
+		 */
+		tvfe_router: syscon@6700000 {
+			compatible = "allwinner,sun50i-h713-tvfe-router", "syscon";
+			reg = <0x06700000 0x4>;
+		};
+
+		incap: syscon@6940000 {
+			compatible = "allwinner,sun50i-h713-incap", "syscon";
+			reg = <0x06940000 0x1000>;
+		};
+
+		/*
+		 * LINK, the HDMI receiver's port window. Like INCAP above it
+		 * belongs to the MIPS firmware and has no ARM driver: the
+		 * firmware detects the audio in the stream, programmes the
+		 * audio PLL and unmutes the receiver's audio output all by
+		 * itself, and it offers the ARM neither an RPC nor a callback
+		 * to ask about any of it (doku/nachtlog/S18-re-mips-hdmi-audio.md).
+		 * The HDMI receiver node reads four bytes of it -- +0x40,
+		 * +0x56, +0x15f, +0x160 -- plus the six of N and CTS, and
+		 * writes none.
+		 *
+		 * reg-io-width = <1> is not decoration. These are byte
+		 * registers: a 32 bit read of this window returns the byte of
+		 * the aligned address four times over, so a word access
+		 * cannot reach +0x45..0x47 at all (S18 section 4.4). With
+		 * reg-io-width = 1 the syscon's regmap uses readb().
+		 */
+		hdmirx_link: syscon@6840000 {
+			compatible = "allwinner,sun50i-h713-hdmirx-link",
+				     "syscon";
+			reg = <0x06840000 0x1000>;
+			reg-io-width = <1>;
+		};
+
+		/* R-domain pinctrl for PL/PM banks (IR, S_PWM, WLAN/BT GPIOs) */
+		r_pio: pinctrl@7022000 {
+			compatible = "allwinner,sun50i-h713-r-pinctrl";
+			reg = <0x07022000 0x400>;
+			clocks = <&r_ccu CLK_R_AHB>, <&osc24M>,
+				 <&rtc CLK_OSC32K>;
+			clock-names = "apb", "hosc", "losc";
+			vcc-pm-supply = <&reg_vcc_3v3>;
+			vcc-pl-supply = <&reg_vcc_3v3>;
+			gpio-controller;
+			#gpio-cells = <3>;
+			interrupt-controller;
+			#interrupt-cells = <3>;
+			interrupts = <GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 151 IRQ_TYPE_LEVEL_HIGH>;
+
+			r_ir_rx_pin: r-ir-rx-pin {
+				pins = "PL9";
+				function = "s_cir";
+				bias-pull-up;
+				drive-strength = <30>;
+				input-enable;
+			};
+
+			s_pwm1_pin: s-pwm1-pin {
+				pins = "PL7";
+				function = "s_pwm1";
+			};
+		};
+
+		/* R-block PWM (3 channels); channel 1 / PL7 drives VDD-CPU. */
+		r_pwm: pwm@7020c00 {
+			compatible = "allwinner,sun50i-h713-pwm";
+			reg = <0x07020c00 0x400>;
+			clocks = <&r_ccu CLK_BUS_R_PWM>, <&r_ccu CLK_R_PWM>;
+			clock-names = "bus", "hosc";
+			resets = <&r_ccu RST_BUS_R_PWM>;
+			#pwm-cells = <3>;
+			allwinner,npwms = <3>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&s_pwm1_pin>;
+			status = "okay";
+		};
+
+		/* IR Receiver on PL9 (stock-like route) */
+		r_ir: ir@7040000 {
+			compatible = "allwinner,sun50i-h713-ir",
+				     "allwinner,sun50i-h6-ir",
+				     "allwinner,sun6i-a31-ir";
+			reg = <0x07040000 0x400>;
+			interrupts = <GIC_SPI 155 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&r_ccu CLK_BUS_R_IR_RX>,
+				 <&r_ccu CLK_R_IR_RX>;
+			clock-names = "apb", "ir";
+			clock-frequency = <24000000>;
+			resets = <&r_ccu RST_BUS_R_IR_RX>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&r_ir_rx_pin>;
+			status = "okay";
+		};
+
+		/* === Phase 2: MIPS Display Subsystem === */
+
+		/*
+		 * Msgbox hardware (0x03003000) is driven directly by the
+		 * cpu_comm module — the H713 register layout is incompatible
+		 * with the mainline sun6i-a31-msgbox driver.
+		 * IRQ, reg, and clocks are on the cpu-comm node instead.
+		 */
+
+		/*
+		 * MIPS Display Co-processor (dec@5600000)
+		 * The DEC node is the parent container for the MIPS subsystem.
+		 * Stock DTS: compatible = "allwinner,sunxi-dec", "simple-bus"
+		 */
+
+		/*
+		 * GE2D Display Controller (trix,ge2d)
+		 * Stock live DTS extracted via ADB from Android.
+		 * reg/interrupts = stock values, clocks/resets = our CCU IDs.
+		 * IOMMU omitted for Phase 1 (our iommu@30f0000 address unverified).
+		 */
+		ge2d: ge2d@5240000 {
+			compatible = "trix,ge2d";
+			reg = <0x05240000 0x60000>,   /* GE2D core 384KB */
+			      <0x051c0000 0x10000>,   /* LVDS 64KB */
+			      <0x05200000 0x1000>,    /* OSD_B 4KB */
+			      <0x05600000 0x1000>;    /* AFBD 4KB */
+			interrupts = <GIC_SPI 101 IRQ_TYPE_LEVEL_HIGH>,  /* vblender */
+				     <GIC_SPI 103 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 104 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH>;  /* AFBD (idx 3) */
+			clocks = <&ccu CLK_AFBD>, <&ccu CLK_BUS_DISP>;
+			clock-names = "clk_afbd", "clk_bus_disp";
+			resets = <&ccu RST_BUS_DISP>;
+			reset-names = "rst_bus_disp";
+			/*
+			 * PWM channel 2 for backlight dimming.
+			 * Stock uses pwm_request(2, "fastlogo"), period = 1/25kHz = 40us.
+			 * ge2d_backlight.c calls devm_pwm_get(dev, NULL) to find this.
+			 * Polarity is panel_pwm_pol in tvtop, and stock sets it 0.
+			 */
+			pwms = <&pwm 2 40000 0>;
+			status = "okay";
+			memory-region = <&framebuf_reserved>;
+		};
+
+		/*
+		 * TV System Top Controller
+		 * Manages display clocks, resets, and HDMI routing
+		 * Stock registers: 0x05700000, 0x06e00000, 0x06700000
+		 */
+		tvtop: tvtop@5700000 {
+			compatible = "allwinner,sunxi-tvtop";
+			reg = <0x05700000 0x100>,
+			      <0x06700000 0x100>,
+			      <0x06e00000 0x100>;
+			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
+			resets = <&ccu RST_BUS_DISP>,
+				 <&ccu RST_BUS_TVCAP>,
+				 <&ccu RST_BUS_DEMOD>;
+			reset-names = "reset_bus_disp", "reset_bus_tvcap", "reset_bus_demod";
+			clocks = <&ccu CLK_BUS_DISP>,
+				 <&ccu CLK_SVP_DTL>,
+				 <&ccu CLK_DEINT>,
+				 <&ccu CLK_PANEL>,
+				 <&ccu CLK_BUS_TVCAP>,
+				 <&ccu CLK_TCD3>,
+				 <&ccu CLK_VINCAP_DMA>,
+				 <&ccu CLK_HDMI_AUDIO>,
+				 <&ccu CLK_BUS_CAP_300M>,
+				 <&ccu CLK_BUS_HDMI_AUDIO>,
+				 <&ccu CLK_BUS_DEMOD>,
+				 <&ccu CLK_CIP_TSP>,
+				 <&ccu CLK_CIP_TSX>,
+				 <&ccu CLK_CIP_MCX>,
+				 <&ccu CLK_TSA_TSP>,
+				 <&ccu CLK_TSA432>,
+				 <&ccu CLK_AUDIO_IHB>,
+				 <&ccu CLK_I2H>,
+				 <&ccu CLK_CIP_MTS0>,
+				 <&ccu CLK_CIP27>,
+				 <&ccu CLK_TVFE_1296M>,
+				 <&ccu CLK_AUDIO_CPU>,
+				 <&ccu CLK_AUDIO_UMAC>,
+				 <&ccu CLK_MPG0>,
+				 <&ccu CLK_MPG1>,
+				 <&ccu CLK_ADC>;
+			clock-names = "clk_bus_disp", "svp_dtl_clk", "deint_clk",
+				      "panel_clk", "clk_bus_tvcap", "tcd3_clk",
+				      "vincap_dma_clk", "hdmi_audio_clk", "cap_300m",
+				      "hdmi_audio_bus", "clk_bus_demod", "cip_tsp_clk",
+				      "cip_tsx_clk", "cip_mcx_clk", "tsa_tsp_clk",
+				      "tsa432_clk", "audio_ihb_clk", "i2h_clk",
+				      "cip_mts0_clk", "cip27_clk", "tvfe_1296M_clk",
+				      "audio_cpu", "audio_umac", "mpg0", "mpg1", "adc";
+			status = "okay";
+
+			/* Panel properties (read by ge2d_dev via of_find_compatible_node) */
+			panel_power_en = <&pio 7 19 1 2 3 1>;
+			panel_bl_en = <&pio 1 5 1 0 3 1>;
+			panel_gpio_0 = <&pio 7 16 1 2 3 1>;
+			panel_gpio_1 = <&pio 7 15 1 2 3 1>;
+			panel_gpio_2 = <&pio 7 8 1 2 3 1>;
+			panel_gpio_3 = <&pio 7 9 1 2 3 1>;
+			panel_pwm_ch = <2>;
+			panel_pwm_freq = <25000>;
+			panel_pwm_pol = <0>;
+			panel_backlight = <75>;
+			panel_pwm_min = <0>;
+			panel_pwm_max = <100>;
+			panel_protocol = <0>;
+			panel_bitwidth = <8>;
+			panel_data_swap = <0>;
+			panel_mirror_mode = <0>;
+			panel_dclk_invert = <1>;
+			panel_de_invert = <0>;
+			panel_hs_invert = <0>;
+			panel_vs_invert = <0>;
+			panel_dual_port = <1>;
+			panel_odd_data_current = <7>;
+			panel_even_data_current = <7>;
+			panel_de_current = <0x2f>;
+			panel_dclk_freq = <148500000>;
+			panel_ssc_en = <1>;
+			panel_ssc_step = <10>;
+			panel_ssc_span = <0>;
+			panel_poweron_delay0 = <20>;
+			panel_poweron_delay1 = <550>;
+			panel_poweron_delay2 = <75>;
+			panel_powerdown_delay0 = <20>;
+			panel_powerdown_delay1 = <250>;
+			panel_powerdown_delay2 = <75>;
+			panel_width = <1920>;
+			panel_height = <1080>;
+			panel_htotal = <2127>;
+			panel_vtotal = <1119>;
+			panel_hbp = <88>;
+			panel_vbp = <20>;
+			panel_hsync = <44>;
+			panel_vsync = <5>;
+			panel_hsync_pol = <1>;
+			panel_vsync_pol = <1>;
+			panel_lvds0_pol = <0x0f>;
+			panel_lvds1_pol = <0x0f>;
+			project_id = <48>;
+		};
+
+		/*
+		 * MIPS Display Decoder (dec@5600000)
+		 * Shares tvtop register space + has own AFBD registers.
+		 * Stock compatible: "allwinner,sunxi-dec"
+		 */
+		dec: dec@5600000 {
+			compatible = "allwinner,sunxi-dec";
+			reg = <0x05600000 0x400>,
+			      <0x05700000 0x100>;
+			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_AFBD>,
+				 <&ccu CLK_BUS_DISP>;
+			clock-names = "clk_afbd", "clk_bus_disp";
+			resets = <&ccu RST_BUS_DISP>;
+			reset-names = "rst_bus_disp";
+			memory-region = <&decd_reserved>;
+			/*
+			 * 100 MHz, not the vendor's 200: dec_enable() does
+			 * clk_set_rate(clk_afbd, this) on runtime resume, and
+			 * clk_summary shows afbd running at 100 MHz under the
+			 * display U-Boot established. Asking for 200 would move
+			 * a divider beneath a live panel. Match what is there.
+			 */
+			clock-frequency = <100000000>;
+			/*
+			 * Disabled: display@5600000 owns this register window
+			 * and SPI 110 now. DECD probes and works but has no
+			 * job -- its registers are not in the scanout fetch
+			 * path -- and two drivers cannot hold one window and
+			 * one interrupt. Still built as a module; this is one
+			 * word from coming back if a use is ever found.
+			 */
+			status = "disabled";
+		};
+
+		/*
+		 * AFBD scanout, driven as KMS. Adopts the display U-Boot's
+		 * h713_disp brought up and drives buffer selection and page
+		 * flips only -- never timing, the LVDS PHY, or the display
+		 * reset. The missing `resets` property is deliberate: asserting
+		 * rst_bus_disp would kill a panel this driver cannot bring
+		 * back, so the hardware description withholds the means.
+		 */
+		display: display@5600000 {
+			compatible = "allwinner,sun50i-h713-afbd";
+			reg = <0x05600000 0x400>,
+			      <0x05140000 0x1000>,
+			      <0x051c0000 0x200>,
+			      <0x05208000 0x2000>;
+			reg-names = "afbd", "route", "lvds", "gamma";
+			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_AFBD>,
+				 <&ccu CLK_BUS_DISP>;
+			clock-names = "clk_afbd", "clk_bus_disp";
+			/*
+			 * The video plane's two firmware-shared regions.
+			 * Neither is a DMA pool: "hdmi-ring" is the capture
+			 * ring the MIPS writes -- the driver only needs its
+			 * bounds to sanity-check the flip pointers it reads
+			 * out of the hardware -- and "viddec-info" holds the
+			 * frame descriptor both the AFBD and the MIPS read.
+			 * There is deliberately no "scanout" entry: ordinary
+			 * framebuffers come from the system CMA pool.
+			 */
+			memory-region = <&mips_framebuf>, <&viddec_info>;
+			memory-region-names = "hdmi-ring", "viddec-info";
+			status = "okay";
+		};
+
+		/* NSI Bus Priority Controller */
+		nsi: nsi@2020000 {
+			compatible = "allwinner,sun50i-nsi";
+			reg = <0x02020000 0x10000>;
+			interrupts = <GIC_SPI 63 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&ccu CLK_PLL_PERIPH0>,
+				 <&ccu CLK_AHB>,
+				 <&ccu CLK_DRAM>;
+			clock-names = "pll", "bus", "sdram";
+			resets = <&ccu RST_MBUS>;
+			status = "okay";
+		};
+
+		/*
+		 * CPU Communication (ARM↔MIPS SharedMem IPC)
+		 * Fully RE-ported driver. Uses shared-memory + HW spinlocks + msgbox.
+		 */
+		hwspinlock: hwspinlock@3004000 {
+			compatible = "allwinner,sun6i-a31-hwspinlock";
+			reg = <0x03004000 0x1000>;
+			clocks = <&ccu CLK_BUS_SPINLOCK>;
+			clock-names = "ahb";
+			resets = <&ccu RST_BUS_SPINLOCK>;
+			reset-names = "ahb";
+			#hwlock-cells = <1>;
+			status = "okay";
+		};
+
+		cpu_comm: cpu-comm@3003000 {
+			compatible = "allwinner,sunxi-cpu-comm";
+			reg = <0x03003000 0x1000>;
+			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;	/* 46, nicht 21 -- 21 ist S/PDIF */
+			clocks = <&ccu CLK_BUS_MSGBOX>;
+			resets = <&ccu RST_BUS_MSGBOX>;
+			shared-memory = <&cpu_comm_reserved>;
+			hwlocks = <&hwspinlock 0>;
+			status = "okay";
+		};
+	};
+
+	/*
+	 * HDMI receiver, exposed as a V4L2 capture device. OURS, not in
+	 * cstenger's tree.
+	 *
+	 * The node has no registers, which is why it sits here beside sound and
+	 * not in the soc bus: there is no HDMI receiver register block for the
+	 * ARM on this SoC. The receiver, the picture pipeline behind it and the
+	 * capture DMA belong to the MIPS co-processor; the driver reaches the
+	 * pipeline over cpu_comm (THal_Vp_* calls) and the hotplug pin and EDID
+	 * store over the ARISC, and it learns which capture slot is finished
+	 * from the flip notifier of display@5600000 -- that node owns the
+	 * register pair, claims it, and reads it on every vsync anyway. All
+	 * three are dependencies in Kconfig, not resources here. What is left
+	 * to describe is the memory the capture lands in, and the one block
+	 * the driver looks at without owning it.
+	 *
+	 * Binding:
+	 *   compatible     "allwinner,sun50i-h713-hdmirx"
+	 *   memory-region  two regions, by name:
+	 *     "hdmi-ring"       the firmware's framebuffer reservation. The
+	 *                       three Y and three C capture slots live inside
+	 *                       it; the driver checks its slot addresses
+	 *                       against the region at probe instead of
+	 *                       trusting them.
+	 *     "cpu-comm-shmem"  the IPC shared memory. Call arguments that are
+	 *                       pointers -- the HDCP key, the two window
+	 *                       rectangles, the Vp_Init staging area -- have to
+	 *                       live where the MIPS can address them, and this
+	 *                       is that place. Named, not hard coded.
+	 *   allwinner,incap  the syscon over the firmware's capture block
+	 *                    (INCAP, syscon@6940000 above). Read only, two
+	 *                    words: the active and the total size of what the
+	 *                    capture is writing, which is where the driver
+	 *                    gets the pixel clock and the blanking of the
+	 *                    timing it reports -- the firmware's own signal
+	 *                    record has the active size and the frame rate
+	 *                    but no totals (doku/nachtlog/E4).
+	 *   allwinner,hdmirx-link  the syscon over the receiver's own port
+	 *                    window (LINK, syscon@6840000 above). Optional,
+	 *                    read only, byte wide: without it everything
+	 *                    works except the three audio status controls,
+	 *                    which stay at zero.
+	 *
+	 * No interrupt: three independent searches of the firmware image found
+	 * the capture interrupt only inside the MIPS interrupt controller, and
+	 * the stock device tree wires none to the ARM either (doku/84, RE
+	 * question K2).
+	 */
+	hdmirx: hdmi-rx {
+		compatible = "allwinner,sun50i-h713-hdmirx";
+		memory-region = <&mips_framebuf>, <&cpu_comm_reserved>;
+		memory-region-names = "hdmi-ring", "cpu-comm-shmem";
+		allwinner,incap = <&incap>;
+		allwinner,hdmirx-link = <&hdmirx_link>;
+		status = "okay";
+	};
+
+	codec_machine: sound {
+		compatible = "allwinner,sunxi-codec-machine";
+		interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+		sunxi,audio-codec = <&codec>;
+		sunxi,cpudai-controller = <&dummy_cpudai>;
+		jack_enable = <0>;
+		hp_detect_case = <0x0>;
+		status = "okay";
+	};
+
+	/*
+	 * Panel backlight dimming (bench bring-up).
+	 *
+	 * Brightness input is PWM channel 2 on PB4 -- the stock dimmer. The
+	 * vendor DTB sets panel_pwm_ch = 2 at 25 kHz (period 40000 ns) on a
+	 * 0..100 duty scale (see tvtop_config below), and stock U-Boot fastlogo
+	 * drives it with pwm_request(2, "fastlogo"). Model it as a standard
+	 * pwm-backlight so brightness is controllable from
+	 * /sys/class/backlight/backlight/brightness for evaluation.
+	 *
+	 * PB5 (panel_bl_en) is shared with cooling-fan power and is held high by
+	 * fan_power_hog; it must never be driven low (that cuts the fan). It is
+	 * therefore deliberately NOT wired here as enable-gpios -- this node
+	 * varies PWM duty only, and the panel stays powered by the hog.
+	 *
+	 * Polarity is the stock vendor-DTB value (normal, flag 0). If a duty
+	 * sweep reads inverted, change the third pwms cell to
+	 * PWM_POLARITY_INVERTED (and #include dt-bindings/pwm/pwm.h) to match
+	 * tvtop_config's panel_pwm_pol = 1.
+	 */
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 2 40000 0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pwm2_pins>;
+		brightness-levels = <0 25 50 75 100>;
+		num-interpolated-steps = <25>;
+		default-brightness-level = <75>;
+	};
+
+		/*
+		 * U-Boot: early GPIO init.
+		 * Sets PB3 as output LOW during boot.
+		 * Format: <phandle port pin mux drive pull data>
+		 */
+	boot_init_gpio {
+			device_type = "boot_init_gpio";
+			logical_start = <0xa000>;
+			gpio0 = <&pio 1 3 1 0 0 0>;  /* PB3 output LOW */
+		};
+
+		/*
+		 * U-Boot: eMMC tuning parameters (card2 = MMC2).
+		 * Needed for HS200/HS400 mode at 1.8V.
+		 */
+		card2_boot_para@3 {
+			device_type = "card2_boot_para";
+			reg = <0x03 0x00>;
+			card_ctrl = <2>;
+			card_high_speed = <1>;
+			card_line = <8>;
+			sdc_ex_dly_used = <2>;
+			sdc_io_1v8 = <1>;
+			sdc_tm4_hs200_max_freq = <200>;
+			sdc_tm4_hs400_max_freq = <200>;
+			sdc_tm4_win_th = <7>;
+			sdc_type = "tm4";
+		};
+
+		/*
+		 * U-Boot: GPIO voltage bias.
+		 * Sets PC bank to 1.8V for eMMC I/O.
+		 */
+		gpio_bias@4 {
+			reg = <0x04 0x00>;
+			device_type = "gpio_bias";
+			pc_bias = <0x708>;  /* 1800mV */
+		};
+
+		/*
+		 * U-Boot: Display / Panel configuration.
+		 * Read by U-Boot for fastlogo display + LVDS panel init.
+		 * Format: <phandle port pin mux drive pull data>
+		 * phandle 0x0d = Main PIO in stock U-Boot DTB
+		 */
+	tvtop_config {
+			/* Panel power GPIOs */
+			panel_power_en = <&pio 7 19 1 2 3 1>;   /* PH19 output HIGH */
+			panel_bl_en = <&pio 1 5 1 0 3 1>;        /* PB5 output HIGH */
+			panel_gpio_0 = <&pio 7 16 1 2 3 1>;      /* PH16 */
+			panel_gpio_1 = <&pio 7 15 1 2 3 1>;      /* PH15 */
+			panel_gpio_2 = <&pio 7 8 1 2 3 1>;       /* PH8 */
+			panel_gpio_3 = <&pio 7 9 1 2 3 1>;       /* PH9 */
+
+			/* Panel PWM / backlight */
+			panel_pwm_ch = <2>;         /* PWM2 = PB4 */
+			panel_pwm_freq = <25000>;
+			panel_pwm_pol = <0>;
+			panel_backlight = <75>;
+			panel_pwm_min = <0>;
+			panel_pwm_max = <100>;
+
+			/* Panel interface */
+			panel_protocol = <0>;       /* LVDS */
+			panel_bitwidth = <8>;
+			panel_data_swap = <0>;
+			panel_mirror_mode = <0>;
+			panel_dclk_invert = <1>;
+			panel_de_invert = <0>;
+			panel_hs_invert = <0>;
+			panel_vs_invert = <0>;
+			panel_dual_port = <1>;      /* Dual-link LVDS */
+			panel_odd_data_current = <7>;
+			panel_even_data_current = <7>;
+			panel_de_current = <0x2f>;
+
+			/* Panel timing */
+			panel_dclk_freq = <148500000>;  /* 0x8d9ee20 = 148.5 MHz */
+			panel_ssc_en = <1>;
+			panel_ssc_step = <10>;
+			panel_ssc_span = <0>;
+
+			/* Power sequencing delays (ms) */
+			panel_poweron_delay0 = <20>;
+			panel_poweron_delay1 = <550>;
+			panel_poweron_delay2 = <75>;
+			panel_powerdown_delay0 = <20>;
+			panel_powerdown_delay1 = <250>;
+			panel_powerdown_delay2 = <75>;
+
+			/* Panel resolution + timing (from stock live DTS via ADB) */
+			panel_width = <1920>;
+			panel_height = <1080>;
+			panel_htotal = <2127>;
+			panel_vtotal = <1119>;
+			panel_hbp = <88>;
+			panel_vbp = <20>;
+			panel_hsync = <44>;
+			panel_vsync = <5>;
+			panel_hsync_pol = <1>;
+			panel_vsync_pol = <1>;
+			panel_lvds0_pol = <0x0f>;
+			panel_lvds1_pol = <0x0f>;
+			project_id = <48>;
+		};
+
+		/*
+		 * U-Boot: Project/board configuration.
+		 * USB power, LEDs, fan PWM policies, backlight policies.
+		 * Format: <phandle port pin mux drive pull data>
+		 * phandle 0x23 = R_PIO in stock U-Boot DTB
+		 */
+	prj {
+			device_type = "prj";
+			usb0 = <&r_pio 0 3 1 0 0 1>;   /* PL3 output HIGH = USB power */
+			led0 = <&r_pio 0 0 1 0 0 0>;   /* PL0 output LOW = red LED off */
+			led1 = <&r_pio 0 1 1 0 0 0>;   /* PL1 output LOW = blue LED off */
+
+			fan0 {
+				period_ns = <40000>;
+				polarity = <0>;
+				duty-array-policy1 = <70 50 95 70>;
+			};
+
+			fan1 {
+				period_ns = <40000>;
+				polarity = <0>;
+				duty-array-policy1 = <70 50 95 70>;
+			};
+
+			bl0 {
+				period_ns = <40000>;
+				polarity = <0>;
+				duty-array = <50 75 20 75>;
+			};
+		};
+	/*
+	 * ============================================================
+	 * U-Boot consumed nodes below.
+	 * These are parsed by the stock Allwinner U-Boot during
+	 * board_late_init / update_dts. They use the vendor GPIO
+	 * format: <phandle port pin mux drive pull data>
+	 * where phandle 0x0d = Main PIO, 0x23 = R_PIO.
+	 *
+	 * NOTE: U-Boot's working FDT is switched to OUR DTB at
+	 * "change working_fdt", so these nodes MUST be present
+	 * here for U-Boot to enable fans, USB power, LEDs, and
+	 * panel GPIOs properly.
+	 * ============================================================
+	 */
+
+	/*
+	 * The projector's single stepper motor: the focus drive.
+	 *
+	 * Every value below is the stock DTB's, node "motor_ctr" in
+	 * re/vendor/HY310/extracted/dtb_extracted/hy310-board.dts:2635.
+	 * That DTB has exactly one motor node and the stock kernel has
+	 * exactly one motor driver, so this is not a keystone motor
+	 * beside a focus motor -- it is the focus motor.  The old name
+	 * came from the HY300 tree, not from this firmware.
+	 *
+	 * The property names are the ones motor_control_fdt_parse
+	 * (stock vmlinux 0xc05d62c8) actually looks up, including the
+	 * two spelled with underscores.
+	 *
+	 * PH14 is a range gate, not an end stop: it reads active over
+	 * the whole allowed travel, and the driver reverses when it
+	 * goes inactive (motor_run_up_control 0xc05d6ea0).  On stock it
+	 * is a GPIO input with a pull-down, which is the idle level for
+	 * active_level = 1 (re/captures/HY310-DEV/stock_pinconf_pio.txt,
+	 * "pin 238 (PH14): input bias pull down").  The driver sets that
+	 * bias itself, so no pinctrl group is needed here.
+	 *
+	 * GPIO format: <&pio bank pin flags>  bank 7 = PH
+	 */
+	motor_ctr: motor-ctr {
+		compatible = "allwinner,hy310-focus-motor", "motor-control";
+		status = "okay";
+
+		motor-phase-num = <4>;
+		motor-gpio-phase0 = <&pio 7 4 0>;	/* PH4 */
+		motor-gpio-phase1 = <&pio 7 5 0>;	/* PH5 */
+		motor-gpio-phase2 = <&pio 7 6 0>;	/* PH6 */
+		motor-gpio-phase3 = <&pio 7 7 0>;	/* PH7 */
+
+		limiter-up-gpio = <&pio 7 14 0>;	/* PH14 */
+		active_level = <1>;			/* limiter active HIGH */
+
+		motor_type = <0>;			/* 0 = stepper */
+		motor-step-num = <8>;			/* 8 half-steps per sequence */
+		motor-cycle = <2>;			/* 2 cycles per mstep */
+		motor-step-type = <8>;
+
+		/* CW/CCW half-step tables (from stock DTB) */
+		motor-cw-table = [01 09 08 0A 02 06 04 05];
+		motor-ccw-table = [05 04 06 02 0A 08 09 01];
+
+		motor-phase-udelay = <1>;		/* ms between phases */
+		motor-step-mdelay = <1>;		/* ms between steps */
+	};
+
+	/*
+	 * Power button on PL4 -- the pin stock names in `standby_param`
+	 * (`power_key = "PL4"`, `key_debounce = <50>`). Measured on the
+	 * device 2026-09-08: idle reads 1, pressed reads 0, so the board
+	 * carries an external pull-up and no internal bias is set here.
+	 *
+	 * No pinctrl state on purpose: gpiolib muxes the pin to gpio_in when
+	 * the driver claims it, and the irq path re-muxes it to PL_EINT4
+	 * (mux 6, see pinctrl-sun50i-h713-r.c). A pinctrl-0 on this node
+	 * would only claim the same pin a second time.
+	 *
+	 * `wakeup-source` keeps the key armed across suspend; the R_PIO
+	 * irqchip implements .irq_set_wake, so enable_irq_wake() succeeds.
+	 * Actually waking the SoC out of standby stays the ARISC's job.
+	 */
+	gpio_keys: gpio-keys {
+		compatible = "gpio-keys";
+
+		key-power {
+			label = "power";
+			gpios = <&r_pio 0 4 GPIO_ACTIVE_LOW>;	/* PL4 */
+			linux,code = <KEY_POWER>;
+			debounce-interval = <50>;	/* ms, stock value */
+			wakeup-source;
+		};
+	};
+
+	/*
+	 * ADC-based keyboard (6 buttons on LRADC channel 0).
+	 * Uses mainline adc-keys driver with LRADC IIO provider.
+	 * Voltage thresholds from stock DTS keyboard@2009800 node.
+	 * Reference voltage: ~1.8V (AVCC), 6-bit ADC resolution.
+	 */
+	adc_keys: adc-keys {
+		compatible = "adc-keys";
+		io-channels = <&lradc 0>;
+		io-channel-names = "buttons";
+		keyup-threshold-microvolt = <1600000>;
+
+		button-back {
+			label = "Back";
+			linux,code = <158>;	/* KEY_BACK */
+			press-threshold-microvolt = <0>;
+		};
+
+		button-down {
+			label = "Down";
+			linux,code = <108>;	/* KEY_DOWN */
+			press-threshold-microvolt = <177000>;
+		};
+
+		button-up {
+			label = "Up";
+			linux,code = <103>;	/* KEY_UP */
+			press-threshold-microvolt = <344000>;
+		};
+
+		button-enter {
+			label = "Enter";
+			linux,code = <28>;	/* KEY_ENTER */
+			press-threshold-microvolt = <516000>;
+		};
+
+		button-right {
+			label = "Right";
+			linux,code = <106>;	/* KEY_RIGHT */
+			press-threshold-microvolt = <690000>;
+		};
+
+		button-left {
+			label = "Left";
+			linux,code = <105>;	/* KEY_LEFT */
+			press-threshold-microvolt = <861000>;
+		};
+	};
+
+	/*
+	 * Board management driver (hy310-board-mgr).
+	 * U-Boot also reads this node for USB power + fan power init.
+	 * Dual compatible: our driver matches "allwinner,hy310-board-mgr",
+	 * falls back to "pwm-fan" with pwm_ids guard.
+	 *
+	 * NTC temperature sensing via IIO consumer (LRADC channel 0).
+	 * LRADC hardware is owned by the sun50i-h713-lradc IIO driver.
+	 */
+	board_mgr: fan {
+		compatible = "allwinner,hy310-board-mgr", "pwm-fan";
+		status = "okay";
+		io-channels = <&lradc 0>;
+		io-channel-names = "ntc";
+		pwms = <&pwm 0 40000 0>;	/* PWM channel 0, 40000ns period, normal polarity */
+		pwm-names = "fan0";
+		lradc-table = <0x12 0x41A 0x14 0x3F0 0x16 0x3B1 0x18 0x3DB 0x1A 0x35C 0x1C 0x33E 0x1E 0x320 0x20 0x309 0x22 0x2E2 0x24 0x2BE 0x26 0x2A0 0x28 0x28A 0x2A 0x271 0x2C 0x258 0x2E 0x24C 0x30 0x20D 0x32 0x1F8 0x34 0x1EF 0x36 0x1D6 0x38 0x1A5 0x3A 0x18F 0x3C 0x16F 0x3E 0x14F 0x40 0x13B 0x42 0x130 0x44 0x126 0x46 0x111 0x48 0xFC 0x4A 0xE7 0x4C 0xD2 0x4E 0xBC 0x50 0xAF>;
+		gpadc-table = <0x0 0x5E6 0x5 0x5B4 0x14 0x4F8 0x15 0x4EA 0x16 0x4DC 0x17 0x4CD 0x18 0x4BF 0x19 0x4B0 0x1A 0x4A1 0x1B 0x492 0x1C 0x483 0x1D 0x474 0x1E 0x464 0x1F 0x455 0x20 0x446 0x21 0x437 0x22 0x427 0x23 0x418 0x24 0x408 0x25 0x3F9 0x26 0x3E9 0x27 0x3D9 0x28 0x3CA 0x29 0x3BA 0x2A 0x3AB 0x2B 0x39B 0x2C 0x38C 0x2D 0x37D 0x2E 0x36D 0x2F 0x35E 0x30 0x34F 0x31 0x340 0x32 0x331 0x33 0x323 0x34 0x314 0x35 0x306 0x36 0x2F8 0x37 0x2E9 0x38 0x2DB 0x39 0x2CD 0x3A 0x2BF 0x3B 0x2B2 0x3C 0x2A4 0x3D 0x297 0x3E 0x28A 0x3F 0x27D 0x40 0x270 0x41 0x263 0x42 0x257 0x43 0x24A 0x44 0x23E 0x45 0x232 0x46 0x227 0x47 0x21B 0x48 0x210 0x49 0x204 0x4A 0x1F9 0x4B 0x1EE 0x4C 0x1E3 0x4D 0x1D9 0x4E 0x1CF 0x4F 0x1C5 0x50 0x1BB>;
+		temp_poweroff = <60>;
+		temp_warn = <55>;
+		pwm_ids = <0>;
+		pwm_period_ns = <40000>;
+		default-duty = <50>;
+		fan_policy = <1>;
+
+		gpios {
+			usb-power-gpio = <&r_pio 0 3 GPIO_ACTIVE_HIGH>;   /* PL3 = USB power */
+			cam-usb-power-gpio = <&r_pio 0 3 GPIO_ACTIVE_HIGH>; /* PL3 */
+		};
+
+		battery {
+			enable = <0>;
+			source = <1>;
+			bat-array = <0x508 0x53D 0x5A7 0x5D5 0x637>;
+			bat_vol_off = <0x4DA>;
+			bat_vol_low = <0x4F1>;
+			bat_vol_full = <0x601>;
+			dc_in = <&pio 1 5 GPIO_ACTIVE_HIGH>;     /* PB5 */
+			charge_ok = <&pio 5 6 GPIO_ACTIVE_HIGH>;  /* PF6 */
+			power-hold = <&r_pio 0 3 GPIO_ACTIVE_HIGH>; /* PL3 */
+		};
+
+		switcher {
+			enable = <0>;
+			source = <0>;
+			gpio-a = <&pio 5 5 GPIO_ACTIVE_HIGH>;   /* PF5 */
+			gpio-b = <&pio 5 4 GPIO_ACTIVE_HIGH>;   /* PF4 */
+		};
+
+		ntc {
+			ntc_num = <0>;
+			ntc0 {
+				enable = <1>;
+				source = <1>;
+				channel = <1>;
+				fan_ids = <0>;
+			};
+			ntc1 {
+				enable = <0>;
+				source = <1>;
+				channel = <1>;
+				fan_ids = <0>;
+			};
+		};
+
+		fan0 {
+			temp-array = <30 40 50 55 60>;
+			duty-array = <70 80 90 95 100>;
+			duty-array-policy1 = <75 75 100 100>;
+			fg-gpio = <&pio 7 17 GPIO_ACTIVE_HIGH>;        /* PH17 = PWM0 fan tacho */
+			fg-warn-speed = <1000>;
+			fg-warn-cnt = <8>;
+		};
+
+		fan1 {
+			temp-array = <30 40 50 55 60>;
+			duty-array = <55 66 77 93 100>;
+			duty-array-policy1 = <65 70 90 100>;
+		};
+	};
+
+	/*
+	 * Standby / power management parameters.
+	 * Read by U-Boot and ARISC for suspend/resume and power-off.
+	 */
+	standby_param {
+		power_key = "PL4";
+		vdd-cpu = "PL6";
+		vdd-sys = "PL6";
+		vcc-pll = "PL6";
+		vcc-dram = "PL6";
+		led_red = "PL0";
+		led_red_vol = "1";
+		led_blue = "PL1";
+		led_blue_vol = "0";
+		power_down = <0>;
+		key_debounce = <50>;
+	};
+
+	/*
+	 * IR remote control key codes for power-on from standby.
+	 * Read by ARISC and U-Boot for wake-from-standby.
+	 */
+	cir_param {
+		gpio_group = "PL";
+		gpio_pin = <9>;
+		gpio_function = <3>;
+		count = <21>;
+		ir_power_key_code0 = <0x14>;  ir_addr_code0 = <0xff00>;
+		ir_power_key_code1 = <0x45>;  ir_addr_code1 = <0xff00>;
+		ir_power_key_code2 = <0x87>;  ir_addr_code2 = <0x1608>;
+		ir_power_key_code3 = <0x57>;  ir_addr_code3 = <0x9f00>;
+		ir_power_key_code4 = <0xdc>;  ir_addr_code4 = <0x4cb3>;
+		ir_power_key_code5 = <0x18>;  ir_addr_code5 = <0xff11>;
+		ir_power_key_code6 = <0xdc>;  ir_addr_code6 = <0xdd22>;
+		ir_power_key_code7 = <0x0d>;  ir_addr_code7 = <0xbc00>;
+		ir_power_key_code8 = <0x4d>;  ir_addr_code8 = <0x4040>;
+		ir_power_key_code9 = <0x08>;  ir_addr_code9 = <0xfb04>;
+		ir_power_key_code10 = <0x00>; ir_addr_code10 = <0xfc03>;
+		ir_power_key_code11 = <0x00>; ir_addr_code11 = <0xbf00>;
+		ir_power_key_code12 = <0xea>; ir_addr_code12 = <0xfb04>;
+		ir_power_key_code13 = <0x42>; ir_addr_code13 = <0xbf00>;
+		ir_power_key_code14 = <0xeb>; ir_addr_code14 = <0xff00>;
+		ir_power_key_code15 = <0x14>; ir_addr_code15 = <0xff>;
+		ir_power_key_code16 = <0x1d>; ir_addr_code16 = <0xfd02>;
+		ir_power_key_code17 = <0x00>; ir_addr_code17 = <0xfe01>;
+		ir_power_key_code18 = <0x02>; ir_addr_code18 = <0x707>;
+		ir_power_key_code19 = <0x21>; ir_addr_code19 = <0x7788>;
+		ir_power_key_code20 = <0x14>; ir_addr_code20 = <0x3412>;
+	};
+
+	/*
+	 * ARISC coprocessor UART configuration.
+	 * Used for ARISC debug output on PL2.
+	 */
+	arisc_config {
+		s_uart_config {
+			pins = "PL2";
+			function = <2>;
+			status = "disabled";
+		};
+	};
+
+	/*
+	 * Auto-start OS configuration.
+	 * Controls IR-key-based power-on behavior.
+	 */
+	box_start_os0 {
+		used = <1>;
+		start_type = <0>;
+		irkey_used = <1>;
+		pmukey_used = <0>;
+	};
+};

@@ -1,0 +1,29 @@
+P6, 12.09.2026 ~22:50 -- Bild kommt beim Einstecken nicht von selbst
+
+BEOBACHTUNG (Marco): Kabel am HDMI-Eingang eingesteckt, kurz erschien ein Bild,
+dann war es weg. Ein "h713-tv ctl replug" hat es geholt; seitdem stabil.
+
+LOG (dmesg, Zeitachse seit Kaltstart)
+  [202.699] hdmi-rx: INCAP meldet keine Geometrie (aktiv 0x00000000, total 0x0001007d)
+  [206.294] hdmi-rx: Freigabe: nach 2000 ms bewegen sich die Flip-Zeiger nicht;
+            liegt ein Signal an?
+  [350.791] hdmi-rx: Freigabe: Capture laeuft inzwischen von selbst      <- nach replug
+
+STATUS DANACH
+  signal   1920x1080p, 148500000 Hz
+  bild     Plane an, DRM-Master gehalten
+  puffer   1920x1080 NV16, Zeilenabstand 1920
+
+LESART: Beim Einstecken meldet der Ring keine Geometrie (INCAP aktiv = 0) und die
+Flip-Zeiger stehen -- die Firmware hat die Quelle also nicht zu Ende
+uebernommen. Der Nachziehversuch nach 2000 ms greift in diesem Fall nicht;
+erst ein erzwungener Hotplug-Zyklus (HPD ab, EDID neu, HPD an) bringt sie dazu.
+"h713-tv ctl resync" allein (nur SetSource) hat NICHT gereicht.
+
+NICHT ERKLAERT: warum der erste Anlauf haengenbleibt. Kandidaten: der
+Zuspieler/HDMI-Switch dazwischen liefert beim Einstecken kurz ein anderes Timing,
+oder die Firmware braucht den HPD-Flankenwechsel, den ein blosses Einstecken bei
+schon aktiver EDID nicht erzeugt.
+
+FUER DEN NUTZER: als bekannter Mangel dokumentieren, mit dem Handgriff dazu --
+"kein Bild nach dem Einstecken -> h713-tv ctl replug".

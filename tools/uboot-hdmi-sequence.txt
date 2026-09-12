@@ -1,0 +1,105 @@
+# Stock-Init-Sequenz für HDMI, aus U-Boot über h713_disp commcall.
+#
+# Reihenfolge ist NICHT beliebig. Quelle: HANDOFF-IPC-SESSION-20260505-Z.md
+# (Phase Z6, 33/33 Aufrufe sauber, TMDS-Lock, State 5) und
+# HANDOFF-HDMI-RX-SESSION-20260501-U.md (Phase U5, Stock-RPC-Mitschnitt).
+#
+# SetSource kommt ZULETZT. Am 01.09.2026 an Position 2 gerufen: angenommen,
+# kein RETURN, und der einzige BG_Thread der Firmware blockiert seitdem —
+# alle folgenden Aufrufe liefen ins Leere, Erholung nur per Stromzyklus.
+#
+# Voraussetzungen:
+#   - Kaltstart, dann 'h713_disp init 0x30'  OHNE elog=
+#     (elog=3 verhindert, dass der MIPS rechtzeitig bereit wird; n=3)
+#   - 'MIPS=00000005' und 'application readiness proven' abwarten
+#   - pid aus 'h713_disp calltable 1', Roh-Dump +0x04  (hier 8b8f3160)
+#   - chan=0  (device-belegt für alle Routinen dieser Tabelle)
+#   - HDMI-Quelle beim Booten gesteckt, HPD-IRQ ist tot
+#
+# Weggelassen und begründet (DEAD-ENDS.md: "TMDS reaches lock without them"):
+#   SetHDCP22Key      braucht 960 B in Shared Memory
+#   SetWhiteBalance   braucht Factory-Daten, reine PQ-Hygiene
+#   Wce_SetWindow     dito, sechs Sessions lang ohne Wirkung getestet
+#   GetPortStatus     kommt in KEINEM der vier Stock-Mitschnitte vor
+#
+# NIEMALS: 0152f134 (THal_Vp_EnableScreenCover) — wedgt CPU_COMM.
+#
+# GEPRUEFT 04.09.2026 — die Argumente unten sind jetzt gegen
+# legacy/userspace/hy310-hdmird geprueft (libhaldisplay-Wrapper-RE + Stock-elog).
+# DREI Zeilen waren falsch, siehe die Kommentare an Ort und Stelle.
+# Ausserdem fehlen dieser Datei THal_Vp_Init(0,0,0x4E700000) ganz vorn und
+# Wce_SetWindow (drei Shmem-Zeiger) -- letzteres traegt im hdmird-Quelltext den
+# Vermerk "SKIPPING THIS WAS THE LVDS-ROUTING BLOCKER through Z-session".
+# Die vollstaendige Sequenz steht in doku/68-stock-extraktion-arisc-hdcp.md.
+#
+# ACHTUNG 04.09.2026 — die Argument-ABI war falsch verstanden.
+# Es gibt KEINEN Dummy-Parameter: der Adapter bekommt einen Zeiger auf die
+# Nachricht bei +0x28 (comp_id), seine Ladebefehle bei +4/+8/+12 lesen also
+# die ersten drei Nutzwerte ab +0x2c. Aufrufe, die eine fuehrende 0 schicken,
+# nullen damit den ERSTEN Ausgabezeiger des Adapters — was fuer p1 gehalten
+# wurde, bekam in Wahrheit die zweite Ausgabe. Belegt von cstenger per
+# Linux-Mitschnitt (Commit ec53910, doku/67-cpu-comm-linux.md).
+# ARGUMENTE GEPRUEFT 04.09.2026 gegen userspace/hy310-hdmird (main.cpp).
+# Quelle dort: libhaldisplay.so-Wrapper-RE + Stock-elog-Mitschnitt. Drei
+# Argumentsaetze waren falsch und sind unten korrigiert; die alte Fassung
+# liegt als .bak-vor-abi-korrektur daneben.
+#
+# ES FEHLEN hier weiterhin zwei Aufrufe, die hdmird hat:
+#   THal_Vp_Init(0, 0, 0x4E700000)   ganz am Anfang, ParaCount 3
+#   THal_Vp_Wce_SetWindow(src, dst, aspect)  drei Shmem-Zeiger
+# Wce_SetWindow traegt in hdmird den Kommentar "SKIPPING THIS WAS THE
+# LVDS-ROUTING BLOCKER through Z-session". Beide brauchen Shared-Memory-
+# Puffer und lassen sich am U-Boot-Prompt nicht ohne Weiteres stellen --
+# aus Linux schon, siehe tools/hdmi-sequence.py.
+
+# ── 1. Callbacks anmelden, VOR allem anderen ─────────────────────────
+# KORRIGIERT: beide nehmen GENAU EIN Argument. Die Callback-ID ist kein
+# Parameter -- der Wrapper haelt den Zeiger ARM-seitig und schickt nur den
+# Skalar. Aufloesung passiert ueber den Namens-Hash der zuvor per
+# IOCTL_INSTALL_RT registrierten MipsHalCallback_*_0_000. Stock-elog belegt
+# ParaCount=1 fuer beide. Vorher stand hier die Callback-ID als 2. Argument.
+#
+# RegisterSignalChangeCallback(source_id)   11 = alle Quellen
+h713_disp commcall 671ceca6 chan=0 pid=8b8f3160 b
+# SetHDMIHotPlugByPortCallback(enable)      1 = HPD-Callbacks an
+h713_disp commcall ba3e5a70 chan=0 pid=8b8f3160 1
+
+# ── 2. Bildqualität, wie Stock sie setzt ─────────────────────────────
+h713_disp commcall 51ad877e chan=0 pid=8b8f3160 64
+h713_disp commcall 4d80db0e chan=0 pid=8b8f3160 0
+h713_disp commcall a4bb0747 chan=0 pid=8b8f3160 2
+h713_disp commcall c0da6a8e chan=0 pid=8b8f3160 1
+h713_disp commcall f6a798d3 chan=0 pid=8b8f3160 2
+h713_disp commcall 5c135587 chan=0 pid=8b8f3160 1
+h713_disp commcall 83a878bf chan=0 pid=8b8f3160 1
+h713_disp commcall 9817a1c1 chan=0 pid=8b8f3160 0
+h713_disp commcall 24f44438 chan=0 pid=8b8f3160 1
+
+# ── 3. Port-Zuordnung, drei Aufrufe wie im Stock-Mitschnitt ──────────
+# ParaCount 2 (libhaldisplay-RE). Para[0] = 3, 4, 5 -- GEMESSEN, nicht hergeleitet:
+#   re/captures/weltneuheit/stock-rpc-LIVE.txt
+#     sessionID:26 call func:THal_Vp_HDMI_SetPortMap_1_000 Para[0]: 0x4
+#     sessionID:27 call func:THal_Vp_HDMI_SetPortMap_1_000 Para[0]: 0x5
+#
+# Am 04.09. stand hier zwischenzeitlich "1 0 / 2 1 / 3 2", abgeleitet aus einem
+# hy310-hdmird-Kommentar ueber die elog-Zeilen "Change Port(N) Map, from OLD to
+# NEW". Das widerspricht der Leitung und ist zurueckgenommen. Wie die Zahlen
+# heissen (Port oder Quellen-ID) ist damit NICHT entschieden -- was Stock
+# sendet, schon. Wir bilden Stock nach.
+#
+# arg2 bleibt unbekannt: der Mitschnitt druckt in beiden Dateien NIE ein
+# Para[1] -- auch nicht bei Wce_SetWindow, das nachweislich drei Zeiger nimmt.
+# Er kann darueber also gar nichts sagen. 0 ist ein Platzhalter, kein Befund.
+h713_disp commcall 9ce74c48 chan=0 pid=8b8f3160 3 0
+h713_disp commcall 9ce74c48 chan=0 pid=8b8f3160 4 0
+h713_disp commcall 9ce74c48 chan=0 pid=8b8f3160 5 0
+
+# ── 4. Schwarzbild aus, HPD-Intervall ────────────────────────────────
+# DisableBlackScreen hat ParaCount 0 (Y2-Fix #17), nicht 1.
+h713_disp commcall b66041d8 chan=0 pid=8b8f3160
+h713_disp commcall 6eb4c96a chan=0 pid=8b8f3160 c8
+
+# ── 5. Erst jetzt die Quelle ─────────────────────────────────────────
+# Session Z: 59 ms Roundtrip. Kommt kein RETURN, ist das ein Befund —
+# U-Boots Fenster sind 2 s, die Firmware braucht darunter.
+h713_disp commcall eaf13de5 chan=0 pid=8b8f3160 3

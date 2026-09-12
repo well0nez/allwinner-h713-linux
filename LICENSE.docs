@@ -1,0 +1,14 @@
+The documentation in this repository -- `docs/`, `doku/`, and the Markdown files
+at the top level -- is licensed under
+
+    Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+    https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+    Copyright (C) 2026 well0nez
+
+Share it and adapt it, commercially too. Two conditions: credit **well0nez**
+(github.com/well0nez/allwinner-h713-linux) and put your version under the same
+licence.
+
+The code is GPL-2.0 -- see LICENSE. Measurements, register values and hardware
+facts are not copyrightable in the first place; the wording around them is.

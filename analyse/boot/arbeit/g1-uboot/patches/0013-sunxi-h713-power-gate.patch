@@ -1,0 +1,344 @@
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 8 Sep 2026 23:59:00 +0200
+Subject: [PATCH] sunxi: h713: wait for the power key before powering the board
+ up
+
+Restore the stock power-button behaviour, which we lost when
+board_late_init started driving PB5 and PL3 unconditionally: mains-on now
+leaves the board in standby -- fan off, backlight off, USB VBUS off, LED
+red -- and a press of the power key starts the boot.
+
+There is no PMIC and no power-hold line on this board (battery { enable =
+<0> }, PWM and fixed regulators only), so "off" cannot mean off. It can
+only mean "SoC running, nothing else powered", and everything the user
+can see or hear hangs off the two lines h713_poweron_lines() drives.
+Holding that call back is the entire gate. Both pins sit at their reset
+level until then, so the board really is dark and silent from mains-on to
+the key press.
+
+No LED code: measured on the board, the LED follows PB5 -- high blue, low
+red -- so red standby is what the gate produces by itself. All four
+combinations of PL0/PL1, which the vendor device tree calls the LEDs, had
+no visible effect.
+
+RTC general-purpose word 5 separates a cold start from a warm one. That
+domain has no battery, so after mains-off every GP word reads 0, while a
+value written before a reset survives it (verified for U-Boot "reset",
+for Linux "reboot" through PSCI, and by the same experiment that put the
+fastboot magic in GP7). U-Boot stamps "RUN1" into GP5 on every path
+before it powers anything up, so reboot, crash and watchdog reset come
+back without a key press and a field device is never left waiting for
+someone to press a button; TF-A will write "GATE" on poweroff. GP5 is
+free -- GP7 is the fastboot handoff that preboot consumes, GP2/GP3/GP6
+belong to the vendor firmware and the ARISC driver, and the SPL touches
+only 0x160 and 0x1f4 in that region.
+
+The key is PL4 in R_PIO, active low against an external pull-up (measured
+1 idle, 0 pressed, 24 samples), so no bias of ours is needed. It is
+looked up by name for the same reason the power lines are: the legacy
+linear numbering does not reach R_PIO. A stroke is a debounced 50 ms low
+followed by the release; anchoring on the release keeps a held key from
+starting the boot the moment the gate opens.
+
+Two ways out for a board nobody can reach over serial: the env variable
+h713_gate=0, and holding the key while the mains comes on for three
+seconds. If PL4 cannot be read at all the gate is skipped rather than
+entered, because there would be no way out of the loop.
+
+Off by default. On for the shipping defconfig; bench, netboot and
+recovery builds keep coming up on mains alone.
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -69,6 +69,25 @@
+ 	  send it. Recovers a board whose first stage was overwritten while
+ 	  U-Boot proper is still intact. Never enable this in a shipping image.
+ 
++config H713_POWER_GATE
++	bool "H713: wait for the power key before powering the board up"
++	depends on H713_POWERON_LIGHT_FAN
++	help
++	  Restore the stock power-button behaviour: on mains-on U-Boot leaves
++	  fan, backlight and USB VBUS off (the LED follows the backlight line,
++	  so the board shows red standby) and waits for a press of the power
++	  key on PL4 before calling the power-on lines and booting.
++
++	  RTC GP5 tells a cold start (gate) from a warm one: U-Boot stamps
++	  "RUN1" there before powering up, so reboot, crash and watchdog reset
++	  come back without a key press, while mains-off clears the word and
++	  TF-A writes "GATE" on poweroff. The env variable h713_gate=0 turns
++	  the gate off without a rebuild, and holding the key for three seconds
++	  while the mains comes on bypasses it for one boot.
++
++	  For shipping images. Leave this off for bench, netboot and recovery
++	  builds, which must come up on mains alone.
++
+ config DRAM_SUN50I_A133
+ 	bool
+ 	help
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -50,7 +50,9 @@
+ #include <net.h>
+ #include <spl.h>
+ #include <sy8106a.h>
++#include <time.h>
+ #include <usb.h>
++#include <watchdog.h>
+ #include <asm/setup.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+@@ -1027,8 +1029,214 @@
+ }
+ #endif
+ 
++#ifdef CONFIG_H713_POWER_GATE
++/*
++ * Power gate: mains-on leaves the board in standby -- dark, silent, LED red --
++ * until the power key is pressed.  There is no PMIC and no power-hold line on
++ * this board, so "off" can only mean "SoC running, nothing else powered":
++ * everything the user can see or hear hangs off PB5 and PL3, and those are
++ * exactly the lines h713_poweron_lines() drives.  Holding that call back is
++ * the whole gate; until then both pins sit at their reset level (low).
++ *
++ * The LED needs no code of its own: it follows PB5 (high = blue, low = red),
++ * measured on the board.  The red standby light therefore appears by itself
++ * while the gate keeps PB5 down.  PL0/PL1, which the vendor device tree calls
++ * the LEDs, have no visible effect here.
++ *
++ * RTC general-purpose word 5 separates a cold start from a warm one.  The RTC
++ * domain has no battery: after mains-off every GP word reads back 0, while a
++ * value written before a reset (U-Boot "reset", Linux "reboot" via PSCI, or a
++ * watchdog reset) survives unchanged.  Hence:
++ *
++ *   0        cold start, mains just came on          -> gate
++ *   "RUN1"   we were already up                      -> boot straight through
++ *   "GATE"   power-off requested (written by TF-A)   -> gate
++ *
++ * GP7 is the fastboot handoff and is consumed and cleared by preboot; GP2, GP3
++ * and GP6 are taken by the vendor firmware and by the ARISC driver.  GP5 is
++ * free, and nothing between SPL and the kernel writes it.
++ */
++#define H713_RTC_GP5_REG	0x07090114UL
++#define H713_GATE_RUN1		0x52554e31UL	/* "RUN1": system is up */
++#define H713_GATE_REQUESTED	0x47415445UL	/* "GATE": TF-A wants standby */
++
++/* 50 ms debounce is what the stock firmware applies to this key. */
++#define H713_GATE_POLL_MS	10
++#define H713_GATE_DEBOUNCE_MS	50
++#define H713_GATE_BYPASS_MS	3000
++#define H713_GATE_NOTE_MS	60000
++
++/*
++ * The power key is PL4 in R_PIO: active low against an external pull-up, so no
++ * bias of ours is needed (measured: reads 1 idle, 0 pressed).  By name for the
++ * same reason h713_poweron_lines() uses names -- the legacy linear numbering
++ * does not reach R_PIO at all.
++ */
++static int h713_gate_key_get(struct gpio_desc *key)
++{
++	int ret;
++
++	ret = dm_gpio_lookup_name("PL4", key);
++	if (ret)
++		return ret;
++
++	ret = dm_gpio_request(key, "power-key");
++	if (ret && ret != -EBUSY)
++		return ret;
++
++	ret = dm_gpio_set_dir_flags(key, GPIOD_IS_IN);
++	if (ret)
++		return ret;
++
++	/* Read once here so a pin we cannot read fails before the loop. */
++	return dm_gpio_get_value(key) < 0 ? -EIO : 0;
++}
++
++/*
++ * Raw level rather than GPIOD_ACTIVE_LOW, so the one inversion this file makes
++ * is written down at the place it happens.
++ */
++static bool h713_gate_key_down(struct gpio_desc *key)
++{
++	return dm_gpio_get_value(key) == 0;
++}
++
++/*
++ * Service back door: a key that is already held when the mains comes on, and
++ * stays held, skips the gate for this boot.  It is the only way to boot a
++ * gated board with no serial console and no working flag.
++ */
++static bool h713_gate_key_held(struct gpio_desc *key, unsigned int ms)
++{
++	unsigned int waited;
++
++	if (!h713_gate_key_down(key))
++		return false;
++
++	for (waited = 0; waited < ms; waited += H713_GATE_POLL_MS) {
++		schedule();
++		mdelay(H713_GATE_POLL_MS);
++		if (!h713_gate_key_down(key))
++			return false;
++	}
++
++	return true;
++}
++
++/*
++ * Wait for one whole key stroke: idle, then low for at least the debounce
++ * time, then idle again.  The release is what starts the boot.  If the press
++ * alone did, a key still held from the back-door check above -- or simply held
++ * a moment too long -- would start the boot the instant the gate opened, and
++ * nobody would ever see the standby state.
++ */
++static void h713_gate_wait(struct gpio_desc *key)
++{
++	unsigned int low_ms = 0, high_ms = 0;
++	bool idle_seen = false, pressed = false, noted = false;
++	ulong last_note = get_timer(0);
++
++	printf("gate: waiting for power key\n");
++
++	for (;;) {
++		if (h713_gate_key_down(key)) {
++			high_ms = 0;
++			if (low_ms < H713_GATE_DEBOUNCE_MS)
++				low_ms += H713_GATE_POLL_MS;
++			if (idle_seen && low_ms >= H713_GATE_DEBOUNCE_MS)
++				pressed = true;
++		} else {
++			low_ms = 0;
++			if (high_ms < H713_GATE_DEBOUNCE_MS)
++				high_ms += H713_GATE_POLL_MS;
++			if (high_ms >= H713_GATE_DEBOUNCE_MS) {
++				if (pressed)
++					break;
++				idle_seen = true;
++			}
++		}
++
++		/* One dot a minute: proof of life without flooding the log. */
++		if (get_timer(last_note) >= H713_GATE_NOTE_MS) {
++			last_note = get_timer(0);
++			noted = true;
++			printf(".");
++		}
++
++		schedule();
++		mdelay(H713_GATE_POLL_MS);
++	}
++
++	if (noted)
++		printf("\n");
++}
++
++static void h713_power_gate(void)
++{
++	struct gpio_desc key;
++	const char *sel;
++	bool gate = true;
++	u32 flag;
++	int ret;
++
++	/* Override without a rebuild; anything but "0" leaves the gate on. */
++	sel = env_get("h713_gate");
++	if (sel && !strcmp(sel, "0")) {
++		printf("gate: off (h713_gate=0)\n");
++		gate = false;
++	}
++
++	if (gate) {
++		flag = readl(H713_RTC_GP5_REG);
++		if (flag == H713_GATE_RUN1) {
++			printf("gate: warm start, booting\n");
++			gate = false;
++		} else if (flag == H713_GATE_REQUESTED) {
++			printf("gate: power-off requested\n");
++		} else {
++			printf("gate: cold start (GP5 %08x)\n", flag);
++		}
++	}
++
++	if (gate) {
++		ret = h713_gate_key_get(&key);
++		if (ret) {
++			/*
++			 * Without a readable key there is no way out of the
++			 * loop, so a board that cannot see PL4 must boot.
++			 */
++			printf("gate: power key PL4 unavailable (%d), booting\n",
++			       ret);
++			gate = false;
++		}
++	}
++
++	if (gate && h713_gate_key_held(&key, H713_GATE_BYPASS_MS)) {
++		printf("gate: key held at power-on, bypass\n");
++		gate = false;
++	}
++
++	if (gate) {
++		h713_gate_wait(&key);
++		printf("gate: power key, booting\n");
++	}
++
++	/*
++	 * Mark the system as up on every path, before anything is powered.
++	 * A reboot, a crash or a watchdog reset from here on finds RUN1 and
++	 * boots through, so a device in the field never ends up waiting for a
++	 * key that nobody is there to press.
++	 */
++	writel(H713_GATE_RUN1, H713_RTC_GP5_REG);
++}
++#endif
++
+ int board_late_init(void)
+ {
++#ifdef CONFIG_H713_POWER_GATE
++	/* Must run before the power lines: the gate is their absence. */
++	h713_power_gate();
++#endif
+ #ifdef CONFIG_H713_POWERON_LIGHT_FAN
+ 	h713_poweron_lines();
+ #endif
+--- a/configs/hy310_felmmc_defconfig
++++ b/configs/hy310_felmmc_defconfig
+@@ -31,6 +31,7 @@
+ CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+ CONFIG_MACH_SUN50I_H713=y
+ CONFIG_H713_POWERON_LIGHT_FAN=y
++# CONFIG_H713_POWER_GATE is not set
+ CONFIG_H713_MIPS_BOOT=y
+ CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+ CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+--- a/configs/hy310_host_defconfig
++++ b/configs/hy310_host_defconfig
+@@ -31,6 +31,7 @@
+ CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+ CONFIG_MACH_SUN50I_H713=y
+ CONFIG_H713_POWERON_LIGHT_FAN=y
++# CONFIG_H713_POWER_GATE is not set
+ CONFIG_H713_MIPS_BOOT=y
+ CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+ CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+--- a/configs/hy310_netboot_defconfig
++++ b/configs/hy310_netboot_defconfig
+@@ -31,6 +31,7 @@
+ CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+ CONFIG_MACH_SUN50I_H713=y
+ CONFIG_H713_POWERON_LIGHT_FAN=y
++# CONFIG_H713_POWER_GATE is not set
+ CONFIG_H713_MIPS_BOOT=y
+ CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+ CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+--- a/configs/hy310_qz713_v3_1_defconfig
++++ b/configs/hy310_qz713_v3_1_defconfig
+@@ -31,6 +31,7 @@
+ CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+ CONFIG_MACH_SUN50I_H713=y
+ CONFIG_H713_POWERON_LIGHT_FAN=y
++CONFIG_H713_POWER_GATE=y
+ CONFIG_H713_MIPS_BOOT=y
+ CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+ CONFIG_MMC_SUNXI_SLOT_EXTRA=2

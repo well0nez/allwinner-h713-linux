@@ -1,0 +1,94 @@
+# U-Boot commands: h713_disp, h713_mips, h713_logo, h713_i2c
+
+> **Running the projector needs none of this.** The shipped `bootcmd` starts the display firmware and
+> boots Linux on its own. Everything below is for bring-up, diagnosis and repair — reach for it when
+> something does not come up, not before.
+
+Four commands exist only in this fork, not in mainline U-Boot. `h713_disp` is the one that actually gets
+a picture on the panel — it is what `bootcmd` calls — and its `init`/`auto`/`load` subcommands are the
+ones worth knowing day to day. The other three, and most of `h713_disp`'s own subcommands beyond those,
+are bring-up and diagnostic tools built while reverse-engineering the display path: they talk to the same
+hardware more directly, for when `h713_disp` itself needs to be the suspect.
+
+## h713_disp — bring the display up and run it
+
+| Subcommand | What it does |
+|---|---|
+| `init <project-id> [elog=<0-5>]` | bring the display up and stop: clocks, panel power sequencing, firmware handoff, no boot logo. This is what `bootcmd` runs before `boot_emmc`/`boot_net` |
+| `auto <project-id> [nowait] [logo [file.bmp]]` | load the display artifacts from eMMC and run; `logo` also publishes a boot logo and leaves it on screen |
+| `load <project-id>` | load the artifacts from eMMC without running them, so `display_cfg.xml` can be patched first |
+| `list <blob-addr>` | list every project ID a staged artifacts blob knows about |
+| `dump [force]` | dump the display register blocks |
+
+```
+=> h713_disp auto 0x30
+```
+
+`0x30` is this device's own project ID — the default of `h713_project` in the shipped environment (see
+`environment.md`); the command's own source comment says `0x34`, but that is cstenger's bench board, not
+this one (`doku/108-plan-vendordaten.md`).
+
+Everything else under `h713_disp` — `test`, `mips-test`/`mips-trace`/`mips-comm-trace`/`mips-stability`,
+`calltable`, `commstate`/`commtrace`/`commcall`, `comm-pq-test`, `clkfind`, `regscan`, `fwmd`, `teardown`,
+`scanrate`, `bl-gpio`, and `panel-test` with around thirty pattern modes (`tcon-checker`, `fb-pitch`,
+`vendor-logo`, …) — is a firmware bring-up diagnostic, not needed for normal use. `help h713_disp` at the
+prompt lists all of them; `elog=<0-5>` on `init` turns on the coprocessor's own log ring, covered in
+`docs/subsystems/mips.md`.
+
+## h713_mips — manage the display coprocessor directly (diagnostic)
+
+Below `h713_disp` sits the MIPS32 core that runs the vendor firmware `display.bin`; `h713_mips` talks to
+it directly, without the panel power sequencing `h713_disp` wraps around it. Its own help text calls it
+out as manual management — useful for telling whether the coprocessor or the ARM-side bring-up is at
+fault, not for a normal boot.
+
+| Subcommand | What it does |
+|---|---|
+| `status` | report whether the coprocessor is running |
+| `verify` | check the loaded firmware's size and digest against the known-revision table |
+| `log [start] [end]` | dump a range of the firmware's own log ring (default range covers its working set) |
+| `stop` / `start` | halt the coprocessor, or clear its runtime tail and release it |
+| `release` | release the coprocessor directly, without `start`'s BSS/heap clear first |
+| `prepare` | bring up the display clock tree without releasing the coprocessor |
+| `load`/`boot <interface> <dev[:part]> <path>` | load firmware from storage, optionally starting it |
+| `probe-ready` / `probe-trace [tvcap\|no-wait]` | check, or trace, readiness before starting; `probe-trace tvcap` opts into a probe known to wedge the board |
+
+```
+=> h713_mips status
+```
+
+## h713_logo — replay the vendor boot-logo register table (diagnostic)
+
+Stock U-Boot draws its own boot logo by walking `LogoRegData.bin`, a container of 16-byte
+`{address, value, mask, type}` records — masked read-modify-write, bit pulses, microsecond delays.
+`h713_logo` replays or inspects a chosen range of that table directly, to understand what stock does
+before reproducing the effect through `h713_disp panel-test vendor-logo`.
+
+| Subcommand | What it does |
+|---|---|
+| `dump <blob-addr> <start-off> <end-off>` | print what a range of records would do, without touching hardware |
+| `apply <blob-addr> <start-off> <end-off>` | actually replay that range |
+
+```
+=> h713_logo dump 0x4a800000 0x10 0x40
+```
+
+## h713_i2c — bit-banged I2C bus scan (diagnostic)
+
+Scans TWI1's pins (PH2/PH3 by default) by bit-banging rather than bringing up a real I2C driver for a
+one-off probe. On this device, `0x18` (the STK8BA58 accelerometer) is the only address that answers —
+proof the bus itself works, not that anything else is missing (`doku/70-sackgassen.md`; the DLPC3435 at
+`0x1b` never answers on the live panel boot, on this device or cstenger's).
+
+| Subcommand | What it does |
+|---|---|
+| `scan` | scan the default pins (PH2/PH3, the vendor TWI1 pair) |
+| `scan <scl> <sda>` | scan a different pair of PH pins |
+| `read <addr> <count>` | read `count` bytes from `addr` with no preceding register write |
+
+```
+=> h713_i2c scan
+```
+
+Details: `mainline/external/u-boot/arch/arm/mach-sunxi/h713_mips.c`, `doku/98-mips-shell.md`,
+`doku/70-sackgassen.md`.

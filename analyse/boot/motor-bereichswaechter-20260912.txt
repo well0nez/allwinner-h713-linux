@@ -1,0 +1,46 @@
+=== Fokusmotor: der Bereichswaechter LEBT — Messung 12.09.2026, am Geraet ===
+Kernel ab8f5b46 (Serie bis 0154), DTS-Knoten motor_ctr auf "okay",
+Modul von Hand geladen mit homing=0, Bias unveraendert (limiter_bias=-1).
+
+--- Schritt 1: Rohpegel im Stock-Zustand (ohne jede Bewegung) ---
+  hy310-focus-motor motor-ctr: limiter-up-gpio: gpio 238, Eingang,
+      Bias unveraendert (wie Stock), aktiv high, liest roh 1 (im Bereich)
+  hy310-focus-motor motor-ctr: limiter_num = 1
+  motor_limit: 1 up=1 dn=1 num=1 raw=1 act=1 edge_up=0 edge_dn=0 step=0
+
+Der Pin liefert HIGH, sobald ihn niemand anfasst. limiter_num = 1 heisst:
+der Limiter ist erfolgreich angefordert — bei Stock das Tor zur Positionslogik.
+
+--- Schritt 2: abwaerts fahren, 2 msteps je Durchgang ---
+  ... raw=1 step=-204
+      raw=0 step=-206      <== BEREICHSRAND ERKANNT
+      raw=1 edge_dn=1 step=-207
+      raw=1 edge_dn=1 step=-207   (und so weiter, unveraendert)
+
+Der Treiber hat den Rand gesehen, ist einen mstep zurueckgefahren, die Kante
+gesetzt (edge_dn=1) und verwirft seitdem jeden weiteren Abwaertsbefehl.
+Genau das Verhalten, das motor_run_dn_control im Herstellercode beschreibt.
+
+--- Was damit belegt ist ---
+1. PH14 ist ein BEREICHSWAECHTER, kein Endschalter: HIGH = im Fahrbereich,
+   der Rand wird am WEGFALL des Pegels erkannt (active_level = 1).
+2. Der Geber ist INTAKT. Die Aussage in doku/94 ("der Endschalter liefert kein
+   Signal") war falsch, ebenso die daraus gebaute These, unser alter Treiber
+   habe ihn zerstoert.
+3. Die Ursache war unser eigener Patch 0111: er erzwang einen Pull-down mit der
+   Begruendung, das sei "the defined idle level for active_level = 1". Diese
+   Regel gibt es im Herstellercode nicht — Stock setzt zwischen gpio_request()
+   und dem ersten Lesen keinen Bias. Der Pull-down im Stock-Pinabzug stammt von
+   der Bootkette; eine Beobachtung wurde fuer eine Absicht gehalten.
+   Behoben mit 0153 (Pad unveraendert lassen) und 0154 (Rohpegel anzeigen).
+4. Der untere Bereichsrand liegt bei step = -206, gemessen von der Position,
+   an der die Mechanik seit dem 07.09. stand. Der nutzbare Fahrweg ist damit
+   zum ersten Mal an einem Ende vermessen.
+
+--- Was noch offen ist ---
+  * Der OBERE Rand ist nicht angefahren worden (bewusst: Richtung Anschlag).
+  * Ob 800 msteps (DTS motor-step-num) dem echten Fahrweg entsprechen.
+  * Homing kann jetzt wieder scharf geschaltet werden — vorher pruefen, dass
+    es vom unteren Rand aus startet, nicht blind aufwaerts.
+  * Autofokus ueber die Kamera (doku/94 "Wie es weitergehen koennte") ist damit
+    wieder moeglich; die Kamera laeuft seit 11.09.

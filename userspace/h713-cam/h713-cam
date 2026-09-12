@@ -1,0 +1,402 @@
+#!/usr/bin/env python3
+"""h713-cam -- die interne Kamera des Beamers ansprechen.
+
+Realtek 0bda:5803 "Generic HD camera", UVC, an USB-Port 1. Ein Format:
+YUYV 4:2:2, 640x480. Stock benutzt sie fuer den Autofokus (doku/94).
+
+    h713-cam probe                 Treiber, Formate, Bildgroessen
+    h713-cam controls              alle Steuerungen mit Bereich und Istwert
+    h713-cam get NAME|ID           eine Steuerung lesen
+    h713-cam set NAME|ID WERT      eine Steuerung setzen
+    h713-cam grab [DATEI]          ein Einzelbild (PNG, oder PPM nach Endung)
+
+Laeuft mit blankem python3 -- kein v4l2-ctl, kein ffmpeg, kein PIL. Das ist
+Absicht: das Release-Rootfs traegt nichts davon (packages.txt), und ein
+Werkzeug, das an einem fehlenden Paket scheitert, zeigt nie ein Bild.
+
+Zusammengelegt am 12.09.2026 aus analyse/beamer-cam/{camprobe,camset,camgrab}.py.
+Der Geraeteknoten wird gesucht, nicht geraten: /dev/video2 ist er nur, weil
+Cedrus und HDMI-RX vorher geladen wurden.
+
+Macke der Kamera, gemessen 11.09.: frisch geladen liefert sie SCHWARZ (Y um 5),
+auch nach 90 verworfenen Bildern -- bis einmal irgendeine Steuerung geschrieben
+wurde. Danach laeuft die Belichtungsautomatik von selbst (Y um 187). 'grab'
+schreibt deshalb vor dem Stream die Belichtung einmal unveraendert zurueck.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import glob
+import mmap
+import os
+import struct
+import sys
+import time
+import zlib
+
+# ── V4L2 ─────────────────────────────────────────────────────────────────
+VIDIOC_QUERYCAP        = 0x80685600
+VIDIOC_ENUM_FMT        = 0xc0405602
+VIDIOC_S_FMT           = 0xc0d05605
+VIDIOC_REQBUFS         = 0xc0145608
+VIDIOC_QUERYBUF        = 0xc0585609
+VIDIOC_QBUF            = 0xc058560f
+VIDIOC_DQBUF           = 0xc0585611
+VIDIOC_STREAMON        = 0x40045612
+VIDIOC_STREAMOFF       = 0x40045613
+VIDIOC_G_CTRL          = 0xc008561b
+VIDIOC_S_CTRL          = 0xc008561c
+VIDIOC_QUERYCTRL       = 0xc0445624
+VIDIOC_ENUM_FRAMESIZES = 0xc02c564a
+
+BUF_TYPE_CAPTURE = 1
+MEMORY_MMAP      = 1
+FMT_YUYV         = 0x56595559          # 'YUYV'
+CID_EXPOSURE_ABS = 0x009a0902
+CTRL_FLAG_DISABLED = 0x0001
+
+#: Woran die Kamera zu erkennen ist -- der Name, den uvcvideo aus dem
+#: USB-Deskriptor uebernimmt. Nicht die Nummer des Knotens.
+KAMERA_NAME = "HD camera"
+
+
+class Fehler(Exception):
+    pass
+
+
+def fourcc(v: int) -> str:
+    return "".join(chr((v >> (8 * i)) & 0xff) for i in range(4))
+
+
+def cstr(b: bytes) -> str:
+    return bytes(b).split(b"\0")[0].decode("utf-8", "replace")
+
+
+# ── Geraet finden ────────────────────────────────────────────────────────
+
+def finde_kamera(vorgabe: str | None) -> str:
+    if vorgabe:
+        return vorgabe
+    treffer = []
+    for pfad in sorted(glob.glob("/sys/class/video4linux/video*/name")):
+        try:
+            name = open(pfad).read().strip()
+        except OSError:
+            continue
+        if KAMERA_NAME not in name:
+            continue
+        dev = "/dev/" + pfad.split("/")[-2]
+        # uvcvideo legt zwei Knoten an: das Bild und die Metadaten. Nur der
+        # mit VIDEO_CAPTURE ist der richtige; der andere heisst gleich.
+        try:
+            fd = os.open(dev, os.O_RDWR | os.O_NONBLOCK)
+        except OSError:
+            continue
+        try:
+            buf = bytearray(104)
+            fcntl.ioctl(fd, VIDIOC_QUERYCAP, buf, True)
+            dcaps = struct.unpack_from("<I", buf, 88)[0]
+            if dcaps & 0x1:
+                treffer.append(dev)
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+    if not treffer:
+        raise Fehler(
+            f"keine Kamera mit '{KAMERA_NAME}' im Namen unter /sys/class/video4linux/.\n"
+            "  Ist uvcvideo geladen? (lsmod | grep uvcvideo; ohne Modul: modprobe uvcvideo)\n"
+            "  Haengt sie am Bus?   (lsusb | grep 0bda:5803)")
+    return treffer[0]
+
+
+# ── Steuerungen ──────────────────────────────────────────────────────────
+
+def liste_steuerungen(fd: int) -> list[dict]:
+    """VIDIOC_QUERYCTRL ueber die Benutzer- und Kameraklassen."""
+    aus = []
+    for basis, n in ((0x00980900, 64), (0x009a0900, 32)):
+        for cid in range(basis, basis + n):
+            q = bytearray(68)
+            struct.pack_into("<I", q, 0, cid)
+            try:
+                fcntl.ioctl(fd, VIDIOC_QUERYCTRL, q, True)
+            except OSError:
+                continue
+            typ, = struct.unpack_from("<I", q, 4)
+            name = cstr(q[8:40])
+            lo, hi, schritt, vorgabe = struct.unpack_from("<iiii", q, 40)
+            flags, = struct.unpack_from("<I", q, 56)
+            if flags & CTRL_FLAG_DISABLED:
+                continue
+            aus.append(dict(id=cid, typ=typ, name=name, min=lo, max=hi,
+                            step=schritt, default=vorgabe, flags=flags))
+    return aus
+
+
+def finde_steuerung(fd: int, was: str) -> int:
+    """'0x009a0902', '10094594' oder ein Name ('Exposure Time, Absolute',
+    auch verkuerzt: 'exposure', 'brightness')."""
+    try:
+        return int(was, 0)
+    except ValueError:
+        pass
+    suche = was.lower().replace("_", " ")
+    kandidaten = [s for s in liste_steuerungen(fd) if suche in s["name"].lower()]
+    if len(kandidaten) == 1:
+        return kandidaten[0]["id"]
+    if not kandidaten:
+        raise Fehler(f"keine Steuerung passt zu '{was}' -- 'h713-cam controls' zeigt alle")
+    namen = ", ".join(repr(k["name"]) for k in kandidaten)
+    raise Fehler(f"'{was}' ist nicht eindeutig: {namen}")
+
+
+def lies_steuerung(fd: int, cid: int) -> int:
+    b = bytearray(8)
+    struct.pack_into("<Ii", b, 0, cid, 0)
+    fcntl.ioctl(fd, VIDIOC_G_CTRL, b, True)
+    return struct.unpack_from("<Ii", b, 0)[1]
+
+
+def setze_steuerung(fd: int, cid: int, wert: int) -> None:
+    b = bytearray(8)
+    struct.pack_into("<Ii", b, 0, cid, wert)
+    fcntl.ioctl(fd, VIDIOC_S_CTRL, b, True)
+
+
+# ── Bild holen ───────────────────────────────────────────────────────────
+
+def hole_bild(fd: int, breite: int, hoehe: int, vorlauf: int, melde) -> tuple[bytes, int, int, int]:
+    """Ein YUYV-Bild per MMAP-Streaming. Liefert (rohdaten, B, H, bytesperline)."""
+    # Die Macke: vor dem Stream einmal die Belichtung unveraendert zurueckschreiben.
+    try:
+        setze_steuerung(fd, CID_EXPOSURE_ABS, lies_steuerung(fd, CID_EXPOSURE_ABS))
+    except OSError:
+        pass                    # andere Kamera ohne diese Steuerung: egal
+
+    f = bytearray(208)
+    struct.pack_into("<I", f, 0, BUF_TYPE_CAPTURE)
+    struct.pack_into("<IIII", f, 8, breite, hoehe, FMT_YUYV, 1)
+    fcntl.ioctl(fd, VIDIOC_S_FMT, f, True)
+    breite, hoehe, pf = struct.unpack_from("<III", f, 8)
+    bpl, groesse = struct.unpack_from("<II", f, 24)
+    if pf != FMT_YUYV:
+        raise Fehler(f"Kamera liefert {fourcc(pf)}, dieses Werkzeug kann nur YUYV")
+    melde(f"Format {breite}x{hoehe} {fourcc(pf)}, {bpl} Byte je Zeile")
+
+    r = bytearray(20)
+    struct.pack_into("<III", r, 0, 4, BUF_TYPE_CAPTURE, MEMORY_MMAP)
+    fcntl.ioctl(fd, VIDIOC_REQBUFS, r, True)
+    n_puffer, = struct.unpack_from("<I", r, 0)
+
+    karten = []
+    for i in range(n_puffer):
+        b = bytearray(88)
+        struct.pack_into("<III", b, 0, i, BUF_TYPE_CAPTURE, 0)
+        struct.pack_into("<I", b, 60, MEMORY_MMAP)
+        fcntl.ioctl(fd, VIDIOC_QUERYBUF, b, True)
+        offset, = struct.unpack_from("<I", b, 64)
+        laenge, = struct.unpack_from("<I", b, 72)
+        karten.append(mmap.mmap(fd, laenge, mmap.MAP_SHARED,
+                                mmap.PROT_READ | mmap.PROT_WRITE, offset=offset))
+        fcntl.ioctl(fd, VIDIOC_QBUF, b, True)
+
+    fcntl.ioctl(fd, VIDIOC_STREAMON, struct.pack("<I", BUF_TYPE_CAPTURE))
+    bild = None
+    try:
+        for n in range(vorlauf + 1):
+            b = bytearray(88)
+            struct.pack_into("<II", b, 0, 0, BUF_TYPE_CAPTURE)
+            struct.pack_into("<I", b, 60, MEMORY_MMAP)
+            for _ in range(200):
+                try:
+                    fcntl.ioctl(fd, VIDIOC_DQBUF, b, True)
+                    break
+                except OSError as e:
+                    if e.errno != 11:           # EAGAIN
+                        raise
+                    time.sleep(0.01)
+            else:
+                raise Fehler("Zeitueberschreitung beim Warten auf ein Bild")
+            idx, = struct.unpack_from("<I", b, 0)
+            benutzt, = struct.unpack_from("<I", b, 8)
+            if n == vorlauf:
+                bild = bytes(karten[idx][:benutzt or groesse])
+            fcntl.ioctl(fd, VIDIOC_QBUF, b, True)
+    finally:
+        fcntl.ioctl(fd, VIDIOC_STREAMOFF, struct.pack("<I", BUF_TYPE_CAPTURE))
+        for k in karten:
+            k.close()
+    return bild, breite, hoehe, bpl
+
+
+def yuyv_nach_rgb(bild: bytes, breite: int, hoehe: int, bpl: int) -> bytes:
+    """BT.601, begrenzter Bereich -- so wie es die Kamera liefert."""
+    def clamp(v):
+        return 0 if v < 0 else (255 if v > 255 else v)
+    aus = bytearray()
+    for y in range(hoehe):
+        zeile = bild[y * bpl: y * bpl + breite * 2]
+        for x in range(0, len(zeile) - 3, 4):
+            y0, u, y1, v = zeile[x], zeile[x + 1], zeile[x + 2], zeile[x + 3]
+            cu, cv = u - 128, v - 128
+            for yy in (y0, y1):
+                c = yy - 16
+                aus += bytes((clamp((298 * c + 409 * cv + 128) >> 8),
+                              clamp((298 * c - 100 * cu - 208 * cv + 128) >> 8),
+                              clamp((298 * c + 516 * cu + 128) >> 8)))
+    return bytes(aus)
+
+
+def schreibe_png(pfad: str, rgb: bytes, breite: int, hoehe: int) -> None:
+    """PNG ohne PIL: zlib aus der Standardbibliothek reicht."""
+    def chunk(typ: bytes, daten: bytes) -> bytes:
+        return (struct.pack(">I", len(daten)) + typ + daten
+                + struct.pack(">I", zlib.crc32(typ + daten) & 0xffffffff))
+    roh = b"".join(b"\0" + rgb[z * breite * 3:(z + 1) * breite * 3] for z in range(hoehe))
+    with open(pfad, "wb") as fh:
+        fh.write(b"\x89PNG\r\n\x1a\n")
+        fh.write(chunk(b"IHDR", struct.pack(">IIBBBBB", breite, hoehe, 8, 2, 0, 0, 0)))
+        fh.write(chunk(b"IDAT", zlib.compress(roh, 6)))
+        fh.write(chunk(b"IEND", b""))
+
+
+def schreibe_ppm(pfad: str, rgb: bytes, breite: int, hoehe: int) -> None:
+    with open(pfad, "wb") as fh:
+        fh.write(b"P6\n%d %d\n255\n" % (breite, hoehe))
+        fh.write(rgb)
+
+
+# ── Unterbefehle ─────────────────────────────────────────────────────────
+
+def cmd_probe(fd: int, dev: str) -> int:
+    buf = bytearray(104)
+    fcntl.ioctl(fd, VIDIOC_QUERYCAP, buf, True)
+    version, caps, dcaps = struct.unpack_from("<III", buf, 80)
+    print(f"Geraet   {dev}")
+    print(f"Treiber  {cstr(buf[0:16])}   Karte: {cstr(buf[16:48])}   Bus: {cstr(buf[48:80])}")
+    print(f"Version  {version >> 16}.{(version >> 8) & 0xff}.{version & 0xff}   "
+          f"Caps 0x{dcaps:08x} (Capture {bool(dcaps & 0x1)}, Streaming {bool(dcaps & 0x04000000)})")
+    print("Formate:")
+    for i in range(32):
+        f = bytearray(64)
+        struct.pack_into("<II", f, 0, i, BUF_TYPE_CAPTURE)
+        try:
+            fcntl.ioctl(fd, VIDIOC_ENUM_FMT, f, True)
+        except OSError:
+            break
+        pf, = struct.unpack_from("<I", f, 44)
+        groessen = []
+        for j in range(24):
+            s = bytearray(44)
+            struct.pack_into("<II", s, 0, j, pf)
+            try:
+                fcntl.ioctl(fd, VIDIOC_ENUM_FRAMESIZES, s, True)
+            except OSError:
+                break
+            art, = struct.unpack_from("<I", s, 8)
+            if art == 1:
+                w, h = struct.unpack_from("<II", s, 12)
+                groessen.append(f"{w}x{h}")
+            else:
+                w0, h0, w1, h1 = struct.unpack_from("<IIII", s, 12)
+                groessen.append(f"{w0}x{h0}..{w1}x{h1}")
+                break
+        print(f"  {fourcc(pf):<6} {cstr(f[12:44]):<24} {', '.join(groessen)}")
+    return 0
+
+
+def cmd_controls(fd: int) -> int:
+    for s in liste_steuerungen(fd):
+        try:
+            ist = str(lies_steuerung(fd, s["id"]))
+        except OSError as e:
+            ist = f"({e.strerror})"
+        print(f"0x{s['id']:08x}  {s['name']:<32} {s['min']:>6}..{s['max']:<6} "
+              f"schritt {s['step']:<4} vorgabe {s['default']:<6} ist {ist}")
+    return 0
+
+
+def cmd_get(fd: int, was: str) -> int:
+    cid = finde_steuerung(fd, was)
+    print(f"0x{cid:08x} = {lies_steuerung(fd, cid)}")
+    return 0
+
+
+def cmd_set(fd: int, was: str, wert: int) -> int:
+    cid = finde_steuerung(fd, was)
+    try:
+        setze_steuerung(fd, cid, wert)
+    except OSError as e:
+        raise Fehler(f"0x{cid:08x} := {wert}: {e.strerror} -- 'controls' zeigt den erlaubten Bereich")
+    print(f"0x{cid:08x} = {lies_steuerung(fd, cid)}")
+    return 0
+
+
+def cmd_grab(fd: int, pfad: str, groesse: str, vorlauf: int, still: bool) -> int:
+    melde = (lambda *_: None) if still else (lambda *a: print(*a, file=sys.stderr))
+    try:
+        b, h = (int(x) for x in groesse.lower().split("x"))
+    except ValueError:
+        raise Fehler(f"--size erwartet BxH, nicht '{groesse}'")
+    bild, b, h, bpl = hole_bild(fd, b, h, vorlauf, melde)
+    hell = sum(bild[0::2]) / (len(bild) / 2)
+    melde(f"{vorlauf} Bilder verworfen, mittlere Helligkeit Y = {hell:.1f}"
+          + ("  -- SCHWARZ: die Kamera hat noch keine Steuerung gesehen?" if hell < 16 else ""))
+    rgb = yuyv_nach_rgb(bild, b, h, bpl)
+    if pfad.lower().endswith(".ppm"):
+        schreibe_ppm(pfad, rgb, b, h)
+    else:
+        schreibe_png(pfad, rgb, b, h)
+    print(f"{pfad}  {b}x{h}  Y={hell:.0f}")
+    return 0
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(prog="h713-cam",
+                                description="Die interne Kamera des Beamers ansprechen.")
+    p.add_argument("--dev", metavar="KNOTEN",
+                   help=f"Geraeteknoten vorgeben statt nach '{KAMERA_NAME}' zu suchen")
+    u = p.add_subparsers(dest="befehl", required=True)
+    u.add_parser("probe", help="Treiber, Formate, Bildgroessen")
+    u.add_parser("controls", help="alle Steuerungen mit Bereich und Istwert")
+    g = u.add_parser("get", help="eine Steuerung lesen"); g.add_argument("steuerung")
+    s = u.add_parser("set", help="eine Steuerung setzen")
+    s.add_argument("steuerung"); s.add_argument("wert", type=lambda x: int(x, 0))
+    r = u.add_parser("grab", help="ein Einzelbild holen (PNG; .ppm nach Endung)")
+    r.add_argument("datei", nargs="?", default="/data/cam.png")
+    r.add_argument("--size", default="640x480", metavar="BxH")
+    r.add_argument("--warm", type=int, default=10, metavar="N",
+                   help="Bilder verwerfen, bis die Belichtung steht (Vorgabe 10)")
+    r.add_argument("-q", "--quiet", action="store_true")
+    a = p.parse_args(argv)
+
+    dev = finde_kamera(a.dev)
+    fd = os.open(dev, os.O_RDWR)
+    try:
+        if a.befehl == "probe":
+            return cmd_probe(fd, dev)
+        if a.befehl == "controls":
+            return cmd_controls(fd)
+        if a.befehl == "get":
+            return cmd_get(fd, a.steuerung)
+        if a.befehl == "set":
+            return cmd_set(fd, a.steuerung, a.wert)
+        return cmd_grab(fd, a.datei, a.size, a.warm, a.quiet)
+    finally:
+        os.close(fd)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Fehler as e:
+        print(f"h713-cam: {e}", file=sys.stderr)
+        sys.exit(2)
+    except PermissionError as e:
+        print(f"h713-cam: {e} -- der Knoten gehoert root:video", file=sys.stderr)
+        sys.exit(2)
+    except KeyboardInterrupt:
+        sys.exit(130)

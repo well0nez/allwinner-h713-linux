@@ -1,0 +1,125 @@
+=== NTC / GPADC am HY310, gemessen 11.09.2026 ===
+Kernel: Serie bis 0145, Geraet HY200 QZ713DF_A1, Beamer im Betrieb (Bild an).
+
+--- Hardware direkt (mmap auf /dev/mem, GPADC-Basis 0x02009000) ---
+  0x04 CTRL      = 0x00800000
+  0x08 CS_EN     = 0x00000002     <- nur Kanal 1 freigeschaltet
+  0x0c FIFO_INTC = 0x00001f00
+  0x10 FIFO_INTS = 0x00000000
+  DATA[0] (0x80) = 0              <- Kanal 0 inaktiv
+  DATA[1] (0x84) = 1766           <- 120 Abtastungen, min=max=1766, Spanne 0
+  DATA[2], DATA[3] = 0
+
+--- Dieselben Kanaele ueber die IIO-sysfs-Knoten ---
+  in_voltage1_raw, 120x nur ch1 : min=680 max=1777 spanne=1097 mittel=1747,6 stdabw=115,35
+  in_voltage0_raw, 120x mit ch1 abwechselnd : min=1138 max=1145 spanne=7 stdabw=1,27 (Artefakt)
+  in_voltage1_raw, 120x mit ch0 abwechselnd : min=680 max=1772 spanne=1092 stdabw=115 (Artefakt)
+
+  Ursache des Artefakts: sun20i_gpadc_adc_read() schreibt CS_EN neu, sobald die
+  angeforderte Kanalnummer von last_channel abweicht, und wartet danach nur auf
+  den Data-IRQ (10 ms), nicht auf ein Einschwingen des Eingangs. Wer abwechselnd
+  beide sysfs-Knoten liest, misst jedes Mal einen frisch umgeschalteten Eingang.
+  Das Datenregister selbst steht vollkommen still.
+
+--- LRADC (iio:device1, sun50i-h713-lradc) ---
+  in_voltage0_raw = 63, in_voltage1_raw = 63   (Maske 0x3f, beide am Anschlag)
+
+--- Vendor-Tabelle im DTS-Knoten board_mgr ---
+  gpadc-table: 63 Paare (temp, wert), wert absteigend 0x5E6=1510 (0 Grad)
+               bis 0x1BB=443 (0x50=80 Grad)
+  lradc-table: 32 Paare, 0x41A=1050 bis 0xAF=175
+  ntc0: enable=1, source=1, channel=1, fan_ids=0
+  temp_warn=55, temp_poweroff=60
+
+--- Das Problem ---
+  1766 liegt ueber dem groessten Tabelleneintrag (1510). hy310_ntc_adc_to_temp()
+  sucht mit dem ROHWERT und faellt deshalb auf seinen Standardwert 0 zurueck.
+  Der Hersteller skaliert vorher (siehe unten).
+
+--- Querverweise ins Stock-vmlinux (ARM32, mit DWARF, Quelldatei pwm_fan.c) ---
+  c05db9a0 ntc_read                     Arbeitsfunktion, alle 500 Jiffies (HZ=250 -> 2 s)
+  c05db32c get_adc_data(priv, source, channel)
+             source==1 -> mov r0,r1 ; b sunxi_gpadc_read_channel_data  (Tailcall)
+             source==2 -> eigener Pfad mit mutex_lock und channel-Switch
+             source==0 -> r0 = 0x15 * [..]  (anderer Wandler)
+  c06b93f8 sunxi_gpadc_read_channel_data(ch)
+             prueft (maske & (1<<ch)), sonst Rueckgabe 0x001b7741 = 1800001
+             sonst sunxi_gpadc_read_data(), dann  raw*0x1b7, umull, lsr #6
+             0x1b7 = 439 ~ 1800000/4095  -> Ergebnis sieht nach Mikrovolt aus
+  c06b9090 sunxi_gpadc_read_data
+  c05db898 search_table_gpadc           sucht Intervall [r3+0xc] .. [r3+4], liefert [r3]
+  c05d8f84 gpadc_table_init             baut die Tabelle beim Init auf (Einheit pruefen!)
+  c05db970 get_temp_data
+
+=== Nachtrag 11.09. spaetabends: ch1 ist KEINE Temperatur (gemessen) ===
+Gemessen wurde das Datenregister direkt (0x02009084), nicht ueber IIO.
+
+  Ruhe        raw=1445   CPU 54,0 C
+  Last  60 s  raw=1509   CPU 69,8 C
+  Last 120 s  raw=1516   CPU 71,0 C
+  Last 180 s  raw=1514   CPU 71,8 C
+  2 s nach Last aus   raw=1447   CPU 59,7 C
+  15 s                raw=1445   CPU 56,6 C
+  60 s                raw=1444   CPU 54,5 C
+
+Zwei Gruende, warum das keine Temperatur sein kann:
+  1. Der Wert springt in 2 s von 1514 auf 1447 zurueck, waehrend die CPU Minuten
+     zum Abkuehlen braucht. Keine thermische Masse kuehlt so schnell ab.
+  2. Die Richtung ist verkehrt: bei Last STEIGT der Wert. Bei einem NTC muesste
+     er nach der Tabelle fallen.
+Das Verhalten passt zur CPU-Kernspannung (DVFS: Last -> hoeherer Takt -> hoehere
+VDD_CPU -> hoeherer Wert, beim Lastende sofort zurueck).
+
+=== ABER: Marcos Gegenargument (11.09.), das schwerer wiegt ===
+Das Geraet hat nachweislich einen Ueberhitzungsschutz: bei Stock schaltet es ab,
+wenn man den Luefter entfernt. Es MUSS also einen funktionierenden Fuehler geben.
+
+Und der Kanal stimmt: alle drei Stock-Geraetebaeume (extracted/sun50i-h713-hy310.dts
+Zeile 1726, extracted/bootpkg-full.dts 2977, hy310_factory.dts 2697) tragen
+uebereinstimmend  ntc0 { enable=1; source=1; channel=1; }.
+
+Daraus folgt: der Fehler liegt NICHT im Kanal und NICHT am fehlenden Fuehler,
+sondern in der KONFIGURATION des GPADC-Blocks. Der Mainline-Treiber
+sun20i-gpadc-iio.c initialisiert ihn offenbar anders als der Hersteller, sodass
+der Wandler etwas anderes als den Eingang misst.
+
+=== Naechste Spur ===
+  - sunxi_gpadc_enable (c06b912c) und den Init-Pfad im Stock-vmlinux lesen:
+    welche Register setzt der Hersteller, die wir nicht setzen?
+  - CTRL stand bei uns auf 0x00800000 -- pruefen was der Vendor dort schreibt
+    (TACQ? Referenzauswahl? Kanal-Multiplexer?)
+  - Dazu passt der bisher ungeklaerte Befund, dass der IIO-Lesepfad ueber den
+    ganzen Bereich streut (683..1768), waehrend das Register still steht.
+
+=== AUFLOESUNG (11.09., spaetabends): es gibt keinen NTC ===
+Der Hersteller sagt es im Geraetebaum selbst:  ntc_num = 0
+  hy310_factory.dts Zeile 2696, extracted/bootpkg-full.dts Zeile 2975
+  (beide vom Geraet dekompiliert, nicht von uns geschrieben)
+
+ntc_num ist bindend, nicht dekorativ:
+  ntc_read       c05db9a0  Messschleife laeuft ueber ntc_num, bricht bei 0 sofort ab
+  avdtemp_read   c05d9700  cmp ntc_num,#0 -> moveq r2,#0x63  (99 = "kein Fuehler")
+  ledtemp_read   c05d8ef4  cmp ntc_num,#1 -> movls r2,#0x63  (zweiter Fuehler)
+Die ntc0/ntc1-Unterknoten werden bei ntc_num = 0 nie erreicht; ihr enable = 1
+ist eine Karteileiche aus der Vorlage.
+
+Damit erklaert sich jede Messung oben:
+  - GPADC ch1 ist ein OFFENER Eingang. Deshalb laeuft er mit steigender
+    Abtastzeit auf Vollausschlag (Leckstrom laedt den Haltekondensator) und
+    folgt sonst der CPU-Last (Uebersprechen/DVFS).
+  - GPADC ch0 ist nicht freigeschaltet.
+  - Der LRADC ist an diesem Geraet die TASTATUR (allwinner,keyboard_1350mv,
+    key_cnt = 6, Schwellen 0 / 0xb1 / 0x158 ...), Vollausschlag 63 heisst
+    schlicht "keine Taste gedrueckt". Der lradc-table im Luefterknoten ist
+    Vorrat fuer Varianten, die den Fuehler dort haben.
+
+Der Ueberhitzungsschutz haengt am TACHOMETER, nicht am NTC:
+  fan_io_status_read  c05d8900  bei anhaltendem Stillstand -> kernel_power_off
+  ntc_read            c05db9a0  bei Uebertemperatur -> nur Uevent + record_exception
+Ein Stock-Geraet schaltet also ab, wenn man den Luefter entfernt, auch ohne
+Fuehler. Der Tacho ist auf diesem Geraet nachgewiesen (PB5 aus -> 0 RPM,
+wieder an -> 4770 RPM).
+
+Unser Fehler: hy310-board-mgr hat ntc_num bewusst uebergangen
+("Tolerant parsing" in Patch 0008) und aus dem offenen Eingang eine Temperatur
+gebaut -- 0, dann 60, dann 71 Grad. Behoben mit Patch 0152.

@@ -1,0 +1,36 @@
+Notaus bei Luefterstillstand -- am Geraet ausgeloest (12.09.2026, ~23:00, P6)
+
+STAND: Abbild h713-hy310-v0.5-beta aus dem Klon, Kernel 6.18.38 mit Patch 0159,
+fan_stall_shutdown = Y (Vorgabe), thermal_shutdown = N (kein NTC an diesem Geraet).
+
+VERSUCH
+  vorher   fan1_input = 4830 U/min, PB5 = 1 (DAT 0x02000040 Bit 5)
+  Eingriff python3 pb5-schalten.py aus     -> Luefter und Lampe stromlos
+  erwartet Tacho faellt unter fg-warn-speed (1000) und bleibt dort;
+           nach fg-warn-cnt (8) Sekunden ruft der Treiber orderly_poweroff(true)
+
+ERGEBNIS
+  Die SSH-Sitzung starb waehrend der Zaehlschleife mit SIGTERM (Exit 143) --
+  das ist systemd, das beim Herunterfahren die Prozesse beendet. Das Geraet war
+  danach dauerhaft vom Netz.
+
+  Kein UART-Mitschnitt vorhanden (niemand war verbunden), und das Journal liegt
+  im RAM (hy310-logs volatile), also ist die Treiberzeile selbst nicht belegt.
+  Der Beweis kommt deshalb vom naechsten Start:
+
+    [0.476] EXT4-fs (mmcblk0p6): mounted filesystem ... r/w with ordered data mode
+
+  KEIN "recovering journal", keine Orphan-Bereinigung. Das Wurzeldateisystem war
+  also sauber ausgehaengt -- ein Haenger oder ein harter Stromverlust haette hier
+  eine Wiederherstellung erzwungen. Zusammen mit dem SIGTERM ist damit belegt:
+  es war ein geordnetes Herunterfahren, ausgeloest waehrend PB5 aus war.
+
+  PB5 schaltet nur Luefter und Lampe, nicht die SoC-Versorgung; ein Abschalten
+  aus einem anderen Grund als dem Treiber gibt es auf diesem Weg nicht.
+
+NACH DEM WIEDEREINSCHALTEN (Taste)
+  fan1_input = 4830, PB5 = 1, fan_stall_shutdown = Y -- alles wieder im Normalzustand.
+
+FUER DEN NAECHSTEN TEST DIESER ART
+  Vorher `hy310-logs persistent` setzen, dann steht die Zeile
+  "fan0 stalled -- powering off to protect the optics" hinterher in /data/log.

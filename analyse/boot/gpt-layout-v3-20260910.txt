@@ -1,0 +1,8 @@
+NAME         START       SIZE PARTLABEL    FSTYPE
+mmcblk0            7818182656              
+|-mmcblk0p1     16      32768 hy310-spl    
+|-mmcblk0p2   2048    5242880 hy310-uboot  
+|-mmcblk0p3  12288      57344 hy310-keys   
+|-mmcblk0p4  14336    1048576 hy310-env    
+|-mmcblk0p5  16384  134217728 hy310-boot   ext4
+`-mmcblk0p6 278528 7675559424 hy310-rootfs ext4

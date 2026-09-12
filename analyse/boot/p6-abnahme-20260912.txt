@@ -1,0 +1,60 @@
+P6 Generalprobe -- 12.09.2026, 21:30 bis 23:20
+
+AUSGANGSLAGE
+  Geraet auf Stock-Android (von uns zurueckgespielt, 2423 MiB in 6 min, rc=0),
+  Sicherung hy310-sicherung-20260912-vor-stock.
+
+BAU AUS DEM KLON
+  repo-neu @ b6e35f4, "0 lokale Aenderungen", release/build-all.sh --version v0.5-beta
+  ohne --vendor (wie beim Nutzer: Platzhalter, gefuellt wird beim Einspielen).
+  21 min 34 s, Serie a454b1b3 (133 Patches), Kernelbaum c5f33248.
+
+EINSPIELEN AUS DEM KLON
+  FEL ueber die Reset-Taste, Installer aus repo-neu/installer, 3 min.
+  43 Vendor-Platzhalter + authorized_keys gefuellt und zurueckgelesen,
+  Secure Storage byteweise unveraendert.
+
+ABNAHME AM GERAET
+  Erster Start mit dem sauber gebauten bl31 (45 164 Byte)      ok
+  Bild 1920x1080p, 148,5 MHz, Plane an, NV16                   ok (nach ctl replug, s.u.)
+  Ton ohne HDMI (speaker-test auf card0 "Codec")               ok, gehoert
+  Kamera: grab, Y = 88,7, 3,2 s                                ok
+  Fokusmotor: Knoten gebunden, Waechter raw=1 act=1 im Bereich ok
+  WLAN AP: -50 dBm, 72/52 MBit/s, 5,7 MB/s, DHCP, SSH          ok
+  WLAN STA gegen ein echtes Netz: 192.168.8.131, TCP nach      ok
+      1.1.1.1:443 in 70 ms
+  Notaus bei Luefterstillstand (PB5 aus)                       ok, eigener Beleg
+  Env-Uebernahme                                               ok, eigener Absatz
+
+ENV-UEBERNAHME, DER BEWEIS
+  Vorher gesetzt: h713_gate=0, h713_boot=net (das Abbild bringt 1 und emmc mit).
+  Installer beim Neuinstallieren:
+    [3] uboot-env ... (77 Eintraege; h713_gate=0, h713_boot=net)
+    [5] Umgebung: aus der alten uebernommen: h713_gate=0 (Abbild: 1);
+                                             h713_boot=net (Abbild: emmc)
+  Zurueckgelesen von der eMMC: beide Werte da, CRC gueltig, 77 Eintraege.
+  Nach dem Start: fw_printenv zeigt h713_gate=0 -- und das Geraet kam OHNE
+  Tastendruck hoch, die Uebernahme hat also auch gewirkt.
+  (h713_boot habe ich vor dem Neustart auf der eMMC wieder auf emmc gesetzt:
+  auf diesem Rechner laeuft ein TFTP-Server, ein Netzstart haette einen alten
+  Kernel gezogen.)
+
+GATE
+  Ueber den ganzen Abend hat das Geraet nach jedem Kaltstart auf die Taste
+  gewartet; Marco hat jedes Mal gedrueckt. Das Gate funktioniert.
+  Die geplante 20er-Reihe mit gemessenem Ruhefenster ist NICHT gelaufen:
+  mein Pruefskript konnte "kam von allein hoch" und "Marco hat gedrueckt" nicht
+  unterscheiden -- es pingte 25 s nach dem Einschalten, und da war schon
+  gedrueckt worden. Lehre: eine Messung, die zwei Ursachen nicht trennt, belegt
+  nichts. Fuer die Reihe braucht es ein vereinbartes Ruhefenster (30 s nicht
+  druecken), dann ist der Nachweis sauber.
+
+MAENGEL, DIE DER LAUF GEFUNDEN HAT
+  1. Bild kommt beim Einstecken nicht von selbst; "h713-tv ctl replug" holt es.
+     Beleg: analyse/boot/p6-hdmi-erstanschluss-20260912.txt
+  2. Der HDMI-Empfaenger lag auf /dev/video3, nicht video1 -- die Kamera war
+     zuerst da. Der Dienst startete trotzdem richtig (udev matcht den Treiber-
+     namen). Die Doku behauptete video1 als Tatsache; korrigiert.
+  3. Im Abbild fehlen ping, curl, wget, nc. Auf der Todo-Liste.
+  4. Nach jeder Neuinstallation warnt ssh ueber einen geaenderten Hostschluessel
+     -- richtig so (hy310-ssh-host-keys), gehoert aber in FLASHING.

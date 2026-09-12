@@ -1,0 +1,27 @@
+input: gpio_keys: TEMPORARY h713 debug prints in isr and report path
+
+Diagnostic only (plan doku/103 G3): the power key on PL4 raises its IRQ
+but no key event reaches the input core. Print isr entry and the value
+the debounce path reads. Remove before the series is called done.
+
+--- a/drivers/input/keyboard/gpio_keys.c	2026-09-09 18:30:18.897592597 +0200
++++ b/drivers/input/keyboard/gpio_keys.c	2026-09-09 18:30:18.903735812 +0200
+@@ -373,6 +373,8 @@
+ 		return;
+ 	}
+ 
++	dev_info(input->dev.parent, "h713-debug: report code=%u state=%d hrtimer=%d debounce=%u\n",
++		 *bdata->code, state, bdata->debounce_use_hrtimer, bdata->software_debounce);
+ 	if (type == EV_ABS) {
+ 		if (state)
+ 			input_event(input, type, button->code, button->value);
+@@ -414,6 +416,9 @@
+ 
+ 	BUG_ON(irq != bdata->irq);
+ 
++	dev_info_ratelimited(bdata->input->dev.parent, "h713-debug: isr irq=%d suspended=%d\n",
++			     irq, bdata->suspended);
++
+ 	if (bdata->button->wakeup) {
+ 		const struct gpio_keys_button *button = bdata->button;
+ 

@@ -1,0 +1,310 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+// Derived from local H713 research + live FEL probing (HY200 QZ713DF_A1 bench).
+
+/dts-v1/;
+
+#include <dt-bindings/clock/sun20i-d1-ccu.h>
+#include <dt-bindings/reset/sun20i-d1-ccu.h>
+
+/ {
+	model = "HY200 QZ713DF_A1 (Allwinner H713)";
+	compatible = "allwinner,sun50i-h713";
+
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	aliases {
+		serial0 = &uart0;
+		mmc0 = &mmc0;
+		mmc1 = &mmc2;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x40000000 0x0 0x40000000>;
+	};
+
+	osc24M: osc24M-clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24000000>;
+		clock-output-names = "osc24M";
+	};
+
+	reg_vcc_3v3: regulator-3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+	};
+
+	reg_vcc_1v8: regulator-1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			compatible = "arm,cortex-a53";
+			device_type = "cpu";
+			reg = <0>;
+			enable-method = "psci";
+		};
+
+		cpu@1 {
+			compatible = "arm,cortex-a53";
+			device_type = "cpu";
+			reg = <1>;
+			enable-method = "psci";
+		};
+
+		cpu@2 {
+			compatible = "arm,cortex-a53";
+			device_type = "cpu";
+			reg = <2>;
+			enable-method = "psci";
+		};
+
+		cpu@3 {
+			compatible = "arm,cortex-a53";
+			device_type = "cpu";
+			reg = <3>;
+			enable-method = "psci";
+		};
+	};
+
+	psci {
+		compatible = "arm,psci-1.0";
+		method = "smc";
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		clock-frequency = <24000000>;
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x0 0x0 0x0 0x40000000>;
+
+		ccu: clock-controller@2001000 {
+			compatible = "allwinner,sun50i-h713-ccu";
+			reg = <0x02001000 0x1000>;
+			clocks = <&osc24M>;
+			clock-names = "hosc";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+		};
+
+		/*
+		 * R_PIO, the PL/PM banks in the always-on block.  Needed for
+		 * PL3, the USB-A socket's VBUS enable: without a driver behind
+		 * the bank a gpio_request() on PL just fails and the socket
+		 * stays unpowered, which looks like "cannot reset port 1!?".
+		 */
+		r_pio: pinctrl@7022000 {
+			compatible = "allwinner,sun50i-h713-r-pinctrl";
+			reg = <0x07022000 0x400>;
+			clocks = <&osc24M>;
+			clock-names = "hosc";
+			gpio-controller;
+			#gpio-cells = <3>;
+		};
+
+		pio: pinctrl@2000000 {
+			compatible = "allwinner,sun50i-h713-pinctrl";
+			reg = <0x02000000 0x800>;
+			clocks = <&osc24M>;
+			clock-names = "hosc";
+			vcc-pc-supply = <&reg_vcc_3v3>;
+			vcc-pf-supply = <&reg_vcc_3v3>;
+			vcc-ph-supply = <&reg_vcc_3v3>;
+			gpio-controller;
+			#gpio-cells = <3>;
+
+			mmc0_pins: mmc0-pins {
+				pins = "PF0", "PF1", "PF2",
+				       "PF3", "PF4", "PF5";
+				function = "mmc0";
+				drive-strength = <30>;
+				bias-pull-up;
+			};
+
+			mmc2_pins: mmc2-pins {
+				pins = "PC0", "PC1", "PC5", "PC6",
+				       "PC8", "PC9", "PC10", "PC11",
+				       "PC13", "PC14", "PC15", "PC16";
+				function = "mmc2";
+				drive-strength = <30>;
+				bias-pull-up;
+			};
+
+			mmc2_ds_pin: mmc2-ds-pin {
+				pins = "PC0";
+				function = "mmc2";
+				drive-strength = <30>;
+				bias-pull-down;
+			};
+
+			uart0_ph_pins: uart0-ph-pins {
+				pins = "PH0", "PH1";
+				function = "uart0";
+				drive-strength = <10>;
+				bias-pull-up;
+			};
+		};
+
+		sid: efuse@3006000 {
+			compatible = "allwinner,sun50i-h6-sid";
+			reg = <0x03006000 0x400>;
+		};
+
+		uart0: serial@2500000 {
+			compatible = "snps,dw-apb-uart";
+			reg = <0x02500000 0x400>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			clock-frequency = <24000000>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&uart0_ph_pins>;
+			status = "okay";
+		};
+
+		mmc0: mmc@4020000 {
+			compatible = "allwinner,sun50i-h713-mmc",
+				     "allwinner,sun20i-d1-mmc",
+				     "allwinner,sun50i-h6-mmc";
+			reg = <0x04020000 0x1000>;
+			/* H713 CCU = D1 layout; D1 binding indices */
+			clocks = <&ccu CLK_BUS_MMC0>, <&ccu CLK_MMC0>;
+			clock-names = "ahb", "mmc";
+			resets = <&ccu RST_BUS_MMC0>;
+			reset-names = "ahb";
+			pinctrl-names = "default";
+			pinctrl-0 = <&mmc0_pins>;
+			vmmc-supply = <&reg_vcc_3v3>;
+			bus-width = <4>;
+			/* no SD slot on the HY200/HY310 boards */
+			status = "disabled";
+		};
+
+		mmc2: mmc@4022000 {
+			compatible = "allwinner,sun50i-h713-emmc",
+				     "allwinner,sun20i-d1-mmc",
+				     "allwinner,sun50i-h6-emmc";
+			reg = <0x04022000 0x1000>;
+			clocks = <&ccu CLK_BUS_MMC2>, <&ccu CLK_MMC2>;
+			clock-names = "ahb", "mmc";
+			resets = <&ccu RST_BUS_MMC2>;
+			reset-names = "ahb";
+			pinctrl-names = "default";
+			pinctrl-0 = <&mmc2_pins>, <&mmc2_ds_pin>;
+			vmmc-supply = <&reg_vcc_3v3>;
+			vqmmc-supply = <&reg_vcc_1v8>;
+			bus-width = <8>;
+			non-removable;
+			cap-mmc-hw-reset;
+			mmc-ddr-1_8v;
+			mmc-hs200-1_8v;
+			status = "okay";
+		};
+
+		usb_otg: usb@4100000 {
+			compatible = "allwinner,sun20i-d1-musb",
+				     "allwinner,sun8i-a33-musb";
+			reg = <0x04100000 0x400>;
+			clocks = <&ccu CLK_BUS_OTG>;
+			resets = <&ccu RST_BUS_OTG>;
+			extcon = <&usbphy 0>;
+			phys = <&usbphy 0>;
+			phy-names = "usb";
+			dr_mode = "peripheral";
+			status = "okay";
+		};
+
+		usbphy: phy@4100400 {
+			compatible = "allwinner,sun50i-h713-usb-phy";
+			reg = <0x04100400 0x100>,
+			      <0x04101800 0x100>,
+			      <0x04200800 0x100>;
+			reg-names = "phy_ctrl",
+				    "pmu0",
+				    "pmu1";
+			clocks = <&osc24M>,
+				 <&osc24M>;
+			clock-names = "usb0_phy",
+				      "usb1_phy";
+			resets = <&ccu RST_USB_PHY0>,
+				 <&ccu RST_USB_PHY1>;
+			reset-names = "usb0_reset",
+				      "usb1_reset";
+			#phy-cells = <1>;
+		};
+
+		ehci0: usb@4101000 {
+			compatible = "allwinner,sun50i-h6-ehci", "generic-ehci";
+			reg = <0x04101000 0x100>;
+			clocks = <&ccu CLK_BUS_EHCI0>;
+			resets = <&ccu RST_BUS_EHCI0>;
+			phys = <&usbphy 0>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		ohci0: usb@4101400 {
+			compatible = "allwinner,sun50i-h6-ohci", "generic-ohci";
+			reg = <0x04101400 0x100>;
+			clocks = <&ccu CLK_BUS_OHCI0>, <&ccu CLK_USB_OHCI0>;
+			resets = <&ccu RST_BUS_OHCI0>;
+			phys = <&usbphy 0>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		/* The case's USB-A socket is on port 1 -- stock Android
+		 * enumerates devices under 4200000.ehci1-controller. */
+		ehci1: usb@4200000 {
+			compatible = "allwinner,sun50i-h6-ehci", "generic-ehci";
+			reg = <0x04200000 0x100>;
+			clocks = <&ccu CLK_BUS_EHCI1>;
+			resets = <&ccu RST_BUS_EHCI1>;
+			phys = <&usbphy 1>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		ohci1: usb@4200400 {
+			compatible = "allwinner,sun50i-h6-ohci", "generic-ohci";
+			reg = <0x04200400 0x100>;
+			clocks = <&ccu CLK_BUS_OHCI1>, <&ccu CLK_USB_OHCI1>;
+			resets = <&ccu RST_BUS_OHCI1>;
+			phys = <&usbphy 1>;
+			phy-names = "usb";
+			status = "okay";
+		};
+
+		watchdog: watchdog@2051000 {
+			/*
+			 * Key-protected sun55i register layout (ctrl 0x0c,
+			 * cfg 0x10, mode 0x14, key 0x16aa), hardware-proven;
+			 * NOT the H6/sun6i layout.
+			 */
+			compatible = "allwinner,sun50i-h713-wdt",
+				     "allwinner,sun55i-a523-wdt";
+			reg = <0x02051000 0x20>;
+		};
+	};
+};

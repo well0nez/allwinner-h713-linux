@@ -1,0 +1,29 @@
+NAME           START       SIZE PARTLABEL       PARTTYPE
+mmcblk0              7818182656                 
+mmcblk0p1    73728   33554432 bootloader_a    ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p2   139264   33554432 bootloader_b    ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p3   204800     262144 env_a           ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p4   205312     262144 env_b           ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p5   205824   67108864 boot_a          ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p6   336896   67108864 boot_b          ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p7   467968   33554432 vendor_boot_a   ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p8   533504   33554432 vendor_boot_b   ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p9   599040 2147483648 super           ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p10 4793344   16777216 misc            ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p11 4826112     131072 vbmeta_a        ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p12 4826368     131072 vbmeta_b        ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p13 4826624      65536 vbmeta_system_a ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p14 4826752      65536 vbmeta_system_b ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p15 4826880      65536 vbmeta_vendor_a ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p16 4827008      65536 vbmeta_vendor_b ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p17 4827136     524288 frp             ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p18 4828160   15728640 empty           ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p19 4858880   16777216 metadata        ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p20 4891648   16777216 private         ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p21 4924416    2097152 dtbo_a          ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p22 4928512    2097152 dtbo_b          ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p23 4932608  285212672 media_data      ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p24 5489664   16777216 Reserve0_a      ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p25 5522432   16777216 Reserve0_b      ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+mmcblk0p26 5555200 4973903360 UDISK           ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+15269888

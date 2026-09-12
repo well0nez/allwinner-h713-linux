@@ -1,0 +1,23 @@
+#    Boot    Quelle    MIPS    Panel    hy310-tv  Bemerkung
+1    ok      emmc      ok      ok       active    
+2    ok      emmc      ok      ok       active    
+3    ok      emmc      ok      ok       active    
+4    ok      emmc      ok      ok       active    
+5    ok      emmc      ok      ok       active    
+6    ok      emmc      ok      ok       active    
+7    ok      emmc      ok      ok       active    
+8    ok      emmc      ok      ok       active    
+9    ok      emmc      ok      ok       active    
+10   ok      emmc      ok      ok       active    
+11   ok      emmc      ok      ok       active    
+12   ok      emmc      ok      ok       active    
+13   ok      emmc      ok      ok       active    
+14   ok      emmc      ok      ok       active    
+15   ok      emmc      ok      ok       active    
+16   ok      emmc      ok      ok       active    
+17   ok      emmc      ok      ok       active    
+18   ok      emmc      ok      ok       active    
+19   ok      emmc      ok      ok       active    
+20   ok      emmc      ok      ok       active    
+---
+Ergebnis: 20 von 20 sauber, 0 Abweichungen
