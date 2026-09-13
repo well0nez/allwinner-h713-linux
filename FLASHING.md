@@ -23,18 +23,46 @@ until you have a dump of what was there before.
 - Your public SSH key. Without it the installed system has **no** SSH access, only the serial console:
   the image deliberately ships no key.
 
+## Getting the files together
+
+From a release you need two things: **this repository** (the installer lives in `installer/`) and **the
+release files**. Put all release files into one folder; the installer finds the image parts next to the
+table.
+
+```bash
+git clone https://github.com/well0nez/allwinner-h713-linux.git
+mkdir ~/hy310-v0.5-beta && cd ~/hy310-v0.5-beta
+#   download every file of the v0.5-beta release into this folder, then:
+zstd -d *.img.zst
+sha256sum -c h713-hy310-v0.5-beta.sha256
+chmod +x sunxi-fel
+```
+
+The folder then holds the three `.img` parts, `h713-hy310-v0.5-beta.tabelle.json`, `u-boot-installer.bin`
+(the U-Boot that exposes the eMMC over USB) and `sunxi-fel` (the FEL tool, built with the H713 trap door —
+the stock `sunxi-fel` from your distribution does **not** work here). `sunxi-fel` needs `libusb-1.0` on your
+PC; on Debian and Ubuntu that is `apt install libusb-1.0-0`.
+
+If you built the image yourself with `release/build-all.sh`, the same files are in `installer/out/` and
+`mainline/build/out/`.
+
 ## The four steps
 
 ```bash
 # 1. put the device into FEL: hold the reset button, then plug in power
 # 2. run the installer (it loads U-Boot over USB — nothing is written yet)
-installer/hy310-install.py \
-    --abbild out/h713-hy310-v0.5-beta.tabelle.json \
+sudo allwinner-h713-linux/installer/hy310-install.py \
+    --abbild   ~/hy310-v0.5-beta/h713-hy310-v0.5-beta.tabelle.json \
+    --uboot    ~/hy310-v0.5-beta/u-boot-installer.bin \
+    --sunxi-fel ~/hy310-v0.5-beta/sunxi-fel \
     --authorized-key ~/.ssh/id_ed25519.pub \
     --abzug voll --sicherung ~/hy310-dump
 # 3. it dumps, extracts your device's own files, fills the image, writes it, verifies
 # 4. power off, power on — and press the power key
 ```
+
+`sudo` because it writes a block device. The dump and the filled copy of the image land in `~/hy310-dump`
+— about 8.5 GB with the full dump.
 
 U-Boot exposes the eMMC as a normal USB drive; that is how the PC reads and writes it. The only way out
 of that mode is a power cycle, which is also the end of the procedure.
