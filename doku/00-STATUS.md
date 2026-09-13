@@ -1,5 +1,14 @@
 # H713-Projekt — Status
 
+**Stand 13.09.2026, nachts — `v0.5-beta` ist veröffentlicht.**
+https://github.com/well0nez/allwinner-h713-linux/releases/tag/v0.5-beta — Standardzweig `main`, dein alter Stand
+als `legacy` + Tag `legacy-arm32-2026-08`, die drei Forks öffentlich. Auf dem Gerät läuft genau das Release-Abbild
+(am 13.09. eingespielt und über den eigenen AP geprüft). Der Weg dahin, Phase für Phase mit Haken und Stolpersteinen:
+[`116`](116-plan-release-repo.md) §4a P1–P8; die englische Doku und ihre Prüfläufe: [`117`](117-plan-p5-doku.md).
+**Offen und als Nächstes sinnvoll** ([`61-todo`](61-todo.md)): Installer vereinfachen (`.zst` direkt lesen,
+Werkzeuge neben der Tabelle finden, Pflichtabzug überspringen), alle Werkzeuge ins Englische (deutsche Aliasse
+bleiben), `ping`/`curl` ins Rootfs, Fotos für die README, die formale 20er-Gate-Reihe mit Ruhefenster.
+
 **Stand 11.09.2026, abends.** Einstiegsseite: was läuft, wie man es bedient, wo was liegt, was offen ist.
 Der letzte Übergabestand steht in [`111-handoff-20260910-abend.md`](111-handoff-20260910-abend.md); was seitdem
 passiert ist, steht hier im Kopf und in [`60-offen.md`](60-offen.md). **Wer neu einsteigt, liest 111 und dann 60.**
