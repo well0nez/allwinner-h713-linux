@@ -179,7 +179,7 @@ Skript: **`release/repo-skelett.sh [--ziel DIR] [--neu]`** → `repo-neu/` (unte
 - ☐ P7.4 Push: `legacy` + Tag `legacy-arm32-2026-08` + `main` nach `well0nez/allwinner-h713-linux` (kein Force nötig, `main` sitzt auf dem alten Stand auf), danach **Standardzweig auf `main`**. U-Boot-Fork `h713-hy310` pushen, Standardzweig setzen.
 - ☐ P7.5 Vor dem Push: **neu bauen**, damit die eingebaute U-Boot-Kennung wieder zum Commit passt (`-g4091ea68c06`), Sperr-Scan, Tag `v0.5-beta`, Assets (drei Abbildteile, Tabelle, Installer).
 
-### P8 — Haken kommen, wenn die Phase beginnt.
+
 
 ## 5. Der Installer — was am Nutzerweg noch fehlt
 
@@ -252,6 +252,27 @@ ohne Objekte trifft — die Falle von heute Nachmittag.
   Kabelnetz unberührt): Kernel vom 12.09. 23:35 UTC, U-Boot auf der eMMC `2026.07-rc5-g4091ea68c062`,
   `h713_gate=1`, `h713_boot=emmc`, `fan_stall_shutdown=Y`, `h713-tv` läuft. **Das veröffentlichte Abbild ist
   am Gerät gestartet.**
-- ☐ Nachtrag-Commit in `repo-neu` (FLASHING-Transkript, ROADMAP, `61-todo`, Aufnahme im Fahrer) — auf `150d70c`
-  obenauf, damit der Commit im Stempel in der veröffentlichten Historie steht.
-- ☐ Veröffentlichen.
+- ☑ Nachtrag-Commits auf `150d70c` obenauf (`3863ebe` Doku/Transkript, `48f2108` FLASHING-Dateiablage), damit
+  der Commit aus dem Stempel in der veröffentlichten Historie steht.
+- ☑ **Veröffentlicht, 13.09. ~02:40:** TF-A und sunxi-tools öffentlich; U-Boot-Fork `h713-hy310` gepusht und
+  Standard; Hauptrepo `legacy`, Tag `legacy-arm32-2026-08`, `main` gepusht, Standard `main` (`master` bleibt);
+  alle drei Submodul-Pins von außen als Zweigköpfe erreichbar. **Release `v0.5-beta`** (Vorabversion) auf Tag
+  → `150d70c`: https://github.com/well0nez/allwinner-h713-linux/releases/tag/v0.5-beta
+- ☑ **Beinahe-Panne beim Upload, und was daraus wurde:** Marco erschrak („da wären doch meine Keys drin") —
+  ich habe das Release sofort auf Entwurf zurückgestellt und die hochgeladenen Dateien geprüft: Secure Storage
+  liegt im Loch (in keiner Datei), einziger `hdcpkey`-Treffer ist der Quelltext von `h713-hdcp-key`, SSH-Schlüssel
+  0 Treffer, **0 von 34** Vendor-Dateien im Abbild. Dabei zwei echte Mängel gefunden und behoben:
+  (1) **1,15 GB roh, 94 % Nullen** → Abbilder als `.zst` (56 MiB), Rundreise gegen die Prüfsummen belegt;
+  (2) **ein Nutzer hätte nicht installieren können** — `u-boot-installer.bin` und das Falltür-`sunxi-fel` fehlten
+  im Release, und nirgends stand, wohin die Dateien gehören. Beide jetzt als Assets, FLASHING hat einen Abschnitt
+  „Getting the files together" mit Ordner und genauem Befehl. Hochgeladene `.zst` per Download gegengeprüft.
+- Lehre: ein Release-Artefakt zuerst **aus Sicht eines Fremden** durchgehen, der nur die Release-Seite sieht —
+  nicht aus Sicht dessen, der den Baum kennt.
+
+### P8 — an cstenger (13.09.)
+- ☑ **Issue statt PRs** — cstenger ist seit dem 22.08. still, bei ihm liegen drei Issues und zwei U-Boot-PRs von
+  Marco ohne Reaktion. PRs hätten einen Fork, übersetzte Patchköpfe und Zurechtschneiden auf seinen Stand
+  gekostet, für etwas, das liegen bleibt. Ein Issue macht die Fehler für Nutzer seines Baums auffindbar:
+  https://github.com/cstenger/allwinner-h713-mainline/issues/4 — pinctrl-IRQ-Bänke (`0143`/`0144`),
+  cpu_comm-Knoten (`0024a`), U-Boot-Env-Offset ≥ 2 GiB (`uboot-h713/0022`), dazu `0024b`, `0078a`,
+  `build.sh`-Kommentarzeilen. Angebot, sie auf Wunsch als PRs aufzuteilen. Text: `analyse/release/arbeit/p8-issue-cstenger.md`.
