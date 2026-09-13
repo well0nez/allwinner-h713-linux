@@ -1,6 +1,7 @@
 # H713-Projekt — Status
 
-**Stand 13.09.2026, nachts — `v0.5-beta` ist veröffentlicht.**
+**Stand 13.09.2026 — `v0.5-beta` ist veröffentlicht. Wer neu einsteigt: zuerst [`118-handoff-20260913.md`](118-handoff-20260913.md)** (besonders §2: `repo-neu` ist seither das veröffentlichte Repo).
+
 https://github.com/well0nez/allwinner-h713-linux/releases/tag/v0.5-beta — Standardzweig `main`, dein alter Stand
 als `legacy` + Tag `legacy-arm32-2026-08`, die drei Forks öffentlich. Auf dem Gerät läuft genau das Release-Abbild
 (am 13.09. eingespielt und über den eigenen AP geprüft). Der Weg dahin, Phase für Phase mit Haken und Stolpersteinen:
