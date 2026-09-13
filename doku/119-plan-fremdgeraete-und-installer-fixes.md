@@ -70,10 +70,10 @@ für die Verifikation; posten wird ihn dann niemand versehentlich.
 - ☑ B1, B3, B4 gefixt in `analyse/release/arbeit/r0-fel/hy310-install.py`, offline geprüft: B1 akzeptiert
   distro-`(unknown)` (ID 0x1860) mit Hinweis und lehnt fremde SoC ab; B3 meldet bei `--nur-abzug` eine Warnung
   statt „FEHLER … kein Weiter"; B4 zeigt für `secure-storage`/`private` „gesichert (Hash im Manifest)" statt des
-  Hashes. Noch **nicht** nach `repo-neu`/`main` — Marcos Freigabe.
-- ☐ Antwort an #1 überarbeiten: Angebot eines gemeinsamen HY300-Pro-Profils (A), plus „die zwei Installer-Fehler
-  sind gefixt". Marco gibt sie frei.
+  Hashes. Gepusht nach `main` als `96e2188`.
+- ☑ Antwort an #1 gepostet (13.09.): Kooperationsangebot in drei Stufen, ausdrückliches „nicht flashen", Bitte,
+  den Abzug nie hochzuladen. https://github.com/well0nez/allwinner-h713-linux/issues/1#issuecomment-5655638816
 - ☐ B2 + A2: `mkimage`/`abzug_klein` lesen Layout aus der GPT. Braucht Gegenprobe an unserem Gerät (unser Abzug
   muss byteidentisch bleiben) und danach an seinem Abzug (nur lesen).
 - ☐ `h713-extract`-Profil `hy300pro` aus seinen Hashes.
-- ☐ Fixes nach `repo-neu` und `push origin main` (kein neues Release nötig; Installer wird geklont).
+- ☑ Fixes nach `main` gepusht (kein neues Release nötig; der Installer wird geklont).
