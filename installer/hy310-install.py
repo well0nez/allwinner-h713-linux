@@ -486,8 +486,14 @@ def abzug_klein(platte, ziel, log=K, unser_layout=False):
         if ist_leer:
             leer.append(name)
         manifest.append((name, lba, sektoren, h, zweck + (" [leer]" if ist_leer else "")))
+        # Der Hash geht ins Manifest (Verifikation), aber NICHT auf den Schirm:
+        # der von secure-storage/private ist ein Fingerabdruck des Geraets, den
+        # Nutzer sonst in Logs posten (Issue #1). Leere Bereiche haben nichts
+        # Geheimes -- da darf er stehen bleiben.
+        geheim = name in ("secure-storage", "private") and not ist_leer
         log.ok("%-16s LBA %-8d %5.1f MiB  %s%s"
-               % (name, lba, mib(len(daten)), h[:16] + "…",
+               % (name, lba, mib(len(daten)),
+                  "gesichert (Hash im Manifest)" if geheim else h[:16] + "…",
                   "  (leer)" if ist_leer else ""))
     if leer:
         log.warn("Leer und damit ohne Inhalt: %s." % ", ".join(leer))
@@ -1032,9 +1038,15 @@ def main(argv=None):
             K.fehler("Immer noch nichts. Steckt das A-auf-A-Kabel?")
             return 1
     K.ok(kennung.split("\n")[0])
-    if "H713" not in kennung:
-        K.fehler("Das ist kein H713. Abbruch.")
+    # An der SoC-ID pruefen, nicht am Namen: der Name in soc=00001860(<name>)
+    # kommt aus der sunxi-fel-Tabelle und fehlt bei aelteren Staenden ("unknown").
+    # 0x1860 ist der H713 (Issue #1: distro-sunxi-fel meldete "(unknown)").
+    if "00001860" not in kennung:
+        K.fehler("Das ist kein H713 (SoC-ID 0x1860 nicht gefunden). Abbruch.")
         return 1
+    if "1860(H713)" not in kennung and "(sun50iw12" not in kennung:
+        K.warn("sunxi-fel kennt diesen SoC nicht beim Namen -- nimm das "
+               "sunxi-fel aus dem Release, sonst scheitert der naechste Schritt.")
 
     # --- 2. Laufwerksfreigabe
     K.schritt(2, "eMMC als USB-Laufwerk freigeben")
@@ -1078,7 +1090,7 @@ def _arbeiten(args, pfad):
         if not args.ohne_erkennung:
             K.schritt("1b", "Geraet erkennen")
             erk = geraet_erkennen(platte, args.extraktor)
-            if not geraet_melden(erk) and schreiben:
+            if not geraet_melden(erk, schreibt=schreiben) and schreiben:
                 return 10
         if platte.sektoren != SECTORS_EXPECTED:
             K.fehler("%s hat %d Sektoren, erwartet %d -- falsches Laufwerk?"
@@ -1572,9 +1584,13 @@ def _fingerprint_deuten(fp):
     return version, datum
 
 
-def geraet_melden(erk, log=K):
+def geraet_melden(erk, log=K, schreibt=True):
     """Die Erkennung im Klartext ausgeben. Rueckgabe: darf weitergeschrieben
-    werden? (Plan 110 §8, Punkte 3 bis 5)"""
+    werden? (Plan 110 §8, Punkte 3 bis 5)
+
+    schreibt=False (--nur-abzug/--dry-run): eine unbekannte Firmware ist dann
+    kein Abbruchgrund, sondern eine Notiz -- gelesen wird ohnehin nichts
+    veraendert (Issue #1: die Meldung klang nach Abbruch und lief dann weiter)."""
     if erk["layout"] and not erk["layout"].startswith("Stock-Layout"):
         log.ok("%s -- kein Android mehr, nur der Abzug ist sinnvoll" % erk["layout"])
         return True
@@ -1589,7 +1605,13 @@ def geraet_melden(erk, log=K):
     if erk["bekannt"]:
         log.ok("%s erkannt -- Android %s, Stand %s" % (erk["geraet"], version, datum))
         return True
-    log.fehler("Unbekannte Firmware: Android %s, Stand %s." % (version, datum))
+    if not schreibt:
+        log.warn("Unbekannte Firmware: Android %s, Stand %s -- es wird nur "
+                 "gelesen, nichts geschrieben." % (version, datum))
+        log.info("  Bitte die Kennungszeile oben melden, dann kommt das Geraet")
+        log.info("  in die Tabelle (github.com/well0nez/allwinner-h713-linux).")
+        return True
+    log.fehler("Unbekannte Firmware: Android %s, Stand %s -- kein Schreiben." % (version, datum))
     log.info("  Die Fundstellen einer fremden Version zu raten, kostet im")
     log.info("  schlimmsten Fall den Secure Storage -- deshalb kein Weiter.")
     log.info("  Bitte die Kennungszeile oben melden, dann kommt sie in die Tabelle.")
