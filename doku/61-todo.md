@@ -99,7 +99,7 @@ Diese Datei sammelt keine Geschichte.
 | ☐ | **Standby Stufe 2** (ARISC-Deep-Sleep, IR/CEC): <1 W statt 4 W, Sofort-an. RE-Vorarbeit fertig | [`104`](104-plan-standby-stufe2.md) |
 | ☐ | **Preset beim Start wählbar** (`preset = NAME \| zuletzt` in `/etc/h713/tv.conf`) und die einzelnen Regler über den Neustart merken | [`60`](60-offen.md) §Bildpfad |
 | ☐ | **`h713-tv` Startmodus `auto\|manuell`** merken; heute startet der Dienst immer in `auto` | dito |
-| ☐ | **`sunxi-tvtop` + `sunxi-nsi`** einzeln hochfahren, an einem Punkt wo der Bildpfad sonst stabil ist. Hängt mittelbar an Standby-Rückkehr und HDCP 1.4 | [`60`](60-offen.md) §Module aus dem Altbestand |
+| ☐ | **`sunxi-tvtop` + `tvfe` + `sunxi-nsi`** einzeln hochfahren, an einem Punkt wo der Bildpfad sonst stabil ist. Hängt mittelbar an Standby-Rückkehr und HDCP 1.4 | [`60`](60-offen.md) §Module aus dem Altbestand |
 | ☐ | **AV1-Dekoder**: erst feststellen, ob das RE-Stand oder lauffähiger Stand ist, dann einreihen. H713 ist der erste Allwinner mit AV1-Hardware | dito |
 | ☐ | **Bitgleiche Bauten**: derselbe Stand aus zwei Verzeichnissen liefert verschiedene SPL/U-Boot/FIT/`aic8800_fdrv.ko` — eingebettete **Bauzeit** (TF-A `Built : …`, U-Boot-Kennung, FIT-`timestamp`) und **Baupfad** (`__FILE__` in `aic8800_fdrv.ko`); gemessen 12.09., P3.9. Mittel: `KBUILD_BUILD_TIMESTAMP`, `-ffile-prefix-map`, `mkimage -t` fest. Erst nach v0.1 | [`116`](116-plan-release-repo.md) §4a P3.9 |
 | ☐ | **Autofokus** — darf nur mit Testbild laufen, sonst misst er auf einer dunklen Szene Unsinn. Eigenes Werkzeug, nicht in `h713-focus` | [`h713-focus/README`](../userspace/h713-focus/README.md) |
