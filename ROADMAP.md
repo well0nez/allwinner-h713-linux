@@ -42,7 +42,7 @@ Less exciting, and the part that decides whether anyone else can use this.
 | **Windows** | The installer is written to run there and refuses nothing, but nobody has ever run the Windows path. Until someone does, it is untested, not supported. |
 | **Reproducible builds** | Two builds of the same source differ: TF-A, U-Boot and the FIT embed a build time, the Wi-Fi module embeds kernel header paths. Fixable with `KBUILD_BUILD_TIMESTAMP`, `-ffile-prefix-map` and a fixed `mkimage -t`. |
 | **A second pair of eyes on the safety paths** | The fan-stall poweroff is armed (see STATUS). The gate, the recovery path and the installer's refusals deserve someone who did not write them trying to break them. |
-| **English tooling** | The documentation is English; the tools still speak German on the command line (`--trocken`, `--abzug`, replies `ok`/`fehler`). Aliases or a rename — undecided. |
+| **English tooling** | The documentation is English; the tools still speak German on the command line (`--trocken`, `--abzug`, replies `ok`/`fehler`). Decided: everything moves to English, with the German switches kept as aliases so existing scripts keep working. Not done yet. |
 | **Pictures** | There is a video of the HDMI input running (linked from the README). Still photographs — the projected picture, the board, the UART pads — will follow. A recording of the install from FEL to first boot is still missing. |
 
 ## Upstreaming

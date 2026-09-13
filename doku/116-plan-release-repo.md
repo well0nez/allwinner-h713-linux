@@ -240,3 +240,18 @@ ohne Objekte trifft — die Falle von heute Nachmittag.
 4. Hauptrepo: `legacy` + Tag `legacy-arm32-2026-08` + `main` pushen, Standardzweig `main`,
    dann Release `v0.5-beta` mit den drei Abbildteilen, Tabelle, sha256 und `.BUILD.txt`
    (im Stempel vorher `repo repo-neu:` → `repo:` korrigieren, falls der Bau noch die alte Zeile schreibt)
+
+### P7, 13.09. nachts — Release-Abbild gebaut und am Gerät gestartet
+- ☑ Skelett neu erzeugt (843 Dateien, Sperr-Scan leer, Arbeitsadresse nirgends), dann **Release-Bau aus dem
+  Klon**: 20 min 30 s, **Selbsttest mit Vendor-Dateien ALLES GRÜN**, Stempel `repo: 150d70c (0 lokale
+  Änderungen)`, U-Boot `-g4091ea68c062`, bl31 45 164 Byte. Assets gesichert nach `analyse/release/arbeit/p7-assets/`.
+- ☑ **Genau dieses Abbild** über FEL (Reset-Taste, fremdes Netz — kein Heimnetz nötig) eingespielt, rc=0 in
+  184 s, Secure Storage unverändert, **mit Aufnahme** (`analyse/release/arbeit/p7-aufnahme/`, 178 s, abspielbar
+  mit `scriptreplay`).
+- ☑ Nach Stromzyklus + Taste über den **eigenen AP des Beamers** geprüft (Rechner-WLAN mit `never-default`,
+  Kabelnetz unberührt): Kernel vom 12.09. 23:35 UTC, U-Boot auf der eMMC `2026.07-rc5-g4091ea68c062`,
+  `h713_gate=1`, `h713_boot=emmc`, `fan_stall_shutdown=Y`, `h713-tv` läuft. **Das veröffentlichte Abbild ist
+  am Gerät gestartet.**
+- ☐ Nachtrag-Commit in `repo-neu` (FLASHING-Transkript, ROADMAP, `61-todo`, Aufnahme im Fahrer) — auf `150d70c`
+  obenauf, damit der Commit im Stempel in der veröffentlichten Historie steht.
+- ☐ Veröffentlichen.

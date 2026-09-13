@@ -43,6 +43,50 @@ The installer types nothing for you: before it writes, it asks you to type `JA`.
 if it does not recognise the device, so a stranger's firmware cannot be guessed at (`--ohne-erkennung`
 exists for development and is exactly as dangerous as it sounds).
 
+## What a successful run looks like
+
+A real install from 2026-09-12, onto a device that was running stock Android. Checksums of the secure storage
+are cut out, paths shortened; nothing else is changed. The installer still talks German — the steps are
+numbered, and `OK` and `!` mean what they look like.
+
+```
+hy310-install 0.1   (Linux)
+[1] Geraet im FEL-Modus suchen
+  OK AWUSBFEX soc=00001860(H713) ...
+[2] eMMC als USB-Laufwerk freigeben
+  laedt U-Boot fluechtig -- kein Byte auf die eMMC
+  OK /dev/sda, 15269888 Sektoren (7,28 GiB)
+[1b] Geraet erkennen
+  OK HY310 erkannt -- Android 11, Stand 24.07., 10:19 Uhr (Projector07241019)
+[3] Abzug ziehen (klein)
+  OK secure-storage   LBA 12288      1.0 MiB  …
+  OK private          LBA 4891648   16.0 MiB  …
+  OK reserve0-a       LBA 5489664   16.0 MiB  …
+  OK reserve0-b       LBA 5522432   16.0 MiB  …
+  OK Sicherung liegt in ~/hy310-dump
+[4] Abbild pruefen (h713-hy310-v0.5-beta)
+  OK h713-hy310-v0.5-beta-a-bootkette.img LBA 0             6291456 Byte  sha256 ok
+  OK h713-hy310-v0.5-beta-b-system.img  LBA 14336      1209008128 Byte  sha256 ok
+  OK h713-hy310-v0.5-beta-c-gptkopie.img LBA 15269855        16896 Byte  sha256 ok
+  Loch bei LBA 12288..14335 (hy310-keys) -- bleibt unberuehrt
+[5] Die geraeteeigenen Dateien einsetzen (43 Platzhalter)
+  OK 43 Dateien aus ~/hy310-dump/extract
+  OK authorized_keys: 1 Schluessel aus ~/.ssh/id_ed25519.pub
+  OK 44 Platzhalter gefuellt und zurueckgelesen -- alle gleich
+[6] Auf die eMMC schreiben
+  ! Das ueberschreibt die eMMC.
+  Zum Fortfahren JA eintippen: JA
+  OK alles geschrieben in 3 min
+[7] Zurueckvergleichen
+  OK Stichproben stimmen
+  OK Secure Storage unveraendert (byteweise gegen den Abzug verglichen)
+  Fertig. Strom abziehen und wieder einstecken.
+```
+
+Three minutes of writing, a few seconds for everything else. Step `[1b]` is the check that refuses a
+device it does not recognise; step `[7]` compares the secure storage byte by byte against the dump taken in
+step `[3]`, so you know it was not touched.
+
 ## After the first boot
 
 Plug in power, then press the power key — the same as with the stock firmware. Until you press it the
