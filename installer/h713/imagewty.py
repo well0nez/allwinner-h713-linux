@@ -48,6 +48,10 @@ class Imagewty:
         if diff[:4] * 16 == diff:
             log.info("Bereich 0x60..0x3ff: Füllmuster n² mod 256 (kein Chiffrat, keine Nutzdaten)")
         self.entries: dict[str, dict] = {}
+        #: name -> every copy of it in the file table, in table order (stage 2 C-C).
+        #: `entries[name]` stays the first one; A1 found boot-resource.fex twice in the
+        #: HY310 and the HY350 image (one entry per slot), byte-identical.
+        self.copies: dict[str, list[dict]] = {}
         tab = 0x400
         for i in range(self.num_files):
             e = q.read(tab + i * 0x400, 0x400)
@@ -70,8 +74,10 @@ class Imagewty:
                 log.warn(f"IMAGEWTY: {fn}: Offset {off:#x} + {stored} überschreitet das Image oder original>stored")
             self.entries.setdefault(fn, {"name": fn, "maintype": maintype, "subtype": subtype,
                                          "offset": off, "stored": stored, "original": original})
+            self.copies.setdefault(fn, []).append({"offset": off, "stored": stored,
+                                                   "original": original})
         log.info("Dateien: " + ", ".join(self.entries))
-        end = max((e["offset"] + e["stored"] for e in self.entries.values()), default=0)
+        end = max((c["offset"] + c["stored"] for cs in self.copies.values() for c in cs), default=0)
         log.info(f"letzte Nutzdaten enden bei {end:#x} ({end} B); Kopf image_size {self.image_size}, Datei {q.size}")
         if end > q.size:
             log.warn(f"Image abgeschnitten: Nutzdaten reichen bis {end}, Datei hat nur {q.size} B")
@@ -84,6 +90,15 @@ class Imagewty:
         if not e:
             return None
         return self.q.sub(e["offset"], e["original"], f"{name} (im Image @{e['offset']:#x})")
+
+    def file_copies(self, name: str) -> list:
+        """Every copy of `name` as a source, in file-table order.
+
+        `file()` returns the first one and stays what every caller uses; whoever writes
+        the file compares the copies first (stage 2 C-C, `h713.stock._check_copies`).
+        """
+        return [self.q.sub(c["offset"], c["original"], f"{name} (im Image @{c['offset']:#x})")
+                for c in self.copies.get(name, [])]
 
 
 class SunxiPackage:

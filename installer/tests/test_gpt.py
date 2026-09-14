@@ -15,12 +15,17 @@ RAW_TARGETS = [("boot0_sdcard.fex", 16), ("boot0_sdcard.fex", 256),
 
 # frozen 2026-09-14 from hy310-install.py 0.1: board -> (partitions in the plan,
 # entries the GPT header claims, digest over {lba: sha256} of every block that
-# stock_gpt_bauen() returns).  hy300-t08 and hy350 have 25 partitions and still
-# get 26 in the header -- known bug, stage 2 C4.
+# stock_gpt_bauen() returns).  The header now counts the partitions the image
+# declares (stage 2 C-C); the HY310 is unchanged, the two ADT-3 images say 25.
 STOCK_TABLES = {
     "hy310": (26, 26, "489a8bb587d54005deb71b986af663293253fbf9e35586c2840410852b365c89"),
-    "hy300-t08": (25, 26, "25592ab888978c74d4b18240aab7645215aadee82131f8f5e2ab063806e06ff5"),
-    "hy350": (25, 26, "1e2f50117d3a4d2bf5dac357e596388ece25c133267c4c54e88e29ab22938438"),
+    # was (25, 26, "25592ab888978c74d4b18240aab7645215aadee82131f8f5e2ab063806e06ff5")
+    # until stage 2 C-C: header entry count 26 -> 25, so header CRC and entry-array CRC
+    # change; the 3584 bytes of the table itself and both backup LBAs stay as they were.
+    "hy300-t08": (25, 25, "f792beb10954580aa5ea6a54878afd9de9c476de0f8acaa7ff570f62e77f1604"),
+    # was (25, 26, "1e2f50117d3a4d2bf5dac357e596388ece25c133267c4c54e88e29ab22938438")
+    # until stage 2 C-C, same reason.
+    "hy350": (25, 25, "c22638d4733b908ca3b96dc0ac52cd6d71edfc05bcdcd3202deb6ec03c080c7f"),
 }
 # frozen 2026-09-14 from hy310-mkimage.py 0.1, gpt_bauen() with its defaults
 V3_TABLE = "487390f31e556d2476f7ff3904aeb417179f9142858c503ff58ee5073af18ea8"
@@ -50,7 +55,7 @@ class StockTable(unittest.TestCase):
             self.assertEqual(sorted(gpt), BLOCK_LBAS, board)
             self.assertEqual(_blocks(gpt), want, board)
             self.assertEqual(struct.unpack_from("<I", gpt[1], 80)[0],
-                             n_header, board)            # known bug, stage 2 C4
+                             n_header, board)            # = len(partitions), stage 2 C-C
             if board == "hy310":       # byte for byte the table read off Marco's
                 support.need([fakedisk.STOCK_GPT])
                 with open(fakedisk.STOCK_GPT, "rb") as fh:

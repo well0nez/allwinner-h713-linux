@@ -10,22 +10,36 @@ import fakedisk
 
 # frozen 2026-09-14 from hy310-install.py 0.1 with h713-extract 0.4 as the
 # IMAGEWTY reader: board -> (bytes it would write, partitions, entries the GPT
-# header claims, digest of the plan, digest of the screen output, regions it
-# must leave alone).  25 partitions and still 26 entries in the header on the
-# two ADT-3 images -- known bug, stage 2 C4.
+# header claims, digest of the plan, digest of the screen output, partitions it
+# must leave alone).  Stage 2 C-C re-froze three of the six columns per board;
+# the partition list (fourth column) is untouched by the change.
+#
+#   bytes    : the head of every partition the image brings no file for used to be
+#              zeroed. Now the preserve list keeps some of them, and their bytes are
+#              gone from the total (see the comment per board).
+#   entries  : the header counts the partitions of the image (was 26 for all three).
+#   screen   : the "left untouched" lines are new English text, and the two boards
+#              whose image carries boot-resource.fex twice say so in its line.
 PLANS = {
-    "hy310": (2540453376, 26, 26,
+    # C-C froze 2473344512 with UDISK kept; UDISK is zeroed again, so it is the v0.5-beta value (Fable).
+    "hy310": (2540453376, 26, 26,   # UDISK head zeroed again (Fable, C-C review): the v0.5-beta value
               "3724361e2b0fe97e424ca06d3e2f720e3dc40d8fb964800ab3f2f09cc57fee6d",
-              "9b17ac15fd4b6ec8d3d5579c391095e4fd2507a5bbe550e114ae4b2727b496a3",
-              ("private", "Reserve0_b")),
-    "hy300-t08": (3630279680, 25, 26,
+              # was 9b17ac15fd4b6ec8d3d5579c391095e4fd2507a5bbe550e114ae4b2727b496a3
+              "9c23724640b10a0aee8ae38eb0ae457ce30a2631aafb13f54bf3b019ee9224b6",   # screen: was e3e06cd9… with UDISK kept (C-C); UDISK zeroed again (Fable)
+              ("private", "Reserve0_b")),   # UDISK zeroed again, not kept (Fable, C-C review)
+    # was 3630279680: bootloader_b (32 MiB), media_data (16 MiB) and UDISK (64 MiB)
+    # are no longer zeroed. Header was 26.
+    "hy300-t08": (3579948032, 25, 25,   # + 64 MiB UDISK head (Fable, C-C review)
                   "60d972f2be80db5c09df5ad030414232203ddc48e5001b605cbd54329cc74a0a",
-                  "2185216886c954f1e64034d8a73dc959a68bf5b2b9a8bec9feaae753c3609f85",
-                  ("private",)),
-    "hy350": (3083081728, 25, 26,
+                  # was 2185216886c954f1e64034d8a73dc959a68bf5b2b9a8bec9feaae753c3609f85
+                  "0f9828bd72409b94b04a268f3807c015816b6f88ee5b9a1fdaa4653ce9ae555b",   # screen: was 3f9c2ed9… with UDISK kept (C-C); UDISK zeroed again (Fable)
+                  ("private", "media_data", "bootloader_b")),   # UDISK zeroed again, not kept (Fable, C-C review)
+    # was 3083081728: media_data (16 MiB) and UDISK (64 MiB). Header was 26.
+    "hy350": (3066304512, 25, 25,   # + 64 MiB UDISK head (Fable, C-C review)
               "8aa4daa85514b87c6baf745a3d71c7662a81ca82ea2e8a9557fde2f199bcbae3",
-              "9627ad2496f8f7675e40906913f83f25208b3eba2b94b806eec36263a7278c85",
-              ("private",)),
+              # was 9627ad2496f8f7675e40906913f83f25208b3eba2b94b806eec36263a7278c85
+              "c9c27ed2791601fc534e95155c77f2dd61e9e9b418b0edd3baaee8aa1d9d849f",   # screen: was e03021d9… with UDISK kept (C-C); UDISK zeroed again (Fable)
+              ("private", "media_data")),   # UDISK zeroed again, not kept (Fable, C-C review)
 }
 
 
@@ -54,9 +68,10 @@ class RestorePlan(unittest.TestCase):
         self.assertEqual(support.digest(log.lines), screen, board)
         gpt = inst.stock_gpt_bauen(partitions, fakedisk.DISK_SECTORS)
         self.assertEqual(struct.unpack_from("<I", gpt[1], 80)[0],
-                         want_entries, board)            # known bug, stage 2 C4
+                         want_entries, board)            # = len(partitions), stage 2 C-C
         for name in kept:
-            self.assertIn("  %-16s bleibt unangetastet" % name, log.text, board)
+            self.assertIn("  %-16s left untouched" % name, log.text, board)
+            self.assertNotIn("-> %-16s" % name, log.text, board)
         self.assertEqual(fakedisk.journal(disk), before,
                          "%s: the dry run changed the disk" % board)
 

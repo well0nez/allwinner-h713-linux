@@ -18,7 +18,12 @@ import fakedisk
 # normalised stdout).  Normalisation replaces the temp directory, the device and
 # the image path, and the platform name; nothing else in these runs varies.
 DUMP_ONLY = (0, 29, "22bef032ae8372bc190b5e494e8e9438816950b9dbb286996e7ca77dba5e667e")
-RESTORE_STOCK = (0, 50, "da0ecc92e5649f29597bd72ca1da1fabe6954f0c756d1d068c9c5d13189f305c")
+# was (0, 50, "da0ecc92e5649f29597bd72ca1da1fabe6954f0c756d1d068c9c5d13189f305c") until
+# stage 2 C-C: still 50 lines, but UDISK's line turned from "genullt" into the new
+# English "left untouched", private/Reserve0_b say who keeps them, and the two
+# boot-resource.fex lines note the second copy in the container.
+# C-C froze "3f61d6c1…" with UDISK in the default preserve list; UDISK is zeroed again (Fable, C-C review):
+RESTORE_STOCK = (0, 50, "f89c3e441d75135c64456705eabaf4c5353ce28dabdec94e20b3467077aaef8c")
 
 
 class InstallerDryRun(unittest.TestCase):
