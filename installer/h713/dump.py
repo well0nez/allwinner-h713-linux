@@ -387,12 +387,13 @@ def write_manifest(directory, manifest, device):
             "What lies here:\n%s\n"
             "Restoring (put the device into FEL mode first: hold reset,\n"
             "plug the power in):\n\n"
-            "    h713-install restore emmc-voll.img --uboot <u-boot.bin>\n\n"
+            "    h713-install restore emmc-full.img --uboot <u-boot.bin>\n\n"
             "The single .bin files are raw regions of the eMMC. They stand in no\n"
             "firmware image -- without them the device loses HDCP, its MAC\n"
             "addresses and its serial number. Keep them well.\n"
             % (data["created"], VERSION,
-               "".join("  %-18s %s\n" % (t["name"] + ".bin", t["purpose"])
+               "".join("  %-18s %s\n" % (t["name"] + (".img" if t["name"] == "emmc-full" else ".bin"),
+                                           t["purpose"])
                        for t in data["regions"])))
         if saved:
             f.write("\nDisplay firmware:\n%s"

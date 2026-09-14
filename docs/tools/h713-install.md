@@ -54,14 +54,15 @@ tail on. Exit codes are listed in `h713-install --help`.
 
 ## The two dump sizes
 
-Both land in one directory — `hy310-sicherung` unless `-o`/`--dump` says otherwise — with `MANIFEST.json`
-and a `README.txt` naming every file and the command that puts it back. Those names are read back by the
-install path and are unchanged here. Only the full dump is a way back to Android.
+Both land in one directory — `h713-dump` unless `-o`/`--dump` says otherwise — with `MANIFEST.json`
+and a `README.txt` naming every file and the command that puts it back. A dump made by v0.5-beta keeps
+working: where `emmc-full.img` or `extract/` is missing, the tool reads the old `emmc-voll.img` / `extrakt/`
+and says so. Only the full dump is a way back to Android.
 
 | Size | What it holds | Cost |
 |---|---|---|
 | `--small` | secure storage, `private` and `Reserve0*` as the device's own partition table spells them; the display firmware from both bootloader slots, from the vendor partition, from `Reserve0` and from `media_data`; the U-Boot environment on our own layout. Enough for a later run on the **same** device | 49 MiB, about 10 seconds |
-| `--full` | `emmc-voll.img`, the whole eMMC, with the small dump alongside it | 7.3 GB, about 17 minutes |
+| `--full` | `emmc-full.img`, the whole eMMC, with the small dump alongside it | 7.3 GB, about 17 minutes |
 
 ## Safety nets
 

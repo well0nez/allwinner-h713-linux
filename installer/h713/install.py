@@ -238,6 +238,27 @@ RELEASE_FILES = {"uboot": ("u-boot-installer.bin",),
                  "fel": ("sunxi-fel.exe", "sunxi-fel")}
 
 
+# The dump's file and directory names, English since stage 4. A dump made by
+# v0.5-beta carries the German names; in_dump() still finds those, so the way
+# back through an old dump stays open.
+DUMP_DEFAULT = "h713-dump"                  # v0.5-beta: hy310-sicherung
+DUMP_FULL = "emmc-full.img"                 # v0.5-beta: emmc-voll.img
+EXTRACT_DIR = "extract"                     # v0.5-beta: extrakt
+WORK_COPY = "image-filled.img"              # v0.5-beta: abbild-gefuellt.img (written, never read back)
+OLD_NAMES = {DUMP_FULL: "emmc-voll.img", EXTRACT_DIR: "extrakt"}
+
+
+def in_dump(dump_dir, name, log=console):
+    """The path of `name` in a dump directory. When it is missing but the v0.5-beta
+    spelling is there, that one is returned (and said), so old dumps keep working."""
+    new = os.path.join(dump_dir, name)
+    old = OLD_NAMES.get(name)
+    if old and not os.path.exists(new) and os.path.exists(os.path.join(dump_dir, old)):
+        log.info("  %s: reading the v0.5-beta name %s" % (name, old))
+        return os.path.join(dump_dir, old)
+    return new
+
+
 def release_files(directory):
     """What a release folder brings along besides the table: {"uboot": path, "fel": path}.
 
@@ -614,9 +635,9 @@ def write_package(args, disk, path, directory, tab, here=None):
         console.step(5, "Put the device's own files in (%d placeholders)" % len(table))
         vendor = args.vendor
         if not vendor:
-            full = os.path.join(args.dump_dir, "emmc-voll.img")
+            full = in_dump(args.dump_dir, DUMP_FULL)
             if os.path.isfile(full):
-                vendor = os.path.join(args.dump_dir, "extrakt")
+                vendor = in_dump(args.dump_dir, EXTRACT_DIR)
                 os.makedirs(vendor, exist_ok=True)
                 run_extractor(full, vendor, None, search_dir=here)
             else:
@@ -644,7 +665,7 @@ def write_package(args, disk, path, directory, tab, here=None):
             sources[name] = own[name]
 
     if table:
-        work = args.work_copy or os.path.join(args.dump_dir, "abbild-gefuellt.img")
+        work = args.work_copy or os.path.join(args.dump_dir, WORK_COPY)
         source_part = os.path.join(directory, part_file)
         if args.no_write:
             console.info("WOULD: copy %s to %s and fill %d placeholders"

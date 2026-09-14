@@ -60,11 +60,13 @@ Not in this table, because they belong to D2's tools and are translated with the
 | manifest `werkzeug` value `hy310-install 0.1 (Entwurf, doku/110)` | `h713-install 0.1 (draft, doku/110)` | `h713/dump.py:37` |
 | dump file `LIESMICH.txt` | `README.txt` (no LIESMICH.txt any more) | `h713/dump.py:382` |
 
-Unchanged on purpose (file and directory names inside a dump, read by other tools and
-named in FLASHING.md): `emmc-voll.img`, `abbild-gefuellt.img`, `uboot-env.bin`, `extrakt/`,
-`secure-storage.bin`, `private.bin`, `reserve0-a.bin`, `reserve0-b.bin`, `mips/`, the default
-dump directory `hy310-sicherung`, and every key of the release table (`teile`, `datei`,
-`loch`, `platzhalter`, ... -- api-stufe3.md: they stay until the release format changes).
+Renamed in stage 4 (15.09., Marco's decision), with the v0.5-beta spelling still read by
+`h713.install.in_dump()` when the new name is missing: `emmc-voll.img` -> `emmc-full.img`,
+`abbild-gefuellt.img` -> `image-filled.img` (written, never read back), `extrakt/` -> `extract/`,
+the default dump directory `hy310-sicherung` -> `h713-dump`. Unchanged: `uboot-env.bin`,
+`secure-storage.bin`, `private.bin`, `reserve0-a.bin`, `reserve0-b.bin`, `mips/`, and every key of
+the release table (`teile`, `datei`, `loch`, `platzhalter`, ... -- api-stufe3.md: they stay until
+the release format changes).
 
 ## 4. Messages
 
