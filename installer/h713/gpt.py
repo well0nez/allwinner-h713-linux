@@ -206,7 +206,8 @@ def _stock_attributes(index: int, name: str) -> int:
 
 def build_stock_gpt(partitions, disk_sectors=DEFAULT_DISK_SECTORS,
                     disk_guid=STOCK_DISK_GUID,
-                    guid_base=STOCK_GUID_BASE) -> Dict[int, bytes]:
+                    guid_base=STOCK_GUID_BASE,
+                    entry_count=None) -> Dict[int, bytes]:
     """Rebuild the stock partition table from sys_partition.fex (I:1883 stock_gpt_bauen).
 
     Without it Android does not find its partitions -- the manufacturer's tool writes it,
@@ -214,16 +215,22 @@ def build_stock_gpt(partitions, disk_sectors=DEFAULT_DISK_SECTORS,
     conversion): 26 entries of 128 bytes from LBA 2, FirstUsable 73728, the type GUID
     throughout the usual Allwinner one, and the unique GUIDs are simply numbered through --
     p1 ends in 8e45, p2 in 8e46 and so forth.
+
+    `entry_count` defaults to the number of partitions the image declares -- 26 for the
+    HY310, 25 for the two ADT-3 images -- which is what the vendor's own sunxi_gpt.fex
+    does (doku/121 section 2 finding 5). Until stage 2 C-C the header said 26 for every
+    image, so a 25-partition table carried one all-zero entry inside its CRC. The HY310
+    bytes do not change (26 partitions, 26 entries), and neither does the backup
+    placement: a table of 25 and one of 26 entries both need seven sectors.
     """
+    if entry_count is None:
+        entry_count = len(partitions) or GPT_ENTRIES
     return build_gpt(disk_sectors, partitions,
                      first_usable=partitions[0][1] if partitions else STOCK_FIRST_USABLE,
                      disk_guid=disk_guid,
                      type_guid=STOCK_TYPE_GUID,
                      unique_guids=guid_base,
-                     # 26 is the entry count of the HY310 stock table; a sys_partition.fex
-                     # with fewer partitions (the two OTA images have 25) still gets a
-                     # 26-entry header and one all-zero entry inside the table CRC.
-                     entry_count=26,          # known bug, stage 2 C4
+                     entry_count=entry_count,
                      attributes=_stock_attributes,
                      header_reserved=1)
 
