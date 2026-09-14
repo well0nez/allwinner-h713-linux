@@ -110,6 +110,8 @@ def main(argv=None):
     p = parser()
     args = p.parse_args(translate(list(sys.argv[1:] if argv is None else argv)))
     print("h713-mkimage %s" % VERSION)
+    if getattr(args, "extraktor", None):
+        print("note: --extraktor is gone -- the package brings its own reader (ignored)", file=sys.stderr)
     if args.command == "tree-boot":
         return 0 if tree_boot(args.directory, args.fit) else 1
     if args.command == "tree-rootfs":
