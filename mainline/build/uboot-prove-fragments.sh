@@ -10,10 +10,11 @@
 # so they are fetched back out of git for the length of the run -- from the
 # parent of whichever commit deleted them -- and removed again at the end.
 #
-# One difference is intended and is normalised away here: the base names the
-# board's own device tree and the old defconfigs named the bench board's, so
-# CONFIG_DEFAULT_DEVICE_TREE differs, and CONFIG_OF_LIST with it because its
-# default is the default device tree. Every other difference is a failure.
+# Two differences are intended and are normalised away here: the base names
+# the board's own device tree and the old defconfigs named the bench board's,
+# so CONFIG_DEFAULT_DEVICE_TREE differs, and CONFIG_OF_LIST with it because
+# its default is the default device tree; and the installer role's boot
+# message is English now. Every other difference is a failure.
 #
 # Config targets only: no cross toolchain, no compile, nothing written outside
 # the work directory (build/uboot-proof/, ignored by git). Runs on the host or
@@ -56,6 +57,10 @@ for pair in $ROLES; do
 		>"$WORK/merge-$role.log" 2>&1
 	"${MAKE[@]}" O="$new" olddefconfig >/dev/null
 	sed -i "s|$NEW_DT|$OLD_DT|" "$new/.config"
+	# The second intended difference: stage 3 put the installer role's boot
+	# message into English (fragment h713_installer.config); the defconfig it
+	# replaced still carries the German one. Same command, other words.
+	sed -i 's|echo H713 installer: exposing the eMMC as a USB drive; ums 0 mmc 1|echo HY310 installer: eMMC wird als USB-Laufwerk freigegeben; ums 0 mmc 1|' "$new/.config"
 
 	if diff -u "$ref/.config" "$new/.config" >"$WORK/diff-$role.txt"; then
 		verdict=identical
