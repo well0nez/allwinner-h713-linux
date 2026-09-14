@@ -92,7 +92,8 @@ class _PackageAdapter:
             if name == "stock_zurueck":
                 import h713.stock
                 return lambda platte, image_datei, extraktor=None, log=h.log.console, trocken=False: \
-                    h713.stock.restore_stock(platte, image_datei, extraktor, log, trocken)
+                    h713.stock.restore_stock(platte, image_datei, extraktor, log, trocken,
+                                             data_dir=TOOLS)   # the shipped ext4 blob lives next to the scripts
         elif self.which == "extract":
             table = {"DateiQuelle": h.source.FileSource, "Gpt": h.gpt.Gpt, "Log": h.log.Log}
             if name in table:
