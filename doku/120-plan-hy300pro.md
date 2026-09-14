@@ -300,7 +300,13 @@ Die zwischendurch notierte Vermutung „Uploads nach `run fel` brechen ab" war f
 dem Schreiben nicht zurückkehrt. **Offen:** ein Build, der per FEL startet und dann vom eMMC bootet, ohne zu
 schreiben — für den Rückfalltest des normalen Pfads.
 
-**Danach:** Stock frisch aus `update.img` (erprobter P6-Weg), Sonde auf echtem Stock.
+**Danach, Stock frisch aus `update.img`** (erprobter P6-Weg), Sonde vom Stand `2ba4003`:
+- boot0 an LBA 16 als Vendor-boot0 erkannt, DRAM-Block wie im Vollabzug (792, `tpr11 0x44340000`, `tpr12 0x6666`).
+- `display.bin` im ersten Versuch auf `1:2`, Identität HY310, HDCP-Stelle `0x4b13d0a4`, Panel 1920×1080.
+- **Rückfalltest des normalen Pfads** am selben Prompt: `h713_disp init 0x30` → Panel aus der Identität (ohne „guess"),
+  HDCP-Wartestelle per Suche `0x4b13d0a4` entschärft, MIPS READY, Timing 1920×1080 aktiv, kein falscher
+  Projekt-Hinweis mehr. Alle sieben Fork-Commits damit am Gerät bestätigt; nur der Zweig „unbekannte Revision" bleibt
+  einem fremden Gerät vorbehalten.
 
 ## 5. Reihenfolge
 
