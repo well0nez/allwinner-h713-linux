@@ -36,11 +36,11 @@ done
 
 # Feste Staende (doku/116 §4a P1/P2, 115 §2). Wer sie aendert, aendert sie hier.
 CSTENGER_MAINLINE=8860991
-UBOOT_BASIS=8fe568cdfc4              # cstenger/u-boot h713 -- darauf sitzen unsere 37
-UBOOT_KOPF=218792fde2d               # unser Fork-Stand (Zweig h713-hy310 = h713-display)
+UBOOT_BASIS=8fe568cdfc4              # cstenger/u-boot h713 -- darauf sitzen unsere 40
+UBOOT_KOPF=2ba4003276b               # unser Fork-Stand (Zweig h713-hy310 = h713-display)
 TFA_KOPF=dfa9fab443147459960e4a33971817fedd9659de
 SUNXI_TOOLS_KOPF=269dfa22fcbbe5ced352c337495ba8dd0bbf82e6
-UBOOT_KOPF_LANG=218792fde2d1c558cdbd217a428e15cb544d1b92
+UBOOT_KOPF_LANG=2ba4003276ba15e828bba335b6c63c254d11b757
 LEGACY_TAG=legacy-arm32-2026-08
 
 MAINLINE="$WURZEL/mainline"; ARBEIT="$WURZEL/analyse/release/arbeit"

@@ -1,7 +1,7 @@
 From cbcbf10af046666c77e2f1645c8db1e188ab56c0 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:19:14 +0200
-Subject: [PATCH 16/37] sunxi: h713: mark the one-launch-per-power-cycle rule
+Subject: [PATCH 16/40] sunxi: h713: mark the one-launch-per-power-cycle rule
  in init too
 
 panel-test and auto set h713_panel_test_ran; h713_disp_init_only() does

@@ -1,7 +1,7 @@
 From 218792fde2d1c558cdbd217a428e15cb544d1b92 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 02:24:45 +0200
-Subject: [PATCH 37/37] sunxi: h713: the declared project ID belongs to the
+Subject: [PATCH 37/40] sunxi: h713: the declared project ID belongs to the
  board, not to the build
 
 H713_DISP_BOARD_PROJECT_ID was 0x34, the bench board's ID, compiled in.

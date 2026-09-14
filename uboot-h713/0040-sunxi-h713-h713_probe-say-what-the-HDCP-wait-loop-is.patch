@@ -1,0 +1,38 @@
+From 2ba4003276ba15e828bba335b6c63c254d11b757 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 11:20:55 +0200
+Subject: [PATCH 40/40] sunxi: h713: h713_probe, say what the HDCP wait loop is
+ instead of "not patched"
+
+The probe reports where it found the HDCP 1.4 key-wait loop and added
+"(not patched -- probe writes nothing)". The first person to read that
+took it for a fault. It is not one: the probe never starts the firmware,
+so there is no wait to defuse. Say what the loop is and that normal boot
+defuses it.
+---
+ arch/arm/mach-sunxi/h713_mips.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index a14892d3800..b95bc2c444c 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -11680,10 +11680,16 @@ static void h713_probe_report(void)
+ 	if (h713_mips_verify())
+ 		return;
+ 
++	/*
++	 * Only located, never patched: the probe does not start the
++	 * firmware, so there is no wait to defuse. "Not patched" read like
++	 * a fault to the first person who saw it -- say what it is for.
++	 */
+ 	site = h713_mips_find_hdcp_wait();
+ 	if (site)
+-		printf("H713 MIPS: HDCP wait site at 0x%08lx (not patched -- "
+-		       "probe writes nothing)\n", site);
++		printf("H713 MIPS: HDCP 1.4 key-wait loop found at 0x%08lx "
++		       "(normal boot defuses it; the probe only locates it)\n",
++		       site);
+ 
+ 	if (h713_mips_fw && h713_mips_fw->panel)
+ 		printf("H713 probe: panel %ux%u, project 0x%02x\n",

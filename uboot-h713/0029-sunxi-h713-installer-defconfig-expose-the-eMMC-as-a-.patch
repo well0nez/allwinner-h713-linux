@@ -1,7 +1,7 @@
 From 75284aeda9d0311180297f247eb5a02f3e18f4dc Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 11 Sep 2026 09:35:16 +0200
-Subject: [PATCH 29/37] sunxi: h713: installer defconfig - expose the eMMC as a
+Subject: [PATCH 29/40] sunxi: h713: installer defconfig - expose the eMMC as a
  USB drive
 
 Loaded over FEL, this build does one thing: "ums 0 mmc 1", so the eMMC

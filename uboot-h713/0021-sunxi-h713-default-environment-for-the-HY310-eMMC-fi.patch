@@ -1,7 +1,7 @@
 From 7f29b078203988b77f501c53f5d71430ba9f319f Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 9 Sep 2026 21:35:24 +0200
-Subject: [PATCH 21/37] sunxi: h713: default environment for the HY310, eMMC
+Subject: [PATCH 21/40] sunxi: h713: default environment for the HY310, eMMC
  first with netboot fallback
 
 Until now the whole boot flow lived in the saved environment of one

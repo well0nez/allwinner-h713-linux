@@ -1,7 +1,7 @@
 From 896b0a48943cde813301ffee223f55bbffcf1116 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 17:01:10 +0200
-Subject: [PATCH 06/37] sunxi: h713: add defconfigs for the HY260 QZ713 V3.1
+Subject: [PATCH 06/40] sunxi: h713: add defconfigs for the HY260 QZ713 V3.1
 
 A third board in this family, silkscreen HY260_QZ713_V3.1, label
 CGDD00700507/HY260A 1G+8G. DDR3 like your bench board, not LPDDR3 --

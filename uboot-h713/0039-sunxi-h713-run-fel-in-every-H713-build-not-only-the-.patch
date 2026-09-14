@@ -1,0 +1,93 @@
+From 359e96cda5b3f415fd67003eebb63f9491fe14ea Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 11:20:55 +0200
+Subject: [PATCH 39/40] sunxi: h713: "run fel" in every H713 build, not only
+ the three that load hy310.env
+
+"run fel" -- set the efex flag in RTC GP2 until it reads back, wait,
+reset, and let the SPL on the eMMC drop into FEL -- was defined in
+hy310.env. Only three defconfigs load that file: the shipping build and
+the two netboot variants. The installer, the probe and the other FEL
+builds load none, so they had no way back to FEL but the reset button,
+which is exactly where you stand when one of them is running. The first
+time the probe was used on the board, "run fel" answered "not defined".
+
+Move it into the H713 block of sunxi-common.h, which every H713 build
+compiles, and drop it from hy310.env so it is defined once. hy310.env
+cannot simply be loaded everywhere instead: it brings its own bootcmd,
+and the installer would boot the eMMC rather than export it.
+
+Checked in all four builds that the default environment carries exactly
+one fel= line, and on the board that "run fel" from a FEL-booted probe
+returns to FEL.
+---
+ board/sunxi/hy310.env          | 10 +++-------
+ include/configs/sunxi-common.h | 22 ++++++++++++++++++++++
+ 2 files changed, 25 insertions(+), 7 deletions(-)
+
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index d53ddd96754..697825289ff 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -6,12 +6,9 @@
+  * network path is the bench and keeps earlycon, so a kernel that dies before
+  * its console driver still says where. Nothing else differs between them.
+  *
+- * "run fel" reboots into FEL without touching the reset button: it sets the
+- * vendor's efex flag in RTC GP2, which our SPL checks first thing and answers
+- * by jumping into the BROM's FEL entry (arch-sunxi/boot0.h, doku/nachtlog/S48).
+- * RTC registers sit on a slow clock: the vendor writes the flag until it reads
+- * back and then waits 500 ms before the watchdog reset. A single store right
+- * before "reset" was lost once in four tries, so do the same here.
++ * "run fel" (back to FEL without the reset button) is defined for every H713
++ * build in include/configs/sunxi-common.h, not here: this file is loaded by
++ * three builds only, and the others need it most.
+  *
+  * h713_project picks the vendor ProjectID_0x*.TSE group; h713_mips_dev and
+  * h713_mips_path say where the display artifacts live. These defaults describe
+@@ -39,5 +36,4 @@ boot_net=
+ 	setenv bootargs "${bootargs_base} earlycon root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp";
+ 	tftpboot 0x60000000 ${serverip}:${bootfile};
+ 	bootm 0x60000000
+-fel=while itest.l *0x07090108 != 0x5aa5a55a; do mw.l 0x07090108 0x5aa5a55a; done; sleep 1; reset
+ bootcmd=h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net
+diff --git a/include/configs/sunxi-common.h b/include/configs/sunxi-common.h
+index 91edf3b001f..54c247d651c 100644
+--- a/include/configs/sunxi-common.h
++++ b/include/configs/sunxi-common.h
+@@ -353,6 +353,27 @@
+ 	"boot_vendor=" H713_BOOT_VENDOR_COMMAND "\0" \
+ 	"switch_vendor=" H713_SWITCH_VENDOR_COMMAND "\0"
+ 
++/*
++ * "run fel" reboots into FEL without touching the reset button: it sets the
++ * vendor's efex flag in RTC GP2, which our SPL checks first thing and answers
++ * by jumping into the BROM's FEL entry (arch-sunxi/boot0.h). RTC registers sit
++ * on a slow clock: the vendor writes the flag until it reads back and then
++ * waits 500 ms before the watchdog reset. A single store right before "reset"
++ * was lost once in four tries, so do the same here.
++ *
++ * It lives here rather than in hy310.env because only three builds load that
++ * file. The installer, the probe and the FEL-to-eMMC builds use none, so they
++ * had no way back to FEL but the button -- which is exactly where you are when
++ * one of them is running. Every H713 build gets this block.
++ *
++ * What the flag is answered by is the SPL on the eMMC, not the one that is
++ * running: after the reset the BROM loads LBA 16. On a stock device that is the
++ * vendor's boot0, which honours the same flag.
++ */
++#define H713_FEL_ENV_SETTINGS \
++	"fel=while itest.l *0x07090108 != 0x5aa5a55a; do " \
++	"mw.l 0x07090108 0x5aa5a55a; done; sleep 1; reset\0"
++
+ /*
+  * The BROM-loaded first stage is a single raw image at LBA 0x10 (not slotted).
+  * Provide it under a non-slotted alias "uboot" as well as "bootloader":
+@@ -383,6 +404,7 @@
+ 	"fastboot_raw_partition_ubootp=0x800 0x2800\0" \
+ 	"fastboot_raw_partition_splstash=0x3880 0x40\0" \
+ 	H713_SWITCH_ENV_SETTINGS \
++	H713_FEL_ENV_SETTINGS \
+ 	H713_FASTBOOT_MODE_ENV_SETTINGS
+ #else
+ #define H713_SWITCH_VENDOR_COMMAND ""

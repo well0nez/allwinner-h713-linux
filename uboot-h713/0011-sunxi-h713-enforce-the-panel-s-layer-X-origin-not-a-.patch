@@ -1,7 +1,7 @@
 From 20c9178380dc381f45dcc5d38e63140704f03dd1 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:14:56 +0200
-Subject: [PATCH 11/37] sunxi: h713: enforce the panel's layer X origin, not a
+Subject: [PATCH 11/40] sunxi: h713: enforce the panel's layer X origin, not a
  literal zero
 
 h713_disp_clear_layer_xoff() reads 0x0528008c and writes zero into it

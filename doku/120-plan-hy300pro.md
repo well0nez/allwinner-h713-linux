@@ -277,6 +277,31 @@ Gerät dasselbe liefert wie am Abzug.
 Schritt 4 ist die Rückfallprüfung: Panelauswahl und HDCP-Suche liegen im **normalen** Pfad, nicht nur im
 Sondenpfad. Wenn dort etwas kaputt wäre, bliebe das Bild schwarz.
 
+## 4c. Am Gerät, 14.09.
+
+**Sonde auf unserem HY310 (Layout v3), per FEL:**
+- SPL trainiert mit **624 MHz** auf dem 792-MHz-Board.
+- Display bestätigt: Digest `16c74a28…`, Identität `HY310 (QZ713 V3.1)`, **HDCP-Stelle per Suche `0x4b13d0a4`** — genau
+  der festgenagelte Wert —, Panel 1920×1080, Projekt 0x30. Die Firmware trägt 15 Projekt-Deskriptoren (auch 0x36/0x37).
+- Zwei Fehler der Sonde gefunden und behoben (`a9c6304`): bei LBA 16 liegt auf unserem Layout **unser SPL** (auch
+  `eGON.BT0`, erkennbar an `SPL` bei `0x14`) — die Sonde hatte dessen DT-Namen als DRAM-Werte gedruckt; LBA 256 ist
+  leer (so geplant, `109` Z. 123). Und `hy310-boot` fehlte in der Kandidatenliste.
+- `run fel` fehlte in der Sonde, weil nur drei Builds `hy310.env` laden → jetzt für jeden H713-Build in
+  `sunxi-common.h` (`359e96c`), am Gerät bestätigt.
+- Stock-Pfade gegen den Stock-Vollabzug geprüft: `1:2`=`bootloader_b` FAT16 mit `display.bin` `16c74a28…`, `1:1`
+  dieselbe; boot0 an LBA 16 und 256 mit Kopfgröße `0x30` bei `0x14`, clk 792 / Typ 3.
+
+**Vorfall: `hy310_felmmc_defconfig` ist kein Testbuild.** Als „Rückfalltest ohne Flashen" geladen, nach dem Namen
+geraten. Er setzt `CONFIG_H713_SPL_FORCE_MMC`: der SPL schreibt `h713_spl_payload.h` — ein altes **Vendor-boot0** —
+nach LBA 16–79 und hält an. Lief zweimal; danach startete Vendor-BOOT0 und scheiterte an `Loading boot-pkg`.
+Repariert über den Release-Installer: 64 Sektoren aus dem v0.5-beta-Abbild zurück, Rücklesen identisch, Teil A
+(LBA 0–12287) danach byte-gleich zum Release, beide Dateisysteme ohne Fehler. Secure Storage war nie im Schreibbereich.
+Die zwischendurch notierte Vermutung „Uploads nach `run fel` brechen ab" war falsch — das war dieser SPL, der nach
+dem Schreiben nicht zurückkehrt. **Offen:** ein Build, der per FEL startet und dann vom eMMC bootet, ohne zu
+schreiben — für den Rückfalltest des normalen Pfads.
+
+**Danach:** Stock frisch aus `update.img` (erprobter P6-Weg), Sonde auf echtem Stock.
+
 ## 5. Reihenfolge
 
 | | Wer | Was | Risiko |

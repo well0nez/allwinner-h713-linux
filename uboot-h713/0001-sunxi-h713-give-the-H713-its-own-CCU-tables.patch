@@ -1,7 +1,7 @@
 From 90cf5bc8da14e086624f76300e6f055a136ef066 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 17:00:14 +0200
-Subject: [PATCH 01/37] sunxi: h713: give the H713 its own CCU tables
+Subject: [PATCH 01/40] sunxi: h713: give the H713 its own CCU tables
 
 The H713 currently reuses d1_ccu_desc. That is fine for the blocks the
 comment there names as verified -- MMC 0x84c/0x830, UART 0x90c, and the

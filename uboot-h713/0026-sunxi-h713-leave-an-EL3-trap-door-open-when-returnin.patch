@@ -1,7 +1,7 @@
 From dedd25660eca70ee2c5a2939be2bd4f55f10a4cc Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 11 Sep 2026 09:35:16 +0200
-Subject: [PATCH 26/37] sunxi: h713: leave an EL3 trap door open when returning
+Subject: [PATCH 26/40] sunxi: h713: leave an EL3 trap door open when returning
  to FEL
 
 The H713 cannot return to FEL through the H616/H6 RMR hotplug mailbox;
