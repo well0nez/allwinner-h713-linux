@@ -16,7 +16,7 @@ import time
 
 from .log import console
 
-SECT = 512
+from h713.util import SECTOR as SECT   # one definition for the whole package (`SECT` is the installer's old name)
 SECTORS_EXPECTED = 15269888          # 7.28 GiB -- the eMMC of the HY310
 
 # The secure-storage block is NEVER written, not even with --force. It belongs

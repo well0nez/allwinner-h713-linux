@@ -7,6 +7,8 @@ import os
 import time
 import zlib
 
+SECTOR = 512          # bytes per eMMC sector; the one definition for the whole package
+
 
 def mib(b):
     return b / 2**20
