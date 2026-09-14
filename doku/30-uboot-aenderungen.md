@@ -288,7 +288,7 @@ Lüfter/Backlight/USB eingeschaltet werden — `reboot`, Absturz und Watchdog la
 Gate einmalig; `setenv h713_gate 0; saveenv` schaltet es dauerhaft ab, `1` an. Die Status-LED folgt PB5 (1 = blau, 0 = rot), es gibt keinen
 LED-Code. Gate an in `hy310_qz713_v3_1_defconfig` und der Test-Defconfig `hy310_netboot_gate_defconfig` (geflasht 09.09.), aus in
 `hy310_netboot`, `hy310_host`, `hy310_felmmc`. Gegenstück in TF-A: `sunxi_power_down()` stempelt GATE und resettet über den Haupt-Watchdog
-(Commit `3b3fb35fa` im Submodul, Bericht S37). Konsolenzeilen: `gate: cold start (GP5 …)`, `gate: warm start, booting`,
+(Commit `dfa9fab44` im Submodul, Bericht S37). Konsolenzeilen: `gate: cold start (GP5 …)`, `gate: warm start, booting`,
 `gate: power-off requested`, `gate: waiting for power key`, `gate: power key, booting`, `gate: off (h713_gate=0)`.
 
 ## 16 — Env-Offset: der 2-GiB-Fehler in `env/mmc.c` (`0022`, 10.09.2026)

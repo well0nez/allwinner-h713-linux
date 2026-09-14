@@ -172,7 +172,7 @@ Regeln wie in Plan 101 §4: Agenten schreiben nur in ihre Kopien, fassen weder B
   Mux-Diagnose 6/14 per Register, dann Pinctrl-Patch (`pinctrl-sun50i-h713-r.c`, IRQ-Funktion) — siehe S38 §7 Annahme 2.
 - **Noch nicht getan:** Stufe 2 (`setenv h713_gate 1; saveenv; reset` → Gate scharf, Taste startet), `poweroff`-Test mit Fänger, Abnahme §5,
   Commit der TF-A-Änderung im Submodul, Doku 30/20/00-STATUS, Kernel-GUT-Markierung für 4571c431 nach Abnahme.
-- **09.09. 09:xx Aufräumen:** TF-A-Änderung als Commit `3b3fb35fa` im Submodul; U-Boot-Gate als Commit `1cd5e6d6beb` im Submodul und
+- **09.09. 09:xx Aufräumen:** TF-A-Änderung als Commit `dfa9fab44` im Submodul; U-Boot-Gate als Commit `1cd5e6d6beb` im Submodul und
   `uboot-h713/0018-sunxi-h713-add-the-power-gate-…patch` (git-am-Format, ersetzt den Roh-Diff). **Todo U-Boot-Baum:** `h713_mips.c` trägt 162
   unkommittierte Zeilen, Patch 0017 deckt 54 (das ist der seit 07.09. geflashte Stand) — sichten und als Commit(s) nachziehen; Branch heißt
   `h713-display`, README nennt `h713-display-hy310`.

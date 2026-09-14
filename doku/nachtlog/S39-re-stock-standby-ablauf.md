@@ -240,7 +240,7 @@ der Tabelle. Welche Zeile CIR bzw. CEC ist, bleibt damit **offen**.
 
 ## 4. Was unserem Stack für Stufe 2 fehlt
 
-TF-A-Pfade relativ zu `mainline/external/arm-trusted-firmware` (HEAD `3b3fb35fa`).
+TF-A-Pfade relativ zu `mainline/external/arm-trusted-firmware` (HEAD `dfa9fab44`).
 
 | # | Ebene | Lücke | Beleg |
 |---|---|---|---|
