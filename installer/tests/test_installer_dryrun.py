@@ -17,13 +17,15 @@ import fakedisk
 # frozen 2026-09-14 from hy310-install.py 0.1: (exit code, lines, digest of the
 # normalised stdout).  Normalisation replaces the temp directory, the device and
 # the image path, and the platform name; nothing else in these runs varies.
-DUMP_ONLY = (0, 36, "f75069a5c52094e4e29b3700f67b827576ef643d55915d8784c16794fc1dc5e2")
+# C-B froze (0, 36, "f75069a5c52094e4e29b3700f67b827576ef643d55915d8784c16794fc1dc5e2"); stage 2 C1 wired identify() into the installer (Fable):
+DUMP_ONLY = (0, 39, "2df06dfc7fa639b2a0f086108f209783cfeded689e02f0bdeaaac321b311dd54")
 # was (0, 50, "da0ecc92e5649f29597bd72ca1da1fabe6954f0c756d1d068c9c5d13189f305c") until
 # stage 2 C-C: still 50 lines, but UDISK's line turned from "genullt" into the new
 # English "left untouched", private/Reserve0_b say who keeps them, and the two
 # boot-resource.fex lines note the second copy in the container.
 # C-C froze "3f61d6c1…" with UDISK in the default preserve list; UDISK is zeroed again (Fable, C-C review):
-RESTORE_STOCK = (0, 50, "f89c3e441d75135c64456705eabaf4c5353ce28dabdec94e20b3467077aaef8c")
+# was (0, 50, "f89c3e441d75135c64456705eabaf4c5353ce28dabdec94e20b3467077aaef8c") until identify() (Fable, C1 wiring):
+RESTORE_STOCK = (0, 53, "09b955f14db23015d0e929180cdc5152f1e76062685ff3ef84955aafabfaee34")
 
 
 class InstallerDryRun(unittest.TestCase):
