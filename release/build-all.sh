@@ -313,15 +313,15 @@ say "9/11 Abbild $NAME"
 	--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
 	--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 --extraktor "$EXTRAKTOR" ) > "$OUT/mkimage.log" 2>&1 \
 	|| { tail -20 "$OUT/mkimage.log"; die "Abbild-Bau gescheitert (Log: $OUT/mkimage.log)"; }
-grep -E "Umgebung:|OK   $NAME|Platzhalter fuer|zusammen" "$OUT/mkimage.log" | sed 's/^/    /'
+grep -E "environment:|OK   $NAME|placeholders for|in all" "$OUT/mkimage.log" | sed 's/^/    /'
 
 # --- 10. Pruefen ------------------------------------------------------------
 say "10/11 Pruefen"
 ( cd "$INSTALLER" && python3 hy310-mkimage.py --pruefen "out/$NAME.tabelle.json" ) | tail -2 | sed 's/^/    /'
 if [[ -n "$VENDOR" ]]; then
 	( cd "$INSTALLER" && python3 mkimage-selbsttest.py "out/$NAME.tabelle.json" --vendor "$VENDOR" ) > "$OUT/selbsttest.log" 2>&1 || true
-	if grep -q "ALLES GRUEN" "$OUT/selbsttest.log"; then info "Selbsttest mit Vendor-Dateien: ALLES GRUEN"
-	else grep -E "FEHL" "$OUT/selbsttest.log" | sed 's/^/    /'; die "Selbsttest nicht gruen (Log: $OUT/selbsttest.log)"; fi
+	if grep -q "ALL GREEN" "$OUT/selbsttest.log"; then info "Selbsttest mit Vendor-Dateien: ALL GREEN"
+	else grep -E "FAIL" "$OUT/selbsttest.log" | sed 's/^/    /'; die "Selbsttest nicht gruen (Log: $OUT/selbsttest.log)"; fi
 else
 	info "kein --vendor: nur Strukturpruefung. Der volle Selbsttest braucht eine h713-extract-Ausgabe."
 fi

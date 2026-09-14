@@ -11,7 +11,7 @@
 #
 #   tmp/hy310-boot.ext4          128 MiB: h713-kernel.fit (real) + mips/ (19 placeholders)
 #   tmp/hy310-rootfs-platz.ext4    1 GiB: the rootfs from rootfs/out/hy310-rootfs.tar,
-#                                         extended by 11 placeholders (firmware + PQ)
+#                                         extended by 24 placeholders (3 firmware, 8 PQ, 13 WLAN) + authorized_keys
 #                                         and /root/.ssh/authorized_keys (4096 B of
 #                                         line breaks, filled by h713-install)
 #
@@ -82,7 +82,7 @@ ok "$TMP/hy310-boot.ext4"
 say "hy310-rootfs-platz.ext4 (1 GiB)"
 mkdir -p "$TMP/rootfs-baum"
 # The accepted rootfs (doku/107 §9) comes out of the tar, not out of the finished
-# ext4: the eleven placeholders have to be created as real files of the right size,
+# ext4: the placeholders have to be created as real files of the right size,
 # and mke2fs -d can do that in one go. --numeric-owner: the uid/gid out of the tar,
 # not resolved through the names in the container's user database (0/0, 0/42 ...).
 # Then a spot check, before mke2fs bakes the tree in.
@@ -99,7 +99,7 @@ ok "tree: /etc/passwd, /root, /root/.ssh, authorized_keys belong to root, the mo
 rm -f "$TMP/hy310-rootfs-platz.ext4"
 truncate -s 1G "$TMP/hy310-rootfs-platz.ext4"
 # Word for word the same as build-rootfs.sh, so that this file system is the same as
-# the accepted one -- only with the eleven placeholders more.
+# the accepted one -- only with the placeholders more.
 mke2fs -q -F -t ext4 -L hy310-rootfs -m 1 \
 	-E lazy_itable_init=0,lazy_journal_init=0 \
 	-d "$TMP/rootfs-baum" "$TMP/hy310-rootfs-platz.ext4"

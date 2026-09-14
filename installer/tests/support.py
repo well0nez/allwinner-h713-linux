@@ -24,8 +24,8 @@ import fakedisk                                            # noqa: E402
 # value. H713_EXTRACT_PATH overrides the extractor alone (it used to live elsewhere).
 TOOLS = os.environ.get("H713_TOOLS_DIR", os.path.dirname(_HERE))
 INSTALL_PY = os.path.join(TOOLS, "hy310-install.py")
-MKIMAGE_PY = os.path.join(TOOLS, "hy310-mkimage.py")
-SELFTEST_PY = os.path.join(TOOLS, "mkimage-selbsttest.py")
+MKIMAGE_PY = os.path.join(TOOLS, "h713-mkimage")          # stage 3: no .py suffix, loaded by path
+SELFTEST_PY = os.path.join(TOOLS, "mkimage-selftest.py")
 EXTRACT_PY = os.environ.get("H713_EXTRACT_PATH", os.path.join(TOOLS, "h713-extract"))
 BUILD_OUT = os.environ.get("H713_BUILD_OUT", os.path.join(TOOLS, "out"))
 VENDOR_OUT = os.environ.get("H713_VENDOR_OUT", os.path.join(TOOLS, "out", "vendor"))
