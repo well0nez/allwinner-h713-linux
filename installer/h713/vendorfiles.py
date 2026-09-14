@@ -18,7 +18,8 @@ from typing import List, Optional, Tuple
 
 from h713.fex import ini_numbers, parse_ini
 from h713.log import Abort
-from h713.util import hexdump_short
+from h713.profiles import FIRMWARE_REVISIONS
+from h713.util import hexdump_short, sha256_bytes
 
 REQUIRED_FILES = ("lib/firmware/h713-arisc.bin", "lib/firmware/hy310-edid.bin", "lib/firmware/h713/msp-patch.bin")
 
@@ -68,6 +69,14 @@ MIPS_NOT_OURS = ("bootlogo.bmp", "fastbootlogo.bmp", "font24.sft", "font32.sft",
 MIPS_PART_NAMES = ("bootloader_b", "bootloader_a")
 MIPS_PART_KEYS = ("bootloader_b", "bootloader_a", "bootloader", "boot-resource", "boot_resource", "mips")
 MIPS_FEX = "boot-resource.fex"          # that is what the image is called in the IMAGEWTY container and in --fex-dir
+
+# Stage 2 C-D, second MIPS source: the same set lies a second time inside super, in the vendor
+# partition (A0 section 4 -- where the vendor U-Boot falls back to, and the only place the two ADT-3
+# images have it: their bootloader FAT carries no mips/ at all). VENDOR_MIPS_SOURCE is the name the
+# profiles use in mips.sources, FALLBACK_MIPS_SOURCES the order of api-stufe2.md without a profile.
+VENDOR_MIPS_DIR = "/etc/display/mips"   # relative to the root of the vendor partition
+VENDOR_MIPS_SOURCE = "vendor:" + VENDOR_MIPS_DIR
+FALLBACK_MIPS_SOURCES = ("bootloader_b", "bootloader_a", VENDOR_MIPS_SOURCE)
 
 TSE_MAGIC = b"TSE"
 TSE_ID_OFFSET = 14                      # u16 little-endian in the 16-byte header (plan 108 §4.5 „erstens")
@@ -337,6 +346,37 @@ def check_tse(name: str, data: bytes) -> Tuple[List[str], Optional[int]]:
     else:
         findings.append(f"{name}: TSE-Kopf {k['kopf']}, ID-Feld {k['id']:#06x}")
     return findings, k["id"]
+
+
+def read_vendor_mips(fs, directory: str = VENDOR_MIPS_DIR, tmp: Optional[Path] = None):
+    """The vendor copy of mips/ out of an open vendor filesystem (`fs`: an h713.fs.Ext4Base). Returns
+    what the FAT reader in h713.extract returns: the files our chain uses, what else lies in that
+    directory, and the problems met on the way."""
+    files, leftover, problems = {}, [], []   # type: (dict, List[str], List[str])
+    for e in sorted(fs.ls(directory), key=lambda x: x["name"]):
+        name = e["name"]
+        if e["typ"] == "d":
+            leftover.append(f"{directory}/{name}/ (directory)")
+        elif name in MIPS_FILES or MIPS_PROJECTID.match(name):
+            try:
+                files[name] = fs.read(f"{directory}/{name}", tmp)
+            except Abort as ex:
+                problems.append(f"{name}: {ex}")
+        else:
+            leftover.append(f"{directory}/{name} ({e['size']} B)")
+    return files, leftover, problems
+
+
+def firmware_revision_of(data: bytes) -> Optional[dict]:
+    """The display.bin revision this blob is, by sha256, out of profiles.FIRMWARE_REVISIONS. Wider
+    than h713.identify.firmware_revision_of(), which asks UBOOT_FW_REVS -- only the two rows
+    h713_mips_fw_revs[] declares. Stage 2 C-D needs "ADT-3 2024" (both ADT-3 images) and "HY300 Pro"
+    (the owner's report) too: they carry the HDCP wait site."""
+    h = sha256_bytes(data)
+    for r in FIRMWARE_REVISIONS:
+        if r["sha256"] == h:
+            return r
+    return None
 
 
 def check_display_cfg(data: bytes) -> List[str]:
