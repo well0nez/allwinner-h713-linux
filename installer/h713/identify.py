@@ -422,14 +422,27 @@ def report_device(found, log=console, writing=True):
         # has to stay open, exactly as before (I:1620).
         log.info("Our layout is on the device -- restoring the vendor firmware stays possible.")
         return True
+    # A known board without a verified run (profile-only, partial) is not an unknown
+    # board: its row is already in the table, what is missing is an owner's green
+    # report -- and no image exists for it until then (doku/121 section 5).
+    known = found.get("profile")
     if not writing:
-        log.warn("Only reading -- nothing is written, so an unknown board is a note, not a stop.")
-        log.info("Please post the row above, then the board goes into the table")
-        log.info("(github.com/well0nez/allwinner-h713-linux).")
+        if known:
+            log.warn("Only reading -- nothing is written. This board is known (profile '%s') but no"
+                     % known)
+            log.info("owner has reported a green run of our build on it, so no image exists for it yet.")
+        else:
+            log.warn("Only reading -- nothing is written, so an unknown board is a note, not a stop.")
+            log.info("Please post the row above, then the board goes into the table")
+            log.info("(github.com/well0nez/allwinner-h713-linux).")
         return True
     log.error("No verified profile for this board -- nothing is written.")
-    log.info("Guessing the places of a foreign version costs the secure storage in the")
-    log.info("worst case, so this stops here. Post the row above and it goes into the table.")
+    if known:
+        log.info("This board is known (profile '%s'), but nobody has reported a green run of our" % known)
+        log.info("build on it, and no image is built for a board nobody has tested (doku/121 section 5).")
+    else:
+        log.info("Guessing the places of a foreign version costs the secure storage in the")
+        log.info("worst case, so this stops here. Post the row above and it goes into the table.")
     return False
 
 
