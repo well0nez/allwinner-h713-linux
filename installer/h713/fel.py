@@ -18,14 +18,15 @@ from .log import console
 FEL_VID_PID = "1f3a:efe8"
 
 
-def fel_tool(given=None):
-    """Find sunxi-fel: shipped with us, in the PATH, or named by the caller."""
+def fel_tool(given=None, search_dir=None):
+    """Find sunxi-fel: shipped with us (next to the calling script, `search_dir`),
+    in the PATH, or named by the caller."""
     if given:
         if not os.path.isfile(given):
             raise SystemExit("--sunxi-fel %s nicht gefunden" % given)
         return given
     name = "sunxi-fel.exe" if platform.system() == "Windows" else "sunxi-fel"
-    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+    here = os.path.join(search_dir or os.path.dirname(os.path.abspath(__file__)), name)
     if os.path.isfile(here):
         return here
     found = shutil.which(name)

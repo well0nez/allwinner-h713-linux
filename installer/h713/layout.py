@@ -20,12 +20,11 @@ from h713.blockdev import LOCK_FIRST, LOCK_LAST
 # (10.09.2026, /dev/sda after the run from doku/109 §12) -- so that the image
 # carries, byte for byte, the table the device is known to boot from.
 
-SECTOR = 512
+from h713.gpt import GPT_ENTRIES as GPT_ENTRY_COUNT, GPT_ENTRY_SIZE, SECTOR   # 26 entries: more would reach into the SPL (M:81)
+
 DISK_SECTORS = 15269888               # 7.28 GiB -- the eMMC of the HY310
 FIRST_USABLE = 16                     # doku/109 §2.2: the raw areas as well
 LAST_USABLE = DISK_SECTORS - 34
-# more entries would have reached into the SPL
-GPT_ENTRY_COUNT, GPT_ENTRY_SIZE = 26, 128
 GPT_ARRAY_SECTORS = (GPT_ENTRY_COUNT * GPT_ENTRY_SIZE + SECTOR - 1) // SECTOR   # 7
 TYPE_GUID = "0fc63daf-8483-4772-8e79-3d69d8477de4"    # Linux filesystem data
 DISK_GUID = "ab6f3888-569a-4926-9668-80941dcb40bc"
