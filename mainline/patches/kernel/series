@@ -189,3 +189,14 @@
 #     doku/60 §board-mgr; Marco 12.09.: der Tacho ist der Schutz, den dieses
 #     Geraet hat, und er ist belegt. thermal_shutdown bleibt aus (kein NTC).
 0159-misc-hy310-board-mgr-den-notaus-bei-luefterstillstand-scharf-schalten.patch
+#
+# --- 15. Boards: one DTB name per board (stage 4) -----------------------------
+#     doku/121 §3, umbau/plan/api-stufe4.md "Kernel DTS". Until now the HY310
+#     booted sun50i-h713-hy200-qz713df-a1.dtb -- the HY310's hardware under
+#     cstenger's board name. boards/<id>/board.env names the DTB per board, and
+#     it cannot do that while every board shares one file. 0160 adds a device
+#     tree that is only a name: it includes the hy200 dts and overrides model
+#     and board compatible; the SoC compatible and every node stay identical,
+#     so the DTB the device boots does not change behaviour. Splitting the
+#     HY310-specific bits out of the hy200 dts is a later cleanup, not this.
+0160-arm64-dts-h713-add-the-hy310-board-dts.patch

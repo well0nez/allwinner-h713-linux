@@ -12,7 +12,11 @@
 #   build/build.sh [all|bl31|uboot|kernel|aic8800|images]   # default: all
 #
 # Env:
-#   BOARD=ddr3|lpddr3   board profile (default ddr3): ddr3=HY200 QZ713DF_A1 bench, lpddr3=HY200 QZ713_V2 projector
+#   BOARD=<id>          board id, i.e. a directory under boards/ (default ddr3).
+#                       'ddr3' and 'lpddr3' stay as aliases for cstenger's two
+#                       HY200 boards -- ddr3=HY200 QZ713DF_A1 bench,
+#                       lpddr3=HY200 QZ713_V2 projector. boards/<id>/board.env
+#                       names the kernel DTB the FIT carries.
 #   JOBS=N              parallelism (default: nproc)
 set -euo pipefail
 
@@ -34,11 +38,41 @@ UBOOT="$ROOT/external/u-boot"
 ATF="$ROOT/external/arm-trusted-firmware"
 mkdir -p "$OUT" "$CACHE"
 
+# --- board profile ----------------------------------------------------------
+# One directory per board, boards/<id>/board.env (doku/121 §3, umbau/plan/
+# api-stufe4.md). It sets BOARD_ID STATUS PROFILE IMAGE_NAME KERNEL_DTB
+# UBOOT_BOARD (and, for cstenger's boards, the defconfig names they use today).
+# KERNEL_DTB is the reason this is read here: which device tree a board boots
+# is a property of the board, not of the release. The boards live next to
+# mainline/, i.e. in the repository root, which is the parent of ROOT.
+BOARDS_DIR=${BOARDS_DIR:-${BOARDS:-$ROOT/../boards}}
+# The two names this script knew before stage 4 are cstenger's boards.
 case "$BOARD" in
-  ddr3)   UBOOT_DEFCONFIG=$UBOOT_DEFCONFIG_DDR3 ;;
-  lpddr3) UBOOT_DEFCONFIG=$UBOOT_DEFCONFIG_LPDDR3 ;;
-  *) echo "error: BOARD='$BOARD' must be ddr3 or lpddr3" >&2; exit 2 ;;
+  ddr3)   BOARD=hy200-qz713df-a1 ;;   # cstenger's bench board (alias kept)
+  lpddr3) BOARD=hy200-qz713-v2 ;;     # cstenger's projector (alias kept)
 esac
+BOARD_ENV="$BOARDS_DIR/$BOARD/board.env"
+if [ ! -f "$BOARD_ENV" ]; then
+  { echo "error: unknown board '$BOARD': there is no $BOARD_ENV"
+    if [ -d "$BOARDS_DIR" ]; then
+      echo "       known boards: $(cd "$BOARDS_DIR" && ls -d -- */ 2>/dev/null | tr -d / | tr '\n' ' ')"
+    else
+      echo "       there is no boards/ directory at $BOARDS_DIR"
+    fi
+    echo "       aliases:      ddr3 = hy200-qz713df-a1, lpddr3 = hy200-qz713-v2"
+    echo "       a new board starts from an h713_probe log -- see boards/README.md"; } >&2
+  exit 2
+fi
+grep -q '^KERNEL_DTB=' "$BOARD_ENV" ||
+  { echo "error: $BOARD_ENV sets no KERNEL_DTB (empty is allowed, missing is not)" >&2; exit 2; }
+# shellcheck source=/dev/null
+source "$BOARD_ENV"
+[ "${BOARD_ID:-}" = "$BOARD" ] ||
+  { echo "error: $BOARD_ENV says BOARD_ID='${BOARD_ID:-}', not '$BOARD'" >&2; exit 2; }
+# board.env may name its own defconfigs (cstenger's boards do); otherwise the
+# kernel defconfig comes from config/versions.env and the U-Boot one is the
+# board's base defconfig <UBOOT_BOARD>_defconfig (base + role fragment, E3b).
+UBOOT_DEFCONFIG=${UBOOT_DEFCONFIG:-${UBOOT_BOARD:?board.env: UBOOT_BOARD is empty}_defconfig}
 
 log()  { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 note() { printf '    \033[33m%s\033[0m\n' "$*"; }
@@ -174,6 +208,11 @@ find_mkimage() {
 }
 
 build_kernel() {
+  [ -n "$KERNEL_DTB" ] || {
+    echo "error: board '$BOARD' (STATUS=${STATUS:-?}) has no device tree of ours -- boards/$BOARD/board.env" >&2
+    echo "       leaves KERNEL_DTB empty, so no FIT may be built for it. bl31 and uboot do work." >&2
+    return 1
+  }
   local tree; tree=$(prepare_kernel)
   local suffix=""
   [ -n "$KERNEL_CONFIG" ] && suffix="-${KERNEL_CONFIG//,/-}"
@@ -210,10 +249,20 @@ build_kernel() {
   make -C "$tree" ARCH="$KERNEL_ARCH" LLVM=1 -j"$JOBS" Image dtbs modules
   gzip -9 -kf "$tree/arch/arm64/boot/Image"
   install -m 0644 "$tree/arch/arm64/boot/Image.gz" "$OUT/Image$suffix.gz"
-  install -m 0644 "$tree/arch/arm64/boot/dts/allwinner/$KERNEL_DTB.dtb" "$OUT/$KERNEL_DTB.dtb"
-  install -m 0644 "$tree/arch/arm64/boot/dts/allwinner/$KERNEL_DTB_PROJECTOR.dtb" \
-    "$OUT/$KERNEL_DTB_PROJECTOR.dtb"
-  log "Image$suffix.gz -> $OUT/Image$suffix.gz ($(stat -c%s "$OUT/Image$suffix.gz") bytes); bench + projector DTBs built"
+  # The board's own DTB (board.env) plus cstenger's two HY200 DTBs, which stay
+  # in the output so his bench runs keep working and a regression there is
+  # still visible. 'make dtbs' builds every DTB in the Makefile anyway; this
+  # only decides what lands in build/out.
+  local dtb dtbs=("$KERNEL_DTB")
+  for dtb in "$KERNEL_DTB_BENCH" "$KERNEL_DTB_PROJECTOR"; do
+    # BOARD=ddr3/lpddr3: the board DTB *is* one of the two; install it once.
+    case " ${dtbs[*]} " in *" $dtb "*) continue ;; esac
+    dtbs+=("$dtb")
+  done
+  for dtb in "${dtbs[@]}"; do
+    install -m 0644 "$tree/arch/arm64/boot/dts/allwinner/$dtb.dtb" "$OUT/$dtb.dtb"
+  done
+  log "Image$suffix.gz -> $OUT/Image$suffix.gz ($(stat -c%s "$OUT/Image$suffix.gz") bytes); DTBs: $KERNEL_DTB (board $BOARD) + bench + projector"
   build_kernel_fit "$suffix"
 }
 
@@ -354,7 +403,7 @@ build_kernel_fit() {
   cat > "$OUT/h713-kernel$suffix.its" <<ITS
 /dts-v1/;
 / {
-	description = "H713 arm64 kernel ($KERNEL_VERSION$suffix) + DTB";
+	description = "H713 arm64 kernel ($KERNEL_VERSION$suffix) + DTB ($BOARD)";
 	#address-cells = <1>;
 	images {
 		kernel {
@@ -382,9 +431,9 @@ build_kernel_fit() {
 		};
 	};
 	configurations {
-		default = "conf-1";
-		conf-1 {
-			description = "H713 HY200";
+		default = "conf-$KERNEL_DTB";
+		conf-$KERNEL_DTB {
+			description = "$BOARD ($KERNEL_DTB)";
 			kernel = "kernel";
 			fdt = "fdt-1";
 		};
@@ -398,8 +447,12 @@ ITS
 
 # --- Images / summary -------------------------------------------------------
 build_images() {
-  local files=(bl31.bin Image.gz "$KERNEL_DTB.dtb" "$KERNEL_DTB_PROJECTOR.dtb" h713-kernel.fit)
-  local image
+  local files=(bl31.bin Image.gz "$KERNEL_DTB.dtb" h713-kernel.fit)
+  local image dtb
+  for dtb in "$KERNEL_DTB_BENCH" "$KERNEL_DTB_PROJECTOR"; do
+    case " ${files[*]} " in *" $dtb.dtb "*) continue ;; esac
+    files+=("$dtb.dtb")
+  done
   for image in "$OUT"/u-boot-sunxi-with-spl-*.bin; do
     [ -f "$image" ] && files+=("${image##*/}")
   done

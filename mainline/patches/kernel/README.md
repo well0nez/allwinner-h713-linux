@@ -134,9 +134,26 @@ descriptor-level RE of the vendor `allwinner,sunxi-ce` driver (source
 unavailable) for no benefit — the A53's ARMv8 AES/SHA already outrun it. See the
 roadmap and `docs/status.md`.
 
-With these patches in place `build/build.sh kernel` emits both DTBs and a bench-only
-bootable FIT (`build/out/h713-kernel.fit`: gzip Image + bench DTB, load/entry
-`0x48000000`).
+- **0160 — a DTB name per board.** `sun50i-h713-hy310.dts` is a device tree
+  that is nothing but a name: it `#include`s
+  `sun50i-h713-hy200-qz713df-a1.dts` and overrides `model` and the board
+  `compatible` (`magcubic,hy310`). The SoC compatible stays
+  `allwinner,sun50i-h713` and no node, property or `status` changes — the
+  compiled DTB differs from the HY200 one in those two strings and nothing
+  else. It exists because `boards/<id>/board.env` names the DTB per board
+  (doku/121 §3), and until stage 4 the HY310 booted a DTB called after
+  cstenger's bench board. Including a `.dts` from a `.dts` is the pattern
+  mainline uses two Makefile entries above ours
+  (`sun50i-h700-anbernic-rg35xx-plus.dts`). Everything HY310-specific that we
+  patched into the hy200 dts stays there; moving it (and giving the bench board
+  a real bench description) is a later cleanup, deliberately not bundled with
+  the rename. Note `magcubic` is not in `vendor-prefixes.yaml` — that matters
+  for upstreaming, not for this series. *(ours)*
+
+With these patches in place `build/build.sh kernel` emits the board's DTB plus
+cstenger's two HY200 DTBs, and a bootable FIT (`build/out/h713-kernel.fit`:
+gzip Image + the DTB named by `boards/<id>/board.env` → `KERNEL_DTB`, load/entry
+`0x48000000`; the FIT configuration is named `conf-<dtb>`).
 
 ## Debug kernels (`board/*.config`)
 
