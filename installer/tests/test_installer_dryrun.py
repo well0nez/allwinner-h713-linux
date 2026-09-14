@@ -17,7 +17,7 @@ import fakedisk
 # frozen 2026-09-14 from hy310-install.py 0.1: (exit code, lines, digest of the
 # normalised stdout).  Normalisation replaces the temp directory, the device and
 # the image path, and the platform name; nothing else in these runs varies.
-DUMP_ONLY = (0, 29, "22bef032ae8372bc190b5e494e8e9438816950b9dbb286996e7ca77dba5e667e")
+DUMP_ONLY = (0, 36, "f75069a5c52094e4e29b3700f67b827576ef643d55915d8784c16794fc1dc5e2")
 # was (0, 50, "da0ecc92e5649f29597bd72ca1da1fabe6954f0c756d1d068c9c5d13189f305c") until
 # stage 2 C-C: still 50 lines, but UDISK's line turned from "genullt" into the new
 # English "left untouched", private/Reserve0_b say who keeps them, and the two
