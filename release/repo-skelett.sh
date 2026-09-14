@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# AUSSER DIENST seit v0.5-beta (doku/118 §2): das veroeffentlichte Repo ist der Klon; Aenderungen
+# werden dort kopiert, committet und gepusht. Bleibt als Beleg, wie das Skelett entstand -- nicht mehr
+# ausfuehren (Stufe 3 hat die Dateiliste nur noch ehrlich gehalten).
 # release/repo-skelett.sh -- das neue Repo lokal und wiederholbar aus dem Arbeitsbaum bauen.
 #
 #   release/repo-skelett.sh [--ziel DIR] [--neu]
@@ -184,17 +187,28 @@ snapshots from 2026-08-31 are gone -- the patches carry the same files."
 
 say "6 installer/"
 mkdir -p "$ZIEL/installer"
-for f in hy310-install.py hy310-mkimage.py mkimage-selbsttest.py mkimage-eingaben.sh installer-fahren.py metadata-leer-16m.ext4.gz; do
+# Seit doku/121 Stufe 3 heissen die Werkzeuge h713-install, h713-mkimage, h713-extract,
+# mkimage-inputs.sh und mkimage-selftest.py; die alten Namen hy310-install.py und
+# hy310-mkimage.py bleiben eine Auflage lang als Weiterleitungen daneben.
+# installer-fahren.py gibt es nicht mehr (D1): h713-install --yes hat den
+# Pseudo-Terminal-Treiber fuer die JA-Abfrage ersetzt.
+# Fehlt eine Datei, bricht der Export ab statt einen alten Stand unter neuem Namen
+# auszuliefern -- die Werkzeuge der Stufe 3 sind im Repo entstanden, nicht im
+# Arbeitsbaum (doku/118 §2: repo-neu ist das veroeffentlichte Repo, dieses Skript
+# laeuft nicht mehr).
+for f in h713-install h713-mkimage mkimage-inputs.sh mkimage-selftest.py \
+         hy310-install.py hy310-mkimage.py metadata-leer-16m.ext4.gz; do
+	[[ -e "$ARBEIT/r0-fel/$f" ]] || die "installer: $ARBEIT/r0-fel/$f fehlt"
 	cp -a "$ARBEIT/r0-fel/$f" "$ZIEL/installer/"
 done
 cp -a "$ARBEIT/r2-extract/h713-extract" "$ZIEL/installer/"
 # Die deutsche Langfassung r2-extract/README.md bleibt draussen (Marco, 12.09.): zwei
 # Beschreibungen desselben Werkzeugs nebeneinander verwirren mehr, als sie helfen.
 # Englisch steht sie in docs/tools/h713-extract.md.
-commit "installer: hy310-install, hy310-mkimage, h713-extract and their helpers" "Moved from analyse/release/arbeit/{r0-fel,r2-extract}. hy310-install (FEL -> ums ->
-dump -> placeholders -> env carry-over -> write -> verify), hy310-mkimage (image
-layout v3: bootchain / hole 12288-14335 / system / GPT copy), mkimage-selbsttest,
-mkimage-eingaben.sh, installer-fahren.py (pty driver for the JA prompt),
+commit "installer: h713-install, h713-mkimage, h713-extract and their helpers" "Moved from analyse/release/arbeit/{r0-fel,r2-extract}. h713-install (FEL -> ums ->
+dump -> placeholders -> env carry-over -> write -> verify), h713-mkimage (image
+layout v3: bootchain / hole 12288-14335 / system / GPT copy), mkimage-selftest.py,
+mkimage-inputs.sh, the forwarders hy310-install.py and hy310-mkimage.py for one release,
 h713-extract (vendor blobs from the user's own firmware, with hashes and report; documented in
 docs/tools/h713-extract.md, its German long form stays in the working tree),
 metadata-leer-16m.ext4.gz (the empty metadata filesystem Android needs).

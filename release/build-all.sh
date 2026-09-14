@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# release/build-all.sh -- vom frischen Klon bis zum einspielbaren Abbild, ein Einstieg.
+# release/build-all.sh -- from a fresh clone to an installable image, one entry point.
 #
-#   release/build-all.sh --version v0.10 [--board hy310] [--vendor DIR] [--wifi-env DATEI]
+#   release/build-all.sh --version v0.10 [--board hy310] [--vendor DIR] [--wifi-env FILE]
 #                        [--jobs N] [--skip-bl31] [--skip-uboot] [--skip-kernel]
 #                        [--skip-rootfs] [--dry-run]
 #
@@ -11,54 +11,55 @@
 # no image for a board nobody has tested -- a board that is not STATUS=verified
 # (an owner reported a green run) or has no installer profile is refused.
 #
-# Reihenfolge (doku/116 P4):
-#   1 bl31  2 U-Boot (+ SPL/proper trennen + Umgebung mit CRC)  2b Installer-U-Boot (ums)
-#   2b2 Sonden-U-Boot (h713_probe)  2c sunxi-fel (Falltuer)  3 Kernel (+ Module)
-#   4 aic8800  5 Debian-Keyring (gepinnt)  6 Sysroot + h713-tv quer  7 Rootfs
-#   8 ext4-Eingaben  9 Abbild  10 Pruefen (mit --vendor: voller Selbsttest)  11 Stempel
+# Order (doku/116 P4):
+#   1 bl31  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
+#   2b2 probe U-Boot (h713_probe)  2c sunxi-fel (trap door)  3 kernel (+ modules)
+#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv cross-built  7 rootfs
+#   8 ext4 inputs  9 image  10 check (with --vendor: the full self-test)  11 stamp
 #
-# Laeuft auf dem Arbeitsrechner und treibt den Container h713-build (doku/50 §Bauen);
-# nichts wird auf dem Host gebaut (Gedaechtnis: "Bauen nur im Container"). Alles,
-# was frueher von Hand nach tftp/ kopiert wurde, entsteht hier unter
-# mainline/build/out/ und wird dem Abbild-Bauer ausdruecklich uebergeben --
-# tftp/ ist ab jetzt Entwicklungsablage, keine Eingabe.
+# Runs on the work machine and drives the container h713-build (doku/50 §Bauen);
+# nothing is built on the host (memory: "build only in the container"). Everything
+# that used to be copied to tftp/ by hand is made here under mainline/build/out/
+# and is handed to the image builder explicitly -- tftp/ is a development shelf
+# from now on, not an input.
 #
-# Was dieses Skript NICHT tut: den Extrakt aus dem Abzug des Nutzers erzeugen
-# (das macht hy310-install beim Einspielen) und irgendetwas ans Geraet schicken.
+# What this script does NOT do: make the extract out of the user's own dump
+# (h713-install does that while installing) and send anything to the device.
 #
-# Pfade der Bausteine stehen unten in einem Block, damit der Umzug nach
-# installer/ und rootfs/ (doku/116 P3) genau diese Zeilen aendert und sonst nichts.
+# The paths of the building blocks are in one block below, so that the move to
+# installer/ and rootfs/ (doku/116 P3) changes those lines and nothing else.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-# --- Pfade (P3 aendert nur diese) ------------------------------------------
+# --- paths (P3 changes only these) -----------------------------------------
 MAINLINE="$ROOT/mainline"
-# Beide Layouts: Release-Repo (installer/, rootfs/ unter der Wurzel) und
-# Arbeitsverzeichnis (analyse/release/arbeit/...). Das Repo-Layout gewinnt.
+# Both layouts: release repository (installer/, rootfs/ under the root) and
+# working directory (analyse/release/arbeit/...). The repository layout wins.
 if [[ -d "$ROOT/installer" && -d "$ROOT/rootfs" ]]; then
-	INSTALLER="$ROOT/installer"; EXTRAKTOR="$ROOT/installer/h713-extract"; ROOTFS="$ROOT/rootfs"
+	INSTALLER="$ROOT/installer"; EXTRACTOR="$ROOT/installer/h713-extract"; ROOTFS="$ROOT/rootfs"
 else
-	INSTALLER="$ROOT/analyse/release/arbeit/r0-fel"; EXTRAKTOR="$ROOT/analyse/release/arbeit/r2-extract/h713-extract"; ROOTFS="$ROOT/analyse/release/arbeit/rootfs"
+	INSTALLER="$ROOT/analyse/release/arbeit/r0-fel"; EXTRACTOR="$ROOT/analyse/release/arbeit/r2-extract/h713-extract"; ROOTFS="$ROOT/analyse/release/arbeit/rootfs"
 fi
 USERSPACE="$ROOT/userspace"
 CONTAINER=h713-build
-# Wie heisst $ROOT im Container? Aus den Mounts des Containers ableiten, nicht
-# annehmen -- das Release-Repo kann unterhalb des gemounteten Arbeitsverzeichnisses
-# liegen (z. B. /opt/Projekte/h713/repo-neu -> /work/repo-neu), doku/116 P3.
-container_pfad() {
-	local quelle ziel
-	while IFS=' ' read -r quelle ziel; do
-		[[ -n "$quelle" ]] || continue
-		if [[ "$ROOT" == "$quelle" || "$ROOT" == "$quelle"/* ]]; then
-			printf '%s%s' "$ziel" "${ROOT#"$quelle"}"; return 0
+# What is $ROOT called inside the container? Derive it from the container's
+# mounts, do not assume -- the release repository can sit below the mounted work
+# directory (e.g. /opt/Projekte/h713/repo-neu -> /work/repo-neu), doku/116 P3.
+container_path() {
+	local src dst
+	while IFS=' ' read -r src dst; do
+		[[ -n "$src" ]] || continue
+		if [[ "$ROOT" == "$src" || "$ROOT" == "$src"/* ]]; then
+			printf '%s%s' "$dst" "${ROOT#"$src"}"; return 0
 		fi
 	done < <(podman inspect -f '{{range .Mounts}}{{.Source}} {{.Destination}}{{"\n"}}{{end}}' "$CONTAINER" 2>/dev/null)
 	return 1
 }
-WORK=$(container_pfad) || { echo "Fehler: $ROOT liegt in keinem Mount des Containers $CONTAINER" >&2; exit 1; }
+WORK=$(container_path) || { echo "error: $ROOT is in no mount of the container $CONTAINER" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 # U-Boot is <board base> + <role fragment> (docs/uboot/README.md "Which defconfig"):
-# the base comes from board.env (UBOOT_BOARD), the roles are fixed here. The probe
+# the base comes from board.env (UBOOT_DEFCONFIG, else UBOOT_BOARD), the roles are
+# fixed here (resolved into UBOOT_BASE below). The probe
 # keeps its own base at 624 MHz and takes no role -- it must never run at the
 # clock of a board someone happens to be building for.
 UBOOT_RELEASE_ROLE=release                            # boots the eMMC, ums + fastboot
@@ -66,8 +67,8 @@ UBOOT_INSTALLER_ROLE=installer                        # FEL -> ums, for h713-ins
 UBOOT_PROBE_DEFCONFIG=h713_probe_defconfig            # FEL -> h713_probe, for unknown H713 devices
 KEYRING_DEB_URL="https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
 KEYRING_DEB_SHA256=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
-KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byteidentisch zum bisher benutzten .gpg (12.09.)
-SYSROOT_PAKETE=libc6-dev,libgcc-14-dev,libdrm-dev,libasound2-dev
+KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byte-identical to the .gpg used so far (12.09.)
+SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libdrm-dev,libasound2-dev
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
@@ -86,7 +87,7 @@ while (($#)); do
 	--skip-rootfs) SKIP_ROOTFS=1; shift ;;
 	--dry-run)   DRY=1; shift ;;
 	-h|--help)   sed -n '2,28p' "$0"; exit 0 ;;
-	*) echo "unbekannt: $1" >&2; exit 2 ;;
+	*) echo "unknown: $1" >&2; exit 2 ;;
 	esac
 done
 # --- board (doku/121 §3 and §5) ---------------------------------------------
@@ -109,246 +110,254 @@ fi
 [[ -n "${KERNEL_DTB:-}" ]] || { echo "boards/$BOARD names no KERNEL_DTB -- no device tree of ours has booted there" >&2; exit 2; }
 [[ -n "${UBOOT_BOARD:-}" ]] || { echo "boards/$BOARD names no UBOOT_BOARD -- no U-Boot base defconfig of ours for it" >&2; exit 2; }
 [[ -n "${IMAGE_NAME:-}" ]] || { echo "boards/$BOARD names no IMAGE_NAME" >&2; exit 2; }
-[[ -n "$VERSION" ]] || { echo "--version vX.Y fehlt (Name des Abbilds: $IMAGE_NAME-vX.Y)" >&2; exit 2; }
-[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+(-[a-z0-9]+)?$ ]] || { echo "--version: erwartet vX.Y oder vX.Y-beta, nicht '$VERSION'" >&2; exit 2; }
+# The kernel defconfig: board.env may name one; otherwise config/versions.env pins it (build.sh does the same).
+KDEF=${KERNEL_DEFCONFIG:-$(sed -n 's/^KERNEL_DEFCONFIG=\([^ #]*\).*/\1/p' "$MAINLINE/config/versions.env")}
+[[ -n "$KDEF" ]] || { echo "no KERNEL_DEFCONFIG in boards/$BOARD/board.env or config/versions.env" >&2; exit 2; }
+# The U-Boot base: board.env may name its defconfig outright (cstenger's boards do,
+# their UBOOT_BOARD is the hyphenated id and no defconfig name), else it is
+# <UBOOT_BOARD>_defconfig. Same resolution as mainline/build/build.sh; uboot-build.sh
+# takes the base without the suffix. For hy310 this is hy310, as before.
+UBOOT_BASE=${UBOOT_DEFCONFIG:-${UBOOT_BOARD}_defconfig}; UBOOT_BASE=${UBOOT_BASE%_defconfig}
+[[ -n "$VERSION" ]] || { echo "--version vX.Y is missing (name of the image: $IMAGE_NAME-vX.Y)" >&2; exit 2; }
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+(-[a-z0-9]+)?$ ]] || { echo "--version: expected vX.Y or vX.Y-beta, not '$VERSION'" >&2; exit 2; }
 NAME="$IMAGE_NAME-$VERSION"
 OUT="$MAINLINE/build/out"
-AUSGABE="$INSTALLER/out"
+DELIVERY="$INSTALLER/out"
 
 say()  { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
-die()  { printf '\nFehler: %s\n' "$*" >&2; exit 1; }
-im_container()      { podman exec -e JOBS="$JOBS" "$CONTAINER" bash -lc "$*"; }
-im_container_root() { podman exec -u root -e JOBS="$JOBS" "$CONTAINER" bash -lc "$*"; }
-# Host-Pfad -> Container-Pfad
+die()  { printf '\nerror: %s\n' "$*" >&2; exit 1; }
+in_container()      { podman exec -e JOBS="$JOBS" "$CONTAINER" bash -lc "$*"; }
+in_container_root() { podman exec -u root -e JOBS="$JOBS" "$CONTAINER" bash -lc "$*"; }
+# host path -> container path
 c() { printf '%s' "${1/#$ROOT/$WORK}"; }
 T0=$(date +%s)
-dauer() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $((s%60)); }
+elapsed() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $((s%60)); }
 
 say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
-info "Wurzel $ROOT"
-info "Board $BOARD ($STATUS, Profil $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BOARD + Rollen)"
-((DRY)) && info "TROCKENLAUF -- es wird nichts gebaut"
+info "root $ROOT"
+info "board $BOARD ($STATUS, profile $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles)"
+((DRY)) && info "DRY RUN -- nothing is built"
 
-# --- 0. Voraussetzungen -----------------------------------------------------
-say "0/11 Voraussetzungen"
-for w in podman python3 curl ar tar sha256sum; do command -v "$w" >/dev/null || die "fehlt auf dem Host: $w"; done
-st=$(podman inspect -f '{{.State.Status}}' "$CONTAINER" 2>/dev/null || echo fehlt)
+# --- 0. prerequisites -------------------------------------------------------
+say "0/11 prerequisites"
+for w in podman python3 curl ar tar sha256sum; do command -v "$w" >/dev/null || die "missing on the host: $w"; done
+st=$(podman inspect -f '{{.State.Status}}' "$CONTAINER" 2>/dev/null || echo missing)
 case "$st" in
-	running) info "Container $CONTAINER laeuft" ;;
-	created|exited|stopped) ((DRY)) || podman start "$CONTAINER" >/dev/null; info "Container $CONTAINER gestartet (war: $st)" ;;
-	*) die "Container $CONTAINER fehlt -- Rezept in doku/50-befehle.md §Bauen" ;;
+	running) info "container $CONTAINER is running" ;;
+	created|exited|stopped) ((DRY)) || podman start "$CONTAINER" >/dev/null; info "container $CONTAINER started (was: $st)" ;;
+	*) die "container $CONTAINER is missing -- recipe in doku/50-befehle.md §Bauen" ;;
 esac
-((DRY)) || im_container 'clang --version | head -1; command -v mmdebstrap mke2fs depmod dtc >/dev/null || { echo "im Container fehlen Werkzeuge (mmdebstrap/mke2fs/depmod/dtc)"; exit 1; }' | sed 's/^/    /'
-for f in "$INSTALLER/hy310-mkimage.py" "$INSTALLER/mkimage-eingaben.sh" "$ROOTFS/build-rootfs.sh" "$EXTRAKTOR" "$MAINLINE/build/build.sh" "$MAINLINE/build/uboot-build.sh"; do
-	[[ -e "$f" ]] || die "fehlt: $f"
+((DRY)) || in_container 'clang --version | head -1; command -v mmdebstrap mke2fs depmod dtc >/dev/null || { echo "tools are missing in the container (mmdebstrap/mke2fs/depmod/dtc)"; exit 1; }' | sed 's/^/    /'
+for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build-rootfs.sh" "$EXTRACTOR" "$MAINLINE/build/build.sh" "$MAINLINE/build/uboot-build.sh"; do
+	[[ -e "$f" ]] || die "missing: $f"
 done
-[[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR sieht nicht wie eine h713-extract-Ausgabe aus (kein boot/mips/)"
-mkdir -p "$OUT" "$AUSGABE"
-((DRY)) && { info "wuerde bauen: bl31, U-Boot ($UBOOT_BOARD + $UBOOT_RELEASE_ROLE) + Env, Installer-U-Boot ($UBOOT_BOARD + $UBOOT_INSTALLER_ROLE), Sonden-U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, Kernel + Module (BOARD=$BOARD, $KERNEL_DTB), aic8800, Keyring, Sysroot + h713-tv, Rootfs, Eingaben, Abbild $NAME"; exit 0; }
+[[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR does not look like an h713-extract output (no boot/mips/)"
+mkdir -p "$OUT" "$DELIVERY"
+((DRY)) && { info "would build: bl31, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv, rootfs, inputs, image $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
-if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- uebersprungen (--skip-bl31, $OUT/bl31.bin vorhanden)"
+if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- skipped (--skip-bl31, $OUT/bl31.bin is there)"
 else
 	say "1/11 bl31 (TF-A)"
-	# Von vorn bauen. Grund (12.09., P3.9): im Arbeitsbaum lag ein bl31 vom 10.09.,
-	# das mit eingeschalteten Zusicherungen gebaut worden war (49260 statt 45164 Byte).
-	# make sah alles aktuell und hat es nie ersetzt -- es steckt in v0.8 bis v0.10.
+	# Build from scratch. Reason (12.09., P3.9): the work tree held a bl31 from
+	# 10.09. built with assertions enabled (49260 instead of 45164 bytes). make
+	# saw everything as up to date and never replaced it -- it sits in v0.8 to v0.10.
 	rm -rf "$MAINLINE/external/arm-trusted-firmware/build"
-	im_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh bl31" | tail -3 | sed 's/^/    /'
+	in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh bl31" | tail -3 | sed 's/^/    /'
 fi
-[[ -f "$OUT/bl31.bin" ]] || die "kein bl31.bin"
+[[ -f "$OUT/bl31.bin" ]] || die "no bl31.bin"
 
-# --- 2. U-Boot: bauen, trennen, Umgebung ------------------------------------
+# --- 2. U-Boot: build, split, environment -----------------------------------
 UB_O="$MAINLINE/build/uboot-release"
 if ((SKIP_UBOOT)) && [[ -f "$OUT/spl-release.bin" && -f "$OUT/uboot-proper-release.bin" && -f "$OUT/hy310-env-release.bin" ]]; then
-	say "2/11 U-Boot -- uebersprungen (--skip-uboot, Bausteine vorhanden)"
+	say "2/11 U-Boot -- skipped (--skip-uboot, the building blocks are there)"
 else
-	say "2/11 U-Boot $UBOOT_BOARD + $UBOOT_RELEASE_ROLE"
-	rm -rf "$UB_O"   # wie bei bl31: keine alten Objekte, kein altes .config
-	im_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UB_O") $UBOOT_BOARD $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot-Bau gescheitert (Log: $OUT/uboot-build.log)"; }
-	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "kein $B"
-	# SPL = die ersten 32 KiB (eGON.BT0), der Rest ist U-Boot proper (doku/50 §Bauen)
+	say "2/11 U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE"
+	rm -rf "$UB_O"   # as with bl31: no old objects, no old .config
+	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
+	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "no $B"
+	# SPL = the first 32 KiB (eGON.BT0), the rest is U-Boot proper (doku/50 §Bauen)
 	head -c 32768 "$B" > "$OUT/spl-release.bin"
 	tail -c +32769 "$B" > "$OUT/uboot-proper-release.bin"
-	[[ "$(head -c 12 "$OUT/spl-release.bin" | tail -c 8)" == "eGON.BT0" ]] || die "SPL traegt keine eGON.BT0-Kennung"
-	# Die eingebaute Vorgabe-Umgebung als 64-KiB-Abbild mit CRC (doku/60 §Die U-Boot-Umgebung im Abbild).
-	# u-boot-initial-env listet bootcmd zweimal (Defconfig + hy310.env, identisch); Dubletten raus.
-	im_container "cd $WORK/mainline/external/u-boot && make -s O=$(c "$UB_O") ARCH=arm HOSTCC=clang CC='clang -target aarch64-linux-gnu' LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip u-boot-initial-env" >/dev/null
+	[[ "$(head -c 12 "$OUT/spl-release.bin" | tail -c 8)" == "eGON.BT0" ]] || die "the SPL carries no eGON.BT0 marker"
+	# The built-in default environment as a 64 KiB image with a CRC (doku/60 §Die U-Boot-Umgebung im Abbild).
+	# u-boot-initial-env lists bootcmd twice (defconfig + hy310.env, identical); drop the duplicates.
+	in_container "cd $WORK/mainline/external/u-boot && make -s O=$(c "$UB_O") ARCH=arm HOSTCC=clang CC='clang -target aarch64-linux-gnu' LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip u-boot-initial-env" >/dev/null
 	awk '!seen[$0]++' "$UB_O/u-boot-initial-env" > "$UB_O/u-boot-initial-env.dedup"
-	im_container "$(c "$UB_O")/tools/mkenvimage -s 0x10000 -o $(c "$OUT")/hy310-env-release.bin $(c "$UB_O")/u-boot-initial-env.dedup"
+	in_container "$(c "$UB_O")/tools/mkenvimage -s 0x10000 -o $(c "$OUT")/hy310-env-release.bin $(c "$UB_O")/u-boot-initial-env.dedup"
 	chmod 0644 "$OUT/hy310-env-release.bin"
 	python3 - "$OUT/hy310-env-release.bin" <<'PY'
 import sys, zlib, struct
 d = open(sys.argv[1], "rb").read(); assert len(d) == 65536, len(d)
 assert struct.unpack("<I", d[:4])[0] == zlib.crc32(d[4:]) & 0xffffffff, "CRC"
 e = [x.decode() for x in d[4:].split(b"\0") if x and x != b"\xff" * len(x)]
-g = [x for x in e if x.startswith("h713_gate=")]; assert g, "h713_gate fehlt"
-print("    Umgebung: %d Eintraege, %s" % (len(e), g[0]))
+g = [x for x in e if x.startswith("h713_gate=")]; assert g, "h713_gate is missing"
+print("    environment: %d entries, %s" % (len(e), g[0]))
 PY
 	v=$(strings -n 8 "$OUT/uboot-proper-release.bin" | grep -m1 '^U-Boot 20' || true)
 	info "U-Boot $v"
 fi
-# 2b. Der Installer-U-Boot (FEL -> ums): derselbe Fork, eigene Defconfig. Ohne ihn
-#     kann hy310-install aus einem frischen Klon nichts freigeben (P3, 12.09.).
+# 2b. The installer U-Boot (FEL -> ums): same fork, own role fragment. Without it
+#     h713-install cannot share the drive out of a fresh clone (P3, 12.09.).
 UBI_O="$MAINLINE/build/uboot-installer"
 if ((SKIP_UBOOT)) && [[ -f "$OUT/u-boot-installer.bin" ]]; then
-	say "2b/11 Installer-U-Boot -- uebersprungen"
+	say "2b/11 installer U-Boot -- skipped"
 else
-	say "2b/11 Installer-U-Boot $UBOOT_BOARD + $UBOOT_INSTALLER_ROLE (ums)"
+	say "2b/11 installer U-Boot $UBOOT_BASE + $UBOOT_INSTALLER_ROLE (ums)"
 	rm -rf "$UBI_O"
-	im_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBI_O") $UBOOT_BOARD $UBOOT_INSTALLER_ROLE" > "$OUT/uboot-installer-build.log" 2>&1 || { tail -20 "$OUT/uboot-installer-build.log"; die "Installer-U-Boot gescheitert (Log: $OUT/uboot-installer-build.log)"; }
-	[[ -f "$UBI_O/u-boot-sunxi-with-spl.bin" ]] || die "kein $UBI_O/u-boot-sunxi-with-spl.bin"
+	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBI_O") $UBOOT_BASE $UBOOT_INSTALLER_ROLE" > "$OUT/uboot-installer-build.log" 2>&1 || { tail -20 "$OUT/uboot-installer-build.log"; die "installer U-Boot failed (log: $OUT/uboot-installer-build.log)"; }
+	[[ -f "$UBI_O/u-boot-sunxi-with-spl.bin" ]] || die "no $UBI_O/u-boot-sunxi-with-spl.bin"
 	cp "$UBI_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-installer.bin"
-	grep -q 'ums 0 mmc 1' "$OUT/u-boot-installer.bin" || die "Installer-U-Boot traegt kein 'ums 0 mmc 1' im bootcmd"
+	grep -q 'ums 0 mmc 1' "$OUT/u-boot-installer.bin" || die "the installer U-Boot carries no 'ums 0 mmc 1' in its bootcmd"
 fi
-# 2b2. Die Sonde (FEL -> h713_probe): fuer H713-Geraete, die wir nicht kennen.
-#      Derselbe Fork, eigene Defconfig, DRAM auf 624 statt 792 -- das konservative
-#      Ende der Spanne, die unsere beiden bekannten Boards aufspannen (doku/120 §4).
-#      Schreibt nichts; gehoert neben u-boot-installer.bin in den Auslieferungsordner.
+# 2b2. The probe (FEL -> h713_probe): for H713 devices we do not know. Same fork,
+#      own defconfig, DRAM at 624 instead of 792 -- the conservative end of the
+#      range our two known boards span (doku/120 §4). Writes nothing; belongs next
+#      to u-boot-installer.bin in the delivery directory.
 UBP_O="$MAINLINE/build/uboot-probe"
 if ((SKIP_UBOOT)) && [[ -f "$OUT/u-boot-h713-probe.bin" ]]; then
-	say "2b2/11 Sonden-U-Boot -- uebersprungen"
+	say "2b2/11 probe U-Boot -- skipped"
 else
-	say "2b2/11 Sonden-U-Boot $UBOOT_PROBE_DEFCONFIG (h713_probe)"
+	say "2b2/11 probe U-Boot $UBOOT_PROBE_DEFCONFIG (h713_probe)"
 	rm -rf "$UBP_O"
-	im_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBP_O") $UBOOT_PROBE_DEFCONFIG" > "$OUT/uboot-probe-build.log" 2>&1 || { tail -20 "$OUT/uboot-probe-build.log"; die "Sonden-U-Boot gescheitert (Log: $OUT/uboot-probe-build.log)"; }
-	[[ -f "$UBP_O/u-boot-sunxi-with-spl.bin" ]] || die "kein $UBP_O/u-boot-sunxi-with-spl.bin"
+	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBP_O") $UBOOT_PROBE_DEFCONFIG" > "$OUT/uboot-probe-build.log" 2>&1 || { tail -20 "$OUT/uboot-probe-build.log"; die "probe U-Boot failed (log: $OUT/uboot-probe-build.log)"; }
+	[[ -f "$UBP_O/u-boot-sunxi-with-spl.bin" ]] || die "no $UBP_O/u-boot-sunxi-with-spl.bin"
 	cp "$UBP_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-h713-probe.bin"
-	grep -q 'h713_probe' "$OUT/u-boot-h713-probe.bin" || die "Sonden-U-Boot kennt kein h713_probe"
-	# Die Sonde darf nie mit dem Takt dieses Boards ausgeliefert werden: 792 auf
-	# fremdem RAM ist genau das Raten, das sie vermeiden soll.
-	grep -q 'CONFIG_DRAM_CLK=624' "$MAINLINE/external/u-boot/configs/$UBOOT_PROBE_DEFCONFIG" || die "Sonden-defconfig steht nicht auf 624 MHz"
+	grep -q 'h713_probe' "$OUT/u-boot-h713-probe.bin" || die "the probe U-Boot knows no h713_probe"
+	# The probe must never be shipped with this board's clock: 792 on somebody
+	# else's RAM is exactly the guessing it is meant to avoid.
+	grep -q 'CONFIG_DRAM_CLK=624' "$MAINLINE/external/u-boot/configs/$UBOOT_PROBE_DEFCONFIG" || die "the probe defconfig is not at 624 MHz"
 fi
-# 2c. sunxi-fel mit der S44-Falltuer (Fork-Commit 269dfa2): das Werkzeug, mit dem
-#     hy310-install das Geraet ueberhaupt erreicht. Wirtsprogramm, im Container gebaut
-#     (x86_64, libusb-1.0) -- gehoert spaeter neben hy310-install in den Auslieferungsordner.
+# 2c. sunxi-fel with the S44 trap door (fork commit 269dfa2): the tool h713-install
+#     reaches the device with at all. A host program, built in the container
+#     (x86_64, libusb-1.0) -- belongs next to h713-install in the delivery directory.
 if ((SKIP_UBOOT)) && [[ -x "$OUT/sunxi-fel" ]]; then
-	say "2c/11 sunxi-fel -- uebersprungen"
+	say "2c/11 sunxi-fel -- skipped"
 else
-	say "2c/11 sunxi-fel (Falltuer, Wirtsprogramm)"
-	im_container "make -s -C $WORK/mainline/external/sunxi-tools clean >/dev/null 2>&1; make -s -C $WORK/mainline/external/sunxi-tools sunxi-fel" > "$OUT/sunxi-fel-build.log" 2>&1 || { tail -20 "$OUT/sunxi-fel-build.log"; die "sunxi-fel bauen gescheitert (Log: $OUT/sunxi-fel-build.log)"; }
+	say "2c/11 sunxi-fel (trap door, host program)"
+	in_container "make -s -C $WORK/mainline/external/sunxi-tools clean >/dev/null 2>&1; make -s -C $WORK/mainline/external/sunxi-tools sunxi-fel" > "$OUT/sunxi-fel-build.log" 2>&1 || { tail -20 "$OUT/sunxi-fel-build.log"; die "building sunxi-fel failed (log: $OUT/sunxi-fel-build.log)"; }
 	cp "$MAINLINE/external/sunxi-tools/sunxi-fel" "$OUT/sunxi-fel"
-	# (kein grep -q hinter einer Pipe: mit pipefail stirbt strings an SIGPIPE und der Test schlaegt fehl)
-	[[ $(strings -n 6 "$OUT/sunxi-fel" | grep -c 'FEL trap door') -gt 0 ]] || die "sunxi-fel ohne Falltuer-Kennung -- falscher Stand?"
+	# (no grep -q behind a pipe: with pipefail strings dies of SIGPIPE and the test fails)
+	[[ $(strings -n 6 "$OUT/sunxi-fel" | grep -c 'FEL trap door') -gt 0 ]] || die "sunxi-fel without the trap-door marker -- wrong revision?"
 fi
 
-# --- 3. Kernel + Module -----------------------------------------------------
-if ((SKIP_KERNEL)) && [[ -f "$OUT/h713-kernel.fit" ]]; then say "3/11 Kernel -- uebersprungen (--skip-kernel)"
+# --- 3. kernel + modules ----------------------------------------------------
+if ((SKIP_KERNEL)) && [[ -f "$OUT/h713-kernel.fit" ]]; then say "3/11 kernel -- skipped (--skip-kernel)"
 else
-	say "3/11 Kernel (Board-defconfig allein = Auslieferung; BOARD=$BOARD, DTB $KERNEL_DTB)"
-	im_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "Kernelbau gescheitert (Log: $OUT/kernel-build.log)"; }
+	say "3/11 kernel (board defconfig alone = delivery; BOARD=$BOARD, DTB $KERNEL_DTB)"
+	in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "kernel build failed (log: $OUT/kernel-build.log)"; }
 	grep -o 'applied [0-9]* series patches' "$OUT/kernel-build.log" | sed 's/^/    /' || true
 fi
 # The FIT names its configuration after the DTB (build.sh); an image for board X
 # must not quietly carry board Y's tree.
-[[ -f "$OUT/$KERNEL_DTB.dtb" ]] || die "kein $OUT/$KERNEL_DTB.dtb -- build.sh hat nicht die DTB von boards/$BOARD gebaut"
-grep -q "conf-$KERNEL_DTB" "$OUT/h713-kernel.fit" || die "h713-kernel.fit traegt keine Konfiguration conf-$KERNEL_DTB"
+[[ -f "$OUT/$KERNEL_DTB.dtb" ]] || die "no $OUT/$KERNEL_DTB.dtb -- build.sh did not build the DTB of boards/$BOARD"
+grep -q "conf-$KERNEL_DTB" "$OUT/h713-kernel.fit" || die "h713-kernel.fit carries no configuration conf-$KERNEL_DTB"
 TREE=$(ls -dt "$MAINLINE"/build/linux-6.18.38-*/ | head -1); TREE=${TREE%/}
-[[ -f "$TREE/Module.symvers" ]] || die "kein gebauter Kernelbaum unter $MAINLINE/build/"
+[[ -f "$TREE/Module.symvers" ]] || die "no built kernel tree under $MAINLINE/build/"
 H=$(basename "$TREE" | sed 's/linux-6.18.38-//' | cut -c1-8)
 MODROOT="$MAINLINE/build/modroot.$H"
-if ((SKIP_KERNEL)) && [[ -d "$MODROOT/lib/modules" ]]; then info "Modulbaum $MODROOT vorhanden"
+if ((SKIP_KERNEL)) && [[ -d "$MODROOT/lib/modules" ]]; then info "module tree $MODROOT is there"
 else
-	im_container "cd $(c "$TREE") && make -s ARCH=arm64 LLVM=1 INSTALL_MOD_PATH=$(c "$MODROOT") modules_install" >/dev/null
+	in_container "cd $(c "$TREE") && make -s ARCH=arm64 LLVM=1 INSTALL_MOD_PATH=$(c "$MODROOT") modules_install" >/dev/null
 fi
 KREL=$(ls "$MODROOT/lib/modules" | head -1)
-info "Baum $H, Release $KREL, $(find "$MODROOT" -name '*.ko' | wc -l) Module"
+info "tree $H, release $KREL, $(find "$MODROOT" -name '*.ko' | wc -l) modules"
 
-# --- 4. aic8800 (immer nach dem Kernel, gegen denselben Baum) ---------------
-say "4/11 aic8800-Module gegen Baum $H"
-im_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh aic8800" > "$OUT/aic8800-build.log" 2>&1 || { tail -20 "$OUT/aic8800-build.log"; die "aic8800-Bau gescheitert"; }
-for k in aic8800_bsp aic8800_fdrv; do [[ -f "$OUT/modules/$k.ko" ]] || die "fehlt: $OUT/modules/$k.ko"; done
-info "bsp + fdrv da ($(stat -c %s "$OUT/modules/aic8800_fdrv.ko") Byte fdrv)"
+# --- 4. aic8800 (always after the kernel, against the same tree) ------------
+say "4/11 aic8800 modules against tree $H"
+in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh aic8800" > "$OUT/aic8800-build.log" 2>&1 || { tail -20 "$OUT/aic8800-build.log"; die "aic8800 build failed"; }
+for k in aic8800_bsp aic8800_fdrv; do [[ -f "$OUT/modules/$k.ko" ]] || die "missing: $OUT/modules/$k.ko"; done
+info "bsp + fdrv are there ($(stat -c %s "$OUT/modules/aic8800_fdrv.ko") bytes fdrv)"
 
-# --- 5. Debian-Keyring, gepinnt --------------------------------------------
-say "5/11 Debian-Keyring fuer $DEBIAN_SUITE"
+# --- 5. Debian keyring, pinned ----------------------------------------------
+say "5/11 Debian keyring for $DEBIAN_SUITE"
 KEYRING_DIR="$MAINLINE/build/cache/keyring"; mkdir -p "$KEYRING_DIR"
 KEYRING="$KEYRING_DIR/debian-archive-keyring.pgp"
 if [[ ! -f "$KEYRING" ]]; then
 	DEB="$MAINLINE/build/cache/$(basename "$KEYRING_DEB_URL")"
 	[[ -f "$DEB" ]] || curl -fsSL -o "$DEB" "$KEYRING_DEB_URL"
-	echo "$KEYRING_DEB_SHA256  $DEB" | sha256sum -c --quiet - || die "Keyring-Paket: sha256 passt nicht -- nicht benutzen"
+	echo "$KEYRING_DEB_SHA256  $DEB" | sha256sum -c --quiet - || die "keyring package: the sha256 does not match -- do not use it"
 	T=$(mktemp -d); ( cd "$T" && ar x "$DEB" && tar -xf data.tar.* "$KEYRING_IN_DEB" ) && cp "$T/$KEYRING_IN_DEB" "$KEYRING"; rm -rf "$T"
 fi
-info "$(basename "$KEYRING") ($(stat -c %s "$KEYRING") Byte) aus $(basename "$KEYRING_DEB_URL"), sha256 gepinnt"
+info "$(basename "$KEYRING") ($(stat -c %s "$KEYRING") bytes) out of $(basename "$KEYRING_DEB_URL"), sha256 pinned"
 
-# --- 6. Sysroot + h713-tv quer ----------------------------------------------
-say "6/11 Sysroot (arm64, nur Entwicklungspakete) und h713-tv quer bauen"
+# --- 6. sysroot + h713-tv cross-built ---------------------------------------
+say "6/11 sysroot (arm64, development packages only) and h713-tv cross-built"
 SYSROOT="$MAINLINE/build/sysroot-arm64"
 if [[ ! -f "$SYSROOT/usr/include/libdrm/drm.h" ]]; then
 	rm -rf "$SYSROOT"
-	im_container_root "mmdebstrap --mode=unshare --variant=extract --arch=arm64 --skip=check/qemu --keyring=$(c "$KEYRING") --include=$SYSROOT_PAKETE $DEBIAN_SUITE $(c "$SYSROOT") '$DEBIAN_MIRROR'" > "$OUT/sysroot.log" 2>&1 \
-		|| im_container_root "mmdebstrap --variant=extract --arch=arm64 --skip=check/qemu --keyring=$(c "$KEYRING") --include=$SYSROOT_PAKETE $DEBIAN_SUITE $(c "$SYSROOT") '$DEBIAN_MIRROR'" >> "$OUT/sysroot.log" 2>&1 \
-		|| { tail -20 "$OUT/sysroot.log"; die "Sysroot scheitert (Log: $OUT/sysroot.log)"; }
-	# mmdebstrap --variant=extract legt absolute Symlinks an (/usr/lib/... -> /lib/...);
-	# clang --sysroot loest die auf dem Host auf. Relativ machen (release/sysroot-fix.py: merged-usr-Links + relative Symlinks).
-	im_container_root "python3 $WORK/release/sysroot-fix.py $(c "$SYSROOT")" | sed 's/^/    /'
+	in_container_root "mmdebstrap --mode=unshare --variant=extract --arch=arm64 --skip=check/qemu --keyring=$(c "$KEYRING") --include=$SYSROOT_PACKAGES $DEBIAN_SUITE $(c "$SYSROOT") '$DEBIAN_MIRROR'" > "$OUT/sysroot.log" 2>&1 \
+		|| in_container_root "mmdebstrap --variant=extract --arch=arm64 --skip=check/qemu --keyring=$(c "$KEYRING") --include=$SYSROOT_PACKAGES $DEBIAN_SUITE $(c "$SYSROOT") '$DEBIAN_MIRROR'" >> "$OUT/sysroot.log" 2>&1 \
+		|| { tail -20 "$OUT/sysroot.log"; die "sysroot fails (log: $OUT/sysroot.log)"; }
+	# mmdebstrap --variant=extract makes absolute symlinks (/usr/lib/... -> /lib/...);
+	# clang --sysroot resolves those on the host. Make them relative (release/sysroot-fix.py: merged-usr links + relative symlinks).
+	in_container_root "python3 $WORK/release/sysroot-fix.py $(c "$SYSROOT")" | sed 's/^/    /'
 fi
-info "Sysroot $SYSROOT ($(du -sh "$SYSROOT" 2>/dev/null | cut -f1))"
-im_container "cd $WORK/userspace/h713-tv && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-tv-cross.log" 2>&1 || { tail -20 "$OUT/h713-tv-cross.log"; die "h713-tv quer bauen gescheitert (Log: $OUT/h713-tv-cross.log)"; }
-TV="$USERSPACE/h713-tv/h713-tv.aarch64-linux-gnu"; [[ -f "$TV" ]] || die "kein $TV"
-info "h713-tv $(stat -c %s "$TV") Byte, $(file -b "$TV" 2>/dev/null | cut -d, -f1-2)"
+info "sysroot $SYSROOT ($(du -sh "$SYSROOT" 2>/dev/null | cut -f1))"
+in_container "cd $WORK/userspace/h713-tv && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-tv-cross.log" 2>&1 || { tail -20 "$OUT/h713-tv-cross.log"; die "cross-building h713-tv failed (log: $OUT/h713-tv-cross.log)"; }
+TV="$USERSPACE/h713-tv/h713-tv.aarch64-linux-gnu"; [[ -f "$TV" ]] || die "no $TV"
+info "h713-tv $(stat -c %s "$TV") bytes, $(file -b "$TV" 2>/dev/null | cut -d, -f1-2)"
 
-# --- 7. Rootfs --------------------------------------------------------------
-if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 Rootfs -- uebersprungen (--skip-rootfs)"
+# --- 7. rootfs --------------------------------------------------------------
+if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 rootfs -- skipped (--skip-rootfs)"
 else
-	say "7/11 Rootfs ($DEBIAN_SUITE/arm64, mmdebstrap im Container als root)"
-	im_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "Fehler|Abnahme gescheitert|^!!" "$OUT/rootfs-build.log" | tail -8; die "Rootfs-Bau gescheitert (Log: $OUT/rootfs-build.log)"; }
-	grep -E "Baumgroesse|wifi.env aus|Abnahme" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
+	say "7/11 rootfs ($DEBIAN_SUITE/arm64, mmdebstrap in the container as root)"
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
-# --- 8. ext4-Eingaben -------------------------------------------------------
-say "8/11 ext4-Eingaben (hy310-boot 128 MiB, hy310-rootfs 1 GiB mit Platzhaltern)"
-# tmp/ vorher als Nutzer anlegen: der Container schreibt darin als root, aber der
-# Selbsttest (Schritt 10) legt spaeter probe-b-gefuellt.img daneben -- in einem
-# root-eigenen Verzeichnis geht das nicht (P3, 12.09.).
+# --- 8. ext4 inputs ---------------------------------------------------------
+say "8/11 ext4 inputs (hy310-boot 128 MiB, hy310-rootfs 1 GiB with placeholders)"
+# Make tmp/ as the user beforehand: the container writes into it as root, but the
+# self-test (step 10) later puts probe-b-gefuellt.img next to it -- which does not
+# work in a root-owned directory (P3, 12.09.).
 mkdir -p "$INSTALLER/tmp"
-im_container_root "FIT=$(c "$OUT")/h713-kernel.fit ROOTFS_OUT=$(c "$ROOTFS")/out bash $(c "$INSTALLER")/mkimage-eingaben.sh" > "$OUT/eingaben.log" 2>&1 || { tail -12 "$OUT/eingaben.log"; die "ext4-Eingaben gescheitert"; }
-grep -c "  OK" "$OUT/eingaben.log" | sed 's/^/    OK-Zeilen: /'
+in_container_root "FIT=$(c "$OUT")/h713-kernel.fit ROOTFS_OUT=$(c "$ROOTFS")/out bash $(c "$INSTALLER")/mkimage-inputs.sh" > "$OUT/inputs.log" 2>&1 || { tail -12 "$OUT/inputs.log"; die "ext4 inputs failed"; }
+grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
 
-# --- 9. Abbild --------------------------------------------------------------
-say "9/11 Abbild $NAME"
-( cd "$INSTALLER" && python3 hy310-mkimage.py --out "out/$NAME.img" \
+# --- 9. image ---------------------------------------------------------------
+say "9/11 image $NAME"
+( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" \
 	--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
-	--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 --extraktor "$EXTRAKTOR" ) > "$OUT/mkimage.log" 2>&1 \
-	|| { tail -20 "$OUT/mkimage.log"; die "Abbild-Bau gescheitert (Log: $OUT/mkimage.log)"; }
+	--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 ) > "$OUT/mkimage.log" 2>&1 \
+	|| { tail -20 "$OUT/mkimage.log"; die "image build failed (log: $OUT/mkimage.log)"; }
 grep -E "environment:|OK   $NAME|placeholders for|in all" "$OUT/mkimage.log" | sed 's/^/    /'
 
-# --- 10. Pruefen ------------------------------------------------------------
-say "10/11 Pruefen"
-( cd "$INSTALLER" && python3 hy310-mkimage.py --pruefen "out/$NAME.tabelle.json" ) | tail -2 | sed 's/^/    /'
+# --- 10. check --------------------------------------------------------------
+say "10/11 check"
+( cd "$INSTALLER" && python3 h713-mkimage check "out/$NAME.tabelle.json" ) | tail -2 | sed 's/^/    /'
 if [[ -n "$VENDOR" ]]; then
-	( cd "$INSTALLER" && python3 mkimage-selbsttest.py "out/$NAME.tabelle.json" --vendor "$VENDOR" ) > "$OUT/selbsttest.log" 2>&1 || true
-	if grep -q "ALL GREEN" "$OUT/selbsttest.log"; then info "Selbsttest mit Vendor-Dateien: ALL GREEN"
-	else grep -E "FAIL" "$OUT/selbsttest.log" | sed 's/^/    /'; die "Selbsttest nicht gruen (Log: $OUT/selbsttest.log)"; fi
+	( cd "$INSTALLER" && python3 mkimage-selftest.py "out/$NAME.tabelle.json" --vendor "$VENDOR" ) > "$OUT/selftest.log" 2>&1 || true
+	if grep -q "ALL GREEN" "$OUT/selftest.log"; then info "self-test with the vendor files: ALL GREEN"
+	else grep -E "FAIL" "$OUT/selftest.log" | sed 's/^/    /'; die "self-test not green (log: $OUT/selftest.log)"; fi
 else
-	info "kein --vendor: nur Strukturpruefung. Der volle Selbsttest braucht eine h713-extract-Ausgabe."
+	info "no --vendor: structure check only. The full self-test needs an h713-extract output."
 fi
 
-# --- 11. Stempel ------------------------------------------------------------
-say "11/11 Stempel"
-STEMPEL="$AUSGABE/$NAME.BUILD.txt"
+# --- 11. stamp --------------------------------------------------------------
+say "11/11 stamp"
+STAMP="$DELIVERY/$NAME.BUILD.txt"
 {
-	echo "$NAME  gebaut $(date -u '+%Y-%m-%dT%H:%M:%SZ') in $(dauer)"
-	echo "Board:    $BOARD ($STATUS; Profil $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BOARD + $UBOOT_RELEASE_ROLE/$UBOOT_INSTALLER_ROLE, Sonde $UBOOT_PROBE_DEFCONFIG)"
-	echo "Serie:    $(sha256sum "$MAINLINE/patches/kernel/series" | cut -c1-16)  $(grep -cv '^#\|^$' "$MAINLINE/patches/kernel/series") Patches"
-	echo "defconfig: $(sha256sum "$MAINLINE/patches/kernel/board/hy200_qz713df_a1_defconfig" | cut -c1-16)"
-	echo "Kernelbaum: $H  Release $KREL"
+	echo "$NAME  built $(date -u '+%Y-%m-%dT%H:%M:%SZ') in $(elapsed)"
+	echo "board:    $BOARD ($STATUS; profile $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE/$UBOOT_INSTALLER_ROLE, probe $UBOOT_PROBE_DEFCONFIG)"
+	echo "series:   $(sha256sum "$MAINLINE/patches/kernel/series" | cut -c1-16)  $(grep -cv '^#\|^$' "$MAINLINE/patches/kernel/series") patches"
+	echo "kernel defconfig: $KDEF $(sha256sum "$MAINLINE/patches/kernel/board/$KDEF" | cut -c1-16)"
+	echo "kernel tree: $H  release $KREL"
 	for r in u-boot arm-trusted-firmware sunxi-tools; do
 		echo "$r: $(git -C "$MAINLINE/external/$r" rev-parse --short HEAD 2>/dev/null)$(git -C "$MAINLINE/external/$r" diff --quiet HEAD 2>/dev/null || echo ' +uncommitted')"
 	done
-	G_WURZEL=$(git -C "$MAINLINE" rev-parse --show-toplevel 2>/dev/null || true)
-	# Kein Verzeichnisname im Stempel: der ist lokal und sagt einem Leser nichts.
-	if [[ "$G_WURZEL" == "$MAINLINE" ]]; then W=mainline; else W=repo; fi
-	echo "$W: $(git -C "$MAINLINE" rev-parse --short HEAD 2>/dev/null) ($(git -C "$MAINLINE" status --short 2>/dev/null | wc -l) lokale Aenderungen)"
+	GIT_ROOT=$(git -C "$MAINLINE" rev-parse --show-toplevel 2>/dev/null || true)
+	# No directory name in the stamp: that is local and tells a reader nothing.
+	if [[ "$GIT_ROOT" == "$MAINLINE" ]]; then W=mainline; else W=repo; fi
+	echo "$W: $(git -C "$MAINLINE" rev-parse --short HEAD 2>/dev/null) ($(git -C "$MAINLINE" status --short 2>/dev/null | wc -l) local changes)"
 	echo "U-Boot:   $(strings -n 8 "$OUT/uboot-proper-release.bin" | grep -m1 '^U-Boot 20')"
-	echo "Bausteine (sha256, 16 Zeichen):"
+	echo "building blocks (sha256, 16 characters):"
 	for f in spl-release.bin uboot-proper-release.bin hy310-env-release.bin u-boot-installer.bin h713-kernel.fit modules/aic8800_bsp.ko modules/aic8800_fdrv.ko; do
 		printf '  %-28s %s\n' "$f" "$(sha256sum "$OUT/$f" | cut -c1-16)"
 	done
 	printf '  %-28s %s\n' "h713-tv.aarch64-linux-gnu" "$(sha256sum "$TV" | cut -c1-16)"
 	printf '  %-28s %s\n' "hy310-rootfs.tar" "$(sha256sum "$ROOTFS/out/hy310-rootfs.tar" | cut -c1-16)"
-} > "$STEMPEL"
-sed 's/^/    /' "$STEMPEL"
-say "fertig: $AUSGABE/$NAME-{a-bootkette,b-system,c-gptkopie}.img + $NAME.tabelle.json  ($(dauer))"
+} > "$STAMP"
+sed 's/^/    /' "$STAMP"
+say "done: $DELIVERY/$NAME-{a-bootkette,b-system,c-gptkopie}.img + $NAME.tabelle.json  ($(elapsed))"

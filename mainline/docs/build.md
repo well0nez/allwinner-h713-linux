@@ -32,7 +32,10 @@ make -j PLAT=sun50i_h713 DEBUG=0 BL31_IN_DRAM=1 \
 
 ## 2. U-Boot (SPL + BL31 + proper -> u-boot-sunxi-with-spl.bin)
 
-Use `build/uboot-build.sh <O-dir> <defconfig>`, or directly:
+Use `build/uboot-build.sh <O-dir> <board-base> [role]` — since the defconfig
+matrix of stage 4 a build is one board base plus one role fragment, e.g.
+`hy310 release` for the HY310 release U-Boot (the old `hy310_qz713_v3_1_defconfig`
+is gone; the matrix is in `docs/uboot/README.md`). Or directly:
 
 ```
 make -C external/u-boot O=<O> ARCH=arm HOSTCC=clang CC='clang -target aarch64-linux-gnu' \
