@@ -29,7 +29,7 @@ Every image carries `<name>.BUILD.txt`. That, not the version string, identifies
 h713-hy310-v0.5-beta  gebaut 2026-09-12T19:11:13Z in 10 min 01 s
 Serie:    0c8b184696b422b1  133 Patches
 Kernelbaum: 0565521f  Release 6.18.38
-u-boot: 4091ea68c06   arm-trusted-firmware: 3b3fb35fa   sunxi-tools: 269dfa2
+u-boot: 4091ea68c06   arm-trusted-firmware: dfa9fab44   sunxi-tools: 269dfa2
 ```
 
 Two builds of the same sources are not byte-identical (build timestamps and paths get embedded), so

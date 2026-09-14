@@ -38,7 +38,7 @@ done
 CSTENGER_MAINLINE=8860991
 UBOOT_BASIS=8fe568cdfc4              # cstenger/u-boot h713 -- darauf sitzen unsere 33
 UBOOT_KOPF=4091ea68c06               # unser Fork-Stand (Zweig h713-hy310 = h713-display)
-TFA_KOPF=3b3fb35fa40b097eafc75528170de62f8130cff9
+TFA_KOPF=dfa9fab443147459960e4a33971817fedd9659de
 SUNXI_TOOLS_KOPF=269dfa22fcbbe5ced352c337495ba8dd0bbf82e6
 UBOOT_KOPF_LANG=4091ea68c0620c590ad9af583c074a6bab463dad
 LEGACY_TAG=legacy-arm32-2026-08

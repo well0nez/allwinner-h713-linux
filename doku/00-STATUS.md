@@ -75,7 +75,7 @@ Abbild `GUT-bad2f16b` (Audio + Einschalttaste + EINT-Fix `0140`), Module `mainli
 **Serie ist inzwischen bei `0142`** (board-mgr, gesichert `patches-snapshots/20260911-1837-nach-0142/`), Bäume
 `61d37af9` und `e88af5af` (+ `uvcvideo`) gebaut, **am Gerät ungeprüft**; vorige gute Stände `GUT-d5fd82a7` (Serie 110, Audio), `GUT-a3097ce7`
 (Serie 102) und `GUT-e2f6be7c` (Serie 98). **U-Boot am Gerät seit 09.09.:** Gate-U-Boot + BL31 (`tftp/uboot-proper.GUT-gate-v2-20260909.bin`,
-`uboot-h713/0018`, TF-A `3b3fb35fa`); Env `h713_gate=1` → Netz an = Bereitschaft (rote LED), Taste = Start; `setenv h713_gate 0; saveenv`
+`uboot-h713/0018`, TF-A `dfa9fab44`); Env `h713_gate=1` → Netz an = Bereitschaft (rote LED), Taste = Start; `setenv h713_gate 0; saveenv`
 schaltet zurück auf Direktstart.
 `h713-tv` mit Audio-Automat md5 `63f844f9…` (Original vor Audio: `userspace/hy310-tv.vor-audio-20260908/`).
 **Sicherung dieses Stands:** `/opt/Projekte/h713-backups/h713-entwicklungsstand-20260908-2245.tar.gz` (338 MB) + `h713-captures-weltneuheit-20260908-2245.tar.gz`
