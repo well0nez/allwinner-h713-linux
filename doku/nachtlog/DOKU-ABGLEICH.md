@@ -347,7 +347,7 @@ Gemessen ist das Gegenteil: im laufenden Betrieb `0x400 = 0x21`, `0x824 = 0x0000
 
 > **Widerlegt am 07.09.** `0x06940400 = 0x61` und `0x06940824` Bit 31 kennzeichnen den Zustand **nach**
 > dem Descriptor — und in dem ist die Capture abgeschaltet. Im laufenden Betrieb steht `0x21` bzw.
-> `0x0000000B`. Einzelheiten und der Korrekturkasten in [84-re-capture-ring.md](84-re-capture-ring.md);
+> `0x0000000B`. Einzelheiten und der Korrekturkasten in [84-re-capture-ring.md](../84-re-capture-ring.md);
 > Messung in `nachtlog/B2-quellenwechsel.md`.
 
 Dasselbe eine Zeile unter §12.5 Punkt 3.
@@ -452,7 +452,7 @@ diese Nacht teuer waren" — die dritte, jüngste und schärfste Regel fehlt dor
 > Momentaufnahme (`patches-snapshots/<zeitstempel>/`), `diff -u` gegen den Ist-Stand und Serienprüfung
 > (71/71, kein `.rej`). Anlass: beim Callback-Fix überschrieb ein Agent `0092` und `0094`; sein Stand fiel
 > am Gerät durch, und die Fassung, mit der A–H grün waren, existierte als Patch nicht mehr.
-> Begründung: [`nachtlog/00-koordination.md`](nachtlog/00-koordination.md), Nachtrag 10:06.
+> Begründung: [`nachtlog/00-koordination.md`](00-koordination.md), Nachtrag 10:06.
 
 ### 5.3 `STAND-JETZT.md` ist von nirgends verlinkt
 

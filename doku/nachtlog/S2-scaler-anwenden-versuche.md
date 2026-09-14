@@ -27,7 +27,7 @@ Die **vollständige Stock-Quellwechselfolge** abgesetzt —
 Vorher von Hand sauber auf den Ausgangswert gesetzt, damit der Kontrollversuch etwas beweist.
 
 Damit ist M6 mit *nein* beantwortet und die Begründung aus
-[`re/notes/DEAD-ENDS.md`](../../re/notes/DEAD-ENDS.md) §81 bestätigt: `UpdateWce` hängt an einer
+`re/notes/DEAD-ENDS.md` §81 bestätigt: `UpdateWce` hängt an einer
 Zustandsmaschine, die nur per Hardware-IRQ (`Vdd_TriggerInterruptTop`) taktet. Von außen ist der
 Fensterneubau nicht auslösbar — über inzwischen sieben Sitzungen.
 

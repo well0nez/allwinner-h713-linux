@@ -171,7 +171,7 @@ Die Frage ist nicht mehr „wie kommen Pixel aufs Panel" (§3), sondern:
    ins Leere. Werkzeug `/root/mipslog state|dump|tail`.
 
 **Der Commit ist inzwischen firmware-seitig aufgelöst** —
-[../analyse/REPORT-ch0-wce-chain.md](../analyse/REPORT-ch0-wce-chain.md):
+`../analyse/REPORT-ch0-wce-chain.md`:
 `0x0560006C` Bit 0 setzt allein `NRWinNode_AfbdConfigure` (`0x8b1a3c58`),
 erreichbar nur über `WindowManager::Refresh → UpdateWce → SetWindow →
 StepWceSTM(wce,1)`. Sie schreibt das Quartett `0x05600010` Bit31, `+0x14 |= 1`,

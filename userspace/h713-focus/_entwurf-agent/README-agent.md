@@ -5,7 +5,7 @@
 Ränder des Fahrbereichs und bricht sicher ab.
 
 **Stand 12.09.2026: am Gerät noch nicht gelaufen.** Gebaut wurde es an dem Tag, an dem der Bereichswächter
-zum ersten Mal ansprach ([`analyse/boot/motor-bereichswaechter-20260912.txt`](../../analyse/boot/motor-bereichswaechter-20260912.txt));
+zum ersten Mal ansprach ([`analyse/boot/motor-bereichswaechter-20260912.txt`](../../../analyse/boot/motor-bereichswaechter-20260912.txt));
 geprüft ist es bisher nur gegen eine Attrappe (Abschnitt „Tests"). Die Abnahme steht in
 [`TESTANLEITUNG.md`](TESTANLEITUNG.md) und ist noch offen.
 
@@ -14,8 +14,8 @@ geprüft ist es bisher nur gegen eine Attrappe (Abschnitt „Tests"). Die Abnahm
 Es braucht nur die Python-Standardbibliothek (entwickelt gegen 3.12, wie `h713-pq`), kein Paket, keine
 Installation, keine neue Abhängigkeit im Rootfs.
 
-**Zum Namen.** `h713-focus` folgt [`doku/60-offen.md`](../../doku/60-offen.md) Abschnitt „Werkzeugnamen" und
-[`doku/113`](../../doku/113-plan-pq-laufzeit-und-speichern.md) Paket B: Werkzeuge heißen `h713-*`,
+**Zum Namen.** `h713-focus` folgt [`doku/60-offen.md`](../../../doku/60-offen.md) Abschnitt „Werkzeugnamen" und
+[`doku/113`](../../../doku/113-plan-pq-laufzeit-und-speichern.md) Paket B: Werkzeuge heißen `h713-*`,
 gerätespezifische Dinge behalten `hy310`. Der Treiber heißt deshalb weiterhin `hy310-focus-motor`, das Modul
 `hy310_focus_motor`, der Gerätebaum-Knoten `motor-ctr` — **nichts davon wird umbenannt**, und `h713-focus`
 tippt auch keinen dieser Namen als Pfad ein (Abschnitt 5).
@@ -41,7 +41,7 @@ Die Umkehr, das Zurückfahren um `back_step` und das Merken der Kante macht **de
 `h713-focus` baut das **nicht** nach. Es erkennt, dass es passiert ist, und hört dann auf.
 
 Die vollständige Belegkette steht in
-[`mainline/patches/vorschlaege/motor-limiter/README.md`](../../mainline/patches/vorschlaege/motor-limiter/README.md).
+[`mainline/patches/vorschlaege/motor-limiter/README.md`](../../../mainline/patches/vorschlaege/motor-limiter/README.md).
 
 ---
 
@@ -238,7 +238,7 @@ Erholungsfahrt beendet hat („Ruhelage").
 
 ## 6. Kein Autofokus — und warum nicht
 
-Die Kamera läuft seit dem 11.09. ([`analyse/beamer-cam/`](../../analyse/beamer-cam/)), und Stock benutzt sie
+Die Kamera läuft seit dem 11.09. ([`analyse/beamer-cam/`](../../../analyse/beamer-cam/)), und Stock benutzt sie
 für den Autofokus. Trotzdem ist hier keiner drin, und das ist eine Entscheidung, keine Auslassung.
 
 Ein Autofokus über die Kamera braucht zwei Dinge, die es heute beide nicht gibt:

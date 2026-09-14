@@ -80,7 +80,7 @@ genau bis zur Umgebung bei LBA 14336; der Bereich dazwischen war ohnehin leer (n
 **Bewahrt wird auf zwei Wegen (Marco, 10.09.):** auf dem Gerät bleibt der Block unangetastet, und es liegt eine Kopie unter
 `re/device-dumps/hdcp-keys-HY310-dev-20260910.bin` (56 KiB, sha256 `b83ce75d68ca59dd…`, Modus 600), dazu die ersten 8 MiB roh als
 `bootbereich-8mib-HY310-dev-20260910.bin`. Beides nie ins Repo und nie ins Release — Regeln in
-[`re/device-dumps/HDCP-SCHLUESSEL.md`](../re/device-dumps/HDCP-SCHLUESSEL.md).
+`re/device-dumps/HDCP-SCHLUESSEL.md`.
 
 Praktisch kostet das nichts: U-Boots Fenster endet bei LBA 12287, die Umgebung beginnt bei 14336, dazwischen liegt die
 reservierte Partition. **Der Installer muss den Bereich trotzdem ausdrücklich sperren**, damit ihn

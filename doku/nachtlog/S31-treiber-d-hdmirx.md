@@ -1,7 +1,7 @@
 # S31 — Paket D: Audiostatus des HDMI-Empfängers als V4L2-Controls (Patch 0136)
 
 **08.09.2026. Reine Schreibtischarbeit — kein Board, kein Bau.** Auftrag
-[`t-d-hdmirx/AUFTRAG.md`](../../analyse/audio/arbeit/t-d-hdmirx/AUFTRAG.md), Plan
+`t-d-hdmirx/AUFTRAG.md`, Plan
 [`101`](../101-plan-audio-treiber.md) §1 D, §2, §4. Belege: [`S18`](S18-re-mips-hdmi-audio.md)
 §3.4, §4.1, §4.4, §6, [`S16`](S16-hdmi-audio.md) 13:15–13:45, 18:10, 20:30, 20:45. Basisbaum
 `mainline/build/linux-6.18.38-a3097ce7…`; Arbeitskopien `analyse/audio/arbeit/t-d-hdmirx/{a,b}/`.

@@ -66,7 +66,7 @@ HPD-Gate 0x4b271c2c: 1 (unverändert)
 ```
 
 Kein elog-Eintrag, obwohl der Stub auf Stufe 3 loggen würde. Also hat
-entweder vtable[3](3) ohne aktive Quelle nichts geliefert (dann wird nichts
+entweder vtable\[3\](3) ohne aktive Quelle nichts geliefert (dann wird nichts
 gepostet), oder die Nachricht landet nirgends. Session N (24.04.) sah dasselbe
 („no visible effect"). **Post-hoc nachladen ist damit als Weg tot**, solange
 keine Quelle aktiv ist — und die Quelle aktivieren ist Phase 4 (s. u.).

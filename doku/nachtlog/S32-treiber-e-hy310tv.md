@@ -1,7 +1,7 @@
 # S32 — Paket E: `hy310-tv`, der Ton folgt dem Bild (Patch `hy310-tv-audio.patch`)
 
 **08.09.2026, zwei Agentenläufe (17:55–18:10 und 18:25–18:50). Reine Schreibtischarbeit — kein Board, kein Bau des
-aktiven Baums.** Auftrag [`t-e-hy310tv/AUFTRAG.md`](../../analyse/audio/arbeit/t-e-hy310tv/AUFTRAG.md), Plan
+aktiven Baums.** Auftrag `t-e-hy310tv/AUFTRAG.md`, Plan
 [`101`](../101-plan-audio-treiber.md) §1 E, §2, §4; Änderung gegenüber dem Auftrag: Entscheidung 08.09. 22:10 (Lautstärke
 im Codec, §4.1 unten). Belege: [`S16`](S16-hdmi-audio.md) 17:55–20:45, [`S25`](S25-re-i2sout-codec.md), [`S30`](S30-treiber-c-codec.md)
 (Codec-Regler), [`S31`](S31-treiber-d-hdmirx.md) (V4L2-Regler). Quelle `userspace/hy310-tv/` (main.c 2284 Zeilen, Stand

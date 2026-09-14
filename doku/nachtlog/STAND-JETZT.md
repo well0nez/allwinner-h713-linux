@@ -45,7 +45,7 @@ frei; `hy310-tv` startet und zeigt.
    des Descriptors schaltet sie ab, niemand schaltete sie an. Jetzt meldet der Anzeigetreiber die
    Veröffentlichung auf einer eigenen Kette, der Aufnahmetreiber antwortet mit einem Quellenwechsel
    weg-und-zurück. Ein einzelner `SetSource(HDMI-1)` reicht **nicht** (dreimal nichts).
-4. **Die Callback-Lücke ist zu** ([BEFUND](../../mainline/patches/vorschlaege/callback2/BEFUND.md),
+4. **Die Callback-Lücke ist zu** (BEFUND (`../../mainline/patches/vorschlaege/callback2/BEFUND.md`),
    Patch `0100`) — Anmeldung wandert ins `open()` von `/dev/video1`. `handlers 2`, `rx_calls` zählt,
    `SOURCE_CHANGE` feuert, F fällt auf die Konsole zurück.
 5. **Paket I** ([I1](I1-get-routinen.md), Patch `0101`) — neun Controls. Die Rückfrage an die

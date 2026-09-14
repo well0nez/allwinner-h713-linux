@@ -2,28 +2,28 @@
 
 # H713-Projekt — Status
 
-> **08.09.2026, 10:20 — Restpunkte erledigt: 1366×768, 5:4 mit Balken, Bildmodus-Menü + Presets, Template-Unit; Plan/Ergebnisse [`99`](99-plan-restpunkte-20260908.md), Protokoll [`S13`](nachtlog/S13-restpunkte.md).**
+> **08.09.2026, 10:20 — Restpunkte erledigt: 1366×768, 5:4 mit Balken, Bildmodus-Menü + Presets, Template-Unit; Plan/Ergebnisse [`99`](../99-plan-restpunkte-20260908.md), Protokoll [`S13`](S13-restpunkte.md).**
 > Serie **102 Patches** (`0130`–`0133`), guter Stand `GUT-a3097ce7`; `hy310-tv` `00460d4a` als `hy310-tv@video1`
 > (`BindsTo`), neu `hy310-tv ctl preset NAME` und `ctl aspect NAME`. Befunde: der Ring hat Zeilenabstand
-> rowbyte·16 (`0x924`), nicht „Breite" (`0131`); 5:4 steuert allein Descriptor-Wort 35 (`0133`, [`S15`](nachtlog/S15-re-aspect-regel.md));
-> `SetPictureMode` ändert keinen Regler, `Get*` sind Stubs ([`S14`](nachtlog/S14-re-picture-mode.md)). Fehlfall der
+> rowbyte·16 (`0x924`), nicht „Breite" (`0131`); 5:4 steuert allein Descriptor-Wort 35 (`0133`, [`S15`](S15-re-aspect-regel.md));
+> `SetPictureMode` ändert keinen Regler, `Get*` sind Stubs ([`S14`](S14-re-picture-mode.md)). Fehlfall der
 > ersten Freigabe provoziert (Journal-Trigger), Wartepfad `0130` greift. **10:25:** `hy310-tv` sendet beim Start
 > `preset standard` und die Stock-Gammakurve 2,2 (`-p`/`-g`); Sichtprüfung der Kurve durch Marco offen.
 
-> **08.09.2026, 02:00 — Grünstich und Kippen gelöst, `hy310-tv` als Dienst mit Steuerkanal, Handoff: [`97-handoff-20260908.md`](97-handoff-20260908.md).**
+> **08.09.2026, 02:00 — Grünstich und Kippen gelöst, `hy310-tv` als Dienst mit Steuerkanal, Handoff: [`97-handoff-20260908.md`](../97-handoff-20260908.md).**
 > Serie **98 Patches** (`0123`–`0129`), guter Stand `GUT-e2f6be7c` (`tftp/` und `mainline/build/modroot.GUT-*`).
-> `hy310-tv ctl status|off|auto|set …` ([`S12`](nachtlog/S12-hy310-tv-review.md)). VESA-Modi laufen mit 60 Hz (S11, Nachtrag 07:55).
+> `hy310-tv ctl status|off|auto|set …` ([`S12`](S12-hy310-tv-review.md)). VESA-Modi laufen mit 60 Hz (S11, Nachtrag 07:55).
 > `0123`: der Eingangs-Farbwandler der Aufnahme (`0x06940824` Bit 31) wird nach jedem Descriptor-Neubau über
 > `SetVideoRange` zurückgesetzt — vor der Freigabe, kein grüner Rahmen. `0124`: die Slots der MIPS→ARM-Rückrufe
 > werden freigegeben — vorher hing die Firmware nach 19 Rückrufen („Kippen nach 4–5 Wechseln"). Abnahme: acht
-> Auflösungswechsel, 27 Rückrufe, Ring und Wand sauber ([`nachtlog/S11`](nachtlog/S11-gruenstich-ursache-und-callback-slots.md)).
+> Auflösungswechsel, 27 Rückrufe, Ring und Wand sauber ([`nachtlog/S11`](S11-gruenstich-ursache-und-callback-slots.md)).
 > Offen: Konsolen-Sperre/`H713_TV_SKALIERTEST` in `hy310-tv`, übrige Auflösungen.
 
-> **08.09.2026 — Skalierung laeuft, Handoff: [`97-handoff-20260908.md`](97-handoff-20260908.md).**
+> **08.09.2026 — Skalierung laeuft, Handoff: [`97-handoff-20260908.md`](../97-handoff-20260908.md).**
 > 720p wird korrekt aufs Panel hochskaliert; offen sind ein Gruenstich und ein Kippen nach vier bis
-> fuenf Wechseln. Neu erschlossen: die Firmware-Shell ([`98`](98-mips-shell.md)) und die
-> Gesamtdarstellung der Anzeigekette ([`96`](96-anzeigekette.md)). Fokusmotor abgeschlossen und
-> geparkt ([`94`](94-fokusmotor-endschalter.md)).
+> fuenf Wechseln. Neu erschlossen: die Firmware-Shell ([`98`](../98-mips-shell.md)) und die
+> Gesamtdarstellung der Anzeigekette ([`96`](../96-anzeigekette.md)). Fokusmotor abgeschlossen und
+> geparkt ([`94`](../94-fokusmotor-endschalter.md)).
 **Einstiegspunkt.** Stand 2026-09-07, 12:00 — nach dem Nachtlauf 06./07.09. **und** den Board-Abnahmen
 des Vormittags (zuletzt Kaltstart 11:42, Freigabe `0099`). Die Fassung von gestern 23:09 stammte von **vor** allen Abnahmen; die Stellen, die sich
 dadurch geändert haben, sind unten als *korrigiert 07.09.* gekennzeichnet.
@@ -35,24 +35,24 @@ Seit der Nacht steht es aus dem Treiber, und das ist am Gerät abgenommen:
 
 * **Plane 38 (`video-0`) zeigt den Capture-Ring.** KMS, Format NV16, Betriebsart `hdmi-ring`; die Ring-Folge
   wandert (`0x05600070` läuft über die vier Slots, statt wie im Skript festgenagelt zu sein). Patch `0093`,
-  [86-video-plane-nv16.md](86-video-plane-nv16.md).
+  [86-video-plane-nv16.md](../86-video-plane-nv16.md).
 * **`/dev/video1` liefert Bilder.** `sun50i-h713-hdmirx` (`0094`): **60 von 60** Bildern NV16M, das
   rekonstruierte Bild ist ein **pixelgenauer Screenshot** der Quelle; Slot-Quelle ist der AFBD-Vsync-Notifier
-  (GIC 142) mit 287 gezählten Ereignissen. [88-v4l2-hdmirx.md](88-v4l2-hdmirx.md).
+  (GIC 142) mit 287 gezählten Ereignissen. [88-v4l2-hdmirx.md](../88-v4l2-hdmirx.md).
 * **HPD/EDID kommen aus dem Kernel.** `sun50i-h713-arisc` (`0091`): Zuspieler meldet `connected, 1920x1080`,
   die Sequenz ist nach **17,65 s** durch — ohne `arisc_edid_init.sh`, ohne Doorbell-Puls.
-  [82-arisc-treiber.md](82-arisc-treiber.md).
+  [82-arisc-treiber.md](../82-arisc-treiber.md).
 * **Gamma/CTM sitzen am CRTC** (`0095`) und färben **beide** Pfade: Konsole und Video.
 * **`hy310-tv` läuft am Gerät**, das Bild kommt: der Trockenlauf nennt `/dev/video1`, `card1`, CRTC 36,
   Plane 38, `hdmi-ring`, `signal vorhanden`, und die Wand **folgt der Quelle** — Zuspieler gedimmt,
-  **48,16 %** der Bildpunkte geändert ([nachtlog/E2-freigabe.md](nachtlog/E2-freigabe.md)).
+  **48,16 %** der Bildpunkte geändert ([nachtlog/E2-freigabe.md](E2-freigabe.md)).
   *(Korrektur 07.09.: hier stand „Wand mean 131,2". Die Zahl trägt nicht — derselbe ROI misst für den
-  **eingefrorenen** Rahmen nach `xrandr --off` mean 130,4, siehe [88-v4l2-hdmirx.md](88-v4l2-hdmirx.md)
-  Z. 496 und [nachtlog/F-abnahme-und-callback-luecke.md](nachtlog/F-abnahme-und-callback-luecke.md).)*
+  **eingefrorenen** Rahmen nach `xrandr --off` mean 130,4, siehe [88-v4l2-hdmirx.md](../88-v4l2-hdmirx.md)
+  Z. 496 und [nachtlog/F-abnahme-und-callback-luecke.md](F-abnahme-und-callback-luecke.md).)*
 
-**Das Protokoll dazu ist [79-nachtlog-20260907.md](79-nachtlog-20260907.md)** mit den Teillogs je Paket in
-[`doku/nachtlog/`](nachtlog/). Dort steht der jeweils genaue Messwert; diese Seite nennt nur das Ergebnis.
-Die Fachseiten sind [81](81-pq-datenmodell.md) bis [89](89-composition-block.md).
+**Das Protokoll dazu ist [79-nachtlog-20260907.md](../79-nachtlog-20260907.md)** mit den Teillogs je Paket in
+[`doku/nachtlog/`](./). Dort steht der jeweils genaue Messwert; diese Seite nennt nur das Ergebnis.
+Die Fachseiten sind [81](../81-pq-datenmodell.md) bis [89](../89-composition-block.md).
 
 ## Stand je Paket
 
@@ -60,14 +60,14 @@ Die Fachseiten sind [81](81-pq-datenmodell.md) bis [89](89-composition-block.md)
 
 | Paket | Stand | Beleg |
 |---|---|---|
-| **A** cstengers 17 Patches | **abgenommen** | Kernel bootet, Konsole auf der Wand, Plane `video-0` (ID 38) gelistet, Bild farbrichtig **und live**: Gamma-Reiz 7,26 % der Bildpunkte, Rückkehr 0,00 % — [nachtlog/A-abnahme-board.md](nachtlog/A-abnahme-board.md) |
-| **B** ARISC-Treiber `0091` | **abgenommen** | Zuspieler `connected 1920x1080` aus dem Kernel, Sequenz nach 17,65 s. Der Wächter wurde dafür erst **falsifizierbar** gemacht (Vorbelegung `0xff`) — [nachtlog/B-abnahme-board.md](nachtlog/B-abnahme-board.md), [nachtlog/B-waechter-falsifizierbar.md](nachtlog/B-waechter-falsifizierbar.md) |
-| **C** `cpu_comm`-Kernel-API `0092` | **abgenommen, mit einem Vorbehalt** | `THal_Vp_SetSource 3` aus dem Kernel über debugfs → `ok`; `/dev/cpu_comm` bleibt daneben nutzbar — [83-cpu-comm-api.md](83-cpu-comm-api.md). **Vorbehalt:** die C-Vorschrift nennt **drei** Zwecke ([nachtlog/C-cpu-comm.md](nachtlog/C-cpu-comm.md) Z. 350), der dritte — `SignalChange` **im Kernel-Handler** — ist **nicht** belegt; er ist genau das, was die Callback-Lücke betrifft |
-| **D** Video-Plane NV16 `0093` | **abgenommen** | fünf Abnahmeteile, darunter der **reproduzierte Fehlerfall** und die Markenmessung: `0x05600044` geht aus jedem Vorzustand auf `0x0F00`, beim Abschalten zurück auf `0x0780`. Vorgeschichte und Vorschrift: [nachtlog/D-abnahme-board.md](nachtlog/D-abnahme-board.md), [nachtlog/D-cstride-befund.md](nachtlog/D-cstride-befund.md), [nachtlog/D-cstride-fix.md](nachtlog/D-cstride-fix.md) §4; die Nachabnahme selbst stammt aus der Board-Sitzung vom Vormittag, ihr Teillog entsteht noch |
-| **E** V4L2 `0094` | **abgenommen** | 60/60 Bilder, rekonstruiertes Bild pixelgenau, 287 Vsync-Ereignisse — [nachtlog/E-v4l2.md](nachtlog/E-v4l2.md), [nachtlog/DE-vsync-notifier.md](nachtlog/DE-vsync-notifier.md). *(Der zwischenzeitliche Rückschritt „probt nicht mehr" ist behoben — Hotplug-Rennen in `0091`, [nachtlog/B3-hpd-rennen.md](nachtlog/B3-hpd-rennen.md); Kaltstart 11:42 ohne Handgriff.)* |
-| **F** `hy310-tv` | **läuft am Gerät**, Bild kommt | ein echter Fehler dabei gefunden, der nur durchs Ausführen zu finden war (siehe unten) — [nachtlog/F-abnahme-und-callback-luecke.md](nachtlog/F-abnahme-und-callback-luecke.md) |
-| **G** `hy310-pq` | **fertig** | Gamma-LUT **bitgleich** zum Legacy-Rechner — [nachtlog/G-pq.md](nachtlog/G-pq.md) |
-| **H** Gamma/CTM `0095` | **abgenommen** | invertierte LUT: **100,00 %** der Bildpunkte auf der Konsole, Rückkehr **0,00 %**; und **86,56 %** auf dem **Video**-Pfad — damit ist die in `H-gamma.md` offen gelassene Frage beantwortet: **ja, beide Pfade** — [nachtlog/H-abnahme-board.md](nachtlog/H-abnahme-board.md) |
+| **A** cstengers 17 Patches | **abgenommen** | Kernel bootet, Konsole auf der Wand, Plane `video-0` (ID 38) gelistet, Bild farbrichtig **und live**: Gamma-Reiz 7,26 % der Bildpunkte, Rückkehr 0,00 % — [nachtlog/A-abnahme-board.md](A-abnahme-board.md) |
+| **B** ARISC-Treiber `0091` | **abgenommen** | Zuspieler `connected 1920x1080` aus dem Kernel, Sequenz nach 17,65 s. Der Wächter wurde dafür erst **falsifizierbar** gemacht (Vorbelegung `0xff`) — [nachtlog/B-abnahme-board.md](B-abnahme-board.md), [nachtlog/B-waechter-falsifizierbar.md](B-waechter-falsifizierbar.md) |
+| **C** `cpu_comm`-Kernel-API `0092` | **abgenommen, mit einem Vorbehalt** | `THal_Vp_SetSource 3` aus dem Kernel über debugfs → `ok`; `/dev/cpu_comm` bleibt daneben nutzbar — [83-cpu-comm-api.md](../83-cpu-comm-api.md). **Vorbehalt:** die C-Vorschrift nennt **drei** Zwecke ([nachtlog/C-cpu-comm.md](C-cpu-comm.md) Z. 350), der dritte — `SignalChange` **im Kernel-Handler** — ist **nicht** belegt; er ist genau das, was die Callback-Lücke betrifft |
+| **D** Video-Plane NV16 `0093` | **abgenommen** | fünf Abnahmeteile, darunter der **reproduzierte Fehlerfall** und die Markenmessung: `0x05600044` geht aus jedem Vorzustand auf `0x0F00`, beim Abschalten zurück auf `0x0780`. Vorgeschichte und Vorschrift: [nachtlog/D-abnahme-board.md](D-abnahme-board.md), [nachtlog/D-cstride-befund.md](D-cstride-befund.md), [nachtlog/D-cstride-fix.md](D-cstride-fix.md) §4; die Nachabnahme selbst stammt aus der Board-Sitzung vom Vormittag, ihr Teillog entsteht noch |
+| **E** V4L2 `0094` | **abgenommen** | 60/60 Bilder, rekonstruiertes Bild pixelgenau, 287 Vsync-Ereignisse — [nachtlog/E-v4l2.md](E-v4l2.md), [nachtlog/DE-vsync-notifier.md](DE-vsync-notifier.md). *(Der zwischenzeitliche Rückschritt „probt nicht mehr" ist behoben — Hotplug-Rennen in `0091`, [nachtlog/B3-hpd-rennen.md](B3-hpd-rennen.md); Kaltstart 11:42 ohne Handgriff.)* |
+| **F** `hy310-tv` | **läuft am Gerät**, Bild kommt | ein echter Fehler dabei gefunden, der nur durchs Ausführen zu finden war (siehe unten) — [nachtlog/F-abnahme-und-callback-luecke.md](F-abnahme-und-callback-luecke.md) |
+| **G** `hy310-pq` | **fertig** | Gamma-LUT **bitgleich** zum Legacy-Rechner — [nachtlog/G-pq.md](G-pq.md) |
+| **H** Gamma/CTM `0095` | **abgenommen** | invertierte LUT: **100,00 %** der Bildpunkte auf der Konsole, Rückkehr **0,00 %**; und **86,56 %** auf dem **Video**-Pfad — damit ist die in `H-gamma.md` offen gelassene Frage beantwortet: **ja, beide Pfade** — [nachtlog/H-abnahme-board.md](H-abnahme-board.md) |
 | **I** PQ-Controls (V4L2) | **nicht begonnen** | Grundlage steht (K5 am Gerät); `V4L2_CID_BRIGHTNESS` **anbieten, Bereich 0…100** — gemessen, siehe unten |
 
 `series` hat **75 Zeilen** (Stand 07.09., 11:31 — die Zahl wächst gerade, bitte gegen
@@ -77,8 +77,8 @@ Die Fachseiten sind [81](81-pq-datenmodell.md) bis [89](89-composition-block.md)
 Callback-Anmeldung) und `0099` (Freigabe der Capture nach dem Descriptor) — beide am Gerät gelaufen; dazu seit
 11:31 `0100` (Callback-Anmeldung, **zweiter Anlauf** — Registrierung weg vom Bring-up-Pfad) und `0101`
 (PQ-Controls, Paket I), **beide offline entstanden und noch nicht am Gerät**
-([`nachtlog/STAND-JETZT.md`](nachtlog/STAND-JETZT.md), `mainline/patches/vorschlaege/`).
-Bauen **nur** im Container `h713-build` ([50-befehle.md](50-befehle.md)).
+([`nachtlog/STAND-JETZT.md`](STAND-JETZT.md), `mainline/patches/vorschlaege/`).
+Bauen **nur** im Container `h713-build` ([50-befehle.md](../50-befehle.md)).
 
 ## Was gerade offen ist
 
@@ -88,13 +88,13 @@ Bauen **nur** im Container `h713-build` ([50-befehle.md](50-befehle.md)).
 `NotifySignalChange` (im elog belegt), die **Kernel-Handler zählen 0**. Ursache gefunden:
 `cpu_comm_register_callback()` trug den Handler nur in eine treiberinterne Tabelle ein und meldete die Routine
 nie in der **Routinentabelle im Shared Memory** an — die Firmware sucht dort, findet nichts und schickt gar
-nicht erst ab ([nachtlog/CALLBACK-luecke.md](nachtlog/CALLBACK-luecke.md)). Der Fix ist gebaut (`0092`, `0094`)
+nicht erst ab ([nachtlog/CALLBACK-luecke.md](CALLBACK-luecke.md)). Der Fix ist gebaut (`0092`, `0094`)
 und **am Gerät durchgefallen** — E probte danach nicht mehr. Er ist mit `0098` **zurückgenommen**
 (chirurgisch: nur `cpu_comm_api.c`, `sun50i-h713-hdmirx.c`, `h713-cpu-comm.h`; die Regel-1-Korrekturen in
 `0093`/`0095` bleiben). *Korrektur 07.09. vormittags:* von den drei Fehlschlägen gehörte **einer nicht dazu** —
 Lauf 2 (`-EBUSY` in der EDID-Folge) war ein davon unabhängiges Hotplug-Rennen in `0091` und ist behoben
-([nachtlog/B3-hpd-rennen.md](nachtlog/B3-hpd-rennen.md)). **E probt wieder**, vom Kaltstart an und ohne
-Handgriff (11:42, [nachtlog/E2-freigabe.md](nachtlog/E2-freigabe.md)). Übrig bleiben zwei echte Fehlschläge
+([nachtlog/B3-hpd-rennen.md](B3-hpd-rennen.md)). **E probt wieder**, vom Kaltstart an und ohne
+Handgriff (11:42, [nachtlog/E2-freigabe.md](E2-freigabe.md)). Übrig bleiben zwei echte Fehlschläge
 (`SetPortMap -110`, `THal_Vp_DisableBlackScreen -110`); der Callback-Fix hat damit **einen** sauberen Versuch
 verdient. **Die Lücke selbst ist offen**, und daran hängt:
 
@@ -103,16 +103,16 @@ verdient. **Die Lücke selbst ist offen**, und daran hängt:
   nachweislich weg war.
 * **Ein Auflösungswechsel der Quelle ist über V4L2 nicht bemerkbar.** Er erzeugt **kein** `SOURCE_CHANGE`,
   und der Ring enthält dann zerrissenen Inhalt (720p dreifach nebeneinander über altem 1080p-Inhalt).
-  Der Rückweg auf 1920×1080 ist sauber, ohne Zutun — [nachtlog/A6-4-aufloesungswechsel.md](nachtlog/A6-4-aufloesungswechsel.md).
+  Der Rückweg auf 1920×1080 ist sauber, ohne Zutun — [nachtlog/A6-4-aufloesungswechsel.md](A6-4-aufloesungswechsel.md).
   **Neu am 07.09., 12:20:** *erkennbar* wäre er inzwischen ohne Callback — `0x06940928` trägt in den unteren
   16 Bit die Zeilenzahl des eingerasteten Signals (`0x438` = 1080, `0x2D0` = 720) und in Bit 31, ob die
   Firmware überhaupt einrastet. Ein Quellenwechsel als Rettungsweg trägt aber **nicht**: die Firmware zieht
   mit, die Anzeigeseite (Ring-Zeilenabstand, Zuschnitt, Descriptor) bleibt auf 1080p, das Bild bleibt
-  zerrissen — [nachtlog/E3-geometrie-im-register.md](nachtlog/E3-geometrie-im-register.md).
+  zerrissen — [nachtlog/E3-geometrie-im-register.md](E3-geometrie-im-register.md).
 * Da die Init-Sequenz und der EDID/HPD-Anstoß **am Probe von `0094`** hängen (doku/88 §2/§3), betrifft ein
   ausfallender Probe mehr als nur `/dev/video1`.
 
-**Zwei Rückwege liegen fertig daneben** ([nachtlog/STAND-JETZT.md](nachtlog/STAND-JETZT.md)), nichts muss neu
+**Zwei Rückwege liegen fertig daneben** ([nachtlog/STAND-JETZT.md](STAND-JETZT.md)), nichts muss neu
 gebaut werden.
 
 > **Die Namen wechseln mit jedem guten Bau.** Der gute Stand heißt `tftp/h713-kernel-netboot.fit.GUT-<hash>`
@@ -136,7 +136,7 @@ ist sie als `0098` bereits aufgenommen). Momentaufnahme aller 73 Patchdateien:
 * ~~**`SetBrightness` wirkt nicht.**~~ **Erledigt 07.09., 11:25 — die Aussage war falsch.**
   `SetBrightness` **wirkt**: std im ROI 12,6 → 22,7, p95 151 → 185, monoton von 0 bis 100 und darüber exakt
   flach; drei Werte je zweimal angefahren, jedes Mal dieselben Kennzahlen
-  ([nachtlog/I0-helligkeit-nachgemessen.md](nachtlog/I0-helligkeit-nachgemessen.md)).
+  ([nachtlog/I0-helligkeit-nachgemessen.md](I0-helligkeit-nachgemessen.md)).
   **Der Stellbereich ist 0…100, nicht 0…255** — gemessen, nicht erschlossen. Für **Paket I** heißt das:
   `V4L2_CID_BRIGHTNESS` mit Bereich 0…100 **anbieten**. Die alten „0,00 %" waren eine ungültige Messung: sie
   lief gegen eine fast weiße Vorlage, und Helligkeit wirkt im Schwarzbereich — das Kriterium konnte nicht
@@ -157,7 +157,7 @@ ist sie als `0098` bereits aufgenommen). Momentaufnahme aller 73 Patchdateien:
    `analyse/arisc/scp.bin`) und `/lib/firmware/hy310-edid.bin` **mit 512 Byte** (die alte 256-B-Fassung
    ignoriert der Treiber und sagt es laut). Ein frisch gebautes Rootfs kommt ohne beide hoch, und **kein
    Rezept legt sie an** — genau daran ist der erste Abnahmeversuch gescheitert
-   ([60-offen.md](60-offen.md), „Zwei Dateien liegen nur von Hand auf dem Board").
+   ([60-offen.md](../60-offen.md), „Zwei Dateien liegen nur von Hand auf dem Board").
 1. Kaltstart (`sonoff_ctl restart --host 192.168.8.179`), Uptime prüfen.
 2. **`prep_clean.sh` statt `prep_after_boot.sh`.** Mit `0091` im Kernel lädt und quittiert der Treiber die
    ARISC selbst; das alte Rezept lädt den Blob ein zweites Mal und schickt eine zweite Quittung.
@@ -172,17 +172,17 @@ ist sie als `0098` bereits aufgenommen). Momentaufnahme aller 73 Patchdateien:
    (getrennt von der Flip-Kette), der Aufnahmetreiber antwortet mit einem Quellenwechsel weg **und zurück**.
    Belegt am Kaltstart 11:42 ohne einen einzigen Handgriff: `0x928 = 0xE0020438`, `HDMI-1: ok`, nach
    `hy310-tv` „Capture laeuft wieder nach 25 ms", Zuspieler gedimmt → **48,16 %** der Bildpunkte geändert
-   ([nachtlog/E2-freigabe.md](nachtlog/E2-freigabe.md)).
+   ([nachtlog/E2-freigabe.md](E2-freigabe.md)).
    *Der frühere Handgriff aus dem Userspace ist ersatzlos weg.* Zur Messgeschichte: ein **einzelner**
    `SetSource(HDMI-1)` reicht **nicht** (dreimal nichts), weg und zurück wirkt immer, und die Freigabe kommt
    erst 536–544 ms nach der Antwort der Firmware — wer sofort danach liest, liest zu früh.
    **Achtung, die frühere Formel „zwei belegte Freigabewege" ist nicht mehr haltbar** (Nachprüfung 11:55,
-   [nachtlog/M4-nachpruefung.md](nachtlog/M4-nachpruefung.md)): der **HPD-Zyklus** hat aus dem geprüften
+   [nachtlog/M4-nachpruefung.md](M4-nachpruefung.md)): der **HPD-Zyklus** hat aus dem geprüften
    Zustand (aktive Quelle VideoDec) die Capture in 20 s **nicht** freigegeben, während ein `SetSource(3)`
    danach sofort wirkte. M4s eigener Ausgangszustand ist seit `0099` nicht mehr herstellbar, also weder
    bestätigt noch widerlegt — als Betriebsweg **nicht verwenden**. Belegt bleibt allein der Quellenwechsel
-   ([nachtlog/B2-quellenwechsel.md](nachtlog/B2-quellenwechsel.md), Reiz an der Quelle;
-   [nachtlog/M4-hpd-dauer.md](nachtlog/M4-hpd-dauer.md) trägt nur das Freigabebit).
+   ([nachtlog/B2-quellenwechsel.md](B2-quellenwechsel.md), Reiz an der Quelle;
+   [nachtlog/M4-hpd-dauer.md](M4-hpd-dauer.md) trägt nur das Freigabebit).
 
 Registerbild ziehen: `analyse/hdmi-seq/dump_state.py` (liegt jetzt **im Repo**, nicht nur auf dem Board, und
 erfasst zusätzlich den Composition-Block bis `0x05000FFC` und den PQ-Block ab `0x05001000`).
@@ -202,8 +202,8 @@ der **gesamte INCAP-Block liest `0x00000000`** und die Wand zeigt gleichmäßige
 
 **Regel:** Was am Gerät wirkt, gehört in `mainline/patches/kernel/` **und** in `series`. Wer eine Datei im
 Baubaum ändert, hat noch nichts geliefert. Vor jeder Abnahme die entscheidende Zeile im **Patch** prüfen, nicht
-im Baum. Herleitung: [78](78-nachtplan-hdmi-switch.md) Abschnitt 0a, Belege in
-[`nachtlog/A-abnahme-board.md`](nachtlog/A-abnahme-board.md) und [`nachtlog/00-koordination.md`](nachtlog/00-koordination.md).
+im Baum. Herleitung: [78](../78-nachtplan-hdmi-switch.md) Abschnitt 0a, Belege in
+[`nachtlog/A-abnahme-board.md`](A-abnahme-board.md) und [`nachtlog/00-koordination.md`](00-koordination.md).
 
 ### 2. Ein Kriterium, das nicht scheitern kann, prüft nichts *(neu 07.09.)*
 
@@ -233,7 +233,7 @@ namentlich für eine bestimmte Patchdatei freigibt — auch dann erst nach einer
 **Anlass:** beim Callback-Fix überschrieb ein Agent `0092` und `0094`; sein Stand fiel am Gerät durch, und
 die Fassung, mit der A–H grün waren, existierte als Patch nicht mehr. Nur weil der Baubaum noch dalag, ließ
 sich eine bootfähige FIT rekonstruieren — darauf darf man sich nicht verlassen.
-Begründung: [`nachtlog/00-koordination.md`](nachtlog/00-koordination.md), Nachtrag 10:06.
+Begründung: [`nachtlog/00-koordination.md`](00-koordination.md), Nachtrag 10:06.
 
 ## Worum es geht
 
@@ -282,7 +282,7 @@ unangetastet.
 | **MIPS-Quellenwechsel** | **`SetSource(HDMI)` läuft durch** (07.09.): U-Boot legt den SMM-Heap vor dem MIPS-Start an; Firmware allokiert `sgp_hal_signal_info` selbst. Serienmodul `hy310_cpu_comm` lädt automatisch |
 | **HDMI-Eingang** | *korrigiert 07.09.:* **HPD/EDID, Capture, Plane und `/dev/video1` laufen aus dem Kernel und sind abgenommen** (`0091`, `0093`, `0094`, `0095`). Offen ist die Zustellung der Firmware-Callbacks — siehe „Was gerade offen ist" |
 | **Video-Plane** | *korrigiert 07.09.:* `video-0`, **Plane-ID 38** (Overlay) neben der Primary 34 am CRTC 36; der AFBD-Anzeigetreiber ist **`card1`**, `card0` ist Panfrost (nur Render-Knoten). Mit `0093` **in Betrieb und abgenommen** |
-| **Bildqualität (PQ)** | Registerblock `0x05001000…0x050015FC` erschlossen und am Gerät bestätigt — er war in keinem unserer Abzüge enthalten. `SetContrast` → `0x05001234[31:16]`, wirkt messbar (12,16 %); `SetBrightness` → `[15:0]`, **wirkt ebenfalls, Stellbereich 0…100** (*korrigiert 07.09., 11:25:* hier stand „wirkt nicht" — die Messung dahinter lief gegen eine fast weiße Vorlage und konnte nicht anschlagen, [nachtlog/I0-helligkeit-nachgemessen.md](nachtlog/I0-helligkeit-nachgemessen.md)); `SetSaturation` und der Chroma-Gain `0x05140508` sind **derselbe** Regler (`Gain = floor(Argument × 1,28)`, Vorgabe `0x4C` = `SetSaturation 60`). [81](81-pq-datenmodell.md), [85](85-re-pq-register.md), [nachtlog/K5-board-verifikation.md](nachtlog/K5-board-verifikation.md) |
+| **Bildqualität (PQ)** | Registerblock `0x05001000…0x050015FC` erschlossen und am Gerät bestätigt — er war in keinem unserer Abzüge enthalten. `SetContrast` → `0x05001234[31:16]`, wirkt messbar (12,16 %); `SetBrightness` → `[15:0]`, **wirkt ebenfalls, Stellbereich 0…100** (*korrigiert 07.09., 11:25:* hier stand „wirkt nicht" — die Messung dahinter lief gegen eine fast weiße Vorlage und konnte nicht anschlagen, [nachtlog/I0-helligkeit-nachgemessen.md](I0-helligkeit-nachgemessen.md)); `SetSaturation` und der Chroma-Gain `0x05140508` sind **derselbe** Regler (`Gain = floor(Argument × 1,28)`, Vorgabe `0x4C` = `SetSaturation 60`). [81](../81-pq-datenmodell.md), [85](../85-re-pq-register.md), [nachtlog/K5-board-verifikation.md](K5-board-verifikation.md) |
 
 ## Eingereicht
 
@@ -306,62 +306,62 @@ unangetastet.
 **Gelöst am 31.08.:** `[CRTC:36:crtc-0] vblank wait timed out` — in den
 Netboot-`bootargs` fehlten `clk_ignore_unused` und `pd_ignore_unused`,
 worauf Linux dem laufenden Panel PLL_VIDEO2 und den MIPS abschaltete. Der
-komplette Beweisgang steht in [61-plan-vblank.md](61-plan-vblank.md).
+komplette Beweisgang steht in [61-plan-vblank.md](../61-plan-vblank.md).
 
 ## Der rote Faden
 
 Alle bisherigen Stolpersteine hatten dieselbe Ursache: sein Code ist auf
 **ein** Board und **einen** Ablauf geschrieben, und jede Abweichung fällt
 einzeln auf. Fünf davon haben wir behoben, siehe
-[30-uboot-aenderungen.md](30-uboot-aenderungen.md).
+[30-uboot-aenderungen.md](../30-uboot-aenderungen.md).
 
 ## Weiter
 
-- [nachtlog/STAND-JETZT.md](nachtlog/STAND-JETZT.md) — **was gerade läuft, was gerade klemmt, und wo die Rückwege liegen (11:50).**
-- [79-nachtlog-20260907.md](79-nachtlog-20260907.md) — **das Protokoll der Nacht mit den Teillogs.** Die Einzelmessungen stehen dort; die **Kopftabelle** ist der Stand von 08:57 und bei B, E und F vom Vormittag überholt — der aktuelle Paketstand steht oben auf dieser Seite.
-- [10-hardware.md](10-hardware.md) — was auf dem Board sitzt, alles gemessen
-- [20-flashen-und-recovery.md](20-flashen-und-recovery.md) — Layout, Flash-Wege, FEL
-- [30-uboot-aenderungen.md](30-uboot-aenderungen.md) — unsere Patches und ihre Belege
-- [40-display.md](40-display.md) — der MIPS-Display-Pfad
-- [50-befehle.md](50-befehle.md) — Befehlssammlung
-- [60-offen.md](60-offen.md) — offene Punkte
+- [nachtlog/STAND-JETZT.md](STAND-JETZT.md) — **was gerade läuft, was gerade klemmt, und wo die Rückwege liegen (11:50).**
+- [79-nachtlog-20260907.md](../79-nachtlog-20260907.md) — **das Protokoll der Nacht mit den Teillogs.** Die Einzelmessungen stehen dort; die **Kopftabelle** ist der Stand von 08:57 und bei B, E und F vom Vormittag überholt — der aktuelle Paketstand steht oben auf dieser Seite.
+- [10-hardware.md](../10-hardware.md) — was auf dem Board sitzt, alles gemessen
+- [20-flashen-und-recovery.md](../20-flashen-und-recovery.md) — Layout, Flash-Wege, FEL
+- [30-uboot-aenderungen.md](../30-uboot-aenderungen.md) — unsere Patches und ihre Belege
+- [40-display.md](../40-display.md) — der MIPS-Display-Pfad
+- [50-befehle.md](../50-befehle.md) — Befehlssammlung
+- [60-offen.md](../60-offen.md) — offene Punkte
 
 ## Die übrigen Dateien
 
-- [10-hardware.md](10-hardware.md) — Board, SoC, Panel, GPIO-Warnungen
-- [20-flashen-und-recovery.md](20-flashen-und-recovery.md) — Flash-Rezept, FEL
-- [30-uboot-aenderungen.md](30-uboot-aenderungen.md) — unsere dreizehn Änderungen
-- [40-display.md](40-display.md) — MIPS-Firmware und Display-Pfad
-- [50-befehle.md](50-befehle.md) — alles zum Nachschlagen
-- [60-offen.md](60-offen.md) — offene Punkte
-- [70-sackgassen.md](70-sackgassen.md) — **ausgeschlossen, mit Beleg. Zuerst lesen.**
-- [80-vergleich-baeume.md](80-vergleich-baeume.md) — was cstenger portiert hat und was nicht
-- [90-stock-referenz.md](90-stock-referenz.md) — **der A/B-Umschalter gegen Stock. Das Werkzeug, das den Display-Pfad gelöst hat.**
-- [95-netboot.md](95-netboot.md) — **Netboot komplett: TFTP starten, NFS, Environment, UART-Flashen**
-- [61-plan-vblank.md](61-plan-vblank.md) — **der Vblank-Fehler, gelöst und belegt**
-- [62-video.md](62-video.md) — **VE-Dekodierung und Wiedergabe; fünf Defekte in seinem Video-Pfad**
-- [64-afbd-quelle0.md](64-afbd-quelle0.md) — **belegt: unser DRAM steht auf dem Panel. Das Latch-Orakel (bedient vs. konfiguriert), der Ring, und vier widerlegte Annahmen**
-- [65-cpu-comm-abgleich.md](65-cpu-comm-abgleich.md) — **die drei cpu_comm-Generationen, vollständig gediffed: sein Patch 0014 ist unser `Archived/`-Stand. Wer was hat, und die zwei U-Boot-Fallen**
-- [66-cpu-comm-arm64-bringup.md](66-cpu-comm-arm64-bringup.md) — **erster CPU_COMM-Round-Trip auf diesem Board, Session Z reproduziert; fünf behobene Fehler, und warum der MIPS aus Linux noch nicht abholt**
-- [67-cpu-comm-linux.md](67-cpu-comm-linux.md) — **CPU_COMM-Aufruf aus Linux läuft durch, mit Rückgabewert. Drei Ursachen: geparkter MIPS, `cc_ref` ohne `cc_deref`, 64-Bit-Laden auf 4-Byte-Grenze.**
-- [68-stock-extraktion-arisc-hdcp.md](68-stock-extraktion-arisc-hdcp.md) — **die HDCP-Keys und die ARISC-Firmware aus den Stock-Daten geholt; die vollstaendige ARISC-Ladesequenz aus dem Vendor-BL31, Ladeadresse `0x00100000`, Reset `0x07000400` Bit 0. `GIC_SPI 46` aus der Herstellerquelle belegt.**
-- [69-handoff-20260905.md](69-handoff-20260905.md) — Übergabe vom 05.09.: HDMI-Eingang bis kurz vors Signal. Enthält Zugang, Wiederherstellungsrezept und Sperren; **der Sachstand darin ist überholt**
-- [71-tvtop-noetig.md](71-tvtop-noetig.md) — **Antwort auf den Folgeauftrag aus 69: der ARM braucht `tvtop` fuer den HDMI-Eingang NICHT.** MIPS setzt INCAP selbst auf, Domains aus U-Boot an, Fabric-Routing aus U-Boot. Dazu: `reg`-Reihenfolge des tvtop-Knotens im DT ist gegen den Vendor vertauscht.
-- [74-setsource-ursache-nullzeiger.md](74-setsource-ursache-nullzeiger.md) — **`SetSource(HDMI)` tötet den SoC nicht mehr:** Nullzeiger `sgp_hal_signal_info`, Fix in U-Boot, A/B belegt; dazu die Bereinigung der Diagnose-Bausteine (11 Positionen)
-- [75-handoff-20260907.md](75-handoff-20260907.md) — die Übergabe vom Morgen des 07.09.; **chronologisch gewachsen, der Sachstand darin endet vor den Abnahmen** (die Seite markiert das selbst am Kopf)
-- [76-plan-ch0-de.md](76-plan-ch0-de.md), [77-plan-hdmi-integration.md](77-plan-hdmi-integration.md) — die Pläne, aus denen die Patches entstanden sind
+- [10-hardware.md](../10-hardware.md) — Board, SoC, Panel, GPIO-Warnungen
+- [20-flashen-und-recovery.md](../20-flashen-und-recovery.md) — Flash-Rezept, FEL
+- [30-uboot-aenderungen.md](../30-uboot-aenderungen.md) — unsere dreizehn Änderungen
+- [40-display.md](../40-display.md) — MIPS-Firmware und Display-Pfad
+- [50-befehle.md](../50-befehle.md) — alles zum Nachschlagen
+- [60-offen.md](../60-offen.md) — offene Punkte
+- [70-sackgassen.md](../70-sackgassen.md) — **ausgeschlossen, mit Beleg. Zuerst lesen.**
+- [80-vergleich-baeume.md](../80-vergleich-baeume.md) — was cstenger portiert hat und was nicht
+- [90-stock-referenz.md](../90-stock-referenz.md) — **der A/B-Umschalter gegen Stock. Das Werkzeug, das den Display-Pfad gelöst hat.**
+- [95-netboot.md](../95-netboot.md) — **Netboot komplett: TFTP starten, NFS, Environment, UART-Flashen**
+- [61-plan-vblank.md](../61-plan-vblank.md) — **der Vblank-Fehler, gelöst und belegt**
+- [62-video.md](../62-video.md) — **VE-Dekodierung und Wiedergabe; fünf Defekte in seinem Video-Pfad**
+- [64-afbd-quelle0.md](../64-afbd-quelle0.md) — **belegt: unser DRAM steht auf dem Panel. Das Latch-Orakel (bedient vs. konfiguriert), der Ring, und vier widerlegte Annahmen**
+- [65-cpu-comm-abgleich.md](../65-cpu-comm-abgleich.md) — **die drei cpu_comm-Generationen, vollständig gediffed: sein Patch 0014 ist unser `Archived/`-Stand. Wer was hat, und die zwei U-Boot-Fallen**
+- [66-cpu-comm-arm64-bringup.md](../66-cpu-comm-arm64-bringup.md) — **erster CPU_COMM-Round-Trip auf diesem Board, Session Z reproduziert; fünf behobene Fehler, und warum der MIPS aus Linux noch nicht abholt**
+- [67-cpu-comm-linux.md](../67-cpu-comm-linux.md) — **CPU_COMM-Aufruf aus Linux läuft durch, mit Rückgabewert. Drei Ursachen: geparkter MIPS, `cc_ref` ohne `cc_deref`, 64-Bit-Laden auf 4-Byte-Grenze.**
+- [68-stock-extraktion-arisc-hdcp.md](../68-stock-extraktion-arisc-hdcp.md) — **die HDCP-Keys und die ARISC-Firmware aus den Stock-Daten geholt; die vollstaendige ARISC-Ladesequenz aus dem Vendor-BL31, Ladeadresse `0x00100000`, Reset `0x07000400` Bit 0. `GIC_SPI 46` aus der Herstellerquelle belegt.**
+- [69-handoff-20260905.md](../69-handoff-20260905.md) — Übergabe vom 05.09.: HDMI-Eingang bis kurz vors Signal. Enthält Zugang, Wiederherstellungsrezept und Sperren; **der Sachstand darin ist überholt**
+- [71-tvtop-noetig.md](../71-tvtop-noetig.md) — **Antwort auf den Folgeauftrag aus 69: der ARM braucht `tvtop` fuer den HDMI-Eingang NICHT.** MIPS setzt INCAP selbst auf, Domains aus U-Boot an, Fabric-Routing aus U-Boot. Dazu: `reg`-Reihenfolge des tvtop-Knotens im DT ist gegen den Vendor vertauscht.
+- [74-setsource-ursache-nullzeiger.md](../74-setsource-ursache-nullzeiger.md) — **`SetSource(HDMI)` tötet den SoC nicht mehr:** Nullzeiger `sgp_hal_signal_info`, Fix in U-Boot, A/B belegt; dazu die Bereinigung der Diagnose-Bausteine (11 Positionen)
+- [75-handoff-20260907.md](../75-handoff-20260907.md) — die Übergabe vom Morgen des 07.09.; **chronologisch gewachsen, der Sachstand darin endet vor den Abnahmen** (die Seite markiert das selbst am Kopf)
+- [76-plan-ch0-de.md](../76-plan-ch0-de.md), [77-plan-hdmi-integration.md](../77-plan-hdmi-integration.md) — die Pläne, aus denen die Patches entstanden sind
 - `legacy/docs/known-issues.md` — die **Pflichtliste**, in Paket J überarbeitet: 17 Sachpunkte eingeordnet, 12 Behelfe im Quelltext benannt (W1–W12)
 
 ## Aus dem Nachtlauf 06./07.09.
 
-- [78-nachtplan-hdmi-switch.md](78-nachtplan-hdmi-switch.md) — die Aufträge; **Abschnitt 0a** (die Baubaum-Falle) und **Anhang A** (der Umschaltablauf in sieben Stufen, Fehlerbilder, offene Punkte) gelten weiter
-- [79-nachtlog-20260907.md](79-nachtlog-20260907.md) — **das Protokoll mit den Teillogs in [`nachtlog/`](nachtlog/).** Die Einzelmessungen stehen dort; die Kopftabelle ist der Stand von **08:57** und bei B, E und F überholt. Der jüngste operative Stand: [`nachtlog/STAND-JETZT.md`](nachtlog/STAND-JETZT.md)
-- [81-pq-datenmodell.md](81-pq-datenmodell.md) — von der Stock-Datei bis zum Register: Bildmodus, Werkskurve, Sättigung, Gamma-LUT; Werkzeug `userspace/hy310-pq`
-- [82-arisc-treiber.md](82-arisc-treiber.md) — `sun50i-h713-arisc` (`0091`): Firmware laden, Startup-Handshake, EDID/HPD als Kernel-API, ohne Puls und ohne Rettungspfade
-- [83-cpu-comm-api.md](83-cpu-comm-api.md) — die In-Kernel-API von `cpu_comm` (`0092`); der Namens-Hash macht die Call-Tabelle entbehrlich
-- [84-re-capture-ring.md](84-re-capture-ring.md) — RE: die INCAP-Felder stehen in den TSE-Tabellen, nicht im Code; **es gibt auf dem ARM kein Capture-Ereignis** (Vsync-getaktetes Lesen der Flip-Zeiger statt Interrupt)
-- [85-re-pq-register.md](85-re-pq-register.md) — RE: der PQ-Registerblock `0x05001000…15FC` und eine Vorstudie zu Stocks Compositing (der exklusive Mux ist **unsere** Konfiguration, nicht die Hardware)
-- [86-video-plane-nv16.md](86-video-plane-nv16.md) — die Video-Plane auf dem Capture-Ring (`0093`): Registersatz mit Begründung je Wert, Ring-Folge, Descriptor
-- [87-gamma-ctm-kms.md](87-gamma-ctm-kms.md) — `GAMMA_LUT` und `CTM` am AFBD-CRTC (`0095`), Schreibsequenz nach BACKGROUND.md §5.3
-- [88-v4l2-hdmirx.md](88-v4l2-hdmirx.md) — `sun50i-h713-hdmirx` (`0094`): Probe-Sequenz, Puffermodell, `SOURCE_CHANGE` aus dem Firmware-Callback
-- [89-composition-block.md](89-composition-block.md) — der Composition-Block `0x05000000` an unserem Board gegengeprüft: 1920×1080, Skalierung 1:1. **Composition treibt das Panel, nicht AFBD**
+- [78-nachtplan-hdmi-switch.md](../78-nachtplan-hdmi-switch.md) — die Aufträge; **Abschnitt 0a** (die Baubaum-Falle) und **Anhang A** (der Umschaltablauf in sieben Stufen, Fehlerbilder, offene Punkte) gelten weiter
+- [79-nachtlog-20260907.md](../79-nachtlog-20260907.md) — **das Protokoll mit den Teillogs in [`nachtlog/`](./).** Die Einzelmessungen stehen dort; die Kopftabelle ist der Stand von **08:57** und bei B, E und F überholt. Der jüngste operative Stand: [`nachtlog/STAND-JETZT.md`](STAND-JETZT.md)
+- [81-pq-datenmodell.md](../81-pq-datenmodell.md) — von der Stock-Datei bis zum Register: Bildmodus, Werkskurve, Sättigung, Gamma-LUT; Werkzeug `userspace/hy310-pq`
+- [82-arisc-treiber.md](../82-arisc-treiber.md) — `sun50i-h713-arisc` (`0091`): Firmware laden, Startup-Handshake, EDID/HPD als Kernel-API, ohne Puls und ohne Rettungspfade
+- [83-cpu-comm-api.md](../83-cpu-comm-api.md) — die In-Kernel-API von `cpu_comm` (`0092`); der Namens-Hash macht die Call-Tabelle entbehrlich
+- [84-re-capture-ring.md](../84-re-capture-ring.md) — RE: die INCAP-Felder stehen in den TSE-Tabellen, nicht im Code; **es gibt auf dem ARM kein Capture-Ereignis** (Vsync-getaktetes Lesen der Flip-Zeiger statt Interrupt)
+- [85-re-pq-register.md](../85-re-pq-register.md) — RE: der PQ-Registerblock `0x05001000…15FC` und eine Vorstudie zu Stocks Compositing (der exklusive Mux ist **unsere** Konfiguration, nicht die Hardware)
+- [86-video-plane-nv16.md](../86-video-plane-nv16.md) — die Video-Plane auf dem Capture-Ring (`0093`): Registersatz mit Begründung je Wert, Ring-Folge, Descriptor
+- [87-gamma-ctm-kms.md](../87-gamma-ctm-kms.md) — `GAMMA_LUT` und `CTM` am AFBD-CRTC (`0095`), Schreibsequenz nach BACKGROUND.md §5.3
+- [88-v4l2-hdmirx.md](../88-v4l2-hdmirx.md) — `sun50i-h713-hdmirx` (`0094`): Probe-Sequenz, Puffermodell, `SOURCE_CHANGE` aus dem Firmware-Callback
+- [89-composition-block.md](../89-composition-block.md) — der Composition-Block `0x05000000` an unserem Board gegengeprüft: 1920×1080, Skalierung 1:1. **Composition treibt das Panel, nicht AFBD**

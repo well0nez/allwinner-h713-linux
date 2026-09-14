@@ -9,7 +9,7 @@ Disassemblate in `analyse/release/arbeit/r0-fel/s49-dis/`). Lies S49 ganz, bevor
 
 1. **Schlüsselmaterial wird nie gelesen, kopiert, zitiert oder ins Repo gelegt.** Die Dateien in `analyse/hdcp-keys/`
    und `re/device-dumps/` öffnest du nicht. Du brauchst sie nicht: das Chiffrat liest dein Code **auf dem Gerät** aus
-   dem Secure Storage, genau wie [`h713-hdcp-key`](../analyse/release/arbeit/rootfs/overlay/usr/local/sbin/h713-hdcp-key)
+   dem Secure Storage, genau wie [`h713-hdcp-key`](../rootfs/overlay/usr/local/sbin/h713-hdcp-key)
    es für HDCP 2.2 tut. Auch Logausgaben dürfen keine Schlüsselbytes enthalten, auch nicht „nur zum Debuggen".
 2. **Der Secure Storage bei LBA 12288…14335 wird nie beschrieben.** Nur gelesen.
 3. **Bauen nur im Container `h713-build`**, nie auf dem Host. Kernel-Patches gehören in `mainline/patches/kernel/series`,

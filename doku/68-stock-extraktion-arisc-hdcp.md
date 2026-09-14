@@ -1421,7 +1421,7 @@ Beobachtungen bei jedem Aufruf:
 * er läuft auf 0 herunter — und auf 0 bringt ihn ausschließlich die Stufe,
   die `pin_write(port, 1)` aufruft.
 
-Werkzeug: [`analyse/arisc-msg/arisc_hdmi.py`](../analyse/arisc-msg/arisc_hdmi.py).
+Werkzeug: `analyse/arisc-msg/arisc_hdmi.py`.
 
 ## Es gibt zwei Empfangswege, nicht einen
 

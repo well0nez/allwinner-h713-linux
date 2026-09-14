@@ -27,7 +27,7 @@ Angelegt 2026-08-31.
 **Stand 08.09.2026:** der HDMI-Eingang läuft vollständig aus Kernel und Userspace (Bild, Umschalten,
 Auflösungen, Bildregler, Presets, Einpassung, Gamma). Bedienung: `doku/50-befehle.md`, Abschnitt Betrieb.
 
-**Einstieg: [doku/00-STATUS.md](doku/00-STATUS.md)** — aktueller Stand, was
+**Einstieg: [doku/00-STATUS.md](00-STATUS.md)** — aktueller Stand, was
 läuft, was offen ist. Die Datei hier beschreibt nur die Bäume und die
 Submodul-Fallen.
 
@@ -103,8 +103,8 @@ den funktionierenden Audio-Stack und den `sunxi_ge2d`-Port.
 ## `re/` — das Material
 
 25.277 Dateien, dedupliziert aus vier Quellen, doppelt verifiziert. Einstieg:
-[`re/INDEX.md`](re/INDEX.md), Datenbank-Zuordnung in
-[`re/ida/PAIRING.md`](re/ida/PAIRING.md). Die Originale liegen unangetastet
+`re/INDEX.md`, Datenbank-Zuordnung in
+`re/ida/PAIRING.md`. Die Originale liegen unangetastet
 unter `/opt/archive/`.
 
 Wichtig: der aktuelle Wissensstand steht in `re/notes/` (u.a.

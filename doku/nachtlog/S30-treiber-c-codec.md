@@ -1,7 +1,7 @@
 # S30 — Paket C: Codec-I2S-Fenster, `DAC Source`, `I2S Rate` (Patch 0135)
 
 **08.09.2026. Reine Schreibtischarbeit — kein Board, kein Bau.** Auftrag
-[`t-c-codec/AUFTRAG.md`](../../analyse/audio/arbeit/t-c-codec/AUFTRAG.md), Plan
+`t-c-codec/AUFTRAG.md`, Plan
 [`101`](../101-plan-audio-treiber.md) §1 C, §2, §4. Belege: [`S25`](S25-re-i2sout-codec.md) §1–§4,
 [`S16`](S16-hdmi-audio.md) 17:40–20:45. Basisbaum
 `mainline/build/linux-6.18.38-a3097ce7…`; Arbeitskopien `analyse/audio/arbeit/t-c-codec/{a,b}/`.

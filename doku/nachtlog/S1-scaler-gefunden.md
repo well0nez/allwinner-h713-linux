@@ -86,7 +86,7 @@ SetSource(3), reapply picture-quality + Wce_SetWindow + DisableBlackScreen").
 Sauberer Kontrollversuch: PROC vorher von Hand auf 1920 zurückgesetzt, danach der Ruf, danach
 immer noch 1920. Der Ruf legt das Fenster also nur im WCE-Zustand ab; die Register schreibt erst
 `UpdateWce`, und das taktet die Zustandsmaschine, die laut
-[`re/notes/DEAD-ENDS.md`](../../re/notes/DEAD-ENDS.md) §81 nur per Hardware-IRQ
+`re/notes/DEAD-ENDS.md` §81 nur per Hardware-IRQ
 (`Vdd_TriggerInterruptTop`) läuft und über ~6 Sitzungen nie von außen auszulösen war.
 
 Ebenfalls ohne Wirkung geblieben (jeweils zurückgesetzt): PROC-Register von Hand auf 1280×720,
