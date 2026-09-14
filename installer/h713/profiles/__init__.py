@@ -28,10 +28,47 @@ PROFILES = {
 #: the values "status" may take. Only "verified" may produce an image (doku/121 section 5).
 STATUS_VALUES = ("verified", "profile-only", "partial")
 
+#: X:178 KENNUNGS_MERKMALE -- the only names a profile's "strong_features" and the readers may use.
+#: Order = weight of evidence; the last two only confirm or contradict in the old global reading.
+FEATURE_VOCABULARY = ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version", "arisc_version",
+                      "build_fingerprint", "mips_database_sha256", "sunxi_version", "vendor_size")
+
 
 def get(board_id):
     """Return the profile of `board_id`, or None if there is none."""
     return PROFILES.get(board_id)
+
+
+def strong_features_of(profile):
+    """The features that alone pin *this* board down (profile["stock"]["strong_features"]).
+
+    Per board, not globally: the three ADT-3 boards share `build_fingerprint` and
+    `mips_database_sha256`, so their profiles do not list them (doku/121 section 2, finding 1).
+    A profile that lists none (HY300 Pro -- nothing known about it is unique) can never be
+    matched, which is the intended answer, not a bug.
+    """
+    return tuple((profile.get("stock") or {}).get("strong_features") or ())
+
+
+def expected_features(profile):
+    """The nine identification features a profile declares, as {name: value or None}.
+
+    Two shapes reach this: a row of legacy_devices() ("erwartung"/"paket_item_sha256", what the
+    moved extractor hands over) and a board profile ("expected"/"package_item_sha256"). Same
+    values, so only the two names are looked up. A profile that declares nothing at all
+    (`expected: None`, HY300 Pro) gives every feature as None.
+    """
+    declared = profile.get("erwartung") if "erwartung" in profile else profile.get("expected")
+    if not declared:
+        return dict((name, None) for name in FEATURE_VOCABULARY)
+    items = declared.get("paket_item_sha256") or declared.get("package_item_sha256") or {}
+    return {"scp_sha256": items.get("scp"), "uboot_sha256": items.get("u-boot"),
+            "dtb_sha256": items.get("dtb"), "uboot_version": declared.get("uboot_version"),
+            "arisc_version": declared.get("arisc_version"),
+            "build_fingerprint": declared.get("build_fingerprint"),
+            "mips_database_sha256": declared.get("mips_database_sha256"),
+            "sunxi_version": declared.get("sunxi_version"),
+            "vendor_size": declared.get("vendor_size")}
 
 
 # --------------------------------------------------------------------------------------------------

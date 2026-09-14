@@ -1,47 +1,52 @@
 # SPDX-License-Identifier: GPL-2.0
-"""Which device is this? -- the features of a stock image and of a stock drive.
+"""Which device is this? -- one answer for an image, a raw dump and a device.
 
-The tables and the two feature helpers come from h713-extract (X:178-207, X:1961), the drive-side
-recognition from hy310-install.py (I:1456-1620). Stage 1 of doku/121: identifiers and comments are
-English, every user-visible string is unchanged.
+Stage 2 C1/C6 (doku/121 section 2, findings 1 and 6): the installer decided "known device, may
+write" on a single string, the vendor `build_fingerprint`. The three ADT-3 boards share it, so a
+HY350 passed as an HY300 Pro. `identify()` reads every feature the board profiles carry, compares
+each profile against the features *that* profile calls strong, and when nothing matches it prints
+what it saw in the field names `h713_probe` uses -- so a stranger can post the row as it stands.
+
+`identify_device()` is the installer's old call site: same keys, same German texts, byte for byte.
+Wiring the installer onto `identify()` is a later step (doku/121 stage 3).
+
+Tables and feature helpers come from h713-extract (X:178-207), the drive side from
+hy310-install.py (I:1456-1620).
 """
 
 from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from h713.blockdev import SECT, device_kind
+from h713.blockdev import LOCK_FIRST, LOCK_LAST, device_kind
+from h713.facts import (DiskSource, MIPS_SOURCES, as_source, close_source, device_facts,
+                        image_facts, VENDOR_PARTITIONS)
 from h713.fs import Ext4, LpSuper
 from h713.gpt import Gpt
+from h713.imagewty import Imagewty
 from h713.log import Log, console
-from h713.profiles import UBOOT_FW_REVS, legacy_devices
-from h713.source import SliceSource, Source
-from h713.util import sha256_bytes
+from h713.profiles import (FEATURE_VOCABULARY, PROFILES, UBOOT_FW_REVS, expected_features,
+                           legacy_devices, strong_features_of)
+from h713.util import SECTOR, sha256_bytes
 
 # Features a device is recognised by even without an image fingerprint (--part, --fex-dir, --no-hash).
-# Order = weight of evidence. EDID, MSP patch, monitor, optee, libmspsound.so and the dtb compatible are
-# the same on both devices and tell them apart in nothing -- they are checked, but they do not count for
-# recognition. Of the MIPS artefacts exactly one file tells the two devices apart: mips/database.TSE
-# (0.3, S42 §9) -- with it even a bare bootloader partition can be assigned to a device.
-ID_FEATURES = ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version", "arisc_version",
-               "build_fingerprint", "mips_database_sha256", "sunxi_version", "vendor_size")
-# Only these pin a device down; vendor_size and sunxi_version merely confirm or contradict.
+# Order = weight of evidence. Of the MIPS artefacts exactly one file tells two devices apart:
+# mips/database.TSE (0.3, S42 §9) -- with it even a bare bootloader partition can be assigned.
+ID_FEATURES = FEATURE_VOCABULARY
+# X:181 the old global list; it stays because the extractor reads it. Which features pin down *one*
+# board is a property of that board -- profiles[..]["stock"]["strong_features"], and that is what
+# match_profiles() asks (stage 2 C6: the ADT-3 profiles do not list build_fingerprint).
 STRONG_FEATURES = ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version", "arisc_version",
                    "build_fingerprint", "mips_database_sha256")
+# The rows a profile needs, in the names h713_probe prints (docs/tools/h713-probe.md).
+ROW_FEATURES = ("sunxi_version", "build_fingerprint", "uboot_version", "arisc_version", "scp_sha256",
+                "uboot_sha256", "dtb_sha256", "dtb_compatible", "mips_database_sha256", "vendor_size",
+                "display_bin_size", "display_bin_sha256", "project_id", "panel")
 
 
 def features_of(profile: dict) -> dict:
-    # Two shapes reach this: a row of legacy_devices() ("erwartung"/"paket_item_sha256", what the moved
-    # readers hand over) and a board profile of A3 ("expected"/"package_item_sha256"). Same values, so
-    # only the two names are looked up -- everything below is X:185 unchanged.
-    e = profile["erwartung"] if "erwartung" in profile else profile["expected"]
-    if "paket_item_sha256" not in e:
-        e = dict(e, paket_item_sha256=e["package_item_sha256"])
-    return {"scp_sha256": e["paket_item_sha256"]["scp"], "uboot_sha256": e["paket_item_sha256"]["u-boot"],
-            "dtb_sha256": e["paket_item_sha256"]["dtb"], "uboot_version": e["uboot_version"],
-            "arisc_version": e["arisc_version"], "build_fingerprint": e["build_fingerprint"],
-            "mips_database_sha256": e["mips_database_sha256"],
-            "sunxi_version": e["sunxi_version"], "vendor_size": e["vendor_size"]}
+    """X:185 -- what a legacy_devices() row or a board profile declares (h713.profiles)."""
+    return expected_features(profile)
 
 
 def feature_matches(name: str, actual, expected) -> bool:
@@ -59,75 +64,248 @@ KNOWN_IMAGES = {
 }
 
 
-def firmware_revision_of(data: bytes) -> Optional[dict]:
-    """Find a display.bin again by its sha256 in h713_mips_fw_revs[] -- that determines the *used* project id."""
-    h = sha256_bytes(data)
-    for r in UBOOT_FW_REVS:
-        if r["sha256"] == h:
-            return r
-    return None
+# The revision lookup lives in h713.vendorfiles (the whole FIRMWARE_REVISIONS table, stage 2 C7);
+# re-exported here because identify's callers and the probe row use it (Fable, C-A merge).
+from h713.vendorfiles import firmware_revision_of   # noqa: E402,F401
 
 
-class DiskSource:
-    """The extractor reads through its source interface; here it lies on the block
-    device instead of on a file. Read only."""
-
-    def __init__(self, disk):
-        self._d = disk
-        self.size = disk.sectors * SECT
-        self.name = disk.path
-
-    def read(self, off, n):
-        if off < 0 or n < 0:
-            raise ValueError("negativer Lesezugriff")
-        first = off // SECT
-        front = off - first * SECT
-        sectors = (front + n + SECT - 1) // SECT
-        return self._d.read(first, sectors)[front:front + n]
-
-    def backing(self):
-        return None
-
-    def sub(self, off, size, name) -> Source:
-        return SliceSource(self, off, size, name)
+def _files_dict(entries):
+    """A [{name, size, sha256}] list of h713.facts back as name -> {size, sha256}."""
+    return dict((e["name"], {"sha256": e["sha256"], "size": e["size"]}) for e in entries or [])
 
 
-def identify_device(disk, extractor=None, log=console):
-    """What are we dealing with? (plan 110 §8)
+def _panel_value(facts, field):
+    """One field of panel_config.ini -- the Reserve0 copy is the one U-Boot reads."""
+    entry = (facts.get("panel_config") or {}).get(field) or {}
+    return entry.get("reserve0") if entry.get("reserve0") is not None else entry.get("vendor")
 
-    A deliberate path instead of a search: GPT -> super -> LP metadata ->
-    vendor -> build.prop. Together about 1.2 MiB, so fractions of a second;
-    reading the whole eMMC takes 17 minutes.
 
-    Nothing is computed here: GPT, LP metadata, ext4 reader and the device
-    table are in the package. A second copy of them would be exactly the
-    double bookkeeping this project has already paid for twice.
+def features_from_facts(facts: dict) -> dict:
+    """Every identification feature plus what a profile row needs, None where unreadable."""
+    package = facts.get("boot_package") or {}
+    items = dict((i["name"], i) for i in package.get("items") or [])
+    mips = facts.get("mips_files") or {}
+    database = [_files_dict(e).get("database.TSE", {}).get("sha256")
+                for e in mips.get("sources", {}).values()]
+    sizes = dict((p["name"], p["size"]) for p in (facts.get("super") or {}).get("partitions") or [])
+    display = mips.get("display_bin") or {}
+    width, height = _panel_value(facts, "PanelWidth"), _panel_value(facts, "PanelHeight")
+    return {
+        "scp_sha256": items.get("scp", {}).get("sha256"),
+        "uboot_sha256": items.get("u-boot", {}).get("sha256"),
+        "dtb_sha256": items.get("dtb", {}).get("sha256"),
+        "uboot_version": package.get("uboot_version"),
+        "arisc_version": package.get("arisc_version"),
+        "build_fingerprint": (facts.get("vendor_build_prop") or {}).get("ro.vendor.build.fingerprint"),
+        "mips_database_sha256": next((h for h in database if h), None),
+        "sunxi_version": facts.get("sunxi_version"),
+        "vendor_size": next((sizes[n] for n in VENDOR_PARTITIONS if n in sizes), None),
+        "dtb_compatible": package.get("dtb_compatible"),
+        "dram": (facts.get("boot0") or {}).get("dram"),
+        "dram_clk_mhz": (facts.get("boot0") or {}).get("dram_clk_mhz"),
+        "display_bin_sha256": display.get("sha256"),
+        "display_bin_size": display.get("size"),
+        "project_id": _panel_value(facts, "ProjectID"),
+        "panel": None if not width or not height else "%dx%d" % (width, height),
+    }
 
-    `extractor` is the path to h713-extract. It is still taken so that callers
-    do not change, and it is no longer used -- the package imports itself
-    (api-h713.md: `_extraktor_laden` is deleted).
 
-    Return: dict with 'layout', and on stock additionally 'fingerprint',
-    'geraet', 'bekannt'. Never throws -- whoever does not recognise, says so.
+def match_profiles(features: dict, profiles=None):
+    """(profile id or None, candidates, matches) -- every profile whose strong features all agree.
+
+    Strong is per profile (`stock.strong_features`): `build_fingerprint` and `mips_database_sha256`
+    count only where a profile lists them, because the three ADT-3 boards share both (doku/121
+    section 2, finding 1). A feature neither side supplies is no evidence and is recorded as None;
+    a profile with no comparable feature at all (HY300 Pro) is never a candidate, and two
+    candidates mean ambiguous -- then there is no profile.
     """
-    out = {"layout": None, "fingerprint": None, "geraet": None, "bekannt": False}
+    profiles = PROFILES if profiles is None else profiles
+    matches, candidates = {}, []
+    for board_id, profile in profiles.items():
+        expected = expected_features(profile)
+        row, compared, agrees = {}, 0, True
+        for name in strong_features_of(profile):
+            actual, want = features.get(name), expected.get(name)
+            if actual is None or want is None:
+                row[name] = None
+                continue
+            row[name] = feature_matches(name, actual, want)
+            compared += 1
+            agrees = agrees and row[name]
+        matches[board_id] = row
+        if compared and agrees:
+            candidates.append(board_id)
+    return (candidates[0] if len(candidates) == 1 else None), candidates, matches
 
-    out["layout"] = device_kind(disk.path)
-    # Only a stock layout has a vendor partition with build.prop. The text
-    # comes from device_kind() -- "Stock-Layout, N Partitionen" or
-    # "unser Layout (...)"; check the first word, not the whole sentence
-    # (the number of partitions is in it).
-    if not (out["layout"] or "").startswith("Stock-Layout"):
-        return out
 
+def _layout_of(facts: dict) -> dict:
+    """entries, partitions (name, start LBA, sectors), disk size, layout disagreements.
+
+    An image's partitions are the rows of sys_partition.fex -- that is what the device follows,
+    not sunxi_gpt.fex (doku/121 section 2, finding 6); a device has only its GPT entries. The
+    disk size is what the table describes, not what was handed in: a raw dump is usually shorter.
+    """
+    header = ((facts.get("gpt") or facts.get("sunxi_gpt")) or {}).get("header") or {}
+    partitions = [(p["name"], p["start_lba"], p["sectors"]) for p in facts.get("sys_partition") or []]
+    if not partitions:
+        entries = ((facts.get("gpt") or facts.get("sunxi_gpt")) or {}).get("entries") or []
+        partitions = [(e["name"], e["first"], e["last"] - e["first"] + 1) for e in entries]
+    return {"entries": header.get("entries") or len(partitions), "partitions": partitions,
+            "disk_sectors": header["last_usable"] + 34 if header.get("last_usable")
+            else (facts.get("input") or {}).get("size", 0) // SECTOR or None,
+            "consistency": list(facts.get("layout_consistency") or [])}
+
+
+def _regions_of(layout: dict) -> dict:
+    """The regions no firmware image brings back, found BY NAME (I:95 EINMALIG, generalised).
+
+    secure-storage is fixed for every H713; private and Reserve0* come from the table of this very
+    device, never from the HY310 constants -- the HY300 Pro has one Reserve0 elsewhere (issue #1).
+    """
+    regions = {"secure-storage": (LOCK_FIRST, LOCK_LAST - LOCK_FIRST + 1)}
+    for name, start, sectors in layout["partitions"]:
+        if name == "private" or name.startswith("Reserve0"):
+            regions[name] = (start, sectors)
+    return regions
+
+
+def _mips_of(facts: dict) -> dict:
+    """Where the display firmware sits: per bootloader slot, plus the copy inside Android."""
+    if facts.get("mips"):
+        return dict(facts["mips"])
+    sources = (facts.get("mips_files") or {}).get("sources") or {}
+    fat = _files_dict(sources.get(MIPS_SOURCES[0])) or None
+    supplies = dict((p["name"], p["downloadfile"]) for p in facts.get("sys_partition") or [])
+    out = {"active_slot": None, "vendor": _files_dict(sources.get(MIPS_SOURCES[1])) or None}
+    for slot in ("bootloader_a", "bootloader_b"):
+        out[slot] = fat if supplies.get(slot) == "boot-resource.fex" else None
+    return out
+
+
+def _kind_of(layout: dict) -> str:
+    """What the partition table says -- the same test device_kind() runs, on a table we already read."""
+    names = [name for name, _start, _sectors in layout["partitions"]]
+    if not names:
+        return "no-gpt"
+    if any(n.startswith("hy310-") for n in names):
+        return "ours"
+    if "bootloader_a" in names and "super" in names:
+        return "stock"
+    return "unknown-gpt"
+
+
+def _profile_row(ident: dict, add) -> None:
+    """The fields a profile needs, in the names h713_probe prints -- to be posted as they stand."""
+    features = ident["features"]
+    add("info", "-- profile row (post it as it stands, then this board gets a profile) --")
+    add("info", "%-21s %s, %s" % ("input", ident["input"], ident["kind"]))
+    add("info", "%-21s %d" % ("partitions", len(ident["layout"]["partitions"])))
+    for name in ROW_FEATURES:
+        value = features.get(name)
+        if name == "project_id" and isinstance(value, int):
+            value = "0x%02x" % value
+        add("info", "%-21s %s" % (name, "-" if value is None else value))
+    for name, value in (features.get("dram") or {}).items():
+        add("info", "dram_%-6s 0x%08x%s" % (name, value, "   MHz: %d" % value if name == "clk" else ""))
+
+
+def _render(ident: dict) -> list:
+    """The lines report_device() prints, as (level, text)."""
+    lines = []
+
+    def add(level, text):
+        lines.append((level, text))
+
+    board = PROFILES.get(ident["profile"] or "", {}).get("name", ident["profile"])
+    where = "%s (%s)" % (ident["input"], ident["kind"])
+    if ident["profile"] and ident["status"] == "verified":
+        add("ok", "%s recognised -- %s, verified profile" % (board, where))
+    elif ident["profile"]:
+        add("warn", "%s matches this %s, but its profile is '%s', not verified -- no writing."
+            % (board, ident["input"], ident["status"]))
+    elif len(ident["candidates"]) > 1:
+        add("warn", "Several profiles match this %s (%s) -- it stays unidentified."
+            % (ident["input"], ", ".join(ident["candidates"])))
+    else:
+        add("warn", "No profile matches this %s." % where)
+    hit = [name for name, ok in (ident["matches"].get(ident["profile"]) or {}).items() if ok]
+    if hit:
+        add("info", "matched on %s" % ", ".join(sorted(hit)))
+    if ident["features"].get("build_fingerprint"):
+        add("info", "fingerprint %s" % ident["features"]["build_fingerprint"])
+    layout = ident["layout"]
+    add("info", "layout    %s, %d partitions, %s sectors"
+        % (ident["kind"], len(layout["partitions"]),
+           "?" if layout["disk_sectors"] is None else layout["disk_sectors"]))
+    for entry in layout["consistency"]:
+        add("warn", "sys_partition.fex and sunxi_gpt.fex disagree on %s: %s vs %s sectors "
+                    "-- the device follows sys_partition.fex"
+            % (entry["name"], entry["sys_partition_sectors"], entry["sunxi_gpt_sectors"]))
+    if ident["regions"]:
+        add("info", "device-only %s" % ", ".join("%s@%d+%d" % (n, r[0], r[1])
+                                                 for n, r in sorted(ident["regions"].items())))
+    mips = ident["mips"]
+    found = ["%s %d files" % (k, len(mips[k])) for k in ("bootloader_a", "bootloader_b", "vendor")
+             if mips.get(k)]
+    if found:
+        add("info", "display firmware in %s%s"
+            % (", ".join(found), " (active slot %s)" % mips["active_slot"] if mips["active_slot"] else ""))
+    if ident["profile"] is None:
+        _profile_row(ident, add)
+    return lines
+
+
+def identify(source, *, log=None) -> dict:
+    """What is this? An IMAGEWTY image, a raw dump or the device itself (api-stufe2.md).
+
+    Never writes. Reads what it needs and nothing more: the partition table, boot0 at LBA 16, the
+    boot package at LBA 24576, the vendor build.prop through super/LP/ext4, the MIPS files of the
+    bootloader FAT and panel_config.ini -- about 1.2 MiB plus the display firmware.
+    """
+    q = as_source(source)
+    reader_log = Log(quiet=True) if log is None else log
     try:
+        if Imagewty.is_imagewty(q):
+            kind_of_input, facts = "image", image_facts(q, reader_log)
+        else:
+            kind_of_input = "device" if isinstance(q, DiskSource) else "dump"
+            facts = device_facts(q, reader_log)
+    finally:
+        if q is not source:
+            close_source(q)
+    features = features_from_facts(facts)
+    profile, candidates, matches = match_profiles(features)
+    layout = _layout_of(facts)
+    # "facts" is everything that was read, so no later step has to open the device a second
+    # time; it is an addition to the dict of api-stufe2.md, not part of its contract.
+    ident = {"input": kind_of_input, "kind": _kind_of(layout), "profile": profile,
+             "status": PROFILES[profile]["status"] if profile else None, "candidates": candidates,
+             "features": features, "matches": matches, "layout": layout,
+             "regions": _regions_of(layout), "mips": _mips_of(facts), "facts": facts}
+    # "text" is what report_device() prints; "_lines" carries the level per line, because a
+    # warning must not arrive as a success (the api names only the plain lines).
+    ident["_lines"] = _render(ident)
+    ident["text"] = [text for _level, text in ident["_lines"]]
+    return ident
+
+
+# --------------------------------------------------------------------------------- the old call site
+
+def vendor_fingerprint(disk, log):
+    """The vendor build.prop the old way: GPT -> super -> LP metadata -> vendor -> build.prop.
+
+    About 1.2 MiB, so fractions of a second; reading the whole eMMC takes 17 minutes. Returns
+    (fingerprint or None, name of the LP partition or None) and warns exactly as before.
+    """
+    found = None                                # the old code set out["lp_partition"] here, so a
+    try:                                        # failure further down keeps the name it had found
         q = DiskSource(disk)
         quiet = Log(quiet=True)
         gpt = Gpt(q, quiet)
         sup = gpt.partition(q, "super")
         if sup is None:
             log.warn("Geraeteerkennung: keine Partition 'super'")
-            return out
+            return None, found
         lp = LpSuper(sup, quiet)
         # In super the names carry the slot suffix ("vendor_a"), on older
         # states without. First the active slot, then the other, then without.
@@ -135,34 +313,56 @@ def identify_device(disk, extractor=None, log=console):
         for name in ("vendor_a", "vendor_b", "vendor"):
             ven = lp.partition(name, quiet)
             if ven is not None:
-                out["lp_partition"] = name
+                found = name
                 break
         if ven is None:
             # known bug, stage 2 C: `%` binds tighter than `or`, so the fallback
             # "keine" can never appear -- the formatted line is always truthy.
             log.warn("Geraeteerkennung: keine LP-Partition 'vendor' (gefunden: %s)"
                      % ", ".join(getattr(lp, "parts", {})) or "keine")
-            return out
+            return None, found
         fs = Ext4(ven, None, "vendor", quiet)
         if not fs.exists("/build.prop"):
             log.warn("Geraeteerkennung: /build.prop fehlt in vendor")
-            return out
+            return None, found
         text = fs.read("/build.prop").decode("utf-8", "replace")
     except Exception as e:                      # noqa: BLE001
         log.warn("Geraeteerkennung abgebrochen: %s" % e)
-        return out
-
+        return None, found
     for line in text.splitlines():
         if line.startswith("ro.vendor.build.fingerprint="):
-            out["fingerprint"] = line.split("=", 1)[1].strip()
-            break
-    if not out["fingerprint"]:
-        log.warn("Geraeteerkennung: kein ro.vendor.build.fingerprint in build.prop")
-        return out
+            return line.split("=", 1)[1].strip(), found
+    log.warn("Geraeteerkennung: kein ro.vendor.build.fingerprint in build.prop")
+    return None, found
 
+
+def identify_device(disk, extractor=None, log=console):
+    """What are we dealing with? (plan 110 §8) -- the installer's old call site.
+
+    Compatibility wrapper (doku/121 stage 2 C1): same reads, same keys, same German texts as
+    before, so the golden dry-run stays byte-identical. `identify()` above is the new answer;
+    the installer is wired onto it in a later step, together with the texts.
+
+    `extractor` is the path to h713-extract. It is still taken so that callers
+    do not change, and it is no longer used -- the package imports itself.
+
+    Return: dict with 'layout', and on stock additionally 'fingerprint',
+    'geraet', 'bekannt'. Never throws -- whoever does not recognise, says so.
+    """
+    out = {"layout": device_kind(disk.path), "fingerprint": None, "geraet": None, "bekannt": False}
+    # Only a stock layout has a vendor partition with build.prop. The text
+    # comes from device_kind() -- "Stock-Layout, N Partitionen" or
+    # "unser Layout (...)"; check the first word, not the whole sentence
+    # (the number of partitions is in it).
+    if not (out["layout"] or "").startswith("Stock-Layout"):
+        return out
+    out["fingerprint"], lp_partition = vendor_fingerprint(disk, log)
+    if lp_partition:
+        out["lp_partition"] = lp_partition
+    if not out["fingerprint"]:
+        return out
     for gid, profile in legacy_devices().items():
-        k = features_of(profile)
-        if k.get("build_fingerprint") == out["fingerprint"]:
+        if features_of(profile).get("build_fingerprint") == out["fingerprint"]:
             out["geraet"], out["bekannt"] = profile.get("name", gid), True
             break
     return out
@@ -205,7 +405,35 @@ def report_device(found, log=console, writing=True):
 
     writing=False (--nur-abzug/--dry-run): an unknown firmware is then no
     reason to stop, but a note -- reading changes nothing anyway
-    (issue #1: the message sounded like a stop and then went on)."""
+    (issue #1: the message sounded like a stop and then went on).
+
+    Takes an `Identification` of `identify()` (it renders its `text`) as well as the old dict of
+    `identify_device()`. Only a verified profile is a yes to writing; `--ohne-erkennung` stays the
+    installer's escape hatch for everything else.
+    """
+    if "text" not in found:
+        return _report_legacy(found, log, writing)
+    for level, text in found["_lines"]:
+        getattr(log, level, log.info)(text)
+    if found["status"] == "verified":
+        return True
+    if found["kind"] == "ours":
+        # Our own layout: no Android left, nothing stock-specific to lose -- the restore path
+        # has to stay open, exactly as before (I:1620).
+        log.info("Our layout is on the device -- restoring the vendor firmware stays possible.")
+        return True
+    if not writing:
+        log.warn("Only reading -- nothing is written, so an unknown board is a note, not a stop.")
+        log.info("Please post the row above, then the board goes into the table")
+        log.info("(github.com/well0nez/allwinner-h713-linux).")
+        return True
+    log.error("No verified profile for this board -- nothing is written.")
+    log.info("Guessing the places of a foreign version costs the secure storage in the")
+    log.info("worst case, so this stops here. Post the row above and it goes into the table.")
+    return False
+
+
+def _report_legacy(found, log, writing):
     if found["layout"] and not found["layout"].startswith("Stock-Layout"):
         log.ok("%s -- kein Android mehr, nur der Abzug ist sinnvoll" % found["layout"])
         return True
