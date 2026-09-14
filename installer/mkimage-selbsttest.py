@@ -16,13 +16,13 @@ Installer schiefgehen kann:
 
 Aufruf:
     python3 mkimage-selbsttest.py out/hy310-v0.1.tabelle.json \\
-            [--vendor ../r2-extract/out-hy310] [--behalten]
+            [--vendor out/vendor] [--tmp VERZ] [--behalten]
+
+Seit doku/121 Stufe 1 laeuft der Test ueber das Paket h713 (kein Laden per Pfad mehr).
 """
 
 import argparse
 import hashlib
-import importlib.machinery
-import importlib.util
 import json
 import os
 import shutil
@@ -31,29 +31,29 @@ import sys
 import time
 
 HIER = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HIER)
+
+from pathlib import Path                                                   # noqa: E402
+
+from h713 import layout                                                     # noqa: E402
+from h713.blockdev import LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED           # noqa: E402
+from h713.fs.ext4 import Ext4                                              # noqa: E402
+from h713.gpt import Gpt, check_gpt                                        # noqa: E402
+from h713.install import check_placeholders, fill_placeholders             # noqa: E402
+from h713.log import Log                                                   # noqa: E402
+from h713.source import FileSource                                         # noqa: E402
+
 SECT = 512
-
-
-def modul(name, pfad):
-    spec = importlib.util.spec_from_loader(
-        name, importlib.machinery.SourceFileLoader(name, pfad))
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("tabelle")
-    p.add_argument("--vendor", default=os.path.join(HIER, "..", "r2-extract", "out-hy310"))
+    p.add_argument("--vendor", default=os.path.join(HIER, "out", "vendor"))
     p.add_argument("--tmp", default=os.path.join(HIER, "tmp"))
     p.add_argument("--behalten", action="store_true", help="Zwischenstaende nicht loeschen")
     a = p.parse_args()
 
-    mk = modul("hy310_mkimage", os.path.join(HIER, "hy310-mkimage.py"))
-    inst = modul("hy310_install", os.path.join(HIER, "hy310-install.py"))
-    ex = mk._extraktor_laden()
-    from pathlib import Path
 
     verz = os.path.dirname(os.path.abspath(a.tabelle))
     with open(a.tabelle, encoding="utf-8") as f:
@@ -71,14 +71,14 @@ def main():
 
     # ---------------------------------------------------------------- 1
     print("\n[1] Sperre in hy310-install passt zur Tabelle")
-    if (inst.SPERRE_ERSTER, inst.SPERRE_LETZTER) == \
+    if (LOCK_FIRST, LOCK_LAST) == \
             (d["loch"]["lba"], d["loch"]["lba"] + d["loch"]["sektoren"] - 1):
-        ok("SPERRE_ERSTER/LETZTER %d..%d -- gleich" % (inst.SPERRE_ERSTER, inst.SPERRE_LETZTER))
+        ok("SPERRE_ERSTER/LETZTER %d..%d -- gleich" % (LOCK_FIRST, LOCK_LAST))
     else:
         bad("Installer sperrt %d..%d, die Tabelle nennt %d.."
-            % (inst.SPERRE_ERSTER, inst.SPERRE_LETZTER, d["loch"]["lba"]))
-    if inst.SECTORS_EXPECTED == d["disk_sektoren"]:
-        ok("Sektorzahl %d -- gleich" % inst.SECTORS_EXPECTED)
+            % (LOCK_FIRST, LOCK_LAST, d["loch"]["lba"]))
+    if SECTORS_EXPECTED == d["disk_sektoren"]:
+        ok("Sektorzahl %d -- gleich" % SECTORS_EXPECTED)
     else:
         bad("Sektorzahl weicht ab")
 
@@ -104,9 +104,9 @@ def main():
             pass
 
     t0 = time.time()
-    inst.platzhalter_fuellen(probe, tabelle, quellen, log=Still)
+    fill_placeholders(probe, tabelle, quellen, log=Still)
     ok("30 Dateien gefuellt in %.2f s" % (time.time() - t0))
-    schlecht = inst.platzhalter_pruefen(probe, tabelle, quellen)
+    schlecht = check_placeholders(probe, tabelle, quellen)
     if schlecht:
         bad("platzhalter_pruefen beanstandet: %s" % schlecht)
     else:
@@ -114,23 +114,23 @@ def main():
 
     # ---------------------------------------------------------------- 3
     print("\n[3] Gegenprobe UEBER das Dateisystem (nicht am Rohoffset)")
-    q = ex.DateiQuelle(Path(probe))
-    basis = {"hy310-boot": (mk.LBA_BOOT - mk.TEIL_B_LBA) * SECT,
-             "hy310-rootfs": (mk.LBA_ROOTFS - mk.TEIL_B_LBA) * SECT}
+    q = FileSource(Path(probe))
+    basis = {"hy310-boot": (layout.LBA_BOOT - layout.PART_B_LBA) * SECT,
+             "hy310-rootfs": (layout.LBA_ROOTFS - layout.PART_B_LBA) * SECT}
     laenge = {"hy310-boot": 262144 * SECT, "hy310-rootfs": os.path.getsize(probe) - basis["hy310-rootfs"]}
     fs = {}
     for teil in basis:
-        fs[teil] = ex.Ext4(q.sub(basis[teil], laenge[teil], teil), label=teil)
+        fs[teil] = Ext4(q.sub(basis[teil], laenge[teil], teil), label=teil)
         ok("%-13s als ext4 geoeffnet: %s" % (teil, fs[teil].label_fs))
     gut = 0
-    for name, groesse, teil, pfad in mk.PLATZHALTER:
-        gelesen = fs[teil].lies(pfad)
+    for name, groesse, teil, pfad in layout.PLACEHOLDERS:
+        gelesen = fs[teil].read(pfad)
         if gelesen == quellen[name]:
             gut += 1
         else:
             bad("%s: ueber das Dateisystem gelesen weicht ab (%d vs %d Byte)"
                 % (pfad, len(gelesen), len(quellen[name])))
-    if gut == len(mk.PLATZHALTER):
+    if gut == len(layout.PLACEHOLDERS):
         ok("alle %d Dateien lesen sich ueber ext4 byteidentisch zur Quelle" % gut)
     # der Kernel-FIT muss unberuehrt geblieben sein. Bis 12.09. stand hier eine
     # feste Laenge (7987476, das FIT vom 11.09.) -- jeder neue Kernel liess den
@@ -139,10 +139,10 @@ def main():
     # entsprechen -- das prueft die Struktur, nicht eine Momentaufnahme. Liegt
     # die Quelle daneben (tmp/boot-baum, von mkimage-eingaben.sh), wird
     # zusaetzlich byteweise verglichen.
-    fit = fs["hy310-boot"].lies("/" + mk.KERNEL_FIT)
+    fit = fs["hy310-boot"].read("/" + layout.KERNEL_FIT)
     kopf_ok = fit[:4] == b"\xd0\x0d\xfe\xed" and len(fit) >= 8 and \
         int.from_bytes(fit[4:8], "big") == len(fit)
-    quelle_fit = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp", "boot-baum", mk.KERNEL_FIT)
+    quelle_fit = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp", "boot-baum", layout.KERNEL_FIT)
     if kopf_ok and os.path.isfile(quelle_fit):
         with open(quelle_fit, "rb") as f:
             gleich = f.read() == fit
@@ -155,7 +155,7 @@ def main():
     else:
         bad("h713-kernel.fit beschaedigt (Kennung oder FDT-Laenge)")
     # eine Datei, die NICHT Platzhalter ist, darf sich nicht geaendert haben
-    fstab = fs["hy310-rootfs"].lies("/etc/fstab")
+    fstab = fs["hy310-rootfs"].read("/etc/fstab")
     if b"hy310-rootfs" in fstab:
         ok("/etc/fstab im Rootfs unversehrt (%d Byte)" % len(fstab))
     else:
@@ -195,9 +195,9 @@ def main():
         bad("SECURE STORAGE UEBERSCHRIEBEN -- %s statt %s" % (nachher[:16], vorher[:16]))
 
     print("\n[5] Die Attrappe als Datentraeger lesen")
-    aq = ex.DateiQuelle(Path(att))
-    if ex.Gpt.ist_gpt(aq):
-        g = ex.Gpt(aq, ex.Log(quiet=True))
+    aq = FileSource(Path(att))
+    if Gpt.is_gpt(aq):
+        g = Gpt(aq, Log(quiet=True))
         namen = [p[0] if isinstance(p, (list, tuple)) else p for p in
                  (g.parts.keys() if hasattr(g, "parts") else [])]
         ok("GPT erkannt")
@@ -205,35 +205,35 @@ def main():
         bad("die Attrappe traegt keine erkennbare GPT")
     # Partitionstabelle roh nachlesen
     kopf = aq.read(0, 9 * SECT)
-    probleme = mk.gpt_pruefen(kopf, aq.read(mk.TEIL_C_LBA * SECT, mk.TEIL_C_SEKT * SECT),
+    probleme = check_gpt(kopf, aq.read(layout.PART_C_LBA * SECT, layout.PART_C_SECTORS * SECT),
                               d["disk_sektoren"])
     for x in probleme:
         bad(x)
     if not probleme:
         ok("sechs Partitionen, CRCs stimmen, Sicherungskopie am Plattenende stimmt")
     # SPL und U-Boot an ihrem Platz?
-    if aq.read(mk.LBA_SPL * SECT + 4, 8) == b"eGON.BT0":
-        ok("eGON.BT0 steht bei LBA %d" % mk.LBA_SPL)
+    if aq.read(layout.LBA_SPL * SECT + 4, 8) == b"eGON.BT0":
+        ok("eGON.BT0 steht bei LBA %d" % layout.LBA_SPL)
     else:
-        bad("bei LBA %d steht keine SPL" % mk.LBA_SPL)
+        bad("bei LBA %d steht keine SPL" % layout.LBA_SPL)
     # Umgebung: bis v0.8 musste der Bereich leer sein; seit 12.09. liegt dort
     # die eingebaute Vorgabe des mitgelieferten U-Boot -- 64 KiB, vorn CRC32
     # ueber den Rest, und h713_gate muss darin vorkommen.
     import zlib, struct
-    umg = aq.read(mk.LBA_ENV * SECT, mk.ENV_BYTES)
+    umg = aq.read(layout.LBA_ENV * SECT, layout.ENV_BYTES)
     crc = struct.unpack("<I", umg[:4])[0]
     if crc == (zlib.crc32(umg[4:]) & 0xffffffff) and b"h713_gate=" in umg:
         gate = [e for e in umg[4:].split(b"\0") if e.startswith(b"h713_gate=")][0].decode()
-        ok("hy310-env (LBA %d) traegt eine gueltige Umgebung: CRC %08x, %s" % (mk.LBA_ENV, crc, gate))
+        ok("hy310-env (LBA %d) traegt eine gueltige Umgebung: CRC %08x, %s" % (layout.LBA_ENV, crc, gate))
     elif not any(umg):
         bad("hy310-env ist leer -- U-Boot meldete dann 'bad CRC' und liefe auf Vorgaben (Stand vor 12.09.)")
     else:
         bad("hy310-env: CRC %08x passt nicht oder h713_gate fehlt" % crc)
     # Und die beiden Dateisysteme direkt aus der Attrappe
-    for teil, lba, n in (("hy310-boot", mk.LBA_BOOT, 262144 * SECT),
-                         ("hy310-rootfs", mk.LBA_ROOTFS, 1 << 30)):
-        f2 = ex.Ext4(aq.sub(lba * SECT, n, teil), label=teil)
-        anzahl = len(list(f2.gehe("/", max_tiefe=2)))
+    for teil, lba, n in (("hy310-boot", layout.LBA_BOOT, 262144 * SECT),
+                         ("hy310-rootfs", layout.LBA_ROOTFS, 1 << 30)):
+        f2 = Ext4(aq.sub(lba * SECT, n, teil), label=teil)
+        anzahl = len(list(f2.walk("/", max_depth=2)))
         ok("%-13s aus der Attrappe lesbar (Label '%s', %d Eintraege in zwei Ebenen)"
            % (teil, f2.label_fs, anzahl))
 
