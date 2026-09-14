@@ -18,6 +18,10 @@ Was ein harter Fund ist (doku/116 §2 "Veroeffentlichen", §7):
      ein umbenannter Vendor-Blob faellt so trotzdem auf.
   6. Ein Secure-Storage-Block (Magic 'sunxi-secure-storage' bzw. der Item-Kopf mit
      "hdcpkey")
+  7. Verweise auf das Umbau-Arbeitsverzeichnis (der Ordnername plus Schraegstrich) in
+     einer Textdatei: das Verzeichnis wird nicht veroeffentlicht, ein solcher Pfad
+     geht im Klon des Lesers ins Leere. Gemeldet wird Datei:Zeile. Ausgenommen ist
+     doku/: das Journal beschreibt den Umbau beim Namen, und doku/121 geht mit ins Repo.
 Ausgenommen: .git/, __pycache__/, die Arbeitsbaeume der Submodule aus .gitmodules
 (gepusht wird ihr Commit-Zeiger, nicht ihr Inhalt) und alles, was Zeilen in .sperrscan-ignore treffen
 (Zeile = Pfadpraefix relativ zur Wurzel; heute keine).
@@ -26,8 +30,9 @@ from __future__ import annotations
 import argparse, fnmatch, hashlib, importlib.machinery, importlib.util, os, re, sys
 
 PFADE = ("re/", "hy310-sicherung", "analyse/hdcp-keys", "device-dumps", "mainline/build/", "tftp/", "patches-snapshots/")
-# unter den gesperrten Pfaden trotzdem erlaubt: die zwei Bauskripte (alles andere in mainline/build/ ist Bauausgabe)
-ERLAUBT = ("mainline/build/build.sh", "mainline/build/uboot-build.sh")
+# unter den gesperrten Pfaden trotzdem erlaubt: die drei Bauskripte (alles andere in mainline/build/ ist Bauausgabe).
+# Dieselbe Liste wie die !-Zeilen in .gitignore -- uboot-prove-fragments.sh kam mit E3b dazu.
+ERLAUBT = ("mainline/build/build.sh", "mainline/build/uboot-build.sh", "mainline/build/uboot-prove-fragments.sh")
 NAMEN = ("hy310-hdcp22.bin", "hdcp_v22.bin", "h713-arisc.bin", "msp-patch.bin", "hy310-edid*.bin",
          "fmacfw*", "lmacfw*", "fw_patch*", "fw_adid*", "*.TSE", "display.bin", "display_cfg.xml",
          "LogoRegData.bin", "hdcpkey*", "secure-storage*", "emmc-*.img", "*.img", "*.ext4", "*.bundle",
@@ -36,6 +41,14 @@ NAMEN = ("hy310-hdcp22.bin", "hdcp_v22.bin", "h713-arisc.bin", "msp-patch.bin", 
          "tvpq.db", "pq_*.ini", "pqcontrol_*.xml", "portmap.cfg")
 # (die Kennung geteilt geschrieben, damit dieses Skript sich nicht selbst findet)
 INHALT = (re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----"), re.compile(rb"PuTTY-User-Key" rb"-File"))
+# Regel 7, aus demselben Grund geteilt geschrieben: der Name des Umbau-Verzeichnisses
+# mit Schraegstrich. UMBAU_FREI nennt -- wie ERLAUBT oben -- die Stellen, an denen er
+# stehen darf: doku/ (das Journal beschreibt den Umbau beim Namen, doku/121 geht mit
+# ins Repo) und installer/tests/run.sh, dessen --local dort absichtlich auf die
+# Fixtures auf Marcos Rechner zeigt (H713_FIXTURES_LOCAL).
+UMBAU = re.compile(rb"umb" rb"au/")
+UMBAU_FREI = ("doku/", "installer/tests/run.sh")
+UMBAU_MAX = 5          # hoechstens so viele Zeilen je Datei nennen, dann zaehlen
 SECURE = (b"sunxi-secure-storage", b"hdcpkeyV22", b"wifiBleDatas")
 TEXT_ENDUNGEN = {".md", ".txt", ".py", ".sh", ".c", ".h", ".patch", ".dts", ".dtsi", ".env", ".conf", ".json", ".yaml", ".yml", ".ini", ".xml", ".service", ".rules", ".cfg", ".its", ".mk", ".S", ".s", ".html", ".css", ".js", ".toml", ".gitignore", ".gitmodules", ""}
 
@@ -153,6 +166,19 @@ def main() -> int:
             for s in SECURE:
                 if s in daten and os.path.splitext(f)[1] not in TEXT_ENDUNGEN:
                     funde.append(("Secure-Storage", rel, s.decode())); break
+            # Regel 7: Verweise auf das Umbau-Arbeitsverzeichnis. Nur Textdateien --
+            # in einer Binaerdatei waere ein Treffer Zufall. Datei:Zeile melden, damit
+            # man sie ohne Suchen findet.
+            if os.path.splitext(f)[1] in TEXT_ENDUNGEN and not rel.startswith(UMBAU_FREI):
+                zeilen = sorted({daten.count(b"\n", 0, m.start()) + 1 for m in UMBAU.finditer(daten)})
+                if zeilen:
+                    text = daten.split(b"\n")
+                    for z in zeilen[:UMBAU_MAX]:
+                        funde.append(("Umbau-Verweis", "%s:%d" % (rel, z),
+                                      text[z - 1].strip().decode("utf-8", "replace")[:60]))
+                    if len(zeilen) > UMBAU_MAX:
+                        funde.append(("Umbau-Verweis", rel,
+                                      "und %d weitere Zeilen" % (len(zeilen) - UMBAU_MAX)))
     print(f"sperr-scan: {n} Dateien unter {wurzel}, {len(hashes)} Referenz-Hashes")
     for art, rel, was in funde:
         print(f"  FUND  {art:<14} {rel}  ({was})")

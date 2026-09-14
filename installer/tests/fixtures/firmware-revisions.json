@@ -20,7 +20,7 @@
         "count_0093": 0
       }
     ],
-    "source": "computed by hdcp_site.py from umbau/fixtures-local/mips/hy310/display.bin; equals the pinned .hdcp_wait_va of the HY310 row in h713_mips_fw_revs[] (h713_mips.c). Fixture holds display.bin only, so no ProjectID descriptors were seen."
+    "source": "computed by hdcp_site.py from the HY310 stock display.bin (vendor bytes, not in the tree); equals the pinned .hdcp_wait_va of the HY310 row in h713_mips_fw_revs[] (h713_mips.c). Fixture holds display.bin only, so no ProjectID descriptors were seen."
   },
   {
     "name": "HY200 QZ713DF_A1",
@@ -67,7 +67,7 @@
         "count_0093": 0
       }
     ],
-    "source": "computed by hdcp_site.py from umbau/fixtures-local/mips/adt3-2024/display.bin. Not in h713_mips_fw_revs[]: its size 0x131b20 is declared by no row, so h713_mips_accept_size() takes it only in probe mode. project_ids_seen are the ProjectID_0x*.TSE descriptors next to it (id read back from the TSE header, offset 14); the board's panel_config.ini declares ProjectID 52 = 0x34, 1280x720."
+    "source": "computed by hdcp_site.py from the ADT-3 2024 display.bin (vendor bytes, not in the tree). Not in h713_mips_fw_revs[]: its size 0x131b20 is declared by no row, so h713_mips_accept_size() takes it only in probe mode. project_ids_seen are the ProjectID_0x*.TSE descriptors next to it (id read back from the TSE header, offset 14); the board's panel_config.ini declares ProjectID 52 = 0x34, 1280x720."
   },
   {
     "name": "HY300 Pro",

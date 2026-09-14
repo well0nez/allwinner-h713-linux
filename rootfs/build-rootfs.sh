@@ -1,64 +1,64 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-2.0
 #
-# build-rootfs.sh -- das schlanke Rootfs fuer HY310 v0.1 bauen.
+# build-rootfs.sh -- build the slim rootfs for the HY310 v0.1.
 #
-# Vorgabe: doku/107-plan-rootfs.md. Ziel-Layout: doku/109-plan-layout-v3.md §2.2
-# (eine Partition hy310-rootfs, 7,15 GiB, /data ist ein Verzeichnis darin).
+# Specified in doku/107-plan-rootfs.md. Target layout: doku/109-plan-layout-v3.md §2.2
+# (one partition hy310-rootfs, 7.15 GiB, /data is a directory inside it).
 #
-# Ergebnis (in --out):
-#   hy310-rootfs.tar          der Baum, den der Installer nach hy310-rootfs
-#                             entpackt und der zugleich als NFS-Wurzel dient
-#                             (109 §4.2: ein Bau, zwei Ziele)
-#   hy310-rootfs.ext4         dasselbe als ext4-Abbild (optional, --image-size)
-#   hy310-rootfs.manifest     was drin ist, mit welchen Quellen gebaut
-#   ROOTFS-SHA256SUMS         Pruefsummen
+# Result (in --out):
+#   hy310-rootfs.tar          the tree the installer unpacks into hy310-rootfs
+#                             and which doubles as the NFS root
+#                             (109 §4.2: one build, two targets)
+#   hy310-rootfs.ext4         the same as an ext4 image (optional, --image-size)
+#   hy310-rootfs.manifest     what is in it, and what it was built from
+#   ROOTFS-SHA256SUMS         checksums
 #
 # ============================================================================
-# WO DAS LAEUFT
+# WHERE THIS RUNS
 # ============================================================================
-# Im Container h713-build (Projektregel: kein Bau auf dem Host):
+# In the container h713-build (project rule: no build on the host):
 #
 #     podman exec -u root h713-build \
 #         /work/analyse/release/arbeit/rootfs/build-rootfs.sh --out /work/...
 #
-# Das Projekt ist dort als /work gemountet. Das Skript findet seinen
-# Projektbaum selbst ueber den eigenen Pfad, es braucht kein --project-root.
+# The project is mounted there as /work. The script finds its own project tree
+# from its own path, it needs no --project-root.
 #
 # ============================================================================
-# WAS DIESES SKRIPT BEWUSST *NICHT* TUT -- Abgrenzung zu
+# WHAT THIS SCRIPT DELIBERATELY DOES *NOT* DO -- how it differs from
 # mainline/tools/rootfs/build.sh (cstenger)
 # ============================================================================
-#  * Kein VIDEO_RUNTIME_PACKAGES. Dort ist die GStreamer/Mesa/GTK-Kette Teil
-#    des Grundsystems ("this is a projector"). Fuer uns ist sie der groesste
-#    Einzelposten des heutigen Netboot-Roots (107 §1: libllvm19 118 MiB,
-#    mesa-libgallium 33 MiB, libgtk-3-common 30 MiB ...) und ohne Funktion:
-#    h713-tv schiebt den HDMI-Eingang auf eine DRM-Plane und decodiert nichts.
-#  * Kein --profile dev, kein build-essential, keine -dev-Pakete. Gebaut wird
-#    quer (107 §3).
-#  * KEIN --ssh-key als Pflichtargument. Dort ist der Schluessel verlangt und
-#    wird ins Abbild kopiert; fuer ein Release muss er vom Nutzer kommen, also
-#    vom Installer (107 §3). --authorized-key gibt es hier nur als Wahl fuer
-#    eigene Bauten, nicht als Pflicht.
-#  * WLAN ist drin (seit 12.09.: Treiber als Module, Pakete, h713-wifi mit
-#    /etc/h713/wifi.env), aber KEINE Firmware-Blobs im Abbild (107 §5) -- die
-#    aic8800-Firmware kommt wie alles Proprietaere vom Installer aus
-#    h713-extract, aus dem Abzug des Nutzers. Bluetooth bleibt draussen: seine
-#    Firmware liegt nicht im Abzug.
+#  * No VIDEO_RUNTIME_PACKAGES. There the GStreamer/Mesa/GTK chain is part of
+#    the base system ("this is a projector"). For us it is the single biggest
+#    item of today's netboot root (107 §1: libllvm19 118 MiB, mesa-libgallium
+#    33 MiB, libgtk-3-common 30 MiB ...) and does nothing: h713-tv puts the
+#    HDMI input on a DRM plane and decodes nothing.
+#  * No --profile dev, no build-essential, no -dev packages. We cross-build
+#    (107 §3).
+#  * NO --ssh-key as a required argument. There the key is demanded and copied
+#    into the image; for a release it has to come from the user, that is, from
+#    the installer (107 §3). --authorized-key exists here only as a choice for
+#    private builds, never as a duty.
+#  * WLAN is in (since 12.09.: drivers as modules, packages, h713-wifi with
+#    /etc/h713/wifi.env), but NO firmware blobs in the image (107 §5) -- the
+#    aic8800 firmware comes, like everything proprietary, from the installer
+#    out of h713-extract, out of the user's own dump. Bluetooth stays out: its
+#    firmware is not in the dump.
 # ============================================================================
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Ort und Vorgaben
+# Place and defaults
 # ---------------------------------------------------------------------------
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-# Projektwurzel: das naechste Elternverzeichnis mit mainline/build/build.sh -- so
-# funktioniert das Skript im Arbeitsverzeichnis (analyse/release/arbeit/...) wie im
-# Release-Repo (rootfs/ bzw. installer/ direkt unter der Wurzel), doku/116 P3.
-projekt_wurzel() { local d=$1; while [ "$d" != / ]; do [ -f "$d/mainline/build/build.sh" ] && { echo "$d"; return; }; d=$(dirname "$d"); done; return 1; }
-# analyse/release/arbeit/rootfs -> vier Ebenen hoch ist der Projektbaum
-PROJECT_ROOT=$(projekt_wurzel "$HERE") || { echo "Projektwurzel (mainline/build/build.sh) oberhalb von $HERE nicht gefunden" >&2; exit 1; }
+# Project root: the next parent directory with mainline/build/build.sh -- that way
+# the script works in the working directory (analyse/release/arbeit/...) as well as
+# in the release repository (rootfs/ and installer/ directly under the root), doku/116 P3.
+project_root() { local d=$1; while [ "$d" != / ]; do [ -f "$d/mainline/build/build.sh" ] && { echo "$d"; return; }; d=$(dirname "$d"); done; return 1; }
+# analyse/release/arbeit/rootfs -> four levels up is the project tree
+PROJECT_ROOT=$(project_root "$HERE") || { echo "no project root (mainline/build/build.sh) found above $HERE" >&2; exit 1; }
 
 SUITE=trixie
 ARCH=arm64
@@ -67,16 +67,16 @@ OUT_DIR="$HERE/out"
 IMAGE_SIZE=1G
 MAKE_EXT4=1
 DRY_RUN=0
-SKIP_PROJEKT=0
+SKIP_PROJECT=0
 AUTHORIZED_KEY=
 KEEP_WORK=0
 KEYRING=
-# WLAN: /etc/h713/wifi.env im Abbild. Reihenfolge: --wifi-env DATEI, sonst
-# rootfs/wifi.env neben diesem Skript (lokal, nicht fuer git), sonst die
-# Vorgabe aus dem Overlay (AP h713/magcubic -- oeffentlich bekannt).
+# WLAN: /etc/h713/wifi.env in the image. Order: --wifi-env FILE, else
+# rootfs/wifi.env next to this script (local, not for git), else the default
+# out of the overlay (AP h713/magcubic -- publicly known).
 WIFI_ENV=
 
-# Projektteile (Abschnitt 4 des Auftrags) -- Vorgaben, per Schalter aenderbar
+# Project parts (section 4 of the assignment) -- defaults, changeable by switch
 MODROOT="$PROJECT_ROOT/mainline/build/modroot.GUT-bad2f16b"
 H713_TV_SRC="$PROJECT_ROOT/userspace/h713-tv"
 H713_TV_BIN="$H713_TV_SRC/h713-tv.aarch64-linux-gnu"
@@ -84,92 +84,93 @@ H713_PQ_SRC="$PROJECT_ROOT/userspace/h713-pq"
 
 usage() {
 	cat <<EOF
-Aufruf: ${0##*/} [Optionen]
+Usage: ${0##*/} [options]
 
-Baut Debian $SUITE/$ARCH mit mmdebstrap --variant=minbase, legt overlay/
-darueber und spielt die Projektteile ein (h713-tv, Kernelmodule, h713-pq).
+Builds Debian $SUITE/$ARCH with mmdebstrap --variant=minbase, lays overlay/
+on top and installs the project parts (h713-tv, kernel modules, h713-pq).
 
-  --out DIR             Ausgabeverzeichnis (Vorgabe: $OUT_DIR)
-  --suite NAME          Debian-Suite (Vorgabe: $SUITE)
-  --arch ARCH           Architektur (Vorgabe: $ARCH)
-  --mirror URL          Spiegel (Vorgabe: $MIRROR)
-  --keyring DATEI       Keyring fuer die Signaturpruefung. NOETIG im Container
-                        h713-build: dessen debian-archive-keyring (2023.4)
-                        hoert bei bookworm auf und kennt trixie nicht.
-  --image-size GROESSE  Groesse des ext4-Abbilds (Vorgabe: $IMAGE_SIZE).
-                        Klein bauen ist Absicht: die fstab traegt
-                        x-systemd.growfs, das Abbild waechst beim ersten
-                        Start auf die volle Partition (7,15 GiB).
-  --no-ext4             nur das tar erzeugen
-  --modroot DIR         Kernelmodul-Baum (Vorgabe: ${MODROOT#"$PROJECT_ROOT"/})
-  --h713-tv DATEI      quer gebautes h713-tv (Vorgabe:
+  --out DIR             output directory (default: $OUT_DIR)
+  --suite NAME          Debian suite (default: $SUITE)
+  --arch ARCH           architecture (default: $ARCH)
+  --mirror URL          mirror (default: $MIRROR)
+  --keyring FILE        keyring for the signature check. NEEDED in the
+                        container h713-build: its debian-archive-keyring
+                        (2023.4) stops at bookworm and does not know trixie.
+  --image-size SIZE     size of the ext4 image (default: $IMAGE_SIZE).
+                        Building it small is deliberate: the fstab carries
+                        x-systemd.growfs, the image grows to the full
+                        partition (7.15 GiB) on the first start.
+  --no-ext4             write the tar only
+  --modroot DIR         kernel module tree (default: ${MODROOT#"$PROJECT_ROOT"/})
+  --h713-tv FILE       cross-built h713-tv (default:
                         ${H713_TV_BIN#"$PROJECT_ROOT"/})
-  --authorized-key FILE optional einen SSH-Schluessel einbauen. NICHT die
-                        Vorgabe und nicht der Release-Weg (107 §3).
-  --wifi-env DATEI      eigene /etc/h713/wifi.env (mode=ap|sta|off, ssid,
-                        password, channel, ...). Ohne Schalter: rootfs/wifi.env,
-                        falls vorhanden, sonst die Vorgabe aus dem Overlay --
-                        Zugangspunkt h713 / magcubic, und die kennt jeder.
-                        Wird vor dem Bau mit 'h713-wifi check' geprueft.
-  --skip-projekt        nur das Debian-Grundsystem + overlay/
-  --keep-work           Arbeitsverzeichnis nicht loeschen
-  --dry-run             nichts bauen, nichts schreiben, nichts aus dem Netz
-                        holen -- nur zeigen, was geschehen wuerde. Laeuft
-                        auch ohne mmdebstrap durch.
-  -h, --help            diese Hilfe
+  --authorized-key FILE optionally build in an SSH key. NOT the default and
+                        not the release way (107 §3).
+  --wifi-env FILE       your own /etc/h713/wifi.env (mode=ap|sta|off, ssid,
+                        password, channel, ...). Without the switch:
+                        rootfs/wifi.env if it is there, else the default out
+                        of the overlay -- access point h713 / magcubic, and
+                        everybody knows that one. Checked with
+                        'h713-wifi check' before the build.
+  --skip-project        the Debian base system + overlay/ only
+  --keep-work           do not delete the work directory
+  --dry-run             build nothing, write nothing, fetch nothing from the
+                        network -- only show what would happen. Runs through
+                        even without mmdebstrap.
+  -h, --help            this help
 EOF
 }
 
 while (($#)); do
 	case "$1" in
-	--out)             OUT_DIR=${2:?fehlender Wert fuer --out}; shift 2 ;;
-	--keyring)         KEYRING=${2:?fehlender Wert fuer --keyring}; shift 2 ;;
-	--suite)           SUITE=${2:?fehlender Wert fuer --suite}; shift 2 ;;
-	--arch)            ARCH=${2:?fehlender Wert fuer --arch}; shift 2 ;;
-	--mirror)          MIRROR=${2:?fehlender Wert fuer --mirror}; shift 2 ;;
-	--image-size)      IMAGE_SIZE=${2:?fehlender Wert fuer --image-size}; shift 2 ;;
+	--out)             OUT_DIR=${2:?missing value for --out}; shift 2 ;;
+	--keyring)         KEYRING=${2:?missing value for --keyring}; shift 2 ;;
+	--suite)           SUITE=${2:?missing value for --suite}; shift 2 ;;
+	--arch)            ARCH=${2:?missing value for --arch}; shift 2 ;;
+	--mirror)          MIRROR=${2:?missing value for --mirror}; shift 2 ;;
+	--image-size)      IMAGE_SIZE=${2:?missing value for --image-size}; shift 2 ;;
 	--no-ext4)         MAKE_EXT4=0; shift ;;
-	--modroot)         MODROOT=${2:?fehlender Wert fuer --modroot}; shift 2 ;;
-	--h713-tv)        H713_TV_BIN=${2:?fehlender Wert fuer --h713-tv}; shift 2 ;;
-	--authorized-key)  AUTHORIZED_KEY=${2:?fehlender Wert fuer --authorized-key}; shift 2 ;;
-	--wifi-env)        WIFI_ENV=${2:?fehlender Wert fuer --wifi-env}; shift 2 ;;
-	--skip-projekt)    SKIP_PROJEKT=1; shift ;;
+	--modroot)         MODROOT=${2:?missing value for --modroot}; shift 2 ;;
+	--h713-tv)        H713_TV_BIN=${2:?missing value for --h713-tv}; shift 2 ;;
+	--authorized-key)  AUTHORIZED_KEY=${2:?missing value for --authorized-key}; shift 2 ;;
+	--wifi-env)        WIFI_ENV=${2:?missing value for --wifi-env}; shift 2 ;;
+	--skip-project|--skip-projekt) SKIP_PROJECT=1; shift ;;
 	--keep-work)       KEEP_WORK=1; shift ;;
 	--dry-run)         DRY_RUN=1; shift ;;
 	-h|--help)         usage; exit 0 ;;
-	*) echo "Fehler: unbekanntes Argument: $1" >&2; usage >&2; exit 2 ;;
+	*) echo "error: unknown argument: $1" >&2; usage >&2; exit 2 ;;
 	esac
 done
 
 OVERLAY="$HERE/overlay"
 PACKAGES_FILE="$HERE/packages.txt"
-PROJEKT_SCRIPT="$HERE/install-projekt.sh"
+PROJECT_SCRIPT="$HERE/install-projekt.sh"
 
-# wifi.env aufloesen. Die Pruefung macht dasselbe Skript, das auf dem Geraet
-# laeuft -- was hier durchgeht, geht dort durch, und umgekehrt.
+# Resolve wifi.env. The check is done by the same script that runs on the
+# device -- what passes here passes there, and the other way round.
 WIFI_CHECK="$OVERLAY/usr/local/sbin/h713-wifi"
-WIFI_ENV_HERKUNFT=
+WIFI_ENV_ORIGIN=
 if [[ -n "$WIFI_ENV" ]]; then
-	WIFI_ENV_HERKUNFT="--wifi-env"
+	WIFI_ENV_ORIGIN="--wifi-env"
 elif [[ -f "$HERE/wifi.env" ]]; then
-	WIFI_ENV="$HERE/wifi.env"; WIFI_ENV_HERKUNFT="rootfs/wifi.env"
+	WIFI_ENV="$HERE/wifi.env"; WIFI_ENV_ORIGIN="rootfs/wifi.env"
 else
-	WIFI_ENV="$OVERLAY/etc/h713/wifi.env"; WIFI_ENV_HERKUNFT="Vorgabe aus dem Overlay"
+	WIFI_ENV="$OVERLAY/etc/h713/wifi.env"; WIFI_ENV_ORIGIN="the default out of the overlay"
 fi
-WIFI_IST_VORGABE=0
-[[ "$WIFI_ENV" -ef "$OVERLAY/etc/h713/wifi.env" ]] && WIFI_IST_VORGABE=1
+WIFI_IS_DEFAULT=0
+[[ "$WIFI_ENV" -ef "$OVERLAY/etc/h713/wifi.env" ]] && WIFI_IS_DEFAULT=1
 
 say()  { printf '==> %s\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 warn() { printf '!!  %s\n' "$*" >&2; }
-die()  { printf 'Fehler: %s\n' "$*" >&2; exit 1; }
+die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# 1. Werkzeugpruefung -- soll SAGEN, was fehlt, nicht nur scheitern
+# 1. Tool check -- it should SAY what is missing, not just fail
 # ---------------------------------------------------------------------------
-# Die Zuordnung Werkzeug -> Debian/Ubuntu-Paket steht hier, damit die Meldung
-# den Befehl nennt, mit dem man weiterkommt. Stand 10.09.2026 fehlt im
-# Container h713-build (ubuntu:24.04) genau mmdebstrap.
+# The mapping tool -> Debian/Ubuntu package lives here so that the message can
+# name the command that gets you further. As of 10.09.2026 exactly mmdebstrap
+# is missing in the container h713-build (ubuntu:24.04).
 declare -A TOOL_PKG=(
 	[mmdebstrap]=mmdebstrap
 	[tar]=tar
@@ -181,9 +182,9 @@ declare -A TOOL_PKG=(
 	[du]=coreutils
 	[find]=findutils
 )
-# Nur fuer den ext4-Schritt gebraucht
+# Needed for the ext4 step only
 EXT4_TOOLS=(mke2fs e2fsck)
-# Nur fuer den Fremdarchitektur-Bootstrap
+# Needed for the foreign-architecture bootstrap only
 FOREIGN_TOOLS=(/usr/bin/qemu-aarch64-static)
 
 check_tools() {
@@ -197,101 +198,100 @@ check_tools() {
 		pkgs+=("${TOOL_PKG[$t]}")
 	done
 
-	# Fremdarchitektur: die Wartungsskripte der arm64-Pakete laufen unter
-	# qemu-user. Es gibt zwei Wege, auf denen das klappt, und der zweite ist
-	# der, den wir hier tatsaechlich benutzen:
-	#   a) qemu-user-static IM Container installiert;
-	#   b) das binfmt_misc des HOSTS ist mit Flag F registriert -- dann liegt
-	#      der Interpreter bereits im Kernel und der Pfad im Container ist
-	#      egal. Im Container ist /proc/sys/fs/binfmt_misc dann gar nicht
-	#      sichtbar, ein Blick dorthin waere also ein falsches Negativ.
-	# Deshalb wird nicht nach Dateien gesucht, sondern GEMESSEN: arch-test
-	# (kommt mit mmdebstrap) fuehrt ein winziges Testprogramm der Zielarch
-	# wirklich aus.
-	local fw_ok=1 fw_wie=
-	local host_arch; host_arch=$(dpkg --print-architecture 2>/dev/null || echo unbekannt)
+	# Foreign architecture: the maintainer scripts of the arm64 packages run
+	# under qemu-user. There are two ways that works, and the second is the
+	# one we actually use here:
+	#   a) qemu-user-static installed IN the container;
+	#   b) the HOST's binfmt_misc is registered with flag F -- then the
+	#      interpreter is already in the kernel and the path in the container
+	#      does not matter. Inside the container /proc/sys/fs/binfmt_misc is
+	#      then not even visible, so looking there would be a false negative.
+	# That is why we do not look for files but MEASURE: arch-test (comes with
+	# mmdebstrap) really runs a tiny test program of the target architecture.
+	local fw_ok=1 fw_how=
+	local host_arch; host_arch=$(dpkg --print-architecture 2>/dev/null || echo unknown)
 	if [[ "$ARCH" != "$host_arch" ]]; then
 		if command -v arch-test >/dev/null 2>&1 && arch-test "$ARCH" >/dev/null 2>&1; then
-			fw_wie="arch-test $ARCH: ok"
+			fw_how="arch-test $ARCH: ok"
 		elif [[ -x /usr/bin/qemu-${ARCH/arm64/aarch64}-static ]]; then
-			fw_wie="qemu-user-static im Container"
+			fw_how="qemu-user-static in the container"
 		elif [[ -r /proc/sys/fs/binfmt_misc/qemu-${ARCH/arm64/aarch64} ]]; then
-			fw_wie="binfmt_misc sichtbar"
+			fw_how="binfmt_misc visible"
 		else
 			fw_ok=0
 		fi
 	else
-		fw_wie="native"
+		fw_how="native"
 	fi
 
 	if ((${#missing[@]} == 0)) && ((fw_ok == 1)); then
-		info "Werkzeuge vollstaendig ($host_arch -> $ARCH: $fw_wie)"
+		info "tools complete ($host_arch -> $ARCH: $fw_how)"
 		return 0
 	fi
 
-	warn "es fehlen Werkzeuge:"
-	((${#missing[@]})) && printf '    fehlend: %s\n' "${missing[*]}" >&2
-	((fw_ok == 0)) && printf '    fehlend: Ausfuehrung von %s-Programmen (qemu-user-static oder binfmt des Hosts)\n' "$ARCH" >&2
+	warn "tools are missing:"
+	((${#missing[@]})) && printf '    missing: %s\n' "${missing[*]}" >&2
+	((fw_ok == 0)) && printf '    missing: running %s programs (qemu-user-static or the host binfmt)\n' "$ARCH" >&2
 
-	# Das Rezept gehoert nach doku/50-befehle.md.
+	# The recipe belongs in doku/50-befehle.md.
 	((${#pkgs[@]})) || pkgs=()
 	local pkglist
 	pkglist=$( ((${#pkgs[@]})) && printf '%s\n' "${pkgs[@]}" | sort -u | tr '\n' ' ' )
 	cat >&2 <<EOF
 
-    Im Container nachinstallieren (das gehoert ins Rezept in doku/50-befehle.md):
+    Install them in the container (this belongs in the recipe in doku/50-befehle.md):
 
         podman exec -u root h713-build apt-get update
         podman exec -u root h713-build env DEBIAN_FRONTEND=noninteractive \\
             apt-get install -y mmdebstrap debian-archive-keyring
 
-    mmdebstrap zieht fakeroot, fakechroot, arch-test und gpg mit.
-    debian-archive-keyring liefert /usr/share/keyrings/debian-archive-keyring.gpg
-    -- ohne das kann mmdebstrap die Debian-Signaturen nicht pruefen.
+    mmdebstrap pulls in fakeroot, fakechroot, arch-test and gpg.
+    debian-archive-keyring delivers /usr/share/keyrings/debian-archive-keyring.gpg
+    -- without it mmdebstrap cannot check the Debian signatures.
 
-    NUR falls oben "Ausfuehrung von $ARCH-Programmen" fehlt, zusaetzlich:
+    ONLY if "running $ARCH programs" is missing above, additionally:
 
         podman exec -u root h713-build env DEBIAN_FRONTEND=noninteractive \\
             apt-get install -y qemu-user-static
 
-    (Auf diesem Host nicht noetig: sein binfmt_misc registriert qemu-aarch64
-     mit Flag F, der Interpreter ist also schon im Kernel geladen und gilt
-     auch im Container. Gepruefte Meldung: "arch-test arm64: ok".)
+    (Not needed on this host: its binfmt_misc registers qemu-aarch64 with flag
+     F, so the interpreter is already loaded in the kernel and counts inside
+     the container too. Checked message: "arch-test arm64: ok".)
 ${pkglist:+
-    Fehlende Pakete laut Werkzeugpruefung: $pkglist}
+    Packages missing according to the tool check: $pkglist}
 EOF
 	return 1
 }
 
-# Das Keyring, mit dem mmdebstrap die Debian-Quelle prueft. Ohne Keyring gibt
-# es hier KEINEN unsignierten Notweg -- lieber abbrechen als ein Abbild aus
-# ungeprueften Paketen bauen.
+# The keyring mmdebstrap checks the Debian source with. Without a keyring there
+# is NO unsigned emergency path here -- better to stop than to build an image
+# out of unchecked packages.
 #
-# ACHTUNG, die Falle, die 40 Minuten kosten kann: der Container h713-build ist
-# ubuntu:24.04, und dessen `debian-archive-keyring` ist Fassung 2023.4 -- die
-# hoert bei **bookworm (12)** auf. Der Schluessel fuer **trixie (13)** ist
-# nicht drin, und mmdebstrap scheitert dann erst beim Holen des Release-Files
-# mit einer Meldung ueber eine ungueltige Signatur. Deshalb wird hier nicht
-# nur geprueft, OB ein Keyring da ist, sondern ob er die Suite auch KENNT.
+# WATCH OUT, the trap that can cost 40 minutes: the container h713-build is
+# ubuntu:24.04, and its `debian-archive-keyring` is version 2023.4 -- which
+# stops at **bookworm (12)**. The key for **trixie (13)** is not in it, and
+# mmdebstrap then only fails while fetching the Release file, with a message
+# about an invalid signature. That is why we check not only WHETHER a keyring
+# is there, but whether it KNOWS the suite.
 #
-# Drei Wege, in dieser Reihenfolge:
-#   1. --keyring DATEI (ausdrueckliche Angabe)
-#   2. ein Keyring im Container, der den Suite-Schluessel traegt
-#   3. der Keyring eines vorhandenen trixie-Baums, z. B. der heutigen
-#      NFS-Wurzel: /srv/h713-rootfs/usr/share/keyrings/debian-archive-keyring.gpg
-#      (traegt "Debian Archive Automatic Signing Key (13/trixie)"; der
-#      Container sieht /srv nicht, die Datei muss also nach /work kopiert
-#      werden -- siehe --keyring)
+# Three ways, in this order:
+#   1. --keyring FILE (given explicitly)
+#   2. a keyring in the container that carries the suite key
+#   3. the keyring of an existing trixie tree, e.g. today's NFS root:
+#      /srv/h713-rootfs/usr/share/keyrings/debian-archive-keyring.gpg
+#      (carries "Debian Archive Automatic Signing Key (13/trixie)"; the
+#      container does not see /srv, so the file has to be copied to /work
+#      -- see --keyring)
 KEYRING_CANDIDATES=(
 	/usr/share/keyrings/debian-archive-keyring.gpg
 	/usr/share/keyrings/debian-archive-keyring.pgp
 	/etc/apt/trusted.gpg.d/debian-archive-keyring.gpg
 )
 
-# Kennt dieser Keyring die Suite? Sucht eine uid, die den Suite-Namen nennt
-# ("... (13/trixie) ..."). Ohne gpg wird nicht geraten, sondern durchgelassen
-# -- dann faellt es spaeter auf, aber wir behaupten nichts Falsches.
-keyring_kennt_suite() {
+# Does this keyring know the suite? Looks for a uid that names the suite
+# ("... (13/trixie) ..."). Without gpg we do not guess but let it pass -- it
+# shows up later then, but we do not claim anything false.
+keyring_knows_suite() {
 	local k=$1
 	command -v gpg >/dev/null 2>&1 || return 0
 	gpg --no-default-keyring --keyring "$k" --list-keys 2>/dev/null \
@@ -304,65 +304,65 @@ find_keyring() {
 		[[ -r "$KEYRING" ]] || return 1
 		printf '%s\n' "$KEYRING"; return 0
 	fi
-	# erst einen, der die Suite kennt
+	# first one that knows the suite
 	for k in "${KEYRING_CANDIDATES[@]}"; do
-		[[ -r "$k" ]] && keyring_kennt_suite "$k" && { printf '%s\n' "$k"; return 0; }
+		[[ -r "$k" ]] && keyring_knows_suite "$k" && { printf '%s\n' "$k"; return 0; }
 	done
-	# sonst irgendeinen (der Aufrufer meldet dann die Luecke)
+	# else any of them (the caller then reports the gap)
 	for k in "${KEYRING_CANDIDATES[@]}"; do
 		[[ -r "$k" ]] && { printf '%s\n' "$k"; return 0; }
 	done
 	return 1
 }
 
-keyring_pruefen() {
+check_keyring() {
 	local k=$1
-	if keyring_kennt_suite "$k"; then
-		info "Keyring: $k (kennt $SUITE)"
+	if keyring_knows_suite "$k"; then
+		info "keyring: $k (knows $SUITE)"
 		return 0
 	fi
-	warn "Keyring $k kennt die Suite '$SUITE' NICHT."
+	warn "keyring $k does NOT know the suite '$SUITE'."
 	cat >&2 <<EOF
-    Der Container ubuntu:24.04 liefert debian-archive-keyring 2023.4; die
-    hoert bei bookworm (12) auf. Ohne den trixie-Schluessel scheitert
-    mmdebstrap beim Release-File -- erst nach dem halben Bootstrap.
+    The container ubuntu:24.04 ships debian-archive-keyring 2023.4, which
+    stops at bookworm (12). Without the trixie key mmdebstrap fails at the
+    Release file -- only after half the bootstrap.
 
-    Weg heraus (einer davon):
-      a) einen aktuellen Keyring in den Container bringen und
-             $0 --keyring /pfad/zum/debian-archive-keyring.gpg
-      b) den Keyring aus einem vorhandenen trixie-Baum nehmen. Auf diesem
-         Host liegt einer in der heutigen NFS-Wurzel:
+    Way out (one of these):
+      a) bring a current keyring into the container and
+             $0 --keyring /path/to/debian-archive-keyring.gpg
+      b) take the keyring out of an existing trixie tree. On this host there
+         is one in today's NFS root:
              /srv/h713-rootfs/usr/share/keyrings/debian-archive-keyring.gpg
-         Der Container sieht /srv nicht -- also einmal nach /work kopieren:
+         The container does not see /srv -- so copy it to /work once:
              install -D -m 0644 \\
                /srv/h713-rootfs/usr/share/keyrings/debian-archive-keyring.gpg \\
                $OUT_DIR/keyring/debian-archive-keyring.gpg
-         und dann --keyring $OUT_DIR/keyring/debian-archive-keyring.gpg
-      c) --suite bookworm bauen (NICHT gewollt: das heutige Root ist
+         and then --keyring $OUT_DIR/keyring/debian-archive-keyring.gpg
+      c) build with --suite bookworm (NOT wanted: today's root is
          trixie 13.6, 107 §5)
 EOF
 	return 1
 }
 
 # ---------------------------------------------------------------------------
-# 2. Paketliste einlesen
+# 2. Read the package list
 # ---------------------------------------------------------------------------
 read_packages() {
-	[[ -r "$PACKAGES_FILE" ]] || die "packages.txt nicht lesbar: $PACKAGES_FILE"
-	# Kommentare und Leerzeilen weg, erstes Wort der Zeile ist der Paketname
+	[[ -r "$PACKAGES_FILE" ]] || die "packages.txt is not readable: $PACKAGES_FILE"
+	# comments and blank lines out, the first word of a line is the package name
 	sed -e 's/#.*//' -e 's/[[:space:]]\+/ /g' -e 's/^ //' -e 's/ $//' \
 		"$PACKAGES_FILE" | awk 'NF { print $1 }'
 }
 
 # ---------------------------------------------------------------------------
-# 3. Trockenlauf
+# 3. Dry run
 # ---------------------------------------------------------------------------
 mmdebstrap_argv() {
-	# Als Array ausgeben (eine Zeile je Argument), damit der Trockenlauf
-	# genau das zeigt, was der scharfe Lauf ausfuehrt.
+	# Print as an array (one line per argument) so that the dry run shows
+	# exactly what the real run executes.
 	local mode=unshare
 	((EUID == 0)) && mode=root
-	local keyring; keyring=$(find_keyring || echo "<KEYRING-FEHLT>")
+	local keyring; keyring=$(find_keyring || echo "<KEYRING-MISSING>")
 	printf '%s\n' \
 		mmdebstrap \
 		"--mode=$mode" \
@@ -378,82 +378,82 @@ mmdebstrap_argv() {
 		'--dpkgopt=path-include=/usr/share/locale/locale.alias' \
 		"--include=$(read_packages | paste -sd,)" \
 		"$SUITE" \
-		'<ausgabe>.tar' \
+		'<output>.tar' \
 		"deb $MIRROR $SUITE main"
 }
 
 dry_run() {
-	say "Trockenlauf -- es wird nichts geschrieben und nichts aus dem Netz geholt"
+	say "dry run -- nothing is written and nothing is fetched from the network"
 	echo
-	info "Projektbaum:   $PROJECT_ROOT"
-	info "Ausgabe waere: $OUT_DIR"
-	info "Suite/Arch:    $SUITE/$ARCH ueber $MIRROR"
-	info "ext4-Abbild:   $( ((MAKE_EXT4)) && echo "ja, $IMAGE_SIZE (waechst per x-systemd.growfs)" || echo nein )"
+	info "project tree:  $PROJECT_ROOT"
+	info "output would be: $OUT_DIR"
+	info "suite/arch:    $SUITE/$ARCH over $MIRROR"
+	info "ext4 image:    $( ((MAKE_EXT4)) && echo "yes, $IMAGE_SIZE (grows via x-systemd.growfs)" || echo no )"
 	echo
 
-	say "1. Werkzeugpruefung"
+	say "1. tool check"
 	check_tools || true
 	echo
 
-	say "2. Paketliste ($PACKAGES_FILE)"
+	say "2. package list ($PACKAGES_FILE)"
 	local n; n=$(read_packages | wc -l)
 	read_packages | sed 's/^/    /'
-	info "-- $n Pakete ueber minbase hinaus"
+	info "-- $n packages beyond minbase"
 	echo
 
-	say "3. Bootstrap-Aufruf (so wuerde er lauten)"
+	say "3. bootstrap call (this is how it would read)"
 	mmdebstrap_argv | sed -e '1s/^/    /' -e '2,$s/^/        /'
 	echo
 
-	say "4. Overlay ($OVERLAY) -- diese Dateien werden darueber gelegt"
+	say "4. overlay ($OVERLAY) -- these files are laid on top"
 	if [[ -d "$OVERLAY" ]]; then
 		(cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) -printf '    /%P\n' | sort)
-		(cd "$OVERLAY" && find . -mindepth 1 -type d -empty -printf '    /%P/  (leeres Verzeichnis)\n' | sort)
+		(cd "$OVERLAY" && find . -mindepth 1 -type d -empty -printf '    /%P/  (empty directory)\n' | sort)
 	else
-		warn "overlay/ fehlt: $OVERLAY"
+		warn "overlay/ is missing: $OVERLAY"
 	fi
 	echo
 
-	say "5. WLAN ($WIFI_ENV_HERKUNFT: $WIFI_ENV)"
+	say "5. WLAN ($WIFI_ENV_ORIGIN: $WIFI_ENV)"
 	if sh "$WIFI_CHECK" check "$WIFI_ENV" 2>&1 | sed 's/^/    /'; then
 		info "-> /etc/h713/wifi.env (0600), h713-wifi.service in multi-user.target.wants"
 	fi
 	echo
 
-	say "6. Nacharbeit am Baum"
+	say "6. rework on the tree"
 	cat <<'EOF'
-    - /etc/machine-id leeren  (sonst haetten alle Geraete dieselbe ID)
-    - /etc/ssh/ssh_host_* loeschen -> hy310-ssh-host-keys.service erzeugt sie
-      beim ersten Start neu (sonst: gleiche Host-Schluessel auf jedem Geraet)
-    - Root-Passwort gesperrt lassen/setzen ("*"); herein kommt man ueber den
-      Autologin auf ttyS0, per ssh nur mit Schluessel vom Installer
-    - Units verlinken: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys,
+    - empty /etc/machine-id  (else every device would have the same ID)
+    - delete /etc/ssh/ssh_host_* -> hy310-ssh-host-keys.service makes them
+      again on the first start (else: the same host keys on every device)
+    - leave/set the root password locked ("*"); you get in over the autologin
+      on ttyS0, over ssh only with the key from the installer
+    - link the units: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys,
       h713-hdcp-key, h713-wifi
-    - /data und /etc/h713/tvconfig anlegen (tvconfig bleibt LEER)
-    - /var/lib/apt/lists und /var/cache/apt leeren (107 §8: kein apt update
-      beim Bau -- 40 MiB Listen, am ersten Tag veraltet)
+    - make /data and /etc/h713/tvconfig (tvconfig stays EMPTY)
+    - empty /var/lib/apt/lists and /var/cache/apt (107 §8: no apt update at
+      build time -- 40 MiB of lists, stale on the first day)
 EOF
 	echo
 
-	say "7. Projektteile"
-	if ((SKIP_PROJEKT)); then
-		info "uebersprungen (--skip-projekt)"
-	elif [[ -x "$PROJEKT_SCRIPT" ]]; then
+	say "7. project parts"
+	if ((SKIP_PROJECT)); then
+		info "skipped (--skip-project)"
+	elif [[ -x "$PROJECT_SCRIPT" ]]; then
 		MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" \
 		H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" \
-			"$PROJEKT_SCRIPT" --dry-run "<baum>" || true
+			"$PROJECT_SCRIPT" --dry-run "<tree>" || true
 	else
-		warn "install-projekt.sh fehlt oder ist nicht ausfuehrbar: $PROJEKT_SCRIPT"
+		warn "install-projekt.sh is missing or not executable: $PROJECT_SCRIPT"
 	fi
 	echo
 
-	say "8. Ausgabe"
+	say "8. output"
 	info "$OUT_DIR/hy310-rootfs.tar"
 	((MAKE_EXT4)) && info "$OUT_DIR/hy310-rootfs.ext4  ($IMAGE_SIZE)"
 	info "$OUT_DIR/hy310-rootfs.manifest"
 	info "$OUT_DIR/ROOTFS-SHA256SUMS"
 	echo
-	say "Trockenlauf beendet. Nichts geschrieben."
+	say "dry run finished. Nothing written."
 }
 
 if ((DRY_RUN)); then
@@ -462,14 +462,14 @@ if ((DRY_RUN)); then
 fi
 
 # ===========================================================================
-# Scharfer Lauf
+# Real run
 # ===========================================================================
-say "HY310-Rootfs bauen -- $SUITE/$ARCH"
-check_tools || die "Werkzeuge fehlen (siehe oben). Mit --dry-run laeuft es trotzdem durch."
-KEYRING=$(find_keyring) || die "kein Debian-Keyring gefunden. apt-get install debian-archive-keyring"
-keyring_pruefen "$KEYRING" || die "Keyring passt nicht zur Suite (siehe oben)"
+say "building the HY310 rootfs -- $SUITE/$ARCH"
+check_tools || die "tools are missing (see above). With --dry-run it runs through anyway."
+KEYRING=$(find_keyring) || die "no Debian keyring found. apt-get install debian-archive-keyring"
+check_keyring "$KEYRING" || die "the keyring does not fit the suite (see above)"
 
-[[ -d "$OVERLAY" ]] || die "overlay/ fehlt: $OVERLAY"
+[[ -d "$OVERLAY" ]] || die "overlay/ is missing: $OVERLAY"
 
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
@@ -480,97 +480,97 @@ trap cleanup EXIT
 TREE="$WORK/tree"
 BOOTSTRAP_TAR="$WORK/bootstrap.tar"
 
-# --- 1. Bootstrap ----------------------------------------------------------
-say "0/6 wifi.env pruefen ($WIFI_ENV_HERKUNFT)"
-sh "$WIFI_CHECK" check "$WIFI_ENV" | sed 's/^/    /' || die "wifi.env nicht brauchbar: $WIFI_ENV"
-if ((WIFI_IST_VORGABE)); then
-	warn "Dieses Abbild spannt den Zugangspunkt 'h713' mit dem Passwort 'magcubic' auf."
-	warn "Das steht so in der Doku und im Repo. Eigene Fassung: --wifi-env DATEI"
-	warn "oder rootfs/wifi.env -- oder auf dem Geraet /etc/h713/wifi.env aendern."
+# --- 1. bootstrap ----------------------------------------------------------
+say "0/6 check wifi.env ($WIFI_ENV_ORIGIN)"
+sh "$WIFI_CHECK" check "$WIFI_ENV" | sed 's/^/    /' || die "wifi.env is not usable: $WIFI_ENV"
+if ((WIFI_IS_DEFAULT)); then
+	warn "This image opens the access point 'h713' with the password 'magcubic'."
+	warn "That is what the docs and the repository say. Your own version: --wifi-env FILE"
+	warn "or rootfs/wifi.env -- or change /etc/h713/wifi.env on the device."
 fi
 
 say "1/6 mmdebstrap --variant=minbase"
 mapfile -t MMARGV < <(mmdebstrap_argv)
-# das Platzhalter-Argument '<ausgabe>.tar' durch den echten Pfad ersetzen
+# replace the placeholder argument '<output>.tar' with the real path
 for i in "${!MMARGV[@]}"; do
-	[[ "${MMARGV[$i]}" == '<ausgabe>.tar' ]] && MMARGV[$i]=$BOOTSTRAP_TAR
+	[[ "${MMARGV[$i]}" == '<output>.tar' ]] && MMARGV[$i]=$BOOTSTRAP_TAR
 done
 "${MMARGV[@]}"
-[[ -s "$BOOTSTRAP_TAR" ]] || die "mmdebstrap hat kein tar geliefert"
-info "Bootstrap-tar: $(du -h "$BOOTSTRAP_TAR" | cut -f1)"
+[[ -s "$BOOTSTRAP_TAR" ]] || die "mmdebstrap delivered no tar"
+info "bootstrap tar: $(du -h "$BOOTSTRAP_TAR" | cut -f1)"
 
-# --- 2. Auspacken ----------------------------------------------------------
-say "2/6 auspacken"
+# --- 2. unpack -------------------------------------------------------------
+say "2/6 unpack"
 mkdir -p "$TREE"
-# ./dev/* wird ausgelassen: im rootless Container darf tar kein mknod, und
-# gebraucht wird es nicht -- der Kernel mountet devtmpfs auf /dev, bevor init
-# laeuft (CONFIG_DEVTMPFS_MOUNT=y in unserem Defconfig). Das finale tar
-# schliesst ./dev/* ohnehin aus (Schritt 6).
+# ./dev/* is left out: in the rootless container tar may not mknod, and it is
+# not needed -- the kernel mounts devtmpfs on /dev before init runs
+# (CONFIG_DEVTMPFS_MOUNT=y in our defconfig). The final tar excludes ./dev/*
+# anyway (step 6).
 tar --numeric-owner --xattrs --acls --exclude='./dev/*' -C "$TREE" -xf "$BOOTSTRAP_TAR"
 rm -f "$BOOTSTRAP_TAR"
-[[ -d "$TREE/etc" && -d "$TREE/usr" ]] || die "Baum sieht nicht wie ein Rootfs aus"
+[[ -d "$TREE/etc" && -d "$TREE/usr" ]] || die "the tree does not look like a rootfs"
 
-# --- 3. Overlay ------------------------------------------------------------
-say "3/6 Overlay legen"
-# -a erhaelt Rechte und Symlinks; das Overlay ist bewusst root:root, deshalb
-# danach ein chown auf 0:0 (falls als Nutzer gebaut wurde, s. --mode=unshare).
-# --exclude: ein __pycache__ entsteht, sobald jemand ein Skript aus dem
-# Overlay von Hand startet, und waere sonst im Abbild gelandet (11.09.2026).
+# --- 3. overlay ------------------------------------------------------------
+say "3/6 lay the overlay"
+# -a keeps permissions and symlinks; the overlay is deliberately root:root, so
+# a chown to 0:0 follows (in case it was built as a user, see --mode=unshare).
+# --exclude: a __pycache__ appears as soon as somebody starts a script out of
+# the overlay by hand, and would otherwise end up in the image (11.09.2026).
 tar -C "$OVERLAY" --exclude=__pycache__ --exclude="*.pyc" -cf - . |
 	tar -C "$TREE" --no-same-owner -xf -
 (cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) -printf '%P\n') | \
 	while read -r rel; do
 		chown 0:0 "$TREE/$rel" 2>/dev/null || true
 	done
-info "$(cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) Dateien aus overlay/"
-# wifi.env: die gewaehlte Fassung, 0600 root -- sie traegt ein Passwort.
+info "$(cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) files from overlay/"
+# wifi.env: the chosen version, 0600 root -- it carries a password.
 install -m 0600 -o 0 -g 0 "$WIFI_ENV" "$TREE/etc/h713/wifi.env" 2>/dev/null || \
 	{ install -m 0600 "$WIFI_ENV" "$TREE/etc/h713/wifi.env"; chown 0:0 "$TREE/etc/h713/wifi.env" 2>/dev/null || true; }
-info "/etc/h713/wifi.env aus $WIFI_ENV_HERKUNFT"
+info "/etc/h713/wifi.env from $WIFI_ENV_ORIGIN"
 
-# --- 4. Nacharbeit ---------------------------------------------------------
-say "4/6 Nacharbeit"
+# --- 4. rework -------------------------------------------------------------
+say "4/6 rework"
 
-# 4a. Verzeichnisse, die es geben MUSS. /etc/h713/tvconfig liegt zwar auch
-# im Overlay, aber ein leeres Verzeichnis ueberlebt kein git -- deshalb hier
-# noch einmal ausdruecklich. Es bleibt LEER: die PQ-Daten spielt der
-# Installer aus h713-extract ein (107 §8, 108 §6).
+# 4a. Directories that MUST exist. /etc/h713/tvconfig is in the overlay too,
+# but an empty directory does not survive git -- so once more explicitly here.
+# It stays EMPTY: the PQ data is put in by the installer out of h713-extract
+# (107 §8, 108 §6).
 install -d -m 0755 "$TREE/etc/h713" "$TREE/etc/h713/tvconfig"
-# /data: alles Wachsende (Mitschnitte, Aufnahmen, optionale Logs) -- seit
-# Layout v3 ein Verzeichnis im Rootfs, keine eigene Partition (109 §2.2).
+# /data: everything that grows (recordings, captures, optional logs) -- since
+# layout v3 a directory in the rootfs, not a partition of its own (109 §2.2).
 install -d -m 0755 "$TREE/data"
 install -d -m 0755 "$TREE/boot"
 
-# 4b. Maschinen-Identitaet: leer heisst "beim ersten Start erzeugen".
+# 4b. Machine identity: empty means "make it on the first start".
 : > "$TREE/etc/machine-id"
 rm -f "$TREE/var/lib/dbus/machine-id"
 
-# 4c. SSH-Host-Schluessel: das Postinst hat sie IM CHROOT erzeugt, also
-# beim Bau. Weg damit, sonst haben alle Geraete dieselben.
+# 4c. SSH host keys: the postinst made them IN THE CHROOT, that is, at build
+# time. Away with them, else every device has the same ones.
 rm -f "$TREE"/etc/ssh/ssh_host_*
-info "Host-Schluessel entfernt (hy310-ssh-host-keys.service erzeugt sie neu)"
+info "host keys removed (hy310-ssh-host-keys.service makes them again)"
 
-# 4d. Root-Passwort gesperrt. Der Weg herein ist der Autologin auf ttyS0;
-# per ssh nur mit Schluessel, und der kommt vom Installer (107 §3).
+# 4d. Root password locked. The way in is the autologin on ttyS0; over ssh
+# only with a key, and that one comes from the installer (107 §3).
 if [[ -f "$TREE/etc/shadow" ]]; then
 	sed -i 's/^root:[^:]*:/root:*:/' "$TREE/etc/shadow"
 	root_hash=$(awk -F: '$1=="root"{print $2}' "$TREE/etc/shadow")
-	[[ "$root_hash" == '*' ]] || die "Root-Passwort nicht gesperrt (Feld: '$root_hash')"
-	info "Root-Passwort gesperrt ('*')"
+	[[ "$root_hash" == '*' ]] || die "root password not locked (field: '$root_hash')"
+	info "root password locked ('*')"
 fi
 
-# 4e. Optionaler Schluessel -- ausdruecklich NICHT der Release-Weg.
+# 4e. Optional key -- explicitly NOT the release way.
 if [[ -n "$AUTHORIZED_KEY" ]]; then
-	[[ -s "$AUTHORIZED_KEY" ]] || die "Schluesseldatei leer/fehlt: $AUTHORIZED_KEY"
+	[[ -s "$AUTHORIZED_KEY" ]] || die "key file empty/missing: $AUTHORIZED_KEY"
 	install -d -m 0700 "$TREE/root/.ssh"
 	install -m 0600 "$AUTHORIZED_KEY" "$TREE/root/.ssh/authorized_keys"
-	warn "--authorized-key: dieses Abbild traegt einen fest eingebauten"
-	warn "Schluessel. Fuer ein Release ist das der falsche Weg (107 §3)."
+	warn "--authorized-key: this image carries a key built in for good."
+	warn "For a release that is the wrong way (107 §3)."
 fi
 
-# 4f. Units verlinken. Ohne laufendes systemd im Chroot: von Hand, so wie es
-# `systemctl enable` auch tun wuerde.
-link_unit() { # $1 = Ziel-Unit-Datei (im Baum absolut), $2 = wants-Verzeichnis, $3 = Name
+# 4f. Link the units. Without a running systemd in the chroot: by hand, the way
+# `systemctl enable` would do it too.
+link_unit() { # $1 = target unit file (absolute in the tree), $2 = wants directory, $3 = name
 	install -d "$TREE/$2"
 	ln -sfn "$1" "$TREE/$2/$3"
 }
@@ -580,154 +580,154 @@ link_unit /etc/systemd/system/hy310-zram-swap.service \
 	etc/systemd/system/swap.target.wants hy310-zram-swap.service
 link_unit /etc/systemd/system/hy310-ssh-host-keys.service \
 	etc/systemd/system/ssh.service.wants hy310-ssh-host-keys.service
-# h713-hdcp-key MUSS verlinkt sein: modprobe.d sperrt den Autoload des
-# hdmirx-Treibers, damit die Init-Sequenz nicht ohne HDCP-Schluessel laeuft.
-# Ohne diese Zeile laedt ihn niemand -- das Geraet bliebe ohne Bild.
+# h713-hdcp-key MUST be linked: modprobe.d blocks the autoload of the hdmirx
+# driver so that the init sequence does not run without an HDCP key. Without
+# this line nobody loads it -- the device would stay without a picture.
 link_unit /etc/systemd/system/h713-hdcp-key.service \
 	etc/systemd/system/sysinit.target.wants h713-hdcp-key.service
-# h713-wifi: liest /etc/h713/wifi.env und faehrt AP, Station oder nichts hoch.
-# Die Paket-Units hostapd/wpa_supplicant sind im Overlay maskiert (-> /dev/null).
+# h713-wifi: reads /etc/h713/wifi.env and brings up an AP, a station or nothing.
+# The packages' own hostapd/wpa_supplicant units are masked in the overlay (-> /dev/null).
 link_unit /etc/systemd/system/h713-wifi.service \
 	etc/systemd/system/multi-user.target.wants h713-wifi.service
-info "Units verlinkt: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys, h713-hdcp-key, h713-wifi"
+info "units linked: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys, h713-hdcp-key, h713-wifi"
 
-# 4g. resolv.conf muss eine echte Datei sein, kein Symlink auf
-# systemd-resolved -- den Dienst gibt es hier nicht, isc-dhcp-client schreibt
-# selbst hinein (S41 §1: so laeuft es heute).
+# 4g. resolv.conf has to be a real file, not a symlink to systemd-resolved --
+# that service does not exist here, isc-dhcp-client writes into it itself
+# (S41 §1: that is how it runs today).
 rm -f "$TREE/etc/resolv.conf"
 : > "$TREE/etc/resolv.conf"
 chmod 0644 "$TREE/etc/resolv.conf"
 
-# 4h. apt: Quellen ja, Listen nein (107 §8).
+# 4h. apt: sources yes, lists no (107 §8).
 rm -f "$TREE/etc/apt/sources.list"
 rm -rf "$TREE"/var/lib/apt/lists/* "$TREE"/var/cache/apt/archives/*.deb
 install -d "$TREE/var/lib/apt/lists/partial"
-info "apt-Quellen eingetragen, Paketlisten NICHT eingebacken"
+info "apt sources written, package lists NOT baked in"
 
-# 4i. Journal-Verzeichnis nicht anlegen: existiert /var/log/journal, schaltet
-# journald trotz Storage=volatile auf persistent um. Das ist genau der
-# Fallstrick, den 107 §4.1 vermeiden will.
+# 4i. Do not create the journal directory: if /var/log/journal exists, journald
+# switches to persistent despite Storage=volatile. That is exactly the trap
+# 107 §4.1 wants to avoid.
 rm -rf "$TREE/var/log/journal"
 
-# 4j. regulatory.db: wireless-regdb liefert zwei signierte Kopien und zeigt per
-# Alternative (Prioritaet 100 gegen 50) auf die Debian-signierte. Unser Kernel
-# ist Mainline und traegt nur die Upstream-Zertifikate (net/wireless/certs:
-# sforshee, wens) bei CFG80211_REQUIRE_SIGNED_REGDB=y -- die Debian-Signatur
-# kann er nicht pruefen und wuerde die Datenbank ablehnen. Also auf -upstream
-# zeigen. Fuer den aic8800 (self-managed wiphy, default_ccode) ist das ohne
-# Folgen; fuer das globale Reich von cfg80211 ist es der Unterschied zwischen
-# "geladen" und "verworfen". (cstengers Befund, mainline/tools/rootfs/customize.sh.)
-# Ohne chroot: die Alternative ist nur ein Symlink unter /etc/alternatives.
+# 4j. regulatory.db: wireless-regdb ships two signed copies and points, through
+# an alternative (priority 100 against 50), at the Debian-signed one. Our kernel
+# is mainline and carries only the upstream certificates (net/wireless/certs:
+# sforshee, wens) at CFG80211_REQUIRE_SIGNED_REGDB=y -- it cannot check the
+# Debian signature and would reject the database. So point at -upstream. For the
+# aic8800 (self-managed wiphy, default_ccode) that has no consequences; for
+# cfg80211's global realm it is the difference between "loaded" and "discarded".
+# (cstenger's finding, mainline/tools/rootfs/customize.sh.)
+# Without a chroot: the alternative is only a symlink under /etc/alternatives.
 for alt in regulatory.db regulatory.db.p7s; do
 	if [[ -e "$TREE/lib/firmware/$alt-upstream" && -L "$TREE/etc/alternatives/$alt" ]]; then
 		ln -sfn "/lib/firmware/$alt-upstream" "$TREE/etc/alternatives/$alt"
 	fi
 done
-info "regulatory.db -> upstream-signiert (Kernel kennt nur sforshee/wens)"
+info "regulatory.db -> upstream-signed (the kernel knows only sforshee/wens)"
 
-# --- 5. Projektteile -------------------------------------------------------
-if ((SKIP_PROJEKT)); then
-	say "5/6 Projektteile uebersprungen (--skip-projekt)"
+# --- 5. project parts ------------------------------------------------------
+if ((SKIP_PROJECT)); then
+	say "5/6 project parts skipped (--skip-project)"
 else
-	say "5/6 Projektteile"
-	[[ -x "$PROJEKT_SCRIPT" ]] || die "install-projekt.sh fehlt: $PROJEKT_SCRIPT"
+	say "5/6 project parts"
+	[[ -x "$PROJECT_SCRIPT" ]] || die "install-projekt.sh is missing: $PROJECT_SCRIPT"
 	MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" \
 	H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" \
-		"$PROJEKT_SCRIPT" "$TREE"
+		"$PROJECT_SCRIPT" "$TREE"
 fi
 
-# --- 6. Abnahme, tar, ext4 -------------------------------------------------
-say "6/6 Abnahme und Ausgabe"
+# --- 6. acceptance, tar, ext4 ----------------------------------------------
+say "6/6 acceptance and output"
 
-# Die Pruefungen, die scheitern DUERFEN -- lieber kein Abbild als ein falsches.
-t() { # t "Was" test-ausdruck...
+# The checks that are ALLOWED to fail -- better no image than a wrong one.
+t() { # t "what" test-expression...
 	local what=$1; shift
-	if "$@"; then info "✓ $what"; else die "Abnahme gescheitert: $what"; fi
+	if "$@"; then info "✓ $what"; else die "acceptance failed: $what"; fi
 }
-t "systemd als Init"          test -x "$TREE/usr/lib/systemd/systemd"
-t "agetty vorhanden"          test -x "$TREE/sbin/agetty"
-t "Autologin-Drop-in"         test -f "$TREE/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf"
-t "serial-getty verlinkt"     test -L "$TREE/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service"
+t "systemd as init"           test -x "$TREE/usr/lib/systemd/systemd"
+t "agetty present"            test -x "$TREE/sbin/agetty"
+t "autologin drop-in"         test -f "$TREE/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf"
+t "serial-getty linked"       test -L "$TREE/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service"
 t "journald volatile"         grep -qx 'Storage=volatile' "$TREE/etc/systemd/journald.conf.d/10-hy310.conf"
-t "kein /var/log/journal"     test ! -d "$TREE/var/log/journal"
-t "fstab: PARTLABEL-Wurzel"   grep -q '^PARTLABEL=hy310-rootfs' "$TREE/etc/fstab"
-t "fstab: PARTLABEL-Boot"     grep -q '^PARTLABEL=hy310-boot' "$TREE/etc/fstab"
-t "fstab: keine dritte Zeile" test "$(grep -c '^PARTLABEL=' "$TREE/etc/fstab")" = 2
-t "fw_env auf 0x700000"       grep -q '^/dev/mmcblk0[[:space:]]*0x700000[[:space:]]*0x10000' "$TREE/etc/fw_env.config"
-t "fw_printenv vorhanden"     test -x "$TREE/usr/bin/fw_printenv"
-t "Netz per ifupdown/DHCP"    grep -q 'iface eth0 inet dhcp' "$TREE/etc/network/interfaces"
-t "hy310-logs ausfuehrbar"    test -x "$TREE/usr/local/sbin/hy310-logs"
-t "zram-Unit verlinkt"        test -L "$TREE/etc/systemd/system/swap.target.wants/hy310-zram-swap.service"
-t "HDCP-Unit verlinkt"       test -L "$TREE/etc/systemd/system/sysinit.target.wants/h713-hdcp-key.service"
-t "hdmirx-Autoload gesperrt" test -f "$TREE/etc/modprobe.d/h713-hdcp-key.conf"
+t "no /var/log/journal"       test ! -d "$TREE/var/log/journal"
+t "fstab: PARTLABEL root"     grep -q '^PARTLABEL=hy310-rootfs' "$TREE/etc/fstab"
+t "fstab: PARTLABEL boot"     grep -q '^PARTLABEL=hy310-boot' "$TREE/etc/fstab"
+t "fstab: no third line"      test "$(grep -c '^PARTLABEL=' "$TREE/etc/fstab")" = 2
+t "fw_env at 0x700000"        grep -q '^/dev/mmcblk0[[:space:]]*0x700000[[:space:]]*0x10000' "$TREE/etc/fw_env.config"
+t "fw_printenv present"       test -x "$TREE/usr/bin/fw_printenv"
+t "network via ifupdown/DHCP" grep -q 'iface eth0 inet dhcp' "$TREE/etc/network/interfaces"
+t "hy310-logs executable"     test -x "$TREE/usr/local/sbin/hy310-logs"
+t "zram unit linked"          test -L "$TREE/etc/systemd/system/swap.target.wants/hy310-zram-swap.service"
+t "HDCP unit linked"         test -L "$TREE/etc/systemd/system/sysinit.target.wants/h713-hdcp-key.service"
+t "hdmirx autoload blocked"  test -f "$TREE/etc/modprobe.d/h713-hdcp-key.conf"
 t "swappiness=180"            grep -q 'vm.swappiness *= *180' "$TREE/etc/sysctl.d/99-hy310-zram.conf"
-t "tvconfig leer"             test -z "$(ls -A "$TREE/etc/h713/tvconfig")"
-t "/data vorhanden"           test -d "$TREE/data"
-t "keine Host-Schluessel"     test -z "$(find "$TREE/etc/ssh" -maxdepth 1 -name 'ssh_host_*' -print -quit)"
-t "keine apt-Listen"          test -z "$(find "$TREE/var/lib/apt/lists" -maxdepth 1 -type f -print -quit)"
-t "apt-Quelle signiert"       grep -q '^Signed-By:' "$TREE/etc/apt/sources.list.d/debian.sources"
-# Kommentarzeilen ausnehmen: die eigene sources-Datei erwaehnt trusted=yes
-# in ihrer Begruendung, und eine Abnahme, die ueber den eigenen Kommentar
-# stolpert, prueft nichts.
-t "kein trusted=yes"          bash -c "! grep -rhv '^[[:space:]]*#' '$TREE/etc/apt' 2>/dev/null | grep -q 'trusted=yes'"
-t "kein Compiler"             test ! -e "$TREE/usr/bin/gcc"
-t "kein GStreamer"            test ! -e "$TREE/usr/bin/gst-launch-1.0"
-# WLAN ist seit dem 12.09. drin (Marco). Bis dahin stand hier "kein
-# wpa_supplicant" -- der Satz ist umgedreht, nicht geloescht.
-t "wpa_supplicant vorhanden"  test -x "$TREE/usr/sbin/wpa_supplicant"
-t "hostapd vorhanden"         test -x "$TREE/usr/sbin/hostapd"
-t "dnsmasq vorhanden"         test -x "$TREE/usr/sbin/dnsmasq"
-t "kein dnsmasq.service"      test ! -e "$TREE/lib/systemd/system/dnsmasq.service"
-t "hostapd.service maskiert"  test "$(readlink "$TREE/etc/systemd/system/hostapd.service")" = /dev/null
-t "wpa_supplicant maskiert"   test "$(readlink "$TREE/etc/systemd/system/wpa_supplicant.service")" = /dev/null
+t "tvconfig empty"            test -z "$(ls -A "$TREE/etc/h713/tvconfig")"
+t "/data present"             test -d "$TREE/data"
+t "no host keys"              test -z "$(find "$TREE/etc/ssh" -maxdepth 1 -name 'ssh_host_*' -print -quit)"
+t "no apt lists"              test -z "$(find "$TREE/var/lib/apt/lists" -maxdepth 1 -type f -print -quit)"
+t "apt source signed"         grep -q '^Signed-By:' "$TREE/etc/apt/sources.list.d/debian.sources"
+# Leave comment lines out: our own sources file mentions trusted=yes in its
+# reasoning, and an acceptance check that trips over its own comment checks
+# nothing.
+t "no trusted=yes"            bash -c "! grep -rhv '^[[:space:]]*#' '$TREE/etc/apt' 2>/dev/null | grep -q 'trusted=yes'"
+t "no compiler"               test ! -e "$TREE/usr/bin/gcc"
+t "no GStreamer"              test ! -e "$TREE/usr/bin/gst-launch-1.0"
+# WLAN has been in since 12.09. (Marco). Until then this said "no
+# wpa_supplicant" -- the sentence was turned round, not deleted.
+t "wpa_supplicant present"    test -x "$TREE/usr/sbin/wpa_supplicant"
+t "hostapd present"           test -x "$TREE/usr/sbin/hostapd"
+t "dnsmasq present"           test -x "$TREE/usr/sbin/dnsmasq"
+t "no dnsmasq.service"        test ! -e "$TREE/lib/systemd/system/dnsmasq.service"
+t "hostapd.service masked"    test "$(readlink "$TREE/etc/systemd/system/hostapd.service")" = /dev/null
+t "wpa_supplicant masked"     test "$(readlink "$TREE/etc/systemd/system/wpa_supplicant.service")" = /dev/null
 t "wifi.env 0600"             test "$(stat -c %a "$TREE/etc/h713/wifi.env")" = 600
-t "wifi.env brauchbar"        sh "$TREE/usr/local/sbin/h713-wifi" check "$TREE/etc/h713/wifi.env"
-t "h713-wifi verlinkt"        test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-wifi.service"
-t "aic8800 leise"             grep -q 'aicwf_dbg_level=0x1' "$TREE/etc/modprobe.d/aic8800.conf"
+t "wifi.env usable"           sh "$TREE/usr/local/sbin/h713-wifi" check "$TREE/etc/h713/wifi.env"
+t "h713-wifi linked"          test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-wifi.service"
+t "aic8800 quiet"             grep -q 'aicwf_dbg_level=0x1' "$TREE/etc/modprobe.d/aic8800.conf"
 t "regulatory.db upstream"    test "$(readlink "$TREE/etc/alternatives/regulatory.db")" = /lib/firmware/regulatory.db-upstream
 
 TREE_KIB=$(du -sxk "$TREE" | cut -f1)
-info "Baumgroesse: $((TREE_KIB / 1024)) MiB ($TREE_KIB KiB, du -sx)"
+info "tree size: $((TREE_KIB / 1024)) MiB ($TREE_KIB KiB, du -sx)"
 if ((TREE_KIB > 500 * 1024)); then
-	warn "ueber der Abnahmegrenze aus 107 §7.1 (500 MiB)"
+	warn "over the acceptance limit of 107 §7.1 (500 MiB)"
 fi
 
-say "tar schreiben"
+say "write the tar"
 TAR_OUT="$OUT_DIR/hy310-rootfs.tar"
 tar --numeric-owner --xattrs --acls --sort=name \
 	--exclude=./dev/* -C "$TREE" -cf "$TAR_OUT" .
 info "$TAR_OUT ($(du -h "$TAR_OUT" | cut -f1))"
 
 if ((MAKE_EXT4)); then
-	say "ext4-Abbild schreiben ($IMAGE_SIZE)"
+	say "write the ext4 image ($IMAGE_SIZE)"
 	EXT4_OUT="$OUT_DIR/hy310-rootfs.ext4"
 	rm -f "$EXT4_OUT"
 	truncate -s "$IMAGE_SIZE" "$EXT4_OUT"
-	# -L hy310-rootfs: dasselbe Etikett wie die Partition, damit blkid und
-	# e2label dasselbe sagen. -m 1: 1 % Reserve reicht, das ist keine
-	# Systemplatte mit /var-Fuellstand-Problem.
+	# -L hy310-rootfs: the same label as the partition, so that blkid and
+	# e2label say the same. -m 1: 1 % reserve is enough, this is no system
+	# disk with a /var fill-level problem.
 	mke2fs -q -F -t ext4 -L hy310-rootfs -m 1 \
 		-E lazy_itable_init=0,lazy_journal_init=0 \
 		-d "$TREE" "$EXT4_OUT"
 	e2fsck -fn "$EXT4_OUT" >/dev/null
-	info "$EXT4_OUT ($(du -h "$EXT4_OUT" | cut -f1)) -- waechst beim ersten Start (x-systemd.growfs)"
+	info "$EXT4_OUT ($(du -h "$EXT4_OUT" | cut -f1)) -- grows on the first start (x-systemd.growfs)"
 fi
 
-say "Manifest"
+say "manifest"
 MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 {
 	echo "suite=$SUITE"
 	echo "arch=$ARCH"
 	echo "mirror=$MIRROR"
 	echo "keyring=$KEYRING"
-	echo "gebaut=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-	echo "baumgroesse_kib=$TREE_KIB"
-	echo "pakete_ueber_minbase=$(read_packages | paste -sd,)"
-	echo "installiert=$(chroot_count=$(grep -c '^Package: ' "$TREE/var/lib/dpkg/status" 2>/dev/null || echo 0); echo "$chroot_count")"
+	echo "built=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+	echo "tree_size_kib=$TREE_KIB"
+	echo "packages_beyond_minbase=$(read_packages | paste -sd,)"
+	echo "installed=$(chroot_count=$(grep -c '^Package: ' "$TREE/var/lib/dpkg/status" 2>/dev/null || echo 0); echo "$chroot_count")"
 	echo "modroot=${MODROOT#"$PROJECT_ROOT"/}"
 	echo "h713_tv=${H713_TV_BIN#"$PROJECT_ROOT"/}"
-	echo "ssh_key_eingebaut=$( [[ -n "$AUTHORIZED_KEY" ]] && echo ja || echo nein )"
-	echo "image_size=$( ((MAKE_EXT4)) && echo "$IMAGE_SIZE" || echo keins )"
+	echo "ssh_key_built_in=$( [[ -n "$AUTHORIZED_KEY" ]] && echo yes || echo no )"
+	echo "image_size=$( ((MAKE_EXT4)) && echo "$IMAGE_SIZE" || echo none )"
 } > "$MANIFEST"
 cat "$MANIFEST" | sed 's/^/    /'
 
@@ -737,5 +737,5 @@ cat "$MANIFEST" | sed 's/^/    /'
 	sha256sum hy310-rootfs.tar hy310-rootfs.manifest \
 		$( ((MAKE_EXT4)) && echo hy310-rootfs.ext4 ) > ROOTFS-SHA256SUMS
 )
-say "fertig"
+say "done"
 ls -lh "$OUT_DIR"
