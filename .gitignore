@@ -1,7 +1,8 @@
-# Build output -- everything under mainline/build except the two scripts
+# Build output -- everything under mainline/build except the build scripts
 mainline/build/*
 !mainline/build/build.sh
 !mainline/build/uboot-build.sh
+!mainline/build/uboot-prove-fragments.sh
 mainline/patches-snapshots/
 # Installer / rootfs output and run logs
 installer/out/
