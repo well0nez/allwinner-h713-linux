@@ -81,7 +81,7 @@ PROFILE = {
     },
     "reference": None,                       # his extraction output was not posted file by file
     "expected": None,                        # nothing to compare a device against yet
-    "board_dt": None,                        # no board DTS of ours yet (legacy/dts/sun50i-h713-hy310.dts
-                                             # is the vendor DTS, not ours)
-    "uboot_fragment": None,                  # boards/<id>/uboot.config does not exist yet
+    "board_dt": None,                        # no device tree of ours has booted on this board
+                                             # (boards/<id>/board.env leaves KERNEL_DTB empty)
+    "uboot_board": None,                     # no U-Boot base defconfig of ours for this board
 }

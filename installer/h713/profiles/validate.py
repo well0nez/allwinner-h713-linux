@@ -19,7 +19,7 @@ NONE = type(None)
 TOP = (("id", str), ("name", str), ("description", str), ("status", str), ("verified_by", (str, NONE)),
        ("soc", str), ("stock", dict), ("dram", (dict, NONE)), ("layout", (dict, NONE)), ("mips", dict),
        ("unique_regions", list), ("preserve_on_restore", tuple), ("panel", (dict, NONE)),
-       ("board_dt", (str, NONE)), ("uboot_fragment", (str, NONE)), ("reference", (dict, NONE)),
+       ("board_dt", (str, NONE)), ("uboot_board", (str, NONE)), ("reference", (dict, NONE)),
        ("expected", (dict, NONE)))
 STOCK = sorted("android arisc_version build_fingerprint package_items strong_features sunxi_version"
                " uboot_version vendor_size".split())
