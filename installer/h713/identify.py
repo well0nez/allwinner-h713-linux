@@ -226,6 +226,11 @@ def _render(ident: dict) -> list:
     elif len(ident["candidates"]) > 1:
         add("warn", "Several profiles match this %s (%s) -- it stays unidentified."
             % (ident["input"], ", ".join(ident["candidates"])))
+    elif ident["kind"] == "ours":
+        # Our own layout: no Android, no vendor U-Boot, nothing a profile could match on --
+        # and nothing to post. The way back to the vendor firmware is what matters here.
+        add("ok", "our layout (v3, doku/109) on this %s -- this project's image is installed"
+            % ident["input"])
     else:
         add("warn", "No profile matches this %s." % where)
     hit = [name for name, ok in (ident["matches"].get(ident["profile"]) or {}).items() if ok]
@@ -250,7 +255,7 @@ def _render(ident: dict) -> list:
     if found:
         add("info", "display firmware in %s%s"
             % (", ".join(found), " (active slot %s)" % mips["active_slot"] if mips["active_slot"] else ""))
-    if ident["profile"] is None:
+    if ident["profile"] is None and ident["kind"] != "ours":
         _profile_row(ident, add)
     return lines
 
