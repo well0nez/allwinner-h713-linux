@@ -4,6 +4,13 @@ opening it, keeping the desktop off it, and recognising it by content.
 
 Stage 1: moved from hy310-install.py (I:44-45, 104-105, 167-419, 613).
 Every printed string and every exception text is unchanged.
+
+Stage 2, package C-B: the write lock becomes a contract. Besides the built-in
+secure-storage block a caller may lock the regions that exist only on this one
+device -- `Disk(..., locked=[...])` when they are known at opening time, else
+`lock_regions()` afterwards (the installer learns them from the identification,
+api-stufe2.md §"Device-unique regions and the write lock"). The message of the
+built-in lock is untouched and stays German; the new one is English.
 """
 
 from __future__ import annotations
@@ -30,9 +37,11 @@ class Disk:
     on Windows. Python opens both in binary mode; what differs is finding the
     device and the question of who is holding it right now."""
 
-    def __init__(self, path, writable=False, exclusive=None):
+    def __init__(self, path, writable=False, exclusive=None, locked=None):
         self.path = path
         self.writable = writable
+        self.locked = []                     # on top of the built-in secure-storage lock
+        self.lock_regions(locked or [])
         if exclusive is None:
             exclusive = writable
         if exclusive:
@@ -122,6 +131,25 @@ class Disk:
             rest -= len(b)
         return b"".join(parts)
 
+    def lock_regions(self, regions):
+        """Lock further regions against writing -- the ones that exist only on this
+        device (private, Reserve0*). The installer knows them only after it has read
+        the partition table, so they can be added after opening.
+
+        `regions`: {name: (first_lba, sectors)} exactly as `identify()` and
+        `h713.dump.regions_from_gpt()` return it, or a list of (first_lba, last_lba)
+        pairs -- optionally with a name as a third element, so the refusal can say
+        which region it is about. Returns the whole list of extra locks.
+        """
+        if hasattr(regions, "items"):
+            rows = [(lba, lba + sectors - 1, name) for name, (lba, sectors) in regions.items()]
+        else:
+            rows = [(r[0], r[1], r[2] if len(r) > 2 else None) for r in regions]
+        for row in rows:
+            if row[1] >= row[0] and row not in self.locked:
+                self.locked.append(row)
+        return self.locked
+
     def write(self, lba, data):
         if not self.writable:
             raise RuntimeError("nur zum Lesen geoeffnet")
@@ -132,6 +160,13 @@ class Disk:
                 "(%d..%d). Dort stehen HDCP-Schluessel, die MAC-Adressen und "
                 "die Seriennummer dieses Geraets -- nicht wiederherstellbar."
                 % (lba, end, LOCK_FIRST, LOCK_LAST))
+        for first, last, name in self.locked:
+            if lba <= last and end >= first:
+                raise RuntimeError(
+                    "Write attempt on LBA %d..%d touches %s (LBA %d..%d). It exists "
+                    "only on this device -- no firmware image brings it back."
+                    % (lba, end, "the locked region '%s'" % name if name
+                       else "a locked region", first, last))
         os.lseek(self.fd, lba * SECT, os.SEEK_SET)
         view = memoryview(data)
         while view:

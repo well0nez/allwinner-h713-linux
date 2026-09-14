@@ -5,50 +5,128 @@ which of the two sizes it should be.
 
 Stage 1 of plan doku/121: moved from hy310-install.py (I:42, 48-50, 95-101,
 462-574, 925-943, 1405-1435). Every printed string is unchanged.
+
+Stage 2, package C-B (brief umbau/plan/briefs/CB.md, api-stufe2.md §"Device-unique
+regions and the write lock"): the device-unique regions are looked up in the device's
+own GPT BY NAME (`regions_from_gpt`) instead of standing here as constant LBAs; the
+MIPS/display artefacts of both bootloader slots are saved as well; and no hash of a
+device-unique region goes on screen any more. New and changed messages are English,
+the German ones stage 2 does not touch stay until stage 3 translates them.
 """
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import os
 import random
+import struct
 import time
 
 from .blockdev import SECT, SECTORS_EXPECTED
 from .env import ENV_BYTES, ENV_CARRY_OVER, ENV_LBA, ENV_SECTORS, env_read
+from .fs import Ext4, Fat, LpSuper
+from .gpt import Gpt
 from .install import ask
-from .log import console
+from .log import Log, console
 from .util import duration, mib
 
 # Version of the hy310-install tool (I:42), not the version of the package
 # (h713.VERSION): it goes into MANIFEST.json as "werkzeug" and into LIESMICH.txt.
 VERSION = "0.1 (Entwurf, doku/110)"
 
-# Regions that exist ONLY on this device: no firmware image in the world brings
-# them back. They are always saved, in the small dump as well.
-# Evidence: doku/109 §2.3 and §9.1.
-UNIQUE_REGIONS = [
-    ("secure-storage", 12288, 2048, "HDCP-Schluessel, WLAN-/BT-MAC-Adressen, Seriennummer"),
-    ("private", 4891648, 32768, "Android Secure-Storage-Partition"),
-    ("reserve0-a", 5489664, 32768, "Reserve0, Slot A"),
-    ("reserve0-b", 5522432, 32768, "Reserve0, Slot B"),
-]
+# Secure storage: no partition entry points at it, its position is fixed on every H713, so
+# it can only stand here (doku/109 §2.3, I:95). The other device-only regions are looked up
+# by name in the device's own GPT -- a constant LBA was the HY310's and would have saved
+# the wrong 16 MiB on a HY300 T08 (A0 §5). Key: GPT name lower case -> (file name, purpose).
+SECURE_STORAGE = ("secure-storage", 12288, 2048)
+BY_NAME = ("private", "Reserve0", "Reserve0_a", "Reserve0_b")
+REGION_FILES = {
+    "secure-storage": ("secure-storage", "HDCP-Schluessel, WLAN-/BT-MAC-Adressen, Seriennummer"),
+    "private":        ("private",        "Android Secure-Storage-Partition"),
+    "reserve0":       ("reserve0",       "Reserve0 (single slot)"),
+    "reserve0_a":     ("reserve0-a",     "Reserve0, Slot A"),
+    "reserve0_b":     ("reserve0-b",     "Reserve0, Slot B"),
+}
+
+MIPS_DIR = "mips"                        # in the bootloader FAT, in Reserve0 and in /oem
+VENDOR_MIPS = "/etc/display/mips"        # profiles/*.py -> mips.sources
+PANEL_CONFIG = "panel_config.ini"
+SLOTS = ("bootloader_a", "bootloader_b")
+BOOT_CTRL_OFFSET = 2048                  # Android bootloader_control inside misc
+BOOT_CTRL_MAGIC = 0x42414342
 
 
-def dump_small(disk, target, log=console, our_layout=False):
+class DumpResult(list):
+    """The manifest rows of `dump_small()` -- a plain list for every caller (the installer
+    appends the full clone to it), plus `info` for what has no row: regions_by_name, mips,
+    active_slot. `write_manifest()` picks `info` up."""
+
+    def __init__(self, rows=()):
+        list.__init__(self, rows)
+        self.info = {}
+
+
+def _source(disk):
+    """A read-only Source over the device -- identify() hands one in, a Disk is wrapped."""
+    if not hasattr(disk, "sectors"):
+        return disk
+    from .identify import DiskSource       # late on purpose: identify() calls us
+    return DiskSource(disk)
+
+
+def _gpt(q):
+    """The device's GPT, or None -- our own layout and a fresh eMMC have none."""
+    try:
+        return Gpt(q, Log(quiet=True)) if Gpt.is_gpt(q) else None
+    except Exception:                      # noqa: BLE001 -- a backup never fails on a table
+        return None
+
+
+def regions_from_gpt(disk):
+    """The device-unique regions BY NAME: {name: (first_lba, sectors)}.
+
+    Secure storage is fixed; private and Reserve0* come out of the device's own
+    partition table, spelled as the table spells them -- our own layout has none of
+    them. Written so that C-A's identify() can fill Identification["regions"].
+    """
+    out = collections.OrderedDict()
+    out[SECURE_STORAGE[0]] = (SECURE_STORAGE[1], SECURE_STORAGE[2])
+    gpt = _gpt(_source(disk))
+    if gpt is None:
+        return out
+    spelling = dict((name.lower(), name) for name in gpt.parts)
+    for wanted in BY_NAME:
+        found = spelling.get(wanted.lower())
+        if found is not None:
+            out[found] = gpt.parts[found]
+    return out
+
+
+def _region_file(name):
+    """(file name, purpose) for a region name as the GPT spells it."""
+    return REGION_FILES.get(name.lower(), (name.lower(), "device-unique region %s" % name))
+
+
+def dump_small(disk, target, log=console, our_layout=False, regions=None):
     """Only the regions that exist nowhere else (doku/110 §2).
 
     our_layout: the GPT carries hy310-* (device_kind). Only then does a U-Boot
     environment lie at LBA 14336; on a stock device Android lies there, and a
     random CRC would be no detection but a coincidence.
+
+    regions: {name: (lba, sectors)} as identify() found them -- by default looked
+    up here, never from constants (stage 2 C-B).
     """
     os.makedirs(target, exist_ok=True)
-    manifest = []
+    manifest = DumpResult()
     empty = []
-    for name, lba, sectors, purpose in UNIQUE_REGIONS:
+    regions = regions_from_gpt(disk) if regions is None else regions
+    for name, (lba, sectors) in regions.items():
+        file_name, purpose = _region_file(name)
         data = disk.read(lba, sectors)
-        path = os.path.join(target, "%s.bin" % name)
+        path = os.path.join(target, "%s.bin" % file_name)
         with open(path, "wb") as f:
             f.write(data)
         try:
@@ -56,23 +134,19 @@ def dump_small(disk, target, log=console, our_layout=False):
         except OSError:
             pass
         h = hashlib.sha256(data).hexdigest()
-        # A region that is empty throughout means: nothing stands here (any
-        # more). On a stock device that would be unusual -- the device has
-        # probably been converted once already.
+        # A region that is empty throughout means: nothing stands here (any more).
+        # On a stock device that is unusual -- it has probably been converted once.
         is_empty = data.count(0) == len(data)
         if is_empty:
-            empty.append(name)
-        manifest.append((name, lba, sectors, h, purpose + (" [leer]" if is_empty else "")))
-        # The hash goes into the manifest (verification), but NOT onto the
-        # screen: the one of secure-storage/private is a fingerprint of the
-        # device that users otherwise post in logs (Issue #1). Empty regions
-        # have nothing secret -- there it may stay.
-        # known bug, stage 2 C…: reserve0-a/-b are device-only as well (they
-        # stand in UNIQUE_REGIONS), and their hash does go onto the screen.
-        # A4A6's tests/test_dump_plan.py pins that as today's behaviour.
-        secret = name in ("secure-storage", "private") and not is_empty
+            empty.append(file_name)
+        manifest.append((file_name, lba, sectors, h, purpose + (" [leer]" if is_empty else "")))
+        # The hash goes into the manifest (verification), but NOT onto the screen:
+        # each of these regions is a fingerprint of this one device, and users post
+        # screen output in logs (issue #1). Stage 2 C-B extends that to reserve0*,
+        # device-only just as much (brief CB §3); empty regions keep nothing secret.
+        secret = not is_empty
         log.ok("%-16s LBA %-8d %5.1f MiB  %s%s"
-               % (name, lba, mib(len(data)),
+               % (file_name, lba, mib(len(data)),
                   "gesichert (Hash im Manifest)" if secret else h[:16] + "…",
                   "  (leer)" if is_empty else ""))
     if empty:
@@ -100,7 +174,144 @@ def dump_small(disk, target, log=console, our_layout=False):
         else:
             log.info("uboot-env: unser Layout, aber bei LBA %d liegt keine gueltige Umgebung "
                      "(leer oder ohne CRC) -- nichts zu sichern, nichts zu uebernehmen" % ENV_LBA)
+    mips, active_slot = dump_mips(disk, target, log)
+    manifest.info["regions_by_name"] = True
+    manifest.info["mips"] = mips
+    manifest.info["active_slot"] = active_slot
     return manifest
+
+
+# ----------------------------------------------------------------- MIPS/display artefacts
+
+def active_slot_of(data):
+    """The active slot out of Android's `bootloader_control` in misc (offset 2048,
+    magic 0x42414342): "_a", "_b" -- or None when it does not decode or two slots are
+    equally good. Best effort, never an error."""
+    if len(data) < BOOT_CTRL_OFFSET + 32:
+        return None
+    b = data[BOOT_CTRL_OFFSET:BOOT_CTRL_OFFSET + 32]
+    if struct.unpack_from("<I", b, 4)[0] != BOOT_CTRL_MAGIC:
+        return None
+    best, best_priority = None, 0
+    for i in range(max(2, min(4, b[9] & 0x07))):          # nb_slot
+        priority = b[12 + 2 * i] & 0x0F                   # slot_info[i].priority
+        if priority > best_priority:
+            best, best_priority = i, priority
+        elif priority == best_priority:
+            best = None                                   # a tie is not an answer
+    return None if best is None else "_" + "abcd"[best]
+
+
+def _from_fat(gpt, q, part, extras=()):
+    """(files, reason) -- everything under mips/ of a FAT partition, plus the named
+    files from its root. `reason` says in plain words why there is nothing."""
+    sub = gpt.partition(q, part)
+    if sub is None:
+        return None, "no partition %s in the GPT" % part
+    try:
+        if not Fat.is_fat(sub):
+            return None, "%s carries no FAT filesystem" % part
+        fs = Fat(sub, Log(quiet=True), part)
+        entries = fs.directory(MIPS_DIR)
+        if entries is None and not extras:
+            return None, "%s has no mips/ directory" % part
+        files = collections.OrderedDict()
+        for e in sorted(entries or [], key=lambda x: x["name"]):
+            if not e["verzeichnis"]:
+                files[e["name"]] = fs.read(e)
+        for e in sorted(fs.entries(0), key=lambda x: x["name"]):
+            if not e["verzeichnis"] and e["name"].lower() in extras:
+                files[e["name"]] = fs.read(e)
+        return (files, None) if files else (None, "%s holds none of the files we look for" % part)
+    except Exception as e:                    # noqa: BLE001 -- best effort, never an error
+        return None, "%s not readable (%s)" % (part, e)
+
+
+def _from_ext4(source, label, where, extras=()):
+    """The same out of an ext4 filesystem: everything under `where`, plus `extras`."""
+    if source is None:
+        return None, "%s is not there or not readable" % label
+    try:
+        fs = Ext4(source, None, label, Log(quiet=True))
+        files = collections.OrderedDict()
+        for e in sorted(fs.ls(where), key=lambda x: x["name"]):
+            if e["typ"] != "d":
+                files[e["name"]] = fs.read("%s/%s" % (where.rstrip("/"), e["name"]))
+        for e in sorted(fs.ls("/"), key=lambda x: x["name"]):
+            if e["typ"] != "d" and e["name"].lower() in extras:
+                files[e["name"]] = fs.read("/" + e["name"])
+        return (files, None) if files else (None, "%s holds none of the files we look for" % label)
+    except Exception as e:                    # noqa: BLE001
+        return None, "%s not readable (%s)" % (label, e)
+
+
+def _vendor_of(gpt, q):
+    """The vendor filesystem inside `super` (LP metadata), or None."""
+    try:
+        sup = gpt.partition(q, "super")
+        quiet = Log(quiet=True)
+        lp = LpSuper(sup, quiet) if sup is not None else None
+        for name in ("vendor_a", "vendor_b", "vendor"):
+            ven = lp.partition(name, quiet) if lp is not None else None
+            if ven is not None:
+                return ven
+    except Exception:                         # noqa: BLE001 -- best effort
+        pass
+    return None
+
+
+def _store(out, target, where, found, log):
+    """One source's result: saved to <target>/mips/<where>/, or named and skipped."""
+    files, why = found
+    out[where] = None
+    if not files:
+        log.info("mips/: %s" % why)
+        return
+    directory = os.path.join(target, MIPS_DIR, where)
+    os.makedirs(directory, exist_ok=True)
+    saved = collections.OrderedDict()
+    for name, data in files.items():
+        with open(os.path.join(directory, os.path.basename(name.replace("\\", "/"))), "wb") as f:
+            f.write(data)
+        saved[name] = {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    out[where] = saved
+    log.ok("%-16s %2d files  %5.1f MiB  -> %s/%s/"
+           % (where, len(saved), mib(sum(len(d) for d in files.values())), MIPS_DIR, where))
+
+
+def dump_mips(disk, target, log=console):
+    """The MIPS/display artefacts into <target>/mips/: both bootloader slots, the
+    vendor copy under /etc/display/mips and the overrides (panel_config.ini, mips/)
+    in Reserve0 and in media_data (/oem). Returns (mips, active_slot). Best effort:
+    a source that cannot be read is named and skipped -- the dump is the user's
+    failsafe and must not fail on an unusual filesystem.
+    """
+    out = collections.OrderedDict()
+    q = _source(disk)
+    gpt = _gpt(q)
+    if gpt is None:
+        log.info("mips/: this device has no readable partition table -- nothing to look for")
+        return out, None
+    for slot in SLOTS:
+        _store(out, target, slot, _from_fat(gpt, q, slot), log)
+    both = [out[s] for s in SLOTS]
+    if any(out[s] is None and s in gpt.parts for s in SLOTS):
+        log.info("mips/: a bootloader slot without mips/ is the normal state of the ADT-3 family")
+    elif all(b is not None for b in both):
+        same = both[0] == both[1]
+        (log.ok if same else log.warn)(
+            "mips/: the two bootloader slots hold %s"
+            % ("the same %d files" % len(both[0]) if same else "DIFFERENT files"))
+    misc = gpt.partition(q, "misc")
+    active = active_slot_of(misc.read(0, BOOT_CTRL_OFFSET + 32)) if misc is not None else None
+    log.info("mips/: active slot %s" % (active or "unknown (no readable bootloader_control)"))
+    _store(out, target, "vendor", _from_ext4(_vendor_of(gpt, q), "vendor", VENDOR_MIPS), log)
+    part = ([p for p in ("Reserve0", "Reserve0_a", "Reserve0_b") if p in gpt.parts] + [None])[0]
+    _store(out, target, "reserve0", _from_fat(gpt, q, part, (PANEL_CONFIG,)) if part
+           else (None, "no Reserve0 partition in the GPT"), log)
+    _store(out, target, "media_data",
+           _from_ext4(gpt.partition(q, "media_data"), "media_data", "/" + MIPS_DIR, (PANEL_CONFIG,)), log)
+    return out, active
 
 
 def dump_full(disk, file, log=console):
@@ -158,6 +369,11 @@ def write_manifest(directory, manifest, device):
         "teile": [{"name": n, "lba": l, "sektoren": s, "sha256": h, "zweck": p}
                   for n, l, s, h, p in manifest],
     }
+    # Stage 2 C-B: regions_by_name, mips and active_slot ride on dump_small()'s result
+    # (DumpResult.info), so that no caller has to hand them in.
+    data.update(getattr(manifest, "info", {}))
+    saved = ["%s/%s" % (MIPS_DIR, name)
+             for name, files in (data.get("mips") or {}).items() if files]
     with open(os.path.join(directory, "MANIFEST.json"), "w") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     with open(os.path.join(directory, "LIESMICH.txt"), "w") as f:
@@ -175,6 +391,12 @@ def write_manifest(directory, manifest, device):
             % (data["erzeugt"], VERSION,
                "".join("  %-18s %s\n" % (t["name"] + ".bin", t["zweck"])
                        for t in data["teile"])))
+        if saved:
+            f.write("\nDisplay firmware (English, stage 2):\n%s"
+                    "These directories hold the MIPS/display files of this device -- the\n"
+                    "bootloader slots, the vendor copy and the overrides found in Reserve0\n"
+                    "and media_data. MANIFEST.json lists every file with its sha256.\n"
+                    % "".join("  %s/\n" % name for name in saved))
 
 
 def choose_dump(args):
