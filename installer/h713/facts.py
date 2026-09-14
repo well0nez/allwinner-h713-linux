@@ -73,7 +73,7 @@ class DiskSource(Source):
 
     def read(self, off, n):
         if off < 0 or n < 0:
-            raise ValueError("negativer Lesezugriff")
+            raise ValueError("negative read")
         first, front = off // SECTOR, off % SECTOR
         return self._d.read(first, (front + n + SECTOR - 1) // SECTOR)[front:front + n]
 

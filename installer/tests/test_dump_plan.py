@@ -18,21 +18,25 @@ import fakedisk
 # frozen 2026-09-14 from hy310-install.py 0.1 (EINMALIG + ENV_LBA).  The hashes
 # are NOT frozen as literals: they are recomputed from fakedisk.pattern(), so a
 # changed fake disk cannot silently make this test pass.
+# The purposes were German until stage 3 texts (D1): "HDCP-Schluessel, WLAN-/BT-MAC-Adressen,
+# Seriennummer" and "Android Secure-Storage-Partition"; LBAs, sizes and file names unchanged.
 REGIONS = (
     ("secure-storage", 12288, 2048, "secure-storage",
-     "HDCP-Schluessel, WLAN-/BT-MAC-Adressen, Seriennummer"),
-    ("private", 4891648, 32768, "private", "Android Secure-Storage-Partition"),
+     "HDCP keys, WLAN/BT MAC addresses, serial number"),
+    ("private", 4891648, 32768, "private", "Android secure storage partition"),
     ("reserve0-a", 5489664, 32768, "Reserve0_a", "Reserve0, Slot A"),
     ("reserve0-b", 5522432, 32768, "Reserve0_b", "Reserve0, Slot B"))
 # The same table for the HY300 T08, read off its own sunxi_gpt.fex: one single Reserve0,
-# and private 2 GiB further out than on the HY310. Frozen 2026-09-14 by C-B.
+# and private 2 GiB further out than on the HY310. Frozen 2026-09-14 by C-B, purposes
+# translated by stage 3 texts (D1), see above.
 ADT3_REGIONS = (
-    ("secure-storage", 12288, 2048, "HDCP-Schluessel, WLAN-/BT-MAC-Adressen, Seriennummer"),
-    ("private", 6988800, 32768, "Android Secure-Storage-Partition"),
+    ("secure-storage", 12288, 2048, "HDCP keys, WLAN/BT MAC addresses, serial number"),
+    ("private", 6988800, 32768, "Android secure storage partition"),
     ("reserve0", 7062528, 32768, "Reserve0 (single slot)"))
 EMPTY_16M = "080acf35a507ac9849cfcba47dc2ad83e01b75663a516279c8b9d243b719643e"
+# was "U-Boot-Umgebung, 77 Eintraege (h713_gate=1, h713_boot=emmc)" until stage 3 texts (D1)
 V3_ENV_ROW = ("uboot-env", 14336, 128,
-              "U-Boot-Umgebung, 77 Eintraege (h713_gate=1, h713_boot=emmc)")
+              "U-Boot environment, 77 entries (h713_gate=1, h713_boot=emmc)")
 # mips/ of the stock bootloader partition (fixture hy310-stock-bootloader_b-20260831.fat),
 # frozen 2026-09-14 by C-B. Names and total size only -- the sha256 of every file is
 # checked against the saved bytes, so no vendor hash has to stand in the repository.
@@ -91,7 +95,7 @@ class StockDisk(unittest.TestCase):
         self.assertEqual(sorted(os.listdir(self.out)),
                          ["mips", "private.bin", "reserve0-a.bin", "reserve0-b.bin",
                           "secure-storage.bin"])
-        self.assertNotIn("leer", self.log.text)
+        self.assertNotIn("empty", self.log.text)      # was "leer" until stage 3 texts (D1)
 
     def test_screen_never_shows_a_device_fingerprint(self):
         rows = dict((r[0], r[3]) for r in self.manifest)
@@ -171,7 +175,8 @@ class LayoutV3Disk(unittest.TestCase):
     def test_manifest_is_the_keys_and_the_environment(self):
         # was ["secure-storage", "private", "reserve0-a", "reserve0-b", "uboot-env"]
         # with the three Android regions saved as 16 MiB of zeros (EMPTY_16M) and
-        # reported as "Leer und damit ohne Inhalt: private, reserve0-a, reserve0-b."
+        # reported as "Empty and therefore without content: private, reserve0-a, reserve0-b."
+        # (German "Leer und damit ohne Inhalt: ..." until stage 3 texts, D1).
         # Stage 2 C-B: our layout has no such partitions in its GPT, so the by-name
         # lookup finds none -- keys plus environment is what is left (brief CB §1).
         _info(self.manifest, "regions_by_name")       # skips on the pre-stage-2 tools
@@ -179,7 +184,7 @@ class LayoutV3Disk(unittest.TestCase):
         self.assertEqual(sorted(os.listdir(self.out)),
                          ["secure-storage.bin", "uboot-env.bin"])
         self.assertNotIn(EMPTY_16M, [m[3] for m in self.manifest])
-        self.assertNotIn("Leer und damit ohne Inhalt", self.log.text)
+        self.assertNotIn("Empty and therefore without content", self.log.text)
 
     def test_manifest_adds_the_uboot_environment(self):
         row = self.manifest[-1]
