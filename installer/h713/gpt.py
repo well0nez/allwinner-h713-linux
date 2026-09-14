@@ -33,27 +33,18 @@ GPT_ENTRIES = 26                 # M:81 "mehr Eintraege reichten in die SPL" -- 
 GPT_ENTRIES_LBA = 2
 
 # --------------------------------------------------------------------------------- defaults
-# Temporary home. DISK_SECTORS/FIRST_USABLE/PARTITIONS/TYPE_GUID/DISK_GUID and PART_C_LBA
-# belong to h713/layout.py (B6, M:77-111); gpt.py must not import layout (the import graph
-# runs layout -> gpt). They are repeated here only so that build_layout_gpt() and check_gpt()
-# stay callable without arguments, exactly as gpt_bauen()/gpt_pruefen() are today. Once B6 is
-# merged, B8 can bind these wrappers to layout and delete this block.
+# Our layout v3 (partitions, GUIDs, first usable LBA, part C) lives in h713/layout.py (B6,
+# M:77-111). gpt.py must not import layout at module level (the import graph runs
+# layout -> gpt), so build_layout_gpt() and check_gpt() fetch their defaults lazily; both stay
+# callable without arguments, exactly as gpt_bauen()/gpt_pruefen() are today.
 
 DEFAULT_DISK_SECTORS = 15269888                             # M:78, I:45 -- 7.28 GiB, the HY310 eMMC
-LAYOUT_FIRST_USABLE = 16                                    # M:79, doku/109 §2.2
-LAYOUT_TYPE_GUID = "0fc63daf-8483-4772-8e79-3d69d8477de4"   # M:83, Linux filesystem data
-LAYOUT_DISK_GUID = "ab6f3888-569a-4926-9668-80941dcb40bc"   # M:84
-LAYOUT_PART_C_LBA = DEFAULT_DISK_SECTORS - 33               # M:111
 
-# name, start lba, sectors, unique guid (M:87)
-LAYOUT_PARTITIONS = [
-    ("hy310-spl",    16,      64,       "cf5e1195-48e8-41bf-9394-1afdeff2bf01"),
-    ("hy310-uboot",  2048,    10240,    "3c05da4e-39e8-4472-bd09-17f0433da668"),
-    ("hy310-keys",   12288,   2048,     "404b1401-5772-4781-88ab-1b56c4682a97"),
-    ("hy310-env",    14336,   2048,     "0a175557-ceb7-4ce5-b247-45e28a588dfd"),
-    ("hy310-boot",   16384,   262144,   "f6d66c6c-2079-4e06-b550-4f37e6c5ab84"),
-    ("hy310-rootfs", 278528,  14991327, "45f95906-692a-4dcf-94e5-10bf1672909d"),
-]
+
+def _layout():
+    from h713 import layout          # lazy: layout imports gpt, not the other way round
+    return layout
+
 
 STOCK_DISK_GUID = "ab6f3888-569a-4926-9668-80941dcb40bc"        # I:1884
 STOCK_GUID_BASE = "a0085546-4166-744a-a353-fca9272b8e45"        # I:1885
@@ -189,11 +180,16 @@ def build_gpt(disk_sectors, partitions, *, first_usable, disk_guid, type_guid, u
     }
 
 
-def build_layout_gpt(disk_sectors=DEFAULT_DISK_SECTORS, partitions=LAYOUT_PARTITIONS,
-                     disk_guid=LAYOUT_DISK_GUID, type_guid=LAYOUT_TYPE_GUID) -> Dict[int, bytes]:
-    """The GPT of our layout v3 (M:294 gpt_bauen), byte for byte."""
+def build_layout_gpt(disk_sectors=None, partitions=None,
+                     disk_guid=None, type_guid=None) -> Dict[int, bytes]:
+    """The GPT of our layout v3 (M:294 gpt_bauen), byte for byte. Defaults from h713.layout."""
+    L = _layout()
+    disk_sectors = L.DISK_SECTORS if disk_sectors is None else disk_sectors
+    partitions = L.PARTITIONS if partitions is None else partitions
+    disk_guid = L.DISK_GUID if disk_guid is None else disk_guid
+    type_guid = L.TYPE_GUID if type_guid is None else type_guid
     return build_gpt(disk_sectors, partitions,
-                     first_usable=LAYOUT_FIRST_USABLE,
+                     first_usable=L.FIRST_USABLE,
                      disk_guid=disk_guid,
                      type_guid=type_guid,
                      unique_guids=[p[3] for p in partitions],
@@ -234,11 +230,17 @@ def build_stock_gpt(partitions, disk_sectors=DEFAULT_DISK_SECTORS,
 
 # --------------------------------------------------------------------------------- checker
 
-def check_gpt(mbr_header_table, part_c, disk_sectors=DEFAULT_DISK_SECTORS, *,
-              first_usable=LAYOUT_FIRST_USABLE, partitions=LAYOUT_PARTITIONS,
+def check_gpt(mbr_header_table, part_c, disk_sectors=None, *,
+              first_usable=None, partitions=None,
               entry_count=GPT_ENTRIES, entry_size=GPT_ENTRY_SIZE,
-              part_c_lba=LAYOUT_PART_C_LBA) -> List[str]:
-    """Recompute a built or read GPT (M:344 gpt_pruefen). Return value: list of problems."""
+              part_c_lba=None) -> List[str]:
+    """Recompute a built or read GPT (M:344 gpt_pruefen). Return value: list of problems.
+    Defaults (disk size, first usable LBA, partitions, part C) come from h713.layout."""
+    L = _layout()
+    disk_sectors = L.DISK_SECTORS if disk_sectors is None else disk_sectors
+    first_usable = L.FIRST_USABLE if first_usable is None else first_usable
+    partitions = L.PARTITIONS if partitions is None else partitions
+    part_c_lba = L.PART_C_LBA if part_c_lba is None else part_c_lba
     p = []
     if mbr_header_table[510:512] != b"\x55\xaa":
         p.append("Schutz-MBR ohne 55AA")

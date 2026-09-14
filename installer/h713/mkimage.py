@@ -34,9 +34,12 @@ from h713.layout import (
     PARTITIONS, PLACEHOLDERS, ROOTFS_PERMISSIONS, SECTOR, USER_DIRECTORIES,
     USER_PLACEHOLDERS, filling, is_user_placeholder, pattern,
 )
-from h713.log import console
+from h713.log import Console
 from h713.source import FileSource
 from h713.util import mib, relpath_or_abs, sha256_file
+
+# hy310-mkimage's own look (its old class K), kept byte for byte -- doku/121 stage 1.
+console = Console(style="mkimage")
 
 # Version of the hy310-mkimage tool (M:70), not the version of the package
 # (h713.VERSION): it goes into the table as "werkzeug" and the installer reads
@@ -238,8 +241,11 @@ def uboot_version(path):
     return m.group(0).decode("latin1") if m else None
 
 
-def build(args):
-    here = os.path.dirname(os.path.abspath(__file__))
+def build(args, here=None):
+    """`here`: the directory of the calling script (the installer directory, where
+    mkimage-eingaben.sh puts tmp/); the module's own directory when not given."""
+    if here is None:
+        here = os.path.dirname(os.path.abspath(__file__))
     # Project root: the next parent directory with mainline/build/build.sh --
     # holds in the working directory (analyse/release/arbeit/r0-fel) as well as
     # in the release repository (installer/ directly under the root),
