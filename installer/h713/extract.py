@@ -17,23 +17,25 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from h713 import hdcpsite
 from h713.fex import panel_config_id
 from h713.fs import Ext4, Ext4Base, Ext4Debugfs, Fat, LpSuper
 from h713.gpt import SECTOR, Gpt
-from h713.identify import (ID_FEATURES, KNOWN_IMAGES, STRONG_FEATURES, feature_matches, features_of,
-                           firmware_revision_of)
+from h713.identify import ID_FEATURES, KNOWN_IMAGES, STRONG_FEATURES, feature_matches, features_of
 from h713.imagewty import (Imagewty, SunxiPackage, check_scp, fdt_root, find_sunxi_packages,
                            uboot_version_string)
 from h713.log import Abort, Log
-from h713.profiles import UBOOT_FW_REVS, legacy_devices
+from h713.profiles import PROFILES, UBOOT_FW_REVS, legacy_devices
 from h713.source import FileSource, SparseSource, Source
 from h713.util import hexdump_short, sha256_bytes, sha256_file
-from h713.vendorfiles import (AIC_FW_DIR, AIC_FW_TARGET, EDID_14, EDID_20, MIPS_FEX, MIPS_FILES,
-                              MIPS_OUTPUT_DIR, MIPS_PART_KEYS, MIPS_PART_NAMES, MIPS_PROJECTID,
-                              MIPS_SOURCE_DIR, MSP_LIB_CANDIDATES, PANEL_CONFIG_CANDIDATES,
-                              PQ_FILES, REQUIRED_FILES, TVCONFIG, check_display_cfg,
+from h713.vendorfiles import (AIC_FW_DIR, AIC_FW_TARGET, EDID_14, EDID_20, FALLBACK_MIPS_SOURCES,
+                              MIPS_FEX, MIPS_FILES, MIPS_OUTPUT_DIR, MIPS_PART_KEYS, MIPS_PART_NAMES,
+                              MIPS_PROJECTID, MIPS_SOURCE_DIR, MSP_LIB_CANDIDATES,
+                              PANEL_CONFIG_CANDIDATES, PQ_FILES, REQUIRED_FILES, TVCONFIG,
+                              VENDOR_MIPS_DIR, VENDOR_MIPS_SOURCE, check_display_cfg,
                               check_edid_block, check_pq, check_tse, edid_name, edid_vendor,
-                              elf_symbol, find_mspm_chain, parse_mspm)
+                              elf_symbol, find_mspm_chain, firmware_revision_of, parse_mspm,
+                              read_vendor_mips)
 
 #: X:52 -- the extractor's own version; it goes into MANIFEST.json and BERICHT.txt, and the CLI
 #: prints it for --version.
@@ -41,6 +43,20 @@ VERSION = "0.4 (S45: eigener ext4-Leser, kein debugfs mehr; ext4 über e2fsprogs
 
 #: X:98 GERAETE -- the two boards this run compares against, in that order.
 DEVICES = legacy_devices()
+
+
+def _va(address: Optional[int]) -> Optional[str]:
+    """A virtual address the way the profiles write it, or None -- stage 2 C-D."""
+    return None if address is None else "0x%08x" % address
+
+
+def profile_status(board_id: Optional[str]) -> Optional[str]:
+    """The `status` of a board profile: "verified", "profile-only", "partial" -- or None.
+
+    Stage 2 C-D: the report names it next to the board, and only a "verified" profile may still end
+    in exit code 0 (doku/121 section 5: nothing else has been run against the hardware)."""
+    profile = PROFILES.get(board_id) if board_id else None
+    return (profile or {}).get("status")
 
 
 class Run:
@@ -122,7 +138,8 @@ class Run:
         else:
             # boot-resource.fex is exactly what the flasher writes to bootloader_a and bootloader_b
             # (sys_partition.fex: downloadfile="boot-resource.fex" for both).
-            self.mips_source(br, f"{MIPS_FEX} im Image (= bootloader_a und bootloader_b)")
+            self.mips_source(br, f"{MIPS_FEX} im Image (= bootloader_a und bootloader_b)",
+                             ("bootloader_b", "bootloader_a"))
         sup = img.file("super.fex")
         if sup is None:
             self.log.warn("super.fex fehlt im Image — kein EDID/MSP/PQ aus diesem Eingang")
@@ -174,7 +191,7 @@ class Run:
                 self.log.warn(f"{n} liegt {'bei LBA %d+%d, ' % s if s else ''}nicht (vollständig) im Dump")
                 continue
             if Fat.is_fat(p):
-                self.mips_source(p, f"Dump: Partition {n} (LBA {gpt.parts[n][0]}, {gpt.parts[n][1]} Sektoren)")
+                self.mips_source(p, f"Dump: Partition {n} (LBA {gpt.parts[n][0]}, {gpt.parts[n][1]} Sektoren)", (n,))
             else:
                 self.log.warn(f"{n}: kein FAT-Bootsektor ({hexdump_short(p.read(0, 8))}) — MIPS-Dateien nicht lesbar")
         if "private" in gpt.parts:
@@ -218,8 +235,10 @@ class Run:
             q = self.open(parts[k])
             self.log.info(f"{k}: {q.path} ({q.size} B)")
             if k in MIPS_PART_KEYS and Fat.is_fat(q):
-                # bootloader_a/_b and boot-resource.fex are FAT16 with mips/ -- no sunxi-package in them
-                self.mips_source(q, f"{k} ({q.path.name})")
+                # bootloader_a/_b and boot-resource.fex are FAT16 with mips/ -- no sunxi-package in them.
+                # A named slot serves that slot only; boot-resource.fex/bootloader/mips serve both.
+                self.mips_source(q, f"{k} ({q.path.name})",
+                                 (k,) if k in MIPS_PART_NAMES else ("bootloader_b", "bootloader_a"))
                 continue
             offs = [0] if q.read(0, 13) == SunxiPackage.NAME else find_sunxi_packages(q, self.log)
             if not offs:
@@ -529,8 +548,9 @@ class Run:
 
     # ---- MIPS/display artefacts (plan 108 §1/§4.2/§4.5) -----------------------------------------
 
-    def mips_source(self, q: Source, origin: str):
-        self.mips_sources.append((origin, q))
+    def mips_source(self, q: Source, origin: str, keys=("bootloader_b", "bootloader_a")):
+        """Remember a FAT image with mips/. `keys` are the profile source keys it serves."""
+        self.mips_sources.append((origin, q, tuple(keys)))
         self.log.info(f"MIPS-Quelle gemerkt: {origin} ({q.size} B)")
 
     def _read_mips(self, origin: str, q: Source) -> Optional[dict]:
@@ -572,8 +592,70 @@ class Run:
             if e["name"].lower() == MIPS_SOURCE_DIR:
                 continue
             others.append(f"{e['name']}{'/' if e['verzeichnis'] else ''} ({'Verzeichnis' if e['verzeichnis'] else str(e['groesse']) + ' B'})")
-        return {"herkunft": origin, "fs": fs.description, "typ": fs.type, "dateien": files,
+        return {"herkunft": origin, "fs": fs.description, "typ": fs.type, "art": "fat", "dateien": files,
                 "kurznamen": short_names, "probleme": problems, "uebrig": leftover, "sonst": others}
+
+    def _read_mips_vendor(self) -> Optional[dict]:
+        """The second source (stage 2 C-D): the vendor copy of mips/ inside super (lpsuper + ext4).
+
+        Same read set as _read_mips(); the vendor filesystem has no 8.3 names, "kurznamen" stays empty."""
+        try:
+            if self.vendor is None and not self.open_vendor():
+                self.log.info(f"{VENDOR_MIPS_SOURCE}: no vendor partition in this input")
+                return None
+        except Abort as e:
+            self.log.warn(f"{VENDOR_MIPS_SOURCE}: vendor filesystem not readable ({e})")
+            return None
+        if not self.vendor.exists(VENDOR_MIPS_DIR):
+            self.log.info(f"{VENDOR_MIPS_SOURCE}: not present in the vendor partition")
+            return None
+        files, leftover, problems = read_vendor_mips(self.vendor, VENDOR_MIPS_DIR, self.tmp)
+        for p in problems:
+            self.log.warn(f"{VENDOR_MIPS_SOURCE}: {p}")
+        self.log.info(f"{VENDOR_MIPS_SOURCE}: {len(files)} file(s) for our chain, {len(leftover)} more there")
+        return {"herkunft": VENDOR_MIPS_SOURCE + "/", "fs": self.vendor.description, "typ": "ext4",
+                "art": "vendor", "dateien": files, "kurznamen": {}, "probleme": problems,
+                "uebrig": leftover, "sonst": []}
+
+    def mips_source_order(self) -> tuple:
+        """The source keys of the identified profile, or the fallback order of api-stufe2.md."""
+        profile = PROFILES.get(self.device) if self.device else None
+        order = ((profile or {}).get("mips") or {}).get("sources")
+        return tuple(order) if order else FALLBACK_MIPS_SOURCES
+
+    def mips_read_sets(self) -> tuple:
+        """Read every MIPS source, in the order of the profile. Returns (read sets, source notes).
+
+        One note per profile source key: what it was and how many files it held. `role` is filled in
+        here only where nothing was read; extract_mips() marks the rest used/cross-check."""
+        order = self.mips_source_order()
+        self.log.info("MIPS sources in profile order: " + ", ".join(order))
+        sets, notes, taken = [], [], {}
+
+        def take(key, origin, reader):
+            if origin in taken:      # bootloader_a and bootloader_b are one boot-resource.fex in an image
+                notes.append({"source": key, "origin": origin, "files": None,
+                              "role": f"same image as {taken[origin]}"})
+                return
+            taken[origin] = key
+            r = reader()
+            notes.append({"source": key, "origin": origin, "files": len(r["dateien"]) if r else None,
+                          "role": None if r else "not present"})
+            if r:
+                sets.append(r)
+
+        for key in order:
+            if key == VENDOR_MIPS_SOURCE:
+                take(key, VENDOR_MIPS_SOURCE + "/", self._read_mips_vendor)
+                continue
+            for origin, q, keys in self.mips_sources:
+                if key in keys:
+                    take(key, origin, lambda o=origin, s=q: self._read_mips(o, s))
+        # A source the input offers but the profile does not name keeps its old place: at the end.
+        for origin, q, keys in self.mips_sources:
+            if origin not in taken:
+                take(keys[0] if keys else "?", origin, lambda o=origin, s=q: self._read_mips(o, s))
+        return sets, notes
 
     def declared_project_id(self) -> dict:
         """panel_config.ini in the vendor filesystem: it is reported, but not used (plan 108 §4.5 thirdly)."""
@@ -593,28 +675,34 @@ class Run:
                 "hinweis": "panel_config.ini nicht in vendor gefunden (" + ", ".join(PANEL_CONFIG_CANDIDATES) + ")"}
 
     def extract_mips(self):
-        self.log.heading(f"{MIPS_OUTPUT_DIR}/… (MIPS-/Display-Artefakte aus bootloader_a/bootloader_b)")
-        if not self.mips_sources:
-            self.log.warn("keine bootloader-Partition und keine boot-resource.fex im Eingang — "
-                          f"{MIPS_OUTPUT_DIR}/* nicht extrahiert")
-            self.not_extracted.append(f"{MIPS_OUTPUT_DIR}/* (keine bootloader_a/_b bzw. boot-resource.fex im Eingang)")
-            return
-        read_sets = [r for r in (self._read_mips(h, q) for h, q in self.mips_sources) if r]
+        self.log.heading(f"{MIPS_OUTPUT_DIR}/… (MIPS/display artefacts from the bootloader FAT and the vendor copy)")
+        read_sets, source_notes = self.mips_read_sets()
         if not read_sets:
-            self.not_extracted.append(f"{MIPS_OUTPUT_DIR}/* (Quelle vorhanden, aber kein lesbares mips/ darin)")
+            tried = ", ".join(n["source"] for n in source_notes) or "none"
+            self.log.warn(f"no readable {MIPS_SOURCE_DIR}/ in this input (sources tried: {tried}) — "
+                          f"{MIPS_OUTPUT_DIR}/* not extracted")
+            self.not_extracted.append(f"{MIPS_OUTPUT_DIR}/* (no readable {MIPS_SOURCE_DIR}/; tried: {tried})")
             return
-        main_set = read_sets[0]
+        # The first source that has the whole set wins; failing that the first that has display.bin.
+        main_set = ([r for r in read_sets if all(n in r["dateien"] for n in MIPS_FILES)] or
+                    [r for r in read_sets if "display.bin" in r["dateien"]] or read_sets)[0]
+        for note in source_notes:
+            if note["role"] is None:
+                note["role"] = "used" if note["origin"] == main_set["herkunft"] else "cross-check"
+        # Every other source is cross-checked file by file; every difference is reported.
         comparison: List[str] = []
-        for w in read_sets[1:]:
+        for w in [r for r in read_sets if r is not main_set]:
             a, b = main_set["dateien"], w["dateien"]
-            difference = ([f"nur in {main_set['herkunft']}: {n}" for n in sorted(set(a) - set(b))] +
-                          [f"nur in {w['herkunft']}: {n}" for n in sorted(set(b) - set(a))] +
-                          [f"{n} unterschiedlich" for n in sorted(set(a) & set(b)) if a[n] != b[n]])
+            difference = ([f"only in {main_set['herkunft']}: {n}" for n in sorted(set(a) - set(b))] +
+                          [f"only in {w['herkunft']}: {n}" for n in sorted(set(b) - set(a))] +
+                          [f"{n} differs: {len(a[n])} B sha256 {sha256_bytes(a[n])[:12]}… against "
+                           f"{len(b[n])} B sha256 {sha256_bytes(b[n])[:12]}…"
+                           for n in sorted(set(a) & set(b)) if a[n] != b[n]])
             if difference:
-                comparison.append(f"{w['herkunft']} weicht von {main_set['herkunft']} ab: " + "; ".join(difference))
+                comparison.append(f"{w['herkunft']} differs from {main_set['herkunft']}: " + "; ".join(difference))
                 self.log.warn(comparison[-1])
             else:
-                comparison.append(f"{w['herkunft']} ist inhaltlich gleich {main_set['herkunft']} ({len(b)} Dateien)")
+                comparison.append(f"{w['herkunft']} is byte-identical to {main_set['herkunft']} ({len(b)} files)")
                 self.log.info(comparison[-1])
         files = main_set["dateien"]
         # database.TSE is the only MIPS file that tells HY310 and L018 apart (S42 §9) -- with it even a
@@ -628,19 +716,42 @@ class Run:
             if k.lower() != n.lower():
                 self.log.info(f"  Langname '{n}' (8.3 wäre '{k}')")
 
+        # ---- (c) list of all ProjectID files (needed for the revision row below) --------------------
+        found_ids: List[str] = []
+        for n in sorted(files):
+            m = MIPS_PROJECTID.match(n)
+            if m:
+                found_ids.append(f"0x{int(m.group(1), 16):04x}")
+
         # ---- (b) the used project id: sha256 of the display.bin through h713_mips_fw_revs[] --------
         rev = None
+        revision: Optional[dict] = None
         db = files.get("display.bin")
         display_checks: List[str] = []
         display_error = False
         if db is None:
             self.log.warn("display.bin fehlt in mips/ — die benutzte Projekt-ID ist damit nicht bestimmbar")
         else:
+            # Stage 2 C-D: profiles.FIRMWARE_REVISIONS, not only the rows h713_mips_fw_revs[] declares.
             rev = firmware_revision_of(db)
             if rev:
+                revision = {"name": rev["board"], "size": rev["size"], "sha256": rev["sha256"],
+                            "hdcp_wait_va": _va(rev["hdcp_wait_va"]), "project_ids_seen": found_ids,
+                            "known": True, "hdcp_wait_va_source": "profiles.FIRMWARE_REVISIONS"}
+            if rev and rev["project_id"] is None:
+                # Measured, but declared by no row of h713_mips_fw_revs[]: no project id, no panel --
+                # what it does carry is the HDCP wait site (api-stufe2.md, "Extractor").
+                display_checks.append(f"FIRMWARE_REVISIONS: {rev['board']}, {rev['size']} B, HDCP wait site "
+                                      f"{_va(rev['hdcp_wait_va']) or 'unknown'} — no row in h713_mips_fw_revs[], "
+                                      f"so no project id comes from it")
+                self.log.info(f"display.bin: known revision '{rev['board']}' ({rev['size']} B, HDCP wait site "
+                              f"{_va(rev['hdcp_wait_va']) or 'unknown'}) — h713_mips_fw_revs[] does not declare it, "
+                              f"so the used project id stays undetermined")
+            elif rev:
                 display_checks.append(f"h713_mips_fw_revs[]: {rev['board']}, Projekt {rev['project_id']:#04x}, "
                                       f"Panel {rev['panel']}, Sollgröße {rev['size']} B")
                 self.log.info(f"display.bin: bekannt — {rev['board']}, Projekt-ID {rev['project_id']:#04x}, Panel {rev['panel']}")
+                display_checks.append(f"HDCP wait site of this revision: {_va(rev['hdcp_wait_va']) or 'unknown'}")
                 if self.device and DEVICES[self.device]["name"].lower() not in rev["board"].lower():
                     # e.g. L018: the same display.bin as the HY310. The name in h713_mips_fw_revs[] says *from which*
                     # board the revision was read, not which device lies here in the input.
@@ -664,13 +775,19 @@ class Run:
                               f"die benutzte Projekt-ID lässt sich nicht bestimmen")
                 self.log.warn("Ausweg: alle ProjectID-Dateien liegen in der Ausgabe; die richtige zur Laufzeit wählen "
                               "(setenv h713_project 0x…; saveenv), Plan 108 §4.5 drittens")
-
-        # ---- (a) check the TSE headers, (c) list of all ProjectID files ----------------------------
-        found_ids: List[str] = []
-        for n in sorted(files):
-            m = MIPS_PROJECTID.match(n)
-            if m:
-                found_ids.append(f"0x{int(m.group(1), 16):04x}")
+                # Stage 2 C-D: an unknown revision gets its HDCP wait site searched (A5's rule), and the
+                # report prints the complete row a profile would need.
+                found = hdcpsite.search(db)
+                revision = {"name": "unknown", "size": len(db), "sha256": sha256_bytes(db),
+                            "hdcp_wait_va": _va(found["hdcp_wait_va"]) or found["status"],
+                            "project_ids_seen": found_ids, "known": False,
+                            "hdcp_wait_va_source": f"searched by h713.hdcpsite (base {_va(found['base'])})"}
+                self.log.info(f"unknown revision — searching the HDCP wait site over {len(db)} B "
+                              f"(base {_va(found['base'])}, {len(found['hits'])} candidate word(s)):")
+                for line in found["text"]:
+                    self.log.info("  " + line)
+                self.log.info("HDCP wait site: " + hdcpsite.describe(found))
+                display_checks.append("HDCP wait site (searched): " + hdcpsite.describe(found))
 
         # ---- (c) the declared id: report it, do not use it ----------------------------------------
         declared = self.declared_project_id()
@@ -689,10 +806,17 @@ class Run:
         self.mips = {
             "quelle": main_set["herkunft"],
             "dateisystem": main_set["fs"],
-            "weitere_quellen": comparison,
+            # Stage 2 C-D, English keys for the new facts: the sources tried in profile order, the
+            # file-by-file cross-check against the ones not used, and the display.bin revision (its
+            # HDCP wait site searched when no row of FIRMWARE_REVISIONS fits).
+            "sources": source_notes,
+            "cross_check": comparison,
+            "revision": revision,
             "projekt_id_benutzt": f"{used:#04x}" if used is not None else None,
             "projekt_id_benutzt_woher": (f"sha256 der display.bin in h713_mips_fw_revs[] -> {rev['board']}, "
-                                         f"Panel {rev['panel']}" if rev else
+                                         f"Panel {rev['panel']}" if rev and rev["project_id"] is not None else
+                                         f"undetermined: the revision is '{rev['board']}', which no row of "
+                                         f"h713_mips_fw_revs[] declares" if rev else
                                          "unbestimmbar: display.bin steht nicht in h713_mips_fw_revs[]"),
             "projekt_id_deklariert": f"{declared['id']:#04x}" if declared["id"] is not None else None,
             "projekt_id_deklariert_quelle": declared["quelle"],
@@ -710,10 +834,13 @@ class Run:
                           + ", ".join(main_set["sonst"] + main_set["uebrig"]))
 
         # ---- Store --------------------------------------------------------------------------------
+        fat = main_set["art"] == "fat"
         for n in sorted(files, key=lambda x: (bool(MIPS_PROJECTID.match(x)), x)):
             d = files[n]
+            # The vendor copy has no 8.3 short names -- its own line says where the file came from.
             checks: List[str] = [f"aus {main_set['herkunft']}, {MIPS_SOURCE_DIR}/{n} "
-                                 f"(8.3-Kurzname '{main_set['kurznamen'].get(n, '?')}')"]
+                                 f"(8.3-Kurzname '{main_set['kurznamen'].get(n, '?')}')"] if fat else \
+                                [f"from {main_set['herkunft']}{n} ({len(d)} B, vendor copy)"]
             error = False
             if n == "display.bin":
                 checks += display_checks
@@ -735,7 +862,8 @@ class Run:
                 if x.startswith(n + ":"):
                     checks.append(x)
             self.store(f"{MIPS_OUTPUT_DIR}/{n}", d,
-                       origin=f"{main_set['herkunft']}: {MIPS_SOURCE_DIR}/{n} ({len(d)} B, FAT-Langname)",
+                       origin=f"{main_set['herkunft']}: {MIPS_SOURCE_DIR}/{n} ({len(d)} B, FAT-Langname)" if fat
+                              else f"{main_set['herkunft']}{n} ({len(d)} B, vendor copy inside super)",
                        checks=checks, error=error)
         for n in MIPS_FILES:
             if n not in files:
@@ -941,7 +1069,8 @@ class Run:
                 k = features_of(DEVICES[self.device])
                 self.detection["merkmale"] = [m for m in ID_FEATURES
                                               if m in self.features and feature_matches(m, self.features[m], k[m])]
-            self.log.info(f"Gerät: {self.device} — {DEVICES[self.device]['beschreibung']}; erkannt über {self.detection['ueber']}"
+            self.log.info(f"Gerät: {self.device} [profile status: {profile_status(self.device)}] — "
+                          f"{DEVICES[self.device]['beschreibung']}; erkannt über {self.detection['ueber']}"
                           + (f" ({'bestätigt durch' if self.device_fixed else 'Merkmale'}: " + ", ".join(self.detection["merkmale"]) + ")"
                              if self.detection["merkmale"] else ""))
         else:
@@ -977,8 +1106,14 @@ class Run:
         errors = [a for a in self.artefacts if a["fehler"]]
         ref_no = [a for a in self.artefacts if a["referenz_stimmt"] is False]
         missing = [p for p in REQUIRED_FILES if not any(a["pfad"] == p for a in self.artefacts)]
+        # Stage 2 C-D: exit 0 stays reserved for a *verified* profile whose references are all equal.
+        status = profile_status(self.device)
+        if self.device and status != "verified":
+            self.log.warn(f"profile '{self.device}' has status '{status}', not 'verified' — exit code stays 1 "
+                          f"(doku/121 section 5: only a verified profile has run against the hardware)")
         code = 0
-        if self.device is None or errors or ref_no or missing or self.not_extracted or self.deviations:
+        if (self.device is None or status != "verified" or errors or ref_no or missing
+                or self.not_extracted or self.deviations):
             code = 1
         if not self.artefacts:
             code = 2
@@ -1024,7 +1159,7 @@ class Run:
                     self.vendor_source = q
                 elif Fat.is_fat(q):
                     self.input_facts["typ"] = "FAT (bootloader_a/_b bzw. boot-resource.fex)"
-                    self.mips_source(q, f"{q.path.name} (FAT-Abbild)")
+                    self.mips_source(q, f"{q.path.name} (FAT-Abbild)", ("bootloader_b", "bootloader_a"))
                 else:
                     raise Abort(f"Eingang nicht erkannt: {q.path} ({hexdump_short(q.read(0, 16))}) — "
                                 f"weder IMAGEWTY, GPT-Dump, sunxi-package, Sparse/LP-super, ext4 noch FAT")
@@ -1083,6 +1218,7 @@ class Run:
             "device": self.device,
             "device_name": DEVICES[self.device]["name"] if self.device else None,
             "device_beschreibung": DEVICES[self.device]["beschreibung"] if self.device else None,
+            "device_status": profile_status(self.device),   # stage 2 C-D: verified / profile-only / partial
             "device_erkennung": {k: v for k, v in self.detection.items() if not k.startswith("_")},
             "referenzgeraet": self.reference_device,
             "merkmale": self.features,
@@ -1102,7 +1238,8 @@ class Run:
              f"Eingang: {self.input_facts.get('pfad') or self.input_facts.get('teile')} ({self.input_facts.get('typ')})",
              f"sha256:  {self.input_facts.get('sha256')}",
              f"Bekannt: {self.input_facts.get('bekannt_als') or 'kein bekannter Image-Fingerabdruck'}",
-             f"Gerät:   " + (f"{self.device} — {DEVICES[self.device]['beschreibung']} (erkannt über {self.detection['ueber']}"
+             f"Gerät:   " + (f"{self.device} [profile status: {profile_status(self.device)}] — "
+                             f"{DEVICES[self.device]['beschreibung']} (erkannt über {self.detection['ueber']}"
                              + ((", bestätigt durch " if self.device_fixed else ": ") + ", ".join(self.detection["merkmale"])
                                 if self.detection["merkmale"] else "") + ")"
                              if self.device else
@@ -1117,8 +1254,21 @@ class Run:
                      else f"  ({m['projekt_id_deklariert_hinweis']})") + "  — gemeldet, NICHT benutzt",
                   f"  vorhanden:   {len(m['projekt_id_dateien'])} ProjectID-Dateien: {', '.join(m['projekt_id_dateien'])}",
                   f"  Quelle:      {m['quelle']} ({m['dateisystem']})"]
-            for v in m["weitere_quellen"]:
-                report.append(f"               {v}")
+            # Stage 2 C-D: which sources were tried in which order, and the cross-check against them.
+            report.append("  Sources:     " + ", ".join(
+                f"{s['source']} [{s['role']}" + (f", {s['files']} files]" if s["files"] is not None else "]")
+                for s in m["sources"]))
+            for v in m["cross_check"]:
+                report.append(f"  Cross-check: {v}")
+            r = m["revision"]
+            if r:
+                # The row a profile's mips.revisions needs -- the field names of the profile schema.
+                report += ["  display.bin revision" + (":" if r["known"] else " — UNKNOWN, the row a profile would need:"),
+                           f"    name:             {r['name']}",
+                           f"    size:             {r['size']}",
+                           f"    sha256:           {r['sha256']}",
+                           f"    hdcp_wait_va:     {r['hdcp_wait_va']}  ({r['hdcp_wait_va_source']})",
+                           f"    project_ids_seen: {', '.join(r['project_ids_seen']) or '—'}"]
             if not m["display_bin_bekannt"]:
                 report += ["  ACHTUNG: display.bin ist keine bekannte Revision — die benutzte ID ist nicht bestimmbar.",
                       "           Alle ProjectID-Dateien liegen in der Ausgabe; die richtige zur Laufzeit wählen",

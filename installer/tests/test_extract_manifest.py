@@ -14,13 +14,21 @@ import fakedisk
 # device, artefakte, digest of the sorted (path, size, sha256) list).  Exit 1 on
 # the two ADT-3 images is documented behaviour, not a failure: no device profile
 # matches them, so the extractor reports a best effort.
+#
+# Re-frozen on 2026-09-14 for stage 2 C-D (second MIPS source): the ADT-3 images have no mips/ in
+# their bootloader FAT, so the extractor found nothing there; now it also reads the vendor copy in
+# vendor:/etc/display/mips/ and both images yield the 19 files under boot/mips/.  Only those 19
+# artefacts are new -- every other artefact is byte for byte the one of stage 1, and the HY310 row
+# is untouched (its FAT copy still wins, the vendor copy is only cross-checked).
+#   hy300-t08: was (1, None, 20, "f347466ecb7721bc8f982bddacdb6cd096a845202facff54c872db7dfa3c35e1")
+#   hy350:     was (1, None, 21, "7bfa4452385130b716684666608a52a9f7638bfddb019bcc89ac8453d1acd811")
 MANIFESTS = {
     "hy310": (0, "hy310", 43,
               "ced1b8aeb61bb265d488d7ff09d39beb149ef4698f17cbf96a45d5e73bdce162"),
-    "hy300-t08": (1, None, 20,
-                  "f347466ecb7721bc8f982bddacdb6cd096a845202facff54c872db7dfa3c35e1"),
-    "hy350": (1, None, 21,
-              "7bfa4452385130b716684666608a52a9f7638bfddb019bcc89ac8453d1acd811"),
+    "hy300-t08": (1, None, 39,
+                  "3c84815992b349d09f12b562e0e2ef7f1d74dbf351f2125d8866f577d62b9b9e"),
+    "hy350": (1, None, 40,
+              "2cfcca38d4b1eb09a81e932f997e2db1290dc7fe5a672e023f55f51bb68b3f7f"),
 }
 
 
