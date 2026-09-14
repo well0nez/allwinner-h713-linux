@@ -6,7 +6,7 @@ printed string and every exception text is unchanged. What used to be loaded
 out of h713-extract at runtime now comes from the package itself: the IMAGEWTY
 reader, the file source, the sparse writer and the stock GPT builder.
 
-Stage 2 (package C-C, umbau/plan/stufe-2.md row C4) makes the restore follow the board
+Stage 2 (package C-C, doku/121 §4) makes the restore follow the board
 profile: the GPT header counts the partitions the image really has; a partition the image
 brings no file for is zeroed only when neither the profile's `preserve_on_restore` nor the
 built-in default keeps it; `boot-resource.fex` never takes `mips/` away from a bootloader

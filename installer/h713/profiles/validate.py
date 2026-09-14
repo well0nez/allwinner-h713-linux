@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schema check for the board profiles -- umbau/plan/profil-schema.md is the contract.
+"""Schema check for the board profiles -- installer/h713/profiles/SCHEMA.md is the contract.
 
     python3 validate.py                 # check all five, print problems, exit 1 if there are any
     python3 -m unittest validate -v     # the same check as a test

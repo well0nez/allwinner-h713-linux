@@ -1,11 +1,11 @@
 """HY310 -- board profile. Data only, no vendor bytes: numbers, hashes and strings.
 
-Shape: umbau/plan/profil-schema.md. Source tags used in the comments below:
-  J  = umbau/fixtures/images/hy310-update.img.json (board facts of the stock image, package A1)
+Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below:
+  J  = installer/tests/fixtures/images/hy310-update.img.json (board facts of the stock image, package A1)
   X  = analyse/release/arbeit/r2-extract/h713-extract (line numbers are lines 52-275)
   I  = analyse/release/arbeit/r0-fel/hy310-install.py (installer constants, lines 42-105)
-  A0 = umbau/work/A0/REPORT.md, sections 4 and 5 (what the vendor U-Boot loads, and from where)
-  F  = umbau/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site, package A5)
+  A0 = docs/subsystems/mips.md ("vendor boot path") (what the vendor U-Boot loads, and from where)
+  F  = installer/tests/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site, package A5)
 """
 
 PROFILE = {

@@ -17,6 +17,27 @@ below. What the numbers mean: [RELEASES.md](RELEASES.md).
 - **Missing:** Bluetooth, AV1 decode, HDCP 1.4 for protected sources, any desktop.
 - **Not re-tested by us:** hardware video decode, IOMMU, Mali GPU — these come from cstenger's tree.
 
+## Boards
+
+One board is tested; the others are described. The rule behind that, from `doku/121` §5 and enforced
+by `release/build-all.sh --board`: **no image for a board nobody has tested.** A row below
+*verified* is a description, not a claim that anything runs on it.
+
+| Board | State | Who ran it, and when | What exists for it |
+|---|---|---|---|
+| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.5-beta`, 13.09.2026 | everything else on this page. The only board an image is built for |
+| **HY200 QZ713DF_A1** | verified by cstenger | cstenger, on his own bench board and in his own tree — kernel 6.18.38 boot-good (`mainline/config/versions.env`). Not our image, not our installer | kernel and U-Boot defconfigs, device tree. No installer profile, so `--board hy200-qz713df-a1` is refused today |
+| **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too |
+| **HY300 T08** | profile-only | nobody | installer profile and DRAM fragment, both read out of its stock image (`doku/121` §2). No device tree of ours |
+| **HY350** | profile-only | nobody | as above. It ships the same `display.bin` as the T08 and a different panel — which is why the panel comes from the declared project id, never from the firmware image |
+| **HY300 Pro** | partial | nobody. One owner report, [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1), 13.09.2026: a dump-only run, nothing written, no green run | installer profile with gaps — layout from his log, DRAM clock 636 MHz, HDCP wait site unknown |
+
+`boards/<id>/board.env` carries these states machine-readably, and `bash boards/check.sh` holds each
+one against the installer profile in `installer/h713/profiles/`. What a board below *verified* gets
+instead of an image is the read-only probe, which writes nothing and runs from FEL on any H713:
+[docs/tools/h713-probe.md](docs/tools/h713-probe.md). A row becomes *verified* when that board's
+owner reports a green run of a build of ours, with a date — see [BUILDING.md](BUILDING.md), *Boards*.
+
 ## Subsystems
 
 | Subsystem | State | Where it lives | Evidence |

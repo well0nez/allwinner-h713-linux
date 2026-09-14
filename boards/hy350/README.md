@@ -18,7 +18,7 @@ one in hand; nothing of ours has ever run on it.
 ## Where the facts come from
 
 One source: the stock OTA image `HY350_user_public_en_F_chuangyihui_OTA_2024-10-25-1715_.img`,
-unpacked into `umbau/fixtures/images/hy350.json` (package A1) and written down as
+unpacked into `installer/tests/fixtures/images/hy350.json` (package A1) and written down as
 `installer/h713/profiles/hy350.py`.
 
 - **DRAM** — the 24 words at `boot0_sdcard.fex+0x38`. Same clock as the HY310 (792 MHz) and the same

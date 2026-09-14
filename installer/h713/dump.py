@@ -6,7 +6,7 @@ which of the two sizes it should be.
 Stage 1 of plan doku/121: moved from hy310-install.py (I:42, 48-50, 95-101,
 462-574, 925-943, 1405-1435). Every printed string is unchanged.
 
-Stage 2, package C-B (brief umbau/plan/briefs/CB.md, api-stufe2.md §"Device-unique
+Stage 2, package C-B (doku/121 §4, stage 2 §"Device-unique
 regions and the write lock"): the device-unique regions are looked up in the device's
 own GPT BY NAME (`regions_from_gpt`) instead of standing here as constant LBAs; the
 MIPS/display artefacts of both bootloader slots are saved as well; and no hash of a

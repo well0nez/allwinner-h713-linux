@@ -147,7 +147,7 @@ GPT-Kopfs stimmt nicht"`, `"GPT: Kopf-CRC …"`, `"Partitionen: …"`, `"Partiti
 # B3 — rename map (old → new)
 
 Sources: `X` = `analyse/release/arbeit/r2-extract/h713-extract`, `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`.
-Line numbers point at the **old** definition. Public names follow `umbau/plan/api-h713.md`; private helpers, parameters
+Line numbers point at the **old** definition. Public names follow the package API of doku/121 §4 (stage 1); private helpers, parameters
 and locals are translated freely. Every user-visible string and every **dict key** stays byte-identical (see the last
 section) — only identifiers change.
 
@@ -486,7 +486,7 @@ type), `treffer`→`hits`, `inhalt`→`content`, `nutzer`→`user`, `fremd`→`u
 
 `M` = `analyse/release/arbeit/r0-fel/hy310-mkimage.py` (1193 lines),
 `I` = `…/r0-fel/hy310-install.py`, `X` = `…/r2-extract/h713-extract`.
-Names fixed by `umbau/plan/api-h713.md` are marked **api**; the rest are B6's
+Names fixed by the package API of doku/121 §4 (stage 1) are marked **api**; the rest are B6's
 choice and free for the reviewer to change.
 
 ## `h713/layout.py` (from M:77–204, M:261–293)
@@ -586,7 +586,7 @@ choice and free for the reviewer to change.
 
 Sources: `X` = `analyse/release/arbeit/r2-extract/h713-extract` (3138 lines),
 `I` = `analyse/release/arbeit/r0-fel/hy310-install.py` (1961 lines). Line numbers are those of the
-source file. Public names follow `umbau/plan/api-h713.md`; locals are translated freely (the
+source file. Public names follow the package API of doku/121 §4 (stage 1); locals are translated freely (the
 equivalence test in `tests/test_faithful.py` alpha-renames them on both sides, so only the free
 names and the attributes below are load-bearing). Every user-visible string and every dict key is
 unchanged.
@@ -597,7 +597,7 @@ unchanged.
 |---|---|---|
 | `PROFILES`, `get()`, `STATUS_VALUES` | A3 | unchanged (copied verbatim from `src/installer/h713/profiles/__init__.py`) |
 | `H713_MIPS_FW_REVS` | X:266 | `UBOOT_FW_REVS` — the rows `h713_mips_fw_revs[]` declares, keys as in X |
-| — (new, per brief) | X:266 + `umbau/fixtures/firmware-revisions.json` | `FIRMWARE_REVISIONS` — all four known display.bin revisions, plus `hdcp_wait_va`; `project_id`/`panel` are `None` where no U-Boot row declares them |
+| — (new, per brief) | X:266 + `installer/tests/fixtures/firmware-revisions.json` | `FIRMWARE_REVISIONS` — all four known display.bin revisions, plus `hdcp_wait_va`; `project_id`/`panel` are `None` where no U-Boot row declares them |
 | `GERAETE` | X:98 | `legacy_devices()` — builds the old dict from `PROFILES[...]["reference"]` / `["expected"]` |
 | `GERAETE[...]["beschreibung"]` | X:101, X:145 | `LEGACY_DESCRIPTIONS` (the German text; A3's profile carries an English `description`, and the extractor prints this one into `MANIFEST.json`/`BERICHT.txt`) |
 | the order of `GERAETE` | X:98 | `LEGACY_DEVICE_IDS = ("hy310", "l018")` — `', '.join(GERAETE)` and the profile loops depend on it |

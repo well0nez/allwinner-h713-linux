@@ -1,4 +1,4 @@
-# TEXTS.md -- German -> English, stage 3 (doku/121 §3, umbau/plan/api-stufe3.md)
+# TEXTS.md -- German -> English, stage 3 (doku/121 §4, stage 3)
 
 Every user-visible string of the installer package, translated once by package D1.
 **Translated, not rewritten**: same content, same numbers, same order, same line breaks.

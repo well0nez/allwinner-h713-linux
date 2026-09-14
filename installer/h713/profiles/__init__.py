@@ -4,7 +4,7 @@
     PROFILES["hy310"]["layout"]["entries"]
     get("hy350")
 
-Shape and rules: umbau/plan/profil-schema.md. The modules are data only -- every number and hash
+Shape and rules: installer/h713/profiles/SCHEMA.md. The modules are data only -- every number and hash
 carries the source it came from. A profile with status != "verified" never produces an image.
 
 This module also carries the two cross-board tables the readers need: FIRMWARE_REVISIONS (every
@@ -75,7 +75,7 @@ def expected_features(profile):
 # display.bin revisions
 # --------------------------------------------------------------------------------------------------
 
-# X:266 H713_MIPS_FW_REVS, widened by the rows of umbau/fixtures/firmware-revisions.json (package A5).
+# X:266 H713_MIPS_FW_REVS, widened by the rows of installer/tests/fixtures/firmware-revisions.json (package A5).
 # The sha256 of a display.bin names its board, its project id and its panel; "hdcp_wait_va" is the
 # address of the wait site inside that revision (A5, .hdcp_wait_va of h713_mips_fw_revs[]).
 # Only the first two rows are declared by h713_mips_fw_revs[] in arch/arm/mach-sunxi/h713_mips.c --

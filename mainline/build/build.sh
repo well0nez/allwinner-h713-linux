@@ -39,8 +39,7 @@ ATF="$ROOT/external/arm-trusted-firmware"
 mkdir -p "$OUT" "$CACHE"
 
 # --- board profile ----------------------------------------------------------
-# One directory per board, boards/<id>/board.env (doku/121 §3, umbau/plan/
-# api-stufe4.md). It sets BOARD_ID STATUS PROFILE IMAGE_NAME KERNEL_DTB
+# One directory per board, boards/<id>/board.env (doku/121 §3). It sets BOARD_ID STATUS PROFILE IMAGE_NAME KERNEL_DTB
 # UBOOT_BOARD (and, for cstenger's boards, the defconfig names they use today).
 # KERNEL_DTB is the reason this is read here: which device tree a board boots
 # is a property of the board, not of the release. The boards live next to

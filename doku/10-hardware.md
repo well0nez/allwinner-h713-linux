@@ -33,8 +33,9 @@ Nachgemessen am eigenen Vollabzug (13.09., `doku/120` §4.1): bei LBA 16 und
 LBA 256 steht je ein `eGON.BT0`, ab Offset `0x38` der 24-Wort-Block. Davon
 kommen `zq`, `para1`, die Moduleregister und `tpr3`–`tpr12` wörtlich von dort;
 `tpr0`–`tpr2` rechnet cstengers generalisierter DDR3-Block aus dem Takt
-(boot0: `0x004A2195`/`0x02423190`/`0x0008B061`), und `PARA2`/`TPR13` schreibt
-das Flash-Werkzeug beim Einspielen hinein (boot0: `0` und `0x34010100`).
+(boot0: `0x004A2195`/`0x02423190`/`0x0008B061`, defconfig:
+`0x00482151`/`0x01B1A94C`/`0x0006E04D`); bei `PARA2`/`TPR13` steht unten nicht
+der boot0-, sondern der **defconfig**-Wert (siehe Korrektur unter dem Block).
 `tpr11`/`tpr12` sind boardspezifische PHY-Abstimmung und lassen sich aus
 nichts herleiten — deshalb liest `h713_probe` den Block vom Gerät:
 
@@ -52,8 +53,16 @@ dram_mr3    0x00000000   dram_tpr12  0x00006666
                          dram_tpr13  0xB4016103
 ```
 
-Bis auf den Takt identisch mit `hy200_qz713df_a1_defconfig`. Sein
-generalisierter DDR3-Timing-Block rechnet 792 korrekt, ohne Änderung —
+**Korrektur (14.09., Stufe 4; der Hinweis stand seit dem 13.09. in `doku/120`
+§4.1):** Dieser Block ist gemischt. `para2 0x04000000` und `tpr13 0xB4016103`
+sind die **defconfig**-Werte, nicht die des boot0 — im boot0 des Geräts wie im
+`update.img` stehen dort `0` und `0x34010100`
+(`installer/h713/profiles/hy310.py`, Feld `dram`, gelesen aus
+`boot0_sdcard.fex+0x38`). Alles andere im Block kommt aus dem boot0.
+
+Unser ausgeliefertes DRAM-Fragment (`boards/hy310/uboot.config`) ist bis auf
+den Takt identisch mit dem von `hy200-qz713df-a1`. Sein generalisierter
+DDR3-Timing-Block rechnet 792 korrekt, ohne Änderung —
 `hs = eclk > 800` ist bei 792 falsch, also derselbe Speed-Bin wie sein 624.
 
 ## Panel
