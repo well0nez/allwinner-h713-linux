@@ -11,9 +11,14 @@ import support                 # imported first: it puts the work dir on sys.pat
 import fakedisk
 
 # frozen 2026-09-14 from h713-extract 0.4: board -> (exit code, recognised
-# device, artefakte, digest of the sorted (path, size, sha256) list).  Exit 1 on
+# device, files, digest of the sorted (path, size, sha256) list).  Exit 1 on
 # the two ADT-3 images is documented behaviour, not a failure: no device profile
 # matches them, so the extractor reports a best effort.
+#
+# doku/121 stage 3 ("stage 3 texts") renamed the MANIFEST keys this test reads --
+# manifest["artefakte"] -> manifest["files"], a["pfad"/"groesse"] -> a["path"/"size"]
+# (the full table is in TEXTS-extract.md).  Not one value changed with it, so all
+# three digests below stayed exactly as they were frozen; nothing was re-frozen here.
 #
 # Re-frozen on 2026-09-14 for stage 2 C-D (second MIPS source): the ADT-3 images have no mips/ in
 # their bootloader FAT, so the extractor found nothing there; now it also reads the vendor copy in
@@ -46,8 +51,8 @@ class ExtractManifest(unittest.TestCase):
             manifest = json.load(fh)
         self.assertEqual((proc.returncode, manifest["exit_code"], manifest["device"]),
                          (want_code, want_code, want_device), text)
-        rows = sorted((a["pfad"], a["groesse"], a["sha256"])
-                      for a in manifest["artefakte"])
+        rows = sorted((a["path"], a["size"], a["sha256"])
+                      for a in manifest["files"])
         names = [r[0] for r in rows]
         self.assertEqual(len(rows), want_count, names)
         self.assertEqual(support.digest(rows), want_digest, names)

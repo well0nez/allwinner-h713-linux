@@ -40,7 +40,7 @@ class Fat:
         self.problems: list[str] = []
         b = q.read(0, 512)
         if len(b) < 512:
-            raise Abort(f"{origin}: zu klein für einen FAT-Bootsektor")
+            raise Abort(f"{origin}: too small for a FAT boot sector")
         self.bps = struct.unpack_from("<H", b, 11)[0]
         self.spc = b[13]
         self.reserved = struct.unpack_from("<H", b, 14)[0]
@@ -50,7 +50,7 @@ class Fat:
         fatsz16 = struct.unpack_from("<H", b, 22)[0]
         ts32 = struct.unpack_from("<I", b, 32)[0]
         if not self.bps or not self.spc or not self.nfats or not self.reserved:
-            raise Abort(f"{origin}: kein brauchbarer FAT-BPB (bps {self.bps}, spc {self.spc}, fats {self.nfats})")
+            raise Abort(f"{origin}: no usable FAT BPB (bps {self.bps}, spc {self.spc}, fats {self.nfats})")
         self.total = ts16 or ts32
         self.fatsz = fatsz16 or struct.unpack_from("<I", b, 36)[0]
         self.root_cluster = 0 if fatsz16 else struct.unpack_from("<I", b, 44)[0]
@@ -67,22 +67,22 @@ class Fat:
         else:
             self.type, self.eoc = "FAT32", 0x0FFFFFF8
         self.label = b[43:54].decode("latin1", "replace").strip() if fatsz16 else b[71:82].decode("latin1", "replace").strip()
-        self.description = (f"{self.type}, {self.bps} B/Sektor, {self.spc} Sektoren/Cluster ({self.cluster_bytes} B), "
-                            f"{self.nfats} FATs à {self.fatsz} Sektoren, Wurzel {self.root_entries} Einträge, "
-                            f"{self.total} Sektoren = {self.total * self.bps} B, {self.cluster_count} Cluster, "
-                            f"Label '{self.label}'")
+        self.description = (f"{self.type}, {self.bps} B/sector, {self.spc} sectors/cluster ({self.cluster_bytes} B), "
+                            f"{self.nfats} FATs of {self.fatsz} sectors, root {self.root_entries} entries, "
+                            f"{self.total} sectors = {self.total * self.bps} B, {self.cluster_count} clusters, "
+                            f"label '{self.label}'")
         log.info(f"{origin}: {self.description}")
         if self.total * self.bps > q.size:
             # bootloader_a/_b are 32 MiB while the BPB claims 128 MiB; boot-resource.fex is cut off behind the
             # payload. Both are harmless as long as the used clusters lie inside the source — otherwise reading
             # the individual file fails and is reported there.
-            note = (f"FAT-Volumen behauptet {self.total * self.bps} B, die Quelle hat {q.size} B — "
-                    f"es wird nur gelesen, was vorhanden ist")
+            note = (f"the FAT volume claims {self.total * self.bps} B, the source has {q.size} B -- "
+                    f"only what is there is read")
             self.problems.append(note)
             log.info("  " + note)
         self._fat = q.read(self.fat_start * self.bps, min(self.fatsz * self.bps, max(0, q.size - self.fat_start * self.bps)))
         if len(self._fat) < 4:
-            raise Abort(f"{origin}: FAT-Tabelle nicht lesbar")
+            raise Abort(f"{origin}: FAT table not readable")
 
     # ---- cluster chain --------------------------------------------------------------------------
 
@@ -106,7 +106,7 @@ class Fat:
         seen: set[int] = set()
         while 2 <= c < self.eoc:
             if c in seen:
-                raise Abort(f"{self.origin}: Clusterkette läuft im Kreis bei {c}")
+                raise Abort(f"{self.origin}: the cluster chain loops at {c}")
             seen.add(c)
             out.append(c)
             if max_cluster is not None and len(out) >= max_cluster:
@@ -193,14 +193,14 @@ class Fat:
         got = 0
         for c in self.chain(e["cluster"], needed):
             if c - 2 >= self.cluster_count:
-                raise Abort(f"{self.origin}: {e['name']}: Cluster {c} liegt außerhalb des Volumens")
+                raise Abort(f"{self.origin}: {e['name']}: cluster {c} lies outside the volume")
             b = self.q.read(self._cluster_offset(c), self.cluster_bytes)
             if len(b) < self.cluster_bytes and got + len(b) < e["groesse"]:
-                raise Abort(f"{self.origin}: {e['name']}: Quelle endet mitten in Cluster {c} "
-                            f"({got + len(b)} von {e['groesse']} B) — Abbild abgeschnitten?")
+                raise Abort(f"{self.origin}: {e['name']}: the source ends in the middle of cluster {c} "
+                            f"({got + len(b)} of {e['groesse']} B) -- image truncated?")
             parts.append(b)
             got += len(b)
         d = b"".join(parts)
         if len(d) < e["groesse"]:
-            raise Abort(f"{self.origin}: {e['name']}: Clusterkette endet nach {len(d)} von {e['groesse']} B")
+            raise Abort(f"{self.origin}: {e['name']}: the cluster chain ends after {len(d)} of {e['groesse']} B")
         return d[:e["groesse"]]

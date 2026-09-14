@@ -80,9 +80,9 @@ class Gpt:
             s, en = struct.unpack_from("<QQ", e, 32)
             name = e[56:128].decode("utf-16le", "replace").rstrip("\0")
             self.parts[name] = (s, en - s + 1)
-        log.info(f"GPT: Kopf-CRC {'ok' if self.header_ok else 'FALSCH'}, Tabellen-CRC {'ok' if self.table_ok else 'FALSCH'}, "
-                 f"{pe_n} Einträge à {pe_sz} B ab LBA {pe_lba}, nutzbar {first}..{last}, Backup-Kopf LBA {bak}")
-        log.info("Partitionen: " + ", ".join(f"{n}@{s}+{c}" for n, (s, c) in self.parts.items()))
+        log.info(f"GPT: header CRC {'ok' if self.header_ok else 'WRONG'}, table CRC {'ok' if self.table_ok else 'WRONG'}, "
+                 f"{pe_n} entries of {pe_sz} B from LBA {pe_lba}, usable {first}..{last}, backup header LBA {bak}")
+        log.info("partitions: " + ", ".join(f"{n}@{s}+{c}" for n, (s, c) in self.parts.items()))
 
     def partition(self, q: Source, name: str) -> Optional[Source]:
         p = self.parts.get(name)
@@ -91,7 +91,7 @@ class Gpt:
         s, c = p
         if (s + c) * SECTOR > q.size:
             return None
-        return q.sub(s * SECTOR, c * SECTOR, f"Partition {name} (LBA {s}, {c} Sektoren)")
+        return q.sub(s * SECTOR, c * SECTOR, f"partition {name} (LBA {s}, {c} sectors)")
 
 
 # --------------------------------------------------------------------------------- builder
@@ -252,30 +252,30 @@ def check_gpt(mbr_header_table, part_c, disk_sectors=None, *,
     if mbr_header_table[510:512] != b"\x55\xaa":
         p.append("Schutz-MBR ohne 55AA")
     if mbr_header_table[450] != 0xEE:
-        p.append("Schutz-MBR: erster Eintrag ist nicht Typ 0xEE")
+        p.append("protective MBR: the first entry is not type 0xEE")
     hdr = mbr_header_table[SECTOR:2 * SECTOR]
     if hdr[:8] != b"EFI PART":
-        p.append("primaerer GPT-Kopf ohne Signatur")
+        p.append("primary GPT header without a signature")
         return p
     hsz = struct.unpack_from("<I", hdr, 12)[0]
     stored = struct.unpack_from("<I", hdr, 16)[0]
     raw = bytearray(hdr[:hsz])
     struct.pack_into("<I", raw, 16, 0)
     if crc32(bytes(raw)) != stored:
-        p.append("CRC des primaeren GPT-Kopfs stimmt nicht")
+        p.append("CRC of the primary GPT header does not match")
     my_lba, alt_lba, first, last = struct.unpack_from("<QQQQ", hdr, 24)
     table_lba, nent, entsz, entry_crc = struct.unpack_from("<QIII", hdr, 72)
     if (my_lba, alt_lba) != (1, disk_sectors - 1):
-        p.append("MyLBA/AlternateLBA falsch (%d/%d)" % (my_lba, alt_lba))
+        p.append("MyLBA/AlternateLBA wrong (%d/%d)" % (my_lba, alt_lba))
     if first != first_usable:
-        p.append("FirstUsableLBA ist %d, erwartet %d" % (first, first_usable))
+        p.append("FirstUsableLBA is %d, expected %d" % (first, first_usable))
     if last != disk_sectors - 34:
-        p.append("LastUsableLBA ist %d, erwartet %d" % (last, disk_sectors - 34))
+        p.append("LastUsableLBA is %d, expected %d" % (last, disk_sectors - 34))
     if (nent, entsz) != (entry_count, entry_size):
-        p.append("%d Eintraege a %d Byte, erwartet %d a %d" % (nent, entsz, entry_count, entry_size))
+        p.append("%d entries of %d bytes, expected %d of %d" % (nent, entsz, entry_count, entry_size))
     tab = mbr_header_table[table_lba * SECTOR:table_lba * SECTOR + nent * entsz]
     if crc32(tab) != entry_crc:
-        p.append("CRC der Partitionstabelle stimmt nicht")
+        p.append("CRC of the partition table does not match")
     found = []
     for i in range(nent):
         e = tab[i * entsz:(i + 1) * entsz]
@@ -290,19 +290,19 @@ def check_gpt(mbr_header_table, part_c, disk_sectors=None, *,
     if part_c is not None:
         bhdr = part_c[(disk_sectors - 1 - part_c_lba) * SECTOR:][:SECTOR]
         if bhdr[:8] != b"EFI PART":
-            p.append("Sicherungskopie des GPT-Kopfs fehlt am Plattenende (Befund S46 B7)")
+            p.append("the backup copy of the GPT header is missing at the end of the disk (finding S46 B7)")
         else:
             bmy, balt, _bf, _bl = struct.unpack_from("<QQQQ", bhdr, 24)
             btable_lba = struct.unpack_from("<Q", bhdr, 72)[0]
             if (bmy, balt) != (disk_sectors - 1, 1):
-                p.append("Sicherungskopf: MyLBA/AlternateLBA falsch")
+                p.append("backup header: MyLBA/AlternateLBA wrong")
             btab = part_c[(btable_lba - part_c_lba) * SECTOR:][:nent * entsz]
             if btab != tab:
-                p.append("Sicherungstabelle weicht von der primaeren ab")
+                p.append("the backup table differs from the primary one")
             bhsz = struct.unpack_from("<I", bhdr, 12)[0]
             bstored = struct.unpack_from("<I", bhdr, 16)[0]
             braw = bytearray(bhdr[:bhsz])
             struct.pack_into("<I", braw, 16, 0)
             if crc32(bytes(braw)) != bstored:
-                p.append("CRC des Sicherungskopfs stimmt nicht")
+                p.append("CRC of the backup header does not match")
     return p

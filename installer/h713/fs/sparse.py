@@ -43,9 +43,9 @@ def write_sparse(disk, data, part_lba, dry_run=False):
     (_, maj, _mn, fhsz, chsz, blk, nblk, nchunk, _crc) = struct.unpack(
         "<IHHHHIIII", data.read(0, 28))
     if maj != 1:
-        raise RuntimeError("Sparse-Version %d wird nicht unterstuetzt" % maj)
+        raise RuntimeError("sparse version %d is not supported" % maj)
     if blk % SECTOR:
-        raise RuntimeError("Sparse-Blockgroesse %d ist kein Vielfaches von %d" % (blk, SECTOR))
+        raise RuntimeError("sparse block size %d is not a multiple of %d" % (blk, SECTOR))
     step = 1 << 20                        # write in 1 MiB steps
     pos, block, written = fhsz, 0, 0
 
@@ -87,10 +87,10 @@ def write_sparse(disk, data, part_lba, dry_run=False):
         elif ctype == _CHUNK_CRC32:
             pass
         else:
-            raise RuntimeError("unbekannter Sparse-Stuecktyp 0x%04x" % ctype)
+            raise RuntimeError("unknown sparse chunk type 0x%04x" % ctype)
         block += cblk
         pos += csz
     if block != nblk:
-        raise RuntimeError("Sparse-Abbild unvollstaendig: %d von %d Bloecken"
+        raise RuntimeError("sparse image incomplete: %d of %d blocks"
                            % (block, nblk))
     return written

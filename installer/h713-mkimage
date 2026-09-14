@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""h713-mkimage -- build the installable image for the HY310/H713 projector.
+
+Out of the pieces we have (SPL, U-Boot proper, kernel FIT, the two ext4 file
+systems) it makes an image following layout v3 (doku/109 §2), plus the offset
+table, a manifest, checksums and a README file.
+
+THE IMAGE HAS A HOLE. At LBA 12288..14335 sits the secure storage: HDCP keys, the
+WLAN and Bluetooth MAC addresses, the serial number. Device-specific, in no firmware
+image, not restorable (doku/109 §2.3). That is why the image is not one continuous
+file but three pieces, and the locked range is in none of them -- so even a dd by
+hand cannot overwrite it. Reasoning in doku/nachtlog/S47.
+
+THE PROPRIETARY FILES ARE PLACEHOLDERS. 43 files (19 display artefacts, 3
+firmware files, 8 PQ files, 13 WLAN firmware files) may not be handed out. The
+image carries placeholders of exactly the right size in their place;
+`h713-install` fills them from what `h713-extract` pulled out of the user's own
+device. Where they sit is in the offset table.
+
+THE USER'S SSH KEY IS A PLACEHOLDER TOO. /root/.ssh/authorized_keys is a file of
+fixed size (4096 B) filled with line breaks -- for sshd an empty file, so valid
+even if nobody fills it; `h713-install --ssh-key FILE` writes the public key
+into it. No key is handed out with the image (doku/107 §3). Owner and modes
+(root:root, /root/.ssh 0700, the file 0600) come from the tree, and step 5
+checks them in the finished ext4 -- sshd would otherwise ignore the key silently.
+
+Commands:
+  build -o out/hy310-v0.1.img          image (three pieces), table, checksums, README
+  check out/hy310-v0.1.tabelle.json    validate a finished image: sizes, checksums,
+                                       GPT, where the placeholders lie, hole untouched
+  tree-boot DIR / tree-rootfs DIR      only the file trees with the placeholders;
+                                       mkimage-inputs.sh makes the two ext4 out of
+                                       them (in the container, not at the user)
+The old switches --out/--pruefen/--baum-boot/--baum-rootfs are still accepted for one
+release; each prints one line saying what it is called now.
+
+Runs under Linux and Windows: Python 3.9+, standard library only, no external
+programs. The one part that needs more is finding the placeholder offsets in the
+finished ext4 -- the pure-Python ext4 reader of h713-extract does that (S45), at
+build time, not at the user; `check` does without it.
+"""
+
+# Stage 3 of doku/121: the tool is a thin script over the h713 package; subcommands
+# instead of flags, and every printed line is English.
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from h713.mkimage import VERSION, build, check, tree_boot, tree_rootfs   # noqa: E402
+
+COMMANDS = ("build", "check", "tree-boot", "tree-rootfs")
+# old flag -> (subcommand, how it is called now); accepted for one release, hidden in --help.
+ALIASES = {"--out": ("build", "build -o FILE"), "--pruefen": ("check", "check TABLE.json"),
+           "--baum-boot": ("tree-boot", "tree-boot DIR"), "--baum-rootfs": ("tree-rootfs", "tree-rootfs DIR")}
+
+
+def translate(argv):
+    """Turn an old-style call into the new one, and say so once per switch."""
+    if not argv or argv[0] in COMMANDS:
+        return argv
+    out, command = [], None
+    for arg in argv:
+        flag, _, value = arg.partition("=")
+        if flag not in ALIASES:
+            out.append(arg)
+            continue
+        command, hint = ALIASES[flag]
+        print("`%s` is now `h713-mkimage %s`" % (flag, hint), file=sys.stderr)
+        if flag == "--out":
+            out += ["-o"] + ([value] if value else [])
+        elif value:
+            out.append(value)
+    return [command] + out if command else argv
+
+
+def parser():
+    p = argparse.ArgumentParser(
+        prog="h713-mkimage",
+        description="Build the installable image for the HY310/H713 projector (doku/109, doku/110).",
+        formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
+    p.add_argument("--version", action="version", version="h713-mkimage " + VERSION)
+    sub = p.add_subparsers(dest="command")
+
+    b = sub.add_parser("build", help="build the image, the table, the checksums and the README")
+    b.add_argument("-o", "--out", required=True, metavar="FILE.img",
+                   help="target; table, checksums and README are written next to it")
+    b.add_argument("--spl", help="SPL (default: mainline/build/out/spl-release.bin)")
+    b.add_argument("--uboot", help="U-Boot proper (default: mainline/build/out/uboot-proper-release.bin)")
+    b.add_argument("--env", help="U-Boot environment, 64 KiB with a CRC from mkenvimage "
+                                 "(default: mainline/build/out/hy310-env-release.bin)")
+    b.add_argument("--boot-ext4", help="finished hy310-boot.ext4 (128 MiB)")
+    b.add_argument("--rootfs-ext4", help="finished hy310-rootfs.ext4 with the placeholders")
+    b.add_argument("--fit", help=argparse.SUPPRESS)          # only tree-boot uses it
+    b.add_argument("--extraktor", help=argparse.SUPPRESS)    # accepted, ignored (release/build-all.sh passes it)
+
+    sub.add_parser("check", help="validate a finished image against its table").add_argument("table", metavar="TABLE.json")
+    tb = sub.add_parser("tree-boot", help="write the file tree for hy310-boot")
+    tb.add_argument("directory", metavar="DIR")
+    tb.add_argument("--fit", help="kernel FIT that goes into the tree")
+    sub.add_parser("tree-rootfs", help="write the rootfs placeholders (an overlay)").add_argument(
+        "directory", metavar="DIR")
+    return p
+
+
+def main(argv=None):
+    p = parser()
+    args = p.parse_args(translate(list(sys.argv[1:] if argv is None else argv)))
+    print("h713-mkimage %s" % VERSION)
+    if args.command == "tree-boot":
+        return 0 if tree_boot(args.directory, args.fit) else 1
+    if args.command == "tree-rootfs":
+        return 0 if tree_rootfs(args.directory) else 1
+    if args.command == "check":
+        return check(args.table)
+    if args.command == "build":
+        return build(args, here=os.path.dirname(os.path.abspath(__file__)))
+    p.print_help()
+    return 2
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\nAborted.", file=sys.stderr)
+        sys.exit(130)

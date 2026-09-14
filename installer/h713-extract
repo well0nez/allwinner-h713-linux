@@ -1,39 +1,41 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""h713-extract — die proprietären Teile eines H713-Beamers (HY310, L018) aus der Stock-Firmware ziehen.
+"""h713-extract -- pull the proprietary parts of an H713 projector (HY310, L018) out of its stock firmware.
 
-Geräteprofile: hy310 (Referenz = Netboot-Root des HY310) und l018 (eigene Referenzwerte, S42 Nachtrag). Das Gerät wird am
-sha256 des Eingangs erkannt oder inhaltlich (scp/u-boot/dtb-Hashes, U-Boot- und ARISC-Kennung, Vendor-Fingerprint,
-sunxi_version, vendor-Größe) — so lassen sich auch Einzelteile (--part, --fex-dir) einem Gerät zuordnen.
+Board profiles: hy310 (reference = the netboot root of the HY310) and l018 (its own reference values, S42
+addendum). The device is recognised by the sha256 of the input or by its content (scp/u-boot/dtb hashes,
+U-Boot and ARISC identifier, vendor fingerprint, sunxi_version, vendor size) -- that way single parts
+(--part, --fex-dir) can be assigned to a device as well.
 
-Eingänge (werden erkannt):
-  * Allwinner-Firmware-Image (IMAGEWTY-Container, z. B. update.img)
-  * roher eMMC-Dump (GPT + boot0 an LBA 16/256 + sunxi-package/TOC1 an LBA 24576/32800)
-  * einzelne Partitions-/.fex-Dateien:  --part boot_package=DATEI  --part super=DATEI  --part vendor=DATEI
-    --part bootloader_b=DATEI / --part boot-resource=DATEI (FAT16-Abbild mit mips/)
-    oder ein Verzeichnis mit entpackten .fex:  --fex-dir VERZEICHNIS
+Inputs (recognised by themselves):
+  * an Allwinner firmware image (IMAGEWTY container, e.g. update.img)
+  * a raw eMMC dump (GPT + boot0 at LBA 16/256 + sunxi-package/TOC1 at LBA 24576/32800)
+  * single partition/.fex files:  --part boot_package=FILE  --part super=FILE  --part vendor=FILE
+    --part bootloader_b=FILE / --part boot-resource=FILE (a FAT16 image holding mips/)
+    or a directory of unpacked .fex files:  --fex-dir DIR
 
-Ausgabe (unter --out, Vorgabe ./h713-extract-out):
-  lib/firmware/h713-arisc.bin        (= scp-Item des sunxi-package)
+Output (under --out, default ./h713-extract-out):
+  lib/firmware/h713-arisc.bin        (= the scp item of the sunxi-package)
   lib/firmware/hy310-edid.bin        (= HDMI_EDID_14.bin + HDMI_EDID_20.bin, 512 B)
-  lib/firmware/h713/msp-patch.bin    (= Symbol patch_msp aus libmspsound.so, MSPM-Blöcke)
-  pq/…                               (die Dateien, die h713-pq liest)
-  boot/mips/…                        (= MIPS-/Display-Artefakte aus bootloader_a/bootloader_b, was U-Boot liest)
-  lib/firmware/aic8800_fw/SDIO/aic8800D80/…  (= WLAN-Firmware des AIC8800D80 aus vendor:/etc/firmware/aic8800d80/)
-  MANIFEST.json, BERICHT.txt
+  lib/firmware/h713/msp-patch.bin    (= symbol patch_msp out of libmspsound.so, MSPM blocks)
+  pq/...                             (the files h713-pq reads)
+  boot/mips/...                      (= MIPS/display artefacts from bootloader_a/bootloader_b, what U-Boot reads)
+  lib/firmware/aic8800_fw/SDIO/aic8800D80/...  (= WLAN firmware of the AIC8800D80 from vendor:/etc/firmware/aic8800d80/)
+  MANIFEST.json, REPORT.txt (BERICHT.txt is written as a copy for one more release)
 
-Exit-Codes: 0 = bekanntes Gerät (hy310 oder l018), alles geprüft und referenzgleich; 1 = unbekanntes Image (kein Profil passt,
-Best-Effort mit Abweichungsliste) oder fehlende/fehlerhafte Teile (Ausgabe liegt trotzdem); 2 = Fehler.
+Exit codes: 0 = known device (hy310 or l018), everything checked and equal to the reference; 1 = unknown image
+(no profile fits, best effort with a deviation list) or missing/faulty parts (the output is there all the same);
+2 = error.
 
-Nur Python-Standardbibliothek — auch ext4 (vendor) wird selbst gelesen, ohne debugfs/e2fsprogs; damit läuft das
-Werkzeug auch unter Windows. Der alte Weg über `debugfs` bleibt als Gegenprobe erhalten: --use-debugfs.
-Nie angefasst: HDCP-/DRM-Schlüssel, APKs, Android-System. Die WLAN-Firmware wird seit dem 12.09.2026 mitgenommen
-(--no-wlan schaltet es ab): sie ist am Gerät geprüft, und weil sie aus dem Abzug des Nutzers kommt, muss nichts
-Proprietäres ausgeliefert werden. Die BT-Firmware (fmacfwbt_*) liegt nicht in der vendor-Partition und bleibt offen.
+Python standard library only -- even ext4 (vendor) is read by this tool, without debugfs/e2fsprogs, so it runs
+under Windows too. The old way through `debugfs` stays as a counter-check: --use-debugfs.
+Never touched: HDCP/DRM keys, APKs, the Android system. The WLAN firmware has been taken along since 12.09.2026
+(--no-wlan switches it off): it has been checked on the device, and because it comes out of the user's own dump,
+nothing proprietary has to be shipped. The BT firmware (fmacfwbt_*) is not in the vendor partition and stays open.
 """
 
-# Stage 1 of doku/121: h713-extract is a thin script over the h713 package (h713.extract.Run);
-# every flag, every log line, MANIFEST.json and BERICHT.txt are unchanged (German until stage 3).
+# Stage 3 of doku/121: h713-extract is a thin script over the h713 package (h713.extract.Run);
+# every flag is unchanged, every help text, log line, MANIFEST.json key and the report are English.
 
 from __future__ import annotations
 
@@ -49,32 +51,33 @@ from h713.log import Log                # noqa: E402
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="h713-extract", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("input", nargs="?", help="update.img (IMAGEWTY), roher eMMC-Dump, boot_package.fex, super.fex oder vendor-ext4")
+    ap.add_argument("input", nargs="?", help="update.img (IMAGEWTY), a raw eMMC dump, boot_package.fex, super.fex or a vendor ext4")
+
     def part(s):
         if "=" not in s:
-            raise argparse.ArgumentTypeError(f"--part erwartet NAME=DATEI, nicht '{s}'")
+            raise argparse.ArgumentTypeError(f"--part expects NAME=FILE, not '{s}'")
         return tuple(s.split("=", 1))
 
-    ap.add_argument("--part", action="append", metavar="NAME=DATEI", type=part,
-                    help="Einzelteil: boot_package=…, bootloader_a=…, bootloader_b=…, boot-resource=…, super=…, "
-                         "vendor=…, emmc=… (mehrfach)")
-    ap.add_argument("--fex-dir", metavar="DIR", help="Verzeichnis mit entpackten .fex (boot_package.fex, super.fex, boot-resource.fex)")
-    ap.add_argument("-o", "--out", default="h713-extract-out", help="Ausgabeverzeichnis (Vorgabe: ./h713-extract-out)")
-    ap.add_argument("--tmp", help="Verzeichnis für Zwischenstände (Vorgabe: <out>/tmp; wird am Ende gelöscht)")
-    ap.add_argument("--keep-tmp", action="store_true", help="Zwischenstände nicht löschen")
-    ap.add_argument("--no-hash", action="store_true", help="sha256 des Eingangs überspringen (Gerät wird dann nur inhaltlich erkannt)")
+    ap.add_argument("--part", action="append", metavar="NAME=FILE", type=part,
+                    help="a single part: boot_package=..., bootloader_a=..., bootloader_b=..., boot-resource=..., "
+                         "super=..., vendor=..., emmc=... (repeatable)")
+    ap.add_argument("--fex-dir", metavar="DIR", help="directory of unpacked .fex files (boot_package.fex, super.fex, boot-resource.fex)")
+    ap.add_argument("-o", "--out", default="h713-extract-out", help="output directory (default: ./h713-extract-out)")
+    ap.add_argument("--tmp", help="directory for scratch files (default: <out>/tmp; deleted at the end)")
+    ap.add_argument("--keep-tmp", action="store_true", help="do not delete the scratch files")
+    ap.add_argument("--no-hash", action="store_true", help="skip the sha256 of the input (the device is then recognised by content alone)")
     ap.add_argument("--use-debugfs", action="store_true",
-                    help="ext4 über debugfs (e2fsprogs) statt über den eingebauten Leser — Gegenprobe, braucht e2fsprogs")
-    ap.add_argument("--no-pq", action="store_true", help="PQ-Dateien nicht kopieren")
-    ap.add_argument("--no-mips", action="store_true", help="MIPS-/Display-Artefakte (boot/mips/…) nicht extrahieren")
-    ap.add_argument("--no-wlan", action="store_true", help="WLAN-Firmware (lib/firmware/aic8800_fw/…) nicht extrahieren")
-    ap.add_argument("-q", "--quiet", action="store_true", help="nur Ergebniszeilen")
+                    help="read ext4 through debugfs (e2fsprogs) instead of the built-in reader -- a counter-check, needs e2fsprogs")
+    ap.add_argument("--no-pq", action="store_true", help="do not copy the PQ files")
+    ap.add_argument("--no-mips", action="store_true", help="do not extract the MIPS/display artefacts (boot/mips/...)")
+    ap.add_argument("--no-wlan", action="store_true", help="do not extract the WLAN firmware (lib/firmware/aic8800_fw/...)")
+    ap.add_argument("-q", "--quiet", action="store_true", help="result lines only")
     ap.add_argument("--version", action="version", version=f"h713-extract {VERSION}")
     args = ap.parse_args(argv)
     if not args.input and not args.part and not args.fex_dir:
-        ap.error("Eingang fehlt (Datei, --part … oder --fex-dir …)")
+        ap.error("input missing (a file, --part ... or --fex-dir ...)")
     if args.input and (args.part or args.fex_dir):
-        ap.error("entweder eine Eingangsdatei oder --part/--fex-dir")
+        ap.error("either one input file or --part/--fex-dir")
     log = Log(args.quiet)
     log.heading(f"h713-extract {VERSION}")
     return Run(args, log).run()
@@ -82,4 +85,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

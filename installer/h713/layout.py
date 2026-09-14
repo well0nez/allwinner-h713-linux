@@ -6,12 +6,14 @@ table, the three pieces of the image, the locked range in the middle, and the
 list of placeholders that stand in for the files we may not redistribute.
 Numbers only -- who writes them where is in `h713.mkimage` and `h713.install`.
 
-Moved from hy310-mkimage.py (M:77-204, M:261-293), stage 1 (doku/121).
+Moved from hy310-mkimage.py (M:77-204, M:261-293), stage 1 (doku/121). Stage 3
+changed no value here: the fill pattern of `pattern()` is image content, not a
+printed line -- see the note there.
 """
 
 from __future__ import annotations
 
-# The locked range. Identical to LOCK_FIRST/LOCK_LAST in hy310-install.py --
+# The locked range. Identical to LOCK_FIRST/LOCK_LAST in h713.blockdev --
 # the two values belong together and are checked here.
 from h713.blockdev import LOCK_FIRST, LOCK_LAST
 
@@ -116,7 +118,7 @@ PLACEHOLDERS = [
 
 # Placeholders that do NOT come from h713-extract but from the user:
 # same mechanics (fixed size, offset out of the ext4), different source and
-# different filling. hy310-install lists them under "platzhalter_nutzer" in the
+# different filling. h713-install lists them under "platzhalter_nutzer" in the
 # table; an older installer does not know the key and leaves the file as it is
 # -- and as it is, it is valid (line breaks only).
 #   name -> (size, target partition, path, mode)
@@ -130,7 +132,7 @@ USER_DIRECTORIES = [
 # What has to be right in the finished ext4, otherwise sshd will not take the
 # key (StrictModes): owner root, and these modes. /etc/passwd is in the list
 # because a tree unpacked as a user gives EVERY file uid 1000 -- that is how it
-# was in image v0.5 on 11.09. (mkimage-eingaben.sh did not run as root).
+# was in image v0.5 on 11.09. (mkimage-inputs.sh did not run as root).
 # (path, expected mode or None, uid, gid)
 ROOTFS_PERMISSIONS = [
     ("/etc/passwd", 0o644, 0, 0),
@@ -154,6 +156,13 @@ def pattern(name, length):
     the file is not filled yet and which one it is, (2) for nothing but zeros
     mke2fs may create a hole (sparse) -- then there would be no physical
     blocks for the installer to write into.
+
+    Stage 3 does NOT translate this string. It is not a printed line but the
+    content of the image: it stands in every built image, its sha256 is in the
+    table under "sha256_muster", and `h713-mkimage check` decides from it
+    whether a placeholder is still unfilled. Translating it would make every
+    image built before stage 3 read as "already filled". It goes when the
+    release format changes (stage 4).
     """
     core = ("HY310-PLATZHALTER %s -- hy310-install fuellt das. " % name).encode("ascii", "replace")
     n = -(-length // len(core))

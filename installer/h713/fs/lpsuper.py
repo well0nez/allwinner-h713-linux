@@ -34,15 +34,15 @@ class LpSuper:
                 ok = hashlib.sha256(bytes(gg)).digest() == chk
                 if ok:
                     geo = g
-                    log.info(f"LP-Geometrie @{goff} gültig (sha256 ok)")
+                    log.info(f"LP geometry @{goff} valid (sha256 ok)")
                     break
-                log.warn(f"LP-Geometrie @{goff}: Prüfsumme falsch")
+                log.warn(f"LP geometry @{goff}: wrong checksum")
         if geo is None:
-            raise Abort("keine gültige LP-Geometrie bei 4096/8192 — ist das eine 'super'-Partition?")
+            raise Abort("no valid LP geometry at 4096/8192 -- is this a 'super' partition?")
         self.metadata_max_size, self.slot_count, self.logical_block_size = struct.unpack_from("<III", geo, 40)
         log.info(f"LP: metadata_max_size {self.metadata_max_size}, Slots {self.slot_count}, logical_block {self.logical_block_size}")
         base = 4096 + 2 * 4096
-        candidates = [("primär", base)] + [("backup", base + self.slot_count * self.metadata_max_size)]
+        candidates = [("primary", base)] + [("backup", base + self.slot_count * self.metadata_max_size)]
         self.parts: dict[str, dict] = {}
         found = False
         for location, moff in candidates:
@@ -53,7 +53,7 @@ class LpSuper:
             except Abort as e:
                 log.warn(f"LP-Metadaten {location} @{moff}: {e}")
         if not found:
-            raise Abort("keine gültigen LP-Metadaten")
+            raise Abort("no valid LP metadata")
 
     def _read_metadata(self, moff: int, log: Log, location: str):
         h = self.q.read(moff, 256)
@@ -66,7 +66,7 @@ class LpSuper:
         header_checksum = bytes(hdr[12:44])
         hdr[12:44] = b"\0" * 32
         if hashlib.sha256(bytes(hdr)).digest() != header_checksum:
-            raise Abort("Kopf-Prüfsumme falsch")
+            raise Abort("wrong header checksum")
         tables_size = struct.unpack_from("<I", h, 44)[0]
         tables_checksum = h[48:80]
         p_off, p_n, p_sz = struct.unpack_from("<III", h, 80)
@@ -75,7 +75,7 @@ class LpSuper:
         b_off, b_n, b_sz = struct.unpack_from("<III", h, 116)
         tab = self.q.read(moff + header_size, tables_size)
         if hashlib.sha256(tab).digest() != tables_checksum:
-            raise Abort("Tabellen-Prüfsumme falsch")
+            raise Abort("wrong table checksum")
         extents = []
         for i in range(e_n):
             e = tab[e_off + i * e_sz:e_off + (i + 1) * e_sz]
@@ -96,17 +96,17 @@ class LpSuper:
             attrs, first_ext, n_ext, grp = struct.unpack_from("<IIII", p, 36)
             exts = extents[first_ext:first_ext + n_ext]
             size = sum(x[0] for x in exts) * SECTOR
-            # dict keys stay as they are — the extractor's JSON depends on them (stage 1)
+            # stage 3: "gruppe" -> "group"; the extractor maps these keys into its JSON
             self.parts[name] = {"attrs": attrs, "extents": exts, "size": size,
-                                "gruppe": groups[grp] if grp < len(groups) else "?"}
+                                "group": groups[grp] if grp < len(groups) else "?"}
         self.version = f"{major}.{minor}"
         self.location = location
         self.devices = devices
-        log.info(f"LP-Metadaten {location} @{moff}: v{major}.{minor}, header_size {header_size}, {p_n} Partitionen, {e_n} Extents, "
-                 f"{g_n} Gruppen, Blockgeräte {', '.join(f'{n}({s} B)' for n, _f, s in devices)}")
+        log.info(f"LP metadata {location} @{moff}: v{major}.{minor}, header_size {header_size}, {p_n} partitions, {e_n} extents, "
+                 f"{g_n} groups, block devices {', '.join(f'{n}({s} B)' for n, _f, s in devices)}")
         for name, p in self.parts.items():
-            ex = "; ".join((f"linear Sektor {d}+{n}" if t == 0 else f"zero {n}") for n, t, d, _s in p["extents"])
-            log.info(f"  {name:20s} {p['size']:12d} B  attrs {p['attrs']:#x}  Gruppe {p['gruppe']}  [{ex or 'leer'}]")
+            ex = "; ".join((f"linear sector {d}+{n}" if t == 0 else f"zero {n}") for n, t, d, _s in p["extents"])
+            log.info(f"  {name:20s} {p['size']:12d} B  attrs {p['attrs']:#x}  group {p['group']}  [{ex or 'empty'}]")
 
     def partition(self, name: str, log: Log) -> Optional[Source]:
         p = self.parts.get(name)

@@ -101,7 +101,7 @@ class Ext4(Ext4Base):
         self.problems: list[str] = []
         sb = q.read(0x400, 0x400)
         if len(sb) < 0x100 or struct.unpack_from("<H", sb, 0x38)[0] != self.MAGIC:
-            raise Abort(f"{label}: kein ext4-Superblock (Magic bei 0x438 fehlt) — erofs/f2fs? Nicht unterstützt.")
+            raise Abort(f"{label}: no ext4 superblock (no magic at 0x438) -- erofs/f2fs? Not supported.")
         u32 = lambda o: struct.unpack_from("<I", sb, o)[0]       # noqa: E731
         u16 = lambda o: struct.unpack_from("<H", sb, o)[0]       # noqa: E731
         self.inodes_count = u32(0x00)
@@ -109,7 +109,7 @@ class Ext4(Ext4Base):
         self.first_data_block = u32(0x14)
         log_bs = u32(0x18)
         if log_bs > 16:
-            raise Abort(f"{label}: unsinnige Blockgröße im Superblock (s_log_block_size {log_bs})")
+            raise Abort(f"{label}: nonsensical block size in the superblock (s_log_block_size {log_bs})")
         self.block_size = 1024 << log_bs
         self.blocks_per_group = u32(0x20)
         self.clusters_per_group = u32(0x24)
@@ -126,28 +126,28 @@ class Ext4(Ext4Base):
         blocks_hi = u32(0x150) if (self.feat_incompat & self.INCOMPAT_64BIT) else 0
         self.blocks_count = s_blocks_lo | (blocks_hi << 32)
         # wording as before — it goes into the manifest (eingang.vendor_fs) and into the report exactly like this.
-        self.description = (f"ext4, Block {self.block_size}, {s_blocks_lo} Blöcke = {s_blocks_lo * self.block_size} B, "
-                            f"Label '{vol}', feature_incompat {self.feat_incompat:#x}")
+        self.description = (f"ext4, block {self.block_size}, {s_blocks_lo} blocks = {s_blocks_lo * self.block_size} B, "
+                            f"label '{vol}', feature_incompat {self.feat_incompat:#x}")
         self.log.info(f"{label}: {self.description}")
 
         if not self.inodes_per_group or not self.blocks_per_group or not self.inode_size:
-            raise Abort(f"{label}: unbrauchbarer Superblock (inodes/Gruppe {self.inodes_per_group}, "
-                        f"Blöcke/Gruppe {self.blocks_per_group}, Inode-Größe {self.inode_size})")
+            raise Abort(f"{label}: unusable superblock (inodes/group {self.inodes_per_group}, "
+                        f"blocks/group {self.blocks_per_group}, inode size {self.inode_size})")
         if self.inode_size & (self.inode_size - 1) or self.inode_size < 128:
-            raise Abort(f"{label}: unsinnige Inode-Größe {self.inode_size}")
+            raise Abort(f"{label}: nonsensical inode size {self.inode_size}")
         for bit, what in ((self.INCOMPAT_COMPRESSION, "compression"), (self.INCOMPAT_ENCRYPT, "encrypt"),
                           (self.INCOMPAT_INLINE_DATA, "inline_data"), (self.INCOMPAT_META_BG, "meta_bg")):
             if self.feat_incompat & bit:
-                raise Abort(f"{label}: ext4-Merkmal '{what}' wird von diesem Leser nicht unterstützt "
-                            f"(feature_incompat {self.feat_incompat:#x}) — mit --use-debugfs versuchen")
+                raise Abort(f"{label}: ext4 feature '{what}' is not supported by this reader "
+                            f"(feature_incompat {self.feat_incompat:#x}) -- try --use-debugfs")
         if self.feat_ro_compat & self.ROCOMPAT_BIGALLOC:
-            raise Abort(f"{label}: ext4-Merkmal 'bigalloc' wird von diesem Leser nicht unterstützt "
-                        f"— mit --use-debugfs versuchen")
+            raise Abort(f"{label}: ext4 feature 'bigalloc' is not supported by this reader "
+                        f"-- try --use-debugfs")
 
         self.has_64bit = bool(self.feat_incompat & self.INCOMPAT_64BIT)
         self.desc_size = (desc_size or 32) if self.has_64bit else 32
         if self.desc_size < 32 or self.desc_size > self.block_size:
-            raise Abort(f"{label}: unsinnige Gruppendeskriptorgröße {self.desc_size}")
+            raise Abort(f"{label}: nonsensical group descriptor size {self.desc_size}")
         self.has_filetype = bool(self.feat_incompat & self.INCOMPAT_FILETYPE)
         self.groups = max(1, (self.blocks_count - self.first_data_block + self.blocks_per_group - 1)
                           // self.blocks_per_group)
@@ -155,17 +155,17 @@ class Ext4(Ext4Base):
         gd_off = (self.first_data_block + 1) * self.block_size
         gd = q.read(gd_off, self.groups * self.desc_size)
         if len(gd) < self.groups * self.desc_size:
-            raise Abort(f"{label}: Gruppendeskriptoren unvollständig ({len(gd)} von "
-                        f"{self.groups * self.desc_size} B) — Bereich zu klein?")
+            raise Abort(f"{label}: group descriptors incomplete ({len(gd)} of "
+                        f"{self.groups * self.desc_size} B) -- range too small?")
         self.inode_table: list[int] = []
         for g in range(self.groups):
             d = gd[g * self.desc_size:(g + 1) * self.desc_size]
             lo = struct.unpack_from("<I", d, 8)[0]
             hi = struct.unpack_from("<I", d, 40)[0] if (self.has_64bit and self.desc_size >= 64) else 0
             self.inode_table.append(lo | (hi << 32))
-        self.structure = (f"{self.groups} Gruppe(n) à {self.blocks_per_group} Blöcke, {self.inodes_per_group} Inodes; "
-                          f"Inode-Größe {self.inode_size}, Deskriptor {self.desc_size} B"
-                          f"{' (64bit)' if self.has_64bit else ''}, {self.inodes_count} Inodes, UUID {self.uuid}")
+        self.structure = (f"{self.groups} group(s) of {self.blocks_per_group} blocks, {self.inodes_per_group} inodes; "
+                          f"inode size {self.inode_size}, descriptor {self.desc_size} B"
+                          f"{' (64bit)' if self.has_64bit else ''}, {self.inodes_count} inodes, UUID {self.uuid}")
 
         self._inode_cache: dict[int, dict] = {}
         self._dir_cache: dict[int, list] = {}
@@ -184,15 +184,15 @@ class Ext4(Ext4Base):
         if nr <= 0:
             return b"\0" * (self.block_size * count)
         if nr + count > self.blocks_count:
-            raise Abort(f"{self.label}: Block {nr} liegt außerhalb des Dateisystems ({self.blocks_count} Blöcke)")
+            raise Abort(f"{self.label}: block {nr} lies outside the file system ({self.blocks_count} blocks)")
         out = bytearray()
         rest, p = count * self.block_size, nr * self.block_size
         while rest > 0:
             k = min(rest, self.BLOCK_CHUNK)
             b = self.q.read(p, k)
             if len(b) < k:
-                note = (f"{self.label}: Quelle endet bei {p + len(b)} B, Block {nr}+{count} reicht bis "
-                        f"{(nr + count) * self.block_size} B — fehlender Rest wird als Nullen gelesen")
+                note = (f"{self.label}: the source ends at {p + len(b)} B, block {nr}+{count} reaches to "
+                        f"{(nr + count) * self.block_size} B -- the missing rest is read as zeros")
                 if note not in self.problems:
                     self.problems.append(note)
                     self.log.warn(note)
@@ -215,12 +215,12 @@ class Ext4(Ext4Base):
         if c is not None:
             return c
         if ino < 1 or ino > self.inodes_count:
-            raise Abort(f"{self.label}: Inode {ino} liegt außerhalb des Dateisystems (1..{self.inodes_count})")
+            raise Abort(f"{self.label}: inode {ino} lies outside the file system (1..{self.inodes_count})")
         g, idx = divmod(ino - 1, self.inodes_per_group)
         off = self.inode_table[g] * self.block_size + idx * self.inode_size
         raw = self.q.read(off, self.inode_size)
         if len(raw) < 128:
-            raise Abort(f"{self.label}: Inode {ino} nicht lesbar (Tabelle außerhalb der Quelle?)")
+            raise Abort(f"{self.label}: inode {ino} not readable (table outside the source?)")
         mode, uid_lo, size_lo, _at, _ct, _mt, _dt, gid_lo, links, blocks_lo, flags = struct.unpack_from(
             "<HHIIIIIHHII", raw, 0)
         i_block = raw[40:100]
@@ -249,14 +249,14 @@ class Ext4(Ext4Base):
 
     def _extent_node(self, raw: bytes, ino: int, out: list, level: int = 0):
         if len(raw) < 12:
-            raise Abort(f"{self.label}: Inode {ino}: Extent-Knoten zu kurz")
+            raise Abort(f"{self.label}: inode {ino}: extent node too short")
         magic, entries, _max, depth, _gen = struct.unpack_from("<HHHHI", raw, 0)
         if magic != self.EXT_MAGIC:
-            raise Abort(f"{self.label}: Inode {ino}: Extent-Kopf ohne Magic 0xF30A (ist {magic:#06x})")
+            raise Abort(f"{self.label}: inode {ino}: extent header without magic 0xF30A (it is {magic:#06x})")
         self.stat["extent_knoten"] += 1
         self.stat["extent_max_tiefe"] = max(self.stat["extent_max_tiefe"], depth + level)
         if 12 + entries * 12 > len(raw):
-            raise Abort(f"{self.label}: Inode {ino}: {entries} Extent-Einträge passen nicht in den Knoten")
+            raise Abort(f"{self.label}: inode {ino}: {entries} extent entries do not fit into the node")
         for i in range(entries):
             o = 12 + i * 12
             if depth == 0:
@@ -297,9 +297,9 @@ class Ext4(Ext4Base):
         if c is not None:
             return c
         if inode["flags"] & self.FL_INLINE_DATA:
-            raise Abort(f"{self.label}: Inode {ino}: inline_data wird von diesem Leser nicht unterstützt")
+            raise Abort(f"{self.label}: inode {ino}: inline_data is not supported by this reader")
         if inode["flags"] & self.FL_ENCRYPT:
-            raise Abort(f"{self.label}: Inode {ino}: verschlüsselt — wird nicht gelesen")
+            raise Abort(f"{self.label}: inode {ino}: encrypted -- not read")
         mapping: list = []
         if inode["flags"] & self.FL_EXTENTS:
             self._extent_node(inode["i_block"], ino, mapping)
@@ -442,20 +442,20 @@ class Ext4(Ext4Base):
     def read(self, path: str, tmp: Optional[Path] = None) -> bytes:
         ino = self.path_inode(path)
         if ino is None:
-            raise Abort(f"{self.label}: {path} nicht gefunden")
+            raise Abort(f"{self.label}: {path} not found")
         inode = self.inode(ino)
         if inode["typ"] == "d":
-            raise Abort(f"{self.label}: {path} ist ein Verzeichnis")
+            raise Abort(f"{self.label}: {path} is a directory")
         return self._data(ino, inode)
 
     def stats(self) -> str:
         s = self.stat
-        return (f"{self.structure}; gelesen: {s['inodes']} Inodes ({s['extent_inodes']} mit Extents, "
-                f"{s['indirekt_inodes']} indirekt), {s['extents']} Extents in {s['extent_knoten']} Knoten, "
-                f"Baumtiefe max {s['extent_max_tiefe']}, {s['unbelegte_extents']} unbelegt, "
-                f"{s['verzeichnisse']} Verzeichnisse ({s['htree_verzeichnisse']} mit dir_index-Flag), "
-                f"{s['symlink_schnell']}+{s['symlink_block']} Symlinks (schnell+in Blöcken), "
-                f"{s['loecher']} Dateien mit Löchern, {s['gelesene_bytes']} B aus der Quelle geholt")
+        return (f"{self.structure}; read: {s['inodes']} inodes ({s['extent_inodes']} with extents, "
+                f"{s['indirekt_inodes']} indirect), {s['extents']} extents in {s['extent_knoten']} nodes, "
+                f"tree depth max {s['extent_max_tiefe']}, {s['unbelegte_extents']} unallocated, "
+                f"{s['verzeichnisse']} directories ({s['htree_verzeichnisse']} with the dir_index flag), "
+                f"{s['symlink_schnell']}+{s['symlink_block']} symlinks (fast+in blocks), "
+                f"{s['loecher']} files with holes, {s['gelesene_bytes']} B fetched from the source")
 
 
 class Ext4Debugfs(Ext4Base):
@@ -469,25 +469,25 @@ class Ext4Debugfs(Ext4Base):
         self.log = log
         sb = q.read(0x400, 0x100)
         if len(sb) < 0x100 or struct.unpack_from("<H", sb, 0x38)[0] != 0xEF53:
-            raise Abort(f"{label}: kein ext4-Superblock (Magic bei 0x438 fehlt) — erofs/f2fs? Nicht unterstützt.")
+            raise Abort(f"{label}: no ext4 superblock (no magic at 0x438) -- erofs/f2fs? Not supported.")
         s_blocks_lo = struct.unpack_from("<I", sb, 4)[0]
         log_bs = struct.unpack_from("<I", sb, 0x18)[0]
         self.block_size = 1024 << log_bs
         vol = sb[0x78:0x88].split(b"\0")[0].decode("latin1", "replace")
         feat_incompat = struct.unpack_from("<I", sb, 0x60)[0]
-        self.description = (f"ext4, Block {self.block_size}, {s_blocks_lo} Blöcke = {s_blocks_lo * self.block_size} B, "
-                            f"Label '{vol}', feature_incompat {feat_incompat:#x}")
+        self.description = (f"ext4, block {self.block_size}, {s_blocks_lo} blocks = {s_blocks_lo * self.block_size} B, "
+                            f"label '{vol}', feature_incompat {feat_incompat:#x}")
         log.info(f"{label}: {self.description}")
         if shutil.which("debugfs") is None:
-            raise Abort("debugfs (e2fsprogs) nicht gefunden — nötig für --use-debugfs (ohne die Option "
-                        "liest h713-extract ext4 selbst)")
+            raise Abort("debugfs (e2fsprogs) not found -- needed for --use-debugfs (without that option "
+                        "h713-extract reads ext4 itself)")
         b = q.backing()
         self.file: Optional[Path] = None
         if b is not None:
             self.dev = f"{b[0]}?offset={b[1]}"
             # probe: can this debugfs version do '?offset=' ?
             if "Inode: 2" not in self._raw(["stat <2>"]).get("stat <2>", ""):
-                log.info("debugfs kann '?offset=' hier nicht — Partition wird zwischengespeichert")
+                log.info("debugfs cannot do '?offset=' here -- the partition is cached as a file")
                 b = None
         if b is None:
             self.file = tmp / f"{label}.ext4"
@@ -540,7 +540,7 @@ class Ext4Debugfs(Ext4Base):
         cmd = f"dump -p {path} {target}"
         self._raw([cmd])
         if not target.exists():
-            raise Abort(f"debugfs konnte {path} nicht lesen")
+            raise Abort(f"debugfs could not read {path}")
         b = target.read_bytes()
         target.unlink()
         return b

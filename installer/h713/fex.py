@@ -46,7 +46,7 @@ def stock_plan(image: "Imagewty"):
     """
     sysp = image.file("sys_partition.fex")
     if sysp is None:
-        raise RuntimeError("sys_partition.fex fehlt im Image -- kein Allwinner-Vollimage?")
+        raise RuntimeError("sys_partition.fex is missing from the image -- not a full Allwinner image?")
     text = sysp.read(0, sysp.size if hasattr(sysp, "size") else 1 << 20).decode("latin1")
     partitions = parse_sys_partition(text)
     raw = [("boot0_sdcard.fex", 16), ("boot0_sdcard.fex", 256),

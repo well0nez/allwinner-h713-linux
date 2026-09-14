@@ -153,13 +153,17 @@ class UnknownRevisionReport(unittest.TestCase):
         out = support.workdir(self)
         args = argparse.Namespace(out=out, tmp=os.path.join(out, "tmp"), use_debugfs=False)
         run = extract.Run(args, log.Log(True))
-        read_set = {"herkunft": "vendor:/etc/display/mips/", "fs": "ext4 (synthetic)", "typ": "ext4",
-                    "art": "vendor", "dateien": files, "kurznamen": {}, "probleme": [],
-                    "uebrig": [], "sonst": []}
+        # doku/121 stage 3 ("stage 3 texts"): the read-set keys of h713.extract are English --
+        # herkunft/typ/art/dateien/kurznamen/probleme/uebrig/sonst ->
+        # origin/type/kind/files/short_names/problems/leftover/others, and
+        # declared_project_id() returns id/source/note instead of id/quelle/hinweis.
+        read_set = {"origin": "vendor:/etc/display/mips/", "fs": "ext4 (synthetic)", "type": "ext4",
+                    "kind": "vendor", "files": files, "short_names": {}, "problems": [],
+                    "leftover": [], "others": []}
         run.mips_read_sets = lambda: ([read_set], [{"source": "vendor:/etc/display/mips",
-                                                    "origin": read_set["herkunft"],
+                                                    "origin": read_set["origin"],
                                                     "files": len(files), "role": None}])
-        run.declared_project_id = lambda: {"id": None, "quelle": None, "hinweis": "synthetic input"}
+        run.declared_project_id = lambda: {"id": None, "source": None, "note": "synthetic input"}
         run.extract_mips()
         run.write_manifest(1)
         revision = run.mips["revision"]
@@ -170,8 +174,11 @@ class UnknownRevisionReport(unittest.TestCase):
         self.assertEqual(revision["hdcp_wait_va"], "0x4b13d1f0")      # the flipped byte is outside the window
         self.assertEqual(revision["project_ids_seen"][:2], ["0x0001", "0x0012"])
         self.assertEqual(len(revision["project_ids_seen"]), 13)
-        with open(os.path.join(out, "BERICHT.txt"), encoding="utf-8") as fh:
+        # stage 3: the report is REPORT.txt (BERICHT.txt is written as a copy for one release)
+        with open(os.path.join(out, "REPORT.txt"), encoding="utf-8") as fh:
             report = fh.read()
+        with open(os.path.join(out, "BERICHT.txt"), encoding="utf-8") as fh:
+            self.assertEqual(report, fh.read())
         for line in ("UNKNOWN, the row a profile would need:", "name:             unknown",
                      "hdcp_wait_va:     0x4b13d1f0", "sha256:           " + revision["sha256"],
                      "size:             %d" % revision["size"]):
@@ -195,7 +202,7 @@ class AdtImages(unittest.TestCase):
     def _check_adt3(self, board):
         man, text, out = self._manifest(board)
         mips = man["mips"]
-        self.assertEqual(mips["quelle"], "vendor:/etc/display/mips/", text)
+        self.assertEqual(mips["source"], "vendor:/etc/display/mips/", text)
         self.assertEqual([s["source"] for s in mips["sources"]],
                          ["bootloader_b", "bootloader_a", "vendor:/etc/display/mips"], text)
         self.assertEqual([s["role"] for s in mips["sources"]],
@@ -204,11 +211,11 @@ class AdtImages(unittest.TestCase):
         self.assertEqual((mips["revision"]["name"], mips["revision"]["hdcp_wait_va"],
                           mips["revision"]["known"]), ("ADT-3 2024", "0x4b13d1f0", True), text)
         self.assertEqual(mips["revision"]["sha256"], ADT3_SHA, text)
-        got = sorted(a["pfad"] for a in man["artefakte"] if a["pfad"].startswith("boot/mips/"))
+        got = sorted(a["path"] for a in man["files"] if a["path"].startswith("boot/mips/"))
         self.assertEqual(len(got), 19, got)
         self.assertIn("boot/mips/display.bin", got)
         self.assertEqual(len([p for p in got if "ProjectID_0x" in p]), 13, got)
-        with open(os.path.join(out, "BERICHT.txt"), encoding="utf-8") as fh:
+        with open(os.path.join(out, "REPORT.txt"), encoding="utf-8") as fh:
             report = fh.read()
         self.assertIn("hdcp_wait_va:     0x4b13d1f0", report)
         self.assertIn("display.bin revision:", report)
@@ -223,7 +230,7 @@ class AdtImages(unittest.TestCase):
         """The HY310 image: the FAT copy wins, the vendor copy differs in display_cfg.xml only."""
         man, text, _out = self._manifest("hy310")
         mips = man["mips"]
-        self.assertTrue(mips["quelle"].startswith("boot-resource.fex"), text)
+        self.assertTrue(mips["source"].startswith("boot-resource.fex"), text)
         self.assertEqual([s["source"] for s in mips["sources"]],
                          ["bootloader_b", "bootloader_a", "vendor:/etc/display/mips"], text)
         self.assertEqual([s["role"] for s in mips["sources"]],
