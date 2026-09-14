@@ -38,7 +38,7 @@ common: --device PATH  --sunxi-fel PATH  --uboot PATH  --no-write  --skip-identi
 
 | Subcommand | What it does | eMMC |
 |---|---|---|
-| `identify` | prints the profile row of a device, a dump or a vendor firmware image | writes nothing |
+| `identify` | prints the profile row of a device, a dump or a vendor firmware image; given a release table (`*.tabelle.json`), lists the pieces and whether they lie next to it | writes nothing |
 | `dump` | saves what exists only on this device; `--with-vendor` also runs the extractor | writes nothing |
 | `install` | dump, extract, fill, write, compare back | writes |
 | `restore` | writes a previous full dump back | writes |

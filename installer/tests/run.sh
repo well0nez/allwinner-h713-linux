@@ -9,7 +9,10 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ARBEIT=/opt/Projekte/h713/analyse/release/arbeit
 for a in "$@"; do
   case "$a" in
-    --local) export H713_FIXTURES_LOCAL=/opt/Projekte/h713/umbau/fixtures-local H713_BUILD_OUT=$ARBEIT/r0-fel/out H713_VENDOR_OUT=$ARBEIT/r2-extract/out-hy310-20260912 ;;
+    # The built image under test is this checkout's own (installer/out, support.py's default):
+    # the self-test compares it with the tree mkimage-inputs.sh left in installer/tmp, and
+    # an image from another checkout does not match that tree.
+    --local) export H713_FIXTURES_LOCAL=/opt/Projekte/h713/umbau/fixtures-local H713_VENDOR_OUT=$ARBEIT/r2-extract/out-hy310-20260912 ;;
     --slow)  export H713_SLOW_TESTS=1 ;;
     --old)   export H713_TOOLS_DIR=$ARBEIT/r0-fel H713_EXTRACT_PATH=$ARBEIT/r2-extract/h713-extract ;;
     *) echo "usage: run.sh [--local] [--slow] [--old]" >&2; exit 2 ;;

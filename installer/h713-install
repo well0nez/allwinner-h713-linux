@@ -173,12 +173,44 @@ def _report(args, ident):
     return 0
 
 
+def _identify_table(path):
+    """`identify RELEASE.tabelle.json`: what the release folder holds, read from its table --
+    the pieces and whether they lie next to it. None when the file is not a table."""
+    with open(path, "r", encoding="utf-8") as f:
+        d = json.load(f)
+    if d.get("format") != "hy310-abbild-tabelle":
+        return None
+    here = os.path.dirname(os.path.abspath(path))
+    console.info("release table  %s  (%s, built %s)" % (d.get("abbild"), d.get("werkzeug"), d.get("erzeugt")))
+    for piece in d.get("teile", []):
+        whole = os.path.join(here, piece["datei"])
+        if os.path.isfile(whole) and os.path.getsize(whole) == piece["bytes"]:
+            state = "present"
+        elif os.path.isfile(whole):
+            state = "present, but %d bytes -- truncated?" % os.path.getsize(whole)
+        elif os.path.isfile(whole + ".zst"):
+            state = "packed (.zst) -- install unpacks it with zstd"
+        else:
+            state = "MISSING"
+        console.info("  %-40s %11d bytes  %s" % (piece["datei"], piece["bytes"], state))
+    console.info("  placeholders: %d for h713-extract, %d for the user"
+                 % (len(d.get("platzhalter", [])), len(d.get("platzhalter_nutzer", []))))
+    for name in ("u-boot-installer.bin", "sunxi-fel"):
+        console.info("  %-40s %s" % (name, "present" if os.path.isfile(os.path.join(here, name))
+                                      else "not next to the table (--uboot / --sunxi-fel)"))
+    return 0
+
+
 def _identify_file(args):
-    """`identify FILE`: a raw dump or a vendor image, without FEL and without a device."""
+    """`identify FILE`: a raw dump, a vendor image or a release table, without FEL and without a device."""
     if not os.path.exists(args.source):
         console.error("%s not found" % args.source)
         return 5
     if os.path.isfile(args.source):
+        if args.source.endswith(".json"):
+            code = _identify_table(args.source)
+            if code is not None:
+                return code
         return _report(args, identify(args.source))
     disk = Disk(args.source, writable=False)
     try:

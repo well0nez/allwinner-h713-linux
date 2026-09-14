@@ -227,6 +227,23 @@ class ReleaseFolder(unittest.TestCase):
         from h713.install import release_files
         self.assertEqual(release_files(os.path.dirname(self.release)), {})
 
+    def test_identify_reads_the_table_itself(self):
+        """`identify TABLE.json` lists the pieces and what lies next to the table; exit 0,
+        nothing written (the device-test plan's "Vorher 2" check, stage 4)."""
+        import contextlib
+        import io
+        tool = _tool_module()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = tool.main(["identify", os.path.join(self.release, self.TABLE)])
+        text = buf.getvalue()
+        self.assertEqual(code, 0, text)
+        self.assertIn("release table  h713-hy310-v0.5-beta", text)
+        for part in self.table["teile"]:
+            self.assertIn(part["datei"], text)
+        self.assertIn("truncated?", text)          # the fixture's parts are empty files
+        self.assertIn("u-boot-installer.bin                     present", text)
+
     def test_the_tool_takes_uboot_and_fel_out_of_the_release_folder(self):
         """main() fills --uboot/--sunxi-fel from the folder before it goes looking for the
         device; expose_drive() is stood in for, so no FEL and no drive are needed here."""
