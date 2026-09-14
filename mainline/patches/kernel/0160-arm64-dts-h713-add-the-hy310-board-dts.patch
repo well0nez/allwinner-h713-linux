@@ -1,0 +1,75 @@
+arm64: dts: h713: add the HY310 board dts
+
+Until now the HY310 boots a DTB called sun50i-h713-hy200-qz713df-a1: the file
+carries the HY310's hardware, but it is named after cstenger's HY200 bench
+board, because that is the board the description was first written for. With
+boards/ turning into one directory per board, every board needs a DTB name of
+its own -- otherwise board.env cannot name the DTB, the FIT description lies
+about what it carries, and a second board cannot be added at all without
+renaming the first one's file (doku/121 section 3, umbau/plan/api-stufe4.md
+"Kernel DTS").
+
+So this adds a device tree that is nothing but a name:
+
+  #include "sun50i-h713-hy200-qz713df-a1.dts"
+  / { model/compatible for the HY310 };
+
+The SoC compatible string stays byte for byte what the included file uses,
+"allwinner,sun50i-h713", so the same drivers bind; only the board compatible
+becomes "magcubic,hy310". The resulting DTB is the HY200 one plus a different
+model and board compatible -- no node, no property, no status changes, so an
+HY310 that boots with the new DTB sees the hardware it saw before.
+
+Everything HY310-specific that we patched into the hy200 dts stays where it
+is. Moving it into this file (and leaving the bench board with a real bench
+description) is a separate cleanup; doing it here would mean changing the
+DTB the device boots and renaming it in one step.
+
+Including a .dts from a .dts is the pattern mainline already uses two entries
+above ours in the same Makefile: sun50i-h700-anbernic-rg35xx-plus.dts includes
+sun50i-h700-anbernic-rg35xx-2024.dts and overrides model/compatible, and
+sun50i-h700-anbernic-rg35xx-h.dts does the same on top of that. The /dts-v1/;
+of the included file counts as this file's version tag, which is why there is
+none here.
+
+The vendor string "magcubic" is not in
+Documentation/devicetree/bindings/vendor-prefixes.yaml (checked against the
+pinned 6.18.38 tarball; neither is "cstenger", which patch 0024 already uses).
+That matters the day this goes upstream, not for an out-of-tree series -- no
+driver we ship matches on the board compatible.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -57,6 +57,7 @@ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg35xx-plus.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg35xx-sp.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy200-qz713df-a1.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy200-qz713-v2.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy310.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-a527-cubie-a5e.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-h728-x96qpro+.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-t527-avaota-a1.dtb
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++/*
++ * MagCubic HY310 projector (board silkscreen HY260_QZ713_V3.1).
++ *
++ * The hardware description lives in sun50i-h713-hy200-qz713df-a1.dts; this
++ * board only carries its own name, so that the DTB the HY310 boots is not
++ * named after somebody else's board. Whatever is HY310-specific in the
++ * included file stays there for now -- splitting it out is a later cleanup,
++ * not part of this change (doku/121 section 3).
++ *
++ * Same pattern as sun50i-h700-anbernic-rg35xx-plus.dts, which includes
++ * sun50i-h700-anbernic-rg35xx-2024.dts and overrides model/compatible.
++ */
++
++#include "sun50i-h713-hy200-qz713df-a1.dts"
++
++/ {
++	model = "MagCubic HY310 (HY260_QZ713_V3.1)";
++	compatible = "magcubic,hy310", "allwinner,sun50i-h713";
++};
