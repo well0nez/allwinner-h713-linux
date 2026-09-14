@@ -255,6 +255,27 @@ Beides gebaut: Auslieferungs-defconfig und `h713_probe_defconfig`, je 957 bzw. 9
    Panelauswahl und die HDCP-Suche liegen im normalen Pfad).
 
 Erst danach: Fork pushen, Submodul-Pin nachziehen, Sperr-Scan, `repo-neu` pushen.
+(`repo-neu` hat den Commit `933b292` schon **lokal**; nichts davon ist draußen.)
+
+### Der Gerätetest, Schritt für Schritt
+
+Vorbereitet, damit er ohne Nachdenken läuft, sobald das Gerät frei ist. Kostet **zwei** Einschaltvorgänge.
+
+| | Was | Wer |
+|---|---|---|
+| 0 | UART-Adapter und A-auf-A-Kabel stecken. **Achtung:** mit gestecktem FEL-Kabel startet die Steckdose nicht neu — erst Kabel ziehen, dann schalten | Marco |
+| 1 | Reset halten + Strom → FEL. `lsusb` muss `1f3a:efe8` zeigen | Marco |
+| 2 | `sunxi-fel uboot mainline/build/uboot-probe/u-boot-sunxi-with-spl.bin`, UART mitschneiden | ich |
+| 3 | Erwartet: `HY310 (QZ713 V3.1)`, Panel 1920×1080, Projekt 0x30, HDCP-Stelle `0x4b13d0a4`, `dram_clk 0x318` (792) — und zwar auf einem U-Boot, das mit **624** trainiert hat | ich |
+| 4 | Strom weg, Kabel ziehen, normal einschalten (Taste) → Auslieferungs-U-Boot muss booten und ein Bild zeigen | Marco + ich |
+
+Schritt 3 prüft vier Dinge auf einmal: dass die Sonde auf bekannter Wahrheit die Wahrheit sagt, dass die
+HDCP-Suche denselben Wert findet wie die festgenagelte Adresse, dass 624 auf einem 792-MHz-Board trainiert
+(also das konservative Ende wirklich konservativ ist), und dass der boot0-Block an Offset `0x38` auf dem
+Gerät dasselbe liefert wie am Abzug.
+
+Schritt 4 ist die Rückfallprüfung: Panelauswahl und HDCP-Suche liegen im **normalen** Pfad, nicht nur im
+Sondenpfad. Wenn dort etwas kaputt wäre, bliebe das Bild schwarz.
 
 ## 5. Reihenfolge
 
