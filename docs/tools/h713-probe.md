@@ -82,7 +82,7 @@ mips.bootloader_a: <sha256> 1256216
 mips.bootloader_b: <sha256> 1256216
 mips.bootloader_a_equals_b: yes
 panel_config.ini: mmc 1#Reserve0_b
-secure_storage: sunxi at LBA 12288 (magic 0x17253948, item "<name>")
+secure_storage: sunxi at LBA 12288 (map lists 6 entries; item magic 0x17253948 at LBA 12304, first item "hdcpkey")
 ```
 
 Three of those need a word.
@@ -103,9 +103,11 @@ restore needs both answered. `mips.bootloader_a_equals_b: no` is a fact about yo
 
 **`secure_storage` reports presence and a name, never bytes.** LBA 12288 is the sunxi secure storage:
 HDCP 1.4 and 2.2 keys, the WLAN and Bluetooth MAC addresses, the serial number — none of it in any
-firmware image, none of it recoverable once lost. The row prints whether the sunxi signature is there
-and what the map item calls itself: no contents, no digest, and when the signature is absent, no
-bytes either. It is there so a board's profile can lock the region, not so anything can be read out.
+firmware image, none of it recoverable once lost. The row prints the shape only: how many entries the
+map at LBA 12288 lists, that the item magic `0x17253948` is there sixteen sectors in (the map itself is a
+plain `name:size` list without one), and what the first item calls itself. No contents, no digest, and
+when the signature is absent, no bytes either. It is there so a board's profile can lock the region, not
+so anything can be read out.
 
 The row closes by saying that the stock boot chain starts the MIPS in its logo path and that this
 probe never does. That is the one sentence in the output worth reading twice.
