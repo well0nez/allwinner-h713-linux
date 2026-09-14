@@ -109,7 +109,7 @@ PROFILE = {
         "sunxi_version": "2025-05-14 12:19:36",
         "mips_database_sha256": "002ad401d581a293d56106c8faf361eb9919f234562a6d7c316c1de1438a2aac",
     },
-    "board_dt": None,                        # no board DTS of ours yet (legacy/dts/sun50i-h713-hy310.dts
-                                             # is the vendor DTS, not ours)
-    "uboot_fragment": None,                  # boards/<id>/uboot.config does not exist yet
+    "board_dt": None,                        # no device tree of ours has booted on this board
+                                             # (boards/<id>/board.env leaves KERNEL_DTB empty)
+    "uboot_board": None,                     # no U-Boot base defconfig of ours for this board
 }

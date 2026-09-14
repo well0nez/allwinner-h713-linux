@@ -51,6 +51,19 @@ print("%s %s" % (dram.get("clk"), dram.get("type")))
 PY
 }
 
+# "<board_dt> <uboot_board>" of an installer profile ("-" for None), read from the module
+profile_board() {
+  python3 - "$1" <<'PY' 2>/dev/null
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("board_profile", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print("%s %s" % (module.PROFILE.get("board_dt") or "-", module.PROFILE.get("uboot_board") or "-"))
+PY
+}
+
 printf '== 1. script syntax ==\n'
 scripts="$BOARDS/check.sh $BUILD_SH $ROOT/mainline/build/uboot-build.sh"
 [ -d "$ROOT/release" ] && scripts="$scripts $(ls "$ROOT"/release/*.sh 2>/dev/null)"
@@ -172,6 +185,16 @@ for id in $boards; do
     fi
     if [ -n "$dram_type" ] && [ -n "$p_type" ] && [ "$dram_type" != "$p_type" ]; then
       fail "DRAM type $dram_type in uboot.config but profile $profile says dram.type=$p_type"
+    fi
+    # the profile's board_dt / uboot_board are board.env's KERNEL_DTB / UBOOT_BOARD, or nothing
+    read -r p_dt p_ub <<<"$(profile_board "$PROFILES/$profile.py")"
+    if [ "${p_dt:--}" != "${kernel_dtb:--}" ]; then
+      fail "PROFILE=$profile board_dt=$p_dt but board.env KERNEL_DTB='$kernel_dtb' (drift)"
+    else
+      ok "profile $profile board_dt == KERNEL_DTB (${kernel_dtb:-empty})"
+    fi
+    if [ "${p_ub:--}" != "-" ] && [ "$p_ub" != "$uboot_board" ]; then
+      fail "PROFILE=$profile uboot_board=$p_ub but board.env UBOOT_BOARD='$uboot_board' (drift)"
     fi
   fi
 

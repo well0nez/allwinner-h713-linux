@@ -178,7 +178,8 @@ PROFILE = {
         "sunxi_version": "2025-07-24 10:31:23",
         "mips_database_sha256": "133bbec3e9a297aa0bd42b294de3ffe0d74235e8683659dfd2dfc1f2f855bdfb",
     },
-    "board_dt": None,                        # no board DTS of ours yet (legacy/dts/sun50i-h713-hy310.dts
-                                             # is the vendor DTS, not ours)
-    "uboot_fragment": None,                  # boards/<id>/uboot.config does not exist yet
+    "board_dt": "sun50i-h713-hy310",        # boards/hy310/board.env KERNEL_DTB: the hy200 dts under the
+                                             # board's own name (mainline/patches/kernel/0160)
+    "uboot_board": "hy310",                  # boards/hy310/board.env UBOOT_BOARD: base hy310_defconfig,
+                                             # a role fragment on top (docs/uboot/README.md)
 }
