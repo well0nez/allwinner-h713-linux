@@ -41,6 +41,36 @@ The skips are for iterating. A release build should run without them: since 2026
 the TF-A and U-Boot build directories first, because a stale BL31 from an earlier build silently shipped
 in three images before anyone noticed ([STATUS.md](STATUS.md), *Boot chain*).
 
+## Boards
+
+`--board <id>` (default `hy310`) builds for one board. Everything that differs between devices is in
+`boards/<id>/board.env`: the installer profile, the kernel DTB the FIT carries, the U-Boot base
+defconfig, and the image name (`<IMAGE_NAME>-<version>`). What a board directory is, and how to add
+one from a probe log, is [`boards/README.md`](boards/README.md); `bash boards/check.sh` holds every
+one of them against its installer profile. The same ids work for the parts:
+`BOARD=<id> mainline/build/build.sh kernel`, with `ddr3` and `lpddr3` still accepted as aliases for
+the two HY200 boards.
+
+**An image is built only for a board somebody has run.** A board that is not `STATUS=verified` is
+refused with the rule it comes from:
+
+```
+no image for a board nobody has tested (doku/121 §5): boards/hy300-t08 is STATUS=profile-only.
+```
+
+A verified board that names no installer profile is refused as well, because `h713-install`
+identifies the device before it writes and would have nothing to identify it against. Today that
+leaves exactly one board: `hy310`. The HY200 bench board is verified by cstenger but has no profile
+of ours, and the other four are `profile-only` or `partial` — the table is in
+[STATUS.md](STATUS.md), *Boards*.
+
+What a board below `verified` does get is everything that reads and nothing that writes: an installer
+profile wherever a stock image or a dump exists for it, its DRAM block written down in
+`boards/<id>/uboot.config`, and the read-only probe, which runs from FEL on any H713 without touching
+the eMMC ([docs/tools/h713-probe.md](docs/tools/h713-probe.md)). It gets no FIT either: `board.env`
+leaves `KERNEL_DTB` empty for a board we have no device tree for, and `build.sh kernel` refuses
+rather than ship one written for a different board.
+
 ## What comes out
 
 ```
@@ -80,10 +110,13 @@ them the build compiles the same 119 objects. Only measured boot or TPM support 
 ## Building parts by hand
 
 ```bash
-mainline/build/build.sh bl31          # TF-A
-mainline/build/build.sh uboot         # U-Boot for the default board
-mainline/build/build.sh kernel        # kernel + modules + FIT
+mainline/build/build.sh bl31                  # TF-A
+BOARD=hy310 mainline/build/build.sh uboot     # U-Boot for one board
+BOARD=hy310 mainline/build/build.sh kernel    # kernel + modules + FIT
 ```
+
+`BOARD` defaults to `ddr3`, the HY200 bench board this port was brought up on — name the board you
+mean. `release/build-all.sh` always passes one.
 
 `build.sh` names its kernel tree after a digest of the inputs (`build/linux-6.18.38-<digest>/`), so
 changing the series or the defconfig gives you a new tree instead of a confusing half-rebuild.

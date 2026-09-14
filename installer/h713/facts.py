@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0
 """Board facts of a firmware image and of a device -- read only, nothing is ever written.
 
-`image_facts()` is package A1's `umbau/work/A1/image_facts.py` moved into the package: same
+`image_facts()` is package A1's image_facts.py (doku/121 §4) moved into the package: same
 sections, same key names, same values, but on `h713.imagewty` / `h713.fex` / `h713.fs` instead of
 loading the old extractor by path (no `--library`). Its JSON (sorted keys, indent 2) is frozen in
-`umbau/fixtures/images/*.json`; `tests/test_facts.py` compares byte for byte.
+`tests/fixtures/images/*.json`; `tests/test_facts.py` compares byte for byte.
 
 `device_facts()` answers the same sections off a device or a raw dump, as far as one carries them:
 GPT (layout), boot0 at LBA 16 (DRAM), the boot package at LBA 24576 (items, versions), the vendor

@@ -1,9 +1,9 @@
 """HY300 Pro -- board profile. Data only, no vendor bytes: numbers, hashes and strings.
 
-Shape: umbau/plan/profil-schema.md. Source tags used in the comments below:
+Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below:
   P  = analyse/issues/issue-1-hy300pro-20260913.md and doku/120-plan-hy300pro.md section 1
-  A0 = umbau/work/A0/REPORT.md, sections 4 and 5 (what the vendor U-Boot loads, and from where)
-  F  = umbau/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site, package A5)
+  A0 = docs/subsystems/mips.md ("vendor boot path") (what the vendor U-Boot loads, and from where)
+  F  = installer/tests/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site, package A5)
   I  = analyse/release/arbeit/r0-fel/hy310-install.py (installer constants, lines 42-105)
 """
 

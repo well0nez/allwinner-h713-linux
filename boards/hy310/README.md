@@ -52,7 +52,7 @@ run yet.
   `0x30`, 1920×1080 dual port, htotal 2128, vtotal 1120, 143 001 600 Hz, hsync 44, vsync 5, hbp 88,
   vbp 20, PWM channel 2 at 25 kHz.
 - **Partition layout, unique regions, firmware digests** — same profile, from
-  `umbau/fixtures/images/hy310-update.img.json`.
+  `installer/tests/fixtures/images/hy310-update.img.json`.
 - **Display firmware** — `display.bin` 1 256 216 bytes,
   `16c74a28187f342de657828fab65145b140ac9411c40cccc02eed25047472ee9`, HDCP wait site `0x4b13d0a4`
   (`profiles/hy310.py`, `"mips"`).

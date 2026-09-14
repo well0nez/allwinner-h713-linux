@@ -1,9 +1,9 @@
 """L018 -- board profile. Data only, no vendor bytes: numbers, hashes and strings.
 
-Shape: umbau/plan/profil-schema.md. Source tags used in the comments below:
+Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below:
   X  = analyse/release/arbeit/r2-extract/h713-extract (line numbers are lines 52-275)
-  A0 = umbau/work/A0/REPORT.md, sections 4 and 5 (what the vendor U-Boot loads, and from where)
-  F  = umbau/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site, package A5)
+  A0 = docs/subsystems/mips.md ("vendor boot path") (what the vendor U-Boot loads, and from where)
+  F  = installer/tests/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site, package A5)
 """
 
 PROFILE = {

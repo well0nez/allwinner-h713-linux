@@ -8,8 +8,8 @@ anything.
 
 ## Artifacts it needs
 
-U-Boot loads these from the boot partition before it releases the core. None of them are computed;
-all come straight from the vendor.
+Our U-Boot loads these before it releases the core; which partition they come from depends on the
+board (below). None of them are computed; all come straight from the vendor.
 
 | File | Role |
 |---|---|
@@ -17,7 +17,7 @@ all come straight from the vendor.
 | `display_cfg.xml` | runtime configuration the firmware re-reads at start (elog level, ELOG_ASYNC, panel selection) |
 | `database.TSE` | shared picture-quality database |
 | `pq_custom.TSE`, `projecttable.TSE` | picture-quality and per-project tables |
-| `ProjectID_0x*.TSE` (13 files) | one panel/timing profile per known board; the firmware's own SHA-256 picks the right one, `h713_project` in U-Boot's environment can override it |
+| `ProjectID_0x*.TSE` (13 files) | one panel/timing profile per known board; the **declared project id** picks the file — `h713_project` in U-Boot's environment, else `panel_config.ini` (below) |
 | `LogoRegData.bin` | 113 register records replayed before the panel comes up (32 + 26 + 55 entries, with pulses and delays) |
 
 **None of this ships in the repo or the release image.** It is vendor material — the same files on every
@@ -25,6 +25,38 @@ device of this model, but not ours to redistribute; `h713-extract` pulls them fr
 dump during installation (`doku/108`,
 proven at the device 10.09.2026: files extracted, compared byte-for-byte against the source
 partition, and booted from the extracted copy).
+
+### They live in one of two places
+
+There is no single vendor location; which one a device uses follows its U-Boot — read out of the
+three stock images and out of the vendor U-Boot's own loader (`doku/121` §2, finding 2):
+
+- **`bootloader_a` / `bootloader_b`** — a FAT16 partition with a `mips/` directory. The HY310's case,
+  and the HY300 Pro's: their U-Boot reads the files itself, addressing the partition by **name plus
+  the A/B slot out of `misc`**, never by index. A device this port was installed on keeps the same
+  files on `hy310-boot`.
+- **`/vendor/etc/display/mips/`** — inside the `vendor` logical partition of `super`. The HY300 T08's
+  case and the HY350's: their U-Boot contains none of the loading code at all, so the 19 files are
+  uploaded from Android after `/vendor` is mounted. On such a board, "no `mips/` in the bootloader
+  partition" is the normal state and not a fault.
+
+A dump therefore takes `Reserve0` and `media_data` (`/oem`) as well: a device can carry per-unit
+overrides of the TSE group and of `panel_config.ini` there, and both the vendor's U-Boot and its
+userspace read those **before** the bootloader partition.
+
+### One `display.bin`, two panels
+
+The firmware image does not name a board. `22a7df11…` is the firmware of the 720p HY300 T08 *and* of
+the 1080p HY350 (`doku/121` §2, finding 3). What a digest does pin down is a revision — its size and
+the address of the HDCP key-wait loop inside it — and that is all our firmware table claims.
+
+The panel comes from the **declared project id**: `ProjectID = 48` (0x30) or `52` (0x34), written in
+decimal in `panel_config.ini`, which the vendor keeps on `Reserve0` and mirrors to `media_data`. Our
+U-Boot resolves it the same way — `h713_project` from the environment, which the installer writes at
+install time from the device's own file, otherwise the file itself, found by partition name. 0x30 is
+1920×1080 dual-port, 0x34 is 1280×720 single-port. An id fixes the resolution and not the blanking:
+the HY350 declares 0x30 like the HY310 and asks for a different raster, which is why a board nobody
+has driven gets a profile and not a panel row.
 
 ## Starting it
 
@@ -37,6 +69,29 @@ the coprocessor through four reset stages. A boot that got this far reports
 `CPU_COMM magic=deadbeef/deadbeef ARM=00000005 MIPS=00000005` and `application readiness proven`
 (`doku/40`, device log). **`init` only runs once per power cycle** — a warm restart reaches the
 prompt again but leaves the display blocks gated and the coprocessor dead.
+
+## What the vendor's own stack does at runtime
+
+Read off the vendor kernel, not measured on our build: `sunxi-mipsloader` in the HY310's stock kernel
+5.4.99 (`drivers/misc/sunxi-tvutils/mipsloader.c`, disassembled offline together with `libmips.so`
+and `/vendor/bin/loadmips`).
+
+- **The kernel driver never loads firmware.** `mipsloader_probe()` has no `request_firmware`, no file
+  access and no DMA of an image. It maps the reserved window, claims the three reset lines and the
+  two clocks, and then assumes the core is already running — which on an HY310 it is, because U-Boot
+  started it during the boot logo.
+- **Uploading is `mmap` on `/dev/mipsloader`**, followed by one ioctl pair: `0x10648` with
+  `{type, offset}`, where type 0 stops the core, 1 starts it at `offset`, 2 powers it down. The other
+  ioctl, `0x648`, the driver refuses itself with "use mmap instead".
+- **Resume leaves the core paused.** `mipsloader_resume()` runs the reset ladder and restores the two
+  share-memory registers from the driver's own copy, and stops there: clocks on, soft reset asserted,
+  boot address not rewritten. Userspace has to issue the start ioctl afterwards. Nothing re-uploads
+  the image — Linux never writes into the reserved window, which is why a power-down and up needs no
+  reload at all.
+
+None of this runs on our build: our kernel drives the panel through its own KMS driver, and U-Boot is
+the only thing that ever starts the core. It matters for two roadmap items — reloading the firmware
+at runtime and deep sleep — and for anyone who boots a vendor kernel with our U-Boot.
 
 ## The onboard log (elog)
 

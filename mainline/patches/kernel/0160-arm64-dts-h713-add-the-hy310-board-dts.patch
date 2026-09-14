@@ -6,8 +6,7 @@ board, because that is the board the description was first written for. With
 boards/ turning into one directory per board, every board needs a DTB name of
 its own -- otherwise board.env cannot name the DTB, the FIT description lies
 about what it carries, and a second board cannot be added at all without
-renaming the first one's file (doku/121 section 3, umbau/plan/api-stufe4.md
-"Kernel DTS").
+renaming the first one's file (doku/121 section 3 "Kernel DTS").
 
 So this adds a device tree that is nothing but a name:
 

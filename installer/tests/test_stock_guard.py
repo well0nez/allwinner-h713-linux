@@ -22,7 +22,7 @@ from h713.profiles import PROFILES                           # noqa: E402
 from h713.source import FileSource                           # noqa: E402
 
 SECT = fakedisk.SECT
-# umbau/reviews/A1.md: boot-resource.fex stands twice in the file table of update.img,
+# stage 0 review A1 (doku/121 §4): boot-resource.fex stands twice in the file table of update.img,
 # one entry per slot, and the two copies are byte-identical.
 HY310_COPIES = (0x67be000, 0x7c7b800)
 

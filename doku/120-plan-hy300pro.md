@@ -235,7 +235,7 @@ Rückweg bleibt „Vollabzug zurückspielen". Alles machbar, aber es gehört vor
 
 | Commit | Was |
 |---|---|
-| `1e9daac` | Panel aus der **Identität** statt aus der Projekt-ID; Identifikation nach vorn in `h713_disp_load()`; die zwei doppelten Größenprüfungen zu `h713_mips_accept_size()` zusammengelegt |
+| `1e9daac` | Panel aus der **Identität** statt aus der Projekt-ID — **falsch, in Stufe 4 zurückgenommen**, siehe Nachtrag unter der Tabelle; Identifikation nach vorn in `h713_disp_load()`; die zwei doppelten Größenprüfungen zu `h713_mips_accept_size()` zusammengelegt |
 | `80397f0` | HDCP-Wartestelle **suchen** statt festnageln (§3.1); die Tabellenwerte sind jetzt Gegenprobe |
 | `fcc147d` | `h713_probe` + `h713_probe_defconfig` (624 MHz) |
 | `218792f` | Die deklarierte Projekt-ID gehört dem Board: `H713_DISP_BOARD_PROJECT_ID` raus |
@@ -246,6 +246,16 @@ dahinter feuerte bei **jedem HY310-Start** — unser bootcmd fährt `0x30` — m
 falsch, auf dem sie gedruckt wurde. Jetzt kommt sie aus der Tabellenzeile, oder gar nicht.
 
 Beides gebaut: Auslieferungs-defconfig und `h713_probe_defconfig`, je 957 bzw. 965 KiB, ohne neue Warnungen.
+
+**Nachtrag (Stufe 4, Paket E3a, Commit `cbd8f03`): der Panel-Teil von `1e9daac` war falsch.** Eine
+`display.bin` bedient **zwei** Panels — `22a7df11…` steckt im 720p-HY300-T08 *und* im 1080p-HY350
+(`doku/121` §2, Befund 3) —, ein Digest kann also kein Panel benennen. Das Panel kommt seitdem aus der
+**deklarierten Projekt-ID**: `h713_project` aus der Umgebung, sonst `panel_config.ini` nach Partitionsnamen
+auf `Reserve0_<Slot>` / `Reserve0` / `media_data` (dezimal, `ProjectID = 48` = 0x30). Paneltabelle:
+0x30 = 1920×1080 dual-port, 0x34 = 1280×720 single-port. Der Digest trägt nur noch Revisionsfakten,
+Größe und HDCP-Wartestelle. Eine Projekt-ID legt dabei die Auflösung fest, **nicht** die Austastung: der
+HY350 deklariert ebenfalls 0x30 und will ein anderes Raster — deshalb bekommt ein Board, das niemand
+gefahren hat, ein Profil und keine Panelzeile.
 
 **Was noch fehlt, und ohne das geht nichts raus:**
 1. Sonde per FEL auf **unserem** Gerät — sie muss „HY310 (QZ713 V3.1)", Panel 1920×1080, Projekt 0x30,
@@ -303,7 +313,9 @@ schreiben — für den Rückfalltest des normalen Pfads.
 **Danach, Stock frisch aus `update.img`** (erprobter P6-Weg), Sonde vom Stand `2ba4003`:
 - boot0 an LBA 16 als Vendor-boot0 erkannt, DRAM-Block wie im Vollabzug (792, `tpr11 0x44340000`, `tpr12 0x6666`).
 - `display.bin` im ersten Versuch auf `1:2`, Identität HY310, HDCP-Stelle `0x4b13d0a4`, Panel 1920×1080.
-- **Rückfalltest des normalen Pfads** am selben Prompt: `h713_disp init 0x30` → Panel aus der Identität (ohne „guess"),
+- **Rückfalltest des normalen Pfads** am selben Prompt: `h713_disp init 0x30` → Panel gesetzt (dieser Lauf wählte es
+  noch aus der **Identität**, ohne „guess"; seit Stufe 4 kommt es aus der **Projekt-ID** — auf dem HY310 dieselbe
+  Auswahl, Nachtrag zu §4b),
   HDCP-Wartestelle per Suche `0x4b13d0a4` entschärft, MIPS READY, Timing 1920×1080 aktiv, kein falscher
   Projekt-Hinweis mehr. Alle sieben Fork-Commits damit am Gerät bestätigt; nur der Zweig „unbekannte Revision" bleibt
   einem fremden Gerät vorbehalten.

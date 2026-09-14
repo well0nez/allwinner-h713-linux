@@ -499,7 +499,7 @@ def _store_image_env(work, off, env, log):
 def write_env_keys(tab, work, part_file, keys, log=console):
     """Set the given keys in the image's environment (working copy of part B) -- stage 2 C9:
     what the board declared and our layout no longer carries as a partition, e.g.
-    h713_project from Reserve0's panel_config.ini (doku/121, umbau/plan/stufe-2.md). Returns 0,
+    h713_project from Reserve0's panel_config.ini (doku/121 §4). Returns 0,
     11 on a broken environment; nothing happens when the image has no environment block."""
     if not keys:
         return 0

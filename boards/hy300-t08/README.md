@@ -18,7 +18,7 @@ one in hand; nothing of ours has ever run on it.
 ## Where the facts come from
 
 One source: the stock OTA image `HY300_T08_OTA_2024-04-19-2028.img`, unpacked into
-`umbau/fixtures/images/hy300-t08.json` (package A1) and written down as
+`installer/tests/fixtures/images/hy300-t08.json` (package A1) and written down as
 `installer/h713/profiles/hy300_t08.py`.
 
 - **DRAM** — the 24 words at `boot0_sdcard.fex+0x38`. `uboot.config` carries them; the two words the

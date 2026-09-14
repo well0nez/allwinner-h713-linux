@@ -46,10 +46,14 @@ Sourced as shell, so `KEY=value`, no spaces around `=`. Keys:
 
 ### `uboot.config`
 
-A Kconfig fragment, merged over the board's base defconfig by
-`mainline/build/uboot-build.sh` (`scripts/kconfig/merge_config.sh -m` + `make olddefconfig`).
-It carries exactly three things: the DRAM settings (`CONFIG_DRAM_*` plus the DRAM type selector),
-`CONFIG_DEFAULT_DEVICE_TREE`, and the board name in `CONFIG_IDENT_STRING`.
+The board's U-Boot facts as a Kconfig fragment: the DRAM settings (`CONFIG_DRAM_*` plus the DRAM type
+selector), `CONFIG_DEFAULT_DEVICE_TREE`, and the board name in `CONFIG_IDENT_STRING`. **No build reads
+it.** The U-Boot fork carries a base defconfig per board that has one (`configs/<UBOOT_BOARD>_defconfig`,
+e.g. `hy310_defconfig`), and `mainline/build/uboot-build.sh <O> <base> [role]` merges a *role* fragment
+from the fork (`configs/fragments/h713_<role>.config`) over that base — see `docs/uboot/README.md`. This
+file is the record of what the base defconfig says about the board, in one place next to the profile:
+`boards/check.sh` compares its `CONFIG_DRAM_CLK` and DRAM type with the installer profile, and a new
+board's DRAM words are written here first, from the probe log, before anyone builds a defconfig from them.
 
 Two conventions keep the DRAM block honest:
 
@@ -76,8 +80,8 @@ that promise for a board whose owner has booted it and said so.
 
 What follows from the rule:
 
-- A board may have a `uboot.config` without ever getting an image. Probe builds (`--role probe`) are
-  read-only and are exactly what an untested board is for.
+- A board may have a `uboot.config` without ever getting an image. The probe (`h713_probe_defconfig`,
+  its own 624 MHz base, no role) is read-only and is exactly what an untested board is for.
 - `STATUS=verified` needs `VERIFIED_BY` filled in with a person, a board and a date. "It compiles" is
   not verification, and neither is "it booted in somebody else's tree" unless that somebody is named.
 - We hand strangers a finished file, not an instruction list, and we never claim their device is
