@@ -217,11 +217,17 @@ def _arbeiten(args, pfad):
         if args.restore_stock:
             # Plan 110 §2: vor jedem Schreibzugriff der kleine Abzug. Er kostet
             # Sekunden und rettet, was kein Image zurueckbringt (Befund S46 B2).
-            if not args.dry_run:
+            # Stage 2 C5 (Marco, 14.09.): only when the device still carries the stock
+            # layout -- on our own layout there is nothing stock-specific left to save,
+            # and the dump exists since the first installation.
+            if not args.dry_run and not args._unser_layout:
                 console.step(2, "Kleiner Abzug (Pflicht, auch vor dem Zuruecksetzen)")
                 os.makedirs(args.sicherung, exist_ok=True)
                 mf = dump_small(platte, args.sicherung, our_layout=args._unser_layout)
                 write_manifest(args.sicherung, mf, pfad)
+            elif not args.dry_run:
+                console.info("Our layout is on the device: no mandatory dump before the restore "
+                             "(nothing stock-specific is left to save; use the dump of your first install).")
             console.step(3, "Herstellerfirmware einspielen")
             if not os.path.isfile(args.restore_stock):
                 console.error("%s nicht gefunden" % args.restore_stock)
@@ -244,11 +250,14 @@ def _arbeiten(args, pfad):
 
         # --- Zurueckspielen statt installieren
         if args.restore:
-            if not args.dry_run:
+            if not args.dry_run and not args._unser_layout:      # stage 2 C5, see above
                 console.step(2, "Kleiner Abzug (Pflicht, auch vor dem Zuruecksetzen)")
                 os.makedirs(args.sicherung, exist_ok=True)
                 mf = dump_small(platte, args.sicherung, our_layout=args._unser_layout)
                 write_manifest(args.sicherung, mf, pfad)
+            elif not args.dry_run:
+                console.info("Our layout is on the device: no mandatory dump before the restore "
+                             "(nothing stock-specific is left to save; use the dump of your first install).")
             console.step(3, "Vollabzug zurueckspielen")
             if not os.path.isfile(args.restore):
                 console.error("%s nicht gefunden" % args.restore)
