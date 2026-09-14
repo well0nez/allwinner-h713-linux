@@ -45,7 +45,7 @@ def sha256_file(path, chunk: int = 8 << 20, log=None) -> str:
             h.update(b)
             n += len(b)
     if log:
-        log.info(f"sha256 über {n} B in {time.time() - t0:.1f} s")
+        log.info(f"sha256 over {n} B in {time.time() - t0:.1f} s")
     return h.hexdigest()
 
 

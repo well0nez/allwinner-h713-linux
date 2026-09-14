@@ -89,7 +89,7 @@ PANEL_CONFIG_CANDIDATES = ("/etc/tvconfig/panel_config/panel_config.ini", "/etc/
 def elf_symbol(data: bytes, symbol: str) -> Optional[Tuple[int, int, str]]:
     """(file offset, size, section) of a symbol out of .dynsym/.symtab; mapped through the section (sh_addr -> sh_offset)."""
     if data[:4] != b"\x7fELF":
-        raise Abort("keine ELF-Datei")
+        raise Abort("not an ELF file")
     cls, endian = data[4], data[5]
     E = "<" if endian == 1 else ">"
     if cls == 1:
@@ -150,22 +150,22 @@ def parse_mspm(blob: bytes) -> Tuple[List[dict], List[str]]:
     while o < len(blob):
         h = blob[o:o + 12]
         if len(h) < 12 or h[:4] != b"MSPM":
-            problems.append(f"bei +{o:#x}: kein MSPM-Kopf ({h[:4]!r})")
+            problems.append(f"at +{o:#x}: no MSPM header ({h[:4]!r})")
             break
         zero, target, raw = struct.unpack(">HHI", h[4:12])
         length = raw >> 8
         if zero != 0 or (target >> 8) != 1 or (raw & 0xFF) != 0:
-            problems.append(f"Block {len(blocks)} bei +{o:#x}: Kopffelder {zero:#x} {target:#x} {raw:#x} unerwartet")
+            problems.append(f"block {len(blocks)} at +{o:#x}: header fields {zero:#x} {target:#x} {raw:#x} unexpected")
         if length % 4 or o + 12 + length > len(blob):
-            problems.append(f"Block {len(blocks)} bei +{o:#x}: Länge {length} passt nicht")
+            problems.append(f"block {len(blocks)} at +{o:#x}: length {length} does not fit")
             break
         dsp = {0x100: "DSP1", 0x102: "DSP2"}.get(target, f"?{target:#x}")
-        blocks.append({"offset": o, "ziel": dsp, "laenge": length, "paare": length // 4})
+        blocks.append({"offset": o, "target": dsp, "length": length, "pairs": length // 4})
         o += 12 + length
     if o != len(blob):
-        problems.append(f"Kette endet bei +{o:#x}, Blob hat {len(blob)} B")
+        problems.append(f"the chain ends at +{o:#x}, the blob has {len(blob)} B")
     if not blocks:
-        problems.append("kein einziger MSPM-Block")
+        problems.append("not a single MSPM block")
     return blocks, problems
 
 
@@ -198,15 +198,15 @@ def check_edid_block(b: bytes, who: str) -> List[str]:
         findings.append(f"{who}: {len(b)} B statt 256")
         return findings
     if b[:8] != b"\x00\xff\xff\xff\xff\xff\xff\x00":
-        findings.append(f"{who}: EDID-Kopf fehlt ({hexdump_short(b, 8)})")
+        findings.append(f"{who}: EDID header missing ({hexdump_short(b, 8)})")
     for i in (0, 128):
         s = sum(b[i:i + 128]) & 0xFF
         if s:
-            findings.append(f"{who}: Block {i // 128} Prüfsumme {s:#04x} statt 0")
+            findings.append(f"{who}: block {i // 128} checksum {s:#04x} instead of 0")
     if b[126] != 1:
-        findings.append(f"{who}: Erweiterungszähler {b[126]} statt 1")
+        findings.append(f"{who}: extension counter {b[126]} instead of 1")
     if b[128] != 0x02:
-        findings.append(f"{who}: Block 1 ist kein CEA-861 (Tag {b[128]:#04x})")
+        findings.append(f"{who}: block 1 is not CEA-861 (tag {b[128]:#04x})")
     return findings
 
 
@@ -228,7 +228,7 @@ def edid_name(b: bytes) -> str:
 # --------------------------------------------------------------------------------------------------
 
 def check_pq(name: str, data: bytes, tmp: Path) -> List[str]:
-    """Empty list = ok. Otherwise findings („hier drohen Probleme")."""
+    """Empty list = ok. Otherwise findings (each one is trouble ahead)."""
     findings = []
     try:
         if name.endswith(".ini") or name.endswith(".cfg"):
@@ -237,58 +237,58 @@ def check_pq(name: str, data: bytes, tmp: Path) -> List[str]:
             s = parse_ini(text)
             cfg = dict(s.get("CONFIG", []))
             if "picture_mode" not in cfg:
-                findings.append("[CONFIG] picture_mode fehlt")
+                findings.append("[CONFIG] picture_mode missing")
             modes = [m.strip() for m in cfg.get("picture_mode", "").split(",") if m.strip()]
             for input_name in ("HDMI1", "HDMI2", "HDMI3"):
                 if input_name not in s:
-                    findings.append(f"Sektion [{input_name}] fehlt")
+                    findings.append(f"section [{input_name}] missing")
                     continue
                 d = dict(s[input_name])
                 for m in modes:
                     if m not in d:
-                        findings.append(f"[{input_name}] Modus {m} fehlt")
+                        findings.append(f"[{input_name}] mode {m} missing")
                     elif len(ini_numbers(d[m])) != 13:
                         findings.append(f"[{input_name}] {m}: {len(ini_numbers(d[m]))} statt 13 Werte")
         elif name == "pq_factory_extern.ini":
             s = parse_ini(text)
             if "PQ_ENABLE" not in s:
-                findings.append("[PQ_ENABLE] fehlt")
+                findings.append("[PQ_ENABLE] missing")
             if "PICTURE_CURVE_HDMI" not in s:
-                findings.append("[PICTURE_CURVE_HDMI] fehlt")
+                findings.append("[PICTURE_CURVE_HDMI] missing")
             else:
                 d = dict(s["PICTURE_CURVE_HDMI"])
                 for i in range(1, 6):
                     k = f"PICTURE_CURVE_SETTINGS[{i}]"
                     if k not in d:
-                        findings.append(f"[PICTURE_CURVE_HDMI] {k} fehlt")
+                        findings.append(f"[PICTURE_CURVE_HDMI] {k} missing")
                     elif len(ini_numbers(d[k])) != 5:
-                        findings.append(f"[PICTURE_CURVE_HDMI] {k}: {len(ini_numbers(d[k]))} statt 5 Stützstellen")
+                        findings.append(f"[PICTURE_CURVE_HDMI] {k}: {len(ini_numbers(d[k]))} instead of 5 support points")
         elif name == "pq_colortemp.ini":
             s = parse_ini(text)
             if "COLOR_TEMP_HDMI" not in s:
-                findings.append("[COLOR_TEMP_HDMI] fehlt")
+                findings.append("[COLOR_TEMP_HDMI] missing")
             else:
                 d = dict(s["COLOR_TEMP_HDMI"])
                 for k in ("STANDARD", "COOL", "WARM", "USER"):
                     if k not in d:
-                        findings.append(f"[COLOR_TEMP_HDMI] {k} fehlt")
+                        findings.append(f"[COLOR_TEMP_HDMI] {k} missing")
                     elif len(ini_numbers(d[k])) != 6:
                         findings.append(f"[COLOR_TEMP_HDMI] {k}: {len(ini_numbers(d[k]))} statt 6 Werte")
         elif name == "pq_overscan_config.ini":
             s = parse_ini(text)
             if "HDMIOverscanSetting" not in s:
-                findings.append("[HDMIOverscanSetting] fehlt")
+                findings.append("[HDMIOverscanSetting] missing")
         elif name.endswith(".xml"):
             root = ET.fromstring(data)
             if name == "pqcontrol_config_setting.xml":
                 items = [it for it in root.iter("item") if it.get("name") == "gamma"]
                 if not items:
-                    findings.append("<transform><item name=\"gamma\"> fehlt")
+                    findings.append("<transform><item name=\"gamma\"> missing")
                 elif not all(items[0].get(f"level{i}") for i in range(5)):
-                    findings.append("gamma level0..level4 unvollständig")
+                    findings.append("gamma level0..level4 incomplete")
         elif name == "tvpq.db":
             if data[:16] != b"SQLite format 3\0":
-                findings.append("kein SQLite-Kopf")
+                findings.append("no SQLite header")
             else:
                 dbp = tmp / "pruef-tvpq.db"
                 dbp.write_bytes(data)
@@ -297,22 +297,22 @@ def check_pq(name: str, data: bytes, tmp: Path) -> List[str]:
                     tables = {r[0] for r in c.execute("select name from sqlite_master where type='table'")}
                     for t in ("Picture_Mode", "White_Balance_Mode", "Gamma_Point"):
                         if t not in tables:
-                            findings.append(f"Tabelle {t} fehlt")
+                            findings.append(f"table {t} missing")
                         else:
                             n = c.execute(f"select count(*) from {t}").fetchone()[0]
                             if n == 0:
-                                findings.append(f"Tabelle {t} leer")
+                                findings.append(f"table {t} empty")
                     c.close()
                 finally:
                     dbp.unlink(missing_ok=True)
         elif name == "portmap.cfg":
             lines = [line.split() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
             if not lines or any(len(line) < 3 for line in lines):
-                findings.append("keine dreispaltigen Port-Zeilen")
+                findings.append("no three-column port rows")
             elif not any(line[2].startswith("HDMI") for line in lines):
-                findings.append("kein HDMI-Port")
+                findings.append("no HDMI port")
     except Exception as e:  # noqa: BLE001 — every unreadability is a finding, not a stop
-        findings.append(f"nicht lesbar: {e}")
+        findings.append(f"not readable: {e}")
     return findings
 
 
@@ -323,10 +323,10 @@ def check_pq(name: str, data: bytes, tmp: Path) -> List[str]:
 def tse_header(data: bytes) -> dict:
     """The 16-byte TSE header: magic 'TSE' and at offset 14 the project id as u16 little-endian (plan 108 §4.5)."""
     if len(data) < 16:
-        return {"magic_ok": False, "id": None, "kopf": data.hex()}
+        return {"magic_ok": False, "id": None, "header": data.hex()}
     return {"magic_ok": data[:3] == TSE_MAGIC,
             "id": struct.unpack_from("<H", data, TSE_ID_OFFSET)[0],
-            "kopf": data[:16].hex()}
+            "header": data[:16].hex()}
 
 
 def check_tse(name: str, data: bytes) -> Tuple[List[str], Optional[int]]:
@@ -334,17 +334,17 @@ def check_tse(name: str, data: bytes) -> Tuple[List[str], Optional[int]]:
     findings: List[str] = []
     k = tse_header(data)
     if not k["magic_ok"]:
-        findings.append(f"{name}: TSE-Magic fehlt (Kopf {k['kopf']})")
+        findings.append(f"{name}: TSE magic missing (header {k['header']})")
         return findings, None
     m = MIPS_PROJECTID.match(name)
     if m:
         from_name = int(m.group(1), 16)
         if k["id"] != from_name:
-            findings.append(f"{name}: Kopf sagt ID {k['id']:#06x}, der Dateiname sagt {from_name:#06x} — passt nicht zusammen")
+            findings.append(f"{name}: the header says ID {k['id']:#06x}, the file name says {from_name:#06x} -- they do not match")
         else:
-            findings.append(f"{name}: TSE-Kopf {k['kopf']}, ID {k['id']:#06x} = Dateiname")
+            findings.append(f"{name}: TSE header {k['header']}, ID {k['id']:#06x} = file name")
     else:
-        findings.append(f"{name}: TSE-Kopf {k['kopf']}, ID-Feld {k['id']:#06x}")
+        findings.append(f"{name}: TSE header {k['header']}, ID field {k['id']:#06x}")
     return findings, k["id"]
 
 
@@ -385,12 +385,12 @@ def check_display_cfg(data: bytes) -> List[str]:
     notes = []
     raw = data
     if raw.rstrip(b"\r\n\t \0") != raw.rstrip():
-        notes.append("display_cfg.xml: endet auf Null-Byte(s) hinter </root> (Stock-Eigenart, unverändert kopiert)")
+        notes.append("display_cfg.xml: ends on null byte(s) behind </root> (a stock quirk, copied unchanged)")
     text = raw.rstrip(b"\r\n\t \0").decode("utf-8", "replace")
     try:
         root = ET.fromstring(text)
     except ET.ParseError as e:
-        return notes + [f"display_cfg.xml: nicht parsebar ({e})"]
+        return notes + [f"display_cfg.xml: not parsable ({e})"]
     children = [k.tag for k in root]
-    return notes + [f"display_cfg.xml: wohlgeformt, Wurzel <{root.tag}>, {len(children)} Kinder"
+    return notes + [f"display_cfg.xml: well formed, root <{root.tag}>, {len(children)} children"
                     + (": " + ", ".join(sorted(set(children))[:8]) if children else "")]

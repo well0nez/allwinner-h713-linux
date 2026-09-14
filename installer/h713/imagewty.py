@@ -33,20 +33,20 @@ class Imagewty:
             (self.image_size, self.image_header_size, self.pid, self.vid, self.hardware_id, self.firmware_id,
              _val1, _val1024, self.num_files) = struct.unpack_from("<9I", h, 0x18)
             self.layout = "v1"
-            log.warn("IMAGEWTY v1-Kopf (0x0100) — Layout aus awimage übernommen, hier ungetestet")
+            log.warn("IMAGEWTY v1 header (0x0100) -- layout taken from awimage, untested here")
         log.info(f"IMAGEWTY header_version {self.header_version:#06x} ({self.layout}), header_size {self.header_size:#x}, "
-                 f"image_size {self.image_size} B (Datei {q.size} B), image_header_size {self.image_header_size:#x}, "
-                 f"pid {self.pid:#x} vid {self.vid:#x} hw {self.hardware_id:#x} fw {self.firmware_id:#x}, {self.num_files} Dateien")
+                 f"image_size {self.image_size} B (file {q.size} B), image_header_size {self.image_header_size:#x}, "
+                 f"pid {self.pid:#x} vid {self.vid:#x} hw {self.hardware_id:#x} fw {self.firmware_id:#x}, {self.num_files} files")
         if self.image_header_size not in (0x400,):
-            log.warn(f"image_header_size {self.image_header_size:#x} statt 0x400 — Tabellenlayout unsicher")
+            log.warn(f"image_header_size {self.image_header_size:#x} instead of 0x400 -- table layout uncertain")
         if self.num_files == 0 or self.num_files > 512:
-            raise Abort(f"IMAGEWTY: unplausible Dateizahl {self.num_files}")
+            raise Abort(f"IMAGEWTY: implausible file count {self.num_files}")
         # Range 0x60..0x400: fill pattern n^2 mod 256 (observation only, no cipher text)
         pad = q.read(self.header_size, 64)
         quad = bytes(((i * i) & 0xFF) for i in range(64))
         diff = bytes((a - b) & 0xFF for a, b in zip(pad, quad))
         if diff[:4] * 16 == diff:
-            log.info("Bereich 0x60..0x3ff: Füllmuster n² mod 256 (kein Chiffrat, keine Nutzdaten)")
+            log.info("range 0x60..0x3ff: fill pattern n^2 mod 256 (no cipher text, no payload)")
         self.entries: dict[str, dict] = {}
         #: name -> every copy of it in the file table, in table order (stage 2 C-C).
         #: `entries[name]` stays the first one; A1 found boot-resource.fex twice in the
@@ -56,7 +56,7 @@ class Imagewty:
         for i in range(self.num_files):
             e = q.read(tab + i * 0x400, 0x400)
             if len(e) < 0x400:
-                raise Abort("IMAGEWTY: Dateitabelle abgeschnitten")
+                raise Abort("IMAGEWTY: file table truncated")
             filename_len, total_header_size = struct.unpack_from("<II", e, 0)
             maintype = e[8:16].decode("latin1")
             subtype = e[16:32].decode("latin1")
@@ -68,22 +68,22 @@ class Imagewty:
                 stored, original, off = struct.unpack_from("<3I", e, 36)
                 fn = e[52:52 + 256].split(b"\0")[0].decode("latin1")
             if total_header_size != 0x400 or filename_len != 0x100 or not fn:
-                raise Abort(f"IMAGEWTY: Dateitabelle bei {tab + i * 0x400:#x} unlesbar (total_header_size {total_header_size:#x}, "
-                            f"filename_len {filename_len:#x}) — verschlüsselter Container (RC6)? Dann extern entpacken und --fex-dir nutzen.")
+                raise Abort(f"IMAGEWTY: file table at {tab + i * 0x400:#x} unreadable (total_header_size {total_header_size:#x}, "
+                            f"filename_len {filename_len:#x}) -- encrypted container (RC6)? Then unpack it externally and use --fex-dir.")
             if off + stored > q.size or original > stored:
-                log.warn(f"IMAGEWTY: {fn}: Offset {off:#x} + {stored} überschreitet das Image oder original>stored")
+                log.warn(f"IMAGEWTY: {fn}: offset {off:#x} + {stored} runs past the image, or original>stored")
             self.entries.setdefault(fn, {"name": fn, "maintype": maintype, "subtype": subtype,
                                          "offset": off, "stored": stored, "original": original})
             self.copies.setdefault(fn, []).append({"offset": off, "stored": stored,
                                                    "original": original})
-        log.info("Dateien: " + ", ".join(self.entries))
+        log.info("files: " + ", ".join(self.entries))
         end = max((c["offset"] + c["stored"] for cs in self.copies.values() for c in cs), default=0)
-        log.info(f"letzte Nutzdaten enden bei {end:#x} ({end} B); Kopf image_size {self.image_size}, Datei {q.size}")
+        log.info(f"the last payload ends at {end:#x} ({end} B); header image_size {self.image_size}, file {q.size}")
         if end > q.size:
-            log.warn(f"Image abgeschnitten: Nutzdaten reichen bis {end}, Datei hat nur {q.size} B")
+            log.warn(f"image truncated: the payload reaches to {end}, the file has only {q.size} B")
         elif self.image_size != q.size:
-            log.info(f"Kopf image_size weicht um {self.image_size - q.size:+d} B von der Dateigröße ab — Nutzdaten sind vollständig, "
-                     f"nur Beobachtung")
+            log.info(f"the header image_size differs from the file size by {self.image_size - q.size:+d} B -- the payload is complete, "
+                     f"observation only")
 
     def file(self, name: str) -> Optional[Source]:
         e = self.entries.get(name)
@@ -111,24 +111,24 @@ class SunxiPackage:
         self.off = off
         h = q.read(off, 0x40)
         if h[:13] != self.NAME:
-            raise Abort(f"{origin}: kein sunxi-package bei {off:#x}")
+            raise Abort(f"{origin}: no sunxi-package at {off:#x}")
         magic, add_sum, serial, status, items_nr, valid_len, vmain, vsub = struct.unpack_from("<8I", h, 16)
         self.problems: list[str] = []
         if magic != self.MAGIC:
-            self.problems.append(f"Magic {magic:#x} statt 0x89119800")
+            self.problems.append(f"magic {magic:#x} instead of 0x89119800")
         if h[0x3C:0x40] != b"MIE;":
-            self.problems.append(f"Kopf-Ende {h[0x3C:0x40]!r} statt 'MIE;'")
+            self.problems.append(f"header end {h[0x3C:0x40]!r} instead of 'MIE;'")
         if not (1 <= items_nr <= 32):
-            raise Abort(f"{origin}: items_nr {items_nr} unplausibel")
+            raise Abort(f"{origin}: items_nr {items_nr} implausible")
         if valid_len < 0x40 + items_nr * 0x170 or off + valid_len > q.size:
-            raise Abort(f"{origin}: valid_len {valid_len:#x} unplausibel")
+            raise Abort(f"{origin}: valid_len {valid_len:#x} implausible")
         buf = bytearray(q.read(off, valid_len))
         struct.pack_into("<I", buf, 20, self.STAMP)
         n4 = len(buf) // 4
         total = sum(struct.unpack_from(f"<{n4}I", buf, 0)) & 0xFFFFFFFF
         self.checksum_ok = total == add_sum
         if not self.checksum_ok:
-            self.problems.append(f"add_sum {add_sum:#x}, gerechnet {total:#x}")
+            self.problems.append(f"add_sum {add_sum:#x}, computed {total:#x}")
         self.items: dict[str, tuple[int, int]] = {}
         for i in range(items_nr):
             o = 0x40 + i * 0x170
@@ -136,16 +136,16 @@ class SunxiPackage:
             name = bytes(e[:64]).split(b"\0")[0].decode("latin1", "replace")
             doff, dlen, enc, typ, run, idx = struct.unpack_from("<6I", e, 64)
             if bytes(e[0x16C:0x170]) != b"IIE;":
-                self.problems.append(f"Item {i} ({name}): Ende {bytes(e[0x16C:0x170])!r} statt 'IIE;'")
+                self.problems.append(f"item {i} ({name}): end {bytes(e[0x16C:0x170])!r} instead of 'IIE;'")
             if doff + dlen > valid_len:
-                self.problems.append(f"Item {name}: {doff:#x}+{dlen} überschreitet valid_len")
+                self.problems.append(f"item {name}: {doff:#x}+{dlen} runs past valid_len")
             if enc:
-                self.problems.append(f"Item {name}: encrypt={enc}")
+                self.problems.append(f"item {name}: encrypt={enc}")
             self.items[name] = (doff, dlen)
         self.q, self.valid_len, self.items_nr = q, valid_len, items_nr
         self.serial, self.status, self.vmain, self.vsub = serial, status, vmain, vsub
-        log.info(f"{origin}: sunxi-package @{off:#x}, {items_nr} Items, valid_len {valid_len:#x}, "
-                 f"Prüfsumme {'ok' if self.checksum_ok else 'FALSCH'}: " +
+        log.info(f"{origin}: sunxi-package @{off:#x}, {items_nr} items, valid_len {valid_len:#x}, "
+                 f"checksum {'ok' if self.checksum_ok else 'WRONG'}: " +
                  ", ".join(f"{n}@{o:#x}+{l}" for n, (o, l) in self.items.items()))
         for p in self.problems:
             log.warn(f"{origin}: {p}")
@@ -220,35 +220,35 @@ def check_scp(scp: bytes, log: Log) -> list[str]:
     """Structural check of the ARISC blob (OR1K, stored word-wise mirrored — analyse/arisc/BEFUND.md)."""
     findings = []
     if len(scp) % 4:
-        findings.append(f"Länge {len(scp)} nicht durch 4 teilbar")
+        findings.append(f"length {len(scp)} is not divisible by 4")
     if scp.count(0) == len(scp):
-        findings.append("Blob ist leer (nur Nullen)")
+        findings.append("the blob is empty (zeros only)")
         return findings
     if len(scp) >= 0x104:
         w = scp[0x100:0x104][::-1]  # un-mirrored
         op = w[0] >> 2
         if op == 0x00:
             target = 0x100 + (int.from_bytes(w, "big") & 0x3FFFFFF) * 4
-            findings.append(f"Reset-Vektor @0x100 = l.j {target:#x} (OR1K, plausibel)")
+            findings.append(f"reset vector @0x100 = l.j {target:#x} (OR1K, plausible)")
         else:
-            findings.append(f"Reset-Vektor @0x100 ist kein l.j (Opcode {op:#x}) — Byte-Ordnung oder Blob fraglich")
+            findings.append(f"reset vector @0x100 is not an l.j (opcode {op:#x}) -- byte order or blob doubtful")
     if len(scp) >= 0x4008:
         head = scp[0x4000:0x4008]
         if head[4:8] == b"CPUs":
-            findings.append("Parameterkopf @0x4000: 'CPUs' vorhanden")
+            findings.append("parameter header @0x4000: 'CPUs' present")
         else:
-            findings.append(f"Parameterkopf @0x4004 ist {head[4:8]!r}, nicht 'CPUs'")
+            findings.append(f"parameter header @0x4004 is {head[4:8]!r}, not 'CPUs'")
     # Version string (strings lie word-wise mirrored in the blob)
     mirrored = b"".join(scp[i:i + 4][::-1] for i in range(0, len(scp) - 3, 4))
     m = re.search(rb"[ -~]{0,40}ARISC[ -~]{0,60}", mirrored)
     if m:
-        findings.append("Versionsstring: '" + m.group(0).decode("latin1").strip() + "'")
+        findings.append("version string: '" + m.group(0).decode("latin1").strip() + "'")
     else:
-        findings.append("kein 'ARISC'-Versionsstring gefunden")
+        findings.append("no 'ARISC' version string found")
     # Share of word-aligned l.nop (0x15000000) after un-mirroring
     nops = 0
     for i in range(0, min(len(scp), 0x20000) - 3, 4):
         if scp[i:i + 4] == b"\x00\x00\x00\x15":
             nops += 1
-    findings.append(f"{nops} wortausgerichtete l.nop in den ersten 128 KiB")
+    findings.append(f"{nops} word-aligned l.nop in the first 128 KiB")
     return findings

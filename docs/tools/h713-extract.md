@@ -12,7 +12,7 @@ the projector.
 |---|---|
 | `update.img` | Allwinner IMAGEWTY firmware container |
 | a raw eMMC dump | GPT + `boot0` + the `sunxi-package`/TOC1 boot package at their fixed LBAs |
-| `--part NAME=FILE` | one partition or `.fex` file at a time: `boot_package`, `super`, `vendor`, `bootloader_a`/`bootloader_b`/`boot-resource` |
+| `--part NAME=FILE` | one partition or `.fex` file at a time: `boot_package`, `super`, `vendor`, `bootloader_a`/`bootloader_b`/`boot-resource`, `emmc` |
 | `--fex-dir DIR` | a directory of already-unpacked `.fex` files |
 
 ```
@@ -26,7 +26,8 @@ Output under `--out` (default `./h713-extract-out`): `lib/firmware/h713-arisc.bi
 firmware), `lib/firmware/hy310-edid.bin`, `lib/firmware/h713/msp-patch.bin` (audio DSP patch), `pq/*`
 (the picture-quality tables `h713-pq` reads), `boot/mips/*` (the 19 display artifacts U-Boot loads by
 name), `lib/firmware/aic8800_fw/SDIO/aic8800D80/*` (Wi-Fi firmware, added 12.09.2026, `--no-wlan` to skip
-it), plus `MANIFEST.json` and `BERICHT.txt`.
+it), plus `MANIFEST.json` and `REPORT.txt`. The report is also written as `BERICHT.txt`, byte-identical,
+for one more release — the German name goes away with the next one.
 
 ## Structure checks and the manifest
 
@@ -36,8 +37,13 @@ INI/XML/SQLite parse for the picture tables, and — for the display artifacts �
 directory entries plus each file's 16-byte `TSE` header. The display firmware itself is checked against a
 table of known revisions (size and sha256); an unrecognised revision is reported plainly rather than
 accepted silently, and every `ProjectID_0x*.TSE` file is still extracted so the right one can be chosen at
-runtime. `MANIFEST.json` and `BERICHT.txt` record path, size, sha256, where each file came from, and
+runtime. `MANIFEST.json` and `REPORT.txt` record path, size, sha256, where each file came from, and
 whether it matched its reference.
+
+The manifest keys are English since stage 3 of doku/121: the artifact list is `files` (entries carry
+`path`, `size`, `sha256`, `origin`, `checks`, `error`, `reference_ok`, `reference_device`), the input is
+`input`, and the summary lists are `not_extracted`, `deviations`, `warnings` and `observations`. The
+structure is otherwise unchanged; the complete old → new table is in `installer/tests/TEXTS-extract.md`.
 
 ## Device profiles
 

@@ -49,7 +49,7 @@ class FileSource(Source):
 class SliceSource(Source):
     def __init__(self, parent: Source, off: int, size: int, name: str):
         if off < 0 or off + size > parent.size:
-            raise Abort(f"{name}: Bereich {off:#x}+{size:#x} liegt außerhalb von {parent.name} ({parent.size:#x} B)")
+            raise Abort(f"{name}: range {off:#x}+{size:#x} lies outside {parent.name} ({parent.size:#x} B)")
         self.parent, self.off, self.size, self.name = parent, off, size, name
 
     def read(self, off, n):
@@ -80,9 +80,9 @@ class SparseSource(Source):
         h = parent.read(0, 28)
         magic, maj, mi, fhs, chs, self.blk, self.total_blks, self.total_chunks, _cs = struct.unpack("<IHHHHIIII", h)
         if magic != self.MAGIC:
-            raise Abort("kein Sparse-Abbild")
+            raise Abort("not a sparse image")
         if (maj, mi) != (1, 0) or fhs != 28 or chs != 12:
-            log.warn(f"Sparse-Kopf ungewöhnlich: v{maj}.{mi}, Kopf {fhs}, Chunk-Kopf {chs}")
+            log.warn(f"unusual sparse header: v{maj}.{mi}, header {fhs}, chunk header {chs}")
         self.size = self.blk * self.total_blks
         # chunk map: (logical start, length, type, file offset|fill value)
         self.chunks: list[tuple[int, int, int, int]] = []
@@ -96,7 +96,7 @@ class SparseSource(Source):
             lo, ln = lblk * self.blk, csz * self.blk
             if t == self.RAW:
                 if tsz != 12 + ln:
-                    raise Abort(f"Sparse-Chunk {i}: RAW-Länge passt nicht ({tsz} vs {12 + ln})")
+                    raise Abort(f"sparse chunk {i}: RAW length does not fit ({tsz} vs {12 + ln})")
                 self.chunks.append((lo, ln, t, off + 12))
             elif t == self.FILL:
                 fill = struct.unpack("<I", parent.read(off + 12, 4))[0]
@@ -108,8 +108,8 @@ class SparseSource(Source):
             off += tsz
             lblk += csz
         if lblk != self.total_blks:
-            log.warn(f"Sparse: Chunks decken {lblk} Blöcke, Kopf sagt {self.total_blks}")
-        self.description = (f"Sparse v{maj}.{mi}, Block {self.blk}, {self.total_blks} Blöcke = {self.size} B logisch, "
+            log.warn(f"sparse: the chunks cover {lblk} blocks, the header says {self.total_blks}")
+        self.description = (f"sparse v{maj}.{mi}, block {self.blk}, {self.total_blks} blocks = {self.size} B logical, "
                             f"{self.total_chunks} Chunks (RAW {types[self.RAW]}, FILL {types[self.FILL]}, "
                             f"DONT_CARE {types[self.DONT_CARE]}, CRC {types[self.CRC]})")
 
@@ -224,4 +224,4 @@ def materialize(q: Source, target: Path, log: Log):
                     f.write(b)
                 off += len(b)
             f.truncate(q.size)
-    log.info(f"{q.name} -> {target.name}: {q.size} B in {time.time() - t0:.1f} s (Zwischenstand, wird gelöscht)")
+    log.info(f"{q.name} -> {target.name}: {q.size} B in {time.time() - t0:.1f} s (scratch copy, deleted at the end)")
