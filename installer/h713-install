@@ -117,15 +117,17 @@ def parser():
     put.add_argument("--work-copy", metavar="FILE",
                      help="where the filled copy of the image goes "
                           "(default: <dump>/abbild-gefuellt.img, ~1.2 GB)")
-    put.add_argument("--full", dest="size", action="store_const", const="full",
-                     help="take the full dump without asking")
-    put.add_argument("--small", dest="size", action="store_const", const="small",
-                     help="take the small dump without asking")
+    size = put.add_mutually_exclusive_group()      # the same pair as dump's: one or the other
+    size.add_argument("--full", dest="size", action="store_const", const="full",
+                      help="take the full dump without asking")
+    size.add_argument("--small", dest="size", action="store_const", const="small",
+                      help="take the small dump without asking")
     env = put.add_mutually_exclusive_group()
     env.add_argument("--fresh-env", dest="fresh_env", action="store_true",
                      help="carry NOTHING over from the old U-Boot environment "
                           "(default: %s are carried over)" % ", ".join(ENV_CARRY_OVER))
-    env.add_argument("--keep-env", dest="fresh_env", action="store_false", help=argparse.SUPPRESS)
+    env.add_argument("--keep-env", dest="fresh_env", action="store_false",
+                     help="carry the listed keys over from the old environment (the default, spelled out)")
     put.set_defaults(fresh_env=False, size=None)
 
     for name, metavar, what_for in (("restore", "DUMP.img", "write a full dump back"),

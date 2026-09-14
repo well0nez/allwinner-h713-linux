@@ -760,6 +760,7 @@ def readme_text(d):
     b("  * 19 display artefacts (mips/) -- without them the picture stays black")
     b("  * 3 firmware files (ARISC, EDID, MSP patch)")
     b("  * 8 PQ files (picture tuning)")
+    b("  * 13 WLAN firmware files (aic8800)")
     b("")
     b("They come out of your own device: h713-extract reads them from the full")
     b("dump you pulled beforehand, and h713-install writes them to the places")
