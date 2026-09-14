@@ -227,6 +227,25 @@ class ReleaseFolder(unittest.TestCase):
         from h713.install import release_files
         self.assertEqual(release_files(os.path.dirname(self.release)), {})
 
+    def test_an_old_dump_is_still_read_under_its_v05_names(self):
+        """in_dump(): the English name when it exists, else the v0.5-beta spelling (a dump
+        made by the old tool stays a way back), else the English path for writing."""
+        from h713.install import DUMP_FULL, EXTRACT_DIR, in_dump
+        old = os.path.join(support.workdir(self), "hy310-sicherung")
+        os.makedirs(os.path.join(old, "extrakt"))
+        open(os.path.join(old, "emmc-voll.img"), "wb").close()
+        log = support.Recorder()
+        self.assertEqual(in_dump(old, DUMP_FULL, log), os.path.join(old, "emmc-voll.img"))
+        self.assertEqual(in_dump(old, EXTRACT_DIR, log), os.path.join(old, "extrakt"))
+        self.assertEqual(len(log.lines), 2, log.text)
+        self.assertIn("v0.5-beta name emmc-voll.img", log.text)
+        new = os.path.join(support.workdir(self), "h713-dump")
+        os.makedirs(new)
+        open(os.path.join(new, "emmc-full.img"), "wb").close()
+        self.assertEqual(in_dump(new, DUMP_FULL, log), os.path.join(new, "emmc-full.img"))
+        self.assertEqual(in_dump(new, EXTRACT_DIR, log), os.path.join(new, "extract"))
+        self.assertEqual(len(log.lines), 2, log.text)      # nothing said for the new names
+
     def test_identify_reads_the_table_itself(self):
         """`identify TABLE.json` lists the pieces and what lies next to the table; exit 0,
         nothing written (the device-test plan's "Vorher 2" check, stage 4)."""
@@ -257,7 +276,7 @@ class ReleaseFolder(unittest.TestCase):
         self.assertEqual(tool.main(["install", self.release, "--no-write"]), 0)
         self.assertEqual(seen["args"].uboot, os.path.join(self.release, "u-boot-installer.bin"))
         self.assertEqual(seen["args"].fel, os.path.join(self.release, "sunxi-fel"))
-        self.assertEqual(seen["args"].dump_dir, "hy310-sicherung")
+        self.assertEqual(seen["args"].dump_dir, "h713-dump")
 
     def test_the_given_paths_beat_the_folder(self):
         tool = _tool_module()
@@ -321,7 +340,7 @@ class RestoreNoWrite(unittest.TestCase):
         tmp = support.workdir(self)
         disk = fakedisk.make_v3_disk(os.path.join(tmp, "emmc-v3.img"))
         before = fakedisk.journal(disk)
-        dump = os.path.join(tmp, "emmc-voll.img")
+        dump = os.path.join(tmp, "emmc-full.img")
         with open(dump, "wb") as fh:
             fh.write(b"\xa5" * (1 << 20))
         proc = subprocess.run(

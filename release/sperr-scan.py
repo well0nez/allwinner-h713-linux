@@ -7,7 +7,7 @@ Exit 0: nichts gefunden.  Exit 1: harte Funde (unten).  Grosse Dateien sind nur 
 Hinweis fuer den Menschen, kein Fund.
 
 Was ein harter Fund ist (doku/116 §2 "Veroeffentlichen", §7):
-  1. Pfade, die nie ins Repo gehoeren: re/, hy310-sicherung*, analyse/hdcp-keys, device-dumps
+  1. Pfade, die nie ins Repo gehoeren: re/, hy310-sicherung*, h713-dump*, analyse/hdcp-keys, device-dumps
   2. Dateinamen der proprietaeren Teile (die Blob-Sperre des Installers plus die
      Anzeige-Artefakte): hy310-hdcp22.bin, hdcp_v22.bin, h713-arisc.bin, msp-patch.bin,
      hy310-edid*.bin, fmacfw*, lmacfw*, fw_patch*, fw_adid*, *.TSE, display.bin,
@@ -29,7 +29,7 @@ Ausgenommen: .git/, __pycache__/, die Arbeitsbaeume der Submodule aus .gitmodule
 from __future__ import annotations
 import argparse, fnmatch, hashlib, importlib.machinery, importlib.util, os, re, sys
 
-PFADE = ("re/", "hy310-sicherung", "analyse/hdcp-keys", "device-dumps", "mainline/build/", "tftp/", "patches-snapshots/")
+PFADE = ("re/", "hy310-sicherung", "h713-dump", "analyse/hdcp-keys", "device-dumps", "mainline/build/", "tftp/", "patches-snapshots/")
 # unter den gesperrten Pfaden trotzdem erlaubt: die drei Bauskripte (alles andere in mainline/build/ ist Bauausgabe).
 # Dieselbe Liste wie die !-Zeilen in .gitignore -- uboot-prove-fragments.sh kam mit E3b dazu.
 ERLAUBT = ("mainline/build/build.sh", "mainline/build/uboot-build.sh", "mainline/build/uboot-prove-fragments.sh")

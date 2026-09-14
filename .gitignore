@@ -25,6 +25,7 @@ userspace/h713-tv/*.aarch64-linux-gnu.*
 *.fex
 *.bundle
 hy310-sicherung*/
+h713-dump*/
 re/
 __pycache__/
 *.pyc

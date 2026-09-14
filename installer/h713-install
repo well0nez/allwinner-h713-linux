@@ -49,7 +49,8 @@ from h713.dump import (choose_dump, dump_full, dump_small, mandatory_dump,  # no
 from h713.env import ENV_CARRY_OVER                                         # noqa: E402
 from h713.fel import expose_drive                                           # noqa: E402
 from h713.identify import identify, report_device                           # noqa: E402
-from h713.install import (WRITES, confirm, image_package, release_files,     # noqa: E402
+from h713.install import (DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
+                          WRITES, confirm, image_package, release_files,
                           run_extractor, translate, unpack_parts, write_package)
 from h713.log import console                                                # noqa: E402
 from h713.profiles import PROFILES                                          # noqa: E402
@@ -58,7 +59,6 @@ from h713.util import duration, mib                                         # no
 from h713.verify import verify_image, write_image                           # noqa: E402
 
 VERSION = "0.1 (draft, doku/110)"
-DUMP_DEFAULT = "hy310-sicherung"
 
 EPILOG = """exit codes:
   0 ok                  4 wrong size         8 no vendor source
@@ -116,7 +116,7 @@ def parser():
     put.add_argument("--table", help="offset table when the image is a single file")
     put.add_argument("--work-copy", metavar="FILE",
                      help="where the filled copy of the image goes "
-                          "(default: <dump>/abbild-gefuellt.img, ~1.2 GB)")
+                          "(default: <dump>/%s, ~1.2 GB)" % WORK_COPY)
     size = put.add_mutually_exclusive_group()      # the same pair as dump's: one or the other
     size.add_argument("--full", dest="size", action="store_const", const="full",
                       help="take the full dump without asking")
@@ -272,7 +272,7 @@ def _dump(args, disk, path):
     os.makedirs(args.dump_dir, exist_ok=True)
     manifest = dump_small(disk, args.dump_dir, our_layout=args._our_layout)   # always, "full" too
     if size == "full":
-        file = os.path.join(args.dump_dir, "emmc-voll.img")
+        file = os.path.join(args.dump_dir, DUMP_FULL)
         console.info("7.3 GB, that takes a while. Progress:")
         digest, seconds = dump_full(disk, file)
         console.ok("%s  sha256 %s…  in %s" % (file, digest[:16], duration(seconds)))
@@ -283,18 +283,18 @@ def _dump(args, disk, path):
                           "anything is written." % bad)
             return 7
         console.ok("the dump agrees with the device")
-        manifest.append(("emmc-voll", 0, disk.sectors, digest, "complete clone"))
+        manifest.append((DUMP_FULL[:-4], 0, disk.sectors, digest, "complete clone"))
     write_manifest(args.dump_dir, manifest, path)
     console.ok("the dump lies in %s" % os.path.abspath(args.dump_dir))
     if args.command != "dump":
         return 0
     if args.with_vendor:
-        full = os.path.join(args.dump_dir, "emmc-voll.img")
+        full = os.path.join(args.dump_dir, DUMP_FULL)
         if not os.path.isfile(full):
             console.error("--with-vendor needs the full dump (%s is not there) -- take --full."
                           % full)
             return 8
-        target = os.path.join(args.dump_dir, "extrakt")
+        target = os.path.join(args.dump_dir, EXTRACT_DIR)
         os.makedirs(target, exist_ok=True)
         run_extractor(full, target, None, search_dir=HERE)
     console.info("\ndump: nothing is written. Power off and on.")

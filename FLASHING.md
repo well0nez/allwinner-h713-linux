@@ -114,7 +114,7 @@ anywhere but on your own desk ([docs/tools/h713-wifi.md](docs/tools/h713-wifi.md
 | Reinstall, keeping your U-Boot settings | (default: `h713_gate` and `h713_boot` are carried over) |
 | Reinstall, discarding them | `--fresh-env` |
 | Reuse an extraction you already have | `--vendor <dir from h713-extract>` |
-| Go back to your own dump | `h713-install restore ~/hy310-dump/emmc-voll.img` |
+| Go back to your own dump | `h713-install restore ~/h713-dump/emmc-full.img` |
 | Go back to stock Android | `h713-install restore-stock UPDATE.IMG` |
 | Rehearse without writing | `--no-write` on any subcommand |
 
