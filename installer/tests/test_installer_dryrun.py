@@ -61,3 +61,21 @@ class InstallerDryRun(unittest.TestCase):
         got = self.run_tool("--restore-stock", fakedisk.IMAGES["hy310"], "--dry-run")
         self.check(RESTORE_STOCK, got)
         self.assertIn("Trockenlauf -- nichts geschrieben.", got[1])
+
+
+class NoMandatoryDumpOnOurLayout(unittest.TestCase):
+    """Stage 2 C5: on our own layout the restore paths take no mandatory small dump."""
+
+    def test_no_mandatory_dump_on_our_layout(self):
+        support.need(fakedisk.NEEDS_V3)
+        tmp = support.workdir(self)
+        disk = fakedisk.make_v3_disk(os.path.join(tmp, "emmc-v3.img"))
+        proc = subprocess.run(
+            [sys.executable, support.INSTALL_PY, "--device", disk, "--restore-stock",
+             fakedisk.IMAGES["hy310"], "--sicherung", os.path.join(tmp, "backup"), "--ohne-erkennung"],
+            input="nein\n", capture_output=True, text=True, cwd=tmp)
+        out = proc.stdout + proc.stderr
+        self.assertNotIn("Kleiner Abzug (Pflicht", out)
+        self.assertIn("no mandatory dump before the restore", out)
+        self.assertFalse(os.path.exists(os.path.join(tmp, "backup")))
+        self.assertEqual(proc.returncode, 1, out)          # refused at the JA prompt, nothing written
