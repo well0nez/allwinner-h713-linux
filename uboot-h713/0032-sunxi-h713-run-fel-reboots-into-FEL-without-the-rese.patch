@@ -1,7 +1,7 @@
 From 0b21feeeee4155f8badf40b7dc734b11b84bf3cb Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 11 Sep 2026 11:21:16 +0200
-Subject: [PATCH 32/33] sunxi: h713: "run fel" reboots into FEL without the
+Subject: [PATCH 32/37] sunxi: h713: "run fel" reboots into FEL without the
  reset button
 
 Set the vendor's efex flag in RTC GP2 and reset; the SPL answers by

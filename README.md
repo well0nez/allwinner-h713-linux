@@ -92,6 +92,7 @@ Everything here is ours and documented; nothing needs a vendor daemon.
 | [`hy310-install`](docs/tools/hy310-install.md) | dump, extract, install, verify — and the way back to stock |
 | [`h713-extract`](docs/tools/h713-extract.md) | pull the device-specific firmware out of *your* dump |
 | [`hy310-mkimage`](docs/tools/hy310-mkimage.md) | build the three-part image with the gap over secure storage |
+| [`h713_probe`](docs/tools/h713-probe.md) | **a different H713 projector?** FEL-boot this and it says what your board is — DRAM, partitions, display firmware, panel. Writes nothing |
 | [`release/build-all.sh`](BUILDING.md) | clean clone → flashable image, eleven steps, one command |
 
 ## Hardware at a glance

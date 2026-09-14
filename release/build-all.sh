@@ -7,7 +7,7 @@
 #
 # Reihenfolge (doku/116 P4):
 #   1 bl31  2 U-Boot (+ SPL/proper trennen + Umgebung mit CRC)  2b Installer-U-Boot (ums)
-#   2c sunxi-fel (Falltuer)  3 Kernel (+ Module)
+#   2b2 Sonden-U-Boot (h713_probe)  2c sunxi-fel (Falltuer)  3 Kernel (+ Module)
 #   4 aic8800  5 Debian-Keyring (gepinnt)  6 Sysroot + h713-tv quer  7 Rootfs
 #   8 ext4-Eingaben  9 Abbild  10 Pruefen (mit --vendor: voller Selbsttest)  11 Stempel
 #
@@ -53,6 +53,7 @@ WORK=$(container_pfad) || { echo "Fehler: $ROOT liegt in keinem Mount des Contai
 # ---------------------------------------------------------------------------
 UBOOT_DEFCONFIG=hy310_qz713_v3_1_defconfig
 UBOOT_INSTALLER_DEFCONFIG=hy310_installer_defconfig   # FEL -> ums, fuer hy310-install --uboot
+UBOOT_PROBE_DEFCONFIG=h713_probe_defconfig            # FEL -> h713_probe, fuer unbekannte H713-Geraete
 KEYRING_DEB_URL="https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
 KEYRING_DEB_SHA256=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
 KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byteidentisch zum bisher benutzten .gpg (12.09.)
@@ -112,7 +113,7 @@ for f in "$INSTALLER/hy310-mkimage.py" "$INSTALLER/mkimage-eingaben.sh" "$ROOTFS
 done
 [[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR sieht nicht wie eine h713-extract-Ausgabe aus (kein boot/mips/)"
 mkdir -p "$OUT" "$AUSGABE"
-((DRY)) && { info "wuerde bauen: bl31, U-Boot ($UBOOT_DEFCONFIG) + Env, Installer-U-Boot ($UBOOT_INSTALLER_DEFCONFIG), sunxi-fel, Kernel + Module, aic8800, Keyring, Sysroot + h713-tv, Rootfs, Eingaben, Abbild $NAME"; exit 0; }
+((DRY)) && { info "wuerde bauen: bl31, U-Boot ($UBOOT_DEFCONFIG) + Env, Installer-U-Boot ($UBOOT_INSTALLER_DEFCONFIG), Sonden-U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, Kernel + Module, aic8800, Keyring, Sysroot + h713-tv, Rootfs, Eingaben, Abbild $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
 if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- uebersprungen (--skip-bl31, $OUT/bl31.bin vorhanden)"
@@ -168,6 +169,24 @@ else
 	[[ -f "$UBI_O/u-boot-sunxi-with-spl.bin" ]] || die "kein $UBI_O/u-boot-sunxi-with-spl.bin"
 	cp "$UBI_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-installer.bin"
 	grep -q 'ums 0 mmc 1' "$OUT/u-boot-installer.bin" || die "Installer-U-Boot traegt kein 'ums 0 mmc 1' im bootcmd"
+fi
+# 2b2. Die Sonde (FEL -> h713_probe): fuer H713-Geraete, die wir nicht kennen.
+#      Derselbe Fork, eigene Defconfig, DRAM auf 624 statt 792 -- das konservative
+#      Ende der Spanne, die unsere beiden bekannten Boards aufspannen (doku/120 §4).
+#      Schreibt nichts; gehoert neben u-boot-installer.bin in den Auslieferungsordner.
+UBP_O="$MAINLINE/build/uboot-probe"
+if ((SKIP_UBOOT)) && [[ -f "$OUT/u-boot-h713-probe.bin" ]]; then
+	say "2b2/11 Sonden-U-Boot -- uebersprungen"
+else
+	say "2b2/11 Sonden-U-Boot $UBOOT_PROBE_DEFCONFIG (h713_probe)"
+	rm -rf "$UBP_O"
+	im_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBP_O") $UBOOT_PROBE_DEFCONFIG" > "$OUT/uboot-probe-build.log" 2>&1 || { tail -20 "$OUT/uboot-probe-build.log"; die "Sonden-U-Boot gescheitert (Log: $OUT/uboot-probe-build.log)"; }
+	[[ -f "$UBP_O/u-boot-sunxi-with-spl.bin" ]] || die "kein $UBP_O/u-boot-sunxi-with-spl.bin"
+	cp "$UBP_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-h713-probe.bin"
+	grep -q 'h713_probe' "$OUT/u-boot-h713-probe.bin" || die "Sonden-U-Boot kennt kein h713_probe"
+	# Die Sonde darf nie mit dem Takt dieses Boards ausgeliefert werden: 792 auf
+	# fremdem RAM ist genau das Raten, das sie vermeiden soll.
+	grep -q 'CONFIG_DRAM_CLK=624' "$MAINLINE/external/u-boot/configs/$UBOOT_PROBE_DEFCONFIG" || die "Sonden-defconfig steht nicht auf 624 MHz"
 fi
 # 2c. sunxi-fel mit der S44-Falltuer (Fork-Commit 269dfa2): das Werkzeug, mit dem
 #     hy310-install das Geraet ueberhaupt erreicht. Wirtsprogramm, im Container gebaut

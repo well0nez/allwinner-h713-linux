@@ -28,9 +28,15 @@ gebootet hat).
 3. `sys_config.fex`: `dram_clk = 792`, `dram_type = 3`
 4. `boot0_sdcard.fex`/`boot0_nand.fex` bei Offset `0x38`
 
-Die Parameter aus dem **laufenden** boot0 auf dem eMMC (nicht aus dem
-Firmware-Image — das Flash-Werkzeug patcht `PARA2` und `TPR13` beim
-Schreiben hinein):
+Die Parameter, die wir ausliefern — **nicht** durchgehend die aus dem boot0.
+Nachgemessen am eigenen Vollabzug (13.09., `doku/120` §4.1): bei LBA 16 und
+LBA 256 steht je ein `eGON.BT0`, ab Offset `0x38` der 24-Wort-Block. Davon
+kommen `zq`, `para1`, die Moduleregister und `tpr3`–`tpr12` wörtlich von dort;
+`tpr0`–`tpr2` rechnet cstengers generalisierter DDR3-Block aus dem Takt
+(boot0: `0x004A2195`/`0x02423190`/`0x0008B061`), und `PARA2`/`TPR13` schreibt
+das Flash-Werkzeug beim Einspielen hinein (boot0: `0` und `0x34010100`).
+`tpr11`/`tpr12` sind boardspezifische PHY-Abstimmung und lassen sich aus
+nichts herleiten — deshalb liest `h713_probe` den Block vom Gerät:
 
 ```
 dram_clk    792          dram_tpr0   0x004A2195

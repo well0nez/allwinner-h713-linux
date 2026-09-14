@@ -1,7 +1,7 @@
 From 0341ccb1ec320d3c461c6d6bd10bdb824be893cd Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:16:43 +0200
-Subject: [PATCH 13/33] sunxi: h713: add the HY310 (QZ713 V3.1) panel
+Subject: [PATCH 13/37] sunxi: h713: add the HY310 (QZ713 V3.1) panel
 
 1920x1080, project ID 0x30. Every value is read off a live stock
 bootloader on that board while its logo was on the wall. That is possible

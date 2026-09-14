@@ -1,7 +1,7 @@
 From f2052528e14ec833d254afcf3a33b65bd54ced97 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 9 Sep 2026 19:28:38 +0200
-Subject: [PATCH 20/33] sunxi: h713: show the GP5 flag in every gate message
+Subject: [PATCH 20/37] sunxi: h713: show the GP5 flag in every gate message
 
 A console log from the field should say what the board's previous life
 left in RTC GP5, not only on a cold start. Read the flag once and print

@@ -1,0 +1,177 @@
+From 218792fde2d1c558cdbd217a428e15cb544d1b92 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 02:24:45 +0200
+Subject: [PATCH 37/37] sunxi: h713: the declared project ID belongs to the
+ board, not to the build
+
+H713_DISP_BOARD_PROJECT_ID was 0x34, the bench board's ID, compiled in.
+The note it guards then fired on every HY310 boot -- the shipping bootcmd
+runs project 0x30 -- and told the operator "this board declares project
+0x34 (panel_config.ini ProjectID = 52)". An HY310's panel_config.ini says
+48. The message was wrong on the board it was printed on.
+
+Which ID a board declares is a property of the board, and the revision
+table already carries it per row. Compare against the identified image
+instead and name it, so the note says which board it is talking about.
+When the image is unknown there is nothing to compare and nothing is
+printed, which is also the honest answer.
+
+Same mistake in the command's help text, and in the DRAM comment every
+HY310 defconfig inherited from the bench board's -- it announced
+"clk=624" above CONFIG_DRAM_CLK=792. Say instead where each part of the
+value set actually comes from.
+---
+ arch/arm/mach-sunxi/h713_mips.c      | 23 +++++++++++++----------
+ configs/hy310_felmmc_defconfig       |  5 ++++-
+ configs/hy310_host_defconfig         |  5 ++++-
+ configs/hy310_installer_defconfig    |  5 ++++-
+ configs/hy310_netboot_defconfig      |  5 ++++-
+ configs/hy310_netboot_gate_defconfig |  5 ++++-
+ configs/hy310_qz713_v3_1_defconfig   |  5 ++++-
+ 7 files changed, 37 insertions(+), 16 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 158dc66496a..7a5f0820aa5 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -5135,7 +5135,6 @@ static int h713_disp_stock_panel_power(void)
+  * LogoRegData replay, and the ProjectID_*.TSE payloads -- which differ by 2688
+  * bytes and feed the MIPS -- are not exercised by any test we have.
+  */
+-#define H713_DISP_BOARD_PROJECT_ID	0x34
+ 
+ struct h713_panel_patch {
+ 	u32 reg;
+@@ -5781,14 +5780,17 @@ static int h713_disp_run(ulong blob, u32 project, bool skip_hdcp_wait,
+ 	       sel.project, sel.prologue, sel.timing, sel.de);
+ 
+ 	/*
+-	 * Say so rather than silently obeying. This board declares 0x34 in both
+-	 * panel_config.ini and stock's own log, and the whole bring-up ran 0x33
+-	 * without anything noticing.
++	 * Say so rather than silently obeying: the bench board's whole bring-up
++	 * ran 0x33 when the board declares 0x34, and nothing noticed. Which ID
++	 * a board declares is a property of the board, so read it off the
++	 * identified image instead of a constant -- the constant was the bench
++	 * board's 0x34 and told an HY310, which declares 0x30, that it was
++	 * something it is not, on every boot.
+ 	 */
+-	if (project != H713_DISP_BOARD_PROJECT_ID)
+-		printf("H713 disp: note: this board declares project 0x%02x "
+-		       "(panel_config.ini ProjectID = 52)\n",
+-		       H713_DISP_BOARD_PROJECT_ID);
++	if (h713_mips_fw && project != h713_mips_fw->project_id)
++		printf("H713 disp: note: this image is %s, which declares "
++		       "project 0x%02x\n",
++		       h713_mips_fw->board, h713_mips_fw->project_id);
+ 
+ 	ret = h713_disp_panel_patch(blob, &sel);
+ 	if (ret)
+@@ -11441,8 +11443,9 @@ static int do_h713_disp(struct cmd_tbl *cmdtp, int flag, int argc,
+ 
+ U_BOOT_CMD(h713_disp, 15, 0, do_h713_disp,
+ 	   "run stock's fastlogo display sequence for a project ID",
+-	   "this board's project ID is 0x34 (panel_config.ini ProjectID = 52, and\n"
+-	   "stock's own log); 0x33 renders identically but prefer 0x34 for new work\n"
++	   "the project ID is the board's, not this build's: an HY310 declares\n"
++	   "0x30, the HY200 bench board 0x34 (0x33 renders identically there).\n"
++	   "h713_probe reads it off the device.\n"
+ 	   "test <project-id> [source] [level] [mode] - load, patch, run, sample, log\n"
+ 	   "                                      level 0..5 (ASSERT..VERBOSE), default 3\n"
+ 	   "                                      mode 0=sync 1=async 2=buf, default 2\n"
+diff --git a/configs/hy310_felmmc_defconfig b/configs/hy310_felmmc_defconfig
+index c21d8a3f71b..4b714905c3a 100644
+--- a/configs/hy310_felmmc_defconfig
++++ b/configs/hy310_felmmc_defconfig
+@@ -3,7 +3,10 @@ CONFIG_ARCH_SUNXI=y
+ CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+ CONFIG_DRAM_CLK=792
+ CONFIG_SPL=y
+-# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++# DDR3 (type 3). The value set below is the bench board's; only the clock
++# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
++# para2 and tpr13 are what the flash tool writes; the rest is this board's own
++# boot0. See docs/tools/h713-probe.md.
+ CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+ CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+ CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+diff --git a/configs/hy310_host_defconfig b/configs/hy310_host_defconfig
+index f43e490669a..0f43dea0f0a 100644
+--- a/configs/hy310_host_defconfig
++++ b/configs/hy310_host_defconfig
+@@ -3,7 +3,10 @@ CONFIG_ARCH_SUNXI=y
+ CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+ CONFIG_DRAM_CLK=792
+ CONFIG_SPL=y
+-# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++# DDR3 (type 3). The value set below is the bench board's; only the clock
++# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
++# para2 and tpr13 are what the flash tool writes; the rest is this board's own
++# boot0. See docs/tools/h713-probe.md.
+ CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+ CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+ CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+diff --git a/configs/hy310_installer_defconfig b/configs/hy310_installer_defconfig
+index 663b0ba816a..fbf8de2e3d5 100644
+--- a/configs/hy310_installer_defconfig
++++ b/configs/hy310_installer_defconfig
+@@ -4,7 +4,10 @@ CONFIG_ARCH_SUNXI=y
+ CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+ CONFIG_DRAM_CLK=792
+ CONFIG_SPL=y
+-# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++# DDR3 (type 3). The value set below is the bench board's; only the clock
++# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
++# para2 and tpr13 are what the flash tool writes; the rest is this board's own
++# boot0. See docs/tools/h713-probe.md.
+ CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+ CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+ CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+diff --git a/configs/hy310_netboot_defconfig b/configs/hy310_netboot_defconfig
+index f959754c7ed..2f66e874dca 100644
+--- a/configs/hy310_netboot_defconfig
++++ b/configs/hy310_netboot_defconfig
+@@ -3,7 +3,10 @@ CONFIG_ARCH_SUNXI=y
+ CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+ CONFIG_DRAM_CLK=792
+ CONFIG_SPL=y
+-# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++# DDR3 (type 3). The value set below is the bench board's; only the clock
++# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
++# para2 and tpr13 are what the flash tool writes; the rest is this board's own
++# boot0. See docs/tools/h713-probe.md.
+ CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+ CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+ CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+diff --git a/configs/hy310_netboot_gate_defconfig b/configs/hy310_netboot_gate_defconfig
+index a28dafff4f2..9af77b0fa40 100644
+--- a/configs/hy310_netboot_gate_defconfig
++++ b/configs/hy310_netboot_gate_defconfig
+@@ -3,7 +3,10 @@ CONFIG_ARCH_SUNXI=y
+ CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+ CONFIG_DRAM_CLK=792
+ CONFIG_SPL=y
+-# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++# DDR3 (type 3). The value set below is the bench board's; only the clock
++# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
++# para2 and tpr13 are what the flash tool writes; the rest is this board's own
++# boot0. See docs/tools/h713-probe.md.
+ CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+ CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+ CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+diff --git a/configs/hy310_qz713_v3_1_defconfig b/configs/hy310_qz713_v3_1_defconfig
+index a95a05b31cf..0c30fc203ad 100644
+--- a/configs/hy310_qz713_v3_1_defconfig
++++ b/configs/hy310_qz713_v3_1_defconfig
+@@ -3,7 +3,10 @@ CONFIG_ARCH_SUNXI=y
+ CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+ CONFIG_DRAM_CLK=792
+ CONFIG_SPL=y
+-# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++# DDR3 (type 3). The value set below is the bench board's; only the clock
++# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
++# para2 and tpr13 are what the flash tool writes; the rest is this board's own
++# boot0. See docs/tools/h713-probe.md.
+ CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+ CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+ CONFIG_DRAM_SUNXI_CA_DRI=0x1c12

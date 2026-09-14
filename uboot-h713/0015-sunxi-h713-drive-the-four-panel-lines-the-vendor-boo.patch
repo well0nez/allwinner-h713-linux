@@ -1,7 +1,7 @@
 From 5e14e36a21e48d17b8333a1a90f171e9a51365ac Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:18:20 +0200
-Subject: [PATCH 15/33] sunxi: h713: drive the four panel lines the vendor
+Subject: [PATCH 15/37] sunxi: h713: drive the four panel lines the vendor
  bootloader also drives
 
 The vendor bootloader's own device tree, tvtop@1, names six panel GPIOs and

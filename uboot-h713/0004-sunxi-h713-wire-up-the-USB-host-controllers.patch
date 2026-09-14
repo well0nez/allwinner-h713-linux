@@ -1,7 +1,7 @@
 From 70ca71f06624456c9d748f73df6e935bcec8ef58 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 17:00:56 +0200
-Subject: [PATCH 04/33] sunxi: h713: wire up the USB host controllers
+Subject: [PATCH 04/37] sunxi: h713: wire up the USB host controllers
 
 The build already has CONFIG_USB_EHCI_HCD, CONFIG_USB_OHCI_HCD and
 CONFIG_USB_HOST, but the DT has no EHCI or OHCI nodes -- only the musb

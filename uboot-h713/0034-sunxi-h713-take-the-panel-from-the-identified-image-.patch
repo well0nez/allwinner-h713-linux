@@ -1,0 +1,188 @@
+From 1e9daaca565fa727d8ea7278589e45d787a5768b Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 02:17:35 +0200
+Subject: [PATCH 34/37] sunxi: h713: take the panel from the identified image,
+ not the project ID
+
+Which panel is fitted is a property of the device. The project ID only
+selects a TSE group, and nothing stops two boards with different panels
+from sharing one -- but because both boards in the revision table happen
+to have an ID of their own, choosing the panel by project ID and choosing
+it by device gave the same answer, and the shortcut looked correct.
+
+It is not. A third board reporting project 0x34 would be driven with the
+bench board's 1280x720 timing because that is what 0x34 means in the
+table, whatever panel it actually has.
+
+So select from the row the digest identified, and fall back to the
+project ID only when the image is unknown -- saying, when that happens,
+that the panel is a guess.
+
+That needs the identity earlier than it was available: h713_disp_lookup()
+runs before the release path, where h713_mips_verify() used to be the
+first thing to hash the image. Hash it in h713_disp_load() instead, right
+after the file is read. Verify runs again before release and is
+idempotent; it now also clears any previous load's identity, which it
+should always have done.
+
+While moving that around, the two loaders' identical size checks -- one
+in h713_mips_load(), one in h713_disp_load(), each with its own message
+-- become one h713_mips_accept_size().
+
+No functional change on either known board.
+---
+ arch/arm/mach-sunxi/h713_mips.c | 94 +++++++++++++++++++++------------
+ 1 file changed, 59 insertions(+), 35 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 79d13b4fda4..d49ac835681 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -386,6 +386,28 @@ static const struct h713_mips_fw_rev *h713_board_by_project(u32 project)
+  */
+ static ulong h713_mips_fw_size = H713_MIPS_FW_SIZE;
+ 
++/*
++ * Accept any size a known revision declares; the digest decides which one it
++ * is. Refusing here on one revision's size turns an identity check into a size
++ * check. Both loaders had arrived at the same conclusion separately, in two
++ * copies of the same loop, so they now ask the same question in one place.
++ */
++static int h713_mips_accept_size(ulong len)
++{
++	uint i;
++
++	for (i = 0; i < ARRAY_SIZE(h713_mips_fw_revs); i++) {
++		if (len != h713_mips_fw_revs[i].size)
++			continue;
++		h713_mips_fw_size = len;
++		return 0;
++	}
++
++	printf("H713 MIPS: rejected size 0x%lx, no revision declares it\n", len);
++
++	return -EINVAL;
++}
++
+ /*
+  * Known stock boot logos. The asset is board-specific in geometry as well as
+  * content, and the geometry is simply each board's own panel. A single pinned
+@@ -3573,6 +3595,9 @@ static int h713_mips_verify(void)
+ 
+ 	uint i;
+ 
++	/* A previous load's identity must not survive into this one. */
++	h713_mips_fw = NULL;
++
+ 	sha256_csum_wd((const u8 *)H713_MIPS_FW_ADDR, h713_mips_fw_size,
+ 		       digest, CHUNKSZ_SHA256);
+ 
+@@ -3600,7 +3625,6 @@ static int h713_mips_load(const char *ifname, const char *dev,
+ {
+ 	loff_t file_size;
+ 	loff_t len_read;
+-	uint i;
+ 	int ret;
+ 
+ 	ret = fs_set_blk_dev(ifname, dev, FS_TYPE_ANY);
+@@ -3615,20 +3639,9 @@ static int h713_mips_load(const char *ifname, const char *dev,
+ 		return ret;
+ 	}
+ 
+-	/*
+-	 * Accept any size a known revision declares. The digest decides
+-	 * afterwards; refusing here on one revision's size just turns an
+-	 * identity check into a size check.
+-	 */
+-	for (i = 0; i < ARRAY_SIZE(h713_mips_fw_revs); i++)
+-		if ((ulong)file_size == h713_mips_fw_revs[i].size)
+-			break;
+-	if (i == ARRAY_SIZE(h713_mips_fw_revs)) {
+-		printf("H713 MIPS: rejected size 0x%llx, no revision declares it\n",
+-		       file_size);
+-		return -EINVAL;
+-	}
+-	h713_mips_fw_size = (ulong)file_size;
++	ret = h713_mips_accept_size((ulong)file_size);
++	if (ret)
++		return ret;
+ 
+ 	h713_mips_stop();
+ 	memset((void *)H713_MIPS_FW_ADDR, 0, H713_MIPS_FW_WINDOW_SIZE);
+@@ -4793,16 +4806,25 @@ static int h713_disp_lookup(ulong blob, u32 project,
+ 		}
+ 
+ 		/*
+-		 * The project ID names the board, so this is where the panel
+-		 * becomes known. Everything downstream reads it from here: the
+-		 * register patch table, the OSD surface geometry, the logo.
++		 * Which panel is fitted is a property of the device, and the
++		 * digest is what identifies the device -- the project ID only
++		 * picks a TSE group, and several boards can share one. Both
++		 * boards in the table happen to have an ID of their own, which
++		 * made the two look interchangeable; a third board with
++		 * project 0x34 and a 1080p panel would have been driven with
++		 * the bench board's 720p timing on that assumption. So take
++		 * the panel from the identified image, and fall back to the
++		 * project ID only when the image is unknown -- saying that it
++		 * is a guess. Everything downstream reads the panel from here:
++		 * the register patch table, the OSD geometry, the logo.
+ 		 */
+-		board = h713_board_by_project(id);
++		board = h713_mips_fw ? h713_mips_fw : h713_board_by_project(id);
+ 		if (board && board->panel) {
+ 			h713_disp_panel = board->panel;
+-			printf("H713 disp: project 0x%02x is %s, panel %ux%u\n",
++			printf("H713 disp: project 0x%02x is %s, panel %ux%u%s\n",
+ 			       id, board->board, h713_disp_panel->width,
+-			       h713_disp_panel->height);
++			       h713_disp_panel->height,
++			       h713_mips_fw ? "" : " (by project ID -- guess)");
+ 		} else {
+ 			printf("H713 disp: project 0x%02x has no panel of its "
+ 			       "own -- keeping %ux%u\n", id,
+@@ -6004,7 +6026,6 @@ static int h713_disp_load_tse(u32 project)
+ static int h713_disp_load(u32 project)
+ {
+ 	loff_t len;
+-	uint i;
+ 	int ret;
+ 
+ 	printf("H713 disp: loading vendor artifacts from %s %s:%s\n",
+@@ -6018,20 +6039,23 @@ static int h713_disp_load(u32 project)
+ 	if (ret)
+ 		return ret;
+ 	/*
+-	 * Any size a known revision declares; the digest decides which one it
+-	 * is. Taking the size from the file rather than from a constant also
+-	 * keeps h713_mips_clear_workspace() from erasing the tail of a larger
+-	 * image on the next run.
++	 * Taking the size from the file rather than from a constant also keeps
++	 * h713_mips_clear_workspace() from erasing the tail of a larger image
++	 * on the next run.
+ 	 */
+-	for (i = 0; i < ARRAY_SIZE(h713_mips_fw_revs); i++)
+-		if ((ulong)len == h713_mips_fw_revs[i].size)
+-			break;
+-	if (i == ARRAY_SIZE(h713_mips_fw_revs)) {
+-		printf("H713 disp: display.bin is %llu bytes, no revision declares that size\n",
+-		       len);
+-		return -EINVAL;
+-	}
+-	h713_mips_fw_size = (ulong)len;
++	ret = h713_mips_accept_size((ulong)len);
++	if (ret)
++		return ret;
++	/*
++	 * Identify here, not at release time: the panel is chosen from the
++	 * image's identity in h713_disp_lookup(), and that runs first. Hashing
++	 * 1.2 MB costs a few milliseconds, and the digest is worth printing on
++	 * every load anyway. h713_mips_verify() runs again before release; it
++	 * is idempotent.
++	 */
++	ret = h713_mips_verify();
++	if (ret)
++		return ret;
+ 
+ 	ret = h713_disp_read("display_cfg.xml", H713_MIPS_CFG_ADDR, &len);
+ 	if (ret)

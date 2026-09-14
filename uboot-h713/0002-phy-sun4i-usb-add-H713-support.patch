@@ -1,7 +1,7 @@
 From e4ab8f511fb681074c6bd2486b0baddaca4fc03d Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 17:00:26 +0200
-Subject: [PATCH 02/33] phy: sun4i-usb: add H713 support
+Subject: [PATCH 02/37] phy: sun4i-usb: add H713 support
 
 The driver has no H713 entry at all, so nothing binds the PHYs when the
 board DT names allwinner,sun50i-h713-usb-phy.

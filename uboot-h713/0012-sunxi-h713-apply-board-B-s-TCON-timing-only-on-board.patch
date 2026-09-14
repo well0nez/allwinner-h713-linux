@@ -1,7 +1,7 @@
 From 27ba6f840f812db9593aef8cceab21fe436edbcd Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:15:51 +0200
-Subject: [PATCH 12/33] sunxi: h713: apply board B's TCON timing only on board
+Subject: [PATCH 12/37] sunxi: h713: apply board B's TCON timing only on board
  B
 
 h713_disp_latch_panel_timing() writes five literal 720p values into the

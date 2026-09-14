@@ -1,5 +1,5 @@
 # Generated -- do not edit.
-# release/repo-skelett.sh: git format-patch 8fe568cdfc4..4091ea68c06 in mainline/external/u-boot
+# release/repo-skelett.sh: git format-patch 8fe568cdfc4..218792fde2d in mainline/external/u-boot
 base   8fe568cdfc46f727ffe1f61f4796e73db6454e23  (cstenger/u-boot, branch h713)
-head   4091ea68c0620c590ad9af583c074a6bab463dad  (well0nez/u-boot, branch h713-hy310)
-count  33
+head   218792fde2d1c558cdbd217a428e15cb544d1b92  (well0nez/u-boot, branch h713-hy310)
+count  37
