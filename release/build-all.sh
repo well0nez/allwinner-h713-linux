@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # release/build-all.sh -- vom frischen Klon bis zum einspielbaren Abbild, ein Einstieg.
 #
-#   release/build-all.sh --version v0.10 [--vendor DIR] [--wifi-env DATEI]
+#   release/build-all.sh --version v0.10 [--board hy310] [--vendor DIR] [--wifi-env DATEI]
 #                        [--jobs N] [--skip-bl31] [--skip-uboot] [--skip-kernel]
 #                        [--skip-rootfs] [--dry-run]
+#
+# --board <id> (default hy310) picks boards/<id>/board.env: the installer
+# profile, the kernel DTB the FIT carries, the U-Boot base defconfig and the
+# image name ($IMAGE_NAME-$VERSION). The rule of doku/121 §5 is enforced here:
+# no image for a board nobody has tested -- a board that is not STATUS=verified
+# (an owner reported a green run) or has no installer profile is refused.
 #
 # Reihenfolge (doku/116 P4):
 #   1 bl31  2 U-Boot (+ SPL/proper trennen + Umgebung mit CRC)  2b Installer-U-Boot (ums)
@@ -51,9 +57,13 @@ container_pfad() {
 }
 WORK=$(container_pfad) || { echo "Fehler: $ROOT liegt in keinem Mount des Containers $CONTAINER" >&2; exit 1; }
 # ---------------------------------------------------------------------------
-UBOOT_DEFCONFIG=hy310_qz713_v3_1_defconfig
-UBOOT_INSTALLER_DEFCONFIG=hy310_installer_defconfig   # FEL -> ums, fuer hy310-install --uboot
-UBOOT_PROBE_DEFCONFIG=h713_probe_defconfig            # FEL -> h713_probe, fuer unbekannte H713-Geraete
+# U-Boot is <board base> + <role fragment> (docs/uboot/README.md "Which defconfig"):
+# the base comes from board.env (UBOOT_BOARD), the roles are fixed here. The probe
+# keeps its own base at 624 MHz and takes no role -- it must never run at the
+# clock of a board someone happens to be building for.
+UBOOT_RELEASE_ROLE=release                            # boots the eMMC, ums + fastboot
+UBOOT_INSTALLER_ROLE=installer                        # FEL -> ums, for h713-install
+UBOOT_PROBE_DEFCONFIG=h713_probe_defconfig            # FEL -> h713_probe, for unknown H713 devices
 KEYRING_DEB_URL="https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
 KEYRING_DEB_SHA256=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
 KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byteidentisch zum bisher benutzten .gpg (12.09.)
@@ -61,11 +71,12 @@ SYSROOT_PAKETE=libc6-dev,libgcc-14-dev,libdrm-dev,libasound2-dev
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
-VERSION= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0
+VERSION= BOARD=hy310 VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0
 SKIP_BL31=0 SKIP_UBOOT=0 SKIP_KERNEL=0 SKIP_ROOTFS=0
 while (($#)); do
 	case "$1" in
 	--version)   VERSION=${2:?}; shift 2 ;;
+	--board)     BOARD=${2:?}; shift 2 ;;
 	--vendor)    VENDOR=$(cd "${2:?}" && pwd); shift 2 ;;
 	--wifi-env)  WIFI_ENV=$(readlink -f "${2:?}"); shift 2 ;;
 	--jobs)      JOBS=${2:?}; shift 2 ;;
@@ -74,13 +85,33 @@ while (($#)); do
 	--skip-kernel) SKIP_KERNEL=1; shift ;;
 	--skip-rootfs) SKIP_ROOTFS=1; shift ;;
 	--dry-run)   DRY=1; shift ;;
-	-h|--help)   sed -n '2,22p' "$0"; exit 0 ;;
+	-h|--help)   sed -n '2,28p' "$0"; exit 0 ;;
 	*) echo "unbekannt: $1" >&2; exit 2 ;;
 	esac
 done
-[[ -n "$VERSION" ]] || { echo "--version vX.Y fehlt (Name des Abbilds: h713-hy310-vX.Y)" >&2; exit 2; }
+# --- board (doku/121 §3 and §5) ---------------------------------------------
+BOARD_ENV="$ROOT/boards/$BOARD/board.env"
+if [[ ! -f "$BOARD_ENV" ]]; then
+	echo "unknown board '$BOARD': there is no $BOARD_ENV" >&2
+	echo "known boards: $(cd "$ROOT/boards" 2>/dev/null && ls -d -- */ | tr -d / | tr '\n' ' ')" >&2
+	exit 2
+fi
+# shellcheck source=/dev/null
+source "$BOARD_ENV"
+[[ "${BOARD_ID:-}" == "$BOARD" ]] || { echo "$BOARD_ENV says BOARD_ID='${BOARD_ID:-}', not '$BOARD'" >&2; exit 2; }
+if [[ "${STATUS:-}" != verified ]]; then
+	echo "no image for a board nobody has tested (doku/121 §5): boards/$BOARD is STATUS=${STATUS:-unset}." >&2
+	echo "A board becomes 'verified' when its owner reports a green run of our build; until then it gets" >&2
+	echo "an installer profile and the probe (h713_probe), not an image." >&2
+	exit 2
+fi
+[[ -n "${PROFILE:-}" ]] || { echo "boards/$BOARD is verified but names no installer PROFILE -- a release image needs one, or h713-install cannot recognise the board it is for" >&2; exit 2; }
+[[ -n "${KERNEL_DTB:-}" ]] || { echo "boards/$BOARD names no KERNEL_DTB -- no device tree of ours has booted there" >&2; exit 2; }
+[[ -n "${UBOOT_BOARD:-}" ]] || { echo "boards/$BOARD names no UBOOT_BOARD -- no U-Boot base defconfig of ours for it" >&2; exit 2; }
+[[ -n "${IMAGE_NAME:-}" ]] || { echo "boards/$BOARD names no IMAGE_NAME" >&2; exit 2; }
+[[ -n "$VERSION" ]] || { echo "--version vX.Y fehlt (Name des Abbilds: $IMAGE_NAME-vX.Y)" >&2; exit 2; }
 [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+(-[a-z0-9]+)?$ ]] || { echo "--version: erwartet vX.Y oder vX.Y-beta, nicht '$VERSION'" >&2; exit 2; }
-NAME="h713-hy310-$VERSION"
+NAME="$IMAGE_NAME-$VERSION"
 OUT="$MAINLINE/build/out"
 AUSGABE="$INSTALLER/out"
 
@@ -96,6 +127,7 @@ dauer() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $((s
 
 say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "Wurzel $ROOT"
+info "Board $BOARD ($STATUS, Profil $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BOARD + Rollen)"
 ((DRY)) && info "TROCKENLAUF -- es wird nichts gebaut"
 
 # --- 0. Voraussetzungen -----------------------------------------------------
@@ -113,7 +145,7 @@ for f in "$INSTALLER/hy310-mkimage.py" "$INSTALLER/mkimage-eingaben.sh" "$ROOTFS
 done
 [[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR sieht nicht wie eine h713-extract-Ausgabe aus (kein boot/mips/)"
 mkdir -p "$OUT" "$AUSGABE"
-((DRY)) && { info "wuerde bauen: bl31, U-Boot ($UBOOT_DEFCONFIG) + Env, Installer-U-Boot ($UBOOT_INSTALLER_DEFCONFIG), Sonden-U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, Kernel + Module, aic8800, Keyring, Sysroot + h713-tv, Rootfs, Eingaben, Abbild $NAME"; exit 0; }
+((DRY)) && { info "wuerde bauen: bl31, U-Boot ($UBOOT_BOARD + $UBOOT_RELEASE_ROLE) + Env, Installer-U-Boot ($UBOOT_BOARD + $UBOOT_INSTALLER_ROLE), Sonden-U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, Kernel + Module (BOARD=$BOARD, $KERNEL_DTB), aic8800, Keyring, Sysroot + h713-tv, Rootfs, Eingaben, Abbild $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
 if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- uebersprungen (--skip-bl31, $OUT/bl31.bin vorhanden)"
@@ -123,7 +155,7 @@ else
 	# das mit eingeschalteten Zusicherungen gebaut worden war (49260 statt 45164 Byte).
 	# make sah alles aktuell und hat es nie ersetzt -- es steckt in v0.8 bis v0.10.
 	rm -rf "$MAINLINE/external/arm-trusted-firmware/build"
-	im_container "cd $WORK/mainline && build/build.sh bl31" | tail -3 | sed 's/^/    /'
+	im_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh bl31" | tail -3 | sed 's/^/    /'
 fi
 [[ -f "$OUT/bl31.bin" ]] || die "kein bl31.bin"
 
@@ -132,9 +164,9 @@ UB_O="$MAINLINE/build/uboot-release"
 if ((SKIP_UBOOT)) && [[ -f "$OUT/spl-release.bin" && -f "$OUT/uboot-proper-release.bin" && -f "$OUT/hy310-env-release.bin" ]]; then
 	say "2/11 U-Boot -- uebersprungen (--skip-uboot, Bausteine vorhanden)"
 else
-	say "2/11 U-Boot $UBOOT_DEFCONFIG"
+	say "2/11 U-Boot $UBOOT_BOARD + $UBOOT_RELEASE_ROLE"
 	rm -rf "$UB_O"   # wie bei bl31: keine alten Objekte, kein altes .config
-	im_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UB_O") $UBOOT_DEFCONFIG" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot-Bau gescheitert (Log: $OUT/uboot-build.log)"; }
+	im_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UB_O") $UBOOT_BOARD $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot-Bau gescheitert (Log: $OUT/uboot-build.log)"; }
 	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "kein $B"
 	# SPL = die ersten 32 KiB (eGON.BT0), der Rest ist U-Boot proper (doku/50 §Bauen)
 	head -c 32768 "$B" > "$OUT/spl-release.bin"
@@ -163,9 +195,9 @@ UBI_O="$MAINLINE/build/uboot-installer"
 if ((SKIP_UBOOT)) && [[ -f "$OUT/u-boot-installer.bin" ]]; then
 	say "2b/11 Installer-U-Boot -- uebersprungen"
 else
-	say "2b/11 Installer-U-Boot $UBOOT_INSTALLER_DEFCONFIG (ums)"
+	say "2b/11 Installer-U-Boot $UBOOT_BOARD + $UBOOT_INSTALLER_ROLE (ums)"
 	rm -rf "$UBI_O"
-	im_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBI_O") $UBOOT_INSTALLER_DEFCONFIG" > "$OUT/uboot-installer-build.log" 2>&1 || { tail -20 "$OUT/uboot-installer-build.log"; die "Installer-U-Boot gescheitert (Log: $OUT/uboot-installer-build.log)"; }
+	im_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBI_O") $UBOOT_BOARD $UBOOT_INSTALLER_ROLE" > "$OUT/uboot-installer-build.log" 2>&1 || { tail -20 "$OUT/uboot-installer-build.log"; die "Installer-U-Boot gescheitert (Log: $OUT/uboot-installer-build.log)"; }
 	[[ -f "$UBI_O/u-boot-sunxi-with-spl.bin" ]] || die "kein $UBI_O/u-boot-sunxi-with-spl.bin"
 	cp "$UBI_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-installer.bin"
 	grep -q 'ums 0 mmc 1' "$OUT/u-boot-installer.bin" || die "Installer-U-Boot traegt kein 'ums 0 mmc 1' im bootcmd"
@@ -204,10 +236,14 @@ fi
 # --- 3. Kernel + Module -----------------------------------------------------
 if ((SKIP_KERNEL)) && [[ -f "$OUT/h713-kernel.fit" ]]; then say "3/11 Kernel -- uebersprungen (--skip-kernel)"
 else
-	say "3/11 Kernel (Board-defconfig allein = Auslieferung)"
-	im_container "cd $WORK/mainline && build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "Kernelbau gescheitert (Log: $OUT/kernel-build.log)"; }
+	say "3/11 Kernel (Board-defconfig allein = Auslieferung; BOARD=$BOARD, DTB $KERNEL_DTB)"
+	im_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "Kernelbau gescheitert (Log: $OUT/kernel-build.log)"; }
 	grep -o 'applied [0-9]* series patches' "$OUT/kernel-build.log" | sed 's/^/    /' || true
 fi
+# The FIT names its configuration after the DTB (build.sh); an image for board X
+# must not quietly carry board Y's tree.
+[[ -f "$OUT/$KERNEL_DTB.dtb" ]] || die "kein $OUT/$KERNEL_DTB.dtb -- build.sh hat nicht die DTB von boards/$BOARD gebaut"
+grep -q "conf-$KERNEL_DTB" "$OUT/h713-kernel.fit" || die "h713-kernel.fit traegt keine Konfiguration conf-$KERNEL_DTB"
 TREE=$(ls -dt "$MAINLINE"/build/linux-6.18.38-*/ | head -1); TREE=${TREE%/}
 [[ -f "$TREE/Module.symvers" ]] || die "kein gebauter Kernelbaum unter $MAINLINE/build/"
 H=$(basename "$TREE" | sed 's/linux-6.18.38-//' | cut -c1-8)
@@ -221,7 +257,7 @@ info "Baum $H, Release $KREL, $(find "$MODROOT" -name '*.ko' | wc -l) Module"
 
 # --- 4. aic8800 (immer nach dem Kernel, gegen denselben Baum) ---------------
 say "4/11 aic8800-Module gegen Baum $H"
-im_container "cd $WORK/mainline && build/build.sh aic8800" > "$OUT/aic8800-build.log" 2>&1 || { tail -20 "$OUT/aic8800-build.log"; die "aic8800-Bau gescheitert"; }
+im_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh aic8800" > "$OUT/aic8800-build.log" 2>&1 || { tail -20 "$OUT/aic8800-build.log"; die "aic8800-Bau gescheitert"; }
 for k in aic8800_bsp aic8800_fdrv; do [[ -f "$OUT/modules/$k.ko" ]] || die "fehlt: $OUT/modules/$k.ko"; done
 info "bsp + fdrv da ($(stat -c %s "$OUT/modules/aic8800_fdrv.ko") Byte fdrv)"
 
@@ -295,6 +331,7 @@ say "11/11 Stempel"
 STEMPEL="$AUSGABE/$NAME.BUILD.txt"
 {
 	echo "$NAME  gebaut $(date -u '+%Y-%m-%dT%H:%M:%SZ') in $(dauer)"
+	echo "Board:    $BOARD ($STATUS; Profil $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BOARD + $UBOOT_RELEASE_ROLE/$UBOOT_INSTALLER_ROLE, Sonde $UBOOT_PROBE_DEFCONFIG)"
 	echo "Serie:    $(sha256sum "$MAINLINE/patches/kernel/series" | cut -c1-16)  $(grep -cv '^#\|^$' "$MAINLINE/patches/kernel/series") Patches"
 	echo "defconfig: $(sha256sum "$MAINLINE/patches/kernel/board/hy200_qz713df_a1_defconfig" | cut -c1-16)"
 	echo "Kernelbaum: $H  Release $KREL"
