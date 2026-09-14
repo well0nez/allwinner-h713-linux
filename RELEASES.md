@@ -4,10 +4,21 @@ Three different numbers exist in this project, and mixing them up is easy. This 
 
 ## What a release is
 
-A release is a git tag plus the files a user needs to install without building anything: the three image
-parts, the offset table, the checksums, the installer directory, and the build stamp. Tags are named
-`vX.Y` or `vX.Y-beta`, and the image files carry the same string:
-`h713-hy310-v0.5-beta-a-bootkette.img` and so on.
+A release is a git tag plus the files a user needs to install without building anything. Tags are named
+`vX.Y` or `vX.Y-beta`, and every file carries the same string. The names are unchanged since v0.5-beta:
+
+| File | What it is |
+|---|---|
+| `h713-hy310-vX.Y-a-bootkette.img`, `-b-system.img`, `-c-gptkopie.img` | the three image parts, uploaded `.zst`-packed |
+| `h713-hy310-vX.Y.tabelle.json` | the offset table: where each part goes, and where the placeholders lie |
+| `h713-hy310-vX.Y.sha256` | checksums of the parts and of the table |
+| `h713-hy310-vX.Y-README.txt` | what to do with all of it, next to the files themselves |
+| `u-boot-installer.bin`, `sunxi-fel` | what [`h713-install`](FLASHING.md) needs to expose the eMMC over USB |
+| `h713-hy310-vX.Y.BUILD.txt` | the build stamp — see below |
+
+`<name>-README.txt` is the readme the image builder writes; the German `<name>-LIESMICH.txt` is gone. The dump
+directory `h713-install` leaves on your PC carries a `README.txt` of its own, for the same reason and with
+the same rename behind it.
 
 **The first public release is `v0.5-beta`.** Before it, the only way to an image is
 [BUILDING.md](BUILDING.md) — there is nothing to download, and any page that says "from a release" means
@@ -34,7 +45,8 @@ u-boot: 4091ea68c06   arm-trusted-firmware: dfa9fab44   sunxi-tools: 269dfa2
 
 Two builds of the same sources are not byte-identical (build timestamps and paths get embedded), so
 comparing image checksums between machines proves nothing. The series hash, the kernel tree digest and
-the three submodule commits do. Quote the stamp in a bug report.
+the three submodule commits do. Quote the stamp in a bug report. A build from the current tree writes two
+lines more than the one above: the board it was built for, and the checksum of the kernel defconfig.
 
 ## What the development numbers are
 

@@ -75,7 +75,7 @@ running on. Everything board-specific we patched into the HY200 tree still lives
 | `host` | bench development: USB-A becomes a host, which the internal camera needs | off | host | eMMC, 7 MiB |
 | `netboot` | `host` plus networking; boots over TFTP/NFS instead of eMMC | off | host | eMMC, 7 MiB |
 | `netboot_gate` | `netboot` with the gate compiled in — how the gate was proven before it entered the release build | **on** | host | eMMC, 7 MiB |
-| `installer` | exposes the eMMC as a USB drive from FEL (`ums 0 mmc 1`) for `hy310-install`; no kernel boot at all | off | gadget | **none** (`ENV_IS_NOWHERE`) |
+| `installer` | exposes the eMMC as a USB drive from FEL (`ums 0 mmc 1`) for `h713-install`; no kernel boot at all | off | gadget | **none** (`ENV_IS_NOWHERE`) |
 | `felmmc` | not a bootable image — an SPL carrying the original vendor `boot0`, to restore the first boot stage over FEL | off | gadget | eMMC, 4 MiB |
 
 Roles are board-independent by construction. `hy200_h713_felmmc_defconfig` — the restore SPL at the

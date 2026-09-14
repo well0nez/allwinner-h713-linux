@@ -89,9 +89,9 @@ Everything here is ours and documented; nothing needs a vendor daemon.
 | [`h713-fel`](docs/tools/h713-fel.md) | put the running device back into USB recovery mode, without the reset button |
 | [everything else that runs](docs/services.md) | the services in the image, the journal switch, and the one security decision you should know about |
 | **On your PC** | |
-| [`hy310-install`](docs/tools/hy310-install.md) | dump, extract, install, verify — and the way back to stock |
+| [`h713-install`](docs/tools/h713-install.md) | dump, extract, install, verify — and the way back to stock, in one tool with subcommands |
 | [`h713-extract`](docs/tools/h713-extract.md) | pull the device-specific firmware out of *your* dump |
-| [`hy310-mkimage`](docs/tools/hy310-mkimage.md) | build the three-part image with the gap over secure storage |
+| [`h713-mkimage`](docs/tools/h713-mkimage.md) | build the three-part image with the gap over secure storage |
 | [`h713_probe`](docs/tools/h713-probe.md) | **a different H713 projector?** FEL-boot this and it says what your board is — DRAM, partitions, display firmware, panel. Writes nothing |
 | [`release/build-all.sh`](BUILDING.md) | clean clone → flashable image, eleven steps, one command |
 
@@ -118,7 +118,7 @@ parameters trains "OK" and then hangs on reads, so always say which board a resu
 
 ```bash
 release/build-all.sh --version v0.5-beta --vendor <your extraction>   # image, from a clean clone
-installer/hy310-install.py --help                                     # dump, extract, install
+installer/h713-install --help                                         # dump, extract, install
 ```
 
 The image ships **no proprietary files**. Firmware for the display, the ARISC, Wi-Fi and the picture
@@ -131,7 +131,7 @@ you don't already have.
 ```
 mainline/        cstenger's tree as a git subtree + our kernel patch series (patches/kernel/series)
 uboot-h713/      our U-Boot commits as patches, generated from the fork (read-only mirror)
-installer/       hy310-install, hy310-mkimage, h713-extract and helpers
+installer/       h713-install, h713-mkimage, h713-extract and helpers
 rootfs/          the Debian 13 recipe: package list, overlay, install script, tests
 userspace/       h713-tv, h713-pq, h713-focus, h713-cam
 release/         build-all.sh — clean clone to flashable image

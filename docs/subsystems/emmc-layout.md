@@ -34,7 +34,7 @@ even `--force` lifts.
 
 Because LBA 12,288…14,335 must never appear in a flashable file, the release image itself is not one
 contiguous file but three, built around the gap — the split, its table, and the placeholders it leaves for
-proprietary files are covered in [`hy310-mkimage.md`](../tools/hy310-mkimage.md), not here.
+proprietary files are covered in [`h713-mkimage.md`](../tools/h713-mkimage.md), not here.
 
 ## Restoring to stock
 
