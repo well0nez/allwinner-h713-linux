@@ -1,0 +1,356 @@
+# SPDX-License-Identifier: GPL-2.0
+"""The vendor files the extractor pulls out, and the checks that say whether they are sound.
+
+Where they live in the vendor partition (X:208-262), how a symbol is found in an ELF, how the MSPM
+block chain, an EDID block, the PQ files, a TSE header and display_cfg.xml are checked
+(X:1674-1998). Stage 1 of doku/121: identifiers and comments are English, every user-visible string
+and every dict key is unchanged.
+"""
+
+from __future__ import annotations
+
+import re
+import sqlite3
+import struct
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+from h713.fex import ini_numbers, parse_ini
+from h713.log import Abort
+from h713.util import hexdump_short
+
+REQUIRED_FILES = ("lib/firmware/h713-arisc.bin", "lib/firmware/hy310-edid.bin", "lib/firmware/h713/msp-patch.bin")
+
+# Exactly the files userspace/h713-pq reads (h713_pq/quellen.py)
+PQ_FILES = (
+    "tvpq.db",
+    "pq_picturemode.ini",
+    "pq_factory_extern.ini",
+    "pq_colortemp.ini",
+    "pq_overscan_config.ini",
+    "pqcontrol_config_setting.xml",
+    "pqcontrol_custom_setting.xml",
+    "portmap.cfg",
+)
+TVCONFIG = "/etc/tvconfig"          # relative to the root of the vendor partition (= /vendor in Android)
+EDID_14 = TVCONFIG + "/HDMI_EDID_14.bin"
+EDID_20 = TVCONFIG + "/HDMI_EDID_20.bin"
+MSP_LIB_CANDIDATES = ("/lib/libmspsound.so", "/lib64/libmspsound.so", "/lib/hw/libmspsound.so")
+
+# WLAN firmware of the AIC8800D80 (SDIO), relative to the root of the vendor partition.
+# The target directory MUST match the driver's CONFIG_AIC_FW_PATH; radxa's
+# patch fix-sdio-firmware-path.patch sets it to /lib/firmware/aic8800_fw/SDIO/aic8800D80
+# (formerly aic8800_sdio/aic8800). If the two differ, the driver loads no
+# firmware and wlan0 never appears -- the log then only says "file failed to open".
+# Checked on the device (12.09.2026): with exactly this set mmc1, wlan0 and phy0
+# come up; the driver loads fw_patch_table/fw_adid/fw_patch/fmacfw. So nothing
+# proprietary has to be shipped -- the user gets the firmware of their own
+# device, as with HDCP, ARISC and the MIPS firmware.
+AIC_FW_DIR = "/etc/firmware/aic8800d80"
+AIC_FW_TARGET = "lib/firmware/aic8800_fw/SDIO/aic8800D80"
+
+# --------------------------------------------------------------------------------------------------
+# MIPS/display artefacts (tool 0.3, plan 108 §1/§2/§4.2/§4.5)
+# --------------------------------------------------------------------------------------------------
+
+# U-Boot reads them with h713_disp_read("mips/<name>", …) out of a filesystem (mainline/external/u-boot/
+# arch/arm/mach-sunxi/h713_mips.c). The names below are the *long names* in the FAT16 -- the 8.3 short
+# names are useless (the ProjectID files are called e.g. "PR§÷pð~1.TSE" there).
+MIPS_SOURCE_DIR = "mips"                # subdirectory in bootloader_a/bootloader_b
+MIPS_OUTPUT_DIR = "boot/mips"           # output under --out; exactly the names U-Boot expects
+MIPS_FILES = ("display.bin", "display_cfg.xml", "LogoRegData.bin", "database.TSE", "pq_custom.TSE", "projecttable.TSE")
+MIPS_PROJECTID = re.compile(r"^ProjectID_0x([0-9A-Fa-f]{4})\.TSE$")
+# Lies in the same partition, our chain does not use it (plan 108 §1) -- it is only named in the report, not copied.
+MIPS_NOT_OURS = ("bootlogo.bmp", "fastbootlogo.bmp", "font24.sft", "font32.sft", "magic.bin", "bat", "wavefile")
+# Partition names (GPT) resp. --part keys behind which this FAT16 sits. bootloader_b first: that is the
+# partition U-Boot reads from today (mmc 1:2, plan 108 §1).
+MIPS_PART_NAMES = ("bootloader_b", "bootloader_a")
+MIPS_PART_KEYS = ("bootloader_b", "bootloader_a", "bootloader", "boot-resource", "boot_resource", "mips")
+MIPS_FEX = "boot-resource.fex"          # that is what the image is called in the IMAGEWTY container and in --fex-dir
+
+TSE_MAGIC = b"TSE"
+TSE_ID_OFFSET = 14                      # u16 little-endian in the 16-byte header (plan 108 §4.5 „erstens")
+
+# panel_config.ini in the vendor filesystem: the project id the board *declares*. It is reported, but never
+# used (plan 108 §4.5 „drittens" / §3).
+PANEL_CONFIG_CANDIDATES = ("/etc/tvconfig/panel_config/panel_config.ini", "/etc/tvconfig/panel_config.ini")
+
+
+def elf_symbol(data: bytes, symbol: str) -> Optional[Tuple[int, int, str]]:
+    """(file offset, size, section) of a symbol out of .dynsym/.symtab; mapped through the section (sh_addr -> sh_offset)."""
+    if data[:4] != b"\x7fELF":
+        raise Abort("keine ELF-Datei")
+    cls, endian = data[4], data[5]
+    E = "<" if endian == 1 else ">"
+    if cls == 1:
+        e_shoff, = struct.unpack_from(E + "I", data, 0x20)
+        e_shentsize, e_shnum, e_shstrndx = struct.unpack_from(E + "HHH", data, 0x2E)
+        sh_fmt, sh_len = E + "IIIIIIIIII", 40
+        sym_fmt, sym_len = E + "IIIBBH", 16
+    else:
+        e_shoff, = struct.unpack_from(E + "Q", data, 0x28)
+        e_shentsize, e_shnum, e_shstrndx = struct.unpack_from(E + "HHH", data, 0x3A)
+        sh_fmt, sh_len = E + "IIQQQQIIQQ", 64
+        sym_fmt, sym_len = E + "IBBHQQ", 24
+    sects = []
+    for i in range(e_shnum):
+        s = struct.unpack_from(sh_fmt, data, e_shoff + i * e_shentsize)
+        if cls == 1:
+            name, sh_type, flags, addr, off, size, link, info, align, entsize = s
+        else:
+            name, sh_type, flags, addr, off, size, link, info, align, entsize = s
+        sects.append({"name": name, "type": sh_type, "addr": addr, "off": off, "size": size, "link": link, "entsize": entsize})
+    shstr = sects[e_shstrndx] if e_shstrndx < len(sects) else None
+
+    def sname(i):
+        if shstr is None:
+            return "?"
+        o = shstr["off"] + i
+        return data[o:data.find(b"\0", o)].decode("latin1", "replace")
+
+    for s in sects:
+        s["sname"] = sname(s["name"])
+    for s in sects:
+        if s["type"] not in (2, 11):  # SYMTAB, DYNSYM
+            continue
+        strtab = sects[s["link"]]
+        n = s["size"] // sym_len
+        for i in range(n):
+            o = s["off"] + i * sym_len
+            if cls == 1:
+                st_name, st_value, st_size, st_info, st_other, st_shndx = struct.unpack_from(sym_fmt, data, o)
+            else:
+                st_name, st_info, st_other, st_shndx, st_value, st_size = struct.unpack_from(sym_fmt, data, o)
+            no = strtab["off"] + st_name
+            nm = data[no:data.find(b"\0", no)]
+            if nm == symbol.encode():
+                if st_shndx == 0 or st_shndx >= len(sects):
+                    return None
+                sec = sects[st_shndx]
+                if sec["type"] == 8:  # NOBITS
+                    return None
+                return (sec["off"] + (st_value - sec["addr"]), st_size, sec["sname"])
+    return None
+
+
+def parse_mspm(blob: bytes) -> Tuple[List[dict], List[str]]:
+    """MSPM block chain: 'MSPM' | u16 0 | u16 0x01TT | u32 BE (length<<8). Returns blocks and findings."""
+    blocks, problems = [], []
+    o = 0
+    while o < len(blob):
+        h = blob[o:o + 12]
+        if len(h) < 12 or h[:4] != b"MSPM":
+            problems.append(f"bei +{o:#x}: kein MSPM-Kopf ({h[:4]!r})")
+            break
+        zero, target, raw = struct.unpack(">HHI", h[4:12])
+        length = raw >> 8
+        if zero != 0 or (target >> 8) != 1 or (raw & 0xFF) != 0:
+            problems.append(f"Block {len(blocks)} bei +{o:#x}: Kopffelder {zero:#x} {target:#x} {raw:#x} unerwartet")
+        if length % 4 or o + 12 + length > len(blob):
+            problems.append(f"Block {len(blocks)} bei +{o:#x}: Länge {length} passt nicht")
+            break
+        dsp = {0x100: "DSP1", 0x102: "DSP2"}.get(target, f"?{target:#x}")
+        blocks.append({"offset": o, "ziel": dsp, "laenge": length, "paare": length // 4})
+        o += 12 + length
+    if o != len(blob):
+        problems.append(f"Kette endet bei +{o:#x}, Blob hat {len(blob)} B")
+    if not blocks:
+        problems.append("kein einziger MSPM-Block")
+    return blocks, problems
+
+
+def find_mspm_chain(data: bytes) -> Optional[Tuple[int, int]]:
+    """Fallback without a symbol table: the longest gapless MSPM chain in the file."""
+    best = None
+    i = data.find(b"MSPM")
+    while i >= 0:
+        o, n = i, 0
+        while data[o:o + 4] == b"MSPM" and o + 12 <= len(data):
+            raw = struct.unpack(">I", data[o + 8:o + 12])[0]
+            ln = raw >> 8
+            if ln % 4 or ln == 0 or o + 12 + ln > len(data):
+                break
+            o += 12 + ln
+            n += 1
+        if n >= 2 and (best is None or (o - i) > (best[1] - best[0])):
+            best = (i, o)
+        i = data.find(b"MSPM", i + 1)
+    return best
+
+
+# --------------------------------------------------------------------------------------------------
+# EDID
+# --------------------------------------------------------------------------------------------------
+
+def check_edid_block(b: bytes, who: str) -> List[str]:
+    findings = []
+    if len(b) != 256:
+        findings.append(f"{who}: {len(b)} B statt 256")
+        return findings
+    if b[:8] != b"\x00\xff\xff\xff\xff\xff\xff\x00":
+        findings.append(f"{who}: EDID-Kopf fehlt ({hexdump_short(b, 8)})")
+    for i in (0, 128):
+        s = sum(b[i:i + 128]) & 0xFF
+        if s:
+            findings.append(f"{who}: Block {i // 128} Prüfsumme {s:#04x} statt 0")
+    if b[126] != 1:
+        findings.append(f"{who}: Erweiterungszähler {b[126]} statt 1")
+    if b[128] != 0x02:
+        findings.append(f"{who}: Block 1 ist kein CEA-861 (Tag {b[128]:#04x})")
+    return findings
+
+
+def edid_vendor(b: bytes) -> str:
+    v = struct.unpack(">H", b[8:10])[0]
+    return "".join(chr(64 + ((v >> s) & 0x1F)) for s in (10, 5, 0))
+
+
+def edid_name(b: bytes) -> str:
+    for i in range(54, 126, 18):
+        d = b[i:i + 18]
+        if d[:3] == b"\0\0\0" and d[3] == 0xFC:
+            return d[5:18].decode("latin1", "replace").strip("\n ")
+    return ""
+
+
+# --------------------------------------------------------------------------------------------------
+# Check the PQ files
+# --------------------------------------------------------------------------------------------------
+
+def check_pq(name: str, data: bytes, tmp: Path) -> List[str]:
+    """Empty list = ok. Otherwise findings („hier drohen Probleme")."""
+    findings = []
+    try:
+        if name.endswith(".ini") or name.endswith(".cfg"):
+            text = data.decode("utf-8", "replace")
+        if name == "pq_picturemode.ini":
+            s = parse_ini(text)
+            cfg = dict(s.get("CONFIG", []))
+            if "picture_mode" not in cfg:
+                findings.append("[CONFIG] picture_mode fehlt")
+            modes = [m.strip() for m in cfg.get("picture_mode", "").split(",") if m.strip()]
+            for input_name in ("HDMI1", "HDMI2", "HDMI3"):
+                if input_name not in s:
+                    findings.append(f"Sektion [{input_name}] fehlt")
+                    continue
+                d = dict(s[input_name])
+                for m in modes:
+                    if m not in d:
+                        findings.append(f"[{input_name}] Modus {m} fehlt")
+                    elif len(ini_numbers(d[m])) != 13:
+                        findings.append(f"[{input_name}] {m}: {len(ini_numbers(d[m]))} statt 13 Werte")
+        elif name == "pq_factory_extern.ini":
+            s = parse_ini(text)
+            if "PQ_ENABLE" not in s:
+                findings.append("[PQ_ENABLE] fehlt")
+            if "PICTURE_CURVE_HDMI" not in s:
+                findings.append("[PICTURE_CURVE_HDMI] fehlt")
+            else:
+                d = dict(s["PICTURE_CURVE_HDMI"])
+                for i in range(1, 6):
+                    k = f"PICTURE_CURVE_SETTINGS[{i}]"
+                    if k not in d:
+                        findings.append(f"[PICTURE_CURVE_HDMI] {k} fehlt")
+                    elif len(ini_numbers(d[k])) != 5:
+                        findings.append(f"[PICTURE_CURVE_HDMI] {k}: {len(ini_numbers(d[k]))} statt 5 Stützstellen")
+        elif name == "pq_colortemp.ini":
+            s = parse_ini(text)
+            if "COLOR_TEMP_HDMI" not in s:
+                findings.append("[COLOR_TEMP_HDMI] fehlt")
+            else:
+                d = dict(s["COLOR_TEMP_HDMI"])
+                for k in ("STANDARD", "COOL", "WARM", "USER"):
+                    if k not in d:
+                        findings.append(f"[COLOR_TEMP_HDMI] {k} fehlt")
+                    elif len(ini_numbers(d[k])) != 6:
+                        findings.append(f"[COLOR_TEMP_HDMI] {k}: {len(ini_numbers(d[k]))} statt 6 Werte")
+        elif name == "pq_overscan_config.ini":
+            s = parse_ini(text)
+            if "HDMIOverscanSetting" not in s:
+                findings.append("[HDMIOverscanSetting] fehlt")
+        elif name.endswith(".xml"):
+            root = ET.fromstring(data)
+            if name == "pqcontrol_config_setting.xml":
+                items = [it for it in root.iter("item") if it.get("name") == "gamma"]
+                if not items:
+                    findings.append("<transform><item name=\"gamma\"> fehlt")
+                elif not all(items[0].get(f"level{i}") for i in range(5)):
+                    findings.append("gamma level0..level4 unvollständig")
+        elif name == "tvpq.db":
+            if data[:16] != b"SQLite format 3\0":
+                findings.append("kein SQLite-Kopf")
+            else:
+                dbp = tmp / "pruef-tvpq.db"
+                dbp.write_bytes(data)
+                try:
+                    c = sqlite3.connect(f"file:{dbp}?mode=ro", uri=True)
+                    tables = {r[0] for r in c.execute("select name from sqlite_master where type='table'")}
+                    for t in ("Picture_Mode", "White_Balance_Mode", "Gamma_Point"):
+                        if t not in tables:
+                            findings.append(f"Tabelle {t} fehlt")
+                        else:
+                            n = c.execute(f"select count(*) from {t}").fetchone()[0]
+                            if n == 0:
+                                findings.append(f"Tabelle {t} leer")
+                    c.close()
+                finally:
+                    dbp.unlink(missing_ok=True)
+        elif name == "portmap.cfg":
+            lines = [line.split() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+            if not lines or any(len(line) < 3 for line in lines):
+                findings.append("keine dreispaltigen Port-Zeilen")
+            elif not any(line[2].startswith("HDMI") for line in lines):
+                findings.append("kein HDMI-Port")
+    except Exception as e:  # noqa: BLE001 — every unreadability is a finding, not a stop
+        findings.append(f"nicht lesbar: {e}")
+    return findings
+
+
+# --------------------------------------------------------------------------------------------------
+# MIPS/display artefacts: TSE header, display.bin against h713_mips_fw_revs[], display_cfg.xml
+# --------------------------------------------------------------------------------------------------
+
+def tse_header(data: bytes) -> dict:
+    """The 16-byte TSE header: magic 'TSE' and at offset 14 the project id as u16 little-endian (plan 108 §4.5)."""
+    if len(data) < 16:
+        return {"magic_ok": False, "id": None, "kopf": data.hex()}
+    return {"magic_ok": data[:3] == TSE_MAGIC,
+            "id": struct.unpack_from("<H", data, TSE_ID_OFFSET)[0],
+            "kopf": data[:16].hex()}
+
+
+def check_tse(name: str, data: bytes) -> Tuple[List[str], Optional[int]]:
+    """Findings and the id written in the header. For ProjectID_0x*.TSE the file name must match the id field."""
+    findings: List[str] = []
+    k = tse_header(data)
+    if not k["magic_ok"]:
+        findings.append(f"{name}: TSE-Magic fehlt (Kopf {k['kopf']})")
+        return findings, None
+    m = MIPS_PROJECTID.match(name)
+    if m:
+        from_name = int(m.group(1), 16)
+        if k["id"] != from_name:
+            findings.append(f"{name}: Kopf sagt ID {k['id']:#06x}, der Dateiname sagt {from_name:#06x} — passt nicht zusammen")
+        else:
+            findings.append(f"{name}: TSE-Kopf {k['kopf']}, ID {k['id']:#06x} = Dateiname")
+    else:
+        findings.append(f"{name}: TSE-Kopf {k['kopf']}, ID-Feld {k['id']:#06x}")
+    return findings, k["id"]
+
+
+def check_display_cfg(data: bytes) -> List[str]:
+    """Parse display_cfg.xml. The stock file ends on a null byte behind </root> -- that is not an error,
+    U-Boot hands the file on to the MIPS firmware unchanged anyway; it is only reported."""
+    notes = []
+    raw = data
+    if raw.rstrip(b"\r\n\t \0") != raw.rstrip():
+        notes.append("display_cfg.xml: endet auf Null-Byte(s) hinter </root> (Stock-Eigenart, unverändert kopiert)")
+    text = raw.rstrip(b"\r\n\t \0").decode("utf-8", "replace")
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as e:
+        return notes + [f"display_cfg.xml: nicht parsebar ({e})"]
+    children = [k.tag for k in root]
+    return notes + [f"display_cfg.xml: wohlgeformt, Wurzel <{root.tag}>, {len(children)} Kinder"
+                    + (": " + ", ".join(sorted(set(children))[:8]) if children else "")]

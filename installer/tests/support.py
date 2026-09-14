@@ -67,6 +67,29 @@ class _PackageAdapter:
         import h713.log, h713.source, h713.fs.sparse                                     # noqa: E401
         self.h = h713
 
+    def _disk(self):
+        """Disk with the old method names the tests call."""
+        Disk = self.h.blockdev.Disk
+
+        class Platte(Disk):
+            lies, schreib = Disk.read, Disk.write
+
+            @property
+            def sektoren(self):
+                return self.sectors
+        return Platte
+
+    def _gpt(self):
+        Gpt = self.h.gpt.Gpt
+
+        class OldGpt(Gpt):
+            ist_gpt = staticmethod(Gpt.is_gpt)
+
+            @property
+            def tabelle_ok(self):
+                return self.table_ok
+        return OldGpt
+
     def __getattr__(self, name):
         h = self.h
         if self.which == "install":
@@ -76,7 +99,7 @@ class _PackageAdapter:
                 "SPERRE_ERSTER": h.blockdev.LOCK_FIRST, "SPERRE_LETZTER": h.blockdev.LOCK_LAST,
                 "SECTORS_EXPECTED": h.blockdev.SECTORS_EXPECTED,
                 "Platte": lambda pfad, schreiben=False, exklusiv=None:
-                    h.blockdev.Disk(pfad, writable=schreiben, exclusive=exklusiv),
+                    self._disk()(pfad, writable=schreiben, exclusive=exklusiv),
                 "ist_sparse": h.fs.sparse.is_sparse,
                 "sparse_schreiben": lambda platte, d, plba, trocken=False:
                     h.fs.sparse.write_sparse(platte, d, plba, trocken),
@@ -95,7 +118,7 @@ class _PackageAdapter:
                     h713.stock.restore_stock(platte, image_datei, extraktor, log, trocken,
                                              data_dir=TOOLS)   # the shipped ext4 blob lives next to the scripts
         elif self.which == "extract":
-            table = {"DateiQuelle": h.source.FileSource, "Gpt": h.gpt.Gpt, "Log": h.log.Log}
+            table = {"DateiQuelle": h.source.FileSource, "Gpt": self._gpt(), "Log": h.log.Log}
             if name in table:
                 return table[name]
         elif self.which == "mkimage":
