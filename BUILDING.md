@@ -9,7 +9,7 @@ release/build-all.sh --version v0.5-beta --vendor <output of h713-extract>
 Eleven steps: TF-A BL31 · U-Boot (release, installer, and `sunxi-fel`) · kernel with the patch series ·
 AIC8800 modules · a pinned Debian keyring · an arm64 sysroot and `h713-tv` cross-built against it ·
 the Debian 13 root filesystem · the ext4 inputs · the image · verification · a build stamp. With
-`--vendor` it ends in `ALLES GRUEN` — the self-test compared every extracted file against the image —
+`--vendor` it ends in `ALL GREEN` — the self-test compared every extracted file against the image —
 or it stops. Without `--vendor` it ends after the structural check, which is a weaker statement.
 
 Roughly 20 minutes from cold (including the kernel tarball download), about 10 with a kernel tree already
@@ -47,7 +47,7 @@ in three images before anyone noticed ([STATUS.md](STATUS.md), *Boot chain*).
 mainline/build/out/     bl31.bin, spl-release.bin, uboot-proper-release.bin, hy310-env-release.bin,
                         u-boot-installer.bin, sunxi-fel, h713-kernel.fit, modules/
 installer/out/          <name>-{a-bootkette,b-system,c-gptkopie}.img, .tabelle.json,
-                        .sha256, -LIESMICH.txt, .BUILD.txt
+                        .sha256, -README.txt, .BUILD.txt
 ```
 
 The `.BUILD.txt` stamp records the series hash, the defconfig hash, the kernel tree digest, the three
