@@ -27,10 +27,16 @@ class _Silent:
     def error(self, _t): pass
 
 
+# Stage 3: the tool is h713-install (hy310-install.py is only the forwarder now); it has no
+# .py suffix, so it is loaded by path just as before.
+TOOL = os.path.join(support.TOOLS, "h713-install")
+
+
 def _installer_script():
-    """The thin hy310-install.py as a module (for _declared_project)."""
+    """The thin h713-install as a module (for _declared_project)."""
+    support.need([TOOL])
     spec = importlib.util.spec_from_loader(
-        "hy310_install_script", importlib.machinery.SourceFileLoader("hy310_install_script", support.INSTALL_PY))
+        "h713_install_script", importlib.machinery.SourceFileLoader("h713_install_script", TOOL))
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m

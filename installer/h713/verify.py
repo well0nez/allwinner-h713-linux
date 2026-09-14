@@ -25,7 +25,7 @@ def write_image(disk, file, log=console, lba0=0):
     disk. A full dump is one piece from 0 -- the default."""
     total = os.path.getsize(file)
     if lba0 * SECT + total > disk.sectors * SECT:
-        raise RuntimeError("Abbild (%.1f MiB ab LBA %d) ist groesser als die eMMC"
+        raise RuntimeError("image (%.1f MiB from LBA %d) is bigger than the eMMC"
                            % (mib(total), lba0))
     chunk = 4 << 20
     done = 0
@@ -47,7 +47,7 @@ def write_image(disk, file, log=console, lba0=0):
             done += len(b)
             if done % (128 << 20) == 0 or done == total:
                 speed = done / max(time.time() - t0, 0.001)
-                log.info("  %5.1f%%  %6.1f MiB/s  noch %s" %
+                log.info("  %5.1f%%  %6.1f MiB/s  %s left" %
                          (100.0 * done / total, mib(speed),
                           duration((total - done) / max(speed, 1))))
     disk.sync()
@@ -75,6 +75,6 @@ def verify_image(disk, file, samples=6, log=console, lba0=0):
                 continue
             got = disk.read(lba, len(want) // SECT)
             if got != want:
-                log.warn("Abweichung bei LBA %d" % lba)
+                log.warn("mismatch at LBA %d" % lba)
                 errors += 1
     return errors

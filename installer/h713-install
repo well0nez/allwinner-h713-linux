@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+"""
+h713-install -- turn an HY310/H713 projector over to Linux, from a PC.
+
+Runs on Linux and Windows, with Python 3.9+ and without further packages.
+Specification: doku/110-plan-installationsweg.md.
+
+The whole procedure in four steps:
+
+  1. Put the device into FEL mode: hold the reset button, plug the power in.
+     (No opening the case, no pad, no soldering.)
+  2. Start this tool. It loads U-Boot volatile over USB -- NOT one byte is
+     written onto the eMMC while doing so -- and lets it expose the eMMC as a
+     USB drive.
+  3. It takes a dump (size of your choice), fetches the device's own parts out
+     of it and writes the new image.
+  4. Power off and on again. Done.
+
+The only way out of the drive exposure is a power cycle -- that is no defect
+but the end of the road: afterwards the new system starts anyway.
+
+With --ssh-key FILE your own public SSH key goes into the image (placeholder
+/root/.ssh/authorized_keys, 4096 bytes, padded with newlines). Without it there
+is no ssh access, only the serial console -- the image deliberately carries no
+key (doku/107 §3).
+"""
+
+# Stage 3 of doku/121: one tool with subcommands, English throughout, the files found by
+# themselves. The steps are the old main()/_arbeiten() of hy310-install.py, split by
+# subcommand -- same steps, same order, same exit codes; the command line and the language
+# are what changed. The German switches live on as hidden aliases for one release.
+
+import argparse
+import json
+import os
+import platform
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+from h713 import install as install_mod                                     # noqa: E402
+from h713.blockdev import (Disk, LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED,   # noqa: E402
+                           device_kind)
+from h713.dump import (choose_dump, dump_full, dump_small, mandatory_dump,  # noqa: E402
+                       verify_dump, write_manifest)
+from h713.env import ENV_CARRY_OVER                                         # noqa: E402
+from h713.fel import expose_drive                                           # noqa: E402
+from h713.identify import identify, report_device                           # noqa: E402
+from h713.install import (WRITES, confirm, image_package, release_files,     # noqa: E402
+                          run_extractor, translate, unpack_parts, write_package)
+from h713.log import console                                                # noqa: E402
+from h713.profiles import PROFILES                                          # noqa: E402
+from h713.stock import restore_stock                                        # noqa: E402
+from h713.util import duration, mib                                         # noqa: E402
+from h713.verify import verify_image, write_image                           # noqa: E402
+
+VERSION = "0.1 (draft, doku/110)"
+DUMP_DEFAULT = "hy310-sicherung"
+
+EPILOG = """exit codes:
+  0 ok                  4 wrong size         8 no vendor source
+  1 refused/aborted     5 file missing       9 fill mismatch
+  2 usage               6 verify failed     10 unknown device or secure storage changed
+  3 no drive            7 dump mismatch     11 broken env in image
+"""
+
+def parser():
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--device", metavar="PATH", help="name the drive by hand (else searched)")
+    common.add_argument("--sunxi-fel", dest="fel", metavar="PATH", help="path to sunxi-fel")
+    common.add_argument("--uboot", metavar="PATH",
+                        help="U-Boot for the drive exposure (u-boot-installer.bin)")
+    common.add_argument("--no-write", action="store_true",
+                        help="rehearse: read everything, write nothing")
+    common.add_argument("--skip-identify", action="store_true",
+                        help="skip identifying the device (plan 110 §8). For development "
+                             "only -- it protects against guessing on a foreign firmware.")
+    common.add_argument("--yes", action="store_true",
+                        help="say the YES in advance, for runs without a terminal (scripts)")
+
+    p = argparse.ArgumentParser(
+        prog="h713-install", description="Turn an HY310/H713 projector over to Linux (doku/110).",
+        formatter_class=argparse.RawDescriptionHelpFormatter, epilog=EPILOG + __doc__)
+    p.add_argument("--version", action="version", version="h713-install " + VERSION)
+    sub = p.add_subparsers(dest="command", metavar="SUBCOMMAND")
+
+    what = sub.add_parser("identify", parents=[common], help="what is this? prints the profile row")
+    what.add_argument("source", nargs="?", metavar="DEVICE|DUMP|IMAGE",
+                      help="what to look at (default: the projector over FEL)")
+    what.add_argument("--json", action="store_true", help="the identification as JSON")
+
+    take = sub.add_parser("dump", parents=[common], help="save what exists only on this device")
+    size = take.add_mutually_exclusive_group()
+    size.add_argument("--full", dest="size", action="store_const", const="full",
+                      help="the whole eMMC, 7.3 GB, about 17 minutes")
+    size.add_argument("--small", dest="size", action="store_const", const="small",
+                      help="only the device-unique regions, 49 MiB")
+    take.add_argument("-o", "--out", dest="dump_dir", default=DUMP_DEFAULT, metavar="DIR",
+                      help="directory for the dump (default: %(default)s)")
+    take.add_argument("--with-vendor", action="store_true",
+                      help="also run h713-extract over the full dump")
+
+    put = sub.add_parser("install", parents=[common], help="write our image onto the device")
+    put.add_argument("image", metavar="RELEASE-DIR|TABLE.json",
+                     help="the release folder, its *.tabelle.json, or a single .img file")
+    put.add_argument("--ssh-key", metavar="FILE",
+                     help="public SSH key (e.g. ~/.ssh/id_ed25519.pub) for /root/.ssh/"
+                          "authorized_keys in the image; without it there is no ssh access")
+    put.add_argument("--dump", dest="dump_dir", default=DUMP_DEFAULT, metavar="DIR",
+                     help="directory for the dump (default: %(default)s)")
+    put.add_argument("--vendor", metavar="DIR",
+                     help="finished output of h713-extract; without it the full dump is used")
+    put.add_argument("--table", help="offset table when the image is a single file")
+    put.add_argument("--work-copy", metavar="FILE",
+                     help="where the filled copy of the image goes "
+                          "(default: <dump>/abbild-gefuellt.img, ~1.2 GB)")
+    put.add_argument("--full", dest="size", action="store_const", const="full",
+                     help="take the full dump without asking")
+    put.add_argument("--small", dest="size", action="store_const", const="small",
+                     help="take the small dump without asking")
+    env = put.add_mutually_exclusive_group()
+    env.add_argument("--fresh-env", dest="fresh_env", action="store_true",
+                     help="carry NOTHING over from the old U-Boot environment "
+                          "(default: %s are carried over)" % ", ".join(ENV_CARRY_OVER))
+    env.add_argument("--keep-env", dest="fresh_env", action="store_false", help=argparse.SUPPRESS)
+    put.set_defaults(fresh_env=False, size=None)
+
+    for name, metavar, what_for in (("restore", "DUMP.img", "write a full dump back"),
+                                    ("restore-stock", "UPDATE.img",
+                                     "write the manufacturer's firmware (IMAGEWTY container)")):
+        one = sub.add_parser(name, parents=[common], help=what_for)
+        one.add_argument("image", metavar=metavar)
+        one.add_argument("--dump", dest="dump_dir", default=DUMP_DEFAULT, metavar="DIR",
+                         help="directory for the mandatory small dump (default: %(default)s)")
+
+    # `extract` is listed here for the help, but never parsed: main() hands its whole tail
+    # to h713-extract, which owns those flags (including its own -h).
+    sub.add_parser("extract", add_help=False, prog="h713-install extract",
+                   help="pull the device's own parts out of a dump (= h713-extract)")
+    return p
+
+
+# ------------------------------------------------------------------------------ the work
+
+def _declared_project(ident):
+    """The project id the board declares in Reserve0's panel_config.ini (decimal there), as the
+    "0x.." string U-Boot's h713_project expects -- or None when the identification saw none."""
+    pid = ((ident.get("facts") or {}).get("panel_config") or {}).get("ProjectID")
+    if isinstance(pid, dict):
+        for source in ("reserve0", "vendor"):
+            if isinstance(pid.get(source), int) and pid[source] > 0:
+                return "0x%02x" % pid[source]
+    elif isinstance(pid, int) and pid > 0:
+        return "0x%02x" % pid
+    return None
+
+
+def _report(args, ident):
+    """`identify`: the profile row, or the whole identification as JSON. Never writes, so it
+    never refuses -- the exit code is 0 for a board we know and for one we do not."""
+    if args.json:
+        print(json.dumps(dict((k, ident.get(k)) for k in
+                              ("input", "kind", "profile", "status", "candidates", "features",
+                               "matches", "layout", "regions", "mips", "text")),
+                         indent=2, default=str))
+    else:
+        report_device(ident, writing=False)
+    return 0
+
+
+def _identify_file(args):
+    """`identify FILE`: a raw dump or a vendor image, without FEL and without a device."""
+    if not os.path.exists(args.source):
+        console.error("%s not found" % args.source)
+        return 5
+    if os.path.isfile(args.source):
+        return _report(args, identify(args.source))
+    disk = Disk(args.source, writable=False)
+    try:
+        return _report(args, identify(disk))
+    finally:
+        disk.close()
+
+
+def _restore_stock(args, disk):
+    mandatory_dump(args, disk, disk.path)
+    console.step(3, "Install the manufacturer's firmware")
+    if not os.path.isfile(args.image):
+        console.error("%s not found" % args.image)
+        return 5
+    console.info("%s (%.0f MiB)" % (args.image, mib(os.path.getsize(args.image))))
+    console.info("The Secure Storage (LBA %d..%d) stays untouched while doing it."
+                 % (LOCK_FIRST, LOCK_LAST))
+    profile = getattr(args, "_profile", None)
+    if args.no_write:
+        restore_stock(disk, args.image, None, dry_run=True, data_dir=HERE, profile=profile)
+        console.info("No-write run -- nothing written.")
+        return 0
+    if not confirm("This overwrites the eMMC with Android."):
+        return 1
+    t0 = time.time()
+    written, _parts = restore_stock(disk, args.image, None, data_dir=HERE, profile=profile)
+    console.ok("%.0f MiB written in %s" % (mib(written), duration(time.time() - t0)))
+    console.info("")
+    console.info("Now unplug the power and plug it in again.")
+    return 0
+
+
+def _restore(args, disk):
+    mandatory_dump(args, disk, disk.path)
+    console.step(3, "Write the full dump back")
+    if not os.path.isfile(args.image):
+        console.error("%s not found" % args.image)
+        return 5
+    console.info("%s (%.1f MiB)" % (args.image, mib(os.path.getsize(args.image))))
+    if args.no_write:
+        # The one deliberate behaviour change of stage 3 (see REPORT.txt): --dry-run used to
+        # fall through here, ask for the JA and then die in Disk.write() with "opened
+        # read-only". Nothing was written then either -- but a flag that says "write nothing"
+        # must say so, not throw a traceback. restore-stock has had this branch all along.
+        console.info("No-write run -- nothing written.")
+        return 0
+    if not confirm("This overwrites the eMMC with your dump."):
+        return 1
+    console.ok("written back in %s" % duration(write_image(disk, args.image)))
+    console.info("")
+    console.info("Now unplug the power and plug it in again.")
+    return 0
+
+
+def _dump(args, disk, path):
+    """Step 3 -- the same step in the same place for `dump` and for `install`."""
+    size = choose_dump(args.size)
+    console.step(3, "Take the dump (%s)" % size)
+    os.makedirs(args.dump_dir, exist_ok=True)
+    manifest = dump_small(disk, args.dump_dir, our_layout=args._our_layout)   # always, "full" too
+    if size == "full":
+        file = os.path.join(args.dump_dir, "emmc-voll.img")
+        console.info("7.3 GB, that takes a while. Progress:")
+        digest, seconds = dump_full(disk, file)
+        console.ok("%s  sha256 %s…  in %s" % (file, digest[:16], duration(seconds)))
+        console.info("Samples against the device:")     # an unchecked dump is no failsafe
+        bad = verify_dump(disk, file)
+        if bad:
+            console.error("%d sample(s) differ -- the dump is no good. Stopping before "
+                          "anything is written." % bad)
+            return 7
+        console.ok("the dump agrees with the device")
+        manifest.append(("emmc-voll", 0, disk.sectors, digest, "complete clone"))
+    write_manifest(args.dump_dir, manifest, path)
+    console.ok("the dump lies in %s" % os.path.abspath(args.dump_dir))
+    if args.command != "dump":
+        return 0
+    if args.with_vendor:
+        full = os.path.join(args.dump_dir, "emmc-voll.img")
+        if not os.path.isfile(full):
+            console.error("--with-vendor needs the full dump (%s is not there) -- take --full."
+                          % full)
+            return 8
+        target = os.path.join(args.dump_dir, "extrakt")
+        os.makedirs(target, exist_ok=True)
+        run_extractor(full, target, None, search_dir=HERE)
+    console.info("\ndump: nothing is written. Power off and on.")
+    return 0
+
+
+def _install(args, disk, path):
+    directory, table = image_package(args.image)
+    if table is None and args.table:
+        # A single file plus its own table: the same mechanics, one part.
+        directory, table = image_package(args.table)
+        if table is None:
+            console.error("%s is no image table" % args.table)
+            return 5
+        table = dict(table)
+        table["teile"] = [t for t in table["teile"]
+                          if t["datei"] == os.path.basename(args.image)] or [{
+                              "datei": os.path.basename(args.image), "lba": 0,
+                              "bytes": os.path.getsize(args.image), "sha256": None}]
+        directory = os.path.dirname(os.path.abspath(args.image)) or "."
+    if table is not None:
+        unpack_parts(directory, table)
+        return write_package(args, disk, path, directory, table, here=HERE)
+
+    # A single file without a table: one piece from LBA 0, without placeholders.
+    console.step(4, "Write the image")
+    if args.no_write:
+        console.info("WOULD: write %s onto %s (%.1f MiB)"
+                     % (args.image, path, mib(os.path.getsize(args.image))))
+        return 0
+    console.info("%s (%.1f MiB)" % (args.image, mib(os.path.getsize(args.image))))
+    if not confirm("This overwrites the eMMC."):
+        return 1
+    console.ok("written in %s" % duration(write_image(disk, args.image)))
+    bad = verify_image(disk, args.image)
+    if bad:
+        console.error("%d sample(s) differ -- do not reboot, ask." % bad)
+        return 6
+    console.ok("samples match")
+    console.info("")
+    console.info("Done. Unplug the power and plug it in again.")
+    return 0
+
+
+def _work(args, path):
+    writing = args.command in WRITES and not args.no_write
+    disk = Disk(path, writable=writing)
+    # For the environment the GPT alone counts: hy310-* means our layout. That is independent
+    # of --skip-identify, because it guesses nothing -- it reads partition names, 1 KiB.
+    args._our_layout = (device_kind(path) or "").startswith("our layout")
+    try:
+        # Before the first write: what are we dealing with? (plan 110 §8) Costs 1.2 MiB and
+        # fractions of a second and keeps us from guessing on an unknown firmware.
+        if not args.skip_identify:
+            console.step("1b", "Identify the device")
+            # Stage 2 C1: the identification uses every feature of the profiles (not one
+            # string), never writes, and hands the installer what our layout no longer
+            # carries as partitions -- the profile, the device-unique regions, the project id.
+            ident = identify(disk)
+            if args.command == "identify":
+                return _report(args, ident)
+            if not report_device(ident, writing=writing) and writing:
+                return 10
+            args._profile = PROFILES.get(ident["profile"]) if ident.get("profile") else None
+            project = _declared_project(ident)
+            args._env_keys = {"h713_project": project} if project else {}
+            if args.command == "restore-stock" and ident["regions"].get("private"):
+                # The vendor image never brings 'private'; the restore promises not to touch
+                # it, and the lock makes that promise hard (stage 2 C8).
+                disk.lock_regions({"private": ident["regions"]["private"]})
+        if disk.sectors != SECTORS_EXPECTED:
+            console.error("%s has %d sectors, expected %d -- wrong drive?"
+                          % (path, disk.sectors, SECTORS_EXPECTED))
+            return 4
+        if args.command == "restore-stock":
+            return _restore_stock(args, disk)
+        if args.command == "restore":
+            return _restore(args, disk)
+        code = _dump(args, disk, path)
+        return code if code or args.command == "dump" else _install(args, disk, path)
+    finally:
+        disk.close()
+
+
+def main(argv=None):
+    raw = sys.argv[1:] if argv is None else list(argv)
+    if not raw:
+        parser().print_help()
+        return 2
+    argv, hints = translate(raw)
+    if argv[0] == "extract":
+        # Everything behind it goes to h713-extract next to us -- that script owns its flags.
+        # It is loaded as a module, not started as a process: no PATH, no interpreter
+        # guessing, and its exit code comes straight back.
+        return install_mod._load_extractor(None, HERE).main(argv[1:])
+    args = parser().parse_args(argv)
+    print("h713-install %s   (%s)" % (VERSION, platform.system()))
+    for line in hints:
+        console.warn(line)
+    install_mod.ASSUME_YES = bool(args.yes)
+    if args.command == "identify":
+        args.skip_identify = False                # that is the whole job of this subcommand
+        if args.source:
+            return _identify_file(args)
+    if args.command == "install" and os.path.isdir(args.image):
+        found = release_files(args.image)         # a release folder brings both along
+        args.uboot = args.uboot or found.get("uboot")
+        args.fel = args.fel or found.get("fel")
+    path, code = expose_drive(args, HERE)
+    return code if path is None else _work(args, path)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\nAborted.", file=sys.stderr)
+        sys.exit(130)

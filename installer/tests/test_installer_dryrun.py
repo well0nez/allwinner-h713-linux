@@ -1,43 +1,70 @@
-"""hy310-install.py driven as a subprocess, the way a user drives it.
+"""h713-install driven as a subprocess, the way a user drives it.
 
-A regular file IS accepted as --device: main() takes any existing path given with
---device, Platte opens it with os.open(), and the size comes from lseek(SEEK_END).
-So the two command lines below are the real ones."""
+A regular file IS accepted as --device: the tool takes any existing path given with
+--device, Disk opens it with os.open(), and the size comes from lseek(SEEK_END).
+So the command lines below are the real ones.
+
+Stage 3 (doku/121 §3) turned the switches into subcommands and every text English,
+so both golden values below are re-frozen once -- reason "stage 3 texts" -- with the
+old value in the comment above them. The runs themselves are the same: the same
+steps in the same order, the same exit code, and the disk untouched.
+"""
 
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
+import types
 import unittest
 
 import support                 # imported first: it puts the work dir on sys.path
 import fakedisk
 
+TOOL = os.path.join(support.TOOLS, "h713-install")
+FORWARDER = support.INSTALL_PY                      # hy310-install.py, now a forwarder
+
+
+def _tool_module():
+    """h713-install as a module -- it has no .py suffix, so it is loaded by path."""
+    import importlib.machinery, importlib.util
+    support.need([TOOL])
+    spec = importlib.util.spec_from_loader(
+        "h713_install_tool", importlib.machinery.SourceFileLoader("h713_install_tool", TOOL))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 # frozen 2026-09-14 from hy310-install.py 0.1: (exit code, lines, digest of the
 # normalised stdout).  Normalisation replaces the temp directory, the device and
 # the image path, and the platform name; nothing else in these runs varies.
-# C-B froze (0, 36, "f75069a5c52094e4e29b3700f67b827576ef643d55915d8784c16794fc1dc5e2"); stage 2 C1 wired identify() into the installer (Fable):
-DUMP_ONLY = (0, 39, "2df06dfc7fa639b2a0f086108f209783cfeded689e02f0bdeaaac321b311dd54")
+# C-B froze (0, 36, "f75069a5c52094e4e29b3700f67b827576ef643d55915d8784c16794fc1dc5e2"); stage 2 C1 wired identify() into the installer (Fable);
+# was (0, 39, "2df06dfc7fa639b2a0f086108f209783cfeded689e02f0bdeaaac321b311dd54") until stage 3 texts (D1):
+DUMP_ONLY = (0, 39, "d1a21c7154f202072e2fbd350434093b27acbf104500ce734b8cda4008bfa823")
+# was b6e41cd4… (D1): re-frozen once more for the stage 3 texts of D2 (h713/fs/ext4.py: the
+# "media_data not readable" line is English now); exit code and 39 lines unchanged (Fable, 14.09.).
 # was (0, 50, "da0ecc92e5649f29597bd72ca1da1fabe6954f0c756d1d068c9c5d13189f305c") until
 # stage 2 C-C: still 50 lines, but UDISK's line turned from "genullt" into the new
 # English "left untouched", private/Reserve0_b say who keeps them, and the two
 # boot-resource.fex lines note the second copy in the container.
-# C-C froze "3f61d6c1…" with UDISK in the default preserve list; UDISK is zeroed again (Fable, C-C review):
-# was (0, 50, "f89c3e441d75135c64456705eabaf4c5353ce28dabdec94e20b3467077aaef8c") until identify() (Fable, C1 wiring):
-RESTORE_STOCK = (0, 53, "09b955f14db23015d0e929180cdc5152f1e76062685ff3ef84955aafabfaee34")
+# C-C froze "3f61d6c1…" with UDISK in the default preserve list; UDISK is zeroed again (Fable, C-C review);
+# was (0, 53, "09b955f14db23015d0e929180cdc5152f1e76062685ff3ef84955aafabfaee34") until stage 3 texts (D1):
+RESTORE_STOCK = (0, 53, "f066a21a87d82f33d297a2727079816bdd49fb6820fb11ed418b8f069298e4e4")
+# was dd1faf56… (D1): re-frozen once more for the stage 3 texts of D2 (h713/imagewty.py: the five
+# IMAGEWTY reader lines are English now); exit code and 53 lines unchanged (Fable, 14.09.).
 
 
 class InstallerDryRun(unittest.TestCase):
     def setUp(self):
-        support.need(fakedisk.NEEDS_STOCK + (support.INSTALL_PY, support.EXTRACT_PY))
+        support.need(fakedisk.NEEDS_STOCK + (TOOL, support.EXTRACT_PY))
         self.tmp = support.workdir(self)
         self.disk = fakedisk.make_stock_disk(os.path.join(self.tmp, "emmc.img"))
         self.before = fakedisk.journal(self.disk)
 
-    def run_tool(self, *args):
+    def run_tool(self, *args, **kw):
         proc = subprocess.Popen(
-            [sys.executable, support.INSTALL_PY, "--device", self.disk] + list(args),
+            [sys.executable, kw.get("tool", TOOL)] + list(args),
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, cwd=self.tmp,
             env=dict(os.environ, TERM="dumb", LC_ALL="C.UTF-8"))
@@ -56,33 +83,237 @@ class InstallerDryRun(unittest.TestCase):
         self.assertEqual(fakedisk.journal(self.disk), self.before, got[1])
 
     def test_backup_only(self):
-        got = self.run_tool("--nur-abzug", "--sicherung", "backup", "--dry-run")
+        # no --small/--full, exactly as the old --nur-abzug run: the size question is
+        # printed and, without a terminal, answered with its default (39 lines, as before).
+        got = self.run_tool("dump", "--device", self.disk, "-o", "backup", "--no-write")
         self.check(DUMP_ONLY, got)
-        self.assertIn("Stock-Layout, 26 Partitionen", got[1])
+        self.assertIn("stock layout, 26 partitions", got[1])
         for name in ("secure-storage", "private", "reserve0-a", "reserve0-b"):
             self.assertTrue(os.path.isfile(
                 os.path.join(self.tmp, "backup", "%s.bin" % name)), name)
 
     def test_restore_stock(self):
         support.need([fakedisk.IMAGES["hy310"]])
-        got = self.run_tool("--restore-stock", fakedisk.IMAGES["hy310"], "--dry-run")
+        got = self.run_tool("restore-stock", fakedisk.IMAGES["hy310"],
+                            "--device", self.disk, "--no-write")
         self.check(RESTORE_STOCK, got)
-        self.assertIn("Trockenlauf -- nichts geschrieben.", got[1])
+        self.assertIn("No-write run -- nothing written.", got[1])
+
+    def test_no_write_is_the_old_dry_run(self):
+        """--no-write replaces --dry-run and --nur-abzug: the old command line through the
+        hidden aliases and the new one produce the same run, modulo the hint lines."""
+        old = self.run_tool("--device", self.disk, "--nur-abzug", "--sicherung", "backup",
+                            "--abzug", "klein", "--dry-run")
+        new = self.run_tool("dump", "--device", self.disk, "-o", "backup",
+                            "--small", "--no-write")
+        hints = [line for line in old[1].splitlines() if " is now " in line]
+        self.assertEqual(len(hints), 4, old[1])            # one line per alias used
+        self.assertEqual(old[0], new[0])
+        self.assertEqual([line for line in old[1].splitlines() if " is now " not in line],
+                         new[1].splitlines())
+
+    def test_the_forwarder_runs_the_new_tool(self):
+        support.need([FORWARDER])
+        got = self.run_tool("--device", self.disk, "--nur-abzug", "--sicherung", "backup",
+                            "--abzug", "klein", "--dry-run", tool=FORWARDER)
+        self.assertEqual(got[0], 0, got[1])
+        self.assertIn("hy310-install.py is now h713-install dump; running: "
+                      "h713-install dump --device <DEV> -o backup --small --no-write",
+                      got[1])
+        self.assertEqual(fakedisk.journal(self.disk), self.before, got[1])
+
+
+class AliasHints(unittest.TestCase):
+    """Every German switch is still accepted and says in one line what it is now."""
+
+    def test_each_alias_prints_one_hint_line(self):
+        sys.path.insert(0, support.TOOLS)
+        from h713.install import ALIASES, HINTS, translate
+        for old in sorted(ALIASES):
+            argv, hints = translate([old, "x"] if ALIASES[old][2] else [old])
+            self.assertEqual(len(hints), 1, old)
+            self.assertEqual(hints[0], "%s is now %s" % (old, HINTS[old]), old)
+            self.assertNotIn(old, argv, old)
+
+    def test_the_aliases_map_onto_the_documented_command_lines(self):
+        sys.path.insert(0, support.TOOLS)
+        from h713.install import translate
+        for argv, want in (
+                (["--abbild", "t.json"], ["install", "t.json"]),
+                (["--restore", "d.img"], ["restore", "d.img"]),
+                (["--restore-stock", "u.img"], ["restore-stock", "u.img"]),
+                (["--nur-abzug"], ["dump"]),
+                (["--abzug", "voll"], ["dump", "--full"]),
+                (["--abzug", "klein"], ["dump", "--small"]),
+                (["--nur-abzug", "--sicherung", "b"], ["dump", "-o", "b"]),
+                (["--abbild", "t.json", "--sicherung", "b"], ["install", "t.json", "--dump", "b"]),
+                (["--abbild", "t.json", "--authorized-key", "k.pub"],
+                 ["install", "t.json", "--ssh-key", "k.pub"]),
+                (["--abbild", "t.json", "--arbeitskopie", "w.img"],
+                 ["install", "t.json", "--work-copy", "w.img"]),
+                (["--abbild", "t.json", "--tabelle", "t.json"],
+                 ["install", "t.json", "--table", "t.json"]),
+                (["--abbild", "t.json", "--env-neu"], ["install", "t.json", "--fresh-env"]),
+                (["--abbild", "t.json", "--ohne-erkennung"],
+                 ["install", "t.json", "--skip-identify"]),
+                (["--abbild", "t.json", "--dry-run"], ["install", "t.json", "--no-write"]),
+                (["--extraktor", "/tmp/e", "--nur-abzug"], ["dump"]),
+                (["--device", "/dev/sdb", "--nur-abzug"], ["dump", "--device", "/dev/sdb"])):
+            self.assertEqual(translate(argv)[0], want, argv)
+
+    def test_a_new_command_line_is_left_alone(self):
+        sys.path.insert(0, support.TOOLS)
+        from h713.install import translate
+        for argv in (["dump", "--full", "-o", "b"], ["install", "DIR", "--ssh-key", "k"],
+                     ["identify", "x.img", "--json"], ["extract", "x.img", "-o", "out"],
+                     ["--help"], ["--version"]):
+            self.assertEqual(translate(argv), (argv, []), argv)
 
 
 class NoMandatoryDumpOnOurLayout(unittest.TestCase):
     """Stage 2 C5: on our own layout the restore paths take no mandatory small dump."""
 
     def test_no_mandatory_dump_on_our_layout(self):
-        support.need(fakedisk.NEEDS_V3)
+        support.need(fakedisk.NEEDS_V3 + (TOOL,))
         tmp = support.workdir(self)
         disk = fakedisk.make_v3_disk(os.path.join(tmp, "emmc-v3.img"))
         proc = subprocess.run(
-            [sys.executable, support.INSTALL_PY, "--device", disk, "--restore-stock",
-             fakedisk.IMAGES["hy310"], "--sicherung", os.path.join(tmp, "backup"), "--ohne-erkennung"],
-            input="nein\n", capture_output=True, text=True, cwd=tmp)
+            [sys.executable, TOOL, "restore-stock", fakedisk.IMAGES["hy310"], "--device", disk,
+             "--dump", os.path.join(tmp, "backup"), "--skip-identify"],
+            input="no\n", capture_output=True, text=True, cwd=tmp)
         out = proc.stdout + proc.stderr
-        self.assertNotIn("Kleiner Abzug (Pflicht", out)
+        self.assertNotIn("Small dump (mandatory", out)
         self.assertIn("no mandatory dump before the restore", out)
         self.assertFalse(os.path.exists(os.path.join(tmp, "backup")))
-        self.assertEqual(proc.returncode, 1, out)          # refused at the JA prompt, nothing written
+        self.assertEqual(proc.returncode, 1, out)          # refused at the YES prompt, nothing written
+
+
+class ReleaseFolder(unittest.TestCase):
+    """`install RELEASE-DIR` finds the table, the parts, u-boot-installer.bin and sunxi-fel
+    by itself (api-stufe3.md). The folder here is the real release table of v0.5-beta with
+    empty part files next to it -- the discovery is what is under test, not the writing."""
+
+    TABLE = "h713-hy310-v0.5-beta.tabelle.json"
+
+    def setUp(self):
+        sys.path.insert(0, support.TOOLS)
+        self.release = os.path.join(support.workdir(self), "release")
+        os.makedirs(self.release)
+        source = os.path.join(fakedisk.FIXTURES, "release", self.TABLE)
+        support.need([source])
+        shutil.copyfile(source, os.path.join(self.release, self.TABLE))
+        from h713.install import image_package
+        _dir, self.table = image_package(self.release)
+        for part in self.table["teile"]:
+            open(os.path.join(self.release, part["datei"]), "wb").close()
+        for name in ("u-boot-installer.bin", "sunxi-fel"):
+            with open(os.path.join(self.release, name), "wb") as fh:
+                fh.write(b"\x7fELF" + b"\0" * 60)
+
+    def test_the_table_is_found_in_the_folder(self):
+        from h713.install import image_package
+        directory, table = image_package(self.release)
+        self.assertEqual(directory, os.path.abspath(self.release))
+        self.assertEqual(table["abbild"], "h713-hy310-v0.5-beta")
+        self.assertEqual(len(table["teile"]), 3)
+
+    def test_uboot_and_sunxi_fel_are_found_next_to_it(self):
+        from h713.install import release_files
+        self.assertEqual(release_files(self.release),
+                         {"uboot": os.path.join(self.release, "u-boot-installer.bin"),
+                          "fel": os.path.join(self.release, "sunxi-fel")})
+
+    def test_a_folder_without_them_simply_has_nothing_to_offer(self):
+        from h713.install import release_files
+        self.assertEqual(release_files(os.path.dirname(self.release)), {})
+
+    def test_the_tool_takes_uboot_and_fel_out_of_the_release_folder(self):
+        """main() fills --uboot/--sunxi-fel from the folder before it goes looking for the
+        device; expose_drive() is stood in for, so no FEL and no drive are needed here."""
+        tool = _tool_module()
+        seen = {}
+
+        def instead(args, here):
+            seen["args"] = args
+            return None, 0
+        tool.expose_drive = instead
+        self.assertEqual(tool.main(["install", self.release, "--no-write"]), 0)
+        self.assertEqual(seen["args"].uboot, os.path.join(self.release, "u-boot-installer.bin"))
+        self.assertEqual(seen["args"].fel, os.path.join(self.release, "sunxi-fel"))
+        self.assertEqual(seen["args"].dump_dir, "hy310-sicherung")
+
+    def test_the_given_paths_beat_the_folder(self):
+        tool = _tool_module()
+        seen = {}
+
+        def instead(args, here):
+            seen["args"] = args
+            return None, 0
+        tool.expose_drive = instead
+        tool.main(["install", self.release, "--uboot", "/tmp/mine.bin", "--no-write"])
+        self.assertEqual(seen["args"].uboot, "/tmp/mine.bin")
+        self.assertEqual(seen["args"].fel, os.path.join(self.release, "sunxi-fel"))
+
+    def _pack(self, name):
+        """Replace one part by its .img.zst -- that is how the release ships them."""
+        path = os.path.join(self.release, name)
+        with open(path, "wb") as fh:
+            fh.write(b"h713" * 1024)
+        subprocess.run(["zstd", "-q", "-f", path, "-o", path + ".zst"], check=True)
+        os.remove(path)
+        return path
+
+    def test_a_packed_part_is_unpacked_with_zstd(self):
+        if not shutil.which("zstd"):
+            raise unittest.SkipTest("no zstd binary on this machine")
+        from h713.install import unpack_parts
+        path = self._pack(self.table["teile"][0]["datei"])
+        unpack_parts(self.release, self.table, support.Recorder())
+        self.assertTrue(os.path.isfile(path))
+        with open(path, "rb") as fh:
+            self.assertEqual(fh.read(), b"h713" * 1024)
+
+    def test_without_the_zstd_binary_it_says_so_and_names_the_file(self):
+        from h713 import install as module
+        from h713.install import unpack_parts
+        name = self.table["teile"][0]["datei"]
+        self._pack(name)
+        keep = module.shutil
+        module.shutil = types.SimpleNamespace(which=lambda _n: None)
+        try:
+            with self.assertRaises(RuntimeError) as caught:
+                unpack_parts(self.release, self.table, support.Recorder())
+        finally:
+            module.shutil = keep
+        self.assertIn(name + ".zst", str(caught.exception))
+        self.assertIn("zstd", str(caught.exception))
+
+    def test_nothing_to_unpack_is_no_work(self):
+        from h713.install import unpack_parts
+        log = support.Recorder()
+        unpack_parts(self.release, self.table, log)
+        self.assertEqual(log.lines, [])
+
+
+class RestoreNoWrite(unittest.TestCase):
+    """`restore --no-write` rehearses instead of asking for the YES and then dying in
+    Disk.write() -- the one deliberate behaviour change of stage 3 (REPORT.txt)."""
+
+    def test_a_rehearsed_restore_writes_nothing_and_says_so(self):
+        support.need(fakedisk.NEEDS_V3 + (TOOL,))
+        tmp = support.workdir(self)
+        disk = fakedisk.make_v3_disk(os.path.join(tmp, "emmc-v3.img"))
+        before = fakedisk.journal(disk)
+        dump = os.path.join(tmp, "emmc-voll.img")
+        with open(dump, "wb") as fh:
+            fh.write(b"\xa5" * (1 << 20))
+        proc = subprocess.run(
+            [sys.executable, TOOL, "restore", dump, "--device", disk, "--skip-identify",
+             "--no-write"], stdin=subprocess.DEVNULL, capture_output=True, text=True, cwd=tmp)
+        out = proc.stdout + proc.stderr
+        self.assertEqual(proc.returncode, 0, out)
+        self.assertIn("No-write run -- nothing written.", out)
+        self.assertNotIn("Type YES to continue", out)
+        self.assertNotIn("Traceback", out)
+        self.assertEqual(fakedisk.journal(disk), before, out)
+        os.remove(dump)

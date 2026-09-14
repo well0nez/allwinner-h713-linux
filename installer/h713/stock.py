@@ -147,7 +147,7 @@ def restore_stock(disk, image_file, extractor=None, log=console, dry_run=False, 
     """
     q = FileSource(pathlib.Path(image_file))
     if not Imagewty.is_imagewty(q):
-        raise RuntimeError("%s ist kein IMAGEWTY-Container" % image_file)
+        raise RuntimeError("%s is no IMAGEWTY container" % image_file)
     img = Imagewty(q, Log())
     partitions, raw = stock_plan(img)
     if profile and profile.get("preserve_on_restore"):
@@ -156,7 +156,7 @@ def restore_stock(disk, image_file, extractor=None, log=console, dry_run=False, 
     else:
         preserve, preserve_from = DEFAULT_PRESERVE, "the built-in list"
 
-    log.info("%d Partitionen laut sys_partition.fex" % len(partitions))
+    log.info("%d partitions according to sys_partition.fex" % len(partitions))
     written = 0
     missing = []
     # Every copy of a file has to say the same thing before we write any of them.
@@ -171,7 +171,7 @@ def restore_stock(disk, image_file, extractor=None, log=console, dry_run=False, 
     if not dry_run:
         for lba in sorted(gpt):
             disk.write(lba, gpt[lba])
-    log.ok("%-22s -> GPT (Schutz-MBR, Kopf, Tabelle, Sicherungskopien)" % "sys_partition.fex")
+    log.ok("%-22s -> GPT (protective MBR, header, table, backup copies)" % "sys_partition.fex")
 
     # 1. Raw regions in front of the first partition
     for name, target_lba in raw:
@@ -208,15 +208,15 @@ def restore_stock(disk, image_file, extractor=None, log=console, dry_run=False, 
         if is_sparse(d.read(0, 28)):
             n = _sparse_bytes(d) if dry_run else write_sparse(disk, d, plba)
             if psect and n > psect * SECT:
-                raise RuntimeError("%s entpackt %.1f MiB, %s fasst nur %.1f MiB"
+                raise RuntimeError("%s unpacks to %.1f MiB, %s only holds %.1f MiB"
                                    % (source, mib(n), pname, mib(psect * SECT)))
             written += n
-            log.ok("%-22s -> %-16s LBA %-8d %7.2f MiB entpackt (Sparse, Datei %.0f MiB)"
+            log.ok("%-22s -> %-16s LBA %-8d %7.2f MiB unpacked (sparse, file %.0f MiB)"
                    % (source, pname, plba, mib(n), mib(d.size)))
             continue
         n = d.size
         if psect and n > psect * SECT:
-            raise RuntimeError("%s (%.1f MiB) passt nicht in %s (%.1f MiB)"
+            raise RuntimeError("%s (%.1f MiB) does not fit into %s (%.1f MiB)"
                                % (source, mib(n), pname, mib(psect * SECT)))
         if not dry_run:
             data = d.read(0, d.size)
@@ -262,9 +262,9 @@ def restore_stock(disk, image_file, extractor=None, log=console, dry_run=False, 
                 disk.write(plba + done, zeros[:n * SECT])
                 done += n
         written += sect * SECT
-        log.ok("%-22s -> %-16s LBA %-8d %7.2f MiB genullt%s"
-               % ("(kein Abbild)", pname, plba, mib(sect * SECT),
-                  "" if sect == left else " (Kopf)"))
+        log.ok("%-22s -> %-16s LBA %-8d %7.2f MiB zeroed%s"
+               % ("(no image)", pname, plba, mib(sect * SECT),
+                  "" if sect == left else " (head)"))
 
     # 4. Create the filesystems the image does not bring along.
     #
@@ -295,22 +295,22 @@ def restore_stock(disk, image_file, extractor=None, log=console, dry_run=False, 
             continue
         blob_path = os.path.join(here, blob)
         if not os.path.isfile(blob_path):
-            log.warn("%s fehlt -- %s bleibt ohne Dateisystem, Android startet "
-                     "dann nicht durch" % (blob, pname))
+            log.warn("%s is missing -- %s stays without a filesystem, Android "
+                     "then does not boot through" % (blob, pname))
             continue
         with gzip.open(blob_path, "rb") as fh:
             data = fh.read()
         if psect and len(data) > psect * SECT:
-            raise RuntimeError("%s (%.1f MiB) passt nicht in %s"
+            raise RuntimeError("%s (%.1f MiB) does not fit into %s"
                                % (blob, mib(len(data)), pname))
         if not dry_run:
             disk.write(plba, data)
         written += len(data)
-        log.ok("%-22s -> %-16s LBA %-8d %7.2f MiB leeres ext4"
+        log.ok("%-22s -> %-16s LBA %-8d %7.2f MiB empty ext4"
                % (blob, pname, plba, mib(len(data))))
 
     if missing:
-        log.warn("nicht im Image und daher ausgelassen: %s" % ", ".join(sorted(set(missing))))
+        log.warn("not in the image and therefore left out: %s" % ", ".join(sorted(set(missing))))
     if not dry_run:
         disk.sync()
     return written, partitions

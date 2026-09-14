@@ -7,8 +7,8 @@ HY350 passed as an HY300 Pro. `identify()` reads every feature the board profile
 each profile against the features *that* profile calls strong, and when nothing matches it prints
 what it saw in the field names `h713_probe` uses -- so a stranger can post the row as it stands.
 
-`identify_device()` is the installer's old call site: same keys, same German texts, byte for byte.
-Wiring the installer onto `identify()` is a later step (doku/121 stage 3).
+`identify_device()` is the installer's old call site (same reads, same keys); stage 3 wired the
+installer onto `identify()` and translated every text of both.
 
 Tables and feature helpers come from h713-extract (X:178-207), the drive side from
 hy310-install.py (I:1456-1620).
@@ -57,10 +57,10 @@ def feature_matches(name: str, actual, expected) -> bool:
 
 # Whole input files recognised by their sha256 -> device (profile key), description
 KNOWN_IMAGES = {
-    "c518251a00b5cc7b0404e0bb479dc4f18a7558af6df97e9e999d81b31ef3c25d": ("hy310", "HY310 update.img (Stock)"),
-    "64c629b15538f897f40caf446a52862a92234797328fbb17bc9fd073354a50d6": ("hy310", "HY310 update_rooted.img (Stock + Root, gleiche Firmware)"),
-    "812392c7d3de68433b0716aa94155c38d87898956b9fc7e4998cb12b9e111066": ("l018", "L018 update.img (Stock)"),
-    "5d2c5e1d2c4a3af6accfdcb6f5fdff8d88aec055743ffe29b82ceccff0c74851": ("hy310", "HY310 Dev-Gerät, roher eMMC-Dump LBA 0..614399 (300 MiB)"),
+    "c518251a00b5cc7b0404e0bb479dc4f18a7558af6df97e9e999d81b31ef3c25d": ("hy310", "HY310 update.img (stock)"),
+    "64c629b15538f897f40caf446a52862a92234797328fbb17bc9fd073354a50d6": ("hy310", "HY310 update_rooted.img (stock + root, same firmware)"),
+    "812392c7d3de68433b0716aa94155c38d87898956b9fc7e4998cb12b9e111066": ("l018", "L018 update.img (stock)"),
+    "5d2c5e1d2c4a3af6accfdcb6f5fdff8d88aec055743ffe29b82ceccff0c74851": ("hy310", "HY310 dev device, raw eMMC dump LBA 0..614399 (300 MiB)"),
 }
 
 
@@ -304,7 +304,7 @@ def vendor_fingerprint(disk, log):
         gpt = Gpt(q, quiet)
         sup = gpt.partition(q, "super")
         if sup is None:
-            log.warn("Geraeteerkennung: keine Partition 'super'")
+            log.warn("Device identification: no partition 'super'")
             return None, found
         lp = LpSuper(sup, quiet)
         # In super the names carry the slot suffix ("vendor_a"), on older
@@ -317,22 +317,22 @@ def vendor_fingerprint(disk, log):
                 break
         if ven is None:
             # known bug, stage 2 C: `%` binds tighter than `or`, so the fallback
-            # "keine" can never appear -- the formatted line is always truthy.
-            log.warn("Geraeteerkennung: keine LP-Partition 'vendor' (gefunden: %s)"
-                     % ", ".join(getattr(lp, "parts", {})) or "keine")
+            # "none" can never appear -- the formatted line is always truthy.
+            log.warn("Device identification: no LP partition 'vendor' (found: %s)"
+                     % ", ".join(getattr(lp, "parts", {})) or "none")
             return None, found
         fs = Ext4(ven, None, "vendor", quiet)
         if not fs.exists("/build.prop"):
-            log.warn("Geraeteerkennung: /build.prop fehlt in vendor")
+            log.warn("Device identification: /build.prop is missing in vendor")
             return None, found
         text = fs.read("/build.prop").decode("utf-8", "replace")
     except Exception as e:                      # noqa: BLE001
-        log.warn("Geraeteerkennung abgebrochen: %s" % e)
+        log.warn("Device identification aborted: %s" % e)
         return None, found
     for line in text.splitlines():
         if line.startswith("ro.vendor.build.fingerprint="):
             return line.split("=", 1)[1].strip(), found
-    log.warn("Geraeteerkennung: kein ro.vendor.build.fingerprint in build.prop")
+    log.warn("Device identification: no ro.vendor.build.fingerprint in build.prop")
     return None, found
 
 
@@ -349,12 +349,12 @@ def identify_device(disk, extractor=None, log=console):
     Return: dict with 'layout', and on stock additionally 'fingerprint',
     'geraet', 'bekannt'. Never throws -- whoever does not recognise, says so.
     """
-    out = {"layout": device_kind(disk.path), "fingerprint": None, "geraet": None, "bekannt": False}
+    out = {"layout": device_kind(disk.path), "fingerprint": None, "device": None, "known": False}
     # Only a stock layout has a vendor partition with build.prop. The text
-    # comes from device_kind() -- "Stock-Layout, N Partitionen" or
-    # "unser Layout (...)"; check the first word, not the whole sentence
+    # comes from device_kind() -- "stock layout, N partitions" or
+    # "our layout (...)"; check the first words, not the whole sentence
     # (the number of partitions is in it).
-    if not (out["layout"] or "").startswith("Stock-Layout"):
+    if not (out["layout"] or "").startswith("stock layout"):
         return out
     out["fingerprint"], lp_partition = vendor_fingerprint(disk, log)
     if lp_partition:
@@ -363,7 +363,7 @@ def identify_device(disk, extractor=None, log=console):
         return out
     for gid, profile in legacy_devices().items():
         if features_of(profile).get("build_fingerprint") == out["fingerprint"]:
-            out["geraet"], out["bekannt"] = profile.get("name", gid), True
+            out["device"], out["known"] = profile.get("name", gid), True
             break
     return out
 
@@ -391,7 +391,7 @@ def interpret_fingerprint(fp) -> Tuple[str, str]:
         if len(digits) == 8:
             mm, dd, hh, mi = digits[:2], digits[2:4], digits[4:6], digits[6:]
             if 1 <= int(mm) <= 12 and 1 <= int(dd) <= 31:
-                date = "%s.%s., %s:%s Uhr (%s)" % (dd, mm, hh, mi, mark)
+                date = "%s.%s., %s:%s (%s)" % (dd, mm, hh, mi, mark)
             else:
                 date = mark
         else:
@@ -434,28 +434,28 @@ def report_device(found, log=console, writing=True):
 
 
 def _report_legacy(found, log, writing):
-    if found["layout"] and not found["layout"].startswith("Stock-Layout"):
-        log.ok("%s -- kein Android mehr, nur der Abzug ist sinnvoll" % found["layout"])
+    if found["layout"] and not found["layout"].startswith("stock layout"):
+        log.ok("%s -- no Android any more, only the dump makes sense" % found["layout"])
         return True
     if not found["layout"]:
-        log.warn("Das Laufwerk sieht nach nichts Bekanntem aus.")
+        log.warn("The drive looks like nothing known.")
         return True
     if not found["fingerprint"]:
-        log.warn("Die Firmware liess sich nicht bestimmen.")
+        log.warn("The firmware could not be determined.")
         return True
     version, date = interpret_fingerprint(found["fingerprint"])
-    log.info("  Kennung   %s" % found["fingerprint"])
-    if found["bekannt"]:
-        log.ok("%s erkannt -- Android %s, Stand %s" % (found["geraet"], version, date))
+    log.info("  fingerprint   %s" % found["fingerprint"])
+    if found["known"]:
+        log.ok("%s recognised -- Android %s, build %s" % (found["device"], version, date))
         return True
     if not writing:
-        log.warn("Unbekannte Firmware: Android %s, Stand %s -- es wird nur "
-                 "gelesen, nichts geschrieben." % (version, date))
-        log.info("  Bitte die Kennungszeile oben melden, dann kommt das Geraet")
-        log.info("  in die Tabelle (github.com/well0nez/allwinner-h713-linux).")
+        log.warn("Unknown firmware: Android %s, build %s -- only reading, "
+                 "nothing is written." % (version, date))
+        log.info("  Please report the fingerprint line above, then the device goes")
+        log.info("  into the table (github.com/well0nez/allwinner-h713-linux).")
         return True
-    log.error("Unbekannte Firmware: Android %s, Stand %s -- kein Schreiben." % (version, date))
-    log.info("  Die Fundstellen einer fremden Version zu raten, kostet im")
-    log.info("  schlimmsten Fall den Secure Storage -- deshalb kein Weiter.")
-    log.info("  Bitte die Kennungszeile oben melden, dann kommt sie in die Tabelle.")
+    log.error("Unknown firmware: Android %s, build %s -- no writing." % (version, date))
+    log.info("  Guessing the places of a foreign version costs the Secure Storage")
+    log.info("  in the worst case -- so no going on.")
+    log.info("  Please report the fingerprint line above, then it goes into the table.")
     return False

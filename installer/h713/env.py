@@ -53,6 +53,6 @@ def env_write(d):
     """dict -> 64 KiB with CRC, sorted the way mkenvimage does it."""
     payload = b"".join(("%s=%s" % (k, d[k])).encode("utf-8") + b"\0" for k in sorted(d)) + b"\0"
     if len(payload) > ENV_BYTES - 4:
-        raise RuntimeError("Umgebung zu gross: %d Byte, Platz fuer %d" % (len(payload), ENV_BYTES - 4))
+        raise RuntimeError("environment too big: %d bytes, room for %d" % (len(payload), ENV_BYTES - 4))
     payload = payload.ljust(ENV_BYTES - 4, b"\0")
     return struct.pack("<I", zlib.crc32(payload) & 0xffffffff) + payload

@@ -89,5 +89,5 @@ class WriteLock(unittest.TestCase):
     def test_the_built_in_secure_storage_lock_is_untouched(self):
         disk = self._disk(locked=[(PRIVATE_FIRST, PRIVATE_LAST)])
         said = self._refused(disk, self.blockdev.LOCK_FIRST)
-        self.assertIn("Secure Storage", said)                       # unchanged, still German
+        self.assertIn("Secure Storage", said)                       # the built-in lock, unchanged
         self.assertEqual(disk.locked, [(PRIVATE_FIRST, PRIVATE_LAST, None)])

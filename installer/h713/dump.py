@@ -32,9 +32,9 @@ from .install import ask
 from .log import Log, console
 from .util import duration, mib
 
-# Version of the hy310-install tool (I:42), not the version of the package
-# (h713.VERSION): it goes into MANIFEST.json as "werkzeug" and into LIESMICH.txt.
-VERSION = "0.1 (Entwurf, doku/110)"
+# Version of the h713-install tool (I:42), not the version of the package
+# (h713.VERSION): it goes into MANIFEST.json as "tool" and into README.txt.
+VERSION = "0.1 (draft, doku/110)"
 
 # Secure storage: no partition entry points at it, its position is fixed on every H713, so
 # it can only stand here (doku/109 §2.3, I:95). The other device-only regions are looked up
@@ -43,8 +43,8 @@ VERSION = "0.1 (Entwurf, doku/110)"
 SECURE_STORAGE = ("secure-storage", 12288, 2048)
 BY_NAME = ("private", "Reserve0", "Reserve0_a", "Reserve0_b")
 REGION_FILES = {
-    "secure-storage": ("secure-storage", "HDCP-Schluessel, WLAN-/BT-MAC-Adressen, Seriennummer"),
-    "private":        ("private",        "Android Secure-Storage-Partition"),
+    "secure-storage": ("secure-storage", "HDCP keys, WLAN/BT MAC addresses, serial number"),
+    "private":        ("private",        "Android secure storage partition"),
     "reserve0":       ("reserve0",       "Reserve0 (single slot)"),
     "reserve0_a":     ("reserve0-a",     "Reserve0, Slot A"),
     "reserve0_b":     ("reserve0-b",     "Reserve0, Slot B"),
@@ -139,7 +139,7 @@ def dump_small(disk, target, log=console, our_layout=False, regions=None):
         is_empty = data.count(0) == len(data)
         if is_empty:
             empty.append(file_name)
-        manifest.append((file_name, lba, sectors, h, purpose + (" [leer]" if is_empty else "")))
+        manifest.append((file_name, lba, sectors, h, purpose + (" [empty]" if is_empty else "")))
         # The hash goes into the manifest (verification), but NOT onto the screen:
         # each of these regions is a fingerprint of this one device, and users post
         # screen output in logs (issue #1). Stage 2 C-B extends that to reserve0*,
@@ -147,13 +147,13 @@ def dump_small(disk, target, log=console, our_layout=False, regions=None):
         secret = not is_empty
         log.ok("%-16s LBA %-8d %5.1f MiB  %s%s"
                % (file_name, lba, mib(len(data)),
-                  "gesichert (Hash im Manifest)" if secret else h[:16] + "…",
-                  "  (leer)" if is_empty else ""))
+                  "saved (hash in the manifest)" if secret else h[:16] + "…",
+                  "  (empty)" if is_empty else ""))
     if empty:
-        log.warn("Leer und damit ohne Inhalt: %s." % ", ".join(empty))
-        log.info("  Auf einem unangetasteten Geraet stuende dort etwas. Entweder wurde")
-        log.info("  dieses Geraet schon einmal umgebaut, oder diese Firmware nutzt die")
-        log.info("  Bereiche nicht. Der Secure Storage ist davon unabhaengig.")
+        log.warn("Empty and therefore without content: %s." % ", ".join(empty))
+        log.info("  On an untouched device something would stand there. Either this")
+        log.info("  device has been converted once already, or this firmware does not")
+        log.info("  use the regions. The Secure Storage is independent of that.")
     # The U-Boot environment -- only on our layout is there one at all. The new
     # image replaces it with its own default; the intent keys (ENV_CARRY_OVER)
     # are carried over by write_package(), the rest lies here as uboot-env.bin
@@ -166,14 +166,14 @@ def dump_small(disk, target, log=console, our_layout=False, regions=None):
             with open(path, "wb") as f:
                 f.write(raw_env)
             h = hashlib.sha256(raw_env).hexdigest()
-            intent = ", ".join("%s=%s" % (k, d[k]) for k in ENV_CARRY_OVER if k in d) or "keine Absichts-Schluessel"
+            intent = ", ".join("%s=%s" % (k, d[k]) for k in ENV_CARRY_OVER if k in d) or "no intent keys"
             manifest.append(("uboot-env", ENV_LBA, ENV_SECTORS, h,
-                             "U-Boot-Umgebung, %d Eintraege (%s)" % (len(d), intent)))
-            log.ok("%-16s LBA %-8d %5.1f MiB  %s  (%d Eintraege; %s)"
+                             "U-Boot environment, %d entries (%s)" % (len(d), intent)))
+            log.ok("%-16s LBA %-8d %5.1f MiB  %s  (%d entries; %s)"
                    % ("uboot-env", ENV_LBA, mib(len(raw_env)), h[:16] + "…", len(d), intent))
         else:
-            log.info("uboot-env: unser Layout, aber bei LBA %d liegt keine gueltige Umgebung "
-                     "(leer oder ohne CRC) -- nichts zu sichern, nichts zu uebernehmen" % ENV_LBA)
+            log.info("uboot-env: our layout, but no valid environment lies at LBA %d "
+                     "(empty or without CRC) -- nothing to save, nothing to carry over" % ENV_LBA)
     mips, active_slot = dump_mips(disk, target, log)
     manifest.info["regions_by_name"] = True
     manifest.info["mips"] = mips
@@ -326,14 +326,14 @@ def dump_full(disk, file, log=console):
             n = min(chunk, total - done)
             b = disk.read(done // SECT, n // SECT)
             if len(b) != n:
-                raise RuntimeError("nur %d von %d Byte gelesen bei %d" % (len(b), n, done))
+                raise RuntimeError("only %d of %d bytes read at %d" % (len(b), n, done))
             f.write(b)
             h.update(b)
             done += n
             if done % (256 << 20) == 0 or done == total:
                 speed = done / max(time.time() - t0, 0.001)
                 left = (total - done) / max(speed, 1)
-                log.info("  %5.1f%%  %6.1f MiB/s  noch %s" %
+                log.info("  %5.1f%%  %6.1f MiB/s  %s left" %
                          (100.0 * done / total, mib(speed), duration(left)))
         f.flush()
         os.fsync(f.fileno())
@@ -361,13 +361,16 @@ def verify_dump(disk, file, samples=8):
 
 
 def write_manifest(directory, manifest, device):
+    # Stage 3: the keys are English (api-stufe3.md) -- "erzeugt"/"werkzeug"/"geraet"/
+    # "sektoren"/"teile" became created/tool/device/sectors/regions, the row keys
+    # "sektoren"/"zweck" sectors/purpose. The file names inside the dump are unchanged.
     data = {
-        "erzeugt": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "werkzeug": "hy310-install " + VERSION,
-        "geraet": device,
-        "sektoren": SECTORS_EXPECTED,
-        "teile": [{"name": n, "lba": l, "sektoren": s, "sha256": h, "zweck": p}
-                  for n, l, s, h, p in manifest],
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "tool": "h713-install " + VERSION,
+        "device": device,
+        "sectors": SECTORS_EXPECTED,
+        "regions": [{"name": n, "lba": l, "sectors": s, "sha256": h, "purpose": p}
+                    for n, l, s, h, p in manifest],
     }
     # Stage 2 C-B: regions_by_name, mips and active_slot ride on dump_small()'s result
     # (DumpResult.info), so that no caller has to hand them in.
@@ -376,43 +379,66 @@ def write_manifest(directory, manifest, device):
              for name, files in (data.get("mips") or {}).items() if files]
     with open(os.path.join(directory, "MANIFEST.json"), "w") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    with open(os.path.join(directory, "LIESMICH.txt"), "w") as f:
+    with open(os.path.join(directory, "README.txt"), "w") as f:
         f.write(
-            "Sicherung eines HY310/H713-Beamers\n"
-            "==================================\n\n"
-            "Erzeugt am %s von hy310-install %s.\n\n"
-            "Was hier liegt:\n%s\n"
-            "Zurueckspielen (Geraet vorher in den FEL-Modus: Reset halten,\n"
-            "Strom einstecken):\n\n"
-            "    hy310-install --uboot <u-boot.bin> --restore emmc-voll.img\n\n"
-            "Die einzelnen .bin-Dateien sind Rohbereiche der eMMC. Sie stehen in\n"
-            "keinem Firmware-Abbild -- ohne sie verliert das Geraet HDCP, seine\n"
-            "MAC-Adressen und seine Seriennummer. Gut aufheben.\n"
-            % (data["erzeugt"], VERSION,
-               "".join("  %-18s %s\n" % (t["name"] + ".bin", t["zweck"])
-                       for t in data["teile"])))
+            "Dump of an HY310/H713 projector\n"
+            "===============================\n\n"
+            "Created on %s by h713-install %s.\n\n"
+            "What lies here:\n%s\n"
+            "Restoring (put the device into FEL mode first: hold reset,\n"
+            "plug the power in):\n\n"
+            "    h713-install restore emmc-voll.img --uboot <u-boot.bin>\n\n"
+            "The single .bin files are raw regions of the eMMC. They stand in no\n"
+            "firmware image -- without them the device loses HDCP, its MAC\n"
+            "addresses and its serial number. Keep them well.\n"
+            % (data["created"], VERSION,
+               "".join("  %-18s %s\n" % (t["name"] + ".bin", t["purpose"])
+                       for t in data["regions"])))
         if saved:
-            f.write("\nDisplay firmware (English, stage 2):\n%s"
+            f.write("\nDisplay firmware:\n%s"
                     "These directories hold the MIPS/display files of this device -- the\n"
                     "bootloader slots, the vendor copy and the overrides found in Reserve0\n"
                     "and media_data. MANIFEST.json lists every file with its sha256.\n"
                     % "".join("  %s/\n" % name for name in saved))
 
 
-def choose_dump(args):
-    if args.abzug:
-        return args.abzug
+def mandatory_dump(args, disk, path, log=console):
+    """Plan 110 §2: the small dump before every write. It costs seconds and saves what no
+    image brings back (finding S46 B2).
+
+    Stage 2 C5 (Marco, 14.09.): only while the device still carries the stock layout -- on
+    our own layout nothing stock-specific is left to save, and the dump has existed since
+    the first installation. Stage 3 moved it here out of the installer, where it stood
+    three times over (doku/121 §1 point 3).
+    """
+    if args.no_write:
+        return
+    if args._our_layout:
+        log.info("Our layout is on the device: no mandatory dump before the restore "
+                 "(nothing stock-specific is left to save; use the dump of your first install).")
+        return
+    console.step(2, "Small dump (mandatory, before a restore too)")
+    os.makedirs(args.dump_dir, exist_ok=True)
+    write_manifest(args.dump_dir, dump_small(disk, args.dump_dir, our_layout=args._our_layout),
+                   path)
+
+
+def choose_dump(chosen=None):
+    """"small" or "full" -- `chosen` is what --small/--full said, None means ask."""
+    if chosen:
+        return chosen
     console.info("")
-    console.info("Der Abzug ist deine Sicherung. Zwei Groessen:")
+    console.info("The dump is your backup. Two sizes:")
     console.info("")
-    console.info("  klein  49 MiB, rund 10 Sekunden.")
-    console.info("         Alles, was es NUR auf diesem Geraet gibt: HDCP-Schluessel,")
-    console.info("         die MAC-Adressen von WLAN und Bluetooth, die Seriennummer.")
-    console.info("         Das bringt kein Firmware-Abbild der Welt zurueck.")
+    console.info("  small  49 MiB, about 10 seconds.")
+    console.info("         Everything that exists ONLY on this device: HDCP keys,")
+    console.info("         the MAC addresses of WLAN and Bluetooth, the serial number.")
+    console.info("         No firmware image in the world brings that back.")
     console.info("")
-    console.info("  voll   7,3 GB, rund 17 Minuten.")
-    console.info("         Die ganze eMMC. Damit spielst du dein Geraet 1:1 zurueck,")
-    console.info("         Android eingeschlossen, ohne irgendetwas herunterzuladen.")
+    console.info("  full   7.3 GB, about 17 minutes.")
+    console.info("         The whole eMMC. With it you restore your device 1:1,")
+    console.info("         Android included, without downloading anything.")
     console.info("")
-    answer = ask("  Welchen Abzug? [klein/voll] ", "klein")
-    return "voll" if answer.startswith("v") else "klein"
+    # "voll"/"klein" stay accepted for one release, like JA at the confirmation.
+    answer = ask("  Which dump? [small/full] ", "small")
+    return "full" if answer.startswith(("f", "v")) else "small"

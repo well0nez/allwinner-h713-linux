@@ -55,7 +55,7 @@ class Disk:
                 # pass unmounts the first while the second is just arriving
                 # (which is exactly what happened on 11.09.). So several
                 # passes, until nothing is left twice in a row.
-                console.warn("Der Desktop hat Partitionen eingehaengt: %s"
+                console.warn("The desktop has mounted partitions: %s"
                              % ", ".join(open_ones))
                 calm = 0
                 for _ in range(12):
@@ -67,11 +67,11 @@ class Disk:
                         break
             if open_ones:
                 raise RuntimeError(
-                    "Von %s ist noch etwas eingehaengt und laesst sich nicht "
-                    "loesen: %s. Dort arbeitet noch jemand -- schliesse das "
-                    "Programm oder haenge von Hand aus ('udisksctl unmount -b "
-                    "...'), sonst ueberschreibt das laufende Dateisystem, was "
-                    "wir schreiben." % (path, ", ".join(open_ones)))
+                    "Something of %s is still mounted and will not come "
+                    "loose: %s. Somebody is still working there -- close the "
+                    "program or unmount by hand ('udisksctl unmount -b "
+                    "...'), otherwise the running filesystem overwrites what "
+                    "we write." % (path, ", ".join(open_ones)))
         flags = os.O_RDWR if writable else os.O_RDONLY
         if hasattr(os, "O_BINARY"):          # Windows
             flags |= os.O_BINARY
@@ -92,17 +92,17 @@ class Disk:
                 if not (exclusive and getattr(e, "errno", None) == 16):
                     raise
                 if attempt == 0:
-                    console.info("  %s ist noch belegt (der Desktop untersucht es) -- "
-                                 "ich warte" % path)
+                    console.info("  %s is still busy (the desktop is examining it) -- "
+                                 "I am waiting" % path)
                 unmount(path)
                 time.sleep(0.5)
         else:
             open_ones = mounted(path)
             raise RuntimeError(
-                "%s ist nach 5 s immer noch belegt%s. Schliesse das Programm, "
-                "das darauf zugreift (Dateimanager, Datentraegerverwaltung), "
-                "und versuche es erneut." % (path,
-                    " (eingehaengt: %s)" % ", ".join(open_ones) if open_ones else ""))
+                "%s is still busy after 5 s%s. Close the program that is "
+                "using it (file manager, disk management) and try again."
+                % (path,
+                   " (mounted: %s)" % ", ".join(open_ones) if open_ones else ""))
         self.sectors = self._size() // SECT
 
     def _size(self):
@@ -115,7 +115,7 @@ class Disk:
             ret = wt.DWORD()
             if not ctypes.windll.kernel32.DeviceIoControl(
                     handle, 0x0007405C, None, 0, buf, 8, ctypes.byref(ret), None):
-                raise OSError("Groesse des Laufwerks nicht lesbar")
+                raise OSError("drive size not readable")
             return int.from_bytes(buf.raw[:8], "little")
         return os.lseek(self.fd, 0, os.SEEK_END)
 
@@ -152,13 +152,13 @@ class Disk:
 
     def write(self, lba, data):
         if not self.writable:
-            raise RuntimeError("nur zum Lesen geoeffnet")
+            raise RuntimeError("opened read-only")
         end = lba + (len(data) + SECT - 1) // SECT - 1
         if lba <= LOCK_LAST and end >= LOCK_FIRST:
             raise RuntimeError(
-                "Schreibversuch auf LBA %d..%d beruehrt den Secure Storage "
-                "(%d..%d). Dort stehen HDCP-Schluessel, die MAC-Adressen und "
-                "die Seriennummer dieses Geraets -- nicht wiederherstellbar."
+                "Write attempt on LBA %d..%d touches the Secure Storage "
+                "(%d..%d). The HDCP keys, the MAC addresses and the serial "
+                "number of this device stand there -- not restorable."
                 % (lba, end, LOCK_FIRST, LOCK_LAST))
         for first, last, name in self.locked:
             if lba <= last and end >= first:
@@ -205,7 +205,7 @@ def mounted(path, raw=False):
             continue
         source = os.path.realpath(parts[0])
         if source == base or (source.startswith(base) and source[len(base):].isdigit()):
-            hits.append(parts[0] if raw else "%s auf %s" % (parts[0], parts[1]))
+            hits.append(parts[0] if raw else "%s on %s" % (parts[0], parts[1]))
     return hits
 
 
@@ -235,7 +235,7 @@ def unmount(path, log=None):
             left.append(dev)
     if log:
         for dev in unmounted:
-            log.info("  %s ausgehaengt" % dev)
+            log.info("  %s unmounted" % dev)
     return unmounted, left
 
 
@@ -256,10 +256,10 @@ def device_kind(path):
     try:
         head = p.read(1, 1)
         if head[:8] != b"EFI PART":
-            return "keine GPT"
+            return "no GPT"
         entlba, nent, entsz = struct.unpack_from("<QII", head, 72)
         if nent > 128 or entsz not in (128, 256):
-            return "GPT unplausibel"
+            return "GPT implausible"
         arr = p.read(entlba, (nent * entsz + SECT - 1) // SECT)
         names = []
         for i in range(nent):
@@ -270,9 +270,9 @@ def device_kind(path):
     finally:
         p.close()
     if any(n.startswith("hy310-") for n in names):
-        return "unser Layout (%s)" % ", ".join(n for n in names if n.startswith("hy310-"))
+        return "our layout (%s)" % ", ".join(n for n in names if n.startswith("hy310-"))
     if "bootloader_a" in names and "super" in names:
-        return "Stock-Layout, %d Partitionen" % len(names)
+        return "stock layout, %d partitions" % len(names)
     return None
 
 
@@ -306,7 +306,7 @@ def find_drive(expected=SECTORS_EXPECTED):
             if n == expected:
                 hits.append((path, n, True))
     else:
-        raise SystemExit("Nicht unterstuetztes System: %s" % system)
+        raise SystemExit("unsupported system: %s" % system)
     return hits
 
 

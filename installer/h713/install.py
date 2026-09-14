@@ -16,6 +16,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 
@@ -40,20 +41,20 @@ def fill_placeholders(image, table, sources, log=console):
     """
     missing = [n for n in table if n not in sources]
     if missing:
-        raise RuntimeError("keine Quelle fuer: %s" % ", ".join(sorted(missing)))
+        raise RuntimeError("no source for: %s" % ", ".join(sorted(missing)))
     with open(image, "r+b") as f:
         for name in sorted(table):
             off, length = table[name]
             data = sources[name]
             if len(data) > length:
                 raise RuntimeError(
-                    "%s ist %d Byte gross, der Platzhalter fasst nur %d"
+                    "%s is %d bytes, the placeholder only holds %d"
                     % (name, len(data), length))
             f.seek(off)
             f.write(data)
             if len(data) < length:
                 f.write(b"\0" * (length - len(data)))   # zero the rest cleanly
-            log.ok("%-28s %7d Byte an Offset 0x%x" % (name, len(data), off))
+            log.ok("%-28s %7d bytes at offset 0x%x" % (name, len(data), off))
         f.flush()
         os.fsync(f.fileno())
 
@@ -66,7 +67,7 @@ KEY_TYPES = (b"ssh-ed25519", b"ssh-rsa", b"ecdsa-sha2-nistp256",
 
 
 def read_public_key(path, length):
-    """--authorized-key: prepare the public key as the content for the
+    """--ssh-key: prepare the public key as the content for the
     placeholder /root/.ssh/authorized_keys.
 
     What is checked is what a typo would cost: a private key (that must never
@@ -80,25 +81,25 @@ def read_public_key(path, length):
         with open(path, "rb") as f:
             raw = f.read(length + 1)
     except OSError as e:
-        raise RuntimeError("--authorized-key %s: %s" % (path, e))
+        raise RuntimeError("--ssh-key %s: %s" % (path, e))
     if b"PRIVATE KEY" in raw:
-        raise RuntimeError("--authorized-key %s ist ein PRIVATER Schluessel -- gemeint ist "
-                           "die .pub-Datei. Nichts geschrieben." % path)
+        raise RuntimeError("--ssh-key %s is a PRIVATE key -- what is meant is "
+                           "the .pub file. Nothing written." % path)
     if b"\0" in raw:
-        raise RuntimeError("--authorized-key %s enthaelt Nullbytes -- keine Schluesseldatei" % path)
+        raise RuntimeError("--ssh-key %s contains NUL bytes -- no key file" % path)
     text = raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     lines = [line.strip() for line in text.split(b"\n")]
     lines = [line for line in lines if line]
     hits = [line for line in lines if not line.startswith(b"#") and
             any(line.startswith(kind + b" ") or (b" " + kind + b" ") in line for kind in KEY_TYPES)]
     if not hits:
-        raise RuntimeError("--authorized-key %s: keine Zeile sieht wie ein oeffentlicher "
-                           "OpenSSH-Schluessel aus (%s ...)"
+        raise RuntimeError("--ssh-key %s: no line looks like a public "
+                           "OpenSSH key (%s ...)"
                            % (path, ", ".join(kind.decode() for kind in KEY_TYPES[:3])))
     content = b"\n".join(lines) + b"\n"
     if len(content) > length:
-        raise RuntimeError("--authorized-key %s: %d Byte, der Platzhalter fasst %d -- weniger "
-                           "Schluessel oder kuerzere Kommentare" % (path, len(content), length))
+        raise RuntimeError("--ssh-key %s: %d bytes, the placeholder holds %d -- fewer "
+                           "keys or shorter comments" % (path, len(content), length))
     return content.ljust(length, b"\n"), len(hits)
 
 
@@ -109,22 +110,22 @@ def user_sources(args, user, log=console):
     sources = {}
     if "authorized_keys" in user:
         off, length = user["authorized_keys"]
-        if args.authorized_key:
-            data, n = read_public_key(args.authorized_key, length)
+        if args.ssh_key:
+            data, n = read_public_key(args.ssh_key, length)
             sources["authorized_keys"] = data
-            log.ok("authorized_keys: %d Schluessel aus %s, %d Byte, mit Zeilenumbruechen auf %d aufgefuellt"
-                   % (n, args.authorized_key, len(data.rstrip(b"\n")) + 1, length))
+            log.ok("authorized_keys: %d key(s) from %s, %d bytes, padded with newlines to %d"
+                   % (n, args.ssh_key, len(data.rstrip(b"\n")) + 1, length))
         else:
-            log.warn("kein --authorized-key: /root/.ssh/authorized_keys bleibt leer -- auf das "
-                     "Geraet kommt man dann nur ueber die serielle Konsole")
-    elif args.authorized_key:
-        raise RuntimeError("--authorized-key: dieses Abbild hat keinen Platzhalter fuer "
-                           "authorized_keys (Tabelle ohne platzhalter_nutzer, aelter als "
-                           "11.09.2026) -- der Schluessel kaeme nicht an. Abbruch.")
+            log.warn("no --ssh-key: /root/.ssh/authorized_keys stays empty -- the device "
+                     "is then reachable only over the serial console")
+    elif args.ssh_key:
+        raise RuntimeError("--ssh-key: this image has no placeholder for "
+                           "authorized_keys (table without platzhalter_nutzer, older than "
+                           "11.09.2026) -- the key would not arrive. Aborted.")
     unknown = [n for n in user if n != "authorized_keys"]
     if unknown:
-        raise RuntimeError("die Tabelle nennt Nutzer-Platzhalter, die dieses Skript nicht "
-                           "kennt: %s -- neueres hy310-install noetig" % ", ".join(unknown))
+        raise RuntimeError("the table names user placeholders this script does not "
+                           "know: %s -- a newer h713-install is needed" % ", ".join(unknown))
     return sources
 
 
@@ -139,30 +140,166 @@ def check_placeholders(image, table, sources):
     return bad
 
 
+# ---------------------------------------------------------------- the old command line
+# Stage 3 (api-stufe3.md): h713-install has subcommands, the v0.5-beta switches live on
+# as hidden aliases for one release, and hy310-install.py forwards through the very same
+# translate() -- so the forwarder and the hidden aliases can never drift apart.
+
+# The German switches of v0.5-beta: hidden, accepted for one release (Marco, 13.09.).
+#   old flag -> (subcommand it implies, new flag, what happens to its value)
+#      "pos"  the value becomes the subcommand's positional     "drop" flag and value fall away
+#      "flag" the value follows the new flag                    None   the old flag takes no value
+#      "size" klein|voll becomes --small|--full
+ALIASES = {
+    "--abbild":         ("install", None, "pos"),
+    "--tabelle":        (None, "--table", "flag"),
+    "--authorized-key": (None, "--ssh-key", "flag"),
+    "--arbeitskopie":   (None, "--work-copy", "flag"),
+    "--sicherung":      (None, "--dump", "flag"),
+    "--abzug":          ("dump", None, "size"),
+    "--nur-abzug":      ("dump", None, None),
+    "--restore":        ("restore", None, "pos"),
+    "--restore-stock":  ("restore-stock", None, "pos"),
+    "--extraktor":      (None, None, "drop"),
+    "--env-neu":        (None, "--fresh-env", None),
+    "--ohne-erkennung": (None, "--skip-identify", None),
+    "--dry-run":        (None, "--no-write", None),
+}
+HINTS = {
+    "--abbild": "install TABLE", "--tabelle": "--table", "--authorized-key": "--ssh-key",
+    "--arbeitskopie": "--work-copy", "--sicherung": "--dump DIR (with dump: -o DIR)",
+    "--abzug": "dump --small|--full", "--nur-abzug": "dump", "--restore": "restore DUMP.img",
+    "--restore-stock": "restore-stock UPDATE.img", "--env-neu": "--fresh-env",
+    "--ohne-erkennung": "--skip-identify", "--dry-run": "--no-write",
+    "--extraktor": "gone -- the package brings its own reader (ignored)",
+}
+STRONG = ("install", "restore", "restore-stock", "dump")     # --nur-abzug beat --abbild before
+WRITES = ("install", "restore", "restore-stock")             # the subcommands that may write
+COMMANDS = ("identify", "dump", "install", "restore", "restore-stock", "extract")
+COMMON = {"--device": 1, "--sunxi-fel": 1, "--uboot": 1,     # option -> how many values
+          "--no-write": 0, "--skip-identify": 0, "--yes": 0}
+
+
+def _command_of(argv):
+    """(subcommand, the rest) -- argparse wants the subcommand first, people write the
+    common options in front of it (`--device /dev/sdb dump`). So it is looked for behind
+    them as well, but only behind options whose arity is known."""
+    if argv and not argv[0].startswith("-"):
+        return argv[0], argv[1:]
+    i = 0
+    while i < len(argv):
+        if argv[i] in COMMANDS:
+            return argv[i], argv[:i] + argv[i + 1:]
+        flag, glued, _value = argv[i].partition("=")
+        if flag not in COMMON:
+            break
+        i += 1 + (0 if glued else COMMON[flag])
+    return None, argv
+
+
+def translate(argv):
+    """Old command line -> new one. Returns (argv, hints), one hint line per alias used."""
+    command, rest = _command_of(list(argv))
+    out, hints, positional, implied, i = [], [], None, None, 0
+    while i < len(rest):
+        flag, glued, inline = rest[i].partition("=")
+        if flag not in ALIASES:
+            out.append(rest[i])
+            i += 1
+            continue
+        wants, new, kind = ALIASES[flag]
+        value = inline
+        if kind is not None and not glued:
+            i += 1
+            value = rest[i] if i < len(rest) else ""
+        hints.append("%s is now %s" % (flag, HINTS[flag]))
+        if wants and (implied is None or STRONG.index(wants) > STRONG.index(implied)):
+            implied = wants
+        if kind == "pos":
+            positional = value
+        elif kind == "flag":
+            out += [new, value]
+        elif kind == "size":
+            out.append("--full" if value.startswith(("f", "v")) else "--small")
+        elif new:
+            out.append(new)
+        i += 1
+    if command is None and not (set(rest) & {"-h", "--help", "--version"}):
+        command = implied or "dump"           # the old tool without --abbild only dumped
+    if positional is not None and command in WRITES:
+        out.insert(0, positional)
+    if command == "dump":
+        out = ["-o" if a == "--dump" else a for a in out]
+    return ([command] if command else []) + out, hints
+
 # ---------------------------------------------------------------- image package
 
+RELEASE_FILES = {"uboot": ("u-boot-installer.bin",),
+                 "fel": ("sunxi-fel.exe", "sunxi-fel")}
+
+
+def release_files(directory):
+    """What a release folder brings along besides the table: {"uboot": path, "fel": path}.
+
+    Stage 3 (api-stufe3.md): `install RELEASE-DIR` finds u-boot-installer.bin and
+    sunxi-fel next to the table, so that nobody has to name six paths by hand.
+    --uboot/--sunxi-fel keep precedence; what is not there is simply not in the dict.
+    """
+    found = {}
+    for key, names in RELEASE_FILES.items():
+        for name in names:
+            path = os.path.join(directory, name)
+            if os.path.isfile(path):
+                found[key] = path
+                break
+    return found
+
+
+def unpack_parts(directory, table, log=console):
+    """Image parts that lie only as `.img.zst`: unpack them with the `zstd` binary.
+
+    The release ships the parts packed (1.15 GB -> 56 MiB). Without `zstd` on the PC
+    this says so in one line and names the file instead of failing somewhere deeper.
+    """
+    packed = [t["datei"] for t in table["teile"]
+              if not os.path.isfile(os.path.join(directory, t["datei"]))
+              and os.path.isfile(os.path.join(directory, t["datei"] + ".zst"))]
+    if not packed:
+        return
+    zstd = shutil.which("zstd")
+    if not zstd:
+        raise RuntimeError("%d part(s) lie only packed (%s) and `zstd` is not on this PC -- "
+                           "install zstd or unpack by hand (`zstd -d *.img.zst`)"
+                           % (len(packed), ", ".join(name + ".zst" for name in packed)))
+    for name in packed:
+        source = os.path.join(directory, name + ".zst")
+        log.info("unpacking %s (zstd, %.0f MiB packed)" % (name + ".zst", mib(os.path.getsize(source))))
+        subprocess.run([zstd, "-d", "-q", "-f", source, "-o", os.path.join(directory, name)],
+                       check=True)
+
+
 def image_package(path):
-    """Resolve --abbild. Three things are allowed:
+    """Resolve the image to be written. Three things are allowed:
 
       * the table itself         out/hy310-v0.1.tabelle.json
-      * the directory around it  out/
-      * a single file            irgendwas.img   (then it needs --tabelle)
+      * the directory around it  out/          (a release folder)
+      * a single file            anything.img   (then it needs --table)
 
-    Return value: (directory, table|None). The table comes out of hy310-mkimage;
+    Return value: (directory, table|None). The table comes out of h713-mkimage;
     its structure is documented there.
     """
     if os.path.isdir(path):
         hits = sorted(x for x in os.listdir(path) if x.endswith(".tabelle.json"))
         if len(hits) != 1:
             raise RuntimeError(
-                "in %s liegen %d Dateien *.tabelle.json -- bitte die richtige "
-                "direkt angeben" % (path, len(hits)))
+                "%s holds %d files *.tabelle.json -- please name the right one "
+                "directly" % (path, len(hits)))
         path = os.path.join(path, hits[0])
     if path.endswith(".json"):
         with open(path, encoding="utf-8") as f:
             d = json.load(f)
         if d.get("format") != "hy310-abbild-tabelle":
-            raise RuntimeError("%s ist keine Abbild-Tabelle von hy310-mkimage" % path)
+            raise RuntimeError("%s is no image table of h713-mkimage" % path)
         return os.path.dirname(os.path.abspath(path)), d
     return os.path.dirname(os.path.abspath(path)), None
 
@@ -172,9 +309,9 @@ def check_package(directory, d, log=console):
     for t in d["teile"]:
         p = os.path.join(directory, t["datei"])
         if not os.path.isfile(p):
-            raise RuntimeError("%s fehlt -- das Abbild ist unvollstaendig" % t["datei"])
+            raise RuntimeError("%s is missing -- the image is incomplete" % t["datei"])
         if os.path.getsize(p) != t["bytes"]:
-            raise RuntimeError("%s ist %d Byte, erwartet %d"
+            raise RuntimeError("%s is %d bytes, expected %d"
                                % (t["datei"], os.path.getsize(p), t["bytes"]))
         h = hashlib.sha256()
         with open(p, "rb") as f:
@@ -184,18 +321,18 @@ def check_package(directory, d, log=console):
                     break
                 h.update(b)
         if t.get("sha256") and h.hexdigest() != t["sha256"]:
-            raise RuntimeError("%s: sha256 stimmt nicht -- Uebertragung kaputt?" % t["datei"])
-        log.ok("%-34s LBA %-9d %11d Byte  %s"
+            raise RuntimeError("%s: sha256 does not match -- broken transfer?" % t["datei"])
+        log.ok("%-34s LBA %-9d %11d bytes  %s"
                % (t["datei"], t["lba"], t["bytes"],
                   "sha256 ok" if t.get("sha256") else "sha256 " + h.hexdigest()[:16] + "…"))
     hole = d.get("loch")
     if hole and (hole["lba"], hole["lba"] + hole["sektoren"] - 1) != (LOCK_FIRST, LOCK_LAST):
-        raise RuntimeError("die Tabelle sperrt LBA %d..%d, dieses Skript %d..%d -- "
-                           "nicht zusammengehoerig"
+        raise RuntimeError("the table locks LBA %d..%d, this script %d..%d -- "
+                           "they do not belong together"
                            % (hole["lba"], hole["lba"] + hole["sektoren"] - 1,
                               LOCK_FIRST, LOCK_LAST))
     if d.get("disk_sektoren") != SECTORS_EXPECTED:
-        raise RuntimeError("die Tabelle ist fuer %s Sektoren gebaut, hier sind %d erwartet"
+        raise RuntimeError("the table is built for %s sectors, %d are expected here"
                            % (d.get("disk_sektoren"), SECTORS_EXPECTED))
 
 
@@ -227,24 +364,24 @@ def vendor_sources(directory, table, log=console):
         group = [n for n in table if n.startswith(prefix)]
         gone = [n for n in group if n in missing]
         if group and len(gone) == len(group):
-            log.warn("%s: keine der %d Dateien im Abzug -- dieses Geraet hat den Chip "
-                     "wohl nicht. Die Platzhalter bleiben genullt, WLAN bleibt aus."
+            log.warn("%s: none of the %d files in the dump -- this device probably "
+                     "does not have the chip. The placeholders stay zeroed, WLAN stays off."
                      % (prefix, len(group)))
             for n in gone:
                 sources[n] = b""
                 missing.remove(n)
     if missing:
-        raise RuntimeError("in %s fehlen %d Datei(en), z. B. %s"
+        raise RuntimeError("in %s %d file(s) are missing, e.g. %s"
                            % (directory, len(missing), ", ".join(sorted(missing)[:3])))
     if too_big:
-        raise RuntimeError("passt nicht in den Platzhalter: %s" % ", ".join(too_big))
+        raise RuntimeError("does not fit into the placeholder: %s" % ", ".join(too_big))
     too_small = [n for n, b in sources.items() if len(b) < table[n][1]]
     if too_small:
         # No abort: the placeholder is filled up with zeros. But it means that
         # this firmware has other sizes than the one the image was built
         # against -- that belongs said.
-        log.warn("%d Datei(en) sind kleiner als ihr Platzhalter (%s) -- der Rest "
-                 "wird genullt. Andere Firmware als beim Bau des Abbilds?"
+        log.warn("%d file(s) are smaller than their placeholder (%s) -- the rest "
+                 "is zeroed. Other firmware than when the image was built?"
                  % (len(too_small), ", ".join(sorted(too_small)[:3])))
     return sources
 
@@ -262,7 +399,7 @@ def _load_extractor(path=None, search_dir=None):
                 path = candidate
                 break
     if not path or not os.path.isfile(path):
-        raise SystemExit("h713-extract nicht gefunden -- es gehoert neben dieses Skript.")
+        raise SystemExit("h713-extract not found -- it belongs next to this script.")
     spec = importlib.util.spec_from_loader(
         "h713_extract", importlib.machinery.SourceFileLoader("h713_extract", path))
     m = importlib.util.module_from_spec(spec)
@@ -277,16 +414,23 @@ def run_extractor(dump, target, extractor=None, log=console, search_dir=None):
     log.info("h713-extract %s -> %s" % (os.path.basename(dump), target))
     rc = ex.main([dump, "--out", target, "-q"])
     if rc == 0:
-        log.ok("Extraktion vollstaendig und gegen die Referenz geprueft")
+        log.ok("extraction complete and checked against the reference")
     elif rc == 1:
-        log.warn("h713-extract meldet Abweichungen (unbekannter Stand oder "
-                 "fehlende Teile) -- die Ausgabe liegt trotzdem in %s" % target)
+        log.warn("h713-extract reports differences (unknown build or missing "
+                 "parts) -- the output lies in %s all the same" % target)
     else:
-        raise RuntimeError("h713-extract ist mit Fehler %d ausgestiegen" % rc)
+        raise RuntimeError("h713-extract exited with error %d" % rc)
     return rc
 
 
 # ---------------------------------------------------------------- run
+
+# Stage 3: `--yes` says the confirmation in advance, for runs without a terminal
+# (h713-install sets it). It replaces the pseudo-TTY of installer-fahren.py, which
+# typed the JA into the prompt from outside -- the promise is given, not bypassed:
+# the warning block is printed either way and the answer stands in the log.
+ASSUME_YES = False
+
 
 def ask(text, default=None):
     if not sys.stdin.isatty():
@@ -294,24 +438,28 @@ def ask(text, default=None):
     try:
         answer = input(text).strip().lower()
     except (EOFError, KeyboardInterrupt):
-        raise SystemExit("\nAbgebrochen.")
+        raise SystemExit("\nAborted.")
     return answer or default
 
 
 def confirm(what):
-    """A typed confirmation, not a comfortable [j/N] -- and the same abort rule
+    """A typed confirmation, not a comfortable [y/N] -- and the same abort rule
     at every place that writes (finding S46 B15, plan 110 §9)."""
     console.info("")
     console.warn(what)
     console.info("")
-    console.info("  Das hier ist eine Beta. Wenn waehrend des Schreibens etwas")
-    console.info("  schiefgeht: NICHT den Strom ziehen und neu starten. Das Geraet")
-    console.info("  in den FEL-Modus bringen (Reset halten, Strom einstecken) und")
-    console.info("  von vorn anfangen -- die Boot-Kette ist von dort immer erreichbar.")
+    console.info("  This here is a beta. If something goes wrong while it writes:")
+    console.info("  do NOT pull the power and reboot. Put the device into FEL mode")
+    console.info("  (hold reset, plug the power in) and start from the beginning --")
+    console.info("  the boot chain is always reachable from there.")
     console.info("")
+    if ASSUME_YES:
+        console.info("  Type YES to continue: YES   (--yes on the command line)")
+        return True
     # ask() gives the answer back in lower case -- the comparison has to fit
-    # that, otherwise every confirmation fails (10.09.).
-    return ask("  Zum Fortfahren JA eintippen: ", "") == "ja"
+    # that, otherwise every confirmation fails (10.09.). "ja" stays accepted for
+    # one release (api-stufe3.md: YES and JA).
+    return ask("  Type YES to continue: ", "") in ("yes", "ja")
 
 
 def _image_env_block(tab, work, part_file, log):
@@ -323,14 +471,14 @@ def _image_env_block(tab, work, part_file, log):
         return None
     part_lba = next((t["lba"] for t in tab["teile"] if t["datei"] == part_file), None)
     if part_lba is None or block["lba"] < part_lba:
-        log.warn("Umgebung liegt nicht im Teil mit den Platzhaltern -- Uebernahme uebersprungen")
+        log.warn("the environment does not lie in the part with the placeholders -- carry-over skipped")
         return None
     off = (block["lba"] - part_lba) * SECT
     with open(work, "rb") as f:
         f.seek(off)
         env = env_read(f.read(ENV_BYTES))
     if env is None:
-        log.error("Umgebung im Abbild bei Offset 0x%x hat keinen gueltigen CRC" % off)
+        log.error("the environment in the image at offset 0x%x has no valid CRC" % off)
     return off, env
 
 
@@ -343,7 +491,7 @@ def _store_image_env(work, off, env, log):
         os.fsync(f.fileno())
         f.seek(off)
         if env_read(f.read(ENV_BYTES)) != env:
-            log.error("Umgebung nach dem Schreiben nicht wie erwartet")
+            log.error("the environment is not as expected after writing")
             return 11
     return 0
 
@@ -383,13 +531,13 @@ def carry_env(args, tab, work, part_file, log=console):
     there, nothing is invented), the old one was valid, and the user did not say
     --env-neu.
     """
-    if args.env_neu or not args._unser_layout:
+    if args.fresh_env or not args._our_layout:
         return 0
     block = (tab.get("bausteine") or {}).get("env")
     if not block:
-        log.info("Umgebung: dieses Abbild bringt keine mit (aelter als 12.09.) -- nichts zu uebernehmen")
+        log.info("Environment: this image brings none along (older than 12.09.) -- nothing to carry over")
         return 0
-    old_path = os.path.join(args.sicherung, "uboot-env.bin")
+    old_path = os.path.join(args.dump_dir, "uboot-env.bin")
     if not os.path.isfile(old_path):
         return 0
     with open(old_path, "rb") as f:
@@ -398,22 +546,22 @@ def carry_env(args, tab, work, part_file, log=console):
         return 0
     part_lba = next((t["lba"] for t in tab["teile"] if t["datei"] == part_file), None)
     if part_lba is None or block["lba"] < part_lba:
-        log.warn("Umgebung liegt nicht im Teil mit den Platzhaltern -- Uebernahme uebersprungen")
+        log.warn("the environment does not lie in the part with the placeholders -- carry-over skipped")
         return 0
     off = (block["lba"] - part_lba) * SECT
     with open(work, "r+b") as f:
         f.seek(off)
         new = env_read(f.read(ENV_BYTES))
         if new is None:
-            log.error("Umgebung im Abbild bei Offset 0x%x hat keinen gueltigen CRC" % off)
+            log.error("the environment in the image at offset 0x%x has no valid CRC" % off)
             return 11
         taken = []
         for k in ENV_CARRY_OVER:
             if k in old and old[k] != new.get(k):
-                taken.append("%s=%s (Abbild: %s)" % (k, old[k], new.get(k, "-")))
+                taken.append("%s=%s (image: %s)" % (k, old[k], new.get(k, "-")))
                 new[k] = old[k]
         if not taken:
-            log.ok("Umgebung: %s stimmen mit der Vorgabe des Abbilds ueberein -- nichts zu uebernehmen"
+            log.ok("Environment: %s agree with the image's default -- nothing to carry over"
                    % ", ".join(ENV_CARRY_OVER))
             return 0
         f.seek(off)
@@ -422,10 +570,10 @@ def carry_env(args, tab, work, part_file, log=console):
         os.fsync(f.fileno())
         f.seek(off)
         if env_read(f.read(ENV_BYTES)) != new:
-            log.error("Umgebung nach dem Schreiben nicht wie erwartet")
+            log.error("the environment is not as expected after writing")
             return 11
-    log.ok("Umgebung: aus der alten uebernommen: %s" % "; ".join(taken))
-    log.info("  Alles andere kommt vom U-Boot des Abbilds. Die alte liegt in %s." % old_path)
+    log.ok("Environment: carried over from the old one: %s" % "; ".join(taken))
+    log.info("  Everything else comes from the image's U-Boot. The old one lies in %s." % old_path)
     return 0
 
 
@@ -437,9 +585,9 @@ def write_package(args, disk, path, directory, tab, here=None):
     EVERYTHING goes onto the eMMC in one go. An abort on the PC costs nothing;
     an abort in the middle of a second write pass would have left half a system.
     """
-    console.step(4, "Abbild pruefen (%s, %s)" % (tab.get("abbild"), tab.get("layout")))
+    console.step(4, "Check the image (%s, %s)" % (tab.get("abbild"), tab.get("layout")))
     check_package(directory, tab, console)
-    console.info("Loch bei LBA %d..%d (%s) -- bleibt unberuehrt"
+    console.info("Hole at LBA %d..%d (%s) -- stays untouched"
                  % (tab["loch"]["lba"], tab["loch"]["lba"] + tab["loch"]["sektoren"] - 1,
                     tab["loch"]["partition"]))
 
@@ -455,39 +603,39 @@ def write_package(args, disk, path, directory, tab, here=None):
     # away.
     chosen = {t["datei"] for t in tab["teile"]}
     if (table or user) and part_file not in chosen:
-        console.info("Platzhalter uebersprungen: %s wird bei diesem Lauf nicht geschrieben"
+        console.info("placeholders skipped: %s is not written in this run"
                      % part_file)
-        if args.authorized_key:
-            console.warn("--authorized-key bleibt damit ohne Wirkung")
+        if args.ssh_key:
+            console.warn("--ssh-key therefore has no effect")
         table, user = {}, {}
 
     sources = {}
     if table:
-        console.step(5, "Die geraeteeigenen Dateien einsetzen (%d Platzhalter)" % len(table))
+        console.step(5, "Put the device's own files in (%d placeholders)" % len(table))
         vendor = args.vendor
         if not vendor:
-            full = os.path.join(args.sicherung, "emmc-voll.img")
+            full = os.path.join(args.dump_dir, "emmc-voll.img")
             if os.path.isfile(full):
-                vendor = os.path.join(args.sicherung, "extrakt")
+                vendor = os.path.join(args.dump_dir, "extrakt")
                 os.makedirs(vendor, exist_ok=True)
-                run_extractor(full, vendor, args.extraktor, search_dir=here)
+                run_extractor(full, vendor, None, search_dir=here)
             else:
-                console.error("Es gibt weder --vendor noch einen Vollabzug in %s."
-                              % args.sicherung)
-                console.info("  Die 43 Dateien (Anzeige-Artefakte, Firmware, PQ, WLAN) stehen nur")
-                console.info("  auf deinem eigenen Geraet. Ohne sie bleibt das Bild schwarz.")
-                console.info("  Also: den VOLLEN Abzug ziehen (--abzug voll) oder ein")
-                console.info("  Verzeichnis von h713-extract mit --vendor angeben.")
+                console.error("There is neither --vendor nor a full dump in %s."
+                              % args.dump_dir)
+                console.info("  The 43 files (display artefacts, firmware, PQ, WLAN) stand only")
+                console.info("  on your own device. Without them the picture stays black.")
+                console.info("  So: take the FULL dump (dump --full) or name a directory")
+                console.info("  from h713-extract with --vendor.")
                 return 8
         sources = vendor_sources(vendor, table, console)
-        console.ok("%d Dateien aus %s" % (len(sources), vendor))
+        console.ok("%d files from %s" % (len(sources), vendor))
 
     # The user's key: same mechanics, other source. Here and not in
     # vendor_sources(), because it does not come out of the device -- and
     # because it must be settable without vendor files as well.
     if user:
         if not table:
-            console.step(5, "Den eigenen SSH-Schluessel einsetzen")
+            console.step(5, "Put your own SSH key in")
         own = user_sources(args, user, console)
         # Only the filled ones are written; an empty placeholder stays as it was
         # built (newlines), and is valid that way.
@@ -496,20 +644,20 @@ def write_package(args, disk, path, directory, tab, here=None):
             sources[name] = own[name]
 
     if table:
-        work = args.arbeitskopie or os.path.join(args.sicherung, "abbild-gefuellt.img")
+        work = args.work_copy or os.path.join(args.dump_dir, "abbild-gefuellt.img")
         source_part = os.path.join(directory, part_file)
-        if args.dry_run:
-            console.info("WUERDE: %s nach %s kopieren und %d Platzhalter fuellen"
+        if args.no_write:
+            console.info("WOULD: copy %s to %s and fill %d placeholders"
                          % (part_file, work, len(table)))
         else:
-            console.info("Arbeitskopie: %s (%.0f MiB)" % (work, mib(os.path.getsize(source_part))))
+            console.info("Working copy: %s (%.0f MiB)" % (work, mib(os.path.getsize(source_part))))
             shutil.copyfile(source_part, work)
             fill_placeholders(work, table, sources, log=Quiet)
             bad = check_placeholders(work, table, sources)
             if bad:
-                console.error("nach dem Fuellen weichen ab: %s" % ", ".join(bad))
+                console.error("differ after filling: %s" % ", ".join(bad))
                 return 9
-            console.ok("%d Platzhalter gefuellt und zurueckgelesen -- alle gleich" % len(table))
+            console.ok("%d placeholders filled and read back -- all equal" % len(table))
             rc = carry_env(args, tab, work, part_file, console)
             if rc:
                 return rc
@@ -517,43 +665,43 @@ def write_package(args, disk, path, directory, tab, here=None):
             if rc:
                 return rc
 
-    console.step(6, "Auf die eMMC schreiben")
+    console.step(6, "Write onto the eMMC")
     for t in tab["teile"]:
-        console.info("  %-34s ab LBA %-9d %11d Byte" % (t["datei"], t["lba"], t["bytes"]))
-    if args.dry_run:
-        console.info("Trockenlauf -- nichts geschrieben.")
+        console.info("  %-34s from LBA %-9d %11d bytes" % (t["datei"], t["lba"], t["bytes"]))
+    if args.no_write:
+        console.info("No-write run -- nothing written.")
         return 0
-    if not confirm("Das ueberschreibt die eMMC."):
+    if not confirm("This overwrites the eMMC."):
         return 1
     t0 = time.time()
     for t in tab["teile"]:
         file = work if (work and t["datei"] == part_file) else os.path.join(directory, t["datei"])
         write_image(disk, file, lba0=t["lba"])
-        console.ok("%s geschrieben" % t["datei"])
-    console.ok("alles geschrieben in %s" % duration(time.time() - t0))
+        console.ok("%s written" % t["datei"])
+    console.ok("everything written in %s" % duration(time.time() - t0))
 
-    console.step(7, "Zurueckvergleichen")
+    console.step(7, "Compare back")
     errors = 0
     for t in tab["teile"]:
         file = work if (work and t["datei"] == part_file) else os.path.join(directory, t["datei"])
         errors += verify_image(disk, file, samples=4, lba0=t["lba"])
     if errors:
-        console.error("%d Stichprobe(n) weichen ab -- nicht neu starten, nachfragen." % errors)
+        console.error("%d sample(s) differ -- do not reboot, ask." % errors)
         return 6
-    console.ok("Stichproben stimmen")
+    console.ok("samples match")
     # And the acid test: the locked region must not have changed. The small dump
     # has been there since step 3.
-    ss = os.path.join(args.sicherung, "secure-storage.bin")
+    ss = os.path.join(args.dump_dir, "secure-storage.bin")
     if os.path.isfile(ss):
         with open(ss, "rb") as f:
             before = f.read()
         after = disk.read(LOCK_FIRST, len(before) // SECT)
         if after == before:
-            console.ok("Secure Storage unveraendert (byteweise gegen den Abzug verglichen)")
+            console.ok("Secure Storage unchanged (compared byte for byte against the dump)")
         else:
-            console.error("DER SECURE STORAGE HAT SICH GEAENDERT -- bitte melden, "
-                          "nichts weiter tun, %s aufheben." % ss)
+            console.error("THE SECURE STORAGE HAS CHANGED -- please report it, do "
+                          "nothing further, keep %s." % ss)
             return 10
     console.info("")
-    console.info("Fertig. Strom abziehen und wieder einstecken.")
+    console.info("Done. Unplug the power and plug it in again.")
     return 0

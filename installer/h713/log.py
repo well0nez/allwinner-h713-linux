@@ -6,7 +6,8 @@ them the way the installer does, and `Quiet` stands in for `console` where the
 success lines are noise.
 
 Stage 1: moved from h713-extract (X:280-306) and hy310-install.py (I:118-166).
-Every printed string is unchanged.
+Stage 3: the markers of `Log` and of the "install" console style are English
+("WARNING:", "ERROR:"); the "mkimage" style is untouched (api-stufe3.md).
 """
 
 from __future__ import annotations
@@ -35,10 +36,10 @@ class Log:
 
     def warn(self, s: str):
         self.warnings.append(s)
-        self._p("  WARNUNG: " + s)
+        self._p("  WARNING: " + s)
 
     def error(self, s: str):
-        self._p("  FEHLER: " + s)
+        self._p("  ERROR: " + s)
 
 
 class Abort(Exception):
@@ -49,9 +50,10 @@ class Console:
     """Output that stays readable in a Windows command prompt as well."""
 
     def __init__(self, color=None, style="install"):
-        """`style`: "install" is hy310-install's look ("OK", "!", "FEHLER:"), "mkimage"
+        """`style`: "install" is h713-install's look ("OK", "!", "ERROR:"), "mkimage"
         is hy310-mkimage's old class K ("OK  ", "HM  ", "FEHL", deeper info indent).
-        Both keep their exact old output (stage 1, doku/121)."""
+        Stage 3 translated the install markers; the mkimage markers belong to
+        h713-mkimage and are translated with that tool (D2)."""
         if color is None:
             color = sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
         self.color = color
@@ -90,7 +92,7 @@ class Console:
         if self.style == "mkimage":
             print("  %s %s" % (self._c("1;31", "FEHL"), text), file=sys.stderr)
         else:
-            print("\n%s %s" % (self._c("31", "FEHLER:"), text), file=sys.stderr)
+            print("\n%s %s" % (self._c("31", "ERROR:"), text), file=sys.stderr)
 
 
 console = Console()
