@@ -81,11 +81,71 @@ placeholders on the PC and reads them back, step `6` is the only one that writes
 the secure storage byte by byte against the dump from step `3`, so you know it was not touched. Writing
 takes about three minutes with the full image; everything else is seconds.
 
-The transcript that used to stand here is from a German-language run of v0.5-beta (2026-09-12). The
-English tool has not been recorded on hardware yet, and an old transcript of a different command line
-would be worse than none.
+Recorded on 2026-09-15 on an HY310 running the stock firmware, with `h713-install install ~/h713-hy310-v0.6-beta
+--ssh-key ~/.ssh/id_ed25519.pub --dump ~/h713-dump-T --small --yes` after a full dump had been taken into the same
+directory (17 minutes, not shown). Progress lines are cut. The two regions reported as empty are a trait of this
+test device, which had been converted before; an untouched device saves content there.
 
-<!-- transcript recorded at the device test -->
+```
+h713-install 0.1 (draft, doku/110)   (Linux)
+[1] the eMMC is already exposed as a drive
+  OK /dev/sda, 15269888 sectors, stock layout, 26 partitions -- FEL and exposure skipped
+[1b] Identify the device
+  OK HY310 recognised -- device (stock), verified profile
+  matched on arisc_version, build_fingerprint, dtb_sha256, mips_database_sha256, scp_sha256, uboot_sha256, uboot_version
+  fingerprint Allwinner/h713_tuna_p3/h713-tuna_p3:11/RP1A.201005.006/Projector07241019:user/release-keys
+  layout    stock, 26 partitions, 15269888 sectors
+  device-only Reserve0_a@5489664+32768, Reserve0_b@5522432+32768, private@4891648+32768, secure-storage@12288+2048
+  display firmware in bootloader_a 19 files, bootloader_b 19 files, vendor 19 files
+[3] Take the dump (small)
+  OK secure-storage   LBA 12288      1.0 MiB  saved (hash in the manifest)
+  OK private          LBA 4891648   16.0 MiB  080acf35a507ac98…  (empty)
+  OK reserve0-a       LBA 5489664   16.0 MiB  saved (hash in the manifest)
+  OK reserve0-b       LBA 5522432   16.0 MiB  080acf35a507ac98…  (empty)
+  ! Empty and therefore without content: private, reserve0-b.
+    On an untouched device something would stand there. Either this
+    device has been converted once already, or this firmware does not
+    use the regions. The Secure Storage is independent of that.
+  OK bootloader_a     19 files    1.9 MiB  -> mips/bootloader_a/
+  OK bootloader_b     19 files    1.9 MiB  -> mips/bootloader_b/
+  OK mips/: the two bootloader slots hold the same 19 files
+  mips/: active slot unknown (no readable bootloader_control)
+  OK vendor           19 files    1.9 MiB  -> mips/vendor/
+  OK reserve0          1 files    0.0 MiB  -> mips/reserve0/
+  mips/: media_data not readable (media_data: no ext4 superblock (no magic at 0x438) -- erofs/f2fs? Not supported.)
+  OK the dump lies in ~/h713-dump-T
+[4] Check the image (h713-hy310-v0.6-beta, v3 (doku/109 §2.2))
+  OK h713-hy310-v0.6-beta-a-bootkette.img LBA 0             6291456 bytes  sha256 ok
+  OK h713-hy310-v0.6-beta-b-system.img  LBA 14336      1209008128 bytes  sha256 ok
+  OK h713-hy310-v0.6-beta-c-gptkopie.img LBA 15269855        16896 bytes  sha256 ok
+  Hole at LBA 12288..14335 (hy310-keys) -- stays untouched
+[5] Put the device's own files in (43 placeholders)
+  h713-extract emmc-full.img -> h713-dump-T/extract
+  OK extraction complete and checked against the reference
+  OK 43 files from h713-dump-T/extract
+  OK authorized_keys: 1 key(s) from ~/.ssh/id_ed25519.pub, 104 bytes, padded with newlines to 4096
+  Working copy: h713-dump-T/image-filled.img (1153 MiB)
+  OK 44 placeholders filled and read back -- all equal
+  OK Environment: h713_project=0x30 already set as declared
+[6] Write onto the eMMC
+    h713-hy310-v0.6-beta-a-bootkette.img from LBA 0             6291456 bytes
+    h713-hy310-v0.6-beta-b-system.img  from LBA 14336      1209008128 bytes
+    h713-hy310-v0.6-beta-c-gptkopie.img from LBA 15269855        16896 bytes
+  ! This overwrites the eMMC.
+    This here is a beta. If something goes wrong while it writes:
+    do NOT pull the power and reboot. Put the device into FEL mode
+    (hold reset, plug the power in) and start from the beginning --
+    the boot chain is always reachable from there.
+    Type YES to continue: YES   (--yes on the command line)
+  OK h713-hy310-v0.6-beta-a-bootkette.img written
+  OK h713-hy310-v0.6-beta-b-system.img written
+  OK h713-hy310-v0.6-beta-c-gptkopie.img written
+  OK everything written in 3 min
+[7] Compare back
+  OK samples match
+  OK Secure Storage unchanged (compared byte for byte against the dump)
+  Done. Unplug the power and plug it in again.
+```
 
 ## After the first boot
 
