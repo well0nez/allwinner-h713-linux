@@ -22,6 +22,10 @@ installer/h713-extract --part bootloader_b=bootloader_b.img -o out    # only the
 installer/h713-extract --part super=super.img -o out                  # only super -> EDID, audio patch, picture tables
 ```
 
+`h713-install extract` is the same tool under a second name: everything behind the word `extract` is
+handed to it unchanged, so the installer needs no second copy. `--no-pq`, `--no-mips` and `--no-wlan`
+each leave one group out; `-q` prints result lines only.
+
 Output under `--out` (default `./h713-extract-out`): `lib/firmware/h713-arisc.bin` (ARISC coprocessor
 firmware), `lib/firmware/hy310-edid.bin`, `lib/firmware/h713/msp-patch.bin` (audio DSP patch), `pq/*`
 (the picture-quality tables `h713-pq` reads), `boot/mips/*` (the 19 display artifacts U-Boot loads by
@@ -70,9 +74,10 @@ with a deviation list) or a known device with missing/mismatched parts — the o
 Exit 2: a hard error, including an `--out` directory that already belongs to a different device.
 
 Pure Python standard library, including its own read-only ext4 and FAT reader — no `debugfs`, no
-`e2fsprogs`, so it runs the same on Windows. It only reads: HDCP/DRM keys are never touched even when
-present in the input, and boot logos, fonts and battery-animation files from the same vendor partition
-are deliberately left out. It knows only the two device profiles above; a third device needs its own
-entry in the tool's device table before it can be recognised.
+`e2fsprogs`, so it runs the same on Windows (`--use-debugfs` is the counter-check and needs `e2fsprogs`).
+It only reads its input: HDCP/DRM keys are never touched even when present, and boot logos, fonts and
+battery-animation files from the same vendor partition are deliberately left out. It compares against the
+two profiles above and no others — the project carries board profiles for more H713 projectors, and
+`h713-install identify` uses all of them, but the extractor's reference table is the pair.
 
 Details: doku/108-plan-vendordaten.md, doku/nachtlog/S42-r2-extract.md.

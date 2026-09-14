@@ -56,7 +56,7 @@ the eMMC (`doku/109-plan-layout-v3.md`). From a running Debian, read and change 
 ```
 
 A device flashed before the eMMC layout moved to this offset (layout v3, 10.09.2026) carries its saved
-environment at the older location instead; `hy310-install` finds and migrates it by scanning for a valid
+environment at the older location instead; `h713-install` finds and migrates it by scanning for a valid
 CRC rather than assuming the offset (`doku/30-uboot-aenderungen.md` §16, `doku/nachtlog/S41-r1-installer.md`).
 
 Details: `mainline/external/u-boot/board/sunxi/hy310.env`, `doku/105-plan-release.md`,

@@ -1,19 +1,22 @@
 # h713-mkimage
 
 `h713-mkimage` assembles the flashable image from the built pieces — SPL, U-Boot proper, the kernel FIT,
-and the two ext4 filesystems — laid out to Layout v3, together with an offset table, a manifest, and
-checksums. Users normally never run it themselves; it produces the image that `h713-install` writes.
+and the two ext4 filesystems — laid out to Layout v3, together with an offset table, checksums and a
+readme. Users normally never run it themselves; it produces the image that
+[`h713-install`](h713-install.md) writes.
 
 ```
-installer/h713-mkimage build -o out/hy310-v0.1.img            # image (three pieces) + table + manifest + README
-installer/h713-mkimage check out/hy310-v0.1.tabelle.json      # validate a finished image against its table
+installer/h713-mkimage build -o out/hy310-v0.1.img            # image (three pieces) + table + checksums + README
+installer/h713-mkimage check out/hy310-v0.1.tabelle.json      # validate a finished image; writes nothing
 installer/h713-mkimage tree-boot DIR [--fit FILE]             # only the file tree for hy310-boot
 installer/h713-mkimage tree-rootfs DIR                        # only the rootfs placeholders (an overlay)
 ```
 
 `build` takes `--spl`, `--uboot`, `--env`, `--boot-ext4` and `--rootfs-ext4` to override what it would
 otherwise pick up from `mainline/build/out/` and `installer/tmp/`. Next to the image it writes
-`<name>.tabelle.json`, `<name>.sha256` and `<name>-README.txt` (the German `-LIESMICH.txt` is gone).
+`<name>.tabelle.json`, `<name>.sha256` and `<name>-README.txt` (the German `-LIESMICH.txt` is gone). The
+keys *inside* the table are still the German ones — `h713-install` reads them, and they change only when
+the release file names do.
 
 The switches of the old `hy310-mkimage.py` — `--out`, `--pruefen`, `--baum-boot`, `--baum-rootfs` — are
 still accepted for one release and print one line saying what they are called now; `hy310-mkimage.py`

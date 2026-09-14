@@ -47,7 +47,7 @@ fw_setenv h713_gate 0
 
 from a running Linux, or `setenv h713_gate 0; saveenv` at the U-Boot prompt, overrides the gate without a
 rebuild; `1`, the shipped default, turns it back on. The gate is otherwise a build-time option,
-`CONFIG_H713_POWER_GATE` — the FEL restore SPL and the `hy310-install` build never compile it in at all,
+`CONFIG_H713_POWER_GATE` — the FEL restore SPL and the `h713-install` (installer role) build never compile it in at all,
 so those always start straight through no matter what the environment says (the defconfig matrix in
 `README.md`).
 
