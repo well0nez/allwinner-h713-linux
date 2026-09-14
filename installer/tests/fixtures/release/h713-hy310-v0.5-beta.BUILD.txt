@@ -1,0 +1,19 @@
+h713-hy310-v0.5-beta  gebaut 2026-09-12T23:44:33Z in 20 min 30 s
+Serie:    a454b1b3ca1f2cf2  133 Patches
+defconfig: d24973c23442fb7d
+Kernelbaum: 286ad979  Release 6.18.38
+u-boot: 4091ea68c06
+arm-trusted-firmware: 3b3fb35fa
+sunxi-tools: 269dfa2
+repo: 150d70c (0 lokale Aenderungen)
+U-Boot:   U-Boot 2026.07-rc5-g4091ea68c062
+Bausteine (sha256, 16 Zeichen):
+  spl-release.bin              a08eab6683981270
+  uboot-proper-release.bin     af43fc7618e063db
+  hy310-env-release.bin        b3b463f243ffca18
+  u-boot-installer.bin         45c46df29ae0c8eb
+  h713-kernel.fit              24f752615927803d
+  modules/aic8800_bsp.ko       cac577a9e9656fd1
+  modules/aic8800_fdrv.ko      29f890ec73c35ac6
+  h713-tv.aarch64-linux-gnu    d98b1c8ffa7405df
+  hy310-rootfs.tar             3182af387c3a4065

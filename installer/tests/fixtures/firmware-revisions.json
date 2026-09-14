@@ -1,0 +1,82 @@
+[
+  {
+    "name": "HY310 (QZ713 V3.1)",
+    "size": 1256216,
+    "sha256": "16c74a28187f342de657828fab65145b140ac9411c40cccc02eed25047472ee9",
+    "project_ids_seen": null,
+    "hdcp_wait_va": 1259589796,
+    "hdcp_wait_file_offset": 250020,
+    "hits": [
+      {
+        "offset": 250020,
+        "va": 1259589796,
+        "count_0684": 1,
+        "count_0093": 2
+      },
+      {
+        "offset": 398456,
+        "va": 1259738232,
+        "count_0684": 0,
+        "count_0093": 0
+      }
+    ],
+    "source": "computed by hdcp_site.py from umbau/fixtures-local/mips/hy310/display.bin; equals the pinned .hdcp_wait_va of the HY310 row in h713_mips_fw_revs[] (h713_mips.c). Fixture holds display.bin only, so no ProjectID descriptors were seen."
+  },
+  {
+    "name": "HY200 QZ713DF_A1",
+    "size": 1255696,
+    "sha256": "4380f1b3ed7b62aa50582e7cb16a87bdface1b4300578fe3631a416354da30ce",
+    "project_ids_seen": null,
+    "hdcp_wait_va": 1259591416,
+    "hdcp_wait_file_offset": 251640,
+    "hits": null,
+    "source": "h713_mips_fw_revs[] in h713_mips.c (pinned .hdcp_wait_va) and H713_MIPS_FW_REVS in analyse/release/arbeit/r2-extract/h713-extract. No image available: hits is null because nothing was searched, not because nothing was found. The file offset is derived as va - 0x4b100000."
+  },
+  {
+    "name": "ADT-3 2024",
+    "size": 1252128,
+    "sha256": "22a7df113fce3fa182926268de8c7551a107f0c3bc2932f0940bd58b8f424835",
+    "project_ids_seen": [
+      1,
+      18,
+      19,
+      20,
+      21,
+      22,
+      32,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53
+    ],
+    "hdcp_wait_va": 1259590128,
+    "hdcp_wait_file_offset": 250352,
+    "hits": [
+      {
+        "offset": 250352,
+        "va": 1259590128,
+        "count_0684": 1,
+        "count_0093": 2
+      },
+      {
+        "offset": 398560,
+        "va": 1259738336,
+        "count_0684": 0,
+        "count_0093": 0
+      }
+    ],
+    "source": "computed by hdcp_site.py from umbau/fixtures-local/mips/adt3-2024/display.bin. Not in h713_mips_fw_revs[]: its size 0x131b20 is declared by no row, so h713_mips_accept_size() takes it only in probe mode. project_ids_seen are the ProjectID_0x*.TSE descriptors next to it (id read back from the TSE header, offset 14); the board's panel_config.ini declares ProjectID 52 = 0x34, 1280x720."
+  },
+  {
+    "name": "HY300 Pro",
+    "size": 1253136,
+    "sha256": "cf9649bcc84a111ce590fc7acde723c25557fd2332abbb9fd10225905aae13a2",
+    "project_ids_seen": null,
+    "hdcp_wait_va": null,
+    "hdcp_wait_file_offset": null,
+    "hits": null,
+    "source": "issue #1: size and sha256 reported by the owner, no image available. Unknown -- the site can only be found by running the search over that image."
+  }
+]
