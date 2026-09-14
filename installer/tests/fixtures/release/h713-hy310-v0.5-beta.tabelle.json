@@ -1,0 +1,695 @@
+{
+  "format": "hy310-abbild-tabelle",
+  "version": 1,
+  "werkzeug": "hy310-mkimage 0.1",
+  "erzeugt": "2026-09-13T01:44:28",
+  "abbild": "h713-hy310-v0.5-beta",
+  "sektorgroesse": 512,
+  "disk_sektoren": 15269888,
+  "layout": "v3 (doku/109 §2.2)",
+  "partitionen": [
+    {
+      "name": "hy310-spl",
+      "lba": 16,
+      "sektoren": 64,
+      "guid": "cf5e1195-48e8-41bf-9394-1afdeff2bf01"
+    },
+    {
+      "name": "hy310-uboot",
+      "lba": 2048,
+      "sektoren": 10240,
+      "guid": "3c05da4e-39e8-4472-bd09-17f0433da668"
+    },
+    {
+      "name": "hy310-keys",
+      "lba": 12288,
+      "sektoren": 2048,
+      "guid": "404b1401-5772-4781-88ab-1b56c4682a97"
+    },
+    {
+      "name": "hy310-env",
+      "lba": 14336,
+      "sektoren": 2048,
+      "guid": "0a175557-ceb7-4ce5-b247-45e28a588dfd"
+    },
+    {
+      "name": "hy310-boot",
+      "lba": 16384,
+      "sektoren": 262144,
+      "guid": "f6d66c6c-2079-4e06-b550-4f37e6c5ab84"
+    },
+    {
+      "name": "hy310-rootfs",
+      "lba": 278528,
+      "sektoren": 14991327,
+      "guid": "45f95906-692a-4dcf-94e5-10bf1672909d"
+    }
+  ],
+  "loch": {
+    "lba": 12288,
+    "sektoren": 2048,
+    "partition": "hy310-keys",
+    "warum": "Secure Storage: HDCP-Schluessel, WLAN-/BT-MAC-Adressen und Seriennummer. Geraetespezifisch, in keinem Firmware-Abbild, nicht wiederherstellbar (doku/109 §2.3). Deshalb steht dieser Bereich in keinem Teil des Abbilds."
+  },
+  "teile": [
+    {
+      "datei": "h713-hy310-v0.5-beta-a-bootkette.img",
+      "lba": 0,
+      "sektoren": 12288,
+      "bytes": 6291456,
+      "sha256": "6fa71097e89162373329a28a91ccea00175be2f45648ebe947a9b8cae98fadbb",
+      "dd": "dd if=h713-hy310-v0.5-beta-a-bootkette.img of=/dev/sdX bs=512 seek=0 conv=fsync"
+    },
+    {
+      "datei": "h713-hy310-v0.5-beta-b-system.img",
+      "lba": 14336,
+      "sektoren": 2361344,
+      "bytes": 1209008128,
+      "sha256": "a5d6bd859844ff5cf22eefe2e27c92a7244e42b67362c8879a2107fcd964c00e",
+      "dd": "dd if=h713-hy310-v0.5-beta-b-system.img of=/dev/sdX bs=512 seek=14336 conv=fsync"
+    },
+    {
+      "datei": "h713-hy310-v0.5-beta-c-gptkopie.img",
+      "lba": 15269855,
+      "sektoren": 33,
+      "bytes": 16896,
+      "sha256": "e085b68113e5b93925dc636386d8d1eecdaeb8e63e8e6039c2ab1b58953d2b82",
+      "dd": "dd if=h713-hy310-v0.5-beta-c-gptkopie.img of=/dev/sdX bs=512 seek=15269855 conv=fsync"
+    }
+  ],
+  "bausteine": {
+    "spl": {
+      "datei": "mainline/build/out/spl-release.bin",
+      "bytes": 32768,
+      "sha256": "a08eab6683981270d39d974e3fb59ee9eb93ea2c222604d75e4e07107bcb1853",
+      "lba": 16,
+      "version": "U-Boot SPL 2026.07-rc5-g4091ea68c062"
+    },
+    "uboot": {
+      "datei": "mainline/build/out/uboot-proper-release.bin",
+      "bytes": 927953,
+      "sha256": "af43fc7618e063db592cc9a9f53f74db6d78dfcc8a086cde42197512047909a4",
+      "lba": 2048,
+      "version": "U-Boot 2026.07-rc5-g4091ea68c062"
+    },
+    "env": {
+      "datei": "mainline/build/out/hy310-env-release.bin",
+      "bytes": 65536,
+      "sha256": "b3b463f243ffca1810bca6275f4f7a74bb66d47d859355744fec7363d7d00262",
+      "lba": 14336,
+      "crc32": "27b6d7b2",
+      "eintraege": 77
+    },
+    "boot_ext4": {
+      "datei": "installer/tmp/hy310-boot.ext4",
+      "bytes": 134217728,
+      "sha256": "448d29ba1064affb2926c5c029b23735a73f3d43e32c0ea9e012a29e527715a1",
+      "lba": 16384
+    },
+    "rootfs_ext4": {
+      "datei": "installer/tmp/hy310-rootfs-platz.ext4",
+      "bytes": 1073741824,
+      "sha256": "d588bd8d952ee03de2345135c40af59258e7c3c7f848268f734c8865e4e281bf",
+      "lba": 278528
+    }
+  },
+  "platzhalter_datei": "h713-hy310-v0.5-beta-b-system.img",
+  "platzhalter": {
+    "boot/mips/database.TSE": [
+      34365440,
+      282464
+    ],
+    "boot/mips/display.bin": [
+      34648064,
+      1256216
+    ],
+    "boot/mips/display_cfg.xml": [
+      35905536,
+      4766
+    ],
+    "boot/mips/LogoRegData.bin": [
+      33939456,
+      15652
+    ],
+    "boot/mips/pq_custom.TSE": [
+      35913728,
+      15016
+    ],
+    "boot/mips/ProjectID_0x0001.TSE": [
+      33955840,
+      19992
+    ],
+    "boot/mips/ProjectID_0x0012.TSE": [
+      33976320,
+      48952
+    ],
+    "boot/mips/ProjectID_0x0013.TSE": [
+      34025472,
+      47880
+    ],
+    "boot/mips/ProjectID_0x0014.TSE": [
+      34074624,
+      47880
+    ],
+    "boot/mips/ProjectID_0x0015.TSE": [
+      34123776,
+      47880
+    ],
+    "boot/mips/ProjectID_0x0016.TSE": [
+      34172928,
+      47880
+    ],
+    "boot/mips/ProjectID_0x0020.TSE": [
+      34222080,
+      19992
+    ],
+    "boot/mips/ProjectID_0x0030.TSE": [
+      34242560,
+      19992
+    ],
+    "boot/mips/ProjectID_0x0031.TSE": [
+      34263040,
+      19992
+    ],
+    "boot/mips/ProjectID_0x0032.TSE": [
+      34283520,
+      19992
+    ],
+    "boot/mips/ProjectID_0x0033.TSE": [
+      34304000,
+      19992
+    ],
+    "boot/mips/ProjectID_0x0034.TSE": [
+      34324480,
+      17328
+    ],
+    "boot/mips/ProjectID_0x0035.TSE": [
+      34344960,
+      19992
+    ],
+    "boot/mips/projecttable.TSE": [
+      35930112,
+      1384
+    ],
+    "lib/firmware/h713-arisc.bin": [
+      264769536,
+      176132
+    ],
+    "lib/firmware/h713/msp-patch.bin": [
+      264765440,
+      2896
+    ],
+    "lib/firmware/hy310-edid.bin": [
+      264949760,
+      512
+    ],
+    "pq/portmap.cfg": [
+      153071616,
+      312
+    ],
+    "pq/pq_colortemp.ini": [
+      153075712,
+      865
+    ],
+    "pq/pq_factory_extern.ini": [
+      153079808,
+      592528
+    ],
+    "pq/pq_overscan_config.ini": [
+      153673728,
+      10877
+    ],
+    "pq/pq_picturemode.ini": [
+      153686016,
+      10216
+    ],
+    "pq/pqcontrol_config_setting.xml": [
+      153698304,
+      1055
+    ],
+    "pq/pqcontrol_custom_setting.xml": [
+      153702400,
+      1326
+    ],
+    "pq/tvpq.db": [
+      153706496,
+      36864
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt": [
+      263176192,
+      2807
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin": [
+      263180288,
+      261352
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin": [
+      263442432,
+      328912
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin": [
+      263774208,
+      328720
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin": [
+      264105984,
+      1680
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin": [
+      264110080,
+      1708
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin": [
+      264114176,
+      8348
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin": [
+      264126464,
+      31592
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin": [
+      264159232,
+      10956
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin": [
+      264171520,
+      648
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin": [
+      264175616,
+      23472
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin": [
+      264200192,
+      302105
+    ],
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin": [
+      264503296,
+      256810
+    ]
+  },
+  "platzhalter_nutzer": {
+    "authorized_keys": [
+      155992064,
+      4096
+    ]
+  },
+  "platzhalter_info": {
+    "boot/mips/database.TSE": {
+      "ziel": "hy310-boot:/mips/database.TSE",
+      "laenge": 282464,
+      "lba": 81456,
+      "disk_offset": 41705472,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "ee6177c444cc8963976000ce94ff119154fbf05b05d129beae94ad465418281c"
+    },
+    "boot/mips/display.bin": {
+      "ziel": "hy310-boot:/mips/display.bin",
+      "laenge": 1256216,
+      "lba": 82008,
+      "disk_offset": 41988096,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "6f9f30f2573737b1514c2d9f8a4e6c3ad556bba72e639dbdc64c7fcf813d0625"
+    },
+    "boot/mips/display_cfg.xml": {
+      "ziel": "hy310-boot:/mips/display_cfg.xml",
+      "laenge": 4766,
+      "lba": 84464,
+      "disk_offset": 43245568,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "7fcab094649c3c839fdc39e16924088789bd80e8925c9337c24fd8ea4c007878"
+    },
+    "boot/mips/LogoRegData.bin": {
+      "ziel": "hy310-boot:/mips/LogoRegData.bin",
+      "laenge": 15652,
+      "lba": 80624,
+      "disk_offset": 41279488,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "e49c976aa256ef8eb9800924be1084ced97db5f43708c8decf86d6580f5368be"
+    },
+    "boot/mips/pq_custom.TSE": {
+      "ziel": "hy310-boot:/mips/pq_custom.TSE",
+      "laenge": 15016,
+      "lba": 84480,
+      "disk_offset": 43253760,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "9e1b78f181015516a58b071f49dc9b4e9b4606c9cc53315bb570b33a5cc644e7"
+    },
+    "boot/mips/ProjectID_0x0001.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0001.TSE",
+      "laenge": 19992,
+      "lba": 80656,
+      "disk_offset": 41295872,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "4e8e290f823406598da98ba4bb8e8d8093629b95626b4d1db7e43c96d41e9c35"
+    },
+    "boot/mips/ProjectID_0x0012.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0012.TSE",
+      "laenge": 48952,
+      "lba": 80696,
+      "disk_offset": 41316352,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "85f3a74c7afb6e2dce3e3849fe68d1b0701243bb05f355e2dbff4da5855a42bc"
+    },
+    "boot/mips/ProjectID_0x0013.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0013.TSE",
+      "laenge": 47880,
+      "lba": 80792,
+      "disk_offset": 41365504,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "fcd3ee8f9fbe845844bc6d07003688abb278fe6eec7560c223e26683acaf8358"
+    },
+    "boot/mips/ProjectID_0x0014.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0014.TSE",
+      "laenge": 47880,
+      "lba": 80888,
+      "disk_offset": 41414656,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "6f6978b36c3474b671177df9250356a34edd551df731382105e9082b019779ec"
+    },
+    "boot/mips/ProjectID_0x0015.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0015.TSE",
+      "laenge": 47880,
+      "lba": 80984,
+      "disk_offset": 41463808,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "182c137b5ffe126fd77bf86f6446d4a6fb3a314b74291a53ca087affb0db130f"
+    },
+    "boot/mips/ProjectID_0x0016.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0016.TSE",
+      "laenge": 47880,
+      "lba": 81080,
+      "disk_offset": 41512960,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "81f0cfca824d1582224abadc2bb2573018ee57a18c586910cdaec7c05f0d2969"
+    },
+    "boot/mips/ProjectID_0x0020.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0020.TSE",
+      "laenge": 19992,
+      "lba": 81176,
+      "disk_offset": 41562112,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "0fa7ad910fce9e1398815f4303d1d766f1ebef3d0822c5649d8cbbbe9ec069a6"
+    },
+    "boot/mips/ProjectID_0x0030.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0030.TSE",
+      "laenge": 19992,
+      "lba": 81216,
+      "disk_offset": 41582592,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "e3c6b940cc92b8f746eaf97c3375d9b6c6494a656ebfe59dfe14a8d3a68745dc"
+    },
+    "boot/mips/ProjectID_0x0031.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0031.TSE",
+      "laenge": 19992,
+      "lba": 81256,
+      "disk_offset": 41603072,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "a3b9b9e824f11e46f2ff1b1bf34e82a37e39f8530ae6e79bdc45c2bf37e66d52"
+    },
+    "boot/mips/ProjectID_0x0032.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0032.TSE",
+      "laenge": 19992,
+      "lba": 81296,
+      "disk_offset": 41623552,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "2b08e2fafd39078e64710d6fe639b13f4d5584c6b76f95dcac5f2145eee7fc30"
+    },
+    "boot/mips/ProjectID_0x0033.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0033.TSE",
+      "laenge": 19992,
+      "lba": 81336,
+      "disk_offset": 41644032,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "2b69494aeb0ccb88cb94a89bde35e9a665284ae571764b4bcb7fc5765a74063c"
+    },
+    "boot/mips/ProjectID_0x0034.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0034.TSE",
+      "laenge": 17328,
+      "lba": 81376,
+      "disk_offset": 41664512,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "a578b96aea959c317c1391ac1c069c8928f2fb3db5757b3a6c9865dfbd65a546"
+    },
+    "boot/mips/ProjectID_0x0035.TSE": {
+      "ziel": "hy310-boot:/mips/ProjectID_0x0035.TSE",
+      "laenge": 19992,
+      "lba": 81416,
+      "disk_offset": 41684992,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "990a072be501283cf00578882fed84851e641dc58d8466dc638a1024ae71520a"
+    },
+    "boot/mips/projecttable.TSE": {
+      "ziel": "hy310-boot:/mips/projecttable.TSE",
+      "laenge": 1384,
+      "lba": 84512,
+      "disk_offset": 43270144,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "c493fad306adacb3a8eec1f997693df5e9109b770269f05370a3f1b29cf91156"
+    },
+    "lib/firmware/h713-arisc.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/h713-arisc.bin",
+      "laenge": 176132,
+      "lba": 531464,
+      "disk_offset": 272109568,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "8f53d24a500e15d5d036a5e9c853553b88c9bbaeaa6e1997035e76cb3cf43987"
+    },
+    "lib/firmware/h713/msp-patch.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/h713/msp-patch.bin",
+      "laenge": 2896,
+      "lba": 531456,
+      "disk_offset": 272105472,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "535b74e4c0529af41cbf53f7a66cc5c121d94af5ad6cf5879c361c1c24bdea7f"
+    },
+    "lib/firmware/hy310-edid.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/hy310-edid.bin",
+      "laenge": 512,
+      "lba": 531816,
+      "disk_offset": 272289792,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "c06892f6704373c5ca7581b9306e7d60112d5fe2c7c44cb5cedba5b3f7f35ddc"
+    },
+    "pq/portmap.cfg": {
+      "ziel": "hy310-rootfs:/etc/h713/tvconfig/portmap.cfg",
+      "laenge": 312,
+      "lba": 313304,
+      "disk_offset": 160411648,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "1d44eabe533cab842ec9a833dc90bf1e2ec8c13592cd1c80729ed4bacd846b24"
+    },
+    "pq/pq_colortemp.ini": {
+      "ziel": "hy310-rootfs:/etc/h713/tvconfig/pq_colortemp.ini",
+      "laenge": 865,
+      "lba": 313312,
+      "disk_offset": 160415744,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "965024bf85f35cc085b8dc4e13df5f69784ba824c878a6a38f894b9ce1b16826"
+    },
+    "pq/pq_factory_extern.ini": {
+      "ziel": "hy310-rootfs:/etc/h713/tvconfig/pq_factory_extern.ini",
+      "laenge": 592528,
+      "lba": 313320,
+      "disk_offset": 160419840,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "858cff8f164b9a4f8cefa6318da0a9b251ccf3f03b351aced83cef919f5666e2"
+    },
+    "pq/pq_overscan_config.ini": {
+      "ziel": "hy310-rootfs:/etc/h713/tvconfig/pq_overscan_config.ini",
+      "laenge": 10877,
+      "lba": 314480,
+      "disk_offset": 161013760,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "e87f5dafc4585eee8b15bec3ca1aef6bb30a54ffcd470afd084752ab9eb4c0bb"
+    },
+    "pq/pq_picturemode.ini": {
+      "ziel": "hy310-rootfs:/etc/h713/tvconfig/pq_picturemode.ini",
+      "laenge": 10216,
+      "lba": 314504,
+      "disk_offset": 161026048,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "f7806e2076e4e63b1cad939dccba3e687efc80863f26b3181780fef234183ee2"
+    },
+    "pq/pqcontrol_config_setting.xml": {
+      "ziel": "hy310-rootfs:/etc/h713/tvconfig/pqcontrol_config_setting.xml",
+      "laenge": 1055,
+      "lba": 314528,
+      "disk_offset": 161038336,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "94c909fb03293ce89ddc09383a43275176ad049f75d37e7e2feb5f703c7dadf6"
+    },
+    "pq/pqcontrol_custom_setting.xml": {
+      "ziel": "hy310-rootfs:/etc/h713/tvconfig/pqcontrol_custom_setting.xml",
+      "laenge": 1326,
+      "lba": 314536,
+      "disk_offset": 161042432,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "12a8b6498f346a53bd547e47f2f03b0dc9e281cd058c3052163b33ab881c0518"
+    },
+    "pq/tvpq.db": {
+      "ziel": "hy310-rootfs:/etc/h713/tvconfig/tvpq.db",
+      "laenge": 36864,
+      "lba": 314544,
+      "disk_offset": 161046528,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "40714c9fc3dfacc0fe8e13837e2c3233cc6ee6389a92818f39b03fe451a7b704"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt",
+      "laenge": 2807,
+      "lba": 528352,
+      "disk_offset": 270516224,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "93aae713707b6e331ab7d955d8d1d9a208e6a523c9400b6dc5f69d5a81bfbb12"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin",
+      "laenge": 261352,
+      "lba": 528360,
+      "disk_offset": 270520320,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "23f870e781ed8c45e0905c9326ac369eeb88e737b4abad0413d0d5174132ac28"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin",
+      "laenge": 328912,
+      "lba": 528872,
+      "disk_offset": 270782464,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "e565962a0cff1aba201db1c7574ff8a6903572ebdabd622f987eb5817c384b42"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin",
+      "laenge": 328720,
+      "lba": 529520,
+      "disk_offset": 271114240,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "bb1ea8b35a26534331d5d721a824a23507687ef8eedb5917ba22866198a7858b"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin",
+      "laenge": 1680,
+      "lba": 530168,
+      "disk_offset": 271446016,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "c82abc3539fa7d1cf283203cd547a299698572c5d33b44a529f01e5a05aaa49a"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin",
+      "laenge": 1708,
+      "lba": 530176,
+      "disk_offset": 271450112,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "a8be87ecc3a9bcc88aec88847b255dfc8f4a17a117f822a583e687fc37db6852"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin",
+      "laenge": 8348,
+      "lba": 530184,
+      "disk_offset": 271454208,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "aa68dd223beb7bcef0242862b8e5fcc9529f4ecb54482d20d50aa7ff1e4b9091"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin",
+      "laenge": 31592,
+      "lba": 530208,
+      "disk_offset": 271466496,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "bdc80eb157ae1a4eeacc1cc7fc05e845dd4421a3f5c510c8a3ca4d0537a1b2d3"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin",
+      "laenge": 10956,
+      "lba": 530272,
+      "disk_offset": 271499264,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "d551317e58171b0aa0d190ef26c91154fb26e111f39b2c78d47497ce3defdce6"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin",
+      "laenge": 648,
+      "lba": 530296,
+      "disk_offset": 271511552,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "ab43c26a9c91754b0494bbb7b67b89d5b31458616f3be411be2ea43e915f4ee9"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin",
+      "laenge": 23472,
+      "lba": 530304,
+      "disk_offset": 271515648,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "434df395907f7ba24856b624b09b48d4ca65332ce13d602a1e918eb93b38e20b"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin",
+      "laenge": 302105,
+      "lba": 530352,
+      "disk_offset": 271540224,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "7b33803713828315f8aab8565ea447a28a121e0e057130432f7428d89a55d5ed"
+    },
+    "lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin": {
+      "ziel": "hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin",
+      "laenge": 256810,
+      "lba": 530944,
+      "disk_offset": 271843328,
+      "quelle": "h713-extract",
+      "fuellung": "muster",
+      "sha256_muster": "4367ba7a92013f55d480374b744d21be0666022debf3c3f66193179fab890a5d"
+    },
+    "authorized_keys": {
+      "ziel": "hy310-rootfs:/root/.ssh/authorized_keys",
+      "laenge": 4096,
+      "lba": 319008,
+      "disk_offset": 163332096,
+      "quelle": "hy310-install --authorized-key",
+      "fuellung": "zeilenumbrueche",
+      "sha256_muster": "40bcea1a7a15701f47850819f064c5ea097d5ac9dce7a3861036b302ff82cc41"
+    }
+  }
+}

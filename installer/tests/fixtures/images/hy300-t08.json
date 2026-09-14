@@ -1,0 +1,1081 @@
+{
+  "boot0": {
+    "dram": {
+      "clk": 640,
+      "mr0": 7280,
+      "mr1": 64,
+      "mr2": 24,
+      "mr3": 0,
+      "odt_en": 1,
+      "para1": 4340,
+      "para2": 0,
+      "tpr0": 4858261,
+      "tpr1": 37892496,
+      "tpr10": 0,
+      "tpr11": 1145307136,
+      "tpr12": 21845,
+      "tpr13": 872481024,
+      "tpr2": 569441,
+      "tpr3": 3027794070,
+      "tpr4": 0,
+      "tpr5": 1212696648,
+      "tpr6": 72,
+      "tpr7": 371200542,
+      "tpr8": 0,
+      "tpr9": 0,
+      "type": 3,
+      "zq": 8092667
+    },
+    "dram_clk_mhz": 640,
+    "magic": "eGON.BT0",
+    "size": 32768
+  },
+  "boot_package": {
+    "arisc_version": "TV-303  ARISC  00.00.00.09 Date:Apr 19 2024 Time: 20:09:09",
+    "checksum_ok": true,
+    "dtb_compatible": "allwinner,tv303 arm,sun50iw12p1",
+    "dtb_model": "sun50iw12",
+    "items": [
+      {
+        "name": "u-boot",
+        "offset": 2048,
+        "sha256": "20171bc98d34929955ae3fae29be14ce3d430dd6d421c43ad4f81c2d47e6fe40",
+        "size": 638976
+      },
+      {
+        "name": "monitor",
+        "offset": 641024,
+        "sha256": "2dc43c309aeadf010353ac4fda0b91367eb25e9694cadbf6277874fb92be5e43",
+        "size": 65996
+      },
+      {
+        "name": "scp",
+        "offset": 707584,
+        "sha256": "e79e1b9ccedad3ac79cfcdaea8c4e46b5ce8d275b7601edbe3fb3b454a92c4aa",
+        "size": 176132
+      },
+      {
+        "name": "optee",
+        "offset": 884736,
+        "sha256": "c391dde39995529ab70b883ec4499a7f44954d439d1d6d0f9ccfa3ae01ea762a",
+        "size": 267136
+      },
+      {
+        "name": "dtb",
+        "offset": 1152000,
+        "sha256": "fb6f39ee4b0ba91a5bd47f06cf57110cd2d195a558a090213405282fe0c2d596",
+        "size": 71168
+      }
+    ],
+    "package_offset": 0,
+    "size": 1228800,
+    "uboot_version": "U-Boot 2018.05-00019-gbba611f (Apr 15 2024 - 11:04:17 +0000) Allwinner Technology"
+  },
+  "boot_resource_fat": {
+    "has_mips_dir": false,
+    "mips": null,
+    "root": [
+      {
+        "is_dir": false,
+        "name": "LogoRegData.bin",
+        "size": 14388
+      },
+      {
+        "is_dir": true,
+        "name": "bat",
+        "size": 0
+      },
+      {
+        "is_dir": false,
+        "name": "bootlogo.bmp",
+        "size": 2764854
+      },
+      {
+        "is_dir": false,
+        "name": "fastbootlogo.bmp",
+        "size": 189966
+      },
+      {
+        "is_dir": false,
+        "name": "font24.sft",
+        "size": 344813
+      },
+      {
+        "is_dir": false,
+        "name": "font32.sft",
+        "size": 357443
+      },
+      {
+        "is_dir": false,
+        "name": "magic.bin",
+        "size": 512
+      },
+      {
+        "is_dir": true,
+        "name": "wavefile",
+        "size": 0
+      }
+    ]
+  },
+  "firmware_hints": {
+    "vendor:/bin/hw/tvserver": {
+      "present": true,
+      "sha256": "25d7e22ca42f174984aa8bc2c4b76dba4f91a8e6bb183c72bb7f36a71800686c",
+      "size": 128988
+    },
+    "vendor:/bin/loadmips": {
+      "present": true,
+      "sha256": "c164944c61ef358b94a3d36aaa2875db294c7ae2baccb82eaee5796a88fdc96c",
+      "size": 4076
+    },
+    "vendor:/etc/firmware/hdcp_1.bin": {
+      "present": true,
+      "sha256": "467b1713b8ce5334d29274e26e67461663d109e87f9d693352c335c1af581b62",
+      "size": 368
+    },
+    "vendor:/etc/firmware/hdcp_v22.bin": {
+      "present": false,
+      "sha256": null,
+      "size": null
+    },
+    "vendor:/lib/libmips.so": {
+      "present": true,
+      "sha256": "df06e8ad269a84a9a55b9c42f520bcf1819eea5f8e4fb4557eb43444e8427719",
+      "size": 37816
+    }
+  },
+  "imagewty": {
+    "files": [
+      {
+        "maintype": "COMMON  ",
+        "name": "sys_config.fex",
+        "original": 1983,
+        "stored": 1984,
+        "subtype": "SYS_CONFIG100000"
+      },
+      {
+        "maintype": "COMMON  ",
+        "name": "board.fex",
+        "original": 1024,
+        "stored": 1024,
+        "subtype": "BOARD_CONFIG_BIN"
+      },
+      {
+        "maintype": "COMMON  ",
+        "name": "config.fex",
+        "original": 4096,
+        "stored": 4096,
+        "subtype": "SYS_CONFIG_BIN00"
+      },
+      {
+        "maintype": "COMMON  ",
+        "name": "split_xxxx.fex",
+        "original": 512,
+        "stored": 512,
+        "subtype": "SPLIT_0000000000"
+      },
+      {
+        "maintype": "COMMON  ",
+        "name": "sys_partition.fex",
+        "original": 5583,
+        "stored": 5584,
+        "subtype": "SYS_CONFIG000000"
+      },
+      {
+        "maintype": "COMMON  ",
+        "name": "sunxi.fex",
+        "original": 71168,
+        "stored": 71168,
+        "subtype": "DTB_CONFIG000000"
+      },
+      {
+        "maintype": "BOOT    ",
+        "name": "boot0_nand.fex",
+        "original": 32768,
+        "stored": 32768,
+        "subtype": "BOOT0_0000000000"
+      },
+      {
+        "maintype": "12345678",
+        "name": "boot0_sdcard.fex",
+        "original": 32768,
+        "stored": 32768,
+        "subtype": "1234567890BOOT_0"
+      },
+      {
+        "maintype": "12345678",
+        "name": "u-boot.fex",
+        "original": 638976,
+        "stored": 638976,
+        "subtype": "UBOOT_0000000000"
+      },
+      {
+        "maintype": "12345678",
+        "name": "u-boot-crash.fex",
+        "original": 37,
+        "stored": 48,
+        "subtype": "UBOOT_CRASH_0000"
+      },
+      {
+        "maintype": "12345678",
+        "name": "toc1.fex",
+        "original": 8,
+        "stored": 16,
+        "subtype": "TOC1_00000000000"
+      },
+      {
+        "maintype": "12345678",
+        "name": "toc0.fex",
+        "original": 8,
+        "stored": 16,
+        "subtype": "TOC0_00000000000"
+      },
+      {
+        "maintype": "FES     ",
+        "name": "fes1.fex",
+        "original": 13184,
+        "stored": 13184,
+        "subtype": "FES_1-0000000000"
+      },
+      {
+        "maintype": "12345678",
+        "name": "boot_package.fex",
+        "original": 1228800,
+        "stored": 1228800,
+        "subtype": "BOOTPKG-00000000"
+      },
+      {
+        "maintype": "PXTOOLSB",
+        "name": "usbtool.fex",
+        "original": 154624,
+        "stored": 154624,
+        "subtype": "XXXXXXXXXXXXXXXX"
+      },
+      {
+        "maintype": "PXTOOLCH",
+        "name": "usbtool_crash.fex",
+        "original": 125952,
+        "stored": 125952,
+        "subtype": "XXXXXXXXXXXXXXXX"
+      },
+      {
+        "maintype": "UPFLYTLS",
+        "name": "aultools.fex",
+        "original": 166515,
+        "stored": 166528,
+        "subtype": "XXXXXXXXXXXXXXXX"
+      },
+      {
+        "maintype": "UPFLTL32",
+        "name": "aultls32.fex",
+        "original": 152069,
+        "stored": 152080,
+        "subtype": "XXXXXXXXXXXXXXXX"
+      },
+      {
+        "maintype": "12345678",
+        "name": "cardtool.fex",
+        "original": 73216,
+        "stored": 73216,
+        "subtype": "1234567890CARDTL"
+      },
+      {
+        "maintype": "12345678",
+        "name": "cardscript.fex",
+        "original": 1758,
+        "stored": 1760,
+        "subtype": "1234567890SCRIPT"
+      },
+      {
+        "maintype": "12345678",
+        "name": "sunxi_gpt.fex",
+        "original": 8192,
+        "stored": 8192,
+        "subtype": "1234567890___GPT"
+      },
+      {
+        "maintype": "12345678",
+        "name": "sunxi_mbr.fex",
+        "original": 65536,
+        "stored": 65536,
+        "subtype": "1234567890___MBR"
+      },
+      {
+        "maintype": "12345678",
+        "name": "dlinfo.fex",
+        "original": 16384,
+        "stored": 16384,
+        "subtype": "1234567890DLINFO"
+      },
+      {
+        "maintype": "12345678",
+        "name": "arisc.fex",
+        "original": 6,
+        "stored": 16,
+        "subtype": "1234567890ARISC"
+      },
+      {
+        "maintype": "12345678",
+        "name": "sunxi_version.fex",
+        "original": 20,
+        "stored": 32,
+        "subtype": "123456789VERSION"
+      },
+      {
+        "maintype": "12345678",
+        "name": "vmlinux.fex",
+        "original": 104829219,
+        "stored": 104829232,
+        "subtype": "123456789VMLINUX"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "boot-resource.fex",
+        "original": 16317440,
+        "stored": 16317440,
+        "subtype": "BOOT-RESOURCE_FE"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vboot-resource.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VBOOT-RESOURCE_F"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "env.fex",
+        "original": 131072,
+        "stored": 131072,
+        "subtype": "ENV_FEX000000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Venv.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VENV_FEX00000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "boot.fex",
+        "original": 67108864,
+        "stored": 67108864,
+        "subtype": "BOOT_FEX00000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vboot.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VBOOT_FEX0000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "vendor_boot.fex",
+        "original": 33554432,
+        "stored": 33554432,
+        "subtype": "VENDOR_BOOT_FEX0"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vvendor_boot.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VVENDOR_BOOT_FEX"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "super.fex",
+        "original": 2479144148,
+        "stored": 2479144160,
+        "subtype": "SUPER_FEX0000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vsuper.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VSUPER_FEX000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "misc.fex",
+        "original": 16777216,
+        "stored": 16777216,
+        "subtype": "MISC_FEX00000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vmisc.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VMISC_FEX0000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "vbmeta.fex",
+        "original": 4096,
+        "stored": 4096,
+        "subtype": "VBMETA_FEX000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vvbmeta.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VVBMETA_FEX00000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "vbmeta_system.fex",
+        "original": 4096,
+        "stored": 4096,
+        "subtype": "VBMETA_SYSTEM_FE"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vvbmeta_system.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VVBMETA_SYSTEM_F"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "vbmeta_vendor.fex",
+        "original": 4096,
+        "stored": 4096,
+        "subtype": "VBMETA_VENDOR_FE"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vvbmeta_vendor.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VVBMETA_VENDOR_F"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "dtbo.fex",
+        "original": 2097152,
+        "stored": 2097152,
+        "subtype": "DTBO_FEX00000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Vdtbo.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VDTBO_FEX0000000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "Reserve0.fex",
+        "original": 16777216,
+        "stored": 16777216,
+        "subtype": "RESERVE0_FEX0000"
+      },
+      {
+        "maintype": "RFSFAT16",
+        "name": "VReserve0.fex",
+        "original": 4,
+        "stored": 16,
+        "subtype": "VRESERVE0_FEX000"
+      }
+    ],
+    "firmware_id": 256,
+    "hardware_id": 256,
+    "header_version": 768,
+    "image_header_size": 1024,
+    "image_size": 2739615744,
+    "layout": "v3",
+    "num_files": 48,
+    "pid": 4660,
+    "vid": 34627
+  },
+  "input": {
+    "name": "HY300_T08_OTA_2024-04-19-2028.img",
+    "sha256": "97b653c76b79cef1c2d1d7b703c419b4082248510e8fbabfce2a077d4339453c",
+    "size": 2739615744
+  },
+  "layout_consistency": [],
+  "mips_files": {
+    "display_bin": {
+      "sha256": "22a7df113fce3fa182926268de8c7551a107f0c3bc2932f0940bd58b8f424835",
+      "size": 1252128,
+      "source": "vendor:/etc/display/mips/"
+    },
+    "sources": {
+      "vendor:/etc/display/mips/": [
+        {
+          "name": "LogoRegData.bin",
+          "sha256": "ea915abda2acc5452f7494de4c59a3fed1ea02b1cec382e5e1d389d51ab6113c",
+          "size": 14388
+        },
+        {
+          "name": "ProjectID_0x0001.TSE",
+          "sha256": "93258b453b8cf4d33ef49df24a9413aa2d6263367057d53dd7b907330b9aca85",
+          "size": 19992
+        },
+        {
+          "name": "ProjectID_0x0012.TSE",
+          "sha256": "8077c4465ff09d72817a36b32c00f4cec36b5d54f9bb6073b64480b039a4f39d",
+          "size": 48952
+        },
+        {
+          "name": "ProjectID_0x0013.TSE",
+          "sha256": "56ab808d776c063101d8e93be277a7802f07a4acc03fb99b678d78aba5e6431b",
+          "size": 47880
+        },
+        {
+          "name": "ProjectID_0x0014.TSE",
+          "sha256": "f87c1d990bcd4543c1d8a11254316d18390ef39d3412d650a53e542b53da2d91",
+          "size": 47880
+        },
+        {
+          "name": "ProjectID_0x0015.TSE",
+          "sha256": "be1622babeada99b8ccf79d361b4565752d30ede8cf0368e062b2ae8acfe3ba9",
+          "size": 47880
+        },
+        {
+          "name": "ProjectID_0x0016.TSE",
+          "sha256": "9acba93639323d35d1b9360ac6758b2b7b4619ae04c45fc4fa0ccd04decee55a",
+          "size": 47880
+        },
+        {
+          "name": "ProjectID_0x0020.TSE",
+          "sha256": "e8090e174ecb5d150248f78e00033482f3778d6100a7701b8f0364dfc8dec342",
+          "size": 19992
+        },
+        {
+          "name": "ProjectID_0x0030.TSE",
+          "sha256": "1b8478fb6886ae8b3953733e385fec0917970958c472c1d13dd8ebda3842c340",
+          "size": 19992
+        },
+        {
+          "name": "ProjectID_0x0031.TSE",
+          "sha256": "a152f6da9d883a2a83c55f12f1778c0f92040900128c8f4a95119e20fa13d8d4",
+          "size": 19992
+        },
+        {
+          "name": "ProjectID_0x0032.TSE",
+          "sha256": "3129551510a9bb126aa239fe65d9e086f6569de843ae400bfa192bf3acece7e4",
+          "size": 19992
+        },
+        {
+          "name": "ProjectID_0x0033.TSE",
+          "sha256": "32bbb023bd37534b5a0622e23c78f47f7a5d3e2060e77d72106b2d517720185c",
+          "size": 19992
+        },
+        {
+          "name": "ProjectID_0x0034.TSE",
+          "sha256": "222d4b0e759ad0936a33a8d488613e5d6965148ff5adf7c074f41bfa46d56084",
+          "size": 19992
+        },
+        {
+          "name": "ProjectID_0x0035.TSE",
+          "sha256": "ce86f77021873552cddd4085c649343c98f2501afeb26f57216d416ce5f07c8c",
+          "size": 49008
+        },
+        {
+          "name": "database.TSE",
+          "sha256": "6d43b85a5880d34df0428f234c0c713ac1ca7ec28e551554137d967f60c380e4",
+          "size": 251184
+        },
+        {
+          "name": "display.bin",
+          "sha256": "22a7df113fce3fa182926268de8c7551a107f0c3bc2932f0940bd58b8f424835",
+          "size": 1252128
+        },
+        {
+          "name": "display_cfg.xml",
+          "sha256": "a271b11d6105c983c7602d8ad21608c0ba9186b996d5e7ec98aafa7eee0b5b07",
+          "size": 4758
+        },
+        {
+          "name": "pq_custom.TSE",
+          "sha256": "a6f8ac0c59f0c1644da0c40bcf523d77db1186685be762cb89a4a0ea19d66076",
+          "size": 15016
+        },
+        {
+          "name": "projecttable.TSE",
+          "sha256": "3b9abcb2bd548f874bfb22d1678bae88c904ba7df681e731251df34695f7a885",
+          "size": 1480
+        }
+      ]
+    }
+  },
+  "panel_config": {
+    "PanelDCLK": {
+      "reserve0": 62000000,
+      "vendor": 62000000
+    },
+    "PanelDualPort": {
+      "reserve0": 0,
+      "vendor": 0
+    },
+    "PanelHBP": {
+      "reserve0": 40,
+      "vendor": 40
+    },
+    "PanelHTotal": {
+      "reserve0": 1360,
+      "vendor": 1360
+    },
+    "PanelHeight": {
+      "reserve0": 720,
+      "vendor": 720
+    },
+    "PanelHsync": {
+      "reserve0": 20,
+      "vendor": 20
+    },
+    "PanelHsyncPol": {
+      "reserve0": 0,
+      "vendor": 0
+    },
+    "PanelVBP": {
+      "reserve0": 20,
+      "vendor": 20
+    },
+    "PanelVTotal": {
+      "reserve0": 760,
+      "vendor": 760
+    },
+    "PanelVsync": {
+      "reserve0": 2,
+      "vendor": 2
+    },
+    "PanelVsyncPol": {
+      "reserve0": 0,
+      "vendor": 0
+    },
+    "PanelWidth": {
+      "reserve0": 1280,
+      "vendor": 1280
+    },
+    "ProjectID": {
+      "reserve0": 52,
+      "vendor": 52
+    },
+    "default_backlight": {
+      "reserve0": 50,
+      "vendor": 50
+    },
+    "pwm_channel": {
+      "reserve0": 5,
+      "vendor": 5
+    },
+    "pwm_freq": {
+      "reserve0": 40000,
+      "vendor": 40000
+    },
+    "sources": {
+      "reserve0": "Reserve0.fex:panel_config.ini",
+      "vendor": "vendor:/etc/tvconfig/panel_config/panel_config.ini"
+    }
+  },
+  "reserve0_fat": {
+    "root": [
+      {
+        "is_dir": false,
+        "name": "panel_config.ini",
+        "size": 2513
+      },
+      {
+        "is_dir": false,
+        "name": "panel_config111.ini",
+        "size": 2708
+      }
+    ]
+  },
+  "sunxi_gpt": {
+    "entries": [
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 73728,
+        "last": 139263,
+        "name": "bootloader_a"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 139264,
+        "last": 204799,
+        "name": "bootloader_b"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 204800,
+        "last": 205311,
+        "name": "env_a"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 205312,
+        "last": 205823,
+        "name": "env_b"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 205824,
+        "last": 336895,
+        "name": "boot_a"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 336896,
+        "last": 467967,
+        "name": "boot_b"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 467968,
+        "last": 533503,
+        "name": "vendor_boot_a"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 533504,
+        "last": 599039,
+        "name": "vendor_boot_b"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 599040,
+        "last": 6890495,
+        "name": "super"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6890496,
+        "last": 6923263,
+        "name": "misc"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6923264,
+        "last": 6923519,
+        "name": "vbmeta_a"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6923520,
+        "last": 6923775,
+        "name": "vbmeta_b"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6923776,
+        "last": 6923903,
+        "name": "vbmeta_system_a"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6923904,
+        "last": 6924031,
+        "name": "vbmeta_system_b"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6924032,
+        "last": 6924159,
+        "name": "vbmeta_vendor_a"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6924160,
+        "last": 6924287,
+        "name": "vbmeta_vendor_b"
+      },
+      {
+        "attributes_hex": "0x8000a00000000000",
+        "first": 6924288,
+        "last": 6925311,
+        "name": "frp"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6925312,
+        "last": 6956031,
+        "name": "empty"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6956032,
+        "last": 6988799,
+        "name": "metadata"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 6988800,
+        "last": 7021567,
+        "name": "private"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 7021568,
+        "last": 7025663,
+        "name": "dtbo_a"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 7025664,
+        "last": 7029759,
+        "name": "dtbo_b"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 7029760,
+        "last": 7062527,
+        "name": "media_data"
+      },
+      {
+        "attributes_hex": "0x8000200000000000",
+        "first": 7062528,
+        "last": 7095295,
+        "name": "Reserve0"
+      },
+      {
+        "attributes_hex": "0x8000204000000000",
+        "first": 7095296,
+        "last": 15269854,
+        "name": "UDISK"
+      }
+    ],
+    "header": {
+      "disk_guid": "AB6F3888-569A-4926-9668-80941DCB40BC",
+      "entries": 25,
+      "entry_size": 128,
+      "first_usable": 73728,
+      "last_usable": 15269854
+    }
+  },
+  "sunxi_version": "2024-04-19 20:28:23",
+  "super": {
+    "partitions": [
+      {
+        "name": "product_a",
+        "size": 809185280
+      },
+      {
+        "name": "product_b",
+        "size": 0
+      },
+      {
+        "name": "system_a",
+        "size": 1582907392
+      },
+      {
+        "name": "system_b",
+        "size": 0
+      },
+      {
+        "name": "vendor_a",
+        "size": 114851840
+      },
+      {
+        "name": "vendor_b",
+        "size": 0
+      }
+    ],
+    "vendor_partition": "vendor_a"
+  },
+  "sys_config": {
+    "dram_para": {
+      "dram_clk": "640",
+      "dram_mr0": "0x1c70",
+      "dram_mr1": "0x40",
+      "dram_mr2": "0x18",
+      "dram_mr3": "0x0",
+      "dram_odt_en": "0x1",
+      "dram_para1": "0x000010f4",
+      "dram_para2": "0x0000",
+      "dram_tpr0": "0x004A2195",
+      "dram_tpr1": "0x02423190",
+      "dram_tpr10": "0x0",
+      "dram_tpr11": "0x44440000",
+      "dram_tpr12": "0x00005555",
+      "dram_tpr13": "0x34010100",
+      "dram_tpr2": "0x0008B061",
+      "dram_tpr3": "0xB4787896",
+      "dram_tpr4": "0x0",
+      "dram_tpr5": "0x48484848",
+      "dram_tpr6": "0x48",
+      "dram_tpr7": "0x1620121e",
+      "dram_tpr8": "0x0",
+      "dram_tpr9": "0x0",
+      "dram_type": "3",
+      "dram_zq": "0x7b7bfb"
+    },
+    "sections": [
+      "target",
+      "platform",
+      "box_start_os",
+      "card0_boot_para",
+      "card2_boot_para",
+      "twi2",
+      "dram_para",
+      "uart_para"
+    ],
+    "size": 1983
+  },
+  "sys_partition": [
+    {
+      "downloadfile": "boot-resource.fex",
+      "name": "bootloader_a",
+      "sectors": 65536,
+      "start_lba": 73728
+    },
+    {
+      "downloadfile": null,
+      "name": "bootloader_b",
+      "sectors": 65536,
+      "start_lba": 139264
+    },
+    {
+      "downloadfile": "env.fex",
+      "name": "env_a",
+      "sectors": 512,
+      "start_lba": 204800
+    },
+    {
+      "downloadfile": null,
+      "name": "env_b",
+      "sectors": 512,
+      "start_lba": 205312
+    },
+    {
+      "downloadfile": "boot.fex",
+      "name": "boot_a",
+      "sectors": 131072,
+      "start_lba": 205824
+    },
+    {
+      "downloadfile": null,
+      "name": "boot_b",
+      "sectors": 131072,
+      "start_lba": 336896
+    },
+    {
+      "downloadfile": "vendor_boot.fex",
+      "name": "vendor_boot_a",
+      "sectors": 65536,
+      "start_lba": 467968
+    },
+    {
+      "downloadfile": null,
+      "name": "vendor_boot_b",
+      "sectors": 65536,
+      "start_lba": 533504
+    },
+    {
+      "downloadfile": "super.fex",
+      "name": "super",
+      "sectors": 6291456,
+      "start_lba": 599040
+    },
+    {
+      "downloadfile": "misc.fex",
+      "name": "misc",
+      "sectors": 32768,
+      "start_lba": 6890496
+    },
+    {
+      "downloadfile": "vbmeta.fex",
+      "name": "vbmeta_a",
+      "sectors": 256,
+      "start_lba": 6923264
+    },
+    {
+      "downloadfile": null,
+      "name": "vbmeta_b",
+      "sectors": 256,
+      "start_lba": 6923520
+    },
+    {
+      "downloadfile": "vbmeta_system.fex",
+      "name": "vbmeta_system_a",
+      "sectors": 128,
+      "start_lba": 6923776
+    },
+    {
+      "downloadfile": null,
+      "name": "vbmeta_system_b",
+      "sectors": 128,
+      "start_lba": 6923904
+    },
+    {
+      "downloadfile": "vbmeta_vendor.fex",
+      "name": "vbmeta_vendor_a",
+      "sectors": 128,
+      "start_lba": 6924032
+    },
+    {
+      "downloadfile": null,
+      "name": "vbmeta_vendor_b",
+      "sectors": 128,
+      "start_lba": 6924160
+    },
+    {
+      "downloadfile": null,
+      "name": "frp",
+      "sectors": 1024,
+      "start_lba": 6924288
+    },
+    {
+      "downloadfile": null,
+      "name": "empty",
+      "sectors": 30720,
+      "start_lba": 6925312
+    },
+    {
+      "downloadfile": null,
+      "name": "metadata",
+      "sectors": 32768,
+      "start_lba": 6956032
+    },
+    {
+      "downloadfile": null,
+      "name": "private",
+      "sectors": 32768,
+      "start_lba": 6988800
+    },
+    {
+      "downloadfile": "dtbo.fex",
+      "name": "dtbo_a",
+      "sectors": 4096,
+      "start_lba": 7021568
+    },
+    {
+      "downloadfile": null,
+      "name": "dtbo_b",
+      "sectors": 4096,
+      "start_lba": 7025664
+    },
+    {
+      "downloadfile": null,
+      "name": "media_data",
+      "sectors": 32768,
+      "start_lba": 7029760
+    },
+    {
+      "downloadfile": "Reserve0.fex",
+      "name": "Reserve0",
+      "sectors": 32768,
+      "start_lba": 7062528
+    },
+    {
+      "downloadfile": null,
+      "name": "UDISK",
+      "sectors": 0,
+      "start_lba": 7095296
+    }
+  ],
+  "vendor_build_prop": {
+    "ro.product.vendor.brand": "ADT-3",
+    "ro.product.vendor.model": "ADT-3",
+    "ro.product.vendor.name": "adt3",
+    "ro.vendor.build.date": "Fri Apr 19 20:12:20 CST 2024",
+    "ro.vendor.build.fingerprint": "ADT-3/adt3/adt3:10/QTT1.200116.002.B6/6245789:user/release-keys"
+  }
+}
