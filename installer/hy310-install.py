@@ -46,7 +46,8 @@ from h713.dump import (choose_dump, dump_full, dump_small, verify_dump,     # no
                        write_manifest)
 from h713.env import ENV_CARRY_OVER                                        # noqa: E402
 from h713.fel import fel_instructions, fel_present, fel_tool                # noqa: E402
-from h713.identify import identify_device, report_device                    # noqa: E402
+from h713.identify import identify, report_device                           # noqa: E402
+from h713.profiles import PROFILES                                         # noqa: E402
 from h713.install import ask, confirm, image_package, write_package         # noqa: E402
 from h713.log import console                                               # noqa: E402
 from h713.stock import restore_stock                                       # noqa: E402
@@ -191,6 +192,21 @@ def main(argv=None):
     return _arbeiten(args, pfad)
 
 
+def _declared_project(ident):
+    """The project id the board declares in Reserve0's panel_config.ini (decimal there), as the
+    "0x.." string U-Boot's h713_project expects -- or None when the identification saw none."""
+    pc = (ident.get("facts") or {}).get("panel_config") or {}
+    pid = pc.get("ProjectID")
+    if isinstance(pid, dict):
+        for src in ("reserve0", "vendor"):
+            v = pid.get(src)
+            if isinstance(v, int) and v > 0:
+                return "0x%02x" % v
+    elif isinstance(pid, int) and pid > 0:
+        return "0x%02x" % pid
+    return None
+
+
 def _arbeiten(args, pfad):
     schreiben = not (args.dry_run or args.nur_abzug)
     platte = Disk(pfad, writable=schreiben)
@@ -205,9 +221,19 @@ def _arbeiten(args, pfad):
         # auf einer unbekannten Firmware raten.
         if not args.ohne_erkennung:
             console.step("1b", "Geraet erkennen")
-            erk = identify_device(platte, args.extraktor)
-            if not report_device(erk, writing=schreiben) and schreiben:
+            # Stage 2 C1: the identification uses every feature of the profiles (not one string),
+            # never writes, and hands the installer what our layout no longer carries as
+            # partitions -- the profile, the device-unique regions, the declared project id.
+            ident = identify(platte)
+            if not report_device(ident, writing=schreiben) and schreiben:
                 return 10
+            args._profile = PROFILES.get(ident["profile"]) if ident.get("profile") else None
+            project = _declared_project(ident)
+            args._env_keys = {"h713_project": project} if project else {}
+            if args.restore_stock and ident["regions"].get("private"):
+                # The vendor image never brings 'private'; the restore promises not to touch it,
+                # and the lock makes that promise hard (stage 2 C8).
+                platte.lock_regions({"private": ident["regions"]["private"]})
         if platte.sectors != SECTORS_EXPECTED:
             console.error("%s hat %d Sektoren, erwartet %d -- falsches Laufwerk?"
                      % (pfad, platte.sectors, SECTORS_EXPECTED))
@@ -236,13 +262,15 @@ def _arbeiten(args, pfad):
             console.info("Der Secure Storage (LBA %d..%d) bleibt dabei unberuehrt."
                    % (LOCK_FIRST, LOCK_LAST))
             if args.dry_run:
-                restore_stock(platte, args.restore_stock, args.extraktor, dry_run=True, data_dir=HERE)
+                restore_stock(platte, args.restore_stock, args.extraktor, dry_run=True, data_dir=HERE,
+                              profile=getattr(args, "_profile", None))
                 console.info("Trockenlauf -- nichts geschrieben.")
                 return 0
             if not confirm("Das ueberschreibt die eMMC mit Android."):
                 return 1
             t0 = time.time()
-            n, parts = restore_stock(platte, args.restore_stock, args.extraktor, data_dir=HERE)
+            n, parts = restore_stock(platte, args.restore_stock, args.extraktor, data_dir=HERE,
+                                     profile=getattr(args, "_profile", None))
             console.ok("%.0f MiB in %s geschrieben" % (mib(n), dauer(time.time() - t0)))
             console.info("")
             console.info("Jetzt Strom abziehen und wieder einstecken.")

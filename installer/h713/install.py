@@ -314,6 +314,66 @@ def confirm(what):
     return ask("  Zum Fortfahren JA eintippen: ", "") == "ja"
 
 
+def _image_env_block(tab, work, part_file, log):
+    """Locate the U-Boot environment inside the working copy of the part that carries the
+    placeholders. Returns (offset, env dict) or None (no block, wrong part) -- a broken CRC
+    is reported and returned as (offset, None)."""
+    block = (tab.get("bausteine") or {}).get("env")
+    if not block:
+        return None
+    part_lba = next((t["lba"] for t in tab["teile"] if t["datei"] == part_file), None)
+    if part_lba is None or block["lba"] < part_lba:
+        log.warn("Umgebung liegt nicht im Teil mit den Platzhaltern -- Uebernahme uebersprungen")
+        return None
+    off = (block["lba"] - part_lba) * SECT
+    with open(work, "rb") as f:
+        f.seek(off)
+        env = env_read(f.read(ENV_BYTES))
+    if env is None:
+        log.error("Umgebung im Abbild bei Offset 0x%x hat keinen gueltigen CRC" % off)
+    return off, env
+
+
+def _store_image_env(work, off, env, log):
+    """Write `env` back into the working copy at `off` and read it back. Returns 0 or 11."""
+    with open(work, "r+b") as f:
+        f.seek(off)
+        f.write(env_write(env))
+        f.flush()
+        os.fsync(f.fileno())
+        f.seek(off)
+        if env_read(f.read(ENV_BYTES)) != env:
+            log.error("Umgebung nach dem Schreiben nicht wie erwartet")
+            return 11
+    return 0
+
+
+def write_env_keys(tab, work, part_file, keys, log=console):
+    """Set the given keys in the image's environment (working copy of part B) -- stage 2 C9:
+    what the board declared and our layout no longer carries as a partition, e.g.
+    h713_project from Reserve0's panel_config.ini (doku/121, umbau/plan/stufe-2.md). Returns 0,
+    11 on a broken environment; nothing happens when the image has no environment block."""
+    if not keys:
+        return 0
+    found = _image_env_block(tab, work, part_file, log)
+    if found is None:
+        log.info("Environment: this image carries none -- %s not stored" % ", ".join(sorted(keys)))
+        return 0
+    off, env = found
+    if env is None:
+        return 11
+    changed = {k: v for k, v in keys.items() if env.get(k) != v}
+    if not changed:
+        log.ok("Environment: %s already set as declared" % ", ".join("%s=%s" % kv for kv in sorted(keys.items())))
+        return 0
+    env.update(changed)
+    rc = _store_image_env(work, off, env, log)
+    if rc == 0:
+        log.ok("Environment: stored what the board declares: %s"
+               % ", ".join("%s=%s" % kv for kv in sorted(changed.items())))
+    return rc
+
+
 def carry_env(args, tab, work, part_file, log=console):
     """Write the intent keys of the old environment into the new one -- in the
     working copy of part B, before anything goes onto the eMMC.
@@ -451,6 +511,9 @@ def write_package(args, disk, path, directory, tab, here=None):
                 return 9
             console.ok("%d Platzhalter gefuellt und zurueckgelesen -- alle gleich" % len(table))
             rc = carry_env(args, tab, work, part_file, console)
+            if rc:
+                return rc
+            rc = write_env_keys(tab, work, part_file, getattr(args, "_env_keys", None) or {}, console)   # stage 2 C9
             if rc:
                 return rc
 
