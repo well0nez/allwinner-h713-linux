@@ -25,7 +25,7 @@ from h713.log import Log
 from h713.source import Source
 from h713.util import crc32
 
-SECTOR = 512
+from h713.util import SECTOR   # one definition for the whole package
 GPT_ENTRY_SIZE = 128
 GPT_HEADER_LBA = 1
 GPT_ENTRIES = 26                 # M:81 "mehr Eintraege reichten in die SPL" -- 128 entries

@@ -14,7 +14,7 @@ import struct
 
 from h713.source import SparseSource
 
-SECTOR = 512                                # `gpt.py` (package B2) carries the same constant
+from h713.util import SECTOR   # one definition for the whole package
 
 SPARSE_MAGIC = 0xed26ff3a
 _CHUNK_RAW, _CHUNK_FILL, _CHUNK_DONT_CARE, _CHUNK_CRC32 = 0xCAC1, 0xCAC2, 0xCAC3, 0xCAC4

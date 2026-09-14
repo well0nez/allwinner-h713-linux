@@ -14,7 +14,7 @@ from typing import Optional
 from h713.log import Abort, Log
 from h713.source import ChainSource, NullSource, Source
 
-SECTOR = 512                                # `gpt.py` (package B2) carries the same constant
+from h713.util import SECTOR   # one definition for the whole package
 
 
 class LpSuper:
