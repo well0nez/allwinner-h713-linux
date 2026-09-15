@@ -279,6 +279,7 @@ def build(args, here=None):
         if not os.path.isfile(p):
             raise SystemExit("%s: %s not found" % (w, p))
 
+    test_for = getattr(args, "test_for", None)
     target = os.path.abspath(args.out)
     directory = os.path.dirname(target) or "."
     os.makedirs(directory, exist_ok=True)
@@ -456,8 +457,14 @@ def build(args, here=None):
             "dd": "dd if=%s of=/dev/sdX bs=512 seek=%d conv=fsync"
                   % (os.path.basename(file_name), lba),
         })
-    data = {
-        "format": "hy310-abbild-tabelle",
+    data = {"format": "hy310-abbild-tabelle"}
+    # Stage 5: an image built on purpose for a board nobody has run this system on.
+    # `h713-install` writes it only on that board and only when asked for it with
+    # --test-image. A normal build passes no --test-for, the key stays out of the
+    # table, and the table is byte for byte the one built before.
+    if test_for:
+        data["test_for"] = test_for
+    data.update({
         "version": 1,
         "werkzeug": "h713-mkimage " + VERSION,     # key stays (stage 4), the tool is renamed in stage 3
         "erzeugt": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -503,7 +510,7 @@ def build(args, here=None):
         # leaves the file empty (line breaks only) -- valid.
         "platzhalter_nutzer": user,
         "platzhalter_info": info,
-    }
+    })
     with open(t_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False, sort_keys=False)
         f.write("\n")
@@ -540,6 +547,11 @@ def check(table_file, log=console):
         d = json.load(f)
     if d.get("format") != "hy310-abbild-tabelle":
         raise SystemExit("%s is not an image table" % table_file)
+    if d.get("test_for"):
+        log.warn("TEST IMAGE for the board profile '%s' -- built for one board that nobody has "
+                 "run this system on." % d["test_for"])
+        log.info("  Only its owner flashes it, with a full dump as the way back: "
+                 "h713-install install ... --test-image")
     bad = 0
 
     log.step(1, "pieces: size and checksum")
@@ -691,6 +703,21 @@ def readme_text(d):
     b(BETA_WARNING.rstrip())
     b("-" * 78)
     b("")
+    if d.get("test_for"):
+        b("")
+        b("TEST IMAGE for %s" % d["test_for"])
+        b("-" * (15 + len(d["test_for"])))
+        b("")
+        b("This image was built for one board that nobody has run this system on.")
+        b("Only its owner flashes it, with a full dump as the way back, and only")
+        b("with the flag that says so:")
+        b("")
+        b("  h713-install install . --test-image")
+        b("")
+        b("h713-install refuses it on any other board: it carries the device tree,")
+        b("the U-Boot and the panel settings of %s and nothing else." % d["test_for"])
+        b("Take the full dump first (h713-install dump --full) -- that dump is what")
+        b("puts your device back the way it was.")
     b("")
     b("What is here")
     b("------------")

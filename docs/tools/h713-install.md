@@ -30,6 +30,7 @@ USB block device, so it needs Python 3.9+ and no other package, on Linux or Wind
 h713-install identify [DEVICE|DUMP|IMAGE] [--json]
 h713-install dump [--full|--small] [-o DIR] [--with-vendor]
 h713-install install RELEASE-DIR|TABLE.json [--ssh-key FILE] [--dump DIR] [--vendor DIR] [--fresh-env]
+                                            [--test-image]
 h713-install restore DUMP.img
 h713-install restore-stock UPDATE.img
 h713-install extract INPUT -o DIR
@@ -40,7 +41,7 @@ common: --device PATH  --sunxi-fel PATH  --uboot PATH  --no-write  --skip-identi
 |---|---|---|
 | `identify` | prints the profile row of a device, a dump or a vendor firmware image; given a release table (`*.tabelle.json`), lists the pieces and whether they lie next to it | writes nothing |
 | `dump` | saves what exists only on this device; `--with-vendor` also runs the extractor | writes nothing |
-| `install` | dump, extract, fill, write, compare back | writes |
+| `install` | dump, extract, fill, write, compare back; `--test-image` accepts an image built for one untested board, on that board only | writes |
 | `restore` | writes a previous full dump back | writes |
 | `restore-stock` | rebuilds the stock partition table and writes the vendor firmware back | writes |
 | `extract` | hands everything behind it to [`h713-extract`](h713-extract.md) | writes nothing |
@@ -51,6 +52,27 @@ common: --device PATH  --sunxi-fel PATH  --uboot PATH  --no-write  --skip-identi
 nothing is written. `--yes` answers the confirmation in advance, for scripted runs without a terminal.
 Both belong to the common set, which every subcommand but `extract` takes — `extract` hands its whole
 tail on. Exit codes are listed in `h713-install --help`.
+
+## Test images
+
+A board nobody has run gets no release image — that rule has not moved. What it does get, once it
+is described well enough to build for, is a **test image**: built on purpose with
+`release/build-all.sh --test-image`, named `…-TEST`, and marked in its table with
+`test_for: "<profile>"`. It is meant for one person, the owner of that board.
+
+`install` writes such an image only when both hold:
+
+- `--test-image` is on the command line, and
+- the device in front of it identifies as exactly that profile.
+
+Either one missing and the run stops before the eMMC is touched, naming which board the image was
+built for, which board was found, and that a full dump (`dump --full`) is the way back. `--no-write`
+shows the same decision and writes nothing; `--skip-identify` does not open the door, because the
+whole point is that the board must be identified. A normal image is unaffected: its table carries no
+`test_for`, and everything about it behaves as before.
+
+Passing `--test-image` to an image that is not marked does nothing, and says so in one line. A green
+report from the owner is what turns the board `verified` and its next build into a real release.
 
 ## The two dump sizes
 

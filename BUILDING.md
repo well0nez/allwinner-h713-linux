@@ -66,6 +66,15 @@ run. Four of the five now carry an installer profile read out of a stock image; 
 board, it does not test it, and `--board` still refuses them. The table is in
 [STATUS.md](STATUS.md), *Boards*.
 
+There is one named way past that refusal, and it does not weaken it: `--test-image`. A board that is
+`partial` or `profile-only` but has a `PROFILE`, a `KERNEL_DTB` and a U-Boot base can be built for on
+purpose, as a **test image** — `<IMAGE_NAME>-<version>-TEST`, marked `test_for: "<profile>"` in its
+table, saying so in its banner, its stamp and its README. `h713-install` writes it only on that very
+board and only with its own `--test-image` ([docs/tools/h713-install.md](docs/tools/h713-install.md)).
+It is a build for one person — the board's owner, who holds a full dump as the way back — not a
+release, and it changes nothing we claim: the board's line stays `partial` or `profile-only` until
+that owner reports a green run.
+
 What a board below `verified` does get is everything that reads and nothing that writes: an installer
 profile wherever a stock image or a dump exists for it, its DRAM block written down in
 `boards/<id>/uboot.config`, and the read-only probe, which runs from FEL on any H713 without touching
