@@ -18,6 +18,7 @@ device that has ever been touched before trusting it.
 | `serverip` | `192.168.8.123` | TFTP/NFS server `boot_net` talks to | development only |
 | `nfsroot` | `/srv/h713-rootfs` | NFS export `boot_net` mounts as root | development only |
 | `bootargs_base` | `console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0` | kernel command line shared by both boot paths | rarely |
+| `bootcmd` | `h713_disp init ${h713_project} logo; run boot_${h713_boot}; run boot_net` | bring the display up with the boot logo, then boot the path `h713_boot` names, falling through to the network | drop the word `logo` to boot with a black panel until Linux; a missing `/boot/bootlogo.bmp` only costs a warning |
 
 **`serverip`, `nfsroot` and `bootfile` are development defaults, not a general feature:** they point at
 the bench network this project was built on and resolve to nothing anywhere else. A device shipped to a
