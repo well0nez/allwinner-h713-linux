@@ -1,17 +1,17 @@
-# Der Composition-Block bei `0x05000000` — gelesen am 07.09.2026
+# Der Composition-Block bei `0x05000000` - gelesen am 07.09.2026
 
-**Herkunft der Frage:** cstenger, Commit `8f1aadd` „display: the fetcher was never the problem —
+**Herkunft der Frage:** cstenger, Commit `8f1aadd` „display: the fetcher was never the problem -
 composition is at 852x480" und der Handoff `74fa0f1` vom 06.09.2026. Sein Befund: **Composition treibt
 das Panel, AFBD dimensioniert die Ausgabe nicht.** Sein Bild blieb korrupt, obwohl sein AFBD-Block
-byteidentisch zu einem funktionierenden Abzug war — weil siebzehn Register bei `0x05000000` auf 852×480
+byteidentisch zu einem funktionierenden Abzug war - weil siebzehn Register bei `0x05000000` auf 852×480
 standen, während AFBD 1280×720 holte. Das erklärt bei ihm auch, warum Änderungen an der AFBD-Geometrie
 den Bildausschnitt nie bewegt haben.
 
-**Wie weit unsere Abzüge wirklich reichen — mit einer Korrektur.** Paket K5 schreibt, alle unsere Abzüge
+**Wie weit unsere Abzüge wirklich reichen - mit einer Korrektur.** Paket K5 schreibt, alle unsere Abzüge
 endeten bei `0x050000FC`. **Das stimmt nicht**: `dump_state.py` liest den Block `DE0` als
 `(0x05000000, 0x400)`, der Abzug `nacht-00-vor-A.txt` enthält 256 Zeilen und endet bei `0x050003FC`.
 
-Damit war die **Hälfte** des Composition-Blocks längst erfasst — Skalierverhältnis `0x05000174`, Geometrie
+Damit war die **Hälfte** des Composition-Blocks längst erfasst - Skalierverhältnis `0x05000174`, Geometrie
 `0x05000224` und die beiden DE-Schreibkanäle `0x05000278`/`0x050002B8` stehen in jedem unserer Abzüge.
 Nur zwei Dinge fehlten: die **Pitch-Register ab `0x05000444`** (jenseits von `0x400`) und der **PQ-Block
 bei `0x05001000…0x050015FC`** aus doku/85. Beides ist unten nachgetragen und ab jetzt Teil des Abzugs.
@@ -23,7 +23,7 @@ Bild vollflächig und farbrichtig auf der Wand.
 
 | Register | unser Wert | Deutung | cstenger (kaputt) |
 |---|---|---|---|
-| `0x05000000` | `0xFFFFFFFF` | — | — |
+| `0x05000000` | `0xFFFFFFFF` | - | - |
 | `0x05000030` | `0x00000C00` | | |
 | `0x050000F0` | `0x63006060` | | |
 | **`0x05000174`** | **`0x00600060`** | **96/96 = 1:1, keine Skalierung** | `0x002B002B` = 43/64 |
@@ -45,7 +45,7 @@ Bild vollflächig und farbrichtig auf der Wand.
 
 ## Was das für uns heißt
 
-1. **Unser Composition-Block steht richtig** — 1920×1080, Skalierung 1:1. Die Firmware stellt ihn für den
+1. **Unser Composition-Block steht richtig** - 1920×1080, Skalierung 1:1. Die Firmware stellt ihn für den
    HDMI-Eingang selbst ein; wir haben ihn nie angefasst und müssen es auch nicht. Das ist der Grund, warum
    unser Bild vollflächig kommt und cstengers nicht: bei ihm verhindert der DECD-Workaround
    (`ring_writes_max = 1`), dass die Firmware Composition je umprogrammiert.
@@ -55,7 +55,7 @@ Bild vollflächig und farbrichtig auf der Wand.
    (`0x05000178/1B8/278/2B8`). cstengers „Composition-Block" und unsere „DE-Schreibkanäle" sind also
    dasselbe Registerfenster, aus zwei Richtungen benannt. Beide Bezeichnungen meinen `0x05000000`.
 4. **`dump_state.py` sollte erweitert werden.** Ein Fenster, das das Panel dimensioniert, gehört in den
-   Standardabzug — sonst sucht der Nächste wieder am falschen Ende. Dasselbe gilt für den PQ-Block bei
+   Standardabzug - sonst sucht der Nächste wieder am falschen Ende. Dasselbe gilt für den PQ-Block bei
    `0x05001000` (doku/85).
 
 ## Nicht geprüft

@@ -1,6 +1,6 @@
 # h713-install
 
-`h713-install` turns a stock HY310/L018 into this system, entirely from the user's PC — nothing
+`h713-install` turns a stock HY310/L018 into this system, entirely from the user's PC - nothing
 proprietary is downloaded, and nothing runs on the device beyond U-Boot. It talks to the eMMC as a plain
 USB block device, so it needs Python 3.9+ and no other package, on Linux or Windows. It replaces
 `hy310-install.py`, which stays one release as a forwarder.
@@ -10,17 +10,17 @@ USB block device, so it needs Python 3.9+ and no other package, on Linux or Wind
 1. **FEL.** Hold reset, plug in power. No case to open, no pads, no soldering.
 2. **`h713-install` loads U-Boot over USB** (`sunxi-fel uboot`, a few seconds, no byte written to the
    eMMC yet) and has it export the eMMC as a USB mass-storage drive. From here on the only way back to
-   FEL is cutting power — which is the end of the procedure anyway.
+   FEL is cutting power - which is the end of the procedure anyway.
 3. **The device is identified and dumped**, before anything is written. A board without a **verified**
-   profile is refused rather than guessed at — that includes a board we hold a profile for but nobody has
+   profile is refused rather than guessed at - that includes a board we hold a profile for but nobody has
    reported a green run on. There is no flag to skip the dump: the choice is which size, not whether. Only
-   a device that already runs this system is spared — nothing stock-specific is left on it.
+   a device that already runs this system is spared - nothing stock-specific is left on it.
 4. **The proprietary parts are extracted from that dump** with [`h713-extract`](h713-extract.md) and
    filled into the image's placeholders on the PC, together with the user's SSH public key if one was
    given. The filled copy is read back before anything goes onto the eMMC, in one pass.
 5. **Verified**: a full dump is sampled against the device before extraction starts; after writing, every
    part is spot-checked and the secure storage compared byte for byte against the dump. A mismatch is
-   reported as a clear failure — "do not reboot, ask" — never as a quiet success.
+   reported as a clear failure - "do not reboot, ask" - never as a quiet success.
 6. **Power off and back on**, then press the power key: the device no longer boots by itself on power-up,
    by design ([docs/uboot/power-gate.md](../uboot/power-gate.md)).
 
@@ -50,12 +50,12 @@ common: --device PATH  --sunxi-fel PATH  --uboot PATH  --no-write  --skip-identi
 `sunxi-fel` lying next to each other, and unpacks `*.img.zst` parts itself when `zstd` is on the PC
 (`--uboot` and `--sunxi-fel` override). `--no-write` is the one word for "rehearse": everything is read,
 nothing is written. `--yes` answers the confirmation in advance, for scripted runs without a terminal.
-Both belong to the common set, which every subcommand but `extract` takes — `extract` hands its whole
+Both belong to the common set, which every subcommand but `extract` takes - `extract` hands its whole
 tail on. Exit codes are listed in `h713-install --help`.
 
 ## Test images
 
-A board nobody has run gets no release image — that rule has not moved. What it does get, once it
+A board nobody has run gets no release image - that rule has not moved. What it does get, once it
 is described well enough to build for, is a **test image**: built on purpose with
 `release/build-all.sh --test-image`, named `…-TEST`, and marked in its table with
 `test_for: "<profile>"`. It is meant for one person, the owner of that board.
@@ -76,7 +76,7 @@ report from the owner is what turns the board `verified` and its next build into
 
 ## The two dump sizes
 
-Both land in one directory — `h713-dump` unless `-o`/`--dump` says otherwise — with `MANIFEST.json`
+Both land in one directory - `h713-dump` unless `-o`/`--dump` says otherwise - with `MANIFEST.json`
 and a `README.txt` naming every file and the command that puts it back. A dump made by v0.5-beta keeps
 working: where `emmc-full.img` or `extract/` is missing, the tool reads the old `emmc-voll.img` / `extrakt/`
 and says so. Only the full dump is a way back to Android.
@@ -88,8 +88,8 @@ and says so. Only the full dump is a way back to Android.
 
 ## Safety nets
 
-Before the first byte is written the tool prints the beta warning and requires **`YES` typed out** — not a
-`[y/N]` prompt — because a fast keypress is exactly the failure mode a full write should not allow. `JA`
+Before the first byte is written the tool prints the beta warning and requires **`YES` typed out** - not a
+`[y/N]` prompt - because a fast keypress is exactly the failure mode a full write should not allow. `JA`
 is accepted for one more release.
 
 GPT partition names starting `hy310-` mean the device already runs this system; a stock layout is matched
@@ -98,12 +98,12 @@ our own layout the intent keys `h713_gate` and `h713_boot` are carried over from
 environment and the declared project id is written as `h713_project`; everything else comes from the image,
 so a stale setting cannot silently survive an upgrade. `--fresh-env` carries nothing over.
 
-The secure storage region is never written, whatever you pass — the image itself has a gap there, so even
+The secure storage region is never written, whatever you pass - the image itself has a gap there, so even
 a raw `dd` from someone bypassing this tool cannot reach it (see [`h713-mkimage`](h713-mkimage.md)).
 
 `restore-stock` rebuilds the original GPT from the image's own `sys_partition.fex`. Partitions the image
 brings no file for are left alone rather than zeroed where the board profile lists them under
-`preserve_on_restore` — `private`, `Reserve0*`, `media_data` and both bootloader slots on the HY310. An
+`preserve_on_restore` - `private`, `Reserve0*`, `media_data` and both bootloader slots on the HY310. An
 image without a `mips/` directory does not get to write over a bootloader partition that has one: the
 stock U-Boot reads the display firmware from the slot `misc` selects.
 
@@ -111,7 +111,7 @@ stock U-Boot reads the display firmware from the slot `misc` selects.
 
 The steps above ran on a device with the German command line of v0.5-beta ([STATUS.md](../../STATUS.md)).
 The English subcommands are the same steps behind a new front, but that front is **unverified**: no run
-over `h713-install install` has happened on hardware yet. The Windows path is unverified too — the tool is
+over `h713-install install` has happened on hardware yet. The Windows path is unverified too - the tool is
 written for it and refuses nothing, and nobody has run it. Every German switch of v0.5-beta
 (`--abbild`, `--abzug`, `--nur-abzug`, `--dry-run` and the rest) is still accepted for one release and
 prints one line with its new name.

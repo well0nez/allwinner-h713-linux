@@ -30,7 +30,7 @@ h713-tv ctl rpc NAME [ARG...]               # roher Firmware-RPC, nur Diagnose
 Startoptionen der Unit (`/etc/systemd/system/h713-tv@.service`): `-p PRESET` (Vorgabe `standard`, `none`),
 `-g LUT` (Vorgabe `/usr/local/share/h713-tv/gamma-standard.bin`, `none`).
 
-**Zuspieler (Laptop, HDMI-2) umschalten** — Rate ist Pflicht, sonst nimmt xrandr 120-Hz-Varianten:
+**Zuspieler (Laptop, HDMI-2) umschalten** - Rate ist Pflicht, sonst nimmt xrandr 120-Hz-Varianten:
 
 ```bash
 bash analyse/hdmi-seq/wechsel.sh 1280x1024 NAME 60.02    # eDP aus, HDMI-2 auf Modus, Register + Ring + Foto
@@ -106,10 +106,10 @@ podman exec -u root h713-build apt-get install -y --no-install-recommends \
   python3-setuptools python3-pyelftools
 ```
 
-(`python3-setuptools` braucht U-Boots pylibfdt-Bau — fehlte im Rezept, 10.09. ergänzt. Nach jedem Neuerzeugen des Containers gehört
+(`python3-setuptools` braucht U-Boots pylibfdt-Bau - fehlte im Rezept, 10.09. ergänzt. Nach jedem Neuerzeugen des Containers gehört
 auch der LLVM-20-Schritt unten wieder dazu; ein frischer Container hat nur LLVM 18 und bricht bei `u-boot.srec` ab.)
 
-**LLVM 18 reicht nicht** — `llvm-objcopy` kann erst ab 19 SREC ausgeben, U-Boot
+**LLVM 18 reicht nicht** - `llvm-objcopy` kann erst ab 19 SREC ausgeben, U-Boot
 bricht bei `u-boot.srec` ab. LLVM 20 aus `apt.llvm.org` genügt, seine gepinnte
 22 ist nicht nötig:
 
@@ -167,8 +167,8 @@ mmc write 0x48000000 <lba> <blocks>
 
 ```
 gpio status PB5           Zustand lesen
-gpio set PB5              auf high — Lüfter und Backlight
-gpio set PL3              auf high — USB-/Kameraversorgung
+gpio set PB5              auf high - Lüfter und Backlight
+gpio set PL3              auf high - USB-/Kameraversorgung
 ```
 
 **Niemals `gpio clear PB5`.** Der Lüfter stoppt.
@@ -214,7 +214,7 @@ h713_i2c scan <scl> <sda>        andere PH-Pins
 h713_i2c read <addr> <count>     lesen ohne Registerschreiben
 ```
 
-Bitgebangt, ohne CCU-Gate und ohne Devicetree-Knoten — läuft unabhängig vom
+Bitgebangt, ohne CCU-Gate und ohne Devicetree-Knoten - läuft unabhängig vom
 Display-Zustand. `0x18` ist der stk8ba58 und der Beweis, dass der Bus geht.
 
 ### Display
@@ -234,8 +234,8 @@ h713_disp dump                   alle Display-Registerblöcke
 Testbilder über `panel-test <id> <modus>`:
 
 ```
-fb-quad          vier Vollton-Quadranten — übersteht Unschärfe, zählt die Kachelung
-fb-grid          Rand, Diagonalen, Ecken — braucht ein scharfes Foto
+fb-quad          vier Vollton-Quadranten - übersteht Unschärfe, zählt die Kachelung
+fb-grid          Rand, Diagonalen, Ecken - braucht ein scharfes Foto
 fb-vprobe        acht waagerechte Farbbänder, nur die vertikale Ordnung
 fb-hprobe        acht senkrechte Bänder, isoliert die waagerechte Achse
 bl-sweep         Weißbild, PWM2/PB4-Duty 100..0 (wirkungslos, siehe 70-sackgassen)
@@ -243,7 +243,7 @@ vendor-logo-chroma   das Stock-Logo, hell->rot dunkel->blau
 ```
 
 `init` ohne `quiesce` lässt die Firmware laufen, veröffentlicht aber **keinen
-Inhalt** — Schwarz ist dort das erwartete Ergebnis und kein Befund.
+Inhalt** - Schwarz ist dort das erwartete Ergebnis und kein Befund.
 
 **Vor einem zweiten Lauf Strom ziehen.** Sonst läuft die MIPS weiter und
 schreibt in das frisch geladene Image.
@@ -256,7 +256,7 @@ fatload usb 0:1 0x60000000 h713-kernel.fit
 bootm 0x60000000
 ```
 
-Das FIT **nicht** nach `0x48000000` laden — dorthin wird der Kernel entpackt,
+Das FIT **nicht** nach `0x48000000` laden - dorthin wird der Kernel entpackt,
 er überschreibt sich beim Auspacken selbst. `inflate() returned -5` und
 „Image too large" sind dann irreführend, `CONFIG_SYS_BOOTM_LEN` ist mit 128 MiB
 reichlich.
@@ -272,7 +272,7 @@ tools/regdiff.py a.txt b.txt               zwei Mitschnitte adressweise vergleic
 Spricht den ESP32-Proxy direkt an, ohne pyserial. **Eine laufende `tio`-Sitzung
 vorher beenden** (`Strg-t` `q`), sonst teilen sich beide die Leitung.
 
-`-i <sek>` erhöht die Stille, nach der ein Befehl als fertig gilt — nötig für
+`-i <sek>` erhöht die Stille, nach der ein Befehl als fertig gilt - nötig für
 lang laufende Befehle wie `bl-sweep` oder `h713_disp auto`.
 
 ### Am U-Boot-Prompt arbeiten, ohne den Kernel zu starten
@@ -289,10 +289,10 @@ tools/uart-uboot.py vpinit           THal_Vp_Init, Trockenlauf; --go sendet
 
 Alle Unterbefehle prüfen zuerst, ob wirklich U-Boot antwortet, und verweigern
 den Dienst an einem Linux-Prompt. `elog` liest die Modus-1-Zeiger und holt nur
-den beschriebenen Teil des Rings — Adressen aus [63-mips-elog.md](63-mips-elog.md).
+den beschriebenen Teil des Rings - Adressen aus [63-mips-elog.md](63-mips-elog.md).
 
 **Nach einem von Hand abgesetzten `h713_disp init` nicht `run bootcmd`
-benutzen** — darin steckt ein zweites `init`, und es gilt ein Start pro
+benutzen** - darin steckt ein zweites `init`, und es gilt ein Start pro
 Stromzyklus. Stattdessen nur den Netboot-Teil:
 
 ```
@@ -311,7 +311,7 @@ mmc write 0x50000000 0x10 0x40
 **Die eMMC hat verschiedene Nummern:** Stock `mmc dev 2`, unser `mmc dev 1`.
 
 **Immer den RAM prüfen, bevor geschrieben wird.** Ein `fatload` kann
-fehlschlagen und `mmc write` schreibt trotzdem — dann landet uninitialisierter
+fehlschlagen und `mmc write` schreibt trotzdem - dann landet uninitialisierter
 Speicher im Bootsektor. Erwartete erste Wörter:
 
 ```
@@ -375,7 +375,7 @@ o = d.find(b"config usb clk ok")
 refs = [m.start() for m in re.finditer(re.escape(struct.pack("<I", BASE+o)), d)]
 ```
 
-IDA-Datenbank zu ihrem Binary zuordnen — der Input-md5 steht in der `.i64`:
+IDA-Datenbank zu ihrem Binary zuordnen - der Input-md5 steht in der `.i64`:
 
 ```python
 import re

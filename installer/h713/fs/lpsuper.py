@@ -117,7 +117,7 @@ class LpSuper:
             if t == 0:
                 pieces.append(self.q.sub(d * SECTOR, n * SECTOR, f"{name} extent"))
             else:
-                log.warn(f"LP {name}: Zero-Extent {n} Sektoren — als Nullen gelesen")
+                log.warn(f"LP {name}: Zero-Extent {n} Sektoren - als Nullen gelesen")
                 pieces.append(NullSource(n * SECTOR))
         if not pieces:
             return None

@@ -20,7 +20,7 @@ Pins live in `config/versions.env`; the series and its rationale are in
 
 **This directory now carries only `firmware.sha256sums`** (the firmware pin) and
 this file. The `aic8800_bsp/`, `aic8800_fdrv/` and `aic8800_btlpm/` source trees
-still physically present here are the **superseded 2024_0109 copy** — nothing
+still physically present here are the **superseded 2024_0109 copy** - nothing
 builds from them any more. They are safe to delete:
 
     rm -rf modules/aic8800/aic8800_{bsp,fdrv,btlpm}
@@ -32,14 +32,14 @@ Kept only so the previous driver stays diffable while the rebase settles.
 That superseded copy was the GPL SDIO driver from
 `local/allwinner-h713-linux/drivers/wifi/` (well0nez H713 port of the
 Aicsemi/Radxa V5 driver), release `2024_0109_ec460377`, re-ported by hand to
-6.18/arm64. The rebase replaced it with vendor release `2026_0123_5f7be68d` —
-a two-year jump — and folded the hand port into `patches/aic8800/`.
+6.18/arm64. The rebase replaced it with vendor release `2026_0123_5f7be68d` -
+a two-year jump - and folded the hand port into `patches/aic8800/`.
 
 ## Modules (load order)
 
 | Module | Role | Depends on |
 |--------|------|------------|
-| `aic8800_bsp`   | chip bring-up, SDIO glue, firmware download, H713 power/GPIO (`4021000.mmc`, PM1 `wlan_regon`, `mmc_detect_change`) | — |
+| `aic8800_bsp`   | chip bring-up, SDIO glue, firmware download, H713 power/GPIO (`4021000.mmc`, PM1 `wlan_regon`, `mmc_detect_change`) | - |
 | `aic8800_fdrv`  | fullmac WiFi driver (cfg80211) | `aic8800_bsp` |
 | `aic8800_btlpm` | BT rfkill + low-power management (HCI data rides mainline `hci_uart` on `ttyS1`) | `aic8800_bsp` |
 
@@ -49,7 +49,7 @@ All three declare `MODULE_LICENSE("GPL")`.
 
 Proprietary Aicsemi blobs with no open equivalent (see
 `docs/wifi-failure-2026-08-17.md` for why an open one does not exist). **Not
-committed** — pinned by SHA-256 in `firmware.sha256sums` and copied into the
+committed** - pinned by SHA-256 in `firmware.sha256sums` and copied into the
 rootfs at build time from `AIC8800_FW_SRC`.
 
 Two things about firmware are easy to get wrong and both stop `wlan0` appearing:

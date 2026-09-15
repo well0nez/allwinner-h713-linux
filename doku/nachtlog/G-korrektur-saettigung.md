@@ -1,11 +1,11 @@
-# Paket G — Korrektur der Sättigung: Registerwert → RPC-Argument
+# Paket G - Korrektur der Sättigung: Registerwert → RPC-Argument
 
-Agent: Paket G (Korrekturlauf, offline). **Kein Board angefasst** — kein `ssh`, kein `sonoff_ctl`, kein
+Agent: Paket G (Korrekturlauf, offline). **Kein Board angefasst** - kein `ssh`, kein `sonoff_ctl`, kein
 `wandcheck.py`, kein `tio`, kein `scp`; kein `sudo`, kein `git commit`, kein `build.sh`, keine Änderung an
 `mainline/patches/`. Vendor-Daten unter `re/vendor/` nur **gelesen**, nichts kopiert. Die parallel bearbeiteten
 Patches `0091`, `0093`, `0094` wurden nicht berührt.
 
-Auslöser: [`K5-board-verifikation.md`](K5-board-verifikation.md) Abschnitt f — die Messung am Gerät hat den
+Auslöser: [`K5-board-verifikation.md`](K5-board-verifikation.md) Abschnitt f - die Messung am Gerät hat den
 Rechenweg von Paket G widerlegt.
 
 ---
@@ -30,23 +30,23 @@ Aus K5-Abnahme (f): ein einziger RPC schreibt **zwei** Register.
 |---|---|---|---|
 | 0 | `0x00000000` | `0x14000000` | `0x00` |
 | 50 | `0x00000032` | `0x14400000` | `0x40` |
-| 59 | — | `0x144B0000` | `0x4B` |
-| 60 | — | `0x144C0000` | `0x4C` |
+| 59 | - | `0x144B0000` | `0x4B` |
+| 60 | - | `0x144C0000` | `0x4C` |
 | 100 | `0x00000064` | `0x14800000` | `0x80` |
 
 Drei Befunde daraus, die den Umbau tragen:
 
 1. **Der PQ-Block spiegelt das Argument 1:1** (`0` → 0, `50` → 0x32, `100` → 0x64). Genauso wie
    `SetContrast 20/80/100` → `0x14/0x50/0x64` (Abschnitt c) und `SetBrightness 100` → `0x64` (Abschnitt e).
-   **In diesem Block gibt es keinen Umrechnungsfaktor — bei keiner der drei gemessenen Größen.**
+   **In diesem Block gibt es keinen Umrechnungsfaktor - bei keiner der drei gemessenen Größen.**
 2. **Der Faktor 1,28 sitzt auf dem zweiten, nachgelagerten Schreibzugriff** in den PROC-Block. Ein solcher ist
    bisher nur für die Sättigung bekannt.
-3. **`floor`, nicht `round`** — und das ist nicht Geschmackssache, sondern gemessen: 59 × 1,28 = 75,52,
+3. **`floor`, nicht `round`** - und das ist nicht Geschmackssache, sondern gemessen: 59 × 1,28 = 75,52,
    kaufmännisch gerundet 76, gemessen `0x4B` = 75. Die beiden Nachbarpunkte 59/60 sind genau die Stelle, an der
    sich die beiden Rundungsarten unterscheiden.
 
 Und der Widerspruch zur alten Fassung: `0x4C` gehört zu `SetSaturation 60`, nicht zu Benutzerwert 50.
-`prep_after_boot.sh` ruft `SetSaturation` gar nicht auf — `0x4C` ist die Vorgabe der Firmware.
+`prep_after_boot.sh` ruft `SetSaturation` gar nicht auf - `0x4C` ist die Vorgabe der Firmware.
 
 ## 06:26 Wohin die Werkskurve gehört (und wohin nicht)
 
@@ -58,13 +58,13 @@ Nachrechnen an den Daten trägt die Kurvenstufe an dieser Stelle nicht:
 * Die Kurve liegt auch nicht zwischen RPC und Register: `SetContrast 100` schreibt 100, nicht 2392 oder 3588.
 
 Also: die Werkskurve liegt **nicht** auf diesem Weg. Was sie statt dessen bedient, ist **offen** und wird als
-offen benannt (Werks-/Abgleichsanwendung? eine Tabelle innerhalb der MIPS-Firmware?) — nicht geraten.
+offen benannt (Werks-/Abgleichsanwendung? eine Tabelle innerhalb der MIPS-Firmware?) - nicht geraten.
 
 Damit bleibt genau **eine ungemessene Stufe**: `Benutzerwert → RPC-Argument`. Belegt ist nur, was links und
 rechts steht (Presets 0..100, RPC 0..100, Register = Argument). `hy310-pq` reicht den Benutzerwert 1:1 durch
 und schreibt an jeder Ausgabestelle dazu, dass diese Stufe ungemessen ist.
 
-**Warum das heute folgenlos ist** — und das ist nachgerechnet, nicht behauptet: legte man die Werkskurve doch
+**Warum das heute folgenlos ist** - und das ist nachgerechnet, nicht behauptet: legte man die Werkskurve doch
 dazwischen (auf 0..100 normiert), wiche das Ergebnis im ganzen Bereich 0..100 an **genau einer** Stelle vom
 Benutzerwert ab: 75 → 76. In den Vendor-Daten kommen als Sättigungswerte nur **45, 50 und 60** vor. Beide
 Lesarten liefern für jeden real vorkommenden Wert dasselbe Argument. Ein Test hält das fest
@@ -74,14 +74,14 @@ Lesarten liefern für jeden real vorkommenden Wert dasselbe Argument. Ein Test h
 
 **`userspace/hy310-pq/hy310_pq/modell.py`**
 
-* `saettigungs_gain(kurve_u, kurve_50)` **entfernt** — das war die widerlegte Rechnung.
+* `saettigungs_gain(kurve_u, kurve_50)` **entfernt** - das war die widerlegte Rechnung.
 * Neu `rpc_argument(benutzerwert)`: die durchgereichte Stufe, mit der Begründung im Docstring.
 * Neu `chroma_gain(argument)`: `argument × 128 // 100`, ganzzahlig, damit kein Gleitkommafehler die Messpunkte
   verfehlt. Ausdrücklich als **Kontrollrechnung** dokumentiert.
 * Neu `kurve_als_argument(stuetzstellen, benutzerwert)`: die normierte Kurve als Gegenprobe zur offenen Stufe.
 * Neu die Tabelle `PQ_ZIELE` (Helligkeit, Kontrast, Sättigung, Farbton, Schärfe) und `PQ_ZIELE_INDEX`
   (DCI, SNR) mit RPC-Name, Item-ID, Register, Maske, Stand und Wirkung; dazu `PQ_OHNE_REGISTER`
-  (TNR, Schwarzdehnung — Adresse 0 in der UIMapping-Tabelle, schreiben nachweislich kein Register).
+  (TNR, Schwarzdehnung - Adresse 0 in der UIMapping-Tabelle, schreiben nachweislich kein Register).
   Quellen: doku/85 §A.1/§A.4/§A.5 und K5-Abnahme b/c/e/f.
 * `Zielwert` hat ein neues Feld `argument`; `Kette` ein neues Feld `saettigung_argument`. `gain` und
   `gain_register` bleiben, sind aber jetzt Kontrollwerte aus dem Argument.
@@ -89,23 +89,23 @@ Lesarten liefern für jeden real vorkommenden Wert dasselbe Argument. Ein Test h
 * `GAIN_BEI_BENUTZERWERT_50 = 0x4C` **entfernt** (widerlegter Kalibrierpunkt), dafür
   `ARGUMENT_DER_FIRMWARE_VORGABE = 60`.
 
-**`hy310_pq/ausgabe.py`** — `show` bekommt die Spalte `RPC-Arg` (das Ergebnis) und eine Spalte
-„Register — schreibt die Firmware"; die Kurve bleibt als Nebenspalte mit Fußnote. `saturation` druckt die Kette
+**`hy310_pq/ausgabe.py`** - `show` bekommt die Spalte `RPC-Arg` (das Ergebnis) und eine Spalte
+„Register - schreibt die Firmware"; die Kurve bleibt als Nebenspalte mit Fußnote. `saturation` druckt die Kette
 stufenweise mit `[belegt]`/`[NICHT gemessen]` je Stufe. Der ausgegebene Schreibpfad ist jetzt der **RPC**
 (`pq_probe.py rpc SetSaturation <arg>`), nicht mehr das Register-Poken.
 
-**`hy310_pq/cli.py`** — `saturation` bricht nicht mehr ab, wenn es keine Werkskurve gibt (VGA1..3): das
+**`hy310_pq/cli.py`** - `saturation` bricht nicht mehr ab, wenn es keine Werkskurve gibt (VGA1..3): das
 Argument hängt seit der Korrektur nicht mehr an der Kurve. Dafür wird jetzt der Eingangsname geprüft.
 
 **Nicht angefasst: die Gamma-LUT.** Sie läuft nicht über einen RPC, wird von Paket H im Kernel geschrieben und
-ist unverändert bitgleich zum Legacy-Rechner — `TestGegenLegacy.test_bitgleich` läuft und ist grün.
+ist unverändert bitgleich zum Legacy-Rechner - `TestGegenLegacy.test_bitgleich` läuft und ist grün.
 
 ## 06:33 Tests
 
-`python3 tests/test_hy310_pq.py` — **33 Tests, alle grün** (vorher 25), einschließlich des byteweisen
+`python3 tests/test_hy310_pq.py` - **33 Tests, alle grün** (vorher 25), einschließlich des byteweisen
 Vergleichs gegen `legacy/userspace/hy310-pqd/src/pqgamma.cpp`.
 
-Geänderte Erwartungswerte — **die Rechnung wurde nicht an die Tests angepasst, sondern die Tests an die
+Geänderte Erwartungswerte - **die Rechnung wurde nicht an die Tests angepasst, sondern die Tests an die
 Messung**; die Begründung steht jeweils im Test:
 
 | Test | vorher | jetzt | Begründung |
@@ -114,7 +114,7 @@ Messung**; die Begründung steht jeweils im Test:
 | `test_registerwort` → `test_kontrollwerte_gain_und_registerwort` | standard `0x144C0000` | standard `0x14400000`, vivid `0x144C0000` | `0x4C` gehört zu Argument 60 = `vivid`, nicht zu 50 |
 | `test_gegen_pq_saturation_py` | Bitgleichheit mit `pq_saturation.py` | **entfällt** | die Vorlage trägt die widerlegte Formel; Bitgleichheit mit ihr wäre jetzt ein Fehler |
 | `test_offene_zielwerte_haben_kein_register` → `test_alle_kurvengroessen_haben_jetzt_ein_register` | Ziel `-`, Stand „offen (K5)" | Register je Größe, Stand `gemessen` bzw. `RE belegt, ungemessen` | doku/85 §A.1 hat die Register aufgelöst, K5-Abnahme c/e hat zwei davon nachgemessen |
-| `test_vga_hat_keine_werkskurve` | `k.gain is None` | Argument 50, Gain `0x40`; Kurvenwert weiterhin `None` | das Argument hängt nicht mehr an der Kurve — VGA hat trotzdem keine Kurvengruppe, und das wird weiter ausgewiesen |
+| `test_vga_hat_keine_werkskurve` | `k.gain is None` | Argument 50, Gain `0x40`; Kurvenwert weiterhin `None` | das Argument hängt nicht mehr an der Kurve - VGA hat trotzdem keine Kurvengruppe, und das wird weiter ausgewiesen |
 
 Neu dazugekommen: `test_floor_nicht_round`, `test_firmware_vorgabe_entspricht_argument_60`,
 `test_bildmodi_liefern_rpc_argumente`, `test_gain_nur_aus_dem_argument_nicht_aus_der_kurve`,
@@ -224,21 +224,21 @@ Die drei Bildmodi im Überblick:
 1. **`Benutzerwert → RPC-Argument` ist ungemessen.** 1:1 durchgereicht und überall so gekennzeichnet. Heute
    folgenlos (siehe 06:26), aber nicht belegt. Messung: `THal_Vp_Set*`-Argumente am cpu-comm-Ring mitlesen
    oder den PQ-Block nach einem Moduswechsel am Stock abziehen.
-2. **Hat Kontrast/Helligkeit ein nachgelagertes Register wie die Sättigung?** Ungemessen — die Abnahme (c)/(e)
+2. **Hat Kontrast/Helligkeit ein nachgelagertes Register wie die Sättigung?** Ungemessen - die Abnahme (c)/(e)
    hat nur `0x05001xxx` abgezogen, nie den PROC-Block, und doku/85 §A.7 findet für `0x05140508` keinen
    statischen Schreiber (Zugriff registerindirekt). Messung: (c)/(e) wiederholen und dabei
    `pq_probe.py blocks 0x05140000 0x600` mit abziehen. **Solange das offen ist, steht in der Tabelle für
-   Kontrast und Helligkeit kein zweites Register — auch kein vermutetes.**
+   Kontrast und Helligkeit kein zweites Register - auch kein vermutetes.**
 3. **Farbton und Schärfe** sind statisch belegt (`0x05001238[31:16]`, `0x05001228[23:8]`), am Gerät nie
    gemessen. Je zwei Minuten mit `pq_probe.py probe SetHue …`.
 4. **Wer verbraucht die Werkskurve?** Offen.
 5. **`analyse/hdmi-seq/pq_saturation.py` trägt weiterhin die widerlegte Formel** und schreibt das Gain-Byte
    direkt ins Register (umgeht damit den PQ-Block). Für `standard` liegt es 12 Gain-Stufen daneben
-   (`0x4C` statt `0x40`). Es gehört nicht zu Paket G, und eine Kopie liegt auf dem Board unter `/root/` —
+   (`0x4C` statt `0x40`). Es gehört nicht zu Paket G, und eine Kopie liegt auf dem Board unter `/root/` -
    deshalb wurde es hier **nicht** angefasst, sondern nur in `README.md` und doku/81 §6 als überholt
    gekennzeichnet. Es sollte zurückgezogen oder auf den RPC-Weg umgestellt werden; das ist Sache dessen, der
    auch die Board-Kopie ersetzen kann.
 6. **Für Paket I (V4L2-Controls)** heißt der Stand: `V4L2_CID_CONTRAST` und `V4L2_CID_SATURATION` sind belegt
    und wirken, `V4L2_CID_BRIGHTNESS` ist belegt und wirkt **nicht** (Modul nicht bestückt), `HUE` und
    `SHARPNESS` sind plausibel, aber ungemessen. Die Controls nehmen 0..100 und geben das unverändert an den
-   RPC weiter — keine eigene Umrechnung im Treiber.
+   RPC weiter - keine eigene Umrechnung im Treiber.

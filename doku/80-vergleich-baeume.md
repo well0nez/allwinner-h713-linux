@@ -1,7 +1,7 @@
 # Was cstenger portiert hat, und was nicht
 
 Vollständiger Abgleich `legacy/drivers/` gegen `mainline/patches/kernel/`,
-Stand 31.08.2026. Nicht stichprobenartig — jeder Treiber, jeder Patch.
+Stand 31.08.2026. Nicht stichprobenartig - jeder Treiber, jeder Patch.
 
 ## Zugeordnet
 
@@ -11,8 +11,8 @@ Stand 31.08.2026. Nicht stichprobenartig — jeder Treiber, jeder Patch.
 | `decd/` (6 Dateien) | ~2.700 | `0013-misc-add-sunxi-decd` | 3.106 |
 | `tvtop/` (5 Dateien) | ~1.400 | `0012-misc-add-sunxi-tvtop` | 1.666 |
 
-Dazu CCU, Pinctrl, MMC, PHY, NSI, LRADC, PPU, CIR, Cedrus — die Patches
-0001–0022 sind unsere, mit Namensnennung übernommen (sein `PROVENANCE.md`).
+Dazu CCU, Pinctrl, MMC, PHY, NSI, LRADC, PPU, CIR, Cedrus - die Patches
+0001-0022 sind unsere, mit Namensnennung übernommen (sein `PROVENANCE.md`).
 
 ## Weggelassen: `sunxi-mipsloader`
 
@@ -42,7 +42,7 @@ das ausdrücklich nur übernimmt, was U-Boot hinterlassen hat, und Timing, LVDS
 und `rst_bus_disp` nicht anfasst.
 
 **Das ist der größte strukturelle Unterschied zwischen den Bäumen.** `ge2d/`
-ist der Stock-Display-Stack — Panel-Konfiguration aus dem Devicetree,
+ist der Stock-Display-Stack - Panel-Konfiguration aus dem Devicetree,
 Backlight, OSD, Lichtmaschine. Davon ist nichts portiert, und nichts davon
 findet in seinem U-Boot ein Äquivalent.
 
@@ -60,9 +60,9 @@ Treiber als Ausgangsmaterial. HDMI-RX fehlt bei ihm ganz.
 ## Was er selbst gebaut hat
 
 `0007` PWM-Achtkanaltreiber, `0008` Board-Manager, `0009` Keystone-Motor,
-`0017`/`0041`/`0042` IOMMU, `0019` LRADC, `0020` PPU, `0025`–`0028` CPU-DVFS,
-`0031` RTC, `0033`–`0035` decd-Korrekturen, `0036`–`0038` der Scanout-/KMS-Weg,
-`0039`/`0040` Cedrus-Absicherung, `0043`–`0048` MMC-Feinschliff.
+`0017`/`0041`/`0042` IOMMU, `0019` LRADC, `0020` PPU, `0025` - `0028` CPU-DVFS,
+`0031` RTC, `0033` - `0035` decd-Korrekturen, `0036` - `0038` der Scanout-/KMS-Weg,
+`0039`/`0040` Cedrus-Absicherung, `0043` - `0048` MMC-Feinschliff.
 
 ## Devicetrees
 
@@ -70,7 +70,7 @@ Drei liegen vor, und sie sagen nicht dasselbe:
 
 | Datei | was er ist |
 |---|---|
-| `legacy/reference/uboot_dtb.dts` | **Vendor-U-Boot**, dekompiliert — der für unseren Fall maßgebliche |
+| `legacy/reference/uboot_dtb.dts` | **Vendor-U-Boot**, dekompiliert - der für unseren Fall maßgebliche |
 | `legacy/reference/stock_dts/hy310-board.dts` | Stock-Kernel |
 | `legacy/dts/sun50i-h713-hy310.dts` | unser Kernel-Port |
 

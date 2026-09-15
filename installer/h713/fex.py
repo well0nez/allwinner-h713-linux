@@ -83,7 +83,7 @@ def ini_numbers(v: str) -> list[int]:
 
 
 def panel_config_id(text: str) -> Optional[int]:
-    """ProjectID from panel_config.ini — decimal in the file ('ProjectID = 48' = 0x30)."""
+    """ProjectID from panel_config.ini - decimal in the file ('ProjectID = 48' = 0x30)."""
     for _sect, pairs in parse_ini(text).items():
         for k, v in pairs:
             if k.strip().lower() == "projectid":

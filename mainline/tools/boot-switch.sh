@@ -82,7 +82,7 @@ with open(dev, 'rb') as f:
     f.seek(512)
     hdr = f.read(92)
     if hdr[:8] != b'EFI PART':
-        sys.exit(f"{dev}: no GPT — refusing to write")
+        sys.exit(f"{dev}: no GPT - refusing to write")
     part_lba = struct.unpack('<Q', hdr[72:80])[0]
     n, sz = struct.unpack('<II', hdr[80:88])
     f.seek(part_lba * 512)
@@ -91,7 +91,7 @@ names = [data[i*sz+56:i*sz+128].decode('utf-16-le').rstrip('\x00') for i in rang
 names = [x for x in names if x]
 if not names or names[0] != 'bootloader_a' or names[-1] != 'UDISK':
     sys.exit(f"{dev}: partition table is not the H713 layout "
-             f"(first={names[:1]}, last={names[-1:]}) — refusing to write")
+             f"(first={names[:1]}, last={names[-1:]}) - refusing to write")
 EOF
 }
 
@@ -108,7 +108,7 @@ dd_write() {  # file lba dev
 	rb=$(mktemp)
 	sudo dd if="$dev" bs=512 skip="$lba" count="$n" status=none of="$rb"
 	cmp -s -n "$sz" "$rb" "$f" \
-		|| { rm -f "$rb"; die "read-back differs from $f — do NOT power cycle, investigate first"; }
+		|| { rm -f "$rb"; die "read-back differs from $f - do NOT power cycle, investigate first"; }
 	rm -f "$rb"
 	echo "    read-back OK"
 }
@@ -120,12 +120,12 @@ fb_flash() {  # alias file
 }
 
 split_ours() {  # -> $TMP/spl.bin, $TMP/uboot-proper.bin
-	[ -f "$OURS_IMG" ] || die "missing $OURS_IMG — run build/build.sh"
+	[ -f "$OURS_IMG" ] || die "missing $OURS_IMG - run build/build.sh"
 	# An image built for an older layout expects U-Boot proper elsewhere.  Writing
 	# it to the new locations produces an SPL that loads nothing, so refuse.
 	local def="$ROOT/external/u-boot/configs/hy200_qz713df_a1_defconfig"
 	[ "$OURS_IMG" -nt "$def" ] || die \
-		"$(basename "$OURS_IMG") is older than $(basename "$def") — it may
+		"$(basename "$OURS_IMG") is older than $(basename "$def") - it may
 predate the current layout and would look for U-Boot proper where it used to be.
 Rebuild before flashing."
 	TMP=$(mktemp -d)
@@ -146,7 +146,7 @@ cmd_status() {
 	case "$cur" in
 		"$ours")   echo "  -> OURS (matches $(basename "$OURS_IMG") first 32 KiB)" ;;
 		"$vendor") echo "  -> VENDOR (matches $(basename "$VENDOR_BOOT0"))" ;;
-		*)         echo "  -> UNKNOWN — neither the current build nor the captured vendor boot0" ;;
+		*)         echo "  -> UNKNOWN - neither the current build nor the captured vendor boot0" ;;
 	esac
 }
 

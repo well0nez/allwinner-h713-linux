@@ -9,7 +9,7 @@ release/build-all.sh --version v0.5-beta --vendor <output of h713-extract>
 Eleven steps: TF-A BL31 · U-Boot (release, installer, and `sunxi-fel`) · kernel with the patch series ·
 AIC8800 modules · a pinned Debian keyring · an arm64 sysroot and `h713-tv` cross-built against it ·
 the Debian 13 root filesystem · the ext4 inputs · the image · verification · a build stamp. With
-`--vendor` it ends in `ALL GREEN` — the self-test compared every extracted file against the image —
+`--vendor` it ends in `ALL GREEN` - the self-test compared every extracted file against the image -
 or it stops. Without `--vendor` it ends after the structural check, which is a weaker statement.
 
 Roughly 20 minutes from cold (including the kernel tarball download), about 10 with a kernel tree already
@@ -18,7 +18,7 @@ built. Everything runs in a container; **nothing is built on your host**.
 ## Prerequisites
 
 - `podman`, `python3`, `curl`, `ar`, `tar`, `sha256sum` on the host
-- the build container `h713-build` — **[docs/build-container.md](docs/build-container.md) is the recipe**,
+- the build container `h713-build` - **[docs/build-container.md](docs/build-container.md) is the recipe**,
   one `podman run` plus two `apt-get` lines. Skipping the LLVM 20 step there makes U-Boot fail at
   `u-boot.srec`, which does not look like a missing toolchain at all
 - the submodules checked out: `git submodule update --init` (see below)
@@ -60,7 +60,7 @@ no image for a board nobody has tested (doku/121 §5): boards/hy300-t08 is STATU
 
 A verified board that names no installer profile is refused as well, because `h713-install`
 identifies the device before it writes and would have nothing to identify it against. Today that
-leaves exactly one board: `hy310`. The other five are `profile-only` or `partial` — including the
+leaves exactly one board: `hy310`. The other five are `profile-only` or `partial` - including the
 HY200 bench board, which cstenger has booted in his own tree but on which no build of ours has ever
 run. Four of the five now carry an installer profile read out of a stock image; that describes the
 board, it does not test it, and `--board` still refuses them. The table is in
@@ -68,10 +68,10 @@ board, it does not test it, and `--board` still refuses them. The table is in
 
 There is one named way past that refusal, and it does not weaken it: `--test-image`. A board that is
 `partial` or `profile-only` but has a `PROFILE`, a `KERNEL_DTB` and a U-Boot base can be built for on
-purpose, as a **test image** — `<IMAGE_NAME>-<version>-TEST`, marked `test_for: "<profile>"` in its
+purpose, as a **test image** - `<IMAGE_NAME>-<version>-TEST`, marked `test_for: "<profile>"` in its
 table, saying so in its banner, its stamp and its README. `h713-install` writes it only on that very
 board and only with its own `--test-image` ([docs/tools/h713-install.md](docs/tools/h713-install.md)).
-It is a build for one person — the board's owner, who holds a full dump as the way back — not a
+It is a build for one person - the board's owner, who holds a full dump as the way back - not a
 release, and it changes nothing we claim: the board's line stays `partial` or `profile-only` until
 that owner reports a green run.
 
@@ -112,7 +112,7 @@ account this repo lives under.
 
 If `git submodule update --init` fails on U-Boot, you have a copy of this repository from before the
 first release: the fork went public with the release, and there is no way to build the boot chain
-without it — `uboot-h713/` is a mirror for reading, not a source tree. Take a release image instead, or
+without it - `uboot-h713/` is a mirror for reading, not a source tree. Take a release image instead, or
 wait for the tag.
 
 TF-A carries submodules of its own (`contrib/*`). They are not needed for `sun50i_h713`: with and without
@@ -126,7 +126,7 @@ BOARD=hy310 mainline/build/build.sh uboot     # U-Boot for one board
 BOARD=hy310 mainline/build/build.sh kernel    # kernel + modules + FIT
 ```
 
-`BOARD` defaults to `ddr3`, the HY200 bench board this port was brought up on — name the board you
+`BOARD` defaults to `ddr3`, the HY200 bench board this port was brought up on - name the board you
 mean. `release/build-all.sh` always passes one.
 
 `build.sh` names its kernel tree after a digest of the inputs (`build/linux-6.18.38-<digest>/`), so

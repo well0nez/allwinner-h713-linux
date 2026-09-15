@@ -1,4 +1,4 @@
-# Die Anzeigekette des H713 — wie sie wirklich funktioniert
+# Die Anzeigekette des H713 - wie sie wirklich funktioniert
 
 Stand 08.09.2026. Zusammenfassung dessen, was in der Sitzung vom 07.09. gemessen, reversed und am
 Gerät bestätigt wurde. Ersetzt keine der Detaildokumente, sondern verbindet sie:
@@ -11,13 +11,13 @@ Video-Plane · [`89`](89-composition-block.md) Composition · [`98`](98-mips-she
 
 Der SoC hat zwei Rechner für die Anzeige:
 
-- **ARM** (unser Linux) besitzt den **AFBD** bei `0x05600000` — er füttert die Video-Plane aus dem
+- **ARM** (unser Linux) besitzt den **AFBD** bei `0x05600000` - er füttert die Video-Plane aus dem
   Capture-Ring und schreibt den VidDec-Descriptor.
 - **MIPS** (`display.bin`) besitzt **alles dahinter**: Aufnahme (INCAP `0x06940000`), die
   Fensterkette, den Scaler und die Panelausgabe. Er programmiert diese Register **selbst**, sobald
   er einen Grund dazu sieht.
 
-Der ARM kann diese Register lesen und sogar beschreiben — aber ohne die firmware-eigene Neuberechnung
+Der ARM kann diese Register lesen und sogar beschreiben - aber ohne die firmware-eigene Neuberechnung
 bleibt das wirkungslos oder schädlich. **Am Gerät belegt:** ein PROC-Zielfenster von 960×540 bei
 1080p ändert am Bild nichts, und der Scaler-Handreset nach einem Firmware-Neubau holt das
 Doppelbild nicht zurück. Der einzige Weg, der wirkt, ist die Firmware dazu zu bringen, neu zu rechnen.
@@ -58,7 +58,7 @@ if (phase_v >= 0x10000) { mode_v++; phase_v = 0; }
 
 Dreifach bestätigt: gegen den gelesenen 1:1-Zustand (`0x43010000`), gegen Stock-Zahlen aus dem elog
 (720×480 → 1920×1080 ergibt `ratio [24576 x 29127]`), und gegen die Firmware selbst, die bei
-1280×720 → 1920×1080 `ratio [43690 x 43690]` = `0xAAAA` rechnet — genau der vorhergesagte Wert.
+1280×720 → 1920×1080 `ratio [43690 x 43690]` = `0xAAAA` rechnet - genau der vorhergesagte Wert.
 
 ### INCAP, gemessen
 
@@ -69,12 +69,12 @@ Dreifach bestätigt: gegen den gelesenen 1:1-Zustand (`0x43010000`), gegen Stock
 | `0x06940924` rowbyte | `0x78` = 120 | `0x50` = 80 |
 | `0x06940928` | `0xE0020438`, Bit 31 = Freigabe | `0xE00202D0` |
 
-`rowbyte = Breite / 16`. **`0x06940928` Bit 31 ist die Aufnahmefreigabe** — ist sie gelöscht, zählt
+`rowbyte = Breite / 16`. **`0x06940928` Bit 31 ist die Aufnahmefreigabe** - ist sie gelöscht, zählt
 `+0x104` weiter, aber es wird nichts geschrieben: die Wand zeigt einen Standrahmen.
 
 ---
 
-## 3. Der VidDec-Descriptor — die Signalquelle der Firmware
+## 3. Der VidDec-Descriptor - die Signalquelle der Firmware
 
 144 Byte, vom ARM geschrieben, Zeiger in `0x05600098…0A4` (vier Slots). Inhalt (Wortindex):
 
@@ -82,8 +82,8 @@ Dreifach bestätigt: gegen den gelesenen 1:1-Zustand (`0x43010000`), gegen Stock
 |---|---|---|
 | 0 | `0x61770000` | Magic; die Firmware prüft ihn |
 | 1 | `2` | Typ: Videodecoder-Rahmen |
-| 2–5 | `w, h, w, h` | Quell- und Zielgröße |
-| 6–9 | `0, h, 0, w` | Fenster |
+| 2-5 | `w, h, w, h` | Quell- und Zielgröße |
+| 6-9 | `0, h, 0, w` | Fenster |
 | 13/14 | `30000` | Bildrate |
 | 22 | stride | |
 | 28/30/32/34 | `w*16, h*16, w*16, h*16` | Fenster in 1/16 Pixel |
@@ -131,23 +131,23 @@ PanelWinNode out [0,0,1920,1080]
 ```
 
 **Wichtig für das Lesen der Logs:** `SetCaptureCfg` druckt seine beiden Rechtecke in *umgekehrter*
-Reihenfolge — `[a2[4..7]][a2[0..3]]`, also `[Quelle][Anzeige]`. Wer das als `[Quelle][Ziel]` liest,
+Reihenfolge - `[a2[4..7]][a2[0..3]]`, also `[Quelle][Anzeige]`. Wer das als `[Quelle][Ziel]` liest,
 zieht falsche Schlüsse (so geschehen, siehe `nachtlog/S7`).
 
 ---
 
-## 5. Was den Neubau auslöst — und was nicht
+## 5. Was den Neubau auslöst - und was nicht
 
 | Weg | Wirkung |
 |---|---|
 | **Descriptor mit neuer Geometrie veröffentlichen** | **löst den Neubau aus** ✓ |
-| `Wce_SetWindow` (RPC) | **wirkungslos** — endet MIPS-seitig in einem Stub |
-| `SetSource` weg und zurück | löst `SetSignalInfo`/`SetCaptureCfg` aus — und damit einen **zweiten**, fehlerhaften Neubau |
+| `Wce_SetWindow` (RPC) | **wirkungslos** - endet MIPS-seitig in einem Stub |
+| `SetSource` weg und zurück | löst `SetSignalInfo`/`SetCaptureCfg` aus - und damit einen **zweiten**, fehlerhaften Neubau |
 | `win rn 2` (Shell) | setzt nur das Flag, löst nichts aus |
 | `dtv get_fb` (Shell) | liest den Descriptor in einen Stack-Puffer, ändert die Detektorkopien nicht |
 | Modul-Neuladen / Rebind | Probe läuft, aber ohne Geometrieänderung kein Neubau |
 
-Stock ruft `UpdateWce` in sechs Minuten Laufzeit **genau zweimal auf, beide bei Zeitstempel 0** —
+Stock ruft `UpdateWce` in sechs Minuten Laufzeit **genau zweimal auf, beide bei Zeitstempel 0** -
 der Fensteraufbau ist bei Stock eine Init-Zeit-Sache, kein Laufzeitvorgang.
 
 ---
@@ -165,44 +165,44 @@ INCAP   aktiv 1280x720, rowbyte 0x50 = 80, Freigabe Bit 31 gesetzt
 Was die vier Patches tun:
 
 - **`0117`** veröffentlicht den Descriptor bei Geometriewechsel neu. Ohne ihn skaliert die Firmware
-  nie — gemessen.
+  nie - gemessen.
 - **`0120`** hält die vier Fensterwörter (rec 28/30/32/34) auf **Panelgröße**. Sie sind die
   Konfiguration des Fenstermanagers, nicht die Bildgeometrie; mit Quellmaßen darin staucht
   `CalcPropRect` die Aufnahme auf 853×480.
 - **`0121`** gibt die Aufnahme direkt frei (Bit 31 in `0x06940928` **und** `0x06940968`) statt über
-  einen Quellenwechsel — der löste einen zweiten, fehlerhaften Neubau aus.
-- **`0122`** setzt nach, bis die Freigabe hält (gemessen 159–223 ms).
+  einen Quellenwechsel - der löste einen zweiten, fehlerhaften Neubau aus.
+- **`0122`** setzt nach, bis die Freigabe hält (gemessen 159-223 ms).
 
-## 7. Was daran noch nicht stimmte — und seit 08.09. gelöst ist
+## 7. Was daran noch nicht stimmte - und seit 08.09. gelöst ist
 
 **Grünstich (gelöst, `0123`).** Der Neubau über den VidDec-Descriptor schaltet den Eingangs-Farbwandler der
 Aufnahme ab (`MP_ICSC_VINCAP`, INCAP `0x06940824` Bit 31 = Bypass), weil der Descriptor `yuv420_888` sagt und
-die Firmware für YUV-Signale keinen Wandler braucht — für die HDMI-Aufnahme, die RGB bekommt, aber schon. Das
+die Firmware für YUV-Signale keinen Wandler braucht - für die HDMI-Aufnahme, die RGB bekommt, aber schon. Das
 RGB landete ungewandelt im NV16-Ring (Grau: Cb ≈ Cr ≈ Y statt 128). Rückweg ohne Quellenwechsel:
-`THal_Vp_SetVideoRange` mit geändertem Wert (2, dann 0) — die Firmware wertet dann VidDec- und HDMI-Cache neu
+`THal_Vp_SetVideoRange` mit geändertem Wert (2, dann 0) - die Firmware wertet dann VidDec- und HDMI-Cache neu
 aus, der HDMI-Cache gewinnt (BT709). `0123` macht das nach dem Neubau und **vor** der Freigabe der Aufnahme,
 so dass kein grüner Rahmen entsteht. Regel und Register: [`nachtlog/S9`](nachtlog/S9-re-tfd-vincap-icsc.md);
 Messung und Abnahme: [`nachtlog/S11`](nachtlog/S11-gruenstich-ursache-und-callback-slots.md).
 
 **Kippen nach vier bis fünf Wechseln (gelöst, `0124`).** Kein Anzeigefehler, sondern ein Slot-Leck im
 `cpu_comm`: der Kernel gab die Slots der MIPS→ARM-Rückrufe nie zurück; nach 19 Rückrufen (≈ 6 Wechsel) blieb
-der MIPS-Sender in `fifo_isNearlyFull` stehen — Tick steht, Shell tot, jeder RPC `-110`. `0124` gibt den Slot
+der MIPS-Sender in `fifo_isNearlyFull` stehen - Tick steht, Shell tot, jeder RPC `-110`. `0124` gibt den Slot
 nach dem ACK frei; `watch` zeigt den eingehenden Pool (`ungelesen 0`, `frei 20`). Abgenommen mit 27 Rückrufen
 in einem Boot. Firmware-Seite: [`nachtlog/S10`](nachtlog/S10-re-cpucomm-callback-slots.md).
 
 Ein Diagnosewerkzeug, das beides sichtbar macht: `analyse/hdmi-seq/ringstat.py` liest Y/Cb/Cr direkt aus dem
-Capture-Ring — vor der Anzeige, unabhängig von der Kamera.
+Capture-Ring - vor der Anzeige, unabhängig von der Kamera.
 
 ## 8. Betriebswissen, teuer bezahlt
 
 - **Bilder ansehen, nicht Zahlen lesen.** Ein Doppelbild hat dieselbe Streuung wie ein gutes Bild;
   `wandcheck.py std` allein hat mehrfach in die Irre geführt.
 - **Die Quelle prüfen, nicht nur den Modus.** Ein `xrandr --mode 1280x720` bei einem X-Schirm von
-  1920×1080 liefert nur einen Ausschnitt — mehrere Fotos waren dadurch wertlos. Sauber ist
+  1920×1080 liefert nur einen Ausschnitt - mehrere Fotos waren dadurch wertlos. Sauber ist
   `--output eDP-1 --mode WxH --output HDMI-2 --mode WxH --same-as eDP-1`, danach `xrandr | grep ^Screen`.
 - **Register nicht im laufenden Betrieb durchprobieren.** Zweimal hat es die Firmware hängen lassen
   (leerer Signalsatz, RPCs von <10 ms auf 537 ms), nur ein Netboot-Neustart half.
-- **Ohne laufenden Player kommen keine Firmware-Ereignisse an** — die Callback-Registrierung hängt
+- **Ohne laufenden Player kommen keine Firmware-Ereignisse an** - die Callback-Registrierung hängt
   seit `0100` am ersten `open()` von `/dev/video1`.
 - **`/dev/mem` auf den MIPS-Carveout ist DEVICE-Speicher**: nur ausgerichtete 32-Bit-Zugriffe,
   Pythons `mmap`-Slicing stirbt mit SIGBUS, nichtdeterministisch nach Länge.

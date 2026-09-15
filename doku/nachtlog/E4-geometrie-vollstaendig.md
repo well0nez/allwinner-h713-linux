@@ -1,4 +1,4 @@
-# E4 — Die Quellgeometrie steht vollständig lesbar im INCAP-Block
+# E4 - Die Quellgeometrie steht vollständig lesbar im INCAP-Block
 
 07.09.2026, 13:30 · Board-Sitzung · Paket E, Vorarbeit zum neuen Plan
 
@@ -14,7 +14,7 @@ Genau das ist jetzt gefahren.
 
 `dump_state.py` bei 1920x1080, Zuspieler auf 1280x720, Quellenwechsel weg-und-zurück (damit die
 Firmware neu einrastet), zweiter Abzug. Dann beide Abzüge auf Register durchsucht, deren Hälften
-**exakt** von 1920/1080 auf 1280/720 springen — beziehungsweise auf die zugehörigen Totalwerte
+**exakt** von 1920/1080 auf 1280/720 springen - beziehungsweise auf die zugehörigen Totalwerte
 2200/1125 → 1650/750.
 
 Das ist eine Suche, die leer ausgehen kann; für die Synchronlagen ist sie es auch (siehe unten).
@@ -53,17 +53,17 @@ diesen Registern braucht keines von beidem einen Callback:
 
 * **aktive Geometrie** aus `0x06940874`, ein Lesezugriff,
 * **Totale** aus `0x06940548`,
-* **Ausgabefreigabe** aus `0x06940928` Bit 31 — **nicht** „eingerastet“, siehe Korrektur unten.
+* **Ausgabefreigabe** aus `0x06940928` Bit 31 - **nicht** „eingerastet“, siehe Korrektur unten.
 
 Der Treiber darf INCAP **lesen** (Nachtplan Abschnitt 0 verbietet nur das Schreiben). Damit ist
-`QUERY_DV_TIMINGS` ehrlich beantwortbar, und ein Geometriewechsel ist erkennbar, ohne zu pollen —
+`QUERY_DV_TIMINGS` ehrlich beantwortbar, und ein Geometriewechsel ist erkennbar, ohne zu pollen -
 der Aufnahmetreiber hat mit dem AFBD-Vsync-Notifier bereits ein Ereignis, an dem er das ansehen
 kann, ohne einen eigenen Takt zu erfinden.
 
 ## Was **nicht** gefunden wurde
 
 **Die Synchronlagen.** Gesucht wurde nach Registern, die von den CTA-Werten für 1080p60 auf die
-für 720p60 springen — `hfront` 88→110, `hsync` 44→40, `hback` 148→220, `vfront` 4→5, `vback` 36→20,
+für 720p60 springen - `hfront` 88→110, `hsync` 44→40, `hback` 148→220, `vfront` 4→5, `vback` 36→20,
 sowie den Austastlücken 280→370 und 45→30. **Kein einziger Treffer** im ganzen INCAP-Block.
 
 Drei mögliche Erklärungen, keine davon geprüft:
@@ -72,7 +72,7 @@ Drei mögliche Erklärungen, keine davon geprüft:
 3. der Zuspieler fährt andere Zeitlagen als die CTA-Norm.
 
 Für `V4L2_DV_TIMINGS` sind sie Pflichtfelder. Ohne sie bleibt nur, sie aus den bekannten
-Norm-Zeitlagen zur gemessenen Geometrie zu erschließen — was eine erfundene Zahl wäre, sobald die
+Norm-Zeitlagen zur gemessenen Geometrie zu erschließen - was eine erfundene Zahl wäre, sobald die
 Quelle etwas anderes fährt. **Das ist der offene Rest.**
 
 Zum Vergleich: insgesamt haben sich zwischen den beiden Abzügen 33 INCAP-Register geändert (ohne
@@ -81,18 +81,18 @@ zugeordnet. Die übrigen 15 sind nicht untersucht.
 
 ## Der Pixeltakt
 
-`hy310-tv` meldet heute `148500000 Hz Pixeltakt` bei 1080p — die Zahl kommt aus derselben
+`hy310-tv` meldet heute `148500000 Hz Pixeltakt` bei 1080p - die Zahl kommt aus derselben
 fest verdrahteten Konstante wie die Timings und ist damit **kein Messwert**. Ob der Takt irgendwo
 lesbar ist, wurde nicht gesucht. Aus h_total × v_total × 60 ergäbe sich 148,5 MHz für 1080p60 und
-74,25 MHz für 720p60 — das ist eine Rechnung, keine Messung, und sie setzt 60 Hz voraus.
+74,25 MHz für 720p60 - das ist eine Rechnung, keine Messung, und sie setzt 60 Hz voraus.
 
 
 ---
 
-## Korrektur 14:00 — zwei Fehler in dieser Seite
+## Korrektur 14:00 - zwei Fehler in dieser Seite
 
 **1. Bit 31 ist nicht „eingerastet“.** Es ist ida-belegt `VIncap_EnableCaptureOutput`
-(`re/notes/CURRENT-TRUTH.md:65`, `re/work/weltneuheit/re_chain/mem_agent.txt:2`, `doku/84` §4.3) —
+(`re/notes/CURRENT-TRUTH.md:65`, `re/work/weltneuheit/re_chain/mem_agent.txt:2`, `doku/84` §4.3) -
 die INCAP-**Ausgabefreigabe**. Am Gerät steht es auf 0, während ein Signal anliegt und eingerastet
 ist: unmittelbar nach jedem Descriptor-Schreiben (`A-abnahme-board.md:101-106`) und 20 s lang nach
 `SetSource(VideoDec)` (`M4-nachpruefung.md`). Ein Einrast-Wächter darauf meldet Fehlalarm. Der Satz
@@ -102,9 +102,9 @@ oben, damit sei „liegt ein Signal an“ beantwortbar, trägt so **nicht**.
 Hälfte war aussichtslos, und das stand schon im Projekt: `CapWinNode__WriteReg` baut das Wort als
 `0x60020000 | Höhe` (`doku/84-re-capture-ring.md:388`). Die obere Hälfte ist ein **Literal**, kein
 Feld. Dieselbe Stelle nennt auch `0x924`/`0x964` und die Capture-Fenster-Register
-`0x440/0x444/0x448/0x464/0x468` — dort hätte die Suche anfangen können.
+`0x440/0x444/0x448/0x464/0x468` - dort hätte die Suche anfangen können.
 
-## Nachtrag 14:00 — der Zeilenabstand der Capture
+## Nachtrag 14:00 - der Zeilenabstand der Capture
 
 Aus denselben zwei Abzügen:
 
@@ -116,7 +116,7 @@ Aus denselben zwei Abzügen:
 
 `0x78` = 120 = 1920/16, `0x50` = 80 = **1280**/16; der elog nennt das Feld `m_psu_rowbyte_y`
 (`CapWinNode.cpp 235`). **Die Capture schreibt bei 720p ein 1280 breites Bild in den Ring.** Eine
-Offline-Messung an `E/frame720.png`, die auf 640 Byte je Zeile kam, ist damit widerlegt — die
+Offline-Messung an `E/frame720.png`, die auf 640 Byte je Zeile kam, ist damit widerlegt - die
 640er-Periode entsteht im Rekonstruktionswerkzeug, nicht in der Capture.
 
 Das entscheidet die teuerste Weggabelung bei Punkt 2: der Ring enthält bei 720p wirklich ein

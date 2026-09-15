@@ -1,11 +1,11 @@
-# HDMI-Eingang: Integrationsplan — Kernel, Userspace, Zwischenschritte, PQ
+# HDMI-Eingang: Integrationsplan - Kernel, Userspace, Zwischenschritte, PQ
 
 > **Erledigt (Stand 08.09.2026):** dieser Plan ist abgearbeitet und am Gerät abgenommen; was davon abweicht und was übrig blieb, steht in [`00-STATUS.md`](00-STATUS.md) §4 und [`60-offen.md`](60-offen.md). Das Dokument bleibt als Planungsstand und Begründung.
 
 **Stand 06.09.2026, 19:35.** Voraussetzung ist der heutige Befund (doku/75, doku/76): Erkennung über die ARISC,
 Capture live im DRAM, Bild auf der Wand über AFBD Source 0. Alles davon läuft heute mit Skripten und
 Registerzugriffen aus dem Scratchpad. Dieses Dokument legt fest, **wo jeder Baustein hingehört**, damit es sich
-am Ende anfühlt wie ein normales Linux-Gerät mit HDMI-Eingang — und nicht wie ein Labor.
+am Ende anfühlt wie ein normales Linux-Gerät mit HDMI-Eingang - und nicht wie ein Labor.
 
 ## 0. Der Maßstab: „natürlich anfühlen"
 
@@ -28,7 +28,7 @@ Unter Linux hat ein HDMI-Eingang eine feste Gestalt, und die ist nicht die eines
 Alles, was heute an Skripten existiert, wird an diesem Maßstab einsortiert: entweder es wird ein Kernel-Baustein
 mit Standard-Schnittstelle, oder es bleibt Werkzeug für die Diagnose.
 
-## 1. Die Zwischenschritte — was auf Stock wer tut, und wohin es bei uns gehört
+## 1. Die Zwischenschritte - was auf Stock wer tut, und wohin es bei uns gehört
 
 | # | Schritt | Stock: wer | Heute bei uns | Ziel |
 |---|---|---|---|---|
@@ -62,14 +62,14 @@ Heute: debugfs-Werkzeug mit Hotplug/Probe/Unstick und (seit heute) der Startup-Q
   block, data)`, `arisc_hdmi_set_portmap()`, `arisc_hdmi_hpd(port, up/down/reset)`, `arisc_hdmi_5v(port, on)`,
   `arisc_hdmi_audio_mode()`. Die Rahmen gehen heute über user1 Port 0 **mit** Doorbell-Puls
   (`arisc_send.py`: `MSG_DATA` schreiben, `TX_IRQ_EN 0x03003430` Bit 7 ~10 µs pulsen). **Korrektur 07.09.:**
-  Die frühere Fassung dieses Absatzes behauptete, der Puls sei entbehrlich, „die ARISC pollt, 3/3 belegt" —
+  Die frühere Fassung dieses Absatzes behauptete, der Puls sei entbehrlich, „die ARISC pollt, 3/3 belegt" -
   **dafür gibt es keine Fundstelle.** Belegt ist nur eine Empfangs-Warteschleife für **Port 3**
   (`re/notes/arisc-firmware__b7da2fb9.md`: `0x07970 msgbox-recv polling loop (sub0 port 3 FIFO_STAT)`), also für
   den Notify-/Quittungskanal; für Port 0 ist nichts gemessen, und `arisc_send.py` dokumentiert die Msgbox
   ausdrücklich als flankengesteuert. Pflichtliste #2/#8 bleibt damit **offen**; Paket B darf den Puls erst
   streichen, wenn die Messung unten ihn widerlegt.
 - Antworten (Status, RequestEDID) über ARM-RX ch1 mit Wartezeit; Fehler nach oben, nicht still.
-- Was **weg** kann: `main_loop_alive`/`unstick`/`hpd_delay` — Diagnosen für Symptome, deren Ursache
+- Was **weg** kann: `main_loop_alive`/`unstick`/`hpd_delay` - Diagnosen für Symptome, deren Ursache
   (Startup-Handshake) jetzt bekannt ist. Bleiben darf ein `status` in debugfs.
 - Offen und zu belegen: die ARISC-Reaktion auf 5-V-Detect (steckt der Nutzer nach dem Boot, muss der Kernel
   nichts tun, oder muss er `PullHotPlug` nachziehen?). Messung: Kabel ziehen/stecken bei laufendem Treiber, elog.
@@ -88,26 +88,26 @@ Der Kern des Plans. Ein V4L2-Videodevice, das die MIPS-Seite kapselt:
 - **Eingänge:** ein `V4L2_INPUT` je HDMI-Port (Stock kennt drei, das Gerät hat eine Buchse = Port 0);
   `VIDIOC_S_INPUT` → `SetSource(3+port)`.
 - **Signal:** `SignalChange`-Callback (kommt heute über `cpu_comm_user`) wird im Kernel verarbeitet: Signal-Info
-  (1920×1080, 60,00 Hz, RGB 12 Bit — heute belegt) → `V4L2_DV_TIMINGS`, `V4L2_EVENT_SOURCE_CHANGE`; kein Signal →
+  (1920×1080, 60,00 Hz, RGB 12 Bit - heute belegt) → `V4L2_DV_TIMINGS`, `V4L2_EVENT_SOURCE_CHANGE`; kein Signal →
   Event mit Resolution-Change-Flag.
 - **Frames:** Der Capture-Ring ist Firmware-Eigentum (drei Y-/drei C-Puffer, von der MIPS gedreht). Der Treiber
   exportiert die Slots als dma-buf (`VIDIOC_EXPBUF` auf einer `MMAP`-Queue über die reservierte Region) und liefert
-  pro Vsync/Frame-Interrupt den aktuellen Slot als `DQBUF`. Format **NV16** (4:2:2, Chroma volle Höhe — Notiz vom
+  pro Vsync/Frame-Interrupt den aktuellen Slot als `DQBUF`. Format **NV16** (4:2:2, Chroma volle Höhe - Notiz vom
   04.07. und Capture-Register `+0x968` mit 1080 Zeilen). Das ist der Punkt, an dem noch RE fehlt: **welches Ereignis
   sagt „Slot n ist fertig"** (INCAP-Interrupt? das Ring-Register `0x8fc/900`? der MIPS-Vsync?). Ohne das gibt es
   Tearing, aber Bild.
 - **Controls:** `V4L2_CID_BRIGHTNESS/CONTRAST/SATURATION/HUE/SHARPNESS` auf die THal-RPCs (`SetBrightness`,
-  `SetContrast`, `SetSaturation`, `SetHue`, `SetSharpness` — alle in der Routinenliste), dazu Custom-Controls für
+  `SetContrast`, `SetSaturation`, `SetHue`, `SetSharpness` - alle in der Routinenliste), dazu Custom-Controls für
   `TNR`, `SNR`, `DCI`, `BlackExtension`, `PictureMode`, `VideoRange`, `LowLatency`. Das ist die PQ-Schnittstelle,
   auf der der Userspace (Abschnitt 3) aufsetzt.
 
 ### 2.3 KMS-Treiber `sun50i-h713-afbd`: die Video-Plane
 
 - cstengers Patches **0078/0079/0080** (Vollbild-NV12-Plane auf Source 0, kein vmap bei PRIME-Imports,
-  IOMMU-Anbindung) übernehmen — sie fehlen unserer Serie (0063–0086 insgesamt). Das ist Voraussetzung, nicht Kür:
+  IOMMU-Anbindung) übernehmen - sie fehlen unserer Serie (0063-0086 insgesamt). Das ist Voraussetzung, nicht Kür:
   sie enthalten die validierte Übergabe RGB ↔ Source 0 (exklusiver Mux, Selektor `0x051C006C`, Gain
   `0x05140508`, vier Slots, Dirty-Latch), die heute das Bild gebracht hat.
-- Erweiterung um **NV16** (Chroma-Höhe `+0x04C`, Format-Bits `+0x010[14:8]`) — Stock liest die Capture nicht als
+- Erweiterung um **NV16** (Chroma-Höhe `+0x04C`, Format-Bits `+0x010[14:8]`) - Stock liest die Capture nicht als
   NV12, sonst wären die Farben falsch; die genauen Bits sind aus `NRWinNode__WriteReg`/`AfbdConfigure` zu holen.
 - Der **VidDec-Descriptor** gehört hierher: Er beschreibt das Frame (Magic, 1920×1080, Stride) und wird beim
   Aktivieren der Plane geschrieben, Zeiger in `0x05600098`; ohne ihn bleibt die Zustandsmaschine der Firmware auf 0
@@ -138,7 +138,7 @@ Was übrig bleibt, wenn der Kernel die Firmware orchestriert, ist klein und gew�
 
 - **`hy310-tv`** (systemd-Dienst, C, wenige hundert Zeilen): wartet auf `SOURCE_CHANGE` des Capture-Geräts,
   legt bei gültigem Signal die Frames per dma-buf auf die KMS-Video-Plane, zeigt bei fehlendem Signal die
-  Konsole/den Desktop wieder (RGB-Plane). Optional als GStreamer-Pipeline (`v4l2src ! kmssink`) — dann ist es
+  Konsole/den Desktop wieder (RGB-Plane). Optional als GStreamer-Pipeline (`v4l2src ! kmssink`) - dann ist es
   gar kein eigenes Programm mehr. Der „HDMI-Switch" ist damit ein `systemctl start hy310-tv` bzw. ein Tastendruck
   der Fernbedienung, der genau das tut.
 - **`hy310-pq`** (CLI + Konfigurationsdateien): liest die Stock-Presets (`tvpq.db`, `pq_picturemode.ini`,
@@ -152,17 +152,17 @@ Was übrig bleibt, wenn der Kernel die Firmware orchestriert, ist klein und gew�
 
 | Werkzeug | Relevant | Nicht übernehmen |
 |---|---|---|
-| `hy310-hdmird` | die RPC-Sequenzen (Boot-Init, Post-Signal), die Callback-Behandlung, das `Wce_SetWindow`-Argumentlayout, das HDCP-Laden — als **Referenz** für Treiber-Probe und `S_INPUT` | der Daemon selbst: Socket, `CALL_GAP_MS`-Drossel (Symptom des FreeCall-Pools), Post-Signal-Fallback-Timeouts, No-op-Callback-Stubs; der Kernel hält die Callbacks selbst |
+| `hy310-hdmird` | die RPC-Sequenzen (Boot-Init, Post-Signal), die Callback-Behandlung, das `Wce_SetWindow`-Argumentlayout, das HDCP-Laden - als **Referenz** für Treiber-Probe und `S_INPUT` | der Daemon selbst: Socket, `CALL_GAP_MS`-Drossel (Symptom des FreeCall-Pools), Post-Signal-Fallback-Timeouts, No-op-Callback-Stubs; der Kernel hält die Callbacks selbst |
 | `hy310-pqd` | `tvpq.db`-Auswertung, Gamma-Interpolation (`CALCULATEGAMMA_RE_GUIDE.md`), DE2-LUT-Registerbeschreibung, die 34 Routinen-Stubs als Liste dessen, was die MIPS aufruft | `/dev/mem`-Gamma (→ KMS), der Daemon und sein Socket, die eigene RPC-Schicht (→ V4L2-Controls) |
-| `h713_hdmi_input.c`, `sun50i-h713-hdmi-rx.ko` (Legacy-Kernel) | der 5-Phasen-PHY-Init und die Register-Karte als Nachschlagewerk | die direkte EDID-/HPD-Programmierung (Patch 0023) — der Stock-Weg ist die ARISC, heute belegt |
+| `h713_hdmi_input.c`, `sun50i-h713-hdmi-rx.ko` (Legacy-Kernel) | der 5-Phasen-PHY-Init und die Register-Karte als Nachschlagewerk | die direkte EDID-/HPD-Programmierung (Patch 0023) - der Stock-Weg ist die ARISC, heute belegt |
 
 Beide Daemons sind C++ mit eigener RPC-Schicht; sie werden nicht portiert, sondern ausgelesen.
 
-## 4. PQ — „die Qualitätsscheiße"
+## 4. PQ - „die Qualitätsscheiße"
 
 Was fehlt, ist dreierlei, und es hängt zusammen:
 
-1. **Die Daten — gesichert am 06.09.2026.** Sie lagen bereits als `re/vendor/HY310/extracted/super.fex` vor
+1. **Die Daten - gesichert am 06.09.2026.** Sie lagen bereits als `re/vendor/HY310/extracted/super.fex` vor
    (Android-Sparse → LP-Container). Entpackt nach `re/vendor/HY310/extracted/vendor_a/etc/`: `tvconfig/`
    (`tvpq.db`, `pq_picturemode.ini`, `pq_colortemp.ini`, `pq_factory_extern.ini` 592 KB,
    `pq_overscan_config.ini`, `pqcontrol_*_setting.xml`, `panel_config/panel_config.ini`, `portmap.cfg`,
@@ -171,7 +171,7 @@ Was fehlt, ist dreierlei, und es hängt zusammen:
 
    **Was drinsteht und wie es auf die Hardware trifft** (06.09., am Gerät belegt):
 
-   * `pq_picturemode.ini` und die Tabelle `Picture_Mode` in `tvpq.db` geben je Eingang (ATV/DTV/HDMI1–3/CVBS/
+   * `pq_picturemode.ini` und die Tabelle `Picture_Mode` in `tvpq.db` geben je Eingang (ATV/DTV/HDMI1-3/CVBS/
      VideoDec) und Bildmodus die **Benutzerwerte 0..100**: Helligkeit, Kontrast, Sättigung, Farbton, Schärfe,
      TNR, SNR, Farbtemperatur, Gamma, DCI, Schwarzdehnung, Backlight. Modi: `standard`, `cinema` (Kontrast 45,
      Sättigung 45), `vivid` (55/60), `game`, `computer` (Schärfe 0, alle Filter aus), `hdr`, `energy_saving`
@@ -180,12 +180,12 @@ Was fehlt, ist dreierlei, und es hängt zusammen:
      fünf Stützstellen bei 0/25/50/75/100. Für HDMI: Helligkeit `0,256,512,775,1023`, Kontrast
      `1196,1794,2392,3010,3588`, **Sättigung `0,48,96,145,192`**, Farbton `0,256,512,775,1023`, Schärfe
      `0,64,128,193,255`. Dazu die Tabellen für NR, CTI, SSR und die Farbmatrix (CM).
-   * `pq_colortemp.ini` und `White_Balance_Mode`: Weißabgleich als Gain 0..1023 und Offset ±512 je Kanal — auf
+   * `pq_colortemp.ini` und `White_Balance_Mode`: Weißabgleich als Gain 0..1023 und Offset ±512 je Kanal - auf
      diesem Gerät durchweg `512/512/512` und `0/0/0`, also neutral.
 
    **Die Brücke zum Register.** Unsere Anzeige hängt heute an genau einem PQ-Register: dem Chroma-Gain
    `0x05140508`, Bits [23:16]. cstenger hat den Wert **am Stock-Gerät** charakterisiert (Commit `5718e4c`):
-   `0x00`/`0x01` grau, `0x26` blass, **`0x4C` richtig**, `0xFF` übersättigt — eine lineare Sättigungs-Verstärkung,
+   `0x00`/`0x01` grau, `0x26` blass, **`0x4C` richtig**, `0xFF` übersättigt - eine lineare Sättigungs-Verstärkung,
    kein Freigabebit. `0x4C` entspricht dem Kurvenwert **96** für Sättigung 50, dem Wert aller Standardmodi. Damit
    ist der Maßstab bekannt, und die übrigen Bildmodi rechnen sich direkt aus:
 
@@ -196,8 +196,8 @@ Was fehlt, ist dreierlei, und es hängt zusammen:
    | `vivid` | 60 | 115,6 | `0x145C0000` |
 
    Am Gerät gemessen (06.09., 21:2x, bunter Zuspieler, Farbigkeit im Spiralbereich gegen die weiße Fläche als
-   Referenz): cinema 31,0 — standard 33,1 — vivid 36,9, bei konstanter Weißfläche (27,1/26,6/26,5). Monoton,
-   ohne Helligkeitsänderung — die Kurve trifft die Hardware. **Das ist der erste vollständige Weg von einer
+   Referenz): cinema 31,0 - standard 33,1 - vivid 36,9, bei konstanter Weißfläche (27,1/26,6/26,5). Monoton,
+   ohne Helligkeitsänderung - die Kurve trifft die Hardware. **Das ist der erste vollständige Weg von einer
    Stock-PQ-Datei bis auf die Wand**, und die Vorlage für `hy310-pq`: Bildmodus → Benutzerwert → Werkskurve →
    Register, ohne geratene Konstanten.
 2. **Die MIPS-Seite.** Die Boot-Fehler „Can not get gamma LUT data", „mp_dci_data is NULL", „Can not get PP
@@ -215,25 +215,25 @@ Was fehlt, ist dreierlei, und es hängt zusammen:
 > Ausgearbeitet zu Agenten-Aufträgen mit Eingaben, Schritten, Abnahme und Board-Protokoll in
 > [78-nachtplan-hdmi-switch.md](78-nachtplan-hdmi-switch.md) (06.09., 21:40).
 
-> **Überholt am 07.09. — diese Tabelle ist Planung, kein Abnahmestand.** Vier ihrer Kriterien tragen
+> **Überholt am 07.09. - diese Tabelle ist Planung, kein Abnahmestand.** Vier ihrer Kriterien tragen
 > nicht mehr, und zwar an der Regel „ein Kriterium, das nicht scheitern kann, prüft nichts" (samt
 > Spiegelbild):
 >
-> * **A** „NV12-Plane in `modetest` sichtbar" — `modetest` gibt es auf dem Board nicht
+> * **A** „NV12-Plane in `modetest` sichtbar" - `modetest` gibt es auf dem Board nicht
 >   (`doku/79`, Widerspruch 5). Abgenommen wurde gegen die gelistete Plane `video-0` (ID 38) und einen
 >   Gamma-Reiz.
-> * **E** „`v4l2-ctl --query-dv-timings` meldet 1080p60" — der Wert ist in `0094` eine
+> * **E** „`v4l2-ctl --query-dv-timings` meldet 1080p60" - der Wert ist in `0094` eine
 >   **Übersetzungszeit-Konstante** (`V4L2_DV_BT_CEA_1920X1080P60`), die Fähigkeitsgrenzen klemmen
 >   `min == max`; er wird bei jeder Quellauflösung gedruckt. **Kann nicht scheitern.**
-> * **E** „`SOURCE_CHANGE` beim Stecken" — feuert nie, solange die Callback-Lücke steht.
+> * **E** „`SOURCE_CHANGE` beim Stecken" - feuert nie, solange die Callback-Lücke steht.
 >   **Kann nicht gelingen.**
-> * **G** „Boot-elog ohne ‚Can not get …'" — die Meldung steht weiterhin da; G wurde gegen ein
+> * **G** „Boot-elog ohne ‚Can not get …'" - die Meldung steht weiterhin da; G wurde gegen ein
 >   **anderes** Kriterium abgenommen (Gamma-LUT bitgleich zum Legacy-Rechner, offline, kein Board).
 >
 > Die **I**-Zeile („`brightness` wirkt") ist dagegen **gültig geblieben**: Helligkeit wirkt, gemessen am
 > 07.09. gegen dunkles Material, Stellbereich 0…100
 > ([`nachtlog/I0-helligkeit-nachgemessen.md`](nachtlog/I0-helligkeit-nachgemessen.md)). Die zwischenzeitliche
-> Auflage, `V4L2_CID_BRIGHTNESS` **nicht** anzubieten, ist damit hinfällig — sie stützte sich auf eine
+> Auflage, `V4L2_CID_BRIGHTNESS` **nicht** anzubieten, ist damit hinfällig - sie stützte sich auf eine
 > Messung gegen eine fast weiße Vorlage, die gar nicht anschlagen konnte.
 >
 > Der maßgebliche Stand steht in [`00-STATUS.md`](00-STATUS.md) („Stand je Paket") und
@@ -242,16 +242,16 @@ Was fehlt, ist dreierlei, und es hängt zusammen:
 
 | # | Paket | Abnahme | Abhängigkeit |
 |---|---|---|---|
-| A | cstengers Serie 0063–0086 in unsere Serie übernehmen (`build.sh kernel`), auf dem Board booten | Konsole wie heute; NV12-Plane in `modetest` sichtbar | — |
-| B | ARISC-Treiber: Firmware-Laden im Kernel, Quittung, HDMI-API; Doorbell **nur nach Messung** streichen | Kaltstart ohne Prep-Schritt 1; `status` zeigt Notify quittiert; EDID/HPD-Funktionen aus dem Kernel aufrufbar; Puls-Messung protokolliert | — |
-| C | `cpu_comm` In-Kernel-API (Call + Callback-Handler) | HDMI-RX-Treiber kann `SetSource` rufen und `SignalChange` empfangen ohne `/dev/cpu_comm` | — |
+| A | cstengers Serie 0063-0086 in unsere Serie übernehmen (`build.sh kernel`), auf dem Board booten | Konsole wie heute; NV12-Plane in `modetest` sichtbar | - |
+| B | ARISC-Treiber: Firmware-Laden im Kernel, Quittung, HDMI-API; Doorbell **nur nach Messung** streichen | Kaltstart ohne Prep-Schritt 1; `status` zeigt Notify quittiert; EDID/HPD-Funktionen aus dem Kernel aufrufbar; Puls-Messung protokolliert | - |
+| C | `cpu_comm` In-Kernel-API (Call + Callback-Handler) | HDMI-RX-Treiber kann `SetSource` rufen und `SignalChange` empfangen ohne `/dev/cpu_comm` | - |
 | D | Video-Plane auf den Capture-Ring: NV16, Descriptor beim Enable, Slot-Flip | Bild wie heute, aber aus dem Treiber; Farben korrekt (Webcam gegen Laptop-Bild) | A |
 | E | `sun50i-h713-hdmirx` V4L2: Probe-Sequenz, EDID, Inputs, DV-Timings, Events, dma-buf-Export der Slots | `v4l2-ctl --query-dv-timings` meldet 1080p60; `SOURCE_CHANGE` beim Stecken; `v4l2-ctl --stream-mmap` liefert Frames | B, C, Slot-Fertig-Ereignis (RE) |
 | F | `hy310-tv`: Capture → Plane, Signalverlust → Desktop | Kaltstart, Laptop einstecken, Bild ohne Handgriff; Kabel ziehen → Konsole | D, E |
-| G | PQ-Daten aus `super` sichern; MIPS-PQ-Fehler beim Boot klären | Boot-elog ohne „Can not get …"; Datenbestand dokumentiert | — |
+| G | PQ-Daten aus `super` sichern; MIPS-PQ-Fehler beim Boot klären | Boot-elog ohne „Can not get …"; Datenbestand dokumentiert | - |
 | H | Gamma/CTM im KMS, `hy310-pq` mit Stock-Presets | Gamma-Wechsel messbar (Webcam), Presets umschaltbar | A, G |
 | I | PQ-Controls im HDMI-RX-Treiber | `v4l2-ctl --set-ctrl=brightness=…` wirkt, elog zeigt den RPC | E |
-| J | Pflichtliste abräumen: Hot-Plug nach dem Boot (Messung), FreeCall-Pool (kein Drosseln), ACK-Cache-Sync, `clk_ignore_unused` durch DT-Takte | jeder Punkt mit Beleg oder als Stock-Verhalten belegt | B–F |
+| J | Pflichtliste abräumen: Hot-Plug nach dem Boot (Messung), FreeCall-Pool (kein Drosseln), ACK-Cache-Sync, `clk_ignore_unused` durch DT-Takte | jeder Punkt mit Beleg oder als Stock-Verhalten belegt | B-F |
 
 A, B, C und G sind unabhängig und können nebeneinander laufen. Der sichtbare Meilenstein ist F.
 

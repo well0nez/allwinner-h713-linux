@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-uart-send.py — eine Datei per YMODEM an U-Boots `loady` schicken.
+uart-send.py - eine Datei per YMODEM an U-Boots `loady` schicken.
 
   # in U-Boot:  loady 0x50000000
   ./uart-send.py 0x50000000 build/flash-netboot/uboot-proper.bin

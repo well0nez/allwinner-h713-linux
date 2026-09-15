@@ -8,18 +8,18 @@ Stock-`display.bin` (md5 `0d2191ca`).
 ## Ergebnis in drei Sätzen
 
 1. **`THal_Vp_HDMI_ReloadHdcp14Key` (`0x449effe8`) nimmt kein Argument**, läuft
-   sauber durch (RETURN, 0 Werte) und bewegt **nichts** — kein elog-Byte, kein
+   sauber durch (RETURN, 0 Werte) und bewegt **nichts** - kein elog-Byte, kein
    Flag. Stock ruft es genauso argumentlos in seiner Init-Sequenz.
 2. **Der HDCP-1.4-Ladepfad kann in dieser Firmware gar kein Positiv zeigen:**
    U-Boot hat die Warteschleife von `HdmiRx_HDCP14_LoadKey` entschärft
    (`0x4b13d0a4` liest `0x2c630000` statt `0x2c630033`).
-3. **`SetSource(3)` hängt den SoC hart** — auch nach vollständiger Phase-3-Sequenz,
+3. **`SetSource(3)` hängt den SoC hart** - auch nach vollständiger Phase-3-Sequenz,
    Stock-Reihenfolge, 1 s Pause, Callbacks angemeldet. Dritter Absturz an dieser
-   Stelle. **Es gibt keinen Watchdog** — das Board bleibt tot bis zum
+   Stelle. **Es gibt keinen Watchdog** - das Board bleibt tot bis zum
    Stromzyklus (das „nach 40 s wieder da" vom 05.09. war der manuelle Neustart
    des Nutzers, kein Watchdog).
 
-## 3.5 — HDCP 1.4
+## 3.5 - HDCP 1.4
 
 ### Die Signatur, aus dem Adapter
 
@@ -32,7 +32,7 @@ Routine-Tabelle (Shmem `0x4e3075c8`), Slot 1000, Handler `0x8B10AC30`:
 0x8b10ac48  sw    zero,0x0(s0)        nret = 0
 ```
 
-**Kein `lw` aus dem Nachrichtenpuffer** — zum Vergleich der Nachbar
+**Kein `lw` aus dem Nachrichtenpuffer** - zum Vergleich der Nachbar
 `SetHDCP22Key` (`0x8b10abb8`): `lw v1,0x4(a0)` (Zeiger, auf 28 Bit maskiert,
 `| 0xa0000000`) und `lw a1,0x8(a0)` (Größe). Die Frage aus doku/69, ob die
 Routine einen Zeiger nimmt, ist damit entschieden: **nein.**
@@ -69,7 +69,7 @@ Kein elog-Eintrag, obwohl der Stub auf Stufe 3 loggen würde. Also hat
 entweder vtable\[3\](3) ohne aktive Quelle nichts geliefert (dann wird nichts
 gepostet), oder die Nachricht landet nirgends. Session N (24.04.) sah dasselbe
 („no visible effect"). **Post-hoc nachladen ist damit als Weg tot**, solange
-keine Quelle aktiv ist — und die Quelle aktivieren ist Phase 4 (s. u.).
+keine Quelle aktiv ist - und die Quelle aktivieren ist Phase 4 (s. u.).
 
 ### Das eigentliche Hindernis: der Ladepfad ist entschärft
 
@@ -81,23 +81,23 @@ schreibt `0xc0` dorthin und pollt Bit 0 für `0x33` Ticks:
 0x8b13d0a4  2c630033  sltiu v1,v1,0x33     <- Schleifengrenze
 ```
 
-Am Board liest `0x4b13d0a4` **`0x2c630000`** — U-Boots
+Am Board liest `0x4b13d0a4` **`0x2c630000`** - U-Boots
 „HDCP key-load wait defeated" (Kommentar in `h713_mips.c`: die Ticks laufen
 beim MIPS-Start noch nicht, die Schleife würde ewig drehen). Damit ist die
-Grenze 0, `bne` fällt sofort durch, jeder Ladeversuch endet in „time out!" —
+Grenze 0, `bne` fällt sofort durch, jeder Ladeversuch endet in „time out!" -
 **unabhängig davon, was die Hardware tut.** Ein Test von These 1 aus doku/69
 (Domains schon in U-Boot an) muss diese Patchstelle zurücknehmen oder die
 Ticks anders sichern, sonst misst er mit einem Instrument, das kein Positiv
 zeigen kann.
 
-Der Schlüssel selbst wird von `LoadKey` **nicht aus dem Speicher gelesen** —
+Der Schlüssel selbst wird von `LoadKey` **nicht aus dem Speicher gelesen** -
 `0xc0` nach `0x06840093` stößt ein Laden aus dem Schlüsselspeicher der
 Hardware an. Wer den füllt, ist im Stock der Bootloader (`down hdcp 1.4`,
 `sunxi_smc_refresh_hdcp`, vgl. `sunxi_tvtop_complete`). Die 320 Byte aus
 `analyse/hdcp-keys/hdcp14-key-320.bin` haben damit noch keinen Weg in die
 Hardware; er liegt in der Secure-World-Schnittstelle, nicht im MIPS.
 
-## 4 — `SetSource(3)`
+## 4 - `SetSource(3)`
 
 ### Der Lauf
 
@@ -114,7 +114,7 @@ Dann `hdmi_seq.py run --phase 4 --i-mean-it --only setsource --portmap stock
 vor dem Aufruf wie Stock). Ergebnis:
 
 * keine Ausgabe mehr, kein RETURN; `--log`-Datei leer
-* nach ~2 min: **`ssh: No route to host`**, ARP-Eintrag unvollständig — der
+* nach ~2 min: **`ssh: No route to host`**, ARP-Eintrag unvollständig - der
   ganze SoC steht, nicht nur ein Firmware-Thread
 * Ping erst wieder nach dem **manuellen Stromzyklus** (kein Watchdog),
   `uptime 0 min`, MIPS über die persistente `bootcmd` von selbst hoch
@@ -131,13 +131,13 @@ zusammen und ist nicht bewertbar; der zweite ist der oben).
   mit `--only`.
 * **Nicht „SetSource ist immer tödlich".** `re/captures/weltneuheit/
   mainline-0x5600000-post-hdmird.txt:7`: `THal_Vp_SetSource(0x3) OK in 129ms`
-  — auf dem arm32-Mainline der weltneuheit-Ära lief es durch, und Session R
+- auf dem arm32-Mainline der weltneuheit-Ära lief es durch, und Session R
   sah danach `port1 SwitchState 1→2→3` im elog.
 
 ### KORREKTUR (dritter Lauf, UART mitgelesen): es ist ein ARM-Kernel-Oops
 
-Der dritte Lauf — volle Sequenz in **einem** Prozess (`run --phase 4`, kein
-`--only`) — wurde am UART mitgeschnitten. Er zeigt zwei Dinge, die die
+Der dritte Lauf - volle Sequenz in **einem** Prozess (`run --phase 4`, kein
+`--only`) - wurde am UART mitgeschnitten. Er zeigt zwei Dinge, die die
 Deutung „Interconnect-Hänger" **aufheben**:
 
 1. **Der erste Callback vom MIPS überhaupt.** Während des ersten
@@ -152,8 +152,8 @@ Deutung „Interconnect-Hänger" **aufheben**:
    `(1, 3)`. Das HPD-Gate `0x4b271c2c` kippt an derselben Stelle. Die
    Callback-Verdrahtung funktioniert also in beide Richtungen.
 
-2. **`SetSource(3)` (`0xeaf13de5`, t = 299.62 s) bekommt CALL_ACK** — die
-   Firmware hat den Aufruf angenommen — und 0,45 s später, **ohne weitere
+2. **`SetSource(3)` (`0xeaf13de5`, t = 299.62 s) bekommt CALL_ACK** - die
+   Firmware hat den Aufruf angenommen - und 0,45 s später, **ohne weitere
    Msgbox-Zeile**, stirbt der ARM-Kernel:
 
    ```
@@ -163,7 +163,7 @@ Deutung „Interconnect-Hänger" **aufheben**:
    ```
 
    Kein RETURN, kein weiterer CALL im Log davor. Der Oops-Text bricht nach
-   dieser einen Zeile ab (kein PC, kein Trace) — das ist selbst ein Befund,
+   dieser einen Zeile ab (kein PC, kein Trace) - das ist selbst ein Befund,
    s. u. Das erklärt, warum nach dem ersten Lauf der `--log` leer war.
 
 Was das für die Takt-These unten heißt: sie ist damit **nicht die erste
@@ -174,19 +174,19 @@ führt:
 
 * ein Pfad im `cpu_comm`-Treiber, der bei `SetSource` zum ersten Mal läuft
   (die Firmware antwortet auf `SetSource` anders als auf die 22
-  Init-Aufrufe — evtl. mit einem Rahmen, den `handle_return`/`ack_action`
+  Init-Aufrufe - evtl. mit einem Rahmen, den `handle_return`/`ack_action`
   falsch dereferenziert; `cc_deref` auf einem Wert, den der MIPS verändert hat);
 * der Listener-Pfad (`cpu_comm_dev.c`, `*(u64 *)&buf[1]`, in doku/67 als
-  „nicht auf unserem Pfad, ungeprüft" geführt) — **seit diesem Lauf ist er
+  „nicht auf unserem Pfad, ungeprüft" geführt) - **seit diesem Lauf ist er
   auf unserem Pfad**, denn erstmals wurde ein Callback zugestellt;
 * ein MIPS-Schreibzugriff in ARM-Speicher über einen Zeiger, den wir ihm
   gegeben haben (Wce-Fenster, Vp_Init-Staging, Key liegen alle im
-  no-map-Shmem — die getaggten `cc_ref`-Wait-Referenzen aber nicht).
+  no-map-Shmem - die getaggten `cc_ref`-Wait-Referenzen aber nicht).
 
 Der naheliegendste Treiberpfad, geprüft: `CPUComm_CallEx` wartet nach dem
 `CALL_ACK` mit `cpu_comm_sem_down_timeout(wait_obj+8, 500 ms)` auf das
 `RETURN` (`cpu_comm_rpc.c:633`), holt dann `GetReturnbySessionId` (bei
-ausbleibendem RETURN `NULL`) und gibt am Ende das Wait-Objekt frei — ein
+ausbleibendem RETURN `NULL`) und gibt am Ende das Wait-Objekt frei - ein
 spätes `RETURN` würde es dann freigegeben dereferenzieren. Der Kommentar
 im Treiber nennt genau diesen Use-after-free als Grund für die 500 ms.
 `SetSource` dauert im MIPS länger als jeder Init-Aufruf (PHY-Reset,
@@ -197,19 +197,19 @@ Warten begann früher, als das Log zeigt.
 
 ### Vierter Lauf (06.09., UART per tio beim Nutzer): stirbt STUMM
 
-Gleiche Sequenz, gleiche Stelle — nach `IPC[dispatch] type=2(CALL_ACK)` für
+Gleiche Sequenz, gleiche Stelle - nach `IPC[dispatch] type=2(CALL_ACK)` für
 `SetSource` (`0xeaf13de5`, t = 109.37 s) kommt **nichts mehr**, keine
 Oops-Zeile. Kein Watchdog, das Board bleibt tot bis zum Stromzyklus. Zusammen
 mit dem abgebrochenen Oops-Kopf vom Vortag (eine Zeile, dann Stille) heißt
 das: der ARM friert **mitten im Drucken** ein. Das ist das Bild eines
-**Interconnect-Hängers**, nicht eines Treiberfehlers — ein Treiber-Oops
+**Interconnect-Hängers**, nicht eines Treiberfehlers - ein Treiber-Oops
 druckt seinen Trace zu Ende.
 
 Ein naheliegender Kandidat wäre ein ungetakteter HDMI-Audio-Block: der MIPS
 macht bei `SetSource` laut Session-R-elog `AUDIO PLL CALC`. **Diese These ist
 am 06.09. widerlegt.**
 
-### WIDERLEGT: die Takte sind alle an — und der Mainline-CCU zählt zwei falsch
+### WIDERLEGT: die Takte sind alle an - und der Mainline-CCU zählt zwei falsch
 
 Ich hatte `0xd80` Bit 0/1 für die Gates von `bus-hdmi-audio` und `cap-300m`
 gehalten (so steht es in unserem `ccu-sun50i-h713.c`) und aus `0xd80 =
@@ -220,14 +220,14 @@ Der Stock-`vmlinux` (`/opt/archive/HY310/extracted/vmlinux.elf`, CCU-Tabelle
 
 | Takt | Register | Gate-Bit (Vendor) | unser `ccu-sun50i-h713.c` |
 |---|---|---|---|
-| `bus-hdmi-audio` | `0xd80` | **Bit 31** | Bit 0 — **falsch** |
-| `bus-cap-300m` | `0xd80` | **Bit 30** | Bit 1 — **falsch** |
+| `bus-hdmi-audio` | `0xd80` | **Bit 31** | Bit 0 - **falsch** |
+| `bus-cap-300m` | `0xd80` | **Bit 30** | Bit 1 - **falsch** |
 | `bus-tvcap` | `0xd88` | Bit 0 | Bit 0 ✓ |
 | `bus-disp` | `0xdd8` | Bit 0 | Bit 0 ✓ |
 
 Die beiden bekannten (`bus-tvcap`, `bus-disp`) bestätigen die Auslesemethode;
 die beiden strittigen kippen. **Am Board sind Bit 31 und 30 gesetzt**
-(`0xd80 = 0xC0000000`) — `bus-hdmi-audio` und `bus-cap-300m` laufen also. Der
+(`0xd80 = 0xC0000000`) - `bus-hdmi-audio` und `bus-cap-300m` laufen also. Der
 Treiber weiß es nur nicht: `clk_summary` zeigt `bus-hdmi-audio` mit Zähler 0
 (er schaltet Bit 0, wirkungslos) und `bus-cap-300m` mit Zähler 1 (Bit 1,
 ebenso wirkungslos), während die echten Bits längst an sind.
@@ -244,13 +244,13 @@ Live gegengeprüft (06.09.):
 
 **Alle Takte, die der MIPS bei `SetSource` anfasst, sind an.** Ein fehlender
 Takt ist damit als Ursache des Hängers ausgeschlossen. `SetSource` läuft bei
-uns **mit** demselben Taktsatz, den die weltneuheit-Erfolge hatten — der
+uns **mit** demselben Taktsatz, den die weltneuheit-Erfolge hatten - der
 Unterschied liegt woanders.
 
 Nebenbefund, unabhängig vom Absturz: **unser CCU-Treiber definiert
 `bus-hdmi-audio` und `bus-cap-300m` an den falschen Bits** (0/1 statt 31/30).
 Folgenlos, solange die Bits aus U-Boot gesetzt bleiben und `clk_ignore_unused`
-in den bootargs steht — aber ein `clk_disable` würde ins Leere greifen und der
+in den bootargs steht - aber ein `clk_disable` würde ins Leere greifen und der
 `clk_summary`-Zustand ist irreführend. Gehört in `ccu-sun50i-h713.c`
 korrigiert (Patch 0001), unabhängig von dieser Fehlersuche.
 
@@ -259,7 +259,7 @@ korrigiert (Patch 0001), unabhängig von dieser Fehlersuche.
 Der ARM friert mitten im `printk` ein, ohne Oops-Trace, an genau der Stelle,
 wo `SetSource` sein `CALL_ACK` bekommen hat. Der MIPS fängt danach an, die
 HDMI-RX-Blöcke umzuschalten (`HdmiRx_Port_Select base=6800800`,
-`HdmiRx_PHY_Reset`, `Toggle_PD_IDCLK_Reset` — Session R). Was den ARM dabei
+`HdmiRx_PHY_Reset`, `Toggle_PD_IDCLK_Reset` - Session R). Was den ARM dabei
 festsetzt, ist **nicht** gezeigt. Mögliche Klassen, keine belegt:
 
 * der MIPS legt beim PHY-Reset kurz einen Bus/Takt lahm, den der ARM gerade
@@ -267,14 +267,14 @@ festsetzt, ist **nicht** gezeigt. Mögliche Klassen, keine belegt:
 * ein Zeiger, den wir dem MIPS mitgegeben haben und den er erst bei
   `SetSource` benutzt (Wce-Fenster, Vp_Init-Staging), zeigt woanders hin als
   er soll;
-* ~~etwas an der Quelle~~ — zurückgenommen: die Quelle ist permanent
+* ~~etwas an der Quelle~~ - zurückgenommen: die Quelle ist permanent
   angeschlossen (Nutzer, 06.09.).
 
 ### Was das für den Plan heißt
 
 `SetSource` bleibt der letzte, gefährliche Schritt und **nur mit Ansage**. Der U-Boot-Weg (`h713_tvcap_prepare()` vor dem MIPS-Start, plus
 die `LoadKey`-Schleifengrenze zurück auf `0x33`) prüft in einem Boot auch
-HDCP 1.4 — aber er ist ein U-Boot-Neubau und -Flash und ändert an der
+HDCP 1.4 - aber er ist ein U-Boot-Neubau und -Flash und ändert an der
 Takt-Lage nichts mehr, nachdem die als Ursache ausfällt. Er lohnt erst, wenn
 die Quelle-These geprüft ist.
 
@@ -292,20 +292,20 @@ trotzdem). Steht jetzt im Rezept in doku/69.
 * Warum `SetSource` hängt. Die Takt-These ist widerlegt (alle Takte an,
   Vendor-CCU-Tabelle), ein Mechanismus ist nicht benannt; ein elog des
   Absturzlaufs gibt es nicht (DRAM nach dem Stromzyklus neu geladen).
-* ~~Ob `SetSource` mit angeschlossener Quelle genauso hängt~~ — die Quelle
+* ~~Ob `SetSource` mit angeschlossener Quelle genauso hängt~~ - die Quelle
   ist permanent angeschlossen (Nutzer, 06.09.); die Annahme „ohne Quelle"
   war falsch.
-* Ob `ReloadHdcp14Key` mit aktiver Quelle etwas tut — ohne `SetSource` nicht
+* Ob `ReloadHdcp14Key` mit aktiver Quelle etwas tut - ohne `SetSource` nicht
   prüfbar.
-* ~~Keine Quelle gesehen~~ — es hängt permanent eine Quelle am Projektor
+* ~~Keine Quelle gesehen~~ - es hängt permanent eine Quelle am Projektor
   (Nutzer, 06.09.); ob sie das Board sieht, ist weiterhin nicht gezeigt.
 
 ## Werkzeuge und Spuren
 
-* `/root/phase3-*.log`, `/root/phase4-194206.log` (leer — der Aufruf kam nie
+* `/root/phase3-*.log`, `/root/phase4-194206.log` (leer - der Aufruf kam nie
   zurück)
 * Scratch: `mdis.py` (MIPS-Minidecoder für das LE-abgelegte `display.bin`,
-  Befehle `dis`, `refs`, `words`) — liegt nur im Sitzungs-Scratchpad, bei
+  Befehle `dis`, `refs`, `words`) - liegt nur im Sitzungs-Scratchpad, bei
   Bedarf nach `tools/` heben
 * Board nach dem Watchdog wiederhergestellt: ARISC geladen, cpu_comm 4/4
   Ready, `h713-tvcap` und `hy310-arisc-hdmi` geladen. Phase 2/3 **nicht**
@@ -329,7 +329,7 @@ den geteilten 1-KiB-Formatpuffer der Firmware verschränkt):
                                                      (hb 512 um ~173.17 fehlt)
 ```
 
-Der ARM stirbt **150–300 ms nach dem `CALL_ACK`**, während der MIPS in
+Der ARM stirbt **150-300 ms nach dem `CALL_ACK`**, während der MIPS in
 `AUDIO PLL CALC` steht (Stage 3 erreicht). Der Herzschlag bricht **zwischen
 zwei Schlägen** ab, nicht mitten in einer Zeile.
 
@@ -341,9 +341,9 @@ zwei Schlägen** ab, nicht mitten in einer Zeile.
   `rmw8 0x8b17fafc` zu: `a0` = **physische Adresse**, Zugriff als
   `(a0 + 0xB5000000) | 0x20000000`.
 * Davor steht ein **Wächter** (`0x8b17f8ec`), eine Whitelist: nur
-  `0x05000000–0x05FFFFFF`, `0x06800000–0x06FFFFFF`, `0x03000000–0x03000FFF`,
-  `0x03002000–0x03004FFF`, `0x03006000–0x03006FFF`, `0x03010000–0x0302FFFF`,
-  `0x03040000–0x03041FFF`, `0x03060000–0x030607FF` (und weitere kleine
+  `0x05000000-0x05FFFFFF`, `0x06800000-0x06FFFFFF`, `0x03000000-0x03000FFF`,
+  `0x03002000-0x03004FFF`, `0x03006000-0x03006FFF`, `0x03010000-0x0302FFFF`,
+  `0x03040000-0x03041FFF`, `0x03060000-0x030607FF` (und weitere kleine
   Fenster). Außerhalb wird der Zugriff **übersprungen** (`read8` liefert 0).
 * Die APLL-Basis kommt aus dem Treiberobjekt (Offsets `+0x04…+0x1b`), also der
   HDMI-RX-Wrapper (`base=6800800`). `UpdateAPLL` schreibt ein 32-Bit-Register
@@ -366,8 +366,8 @@ Bleibt: der ARM stirbt, während der MIPS etwas Harmloses tut. Zwei Klassen:
    `cpu_comm`-Pfad, der bei `SetSource` erstmals läuft). Er hält die Konsole
    (andere Kerne drucken nur noch in den Puffer) und, wenn die Netz-IRQ auf
    ihm liegt, das Netz. Von außen sieht das aus wie ein toter SoC. Alle
-   Spinlocks des Treibers sind `irqsave` — ein offensichtlicher Kandidat fehlt.
-2. **Der Interconnect steht** — dann ist jeder Kern tot.
+   Spinlocks des Treibers sind `irqsave` - ein offensichtlicher Kandidat fehlt.
+2. **Der Interconnect steht** - dann ist jeder Kern tot.
 
 Unterscheidbar per IRQ-Trennung: Msgbox-IRQ auf CPU3, Netz-IRQ auf CPU0,
 `hdmi_seq` auf CPU1, `elog_tail` auf CPU2 (`analyse/hdmi-seq/prep_after_boot.sh`).
@@ -375,7 +375,7 @@ Antwortet das Board nach dem Hänger noch auf ssh, ist es Klasse 1, und
 `/proc/<pid>/task/*/stack` der hängenden Threads zeigt die Stelle. Antwortet
 nichts, ist es Klasse 2.
 
-## Sechster Lauf (06.09.): IRQ-Trennung — der ganze SoC steht
+## Sechster Lauf (06.09.): IRQ-Trennung - der ganze SoC steht
 
 `prep_after_boot.sh`: Msgbox-IRQ 332 auf CPU3, USB-Ethernet-IRQ 249 (EHCI
 usb5) auf CPU0, `hdmi_seq` per `taskset` auf CPU1, `elog_tail` auf CPU2, tio
@@ -386,7 +386,7 @@ ping: 2 packets transmitted, 0 received
 ssh:  No route to host
 ```
 
-Kein Kern antwortet — auch nicht CPU0 mit dem USB-Host-Controller, der
+Kein Kern antwortet - auch nicht CPU0 mit dem USB-Host-Controller, der
 nichts mit dem Treiber zu tun hat. **Klasse 1 (Kern-Deadlock im
 `cpu_comm`-Treiber) ist damit ausgeschlossen, Klasse 2 bestätigt: der
 Interconnect steht.** Der `CONFIG_LOCKUP_DETECTOR` ist nicht gebaut
@@ -399,12 +399,12 @@ hängen `tvcap@6800000` und `tvdisp@5000000` als
 `allwinner,sunxi-tvsystem-iommu-dev` hinter einem eigenen **TV-System-IOMMU**
 (`0x02010000`), der laut `re/notes/CURRENT-TRUTH.md` „MISSING in mainline
 (U-Boot bypass)" ist. Läuft die Capture-DMA gegen einen IOMMU, den niemand
-konfiguriert oder umgeht, blockiert sie den Bus — genau das Bild. Der
+konfiguriert oder umgeht, blockiert sie den Bus - genau das Bild. Der
 arm32-Erfolg der weltneuheit-Ära lief mit dem Vendor-Bootloader, unser
 `h713_disp init` ist eine andere Boot-Kette. Das ist die nächste Spur, noch
 nicht belegt.
 
-## Siebter Lauf (06.09.): TV-IOMMU geprüft, tvcap-Magic-Puls gefahren — hängt trotzdem
+## Siebter Lauf (06.09.): TV-IOMMU geprüft, tvcap-Magic-Puls gefahren - hängt trotzdem
 
 **TV-IOMMU `0x02010000` live** (Gate `0x020017bc` an, Treiber gebunden):
 
@@ -412,7 +412,7 @@ nicht belegt.
 +0x00=0x00000014  +0x10=0x8003007F  +0x30=0x0000007C (BYPASS)  +0x40=1  +0x50=0x413F0000 (TTB)  +0x60=0x0003007F
 ```
 
-Bypass `0x7C` = Master 2–6 durchgereicht, nur 0/1 (Video-Codec, `iommus =
+Bypass `0x7C` = Master 2-6 durchgereicht, nur 0/1 (Video-Codec, `iommus =
 <&iommu 0 1>, <&iommu 1 1>`) übersetzt. Vendor-DT: `tvcap@6800000` ist
 **Master 4** (`<&mmu_aw 4 1>`), `tvdisp@5000000` Master 3, `ge2d`/`dec`
 Master 2 (Bypass). Master 4 läuft bei uns physisch wie im April
@@ -427,7 +427,7 @@ nach Phase 2  tvcap +0=0          +4=0          +8=0           INCAP+0=0x0000000
 nach Phase 3  tvcap +0=0x00111111 +4=0x01111117 +8=0x00000404  INCAP+0=0x00003a7b
 ```
 
-Nebenbefund: mit genulltem `0x06e00000` liest INCAP null — **`0x06e00000`
+Nebenbefund: mit genulltem `0x06e00000` liest INCAP null - **`0x06e00000`
 ist der Fabric-Router der Capture-Blöcke**, analog zu `0x05700000` für die
 Display-Blöcke. `+8` stand vor dem Puls auf `0x504` (Boot-Default), Stock
 schreibt `0x404`.
@@ -444,9 +444,9 @@ Danach `SetSource(3)` auf CPU1: **hängt wie zuvor**, kein Ping, kein ssh.
 | fehlender tvcap-Magic-Puls / INCAP-Bit | gefahren, ohne Änderung |
 | Position in der Sequenz, fehlende Callbacks | s. o. |
 
-### Was übrig bleibt — zwei Unterschiede zum April, beide ungetestet
+### Was übrig bleibt - zwei Unterschiede zum April, beide ungetestet
 
-1. ~~Keine HDMI-Quelle~~ — **falsch, zurückgenommen (06.09.):** am
+1. ~~Keine HDMI-Quelle~~ - **falsch, zurückgenommen (06.09.):** am
    Projektor hängt permanent eine Quelle (Aussage des Nutzers). Die
    Formulierung „ohne Quelle" in dieser und in doku/71 war meine Annahme,
    nie gemessen. Damit ist die Quelle als Unterschied zum April vom Tisch.
@@ -456,7 +456,7 @@ Danach `SetSource(3)` auf CPU1: **hängt wie zuvor**, kein Ping, kein ssh.
    Symptom); `SetSource` arbeitet dann mit einem Objekt aus einer
    fehlgeschlagenen Init. Im April startete Linux den MIPS **nach**
    `sunxi_tvtop`. Test: `h713_tvcap_prepare()` **und** die PPU-Domains
-   TVFE/TVCAP in U-Boot vor `h713_mips_release_reset` — ein U-Boot-Neubau
+   TVFE/TVCAP in U-Boot vor `h713_mips_release_reset` - ein U-Boot-Neubau
    und -Flash, nur mit Ansage. Dazu gehört die `LoadKey`-Schleifengrenze
    zurück auf `0x33`, damit derselbe Boot auch HDCP 1.4 prüft.
 
@@ -464,7 +464,7 @@ Danach `SetSource(3)` auf CPU1: **hängt wie zuvor**, kein Ping, kein ssh.
 
 „TVFE/TVCAP sind beim Start aus, jeder Zugriff hängt" stammt von **cstengers
 Board B** (Patch 0087, `hy200_qz713df_a1`), nicht vom HY310. Auf dem HY310 ist
-der PPU-Zustand beim Boot **nicht gemessen** — meine Lesungen von
+der PPU-Zustand beim Boot **nicht gemessen** - meine Lesungen von
 `0x07001080`/`0x07001100` waren die Domain-Basisregister, nicht die
 Statusregister. Nach `sun50i-h713-ppu.c` gilt: Basis `0x07001000`,
 Domain d: `pwr_ctrl = +0x20 + d*0x80`, `status = +0x24 + d*0x80`, Bits 17:16
@@ -476,14 +476,14 @@ schon auf „an", hatte der MIPS beim Start Strom auf dem Block, und These 2
 fällt wie die anderen. Dazu `THal_Vp_HDMI_GetPortStatus` (`0xcbf83247`,
 rein lesend) als Blick in das HDMI-RX-Objekt des MIPS.
 
-## Achter/neunter Lauf (06.09.): `0x068B0000` liegt am Demod-Bus — und der Hänger bleibt
+## Achter/neunter Lauf (06.09.): `0x068B0000` liegt am Demod-Bus - und der Hänger bleibt
 
 **Messung am HY310, vor jedem Modul:** alle fünf PPU-Domains sind beim Boot
 an (`pwr_ctrl = 1`, `status = 0x00010000`). These 2 (stromloses TVCAP beim
 MIPS-Start) ist auf diesem Board tot. `THal_Vp_HDMI_GetPortStatus`
-(`0xcbf83247`) liefert 0, mit und ohne Argument — nicht aussagekräftig.
+(`0xcbf83247`) liefert 0, mit und ohne Argument - nicht aussagekräftig.
 
-**CCU-Block `0xd10`–`0xdac` gelesen:** der gesamte TVFE/Demod-Teil ist
+**CCU-Block `0xd10` - `0xdac` gelesen:** der gesamte TVFE/Demod-Teil ist
 ungetaktet (`adc`, `dtmb`, `i2h`, `cip-*`, `tsa-*`, `audio_*`, `mpg0/1` alle
 Bit 31 = 0), **`bus-demod` `0xd64 = 0x00000000`** (Gate aus, Reset
 angezogen); nur `tvfe_1296M` (`0xd20`) läuft.
@@ -498,7 +498,7 @@ Lesung von `0x068B0000` vom ARM:
 
 **Liest, Board lebt.** `0x068B0000` („TVTOP A/B", Ziel von
 `memory_agent_onoff`) hängt am **Demod-Bus**; ohne `bus-demod` tötet jeder
-Zugriff den Interconnect — vom ARM (Sperre in doku/69) wie vom MIPS. Die
+Zugriff den Interconnect - vom ARM (Sperre in doku/69) wie vom MIPS. Die
 absolute Sperre „`0x068B0000` nie lesen" ist damit erklärt und **bedingt**:
 mit `bus-demod` an ist der Block ein normales Register.
 
@@ -509,7 +509,7 @@ stummem Ende). Der Rest des TVFE-Taktsatzes bleibt aus; Stock
 `0x003003FF` auf `0x06700000`. Nächster Schritt:
 `analyse/hdmi-seq/tvfe_enable.py --do` vor `SetSource`.
 
-## Zehnter/elfter Lauf (06.09.): voller TVFE-Taktsatz — hängt; Black-Box im DRAM
+## Zehnter/elfter Lauf (06.09.): voller TVFE-Taktsatz - hängt; Black-Box im DRAM
 
 `tvfe_enable.py --do` (alle 15 TVFE-Takte Bit 31, `bus-demod` Gate+Reset,
 Router `0x06700000 := 0x003003FF`; vorher las das Register `0x7ff`, mit
@@ -518,7 +518,7 @@ Router `0x06700000 := 0x003003FF`; vorher las das Register `0x7ff`, mit
 
 Beobachtung aus dem UART (Nutzer, Lauf 10): nach dem `CALL_ACK` (113.204)
 wuchs der elog-Schreibzeiger von 40613 auf 45580 (~5 KiB) bis zum nächsten
-Herzschlag 10 ms später — und dann nichts mehr. In Lauf 5 (ohne
+Herzschlag 10 ms später - und dann nichts mehr. In Lauf 5 (ohne
 `bus-demod`) kam der MIPS noch bis `AUDIO PLL CALC`; in Lauf 9 (nur
 `bus-demod`) blieb der Zeiger sofort stehen. **Die Freigaben verschieben den
 Hänger, sie beseitigen ihn nicht.** Was in den 5 KiB stand, hat der UART
@@ -527,16 +527,16 @@ hinterher (letzter Stand Tick 96899 bei `SetSource` um 115372).
 
 Deshalb zwei Änderungen am Mitschreiber (`elog_tail.py`):
 
-* `--kmsg-exclude 'cpucomm|TSEXX|D/sys|app_init' --kmsg-cut 160` — der
+* `--kmsg-exclude 'cpucomm|TSEXX|D/sys|app_init' --kmsg-cut 160` - der
   UART bekommt alles außer dem Rauschen, statt nur eine Whitelist.
 * **Black-Box im DRAM**: jede Zeile wortweise nach `0x4e710000` (Shmem,
   `no-map`, oberhalb der Vp_Init-Staging; U-Boots `clear_workspace` nullt
-  nur `0x4b1xxxxx`–`0x4be01000` und den FB). Kopf: Magic `0x424f5845`,
+  nur `0x4b1xxxxx` - `0x4be01000` und den FB). Kopf: Magic `0x424f5845`,
   Schreiboffset, Wrap-Zähler. `bbox_read.py` liest sie nach einem
-  Stromzyklus — **als Erstes**, DDR3 hält Daten nur Sekunden ohne Strom.
+  Stromzyklus - **als Erstes**, DDR3 hält Daten nur Sekunden ohne Strom.
   Der elog-Ring selbst liegt im genullten Bereich und taugt nicht.
 
-## Zwölfter Lauf (06.09.): MIPS-Log per UDP — der MIPS stirbt im Resync der Routine-Tabelle
+## Zwölfter Lauf (06.09.): MIPS-Log per UDP - der MIPS stirbt im Resync der Routine-Tabelle
 
 DRAM-Black-Box fiel aus (U-Boot nullt den ganzen Shmem, `h713_mips.c:3056`).
 Ersatz: `elog_tail.py --udp 192.168.8.104:5555` schickt jede Zeile ungefiltert
@@ -576,7 +576,7 @@ der Resync-Pfad bei `0x8b11c280`:
 ```
 
 Er läuft, wenn die **Versionsnummer** der Tabelle (`0x4e3075c0`) nicht zur
-privaten Kopie passt — also nach jedem `INSTALL_RT` (jede Callback-Anmeldung
+privaten Kopie passt - also nach jedem `INSTALL_RT` (jede Callback-Anmeldung
 durch `hdmi_seq`, auch bei `--only setsource`) und nach jeder
 Kanalregistrierung des Treibers („MIPS-incoming channel reg"). Der erste
 Aufruf danach löst die Kopie aus. Bei `GetSource` überlebte der ARM sie, bei
@@ -584,25 +584,25 @@ Aufruf danach löst die Kopie aus. Bei `GetSource` überlebte der ARM sie, bei
 (`beq zero,zero,<self>` nach einer Fehlermeldung); keine davon wurde geloggt.
 
 **Offen, entscheidend:** wohin `*(0x8b22f1f4) + 0x7d8` zeigt. Reserviert
-(`no-map`) sind bei uns `0x4b100000`–`0x4d961000` und der Shmem. Liegt die
+(`no-map`) sind bei uns `0x4b100000` - `0x4d961000` und der Shmem. Liegt die
 private Kopie außerhalb, überschreibt der MIPS bei jedem Resync 117 KB
-**Kernel-RAM** — das erklärte den halb gedruckten Oops (Lauf 3), das stumme
+**Kernel-RAM** - das erklärte den halb gedruckten Oops (Lauf 3), das stumme
 Sterben und die Unempfindlichkeit gegen jede Takt-Freigabe. Messung: die
 zwei Wörter `0x4b22f1f4` und `0x4b22efe4` nach dem nächsten Boot, gegen
 `/proc/iomem`.
 
 ### Läufe 13/14 (06.09.): Kopierziel reserviert, ARISC ausgeschlossen, MIPS steht ≥100 ms vor dem ARM
 
-* `*(0x8b22f1f4) = 0x8B254410` → Kopie nach `0x4b254be8`–`0x4b2716f0`,
+* `*(0x8b22f1f4) = 0x8B254410` → Kopie nach `0x4b254be8` - `0x4b2716f0`,
   vollständig in `mips-firmware` (`no-map`). **Die Resync-Kopie trifft kein
-  Kernel-RAM.** (`0x8b22efe4` liest 0, wie in doku/66 — andere Firmware-Revision.)
+  Kernel-RAM.** (`0x8b22efe4` liest 0, wie in doku/66 - andere Firmware-Revision.)
 * **ARISC im Reset** (Schritt 1 der Vorbereitung ausgelassen, `R_CPUCFG = 0`):
   identischer Verlauf, identischer Tod. Die ARISC ist raus.
 * UDP-Zeitstempel: `spinLock(2,quick)-End` um 13:47:11.344, letzter
   Herzschlag 13:47:11.451 mit unverändertem elog-Schreibzeiger. **Der MIPS-
   Hauptthread schweigt ≥107 ms, bevor der ARM stirbt.** Bei `GetSource` kam
   `comm_SpinUnLock(2)` nach 7 ms. Der ARM las in dieser Zeit noch DRAM und
-  sendete UDP über USB — sein Buspfad lebte noch, während der MIPS-Thread in
+  sendete UDP über USB - sein Buspfad lebte noch, während der MIPS-Thread in
   einer DRAM→DRAM-Kopie stand.
 * Der doppelte CALL-Doorbell unseres Treibers (zwei `msgbox tx raw=0 (CALL)`
   je Aufruf, `cpu_comm_proto.c:158`) trifft den MIPS mal innerhalb, mal
@@ -614,7 +614,7 @@ nur der Thread? Der ThreadX-Tick liegt bei `0x8b252cc0` (ARM `0x4b252cc0`,
 sendet ihn alle 20 ms per UDP, dazu die drei Wörter von SW-Spinlock 2
 (`0x4e300018`). Nächster Lauf.
 
-### Lauf 15 (06.09.): der ARM lebt nach dem Hänger — der UART stirbt
+### Lauf 15 (06.09.): der ARM lebt nach dem Hänger - der UART stirbt
 
 Mit Tick-Sonde: der ThreadX-Tick bei `0x4b252cc0` ist für den ARM **stale**
 (sekundenlang 219480, während die MIPS-Zeilen 2313xx tragen; er springt nur
@@ -624,11 +624,11 @@ jede kseg0-Variable. Der elog-Ring erscheint dagegen zeilenweise (einzelne
 `D/sys`-Zeilen alle 5 s), wird also vom Writer zurückgeschrieben.
 
 Entscheidend: nach dem Hänger (13:51:37.5) antwortete das Board **weiter auf
-Ping**, bis 13:53:47 — zwei Minuten. Meine ssh-Sitzung hing nur, weil
+Ping**, bis 13:53:47 - zwei Minuten. Meine ssh-Sitzung hing nur, weil
 `hdmi_seq` darin im ioctl stand; der Mitschreiber verstummte 105 ms nach
 `spinLock(2)-End`. Deutung: **nicht der SoC stirbt, sondern der UART**
-(`0x02500000`, APB). Wer danach auf die Konsole schreibt — `printk` aus dem
-Treiber, `/dev/kmsg` aus `elog_tail`, der Oops-Handler — blockiert im
+(`0x02500000`, APB). Wer danach auf die Konsole schreibt - `printk` aus dem
+Treiber, `/dev/kmsg` aus `elog_tail`, der Oops-Handler - blockiert im
 Konsolentreiber für immer. Das erklärt den nach einer Zeile abgebrochenen Oops
 (Lauf 3), das Schweigen von tio, und warum in manchen Läufen `ssh` noch mit
 „Connection refused"/„closed by remote host" antwortete. Die früheren „kein
@@ -638,18 +638,18 @@ der Msgbox-IRQ-Handler druckt auf CPU3 …).
 Konsequenz für den nächsten Lauf: `printk` auf Konsolen-Loglevel 1 (alles
 bleibt in `dmesg`), `SetSource` im Hintergrund, danach eine **frische**
 ssh-Sitzung: `dmesg`, `/proc/<pid>/task/*/stack` der hängenden Threads,
-MIPS-/Msgbox-Zustand — ohne den UART anzufassen.
+MIPS-/Msgbox-Zustand - ohne den UART anzufassen.
 
-### Lauf 16 (06.09.): Konsole stumm — trotzdem tot nach ~3,5 s
+### Lauf 16 (06.09.): Konsole stumm - trotzdem tot nach ~3,5 s
 
 `printk`-Konsolenlevel 1, `SetSource` im Hintergrund, frische ssh danach:
 **Connection timed out**; Watcher: Ping weg um 13:58:17, der Hänger war um
-13:58:13.76. Die UART-These allein trägt also nicht — der ARM stirbt auch,
+13:58:13.76. Die UART-These allein trägt also nicht - der ARM stirbt auch,
 wenn niemand auf die Konsole schreibt. Lauf 15 (Ping 2 min überlebt) bleibt
 der Ausreißer.
 
 Was der Tick jetzt beweist: `spinLock(2)-End` bei MIPS-Tick 266463, der
-Tick-Zähler im DRAM springt auf **266470** — die Kopie evictet den Cache
+Tick-Zähler im DRAM springt auf **266470** - die Kopie evictet den Cache
 und dauert wie bei `GetSource` 7 Ticks. **Die 117-KiB-Kopie läuft auch im
 tödlichen Fall normal durch.** Danach erscheint keine Zeile mehr, der
 Mitschreiber verstummt 326 ms nach dem Lock, das Netz 3,5 s danach.
@@ -659,7 +659,7 @@ zurückschreibt (kseg0 ist gecacht). Der Tick-Zähler tut es nicht; einzelne
 `D/sys`-Zeilen im Leerlauf erscheinen aber zeilenweise. Statische Prüfung:
 `cache`-Instruktionen im elog-Pfad (s. u.).
 
-### Der Cache erklärt das Log-Ende — die „MIPS schweigt"-Deutung ist zurückgenommen
+### Der Cache erklärt das Log-Ende - die „MIPS schweigt"-Deutung ist zurückgenommen
 
 Statisch geprüft (`tools/mips-dis.py`): der Ring-Writer (`0x8b151a44`,
 `0x8b151c74`, fünf `lui 0x8b27`-Referenzen auf `0x8B272D9C`) ruft **keinen
@@ -668,24 +668,24 @@ Startcode. Der Ring liegt in kseg0 = gecacht. Zeilen werden für den ARM erst
 sichtbar, wenn der MIPS-D-Cache sie verdrängt.
 
 Damit ist das wiederkehrende Log-Ende bei `spinLock(2,quick)-End` ein
-**Artefakt**: unmittelbar danach kopiert der MIPS 117 KiB (Resync) — das
+**Artefakt**: unmittelbar danach kopiert der MIPS 117 KiB (Resync) - das
 verdrängt den gesamten Cache und spült alle *davor* geloggten Zeilen ins
 DRAM. Alles *danach* bleibt im Cache, weil keine zweite große Verdrängung
 folgt, bis der SoC stirbt. Lauf 9 (kein Resync) zeigte nach dem ACK gar
 nichts; Lauf 5 zeigte `hdmirx`-Zeilen, weil dort anders verdrängt wurde.
 **Der MIPS läuft nach dem Lock mit hoher Wahrscheinlichkeit normal in
-`SetSource` hinein**; der Tod kommt 100–300 ms später, die entscheidenden
-Zeilen stecken im MIPS-Cache. Die Läufe 12–16 sagen über den MIPS-Zustand
+`SetSource` hinein**; der Tod kommt 100-300 ms später, die entscheidenden
+Zeilen stecken im MIPS-Cache. Die Läufe 12-16 sagen über den MIPS-Zustand
 nach dem Lock **nichts** aus.
 
 Ausweg: Ring-Writer auf kseg1 umbiegen (`lui 0x8b27 → 0xab27`, vier Wörter
 bei ARM `0x4b151ac0/1d70/1e28/1ebc`; `analyse/hdmi-seq/elog_uncached_patch.py`).
 Sauber gehört das in U-Boot neben den HDCP-Wait-Patch (Image geladen, vor dem
 Reset-Lösen, `flush_cache` folgt dort ohnehin). Live aus Linux greift es nur,
-wenn der MIPS-I-Cache die heißen Writer-Zeilen neu holt — ein Versuch ohne
+wenn der MIPS-I-Cache die heißen Writer-Zeilen neu holt - ein Versuch ohne
 Risiko, aber ohne Garantie.
 
-## Lauf 17 (06.09.): Ring ungecacht — der vollständige `SetSource`-Verlauf des MIPS
+## Lauf 17 (06.09.): Ring ungecacht - der vollständige `SetSource`-Verlauf des MIPS
 
 Der Live-Patch (`elog_uncached_patch.py --do`, vier `lui`-Wörter) **griff**:
 der I-Cache holte die Writer-Zeilen neu, ab da kam jede Zeile sofort. Volles
@@ -709,7 +709,7 @@ Log: `analyse/hdmi-seq/elog-udp-run17-setsource-uncached.txt`. Nach
 (nächster Herzschlag um 38.843 fehlt; ssh danach: Connection timed out)
 ```
 
-Zwei Befunde: (1) **`TMDS=ffffffff` mit gesteckter Quelle** — der PHY sieht
+Zwei Befunde: (1) **`TMDS=ffffffff` mit gesteckter Quelle** - der PHY sieht
 keinen Takt; die Quelle sendet nicht, weil HPD zu ihr hin nicht steht
 (`port 1 send HPD event` geht an einen Empfänger, den es bei uns nicht gibt:
 Stock-ARISC-Weg über `SetPortMap`-Gate / Msgbox). Das ist Phase-1.5-Material,
@@ -722,28 +722,28 @@ asynchrone HotPlug. Der Tod folgt ≤ 150 ms später.
 907/936) Listenglieder per `cc_deref()`; Werte mit Bit 31 gelten als
 getaggte Arena-Referenz und werden zu `arena + (ref & 0x7fffffff)`. Ein
 MIPS-kseg0-Zeiger (`0x8B25xxxx`) in einem dieser Felder ergibt eine wilde
-Kernel-VA — die Form des Oops aus Lauf 3 (`ffff80008112f340`). Nur
+Kernel-VA - die Form des Oops aus Lauf 3 (`ffff80008112f340`). Nur
 `proto.c:1005` hat die `cpu_comm_is_mips_va()`-Prüfung. Der arm32-Treiber
 kannte keine Arena-Refs. **Nicht bewiesen.** Gegentest: `--no-callbacks`.
 
-### Lauf 18 (06.09.): `--no-callbacks` — stirbt trotzdem
+### Lauf 18 (06.09.): `--no-callbacks` - stirbt trotzdem
 
 Ring gepatcht, keine `INSTALL_RT`, `SetSource`: der ARM stirbt, das Log
 endet diesmal wieder bei `spinLock(2,quick)-End` (der Tod kam schneller,
 < 200 ms nach dem Lock; ob der MIPS noch weiterlief, ist nicht zu sehen).
 **Der synchrone `SignalChange`-Callback ist als Ursache damit unwahrscheinlich.**
 Nächster Verdächtiger aus dem Lauf-17-Verlauf: `memory_agent_onoff` schaltet
-als Erstes AFBD (`0x05600010`), DE2-Kanäle und INCAP um — AFBD gehört auf dem
+als Erstes AFBD (`0x05600010`), DE2-Kanäle und INCAP um - AFBD gehört auf dem
 ARM dem geladenen KMS-Treiber `sun50i_h713_afbd` samt Interrupt
 (`GIC_SPI 110`). Test: Treiber vor `SetSource` entladen.
 
-### Lauf 19 (06.09.): ohne AFBD-KMS-Treiber — stirbt trotzdem
+### Lauf 19 (06.09.): ohne AFBD-KMS-Treiber - stirbt trotzdem
 
 `rmmod sun50i_h713_afbd` (IRQ 142 verschwindet aus `/proc/interrupts`),
 Ring gepatcht, `SetSource`: Tod wie zuvor. **AFBD-Treiber ausgeschlossen.**
 
 Hinweis des Nutzers: im früheren (arm32-)Aufbau war das **HDMI-RX-Kernelmodul**
-(`legacy/patches/0023-…hdmi-rx…`) vor der Init-Sequenz geladen — es
+(`legacy/patches/0023-…hdmi-rx…`) vor der Init-Sequenz geladen - es
 programmiert beim Probe Takte/Resets/Register des HDMI-RX-Blocks, bevor der
 MIPS ihn bei `SetSource` umschaltet (`Port_Select`, `PHY_Reset`,
 `SYSTEM_PD_HDCP/DDC`, `PD_IDCLK`). Bei uns fehlt das. Nächste Prüfung.
@@ -760,7 +760,7 @@ zehn Byte-Nullen (`+0x40202/10/20/21/30/40/2C0/137/0C0/0`), dann Synopsys
 Resets (Kommentar im DTS), PD `pd_tvcap`. Nachbau:
 `analyse/hdmi-seq/hdmirx_ctrl_enable.py --do`, vorher Rohlesung derselben
 Register (was der MIPS beim Start selbst gesetzt hat). Die Vendor-CCU hat im
-Bereich `0xb00`–`0xc70` keine HDMI-Takte — die H6-„Phantome" sind wirklich
+Bereich `0xb00` - `0xc70` keine HDMI-Takte - die H6-„Phantome" sind wirklich
 Phantome, das Modul lief also allein mit `bus_disp` und diesen Registerwerten.
 
 ## ~~ROOT CAUSE~~ WIDERLEGT (Lauf 21): `comm_CallWorkAction`-Zeigeraufruf ist es NICHT
@@ -784,7 +784,7 @@ if (callback)
 Zwei Fehler übereinander:
 
 1. **Falscher Offset / uninitialisiert.** `FindRoutineEx` füllt `routine_info`
-   nur bei +0/+2/+4/+8, +12..76 und **+80 (u64)** — Bytes **88..95 bleiben
+   nur bei +0/+2/+4/+8, +12..76 und **+80 (u64)** - Bytes **88..95 bleiben
    uninitialisierter Stack**. `callback` ist damit Stack-Müll: mal 0
    (überlebt), mal ein Rest-Wert (Sprung → Tod). Das erklärt die
    Schwankung (Lauf 15 überlebte 2 min, andere starben sofort).
@@ -792,13 +792,13 @@ Zwei Fehler übereinander:
    Treibers hat nach dem „Y2"-Bug diesen Schutz (`channel.c:715/795/913`,
    `proto.c:1005`). Genau der Callback-Aufruf hat ihn **nicht**. Selbst am
    richtigen Offset (+80) stünde dort ein **MIPS-kseg0-Zeiger** (Slot 19 am
-   Gerät: Handler `0x8B10ABB8`) — den der ARM nie aufrufen darf.
+   Gerät: Handler `0x8B10ABB8`) - den der ARM nie aufrufen darf.
 
 **Warum nur `SetSource`:** der HotPlug-Callback bei `SetPortMap` kam mit
 `entry_cmd = 0` (Lauf 3, `chan=0x0`), lief also den harmlosen FIFO-Pfad
 (`Comm_Add2NewCallFifo`, kein Zeigeraufruf). `SignalChange` ist der einzige
 `> 4`-Rückruf. Deshalb blieben Takte, IOMMU, tvcap, AFBD, controller_enable
-und ARISC ohne Wirkung — keiner berührt diesen Pfad.
+und ARISC ohne Wirkung - keiner berührt diesen Pfad.
 
 **Warum `--no-callbacks` (Lauf 18) nicht half:** der Schalter unterdrückt nur
 `INSTALL_RT` auf der ARM-Seite. Der MIPS schickt den `SignalChange`-CALL
@@ -806,13 +806,13 @@ trotzdem, und `comm_CallWorkAction` läuft unabhängig davon
 (`cpu_comm_userspace_deliver` „userspace cannot inhibit it").
 
 **Passt zum Oops** aus Lauf 3: Paging-Fault bei `ffff80008112f340`, einer
-Kernel-VA, ohne sauberen Trace — genau das Bild eines Sprungs auf einen
+Kernel-VA, ohne sauberen Trace - genau das Bild eines Sprungs auf einen
 kaputten Funktionszeiger (fehlgeschlagener Instruktions-Fetch).
 
 ### Der Fix
 
 Die Stock-Semantik ist „fire-and-forget an den Userspace" (0 ARM→MIPS
-RETURNs). Der Kernel-seitige `callback()`-Aufruf ist ein Portierungsfehler —
+RETURNs). Der Kernel-seitige `callback()`-Aufruf ist ein Portierungsfehler -
 in dieser Tabelle steht kein gültiger ARM-Kernel-Zeiger. In
 `comm_CallWorkAction` den rohen Aufruf **entfernen** (bzw. hinter
 `cpu_comm_is_mips_va()` + Kernel-Adressprüfung legen, die praktisch immer
@@ -820,7 +820,7 @@ ablehnt); `cpu_comm_userspace_deliver` und die leere ACK bleiben. Ein-Ort-
 Änderung, deckt sich mit den bestehenden Y2-Riegeln. Danach Modul neu bauen
 (Rezept doku/67, clang-18, kein Container) und `SetSource` **einmal** testen.
 
-### Lauf 21 (06.09.): Testmodul mit `callwq_kernel_cb=0` — stirbt trotzdem
+### Lauf 21 (06.09.): Testmodul mit `callwq_kernel_cb=0` - stirbt trotzdem
 
 Modul neu gebaut (`analyse/cpu-comm-arm64`, `cpu_comm_rpc.c`: Puffer genullt,
 Kernel-seitiger Callback hinter `callwq_kernel_cb` (Vorgabe 0) mit
@@ -831,7 +831,7 @@ Uninitialisiert-/Riegel-Befunde bleiben echte Fehler im Treiber, sind aber
 nicht die Absturzursache. Die Aussage „Root Cause" oben war verfrüht.
 
 Das Ring-Log endete wieder bei `spinLock(2)-End`: der Live-Patch greift nur,
-wenn der I-Cache die Writer-Zeilen neu holt (Lauf 17 ja, 18/20/21 nein) —
+wenn der I-Cache die Writer-Zeilen neu holt (Lauf 17 ja, 18/20/21 nein) -
 kein Befund über den MIPS.
 
 **Nächste These (prüfbar ohne Absturz):** `memory_agent_onoff` schaltet
@@ -850,14 +850,14 @@ mit `callwq_kernel_cb=0` (Zeiger nur protokolliert, nicht angesprungen; Puffer
 genullt) stirbt wie zuvor. Der Kernel-Callback ist also **nicht** die Ursache.
 Er bleibt ein latenter Fehler (uninitialisierter Zeiger, fehlender
 `is_mips_va`-Riegel) und muss sauber gemacht werden, **bevor** der Callback-Pfad
-je gebraucht wird — aber er hängt den SoC nicht.
+je gebraucht wird - aber er hängt den SoC nicht.
 
 **Der Oops zeigt auf Daten, nicht auf Code.** `ffff80008112f340` (Lauf 3) ist
 `timekeeper_data` im Kernel-`.bss` (`_edata..__bss_start..`, aufgelöst gegen
 `vmlinux`). Ein Sprung auf einen kaputten Funktionszeiger würde beim
 Instruktions-Fetch faulten, nicht an einer Datenadresse im `.bss`. Das Bild
 passt eher zu **Speicher-Korruption**: irgendetwas überschreibt Kernel-RAM, und
-der nächste Zugriff auf die Timer-/Timekeeping-Struktur stürzt ab — was auch
+der nächste Zugriff auf die Timer-/Timekeeping-Struktur stürzt ab - was auch
 erklärt, warum der ganze SoC „tot" wirkt (Scheduler/Timer hin) und warum es mal
 sofort, mal nach Sekunden kippt.
 
@@ -873,12 +873,12 @@ Pufferquelle; ob unser Treiber ihn gen.wie Stock aufsetzt (`ShStartAddr`,
 VA-Offset), ist offen.
 
 **Nächste Messung (read-only, kein Absturz nötig):** vor jedem `SetSource` die
-Ziel-/Enable-Register der DMA-Engines lesen — INCAP `0x06940900/930/938/960`,
-AFBD `0x05600010/320/324`, DE2 `0x05000178/1b8/278/2b8` — und prüfen, ob eine
+Ziel-/Enable-Register der DMA-Engines lesen - INCAP `0x06940900/930/938/960`,
+AFBD `0x05600010/320/324`, DE2 `0x05000178/1b8/278/2b8` - und prüfen, ob eine
 Zieladresse **außerhalb** der reservierten Bereiche (`/proc/iomem`) zeigt. Zeigt
 eine in System-RAM, ist die Ursache gefunden, ohne den SoC zu riskieren.
 
-## Läufe 23/24 (06.09., abends): DMA-Abtastung, `memory_agent`-Ziele, SMM-Heap — und ein Fehler im Messinstrument
+## Läufe 23/24 (06.09., abends): DMA-Abtastung, `memory_agent`-Ziele, SMM-Heap - und ein Fehler im Messinstrument
 
 **Lauf 23 (abgetastete `SetSource`):** `elog_tail.py --mmio` las 23 Register alle
 20 ms und meldete Änderungen per UDP (INCAP `0x06940900/928/930/938/960/968`,
@@ -904,7 +904,7 @@ und das 20-ms-Raster verfehlt einen Tod < 20 ms nach einer Änderung.
 | 8 | `0x050C07B8` | Bit 31 |
 | 9 | `0x050C0478/4F8/578/5F8/678` | Bit 31 |
 
-Die Tabelle in doku/62 (aus CURRENT-TRUTH) nennt für Bit 0–2 **`0x068B00B8`/`0x068B044C`**;
+Die Tabelle in doku/62 (aus CURRENT-TRUTH) nennt für Bit 0-2 **`0x068B00B8`/`0x068B044C`**;
 die Firmware baut **`0x068C…`** (`lui 0x68c`). Lauf 23 hat damit den falschen
 Block abgetastet. `0x05000000` ist laut Legacy-DT der HDMI-RX-Kern („rx"),
 `0x050C0000` „thdmirx", nicht DE. Der Schreibhelfer prüft nur, ob die Adresse in
@@ -912,10 +912,10 @@ einer Liste bekannter Peripheriebereiche liegt (0x02…, 0x03…, 0x05…, 0x068
 und schreibt dann ungecacht (kseg1).
 
 **Pfad in `update_onoff` (0x8b153140) bei `SetSource`:** aus den geloggten Zeilen
-(71, 159, 159 — nie 76/83/87) folgt Signal `0x20002/3`, Flags b5=b6=0 →
+(71, 159, 159 - nie 76/83/87) folgt Signal `0x20002/3`, Flags b5=b6=0 →
 `memory_agent_onoff(alle Bits, AUS)` gefolgt von `(0, AN)`. Beide Paare (bei
 `AppTopSetSource` und nach `CallbackOfSignalChange`) sind Aus-Durchläufe; das
-erste Paar lag 30 ms vor dem Tod und der MIPS lief danach weiter — die
+erste Paar lag 30 ms vor dem Tod und der MIPS lief danach weiter - die
 Registerschreibungen selbst hängen den Bus also nicht.
 
 **Weitere Ableitungen, alle mit Positivkontrolle im lui-Scan:** die Firmware
@@ -923,7 +923,7 @@ fasst weder CCU (`0x02001xxx`, bis auf Lesen von `0x02001DB4`), PPU (nur
 `0x07000000` in 0x8b144d74), DRAM-Controller, TV-IOMMU (`0x02010000`), GIC noch
 UART-Register an. Lauf 23 stellt den Demod-Bus-Riegel infrage: das TVFE-Set
 und `0xd64` waren in diesem Boot an; nach dem Kaltstart ist `0xd64 = 0` und
-das gesamte TVFE-Set aus — der Zustand aus doku/72 „alle Takte an" galt nur für
+das gesamte TVFE-Set aus - der Zustand aus doku/72 „alle Takte an" galt nur für
 die fünf dort gelesenen Register. Der Vendor-`tvtop` schaltet 27 Takte; bei uns
 fehlen ~15 (ADC, DTMB, I2H, CIP*, TSA*, MPG*, audio_cpu/umac/ihb). Da Lauf 23
 mit vollem TVFE-Set trotzdem starb, ist das nicht die alleinige Ursache.
@@ -954,7 +954,7 @@ Nebenbefund: das Session-Scratchpad wurde beim Kontextwechsel geleert, der
 UDP-Mitschnitt von Lauf 23 ist verloren (nur die oben zitierten Auszüge sind
 erhalten). Logs liegen ab jetzt unter `analyse/hdmi-seq/`.
 
-## Lauf 25 (06.09., 20:02): Messinstrument repariert — der Oops ist da
+## Lauf 25 (06.09., 20:02): Messinstrument repariert - der Oops ist da
 
 Bedingungen wie Lauf 23/24 (TVFE+demod an, SMM-Heap angelegt), aber Konsole auf
 Stufe 4, elog-Zeilen als `<7>`, `kmsg_udp.py` auf CPU 3, `--mmio` mit 1-ms-Raster
@@ -967,7 +967,7 @@ Zeitachse (Kernel-Uhr): CALL `SetSource` 109.025 s, CALL_ACK 109.027, MIPS
 `spinLock(2)-End` ≈ 109.07, letzter Tail-Sample (CPU 2) **109.191**, danach nichts
 mehr per UDP; am UART des Nutzers ab **109.461** ein Oops:
 `ESR = 0x96000004`, EC 0x25 DABT (current EL), **FSC 0x04 = Level-0-Translation-
-Fault** (kein Eintrag der obersten Tabelle für die Adresse — Wildzeiger oder
+Fault** (kein Eintrag der obersten Tabelle für die Adresse - Wildzeiger oder
 zerstörte PGD). Die Adresse, `pc/lr` und der Call-Trace stehen beim Nutzer (tio),
 `kmsg_udp` hat sie nicht mehr abgesetzt (Prozess auf CPU 3 kam nicht mehr dran).
 
@@ -980,17 +980,17 @@ Offen; Ring war wieder gecacht.
 ## Lauf 26 (06.09., 20:14) und der Fund dahinter: `CC_REF_LOCAL` zeigt in BL31
 
 **Replik SYS_CFG:** die einzige echte Registeränderung der App-Schreibfolge nach
-„AppTopSetSource" (`0x03000000` Bits 3:0 := 0xE) vom ARM nachgespielt — Board
+„AppTopSetSource" (`0x03000000` Bits 3:0 := 0xE) vom ARM nachgespielt - Board
 lebt. Ausgeschlossen.
 
-**Kernel-Lage (aus `/proc/iomem`):** Kernel-Code `0x48000000–0x48E9FFFF`, Daten bis
-`0x4918FFFF`; `0x40000000–0x400FFFFF` reserviert = **BL31 (ATF)**, am Board per
+**Kernel-Lage (aus `/proc/iomem`):** Kernel-Code `0x48000000-0x48E9FFFF`, Daten bis
+`0x4918FFFF`; `0x40000000-0x400FFFFF` reserviert = **BL31 (ATF)**, am Board per
 Strings belegt („BL31: Detected Allwinner %s SoC", „PSCI: System reset failed").
 Kommandozeile hat `clk_ignore_unused pd_ignore_unused`.
 
 **Shmem-Scan (read-only):** 406 Wörter im 5-MiB-Shmem liegen im kseg0/kseg1-
 Bereich; 186 davon zeigen **weder in MIPS-RAM noch in den Shmem**, 108 eindeutige
-Werte. Die auffälligste Gruppe: `0x8000xxxx` mit kleinen Offsets — das sind die
+Werte. Die auffälligste Gruppe: `0x8000xxxx` mit kleinen Offsets - das sind die
 `CC_REF_LOCAL`-Referenzen unseres arm64-Treibers (`BIT(31) | Arena<<28 | Offset`,
 cpu_comm.h) auf ARM-privaten Speicher (`s_CommSockt`, `pcpu_comm_dev`). Sie
 stehen in den **geteilten Call-Slots** (Stride 0x68): je Slot ein Semaphor-Ref
@@ -1000,14 +1000,14 @@ gültige kseg0-Adressen: `0x8000xxxx` → ARM-phys `0x4000xxxx` = **BL31-Code**
 (`0x40001398 = d503201f` NOP, `0x400017E4 = eb13029f` …). Im arm32-Treiber standen
 an diesen Stellen 32-Bit-Kernel-VAs (`0xC0xxxxxx`), die der MIPS nicht abbilden
 kann. Ein `list_del`/Listen-Update des MIPS über `prev->next` schriebe heute in
-BL31; die nächste PSCI-Idle-SMC führt dann Müll in EL3 aus — passt zu
+BL31; die nächste PSCI-Idle-SMC führt dann Müll in EL3 aus - passt zu
 Level-0-Fault + unlesbaren Seitentabellen + abgebrochenem Oops-Druck.
 
 **Lauf 26:** `--mmio` mit 1-ms-Raster auf die 30 BL31-Zielwörter, Zwangsmeldung
 alle 10 ms, Konsole 4, `kmsg_udp` auf CPU 3. Ergebnis: bis zur letzten
 **empfangenen** UDP-Meldung (t = 597.576) keine Änderung. Aber: der Tail lebte laut
-kmsg noch bei 597.666 (hb 25), CALL_ACK bei 597.621 — die UDP-Datagramme des Tails
-ab 597.576 kamen nicht mehr an, das Todesfenster (≈ 597.6–597.7) ist **nicht
+kmsg noch bei 597.666 (hb 25), CALL_ACK bei 597.621 - die UDP-Datagramme des Tails
+ab 597.576 kamen nicht mehr an, das Todesfenster (≈ 597.6-597.7) ist **nicht
 beobachtet**. Kein Negativbefund.
 
 Abhilfe für Lauf 27: Änderungen zusätzlich als `<4>`-Zeile nach `/dev/kmsg`
@@ -1038,13 +1038,13 @@ Shmem darf keine `0x8000xxxx`-Wörter mehr enthalten, dafür `0xAE78xxxx`-Refs.
 Erwartung: überlebt `SetSource`, ist die Kollision mit BL31 die Ursache, und die
 Zone zeigt, was der MIPS schreibt; stirbt es weiter, ist die These widerlegt.
 
-## Lauf 28 (06.09., 20:23): Landezone aktiv — und der Absturz bleibt. These widerlegt.
+## Lauf 28 (06.09., 20:23): Landezone aktiv - und der Absturz bleibt. These widerlegt.
 
 Vorzustand am Board bestätigt: `landing_zone.py` meldet **0** Wörter `0x8000xxxx`
 im Shmem (vorher 186) und **86** neue Refs `0xAE78xxxx`; die Landezone
 `0x4E780000` ist null. Der Treiber lädt sauber (`adopting the live shared region`),
 `SetSource` läuft, CALL_ACK kommt (`IPC[dispatch] type=2(CALL_ACK)` bei 95.170 s),
-und **~40 ms später ist der SoC tot** — genau wie mit `BIT(31)`-Refs.
+und **~40 ms später ist der SoC tot** - genau wie mit `BIT(31)`-Refs.
 
 **Damit ist die BL31-Kollisions-These widerlegt.** Das Verschieben der lokalen
 Referenzen aus dem BL31-Bereich verhindert den Absturz nicht. Der MIPS
@@ -1063,7 +1063,7 @@ Kandidaten, die noch offen sind: der `command_action`-Pfad liest `entry_base` un
 `*(u64*)(entry_base+32)` aus geteilten Feldern; ist `entry_base` selbst
 verbogen, schreibt `*(u16*)(entry_base+10) |= 0x40` irgendwohin. Und der
 `GetReturnbySessionId`-`list_del` schreibt `*(u32*)node_prev` / `*(u32*)(node_next+4)`
-— zwei ungeprüfte Schreibziele aus der Liste (nur `is_mips_va`, kein Bereichstest).
+- zwei ungeprüfte Schreibziele aus der Liste (nur `is_mips_va`, kein Bereichstest).
 
 **Nächster Schritt (Messung, die den Tod wirklich zeigt):** der UART des Nutzers
 ist der einzige Kanal, der einen Oops < 40 ms nach CALL_ACK noch rausbekommt (UDP
@@ -1084,8 +1084,8 @@ laufenden Kernels, Baum `linux-6.18.38-102233d4…`).
 ## Eingriff 2: Bereichsprüfung in `cc_deref`, Ablaufspur in `ack_action`
 
 Der Tod fällt in allen Läufen mit dem ARM-Handling von CALL_ACK zusammen.
-`ack_action` (proto.c) liest `*(u32*)(share_seq+112)` — „die Firmware spiegelt die
-32-Bit-Referenz zurück, die der CALL mitgegeben hat" —, macht `cc_deref` und ruft
+`ack_action` (proto.c) liest `*(u32*)(share_seq+112)` - „die Firmware spiegelt die
+32-Bit-Referenz zurück, die der CALL mitgegeben hat" - , macht `cc_deref` und ruft
 `cpu_comm_sem_up()` darauf: ein **Schreibzugriff** auf eine Adresse, die aus dem
 Shmem stammt. `cc_deref` prüfte für nicht-lokale Refs keinen Bereich: ein
 MIPS-Zeiger (`0x8B2544C8`, `0xAE302958`) ergäbe mit `Mid2Vir` eine wilde
@@ -1100,10 +1100,10 @@ Modul `hy310-cpu-comm-derefcheck.ko` (sha `9cb19fe3…`), am Board wieder als
 Schreibzugriff über einen ungeprüften Ref (Warnzeile nennt ihn); stirbt es, steht
 in der letzten `ack_action`-Zeile, was der MIPS zurückgespiegelt hat.
 
-## Lauf 30 (06.09., 20:46): Bereichsprüfung greift nicht — der ARM stirbt nach korrektem `ack_action`
+## Lauf 30 (06.09., 20:46): Bereichsprüfung greift nicht - der ARM stirbt nach korrektem `ack_action`
 
 Letzte Kernelzeile per UDP: `ack_action cpu=1 dir=0 sem_ref=0xae781398
-sem_ptr=0xffff80007929a89c` (268.979 s) — der MIPS spiegelt **unsere** Referenz
+sem_ptr=0xffff80007929a89c` (268.979 s) - der MIPS spiegelt **unsere** Referenz
 zurück, `cc_deref` verwirft nichts (0 Warnungen), `sem_up` trifft ein gültiges
 Objekt. Danach Tod. Damit sind alle ARM-Treiberpfade als Ursache widerlegt:
 Callback (18/21), AFBD-KMS (19), SMM-Heap (24), lokale Refs/BL31 (28),
@@ -1116,7 +1116,7 @@ Tails ~20 ms nach dem CALL einbricht (Speicherbus belegt?). Nächste Bisektion:
 liegt es nicht im HDMI-RX-Pfad, sondern im gemeinsamen Teil (memory_agent, VPROC,
 Anzeige-Umschaltung).
 
-## Zähl-Test (06.09., 20:50) — Anzahl der Aufrufe ist es nicht
+## Zähl-Test (06.09., 20:50) - Anzahl der Aufrufe ist es nicht
 
 Vorschlag des Nutzers: dieselbe Zahl (und mehr) Aufrufe nur mit einem harmlosen
 RPC. Restore macht 10 CALLs; danach **35× `THal_Vp_GetSource`** (0x24efc7c9) mit
@@ -1126,10 +1126,10 @@ damit ausgeschlossen. Der Tod hängt an dem, was der MIPS bei `SetSource` tut.
 Außerdem geklärt: der „Mem abort info"-Block stammt aus dem Linux-Kernel
 (`arch/arm64/mm/fault.c`), U-Boot hat keinen solchen Drucker.
 
-## Läufe 31/32 (06.09., 20:55/20:57): die Halbierung — Dummy lebt, HDMI_2 ohne Kabel stirbt
+## Läufe 31/32 (06.09., 20:55/20:57): die Halbierung - Dummy lebt, HDMI_2 ohne Kabel stirbt
 
 Quellen-Enum aus der Firmware (Zeigertabelle 0x8b1f50f0): 0 Dummy, 1 VideoDec,
-2 Image, 3 HDMI_1, 4–6 HDMI_2–4, 7–9 CVBS_1–3, 10 ATV.
+2 Image, 3 HDMI_1, 4-6 HDMI_2-4, 7-9 CVBS_1-3, 10 ATV.
 
 **Lauf 31, `SetSource(0)` = Dummy:** kompletter Umlauf CALL → CALL_ACK → RETURN →
 RETURN_ACK, MIPS loggt `SetSource() ENTER`, `hal_source_id: 0`, `AppTopSetSource`,
@@ -1170,14 +1170,14 @@ den MIPS aus Linux" ist falsch: auch dort startete Stock-U-Boot (Fastlogo) den M
 schaltete nur MIPS-Takt/Gate/Msgbox-Reset. Der Legacy-`cpu_comm` initialisierte den Shmem
 also ebenfalls **nach** dem MIPS-Start (Vollinit über die laufende Firmware).
 
-## Lauf 35 (06.09., 21:26): Legacy-Synopsys-Init mit `SWENABLE = 0x203B01` — stirbt trotzdem
+## Lauf 35 (06.09., 21:26): Legacy-Synopsys-Init mit `SWENABLE = 0x203B01` - stirbt trotzdem
 
 Agent-2-Befund umgesetzt: `hdmirx_ctrl_enable.py` schreibt jetzt `0x203B01` (Bit 21
 PHYCTRL_ENABLE, das der Legacy-Treiber setzte; sein `dev_info` druckte irreführend
 0x3B01). Vor `SetSource(4)`: Wrapper-Nullen (Basis 0x06880000), IRQ-Masken, TIMER_REF,
 CMU/DESCRAND/CED/DEFRAMER/PHY_CONFIG, SWENABLE `0x00203b01` (nachher-Lesung bestätigt).
 Ergebnis: Tod wie gehabt nach `ack_action` (`elog-udp-run35-snps.txt`). INCAP `0x06940000`
-steht bei uns wie bei Stock auf `0x3A7B` (doku/72:425, Stock-Capture) — U-Boots `writel(1)`
+steht bei uns wie bei Stock auf `0x3A7B` (doku/72:425, Stock-Capture) - U-Boots `writel(1)`
 wird vom MIPS beim Boot überschrieben; kein Unterschied.
 
 ## Lauf 36 (06.09., 21:35) und der Stock-Vergleich der Registerblöcke
@@ -1190,39 +1190,39 @@ Konfigurationsbytes (0x0c/0x10/0x28/…), keine Takte. **Lauf 36:** `0x05000058 
 (Stock), `SetSource(4)` → Tod wie gehabt. Die Registerzustände der HDMI-Blöcke sind damit als
 Unterschied erschöpft. Nächster Blick: die **Speicherkarte** (CMA/hohes DRAM vs. Vendor-Carve-out,
 AFBD-Framebuffer bei 0x76d00000 im CMA-Bereich, Ethernet-Deskriptoren und Seitentabellen im hohen
-DRAM — passt zur Symptomfolge UDP-Einbruch → Level-0-Fault).
+DRAM - passt zur Symptomfolge UDP-Einbruch → Level-0-Fault).
 
-## Lauf 37 (06.09., 21:45): Kernel verschoben, Vendor-Bereiche reserviert — stirbt trotzdem
+## Lauf 37 (06.09., 21:45): Kernel verschoben, Vendor-Bereiche reserviert - stirbt trotzdem
 
 FIT `analyse/hdmi-seq/fit-relocated/h713-kernel-reloc.fit` (im TFTP als
 `h713-kernel-netboot.fit`, Original `.bak-vor-reloc-20260906`): Kernel `load/entry
 0x50000000`, DTB mit `no-map` `0x48000000+0x700000` (Vendor BL31/OP-TEE) und
 `0x4E800000+0xB18000` (Vendor-Shmem-Rest, mips.xml). `/proc/iomem` bestätigt: Kernel-Code
-`0x50000000–0x50E9FFFF`, `48000000-486fffff reserved`, `4e300000-4f317fff reserved`.
+`0x50000000-0x50E9FFFF`, `48000000-486fffff reserved`, `4e300000-4f317fff reserved`.
 Beide Bereiche mit Kanarie gefüllt (`canary_regions.py`, vor SetSource 0 Änderungen),
 `SetSource(4)`: **Tod wie gehabt.** Adresskollision mit diesen Vendor-Bereichen
 ausgeschlossen. Das verschobene FIT bleibt vorerst aktiv (neutral, mehr Reservierung).
 
 Zwischenbilanz: Register der HDMI-Blöcke identisch mit Stock, ARM-Treiber nach CALL_ACK
-passiv, Speicherkarte (Vendor-Bereiche) neutral — der Tod entsteht aus der HDMI-RX-Init
+passiv, Speicherkarte (Vendor-Bereiche) neutral - der Tod entsteht aus der HDMI-RX-Init
 des MIPS über einen Weg, der die oberste Kernel-Seitentabelle bzw. TTBR trifft. Nächste
 These: Secure-Interrupt (Group 0/FIQ) des HDMI-RX/HDCP-Blocks, die im Vendor-System EL3/
 OP-TEE bedient, unser BL31 nicht.
 
-## Lauf 38 (06.09., 21:49): DRAM-Sonde und DRAM-Controller-Watch — sauber; der Ethernet-Stau davor
+## Lauf 38 (06.09., 21:49): DRAM-Sonde und DRAM-Controller-Watch - sauber; der Ethernet-Stau davor
 
 `dram_probe.py` (16 MiB Userspace-Muster, ~30 Vergleiche/s, CPU 0): bis zum letzten
 Herzschlag (73.055 s) **0 Fehler**; PLL_DDR `0x02001010`, MBUS `0x02001540`, DRAM-Takt
 `0x02001800`, MCTL_COM `0x04810000…10`, DRAMC `0x04820000/04/30`: **keine Änderung** (1-ms-
 Raster) bis 73.186 s. `SetSource(4)`-CALL 73.205, CALL_ACK 73.216, `ack_action` 73.287, danach
 Ende. Auffällig: das Tail-Datagramm von t = 73.186 kam am Host **nach** der CPU-3-Zeile von
-73.287 an — die Ethernet-TX-Queue von CPU 2 hing schon ~100 ms vor dem Ende, CPU 3 sendete
+73.287 an - die Ethernet-TX-Queue von CPU 2 hing schon ~100 ms vor dem Ende, CPU 3 sendete
 noch. Deutung: **DMA-Master (NIC-TX-Kanal) leiden vor den CPUs**; der Auslöser liegt zeitlich
 beim CALL (±30 ms), also bei dem, was der MIPS *sofort* nach dem Doorbell tut (Routine-Tabelle
-resync, `SetSource` ENTER, `update_onoff` → `memory_agent_onoff` — das Dummy **nicht** ausführt).
+resync, `SetSource` ENTER, `update_onoff` → `memory_agent_onoff` - das Dummy **nicht** ausführt).
 Kernel läuft in diesem Lauf verschoben bei 0x50000000 (FIT-reloc), was nichts ändert.
 
-## Lauf 39 (06.09., 21:52) und H9/H10-Repliken — und eine Warnung zu den UDP-Sonden
+## Lauf 39 (06.09., 21:52) und H9/H10-Repliken - und eine Warnung zu den UDP-Sonden
 
 **H9/H10 (21:51, vom ARM nachgespielt, Board lebt):** `0x068C00B8/C4/D0/DC/E8/F4` Bit 0 := 0,
 `0x068C038C` Bit 18 := 0, `0x068C0014` Feld 26:24 := 4, AFBD `0x05600014 |= 1` (selbstlöschend,
@@ -1230,7 +1230,7 @@ liest danach 0). Nebenbefund: `0x068C0000` ist ein Puffer-Manager mit Adressen `
 0x04C11200/0x04C2E200` (≙ Framebuffer 0x4BF42000… ≫ 4), also ein DMA-Block mit Zielen im
 reservierten `framebuf`.
 
-**Lauf 39:** TV-IOMMU `0x02010000…0x88` im 1-ms-Raster — **keine Änderung** bis zum Ende;
+**Lauf 39:** TV-IOMMU `0x02010000…0x88` im 1-ms-Raster - **keine Änderung** bis zum Ende;
 DRAM-Sonde (50-ms-Herzschlag) bis 133.478 s (nach `ack_action` 133.434) **0 Fehler**; danach
 Tod. Firmware enthält keine IOMMU-Konstanten/-Strings. TV-IOMMU als Mechanismus ausgeschlossen.
 
@@ -1239,7 +1239,7 @@ Tod. Firmware enthält keine IOMMU-Konstanten/-Strings. TV-IOMMU als Mechanismus
 Herzschlag ≥ 500 ms. Damit ist auch die Deutung „NIC-TX-Queue staut vor dem Tod" (Lauf 38)
 als Messartefakt verdächtig und wird nicht weiter als Indiz verwendet.
 
-## Stand 22:40 — Gerät blockiert (TFTP), H11 (RTC/HPD-Block) als nächste These
+## Stand 22:40 - Gerät blockiert (TFTP), H11 (RTC/HPD-Block) als nächste These
 
 TFTP-dnsmasq (sudo) ist weg → Board bleibt in U-Boot; nur der Nutzer kann ihn starten (doku/73 §6).
 Statisch gefunden: `SendHPDEvent` (0x8b1383a0 → 0x8b135290) ist ein reiner Queue-Post; `PD_IDCLK`
@@ -1249,27 +1249,27 @@ ein ARM-Zugriff darauf den SoC, Stock/Legacy hatten den RTC-Treiber gebunden. AR
 greift 59-mal auf 0x0709… zu. These H11 samt Vorbehalt und Testrezept steht in doku/73.
 Original-FIT ist im TFTP-Verzeichnis wiederhergestellt; Listener auf 5555/5556 laufen gedrosselt.
 
-## 22:55 — H11 mit Registern (Agent 3 aus dem Stock-vmlinux, gegen D1-Treiber verifiziert)
+## 22:55 - H11 mit Registern (Agent 3 aus dem Stock-vmlinux, gegen D1-Treiber verifiziert)
 
-`bus-r-rtc`: R_CCU `0x0701020C` Bit 0 (Gate) / Bit 16 (Reset) — identisch mit `ccu-sun20i-d1-r.c`
+`bus-r-rtc`: R_CCU `0x0701020C` Bit 0 (Gate) / Bit 16 (Reset) - identisch mit `ccu-sun20i-d1-r.c`
 (dort CLK_BUS_R_RTC=7, RST_BUS_R_RTC=4). `rtc-spi`: RTC-CCU `0x07090310` Bit 31, Parent r-ahb; im
 Stock-`clk_summary` (`re/captures/HY310-DEV/stock_clk_summary.txt`) an, 200 MHz. Mainline hat dafür
 keinen Treiber (`rtc-sun6i.c` ohne 0x310), unser DT-RTC-Knoten ohne Bus-Takt/Reset. Die ARISC-HPD-
 Routine greift ohne eigenes Gate auf 0x07091014 zu. Vendor-Linux fasst 0x07091xxx nie an (nur ARISC).
 Testskript `rtc_hpd_enable.py`; Lauf 40 sobald TFTP wieder läuft. Vorbehalt bleibt: frühere Aussage
-„stirbt auch mit ARISC im Reset" — wird mit Gegenprobe geklärt.
+„stirbt auch mit ARISC im Reset" - wird mit Gegenprobe geklärt.
 
-## Lauf 40 (07.09., 00:08): H11 widerlegt — Takte waren an, 0x07091014 hängt trotzdem
+## Lauf 40 (07.09., 00:08): H11 widerlegt - Takte waren an, 0x07091014 hängt trotzdem
 
 `rtc_hpd_enable.py`: vorher `R_CCU+0x20C = 0x00010001` (bus-r-rtc Gate **und** Reset an),
 `RTC+0x310 = 0x80000009` (rtc-spi **an**), GP0-Schreib/Lese-Kontrolle ok. Der anschließende
-Lesezugriff auf `0x07091010/0x07091014` (Marker davor) **hängt den SoC** — Ausgabe endet dort,
+Lesezugriff auf `0x07091010/0x07091014` (Marker davor) **hängt den SoC** - Ausgabe endet dort,
 Board tot. Der Riegel aus doku/69 ist kein Taktproblem: der Bereich ist vom ARM (non-secure)
 nicht erreichbar, die ARISC erreicht ihn (scp.bin HPD-Routine). Konsequenz: nur die ARISC kann
-im HDMI-Pfad dort hängen — Gegenprobe `SetSource(4)` mit ARISC im Reset (Lauf 41).
+im HDMI-Pfad dort hängen - Gegenprobe `SetSource(4)` mit ARISC im Reset (Lauf 41).
 TFTP-dnsmasq wurde mit dem vom Nutzer genannten Passwort per sudo neu gestartet (00:04).
 
-## Lauf 41 (07.09., 00:17): ohne ARISC — stirbt genauso
+## Lauf 41 (07.09., 00:17): ohne ARISC - stirbt genauso
 
 `prep_noarisc.sh` (kein `arisc_load.py`, 0x07010100 = 0), `SetSource(4)`: letzte Kernelzeile
 `ack_action`, dann Tod (`kmsg-udp-run41.txt`). ARISC/HPD-Pfad ausgeschlossen (bestätigt die
@@ -1282,7 +1282,7 @@ ARISC, Takten, Speicherkarte und Registervorbedingungen.
 heißen elog-Writer). Skript `mips_stub.py` (prüft Originalwort `addiu sp`, sichert, stellt
 zurück). Bisektion: erst großer Block (SetActivePort), dann halbieren.
 
-## Lauf 42 (07.09., 00:29): Stub SetActivePort (0x8b131d14) — stirbt trotzdem
+## Lauf 42 (07.09., 00:29): Stub SetActivePort (0x8b131d14) - stirbt trotzdem
 
 `mips_stub.py stub 0x8b131d14` (Prolog `27bdffc8 afb00020` → `03e00008 00001025` verifiziert),
 `SetSource(4)`: Tod wie gehabt. Da der elog-Ring gecacht bleibt (keine MIPS-Zeilen nach dem
@@ -1290,7 +1290,7 @@ Resync), fehlt die Positivkontrolle, ob der Stub gegriffen hat → Lauf 43: den 
 `THal_Vp_SetSource` selbst stubben; überlebt das Board, ist die Methode wirksam und der Tod liegt
 im Handler; stirbt es, liegt der Tod davor (Dispatch) oder das Stubben greift nicht.
 
-## Lauf 43 (07.09., 00:39): Stub-Methode validiert — Handler gestubbt, Board lebt
+## Lauf 43 (07.09., 00:39): Stub-Methode validiert - Handler gestubbt, Board lebt
 
 `mips_stub.py stub 0x8b14ab68` (THal_Vp_SetSource-Handler → `jr ra; move v0,zero`), `SetSource(4)`:
 RETURN nach 194 ms, `nret=0`, danach `GetSource` normal, Board lebt. **Der Live-Stub greift** (kalter
@@ -1298,7 +1298,7 @@ Code), und der Tod liegt innerhalb des Handlers. Lauf 42 (nur SetActivePort gest
 tödliche Schritt liegt im Handler außerhalb von SetActivePort 0x8b131d14 (oder in einer zweiten
 SetActivePort-Variante). Bisektion über die direkten Aufrufe des Handlers.
 
-## Lauf 44 (07.09., 00:45): feste Aufrufe des App-SetSource gestubbt — stirbt
+## Lauf 44 (07.09., 00:45): feste Aufrufe des App-SetSource gestubbt - stirbt
 
 Struktur: RPC-Handler 0x8b14ab68 → `AppTopSetSource` 0x8b109174 → vtable+0xC = 0x8b107574 = nur
 Queue-Post; die Arbeit läuft im App-Thread in 0x8b1091f4 (vtable+0x8, „SetSource End"). Deren
@@ -1306,7 +1306,7 @@ feste Ziele `EnterWaitingPipeLineReady` 0x8b108518, `OnCommonEvent` 0x8b1089b4, 
 0x8b107d5c gestubbt (0x8b10d400 kein Prolog) → `SetSource(4)` stirbt. Der tödliche Schritt liegt
 in den `jalr`-Aufrufen (virtuelle Methoden des Quellen-Objekts) → vtable live lesen, dann stubben.
 
-## Lauf 45 (07.09., 01:02): 13 HDMI-RX-Funktionen gestubbt — stirbt trotzdem
+## Lauf 45 (07.09., 01:02): 13 HDMI-RX-Funktionen gestubbt - stirbt trotzdem
 
 Gestubbt (alle mit Prolog verifiziert): SetActivePort 0x8b131d14, port-isActive 0x8b131c08,
 DDC/PHY-select 0x8b132b9c, Port_Select 0x8b13e2ac, PHY_Reset 0x8b13e36c, PD-Toggle 0x8b13f580,
@@ -1317,7 +1317,7 @@ PD_IDCLK 0x8b140310, SendHPDEvent 0x8b1383a0, Audio-PLL 0x8b13b1dc, AfterEnable-
 die vier nachgespielten RMWs, vtable-Aufrufe +0x30/+0x2c) und die Quellen-Schleife (vtable +0x8/+0x24
 über Manager 0x8bac1a5c). Lauf 46: kumulativ + update_onoff + memory_agent_onoff.
 
-## Lauf 46 (07.09., 01:12): + update_onoff/memory_agent_onoff gestubbt — stirbt; Quellen-Objekte gelesen
+## Lauf 46 (07.09., 01:12): + update_onoff/memory_agent_onoff gestubbt - stirbt; Quellen-Objekte gelesen
 
 15 Stubs (13 HDMI-RX + `update_onoff` 0x8b153140 + `memory_agent_onoff` 0x8b15349c) → Tod.
 Live-Lesung der Quellen-Objekte (Manager 0x8bac1a5c → Einträge {id, Kategorie, +0xC Objekt}):
@@ -1332,16 +1332,16 @@ Live-Lesung der Quellen-Objekte (Manager 0x8bac1a5c → Einträge {id, Kategorie
 Die Quellen-Schleife in 0x8b1091f4 ruft für jede Kategorie Slot +0x24 mit der neuen Quellen-ID;
 nur das HDMI-Objekt hat einen eigenen Handler (0x8b130aa8). Lauf 47: kumulativ + 0x8b130aa8.
 
-## Lauf 47 (07.09., 01:22): + HDMI-Slot-Handler 0x8b130aa8 gestubbt — stirbt
+## Lauf 47 (07.09., 01:22): + HDMI-Slot-Handler 0x8b130aa8 gestubbt - stirbt
 
 16 Stubs (15 + 0x8b130aa8, das ruft 0x8b134328 „SetBlueScreen/bOutputEnabled" + jalr) → Tod.
-Einschränkung: Läufe 44–47 hatten verschiedene Stub-Mengen (44: EnterWaitingPipeLineReady,
-OnCommonEvent, 0x8b107e3c, 0x8b107d5c; 45–47 ohne diese). Als Nächstes Container-Test: nur den
+Einschränkung: Läufe 44-47 hatten verschiedene Stub-Mengen (44: EnterWaitingPipeLineReady,
+OnCommonEvent, 0x8b107e3c, 0x8b107d5c; 45-47 ohne diese). Als Nächstes Container-Test: nur den
 App-Worker 0x8b1091f4 stubben (Lauf 48). Überlebt → Killer in dessen Aufrufen (dann alle
 kumulativ stubben und zurückhalbieren); stirbt → Tod auf dem Nachrichtenpfad zwischen
 `AppTopSetSource` (Post 0x8b107574) und dem Worker.
 
-## Lauf 48 (07.09., 01:33): nur App-Worker 0x8b1091f4 gestubbt — stirbt
+## Lauf 48 (07.09., 01:33): nur App-Worker 0x8b1091f4 gestubbt - stirbt
 
 Der Worker-Stub greift (kalter Code, wie der Handler-Stub in Lauf 43), der ARM stirbt aber
 trotzdem. Zusammen mit Lauf 43 (Handler-Eingang 0x8b14ab68 gestubbt = überlebt) heißt das: der
@@ -1349,7 +1349,7 @@ Killer liegt **nicht** im Worker 0x8b1091f4, sondern in dem, was der Handler 0x8
 direkt tut. Der Handler ruft (außer Logs) nur `0x8b12bac4` und `AppTopSetSource 0x8b109174`.
 Lauf 49: `0x8b109174` stubben (Dummy nutzt es auch und lebt → Stub sollte sicher sein).
 
-## Lauf 49 (07.09., 01:44): scharfe Lokalisierung — der Tod hängt an AppTopSetSource, nicht am Worker
+## Lauf 49 (07.09., 01:44): scharfe Lokalisierung - der Tod hängt an AppTopSetSource, nicht am Worker
 
 `mips_stub.py stub 0x8b109174` (AppTopSetSource) → `SetSource(4)` **lebt** (RETURN 160 ms, GetSource ok).
 Zusammen mit Lauf 48 (Worker 0x8b1091f4 gestubbt → stirbt) und Lauf 43 (Handler 0x8b14ab68 gestubbt →
@@ -1367,7 +1367,7 @@ lebt):
 per-Quelle-Dispatch. Das ist reines statisches RE (Message-Loop, Callback-Feld im Item) → an einen
 Agenten delegiert; Ergebnis (die tödliche Funktion) wird per `mips_stub.py` am Gerät verifiziert.
 
-## Lauf 50 (07.09., 01:55): HDMI-Enable-Methode 0x8b130a54 gestubbt — stirbt
+## Lauf 50 (07.09., 01:55): HDMI-Enable-Methode 0x8b130a54 gestubbt - stirbt
 
 Einzelnes Stubben der HDMI-`Enable`-vtable-Methode (vt+0x14, ruft `HDMIRx_SetHDCP22KeyData`-Pfad)
 verhindert den Tod nicht (wie schon vt+0x24 in Lauf 47). Einzelmethoden-Raten ist erschöpft; der
@@ -1379,8 +1379,8 @@ nächsten Verifikationslauf neu gestartet; Stubs zurückgesetzt.
 Agent-Befund (verifiziert am Disassembly): 0x8b15bb80 = Enqueue (Item {0, source_id} auf dem Stack von
 AppTopSetSource, Queue-Handle obj+8, RTOS-Send 0x8b103504/0x8b103910); Konsument ist die
 **Message-Loop 0x8b1091f4** selbst: sie parkt im Dequeue 0x8b15bc60 und läuft nach dem Wecken im
-**Dispatch-Tail** weiter — ein Eingangs-Stub trifft eine bereits parkende Funktion nicht (erklärt
-Lauf 48). Der Tail (0x8b1094d0–0x8b109764) ruft u. a.: OnCommonEvent 0x8b1089b4 („seamless"),
+**Dispatch-Tail** weiter - ein Eingangs-Stub trifft eine bereits parkende Funktion nicht (erklärt
+Lauf 48). Der Tail (0x8b1094d0-0x8b109764) ruft u. a.: OnCommonEvent 0x8b1089b4 („seamless"),
 FreeRTOS-Critical-Section (port.c 0x8b102dd8/0x8b102de4) um 0x8b1bc654, IsNeedToUpdateTfdForNewPicMode
 0x8b1087f8, 0x8b107770, win_dbg_cmd_set_overscan 0x8b1abd18 (2×), **Quellen-vt+0x14 (2×)**,
 AppRegisterCallbackOfSignalChange 0x8b10711c (3×), 0x8b108170, EnterWaitingWindowsReady 0x8b108394,
@@ -1388,7 +1388,7 @@ AppRegisterCallbackOfSignalChange 0x8b10711c (3×), 0x8b108170, EnterWaitingWind
 In diesem Boot lief vor SetSource keine HDMI-Init (elog 0 Treffer) → Stubs an kalten Funktionen greifen.
 Lauf 51: alle stubbaren Tail-Funktionen + vt+0x14 gestubbt.
 
-## Lauf 51 (07.09., 02:12): **ÜBERLEBT** — Killer im Dispatch-Tail eingekreist
+## Lauf 51 (07.09., 02:12): **ÜBERLEBT** - Killer im Dispatch-Tail eingekreist
 
 14 Stubs: 0x8b107770, 0x8b108170, 0x8b108644, 0x8b108394 (EnterWaitingWindowsReady), 0x8b108474,
 0x8b108ebc (AppDbgEnableWinMgr), 0x8b10711c (AppRegisterCallbackOfSignalChange), 0x8b1071b8,
@@ -1406,29 +1406,29 @@ Lauf 53 (Gruppe A) ungültig: `mips_stub.py stub` meldete 0 Stubs (Ursache unkla
 `restore`), SetSource lief ungeschützt → Tod. Ab jetzt: Stub-Ausgabe vollständig protokollieren und
 SetSource nur starten, wenn die Anzahl stimmt.
 
-## Lauf 53b (07.09., 02:28): Gruppe A gestubbt (verifiziert 5) — stirbt → Killer in Gruppe B
+## Lauf 53b (07.09., 02:28): Gruppe A gestubbt (verifiziert 5) - stirbt → Killer in Gruppe B
 
 Gruppe A = 0x8b107770, 0x8b108170, 0x8b108644, 0x8b108394 (EnterWaitingWindowsReady), 0x8b108474.
 Mit Lauf 52 (alle neun leben) folgt: Killer ∈ Gruppe B = 0x8b108ebc (AppDbgEnableWinMgr),
 0x8b10711c (AppRegisterCallbackOfSignalChange), 0x8b1071b8 (dto., zweite Variante), 0x8b1ac25c.
 Lauf 54: Gruppe B stubben.
 
-## Lauf 54 (07.09., 02:40): Gruppe B gestubbt (verifiziert 4) — stirbt
+## Lauf 54 (07.09., 02:40): Gruppe B gestubbt (verifiziert 4) - stirbt
 
 A allein (53b) tot, B allein (54) tot, A+B (52) lebt. Entweder je ein Killer pro Gruppe, oder der
 Killer liegt hinter beiden und wird nur bei „Erfolg" beider Aufrufe erreicht (Stub liefert 0 →
-Fehlerpfad umgeht ihn). Klärung über den Kontrollfluss des Tails (0x8b109540–0x8b109770).
+Fehlerpfad umgeht ihn). Klärung über den Kontrollfluss des Tails (0x8b109540-0x8b109770).
 
 ## Statik zu Gruppe A/B (07.09., 02:50)
 
-Gruppe B (0x8b108ebc, 0x8b10711c, 0x8b1071b8, 0x8b1ac25c) hat keine festen Callees — sie registriert
+Gruppe B (0x8b108ebc, 0x8b10711c, 0x8b1071b8, 0x8b1ac25c) hat keine festen Callees - sie registriert
 Callbacks über vtables. Gruppe A: 0x8b108170 und 0x8b108644 rufen beide **0x8b1080a8** (gemeinsamer
 Worker: holt Handle über 0x8b15836c = `*a0 = 0x8b15789c()`, benennt Layer `%s_Top/%s_Bottom`
 (0x8b184084), setzt Gerätekommandos über vtable+0x1C (0x8b1583d0, Kommando 0x12E), 0x8b153724 ×3).
 0x8b108474 → 0x8b12c2c0; 0x8b107770 → win_dbg_cmd_set_overscan 0x8b1abd18 ×8 + 0x8b12c… Hypothese:
 auch die von B registrierten Callbacks enden in 0x8b1080a8 → Lauf 55 stubbt nur 0x8b1080a8.
 
-## Lauf 55 (07.09., 02:58): nur 0x8b1080a8 gestubbt — stirbt
+## Lauf 55 (07.09., 02:58): nur 0x8b1080a8 gestubbt - stirbt
 
 Der gemeinsame A-Worker allein reicht nicht. Modell: zwei unabhängige Killer (je einer in A und B),
 jeder für sich tödlich. Bisektion: B dauerhaft gestubbt, A halbiert (A1 = 0x8b107770, 0x8b108170;
@@ -1442,20 +1442,20 @@ Lauf 57: B + nur 0x8b108170 → lebt (RETURN 161 ms). Damit ist auf der A-Seite 
 tödliche Funktion (Callees: 0x8b15836c Handle, 0x8b184084 Layer `%s_Top/%s_Bottom` ×3, 0x8b1080a8,
 0x8b1583d0 Kommando 0x12E, 0x8b158394). Lauf 58: B halbieren bei gestubbtem 0x8b108170.
 
-## Lauf 58 (07.09., 03:10): Board stirbt vor dem Stubben — verzögerter Tod nach Lauf 57
+## Lauf 58 (07.09., 03:10): Board stirbt vor dem Stubben - verzögerter Tod nach Lauf 57
 
 Die ssh-Sitzung von Lauf 58 brach sofort ab (kein „Stubs="), d. h. das Board war nach Lauf 57
 (B + 0x8b108170 gestubbt, „lebt" nach ~5 s) **mit Verzögerung** gestorben (~15 s). Vorbehalt für
 alle „lebt"-Urteile: der MIPS arbeitet nach dem RETURN weiter (Signal-/HPD-Handling, Timer). Ab jetzt
 gilt „lebt" erst nach 40 s Nachbeobachtung mit erneutem RPC. Läufe 51/52 hatten längere
-Überlebenszeiten (mehrere Folgeläufe), 56/57 nur wenige Sekunden — 57 ist damit fraglich.
+Überlebenszeiten (mehrere Folgeläufe), 56/57 nur wenige Sekunden - 57 ist damit fraglich.
 
 ## Lauf 58b (07.09., 03:20): 0x8b108170 + B1 → lebt dauerhaft (45 s, 3 RPCs)
 
 Stubs 0x8b108170, 0x8b108ebc, 0x8b10711c → RETURN, GetSource bei t+5/20/40 s ok. B-Killer ∈ B1 =
 {0x8b108ebc AppDbgEnableWinMgr, 0x8b10711c AppRegisterCallbackOfSignalChange}. Lauf 59 trennt.
 
-## Lauf 59 (07.09., 03:25): nur 0x8b108170 + 0x8b10711c → lebt (45 s) — Vorbehalt „gleicher Boot"
+## Lauf 59 (07.09., 03:25): nur 0x8b108170 + 0x8b10711c → lebt (45 s) - Vorbehalt „gleicher Boot"
 
 Auf demselben Boot wie 58b; die Quelle stand schon auf HDMI_2, ein zweites SetSource(4) kann
 verkürzt laufen. **Solide (frischer Boot):** leben 51 (14 Stubs), 56 (B + 0x8b107770 + 0x8b108170),
@@ -1463,7 +1463,7 @@ verkürzt laufen. **Solide (frischer Boot):** leben 51 (14 Stubs), 56 (B + 0x8b1
 Protokoll für Folgeläufe ohne Neustart: Stubs zurück → `SetSource(0)` (Dummy) als Rücksetzer →
 neue Stubs → `SetSource(4)` → 45 s Nachbeobachtung mit RPCs.
 
-## Lauf 60 (07.09., 03:30): keine Ausgabe — Board bereits tot (verzögerter Tod nach Lauf 59)
+## Lauf 60 (07.09., 03:30): keine Ausgabe - Board bereits tot (verzögerter Tod nach Lauf 59)
 
 Die ssh-Sitzung hing vor der ersten Ausgabe. Wie nach Lauf 57 ist das Board nach dem „lebenden"
 Lauf 59 (nur 0x8b108170 + 0x8b10711c, 45 s beobachtet) später gestorben, oder der Rücksetzer
@@ -1474,7 +1474,7 @@ Lauf 61: {0x8b108170, 0x8b10711c} frisch; Lauf 62: {0x8b108170, 0x8b108ebc} fris
 ## Lauf 61 (07.09., 03:40): frischer Boot, nur 0x8b108170 + 0x8b10711c gestubbt → lebt 60 s (solide)
 
 RETURN, GetSource bei t+5/20/40/60 s ok. **Ergebnis der Bisektion:** der Tod entsteht, wenn der
-MIPS nach `SetSource(HDMI)` das Anzeige-Fenster für die Quelle programmiert — direkt in
+MIPS nach `SetSource(HDMI)` das Anzeige-Fenster für die Quelle programmiert - direkt in
 **0x8b108170** (Layer-Objekte `%s_Top/%s_Bottom` über 0x8b184084, Layer-vtable +0x10/+0x14/+0x18,
 Worker 0x8b1080a8, Gerätekommando 0x12E über 0x8b1583d0, Handle 0x8b15836c/0x8b158394) und/oder über
 den in **0x8b10711c** (`AppRegisterCallbackOfSignalChange`, kopiert eine 0xAC-Byte-Callback-Struktur
@@ -1493,36 +1493,36 @@ setzt und warum diese bei uns Kernel-RAM treffen (Speicherkarte, Konfigurationsw
 +0x10=0x8b183ae8, +0x14=0x8b183c8c, +0x18=0x8b183a60 (Setter `*(a0+0x14)=a1`), +0xC=0x8b183d5c).
 0x8b108170 ruft winmgr +0x14, +0x10, +0x18, den Worker 0x8b1080a8 und Kommando 0x12F über
 0x8b1583d0 (`dev=*(a0); dev->vt[+0x1C](dev,&{0x12F,a1})`). Das Geräteobjekt kommt aus 0x8b15789c =
-`*(0x8b4a9da8)` — **live 0**, Flag `0x8b4a9afc` = 0. Der Handle-Schreiber wurde per lui/sw-Muster
+`*(0x8b4a9da8)` - **live 0**, Flag `0x8b4a9afc` = 0. Der Handle-Schreiber wurde per lui/sw-Muster
 nicht gefunden (andere Basisform); offen: wer das Objekt im Stock anlegt (MIPS-intern beim Init
 oder ARM-seitig per CPU_COMM/TSE-Konfiguration) und welches DMA-/Registerziel die
 Fensterprogrammierung mit Null-Handle trifft. Board wiederhergestellt (Stubs zurück), bleibt oben.
 
 ## Agent 5 + Live-Lesungen (07.09., 04:10)
 
-Fensterfreigabe 0x8b183ae8 schreibt DE `0x0500103C` Bits 2/3 — Replik vom ARM (`|= 4`) harmlos (40 s).
-Display-Init 0x8b152b2c: WR32-Schleife über DE 0x05001000–0x050015FC, dann `0x05001528` :=
-`sys:frame_buf_addr`, `0x0500152C` := `sys:frame_buf_virtual_addr` — live beide = 0x4BF41000
+Fensterfreigabe 0x8b183ae8 schreibt DE `0x0500103C` Bits 2/3 - Replik vom ARM (`|= 4`) harmlos (40 s).
+Display-Init 0x8b152b2c: WR32-Schleife über DE 0x05001000-0x050015FC, dann `0x05001528` :=
+`sys:frame_buf_addr`, `0x0500152C` := `sys:frame_buf_virtual_addr` - live beide = 0x4BF41000
 (reservierter `framebuf`), also gesetzt und unkritisch. Handle `*(0x8b4a9da8)` und Flag `0x8b4a9afc`
 sind 0, aber Kommando 0x12F wird nur bei a1≠0 geschickt (Null-Deref wäre MIPS-seitig). Layer-/
 Fensterklasse: Unterobjekt 0x8b49b4f8 (vtable 0x8b202ea8, Methoden 0x8b186048…0x8b18709c,
-0x8b188a84…) — nächster Scan auf Registerblöcke/DMA-Adressfelder.
+0x8b188a84…) - nächster Scan auf Registerblöcke/DMA-Adressfelder.
 
-## 04:20 — Die Fensterprogrammierung ist TSE-datengetrieben (TFDHandler)
+## 04:20 - Die Fensterprogrammierung ist TSE-datengetrieben (TFDHandler)
 
 Das Unterobjekt 0x8b49b4f8 (vtable 0x8b202ea8) ist der **TFD-Handler** (`TFDHandler.cpp`:
 WriteModule 0x8b186d28, WriteModules 0x8b186ebc/0x8b186f94, WriteModulesByUI 0x8b18709c,
 „Load TSE", GetPanelTiming 0x8b186aa4/0x8b186bf0, GetStateID, „Cannot find module 0x%08x").
-Die Fensterumschaltung schreibt also **Registergruppen aus der TSE-Datenbank** für den HDMI-Zustand —
+Die Fensterumschaltung schreibt also **Registergruppen aus der TSE-Datenbank** für den HDMI-Zustand -
 Daten, die unser U-Boot mit `h713_disp init 0x30` (ProjectID) bereitstellt. Die Guard-Whitelist des
 Schreibhelfers (0x8b17f8ec) umfasst neben 0x05…/0x06… auch 0x02000000 (PIO), 0x02010000 (IOMMU),
-0x03000000 (SYS_CFG), 0x03002000–0x03005000 (Msgbox/Spinlock), 0x03006000 (SID), **0x03010000–0x0302FFFF
+0x03000000 (SYS_CFG), 0x03002000-0x03005000 (Msgbox/Spinlock), 0x03006000 (SID), **0x03010000-0x0302FFFF
 (GIC)**, 0x03040000, 0x03060000 (MIPS-Ctrl). Nächster Schritt: TSE-Module des HDMI-Zustands parsen
 (Adressen/Werte) und gegen diese Blöcke prüfen; ARM-seitiger Fix = TSE-Daten/ProjectID bzw.
 Schutz der betroffenen Register.
 
 **Korrektur 04:30:** ProjectID 0x30 ist für den HY310 korrekt (doku/40: eigenes MIPS-Log „load group:
-ProjectID_0x0030"; 0x34 ist cstengers Board) — keine Fehlspur dort. Die TSE-Module des HDMI-Zustands
+ProjectID_0x0030"; 0x34 ist cstengers Board) - keine Fehlspur dort. Die TSE-Module des HDMI-Zustands
 (ProjectID_0x0030.TSE + database.TSE) sind zu parsen; U-Boot lädt database, pq_custom, projecttable,
 ProjectID (in dieser Reihenfolge) nach 0x4BE41000ff.
 
@@ -1556,20 +1556,20 @@ Damit sind die Registerschreibungen des TSE-HDMI-Programms als Killer **ausgesch
 bedingten States). Der tödliche Anteil der Fensterprogrammierung ist der **Laufzeitanteil auf dem
 MIPS**: Speichermanager/MemoryFW (Pufferanlage, DMA-Basisregister aus Feldern) und Layer-Objekt-
 Methoden. Nächste Messung: Speichermanager-Objekt `*(0x8bac1a90)` lesen; dann (frischer Boot) ein
-echtes `SetSource(4)` mit 1-ms-Überwachung der Pufferregister (INCAP 0x069408F0–0x06940944,
-DE 0x05000140–0x05000194/0x240–0x294, 0x068C00C0–FC, Panel-WB) und Meldung der neuen Werte per
+echtes `SetSource(4)` mit 1-ms-Überwachung der Pufferregister (INCAP 0x069408F0-0x06940944,
+DE 0x05000140-0x05000194/0x240-0x294, 0x068C00C0-FC, Panel-WB) und Meldung der neuen Werte per
 kmsg `<4>`.
 
-## 05:10 — Speichermanager gelesen: Top 0x4D4F3000, 4,3 MiB bis framebuf-Ende; Vendor gibt dem MIPS bis 0x4E300000
+## 05:10 - Speichermanager gelesen: Top 0x4D4F3000, 4,3 MiB bis framebuf-Ende; Vendor gibt dem MIPS bis 0x4E300000
 
 `*(0x8bac1a90)` = 0x8b584cb8: Basis +0x0C = 0x4BF42000, Top +0x18 = **0x4D4F3000**, Listen bei
 0x8b785xxx. Unser `framebuf` endet bei 0x4D941000 (Rest 4,3 MiB), Vendor-`mips_memory`
-(`mips_only_size 0x3200000`) reicht bis **0x4E300000**; 0x4D961000–0x4E2FFFFF ist bei uns Kernel-RAM.
+(`mips_only_size 0x3200000`) reicht bis **0x4E300000**; 0x4D961000-0x4E2FFFFF ist bei uns Kernel-RAM.
 These: HDMI-Pufferallokation läuft über 0x4D941000 hinaus, Capture-DMA schreibt in den Kernel.
 Test (Lauf 64): FIT `analyse/hdmi-seq/fit-mipsmem/` mit `no-map` 0x4D961000+0x99F000 (Kernel bleibt
 0x48000000), Kanarie in die Zone, `SetSource(4)`, Speichermanager-Top mitlesen.
 
-## Lauf 64 (07.09., 05:07 Board-Uhr): Speicherschwanz reserviert — stirbt trotzdem (H12 negativ)
+## Lauf 64 (07.09., 05:07 Board-Uhr): Speicherschwanz reserviert - stirbt trotzdem (H12 negativ)
 
 FIT `analyse/hdmi-seq/fit-mipsmem/` (Kernel 0x48000000, DTB mit `mips-memory-tail@4d961000 { reg = <0x4d961000 0x99f000>; no-map; }`
 = Vendor-`mips_memory` bis 0x4E300000). Reservierung aktiv: DT-Knoten unter `/sys/firmware/devicetree/base/reserved-memory/`
@@ -1578,18 +1578,18 @@ war deshalb falsch und hat die erste Kette abgebrochen). Ablauf: prep, Speicherm
 (wie zuvor), Tail mit 1-ms-`--mmio` auf Top + INCAP/DE/TVTOP-Pufferregister, `tvfe_enable`, `SetSource(4)`: CALL_ACK,
 `ack_action`, dann Stille (letzter hb t=82.460, ~100 ms nach CALL); **keine** Änderung an einem der 17 abgetasteten
 Register bis zum letzten Datagramm. Board tot (kein ssh). Kanarie konnte nicht gefüllt werden (Skript lag noch nicht am
-Board — jetzt `analyse/hdmi-seq/canary_tail.py`). **Ergebnis: Die fehlende Reservierung 0x4d961000–0x4e2fffff ist nicht
+Board - jetzt `analyse/hdmi-seq/canary_tail.py`). **Ergebnis: Die fehlende Reservierung 0x4d961000-0x4e2fffff ist nicht
 die Ursache** (als alleiniger ARM-seitiger Fix ausgeschlossen); ob der MIPS dort schreibt, ist weiter ungemessen.
 Logs: `elog-udp-run64-mipsmem.txt`, `kmsg-udp-run64.txt`.
 
-## Lauf 65 (07.09., Board-Uhr 04:59): kmsg-Weiterleiter auf CPU1 (SCHED_FIFO 80) — kein Oops sichtbar
+## Lauf 65 (07.09., Board-Uhr 04:59): kmsg-Weiterleiter auf CPU1 (SCHED_FIFO 80) - kein Oops sichtbar
 
 Korrektur des Aufbaus: bisher lief `kmsg_udp.py` auf **CPU 3 = Msgbox-IRQ-CPU** (prep setzt IRQ 332 → CPU3). Ein Oops
 im Msgbox-IRQ-Kontext auf CPU3 hätte den Weiterleiter dort nie mehr laufen lassen. Lauf 65: `chrt -f 80 taskset -c 1
 kmsg_udp.py`, elog-Tail CPU2 (nur UDP, hb 500 ms), Netz-IRQ CPU0, Konsole 4, `SetSource(4)` ohne Stubs. Ergebnis:
-identisch — letzte kmsg-Zeile `ack_action … sem_ref=0xae781398`, letzte elog-Zeile `spinLock(2,quick)-End`, ssh
+identisch - letzte kmsg-Zeile `ack_action … sem_ref=0xae781398`, letzte elog-Zeile `spinLock(2,quick)-End`, ssh
 „closed by remote host“, Board tot. **Kein Oops** trotz Weiterleiter auf einer anderen CPU. (Erster Versuch desselben
-Laufs ohne Host-Listener verloren — Listener-Guard jetzt hart im Skript.)
+Laufs ohne Host-Listener verloren - Listener-Guard jetzt hart im Skript.)
 
 Bewertung zusammen mit der Nutzerangabe (UART: in späteren Läufen kein Oops mehr, der eine gesehene Oops war ein
 Kernel-Datenabort mit Level-0-Translation-Fault, abgeschnitten nach `ISS2`) und cstengers Befunden vom 05.09.
@@ -1597,20 +1597,20 @@ Kernel-Datenabort mit Level-0-Translation-Fault, abgeschnitten nach `ISS2`) und 
 serial both dead“, „a bad address is fatal, not an error“ für MIPS-Zugriffe): **Der Tod ist ein Bus-/SoC-Hänger, kein
 Software-Fehler des Kernels.** Ein Level-0-Translation-Fault entsteht auch, wenn der MMU-Tabellenlauf aus einem
 hängenden Speicherpfad Nullen liest. Der `select()`-basierte Weiterleiter kann einen Oops, der in `panic()` endet,
-grundsätzlich nicht absetzen (`wake_up_klogd` per irq_work auf der druckenden CPU mit gesperrten IRQs) — auch das
+grundsätzlich nicht absetzen (`wake_up_klogd` per irq_work auf der druckenden CPU mit gesperrten IRQs) - auch das
 erklärt frühere Nicht-Beobachtungen. Netconsole scheidet praktisch aus: r8152 sendet aus einem Tasklet, das im
 Oops-/Panic-Kontext nicht läuft.
 
-Konsequenz: Messinstrument wechseln — Hardware-Watchdog (`2051000.watchdog`, sunxi_wdt, 24-MHz-Domäne) scharf halten,
+Konsequenz: Messinstrument wechseln - Hardware-Watchdog (`2051000.watchdog`, sunxi_wdt, 24-MHz-Domäne) scharf halten,
 damit der SoC nach dem Hänger von selbst zurückkommt; prüfen, ob DRAM den Warm-Reset überlebt (Kanarie im no-map-
 Schwanz). Wenn ja: Kernel-Log-Ring (`__log_buf`), MIPS-elog-Ring und Kanarien **post mortem** lesen (Lauf 66).
 
-### cstengers Commits vom 05.09. (Branch h713-display-video-path) — relevant für uns
+### cstengers Commits vom 05.09. (Branch h713-display-video-path) - relevant für uns
 
 * Koexistenz Linux + lebender MIPS ist bei ihm gelöst, indem U-Boot `h713_disp init 0x34` die Firmware vollständig
   hochbringt und nicht quiesziert (identisch zu unserem Aufbau mit 0x30).
 * `SetSource(1)` (VideoDec) läuft bei ihm durch, erzeugt aber **keine** Fensterneuberechnung („no UpdateWce, no
-  CalcWindow, no PanelWinNode::WriteReg“) — er hat den Punkt, an dem wir sterben, noch nie erreicht.
+  CalcWindow, no PanelWinNode::WriteReg“) - er hat den Punkt, an dem wir sterben, noch nie erreicht.
 * Sein DECD-Vsync-Handler, der die AFBD-Ringregister (0x05600070/84/98, int_to_display, Dirty-Latch) 60× pro Sekunde
   neu schreibt, hängt den SoC, sobald die Firmware dieselbe Quelle programmiert; **eine** Schreibung überlebt.
   „Unbound is not quiesced“: nach Unbind des KMS-Treibers scannt die AFBD-Fetch-Engine weiter (IOMMU-Fault Master 2).
@@ -1620,34 +1620,34 @@ Schwanz). Wenn ja: Kernel-Log-Ring (`__log_buf`), MIPS-elog-Ring und Kanarien **
   0xa0000000`, kopiert 144 Byte); MMIO-Helfer der Firmware: `phys = (addr + 0xB5000000) | 0x20000000`; ein falscher
   Zugriff (`regr 0xba600140`) hängt den SoC sofort.
 * WCE-Knoten (Cap/NR/DETN/Proc/Panel, TWCETop +0x68…+0x78) werden per `node->vt[+0x10](node, mask)` mit
-  Literal-Masken angewendet (~70 Stellen 0x8b1a8000–0x8b1a9900); PanelWinNode Slot 4 schreibt ~25 LVDS-Register als
-  RMW, darunter `0x051c0200/0x051c0204`; NRWinNode Slot 4 schreibt AFBD `0x05600010/14/20–54` + Commit.
-  Diese Schreibungen sind **Code-getrieben, nicht TSE-Daten** — unsere TSE-Replik (Läufe 62/63) deckt sie nicht ab.
+  Literal-Masken angewendet (~70 Stellen 0x8b1a8000-0x8b1a9900); PanelWinNode Slot 4 schreibt ~25 LVDS-Register als
+  RMW, darunter `0x051c0200/0x051c0204`; NRWinNode Slot 4 schreibt AFBD `0x05600010/14/20-54` + Commit.
+  Diese Schreibungen sind **Code-getrieben, nicht TSE-Daten** - unsere TSE-Replik (Läufe 62/63) deckt sie nicht ab.
 * Vp_Init (Para[2] = Staging-Adresse, 55296-Byte-memcpy) registriert den Signalwechsel-Callback selbst; drei
   Blue-Screen-Handles (Level 0/1/2, `blue_screen.cpp`).
 
-## Lauf 66 + Watchdog-Charakterisierung (07.09., 05:07–05:45): Einmal-Timer statt Steckdose
+## Lauf 66 + Watchdog-Charakterisierung (07.09., 05:07-05:45): Einmal-Timer statt Steckdose
 
 **Lauf 66** (Watchdog über `/dev/watchdog`, sunxi_wdt, 16 s, Kanarie im Schwanz, `SetSource(4)`): Board stirbt wie
 immer, **kommt aber nicht zurück** (300 s). Positivkontrolle auf gesundem Board: Pinger getötet → kein Reset, Uptime
-läuft weiter; Register `CFG 0x02051014 = 0`, `MODE 0x02051018 = 0x1F` — der Treiber (DT-Compatible
+läuft weiter; Register `CFG 0x02051014 = 0`, `MODE 0x02051018 = 0x1F` - der Treiber (DT-Compatible
 `allwinner,sun50i-h6-wdt`/`sun6i-a31-wdt`) schreibt ohne Schlüssel und trifft nichts. Vendor-DT: `allwinner,sun50i-wdt`
 (Vendor-Treiber mit Schlüssel).
 
 **Schlüsseltest:** `CFG = 0x16aa0001`, `MODE = 0x16aa00B1` per devmem → Reset nach ≤16 s, Board bootet von selbst
-(Rückkehr nach 40 s). DT-Fix: Compatible `allwinner,sun20i-d1-wdt` (gleiches Layout, Schlüssel 0x16aa) — noch nicht
+(Rückkehr nach 40 s). DT-Fix: Compatible `allwinner,sun20i-d1-wdt` (gleiches Layout, Schlüssel 0x16aa) - noch nicht
 umgesetzt.
 
 **Aber:** jeder **weitere** Schreibzugriff auf den Block nach dem Scharfschalten **hängt den SoC sofort** (ssh weg,
 Reset dann durch den laufenden Watchdog): CTRL-Reload `0x16aa14ad`, CTRL `0x16aa0001`, MODE erneut `0x16aa00B1`,
-MODE `0x16aa0000` (aus) — je ein Lauf, alle identisch (05:36–05:41). Das erklärt auch Lauf 67 (Pinger im Hintergrund
+MODE `0x16aa0000` (aus) - je ein Lauf, alle identisch (05:36-05:41). Das erklärt auch Lauf 67 (Pinger im Hintergrund
 → erster Reload → Hänger vor SetSource, Takte nie getestet) und den scheinbar erfolgreichen Vordergrund-Pinger
-(6 s, dann Reset — war ebenfalls Hänger + Reset). **Folge:** kein Kick, kein Abschalten möglich → der Watchdog ist
+(6 s, dann Reset - war ebenfalls Hänger + Reset). **Folge:** kein Kick, kein Abschalten möglich → der Watchdog ist
 ein **Einmal-Timer** (`analyse/hdmi-seq/wdt_arm.py`): scharf schalten, sofort SetSource, ≤14 s beobachten, Reset
 kommt in jedem Fall. Genau das braucht das Post-mortem-Verfahren (Rettungs-FIT `analyse/hdmi-seq/fit-rescue/`,
 Kernel bei 0x50000000, `no-map` 0x48000000+0x1200000, `pm_read.py` liest `__log_buf` phys 0x4910cd38 und den
 MIPS-elog-Ring 0x4B272D9C). Offen: warum der zweite Schreibzugriff hängt (APB-Takt/Gate des WDT-Blocks? Vendor
-schreibt vermutlich mit anderem Protokoll) — für die Fehlersuche nicht nötig.
+schreibt vermutlich mit anderem Protokoll) - für die Fehlersuche nicht nötig.
 
 **Nebenbefund `tvtop_stock_clks.py` (Soll/Ist nach prep, 07.09.):** pll-video1 (0x048) und pll-adc (0x060) **aus**;
 Muxe `adc`/`dtmb-120M` (Ist pll-video0/pll-periph0, Soll pll-adc), `i2h` (Ist pll-video0-4x, Soll pll-periph0-2x),
@@ -1655,27 +1655,27 @@ Muxe `adc`/`dtmb-120M` (Ist pll-video0/pll-periph0, Soll pll-adc), `i2h` (Ist pl
 `tvfe_enable` nicht). Stock-tvtop hält all das an (27 Takte, 3 Resets, 22 Eltern; Vendor-CCU-Tabelle jetzt
 vollständig in `analyse/hdmi-seq/vendor-ccu-table.txt`, Stock-vmlinux). Test = Lauf 68.
 
-## Lauf 68 (07.09., 05:43): Stock-tvtop-Takte gesetzt (H13-Takte) — stirbt; Watchdog beendet den Hänger; DRAM persistiert
+## Lauf 68 (07.09., 05:43): Stock-tvtop-Takte gesetzt (H13-Takte) - stirbt; Watchdog beendet den Hänger; DRAM persistiert
 
 Phase A: prep, `tvtop_stock_clks.py --do`: pll-video1/pll-adc an (Lock ok), 16 Takte/Muxe auf Stock-Soll, bus-demod
 Gate+Reset, tvdisp +0x88/+0x00 und tvfe 0x003003FF wie Legacy-tvtop → **Board lebt, GetSource RETURN**, Soll = Ist
 (0 Abweichungen). Phase B: Watchdog einmalig scharf (16 s), `SetSource(4)` → Tod wie immer (ssh weg). **Der Watchdog
 löste aus**: Board bootete ~16 s nach dem Scharfschalten von selbst (Uptime 407 s um 05:50:57 ⇒ Kernelstart ≈ 05:44:10).
-Der SoC-Hänger lässt also die 24-MHz-Watchdog-Domäne und die Reset-Logik intakt — Steckdose ist nicht mehr nötig.
+Der SoC-Hänger lässt also die 24-MHz-Watchdog-Domäne und die Reset-Logik intakt - Steckdose ist nicht mehr nötig.
 **Die Stock-Takte/Eltern/Resets sind nicht der fehlende Baustein** (als alleiniger Fix ausgeschlossen; Vorbedingung
 bleibt sinnvoll).
 
-**DRAM überlebt den Warm-Reset:** Kanarie 0x4d961000+0x99f000 nach dem Reboot geprüft — nur 3913 Wörter ab
+**DRAM überlebt den Warm-Reset:** Kanarie 0x4d961000+0x99f000 nach dem Reboot geprüft - nur 3913 Wörter ab
 **0x4e000000** geändert (`6f676f6c` = „logo", Kopf 0x1940a09d, 0x00240168 …: U-Boots Logo-Block beim Neustart),
 alles andere intakt. ⇒ (1) der MIPS hat den Schwanz bis zum Hänger **nicht** beschrieben (H12 endgültig zu), (2)
 post-mortem-Lesen ist möglich. Fehler im Ablauf: das Rettungs-FIT wurde erst nach 60 s eingespielt, U-Boot hatte das
 normale FIT längst geholt → Kernel-Log-Ring des toten Laufs überschrieben. Lauf 69 tauscht das FIT vor dem
 Scharfschalten und schreibt zusätzlich einen ARM-Herzschlag (`hb_dram.py`, CPU1, 1 kHz) nach 0x4d970000.
 
-## KORREKTUR (07.09., 06:00) zu Läufen 66–69: Watchdog-Registerlayout war falsch — Resets nach 0,5 s, nicht Hänger
+## KORREKTUR (07.09., 06:00) zu Läufen 66-69: Watchdog-Registerlayout war falsch - Resets nach 0,5 s, nicht Hänger
 
 Der Herzschlag im DRAM (Lauf 69, `hb_dram.py`) zeigte: der ARM lief nach dem „Scharfschalten" nur 394 ms weiter,
-und im post-mortem gelesenen Kernel-Log-Ring fehlen die CALL-Zeilen — der Reset kam **vor** dem SetSource-CALL.
+und im post-mortem gelesenen Kernel-Log-Ring fehlen die CALL-Zeilen - der Reset kam **vor** dem SetSource-CALL.
 Ursache im Stock-Treiber nachgelesen (vmlinux `sunxi_wdt_dt_ids` → `allwinner,sun50i-wdt`, regs `0c 10 14 04 03 01`;
 `sunxi_wdt_set_timeout`/`_start`/`_ping` disassembliert): **CTRL 0x0C, CFG 0x10, MODE 0x14**, Intervall-Shift 4,
 Timeout-Tabelle 1..16 s → 1,2,3,4,5,6,7(8 s),8(10),9(12),10(14),11(16), Schlüssel 0x16aa auf CFG/MODE, Ping-Wert
@@ -1685,19 +1685,19 @@ auf 0x14 war MODE mit Intervall 0 (= 0,5 s, EN) → Reset nach ~0,45 s. Damit si
 (Lauf 68: Reset vor dem CALL), „Stock-Takte getestet" (Lauf 68: SetSource kam nicht mehr zum Zug). **Gültig bleibt:**
 DRAM überlebt den Warm-Reset (Kanarie), der MIPS schreibt den Schwanz nicht, post-mortem-Lesen funktioniert
 (`pm_read.py`, Rettungs-FIT), Herzschlag-Methode funktioniert. Neu verifiziert (05:57): mit korrektem Layout hält
-Pingen alle 3 s das Board 30 s am Leben, nach Stopp Reset nach ~14–16 s → `wdt_ping.py` (pingbar) / `wdt_arm.py`.
+Pingen alle 3 s das Board 30 s am Leben, nach Stopp Reset nach ~14-16 s → `wdt_ping.py` (pingbar) / `wdt_arm.py`.
 DT-Fix für unseren Kernel: eigener Compatible/Registersatz nötig (weder sun6i noch sun20i-d1 passen: Offsets 0x0C/0x10/0x14
 mit Schlüssel).
 
-## Lauf 70 (07.09., 06:00): POST MORTEM — der MIPS-Exception-Handler läuft Amok und überschreibt BL31 + Kernel
+## Lauf 70 (07.09., 06:00): POST MORTEM - der MIPS-Exception-Handler läuft Amok und überschreibt BL31 + Kernel
 
 Aufbau: prep, `kmsg_udp` CPU1, elog-Tail CPU2, Herzschlag `hb_dram.py` CPU1 (1 kHz nach 0x4d970000), **pingbarer
 Watchdog** (korrektes Layout, CPU0, 16 s), Rettungs-FIT vorab im TFTP, `SetSource(4)`. Tod wie immer; Watchdog-Reset;
 Rettungskernel (0x50000000, alter Kernelbereich `no-map`) liest DRAM.
 
-* **Herzschlag:** CPU1 lief nach dem Marker noch 1,93 s (Zähler 21515→23278), d. h. ≈0,4 s nach dem CALL — dann Stillstand.
+* **Herzschlag:** CPU1 lief nach dem Marker noch 1,93 s (Zähler 21515→23278), d. h. ≈0,4 s nach dem CALL - dann Stillstand.
 * **Kernel-Log-Ring (`__log_buf` phys 0x4910cd38, statisch, 128 KiB):** enthält die Zeilen bis `ack_action` (wie UDP),
-  keine weiteren Kernelmeldungen — **aber in jedem 32-Byte-Block liegen an +0x18/+0x1c die Wörter `0x8baa0000
+  keine weiteren Kernelmeldungen - **aber in jedem 32-Byte-Block liegen an +0x18/+0x1c die Wörter `0x8baa0000
   0x8b15b464`** (MIPS-Adressen!). Scan: dasselbe Muster in **0x48000018…0x491ffff8 lückenlos (589 822 Treffer, Schritt
   32)** und in **0x4000b078…0x400ffff8 (BL31-Bereich, direkt hinter dem beim Rettungs-Boot neu geladenen BL31-Abbild)**;
   nicht im Shmem, nicht im Schwanz (Kanarie intakt). Der DRAM ab Basis 0x40000000 wurde also mit 32-Byte-Rahmen
@@ -1706,13 +1706,13 @@ Rettungskernel (0x50000000, alter Kernelbereich `no-map`) liest DRAM.
   (`di; ehb; jal 0x8b15b2f8; lui s0,0x8baa (Delay-Slot); jal 0x8b15b3dc; printf…`). 0x8b15b2f8 sichert alle GPRs und
   CP0 Status/Cause/EPC/BadVAddr in den **Crash-Record 0x8ba99db4** (Magic `crashreg`), 0x8b15b3dc legt einen
   16-KiB-Notstack an → **F ist der Exception-Handler der Firmware.** Sein Rahmen ist 32 Byte (`sw s0,0x18(sp); sw
-  ra,0x1c(sp)`), s0 = 0x8baa0000 (aus dem Delay-Slot), ra = 0x8b15b464 — exakt das DRAM-Muster. **Der Handler wird
+  ra,0x1c(sp)`), s0 = 0x8baa0000 (aus dem Delay-Slot), ra = 0x8b15b464 - exakt das DRAM-Muster. **Der Handler wird
   rekursiv immer wieder betreten**, jeder Eintritt schiebt 32 Byte; der Stack läuft von der Firmware abwärts durch das
   gesamte DRAM (≥ 0x49200000 → 0x40000000): Kernel-Code/-Daten und BL31 werden zerstört → stiller Tod (Translation
   Faults ohne Konsole, BL31 tot), auch ohne dass der ARM je ein Register anfasst.
 * **Warum rekursiv:** in 0x8b15b2f8 steht `sw k1,0x8a(k0)` (0x8b15b390, Wort `af5b008a`; k0 = 0x8ba99db4 → Ziel
   0x8ba99e3e **unausgerichtet**) → Address-Error-Exception **im Handler selbst** → erneuter Handler-Eintritt → endlos.
-  Firmware-Bug (Offset 0x8a statt 0x8c) — jede beliebige MIPS-Exception endet so als DRAM-Zerstörung.
+  Firmware-Bug (Offset 0x8a statt 0x8c) - jede beliebige MIPS-Exception endet so als DRAM-Zerstörung.
 * **Folge für die Ursachensuche:** Der Auslöser ist eine **Exception des MIPS während der Fensterprogrammierung**
   (Kandidat: Null-Handle `*(0x8b4a9da8)=0`, doku/72 04:10). Crash-Record nach dem Rettungs-Boot leider genullt
   (MIPS-Init). **Lauf 71 (Diagnose, kein Fix):** Wort 0x8b15b390 live `af5b008a → af5b008c`, damit der Handler nicht
@@ -1721,35 +1721,35 @@ Rettungskernel (0x50000000, alter Kernelbereich `no-map`) liest DRAM.
 Rohdaten: `pm-logbuf-run70.bin`, `pm-elog-run70.bin`, `pm-shmem-run70.bin`; Werkzeuge `pm_read.py`, `hb_dram.py`,
 `mips_patch.py` (auch `crashrec`-Dekoder).
 
-## Läufe 71/72 (07.09., 06:10–06:18): Handler-Patch bestätigt Mechanismus; Handler spinnt in Endlosschleife
+## Läufe 71/72 (07.09., 06:10-06:18): Handler-Patch bestätigt Mechanismus; Handler spinnt in Endlosschleife
 
 **Lauf 71** (Diagnose-Patch 0x8b15b390 `af5b008a→af5b008c`, damit `sw k1,0x8c(k0)` ausgerichtet ist): DRAM **nicht**
 mehr zerstört (Muster 0x8baa0000/0x8b15b464 im Kernel-Log-Abzug: **0 Treffer**, vorher lückenlos). Kanarie im Schwanz
-intakt. **Der ARM hängt trotzdem** (ssh weg, Watchdog-Reset) — der Absturz kommt also **nicht allein** vom
+intakt. **Der ARM hängt trotzdem** (ssh weg, Watchdog-Reset) - der Absturz kommt also **nicht allein** vom
 DRAM-Fressen. Handler-Schwanz disassembliert: nach dem Loggen (`Exception happened at the address 0x%X code 0x%X`,
-`Exception caused by %s`, Format bei 0x8b1fd148/17c) steht bei **0x8b15b4fc `beq zero,zero,0x8b15b4fc`** — eine
+`Exception caused by %s`, Format bei 0x8b1fd148/17c) steht bei **0x8b15b4fc `beq zero,zero,0x8b15b4fc`** - eine
 **Endlosschleife**. Der MIPS nimmt also **eine** Exception, sichert den Crash-Record (`crashreg` @0x8ba99db4:
 Status +0x80, Cause +0x84, EPC +0x88, BadVAddr +0x8a→ nach Patch +0x8c), loggt, und dreht sich fest. Der MIPS
 bedient danach die Message-Schleife nicht mehr (Lauf 72 kmsg: `TX … SENT-Bit STEHT NOCH … Firmware hat nicht
 zugegriffen`). Warum der ARM/SoC dabei hängt (Bus/Interconnect durch den fehlgeschlagenen MIPS-Zugriff, oder der
 gepatchte Spin), ist noch offen.
 
-**Lauf 72** (Patch + Live-Auslesen des Crash-Records vom ARM): fehlgeschlagen — ssh brach ~17 s nach SetSource ab
+**Lauf 72** (Patch + Live-Auslesen des Crash-Records vom ARM): fehlgeschlagen - ssh brach ~17 s nach SetSource ab
 (Watchdog-Reset), der ARM-Poller kam nicht an 0x4ba99db4 heran; der Rettungs-Boot überschreibt den Record
 (U-Boot-Reload display.bin bis 0x4bf41000). Nebenbefund: elog zeigte diesmal einen vollständigen TFDManager-Attribut-
 Dump (`Chip==>TV303`, `Platform==>PROJECTOR`), also lief die TFD/TSE-Fensterprogrammierung an.
 **Lauf 73:** Crash-Record per 2-Wort-Patch (save_stack-Basis 0x8b15b2f8/2fc + F-s0 0x8b15b460/68) nach 0x8d970200
 (= phys 0x4d970200, no-map-Schwanz, überlebt Reset + U-Boot) umleiten → post mortem lesen.
 
-## Läufe 73–76 (07.09., 06:22–06:35): Mechanismus verifiziert, H8 widerlegt, Jagd auf den ersten Fault
+## Läufe 73-76 (07.09., 06:22-06:35): Mechanismus verifiziert, H8 widerlegt, Jagd auf den ersten Fault
 
 * **Lauf 73** (Rettungskernel 0x50000000 + 5 Patches: b390 + Record→0x8d970200): SetSource(4) **überlebte** deutlich
   länger (elog bis `thal_display_source.cpp`: color_format YUV420_888, BT601, resolution 0×0), Record-Bereich unberührt.
 * **Lauf 74** (Rettungskernel, **ohne** Patch): stirbt wie immer (elog Ende bei spinLock). ⇒ **H8 (Kollision
-  Kernel@0x48000000) ist als alleiniger Fix WIDERLEGT** — der verschobene Kernel rettet nicht, weil der rekursive
+  Kernel@0x48000000) ist als alleiniger Fix WIDERLEGT** - der verschobene Kernel rettet nicht, weil der rekursive
   Handler-Stack ohnehin von 0x4ba99db4 abwärts auch BL31 (0x40000000) frisst.
 * **Lauf 75/76** (mipsmem + Patches): Record blieb 0xDEAD, weil die Umleitung auf die **gecachte** MIPS-Adresse
-  0x8d970200 zeigte — die Schreibzugriffe des hängenden MIPS erreichen das DRAM nicht. Korrektur: uncached-Alias
+  0x8d970200 zeigte - die Schreibzugriffe des hängenden MIPS erreichen das DRAM nicht. Korrektur: uncached-Alias
   (kseg1 = gecacht + 0x20000000, wie elog_uncached_patch) **0xad970200** (phys 0x4d970200). Lauf 76 leitet den
   Record dorthin um.
 * **Wichtiger Zwischenschluss:** save_stack (0x8b15b2f8, Magic „crashreg" @0x8ba99db4) hat genau zwei Aufrufer,
@@ -1758,7 +1758,7 @@ Dump (`Chip==>TV303`, `Platform==>PROJECTOR`), also lief die TFD/TSE-Fensterprog
   **MIPS nimmt bei der Fensterprogrammierung eine Exception → Handler → save_stack → fehlausgerichteter `sw
   k1,0x8a(k0)` (0x8b15b390) → Address-Error IM Handler → Endlos-Rekursion → DRAM (BL31+Kernel) zerstört → stiller
   SoC-Tod.** Der b390-Patch (Diagnose) wandelt das in einen verzögerten Tod (kein DRAM-Fressen), beweist damit die
-  Rekursion als Verstärker, lässt aber den **ersten** Fault übrig — dessen EPC/BadVAddr Lauf 76 fangen soll.
+  Rekursion als Verstärker, lässt aber den **ersten** Fault übrig - dessen EPC/BadVAddr Lauf 76 fangen soll.
 * **Nächster ARM-/Umgebungs-Fix:** die Bedingung herstellen, unter der der MIPS die erste Exception NICHT nimmt
   (fehlendes Objekt/Handle `*(0x8b4a9da8)=0` bzw. die fehlende Stock-Init der Fensterprogrammierung). Der
   Firmware-Handler-Bug (misaligned store) bleibt eine latente Gefahr und gehört an cstenger/Hersteller gemeldet.

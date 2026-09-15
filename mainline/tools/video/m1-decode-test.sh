@@ -1,5 +1,5 @@
 #!/bin/bash
-# M1 — does the H713 VE actually decode? Runs ON THE TARGET.
+# M1 - does the H713 VE actually decode? Runs ON THE TARGET.
 #
 # Cedrus binding proves nothing about the silicon: it binds on a DT compatible
 # and clock handles, and nothing in a successful probe touches a codec register.

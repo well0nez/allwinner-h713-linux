@@ -1,12 +1,12 @@
 #!/bin/bash
-# VA1 — does libva-v4l2-request decode H.264 on the VE, bit-exact? RUNS ON THE TARGET.
+# VA1 - does libva-v4l2-request decode H.264 on the VE, bit-exact? RUNS ON THE TARGET.
 #
 # This is the gate for docs/vaapi-scope.md step 5, and it is deliberately run
 # with NO DISPLAY INVOLVED. The display path is a separate and larger risk; if
 # both are in play at once, a failure lands in neither half cleanly.
 #
-# The instrument is the M1 ladder's references — the same vectors and the same
-# whole-file md5s that scored the GStreamer path bit-exact — so a PASS here
+# The instrument is the M1 ladder's references - the same vectors and the same
+# whole-file md5s that scored the GStreamer path bit-exact - so a PASS here
 # means the shim drives cedrus exactly as well as GStreamer already does, and a
 # MISMATCH means it decoded something, but not the same pixels.
 #
@@ -50,7 +50,7 @@ decode_sw() {
 score() {   # vector, file, label
   local v=$1 dst=$2 label=$3 md5 want frames
   if [ ! -s "$dst" ]; then
-    echo "     FAIL ($label) — no output produced"
+    echo "     FAIL ($label) - no output produced"
     return 1
   fi
   md5=$(md5sum "$dst" | cut -d' ' -f1)
@@ -62,10 +62,10 @@ score() {   # vector, file, label
     return 0
   fi
   if [ "$md5" = "$want" ]; then
-    echo "     PASS ($label) — bit-exact against the host reference ($frames frames)"
+    echo "     PASS ($label) - bit-exact against the host reference ($frames frames)"
     return 0
   fi
-  echo "     MISMATCH ($label) — decoded, but not bit-exact (want $want)"
+  echo "     MISMATCH ($label) - decoded, but not bit-exact (want $want)"
   return 1
 }
 
@@ -79,13 +79,13 @@ ctl=v04-1280x720-high
 if [ -f "$DIR/$ctl.h264" ]; then
   decode_sw "$DIR/$ctl.h264" "$OUT/$ctl.sw.nv12" 2>&1 | sed 's/^/     /'
   if score "$ctl" "$OUT/$ctl.sw.nv12" "sw"; then
-    echo "     harness is sound — hardware results below are readable"
+    echo "     harness is sound - hardware results below are readable"
   else
     echo "     STOP: the CPU decoder does not reproduce the reference either."
     echo "     Fix the harness before reading anything into the hardware runs."
   fi
 else
-  echo "  SKIP — $ctl.h264 not present"
+  echo "  SKIP - $ctl.h264 not present"
 fi
 
 hr "hardware decode runs"

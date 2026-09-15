@@ -1,6 +1,6 @@
-# B — `CheckEDIDUpdateStatus`: Ursache gefunden, Treiber korrigiert (05:58–06:21)
+# B - `CheckEDIDUpdateStatus`: Ursache gefunden, Treiber korrigiert (05:58-06:21)
 
-Agent: Paket B, Teilauftrag „Fix `0x0215`". **Board nicht angefasst** — kein `ssh`, kein
+Agent: Paket B, Teilauftrag „Fix `0x0215`". **Board nicht angefasst** - kein `ssh`, kein
 `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach `tftp/`. Kein `sudo`,
 kein `git`. Nur `0091` bearbeitet; `series` und `build/build.sh` unberührt.
 
@@ -14,23 +14,23 @@ kein `git`. Nur `0091` bearbeitet; `series` und `build/build.sh` unberührt.
 | Byte | Wert im Fehlerlauf | Bedeutung |
 |---|---|---|
 | 0 | `a5` | Marker |
-| 1 | `00` | `seq` — erste gerahmte Antwort seit dem Firmwarestart |
+| 1 | `00` | `seq` - erste gerahmte Antwort seit dem Firmwarestart |
 | 2 | `01` | Typ, für diesen Sender konstant |
 | 3 | `08` | **Länge der Nutzlast in Byte** |
-| 4..7 | `00 00 00 00` | Füllwort des Kopfes — **keine leere Nutzlast** |
+| 4..7 | `00 00 00 00` | Füllwort des Kopfes - **keine leere Nutzlast** |
 
-`8 Byte Nutzlast = 2 Wörter`, plus 2 Kopfwörter = **4 Wörter** — exakt die Zahl, die der
+`8 Byte Nutzlast = 2 Wörter`, plus 2 Kopfwörter = **4 Wörter** - exakt die Zahl, die der
 Treiber selbst geloggt hat („4 Woerter, 2 uebernommen"). Die gesuchten acht Bytes lagen in
 **Wort 2 und 3** und wurden verworfen, weil `edid_status[]` acht Byte groß ist und der alte
 Leser die Kopfwörter mitgezählt hat.
 
 **Verdacht 2 („leere Nutzlast, Firmware hat das EDID nicht übernommen") ist damit
-widerlegt** — jedenfalls als Schluss aus *dieser* Messung. Die Nullen stammen aus dem Kopf.
+widerlegt** - jedenfalls als Schluss aus *dieser* Messung. Die Nullen stammen aus dem Kopf.
 Ob die Firmware das EDID übernommen hat, sagt genau das Byte, das der Treiber nie gelesen
 hat (Nutzlast[4]); ab jetzt liest und prüft er es.
 
 **Auch die Vergleichszeile im Abnahmelog gehört zu einem anderen Befehl.** Der Dump
-`ARM-RX ch1 (8 W): a5 01 01 48 …` hat `seq = 1` und `Länge = 0x48 = 72` — das ist die
+`ARM-RX ch1 (8 W): a5 01 01 48 …` hat `seq = 1` und `Länge = 0x48 = 72` - das ist die
 Antwort auf **`0x0315 RequestEDID`** (`arisc_edid_init.sh` macht `drain` nach *beiden*
 Befehlen). Die Antwort auf `0x0215` in demselben Lauf hätte
 `a5 00 01 08 | 00 00 00 00 | ff f8 01 01 01 00 07 fe` gelautet. Dass dort `ff f8 02 41`
@@ -41,7 +41,7 @@ Unterbefehl.
 
 ## 1. Der Firmware-Beleg (Quelle: `analyse/arisc-frame/full-disasm.txt`)
 
-### 1.1 Wer den Kopf schreibt — `0x81c8`
+### 1.1 Wer den Kopf schreibt - `0x81c8`
 
 `0x118e4` (der gerahmte Sender) übergibt Puffer und Länge an `0x8254` mit `r3 = 1`, das
 reicht an `0x81c8` weiter. Dort:
@@ -64,20 +64,20 @@ reicht an `0x81c8` weiter. Dort:
 
 **Auf dem Draht:** `Wort0 = a5 | seq<<8 | typ<<16 | laenge<<24`, `Wort1 = 0`,
 **ab Wort 2 die Nutzlast**, `DIV_ROUND_UP(laenge,4)` Wörter. Das ist derselbe BOP-Kopf, den
-der ARM auf user1 Port 0 schickt — nur in die Gegenrichtung. Genau deshalb sieht `a5 .. 01 ..`
+der ARM auf user1 Port 0 schickt - nur in die Gegenrichtung. Genau deshalb sieht `a5 .. 01 ..`
 in beiden Läufen gleich aus: es ist beide Male ein Kopf.
 
-### 1.2 Wer die Nutzlast rahmt — `0x118e4`
+### 1.2 Wer die Nutzlast rahmt - `0x118e4`
 
 `0x1198c` `Nutzlast[0] = 0xff`; `0x11990..0x119c4` summiert `Nutzlast[1..laenge-6]`;
 `0x119d4` legt die negierte Summe nach `Nutzlast[laenge-2]`; `0x119e0`
 `Nutzlast[laenge-1] = 0xfe`.
 
-Die Prüfsumme deckt bei Länge 8 nur `Nutzlast[1..2]` ab — **nicht** das Zustandsbyte. Der
+Die Prüfsumme deckt bei Länge 8 nur `Nutzlast[1..2]` ab - **nicht** das Zustandsbyte. Der
 Treiber rechnet sie nach, meldet Abweichungen aber nur per `dev_dbg` und verwirft den Rahmen
 deswegen nicht. Hart geprüft werden Marker, Typ, Länge, `0xff` vorn, `0xfe` hinten.
 
-### 1.3 Was `0x0215` wirklich schickt — `0x1257c`
+### 1.3 Was `0x0215` wirklich schickt - `0x1257c`
 
 Sprungtabellen: `classify 0x114e8` → `[0x15b30 + (lo-0x10)*4]`, für `lo = 0x15` ist das
 `0x11780`. Dort `hi = 2 → Fall 1`, `hi = 3 → Fall 4`, `hi = 1 → Fall 6`. Zweite Tabelle
@@ -100,11 +100,11 @@ Fall 8 = `0x127f0` (ResetEDIDModule).
 ```
 
 **Nutzlast = `ff f8 01 01 <ready> 00 <cks> fe`**, `<cks> = -(0xf8+0x01) = 0x07`. Die
-Erwartung `ff f8 01 01 …` im Treiber war also richtig — nur an der falschen Stelle
+Erwartung `ff f8 01 01 …` im Treiber war also richtig - nur an der falschen Stelle
 verglichen.
 
 **Nebenbefund, der die zweite Frage stuetzt:** im Vergleichsdump vom 22:04 steht ab
-Nutzlast-Offset 5 (Gesamt-Offset 13) `00 ff ff ff ff ff ff 00 5e 78 43 48 21 03` — das sind
+Nutzlast-Offset 5 (Gesamt-Offset 13) `00 ff ff ff ff ff ff 00 5e 78 43 48 21 03` - das sind
 Byte fuer Byte die ersten 14 Bytes von `analyse/arisc/hy310-edid.bin`. Damit ist zweierlei
 gemessen und nicht hergeleitet: der ARM sieht die Rahmenbytes in **natuerlicher Reihenfolge**
 (kein Wort-Swap noetig), und im **Userspace-Lauf hatte die Firmware das EDID uebernommen**.
@@ -125,7 +125,7 @@ Die Firmware nennt das erste Byte selbst beim Namen: Formatstring `0x15393` =
 | `[0x1723f]` | Ausgabe-Gate („edid updated", Formatstring `0x153af`) | `0x11d88` setzt es **ganz am Ende** (`0x11e6c`), nachdem das EDID je Port ins DDC-RAM geschrieben ist; `0x11d88` kehrt sofort zurück, solange `[0x1723e] == 0` (`0x11dac`) |
 
 `ResetEDIDModule` nullt beide (`0x12188`), setzt dann `[0x1723e] = 1` und ruft `0x11d88`
-(`0x121b4`) — es veröffentlicht das ROM-Vorgabe-EDID und setzt das Gate dabei gleich wieder.
+(`0x121b4`) - es veröffentlicht das ROM-Vorgabe-EDID und setzt das Gate dabei gleich wieder.
 **Das erklärt, warum das Zustandsbyte „auf frischem Boot schon 1" war**: es war nicht
 „unklar", es war der Vorgabe-Datensatz. Für den Gate-Wert *vor* dem ersten
 `ResetEDIDModule` gibt es keine Messung.
@@ -150,16 +150,16 @@ im Treiber hätte also eine steigende Flanke gemeldet, die es nicht gab.
 
 | # | Änderung | Beleg |
 |---|---|---|
-| 1 | **`arisc_unframe()`** neu: zerlegt den Wortstrom von ch1 in Rahmen, prüft Marker/Typ/Länge/`ff`/`fe`, überspringt die **zwei** Kopfwörter und liefert **nur die Nutzlast** — mehrere Rahmen hintereinander. `-EPROTO` bei kaputtem Rahmen oder Rest, `-EMSGSIZE` statt stiller Kürzung. | 1.1, 1.2 |
+| 1 | **`arisc_unframe()`** neu: zerlegt den Wortstrom von ch1 in Rahmen, prüft Marker/Typ/Länge/`ff`/`fe`, überspringt die **zwei** Kopfwörter und liefert **nur die Nutzlast** - mehrere Rahmen hintereinander. `-EPROTO` bei kaputtem Rahmen oder Rest, `-EMSGSIZE` statt stiller Kürzung. | 1.1, 1.2 |
 | 2 | `arisc_send_and_reply()` gibt Nutzlastbytes zurück statt roher Wörter; ein Wortstrom, der nicht in den Puffer passte, ist jetzt `-EMSGSIZE` statt einer `dev_dbg`-Zeile. | 1.1 |
 | 3 | `arisc_hdmi_set_edid()` vergleicht `ff f8 01 01` gegen die **Nutzlast**, verlangt Länge 8 **und** `Nutzlast[4] == 1`; die Fehlermeldung nennt zusätzlich `[0x1723e]`/`[0x1723f]` aus dem SRAM. | 1.3, 1.4 |
 | 4 | `arisc_hdmi_get_edid()` setzt die **vier** `RequestEDID`-Rahmen nach Fragmentindex wieder zu einem EDID-Block zusammen (Präfix `ff f8 02 41 <index>`, 64 B je Rahmen) statt Kopfbytes als EDID auszugeben. | `0x12618`, `0x126b8`, `0x126c4..0x126f8`, `0x12714` |
-| 5 | `arisc_hpd_locked()` prüft **vor** UP/RESET das Gate `[0x1723f]` und liefert `-EIO`, wenn es 0 ist. Keine Warteschleife, keine Pause — ein Zustand, den nur die Ausgaberoutine herstellt. | 1.4 |
+| 5 | `arisc_hpd_locked()` prüft **vor** UP/RESET das Gate `[0x1723f]` und liefert `-EIO`, wenn es 0 ist. Keine Warteschleife, keine Pause - ein Zustand, den nur die Ausgaberoutine herstellt. | 1.4 |
 | 6 | **Instrumentierung:** `dev_dbg` gibt die rohe Antwort **vollständig mit Wortindex** aus (`Antwort 0x0215 Wort 0: 080100a5  a5 00 01 08`), dazu eine Zeile je Rahmen und die Prüfsummenabweichung. `debugfs status` zeigt neu `edid_ready` und `edid_gate`. | Auftrag |
-| 7 | Kommentarblock im Quelltext: das ch1-Rahmenformat mit Adressen; Korrektur `[0x117246]` → `[0x1723e]` und Sender `0x11984` → `0x118e4`. | 1.1–1.4 |
+| 7 | Kommentarblock im Quelltext: das ch1-Rahmenformat mit Adressen; Korrektur `[0x117246]` → `[0x1723e]` und Sender `0x11984` → `0x118e4`. | 1.1-1.4 |
 
 `SRAM_EDID_READY` (`0x1723e`) und `SRAM_EDID_GATE` (`0x1723f`) liegen in **SRAM A2**, das der
-Treiber ohnehin abbildet. **Kein `0x0709xxxx` wird gelesen** — die absolute Sperre bleibt
+Treiber ohnehin abbildet. **Kein `0x0709xxxx` wird gelesen** - die absolute Sperre bleibt
 unangetastet, die Reihenfolge-Garantie über `edid_module_ready` bleibt wie sie war.
 
 ### Belegt vs. vermutet
@@ -174,10 +174,10 @@ geschlossenem Gate.
 
 * dass `<ready>` im Treiberlauf tatsächlich `1` sein wird. Das entscheidet erst der
   Abnahmelauf; die Statusantwort war bisher nie gelesen worden. Wenn dort `0` steht, ist
-  Verdacht 2 doch zutreffend — dann meldet der Treiber das jetzt **wörtlich** („EDID nicht
+  Verdacht 2 doch zutreffend - dann meldet der Treiber das jetzt **wörtlich** („EDID nicht
   uebernommen: bEdidDataReady = 0 …") statt es hinter `-EPROTO` zu verstecken.
 * dass alle vier `RequestEDID`-Rahmen ankommen (80 Wörter durch ein 8 Wörter tiefes FIFO).
-  Der Treiber pumpt in einer engen Schleife, das Skript hat nur einmal gedraint — deshalb
+  Der Treiber pumpt in einer engen Schleife, das Skript hat nur einmal gedraint - deshalb
   standen dort 8 Wörter. Kommen weniger, meldet der Treiber
   `dev_warn "nur n von 4 Fragmenten angekommen"` und liefert die Bytes, die da waren; er
   scheitert nicht daran.
@@ -202,7 +202,7 @@ make ARCH=arm64 LLVM=1 W=1 M=drivers/soc/sunxi modules             ->  LD [M]  s
 Die einzige Warnung im Verzeichnis kommt aus `cpu_comm/cpu_comm_rpc.c`
 (`prev_idx set but not used`) und ist **vorbestehend**, nicht aus `0091`.
 
-`checkpatch.pl --no-tree --no-signoff`: **0 errors, 6 warnings** — Zeichen für Zeichen
+`checkpatch.pl --no-tree --no-signoff`: **0 errors, 6 warnings** - Zeichen für Zeichen
 dieselben sechs wie beim alten `0091` (Zeilenlänge in der Commit-Message, 5×
 „acknowledgement"). Keine neue.
 
@@ -216,7 +216,7 @@ Baum, der gebaut wurde. Genau **eine** `Signed-off-by:`-Zeile, Kopf wie `0049`.
 
 ## 4. Abnahmevorschrift für die Hauptsitzung (kopierbar)
 
-Voraussetzung: FIT mit dem neuen `0091` bauen (`build/build.sh`) und nach `tftp/` legen —
+Voraussetzung: FIT mit dem neuen `0091` bauen (`build/build.sh`) und nach `tftp/` legen -
 das macht die Hauptsitzung, dieser Agent hat das Board nicht angefasst.
 
 ```bash
@@ -297,7 +297,7 @@ EDID nicht uebernommen: bEdidDataReady = 0 statt 1, SRAM [0x1723e]=0 [0x1723f]=<
 ```
 
 **Messvorschrift für diesen Fall** (ausführbar ohne Rückfrage, kein Aux-Register, nur SRAM
-A2 — auch vor `ResetEDIDModule` gefahrlos):
+A2 - auch vor `ResetEDIDModule` gefahrlos):
 
 ```bash
 # Beide Bytes zwischen den Fragmenten mitlesen: erst die Folge bis Fragment 6, dann 7.

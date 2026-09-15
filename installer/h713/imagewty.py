@@ -29,7 +29,7 @@ class Imagewty:
              _val1, _val1024, self.num_files) = struct.unpack_from("<8I", h, 0x20)
             self.layout = "v3"
         else:
-            # v1 (0x0100, header_size 0x50): image_size u32 at 0x18 — untested
+            # v1 (0x0100, header_size 0x50): image_size u32 at 0x18 - untested
             (self.image_size, self.image_header_size, self.pid, self.vid, self.hardware_id, self.firmware_id,
              _val1, _val1024, self.num_files) = struct.unpack_from("<9I", h, 0x18)
             self.layout = "v1"
@@ -158,7 +158,7 @@ class SunxiPackage:
 
 
 def find_sunxi_packages(q: Source, log: Log, max_bytes: Optional[int] = None) -> list[int]:
-    """Byte-wise search for 'sunxi-package' (chunks with overlap) — grep is no good for it (doku/105 §6)."""
+    """Byte-wise search for 'sunxi-package' (chunks with overlap) - grep is no good for it (doku/105 §6)."""
     hits = []
     chunk, overlap = 8 << 20, 32
     end = q.size if max_bytes is None else min(q.size, max_bytes)
@@ -217,7 +217,7 @@ def fdt_root(dtb: bytes) -> dict[str, str]:
 
 
 def check_scp(scp: bytes, log: Log) -> list[str]:
-    """Structural check of the ARISC blob (OR1K, stored word-wise mirrored — analyse/arisc/BEFUND.md)."""
+    """Structural check of the ARISC blob (OR1K, stored word-wise mirrored - analyse/arisc/BEFUND.md)."""
     findings = []
     if len(scp) % 4:
         findings.append(f"length {len(scp)} is not divisible by 4")

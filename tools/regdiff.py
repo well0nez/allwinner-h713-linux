@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-regdiff.py — zwei uart-capture-Mitschnitte vergleichen.
+regdiff.py - zwei uart-capture-Mitschnitte vergleichen.
 
   ./regdiff.py stock.txt ours.txt
 

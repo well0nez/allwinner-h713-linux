@@ -1,11 +1,11 @@
-# Paket G — PQ-Werkzeug `hy310-pq`
+# Paket G - PQ-Werkzeug `hy310-pq`
 
 > **Überholt in einem Punkt (07.09., 06:38):** die Sättigungsrechnung dieses Laufs
 > (`Benutzerwert → Werkskurve → Registerwert`, `standard` → `0x4C`) ist durch die Messung am Gerät widerlegt.
 > Korrektur, Begründung und Vorher/Nachher: [`G-korrektur-saettigung.md`](G-korrektur-saettigung.md).
-> Alles Übrige dieses Logs — Datenlage, `tvin`-Frage, Gamma-LUT — gilt unverändert.
+> Alles Übrige dieses Logs - Datenlage, `tvin`-Frage, Gamma-LUT - gilt unverändert.
 
-Agent: Paket G (offline, komplett). **Kein Board angefasst** — kein `ssh root@192.168.8.141`, kein
+Agent: Paket G (offline, komplett). **Kein Board angefasst** - kein `ssh root@192.168.8.141`, kein
 `ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `/dev/ttyACM0`, kein `sudo`,
 kein `git commit`, kein `build.sh`, keine Änderung an `mainline/patches/kernel/series`.
 Vendor-Binärdaten wurden nur **gelesen**, nichts davon liegt in `userspace/`.
@@ -22,10 +22,10 @@ und vollständiger Tabellenabzug), `legacy/userspace/hy310-pqd/CALCULATEGAMMA_RE
 
 * `tvpq.db`: `Picture_Mode` 25 Zeilen (`tvin` 0..4, Modusnamen `standard/cinema/vivid/game/computer/hdr/custom`),
   `White_Balance_Mode` 20 Zeilen **durchgängig neutral** (512/512/512, Offset 0), `Gamma_Point` 33 Zeilen
-  **durchgängig 0** — als Kurve unbrauchbar, Stock rechnet sie zur Laufzeit (BACKGROUND.md §6.2).
+  **durchgängig 0** - als Kurve unbrauchbar, Stock rechnet sie zur Laufzeit (BACKGROUND.md §6.2).
 * `pqcontrol_config_setting.xml` enthält `<transform><item name="gamma" level0="1.8" … level4="2.4"/>`. Das ist
   **wertgleich** zur RE-Tabelle `dword_4A50` (180/200/210/220/240) aus `libhaldisplay.so` und zum Kommentarkopf
-  von `pq_picturemode.ini` — drei unabhängige Belege für Gamma-Index → Exponent. Alle Presets stehen auf Index 3
+  von `pq_picturemode.ini` - drei unabhängige Belege für Gamma-Index → Exponent. Alle Presets stehen auf Index 3
   = 2.2.
 * `pq_factory_extern.ini`: alle fünf `[PICTURE_CURVE_*]`-Gruppen sind wertgleich; für `VGA1..3` gibt es **keine**
   Gruppe. Sättigung HDMI `0,48,96,145,192` wie in doku/77 §4.
@@ -40,7 +40,7 @@ und vollständiger Tabellenabzug), `legacy/userspace/hy310-pqd/CALCULATEGAMMA_RE
   enthält laut eigenem Kommentar **synthetische** Basiskurven und ist als Referenz für unsere LUT unbrauchbar.
 
 **21:50** `userspace/hy310-pq/` gebaut: Python 3, nur Standardbibliothek, kein Daemon, kein `/dev/mem`.
-Drei Module streng getrennt — `quellen.py` liest (SQLite, eigener INI-Leser für den Vendor-Dialekt, XML,
+Drei Module streng getrennt - `quellen.py` liest (SQLite, eigener INI-Leser für den Vendor-Dialekt, XML,
 `portmap.cfg`), `modell.py` rechnet (Werkskurve, Sättigungs-Gain, Gamma-Stützpunkte → LUT → DE2-Packung),
 `ausgabe.py` druckt/schreibt. Befehle: `list`, `show`, `saturation`, `gamma`.
 
@@ -48,7 +48,7 @@ Drei Module streng getrennt — `quellen.py` liest (SQLite, eigener INI-Leser f�
 (`g++ -O2 -std=c++17`, kein `/dev/mem`, nur `GammaCurve::from_exponent` + `interpolate`). Erster Lauf:
 **bitgleich**.
 
-**21:55–21:56** Abnahme gefahren (siehe unten), 25 Tests grün, Doku geschrieben
+**21:55-21:56** Abnahme gefahren (siehe unten), 25 Tests grün, Doku geschrieben
 (`doku/81-pq-datenmodell.md`, `userspace/hy310-pq/README.md`).
 
 ---
@@ -87,7 +87,7 @@ Belegter Schreibpfad Gamma: DE2-LUT, Paket H (Kernel, GAMMA_LUT).
 Offen: Helligkeit, Kontrast, Farbton, Schaerfe -- Zielregister unbekannt (RE-Frage K5). Kein Register geraten.
 ```
 
-`standard` liefert `0x4C` (Wort `0x144C0000`), `cinema` `0x44` — genau die Tabelle aus doku/77 §4, die am
+`standard` liefert `0x4C` (Wort `0x144C0000`), `cinema` `0x44` - genau die Tabelle aus doku/77 §4, die am
 06.09. an der Wand gemessen wurde. **Grün.**
 
 ### 2. `hy310-pq gamma 2.2 --lut out.bin`
@@ -108,7 +108,7 @@ Gamma-Exponent 2.2
 
 (Die ersten vier Wörter sind echt 0: bei Gamma 2.2 sind `lut[0..7]` alle 0.)
 
-### 3. Vergleich gegen den Legacy-Rechner — **bitgleich**
+### 3. Vergleich gegen den Legacy-Rechner - **bitgleich**
 
 ```
 $ g++ -O2 -std=c++17 -I legacy/userspace/hy310-pqd/include \
@@ -152,14 +152,14 @@ echten Vendor-Dateien zur Laufzeit und überspringen sich sauber, wenn der Pfad 
 `CALCULATEGAMMA_RE_GUIDE.md` §11 nennt für Gamma 2.2 „`lut[512] ≈ 891`". Unser (und des Legacy-Rechners) Wert
 ist **894**. Das ist kein Fehler: 891 ist der **Stützpunkt bei t = 0,5** (Punkt 16 von 33,
 `pow(0.5, 2.2)*4095 = 891,4`), der LUT-Index 512 liegt aber bei t = 512/1023 = 0,5005. Der Stützpunkt 16 ist bei
-uns exakt 891 — der Harness druckt ihn mit. Die Identitätsprobe (`lut[0]=0`, `lut[512]≈2048`, `lut[1023]=4095`)
+uns exakt 891 - der Harness druckt ihn mit. Die Identitätsprobe (`lut[0]=0`, `lut[512]≈2048`, `lut[1023]=4095`)
 stimmt ebenfalls.
 
 ## Ergebnisdateien
 
-* `userspace/hy310-pq/` — `hy310-pq` (Einstieg), `hy310_pq/{quellen,modell,ausgabe,cli}.py`, `README.md`,
+* `userspace/hy310-pq/` - `hy310-pq` (Einstieg), `hy310_pq/{quellen,modell,ausgabe,cli}.py`, `README.md`,
   `tests/test_hy310_pq.py`, `tests/legacy_ref.cpp`
-* `doku/81-pq-datenmodell.md` — Seite „PQ-Datenmodell"
+* `doku/81-pq-datenmodell.md` - Seite „PQ-Datenmodell"
 * LUT-Dateien der Abnahme liegen im Scratchpad, nicht im Repo (keine Binärdaten abgelegt).
 
 ## Für Paket H

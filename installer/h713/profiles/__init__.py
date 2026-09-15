@@ -126,8 +126,8 @@ LEGACY_DEVICE_IDS = ("hy310", "l018")
 # text into MANIFEST.json ("device_beschreibung") and BERICHT.txt, so stage 1 keeps the German one.
 # Stage 3 translates the visible layer and this table goes away with it.
 LEGACY_DESCRIPTIONS = {
-    "hy310": "HY310 — Allwinner H713, Referenzdesign h713_tuna_p3, Stock-Build 2025-07-24 (Projector07241019)",
-    "l018": "L018 — Allwinner H713, Referenzdesign h713_tuna_p3, Stock-Build 2025-05-14 (Projector05141211)",
+    "hy310": "HY310 - Allwinner H713, Referenzdesign h713_tuna_p3, Stock-Build 2025-07-24 (Projector07241019)",
+    "l018": "L018 - Allwinner H713, Referenzdesign h713_tuna_p3, Stock-Build 2025-05-14 (Projector05141211)",
 }
 
 #: X:124 "erwartung" key -> profile "expected" key. Only two names differ.

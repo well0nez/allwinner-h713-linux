@@ -7,12 +7,12 @@ Gerät, umgeschaltet wird allein über den ersten Stage.
 
 | LBA | dezimal | was |
 |---|---|---|
-| `0x10` | 16 | **erster Stage** — hier entscheidet sich, wer bootet |
+| `0x10` | 16 | **erster Stage** - hier entscheidet sich, wer bootet |
 | `0x100` | 256 | Vendor-boot0, Zweitkopie. Ab Werk vorhanden |
 | 24576 / 32800 | | Vendor-U-Boot, TOC1-Paket |
 | `0x49ac00` | 4828160 | unser U-Boot proper, Start der `empty`-Partition |
 | `0x49cc00` | 4836352 | SPL-Parkplatz, `empty` + 4 MiB |
-| `0x49ec00` | 4844544 | unser Env, `empty` + 8 MiB — **nur mit U-Boot-Commit `0022`**; ohne den Fix landet sie bei Byte `0x65d80000` ([`30` §16](30-uboot-aenderungen.md)) |
+| `0x49ec00` | 4844544 | unser Env, `empty` + 8 MiB - **nur mit U-Boot-Commit `0022`**; ohne den Fix landet sie bei Byte `0x65d80000` ([`30` §16](30-uboot-aenderungen.md)) |
 
 Nichts davon liegt in einer benutzten Partition. `bootloader_a`, `env_a`,
 `boot_a` bleiben unangetastet.
@@ -29,7 +29,7 @@ re/git-archive/HY310-DEV-full.bundle    Git-History des alten Arbeitsbaums
 Der 300-MB-Dump reicht bis LBA 614399 und deckt `bootloader_a/b`, `env_a/b`,
 `boot_a/b` und `vendor_boot_a/b` vollständig ab.
 
-## Weg 1 — über USB-Stick, aus dem laufenden U-Boot
+## Weg 1 - über USB-Stick, aus dem laufenden U-Boot
 
 Der bequemste, seit USB-Host läuft. Dateien auf die FAT-Partition des Sticks,
 dann am Prompt:
@@ -46,10 +46,10 @@ mmc write 0x50000000 0x10 0x40
 `0x688` sind 1672 Sektoren, die Zahl bei jedem Build neu ausrechnen:
 `(Dateigröße + 511) / 512`. `0x40` sind die 64 Sektoren des SPL.
 
-**Reihenfolge nicht tauschen.** Erst U-Boot proper, dann der erste Stage —
+**Reihenfolge nicht tauschen.** Erst U-Boot proper, dann der erste Stage -
 bricht es dazwischen ab, steht bei LBA 16 noch der alte, funktionierende.
 
-## Weg 2 — über `ums`, nur mit Gadget-Modus
+## Weg 2 - über `ums`, nur mit Gadget-Modus
 
 Geht nur mit einem Build, der MUSB enthält (`hy310_qz713_v3_1_defconfig`).
 Am Prompt `ums 0 mmc 1`, dann erscheint die eMMC am PC als Blockgerät:
@@ -67,7 +67,7 @@ Immer mit Rücklesung prüfen:
 sudo dd if=/dev/sdX bs=512 skip=16 count=64 status=none | sha256sum
 ```
 
-## Weg 3 — aus einem laufenden Linux auf dem Gerät
+## Weg 3 - aus einem laufenden Linux auf dem Gerät
 
 Solange das alte arm32-System bootet, per SSH:
 
@@ -84,7 +84,7 @@ sync
 ### Kabel
 
 A-auf-A, selbst gelötet. **Die rote Ader (VBUS) auf beiden Seiten offen
-lassen** — beide Enden sind Hosts und würden sonst gegeneinander 5 V treiben.
+lassen** - beide Enden sind Hosts und würden sonst gegeneinander 5 V treiben.
 Nur grün (D+), weiß (D−) und schwarz (GND) eins zu eins, nicht kreuzen.
 
 ### FEL auslösen
@@ -102,7 +102,7 @@ niemand sie in älteren Notizen für aktuell hält.
 
 Erwartet: `AWUSBFEX soc=00001860(H713) ver=0001`
 
-### U-Boot über FEL starten — der empfohlene Weg (seit 10.09.2026)
+### U-Boot über FEL starten - der empfohlene Weg (seit 10.09.2026)
 
 ```bash
 mainline/external/sunxi-tools/sunxi-fel uboot mainline/build/uboot-v3/u-boot-sunxi-with-spl.bin
@@ -114,11 +114,11 @@ Vorher: Reset-Taste halten, Strom einstecken.
 Das ging lange nicht, und die Ursache lag tiefer als vermutet ([`nachtlog/S44`](nachtlog/S44-fel-boot.md)):
 der `boot0`-Stub wechselt per RMR nach AArch64, **damit ist EL3 fortan AArch64**; die FEL-Schleife kehrt per
 `eret` nach unten zurück und läuft auf EL1, wo das AArch32-RMR-Register nicht mehr erreichbar ist. Die
-CPSR-Modusbits sehen dabei vorher wie nachher gleich aus (`0x13`), nur die Ausnahmestufe ist eine andere —
+CPSR-Modusbits sehen dabei vorher wie nachher gleich aus (`0x13`), nur die Ausnahmestufe ist eine andere -
 deshalb schlugen vier frühere Rückwege im selben Muster fehl. Die Lösung nutzt genau diesen Zustand: ein `smc`
 aus AArch32-EL1 ist eine Falltür zurück nach AArch64-EL3. Der SPL legt vor dem `eret` eine minimale
 EL3-Vektortabelle mit Postfach bei `0x48000000` ab, `sunxi-fel` klopft dort an. Dazu kam ein zweiter Fehler:
-beim FEL-Boot ist das Bootgerät `BOOT_DEVICE_BOARD`, und `env_get_location()` fiel dann nicht auf MMC zurück —
+beim FEL-Boot ist das Bootgerät `BOOT_DEVICE_BOARD`, und `env_get_location()` fiel dann nicht auf MMC zurück -
 `env_init()` blieb still stehen. Behoben mit `ENVL_MMC` als Rückfall und `CONFIG_ENV_MMC_DEVICE_INDEX=1`.
 
 **Die frühere Warnung „Nicht `sunxi-fel uboot` benutzen" ist damit überholt** und steht hier nur noch, damit
@@ -155,7 +155,7 @@ build/fel/sunxi-fel -p spl build/uboot-felmmc/spl/sunxi-spl.bin
 Auf der UART erscheint `=== H713 SPL RESTORE ===` und `wrote 64/64
 RESTORED-OK`. Danach Strom aus und an.
 
-**Der Host meldet dabei `usb_bulk_send() ERROR -7: Operation timed out` —
+**Der Host meldet dabei `usb_bulk_send() ERROR -7: Operation timed out` -
 das ist kein Fehlschlag.** Sobald der Restore-SPL läuft, kehrt er nicht ins
 FEL zurück, also läuft der Nachfass-Handshake ins Leere. Die UART ist die
 Wahrheit.
@@ -166,11 +166,11 @@ Die BROM sitzt im Mask-ROM, unterhalb von allem auf dem eMMC. FEL lässt sich
 nicht wegflashen. Solange das Kabel funktioniert und das Pad erreichbar ist,
 ist das Board nicht verloren.
 
-## Weg 4 — per TFTP am U-Boot-Prompt, ohne Stick (seit 09.09.2026 der schnellste Weg)
+## Weg 4 - per TFTP am U-Boot-Prompt, ohne Stick (seit 09.09.2026 der schnellste Weg)
 
 Nur U-Boot proper (ab LBA `0x49ac00`); die SPL bleibt. Datei nach `/opt/Projekte/h713/tftp/`, am Prompt (Server **immer explizit**, weil
 `dhcp` `serverip` auf den Router setzt). Dieser Rechner (Mini-IT11) ist **192.168.8.123**; `.104` in älteren Doku-Stellen war der vorige Rechner.
-Aus der Claude-Sitzung skriptbar: `sudo python3 tools/uart-uboot.py run -t 45 -c …` — Marcos `tio` muss dabei geschlossen sein.
+Aus der Claude-Sitzung skriptbar: `sudo python3 tools/uart-uboot.py run -t 45 -c …` - Marcos `tio` muss dabei geschlossen sein.
 
 ```
 tftpboot 0x50000000 192.168.8.123:uboot-proper-gate-v4.bin
@@ -190,7 +190,7 @@ Stand seit 09.09.: `tftp/uboot-proper.GUT-gate-v2-20260909.bin` (sha256 `25da46c
 Vorgänger `mainline/build/flash-netboot-gate/emmc-proper-vorher.bin`.
 **Stand seit 10.09. 08:40 (GUT):** `tftp/uboot-proper.GUT-gate-v5-20260910.bin` (890.233 B, CRC32 `be77a83a`, Sektoren `0x6cb`) =
 v4 **plus `0023`** (Env-Umschalter `h713_mips_dev`/`h713_mips_path`/`h713_project`, `doku/108`). Vorgänger: `tftp/uboot-proper.GUT-gate-v4-20260910.bin` (= `uboot-proper-gate-v4.bin`, 886.137 B, CRC32 `56a6a77f`,
-sha256 `9a7e0c38…`) = v3 (Gate, GP5, Default-Env `0021`) **plus Env-Offset-Fix `0022`** — erst damit liegt die Env wirklich bei `0x93d80000`.
+sha256 `9a7e0c38…`) = v3 (Gate, GP5, Default-Env `0021`) **plus Env-Offset-Fix `0022`** - erst damit liegt die Env wirklich bei `0x93d80000`.
 Gebaut im Container `h713-build` (clang 20.1.8 wie v3). **Kaltstart am 10.09. abgenommen** (`analyse/boot/v4-kaltstart-20260910.txt`): Gate aus, MIPS-Firmware und Panel wie mit v2,
 `display.bin`-SHA akzeptiert, MIPS-Readiness bewiesen, Panel 1920×1080 latched; `boot_emmc` scheitert still (Stock-Layout, keine FIT
 auf p5), `boot_net` greift als Rückfall, Kernel und `h713-tv@video1` laufen. Geflasht über UART nach obigem Rezept, danach aus Linux bestätigt:
@@ -200,7 +200,7 @@ in p6). Vorgänger gesichert: `mainline/build/flash-netboot-gate/emmc-proper-vor
 
 ### Falle beim Flashen über TFTP (10.09. selbst hineingelaufen)
 
-`tftpboot` bricht nach einem frischen U-Boot-Start mit `*** ERROR: 'ipaddr' not set` ab, wenn noch kein `dhcp` gelaufen ist —
+`tftpboot` bricht nach einem frischen U-Boot-Start mit `*** ERROR: 'ipaddr' not set` ab, wenn noch kein `dhcp` gelaufen ist -
 und lässt den alten Speicherinhalt an der Ladeadresse stehen. Ein direkt folgendes `mmc write` schreibt dann Müll an die
 U-Boot-Stelle. Deshalb gilt ohne Ausnahme:
 

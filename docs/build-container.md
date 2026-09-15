@@ -1,7 +1,7 @@
 # The build container
 
 `release/build-all.sh` builds nothing on your host. It drives a container named **`h713-build`** that has
-the toolchain, and it derives the in-container path of this repository from the container's own mounts —
+the toolchain, and it derives the in-container path of this repository from the container's own mounts -
 so the repository can sit anywhere, as long as it is mounted.
 
 This page is the recipe. It is a one-time setup; after that `release/build-all.sh` is the only command
@@ -33,7 +33,7 @@ podman exec -u root h713-build apt-get install -y --no-install-recommends \
 `python3-setuptools` is needed by U-Boot's in-tree `pylibfdt`; `mmdebstrap` and `e2fsprogs` build the
 root filesystem and its ext4 images; `libusb-1.0-0-dev` builds `sunxi-fel`.
 
-## LLVM 20 — not optional
+## LLVM 20 - not optional
 
 Ubuntu 24.04 ships LLVM 18, and `llvm-objcopy` learned SREC output in 19. Without this step the U-Boot
 build dies at `u-boot.srec`, which is a confusing place to find out:
@@ -57,7 +57,7 @@ podman exec h713-build bash -lc 'clang --version | head -1; command -v mmdebstra
 ```
 
 `release/build-all.sh` runs the same check as its step 0 and refuses to start if anything is missing.
-It also starts the container for you if it exists but is stopped — after a reboot, `podman ps -a` shows
+It also starts the container for you if it exists but is stopped - after a reboot, `podman ps -a` shows
 it as `Created`, which is normal.
 
 ## Building the root filesystem needs root inside the container

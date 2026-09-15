@@ -1,6 +1,6 @@
 # Building the H713 firmware
 
-The whole stack builds with **LLVM (clang / ld.lld)** — no aarch64 GCC needed.
+The whole stack builds with **LLVM (clang / ld.lld)** - no aarch64 GCC needed.
 
 **The fast path is the orchestrator:** `build/build.sh [all|bl31|uboot|kernel|images]`
 (board via `BOARD=ddr3|lpddr3`). It reads pinned versions from
@@ -12,14 +12,14 @@ document the underlying recipes it runs (and the gotchas behind them).
 
 - `clang`, `lld`, `llvm` (llvm-* binutils)
 - `dtc` (system, only as a fallback), `python-libfdt` (importable `libfdt`)
-- **`swig`** — required. U-Boot builds its own dtc + pylibfdt, and pylibfdt
+- **`swig`** - required. U-Boot builds its own dtc + pylibfdt, and pylibfdt
   needs swig. Without it the build fails at `scripts/dtc/pylibfdt`.
   `sudo pacman -S swig`
 - Rootfs only: `mmdebstrap` (AUR), `apt`, `qemu-user-static-binfmt`,
   `e2fsprogs`, `kmod`, `android-tools`, `curl`, and `libarchive`. See
   [rootfs.md](rootfs.md); its QEMU registration is private and rootless.
 
-## 1. TF-A BL31 (build first — U-Boot embeds it)
+## 1. TF-A BL31 (build first - U-Boot embeds it)
 
 ```
 cd external/arm-trusted-firmware   # submodule, branch sun50i-h713
@@ -32,7 +32,7 @@ make -j PLAT=sun50i_h713 DEBUG=0 BL31_IN_DRAM=1 \
 
 ## 2. U-Boot (SPL + BL31 + proper -> u-boot-sunxi-with-spl.bin)
 
-Use `build/uboot-build.sh <O-dir> <board-base> [role]` — since the defconfig
+Use `build/uboot-build.sh <O-dir> <board-base> [role]` - since the defconfig
 matrix of stage 4 a build is one board base plus one role fragment, e.g.
 `hy310 release` for the HY310 release U-Boot (the old `hy310_qz713_v3_1_defconfig`
 is gone; the matrix is in `docs/uboot/README.md`). Or directly:
@@ -47,7 +47,7 @@ make -C external/u-boot O=<O> ARCH=arm HOSTCC=clang CC='clang -target aarch64-li
   hy200_qz713df_a1_defconfig            # then the same without the defconfig arg
 ```
 
-**Recipe gotchas (each cost real time — do not drop):**
+**Recipe gotchas (each cost real time - do not drop):**
 - **`-fintegrated-as`** (both KAFLAGS and KCFLAGS): without it clang shells out
   to the x86 `/usr/bin/as` for `.S` files, which fails with `unrecognized
   option '-EL'`.
@@ -81,9 +81,9 @@ Each distinct digest is materialized as its own `build/linux-$KERNEL_VERSION-<di
 tree (~2 GiB once built), so editing the series, defconfig, or `versions.env`
 leaves the previous tree behind rather than overwriting it. These accumulate
 under `build/` (git-ignored); only the newest matches the current HEAD. Rerun
-`build/build.sh kernel` — its make output prints the tree path it uses
+`build/build.sh kernel` - its make output prints the tree path it uses
 (`Entering directory .../build/linux-$KERNEL_VERSION-<digest>`), and it is fast
-when that tree is warm — then `rm -rf` every other `build/linux-$KERNEL_VERSION-*`.
+when that tree is warm - then `rm -rf` every other `build/linux-$KERNEL_VERSION-*`.
 Pruning matters because the rootfs builder's kernel-tree auto-detect requires
 **exactly one** such tree (see [rootfs.md](rootfs.md)); it aborts otherwise.
 

@@ -1,9 +1,9 @@
-# S30 — Paket C: Codec-I2S-Fenster, `DAC Source`, `I2S Rate` (Patch 0135)
+# S30 - Paket C: Codec-I2S-Fenster, `DAC Source`, `I2S Rate` (Patch 0135)
 
-**08.09.2026. Reine Schreibtischarbeit — kein Board, kein Bau.** Auftrag
+**08.09.2026. Reine Schreibtischarbeit - kein Board, kein Bau.** Auftrag
 `t-c-codec/AUFTRAG.md`, Plan
-[`101`](../101-plan-audio-treiber.md) §1 C, §2, §4. Belege: [`S25`](S25-re-i2sout-codec.md) §1–§4,
-[`S16`](S16-hdmi-audio.md) 17:40–20:45. Basisbaum
+[`101`](../101-plan-audio-treiber.md) §1 C, §2, §4. Belege: [`S25`](S25-re-i2sout-codec.md) §1 - §4,
+[`S16`](S16-hdmi-audio.md) 17:40-20:45. Basisbaum
 `mainline/build/linux-6.18.38-a3097ce7…`; Arbeitskopien `analyse/audio/arbeit/t-c-codec/{a,b}/`.
 
 ## 1. Was geliefert wird
@@ -28,14 +28,14 @@ H713 wahr werden.
 
 ## 2. Was der Treiber bei `DAC Source = I2S` genau schaltet
 
-In dieser Reihenfolge (Vendor-Reihenfolge aus S25 §4.2 — Takte, Empfänger, Wähler, Analogteil):
+In dieser Reihenfolge (Vendor-Reihenfolge aus S25 §4.2 - Takte, Empfänger, Wähler, Analogteil):
 
 1. **Verriegelung.** Läuft schon ein PCM (`snd_soc_component_active()`) mit *anderer* Rate als
    `I2S Rate`, bricht das Setzen mit `-EBUSY` ab. Nichts wird angefasst.
-2. **Takt.** `clk_prepare_enable(codec-Modultakt)` — dieselbe Uhr, die `startup()` nimmt, also über
+2. **Takt.** `clk_prepare_enable(codec-Modultakt)` - dieselbe Uhr, die `startup()` nimmt, also über
    die Referenzzählung des Taktrahmens; ein gleichzeitig laufender Strom hält sie weiter.
 3. **Rate** (`sun50i_h713_codec_i2s_set_rate()`): `clk_set_rate` auf 45 158 400 Hz (44,1-kHz-Familie)
-   bzw. 49 152 000 Hz (32/48 kHz) — das ist `sun4i_codec_get_mod_freq()` × `mod_freq_mult` = 2, also
+   bzw. 49 152 000 Hz (32/48 kHz) - das ist `sun4i_codec_get_mod_freq()` × `mod_freq_mult` = 2, also
    exakt die Werte aus S16 20:45. Dann `DAC_FIFOC` (`0x02030010`) Bits 31:29 = Ratencode (48/44,1 → 0,
    32 → 1), Bit 28 (FIR) wie `prepare_playback()`, Bit 6 (MONO) gelöscht.
 4. **Empfänger** (`0x02031000 INTER_I2S_CTL`): Bit 17 → 0, Bit 18 → 0 (BCLK und LRCK als Ausgänge,
@@ -52,7 +52,7 @@ In dieser Reihenfolge (Vendor-Reihenfolge aus S25 §4.2 — Takte, Empfänger, W
 **Das ist die Referenzzählung.** DAPM zählt, wie viele Gründe ein Widget hat, an zu sein: solange
 entweder ein PCM oder der I2S-Weg die Kette braucht, bleibt sie an. `aplay` starten und beenden,
 während HDMI-Ton läuft, schaltet nichts ab; `DAC Source APB` während `aplay` läuft, schaltet
-ebenfalls nichts ab. Beim Kartenaufbau wird der Erzeuger in `card->late_probe` abgeklemmt — sonst
+ebenfalls nichts ab. Beim Kartenaufbau wird der Erzeuger in `card->late_probe` abgeklemmt - sonst
 wäre er, wie jede Quelle, ab dem ersten `dapm_sync` verbunden und hielte den DAC ab dem Booten an.
 
 **Zurück auf `APB`:** nur `DAC_DPC` Bit 29 → 0 (Bit 30 und der ganze Empfänger bleiben stehen, wie
@@ -78,7 +78,7 @@ Voraussetzung: MSP-Insel läuft und der Graph `0xC1` ohne DELAY1 steht (Paket B 
 dmesg | grep -i 'i2s'
 amixer -c 0 controls | grep -E "DAC Source|I2S Rate"
 
-# 1) Analogweg freigeben — wie für jede Wiedergabe auf diesem Board
+# 1) Analogweg freigeben - wie für jede Wiedergabe auf diesem Board
 amixer -c 0 sset 'Line Out' on
 amixer -c 0 sset 'Speaker' on
 
@@ -112,7 +112,7 @@ Erwartete Messwerte aus S16 zum Vergleich: 48 kHz → 1001 Hz, ~80 dB; 44,1 kHz 
 ## 4. Offene Annahmen
 
 1. **Die Taktrechnung des Empfängers stimmt weiter nicht** (S25 §2 „[offen]"). LRCK-Periode 32 ×
-   BCLK-Teiler 24 ergibt bei 49,152 MHz Modultakt 64 kHz, nicht 48 kHz — trotzdem war der Ton am
+   BCLK-Teiler 24 ergibt bei 49,152 MHz Modultakt 64 kHz, nicht 48 kHz - trotzdem war der Ton am
    Gerät tonhöhenrichtig, und der Modultakt war messbar 49,152 MHz. Der Treiber bildet **die
    Messung** ab, nicht die Rechnung. Wer das auflöst, kann `I2S Rate` vielleicht ganz abschaffen.
 2. **Die Rate muss von außen kommen.** Der Empfänger ist Master mit festen Teilern; es gibt kein
@@ -138,9 +138,9 @@ Erwartete Messwerte aus S16 zum Vergleich: 48 kHz → 1001 Hz, ~80 dB; 44,1 kHz 
 `soc-dapm.c` 6.18 nachgelesen: `SND_SOC_DAPM_SIGGEN` bekommt `is_ep = EP_SOURCE` und
 `connected = 1` (Zeile 3778/3836), ein DAI-Widget wird erst beim Stream-Start zum Endpunkt
 (Zeile 4500). `is_connected_input_ep()` zählt beide Wege auf (`con +=`, Zeile 1496) und prüft
-`is_ep && connected` — ein abgeklemmter Erzeuger trägt exakt 0 bei, ändert für den APB-Weg also
+`is_ep && connected` - ein abgeklemmter Erzeuger trägt exakt 0 bei, ändert für den APB-Weg also
 nichts, und ein erzwungener trägt genau eine Freigabe bei. `w->force` selbst schaltet nur das
-Widget an sich ein (Zeile 1690), nicht die Pfade — deshalb ist `late_probe` mit `disable_pin`
+Widget an sich ein (Zeile 1690), nicht die Pfade - deshalb ist `late_probe` mit `disable_pin`
 nötig und nicht bloß Vorsicht.
 
 ## 6. Was geprüft wurde
@@ -148,7 +148,7 @@ nötig und nicht bloß Vorsicht.
 | Prüfung | Ergebnis |
 |---|---|
 | `patch -p1` beider Patches gegen `a/` | sauber, erzeugt danach byteweise `b/` |
-| `checkpatch.pl --strict --max-line-length=80` | je 1 Fehler, 0 Warnungen, 0 Checks — der Fehler ist die bekannte „diff content in the commit message"-Eigenheit des Formats ohne `diff --git`, identisch mit 0131/0134 |
+| `checkpatch.pl --strict --max-line-length=80` | je 1 Fehler, 0 Warnungen, 0 Checks - der Fehler ist die bekannte „diff content in the commit message"-Eigenheit des Formats ohne `diff --git`, identisch mit 0131/0134 |
 | DTS: `cpp` + `scripts/dtc/dtc -I dts -O dtb` (nur im Scratchpad) | übersetzt, keine neue Warnung gegenüber `a/` |
 | DTB zurückgelesen | `reg = <0x2030000 0x32c 0x2031000 0x7c>`, `reg-names = "codec", "i2s"` |
 | 21er-Folge gegen S25 §2 | Zeile für Zeile, Maske und Wert; Erwartung nach dem Probe `CTL 0x00060011`, `FMT0 0x00081F55`, `CLKDIV 0x184` = die Werte, die S16 17:40 am Gerät gesehen hat |

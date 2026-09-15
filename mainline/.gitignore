@@ -1,4 +1,4 @@
-# Build artifacts and large binaries — never committed
+# Build artifacts and large binaries - never committed
 build/out/
 build/cache/
 build/uboot-*/
@@ -16,7 +16,7 @@ zImage*
 # Pinned source trees are fetched by the build, not vendored
 linux-*/
 rootfs-build/
-# Proprietary/local-only recovery material — keep in the workspace, never Git
+# Proprietary/local-only recovery material - keep in the workspace, never Git
 local/
 
 # Editor/OS cruft

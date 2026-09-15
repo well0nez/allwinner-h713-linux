@@ -1,4 +1,4 @@
-# S13 — Restpunkte 08.09.2026 (09:30–10:20): Protokoll
+# S13 - Restpunkte 08.09.2026 (09:30-10:20): Protokoll
 
 Plan und Kurzfassung der Ergebnisse stehen in [`../99-plan-restpunkte-20260908.md`](../99-plan-restpunkte-20260908.md);
 hier der Ablauf mit Zeiten, Messwerten und Dateien. Kernel-Stände: Start Serie 99 (`0130`, Baum `06623efb`),
@@ -12,7 +12,7 @@ Formatregel). Rohdaten: `re/captures/weltneuheit/s13-20260908/`, Fotos `wand-akt
 13× (2 s an / 5 s aus) ab 6 s nach `sonoff on` (`toggle.sh`). Board nach 55 s da; erste Veröffentlichung bei
 24,1 s Kernelzeit fiel in ein An-Fenster: `Freigabe: Capture laeuft wieder, nach 652 ms`. Kein Treffer.
 
-## 09:37 1366×768 mit elog Stufe 5 (Punkt 4) — Kernel `06623efb`
+## 09:37 1366×768 mit elog Stufe 5 (Punkt 4) - Kernel `06623efb`
 
 `wechsel.sh 1366x768 r14-1366x768 59.79`. Firmware: `port1 new timing HActive:0x556 VActive:0x300`,
 `Set Valid Signal dwSignal:0x20059`, `AI_SIGNAL_MODE_1366_768`, `WriteModules V_INCAP` (`Signal_Mode ==> 1366_768`,
@@ -31,17 +31,17 @@ Formatregel). Rohdaten: `re/captures/weltneuheit/s13-20260908/`, Fotos `wand-akt
   zusätzlich `pitches[0] == width`. `h713_video_block_m1` rundet Spalten ab (wie die Firmware, gemessen unten).
 - `hy310-tv`: `capture_pitch()` (`G_FMT`, Fallback 16er-Regel), `src_pitch`, Dumb-Puffer mit Pitch als Breite,
   Prüfung `width & 15` gestrichen, `puffer`-Zeile zeigt den Pitch.
-- Build 09:43–09:46, Baum `829b1161`.
+- Build 09:43-09:46, Baum `829b1161`.
 
-## 09:46–09:52 Template-Unit (Punkt 2) und Kaltstart auf `0131`
+## 09:46-09:52 Template-Unit (Punkt 2) und Kaltstart auf `0131`
 
 `hy310-tv@.service` (`BindsTo=dev-%i.device`, `After=dev-%i.device`, `ExecStart=… -d /dev/%I`), Regel
 `SYSTEMD_WANTS+="hy310-tv@%k.service"`, `install-data` entfernt die alte Unit. Am laufenden Board:
 `udevadm trigger --action=add /sys/class/video4linux/video1` → `hy310-tv@video1 active running`,
 `BindsTo=dev-video1.device`, `dev-video1.device plugged`, Bild nach 110 ms. Kaltstart 09:46 (HDMI-2 am Zuspieler
-vorher aus — der Zuspieler schaltete es beim Hotplug selbst wieder ein): Unit per udev aktiv, Freigabe nach 662 ms.
+vorher aus - der Zuspieler schaltete es beim Hotplug selbst wieder ein): Unit per udev aktiv, Freigabe nach 662 ms.
 
-## 09:48 1366×768 mit `0131` — läuft
+## 09:48 1366×768 mit `0131` - läuft
 
 `wechsel.sh 1366x768 r15-1366x768-fix 59.79`: `Freigabe: Capture direkt freigegeben, kein Quellenwechsel, nach
 164 ms`; `hy310-tv`: `puffer 1366x768 NV16, Zeilenabstand 1376`, `bild Plane 38 an`; Status `format: NV16M
@@ -52,7 +52,7 @@ Formel), `0x048 = 0x03000556`, `0x04c = 0x01800556`, Y-Stride `0x040 = 0x560` (1
 Nebenbefund: `ringstat.py 1366 768` → Bus error (nahm Pitch = Breite); 10:18 behoben (Argument P, Vorgabe
 Breite auf 16 aufgerundet): bei 1366 Cb/Cr 128,0 in allen vier Bändern, Ring sauber.
 
-## 09:52–09:57 Provokation der ersten Freigabe (Punkt 1) — getroffen
+## 09:52-09:57 Provokation der ersten Freigabe (Punkt 1) - getroffen
 
 - `unbind`/`bind` (Probe 9 s) setzt „erste Freigabe" zurück; aber nach einem Rebind mit **gleicher** Geometrie
   gibt es keine neue Veröffentlichung (Descriptor unverändert → `publish_video_info` schreibt nichts → keine
@@ -67,12 +67,12 @@ Breite auf 16 aufgerundet): bei 1366 Cb/Cr 128,0 in allen vier Bändern, Ring sa
   später. Ergebnis 557,6 s: `Freigabe: nach 2000 ms bewegen sich die Flip-Zeiger nicht; liegt ein Signal an?
   Der Quellenwechsel wird wiederholt, sobald eines da ist`; Zustand Capture aus (`0x600202d0`), Farbwandler
   **BYPASS**, Konsole. HDMI an (583,8 s): SignalChange → `hy310-tv` Plane an (583,9) → Wiederholungs-Work nach
-  2 s: `Freigabe: Capture laeuft inzwischen von selbst` (586,0 s) — Capture frei, BT.709, Bild 720p vollflächig
+  2 s: `Freigabe: Capture laeuft inzwischen von selbst` (586,0 s) - Capture frei, BT.709, Bild 720p vollflächig
   farbrichtig (`r16-0130-wiederholung.jpg`). Der SetSource-Wiederholungszweig wurde nicht gebraucht; er ist
-  nur erreichbar, wenn ein Callback kommt, ohne dass die Firmware neu einrastet — am Gerät nicht erzeugbar,
+  nur erreichbar, wenn ein Callback kommt, ohne dass die Firmware neu einrastet - am Gerät nicht erzeugbar,
   ohne INCAP von Hand zu schreiben.
 
-## 09:54–10:02 `0132` (Bildmodus-Menü) und `0133` (`aspect`)
+## 09:54-10:02 `0132` (Bildmodus-Menü) und `0133` (`aspect`)
 
 - S14 (10:05 fertig): `SetPictureMode` zählt 0 Vivid … 13 Graphic, schreibt keinen Regler, `Get*` sind Stubs.
   → `0132`: `Picture Mode` Menü 0…13 mit den Firmware-Namen, Kommentare korrigiert.
@@ -91,7 +91,7 @@ Breite auf 16 aufgerundet): bei 1366 Cb/Cr 128,0 in allen vier Bändern, Ring sa
   `ctl preset NAME` (Tabelle aus `pq_picturemode.ini [HDMI1]`, erst `picture_mode`, dann neun Regler),
   Statuszeile `format`, Hilfe, README §6a/§8.
 
-## 10:04 Kaltstart auf `GUT-a3097ce7` — Abnahme
+## 10:04 Kaltstart auf `GUT-a3097ce7` - Abnahme
 
 - Unit per udev aktiv, `Freigabe: Capture laeuft wieder, nach 643 ms`, `format proportional (aspect 1)`,
   `picture_mode … menu min=0 max=13 default=1 value=1 (Standard)`.
@@ -106,17 +106,17 @@ Breite auf 16 aufgerundet): bei 1366 Cb/Cr 128,0 in allen vier Bändern, Ring sa
   Geraet`, `Result=success ActiveState=inactive`; `bind` → Unit nach 1 s aktiv, `NRestarts=0`, Bild.
 - Abschließender Kaltstart 10:09: alles wie oben (`r24-endstand-1080p.jpg`).
 
-## 10:20–10:25 Nachtrag: Presets gehören zum Start
+## 10:20-10:25 Nachtrag: Presets gehören zum Start
 
 Marcos Frage, ob die Voreinstellungen bei der Display-Initialisierung gefahren werden: bisher nein. Gemessen:
 die neun PQ-Werte überleben `resync`, 1080p→720p→1080p und HDMI aus/an (Cinema-Register `0x2d` blieben) → einmal
 beim Start reicht. `hy310-tv fd5d89c4`: `-p PRESET` (Vorgabe standard) nach `capture_select_input`, `-g LUT`
 (Stock-Gamma 2,2 aus `hy310-pq`, Vorgabe `/usr/local/share/hy310-tv/gamma-standard.bin`) als `GAMMA_LUT` auf CRTC 36
 beim Start (Master kurz genommen) und bei jedem Show. Wand: Median 84 → 57 (`r24` → `r26-1080p-gamma22.jpg`);
-Gegenprobe: das Hintergrundbild des Zuspielers hat Median 27/255, ohne LUT stand es hellgrau — die Kurve ist
+Gegenprobe: das Hintergrundbild des Zuspielers hat Median 27/255, ohne LUT stand es hellgrau - die Kurve ist
 richtig. DE2-Bank liest konstant zurück (`0x0092ceb5`), kein Instrument. CTM: Stock neutral, nichts zu tun.
 
-## 10:30–10:40 A/B mit Testbild (Marco: „mit Bild bestätigt?")
+## 10:30-10:40 A/B mit Testbild (Marco: „mit Bild bestätigt?")
 
 Testbild am Zuspieler (`xviewer -f`, Farbbalken / 16-Stufen-Graukeil / Farbfelder), gleiche Kamera, Auswertung
 `scratchpad/wedge.py` (Graukeil-Stufen in Kamera-L, Sättigung der Balken):
@@ -129,15 +129,15 @@ Testbild am Zuspieler (`xviewer -f`, Farbbalken / 16-Stufen-Graukeil / Farbfelde
 | `-p standard` + Gamma 2,2 | `r27`/`r31` | 138…74…187, Stufen klar getrennt | Balken wie r29, Weiß/Gelb heller |
 
 **Befund Firmware:** ein `Set` mit dem Wert, den ihr Software-Zustand schon hat (Start 50), schreibt **kein
-Register** — nach einem Kaltstart blieb `preset standard` für Kontrast/Schärfe/Helligkeit ohne Registerschreiben
+Register** - nach einem Kaltstart blieb `preset standard` für Kontrast/Schärfe/Helligkeit ohne Registerschreiben
 (`0x05001234 = 0`), erst `49` dann `50` schrieb `0x32`. Bild identisch (r29 = r30): der Reset-Inhalt *ist* die 50.
-`hy310-tv 6f046f93` stupst die fünf Regler deshalb um eine Stufe an, bevor es setzt — der Zustand ist danach
+`hy310-tv 6f046f93` stupst die fünf Regler deshalb um eine Stufe an, bevor es setzt - der Zustand ist danach
 bekannt, nicht nur angenommen. Reihenfolge im Journal: `plane` → `gamma` → `preset` → `steuerung` → `signal` →
 `bild`; das erste Bild erscheint mit fertigen Werten.
 
 ## Dateien
 
-- Patches `0131`–`0133` (Kopien in `s13-20260908/`), Serie gesichert `patches-snapshots/20260908-0940-vor-0131/`
+- Patches `0131` - `0133` (Kopien in `s13-20260908/`), Serie gesichert `patches-snapshots/20260908-0940-vor-0131/`
   und `…-1015-serie102/`; FITs `tftp/h713-kernel-netboot.fit.GUT-a3097ce7`, Sicherungen `*.bak-20260908-vor-013x`.
 - `userspace/hy310-tv/`: `main.c`, `hy310-tv@.service`, `99-hy310-tv.rules`, `Makefile`, `README.md`.
 - Werkzeuge: `s13-20260908/provoke.sh` (+ `provoke-0956.log`), `scratchpad/toggle.sh` (Kipp-Takt, verworfen).

@@ -1,7 +1,7 @@
-# Plan 121 — Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards
+# Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards
 
 Entschieden (Marco, 14.09.2026): Umbau in Stufen, Bibliothek zuerst, Werkzeuge auf Englisch, **keine Abbilder
-für Geräte, die niemand getestet hat — niemals**. Ich (Fable) plane und orchestriere, Opus-Agenten arbeiten in
+für Geräte, die niemand getestet hat - niemals**. Ich (Fable) plane und orchestriere, Opus-Agenten arbeiten in
 eigenen Ordnern, integriert wird nur von mir. Ziel: **ein einziger Zwischenschritt am HY310**, an dem alles auf
 einmal geprüft wird.
 
@@ -28,7 +28,7 @@ alle am Code belegt:
    Unit-Tests; es gibt `mkimage-selbsttest.py` und Gerätemitschnitte.
 
 **Was bleibt und nicht verändert wird** (verschoben ja, verändert nein, vorher mit Golden-Tests eingefroren):
-Schreibsperre über LBA 12288–14335 in `Platte.schreib()`, Füllen am PC und einmal schreiben, Stichproben,
+Schreibsperre über LBA 12288-14335 in `Platte.schreib()`, Füllen am PC und einmal schreiben, Stichproben,
 Secure-Storage-Bytevergleich nach dem Schreiben, Erkennung vor dem ersten Schreibzugriff, `JA` tippen,
 Dreiteiler mit Loch, Stock-GPT-Nachbau, Sparse-Schreiber, der ext4-/FAT16-/LP-Leser.
 
@@ -60,7 +60,7 @@ Befunde, jeder offline geprüft (Skripte und Ausgaben in `umbau/fixtures-local/`
 2. **Die MIPS-Artefakte liegen bei ADT-3 im Android, nicht im boot-resource.** Erste Lesung am 14.09. war
    falsch („aus keinem Download"): `boot-resource.fex` hat dort kein `mips/`, aber `vendor:/etc/display/mips/`
    trägt alle 19 Dateien, dazu `/vendor/bin/loadmips`, `/vendor/lib/libmips.so` und ein `/dev/mipsloader`
-   (Vendor-Kerneltreiber, DT-Knoten `mipsloader@…`). Android schreibt sie auf `bootloader_a/_b` — beim Melder
+   (Vendor-Kerneltreiber, DT-Knoten `mipsloader@…`). Android schreibt sie auf `bootloader_a/_b` - beim Melder
    lagen dort 19 identische Dateien. Für den Extraktor heißt das: eine zweite MIPS-Quelle je Profil. Für den
    Stock-Rückweg: `bootloader_b` ohne `downloadfile` (T08) darf nicht genullt werden.
 3. **Eine `display.bin` bedient zwei Panels.** `22a7df11…` steckt im 720p-T08 und im 1080p-HY350. Das Panel
@@ -129,11 +129,11 @@ h713-install restore-stock UPDATE.img
 
 Danach: Zweig `tools-refactor` nach `main`, Release `v0.6-beta`, Handoff.
 
-**Stand 14.09. 21:45:** Alle Pakete der Stufen 0–4 sind integriert (`umbau/src`, Zweig tools-refactor); Suite 102 Tests grün mit dem eigenen v0.6-beta-Bau, Sperr-Scan leer, erster voller Release-Bau aus dem Integrationsbaum grün (Selbsttest ALL GREEN). Offen: letzter Bau von vorn nach D5, dann der Gerätetest (`umbau/plan/geraetetest.md`), dann Merge nach main, Push, Release, Handoff doku/122.
+**Stand 14.09. 21:45:** Alle Pakete der Stufen 0-4 sind integriert (`umbau/src`, Zweig tools-refactor); Suite 102 Tests grün mit dem eigenen v0.6-beta-Bau, Sperr-Scan leer, erster voller Release-Bau aus dem Integrationsbaum grün (Selbsttest ALL GREEN). Offen: letzter Bau von vorn nach D5, dann der Gerätetest (`umbau/plan/geraetetest.md`), dann Merge nach main, Push, Release, Handoff doku/122.
 
-**Stand 14.09. 21:00:** Stufe 3 zur Hälfte, Stufe 4 bis auf die Doku integriert. Stufe 3: `h713-install` (sechs Unterbefehle, englisch, alte Schalter als Aliasse), `h713-mkimage`/`h713-extract` englisch, Suite 101 Tests grün (`umbau/reviews/D1.md`, `D2.md`); D4 (Doku) und D5 (Bauskripte, build-all englisch) laufen. Stufe 4: `boards/<id>/board.env` mit `check.sh`, Kernel-DTS `sun50i-h713-hy310` (Patch 0160), U-Boot-Fork mit Basis-Defconfig + Rollenfragmenten (Beweis auf .config- und Binärebene), Lader nach Board-Fakten (Projekt-ID, Partition nach Name + Slot, /oem) und Sonden-Profilzeile, `release/build-all.sh --board` mit Verweigerung ungetesteter Boards (`umbau/reviews/E1–E3b.md`); E6 (Doku) läuft, der volle Release-Bau aus `umbau/src` läuft im Container. Danach: Gerätetest nach `umbau/plan/geraetetest.md`. Offene Entscheidung für Marco: deutsche Dateinamen im Abzug (doku/61 Nachtrag).
+**Stand 14.09. 21:00:** Stufe 3 zur Hälfte, Stufe 4 bis auf die Doku integriert. Stufe 3: `h713-install` (sechs Unterbefehle, englisch, alte Schalter als Aliasse), `h713-mkimage`/`h713-extract` englisch, Suite 101 Tests grün (`umbau/reviews/D1.md`, `D2.md`); D4 (Doku) und D5 (Bauskripte, build-all englisch) laufen. Stufe 4: `boards/<id>/board.env` mit `check.sh`, Kernel-DTS `sun50i-h713-hy310` (Patch 0160), U-Boot-Fork mit Basis-Defconfig + Rollenfragmenten (Beweis auf .config- und Binärebene), Lader nach Board-Fakten (Projekt-ID, Partition nach Name + Slot, /oem) und Sonden-Profilzeile, `release/build-all.sh --board` mit Verweigerung ungetesteter Boards (`umbau/reviews/E1-E3b.md`); E6 (Doku) läuft, der volle Release-Bau aus `umbau/src` läuft im Container. Danach: Gerätetest nach `umbau/plan/geraetetest.md`. Offene Entscheidung für Marco: deutsche Dateinamen im Abzug (doku/61 Nachtrag).
 
-**Stand 14.09. 20:00:** Stufe 0, 1 und 2 abgeschlossen (Stufe 2: Erkennung nach Merkmalen, Abzug aus der GPT mit `mips/` aus beiden Slots, Stock-Rückweg nach Profil, Extraktor mit Vendor-Quelle und Revisionstabelle, Projekt-ID in die Umgebung; Reviews `umbau/reviews/C*.md`). Stufe 3 und 4 laufen parallel. Ursprünglich:** Stufe 0 und 1 abgeschlossen (Belege: `umbau/reviews/A0–A7, B1–B7`, Golden-Suite in
+**Stand 14.09. 20:00:** Stufe 0, 1 und 2 abgeschlossen (Stufe 2: Erkennung nach Merkmalen, Abzug aus der GPT mit `mips/` aus beiden Slots, Stock-Rückweg nach Profil, Extraktor mit Vendor-Quelle und Revisionstabelle, Projekt-ID in die Umgebung; Reviews `umbau/reviews/C*.md`). Stufe 3 und 4 laufen parallel. Ursprünglich:** Stufe 0 und 1 abgeschlossen (Belege: `umbau/reviews/A0-A7, B1-B7`, Golden-Suite in
 `umbau/src/installer/tests`). Stufe 2 beginnt. Lebender Stand weiter in `umbau/STATUS.md`.
 
 ## 5. Arbeitsregeln (Marco, 14.09.)
@@ -160,4 +160,4 @@ Danach: Zweig `tools-refactor` nach `main`, Release `v0.6-beta`, Handoff.
 - Wie Android bei ADT-3 `bootloader_a/_b` befüllt (`loadmips`): nur Beobachtung, keine Voraussetzung. Der
   Stock-Rückweg lässt die Partitionen ohne `downloadfile` in Ruhe, dann ist es egal.
 - Issue #1: die Panel-Aussage (0x34 → 720p) gehört in die nächste Antwort, sobald sein Sondenlog da ist.
-- Plan 120 §4b–4c und Fork-Commit `1e9daac` müssen um Befund 3 korrigiert werden (Stufe 4, Paket E3).
+- Plan 120 §4b-4c und Fork-Commit `1e9daac` müssen um Befund 3 korrigiert werden (Stufe 4, Paket E3).

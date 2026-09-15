@@ -1,4 +1,4 @@
-# Paket F — `hy310-tv` (offline: Entwurf + Gerüst)
+# Paket F - `hy310-tv` (offline: Entwurf + Gerüst)
 
 **Agent:** Unteragent F (offline). **Kein Board angefasst:** kein `ssh root@192.168.8.141`, kein
 `ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach
@@ -25,11 +25,11 @@
 |---|---|
 | 22:45 | Nachtplan 78 **vollständig** gelesen (§0, §0a, §0b, §3 „F", **Anhang A ab Z. 440**, A.3/A.4/A.5/A.6); `nachtlog/00-koordination.md` inkl. Nachtrag 22:57, `nachtlog/D-plane.md`, `nachtlog/E-v4l2.md`, `doku/88`, `doku/86` |
 | 22:48 | `analyse/kms/hdmi_plane_test.c` + `README-hdmi-plane.md` (Paket D) als Vorlage gelesen; `legacy/userspace/hy310-hdmird/README.md` gelesen (Zustandsübergänge, **nicht portiert**) |
-| 22:49 | Board-Root `/srv/h713-rootfs` inventarisiert (Werkzeuge, libdrm, systemd/udev-Regeln) — **Korrektur einer Auftragsannahme, siehe §3** |
+| 22:49 | Board-Root `/srv/h713-rootfs` inventarisiert (Werkzeuge, libdrm, systemd/udev-Regeln) - **Korrektur einer Auftragsannahme, siehe §3** |
 | 22:50 | Patch **0093** gelesen (`atomic_check`-Bedingungen, Eigenschaften `hdmi-ring`/`saturation`), Patch **0094**-Quelle `analyse/hdmirx-drv/sun50i-h713-hdmirx.c` (Treibername, `QUERY_DV_TIMINGS`, `SOURCE_CHANGE`, kein `EXPBUF`) |
 | 22:51 | Kernelquelle `drm_file.c`/`drm_ioctl.c` geprüft: `drm_client_dev_restore()` hängt am **letzten Schließen**, nicht am Master-Wechsel; von den benutzten ioctls verlangt nur `MODE_ATOMIC` `DRM_MASTER` |
 | 22:52 | **Entscheidung C-Programm** (§2) |
-| 22:53–22:57 | `main.c` geschrieben, Prüfbau, zwei Befunde behoben (fehlendes `crtc_index`; Commit-Fehlerpfad mit veraltetem `errno`), `fail()`/`usage()` als `_Noreturn` markiert |
+| 22:53-22:57 | `main.c` geschrieben, Prüfbau, zwei Befunde behoben (fehlendes `crtc_index`; Commit-Fehlerpfad mit veraltetem `errno`), `fail()`/`usage()` als `_Noreturn` markiert |
 | 22:57 | Prüfbau grün, `clang --analyze` ohne Befund (§4) |
 | 22:58 | `Makefile`, `hy310-tv.service`, `99-hy310-tv.rules`; `systemd-analyze verify` und `udevadm verify` grün |
 | 23:00 | `README.md` (deutsch) und dieses Teillog |
@@ -40,30 +40,30 @@
 
 **Entschieden: C-Programm.** Der Nachtplan erlaubt beides (§3 „F"), also gehört die Begründung ins Log.
 
-Sie stützt sich **nicht** auf „GStreamer fehlt auf dem Board" — dieser Satz aus meinem Auftrag stimmt
+Sie stützt sich **nicht** auf „GStreamer fehlt auf dem Board" - dieser Satz aus meinem Auftrag stimmt
 nicht (§3). Die Gründe sind inhaltlich:
 
 1. **Eine GStreamer-Kette müsste jedes Bild kopieren.** 0094 gibt die drei Ring-Slots als
    `VB2_MEMORY_MMAP` mit eigenen `mem_ops` heraus und hat **kein `VIDIOC_EXPBUF`**
    (doku/88 §4 und §8 Punkt 2, ausdrücklich „nicht gebaut"). Ohne dma-buf importiert `kmssink` nichts,
    sondern kopiert in seinen eigenen Dumb-Puffer: 2 × 2 073 600 B je Bild, 60-mal je Sekunde, ≈ 250 MB/s
-   — für Daten, die die Plane sich selbst holt. Der Auftrag sagt ausdrücklich „kein Kopieren der Frames".
+- für Daten, die die Plane sich selbst holt. Der Auftrag sagt ausdrücklich „kein Kopieren der Frames".
 2. **Die Plane lässt sich so gar nicht fahren.** Der Ringbetrieb hängt an der treibereigenen
    Plane-Eigenschaft `hdmi-ring` (und optional `saturation`); `kmssink` kennt keine Treiber-Properties.
-   Ohne `hdmi-ring` zeigte die Plane die **Kopie** statt des Rings — also der lange Weg zum selben Bild.
+   Ohne `hdmi-ring` zeigte die Plane die **Kopie** statt des Rings - also der lange Weg zum selben Bild.
 3. **Der Kern von F ist die Zustandsmaschine, nicht der Datenpfad.** Bei Signalverlust friert der Ring
-   ein und die Wand zeigt den letzten Rahmen (K4, 21:50:56) — sie wird **nicht** schwarz. Eine Pipeline,
+   ein und die Wand zeigt den letzten Rahmen (K4, 21:50:56) - sie wird **nicht** schwarz. Eine Pipeline,
    die einfach stehenbleibt, erzeugt exakt das Fehlerbild, das F verhindern soll. Der Verlust muss aus
    `V4L2_EVENT_SOURCE_CHANGE` erkannt werden, und dann muss jemand die Plane abschalten.
 4. **Sauberes Beenden** (Plane aus, Konsole zurück, DRM-Master abgeben, bevor der Prozess endet) ist mit
-   `gst-launch` nicht zu haben — und genau das verlangt Auftragspunkt 3.
+   `gst-launch` nicht zu haben - und genau das verlangt Auftragspunkt 3.
 5. Nebenbei: eine Kette bräuchte die GStreamer-Registry (260 Plugins) auf einem NFS-Root; das Programm
    braucht `libdrm` und sonst nichts.
 
 **Was die Entscheidung kostet:** ~560 Codezeilen (806 Zeilen Datei, davon 139 Kommentar, 107 leer) statt
 einer Kommandozeile. Der Nachtplan nennt „~300 Zeilen"; der Mehraufwand steckt nicht in der Logik,
 sondern in Gerätesuche über den **Treibernamen** (statt `/dev/video0` zu raten) und der
-KMS-Eigenschaftsverwaltung — beides übernommen aus `analyse/kms/hdmi_plane_test.c`, damit D und F
+KMS-Eigenschaftsverwaltung - beides übernommen aus `analyse/kms/hdmi_plane_test.c`, damit D und F
 dieselbe Sprache sprechen.
 
 ### Was das Programm tut
@@ -91,12 +91,12 @@ Plane aus, DRM-Master abgegeben                 Plane an (hdmi-ring=1), Master g
 ### Zwei Entwurfsentscheidungen, die nicht offensichtlich sind
 
 **DRM-Master nur, solange das Bild steht.** Solange ein Userspace-Master existiert, malt der
-kerneleigene Konsolen-Client nicht mehr (`drm_master_internal_acquire`) — die Konsole wäre sichtbar,
+kerneleigene Konsolen-Client nicht mehr (`drm_master_internal_acquire`) - die Konsole wäre sichtbar,
 aber eingefroren. Deshalb gibt das Programm den Master in der Bereitschaft zurück und holt ihn beim
 Einschalten. Nachgesehen statt geglaubt: `drm_client_dev_restore()` wird in 6.18.38 **nur** aus
 `drm_lastclose()` gerufen (`drivers/gpu/drm/drm_file.c:408`), hängt also am letzten Schließen und nicht
 am Master-Wechsel; nötig ist er nicht, weil 0093 die Hardware beim Disable selbst zurückstellt. Von den
-benutzten ioctls verlangt nur `DRM_IOCTL_MODE_ATOMIC` `DRM_MASTER` (`drm_ioctl.c:695`) —
+benutzten ioctls verlangt nur `DRM_IOCTL_MODE_ATOMIC` `DRM_MASTER` (`drm_ioctl.c:695`) -
 `CREATE_DUMB`/`ADDFB2` nicht.
 
 **Eine Rückschau nach dem Einschalten, keine Reparatur.** Der erste Plane-Enable veröffentlicht den
@@ -125,11 +125,11 @@ installiert". Nachgesehen im exportierten NFS-Root (`/etc/exports`: `/srv/h713-r
 
 Für Paket E heißt das: die Abnahme kann `v4l2-ctl --query-dv-timings`, `--all` und
 `--stream-mmap` benutzen; die debugfs-Statusseite bleibt trotzdem der bessere Beleg, weil sie Zähler
-und Rohwörter zeigt. Für F ändert es an der Entscheidung nichts (§2) — nur an ihrer Begründung.
+und Rohwörter zeigt. Für F ändert es an der Entscheidung nichts (§2) - nur an ihrer Begründung.
 
 ---
 
-## 4. Prüfbau — **ausdrücklich ein Prüfbau, kein Serienartefakt**
+## 4. Prüfbau - **ausdrücklich ein Prüfbau, kein Serienartefakt**
 
 Querbau auf dem Arbeitsrechner gegen das Board-Root als Sysroot, genau der Weg, den Paket D für
 `hdmi_plane_test.c` beschreibt (`analyse/kms/README-hdmi-plane.md`):
@@ -144,16 +144,16 @@ make -C userspace/hy310-tv cross
 | Prüfung | Ergebnis |
 |---|---|
 | Querbau, `-Wall -Wextra -Wshadow -Wvla`, clang 18.1.3 | **grün, keine Warnung**; `ELF 64-bit LSB pie executable, ARM aarch64`, dynamisch gegen `libdrm.so.2` |
-| `clang --analyze` (core, unix, deadcode) | **kein Befund** (der eine Fund — `props_get()`, wenn `calloc` scheitert — war echt und ist behoben, indem `fail()`/`usage()` jetzt `_Noreturn` sind) |
-| `systemd-analyze verify hy310-tv.service` | grün (einziger Hinweis: `/usr/local/sbin/hy310-tv` existiert auf **diesem** Rechner nicht — erwartet) |
+| `clang --analyze` (core, unix, deadcode) | **kein Befund** (der eine Fund - `props_get()`, wenn `calloc` scheitert - war echt und ist behoben, indem `fail()`/`usage()` jetzt `_Noreturn` sind) |
+| `systemd-analyze verify hy310-tv.service` | grün (einziger Hinweis: `/usr/local/sbin/hy310-tv` existiert auf **diesem** Rechner nicht - erwartet) |
 | `udevadm verify 99-hy310-tv.rules` | `Success: 1, Fail: 0` |
 | `make clean` | Baum bleibt sauber, kein Binärartefakt im Repo |
 
 **Warum der Prüfbau nicht im Container `h713-build` läuft** (der Auftrag nannte den Container): der
-Container sieht `/srv` nicht — er hat genau einen Mount, `/opt/Projekte/h713 → /work` (mit
-`podman inspect` geprüft) — und hat weder libdrm noch einen arm64-Sysroot (`/usr/include/xf86drm.h`
+Container sieht `/srv` nicht - er hat genau einen Mount, `/opt/Projekte/h713 → /work` (mit
+`podman inspect` geprüft) - und hat weder libdrm noch einen arm64-Sysroot (`/usr/include/xf86drm.h`
 fehlt, kein `libdrm`-Paket, kein `/usr/aarch64-linux-gnu`). Ihn dafür zu erweitern hieße, `apt` in einer
-laufenden Welt zu benutzen oder Board-Root-Dateien ins Repo zu kopieren — beides ist ausgeschlossen.
+laufenden Welt zu benutzen oder Board-Root-Dateien ins Repo zu kopieren - beides ist ausgeschlossen.
 Regel 2 des Nachtplans gilt dem **Kernel** („nur über `build/build.sh`"); für das Userspace-Werkzeug ist
 der Host-Clang der von Paket D bereits beschriebene Weg. **Nicht improvisiert, sondern benannt.**
 
@@ -164,7 +164,7 @@ den das Binärprogramm dynamisch gebunden ist.
 
 ---
 
-## 5. Angenommene Schnittstellen aus D und E — und wo sie abweichen könnten
+## 5. Angenommene Schnittstellen aus D und E - und wo sie abweichen könnten
 
 Gegen die **Patches** geprüft, nicht gegen Prosa (§0a: „was am Gerät wirkt, steht in der Patch-Serie").
 
@@ -185,7 +185,7 @@ Gegen die **Patches** geprüft, nicht gegen Prosa (§0a: „was am Gerät wirkt,
 |---|---|---|
 | `VIDIOC_QUERYCAP.driver == "sun50i-h713-hdmirx"` | `strscpy(cap->driver, H713_HDMIRX_NAME, …)` | Namensänderung bricht die Suche (Meldung nennt den erwarteten Namen) |
 | `QUERY_DV_TIMINGS` = Signalmessung, **`-ENOLINK`** ohne Signal | `if (!h713_hdmirx_signal_present(rx)) return -ENOLINK;` | F akzeptiert zusätzlich `ENOLCK`/`ENODATA` als „kein Signal"; jeder **andere** Fehler wird als Gerätefehler behandelt (Plane aus) |
-| `SUBSCRIBE_EVENT(SOURCE_CHANGE)` wird angenommen, Ereignis kommt aus dem `SignalChange`-Callback | `v4l2_src_change_event_subscribe()`, `h713_hdmirx_src_change()` | ohne Ereignisse gäbe es nur Pollen — das Programm scheitert dann bewusst beim Start |
+| `SUBSCRIBE_EVENT(SOURCE_CHANGE)` wird angenommen, Ereignis kommt aus dem `SignalChange`-Callback | `v4l2_src_change_event_subscribe()`, `h713_hdmirx_src_change()` | ohne Ereignisse gäbe es nur Pollen - das Programm scheitert dann bewusst beim Start |
 | `S_INPUT(0)` = `SetSource(3)`, Nullwechsel ist normal | `h713_hdmirx_set_source()` | Ablehnung ist eine Journalzeile, kein Abbruch |
 | **kein `VIDIOC_EXPBUF`** → kein dma-buf-Pfad | doku/88 §4/§8 Punkt 2 | sobald es ihn gibt, kommt die zweite Betriebsart dazu (§6) |
 | `V4L2_CAP_VIDEO_CAPTURE_MPLANE`, `NV16M`, 3 Puffer | `vdev.device_caps`, `h713_hdmirx_fill_fmt()` | für F ohne Belang: es streamt nicht (siehe unten) |
@@ -193,7 +193,7 @@ Gegen die **Patches** geprüft, nicht gegen Prosa (§0a: „was am Gerät wirkt,
 **Bewusst nicht getan: `REQBUFS`/`STREAMON`/`DQBUF`.** Anhang A.4 zeichnet „pro Frame: DQBUF →
 Plane-Flip"; das setzt den dma-buf-Export voraus. Ohne ihn wäre jedes dequeuete Bild entweder ungenutzt
 (Arbeit ohne Zweck, dazu der 120-Hz-Abtasttakt in 0094) oder müsste kopiert werden. Die Plane folgt dem
-Ring heute selbst, phasenrichtig im Vsync — das ist der bessere Weg, solange er da ist, und er ändert
+Ring heute selbst, phasenrichtig im Vsync - das ist der bessere Weg, solange er da ist, und er ändert
 an der Zustandsmaschine nichts. **Sobald 0094 `EXPBUF` hat, kommt der Streaming-Pfad als zweite
 Betriebsart in `display_show()` dazu.**
 
@@ -201,12 +201,12 @@ Betriebsart in `display_show()` dazu.**
 
 ## 6. Anfragen (keine Board-Zeit nötig)
 
-1. **An D (0093) — die Capture-Freigabe gehört dorthin, wo die Ursache sitzt.** Der Plane-Enable
+1. **An D (0093) - die Capture-Freigabe gehört dorthin, wo die Ursache sitzt.** Der Plane-Enable
    veröffentlicht den Descriptor und schaltet damit die Capture ab. Nach `B2-quellenwechsel.md` genügt
    ein Quellenwechsel (`SetSource` weg und zurück, 22:53 gemessen, null strukturelle
    Registerunterschiede), nach `M4-hpd-dauer.md` ein 0,3-s-HPD-Zyklus. Beides sind Stock-RPCs. Solange
    das keiner der Treiber tut, zeigt der erste Kaltstartlauf ein **Standbild**, und F kann nur warnen.
-2. **An E (0094) — `VIDIOC_EXPBUF`.** Erst damit ist der `DQBUF`→Plane-Weg aus A.4 überhaupt baubar.
+2. **An E (0094) - `VIDIOC_EXPBUF`.** Erst damit ist der `DQBUF`→Plane-Weg aus A.4 überhaupt baubar.
    Bis dahin ist `hdmi-ring` der Datenpfad; das ist in D §7 Punkt 6 ohnehin als Übergang angelegt.
 3. **An die Hauptsitzung:** `nachtlog/E-v4l2.md` §6 und `doku/88` behaupten, `v4l2-ctl` sei auf dem Board
    nicht installiert. Es ist installiert (§3). Bitte beim Zusammenführen richtigstellen.
@@ -218,7 +218,7 @@ Betriebsart in `display_show()` dazu.**
 **Voraussetzungen:** 0091 (B), 0092 (C), 0093 (D) und 0094 (E) stehen in der `series`,
 `build/build.sh kernel` ist grün, die Netboot-FIT liegt in `tftp/`, Module und Firmware-Dateien
 (`hy310-edid.bin`, `hy310-hdcp22.bin`) sind auf dem Board. Sperre halten. **Echtes Stecken kann nur
-Marco** — die Vorschrift benutzt ersatzweise den Zuspieler-Ausgang; der Unterschied ist in Schritt 4
+Marco** - die Vorschrift benutzt ersatzweise den Zuspieler-Ausgang; der Unterschied ist in Schritt 4
 benannt.
 
 ```bash
@@ -279,12 +279,12 @@ python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-nach-stop
 | Schritt | Erwartung |
 |---|---|
 | 2 | `/dev/videoN` da, `hy310-tv` läuft, im Journal `aufnahme …`, `anzeige …`, `crtc …`, `plane 38, NV16, Betriebsart hdmi-ring` |
-| 3 | Journal `signal 1920x1080p …` und `bild Plane 38 an …`; **`F-bild`**: Zuspielerbild in Farbe, Geometrie richtig; **`diff F-bild F-bild-reiz`** zeigt eine deutliche Änderung (Größenordnung 5–10 % der Bildpunkte, vgl. B2: 4,65 %), **`diff F-bild F-bild-zurueck`** ≈ 0,00 % — das ist der Beweis, dass das Bild *läuft* und nicht steht |
+| 3 | Journal `signal 1920x1080p …` und `bild Plane 38 an …`; **`F-bild`**: Zuspielerbild in Farbe, Geometrie richtig; **`diff F-bild F-bild-reiz`** zeigt eine deutliche Änderung (Größenordnung 5-10 % der Bildpunkte, vgl. B2: 4,65 %), **`diff F-bild F-bild-zurueck`** ≈ 0,00 % - das ist der Beweis, dass das Bild *läuft* und nicht steht |
 | 4 | Journal `ereignis SOURCE_CHANGE …`, `signal kein Signal (Flip-Zeiger stehen)`, `konsole Plane aus …`; **`F-konsole`**: Konsolentext auf der Wand, **kein** Standbild der Quelle |
 | 5 | Bild kommt von selbst zurück, gleiche Qualität wie in Schritt 3 |
 | 6 | `F-nach-stop`: Konsole. **Kein Standbild.** Journal: `ende Signal 15 erhalten`, dann `konsole …` |
 
-**Fotos ansehen (Read), nicht nur die Kennzahlen** — und vor jeder Negativaussage die Positivkontrolle
+**Fotos ansehen (Read), nicht nur die Kennzahlen** - und vor jeder Negativaussage die Positivkontrolle
 `ssh root@… 'timeout 40 /root/hdmi_plane_test --pattern -t 30'` (Paket D): kommen die acht Farbbalken,
 liegt der Fehler auf der Capture-Seite, nicht in Plane, Mux oder Panel. Ergebnisse nach
 `re/captures/weltneuheit/ours-20260907-nacht/F/`.
@@ -298,12 +298,12 @@ liegt der Fehler auf der Capture-Seite, nicht in Plane, Mux oder Panel. Ergebnis
 | Commit `EOPNOTSUPP` | `memory-region-names = "hdmi-ring", "viddec-info"` fehlt am Display-Knoten | DTB prüfen (D §3) |
 | Commit `EINVAL` | Geometrie ≠ Modus, Modifier, Zeilenabstände oder Breite | D §5 |
 | `SET_MASTER: … ein anderer Client haelt die Anzeige` | jemand anders ist DRM-Master (X, ein hängendes `hdmi_plane_test`) | den anderen Client beenden |
-| **`der Ring steht seit dem Einschalten der Plane still`** | **der erwartete Descriptor-Effekt** (A.5) — die Wand zeigt ein Standbild | einmal von Hand freigeben, dann Schritt 3 wiederholen: `ssh root@192.168.8.141 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; sleep 1; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'` (0,3 s reichen, M4). **Das ist ein Befund für D/E (§6 Punkt 1), kein Fehler von F** |
+| **`der Ring steht seit dem Einschalten der Plane still`** | **der erwartete Descriptor-Effekt** (A.5) - die Wand zeigt ein Standbild | einmal von Hand freigeben, dann Schritt 3 wiederholen: `ssh root@192.168.8.141 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; sleep 1; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'` (0,3 s reichen, M4). **Das ist ein Befund für D/E (§6 Punkt 1), kein Fehler von F** |
 | `Quellgeometrie … passt nicht zum Panel-Modus …` | Quelle liefert nicht 1920×1080 | K3/A.6 Punkt 4; Zuspieler auf 1080p60 stellen |
 
-**Marcos Handgriff, wenn er da ist:** dasselbe wie Schritt 3–5, aber mit dem **echten** Kabel am Beamer
-(HDMI ziehen, 10 s warten, stecken). Damit ist zugleich K4 Punkt 3 beantwortet — ob die ARISC auf
-5-V-Detect von selbst reagiert —, wenn dabei `elog_tail` auf Stufe 5 mitläuft.
+**Marcos Handgriff, wenn er da ist:** dasselbe wie Schritt 3-5, aber mit dem **echten** Kabel am Beamer
+(HDMI ziehen, 10 s warten, stecken). Damit ist zugleich K4 Punkt 3 beantwortet - ob die ARISC auf
+5-V-Detect von selbst reagiert - , wenn dabei `elog_tail` auf Stufe 5 mitläuft.
 
 ---
 

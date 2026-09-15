@@ -1,21 +1,21 @@
-# TODO — Scaler und 720p
+# TODO - Scaler und 720p
 
 > **Erledigt (Stand 08.09.2026):** dieser Plan ist abgearbeitet und am Gerät abgenommen; was davon abweicht und was übrig blieb, steht in [`00-STATUS.md`](00-STATUS.md) §4 und [`60-offen.md`](60-offen.md). Das Dokument bleibt als Planungsstand und Begründung.
 
-> **08.09., 01:30 — die Skalierung läuft.** 720p wird korrekt aufs Panel hochskaliert
+> **08.09., 01:30 - die Skalierung läuft.** 720p wird korrekt aufs Panel hochskaliert
 > (`0x3200AAAA`, PROC 1280x720 -> 1920x1080), mit Bildbeleg. Offen sind zwei Dinge: ein
 > **Grünstich** ab dem ersten Wechsel und ein **Kippen nach vier bis fünf Wechseln**. Beides in
 > [`nachtlog/S8`](nachtlog/S8-skalierung-laeuft-und-der-gruenstich.md), Einstieg über
 > [`97-handoff-20260908.md`](97-handoff-20260908.md).
 
-> **08.09., 00:20 — entschlüsselt.** Die Firmware rechnet und schreibt die Kette
+> **08.09., 00:20 - entschlüsselt.** Die Firmware rechnet und schreibt die Kette
 > 1280×720 → 1920×1080 vollständig korrekt (`ratio [43690 x 43690]`, Aufnahme 1:1, rowbyte 80).
 > Ein **zweiter** Durchlauf, ausgelöst durch unseren eigenen `SetSource`-Wiederanlauf aus `0099`,
 > staucht die Aufnahme um 2/3 und überschreibt das Ergebnis. Der Scaler war nie das Problem.
 > Fix: Aufnahme ohne Quellenwechsel freigeben (`memory_agent en`). Vollständig in
 > [`nachtlog/S7-scaler-entschluesselt.md`](nachtlog/S7-scaler-entschluesselt.md).
 
-> **07.09., 23:10 — der Blocker ist gefallen.** Die Firmware programmiert den Scaler selbst,
+> **07.09., 23:10 - der Blocker ist gefallen.** Die Firmware programmiert den Scaler selbst,
 > sobald der VidDec-Descriptor die neue Geometrie trägt (`0117`). Gemessen: `0x05180008` von
 > `0x43010000` auf `0x3200AA66`, Bit 27 gelöscht. Offen ist nur noch **K3**: die Aufnahme kommt
 > nach der Neu-Veröffentlichung nicht zurück. Vollständig in
@@ -27,7 +27,7 @@ Stand 07.09.2026, 22:30. Kurzfassung zum Wiedereinstieg; die Belege stehen in
 
 ---
 
-## TODO 1 — Der DE-Scaler
+## TODO 1 - Der DE-Scaler
 
 **Erledigt:** Register gefunden und Formel hergeleitet, bitgenau gegen den laufenden 1080p-Zustand
 geprüft (5 von 5 Registern, inklusive der Modusfelder).
@@ -54,18 +54,18 @@ Für 1280x720 -> 1920x1080: `0x05180008 = 0x3200AAAA`, `0x0518003C = 0x0000AAAA`
 Phasen `0x6AAA` / `0xD555`. Schreiben **wirkt** (Bild wurde sichtbar vergrößert).
 
 **Bestätigt gegen Stock (S4):** `re/ida/IDA_hy310/elog_after_hdmird.txt` enthält einen echten
-Stock-Auflösungswechsel — `in_win_size [720,480]`, `out_win_size [1920,1080]`,
+Stock-Auflösungswechsel - `in_win_size [720,480]`, `out_win_size [1920,1080]`,
 `ratio [24576 x 29127]`. Genau die Formel oben. Ebenfalls dort: Stock übergibt in `Wce_SetWindow`
 das Sentinel **7680x4320** („kein Ausschnitt"), wir sendeten 1920x1080 und nagelten damit Quelle und
-Ziel auf 1:1 — behoben in `0108`. Der Patch allein ändert das Verhalten aber **nicht** (gemessen).
+Ziel auf 1:1 - behoben in `0108`. Der Patch allein ändert das Verhalten aber **nicht** (gemessen).
 
 **Nachtrag (S5):** Der Stock-Mitschnitt läuft über sechs Minuten und enthält `UpdateWce`
-**genau zweimal, beide bei Zeitstempel `[0]`** — Stock baut die Fensterkette bei der Initialisierung
+**genau zweimal, beide bei Zeitstempel `[0]`** - Stock baut die Fensterkette bei der Initialisierung
 und danach nie wieder. Die daraus folgende Gegenprobe (720p-Quelle anliegend, *dann* Probe, mit
 Sentinel) wurde gefahren: Sentinel kommt an, Quelle wird erkannt, **Scaler bleibt 1:1**. Damit ist
 auch `0108` als alleinige Lösung ausgeschlossen.
 
-**Offen — der eine Blocker:** `UpdateWce` läuft bei uns nicht, und ohne ihn programmiert niemand
+**Offen - der eine Blocker:** `UpdateWce` läuft bei uns nicht, und ohne ihn programmiert niemand
 die Knotenkette (`Cap -> NR -> DETN -> Proc -> Panel`, alle in *einem* `WCETop::SetWindow`) um.
 Einzelne Register von außen zu setzen ersetzt das nachweislich nicht. Nebenfrage, ebenfalls offen:
 woher nimmt der aktive Scaler seine **Eingangsgeometrie**? Die
@@ -84,21 +84,21 @@ Der nächste Versuch gehört in **einen** Patch, geprüft direkt nach einem Neus
 
 ---
 
-## TODO 2 — 720p (und die übrigen Auflösungen)
+## TODO 2 - 720p (und die übrigen Auflösungen)
 
-**Erledigt:** Die Erkennung ist vollständig und ehrlich (`0107`) — `QUERY_DV_TIMINGS` aus
+**Erledigt:** Die Erkennung ist vollständig und ehrlich (`0107`) - `QUERY_DV_TIMINGS` aus
 Signal-Info + INCAP, Plane folgt der Quellgeometrie, Y/C-Stride bei 720p korrekt, der
 `mode_config.min_width`-Fehler (AddFB2-EINVAL) behoben.
 
 **Der Kern des Problems, gemessen:** beim Auflösungswechsel ändern sich **genau vier Register**,
-alle im AFBD-Block (`0x05600020/40/48/4C`) — also unser eigener Treiber. Der gesamte Rest der Kette
+alle im AFBD-Block (`0x05600020/40/48/4C`) - also unser eigener Treiber. Der gesamte Rest der Kette
 (PROC, Composition, Panel) bleibt auf 1920x1080 stehen. Wir stellen den Erzeuger um, niemand den
 Abnehmer.
 
 **Warum die Firmware nicht einspringt:** unser Treiber sendet `Wce_SetWindow` mit
 `src == dst == 1920x1080`, fest verdrahtet, einmal beim Probe
 (`0094-media-sun50i-h713-hdmirx.patch`, `h713_hdmirx_wce_args`). Ein erneuter Aufruf mit richtiger
-Geometrie **gelingt, ändert aber nichts** — die Registerprogrammierung hängt hinter `UpdateWce`.
+Geometrie **gelingt, ändert aber nichts** - die Registerprogrammierung hängt hinter `UpdateWce`.
 **M6 ist beantwortet:** die komplette Stock-Quellwechselfolge (`Wce_SetWindow` -> `SetSource(1)` ->
 `SetSource(3)` -> `DisableBlackScreen`) läuft fehlerfrei durch und bewegt nichts. Deckt sich mit
 `re/notes/DEAD-ENDS.md` §81 (HW-IRQ-getaktete Zustandsmaschine).
@@ -118,7 +118,7 @@ am Gerät: Bild / Konsole / Bild, `0 ohne Antwort` durchweg.
 
 ---
 
-## Prüfstand — nicht vergessen
+## Prüfstand - nicht vergessen
 
 Vor **jedem** Bildurteil die Quelle prüfen. Der Zuspieler stand versehentlich auf einem X-Schirm
 von 1920x1080, während HDMI mit 1280x720 nur den linken oberen Ausschnitt zeigte; ein Teil der

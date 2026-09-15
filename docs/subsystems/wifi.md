@@ -1,16 +1,16 @@
 # Wi-Fi: AIC8800D80 over SDIO
 
 The AIC8800D80 gives the projector an access point or a station, chosen and configured in
-`/etc/h713/wifi.env` and brought up by `h713-wifi.service` — nothing to build for a channel or
+`/etc/h713/wifi.env` and brought up by `h713-wifi.service` - nothing to build for a channel or
 password change. The driver is out-of-tree: two modules (`aic8800_bsp`, `aic8800_fdrv`), built and
 vermagic-checked against the running kernel, installed next to the in-tree modroot rather than in it.
 
 ## Driver
 
 Carried as a patch series against a pinned vendor tarball (`radxa-pkg/aic8800`, rebased onto release
-`2026_0123`) the same way the kernel itself is carried — `mainline/patches/aic8800/series`, and never
+`2026_0123`) the same way the kernel itself is carried - `mainline/patches/aic8800/series`, and never
 applied to the kernel tree. On top of the upstream rebase it adds the mainline-sunxi build target, the
-H713 power-on sequencing (`wlan_regon`, hardcoded to GPIO 385 — PM1 on the R_PIO bank, confirmed
+H713 power-on sequencing (`wlan_regon`, hardcoded to GPIO 385 - PM1 on the R_PIO bank, confirmed
 correct for this board after a false lead on 12.09.), SDIO-clock and chip-up-timeout tuning, and a
 guard so the 1.9 MB proprietary firmware-as-C-array blob is never built in. Since `aic8800-0007` the
 number comes from the device tree instead, with the module parameter kept as an override; the patch is in
@@ -22,7 +22,7 @@ not been exercised on hardware.
 Never shipped in the image. `h713-extract` pulls the 13-file SDIO firmware set from **the user's own**
 device dump (`vendor:/etc/firmware/aic8800d80/`) into `/lib/firmware/aic8800_fw/SDIO/aic8800D80/`, the
 same way it pulls the HDCP keys and the display firmware. No dump directory means no Wi-Fi chip on
-that unit — not an error. Measured 12.09.: this stock set brings the chip up with the rebased driver
+that unit - not an error. Measured 12.09.: this stock set brings the chip up with the rebased driver
 (`wlan0`, `phy0`); the differently-sourced firmware set that used to live in this repo's legacy tree
 is not needed. That closed the licensing question that had kept Wi-Fi out of the release rootfs
 (`analyse/boot/wlan-aic8800-messung-20260912.txt`).
@@ -31,9 +31,9 @@ is not needed. That closed the licensing question that had kept Wi-Fi out of the
 
 The wiphy is self-managed, so cfg80211's `regulatory.db` never governs it. The driver carries its own
 table (185 countries) and selects from it with a `default_ccode` module parameter, exposed by patch
-`aic8800-0006` — before that patch it was compiled in as `"00"`, a permissive world entry wide enough
+`aic8800-0006` - before that patch it was compiled in as `"00"`, a permissive world entry wide enough
 to cover DFS and weather-radar spectrum with no DFS restriction. `h713-wifi` now sets the domain at
-load time from `country=` in `wifi.env`; the shipped default is `DE` — a real domain, even if it turns
+load time from `country=` in `wifi.env`; the shipped default is `DE` - a real domain, even if it turns
 out to be the wrong one for wherever the device actually is, is judged safer than that permissive
 fallback.
 
@@ -45,7 +45,7 @@ acceptance run). Station mode has not been tried on this build.
 
 ## Bluetooth is missing
 
-Not a driver problem — it is the same `aic8800` chip and the same module family. The Bluetooth
+Not a driver problem - it is the same `aic8800` chip and the same module family. The Bluetooth
 firmware (`fmacfwbt_*`) does not exist in the vendor dump, only in an SDK-sourced set carried in
 another tree under an unclear license; without firmware, `bluez` would be a daemon with no radio
 behind it. Reasoning kept next to the package list itself:
@@ -69,7 +69,7 @@ build. See [`docs/tools/h713-wifi.md`](../tools/h713-wifi.md) for the file forma
 
 Access point, 2.4 GHz channel 6, one client at −50 dBm (2026-09-12): link 72.2 MBit/s tx / 52.0 MBit/s rx
 (MCS 7 / MCS 5), **5.7 MB/s** of real throughput over SSH, DHCP and WPA2 without complaint. Ping times in
-the same session swung between 3 ms and 2 s — throughput is unaffected, and the cause is unexamined; power
+the same session swung between 3 ms and 2 s - throughput is unaffected, and the cause is unexamined; power
 saving on the radio is the obvious suspect.
 
 Details: `doku/60-offen.md` (§WLAN und Bluetooth, §WLAN vor dem Release),

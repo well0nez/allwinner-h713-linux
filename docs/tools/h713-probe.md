@@ -1,4 +1,4 @@
-# `h713_probe` — what is this board?
+# `h713_probe` - what is this board?
 
 A U-Boot build that answers one question about an H713 device nobody here has ever seen, and writes nothing
 while doing it. It is meant for people whose projector is not the HY310 this port was built on.
@@ -6,12 +6,12 @@ while doing it. It is meant for people whose projector is not the HY310 this por
 Everything the port needs to know about a new board is one profile row: the size and SHA-256 of its
 `display.bin`, the project ID it declares, the DRAM settings its own boot0 uses, how many partitions it has
 and where its vendor files are. All of that is readable off the device. None of it needs a write, and none
-of it needs the device to be in our hands — which is the whole point, because the table can only ever
+of it needs the device to be in our hands - which is the whole point, because the table can only ever
 describe boards someone has held.
 
 ## What it does not do
 
-- **No write to the eMMC.** Not the partition table, not the environment — the build has no writable
+- **No write to the eMMC.** Not the partition table, not the environment - the build has no writable
   environment at all (`CONFIG_ENV_IS_NOWHERE`), so even a stray `saveenv` has nowhere to go.
 - **The coprocessor stays in reset.** The display firmware is read and hashed, never started. Note
   that this is *not* what your device normally does: the vendor's own U-Boot loads `mips/` and
@@ -27,7 +27,7 @@ installer build. Don't leave it running unattended.
 
 ## Running it
 
-The device has to be in FEL. Hold the reset button while applying power, or — if Linux is already running —
+The device has to be in FEL. Hold the reset button while applying power, or - if Linux is already running -
 use [`h713-fel`](h713-fel.md).
 
 ```
@@ -58,13 +58,13 @@ session.
 ```
 
 Paste all of it into an issue. Between the DRAM block, the digest and the project list, that is enough to
-write the table row — and to build a U-Boot with the right DRAM clock for the board.
+write the table row - and to build a U-Boot with the right DRAM clock for the board.
 
 ### The profile row
 
 Everything above is written for a person watching a console; this block is written for the file that
 comes out of it. One `key: value` line per field, named exactly as `h713-install identify` names it,
-in the order a board profile is written — so `boards/<id>/` and `installer/h713/profiles/<id>.py` can
+in the order a board profile is written - so `boards/<id>/` and `installer/h713/profiles/<id>.py` can
 be filled in from a pasted log without anyone here ever holding the board.
 
 ```
@@ -88,12 +88,12 @@ secure_storage: sunxi at LBA 12288 (map lists 6 entries; item magic 0x17253948 a
 Three of those need a word.
 
 **`panel.declared_project_id`, and where `panel_config.ini` was found.** The panel follows the id the
-board declares, never the firmware image — one `display.bin` serves two panels
+board declares, never the firmware image - one `display.bin` serves two panels
 ([mips.md](../subsystems/mips.md)). The probe resolves the id the way the boot path does:
 `h713_project` from the environment first, which is what the installer writes, and then the
 `panel_config.ini` line says the file was not read at all; otherwise the file itself, looked up **by
-partition name** — `Reserve0_<slot>`, then `Reserve0`, then `media_data`. `ProjectID = 48` in that file
-is decimal and means 0x30. If neither source exists, both lines say so instead of guessing — that
+partition name** - `Reserve0_<slot>`, then `Reserve0`, then `media_data`. `ProjectID = 48` in that file
+is decimal and means 0x30. If neither source exists, both lines say so instead of guessing - that
 board's panel has to be measured.
 
 **Both bootloader slots are hashed**, addressed by name (`1#bootloader_a`, `1#bootloader_b`) because
@@ -102,7 +102,7 @@ not always the same file, so "which one is live" and "do the two agree" are sepa
 restore needs both answered. `mips.bootloader_a_equals_b: no` is a fact about your device, not a fault.
 
 **`secure_storage` reports presence and a name, never bytes.** LBA 12288 is the sunxi secure storage:
-HDCP 1.4 and 2.2 keys, the WLAN and Bluetooth MAC addresses, the serial number — none of it in any
+HDCP 1.4 and 2.2 keys, the WLAN and Bluetooth MAC addresses, the serial number - none of it in any
 firmware image, none of it recoverable once lost. The row prints the shape only: how many entries the
 map at LBA 12288 lists, that the item magic `0x17253948` is there sixteen sectors in (the map itself is a
 plain `name:size` list without one), and what the first item calls itself. No contents, no digest, and
@@ -116,17 +116,17 @@ probe never does. That is the one sentence in the output worth reading twice.
 
 It is read from the boot0 header on the eMMC, not from a firmware image: that is the copy the device boots.
 
-What our builds ship is not identical to it. `tpr0`–`tpr2` are computed from the clock by the DDR3 timing
+What our builds ship is not identical to it. `tpr0` - `tpr2` are computed from the clock by the DDR3 timing
 code and never reach the hardware on that path, and `para2`/`tpr13` differ too: ours are
 `0x04000000`/`0xb4016103` where the HY310's own boot0 carries `0`/`0x34010100`, in the stock image and in a
 full dump of the device alike, and why is not written down anywhere (`doku/120` §4.1). But `zq`, `para1`, the
-mode registers and `tpr3`–`tpr12` are taken verbatim, and `tpr11`/`tpr12` in particular are per-board PHY
+mode registers and `tpr3` - `tpr12` are taken verbatim, and `tpr11`/`tpr12` in particular are per-board PHY
 tuning that cannot be derived from anything. Those are the numbers a new board has to supply.
 
 ## Which DRAM clock the probe itself runs at
 
-624 MHz. The two boards this port knows share one DRAM value set and differ only in the clock — 624 on the
-bench board, 792 on the HY310 — so 624 is the conservative end of the range and the branch of the DRAM code
+624 MHz. The two boards this port knows share one DRAM value set and differ only in the clock - 624 on the
+bench board, 792 on the HY310 - so 624 is the conservative end of the range and the branch of the DRAM code
 a low-clock board takes. It is a starting value, not a claim about your board: what your board actually uses
 is in the output.
 
@@ -136,7 +136,7 @@ the place to start, and those can also be read out of a dump without running any
 
 ## Where the vendor files are
 
-On a stock device they live in a FAT partition the vendor calls `bootloader_a` or `bootloader_b` —
+On a stock device they live in a FAT partition the vendor calls `bootloader_a` or `bootloader_b` -
 which of the two is live comes from the A/B slot byte in `misc`, resolved exactly as stock resolves
 it; on a device already running this port they are on `hy310-boot`. The probe asks the GPT for those
 **names**, not for an index, because an index is the one thing two layouts never share. The

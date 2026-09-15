@@ -1,4 +1,4 @@
-# tools/ — Hilfsskripte (Bring-up-Phase, August/September 2026)
+# tools/ - Hilfsskripte (Bring-up-Phase, August/September 2026)
 
 Nicht mehr im täglichen Gebrauch, aber funktionsfähig und gelegentlich nützlich. Der Betrieb läuft über
 `h713-tv` und die Skripte unter `analyse/hdmi-seq/` (siehe `doku/50-befehle.md`).

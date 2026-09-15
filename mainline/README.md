@@ -1,11 +1,11 @@
 # H713 mainline bring-up
 
-Mainline firmware and Linux for the **Allwinner H713 (sun50iw12)** SoC — a
+Mainline firmware and Linux for the **Allwinner H713 (sun50iw12)** SoC - a
 fully open boot chain (U-Boot SPL → TF-A BL31 → U-Boot → Linux) with a
 64-bit Debian userland, replacing the vendor Android stack.
 
 > **Status (2026-07-19):** arm64 Debian 13 on Linux **6.18.38 LTS** boots from
-> eMMC to a root login, 4-core SMP, HS400 eMMC — and boots **standalone**
+> eMMC to a root login, 4-core SMP, HS400 eMMC - and boots **standalone**
 > (power-on → Debian, no host). The signed key-only rootfs, growfs, serial
 > recovery, modules, and sshd are hardware-verified on the HY200 bench board.
 > 32-bit Linux also boots (single-core). See [docs/status.md](docs/status.md)
@@ -13,7 +13,7 @@ fully open boot chain (U-Boot SPL → TF-A BL31 → U-Boot → Linux) with a
 
 ## Hardware
 
-Two physically different H713 boards exist — **know which one you have**:
+Two physically different H713 boards exist - **know which one you have**:
 
 | Board | Silkscreen | DRAM | Notes |
 |-------|-----------|------|-------|
@@ -21,7 +21,7 @@ Two physically different H713 boards exist — **know which one you have**:
 | **Projector** | HY200_QZ713_V2 | **LPDDR3** (1 GiB) | Inside a projector; do not risk it |
 
 Feeding the wrong DRAM parameters trains "OK" but reads hang. Always name the
-board a test ran on. Neither board has an SD slot — boot media is **eMMC or
+board a test ran on. Neither board has an SD slot - boot media is **eMMC or
 FEL only**. There is a hardware **FEL button** (recovery vector).
 
 ## Boot chain
@@ -35,20 +35,20 @@ BROM → U-Boot SPL (DRAM init) → TF-A BL31 (EL3, @0x40000000 in DRAM)
 
 ## Layout
 
-- `external/` — the three firmware components as git submodules pinned to our
+- `external/` - the three firmware components as git submodules pinned to our
   GitHub forks (curated H713 commit series on top of upstream):
   `external/u-boot/`, `external/arm-trusted-firmware/`, `external/sunxi-tools/`.
   Fetch them with `git submodule update --init`.
-- `patches/kernel/` — kernel patch series (well0nez H713 drivers + our arm64
+- `patches/kernel/` - kernel patch series (well0nez H713 drivers + our arm64
   additions), applied to a pinned mainline tag. See
   [patches/kernel/README.md](patches/kernel/README.md).
-- `tools/` — hardware test/flash tooling (`serial/` console + FIT loaders,
+- `tools/` - hardware test/flash tooling (`serial/` console + FIT loaders,
   `rootfs/` Debian build helpers).
-- `docs/` — project documentation (build, flash, status, gotchas). Docs live
+- `docs/` - project documentation (build, flash, status, gotchas). Docs live
   here, **not** in the submodules.
-- `build/` — reproducible build orchestrator (`build.sh`).
-- `config/` — pinned version + toolchain manifest (`versions.env`, `toolchain.md`).
-- `local/` — ignored local-only captures, historical research/build trees, and
+- `build/` - reproducible build orchestrator (`build.sh`).
+- `config/` - pinned version + toolchain manifest (`versions.env`, `toolchain.md`).
+- `local/` - ignored local-only captures, historical research/build trees, and
   proprietary recovery material. It is part of the workspace, never Git.
 
 ## Quick start

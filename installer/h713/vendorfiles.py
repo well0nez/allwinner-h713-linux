@@ -311,7 +311,7 @@ def check_pq(name: str, data: bytes, tmp: Path) -> List[str]:
                 findings.append("no three-column port rows")
             elif not any(line[2].startswith("HDMI") for line in lines):
                 findings.append("no HDMI port")
-    except Exception as e:  # noqa: BLE001 — every unreadability is a finding, not a stop
+    except Exception as e:  # noqa: BLE001 - every unreadability is a finding, not a stop
         findings.append(f"not readable: {e}")
     return findings
 

@@ -66,7 +66,7 @@ class SliceSource(Source):
 
 
 class SparseSource(Source):
-    """Read an Android sparse image (simg) as a logical image — without simg2img."""
+    """Read an Android sparse image (simg) as a logical image - without simg2img."""
     MAGIC = 0xED26FF3A
     RAW, FILL, DONT_CARE, CRC = 0xCAC1, 0xCAC2, 0xCAC3, 0xCAC4
 

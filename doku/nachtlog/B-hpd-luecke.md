@@ -1,6 +1,6 @@
-# B — Die HPD-Lücke: warum der Treiber den falschen Pin bewegt (07:00–08:30)
+# B - Die HPD-Lücke: warum der Treiber den falschen Pin bewegt (07:00-08:30)
 
-Agent: Paket B, Teilauftrag „ein Punkt fehlt noch". **Board nicht angefasst** — kein `ssh`,
+Agent: Paket B, Teilauftrag „ein Punkt fehlt noch". **Board nicht angefasst** - kein `ssh`,
 kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach `tftp/`. Kein
 `sudo`, kein `git`. Geändert: `mainline/patches/kernel/0091-...patch` und
 `doku/82-arisc-treiber.md`. `series` und `build/build.sh` unberührt; Prüfbau in einer
@@ -11,11 +11,11 @@ gekennzeichneten Kopie, danach gelöscht.
 ## 0. Die Kurzfassung
 
 **Die Befehlsfolge des Treibers ist Zeichen für Zeichen die des Skripts. Der Unterschied
-ist die Geschwindigkeit — und ein Unterbefehl, dessen Quittung zu früh kommt.**
+ist die Geschwindigkeit - und ein Unterbefehl, dessen Quittung zu früh kommt.**
 
 `HostHDMIMAP` ist der **einzige** Unterbefehl der `0x11`-Gruppe, dessen Handler seine
 Argumente **nach** dem `memset`, auf das der Treiber wartet, noch einmal aus dem Puffer der
-Empfangspumpe liest — und zwar hinter einem Log-Aufruf. Das Skript wartet danach 600 ms und
+Empfangspumpe liest - und zwar hinter einem Log-Aufruf. Das Skript wartet danach 600 ms und
 merkt nichts. Der Treiber schiebt den nächsten Befehl nach ~1 ms nach und überschreibt die
 Karte, bevor die Firmware sie gelesen hat.
 
@@ -23,8 +23,8 @@ Der nächste Befehl ist `SetEDIDVersion 2`; seine Nutzlast ist `11 03 02 00 00 �
 Firmware liest daraus die Karte **2,0,0**. Damit trägt **Port 0 den Pin 2**, und
 `PullHotPlug` bewegt Bit 2 statt Bit 0 des Pin-Registers.
 
-Genau das steht in der Messung: `0x07091014` ging von `0x07` auf `0x03` — Bit 2 gelöscht.
-Stock steht im verbundenen Zustand auf `0x06` — Bit 0 gelöscht. Der Zuspieler hängt an
+Genau das steht in der Messung: `0x07091014` ging von `0x07` auf `0x03` - Bit 2 gelöscht.
+Stock steht im verbundenen Zustand auf `0x06` - Bit 0 gelöscht. Der Zuspieler hängt an
 Bit 0 und hat deshalb nie eine steigende Flanke gesehen, obwohl jeder einzelne Schritt der
 Folge `0` zurückgegeben hat.
 
@@ -40,7 +40,7 @@ Folge `0` zurückgegeben hat.
 | 1 | `0x2011` 0,0 | `arisc_hdmi_reset_edid()` → `0x2011` 0,0 | ja |
 | 2 | `0x0011` 0,1, data `2` | `arisc_hdmi_set_portmap({0,1,2})` → `0x0011` 0,1, data `2` | ja |
 | 3 | `0x0311` 2,0 | `0x0311` 2,0 | ja |
-| 4–11 | `0x0111` frag, EDID[frag*64], 63 B | dasselbe | ja |
+| 4-11 | `0x0111` frag, EDID[frag*64], 63 B | dasselbe | ja |
 | 12 | `0x0215` 0,0 | dasselbe | ja |
 | 13 | `0x0315` 0,0 | `arisc_hdmi_get_edid(0,…)` → `0x0315` 0,0 | ja |
 | 14 | `0x0511` 0,0 | `arisc_hdmi_audio_mode(0,0)` → `0x0511` 0,0 | ja |
@@ -53,8 +53,8 @@ derselbe: beide schreiben die Nutzlast direkt nach `0x115f59` und schicken einen
 Zwei-Wort-Rahmen mit Länge 0. Es bleiben vier Unterschiede, und nur der erste ist tragend:
 
 1. **Abstand.** Das Skript startet je Befehl einen eigenen Python-Prozess und schaut danach
-   `--settle 0.6` s zu (`0x0315`: 1,5 s). Der Treiber wartet auf den Scratch-Vergleich —
-   `usleep_range(500, 1000)` — und sendet den nächsten Befehl unmittelbar danach. Der
+   `--settle 0.6` s zu (`0x0315`: 1,5 s). Der Treiber wartet auf den Scratch-Vergleich -
+   `usleep_range(500, 1000)` - und sendet den nächsten Befehl unmittelbar danach. Der
    ganze Vorlauf bis `PullHotPlug DOWN` dauert beim Treiber **0,85 s** (10,85 s gemessen
    minus die 10 s HPD-low), beim Skript rund 15 s.
 2. Doorbell-Puls: Skript ja, Treiber nein. Am Gerät belegt, dass die Handler auch ohne Puls
@@ -91,7 +91,7 @@ Der Unter-Dispatch dahinter kennt genau fünf Werte:
 ```
 
 `hi = 4` (**SET5VFlag**) und `hi = 5` (**SetEDIDAudioMode**) fallen auf `0x117f8` und tun
-**nichts**. Beide Läufe schicken sie, beide Läufe bekommen dasselbe Nichts — als Ursache
+**nichts**. Beide Läufe schicken sie, beide Läufe bekommen dasselbe Nichts - als Ursache
 scheiden sie aus. (Für doku/82 §12.5 ist das die Teilantwort: wenn die ARISC auf 5 V
 reagiert, dann nicht über `0x0411`.)
 
@@ -99,11 +99,11 @@ reagiert, dann nicht über `0x0411`.)
 
 | `hi` | liest aus dem Pumpen-Puffer | wohin | Dispatcher bekommt |
 |---|---|---|---|
-| 1 | 65 B ab Nutzlast[2] (`0x1160c`–`0x1162c`) | Scratch | Zeiger auf Scratch (`0x11634`) |
+| 1 | 65 B ab Nutzlast[2] (`0x1160c` - `0x1162c`) | Scratch | Zeiger auf Scratch (`0x11634`) |
 | 2 | Nutzlast[2], [3] (`0x1164c`, `0x11658`) | Scratch | Zeiger auf Scratch (`0x11660`) |
 | 3 | Nutzlast[2] (`0x11678`) | Scratch | Zeiger auf Scratch (`0x11660`) |
-| 0x20 | nichts | — | — |
-| **0** | Nutzlast[2],[3],[4] (`0x115bc`, `0x115c8`, `0x115d4`) **nur für die Logzeile**, dann `l.jal 0xbf70` (`0x115d8`), dann `l.j 0x11f94` (`0x115f0`) mit `r3 = &Nutzlast[2]` | — | **Zeiger in den Pumpen-Puffer** |
+| 0x20 | nichts | - | - |
+| **0** | Nutzlast[2],[3],[4] (`0x115bc`, `0x115c8`, `0x115d4`) **nur für die Logzeile**, dann `l.jal 0xbf70` (`0x115d8`), dann `l.j 0x11f94` (`0x115f0`) mit `r3 = &Nutzlast[2]` | - | **Zeiger in den Pumpen-Puffer** |
 
 Und `0x11f94` liest ihn danach noch einmal:
 
@@ -179,15 +179,15 @@ Mit der überschriebenen Karte `2,0,0` dagegen:
 
 | Messung | Erklärung |
 |---|---|
-| Skript vor UP: `1014 = 0x07`, `b04 = 0x00` | Alle drei Pins low (DOWN auf Port 0 hatte Bit 0 gesetzt, die anderen standen schon). `b04 = 0` ist die Klammer von `RequestEDID`: `0x1269c` ruft `0x11cac(7,0)` (Bits 0–2 löschen), erst `0x12724` ruft `0x11cac(7,1)` und setzt sie wieder — und dazwischen schiebt die Firmware vier Rahmen à 0x48 B durch ein 8-Wort-FIFO. Das Skript hatte nur einmal gedraint, die Firmware hing also noch im Senden. |
+| Skript vor UP: `1014 = 0x07`, `b04 = 0x00` | Alle drei Pins low (DOWN auf Port 0 hatte Bit 0 gesetzt, die anderen standen schon). `b04 = 0` ist die Klammer von `RequestEDID`: `0x1269c` ruft `0x11cac(7,0)` (Bits 0-2 löschen), erst `0x12724` ruft `0x11cac(7,1)` und setzt sie wieder - und dazwischen schiebt die Firmware vier Rahmen à 0x48 B durch ein 8-Wort-FIFO. Das Skript hatte nur einmal gedraint, die Firmware hing also noch im Senden. |
 | Skript nach UP: `1014 = 0x06`, `b04 = 0x07` → `connected` | Karte intakt → Pin 0 → Bit 0 gelöscht. `0x06` ist derselbe Wert wie im Stock-Abzug (`re/captures/weltneuheit/stock-post-hdmi.txt`, Z. 931). `b04` steht wieder auf 7, weil `0x12724` inzwischen gelaufen ist (der Sendeversuch lief in seine Frist). |
 | Treiber: `0x07` → `0x03`, `disconnected` | Karte auf `2,0,0` überschrieben → Pin 2 → Bit 2 gelöscht. Bit 0 (der Stecker) wurde in der ganzen Folge **nie angefasst** und blieb low. |
-| Treiber im bereits verbundenen Zustand: `0x03`/`0x07` vorher wie nachher, Verbindung bleibt | Dieselbe kaputte Karte: DOWN setzt Bit 2, UP löscht es wieder — vor und nach der Folge steht dasselbe da, und Bit 0 wird nicht berührt, also reißt die Folge auch nichts ab. |
+| Treiber im bereits verbundenen Zustand: `0x03`/`0x07` vorher wie nachher, Verbindung bleibt | Dieselbe kaputte Karte: DOWN setzt Bit 2, UP löscht es wieder - vor und nach der Folge steht dasselbe da, und Bit 0 wird nicht berührt, also reißt die Folge auch nichts ab. |
 
-### Was die Werte **nicht** hergeben — offen und benannt
+### Was die Werte **nicht** hergeben - offen und benannt
 
 In dem einen Lauf, in dem `0x03` ein **verbundener** Zustand war, ist Bit 0 gesetzt, also
-Pin 0 low — und der Zuspieler meldete trotzdem `connected`. Das passt nicht zu „Bit 0 =
+Pin 0 low - und der Zuspieler meldete trotzdem `connected`. Das passt nicht zu „Bit 0 =
 der Stecker" und ist mit den vorliegenden Daten **nicht** entscheidbar. Solange das offen
 ist, gilt: **der Registerwert allein bestimmt den Zustand nicht.** Was ihn bestimmt, ist
 das Paar aus (a) der Karte `0x17248+Port*8+2`, die sagt, *welches* Bit ein Puls bewegt,
@@ -206,11 +206,11 @@ Wirkung. Die Messvorschrift dafür steht in §6.
 | 3 | `arisc_hdmi_set_portmap()` ruft das nach `arisc_send()` auf und lehnt Pins ≥ 3 vorab ab (`0x121e4` hat für alles andere nur den Fehlerpfad `0x12304`). | §2.3 |
 | 4 | Kommentarblock an `arisc_hdmi_set_portmap()`: die vollständige Fallunterscheidung, welcher Zweig den Puffer wann losläßt, warum das Skript den Fehler nicht sieht, und was aus der Karte `2,0,0` folgt. | §2 |
 | 5 | Der Kommentar an `arisc_expected_scratch()` sagt jetzt ausdrücklich, dass die Quittung für `hi = 0` **nicht** reicht, und warum sie für `hi = 4`/`5` trotzdem genügt (die beiden bewirken nichts). | §2.1 |
-| 6 | `debugfs status` zeigt neu `portmap: a,b,c` — die Karte, **wie die Firmware sie hält**. Nur SRAM A2, kein `0x0709xxxx`. | Abnahme |
+| 6 | `debugfs status` zeigt neu `portmap: a,b,c` - die Karte, **wie die Firmware sie hält**. Nur SRAM A2, kein `0x0709xxxx`. | Abnahme |
 
 **Was ausdrücklich *nicht* geändert wurde:** keine Pause zwischen den Unterbefehlen, keine
 Wiederholung, kein Puls, kein Timeout als Heilmittel. Die Quittung war zu schwach; sie ist
-jetzt die richtige. Der Treiber bleibt schneller als das Skript — er wartet nur auf das,
+jetzt die richtige. Der Treiber bleibt schneller als das Skript - er wartet nur auf das,
 was der Befehl bewirkt, statt auf das, was der Gruppenhandler in seiner Vorrede tut.
 
 ### Belegt vs. vermutet
@@ -225,7 +225,7 @@ dazwischen; dass `0x11f94` Pin und `1 << Pin` in die Sätze ab `0x1724a` schreib
 und dass DOWN/UP auf Port 0 den Zuspieler umschaltet (K4).
 
 **Vermutet, bis der Abnahmelauf es sagt:** dass das Fenster wirklich bei *jedem* Lauf
-zuschlägt und nicht nur meistens — das Rennen ist ein Rennen, nicht ein Determinismus. Die
+zuschlägt und nicht nur meistens - das Rennen ist ein Rennen, nicht ein Determinismus. Die
 neue Prüfung deckt beide Ausgänge ab: gewinnt der Treiber das Rennen, geht `portmap` sofort
 durch; verliert er es, steht die Karte falsch, die Prüfung schlägt an und nennt den Wert.
 Deshalb ist im Abnahmelauf **`dmesg` auch dann interessant, wenn alles grün ist**.
@@ -248,9 +248,9 @@ make ARCH=arm64 LLVM=1 W=1 M=drivers/soc/sunxi modules             ->  LD [M] su
 
 Die einzige Warnung im Verzeichnis kommt aus `cpu_comm/cpu_comm_rpc.c` (`prev_idx set but
 not used`) und ist **vorbestehend**. `llvm-18` lag nicht im `PATH` und wurde für den Bau
-davorgehängt (`PATH=/usr/lib/llvm-18/bin:$PATH`) — nichts am Rechner geändert.
+davorgehängt (`PATH=/usr/lib/llvm-18/bin:$PATH`) - nichts am Rechner geändert.
 
-`checkpatch.pl --no-tree --no-signoff`: **0 errors, 6 warnings** — dieselben sechs wie beim
+`checkpatch.pl --no-tree --no-signoff`: **0 errors, 6 warnings** - dieselben sechs wie beim
 alten `0091` (Zeilenlänge in der Commit-Message, 5× „acknowledgement"). Keine neue.
 
 `patch -p1 -R --dry-run` gegen den Prüfbau läuft glatt durch: der Patch deckt exakt den
@@ -299,7 +299,7 @@ ssh user@192.168.8.162 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
 
 **Gutkriterien, alle drei nötig:**
 
-1. `status` zeigt **`portmap: 0,1,2`** — die Karte, wie die Firmware sie hält. Das ist der
+1. `status` zeigt **`portmap: 0,1,2`** - die Karte, wie die Firmware sie hält. Das ist der
    Punkt, den diese Änderung herstellt.
 2. `echo edid` gibt **0** zurück und `dmesg` endet mit
    `EDID/HPD-Sequenz auf Port 0 abgeschlossen`.
@@ -316,12 +316,12 @@ ssh root@192.168.8.141 'busybox devmem 0x07091014; busybox devmem 0x07091b04'
 
 Steht dort `0x06` und der Zuspieler bleibt trotzdem `disconnected`, liegt es **nicht** an
 der ARISC-Seite, und die Suche gehört auf die Zuspieler-/Kabelseite bzw. an das
-Ausgabe-Gate; steht dort etwas anderes als `0x06`, hat ein Dritter den Pin nachgezogen —
+Ausgabe-Gate; steht dort etwas anderes als `0x06`, hat ein Dritter den Pin nachgezogen -
 dann `busybox devmem 0x0011722c` (die drei Anforderungsfächer) unmittelbar danach lesen.
 
 **Wenn 1 rot ist** (`portmap` ≠ `0,1,2` oder `echo edid` liefert `-110` beim Portmap-
 Schritt), hat der Treiber das Rennen erneut verloren und die Prüfung hat es *gefangen* statt
-es durchzulassen — das ist das gewünschte Verhalten, nicht das alte Fehlerbild. `dmesg`
+es durchzulassen - das ist das gewünschte Verhalten, nicht das alte Fehlerbild. `dmesg`
 nennt dann Port, gelesenen und erwarteten Pin; die Zeile gehört ins Log, denn sie beweist
 das Rennen am Gerät.
 
@@ -333,7 +333,7 @@ das Rennen am Gerät.
 |---|---|
 | Firmware laden, Reset lösen, Notify quittieren | **grün am Gerät** |
 | `ResetEDIDModule`, `SetEDIDVersion`, 8 × `UpdateEDID`, `CheckEDIDUpdateStatus`, `RequestEDID` | **grün am Gerät** |
-| `HostHDMIMAP` | Handler lief, Karte wurde überschrieben — **Ursache belegt, Fix gebaut, Abnahme offen** |
+| `HostHDMIMAP` | Handler lief, Karte wurde überschrieben - **Ursache belegt, Fix gebaut, Abnahme offen** |
 | `SetEDIDAudioMode`, `SET5VFlag` | laufen durch; in dieser Firmware **wirkungslos** (belegt), Stock schickt sie trotzdem |
 | HPD DOWN/UP | mechanisch grün, bewegt bis zum Fix den falschen Pin |
 | Zuspieler `connected` aus dem Kernel | **offen bis zur Abnahme** |

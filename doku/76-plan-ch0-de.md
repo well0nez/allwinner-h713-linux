@@ -4,7 +4,7 @@
 
 **Stand 06.09.2026, 16:10.** Ausgangspunkt ist der heutige Durchbruch beim HDMI-Eingang: die Quelle wird über die
 ARISC erkannt, der HDMI-Empfänger ist **voll gelockt auf 1920×1080p60** (doku/75, Nachträge 14:55 und 15:25).
-Damit ist zum ersten Mal messbar, was danach passiert — und was nicht.
+Damit ist zum ersten Mal messbar, was danach passiert - und was nicht.
 
 Dieses Dokument hält den Stand fest, bevor irgendetwas geschrieben wird: erst die Kette messen, dann die Ursache
 benennen, dann den Eingriff an der richtigen Stelle. „ch0 einschalten" ist **nicht** die Aufgabe; ch0 ist ein
@@ -16,12 +16,12 @@ Symptom weiter unten in derselben Kette.
 |---|---|---|
 | HDMI-RX | `0x06940104` zählt **+60/s** in den oberen Bits, `+0x59c` +1/s | Empfänger arbeitet, 60 fps kommen an |
 | RX-Zustand (elog) | `port1 SwitchState 3→4→5`, `Set Valid Signal 0x20000`, Timing 2200×1125, aktiv 1920×1080, `AV mute:0 0` | Signal gültig und entstummt |
-| WCE (elog) | `UpdateWce ENTER`, `SetWindow ENTER`, alle fünf Knoten `CalcWindow`, `WriteReg` | **Die Fensterschicht hat komponiert** — genau das, was cstenger am 05./06.09. fehlte |
-| TVTOP-Datenpfad | `0x068B00B8/C4/D0`, `0x068B00DC/E8/F4`, `0x068B044C` alle **0** | **AUS** — hier bricht die Kette |
+| WCE (elog) | `UpdateWce ENTER`, `SetWindow ENTER`, alle fünf Knoten `CalcWindow`, `WriteReg` | **Die Fensterschicht hat komponiert** - genau das, was cstenger am 05./06.09. fehlte |
+| TVTOP-Datenpfad | `0x068B00B8/C4/D0`, `0x068B00DC/E8/F4`, `0x068B044C` alle **0** | **AUS** - hier bricht die Kette |
 | Capture (INCAP) | vollständig konfiguriert: Y-Ring `0x4C3EF000/0x4C5EE000/0x4C7ED000`, C-Ring `0x4C9EC000/0x4CBEB000/0x4CDEA000`, Fenster 1920×1080, Ausgabe-Bit 31 in `0x06940928/0968` **gesetzt** | eingeschaltet, aber ohne Zulauf |
 | DRAM-Puffer | alle sechs statisch, Y=`0x15`, C=`0x80`, **0 Byte Änderung in 2 s** | sauberes Schwarzbild, kein Live-Inhalt |
 | AFBD ch0 | `0x05600010 = 0x03000013` (von uns gesetzt), Latch wird verbraucht, Quellenpaar `0x320/0x324` **rotiert** zwischen zwei Slots | Kanal lebt, liest aber die schwarzen Puffer |
-| DE2-Schreibkanäle | `0x05000178 = 0x6002021c`, `0x050001B8 = 0x60020438`, `0x05000278`, `0x050002B8` — Werte konfiguriert, **Bit 31 = 0** | **AUS** |
+| DE2-Schreibkanäle | `0x05000178 = 0x6002021c`, `0x050001B8 = 0x60020438`, `0x05000278`, `0x050002B8` - Werte konfiguriert, **Bit 31 = 0** | **AUS** |
 | Fenster-Handle | `*(0x8b4a9da8) = 0`, Frame-Descriptor `0x05600098..a4 = 0` | unverändert offen |
 
 Kurz: **Signal ja, Fensterrechnung ja, Datenpfad nein.** Das Panel zeigt weiterhin die Linux-Konsole
@@ -30,7 +30,7 @@ Kurz: **Signal ja, Fensterrechnung ja, Datenpfad nein.** Das Panel zeigt weiterh
 ## 2. Die Ursachenkette (Firmware gelesen, nicht geraten)
 
 Alle Freigabe-Bits der Ausgabekette werden von **einer** Funktion gesetzt: `memory_agent_onoff` (0x8b15349c).
-Ihre Maske ist vollständig bekannt (IDA, heute nachgeprüft — die Adressen der alten Notizen stimmen mit unserer
+Ihre Maske ist vollständig bekannt (IDA, heute nachgeprüft - die Adressen der alten Notizen stimmen mit unserer
 Firmware überein):
 
 | Bit | Register |
@@ -46,11 +46,11 @@ Firmware überein):
 | 0x100 | DE `0x050C07B8` Bit 31 |
 | 0x200 | DE pool-2 `0x050C0478/04F8/0578/05F8/0678` Bit 31 |
 
-Unser Registerbild entspricht **exakt** `enable(0x008)` — nur die Capture. Das ist der „kein Signal"-Zweig von
+Unser Registerbild entspricht **exakt** `enable(0x008)` - nur die Capture. Das ist der „kein Signal"-Zweig von
 `memory_agent_update_onoff` (0x8b153140): er prüft `MemoryAgent+12` (Signal-ID) und schaltet, wenn dort
 `0x20002` oder `0x20003` steht, alles ab **außer** der Capture (Meldung „no signal, disable all memory agent
 without capture", die wir im elog sehen). Der Freigabe-Zweig baut dagegen die Maske
-`0x300 | 0x80 | 0x70 | 0x8/0x18` plus 7 — also die ganze DE-Seite.
+`0x300 | 0x80 | 0x70 | 0x8/0x18` plus 7 - also die ganze DE-Seite.
 
 `MemoryAgent+12` wird **ausschließlich** von drei Zustandseintritten der Projektor-Zustandsmaschine geschrieben
 (`AppTopProjector_PushSignalToMemoryAgent`, 0x8b1082e0):
@@ -60,7 +60,7 @@ without capture", die wir im elog sehen). Der Freigabe-Zweig baut dagegen die Ma
 - `EnterWaitingPipeLineReady` (0x8b108518, Zustand 3) → pusht das **echte** Signal ⇒ **einschalten**
 
 Der Übergang 2 → 3 passiert in `AppTopProjector_ThreadMain` (0x8b1091f4) beim **Timeout** der in Zustand 2
-gesetzten Deadline (ein Frame), nicht durch ein äußeres Ereignis. Es braucht also keinen ARM-Anstoß — die
+gesetzten Deadline (ein Frame), nicht durch ein äußeres Ereignis. Es braucht also keinen ARM-Anstoß - die
 Maschine müsste von allein durchlaufen, **wenn sie gestartet wird**.
 
 **Im elog fehlt jede Zustandsmeldung** (`EnterIdle`, `EnterWaitingWindowsReady`, `EnterWaitingPipeLineReady`,
@@ -72,7 +72,7 @@ Warum sie nicht anläuft, ist die eigentliche offene Frage. Zwei Stellen im gele
 
 1. **Ereignistyp.** `AppTopProjector_HandleSignalEvent` (0x8b108644) verzweigt auf den Quellentyp `sig[0]`:
    nur `== 1` (VidDec) führt in die Zustandsprogression, HDMI (3..6) landet ausschließlich in
-   `UpdateMemoryAgentSecondaryFlags` — dem Pfad, der `+12` nie anfasst. Das deckt sich mit unserer Beobachtung
+   `UpdateMemoryAgentSecondaryFlags` - dem Pfad, der `+12` nie anfasst. Das deckt sich mit unserer Beobachtung
    (Secondary-Flag „capture" gesetzt, sonst nichts).
 2. **Quellenwechsel.** In `ThreadMain` läuft `ApplyNewSource` nur, wenn die gemeldete Quelle sich von der
    aktiven (`this+224`) **unterscheidet**. Ist die aktive Quelle beim Firmware-Start bereits HDMI-1 (aus
@@ -87,12 +87,12 @@ Warum sie nicht anläuft, ist die eigentliche offene Frage. Zwei Stellen im gele
 | H1 | Die Zustandsmaschine startet nur bei einem **echten** Quellenwechsel | `SetSource` auf eine andere Quelle, dann zurück auf HDMI ⇒ `EnterIdle`/`EnterWaitingWindowsReady`/`EnterWaitingPipeLineReady` im elog | zwei `SetSource`-Aufrufe, elog Level 4 | offen |
 | H2 | Nur ein **VidDec-Ereignis** (Typ 1) treibt die Progression; HDMI-Ereignisse nie | auch nach erzwungenem Wechsel keine Zustandsmeldung | wie H1, Auswertung des Zweigs | offen |
 | H3 | Der Zustandsmaschine fehlt ein **Fertig-Signal der Fensterschicht** („windows ready") | Zustand 2 wird betreten, Zustand 3 nie | Zustandswort `AppTopProjector+4` live lesen | offen |
-| H4 | Die Firmware wartet auf einen **Frame-Descriptor** (`0x05600098`), den auf Stock der Decoder-Treiber liefert | Descriptor setzen ⇒ Progression läuft an (2026-06-13 device-verified) | Descriptor-Test, **erst nach H1–H3** | offen |
+| H4 | Die Firmware wartet auf einen **Frame-Descriptor** (`0x05600098`), den auf Stock der Decoder-Treiber liefert | Descriptor setzen ⇒ Progression läuft an (2026-06-13 device-verified) | Descriptor-Test, **erst nach H1-H3** | offen |
 | H5 | TVTOP/DE sind zusätzlich **takt- oder domänenseitig** gesperrt, die Firmware kann gar nicht schalten | Bits lassen sich auch von Hand nicht setzen | ein einzelner Schreibversuch auf `0x068B00B8`, sofort zurück | offen |
 
 Ausdrücklich **nicht** Teil des Plans: das Setzen der zehn Freigabe-Bits von Hand als „Lösung". Das wäre ein
 Workaround an der Stelle, an der die Firmware ihre eigene Zustandslogik hat (Regel: kein Quirk, außer Stock macht
-es identisch). Als **Messmittel** ist ein einzelner, sofort zurückgenommener Schreibversuch erlaubt — er
+es identisch). Als **Messmittel** ist ein einzelner, sofort zurückgenommener Schreibversuch erlaubt - er
 unterscheidet „Hardware gesperrt" von „Firmware will nicht".
 
 ## 4. Reihenfolge
@@ -117,13 +117,13 @@ unterscheidet „Hardware gesperrt" von „Firmware will nicht".
 - Die **Konsole** liegt auf ch2 und ist opak; jeder Bildnachweis für ch0 muss sie berücksichtigen (abschalten
   oder ROI außerhalb).
 - cstengers Befund „mit lebendem MIPS führt kein Weg an der WCE vorbei" ist bestätigt und heute ergänzt: die WCE
-  **rechnet** bei anliegendem Signal — sein Blocker (kein `UpdateWce`) ist mit dem HDMI-Signal weg.
+  **rechnet** bei anliegendem Signal - sein Blocker (kein `UpdateWce`) ist mit dem HDMI-Signal weg.
 
-## 6. Messreihe 06.09., 16:10–16:20 — die Kette lässt sich zünden, das Bild bleibt weiß
+## 6. Messreihe 06.09., 16:10-16:20 - die Kette lässt sich zünden, das Bild bleibt weiß
 
 **Instrument zuerst.** `analyse/hdmi-seq/wandcheck.py`, Messbereich auf der Projektionsfläche
 (x 220..1090, y 40..560 im 1280×720-Bild), Kamerabelichtung **fest** (`v4l2-ctl
---set-ctrl=auto_exposure=1,exposure_time_absolute=60`) — ohne feste Belichtung sind alle Differenzen wertlos,
+--set-ctrl=auto_exposure=1,exposure_time_absolute=60`) - ohne feste Belichtung sind alle Differenzen wertlos,
 die ersten beiden Vergleiche des Tages waren genau deshalb Fehlmessungen. Positivkontrolle: `/dev/fb0` schwarz
 gegen weiß ⇒ **100 % der Bildpunkte, mittlere Differenz 146**. Das Instrument zeigt an.
 
@@ -139,11 +139,11 @@ gegen weiß ⇒ **100 % der Bildpunkte, mittlere Differenz 146**. Das Instrument
 | AFBD ch0 `0x05600010` | `0x03000010` | **`0x03000013`** (von der **Firmware** gesetzt) |
 | elog | nichts | `vdd`-Dump: `kSourceId_VideoDec`, `AI_SIGNAL_MODE_DTV_1920_1080_P` |
 
-Damit ist der Gate-Mechanismus aus Abschnitt 2 am Gerät bestätigt — und zwar erstmals **mit anliegendem
+Damit ist der Gate-Mechanismus aus Abschnitt 2 am Gerät bestätigt - und zwar erstmals **mit anliegendem
 HDMI-Signal**, was beim Test vom 13.06. nicht der Fall war.
 
 **2. Aber die Firmware schaltet dabei den HDMI-Datenpfad ab.** Der Descriptor meldet die Quelle als
-*VideoDec*; der Freigabe-Zweig ruft dann `disable(0x387)` — und `0x387` enthält genau die drei TVTOP-Gruppen.
+*VideoDec*; der Freigabe-Zweig ruft dann `disable(0x387)` - und `0x387` enthält genau die drei TVTOP-Gruppen.
 Gemessen: TVTOP bleibt 0, die Capture verliert ihr Bit 31. Von Hand gesetzt bleibt das Capture-Bit zwar stehen,
 **die Ringpuffer bleiben trotzdem statisch** (0 geänderte Bytes in 2 s). Ohne TVTOP kein Zulauf.
 
@@ -156,13 +156,13 @@ Y-Ringpuffer und neutrales Chroma in die C-Puffer geschrieben, Latch jeweils gep
   99,8 % Bildänderung).
 
 Daraus folgt hart: **ch2 wird angezeigt, ch0 nicht.** Der Videokanal ist im AFBD aktiv, wird bedient (Latch),
-liest gültige Puffer — und erscheint trotzdem nicht auf dem Panel. Und ohne OSD-Kanal ist die Fläche nicht
+liest gültige Puffer - und erscheint trotzdem nicht auf dem Panel. Und ohne OSD-Kanal ist die Fläche nicht
 schwarz, sondern **weiß**, obwohl der einzige verbleibende Kanal schwarze Puffer liest. Es gibt also eine Stufe
 **hinter** dem AFBD, die den Videokanal nicht einbindet und im Leerfall Weiß ausgibt.
 
 Das ist die neue, konkrete Front: nicht „ch0 einschalten", sondern **die Ebeneneinbindung im DE-Mixer**.
 Die weiße Fläche der alten Notizen („NV12 white") ist damit reproduziert und zum ersten Mal von der
-Capture-Frage getrennt — sie tritt auch dann auf, wenn der Pufferinhalt bekannt und gültig ist.
+Capture-Frage getrennt - sie tritt auch dann auf, wenn der Pufferinhalt bekannt und gültig ist.
 
 **Zustand nach der Reihe:** OSD-Kanal wieder an, Konsole sichtbar, Descriptor bleibt gesetzt (Messmittel),
 Capture-Bit von Hand gesetzt. Nichts davon ist eine Lösung; der Descriptor gehört auf Stock ARM-seitig
@@ -177,9 +177,9 @@ geschrieben (decd `dec_reg_set_address`), unser Kernel tut es noch nicht.
 2. **Die Freigabe unter HDMI-Quelle erzwingen**, nicht unter VideoDec: `Flag182` entscheidet über die
    TVTOP-Gruppen, es kommt aus `DeviceManager_GetStatus(source_id)`. Registry lesen, dann den sauberen Weg
    bestimmen (richtige Quelle statt Flag-Poke).
-3. Erst danach Bildnachweis erneut — mit demselben Instrument und fester Belichtung.
+3. Erst danach Bildnachweis erneut - mit demselben Instrument und fester Belichtung.
 
-## 8. Messreihe 16:20–16:30 — **die Capture läuft live**; der Bruch sitzt zwischen DRAM und Panel
+## 8. Messreihe 16:20-16:30 - **die Capture läuft live**; der Bruch sitzt zwischen DRAM und Panel
 
 **Der wichtigste Befund des Tages.** Ein in den Y-Ringpuffer geschriebenes Markenmuster (`0xA5`) wird
 **binnen 200 ms vollständig überschrieben**. Es schreibt also etwas. Und es schreibt das echte Bild:
@@ -188,11 +188,11 @@ geschrieben (decd `dec_reg_set_address`), unser Kernel tut es noch nicht.
 |---|---|
 | `xrandr --gamma 1:1:1` | md5 `2f6ef72c`, Mittelwert 26,6, min 17, max 43 |
 | `xrandr --gamma 0.3:0.3:0.3` | md5 `bfd2684a`, Mittelwert 16,0, konstant |
-| wieder `1:1:1` | md5 `2f6ef72c` — **identisch zum ersten Zustand** |
+| wieder `1:1:1` | md5 `2f6ef72c` - **identisch zum ersten Zustand** |
 
 Der Pufferinhalt folgt reproduzierbar dem Signal der Quelle. Damit ist bewiesen:
 **HDMI-RX → Capture → DRAM funktioniert vollständig.** Die frühere Deutung „Capture schreibt nicht" war
-falsch — sie beruhte darauf, dass der Laptop ein dunkles Bild sendet (Mittelwert 26 von 255) und der
+falsch - sie beruhte darauf, dass der Laptop ein dunkles Bild sendet (Mittelwert 26 von 255) und der
 Vergleich zweier Aufnahmen desselben Standbilds naturgemäß null Änderung ergibt. Ein Standbild ist kein
 Stillstand.
 
@@ -204,21 +204,21 @@ Gamma-Umschaltung: 0 von 452 400 Bildpunkten über der Schwelle, während der Pu
 dokumentiertes Rezept nennt `0x39000000`. Der Wechsel ändert das Panelbild vollständig (100 % der Bildpunkte,
 mittlere Differenz 149): statt einer gleichmäßig weißen Fläche erscheint eine horizontal gestreifte Struktur
 mit scharfer Kante in der Bildmitte. Die Kante **wandert aber nicht** mit einem invertierten Testmuster in den
-Ringpuffern — der angezeigte Inhalt stammt also nicht aus ihnen, sondern aus einer Stufe der
+Ringpuffern - der angezeigte Inhalt stammt also nicht aus ihnen, sondern aus einer Stufe der
 Verarbeitungskette (NR/DETN/PROC), deren Zwischenpuffer wir nicht kennen. Das Register ist damit ein
 belegter, wirksamer Schalter auf der Panelseite, aber nicht die Lösung.
 
 **TVTOP ist hardwareseitig gesperrt** (H5 beantwortet): `0x068B00B8/C4/D0`, `0x068B00DC/E8/F4` und
 `0x068B044C` nehmen einen Schreibversuch **nicht an** und lesen weiter 0. Die Firmware kann sie also nicht
 einfach „vergessen" haben; sie sind ohne die passende Domänen-/Taktfreigabe tot. Für die Capture ist das
-folgerichtig ohne Belang — sie läuft ja.
+folgerichtig ohne Belang - sie läuft ja.
 
 ### Stand der Hypothesen aus Abschnitt 3
 
 | # | Ergebnis |
 |---|---|
 | H1/H2 | **bestätigt**: nur ein VideoDec-Ereignis (Quelle 1) treibt die Zustandsmaschine; HDMI-Ereignisse werden nur zwischengespeichert (`+224`) |
-| H3 | **beantwortet**: die Maschine stand auf Zustand 0, nicht 2 — sie lief nie an |
+| H3 | **beantwortet**: die Maschine stand auf Zustand 0, nicht 2 - sie lief nie an |
 | H4 | **bestätigt und ausgeführt**: der Descriptor bringt sie auf Zustand 4 und öffnet die DE-Schreibkanäle |
 | H5 | **bestätigt**: TVTOP nimmt keine Schreibzugriffe an |
 
@@ -226,7 +226,7 @@ folgerichtig ohne Belang — sie läuft ja.
 
 `DeviceManager` (Zeiger `0x8BAC1A5C`), 10 Einträge: Quellen 7/8/9/10 haben Status **0**, die HDMI-Quellen
 3/4/5/6 Status **1**, der Decoder (1) Status **3**, Quelle 0 Status 5. In `memory_agent_update_onoff` führt
-**nur Status 0** zur vollen Maske `0x7F` (mit TVTOP); bei Status ≠ 0 entsteht `0x78` — genau unser Registerbild.
+**nur Status 0** zur vollen Maske `0x7F` (mit TVTOP); bei Status ≠ 0 entsteht `0x78` - genau unser Registerbild.
 Die alte Notiz „VideoDec-Registry-Status 3→1 poken" zielt auf dieses Feld.
 
 ## 9. Wo es weitergeht
@@ -246,13 +246,13 @@ Die Aufgabe hat sich damit verschoben und ist enger:
 Werkzeuge dieser Sitzung: `analyse/hdmi-seq/wandcheck.py` (Bilddetektor mit fester Belichtung),
 `analyse/hdmi-seq/viddec_descriptor.py` (Descriptor setzen/lesen/entfernen).
 
-## 10. 19:22 — **das HDMI-Bild steht auf der Wand**, über AFBD Source 0 mit cstengers Sequenz
+## 10. 19:22 - **das HDMI-Bild steht auf der Wand**, über AFBD Source 0 mit cstengers Sequenz
 
 **Korrekturen zu Abschnitt 8 zuerst,** damit niemand den falschen Fährten folgt:
 
 - `0x051C006C` ist kein Ebenenwähler im Sinne eines Mixers, sondern ein Register im **LVDS-Block**
   (RE-Notizen: „LVDS-PHY adjustments … 0x051c006c"); cstenger nennt es den „plane-1 downstream selector".
-  Beides passt zusammen: Der Hardware-Mux ist **exklusiv** — Source 0 **oder** der RGB-Kanal erreicht den
+  Beides passt zusammen: Der Hardware-Mux ist **exklusiv** - Source 0 **oder** der RGB-Kanal erreicht den
   Encoder, keine Mischung (cstenger, Patch 0078). Die „Streifen" waren Source 0 mit leerem pool-1.
 - Mein Invertierungstest in Abschnitt 8 war **ungültig**: Die Capture überschreibt die Ringpuffer in unter
   200 ms, die Kamera löst später aus. Er hat nicht gezeigt, dass ch0 unsichtbar ist, sondern nur, dass die
@@ -261,13 +261,13 @@ Werkzeuge dieser Sitzung: `analyse/hdmi-seq/wandcheck.py` (Bilddetektor mit fest
 - Die IOMMU ist **ausgeschlossen**: Master 0 und 1 gehören dem Video-Codec (`iommus = <&iommu 0>, <&iommu 1>`),
   Bypass steht auf `0x7C`, der Display-Knoten hat keine `iommus`-Eigenschaft, keine Faults
   (`INT_STA`, `FAULT_VA` = 0). Stocks pool-1-Werte `0x00800000/0x009fa400` sind IOMMU-Adressen des
-  **Vendor**-Kernels — bei uns liest der AFBD physisch, wie der Konsolenkanal beweist.
+  **Vendor**-Kernels - bei uns liest der AFBD physisch, wie der Konsolenkanal beweist.
 - TVTOP (`0x068B0…`) gehört zur Maske für **Status-0-Quellen** (CVBS/ATV); für HDMI ist der Capture-Pfad ohne
   TVTOP nachweislich vollständig. Dass die Register nicht beschreibbar sind, ist für HDMI ohne Belang.
 
-**Was gefehlt hat — und was cstenger am 02.09. bereits gelöst hatte** (Patch
+**Was gefehlt hat - und was cstenger am 02.09. bereits gelöst hatte** (Patch
 `0078-drm-h713-add-fullscreen-nv12-overlay.patch`, Commit 3cdd89f, in seiner Serie, **nicht in unserer**):
-Source 0 liest im Ring-Modus (`+0x068 = 0x122`, bei uns von der Firmware gesetzt) aus **pool-1** — den vier
+Source 0 liest im Ring-Modus (`+0x068 = 0x122`, bei uns von der Firmware gesetzt) aus **pool-1** - den vier
 Y/C/Info-Slots `+0x070..+0x07C`, `+0x084..+0x090`, `+0x098..+0x0A4`. Bei uns war pool-1 **leer**; die
 Firmware füllt nur pool-2 (`+0x320/+0x324`). Dazu fehlten Chroma-Gain, Dirty-Latch und der Selektor.
 Seine fünf Zustandsteile: *source enable, source size, chroma gain, commit latch, plane-1 downstream selector.*
@@ -302,36 +302,36 @@ Alle Latches wurden verbraucht, alle Werte hielten; die Firmware ließ den Zusta
 Damit ist die gesamte Kette gezeigt: HDMI-RX → Capture → DRAM → AFBD Source 0 → PROC → Panel, **live**.
 
 **Was noch nicht stimmt:** Die Capture liefert **NV16** (Chroma in voller Höhe, 04.07.-Notiz), Source 0 liest
-NV12 (`+0x04C = 1920×540`) — die Farben sind damit noch falsch, das Luma-Bild ist korrekt. Der Ring wird von der
-Firmware über pool-2 gedreht, unsere Slots zeigen fest auf Slot 0 — ein Tearing-Risiko, kein Blocker.
+NV12 (`+0x04C = 1920×540`) - die Farben sind damit noch falsch, das Luma-Bild ist korrekt. Der Ring wird von der
+Firmware über pool-2 gedreht, unsere Slots zeigen fest auf Slot 0 - ein Tearing-Risiko, kein Blocker.
 
 **Wo der richtige Eingriff sitzt:** in cstengers KMS-Treiber als NV12/NV16-Plane auf Source 0 (Patch 0078, plus
 0079/0080 für Import und IOMMU), gespeist aus dem Capture-Ring statt aus Cedrus. Seine Serie enthält dazu 14
-Patches, die unserer fehlen (0063–0086, siehe `patches/kernel/series` auf `origin/h713-display-video-path`).
+Patches, die unserer fehlen (0063-0086, siehe `patches/kernel/series` auf `origin/h713-display-video-path`).
 Der VidDec-Descriptor bleibt ARM-seitige Pflicht (Stock: decd `dec_reg_set_address`).
 
-## 11. 19:35–20:10 — RE-Antworten, Vendor-Daten, der Descriptor-Fehler und der Kachel-Zustand
+## 11. 19:35-20:10 - RE-Antworten, Vendor-Daten, der Descriptor-Fehler und der Kachel-Zustand
 
 Chronologisch, mit dem, was den Ausschlag gegeben hat. Alle Zeiten 06.09., Board seit Kaltstart 15:21 (Lauf 109).
 
 ### 11.1 Die drei RE-Fragen aus doku/77 (beantwortet)
 
-**Frage 1 — „Slot fertig"-Ereignis des Capture-Rings.** Die Firmware dreht die Page-Flip-Zeiger `0x05600320/0x324`
+**Frage 1 - „Slot fertig"-Ereignis des Capture-Rings.** Die Firmware dreht die Page-Flip-Zeiger `0x05600320/0x324`
 mit 60 Hz durch drei Slots (Y `0x4C3EF000/0x4C5EE000/0x4C7ED000`, C `0x4C9EC000/0x4CBEB000/0x4CDEA000`).
 Der INCAP (`0x06940000`) führt in `+0x104` einen Zähler: Bits 31..16 = Frame, Bits 15..0 = aktuelle Zeile;
 `+0x100` pulst Statusbits. Der ARM bekommt den Takt über den AFBD-Vsync (`GIC 142`), den der KMS-Treiber schon
-nutzt. Ein Treiber liest also `0x320/0x324` im Vsync und kennt den zuletzt fertigen Slot — kein eigenes Ereignis nötig.
+nutzt. Ein Treiber liest also `0x320/0x324` im Vsync und kennt den zuletzt fertigen Slot - kein eigenes Ereignis nötig.
 
-**Frage 2 — Format-Bits am AFBD.** `NRWinNode_AfbdConfigure` (`0x8b1a3c58`) schreibt die Bits [14:8] des
+**Frage 2 - Format-Bits am AFBD.** `NRWinNode_AfbdConfigure` (`0x8b1a3c58`) schreibt die Bits [14:8] des
 Source-0-Steuerworts `0x05600010` aus `NRWinNode_ColorFormatConvert` (`0x8b1a2908`): Descriptor-`color_format`
 0→0 (NV12), 2→1, 4→2, 6→3, 8/11→4, 9/12→5, 14→7, 15→6; Commit über `+0x6C`. **Stock fährt Code 0.** Der
-Chroma-Gain `0x05140508` war *angenommen* bei Stock `0x144C0000` — **das ist unbelegt**:
+Chroma-Gain `0x05140508` war *angenommen* bei Stock `0x144C0000` - **das ist unbelegt**:
 die Stock-Registerabzüge decken `0x05140000` ab, enden aber bei `0x051400FC`
 (`doku/nachtlog/I2`). Der Wert `0x144C0000` (Bits [23:16] = `0x4C`, kalibrierte Sättigung aus der PQ;
 `0x04000000` = Chroma aus). Die Geometrie `0x48/0x4C = 0x04380960/0x021C0960` der Firmware ist für **unseren**
 Puffer richtig; die Stock-Werte `…0780` (= 1920) verdoppeln bei uns das Bild vertikal (gemessen 19:40).
 
-**Frage 3 — PQ-Fehler der MIPS beim Boot.** Stock-Verhalten: dieselben Meldungen stehen wortgleich in
+**Frage 3 - PQ-Fehler der MIPS beim Boot.** Stock-Verhalten: dieselben Meldungen stehen wortgleich in
 `re/captures/weltneuheit/elog-stock-LIVE.bin`, und die gesuchten Konfigurationsschlüssel fehlen in jeder
 `tvconfig`-Datei des Vendors. Kein Handlungsbedarf, kein Workaround.
 
@@ -342,7 +342,7 @@ Puffer richtig; die Stock-Werte `…0780` (= 1920) verdoppeln bei uns das Bild v
 `re/vendor/HY310/extracted/vendor_a/etc/`: `tvconfig/` (`tvpq.db`, `pq_colortemp.ini`, `pq_factory_extern.ini`,
 `pq_overscan_config.ini`, `pq_picturemode.ini`, `pqcontrol_config/custom_setting.xml`,
 `panel_config/panel_config.ini`, `portmap.cfg`, `HDMI_EDID_14/20.bin`, `tv_default.json`, `audio_config.ini`),
-`display/mips/` (`display.bin` md5 `0d2191ca0d…`, `display_cfg.xml` — weicht vom Board-Exemplar ab: Panel
+`display/mips/` (`display.bin` md5 `0d2191ca0d…`, `display_cfg.xml` - weicht vom Board-Exemplar ab: Panel
 2128×1120/143 MHz, `work_mode 2`, elog Modus 2/Level 5; TSE-Dateien identisch mit `analyse/tse/board`) und
 `firmware/` (`EXEC_KERNEL_IMAGE.bin`, `OS_ROM.bin`, `LogoRegData.bin`). Paket G aus doku/77 ist damit erledigt;
 die Daten gehören auf das Gerät, nicht ins öffentliche Repo.
@@ -350,17 +350,17 @@ die Daten gehören auf das Gerät, nicht ins öffentliche Repo.
 ### 11.3 Der Fehler, der das Bild gekostet hat (19:44)
 
 Um die Farbfrage (Capture NV16, Source 0 liest NV12) zu prüfen, habe ich im VidDec-Descriptor bei `0x4D95F000`
-das Wort 16 (`color_format`) auf 4 und danach auf 2 gesetzt — in der Annahme, das sei nur unsere Eingabe für den
+das Wort 16 (`color_format`) auf 4 und danach auf 2 gesetzt - in der Annahme, das sei nur unsere Eingabe für den
 AFBD. **Das war falsch:** der Descriptor ist die Signalquelle der Firmware (Abschnitt 6). Jede Änderung löst
 `HandleSignalEvent` → WCE neu aus, und die Firmware konfiguriert NR-, PROC- und Capture-Knoten für das neue
-Format um — sie schrieb Stride- und Modusregister, das Bild fror ein bzw. zerfiel in Streifen. Der Rückweg auf
+Format um - sie schrieb Stride- und Modusregister, das Bild fror ein bzw. zerfiel in Streifen. Der Rückweg auf
 0 stellte den Zustand von 19:22 **nicht** wieder her (welche Register hängen blieben, ist genau der Gegenstand
 von Abschnitt 12). Konsequenz: **Der Descriptor darf nur einmal, beim Enable, mit dem Format der Capture
 beschrieben werden; Formatversuche laufen ausschließlich über den Kaltstart.**
 
-Die Farbmessungen 19:47–19:52 sind **ungültig**: der Sperrbildschirm des ThinkPad ist fast schwarz, die per
+Die Farbmessungen 19:47-19:52 sind **ungültig**: der Sperrbildschirm des ThinkPad ist fast schwarz, die per
 tkinter erzeugten Farbfenster wurden auf dem gesperrten Schirm gar nicht angezeigt. Farbe bleibt ungemessen.
-DPMS war nicht die Ursache (der Laptop zeigt Bild — Marco).
+DPMS war nicht die Ursache (der Laptop zeigt Bild - Marco).
 
 ### 11.4 Der HPD-Zyklus und was die Firmware dabei umbaut
 
@@ -378,7 +378,7 @@ Die drei pool-2-Worte lassen sich vom ARM **nicht** überschreiben (Schreiben + 
 sie liegen also auf Firmware-/Latch-Seite. Die 19:22-Sequenz erneut angewandt (19:57): das Bild ist **live**
 (Uhr läuft), aber **vierfach gekachelt**, Logos rund → Aspekt erhalten, jede Kopie ein Viertel groß.
 
-### 11.5 Was die Kachelung nicht ist — und was sie sein muss
+### 11.5 Was die Kachelung nicht ist - und was sie sein muss
 
 - **Nicht die Capture.** Die Y-Ebene direkt aus dem DRAM gelesen (`0x4C3EF000`, 20:04): ein einzelnes, korrektes
   Bild mit laufender Uhr; Korrelation Spalte x zu x+480 = 0,04 (keine Selbstähnlichkeit), Zeile zu Zeile+4 = 0,84.
@@ -387,13 +387,13 @@ sie liegen also auf Firmware-/Latch-Seite. Die 19:22-Sequenz erneut angewandt (1
 - Ein Leser, der **vier Bytes pro Pixel** konsumiert, erzeugt genau dieses Bild: vier Quellzeilen nebeneinander
   je Ausgabezeile (vier Kopien, je ¼ breit), 270 Zeilen für das ganze Bild (¼ hoch), danach die nächsten
   Ring-Slots als weitere Kachelreihen. Der Schalter dafür liegt außerhalb dessen, was die Sequenz von 19:22
-  schreibt — also in dem, was die Firmware beim WCE-Neulauf oder beim HPD-Zyklus gesetzt hat.
+  schreibt - also in dem, was die Firmware beim WCE-Neulauf oder beim HPD-Zyklus gesetzt hat.
 - Gegen Stock (nach HDMI) unterscheidet sich die AFBD-Seite außer Zählern/Adressen nur in: Geometrie (`0x0960`
   vs `0x0780`, bewusst), `0x60` (`1` vs `0x11`), **ch1** (`0x100` = `0x00010000` vs `0x83001901`,
   `0x108/0x10c/0x12c` = 0 vs `0x008000ff/0x00ff0080/0x21`, Latch `0x104` bei uns unverbraucht), ch2-Konfiguration
   (`0x168/0x16c/0x184/0x1cc`, unser KMS-Treiber) und pool-2 (`0x300/0x304`).
 
-**ch1 (Marcos Frage 20:07):** bei uns nicht aktiv; Stock hat ihn im HDMI-Betrieb mit Bit 31 an — laut doku/64
+**ch1 (Marcos Frage 20:07):** bei uns nicht aktiv; Stock hat ihn im HDMI-Betrieb mit Bit 31 an - laut doku/64
 heißt Bit 31 „Page-Flip-Zeiger `0x320/0x324` verwenden", also der Ring, den die Firmware dreht. Stock zeigt das
 HDMI-Bild demnach vermutlich über ch1 aus dem drehenden Ring, nicht über ch0 mit festem pool-1-Slot wie in
 cstengers Rezept (das für Cedrus-Puffer gedacht ist). Offener Versuch, nicht gemessen.
@@ -409,15 +409,15 @@ cstengers Rezept (das für Cedrus-Puffer gedacht ist). Offener Versuch, nicht ge
 
 **Das Bild muss mehrere HDMI-Wechsel überstehen.** Ein Zustand, der nur nach Kaltstart und exakt einer Sequenz
 steht, ist keine Lösung. Vorgehen ab 20:09 (Kaltstart): Rezept von 19:22 fahren, **im guten Zustand alle Blöcke
-abziehen** (AFBD ganze Seite, PROC, LVDS, DE `0x05000000/0x050C0000`, INCAP, Descriptor) — diese Referenz
+abziehen** (AFBD ganze Seite, PROC, LVDS, DE `0x05000000/0x050C0000`, INCAP, Descriptor) - diese Referenz
 fehlte bis jetzt; dann einen HPD-Zyklus auslösen, erneut abziehen, Diff. Was die Firmware dabei umbaut, muss der
-Treiber entweder mitgehen (Ring über ch1/pool-2) oder nach dem Wechsel wiederherstellen — und zwar so, wie es
+Treiber entweder mitgehen (Ring über ch1/pool-2) oder nach dem Wechsel wiederherstellen - und zwar so, wie es
 Stock tut, nicht mit einem Poke.
 
 
-## 12. 20:10–21:00 — **die Farbe ist gefunden: die Capture schreibt RGB, nicht YUV**
+## 12. 20:10-21:00 - **die Farbe ist gefunden: die Capture schreibt RGB, nicht YUV**
 
-Kaltstart 20:09, Prep, `SetSource(3)`, ARISC-EDID-Sequenz, Descriptor, Source-0-Sequenz — Bild wieder auf der Wand
+Kaltstart 20:09, Prep, `SetSource(3)`, ARISC-EDID-Sequenz, Descriptor, Source-0-Sequenz - Bild wieder auf der Wand
 (20:15, einzeln, richtige Geometrie). Alle Registerabzüge dieser Reihe liegen in
 `re/captures/weltneuheit/ours-20260906-source0/` (`dump_state.py` + `01_lock` … `08_desc0_again`).
 
@@ -434,7 +434,7 @@ Kachelung von 19:57 kam **nicht** vom HPD-Zyklus, sondern von der Descriptor-Än
 ### 12.2 Die Messung, die alles erklärt
 
 Gamma am Zuspieler auf eine Farbe gezogen und die Ebenen im DRAM gemessen (`analyse/hdmi-seq/chroma_stat.py`,
-Bildmitte, Zeilen 400–500):
+Bildmitte, Zeilen 400-500):
 
 | Zuspieler | Y-Ebene `0x4C3EF000` | gerade Bytes der 2. Ebene | ungerade Bytes |
 |---|---|---|---|
@@ -449,7 +449,7 @@ Stock-TSE-Log (`VINCAP_ICSC ==> BYPASS` bei `V_INCAP_MP_Format ==> YUV422_888`):
 Farbraumumsetzung macht Stock **später** in der VPROC, nicht in der Capture.
 
 **Gegenprobe:** dieselben Daten am PC direkt als RGB zusammengesetzt (G aus Ebene 1, B/R aus Ebene 2, horizontal
-verdoppelt) ergeben ein **neutralgraues, geometrisch korrektes Bild** (`scratchpad/rgb_direkt.png`) — mit der
+verdoppelt) ergeben ein **neutralgraues, geometrisch korrektes Bild** (`scratchpad/rgb_direkt.png`) - mit der
 YUV-Matrix dagegen ein durchgehend grünes (`rgb_stride1920.png`). Damit ist die Ebenenaufteilung bewiesen.
 
 ### 12.3 Der Chroma-Weg zum Panel funktioniert
@@ -472,33 +472,33 @@ Und mit **laufender** Capture: Y-Slots auf den Capture-Ring, C-Slots auf eine fe
 ### 12.4 Warum das Bild bis heute grau war
 
 Nicht die Anzeige, sondern der **Inhalt** der zweiten Ebene: Stock-Capture liefert Blau/Rot, der AFBD liest sie als
-Cb/Cr. Bei einem unbunten Bild sind Blau und Rot gleich dem Grün, also weit von 128 entfernt — das ergibt (mit der
+Cb/Cr. Bei einem unbunten Bild sind Blau und Rot gleich dem Grün, also weit von 128 entfernt - das ergibt (mit der
 YUV-Matrix) einen kräftigen Grünstich, kein Grau. Genau das steht seit 20:54 auf der Wand
 (`wand/live_chroma.jpg`). Vorher war die Ebene 2 leer, weil die Capture sie gar nicht beschrieb: der Umschalter
 dafür ist **INCAP `0x0694084C`** (`0x04000C00` → `0x0C000C00`, mit `0x06940400` `0x21`→`0x61` und `0x06940824`
 Bit 31), den die Firmware beim Descriptor-Versuch (11.3) mitgesetzt hat.
 
 > **Widerlegt am 07.09.** `0x06940400 = 0x61` und `0x06940824` Bit 31 kennzeichnen den Zustand **nach** dem
-> Descriptor — und in dem ist die Capture **abgeschaltet**. Im laufenden Betrieb steht `0x21` bzw.
+> Descriptor - und in dem ist die Capture **abgeschaltet**. Im laufenden Betrieb steht `0x21` bzw.
 > `0x0000000B`, und das Bild läuft einwandfrei; wer die beiden Werte in einer Abnahme als Gutkriterium
 > prüft, prüft das Falsche. Einzelheiten und der Korrekturkasten in
 > [84-re-capture-ring.md](84-re-capture-ring.md); Messung in
 > [`nachtlog/B2-quellenwechsel.md`](nachtlog/B2-quellenwechsel.md) (Korrektur 1 und 2) und
 > [`nachtlog/A-abnahme-board.md`](nachtlog/A-abnahme-board.md).
 
-### 12.5 Woran es jetzt hängt — und die drei Wege
+### 12.5 Woran es jetzt hängt - und die drei Wege
 
 Der Panelpfad rechnet YUV→RGB, die Daten sind RGB. Zu lösen ist **eine** Umsetzung, sonst nichts:
 
 1. **Capture umschalten (Stock-Weg).** Die INCAP hat eine eigene Farbraumstufe (`VINCAP_ICSC`, im Stock auf
    `BYPASS`). Steht der Eingang auf RGB, wandelt Stock später in der VPROC. Zu klären: welches Register die
    VPROC-Matrix wählt (Kandidaten im PROC-Block `0x05140300…0x051403C4`, Werte wie `0x55FF0055`, `0x66FF0266`).
-2. **PROC-Matrix auf „Eingang ist RGB" stellen** — derselbe Registersatz, andere Wahl.
+2. **PROC-Matrix auf „Eingang ist RGB" stellen** - derselbe Registersatz, andere Wahl.
 3. **INCAP-ICSC einschalten**, damit die Capture echtes YUV schreibt; dann passt der ganze Rest ohne Änderung.
 
    > **Widerlegt am 07.09., soweit es die Registerdeutung betrifft.** Die zu diesem Weg genannten Marken
    > `0x06940400 = 0x61` und `0x06940824` Bit 31 (§12.4) beschreiben den Zustand **nach** dem Descriptor,
-   > in dem die Capture abgeschaltet ist — nicht den laufenden Betrieb (dort `0x21` / `0x0000000B`).
+   > in dem die Capture abgeschaltet ist - nicht den laufenden Betrieb (dort `0x21` / `0x0000000B`).
    > Siehe den Kasten in §12.4, [84-re-capture-ring.md](84-re-capture-ring.md) und
    > [`nachtlog/B2-quellenwechsel.md`](nachtlog/B2-quellenwechsel.md).
 
@@ -506,10 +506,10 @@ Weg 3 ist der sauberste, wenn Stock ihn bei RGB-Quellen ebenfalls geht; das ist 
 (`attr_id:101, VINCAP_ICSC`). Kein Weg braucht einen Quirk.
 
 
-## 13. 21:10 — **die Farben stimmen: ein verdoppelter Chroma-Zeilenabstand**
+## 13. 21:10 - **die Farben stimmen: ein verdoppelter Chroma-Zeilenabstand**
 
 **Der Befund.** Marcos Foto (21:05, mit eingezeichnetem Bildrahmen) zeigte den Kern: die Farbe war gegenüber der
-Helligkeit **vertikal 2× gedehnt**, verankert oben — Farbe aus der oberen Bildhälfte lag über der unteren, unter
+Helligkeit **vertikal 2× gedehnt**, verankert oben - Farbe aus der oberen Bildhälfte lag über der unteren, unter
 dem Bildrand quollen Farben in die weiße Fläche. Genau das passiert, wenn ein **NV12-Leser** (Chroma halbe Höhe)
 einen **NV16-Puffer** (Chroma volle Höhe) liest: für Ausgabezeile *r* holt er Chromazeile ⌊r/2⌋, und die gehört
 im NV16-Puffer zu Bildzeile ⌊r/2⌋ statt *r*.
@@ -524,7 +524,7 @@ grün, Beleg `wand/f422.jpg`), sondern den **Chroma-Zeilenabstand verdoppeln**:
 0x0560004C            = 0x021C0780   (Chroma-Höhe 540, unverändert)
 ```
 
-Dann ist die Chroma-Adresse für Ausgabezeile *r* gleich ⌊r/2⌋ × 3840 = Zeile *r* (bzw. *r*−1) des NV16-Puffers —
+Dann ist die Chroma-Adresse für Ausgabezeile *r* gleich ⌊r/2⌋ × 3840 = Zeile *r* (bzw. *r*−1) des NV16-Puffers -
 also **exakt 4:2:2**, ohne Formatwechsel und ohne Trick an anderer Stelle. Ein Register, eine Ursache.
 
 **Beleg (Kaltstart 21:08, Lauf mit buntem Zuspielerbild):**
@@ -553,7 +553,7 @@ also **exakt 4:2:2**, ohne Formatwechsel und ohne Trick an anderer Stelle. Ein R
 - Der Chroma-Gain `0x05140508` skaliert die Sättigung. Er ist **nicht** die Ursache des Versatzes. Seit 21:2x ist
   er an die Stock-PQ angeschlossen: die Werkskurve für HDMI (`pq_factory_extern.ini`, Sättigung
   `0,48,96,145,192`) trifft mit dem am Stock kalibrierten `0x4C` für Benutzerwert 50 zusammen, daraus rechnen
-  sich die Bildmodi (`cinema` `0x44`, `standard` `0x4C`, `vivid` `0x5C`) — Werkzeug
+  sich die Bildmodi (`cinema` `0x44`, `standard` `0x4C`, `vivid` `0x5C`) - Werkzeug
   `analyse/hdmi-seq/pq_saturation.py`, Herleitung und Messung in doku/77 Abschnitt 4.
 
 **Damit ist die Kette vollständig:** HDMI-RX → INCAP-Capture (NV16, YUV) → DRAM-Ring → AFBD Source 0 (fmt 0,

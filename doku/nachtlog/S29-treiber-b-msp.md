@@ -1,4 +1,4 @@
-# S29 (Paket B) — Treiber `sun50i-h713-msp`: Insel, Patch, Graph, ALSA-Controls
+# S29 (Paket B) - Treiber `sun50i-h713-msp`: Insel, Patch, Graph, ALSA-Controls
 
 **Auftrag:** [`doku/101-plan-audio-treiber.md`](../101-plan-audio-treiber.md) §1 B, §2, §3, §4;
 Arbeitskopien `analyse/audio/arbeit/t-b-msp/{a,b}`, Basisbaum `linux-6.18.38-a3097ce7…`.
@@ -37,7 +37,7 @@ Einheit eingespielt, Begründung steht im Commit-Text).
 
 **Selbstheilung** (`msp_heal_work`, eigener Worker): läuft nur an, wenn der Zustand `error` ist.
 Schleife mit höchstens `MSP_HEAL_MAX = 3` Durchläufen; ein Erfolg setzt den Zähler zurück.
-Danach bleibt `error` stehen und wird nicht mehr selbst neu angestoßen — `echo 1 > reset`
+Danach bleibt `error` stehen und wird nicht mehr selbst neu angestoßen - `echo 1 > reset`
 setzt den Zähler auf 0 und baut **synchron** neu auf (damit „Ton kommt zurück" direkt am
 Rückgabewert des `write` hängt). Ausgelöst wird die Heilung von `msp_mailbox_failed()`, das
 jeder Nicht-Inbetriebnahme-Pfad (Controls, `levels`, `compressed`) bei `-ETIMEDOUT` aufruft;
@@ -69,7 +69,7 @@ Eine vollständige Inbetriebnahme dauert damit ≈ 0,95 s Wartezeit + ≈ 20 ms 
 Die Polling-Schleifen drehen die ersten ~100 µs mit `cpu_relax()` und schlafen danach
 (`usleep_range(20, 50)`); nie aus Interruptkontext, nie mit Spinlock.
 
-## 3. Was der Treiber am Gerät anfasst — und was bewusst nicht
+## 3. Was der Treiber am Gerät anfasst - und was bewusst nicht
 
 **Angefasst:** `bus-demod` Gate/Reset, 16 TVFE-Gates, `pd_tvfe`, Router `0x06700000`,
 Audio-Top `0x0614A000/0x0614A00C`, Mailbox `0x06144000 +0x00/+0x0C/+0x10`, DSP-Register
@@ -85,7 +85,7 @@ laut Plan §3.3/§3.6.
   dieselben Nibbles wählen das DRAM-Fenster des **laufenden** Capture-Rings. Der Treiber
   liest nur; der Lebensnachweis ist der Mailbox-Selbsttest.
 * **DSP2.** S27: Klangeffekt-Kern, für PCM nicht nötig. Die Typ-0102-Blöcke werden trotzdem
-  mitgeschrieben — der volle Strom ist die Variante mit 20/20 Erfolgen (S16 20:20).
+  mitgeschrieben - der volle Strom ist die Variante mit 20/20 Erfolgen (S16 20:20).
 * **DELAY1.** `0x0036` wird wie im Stock gesetzt, der Ausgang läuft aber über `0x0020 := 0x6263`
   an DELAY1 vorbei (S16 18:00). Kosten: die 2 ms Lippensynchronität, die Stock verwendet (S26).
 * **Codec, HDMI-RX, `0x068B0000`, INCAP.** Pakete C/D bzw. gesperrt.
@@ -102,14 +102,14 @@ ALSA-Karte `snd_card_new`-Familie, kein PCM: Kurzname `hy310hdmi`, Langname `HY3
 | `HDMI Mute Switch` | bool | `0x0050/0x0051` Maske `0xFFC0`, Wert `0x8000` bzw. 0 |
 
 Umrechnung: Registerwert = `((ctl − 400) & 0x3FF) << 6`. Probe: `ctl = 320` → −20 qdB →
-`0xFB00` — genau der Wert, der am 08.09. mit −4,9 dB gemessen wurde.
+`0xFB00` - genau der Wert, der am 08.09. mit −4,9 dB gemessen wurde.
 
 sysfs am Platform-Gerät (`driver.dev_groups`, erscheinen also erst nach erfolgreichem Bind):
 `state` (r), `levels` (r, „`links rechts`" aus `0x00B2/0x00B3`, QPEAK-Eingänge werden bei
 jeder Lesung auf `0x16/0x17` gesetzt), `compressed` (r, 1 nur wenn `0x800A` Bit 7 **und**
 Bit 5), `reset` (w, synchron). debugfs `h713-msp/status`: Zustand, Heilungszähler,
 Timeout-Zähler, Firmwaregröße/Blockzahl, Router, Audio-Top, `0x06142044`, vier AUDIF-Wörter,
-Mailbox-Status und — ab `patched` — `0x80FF`, `0x0001`, `0x00FC`, `0x00EE`, `0x0012`, `0x001E`,
+Mailbox-Status und - ab `patched` - `0x80FF`, `0x0001`, `0x00FC`, `0x00EE`, `0x0012`, `0x001E`,
 `0x0020`, `0x0050`, `0x0052` (mit Rückrechnung in Control-Einheiten) und die volle
 Nicht-PCM-Auswertung von `0x800A`.
 
@@ -120,14 +120,14 @@ Nicht-PCM-Auswertung von `0x800A`.
    sie nicht führt und S25 §6 sie als wirkungslos ausweist. **Wenn kein Ton kommt, obwohl
    `state = running`, `levels` ≠ 0 und der Codec (Paket C) steht: das ist der erste Verdacht.**
    Gegenprobe von Hand: `devmem2`-Äquivalent auf `0x06146000 := 0x40000`, `+0x08 := 3`,
-   `+0x18 := 0x1A5E0000`, `+0x04 |= 0x40000` — kommt der Ton dann, gehören die vier Zeilen in
+   `+0x18 := 0x1A5E0000`, `+0x04 |= 0x40000` - kommt der Ton dann, gehören die vier Zeilen in
    `msp_build_graph()` nachgezogen, und S25 §6 ist zu korrigieren.
 2. **`0x0012` als RMW mit Maske `0xA3FF`.** Plan §3.6 schreibt „`0x0012 := 0x8180`",
    `dsp_graph_only.py` schreibt RMW mit `0xA3FF`. Der Treiber folgt dem Skript (Bits 14 und
    13:10 bleiben stehen). Unterschied ist nur sichtbar, wenn der ROM/Patch dort etwas gesetzt hat.
 3. **Exklusiver Reset.** `devm_reset_control_get_exclusive("bus-demod")` statt des von S17 §4a
    empfohlenen `_shared`: ein geteilter Reset lehnt ein `assert` ohne vorheriges `deassert` ab
-   und feuert `reset_control_reset()` nur einmal je Control — beides unbrauchbar für eine
+   und feuert `reset_control_reset()` nur einmal je Control - beides unbrauchbar für eine
    Heilung, die den Puls wiederholen muss. Das geht, weil `CONFIG_SUNXI_TVTOP` aus ist.
    Wird tvtop je eingeschaltet, siehe 0138 §2c.
 4. **`clk_set_rate` auf `audio-cpu/umac/ihb`** ist heute folgenlos (reine Gates). Erst mit
@@ -136,14 +136,14 @@ Nicht-PCM-Auswertung von `0x800A`.
    `audio-cpu laesst sich nicht auf 400000000 Hz setzen` im `dmesg` das Zeichen, dass die
    Modellierung noch fehlt.
 5. **Weckruf-Timeout ist nicht tödlich.** Bleibt `0x00EE` 500 ms lang ≠ `0x0180`, gibt es eine
-   Warnung und der Download läuft weiter — genau wie `mbx dl -K`. Über Erfolg entscheidet
+   Warnung und der Download läuft weiter - genau wie `mbx dl -K`. Über Erfolg entscheidet
    `0x80FF`/`0x0001`.
 6. **`power-domains = <&ppu 1>` ist eine Referenz, kein Einschalten.** pd_tvfe ist seit U-Boot an.
-   Wäre sie es nicht, hinge jeder Zugriff auf `0x0614xxxx` den Bus — der Treiber prüft das
+   Wäre sie es nicht, hinge jeder Zugriff auf `0x0614xxxx` den Bus - der Treiber prüft das
    indirekt über „Router liest 0".
 7. **Firmwaregröße.** Nur „Vielfaches von 4" und der Kopf `4D53 504D` sind hart; 2896 Byte
    werden erwartet und eine Abweichung nur gewarnt. Kontrolliert: 724 Paare, 8 MSPM-Blöcke,
-   Magic bei Paar 0/4/8/32/39/324/681/707 — deckungsgleich mit `bounds` in `dsp_island2.py`.
+   Magic bei Paar 0/4/8/32/39/324/681/707 - deckungsgleich mit `bounds` in `dsp_island2.py`.
 8. **`maintainers:` in der Bindung** trägt einen Platzhalter (`hy310@example.invalid`). Vor
    einer Einsendung nach außen ersetzen.
 
@@ -188,12 +188,12 @@ for i in $(seq 20); do rmmod sun50i-h713-msp; modprobe sun50i-h713-msp; sleep 2;
 #    30 min Dauerton: keine "Mailbox-Timeout"-Zeile, levels plausibel
 ```
 
-**Schrittweise fahren** (Board-Regel): jeder Aufruf einzeln, 20–30 s Zeitfenster, nach jedem
+**Schrittweise fahren** (Board-Regel): jeder Aufruf einzeln, 20-30 s Zeitfenster, nach jedem
 Schritt `state` lesen. Bleibt `state` auf `error`, sagt `dmesg` welche Stufe (Router,
 Audio-Top, Selbsttest, Download, Graph) und `status` liefert die Registerlage dazu.
 
 ## 7. Dateien
 
-* `analyse/audio/arbeit/t-b-msp/a|b/…` — Arbeitskopien (Original / geändert)
+* `analyse/audio/arbeit/t-b-msp/a|b/…` - Arbeitskopien (Original / geändert)
 * `analyse/audio/arbeit/t-b-msp/patches/0137-ASoC-sunxi-add-the-h713-msp-audio-dsp-driver.patch`
 * `analyse/audio/arbeit/t-b-msp/patches/0138-fragment-dts.txt`

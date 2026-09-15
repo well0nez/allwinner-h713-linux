@@ -1,4 +1,4 @@
-# Paket F — `RING_SETTLE_MS` raus, Ringbeobachtung rein (offline, 07.09. ab 08:4x)
+# Paket F - `RING_SETTLE_MS` raus, Ringbeobachtung rein (offline, 07.09. ab 08:4x)
 
 **Agent:** Unteragent F-korrektur (offline). **Kein Board angefasst:** kein `ssh root@192.168.8.141`,
 kein `ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `scp`, nichts nach
@@ -6,9 +6,9 @@ kein `ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `scp
 `patches/kernel/series` und `build/build.sh` nicht berührt, `0091` nicht angesehen (dort arbeitet ein
 zweiter Agent). `/srv/h713-rootfs` nur **gelesen**.
 
-Anlass: die adversarische Gegenprüfung von [F-startklar.md](F-startklar.md). Ihr Kernsatz —
+Anlass: die adversarische Gegenprüfung von [F-startklar.md](F-startklar.md). Ihr Kernsatz -
 „handwerklich sauber, aber der tragende Beleg für die einzige inhaltliche Codeänderung ist falsch
-gelesen" — trifft zu. Dieses Log sagt, was deshalb raus ist, was an seiner Stelle steht, und wie das
+gelesen" - trifft zu. Dieses Log sagt, was deshalb raus ist, was an seiner Stelle steht, und wie das
 abzunehmen ist.
 
 | Datei | sha256 | Zustand |
@@ -20,7 +20,7 @@ abzunehmen ist.
 | `userspace/hy310-tv/99-hy310-tv.rules` | `08ea07ce63de2df18508b4618a5f2f49dc483022cbf71f1e6d8205a9c2c92ea3` | **unverändert** |
 
 In `F-startklar.md` stehen jetzt Nachträge an §2.2, §2.4, §5 und §7, die auf dieses Log zeigen. Der
-Rest jenes Logs — Prüfbau, Gerätesuche über den Namen, §2.3, §2.5–§2.8, die Board-Anfragen — bleibt
+Rest jenes Logs - Prüfbau, Gerätesuche über den Namen, §2.3, §2.5 - §2.8, die Board-Anfragen - bleibt
 gültig.
 
 ---
@@ -36,7 +36,7 @@ Die Konstante ist **ersatzlos gelöscht**, mitsamt `settle_arm()`, `settle_disar
 
 **Der Beleg trug sie nicht.** Der Kommentar an der Konstante berief sich auf die Tabelle in
 [D-abnahme-board.md](D-abnahme-board.md), Nachtrag 06:15, und las sie als „der Ring läuft noch eine
-Sekunde nach dem Enable, bei +2 s ist er weg — also sind 3 s die gemessenen +2 s mit Reserve".
+Sekunde nach dem Enable, bei +2 s ist er weg - also sind 3 s die gemessenen +2 s mit Reserve".
 Dieselbe Tabelle, vollständig gelesen:
 
 | t | `0x05600044` | `0x05600098` | `0x06940928` | **`0x05600010`** |
@@ -44,7 +44,7 @@ Dieselbe Tabelle, vollständig gelesen:
 | +1 s | `0x0780` | `0x00000000` | `0xE0020438` | **`0x03000010`** |
 | +2 s | `0x0780` | `0x4D95F000` | `0x60020438` | **`0x03000013`** |
 
-`0x05600010` ist CTRL von Source 0. Bei +1 s steht dort `0x03000010` — **Source 0 war noch gar nicht
+`0x05600010` ist CTRL von Source 0. Bei +1 s steht dort `0x03000010` - **Source 0 war noch gar nicht
 eingeschaltet.** Der Treiber hat also irgendwo *innerhalb* dieses Fensters überhaupt erst geschrieben.
 Die Zeile belegt damit **den Schreibzeitpunkt des Treibers**, nicht die Reaktionszeit der Firmware.
 Aus ihr folgt genau eine Schranke, und die ist grob: **die Firmware reagierte irgendwo innerhalb
@@ -60,7 +60,7 @@ aufgefallen.
 gewartet, sie wurde **ausgegeben**. „Der Ring läuft 3000 ms nach dem Einschalten weiter" ist eine
 Messaussage, und die Abnahme in `F-startklar.md` §5 Schritt 4 machte sie zum Kriterium („GENAU EINE
 dieser beiden Zeilen"). Eine geratene Zahl, die als Messwert im Journal steht und in einer
-Abnahmevorschrift als Kriterium auftaucht, ist genau der Fall, den Nachtplan-Regel 1 verbietet —
+Abnahmevorschrift als Kriterium auftaucht, ist genau der Fall, den Nachtplan-Regel 1 verbietet -
 und sie ist schlimmer als eine geratene Wartezeit, weil sie sich als Befund tarnt.
 
 ---
@@ -77,18 +77,18 @@ vergleicht (`memcmp` + `video_info_published`) und ihn nicht zweimal schreibt.
   (`new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr`), und der Zeiger ist nach einem Kaltstart
   **null**.
 * `analyse/hdmi-seq/afbd_source0.py off` **nullt die vier Info-Slots** (`w(AFBD, 0x98 + 4*i, 0)`).
-  Der nächste Enable **im selben Boot** löst den Effekt deshalb erneut aus — am Gerät reproduziert,
+  Der nächste Enable **im selben Boot** löst den Effekt deshalb erneut aus - am Gerät reproduziert,
   [D-cstride-befund.md](D-cstride-befund.md) (zweimal, Zeile „`0x0780` nach `afbd_source0.py off`"),
   ausgewertet in [D-cstride-fix.md](D-cstride-fix.md) §1.
 * Der **Disable des Treibers** lässt den Zeiger absichtlich stehen (0093, Kommentar im
   `atomic_disable`: „The VideoInfo pointers stay"). Ein reines Aus/Ein von `hy310-tv` ist deshalb
-  tatsächlich still — aber das ist eine Aussage über den Zeiger, keine über den Boot.
+  tatsächlich still - aber das ist eine Aussage über den Zeiger, keine über den Boot.
 
-Der `memcmp` schützt vor einem zweiten **Publish desselben Datensatzes** — das ist das, was die
+Der `memcmp` schützt vor einem zweiten **Publish desselben Datensatzes** - das ist das, was die
 Hardware nicht überlebt. Er schützt **nicht** vor einem zweiten VideoDec-Ereignis.
 
 **Folge für F, und sie ist konstruktiv:** aus dem Userspace ist `0x05600098` nicht zu sehen. Die
-Voraussetzung, unter der man sich das Nachsehen sparen könnte, ist von hier aus nicht prüfbar —
+Voraussetzung, unter der man sich das Nachsehen sparen könnte, ist von hier aus nicht prüfbar -
 **also wird nach jedem Einschalten beobachtet**, nicht nur nach dem ersten. Genau deshalb passt eine
 Reihe hier besser als ein Termin: sie kostet, wenn nichts passiert, zehn Registerabfragen und eine
 Journalzeile.
@@ -104,26 +104,26 @@ beobachtet wird:
 
 | | |
 |---|---|
-| **Start** | beim echten Übergang „aus → an" der Plane. Ein `SOURCE_CHANGE`, das eintrifft, während das Bild schon steht, startet **keine** neue Reihe — es hat nichts veröffentlicht, also gibt es nichts zu datieren. |
-| **Raster** | `RING_WATCH_PERIOD_MS = 200` — alle 200 ms eine `QUERY_DV_TIMINGS` |
+| **Start** | beim echten Übergang „aus → an" der Plane. Ein `SOURCE_CHANGE`, das eintrifft, während das Bild schon steht, startet **keine** neue Reihe - es hat nichts veröffentlicht, also gibt es nichts zu datieren. |
+| **Raster** | `RING_WATCH_PERIOD_MS = 200` - alle 200 ms eine `QUERY_DV_TIMINGS` |
 | **Frist** | `RING_WATCH_LIMIT_MS = 2000` |
-| **Ende** | Stillstand erkannt, Gerät antwortet nicht mehr, oder Frist erreicht — in **jedem** Fall wird der Timer entschärft |
+| **Ende** | Stillstand erkannt, Gerät antwortet nicht mehr, oder Frist erreicht - in **jedem** Fall wird der Timer entschärft |
 | **Wirkung auf die Anzeige** | **keine.** Die Plane bleibt in allen drei Fällen, wie sie ist |
 
 Gemessen wird gegen `CLOCK_MONOTONIC` (dieselbe Uhr, an der das `timerfd` hängt). Zwei Zeitpunkte
 werden mitgeführt:
 
-* `t_on` — der Moment, in dem der Atomic-Commit zurückkam,
-* `t_running` — der letzte Moment, zu dem die Flip-Zeiger **nachweislich** wanderten.
+* `t_on` - der Moment, in dem der Atomic-Commit zurückkam,
+* `t_running` - der letzte Moment, zu dem die Flip-Zeiger **nachweislich** wanderten.
 
 `t_running` startet **vor** `t_on`: es ist der Zeitpunkt der `QUERY_DV_TIMINGS`, die unmittelbar vor
 dem Einschalten „Signal vorhanden" ergab. Deshalb ist die erste Zahl im Journal negativ. Das ist
-Absicht — der Anfang des Fensters ist die letzte Messung, die etwas belegt hat, nicht der Moment, ab
+Absicht - der Anfang des Fensters ist die letzte Messung, die etwas belegt hat, nicht der Moment, ab
 dem es bequem zu zählen wäre.
 
 ### 3.2 Die drei Ausgänge, und jeder sagt, welcher er ist
 
-**Stillstand** — der Übergang mit Zeitstempel:
+**Stillstand** - der Übergang mit Zeitstempel:
 
 ```
 warnung: der Ring steht still -- die Flip-Zeiger wanderten zuletzt bei -6 ms und stehen bei
@@ -134,16 +134,16 @@ Standbild, bis die Capture wieder freigegeben wird (Quellenwechsel B2 oder HPD-Z
 
 Beide Zahlen sind Messwerte. Das Fenster endet beim **Beginn** der Abtastung, nicht an ihrem Ende:
 `h713_hdmirx_signal_present()` sieht die Zeiger über die vollen 20 ms dieser Abfrage an und meldet
-Stillstand nur, wenn sie sich in der ganzen Zeit nicht bewegt haben — der Übergang ist also vor dem
+Stillstand nur, wenn sie sich in der ganzen Zeit nicht bewegt haben - der Übergang ist also vor dem
 Beginn der Abfrage passiert.
 
-**Abbruch** — das Gerät antwortet nicht mehr:
+**Abbruch** - das Gerät antwortet nicht mehr:
 
 ```
 warnung: beobachtung abgebrochen bei +812 ms (Abtastung 5): das Aufnahmegeraet antwortet nicht mehr
 ```
 
-**Frist** — und sie sagt, dass sie gerissen wurde:
+**Frist** - und sie sagt, dass sie gerissen wurde:
 
 ```
 ring        laeuft: 10 Abtastungen bis +2022 ms nach dem Einschalten, jede hat wandernde
@@ -152,7 +152,7 @@ ring        laeuft: 10 Abtastungen bis +2022 ms nach dem Einschalten, jede hat w
 ```
 
 Der letzte Halbsatz ist der Punkt. „Kein Stillstand gesehen" ist eine Aussage über diese zwei
-Sekunden. Die alte Zeile („der Ring läuft 3000 ms nach dem Einschalten weiter — kein
+Sekunden. Die alte Zeile („der Ring läuft 3000 ms nach dem Einschalten weiter - kein
 Descriptor-Effekt in diesem Lauf") behauptete mehr, als sie wusste, in beide Richtungen.
 
 ### 3.3 Warum die zwei verbliebenen Zahlen keine Kriterien sind
@@ -162,7 +162,7 @@ Es bleiben zwei Konstanten. Beide sind benannt, beide entscheiden nichts:
 * **`RING_WATCH_PERIOD_MS = 200` ist die Auflösung der Aussage.** Sie sagt, wie eng das Journal den
   Moment benennen kann, und sonst nichts; ein anderer Wert ändert kein Ergebnis, nur die Breite des
   gemeldeten Fensters. Nach unten begrenzt sie die Messung selbst: jede `QUERY_DV_TIMINGS` kostet den
-  Treiber 20–25 ms Zeigerbeobachtung (0094, `h713_hdmirx_signal_present()`), 200 ms hält das bei
+  Treiber 20-25 ms Zeigerbeobachtung (0094, `h713_hdmirx_signal_present()`), 200 ms hält das bei
   rund einem Zehntel der Zeit.
 * **`RING_WATCH_LIMIT_MS = 2000` ist ein Abbruchkriterium.** Beobachten kann nicht ewig laufen. Der
   Wert ist das Doppelte der einzigen gemessenen Schranke (§1: „innerhalb dieser einen Sekunde"), und
@@ -172,7 +172,7 @@ Der Unterschied zu vorher in einem Satz: **die 3 s standen zwischen der Messung 
 („ist es nach 3 s noch gut?"), die 200 ms/2000 ms stehen daneben („wie genau und wie lange sehe ich
 hin?").**
 
-### 3.4 Der Auflösungswechsel — benannt, im Log, und ehrlich ohne zweites Kriterium
+### 3.4 Der Auflösungswechsel - benannt, im Log, und ehrlich ohne zweites Kriterium
 
 [A6-4-aufloesungswechsel.md](A6-4-aufloesungswechsel.md) ist am Gerät gemessen: wechselt die Quelle
 bei stehendem Signal die Auflösung, feuert **kein** `SignalChange` und damit **kein**
@@ -193,17 +193,17 @@ offen       ein Aufloesungswechsel der Quelle erzeugt kein SOURCE_CHANGE und lae
 **Warum kein zweites Kriterium im Programm, obwohl der Auftrag es lieber sähe:** ich habe nach einem
 gesucht und keines gefunden, das nicht gelogen wäre.
 
-* Der naheliegende Griff — die Timings jeder Abtastung mit denen beim Einschalten vergleichen —
+* Der naheliegende Griff - die Timings jeder Abtastung mit denen beim Einschalten vergleichen -
   **kann nie auslösen**: `h713_hdmirx_query_dv_timings()` in 0094 gibt die **Konstante**
   `h713_hdmirx_timings` zurück (die einzige Zeile aus `h713_hdmirx_timings_cap`, 1920×1080 bei
   148,5 MHz) und benutzt `signal_present()` nur als Torwächter. Zwei Abfragen zu vergleichen zeigt
   deshalb strukturell nichts. Eine Prüfung, die nie auslöst, sieht aus wie ein Kriterium, ist keins
-  und macht die nächste Durchsicht blind — dieselbe Sorte Fehler wie die 3 s, nur andersherum.
+  und macht die nächste Durchsicht blind - dieselbe Sorte Fehler wie die 3 s, nur andersherum.
 * Die Kandidaten, die A6-4 selbst nennt (INCAP-Timing-Register, Composition-Block
   `0x05000224`/`0x05000844`), sind `/dev/mem`. Im Betriebspfad ist das ausgeschlossen (J-Fund W10),
   und ein zweiter Weg zur Hardware am Treiber vorbei ist genau der Workaround, den dieses Projekt
   nicht baut.
-* Der Ringinhalt selbst wäre der dritte Weg — F dequeuet nicht und hat mangels `VIDIOC_EXPBUF` auch
+* Der Ringinhalt selbst wäre der dritte Weg - F dequeuet nicht und hat mangels `VIDIOC_EXPBUF` auch
   keinen Puffer.
 
 Also: **benannter, im Log sichtbarer offener Punkt**, mit Adressat. Der Auslöser gehört in 0094; die
@@ -214,14 +214,14 @@ Geometrie liefert, greift der Vergleich in `evaluate()`, der heute schon dasteht
 
 ---
 
-## 4. Abnahmevorschrift (kopierbar, Hauptsitzung) — **gültige Fassung**
+## 4. Abnahmevorschrift (kopierbar, Hauptsitzung) - **gültige Fassung**
 
-Ersetzt `F-startklar.md` §5. Schritte 0–3 und 5–7 sind von dort übernommen und unverändert; neu bzw.
+Ersetzt `F-startklar.md` §5. Schritte 0-3 und 5-7 sind von dort übernommen und unverändert; neu bzw.
 geändert sind **Schritt 4**, **Schritt 8** und der **Zusatzlauf B**.
 
-**Voraussetzungen:** der Kernel mit der integrierten Serie läuft (0091–0095), die Wand zeigt die
+**Voraussetzungen:** der Kernel mit der integrierten Serie läuft (0091-0095), die Wand zeigt die
 Konsole, der Zuspieler `192.168.8.162` ist wach und auf 1080p60. Board-Sperre halten.
-**Solange `hy310-tv` das Bild zeigt, hält es den DRM-Master** — vor jeder Positivkontrolle mit
+**Solange `hy310-tv` das Bild zeigt, hält es den DRM-Master** - vor jeder Positivkontrolle mit
 `hdmi_plane_test`/`gamma_test` erst `systemctl stop hy310-tv`.
 
 ```bash
@@ -318,7 +318,7 @@ python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-nach-stop
 #  Wand = Konsole. KEIN Standbild.
 ```
 
-### Zusatzlauf B — der Descriptor-Effekt ein zweites Mal im selben Boot [NEU]
+### Zusatzlauf B - der Descriptor-Effekt ein zweites Mal im selben Boot [NEU]
 
 Belegt die Korrektur aus §2 **am Gerät** und prüft zugleich, ob die Abtastreihe den Übergang
 wirklich datiert. Kein Kaltstart nötig, direkt im Anschluss an Schritt 8 zu fahren.
@@ -332,21 +332,21 @@ ssh root@192.168.8.141 'systemctl start hy310-tv'; sleep 5
 ssh root@192.168.8.141 'journalctl -u hy310-tv -n 15 --no-pager'
 ```
 
-**Erwartung:** dieselbe Stillstandsmeldung wie beim Erst-Enable, mit zwei Messwerten — obwohl es
+**Erwartung:** dieselbe Stillstandsmeldung wie beim Erst-Enable, mit zwei Messwerten - obwohl es
 derselbe Boot ist. Genau das war mit „nur der erste Enable eines Boots" ausgeschlossen worden.
 
 * Kommt sie, ist §2 am Gerät belegt **und** die Erkennung hat den Übergang datiert, statt ihn zu
   raten. Danach Schritt 7 (Freigabe) fahren.
-* Kommt stattdessen die Frist-Zeile, ist §2 **nicht** bestätigt — dann ins Log, `0x06940928` und
+* Kommt stattdessen die Frist-Zeile, ist §2 **nicht** bestätigt - dann ins Log, `0x06940928` und
   `0x05600098` dazu, und D/E fragen. Auch das ist ein gültiges Ergebnis.
 
 Anschließend `python3 /root/afbd_source0.py off` **nicht** stehen lassen: den Zustand über Schritt 7
 und einen weiteren Start wieder herstellen, sonst verfälscht der Rest die nächste Abnahme
 (D-cstride-befund.md, Nebenbefund).
 
-### Zusatzlauf C — der blinde Fleck, absichtlich vorgeführt [NEU, kein Durchfallkriterium]
+### Zusatzlauf C - der blinde Fleck, absichtlich vorgeführt [NEU, kein Durchfallkriterium]
 
-Zeigt am Gerät, was §3.4 beschreibt. **Erwartet wird ein Fehlbild** — das ist der Sinn der Übung.
+Zeigt am Gerät, was §3.4 beschreibt. **Erwartet wird ein Fehlbild** - das ist der Sinn der Übung.
 
 ```bash
 # Bild steht (Schritt 4 gruen)
@@ -370,10 +370,10 @@ Erwartet: die Wand zeigt zerrissenen Inhalt (A6-4: 720p-Bild dreifach nebeneinan
 | 4 | `bild Plane 38 an …`; **genau eine** Ring-Zeile, mit Messwerten; `grep -c "3000 ms"` = 0 |
 | 5 | Reiz ändert zweistellig viele Prozent. **Der einzige gültige Beweis, dass das Bild läuft** |
 | 6 | Konsolentext auf der Wand, **kein** Standbild |
-| 8 | Bild kommt von selbst zurück; Frist-Zeile — und bei Stillstand erst `0x05600098` lesen |
+| 8 | Bild kommt von selbst zurück; Frist-Zeile - und bei Stillstand erst `0x05600098` lesen |
 | 9 | Konsole, `rc=0`, kein Standbild |
 | B | Stillstandsmeldung mit zwei Messwerten, **im selben Boot** |
-| C | Fehlbild auf der Wand, Journal still — der belegte blinde Fleck |
+| C | Fehlbild auf der Wand, Journal still - der belegte blinde Fleck |
 
 ### Wenn etwas schiefgeht
 
@@ -382,13 +382,13 @@ Die Tabelle aus `F-startklar.md` §5 gilt unverändert weiter, mit drei Änderun
 | Beobachtung | Bedeutung | Nächster Schritt |
 |---|---|---|
 | Journalzeile enthält `3000 ms` | auf dem Board läuft ein **alter** Stand | Schritt 0 wiederholen, `sha256sum /usr/local/sbin/hy310-tv` gegen den Prüfbau halten |
-| `der Ring steht still … zuletzt bei A … stehen bei B` | der Descriptor-Effekt, **datiert** | Schritt 7; Befund für D/E. A und B ins Log übernehmen — das sind die ersten echten Messwerte zu dieser Frage |
+| `der Ring steht still … zuletzt bei A … stehen bei B` | der Descriptor-Effekt, **datiert** | Schritt 7; Befund für D/E. A und B ins Log übernehmen - das sind die ersten echten Messwerte zu dieser Frage |
 | `beobachtung abgebrochen … antwortet nicht mehr` | `QUERY_DV_TIMINGS` gibt einen anderen Fehler als `ENOLINK` zurück | `dmesg \| grep hdmirx`; das ist ein Befund für E, nicht für F |
-| Bild zerrissen, Journal still | **Auflösungswechsel der Quelle** (§3.4) — kein Fehler von F | Zuspieler-Modus prüfen; offener Punkt an 0094 |
+| Bild zerrissen, Journal still | **Auflösungswechsel der Quelle** (§3.4) - kein Fehler von F | Zuspieler-Modus prüfen; offener Punkt an 0094 |
 
 ---
 
-## 5. Prüfbau — **ausdrücklich ein Prüfbau, kein Serienartefakt**
+## 5. Prüfbau - **ausdrücklich ein Prüfbau, kein Serienartefakt**
 
 ```
 clang --target=aarch64-linux-gnu --sysroot=/srv/h713-rootfs -fuse-ld=lld \
@@ -399,20 +399,20 @@ clang --target=aarch64-linux-gnu --sysroot=/srv/h713-rootfs -fuse-ld=lld \
 | Prüfung | Ergebnis |
 |---|---|
 | `make -C userspace/hy310-tv cross`, clang 18.1.3 (Host), `-Wall -Wextra -Wshadow -Wvla` | **grün, null Warnungen** |
-| Ergebnis | `ELF 64-bit LSB pie executable, ARM aarch64`, 60 976 B, `NEEDED libdrm.so.2`, `libc.so.6` — sonst nichts; sha256 `a8f63b2bbb79802e982800dce49849b3de475165ea271875cb4cbf972f1d9aa9` (aus diesem Prüfbau, mit demselben Clang und demselben Pfad wiederholbar) |
+| Ergebnis | `ELF 64-bit LSB pie executable, ARM aarch64`, 60 976 B, `NEEDED libdrm.so.2`, `libc.so.6` - sonst nichts; sha256 `a8f63b2bbb79802e982800dce49849b3de475165ea271875cb4cbf972f1d9aa9` (aus diesem Prüfbau, mit demselben Clang und demselben Pfad wiederholbar) |
 | `clang --analyze` (`core,unix,deadcode`) | **kein Befund** |
 | `make install-cross DESTDIR=…` (Wegwerf-Wurzel) | legt `usr/local/sbin/hy310-tv` (arm64, 0755), Unit und Regel ab |
 | `udevadm verify 99-hy310-tv.rules` | `Success: 1, Fail: 0` |
-| `systemd-analyze verify ./hy310-tv.service` | grün (einziger Hinweis: `/usr/local/sbin/hy310-tv` gibt es auf **diesem** Rechner nicht — erwartet) |
+| `systemd-analyze verify ./hy310-tv.service` | grün (einziger Hinweis: `/usr/local/sbin/hy310-tv` gibt es auf **diesem** Rechner nicht - erwartet) |
 | `grep -n "RING_SETTLE\|settle_" main.c` | leer |
-| `make clean` | Baum wieder sauber, **kein Binärartefakt im Repo** (das `main.plist` des Analyzers räumt `clean` nicht mit weg — hier von Hand entfernt) |
+| `make clean` | Baum wieder sauber, **kein Binärartefakt im Repo** (das `main.plist` des Analyzers räumt `clean` nicht mit weg - hier von Hand entfernt) |
 
 `clock_gettime(CLOCK_MONOTONIC)` braucht auf dem Board-Root kein zusätzliches `-lrt` (glibc ≥ 2.17);
 `NEEDED` bleibt bei `libdrm.so.2` und `libc.so.6`.
 
 **Zeit- und Timer-Arithmetik getrennt geprüft.** Weil ein Lauf am Gerät aussteht, ist die neue
 Mechanik als eigenständiges Programm nachgebaut worden (dieselbe Armierung, dieselben Offsets, die
-`ioctl` durch ein `usleep(22 ms)` ersetzt) und auf dem Arbeitsrechner gelaufen — Wegwerfdatei im
+`ioctl` durch ein `usleep(22 ms)` ersetzt) und auf dem Arbeitsrechner gelaufen - Wegwerfdatei im
 Scratch-Verzeichnis, nicht im Baum:
 
 ```
@@ -437,16 +437,16 @@ es nur am Board. Warum der Prüfbau nicht im Container `h713-build` läuft, steh
 
 1. **Ein Lauf.** Das Programm ist gebaut und geprüft, aber nie gestartet worden. Alles in §4 ist
    Erwartung, kein Messwert. **Die erste echte Zahl zur Reaktionszeit der Firmware entsteht in
-   Schritt 4** — bis dahin ist der einzige Beleg „innerhalb einer Sekunde" (§1).
+   Schritt 4** - bis dahin ist der einzige Beleg „innerhalb einer Sekunde" (§1).
 2. **Der Auslöser für den Auflösungswechsel gehört in 0094** (§3.4). Solange er fehlt, ist die
    `offen`-Zeile im Journal alles, was F dazu tun kann. Messvorschrift steht in A6-4; Zusatzlauf C
    liefert das Foto dazu.
-3. **Die Freigabe nach dem Descriptor gehört in 0093/0094** — unverändert offen seit
+3. **Die Freigabe nach dem Descriptor gehört in 0093/0094** - unverändert offen seit
    `F-hy310-tv.md` §6 Punkt 1 und `F-startklar.md` §6 Punkt 1. Beide Wege sind Stock-RPCs (B2:
    `SetSource` weg und zurück; M4: HPD-Zyklus, 0,3 s). F warnt, F repariert nicht.
 4. **Messung M-F1** (reicht ein wiederholtes `SetSource(3)`?) steht unverändert in
    `F-startklar.md` §6 Punkt 2.
 5. **Ob die Frist von 2000 ms weit genug ist**, ist nach dem ersten Lauf zu prüfen: meldet Schritt 4
-   die Frist-Zeile und friert die Wand **danach** doch ein, ist der Wert zu klein — dann steht die
+   die Frist-Zeile und friert die Wand **danach** doch ein, ist der Wert zu klein - dann steht die
    nächste Zahl auf einer echten Messung. Das ist der Punkt der Umstellung: der Wert kann jetzt
    **widerlegt** werden, weil das Log sagt, worüber er nichts aussagt.

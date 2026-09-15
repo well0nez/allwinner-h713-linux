@@ -1,4 +1,4 @@
-# userspace/ — was auf dem Board läuft
+# userspace/ - was auf dem Board läuft
 
 | Verzeichnis | Was | Stand |
 |---|---|---|

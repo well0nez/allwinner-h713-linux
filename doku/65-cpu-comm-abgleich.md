@@ -11,11 +11,11 @@ Alles unten ist aus den Quellbäumen diffed, nicht aus Notizen übernommen.
 
 | | Zeilen | `cpu_comm_user.c` | |
 |---|---|---|---|
-| `re/work/HY310-DEV/cpu_comm/` | 8179 | — | 21.–31.03., der älteste |
-| `legacy/drivers/Archived/cpu_comm/` | 8361 | — | **= sein Patch 0014** |
+| `re/work/HY310-DEV/cpu_comm/` | 8179 | - | 21. - 31.03., der älteste |
+| `legacy/drivers/Archived/cpu_comm/` | 8361 | - | **= sein Patch 0014** |
 | `legacy/drivers/cpu_comm/` | 9968 | **ja**, 234 Z. | unser Stand, der richtige |
 
-Dass Patch 0014 aus `Archived/` stammt, ist dateiweise belegt — die Zeilenzahlen
+Dass Patch 0014 aus `Archived/` stammt, ist dateiweise belegt - die Zeilenzahlen
 stimmen alle überein (861/1521/257/642/888/2221/902/1069). Steht so auch in
 [60-offen.md](60-offen.md): der Ordner hat ihn einen Tag gekostet.
 
@@ -40,19 +40,19 @@ cpu_comm_user.c      NEU        +234
 
 | Merkmal | alt | neu | arm64 | |
 |---|---|---|---|---|
-| `cpu_comm_user.c` (Callback-Loop) | — | **6 Dateien** | — | `.read`/`.poll`, per-fd-Ringpuffer |
-| `userspace_deliver` | — | **4** | — | Hook in `comm_CallWorkAction` + `handle_CPU2_call` |
-| `sync_mips_cache` (DMB-Muster) | — | **1** | — | Session W |
-| `cpu_comm_is_mips_va` | — | **3** | — | Session Z, KSEG0-Range-Check |
+| `cpu_comm_user.c` (Callback-Loop) | - | **6 Dateien** | - | `.read`/`.poll`, per-fd-Ringpuffer |
+| `userspace_deliver` | - | **4** | - | Hook in `comm_CallWorkAction` + `handle_CPU2_call` |
+| `sync_mips_cache` (DMB-Muster) | - | **1** | - | Session W |
+| `cpu_comm_is_mips_va` | - | **3** | - | Session Z, KSEG0-Range-Check |
 | `sema_init` | 1 | **5** | 1 | Y2: Linux-`struct semaphore` |
-| FreeCall-Cache-Hack raus | — | **ja** | — | K-night, s.u. |
+| FreeCall-Cache-Hack raus | - | **ja** | - | K-night, s.u. |
 | `HW_SPINLOCK_COUNT` | 14 | **9** | 14 | Session W |
-| `cc_ref` | — | — | **6** | **nur er**: 32-Bit-Zeigermodell für arm64 |
-| TX_IRQ_EN-Puls zum MIPS | — | — | **ja** | **nur er** |
+| `cc_ref` | - | - | **6** | **nur er**: 32-Bit-Zeigermodell für arm64 |
+| TX_IRQ_EN-Puls zum MIPS | - | - | **ja** | **nur er** |
 
 Zwei Dinge hat **er**, die uns fehlen; alles andere fehlt **ihm**.
 
-## Der Doorbell — der Punkt, an dem es zusammenläuft
+## Der Doorbell - der Punkt, an dem es zusammenläuft
 
 Für einen frischen CALL an den MIPS:
 
@@ -69,21 +69,21 @@ Der alte Wert `0x2` ist der dokumentierte Fehlgriff: die Firmware liest ihn als
 
 Er hat die Funktion korrigiert (`raw = msg_type & 0x3`), die Aufrufstellen aber
 gelassen (`send_intr_to_mips(dir, INTR_TYPE_SEND, 0)`). Das geht gut, weil `dir`
-0/1 ist und `MSG_TYPE_CALL/RETURN` ebenfalls 0/1 — derselbe Wert wie bei unserer
+0/1 ist und `MSG_TYPE_CALL/RETURN` ebenfalls 0/1 - derselbe Wert wie bei unserer
 expliziten Fassung, aber aus einem anderen Grund.
 
 **Der Puls fehlt bei uns.** Unser einziger `TX_IRQ_EN`-Schreibzugriff steht im
 ARISC-Pfad (`H713_MSGBOX_ARISC_TX_IRQ_EN = 0x430`, `cpu_comm_hw.c:1245`), nicht
 im MIPS-Pfad. Genau das führt [60-offen.md](60-offen.md) als offenen Defekt im
 öffentlichen Repo, und `CURRENT-TRUTH.md` sagt device-verified, dass MSG_DATA
-allein auf dem H713 verworfen wird — der Block ist flankengetriggert, nicht
+allein auf dem H713 verworfen wird - der Block ist flankengetriggert, nicht
 pegelgetriggert wie beim H6.
 
 Die Transportadressen sind in allen vier Fassungen gleich und stimmen mit dem
 Gerät überein: TX `0x03003874` (Zähler `0x03003864`), RX `0x03003164`/`0x03003174`,
 Version `0x03003810` (liest `0x00020000`), Bus-Gate `0x0200171c` Bit 0 + Bit 16.
 
-## Die FreeCall-FIFO — gelöst, und was der Zähler wirklich sagt
+## Die FreeCall-FIFO - gelöst, und was der Zähler wirklich sagt
 
 Der Pool hat 21 Plätze bei `share_seq + 120`. Der **Sender entnimmt**
 (`Comm_GetFreeCall`), der **MIPS legt zurück** (`Comm_ReleaseFreeCall`, nachdem
@@ -98,12 +98,12 @@ call_slot = (u8 *)comm_intrsem[cache_idx];   /* Slot dauerhaft gecacht */
 comm_intrsem[cache_idx] = (u32)call_slot;
 ```
 
-`Comm_GetFreeCall` lief **einmal**, danach nie wieder — während der MIPS in
+`Comm_GetFreeCall` lief **einmal**, danach nie wieder - während der MIPS in
 jedem Zyklus einen Slot zurücklegte. Die FIFO lief nach einem Zyklus über.
 
 Gelöst am 22.04. (Session K-night), in unserem Baum:
 
-- Cache-Hack raus, frisches `Comm_GetFreeCall` pro Send — stock-konform.
+- Cache-Hack raus, frisches `Comm_GetFreeCall` pro Send - stock-konform.
   Entnahme und Rückgabe balancieren sich wieder.
 - `fifo_isNearlyFull`-Warteschleife auf 100 Spins begrenzt, dann `-EBUSY`
   statt Endlosschleife.
@@ -124,7 +124,7 @@ FreeCall  rd=1 wr=20  idx=00 state=04    nach dem ersten
 FreeCall  rd=2 wr=20  idx=01 state=04    nach dem zweiten
 ```
 
-`state=04` ist `MSG_FLAG_SENT`, noch gesetzt — die Firmware hat das Flag nie
+`state=04` ist `MSG_FLAG_SENT`, noch gesetzt - die Firmware hat das Flag nie
 gelöscht, also nie zugegriffen. Solange das so bleibt, kommt kein Slot zurück
 und nach zwanzig Aufrufen meldet `commcall` „no free slot (ring empty)".
 Der Zähler ist damit ein brauchbares Orakel: **läuft er hoch und bleibt oben,
@@ -134,12 +134,12 @@ verarbeitet der MIPS nicht.**
 
 - **Semaphoren.** Alt: roher 4-Byte-Zähler, `sock[31] = 1`. Neu: echte
   `struct semaphore`, Basis `sock[30]` (`sock+120`), dazu `sock[234]`
-  (`sock+936`) — der Y2-Off-by-4. Die alten Kommentare sagten ausdrücklich
+  (`sock+936`) - der Y2-Off-by-4. Die alten Kommentare sagten ausdrücklich
   „sem at sock[31] NOT sock[30]", was für den Zähler stimmte und für die
   Linux-Primitive falsch ist.
 - **`IOCTL_INSTALL_RT` ruft `Comm_AddNewChannel`** nach `AddInRoutine` (Y2,
   stock-konform bei `0x1518`). Ohne das schlägt die ChanPID-Suche für
-  MIPS→ARM-CALLs fehl — also genau für Callbacks.
+  MIPS→ARM-CALLs fehl - also genau für Callbacks.
 - **`GetReturnbySessionId`** gibt `-ENOENT` statt 0-mit-NULL zurück (Session W).
   Die alte Semantik führte zu `ReleaseWaitComm` mit Müllzeiger.
 - **Cache-Kohärenz.** Stock macht `DMB ISHST` + Spin-Wait auf das gelöschte
@@ -154,27 +154,27 @@ Kodierung: Bit 31 gelöscht = ARM-physische Adresse in der geteilten Region,
 Bit 31 gesetzt = getaggte treiber-private Arena. Das deckt auch die Zeiger ab,
 die die `Vir2Mid`/`Mid2Vir`-Schicht allein nicht abgedeckt hätte.
 
-Beim Portieren geht das **vor** unseren Fixes rein, nicht danach — sonst
+Beim Portieren geht das **vor** unseren Fixes rein, nicht danach - sonst
 zeigt jede Listenverkettung ins Leere.
 
 ## Folge für den U-Boot-Weg
 
 `h713_disp commcall` schreibt das Shared Memory direkt und braucht keinen
 Linux-Treiber. Sein Doorbell-Verhalten ist korrekt (blanker Typ + Puls). Was er
-davon **nicht** erbt, sind die Dinge oberhalb des Transports — Semaphoren,
-Channel-Add, Cache-Sync —, und die betreffen erst die Antwortrichtung.
+davon **nicht** erbt, sind die Dinge oberhalb des Transports - Semaphoren,
+Channel-Add, Cache-Sync - , und die betreffen erst die Antwortrichtung.
 
 Zwei Fallen, beide am 01.09. am Gerät gesehen:
 
 - **Das Bus-Gate.** `commcall` **liest** `0x0200171c` und druckt es, schaltet es
   aber nicht ein. Ohne vorheriges `h713_disp init` steht es auf 0, das
-  Versionsregister liest 0, und der Doorbell wird schweigend verschluckt —
+  Versionsregister liest 0, und der Doorbell wird schweigend verschluckt -
   `fifo count now 0`. Von Hand: `mw.l 0x0200171c 0x00010001`, danach liest
   `0x03003810` = `0x00020000`.
 - **Der Selbsttest von `commdev` ist auf Board B kalibriert.** Er erwartet
   `03e00008 24020001` bei `0x8b1227b4`; unsere Firmware hat dort echten Code
   (`00a08025 00809025`). Er erklärt daraufhin alle KSEG-Lesevorgänge für
-  ungültig — zu Unrecht: `fwmd 0x8b48c2a4` liefert `00000757 00000757`, also
+  ungültig - zu Unrecht: `fwmd 0x8b48c2a4` liefert `00000757 00000757`, also
   genau die 1879, die `mipslog state` unter Linux meldet. Gleiche Fehlerklasse
   wie die HDCP-Adresse (`0x4b13d6f8` bei ihm, `0x4b13d0a4` bei uns).
 
@@ -199,25 +199,25 @@ cd /opt/Projekte/h713/legacy/drivers
 diff -upr Archived/cpu_comm cpu_comm
 ```
 
-## Der zusammengeführte Baum — `analyse/cpu-comm-arm64/`
+## Der zusammengeführte Baum - `analyse/cpu-comm-arm64/`
 
 Erzeugt am 01.09.2026 als **Drei-Wege-Merge** mit `Archived/` als gemeinsamem
 Vorfahren (`git merge-file`), nicht als Neuschreiben. Beide Seiten sind vom
 selben Stand ausgegangen, also war das das richtige Werkzeug.
 
 28 Konflikte, `cpu_comm.h` ging konfliktfrei durch. Die Regel war fast
-durchgängig **unsere Logik, seine Typbreiten** — mit vier Ausnahmen, wo seine
+durchgängig **unsere Logik, seine Typbreiten** - mit vier Ausnahmen, wo seine
 Lösung die bessere ist:
 
 | Stelle | genommen | warum |
 |---|---|---|
 | Shared-Region-Adoption | seine | bedingt statt `#if 0`; kein Wipe bei laufendem MIPS |
-| msgbox-Taktung | seine | nur deassert, kein Puls — der MIPS kann in einer Queue stecken |
+| msgbox-Taktung | seine | nur deassert, kein Puls - der MIPS kann in einer Queue stecken |
 | RX-Modell + Doorbell | seine | gegen U-Boots funktionierenden Transport verifiziert |
 | Spinlock-Feldinit | seine | `writel` + benannte Konstanten |
 
 Beim **Doorbell** mussten beide verbunden werden: sein Draht-Format (blanker
-Typ, `TX_IRQ_EN`-Puls auf `0x03003830`), aber unsere Aufrufkonvention — seine
+Typ, `TX_IRQ_EN`-Puls auf `0x03003830`), aber unsere Aufrufkonvention - seine
 Funktion nimmt den Typ aus dem ersten Argument, unsere Aufrufer legen ihn ins
 zweite. Unverändert übernommen hätten wir immer `0` gesendet.
 
@@ -228,7 +228,7 @@ Schlüssel** und das Objekt zieht in eine Seitentabelle. Damit bleibt jeder
 Offset unverändert, die Y2-Semantik bleibt, und auf arm64 überläuft nichts.
 
 Zulässig ist das, weil alle über `cpu_comm_sem_*` angefassten Semaphoren in
-`s_CommSockt[]` liegen — einem statischen Kernel-Array (`cpu_comm_mem.c:38`) —
+`s_CommSockt[]` liegen - einem statischen Kernel-Array (`cpu_comm_mem.c:38`) -
 oder in dessen Wait-Objekten. Der MIPS liest keine davon. Die eine Stelle, die
 er wirklich liest (`sock[248]`, Offset 0x3E0, aus `display.bin` 0x8B11FEEC),
 ist ein roher u32 und läuft nicht über diese Schnittstelle.
@@ -236,7 +236,7 @@ ist ein roher u32 und läuft nicht über diese Schnittstelle.
 Der Vorgabewert beim Anlegen ist **Zähler 0**: die einzigen Adressen ohne
 ausdrückliches Init sind die Wait-Objekte, und die sind im Stock-Layout genau
 so gebaut (`entry[3]=0` lock, `entry[4]=0` count, `entry[5..6]`
-selbstreferenziell) — eine gültige 16-Byte-Semaphore ohne `sema_init`.
+selbstreferenziell) - eine gültige 16-Byte-Semaphore ohne `sema_init`.
 
 ### Zwei Funde beim Bauen
 
@@ -244,7 +244,7 @@ selbstreferenziell) — eine gültige 16-Byte-Semaphore ohne `sema_init`.
 Region wird per `ioremap` abgebildet, Device/uncached; es gibt keinen Cache,
 der etwas Veraltetes zurückhalten könnte. Der Aufruf stammt aus der Zeit, als
 dort `vmap()` stand. `invalidate_kernel_vmap_range` existiert auf arm64 auch
-gar nicht. Der Grund steht jetzt im Code — wer die Abbildung je auf
+gar nicht. Der Grund steht jetzt im Code - wer die Abbildung je auf
 cachefähig umstellt, braucht die Invalidierung wieder.
 
 **Ein Semaphoren-Leck in unserem Baum.** `Comm_ReleaseFreeCall` gibt im
@@ -267,7 +267,7 @@ podman exec h713-build bash -lc 'cd /work/analyse/cpu-comm-arm64 && \
 ```
 
 Sieben Zeiger-Abschneidungen wurden dabei einzeln entschieden, nicht pauschal
-gecastet — darunter `cpu_comm_is_mips_va()`, das ein `u32` nahm und auf arm64
+gecastet - darunter `cpu_comm_is_mips_va()`, das ein `u32` nahm und auf arm64
 Kernelzeiger stutzte, bevor es fragte, ob sie wie `0x8xxxxxxx` aussehen. Ein
 gültiger Rückgabewert wäre damit zufällig verworfen worden.
 

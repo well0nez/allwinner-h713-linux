@@ -5,7 +5,7 @@
 # HANDOFF-HDMI-RX-SESSION-20260501-U.md (Phase U5, Stock-RPC-Mitschnitt).
 #
 # SetSource kommt ZULETZT. Am 01.09.2026 an Position 2 gerufen: angenommen,
-# kein RETURN, und der einzige BG_Thread der Firmware blockiert seitdem —
+# kein RETURN, und der einzige BG_Thread der Firmware blockiert seitdem -
 # alle folgenden Aufrufe liefen ins Leere, Erholung nur per Stromzyklus.
 #
 # Voraussetzungen:
@@ -22,9 +22,9 @@
 #   Wce_SetWindow     dito, sechs Sessions lang ohne Wirkung getestet
 #   GetPortStatus     kommt in KEINEM der vier Stock-Mitschnitte vor
 #
-# NIEMALS: 0152f134 (THal_Vp_EnableScreenCover) — wedgt CPU_COMM.
+# NIEMALS: 0152f134 (THal_Vp_EnableScreenCover) - wedgt CPU_COMM.
 #
-# GEPRUEFT 04.09.2026 — die Argumente unten sind jetzt gegen
+# GEPRUEFT 04.09.2026 - die Argumente unten sind jetzt gegen
 # legacy/userspace/hy310-hdmird geprueft (libhaldisplay-Wrapper-RE + Stock-elog).
 # DREI Zeilen waren falsch, siehe die Kommentare an Ort und Stelle.
 # Ausserdem fehlen dieser Datei THal_Vp_Init(0,0,0x4E700000) ganz vorn und
@@ -32,11 +32,11 @@
 # Vermerk "SKIPPING THIS WAS THE LVDS-ROUTING BLOCKER through Z-session".
 # Die vollstaendige Sequenz steht in doku/68-stock-extraktion-arisc-hdcp.md.
 #
-# ACHTUNG 04.09.2026 — die Argument-ABI war falsch verstanden.
+# ACHTUNG 04.09.2026 - die Argument-ABI war falsch verstanden.
 # Es gibt KEINEN Dummy-Parameter: der Adapter bekommt einen Zeiger auf die
 # Nachricht bei +0x28 (comp_id), seine Ladebefehle bei +4/+8/+12 lesen also
 # die ersten drei Nutzwerte ab +0x2c. Aufrufe, die eine fuehrende 0 schicken,
-# nullen damit den ERSTEN Ausgabezeiger des Adapters — was fuer p1 gehalten
+# nullen damit den ERSTEN Ausgabezeiger des Adapters - was fuer p1 gehalten
 # wurde, bekam in Wahrheit die zweite Ausgabe. Belegt von cstenger per
 # Linux-Mitschnitt (Commit ec53910, doku/67-cpu-comm-linux.md).
 # ARGUMENTE GEPRUEFT 04.09.2026 gegen userspace/hy310-hdmird (main.cpp).
@@ -100,6 +100,6 @@ h713_disp commcall b66041d8 chan=0 pid=8b8f3160
 h713_disp commcall 6eb4c96a chan=0 pid=8b8f3160 c8
 
 # ── 5. Erst jetzt die Quelle ─────────────────────────────────────────
-# Session Z: 59 ms Roundtrip. Kommt kein RETURN, ist das ein Befund —
+# Session Z: 59 ms Roundtrip. Kommt kein RETURN, ist das ein Befund -
 # U-Boots Fenster sind 2 s, die Firmware braucht darunter.
 h713_disp commcall eaf13de5 chan=0 pid=8b8f3160 3

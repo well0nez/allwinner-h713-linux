@@ -4960,8 +4960,8 @@ What does **not** appear is the OSD framebuffer.
 ### The one-line state
 
 Everything from panel power through the LVDS PHY works. The MIPS firmware owns
-the final output stage and composites its configured source — `source_id=1`,
-VideoDecoder, an empty stream that is black by design — rather than our OSD
+the final output stage and composites its configured source - `source_id=1`,
+VideoDecoder, an empty stream that is black by design - rather than our OSD
 layer. That is the whole remaining gap.
 
 ### Proven on hardware this session
@@ -4972,7 +4972,7 @@ layer. That is the whole remaining gap.
 - **The firmware, not the ARM, drives the output stage.** With the coprocessor
   held in reset (`h713_disp panel-test <id> noboot`), `0x051c0000..0x0c` and
   `0x051c00b0..0xcc` all read zero, the scan counter at `0x05880000` is dead,
-  and nothing at all reaches the panel — not even the internal colour source.
+  and nothing at all reaches the panel - not even the internal colour source.
   With the firmware running, those registers are populated (including PHY
   geometry `0x051c00bc=05000030`, `0x051c00c0=02d00016`) and the raster runs.
   The doc's long-standing claim that the ARM path is not independent of the
@@ -5040,7 +5040,7 @@ eMMC `0xa78a3600`) and `runtime-toc1.dtb`.
 
 - The mixer/DE geometry mismatch is fixed and was **not** the blocker.
 - The AFBD module clock is **not** gated; the vendor prologue sets it. Do not
-  add `h713_display_prepare()` to the fastlogo replay — it is redundant there,
+  add `h713_display_prepare()` to the fastlogo replay - it is redundant there,
   and the prologue already writes `0x02001050` and `0x02001db0/db4/db8/dc0/dd8`.
 - Stock's LVDS PHY tail (`0x051c00d4..0xe0` written as a barriered group at
   stock `+0x22cca`) is now replayed, and is a no-op: the neighbouring registers
@@ -5048,7 +5048,7 @@ eMMC `0xa78a3600`) and `runtime-toc1.dtb`.
 - Enumerating every MMIO literal in stock's fastlogo function (`0x4a0228d4`) and
   diffing against our sequence leaves **no remaining difference** except the
   deliberately-skipped `0x02001020` PLL_PERIPH0 write.
-- `source_id=2` (Image) was patched at the correct offset — `0x4be01e48` is
+- `source_id=2` (Image) was patched at the correct offset - `0x4be01e48` is
   genuinely the `'1'` character. The firmware getting *less* far therefore means
   the Image path needs a registered image source, not merely a config value.
 
@@ -5132,8 +5132,8 @@ window. The DTB itself is 69,380 bytes, SHA-256
 `3902567a079720921e226c9176877f49916c6bdabfb6d82885e65d9f0a7d58b0`.
 (An earlier revision of this document recorded `06e5279c...` here; that hash is
 wrong. All three board-B eMMC captures yield the value above at that exact
-offset and size, and both byte-level facts quoted below — `panel_power_en` at
-DTB `+0x9f64` and `panel_gpio_0` at `+0x9f9c` — match it.)
+offset and size, and both byte-level facts quoted below - `panel_power_en` at
+DTB `+0x9f64` and `panel_gpio_0` at `+0x9f9c` - match it.)
 This is the DT parsed by the stock fastlogo path and is the authority for its
 named GPIO descriptors.
 
@@ -5724,7 +5724,7 @@ only the prepared clock tree applied by hand:
 
 - the whole LVDS window `0x051c0000..0x051c0057` reads back zero, so the block
   is idle rather than absent;
-- `0x051c0010` is readable, and the stock write lands and persists — a
+- `0x051c0010` is readable, and the stock write lands and persists - a
   subsequent read returns `0x01800045`;
 - the write is repeatable: two back-to-back writes both completed, and no other
   register in the window changed, so it behaves as a standalone enable rather
@@ -5744,13 +5744,13 @@ that line of `h713_display_prepare()` is a no-op against the current SPL.
 
 The general lesson is that "this register wedges the interconnect" has meant
 "this block was unclocked" every time it has been run down. Apply the same
-suspicion to the remaining exclusions — INCAP at `0x06940000` in particular —
+suspicion to the remaining exclusions - INCAP at `0x06940000` in particular -
 before treating them as hardware limits.
 
 ## Firmware startup trace (2026-07-28)
 
 `h713_mips probe-trace` instruments the authenticated image with 671 volatile
-word patches — code caves plus `j`/`jal` redirection — that store marker ids to
+word patches - code caves plus `j`/`jal` redirection - that store marker ids to
 the firmware's uncached `0xae340000` alias, visible to the ARM at
 `H713_MIPS_SHMEM_ADDR + H713_MIPS_TRACE_OFF`. Markers are streamed to UART as
 they change rather than dumped after the poll loop, because the failure being
@@ -5788,10 +5788,10 @@ is exactly the uncached alias of its `cfg_file` LMA:
 | Region | LMA | Size | Staged from |
 | --- | --- | --- | --- |
 | boot code + C code | `0x4b100000` | `0xc01000` | `display.bin` |
-| debug buffer | `0x4bd01000` | `0x100000` | — (cleared) |
+| debug buffer | `0x4bd01000` | `0x100000` | - (cleared) |
 | cfg file | `0x4be01000` | `0x40000` | `display_cfg.xml` |
 | TSE data | `0x4be41000` | `0x100000` | concatenated `*.TSE` |
-| frame buffer | `0x4bf41000` | `0x1a00000` | — (cleared) |
+| frame buffer | `0x4bf41000` | `0x1a00000` | - (cleared) |
 
 The TSE window takes `database.TSE`, `projecttable.TSE`,
 `ProjectID_0x0012.TSE`, and `pq_custom.TSE` **simply concatenated** in that
@@ -5801,7 +5801,7 @@ magic rather than indexing fixed offsets. Stock U-Boot selects the ProjectID
 file via a `mips_projectID` value; `0x0012` is the literal in its binary.
 
 Stage each window with its own fastboot pass and exit with `fastboot continue`
-— a warm reset destroys staged DRAM (see [flash.md](flash.md)). `probe-trace`
+- a warm reset destroys staged DRAM (see [flash.md](flash.md)). `probe-trace`
 clears everything above the image except the config and TSE windows, so those
 two survive; the firmware image must be re-staged for every run because both
 the trace patches and the running firmware modify it.
@@ -5820,7 +5820,7 @@ non-determinism were second-or-later runs on one boot. Bench procedure:
 1. power cycle;
 2. `mw.l 0x4be01000 0 0x50000`;
 3. stage `display_cfg.xml`, the TSE blob, then `display.bin`;
-4. `h713_mips verify` — must print `16c74a28...`;
+4. `h713_mips verify` - must print `16c74a28...`;
 5. exactly one `h713_mips probe-trace` (or `probe-ready`).
 
 Treat any result from a second run on the same boot as void.
@@ -5855,8 +5855,8 @@ completes. `status` is 1, the BSS witness is clear, both CPU_COMM magics read
 `deadbeef`, and the ARM flag reads back `0x5`. An uninstrumented `probe-ready`
 with a ten-second budget behaves the same.
 
-`MIPS READY` is never set, and the trace explains why. Markers 1-9 — the entire
-CPU_COMM path — never fire:
+`MIPS READY` is never set, and the trace explains why. Markers 1-9 - the entire
+CPU_COMM path - never fire:
 
 ```
 0x4b15257c   ThreadX thread entry           (markers 6, 7)
@@ -5872,8 +5872,8 @@ between marker 24's site (`0x4b152d30`) and marker 25's (`0x4b152d54`). Marker
 and the thread is never created.
 
 The innermost stall is marker 53's call into `0x4b1839dc` (marker 54 does not
-fire). Inside it, trace slots 104 and 105 — which capture the polling loop's
-current and initial tick rather than marker ids — both read **zero**. The loop
+fire). Inside it, trace slots 104 and 105 - which capture the polling loop's
+current and initial tick rather than marker ids - both read **zero**. The loop
 is `while ((now - start) < 0x33)`, so a tick that never advances never expires.
 
 The tick source is a software counter at `0x4b252cc0` (BSS), read under an
@@ -5901,7 +5901,7 @@ strong. The tick is a ThreadX software counter incremented by the CP0 Compare
 ISR, and interrupts are legitimately masked this early in startup, so a
 stopped tick is expected at that point rather than a fault. The real defect is
 that `Rx_HDCP14_LoadKey` polls HDMI-RX `0x06840093` for an acknowledgement
-that never arrives, and its timeout — which stock relies on to recover — cannot
+that never arrives, and its timeout - which stock relies on to recover - cannot
 expire while the tick is stopped. The timer needs no CCU gate either: it is the
 MIPS core's own CP0 Count/Compare, and the coprocessor cannot reach the CCU at
 all, so every clock it depends on must come from the ARM.
@@ -6049,7 +6049,7 @@ which silently discarded a fourth type. The delay unit was a guess.
 
 Both are now settled by reading the vendor applier, not by inference. Stock
 U-Boot 2018.05 for this board (`local/mips-display/board-b-stock/u-boot-stock.bin`)
-is **32-bit ARM, Thumb-2, load base `0x4a000000`** — not AArch64, which is why
+is **32-bit ARM, Thumb-2, load base `0x4a000000`** - not AArch64, which is why
 earlier disassembly attempts produced noise. The record applier is at
 `0x4a025164`, reached through the ops table at `0x4a025488+0x24`; it belongs to
 the LogoRegData module, whose neighbouring strings are `LogRegData.bin version
@@ -6065,12 +6065,12 @@ It walks a `{?, records, count}` descriptor, stride 16, type word at `+0xc`:
 
 Three corrections fall out of that:
 
-**`type 0xfe` is not a poll — it is a masked bit pulse.** The `value` word is
+**`type 0xfe` is not a poll - it is a masked bit pulse.** The `value` word is
 never read. Our four records all carry `mask 0x80000000` on the display PLL at
 `0x058c0014`, and bit 31 there is PLL_ENABLE, so each one is a **PLL restart**:
 drop enable, raise it again. They sit at container offsets `0x0ec4`, `0x1734`,
-`0x1d1c`, `0x1fa4`, and the one at `0x1734` is inside **timing block 6 — the
-block this panel uses** — in the middle of a divider reprogram:
+`0x1d1c`, `0x1fa4`, and the one at `0x1734` is inside **timing block 6 - the
+block this panel uses** - in the middle of a divider reprogram:
 
 ```
 +0x16e4 0x058c0014 <- 0x08000000 mask 0x08000000
@@ -6089,29 +6089,29 @@ in the block landed on a PLL that had never been re-locked.
 
 **The delays are microseconds.** `0x4a000d74`, the thunk the walker calls, tail-
 branches to the delay core at `0x4a000d50`, which reads CNTPCT and busy-waits
-`value * 0x18` ticks — 24 ticks per microsecond on the 24 MHz arch timer. The
+`value * 0x18` ticks - 24 ticks per microsecond on the 24 MHz arch timer. The
 `x1000` wrapper immediately after it at `0x4a000d78` is `mdelay`, and the walker
 does *not* use it. So the old `mdelay()` path was 1000x too long before the cap
 and wrong after it: the whole container is ~126 ms of delay in stock and was
 about 4.6 s for us, with the two 15000 waits bracketing the PLL restart cut to
 200 ms each. `H713_LOGO_MAX_DELAY_MS` is replaced by `H713_LOGO_MAX_DELAY_US`
-at 100000, which only bounds a walk that has fallen into garbage — stock has no
+at 100000, which only bounds a walk that has fallen into garbage - stock has no
 ceiling at all, and the largest genuine value is 15000.
 
 **The width field is vestigial.** Stock uses a 32-bit `ldr`/`str` for every
-type in `0..4`. Moot for this container — all 838 write records are type 4, and
-there is not a single type 1 or 2 — so the width switch is left in place.
+type in `0..4`. Moot for this container - all 838 write records are type 4, and
+there is not a single type 1 or 2 - so the width switch is left in place.
 
 The four `0xfe` records are also *new in this firmware revision*: the superseded
 `research/bootloader_fat` extract has 774 writes, 89 delays and no `0xfe` at
-all. Same for values — `+0x1664` writes `0x058c002c <- 0x00070010` where the old
+all. Same for values - `+0x1664` writes `0x058c002c <- 0x00070010` where the old
 extract had `0x00000010`.
 
 ### Bench result (2026-07-29): the fix works, the panel stays dark
 
 Timing block 6 now applies `32 records, 1 pulse, 7 delays, 0 resync steps`, and
 `0x058c0014` reads back `b9002a00` against the `a9002a00` the table writes. The
-one differing bit is 28 — **PLL lock, set by hardware**. It cannot have been set
+one differing bit is 28 - **PLL lock, set by hardware**. It cannot have been set
 with the restart skipped, so the vendor's PLL sequence now completes correctly
 for the first time. That is the `0xfe` defect closed, on hardware.
 
@@ -6124,7 +6124,7 @@ both in the fastlogo state machine at `0x4a0228d4`, which applies groups
 - stock's FIFO reset after group 1 is **conditional** on `readl(0x05880fe0)`
   being non-zero; `h713_disp_fifo_reset()` does it unconditionally.
 - the mixer write (`0x100` to `0x0525c038`) happens *before* group 2 is applied,
-  which is where we put it — that much is confirmed.
+  which is where we put it - that much is confirmed.
 
 ## The firmware overrides the panel timing with 1080p
 
@@ -6148,7 +6148,7 @@ Eleven do not.
 | `0x05600168` | `000003b2` | `00000002` | firmware (AFBD status) |
 
 Reading `+0x20` as total geometry and `+0x24` as active, the LVDS group goes from
-**1280x720 active / 1360x760 total** — the panel — to **1920x1080 active /
+**1280x720 active / 1360x760 total** - the panel - to **1920x1080 active /
 2200x1125 total**, standard 1080p60. `+0x28` moves consistently with it and
 `+0x2c`/`+0x30` come back with bit 31 set.
 
@@ -6156,7 +6156,7 @@ Nothing in the container writes those values: timing block 6 is the only block
 that touches `0x05880020`/`0x24` and it writes 720p, and no record anywhere in
 the file writes `04650898` or `04380780` to them. The only ARM code after the DE
 table is the clocks/TVCAP step, INCAP, `0x051c0010` and the MIPS release, none in
-`0x0588xxxx`. So the coprocessor is the only candidate — **an inference from
+`0x0588xxxx`. So the coprocessor is the only candidate - **an inference from
 exhaustion, not an observation**, and it should be treated as such.
 
 Meanwhile the mixer, DE and AFBD stay at 720p (`mixer +0x20`/`+0x30` =
@@ -6164,7 +6164,7 @@ Meanwhile the mixer, DE and AFBD stay at 720p (`mixer +0x20`/`+0x30` =
 programmed for 1080p.
 
 **The firmware does not defend the registers.** Re-imposing 720p after it has
-run sticks — verified both with the raw table records and, when that turned out
+run sticks - verified both with the raw table records and, when that turned out
 to clear the firmware's bit 31 on `+0x2c`/`+0x30`, again with those bits
 preserved. Neither changed anything observable.
 
@@ -6180,7 +6180,7 @@ One replay divergence remains: stock pulses the FIFO reset only when
 `0x05880fe0` is non-zero, while `h713_disp_run()` currently pulses it
 unconditionally. This is the first cheap parity fix.
 
-### The projector selector lookup — mapped, but dead on this startup path
+### The projector selector lookup - mapped, but dead on this startup path
 
 Traced in `display.bin` (MIPS32 LE, raw image; external review, verified here
 against the artifacts).
@@ -6418,11 +6418,11 @@ Reading the LVDS page wider than the sequence touches:
 
 `deadabba` is the interconnect's **undecoded-read signature**. The block decodes
 only `0x00..0x44`; there is no status or counter register anywhere in that page,
-so "read the block twice and look for a tick" cannot work — and back-to-back
+so "read the block twice and look for a tick" cannot work - and back-to-back
 reads of the decoded window are indeed byte-identical.
 
 `0x05880FE0` is the exception: it reads `00000000`, not `deadabba`, so it is
-decoded — a real register that is simply always zero. Combined with stock gating
+decoded - a real register that is simply always zero. Combined with stock gating
 its reset on that register being *non-zero*, the likeliest reading is a
 fault/underrun status where zero means "no fault".
 
@@ -6433,7 +6433,7 @@ basis of a dark panel, which was never a sensitive test; `0x05880024` now gives
 a direct readout and that thread should be reopened.
 
 Also recorded from these runs: the MIPS execution witness differed between two
-otherwise identical runs (`0x8baa0000` vs `0x00000000`) — both count as executed,
+otherwise identical runs (`0x8baa0000` vs `0x00000000`) - both count as executed,
 but firmware startup is **not deterministic**. The board hangs 5-30 s after
 the sequence and has now powered itself off after multiple runs, without a
 preceding UART message. Linux was never started, which rules out a Linux kernel
@@ -6449,7 +6449,7 @@ The next objective is not merely another visible-panel attempt. It is to make
 the coprocessor a known-good component before attributing any remaining display
 failure to scanout, LVDS, or panel control.
 
-#### Gate 1 — a reproducible, stock-parity launch
+#### Gate 1 - a reproducible, stock-parity launch
 
 Build one diagnostic command around a single cold-boot run. It must:
 
@@ -6908,8 +6908,8 @@ READY-only exit behavior. The trace reports application readiness separately
 without turning the already-proven READY result into a failure.
 
 All 533 guarded words match the pristine `4380f1b3...` raw image, no address is
-duplicated, and every replacement cave—including the eight-instruction
-counter/capture cave—has been disassembled after applying the patch in memory.
+duplicated, and every replacement cave-including the eight-instruction
+counter/capture cave-has been disassembled after applying the patch in memory.
 The corresponding post-READY/hal-registration DDR3 bench image is
 `build/out/u-boot-sunxi-with-spl-ddr3.bin` (874,009 bytes), SHA-256:
 
@@ -7067,7 +7067,7 @@ The corresponding uninstrumented-application-readiness DDR3 bench image is
 4794550b6fe38a92a7738e283c49945b95ac5bb673fc0e0eab6ec51e4efbeff0
 ```
 
-#### Gate 2 — distinguish a MIPS fault from a board-level power cut
+#### Gate 2 - distinguish a MIPS fault from a board-level power cut
 
 The exact firmware provides a natural heartbeat. Its ThreadX tick function
 loads, increments, and stores the word at MIPS `0x8b252cc0`:
@@ -7139,7 +7139,7 @@ three-run acceptance criterion is complete, but this run establishes that a
 running, application-ready MIPS is not inherently causing the earlier
 uncommanded shutdown.
 
-#### Gate 3 — identify the live timing path
+#### Gate 3 - identify the live timing path
 
 Only after Gate 1 works, add two one-shot probes to the same diagnostic run:
 
@@ -7164,7 +7164,7 @@ panel result is:
 The mixer/DE value `0x02e4059f` remains an internal 1440x741 processing size,
 not the target TCON total.
 
-#### Gate 4 — return to the physical panel
+#### Gate 4 - return to the physical panel
 
 With MIPS READY, no exception/shutdown, and stable 720p TCON timing, test the
 physical output:
@@ -7244,8 +7244,8 @@ TOC1 DT is a separate item in the eMMC dump at TOC1 offset `0x11b400`,
 SHA-256 `3902567a079720921e226c9176877f49916c6bdabfb6d82885e65d9f0a7d58b0`.
 (An earlier revision of this document recorded `06e5279c...` here; that hash is
 wrong. All three board-B eMMC captures yield the value above at that exact
-offset and size, and both byte-level facts quoted below — `panel_power_en` at
-DTB `+0x9f64` and `panel_gpio_0` at `+0x9f9c` — match it.)
+offset and size, and both byte-level facts quoted below - `panel_power_en` at
+DTB `+0x9f64` and `panel_gpio_0` at `+0x9f9c` - match it.)
 It lists **PF6**, not PH19, as `panel_power_en`; `panel_gpio_0` remains PH16.
 Both are active-high with pull-down flags (`0x20` is `GPIO_PULL_DOWN`;
 polarity bit zero is `GPIO_ACTIVE_HIGH`):
@@ -7286,11 +7286,11 @@ The power method itself begins at raw `+0x224e4`, bytes
 
 1. applies the `panel_power_en` descriptor from object offset `+0x48`;
 2. walks the four possible `panel_gpio_N` descriptors from object
-   `+0x4c..+0x58`, forces each present pin low, and waits 2 ms — the loop
+   `+0x4c..+0x58`, forces each present pin low, and waits 2 ms - the loop
    starts at raw `+0x22528`, bytes
    `a0 46 4f f0 00 0a 58 f8 04 1b`;
 3. walks the same descriptors using their configured active value and waits
-   5 ms — the second loop starts at raw `+0x22554`, bytes
+   5 ms - the second loop starts at raw `+0x22554`, bytes
    `54 f8 04 1b a9 b1 38 22`.
 
 Only `panel_gpio_0` is present in the runtime TOC1 DT. Thus the reconstructed
@@ -7440,7 +7440,7 @@ display that signal. The next build moves the internal colors after the
 discriminator.
 
 The same run added a panel-power/readiness phase while internal white was
-selected. It left PB5—the shared fan/backlight enable—asserted throughout,
+selected. It left PB5-the shared fan/backlight enable-asserted throughout,
 but it still used the board-A PH19 assignment:
 
 1. drives PB4, the stock `panel_pwm_ch=2` input, statically low and high for
@@ -7595,7 +7595,7 @@ PLL locks, and 54 of 65 dumped registers hold exactly what the tables wrote.
 Every "not working" result recorded before 2026-07-29 predates the `0xfe` and
 delay-unit fixes, so the replay that produced them was not faithful.
 
-Not working: the panel stays dark. **Do not use `0x05880FE0` as the criterion** —
+Not working: the panel stays dark. **Do not use `0x05880FE0` as the criterion** -
 it is decoded, reads `0x00000002` before the conditional reset and zero after,
 and is most likely a fault status where zero means "no fault"; see the section
 above.
@@ -7608,7 +7608,7 @@ that the block "only decodes `0x00..0x44`" stands for the *upper* page; it does
 not mean the decoded window is static.
 
 Ruled out: table selection (`0x16`, `0x33`, `0x34`, `0x35` all tried, with and
-without the HDCP override), `source_id` (2 is invalid — the board's own
+without the HDCP override), `source_id` (2 is invalid - the board's own
 `display_cfg.xml` already carries 1, and forcing 2 makes the firmware log
 `Element name=source_` and get *less* far), and the HDCP key-load wait.
 
@@ -7636,7 +7636,7 @@ addresses re-derived for `4380f1b3...`.
 - A driver must return an error when its hardware does not become ready. Probe
   success and log messages must not conceal a failed reset/clock/firmware step.
 
-## Milestone 0 — preserve evidence and restore a buildable series
+## Milestone 0 - preserve evidence and restore a buildable series
 
 Actions:
 
@@ -7657,7 +7657,7 @@ Acceptance:
   no-map firmware DRAM reservation.
 - No MIPS/display firmware is compiled into the recovery kernel.
 
-## Milestone 1 — verify the recovery kernel on the bench
+## Milestone 1 - verify the recovery kernel on the bench
 
 Boot the Milestone 0 FIT over the existing safe path before writing it to eMMC.
 
@@ -7670,7 +7670,7 @@ Acceptance on UART:
 - Save the complete UART log and FIT SHA-256 as the new display-recovery
   baseline.
 
-## Milestone 2 — U-Boot firmware loader
+## Milestone 2 - U-Boot firmware loader
 
 Keep the operation in U-Boot proper while it needs filesystem access and
 SHA-256. Do not place the proprietary firmware in SPL or the U-Boot image.
@@ -7708,7 +7708,7 @@ Acceptance:
 - A bounded firmware mailbox/IPC acknowledgement proves higher-level readiness
   before autoboot or Linux clients are added. **Pending.**
 
-## Milestone 2b — Linux post-boot ownership
+## Milestone 2b - Linux post-boot ownership
 
 Enable only the no-map MIPS firmware reservation. Do not instantiate a Linux
 MIPS loader, observer, or management driver. Keep CPU_COMM, TVTOP, DECD, GE2D,
@@ -7730,7 +7730,7 @@ Acceptance:
 - `dmesg` reports only the no-map firmware reservation, not a MIPS probe.
   **Passed on 2026-07-27.**
 
-## Milestone 3 — CPU_COMM address model
+## Milestone 3 - CPU_COMM address model
 
 Do not enable CPU_COMM until its address domains are explicit:
 
@@ -7754,7 +7754,7 @@ Acceptance:
 - With MIPS running, ARM and MIPS exchange a bounded ping/ack before any
   synchronous display RPC is attempted.
 
-## Milestone 4 — TVTOP and DECD
+## Milestone 4 - TVTOP and DECD
 
 Enable TVTOP first, then DECD. Keep GE2D disabled. Define resource ownership so
 shared display clocks, resets, IRQs, and overlapping register windows have one
@@ -7768,7 +7768,7 @@ Acceptance:
 - No IRQ is requested non-shared by two active devices.
 - CPU_COMM ping/ack remains reliable while TVTOP and DECD probe.
 
-## Milestone 5 — GE2D and visible panel path
+## Milestone 5 - GE2D and visible panel path
 
 Review the GE2D patch as a separate feature series. Probe must not issue
 synchronous MIPS RPC until CPU_COMM reports ready, and every RPC result must be

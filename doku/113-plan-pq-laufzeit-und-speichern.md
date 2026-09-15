@@ -1,4 +1,4 @@
-# Plan 113 — Bildwerte zur Laufzeit rechnen und dauerhaft merken
+# Plan 113 - Bildwerte zur Laufzeit rechnen und dauerhaft merken
 
 **Aufgestellt 11.09.2026** nach der Messreihe am Gerät (siehe [`60-offen.md`](60-offen.md) §Bildpfad). Zwei Pakete:
 **A** die Bildaufbereitung, **B** die Umbenennung der Werkzeuge. Beide vor dem Release, B **vor** dem Repo-Umbau
@@ -6,7 +6,7 @@
 
 ---
 
-# Paket A — Presets aus den Gerätedaten, Nutzerwerte über den Neustart
+# Paket A - Presets aus den Gerätedaten, Nutzerwerte über den Neustart
 
 ## A.1 Wie es heute ist
 
@@ -20,7 +20,7 @@
 
 Die Gerätedaten liegen längst da: `/etc/h713/tvconfig/` mit acht Dateien, vom Installer aus der Extraktion des
 Nutzers gefüllt. `h713-pq` rechnet daraus, wird aber nur von Hand aufgerufen. In `packages.txt` steht `python3`
-bereits mit der Begründung „h713-pq rechnet Gamma/Presets zur Laufzeit aus /etc/h713/tvconfig" — der Weg war
+bereits mit der Begründung „h713-pq rechnet Gamma/Presets zur Laufzeit aus /etc/h713/tvconfig" - der Weg war
 gedacht und nie verdrahtet.
 
 **Am 11.09. gemessen und damit belastbar:** die eingecheckte Gammakurve ist **byteidentisch** mit dem, was aus den
@@ -33,12 +33,12 @@ Presets (`energy_saving`, `custom`), und von den fünf Gammastufen (1.8/2.0/2.1/
 
 Drei Schichten, jede mit klarer Herkunft, in dieser Reihenfolge angewandt:
 
-1. **Herstellerdaten** — beim Start aus `/etc/h713/tvconfig/` gerechnet, für das gewählte Preset.
-2. **Wahl des Nutzers** — welches Preset, aus `/etc/h713/tv.conf`.
-3. **Abweichungen des Nutzers** — einzelne Regler, gemerkt, obendrauf.
+1. **Herstellerdaten** - beim Start aus `/etc/h713/tvconfig/` gerechnet, für das gewählte Preset.
+2. **Wahl des Nutzers** - welches Preset, aus `/etc/h713/tv.conf`.
+3. **Abweichungen des Nutzers** - einzelne Regler, gemerkt, obendrauf.
 
 Fehlt eine Schicht, greift die darunter. Fehlt die Extraktion ganz, bleibt die einkompilierte Tabelle als letzter
-Rückfall — ein Gerät ohne Vendor-Daten muss trotzdem ein Bild zeigen.
+Rückfall - ein Gerät ohne Vendor-Daten muss trotzdem ein Bild zeigen.
 
 ## A.3 Die Entscheidung, die alles andere bestimmt: wer rechnet
 
@@ -47,7 +47,7 @@ Rückfall — ein Gerät ohne Vendor-Daten muss trotzdem ein Bild zeigen.
 | Weg | dafür | dagegen |
 |---|---|---|
 | **(a) `h713-tv` ruft `h713-pq` beim Start auf** | eine Quelle der Wahrheit, keine Doppelpflege; `python3` ist ohnehin im Abbild | ~200 ms Startzeit, Abhängigkeit zur Laufzeit |
-| (b) INI-Auswertung nach C portieren | keine Abhängigkeit | dieselbe Rechnung zweimal gepflegt — die Falle, die zur Sättigungs-Korrektur vom 07.09. geführt hat |
+| (b) INI-Auswertung nach C portieren | keine Abhängigkeit | dieselbe Rechnung zweimal gepflegt - die Falle, die zur Sättigungs-Korrektur vom 07.09. geführt hat |
 | (c) beim Einspielen vorrechnen, Binärtabelle ins Abbild | schnellster Start | der Installer müsste rechnen; ein Nutzer, der `tvconfig` später ergänzt, bekommt nichts davon |
 
 **Gewählt: (a).** Doppelte Rechenwege sind in diesem Projekt schon einmal teuer geworden. Die 200 ms fallen einmal
@@ -62,7 +62,7 @@ LUT. `h713-tv` ruft einmal auf, liest, wendet an. **Kein Dauerlauf, kein Dienst,
 - **Datei:** `/var/lib/h713-tv/werte` neben dem bestehenden `modus`. Format wie `tv.conf`, `schluessel = wert`.
 - **Was:** die neun Preset-Größen plus `preset` (welches gerade gilt) und `aspect`.
 - **Wann:** **nicht bei jeder Bewegung.** Ein neues `h713-tv ctl save` schreibt den aktuellen Stand. Grund: wer
-  einen Regler sucht, fährt ihn durch — ohne `save` merkt sich das Gerät genau den Zwischenstand, bei dem der Strom
+  einen Regler sucht, fährt ihn durch - ohne `save` merkt sich das Gerät genau den Zwischenstand, bei dem der Strom
   ausfiel. `ctl save --aus` löscht die Datei wieder.
 - **Ausnahme:** die Betriebsart auto/off wird weiter sofort gemerkt, wie seit 11.09.; sie ist eine Entscheidung,
   keine Suchbewegung.
@@ -82,8 +82,8 @@ LUT. `h713-tv` ruft einmal auf, liest, wendet an. **Kein Dauerlauf, kein Dienst,
 ## A.6 Nebenarbeiten, die dazugehören
 
 - **`h713-pq` Statustabelle korrigieren** (`h713_pq/modell.py`, `PQ_ZIELE`): `brightness` steht dort auf
-  „gemessen, ohne Wirkung" — widerlegt am 07.09. ([`nachtlog/I0`](nachtlog/I0-helligkeit-nachgemessen.md)) und am
-  11.09. mit dem Auge bestätigt. `hue` und `sharpness` stehen auf „RE belegt, ungemessen" — am 11.09. gemessen,
+  „gemessen, ohne Wirkung" - widerlegt am 07.09. ([`nachtlog/I0`](nachtlog/I0-helligkeit-nachgemessen.md)) und am
+  11.09. mit dem Auge bestätigt. `hue` und `sharpness` stehen auf „RE belegt, ungemessen" - am 11.09. gemessen,
   eins zu eins über 0…100, Wirkung am Bild bestätigt (magenta bei 0, grün bei 100).
 - **`computer`-Preset** (Schärfe 0) und die Frage, ob `game`/`hdr` sich außerhalb der fünf Regler unterscheiden,
   am Gerät nachziehen.
@@ -105,11 +105,11 @@ LUT. `h713-tv` ruft einmal auf, liest, wendet an. **Kein Dauerlauf, kein Dienst,
 
 ---
 
-# Paket B — Werkzeuge umbenennen
+# Paket B - Werkzeuge umbenennen
 
 ## B.1 Entscheidung (Marco, 11.09.)
 
-**Gerätespezifisch bleiben dürfen:** der Abbild-Bauer und das Abbild selbst — jede Firmware gilt ohnehin für ein
+**Gerätespezifisch bleiben dürfen:** der Abbild-Bauer und das Abbild selbst - jede Firmware gilt ohnehin für ein
 bestimmtes Gerät. **Umbenannt werden die Werkzeuge**, weil der Bildpfad eine Eigenschaft des **H713** ist und der
 Extraktor schon ein zweites Gerät kennt (Profil `l018`).
 
@@ -130,7 +130,7 @@ Sie stehen nicht nur in Dateinamen, sondern in Dingen, die zusammenpassen müsse
 `hy310-mkimage` (GPT-Bau und Platzhaltertabelle), `hy310-install` (Schreibsperre, Erkennung, Stock-Rückweg), die
 Abbildtabelle, `h713-hdcp-key` (sucht `/dev/disk/by-partlabel/hy310-keys`) und jede Doku, die ein Layout zeigt.
 
-**Ein Wechsel dort muss in einem Zug gemacht und einmal am Gerät bewiesen werden** — ein Abbild mit neuen
+**Ein Wechsel dort muss in einem Zug gemacht und einmal am Gerät bewiesen werden** - ein Abbild mit neuen
 Partitionsnamen und altem `bootargs` startet nicht. **Empfehlung:** die Partitionsnamen so lassen. Sie sind ein
 Kennzeichen des Layouts dieses Geräts, nicht des Werkzeugs, und der Nutzen des Wechsels ist gering gegenüber dem
 Risiko. Falls doch: eigener Durchgang **nach** Paket A, mit Kaltstartserie.

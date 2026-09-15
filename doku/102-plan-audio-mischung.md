@@ -1,4 +1,4 @@
-# Plan 102 — Gerätetöne mit HDMI-Ton mischen (Audio-Bridge + Mischgraph)
+# Plan 102 - Gerätetöne mit HDMI-Ton mischen (Audio-Bridge + Mischgraph)
 
 **Status: TODO, nicht begonnen** (angelegt 08.09.2026 21:50, Entscheidung Marco: als Todo hinterlegen).
 Voraussetzung erfüllt: Plan [`101`](101-plan-audio-treiber.md) abgenommen, GUT-Stand `d5fd82a7`.
@@ -7,7 +7,7 @@ Voraussetzung erfüllt: Plan [`101`](101-plan-audio-treiber.md) abgenommen, GUT-
 
 Der Codec-DAC nimmt eine Quelle: I2S (HDMI über den MSP-DSP) **oder** APB (Linux-PCM `hw:0,0`). Ein PC-Zuspieler hält seinen
 HDMI-Audiostrom dauerhaft offen (PipeWire, 44,1 kHz Stille) → der Automat bleibt auf I2S, `aplay` ist unhörbar oder wird abgewiesen
-(S16 21:35). Stock mischt im DSP (Pfad `0x89` `HDMI2PCM_MIXED_TO_SPEAKER`, S23 §5). Ziel: wie Stock — HDMI und Gerätetöne gemischt,
+(S16 21:35). Stock mischt im DSP (Pfad `0x89` `HDMI2PCM_MIXED_TO_SPEAKER`, S23 §5). Ziel: wie Stock - HDMI und Gerätetöne gemischt,
 ein Regler (Codec `DAC Playback Volume`, `h713-tv ctl volume`).
 
 ## 2. Was bekannt ist
@@ -17,7 +17,7 @@ ein Regler (Codec `DAC Playback Volume`, `h713-tv ctl volume`).
   Einspeisung `0x0118` (`0xFF00 ← 0x7C00`). Ob SURRDEC/SURRPOSTPRO im PCM-Fall transparent sind, ist offen (Variante: DECODER3 + I2SIN1 direkt auf MIXER2).
 - Linux-PCM in den DSP: Audio-Bridge `0x06148000` (AUDBRG, ISTREAM/OSTREAM, DRAM-Ringe; S17/S20, `legacy/drivers/audio/bridge/`,
   Stock-Modul `snd_alsa_trid.ko`, `libmspsound.so`). Nicht kartiert: Ringformat, Doorbell/Interrupt, wie `DECODER3` den ISTREAM liest, Taktdomäne.
-- DSP2 läuft nicht (S27) — falls `MIXER2` oder `DECODER3` auf DSP2 liegen, muss DSP2 gebootet werden (S27: Effektkern, Blöcke Typ 0102 im Patch).
+- DSP2 läuft nicht (S27) - falls `MIXER2` oder `DECODER3` auf DSP2 liegen, muss DSP2 gebootet werden (S27: Effektkern, Blöcke Typ 0102 im Patch).
 - Mailbox-Regeln und Treibergerüst aus `0137` (Graph-Tabelle, Selbstheilung, Zähler) sind wiederverwendbar.
 
 ## 3. Pakete (Agenten in Kopien unter `analyse/audio/arbeit/`, kein Board, keine aktiven Bäume)

@@ -17,7 +17,7 @@ UBOOT="${UBOOT_SRC:-$ROOT/external/u-boot}"   # UBOOT_SRC: build another checkou
 BL31="$ROOT/build/out/bl31.bin"
 ROLE=""
 [ $# -gt 0 ] && [ -f "$UBOOT/configs/fragments/h713_$1.config" ] && { ROLE="$1"; shift; }
-[ -f "$BL31" ] || { echo "missing $BL31 — run: build/build.sh bl31" >&2; exit 1; }
+[ -f "$BL31" ] || { echo "missing $BL31 - run: build/build.sh bl31" >&2; exit 1; }
 F=(ARCH=arm HOSTCC=clang CC='clang -target aarch64-linux-gnu'
   LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump
   READELF=llvm-readelf STRIP=llvm-strip

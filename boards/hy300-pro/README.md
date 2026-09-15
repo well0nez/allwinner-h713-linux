@@ -7,15 +7,15 @@ Nothing was written to his device, and no image of his firmware exists here.
 
 | | |
 |---|---|
-| Status | **partial** — the description itself is incomplete |
+| Status | **partial** - the description itself is incomplete |
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/hy300_pro.py` |
 | Image | a **test image** for its owner only (stage 5, `--test-image`); no release image until a green report |
 | Kernel DTB | `sun50i-h713-hy300-pro` (patch 0161, an include of the hy200 dts) |
 | U-Boot base | `hy300_pro_defconfig` (the owner's DRAM block, 636 MHz) |
-| DRAM | DDR3 (type 3), **636 MHz**, 1 GiB — all 24 boot0 words from his probe run of 2026-09-14 (`uboot.config`) |
+| DRAM | DDR3 (type 3), **636 MHz**, 1 GiB - all 24 boot0 words from his probe run of 2026-09-14 (`uboot.config`) |
 | Panel | declared project id `0x34`; resolution unknown |
-| eMMC | 7.28 GiB, 15 269 888 sectors — the same size as the HY310 |
+| eMMC | 7.28 GiB, 15 269 888 sectors - the same size as the HY310 |
 | Stock | Android 10 (32-bit, ARMv7 kernel 5.4.99), ADT-3 build 6245789 |
 
 ## What we actually know, and from where
@@ -27,15 +27,15 @@ Everything comes from his serial log and his `h713-extract` run, quoted in
   21 words of a DRAM block were never posted.
 - **Our installer U-Boot ran on his hardware.** The SPL trained with *our* values (the HY310 set at
   792 MHz) and `ums` served his eMMC for 17 minutes under load. That proves "enough for a dump", not
-  "stable in operation" — and his board's own clock is 636, not 792.
+  "stable in operation" - and his board's own clock is 636, not 792.
 - **The device check refused to write**, which is what it is for: unknown firmware → dump only.
 - **Partitions**: 25 entries, a single `Reserve0` at LBA 5 358 592 (+32 768), `media_data` at
   4 932 608 (+425 984, 208 MiB). The HY310's constants point at his `UDISK`; that is defect 2 of the
   issue and the reason the small dump read the wrong region (read-only, so harmless).
 - **Display firmware**: `display.bin` 1 253 136 bytes,
-  `cf9649bcc84a111ce590fc7acde723c25557fd2332abbb9fd10225905aae13a2` — a revision no table of ours
+  `cf9649bcc84a111ce590fc7acde723c25557fd2332abbb9fd10225905aae13a2` - a revision no table of ours
   declares, so no HDCP wait site and no panel entry for it.
-- **Project id `0x34`** (`ProjectID_0x0034.TSE`), the same id cstenger's HY200 bench board declares —
+- **Project id `0x34`** (`ProjectID_0x0034.TSE`), the same id cstenger's HY200 bench board declares -
   while his stock system renders 1080p and the other `0x34` board we know is 1280×720. The project id
   selects a panel entry; it is not itself a resolution.
 - **Motor**: `motor-phase-num 4`, `motor-step-num 8`, close to the HY310's.
@@ -44,7 +44,7 @@ Everything comes from his serial log and his `h713-extract` run, quoted in
 
 - whether 636 MHz or 792 MHz is the right clock for *sustained* operation on this board
 - the panel: only the declared project id 0x34 is his; the 1280x720 timing the loader drives is what every
-  other 0x34 source shows (a bench board measured, three vendor inis) — likely, not measured on his board
+  other 0x34 source shows (a bench board measured, three vendor inis) - likely, not measured on his board
 - the boot package contents, the stock `sunxi_version`, the exact build fingerprint
 - nothing about it is unique enough to identify it: its `display.bin` digest is not one of the
   identification features, and it shares the ADT-3 fingerprint with two other images. The profile's
@@ -55,11 +55,11 @@ Everything comes from his serial log and his `h713-extract` run, quoted in
 From the issue, in order:
 
 1. installer: a recognition entry for this firmware, and the small dump's offsets read from the GPT
-   instead of HY310 constants — **before** any write path to such a device is unlocked at all;
+   instead of HY310 constants - **before** any write path to such a device is unlocked at all;
 2. `h713-extract`: reference hashes from his extraction (vendor file hashes are not secret);
-3. board: a DRAM profile at 636 MHz — or proof under load that 792 holds — `h713_project=0x34`, and a
+3. board: a DRAM profile at 636 MHz - or proof under load that 792 holds - `h713_project=0x34`, and a
    DTS comparison (fan, motor, key; the panel comes through TSE from his own dump);
-4. an image for this board **and a test by its owner — do not flash before that**.
+4. an image for this board **and a test by its owner - do not flash before that**.
 
-Steps 1–3 can happen here. Step 4 cannot: it needs a person with the device. Until he reports a green
+Steps 1-3 can happen here. Step 4 cannot: it needs a person with the device. Until he reports a green
 run, this board stays below `verified` and gets no image (`boards/README.md`, honesty rule).

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-uart-capture.py — Befehle auf der U-Boot-Konsole ausfuehren und mitschneiden.
+uart-capture.py - Befehle auf der U-Boot-Konsole ausfuehren und mitschneiden.
 
 Spricht den ESP32-S2-UART-Proxy direkt an (kein pyserial noetig). Schickt jeden
 Befehl, wartet auf den Prompt und schreibt alles in eine Datei.

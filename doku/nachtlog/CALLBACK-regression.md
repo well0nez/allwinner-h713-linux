@@ -1,4 +1,4 @@
-# Callback-Fix: die Regression an E — erklärt und behoben (Unteragent, 07.09. mittags)
+# Callback-Fix: die Regression an E - erklärt und behoben (Unteragent, 07.09. mittags)
 
 **Kein Board angefasst:** kein `ssh`, kein `sonoff_ctl`, kein `scp`, nichts nach `tftp/`, kein `sudo`,
 kein `git commit`/`push`. **`patches/kernel/series` nicht angefasst**, `build/build.sh` nicht
@@ -20,7 +20,7 @@ also außerhalb des Repos), am Ende gelöscht; `mainline/build/` wurde nur **gel
 Der Callback-Fix aus `CALLBACK-luecke.md` **funktioniert**. Genau das ist die Ursache der Regression:
 seit dem Fix stellt die Firmware während der Probe tatsächlich einen Rückruf zu, und der Treiber ist
 in diesem Moment mitten in einer Kette von Fremdgesprächen mit **beiden** Coprozessoren. Wo dieser
-eine Rückruf landet, entscheidet, was kaputtgeht — deshalb zwei Kaltstarts, zwei Fehlerbilder.
+eine Rückruf landet, entscheidet, was kaputtgeht - deshalb zwei Kaltstarts, zwei Fehlerbilder.
 
 Die Korrektur ist eine Reihenfolge, keine Abschaltung: `0094` meldet die beiden Callbacks jetzt als
 **letzten** Schritt der Probe an, nach `video_register_device()`, statt als ersten. Der Fix bleibt
@@ -41,15 +41,15 @@ handlers  0
 
 Das liest sich Zeile für Zeile so:
 
-* **`rx_calls 1`** — genau **ein** MIPS→ARM-CALL hat `cpu_comm_kernel_deliver()` erreicht. Vor dem Fix
+* **`rx_calls 1`** - genau **ein** MIPS→ARM-CALL hat `cpu_comm_kernel_deliver()` erreicht. Vor dem Fix
   war das nie mehr als 0 (das war die Lücke). Das ist die einzige neue Zutat im ganzen System.
-* **`unmatched 0 last 0x00000000`** — dieser eine CALL wurde einem **registrierten Handler**
+* **`unmatched 0 last 0x00000000`** - dieser eine CALL wurde einem **registrierten Handler**
   zugestellt; er ist nicht ins Leere gelaufen. Zusammen mit `rx_calls 1` ist damit belegt: die
   Anmeldung wirkt, die Firmware findet den Empfänger, der Kernel-Handler läuft. **Ziel 2 des Fixes
   ist erreicht.**
-* **`channel 0x00000001 registered`** — der Kanalschlüssel steht. Er wird bewusst nie wieder
+* **`channel 0x00000001 registered`** - der Kanalschlüssel steht. Er wird bewusst nie wieder
   abgemeldet, deshalb überlebt er den gescheiterten Probe.
-* **`handlers 0`** — konsistent mit dem Fehlschlag, wie im Auftrag vermutet, und **nachgeprüft**: der
+* **`handlers 0`** - konsistent mit dem Fehlschlag, wie im Auftrag vermutet, und **nachgeprüft**: der
   Probe scheitert → `err_callbacks` → `h713_hdmirx_unregister_callbacks()` → beide Slots
   `memset`-gelöscht, Zähler 0, keine Handler-Zeilen mehr. `rx_calls`/`unmatched` sind modulglobal und
   bleiben stehen. Kein Widerspruch, keine Spur.
@@ -66,39 +66,39 @@ der Abnahme (§7) mit drin.
 
 Die Probe machte bis eben:
 
-1. `h713_hdmirx_register_callbacks()` — **Deskriptor in die Routinentabelle**, ab hier darf der MIPS senden.
+1. `h713_hdmirx_register_callbacks()` - **Deskriptor in die Routinentabelle**, ab hier darf der MIPS senden.
 2. 22 synchrone RPCs. Schritt **1** ist `THal_Vp_RegisterSignalChangeCallback(11)`, Schritt **2**
-   `THal_Vp_SetHDMIHotPlugByPortCallback(1)` — damit ist der **Sender** in der Firmware scharf.
-3. `arisc_hdmi_edid_init()` — ResetEDID, HostHDMIMAP, EDID hoch, Rücklesen, Audio, +5 V,
+   `THal_Vp_SetHDMIHotPlugByPortCallback(1)` - damit ist der **Sender** in der Firmware scharf.
+3. `arisc_hdmi_edid_init()` - ResetEDID, HostHDMIMAP, EDID hoch, Rücklesen, Audio, +5 V,
    HPD low → 200 ms → HPD up. Zehn Sekunden Größenordnung, mit `mutex_lock(&a->lock)` und
    SRAM-Vorbelegungen mittendrin.
 
 Zwischen Schritt 2 und dem Ende von 3 liegen 20 weitere RPCs **und** die komplette ARISC-Sequenz.
 In genau diesem Fenster kann der eine Rückruf ankommen, auf dem `cpu_comm`-Empfangs-Workitem, parallel
-zu allem. Der Treiber hält dort keine Ordnung — und kann sie auch nicht halten, weil die Zustellung
+zu allem. Der Treiber hält dort keine Ordnung - und kann sie auch nicht halten, weil die Zustellung
 absichtlich nicht auf `cpu_comm_call_mutex` wartet (`cpu_comm.h`: „The receive path deliberately does
 NOT take it").
 
 Vor dem Fix war dieses Fenster **leer**: `SendComm2CPUEx` auf dem MIPS scheiterte an `FindRoutine`
-mit `-3` und verwarf den Rückruf, bevor er auf der Leitung war. Genau in diesem Zustand sind A–E, G, H
+mit `-3` und verwarf den Rückruf, bevor er auf der Leitung war. Genau in diesem Zustand sind A-E, G, H
 abgenommen worden.
 
-### 3.2 Lauf 1 (09:51) — `Schritt 15 THal_Vp_HDMI_SetPortMap (Stock-Session 27): -110`
+### 3.2 Lauf 1 (09:51) - `Schritt 15 THal_Vp_HDMI_SetPortMap (Stock-Session 27): -110`
 
 `-110` ist `-ETIMEDOUT` aus `cpu_comm_call_ex()` im `strict`-Zweig: das Warteobjekt der Sitzung ist
 in seinem Zeitbudget nicht geweckt worden, die RETURN kam nicht (oder nicht zuordenbar) an.
 
 Der ausschlaggebende Umstand ist, **welcher** Schritt es war. `THal_Vp_HDMI_SetPortMap` steht dreimal
-hintereinander in der Tabelle — Schritt 13 (Session 25, Para 3/0), Schritt 14 (Session 26, Para 4/1),
+hintereinander in der Tabelle - Schritt 13 (Session 25, Para 3/0), Schritt 14 (Session 26, Para 4/1),
 Schritt 15 (Session 27, Para 5/2). Dieselbe Routine, dieselbe Argumentform, gleiches Zeitbudget.
 **Zwei gingen durch, der dritte nicht.** Ein Fehler im Aufruf selbst, im Namen, im Hash, in der
 Argumentzahl oder im Zeitbudget ist damit ausgeschlossen: der hätte alle drei getroffen. Übrig bleibt
-etwas, das zwischen 14 und 15 dazwischenkam — und das einzige Neue, was dazwischenkommen kann, ist der
+etwas, das zwischen 14 und 15 dazwischenkam - und das einzige Neue, was dazwischenkommen kann, ist der
 eine eingehende CALL.
 
-### 3.3 Lauf 2 (09:53) — `-EBUSY` aus der EDID/HPD-Sequenz
+### 3.3 Lauf 2 (09:53) - `-EBUSY` aus der EDID/HPD-Sequenz
 
-Hier lief die Kette durch (`Init-Sequenz vollstaendig (22 Aufrufe)`), der Rückruf landete also später —
+Hier lief die Kette durch (`Init-Sequenz vollstaendig (22 Aufrufe)`), der Rückruf landete also später -
 in der ARISC-Sequenz. `last_command: portmap 0,1,2 rc=-16` sagt, wo genau: `arisc_hdmi_set_portmap()`.
 
 In `0091` gibt es dort **zwei** `-EBUSY`-Quellen, und die Unterscheidung steht im dmesg, nicht im
@@ -111,9 +111,9 @@ debugfs:
 
 Beide passen zu „etwas hat den ARISC-Pfad zeitlich verschoben"; welche der beiden es war, ist aus dem
 Auftragstext nicht entscheidbar und muss aus dem vollen dmesg des Laufs kommen. **Für den Fix ist es
-egal** (§4), für die Nachbetrachtung nicht — deshalb steht die Zeile in der Abnahme.
+egal** (§4), für die Nachbetrachtung nicht - deshalb steht die Zeile in der Abnahme.
 
-### 3.4 Belegt / vermutet — ehrlich getrennt
+### 3.4 Belegt / vermutet - ehrlich getrennt
 
 **Belegt:**
 
@@ -121,7 +121,7 @@ egal** (§4), für die Nachbetrachtung nicht — deshalb steht die Zeile in der 
 * Der zugestellte CALL ist die **einzige** neue Laufzeit-Zutat gegenüber dem Stand, in dem E durchprobte.
   Der `diff -ru` der `cpu_comm`- und `hdmirx`-Verzeichnisse zwischen `…e39777bf…` (gut) und
   `…c78adf61…` (kaputt) enthält sonst nur: Namens- statt id-API, die Instrumentierung in `watch`, und
-  `-ENODEV → -EPROBE_DEFER`. `sun50i-h713-arisc.c` ist zwischen beiden Bäumen **byte-gleich** — die
+  `-ENODEV → -EPROBE_DEFER`. `sun50i-h713-arisc.c` ist zwischen beiden Bäumen **byte-gleich** - die
   `0xff`-Vorbelegung aus `0091` war im guten Baum schon drin und scheidet als Ursache aus.
 * Das Fenster ist groß und beginnt vor Schritt 1 der Init-Sequenz (§3.1).
 * Zwei von drei identischen Aufrufen gingen durch, der dritte nicht (§3.2). Das ist ein Rennen, kein
@@ -140,7 +140,7 @@ Weg hatte in dieser Portierung noch nie zwei gleichzeitige Nutzer, weil nie ein 
 
 ## 4. Die Änderung
 
-### `0094` — die Anmeldung wandert ans **Ende** der Probe
+### `0094` - die Anmeldung wandert ans **Ende** der Probe
 
 ```
   … ioremap shm …
@@ -155,14 +155,14 @@ Fehlerpfade entsprechend: `err_vdev` (neu, `vb2_video_unregister_device`) vor `e
 `err_callbacks` entfällt, weil vor Stage 5 nichts angemeldet ist.
 
 **Warum das den Fix nicht entwertet:** die Firmware wird von Schritt 1/2 der Init-Sequenz scharf
-gemacht und bleibt es. Fehlt nur der Deskriptor, verwirft ihr `SendComm2CPUEx` den Rückruf mit `-3` —
+gemacht und bleibt es. Fehlt nur der Deskriptor, verwirft ihr `SendComm2CPUEx` den Rückruf mit `-3` -
 exakt der Zustand des guten Kernels. Sobald der Deskriptor da ist, fließen die Rückrufe. Der Fix ist
 also nicht geparkt, sondern nur ein paar Mikrosekunden später scharf.
 
-**Warum dabei nichts verlorengeht — und das ist kein Ermessen:** beide Handler enden in
+**Warum dabei nichts verlorengeht - und das ist kein Ermessen:** beide Handler enden in
 `h713_hdmirx_src_change()`, das ein V4L2-Source-Change-Ereignis einreiht. V4L2-Ereignisse gehen an
 **abonnierte Dateihandles**. Vor `video_register_device()` gibt es keinen Videoknoten, also kein
-Handle, also kein Abonnement — jedes bis dahin eingereihte Ereignis wäre ohnehin verworfen worden
+Handle, also kein Abonnement - jedes bis dahin eingereihte Ereignis wäre ohnehin verworfen worden
 (deshalb steht die `video_is_registered()`-Sperre überhaupt drin). Aufgegeben wird real das Fenster
 zwischen `video_register_device()` und der Anmeldung: wenige Mikrosekunden.
 
@@ -171,23 +171,23 @@ Aufrufe durch `cpu_comm` gelaufen, „`cpu_comm` ist noch nicht gebunden" kann e
 bedeuten. Die Verschiebung ist also für `-EPROBE_DEFER` an `run_init_seq()`/`edid_init()` gebunden,
 wo sie hingehört.
 
-### `0092` — die Regel steht jetzt da, wo der nächste Aufrufer sie liest
+### `0092` - die Regel steht jetzt da, wo der nächste Aufrufer sie liest
 
 1. Header `<linux/soc/sunxi/h713-cpu-comm.h>` und Dateikopf `cpu_comm_api.c`: **Anmelden ist ein Akt
    mit sofortiger Wirkung auf dem anderen Prozessor.** Der Deskriptor ist es, der den Sender scharf
-   macht; der erste Aufruf kann kommen, sobald `cpu_comm_register_callback()` zurückkehrt — auf dem
+   macht; der erste Aufruf kann kommen, sobald `cpu_comm_register_callback()` zurückkehrt - auf dem
    Empfangs-Workitem, parallel zum Aufrufer. Also anmelden, **wenn man gerufen werden kann**, nicht am
    Anfang einer Probe, die danach eine Kette von Fremdgesprächen führt. Mit der Fundstelle: genau das
    hat die Probe am 07.09. an zwei verschiedenen Stellen zerlegt.
 2. `cpu_comm_remove_routine()` prüft jetzt **zusätzlich** das `cpu`-Feld des gefundenen Eintrags.
    Grund: `RemoveRoutine()` (`cpu_comm_rpc.c`) hat **zwei** Rückgabepfade, die die
-   **Hardware-Spinlock 2 nicht freigeben** — `next_idx > RT_MAX_INDEX` und `entry+2 > 1`. `0092` ist
+   **Hardware-Spinlock 2 nicht freigeben** - `next_idx > RT_MAX_INDEX` und `entry+2 > 1`. `0092` ist
    der erste Aufrufer dieser Funktion aus dem Kernel; bliebe das erreichbar, könnte ein
    fehlgeschlagener Abbau die Routinentabelle für den Coprozessor **und** für `IOCTL_INSTALL_RT`
    dauerhaft verklemmen. Beide Pfade sind jetzt hier ausgeschlossen statt dort repariert
    (`cpu_comm_rpc.c` gehört zum Grundport `0014`, nicht zu `0092`):
    * die Kette hat `FindRoutineEx()` unmittelbar davor bis zum selben Eintrag durchlaufen, und die
-     Funktion bricht bei einem Glied über `RT_MAX_INDEX` ab, **bevor** sie ihm folgt — alle Glieder
+     Funktion bricht bei einem Glied über `RT_MAX_INDEX` ab, **bevor** sie ihm folgt - alle Glieder
      sind also im Bereich;
    * das `cpu`-Feld kommt aus derselben Suche zurück und wird geprüft.
 
@@ -195,15 +195,15 @@ Kein Retry, kein längeres Zeitbudget, kein Polling, kein toter Schalter.
 
 ---
 
-## 5. Was **nicht** die Ursache war — die drei Auffälligkeiten aus dem Auftrag
+## 5. Was **nicht** die Ursache war - die drei Auffälligkeiten aus dem Auftrag
 
-### (2) `portmap: 16,32,48` — kein Byteversatz, sondern der unberührte Einschaltwert
+### (2) `portmap: 16,32,48` - kein Byteversatz, sondern der unberührte Einschaltwert
 
 `arisc_hdmi_set_portmap()` gab `-EBUSY` zurück, **bevor** die Karte geschrieben werden konnte:
 
 * Beim Hotplug-Wächter (`goto out`) wird gar nichts angefasst.
 * Beim TX-FIFO-Wächter hat `arisc_arm_portmap_probe()` `+2`/`+3` mit `0xff` vorbelegt, und
-  `arisc_restore_portmap()` schreibt exakt die vorher gelesenen Bytes zurück — byteweise symmetrisch,
+  `arisc_restore_portmap()` schreibt exakt die vorher gelesenen Bytes zurück - byteweise symmetrisch,
   kein Versatz möglich.
 
 `16,32,48` ist also **das, was vor dem ersten `HostHDMIMAP` in den Sätzen steht**. Dass dort nach einem
@@ -219,24 +219,24 @@ kein gemeinsames Byte. Die `0xff`-Vorbelegung aus `0091` und mein Schema können
 **Befund für den Besitzer von `0091`, nicht von mir zu ändern:** der Kommentar über `SRAM_PORTMAP`
 sagt, die ROM-Tabelle `01 10 00 01 00 | 02 20 01 02 01 | 04 30 02 04 02` lasse die Firmware mit
 Pin `0,1,2` in Byte `+2` starten, und leitet daraus ab, eine Prüfung auf `0,1,2` könne „nicht
-scheitern". Die Messung sagt etwas anderes: frisch steht in `+2` `0x10, 0x20, 0x30` — das **Tag-Byte
+scheitern". Die Messung sagt etwas anderes: frisch steht in `+2` `0x10, 0x20, 0x30` - das **Tag-Byte
 bei `+1`** jedes ROM-Satzes. Entweder kopiert `0x11e88` `ROM[k] → SRAM[k+1]`, oder die Satzgrenze im
-ROM liegt ein Byte früher als angenommen. **Die Logik von `0091` ändert das nicht** — im Gegenteil, die
+ROM liegt ein Byte früher als angenommen. **Die Logik von `0091` ändert das nicht** - im Gegenteil, die
 `0xff`-Vorbelegung macht die Prüfung unabhängig davon richtig, und die Sorge „`0,1,2` steht schon da"
 trifft beim Kaltstart gar nicht zu. Zu korrigieren ist der **Kommentar** (`SRAM_PORTMAP` und die
 `portmap:`-Zeile in `h713_arisc_status_show`, die „0,1,2 ist auch der ROM-Zustand" behauptet).
-Nebenbei: damit wird `portmap:` sogar ein *besseres* Anzeigegerät — `16,32,48` heißt eindeutig
+Nebenbei: damit wird `portmap:` sogar ein *besseres* Anzeigegerät - `16,32,48` heißt eindeutig
 „HostHDMIMAP hat nie geschrieben".
 
-### (3) `-EBUSY` — der Wächter feuert nicht grundlos, er feuert zu spät im Ablauf
+### (3) `-EBUSY` - der Wächter feuert nicht grundlos, er feuert zu spät im Ablauf
 
 Der Wächter selbst ist in Ordnung: er lehnt ab, solange ein Puls unterwegs ist. Was ihn getroffen hat,
 ist die Verschiebung der ARISC-Sequenz durch den dazwischengekommenen Rückruf (§3.3). **Kein Eingriff
-in `0091` nötig oder empfohlen** — außer der Kommentarkorrektur aus (2). Sollte die Abnahme zeigen,
+in `0091` nötig oder empfohlen** - außer der Kommentarkorrektur aus (2). Sollte die Abnahme zeigen,
 dass es der **TX-FIFO**-Wächter war und nicht der Hotplug-Zähler, ändert das an der Korrektur nichts,
 wohl aber an der Nachbetrachtung; deshalb steht die dmesg-Zeile in §7 Schritt 4.
 
-### (1) Zwei Kaltstarts, zwei Fehler — genau das erwartet man hier
+### (1) Zwei Kaltstarts, zwei Fehler - genau das erwartet man hier
 
 Ein Rennen mit einem einzigen Ereignis und einem Fenster von mehreren Sekunden. Fällt das Ereignis in
 die RPC-Kette, stirbt ein RPC (`-110`); fällt es in die ARISC-Sequenz, stirbt die (`-16`). Eine
@@ -245,7 +245,7 @@ Rennen den einzigen Teilnehmer, den es neu bekommen hat.
 
 ---
 
-## 6. Prüfbau — **ausdrücklich ein Prüfbau, kein Serienartefakt**
+## 6. Prüfbau - **ausdrücklich ein Prüfbau, kein Serienartefakt**
 
 Wegwerf-Kopie im Container `h713-build` unter `/tmp/PRUEFBAU-callback-regression` (nicht im Repo, nicht
 in `mainline/build/`), am Ende gelöscht. Frischer Tarball aus `build/cache/linux-6.18.38.tar.xz`, alle
@@ -255,7 +255,7 @@ in `mainline/build/`), am Ende gelöscht. Frischer Tarball aus `build/cache/linu
 |---|---|
 | `series` vollständig anwendbar mit den neuen `0092`/`0094` | **71/71**, 0 `.rej`, dieselben 17 `.orig` wie zuvor (kein neuer Fuzz) |
 | `make -j24 Image modules` | **rc=0** |
-| `make W=1` für `drivers/soc/sunxi/cpu_comm/` und `.../sun50i-h713-hdmirx/` | **eine** Warnung, unverändert Altbestand: `cpu_comm_rpc.c:256: variable 'prev_idx' set but not used` in `RemoveRoutine` — nicht angefasst |
+| `make W=1` für `drivers/soc/sunxi/cpu_comm/` und `.../sun50i-h713-hdmirx/` | **eine** Warnung, unverändert Altbestand: `cpu_comm_rpc.c:256: variable 'prev_idx' set but not used` in `RemoveRoutine` - nicht angefasst |
 | `make dtbs` | rc=0, keine h713-Warnung |
 | Symbole | `cpu_comm_call`, `cpu_comm_register_callback`, `cpu_comm_unregister_callback`, `cpu_comm_name2id` alle `EXPORT_SYMBOL_GPL` in `Module.symvers` |
 | Modulabhängigkeit | `sun50i-h713-hdmirx.ko`: `depends=hy310-cpu-comm,sun50i-h713-afbd,sun50i-h713-arisc` |
@@ -276,7 +276,7 @@ sun50i-h713-hdmirx.ko    ac34201099c68e729c65021437d60ae6c31d6075031825a2ba53821
 
 Sie prüft **beide** Ziele in einem Durchgang und in dieser Reihenfolge: erst dass E wieder probt, dann
 dass der Callback ankommt. Schritt 2 ist der Ersatz für die alte Positivkontrolle: er belegt, dass die
-Probe jetzt **ohne** eingehenden CALL abläuft — das ist die eigentliche Aussage der Korrektur und
+Probe jetzt **ohne** eingehenden CALL abläuft - das ist die eigentliche Aussage der Korrektur und
 zugleich ihre Falsifizierbarkeit.
 
 **Voraussetzungen:** Kernel mit der integrierten Serie inkl. der neuen `0092`/`0094`, Zuspieler
@@ -382,7 +382,7 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
   `0014`; für die Korrektur nicht nötig, für einen Empfangsweg, der im Betrieb belastbar sein soll,
   schon.
 * `RemoveRoutine()` (`cpu_comm_rpc.c`, `0014`) gibt auf zwei Pfaden die HW-Spinlock 2 nicht frei und
-  relinkt die Hash-Kette nicht (`prev_idx set but not used` — genau die `W=1`-Warnung). `0092` umgeht
+  relinkt die Hash-Kette nicht (`prev_idx set but not used` - genau die `W=1`-Warnung). `0092` umgeht
   beides jetzt, repariert es aber nicht. Gehört jemandem, der `0014` anfassen darf.
-* Kommentarkorrektur in `0091` (§5, Auffälligkeit 2) — gehört dem Besitzer von `0091`.
+* Kommentarkorrektur in `0091` (§5, Auffälligkeit 2) - gehört dem Besitzer von `0091`.
 * Ob am 07.09. der Hotplug- oder der TX-FIFO-Wächter das `-EBUSY` geliefert hat (§7 Schritt 4).

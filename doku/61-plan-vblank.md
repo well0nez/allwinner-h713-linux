@@ -1,4 +1,4 @@
-# Der Vblank-Interrupt — gelöst
+# Der Vblank-Interrupt - gelöst
 
 Stand 31.08.2026, **am Gerät verifiziert**. Die frühere Fassung dieses Plans
 nahm an, die Interrupt-Bits seien für unser Board falsch. **Das war falsch.**
@@ -9,7 +9,7 @@ Die Bits stimmen. Der Fehler lag eine Ebene tiefer.
 Linux schaltete dem laufenden Panel den Pixeltakt ab: `clk_disable_unused`
 nimmt PLL_VIDEO2, drei Display-Modtakte und den MIPS-Coprozessor mit, weil
 kein Linux-Treiber sie beansprucht. Ohne MIPS kein Bildaufbau, ohne
-Bildaufbau kein Vsync, ohne Vsync kein Vblank — und jeder Atomic-Commit
+Bildaufbau kein Vsync, ohne Vsync kein Vblank - und jeder Atomic-Commit
 lief in den Timeout.
 
 Auf der Kommandozeile fehlten **`clk_ignore_unused`** und
@@ -36,7 +36,7 @@ wandert, belegt den Bewegtbild-Pfad. Mitschnitt:
 `re/captures/boot-clkignore.log`.
 
 Nebenbefund daraus: AFBD **streamt live** aus `SRC`. Ungebremstes Schreiben
-von Vollbildern nach `/dev/fb0` reißt das Bild sichtbar — was genau das
+von Vollbildern nach `/dev/fb0` reißt das Bild sichtbar - was genau das
 bestätigt, was die U-Boot-Quelle behauptet („fb-anim proved AFBD streams from
 it live rather than latching the surface at commit time").
 
@@ -52,11 +52,11 @@ gelesen.
 |---|---|---|---|---|
 | `0x02001050` | PLL_VIDEO2 | `b9002a00` | `29002a00` | **Bit 31 weg** |
 | `0x02001db0` | deint | `80000000` | `00000000` | **Gate weg** |
-| `0x02001db4` | — | `80000000` | `00000000` | **Gate weg** |
-| `0x02001db8` | — | `c4000005` | `44000005` | **Bit 31 weg** |
+| `0x02001db4` | - | `80000000` | `00000000` | **Gate weg** |
+| `0x02001db8` | - | `c4000005` | `44000005` | **Bit 31 weg** |
 | `0x02001dc0` | afbd | `80000005` | `80000005` | unverändert |
-| `0x02001600` | mips | — | `00000002` | Gate aus |
-| `0x0200160c` | bus-mips | — | `00000000` | Gate aus |
+| `0x02001600` | mips | - | `00000002` | Gate aus |
+| `0x0200160c` | bus-mips | - | `00000000` | Gate aus |
 
 `afbd` überlebt als einziger, weil der KMS-Treiber ihn per `clk_get` hält.
 Alles andere im Display-Pfad hat keinen Halter und fällt.
@@ -85,7 +85,7 @@ nfsroot=192.168.8.104:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait
 
 Kein `clk_ignore_unused`, kein `pd_ignore_unused`, kein `cma=128M`.
 
-### 3. Cstenger benutzt beide Schalter — immer
+### 3. Cstenger benutzt beide Schalter - immer
 
 `patches/kernel/0024-…-board.patch`, der `chosen`-Knoten seines Boards:
 
@@ -115,7 +115,7 @@ Eintrag im DTS uns nicht.
 | `0x05600144` READY | `0` | **`1`** | geschrieben, nie eingerastet |
 | `0x05600168` STATUS | `2` = `DONE` | **`0`** | Commit nie fertig |
 | `0x056000c0` IRQ_STATUS | `0` | `0` | Hardware setzt das Bit nicht |
-| `0x056000c4` IRQ_ENABLE | — | `1` | Treiber hat scharfgeschaltet |
+| `0x056000c4` IRQ_ENABLE | - | `1` | Treiber hat scharfgeschaltet |
 | `0x05600060` / `0x05600068` | `01` / `0122` | `01` / `0122` | **identisch** |
 
 Drei Symptome, ein Ereignis: `READY` rastet am Vsync ein, `STATUS` wird am
@@ -131,7 +131,7 @@ einmal. Danach nie wieder.
 
 ### 6. Die Interrupt-Bits sind gegen die Vendor-Quelle bestätigt
 
-Der Vendor mappt zwei Fenster — `top = reg[0]`, `afbd = reg[1]` — und setzt
+Der Vendor mappt zwei Fenster - `top = reg[0]`, `afbd = reg[1]` - und setzt
 `workaround = afbd + 0x60`. Damit ist `workaround + 8` gleich `0x05600068`,
 und dort steht am Gerät `0x122`: `mux & 3 = 2` und `(mux >> 4) & 3 = 2`, also
 exakt das, was `dec_decoder_display_init()` = `dec_reg_mux_select(regs, 2)`
@@ -140,7 +140,7 @@ daran **verifiziert**, nicht angenommen.
 
 ## Der Fix
 
-### Schritt 1 — die Kommandozeile reparieren — **erledigt, `saveenv` durch**
+### Schritt 1 - die Kommandozeile reparieren - **erledigt, `saveenv` durch**
 
 Nur die `bootargs` in der U-Boot-Env, kein Neubau, kein Flashen:
 
@@ -159,7 +159,7 @@ Ergebnis also nicht.
 **Kalt starten, nicht `reboot`.** `h713_disp auto` setzt seine
 Ein-Start-pro-Stromzyklus-Marke bei jedem U-Boot-Neustart zurück, überspringt
 dann den Teardown und lädt `display.bin` über einen womöglich noch laufenden
-MIPS — der schreibt weiter in das Image, während es gehasht wird, und der
+MIPS - der schreibt weiter in das Image, während es gehasht wird, und der
 Digest passt zu keinem Build (Patch 0016).
 
 Werkzeug dafür: `tools/uart-fixargs.py`. Starten, dann Strom ziehen und
@@ -176,11 +176,11 @@ PM: genpd: Not disabling unused power domains
 **`bus-mips` (`0x0200160c`) bleibt auch danach aus** und wird offenbar nicht
 gebraucht; `mips` (`0x02001600`) dagegen steht wieder auf `0x80000002`.
 
-### Schritt 2 — den Holzhammer durch etwas Sauberes ersetzen
+### Schritt 2 - den Holzhammer durch etwas Sauberes ersetzen
 
 `clk_ignore_unused` hält **alle** ungenutzten Takte an, nicht nur die des
 Displays; auf Dauer ist das Strom und Verdeckung echter Fehler. Sauber wäre,
-die Takte zu beanspruchen, die der Pfad wirklich braucht — als
+die Takte zu beanspruchen, die der Pfad wirklich braucht - als
 `clocks = <&ccu CLK_PLL_VIDEO2>, <&ccu CLK_DEINT>, <&ccu CLK_MIPS>,
 <&ccu CLK_BUS_MIPS>, …` am `display@5600000`-Knoten, oder als
 `CLK_IS_CRITICAL` im CCU.
@@ -188,14 +188,14 @@ die Takte zu beanspruchen, die der Pfad wirklich braucht — als
 **Erst messen, welche es sind.** Mit dem Vergleich oben liegen vier
 Kandidaten fest: `0x02001050`, `0x02001db0`, `0x02001db4`, `0x02001db8`,
 dazu `mips` und `bus-mips`. Was `0x02001db4` und `0x02001db8` heißen, ist
-noch nicht nachgesehen — im CCU-Treiber stehen an `0xdb0` `deint` und an
+noch nicht nachgesehen - im CCU-Treiber stehen an `0xdb0` `deint` und an
 `0xdc0` `afbd`, die zwei dazwischen sind zuzuordnen.
 
 Das ist der Beitrag, der auch **ihn** betrifft: sein Stack hängt an einem
 Kommandozeilenschalter, den seine Doku selbst „load-bearing and easy to
 break" nennt. Als Devicetree-Eigenschaft wäre er nicht mehr zu verlieren.
 
-### Schritt 3 — erst danach die offenen AFBD-Abweichungen
+### Schritt 3 - erst danach die offenen AFBD-Abweichungen
 
 ```
 05600058   Stock 00000062 (98)   wir 0
@@ -225,7 +225,7 @@ offen. Nur Strom ziehen half.
 sind derzeit die CCU (`0x02001000`, immer erreichbar) und das AFBD-Fenster
 `0x05600000..0x056003ff`, weil der KMS-Treiber `clk_afbd` und `clk_bus_disp`
 hält. **Nicht** `0x05200000`, `0x0524c000`, `0x0525c000`, `0x05280080`,
-`0x05880000` — die haben unter Linux keinen Halter. Der Zustand dieser
+`0x05880000` - die haben unter Linux keinen Halter. Der Zustand dieser
 Blöcke gehört über UART aus U-Boot gelesen.
 
 Umgekehrt ist der Wedge selbst eine Messung: dass er auftrat, belegt, dass

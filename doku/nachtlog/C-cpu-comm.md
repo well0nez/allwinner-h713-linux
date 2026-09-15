@@ -1,4 +1,4 @@
-# Paket C — `cpu_comm` bekommt eine In-Kernel-API
+# Paket C - `cpu_comm` bekommt eine In-Kernel-API
 
 **Agent:** Unteragent C (offline). **Kein Board angefasst**: kein `ssh root@192.168.8.141`,
 kein `ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`,
@@ -10,7 +10,7 @@ Ergebnisdateien:
 
 * `mainline/patches/kernel/0092-soc-sunxi-h713-cpu-comm-kernel-api.patch`
   (sha256 `e2d56b6c6b53882f67c16ac766be1bfd8e7cba8a5381c71426767a8c799c0879`)
-* `doku/83-cpu-comm-api.md` — API, Argumentlayout, Callback-Semantik, Timeout,
+* `doku/83-cpu-comm-api.md` - API, Argumentlayout, Callback-Semantik, Timeout,
   Verhältnis zum Char-Device-Pfad, Ergebnis zu Pflichtlisten-Punkt #6
 * dieses Teillog
 
@@ -21,19 +21,19 @@ Ergebnisdateien:
 | Zeit | Schritt |
 |---|---|
 | 21:47 | Nachtplan 78 gelesen (§0 Regeln, §0b Umgebung, §1 gesicherter Stand, §3 „C" und „E", §7 Nachschlagetabelle), `nachtlog/00-koordination.md` (Nummernvertrag: 0092 = C) |
-| 21:48–21:53 | Serienquelltext gelesen: `cpu_comm.h`, `_dev.c` (ioctls, Probe, `cpu_comm_init`), `_proto.c` (`SendCommLow`, `SendComm2CPUEx`, `SendAckLow`, `command_action`, `ack_action`, `queueAction`), `_rpc.c` (`CPUComm_CallEx`, `comm_CallWorkAction`), `_user.c` (Zustellung an die Char-Devices) |
-| 21:53–21:56 | doku/65, 66, 67, 72 gelesen; `analyse/hdmi-seq/hdmi_seq.py` (CALL-Aufbau, `name2id`, Argumentlayout, Empfänger), `signal_info_buf.py`, `prep_after_boot.sh` Z. 2–3, `legacy/userspace/hy310-hdmird/src/main.cpp` (Callback-Behandlung, nur gelesen), `mainline/docs/reference/cpu-comm-call-table.md` |
-| 21:55 | **Namens-Hash nachgerechnet** (siehe §3) — alle Einträge der Call-Tabelle stimmen; damit braucht der Treiber keine Tabelle |
+| 21:48-21:53 | Serienquelltext gelesen: `cpu_comm.h`, `_dev.c` (ioctls, Probe, `cpu_comm_init`), `_proto.c` (`SendCommLow`, `SendComm2CPUEx`, `SendAckLow`, `command_action`, `ack_action`, `queueAction`), `_rpc.c` (`CPUComm_CallEx`, `comm_CallWorkAction`), `_user.c` (Zustellung an die Char-Devices) |
+| 21:53-21:56 | doku/65, 66, 67, 72 gelesen; `analyse/hdmi-seq/hdmi_seq.py` (CALL-Aufbau, `name2id`, Argumentlayout, Empfänger), `signal_info_buf.py`, `prep_after_boot.sh` Z. 2-3, `legacy/userspace/hy310-hdmird/src/main.cpp` (Callback-Behandlung, nur gelesen), `mainline/docs/reference/cpu-comm-call-table.md` |
+| 21:55 | **Namens-Hash nachgerechnet** (siehe §3) - alle Einträge der Call-Tabelle stimmen; damit braucht der Treiber keine Tabelle |
 | 21:56 | Vergleich `patches/kernel/0014` ⇄ Baubaum `d9f9ca8b…`: **zwei Handänderungen im Baum, die nicht im Patch stehen** (siehe §5) |
-| 21:57–22:01 | Header, `cpu_comm_api.c`, Umbau von `CPUComm_CallEx`, Einhängepunkt in `command_action`, Mutex um `IOCTL_CALL`, Makefile/Kconfig |
-| 22:01–22:05 | Prüfbau out-of-tree, Patch erzeugt, gegen frisch entpacktes 0014 mit `-F0` (kein Fuzz) geprüft |
-| 22:05–22:10 | Pflichtlisten-Punkt #6 gegen Stock-Disassembly und Quelltext durchgearbeitet (§4) |
+| 21:57-22:01 | Header, `cpu_comm_api.c`, Umbau von `CPUComm_CallEx`, Einhängepunkt in `command_action`, Mutex um `IOCTL_CALL`, Makefile/Kconfig |
+| 22:01-22:05 | Prüfbau out-of-tree, Patch erzeugt, gegen frisch entpacktes 0014 mit `-F0` (kein Fuzz) geprüft |
+| 22:05-22:10 | Pflichtlisten-Punkt #6 gegen Stock-Disassembly und Quelltext durchgearbeitet (§4) |
 | 22:11 | Paket A hat inzwischen neu gebaut → Prüfbau gegen **A's Baum** `e62e8ee3…` wiederholt |
 | 22:12 | Patch endgültig, Prüfbau grün, Doku geschrieben |
 
 ---
 
-## 2. Prüfbau — Ergebnis
+## 2. Prüfbau - Ergebnis
 
 **Ausdrücklich ein Prüfbau, kein Endstand.** Out-of-tree, `M=`-Bau gegen einen
 fertigen Serienbaum; der Originalbaum wurde nicht verändert (Quellen liegen in
@@ -53,23 +53,23 @@ Ergebnis:
 * **`hy310-cpu-comm.ko` gebaut, AArch64**, sha256
   `33fcf15f0f715aad5eb084b50b8b47f9c40232f280f395f29591b7764377df38`.
 * **Keine neue Warnung, auch mit `W=1`.** Gegengeprobt: derselbe Bau ohne 0092
-  (nur 0014) liefert exakt dieselbe eine Warnung —
+  (nur 0014) liefert exakt dieselbe eine Warnung -
   `cpu_comm_rpc.c: variable 'prev_idx' set but not used` in `RemoveRoutine`,
   Altbestand, von mir nicht angefasst. `cpu_comm_api.o` selbst ist warnungsfrei.
 * Die vier Symbole sind exportiert:
   `cpu_comm_call`, `cpu_comm_register_callback`, `cpu_comm_unregister_callback`,
-  `cpu_comm_name2id` — alle `EXPORT_SYMBOL_GPL`.
+  `cpu_comm_name2id` - alle `EXPORT_SYMBOL_GPL`.
 
 **Patch-Prüfungen:**
 
 | Ziel | Ergebnis |
 |---|---|
-| frisch entpacktes `0014` (Stand auf Platte) | `patch -p1 -F0` — **fehlerfrei, ohne Fuzz** |
-| A's neuer Serienbaum `e62e8ee3…` | `patch -p1 -F0` — **fehlerfrei, ohne Fuzz** |
+| frisch entpacktes `0014` (Stand auf Platte) | `patch -p1 -F0` - **fehlerfrei, ohne Fuzz** |
+| A's neuer Serienbaum `e62e8ee3…` | `patch -p1 -F0` - **fehlerfrei, ohne Fuzz** |
 | alter Baubaum `d9f9ca8b…` (mit den Handänderungen vom 05.09.) | wendet sich ebenfalls an, mit Versatz und Fuzz 2 in einem Hunk |
 
 Der Patch ist in `diff -ruN`-Form wie 0014/0037/0049, mit `From:`/`Subject:`-Kopf
-und `Signed-off-by:`. **Nicht** in `series` eingetragen — das macht die Hauptsitzung.
+und `Signed-off-by:`. **Nicht** in `series` eingetragen - das macht die Hauptsitzung.
 
 Toolchain wie `build/build.sh` für den Kernel: `ARCH=arm64 LLVM=1`, clang/ld.lld
 im Container `h713-build` (der Bau lief mit clang 20, weil A's Baum damit gebaut
@@ -86,26 +86,26 @@ einer neuen Datei `cpu_comm_api.c`.
 
 Der synchrone CALL benutzt **denselben** Protokollrumpf wie bisher: der Körper von
 `CPUComm_CallEx` heißt jetzt `cpu_comm_call_ex(…, timeout_ms, strict)`,
-`CPUComm_CallEx()` ist der Aufruf mit `(0, false)` — der Char-Device-Pfad verhält
-sich unverändert —, `cpu_comm_call()` der mit `(timeout_ms, true)` und liefert bei
+`CPUComm_CallEx()` ist der Aufruf mit `(0, false)` - der Char-Device-Pfad verhält
+sich unverändert - , `cpu_comm_call()` der mit `(timeout_ms, true)` und liefert bei
 ausbleibendem RETURN `-ETIMEDOUT` statt stillschweigend Erfolg. Die
-64-Bit-Ladeeigenheit auf 4-Byte-Grenze (doku/65–67) ist damit automatisch
+64-Bit-Ladeeigenheit auf 4-Byte-Grenze (doku/65-67) ist damit automatisch
 mitgelöst: es wird der vorhandene wortweise Kopierer benutzt, kein zweiter gebaut.
 
 Kernel-Handler werden in `command_action()` bedient, eine Zeile **hinter** der
-bestehenden `cpu_comm_userspace_deliver()` — Reihenfolge dokumentiert, keine
+bestehenden `cpu_comm_userspace_deliver()` - Reihenfolge dokumentiert, keine
 Prioritäten, beide bekommen dasselbe Ereignis, keiner kann den anderen oder die
 Quittung unterdrücken. Der Punkt liegt oberhalb der Verzweigung nach Kanalfeld
 (`<=4` FIFO / `>4` Workqueue), also sieht ein Handler beide Klassen genau einmal.
 
 **Namens-Hash statt Tabelle.** `cpu_comm_name2id("THal_Vp_SetSource", 1)` =
-`0xEAF13DE5`. Der Hash ist `crc32_le(0x00123456, "<name>_<cpu>_<pid>")` — der
+`0xEAF13DE5`. Der Hash ist `crc32_le(0x00123456, "<name>_<cpu>_<pid>")` - der
 Kernel-Rohrechner passt exakt. Nachgerechnet gegen **alle** namentlichen Einträge
 in `mainline/docs/reference/cpu-comm-call-table.md` (24/24, inklusive der beiden
 mit dem Vendor-Tippfehler `Thal_`) und gegen die `KNOWN_IDS`/`CALLBACKS` aus
 `hdmi_seq.py` (8/8 stichprobenweise, darunter `MipsHalCallback_SignalChange` =
 `0x3E7FBC46`). **Die Aussage in `cpu-comm-call-table.md`, die IDs seien aus dem
-Namen nicht ableitbar, ist überholt** — sie stimmt nur ohne die Vorbelegung und
+Namen nicht ableitbar, ist überholt** - sie stimmt nur ohne die Vorbelegung und
 ohne den `_<cpu>_<pid>`-Anhang. Die Seite gehört cstengers Baum; korrigiert habe
 ich sie **nicht**, die Richtigstellung steht in doku/83 §1.
 
@@ -121,23 +121,23 @@ vorhandene Riegel in `SendComm2CPUEx` (Sequenz-Semaphore) nach 100 ms aufgibt un
 
 ---
 
-## 4. Pflichtliste Punkt #6 — „ACK ohne Cache-Sync gegen Stock"
+## 4. Pflichtliste Punkt #6 - „ACK ohne Cache-Sync gegen Stock"
 
 **Befund: kein fehlender Cache-Sync. Als gleichwertig zu Stock abgehakt, ohne
 Codeänderung am ACK-Pfad.** Lange Fassung mit allen Belegen in doku/83 §5; hier
 das Nötige zum Eintragen in `legacy/docs/known-issues.md` (die Datei fasse ich
-auftragsgemäß nicht an — Paket J trägt ein).
+auftragsgemäß nicht an - Paket J trägt ein).
 
 **Kurzfassung für die Pflichtliste:**
 
 > **Stand: Stock-gleichwertig, geschlossen.** Der Bit-2-Test bei `+105` findet
-> statt — nicht im IRQ-Handler wie bei Stock, sondern eine Verzögerung später in
+> statt - nicht im IRQ-Handler wie bei Stock, sondern eine Verzögerung später in
 > `ack_action()`, an derselben Adresse mit demselben Bit. Zusammen verbrauchen
 > beide Fassungen das Bit genau einmal; dass Stocks `ack_action` nicht noch
 > einmal prüft, liegt daran, dass sein IRQ-Handler das Bit schon verbraucht hat.
 > Ohne Entsprechung bleibt allein Stocks Zurücklese-Schleife, und die kann auf
 > unserer Abbildung nichts leisten: `ShMemAddrBase` kommt aus `ioremap()`, auf
-> arm64 `PROT_DEVICE_nGnRE` — ungecacht und non-Reordering, ein Lesen derselben
+> arm64 `PROT_DEVICE_nGnRE` - ungecacht und non-Reordering, ein Lesen derselben
 > Adresse nach dem Schreiben liefert den geschriebenen Wert, die Schleife endete
 > im ersten Durchlauf. Dasselbe Argument steht schon im Baum als Begründung
 > dafür, dass Session Ws `invalidate_kernel_vmap_range()` beim Wechsel von
@@ -152,7 +152,7 @@ auftragsgemäß nicht an — Paket J trägt ein).
 > `@0xcc94`, Offset-Tabelle je Nachrichtenart), doku/65 „Cache-Kohärenz",
 > `cpu_comm_proto.c` (`cpu_comm_sync_mips_cache`, `ack_action`),
 > `cpu_comm_dev.c` (ioremap-Kommentar), `arch/arm64/include/asm/io.h`.
-> **Wieder aufmachen, wenn** die Shared-Region je cachefähig abgebildet wird —
+> **Wieder aufmachen, wenn** die Shared-Region je cachefähig abgebildet wird -
 > dann bekommt die Zurücklese-Schleife Bedeutung, und zwar in **beiden**
 > Handlerfamilien.
 
@@ -161,11 +161,11 @@ auftragsgemäß nicht an — Paket J trägt ein).
 1. Der Kommentar vom 21.04. in `ack_action` vermutet einen „vorherigen
    Verbraucher", der bei Stock das Bit löscht. **Der vorherige Verbraucher ist
    Stocks IRQ-Handler.** Damit ist Stocks invertierte Prüfung logisch, und unsere
-   nicht-invertierte ebenfalls — sie stehen nur an verschiedenen Stellen.
+   nicht-invertierte ebenfalls - sie stehen nur an verschiedenen Stellen.
 2. Die Reihenfolge (wir verzögern, bevor wir prüfen) könnte ein zweites ACT
    verlieren, wenn zwei ACKs derselben Richtung vor dem Work-Item einträfen. Das
    ist strukturell ausgeschlossen: `SendComm2CPUEx` hält die Sequenz-Semaphore
-   vom Absenden bis zu dem `up()`, das `ack_action` macht — höchstens ein ACK je
+   vom Absenden bis zu dem `up()`, das `ack_action` macht - höchstens ein ACK je
    Richtung ist unterwegs. Der einzige Weg, diese Invariante zu brechen, war der
    100-ms-Bypass derselben Semaphore bei **zwei** Aufrufern; genau den schließt
    0092 mit `cpu_comm_call_mutex`.
@@ -183,14 +183,14 @@ für einen auf dieser Abbildung nachweisbar nicht vorhandenen Gewinn.
 ## 5. Nebenbefund, der die Nacht betrifft: der `callwq`-Schutz fehlt im Serienpatch
 
 Der Auftrag sagt, der `callwq`-Fix sei bereits im Serienbaum, und bittet, das im
-Quelltext nachzuprüfen. **Nachgeprüft — und so stimmt es nicht mehr.**
+Quelltext nachzuprüfen. **Nachgeprüft - und so stimmt es nicht mehr.**
 
 | Ort | `callwq` vorhanden? |
 |---|---|
 | Baubaum vom 05.09. `linux-6.18.38-d9f9ca8b…` | **ja** (Modulparameter, `memset(routine_info, …)`, `is_mips_va`-Riegel) |
 | `/root/hy310-cpu-comm-callwq-test.ko` am Board (Diagnose) | ja |
 | **`patches/kernel/0014-soc-sunxi-add-cpu-comm-ipc.patch`** (Platte, 04.09. 20:41) | **nein** |
-| **A's Nachtbau `linux-6.18.38-e62e8ee3…`** | **nein** — `cpu_comm_rpc.c` ist byte-gleich mit der 0014-Ausgabe |
+| **A's Nachtbau `linux-6.18.38-e62e8ee3…`** | **nein** - `cpu_comm_rpc.c` ist byte-gleich mit der 0014-Ausgabe |
 
 Die Handänderungen vom 05.09. stehen also **nur im alten Baubaum**, nicht im
 Patch. Ohne Gegenmaßnahme ist der Nachtkernel gegenüber dem, was am 06.09.
@@ -204,7 +204,7 @@ Zwei Dinge fehlen im Patch gegenüber dem alten Baubaum:
 1. `cpu_comm_rpc.c`: `callwq_kernel_cb`-Parameter, `memset(routine_info, 0, …)`,
    `is_mips_va`-Riegel vor dem Zeigeraufruf.
 2. `cpu_comm_proto.c`: die korrigierte `RX-CALL`-Druckzeile (die alte liest
-   `+0x34` als „pid" und zeigt deshalb die Parameter 1, 2, **4**, 5 — genau der
+   `+0x34` als „pid" und zeigt deshalb die Parameter 1, 2, **4**, 5 - genau der
    Druck, an dem die Callbacks abgelesen werden).
 
 **Was 0092 daraus übernimmt und was nicht.** Punkt 1 ist mit 0092 gegenstandslos:
@@ -212,11 +212,11 @@ der Zeigeraufruf ist dort **ersatzlos entfernt**, weil der Kernel-Empfang jetzt
 einen richtigen Mechanismus hat und in der Routinentabelle ohnehin nie ein
 ARM-Kernel-Zeiger stand (doku/72; am Gerät steht dort `0x8b10abb8`, eine
 MIPS-Adresse). Das Verhalten entspricht damit genau dem des Moduls, das auf dem
-Tisch lief — dort war der Sprung per `callwq_kernel_cb=0` abgeschaltet. Der
+Tisch lief - dort war der Sprung per `callwq_kernel_cb=0` abgeschaltet. Der
 Modulparameter selbst wird nicht gebraucht und kommt nicht mit; er war ein
 Testschalter.
 
-**Punkt 2 fasse ich nicht an** — das ist eine Diagnosezeile in fremdem
+**Punkt 2 fasse ich nicht an** - das ist eine Diagnosezeile in fremdem
 Zuständigkeitsbereich (0014 gehört nicht Paket C). Empfehlung an die
 Hauptsitzung: die Druckzeile aus `d9f9ca8b…/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c`
 (Zeile ~907 ff.) in 0014 nachziehen, sonst ist der `RX-CALL`-Druck im Nachtkernel
@@ -314,7 +314,7 @@ ssh root@192.168.8.141 'kill "$(cat /root/C-listen.pid)" 2>/dev/null; sleep 1; t
 ### Bestanden, wenn
 
 1. `/sys/kernel/debug/cpu_comm/call` **und** `watch` existieren (Modul mit API geladen).
-2. Schritt 4 antwortet `ok` — kein `-110`, kein `-19`.
+2. Schritt 4 antwortet `ok` - kein `-110`, kein `-19`.
 3. `dmesg` zeigt `cpu_comm: kernel callback comp=0x3e7fbc46` (SignalChange erreicht den
    **Kernel**-Handler), und `/root/C-listen.log` zeigt dieselbe Nachricht als `CALLBACK`
    (Char-Device läuft weiter, **beide** bekommen das Ereignis).
@@ -343,7 +343,7 @@ ssh root@192.168.8.141 'kill "$(cat /root/C-listen.pid)" 2>/dev/null; sleep 1; t
 ## 7. Board-Anfrage
 
 Ein Slot, seriell, ~10 Minuten, **nach** der Abnahme von Paket A (neuer Kernel muss
-booten) — im Nachtplan ist das Board-Slot 3.
+booten) - im Nachtplan ist das Board-Slot 3.
 
 | Was | Wert |
 |---|---|
@@ -351,13 +351,13 @@ booten) — im Nachtplan ist das Board-Slot 3.
 | Voraussetzung | `0092` in `series`, Kernel + Module gebaut und ausgerollt; `/root/hy310-cpu-comm-callwq-test.ko` beiseitegelegt |
 | Dauer | ein Kaltstart + Sequenz bis Phase 3 (~2 min) + sieben kurze Befehle |
 | Risiko | `SetSource(3)` ist nach der Sequenz aus Nachtplan §1 dreimal gutgegangen; 0092 entfernt zusätzlich den undefinierten Zeigersprung, der bis zum 06.09. auf diesem Pfad lag. Kein neues Register wird geschrieben, keine INCAP, kein Descriptor. |
-| Zusammen mit E | möglich — E braucht denselben Zustand (Prep + Phase 3), die Abnahme oben lässt sich unmittelbar davor fahren |
+| Zusammen mit E | möglich - E braucht denselben Zustand (Prep + Phase 3), die Abnahme oben lässt sich unmittelbar davor fahren |
 | Artefakte | `dmesg`-Auszug, `/root/C-listen.log`, `/root/elog_tail.out` nach `re/captures/weltneuheit/ours-20260907-nacht/C/` |
 
 **Was ich nicht selbst prüfen konnte:** alles am Gerät. Insbesondere ob debugfs am
 Board schon gemountet ist (Befehl ist oben enthalten), ob der MIPS auf einen
 CALL aus Kernelkontext genauso antwortet wie auf einen aus dem ioctl (er sieht
-dieselbe Nachricht in derselben FIFO — es gibt keinen Grund für einen
+dieselbe Nachricht in derselben FIFO - es gibt keinen Grund für einen
 Unterschied, aber es ist nicht gemessen), und ob der `SignalChange`-Rückruf bei
 diesem Lauf tatsächlich kommt (er kam am 05./06.09., doku/72 Lauf 17).
 
@@ -370,7 +370,7 @@ diesem Lauf tatsächlich kommt (er kam am 05./06.09., doku/72 Lauf 17).
 * **Pflichtliste #6** ist beantwortet: kein fehlender Cache-Sync, mit Belegen
   abgehakt; Text zum Eintragen steht in §4 dieses Logs und ausführlich in
   doku/83 §5. **Ich habe `legacy/docs/known-issues.md` nicht angefasst** (Paket J).
-* **Eine Sache braucht eine Entscheidung der Hauptsitzung:** §5 — der `callwq`-Schutz
+* **Eine Sache braucht eine Entscheidung der Hauptsitzung:** §5 - der `callwq`-Schutz
   steht nicht in `0014` und fehlt daher in A's Nachtbau. 0092 macht den kritischen
   Teil gegenstandslos; die verschobene `RX-CALL`-Druckzeile bleibt offen.
 * **Nichts angefasst**, was anderen gehört: `series`, `build.sh`, `0014`,

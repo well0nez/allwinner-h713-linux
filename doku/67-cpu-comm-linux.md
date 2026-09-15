@@ -41,7 +41,7 @@ Erprobt sind zwei lesende Routinen.
 
 ## Es waren drei Ursachen, nicht eine
 
-### 1. Der MIPS war geparkt — das war der Hauptteil
+### 1. Der MIPS war geparkt - das war der Hauptteil
 
 `bootcmd` lautet ab Werk:
 
@@ -52,7 +52,7 @@ bootcmd=h713_disp auto 0x30 logo; dhcp; tftpboot 0x60000000 192.168.8.104:${boot
 `h713_disp auto … logo` legt den Coprozessor als **letzte Handlung** still.
 Linux startet danach gegen eine tote Firmware: die TX-FIFO `0x03003864` steigt
 und fällt nie, das SENT-Bit bleibt stehen, `SendComm2CPUEx` meldet ACK-Timeout.
-Es war nie ein Transportfehler — es war niemand da, der abholt.
+Es war nie ein Transportfehler - es war niemand da, der abholt.
 
 `0x0306101c` Bit 0 ist der Prüfstein: `1` = Coprozessor läuft. Nach einem
 normalen Start steht es auf `0`.
@@ -69,7 +69,7 @@ Unabhängig bestätigt in cstengers `docs/cpu-comm-client-plan.md`, Abschnitt
 ### 2. `ack_action` gab eine `cc_ref` als Zeiger weiter
 
 `cpu_comm_proto.c`, Ende von `ack_action`. Die Firmware spiegelt bei
-`share_seq + 112` die 32-Bit-Referenz zurück, die der CALL mitgegeben hat —
+`share_seq + 112` die 32-Bit-Referenz zurück, die der CALL mitgegeben hat -
 also eine `cc_ref`, keinen nativen Zeiger. Der alte Code:
 
 ```c
@@ -101,7 +101,7 @@ result[i + 1] = *(u32 *)&return_entry[2 * i + 22];             /* richtig */
 ```
 
 Die Vorlage stand auf arm32, wo `unsigned long` 32 Bit ist. Auf arm64 wird
-daraus `ldr x11, [x8], #4` — ein Doppelwort von einer nur 4-Byte
+daraus `ldr x11, [x8], #4` - ein Doppelwort von einer nur 4-Byte
 ausgerichteten Adresse. Die Shared-Region ist uncached gemappt, also
 Device-Memory, und dort ist das ein Alignment-Fault (FSC 0x21).
 
@@ -119,7 +119,7 @@ Dieselbe Klasse wie cstengers `memcpy`-Fault auf dem Namensfeld der
 Routine-Tabelle (`memcpy_fromio` statt `memcpy`). **Es ist die wahrscheinlichste
 verbleibende Fehlerklasse im ganzen Treiber:** überall dort, wo die arm32-Vorlage
 `unsigned long`, `long` oder einen Zeiger als 32-Bit-Wort behandelt hat.
-Der Bestand ist geprüft — es gab genau diese eine Stelle mit
+Der Bestand ist geprüft - es gab genau diese eine Stelle mit
 `*(unsigned long *)`, und die `*(u64 *)`-Zugriffe liegen alle auf
 8-Byte-Grenzen. Bei jeder Erweiterung erneut prüfen.
 
@@ -140,10 +140,10 @@ Absender-pid steht ohnehin bei `+0x1c` (`cpu_comm_proto.c`, `call_slot + 28`).
 
 **Die abgewendete Gefahr ist konkret:** der Adapter maskiert jedes Argument auf
 28 Bit und ODERt `0xa0000000`, also ARM-physisch `(v & 0x1fffffff) + 0x40000000`.
-Eine tgid von etwa 1000 ergibt `0x400003e8` — mitten in `secure-bl31@40000000`.
+Eine tgid von etwa 1000 ergibt `0x400003e8` - mitten in `secure-bl31@40000000`.
 `Wce_GetWindow` hätte den Skalar `2` in TF-As BL31-Region geschrieben. Nach dem
 Fix bleibt `+0x34` durch das `memset` null, und der Adapter überspringt
-Nullzeiger per `movz` — zu wenige Argumente sind damit harmlos statt gefährlich.
+Nullzeiger per `movz` - zu wenige Argumente sind damit harmlos statt gefährlich.
 
 Beweis am Gerät, frischer Scratch, drei Ausgabeadressen:
 
@@ -161,8 +161,8 @@ Cstenger hat denselben Fehler unabhängig gefunden (Commit `ec53910`).
 ### 5. Der RX-Diagnosedruck war um ein Feld verschoben
 
 `cpu_comm_proto.c`, eingehender CALL. Er las `+0x34` als `pid` und sprang dann
-auf `+0x38`/`+0x3c` weiter — zeigte also die Parameter **1, 2, 4, 5** und
-beschriftete Parameter 3 als pid. Rein diagnostisch, ohne Funktionsfolge — aber
+auf `+0x38`/`+0x3c` weiter - zeigte also die Parameter **1, 2, 4, 5** und
+beschriftete Parameter 3 als pid. Rein diagnostisch, ohne Funktionsfolge - aber
 **genau der Druck, an dem die MIPS→ARM-Callbacks abgelesen werden**. Jetzt
 korrekt indiziert, plus `chan_pid` bei `+0x10`, dem Feld, das den Aufruf
 überhaupt zuordnet.
@@ -173,7 +173,7 @@ Firmware einen Callback auch *benutzen*, nicht nur registriert vorfinden.
 **Modulstand:** `fc570ab6cc46e3a1`, 215520 Byte. Die Vorgängerfassung liegt als
 `hy310-cpu-comm.ko.05b6daca-backup` daneben.
 
-## Das Rezept — seit 04.09. nur noch Strom an
+## Das Rezept - seit 04.09. nur noch Strom an
 
 **Die `bootcmd` ist persistent.** `saveenv` ist geschrieben:
 
@@ -183,7 +183,7 @@ bootcmd=h713_disp init 0x30; dhcp; tftpboot 0x60000000 192.168.8.104:${bootfile}
 
 Ein Stromzyklus genügt; der MIPS kommt von selbst hoch. Zweimal verifiziert:
 `0x0306101c` liest nach dem Boot ohne jeden Handgriff `1`. Kein UART-Fänger,
-kein Prompt, kein `h713_disp init` von Hand — **im Gegenteil, das wäre
+kein Prompt, kein `h713_disp init` von Hand - **im Gegenteil, das wäre
 schädlich**: `init` gilt einmal pro Stromzyklus, und `bootcmd` ruft es selbst.
 
 Erwartete Belege in der Boot-Ausgabe:
@@ -200,7 +200,7 @@ H713 MIPS: application readiness proven
 schwarz. Rückweg jederzeit: `setenv bootcmd 'h713_disp auto 0x30 logo; …'`
 plus `saveenv`.
 
-Das Logo-Init steht bei uns in `bootcmd`, **nicht** in `preboot` — dort steht
+Das Logo-Init steht bei uns in `bootcmd`, **nicht** in `preboot` - dort steht
 nur die Fastboot-Magic-Prüfung und `usb start`. (Bei cstenger ist es umgekehrt;
 seine Notizen nennen `preboot`.)
 
@@ -229,7 +229,7 @@ python3 /root/rpc_test.py call 0x24efc7c9      # GetSource, lesend
 `modprobe.blacklist=hy310_cpu_comm` steht in den `bootargs`: ein fehlerhaftes
 Modul kostet damit ein `insmod`, keinen Startvorgang.
 
-**`rmmod` + `insmod` funktioniert** und der MIPS überlebt es — geprüft am
+**`rmmod` + `insmod` funktioniert** und der MIPS überlebt es - geprüft am
 04.09., zweimal, auch einmal aus einem angeschlagenen (`Tainted: D`) Kernel
 heraus. Das ist die schnelle Schleife. Die frühere Notiz „Hot-Swap tötet den
 MIPS" bezog sich auf den geparkten Zustand und ist damit erledigt.
@@ -267,7 +267,7 @@ awk '/^--- a\/drivers\/soc\/sunxi\/Kconfig/,0' <alter-patch> >> $S/neu.diff
 ```
 
 Danach gegenprüfen: den Patch in ein leeres Verzeichnis auspacken und mit dem
-Kernelbaum vergleichen — sie müssen identisch sein.
+Kernelbaum vergleichen - sie müssen identisch sein.
 
 ### Nur das Modul neu bauen (schnell, ohne Container)
 
@@ -290,7 +290,7 @@ diesem Patchstand **nicht** gelaufen. Der Patch ist auf Quellebene geprüft
 aber ein Serienbau steht aus.
 
 Modul: 215520 Byte, sha256 `05b6daca0bee9fe733b3efd652e698d30f0befaf517e7e6a0834a027b592d547`.
-`sync` vor jedem Test, und die sha auf dem Board gegen den Host prüfen — ein
+`sync` vor jedem Test, und die sha auf dem Board gegen den Host prüfen - ein
 veraltetes Modul hat in diesem Projekt schon eine erfundene Messung erzeugt.
 
 ## Konstanten
@@ -302,7 +302,7 @@ veraltetes Modul hat in diesem Projekt schon eine erfundene Messung erzeugt.
 | `0x03003810` | Version, liest `0x00020000` wenn getaktet |
 | `0x03003830` | TX IRQ enable, `BIT(3)` = `BIT(2*port+1)`, MIPS = Port 1 |
 | `0x03003864` | TX-FIFO-Zählerstand ARM → MIPS |
-| `0x03003874` | TX MSG_DATA — **das ist der Doorbell** |
+| `0x03003874` | TX MSG_DATA - **das ist der Doorbell** |
 | `0x03003120` | RX IRQ enable, `BIT(2)` = `BIT(2*port)` |
 | `0x03003124` | RX IRQ status, write-1-to-clear |
 | `0x03003164` | RX-FIFO-Zählerstand MIPS → ARM |
@@ -319,12 +319,12 @@ Doorbell-Kodierung: **nur der nackte Nachrichtentyp**, 0 = CALL, 1 = RETURN,
 muss `TX_IRQ_EN` gepulst werden (setzen, 10 µs, löschen).
 
 **Achtung:** `cpu_comm_dev.c` schickt beim Probe einen „Doorbell" nach
-`0x03003070` — das ist ARMs **eigene** Bank, nicht die des MIPS. Der geht ins
+`0x03003070` - das ist ARMs **eigene** Bank, nicht die des MIPS. Der geht ins
 Leere. Altlast aus der arm32-Vorlage, bisher folgenlos, gehört entfernt.
 
 **Doppelte Definitionen:** `cpu_comm_hw.c` definiert `H713_MSGBOX_RX_FIFO`,
 `_RX_DATA`, `_TX_DATA`, `_TX_FIFO` zweimal (Zeilen ~78 und ~153), mit identischen
-Werten — deshalb ohne Warnung. Beim Aufräumen zusammenlegen.
+Werten - deshalb ohne Warnung. Beim Aufräumen zusammenlegen.
 
 ### Interrupt
 
@@ -333,7 +333,7 @@ Unser DTS: `interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>` → GICv2 hwirq 78.
 läuft interruptgetrieben.
 
 `GIC_SPI 21` (hwirq 53) ist die falsche: sie stürmt und wird bei exakt 100000
-maskiert. Wir haben das gemessen und cstenger unabhängig ebenfalls — er hält
+maskiert. Wir haben das gemessen und cstenger unabhängig ebenfalls - er hält
 die Msgbox-IRQ deshalb für unbrauchbar und ist auf einen hrtimer-Poll
 ausgewichen (250 µs schnell nach dem Senden, 4 ms im Leerlauf). **Das ist ein
 Befund für ihn:** auf SPI 46 funktioniert der Interrupt.
@@ -347,7 +347,7 @@ Befund für ihn:** auf SPI 46 funktioniert der Interrupt.
 | `SLOTS_OFF` | `0x168` |
 | `RING_OFF` | `0x0c0` |
 | `MSG_FLAG_SENT` | Bit 2 bei `share_seq + 0x08` |
-| ACK-Semaphor-Referenz | `share_seq + 112` — **immer durch `cc_deref()`** |
+| ACK-Semaphor-Referenz | `share_seq + 112` - **immer durch `cc_deref()`** |
 
 Berechnung des Sequenzzeigers (die Stelle, an der die u32-Abschneidung saß):
 
@@ -366,16 +366,16 @@ unsigned long addr = ShMemAddrBase + 9760*1 + 4880*r + 2440*d + 152;
 | `+0x08` | Parameteranzahl (u16) |
 | `+0x0a` | msg_type / flags2, `MSG_FLAG_SENT` |
 | `+0x0c` | session |
-| `+0x10` | **Kanal-pid** — nicht „dst_cpu erweitert" |
+| `+0x10` | **Kanal-pid** - nicht „dst_cpu erweitert" |
 | `+0x20` | Wait-Referenz (`cc_ref`) |
-| `+0x28` | comp_id — **der Adapter bekommt einen Zeiger hierauf** |
+| `+0x28` | comp_id - **der Adapter bekommt einen Zeiger hierauf** |
 | `+0x2c` | Parameter 1 |
 | `+0x30` | Parameter 2 |
-| `+0x34` | Parameter 3 — **nicht nullen** |
+| `+0x34` | Parameter 3 - **nicht nullen** |
 
 Kanalschlüssel: `(pid << 4) | (chan & 0xf)`. Ein CALL, dessen Schlüssel keiner
 Zeile der Firmware-Kanaltabelle entspricht, wird auf Transportebene bestätigt
-und dann **stillschweigend nie ausgeführt** — Symptom: CALL_ACK, kein RETURN.
+und dann **stillschweigend nie ausgeführt** - Symptom: CALL_ACK, kein RETURN.
 
 **Argument-ABI (von cstenger korrigiert, Commit `ec53910`):** es gibt *keinen*
 Dummy-Parameter. Der Adapter erhält die Nachricht bei `+0x28`, seine Ladebefehle
@@ -396,7 +396,7 @@ U-Boot zeigt Version 162, Anzahl 81.
 gemappt; `memcpy`s breite unausgerichtete Ladebefehle nehmen dort einen
 Alignment-Fault. Dieselbe Falle wie Ursache 3.
 
-Cstenger hat dafür `/proc/cpu_comm/routines` gebaut (Commit `ec53910`) — die
+Cstenger hat dafür `/proc/cpu_comm/routines` gebaut (Commit `ec53910`) - die
 Tabelle live, mit Namen. **Das sollten wir übernehmen**, es ist die Karte von
 „Routine, die etwas tut" zu „Zahl, mit der man sie ruft".
 
@@ -414,12 +414,12 @@ Tabelle live, mit Namen. **Das sollten wir übernehmen**, es ist die Karte von
 Sein zweiter Branch `origin/h713-display-video-path` steht bei `83f0974`
 (03.09.2026). Neu sind ~90 Commits; für uns zählen zwei:
 
-**`ec53910` — `cpu_comm: correct the argument ABI, and stop BUG()ing on client input`**
+**`ec53910` - `cpu_comm: correct the argument ABI, and stop BUG()ing on client input`**
 
 - Argument-Indexierung korrigiert (siehe oben), inklusive der Erkenntnis, dass
   `+0x34` Parameter 3 ist und nicht genullt werden darf
 - sechs `BUG()` behoben, **alle sechs wurden getroffen, sobald echter Verkehr den
-  Pfad zum ersten Mal berührte.** Etwa 90 bleiben stehen — grob 23 in `rpc.c`,
+  Pfad zum ersten Mal berührte.** Etwa 90 bleiben stehen - grob 23 in `rpc.c`,
   21 in `channel.c`, 20 in `mem.c`. Sie sind nicht geprüft, nur unbenutzt.
 - `errno` ist erstmals aussagekräftig: `ETIME` = Firmware hat bestätigt und nie
   geantwortet, `ESRCH` = MIPS geparkt
@@ -432,17 +432,17 @@ Sein zweiter Branch `origin/h713-display-video-path` steht bei `83f0974`
   Physadressen; `s_CommSockt` wird `kzalloc`t statt Modul-`.bss`, weil
   `virt_to_phys()` auf Modul-BSS falsch rechnet (gemessen: `0x4124f000` gegen
   echte `0x449ba000`, Folgeseite 27 MiB entfernt).
-  **Wir sind hier bewusst anders** — unsere getaggten Refs sind für den MIPS
+  **Wir sind hier bewusst anders** - unsere getaggten Refs sind für den MIPS
   undurchsichtig, und der dereferenziert sie nachweislich nicht. Nicht
   vermischen, ohne beides zu verstehen.
 - RX per hrtimer-Poll statt IRQ, `rx_irq=1` als Schalter (siehe „Interrupt")
 
-**`9ffbc3b` — `re: CPU_COMM from Linux closes the suppression clears and SetSource`**
+**`9ffbc3b` - `re: CPU_COMM from Linux closes the suppression clears and SetSource`**
 
 - die Voraussetzung „Coprozessor muss leben", `0x0306101c == 1`
 - `docs/cpu-comm-client-plan.md`: Ioctl-ABI (168-Byte-Puffer, comp_id bei `+40`,
   Parameter ab `+64`, Ergebnis ab `+120`), Testprotokoll, Gefahrenliste
-- drei Unterdrückungs-Aufrufe aus Linux, alle `nret=0`, 30–86 ms — und die
+- drei Unterdrückungs-Aufrufe aus Linux, alle `nret=0`, 30-86 ms - und die
   Feststellung, dass der Test vom 30.08. ungültig war, weil das Logo auf dem
   **OSD**-Kanal `0x05600140` liegt, die Routinen aber auf dem **Video**-Kanal
   `0x05600100` arbeiten. Der Versuch konnte einen Erfolg gar nicht sehen.
@@ -450,7 +450,7 @@ Sein zweiter Branch `origin/h713-display-video-path` steht bei `83f0974`
   privaten Quellzustand zu lesen. Seine 0 war nie ein Gegenbeweis.
 
 Sein Ergebnisformat ist `RETURN`/`nret`; unsere Laufzeiten liegen bei ~120 ms,
-seine bei 17–30 ms. Siehe „Offen".
+seine bei 17-30 ms. Siehe „Offen".
 
 ## Für cstenger
 
@@ -467,13 +467,13 @@ seine bei 17–30 ms. Siehe „Offen".
 
 | Punkt | Was wir wissen |
 |---|---|
-| **~120 ms je Aufruf** | Er misst 17–30 ms mit Poll, wir 120 ms mit IRQ. Auffällig gleichmäßig, riecht nach einer festen Verzögerung im Pfad, nicht nach Firmwarearbeit. Im Protokoll liegen zwischen CALL und RETURN_ACK nur ~85 ms. Noch nicht untersucht. |
-| ~~**~90 `BUG()`**~~ **erledigt 04.09.** | Die Zahl war cstengers und galt seinem Baum. Unserer hat **null** lebende `BUG()` — die zwei `grep`-Treffer stehen im Kommentartext. Nach Kommentar-Entfernung: 0, dazu 64 `WARN_ON` und 0 `BUG_ON`. Der arm32-Zweig hat sie am 22.04. abgeräumt (Session K-night, doc 65). Zum Vergleich: seine Branch-Spitze hat 91. Der `INSTALL_RT`→`AddInRoutine`→`Comm_AddNewChannel`-Pfad ist damit `BUG()`-frei. |
-| **Argumentsignaturen** | Unbekannt. Die Tabelle liefert Namen und ids, sonst nichts. Ehrlich klären lässt sich das nur an der Firmware: `tools/mips/disasm.py`, Basis `0x8b100000`, MIPS-VA `0x8b1xxxxx` = ARM-physisch `0x4b1xxxxx`. **Ein erfolgreicher Rückgabewert beweist keine Signatur** — ein CALL mit passendem Schlüssel wird ausgeführt, egal ob die Argumente sinnvoll sind. |
+| **~120 ms je Aufruf** | Er misst 17-30 ms mit Poll, wir 120 ms mit IRQ. Auffällig gleichmäßig, riecht nach einer festen Verzögerung im Pfad, nicht nach Firmwarearbeit. Im Protokoll liegen zwischen CALL und RETURN_ACK nur ~85 ms. Noch nicht untersucht. |
+| ~~**~90 `BUG()`**~~ **erledigt 04.09.** | Die Zahl war cstengers und galt seinem Baum. Unserer hat **null** lebende `BUG()` - die zwei `grep`-Treffer stehen im Kommentartext. Nach Kommentar-Entfernung: 0, dazu 64 `WARN_ON` und 0 `BUG_ON`. Der arm32-Zweig hat sie am 22.04. abgeräumt (Session K-night, doc 65). Zum Vergleich: seine Branch-Spitze hat 91. Der `INSTALL_RT`→`AddInRoutine`→`Comm_AddNewChannel`-Pfad ist damit `BUG()`-frei. |
+| **Argumentsignaturen** | Unbekannt. Die Tabelle liefert Namen und ids, sonst nichts. Ehrlich klären lässt sich das nur an der Firmware: `tools/mips/disasm.py`, Basis `0x8b100000`, MIPS-VA `0x8b1xxxxx` = ARM-physisch `0x4b1xxxxx`. **Ein erfolgreicher Rückgabewert beweist keine Signatur** - ein CALL mit passendem Schlüssel wird ausgeführt, egal ob die Argumente sinnvoll sind. |
 | **`&buf[1]` im Listener-Pfad** | `cpu_comm_dev.c` ~Zeile 815: `*(u64 *)&buf[1]` bei `u8 buf[64]` ist Byte-Offset **1**, der Kommentar meint Offset 4. Kein Absturz (Stack, normales Memory), aber es vergleicht die falschen Bytes. Nicht auf unserem Pfad, ungeprüft. |
 | **Serienbau** | Der volle `build/build.sh kernel` mit LLVM 20 ist mit diesem Patchstand nicht gelaufen. |
 | ~~**`bootcmd` ist flüchtig**~~ **erledigt 04.09.** | `saveenv` ist geschrieben. `bootcmd=h713_disp init 0x30; dhcp; tftpboot …; bootm …`, zweimal per Kaltstart verifiziert: `0x0306101c` liest ohne Handgriff `1`. **Folge: das Gerät startet ohne Bootlogo**, das Panel bleibt beim Booten schwarz. Rückweg: `setenv bootcmd 'h713_disp auto 0x30 logo; …'` + `saveenv`. Das Logo-Init steht bei uns in `bootcmd`, **nicht** in `preboot` (dort nur Fastboot-Magic + `usb start`). |
-| **Nichts hat ein Bild verändert** | Zwei lesende Routinen, beide liefern `0x0`. Der nächste sinnvolle Schritt ist `Wce_GetActiveWindow` mit zwei echten Ausgabeadressen — ein typisierter, lesender Aufruf, der die Argument- und Ergebnispfade wirklich belastet. |
+| **Nichts hat ein Bild verändert** | Zwei lesende Routinen, beide liefern `0x0`. Der nächste sinnvolle Schritt ist `Wce_GetActiveWindow` mit zwei echten Ausgabeadressen - ein typisierter, lesender Aufruf, der die Argument- und Ergebnispfade wirklich belastet. |
 
 ## Betriebliches und Gefahren
 
@@ -489,13 +489,13 @@ seine bei 17–30 ms. Siehe „Offen".
 - **`SetSource` kommt zuletzt.** Am 01.09. an Position 2 gerufen: kein RETURN,
   der einzige BG_Thread der Firmware blockierte, alle folgenden Aufrufe liefen
   ins Leere. Erholung nur per Stromzyklus.
-- **TVTOP `0x068B0000` nicht aus Linux lesen** — wedgt den SoC.
+- **TVTOP `0x068B0000` nicht aus Linux lesen** - wedgt den SoC.
 - **Nach einem Modul-Oops nicht `reboot`.** Stattdessen `sync`, dann
-  `echo b > /proc/sysrq-trigger`. `sysrq-b` synchronisiert *nicht* selbst — ohne
+  `echo b > /proc/sysrq-trigger`. `sysrq-b` synchronisiert *nicht* selbst - ohne
   `sync` ist ein frisch kopiertes Modul aus dem Seitencache verloren und das
   Board läuft mit dem *vorherigen* Bau weiter, was wie ein Codefehler aussieht.
   **Achtung 04.09.:** im Kernelbaum, gegen den wir bauen, ist
-  `CONFIG_MAGIC_SYSRQ` **nicht gesetzt** — dann gibt es weder
+  `CONFIG_MAGIC_SYSRQ` **nicht gesetzt** - dann gibt es weder
   `/proc/sysrq-trigger` noch SysRq über die serielle Konsole. Dieser Rettungsweg
   ist also womöglich gar nicht vorhanden; beim nächsten Boot gegen
   `/proc/config.gz` gegenprüfen. Wer daraus schließt „der Kernel ist tot, weil
@@ -514,7 +514,7 @@ Tage gekostet:
 
 1. **Eine Meldung des Systems als Messfehler abtun.** `Coprozessor beim Laden
    steht` war korrekt und wurde wegerklärt. Wer eine Selbstauskunft anzweifelt,
-   muss den Zweifel messen — `busybox devmem 0x0306101c` hätte 30 Sekunden
+   muss den Zweifel messen - `busybox devmem 0x0306101c` hätte 30 Sekunden
    gedauert.
 2. **Eine Suche, die „nichts" antwortet, nicht prüfen.** `grep -r` unter `/tmp`
    lieferte nichts und erzeugte eine komplett falsche Merkmalstabelle; `find`
@@ -523,23 +523,23 @@ Tage gekostet:
    *„When a scan answers 'none', check that it could have seen one."*
 
 Und eine dritte, die hier gut ausging: der erste Aufruf lief durch und sah nach
-Erfolg aus — er lief nur durch, weil `count=0` die fehlerhafte Schleife
+Erfolg aus - er lief nur durch, weil `count=0` die fehlerhafte Schleife
 übersprang. **Ein grüner erster Versuch ist kein Beweis, solange nicht der Pfad
 gelaufen ist, der etwas tun muss.**
 
 ## Querverweise
 
-- [65-cpu-comm-abgleich.md](65-cpu-comm-abgleich.md) — die drei Generationen
+- [65-cpu-comm-abgleich.md](65-cpu-comm-abgleich.md) - die drei Generationen
   gediffed, Merkmalstabelle, Doorbell-Vergleich, FreeCall-FIFO
-- [66-cpu-comm-arm64-bringup.md](66-cpu-comm-arm64-bringup.md) — erster
+- [66-cpu-comm-arm64-bringup.md](66-cpu-comm-arm64-bringup.md) - erster
   Round-Trip aus U-Boot, fünf behobene Fehler, Session Z reproduziert
-- [50-befehle.md](50-befehle.md) — Bauen, U-Boot-Prompt, `uart-uboot.py`
-- [63-mips-elog.md](63-mips-elog.md) — elog-Ring und Dekodierung
-- [70-sackgassen.md](70-sackgassen.md) — ausgeschlossen, mit Beleg. Zuerst lesen.
-- [95-netboot.md](95-netboot.md) — TFTP, NFS, Environment
-- `re/notes/CONTRADICTIONS.md` — die IRQ-Auflösung, jetzt durch Hardware
+- [50-befehle.md](50-befehle.md) - Bauen, U-Boot-Prompt, `uart-uboot.py`
+- [63-mips-elog.md](63-mips-elog.md) - elog-Ring und Dekodierung
+- [70-sackgassen.md](70-sackgassen.md) - ausgeschlossen, mit Beleg. Zuerst lesen.
+- [95-netboot.md](95-netboot.md) - TFTP, NFS, Environment
+- `re/notes/CONTRADICTIONS.md` - die IRQ-Auflösung, jetzt durch Hardware
   entschieden
-- `re/notes/cstenger-branch/` — seine Handoffs, gespiegelt
+- `re/notes/cstenger-branch/` - seine Handoffs, gespiegelt
 - `tools/uart-uboot.py`, `tools/uart-watch.py`, `tools/uboot-hdmi-sequence.txt`
 - cstengers Baum: `docs/cpu-comm-client-plan.md`,
   `docs/reference/cpu-comm-call-table.md`,

@@ -1,7 +1,7 @@
-# h713-focus — den Fokusmotor von Hand fahren
+# h713-focus - den Fokusmotor von Hand fahren
 
 Ein Skript, `h713-focus`, Python 3, ohne Abhängigkeiten. Ersatz für
-`legacy/tools/focus` (63 Zeilen `sh`) mit denselben Unterbefehlen — nur dass es
+`legacy/tools/focus` (63 Zeilen `sh`) mit denselben Unterbefehlen - nur dass es
 vor und nach jeder Bewegung nachsieht, statt blind zu schreiben.
 
 ```
@@ -22,7 +22,7 @@ oder am Rand angehalten · `4` Frist abgelaufen / Befehl verworfen · `130` Strg
 ## Vorher: das Modul
 
 Seit Patch **0157** ist der Knoten `motor_ctr` aktiv und seit **0156** ist
-`homing` standardmäßig **aus** — der Treiber wird beim Booten geladen (`=m`,
+`homing` standardmäßig **aus** - der Treiber wird beim Booten geladen (`=m`,
 über modalias), richtet die Pads ein, zeigt sysfs und bewegt dabei nichts.
 Normalerweise ist also nichts zu tun; `h713-focus status` sagt, ob er da ist.
 
@@ -33,12 +33,12 @@ modprobe hy310_focus_motor
 ```
 
 Auf einem Kernel **vor 0156** ist `homing=0` dabei Pflicht: sonst läuft beim
-Laden die Homing-Folge, und die fährt bis zu 100 msteps **aufwärts** — in die
+Laden die Homing-Folge, und die fährt bis zu 100 msteps **aufwärts** - in die
 Richtung des mechanischen Anschlags. Ob es dort überhaupt eine Wächterkante
 gibt, ist ungeprüft; gemessen wurde nur die untere. Genau deshalb lädt
 `h713-focus` den Treiber **nicht** selbst.
 
-## Was PH14 ist — und was nicht
+## Was PH14 ist - und was nicht
 
 Ein **Bereichswächter**, kein Endschalter. Der Pin liest `active_level` (hier
 HIGH), *solange* die Mechanik im erlaubten Fahrbereich steht; der Rand wird am
@@ -52,7 +52,7 @@ raw=1 ... edge_dn=1 step=-207  (Treiber kehrt um, merkt die Kante, hält)
 ```
 
 Umkehren und Kantenmerken macht der Treiber selbst. Das Skript baut das nicht
-nach — es erkennt, dass es passiert ist, und hört dann auf.
+nach - es erkennt, dass es passiert ist, und hört dann auf.
 
 `step` ist ein **Zählerstand, keine Position.** Bei einem Randereignis fährt die
 Mechanik physisch `1 + k + back_step` msteps, der Zähler aber nur einen. Nach dem
@@ -63,15 +63,15 @@ Ereignis vergrößert den Versatz.
 
 | Befund | warum das zählt |
 |---|---|
-| `num=0` | Kein Wächter angefordert → `motor_limiter_status()` meldet bedingungslos „im Bereich", der Treiber kehrt **nie** um. Das erste Feld der Zeile sieht dabei gesund aus — es ist also gerade dann wertlos, wenn es darauf ankäme. |
+| `num=0` | Kein Wächter angefordert → `motor_limiter_status()` meldet bedingungslos „im Bereich", der Treiber kehrt **nie** um. Das erste Feld der Zeile sieht dabei gesund aus - es ist also gerade dann wertlos, wenn es darauf ankäme. |
 | `motor_ctrl_no_limit = 1` | Die Bereichsprüfung ist abgeschaltet. Das Skript **schreibt dieses Attribut nie**, aber jemand anders kann es gesetzt haben. |
 | kein `raw=`, oder `raw=-1` | Ohne Rohpegel ist nicht zu sehen, ob der Wächter überhaupt etwas liefert. Genau diese Lücke hat beim NTC eine erfundene Temperatur aus einem offenen Eingang erzeugt. Anzeigen ja, fahren nein. |
 | `raw != act` | Mechanik steht außerhalb des Fahrbereichs. |
-| `edge_up`/`edge_dn` in Fahrtrichtung | Der Treiber verwirft solche Befehle **still** — still ist hier das Falsche. |
+| `edge_up`/`edge_dn` in Fahrtrichtung | Der Treiber verwirft solche Befehle **still** - still ist hier das Falsche. |
 
 Dazu eine harte Obergrenze von 400 msteps je Lauf, auch wenn der Wächter
 schweigt: ein Wächter, der nichts meldet, ist kein Beleg dafür, dass noch Weg da
-ist. Und Strg-C wird abgefangen — die Warteschlange wird geleert, statt den
+ist. Und Strg-C wird abgefangen - die Warteschlange wird geleert, statt den
 Prozess mitten in einem Häppchen zu verlassen. Der mstep, der gerade läuft,
 läuft zu Ende; den kann der Treiber nicht abbrechen.
 
@@ -85,13 +85,13 @@ läuft zu Ende; den kann der Treiber nicht abbrechen.
 | 3 | Warteschlange leeren |
 | 4 | Schrittzähler setzen |
 | 6 | `step_low` setzen |
-| 7 | auf Schritt fahren — **im Treiber nicht implementiert**, liefert `-EOPNOTSUPP` |
-| **8 / 9** | auf/ab, **löscht** das Autofokus-Flag → schlafendes Timing. Der Pfad für Handbedienung — **den nimmt dieses Skript.** |
+| 7 | auf Schritt fahren - **im Treiber nicht implementiert**, liefert `-EOPNOTSUPP` |
+| **8 / 9** | auf/ab, **löscht** das Autofokus-Flag → schlafendes Timing. Der Pfad für Handbedienung - **den nimmt dieses Skript.** |
 
 Der Treiber kürzt msteps je Schreibvorgang still auf 18 (`MOVE_CLAMP_MAX`). Wer
 30 schreibt, bekommt 18 und merkt es nicht; deshalb prüft das Skript selbst und
 zerlegt längere Fahrten in Häppchen. Das Bit `0x80` (`full_limit`) ist im
-Treiberkopf beschrieben, aber nie geprüft worden — es wird nicht benutzt.
+Treiberkopf beschrieben, aber nie geprüft worden - es wird nicht benutzt.
 
 ## Was hier absichtlich fehlt
 
@@ -117,5 +117,5 @@ Zeile richtigerweise ab.
 ## `_entwurf-agent/`
 
 Ein früherer Entwurf als Python-Paket, 2545 Zeilen. Beiseitegelegt, nicht
-weggeworfen — die ausformulierte Sicherheitslogik und die Testanleitung sind
+weggeworfen - die ausformulierte Sicherheitslogik und die Testanleitung sind
 lesenswert, wenn jemand das Werkzeug erweitert. Siehe `_entwurf-agent/LIESMICH.md`.

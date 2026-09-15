@@ -9,7 +9,7 @@
 > history, not as current instructions.
 
 
-Date: 2026-07-14 (v2 — revised after independent review)
+Date: 2026-07-14 (v2 - revised after independent review)
 U-Boot branch: `h713-sun50iw12-dram`
 Reviewed U-Boot commit: `7df83b95a364cf5a29ef5381db8c56211e83091b`
 
@@ -57,15 +57,15 @@ Every element of the recovery chain has been proven on this board:
 - **Cold FEL entry works.** The entire DRAM bring-up ran over FEL, and the
   one-shot eMMC recovery SPL (commit `d293f44f77d`,
   `hy200_h713_recovery_defconfig` + `CONFIG_H713_EMMC_RECOVERY`) has
-  repeatedly restored the board — including from a fully cold FEL entry —
+  repeatedly restored the board - including from a fully cold FEL entry -
   by rewriting the embedded vendor boot0 to eMMC ("wrote 64/64 RESTORED-OK").
 - **A full U-Boot can be FEL-loaded**, giving the ACM/UART console, `ums`,
-  `fastboot`, and raw `mmc write` — enough to rewrite any part of the eMMC
+  `fastboot`, and raw `mmc write` - enough to rewrite any part of the eMMC
   regardless of its contents. This requires the locally patched sunxi-tools
   (`~/Projects/sunxi-tools`, H713 soc_info + FEL transfer fixes).
 - **The BROM is mask ROM.** No eMMC write can remove FEL itself.
 
-Additionally, the board has a **hardware FEL entry (button)** — the cold
+Additionally, the board has a **hardware FEL entry (button)** - the cold
 FEL probes in the MMC gate-order investigation were button-entered. This
 closes even the narrow residual vector of flashing an image with a *valid*
 eGON/TOC0 checksum that hangs before any console: FEL remains reachable
@@ -128,14 +128,14 @@ This is sufficient boot-loader functionality to begin kernel work.
 ### Factory state (recorded for the archive; no longer a constraint)
 
 The saved first-4-MiB image of the original eMMC reports a 26-entry GPT
-(disk GUID `AB6F3888-569A-4926-9668-80941DCB40BC`): entry array LBA 2–8,
+(disk GUID `AB6F3888-569A-4926-9668-80941DCB40BC`): entry array LBA 2-8,
 first usable LBA 73728 (36 MiB), last usable LBA 15269854, with Android
 partitions (`bootloader_a/b`, `boot_a/b`, `env_a/b`, `super`, `UDISK`).
 The reduced entry array exists so the factory boot0 at LBA 16 does not
 collide with it. Note that 26 × 128 B = 3328 B is below the UEFI
-specification's 16 KiB minimum entry-array size — which is exactly why
+specification's 16 KiB minimum entry-array size - which is exactly why
 generic tools tend to "normalize" such tables to 128 entries, whose array
-(LBA 2–33) would overwrite an image at LBA 16.
+(LBA 2-33) would overwrite an image at LBA 16.
 
 Since the Android system is being retired, this analysis is archival. It
 matters only until the migration below is performed, and it documents why
@@ -155,7 +155,7 @@ conventional GPT:
   sector `0x10` for attempt 0 (`0x3e9c`), sector `0x100` for attempt 1
   (`0x3ec0`), and returns failure for attempt ≥ 2; each candidate header is
   read into SRAM `0x104000` and validated, with one retry.
-- **Standard 128-entry GPT** (entry array LBA 2–33, clear of sector 256).
+- **Standard 128-entry GPT** (entry array LBA 2-33, clear of sector 256).
 - **First partition at ≥ 16 MiB.** The raw environment at 4 MiB (LBA 8192)
   is protected today only by the factory table's 36 MiB first-usable-LBA.
   Any conventional layout must impose this floor explicitly, or the default
@@ -176,7 +176,7 @@ Migration order (each step FEL-recoverable):
   the main entry array above the firmware region (`--move-main-table`,
   formerly `-j`). Workable, but retains a nonstandard table that generic
   tools may still normalize.
-- **eMMC hardware boot partitions — likely unsupported by the BROM.** The
+- **eMMC hardware boot partitions - likely unsupported by the BROM.** The
   eMMC has two 4 MiB boot partitions, currently disabled
   (`EXT_CSD[179] = 0`), and `mmc partconf`/`mmc bootbus` are available
   (`CONFIG_SUPPORT_EMMC_BOOT=y`). However, a scan of the BROM dump found no
@@ -193,18 +193,18 @@ Migration order (each step FEL-recoverable):
   the plan below installs Debian with `mmdebstrap`, sidestepping the
   installer entirely.
 - After the migration, the only invariants any tool must respect are:
-  do not touch LBA 0–33 metadata regions incorrectly (normal GPT rules),
+  do not touch LBA 0-33 metadata regions incorrectly (normal GPT rules),
   and keep partitions at or above the 16 MiB floor.
 
 ### Required precautions (before repartitioning)
 
-1. **Full 7.3 GiB eMMC image** — the current backup covers only the first
+1. **Full 7.3 GiB eMMC image** - the current backup covers only the first
    4 MiB. Once the disk is repartitioned this image is the sole source of
    the vendor partitions and anything not yet harvested from them
    (Wi-Fi/BT MAC provisioning, DRM keys, any factory optical/keystone
    calibration). Record SHA-256 hashes for the full image, the first
    36 MiB, and the known-good U-Boot image.
-2. Cold FEL recovery drill — **already satisfied** (see *Recovery posture*).
+2. Cold FEL recovery drill - **already satisfied** (see *Recovery posture*).
 3. Keep the recovery SPL, vendor boot0, and patched sunxi-tools archived
    off-board.
 
@@ -237,7 +237,7 @@ new U-Boot removes or must replicate:
 - The stock chain ran `usb start` before the kernel because the kernel
   depends on prior USB PHY initialization. The current
   `CONFIG_PREBOOT="usb start"` (a sunxi Kconfig default) may therefore be
-  **load-bearing** for this kernel, not cosmetic — do not remove it until a
+  **load-bearing** for this kernel, not cosmetic - do not remove it until a
   kernel boot without it has been tested.
 - The MIPS display firmware load at `0x4b100000` must move into the new boot
   flow (a FIT `loadables` entry is the clean mechanism).
@@ -245,7 +245,7 @@ new U-Boot removes or must replicate:
 One known discrepancy to fix: `docs/BOOT.md` describes the watchdog at
 `0x02051000` as `sun6i-a31-wdt` layout, but the U-Boot bring-up proved on
 hardware that it is the key-protected layout (key `0x16aa0000`, CFG +0x10,
-MODE +0x14 — commit `850840ede26` and the TF-A reset fix). The Linux DTS
+MODE +0x14 - commit `850840ede26` and the TF-A reset fix). The Linux DTS
 node should use the keyed compatible (Linux supports this layout as
 `allwinner,sun20i-d1-wdt`); verify the driver services it correctly.
 
@@ -259,8 +259,8 @@ handoff is new. Mechanics:
 - U-Boot's AArch32 boot path is already compiled in:
   `CONFIG_ARM64_SUPPORT_AARCH32` is default-y (`arch/arm/Kconfig:609`), and
   `bootm` performs the EL2→AArch32 SVC transition (`ES_TO_AARCH32` in
-  `arch/arm/lib/bootm.c`) — the same entry state the stock BL31 produced.
-- Package zImage + DTS (now loadable separately — drop
+  `arch/arm/lib/bootm.c`) - the same entry state the stock BL31 produced.
+- Package zImage + DTS (now loadable separately - drop
   `CONFIG_ARM_APPENDED_DTB`) + initramfs + `display.bin` (as a `loadables`
   entry at `0x4b100000`) in a FIT with `arch = "arm"`.
 - **SMP is the one open verification item:** secondary bring-up becomes a
@@ -274,7 +274,7 @@ handoff is new. Mechanics:
 
 The driver patches are architecture-neutral (clk, pinctrl, mmc, phy compile
 unchanged on arm64); the DTS port is mechanical (arm64 skeleton, same
-peripherals, PSCI unchanged — our BL31 already serves AArch64 callers,
+peripherals, PSCI unchanged - our BL31 already serves AArch64 callers,
 proven by U-Boot). The costs are re-validating every subsystem, foremost
 display/audio/Wi-Fi, and redoing the out-of-tree module builds. Rewards:
 Debian arm64 and alignment with any future upstreaming (upstream would
@@ -290,7 +290,7 @@ and U-Boot.
 `dts/upstream/src/arm64/allwinner/sun50i-h713-hy310.dts` remains a
 U-Boot-only hardware description (no GIC, no interrupts, provisional fixed
 regulators, and `mmc-ddr-1_8v`/`mmc-hs200-1_8v` capabilities that U-Boot
-itself doesn't use — runtime is High Speed 52 MHz). It should not be handed
+itself doesn't use - runtime is High Speed 52 MHz). It should not be handed
 to Linux. Once a Linux-side arm64 DT exists (Path B), sync it back into
 U-Boot rather than maintaining divergent descriptions. The Linux DTS should
 start without DDR/HS200 capabilities until voltage switching and tuning are
@@ -309,14 +309,14 @@ already enables:
 - USB Mass Storage and fastboot targeting eMMC device 1 (both via sunxi
   Kconfig defaults rather than explicit defconfig lines),
 - driver-model watchdog support and the `wdt` command (auto-servicing
-  `CONFIG_WATCHDOG` deliberately off — nothing arms the watchdog unless
+  `CONFIG_WATCHDOG` deliberately off - nothing arms the watchdog unless
   requested, so no accidental armed handoff to Linux), and
 - persistent MMC environment storage.
 
 The runtime EFI errors about a missing system partition are not a
 kernel-bring-up blocker; an ESP and persistent EFI variables are unnecessary
 for the first boot. The `No USB controllers found` message from
-`CONFIG_PREBOOT="usb start"` is harmless — but see the note above before
+`CONFIG_PREBOOT="usb start"` is harmless - but see the note above before
 removing the preboot command, since the 32-bit kernel may rely on the PHY
 initialization it performs.
 
@@ -334,7 +334,7 @@ BusyBox initramfs (armhf), and `display.bin` as a loadable, then `bootm`.
 
 Success criteria:
 
-- Kernel reaches the UART console (`earlycon`; keep UART attached — it is
+- Kernel reaches the UART console (`earlycon`; keep UART attached - it is
   the only reliable transport for the earliest messages).
 - GIC and architectural timer initialize without errors.
 - All four CPUs come online through PSCI **from the AArch32 kernel** (the
@@ -350,7 +350,7 @@ Success criteria:
 After the storage migration, place the boot artifacts on a filesystem in the
 new layout and boot via `bootflow scan`. Note extlinux.conf's `KERNEL` line
 can point at the FIT (`path#conf-name` syntax), which keeps the
-display-firmware loadable in play — plain KERNEL/FDT/INITRD lines cannot
+display-firmware loadable in play - plain KERNEL/FDT/INITRD lines cannot
 load the extra blob.
 
 ### Phase 3: Debian root filesystem
@@ -365,13 +365,13 @@ small: ext4 root, serial login, SSH once networking works, no desktop.
 The CDC ACM console does not continue through the kernel handoff; Linux
 resets and re-enumerates the USB controller when its own MUSB/gadget drivers
 bind. Keep UART attached for kernel work. Later, Linux can provide `ttyGS0`,
-CDC ECM/NCM + SSH, or a composite gadget — none of which replace UART
+CDC ECM/NCM + SSH, or a composite gadget - none of which replace UART
 `earlycon` during the failure-prone phase.
 
 ## Additional validation worth doing
 
 - ~~Verify the sector-256 BROM fallback in the captured BROM disassembly~~
-  — done 2026-07-14, confirmed (see *Target layout*); boot-partition
+- done 2026-07-14, confirmed (see *Target layout*); boot-partition
   support not found.
 - Test PSCI `CPU_ON`/system-reset from an AArch32 caller against the local
   BL31 (Phase 1 covers this).
@@ -398,10 +398,10 @@ CDC ECM/NCM + SSH, or a composite gadget — none of which replace UART
    the factory system is step 5, but the archive must exist first).
    *In progress 2026-07-14 (UMS + udisks OpenForBackup →
    `~/Projects/h713-lab/captures/emmc/emmc-full-20260714.img`).*
-2. ~~Statically verify the sector-256 fallback in the BROM dump~~ — done,
+2. ~~Statically verify the sector-256 fallback in the BROM dump~~ - done,
    confirmed (function `0x3e58`: sector 16 then sector 256).
 3. Build the Path A FIT (zImage + DTS + initramfs + display.bin) and prove
-   the kernel handoff from the current layout — no repartitioning needed
+   the kernel handoff from the current layout - no repartitioning needed
    for this test; artifacts can be loaded over UMS/UART/FEL.
 4. Validate SMP (AArch32 PSCI), reset, RAM, and conservative eMMC in the
    initramfs.
@@ -415,38 +415,38 @@ CDC ECM/NCM + SSH, or a composite gadget — none of which replace UART
 9. Add Linux gadget serial/network to reduce UART dependence.
 10. Optional strategic items: arm64 kernel port; HY200/HY310 naming cleanup
     before any upstream submission. (Firmware in eMMC boot0 is off the
-    list — the BROM shows no boot-partition support.)
+    list - the BROM shows no boot-partition support.)
 
 ## Resolved review questions
 
 Answers to the open questions from v1 of this document:
 
-1. *LBA 16 vs 128-entry GPT collision* — confirmed correct (array LBA 2–33
+1. *LBA 16 vs 128-entry GPT collision* - confirmed correct (array LBA 2-33
    covers LBA 16); root cause is the UEFI 16 KiB minimum entry-array size.
-2. *Keep 26-entry GPT vs eMMC boot0* — neither: migrate to sector 256 with
+2. *Keep 26-entry GPT vs eMMC boot0* - neither: migrate to sector 256 with
    a conventional GPT. Factory-table preservation is moot now that the
    Android system is being retired.
-3. *Tool behavior with 26-entry GPTs* — `sfdisk` can preserve/recreate them
+3. *Tool behavior with 26-entry GPTs* - `sfdisk` can preserve/recreate them
    (`table-length:` header); `sgdisk` can relocate the entry array
    (`--move-main-table`); `parted`/partman normalize and should be avoided.
    Irrelevant after the migration.
-4. *MBR preferable?* — No; it doesn't protect the 4 MiB environment (the
+4. *MBR preferable?* - No; it doesn't protect the 4 MiB environment (the
    real remaining hazard is the first-partition floor) and loses GPT
    compatibility for nothing.
-5. *Best upstream starting point* — structurally `sun50i-h616.dtsi` for an
+5. *Best upstream starting point* - structurally `sun50i-h616.dtsi` for an
    arm64 DT; the H713's CCU is D1-like (proven in U-Boot). In practice the
    existing 32-bit port supersedes the question for bring-up.
-6. *GIC registers and interrupts* — already established: GIC-400 at
+6. *GIC registers and interrupts* - already established: GIC-400 at
    `0x03020000` with full per-peripheral SPI assignments in
    `~/Projects/allwinner-h713-linux/dts/sun50i-h713-hy310.dts`.
-7. *Compatible strings needing real drivers* — the port's 22 patches answer
+7. *Compatible strings needing real drivers* - the port's 22 patches answer
    this; the one known correction is the watchdog (keyed layout, not
    `sun6i-a31-wdt`).
-8. *Provisional fixed regulators* — keep 3.3 V; treat the 1.8 V vqmmc rail
+8. *Provisional fixed regulators* - keep 3.3 V; treat the 1.8 V vqmmc rail
    as unverified and gate DDR/HS200 modes on confirming it.
-9. *Missing `booti`/`bootm` prerequisites* — only the `printenv` check of
+9. *Missing `booti`/`bootm` prerequisites* - only the `printenv` check of
    the `*_addr_r` defaults against the `0x4b100000` display-firmware region.
-10. *Long-term layout retaining FEL* — sector 256 + conventional GPT; FEL
+10. *Long-term layout retaining FEL* - sector 256 + conventional GPT; FEL
     is BROM-resident and unaffected by any eMMC layout.
 
 ## References

@@ -1,11 +1,11 @@
-# Doorbell-Puls — die Messung, die Paket B braucht (Board-Agent = Hauptsitzung)
+# Doorbell-Puls - die Messung, die Paket B braucht (Board-Agent = Hauptsitzung)
 
 Auftrag: Nachtplan Stufe 2, Korrektur vom 07.09. Frage: pollt die ARISC auch **Port 0** (die Host-Unterbefehle
 für EDID und HPD), oder ist die Msgbox dort flankengesteuert und der Puls damit Stock-Verhalten statt Workaround?
 
 ## Werkzeug
 
-`analyse/arisc-msg/arisc_hdmi.py` hatte keinen Schalter dafür. Neu: **`--no-doorbell`** — `doorbell()` gibt dann
+`analyse/arisc-msg/arisc_hdmi.py` hatte keinen Schalter dafür. Neu: **`--no-doorbell`** - `doorbell()` gibt dann
 nur eine Zeile aus und schlägt nicht. Vorgabe bleibt „pulsen"; der Schalter ist ausdrücklich ein Messmittel.
 Die Fassung liegt auch am Board unter `/root/arisc_hdmi.py`.
 
@@ -32,7 +32,7 @@ Lauf 2 war nötig, weil in Lauf 1 der gepulste Befehl zuerst kam und die ARISC �
 
 ## Ergebnis
 
-**Die ARISC verarbeitet Host-Unterbefehle auf Port 0 auch ohne Doorbell-Puls** — belegt in zwei
+**Die ARISC verarbeitet Host-Unterbefehle auf Port 0 auch ohne Doorbell-Puls** - belegt in zwei
 Kaltstart-Läufen, einmal davon als allererster Befehl. Paket B darf den Puls streichen; sein Treiber tut das
 bereits und ist damit gedeckt. Pflichtlisten-Punkte #2/#8 sind damit **gelöst**, nicht „Stock-Verhalten".
 
@@ -40,37 +40,37 @@ bereits und ist damit gedeckt. Pflichtlisten-Punkte #2/#8 sind damit **gelöst**
 
 1. **Restlicher Störfaktor:** `prep_after_boot.sh` lädt vor der Messung `hy310-arisc-hdmi.ko`, und dieses Modul
    pulst im eigenen Startup-Handshake. „Ohne Puls seit dem Kaltstart" gilt also für **meinen** Befehl, nicht für
-   den gesamten Boot. Um das auszuschließen, müsste der Handshake selbst pulsfrei gefahren werden — das kann
+   den gesamten Boot. Um das auszuschließen, müsste der Handshake selbst pulsfrei gefahren werden - das kann
    die Abnahme von Paket B leisten, deren Treiber ohnehin keinen Puls mehr schlägt. **Das ist der eigentliche
    Beweis, und er steht noch aus.**
-2. Im Hänger um 22:37 stand `FIFO user1 P0 = 4` mit unverarbeitetem `0x2011` — an einem hängenden Gerät ist
+2. Im Hänger um 22:37 stand `FIFO user1 P0 = 4` mit unverarbeitetem `0x2011` - an einem hängenden Gerät ist
    das aber kein Gegenbeleg, sondern womöglich die Folge des Hängers. Nicht als Widerspruch buchen.
 
-## M3 kam nicht zustande — Ursache war das Gerät, nicht der Befehl (23:07)
+## M3 kam nicht zustande - Ursache war das Gerät, nicht der Befehl (23:07)
 
 J's exakte Vorschrift M3 (`0x0215 CheckEDIDUpdateStatus`, dreimal mit und dreimal ohne Puls) wurde angesetzt,
 das Board war unmittelbar danach per SSH nicht mehr erreichbar.
 
 **Es war kein Hänger durch den Befehl:** Marco hat gemeldet, dass ihm der **Beamer umgefallen** ist. Der
 zeitliche Zusammenfall war Zufall. Ich hatte hier zunächst eine „Vorsichtsregel" notiert, ARISC-Unterbefehle
-gehörten nicht in den laufenden Betrieb — **die ist aus dieser Beobachtung nicht belegt** und wieder entfernt.
+gehörten nicht in den laufenden Betrieb - **die ist aus dieser Beobachtung nicht belegt** und wieder entfernt.
 Dagegen spricht ohnehin, dass um 22:19 zwei `SetEDIDVersion`-Aufrufe bei laufendem Bild ohne Zwischenfall
 durchliefen.
 
 Sachlich richtig bleibt nur, dass J's Vorschrift die Vorbereitungsphase vorsieht („nach Prep und
-ARISC-Handshake, **vor** `arisc_edid_init.sh`") — dort gehört die Wiederholung hin, aus Gründen der
+ARISC-Handshake, **vor** `arisc_edid_init.sh`") - dort gehört die Wiederholung hin, aus Gründen der
 Vergleichbarkeit, nicht aus Angst vor einem Hänger.
 
-**Der Stand der Puls-Frage bleibt der von 22:22–22:26** (zwei Kaltstart-Läufe mit `0x0311 SetEDIDVersion`,
+**Der Stand der Puls-Frage bleibt der von 22:22-22:26** (zwei Kaltstart-Läufe mit `0x0311 SetEDIDVersion`,
 einmal als allererster Befehl, jeweils „Handler gelaufen: ja"). M3 in J's Fassung mit dem rein lesenden
 `0x0215` steht weiterhin aus.
 
-## M3 nachgeholt (23:11–23:14) — und J's Sondenbefehl taugt nicht
+## M3 nachgeholt (23:11-23:14) - und J's Sondenbefehl taugt nicht
 
 Nach dem Kaltstart um 23:10 (Beamer wieder aufgestellt) in der **Vorbereitungsphase**, wie J es vorsieht:
 nach `prep_after_boot.sh`, vor `arisc_edid_init.sh`.
 
-### Erst der Instrumententest — und er fiel durch
+### Erst der Instrumententest - und er fiel durch
 
 J's Vorschrift nennt `0x0215 CheckEDIDUpdateStatus`, „harmlos, weil es nur liest". Ergebnis:
 
@@ -79,14 +79,14 @@ J's Vorschrift nennt `0x0215 CheckEDIDUpdateStatus`, „harmlos, weil es nur lie
 | `0x0215` direkt nach dem Prep | 3× **NEIN** (0/17) | 3× **NEIN** (0/17) |
 | `0x2011 ResetEDIDModule` vorgeschaltet, dann `0x0215` | 3× **NEIN** (0/17) | 3× **NEIN** (0/17) |
 
-**`0x0215` wird in diesem Zustand überhaupt nicht bearbeitet** — in beiden Armen gleich. Als Instrument für
+**`0x0215` wird in diesem Zustand überhaupt nicht bearbeitet** - in beiden Armen gleich. Als Instrument für
 die Pulsfrage ist es damit **wertlos**: es kann nicht zwischen „Puls nötig" und „Puls nicht nötig"
 unterscheiden, weil es in keinem Fall antwortet. (Das deckt sich mit dem Befund aus `arisc_edid_init.sh`,
 wo `CheckEDIDUpdateStatus` erst **nach** den acht EDID-Fragmenten sinnvoll ist.)
 
 ### Dann die Messung mit einem Befehl, den der Handler nachweislich verarbeitet
 
-`0x2011 ResetEDIDModule` läuft (`ja`, memset-Sonde **16/17**) und ist idempotent — `arisc_edid_init.sh`
+`0x2011 ResetEDIDModule` läuft (`ja`, memset-Sonde **16/17**) und ist idempotent - `arisc_edid_init.sh`
 setzt ihn ohnehin als Schritt 1.
 
 | Lauf | mit Puls | ohne Puls |
@@ -110,4 +110,4 @@ Pflichtlisten-Punkte #2/#8 sind **gelöst**, nicht „Stock-Verhalten".
 
 Die eine Restunsicherheit von oben bleibt bestehen und ist erst mit der Abnahme von Paket B erledigt:
 `prep_after_boot.sh` lädt vorher das **alte** Modul `hy310-arisc-hdmi.ko`, das im eigenen Startup-Handshake
-pulst. Der Treiber aus 0091 tut das nicht mehr — läuft dessen Abnahme durch, ist der Beweis vollständig.
+pulst. Der Treiber aus 0091 tut das nicht mehr - läuft dessen Abnahme durch, ist der Beweis vollständig.

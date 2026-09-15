@@ -1,8 +1,8 @@
-# D — der C-Stride greift nicht aus jedem Vorzustand (Board-Agent, 07.09. 06:50–07:05)
+# D - der C-Stride greift nicht aus jedem Vorzustand (Board-Agent, 07.09. 06:50-07:05)
 
 ## Was reproduzierbar ist
 
-Die KMS-Plane (`0093`, Plane 38, NV16) schreibt `0x05600044` beim Enable — **aber nicht aus jedem
+Die KMS-Plane (`0093`, Plane 38, NV16) schreibt `0x05600044` beim Enable - **aber nicht aus jedem
 Vorzustand**. Sechs Läufe, dieselbe Frage, drei Ausgänge:
 
 | Vorzustand von `0x05600044` | wie er entstand | nach dem Plane-Enable |
@@ -13,7 +13,7 @@ Vorzustand**. Sechs Läufe, dieselbe Frage, drei Ausgänge:
 | `0x00000044` | von Hand (Marke) | wird **`0x0F00`** ✓ |
 | `0x0F00` | voriger Plane-Zyklus | bleibt `0x0F00` ✓ (vier Zyklen in Folge) |
 
-**Der Wert `0x0780` ist also nicht das Problem** — von Hand gesetzt greift der Schreibvorgang. Es ist der
+**Der Wert `0x0780` ist also nicht das Problem** - von Hand gesetzt greift der Schreibvorgang. Es ist der
 **Zustand, den `afbd_source0.py off` hinterlässt**, und derselbe Zustand nach einem Kaltstart.
 
 ## Warum das ernst ist
@@ -23,7 +23,7 @@ vertikal 2× gedehnt und quillt aus ihren Kanten (Foto `D/D-10-erstenable-cstrid
 `D/D-08-farbreiz.jpg`). Das ist das Fehlerbild aus Nachtplan A.5.
 
 **Und es entwertet einen Teil der D-Abnahme von 06:10.** Die farbrichtigen Aufnahmen von heute früh liefen
-über einen Zustand, in dem `0x0F00` schon stand — gesetzt vom **Skript**, nicht vom Treiber. Auf einem
+über einen Zustand, in dem `0x0F00` schon stand - gesetzt vom **Skript**, nicht vom Treiber. Auf einem
 frischen Kaltstart kommt die Plane heute mit falschem Chroma-Stride hoch.
 
 ## Was `afbd_source0.py off` tut (Nachtplan A.3)
@@ -33,7 +33,7 @@ Vier Y/C/Info-Slots auf 0, Aux 0, **C-Stride zurück auf `0x780`**, **Dirty `0x0
 Dirty-Latch bzw. dem Video-Gate: aus diesem Zustand landen offenbar nicht alle Schreibvorgänge der Plane
 im Latch, während Selektor, Geometrie, Descriptor-Zeiger und `0x10` nachweislich ankommen.
 
-## Zwei Zwischenschlüsse, die falsch waren — beide durch Messung widerlegt
+## Zwei Zwischenschlüsse, die falsch waren - beide durch Messung widerlegt
 
 1. **„Die Firmware überschreibt den C-Stride."** Widerlegt: Sekundentakt über 22 s zeigt `0x0780`
    durchgehend, kein Wechsel (D-abnahme-board.md, Nachtrag 06:15).
@@ -47,7 +47,7 @@ eine Hypothese, die nur *einen* Lauf erklärt, ist keine.
 
 Nach `plane is off, console restored` bleibt `0x05600044` auf `0x0F00` stehen. Das Skript setzt beim
 `off` auf `0x0780` zurück, die Plane nicht. Für die RGB-Konsole ist das folgenlos (sie liest den
-Video-C-Stride nicht), aber es ist ein Rest, der den nächsten Lauf verfälscht — genau so ist mir die
+Video-C-Stride nicht), aber es ist ein Rest, der den nächsten Lauf verfälscht - genau so ist mir die
 D-Abnahme heute früh durchgerutscht.
 
 ## Reproduktion (kopierbar)
