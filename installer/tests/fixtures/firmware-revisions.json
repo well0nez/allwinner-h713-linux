@@ -114,6 +114,6 @@
         "count_0093": 0
       }
     ],
-    "source": "computed by h713.hdcpsite.search() (package F1, 15.09.2026) from the display.bin of the LPDDR3 HY300 Pro+ image 0710, extracted to umbau/fixtures-local/vendor-boot/hy300-pro-plus-lpddr3/boot/mips/display.bin (vendor bytes, not in the tree); image facts in installer/tests/fixtures/images/hy300-pro-plus-lpddr3-0710.json. Not in h713_mips_fw_revs[]: its size 0x1328f0 is declared by no row, so h713_mips_accept_size() takes it only in probe mode. project_ids_seen are the ProjectID_0x*.TSE descriptors next to it (id read back from the TSE header, offset 14); the board's panel_config.ini declares ProjectID 52 = 0x34, 1280x720."
+    "source": "computed by h713.hdcpsite.search() (package F1, 15.09.2026) from the display.bin of the LPDDR3 HY300 Pro+ image 0710, in the maintainer's firmware archive, firmware/hy200-qz713-v2/2025-07-10_projector07101345/ (vendor bytes, not in the tree); image facts in installer/tests/fixtures/images/hy300-pro-plus-lpddr3-0710.json. Not in h713_mips_fw_revs[]: its size 0x1328f0 is declared by no row, so h713_mips_accept_size() takes it only in probe mode. project_ids_seen are the ProjectID_0x*.TSE descriptors next to it (id read back from the TSE header, offset 14); the board's panel_config.ini declares ProjectID 52 = 0x34, 1280x720."
   }
 ]

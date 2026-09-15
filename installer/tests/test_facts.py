@@ -23,7 +23,7 @@ from h713.source import FileSource                               # noqa: E402
 
 #: board (key of fakedisk.IMAGES) -> the frozen JSON, as it lies in fixtures/images/. The first three
 #: were written by A1 on 14.09.2026; the two HY300 Pro+ images came with package F1 (15.09.2026) and
-#: live under umbau/fixtures-local, so their tests run with run.sh --local only.
+#: live in the maintainer's firmware archive (fakedisk.FIRMWARE_DIR), so their tests run with run.sh --local only.
 FROZEN = {"hy310": "hy310-update.img.json", "hy300-t08": "hy300-t08.json", "hy350": "hy350.json",
           "hy300-pro-plus-ddr3": "hy300-pro-plus-ddr3-0922.json",
           "hy300-pro-plus-lpddr3": "hy300-pro-plus-lpddr3-0710.json"}
