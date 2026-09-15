@@ -60,7 +60,7 @@ has driven gets a profile and not a panel row.
 
 ## Starting it
 
-`h713_disp init <project-id> [elog=<0-5>]` does the rest: apply clocks and panel routing, write the
+`h713_disp init <project-id> [elog=<0-5>] [logo [file.bmp]]` does the rest: apply clocks and panel routing, write the
 panel configuration (22 register fields, 12 of them behind a record mask), replay the logo records,
 sequence panel power (550 ms lead-in, then two GPIOs), verify the firmware's identity, defuse an
 HDCP wait loop that would otherwise hang forever this early in boot (interrupts aren't live yet),
