@@ -21,8 +21,12 @@ from h713.facts import device_facts, dumps, image_facts          # noqa: E402
 from h713.profiles import PROFILES                               # noqa: E402
 from h713.source import FileSource                               # noqa: E402
 
-#: board (key of fakedisk.IMAGES) -> the JSON A1 wrote on 14.09.2026, as it lies in fixtures/images/.
-FROZEN = {"hy310": "hy310-update.img.json", "hy300-t08": "hy300-t08.json", "hy350": "hy350.json"}
+#: board (key of fakedisk.IMAGES) -> the frozen JSON, as it lies in fixtures/images/. The first three
+#: were written by A1 on 14.09.2026; the two HY300 Pro+ images came with package F1 (15.09.2026) and
+#: live under umbau/fixtures-local, so their tests run with run.sh --local only.
+FROZEN = {"hy310": "hy310-update.img.json", "hy300-t08": "hy300-t08.json", "hy350": "hy350.json",
+          "hy300-pro-plus-ddr3": "hy300-pro-plus-ddr3-0922.json",
+          "hy300-pro-plus-lpddr3": "hy300-pro-plus-lpddr3-0710.json"}
 
 
 def frozen_path(name):
@@ -48,6 +52,12 @@ class ImageFacts(unittest.TestCase):
 
     def test_hy350(self):
         self._check("hy350")
+
+    def test_hy300_pro_plus_ddr3(self):
+        self._check("hy300-pro-plus-ddr3")
+
+    def test_hy300_pro_plus_lpddr3(self):
+        self._check("hy300-pro-plus-lpddr3")
 
     def test_every_frozen_file_is_covered(self):
         listed = sorted(n for n in os.listdir(os.path.join(fakedisk.FIXTURES, "images"))

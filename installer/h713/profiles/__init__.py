@@ -14,7 +14,7 @@ from the profiles so that the moved extractor code keeps behaving byte for byte 
 
 from __future__ import annotations
 
-from . import hy300_pro, hy300_t08, hy310, hy350, l018
+from . import hy200_qz713_v2, hy200_qz713df_a1, hy300_pro, hy300_t08, hy310, hy350, l018
 
 #: board id -> profile dict. The id is also the module name.
 PROFILES = {
@@ -23,6 +23,8 @@ PROFILES = {
     "hy300_t08": hy300_t08.PROFILE,
     "hy350": hy350.PROFILE,
     "hy300_pro": hy300_pro.PROFILE,
+    "hy200_qz713df_a1": hy200_qz713df_a1.PROFILE,
+    "hy200_qz713_v2": hy200_qz713_v2.PROFILE,
 }
 
 #: the values "status" may take. Only "verified" may produce an image (doku/121 section 5).
@@ -96,6 +98,13 @@ FIRMWARE_REVISIONS = (
     {"board": "HY300 Pro", "project_id": None, "panel": None, "size": 0x131f10,
      "sha256": "cf9649bcc84a111ce590fc7acde723c25557fd2332abbb9fd10225905aae13a2",
      "hdcp_wait_va": None},
+    # F, row "HY200 QZ713_V2" (package F1): the display.bin of the LPDDR3 HY300 Pro+ image (0710).
+    # Size 0x1328f0 is declared by no row of h713_mips_fw_revs[], so it carries neither a project id
+    # nor a panel -- the board's panel_config.ini declares ProjectID 0x34, 1280x720. The wait site was
+    # searched with h713.hdcpsite over that display.bin (one hit with context, file offset 0x3d538).
+    {"board": "HY200 QZ713_V2", "project_id": None, "panel": None, "size": 0x1328f0,
+     "sha256": "4628cbaf8c93ea12ec59e871e4250facf0773daae722b251c73f1fad81e80c2c",
+     "hdcp_wait_va": 0x4b13d538},
 )
 
 #: X:266 verbatim: the rows h713_mips_fw_revs[] declares, with the keys the extractor reads. A row

@@ -43,6 +43,13 @@ IMAGES = {
     "hy310": os.path.join(IMAGE_DIR, "update.img"),
     "hy300-t08": os.path.join(IMAGE_DIR, "HY300_T08_OTA_2024-04-19-2028.img"),
     "hy350": os.path.join(IMAGE_DIR, "HY350_user_public_en_F_chuangyihui_OTA_2024-10-25-1715_.img"),
+    # The two HY300 Pro+ (2025) vendor images, package F1. They are not in ~/Downloads but under
+    # umbau/fixtures-local, so they exist only with run.sh --local; without it every test that asks
+    # for them skips (support.need).
+    "hy300-pro-plus-ddr3": os.path.join(FIXTURES_LOCAL, "images", "hy300-pro-downloads",
+                                        "mega", "update.img"),
+    "hy300-pro-plus-lpddr3": os.path.join(FIXTURES_LOCAL, "images", "hy300-pro-downloads",
+                                          "gdrive", "HY300pro+ 0710", "update.img"),
 }
 
 # Raw targets outside every partition, plus the locked block -- the same numbers

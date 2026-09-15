@@ -78,5 +78,42 @@
     "hdcp_wait_file_offset": null,
     "hits": null,
     "source": "issue #1: size and sha256 reported by the owner, no image available. Unknown -- the site can only be found by running the search over that image."
+  },
+  {
+    "name": "HY200 QZ713_V2",
+    "size": 1255664,
+    "sha256": "4628cbaf8c93ea12ec59e871e4250facf0773daae722b251c73f1fad81e80c2c",
+    "project_ids_seen": [
+      1,
+      18,
+      19,
+      20,
+      21,
+      22,
+      32,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53
+    ],
+    "hdcp_wait_va": 1259590968,
+    "hdcp_wait_file_offset": 251192,
+    "hits": [
+      {
+        "offset": 251192,
+        "va": 1259590968,
+        "count_0684": 1,
+        "count_0093": 2
+      },
+      {
+        "offset": 400192,
+        "va": 1259739968,
+        "count_0684": 0,
+        "count_0093": 0
+      }
+    ],
+    "source": "computed by h713.hdcpsite.search() (package F1, 15.09.2026) from the display.bin of the LPDDR3 HY300 Pro+ image 0710, extracted to umbau/fixtures-local/vendor-boot/hy300-pro-plus-lpddr3/boot/mips/display.bin (vendor bytes, not in the tree); image facts in installer/tests/fixtures/images/hy300-pro-plus-lpddr3-0710.json. Not in h713_mips_fw_revs[]: its size 0x1328f0 is declared by no row, so h713_mips_accept_size() takes it only in probe mode. project_ids_seen are the ProjectID_0x*.TSE descriptors next to it (id read back from the TSE header, offset 14); the board's panel_config.ini declares ProjectID 52 = 0x34, 1280x720."
   }
 ]

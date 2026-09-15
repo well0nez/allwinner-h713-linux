@@ -19,15 +19,17 @@ below. What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Boards
 
-One board is tested; the others are described. The rule behind that, from `doku/121` §5 and enforced
+One board is tested; the others are described. Since 15.09. the two HY200 boards have installer
+profiles too, read out of the two 2025 "HY300 Pro+" vendor images — a profile describes the stock
+firmware and tests nothing, so it changes no row's state. The rule behind that, from `doku/121` §5 and enforced
 by `release/build-all.sh --board`: **no image for a board nobody has tested.** A row below
 *verified* is a description, not a claim that anything runs on it.
 
 | Board | State | Who ran it, and when | What exists for it |
 |---|---|---|---|
 | **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.5-beta`, 13.09.2026 | everything else on this page. The only board an image is built for |
-| **HY200 QZ713DF_A1** | verified by cstenger | cstenger, on his own bench board and in his own tree — kernel 6.18.38 boot-good (`mainline/config/versions.env`). Not our image, not our installer | kernel and U-Boot defconfigs, device tree. No installer profile, so `--board hy200-qz713df-a1` is refused today |
-| **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too |
+| **HY200 QZ713DF_A1** | profile-only | nobody has run a build of *ours* on it. cstenger ran his own tree on his own bench board — kernel 6.18.38 boot-good (`mainline/config/versions.env`); that is his run, not ours | kernel and U-Boot defconfigs, device tree, and since 15.09. the installer profile `hy200_qz713df_a1` — its stock firmware is the 2025-09-22 "HY300 Pro+" DDR3 image (624 MHz, `display.bin` `4380f1b3…`) |
+| **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too, plus the installer profile `hy200_qz713_v2` — its stock firmware is the 2025-07-10 "HY300 Pro+" LPDDR3 image (720 MHz, `display.bin` `4628cbaf…`, HDCP wait site `0x4b13d538`) |
 | **HY300 T08** | profile-only | nobody | installer profile and DRAM fragment, both read out of its stock image (`doku/121` §2). No device tree of ours |
 | **HY350** | profile-only | nobody | as above. It ships the same `display.bin` as the T08 and a different panel — which is why the panel comes from the declared project id, never from the firmware image |
 | **HY300 Pro** | partial | nobody. One owner report, [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1), 13.09.2026: a dump-only run, nothing written, no green run | installer profile with gaps — layout from his log, DRAM clock 636 MHz, HDCP wait site unknown |
