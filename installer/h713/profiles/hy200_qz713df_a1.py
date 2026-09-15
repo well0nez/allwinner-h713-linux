@@ -8,7 +8,7 @@ that pair) and tpr0..tpr2, which the sun50iw12 DDR3 path computes from the clock
 
 Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below:
   J  = installer/tests/fixtures/images/hy300-pro-plus-ddr3-0922.json (image facts of
-       umbau/fixtures-local/images/hy300-pro-downloads/mega/update.img, h713.facts.image_facts())
+       the vendor image in the local firmware archive, firmware/hy200-qz713df-a1/2025-09-22_projector09220931/, h713.facts.image_facts())
   B  = boards/hy200-qz713df-a1/ (board.env, uboot.config, README.md -- cstenger's numbers)
   A0 = docs/subsystems/mips.md ("vendor boot path") (what the vendor U-Boot loads, and from where)
   F  = installer/tests/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site)

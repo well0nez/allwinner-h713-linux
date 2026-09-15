@@ -8,7 +8,7 @@ this board, the only one on the LPDDR3 path, tpr0..tpr2 do reach the hardware.
 
 Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below:
   J  = installer/tests/fixtures/images/hy300-pro-plus-lpddr3-0710.json (image facts of
-       "umbau/fixtures-local/images/hy300-pro-downloads/gdrive/HY300pro+ 0710/update.img",
+       the vendor image in the local firmware archive, firmware/hy200-qz713-v2/2025-07-10_projector07101345/,
        h713.facts.image_facts())
   B  = boards/hy200-qz713-v2/ (board.env, uboot.config, README.md -- cstenger's numbers)
   A0 = docs/subsystems/mips.md ("vendor boot path") (what the vendor U-Boot loads, and from where)

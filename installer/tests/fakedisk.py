@@ -31,6 +31,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.environ.get("H713_FIXTURES", os.path.join(_HERE, "fixtures"))
 FIXTURES_LOCAL = os.environ.get("H713_FIXTURES_LOCAL", os.path.join(_HERE, "fixtures-local"))
 IMAGE_DIR = os.environ.get("H713_IMAGE_DIR", os.path.expanduser("~/Downloads"))
+FIRMWARE_DIR = os.environ.get("H713_FIRMWARE_DIR", "/opt/Projekte/h713/firmware")   # the local firmware archive
 
 STOCK_GPT = os.path.join(FIXTURES, "device", "hy310-stock-gpt-primary-20260831.bin")
 V3_GPT_PRIMARY = os.path.join(FIXTURES, "device", "hy310-layout-v3-gpt-primary-v0.5-beta.bin")
@@ -43,13 +44,13 @@ IMAGES = {
     "hy310": os.path.join(IMAGE_DIR, "update.img"),
     "hy300-t08": os.path.join(IMAGE_DIR, "HY300_T08_OTA_2024-04-19-2028.img"),
     "hy350": os.path.join(IMAGE_DIR, "HY350_user_public_en_F_chuangyihui_OTA_2024-10-25-1715_.img"),
-    # The two HY300 Pro+ (2025) vendor images, package F1. They are not in ~/Downloads but under
-    # umbau/fixtures-local, so they exist only with run.sh --local; without it every test that asks
-    # for them skips (support.need).
-    "hy300-pro-plus-ddr3": os.path.join(FIXTURES_LOCAL, "images", "hy300-pro-downloads",
-                                        "mega", "update.img"),
-    "hy300-pro-plus-lpddr3": os.path.join(FIXTURES_LOCAL, "images", "hy300-pro-downloads",
-                                          "gdrive", "HY300pro+ 0710", "update.img"),
+    # The two HY300 Pro+ (2025) vendor images, package F1. They lie in the maintainer's local
+    # firmware archive (H713_FIRMWARE_DIR, one directory per vendor firmware), so they exist only
+    # with run.sh --local; without it every test that asks for them skips (support.need).
+    "hy300-pro-plus-ddr3": os.path.join(FIRMWARE_DIR, "hy200-qz713df-a1",
+                                        "2025-09-22_projector09220931", "update.img"),
+    "hy300-pro-plus-lpddr3": os.path.join(FIRMWARE_DIR, "hy200-qz713-v2",
+                                          "2025-07-10_projector07101345", "update.img"),
 }
 
 # Raw targets outside every partition, plus the locked block -- the same numbers
