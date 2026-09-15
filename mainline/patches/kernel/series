@@ -201,5 +201,5 @@
 #     HY310-specific bits out of the hy200 dts is a later cleanup, not this.
 0160-arm64-dts-h713-add-the-hy310-board-dts.patch
 #     0161: the same for the HY300 Pro (issue #1) -- the tree a TEST image for
-#     its owner boots (stage 5, umbau/plan/stufe-5.md; no image is shipped).
+#     its owner boots (stage 5, doku/121 section 5: no image is shipped).
 0161-arm64-dts-h713-add-the-hy300-pro-board-dts.patch
