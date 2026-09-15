@@ -306,3 +306,15 @@ CONFIG_NVMEM_REBOOT_MODE=y
 # doku/114-plan-crypto-engine.md Paragraph 7 Schritt 3 und die README neben
 # diesem Patch. Fuer ein Release kann die Zeile wieder raus.
 CONFIG_H713_CE_TEST=m
+
+# Magic SysRq in the shipping kernel, not only in the debug fragments (doku/124,
+# after cstenger's 2026-08-22 finding). When the eMMC stops answering, reboot and
+# systemctl are binaries on the dead filesystem and cannot run, and opening
+# /dev/watchdog0 does nothing because systemd already holds and pets it.
+# `echo b > /proc/sysrq-trigger` needs no filesystem, and neither does a UART
+# BREAK (MAGIC_SYSRQ_SERIAL with the empty sequence arms it on BREAK alone).
+# A hard lockup with every CPU spinning interrupts-off is still out of reach;
+# this is for the softer wedge, the one that otherwise costs a trip to the plug.
+CONFIG_MAGIC_SYSRQ=y
+CONFIG_MAGIC_SYSRQ_SERIAL=y
+CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE=0x1

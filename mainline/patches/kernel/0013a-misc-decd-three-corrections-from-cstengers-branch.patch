@@ -1,0 +1,124 @@
+misc: decd: three corrections from cstenger's branch (2026-08-28)
+
+cstenger changed his copy of 0013 on 2026-08-28 (commits df7ceb2 and 15bfaf1
+on h713-display-video-path). Our 0013 stays byte-identical to the version on
+his main; this follow-up carries the three code differences, so the decd
+source after 0013a is byte-identical to his branch (checked with diff -r on
+the materialised files, doku/124 section 4).
+
+1. dec_reg_blue_en() wrote workaround + 16, bit 4. workaround is afbd + 0x60,
+   so that byte is 0x05600070, the Y0 address slot of the video ring, and the
+   function runs from every dec_frame_submit(). The stock decd.ko
+   (dec_reg_blue_en at 0x3818) uses workaround + 5, bit 0, i.e. 0x05600065.
+
+2. dec_frame_recycle() took q->lock although every caller already holds it.
+   Stock has a separate lock on its release-queue object; the reconstructed
+   port embeds that FIFO in q, so the second lock is a self-deadlock as soon
+   as recycle_fifo is non-empty.
+
+3. dec_frame_queue_repeat() lost the line q->slots[1] = q->slots[0]. The field
+   force_interlace is renamed repeating (a new u32 in dec_frame_manager) to
+   say what it actually tracks.
+
+On this board the module is built (CONFIG_SUNXI_DECD=m) but never binds:
+dec@5600000 is disabled by 0038 because the KMS driver owns the AFBD window
+and SPI 110. The corrections are dormant here and cost nothing; they matter
+the moment decd is enabled again.
+
+diff -ru a/drivers/misc/sunxi_decd/decd_frame.c b/drivers/misc/sunxi_decd/decd_frame.c
+--- a/drivers/misc/sunxi_decd/decd_frame.c
++++ b/drivers/misc/sunxi_decd/decd_frame.c
+@@ -987,25 +987,19 @@
+  *   - for each item: lock queue, kfifo_in queue+4, unlock queue
+  *   - then queue_work_on(4, system_wq, queue+24)
+  *
+- * In our port: fmgr has recycle_fifo, q has lock + release_fifo + release_work.
+- * The function IS called under queue lock from dec_vsync_process, BUT IDA shows
+- * it takes its OWN lock (raw_spin_lock_irqsave(a2)). This means the caller
+- * does NOT hold the queue lock when calling recycle — or it's a different lock.
+- * Looking at dec_vsync_process more carefully, recycle is called AFTER
+- * spin_unlock_irqrestore, so the queue lock is NOT held. The recycle function
+- * locks the queue itself.
++ * Stock has a separate lock on its release-queue object.  The reconstructed
++ * port embeds that FIFO in q instead, so q->lock is already held by every
++ * caller.  Taking it again here self-deadlocks as soon as recycle_fifo is
++ * non-empty.
+  */
+ static void dec_frame_recycle(struct dec_frame_manager *fmgr,
+ 			      struct dec_frame_queue *q)
+ {
+ 	struct dec_video_frame *vf = NULL;
+-	unsigned long flags;
+ 
+ 	while (kfifo_out(&fmgr->recycle_fifo, &vf, 1) == 1) {
+ 		if (vf) {
+-			spin_lock_irqsave(&q->lock, flags);
+ 			kfifo_in(&q->release_fifo, &vf, 1);
+-			spin_unlock_irqrestore(&q->lock, flags);
+ 			vf = NULL;
+ 		}
+ 	}
+@@ -1051,6 +1045,7 @@
+ 		dec_frame_defer_release(q, q->slots[3]);
+ 		q->slots[3] = q->slots[2];
+ 		q->slots[2] = q->slots[1];
++		q->slots[1] = q->slots[0];
+ 		if (q->slots[0])
+ 			refcount_inc(&q->slots[0]->refcount);
+ 		q->dirty = 1;
+@@ -1290,7 +1285,7 @@
+ 						dec_frame_defer_release(q, q->interlace_hold);
+ 						q->interlace_hold = vf;
+ 						q->repeat_budget++;
+-						fmgr->force_interlace = 0;
++						fmgr->repeating = 0;
+ 					}
+ 				}
+ 			} else if (!fmgr->force_interlace) {
+@@ -1313,10 +1308,10 @@
+ 						/* enqueue OK → drop caller ref */
+ 						video_frame_put(vf);
+ 					}
+-					fmgr->force_interlace = 0;
++					fmgr->repeating = 0;
+ 				} else {
+ 					dec_frame_queue_repeat(q);
+-					fmgr->force_interlace = 1;
++					fmgr->repeating = 1;
+ 				}
+ 			} else if (fmgr->interlace_pair[0] && fmgr->interlace_pair[1]) {
+ 				q->toggle ^= 1;
+diff -ru a/drivers/misc/sunxi_decd/decd_hw.c b/drivers/misc/sunxi_decd/decd_hw.c
+--- a/drivers/misc/sunxi_decd/decd_hw.c
++++ b/drivers/misc/sunxi_decd/decd_hw.c
+@@ -249,7 +249,7 @@
+ 	dec_reg_int_to_display(regs);
+ }
+ 
+-/* IDA: blue_en uses workaround base (result+8), offset +16 bit 4 */
++/* Stock decd.ko dec_reg_blue_en @ 0x3818: workaround + 5, bit 0. */
+ void dec_reg_blue_en(struct dec_reg_block *regs, bool on)
+ {
+ 	u8 v;
+@@ -257,8 +257,8 @@
+ 	if (!regs || !regs->workaround)
+ 		return;
+ 
+-	v = readb(regs->workaround + 16);
+-	writeb((v & ~BIT(4)) | (on ? BIT(4) : 0), regs->workaround + 16);
++	v = readb(regs->workaround + 5);
++	writeb((v & ~BIT(0)) | (on ? BIT(0) : 0), regs->workaround + 5);
+ }
+ 
+ /*
+diff -ru a/drivers/misc/sunxi_decd/decd_types.h b/drivers/misc/sunxi_decd/decd_types.h
+--- a/drivers/misc/sunxi_decd/decd_types.h
++++ b/drivers/misc/sunxi_decd/decd_types.h
+@@ -182,6 +182,7 @@
+ 	spinlock_t ready_lock;
+ 	struct list_head ready_list;
+ 	u32 ready_count;
++	u32 repeating;
+ 	u32 force_interlace;
+ 	struct dec_frame_queue *queue;
+ 	u64 irq_count;

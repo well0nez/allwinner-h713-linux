@@ -6,15 +6,15 @@ Who made what, where it comes from, and what is deliberately absent.
 
 `mainline/` is a **git subtree** of [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline)
 at commit `8860991`, with full history - you can `git log` any of his commits here. On top of it,
-`mainline/patches/kernel/series` carries 133 patches in fourteen sections:
+`mainline/patches/kernel/series` carries 135 patches in fourteen sections:
 
 | Origin | Patches | Note |
 |---|---|---|
 | well0nez, via cstenger's `main` | 21 (`0001` - `0022`) | **the H713 driver series** - CCU, pinctrl, MMC, USB PHY, PWM, LRADC, board manager, cpu_comm, tvtop, decd. Written here, carried in his tree with attribution, six of them adapted from 6.16 to the pinned kernel. Byte-identical to his tree |
-| cstenger, `main` | 25 (`0023` - `0048`) | the arm64 side built around that series: DTS, defconfig, boot chain, cpufreq. Byte-identical, verified by comparison |
+| cstenger, `main` | 24 (`0023` - `0048`; `0040` retired 15.09., see `zurueckgenommen/`) | the arm64 side built around that series: DTS, defconfig, boot chain, cpufreq. Byte-identical, verified by comparison |
 | cstenger, branch `h713-display-video-path` | 17 (`0051` - `0086`) | byte-identical; scanout, DECD, IOMMU, MMC, video plane |
 | well0nez | `0049`, `0091` - `0159` | ARISC, cpu_comm, HDMI input, audio, motor, board manager, Wi-Fi |
-| well0nez, follow-ups | `0014a`, `0024a` - `0024c`, `0078a` | small fixes placed directly after the original they touch, so the original stays byte-identical |
+| well0nez, follow-ups | `0013a`, `0014a`, `0024a` - `0024c`, `0078a` | small fixes placed directly after the original they touch, so the original stays byte-identical |
 
 cstenger says the same in his own `PROVENANCE.md`: "the bulk of the H713 driver support … originates
 from well0nez". The direction of the debt runs both ways - his arm64 work is what made the 6.18 line

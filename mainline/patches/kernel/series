@@ -21,6 +21,8 @@
 0011-misc-add-sunxi-nsi.patch
 0012-misc-add-sunxi-tvtop.patch
 0013-misc-add-sunxi-decd.patch
+#   (Nachtrag well0nez, doku/124 -- Original bleibt byteidentisch; die drei Korrekturen aus cstengers Zweig vom 28.08.)
+0013a-misc-decd-three-corrections-from-cstengers-branch.patch
 0014-soc-sunxi-add-cpu-comm-ipc.patch
 #   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
 0014a-soc-sunxi-cpu-comm-der-h713-stand-vom-04-09.patch
@@ -54,7 +56,8 @@
 0037-drm-add-h713-afbd-scanout-kms-driver.patch
 0038-arm64-dts-h713-add-afbd-kms-display-node.patch
 0039-media-cedrus-add-runtime-dma-guard.patch
-0040-media-cedrus-halt-ve-before-freeing-dma-buffers.patch
+#   0040 (Cedrus-Reset vor dem Freigeben) seit 15.09. in zurueckgenommen/: Deadlock bei parallelen Dekodern, sein Grund
+#   war der 1416-MHz-Betriebspunkt, den 0055 entfernt (cstenger 23.08., doku/124 3.1)
 0041-iommu-sun50i-support-h713-seven-master-two-cell.patch
 0042-arm64-dts-h713-iommu-real-block-and-attach-ve.patch
 0043-mmc-sunxi-v5p3x-delays-threshold-and-uhs.patch

@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Sun, 24 Aug 2026 21:40:00 -0700
+Subject: [PATCH] aic8800: the AP-mode debugfs unregister was never compiled in
+
+Every re-association of an already-seen MAC logged:
+
+    debugfs: '08:5b:d6:d9:c2:13' already exists in 'rc'
+    aicwf_sdio mmc1:6721:1: Error while (un)registering debug entry for sta 7
+
+Deterministically, on every cycle, with the sta index climbing for one
+unchanging MAC.
+
+The two calls that pair up are guarded by different macros:
+
+    #ifdef CONFIG_DEBUG_FS           /* defined - the kernel has debugfs */
+            rwnx_dbgfs_register_rc_stat(rwnx_hw, sta);
+
+    #ifdef CONFIG_DEBUG_FS_AIC       /* defined NOWHERE */
+                rwnx_dbgfs_unregister_rc_stat(rwnx_hw, cur);
+
+CONFIG_DEBUG_FS_AIC does not exist -- not in the Makefile, not in any header,
+not in the kernel. Both AP-mode station-delete paths use it, so in AP mode the
+register is compiled in and the unregister is compiled out. The MAC-named
+directory under rc/ is created on first association and then never removed, and
+every later debugfs_create_dir() for that MAC collides. The TDLS path a
+thousand lines further down uses plain CONFIG_DEBUG_FS and is unaffected, which
+is what makes this look like a typo rather than a decision.
+
+Confirmed on hardware before the fix: after ten forced re-associations the rc/
+directory held exactly one entry, timestamped at boot, while the station had
+joined and left ten times.
+
+    /sys/kernel/debug/ieee80211/phy0/rwnx/rc/08:5b:d6:d9:c2:13
+
+Use CONFIG_DEBUG_FS in both places.
+
+NOT A RACE, and worth saying plainly because the previous patch in this series
+was written on the theory that it was one. The workqueue toggle this goes
+through is genuinely fragile and 0008 is worth keeping on its own merits, but
+it was never what produced these two lines: an unregister that does not exist
+cannot lose a race.
+
+---
+diff --git a/aic8800_fdrv/rwnx_main.c b/aic8800_fdrv/rwnx_main.c
+index 580c3c9..5479d51 100644
+--- a/aic8800_fdrv/rwnx_main.c
++++ b/aic8800_fdrv/rwnx_main.c
+@@ -3099,7 +3099,7 @@ static int rwnx_cfg80211_del_station_compat(struct wiphy *wiphy,
+ 			rwnx_mu_group_sta_del(rwnx_hw, cur);
+ #endif /* CONFIG_RWNX_BFMER */
+ 
+-#ifdef CONFIG_DEBUG_FS_AIC
++#ifdef CONFIG_DEBUG_FS
+ 			rwnx_dbgfs_unregister_rc_stat(rwnx_hw, cur);
+ #endif
+ 		}
+@@ -3213,7 +3213,7 @@ void apm_staloss_work_process(struct work_struct *work)
+ 		rwnx_mu_group_sta_del(rwnx_hw, cur);
+ #endif /* CONFIG_RWNX_BFMER */
+ 
+-#ifdef CONFIG_DEBUG_FS_AIC
++#ifdef CONFIG_DEBUG_FS
+ 		rwnx_dbgfs_unregister_rc_stat(rwnx_hw, cur);
+ #endif
+ 	}else {
