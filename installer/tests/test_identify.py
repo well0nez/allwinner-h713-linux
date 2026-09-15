@@ -49,6 +49,39 @@ def on_disk(case, maker, *args):
         disk.close()
 
 
+# The identity row the HY300 Pro's owner posted from his v0.6-beta installer run (issue #1, 15.09.2026),
+# as identify() would build it from his device. The fingerprint and the MIPS database are the ADT-3
+# family's and shared with the HY300 T08 image; the boot package and the dates are his alone.
+HY300_PRO_DEVICE = {
+    "sunxi_version": None,
+    "build_fingerprint": "ADT-3/adt3/adt3:10/QTT1.200116.002.B6/6245789:user/release-keys",
+    "uboot_version": "U-Boot 2018.05-00026-g72fa926 (Dec 16 2024 - 03:52:57 +0000) Allwinner Technology",
+    "arisc_version": "TV-303  ARISC  00.00.00.09 Date:Dec 25 2024 Time: 17:26:41",
+    "scp_sha256": "699dd131d5d3bde351c70e0b395e55183ca17097e8335eab8a4027b7c5b96dc3",
+    "uboot_sha256": "e9e7fedf474eb230decbe26fa6d72396b77a60424d855e5241d88e0d5fe5f017",
+    "dtb_sha256": "0df826b17d17662cb096887eb898d8721e5ef6f717552400c96b8e79b563c78c",
+    "dtb_compatible": "allwinner,tv303 arm,sun50iw12p1",
+    "mips_database_sha256": "6d43b85a5880d34df0428f234c0c713ac1ca7ec28e551554137d967f60c380e4",
+    "vendor_size": 115900416,
+}
+
+
+class HY300ProDevice(unittest.TestCase):
+    """The board the test image hy300-pro-test1 is for must be recognised from its own features --
+    the first run at the owner's device failed exactly here (the profile declared none)."""
+
+    def test_the_owners_device_matches_the_profile_alone(self):
+        profile, candidates, matches = match_profiles(HY300_PRO_DEVICE)
+        self.assertEqual((profile, candidates), ("hy300_pro", ["hy300_pro"]))
+        for name in PROFILES["hy300_pro"]["stock"]["strong_features"]:
+            self.assertTrue(matches["hy300_pro"][name], name)
+
+    def test_the_t08_image_does_not_look_like_the_pro(self):
+        from h713.profiles import expected_features
+        profile, candidates, _matches = match_profiles(dict(expected_features(PROFILES["hy300_t08"])))
+        self.assertEqual((profile, candidates), ("hy300_t08", ["hy300_t08"]))
+
+
 class Images(unittest.TestCase):
     def test_hy310_image_is_verified(self):
         ident = identified("hy310")
@@ -211,12 +244,15 @@ class Matching(unittest.TestCase):
         self.assertEqual(matches["twin_a"], {"scp_sha256": True})
 
     def test_a_profile_without_strong_features_never_matches(self):
-        # HY300 Pro: nothing known about it is unique, so it must not be a candidate for
-        # anything -- not even for a feature set that contradicts nothing.
-        self.assertEqual(PROFILES["hy300_pro"]["stock"]["strong_features"], ())
-        _profile, candidates, matches = match_profiles({"build_fingerprint": "whatever"})
-        self.assertNotIn("hy300_pro", candidates)
-        self.assertEqual(matches["hy300_pro"], {})
+        # A profile that names nothing unique must not be a candidate for anything -- not
+        # even for a feature set that contradicts nothing. (The HY300 Pro was that profile
+        # until its owner's installer run supplied its features, 15.09.2026.)
+        blank = dict(PROFILES["hy300_pro"])
+        blank["stock"] = dict(blank["stock"], strong_features=())
+        _profile, candidates, matches = match_profiles({"build_fingerprint": "whatever"},
+                                                        {"blank": blank})
+        self.assertNotIn("blank", candidates)
+        self.assertEqual(matches["blank"], {})
 
     def test_nothing_read_means_no_candidate(self):
         profile, candidates, _matches = match_profiles({})

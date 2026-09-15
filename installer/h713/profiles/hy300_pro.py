@@ -2,6 +2,7 @@
 
 Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below:
   P  = analyse/issues/issue-1-hy300pro-20260913.md and doku/120-plan-hy300pro.md section 1
+  R  = issue #1, his h713-install run of 15.09.2026 (v0.6-beta, --no-write): the device's identity row
   Q  = issue #1, the owner's h713_probe run and dd of his dump (comment of 2026-09-14 16:25 UTC)
   A0 = docs/subsystems/mips.md ("vendor boot path") (what the vendor U-Boot loads, and from where)
   F  = installer/tests/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site, package A5)
@@ -27,7 +28,11 @@ PROFILE = {
         "vendor_size": None,
         # Nothing known about this board pins it down: its display.bin digest is unique but is not one
         # of the identification features (X:178), and the ADT-3 fingerprint it shares with two images.
-        "strong_features": (),
+        # R: his run of the v0.6-beta installer (issue #1, 15.09.2026): the identity features of the
+        # device itself. The fingerprint and the MIPS database are the ADT-3 family's (shared with the
+        # HY300 T08 image), so they are not strong; the boot package hashes, U-Boot and ARISC dates are.
+        "strong_features": ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version",
+                            "arisc_version"),
     },
     "dram": {                                # Q: the 24 words of his vendor boot0 at LBA 16, read by the
         "clk": 636, "type": 3, "zq": 0x7b7bfb, "odt_en": 1,   # probe AND by dd from his full dump (identical)
@@ -102,7 +107,22 @@ PROFILE = {
         "source": "issue #1 UART log and probe run of 2026-09-14, project id only; panel not measured",
     },
     "reference": None,                       # his extraction output was not posted file by file
-    "expected": None,                        # nothing to compare a device against yet
+    "expected": {                            # R: the profile row his installer run printed (device, stock)
+        "package_items": None,               # sizes of the boot package items were not printed
+        "package_item_sha256": {
+            "u-boot": "e9e7fedf474eb230decbe26fa6d72396b77a60424d855e5241d88e0d5fe5f017",
+            "scp": "699dd131d5d3bde351c70e0b395e55183ca17097e8335eab8a4027b7c5b96dc3",
+            "dtb": "0df826b17d17662cb096887eb898d8721e5ef6f717552400c96b8e79b563c78c",
+        },
+        "uboot_version": "U-Boot 2018.05-00026-g72fa926 (Dec 16 2024 - 03:52:57 +0000)",
+        "dtb_compatible": "allwinner,tv303",
+        "arisc_version": "TV-303  ARISC  00.00.00.09 Date:Dec 25 2024",
+        "vendor_size": 115900416,
+        "libmspsound_sha256": None,
+        "build_fingerprint": "ADT-3/adt3/adt3:10/QTT1.200116.002.B6/6245789:user/release-keys",
+        "sunxi_version": None,               # a device does not carry it (the row printed "-")
+        "mips_database_sha256": "6d43b85a5880d34df0428f234c0c713ac1ca7ec28e551554137d967f60c380e4",
+    },
     "board_dt": "sun50i-h713-hy300-pro",   # boards/hy300-pro/board.env KERNEL_DTB (patch 0161, stage 5):
                                              # the hy200 dts under this board's name, for its TEST image
     "uboot_board": "hy300_pro",              # boards/hy300-pro/board.env UBOOT_BOARD: base hy300_pro_defconfig (F2a)
