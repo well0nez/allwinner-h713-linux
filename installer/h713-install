@@ -186,6 +186,9 @@ def _identify_table(path):
         return None
     here = os.path.dirname(os.path.abspath(path))
     console.info("release table  %s  (%s, built %s)" % (d.get("abbild"), d.get("werkzeug"), d.get("erzeugt")))
+    if d.get("test_for"):
+        console.warn("TEST IMAGE for the board profile '%s' -- written only on that board, and only with "
+                     "install --test-image" % d["test_for"])
     for piece in d.get("teile", []):
         whole = os.path.join(here, piece["datei"])
         if os.path.isfile(whole) and os.path.getsize(whole) == piece["bytes"]:
