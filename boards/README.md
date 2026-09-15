@@ -89,6 +89,25 @@ What follows from the rule:
   `profile-only`.
 - Nothing here restricts what an owner does with their own device. The rule limits *our* claims.
 
+## From `partial` to `verified`: the test image
+
+A board cannot become `verified` without somebody running a build of ours on it, and until now there
+was nothing for that somebody to run. `release/build-all.sh --test-image` closes that circle:
+
+1. **`partial` / `profile-only`** — the board has a directory, a `PROFILE`, and (for a test image)
+   a `KERNEL_DTB` and a U-Boot base of its own. No release image is built for it.
+2. **Test image** — `release/build-all.sh --board <id> --test-image --version vX.Y` builds
+   `<IMAGE_NAME>-vX.Y-TEST` and has `h713-mkimage` write `test_for: "<profile>"` into its table.
+   The name, the banner, the `.BUILD.txt` stamp and the image README all say TEST. `h713-install`
+   accepts it only on that board and only with `--test-image`; on any other board it refuses and
+   names the board it was built for. It goes to the board's owner, who takes a full dump first —
+   that dump is the way back — and it is not a release for anybody else.
+3. **`verified`** — the owner reports a green run: `STATUS=verified`, `VERIFIED_BY` gets their name,
+   their board and the date, and from then on the board gets ordinary images.
+
+Between 2 and 3 nothing about our claims changes. A board that has only been handed a test image is
+still `partial` or `profile-only` in `board.env`, in STATUS.md and in every sentence we write.
+
 ## Adding a board from a probe log
 
 A board that nobody here has held can still get a directory. The whole input is one
@@ -119,7 +138,8 @@ sunxi-fel uboot u-boot-h713-probe.bin      # from the release; the probe never w
 7. **`bash boards/check.sh`** — it must stay green.
 
 When the owner reports a green run on a build of ours, and only then, `STATUS` becomes `verified`,
-`VERIFIED_BY` gets their name, their board and the date, and the board can have an image.
+`VERIFIED_BY` gets their name, their board and the date, and the board can have an image. What they
+run to get there is a test image (above), not a release.
 
 ## Checking the directory
 

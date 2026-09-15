@@ -51,7 +51,8 @@ from h713.fel import expose_drive                                           # no
 from h713.identify import identify, report_device                           # noqa: E402
 from h713.install import (DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
                           WRITES, confirm, image_package, release_files,
-                          run_extractor, translate, unpack_parts, write_package)
+                          run_extractor, table_test_for, test_image_allowed,
+                          translate, unpack_parts, write_package)
 from h713.log import console                                                # noqa: E402
 from h713.profiles import PROFILES                                          # noqa: E402
 from h713.stock import restore_stock                                        # noqa: E402
@@ -114,6 +115,9 @@ def parser():
     put.add_argument("--vendor", metavar="DIR",
                      help="finished output of h713-extract; without it the full dump is used")
     put.add_argument("--table", help="offset table when the image is a single file")
+    put.add_argument("--test-image", dest="test_image", action="store_true",
+                     help="accept an image whose table is marked test_for=<profile>: built for "
+                          "one board nobody has run this system on, written only on that board")
     put.add_argument("--work-copy", metavar="FILE",
                      help="where the filled copy of the image goes "
                           "(default: <dump>/%s, ~1.2 GB)" % WORK_COPY)
@@ -339,6 +343,21 @@ def _install(args, disk, path):
     return 0
 
 
+def _test_image_refused(args, ident):
+    """Stage 5: the image's table says it was built for one untested board. Writing it
+    needs --test-image AND that very board underneath. Return the exit code, or None."""
+    test_for = getattr(args, "_test_for", None)
+    if not test_for:
+        return None
+    if ident is None:                      # --skip-identify: nothing says which board this is
+        console.error("This is a TEST IMAGE for the board '%s' -- it is not written with "
+                      "--skip-identify." % test_for)
+        console.info("  The whole point of the flag is that the device must be identified as")
+        console.info("  that board before anything is written.")
+        return 1
+    return None if test_image_allowed(ident, test_for, args.test_image, console) else 1
+
+
 def _work(args, path):
     writing = args.command in WRITES and not args.no_write
     disk = Disk(path, writable=writing)
@@ -356,7 +375,13 @@ def _work(args, path):
             ident = identify(disk)
             if args.command == "identify":
                 return _report(args, ident)
-            if not report_device(ident, writing=writing) and writing:
+            if getattr(args, "_test_for", None):
+                # A test image has its own verdict: report_device() speaks for released
+                # images, where an untested board is always a no.
+                code = _test_image_refused(args, ident)
+                if code is not None:
+                    return code
+            elif not report_device(ident, writing=writing) and writing:
                 return 10
             args._profile = PROFILES.get(ident["profile"]) if ident.get("profile") else None
             project = _declared_project(ident)
@@ -365,6 +390,10 @@ def _work(args, path):
                 # The vendor image never brings 'private'; the restore promises not to touch
                 # it, and the lock makes that promise hard (stage 2 C8).
                 disk.lock_regions({"private": ident["regions"]["private"]})
+        else:
+            code = _test_image_refused(args, None)
+            if code is not None:
+                return code
         if disk.sectors != SECTORS_EXPECTED:
             console.error("%s has %d sectors, expected %d -- wrong drive?"
                           % (path, disk.sectors, SECTORS_EXPECTED))
@@ -399,10 +428,17 @@ def main(argv=None):
         args.skip_identify = False                # that is the whole job of this subcommand
         if args.source:
             return _identify_file(args)
-    if args.command == "install" and os.path.isdir(args.image):
-        found = release_files(args.image)         # a release folder brings both along
-        args.uboot = args.uboot or found.get("uboot")
-        args.fel = args.fel or found.get("fel")
+    if args.command == "install":
+        # Read before the device is touched: is this an image built for one untested
+        # board? The decision needs it early -- the identification is step 1b.
+        args._test_for = table_test_for(args.image, args.table)
+        if args.test_image and not args._test_for:
+            console.warn("--test-image: this table carries no test_for -- it is an ordinary "
+                         "image and the flag changes nothing.")
+        if os.path.isdir(args.image):
+            found = release_files(args.image)     # a release folder brings both along
+            args.uboot = args.uboot or found.get("uboot")
+            args.fel = args.fel or found.get("fel")
     path, code = expose_drive(args, HERE)
     return code if path is None else _work(args, path)
 

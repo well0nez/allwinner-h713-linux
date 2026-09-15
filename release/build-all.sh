@@ -3,13 +3,18 @@
 #
 #   release/build-all.sh --version v0.10 [--board hy310] [--vendor DIR] [--wifi-env FILE]
 #                        [--jobs N] [--skip-bl31] [--skip-uboot] [--skip-kernel]
-#                        [--skip-rootfs] [--dry-run]
+#                        [--skip-rootfs] [--test-image] [--dry-run]
 #
 # --board <id> (default hy310) picks boards/<id>/board.env: the installer
 # profile, the kernel DTB the FIT carries, the U-Boot base defconfig and the
 # image name ($IMAGE_NAME-$VERSION). The rule of doku/121 §5 is enforced here:
 # no image for a board nobody has tested -- a board that is not STATUS=verified
 # (an owner reported a green run) or has no installer profile is refused.
+#
+# --test-image is the one named way past that (plan/stufe-5.md): a partial/profile-only
+# board with PROFILE, KERNEL_DTB and a U-Boot base gets $IMAGE_NAME-$VERSION-TEST, marked
+# test_for=$PROFILE in its table, for its own owner to try -- h713-install writes it on
+# that board alone and only with --test-image. Not a release, no claim of support.
 #
 # Order (doku/116 P4):
 #   1 bl31  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
@@ -72,7 +77,7 @@ SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libdrm-dev,libasound2-dev
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
-VERSION= BOARD=hy310 VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0
+VERSION= BOARD=hy310 VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0
 SKIP_BL31=0 SKIP_UBOOT=0 SKIP_KERNEL=0 SKIP_ROOTFS=0
 while (($#)); do
 	case "$1" in
@@ -85,8 +90,9 @@ while (($#)); do
 	--skip-uboot)  SKIP_UBOOT=1; shift ;;
 	--skip-kernel) SKIP_KERNEL=1; shift ;;
 	--skip-rootfs) SKIP_ROOTFS=1; shift ;;
+	--test-image)  TEST_IMAGE=1; shift ;;
 	--dry-run)   DRY=1; shift ;;
-	-h|--help)   sed -n '2,28p' "$0"; exit 0 ;;
+	-h|--help)   sed -n '2,33p' "$0"; exit 0 ;;
 	*) echo "unknown: $1" >&2; exit 2 ;;
 	esac
 done
@@ -101,12 +107,25 @@ fi
 source "$BOARD_ENV"
 [[ "${BOARD_ID:-}" == "$BOARD" ]] || { echo "$BOARD_ENV says BOARD_ID='${BOARD_ID:-}', not '$BOARD'" >&2; exit 2; }
 if [[ "${STATUS:-}" != verified ]]; then
-	echo "no image for a board nobody has tested (doku/121 §5): boards/$BOARD is STATUS=${STATUS:-unset}." >&2
-	echo "A board becomes 'verified' when its owner reports a green run of our build; until then it gets" >&2
-	echo "an installer profile and the probe (h713_probe), not an image." >&2
+	# --test-image is the named exception; everything else about the rule stays as it is.
+	if ! ((TEST_IMAGE)) || [[ "${STATUS:-}" != partial && "${STATUS:-}" != profile-only ]]; then
+		echo "no image for a board nobody has tested (doku/121 §5): boards/$BOARD is STATUS=${STATUS:-unset}." >&2
+		echo "A board becomes 'verified' when its owner reports a green run of our build; until then it gets" >&2
+		echo "an installer profile and the probe (h713_probe), not an image." >&2
+		exit 2
+	fi
+elif ((TEST_IMAGE)); then
+	echo "boards/$BOARD is STATUS=verified: --test-image is for a board nobody has run (partial, profile-only). This one gets a release image." >&2
 	exit 2
 fi
-[[ -n "${PROFILE:-}" ]] || { echo "boards/$BOARD is verified but names no installer PROFILE -- a release image needs one, or h713-install cannot recognise the board it is for" >&2; exit 2; }
+if [[ -z "${PROFILE:-}" ]]; then
+	if ((TEST_IMAGE)); then
+		echo "boards/$BOARD names no installer PROFILE -- a test image needs one, or h713-install cannot tell whether it is standing on the board the image was built for" >&2
+	else
+		echo "boards/$BOARD is verified but names no installer PROFILE -- a release image needs one, or h713-install cannot recognise the board it is for" >&2
+	fi
+	exit 2
+fi
 [[ -n "${KERNEL_DTB:-}" ]] || { echo "boards/$BOARD names no KERNEL_DTB -- no device tree of ours has booted there" >&2; exit 2; }
 [[ -n "${UBOOT_BOARD:-}" ]] || { echo "boards/$BOARD names no UBOOT_BOARD -- no U-Boot base defconfig of ours for it" >&2; exit 2; }
 [[ -n "${IMAGE_NAME:-}" ]] || { echo "boards/$BOARD names no IMAGE_NAME" >&2; exit 2; }
@@ -121,6 +140,7 @@ UBOOT_BASE=${UBOOT_DEFCONFIG:-${UBOOT_BOARD}_defconfig}; UBOOT_BASE=${UBOOT_BASE
 [[ -n "$VERSION" ]] || { echo "--version vX.Y is missing (name of the image: $IMAGE_NAME-vX.Y)" >&2; exit 2; }
 [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+(-[a-z0-9]+)?$ ]] || { echo "--version: expected vX.Y or vX.Y-beta, not '$VERSION'" >&2; exit 2; }
 NAME="$IMAGE_NAME-$VERSION"
+((TEST_IMAGE)) && NAME="$NAME-TEST"        # the name is the first place it has to say so
 OUT="$MAINLINE/build/out"
 DELIVERY="$INSTALLER/out"
 
@@ -137,6 +157,9 @@ elapsed() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $(
 say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "root $ROOT"
 info "board $BOARD ($STATUS, profile $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles)"
+((TEST_IMAGE)) && { say "TEST IMAGE for $BOARD (STATUS=$STATUS) -- not a release"
+	info "Nobody has reported a green run here. The table is marked test_for=$PROFILE, so h713-install"
+	info "writes it on this board alone and only with --test-image; the owner's full dump is the way back."; }
 ((DRY)) && info "DRY RUN -- nothing is built"
 
 # --- 0. prerequisites -------------------------------------------------------
@@ -318,7 +341,8 @@ grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
 
 # --- 9. image ---------------------------------------------------------------
 say "9/11 image $NAME"
-( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" \
+TEST_FOR=(); ((TEST_IMAGE)) && TEST_FOR=(--test-for "$PROFILE")
+( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" "${TEST_FOR[@]+"${TEST_FOR[@]}"}" \
 	--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
 	--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 ) > "$OUT/mkimage.log" 2>&1 \
 	|| { tail -20 "$OUT/mkimage.log"; die "image build failed (log: $OUT/mkimage.log)"; }
@@ -340,6 +364,7 @@ say "11/11 stamp"
 STAMP="$DELIVERY/$NAME.BUILD.txt"
 {
 	echo "$NAME  built $(date -u '+%Y-%m-%dT%H:%M:%SZ') in $(elapsed)"
+	((TEST_IMAGE)) && echo "TEST IMAGE: built for boards/$BOARD (STATUS=$STATUS), table test_for=$PROFILE -- not a release, and no claim that this board is supported"
 	echo "board:    $BOARD ($STATUS; profile $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE/$UBOOT_INSTALLER_ROLE, probe $UBOOT_PROBE_DEFCONFIG)"
 	echo "series:   $(sha256sum "$MAINLINE/patches/kernel/series" | cut -c1-16)  $(grep -cv '^#\|^$' "$MAINLINE/patches/kernel/series") patches"
 	echo "kernel defconfig: $KDEF $(sha256sum "$MAINLINE/patches/kernel/board/$KDEF" | cut -c1-16)"

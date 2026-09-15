@@ -94,6 +94,10 @@ def parser():
                                  "(default: mainline/build/out/hy310-env-release.bin)")
     b.add_argument("--boot-ext4", help="finished hy310-boot.ext4 (128 MiB)")
     b.add_argument("--rootfs-ext4", help="finished hy310-rootfs.ext4 with the placeholders")
+    b.add_argument("--test-for", dest="test_for", metavar="PROFILE_ID",
+                   help="mark this build as a TEST IMAGE for one installer profile "
+                        '(table key "test_for"): h713-install writes it only on that board '
+                        "and only with --test-image")
     b.add_argument("--fit", help=argparse.SUPPRESS)          # only tree-boot uses it
     b.add_argument("--extraktor", help=argparse.SUPPRESS)    # accepted, ignored (release/build-all.sh passes it)
 

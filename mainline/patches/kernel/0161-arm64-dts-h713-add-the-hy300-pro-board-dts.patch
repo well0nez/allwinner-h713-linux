@@ -29,7 +29,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinn
 diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,20 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * MagCubic HY300 Pro projector (2024 board, DDR3 at 636 MHz; issue #1).

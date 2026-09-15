@@ -78,7 +78,7 @@ class Console:
 
     def warn(self, text):
         if self.style == "mkimage":
-            print("  %s %s" % (self._c("33", "HM  "), text))
+            print("  %s %s" % (self._c("33", "WARN"), text))
         else:
             print("  %s %s" % (self._c("33", "!"), text))
 
@@ -90,7 +90,7 @@ class Console:
 
     def error(self, text):
         if self.style == "mkimage":
-            print("  %s %s" % (self._c("1;31", "FEHL"), text), file=sys.stderr)
+            print("  %s %s" % (self._c("1;31", "FAIL"), text), file=sys.stderr)
         else:
             print("\n%s %s" % (self._c("31", "ERROR:"), text), file=sys.stderr)
 

@@ -325,6 +325,58 @@ def image_package(path):
     return os.path.dirname(os.path.abspath(path)), None
 
 
+def table_test_for(image, table=None):
+    """The `test_for` key of the image's table -- read before the device is touched.
+
+    None for a normal image, for a single .img without a table, and for anything that is
+    not a table at all (the later steps report that in their own words).
+    """
+    for candidate in (image, table):
+        if not candidate:
+            continue
+        try:
+            _directory, d = image_package(candidate)
+        except (RuntimeError, OSError, ValueError):
+            continue
+        if d and d.get("test_for"):
+            return d["test_for"]
+    return None
+
+
+def test_image_allowed(ident, test_for, asked, log=console):
+    """Stage 5: may this TEST IMAGE be written onto the device in front of us?
+
+    Two conditions, both required (stufe-5.md): the user asked for it (--test-image), and
+    the device is the board the image was built for. The identification is printed here
+    instead of by report_device(), whose verdict is about released images.
+    """
+    for level, text in ident.get("_lines", ()):
+        getattr(log, level, log.info)(text)
+    found = ident.get("profile")
+    if found != test_for:
+        log.error("This is a TEST IMAGE for the board '%s'. This device is %s, so nothing "
+                  "is written." % (test_for, "'%s'" % found if found else "no board we know"))
+        log.info("  A test image carries the device tree, the U-Boot and the panel settings of")
+        log.info("  one single board; on any other board those are a guess, and guessing is what")
+        log.info("  this tool exists to avoid. What fits this device is the image built for it.")
+        log.info("  Whatever you write to any device, the way back is a full dump taken first:")
+        log.info("  h713-install dump --full")
+        return False
+    if not asked:
+        log.error("This is a TEST IMAGE for the board '%s' -- it is written only when you ask "
+                  "for it, and you did not." % test_for)
+        log.info("  Nobody has reported a green run of this system on this board yet, so the")
+        log.info("  image is not a release: it was built for its owner to try. If that is you,")
+        log.info("  take a full dump first -- it is the way back -- and say so on the command line:")
+        log.info("  h713-install dump --full")
+        log.info("  h713-install install <release folder> --test-image")
+        return False
+    log.warn("TEST IMAGE for '%s': this device is that board, and --test-image was given."
+             % test_for)
+    log.info("  Nobody has reported a green run here yet. Your full dump is the way back.")
+    return True
+
+
 def check_package(directory, d, log=console):
     """Sizes and checksums of the pieces, before anything is written."""
     for t in d["teile"]:
