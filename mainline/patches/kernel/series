@@ -14,6 +14,8 @@
 0003-pinctrl-sunxi-add-h713-r-pio-driver.patch
 0004-pinctrl-sunxi-fix-irq-mux-and-graceful-resource.patch
 0005-phy-sun4i-usb-add-h713-pmu-bit0-quirk.patch
+#   (Nachtrag well0nez, doku/125 -- Original bleibt byteidentisch; SIDDQ-Bit der HCI-PHYs loeschen, sonst haengt USB an U-Boots usb start)
+0005a-phy-sun4i-usb-h713-clear-siddq-on-the-hci-phys.patch
 0006-mmc-sunxi-add-h713-v5p3x-support.patch
 0007-pwm-add-sun8i-8channel-driver.patch
 0008-misc-add-hy310-board-mgr.patch

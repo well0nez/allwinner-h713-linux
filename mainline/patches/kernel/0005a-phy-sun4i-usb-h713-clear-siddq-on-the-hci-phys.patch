@@ -1,0 +1,38 @@
+phy: sun4i-usb: h713: clear SIDDQ on the HCI PHYs, the way the vendor kernel does
+
+Without "usb start" in U-Boot's preboot, Linux registered all six EHCI/OHCI
+controllers and their root hubs and enumerated no device on any port; the
+internal camera on EHCI1 (0x04200000) was gone (HY310, 15.09.2026, image
+v0.7-dev2). Cause: the H713 cfg in 0005 lacks .hci_phy_ctl_clear, so the
+driver never clears SIDDQ (bit 3 of pmu + REG_HCI_PHY_CTL 0x10, i.e.
+0x04101810 / 0x04200810 / 0x04300810), and the HCI PHYs stay powered down.
+U-Boot's usb start clears it (our fork, phy-sun4i-usb.c cfg sun50i_h713_cfg,
+commit e4ab8f511fb, whose comment already says the kernel cfg relied on a
+bootloader having done it), and the vendor kernel clears it itself in
+open_clock (0xc066b4d8, pmu+0x10 &= ~8, called from sunxi_insmod_ehci
+0xc066307c before usb_add_hcd; IDA db analyse/ida/db-audio-vmlinux).
+The H616 cfg, the closest relative, carries the same flag.
+
+Follow-up to 0005 so that patch stays byte-identical to cstenger's tree
+(package U1, umbau/work/U1/REPORT.txt; doku/125). Also noted there:
+.pmu_enable_bit0 sets SUNXI_ULPI_BYPASS_EN, which sun4i_usb_phy_passby()
+sets anyway - left as is.
+
+--- a/drivers/phy/allwinner/phy-sun4i-usb.c
++++ b/drivers/phy/allwinner/phy-sun4i-usb.c
+@@ -1026,6 +1026,15 @@
+ 	.phy0_dual_route = true,
+ 	.siddq_in_base = true,
+ 	.pmu_enable_bit0 = true,
++	/*
++	 * The HCI PHYs come out of reset with SIDDQ (bit 3 of pmu + 0x10)
++	 * set, i.e. powered down, and nothing clears it unless a bootloader
++	 * did: with it set every EHCI/OHCI registers and no port ever sees a
++	 * device. The vendor kernel clears it itself before usb_add_hcd
++	 * (open_clock, pmu + 0x10 &= ~8), and so does U-Boot's usb start,
++	 * which is the only reason it ever worked here. Same as the H616.
++	 */
++	.hci_phy_ctl_clear = PHY_CTL_SIDDQ,
+ };
+ 
+ static const struct of_device_id sun4i_usb_phy_of_match[] = {
