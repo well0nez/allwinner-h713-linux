@@ -1,4 +1,4 @@
-# D+E — Vsync-Notifier: eine Eigentümerschaft für `0x05600320/324`
+# D+E - Vsync-Notifier: eine Eigentümerschaft für `0x05600320/324`
 
 **Nacht 07.09.2026, ab ~06:00, abgeschlossen 06:27.** Auftrag: die Doppel-Eigentümerschaft an den AFBD-Flip-Zeigern
 beseitigen. Der Anzeigetreiber (Paket D, Patch `0093`) exportiert einen Vsync-Notifier, der
@@ -36,8 +36,8 @@ Ergebnisdateien:
 
 `devm_of_iomap()` ruft intern `devm_ioremap_resource()` und **beansprucht** die Region. Der Kommentar
 beschrieb also eine Absicht, die der Aufruf nicht einlöst. Da `display@5600000` (`0093`,
-`reg = <0x05600000 0x400>`) die Region schon hält — `/proc/iomem`:
-`05600000-056003ff : 5600000.display afbd` — liefert der Aufruf `-EBUSY` und der Probe scheitert hart.
+`reg = <0x05600000 0x400>`) die Region schon hält - `/proc/iomem`:
+`05600000-056003ff : 5600000.display afbd` - liefert der Aufruf `-EBUSY` und der Probe scheitert hart.
 
 Und selbst wenn er ginge, wäre er die falsche Form: zwei Treiber, die dasselbe rotierende Zeigerpaar
 abtasten, jeder mit eigener Zerrissen-Behandlung, einer davon aus einem Timer, der vom Vsync nichts
@@ -76,10 +76,10 @@ Gründe:
 Der Auftrag ließ „Index 0..2 **und/oder** die rohen Werte" offen. Es sind die rohen Werte. Die
 Slot-Tabelle (`0x4c3ef000`/`0x4c5ee000`/`0x4c7ed000` …) ist **gemessenes Wissen der Capture**; der
 Anzeigetreiber kennt nur die Grenzen von `mips_framebuf`. Ein Index in der Nutzlast hieße, diese
-Tabelle in den Anzeigetreiber zu kopieren — zwei Wahrheiten statt einer. Das Paar nennt den fertigen
+Tabelle in den Anzeigetreiber zu kopieren - zwei Wahrheiten statt einer. Das Paar nennt den fertigen
 Slot ohnehin über seine Adresse; E hat mit `h713_hdmirx_slot_of()` die Umrechnung schon.
 
-### 2.3 Die Zerrissen-Logik bleibt beim Erzeuger — und wird zur Änderungsmeldung
+### 2.3 Die Zerrissen-Logik bleibt beim Erzeuger - und wird zur Änderungsmeldung
 
 `h713_afbd_follow_ring()` heißt jetzt `h713_afbd_vsync_flip()` und liest das Paar **einmal** pro
 Vsync für zwei Abnehmer:
@@ -92,9 +92,9 @@ Vsync für zwei Abnehmer:
 Der Verbraucher bekommt also nur echte Wechsel und braucht weder das dreifache Lesen noch ein eigenes
 „hat sich was getan". Die Logik existiert genau einmal, im Treiber, dem das Fenster gehört.
 
-### 2.4 `h713_afbd_read_flip()` — die dritte Funktion, und warum sie nötig ist
+### 2.4 `h713_afbd_read_flip()` - die dritte Funktion, und warum sie nötig ist
 
-`ENUM_INPUT` und `QUERY_DV_TIMINGS` fragen „liegt ein Signal an?", **während nicht gestreamt wird** —
+`ENUM_INPUT` und `QUERY_DV_TIMINGS` fragen „liegt ein Signal an?", **während nicht gestreamt wird** -
 also ohne angemeldeten Notifier. Ohne diese Funktion müsste E dafür doch wieder selbst lesen, und die
 zweite Abbildung wäre durch die Hintertür zurück. Rückgaben:
 
@@ -111,7 +111,7 @@ Funktion **einmal im Probe** und reicht `-EPROBE_DEFER` bzw. `-ENODEV` per `dev_
 ### 2.5 Die Vsync-Maske bekommt zwei Nutzer statt einer Vblank-Referenz
 
 Der Vsync-Interrupt war bisher maskiert, bis DRM eine Vblank-Referenz nahm. Ein
-`drm_crtc_vblank_get()` beim Anmelden wäre die kürzeste Lösung gewesen — aber es scheitert mit
+`drm_crtc_vblank_get()` beim Anmelden wäre die kürzeste Lösung gewesen - aber es scheitert mit
 `-EINVAL`, sobald der CRTC aus ist (`drm_crtc_vblank_off()` hält eine interne Sperr-Referenz). Dann
 würde `STREAMON` an einem Zustand der Anzeige scheitern, den der Verbraucher weder kennt noch
 beeinflusst.
@@ -119,7 +119,7 @@ beeinflusst.
 Stattdessen leitet `h713_afbd_vsync_irq_update()` das Maskenbit `+0x0C4` Bit 0 aus **beiden** Nutzern
 ab: `h->vblank_on` (aus `enable_vblank`/`disable_vblank`) **oder** `h713_afbd_flip_users > 0`.
 `drm_crtc_handle_vblank()` verträgt es, wenn der Interrupt läuft, während DRM den Vblank für
-abgeschaltet hält — es kehrt einfach zurück. Sperrreihenfolge: `vbl_lock` → `h713_afbd_flip_lock`; die
+abgeschaltet hält - es kehrt einfach zurück. Sperrreihenfolge: `vbl_lock` → `h713_afbd_flip_lock`; die
 umgekehrte Reihenfolge kommt nirgends vor.
 
 **Kein Verbraucher = kein Mehraufwand:** ohne angemeldeten Notifier und ohne Ring-Folge liest der
@@ -132,7 +132,7 @@ Nicht als Rückfall hinter einem Modulparameter, auch nicht mit Vorgabe „aus":
 * Er tastete mit einer Rate ab, die mit dem gesuchten Ereignis nichts zu tun hat: die Hälfte der
   Weckrufe fand nichts, die andere fand einen Slot, der bis zu 8 ms vorher fertig war.
 * Es gibt **keine** Lage, in der er die bessere Wahl wäre. Ohne `0093` gibt es keine Plane, keinen
-  VidDec-Descriptor und keine Ring-Grenzen — es ist nichts da, worauf man zurückfallen könnte.
+  VidDec-Descriptor und keine Ring-Grenzen - es ist nichts da, worauf man zurückfallen könnte.
 * Ein Abtasttakt, der still neben dem echten Ereignis herläuft, ist genau der Quirk, den §0 Regel 1
   verbietet.
 
@@ -140,10 +140,10 @@ Die Abstraktion `struct h713_hdmirx_slot_source` **bleibt**: sie ist die Naht, a
 Capture-Interrupt (falls K2 je einen findet) einsteigen könnte, ohne die Warteschlangenbehandlung zu
 berühren. Sie hat jetzt genau eine Implementierung, `h713_hdmirx_vsync`.
 
-### 2.7 Der DT-Knoten verliert `reg` — und zieht um
+### 2.7 Der DT-Knoten verliert `reg` - und zieht um
 
 Ohne Registerfenster hat der Knoten keine Einheitsadresse mehr: aus `hdmi-rx@5600320` wird `hdmi-rx`.
-Er kann dann aber nicht in `soc { compatible = "simple-bus"; }` bleiben — nachgestellt im Prüfbau:
+Er kann dann aber nicht in `soc { compatible = "simple-bus"; }` bleiben - nachgestellt im Prüfbau:
 
 ```
 sun50i-h713.dtsi:1888.32-1890.5: Warning (simple_bus_reg): /soc/hdmi-rx-probe:
@@ -160,7 +160,7 @@ unangetastet.
 
 | Entfallen | Ersatz |
 |---|---|
-| `void __iomem *flip` im Gerätezustand | — |
+| `void __iomem *flip` im Gerätezustand | - |
 | `devm_of_iomap(dev, dev->of_node, 0, NULL)` + der Kommentar „Mapped, not claimed" | Probe-Prüfung über `h713_afbd_read_flip()` |
 | `#define H713_FLIP_Y/H713_FLIP_C` | `struct h713_afbd_flip` |
 | `h713_hdmirx_read_flip()` (dreifaches Lesen, Ring-Prüfung) | steht beim Erzeuger |
@@ -168,7 +168,7 @@ unangetastet.
 | Zähler `stat.torn` | verworfene Proben zählt der Erzeuger nicht mehr weiter; neu: `stat.events` |
 | `reg` am DT-Knoten, Einheitsadresse `@5600320` | keiner |
 | `#include <linux/hrtimer.h>` | `<linux/notifier.h>`, `<linux/soc/sunxi/h713-afbd.h>` |
-| `H713_HDMIRX_FPS` (nur noch vom Abtasttakt benutzt) | — |
+| `H713_HDMIRX_FPS` (nur noch vom Abtasttakt benutzt) | - |
 
 Neu dazu: `struct notifier_block flip_nb`, `h713_hdmirx_flip_notify()`,
 `depends on DRM_SUN50I_H713_AFBD` in Kconfig, `stat.events` und die debugfs-Zeile `vsync:`.
@@ -178,7 +178,7 @@ es zu lesen; die Warteschlangenlogik darin ist **Zeile für Zeile unverändert**
 
 ---
 
-## 4. Prüfbau — **ausdrücklich ein Prüfbau, kein Endstand**
+## 4. Prüfbau - **ausdrücklich ein Prüfbau, kein Endstand**
 
 `build/build.sh` wurde **nicht** aufgerufen; der Originalbaum wurde nicht verändert. Stattdessen ein
 frischer Baum aus dem gepinnten Tarball, die `series` darauf angewandt, gebaut im Container
@@ -200,10 +200,10 @@ Ergebnis:
 | Prüfung | Ergebnis |
 |---|---|
 | `0093` und `0094` auf frischen Baum | sauber, **kein Offset, kein Fuzz** |
-| `0095` danach | wie vorher: 9 Hunks mit Offset/Fuzz — **identisch zum Zustand ohne diese Änderung** (gegengeprüft), also nicht verschlimmert |
+| `0095` danach | wie vorher: 9 Hunks mit Offset/Fuzz - **identisch zum Zustand ohne diese Änderung** (gegengeprüft), also nicht verschlimmert |
 | `W=1` auf `drivers/gpu/drm/tiny/` und `.../sun50i-h713-hdmirx/` | **keine Warnung** |
 | Voller Bau `Image dtbs modules` | grün, keine Warnung, kein Fehler |
-| Symbole des Erzeugers | `Module.symvers`: `h713_afbd_register_flip_notifier`, `h713_afbd_unregister_flip_notifier`, `h713_afbd_read_flip` — alle `EXPORT_SYMBOL_GPL` aus `sun50i-h713-afbd` |
+| Symbole des Erzeugers | `Module.symvers`: `h713_afbd_register_flip_notifier`, `h713_afbd_unregister_flip_notifier`, `h713_afbd_read_flip` - alle `EXPORT_SYMBOL_GPL` aus `sun50i-h713-afbd` |
 | Auflösung beim Verbraucher | `llvm-nm -u …hdmirx.ko` zeigt die drei als `U`; `depends=hy310-cpu-comm,sun50i-h713-afbd,sun50i-h713-arisc` |
 | Kconfig | `CONFIG_VIDEO_SUN50I_H713_HDMIRX=m` überlebt die neue `depends on` |
 | DTB, `W=1 dtbs` | beide H713-DTBs **ohne jede Warnung** (die übrigen Warnungen stammen aus `sun50i-h616.dtsi`/`sun55i-a523.dtsi`, unverändert) |
@@ -228,11 +228,11 @@ Die Baumkopie (`mainline/build/pruefbau-de-vsync`) ist **nach dem Lauf gelöscht
 ## 5. Abnahmevorschrift (kopierbar)
 
 Sie ergänzt [E-v4l2.md §6](E-v4l2.md); alles dort Beschriebene gilt weiter. Neu ist nur, **woran man
-sieht, dass der Notifier trägt**. Auf dem Board gibt es **kein `v4l2-ctl` und kein `modetest`** —
+sieht, dass der Notifier trägt**. Auf dem Board gibt es **kein `v4l2-ctl` und kein `modetest`** -
 gebraucht wird beides auch nicht. (`gamma_test` gehört zu `0095` und braucht
 `--karte /dev/dri/card1`; für diese Abnahme ist es nicht nötig.)
 
-**Voraussetzungen:** `0091`–`0095` in der `series`, `build/build.sh kernel` grün, FIT in `tftp/`,
+**Voraussetzungen:** `0091` - `0095` in der `series`, `build/build.sh kernel` grün, FIT in `tftp/`,
 Module und `hy310-hdcp22.bin`/`hy310-edid.bin` auf dem Board, `depmod -a` gelaufen.
 
 ```bash
@@ -265,7 +265,7 @@ vsync:        0 Ereignisse, zuletzt y=0x00000000 c=0x00000000 slot=-1
 frames:       0 geliefert, ...
 ```
 
-`vsync:` steht auf 0, solange nicht gestreamt wird — **das ist richtig so**: erst `STREAMON` meldet
+`vsync:` steht auf 0, solange nicht gestreamt wird - **das ist richtig so**: erst `STREAMON` meldet
 den Notifier an. Der Beweis ist der Lauf:
 
 ```bash
@@ -284,7 +284,7 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep -
    hier strukturell Verluste; mit dem Vsync darf es keine mehr geben. Ein großer `uebersprungen`-Wert
    gehört ins Log, **nicht** in eine Nachbesserung am Takt.
 4. `unveraendert` ist **0**. Zählt es, melden Erzeuger und Verbraucher unterschiedliche Vorstellungen
-   davon, was „geändert" heißt — ein Fehler, kein Rauschen.
+   davon, was „geändert" heißt - ein Fehler, kein Rauschen.
 
 ```bash
 # --- 5. Gegenprobe "kein Verbraucher = kein Mehraufwand" --------------------
@@ -292,7 +292,7 @@ ssh root@192.168.8.141 'grep h713-afbd /proc/interrupts; sleep 5; grep h713-afbd
 ```
 
 Im Ruhezustand (kein Streaming, keine Plane im Passthrough, kein KMS-Client) darf der Zähler
-**stehen bleiben**. Während `hdmirx_test` läuft, muss er um ~60/s steigen — dieselbe Messung, zwei
+**stehen bleiben**. Während `hdmirx_test` läuft, muss er um ~60/s steigen - dieselbe Messung, zwei
 Aussagen.
 
 ```bash
@@ -302,7 +302,7 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep -
 ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'
 ```
 
-Erwartet ohne Signal: `signal: kein Signal (Flip-Zeiger stehen)`. Die `flip:`-Zeile kommt weiterhin —
+Erwartet ohne Signal: `signal: kein Signal (Flip-Zeiger stehen)`. Die `flip:`-Zeile kommt weiterhin -
 sie geht jetzt über `h713_afbd_read_flip()` an den Anzeigetreiber, nicht mehr über ein eigenes
 Fenster.
 
@@ -313,7 +313,7 @@ Fenster.
 | `dmesg`: `kein AFBD-Vsync-Notifier …` mit `-517` | `-EPROBE_DEFER`: `display@5600000` war noch nicht gebunden | normal beim Booten, muss sich von selbst auflösen; bleibt es stehen, ist `0093` gar nicht gebunden (`dmesg \| grep afbd`) |
 | `dmesg`: `kein AFBD-Vsync-Notifier …` mit `-19` | `-ENODEV`: `CONFIG_DRM_SUN50I_H713_AFBD` nicht gesetzt | Kernelkonfiguration, kein Treiberfehler |
 | `insmod`: `Unknown symbol h713_afbd_read_flip` | Anzeigetreiber nicht geladen | `modprobe` statt `insmod`, `depmod -a` |
-| `vsync: 0 Ereignisse`, aber `flip:` wandert | Interrupt kommt nicht an: Maske oder IRQ | `grep h713-afbd /proc/interrupts` — steht der Zähler, ist es die Maske; steigt er, ist es die Kette |
+| `vsync: 0 Ereignisse`, aber `flip:` wandert | Interrupt kommt nicht an: Maske oder IRQ | `grep h713-afbd /proc/interrupts` - steht der Zähler, ist es die Maske; steigt er, ist es die Kette |
 | `frames: … uebersprungen` groß, `vsync:` passt | Puffer werden nicht schnell genug zurückgegeben | Userspace, nicht der Notifier |
 | `flip: nicht lesbar (-11)` | `-EAGAIN`: Capture nie scharfgemacht oder kein Signal | Anhang A.5, **Kaltstart** |
 | `flip: nicht lesbar (-517)` | Anzeigetreiber weg (entbunden) | `dmesg \| grep afbd` |
@@ -325,7 +325,7 @@ Fenster.
 1. **Alles davon ist ungefahren.** Der Notifier ist gebaut, geprüft und nie gelaufen. Punkt 3 und 5
    der Abnahme sind die zwei Messungen, die ihn belegen.
 2. **Ein Vsync = ein Bild?** Erwartet ja (Capture 60 Hz, Panel 60 Hz), aber ungemessen. Weichen die
-   beiden Takte voneinander ab, zeigt sich das an `uebersprungen` — und dann ist die Frage, ob die
+   beiden Takte voneinander ab, zeigt sich das an `uebersprungen` - und dann ist die Frage, ob die
    Firmware zwei Slots pro Vsync fertigstellt, keine Frage des Notifiers.
 3. **`0095` sitzt weiter mit Fuzz auf `0093`.** Nicht durch diese Änderung entstanden und nicht
    angefasst; wer `0095` das nächste Mal anfasst, sollte die Hunks nachziehen.

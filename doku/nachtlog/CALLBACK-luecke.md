@@ -1,4 +1,4 @@
-# Die Callback-Lücke — verfolgt, gefunden, behoben (Unteragent, 07.09. vormittags)
+# Die Callback-Lücke - verfolgt, gefunden, behoben (Unteragent, 07.09. vormittags)
 
 **Kein Board angefasst:** kein `ssh`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`,
 nichts nach `tftp/`. Kein `sudo`, kein `git commit`/`push`. **`patches/kernel/series` nicht angefasst**,
@@ -18,10 +18,10 @@ Die Serie ist nachweislich weiter anwendbar (siehe §7).
 
 ---
 
-## 1. Der verfolgte Weg — ein eingehender CALL, Schritt für Schritt
+## 1. Der verfolgte Weg - ein eingehender CALL, Schritt für Schritt
 
 Gelesen wurde im **erzeugten Baum** (frischer Tarball + alle 71 Zeilen der `series` mit `patch -p1`,
-wie `build/build.sh` Z. 143–155), nicht im Patch. Zeilennummern unten beziehen sich auf diesen Baum.
+wie `build/build.sh` Z. 143-155), nicht im Patch. Zeilennummern unten beziehen sich auf diesen Baum.
 
 | # | Station | Datei | Zustand |
 |---|---|---|---|
@@ -33,13 +33,13 @@ wie `build/build.sh` Z. 143–155), nicht im Patch. Zeilennummern unten beziehen
 | 6 | Zustellung an Kernel-Handler | `cpu_comm_proto.c:950` | wird nie erreicht |
 | 7 | Verzweigung `entry_cmd <= 4` / `> 4` | `cpu_comm_proto.c:952` | wird nie erreicht |
 
-**Schritt 6 ist nachgeprüft und in Ordnung** — das war die erste Frage des Auftrags. Der Aufruf von
+**Schritt 6 ist nachgeprüft und in Ordnung** - das war die erste Frage des Auftrags. Der Aufruf von
 `cpu_comm_kernel_deliver()` steht in Zeile 950, eine Zeile hinter `cpu_comm_userspace_deliver()` (942)
 und **zwei** Zeilen über der Verzweigung (952). Beide Nachrichtenklassen kommen also genau einmal
 vorbei. Der Einhängepunkt ist nicht der Fehler.
 
 **Die comp_ids stimmen ebenfalls.** `cpu_comm_name2id()` baut `"%s_%1x_%3.3x"`, der Userspace
-`routine_name(base, target_cpu, 0)` = `"%s_%x_%03x"` — für `pid = 0` **byteweise dieselbe
+`routine_name(base, target_cpu, 0)` = `"%s_%x_%03x"` - für `pid = 0` **byteweise dieselbe
 Zeichenkette**. Nachgerechnet:
 
 ```
@@ -52,17 +52,17 @@ den Mitschnitten der Nacht als `comp_id=` der eingehenden CALLs. **Der Hash war 
 
 ---
 
-## 2. Die Stelle des Verlusts — und der Beleg dafür
+## 2. Die Stelle des Verlusts - und der Beleg dafür
 
 > `cpu_comm_register_callback()` trug den Handler **nur in eine treiberinterne Tabelle** ein.
 > Niemand meldete die Routine in der **Routinentabelle im Shared Memory** an. Die Firmware sucht den
-> Empfänger dort — findet nichts — und schickt die Nachricht gar nicht erst ab.
+> Empfänger dort - findet nichts - und schickt die Nachricht gar nicht erst ab.
 
-### Beleg A — der Riegel im Quelltext (`cpu_comm_proto.c:230`)
+### Beleg A - der Riegel im Quelltext (`cpu_comm_proto.c:230`)
 
 ```c
 if (FindRoutine(comp_id, routine_find_buf) != 0)
-        return -3; /* ESRCH — routine not found */
+        return -3; /* ESRCH - routine not found */
 ```
 
 `SendComm2CPUEx` bricht **vor** der Sequenz, vor dem FIFO, vor dem Doorbell ab. Unsere eigene
@@ -70,7 +70,7 @@ Fehlertabelle in `cpu_comm_api.c` sagt dasselbe: `case -3: /* FindRoutine() foun
 comp_id */`. Das ist die ARM-Portierung derselben Vendor-Routine, die auf dem MIPS den Rückruf
 absetzt.
 
-### Beleg B — jeder je gemessene eingehende CALL trägt den Beweis mit sich
+### Beleg B - jeder je gemessene eingehende CALL trägt den Beweis mit sich
 
 `SendComm2CPUEx` füllt das Feld `+0x10` der Nachricht ausschließlich im Zweig `routine_found`
 (`cpu_comm_proto.c:447`):
@@ -79,7 +79,7 @@ absetzt.
 *(u32 *)(call_slot + 16) = *(u32 *)(routine_find_buf + 4);
 ```
 
-`routine_find_buf + 4` ist das **Besitzerfeld des Tabelleneintrags** — bei einem per `INSTALL_RT`
+`routine_find_buf + 4` ist das **Besitzerfeld des Tabelleneintrags** - bei einem per `INSTALL_RT`
 angemeldeten ARM-Callback die `os.getpid()` des anmeldenden Prozesses
 (`hdmi_seq.py`, `install()`: `struct.pack_into("<I", buf, 4, os.getpid())`).
 
@@ -92,12 +92,12 @@ analyse/hdmi-seq/kmsg-udp-run59.txt
   01:57:52.373  RX-CALL from cpu=1 chan=0x0 comp_id=0x38d780e2 ... chan_pid=0x0000019b params=2
 ```
 
-`0x1ad` = 429, `0x19b` = 411 — **Linux-pids**. Der MIPS kann diese Zahl nirgends anders herhaben als
+`0x1ad` = 429, `0x19b` = 411 - **Linux-pids**. Der MIPS kann diese Zahl nirgends anders herhaben als
 aus einem Eintrag, den die ARM-Seite in die Shmem-Tabelle geschrieben hat. Er hat also
 nachweislich nachgeschlagen. (Weiterer Mitschnitt: run80 `0x1c4`, run83 `0x1ae`, run84 `0x1b2`,
 run85 `0x1b7`.)
 
-### Beleg C — im Kernel-Weg macht das niemand
+### Beleg C - im Kernel-Weg macht das niemand
 
 `cpu_comm_dev.c` sagt es im Probe selbst, als Entwurfsentscheidung:
 
@@ -107,14 +107,14 @@ run85 `0x1b7`.)
 Im gesamten Baum ruft **nur** `IOCTL_INSTALL_RT` (`cpu_comm_dev.c:264`) `AddInRoutine()` auf.
 `cpu_comm_register_callback()` schrieb ausschließlich in `cpu_comm_kcbs[]`.
 
-### Beleg D — die Messung vom 09:11 lief ohne jeden Userspace-Eintrag
+### Beleg D - die Messung vom 09:11 lief ohne jeden Userspace-Eintrag
 
 Die gültige Abnahmevorschrift von F (`F-korrektur.md` §4, Schritt 2) lautet ausdrücklich
 „**KEIN prep-Skript, KEIN hdmi_seq.py**". In diesem Boot hat also niemand `INSTALL_RT` gefahren, die
 Tabelle enthielt nur, was der MIPS selbst registriert. Damit passt der Befund lückenlos: Firmware
 feuert (elog), Treiber zählt null (debugfs), und dazwischen fehlt der Eintrag.
 
-Der HotPlug-Callback zählt aus demselben Grund null — es ist **ein** Fehler für beide, wie der
+Der HotPlug-Callback zählt aus demselben Grund null - es ist **ein** Fehler für beide, wie der
 Messbefund es nahegelegt hat.
 
 ---
@@ -124,7 +124,7 @@ Messbefund es nahegelegt hat.
 `doku/83-cpu-comm-api.md` sagt unter „Muss die Routine im Shmem angemeldet sein?": *„Für den
 Kernel-Handler **nein**"*, mit zwei Belegen. Beide halten nicht:
 
-1. **„Der Zustellpunkt liegt oberhalb jeder Kanal- oder Routinensuche."** Stimmt — und sagt nichts
+1. **„Der Zustellpunkt liegt oberhalb jeder Kanal- oder Routinensuche."** Stimmt - und sagt nichts
    zur Sache. Es ist eine Aussage über den **Empfangs**pfad auf dem ARM. Die Frage ist, ob der MIPS
    überhaupt **sendet**. Der Satz beantwortet die falsche Frage.
 
@@ -134,7 +134,7 @@ Kernel-Handler **nein**"*, mit zwei Belegen. Beide halten nicht:
    folgte, hing vollständig an der damaligen Ursachenthese („der Tod kommt aus
    `comm_CallWorkAction`, das nur bei einem eingehenden CALL läuft"). **Lauf 21 hat genau diese
    These widerlegt** (doku/72: „~~ROOT CAUSE~~ WIDERLEGT"). Mit der These fällt der Schluss. Übrig
-   bleibt ein Absturz ohne bekannte Ursache — kein Beleg für einen zugestellten Callback.
+   bleibt ein Absturz ohne bekannte Ursache - kein Beleg für einen zugestellten Callback.
 
 Das ist derselbe Fehlertyp wie der aus `F-abnahme-und-callback-luecke.md`: ein Kriterium, das nicht
 scheitern konnte. Hier: ein Beleg, der nie ein Beleg war.
@@ -143,7 +143,7 @@ scheitern konnte. Hier: ein Beleg, der nie ein Beleg war.
 
 ## 4. Die Änderung
 
-### `0092` — `cpu_comm_register_callback()` meldet die Routine an
+### `0092` - `cpu_comm_register_callback()` meldet die Routine an
 
 Die API nimmt jetzt den **Namen** statt der id:
 
@@ -155,16 +155,16 @@ int cpu_comm_unregister_callback(const char *base_name, cpu_comm_cb_t fn);
 Das ist keine Bequemlichkeit: der Deskriptor **trägt den Namen** (Feld `+0x0c`, 64 Byte), und vom
 Hash führt kein Weg zurück. Registrieren tut jetzt beides, in dieser Reihenfolge:
 
-1. `AddInRoutine()` mit einem 96-Byte-Deskriptor — `+0 channel`, `+2 target_cpu = 0 (ARM)`,
+1. `AddInRoutine()` mit einem 96-Byte-Deskriptor - `+0 channel`, `+2 target_cpu = 0 (ARM)`,
    `+4 owner`, `+8 comp_id`, `+12 voller Name` (`…_0_000`, wie `INSTALL_RT` ihn schreibt),
    `+92 next = -1`. Schlägt das fehl, wird **kein** Handler eingetragen: ein Handler, der nie laufen
    kann, ist schlechter als ein Fehler.
 2. `Comm_AddNewChannel()` für den MIPS-eingehenden Kanal, wie `IOCTL_INSTALL_RT` es tut.
 
-Abmelden entfernt den Deskriptor wieder — **nur**, wenn er noch der von dieser API angelegte ist;
+Abmelden entfernt den Deskriptor wieder - **nur**, wenn er noch der von dieser API angelegte ist;
 ein Daemon, der dieselbe Routine angemeldet hat, behält seinen Eintrag.
 
-**Warum das Besitzerfeld `0` ist**, und warum das kein Zufallswert sein durfte — zwei Bedingungen
+**Warum das Besitzerfeld `0` ist**, und warum das kein Zufallswert sein durfte - zwei Bedingungen
 gleichzeitig:
 
 * `cpu_comm_release()` gibt die pid des schließenden Prozesses an `RemovePidRoutines()`. Der Wert muss
@@ -173,20 +173,20 @@ gleichzeitig:
 * `Comm_Add2NewCallFifo()` prüft nach dem Kanalfund drei Felder gegen den Eintrag, und die erste
   Prüfung liest die **oberen 16 Bit** des Kanalschlüssels (`Comm_AddNewChannel()` legt den ganzen
   Schlüssel in ein Wort, `channel + 2` ist damit `key >> 16`) gegen das Kanalfeld der Nachricht.
-  Das hält nur, solange der Schlüssel unter `0x10000` bleibt — bei einem pid-abgeleiteten Schlüssel
+  Das hält nur, solange der Schlüssel unter `0x10000` bleibt - bei einem pid-abgeleiteten Schlüssel
   also nur für pids unter 4096. Der Char-Device-Pfad lebt von diesem Zufall. Mit `owner = 0` ist der
   Schlüssel `1`, die oberen 16 Bit sind 0, und `1` ist ein Schlüssel, den `IOCTL_INSTALL_RT` gar
   nicht erzeugen kann (dessen ist `1 | pid << 4`, nie unter 17).
 
-Ein Wert oberhalb `PID_MAX_LIMIT` — der erste Entwurf — erfüllt die erste Bedingung und **verletzt
+Ein Wert oberhalb `PID_MAX_LIMIT` - der erste Entwurf - erfüllt die erste Bedingung und **verletzt
 die zweite**; er hätte je Callback eine `channel comp mismatch`-Fehlerzeile erzeugt. Gefunden beim
 Nachlesen von `cpu_comm_channel.c:188`, nicht am Gerät.
 
-### `0094` — meldet mit Namen an und schiebt die Probe auf
+### `0094` - meldet mit Namen an und schiebt die Probe auf
 
 Die beiden Namen stehen als `H713_HDMIRX_CB_SIGNAL` / `H713_HDMIRX_CB_HOTPLUG` an einer Stelle statt
 viermal ausgeschrieben. Neu ist außerdem: `-ENODEV` aus der Registrierung wird zu `-EPROBE_DEFER`.
-Das ist eine **Folge** der Änderung — die Registrierung fasst jetzt das Shared Memory an und kann
+Das ist eine **Folge** der Änderung - die Registrierung fasst jetzt das Shared Memory an und kann
 deshalb aus demselben Grund scheitern wie die Init-Sequenz zwei Zeilen weiter unten: nichts ordnet
 diese Probe gegen die des `cpu_comm`-Treibers.
 
@@ -210,20 +210,20 @@ handlers  2
 0x38d780e2      8 rt cpu=0 owner=0            MipsHalCallback_HdmiHotPlugByPortHandler
 ```
 
-* **`rx_calls`** — jeder eingehende CALL, der `cpu_comm_kernel_deliver()` erreicht hat, **unabhängig
+* **`rx_calls`** - jeder eingehende CALL, der `cpu_comm_kernel_deliver()` erreicht hat, **unabhängig
   davon, ob etwas registriert war**. Der frühere Code stieg vorher aus, wenn die Handlertabelle leer
   war; ein Messgerät, das erst funktioniert, wenn die Sache schon läuft, ist keins.
-* **`unmatched … last`** — davon die, die kein Handler beansprucht hat, samt der id der letzten. Das
+* **`unmatched … last`** - davon die, die kein Handler beansprucht hat, samt der id der letzten. Das
   ist der Unterschied zwischen „nichts kommt an" und „es kommt an und wir werfen es weg". Ein
-  Ereigniszähler je Treiber kann die beiden nicht unterscheiden — genau daran hat diese Lücke eine
+  Ereigniszähler je Treiber kann die beiden nicht unterscheiden - genau daran hat diese Lücke eine
   Nacht gekostet.
-* **`channel … registered|missing`** — der Schlüssel, unter dem `Comm_Add2NewCallFifo()` nachschlägt.
+* **`channel … registered|missing`** - der Schlüssel, unter dem `Comm_Add2NewCallFifo()` nachschlägt.
 * **je Handler:** id, zugestellte Ereignisse, **und was die Shmem-Routinentabelle wirklich über die
   id sagt**. `rt none` ist genau der Zustand, in dem die Firmware den Empfänger nicht findet;
   `(foreign)` heißt: der Eintrag gehört jemand anderem (etwa einem `hdmi_seq.py`-Lauf).
 
 Schreiben nimmt jetzt nur noch einen Namen (`echo MipsHalCallback_SignalChange > …/watch`,
-`-Name` entfernt) — eine rohe id ließe sich nicht in einen Deskriptor zurückverwandeln.
+`-Name` entfernt) - eine rohe id ließe sich nicht in einen Deskriptor zurückverwandeln.
 
 ---
 
@@ -248,7 +248,7 @@ Schreiben nimmt jetzt nur noch einen Namen (`echo MipsHalCallback_SignalChange >
 * Dass die MIPS-Firmware zum Senden **dieselbe** Vendor-Routine benutzt, die wir als
   `SendComm2CPUEx` portiert haben. Das folgt aus der gemeinsamen `cpucomm`-Herkunft und aus Beleg B,
   ist aber in dieser Sitzung nicht disassembliert worden.
-* Dass der Callback mit dem Eintrag ankommt. **Das entscheidet die Abnahme in §8** — und zwar in
+* Dass der Callback mit dem Eintrag ankommt. **Das entscheidet die Abnahme in §8** - und zwar in
   beide Richtungen, siehe dort.
 
 **Ausgeschlossen ist ab jetzt durch Konstruktion:** dass ein ankommender CALL still im
@@ -256,20 +256,20 @@ Kernel-Zustellpunkt verlorengeht. `rx_calls` zählt vor jeder Zuordnung.
 
 ---
 
-## 7. Prüfbau — **ausdrücklich ein Prüfbau, kein Serienartefakt**
+## 7. Prüfbau - **ausdrücklich ein Prüfbau, kein Serienartefakt**
 
 Wegwerf-Kopie im Container `h713-build` unter `/tmp/pruefbau-callback` (nicht im Repo, nicht in
 `mainline/build/`), am Ende gelöscht. Frischer Tarball aus `build/cache/linux-6.18.38.tar.xz`, alle
-71 `series`-Zeilen mit `patch -s -p1` wie `build/build.sh` Z. 143–155, Board-defconfig,
+71 `series`-Zeilen mit `patch -s -p1` wie `build/build.sh` Z. 143-155, Board-defconfig,
 `ARCH=arm64 LLVM=1`, clang 20.1.8.
 
 | Prüfung | Ergebnis |
 |---|---|
 | `series` vollständig anwendbar, mit den neuen `0092`/`0094` | **71/71**, dieselben 17 `.orig`-Dateien wie mit dem Altstand (kein neuer Fuzz) |
 | `make -j24 Image modules` | **rc=0**, keine Warnung, keine `undefined` |
-| `make W=1` für `drivers/soc/sunxi/cpu_comm/` und `.../sun50i-h713-hdmirx/` | **eine** Warnung, unverändert Altbestand: `cpu_comm_rpc.c:256: variable 'prev_idx' set but not used` in `RemoveRoutine` — von mir nicht angefasst |
+| `make W=1` für `drivers/soc/sunxi/cpu_comm/` und `.../sun50i-h713-hdmirx/` | **eine** Warnung, unverändert Altbestand: `cpu_comm_rpc.c:256: variable 'prev_idx' set but not used` in `RemoveRoutine` - von mir nicht angefasst |
 | `make dtbs` | rc=0, keine h713-Warnung |
-| Symbole | `cpu_comm_call`, `cpu_comm_register_callback`, `cpu_comm_unregister_callback`, `cpu_comm_name2id` — alle `EXPORT_SYMBOL_GPL` in `Module.symvers` |
+| Symbole | `cpu_comm_call`, `cpu_comm_register_callback`, `cpu_comm_unregister_callback`, `cpu_comm_name2id` - alle `EXPORT_SYMBOL_GPL` in `Module.symvers` |
 | Modulabhängigkeit | `sun50i-h713-hdmirx.ko`: `depends=hy310-cpu-comm,sun50i-h713-afbd,sun50i-h713-arisc` |
 
 Artefakte des letzten Laufs (nur zum Vergleich, nicht aufbewahrt):
@@ -289,7 +289,7 @@ nichts.
 
 Sie macht **beide** Ausgänge sichtbar und stützt sich **nicht** auf `SignalChange: N mal` allein:
 `N` steigt auch, wenn irgendein anderer Weg den Zähler bewegt, deshalb wird jede Aussage doppelt
-belegt — einmal aus `cpu_comm/watch` (Zustellung), einmal aus dem elog (Firmware) — und vorher
+belegt - einmal aus `cpu_comm/watch` (Zustellung), einmal aus dem elog (Firmware) - und vorher
 wird geprüft, dass die Zähler **nicht** von beliebigem IPC-Verkehr wandern.
 
 **Voraussetzungen:** Kernel mit der integrierten Serie inkl. der neuen `0092`/`0094`, Zuspieler
@@ -400,7 +400,7 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
 
 ---
 
-## 9. Nebenbefunde — gefunden, **nicht** behoben, mit Begründung
+## 9. Nebenbefunde - gefunden, **nicht** behoben, mit Begründung
 
 ### 9.1 `RemovePidRoutines()` liest die pid am falschen Offset
 
@@ -411,7 +411,7 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
 räumt also **nichts** ab.
 
 **Beleg am Gerät:** in `kmsg-udp-run81.txt` meldet `cpu_comm: MIPS-incoming channel reg pid=495`
-um 10:45:57 an — und 1,5 s später trägt der eingehende CALL `chan_pid=0x1ad` (429), die pid eines
+um 10:45:57 an - und 1,5 s später trägt der eingehende CALL `chan_pid=0x1ad` (429), die pid eines
 **früheren** Prozesses desselben Boots. Genau das Bild eines Eintrags, den `AddInRoutine()` als
 „schon vorhanden" durchwinkt, weil ihn niemand entfernt hat. Dasselbe Muster in run59, 80, 83, 84, 85
 (chan_pid stets kleiner als die zuletzt angemeldete pid).
@@ -427,14 +427,14 @@ weg.
 
 `cpu_comm_channel.c:188` vergleicht `*(u16 *)(channel_ptr + 2)` mit dem Kanalfeld der Nachricht.
 Weil `Comm_AddNewChannel()` den ganzen Schlüssel in ein Wort legt, liest das die **oberen 16 Bit des
-Schlüssels**. Für pid-abgeleitete Schlüssel geht das nur bis pid 4095 gut. Nicht angefasst — es
+Schlüssels**. Für pid-abgeleitete Schlüssel geht das nur bis pid 4095 gut. Nicht angefasst - es
 funktioniert für den Bestand, und der richtige Ort dafür ist die Sitzung, die auch 9.1 macht. Für
 diese Änderung war es der Grund, `owner = 0` zu wählen (§4).
 
 ### 9.3 `SignalChange` nimmt den FIFO-Pfad, nicht den Workqueue-Pfad
 
 doku/72 sagt, `SignalChange` sei der `entry_cmd > 4`-Rückruf. In **allen** Mitschnitten
-(run80/81/83/84/85) steht `chan=0x0` — auch für `comp_id=0x3e7fbc46`. Beide Callbacks nehmen also den
+(run80/81/83/84/85) steht `chan=0x0` - auch für `comp_id=0x3e7fbc46`. Beide Callbacks nehmen also den
 `<=4`-FIFO-Pfad. Für die Zustellung ist das gleichgültig (der Einhängepunkt liegt darüber), aber die
 falsche Behauptung stand im Kommentarkopf von `0092` und ist dort korrigiert.
 
@@ -444,11 +444,11 @@ falsche Behauptung stand im Kommentarkopf von `0092` und ist dort korrigiert.
 
 * **Die Messung.** Der Beleg für „mit Eintrag kommt der Callback an" ist §8 und sonst nichts. Ich
   habe das Gerät nicht angefasst.
-* **Ob der MIPS beim Senden wirklich unsere `SendComm2CPUEx`-Entsprechung fährt** — §6, „vermutet".
+* **Ob der MIPS beim Senden wirklich unsere `SendComm2CPUEx`-Entsprechung fährt** - §6, „vermutet".
   Wenn §8 durchfällt mit „elog feuert, `rx_calls` 0, `rt cpu=0 owner=0"`, dann ist genau diese
   Annahme falsch, und der nächste Schritt ist die Disassembly des MIPS-Sendepfads, nicht ein weiterer
   Treiberumbau.
-* **9.1 und 9.2** — echte Fehler im Bestand, absichtlich liegen gelassen.
+* **9.1 und 9.2** - echte Fehler im Bestand, absichtlich liegen gelassen.
 * `RemoveRoutine()` verlässt in zwei Zweigen (`cpu_comm_rpc.c:289/298`) die Funktion mit gehaltenem
   `comm_SpinLock(2)`. Beide Zweige sind für ARM-Einträge (`cpu >= 0`, `next_idx` gültig) nicht
   erreichbar; angefasst habe ich es nicht.

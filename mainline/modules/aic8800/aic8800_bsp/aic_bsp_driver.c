@@ -33,7 +33,7 @@
  * aicwf_firmware_array.{c,h} embed the firmware as a C array and are only used
  * when CONFIG_FIRMWARE_ARRAY=y (its sole caller below is guarded the same way).
  * We do not embed firmware (it is a proprietary blob deployed to the rootfs at
- * runtime), so the header — like its use — is guarded and the files are not
+ * runtime), so the header - like its use - is guarded and the files are not
  * carried in-tree.
  */
 #ifdef CONFIG_FIRMWARE_ARRAY

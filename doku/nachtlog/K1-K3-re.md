@@ -5,7 +5,7 @@ Ergebnisdokument: **[doku/84-re-capture-ring.md](../84-re-capture-ring.md)**.
 
 ## Kurzantworten
 
-**K1 — `0x0694084C`, `0x06940400`, `0x06940824`.** Keines der drei Register wird von Firmware-**Code**
+**K1 - `0x0694084C`, `0x06940400`, `0x06940824`.** Keines der drei Register wird von Firmware-**Code**
 geschrieben; sie stehen in den **TSE-Registertabellen** (`analyse/tse/board/database.TSE`), die
 `AppTopProjector_HandleSignalEvent` → `sub_8B1078EC` (Attribute) → `sub_8B107B04` (Gruppe `"V_INCAP"`)
 ausführt.
@@ -22,18 +22,18 @@ ausführt.
 `ours-20260906-source0/01_lock` vs `02_desc`), **nicht** Folge des Format-4-Versuchs. `0x0694084C` bleibt in
 allen fünf Abzügen des guten Laufs auf `0x04000C00`. Der Wert `0x0C000C00` verlangt Descriptor-`color_format`
 ∈ {3, 5, 6}; mit den am 06.09. geschriebenen Werten 4 und 2 **kann** die Firmware das Register nicht
-beschrieben haben — die Zuschreibung in doku/76 §12.4 trägt nicht.
+beschrieben haben - die Zuschreibung in doku/76 §12.4 trägt nicht.
 
-**K2 — Ring-Folge.** `0x05600320/0x324` werden von **keiner** Firmware-Funktion und von **keiner** TSE-Tabelle
+**K2 - Ring-Folge.** `0x05600320/0x324` werden von **keiner** Firmware-Funktion und von **keiner** TSE-Tabelle
 geschrieben (drei unabhängige, vollständige Suchen; die Firmware fasst im AFBD nur `0x000…0x0A4` an, nichts ab
 `0x100`). Sie sind ein Hardware-Paar; `0x05600010` Bit 31 sagt dem Kanal, dass er sie lesen soll.
 **Ein „Slot fertig"-Interrupt existiert nur MIPS-intern** (INTC `~0x0305FC00`, Quellen `VIncap` 32,
-`VIncap_1` 25, `AFBD` 27 — Klartextnamen aus `g_irq_to_swint_table` `0x8B2319D4`). Auf dem ARM ist nichts
+`VIncap_1` 25, `AFBD` 27 - Klartextnamen aus `g_irq_to_swint_table` `0x8B2319D4`). Auf dem ARM ist nichts
 davon verdrahtet: im Stock-DTS haben weder `tvtop@5700000` noch `tvcap@6800000` eine `interrupts`-Eigenschaft,
 `0x06940000` kommt als Knoten gar nicht vor, und die cpu_comm-Callback-Liste kennt kein Frame-Ereignis.
-INCAP `+0x100` wird von der Firmware nie gelesen und steht bei uns konstant — kein Interruptstatus.
+INCAP `+0x100` wird von der Firmware nie gelesen und steht bei uns konstant - kein Interruptstatus.
 
-**K3 — zweiter Descriptor-Anstoß.** Zwei Sperren, beide belegt:
+**K3 - zweiter Descriptor-Anstoß.** Zwei Sperren, beide belegt:
 1. `sub_8B1087F8`/`sub_8B10881C` vergleicht die neue SignalInfo mit der zwischengespeicherten; bei Gleichheit
    findet **kein** Zustandswechsel statt → `PushSignalToMemoryAgent` und `update_onoff` laufen nicht.
    Denselben Descriptor zweimal zu schreiben ist per Konstruktion ein Nullereignis.
@@ -43,8 +43,8 @@ INCAP `+0x100` wird von der Firmware nie gelesen und steht bei uns konstant — 
    ⇒ Es gibt **keinen** Firmware-Pfad, der die INCAP-Konfiguration vollständig zurückstellt.
    Bester verfügbarer Teil-Reset: **echter Quellenwechsel** (`SetSource` auf eine andere Quelle und zurück),
    weil das über `HandleSignalEvent` die Gruppe `V_INCAP` erneut ausführt. Ob das reicht: **ungemessen** (B2).
-   Bis dahin gilt „Descriptor genau einmal pro Boot" weiter — und der Treiber soll das erzwingen.
-   *Nebenbei:* „`0x928` Bit 31 bleibt 0" ist **kein** Fehlerkennzeichen — im laufenden, korrekten Betrieb ist
+   Bis dahin gilt „Descriptor genau einmal pro Boot" weiter - und der Treiber soll das erzwingen.
+   *Nebenbei:* „`0x928` Bit 31 bleibt 0" ist **kein** Fehlerkennzeichen - im laufenden, korrekten Betrieb ist
    das Bit 0 (`02_desc`/`03_source0`), im Ruhezustand 1. Diagnosemerkmal ist allein, ob `0x320/0x324` wandern.
 
 ## Für Paket E: **Polling, nicht Interrupt**
@@ -62,7 +62,7 @@ Ratenunterschied sichtbar wird statt still verschluckt zu werden.
 * **21:46** Nachtplan §0/§0b/§1/§3K/§7, `doku/nachtlog/00-koordination.md` und `analyse/ida/README.md` gelesen.
   Eigene Datenbank**kopie** angelegt: `analyse/ida/db-k1k3/display.bin.i64` (Original in
   `re/ida/weltneuheit/re_chain/` **nicht geöffnet**). Kein Board, kein `sudo`, kein `git`.
-* **21:50–22:00** `ida_q27`–`ida_q32`: vollständige MMIO-Landkarte der Firmware (direkte `lui`-Zugriffe,
+* **21:50-22:00** `ida_q27` - `ida_q32`: vollständige MMIO-Landkarte der Firmware (direkte `lui`-Zugriffe,
   Basiszeiger-Konstantenverfolgung, `$a0`-Auflösung an den Zugriffsfunktionen inkl. Delay-Slot).
   Befund: die Firmware fasst nur 16 INCAP-Offsets an; `0x84C`, `0x400`, `0x824` sind nicht dabei und kommen
   im Abbild auch nicht als Konstante vor.
@@ -71,9 +71,9 @@ Ratenunterschied sichtbar wird statt still verschluckt zu werden.
   drei Register. K1 damit belegt.
 * **22:03** Gegenprobe mit den echten Abzügen `ours-20260906-source0/01_lock…05_after_hpd`: zwei der drei
   „Umstellungen" sind der Normalfall; `0x84C` ändert sich in der guten Sequenz nie.
-* **22:05** Attribut-Mapper gefunden (`sub_8B12C098`, Tabelle `0x8B1F218C`, 1-basiert) — Modell an drei
+* **22:05** Attribut-Mapper gefunden (`sub_8B12C098`, Tabelle `0x8B1F218C`, 1-basiert) - Modell an drei
   Registern und zwei Zuständen unabhängig bestätigt.
-* **22:07** K2: `g_irq_to_swint_table` mit Klartextnamen (`VIncap`, `VIncap_1`, `AFBD`); Stock-DTS geprüft —
+* **22:07** K2: `g_irq_to_swint_table` mit Klartextnamen (`VIncap`, `VIncap_1`, `AFBD`); Stock-DTS geprüft -
   ARM-seitig keine Capture-Unterbrechung.
 * **22:09** K3: Zustandsautomat, `PushSignalToMemoryAgent`, `update_onoff`, `sub_8B10881C`,
   `ApplyNewSource` dekompiliert.
@@ -104,7 +104,7 @@ Alle drei Messungen sind **lesend** an den INCAP-Registern (Nachtplan Regel 6: `
 und schreiben den Descriptor **höchstens einmal pro Boot**. Reihenfolge frei; B1 und B3 kosten je einen
 Kaltstart, B2 zwei.
 
-### B1 — Polarität von `0x06940824` Bit 31 gegen die Farbe prüfen (1 Kaltstart, ~4 min)
+### B1 - Polarität von `0x06940824` Bit 31 gegen die Farbe prüfen (1 Kaltstart, ~4 min)
 
 Belegt werden soll: Bit 31 = 1 heißt „ICSC rechnet" (Capture liefert YUV), Bit 31 = 0 heißt Bypass
 (Capture liefert die RGB-artigen Ebenen aus doku/76 §12.2).
@@ -129,10 +129,10 @@ ssh root@192.168.8.141 'python3 /root/chroma_stat.py'        # Erwartung: Cb/Cr 
 
 Auswertung: `grep -E '^0x0694(0824|084c|0400|0928|0968)' b1_vor.txt b1_nach.txt`.
 Erwartet `0x824`: `0x0000000b → 0x8000000b`, `0x84C` unverändert `0x04000c00`, `0x400`: `0x21 → 0x61`.
-**Die Aussage steht und fällt mit `chroma_stat.py` vor dem Descriptor** — misst es dort schon YUV um 128,
+**Die Aussage steht und fällt mit `chroma_stat.py` vor dem Descriptor** - misst es dort schon YUV um 128,
 ist die Polarität umgekehrt und Abschnitt 2.2 von doku/84 muss korrigiert werden.
 
-### B2 — Reicht ein Quellenwechsel als Neuanstoß? (2 Kaltstarts, ~10 min)
+### B2 - Reicht ein Quellenwechsel als Neuanstoß? (2 Kaltstarts, ~10 min)
 
 Belegt werden soll: ob `SetSource` auf eine andere Quelle und zurück die Gruppe `V_INCAP` erneut ausführt
 (dann gäbe es einen Firmware-eigenen Reset-Pfad und Paket D/E müsste nicht mit „einmal pro Boot" leben).
@@ -155,8 +155,8 @@ python3 analyse/hdmi-seq/wandcheck.py shot b2_bild2
 ```
 
 Auswertung:
-1. `diff <(grep '^0x0694' b2_gut.txt) <(grep '^0x0694' b2_zurueck.txt)` — kehren `0x400`, `0x824`, `0x84C`,
-   `0x8C0/8C8`, `0x800–0x820` auf die Werte von `b2_gut` zurück?
+1. `diff <(grep '^0x0694' b2_gut.txt) <(grep '^0x0694' b2_zurueck.txt)` - kehren `0x400`, `0x824`, `0x84C`,
+   `0x8C0/8C8`, `0x800-0x820` auf die Werte von `b2_gut` zurück?
 2. Wandern `0x05600320/0x324` in `b2_zurueck` noch (zweimal `dump_state.py` im Abstand von 2 s und die beiden
    Zeilen vergleichen)?
 3. Zeigt das elog `EnterWaitingWindowsReady` / `EnterWaitingPipeLineReady` / `wce_cap ... WriteReg` erneut?
@@ -165,10 +165,10 @@ Ergebnis „ja" ⇒ Paket D/E darf den Descriptor beim Plane-Enable erneut ansto
 Quellenwechsel steht. Ergebnis „nein" ⇒ die Regel „genau einmal pro Boot" bleibt und gehört als
 Zustandsvariable in den Treiber.
 
-### B3 — Kann `0x0694084C` überhaupt auf `0x0C000C00` kippen? (1 Kaltstart, ~5 min, **verbraucht** den Descriptor)
+### B3 - Kann `0x0694084C` überhaupt auf `0x0C000C00` kippen? (1 Kaltstart, ~5 min, **verbraucht** den Descriptor)
 
 Belegt werden soll die Modellvorhersage: `0x0C000C00` verlangt Descriptor-`color_format` ∈ {3, 5, 6}.
-**Nur ausführen, wenn ein Kaltstart-Slot übrig ist — der Descriptor wird dabei mit einem Wert ≠ 0
+**Nur ausführen, wenn ein Kaltstart-Slot übrig ist - der Descriptor wird dabei mit einem Wert ≠ 0
 geschrieben, das Bild bleibt danach aus, und die Firmware ist bis zum nächsten Kaltstart verstellt.**
 Der Lauf beantwortet zugleich, ob die 0x84C-Änderung aus doku/76 §12.4 wirklich vom Descriptor kam.
 
@@ -190,6 +190,6 @@ Zuordnung nicht eindeutig.
 
 ### Nicht angefragt, aber nützlich, falls ohnehin ein Abzug entsteht
 
-`dump_state.py` sollte den INCAP-Bereich `0x06940800–0x069409FF` und `0x06940400–0x069404FF` **vollständig**
-enthalten (er tut es offenbar schon) und zusätzlich AFBD `0x05600300–0x0560036F` — dann lässt sich
+`dump_state.py` sollte den INCAP-Bereich `0x06940800-0x069409FF` und `0x06940400-0x069404FF` **vollständig**
+enthalten (er tut es offenbar schon) und zusätzlich AFBD `0x05600300-0x0560036F` - dann lässt sich
 `0x05600328`/`0x05600368` (der W1C-Interruptstatus, den `ge2d_dev.ko` bedient) mitbeobachten.

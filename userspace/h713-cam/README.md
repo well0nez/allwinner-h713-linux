@@ -1,4 +1,4 @@
-# h713-cam — die interne Kamera ansprechen
+# h713-cam - die interne Kamera ansprechen
 
 Ein Skript, Python 3, ohne Abhängigkeiten. Realtek `0bda:5803` „Generic HD
 camera", UVC, an USB-Port 1 (VBUS über PL3). Ein Format: **YUYV 4:2:2,
@@ -16,7 +16,7 @@ h713-cam grab /tmp/x.ppm --warm 30
 Der Geräteknoten wird **gesucht**, nicht geraten: `/dev/video2` ist die Kamera
 nur, weil Cedrus (`video0`) und HDMI-RX (`video1`) vorher geladen wurden. Das
 Skript geht über `/sys/class/video4linux/*/name` und nimmt den Knoten mit
-`VIDEO_CAPTURE` — der zweite mit demselben Namen ist der Metadatenknoten
+`VIDEO_CAPTURE` - der zweite mit demselben Namen ist der Metadatenknoten
 derselben Kamera, kein zweites Gerät. `--dev` übersteuert.
 
 Namen für `get`/`set` dürfen verkürzt sein (`exposure`, `bright`); ist der
@@ -37,7 +37,7 @@ Gemessen 11.09.2026, Beleg `analyse/beamer-cam/README.md` und `foto-e313.png`.
 
 Das Release-Rootfs trägt nichts davon (`packages.txt`: „kein Paket für alle
 Fälle"). PNG entsteht aus `zlib` der Standardbibliothek, die YUYV→RGB-Rechnung
-ist BT.601 in reinem Python — auf dem A53 einige Sekunden für 640×480, dafür
+ist BT.601 in reinem Python - auf dem A53 einige Sekunden für 640×480, dafür
 läuft es überall, wo `python3` liegt.
 
 ## Herkunft
@@ -46,5 +46,5 @@ Zusammengelegt am 12.09.2026 aus `analyse/beamer-cam/{camprobe,camset,camgrab}.p
 Die Originale bleiben dort als Messbeleg. Neu gegenüber den dreien: die
 Gerätesuche, `controls`, Namen statt nur IDs, PNG.
 
-Was die Kamera **tun** soll (Autofokus wie Stock, nur mit Testbild — siehe
+Was die Kamera **tun** soll (Autofokus wie Stock, nur mit Testbild - siehe
 `h713-focus/README.md`), ist eine eigene Aufgabe nach dem Release.

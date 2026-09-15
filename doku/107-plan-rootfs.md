@@ -1,8 +1,8 @@
-# Plan 107 — das Rootfs für v0.1
+# Plan 107 - das Rootfs für v0.1
 
 **Status: Plan, 10.09.2026.** Gehört zu [`105`](105-plan-release.md) R1. Marcos Vorgabe vom 09.09.: das Netboot-Root ist als
 Basissystem zu groß, für v0.1 ein schlankes Rootfs bauen, Bauskript ins Repo. Entscheidungen aus dem Gespräch vom 10.09. sind in §3
-und §6 eingearbeitet. Das Layout, in das dieses Rootfs geschrieben wird, steht in [`109`](109-plan-layout-v3.md) — dort ist `hy310-rootfs` **7,15 GiB**
+und §6 eingearbeitet. Das Layout, in das dieses Rootfs geschrieben wird, steht in [`109`](109-plan-layout-v3.md) - dort ist `hy310-rootfs` **7,15 GiB**
 groß und es gibt keine getrennte Datenpartition mehr. Die Vorarbeit aus [`108`](108-plan-vendordaten.md) ist am Gerät bewiesen (§7).
 
 ## 1. Ausgangslage, gemessen
@@ -21,7 +21,7 @@ groß und es gibt keine getrennte Datenpartition mehr. Die Vorarbeit aus [`108`]
 
 614 Pakete. Die größten: `libllvm19` 118 MiB, `gcc-14-aarch64-linux-gnu` 60 MiB, `libicu76` 37 MiB, `mesa-libgallium` 33 MiB,
 `libgtk-3-common` 30 MiB, dazu GStreamer, ONNX, ffmpeg. Das ist cstengers Video-Runtime plus Entwicklerwerkzeug aus
-`mainline/tools/rootfs/build.sh` (`VIDEO_RUNTIME_PACKAGES`, `DEV_PACKAGES`) — für den Beamer ohne Funktion.
+`mainline/tools/rootfs/build.sh` (`VIDEO_RUNTIME_PACKAGES`, `DEV_PACKAGES`) - für den Beamer ohne Funktion.
 
 **Zwei Drittel sind Ballast, ein Drittel ist fremder Zweck.** Das eigentliche Betriebssystem ist klein.
 
@@ -35,7 +35,7 @@ groß und es gibt keine getrennte Datenpartition mehr. Die Vorarbeit aus [`108`]
 - **System:** systemd, udev, DHCP über `ifupdown` + `isc-dhcp-client` (das läuft heute so und überlebt den Umzug, S41 §1),
   `openssh-server`, `kmod`, `e2fsprogs`, `alsa-utils`.
 
-**Gemessen am 10.09. (Bau gelaufen, [`S43`](nachtlog/S43-rootfs-bau.md)): 228 MiB** — 154 Pakete, 17 über `minbase` hinaus.
+**Gemessen am 10.09. (Bau gelaufen, [`S43`](nachtlog/S43-rootfs-bau.md)): 228 MiB** - 154 Pakete, 17 über `minbase` hinaus.
 Das Netboot-Root ist 2.938 MiB groß, das Release-Rootfs also **knapp dreizehnmal kleiner**; das Ziel „unter 1 GB" ist weit
 unterschritten. Ausgabe: `hy310-rootfs.tar` (223 MB) und ein ext4-Abbild von 1 GiB, das beim ersten Start auf die volle
 Partition wächst.
@@ -46,7 +46,7 @@ Partition wächst.
 |---|---|
 | WLAN / Bluetooth | **draußen.** Beides ist auf dem aktuellen Kernel ungeprüft; die aic8800-Firmware hat obendrein keine Lizenzangabe (S42). Kein `wpasupplicant`, kein `bluez`, kein `hostapd`, kein `dnsmasq`. In der Matrix als „nicht enthalten, ungetestet". |
 | Zweites Profil `dev` | **nein.** Gebaut wird hier per Cross-Compile (`userspace/h713-tv/Makefile`, Ziel `install-cross`), das Gerät compiliert nichts. Kein `build-essential`, keine `-dev`-Pakete im Abbild. |
-| Zugang | **Autologin bleibt** wie heute auf der seriellen Konsole. `openssh-server` ist dabei; der Installer übernimmt einen Schlüssel, wenn einer angegeben wird. **Kein fest eingebauter Schlüssel im Abbild** — cstengers Skript verlangt `--ssh-key` und schaltet `PasswordAuthentication no`; für ein Release muss der Schlüssel vom Nutzer kommen. |
+| Zugang | **Autologin bleibt** wie heute auf der seriellen Konsole. `openssh-server` ist dabei; der Installer übernimmt einen Schlüssel, wenn einer angegeben wird. **Kein fest eingebauter Schlüssel im Abbild** - cstengers Skript verlangt `--ssh-key` und schaltet `PasswordAuthentication no`; für ein Release muss der Schlüssel vom Nutzer kommen. |
 | Logs / Schreiblast | §4 |
 | Ort des Bauskripts | egal, wird `installer/rootfs/` |
 
@@ -60,20 +60,20 @@ einem Netboot-Root über drei Wochen sind ein Vorgeschmack darauf, was ein Dauer
 ist aber eine Konstruktion aus drei beweglichen Teilen. Für uns reicht weniger, und es ist zugleich strenger:
 
 1. **Journal flüchtig.** `/etc/systemd/journald.conf.d/10-hy310.conf`: `Storage=volatile`, `RuntimeMaxUse=32M`.
-   Das Journal liegt dann in `/run/log/journal`, also tmpfs — die eMMC sieht davon **nichts**. Kein Sicherungsdienst nötig,
+   Das Journal liegt dann in `/run/log/journal`, also tmpfs - die eMMC sieht davon **nichts**. Kein Sicherungsdienst nötig,
    kein zweiter Speicherort, nichts, was beim Herunterfahren schiefgehen kann.
 2. **zram als Swap**, nicht für Logs. `zram0`, zstd, Größe = halber RAM, `vm.swappiness=180`, `page-cluster=0` (die Werte, mit denen
    zram-Swap heute allgemein gefahren wird). Fängt den tmpfs-Druck ab und macht das Gerät bei knappem Speicher träge statt tot.
    **Erledigt 10.09.:** die vier Optionen fehlten im Defconfig; zunächst als Fragment `zram.config` nachgereicht,
    Bau mit `KERNEL_CONFIG=netboot,zram`. Am Gerät gemessen: 461,8 MiB Swap mit zstd, `swappiness=180`, `page-cluster=0`.
    **Korrigiert 11.09.:** die vier Optionen stehen jetzt **im Board-defconfig**, das Fragment ist weg. Als Fragment
-   fehlte zram in jedem Bau ohne `KERNEL_CONFIG` — also ausgerechnet im Auslieferungskernel, während das
+   fehlte zram in jedem Bau ohne `KERNEL_CONFIG` - also ausgerechnet im Auslieferungskernel, während das
    Release-Rootfs die zram-Unit mitbringt. Siehe [`60-offen`](60-offen.md) „Welcher Bau ist der Auslieferungskernel".
 3. **Ein Schalter für die Fehlersuche.** `hy310-logs persistent|volatile` legt `Storage=persistent` und einen Bind-Mount von
-   `/var/log` nach `/data/log` (p6) an. Wer einen Fehler sucht, schaltet um, startet neu, hat Logs über Neustarts hinweg — und
+   `/var/log` nach `/data/log` (p6) an. Wer einen Fehler sucht, schaltet um, startet neu, hat Logs über Neustarts hinweg - und
    schreibt dabei auf die Datenpartition, nicht auf das Wurzeldateisystem.
 4. **`/data` als Verzeichnis im Rootfs** für alles Wachsende: Mitschnitte, Aufnahmen, optionale Logs. Eine eigene Partition dafür ist
-   mit [`109`](109-plan-layout-v3.md) entfallen — das Rootfs hat 7,15 GiB, davon braucht das System unter 350 MiB.
+   mit [`109`](109-plan-layout-v3.md) entfallen - das Rootfs hat 7,15 GiB, davon braucht das System unter 350 MiB.
    `/tmp` und `/var/tmp` sind tmpfs.
 
 Damit ist das Wurzeldateisystem im Betrieb **fast nur-lesend**: es ändern sich Konfiguration und Paketstand, sonst nichts.
@@ -127,7 +127,7 @@ werden), Kernelmodul-Bäume außer dem des mitgelieferten Kernels.
 
 **`systemd-timesyncd` kommt mit.** Ohne gepufferte RTC startet das System 1970. Das ist keine Kleinigkeit: `apt` scheitert an der
 Signaturprüfung, Logs sind unbrauchbar, Dateizeiten lügen, und jede TLS-Verbindung bricht ab. Das Paket wiegt rund 1 MiB und
-stellt die Uhr, sobald Netz da ist. Ohne Netz bleibt es beim Startwert — dann hilft weiterhin nur `date -u -s`.
+stellt die Uhr, sobald Netz da ist. Ohne Netz bleibt es beim Startwert - dann hilft weiterhin nur `date -u -s`.
 
 **`apt` bleibt benutzbar:** Debian-Quellen eingetragen, `ca-certificates` dabei, aber **kein `apt update` beim Bau** (das würde
 Paketlisten von rund 40 MiB einbacken, die am ersten Tag veraltet sind). Ein Beamer, auf dem eine Entwickler-Vorschau nichts
@@ -139,7 +139,7 @@ Ein Pfad, der je nach Leser zwei verschiedene Dinge meint, ist eine Falle, die s
 
 ## 9. Stand 10.09.: gebaut und abgenommen
 
-`analyse/release/arbeit/rootfs/` — `build-rootfs.sh`, `install-projekt.sh`, `packages.txt`, `overlay/` (15 Dateien).
+`analyse/release/arbeit/rootfs/` - `build-rootfs.sh`, `install-projekt.sh`, `packages.txt`, `overlay/` (15 Dateien).
 Der Bau läuft im Container `h713-build` (`mmdebstrap` nachinstalliert, gehört ins Rezept in [`50`](50-befehle.md)).
 
 | | |
@@ -152,9 +152,9 @@ Der Bau läuft im Container `h713-build` (`mmdebstrap` nachinstalliert, gehört 
 **20 Abnahmeprüfungen im Skript, alle grün:** systemd als Init, Autologin auf `ttyS0`, Journal flüchtig und kein
 `/var/log/journal`, zram-Unit verlinkt mit `swappiness=180`, `fstab` mit genau zwei PARTLABEL-Zeilen, `fw_env.config` auf
 `0x500000`, Netz per ifupdown/DHCP, `hy310-logs` ausführbar, `/etc/hy310/tvconfig` leer, `/data` vorhanden, keine
-SSH-Host-Schlüssel und keine apt-Listen im Abbild, signierte Paketquelle — und die Gegenproben: kein Compiler, kein
+SSH-Host-Schlüssel und keine apt-Listen im Abbild, signierte Paketquelle - und die Gegenproben: kein Compiler, kein
 GStreamer, kein `wpa_supplicant`.
 
 **Zwei Dinge waren beim ersten Lauf zu reparieren:** das Auspacken scheiterte im rootless Container an `mknod` für `/dev/*`
-(ausgelassen — der Kernel mountet devtmpfs vor init, und das finale tar schließt `./dev/*` ohnehin aus), und die Abnahme
+(ausgelassen - der Kernel mountet devtmpfs vor init, und das finale tar schließt `./dev/*` ohnehin aus), und die Abnahme
 „kein trusted=yes" stolperte über den eigenen Kommentar in der Paketquelle (prüft jetzt nur Nicht-Kommentarzeilen).

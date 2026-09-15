@@ -1,4 +1,4 @@
-# Boot WiFi hotspot — example config.
+# Boot WiFi hotspot - example config.
 #
 # Copy this to the path named by HOTSPOT_CONF in config/versions.env
 # (default: local/hotspot.conf, which is gitignored so credentials stay out of
@@ -7,7 +7,7 @@
 # wpa_supplicant + the default dnsmasq so the dedicated AP owns wlan0 and DHCP.
 # Remove the file to build an image with no hotspot.
 #
-# Sourced as shell during the build — KEY=value, no spaces around '='.
+# Sourced as shell during the build - KEY=value, no spaces around '='.
 
 HOTSPOT_SSID=my-ssid            # 1-32 chars
 HOTSPOT_PASSPHRASE=change-me    # WPA2, 8-63 chars

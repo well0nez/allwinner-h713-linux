@@ -1,7 +1,7 @@
 # Provenance & licensing
 
 This project integrates several upstream components and third-party work.
-Respect the boundaries below — especially the redistribution ones.
+Respect the boundaries below - especially the redistribution ones.
 
 ## Components (submodules, our GitHub forks)
 
@@ -27,20 +27,20 @@ in the series.
 
 [bootlin/libva-v4l2-request](https://github.com/bootlin/libva-v4l2-request),
 **MIT**, carried as a two-patch series on the pinned head of its unmerged
-**PR #38** rather than vendored — see that directory's README for the base
+**PR #38** rather than vendored - see that directory's README for the base
 commit and why `master` is the wrong starting point.
 
 ## DO NOT REDISTRIBUTE
 
 - **Vendor boot0 / eGON blob** and the U-Boot `H713_EMMC_RECOVERY` tool that
   embeds it (`board/sunxi/h713_recovery.c`, `h713_vendor_boot0.h`). This is
-  proprietary Allwinner code — it stays under the ignored `local/` directory,
+  proprietary Allwinner code - it stays under the ignored `local/` directory,
   is excluded from repository history and the upstreamable series, and must
   not be pushed to public forks.
-- **eMMC backups, BROM dumps, captures** (`local/h713-lab`, ~84 GB) —
+- **eMMC backups, BROM dumps, captures** (`local/h713-lab`, ~84 GB) -
   contain proprietary firmware; never commit or share.
 
 ## Toolchain
 
-Built with LLVM (clang / ld.lld) — no aarch64 GCC required. Verified host-tool
+Built with LLVM (clang / ld.lld) - no aarch64 GCC required. Verified host-tool
 versions are recorded in `config/toolchain.md`.

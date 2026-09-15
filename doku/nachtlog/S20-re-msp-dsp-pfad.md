@@ -1,4 +1,4 @@
-# S20 — Stock-Weg HDMI-Audio → MSP-DSP → DAC (Frage F4)
+# S20 - Stock-Weg HDMI-Audio → MSP-DSP → DAC (Frage F4)
 
 **Agent D, 08.09.2026. Reine statische Analyse** (kein Board, kein Zuspieler, nichts unter `mainline/patches/`
 oder `userspace/`). Quellen: `re/vendor/HY310-DEV/stock_audio_libs/*.so` (arm32), IDA-Arbeitskopien in
@@ -16,23 +16,23 @@ Konvention: **[B]** = belegt (Adresse + Fundstelle), **[V]** = vermutet/abgeleit
 2. **Minimalkette.** `0x0614A000 |= 0x700`, `0x0614A00C = 0x001A5E00` + Bit 24, DSP-Takt `0x00EE`,
    Firmware (724 Paare, Kontrolle `DSP1[0x80FF] != 0 && DSP2[0x80FF] != 0`), globales Enable `0x0002` Bit 15,
    HDMI-Rx ein, I2SIN/I2SOUT konfigurieren, Unmute, Codec `DAC_DPC` Bit 30+29. Klangmodule sind Kür.
-3. **Extraktion.** `re/work/audio/patch_msp.bin` (2896 B — nicht 2892) + entpackte Fassung `patch_msp.txt`.
+3. **Extraktion.** `re/work/audio/patch_msp.bin` (2896 B - nicht 2892) + entpackte Fassung `patch_msp.txt`.
    `sound_preset.bin` und `libmsp_util.so` fehlen im Repo.
 4. **Bypass.** Für den Lautsprecherweg **nein** (belegt); die einzigen DSP-freien Umschalter sind
    „APB statt MSP" für S/PDIF-Out und ARC.
-5. **MIPS.** Nur Mutex-Partner (`0x02031078` / `0x02032078`) — Firmware und Programmierung macht der ARM.
+5. **MIPS.** Nur Mutex-Partner (`0x02031078` / `0x02032078`) - Firmware und Programmierung macht der ARM.
 
 ## 0. Werkzeugstand und Lücken
 
 - IDA-Arbeitskopien: `analyse/ida/db-audio-msp/{libmspsound,libmspdriver}.so.i64` (aus `db-audio-libs/` kopiert),
   dazu die fünf `.so` selbst. Hex-Rays arbeitet auf beiden.
 - **[B] Fehlende Vendor-Dateien.** Zwei für den Stock-Pfad zentrale Artefakte liegen **nicht** im Repo:
-  - `libmsp_util.so` — enthält die gesamte `BP_AUD_*`-Familie (Board-Profil-Zugriff:
+  - `libmsp_util.so` - enthält die gesamte `BP_AUD_*`-Familie (Board-Profil-Zugriff:
     `BP_AUD_IsValidPath`, `BP_AUD_GetMuxDirector`, `BP_AUD_GetPathDirectorActionByIndex`,
     `BP_AUD_GetPathDeviceIndex`, `BP_AUD_GetYBinByIndicator`, `BP_AUD_GetGraph`, `BP_AUD_GetModule`, …).
     In `libmspsound.so` sind alle diese Symbole **UND** (`readelf -sW libmspsound.so | grep BP_AUD`),
     `DT_NEEDED` nennt `libmsp_util.so`.
-  - `sound_preset.bin` — die Board-Profil-Datenbank, aus der `BP_AUD_*` Pfade, Mux-Director-Listen,
+  - `sound_preset.bin` - die Board-Profil-Datenbank, aus der `BP_AUD_*` Pfade, Mux-Director-Listen,
     Modul-Listen und die Y-Code-Blobs (`BP_AUD_GetYBin*`) zieht. `find . -iname 'sound_preset*'` findet nichts.
     Die März-Notiz (`re/notes/AGENT_HANDOFF_AUDIO_MIPS_DSP.md`) führt beide unter
     „Build-Server `/opt/captcha/kernel/stock_audio_libs_full/`" bzw. `/root/sound_preset.bin` auf dem Board.
@@ -76,7 +76,7 @@ tvserver (Quelle/Sink)                                    audio.primary.ares.so
 ```
 
 **[B]** `Thal_Sound_Connect` ist ein dünner Wrapper mit optionaler Umschreibefunktion `pPathHelpRoutine`
-(`Thal_Sound_InstallPathHelper`) und ruft direkt `SlaveRoutine_Thal_Sound_Connect` in `libmspsound.so` auf —
+(`Thal_Sound_InstallPathHelper`) und ruft direkt `SlaveRoutine_Thal_Sound_Connect` in `libmspsound.so` auf -
 **kein RPC, kein `cpu_comm`, kein MIPS**. Belegt durch `readelf -sW`: weder `libmspsound.so` noch
 `libmspdriver.so` noch `libhalsound.so` importieren eine `cpu_comm`-Funktion; der einzige Hardware-Zugriff
 läuft über `Trid_Util_ReadRegWord` / `Trid_Util_WriteRegWord` (aus `libUtility.so`) auf die physischen
@@ -99,7 +99,7 @@ Jeder Aufruf endet in `set_audio_out_effect(dev)`; vorher `Sound_hdmirx_detect_e
 
 | `dev[488]` (**[V]** Ausgangsmodus) | `dev[503]` (**[V]** HDMI-Eingangsformat) | Pfad |
 |---|---|---|
-| 0 | — | **kein Connect** (Log „passthrough") |
+| 0 | - | **kein Connect** (Log „passthrough") |
 | 1 | ≤ 1 (PCM) | **`Sound_Connect(0x89)`** = 137 |
 | 1 | > 1 (Bitstream) | **`Sound_Connect(0x0A)`** = 10 |
 | 2 | ≤ 1 (PCM) | **`Sound_Connect(0x8F)`** = 143 |
@@ -112,7 +112,7 @@ Danach `set_speaker_delay(dev[509], dev[511])`.
 → **Der gesuchte Wert für „HDMI-2-Ton auf den Lautsprecher" ist Pfad `0x89` (137).**
 `0x71` (113) ist der Android-/OTT-Weg (ISTREAM → DSP → DAC), `0x74` (116) ein zweiter Ausgang,
 `0x8F` (143) HDMI auf den zweiten Ausgang, `0x0A` (10) der Bitstream-Durchreichweg.
-Die März-Notiz nennt `Sound_Path_Connect(0x71)` — das ist der **Playback**-Pfad, nicht der HDMI-Eingangspfad.
+Die März-Notiz nennt `Sound_Path_Connect(0x71)` - das ist der **Playback**-Pfad, nicht der HDMI-Eingangspfad.
 
 **[B]** Quellen-Enum: `get_current_input_source()` @0x9124 holt die Quelle über
 `ITvServer::…` und bildet sie mit der Tabelle `dword_7CD8` = `{7,7,1,2,3,7,4,5,7,6,0,1}` ab
@@ -150,10 +150,10 @@ Die März-Notiz nennt `Sound_Path_Connect(0x71)` — das ist der **Playback**-Pf
 `DTVOUT1`, `DECODER1…3`, `DEMOD1…4`, `ADC1`, `ANALOG1`, `BASSMGT`, `TONECONTROL1…3`, `VOICE`, `QPEAK`.
 
 **[B] HDMI-Audio erreicht den DSP als I2S, nicht als S/PDIF.** Beleg: der Name und die Wirkung von
-`MAPI_ADU_CFG_SetHDMIMuteForI2sIn` (DSP `0x8017` Bit 0) — die HDMI-Stummschaltung sitzt am I2S-Eingang —
+`MAPI_ADU_CFG_SetHDMIMuteForI2sIn` (DSP `0x8017` Bit 0) - die HDMI-Stummschaltung sitzt am I2S-Eingang -
 zusammen mit `MAPI_AUD_CFG_Enable_HDMI_Rx` und der Tatsache, dass es im DSP-Modulkatalog **keinen**
 HDMI-Modul­typ gibt, wohl aber `I2SIN1..3`. Die AUDIF-`SPDI1/2` sind die S/PDIF-Empfänger (ARC/optisch),
-nicht der HDMI-Weg. **[V]** HDMI-2 hängt an `I2SIN1` (DSP-Reg `0x12/0x13`) — welcher der drei I2S-Eingänge
+nicht der HDMI-Weg. **[V]** HDMI-2 hängt an `I2SIN1` (DSP-Reg `0x12/0x13`) - welcher der drei I2S-Eingänge
 welchem HDMI-Port entspricht, steht in `sound_preset.bin` und ist statisch nicht auflösbar.
 
 ### 1.5 Datenfluss (Stand der Belege)
@@ -179,7 +179,7 @@ ARM ──► ISTREAM-Ringe (0x06148280 ff.) ──► DSP  (Android-Playback, P
 `daudio_master = 1`, `audio_format = 3`, `tdm_config = 1`, `pcm_lrck_period = 0x20`, `slot_width_select = 0x20`,
 `spk_used = 1`, `speaker_vol = 0x1a`, `gpio-spk`.
 **[B]** `DAC_DPC` (`0x02030000`) Bit 30 = I2S-Quelle wählen, Bit 29 = I2S-Quelle einschalten, Bit 31 = DAC ein,
-Bit 0 = Audio-Hub (`legacy/drivers/audio/snd-soc-sunxi-h713-codec.c`, Zeilen 85–92, 387–412).
+Bit 0 = Audio-Hub (`legacy/drivers/audio/snd-soc-sunxi-h713-codec.c`, Zeilen 85-92, 387-412).
 Unser Port **löscht Bit 29 absichtlich** („Force APB path"), damit die CPU über die FIFO spielt.
 Für den Stock-Weg muss Bit 29 **gesetzt** sein, dann kommt der DAC-Eingang vom I2S-Fenster.
 
@@ -187,7 +187,7 @@ Für den Stock-Weg muss Bit 29 **gesetzt** sein, dann kommt der DAC-Eingang vom 
 
 **[B]** `Global_Sound_Mute(dev)` @0x94F4: `set_codec_speaker_mute(mixer, 0)` → `Sound_Set_Mute(Get_Path(), 1)`.
 `Check_Sound_Unmute(dev)` @0x9490 hebt beides wieder auf, wenn `Audio_mute` und `Lock_mute` beide 0 sind.
-`Sound_Set_Mute(path, mute)` @0x11634 baut eine `Thal_Sound_Set`-Struktur (Pfad, Attribut, Wert) —
+`Sound_Set_Mute(path, mute)` @0x11634 baut eine `Thal_Sound_Set`-Struktur (Pfad, Attribut, Wert) -
 bei `path == 0xFF` wartet es 100 ms und nimmt den aktuellen Pfad.
 `Sound_hdmirx_detect_enable(en)` @0x1170C setzt Attribut `0x2201` (8705) auf 4 (ein) bzw. 5 (aus).
 `Set_Path_In_Prescale(path, val)` @0x10520 setzt die Eingangsvorverstärkung (Ini-Schlüssel `hdmi_prescale = 32`).
@@ -213,16 +213,16 @@ Lautstärkekurve und Mode-Gains kommen aus `audio_config.ini`
 | 6 | `Sound_UserData_Init`, `Sound_EQ_Init`, `Sound_PEQ_Init`, `Sound_DRC_Init`, `Sound_MelodBass_Init`, `Sound_Surround_Init`, `Sound_VolumeCurve_Init` | | Klangeffekte, **für reines Durchreichen entbehrlich** |
 
 `Sound_Path_Init` @0x12198:
-1. `BP_AUD_Init(profil, len)` — `sound_preset.bin` einlesen (aus `libmsp_util.so`)
-2. **`msp_download_sxl()`** — DSP-Firmware (2.4)
+1. `BP_AUD_Init(profil, len)` - `sound_preset.bin` einlesen (aus `libmsp_util.so`)
+2. **`msp_download_sxl()`** - DSP-Firmware (2.4)
 3. Pfad-Bitmap `byte_21950` (0x400 Bit = Pfade 0…1023) nullen
 4. **`MAPI_AUD_Initialization()`** = `Init_Modules()` + `InitAudioGroup()`; `Init_Modules` @0x000130E0 ist
    reine Software-Tabellenanlage und endet mit `Mute_All_Modules()` und
-   **`tdAudioDSPWriteRegMaskWord(0, 0x0002, 0x8000, 0x8000)`** — *DSP-Register `0x0002` Bit 15 = globales Enable* **[B]**
+   **`tdAudioDSPWriteRegMaskWord(0, 0x0002, 0x8000, 0x8000)`** - *DSP-Register `0x0002` Bit 15 = globales Enable* **[B]**
 5. `BP_AUD_GetGraph()` + `MAPI_AUD_CFG_SetDelayLineMode(0x8D00, 0x08910000, &r)` (`DelayLineTimeInit`, sound_path.c:471)
 6. Schleife über `BP_AUD_GetActionByIndex()` → `BH_AUD_DoAction()` (Graph-Grundzustand aus dem Profil)
 
-### 2.2 Pflicht: `sound_lowlevel_init()` — die einzigen direkten MMIO-Schreibzugriffe **[B]**
+### 2.2 Pflicht: `sound_lowlevel_init()` - die einzigen direkten MMIO-Schreibzugriffe **[B]**
 
 ```
 r = read32(0x0614A000);  write32(0x0614A000, r | 0x00000700);
@@ -233,7 +233,7 @@ MAPI_AUD_CFG_Enable_HDMI_Rx()            -> DSP 0x8034, Maske 0x90,   Wert 0x10
 MAPI_ADU_CFG_SetHDMIMuteForI2sIn(1)      -> DSP 0x8017, Maske 0x01,   Wert 0x01   (stumm während Init)
 ```
 
-`0x0614A000` und `0x0614A00C` sind genau die Register, die unser Board bisher als 0 liest (Plan §1) —
+`0x0614A000` und `0x0614A00C` sind genau die Register, die unser Board bisher als 0 liest (Plan §1) -
 `TRID_AUDIO_TOP_CLK_CTL` / `_CFG` im Legacy-Port. **Das ist der Einstiegspunkt: ohne diese beiden Schreibzugriffe
 antwortet die DSP-Mailbox nicht.**
 
@@ -250,7 +250,7 @@ antwortet die DSP-Mailbox nicht.**
 | `0x02032078` | SW_REG2, MIPS-Seite des Mutex: `0x55` = MIPS hält |
 
 `aud_dsp1_write_reg` @libmspdriver 0x0000CED8 baut den Wert mit `pkhbt r8, r1, r0, lsl #16`
-(Rohdisassembly, Datei-Offset = VA − 0x1000) — **Hex-Rays zeigt die Adresse fälschlich nicht**, März hatte recht.
+(Rohdisassembly, Datei-Offset = VA − 0x1000) - **Hex-Rays zeigt die Adresse fälschlich nicht**, März hatte recht.
 Timeout 0xC351 (= 50001 Zeiteinheiten OSA ≈ 5 s), danach wird trotzdem geschrieben.
 `WaitDSPFree` @0x0001F0A5 (Thumb, also 0x1F0A4) + Freigabe `write32(0x02031078, 0xAA)` am Ende
 jedes `tdAudioDSPWriteRegWord`/`…ReadRegWord`.
@@ -267,7 +267,7 @@ Adressraum-Verteilung in `tdAudioDSPWriteRegWord(dsp_id, addr, val)` @0x0001EE08
 | `0x0000…0x7FFF` | `dsp_id = 0` → DSP1; `= 1` → DSP2; sonst Demodulator |
 | `0x8000…0xFEFF` | 8-Bit-Variante |
 
-### 2.4 Pflicht: `msp_download_sxl()` **[B]** — libmspsound @0x0000EF10
+### 2.4 Pflicht: `msp_download_sxl()` **[B]** - libmspsound @0x0000EF10
 
 ```
 1  tdAudioDSPWriteRegWord(0, 0xFFF7, 0x0000)       // DSP-Reset
@@ -283,7 +283,7 @@ Adressraum-Verteilung in `tdAudioDSPWriteRegWord(dsp_id, addr, val)` @0x0001EE08
    Fehler, wenn b == 0 ODER c == 0                  // -> "Download patch failed"
 ```
 
-**Korrektur zur März-Notiz:** es sind **724 Paare / 2896 Byte**, nicht 723/2892 — das ELF-Symbol
+**Korrektur zur März-Notiz:** es sind **724 Paare / 2896 Byte**, nicht 723/2892 - das ELF-Symbol
 `patch_msp` hat `st_size = 2896` (`readelf -sW libmspsound.so`), und die Schleife läuft einschließlich
 `o = 0xB4C`. Die Erfolgskontrolle ist **`DSP1[0x80FF] != 0 && DSP2[0x80FF] != 0`**; `DSP[0xFFF7]` wird nur
 gelesen und verworfen. Gesamtdauer ≥ 200 ms + 724 ms Wartezeit ≈ 1 s.
@@ -296,7 +296,7 @@ Kopfprüfung `*(ybin+20) >= 0x29` und `(size−40) % 4 == 0` → `MAPI_AUD_Init_
 `"Acoustics_Calibrator"`, `MAPI_AUD_Init_AC_Calibrator_DownLoad(0x9D00, …)`, danach
 `MAPI_AUD_SetAcousticsCalibratorBypassGain(0x9D00, 0x7FFF)` / `…ActiveGain(0x9D00, 0x7FFF)` /
 `…State(0x9D00, 0)`. **Alle vier Module hängen an `sound_preset.bin` und sind für reines Durchreichen
-nicht nötig** — sie sind EQ/Surround/Kalibrierung.
+nicht nötig** - sie sind EQ/Surround/Kalibrierung.
 
 ### 2.5 Vorschlag Minimalkette (Pflicht → Kür)
 
@@ -320,12 +320,12 @@ nicht nötig** — sie sind EQ/Surround/Kalibrierung.
 | 13 | Codec: `DAC_DPC` (0x02030000) Bit 31 ein, **Bit 30 und Bit 29 setzen**, Bit 0 (Hub), HP-Amp ein; I2S-Fenster `0x02031000` gemäß DT (`daudio_master=1`, `audio_format=3`, `slot_width=32`, `pcm_lrck_period=32`) | | Ton |
 
 **Kür / entbehrlich:** `AC_Calibrator`, `SRS_TSHD4`, `STEREO_PEQ`, `DTE_Stereo`, `Sound_EQ/PEQ/DRC/
-MelodBass/Surround/VolumeCurve_Init`, `SetDelayLineMode`, `Sound_UserData_Init` — alle brauchen
+MelodBass/Surround/VolumeCurve_Init`, `SetDelayLineMode`, `Sound_UserData_Init` - alle brauchen
 `sound_preset.bin`, keiner ist für den Signalweg nötig.
 
 **Warnung zu Erfolgskontrollen [B]:** `func_get_i2sin_status` @0x00010F9A liest **nur ein Software-Feld**
 (`*(modul+132)`), fragt also *keine* Hardware. Wer „HDMI-Audio erkannt" messen will, kann sich darauf
-**nicht** stützen — dafür taugen nur die HDMI-RX-/AUDIF-Register (Frage F2/F3).
+**nicht** stützen - dafür taugen nur die HDMI-RX-/AUDIF-Register (Frage F2/F3).
 
 ---
 
@@ -334,7 +334,7 @@ MelodBass/Surround/VolumeCurve_Init`, `SetDelayLineMode`, `Sound_UserData_Init` 
 | Datei | Größe | SHA-256 | Herkunft |
 |---|---|---|---|
 | `re/work/audio/patch_msp.bin` | 2896 B | `8e31db199e0078d142f622436ff0b7249b333dbb6df8ec3fbabc0d8fea6ea0c5` | ELF-Symbol `patch_msp` (`st_value = 0x0000B644`, `st_size = 2896`, Sektion 12 = `.rodata`) aus `re/vendor/HY310-DEV/stock_audio_libs/libmspsound.so` (SHA-256 `61f3494…f237e8c4`). In `.rodata` ist `sh_addr == sh_offset`, also Datei-Offset = `0xB644`. |
-| `re/work/audio/patch_msp.txt` | 719 Zeilen | — | Entpackte Klartextfassung derselben Daten (Blockstruktur + alle 724 Register-Paare), von uns erzeugt |
+| `re/work/audio/patch_msp.txt` | 719 Zeilen | - | Entpackte Klartextfassung derselben Daten (Blockstruktur + alle 724 Register-Paare), von uns erzeugt |
 
 Beide Dateien liegen **unter `re/`**; außerhalb von `re/` wurden keine Vendor-Binärdaten abgelegt.
 
@@ -353,7 +353,7 @@ Danach `len` Byte = `len/4` Paare `(BE16 DSP-Adresse, BE16 Wert)`.
 Der Nachweis, dass die Deutung stimmt, kommt aus zwei unabhängigen Quellen: (a) die Blockkette
 konsumiert **genau** 2896 Byte ohne Rest, (b) `msp_download_sxl` schreibt beim Modul-Download exakt
 dieselben Kopfpaare von Hand (`tdAudioDSPWriteRegWord(0, 0x4D53, 0x504D)`, `(0, 0x0000, 0x0100)`,
-`(0, 0x0000, 0x0400)` — Magic, DSP1, Länge 4).
+`(0, 0x0000, 0x0400)` - Magic, DSP1, Länge 4).
 
 | Block | Offset | Ziel | Länge | Paare | Inhalt |
 |---|---|---|---|---|---|
@@ -370,18 +370,18 @@ Damit ist auch klar, **warum** die Erfolgskontrolle `0x80FF` auf *beiden* DSPs p
 genau dieses Flag, je einmal pro Kern. Der eigentliche DSP-Code steckt in den Blöcken 4 (DSP2, 1128 B)
 und 5 (DSP1, 1416 B); `FFF9` ist offenbar das Ladeadress-/Bankregister.
 
-### 3.2 `sound_preset.bin` — **nicht vorhanden** [B]
+### 3.2 `sound_preset.bin` - **nicht vorhanden** [B]
 
 `find . -iname 'sound_preset*'` findet im ganzen Repo nichts, ebenso wenig `libmsp_util.so`.
 Alle `BP_AUD_*`-Symbole sind in `libmspsound.so` **UND**; `DT_NEEDED` verweist auf `libmsp_util.so`.
 `find re/vendor/HY310/extracted/vendor_a/etc -iname '*audio*' -o -iname '*sound*'` liefert nur
-`tvconfig/audio_config.ini` (Lautstärkekurve, Mode-Gains, PEQ/DRC/AVC/Prescale je Quelle — HDMI1/2/3
+`tvconfig/audio_config.ini` (Lautstärkekurve, Mode-Gains, PEQ/DRC/AVC/Prescale je Quelle - HDMI1/2/3
 eigene Abschnitte) und `tvconfig/portmap.cfg` (HDMI1/2/3 = Port 1/2/3).
 
 **Was ohne diese beiden Dateien fehlt:** die Zuordnung Pfadnummer → Modul-/Mux-Liste (also der Inhalt
 von Pfad `0x89`), die YBin-Blobs der vier Klangmodule, und die Zuordnung „HDMI-Port → I2SIN1/2/3".
 **Was trotzdem da ist:** sämtliche Modul-Deskriptoren mit ihren DSP-Registern sind in `libmspdriver.so`
-**einkompiliert** (`Init_Module_*`, `mod[]` @`.data 0x00023968`) — die Registeradressen für Format,
+**einkompiliert** (`Init_Module_*`, `mod[]` @`.data 0x00023968`) - die Registeradressen für Format,
 Enable, Prescaler, Mute und Lautstärke jedes Moduls lassen sich also auch ohne `sound_preset.bin`
 rekonstruieren; nur die *Verdrahtung* fehlt.
 
@@ -394,13 +394,13 @@ der Verdrahtung per Registerdump angewiesen.
 
 ## 4. Gibt es einen DSP-losen Bypass?
 
-**Kurz: für den Lautsprecherweg nein — belegt. Für den Capture-Ring: sehr wahrscheinlich auch nein,
+**Kurz: für den Lautsprecherweg nein - belegt. Für den Capture-Ring: sehr wahrscheinlich auch nein,
 aber das ist die eine Stelle, die ein Messkriterium braucht.**
 
 ### 4.1 Was belegt ist
 
 1. **[B] Die einzigen Quellumschalter im Bridge/AUDIF, die den DSP umgehen können, sind
-   „APB" statt „MSP" — und nur für S/PDIF-Ausgang und ARC:**
+   „APB" statt „MSP" - und nur für S/PDIF-Ausgang und ARC:**
    - `TRID_ARC_SRC = 0x06E00020`, Bit 0: `0` = **APB**, `1` = **MSP**
      (`legacy/drivers/audio/bridge/audio_bridge_pcm.c`, `trid_arc_source_texts[] = {"APB","MSP"}`,
      `trid_arc_source_put`).
@@ -418,7 +418,7 @@ aber das ist die eine Stelle, die ein Messkriterium braucht.**
 
 3. **[B] Der AUDBRG ist die Speicherbrücke des DSP, nicht ein eigener Datenpfad.**
    `trid_ostream_config` (`audio_bridge_if.c:957`) programmiert nur Ring-Geometrie
-   (`START/END/STEP/CFG` mit `cfg = (ch<<8) | (breite<<11)`), `STREAM_SYNC` (`0x06148390`) und die IRQ-Maske —
+   (`START/END/STEP/CFG` mit `cfg = (ch<<8) | (breite<<11)`), `STREAM_SYNC` (`0x06148390`) und die IRQ-Maske -
    **es gibt kein Quellen-Auswahlfeld**. Die Zuordnung „OSTREAM0 ↔ SPDI1, OSTREAM1 ↔ SPDI2"
    in `trid_capture_iface` ist eine Treiberkonvention des Legacy-Ports, kein Registerbit.
 
@@ -447,7 +447,7 @@ Nach dem Einschaltrezept aus F1, bei laufendem HDMI-Ton, **ohne** jede DSP-Progr
 `OSTREAM0_PTR` (`0x06148108`) bzw. `OSTREAM1_PTR` (`0x06148148`) mehrfach lesen.
 *Bewegt sich der Zeiger* → es gibt einen DSP-losen Capture-Weg, Stufe 1 trägt.
 *Bleibt er stehen* → auch Capture braucht den DSP, und Stufe 1 muss um die Minimalkette aus §2.5
-Schritte 1–7 erweitert werden (Firmware laden, globales Enable, HDMI-Rx ein — aber ohne Graph und
+Schritte 1-7 erweitert werden (Firmware laden, globales Enable, HDMI-Rx ein - aber ohne Graph und
 ohne Module). Positivkontrolle: derselbe Test mit vorher geladener Firmware.
 
 ---
@@ -462,14 +462,14 @@ ohne Module). Positivkontrolle: derselbe Test mit vorher geladener Firmware.
    schreibt `0x55` nach `0x02031078`, arbeitet, schreibt `0xAA`. **Der MSP-DSP ist ein eigener
    Coprozessor neben der MIPS-Display-CPU, kein Teil von ihr.**
 2. **[B] Das Laden der DSP-Firmware macht die ARM-Seite**, Byte für Byte über die Mailbox
-   `0x0614400C` — `patch_msp` liegt in einer ARM-Userspace-Bibliothek, nicht in `display.bin`.
+   `0x0614400C` - `patch_msp` liegt in einer ARM-Userspace-Bibliothek, nicht in `display.bin`.
 3. **[V] Der „MIPS App Ready"-Blocker von März war ein Mutex-/Verfügbarkeitsproblem, kein
    Firmware-Ladeproblem.** Wenn der MIPS hängt oder `0x02032078` auf `0x55` stehen bleibt, blockiert
    `WaitDSPFree` und alle DSP-Schreibzugriffe laufen in ihr 5-s-Timeout. Da unsere MIPS-App
-   inzwischen läuft (cpu_comm 4/4, RPCs, Rückrufe — doku/97), entfällt dieser Blocker.
+   inzwischen läuft (cpu_comm 4/4, RPCs, Rückrufe - doku/97), entfällt dieser Blocker.
 4. **[B, aus doku/100 §1] Für den HDMI-Zulauf bleibt die MIPS-Firmware zuständig:**
    `THDMIRx_TV303_Audio_Driver.cpp` in `display.bin` rechnet die APLL aus N/CTS, schaltet
-   `HdmiRx_AEC_Enable` und die ARC-Pfade. Der DSP sieht davon nur „I2S kommt an" — das ist die
+   `HdmiRx_AEC_Enable` und die ARC-Pfade. Der DSP sieht davon nur „I2S kommt an" - das ist die
    Schnittstelle zwischen F2 (MIPS) und F4 (DSP).
 
 ---
@@ -478,10 +478,10 @@ ohne Module). Positivkontrolle: derselbe Test mit vorher geladener Firmware.
 
 | # | Punkt | Wer |
 |---|---|---|
-| 1 | `sound_preset.bin` und `libmsp_util.so` fehlen im Repo — ohne sie ist Pfad `0x89` nicht in Modul-/Mux-Listen auflösbar | Beschaffung (Stock-Android `/vendor/`, Build-Server, Board `/root/`) |
+| 1 | `sound_preset.bin` und `libmsp_util.so` fehlen im Repo - ohne sie ist Pfad `0x89` nicht in Modul-/Mux-Listen auflösbar | Beschaffung (Stock-Android `/vendor/`, Build-Server, Board `/root/`) |
 | 2 | Welcher der drei I2S-Eingänge (`0x12/0x14/0x16`) hängt an HDMI-2? | Registerdump unter Stock oder `sound_preset.bin` |
-| 3 | Bewegt sich `OSTREAM_PTR` ohne DSP? (Kriterium §4.3) — entscheidet über Stufe 1 des Plans | A0/F3 |
-| 4 | Die Port-Deskriptoren in `libmspdriver.data` (z. B. `I2SIN1_CPOUT` @0x000265AC, Schrittweite 88, Feld +4 = DSP-Register, +8 = Maske, +12 = Port-ID) systematisch auslesen — damit ließe sich die Verdrahtung auch ohne Profil nachbauen | Folgeauftrag RE |
-| 5 | `0x0614A00C = 0x001A5E00` und `0x0614A000 |= 0x700` — Bedeutung der Felder (Teiler? PLL-Wahl?), Abgleich mit dem CCU-Befund aus F1/S17 | S17 + Board |
+| 3 | Bewegt sich `OSTREAM_PTR` ohne DSP? (Kriterium §4.3) - entscheidet über Stufe 1 des Plans | A0/F3 |
+| 4 | Die Port-Deskriptoren in `libmspdriver.data` (z. B. `I2SIN1_CPOUT` @0x000265AC, Schrittweite 88, Feld +4 = DSP-Register, +8 = Maske, +12 = Port-ID) systematisch auslesen - damit ließe sich die Verdrahtung auch ohne Profil nachbauen | Folgeauftrag RE |
+| 5 | `0x0614A00C = 0x001A5E00` und `0x0614A000 |= 0x700` - Bedeutung der Felder (Teiler? PLL-Wahl?), Abgleich mit dem CCU-Befund aus F1/S17 | S17 + Board |
 | 6 | `MAPI_AUD_CFG_SetDelayLineMode(0x8D00, 0x08910000)`: Modul-ID `0x8D00` und Moduswort `0x08910000` sind noch unentschlüsselt | niedrige Priorität |
-| 7 | Codec-Seite: unser Port löscht `DAC_DPC` Bit 29 („Force APB path"). Für den Stock-Weg muss Bit 29 gesetzt und das I2S-Fenster `0x02031000` konfiguriert werden — Wechselwirkung mit cstengers Patches `0082`–`0086` prüfen | A3 |
+| 7 | Codec-Seite: unser Port löscht `DAC_DPC` Bit 29 („Force APB path"). Für den Stock-Weg muss Bit 29 gesetzt und das I2S-Fenster `0x02031000` konfiguriert werden - Wechselwirkung mit cstengers Patches `0082` - `0086` prüfen | A3 |

@@ -1,4 +1,4 @@
-# S44 — U-Boot über FEL starten (H713 / HY310)
+# S44 - U-Boot über FEL starten (H713 / HY310)
 
 Stand: 10.09.2026, Messungen am Gerät (QZ713DF_A1) über `mainline/external/sunxi-tools/sunxi-fel`.
 Es wurde **nichts auf die eMMC geschrieben**; alle Eingriffe sind flüchtig (SRAM/DRAM/Register).
@@ -10,10 +10,10 @@ Kratzbereich kollidiert nicht mit dem SPL-Stapel, das DRAM ist einwandfrei und B
 byteidentisch an der richtigen Stelle. Übrig bleibt genau ein ungeklärter Schritt: der **zweite**
 RMR-Sprung, den `sunxi-fel` ausführt, nachdem der SPL nach FEL zurückgekehrt ist.
 
-Zusätzlich gefunden: ein **Bus-Hänger** — ein Lesezugriff auf `0x05000000` (H616-UART-Basis) friert
+Zusätzlich gefunden: ein **Bus-Hänger** - ein Lesezugriff auf `0x05000000` (H616-UART-Basis) friert
 den SoC ein. Der H713 hat dort kein Peripheriegerät.
 
-## 1. Verdächtiger 1 — RVBAR-Auswahl: widerlegt
+## 1. Verdächtiger 1 - RVBAR-Auswahl: widerlegt
 
 `soc_info.c` kennt für den H713 `rvbar_reg = 0x09010040` und `rvbar_reg_alt = 0x08100040`,
 `fel.c:1105` wählt anhand von `ver_reg & 0xff`.
@@ -35,7 +35,7 @@ Schreib-Rücklese-Test:
 
 Drei unabhängige Belege stimmen überein:
 
-1. U-Boot macht es identisch — `arch/arm/mach-sunxi/rmr_switch.S:69` liest `SUNXI_SRAMC_BASE + 36`
+1. U-Boot macht es identisch - `arch/arm/mach-sunxi/rmr_switch.S:69` liest `SUNXI_SRAMC_BASE + 36`
    (= `0x03000024`), `ands r0, r0, #0xff`, und nimmt bei ungleich null
    `CONFIG_SUNXI_RVBAR_ALTERNATIVE`. Kconfig setzt das für `MACH_SUN50I_H713` auf `0x08100040`.
 2. Der Rücklesetest oben.
@@ -46,7 +46,7 @@ Drei unabhängige Belege stimmen überein:
 
 → Hier liegt der Fehler nicht.
 
-## 2. Verdächtiger 2 — Kratzbereich kollidiert mit SPL-Stapel: widerlegt
+## 2. Verdächtiger 2 - Kratzbereich kollidiert mit SPL-Stapel: widerlegt
 
 `hexdump 0x121500` vor und nach dem SPL-Lauf, in einer FEL-Sitzung:
 
@@ -58,7 +58,7 @@ nach dem SPL:  00121500: 10 0f 11 ee 00 00 8f e5 1e ff 2f e1 38 08 c5 00
                00121530: cc cc ... (ab hier unberührt)
 ```
 
-Das ist **sunxi-fels eigener** Stackinfo-Thunk, kein SPL-Inhalt — gut erkennbar an den
+Das ist **sunxi-fels eigener** Stackinfo-Thunk, kein SPL-Inhalt - gut erkennbar an den
 zurückgeschriebenen Ergebnissen `00 54 10 00` (= `sp_irq=0x105400`) und `00 03 12 00` (= `sp=0x120300`).
 Ab `0x121530` steht weiterhin `cc`. Der SPL fasst `0x121500` nicht an; sein Stapel (`CONFIG_SPL_STACK=0x120000`)
 und der BROM-Stapel (`sp=0x120300`) wachsen nach unten und erreichen die Adresse nie.
@@ -105,13 +105,13 @@ plat/allwinner/sun50i_h713/include/sunxi_mmap.h:34:  SUNXI_UART0_BASE  0x0250000
 Einzige gebaute TF-A-Plattform ist `sun50i_h713`; `build/out/bl31.bin` ist byteidentisch mit dem
 BL31 im FIT. BL31 spricht also die richtige UART an (siehe §6).
 
-## 6. Nebenbefund: `0x05000000` hängt den Bus auf — Vorsicht
+## 6. Nebenbefund: `0x05000000` hängt den Bus auf - Vorsicht
 
 Der H713 folgt beim Peripherie-Layout **nicht** dem H616, sondern eher D1/R329:
 
 ```
 UART0 = 0x02500000   (H713, laut DTS und TF-A-Plattform)
-UART0 = 0x05000000   (H616 — auf dem H713 NICHT vorhanden)
+UART0 = 0x05000000   (H616 - auf dem H713 NICHT vorhanden)
 ```
 
 Am Gerät gemessen, `hexdump 0x02500000 0x40` nach dem SPL-Lauf:
@@ -121,7 +121,7 @@ Am Gerät gemessen, `hexdump 0x02500000 0x40` nach dem SPL-Lauf:
 02500010: 03 00 00 00 60 00 00 00 00 00 00 00 00 00 00 00
 ```
 
-Also FIFO aktiv (`0xc1`), `LCR = 0x03` (8N1), `MCR = 0x03`, **`LSR = 0x60` (THRE|TEMT)** — eine
+Also FIFO aktiv (`0xc1`), `LCR = 0x03` (8N1), `MCR = 0x03`, **`LSR = 0x60` (THRE|TEMT)** - eine
 lebende, konfigurierte UART. Das ist die Konsole.
 
 Ein `hexdump 0x05000000` im selben Aufruf endete dagegen mit `usb_bulk_recv() ERROR -7` und der
@@ -134,7 +134,7 @@ einen Teil der früher beobachteten „Gerät hängt"-Fälle.
 Alles auf dem Weg bis zum Sprung ist nachgewiesen korrekt. Der einzige ungemessene Schritt ist der
 **zweite RMR**: Der erste (im SPL-`boot0`-Stub, aus dem BROM-Zustand heraus) funktioniert
 beweisbar. Der zweite wird von `sunxi-fel` ausgelöst, **nachdem** der SPL über `return_to_fel()`
-aus AArch64 nach AArch32 zurückgekehrt ist — also aus einem anderen Prozessorzustand heraus.
+aus AArch64 nach AArch32 zurückgekehrt ist - also aus einem anderen Prozessorzustand heraus.
 
 Nächster Schritt: den RMR von BL31 trennen. Ein 54-Byte-AArch64-Payload
 (`analyse/release/arbeit/r0-fel/rmr-uart-probe.S`) gibt nichts weiter als endlos
@@ -145,7 +145,7 @@ das Problem.
 ## 8. Messung: der zweite RMR springt nicht (10.09., abends)
 
 Isoliertest mit einem 54-Byte-AArch64-Payload (`rmr-uart-probe.S`), der nichts tut als endlos
-`H713-AARCH64-RMR-OK` auf UART0 auszugeben — kein DRAM-, kein eMMC-, kein Peripheriezugriff:
+`H713-AARCH64-RMR-OK` auf UART0 auszugeben - kein DRAM-, kein eMMC-, kein Peripheriezugriff:
 
 ```
 sunxi-fel -v spl u-boot-sunxi-with-spl.bin  write 0x46000000 rmr-uart-probe.bin  reset64 0x46000000
@@ -178,7 +178,7 @@ Ursache endgültig ausgeschlossen: der Payload enthält keinerlei BL31-Code.
 
 Alle anderen SoCs kehren per **echtem RMR-Warmreset** nach AArch32 zurück; das stellt die
 Ausführungsart von EL3 wieder auf AArch32. Der H713-Zweig macht stattdessen nur ein `eret` nach
-unten (`return_to_fel_eret`) — **EL3 bleibt AArch64**. Ob genau das den zweiten RMR unmöglich
+unten (`return_to_fel_eret`) - **EL3 bleibt AArch64**. Ob genau das den zweiten RMR unmöglich
 macht, wird in §11 geprüft.
 
 ## 10. Nebenbefund: der I-Cache-Notbehelf greift auf dem H713 nicht zuverlässig
@@ -192,7 +192,7 @@ macht, wird in §11 geprüft.
 ```
 
 Liegt für diese Adresse bereits eine I-Cache-Zeile vor, führt der Kern den **alten** Code aus und
-die Abschaltung verpufft — ohne Fehlermeldung. Der Schutz `dev->usb->icache_hacked` gilt zudem nur
+die Abschaltung verpufft - ohne Fehlermeldung. Der Schutz `dev->usb->icache_hacked` gilt zudem nur
 je USB-Sitzung, nicht je Zustandswechsel.
 
 Gemessen mit einer eigenen ARM32-Sonde (`cpsr-probe.bin`, liest CPSR und SCTLR):
@@ -211,7 +211,7 @@ Unexpected SCTLR (E121F001)
 Stack pointers: sp_irq=0xCCCCCCCC, sp=0xCCCCCCCC
 ```
 
-`0xCCCCCCCC` ist das Füllmuster des unbenutzten SRAM — sunxi-fels eigene Thunks laufen nicht mehr,
+`0xCCCCCCCC` ist das Füllmuster des unbenutzten SRAM - sunxi-fels eigene Thunks laufen nicht mehr,
 während eine frisch geschriebene eigene Sonde an derselben Adresse einwandfrei läuft. Nach einem
 Stromzyklus ist alles wieder normal (`sp_irq=0x00105400, sp=0x00120300`).
 
@@ -248,7 +248,7 @@ Fehler aus §10).
 
 ## 12. Ursache
 
-In AArch32 mit **AArch32-EL3** laufen die sicheren PL1-Modi — also auch Secure SVC — auf **EL3**.
+In AArch32 mit **AArch32-EL3** laufen die sicheren PL1-Modi - also auch Secure SVC - auf **EL3**.
 Deshalb funktioniert der RMR im `boot0`-Stub des SPL aus genau dem SVC-Modus, der gemessen wurde
 (`CPSR = 0x60000153`, Modusbits `0x13`).
 
@@ -270,12 +270,12 @@ läuft danach also in AArch32 auf Secure **EL1**. Dort ist das RMR-Register arch
 zugänglich: `mrc/mcr p15,0,rX,c12,c0,2` ist undefiniert, die Ausnahme läuft ins Leere, der Kern
 verlässt die FEL-Schleife und hängt.
 
-**Die Modusbits verraten das nicht** — sie lauten vorher wie nachher `0x13`. Nur die Ausnahmestufe
+**Die Modusbits verraten das nicht** - sie lauten vorher wie nachher `0x13`. Nur die Ausnahmestufe
 darunter ist eine andere. Das erklärt, warum die Sache so schwer zu fassen war.
 
 Die Notizen in `mainline/docs/reference/h713-fel-notes.md` dokumentieren, dass alle RMR-basierten
 Rückwege erfolglos blieben (H616-Mailbox `0x070005c0`, H6-RTC-Mailbox `0x070901b8`, direktes RVBAR
-`0x08100040`, CurrentEL-abhängiges RMR). Der `eret`-Weg war die funktionierende Notlösung — sein
+`0x08100040`, CurrentEL-abhängiges RMR). Der `eret`-Weg war die funktionierende Notlösung - sein
 Preis ist genau dieser: **der zweite RMR wird unmöglich.**
 
 Nebenbei erklärt §10 rückwirkend eine wiederkehrende Beobachtung aus jenen Notizen
@@ -285,7 +285,7 @@ Kratzbereich wegen abgestandener I-Cache-Zeilen stillen Unsinn.
 ## 13. Vorgeschlagene Reparatur: SMC-Falltür statt RMR
 
 Der Ausweg nutzt genau den Zustand, der das Problem verursacht. Weil EL3 nach dem SPL **AArch64**
-ist, ist ein `smc` aus AArch32-EL1 eine Falltür **zurück nach AArch64-EL3** — kein RMR, kein
+ist, ist ein `smc` aus AArch32-EL1 eine Falltür **zurück nach AArch64-EL3** - kein RMR, kein
 Warmreset, keine BROM-Mitarbeit nötig.
 
 Nötig sind zwei kleine Änderungen:
@@ -382,7 +382,7 @@ $ sunxi-fel hexdump 0x48000700 0x10            # vom SPL genullt
 48000700: 00 00 00 00 00 00 00 00 ...
 ```
 
-Der Stub steht Byte für Byte an Ort und Stelle — der Einbaucode des SPL ist also gelaufen.
+Der Stub steht Byte für Byte an Ort und Stelle - der Einbaucode des SPL ist also gelaufen.
 Mit Postfach `0x46000000` (54-Byte-UART-Payload) und anschließendem `smc #0` **lief der Payload
 los**: die Konsole füllte sich mit `H713-AARCH64-RMR-OK`.
 
@@ -411,7 +411,7 @@ INFO:    SPSR = 0x3c9
 INFO:    Changed devicetree.
 ```
 
-`SPSR = 0x3c9` ist EL2h mit maskierten Ausnahmen — korrekt. **BL31 ist damit vollständig
+`SPSR = 0x3c9` ist EL2h mit maskierten Ausnahmen - korrekt. **BL31 ist damit vollständig
 entlastet**: Plattform-Setup fertig, Einsprung richtig, Übergabe eingeleitet. Danach schweigt
 U-Boot proper.
 
@@ -420,26 +420,26 @@ U-Boot proper.
 | Verdacht | Befund |
 |---|---|
 | DTB an der falschen Stelle | **Nein.** `_end = 0x4a0c9f38` (aus dem U-Boot-ELF) ist exakt die Adresse, an die sunxi-fel das DTB legt. Die 827192 B im FIT sind `u-boot-nodtb.bin`; das DTB kommt separat genau ans Ende. |
-| x0–x3 beim BL31-Einsprung mit Müll belegt (der Stub springt per `br x0`) | **Egal.** `bl31_early_platform_setup2()` ignoriert `arg0`–`arg3`; BL33 kommt aus `PRELOADED_BL33_BASE`. |
+| x0-x3 beim BL31-Einsprung mit Müll belegt (der Stub springt per `br x0`) | **Egal.** `bl31_early_platform_setup2()` ignoriert `arg0` - `arg3`; BL33 kommt aus `PRELOADED_BL33_BASE`. |
 | U-Boot gibt gar nicht auf der seriellen Konsole aus | **Nein.** Referenzstart von der eMMC (gleicher Stand, Zeitstempel `12:09:36`) zeigt `In: serial / Out: serial / Err: serial` und ein vollständiges Banner. |
 
 ### Warum man nichts sieht, selbst wenn U-Boot liefe
 
 `CONFIG_PRE_CONSOLE_BUFFER=y` mit `CONFIG_PRE_CON_BUF_ADDR=0x4f000000`: **alle** Ausgaben vor
-`console_init_r` wandern erst in den Puffer. Hängt U-Boot davor, erscheint kein einziges Zeichen —
+`console_init_r` wandern erst in den Puffer. Hängt U-Boot davor, erscheint kein einziges Zeichen -
 auch kein Banner. Auslesen lässt sich der Puffer nicht, weil FEL nach dem Sprung tot ist.
 
 ### Sackgasse: `CONFIG_DEBUG_UART`
 
 Ein Diagnosebau mit früher Debug-UART (`DEBUG_UART_BASE=0x02500000`, `SHIFT=2`, `ANNOUNCE`,
-`SKIP_INIT`) sollte am Puffer vorbei direkt ausgeben — `debug_uart_init()` steht in
+`SKIP_INIT`) sollte am Puffer vorbei direkt ausgeben - `debug_uart_init()` steht in
 `arch/arm/lib/crt0_64.S:94`, also vor `board_init_f`. Das Abbild ist aber **reproduzierbar
 unbrauchbar**: zweimal hintereinander riss der Upload nach dem SPL-Lauf mit
 `usb_bulk_send() ERROR -7`, jeweils nach ~20 s, während das sonst identische Abbild ohne
 DEBUG_UART fünfmal sauber durchlief.
 
 Größe ist es nicht (SPL 31080 vs. 30744 B, Grenze `CONFIG_SPL_MAX_SIZE=0xbfa0`). Wahrscheinlich
-schreibt `debug_uart_init()` im SPL auf `0x02500000`, bevor die UART-Takte frei sind — und genau
+schreibt `debug_uart_init()` im SPL auf `0x02500000`, bevor die UART-Takte frei sind - und genau
 solche Zugriffe hängen auf dem H713 den Bus auf (siehe §6). Ansatz verworfen.
 
 ## 17. Nebenstrang: FEL ohne Stromziehen auslösen
@@ -450,7 +450,7 @@ Jeder Fehlversuch kostet bisher „Reset-Taste halten und Strom einstecken". Zwe
   gefolgt von `reset` am U-Boot-Prompt: das Gerät bootet normal durch, **kein** FEL. Flag wieder
   auf 0 gesetzt.
 - **BROM auslesen.** Über FEL ist `0x0` nicht lesbar (hängt den Bus auf, §6), **aus einem
-  laufenden U-Boot heraus aber schon** — `sunxi_mem_map` bildet `0x0`–`0x40000000` als
+  laufenden U-Boot heraus aber schon** - `sunxi_mem_map` bildet `0x0` - `0x40000000` als
   Device-Speicher ab (`arch/arm/mach-sunxi/board.c:48`). `md.l 0 0x10` liefert echten BROM-Code:
 
 ```
@@ -464,24 +464,24 @@ Jeder Fehlversuch kostet bisher „Reset-Taste halten und Strom einstecken". Zwe
 00000038: bafffffc   blt  -0x10
 ```
 
-  Der BROM nullt beim Start SRAM von `0x104000` bis `0x124000` — unabhängige Bestätigung, dass
+  Der BROM nullt beim Start SRAM von `0x104000` bis `0x124000` - unabhängige Bestätigung, dass
   SRAM A2 genau dieser 128-KiB-Bereich ist (passend zu `spl_addr = 0x104000` und
   `thunk_addr = 0x123a00`).
 
   **Damit ist BROM-Reverse-Engineering machbar**: `md.l 0 0x2000` in ein `tio`-Mitschnitt
   (`CONFIG_CMD_TFTPPUT` fehlt im Bau, Netzausgabe geht also nicht). Dort steht die
-  FEL-Einstiegsbedingung — und dort stünde auch die Hotplug-Mailbox, an der die vier früheren
+  FEL-Einstiegsbedingung - und dort stünde auch die Hotplug-Mailbox, an der die vier früheren
   RMR-Rückwege scheiterten. Für den FEL-Boot brauchen wir sie dank der Falltür nicht mehr;
   aufgehoben als Weg, das Stromziehen loszuwerden.
 
-## 18. Der Rest: `env_init()` scheitert im FEL-Boot — und U-Boot warnt davor selbst
+## 18. Der Rest: `env_init()` scheitert im FEL-Boot - und U-Boot warnt davor selbst
 
 Ab hier lief BL31 vollständig durch und übergab korrekt an `0x4a000000`, U-Boot proper blieb aber
 stumm. Nachgewiesen wurde das mit einem 54-Byte-UART-Payload **anstelle** von U-Boots erstem
 Befehl: er lief los, die Übergabe kommt also an.
 
 Da `CONFIG_PRE_CONSOLE_BUFFER` alle Ausgaben bis `console_init_r` in den Puffer bei `0x4f000000`
-umleitet, war der Frühpfad blind. Also wurde er per Halbierung vermessen — die Sonde
+umleitet, war der Frühpfad blind. Also wurde er per Halbierung vermessen - die Sonde
 (`precon-dump.bin`, 154 B) gibt zwei Marken und den Pufferinhalt auf UART0 aus und wurde jeweils
 über den Einsprung der zu prüfenden Funktion geschrieben:
 
@@ -529,13 +529,13 @@ stehen. Die Ursache steht in `board/sunxi/board.c` in `env_get_location()`:
 	return ENVL_UNKNOWN;
 ```
 
-Unser Bau hat **nur** `CONFIG_ENV_IS_IN_MMC=y` — weder FAT noch UBI noch NOWHERE. Beim FEL-Boot ist
+Unser Bau hat **nur** `CONFIG_ENV_IS_IN_MMC=y` - weder FAT noch UBI noch NOWHERE. Beim FEL-Boot ist
 das Bootgerät `BOOT_DEVICE_BOARD`, der `switch` fällt durch, der Rückfall greift nicht,
 `ENVL_UNKNOWN` kommt heraus. Der Kommentar benennt das Symptom wörtlich („will silently hang"); die
 Lücke ist upstream und trifft jede Konfiguration, die ihre Umgebung ausschließlich in MMC hält.
 
 Zweiter, gleichartiger Punkt: `mmc_get_env_dev()` leitet die Gerätenummer ebenfalls aus dem
-Bootgerät ab und fällt sonst auf `CONFIG_ENV_MMC_DEVICE_INDEX` zurück — das stand auf `0`, die eMMC
+Bootgerät ab und fällt sonst auf `CONFIG_ENV_MMC_DEVICE_INDEX` zurück - das stand auf `0`, die eMMC
 ist aber Gerät `1` (`mmc@4022000`). Ohne Korrektur lädt der FEL-Boot die Default-Umgebung statt der
 echten, und das Einschaltgate verlangt dann jedes Mal einen Tastendruck.
 
@@ -558,7 +558,7 @@ Drei Änderungen in U-Boot, drei in sunxi-tools. Patches liegen in
 |---|---|
 | `soc_info.h` | Neues Feld `fel_door_addr` samt Begründung. |
 | `soc_info.c` | H713 bekommt `.fel_door_addr = 0x48000000`. |
-| `fel.c` | Neues `aw_fel_door_request()`; `aw_rmr_request()` nimmt bei gesetztem `fel_door_addr` die Tür statt des RMR. Fehlt die Tür (zu altes U-Boot), gibt es eine Klartextmeldung **statt** eines RMR-Versuchs — der würde das Gerät aufhängen. |
+| `fel.c` | Neues `aw_fel_door_request()`; `aw_rmr_request()` nimmt bei gesetztem `fel_door_addr` die Tür statt des RMR. Fehlt die Tür (zu altes U-Boot), gibt es eine Klartextmeldung **statt** eines RMR-Versuchs - der würde das Gerät aufhängen. |
 
 ## 20. Ergebnis
 
@@ -589,11 +589,11 @@ gate: off (h713_gate=0, GP5 00000000)
 Hit any key to stop autoboot: 0
 ```
 
-Der FEL-Start ist damit vom eMMC-Start nicht mehr zu unterscheiden — inklusive echter Umgebung von
+Der FEL-Start ist damit vom eMMC-Start nicht mehr zu unterscheiden - inklusive echter Umgebung von
 der eMMC. **Auf die eMMC wurde nichts geschrieben**; alles ist flüchtig und nach einem Stromzyklus
 verschwunden.
 
-Abschlussabbild: `analyse/release/arbeit/r0-fel/u-boot-fel-final.bin` (918.857 B, Release-BL31 —
+Abschlussabbild: `analyse/release/arbeit/r0-fel/u-boot-fel-final.bin` (918.857 B, Release-BL31 -
 das Diagnose-BL31 mit `LOG_LEVEL=40` steckt nur in `bl31-info.bin` und in den
 `uboot-v4-*`-Bauverzeichnissen, nicht im Quellbaum).
 
@@ -605,7 +605,7 @@ das Diagnose-BL31 mit `LOG_LEVEL=40` steckt nur in `bl31-info.bin` und in den
 - **`CONFIG_ENV_MMC_DEVICE_INDEX=1` steht nur in `hy310_netboot_gate_defconfig`.** Die anderen
   H713-Defconfigs (`hy310_qz713_v3_1`, `hy310_netboot`, `hy310_host`) brauchen dieselbe Zeile,
   sonst laden sie im FEL-Boot die Default-Umgebung.
-- **Der Bus-Hänger bei `0x05000000` (§6) verdient einen Platz in der Doku** — er kostet einen
+- **Der Bus-Hänger bei `0x05000000` (§6) verdient einen Platz in der Doku** - er kostet einen
   Stromzyklus und ist leicht versehentlich auszulösen, weil H616-Adressen für den H713 naheliegen.
 - **BROM-Auszug** (§17) wäre der Weg, FEL ohne Stromziehen auszulösen. `md.l 0 0x2000` am
   U-Boot-Prompt in einen `tio`-Mitschnitt, dann die FEL-Einstiegsbedingung suchen.

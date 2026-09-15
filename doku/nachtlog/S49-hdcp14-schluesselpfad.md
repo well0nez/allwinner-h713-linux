@@ -7,7 +7,7 @@ untersuchten Binaries unter `bin/` (Kopien aus `update.img` bzw. `boot_package.f
 
 ## Die Antworten
 
-**1. Welche HDMI-RX-Register bekommen den Schlüssel?** Keine — von keiner CPU.
+**1. Welche HDMI-RX-Register bekommen den Schlüssel?** Keine - von keiner CPU.
 Weder U-Boot noch OP-TEE noch der MIPS schreiben Schlüsselbytes in den Bereich
 `0x0684xxxx`. Der Schlüssel wird von der **Crypto Engine (CE) per DMA** in eine
 Hardware-Senke an der physischen Adresse **`0x03041400`** geschrieben (CE-/Key-
@@ -15,7 +15,7 @@ Ladder-Adressraum, nicht DRAM). Das löst U-Boot per SMC aus, ausgeführt wird e
 **OP-TEE** (`sunxi_load_hdcp_key`), das die CE im sicheren Kanal (`0x03040800`)
 programmiert: AES-128-ECB-**Entschlüsselung** mit dem Hardware-Schlüssel **RSSK**
 (Key-Select 3), Quelle = 288 Byte Chiffrat aus dem Keybox-Eintrag `hdcpkey`, Ziel =
-`0x03041400`. Danach steht `0x06840093` Bit 0 auf 1, **bevor** der MIPS startet —
+`0x03041400`. Danach steht `0x06840093` Bit 0 auf 1, **bevor** der MIPS startet -
 die MIPS-Firmware nimmt bei Stock den Zweig „HDCP1.4 key has been loaded!" und
 kommt gar nicht in die Warteschleife. Der ARISC ist nicht beteiligt.
 *Sicherheit: hoch für U-Boot→SMC→OP-TEE→CE→`0x03041400` (Code gelesen); mittel
@@ -28,18 +28,18 @@ Byte Nutzdaten) ist **Chiffrat, gebunden an den Chip**: AES-128-ECB unter der RS
 **nicht** per SMC in Software entschlüsselt: OP-TEE kopiert das Item beim
 `keybox_store` für den Namen `hdcpkey` **unverändert** in seine Keybox (die
 Meldung „Do secure storage decrypted !!" gilt nur für die *anderen* Keybox-Namen),
-und die einzige „Entschlüsselung" ist die CE-Operation mit Ziel `0x03041400` — der
+und die einzige „Entschlüsselung" ist die CE-Operation mit Ziel `0x03041400` - der
 Klartext taucht in keinem CPU-adressierbaren Speicher auf. Die 320 Byte sind 288
 Byte Nutzlast, beim Einbrennen auf 64 Byte aufgerundet; geladen werden nur die
 ersten 288 (`0x120`). Das 2.2-Item `hdcpkeyV22` steht **nicht** in der Stock-
 `keybox_list`, geht also nie durch diesen Pfad; es wird von Android/MIPS
 behandelt, und da die PKF-Efuse auf diesem Gerät leer ist (MIPS-Log „read pkf: 0x0"),
-liegen die 912 Byte unverschlüsselt vor — konsistent mit der Messung in doku/68.
+liegen die 912 Byte unverschlüsselt vor - konsistent mit der Messung in doku/68.
 *Sicherheit: hoch (drei unabhängige Code-Stellen: OP-TEE keybox_store, OP-TEE
 load, OP-TEE Provisionierung; dazu die Efuse-Tabelle im BL31).*
 
 **3. SMC-Schnittstelle.** Function-ID **`0xb2000210`** (OP-TEE-Fast-Call; das
-`0x200` kommt aus der Versionsprüfung „OP-TEE ≥ 3.5", hier 3.7 — ältere Builds
+`0x200` kommt aus der Versionsprüfung „OP-TEE ≥ 3.5", hier 3.7 - ältere Builds
 hätten `0xb2000010`). `a1` = Operationsnummer, `a2`/`a3`… = Argumente. Für HDCP 1.4:
 `a1 = 5`, `a3 = 0x120` (U-Boot) bzw. `a3 = 0` → Default `0x120` (Vendor-Kernel
 `sunxi_smc_refresh_hdcp`, aufgerufen in `sunxi_tvtop_complete` nach jedem Resume).
@@ -79,32 +79,32 @@ CE-Programmierung in OP-TEE (`sunxi_aes_with_hardware`, `0x4860c578`, Task-Deskr
 | Adresse / Feld | Breite | Wert / Quelle | Zweck | Fundstelle |
 |---|---|---|---|---|
 | desc+0x00 `chan_id` | u32 | 0 | CE-Kanal 0 | 0x4860c578 (memset) |
-| desc+0x04 `comm_ctl` | u32 | `0x80000100` = INT(31) \| decrypt(8) \| ALG_AES(0) | Richtung/Algorithmus | 0x4860c5e6–0x4860c5ec |
-| desc+0x08 `sym_ctl` | u32 | `0x00300000` = Key-Select 3 (RSSK), AES-128, ECB | Hardware-Schlüssel | 0x4860c5ee–0x4860c5f2; Aufrufer 0x4860cb34–0x4860cb40 |
-| desc+0x10 `key_addr` | 5 B | phys(64 Byte Nullen) | unbenutzt bei HW-Key | 0x4860c5f4–0x4860c5f8 |
-| desc+0x15 `iv_addr` | 5 B | phys(16 Byte Nullen) | IV (ECB: irrelevant) | 0x4860c5fa–0x4860c60e |
+| desc+0x04 `comm_ctl` | u32 | `0x80000100` = INT(31) \| decrypt(8) \| ALG_AES(0) | Richtung/Algorithmus | 0x4860c5e6-0x4860c5ec |
+| desc+0x08 `sym_ctl` | u32 | `0x00300000` = Key-Select 3 (RSSK), AES-128, ECB | Hardware-Schlüssel | 0x4860c5ee-0x4860c5f2; Aufrufer 0x4860cb34-0x4860cb40 |
+| desc+0x10 `key_addr` | 5 B | phys(64 Byte Nullen) | unbenutzt bei HW-Key | 0x4860c5f4-0x4860c5f8 |
+| desc+0x15 `iv_addr` | 5 B | phys(16 Byte Nullen) | IV (ECB: irrelevant) | 0x4860c5fa-0x4860c60e |
 | desc+0x20 `data_len` | u32 | `0x120` | 288 Byte = 18 AES-Blöcke | 0x4860c616 |
 | desc+0x24 `src_addr` | 5 B | phys(Chiffrat aus Keybox) | Quelle | 0x4860c618 |
-| desc+0x29 `dst_addr` | 5 B | **`0x03041400`** (kein DRAM; phys_to_virt und Cache-Ops werden dafür übersprungen) | Schlüsselsenke | 0x4860c61c–0x4860c622, Sonderfall 0x4860c642/0x4860c690/0x4860c700 |
+| desc+0x29 `dst_addr` | 5 B | **`0x03041400`** (kein DRAM; phys_to_virt und Cache-Ops werden dafür übersprungen) | Schlüsselsenke | 0x4860c61c-0x4860c622, Sonderfall 0x4860c642/0x4860c690/0x4860c700 |
 | desc+0x30 / +0x34 | u32 | `0x120` / `0x120` | src_len / dst_len | 0x4860c620, 0x4860c626 |
 | `0x03040800` CE_S TDA | u32 | phys(desc) | Deskriptor laden | 0x4860c334 |
 | `0x03040808` CE_S ICR | u32 | \|= 1<<0 | IRQ-Enable Kanal 0 | 0x4860c2ac |
 | `0x03040810` CE_S TLR | u32 | warten bis Bit 0 = 0, dann \|= 1 | Task starten | 0x4860c2d0 |
 | `0x0304080c` CE_S ISR | u32 | pollen Bits[1:0], danach quittieren | Fertig/Fehler | 0x4860c3a8, 0x4860c360 |
 | `0x03040818` CE_S ESR | u32 | & 0xff → „SS %s fail 0x%x" | Fehlerstatus | 0x4860c348 |
-| `0x06840093` (HDMI-RX) | u8 | **gelesen** vom MIPS; Bit 0 = 1 „key loaded" | Statusbit, das Stock bereits gesetzt vorfindet | display.bin.bak 0x8b13d044–0x8b13d064 |
-| `0x06840093` | u8 | `0xc0` **nur** wenn Bit 0 = 0 (Nachlade-Anstoß) | MIPS-Fallback / `ReloadKey` | 0x8b13d068–0x8b13d070, 0x8b13d19c |
-| `0x06840002` | u8 | Bit 4 pulsen (1, dann 0) vor `0xc0` | HDCP-Reset im Reload-Pfad | 0x8b13d168–0x8b13d18c |
+| `0x06840093` (HDMI-RX) | u8 | **gelesen** vom MIPS; Bit 0 = 1 „key loaded" | Statusbit, das Stock bereits gesetzt vorfindet | display.bin.bak 0x8b13d044-0x8b13d064 |
+| `0x06840093` | u8 | `0xc0` **nur** wenn Bit 0 = 0 (Nachlade-Anstoß) | MIPS-Fallback / `ReloadKey` | 0x8b13d068-0x8b13d070, 0x8b13d19c |
+| `0x06840002` | u8 | Bit 4 pulsen (1, dann 0) vor `0xc0` | HDCP-Reset im Reload-Pfad | 0x8b13d168-0x8b13d18c |
 
 **Format des Klartexts, den die CE in die Senke schreibt** (aus dem Einbrennpfad
-`sunxi_deal_hdcp_key`, Typ 0, 0x4860d88a–0x4860d8ac): Byte 0…279 = die 40
+`sunxi_deal_hdcp_key`, Typ 0, 0x4860d88a-0x4860d8ac): Byte 0…279 = die 40
 Gerätekeys à 7 Byte in Dateireihenfolge, Byte 280…284 = **KSV (5 Byte, am Ende, nicht
 zuerst)**, Byte 285…287 = 3 Füllbytes. Byte-Strom per DMA, keine Wortsemantik
 erkennbar; die Bitreihenfolge innerhalb der 7-Byte-Keys ist die der Tool-Datei
 (nicht bestimmbar). Das Chiffrat im Secure Storage ist genau dieser 288-Byte-Block
 (plus 32 Byte Aufrundung), AES-128-ECB unter RSSK.
 
-## Klartext / Chiffrat — der Code-Beleg
+## Klartext / Chiffrat - der Code-Beleg
 
 **Wo gelesen wird.** U-Boot `0x4a005070` (Default-Ladecallback der Keybox):
 ```
@@ -112,7 +112,7 @@ erkennbar; die Bitreihenfolge innerhalb der 7-Byte-Keys ist die der Tool-Datei
 4a0050b6  bl 0x4a0278b4      ; smc_tee_keybox_store(name, buf, 0x1000)     -> "key install %s fail with:%d"
 ```
 `0x4a0278b4` druckt `len=[buf+0x40]`, `encrypt=[buf+0x44]`, `write_protect=[buf+0x48]`
-— das ist exakt der innere Kopf aus doku/68 (`name[64] + len + 0x10000001 + 1`) —,
+- das ist exakt der innere Kopf aus doku/68 (`name[64] + len + 0x10000001 + 1`) - ,
 prüft `strcmp(name, buf)`, kopiert 4 KiB ins TEE-Shared-Memory (Basis via op 2) und ruft
 op 1 (`0x4a027992`).
 
@@ -153,16 +153,16 @@ nach op 5 nichts aus dem Shared-Memory; `0x4a0276f0` gibt nur `res.a0` zurück).
 **Wo eingebrannt wird (Gegenrichtung, zwei Pfade):**
 - OP-TEE op 0xa `sunxi_deal_hdcp_key` (0x4860d5f0, Typ 0): Tool-Datei prüfen (Magic
   `0x5aa5a55a`, crc32 über 0x16c Byte, AES mit Datei-Schlüssel bei +0xc über 0x140 Byte
-  ab +0x1c), Hash prüfen, Umordnung ins HW-Format (0x4860d896–0x4860d8ac), dann
+  ab +0x1c), Hash prüfen, Umordnung ins HW-Format (0x4860d896-0x4860d8ac), dann
   `sunxi_deal_rssk_key("rssk", 0x11)` und **`sunxi_aes_encrypt_with_hardware_rssk(out, buf, 0x120)`**
-  (0x4860d8e6–0x4860d8ee → 0x4862626c → `0x4860c578(..., mode 0x300000, encrypt)`).
+  (0x4860d8e6-0x4860d8ee → 0x4862626c → `0x4860c578(..., mode 0x300000, encrypt)`).
   U-Boot-Seite: `0x4a0075c0` („down hdcp 1.4") schreibt das Ergebnis mit Länge `0x120`
   als `hdcpkey`; `0x4a056e74` kopiert hdcpkey/hdcpkeyV22 dabei **ohne** zusätzliche
-  SSK-Verschlüsselung (0x4a056ebc–0x4a056f04), andere Namen bekommen SSK.
+  SSK-Verschlüsselung (0x4a056ebc-0x4a056f04), andere Namen bekommen SSK.
 - OP-TEE PTA `sunxi_utils.ta` → `secure_object_down` (0x4860fc98): für den Namen
-  `hdcpkey` (0x4860fcf6) wird die Länge auf 64 aufgerundet (0x4860fd24–0x4860fd26:
+  `hdcpkey` (0x4860fcf6) wird die Länge auf 64 aufgerundet (0x4860fd24-0x4860fd26:
   `adds r4,#0x3f; bics r4,r4,#0x3f`) und **`sunxi_aes_encrypt_with_hardware_rssk`**
-  aufgerufen (0x4860fd7c). 288 → **320 Byte** — genau die Länge des Items auf diesem
+  aufgerufen (0x4860fd7c). 288 → **320 Byte** - genau die Länge des Items auf diesem
   Gerät. Dieses Gerät wurde also über den PTA-Pfad provisioniert (dazu passen
   `encrypt = 0x10000001`, `write_protect = 1` und die 6-stellige Hash-Datei; der
   U-Boot-Burn-Callback hätte 288 Byte, `encrypt = 1`, `wp = 0` und 12 Hex-Zeichen
@@ -174,13 +174,13 @@ Datei-Offset 0x10000, Einträge à 0x40): `rssk` Offset `0xb0`, 128 Bit, Burned-
 `sunxi_random_and_deal_key` (0x4860d4d4) liest das Flag-Wort `0x03006240`
 (0x48626282), brennt bei Bedarf 16 Zufallsbytes (`sunxi_trng_gen`, `sunxi_efuse_write`),
 meldet sonst „%s already burned". Der SSK-Pfad benutzt `sym_ctl = 0x00100002` (Key-Select 1,
-AES-256), der RSSK-Pfad `0x00300000` (Key-Select 3, AES-128) — konsistent mit den
+AES-256), der RSSK-Pfad `0x00300000` (Key-Select 3, AES-128) - konsistent mit den
 Efuse-Breiten 256/128 Bit. Die Zuordnung „Feld [23:20] = Key-Select, 1 = SSK, 3 = RSSK"
 ist ein Analogieschluss aus Allwinners CE-Registerlayout plus der Funktionsnamen.
 
 ## Die SMC-Schnittstelle im Detail
 
-Aufrufer U-Boot `0x4a019a9c` (ARM-Mode): `r0–r3 = a0–a3`, `[sp..sp+0xc] = a4–a7`,
+Aufrufer U-Boot `0x4a019a9c` (ARM-Mode): `r0-r3 = a0-a3`, `[sp..sp+0xc] = a4-a7`,
 `[sp+0x10]` = Zeiger auf `res[4]`. Function-ID = `0xb2000010 | flag`, `flag` aus
 `0x4a0275b0` (OP-TEE-Version: major > 3 oder 3.≥5 → `0x200`), abgelegt in
 `0x4a0814ec`. Vendor-Kernel identisch: `sunxi_smc_call_offset` (c0598f6c) → 0x200.
@@ -207,7 +207,7 @@ U-Boot-Seite zu op 5 (`0x4a0276f0`, Datei-Offset `0x276f0` in `u-boot.fex`):
 4a02776e  blx smc                                  ; -> res[0] != 0: "smc tee decrypt with ssk failed with: %ld" (kopierter Fehlertext)
 ```
 Vendor-Kernel `sunxi_smc_refresh_hdcp` (vmlinux.elf c05990f0): `arm_smccc_smc(0xb2000000 | (offset|0x10), 5, 0, 0, 0,0,0,0, &res)`; Rückgabe `res.a0`.
-Aufrufer: `sunxi_tvtop_complete` (Modul sunxi_tvtop, bf014084) — also nach jedem
+Aufrufer: `sunxi_tvtop_complete` (Modul sunxi_tvtop, bf014084) - also nach jedem
 Resume des TV-Blocks wird die Senke neu befüllt.
 
 ## Gegenprobe MIPS
@@ -224,7 +224,7 @@ Mitschnitten) zeigt **Zeile 347**, d. h. Bit 0 war beim Aufruf schon 1. Die
 Firmware liest nach dem Laden nichts weiter als dieses Statusbit; sie kennt weder
 Schlüsselbytes noch die Senke. Der Reload-Pfad (0x8b13d160, Ziel des RPC
 `ReloadHdcp14Key`) pulst `0x06840002` Bit 4 und schreibt `0xc0` nach `0x06840093`
-— ein Anstoß, die Senke erneut zu übernehmen, kein Schlüsseltransport.
+- ein Anstoß, die Senke erneut zu übernehmen, kein Schlüsseltransport.
 Damit ist auch die offene Frage aus doku/40 beantwortet („Der Vendor-Bootloader hat
 das Problem offenbar nicht"): bei Stock wird die Warteschleife nie betreten, weil
 der Schlüssel vor dem MIPS-Start geladen ist; das Tick-Problem bleibt latent.
@@ -235,7 +235,7 @@ der Schlüssel vor dem MIPS-Start geladen ist; das Tick-Problem bleibt latent.
   DRAM, mit Sonderbehandlung im Code; benachbart liegt der Key-Ladder-Block
   (`0x03041000` Status, `0x03041030` „exported CW"). Dass dahinter der Schlüsselspeicher
   des HDMI-RX-HDCP-Blocks hängt, ist Analogieschluss (Vendor-DT: CE nur `0x03040000`/
-  `0x03040800` je 0xa0; kein Datenblatt; MIPS-Whitelist erlaubt `0x03040000–0x03041FFF`,
+  `0x03040800` je 0xa0; kein Datenblatt; MIPS-Whitelist erlaubt `0x03040000-0x03041FFF`,
   referenziert die Adresse aber nirgends).
 - **Wer setzt `0x06840093` Bit 0 genau?** Entweder die DMA in die Senke selbst oder ein
   automatisches Übernehmen durch den HDCP-Block. Statisch nicht entscheidbar; beide
@@ -247,7 +247,7 @@ der Schlüssel vor dem MIPS-Start geladen ist; das Tick-Problem bleibt latent.
 - **Ist die RSSK auf diesem Gerät gebrannt?** Nicht belegt (Bit 17 in `0x03006240`,
   nur am Gerät lesbar). Der PTA-Pfad ruft `sunxi_deal_rssk_key` nicht vor dem
   Verschlüsseln auf. Wäre die Efuse leer, wäre das Item AES-128-ECB unter einem
-  Nullschlüssel — offline prüfbar (KSV muss genau 20 gesetzte Bits haben), ich habe
+  Nullschlüssel - offline prüfbar (KSV muss genau 20 gesetzte Bits haben), ich habe
   es nicht getan (Schlüsselmaterial nicht angefasst). Für die Hardware-Senke ändert
   das nichts: ein MMIO-Weg für Schlüsselbytes ist nirgends zu sehen.
 - **Key-Select-Kodierung** (3 = RSSK, Bits 23:20) und **ECB** (Bits 11:8 = 0) sind aus
@@ -263,7 +263,7 @@ Ohne Schlüsseldaten, als Schritte:
 1. **Chiffrat bereitstellen.** Die ersten 288 Byte der Nutzdaten des Items `hdcpkey`
    (Item-Offset `0x4c`, das Projekt hat sie als 320-Byte-Datei) als privates
    Firmware-Blob, analog zu `hy310-hdcp22.bin`. Es ist chipgebundenes Chiffrat, keine
-   Klartextkopie — trotzdem privat halten.
+   Klartextkopie - trotzdem privat halten.
 2. **Vorab-Test am Gerät (ein Stromzyklus):** aus Linux mit dem mainline `sun8i-ce`
    einen Task mit `sym_ctl` Key-Select 3 auf 16 Nullbytes nach DRAM absetzen, einmal
    über den NS-Kanal (`0x03040000`), einmal über CE_S (`0x03040800`). Ergebnis: ESR-Fehler
@@ -281,7 +281,7 @@ Ohne Schlüsseldaten, als Schritte:
    a) Linux, wenn NS erlaubt ist: kleiner Treiber am `crypto@3040000`-Knoten oder als
    Teil von `h713-hdmirx` (Patch 0094): Laden vor dem ersten `SetSource`, Wiederholen in
    jedem Runtime-Resume der HDMI-RX-Domäne.
-   b) Sonst TF-A: ein SiP-SMC „HDCP14-Load(phys, len)", der CE_S aus EL3 programmiert —
+   b) Sonst TF-A: ein SiP-SMC „HDCP14-Load(phys, len)", der CE_S aus EL3 programmiert -
    das ist die Stock-Architektur ohne OP-TEE; aufgerufen aus U-Boot vor dem MIPS-Start
    und aus Linux nach Resume.
 7. **U-Boot-Reihenfolge:** Erfolgt das Laden vor `sunxi_mips`/dem MIPS-Start, nimmt
@@ -300,7 +300,7 @@ Ohne Schlüsseldaten, als Schritte:
   (0x8b13d5e4) verlangt Länge `0x390` und zerlegt den Block feldweise (u. a. 5 Byte
   Receiver-ID bei +0x28, 0x180 Byte Signatur bei +0xb2, 0x140 Byte privater Schlüssel bei
   +0x232). Im OP-TEE-Einbrennpfad Typ 1 werden nur die ersten `0x140` Byte mit der PKF
-  verschlüsselt — auf diesem Gerät entfällt das (PKF leer). Die Messung „912 Byte
+  verschlüsselt - auf diesem Gerät entfällt das (PKF leer). Die Messung „912 Byte
   angenommen" aus doku/68 ist damit auch strukturell plausibel.
 - Die Zeichenkette `smc_tee_hdcp_key_encrypt: failed` gehört zum Burn-Callback
   (`0x4a0075c0`), der eigentliche SMC-Wrapper (`0x4a027794`, op 0xa) meldet Fehler mit
@@ -318,9 +318,9 @@ Ohne Schlüsseldaten, als Schritte:
 
 ## Dateien
 
-- `bin/` — `u-boot.fex`, `boot_package.fex`, daraus `u-boot.bin`, `monitor.bin`,
+- `bin/` - `u-boot.fex`, `boot_package.fex`, daraus `u-boot.bin`, `monitor.bin`,
   `scp.bin` (+ `scp-unswapped.bin`), `optee.bin`, `dtb.bin`.
-- `dis/` — alle zitierten Disassemblate (U-Boot Thumb-2 Basis 0x4a000000, OP-TEE Thumb-2
+- `dis/` - alle zitierten Disassemblate (U-Boot Thumb-2 Basis 0x4a000000, OP-TEE Thumb-2
   Basis 0x48600000, BL31 A64, Vendor-Kernel, MIPS).
-- `d.py`, `xref.py`, `litref.py`, `movwscan.py` — Helfer (capstone).
-- `imagewty-table.txt` — Dateitabelle des `update.img`.
+- `d.py`, `xref.py`, `litref.py`, `movwscan.py` - Helfer (capstone).
+- `imagewty-table.txt` - Dateitabelle des `update.img`.

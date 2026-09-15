@@ -929,7 +929,7 @@ modified; the edit lives only in `build/linux-debug-mmcinstr`.
 
 ---
 
-# 2026-08-18 continuation — UHS works, startup CRCs removed, board RX fixed
+# 2026-08-18 continuation - UHS works, startup CRCs removed, board RX fixed
 
 This section supersedes the old “ordered next steps” above. The investigation
 continued from repeated cold boots at the U-Boot prompt and ended with the
@@ -1241,7 +1241,7 @@ control.
 
 ---
 
-# 2026-08-18 — the 50 MHz question, answered: the wall is between 33.33 and 37.5 MHz
+# 2026-08-18 - the 50 MHz question, answered: the wall is between 33.33 and 37.5 MHz
 
 The A/B above was executed, then extended until the 50 MHz failure was either
 fixed or bounded. It is bounded. Every run below was a cold SDIO init on
@@ -1275,10 +1275,10 @@ threshold only arms for reads), i.e. the firmware download's first CMD53.
 
 Delivery stopped using UART: the FIT is copied to the board's own rootfs over
 the working 25 MHz WiFi link (7.7 MiB in ~7 s) and U-Boot reads it back with
-`ext4load mmc 1:1a`. **The partition index is hex** — `mmc 1:26` asks for
+`ext4load mmc 1:1a`. **The partition index is hex** - `mmc 1:26` asks for
 partition 38 and fails with `** Invalid partition 38 **`.
 
-## 3. Host-side sweep at 50 MHz — 16 states, one outcome
+## 3. Host-side sweep at 50 MHz - 16 states, one outcome
 
 | state (`h713_dly` / mode) | registers | first error |
 |---|---|---|
@@ -1290,17 +1290,17 @@ partition 38 and fails with `** Invalid partition 38 **`.
 | stock pair (0,0)/(0,0) | `DRV=00000000` | `0x80` |
 | stock pair (0,0)/(2,2) | `NTSR=81710220` | `0x80` |
 | `h713_relatch=1` | stock 2X re-latch | `0x80` |
-| `h713_uhs=50` → SDR50 | — | `0x80` |
-| `h713_uhs=50` + data sample 0 | — | `0x80` |
-| `h713_uhs=25` → SDR25 at 50 MHz | — | `0x80` |
-| `h713_uhs=0` → SD high-speed at 50 MHz | — | `0x80` |
+| `h713_uhs=50` → SDR50 | - | `0x80` |
+| `h713_uhs=50` + data sample 0 | - | `0x80` |
+| `h713_uhs=25` → SDR25 at 50 MHz | - | `0x80` |
+| `h713_uhs=0` → SD high-speed at 50 MHz | - | `0x80` |
 
 The last four matter most: **the mode is irrelevant**. Plain SD high-speed at
-50 MHz — 3.3 V legal, no bus-speed switch, no tuning — fails identically to
+50 MHz - 3.3 V legal, no bus-speed switch, no tuning - fails identically to
 SDR104. The 7-state in-driver retry sweep (0044) also fails, so this is not an
 artifact of the retry path's controller reset.
 
-## 4. Card-side sweep — the AIC8800's own iopad controls
+## 4. Card-side sweep - the AIC8800's own iopad controls
 
 The vendor driver carries, under `#if 0` for the D80 (v3) path, writes to
 function-0 registers `0xF0` (iopad control, with `SDIOCLK_FREE_RUNNING_BIT`),
@@ -1314,10 +1314,10 @@ clock bit off: **all fail with `RINT=0x80`.** Both halves of the timing budget
 are therefore exhausted.
 
 Because that block is `#if 0` for the D80, stock never raises the SDIO clock
-from the driver either — stock's link speed comes purely from its device tree
+from the driver either - stock's link speed comes purely from its device tree
 ceiling of 50 MHz.
 
-## 5. The rate ladder — where the wall actually is
+## 5. The rate ladder - where the wall actually is
 
 The v5p3x runs its module clock at 2x the card clock, so the CCU can only
 produce a few rates here. Walking them with `h713_fmax`:
@@ -1338,7 +1338,7 @@ what a link degrading through its margin looks like rather than a mode fault.
 
 `patches/kernel/0048-arm64-dts-h713-sdio-uhs-sdr104-at-33mhz.patch` declares
 `sd-uhs-sdr50`/`sd-uhs-sdr104` and `max-frequency = <35000000>`. No driver
-change: the existing 26–52 MHz delay entry already programs
+change: the existing 26-52 MHz delay entry already programs
 `DRV=00030000 NTSR=81710110`, the state the passing runs used.
 
 Built as FIT `dd7a38493605f034c8fd91bbdbf960e1a3b861feb666311a8db99a7bd30a28ae`
@@ -1358,7 +1358,7 @@ Payload `139080a55d26beca1bb94e58780a6ebd9f7048a1b5e79024e41682f0ba5d8a6b`
 - `dmesg | grep -E 'cmd53|fifo error|phase error|data error|HARD|timed-out'`
   → 0 matches, at 30 MHz and at 33.33 MHz
 
-Transfer times were 3–10 s per 8 MiB at both 25 and 33.33 MHz: the WiFi link,
+Transfer times were 3-10 s per 8 MiB at both 25 and 33.33 MHz: the WiFi link,
 not the SDIO bus, sets throughput. The case for 33.33 MHz is proximity to the
 vendor configuration, not speed.
 
@@ -1374,7 +1374,7 @@ has still never been observed; the vendor BSP prints its negotiated rate as
 
 ---
 
-# 2026-08-19 — CORRECTION: the SDIO clock is ~4x higher than reported
+# 2026-08-19 - CORRECTION: the SDIO clock is ~4x higher than reported
 
 The section above concluded that 50 MHz is unreachable on this board and that
 33.33 MHz is the ceiling. **That conclusion is wrong**, and the sweeps it rests
@@ -1386,18 +1386,18 @@ board can, so the fault had to be ours.
 ## 1. What is doubled, twice
 
 - `sunxi_mmc_clk_set_rate()` (patch 0006) doubles the module clock for the
-  v5p3x 2X timing mode — `if (host->cfg->no_wait_pre_over) clock <<= 1;` — and
+  v5p3x 2X timing mode - `if (host->cfg->no_wait_pre_over) clock <<= 1;` - and
   halves the rate it reports back. This mirrors the vendor driver, which does
   `mod_clk = ios->clock << 1` and reports `ios->clock = rate >> 1`.
 - mainline's H616 CCU declares the MMC clocks with
   `SUNXI_CCU_MP_WITH_MUX_GATE_POSTDIV(mmc0_clk, "mmc0", mmc_parents, 0x830,
-  ..., 2, 0)` — a fixed /2 post-divider — so `clk_set_rate(R)` programs the
+  ..., 2, 0)` - a fixed /2 post-divider - so `clk_set_rate(R)` programs the
   divider chain to `2R` and reports `R`.
 
 Neither layer's assumed halving materialises, so the card is clocked at about
 `4 x ios.clock`. The H713 SDIO cfg (`sun50i_h713_cfg`) is the only one carrying
 `no_wait_pre_over`; the eMMC cfg does not, so the eMMC is off by at most 2x and
-possibly not at all — untested.
+possibly not at all - untested.
 
 ## 2. Direct measurement (patches/kernel/0047, untracked)
 
@@ -1436,15 +1436,15 @@ to the kernel instrumentation at all.
 
 | `max-frequency` | physical | earlier verdict | actual meaning |
 |---|---|---|---|
-| 12.5 MHz | ~50 MHz | not tested then | stock parity — passes, 4 x 8 MiB both ways, 0 faults |
+| 12.5 MHz | ~50 MHz | not tested then | stock parity - passes, 4 x 8 MiB both ways, 0 faults |
 | 25 MHz | ~100 MHz | "the safe baseline" | ~2x stock, passes + 128 MiB soak |
 | 30 MHz | ~120 MHz | pass | pass |
-| 35 MHz | ~133 MHz | "the new ceiling" | pass, 128 MiB soak — but ~2.7x stock |
+| 35 MHz | ~133 MHz | "the new ceiling" | pass, 128 MiB soak - but ~2.7x stock |
 | 40 MHz | ~150 MHz | fail (start-bit) | the analog wall is here |
 | 50 MHz | ~200 MHz | "50 MHz impossible" | ~200 MHz impossible; says nothing about 50 |
 
-The sweeps themselves remain valid observations — mode, 16 host delay states,
-stock's 2X re-latch, and the AIC8800 iopad registers all failed identically —
+The sweeps themselves remain valid observations - mode, 16 host delay states,
+stock's 2X re-latch, and the AIC8800 iopad registers all failed identically -
 but they were run at ~200 MHz, where no timing knob was ever going to help.
 
 ## 5. Consequences
@@ -1457,14 +1457,14 @@ but they were run at ~200 MHz, where no timing knob was ever going to help.
 - The fix is to make the number honest, not to chase a rate. Removing the
   driver-side doubling (`sunxi_mmc.h713_nodouble=1` in 0047) halves the error;
   whether the remaining 2x belongs to the CCU post-divider needs the eMMC
-  measured the same way — one gate change in 0047, since its timing hook is
+  measured the same way - one gate change in 0047, since its timing hook is
   currently restricted to `cfg->v5p3x`.
 - Only after that should the rate be chosen: stock parity is 50 MHz physical,
-  and the wall is ~133–150 MHz physical.
+  and the wall is ~133-150 MHz physical.
 
 ---
 
-# 2026-08-21 — the accounting is fixed, and the link runs stock 50 MHz
+# 2026-08-21 - the accounting is fixed, and the link runs stock 50 MHz
 
 `patches/kernel/0048-mmc-sunxi-h713-run-sdio-at-stock-sdr104-50mhz.patch`.
 
@@ -1506,7 +1506,7 @@ mmc1: new UHS-I speed SDR104 SDIO card at address 6721
 ```
 
 `NTSR=81710110` is the 104M delay entry, selected by the existing per-speed
-programming — no new table was needed at this rate.
+programming - no new table was needed at this rate.
 
 ```text
 clock:          50000000 Hz
@@ -1521,7 +1521,7 @@ signal voltage: 0 (3.30 V)
 `clk_rate` in debugfs is computed by the very model the patch edits, so it
 cannot confirm the patch. The CCU register can.
 
-**The H713 CCU base is `0x02001000`.** It is *not* H616's `0x03001000` — reading
+**The H713 CCU base is `0x02001000`.** It is *not* H616's `0x03001000` - reading
 that address returns `0x00000000` and looks like a dead clock. MMC0/1/2 are
 `0x02001830` / `0x834` / `0x838`.
 
@@ -1549,7 +1549,7 @@ The confirmation is that M=12 is *the same divider* the old nominal-12.5 MHz
 configuration programmed: 12.5 doubled by the driver to 25, multiplied by the
 modelled post-divider to a 50 MHz chain target, giving M=12. Section 3 of the
 2026-08-19 entry measured that exact configuration at **48.6 MHz** with CMD53
-payload timing. Same register, same wire rate — the new setting inherits a
+payload timing. Same register, same wire rate - the new setting inherits a
 physical measurement instead of needing a fresh one.
 
 ## 4. Acceptance and soak
@@ -1575,7 +1575,7 @@ empty after the soak. `ksdioirqd/mmc1` is `S` in `sdio_irq_thread`. The only
 
 The nine `error|fail` lines in `dmesg` are all pre-existing and unrelated:
 pinctrl supplier device-link, missing `regulatory.db`, the `rdinit=/init` access
-check (expected — we boot with `root=`), two `AICWFDBG` `invalid cmd` lines, the
+check (expected - we boot with `root=`), two `AICWFDBG` `invalid cmd` lines, the
 AFBD "display is not running" notice (no `h713_disp` run in U-Boot), and two
 Bluetooth `Opcode 0x1003` timeouts. All present in the 25 MHz control boot too.
 
@@ -1590,7 +1590,7 @@ and that removing it there would *break* HS400 rather than fix it:
 `0x02001838` = `0x02000002` → mux 2 = `pll-periph1-2x` (1200 MHz per
 `clk_summary`), M = 3, P = 1. The divider chain therefore emits **400 MHz**,
 which the model reports as 200 MHz. HS400 is DDR and wants the module clock at
-twice the card clock — and mainline's `sunxi_mmc_clk_set_rate()` only applies
+twice the card clock - and mainline's `sunxi_mmc_clk_set_rate()` only applies
 that doubling for `MMC_TIMING_MMC_DDR52`, never for HS400. The post-divider
 appears to be supplying precisely that missing 2x.
 
@@ -1598,7 +1598,7 @@ appears to be supplying precisely that missing 2x.
 recorded as such. It is worth confirming with the 0047 timing hook before anyone
 edits mmc0/mmc2, but nothing in the current tree depends on the answer.
 
-(`mmc2`'s gate bit reads 0 while the eMMC is idle — sunxi-mmc drops the module
+(`mmc2`'s gate bit reads 0 while the eMMC is idle - sunxi-mmc drops the module
 clock on runtime suspend. The divider fields still hold the last programmed
 value, which is what is decoded above.)
 
@@ -1618,10 +1618,10 @@ mismatched `is_chip_id_h` firmware variant.
 
 ## 7. Production kernel, cold boot (2026-08-21)
 
-Sections 1–6 used a `sysrq` debug kernel started by `bootm` with no intervening
+Sections 1-6 used a `sysrq` debug kernel started by `bootm` with no intervening
 power cycle. Both gaps are now closed.
 
-Production FIT — `build/build.sh kernel` with no `KERNEL_CONFIG`:
+Production FIT - `build/build.sh kernel` with no `KERNEL_CONFIG`:
 
 ```text
 build/out/h713-kernel.fit
@@ -1663,7 +1663,7 @@ mmc1: new UHS-I speed SDR104 SDIO card at address 6721
 Fault grep empty; `ksdioirqd/mmc1` `S` in `sdio_irq_thread`; CCU `0x02001834`
 still `0x8100000B` after the soak; eMMC HS400 8-bit 200 MHz, rootfs `rw`.
 
-Cold SDIO init is clean on the first CMD53 — one `v5p3x delay` line at 50 MHz,
+Cold SDIO init is clean on the first CMD53 - one `v5p3x delay` line at 50 MHz,
 no 400 kHz retry storm, no phase rotation ahead of it.
 
 ## 8. Blocker for flashing: the FAT on `mmc 1:2` overruns its partition
@@ -1687,8 +1687,8 @@ mmc 1:2 0x50000000 h713-kernel.fit` returns all 7739580 bytes in 496 ms
 clusters physically exist on the eMMC past it. The board's boot path has never
 been broken by this; only Linux-side access is.
 
-Consequence for this work: writing the FIT there — from Linux or via `fatwrite`
-— could place data outside the partition, over whatever the GPT assigns to that
+Consequence for this work: writing the FIT there - from Linux or via `fatwrite`
+- could place data outside the partition, over whatever the GPT assigns to that
 region. So flashing stays blocked, and `mmc 1:2` should not be mounted `rw`,
 until it is established whether the GPT entry is undersized or the filesystem
 was built oversized, and what the upper ~96 MiB overlaps.
@@ -1702,19 +1702,19 @@ right.**
 
 | | |
 |---|---|
-| `mmcblk0p2` (`bootloader_b`) | LBA 139264–204799, 65536 sectors = **32 MiB** |
+| `mmcblk0p2` (`bootloader_b`) | LBA 139264-204799, 65536 sectors = **32 MiB** |
 | FAT16 `total_sectors_32`, boot-sector offset 32 | `0x00040000` = 262144 sectors = **128 MiB** |
 
 The partition table cannot be the error. A 128 MiB volume starting at LBA
 139264 ends at 401407, running through `env_a` (204800), `env_b` (205312),
-`boot_a` (205824–336895) and half of `boot_b` — and those are occupied:
+`boot_a` (205824-336895) and half of `boot_b` - and those are occupied:
 `boot_a` begins with an `ANDROID!` header, `env_a` with a live U-Boot
 environment (`BOOTMODE=standby…`). There is nowhere to grow into.
 
 `fsck.vfat -n` names it exactly: `Failed to read sector 262143.`
 
 **Correction to section 8:** it said a write "from either side" was unsafe.
-Linux writes fail *safely* — the block layer clamps to the partition and
+Linux writes fail *safely* - the block layer clamps to the partition and
 returns `attempt to access beyond end of device`, so Linux physically cannot
 reach `boot_a` through this filesystem. The hazard is U-Boot's `fatwrite`,
 which does not clamp. That is why the repair was done from Linux.
@@ -1723,10 +1723,10 @@ which does not clamp. That is why the repair was done from Linux.
 
 Testing every file for readability partitions the set cleanly:
 
-- **All 45 vendor artifacts are inside 32 MiB** — `mips/*`, `wavefile/*`,
+- **All 45 vendor artifacts are inside 32 MiB** - `mips/*`, `wavefile/*`,
   `bat/*`, `bootlogo.bmp`, `boot-logo.bmp`, `fastbootlogo.bmp`, `font24.sft`,
   `font32.sft`, `magic.bin`, `backup_8020.bin`.
-- **Only the six `h713-kernel*.fit` files were out of range** — all ours.
+- **Only the six `h713-kernel*.fit` files were out of range** - all ours.
 
 ### The repair
 
@@ -1739,9 +1739,9 @@ Proven on a copy of the backup before the board was touched:
 3. `mcopy` the validated production FIT in as `h713-kernel.fit`.
 
 Cluster arithmetic stays valid: 65536 − 545 reserved/FAT/root = 64991 data
-sectors ÷ 4 = **16247 clusters**, comfortably inside FAT16's 4085–65524 range,
+sectors ÷ 4 = **16247 clusters**, comfortably inside FAT16's 4085-65524 range,
 and the existing 256-sector FAT indexes far more than that. Nothing needs
-reformatting — the FAT table and directories are untouched.
+reformatting - the FAT table and directories are untouched.
 
 Verification on the copy: `fsck.vfat -n` clean, no unreachable sector, and all
 45 vendor files extracted bit-identical against the original
@@ -1757,7 +1757,7 @@ aborted at the unreachable-sector check.
 Written with `dd of=/dev/mmcblk0p2 bs=1M conv=fsync`; read-back SHA-256 matches
 the prepared image exactly. From Linux: 32M volume on a 32M partition, 46 files,
 **0 unreadable**, 0 `beyond end of device` messages, 3.4M free, and
-`sha256sum h713-kernel.fit` — previously an `Input/output error` — now returns
+`sha256sum h713-kernel.fit` - previously an `Input/output error` - now returns
 `51044da6…`, the validated production build.
 
 Then `bootcmd` was allowed to run untouched:
@@ -1791,11 +1791,11 @@ documented as broken for board RX.
 
 3.4 MB free. One kernel FIT fits; the old habit of parking five or six
 experimental FITs there is what created the overflow in the first place, and
-there is no longer room for it. A larger debug image — the 10.8 MB KASAN build,
-for instance — will not fit alongside the production one. Stage experiments on
+there is no longer room for it. A larger debug image - the 10.8 MB KASAN build,
+for instance - will not fit alongside the production one. Stage experiments on
 the ext4 rootfs and `ext4load` them instead.
 
-## 10. Measuring the eMMC clock (2026-08-21) — attempted, NOT settled
+## 10. Measuring the eMMC clock (2026-08-21) - attempted, NOT settled
 
 The open question from section 7: `mmc2`'s CCU divider chain physically emits
 400 MHz while the driver labels the card clock 200 MHz. Is the eMMC running at
@@ -1809,18 +1809,18 @@ is why, and what it did establish, because the negative is reusable.
 `patches/kernel/0049-mmc-sunxi-h713-payload-timing-probe.patch` (untracked,
 debug). Unlike 0047 it is *not* gated on `cfg->v5p3x`, so it sees both
 controllers, and it logs raw `bytes`/`ns` plus bus geometry rather than baking
-in a 4-bit-SDR conversion — 0047's formula is hardcoded for SDIO and would be
+in a 4-bit-SDR conversion - 0047's formula is hardcoded for SDIO and would be
 wrong by 4x on an 8-bit DDR link. Inert unless `sunxi_mmc.h713_probe=1`;
 `h713_probe_min` sets a size floor to keep rootfs chatter out.
 
-### The method is sound — the SDIO control proves it
+### The method is sound - the SDIO control proves it
 
 | host | samples | fitted slope | implied card clock | label |
 |---|---|---|---|---|
 | mmc1 SDIO | 201 | 41.03 ns/B → 24.4 MB/s | **48.7 MHz** | 50 MHz |
 | mmc0 eMMC | 147 | 8.47 ns/B → 118.0 MB/s | 59.0 MHz | 200 MHz |
 
-mmc1 reads 48.7 MHz against a known 50 — 2.6% low, and independently equal to
+mmc1 reads 48.7 MHz against a known 50 - 2.6% low, and independently equal to
 the 48.6 MHz the 2026-08-19 CMD53 instrumentation measured. The arithmetic is
 right.
 
@@ -1832,7 +1832,7 @@ The shapes differ, and that is the whole story:
   throughout, so throughput reads the clock.
 - **mmc0 climbs**: 46.9 → 75.3 → 91.7 → 103.0 → 109.7 → 112.4 MB/s from 16 KiB
   to 512 KiB, still rising. That is a fixed per-transfer cost amortised over
-  larger reads — the NAND — not a bus ceiling.
+  larger reads - the NAND - not a bus ceiling.
 
 Re-reading the *same* 512 KiB region 60 times does not help: min 4.682 ms,
 median 4.689 ms, max 4.760 ms, a 1.6% spread. There is no device read cache to
@@ -1859,7 +1859,7 @@ That makes the two hypotheses concrete and far apart:
 Measured: **29.5 MB/s**, implying 14.8 MHz at the 2 bytes/card-clock that 8-bit
 DDR requires. That is neither 25 nor 50.
 
-The regime change is real — an 8x label cut (200 → 25 MHz) produced only a
+The regime change is real - an 8x label cut (200 → 25 MHz) produced only a
 3.85x slowdown (112.4 → 29.2 MB/s on the same 512 KiB read), which independently
 confirms the 200 MHz case was media-limited and the 25 MHz case is not. But the
 bus-limited number lands where it should only if bytes-per-card-clock were about
@@ -1867,15 +1867,15 @@ bus-limited number lands where it should only if bytes-per-card-clock were about
 
 **So there is an unexplained ~1.7x factor in the eMMC data path**, and until it
 is identified, eMMC throughput cannot be converted into a card clock the way
-SDIO throughput can. Reporting 14.8 MHz — or forcing it to the nearer
-hypothesis — would be reading a number the method has not earned.
+SDIO throughput can. Reporting 14.8 MHz - or forcing it to the nearer
+hypothesis - would be reading a number the method has not earned.
 
 ### The competing signal, unresolved
 
 Register evidence leans the *other* way from the section-7 inference. Both
 controllers are configured identically: `CLKCR = 0x00010000` (divider 1) and
 `NTSR` bit 31 (`SDXC_2X_TIMING_MODE`) set on each, at their normal settings. On
-mmc1 — the one that can be measured — the card clock equals the CCU chain
+mmc1 - the one that can be measured - the card clock equals the CCU chain
 output (50 MHz chain, 48.7 MHz measured, ratio 1.0). If mmc0 behaved the same
 way its 400 MHz chain would mean a 400 MHz card clock, i.e. HS400 at twice its
 rated maximum.
@@ -1887,7 +1887,7 @@ way to bet.
 
 The difference between the two controllers that could explain it is that mmc1 is
 SDR and mmc0 is DDR, and the controller may halve the module clock for DDR modes
-— which is exactly what `SDXC_2X_TIMING_MODE` is named for. That would make the
+- which is exactly what `SDXC_2X_TIMING_MODE` is named for. That would make the
 label honest and the section-7 inference right. Nothing measured here confirms
 or refutes it.
 
@@ -1900,7 +1900,7 @@ and does not work, so the next attempt should not repeat it.
 
 What would actually settle it, in rough order of cost:
 
-1. Identify the ~1.7x factor — instrument block-gap/CRC overhead, or time a
+1. Identify the ~1.7x factor - instrument block-gap/CRC overhead, or time a
    single multi-block read against its theoretical duration at a known-good
    mode. If eMMC throughput can be calibrated the way SDIO was, the capped-clock
    experiment becomes decisive immediately.
@@ -1912,7 +1912,7 @@ What would actually settle it, in rough order of cost:
 Board was returned to the flashed production kernel afterwards: HS400 200 MHz,
 SDR104 50 MHz, zero faults.
 
-## 11. The regulatory domain (2026-08-21) — fixed, and not where it looked
+## 11. The regulatory domain (2026-08-21) - fixed, and not where it looked
 
 `regulatory.db failed to load` is the visible symptom, and fixing it would not
 have changed the radio's behaviour at all. Worth reading before anyone chases
@@ -1942,7 +1942,7 @@ country 00: DFS-UNSET
 
 `regdb.c` holds **185 countries with 98 distinct rule sets**, with correct DFS
 regions, `NO_IR`/`NO_OUTDOOR` flags and per-subband power. It is selected by
-`default_ccode` — a compiled-in `char[4] = "00"`, not a module parameter, so
+`default_ccode` - a compiled-in `char[4] = "00"`, not a module parameter, so
 there was no way to change it without editing the source.
 
 > A first pass at this concluded the table was 189 identical permissive entries.
@@ -1981,8 +1981,8 @@ Both were found while chasing the log line. Neither affects the self-managed
 wiphy, but both matter if `custregd=0` is ever used.
 
 1. **Broken alternatives, fixed.** `wireless-regdb` is installed and the variant
-   files exist, but `/lib/firmware/regulatory.db` — the master alternatives
-   symlink — was missing, and alternatives pointed at the Debian variant anyway.
+   files exist, but `/lib/firmware/regulatory.db` - the master alternatives
+   symlink - was missing, and alternatives pointed at the Debian variant anyway.
    Our mainline kernel carries only the upstream certs
    (`net/wireless/certs/{sforshee,wens}.hex`) and cannot verify Debian's
    `benh@debian.org` signature, so the Debian pair could never validate.
@@ -2001,9 +2001,9 @@ wiphy, but both matter if `custregd=0` is ever used.
    `CONFIG_EXTRA_FIRMWARE="regulatory.db regulatory.db.p7s"` to embed it in the
    kernel image, building cfg80211 as a module so the request happens after
    `/` is up, or an initramfs. Not done, because with a self-managed wiphy it
-   changes nothing observable — do it only alongside `custregd=0`.
+   changes nothing observable - do it only alongside `custregd=0`.
 
-## 12. Firmware-crash recovery (2026-08-21) — the reboot made reliable
+## 12. Firmware-crash recovery (2026-08-21) - the reboot made reliable
 
 The 2026-07-23 conclusion stands: **there is no safe in-place recovery.**
 Unbinding and reloading the SDIO stack races the mmc/driver core into a
@@ -2011,7 +2011,7 @@ NULL-deref Oops (`__device_attach_driver` via `mmc_rescan` -> `mmc_attach_sdio`)
 Do not try it again. Only a full boot revives the chip.
 
 What was wrong was not that conclusion but what followed from it. The fallback
-reboot itself hung — roughly three minutes on `h713-bt-attach` stop — and left
+reboot itself hung - roughly three minutes on `h713-bt-attach` stop - and left
 the board needing a physical power cycle, so the project gave up on automatic
 recovery entirely and shipped a log-only notifier. The fix is to make the reboot
 reliable rather than to keep avoiding it.
@@ -2054,7 +2054,7 @@ Verified on hardware:
   faults.
 
 **Not verified: recovery from a real firmware crash.** The trigger was
-synthetic — the unit was started directly, not by a `DHDISDOWN` uevent from a
+synthetic - the unit was started directly, not by a `DHDISDOWN` uevent from a
 genuinely dead chip. That matters, because the dead chip is exactly the state
 that makes `hciattach` unkillable, and a healthy `hciattach` sits in `S`/
 `do_sys_poll` where SIGTERM works fine. The watchdog bounds the shutdown either
@@ -2064,9 +2064,9 @@ An attempt to provoke a real crash failed: 4 minutes of the documented
 starvation recipe (performance governor, 4x `yes`, a large memcpy `dd`,
 continuous eMMC-write `dd`, load average 7.97) with six concurrent 64 MiB WiFi
 round-trips produced **zero** `DHDISDOWN`, zero `cmd timed-out`, zero SDIO
-faults, and every hash exact. The crash may simply be less reachable now — the
+faults, and every hash exact. The crash may simply be less reachable now - the
 vendor rebase, the 0046 IDMA fix and the 0048 clock fix all landed since it was
-last seen — or this load was not pathological enough. Either way it is no longer
+last seen - or this load was not pathological enough. Either way it is no longer
 reproducible on demand, so the recovery path stays untested against the real
 fault.
 
@@ -2077,7 +2077,7 @@ beats one that sits dead until someone notices. For a projector that must never
 interrupt playback for a network fault, set `AUTO_REBOOT=no` and keep the older
 log-and-wait behaviour; the handler is one config line either way.
 
-## 13. STA mode retested (2026-08-21) — the standing rule is refuted
+## 13. STA mode retested (2026-08-21) - the standing rule is refuted
 
 STA mode was the last untested path, and historically *the* failing one: two
 attempts out of two on 2026-08-16 wedged the board, and the project adopted the
@@ -2096,19 +2096,19 @@ channel throughout, which is the only reason the mode switch was safe to make
 remotely.
 
 DHCP did not complete, so the board was given `10.42.0.50/24` statically. Not
-investigated — it was in the way, not the subject.
+investigated - it was in the way, not the subject.
 
 ### Results
 
 | transfer | board RX | board TX | hash |
 |---|---|---|---|
-| 8 MiB | 4.46 MB/s | — | exact |
+| 8 MiB | 4.46 MB/s | - | exact |
 | 64 MiB | 8.11 MB/s | 9.20 MB/s | exact |
 | 128 MiB | **8.90 MB/s** | **9.62 MB/s** | exact |
 
 Zero `cmd53`, `cmd timed-out`, `DHDISDOWN`, FIFO or CRC messages throughout, and
 the board stayed up continuously across all of it. The 8 MiB board-RX case is
-the exact shape of the 2026-08-16 failure — a ~10 MB inbound scp — and it
+the exact shape of the 2026-08-16 failure - a ~10 MB inbound scp - and it
 completed in 1.9 s.
 
 STA throughput (8.9/9.6 MB/s) **beats** the shipped 2.4 GHz HT40 hotspot
@@ -2118,8 +2118,8 @@ between the two measurements, so this is a property of the peer, not of STA mode
 
 ### Why the old result was real but misattributed
 
-The 2026-08-16 failures were genuine. They were the SDIO bulk-RX defect — the
-v5p3x IDMA descriptor encoding for an exact maximum-size segment — which
+The 2026-08-16 failures were genuine. They were the SDIO bulk-RX defect - the
+v5p3x IDMA descriptor encoding for an exact maximum-size segment - which
 **patch 0046** fixed on 2026-08-18. That defect was never STA-specific; section
 "three corrections" already recorded that it reproduced in AP mode too. STA mode
 simply got the blame because it was where the transfers happened.
@@ -2131,12 +2131,12 @@ measurements above.
 ### One thing that looks like a wedge and is not
 
 After `sta-connect.sh` associates, it runs `dhclient` in the **foreground**. The
-serial console then echoes typed characters but produces no command output —
+serial console then echoes typed characters but produces no command output -
 which is precisely the signature the old notes describe as "tty echo alive,
 shell dead, recoverable only by pulling power". It is not. **Ctrl-C returns the
 shell.** Check that before concluding the board is wedged.
 
-## 14. The BT `Opcode 0x1003` timeout (2026-08-21) — fixed
+## 14. The BT `Opcode 0x1003` timeout (2026-08-21) - fixed
 
 Two lines on every cold boot:
 
@@ -2168,9 +2168,9 @@ Four hypotheses, measured on cold boots:
 | change | result |
 |---|---|
 | baseline | 2 timeouts, up on attempt 2, MGMT at 13.9 s |
-| +5 s settle before attaching | 2 timeouts, just 5 s later — **not a timing race** |
+| +5 s settle before attaching | 2 timeouts, just 5 s later - **not a timing race** |
 | 115200 instead of 1.5 Mbaud | **fails completely**: 10 attempts, 30 timeouts, hci0 never up |
-| + drain `ttyS1` before attach | 0 timeouts, then 1 on the next boot — helps, not deterministic |
+| + drain `ttyS1` before attach | 0 timeouts, then 1 on the next boot - helps, not deterministic |
 | + drain + prime attach/detach | **0 timeouts, attempt 1, on 3 cold boots out of 3** |
 
 Two things fall out of that table.
@@ -2182,7 +2182,7 @@ cold-boot timing is off" and recommend baud-rate negotiation as the real fix.
 That is wrong for this firmware: attaching at 115200 does not work at all. The
 retry loop they and we both shipped was masking a different problem.
 
-**The retry never worked because of elapsed time — it worked because it was the
+**The retry never worked because of elapsed time - it worked because it was the
 second attach.** The 5 s settle test is what proves this: waiting longer moved
 the timeouts later without removing them. The first `N_HCI` attach after power-on
 leaves the controller unable to answer the first HCI command; a detach/re-attach
@@ -2201,7 +2201,7 @@ via `/etc/default/h713-bt-attach` (`BT_BAUD`, `BT_DRAIN`, `BT_PRIME`); the retry
 loop stays as the backstop.
 
 Result: zero timeouts, `hci0` up on attempt 1, `MGMT ver` at ~9.0 s instead of
-~13.9 s — about 5 seconds off every boot — and scanning still works.
+~13.9 s - about 5 seconds off every boot - and scanning still works.
 
 ### Cross-check against the vendor binaries (2026-08-21)
 
@@ -2227,7 +2227,7 @@ enable ap uart flow control, default disable
 bt uart parity, default none
 ```
 
-So the vendor runs `/dev/ttyS1` at **1.5 Mbaud with flow control disabled** —
+So the vendor runs `/dev/ttyS1` at **1.5 Mbaud with flow control disabled** -
 which is what this project already used (`hciattach ... 1500000 noflow`), and
 independent confirmation that the RE port notes' "default 115200 baud, hciattach
 negotiates up" is wrong. The cold-boot experiment and the vendor binary agree.
@@ -2235,7 +2235,7 @@ negotiates up" is wrong. The cold-boot experiment and the vendor binary agree.
 **Flushing has a vendor analogue.** `tcflush` is referenced five times inside the
 BT HAL region, interleaved with `bt_userial_vendor`, `/dev/ttyS1`,
 `userial_vendor_open` and `BT_VND_OP_USERIAL_OPEN`. That is a symbol reference,
-not proof of the call site — the binaries were not disassembled — but flushing
+not proof of the call site - the binaries were not disassembled - but flushing
 the port is clearly part of the vendor's serial handling, as it is now part of
 ours.
 
@@ -2254,6 +2254,6 @@ setprop ro.bt.bdaddr_path /sys/class/addr_mgt/addr_bt
 ```
 
 So the prime/attach-detach step is specific to the mainline `hci_uart` path and
-has no stock counterpart — but the two settings that could plausibly have been
+has no stock counterpart - but the two settings that could plausibly have been
 wrong, baud and flow control, are confirmed correct against the vendor's own
 configuration.

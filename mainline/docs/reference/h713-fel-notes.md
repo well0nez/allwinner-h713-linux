@@ -6,7 +6,7 @@
 This file tracks the H713-specific FEL facts we have imported from local
 hardware testing and from `<local>/sun50iw12p1-research/`.
 
-## USB TRANSPORT — CORRECTED 2026-07-29 (read before trusting any FEL result below)
+## USB TRANSPORT - CORRECTED 2026-07-29 (read before trusting any FEL result below)
 
 The long-standing "H713 FEL BROM stalls on large bulk transfers" conclusion is
 **wrong**, and several results in this file were shaped by it. Measured on
@@ -30,9 +30,9 @@ wedges the session; 4 KiB at the same base (stopping just below `0x105000`)
 completes in 7.8 ms. `sunxi-fel` now refuses such writes up front.
 
 **Consequence for the record below:** any experiment that used a raw `write`/
-`readl`/`writel` into `0x104000`–`0x124000` may have been measuring BROM
+`readl`/`writel` into `0x104000` - `0x124000` may have been measuring BROM
 corruption rather than the effect under test. Results obtained via the SPL
-loader (`sunxi-fel spl`) are *not* implicated — it relocates around these
+loader (`sunxi-fel spl`) are *not* implicated - it relocates around these
 regions by design, which covers most of the DRAM bring-up ladder. Re-verify
 before relying on any raw-write result.
 
@@ -79,7 +79,7 @@ Useful knobs now available: `SUNXI_FEL_TRACE=1` (per-request wire trace),
 - MILESTONE 2026-07-03: ALL implemented blocks through TYPE_PARAMS are
   hardware-proven first-in-session via `h713-lab/scripts/iw12-ladder.fish`
   (BUS, LDOB, ZQ_CAL, DRAM_CLK, COM, TYPE_PARAMS all PASS). Key process
-  lesson: results only count FIRST-in-session — every apparent rung-3
+  lesson: results only count FIRST-in-session - every apparent rung-3
   failure was a second-upload artifact (Chris spotted the confound).
   Two FEL-safety deviations from vendor order are baked into
   `iw12_bus_init()` and documented in-code.
@@ -193,7 +193,7 @@ Useful knobs now available: `SUNXI_FEL_TRACE=1` (per-request wire trace),
   `hy310_h713_defconfig`; the H616-derived `dram_sun50i_h713.c` is no
   longer built). Implemented so far, each behind a FEL checkpoint:
   RTC-region sys cfg, bus/NSI/MBUS enables (the DRAM-relevant tail of
-  boot0 set_pll; PLL_CPU/PLL_PERI deliberately NOT replayed — U-Boot
+  boot0 set_pll; PLL_CPU/PLL_PERI deliberately NOT replayed - U-Boot
   clock_init covers them and touching PLL_PERI under FEL risks BROM USB),
   ldob fix, ZQ-cal (internal-ZQ path per tpr13 bit16), DRAM clock/COM/
   type params, timing write-out, PIR/train, and the post-training
@@ -228,7 +228,7 @@ Useful knobs now available: `SUNXI_FEL_TRACE=1` (per-request wire trace),
   loading and that the old H616-style `0x20000` SPL address is wrong for this
   board.
 - `FEL_USB_OVERFLOW_FIX_TESTING.md` claims H713 returns a larger response for
-  tiny FEL status reads. **Disproven 2026-07-29** — a healthy session replies
+  tiny FEL status reads. **Disproven 2026-07-29** - a healthy session replies
   with exactly 13/32/8 bytes. The real requirement is that a bulk IN buffer be a
   multiple of `wMaxPacketSize` (64 here); the old 64-byte bounce for `<=8`-byte
   reads satisfied that by coincidence and missed the 13-byte `AWUS` read.

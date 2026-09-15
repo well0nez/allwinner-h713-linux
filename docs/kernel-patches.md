@@ -3,7 +3,7 @@
 The H713 has no mainline kernel support, and this repo does not carry a kernel fork to work around that.
 Instead `mainline/build/build.sh kernel` fetches a **pinned upstream tarball** (Linux 6.18.38, checksum in
 `mainline/config/versions.env`) and applies a **patch series** to it, in order, with `patch -p1`. Every
-patch is a plain file under `mainline/patches/kernel/`, readable and diffable on its own — there is no
+patch is a plain file under `mainline/patches/kernel/`, readable and diffable on its own - there is no
 history to clone, and adding one is a file, not a rebase.
 
 ## The series file
@@ -36,7 +36,7 @@ projector work, dated in `doku/` by section.
 ## Why the numbers are history, not order
 
 A patch keeps the number it was given when it was written. When a later fix targets an already-numbered
-patch, it becomes a lettered addendum — `0014a`, `0024a/b/c`, `0078a` — placed **directly behind its
+patch, it becomes a lettered addendum - `0014a`, `0024a/b/c`, `0078a` - placed **directly behind its
 original**, not at the end of the series, because the patches after it were written against the state the
 original plus its addenda leaves behind: `0024a` fixes a register and IRQ number `0024` got wrong, `0024b`
 renames the driver it introduced, and everything from `0025` on assumes both are already applied. Moving an
@@ -50,25 +50,25 @@ their topical sections after being written, with tree identity re-proven each ti
 `build.sh` extracts the tarball into a scratch directory, applies the series with `patch -p1` in file order,
 copies `board/hy200_qz713df_a1_defconfig` into `arch/arm64/configs/`, and builds. To add a patch: generate it
 against the tree the way the existing ones were made (a `diff -ruN` of two patched trees, not hand-edited),
-give it the next free number — or an `NNNNa` suffix if it corrects a specific earlier patch and must sit
-behind it — and insert the line in `series` at that position, under the right section banner. Nothing else
+give it the next free number - or an `NNNNa` suffix if it corrects a specific earlier patch and must sit
+behind it - and insert the line in `series` at that position, under the right section banner. Nothing else
 needs updating; the next build notices the new file on its own.
 
 That "on its own" is the **tree digest**: `kernel_inputs_digest()` hashes the `KERNEL_*` lines of
 `versions.env` (a prefix match, so an unrelated pin bump elsewhere in that shared file does not invalidate
 the kernel cache), the `series` file, the board defconfig, any `KERNEL_CONFIG` fragment in use, and every
-patch file `series` names — one SHA-256 over all of it. `prepare_kernel` names the extracted, patched source
+patch file `series` names - one SHA-256 over all of it. `prepare_kernel` names the extracted, patched source
 tree `build/linux-6.18.38-<digest>`, so editing a single patch byte gets you a fresh tree automatically,
 never a stale one silently reused, and two different patch sets never collide in the same directory.
 
-`board/hy200_qz713df_a1_defconfig` is the shipping state — `CONFIG_DEBUG_FS` and `CONFIG_DYNAMIC_DEBUG` are
+`board/hy200_qz713df_a1_defconfig` is the shipping state - `CONFIG_DEBUG_FS` and `CONFIG_DYNAMIC_DEBUG` are
 off in it. `board/debug.config` is a fragment for developers only: `KERNEL_CONFIG=debug build.sh kernel`
 merges it back on to reach `/sys/kernel/debug/cpu_comm/call` and similar, and writes its output to a
 suffixed `h713-kernel-debug.fit` so it can never be mistaken for the release image.
 
 ## Next door, not part of any build
 
-`patches/zurueckgenommen/` keeps patches that were dropped from the series, each with the reason — they
+`patches/zurueckgenommen/` keeps patches that were dropped from the series, each with the reason - they
 are history, not a fallback. `patches/vorschlaege/` holds work in progress by topic: a finding, a test
 plan, sometimes a patch that was never applied. Neither directory is read by `build.sh`; both are there
 so a decision can be re-read instead of re-argued. `patches/aic8800/` is the Wi-Fi driver's own series

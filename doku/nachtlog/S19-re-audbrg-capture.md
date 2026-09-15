@@ -1,4 +1,4 @@
-# S19 — RE: Capture-Rezept des Audio-Bridge (AUDIF/AUDBRG) **ohne DSP**
+# S19 - RE: Capture-Rezept des Audio-Bridge (AUDIF/AUDBRG) **ohne DSP**
 
 **08.09.2026, reine statische Analyse.** Board, Zuspieler, `mainline/patches/`, `userspace/` nicht angefasst.
 Arbeitskopie `analyse/ida/db-audio-trid/` (neu angelegt, `snd_alsa_trid.ko` als ELF-Relocatable direkt in idalib 9.1
@@ -15,22 +15,22 @@ Adressen sind ARM-physisch. **belegt** = aus Disassembly/Dekompilat oder Stock-D
 | Frage | Antwort | Stand |
 |---|---|---|
 | **Bypass ohne DSP?** | **Ja.** Im ganzen `snd_alsa_trid.ko` berührt der Capture-Pfad den MSP-DSP **an keiner Stelle**. Die DSP-Mailbox-Helfer (`aud_dsp1_*`, `tdAudioDSP*`, `WaitDSPFree`) haben genau drei Aufrufer, alle in der **Delayline**-Verwaltung. Der Ton läuft HDMI-RX → AUDIF-SPDI1 → AUDBRG-OSTREAM0-DMA → DRAM-Ring; die CPU liest nur einen Zeiger | belegt (Xref-Liste `a32`-Log) |
-| Wer füllt den Ring? | Der AUDBRG-**WLB**-Kanal (Write-Line-Buffer) OSTREAM0 schreibt autonom in den Ring. `audbrg_ostream_start` schaltet **kein Enable-Bit** — der Kanal läuft, sobald START/END/STEP/CFG stehen und der AUDIF Daten liefert | belegt |
+| Wer füllt den Ring? | Der AUDBRG-**WLB**-Kanal (Write-Line-Buffer) OSTREAM0 schreibt autonom in den Ring. `audbrg_ostream_start` schaltet **kein Enable-Bit** - der Kanal läuft, sobald START/END/STEP/CFG stehen und der AUDIF Daten liefert | belegt |
 | Quelle | Fest verdrahtet: **SPDI1 → OSTREAM0**, **SPDI2 → OSTREAM1**. Der Stock-Treiber programmiert **keinen** HDMI→SPDI-Multiplexer. `ARC_SRC 0x06E00020` und `MSP_OWA_OUT 0x02000158` sind **Ausgangs**-Muxe (ARC-TX bzw. S/PDIF-Out: „APB" vs. „MSP"), nicht die Eingangswahl | belegt |
 | Bleibt offen | Ob HDMI-RX-Audio **ohne** MIPS-Zutun an SPDI1 anliegt. Das programmiert der Stock-ALSA-Treiber nicht; das macht `display.bin` (`HdmiRx_AEC_Enable`, `TurnOnARCAudioPath`) → Frage **F2** | offen |
-| Format im Ring | S16_LE, 2 Kanäle, interleaved, 4 Byte/Frame, feste 48 kHz in der Stock-PCM-Deklaration; Ring **0x10000 = 64 KiB** je OSTREAM (nicht 0x20000 — das ist der ALSA-seitige `buffer_bytes_max`) | belegt (ALSA-hw + CFG-Bits), Sinus-Nachweis fehlt |
+| Format im Ring | S16_LE, 2 Kanäle, interleaved, 4 Byte/Frame, feste 48 kHz in der Stock-PCM-Deklaration; Ring **0x10000 = 64 KiB** je OSTREAM (nicht 0x20000 - das ist der ALSA-seitige `buffer_bytes_max`) | belegt (ALSA-hw + CFG-Bits), Sinus-Nachweis fehlt |
 | IRQ-Zuordnung | Stock-DTB `audbrg@203042c`: `interrupts = <0 0x73 4>, <0 0x71 4>` → **Index 0 = SPI 115 = AUDBRG**, **Index 1 = SPI 113 = AUDIF/„abp dtv"**. In `mainline/.../sun50i-h713.dtsi` stehen sie **vertauscht** (113 zuerst) | belegt |
 | IOMMU | Stock-Node hat `iommus = <&mmu_aw 6 1>`; der Treiber holt die Adresse aus `dma_buf_map_attachment()` auf dem audbrg-`platform_device`, d. h. die DMA geht **durch die IOMMU** (Master 6). Unser Baum hat die IOMMU aus → dann ist es eine echte Physadresse aus CMA, was funktionieren muss (die Register nehmen volle 32 bit) | belegt (Stock), Mainline-Folgerung |
-| `high-addr-ctl 0x06142044` | Bits **[3:0] = A[31:28] für alle RLB-Kanäle** (ISTREAM 0–3 + Delayline-Lesen), Bits **[7:4] = A[31:28] für alle WLB-Kanäle** (OSTREAM 0–1 + Delayline-Schreiben). Globale 4-Bit-Adresserweiterung → **alle Puffer einer Richtung müssen im selben 256-MiB-Fenster liegen** | belegt |
-| Alternative I2S2/OWA? | **Nein.** OWA0/OWA1 und I2S0–2 sind Standard-Allwinner-Blöcke ohne HDMI-RX-Anbindung; ihre Takte kommen aus `pll_audio`/`pll_periph0_2x`, `hdmi_audio_clk` gehört im Stock-DTB allein dem `tvtop`. Stock nutzt **`owa1` als HDMI-ARC-Sender** (`super.fex`: `sndowa1 → AUDIO_ARC`, `TridentALSA → AUDIO_SPEAKER`), owa0 und i2s2 sind abgeschaltet | belegt (§13) |
-| Kürzester Weg | AUDBRG-Capture-Treiber (Stufe 1 aus doku/100) — Registerbild ist vollständig, kein DSP, kein Daemon, ein Ring, ein IRQ. Voraussetzung bleibt das Einschaltrezept aus **F1** (der Block liest aktuell 0) | Empfehlung |
+| `high-addr-ctl 0x06142044` | Bits **[3:0] = A[31:28] für alle RLB-Kanäle** (ISTREAM 0-3 + Delayline-Lesen), Bits **[7:4] = A[31:28] für alle WLB-Kanäle** (OSTREAM 0-1 + Delayline-Schreiben). Globale 4-Bit-Adresserweiterung → **alle Puffer einer Richtung müssen im selben 256-MiB-Fenster liegen** | belegt |
+| Alternative I2S2/OWA? | **Nein.** OWA0/OWA1 und I2S0-2 sind Standard-Allwinner-Blöcke ohne HDMI-RX-Anbindung; ihre Takte kommen aus `pll_audio`/`pll_periph0_2x`, `hdmi_audio_clk` gehört im Stock-DTB allein dem `tvtop`. Stock nutzt **`owa1` als HDMI-ARC-Sender** (`super.fex`: `sndowa1 → AUDIO_ARC`, `TridentALSA → AUDIO_SPEAKER`), owa0 und i2s2 sind abgeschaltet | belegt (§13) |
+| Kürzester Weg | AUDBRG-Capture-Treiber (Stufe 1 aus doku/100) - Registerbild ist vollständig, kein DSP, kein Daemon, ein Ring, ein IRQ. Voraussetzung bleibt das Einschaltrezept aus **F1** (der Block liest aktuell 0) | Empfehlung |
 
 ---
 
 ## 1. Quellen und Methode
 
 `re/vendor/HY310-DEV/stock_modules/modules_full/snd_alsa_trid.ko` ist ein **nicht gestripptes** ARM32-Relocatable mit
-**313 benannten Funktionen** in `.text` (0xb464 Bytes) — die komplette Vendor-Bibliothek ist einkompiliert
+**313 benannten Funktionen** in `.text` (0xb464 Bytes) - die komplette Vendor-Bibliothek ist einkompiliert
 (`AudIf_*`, `audbrg_*`, `Trid_Audio_*`, `Thal_Alsa_*`, `REG_*`, `aud_dsp*`). Ein Cross-`objdump` für ARM gibt es auf
 dem Rechner nicht; idalib 9.1 öffnet das Relocatable aber problemlos (`idapro.open_database(pfad, True)` +
 `ida_auto.auto_wait()`), Hex-Rays ARM läuft.
@@ -54,21 +54,21 @@ Der Vendor-Kernel ist **Linux 5.4** (Pfad in einem `warn_slowpath_fmt`:
 
 ---
 
-## 2. Registerkarte AUDIF — `0x06146000`, Fenster **0x88**
+## 2. Registerkarte AUDIF - `0x06146000`, Fenster **0x88**
 
 `REG_Init@0x7738` mappt: `ioremap(0x06146000, 0x88)`, `ioremap(0x06148000, 0x394)`, `ioremap(0x0614A000, 0x0F)`,
 `ioremap(0x06142044, 4)`, `ioremap(0x02031078, 4)`, `ioremap(0x02032078, 4)`. **Alle Zugriffe laufen über
-`REG_Read`/`REG_Write`/`REG_Write_Mask`, die die Physadresse auf das passende Fenster abbilden** — deshalb stehen
+`REG_Read`/`REG_Write`/`REG_Write_Mask`, die die Physadresse auf das passende Fenster abbilden** - deshalb stehen
 im Code überall die vollen Physadressen (das war der Schlüssel für den automatischen Scan in `ida_a37.py`).
 
 | Offset | Name | Richtung | Bedeutung | Stand |
 |---|---|---|---|---|
 | **+0x00** | `IRQ_STATUS` | R / **W1C** | Sammelstatus. Handler: `v = REG_Read(+0x00); REG_Write(+0x00, v);` dann Verteilung | belegt |
 | **+0x04** | `IRQ_MASK` | R/W | 1 = Quelle darf IRQ auslösen | belegt |
-| **+0x08** | `ERR_STATUS` | R / **W1C** | Fehler-/Overflow-Bits, eigene Bitbelegung (s. u.). **Nicht** „IRQ-Route" — der Legacy-Port schreibt hier Registeradressen hinein, das ist falsch | belegt |
-| **+0x0C** | — | | in keiner Funktion benutzt | — |
+| **+0x08** | `ERR_STATUS` | R / **W1C** | Fehler-/Overflow-Bits, eigene Bitbelegung (s. u.). **Nicht** „IRQ-Route" - der Legacy-Port schreibt hier Registeradressen hinein, das ist falsch | belegt |
+| **+0x0C** | - | | in keiner Funktion benutzt | - |
 | **+0x10** | `SPDS_STATUS` | R | S/PDIF-Statuswort. `AudIf_spds_Interrupt` beobachtet die Low-Byte-Felder `0x1F`, `0x60`, `0x80`; `AudIf_spdi_Interrupt` prüft **Bit 25 (0x2000000) = SPDI1 Status-Änderung** und **Bit 9 (0x200) = SPDI2 Status-Änderung** | Offsets/Bits belegt, Feldbedeutung vermutet |
-| **+0x14** | — | | nicht benutzt | — |
+| **+0x14** | - | | nicht benutzt | - |
 | **+0x18 / +0x1C** | `ABPO1_CLK` / `ABPO1_DATA` | W | I2S-Ausgang 1. `AudIf_i2so_setFs` schreibt `CLK = DATA-4` | belegt |
 | **+0x20 / +0x24** | `ABPO2_CLK` / `ABPO2_DATA` | W | I2S-Ausgang 2 | belegt |
 | **+0x28 / +0x2C** | `ABPO3_CLK` / `ABPO3_DATA` | W | I2S-Ausgang 3 | belegt |
@@ -98,7 +98,7 @@ Aus `AudIf_*_GetW1cMask` / `GetStatusMask` und der Verteilung in `Handle_AudIf_I
 | 0 | `0x01` | SPDI2 „Ereignis" | belegt |
 | 6 | `0x40` | SPDI1 **HW-Fehler** | belegt |
 | 5 | `0x20` | SPDI2 **HW-Fehler** | belegt |
-| 3, 4 | | SPDI2 / SPDI1, Zweitbit — im Handler nicht ausgewertet | vermutet |
+| 3, 4 | | SPDI2 / SPDI1, Zweitbit - im Handler nicht ausgewertet | vermutet |
 | 7, 8, 9, 10 | `0x780` | Delayline 3, 2, 1, 0 (`AudIf_dly_GetStatusMask`: Line0 = 0x400, Line1 = 0x200, Line2 = 0x100, Line3 = 0x80) | belegt |
 | 2, 11, 15 | `0x8804` | **SPDO** (`AudIf_spdo_GetStatusMask() = 34820`) | belegt |
 | 16, 17, 18 | `0x10000/0x20000/0x40000` | **I2SO2 / I2SO1 / I2SO0** (ABPO3/2/1) | belegt |
@@ -111,35 +111,35 @@ Jeder Block schreibt beim `Open` seine eigene Maske hinein (W1C) und liest sie i
 
 | Maske | Quelle | Beleg |
 |---|---|---|
-| `0x400` | **SPDI1** — gelesen: gesetzt ⇒ „S/PDIF input 1 data overflow", sonst „unspecified HW error" | belegt (`AudIf_GetHandle_spdi1` schreibt 0x400 nach Handle+0x10, `AudIf_spdi_Open` schreibt Handle+0x10 nach +0x08) |
-| `0x800` | **SPDI2** — „S/PDIF input 2 data overflow" | belegt |
+| `0x400` | **SPDI1** - gelesen: gesetzt ⇒ „S/PDIF input 1 data overflow", sonst „unspecified HW error" | belegt (`AudIf_GetHandle_spdi1` schreibt 0x400 nach Handle+0x10, `AudIf_spdi_Open` schreibt Handle+0x10 nach +0x08) |
+| `0x800` | **SPDI2** - „S/PDIF input 2 data overflow" | belegt |
 | `0xF000` | **alle vier Delaylines** (`AudIf_GetHandle_dly1` → Handle+0x10 = `0xF000`) | belegt |
 | `abpDtv_i2so_state[+552]` | I2SO je Kanal | belegt (Wert nicht ausgelesen) |
 
 ---
 
-## 3. Registerkarte AUDBRG — `0x06148000`, Fenster **0x394**
+## 3. Registerkarte AUDBRG - `0x06148000`, Fenster **0x394**
 
 Der Block besteht aus **14 DMA-Kanälen zu je 0x40 Byte** plus vier globalen Registern. Alle Basen sind aus dem
 Disassembly exakt belegt (`ida_a37.py`, Abschnitt „errechnete Basen"):
 
 | Bereich | Kanäle | Basis | Beleg |
 |---|---|---|---|
-| **Delayline-WLB** (Bridge → Speicher) | 0–3 | `0x06148000 + n·0x40` | `audbrg_delayline_config`: `(n+1593862)<<6 − 384` |
-| **OSTREAM-WLB** (Bridge → Speicher) = **Capture** | 0–1 | **`0x06148100 + n·0x40`** | `audbrg_ostream_config`: `(n+1593860)<<6` |
-| **Delayline-RLB** (Speicher → Bridge) | 0–3 | `0x06148180 + n·0x40` | `audbrg_delayline_config`: `(n+1593862)<<6` |
-| **ISTREAM-RLB** (Speicher → Bridge) = Playback | 0–3 | `0x06148280 + n·0x40` | `audbrg_istream_config`: `(n+1593866)<<6` |
+| **Delayline-WLB** (Bridge → Speicher) | 0-3 | `0x06148000 + n·0x40` | `audbrg_delayline_config`: `(n+1593862)<<6 − 384` |
+| **OSTREAM-WLB** (Bridge → Speicher) = **Capture** | 0-1 | **`0x06148100 + n·0x40`** | `audbrg_ostream_config`: `(n+1593860)<<6` |
+| **Delayline-RLB** (Speicher → Bridge) | 0-3 | `0x06148180 + n·0x40` | `audbrg_delayline_config`: `(n+1593862)<<6` |
+| **ISTREAM-RLB** (Speicher → Bridge) = Playback | 0-3 | `0x06148280 + n·0x40` | `audbrg_istream_config`: `(n+1593866)<<6` |
 | global | | `0x06148384…0x06148390` | belegt |
 
 ### 3.1 Kanalregister
 
-**WLB (Bridge → Speicher, Capture/Delayline-Schreiben)** — Basis `B`:
+**WLB (Bridge → Speicher, Capture/Delayline-Schreiben)** - Basis `B`:
 
 | Offset | Name | Bedeutung | Stand |
 |---|---|---|---|
-| `B+0x00` | `START` | `(dma_addr >> 4) & 0xFFFFFF` — Ringanfang in 16-Byte-Einheiten | belegt |
-| `B+0x04` | `END` | `((dma_addr + size − 1) >> 4) & 0xFFFFFF` — **letztes Byte**, inklusiv | belegt |
-| `B+0x08` | (nur Delayline) | `(x>>4) | (flag<<31)` — Schwelle/zweite Adresse | belegt, Bedeutung vermutet |
+| `B+0x00` | `START` | `(dma_addr >> 4) & 0xFFFFFF` - Ringanfang in 16-Byte-Einheiten | belegt |
+| `B+0x04` | `END` | `((dma_addr + size − 1) >> 4) & 0xFFFFFF` - **letztes Byte**, inklusiv | belegt |
+| `B+0x08` | (nur Delayline) | `(x>>4) | (flag<<31)` - Schwelle/zweite Adresse | belegt, Bedeutung vermutet |
 | `B+0x0C` | `STEP` | `step_bytes >> 4`. Stock-Capture: 1024 B (OSTREAM0), 384 B (OSTREAM1), Default 3072 B | belegt |
 | `B+0x10` | `CFG` | s. u. | belegt |
 | `B+0x14` | `FLUSH` | Bit 0: 1 schreiben, dann 0 → Kanal zurücksetzen | belegt |
@@ -148,7 +148,7 @@ Disassembly exakt belegt (`ida_a37.py`, Abschnitt „errechnete Basen"):
 > **Korrektur zum Legacy-Port:** `audio_bridge.h` setzt `TRID_AUDBRG_OSTREAM_PTR(n) = +0x108 + n·0x40`.
 > Richtig ist **`+0x118 + n·0x40`** (`audbrg_ostream_putdata2SW@0x3f5c` liest `(n<<6) + 102007064 = 0x06148118`).
 
-**RLB (Speicher → Bridge, Playback/Delayline-Lesen)** — Basis `B`: wie oben, zusätzlich
+**RLB (Speicher → Bridge, Playback/Delayline-Lesen)** - Basis `B`: wie oben, zusätzlich
 
 | Offset | Name | Bedeutung | Stand |
 |---|---|---|---|
@@ -167,13 +167,13 @@ ISTREAM (RLB):  CFG = (format_code << 12) | (width << 11) | (bytes_per_sample <<
 
 * Bits **[7:0]** = `handle[0x14] >> 4`. Statisch vorbelegt: **`0x70` bei OSTREAM (⇒ 0x07)**, **`0x80` bei ISTREAM
   (⇒ 0x08)**. Nirgends im Modul überschrieben. *(Wert belegt, Bedeutung vermutet: FIFO-/Burst-Schwelle.)*
-* Bits **[10:8]** = 1…4 (Prüfung `(a2−1) > 3 → Fehler` — dieselbe Prüfung, die beim ISTREAM auf
+* Bits **[10:8]** = 1…4 (Prüfung `(a2−1) > 3 → Fehler` - dieselbe Prüfung, die beim ISTREAM auf
   *Bytes je Sample* liegt; beim OSTREAM gibt es **keinen** Kanalparameter). **Im Capture-Fall ist die
-  Unterscheidung „Bytes je Sample" gegen „Kanalzahl" nicht auflösbar, weil beides 2 ist** — der zu
+  Unterscheidung „Bytes je Sample" gegen „Kanalzahl" nicht auflösbar, weil beides 2 ist** - der zu
   schreibende Wert ist so oder so 2. *(Prüfung und Wert belegt, Bedeutung vermutet.)*
 * Bit **11** = Breiten-/Vorzeichenflag, im Capture-Pfad **0**.
 * Bits **[13:12]** = Betriebsart. Capture setzt **2**.
-* Bits **[16:14]** = Kanalzahl — **nur ISTREAM**; der OSTREAM hat gar keinen Kanalparameter (die Framestruktur
+* Bits **[16:14]** = Kanalzahl - **nur ISTREAM**; der OSTREAM hat gar keinen Kanalparameter (die Framestruktur
   kommt vom AUDIF).
 
 **Stock-Capture-Werte:** OSTREAM0 → `CFG = (2<<12) | (2<<8) | 0x07 = **0x2207**`;
@@ -192,10 +192,10 @@ OSTREAM1 → `CFG = (2<<12) | (4<<8) | 0x07 = **0x2407**`.
 
 | Bit | Kanal | Beleg |
 |---|---|---|
-| 0–3 | Delayline-WLB 0–3 | `audbrg_delayline_wlb_interrupt_enable`: `1 << n` |
-| **4–5** | **OSTREAM 0–1 (Capture)** | `audbrg_ostream_interrupt_enable`: `1 << (n+4)` |
-| 6–9 | Delayline-RLB 0–3 | `1 << (n+6)` |
-| 10–13 | ISTREAM 0–3 (Playback) | `1 << (n+10)` |
+| 0-3 | Delayline-WLB 0-3 | `audbrg_delayline_wlb_interrupt_enable`: `1 << n` |
+| **4-5** | **OSTREAM 0-1 (Capture)** | `audbrg_ostream_interrupt_enable`: `1 << (n+4)` |
+| 6-9 | Delayline-RLB 0-3 | `1 << (n+6)` |
+| 10-13 | ISTREAM 0-3 (Playback) | `1 << (n+10)` |
 
 Der Handler `Handle_audbrg_ISR_interrupt@0x2e2c`:
 ```c
@@ -204,9 +204,9 @@ REG_Write_Mask(0x0614838C, v, 0x3FFF);      /* W1C */
 if (v & 0x0030) Handle_WLB_Interrupt(v);    /* OSTREAM 0/1 */
 if (v & 0x3C00) Handle_RLB_Interrupt(v);    /* ISTREAM 0..3 */
 ```
-`Handle_WLB_Interrupt` ruft für Bit 4 bzw. 5 nur `audbrg_ostream_putdata2SW(n)` — **das ist der ganze
+`Handle_WLB_Interrupt` ruft für Bit 4 bzw. 5 nur `audbrg_ostream_putdata2SW(n)` - **das ist der ganze
 Capture-IRQ**: Zeiger lesen, umrechnen, in den SW-Deskriptor schreiben. Kein DSP, kein Datenkopieren.
-(Die Delayline-Bits 0–3 und 6–9 werden im Handler gar nicht ausgewertet.)
+(Die Delayline-Bits 0-3 und 6-9 werden im Handler gar nicht ausgewertet.)
 
 ---
 
@@ -223,7 +223,7 @@ Capture-IRQ**: Zeiger lesen, umrechnen, in den SW-Deskriptor schreiben. Kein DSP
 | `0x02031078` / `0x02032078` | ARM-/MIPS-Mutex (`WaitDSPFree`/`ReleaseDSP`) | **nur Delayline** | belegt |
 
 > **`audio_top_clk_init@0x2d0c` wird im ausgelieferten Modul nirgends aufgerufen** (nur `__mcount_loc`/`.ARM.exidx`
-> referenzieren es). Die Takte müssen also von außen kommen — beim Stock von `sunxi-tvtop`. Für uns: Die beiden
+> referenzieren es). Die Takte müssen also von außen kommen - beim Stock von `sunxi-tvtop`. Für uns: Die beiden
 > Schreibvorgänge sind trotzdem verwertbar, siehe Handtest Schritt 0 und Frage **F1** (S17).
 
 ---
@@ -269,7 +269,7 @@ buffer_bytes_max   0x20000
 period_bytes_min   0x100        period_bytes_max 0x4000
 periods_min/max    1 / 8        fifo_size 128
 ```
-> Die Märznotiz `AGENT_TASK_AUDIO_BRIDGE_FIXES.md` H1 nennt `0x40203` und leitet daraus `SYNC_APPLPTR` ab —
+> Die Märznotiz `AGENT_TASK_AUDIO_BRIDGE_FIXES.md` H1 nennt `0x40203` und leitet daraus `SYNC_APPLPTR` ab -
 > das ist ein Lesefehler; `262403 = 0x40103`.
 
 Für Playback (Kartenvorgabe in `snd_trid_probe`): `rates = 0x14FE` (8 k…192 k), `rate_min 8000`, `rate_max 192000`,
@@ -299,7 +299,7 @@ trid_pcm_pointer           → trid_systimer_pointer  (rein jiffies-basiert!)
 trid_pcm_capture_copy      → ReadIntoBufferOnceAvailable (copy_to_user aus dem Ring)
 ```
 
-### 6.1 `open` — SPDI-Kanal freischalten
+### 6.1 `open` - SPDI-Kanal freischalten
 
 `Trid_Audio_Output_Ostream_Open(idx)`: `idx 0 → SPDI1`, `idx 1 → SPDI2` (**fest**, kein Register).
 `AudIf_GetHandle_spdi1@0x4c24` setzt statisch `Handle+0x08 = 0x06146034` und `Handle+0x10 = 0x400`
@@ -318,7 +318,7 @@ Vorher hat `AudIf_spdi_ClearState` bereits `REG_Write(CTRL_A, 0)` und `REG_Write
 
 Macht **nichts** außer einem `printk`. Die Parameter kommen erst in `prepare` an.
 
-### 6.3 `prepare` — Formatumrechnung, nur Software
+### 6.3 `prepare` - Formatumrechnung, nur Software
 
 `internal_snd_card_trid_convertType@0x100` bildet `runtime->format` ab:
 `S16_LE/U16_LE → (16 bit, endian 0)`, `S16_BE/U16_BE → (16, 1)`, `S32_LE/U32_LE → (32, 0)`, `S32_BE/U32_BE → (32, 1)`;
@@ -327,7 +327,7 @@ Rate muss aus {8000, 11025, 16000, 22050, 24000, 32000, 44056, 44100, 47250, 480
 `{bits, channels, rate, 512, endian}` → `Thal_Alsa_Audio_Config@0x8210` legt es im Handle ab und rechnet
 `bytes = bits · 2 · channels · 512 / 8`. **Kein Registerzugriff.**
 
-### 6.4 `trigger(START)` — die eigentliche Scharfschaltung
+### 6.4 `trigger(START)` - die eigentliche Scharfschaltung
 
 `Thal_Alsa_Audio_Capture_Start@0x84c0` ruft `Trid_Audio_Output_OWA_Input(idx, 0, mode, 2)` mit
 **`mode = 2` für idx 0** und **`mode = 3` für idx 1** (aus dem Disassembly: `MOV R3,#2; CMP R4,#1; MOVNE R2,R3;
@@ -363,8 +363,8 @@ Danach `audbrg_ostream_start@0x3cf8`:
 
 **Es gibt kein Enable-Bit für den WLB-Kanal.** Er läuft, sobald der AUDIF liefert.
 
-Dann `DeclareNewFrameAvail(spdi_handle, NULL)` — **Callback bewusst 0**, damit der SPDI die Daten an die Bridge
-gibt statt an die Software — und `AudIf_spdi_Run` → `AudIf_spdi_activate@0x4cc0`:
+Dann `DeclareNewFrameAvail(spdi_handle, NULL)` - **Callback bewusst 0**, damit der SPDI die Daten an die Bridge
+gibt statt an die Software - und `AudIf_spdi_Run` → `AudIf_spdi_activate@0x4cc0`:
 
 | # | Register | Wert SPDI1 (LPCM) | Wert SPDI2 (Burst) |
 |---|---|---|---|
@@ -373,7 +373,7 @@ gibt statt an die Software — und `AudIf_spdi_Run` → `AudIf_spdi_activate@0x4
 
 Reihenfolge ist **CTRL_B zuerst, dann CTRL_A** (`REG_Write(base+4, …); REG_Write(base, …)`).
 
-### 6.5 AUDIF-IRQ (SPI 113) — der Sync-Automat
+### 6.5 AUDIF-IRQ (SPI 113) - der Sync-Automat
 
 `AudIf_spdi_Interrupt@0x4ff8`, Zustand in `Handle+0x04` (`2` = wartet auf Sync, `3` = läuft):
 
@@ -410,9 +410,9 @@ if (status & 0x100000) {                            /* SPDS            */
 0x0D…0x0F = DTS I/II/III …); daraus 16 Byte aus `audIf_owa_formatTable` (@`0xbb80`, 26 Einträge; Eintrag 3 enthält
 das AC-3-Syncwort `0x0B77`), Burstlänge → `CTRL_B[7:0] = (Samples/64) − 1` (LPCM ⇒ `0xFF`, AC-3 1536 ⇒ 23).
 
-### 6.6 AUDBRG-IRQ (SPI 115) — Zeigerfortschritt
+### 6.6 AUDBRG-IRQ (SPI 115) - Zeigerfortschritt
 
-`audbrg_ostream_putdata2SW@0x3f5c` — das ist die **gesamte** Datenlogik:
+`audbrg_ostream_putdata2SW@0x3f5c` - das ist die **gesamte** Datenlogik:
 
 ```c
 hi  = REG_Read(0x06142044) & 0xF0;
@@ -435,7 +435,7 @@ ALSA-Puffer heraus, lesen `PTR` im `pointer()`-Callback und rufen `snd_pcm_perio
 
 ---
 
-## 7. Quellwahl — woher weiß der AUDIF, dass HDMI-RX die Quelle ist?
+## 7. Quellwahl - woher weiß der AUDIF, dass HDMI-RX die Quelle ist?
 
 **Antwort: aus diesem Treiber gar nicht.** Belegt:
 
@@ -462,24 +462,24 @@ und ggf. muss ein RPC/Callback den HDMI-Audioausgang scharfschalten. Der Bridge-
 
 | Weg | Was es liefert | Stand |
 |---|---|---|
-| `SPDI_DATA +0x40` `[15:0]` | IEC-61937-**Pc**, daraus Datentyp (LPCM/AC-3/DTS/…) und Burstlänge — **nicht** die Abtastrate | belegt |
-| `SPDS_STATUS +0x10` Low-Byte | Felder `0x1F` (5 bit), `0x60` (2 bit), `0x80` (1 bit); `AudIf_spds_Interrupt@0x4fa4` merkt sich nur Änderungen in `last_status`. **Sehr wahrscheinlich Fs-Code + Kanalstatus + Lock** — der Stock-Treiber wertet es nicht aus | Register/Bits belegt, Bedeutung **vermutet** |
+| `SPDI_DATA +0x40` `[15:0]` | IEC-61937-**Pc**, daraus Datentyp (LPCM/AC-3/DTS/…) und Burstlänge - **nicht** die Abtastrate | belegt |
+| `SPDS_STATUS +0x10` Low-Byte | Felder `0x1F` (5 bit), `0x60` (2 bit), `0x80` (1 bit); `AudIf_spds_Interrupt@0x4fa4` merkt sich nur Änderungen in `last_status`. **Sehr wahrscheinlich Fs-Code + Kanalstatus + Lock** - der Stock-Treiber wertet es nicht aus | Register/Bits belegt, Bedeutung **vermutet** |
 | `SPDS_STATUS` Bit 25 / Bit 9 | „Status geändert" für SPDI1 / SPDI2 → Callback (`DeclareStatusChange`) | belegt |
 | Stock-ALSA | deklariert Capture **hart auf 48 000 Hz** und liest keine Rate aus | belegt |
 
 Es gibt im ganzen Modul **keine** Funktion, die eine Abtastrate aus dem SPDI liest. Rate-Erkennung muss also
 entweder über `SPDS_STATUS` (am Board zu verifizieren, siehe Handtest Schritt 7) oder über die MIPS-Seite
-(HDMI-RX-N/CTS, F2) laufen. Für Stufe 1 reicht 48 kHz — der Zuspieler liefert laut doku/100 §1 genau das.
+(HDMI-RX-N/CTS, F2) laufen. Für Stufe 1 reicht 48 kHz - der Zuspieler liefert laut doku/100 §1 genau das.
 
 ---
 
 ## 9. IOMMU und DMA-Randbedingungen
 
 * Stock-DTB: `audbrg@203042c { compatible = "vs,trid-audio-bridge"; interrupts = <0 0x73 4>, <0 0x71 4>;
-  iommus = <0x11 0x06 0x01>; status = "okay"; }` — **kein `reg`, keine `clocks`, keine `resets`**.
+  iommus = <0x11 0x06 0x01>; status = "okay"; }` - **kein `reg`, keine `clocks`, keine `resets`**.
   Phandle `0x11` = `iommu@2010000` (`allwinner,sunxi-iommu`, `#iommu-cells = <2>`, SPI 0x47 = 71,
   Takt `<&ccu 0x30>`). Also **Master 6, TLB-ID 1**.
-* Der Treiber nimmt `sg_dma_address(sgt->sgl)` aus `dma_buf_map_attachment()` **auf dem audbrg-Gerät** — das ist
+* Der Treiber nimmt `sg_dma_address(sgt->sgl)` aus `dma_buf_map_attachment()` **auf dem audbrg-Gerät** - das ist
   bei aktivem IOMMU eine IOVA. **Die AUDBRG-DMA geht durch die IOMMU** (belegt).
 * Unser Mainline-Baum hat die IOMMU bewusst aus (Kommentarblock in `sun50i-h713.dtsi`). Dann muss der Puffer
   **physisch zusammenhängend** sein → `dma_alloc_coherent` / CMA. Die Register können das:
@@ -496,7 +496,7 @@ entweder über `SPDS_STATUS` (am Board zu verifizieren, siehe Handtest Schritt 7
 ## 10. Handtest am Board (`rd.py`), Schritt für Schritt
 
 Werkzeuge auf dem Board (doku/50, doku/97): `python3 /root/rd.py ADDR…` liest, `python3 /root/rd.py -w ADDR WERT`
-schreibt **und gibt alt → neu → Rückleseprobe aus** — damit ist jeder Schreibvorgang gleichzeitig eine
+schreibt **und gibt alt → neu → Rückleseprobe aus** - damit ist jeder Schreibvorgang gleichzeitig eine
 Positivkontrolle. Für den Ringinhalt `python3 /root/pm_read.py dump PHYS LEN DATEI`
 (`analyse/hdmi-seq/pm_read.py`, liest wortweise aus `/dev/mem`).
 
@@ -506,12 +506,12 @@ Ablauf für **HDMI-2, 1-kHz-Sinus, 48 kHz Stereo LPCM** am Zuspieler (vorher `xr
 > **Voraussetzung / Abbruchkriterium:** Ohne das Einschaltrezept aus **F1/S17** liest der ganze Audio-Top 0
 > (doku/100 §1). **Schritt 0 muss grün sein, sonst misst der Rest nichts.**
 >
-> **Puffer:** `P` ist die Physadresse eines 64-KiB-Blocks, den der Kernel nicht benutzt und `/dev/mem` lesen darf —
+> **Puffer:** `P` ist die Physadresse eines 64-KiB-Blocks, den der Kernel nicht benutzt und `/dev/mem` lesen darf -
 > eine `reserved-memory`-Region mit `no-map` (wie in doku/73 §10) oder ein bekannter CMA-Block. `P` muss
 > 16-Byte-ausgerichtet sein und mit `P + 0xFFFF` im selben 256-MiB-Fenster liegen. Im Folgenden als Beispiel
 > `P = 0x4A000000` (⇒ `P_hi = 4`, `P_lo = 0x4A00000`, `E_lo = 0x4A00FFF`).
 
-### Schritt 0 — lebt der Block? (zwei unabhängige Positivkontrollen)
+### Schritt 0 - lebt der Block? (zwei unabhängige Positivkontrollen)
 
 ```sh
 python3 /root/rd.py 0614A000 0614A00C 06146000 06146004 06148384 06148388
@@ -530,7 +530,7 @@ python3 /root/rd.py -w 06148100 0
 **Liest eine der beiden Kontrollen `0` zurück, ist der Block noch abgeschaltet → F1-Rezept fehlt, abbrechen.**
 Ein Test, der auch bei totem Block „unauffällig" aussieht, prüft nichts.
 
-### Schritt 1 — Ring vorbereiten
+### Schritt 1 - Ring vorbereiten
 
 ```sh
 # 64 KiB mit einem Muster füllen, das kein Audiosignal sein kann
@@ -545,7 +545,7 @@ print("Ring gefuellt")
 EOF
 ```
 
-### Schritt 2 — OSTREAM0 konfigurieren
+### Schritt 2 - OSTREAM0 konfigurieren
 
 ```sh
 python3 /root/rd.py 06142044                       # alten Wert merken
@@ -562,7 +562,7 @@ python3 /root/rd.py 06148100 06148104 0614810C 06148110 06142044
 ```
 Alle fünf Rücklesewerte müssen exakt dem Geschriebenen entsprechen.
 
-### Schritt 3 — SPDI1 freischalten
+### Schritt 3 - SPDI1 freischalten
 
 ```sh
 python3 /root/rd.py -w 06146000 00300052           # IRQ_STATUS W1C
@@ -573,7 +573,7 @@ python3 /root/rd.py -w 06146038 00003000           # CTRL_B: LPCM-Modus
 python3 /root/rd.py -w 06146034 90000000           # CTRL_A: Enable (Bit31) + Bit28
 ```
 
-### Schritt 4 — Sync und Format (was sonst der AUDIF-IRQ macht)
+### Schritt 4 - Sync und Format (was sonst der AUDIF-IRQ macht)
 
 ```sh
 for i in $(seq 20); do python3 /root/rd.py 06146000 0614603C 06146040; sleep 0.2; done
@@ -581,7 +581,7 @@ for i in $(seq 20); do python3 /root/rd.py 06146000 0614603C 06146040; sleep 0.2
 
 | Beobachtung | Bedeutung |
 |---|---|
-| `06146000` bekommt **Bit 1 (`0x02`)** | SPDI1 meldet ein Ereignis — der HDMI-Ton erreicht den AUDIF |
+| `06146000` bekommt **Bit 1 (`0x02`)** | SPDI1 meldet ein Ereignis - der HDMI-Ton erreicht den AUDIF |
 | `06146000` bleibt ohne Bit 1 **und** `0614603C & 3 == 0` | **Am AUDIF kommt nichts an.** Der Bridge ist unschuldig → Frage **F2**: die MIPS-Firmware muss den HDMI-RX-Audioausgang scharfschalten |
 | `0614603C & 3` == 1 | Sync gefunden |
 | `0614603C & 3` == 2 | Daten bereit (Dauerzustand im Betrieb) |
@@ -594,7 +594,7 @@ python3 /root/rd.py -w 06146038 000034FF   # Bit10 = an die Bridge, [7:0]=0xFF (
 python3 /root/rd.py -w 06146000 00300052   # Status quittieren
 ```
 
-### Schritt 5 — wandert der Zeiger?
+### Schritt 5 - wandert der Zeiger?
 
 ```sh
 python3 /root/rd.py 06148118; sleep 1; python3 /root/rd.py 06148118
@@ -608,7 +608,7 @@ python3 /root/rd.py 0614838C
 | `0614838C` | **Bit 4 (`0x10`) gesetzt**. Quittieren: `rd.py -w 0614838C 10` |
 | **Negativkontrolle** | Ton am Zuspieler stumm → Zeiger bleibt stehen **oder** der Ring füllt sich mit Nullen. Bleibt der Zeiger auch **mit** Ton stehen, ist die DMA nicht scharf |
 
-### Schritt 6 — steht ein Sinus im Ring?
+### Schritt 6 - steht ein Sinus im Ring?
 
 ```sh
 python3 /root/pm_read.py dump 0x4A000000 0x4000 /tmp/ring.bin
@@ -632,7 +632,7 @@ print("Spitze bei %.1f Hz, %.1f dB ueber Median" % (f[S.argmax()], 20*np.log10(S
 | **Gegenprobe Kanäle:** nur links spielen | `r` bleibt ≈ 0, `l` nicht. Bestätigt „interleaved, 4 Byte/Frame" |
 | **Gegenprobe Format:** als `>i2` (big endian) lesen | muss **schlechter** aussehen als `<i2`, sonst ist die Byteordnung anders |
 
-### Schritt 7 — `SPDS_STATUS` als Fs-Anzeige prüfen (offene Frage §8)
+### Schritt 7 - `SPDS_STATUS` als Fs-Anzeige prüfen (offene Frage §8)
 
 ```sh
 python3 /root/rd.py 06146010          # bei 48 kHz  -> Wert A
@@ -646,7 +646,7 @@ python3 /root/rd.py 06146010          # -> Wert B
 | Bits in `0x60` / `0x80` mit | Kanalstatus / Lock mit dabei |
 | gar keine Änderung | Fs ist hier **nicht** ablesbar → Rate muss von der MIPS-Seite kommen (F2, HDMI-RX N/CTS) |
 
-### Schritt 8 — sauber abschalten
+### Schritt 8 - sauber abschalten
 
 ```sh
 python3 /root/rd.py -w 06146034 0
@@ -659,8 +659,8 @@ python3 /root/rd.py -w 06148384 0
 python3 /root/rd.py -w 06142044 <alt aus Schritt 2>
 ```
 
-> **Board-Protokoll (doku/100 §5, Memory „Kurze Schritte"):** Jeder Block einzeln, Timeout 20–30 s, nach jedem
-> Schreibvorgang die Rückleseprobe ansehen. Der H713 hat keinen aktiven Watchdog — bleibt das Board hängen, ist
+> **Board-Protokoll (doku/100 §5, Memory „Kurze Schritte"):** Jeder Block einzeln, Timeout 20-30 s, nach jedem
+> Schreibvorgang die Rückleseprobe ansehen. Der H713 hat keinen aktiven Watchdog - bleibt das Board hängen, ist
 > nur ein Kaltstart übrig.
 
 ## 11. Treiberentwurf `sun50i-h713-audbrg`
@@ -668,7 +668,7 @@ python3 /root/rd.py -w 06142044 <alt aus Schritt 2>
 ### 11.1 Dateien
 
 ```
-sound/soc/sunxi/sun50i-h713-audbrg.h    Registerdefinitionen (§2–§4 dieses Berichts)
+sound/soc/sunxi/sun50i-h713-audbrg.h    Registerdefinitionen (§2 - §4 dieses Berichts)
 sound/soc/sunxi/sun50i-h713-audbrg.c    Platform-Treiber + snd_card + Capture-PCM + IRQ + debugfs
 sound/soc/sunxi/Kconfig                 SND_SUN50I_H713_AUDBRG (depends on ARCH_SUNXI, select SND_PCM)
 sound/soc/sunxi/Makefile
@@ -699,14 +699,14 @@ audio_bridge: audio-bridge@6148000 {
                  <&ccu CLK_AUDIO_IHB>, <&ccu CLK_HDMI_AUDIO>,
                  <&ccu CLK_BUS_HDMI_AUDIO>;
         clock-names = "cpu", "umac", "ihb", "hdmi-audio", "bus-hdmi-audio";
-        /* iommus = <&mmu_aw 6 1>;  — erst, wenn die IOMMU im Baum lebt */
+        /* iommus = <&mmu_aw 6 1>; - erst, wenn die IOMMU im Baum lebt */
         status = "okay";
 };
 ```
 
 > **Achtung, echter Fehler im aktuellen Baum:** `mainline/.../sun50i-h713.dtsi` listet
-> `interrupts = <GIC_SPI 113 …>, <GIC_SPI 115 …>` — die Reihenfolge ist gegenüber dem Stock-DTB **vertauscht**.
-> Mit dieser Reihenfolge landet der AUDBRG-Handler auf dem AUDIF-Interrupt. (Nicht geändert — gehört der
+> `interrupts = <GIC_SPI 113 …>, <GIC_SPI 115 …>` - die Reihenfolge ist gegenüber dem Stock-DTB **vertauscht**.
+> Mit dieser Reihenfolge landet der AUDBRG-Handler auf dem AUDIF-Interrupt. (Nicht geändert - gehört der
 > Hauptsitzung.)
 > Die Taktliste ist F1/S17 vorbehalten; `CLK_AUDIO_*` sind in unserem CCU nur AHB-Gates mit Parent `ahb` 100 MHz,
 > Stock fährt 400/200/200 MHz und `hdmi_audio_clk` 1152 MHz.
@@ -753,7 +753,7 @@ static const struct snd_pcm_hardware h713_audbrg_capture_hw = {
 Zwingende Constraints in `.open`:
 
 ```c
-/* Der ALSA-Puffer IST der HW-Ring — Größe ist nicht verhandelbar. */
+/* Der ALSA-Puffer IST der HW-Ring - Größe ist nicht verhandelbar. */
 snd_pcm_hw_constraint_minmax(rt, SNDRV_PCM_HW_PARAM_BUFFER_BYTES,
                              H713_OSTREAM_RING, H713_OSTREAM_RING);
 /* STEP zählt in 16-Byte-Einheiten, und der Ring muss ganzzahlig in Perioden zerfallen. */
@@ -761,7 +761,7 @@ snd_pcm_hw_constraint_step(rt, 0, SNDRV_PCM_HW_PARAM_PERIOD_BYTES, 16);
 snd_pcm_hw_constraint_integer(rt, SNDRV_PCM_HW_PARAM_PERIODS);
 ```
 
-Puffer: `snd_pcm_set_managed_buffer(pcm, SNDRV_DMA_TYPE_DEV, dev, RING, RING)` — kohärent, damit die
+Puffer: `snd_pcm_set_managed_buffer(pcm, SNDRV_DMA_TYPE_DEV, dev, RING, RING)` - kohärent, damit die
 CPU sieht, was die DMA schreibt. Physadresse aus `runtime->dma_addr`; prüfen, dass
 `(dma_addr >> 28) == ((dma_addr + RING - 1) >> 28)` (256-MiB-Fenster), sonst `-EINVAL`.
 
@@ -805,14 +805,14 @@ if (2 * step >= 0x10000) size = 0x10000; else size = (2 * step) & ~0x7F;   /* Ri
 ```
 
 STEP ist also eine **Periodenlänge in Zeit** (10 ms, gedeckelt auf 40 ms), und der Ring wird als **zwei
-Perioden** dimensioniert. Stock nutzt beim Capture-OSTREAM0 fest 1024 B — bei 48 kHz/Stereo/16 bit
+Perioden** dimensioniert. Stock nutzt beim Capture-OSTREAM0 fest 1024 B - bei 48 kHz/Stereo/16 bit
 ≈ 5,3 ms, also 64 Schritte je Ringumlauf. *(Zahlen und Formel belegt; „ein WLB-IRQ je STEP" ist die
-naheliegende Lesart, **vermutet** — Handtest Schritt 5.3 weist es nach.)*
+naheliegende Lesart, **vermutet** - Handtest Schritt 5.3 weist es nach.)*
 
 ### 11.6 Interrupts
 
 ```c
-/* SPI 115, AUDBRG — threaded, IRQF_ONESHOT (wie Stock) */
+/* SPI 115, AUDBRG - threaded, IRQF_ONESHOT (wie Stock) */
 static irqreturn_t audbrg_thread(int irq, void *d) {
         u32 st = readl(a->audbrg + 0x38C) & 0x3FFF;
         if (!st) return IRQ_NONE;
@@ -821,7 +821,7 @@ static irqreturn_t audbrg_thread(int irq, void *d) {
         return IRQ_HANDLED;
 }
 
-/* SPI 113, AUDIF — SPDI-Sync-Automat aus §6.5 */
+/* SPI 113, AUDIF - SPDI-Sync-Automat aus §6.5 */
 static irqreturn_t audif_thread(int irq, void *d) {
         u32 st = readl(a->audif + 0x00);
         if (!st) return IRQ_NONE;
@@ -869,20 +869,20 @@ DSP-Funktion. Ebenso enthält das Modul **keine** cpu_comm-/Mailbox-/RPC-Symbole
 
 Der DSP ist zuständig für:
 
-* **Delaylines** (`0x06146054/58/5C/60/64` plus DSP-Register über die Mailbox) — für Stufe 1 nicht nötig.
+* **Delaylines** (`0x06146054/58/5C/60/64` plus DSP-Register über die Mailbox) - für Stufe 1 nicht nötig.
 * **Wiedergabe** in Stock: der Playback-ISTREAM-Zeiger blieb im März stehen, weil der MIPS/DSP nicht aus dem
   ISTREAM las (`AGENT_HANDOFF_AUDIO_MIPS_DSP.md`). Das betrifft **RLB**, nicht WLB, und damit nicht Capture.
-* Klangverarbeitung (SRS/PEQ/DTE) und `Sound_Path_Connect` — Stufe 2.
+* Klangverarbeitung (SRS/PEQ/DTE) und `Sound_Path_Connect` - Stufe 2.
 
 **Einschränkung, ehrlich benannt:** Der Bridge-Capture braucht den DSP nicht. Ob der **HDMI-RX** ohne MIPS-Zutun
-überhaupt auf SPDI1 sendet, ist damit *nicht* beantwortet (§7) — das ist F2. Unsere MIPS-App läuft, also ist das
+überhaupt auf SPDI1 sendet, ist damit *nicht* beantwortet (§7) - das ist F2. Unsere MIPS-App läuft, also ist das
 kein Blocker, aber eventuell eine zusätzliche RPC-Zeile.
 
 ---
 
 ## 13. Alternative: I2S2 / OWA0-RX statt Bridge
 
-**Ergebnis: nein.** OWA0/OWA1 und I2S0–2 sind im Stock reine Allwinner-Standardschnittstellen ohne jede
+**Ergebnis: nein.** OWA0/OWA1 und I2S0-2 sind im Stock reine Allwinner-Standardschnittstellen ohne jede
 Anbindung an den HDMI-RX. Ein Mainline-`sun4i-spdif`/`sun4i-i2s` wäre billig zu haben, liefert aber nicht den
 HDMI-Eingangston. *(Parallellauf gegen `re/vendor/HY310/extracted/vmlinux.elf` und `super.fex`, Skripte
 `analyse/ida/ida_a43.py` … `ida_a46.py`, Logs `re/captures/weltneuheit/audio-vmlinux-a4[3-6]-*-20260908.log`;
@@ -894,10 +894,10 @@ die IDA-Arbeitskopie wurde nach dem Lauf wieder gelöscht.)*
 |---|---|---|---|---|
 | `owa@2036000` (owa0) | `0x02036000` | **`disabled`** | SPI 23 (`0x17`) | `owa@0` = PH19 |
 | `owa@2037000` (owa1) | `0x02037000` | `okay` | SPI 24 (`0x18`) | **keine** (`pinctrl_used = <0>`) |
-| `daudio@2034000` (I2S2) | `0x02034000` | **`disabled`** | — | `daudio2@0` = PH10–PH13, Funktion `d_i2s2` |
-| `audbrg@203042c` | (kein `reg`) | **`okay`** | SPI 115 + 113 | — |
+| `daudio@2034000` (I2S2) | `0x02034000` | **`disabled`** | - | `daudio2@0` = PH10-PH13, Funktion `d_i2s2` |
+| `audbrg@203042c` | (kein `reg`) | **`okay`** | SPI 115 + 113 | - |
 
-### 13.2 Wofür Stock owa1 benutzt — nachgeprüft
+### 13.2 Wofür Stock owa1 benutzt - nachgeprüft
 
 In `re/vendor/HY310/extracted/super.fex` steht ab Byte-Offset **1 011 846 420** eine Paartabelle
 (ALSA-Kartenname → logisches Gerät, Schrittweite 32 Byte), die ich selbst nachgelesen habe:
@@ -909,8 +909,8 @@ snddaudio2  → AUDIO_CAPTURE
 ```
 
 Bei Offset 1 011 776 092 steht dazu die Liste `AUDIO_SPEAKER,AUDIO_OWA,AUDIO_ARC,AUDIO_HEADPHONE,AUDIO_A2DP`
-unter „out playback"/„out gain" — es sind **Ausgabe**geräte. **`owa1` ist der HDMI-ARC-Sender**, deshalb auch ohne
-Pins (der ARC-Draht sitzt im HDMI-Stecker). **`TridentALSA` ist AUDIO_SPEAKER** — die Karte, um die es hier geht.
+unter „out playback"/„out gain" - es sind **Ausgabe**geräte. **`owa1` ist der HDMI-ARC-Sender**, deshalb auch ohne
+Pins (der ARC-Draht sitzt im HDMI-Stecker). **`TridentALSA` ist AUDIO_SPEAKER** - die Karte, um die es hier geht.
 *(belegt)*
 
 ### 13.3 Registerbild `sunxi-owa` (Stock-`vmlinux`, `sound/soc/sunxi/sunxi-owa.c`)
@@ -931,7 +931,7 @@ Fenster 0x00…0x58, Registersatz **1:1 wie der Mainline-H6-S/PDIF**:
 | **0x40** | **14 = RX-Datentyp (0 = IEC-60958, 1 = IEC-61937)** | `sunxi_owa_set_rx_data_type` | belegt |
 | **0x4C** | [15:0] RX-Frequenzzähler → `sunxi_owa_get_params_info` rechnet daraus die reale Rate | | belegt |
 
-**Es gibt in diesem Fenster kein Bit, das eine Signalquelle wählt** — die einzigen Enums des Treibers sind
+**Es gibt in diesem Fenster kein Bit, das eine Signalquelle wählt** - die einzigen Enums des Treibers sind
 `owa_rx_data_type` = {IEC-60958, IEC-61937}, `owa_hub_function` und `owa_format_function` = {PCM, DTS}. *(belegt)*
 
 ### 13.4 Warum das trotzdem nicht der HDMI-Weg ist
@@ -939,18 +939,18 @@ Fenster 0x00…0x58, Registersatz **1:1 wie der Mainline-H6-S/PDIF**:
 1. Im OWA-/daudio-Code des Stock-`vmlinux` gibt es **keinen** String und kein Symbol mit HDMI-Bezug
    (`hdmi_audio`, `hdmirx`, `owa0-rx` stehen nur im CCU-Treiber). `sunxi_hdmiaudio_set/get_audio_mode`
    gehört zu `sunxi-simple-card.c` und schreibt nur ein Feld im Card-Privatdatensatz.
-2. Die OWA-Takte kommen aus `pll_audio` (TX) und `pll_periph0_2x` (RX, 200 MHz) —
+2. Die OWA-Takte kommen aus `pll_audio` (TX) und `pll_periph0_2x` (RX, 200 MHz) -
    **nie** aus `hdmi_audio`. `hdmi_audio_clk` (CCU 0xD84) und `bus_hdmi_audio_clk` (0xD80) beansprucht im
    Stock-DTB **ausschließlich** `tvtop@5700000`, zusammen mit `audio_cpu/umac/ihb` und `vincap_dma`.
 3. `daudio@2034000` hat zwar im Register `CTL` Bits [11:8] für einen „HDMI-Modus", der ist aber der
-   I2S→HDMI-**Sende**pfad (`daudio_type = 1`, im HY310-DTB nicht gesetzt) und hängt an externen Pins PH10–13.
+   I2S→HDMI-**Sende**pfad (`daudio_type = 1`, im HY310-DTB nicht gesetzt) und hängt an externen Pins PH10-13.
 4. `snd_alsa_trid.ko` mappt **keine** der Adressen `0x02034000/0x02036000/0x02037000` (`REG_Init`, §2) und
    führt mit `audIf_owa_dataTypeTable`, „MSP OWA OUT selector" und „ARC source selector" ein **eigenes**
    OWA/ARC im Trident-Fenster `0x0614xxxx`. Der HDMI-RX-Ton bleibt in der Trident-Domäne.
 
 **Einziges Restargument dafür** (vermutet, ohne Beleg): Es gibt ein ungenutztes CCU-Gate `bus-audio_hub`
 (0xA5C Bit 0), vermutlich ein Audio-Hub bei `0x02035000`, ohne DTB-Knoten und ohne Treiber. Falls dieser Hub
-HDMI-RX-Audio auf OWA/I2S legen könnte, gäbe es einen zweiten Weg — dafür existiert im Stock kein einziger Beleg.
+HDMI-RX-Audio auf OWA/I2S legen könnte, gäbe es einen zweiten Weg - dafür existiert im Stock kein einziger Beleg.
 
 ### 13.5 Nebenbefunde für unseren CCU/DTS-Stand (nur gelesen, nichts geändert)
 
@@ -963,10 +963,10 @@ gegen `sun50iw12_hw_clks` im Stock-`vmlinux`:
 | Eltern der owa/i2s-Takte | pauschal `{pll-audio, pll-audio-2x, pll-audio-4x}` | `owa_rx_parents` = {pll-periph0-2x, pll-audio, pll-audio, dcxo24M, pll-periph0-800M, pll-periph1-800M, pll-periph0-2x, pll-periph1-2x}; `i2s_owa_tx_parents` = {pll-audio, dcxo24M, …} |
 | `bus_hdmi_audio_clk` | `0xd80, BIT(0)` | `0xD80, **BIT(31)**` |
 | `hdmi_audio/audio_cpu/umac/ihb` | reine Gates an `ahb` | Mux + Div mit eigenen Elternlisten |
-| `spdif@2036000` Taktreihenfolge | `[PLL_AUDIO, BUS_OWA0, OWA0_TX, HDMI_AUDIO, OWA0_RX, AUDIO_CODEC_DAC]` | `[pll_audio, owa0_tx, bus_owa0, pll_periph0_2x, owa0_rx, tvfe_1296M]` — `sunxi_owa_dev_probe` holt per **Index**, also sind Position 1/2 vertauscht und Position 3 falsch |
+| `spdif@2036000` Taktreihenfolge | `[PLL_AUDIO, BUS_OWA0, OWA0_TX, HDMI_AUDIO, OWA0_RX, AUDIO_CODEC_DAC]` | `[pll_audio, owa0_tx, bus_owa0, pll_periph0_2x, owa0_rx, tvfe_1296M]` - `sunxi_owa_dev_probe` holt per **Index**, also sind Position 1/2 vertauscht und Position 3 falsch |
 | owa-Interrupts | 21 / 38 | **23 / 24** (im DTB nachgeprüft, Zeilen 1148 und 1182) |
 
-Das gehört zu **F1/S17** bzw. der Hauptsitzung, nicht in diesen Bericht — hier nur als Fundstelle notiert.
+Das gehört zu **F1/S17** bzw. der Hauptsitzung, nicht in diesen Bericht - hier nur als Fundstelle notiert.
 
 ## 14. Korrekturen an bisherigen Notizen
 
@@ -992,7 +992,7 @@ Das gehört zu **F1/S17** bzw. der Hauptsitzung, nicht in diesen Bericht — hie
    liest der Block 0 und der ganze Handtest fällt bei Schritt 0.3 durch.
 2. **F2:** Schaltet die MIPS-Firmware den HDMI-RX-Audioausgang auf SPDI1, und braucht es dafür einen RPC?
    Messbar an Handtest-Schritt 4.1 (Bit 1 in `0x06146000`).
-3. **`SPDS_STATUS +0x10`:** Feldbedeutung (Fs-Code?) — Handtest Schritt 7.
+3. **`SPDS_STATUS +0x10`:** Feldbedeutung (Fs-Code?) - Handtest Schritt 7.
 4. **`CFG[7:0] = 0x07`** (OSTREAM) bzw. `0x08` (ISTREAM): Bedeutung unbekannt. Werte übernehmen, nicht raten.
 5. **`WLB +0x08`:** nur die Delayline schreibt es; für OSTREAM unbenutzt.
 6. **`STREAM_SYNC 0x06148390`:** immer 0; Sync-Gruppen ungenutzt.

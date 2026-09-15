@@ -1,9 +1,9 @@
-# S32 — Paket E: `hy310-tv`, der Ton folgt dem Bild (Patch `hy310-tv-audio.patch`)
+# S32 - Paket E: `hy310-tv`, der Ton folgt dem Bild (Patch `hy310-tv-audio.patch`)
 
-**08.09.2026, zwei Agentenläufe (17:55–18:10 und 18:25–18:50). Reine Schreibtischarbeit — kein Board, kein Bau des
+**08.09.2026, zwei Agentenläufe (17:55-18:10 und 18:25-18:50). Reine Schreibtischarbeit - kein Board, kein Bau des
 aktiven Baums.** Auftrag `t-e-hy310tv/AUFTRAG.md`, Plan
 [`101`](../101-plan-audio-treiber.md) §1 E, §2, §4; Änderung gegenüber dem Auftrag: Entscheidung 08.09. 22:10 (Lautstärke
-im Codec, §4.1 unten). Belege: [`S16`](S16-hdmi-audio.md) 17:55–20:45, [`S25`](S25-re-i2sout-codec.md), [`S30`](S30-treiber-c-codec.md)
+im Codec, §4.1 unten). Belege: [`S16`](S16-hdmi-audio.md) 17:55-20:45, [`S25`](S25-re-i2sout-codec.md), [`S30`](S30-treiber-c-codec.md)
 (Codec-Regler), [`S31`](S31-treiber-d-hdmirx.md) (V4L2-Regler). Quelle `userspace/hy310-tv/` (main.c 2284 Zeilen, Stand
 10:40) → `analyse/audio/arbeit/t-e-hy310tv/a/`, geändert in `b/`.
 
@@ -18,7 +18,7 @@ im Codec, §4.1 unten). Belege: [`S16`](S16-hdmi-audio.md) 17:55–20:45, [`S25`
 | Unit `hy310-tv@.service`, `99-hy310-tv.rules` | unverändert |
 
 Neue Abhängigkeit: **libasound** (ALSA-Control-API, kein PCM). Debian-Paket `libasound2-dev` gehört ins Board-Root
-(`ssh root@192.168.8.141 apt install libasound2-dev`) — auch der Querbau nimmt Header und Linkernamen von dort; heute
+(`ssh root@192.168.8.141 apt install libasound2-dev`) - auch der Querbau nimmt Header und Linkernamen von dort; heute
 liegt dort nur `libasound.so.2` (Laufzeit), kein Header.
 
 ## 2. Der Automat
@@ -35,11 +35,11 @@ Elementnummer); Karten über Kurz-/Lang-/ID-Name, ersatzweise die erste Karte mi
 | **stumm** | Bild ∧ Present ∧ ¬Compressed ∧ Rate ∈ `I2S Rate`-Menü (oder `audio on`) | `HDMI Mute Switch`:=1, `I2S Rate`:=Rate, `DAC Source`:=I2S, `HDMI Audio Switch`:=1, Timer 100 ms | Entprellung |
 | **Entprellung** | nach 100 ms erneut gelesen, Bedingung noch wahr | Codec-Schalter:=an (außer `ctl mute on`), `HDMI Playback Volume`:=max+Abgleich, `HDMI Mute Switch`:=0 | **an** |
 | **Entprellung** | Bedingung inzwischen falsch | `Mute`:=1, `Switch`:=0, `Source`:=APB | stumm |
-| **an** | Bedingung falsch (kein Bild, kein Ton, Bitstrom, `audio off`, Ende) | `Mute`:=1, `Switch`:=0, `Source`:=APB — sofort | stumm |
+| **an** | Bedingung falsch (kein Bild, kein Ton, Bitstrom, `audio off`, Ende) | `Mute`:=1, `Switch`:=0, `Source`:=APB - sofort | stumm |
 | **an** | Quellrate ≠ programmierte Rate | `Mute`:=1, `I2S Rate`:=neu, `Source`:=I2S, `Switch`:=1, Timer 100 ms | Entprellung |
 | jeder | `ctl mute on` / `off` | DSP-Mute (nur wenn *an*: 0/1 nach Regel), Codec-Schalter aus/an; Reihenfolge: leise zuerst, laut zuletzt | gleich |
 | jeder | `ctl volume N` | Codec `DAC Playback Volume` := min + (max−min)·N/100 | gleich |
-| Ende | SIGTERM/SIGINT/Fehler | Ton stumm + `Source`:=APB, Codec-Schalter zurück (falls von uns aus), dann Plane aus | — |
+| Ende | SIGTERM/SIGINT/Fehler | Ton stumm + `Source`:=APB, Codec-Schalter zurück (falls von uns aus), dann Plane aus | - |
 
 Der Weg nach oben ist entprellt (`Present` flattert beim Moduswechsel), der Weg nach unten nie. Rate „unbekannt"
 (`audio on` ohne 0136 oder Rate 0): der Codec behält seine Rate, das nächste Ereignis korrigiert. Ein Wert, den der
@@ -51,7 +51,7 @@ Karten `hy310hdmi` / `H713 Audio Codec`; Regler `HDMI Audio Switch`, `HDMI Playb
 gelesen, 0 dB = Maximum), `HDMI Mute Switch`, `DAC Source` {APB, I2S}, `I2S Rate` {32000, 44100, 48000} (Menütexte
 werden gesucht, nicht Indizes geraten); sysfs `/sys/class/sound/cardN/device/state` und `levels` (Kartennummer aus der
 Suche); V4L2 `H713 Audio Present/Rate/Compressed`. Zusätzlich vom bestehenden Codec: `DAC Playback Volume` (0…63,
-TLV −73,08…0 dB) und als Stummschalter der erste vorhandene aus {`DAC Playback Switch`, `Line Out Playback Switch`} —
+TLV −73,08…0 dB) und als Stummschalter der erste vorhandene aus {`DAC Playback Switch`, `Line Out Playback Switch`} -
 der H713-Codec hat keine Mischstufe (0135-Kommentar zu 0x314), also den zweiten (S16 11:50 sah `Line Out` auf der Karte).
 Beide sind **willkommen, nicht Pflicht**.
 
@@ -67,7 +67,7 @@ Beide sind **willkommen, nicht Pflicht**.
    −100, Viertel-dB, Komma erlaubt.
 3. **Beide Karten oder keine.** Lautstärke ohne Route und Route ohne Mute sind keine halbe Kette, sondern werden
    nicht angefasst.
-4. **Codec-Schalter beim Beenden zurück**, falls `ctl mute on` stand — sonst wäre das nächste `aplay` aus einem Grund
+4. **Codec-Schalter beim Beenden zurück**, falls `ctl mute on` stand - sonst wäre das nächste `aplay` aus einem Grund
    still, den niemand mehr sieht. Der Automat selbst fasst den Codec-Schalter nur beim Lautwerden an (an).
 5. **Stereo-Regler werden ganz geschrieben.** `Line Out Playback Switch` ist `SOC_DOUBLE`; ein Wertstruct mit nur
    Kanal 0 hätte rechts abgeschaltet (Fehler des ersten Laufs, im zweiten gefunden und behoben: `alsa_write` setzt
@@ -75,7 +75,7 @@ Beide sind **willkommen, nicht Pflicht**.
 6. Ein `V4L2_EVENT_CTRL` löst **kein** `QUERY_DV_TIMINGS` aus (20 ms Messung für eine Antwort, die niemand wollte);
    nur `SOURCE_CHANGE` oder unbekannte Ereignisse bewerten das Bild neu.
 
-## 5. Fehlerpfade (Bild in jedem Fall unbeeinflusst — kein ALSA-Aufruf liegt auf dem Weg zur Wand)
+## 5. Fehlerpfade (Bild in jedem Fall unbeeinflusst - kein ALSA-Aufruf liegt auf dem Weg zur Wand)
 
 | Lage | Verhalten |
 |---|---|
@@ -93,13 +93,13 @@ Beide sind **willkommen, nicht Pflicht**.
 |---|---|
 | Querbau `clang --target=aarch64-linux-gnu --sysroot=/srv/h713-rootfs -fuse-ld=lld -O2 -Wall -Wextra -Wshadow -Wvla` von `b/main.c` | übersetzt, **0 Warnungen**; `a/main.c` genauso (Kontrolle des Werkzeugs) |
 | Link gegen die **echte** `libasound.so.2` des Board-Roots (`-l:libasound.so.2`) | alle 36 benutzten `snd_*`-Symbole aufgelöst (`nm -D`), darunter `snd_ctl_elem_tlv_read`, `snd_tlv_convert_to_dB`; Positivkontrolle: erfundenes `snd_ctl_gibtesnicht` → Linkfehler |
-| ALSA-Header | im Board-Root **nicht** vorhanden (nur die Laufzeitbibliothek) → Prototypen als Nachbildung nach `control.h` im Scratchpad; der echte Bau braucht `libasound2-dev`. Die Bibliothek prüft die Symbole, die Nachbildung die Typen — ein Prototypfehler in der Nachbildung wäre nicht sichtbar |
+| ALSA-Header | im Board-Root **nicht** vorhanden (nur die Laufzeitbibliothek) → Prototypen als Nachbildung nach `control.h` im Scratchpad; der echte Bau braucht `libasound2-dev`. Die Bibliothek prüft die Symbole, die Nachbildung die Typen - ein Prototypfehler in der Nachbildung wäre nicht sichtbar |
 | Patch gegen Kopie von `a/` mit `patch -p1` | wendet sauber an, Ergebnis byteweise = `b/` |
 | Am Gerät | **nicht gelaufen** (Auftrag). Insbesondere ungeprüft: Knacken des `Line Out Playback Switch`, Verhalten bei `-EBUSY`, Reihenfolge Plane-an → Present |
 
 ## 7. Offene Annahmen
 
-1. `Line Out Playback Switch` als Codec-Mute hat auf H713 keinen Rampenregler (0x31c fehlt) — ob es knackt, ist zu
+1. `Line Out Playback Switch` als Codec-Mute hat auf H713 keinen Rampenregler (0x31c fehlt) - ob es knackt, ist zu
    hören. Knackt es: `audio_codec_mutes[]` in `main.c` auf `"DAC Playback Switch"` allein kürzen (dann ist `ctl mute`
    nur der DSP-Mute; eine Zeile).
 2. `HDMI Playback Volume` 0 dB = Maximum des Reglers (101 §2). Der Abgleich zählt Viertel-dB, weil die TLV das tut;
@@ -110,7 +110,7 @@ Beide sind **willkommen, nicht Pflicht**.
    Registerreset (DVOL 0 = 0 dB = `ctl volume 100`). Soll eine Startlautstärke her, wäre das eine Option wie `-p`.
 5. `ctl volume 0` ist −73 dB, nicht Stille (Vorgabe „0 = Minimum"); Stille ist `ctl mute on`.
 
-## 8. Testrezept am Gerät (Hauptsitzung, nach 0134–0138)
+## 8. Testrezept am Gerät (Hauptsitzung, nach 0134-0138)
 
 ```sh
 # 0) Abhängigkeit + Bau (Board-Root ist dasselbe wie der Sysroot des Querbaus)

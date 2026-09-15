@@ -1,4 +1,4 @@
-# installer/tests — the behaviour contract of the PC tools
+# installer/tests - the behaviour contract of the PC tools
 
 Golden tests frozen on 2026-09-14 against the stand-alone tools of v0.5-beta (`hy310-install.py`,
 `hy310-mkimage.py`, `h713-extract`), plus a fake eMMC (`fakedisk.py`: a sparse regular file that the

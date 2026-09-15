@@ -14,14 +14,14 @@ A release is a git tag plus the files a user needs to install without building a
 | `h713-hy310-vX.Y.sha256` | checksums of the parts and of the table |
 | `h713-hy310-vX.Y-README.txt` | what to do with all of it, next to the files themselves |
 | `u-boot-installer.bin`, `sunxi-fel` | what [`h713-install`](FLASHING.md) needs to expose the eMMC over USB |
-| `h713-hy310-vX.Y.BUILD.txt` | the build stamp — see below |
+| `h713-hy310-vX.Y.BUILD.txt` | the build stamp - see below |
 
 `<name>-README.txt` is the readme the image builder writes; the German `<name>-LIESMICH.txt` is gone. The dump
 directory `h713-install` leaves on your PC carries a `README.txt` of its own, for the same reason and with
 the same rename behind it.
 
 **The first public release is `v0.5-beta`.** Before it, the only way to an image is
-[BUILDING.md](BUILDING.md) — there is nothing to download, and any page that says "from a release" means
+[BUILDING.md](BUILDING.md) - there is nothing to download, and any page that says "from a release" means
 "once one exists".
 
 Why 0.5 and not 0.1: the device boots on its own, shows the HDMI input with sound and picture controls,
@@ -50,7 +50,7 @@ lines more than the one above: the board it was built for, and the checksum of t
 
 ## What the development numbers are
 
-While working towards a release, images are built and thrown away with plain numbers — `v0.8`, `v0.9`,
+While working towards a release, images are built and thrown away with plain numbers - `v0.8`, `v0.9`,
 `v0.10`, `v0.11`, `v0.12`. They are internal, they appear in the German journal and occasionally in
 [STATUS.md](STATUS.md) when it says which build a device is actually running, and they have **no**
 relationship to release numbers: `v0.9` on a test device is older and less correct than `v0.5-beta`.

@@ -1,6 +1,6 @@
 # Toolchain
 
-The whole stack builds with **LLVM (clang / ld.lld)** — no aarch64 GCC is
+The whole stack builds with **LLVM (clang / ld.lld)** - no aarch64 GCC is
 required for BL31, U-Boot, or the arm64 kernel. Host is Arch/CachyOS.
 
 ## Pinned host tools
@@ -18,11 +18,11 @@ required for BL31, U-Boot, or the arm64 kernel. Host is Arch/CachyOS.
 These are the versions this project has been built and hardware-verified with.
 Newer LLVM should work; the pins record a known-good set, not a hard floor.
 
-## Non-obvious flags (each cost real debugging time — see docs/build.md)
+## Non-obvious flags (each cost real debugging time - see docs/build.md)
 
-- **`-fintegrated-as`** (U-Boot `KAFLAGS` *and* `KCFLAGS`) — without it clang
+- **`-fintegrated-as`** (U-Boot `KAFLAGS` *and* `KCFLAGS`) - without it clang
   shells out to the x86 `/usr/bin/as` for `.S` files and fails on `-EL`.
-- **No `DTC=` override, no `NO_PYTHON=1`** for U-Boot — with swig present it
+- **No `DTC=` override, no `NO_PYTHON=1`** for U-Boot - with swig present it
   builds its own dtc (knows the `graph_child_address` check) and pylibfdt
   (binman needs it).
 - TF-A / kernel take plain `CC=clang` / `LLVM=1`; only U-Boot needs the target

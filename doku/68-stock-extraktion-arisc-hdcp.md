@@ -1,7 +1,7 @@
 # Aus den Stock-Daten geholt: HDCP-Keys und ARISC-Firmware
 
 Stand 04.09.2026. Alles hier ist **statisch** aus vorhandenem Stock-Material
-gewonnen — kein Hardwarezugriff nötig. Anlass war die Frage, was für HDMI-in
+gewonnen - kein Hardwarezugriff nötig. Anlass war die Frage, was für HDMI-in
 fehlt; die Antwort war: **nichts fehlte, es war nur nicht gesucht worden.**
 
 Vorgänger: [67-cpu-comm-linux.md](67-cpu-comm-linux.md) (der CPU_COMM-Transport,
@@ -16,7 +16,7 @@ beide waren falsch:
    nach dem Dateinamen. Der Key liegt nicht als Datei vor, sondern in Allwinners
    **Secure Storage** im eMMC-Abbild, das wir seit Monaten haben.
 2. **„Die ARISC kollidiert mit unserem BL31 im SRAM."** Unser BL31 läuft
-   `SUNXI_BL31_IN_DRAM`, liegt also bei `0x40000000` — der SRAM ist frei.
+   `SUNXI_BL31_IN_DRAM`, liegt also bei `0x40000000` - der SRAM ist frei.
 
 Beide Male war die Prüfung zu flach. Wer in einem Projekt mit 6,9 GB
 Vendor-Material „ist nicht da" sagt, muss vorher **im Material** gesucht haben,
@@ -38,7 +38,7 @@ Do secure storage decrypted !!    sunxi_keybox_store
 
 Der Stock-Bootloader liest die Keys aus dem Secure Storage, entschlüsselt sie
 über TEE und schiebt sie in die Hardware („down hdcp 1.4"). **Unser U-Boot tut
-das nicht** — es patcht nur die Warteschleife heraus:
+das nicht** - es patcht nur die Warteschleife heraus:
 
 ```
 H713 MIPS: HDCP key-load wait defeated at 0x4b13d0a4
@@ -103,7 +103,7 @@ Extrahiert nach `analyse/hdcp-keys/`:
 
 **Ob die Nutzdaten Klartext oder TEE-Chiffrat sind, ist offen.** Die
 Bootloader-Zeichenketten (`smc_tee_hdcp_key_encrypt`, `Do secure storage
-decrypted !!`) deuten auf Verschlüsselung. Die Entropie beweist nichts — ein
+decrypted !!`) deuten auf Verschlüsselung. Die Entropie beweist nichts - ein
 HDCP-Keyset ist von Natur aus zufällig. Die gespeicherten `*_hash`-Items passen
 zu keinem einfachen Digest der Nutzdaten (sha256/sha1/md5 geprüft), was zu
 „Hash über den Klartext, gespeichert ist das Chiffrat" passen würde.
@@ -127,7 +127,7 @@ Eintragsabstand `0x170`, 4-Byte-Tag vor jedem 64-Byte-Namen:
 | dtb | 0x11f400 | 73728 |
 
 Der SCP-Blob ist **wortweise byte-gespiegelt** gespeichert. Entspiegelt steht
-bei `+0x100` `00 00 4a 86` = `l.j 0x4a86` — der OR1K-Reset-Vektor. Er wird also
+bei `+0x100` `00 00 4a 86` = `l.j 0x4a86` - der OR1K-Reset-Vektor. Er wird also
 so geladen, dass Blob-Offset 0 auf OR1K-Adresse 0 fällt.
 
 ### Wer sie lädt
@@ -136,7 +136,7 @@ so geladen, dass Blob-Offset 0 auf OR1K-Adresse 0 fällt.
 `sunxi_arisc_probe`, Meldungen `[SCP] :…`. Das erklärt unmittelbar, warum bei
 uns keine ARISC-Firmware läuft: mainline-TF-A ersetzt genau diesen BL31.
 
-**Deshalb ist „ist bei uns keine ARISC-Firmware geladen?" keine Messung wert** —
+**Deshalb ist „ist bei uns keine ARISC-Firmware geladen?" keine Messung wert** -
 die Antwort folgt zwingend aus unserem eigenen Aufbau. Sie wurde in dieser
 Sitzung trotzdem zweimal gemessen (von cstenger und von hier), was nichts
 erbrachte, was nicht vorher feststand.
@@ -173,7 +173,7 @@ Aus `analyse/arisc/monitor.asm`, Lader bei `0x5cb8`, Reset-Freigabe bei `0x5c38`
 Das Image wird also **geteilt**. `0x07000400` ist unabhängig bestätigt: unser
 eigenes TF-A definiert `SUNXI_R_CPUCFG_BASE 0x07000400`.
 
-### Der SRAM ist frei — es gibt keine Kollision
+### Der SRAM ist frei - es gibt keine Kollision
 
 Der H713-TF-A-Port definiert:
 
@@ -195,10 +195,10 @@ Damit ist `0x00100000 .. 0x00124000` zur Laufzeit ungenutzt; das `eGON.BT0` bei
 Seine `docs/arisc-route-scope.md` führt zwei Punkte, die sich damit auflösen:
 
 1. *„The vendor blob is 172 KB and does not fit in TF-A's 16 KiB SCP slot / in
-   128 KB SRAM A2."* — Der Vendor lädt bei `0x00100000` (nicht `0x104000`) und
+   128 KB SRAM A2."* - Der Vendor lädt bei `0x00100000` (nicht `0x104000`) und
    nur **140** KiB in SRAM; der Rest bleibt im DRAM. Kein Widerspruch.
 2. *„Loading vendor ARISC firmware puts a second power manager on the system,
-   and TF-A would then detect SCPI and switch to it."* — Bei uns nicht:
+   and TF-A would then detect SCPI and switch to it."* - Bei uns nicht:
    `platform.mk` hat `SUNXI_PSCI_USE_SCPI := 0` **und** einen `$(error)`-Riegel.
    Die Erkennung ist nicht einkompiliert.
 
@@ -208,7 +208,7 @@ zudem gar nicht sehen.
 ## Byte-Ordnung: der Wortswap muss der Lader machen
 
 Der Blob liegt im Paket **wortweise byte-gespiegelt**. Das Speicherabbild ist
-die *entspiegelte* Form — statistisch entschieden, nicht geraten:
+die *entspiegelte* Form - statistisch entschieden, nicht geraten:
 
 | | roh (wie gespeichert) | wortweise gespiegelt |
 |---|---|---|
@@ -225,7 +225,7 @@ Auspacken des Paket-Items ins DRAM.
 
 Fuer eine eigene Portierung heisst das: **der Lader muss den 32-Bit-Wortswap
 selbst durchfuehren.** Ohne ihn fuehrt die ARISC Rauschen aus, und zwar
-lautlos — es gibt keine Fehlermeldung, die das anzeigen wuerde.
+lautlos - es gibt keine Fehlermeldung, die das anzeigen wuerde.
 
 ## Der Parameterblock
 
@@ -252,7 +252,7 @@ Vendor-Kernelquellen auf GitHub -- das ist der billigere Weg.
 
 | Punkt | Stand |
 |---|---|
-| **Parameterblock** | 128 B, Vendor-Quelle `0x48000030`. Inhalt unbekannt — muss aus BL31 oder Stock-Abbild rekonstruiert werden. |
+| **Parameterblock** | 128 B, Vendor-Quelle `0x48000030`. Inhalt unbekannt - muss aus BL31 oder Stock-Abbild rekonstruiert werden. |
 | **DRAM-Rest** | 32 KiB bei `0x48100000`; liegt bei uns in System-RAM, braucht eine DT-Reservierung wie `mips-firmware` und `cpu-comm`. |
 | **Schreibzugriff** | Ob `/dev/mem` nach `0x00100000` und `0x07000400` schreiben darf, ist ungeprüft. Lesen geht (gemessen). |
 | **Verhalten der laufenden ARISC** | Ungeprüft. Sie besitzt Energieverwaltungs-Hardware; dass TF-A kein SCPI spricht, heißt nicht, dass sie nichts tut. |
@@ -283,12 +283,12 @@ Gegen `legacy/userspace/hy310-hdmird` (libhaldisplay-RE + Stock-elog) geprüft:
 
 | Aufruf | stand da | richtig |
 |---|---|---|
-| `671ceca6` RegisterSignalChangeCallback | `b 3e7fbc46` | `b` — ParaCount 1, die Callback-ID ist **kein** Argument |
-| `ba3e5a70` SetHDMIHotPlugByPortCallback | `38d780e2` | `1` — Enable-Flag |
-| `9ce74c48` SetPortMap ×3 | `3 0` / `4 0` / `5 0` | `1 0` / `2 1` / `3 2` — (port, port_map) |
+| `671ceca6` RegisterSignalChangeCallback | `b 3e7fbc46` | `b` - ParaCount 1, die Callback-ID ist **kein** Argument |
+| `ba3e5a70` SetHDMIHotPlugByPortCallback | `38d780e2` | `1` - Enable-Flag |
+| `9ce74c48` SetPortMap ×3 | `3 0` / `4 0` / `5 0` | `1 0` / `2 1` / `3 2` - (port, port_map) |
 
 Außerdem fehlen der Datei `THal_Vp_Init(0,0,0x4E700000)` ganz vorn und
-`Wce_SetWindow` (drei Shmem-Zeiger) — letzteres trägt im hdmird-Quelltext den
+`Wce_SetWindow` (drei Shmem-Zeiger) - letzteres trägt im hdmird-Quelltext den
 Vermerk *„SKIPPING THIS WAS THE LVDS-ROUTING BLOCKER through Z-session"*.
 
 ## Dateien
@@ -316,7 +316,7 @@ muessen beide Teile nachgebaut werden, nicht nur der BL31-Teil.
 
 **boot0 laeuft bei `0x00104000` und ist Thumb**, nicht ARM. Belegt: das Literal
 bei Dateioffset `0x1154` haelt `0x00109EAA` (= die Zeichenkette
-`"prcm cpus timer clock enable"`), und genau ein Befehl laedt es —
+`"prcm cpus timer clock enable"`), und genau ein Befehl laedt es -
 `ldr r0, [pc, #44]` bei `0x1124`, ein Thumb-T1-Literal-Load. In ARM32 gibt es
 keinen passenden Zugriff.
 
@@ -332,22 +332,22 @@ printf("board init ok")
 ```
 
 Das `bic #1` vor jedem `orr #1` ist toter Vendor-Code (der Zwischenwert geht
-ueber den Stack und wird nie geschrieben) — **netto wird Bit 0 gesetzt**, in drei
+ueber den Stack und wird nie geschrieben) - **netto wird Bit 0 gesetzt**, in drei
 aufeinanderfolgenden R_PRCM-Registern.
 
 Weitere Literale derselben Funktion: `0x07090160`, `0x07010340`.
 
 boot0 traegt ausserdem die Zeichenkette `"set arisc reset to de-assert state"`
-(Dateioffset `0x5ed7`) — dieselbe Meldung wie im BL31. Ihr Verweis ist noch
+(Dateioffset `0x5ed7`) - dieselbe Meldung wie im BL31. Ihr Verweis ist noch
 nicht aufgeloest (kein direktes Literal auf `0x00109ED7`, vermutlich Basis +
 Offset).
 
 ### Werkzeug
 
-`tools/or1k-disasm.py` — OpenRISC-Dekoder, weil **weder IDA 9.1 noch Capstone
+`tools/or1k-disasm.py` - OpenRISC-Dekoder, weil **weder IDA 9.1 noch Capstone
 5.0.7 OR1K koennen** (IDA `procs/` hat kein or1k/openrisc, `CS_ARCH_*` auch
 nicht). Selbstvalidierend: `dis 0x100` liefert `l.j 0x12b18`, und dort steht
-`l.movhi r1..r16, 0` — das kanonische OR1K-Reset-Stueck.
+`l.movhi r1..r16, 0` - das kanonische OR1K-Reset-Stueck.
 
 ```bash
 tools/or1k-disasm.py analyse/arisc/scp-wordswapped.bin dis 0x12b18 0x40
@@ -364,7 +364,7 @@ Gesucht wurde ueber den Dekoder. Ergebnis:
 - **Aber** `0x142dc` ueberschreibt `r3` sofort und benutzt das Argument nicht.
   `0x145b0` ist ein Thunk (`r4 = r3`, `r3 = 0`, Sprung nach `0x14004`), und
   direkt dahinter stehen Zeichenketten wie `"WRN:cpu%d power switch enable
-  already"` — die Umgebung ist CPU-Power-Switch, nicht offensichtlich der
+  already"` - die Umgebung ist CPU-Power-Switch, nicht offensichtlich der
   Parameterblock.
 
 Wer die 128 Byte tatsaechlich liest, ist damit **offen**. Naechster Ansatz:
@@ -395,7 +395,7 @@ im Lader wuerde die Firmware lautlos zerstoeren.
 
 Was weiterhin stimmt: die *logische* Instruktionsfolge ist die entspiegelte Form,
 und `tools/or1k-disasm.py` braucht sie so (`scp-wordswapped.bin`). Die Statistik
-(445 wortausgerichtete `l.nop`, Reset-Vektor `l.j 0x12b18`) war korrekt — nur die
+(445 wortausgerichtete `l.nop`, Reset-Vektor `l.j 0x12b18`) war korrekt - nur die
 Folgerung „also muss jemand swappen" war es nicht.
 
 Das erklaert nebenbei auch die Zeichenkette bei `0x4004`: das Wiki zeigt, dass
@@ -409,7 +409,7 @@ Auf unsere gemessenen Ladeadressen angewandt:
 
 | AR100 | ARM (bei uns) | Groesse | Bedeutung |
 |---|---|---|---|
-| `0x00000000`-`0x00001fff` | `0x00100000`-`0x00101fff` | 8 KiB | **Exception-Vektoren** — nur *ein* schreibbares Wort je `0x100`-Grenze |
+| `0x00000000`-`0x00001fff` | `0x00100000`-`0x00101fff` | 8 KiB | **Exception-Vektoren** - nur *ein* schreibbares Wort je `0x100`-Grenze |
 | `0x00002000`-`0x00003fff` | `0x00102000`-`0x00103fff` | 8 KiB | reserviert |
 | `0x00004000`-… | `0x00104000`-… | | **SRAM A2**, hier liegt der Firmware-Rumpf |
 
@@ -417,7 +417,7 @@ Also: **AR100-Adresse = ARM-Adresse − `0x100000`.**
 
 Das erklaert mehrere Beobachtungen auf einen Schlag:
 
-- Der Reset-Vektor liegt bei Bild-Offset `0x100` = AR100 `0x100` — genau die
+- Der Reset-Vektor liegt bei Bild-Offset `0x100` = AR100 `0x100` - genau die
   Reset-Exception-Adresse. Dahinter Nullen, weil je `0x100`-Grenze nur ein Wort
   schreibbar ist.
 - Der Vendor kopiert **140 KiB ab ARM `0x00100000`** am Stueck, also Vektorbereich
@@ -427,7 +427,7 @@ Das erklaert mehrere Beobachtungen auf einen Schlag:
 
 crusts `tools/load.c` bestaetigt die Prozedur unabhaengig: Reset anlegen
 (`mmio_clr_32(r_cpucfg, BIT(0))`), Exception-Vektoren schreiben, Firmware nach
-`FIRMWARE_BASE` kopieren, syncen, Reset loesen (`mmio_set_32(r_cpucfg, BIT(0))`) —
+`FIRMWARE_BASE` kopieren, syncen, Reset loesen (`mmio_set_32(r_cpucfg, BIT(0))`) -
 dasselbe Bit 0 in R_CPUCFG, das wir im Vendor-BL31 bei `0x07000400` gefunden haben.
 
 ## Wo die offene Frage jetzt am billigsten zu klaeren ist
@@ -438,7 +438,7 @@ have code for loading and starting the firmware blob."* Und: die API-Definitione
 stehen im ATF-Quelltext unter `plat/sun50iw2p1/include/arisc.h`.
 
 **Der Parameterblock ist damit wahrscheinlich aus Vendor-Quelltext zu holen statt
-aus dem Blob** — `drivers/arisc` in einem BSP-Kernelbaum (z. B. tinalinux
+aus dem Blob** - `drivers/arisc` in einem BSP-Kernelbaum (z. B. tinalinux
 linux-3.10) oder `arisc.h` im ATF-Baum.
 
 ## GEKLAERT: der Parameterblock ist `struct arisc_para`
@@ -482,13 +482,13 @@ value = readl(R_CPUCFG + 0x0); value |=  1; writel(value, ...);   /* release */
    der BL31 schreibt nach ARM `0x00104008` bei Bildbasis `0x00100000`, also
    **`ARISC_PARA_ADDR_OFFSET = 0x4008`**.
 3. **Reset**: das Clear-dann-Set von Bit 0 an `R_CPUCFG + 0` ist Instruktion fuer
-   Instruktion das, was wir im BL31 bei `0x07000400` disassembliert haben — und
+   Instruktion das, was wir im BL31 bei `0x07000400` disassembliert haben - und
    was crusts `tools/load.c` unabhaengig genauso macht
    (`mmio_clr_32(r_cpucfg, BIT(0))` / `mmio_set_32(r_cpucfg, BIT(0))`).
 
 **Meine frueher geaeusserte Vermutung, es seien DRAM-Parameter, war falsch.**
 Es ist ein Konfigurationsblock. Fuer den HPD-Weg zaehlen vor allem
-`message_pool_phys` und `message_pool_size` — das ist der geteilte Speicher, ueber
+`message_pool_phys` und `message_pool_size` - das ist der geteilte Speicher, ueber
 den die BOP-Frames laufen (`PullHotPlug 0x0211` aus `re/notes/edid-protocol.md`).
 
 ### Was damit fuer eine Portierung feststeht
@@ -503,22 +503,22 @@ den die BOP-Frames laufen (`PullHotPlug 0x0211` aus `re/notes/edid-protocol.md`)
 | danach | Msgbox initialisieren, auf „arisc ready" warten |
 | zusaetzlich (boot0-Teil) | Bit 0 setzen in `0x07010110`, `0x07010114`, `0x07010118` |
 
-Offen bleiben nur noch die **Werte** der Felder — `machine`, `services_used`,
-`power_regu_tree` — und wo wir den Message-Pool hinlegen. Letzteres bestimmen wir
+Offen bleiben nur noch die **Werte** der Felder - `machine`, `services_used`,
+`power_regu_tree` - und wo wir den Message-Pool hinlegen. Letzteres bestimmen wir
 selbst (DT-Reservierung), Ersteres steht in der BSP oder faellt beim Ausprobieren
 mit Nullen auf.
 
 ### Quellen
 
-- linux-sunxi.org/AR100 — Byte-Swapping, Adresskarte, Toolchain
-- `allwinner-zh/linux-3.4-sunxi`, `drivers/arisc/` — Lader, Reset, `arisc_para`
-- `crust-firmware/crust`, `tools/load.c` — unabhaengige Bestaetigung der Reset-Prozedur
-- `smaeul/sunxi-blobs` — RE-Werkzeuge fuer ARISC-Blobs (or1k-Toolchain noetig)
+- linux-sunxi.org/AR100 - Byte-Swapping, Adresskarte, Toolchain
+- `allwinner-zh/linux-3.4-sunxi`, `drivers/arisc/` - Lader, Reset, `arisc_para`
+- `crust-firmware/crust`, `tools/load.c` - unabhaengige Bestaetigung der Reset-Prozedur
+- `smaeul/sunxi-blobs` - RE-Werkzeuge fuer ARISC-Blobs (or1k-Toolchain noetig)
 
 ### EINSCHRAENKUNG zum Feldlayout (04.09., am Blob geprueft)
 
-Der Abschnitt oben sagt „GEKLAERT". Das gilt fuer **Groesse und Ort** — 128 Byte
-bei AR100 `0x4008` —, **nicht** zwingend fuer die Feldreihenfolge.
+Der Abschnitt oben sagt „GEKLAERT". Das gilt fuer **Groesse und Ort** - 128 Byte
+bei AR100 `0x4008` - , **nicht** zwingend fuer die Feldreihenfolge.
 
 Die Firmware liest den Block nachweislich: `0x145b0` ist ein Thunk, der mit
 `r4 = 0x4008` nach `0x14004` springt, und dort steht
@@ -532,14 +532,14 @@ Die Firmware liest den Block nachweislich: `0x145b0` ist ein Thunk, der mit
 ```
 
 Getestet wird also **Bit 16 von `para + 0x5c`**. In der `struct arisc_para` aus
-dem linux-3.4-BSP waere Offset `0x5c` = 92 das Feld `reseved[1]` — ein
+dem linux-3.4-BSP waere Offset `0x5c` = 92 das Feld `reseved[1]` - ein
 Reserve-Feld auf ein Bit zu pruefen ergibt keinen Sinn. (Offset `0x4c` = 76 waere
 `power_regu_tree[12]`, ebenso unplausibel.)
 
 **Schluss: das Feldlayout der H713-Firmware weicht vermutlich von der
 linux-3.4-Struktur ab.** Diese stammt aus einem BSP von ~2014; unsere Firmware
 ist deutlich juenger. Groesse (128) und Offset (`0x4008`) sind dreifach belegt und
-bleiben gueltig — die *Bedeutung der einzelnen Woerter* ist es nicht.
+bleiben gueltig - die *Bedeutung der einzelnen Woerter* ist es nicht.
 
 Wer Werte einsetzt, sollte das wissen. Der sichere Weg ist, mit Nullen zu starten
 und die Leser des Blocks in der Firmware einzeln aufzuarbeiten
@@ -548,16 +548,16 @@ und die Leser des Blocks in der Firmware einzeln aufzuarbeiten
 ### Nebenbefund: der DRAM-Anteil ist komplett null
 
 Die 32 KiB ab Blob-Offset `0x23000`, die der Vendor nach `0x48100000` schiebt,
-sind **32772 Byte Nullen** — nachgezaehlt. Und die Firmware enthaelt **keinen
+sind **32772 Byte Nullen** - nachgezaehlt. Und die Firmware enthaelt **keinen
 einzigen** `l.movhi` mit Immediate `0x4810`/`0x8810`/`0x4812`, referenziert diesen
 DRAM-Bereich statisch also nirgends.
 
 Fuer einen ersten Ladeversuch heisst das: **der DRAM-Anteil kann entfallen.** Er
 schreibt nur Nullen an eine Stelle, die die Firmware statisch nicht anfasst. Das
-nimmt auch die DT-Reservierung aus dem kritischen Pfad — sie waere nur noetig,
+nimmt auch die DT-Reservierung aus dem kritischen Pfad - sie waere nur noetig,
 wenn sich zeigt, dass die Firmware den Bereich zur Laufzeit dynamisch benutzt.
 
-## GEMESSEN 04.09.: /dev/mem darf schreiben — der Lader kann im Userspace bleiben
+## GEMESSEN 04.09.: /dev/mem darf schreiben - der Lader kann im Userspace bleiben
 
 Der Kernel hat `CONFIG_STRICT_DEVMEM=y`, aber **nicht** `CONFIG_IO_STRICT_DEVMEM`.
 Auf arm64 heisst das: System-RAM gesperrt, Nicht-RAM erlaubt. Das SRAM bei
@@ -573,7 +573,7 @@ MMIO 0x07010110  idempotenter Rueckschreibvorgang ohne Fehler
 
 Testadresse bewusst gewaehlt: `0x00110000` liegt in SRAM A2 hinter dem toten
 SPL (`eGON.BT0` bei `0x00104000`, 32 KiB) und weit vor `0x00123E00`, wo TF-A bei
-aktivem SCPI seine Mailbox haette (`PLAT_CSS_SCP_COM_SHARED_MEM_BASE`) — bei uns
+aktivem SCPI seine Mailbox haette (`PLAT_CSS_SCP_COM_SHARED_MEM_BASE`) - bei uns
 ist SCPI gar nicht gebaut.
 
 **Folge: die ARISC-Inbetriebnahme braucht keinen Eingriff in die Boot-Kette.**
@@ -583,8 +583,8 @@ Ausserdem gemessen, direkt aus Linux:
 
 | | |
 |---|---|
-| `R_CPUCFG 0x07000400` | `0x00000000` — Bit 0 geloescht, **ARISC steht im Reset** |
-| `R_PRCM 0x07010110` | `0x00000001` — Bit 0 schon gesetzt, der boot0-Taktschritt ist bereits erledigt |
+| `R_CPUCFG 0x07000400` | `0x00000000` - Bit 0 geloescht, **ARISC steht im Reset** |
+| `R_PRCM 0x07010110` | `0x00000001` - Bit 0 schon gesetzt, der boot0-Taktschritt ist bereits erledigt |
 
 ## Nachtrag: TF-A kennt OR1K bereits
 
@@ -609,13 +609,13 @@ Drei Klarstellungen daraus:
    Vendor legt sein Image an den **Anfang**, mit eigenen Vektoren im Bild. Zwei
    verschiedene Lademodelle. `re/notes/arisc-firmware.md` nennt das TF-A-Magic,
    nicht das des Vendor-Blobs.
-2. **`mmio_write_32(vector, offset >> 2)` ist ein `l.j`** — Opcode 0, das rohe Wort
+2. **`mmio_write_32(vector, offset >> 2)` ist ein `l.j`** - Opcode 0, das rohe Wort
    ist genau `offset>>2`. Gegenprobe: Ziel `0x12b18`, Vektor `0x100`, also
    `(0x12b18 - 0x100) >> 2 = 0x4A86`; im Blob steht bei `0x100` exakt `0x00004a86`.
-3. **Wir muessen keine Vektoren schreiben** — der Vendor-Blob bringt seine eigenen
+3. **Wir muessen keine Vektoren schreiben** - der Vendor-Blob bringt seine eigenen
    mit, korrekt fuer Ladeadresse `0x00100000`.
 
-## 04.09.2026: die ARISC laeuft — aus dem Linux-Userspace
+## 04.09.2026: die ARISC laeuft - aus dem Linux-Userspace
 
 Werkzeug `analyse/arisc-loader/arisc_load.py`, Blob `analyse/arisc/scp.bin`.
 Kein Eingriff in die Boot-Kette, kein TF-A-Umbau, keine DT-Aenderung.
@@ -638,7 +638,7 @@ Parameterblock                  :  0 von 32 Woertern weichen ab
 
 Die 18 Abweichungen im Vektorbereich sind **die Bestaetigung, nicht der Fehler**:
 die Hardware nimmt dort nur *ein* Wort je `0x100`-Grenze an, genau wie das
-AR100-Wiki sagt — und alle Grenzen selbst haben gepasst.
+AR100-Wiki sagt - und alle Grenzen selbst haben gepasst.
 
 ### Der Nachweis, dass sie ausfuehrt
 
@@ -665,7 +665,7 @@ sie sind strukturiert:
 ```
 
 MMIO-Basen ablegen, verkettete Listen aufbauen, eine Struktur-Tabelle
-initialisieren — das ist Treiber-Initialisierung, kein Rauschen.
+initialisieren - das ist Treiber-Initialisierung, kein Rauschen.
 
 ### Wo sie stehenbleibt
 
@@ -674,7 +674,7 @@ Stack-Boden bewegt sich nicht. Die Firmware laeuft also an, initialisiert einen
 substanziellen Teil und erreicht dann einen stabilen Ruhezustand.
 
 Die Msgbox-Register bei `user1 sub0` (`0x0300346c`, `0x03003424`, `0x03003420`,
-`0x0300347c`, `0x03003430`) stehen **alle auf null** — ihre Empfangsseite hat sie
+`0x0300347c`, `0x03003430`) stehen **alle auf null** - ihre Empfangsseite hat sie
 nicht geoeffnet. Ob sie wartet, haengt oder unvollstaendig konfiguriert ist, ist
 damit **nicht** entschieden.
 
@@ -695,13 +695,13 @@ Nachricht wartet.
 
 ### Naechste Ansaetze
 
-1. **Die 102 geschriebenen Woerter gegen die Firmware halten** — welcher Code
+1. **Die 102 geschriebenen Woerter gegen die Firmware halten** - welcher Code
    schreibt `0x16f54..0x170a8`? Damit laesst sich bestimmen, wie weit die Init
    kam und woran sie haengt (`tools/or1k-disasm.py`).
-2. **`arisc_para` variieren** — vor allem das Feld, dessen Bit 16 bei `0x14004`
+2. **`arisc_para` variieren** - vor allem das Feld, dessen Bit 16 bei `0x14004`
    geprueft wird, und `uart_pin_used` (die ARISC hat eine eigene UART an R_UART
    `0x07080000`; laeuft sie, koennte sie sprechen).
-3. **Den Msgbox-Pfad pruefen** — ob die ARISC einen anderen Block als `user1
+3. **Den Msgbox-Pfad pruefen** - ob die ARISC einen anderen Block als `user1
    sub0` benutzt.
 
 ## Was die laufende ARISC tatsaechlich getan hat
@@ -724,7 +724,7 @@ IRQ 3:    00015ba8  00010af0     ECHTER Handler, mit Kontext
 IRQ 4..:  00000000  00005f30     alle Default
 ```
 
-Zwei Handler registriert, der Rest auf dem Default. Das ist kein Absturz — die
+Zwei Handler registriert, der Rest auf dem Default. Das ist kein Absturz - die
 Firmware hat ihre Interrupt-Verwaltung fertig aufgebaut und **wartet**.
 
 Der IRQ-2-Handler prueft als Erstes ein Flag bei `0x15b8c` und ueberspringt bei
@@ -740,12 +740,12 @@ IRQ-3-Pfad:     l.movhi r2,  0x0709 ; l.ori r2,  r2,  0x0448 ; l.lwz r5, 0(r2)
 `0x07090404` und `0x07090448` liegen im selben Block wie `0x07091014`.
 
 **Zaehlung ueber die ganze Firmware:** 42 Stellen bilden Adressen in
-`0x07090xxx`, **27 in `0x07091xxx`** — darunter `0x07091014` selbst, dazu
+`0x07090xxx`, **27 in `0x07091xxx`** - darunter `0x07091014` selbst, dazu
 `0x07091008/18/1c/20/30/34/38` und eine Reihe bei `0x07091b00..0x07091f00`.
 
 Damit ist von **beiden** Seiten belegt, was bisher Hypothese war: dieser Block
 antwortet der ARISC, nicht dem ARM. cstengers Schluss („`0x07091000` ist nicht
-ARM-adressierbar") ist damit unabhaengig bestaetigt — und die Loesung ist nicht,
+ARM-adressierbar") ist damit unabhaengig bestaetigt - und die Loesung ist nicht,
 ihn doch vom ARM zu erreichen, sondern die ARISC zu benutzen.
 
 ### Der Msgbox-Pfad ist der aus unserer eigenen RE
@@ -761,7 +761,7 @@ Adressen, die die Firmware im Msgbox-Block bildet:
 
 Deckungsgleich mit `re/notes/arisc-firmware.md` (Session O, device-verified:
 MSG_DATA `0x0300347c`, TX_IRQ_EN `0x03003430`). Die Register lesen null, weil
-ihnen noch niemand etwas geschickt hat — nicht, weil der Pfad falsch waere.
+ihnen noch niemand etwas geschickt hat - nicht, weil der Pfad falsch waere.
 
 ### Damit ist der Weg zu HPD benannt
 
@@ -798,7 +798,7 @@ drivers/arisc/
 ```
 
 Userspace (libhalhdmi & Co.) redet mit diesem Treiber, nicht mit der Msgbox.
-**Bei uns fehlt er** — deshalb stapeln sich Nachrichten der ARISC ungelesen.
+**Bei uns fehlt er** - deshalb stapeln sich Nachrichten der ARISC ungelesen.
 
 ### Die Nachricht
 
@@ -854,12 +854,12 @@ nicht eine absolute Adresse. Der Ablauf ist:
 ### Folge fuer uns
 
 `message_pool_phys` im Parameterblock ist damit **die Schluesselgroesse**:
-`map_to_cpus` subtrahiert die Pool-Basis, `map_to_cpux` addiert sie — ARM und
+`map_to_cpus` subtrahiert die Pool-Basis, `map_to_cpux` addiert sie - ARM und
 ARISC muessen sich ueber sie einig sein, und genau dafuer traegt der
 Parameterblock das Feld. **Unsere `0x00123000` ist geraten.**
 
 Ein Versuch, einen Rahmen direkt in MSG_DATA zu schreiben, ist auf
-Protokollebene falsch (am 04.09. gemacht, siehe unten) — er landet als
+Protokollebene falsch (am 04.09. gemacht, siehe unten) - er landet als
 sinnloser Offset.
 
 ### Der Versuch vom 04.09. und was er trotzdem zeigte
@@ -880,11 +880,11 @@ Drei Dinge daraus, unabhaengig vom falschen Rahmenformat:
 
 1. **Die ARISC arbeitet weiter.** Zwischen zwei Messungen im Abstand von ~8 min:
    BSS 59 -> 132, Stack 35 -> 108 nicht-null.
-2. **Sie reagiert auf den Doorbell** — der Stack bewegte sich in den 0,5 s danach,
+2. **Sie reagiert auf den Doorbell** - der Stack bewegte sich in den 0,5 s danach,
    und acht FIFO-Eintraege wurden verbraucht.
 3. **Sie sendet von sich aus.** user0 hatte *vor* unserem Versuch bereits acht
    Eintraege und gesetzten RX-Status. Ausgelesen ergaben sie einen Kopf
-   `0x00900200`, ein Laengenfeld `13` und 24 Byte klar druckbares ASCII — das
+   `0x00900200`, ein Laengenfeld `13` und 24 Byte klar druckbares ASCII - das
    sich in keiner der acht geprueften Byteordnungen zu lesbarem Text fuegt
    (`]ejorrotc3vt-a-30ordn11d` und Varianten).
 
@@ -897,7 +897,7 @@ ist das nicht.
 
 ### Naechste Schritte
 
-1. `arisc_message_manager_init()` lesen — wie leitet die ARM-Seite die Pool-Basis
+1. `arisc_message_manager_init()` lesen - wie leitet die ARM-Seite die Pool-Basis
    ab, und was ist `ARISC_MESSAGE_POOL_START`? Damit waere `message_pool_phys`
    keine Annahme mehr.
 2. Erst dann erneut senden, diesmal mit korrektem Pool-Offset statt Rohrahmen.
@@ -911,13 +911,13 @@ Der Abschnitt oben schliesst: *„`message_pool_phys` im Parameterblock ist dami
 **nicht fuer diese Firmware**.
 
 Nachgezaehlt im Bild: **null** Zugriffe auf `para+0x0c` (`message_pool_phys`)
-oder `para+0x10` (`message_pool_size`) — weder r0-relativ noch ueber ein
+oder `para+0x10` (`message_pool_size`) - weder r0-relativ noch ueber ein
 `movhi`/`ori`-Paar. Diese TV-Firmware ueberträgt den **Rahmen selbst als
 Wortstrom** durch die Msgbox: Kopf, count, dann `count` Datenwoerter. Der Pool ist
 auf ihr ein totes Feld.
 
 Der Pool-Offset-Mechanismus aus `drivers/arisc/message_manager.c` beschreibt also
-den generischen Fall, nicht unseren. Beides steht jetzt nebeneinander — nicht
+den generischen Fall, nicht unseren. Beides steht jetzt nebeneinander - nicht
 verwechseln.
 
 ## Die ARISC sagt, wer sie ist
@@ -938,7 +938,7 @@ projector-tv303-android11-v1.3-3-g293ff69
 ```
 
 **Dreifach belegt.** (a) Der Kopf zerlegt sich sauber nach `struct arisc_message`.
-(b) Die Zeichenkette steht im Bild bei `0x14d4b` — und in der **Ladeform**
+(b) Die Zeichenkette steht im Bild bei `0x14d4b` - und in der **Ladeform**
 (`scp.bin`) liest dieselbe Stelle `]ejorrotc3vt-a-30ordn11di.1v--3-3392g96ffnes`,
 also byteweise genau das, was aus dem FIFO kam. (c) Der Sendecode bei `0xc4a0`
 baut diesen Rahmen (type 0x90, count 13) und traegt die Zeichenketten
@@ -956,7 +956,7 @@ dem Reset-Loesen auf genau diese Nachricht (`[SCP] :wait arisc ready....`,
 
 Ich hatte Byteordnungen auf den **empfangenen Woertern** durchprobiert, statt die
 Zeichenkette **im Bild** zu suchen. Zwei Dinge kamen zusammen: der Datenbus der
-AR100 dreht jedes Wort, und der String beginnt bei `0x14d4b`, also `3 mod 4` —
+AR100 dreht jedes Wort, und der String beginnt bei `0x14d4b`, also `3 mod 4` -
 keine meiner Wortgrenzen konnte passen. Die Lehre ist die bekannte: **im Material
 suchen, nicht am Symptom rechnen.**
 
@@ -975,7 +975,7 @@ Weg ARM -> ARISC -> ARM steht damit am Geraet.
 ## Und ein Absturz, mit Lehre
 
 Ein `send` mit vier Woertern plus Doorbell **haengte den SoC**. Der Watchdog hat
-neu gestartet, nach 3-4 Minuten war das Board von selbst zurueck — **kein
+neu gestartet, nach 3-4 Minuten war das Board von selbst zurueck - **kein
 Stromzyklus noetig**, und die persistente `bootcmd` brachte den MIPS wieder hoch.
 Nach dem Neustart ist die ARISC-Firmware nicht mehr geladen (`R_CPUCFG` = 0,
 SRAM-Rauschen); fuer weitere Versuche muss `arisc_load.py` erneut laufen.
@@ -1018,7 +1018,7 @@ l.jal 0x7504 mit r3 = 3                        ->  VOR JEDEM Wort Platzpruefung
 l.lbz r3, 4(r14)                               ->  dann count als Wort 1
 ```
 
-**Byte +4 ist `count`** — dort, wo `struct arisc_message` aus dem linux-3.4-BSP
+**Byte +4 ist `count`** - dort, wo `struct arisc_message` aus dem linux-3.4-BSP
 `next` hat. Das Layout dieser Firmware weicht also ab, wie schon beim
 Parameterblock vermutet.
 
@@ -1062,7 +1062,7 @@ Die Empfangsschleife **hat kein Zeitlimit**:
 
 Sie dreht, bis das naechste Wort kommt, und fuettert dabei den Watchdog nicht.
 **Wer weniger Woerter schickt, als `count` ankuendigt, haengt die ARISC
-zwangslaeufig** — Watchdog-Reset des ganzen SoC.
+zwangslaeufig** - Watchdog-Reset des ganzen SoC.
 
 Das war der Absturz vom 04.09.: vier Woerter mit unpassendem `count`.
 
@@ -1078,7 +1078,7 @@ kein Fehlversuch, sondern ein Reset.
 - **Die Bedeutung der Datenwoerter.** Der Empfaenger legt sie ueber einen Zeiger
   bei `msg+28` ab.
 - Wie sich der BOP-Unterbefehl (`PullHotPlug 0x0211` aus
-  `re/notes/EDID-PROTOCOL.md`) in dieses Format einfuegt — vermutlich als
+  `re/notes/EDID-PROTOCOL.md`) in dieses Format einfuegt - vermutlich als
   Nutzlast innerhalb der Datenwoerter, belegt ist es nicht.
 
 Der Dispatcher mit den neun EDID/HPD-Faellen liegt laut deiner RE bei `0x12490`;
@@ -1109,7 +1109,7 @@ Dort steht: *„only case 5/PullHotPlug writes `0x07091014`"*. **Fuer diese
 Firmware-Fassung stimmt das nicht.**
 
 - **Fall 5** ist „Output EDID" und fuehrt ueber `0x11ff4` -> `0x11cac` auf
-  **`0x07091b04`** — ein anderes Register.
+  **`0x07091b04`** - ein anderes Register.
 - **Fall 7** ist „Host pull Hotplug" und fuehrt ueber `0x12330`/`0x12338` auf
   **`0x121e4`**, und *das* schreibt `0x07091014`.
 
@@ -1142,14 +1142,14 @@ Und die Pruefungen in `0x12338`:
 
 **`port` in {0,1,2}, `value` in {1,2,3}.** Die zugehoerigen Meldungen im Bild:
 `hpd %d UP`, `hpd %d DOWN`, `hpd %d RESET` (`0x1543f`/`0x1544a`/`0x15457`).
-Welche Zahl welchem Zustand entspricht, ist damit **nicht** endgueltig belegt —
+Welche Zahl welchem Zustand entspricht, ist damit **nicht** endgueltig belegt -
 die Zuordnung der drei Zweige zu den drei Meldungen muss noch nachgesehen werden.
 
 ### Der Pin-Treiber `0x121e4`
 
 `set_hpd_pin(port, value)`: Port mal 8 als Index in eine Tabelle bei `0x17248`,
 dann Read-Modify-Write. Beide Zugriffe auf `0x07091014` liegen in dieser
-Funktion — `0x12244` liest, **`0x12314` schreibt**. Das deckt sich mit der
+Funktion - `0x12244` liest, **`0x12314` schreibt**. Das deckt sich mit der
 urspruenglichen RE-Angabe „HPD GPIO driver @0x121e4".
 
 ### Weitere Zeichenketten, die den Funktionsumfang zeigen
@@ -1172,7 +1172,7 @@ belegen zusaetzlich, dass die Firmware drei getrennte HDMI-Ports fuehrt.
 Die Bruecke vom Msgbox-Rahmen zum Dispatcher-Aufruf: **welche Felder des Rahmens
 den Fall-Index bestimmen**, und wo der Datenzeiger herkommt. Der Dispatcher wird
 von genau einer Stelle angesprungen (`l.j @0x11670`), und der Code davor setzt
-den Index aus dem Kontrollfluss — die Zuordnung liegt weiter oben.
+den Index aus dem Kontrollfluss - die Zuordnung liegt weiter oben.
 
 ## Die HPD-Zustandsmaschine, vollstaendig (05.09.)
 
@@ -1184,7 +1184,7 @@ ein Byte je Port (`0x1722c`..`0x1722e`).
 | `value` | Meldung | `set_hpd_pin`? | zusaetzlich |
 |---|---|---|---|
 | **1** | `hpd %d UP` (`0x1543f`) | **nein** | `*(0x1722c+port) += 1` |
-| **2** | `hpd %d DOWN` (`0x1544a`) | ja, `(port, 0)` | — |
+| **2** | `hpd %d DOWN` (`0x1544a`) | ja, `(port, 0)` | - |
 | **3** | `hpd %d RESET` (`0x15457`) | ja, `(port, 0)` | `*(0x1722c+port) := 84` |
 | sonst | `ERR:Unknown Hotplug Type %d` (`0x15465`) | | |
 
@@ -1211,7 +1211,7 @@ l.jal   0x121e4             set_hpd_pin(port, 1)   -> Pin HIGH
 ...                         Schleife ueber drei Ports
 ```
 
-**Er handelt nur, wenn der Zaehler exakt 1 ist** — nicht „<= 1". Damit ergibt sich:
+**Er handelt nur, wenn der Zaehler exakt 1 ist** - nicht „<= 1". Damit ergibt sich:
 
 ```
 RESET (3):  Pin sofort LOW, Zaehler 84
@@ -1223,12 +1223,12 @@ DOWN (2):   Pin LOW, kein Zaehler
 ```
 
 **Das ist der Mechanismus, den `re/notes/edid-hpd.md` als
-*„sustained-LOW(8s)+rising edge forces EDID re-read"* beschreibt** — und die 84
+*„sustained-LOW(8s)+rising edge forces EDID re-read"* beschreibt** - und die 84
 Ticks erklaeren die dort genannten acht Sekunden (bei ~100 ms Tick).
 
 ### Praktische Folge
 
-Zum blossen Anheben des Pins genuegt **`value = 1` (UP)** — der Pin geht beim
+Zum blossen Anheben des Pins genuegt **`value = 1` (UP)** - der Pin geht beim
 naechsten Tick hoch. Fuer einen vollstaendigen Hotplug-Zyklus, der die Quelle
 zum EDID-Neulesen zwingt, ist **`value = 3` (RESET)** der richtige Befehl.
 
@@ -1244,7 +1244,7 @@ Sender fuer Rahmen an die laufende ARISC. Die Sicherheitseigenschaft ist
 **strukturell, nicht per Parameter**: `count` wird immer aus der tatsaechlichen
 Nutzlast berechnet (`build_frame`), ein Missverhaeltnis ist nicht darstellbar.
 Zusaetzlich wird vor dem Senden geprueft, ob im FIFO Platz fuer den **ganzen**
-Rahmen ist — ein Rahmen, der mittendrin am vollen FIFO haengenbleibt, haette
+Rahmen ist - ein Rahmen, der mittendrin am vollen FIFO haengenbleibt, haette
 dieselbe Wirkung wie ein zu kurzer. Sperrbereiche `0x07091xxx` und TVTOP sind im
 Speicherzugriff selbst blockiert, nicht nur durch Disziplin.
 
@@ -1286,7 +1286,7 @@ es ist sicher, und es bestaetigt ein statisches Ergebnis unabhaengig.
 
 `arisc_load.py`, `arisc_send.py` und `arisc_msg.py` sind **Instrumente, kein
 Produkt.** Ihr Zweck war, das Protokoll zu finden; danach sind sie Referenz und
-Testgeschirr — wenn ein Treiber sich anders verhaelt als sie, weiss man, wo man
+Testgeschirr - wenn ein Treiber sich anders verhaelt als sie, weiss man, wo man
 nachsieht.
 
 ### Warum ein Kernel-Treiber noetig ist
@@ -1314,14 +1314,14 @@ Vier Gruende, jeder davon in dieser Sitzung aufgetreten:
 Die ARISC-Pfade (`0x03003000` user0, `0x03003400` user1) liegen **in demselben
 Fenster**. Die Analyse-Skripte greifen per `/dev/mem` an `cpu_comm` vorbei darauf
 zu. Fuer Bring-up geht das; als Dauerzustand ist es dieselbe Klasse Problem wie
-KMS gegen DECD und tvtop gegen KMS — „genau einer darf den Block besitzen".
+KMS gegen DECD und tvtop gegen KMS - „genau einer darf den Block besitzen".
 
 ### Drei Zuschnitte
 
 | | Vorteil | Nachteil |
 |---|---|---|
 | **A. `cpu_comm` erweitern** | besitzt den Block schon, kennt die Registerkarte, hat den IRQ | der Treiber wird zwei Dinge |
-| **B. `sun6i-msgbox` als Besitzer**, `cpu_comm` und ARISC als Mailbox-Clients | idiomatisch mainline | baut `cpu_comm`s Transport um — an etwas, das gerade erst laeuft |
+| **B. `sun6i-msgbox` als Besitzer**, `cpu_comm` und ARISC als Mailbox-Clients | idiomatisch mainline | baut `cpu_comm`s Transport um - an etwas, das gerade erst laeuft |
 | **C. eigener ARISC-Treiber** mit eigenem Sub-Block | klare Trennung | zwei Treiber auf einem Registerblock ohne Koordination |
 
 **Empfehlung: A jetzt, B als Endziel.** Nicht weil A schoener ist, sondern weil
@@ -1332,17 +1332,17 @@ funktioniert. B lohnt, wenn der Rest steht.
 
 Per **`request_firmware()`** im Probe, Blob als
 `/lib/firmware/sunxi-arisc-tv303.bin`. Damit neu ladbar, testbar, kein
-Boot-Pfad-Risiko — im Gegensatz zum Vendor, der es im BL31 macht. Der
+Boot-Pfad-Risiko - im Gegensatz zum Vendor, der es im BL31 macht. Der
 Ladevorgang selbst ist in `analyse/arisc-loader/arisc_load.py` vollstaendig
 beschrieben und am Geraet verifiziert (0 Abweichungen ueber 31744 Woerter).
 
-### Wer den Treiber anspricht — und was das repariert
+### Wer den Treiber anspricht - und was das repariert
 
 **`legacy/patches/0023-drm-add-sun50i-h713-hdmi-rx-driver.patch`.** Er mappt
 heute `0x07091000` und schreibt `+0x14` direkt, mit dem Kommentar
 *„ARISC HPD-pin (already wired via separate path)"*.
 
-**Auf unserem Board ist genau das der harte SoC-Haenger** — zweimal gemessen,
+**Auf unserem Board ist genau das der harte SoC-Haenger** - zweimal gemessen,
 und die Firmware-Analyse erklaert warum: 27 Codestellen der ARISC bilden
 Adressen in `0x07091xxx`, der Pin-Zugriff liegt in `0x121e4`. Der Block
 antwortet der ARISC, nicht dem ARM.
@@ -1354,7 +1354,7 @@ statt eines `writel` auf ein Register, das dem ARM nicht gehoert, ein Aufruf wie
 h713_arisc_hotplug(port, H713_HPD_RESET);   /* port 0..2, value 1/2/3 */
 ```
 
-Darueber dann optional Userspace (`hy310-hdmird`) fuer die MIPS-Seite — anderer
+Darueber dann optional Userspace (`hy310-hdmird`) fuer die MIPS-Seite - anderer
 Strang, gleiche Msgbox.
 
 ### Reihenfolge
@@ -1368,7 +1368,7 @@ Weiter oben steht, ein Durchlauf ueber alle 256 `type`-Werte sei ein zulaessiges
 sicheres Verfahren, weil `count` strukturell stimmt und ein unbekannter Typ nur
 `result = -3` liefert. **Das ist nur die halbe Wahrheit.**
 
-Sicher ist der Sweep gegen **Haenger** — ein korrekt gezaehlter Rahmen kann die
+Sicher ist der Sweep gegen **Haenger** - ein korrekt gezaehlter Rahmen kann die
 Empfangsschleife nicht blockieren. Er ist **nicht** sicher gegen **Nebenwirkungen**:
 der generische Typraum enthaelt ausdruecklich Energiebefehle. Aus
 `arisc_messages.h`, Basis `ARISC_MESSAGE_BASE = 0x10`:
@@ -1383,7 +1383,7 @@ ARISC_CPUIDLE_ENTER_REQ      0x1a
 ```
 
 Ein blinder Sweep kann also das Geraet in Standby schicken oder ausschalten. Ob
-diese TV-Firmware dieselben Typnummern fuehrt, ist unbelegt — aber das ist kein
+diese TV-Firmware dieselben Typnummern fuehrt, ist unbelegt - aber das ist kein
 Argument dafuer, es auszuprobieren, sondern eines dagegen.
 
 **Der Sweep bleibt moeglich, aber nur ueber einen begruendet eingegrenzten
@@ -1403,7 +1403,7 @@ Wirkung misst statt einer Quittung.
 ### Nebenbei bestaetigt: das Startup-Telegramm hat wirklich 15 Woerter
 
 Beim Leeren des Empfangs-FIFO kamen die **restlichen sieben** Woerter, darunter
-`0x76312e69` (`"i.1v"`) und `0x32393333`/`0x66363967` (`"3392"`/`"g96f"`) — der
+`0x76312e69` (`"i.1v"`) und `0x32393333`/`0x66363967` (`"3392"`/`"g96f"`) - der
 Schwanz von `...-v1.3-3-g293ff69`. 8 + 7 = 15 = `2 + count(13)`. Die Firmware
 hatte die fehlenden sieben nachgeliefert, sobald wieder Platz war.
 
@@ -1418,7 +1418,7 @@ Beobachtungen bei jedem Aufruf:
 * die `memset`-Sonde bei `0x17320` wird genullt (Handler `0x11550` lief),
 * der HPD-Zähler `[0x11722c + port]` springt auf **exakt 84** und nur beim
   adressierten Port,
-* er läuft auf 0 herunter — und auf 0 bringt ihn ausschließlich die Stufe,
+* er läuft auf 0 herunter - und auf 0 bringt ihn ausschließlich die Stufe,
   die `pin_write(port, 1)` aufruft.
 
 Werkzeug: `analyse/arisc-msg/arisc_hdmi.py`.
@@ -1426,7 +1426,7 @@ Werkzeug: `analyse/arisc-msg/arisc_hdmi.py`.
 ## Es gibt zwei Empfangswege, nicht einen
 
 Beide hängen an derselben Msgbox `0x03003000`, sind aber vollständig getrennt.
-**Das war der eigentliche Fehler in allen bisherigen Versuchen** — auch in
+**Das war der eigentliche Fehler in allen bisherigen Versuchen** - auch in
 meinen: wir haben HDMI-Rahmen an den Standby-Dispatcher geschickt.
 
 | | Standby | **HDMI/RPM** |
@@ -1436,7 +1436,7 @@ meinen: wir haben HDMI-Rahmen an den Standby-Dispatcher geschickt.
 | Empfänger | `0x7970` → Dispatcher `0xbca0` | Pumpe `0x7fd8` → `classify 0x114e8` |
 | Format | `state\|attr<<8\|type<<16\|result<<24`, dann `count`, dann Daten | BOP: `0xA5\|seq<<8\|type<<16\|length<<24`, Füllwort, Nutzlast |
 
-Der Standby-Dispatcher kennt genau neun Typen — alles andere endet in
+Der Standby-Dispatcher kennt genau neun Typen - alles andere endet in
 `ERR:imt [%x]` mit `result = -3`, geschrieben nach `byte[3]` (`0xbe4c`):
 
 | type | Name aus der Firmware | Handler |
@@ -1447,7 +1447,7 @@ Der Standby-Dispatcher kennt genau neun Typen — alles andere endet in
 | `0x25` | `clear wakeup src req` | `0xcae0` |
 | `0x26` | `set wakeup src req` | `0xc994` |
 | `0x60` / `0x62` / `0x64` | (unbenannt) | `0xc27c` / `0x72b8` / `0xc6e8` |
-| `0x61` | (unbenannt) | — gibt Status 0 zurück |
+| `0x61` | (unbenannt) | - gibt Status 0 zurück |
 
 Damit ist auch das alte Rätsel „warum antwortet die ARISC mit `-3`" erledigt:
 `type = 0` ist dort schlicht ungültig. `re/notes/…` deutete das als „hollow by
@@ -1457,7 +1457,7 @@ design"; richtig ist, dass die Nachricht den HDMI-Weg nie betreten hat.
 der Standby-Weg. Der HDMI-Weg liegt bei `0x7fd8`/`0x8064`.
 
 Die RPM-Adressen sind im Blob nicht als `0x0300…` zu finden, weil `0x7e4c`
-sie rechnet — deshalb hat der erste Scan sie übersehen:
+sie rechnet - deshalb hat der erste Scan sie übersehen:
 
 ```
 addr = (0x00c00d1c + chan + rproc*64) << 2      MSG_DATA
@@ -1474,7 +1474,7 @@ Handler; beide Slots sind im laufenden System belegt (nachgelesen):
 `type` und `length` stehen in den Registern `r18`/`r14`, nicht im Kontext, und
 `0x804c`/`0x8054` setzen sie bei **jedem** Einsprung auf 0. Der Poller `0x7bbc`
 weckt die Pumpe aber schon, sobald das erste Wort im FIFO liegt. Kommen die
-Worte nicht in einem Rutsch an, startet die Pumpe zwischendrin neu — `length`
+Worte nicht in einem Rutsch an, startet die Pumpe zwischendrin neu - `length`
 ist wieder 0, und Zustand 1 nimmt bei `0x810c` den `length == 0`-Zweig:
 sofortige Ablieferung mit Länge 0. Wortweise gemessen:
 
@@ -1487,7 +1487,7 @@ Das erklärt, warum wochenlang „nichts passierte", obwohl der Rahmen formal
 stimmte. Der Ausweg nutzt die Eigenheit, statt gegen sie zu kämpfen:
 `classify` liest den Unterbefehl aus dem **Puffer**, nicht aus der Länge
 (`0x11508: r4 = r5[0]`). Also Nutzlast direkt in den Puffer der Pumpe
-schreiben — `ctx+5` = **`0x115f59`** — und einen 2-Wort-Rahmen mit `length = 0`
+schreiben - `ctx+5` = **`0x115f59`** - und einen 2-Wort-Rahmen mit `length = 0`
 schicken. Das ist gegen das Rennen immun.
 
 ```
@@ -1509,12 +1509,12 @@ und `arg1`/`arg2` in den Datenpuffer, dann `l.j 0x12490` → **Fall 7**.
 | value | Wirkung |
 |---|---|
 | 1 UP | `[0x1722c+port] += 1` |
-| 2 DOWN | `0x121e4(port, 0)` — Pin sofort low |
+| 2 DOWN | `0x121e4(port, 0)` - Pin sofort low |
 | 3 RESET | `0x121e4(port, 0)`, dann `[0x1722c+port] = 84` |
 | sonst | `ERR:Unknown Hotplug Type %d` |
 | port > 2 | `ERR:Wrong HDMI Port Number` |
 
-Den Zähler arbeiten **zwei getrennte Stufen** ab — das ist der Schlüssel zur
+Den Zähler arbeiten **zwei getrennte Stufen** ab - das ist der Schlüssel zur
 Fehlersuche:
 
 ```
@@ -1527,7 +1527,7 @@ Gemessen: 84 → 1 in 0,9 s, also 100 Hz. Daraus folgt zweierlei:
 1. **HPD geht auch ganz ohne Nachricht.** `[0x11722c+port]` von Linux aus auf
    ≥ 1 schreiben genügt; die ARISC schreibt den Pin. `arisc_hdmi.py pin`.
 2. **Der Zähler ist die Lebensanzeige der Hauptschleife.** Bleibt er auf 1
-   stehen, läuft nur noch der Timer-ISR — die Hauptschleife hängt.
+   stehen, läuft nur noch der Timer-ISR - die Hauptschleife hängt.
 
 Port-Tabelle `0x17248` (8 Byte je Port) ist im laufenden System gefüllt,
 Freigabe-Byte `[0x1723f] = 1`:
@@ -1537,7 +1537,7 @@ Port 0: 01 00 10 01     Port 1: 02 01 20 02     Port 2: 04 02 30 04
         ^Maske ^Index ^Offset
 ```
 
-## Warum die Hauptschleife hängen bleibt — und wie man sie befreit
+## Warum die Hauptschleife hängen bleibt - und wie man sie befreit
 
 `0x7970` prüft `FIFO_STAT[3]` und kehrt bei leerem FIFO sofort zurück. Hat ein
 Rahmen aber begonnen, wartet es **ohne Timeout** auf die restlichen Worte
@@ -1554,7 +1554,7 @@ ganze Hauptschleife lahm:
 
 Genau das hatten wir uns mit den ersten Versuchen eingehandelt. Befreien:
 Nullworte auf Port 3 nachschieben, je zwei ergeben einen Leerrahmen. In
-unserem Fall genügten drei — danach lief alles wieder. `arisc_hdmi.py unstick`
+unserem Fall genügten drei - danach lief alles wieder. `arisc_hdmi.py unstick`
 macht das und prüft nach jedem Wort über den Zähler, ob die Schleife zurück ist.
 
 **Das ist auch die Erklärung für frühere widersprüchliche Messungen:** eine
@@ -1567,7 +1567,7 @@ hängende Hauptschleife leert Port 0 nicht, der FIFO läuft voll, und
 `printf` ist `0xbf70(level, fmt, …)`, Pegel-Variable `[0x115c0c]`, im laufenden
 System **3**. Die Ausgabe läuft über `0x7234` → `0x7168` und landet auf
 **R_UART `0x07080000`** (Statusregister `0x0708007c`, Bit 1), freigegeben durch
-`[0x115bc0]` und `[0x115f48]`. Also ein physischer Port, kein Speicherpuffer —
+`[0x115bc0]` und `[0x115f48]`. Also ein physischer Port, kein Speicherpuffer -
 von Linux aus nicht lesbar. Wer den Log braucht, muss `0x7168` patchen oder
 R_UART physisch abgreifen. Deshalb arbeitet `arisc_hdmi.py` mit
 Nebenwirkungs-Sonden (`memset` bei `0x17320`, HPD-Zähler) statt mit Meldungen.
@@ -1576,11 +1576,11 @@ Nebenwirkungs-Sonden (`memset` bei `0x17320`, HPD-Zähler) statt mit Meldungen.
 
 Ein Kernel-Treiber braucht nichts weiter als:
 
-* Msgbox `0x03003000` mappen, ARISC-SRAM `0x115000`–`0x118000` mappen,
+* Msgbox `0x03003000` mappen, ARISC-SRAM `0x115000` - `0x118000` mappen,
 * HPD setzen: `PullHotPlug` wie oben abliefern **oder** direkt
   `[0x11722c+port]` schreiben,
 * Lebensprüfung: Zähler auf 3 setzen, muss binnen ~100 ms 0 werden,
-* niemals `0x07091014` vom ARM lesen — das hängt den SoC hart.
+* niemals `0x07091014` vom ARM lesen - das hängt den SoC hart.
 
 Offen bleibt bewusst: ob ein Treiber den Puffer-Vorbelegungs-Trick braucht
 oder ob drei `writel()` hintereinander schnell genug sind, um der Pumpe
@@ -1601,7 +1601,7 @@ sessionID:27 call func:THal_Vp_HDMI_SetPortMap_1_000 Para[0]: 0x5
 
 Also **Para[0] = 3, 4, 5**. Die Gegenbehauptung stammte aus einem Kommentar in
 `hy310-hdmird`, der die elog-Zeilen „Change Port(N) Map, from OLD to NEW"
-deutet — eine Herleitung, keine Messung.
+deutet - eine Herleitung, keine Messung.
 
 **Und der Mitschnitt kann ueber `arg2` nichts sagen:** er druckt in beiden
 Dateien *nie* ein `Para[1]` (0 Treffer), auch nicht bei `Wce_SetWindow`, das
@@ -1610,18 +1610,18 @@ also stehen, `arg2` bleibt unbekannt.
 
 Damit war die urspruengliche Fassung von `tools/uboot-hdmi-sequence.txt` richtig,
 inklusive ihres eigenen Vorbehalts („arg2 unbekannt, Stock zeigt nur Para[0]").
-Die beiden anderen Korrekturen an der Datei — `RegisterSignalChangeCallback` mit
-einem statt zwei Argumenten und `SetHDMIHotPlugByPortCallback(1)` — sind davon
+Die beiden anderen Korrekturen an der Datei - `RegisterSignalChangeCallback` mit
+einem statt zwei Argumenten und `SetHDMIHotPlugByPortCallback(1)` - sind davon
 nicht betroffen und bleiben.
 
 Nebenbei bestaetigt derselbe Mitschnitt zwei Adressen:
 `SetHDCP22Key Para[0]: 0x4e336000` (exakt der Shmem-Offset `0x36000`) und
-`Wce_SetWindow Para[0]: 0x4e334fe0` bzw. `0x4e334000` — Stock legt seine
+`Wce_SetWindow Para[0]: 0x4e334fe0` bzw. `0x4e334000` - Stock legt seine
 Fensterpuffer also woanders hin als hdmird (`0x37000`).
 
-## 05.09.2026: Phase 2.5 und 3 durch — HDCP-Key angenommen
+## 05.09.2026: Phase 2.5 und 3 durch - HDCP-Key angenommen
 
-### 2.5 — TVFE/TVCAP: das HDMI-RX-Fenster ist lesbar
+### 2.5 - TVFE/TVCAP: das HDMI-RX-Fenster ist lesbar
 
 Uebernommen aus cstengers Patch 0087, mit zwei Abweichungen: bei uns ein
 **Modul** statt `builtin_platform_driver` (ein Fehlschlag kostet einen Neustart
@@ -1636,20 +1636,20 @@ thdmirx+0x08 = 0x00000000   +0x14 = 0x030000ff
 ```
 
 **Wort fuer Wort identisch mit cstengers Messung vom 02.09.** auf seinem Board.
-Zwei verschiedene Geraete, dieselben Werte — Silizium, das antwortet, kein
+Zwei verschiedene Geraete, dieselben Werte - Silizium, das antwortet, kein
 floating Bus. Der harte Haenger war ein stromloser Block, nichts Exotischeres.
 
 **Nebenbefund, der Arbeit spart:** die Domains sind schon **an, bevor** das Modul
-geladen wird — allein weil der DT-Knoten sie referenziert und `pd_ignore_unused`
+geladen wird - allein weil der DT-Knoten sie referenziert und `pd_ignore_unused`
 in den bootargs steht. Fuer spaetere Treiber genuegt also der Knoten.
 
 **Gegengeprueft:** `CONFIG_SUNXI_TVTOP is not set`, kein Treiber am
 `tvtop`-Knoten gebunden (er steht zwar auf `okay`, ist aber inert), und `tvtop`
 beansprucht die Power-Domains nicht. Bestaetigt ist dagegen cstengers Warnung:
-**`GICv2 142` gehoert `h713-afbd`** (615 Ausloesungen gemessen) — wer je
+**`GICv2 142` gehoert `h713-afbd`** (615 Ausloesungen gemessen) - wer je
 `CONFIG_SUNXI_TVTOP` einschaltet, reisst dem KMS-Treiber den Interrupt weg.
 
-### 3 — die Init-Sequenz laeuft, und der HDCP-Key wird angenommen
+### 3 - die Init-Sequenz laeuft, und der HDCP-Key wird angenommen
 
 Werkzeug `analyse/hdmi-seq/hdmi_seq.py`, 22 Schritte, alle mit `RETURN`.
 
@@ -1667,7 +1667,7 @@ Damit ist die Frage aus dem Abschnitt „Was damit nicht gesagt ist" beantwortet
 mit dem Stock-elog. Der elog-Schreibzeiger ging 1879 -> 2068.
 
 **Die HPD-Gate-Flagge kippt bei SetPortMap.** Nach dem ersten
-`SetPortMap(3, 0)` liest `0x4b271c2c` **1** statt 0 — genau der Weg, den
+`SetPortMap(3, 0)` liest `0x4b271c2c` **1** statt 0 - genau der Weg, den
 `re/notes/edid-hpd.md` als alternative Stock-Kette nennt
 („ARM->MIPS->ARISC HPD via gate-flag MEMORY[0x8B271C2C]=1 (SetPortMap)").
 Am Geraet bestaetigt.
@@ -1676,19 +1676,19 @@ Am Geraet bestaetigt.
 
 Gefahren wurde `--portmap stock`, also `Para[0] = 3, 4, 5`. Das ist die
 **gemessene** Form aus `re/captures/weltneuheit/stock-rpc-LIVE.txt`. Eine
-zwischenzeitliche „Korrektur" auf `(1,0)(2,1)(3,2)` — abgeleitet aus einem
-hdmird-Kommentar ueber elog-Text — widersprach der Leitung und ist
+zwischenzeitliche „Korrektur" auf `(1,0)(2,1)(3,2)` - abgeleitet aus einem
+hdmird-Kommentar ueber elog-Text - widersprach der Leitung und ist
 zurueckgenommen; siehe den Abschnitt weiter oben. `Para[1]` bleibt unbekannt:
 der Mitschnitt druckt grundsaetzlich nur `Para[0]`.
 
 ### Was weiterhin offen ist
 
 * **Keine Callbacks.** 5 s Wartezeit, null empfangen. Es gibt aber auch noch kein
-  Signal — die Quelle sieht das Board erst, wenn HPD wirklich am Pin liegt.
+  Signal - die Quelle sieht das Board erst, wenn HPD wirklich am Pin liegt.
 * **HDCP 1.4** bleibt offen. Der Timeout beim MIPS-Start
   (`HdmiRx_HDCP14_LoadKey(), time out!`, drei Zeilen) ist unveraendert. Neue
   These, jetzt pruefbar: der MIPS startet in U-Boot, **lange bevor** Linux
-  TVFE/TVCAP einschaltet — er faehrt seine HDMI-RX-Init also immer mit
+  TVFE/TVCAP einschaltet - er faehrt seine HDMI-RX-Init also immer mit
   stromlosem Block. Fuer einen Test muessten die Domains schon in U-Boot an sein,
   oder man ruft `ReloadHdcp14Key` nachtraeglich, wenn sie an sind.
 * **`SetSource(3)`** (Phase 4) ist nicht gefahren.

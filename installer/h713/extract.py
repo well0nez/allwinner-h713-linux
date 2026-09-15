@@ -692,7 +692,7 @@ class Run:
         read_sets, source_notes = self.mips_read_sets()
         if not read_sets:
             tried = ", ".join(n["source"] for n in source_notes) or "none"
-            self.log.warn(f"no readable {MIPS_SOURCE_DIR}/ in this input (sources tried: {tried}) — "
+            self.log.warn(f"no readable {MIPS_SOURCE_DIR}/ in this input (sources tried: {tried}) - "
                           f"{MIPS_OUTPUT_DIR}/* not extracted")
             self.not_extracted.append(f"{MIPS_OUTPUT_DIR}/* (no readable {MIPS_SOURCE_DIR}/; tried: {tried})")
             return
@@ -755,10 +755,10 @@ class Run:
                 # Measured, but declared by no row of h713_mips_fw_revs[]: no project id, no panel --
                 # what it does carry is the HDCP wait site (api-stufe2.md, "Extractor").
                 display_checks.append(f"FIRMWARE_REVISIONS: {rev['board']}, {rev['size']} B, HDCP wait site "
-                                      f"{_va(rev['hdcp_wait_va']) or 'unknown'} — no row in h713_mips_fw_revs[], "
+                                      f"{_va(rev['hdcp_wait_va']) or 'unknown'} - no row in h713_mips_fw_revs[], "
                                       f"so no project id comes from it")
                 self.log.info(f"display.bin: known revision '{rev['board']}' ({rev['size']} B, HDCP wait site "
-                              f"{_va(rev['hdcp_wait_va']) or 'unknown'}) — h713_mips_fw_revs[] does not declare it, "
+                              f"{_va(rev['hdcp_wait_va']) or 'unknown'}) - h713_mips_fw_revs[] does not declare it, "
                               f"so the used project id stays undetermined")
             elif rev:
                 display_checks.append(f"h713_mips_fw_revs[]: {rev['board']}, project {rev['project_id']:#04x}, "
@@ -795,7 +795,7 @@ class Run:
                             "hdcp_wait_va": _va(found["hdcp_wait_va"]) or found["status"],
                             "project_ids_seen": found_ids, "known": False,
                             "hdcp_wait_va_source": f"searched by h713.hdcpsite (base {_va(found['base'])})"}
-                self.log.info(f"unknown revision — searching the HDCP wait site over {len(db)} B "
+                self.log.info(f"unknown revision - searching the HDCP wait site over {len(db)} B "
                               f"(base {_va(found['base'])}, {len(found['hits'])} candidate word(s)):")
                 for line in found["text"]:
                     self.log.info("  " + line)
@@ -1124,7 +1124,7 @@ class Run:
         # Stage 2 C-D: exit 0 stays reserved for a *verified* profile whose references are all equal.
         status = profile_status(self.device)
         if self.device and status != "verified":
-            self.log.warn(f"profile '{self.device}' has status '{status}', not 'verified' — exit code stays 1 "
+            self.log.warn(f"profile '{self.device}' has status '{status}', not 'verified' - exit code stays 1 "
                           f"(doku/121 section 5: only a verified profile has run against the hardware)")
         code = 0
         if (self.device is None or status != "verified" or errors or ref_no or missing

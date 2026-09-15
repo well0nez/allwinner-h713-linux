@@ -1,11 +1,11 @@
-# S7 — Der Rest des Scaler-Problems: wir zerstören selbst, was die Firmware richtig gerechnet hat
+# S7 - Der Rest des Scaler-Problems: wir zerstören selbst, was die Firmware richtig gerechnet hat
 
-07.09.2026, 23:10–00:20 · Werkzeug: die Firmware-Shell aus [`doku/98`](../98-mips-shell.md) und das
+07.09.2026, 23:10-00:20 · Werkzeug: die Firmware-Shell aus [`doku/98`](../98-mips-shell.md) und das
 elog auf Stufe 5
 
 ## Der Befund in einem Satz
 
-Die Firmware baut die Fensterkette bei einem Auflösungswechsel **vollständig korrekt** — und ein
+Die Firmware baut die Fensterkette bei einem Auflösungswechsel **vollständig korrekt** - und ein
 zweiter Durchlauf, den **unser eigener Wiederanlauf** auslöst, rechnet sie falsch neu und
 überschreibt das Ergebnis.
 
@@ -48,7 +48,7 @@ WCETop         capture_cfg : [ 852x480][1280x720]
 
 Die Aufnahme wird proportional um 1280/1920 = 2/3 gestaucht: 1280→853, 720→480. Danach stehen in
 der Hardware `0x06940928` = …`01E0` (480 statt 720) und `0x06940924` = `0x36` (54 statt 80). Das
-Bild an der Wand ist ein schmales, verschmiertes Band — genau das Muster einer Aufnahme, die zwei
+Bild an der Wand ist ein schmales, verschmiertes Band - genau das Muster einer Aufnahme, die zwei
 Drittel zu klein konfiguriert ist.
 
 ## Was Durchlauf 2 auslöst
@@ -76,7 +76,7 @@ memory_agent  en   enable memory agent(0-9 / all)
 
 Das schaltet exakt den Baustein, der die Freigabe löscht. Der nächste Schritt ist damit klar
 umrissen: den `SetSource`-Wiederanlauf aus dem Descriptor-Pfad nehmen und ihn durch das Freigeben
-des MemoryAgent ersetzen — ARM-seitig über einen RPC, falls es einen gibt, sonst über den
+des MemoryAgent ersetzen - ARM-seitig über einen RPC, falls es einen gibt, sonst über den
 Shell-Ring, den wir jetzt bedienen können.
 
 ## Eine zurückgenommene Fehldeutung
@@ -89,5 +89,5 @@ vier Fensterwörter des Descriptors bleiben die Quellgeometrie. Zurückgenommene
 
 ## Stand
 
-Serie 87. Gerät sauber auf 1080p mit korrektem Bild. `0117` bleibt — es ist der Patch, der die
+Serie 87. Gerät sauber auf 1080p mit korrektem Bild. `0117` bleibt - es ist der Patch, der die
 Firmware überhaupt erst zum Neubau bringt, und Durchlauf 1 beweist, dass der Neubau stimmt.

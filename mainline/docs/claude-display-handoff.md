@@ -576,7 +576,7 @@ still be undiscovered.
 The software case below holds on its own terms -- our PWM is verified live on
 PB4 and nothing dims. What it never established is that nothing *could*. The
 full consolidated case is in
-**[backlight-investigation.md](backlight-investigation.md)** — read that rather
+**[backlight-investigation.md](backlight-investigation.md)** - read that rather
 than reconstructing it from this file or the evidence log.
 
 The shipping device tree (`sunxi.fex`, extracted from the OTA package) carries a

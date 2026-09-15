@@ -1,4 +1,4 @@
-# Paket F — `hy310-tv` startklar gemacht (offline, 07.09. ab 07:5x)
+# Paket F - `hy310-tv` startklar gemacht (offline, 07.09. ab 07:5x)
 
 **Agent:** Unteragent F-startklar (offline). **Kein Board angefasst:** kein `ssh root@192.168.8.141`,
 kein `ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts
@@ -8,15 +8,15 @@ nach `tftp/`. Kein `sudo`, kein `git commit`/`push`. **`patches/kernel/series` n
 `/tmp/claude-1000/wf-rest/F-startklar/` und in `userspace/hy310-tv/` mit anschließendem `make clean`.
 
 Vorgänger: [F-hy310-tv.md](F-hy310-tv.md) (Entwurfsstand 06.09., 23:00). Was dort in §7 als
-Abnahmevorschrift steht, ist **überholt** — sie benutzt `/dev/video0`, `v4l2-ctl` und eine
+Abnahmevorschrift steht, ist **überholt** - sie benutzt `/dev/video0`, `v4l2-ctl` und eine
 Reihenfolge, die von den Board-Messungen der Nacht überholt wurde.
 
-> **Nachtrag 07.09., 09:xx — dieses Log ist an drei Stellen überholt.**
+> **Nachtrag 07.09., 09:xx - dieses Log ist an drei Stellen überholt.**
 > Die Gegenprüfung hat den Beleg für `RING_SETTLE_MS = 3000` als **falsch gelesen** nachgewiesen, und
 > die Aussage „nur der erste Enable eines Boots" ist **am Gerät widerlegt**. Betroffen sind §2.2,
 > §2.4, §4 (letzte zwei Punkte), §5 (Abnahmevorschrift) und §7. Richtig ist
 > [F-korrektur.md](F-korrektur.md); **die gültige Abnahmevorschrift steht dort in §4.** Der Rest
-> dieses Logs — Prüfbau, Gerätesuche über den Namen, §2.3, §2.5–§2.8, die Board-Anfragen in §6 —
+> dieses Logs - Prüfbau, Gerätesuche über den Namen, §2.3, §2.5 - §2.8, die Board-Anfragen in §6 -
 > steht unverändert.
 
 ## Ergebnisdateien
@@ -31,12 +31,12 @@ Reihenfolge, die von den Board-Messungen der Nacht überholt wurde.
 
 Die udev-Regel trifft auf `ATTR{name}=="sun50i-h713-hdmirx"`, und 0094 setzt
 `strscpy(rx->vdev.name, H713_HDMIRX_NAME, …)`. Sie passt also auf `/dev/video1` genauso wie auf
-`video0` — an ihr war nichts zu korrigieren, und das ist der Grund, warum das Programm jetzt
+`video0` - an ihr war nichts zu korrigieren, und das ist der Grund, warum das Programm jetzt
 **dieselbe** Zeichenkette aus `/sys/class/video4linux/videoN/name` liest.
 
 ---
 
-## 1. Prüfbau — **ausdrücklich ein Prüfbau, kein Serienartefakt**
+## 1. Prüfbau - **ausdrücklich ein Prüfbau, kein Serienartefakt**
 
 ```
 clang --target=aarch64-linux-gnu --sysroot=/srv/h713-rootfs -fuse-ld=lld \
@@ -47,12 +47,12 @@ clang --target=aarch64-linux-gnu --sysroot=/srv/h713-rootfs -fuse-ld=lld \
 | Prüfung | Ergebnis |
 |---|---|
 | `make -C userspace/hy310-tv cross`, clang 18.1.3 (Host), `-Wall -Wextra -Wshadow -Wvla` | **grün, null Warnungen** |
-| Ergebnis | `ELF 64-bit LSB pie executable, ARM aarch64`, 55 552 B, `NEEDED libdrm.so.2`, `libc.so.6` — sonst nichts |
+| Ergebnis | `ELF 64-bit LSB pie executable, ARM aarch64`, 55 552 B, `NEEDED libdrm.so.2`, `libc.so.6` - sonst nichts |
 | `clang --analyze` (`core,unix,deadcode`) | **kein Befund** |
-| Gegenprobe: derselbe Bau mit dem **alten** `main.c` | ebenfalls grün — der Entwurf war baubar, nur inhaltlich überholt |
+| Gegenprobe: derselbe Bau mit dem **alten** `main.c` | ebenfalls grün - der Entwurf war baubar, nur inhaltlich überholt |
 | `make install-cross DESTDIR=…` (Wegwerf-Wurzel) | legt `usr/local/sbin/hy310-tv` (arm64), Unit und Regel ab |
 | `udevadm verify 99-hy310-tv.rules` | `Success: 1, Fail: 0` |
-| `systemd-analyze verify ./hy310-tv.service` | grün (einziger Hinweis: `/usr/local/sbin/hy310-tv` gibt es auf **diesem** Rechner nicht — erwartet) |
+| `systemd-analyze verify ./hy310-tv.service` | grün (einziger Hinweis: `/usr/local/sbin/hy310-tv` gibt es auf **diesem** Rechner nicht - erwartet) |
 | `make clean` | Baum wieder sauber, **kein Binärartefakt im Repo** |
 
 **Nicht gelaufen.** Ein Lauf braucht `/dev/dri/card1` mit 0093 und `/dev/video1` mit 0094; beides gibt
@@ -78,7 +78,7 @@ bereits beschreibt (`analyse/kms/README-hdmi-plane.md`). **Benannt, nicht improv
 
 ---
 
-## 2. Die korrigierten Annahmen — das ist der Kern
+## 2. Die korrigierten Annahmen - das ist der Kern
 
 ### 2.1 „Die Nummern kann man raten" → Suche über den Namen
 
@@ -87,8 +87,8 @@ Reihe nach geöffnet. **Widerlegt am Gerät:** `/dev/video0` ist cedrus, die Cap
 `card0` ist Panfrost, die Anzeige ist **`/dev/dri/card1`**.
 
 Die Suche war schon vorher richtig (Nummern wurden nie verdrahtet), aber sie fasste fremde Geräte an.
-Jetzt fragt das Programm **erst** `/sys/class/video4linux/videoN/name` — dieselbe Zeichenkette, auf die
-die udev-Regel passt — und öffnet nur den Knoten, der antwortet; `QUERYCAP` bestätigt danach. Cedrus
+Jetzt fragt das Programm **erst** `/sys/class/video4linux/videoN/name` - dieselbe Zeichenkette, auf die
+die udev-Regel passt - und öffnet nur den Knoten, der antwortet; `QUERYCAP` bestätigt danach. Cedrus
 wird gar nicht mehr geöffnet. Alle Doku-Beispiele stehen jetzt auf `video1`/`card1`/`crtc 36`/`plane 38`,
 mit dem ausdrücklichen Satz, dass keine dieser Zahlen im Programm steht.
 
@@ -108,10 +108,10 @@ Sekundentakt mitgeschrieben:
 
 | t nach Plane-Start | `0x05600098` (Descriptor) | `0x06940928` (Capture-Freigabe) |
 |---|---|---|
-| +1 s | `0x00000000` | `0xE0020438` — **frei** |
-| +2 s | `0x4D95F000` | `0x60020438` — **abgeschaltet** |
+| +1 s | `0x00000000` | `0xE0020438` - **frei** |
+| +2 s | `0x4D95F000` | `0x60020438` - **abgeschaltet** |
 
-Die sofortige Nachfrage misst also den Ring, **während er noch läuft**, und schreibt „alles gut" —
+Die sofortige Nachfrage misst also den Ring, **während er noch läuft**, und schreibt „alles gut" -
 eine Sekunde bevor die Wand einfriert. Das ist die schlechteste erreichbare Antwort: sie sieht aus wie
 ein Befund und ist keiner.
 
@@ -121,7 +121,7 @@ mit Reserve. Es ist ein **Messtermin**, keine Heilung, keine Wiederholung, keine
 nichts daran außer einer Journalzeile, und die Plane bleibt in beiden Fällen, wie sie ist.
 
 Der Zahlenwert ist der einzige geratene Anteil, und er ist auf eine Messung gestützt. Wer ihn schärfer
-haben will, liest `0x06940928` im 200-ms-Takt über die ersten 5 s nach dem Enable — das ist eine
+haben will, liest `0x06940928` im 200-ms-Takt über die ersten 5 s nach dem Enable - das ist eine
 Messung von ~5 min, kein Blocker.
 
 ### 2.3 „`S_INPUT(0)` ist ein Nullwechsel" → es ist ein **wiederholtes** `SetSource(3)`
@@ -130,7 +130,7 @@ Messung von ~5 min, kein Blocker.
 
 **Nachgesehen in 0094:** `h713_hdmirx_s_input()` ruft bei `i == 0` **immer**
 `h713_hdmirx_set_source()`, und das schickt `SetSource(3)` an die Firmware. Es ist also kein
-Nullwechsel, sondern eine Wiederholung — und damit **etwas anderes** als der Weg, der in
+Nullwechsel, sondern eine Wiederholung - und damit **etwas anderes** als der Weg, der in
 [B2-quellenwechsel.md](B2-quellenwechsel.md) gemessen wurde (`3 → 1 → 3`, VideoDec dazwischen).
 
 Das ändert nichts an der Entscheidung, es schärft nur die Begründung: **ein wiederholtes `SetSource(3)`
@@ -159,34 +159,34 @@ still", ist das ein **neuer** Befund und gehört ins Log.
 ### 2.5 „E liefert NV16" → E liefert **NV16M**, und das ist kein Widerspruch
 
 `V4L2_PIX_FMT_NV16M` = zwei **getrennte** Ebenen à 2 073 600 Byte (Y und C liegen `0x5FD000`
-auseinander). Der KMS-Framebuffer ist `DRM_FORMAT_NV16` — ein Zweiebenen-Fourcc in **einem**
-Pufferobjekt — und trägt in `hdmi-ring` ohnehin nur Format, Geometrie und Zeilenabstand. Zwischen beiden
+auseinander). Der KMS-Framebuffer ist `DRM_FORMAT_NV16` - ein Zweiebenen-Fourcc in **einem**
+Pufferobjekt - und trägt in `hdmi-ring` ohnehin nur Format, Geometrie und Zeilenabstand. Zwischen beiden
 wird nichts umgerechnet, weil zwischen beiden nichts fließt: die Plane holt sich die Ringadressen selbst.
-0093 prüft `fb->format->format == DRM_FORMAT_NV16` — der Träger-FB ist richtig, wie er ist. Das steht
+0093 prüft `fb->format->format == DRM_FORMAT_NV16` - der Träger-FB ist richtig, wie er ist. Das steht
 jetzt als eigener Absatz im Kopfkommentar und im README, damit die Frage nicht ein zweites Mal
 aufkommt.
 
 ### 2.6 „Die ersten Puffer sind leer" → betrifft F heute **nicht**, morgen aber sehr wohl
 
 Bild 0 und 1 nach `STREAMON` sind komplett null, ab Bild 29 voller Inhalt (am Gerät gemessen); sie gehen
-in die Warteschlange, bevor der erste Flip sie füllt. **F streamt nicht** — kein `REQBUFS`, kein
-`STREAMON`, kein `DQBUF` —, also erreicht ihn das über den Datenpfad nicht. Zwei Stellen, an denen es
+in die Warteschlange, bevor der erste Flip sie füllt. **F streamt nicht** - kein `REQBUFS`, kein
+`STREAMON`, kein `DQBUF` - , also erreicht ihn das über den Datenpfad nicht. Zwei Stellen, an denen es
 trotzdem hängen bleibt, und beide stehen jetzt schwarz auf weiß:
 
 1. **Der `DQBUF`-Pfad aus Anhang A.4**, sobald 0094 `VIDIOC_EXPBUF` hat, **muss die ersten Bilder
    verwerfen**, sonst zeigt er Grün. Das steht in den Grenzen des README und im Kopfkommentar dort, wo
    die zweite Betriebsart beschrieben ist.
-2. **Ganz-Null-NV16 ist flaches Grün** — dieselbe Farbe, die die A-Abnahme mit leerem Ring auf der Wand
+2. **Ganz-Null-NV16 ist flaches Grün** - dieselbe Farbe, die die A-Abnahme mit leerem Ring auf der Wand
    hatte. Und 0093 fällt beim Einschalten auf die Adressen des **Träger-Framebuffers** zurück, wenn es
    kein gültiges Flip-Paar lesen kann (`if (!ring || !h713_afbd_read_ring(...))`). Dieser Puffer bleibt
    deshalb **absichtlich** so, wie der Kernel ihn liefert: null. Ihn auf legales Schwarz zu füllen wäre
-   verlockend und wäre falsch — es machte aus einem eindeutigen Fingerabdruck („es hat nichts
+   verlockend und wäre falsch - es machte aus einem eindeutigen Fingerabdruck („es hat nichts
    geschrieben") ein zweideutiges schwarzes Bild. Der Kommentar an `display_create_fb()` sagt genau das.
 
 ### 2.7 Zwei Stellen, an denen das Programm gelogen hätte
 
 * **`display_hide()` meldete Erfolg, auch wenn der Commit scheiterte.** Es setzte `on = false` und gab
-  den DRM-Master ab — bei stehender Plane. Das Ergebnis wäre ein Standbild auf der Wand plus die
+  den DRM-Master ab - bei stehender Plane. Das Ergebnis wäre ein Standbild auf der Wand plus die
   Journalzeile „Konsole zurück", also genau die Aussage, deren Gegenteil dieses Programm garantieren
   soll. Jetzt gibt `display_hide()` `false` zurück, **behält** Master und Zustand und sagt deutlich, dass
   die Konsole **nicht** zurück ist; beim Beenden wird daraus ein Rückgabewert ≠ 0.
@@ -212,17 +212,17 @@ trotzdem hängen bleibt, und beide stehen jetzt schwarz auf weiß:
    `v4l-utils`), ebenso GStreamer. **`modetest` fehlt** (kein `libdrm-tests`). Der Auftrag und
    `E-v4l2.md` §3a sagen bei beiden „nicht installiert"; bei `v4l2-ctl` stimmt das nicht. Das war schon
    die Bitte in `F-hy310-tv.md` §6 Punkt 3 und ist noch offen. **Die Abnahme in §5 kommt trotzdem ohne
-   beide aus**, wie beauftragt — sie benutzt die debugfs-Seiten, und die sind ohnehin die besseren
+   beide aus**, wie beauftragt - sie benutzt die debugfs-Seiten, und die sind ohnehin die besseren
    Belege.
 2. **Der C-Stride-Befund aus `D-abnahme-board.md` (Nachtrag 06:15) passt nicht zum Code, den ich lese.**
    D schließt: „der Treiber schreibt den NV16-C-Stride beim ersten Enable gar nicht". In 0093 steht
    `writel(c_stride, h->regs + AFBD_VIDEO_C_STRIDE)` **unbedingt** in `atomic_update()`, nach
    `publish_video_info()` und ohne Zweig darum. Entweder überschreibt der Firmware-Übergang den Wert
-   doch (Ds ursprüngliche, dann verworfene Hypothese — die Sekundenlesung kann ihn zwischen zwei
+   doch (Ds ursprüngliche, dann verworfene Hypothese - die Sekundenlesung kann ihn zwischen zwei
    Abtastungen verpasst haben), oder `h713_afbd_wait_ready()` im Publish-Pfad kehrt zurück, bevor die
    Registerbank übernommen hat. **Ich habe 0093 nicht angefasst.** Für die F-Abnahme heißt es nur:
    beim **ersten** Enable nach Kaltstart kann das Bild entsättigt und die Farbe nach rechts unten
-   ausgelaufen sein (`D-10`). Das ist Ds offener Punkt, kein Fehler von F — bitte nicht F anlasten.
+   ausgelaufen sein (`D-10`). Das ist Ds offener Punkt, kein Fehler von F - bitte nicht F anlasten.
 
 ---
 
@@ -248,24 +248,24 @@ Plane aus, DRM-Master abgegeben                 Plane an (hdmi-ring=1), Master g
 
 ---
 
-## 5. Abnahmevorschrift (kopierbar, Hauptsitzung) — **ohne `v4l2-ctl`, ohne `modetest`**
+## 5. Abnahmevorschrift (kopierbar, Hauptsitzung) - **ohne `v4l2-ctl`, ohne `modetest`**
 
 > **ÜBERHOLT (07.09., 09:xx). Nicht mehr nach dieser Vorschrift abnehmen.** Schritt 4 und Schritt 8
 > prüfen auf die `3000 ms`-Zeile, die es nicht mehr gibt, und Schritt 8 fordert eine Aussage, die
-> widerlegt ist (§2.4). **Gültig ist [F-korrektur.md](F-korrektur.md) §4** — sie ist aus dieser hier
-> hervorgegangen, Schritte 0–3 und 5–7 sind unverändert.
+> widerlegt ist (§2.4). **Gültig ist [F-korrektur.md](F-korrektur.md) §4** - sie ist aus dieser hier
+> hervorgegangen, Schritte 0-3 und 5-7 sind unverändert.
 
-**Voraussetzungen:** der Kernel mit der integrierten Serie läuft (0091–0095), die Wand zeigt die
+**Voraussetzungen:** der Kernel mit der integrierten Serie läuft (0091-0095), die Wand zeigt die
 Konsole, der Zuspieler `192.168.8.162` ist wach und auf 1080p60. Board-Sperre halten.
 
-**Instrumente statt Werkzeuge** — beide Statusseiten sind Teil der Patches, kein Zusatz:
+**Instrumente statt Werkzeuge** - beide Statusseiten sind Teil der Patches, kein Zusatz:
 
 | Frage | Instrument |
 |---|---|
 | Läuft die Capture, wandern die Flip-Zeiger? | `/sys/kernel/debug/sun50i-h713-hdmirx/status` (0094) |
 | Steht die Plane, mit welchen Eigenschaften? | `/sys/kernel/debug/dri/1/state` (KMS-Kern) |
 | Ist die Capture freigegeben? | `0x06940928` Bit 31 (`0xE0…` = frei, `0x60…` = abgeschaltet) |
-| Lebt das Bild? | erzwungener Reiz am Zuspieler — **nie** ein Blick auf ein unverändertes Foto |
+| Lebt das Bild? | erzwungener Reiz am Zuspieler - **nie** ein Blick auf ein unverändertes Foto |
 
 **Solange `hy310-tv` das Bild zeigt, hält es den DRM-Master.** `gamma_test`, `hdmi_plane_test` und jeder
 andere KMS-Client bekommen dann `Permission denied` (H-Abnahme, Nachtrag 06:20). Vor jeder
@@ -368,11 +368,11 @@ python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-nach-stop
 | 8 | Bild kommt von selbst zurück; `ring`-Zeile unauffällig |
 | 9 | Konsole, `rc=0`, kein Standbild |
 
-**Fotos ansehen (Read), nicht nur Kennzahlen.** Vor jeder Negativaussage die Positivkontrolle —
+**Fotos ansehen (Read), nicht nur Kennzahlen.** Vor jeder Negativaussage die Positivkontrolle -
 **erst die Unit stoppen**, sonst misst man nur den gehaltenen DRM-Master:
 `ssh root@192.168.8.141 'systemctl stop hy310-tv'` und dann
 `setsid sh -c "nohup /root/hdmi_plane_test --pattern -t 30 > /root/pk.out 2>&1 &"` (die SSH-Sitzung
-danach **nicht** abwürgen, sonst stirbt die Prozessgruppe mit — D-Nebenbefund). Kommen die acht
+danach **nicht** abwürgen, sonst stirbt die Prozessgruppe mit - D-Nebenbefund). Kommen die acht
 Farbbalken, liegt der Fehler auf der Capture-Seite, nicht in Plane, Mux oder Panel.
 
 `wandcheck.py` schreibt ohne Angabe nach `re/captures/weltneuheit/wand-aktuell`. Für diese Abnahme
@@ -389,27 +389,27 @@ jedem Aufruf `--dir /opt/Projekte/h713/re/captures/weltneuheit/ours-20260907-nac
 | Commit `EINVAL` | Geometrie ≠ Modus, Modifier, Zeilenabstände oder Breite | D §5 |
 | `SET_MASTER: … ein anderer Client haelt die Anzeige` | X, ein hängendes `hdmi_plane_test` oder `gamma_test` | den anderen Client beenden |
 | **Wand ist flach grün** | **Ganz-Null-NV16 = es hat nichts geschrieben**: leerer Ring-Slot (A-Abnahme) oder 0093 ist auf den Träger-FB zurückgefallen | debugfs `flip:` und `slot N:` lesen; `0x06940928` prüfen |
-| Bild entsättigt, Farbe quillt nach rechts unten | C-Stride steht auf `0x0780` statt `0x0F00` — **Ds offener Punkt** (D-Abnahme 06:15, Foto `D-10`) | Befund für 0093, **nicht** F |
+| Bild entsättigt, Farbe quillt nach rechts unten | C-Stride steht auf `0x0780` statt `0x0F00` - **Ds offener Punkt** (D-Abnahme 06:15, Foto `D-10`) | Befund für 0093, **nicht** F |
 | `der Ring steht 3000 ms nach dem Einschalten still` | der erwartete Descriptor-Effekt beim **ersten** Enable | Schritt 7; Befund für D/E (§6) |
-| `die Plane laesst sich nicht abschalten … Konsole ist NICHT zurueck` | Disable-Commit abgelehnt — die Wand zeigt noch das Bild | Journal + `dri/1/state`, **nicht** neu starten, bevor das im Log steht |
+| `die Plane laesst sich nicht abschalten … Konsole ist NICHT zurueck` | Disable-Commit abgelehnt - die Wand zeigt noch das Bild | Journal + `dri/1/state`, **nicht** neu starten, bevor das im Log steht |
 | `Quellgeometrie … passt nicht zum Panel-Modus …` | Quelle liefert nicht 1920×1080 | K3/A.6 Punkt 4; Zuspieler auf 1080p60 stellen |
 
-**Marcos Handgriff, wenn er da ist:** Schritt 4–8 mit dem **echten** Kabel am Beamer (ziehen, 10 s,
-stecken). Damit ist zugleich K4 Punkt 3 beantwortet — ob die ARISC auf 5-V-Detect von selbst reagiert —,
+**Marcos Handgriff, wenn er da ist:** Schritt 4-8 mit dem **echten** Kabel am Beamer (ziehen, 10 s,
+stecken). Damit ist zugleich K4 Punkt 3 beantwortet - ob die ARISC auf 5-V-Detect von selbst reagiert - ,
 wenn `elog_tail` auf Stufe 5 mitläuft.
 
 ---
 
 ## 6. Board-Anfragen (eine Messung, sonst nichts)
 
-1. **An D (0093) — die Freigabe gehört in den Plane-Enable.** Wer den Descriptor schreibt, muss die
+1. **An D (0093) - die Freigabe gehört in den Plane-Enable.** Wer den Descriptor schreibt, muss die
    Capture danach wieder scharf machen; beide Wege sind Stock-RPCs (B2: `SetSource` weg und zurück;
    M4: HPD-Zyklus, 0,3 s belegt). Solange das nicht dort steht, zeigt der erste Kaltstartlauf ein
    Standbild und F kann nur warnen. **Unverändert offen seit `F-hy310-tv.md` §6 Punkt 1.**
 2. **Messung M-F1 (~3 min, kein Kaltstart nötig): Reicht ein wiederholtes `SetSource(3)`?**
    Wenn ja, könnte 0094 die Freigabe in `S_INPUT` legen und es bräuchte gar keinen Hot-Plug. Gemessen
    ist bisher nur `3 → 1 → 3` (B2).
-   `VIDIOC_S_INPUT(0)` **ist** dieser Aufruf und sonst nichts — deshalb genügt `v4l2-ctl --set-input=0`,
+   `VIDIOC_S_INPUT(0)` **ist** dieser Aufruf und sonst nichts - deshalb genügt `v4l2-ctl --set-input=0`,
    und das ist auf dem Board-Root installiert (§3 Punkt 1). Für **diese** Messung ist es das richtige
    Werkzeug; die Abnahme in §5 kommt weiterhin ohne es aus.
    ```bash
@@ -424,15 +424,15 @@ wenn `elog_tail` auf Stufe 5 mitläuft.
    ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | head -8'
    ```
    Und dann **zwingend** der Reiz aus §5 Schritt 5: ein zurückgekehrtes Registerbit ist kein Beweis,
-   dass wieder **geschrieben** wird — genau diese Verwechslung hat die Nacht eine Stunde gekostet.
+   dass wieder **geschrieben** wird - genau diese Verwechslung hat die Nacht eine Stunde gekostet.
 
    **`0xE0020438` + Reizantwort = ja** → die Freigabe kann in `S_INPUT` (0094), und es braucht keinen
    Hot-Plug.
    **`0x60020438` = nein** → es bleibt bei Quellenwechsel (`3 → 1 → 3`) oder HPD im Plane-Enable (0093).
    Beides ist ein gültiges Ergebnis; eine klar benannte Sackgasse zählt.
-3. **An E (0094) — `VIDIOC_EXPBUF`.** Erst damit ist der `DQBUF`→Plane-Weg aus A.4 baubar. Wer ihn baut:
+3. **An E (0094) - `VIDIOC_EXPBUF`.** Erst damit ist der `DQBUF`→Plane-Weg aus A.4 baubar. Wer ihn baut:
    die ersten ein bis zwei Bilder verwerfen (§2.6).
-4. **An die Hauptsitzung:** `v4l2-ctl` ist installiert (§3 Punkt 1) — bitte `E-v4l2.md` §3a beim
+4. **An die Hauptsitzung:** `v4l2-ctl` ist installiert (§3 Punkt 1) - bitte `E-v4l2.md` §3a beim
    Zusammenführen richtigstellen.
 
 ---
@@ -442,8 +442,8 @@ wenn `elog_tail` auf Stufe 5 mitläuft.
 * **Ein Lauf.** Das Programm ist gebaut und geprüft, aber nie gestartet worden. Alles in §5 ist
   Erwartung, kein Messwert.
 * ~~**Die 3 s** sind aus Ds Sekundenlesung abgeleitet, nicht selbst gemessen (§2.2).~~
-  **Erledigt am 07.09., 09:xx: die 3 s sind raus** — die Ableitung war falsch (die Sekundenlesung
+  **Erledigt am 07.09., 09:xx: die 3 s sind raus** - die Ableitung war falsch (die Sekundenlesung
   belegt sie nicht), an ihrer Stelle steht eine begrenzte Abtastreihe mit Zeitstempel und einer
   ausdrücklich gemeldeten Frist. [F-korrektur.md](F-korrektur.md).
 * **Der C-Stride-Widerspruch** in §3 Punkt 2 ist ungeklärt; 0093 wurde nicht angefasst.
-* **Kein Audio, kein Overlay, eine Quellgeometrie pro Boot** — unverändert die Grenzen aus dem README.
+* **Kein Audio, kein Overlay, eine Quellgeometrie pro Boot** - unverändert die Grenzen aus dem README.

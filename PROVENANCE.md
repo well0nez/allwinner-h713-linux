@@ -5,20 +5,20 @@ Who made what, where it comes from, and what is deliberately absent.
 ## The kernel series
 
 `mainline/` is a **git subtree** of [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline)
-at commit `8860991`, with full history — you can `git log` any of his commits here. On top of it,
+at commit `8860991`, with full history - you can `git log` any of his commits here. On top of it,
 `mainline/patches/kernel/series` carries 133 patches in fourteen sections:
 
 | Origin | Patches | Note |
 |---|---|---|
-| well0nez, via cstenger's `main` | 21 (`0001`–`0022`) | **the H713 driver series** — CCU, pinctrl, MMC, USB PHY, PWM, LRADC, board manager, cpu_comm, tvtop, decd. Written here, carried in his tree with attribution, six of them adapted from 6.16 to the pinned kernel. Byte-identical to his tree |
-| cstenger, `main` | 25 (`0023`–`0048`) | the arm64 side built around that series: DTS, defconfig, boot chain, cpufreq. Byte-identical, verified by comparison |
-| cstenger, branch `h713-display-video-path` | 17 (`0051`–`0086`) | byte-identical; scanout, DECD, IOMMU, MMC, video plane |
-| well0nez | `0049`, `0091`–`0159` | ARISC, cpu_comm, HDMI input, audio, motor, board manager, Wi-Fi |
-| well0nez, follow-ups | `0014a`, `0024a`–`0024c`, `0078a` | small fixes placed directly after the original they touch, so the original stays byte-identical |
+| well0nez, via cstenger's `main` | 21 (`0001` - `0022`) | **the H713 driver series** - CCU, pinctrl, MMC, USB PHY, PWM, LRADC, board manager, cpu_comm, tvtop, decd. Written here, carried in his tree with attribution, six of them adapted from 6.16 to the pinned kernel. Byte-identical to his tree |
+| cstenger, `main` | 25 (`0023` - `0048`) | the arm64 side built around that series: DTS, defconfig, boot chain, cpufreq. Byte-identical, verified by comparison |
+| cstenger, branch `h713-display-video-path` | 17 (`0051` - `0086`) | byte-identical; scanout, DECD, IOMMU, MMC, video plane |
+| well0nez | `0049`, `0091` - `0159` | ARISC, cpu_comm, HDMI input, audio, motor, board manager, Wi-Fi |
+| well0nez, follow-ups | `0014a`, `0024a` - `0024c`, `0078a` | small fixes placed directly after the original they touch, so the original stays byte-identical |
 
 cstenger says the same in his own `PROVENANCE.md`: "the bulk of the H713 driver support … originates
-from well0nez". The direction of the debt runs both ways — his arm64 work is what made the 6.18 line
-possible here — which is why this repository vendors his tree with its full history instead of copying
+from well0nez". The direction of the debt runs both ways - his arm64 work is what made the 6.18 line
+possible here - which is why this repository vendors his tree with its full history instead of copying
 files out of it. The follow-ups marked as pull-request candidates in `doku/116` are meant to go back to
 him.
 
@@ -38,24 +38,24 @@ reading without cloning. The build uses the submodule, not the mirror.
 ## What is *not* in this repository, on purpose
 
 **No vendor firmware, no keys, no dumps.** The display firmware (`display.bin`), the ARISC firmware, the
-Wi-Fi firmware and the picture tables are the vendor's, not ours to redistribute — they are the same files
+Wi-Fi firmware and the picture tables are the vendor's, not ours to redistribute - they are the same files
 on every device of this model, and every owner already has them. The image ships placeholders;
-`h713-extract` fills them from the user's own dump during installation. The material in secure storage —
-HDCP keys, MAC addresses, serial number — is a different matter again: it exists once, per device, and
+`h713-extract` fills them from the user's own dump during installation. The material in secure storage -
+HDCP keys, MAC addresses, serial number - is a different matter again: it exists once, per device, and
 copying someone else's would be both illegal and useless.
 
-The same applies to the reverse-engineering material — stock firmware images, disassembly databases,
+The same applies to the reverse-engineering material - stock firmware images, disassembly databases,
 captures. It exists, it is what this port was built from, and it stays on private disks. Every push is
 preceded by `release/sperr-scan.py`, which fails the release if a vendor blob, a key, a dump or an image
 has found its way into the tree.
 
 ## Licences
 
-**Code: GPL-2.0** ([LICENSE](LICENSE)) — the kernel patches, the U-Boot changes and the drivers inherit it
+**Code: GPL-2.0** ([LICENSE](LICENSE)) - the kernel patches, the U-Boot changes and the drivers inherit it
 from their upstreams and could not be anything else; the tools in `installer/`, `rootfs/`, `userspace/` and
 `release/` are under it by choice, so the whole tree answers to one licence.
 
-**Documentation: CC BY-SA 4.0** ([LICENSE.docs](LICENSE.docs)) — `docs/`, `doku/` and the Markdown at the
+**Documentation: CC BY-SA 4.0** ([LICENSE.docs](LICENSE.docs)) - `docs/`, `doku/` and the Markdown at the
 top level: share it, adapt it, credit **well0nez**, keep the same licence.
 
 No file here is derived from vendor source code. The drivers were written from measurements, disassembly

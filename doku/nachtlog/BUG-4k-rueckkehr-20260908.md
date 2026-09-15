@@ -1,9 +1,9 @@
 # Bug: nach einem 4K-Modus am Zuspieler kommt das 1080p-Bild nicht zurück (08.09.2026, ~22:15)
 
 **Gemeldet von Marco:** Laptop auf 4K gestellt → Bild schwarz (erwartet, unsere Kette kann kein 4K), **Ton lief weiter** (HDMI-Audio über den
-DSP ist vom Bildpfad unabhängig — schöner Nebenbefund). Zurück auf 1080p → Bild kaputt.
+DSP ist vom Bildpfad unabhängig - schöner Nebenbefund). Zurück auf 1080p → Bild kaputt.
 
-## Befund (Boardzeit 23:00–23:07, Host 22:00–22:07)
+## Befund (Boardzeit 23:00-23:07, Host 22:00-22:07)
 
 - Journal (`re/captures/weltneuheit/bug-4k-rueckkehr-20260908.log`): 23:00:52 „kein Signal", 23:00:53 **`QUERY_DV_TIMINGS: Numerical result out of
   range`** (4K), dmesg **`INCAP-Zeilenabstand 0x00780078 passt nicht zur Breite 4096`**; 23:01:07 „kein Signal"; 23:01:08 Signal 1920x1080p,
@@ -35,7 +35,7 @@ nur neu als Standard gesetzt werden (Profil bleibt).
 
 ## Zu tun
 
-1. **EDID:** keine Modi anbieten, die die Kette nicht kann (4096×2160/3840×2160, 120 Hz, 1600×900) — dann kann der Zuspieler sie nicht wählen (Prüfung der
+1. **EDID:** keine Modi anbieten, die die Kette nicht kann (4096×2160/3840×2160, 120 Hz, 1600×900) - dann kann der Zuspieler sie nicht wählen (Prüfung der
    aktuellen `hy310-edid.bin` siehe unten/60-offen).
 2. **Treiber/hy310-tv:** wenn INCAP eine gültige Geometrie zeigt, die Firmware aber keine Signalinfo liefert (kein `SignalChange`), nach Frist
    einen SetSource-Zyklus (wie `0130`) auslösen oder die Timings aus INCAP nehmen; `hy310-tv` sollte nach n Fehlversuchen die Quelle selbst
@@ -43,32 +43,32 @@ nur neu als Standard gesetzt werden (Profil bleibt).
 3. Reproduzieren mit 3840×2160 und mit 4096×2160@24/30, um zu sehen, ob die Firmware beide gleich behandelt.
 
 **Nachtrag 22:20:** Nach dem HDMI-Aus/An war der Zustandsautomat zwar wieder eingerastet, das Bild aber weiter horizontal gestaucht und doppelt
-(Fotos `bug-4k-nach-hdmi-neu.jpg` — von mir zunächst falsch als „normal" gelesen). **Geheilt hat die Folge aus beidem** (Marco, 22:22): HDMI neu verbinden (Firmware rastet wieder ein) **und danach** ein Modewechsel am Zuspieler
-(1280×720 → 1920×1080, `wechsel.sh`) für die Bildgeometrie — ein Modewechsel allein hatte vorher nicht geholfen, HDMI-Aus/An allein auch nicht. Laufende PipeWire-Streams mussten mit `pactl move-sink-input` auf den
+(Fotos `bug-4k-nach-hdmi-neu.jpg` - von mir zunächst falsch als „normal" gelesen). **Geheilt hat die Folge aus beidem** (Marco, 22:22): HDMI neu verbinden (Firmware rastet wieder ein) **und danach** ein Modewechsel am Zuspieler
+(1280×720 → 1920×1080, `wechsel.sh`) für die Bildgeometrie - ein Modewechsel allein hatte vorher nicht geholfen, HDMI-Aus/An allein auch nicht. Laufende PipeWire-Streams mussten mit `pactl move-sink-input` auf den
 HDMI-Sink geschoben werden (Standard-Sink allein reicht nicht für bereits laufende Wiedergabe). Offen bleibt die Ursache der Stauchung
-(Ring-/Plane-Geometrie nach dem 4K-Versuch — Frage an den Bildpfad, nicht an Audio).
+(Ring-/Plane-Geometrie nach dem 4K-Versuch - Frage an den Bildpfad, nicht an Audio).
 
-## Nachtrag 21:00 — EDID-Variante ohne 4K liegt bereit
+## Nachtrag 21:00 - EDID-Variante ohne 4K liegt bereit
 
 Warum der Zuspieler 4096×2160 anbietet: die Stock-EDID (`analyse/arisc/hy310-edid.bin`, zwei 256-B-EDIDs: HDMI-1.4- und 2.0-Fassung)
 nennt in beiden Video-Blöcken die VICs 93/94/95 (3840×2160p24/25/30), 98/100 (4096×2160p24/30), in der 2.0-Fassung zusätzlich 96/97/101/102
-(2160p50/60, 4096p50/60) und 63/64 (1080p120/100), dazu HDMI-VICs 1–3 im VSDB und maxTMDS 340/300 MHz. Der Stock-Scaler nimmt 4K und
+(2160p50/60, 4096p50/60) und 63/64 (1080p120/100), dazu HDMI-VICs 1-3 im VSDB und maxTMDS 340/300 MHz. Der Stock-Scaler nimmt 4K und
 rechnet herunter; unsere Kette kennt diese Geometrien nicht (Firmware liefert dann veraltete Signalinfo, siehe oben).
 
-**`analyse/arisc/hy310-edid-1080p.bin`** (512 B, md5 `33235180…`): beide CEA-Blöcke neu aufgebaut — VICs 63/64/93–102 entfernt, VSDB auf
+**`analyse/arisc/hy310-edid-1080p.bin`** (512 B, md5 `33235180…`): beide CEA-Blöcke neu aufgebaut - VICs 63/64/93-102 entfernt, VSDB auf
 10 Byte gekürzt (HDMI_Video_present aus, keine HDMI-VICs), **maxTMDS 150 MHz**, YCbCr-4:2:0-Blöcke (ext. Tag 14/15) entfernt, Audio-Blöcke,
 Video-Capability und Vendor-Video-Block unverändert, Basisblöcke (DTD 1920×1080 @148,5 MHz, Name `SGD SX8`) unverändert, Prüfsummen neu.
 Verbleibende VICs: 1.4: 31 32 33 34 16 1 4 7 6 3 2 17 18 19 21; 2.0: 16 34 32 31 20 5 4 7 6 3 2 1 17 18 19 21. Original bleibt als
 `hy310-edid.bin` liegen (`re/captures/weltneuheit/s11-20260908/hy310-edid.orig.bin` ist die Sicherung).
 
 Einspielen (nach dem Audio-Dauerlauf, mit Kaltstart): vom Board aus `install -m 0644` nach `/lib/firmware/hy310-edid.bin` (NFS-Root ist
-host-seitig root-owned), Kaltstart mit TFTP-Prüfung, dann am Zuspieler `xrandr` — es dürfen keine 4K- und 120-Hz-Modi mehr erscheinen —
+host-seitig root-owned), Kaltstart mit TFTP-Prüfung, dann am Zuspieler `xrandr` - es dürfen keine 4K- und 120-Hz-Modi mehr erscheinen -
 und den 4K-Fall nachstellen: nicht mehr anwählbar. Rückweg: Original zurückkopieren, Kaltstart.
 
 **Entscheidung Marco 21:25:** Die EDID wird **nicht** verändert (proprietäre Stock-Daten bleiben, wie sie sind); die Variante wurde verworfen.
 Der 4K-Fall ist stattdessen in Treiber/`hy310-tv` abzufangen: Geometrie ohne Firmware-Signalinfo → nach Frist SetSource-Zyklus statt endlos warten.
 
-## Nachtrag 22:25 — mit Kernel `d5fd82a7` (GUT, Serie 110) nicht reproduzierbar
+## Nachtrag 22:25 - mit Kernel `d5fd82a7` (GUT, Serie 110) nicht reproduzierbar
 
 Drei Sequenzen am Zuspieler per `xrandr`, jeweils mit Status, `--query-dv-timings`, Journal und Foto (`wand-aktuell/4k-repro-zurueck.jpg`,
 `4096-repro-zurueck.jpg`, `720-4096-1080.jpg`): **3840×2160@30 → 1080p**, **4096×2160@30 → 1080p** und die Originalfolge
@@ -76,7 +76,7 @@ Drei Sequenzen am Zuspieler per `xrandr`, jeweils mit Status, `--query-dv-timing
 Treiber `QUERY_DV_TIMINGS → ERANGE` (erwartet), Bild schwarz, **Ton läuft weiter**; nach der Rückkehr `signal_id 0x15 1920×1080`, Timings
 gültig, „Plane 38 an", **Bild korrekt** (keine Verdopplung), `SignalChange` zählt durchgehend weiter (14 → 28). Der Zustand vom Abend
 (Rückrufe bleiben aus, Info bleibt bei 720p30) trat nicht ein. Unterschiede zu damals: frischer Kaltstart 19:54, Kernel `d5fd82a7` statt
-`1f3614a1`, kein `/dev/mem`-Audiohalter mehr neben dem Treiber. Ob einer davon die Ursache war, ist offen — der Fall bleibt als Beobachtungspunkt,
+`1f3614a1`, kein `/dev/mem`-Audiohalter mehr neben dem Treiber. Ob einer davon die Ursache war, ist offen - der Fall bleibt als Beobachtungspunkt,
 der Robustheitsumbau (Frist + SetSource-Zyklus/HPD-Replug) wird **zurückgestellt**, bis er wieder auftritt. Werkzeug dafür läge bereit:
 `echo "hpd 0 reset" > /sys/kernel/debug/h713-arisc/cmd` simuliert ein Neuverbinden (ungetestet im Fehlerfall). Arbeitskopien für einen
 späteren Patch: `analyse/bild/arbeit/4k-robust/`.

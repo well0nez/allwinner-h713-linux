@@ -1,7 +1,7 @@
 # Video: VE-Dekodierung und Wiedergabe auf dem Panel
 
 Stand 01.09.2026. Ziel war, seine Aussage *„video decode is DONE, 59.71 fps
-zero-copy"* auf unserem Board nachzubauen. Das läuft — bei **1920×1080**, wo
+zero-copy"* auf unserem Board nachzubauen. Das läuft - bei **1920×1080**, wo
 er 1280×720 gemessen hat.
 
 ## Was läuft
@@ -73,7 +73,7 @@ Also Systemspeicher. Sein dokumentierter Aufruf endet damit in
 **3. `gst_video_info_from_caps()` kann `DMA_DRM` nicht lesen.** Bei
 DMABuf-Caps ist `format` das Literal `DMA_DRM`, das echte Pixelformat steht
 in `drm-format`. Ergebnis: Format `DMA_DRM`, null Ebenen, und die eigene
-NV12-Prüfung wirft die eigene Dekoderausgabe weg — `expected NV12`. Richtig
+NV12-Prüfung wirft die eigene Dekoderausgabe weg - `expected NV12`. Richtig
 ist `gst_video_info_dma_drm_from_caps()`, wofür `video-info-dma.h` schon
 eingebunden war.
 
@@ -92,7 +92,7 @@ der Bildgröße gerechnet. Passen zwei nicht, läuft es einfach gepuffert **mit
 Ansage**, statt außerhalb der Reservierung zu schreiben.
 
 **5. Das Bild stand auf dem Kopf.** GL rendert von unten nach oben in den
-FBO, AFBD liest von oben nach unten — eine Spiegelung gehört in den Shader,
+FBO, AFBD liest von oben nach unten - eine Spiegelung gehört in den Shader,
 aber welche, ist eine Eigenschaft des Panels. Mit einem Clip aus roter oberer
 und blauer unterer Hälfte gemessen:
 
@@ -107,7 +107,7 @@ Erklärung, warum derselbe Shader auf seinem Board richtig herum aussah.
 
 **Dazu:** `tools/video/reference-md5.txt` existiert im Baum nicht, obwohl
 `m1-decode-test.sh` dagegen vergleicht. Das Gate meldet dann für jeden Vektor
-`no reference on file; size only` — es kann nichts durchfallen lassen. Wir
+`no reference on file; size only` - es kann nichts durchfallen lassen. Wir
 rechnen unsere eigene Referenz, weil ohnehin eine andere x264-Version einen
 anderen Bitstrom erzeugt.
 
@@ -146,7 +146,7 @@ gst_value_collect_int_range: assertion 'collect_values[0].v_int < collect_values
 ```
 
 Auf seinem Board wäre das genauso; er hat `kmssink` nie benutzt. Nicht
-behoben, weil der GPU-Pfad ohnehin der schnellere ist — aber es ist der
+behoben, weil der GPU-Pfad ohnehin der schnellere ist - aber es ist der
 Grund, warum die naheliegendste Pipeline nicht startet.
 
 ## So läuft es
@@ -176,7 +176,7 @@ ffmpeg -i eingabe.mp4 -an -pix_fmt yuv420p -c:v libx264 -profile:v high \
 
 ## Merge-Schuld: die Reservierung steht an der falschen Stelle
 
-Patch 0049 vergrößert `uboot-scanout` von 8 auf 16 MiB — **in
+Patch 0049 vergrößert `uboot-scanout` von 8 auf 16 MiB - **in
 `sun50i-h713.dtsi`, also auf SoC-Ebene.** Die Größe hängt aber am Panel, und
 das ist eine Board-Eigenschaft. So wie es dasteht, reserviert jedes H713-Board
 16 MiB, auch eins mit 720p, das 8 davon nie anfasst.
@@ -186,7 +186,7 @@ Der FIT lädt `sun50i-h713-hy200-qz713df-a1`, aus seinem Patch 0024, samt
 seiner `bootargs` mit `root=/dev/mmcblk0p26`. Es gibt keine Datei im Baum, an
 der „dieses Board hat 1920×1080" hinge. Der einzige Ort, an dem unsere
 Variante überhaupt auftaucht, ist die ProjectID, die **U-Boot zur Laufzeit**
-auswählt — `0x30` bei uns gegen `0x34` bei ihm — und die der Kernel gar nicht
+auswählt - `0x30` bei uns gegen `0x34` bei ihm - und die der Kernel gar nicht
 sieht. Sein eigenes U-Boot-Log sagt es beim Start mit:
 
 ```
@@ -195,19 +195,19 @@ H713 disp: note: this board declares project 0x34 (panel_config.ini ProjectID = 
 ```
 
 **Vor dem Zurückgeben zu klären:** unsere Variante braucht eine eigene
-Board-DTS, und die Reservierung gehört dorthin — als Überschreibung über das
+Board-DTS, und die Reservierung gehört dorthin - als Überschreibung über das
 Label, `&framebuf_reserved { reg = <0x6c100000 0x1000000>; };`. Dann trägt
 jedes Board seine eigene Größe, und die Frage „woran erkennt sein Build, dass
 das ein 1080p-Gerät ist" hat eine Antwort im Devicetree statt nur im
 Bootloader. Solange beide Boards dieselbe DTS benutzen, ist die 16-MiB-Zahl
-im dtsi der einzige Weg, der auf unserer Hardware funktioniert — aber sie ist
+im dtsi der einzige Weg, der auf unserer Hardware funktioniert - aber sie ist
 nicht die Fassung, die man ihm schickt.
 
 ## Offen
 
 - **Tearing nicht vermessen.** Doppelpufferung läuft, aber seine
   `gles-tear`-Messung (0,00 % gegen 16,94 % Positivkontrolle) haben wir nicht
-  wiederholt — die braucht ein Foto der Wand. Bisher nur mit dem Auge geprüft.
+  wiederholt - die braucht ein Foto der Wand. Bisher nur mit dem Auge geprüft.
 - **Kein Ton.** `gles-play` ist reines Video.
 - **Kein Container.** Nur Annex-B-Elementarströme; der Dekodierpfad hat
   keinen Demuxer.
@@ -236,7 +236,7 @@ Live auf unserem Board:
 
 Im Stock steht es umgekehrt: ch0 = `0x83001901` (NV12 **enabled**), ch1 =
 `0x83001900` (Bit 0 = 0, aus). Das Registerlayout der beiden Kanäle ist
-deckungsgleich mit 0x40 Versatz — `0x05600124` und `0x05600164` lesen beide
+deckungsgleich mit 0x40 Versatz - `0x05600124` und `0x05600164` lesen beide
 `0x00000808`.
 
 **Folge:** cstengers KMS-Treiber und `gles-play` fahren beide `ch1`. Deshalb
@@ -254,14 +254,14 @@ Umrechnung, und `kmssink` mit `playbin` wäre ein ganz normaler Player.
 - Die Notizen nennen zusätzlich ein Enable-Set in DE, INCAP und TVTOP
   (`memory_agent_onoff`), ohne das ch0 nichts ausgibt.
 - Genau diese Blöcke (`0x05200000`, `0x0524c000`, `0x0525c000`) **darf man
-  aus Linux nicht lesen** — das wedgt den Interconnect, siehe
+  aus Linux nicht lesen** - das wedgt den Interconnect, siehe
   [61-plan-vblank.md](61-plan-vblank.md). Der Zustand muss über UART aus
   U-Boot geholt werden.
 - Ein früherer Versuch in diese Richtung ist gescheitert und cstenger hat
   seine Behauptung „Direct YUV scanout WORKS" ausdrücklich zurückgezogen.
 
 `/dev/mem`-Schreibzugriffe sind **kein** Hindernis: `0xA5A5` nach
-`0x05600110` liest als `0x05A5` zurück — die Bits kommen an, das Register hat
+`0x05600110` liest als `0x05A5` zurück - die Bits kommen an, das Register hat
 nur ein schmaleres Feld. Die alte Notiz „Pokes wurden rejected" gilt für
 diesen Weg nicht.
 
@@ -274,14 +274,14 @@ scharfschalten.
 ## ch0/NV12: was in der Nacht 01.09. gemessen wurde
 
 Ausgangspunkt war Marcos Frage. Alles unten ist am Gerät gemessen, mit
-**geparktem MIPS** (`h713_disp auto … quiesce`) — das ist der Unterschied zu
+**geparktem MIPS** (`h713_disp auto … quiesce`) - das ist der Unterschied zu
 allen früheren Sitzungen in `re/notes/`, wo der MIPS die HDMI-Capture-Pipeline
 fuhr und die Register laufend selbst beschrieb.
 
 ### Neu: ch0 hat eine ARM-schreibbare Quelle
 
 Alle bisherigen Versuche gingen über den **globalen** Page-Flip
-`0x05600320/0x324`. Der nimmt keine ARM-Writes — heute erneut bestätigt, und
+`0x05600320/0x324`. Der nimmt keine ARM-Writes - heute erneut bestätigt, und
 zwar **auch bei geparktem MIPS**:
 
 ```
@@ -299,7 +299,7 @@ ch1 mit 0x40 Versatz, und dort liegen **zwei** Adressregister nebeneinander:
 ```
 
 Das ist genau das Paar, das NV12 braucht, und es gehört uns. In `re/notes/`
-ist dieser Weg nirgends geprüft — dort ging es immer um den globalen Ring,
+ist dieser Weg nirgends geprüft - dort ging es immer um den globalen Ring,
 weil der MIPS ihn fährt.
 
 ### Die NV12-Geometrie steht bereits
@@ -341,7 +341,7 @@ CLEAR** statt gesetzt, weil wir die per-Kanal-Quelle wollen:
 ### Ergebnis und der offene Rest
 
 **ch0 rastet nicht ein**: `READY (0x05600104)` bleibt 1, `STATUS (0x05600128)`
-bleibt 0. Bei ch1 löscht sich `READY` am Vsync selbst — der Vsync läuft
+bleibt 0. Bei ch1 löscht sich `READY` am Vsync selbst - der Vsync läuft
 nachweislich weiter.
 
 Zwei echte Lebenszeichen gibt es trotzdem: der **Quellen-Mux `0x05600300`
@@ -368,10 +368,10 @@ angefasst haben:
 ```
 
 Von diesen ist bei uns nur die AFBD-Zeile gesetzt. Die DE-Blöcke bei
-`0x05000000` und `0x050C0000` sind bislang unberührt — und sie sind der
+`0x05000000` und `0x050C0000` sind bislang unberührt - und sie sind der
 naheliegendste Grund, warum ch0 nicht durchkommt.
 
-### Der vollständige `init_osd_plane`-Replay — und was er ergibt
+### Der vollständige `init_osd_plane`-Replay - und was er ergibt
 
 Nach dem Durchlesen des ganzen Materials (nicht nur des einen Skripts) ist die
 Sequenz vollständig bekannt. Die **genaueste** Quelle ist nicht
@@ -394,7 +394,7 @@ Dazu zwei Blöcke, die im Skript **fehlen**:
 Und der Commit-Strobe ist **kein** RMW auf `0x0520003c`, wie das Skript es
 macht, sondern **lesen von `0x05200048`, schreiben nach `0x0520003c`** mit
 Bit 24 clear/set/clear. Die VBlender-Basis ist damit auch aufgelöst:
-`0x0520002C`, nicht das in der Notiz vermutete `~0x05208000` — dort liest der
+`0x0520002C`, nicht das in der Notiz vermutete `~0x05208000` - dort liest der
 ganze Block 32× denselben Wert `0x00001800`, das ist kein Steuerblock.
 
 Alles davon wurde in der Treiber-Reihenfolge angewendet, `/root/video/plane_init.sh`.
@@ -407,7 +407,7 @@ pool-2 0x320=0x4C7ED000  0x324=0x4CDEA000   (unverändert)
 
 ### Das entscheidende Experiment
 
-ch0 wurde anschließend **Register für Register auf ch1 angeglichen** — bis auf
+ch0 wurde anschließend **Register für Register auf ch1 angeglichen** - bis auf
 die beabsichtigten Unterschiede (Stride 0x780 statt 0x1E00, eigene Y/C-Adressen):
 
 ```
@@ -431,12 +431,12 @@ nichts.
 
 ### Was daraus folgt
 
-ch1 rastet am **Display-Vsync** ein — dem Interrupt, den wir heute Nacht zum
+ch1 rastet am **Display-Vsync** ein - dem Interrupt, den wir heute Nacht zum
 Laufen gebracht haben. ch0 tut das nicht, obwohl derselbe Vsync läuft. Der
 Frame-Trigger von ch0 kommt also aus einer anderen Quelle, und die
 naheliegendste ist die **Video-Pipeline des MIPS**: `pool-2` (`0x320/0x324`)
 bewegt sich bei uns überhaupt nicht, weil die Page-Flip-Engine erst nach
-MIPS-Signal-Valid läuft — unser U-Boot parkt den Coprozessor ausdrücklich
+MIPS-Signal-Valid läuft - unser U-Boot parkt den Coprozessor ausdrücklich
 (`MIPS core quiesced, display clocks retained`).
 
 In den früheren Sitzungen war es umgekehrt: der MIPS lief und hat ARM-Writes
@@ -454,8 +454,8 @@ die Suche geht im DE-Enable-Satz weiter (`0x05000000`, `0x050C0000`).
 
 **Die Display-Blöcke sind aus Linux jetzt lesbar.** `0x05200048` liest sauber
 `0x00000000`, der SoC überlebt es. Vor der `clk_ignore_unused`-Reparatur hat
-genau dieser Zugriff das Board gewedgt. Damit ist die ganze Kette — DE,
-Mixer, VBlender, TCON — zum ersten Mal aus dem laufenden Linux beobachtbar,
+genau dieser Zugriff das Board gewedgt. Damit ist die ganze Kette - DE,
+Mixer, VBlender, TCON - zum ersten Mal aus dem laufenden Linux beobachtbar,
 statt nur über UART aus U-Boot.
 
 
@@ -465,7 +465,7 @@ Nach dem vollständigen Durchlesen von `re/notes/`, `re/work/weltneuheit/` und
 einem eigenen IDA-Lauf gegen `display.bin` ist die AFBD-Karte aufgelöst. Ich
 hatte sie vorher an drei Stellen falsch.
 
-### Was wo steht — dekompiliert, nicht geraten
+### Was wo steht - dekompiliert, nicht geraten
 
 Eigener IDA-Headless-Lauf (`idat -A -S…` gegen
 `re/ida/weltneuheit/re_chain/display.bin.i64`, auf einer Kopie):
@@ -493,17 +493,17 @@ Werte bereits korrekt:
 
 Der NV12-Frame wurde in **den Puffer geschrieben, den AFBD gerade anzeigt**
 (`0x6c100000`), damit die Adresse als Variable wegfällt. Das Bild änderte sich
-sofort zur typischen Vierfach-Wiederholung — der Prüfstand ist also live.
+sofort zur typischen Vierfach-Wiederholung - der Prüfstand ist also live.
 
 1. **Formatfeld im Kanal-CTRL `0x05600140` [15:8]**: alle 17 Werte
-   (`0x00`…`0x0f`, `0x19`) durchgefahren — **keine sichtbare Änderung**.
+   (`0x00`…`0x0f`, `0x19`) durchgefahren - **keine sichtbare Änderung**.
 2. **Formatfeld im globalen `0x05600010` [14:8]**: alle acht dokumentierten
-   Werte — **keine Änderung**. Ebenso `0x05600164`.
+   Werte - **keine Änderung**. Ebenso `0x05600164`.
 3. **`0x05600010` Bit 31** (laut Dekompilat der Source-Mode): gesetzt, ch1
-   rastet ein — aber das Panel liest **weiterhin `0x178`**, nicht pool-2. Bit 31
+   rastet ein - aber das Panel liest **weiterhin `0x178`**, nicht pool-2. Bit 31
    schaltet die Quelle also **nicht** um.
 
-### Der Deskriptor ist der Auslöser — und der MIPS der Ausführende
+### Der Deskriptor ist der Auslöser - und der MIPS der Ausführende
 
 `_videodec_poke.py` aus `weltneuheit` läuft unverändert auf unserem Board
 (`0x4d95f000` liegt auch bei uns im reservierten `decoder@4d941000`). Der
@@ -532,7 +532,7 @@ pool-2 auf ein sauberes Y/C-Paar geflippt. Bei uns passiert nichts.
 
 Das ist als Beobachtung richtig und als Schlussfolgerung falsch. Stock zeigt
 NV12 in Farbe, der HDMI-Eingang läuft ausschließlich über diesen Pfad, und
-nirgendwo rechnet dabei eine CPU um. Die Hardware kann es — sie wird vom MIPS
+nirgendwo rechnet dabei eine CPU um. Die Hardware kann es - sie wird vom MIPS
 gefahren, und der war in allen diesen Versuchen entweder mit der
 HDMI-Capture beschäftigt oder, wie bei uns, abgeschaltet. „Einziger Weg" war
 der Weg mit abgestelltem Motor.
@@ -540,7 +540,7 @@ der Weg mit abgestelltem Motor.
 ### Der Test, der das entscheidet
 
 `tools/uart-mips-live.py` setzt `bootcmd` auf `h713_disp init 0x30` statt
-`auto 0x30 logo` — `init` lässt den MIPS **laufen** (siehe
+`auto 0x30 logo` - `init` lässt den MIPS **laufen** (siehe
 [70-sackgassen.md](70-sackgassen.md)). Das Panel bleibt dabei schwarz, weil
 dieser Pfad keinen Inhalt veröffentlicht; das ist erwartet und kein Befund.
 
@@ -551,12 +551,12 @@ Danach auf dem Gerät, alles vorbereitet unter `/root/video/`:
 3. Deskriptor setzen: `python3 videodec_poke.py poke`
 4. beobachten, ob `0x05600320/324` auf unsere Adressen flippen
 
-Flippt pool-2, ist der Pfad offen und die GPU-Konvertierung wird überflüssig —
+Flippt pool-2, ist der Pfad offen und die GPU-Konvertierung wird überflüssig -
 dann ist `playbin` mit `kmssink` und `alsasink` ein ganz normaler Player, der
 die A/V-Synchronisation selbst macht.
 
 
-## Der MIPS-Lauf: die Kette feuert — und wo sie stehenbleibt
+## Der MIPS-Lauf: die Kette feuert - und wo sie stehenbleibt
 
 Durchgeführt in der Nacht 01.09. nach Marcos Hinweis, dass Stock NV12 in Farbe
 zeigt und die HDMI-Eingabe ausschließlich über diesen Pfad läuft. Er hatte
@@ -582,7 +582,7 @@ CMA-Puffer (`0x05600178 = 0x76D00000`), die Konsole ist also da.
 
 `videodec_poke.py poke` schreibt den 144-Byte-Deskriptor nach `0x4d95f000`
 und den Zeiger nach `0x05600098`. **Mit laufendem MIPS reagiert die Hardware
-von selbst** — das folgende hat kein ARM-Write verursacht:
+von selbst** - das folgende hat kein ARM-Write verursacht:
 
 ```
 0x05600010:  0x03000010 -> 0x03000013      bits[1:0] = memory_agent capture enable
@@ -591,7 +591,7 @@ von selbst** — das folgende hat kein ARM-Write verursacht:
 ```
 
 Mit geparktem MIPS blieb bei identischem Poke **alles** stehen. Damit ist
-belegt, dass der Deskriptor der Auslöser und der MIPS der Ausführende ist —
+belegt, dass der Deskriptor der Auslöser und der MIPS der Ausführende ist -
 genau wie im Gerätetest vom 13.06.2026.
 
 Zweiter Beleg, dass der Pfad lebt: ch1 abzuschalten macht das Panel jetzt
@@ -612,7 +612,7 @@ TVTOP-Register. Zum ersten Mal ausgelesen (möglich erst seit
 | `0x200` | `0x050C0478/04F8/0578/05F8/0678` | `0x6602…` | fehlt |
 | `0x001/2/4` | TVTOP `0x068B00B8/DC/044C` | `0` | fehlt |
 
-Maske `0x200` heißt in der Quelle ausdrücklich **„DE pool-2"** — die Gruppe,
+Maske `0x200` heißt in der Quelle ausdrücklich **„DE pool-2"** - die Gruppe,
 die den NV12-Scanout speist. Alle acht `0x050C0…`-Register nehmen Bit 31 an
 (`0x6602…` → `0xE602…`). Sicherung: `/root/video/de-save.txt`.
 
@@ -630,12 +630,12 @@ Panel: schwarz
 ```
 
 ch1 rastet bei jeder Änderung sauber ein (`READY` löscht sich, `STATUS = 2`),
-ch0 bei keiner — obwohl beide Kanäle registerweise gleich konfiguriert werden
+ch0 bei keiner - obwohl beide Kanäle registerweise gleich konfiguriert werden
 können. Der Frame-Trigger von ch0 kommt weiterhin von woanders.
 
 ### Was als nächstes drankommt
 
-- **TVTOP `0x068B00B8/DC/044C` — NICHT aus Linux anfassen.** Die Masken
+- **TVTOP `0x068B00B8/DC/044C` - NICHT aus Linux anfassen.** Die Masken
   `0x001/0x002/0x004` sind die einzigen des `memory_agent_onoff`-Satzes, die
   noch fehlen, aber `0x068B0000` ist ein anderer Block als der
   `tvtop@5700000` unseres Devicetree, er ist nicht getaktet, und **ein
@@ -651,7 +651,7 @@ können. Der Frame-Trigger von ch0 kommt weiterhin von woanders.
   benutzbar und wurden noch nicht ausprobiert.
 
 
-## Der Signalpfad im MIPS — vollständig aufgelöst
+## Der Signalpfad im MIPS - vollständig aufgelöst
 
 Eigener IDA-Lauf gegen `display.bin.i64`, plus Messungen am laufenden Gerät
 mit `bootcmd = h713_disp init 0x30` (MIPS läuft).
@@ -681,7 +681,7 @@ sub_8B1ABC60:  if (  MEMORY[0x8BAC4BDC] ) return sub_8B1ABBD0();   // Event 8
 sub_8B1ABC80:  if ( !MEMORY[0x8BAC4BDC] ) return sub_8B1ABBD0();   // Event 35
 ```
 
-Steht das Flag auf 0, wartet die Kette auf Event 35 — den im mainline-Zustand
+Steht das Flag auf 0, wartet die Kette auf Event 35 - den im mainline-Zustand
 niemand postet. Steht es auf 1, erledigt es der Hardware-Interrupt, der pro
 Frame von selbst feuert.
 
@@ -695,7 +695,7 @@ in `mips-firmware@4b100000`:
 | `0x8BAC4BD8` | `0x4BAC4BD8` | WindowManager-Instanzzeiger |
 | `0x8BAC4BDC` | `0x4BAC4BDC` | Routing-Flag |
 | `0x8BAC4BDD` | `0x4BAC4BDD` | pending-Byte |
-| — | `0x4b89c4d4` | die Instanz selbst (bei diesem Lauf) |
+| - | `0x4b89c4d4` | die Instanz selbst (bei diesem Lauf) |
 
 ### Was gemessen wurde
 
@@ -740,7 +740,7 @@ pool-2                  unverändert
 Panel: der letzte ch1-Commit
 ```
 
-`StepWceSTM` läuft, aber die Kette erreicht `NRWinNode_AfbdConfigure` nicht —
+`StepWceSTM` läuft, aber die Kette erreicht `NRWinNode_AfbdConfigure` nicht -
 und genau dort sitzt der abschließende `sw 0xBA60006C`, gated von
 `WriteReg(a2 & 0x800)`.
 

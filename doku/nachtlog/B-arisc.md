@@ -1,7 +1,7 @@
-# B — ARISC-Treiber: Firmware-Laden, Handshake, HDMI-API
+# B - ARISC-Treiber: Firmware-Laden, Handshake, HDMI-API
 
 Agent: Paket B. Board **nicht** angefasst (kein `ssh`, kein `sonoff_ctl`, kein `tftp/`).
-`series` und `build/build.sh` **nicht** angefasst — die gehören in dieser Welle Paket A.
+`series` und `build/build.sh` **nicht** angefasst - die gehören in dieser Welle Paket A.
 
 ---
 
@@ -10,10 +10,10 @@ Agent: Paket B. Board **nicht** angefasst (kein `ssh`, kein `sonoff_ctl`, kein `
 | Uhrzeit | Was |
 |---|---|
 | 21:45 | Nachtplan (0, 0b, 1, 3B, 7), `nachtlog/00-koordination.md`, doku/75/77 gelesen; Eingaben `analyse/arisc-hdmi-drv/arisc_hdmi.c`, `analyse/arisc-msg/arisc_hdmi.py`, `analyse/hdmi-seq/arisc_edid_init.sh`, `analyse/arisc-loader/arisc_load.py`, `prep_after_boot.sh` |
-| 21:50 | Patch `0051-…-arisc-hdmi-hpd` war zu Beginn noch unter der alten Nummer, beim zweiten Zugriff schon `0090-…` — Paket A hat währenddessen umbenannt. Format von `0090` und `0037` als Vorlage genommen |
+| 21:50 | Patch `0051-…-arisc-hdmi-hpd` war zu Beginn noch unter der alten Nummer, beim zweiten Zugriff schon `0090-…` - Paket A hat währenddessen umbenannt. Format von `0090` und `0037` als Vorlage genommen |
 | 21:52 | RE-Rückfrage geklärt: Antwortrahmen auf ARM-RX ch1 kommt aus dem Sender `0x118e4` (`0x11984`: Byte 0 = `0xff`, Prüfsumme + `0xfe` am Ende); Nutzlast von `CheckEDIDUpdateStatus` wird bei `0x125a0..0x125b8` gebaut: `f8 01 01 <[0x117246]>` |
 | 21:54 | `analyse/arisc/hy310-edid.bin` erzeugt (512 B, `HDMI_EDID_14.bin` + `HDMI_EDID_20.bin`) |
-| 21:55–22:01 | Kopf `include/linux/soc/sunxi/h713-arisc.h` und Treiber `sun50i-h713-arisc.c` geschrieben |
+| 21:55-22:01 | Kopf `include/linux/soc/sunxi/h713-arisc.h` und Treiber `sun50i-h713-arisc.c` geschrieben |
 | 22:01 | **Prüfbau 1** (out-of-tree) grün |
 | 22:03 | DT-Knoten ins `sun50i-h713.dtsi`; DTB-Übersetzung geprüft (siehe unten) |
 | 22:05 | Patch `0091-soc-sunxi-h713-arisc.patch` erzeugt, `patch -p1 --dry-run` sauber |
@@ -34,7 +34,7 @@ fünf Dateien:
 |---|---|
 | `drivers/soc/sunxi/sun50i-h713-arisc.c` | neu, 1291 Zeilen |
 | `include/linux/soc/sunxi/h713-arisc.h` | neu, Kernel-API + Inline-Attrappen ohne `CONFIG_` |
-| `drivers/soc/sunxi/Kconfig` | `config SUN50I_H713_ARISC` (tristate, kein `default` — siehe Übergabe 2) |
+| `drivers/soc/sunxi/Kconfig` | `config SUN50I_H713_ARISC` (tristate, kein `default` - siehe Übergabe 2) |
 | `drivers/soc/sunxi/Makefile` | `obj-$(CONFIG_SUN50I_H713_ARISC) += sun50i-h713-arisc.o` |
 | `arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi` | Knoten `arisc@100000` inkl. Binding-Beschreibung im Kommentar |
 
@@ -46,10 +46,10 @@ kollidieren die beiden Hunks.
 Der Treiber tut, was doku/78 §3 B verlangt:
 
 * `request_firmware("h713-arisc.bin")` → Takt, Reset anlegen, RX-FIFOs leeren, Abbild
-  wortweise nach `0x00100000` (140 KiB, **ohne** DRAM-Schwanz — `--skip-tail` ist damit
+  wortweise nach `0x00100000` (140 KiB, **ohne** DRAM-Schwanz - `--skip-tail` ist damit
   konstruktiv abgebildet: das Vendor-Ziel `0x48100000` ist bei uns Kernel-Text),
   Zurückvergleich, `arisc_para`, Reset lösen;
-* Startup-Notify auf ch3 lesen und auf user1 Port 3 quittieren — **nur** bei
+* Startup-Notify auf ch3 lesen und auf user1 Port 3 quittieren - **nur** bei
   `type == 0x90`, `result == 0` **und** `count > 0`;
 * acht exportierte Funktionen als Kernel-API (Tabelle in doku/82 §6);
 * debugfs `/sys/kernel/debug/h713-arisc/{status,cmd}`; `status` zeigt
@@ -86,13 +86,13 @@ Beide EDID-Blöcke haben Prüfsumme 0, Block 0 trägt `SGD SX8`, Byte 168 ist `0
 
 ---
 
-## Prüfbau — ausdrücklich Prüfbau, **nicht** Endstand
+## Prüfbau - ausdrücklich Prüfbau, **nicht** Endstand
 
 Endstand ist `build/build.sh kernel` durch die Hauptsitzung nach Paket A. Hier nur
 Compile-Checks gegen den fertigen Baum
 `mainline/build/linux-6.18.38-102233d4db25e25ede21c6dbdc3d7ef6da4cdf64e65ae4372da5658b0f3dbd49`,
 mit derselben Toolchain, die `build/build.sh` für den Kernel benutzt (`ARCH=arm64 LLVM=1`,
-LLVM 18 wie der Baum gebaut wurde — der Container hat per Vorgabe clang 20, das erzeugt
+LLVM 18 wie der Baum gebaut wurde - der Container hat per Vorgabe clang 20, das erzeugt
 sonst „the compiler differs from the one used to build the kernel").
 
 ```bash
@@ -107,14 +107,14 @@ make -C /work/mainline/build/linux-6.18.38-102233d4db25e25ede21c6dbdc3d7ef6da4cd
 
 | Prüfbau | Ergebnis |
 |---|---|
-| 1 — out-of-tree, `M=/work/analyse/arisc-drv` (Kopf über `-I$(src)/include`) | **grün**, `W=1`, clang 18, keine Warnung. `sun50i-h713-arisc.ko`, alle acht Symbole in `__ksymtab`, `modinfo` nennt beide Firmware-Dateien und den `of`-Alias |
-| 2 — in-tree, Quelle nach `drivers/soc/sunxi/`, Kopf nach `include/linux/soc/sunxi/`, Kconfig/Makefile verdrahtet, `CONFIG_SUN50I_H713_ARISC=m`, `make M=drivers/soc/sunxi modules` | **grün**, `W=1`, keine Warnung. Prüft zusätzlich den Include-Pfad `<linux/soc/sunxi/h713-arisc.h>` und die Kconfig-Verdrahtung. Der Baum wurde danach vollständig zurückgesetzt (`Kconfig`, `Makefile`, `.config`, `syncconfig`, kopierte Dateien entfernt) |
-| DTB | `sun50i-h713-hy200-qz713df-a1.dts` mit dem neuen `dtsi` übersetzt (clang -E + `scripts/dtc`): **eine** Warnung, `dec@5600000` doppelte unit-address — die steht auch ohne unsere Änderung im Baseline-Lauf. Knoten `arisc@100000` im DTB nachgelesen, `reg`/`reg-names`/`firmware-name` korrekt |
+| 1 - out-of-tree, `M=/work/analyse/arisc-drv` (Kopf über `-I$(src)/include`) | **grün**, `W=1`, clang 18, keine Warnung. `sun50i-h713-arisc.ko`, alle acht Symbole in `__ksymtab`, `modinfo` nennt beide Firmware-Dateien und den `of`-Alias |
+| 2 - in-tree, Quelle nach `drivers/soc/sunxi/`, Kopf nach `include/linux/soc/sunxi/`, Kconfig/Makefile verdrahtet, `CONFIG_SUN50I_H713_ARISC=m`, `make M=drivers/soc/sunxi modules` | **grün**, `W=1`, keine Warnung. Prüft zusätzlich den Include-Pfad `<linux/soc/sunxi/h713-arisc.h>` und die Kconfig-Verdrahtung. Der Baum wurde danach vollständig zurückgesetzt (`Kconfig`, `Makefile`, `.config`, `syncconfig`, kopierte Dateien entfernt) |
+| DTB | `sun50i-h713-hy200-qz713df-a1.dts` mit dem neuen `dtsi` übersetzt (clang -E + `scripts/dtc`): **eine** Warnung, `dec@5600000` doppelte unit-address - die steht auch ohne unsere Änderung im Baseline-Lauf. Knoten `arisc@100000` im DTB nachgelesen, `reg`/`reg-names`/`firmware-name` korrekt |
 | `patch -p1 --dry-run` | sauber gegen die `a/`-Seite; der `dtsi`-Hunk zusätzlich sauber gegen die **echte** Datei im Baum geprüft |
 
 Arbeitskopie der Quellen für spätere Prüfbauten: `analyse/arisc-drv/`
 (`sun50i-h713-arisc.c`, `include/linux/soc/sunxi/h713-arisc.h`, `Makefile`).
-Build-Artefakte sind aufgeräumt. **Das ist nicht der Endstand** — der Endstand ist der Patch.
+Build-Artefakte sind aufgeräumt. **Das ist nicht der Endstand** - der Endstand ist der Patch.
 
 Nicht geprüft, weil es nicht ohne `build.sh`/Board geht: Gesamtbau der Serie, Laufverhalten.
 
@@ -125,7 +125,7 @@ Nicht geprüft, weil es nicht ohne `build.sh`/Board geht: Gesamtbau der Serie, L
 1. **`series`:** Zeile 65 lautet (Stand 22:20, nach A's Umnummerierung)
    `0090-soc-sunxi-add-arisc-hdmi-hpd.patch`. Diese Zeile **entfernen** und dafür
    `0091-soc-sunxi-h713-arisc.patch` aufnehmen. Ich habe `series` auftragsgemäß **nicht**
-   angefasst. Die Datei `0090-…` kann als Archiv liegen bleiben — sie darf nur nicht mehr
+   angefasst. Die Datei `0090-…` kann als Archiv liegen bleiben - sie darf nur nicht mehr
    in `series` stehen, sonst kollidieren die Kconfig-/Makefile-Hunks (0091 erwartet den
    Stand *ohne* die beiden `arisc_hdmi/`-Zeilen).
    *Restrisiko:* die `a/`-Seite von 0091 stammt aus dem Baum von 22:00. Sollte ein
@@ -137,7 +137,7 @@ Nicht geprüft, weil es nicht ohne `build.sh`/Board geht: Gesamtbau der Serie, L
    Kconfig-Eintrag hat bewusst kein `default`, damit er nicht als `=y` in den Kernel wandert:
    ein eingebauter Treiber probt, bevor das NFS-Root steht, und `request_firmware()` hätte
    dann nichts zu holen. **Modul, nicht eingebaut.**
-3. **Firmware aufs Board-Root** (`/srv/h713-rootfs`, braucht `sudo` — deshalb nicht von mir):
+3. **Firmware aufs Board-Root** (`/srv/h713-rootfs`, braucht `sudo` - deshalb nicht von mir):
    * `analyse/arisc/scp.bin` → `/srv/h713-rootfs/lib/firmware/h713-arisc.bin`
      (176 132 B, SHA-256 `d41731fa783dace3070264397064b28e2359a27b9e4708f3f7d40f1c3d876b7e`)
    * `analyse/arisc/hy310-edid.bin` → `/srv/h713-rootfs/lib/firmware/hy310-edid.bin`
@@ -154,7 +154,7 @@ Nicht geprüft, weil es nicht ohne `build.sh`/Board geht: Gesamtbau der Serie, L
 
 ## Abnahmevorschrift (Board-Slot 2 des Nachtplans)
 
-Voraussetzung: Punkte 1–5 oben erledigt, neuer Netboot-FIT in `tftp/`, Board-Sperre gesetzt.
+Voraussetzung: Punkte 1-5 oben erledigt, neuer Netboot-FIT in `tftp/`, Board-Sperre gesetzt.
 Erwartete Gesamtdauer ab Kaltstart: ~2 min, davon 10 s HPD-low.
 
 ```bash
@@ -216,13 +216,13 @@ ssh root@192.168.8.141 'dmesg | grep -i "h713-arisc"'
 rm -f /tmp/claude-1000/h713-board.lock
 ```
 
-**Wenn es schiefgeht — was es bedeutet:**
+**Wenn es schiefgeht - was es bedeutet:**
 
 | Befund | Bedeutung | nächster Schritt |
 |---|---|---|
 | `startup_notify: not seen`, `fifo_rx: ch3` ungleich 0 | die Notify liegt da, wurde aber nicht gelesen → Fensteradressen/Mapping | `status` mitschneiden, `busybox devmem 0x0300306c` |
 | `startup_notify: not seen`, `fifo_rx: ch3 = 0`, `R_CPUCFG` = 1 | Kern läuft, aber es kam nie eine Notify → Abbild/Para | `dmesg` auf „Firmware-Abbild stimmt nicht"; `busybox devmem 0x00100100` gegen `scp.bin` |
-| `startup_notify: acked`, aber `echo edid` liefert `-ETIMEDOUT` bei ResetEDIDModule | die Firmware nimmt Port-0-Rahmen nicht an. **Erster Verdacht: der weggelassene Doorbell** (doku/82 §12.2 — „3/3 belegt" steht in doku/77/78, eine Messreihe mit Lauf-Nummern habe ich in doku/ nicht gefunden). Das ist dann eine **Messung**, kein wieder eingebauter Puls | `status` vor/nach dem Versuch; `fifo_tx: port0` beobachten |
+| `startup_notify: acked`, aber `echo edid` liefert `-ETIMEDOUT` bei ResetEDIDModule | die Firmware nimmt Port-0-Rahmen nicht an. **Erster Verdacht: der weggelassene Doorbell** (doku/82 §12.2 - „3/3 belegt" steht in doku/77/78, eine Messreihe mit Lauf-Nummern habe ich in doku/ nicht gefunden). Das ist dann eine **Messung**, kein wieder eingebauter Puls | `status` vor/nach dem Versuch; `fifo_tx: port0` beobachten |
 | `-EBUSY` | Msgbox-FIFO Port 0 läuft voll → die Pumpe holt nicht ab, meist eine hängende Hauptschleife | Kaltstart, Log; **nicht** mit Nullwörtern „befreien" |
 | ThinkPad bleibt `disconnected`, aber alle Schritte quittiert | HPD kam, EDID nicht angenommen | `get-edid 0` und die ersten 16 Byte im Log ansehen: `00 ff ff ff` = plain (gut), `ff ff ff 00` = wortgedreht (Upload hat nicht gegriffen) |
 
@@ -241,10 +241,10 @@ rm -f /tmp/claude-1000/h713-board.lock
    * *HPD-low-Dauer:* nach erfolgreicher Abnahme `hpd 0 down`, 200 ms warten, `hpd 0 up`,
      und sehen, ob der ThinkPad trotzdem neu erkennt. Damit wäre belegt, ob die 10 s des
      Stock-Skripts nötig sind oder ob die HDMI-Mindestzeit von 100 ms reicht
-     (doku/82 §8). **Nur mit Zeitpuffer** — die 10 s sind der belegte Wert und bleiben
+     (doku/82 §8). **Nur mit Zeitpuffer** - die 10 s sind der belegte Wert und bleiben
      im Code, bis eine Messung etwas anderes zeigt.
    * *5-V-Detect (K4):* bei laufendem Treiber am ThinkPad `xrandr --output HDMI-2 --off`
-     und wieder `--auto`, dann `cat /sys/kernel/debug/h713-arisc/status` — ändern sich die
+     und wieder `--auto`, dann `cat /sys/kernel/debug/h713-arisc/status` - ändern sich die
      `hpd_counter`, ohne dass der Kernel etwas geschickt hat? Das beantwortet doku/77 §2.1
      („Offen und zu belegen") für Paket E.
 3. **Kein weiterer Board-Bedarf für Paket B.**

@@ -1,6 +1,6 @@
 # Das Log des Coprozessors mitlesen
 
-Die MIPS-Firmware führt ein eigenes Log. Es kommt **nicht** über UART heraus —
+Die MIPS-Firmware führt ein eigenes Log. Es kommt **nicht** über UART heraus -
 alle Ausgabemodi schreiben in DRAM. Der Kommentar in unserem U-Boot, Modus 0
 sei „SYNC, schreibt direkt über route (0 = uart)", ist falsch; er war aus dem
 Formatter hergeleitet, nicht gemessen.
@@ -48,7 +48,7 @@ if ( MEMORY[0x8B48C2A1] ) return;              // Overflow gesetzt -> nichts meh
 **Zieht niemand den Lesezeiger nach, läuft der Ring einmal voll und die
 Firmware hört auf zu loggen.** Er überschreibt den Anfang nicht, er verwirft
 das Neue. Ohne Konsument stehen dort also die ersten ~100 KiB ab Firmwarestart
-und danach nichts mehr — was praktisch ist, wenn man die Boot-Phase sucht, und
+und danach nichts mehr - was praktisch ist, wenn man die Boot-Phase sucht, und
 nutzlos, wenn man live mitlesen will.
 
 ## Das Zeilenformat
@@ -67,7 +67,7 @@ eine Tabelle pro Loglevel im RAM (`sub_8B150E28`):
 - Maske 8 → `sub_8B152218` = die feste Zeichenkette `"pid:1008"`
 - Maske 16 → drittes Feld
 
-Bei uns ist nur Maske 4 an, und **der Tickzähler steht bei jeder Zeile auf 0** —
+Bei uns ist nur Maske 4 an, und **der Tickzähler steht bei jeder Zeile auf 0** -
 obwohl die HDCP-Zeile beweist, dass Zeit vergangen ist. Die Tickquelle läuft zu
 dem Zeitpunkt also noch nicht; als Ordnungskriterium taugt das Feld nicht.
 
@@ -93,8 +93,8 @@ Historie jenseits von 100 KiB weg.
 ## Den Level hochdrehen
 
 Auf ERROR-Stufe schreibt die Firmware ganze 1879 Bytes und schweigt dann. Die
-Meldungen, die bei der Scanout-Suche zählen — `vdd`, `EntrySTM*`,
-`EnterWaiting*`, WCE — liegen darüber.
+Meldungen, die bei der Scanout-Suche zählen - `vdd`, `EntrySTM*`,
+`EnterWaiting*`, WCE - liegen darüber.
 
 U-Boot kann den Level setzen; es tut es bisher nur in `h713_disp test`. Neu ist
 das optionale Argument:
@@ -104,7 +104,7 @@ h713_disp init <project-id> [noboot|quiesce] [elog=<0-5>]
 ```
 
 Es setzt `H713_CFG_OFF_ELOG_MODE` auf 1, `ELOG_ASYNC` auf 0 und
-`ELOG_LEVEL` auf den gewünschten Wert — drei Bytes in `display_cfg.xml`, das
+`ELOG_LEVEL` auf den gewünschten Wert - drei Bytes in `display_cfg.xml`, das
 bei `0x4be01000` im RAM liegt, bevor der Coprozessor losgelassen wird. Kein
 Firmware-Patch.
 
@@ -145,7 +145,7 @@ I/mem_agn [28] (memory_agent.cpp 71)    update_onoff
 
 Zwei Eingabegeräte fehlen, der Projektor-Task geht in den Leerlauf und bleibt
 dort. `EnterWaitingWindowsReady`, `EnterWaitingPipeLineReady`,
-`PushSignalToMemoryAgent` — die Kette, die den Scanout scharfschalten würde —
+`PushSignalToMemoryAgent` - die Kette, die den Scanout scharfschalten würde -
 kommen im ganzen Log **nicht ein einziges Mal** vor. Ebensowenig `vdd`,
 `EntrySTM*`, `SignalValid` oder `VideoDec`.
 
@@ -157,7 +157,7 @@ Uptime 438 s
 ```
 
 Der Schreibzeiger steht seit sieben Minuten. Die Firmware hängt nicht und ist
-nicht abgestürzt — sie ist **untätig**. Die Ticks im Log reichen von 0 bis 28.
+nicht abgestürzt - sie ist **untätig**. Die Ticks im Log reichen von 0 bis 28.
 (Vorsicht beim Auszählen: `length[197616]` und ähnliche Werte aus den
 TSE-Kopfzeilen sehen wie Ticks aus, sind aber keine.)
 
@@ -176,7 +176,7 @@ mb_420_format      : 1
 
 Danach nicht mehr. `WinMgr+56` war kurz auf `0x0002007C` (gültiges Signal) und
 steht wieder auf `0x00020003` (kein Signal). Ein erneutes Setzen des
-Deskriptors — auch nach Zurücksetzen auf 0 — erzeugt **keine einzige
+Deskriptors - auch nach Zurücksetzen auf 0 - erzeugt **keine einzige
 Logzeile** mehr.
 
 Einordnung: der erste Poke wirkte, weil die Firmware noch in ihrem
@@ -192,7 +192,7 @@ Dekoder-Aktivität feuert nichts, also schaut niemand auf den Deskriptor.
 1. **Auslöser.** Was hebt MIPS-IRQ 19 beziehungsweise `sw_int_type 8`? Solange
    das fehlt, evaluiert die Firmware den Deskriptor nicht, egal was darin
    steht. `register_hw_interrupt` (`0x8b147b48`) programmiert die MIPS-INTC bei
-   `~0x0305FC00` — dort wäre nachzusehen, ob der Interrupt von ARM aus
+   `~0x0305FC00` - dort wäre nachzusehen, ob der Interrupt von ARM aus
    auslösbar ist.
 
 2. **Format.** Selbst als sie evaluierte, stellte sie AFBD auf
@@ -201,13 +201,13 @@ Dekoder-Aktivität feuert nichts, also schaut niemand auf den Deskriptor.
    Das ist die dokumentierte Ursache für das weiße beziehungsweise schwarze
    Bild. Laut `HANDOFF-NV12-WHITE-ROOTCAUSE` sitzt diese Entscheidung in
    `NRWinNode` (`m_afbd_source_mode 1->2`, NRWinNode.cpp:251) und **nicht** im
-   Deskriptor — unser `b_compress_en = 0` ändert daran nichts, was der Lauf
+   Deskriptor - unser `b_compress_en = 0` ändert daran nichts, was der Lauf
    bestätigt hat.
 
 Beides ist ab jetzt am Log überprüfbar: jede Änderung, die die Firmware
 tatsächlich erreicht, hinterlässt Zeilen.
 
-## Den Level zur Laufzeit hochdrehen — ohne Neustart (06.09.2026)
+## Den Level zur Laufzeit hochdrehen - ohne Neustart (06.09.2026)
 
 `elog=3` im U-Boot-`init` verhindert die MIPS-Bereitschaft (doku/67). Der
 Level lässt sich aber **nach** dem Start aus Linux setzen, weil die Firmware
@@ -223,7 +223,7 @@ Modul-Lookup `0x8b150c98`, mit `tools/mips-dis.py` gelesen:
 
 Eine Zeile wird geschrieben, wenn `level(Zeile) <= Schwelle` (`sltu` bei
 `0x8b15014c`). Die Tabelle ist im Betrieb leer (alle Schalter 0), also zählt
-der globale Level. Wortweise (RMW, 32 Bit ausgerichtet — Slices auf Device-
+der globale Level. Wortweise (RMW, 32 Bit ausgerichtet - Slices auf Device-
 Memory geben Bus-Error):
 
 ```

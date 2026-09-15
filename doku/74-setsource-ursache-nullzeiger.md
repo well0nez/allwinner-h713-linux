@@ -1,10 +1,10 @@
-# 74 — Ursache des SetSource(HDMI)-Absturzes: `sgp_hal_signal_info` ist NULL
+# 74 - Ursache des SetSource(HDMI)-Absturzes: `sgp_hal_signal_info` ist NULL
 
 **Stand 07.09.2026, 10:55. Status: Ursache bewiesen (A/B am Gerät), Fix noch nicht eingebaut.**
 
 ## Ergebnis in einem Satz
 
-Der MIPS kopiert bei jedem HDMI-Signalwechsel 44 Byte nach `sgp_hal_signal_info` — **ohne
+Der MIPS kopiert bei jedem HDMI-Signalwechsel 44 Byte nach `sgp_hal_signal_info` - **ohne
 Nullprüfung**. Dieser Zeiger ist bei uns NULL, weil der SMM-Heap beim Firmware-Start noch nicht
 angelegt ist und `smmMalloc` 0 liefert. Der Store nach Adresse 0 löst eine MIPS-Exception aus,
 deren defekter Handler (doku/73) anschließend den DRAM zerlegt und den SoC mitnimmt.
@@ -22,7 +22,7 @@ Gibt man dem Zeiger einen gültigen Puffer, **überlebt `SetSource(HDMI)`**.
 | `0x8b109fb8` | `lui s1,0x8b25` | SignalChange-Adapter `0x8b109fb0` |
 | `0x8b109fc4` | `lw a0,0x3628(s1)` | Ziel = der Zeiger |
 | `0x8b109fcc/d0` | `jal 0x8b1bc654` / `li a2,0x2c` | `memcpy(ziel, quelle, 44)` |
-| `0x8b109fe0` | `beq v0,zero,…` | Nullprüfung — **erst danach** |
+| `0x8b109fe0` | `beq v0,zero,…` | Nullprüfung - **erst danach** |
 | `0x8b1bc7ac` | `sw s0,0x0(t0)` | die faultende Instruktion im memcpy |
 
 `THal_Vp_Init` (`0x8b109f04`) registriert diesen Adapter am Ende selbst (`j 0x8b14b894`,
@@ -48,7 +48,7 @@ für diesen einen Puffer.
 des Adapters), `EPC = 0x8b1bc7ac`, `Cause = 0x0080040c` → ExcCode 3 = TLB-Store.
 Fünf unabhängige Übereinstimmungen auf genau diese Aufrufstelle.
 
-### 4. A/B am Gerät — eine Variable
+### 4. A/B am Gerät - eine Variable
 
 Eingriff: `analyse/hdmi-seq/signal_info_buf.py --do` setzt `0x4b253628` auf `0xAE3FF000`
 (ungecachter Shmem-Block, 44 Byte, mit `0x5A11B0BB` markiert). Keine Handler-Patches,
@@ -56,9 +56,9 @@ keine sonstigen Änderungen. Jeder Lauf mit Kaltstart über die Steckdose.
 
 | Lauf | Quelle | Zeiger | Ergebnis |
 |---|---|---|---|
-| **80** | HDMI_2 (4) | `0xAE3FF000` | **lebt** — 60 s beobachtet, alle GetSource-RPCs RETURN, Uptime 147 s |
-| **81** | HDMI_1 (3) | `0xAE3FF000` | **lebt** — 120 s beobachtet, alle RPCs RETURN, Uptime 181 s |
-| **82** | HDMI_2 (4) | NULL (Gegenprobe) | **tot** — kein ssh, Log endet an derselben Stelle wie immer |
+| **80** | HDMI_2 (4) | `0xAE3FF000` | **lebt** - 60 s beobachtet, alle GetSource-RPCs RETURN, Uptime 147 s |
+| **81** | HDMI_1 (3) | `0xAE3FF000` | **lebt** - 120 s beobachtet, alle RPCs RETURN, Uptime 181 s |
+| **82** | HDMI_2 (4) | NULL (Gegenprobe) | **tot** - kein ssh, Log endet an derselben Stelle wie immer |
 
 In den Läufen 80/81 waren nach dem Lauf **11 von 11 markierten Wörtern überschrieben**:
 
@@ -67,7 +67,7 @@ In den Läufen 80/81 waren nach dem Lauf **11 von 11 markierten Wörtern übersc
 ```
 
 `+0x0c = 0x0d = 13` ist genau der `signal_format:13`, den die Firmware in Lauf 17 geloggt hat.
-Das ist die Signal-Info-Struktur — sie ging bisher nach Adresse 0.
+Das ist die Signal-Info-Struktur - sie ging bisher nach Adresse 0.
 
 Und die Firmware läuft jetzt durch die Stelle, an der sie bisher starb:
 
@@ -93,7 +93,7 @@ Sichtbarkeit für den MIPS ist also gegeben. Zu schreiben sind die Felder aus `T
 (Vorlage: `analyse/cpu-comm-arm64/cpu_comm_mem.c`, ausgeführt in `analyse/hdmi-seq/smm_init.py`):
 
 * Kopf `0x4E32D000`: `[0]=[1]=PT_PHY`, `[2]=PAGES`, `+0xB4=DATA_START`, `+0xB8=SIZE`, `+0xBC=HEAP`
-* Deskriptor-Slot `0x4E304D00`: `(HEAP, SIZE)` — **zuletzt**, das Wort schaltet den Heap scharf
+* Deskriptor-Slot `0x4E304D00`: `(HEAP, SIZE)` - **zuletzt**, das Wort schaltet den Heap scharf
 
 Eine Nachrüstung aus Linux (`smm_init.py`) reicht **nicht**: `hal_adapter_init` ist dann längst
 gelaufen und hat NULL gespeichert. Genau das war der Fehler in Lauf 24.
@@ -103,7 +103,7 @@ gelaufen und hat NULL gespeichert. Genau das war der Fehler in Lauf 24.
 Ein toter Allokator trifft jede Allokation der Firmware, nicht nur diese. Das ist die
 naheliegende Erklärung dafür, dass in der Stub-Bisektion **beide** Funktionen gestubbt werden
 mussten (`0x8b10711c` und `0x8b108170`) und dass das Fenster-Handle `*(0x8b4a9da8)` bis heute 0
-ist — vermutlich ebenfalls eine fehlgeschlagene Allokation. **Vorhersage, nicht gemessen.**
+ist - vermutlich ebenfalls eine fehlgeschlagene Allokation. **Vorhersage, nicht gemessen.**
 
 ## Korrekturen an früheren Befunden
 
@@ -111,52 +111,52 @@ ist — vermutlich ebenfalls eine fehlgeschlagene Allokation. **Vorhersage, nich
   aus Linux nachträglich angelegt; der bereits gespeicherte Nullzeiger wird davon nicht gültig.
   Der Ausschluss hat die Reihenfolge nicht berücksichtigt.
 * **`BadVAddr = 0x63726173` aus Lauf 76/77 war ein Artefakt meines eigenen Patches.** Die Firmware
-  schreibt bei `0x8b15b3b4 sw v0,0x8c(k0)` ihre Record-Kennung nach +0x8c — genau dorthin hatte
+  schreibt bei `0x8b15b3b4 sw v0,0x8c(k0)` ihre Record-Kennung nach +0x8c - genau dorthin hatte
   ich den BadVAddr-Store umgelenkt. Der echte BadVAddr ist nicht erfasst; das Ziel war 0.
-* Der defekte Exception-Handler (doku/73) bleibt ein echter, unabhängiger Befund — er erklärt,
+* Der defekte Exception-Handler (doku/73) bleibt ein echter, unabhängiger Befund - er erklärt,
   **warum der Tod still und total ist**, nicht warum er eintritt.
 
 ## Was NICHT gezeigt ist
 
 * Der Rücksprung `ra` des Faults ist nicht erfasst; die Aufrufstelle ist durch Registerpassung
   und das A/B sehr stark belegt, aber nicht direkt bewiesen.
-* Der U-Boot-Fix ist **nicht gebaut und nicht getestet** — bisher nur der Ersatz-Zeiger aus Linux.
+* Der U-Boot-Fix ist **nicht gebaut und nicht getestet** - bisher nur der Ersatz-Zeiger aus Linux.
 * Es kommt weiterhin **kein Bild**: Fenster-Handle `*(0x8b4a9da8)` und Flag `0x8b4a9afc` sind nach
   wie vor 0, `GetSource` liefert `count=0`. Der Absturz ist beseitigt, die Anzeige nicht gelöst.
 * Ob nach dem Heap-Fix auch der MIPS→ARM-Callback beim ARM ankommt, ist offen.
 
 ## Werkzeuge
 
-* `analyse/hdmi-seq/signal_info_buf.py` — Zeiger setzen / Puffer markieren / Schreibzugriffe prüfen
-* `analyse/hdmi-seq/smm_init.py` — `Trid_SMM_Init`-Replik (als Vorlage für den U-Boot-Fix)
+* `analyse/hdmi-seq/signal_info_buf.py` - Zeiger setzen / Puffer markieren / Schreibzugriffe prüfen
+* `analyse/hdmi-seq/smm_init.py` - `Trid_SMM_Init`-Replik (als Vorlage für den U-Boot-Fix)
 * Läufe: `analyse/hdmi-seq/{elog,kmsg}-udp-run8{0,1,2}.txt`
 
 **Der Hinweis auf `sgp_hal_signal_info` stammt aus dem Review des geforkten Laufs; die
 Firmware-Statik, die Messungen und das A/B hier sind eigenständig nachgeprüft.**
 
-## Nachtrag 07.09.2026, 11:15 — U-Boot-Patch gebaut, Flash vorbereitet
+## Nachtrag 07.09.2026, 11:15 - U-Boot-Patch gebaut, Flash vorbereitet
 
-**Patch:** `mainline/external/u-boot/arch/arm/mach-sunxi/h713_mips.c` — Defines
+**Patch:** `mainline/external/u-boot/arch/arm/mach-sunxi/h713_mips.c` - Defines
 `H713_MIPS_SMM_HEAP_OFF` (0x2ccf0) / `H713_MIPS_SMM_SLOT_OFF` (0x4d00), Helfer `h713_mips_init_smm_heap()`
 (Spiegel von `Trid_SMM_Init()`: Kopf 0x4e32d000, 1236 Seiten, `data_start` 0x5000, Größe 0x4d330f, alle
 Zeiger physisch, Slot-Wort zuletzt), Aufruf in `h713_mips_prepare_ready_probe()` nach dem Record-Pool
 und vor Magic/Flush. Isoliert als `analyse/hdmi-seq/uboot-smm-heap-init.patch` (3 Hunks).
 
 **Lauf 83 (Layout-Kontrolle aus Linux):** `smm_init.py` schreibt exakt die Werte, die der Patch schreibt
-(Kopf/Slot bit-identisch zur Soll-Zeile). Board lebt (Zeiger-Fix). Aber `free_list_cur` blieb 0x4e32e000 —
+(Kopf/Slot bit-identisch zur Soll-Zeile). Board lebt (Zeiger-Fix). Aber `free_list_cur` blieb 0x4e32e000 -
 während `SetSource` allokiert die Firmware nichts; die Allokationen laufen beim Firmware-Init. **Der
-Heap-Pfad selbst ist damit noch nicht getestet** — das geht nur mit U-Boot, das ihn vor dem Start anlegt.
+Heap-Pfad selbst ist damit noch nicht getestet** - das geht nur mit U-Boot, das ihn vor dem Start anlegt.
 
 **Build:** auf dem dokumentierten Weg (Container `h713-build`, `build/uboot-build.sh … hy310_netboot_defconfig`,
 doku/50). rc=0; Warnungen nur in bestehendem Code (Zeilen 8679 ff.). Image enthält „SMM heap prepared".
-Ein Host-seitiger Versuch mit Umgehungen (`YACC=true`) wurde auf Marcos Einspruch verworfen — zu Recht.
+Ein Host-seitiger Versuch mit Umgehungen (`YACC=true`) wurde auf Marcos Einspruch verworfen - zu Recht.
 
 **Ist-Zustand eMMC (nur gelesen):** LBA 16 (SPL) sha256 `3585a720…` und Proper @0x49ac00 (886137 Byte)
 sha256 `4bbf4bd0…` sind **byte-identisch** mit dem Build vom 01.09. (`u-boot-sunxi-with-spl.bin.bak-vor-smmheap-20260907`,
 Split in `build/flash-netboot-smmheap/alt/`). Rückweg damit zertifiziert.
 
 **Flash-Plan (doku/20 Weg 3, aus dem laufenden Linux):** nur **U-Boot proper** (886137 Byte = 1731 Sektoren,
-sha256 `cec9f54f…`) nach `seek=4828160`; **SPL bleibt** — er unterscheidet sich nur im Zeitstempel, und der
+sha256 `cec9f54f…`) nach `seek=4828160`; **SPL bleibt** - er unterscheidet sich nur im Zeitstempel, und der
 Patch liegt ausschließlich in proper. Vorher Sicherung des eMMC-Bereichs nach `/root/uboot-proper.vorher.bin`,
 danach Rücklesung mit sha256-Vergleich. Rückweg: `alt/uboot-proper.bin` an dieselbe Stelle; FEL laut doku/20 getestet.
 
@@ -164,33 +164,33 @@ danach Rücklesung mit sha256-Vergleich. Rückweg: `alt/uboot-proper.bin` an die
 **ohne** jeden Eingriff: Slot 0x4e304d00 ≠ 0, `sgp_hal_signal_info` (0x4b253628) ≠ 0 und im Heap-Datenbereich
 (≥ 0x4e332000); (3) `SetSource(4)` ohne `signal_info_buf.py` → muss leben; (4) Fenster-Handle 0x8b4a9da8 prüfen.
 
-## Nachtrag 07.09.2026, 11:15 — Fix geflasht und am Gerät bestätigt (Lauf 84)
+## Nachtrag 07.09.2026, 11:15 - Fix geflasht und am Gerät bestätigt (Lauf 84)
 
 **Flash:** nur U-Boot proper (886137 Byte, 1731 Sektoren, sha256 `cec9f54f…`) nach LBA 0x49ac00, Rücklesung
 identisch. SPL an LBA 16 unverändert. Sicherung des vorherigen eMMC-Bereichs: `/root/uboot-proper.vorher.bin`
 am Board und `build/flash-netboot-smmheap/alt/uboot-proper.bin` (sha256 `4bbf4bd0…`, identisch zum alten eMMC-Stand).
 
-**Lauf 84 — Kaltstart, neues U-Boot, KEIN Eingriff aus Linux:**
+**Lauf 84 - Kaltstart, neues U-Boot, KEIN Eingriff aus Linux:**
 
 | Messgröße | vorher (alle Läufe bis 82) | jetzt |
 |---|---|---|
 | Slot `0x4e304d00` | 0 | `0x4e32d000` (von U-Boot) |
-| `sgp_hal_signal_info` (`0x4b253628`) | **0** | **`0xae332000`** — von der Firmware selbst allokiert |
+| `sgp_hal_signal_info` (`0x4b253628`) | **0** | **`0xae332000`** - von der Firmware selbst allokiert |
 | `SetSource(4)` | Tod nach ~100 ms | **RETURN, 60 s lebendig, alle GetSource-RPCs RETURN** |
 
 `0xAE332000` ist die kseg1-Sicht von ARM-phys `0x4E332000` = Heap-Basis `0x4e32d000` + `data_start` `0x5000`:
 die **erste Allokation der Firmware liegt exakt am Datenanfang des von U-Boot angelegten Heaps**. Damit ist
-nicht nur der Nullzeiger weg, sondern der Allokator selbst nachweislich in Betrieb — ohne `signal_info_buf.py`,
+nicht nur der Nullzeiger weg, sondern der Allokator selbst nachweislich in Betrieb - ohne `signal_info_buf.py`,
 ohne `smm_init.py`, ohne Firmware-Patch. Der TFD meldet nach dem Umschalten `Signal_Channel ==> HDMI1`.
 
-**Weiterhin offen:** Fenster-Handle `*(0x8b4a9da8)` = 0, Flag 0 — kein Bild. Das ist die nächste Baustelle, jetzt
+**Weiterhin offen:** Fenster-Handle `*(0x8b4a9da8)` = 0, Flag 0 - kein Bild. Das ist die nächste Baustelle, jetzt
 auf einem Board, das den Signalwechsel überlebt. `free_list_cur` (`0x4e32d004`) bleibt `0x4e32e000`; der
-Allokator arbeitet offenbar über den brk (`+0xB4`), nicht über die Seitenliste — nicht weiter untersucht.
+Allokator arbeitet offenbar über den brk (`+0xB4`), nicht über die Seitenliste - nicht weiter untersucht.
 
 **Hinweis für die Doku-Pflege:** `tftp/h713-kernel-netboot.fit` ist noch die `fit-mipsmem`-Variante (zusätzliche
 `no-map`-Reservierung 0x4d961000+0x99f000 aus H12); sie ist neutral, Original liegt als `.bak-vor-reloc-20260906`.
 
-## Nachtrag 07.09.2026, 11:45 — Bereinigung: alle Diagnose-Zustände (Inventar)
+## Nachtrag 07.09.2026, 11:45 - Bereinigung: alle Diagnose-Zustände (Inventar)
 
 Marco: „alle Debug-Flags deaktivieren und nichts vergessen". Vollständige Liste dessen, was während der
 Untersuchung eingeführt wurde, und der Zustand nach der Bereinigung:
@@ -202,14 +202,14 @@ Untersuchung eingeführt wurde, und der Zustand nach der Bereinigung:
 | 3 | `prep_after_boot.sh` Schritt 4: **Firmware-RAM-Schreiben** elog-Level 5 (0x4B48BD9C/0x4B48BE98), `printk 8` | Diagnose | **weg** in `prep_clean.sh` (kein RAM-Schreiben; für Logs künftig `h713_disp init … elog=<n>` von U-Boot) |
 | 4 | prep Schritte 5/6: `elog_tail`, IRQ-Affinität, `watchdog_thresh`, `softlockup_panic`, `kmsg_udp`, `wdt_ping` | Diagnose | **weg** in `prep_clean.sh`; keine Diagnose-Prozesse |
 | 5 | Live-Firmware-Patches (`mips_patch.py`, `mips_stub.py`, `elog_uncached_patch.py`, `signal_info_buf.py`, `smm_init.py`) | Diagnose, nur DRAM | **weg** mit jedem Kaltstart (U-Boot lädt `display.bin` neu); `/root/mips_stub.json` existiert nicht |
-| 6 | Bootargs `modprobe.blacklist=hy310_cpu_comm` (U-Boot-Env, per UART gesetzt) | Diagnose (nur nötig für das Testmodul) | **bereinigt 11:30** mit `tools/uart-fixargs.py` (Kaltstart, Strg-C bis `=>`, `setenv bootargs` ohne Blacklist, `saveenv` → „Writing to MMC(1)… OK“ — die Env liegt auf **MMC(1)**, deshalb war sie unter mmc 0 nicht zu finden). Linux-Cmdline danach ohne Blacklist verifiziert; `hy310_cpu_comm` lädt jetzt automatisch (Ready 4/4). |
+| 6 | Bootargs `modprobe.blacklist=hy310_cpu_comm` (U-Boot-Env, per UART gesetzt) | Diagnose (nur nötig für das Testmodul) | **bereinigt 11:30** mit `tools/uart-fixargs.py` (Kaltstart, Strg-C bis `=>`, `setenv bootargs` ohne Blacklist, `saveenv` → „Writing to MMC(1)… OK“ - die Env liegt auf **MMC(1)**, deshalb war sie unter mmc 0 nicht zu finden). Linux-Cmdline danach ohne Blacklist verifiziert; `hy310_cpu_comm` lädt jetzt automatisch (Ready 4/4). |
 | 7 | U-Boot Trace-Patches (`h713_mips_apply_trace`, Firmware-Cave 0x4b1002c4) | Projekt-Debug | **nicht aktiv** (0x4b1238d8 = Original `0ec5401a`); nur bei `probe-trace` |
-| 8 | U-Boot HDCP-Key-Wait-Patch („key-load wait defeated") | Projektentscheidung (kein Key) | unverändert — **kein** Teil dieser Untersuchung, bewusst nicht angefasst |
-| 9 | `display_cfg.xml` / TSE auf eMMC p1 | — | **unberührt** (md5 identisch mit Vendor) |
+| 8 | U-Boot HDCP-Key-Wait-Patch („key-load wait defeated") | Projektentscheidung (kein Key) | unverändert - **kein** Teil dieser Untersuchung, bewusst nicht angefasst |
+| 9 | `display_cfg.xml` / TSE auf eMMC p1 | - | **unberührt** (md5 identisch mit Vendor) |
 | 10 | U-Boot proper mit `h713_mips_init_smm_heap()` | **der Fix** | geflasht, Rückweg `build/flash-netboot-smmheap/alt/` |
 | 11 | ARISC-Blob, `h713-tvcap.ko`, `hy310-arisc-hdmi.ko` aus `/root` | Bring-up-Rezept (doku/69) | bleiben (nicht Diagnose) |
 
-**Lauf 86 — vollständig sauber (11:26):** Original-FIT, geflashtes U-Boot, `prep_clean.sh` (Serienmodul
+**Lauf 86 - vollständig sauber (11:26):** Original-FIT, geflashtes U-Boot, `prep_clean.sh` (Serienmodul
 `hy310_cpu_comm` aus `/lib/modules`, Ready 4/4, `printk` Standard `7 4 1 7`, keine Diagnose-Prozesse, kein
 Firmware-RAM-Schreiben), Phase 2+3 mit Callbacks. `SetSource(4)`: RETURN 239.8 ms, 60 s alle GetSource-RPCs
 RETURN, Uptime 111 s, `sgp_hal_signal_info = 0xAE332000`. **Der Fix braucht keinen einzigen Diagnose-Baustein.**
@@ -219,7 +219,7 @@ Board-Bereinigung danach: `/root/hy310-cpu-comm-callwq-test.ko` → `/root/attic
 Tabelle) mit dem Projektwerkzeug `tools/uart-fixargs.py` (setzt die saubere Zeile ohne Blacklist, `saveenv`).
 
 **UART-Mitschnitt des bereinigten Boots (11:29):** U-Boot meldet vor der Freigabe des MIPS
-`H713 MIPS: SMM heap prepared (base 0x4e32d000, 1236 pages, slot 0x4e304d00)` — die Zeile des Patches —
+`H713 MIPS: SMM heap prepared (base 0x4e32d000, 1236 pages, slot 0x4e304d00)` - die Zeile des Patches -
 und danach die gewohnte `readiness probe shared memory prepared`. Kernel-Cmdline:
 `console=ttyS0,115200 earlycon root=/dev/nfs rw nfsroot=192.168.8.104:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait clk_ignore_unused pd_ignore_unused cma=128M`.
 Mitschnitt: `re/captures/boot-clkignore.log` (vom Werkzeug geschrieben).

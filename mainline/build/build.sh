@@ -4,9 +4,9 @@
 #   TF-A BL31  ->  U-Boot (SPL + BL31 + proper)  ->  Linux kernel  ->  images
 #
 # Sources are the git submodules under external/ and two curated patch series on
-# pinned upstream tarballs — patches/kernel/ and patches/aic8800/ (see
+# pinned upstream tarballs - patches/kernel/ and patches/aic8800/ (see
 # patches/README.md); versions are pinned in config/versions.env. LLVM-only
-# (clang / ld.lld) — see config/toolchain.md.
+# (clang / ld.lld) - see config/toolchain.md.
 #
 # Usage:
 #   build/build.sh [all|bl31|uboot|kernel|aic8800|images]   # default: all
@@ -75,7 +75,7 @@ UBOOT_DEFCONFIG=${UBOOT_DEFCONFIG:-${UBOOT_BOARD:?board.env: UBOOT_BOARD is empt
 
 log()  { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 note() { printf '    \033[33m%s\033[0m\n' "$*"; }
-have() { [ -e "$ROOT/external/u-boot/Makefile" ] || { echo "error: submodules not checked out — run: git submodule update --init" >&2; exit 1; }; }
+have() { [ -e "$ROOT/external/u-boot/Makefile" ] || { echo "error: submodules not checked out - run: git submodule update --init" >&2; exit 1; }; }
 
 hash_file() {
   sha256sum "$1" | awk '{print $1}'
@@ -374,7 +374,7 @@ prepare_aic8800() {
 build_aic8800() {
   local tree; tree=$(prepare_kernel)
   [ -f "$tree/Module.symvers" ] || {
-    echo "error: kernel not built (no Module.symvers in $tree) — run build/build.sh kernel first" >&2
+    echo "error: kernel not built (no Module.symvers in $tree) - run build/build.sh kernel first" >&2
     return 1
   }
   local moddir; moddir=$(prepare_aic8800)
@@ -398,7 +398,7 @@ build_aic8800() {
 build_kernel_fit() {
   local suffix=${1:-}
   local mkimage; mkimage=$(find_mkimage)
-  [ -n "$mkimage" ] || { note "no mkimage — skipping FIT (install u-boot-tools or run the uboot stage)"; return; }
+  [ -n "$mkimage" ] || { note "no mkimage - skipping FIT (install u-boot-tools or run the uboot stage)"; return; }
   cat > "$OUT/h713-kernel$suffix.its" <<ITS
 /dts-v1/;
 / {
@@ -468,7 +468,7 @@ build_images() {
     sha256sum "${files[@]}" > SHA256SUMS
   )
   note "SHA-256 manifest -> $OUT/SHA256SUMS"
-  note "Flash U-Boot to eMMC sector 16 using a verified raw write — see docs/flash.md."
+  note "Flash U-Boot to eMMC sector 16 using a verified raw write - see docs/flash.md."
 }
 
 case "${1:-all}" in

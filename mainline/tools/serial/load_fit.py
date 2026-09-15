@@ -2,7 +2,7 @@
 """Combined U-Boot `loady` + YMODEM-1K send over one held-open tty.
 
 Opens the port once, issues `loady <addr>`, waits for the receiver's 'C',
-then streams the file — no close/reopen race. For large FITs over serial.
+then streams the file - no close/reopen race. For large FITs over serial.
 
 Usage: load_fit.py FILE [--port auto|/dev/ttyUSB0] [--addr 0x50000000]
 """

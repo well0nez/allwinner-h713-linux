@@ -27,7 +27,7 @@ plus `0x40000000`. Zeilenende `\r` (die Tastentabelle bindet `0x0d` und `0x0a`).
 
 **Falle, die einen Anlauf kostet:** der MIPS-Carveout kommt über `/dev/mem` als **DEVICE**-Speicher.
 Auf arm64 sind dort nur ausgerichtete 32-Bit-Zugriffe erlaubt. Pythons `mmap`-Slicing ist ein
-`memcpy` und stirbt mit SIGBUS — **nichtdeterministisch**, weil es davon abhängt, welchen
+`memcpy` und stirbt mit SIGBUS - **nichtdeterministisch**, weil es davon abhängt, welchen
 memcpy-Pfad die Länge wählt. Jeder Zugriff muss durch eine ctypes-uint32-Sicht.
 
 Werkzeug: `analyse/hdmi-seq/mipsshell.py` (`--status`, `--drain`, `--cmd "…"`), läuft auf dem Board.
@@ -36,12 +36,12 @@ Werkzeug: `analyse/hdmi-seq/mipsshell.py` (`--status`, `--drain`, `--cmd "…"`)
 
 Das **Kommandogerüst** (Befehlsliste, `help`, Prompt `VS:/$`) antwortet über den Ring. Die
 **Rümpfe der Debug-Kommandos** schreiben über die Logfunktion der Firmware ins **elog**. `cmds`
-kommt also zurück, `win wm` nicht — dessen Ausgabe steht im elog. Beide Kanäle mitlesen.
+kommt also zurück, `win wm` nicht - dessen Ausgabe steht im elog. Beide Kanäle mitlesen.
 
-## Befehlsindex — vollständig, von der Firmware bestätigt
+## Befehlsindex - vollständig, von der Firmware bestätigt
 
 Zwei Wege führen zum selben Ergebnis, und beide sind gegangen: die Tabellen im Abbild auszählen
-(12-Byte-Einträge `{Handler, Name, Hilfetext}`, mit Nullen abgeschlossen — `allcmds.py`, idalib)
+(12-Byte-Einträge `{Handler, Name, Hilfetext}`, mit Nullen abgeschlossen - `allcmds.py`, idalib)
 und **das nackte Kommando absetzen**, denn jedes druckt seine eigene Hilfe. Ins elog, nicht in den
 Ring; deshalb sieht man nichts, wenn man nur den Ring liest.
 
@@ -51,19 +51,19 @@ regr  clear  keys  vars  cmds  users  help  setVar  win`
 | Kommando | Unterbefehle | Tabelle |
 |---|---|---|
 | **`app`** | `set_src` set source · `dump_para` dump app top parameters · **`dump_cfg` dump display_cfg.xml** · `sm_on`/`sm_off` seamless · `cb_on`/`cb_off` call back · **`win_on`/`win_off` window manager** · `tfd_on`/`tfd_off` tfd update · `set_ll` low latency · `set_pm` picture mode · `set_wm` wide mode · `set_mm` mirror mode | `8B1EB550` |
-| **`bs`** | `dump_bs` Dump BlueScreen Status | — |
+| **`bs`** | `dump_bs` Dump BlueScreen Status | - |
 | **`crtc`** | `dump_cfg` dump CRTC config · `stop_frl`/`start_frl` freerun lock | `8B1F0AAC` |
 | **`tcd3`** | **`dump_sig` dump signal status** · `dbg` debug mode of mode detection · `pause`/`resume` mode detection · `mo` motion detection | `8B1F82AC` |
 | **`dtv`** | `set_ds` set dtv stop · **`get_fb` get dtv frame info** | `8B1F8EA0` |
 | **`hal`** | **`dump_src` dump context of hal_source** · `set_src` set source · (`vbi`, `atvsnow` stehen in der Tabelle, nicht in der Hilfe) | `8B1F9288` |
 | **`memory_agent`** | **`en` enable memory agent (0-9 / all)** · **`dis` disable …** | `8B1FBB24` |
-| **`pq`** | `set_fc` set free mode wait max count | — |
+| **`pq`** | `set_fc` set free mode wait max count | - |
 | **`win`** | `os` set overscan · `rn` set refresh node · **`wi` get all win size info** · **`wm` get win mgr info** | `8B207298` |
 
 Ohne Unterbefehle, Argumente direkt: `regr`/`regw` (Register **aus Sicht des MIPS**), `elog`,
 `setVar`, `clear`, `keys`, `vars`, `users`, `help`, `cmds`.
 
-Kleinigkeit am Rande: `dtv`s Hilfetext ist mit „Usage: seamless" überschrieben — ein
+Kleinigkeit am Rande: `dtv`s Hilfetext ist mit „Usage: seamless" überschrieben - ein
 Kopierfehler der Firmware, kein Hinweis auf etwas.
 
 ## Gemessene Ausgaben (07.09.2026, HDMI-1 mit 1080p)
@@ -81,7 +81,7 @@ m_dst_active_win : [0, 0, 1920, 1080]
 m_aspect_ratio 0 · mb_seamless 0 · m_mirror_mode 0 · m_refresh_node 0
 data base: hde 1920 vde 1080 hs 44 vs 5 h_back_porch 88 v_back_porch 20
 ```
-`m_src_cfg` bewegt sich **nicht**, wenn wir `Wce_SetWindow` mit anderen Werten senden — der RPC
+`m_src_cfg` bewegt sich **nicht**, wenn wir `Wce_SetWindow` mit anderen Werten senden - der RPC
 endet MIPS-seitig in einem Stub (cstenger `9f70bcb5`, bei uns nachgemessen).
 
 `crtc dump_cfg` (Panel):
@@ -94,7 +94,7 @@ MAIN CRTC      m_tfd_cfg[0]  source 0 · pclk 143001 · htotal 2200 · phase_del
 ```
 
 `tcd3 dump_sig` gibt den **ATV/CVBS**-Detektor aus (`m_cvd_st`, SECAM/PAL-Erkennung,
-`kAtvStd_NoSignal`) — für den HDMI-Pfad ohne Aussage.
+`kAtvStd_NoSignal`) - für den HDMI-Pfad ohne Aussage.
 
 ## Was daran wertvoll ist
 
@@ -103,15 +103,15 @@ MAIN CRTC      m_tfd_cfg[0]  source 0 · pclk 143001 · htotal 2200 · phase_del
 Fensterknoten. `bs dump_sig` und `hal dump_src` geben den Signal- bzw. Quellenzustand aus Sicht
 der Firmware. `memory_agent en/dis` schaltet genau den Baustein, der bei einer
 Descriptor-Veröffentlichung die Aufnahmefreigabe löscht (`doku/86` §4). `app dump_cfg` schüttet
-`display_cfg.xml` aus — die naheliegende Spur zu der Zielgeometrie 852×480, auf die die Firmware
+`display_cfg.xml` aus - die naheliegende Spur zu der Zielgeometrie 852×480, auf die die Firmware
 bei einem eigenen Neubau verfällt.
 
-`regr`/`regw` sind die Sicht des MIPS auf den Registerbus — nützlich für Register, die von der
+`regr`/`regw` sind die Sicht des MIPS auf den Registerbus - nützlich für Register, die von der
 ARM-Seite anders oder gar nicht aussehen.
 
 ## Sicherheit
 
 Lesende Kommandos (`dump_*`, `wi`, `wm`, `cmds`, `help`, `keys`) sind ungefährlich. `set_*`,
-`*_on`/`*_off`, `en`/`dis` und `regw` verändern den laufenden Zustand der Anzeige — nur mit
+`*_on`/`*_off`, `en`/`dis` und `regw` verändern den laufenden Zustand der Anzeige - nur mit
 Sichtkontakt zur Wand und mit einem Rückweg (Quellenwechsel, im Zweifel Neustart **plus**
 Quellenwechsel; ein Neustart allein hat nach einem Firmware-Neubau nicht gereicht).

@@ -1,4 +1,4 @@
-# S28 (Paket A) — CCU: `pll-periph0`-Modell und die Audio-/TVFE-Takte
+# S28 (Paket A) - CCU: `pll-periph0`-Modell und die Audio-/TVFE-Takte
 
 Auftrag [`../101-plan-audio-treiber.md`](../101-plan-audio-treiber.md) §1 Zeile A,
 Arbeitsauftrag `analyse/audio/arbeit/t-a-ccu/AUFTRAG.md`. Reine Quelltextarbeit, **kein Board, kein
@@ -16,8 +16,8 @@ ist `checkpatch.pl`-sauber (0 errors, 0 warnings, 474 Zeilen).
 |---|---|---|---|---|
 | `pll-periph0` | `0x020` = `b8003100` | `nkmp` ohne `.m`/`.p`, `post 4` → **300 MHz** | `.m` Bit 1, `.p` Bit 0, `post 2` → **600 MHz** | 600 MHz, unverändert |
 | `pll-periph1` | `0x028` = `b8006301` | dito → 600 MHz (zufällig richtig) | dito → 600 MHz | 600 MHz, unverändert |
-| `-2x` / `-4x` | — | 600 / 1200 | **1200 / 2400** | 1200 / 2400, unverändert |
-| `pll-periph0/1-800M` | — | **fehlte** | neu, `-4x`/3 = **800 MHz** | vorhanden (Vendor `hw_clks` 137/138) |
+| `-2x` / `-4x` | - | 600 / 1200 | **1200 / 2400** | 1200 / 2400, unverändert |
+| `pll-periph0/1-800M` | - | **fehlte** | neu, `-4x`/3 = **800 MHz** | vorhanden (Vendor `hw_clks` 137/138) |
 | `ahb` | `0x510` = `03000002` | 100 MHz | **200 MHz** | 200 MHz, unverändert |
 | `apb0` | `0x520` = `03000102` | 50 MHz | **100 MHz** | 100 MHz, unverändert |
 | `mbus` | `0x540` = `c3000002` | Eltern `{24M, p0-2x, ddr, p0-4x}`, M 3 bit → 400 MHz | Eltern `{24M, ddr, p0, p0-2x}`, M 5 bit → 400 MHz | 400 MHz, unverändert |
@@ -42,11 +42,11 @@ ist `checkpatch.pl`-sauber (0 errors, 0 warnings, 474 Zeilen).
 | **`hdmi-audio`** | **`0xd84` = `80000000`** | Gate an `ahb`, 100 MHz | `div` M[4:0] Mux[24] `{video3-4x, p0-2x}` → **2400 MHz** | unverändert; Stock 1152 MHz (S17 §5.4) |
 
 Belege durchgehend: Vendor-Takttabelle `sun50iw12_ccu_clks @0xc1460d70`
-(`analyse/hdmi-seq/vendor-ccu-table.txt`, Einträge [18], [19], [55], [102]–[124]) gegen den
+(`analyse/hdmi-seq/vendor-ccu-table.txt`, Einträge [18], [19], [55], [102] - [124]) gegen den
 Boot-Wortdump des Boards (`analyse/hdmi-seq/ccu-dump-after-prep-20260907.txt`); Herleitung des
 PLL-Modells S27 §5/§6/§6.1, Registerkarte `0xd10…0xd90` S17 §1, `bus-demod` S17 §0/§2c.
 
-## 2. `assigned-clock-rates` an `periph0`-Abkömmlingen — die eine physische Änderung
+## 2. `assigned-clock-rates` an `periph0`-Abkömmlingen - die eine physische Änderung
 
 Vollständige Suche über beide Board-DTs und die `dtsi` des Basisbaums (`grep assigned-clock`):
 **genau ein Treffer**, `sun50i-h713.dtsi:973` am eMMC-Knoten `mmc@4022000`:
@@ -68,7 +68,7 @@ Deshalb ist die `mmc2`-Elternliste in denselben Patch gewandert; S27 §7 hatte s
 notiert (Vendor-Eintrag [55]: 3-bit-Mux über `{dcxo24M, p0-800M, p1-800M, p0-2x, p1-2x}`, unsere
 Liste kannte die 800-MHz-Abgriffe gar nicht). Der Mux bleibt bewusst **umhängbar** (kein
 `CLK_SET_RATE_NO_REPARENT`, anders als der Vendor): der MMC-Kern verlangt bei der Kartenerkennung
-400 kHz, und die erreicht nur `osc24M`. Er kann dabei von `p1-800M` auf `p0-800M` wandern — beide
+400 kHz, und die erreicht nur `osc24M`. Er kann dabei von `p1-800M` auf `p0-800M` wandern - beide
 800 MHz, physisch gleichwertig.
 
 Alle übrigen Takte: **kein** `assigned-clock-*`, also beim Boot kein anderer Registerzugriff.
@@ -78,16 +78,16 @@ Alle übrigen Takte: **kein** `assigned-clock-*`, also beim Boot kein anderer Re
 1. **eMMC zuerst.** Das Bootmedium ist der einzige Takt, dessen Register sich durch den Patch beim
    Boot ändert (§2). Er wird **langsamer und richtiger** (133 → 100 MHz), aber er ändert sich. Erste
    Abnahme: Kaltstart und Blick auf `dmesg | grep mmc`, danach ein großes `dd`/`fsck` auf der
-   Rootpartition. Rückfall wäre, allein den `mmc2`-Hunk zurückzunehmen (dann 67 MHz — auch lauffähig,
+   Rootpartition. Rückfall wäre, allein den `mmc2`-Hunk zurückzunehmen (dann 67 MHz - auch lauffähig,
    nur unnötig langsam).
 2. **Jeder `clk_set_rate()` unterhalb `pll-periph0` liefert ab jetzt die angeforderte statt der
    doppelten Rate** (S27 §8.1): `mmc0/1` (SD, SDIO/AIC8800), `spi0/1`, `nand0/1`. Die SDIO-WLAN-Karte
    lief bisher mit doppeltem Bustakt und muss neu geprüft werden. Nichts davon ist ein
-   Boot-Registerzugriff — die Änderung tritt erst auf, wenn der jeweilige Treiber eine Rate setzt.
+   Boot-Registerzugriff - die Änderung tritt erst auf, wenn der jeweilige Treiber eine Rate setzt.
 3. **`clk_disable_unused` sieht `0xd80` jetzt.** Mit den richtigen Bits 31/30 meldet der Taktbaum die
    beiden Gates als eingeschaltet; ein Kernel **ohne** `clk_ignore_unused` würde sie abschalten und
    damit `bus-cap-300m` unter dem laufenden Capture wegziehen. Beide Board-DTs übergeben
-   `clk_ignore_unused` (geprüft: `…qz713-v2.dts:10`, `…qz713df-a1.dts:10`) — bleibt aber eine
+   `clk_ignore_unused` (geprüft: `…qz713-v2.dts:10`, `…qz713df-a1.dts:10`) - bleibt aber eine
    Fußangel, sobald jemand die `bootargs` kürzt. Dasselbe gilt für `tvfe-1296m`, `tcd3` und
    `vincap-dma`, die beim Boot an sind.
 4. **Die TVFE-Takte haben jetzt Teiler, also Zähne.** Ein `clk_set_rate()` auf ihnen war bisher
@@ -102,10 +102,10 @@ Alle übrigen Takte: **kein** `assigned-clock-*`, also beim Boot kein anderer Re
 6. **Nicht gebaut.** Ersatzweise geprüft: alle Elternnamen existieren im Treiber (Skript über die
    `*_parents[]`-Listen und alle `CLK_HW_INIT*`-Namen, 0 Fehlstellen); keine doppelten
    `hw_clks`-Indizes; `.num` deckt den größten Index; Klammernbilanz; und für **jeden** Takt mit Mux
-   der Boot-Registerwert gegen die Länge der Elternliste — 44 Takte, alle Mux-Indizes in Reichweite,
+   der Boot-Registerwert gegen die Länge der Elternliste - 44 Takte, alle Mux-Indizes in Reichweite,
    also kein verwaister Takt beim `probe`. Dabei ist ein echter Fehler aufgefallen und behoben: die
    neuen IDs lagen zuerst auf 139/140, und **139 ist bereits `CLK_PLL_AUDIO`** aus dem exportierten
-   Binding — sie hätten den Codec-Takt aus der Provider-Tabelle verdrängt.
+   Binding - sie hätten den Codec-Takt aus der Provider-Tabelle verdrängt.
 
 ## 4. Was bewusst **nicht** angefasst wurde
 
@@ -114,16 +114,16 @@ treiberintern und stehen in `ccu-sun50i-h713.h` als 143/144, `CLK_NUMBER_INTERNA
 (Loch bei 140 bleibt, `sunxi_ccu_probe` überspringt `NULL`).
 
 Weitere Abweichungen von der Vendor-Tabelle, die beim Prüfen aufgefallen sind, aber weder Audio noch
-`pll-periph0` betreffen — Kandidaten für einen eigenen Patch, hier absichtlich ausgelassen, damit
+`pll-periph0` betreffen - Kandidaten für einen eigenen Patch, hier absichtlich ausgelassen, damit
 0134 prüfbar bleibt:
 
-* `timer0…5` (`0x730…0x744`): Vendor Mux `[5:4]`, Teiler `[3:1]`, Eltern `{24M, iosc, osc32k, ahb}` —
+* `timer0…5` (`0x730…0x744`): Vendor Mux `[5:4]`, Teiler `[3:1]`, Eltern `{24M, iosc, osc32k, ahb}` -
   Mainline hat Mux `[25:24]`, M `[2:0]`, P `[9:8]` und drei Eltern. Registerwerte alle 0, darum heute
   folgenlos.
 * `ve-core` (`0x690`): zweiter Elternteil `pll-periph0-2x` fehlt (Mux steht auf 0).
 * `gpu` (`0x670`): Vendor ist ein 5-bit-Teiler ohne Mux, Mainline ein Mux ohne Teiler.
 * `dram` (`0x800`): zweiter Elternteil `pll-periph1-2x` fehlt (Mux steht auf 0).
-* `mmc0/mmc1`: Mux ist real 3 bit breit, Mainline nutzt 2 — bei drei Eltern heute ohne Wirkung.
+* `mmc0/mmc1`: Mux ist real 3 bit breit, Mainline nutzt 2 - bei drei Eltern heute ohne Wirkung.
 * `i2s2`/Codec tragen laut S17 §4b `CLK_HDMI_AUDIO` unter dem Namen `pll_tvfe`; richtig wäre
   `CLK_TVFE_1296M`. Das ist eine DT-Änderung und gehört zu Paket C/F.
 
@@ -131,7 +131,7 @@ Weitere Abweichungen von der Vendor-Tabelle, die beim Prüfen aufgefallen sind, 
 
 1. Bau im `h713-build`-Container (doku/50), Kaltstart. **Zuerst** eMMC: `dmesg | grep -i mmc`,
    Rootpartition lesen und schreiben.
-2. `cat /sys/kernel/debug/clk/clk_summary` — erwartet: `pll-periph0` 600 MHz, `pll-periph0-2x` 1200,
+2. `cat /sys/kernel/debug/clk/clk_summary` - erwartet: `pll-periph0` 600 MHz, `pll-periph0-2x` 1200,
    `ahb` 200, `apb0` 100, `mbus` 400, `mips` 400, `mmc2` 100, `audio-cpu` 400, `audio-umac` 200,
    `audio-ihb` 162, `bus-demod` 1296 (Gate aus), `bus-hdmi-audio`/`bus-cap-300m` **enabled**,
    `hdmi-audio` 2400. Weicht eine dieser Zahlen ab, stimmt das Modell noch nicht.

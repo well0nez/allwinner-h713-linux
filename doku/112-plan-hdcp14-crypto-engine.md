@@ -1,4 +1,4 @@
-# Plan 112 — HDCP 1.4 über die Crypto Engine: Auftrag für einen späteren Agenten
+# Plan 112 - HDCP 1.4 über die Crypto Engine: Auftrag für einen späteren Agenten
 
 **Status: ZURÜCKGESTELLT (Marco, 11.09.2026).** Nicht für Release v0.1. Wird angefasst, wenn das Release draußen ist.
 **Dieser Auftrag ist so geschrieben, dass ein Agent ohne Gesprächsverlauf damit anfangen kann.** Der Beleg dahinter ist
@@ -15,23 +15,23 @@ Disassemblate in `analyse/release/arbeit/r0-fel/s49-dis/`). Lies S49 ganz, bevor
 3. **Bauen nur im Container `h713-build`**, nie auf dem Host. Kernel-Patches gehören in `mainline/patches/kernel/series`,
    sonst wirken sie nicht am Gerät.
 4. **Am Gerät nur mit Marcos Freigabe und in kleinen Schritten.** Jeder Schritt mit Rückweg. Ein Test in diesem Auftrag
-   kostet einen Stromzyklus und kann den Bus aufhängen — vorher ansagen.
+   kostet einen Stromzyklus und kann den Bus aufhängen - vorher ansagen.
 5. **Nichts von hier ist Wissen aus einem Datenblatt.** Alles ist aus Hersteller-Code rekonstruiert. Wo S49 „Analogie"
    oder „Vermutung" sagt, musst du messen, nicht glauben.
 
-## 0a. Nachtrag 11.09. — gemessene Vorarbeit von cstenger
+## 0a. Nachtrag 11.09. - gemessene Vorarbeit von cstenger
 
 Bevor du S49 liest, nimm diese vier am Gerät gemessenen Tatsachen mit (Zweig `origin/wip/crypto-ce-tooling`,
 Commit `bb44dc8`; Einordnung in [`114`](114-plan-crypto-engine.md)). Sie ersparen dir Stromzyklen:
 
 1. **Die CE hat zwei Interrupts (SPI 73 + 74); mainline fordert nur den ersten an, und ohne den zweiten hängt die
    erste Operation.** Mit dem zweiten läuft sie durch. Unser mainline-DT mappt bisher nur `0x03040000` und den
-   ersten Interrupt — dein Pfad muss beides mitbringen.
+   ersten Interrupt - dein Pfad muss beides mitbringen.
 2. **Der Non-Secure-Kanal ist aus Linux erreichbar**: die CE nimmt NS-Registerschreibvorgänge an, arbeitet und gibt
-   Status zurück — kein Bus-Abort. S49 Schritt 2 ist damit zur Hälfte beantwortet; offen bleibt nur noch, ob NS den
+   Status zurück - kein Bus-Abort. S49 Schritt 2 ist damit zur Hälfte beantwortet; offen bleibt nur noch, ob NS den
    **Key-Select 3 (RSSK)** benutzen darf und ob CE_S `0x03040800` aus NS sichtbar ist.
 3. **Du hast ein Fehlerorakel.** Mit mainline-Deskriptoren meldet die CE `address invalid` (Chiffren) bzw.
-   `algorithm not supported` (Hashes) — für Standard-AES/SHA. Das ist die bekannte Signatur des *falschen*
+   `algorithm not supported` (Hashes) - für Standard-AES/SHA. Das ist die bekannte Signatur des *falschen*
    Deskriptorformats und passt exakt zu den 5-Byte-Adressfeldern aus S49. Miss dagegen, statt nur „kein Fehler".
 4. **Es gibt keine CE-TRNG.** `HW_RANDOM` bleibt aus, jage das nicht.
 
@@ -60,7 +60,7 @@ HDCP 2.2 ist davon **getrennt** und seit 11.09. gelöst: die 912 Byte gehen roh 
 2. U-Boot legt es in OP-TEEs Keybox: **SMC `0xb2000210`, op 1**.
 3. U-Boot ruft **op 5** (`a3 = 0x120`). OP-TEE (`sunxi_load_hdcp_key`, `0x4860caf0`) programmiert die **Crypto Engine
    über den sicheren Kanal CE_S (`0x03040800`)**: AES-128-ECB, **Key-Select 3 = RSSK** (128-Bit-Efuse-Schlüssel, nur der CE
-   zugänglich), 288 Byte, **Ziel per DMA `0x03041400`** — eine Schlüsselsenke im CE-/Key-Ladder-Adressraum, kein DRAM.
+   zugänglich), 288 Byte, **Ziel per DMA `0x03041400`** - eine Schlüsselsenke im CE-/Key-Ladder-Adressraum, kein DRAM.
 4. Danach ist `0x06840093` Bit 0 = 1. Der MIPS nimmt in `Rx_HDCP14_LoadKey` den Zweig „schon geladen".
 5. Der Vendor-Kernel wiederholt op 5 (`a3 = 0`) in `sunxi_tvtop_complete` nach jedem Resume: **die Senke ist flüchtig
    mit der TV-Domäne.**
@@ -89,7 +89,7 @@ ist es wertlos, und in Software ist es nicht entschlüsselbar.
 **Der MIPS-Nachlade-Pfad** (falls Bit 0 nach dem Laden nicht steht): `0x06840002` Bit 4 pulsen (1, dann 0), dann
 `0xc0` nach `0x06840093`, Bit 0 pollen (`display.bin` `0x8b13d168…0x8b13d19c`).
 
-## 3. Was NICHT bekannt ist — das musst du messen
+## 3. Was NICHT bekannt ist - das musst du messen
 
 | Frage | Warum sie zählt | Wie messen |
 |---|---|---|
@@ -106,7 +106,7 @@ ist es wertlos, und in Software ist es nicht entschlüsselbar.
    `THal_Vp_SetHDCP22Key` als Vorbild für „ARM gibt dem MIPS etwas vor dem Start"), `h713-hdcp-key` (wie das Item vom
    Gerät gelesen wird), und den mainline-Treiber `drivers/crypto/allwinner/sun8i-ce/` (Deskriptorformat, Takte, Reset).
 2. **Vorab-Test (ein Stromzyklus, Marcos Freigabe):** aus Linux mit dem `sun8i-ce`-Deskriptorformat einen Task mit
-   `sym_ctl` Key-Select 3 auf 16 Nullbytes **nach DRAM** absetzen — einmal über den NS-Kanal `0x03040000`, einmal über
+   `sym_ctl` Key-Select 3 auf 16 Nullbytes **nach DRAM** absetzen - einmal über den NS-Kanal `0x03040000`, einmal über
    CE_S `0x03040800`. Ergebnis ESR-Fehler oder Bus-Abort → NS darf nicht → Weg 6b. Läuft es durch → Weg 6a.
    **Vorher ansagen, dass der Bus hängen kann.** `0x05000000` niemals lesen (H616-UART, hängt den Bus).
 3. **Voraussetzungen im Zielcode:** CE-Takte und Reset wie in `sun8i-ce`; TVTOP-/HDMI-RX-Domäne und Takte an.
@@ -116,7 +116,7 @@ ist es wertlos, und in Software ist es nicht entschlüsselbar.
 6. **Einbauort:**
    - **a) Linux**, wenn NS darf: kleiner Treiber am `crypto@3040000`-Knoten oder Teil von `h713-hdmirx` (0094). Laden
      **vor dem ersten `SetSource`**, wiederholen in jedem Runtime-Resume der HDMI-RX-Domäne. Das Chiffrat kommt vom
-     Gerät (Item `hdcpkey`), analog zu `h713-hdcp-key` — **nicht als Firmware-Datei ausliefern**.
+     Gerät (Item `hdcpkey`), analog zu `h713-hdcp-key` - **nicht als Firmware-Datei ausliefern**.
    - **b) TF-A**, sonst: ein SiP-SMC „HDCP14-Load(phys, len)", der CE_S aus EL3 programmiert. Das ist die
      Stock-Architektur ohne OP-TEE. Aufruf aus U-Boot vor dem MIPS-Start und aus Linux nach Resume.
 7. **U-Boot-Reihenfolge:** Wird vor dem MIPS-Start geladen, nimmt `HdmiRx_HDCP14_LoadKey` den Zweig „schon geladen",
@@ -134,7 +134,7 @@ ist es wertlos, und in Software ist es nicht entschlüsselbar.
 
 ## 6. Nebenbefunde aus S49, die du kennen solltest
 
-- `hdcpkeyV22` steht **nicht** in der Stock-Keybox-Liste, geht nie durch den CE-Pfad — der MIPS liest die PKF-Efuse
+- `hdcpkeyV22` steht **nicht** in der Stock-Keybox-Liste, geht nie durch den CE-Pfad - der MIPS liest die PKF-Efuse
   selbst (leer auf diesem Gerät). Das stützt, dass die 912 Byte für 2.2 Klartext sind.
 - Die Zeichenkette „Do secure storage decrypted !!" gilt nur für die *anderen* Keybox-Namen; `hdcpkey` wird von
   `sunxi_keybox_store` (`0x4860c0bc…0x4860c0d8`) roh kopiert.

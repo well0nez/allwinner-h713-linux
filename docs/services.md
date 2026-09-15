@@ -7,7 +7,7 @@ cannot enumerate is a system you cannot trust.
 
 | Unit | What it does |
 |---|---|
-| `h713-tv@videoN` | the HDMI input service, one instance per capture device, started by udev when it appears — the number varies with probe order ([h713-tv](tools/h713-tv.md)) |
+| `h713-tv@videoN` | the HDMI input service, one instance per capture device, started by udev when it appears - the number varies with probe order ([h713-tv](tools/h713-tv.md)) |
 | `h713-wifi` | reads `/etc/h713/wifi.env` once at boot and brings the radio up as an access point, a station, or not at all ([h713-wifi](tools/h713-wifi.md)) |
 | `h713-hdcp-key` | reads the 912-byte HDCP 2.2 key out of *your* device's secure storage and hands it to the display firmware. Nothing is shipped, nothing is written back |
 | `hy310-zram-swap` | compressed swap in RAM: zstd, half of the 1 GiB, one device. This board has no swap partition and no room for one |
@@ -34,8 +34,8 @@ into a freshly installed device that has no SSH key: the root password is locked
 key of its own.
 
 The consequence is worth saying plainly: **anyone who can reach the UART pads has root.** That is the
-same class of access as holding the device in your hands — the pads are inside the case, and someone who
-has opened the case can also read the eMMC — but if your threat model includes people with screwdrivers,
+same class of access as holding the device in your hands - the pads are inside the case, and someone who
+has opened the case can also read the eMMC - but if your threat model includes people with screwdrivers,
 remove the drop-in at `/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf` and set a root
 password before the device leaves your desk.
 
@@ -47,7 +47,7 @@ key present is the one you passed to the installer.
 | Path | What |
 |---|---|
 | `/` | the root filesystem, ext4, grown to the partition on first boot |
-| `/data` | a directory in the same filesystem, for things you want out of the way — persistent logs land under `/data/log` |
+| `/data` | a directory in the same filesystem, for things you want out of the way - persistent logs land under `/data/log` |
 | `/etc/h713/` | our configuration: `wifi.env`, `tv.conf`, and the `tvconfig` directory the picture tools use |
 | `/run/log/journal` | the journal, in RAM, unless you switched it |
 

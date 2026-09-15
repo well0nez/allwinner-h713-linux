@@ -1,16 +1,16 @@
-# K4 — Hot-Plug nach dem Boot (Board-Agent = Hauptsitzung)
+# K4 - Hot-Plug nach dem Boot (Board-Agent = Hauptsitzung)
 
-Messung 06.09.2026, 21:47–21:57, Board seit Kaltstart 21:08 in der Sequenz aus Nachtplan Abschnitt 1.
+Messung 06.09.2026, 21:47-21:57, Board seit Kaltstart 21:08 in der Sequenz aus Nachtplan Abschnitt 1.
 Alle Abzüge: `re/captures/weltneuheit/ours-20260907-nacht/00-ausgangszustand/`.
 
 ## 0. Instrument zuerst geprüft (Regel 7)
 
-**Kamera.** `exposure_auto = 3` (Automatik), `exposure_absolute = 333`, `gain = 118` — **nichts verstellt**.
+**Kamera.** `exposure_auto = 3` (Automatik), `exposure_absolute = 333`, `gain = 118` - **nichts verstellt**.
 Die überbelichtete Aufnahme `01-nach-unlock-2147.jpg` (mean 247,5 / std 14,2) entstand nicht durch eine
 stehengebliebene Einstellung, sondern weil `ffmpeg` das **allererste** Bild nach dem Öffnen des Geräts nimmt:
 das trägt noch die Belichtung der **vorigen** Szene (vorher lief der dunkle Sperrbildschirm). Dieselbe Szene
 eine Minute später: mean 206,3 / std 43,7 (`02-wiederholung-2148.jpg`).
-Gegenprobe im Dunkelsprung 21:50:56: ohne Vorlauf mean 172,6 — mit Vorlauf mean 139,5 (gleiche Szene,
+Gegenprobe im Dunkelsprung 21:50:56: ohne Vorlauf mean 172,6 - mit Vorlauf mean 139,5 (gleiche Szene,
 `03-aus-ohne-vorlauf.jpg` / `04-aus-mit-vorlauf.jpg`).
 → `analyse/hdmi-seq/wandcheck.py` verwirft jetzt `WARMUP` (Vorgabe 30, `WAND_WARMUP=` übersteuerbar) Bilder,
 bevor es auslöst. **Die Belichtung wird weiterhin nicht angefasst.**
@@ -18,7 +18,7 @@ bevor es auslöst. **Die Belichtung wird weiterhin nicht angefasst.**
 **elog.** Erster Durchgang: über die ganze K4-Sequenz **null Zeilen** (`rd=wr=2066`). Positivkontrolle mit einem
 harmlosen, unveränderten RPC (`SetBacklightLevel 100`) blieb ebenfalls stumm → **der elog war kein gültiges
 Instrument**, aus seinem Schweigen folgt nichts. Ursache: globaler Level `0x4B48BD9C` stand auf **1** (nur `E/`),
-obwohl `prep_after_boot.sh` ihn auf 5 setzt — die Firmware hat ihn nach dem Prep überschrieben.
+obwohl `prep_after_boot.sh` ihn auf 5 setzt - die Firmware hat ihn nach dem Prep überschrieben.
 Nach dem dokumentierten Verfahren aus doku/63 (Level 5, Tabellenmodus aus) liefert derselbe RPC 122 Zeilen
 inkl. `Session19(RETURN): WAIT ACK completion`. Erst danach wurde gemessen.
 
@@ -54,7 +54,7 @@ dazu AVI/VSI-InfoFrame-Auswertung (`Limit_Range`, `BT709`, Quelle erkannt als `I
 
 **Der Zähler `0x11722c` ist kein Ereigniszähler.** Er ist ein **Anforderungsfach**, das die ARISC selbst wieder
 leert: bei DOWN bleibt er durchweg 0, bei UP steht für einen Moment genau **1** darin und ist danach wieder 0.
-Das deckt sich mit doku/68 („`[0x11722c+port]` von Linux aus auf ≥1 schreiben" löst HPD aus) — das Fach ist der
+Das deckt sich mit doku/68 („`[0x11722c+port]` von Linux aus auf ≥1 schreiben" löst HPD aus) - das Fach ist der
 Weg **hinein**, nicht die Buchführung. Wer HPD-Ereignisse zählen will, kann ihn nicht lesen; die belastbare
 Quelle ist der elog bzw. der `HdmiHotPlugByPort`-Callback.
 
@@ -65,8 +65,8 @@ Stufe 5 mitläuft; dann ist die Frage in einer Minute erledigt.
 
 ## 4. Belege
 
-- `elog-k4-level5-20260907.txt` (851 Zeilen, ANSI entfernt) — der komplette Mitschnitt beider Versuche.
-- `nacht-00-vor-A.txt` — vollständiger Registerabzug des Ausgangszustands (107 KB).
+- `elog-k4-level5-20260907.txt` (851 Zeilen, ANSI entfernt) - der komplette Mitschnitt beider Versuche.
+- `nacht-00-vor-A.txt` - vollständiger Registerabzug des Ausgangszustands (107 KB).
 - Fotos `00-vor-A-2147.jpg` (Sperrbildschirm), `02-wiederholung-2148.jpg` (Spirale, korrekt belichtet),
   `04-aus-mit-vorlauf.jpg` (Quelle aus, Bild steht), `05-an-mit-vorlauf.jpg`, `06-nach-hotplug.jpg`.
 - Zuspieler: Sitzung um 21:47 entsperrt (`loginctl unlock-sessions`), Bildschirmschoner aus (`xset s off -dpms`),

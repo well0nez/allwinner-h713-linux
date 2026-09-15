@@ -1,6 +1,6 @@
 # H713 projector backlight: the case so far
 
-**Status: SOLVED 2026-08-06 (late) — the light dims, from PB5.**
+**Status: SOLVED 2026-08-06 (late) - the light dims, from PB5.**
 
 ```
 h713_disp bl-gpio 500 10 3     -> noticeable drop in brightness
@@ -8,13 +8,13 @@ h713_disp bl-gpio 500 10 3     -> noticeable drop in brightness
 
 `panel_bl_en` (PB5) is the enable of the on-board boost converter that lifts
 36 V to the 52.6 V the `LED` header delivers, and **that converter dims on
-PWM-of-enable** — the standard technique for LED boost drivers. 500 Hz at 10 %
+PWM-of-enable** - the standard technique for LED boost drivers. 500 Hz at 10 %
 duty is visibly dimmer, with no flicker at that rate. Brightness has been
 controllable from the SoC the entire time, on a pin this project has been
 holding statically high since the fan work.
 
-**Not on PB4/PWM2.** Every stock source points there — the shipping DTB's
-`panel_pwm_ch = 2`, our patch 0032 `pwm-backlight`, `bl-sweep` — and it does
+**Not on PB4/PWM2.** Every stock source points there - the shipping DTB's
+`panel_pwm_ch = 2`, our patch 0032 `pwm-backlight`, `bl-sweep` - and it does
 nothing, because it is not what gates the converter. The vendor's own firmware
 never dims either (section 0), so this is a capability of the hardware that the
 shipping software does not use.
@@ -22,20 +22,20 @@ shipping software does not use.
 **The blocker for a real feature is the fan, not the light.** PB5 is shared with
 fan power, so modulating it modulates cooling in lockstep: at 10 % duty the fan
 gets 10 % too. Fine for a three-second test, not for use. **Section 7 has the
-chosen path** — an inline chopper downstream of the converter, which leaves PB5
-static and the fan untouched — and why enable-PWM will not be the
+chosen path** - an inline chopper downstream of the converter, which leaves PB5
+static and the fan untouched - and why enable-PWM will not be the
 implementation.
 
 The question this document set out to answer was narrow: **can the brightness of
 this projector's light engine be controlled from the SoC, and if so how?**
-Answered: yes, and the how is above. Everything else about the display — panel
-init, timing, framebuffer, the MIPS coprocessor — works and was always out of
+Answered: yes, and the how is above. Everything else about the display - panel
+init, timing, framebuffer, the MIPS coprocessor - works and was always out of
 scope.
 
 **PB5 has no PWM function** in this SoC's pinmux (`gpio_in`/`gpio_out` only,
 confirmed against `pinctrl-sun50i-h616.c`), so the SoC cannot drive it with
 hardware PWM as wired. Either bit-bang it, or move the converter's enable to a
-pin that has a PWM function — PB4 being the obvious candidate, already routed
+pin that has a PWM function - PB4 being the obvious candidate, already routed
 for exactly this role and already carrying a correct 25 kHz waveform.
 
 Written 2026-08-05 for external review; the section-0 result arrived when the
@@ -64,7 +64,7 @@ vendor's `bootloader_a` FAT restored so its display path could run for real:
 Four findings, all direct runtime observations rather than inference:
 
 1. **Stock asks for PWM channel 5**, not channel 2. `panel_config.ini` is read
-   at runtime — from `Reserve0`, after `/oem` misses — and `pwm_channel = 5` is
+   at runtime - from `Reserve0`, after `/oem` misses - and `pwm_channel = 5` is
    what reaches `pwm_request`.
 2. **That request fails on this hardware**, with `get reg-base err`: pwm5 has a
    controller node but no pin group, exactly as the static analysis predicted.
@@ -79,7 +79,7 @@ Four findings, all direct runtime observations rather than inference:
 ### The kernel and the app say the same thing
 
 Vendor Android was then booted end to end on the same board (its `userdata`
-had to be reformatted f2fs first — `UDISK` held our ext4 Debian rootfs, which
+had to be reformatted f2fs first - `UDISK` held our ext4 Debian rootfs, which
 `fs_mgr` refused with `invalid magic`). Linux 5.4.99, launcher up, projector
 app running. From its boot log:
 
@@ -93,27 +93,27 @@ app running. From its boot log:
 
 **The vendor kernel's PWM driver never probes** (`can't get pwm bus clk` at
 0.098 s), so every later request fails. The entry at 199 s is not boot-time
-probing — it is a *runtime* attempt, three seconds before the operator shut the
+probing - it is a *runtime* attempt, three seconds before the operator shut the
 board down, i.e. while they were moving the brightness slider in the projector
 app. The UI control does reach a PWM path, and that path fails.
 
 Operator observation across the slider's full range, same session: **some
 change on screen, no change in the light spilling from the panel cable.**
-Unaided visual, not instrumented — the one claim here still resting on an
+Unaided visual, not instrumented - the one claim here still resting on an
 eyeball. It is, however, exactly what the log predicts: the on-screen change is
 digital (picture-quality gain in the DE/MIPS path, the `pq_custom.TSE` side)
 while the light engine is never addressed.
 
 **What this section establishes, and what it does not.** Every layer of the
-shipping firmware — boot0's U-Boot, the Linux PWM driver, and the projector
-app's own brightness control — fails to acquire a PWM, and the light runs at
+shipping firmware - boot0's U-Boot, the Linux PWM driver, and the projector
+app's own brightness control - fails to acquire a PWM, and the light runs at
 full brightness throughout. That is a complete account of the *vendor's
 software*.
 
 It is **not** a statement about the hardware, and this document spent a while
-treating it as one. The conclusion originally drawn here — that the only
+treating it as one. The conclusion originally drawn here - that the only
 surviving hypothesis was an off-board driver, leaving a purely physical question
-about where the light's two wires terminate — was wrong in both halves. The
+about where the light's two wires terminate - was wrong in both halves. The
 driver is on the mainboard (section 1), and the light dims from PB5 (status,
 top). Stock not using a capability is weak evidence that the capability is
 absent, and it was being read as strong.
@@ -124,9 +124,9 @@ absent, and it was being read as strong.
 
 - Board `HY200_QZ713DF_A1 20250304`, Allwinner **H713** (`QA206DA`), sun50iw12.
 - Panel: 1280x720 LVDS, driven via a MIPS coprocessor running vendor
-  `display.bin`. **This all works** — the panel renders correct images.
+  `display.bin`. **This all works** - the panel renders correct images.
 - The light engine is a separate module. **Its cable has only two conductors,
-  power and ground** (operator observation). It runs at **36 V** — corrected
+  power and ground** (operator observation). It runs at **36 V** - corrected
   2026-08-06; earlier text throughout said ~48 V, which was a guess. The AC/DC
   brick has two outputs: **12 V feeds the board, 36 V feeds the light**, and the
   36 V passes through the mainboard, arriving and leaving via the 2-pin `LED`
@@ -145,13 +145,13 @@ absent, and it was being read as strong.
   has thin signal-width traces and no adjacent power stage, so it is very
   unlikely to be the light engine feed; it matches the DT's indicator LEDs
   (`led0` on PL0 red, `led1` on PL1 blue).~~
-  **REFUTED 2026-08-06** — that header *is* the light's feed, and the indicator
+  **REFUTED 2026-08-06** - that header *is* the light's feed, and the indicator
   LEDs are board-mounted with no connector at all. See section 3, inference 3.
 - `PB5` is `panel_bl_en` and is **shared with fan power**. It is the enable of
   the boost converter feeding the light, and `h713_disp bl-gpio` modulates it
   deliberately.
 
-  **The old warning here — "never drive it low, thermal risk" — had the
+  **The old warning here - "never drive it low, thermal risk" - had the
   reasoning backwards.** Driving PB5 low turns the light *and* the fan off
   together, which is the safe combination. The real hazard is the opposite end:
   **sustained low duty**, where the light still emits while the fan runs at the
@@ -184,20 +184,20 @@ cannot be dimmed", and only the second one was resting on the missing driver.
 | the PWM register map is mainline `pwm-sun20i-d1` | the counter wrap at 960 confirms `PERIOD[31:16]` is *entire − 1*, not an active count |
 | PB4's `pwm2` function is **mux 3** | shipping DTB `muxsel = <0x03>`, upstream mainline H616 table, and patch 0018 all agree |
 | driving that correct, running PWM changes brightness **not at all** | bench run 2026-08-05, full-white field, panel initialised and rendering |
-| the MIPS firmware cannot drive a PWM | exhaustive effective-address scan of all 240,266 instructions in `display.bin`: **zero** accesses to `0x02000000`–`0x02002000` (PIO/PWM/CCU). Run twice, second time preserving callee-saved registers across `jal` |
+| the MIPS firmware cannot drive a PWM | exhaustive effective-address scan of all 240,266 instructions in `display.bin`: **zero** accesses to `0x02000000` - `0x02002000` (PIO/PWM/CCU). Run twice, second time preserving callee-saved registers across `jal` |
 | `Thal_Vp_SetBacklightLevel` is a non-blocking post that reports success unconditionally | worker `0x8b148ca4` has no conditional branch and ends `addiu $v0,$zero,1`; it queues `{opcode 2, level}` to the `app_bottom` thread via `IThread` vtable slot 3 with timeout 0 |
 | the vendor kernel has **no backlight support at all** | vendor `vmlinux` (ARM 32-bit 5.4.99, full DWARF): zero backlight-class symbols, zero references to any `panel_*` property, no `Thal_Vp`/`SetBacklight` strings |
 | stock sets the backlight once, in U-Boot fastlogo | stock U-Boot contains `pwm_request`, `sunxi_pwm_pin_set_state`, `Display fastlogo finish!`, and reads the `panel_pwm_*` / `[PWMSetting]` keys |
 | the shipping DTB's backlight config is ch2 / 25 kHz / active-high / 75 | `sunxi.fex` from the retail OTA: `panel_pwm_ch=2`, `panel_pwm_freq=0x61a8`, `panel_pwm_pol=0`, `panel_backlight=0x4b` |
-| **`pwm5` cannot be muxed on this product** | `sunxi.fex` has a `pwm5@2000c15` controller node but **no pwm5 pin group**; pin groups exist only for pwm0–pwm4. Stock calls `sunxi_pwm_pin_set_state`, which needs one |
+| **`pwm5` cannot be muxed on this product** | `sunxi.fex` has a `pwm5@2000c15` controller node but **no pwm5 pin group**; pin groups exist only for pwm0-pwm4. Stock calls `sunxi_pwm_pin_set_state`, which needs one |
 
 **Net:** the only backlight configuration stock can successfully apply is
-channel 2 / PB4 / 25 kHz / active high — which is exactly what we now run, with
+channel 2 / PB4 / 25 kHz / active high - which is exactly what we now run, with
 the PWM verified live, and it does nothing.
 
 **Why it does nothing, established 2026-08-06:** PB4 is not connected to
 anything that reaches the light. The converter's control is PB5, and PB4's
-waveform — correct in every respect the rows above measure — has no path to the
+waveform - correct in every respect the rows above measure - has no path to the
 hardware. Every row in this table stands; the inference drawn from the fourth
 one, that a running PWM with no optical effect means the light cannot be
 dimmed, does not. It means *that pin* does not reach it.
@@ -211,7 +211,7 @@ A reviewer should attack these first.
 1. ~~**That `panel_config.ini` is not a runtime input.**~~ **REFUTED
    2026-08-06.** It is a runtime input: the vendor's U-Boot reads it from
    `Reserve0` (after trying `/oem`), and its `pwm_channel = 5` is what reaches
-   `pwm_request` — which then fails, because channel 5 has no pin group. Both
+   `pwm_request` - which then fails, because channel 5 has no pin group. Both
    halves of the old argument were wrong in the same direction: the file *is*
    loaded, and "channel 5 could not work anyway" was true but irrelevant, since
    stock asks for it regardless and simply fails. The shipping DTB's
@@ -223,7 +223,7 @@ A reviewer should attack these first.
    **REFUTED 2026-08-06, by two independent facts from the operator:** that
    connector *is* the light engine's feed, and the indicator LEDs are mounted on
    the board itself with no connector at all. The reasoning that produced the
-   wrong answer — thin traces, no adjacent power stage — was a correct
+   wrong answer - thin traces, no adjacent power stage - was a correct
    *observation*: photo `IMG_0362` shows the `LED` header beside `IR` with only
    chip passives around it. A 2-pin JST at ~1 A does not need wide traces, and
    the absence of a driver beside it means something else: the rail arrives
@@ -232,16 +232,16 @@ A reviewer should attack these first.
    **The supply is a dual-output AC/DC brick: 12 V for the board, 36 V for the
    light** (not the ~48 V assumed throughout this document), and the 36 V enters
    the mainboard and leaves again through this connector. That is why no boost
-   converter or LED driver was ever found — none is needed.
+   converter or LED driver was ever found - none is needed.
 
    **There is a high-side switch in the 36 V path** (continuity, board
    unpowered, 2026-08-06): the return pin is uninterrupted to board ground, and
-   **the positive is not** — something sits between the 36 V input and the
+   **the positive is not** - something sits between the 36 V input and the
    connector's `+`. That is almost certainly what `panel_bl_en` on PB5 drives.
 
    This separates two claims that had been running together. *The shipping
    firmware never dims this light* is established (section 0). *The hardware
-   cannot dim it* is *not* — there is a switching element in the light's supply,
+   cannot dim it* is *not* - there is a switching element in the light's supply,
    and if it is a MOSFET its gate is a dimming lever the vendor never used.
 
    Open, and the next thing to chase:
@@ -259,7 +259,7 @@ A reviewer should attack these first.
      stays on PB5, the light's gate stage moves to PB4.
 4. **That the waveform physically reaches the PB4 pad.** The counter proves the
    channel generates internally. Nothing has measured the pin. The PIO data
-   register cannot answer this — it reports the output latch, not the pad
+   register cannot answer this - it reports the output latch, not the pad
    (proof: PC's data register reads `0x00000000` while the eMMC bank on PC is
    actively in use).
 
@@ -272,21 +272,21 @@ informative.
 
 - **"The PWM register map was wrong in four places."** False. The original map
   (mainline `pwm-sun20i-d1`) was correct; it was changed to match
-  `pwm-sun8i.c`/patch 0007 and that broke it — a block dump then showed
+  `pwm-sun8i.c`/patch 0007 and that broke it - a block dump then showed
   `0x02000c40 = 0`, `0x02000c80 = 0` and a static counter. Reverted. The
   evidence cited for patch 0007, a live capture of `PERIOD2 = 0x03BF03C0`, is
   **degenerate**: 959 vs 960 reads as 25 kHz at ~100% duty under *either* field
   order, so it cannot discriminate between the layouts.
-- **"Stock uses PWM channel 5."** Overstated, then withdrawn — **and then
+- **"Stock uses PWM channel 5."** Overstated, then withdrawn - **and then
   confirmed on hardware 2026-08-06**: `pwm5 request for fastlogo fail!`. The
   original claim was right and the withdrawal was wrong. The withdrawal rested
   on the shipping DTB's `panel_pwm_ch=2` being "stronger evidence", but the DTB
   is not what the fastlogo path reads; `panel_config.ini` is. This question
   flipped three times across two sessions, and only running the code settled
   it. **Static evidence about which of two config sources wins is not evidence
-  at all — only the runtime knows.**
+  at all - only the runtime knows.**
 - **"PWM2/PB4 verifiably does not dim this panel" (commit `ec1d759`).** The
-  observation was real but the conclusion was not earned — at the time PB4 was
+  observation was real but the conclusion was not earned - at the time PB4 was
   muxed to 2 instead of 3, so the waveform never reached the pad. The result
   only became meaningful after the mux fix.
 - **"`0x8b253570` is never written, so the backlight service is NULL."** Static
@@ -302,7 +302,7 @@ compared it against the vendor's own pin table.
 
 ## 5. What would actually settle it
 
-**All four items are now moot** — kept only to show what the question looked
+**All four items are now moot** - kept only to show what the question looked
 like before it was answered, and how far off the shortlist the answer sat. None
 of these four is what settled it; a three-second GPIO toggle did. Section 7 has
 the work that actually remains.
@@ -312,7 +312,7 @@ In rough order of cost.
 1. ~~**Trace the light's two wires to their other end.** If they reach a
    separate driver PCB, that board's control input is the real dimming path. If
    they reach the PSU directly, brightness is not electronically controllable
-   and this thread is over.~~ **Obsolete** — both branches were wrong. The
+   and this thread is over.~~ **Obsolete** - both branches were wrong. The
    driver is neither on a separate PCB nor absent: it is on this mainboard, and
    the light dims.
 2. ~~**DMM on PB4, DC mode, during `bl-sweep`.**~~ **Obsolete for this
@@ -322,7 +322,7 @@ In rough order of cost.
 3. **Trace `pwm_channel` into the backlight-create call in stock U-Boot**
    (`u-boot.fex`, Thumb, base `0x4a000000`, create call at `0x4a0255a0`,
    selector at `0x4a0239e0`). Settles inference #1. *Static, no hardware.*
-4. ~~**Boot stock and read its U-Boot console**~~ — **DONE 2026-08-06, see
+4. ~~**Boot stock and read its U-Boot console**~~ - **DONE 2026-08-06, see
    section 0.** The blocker was real but misdiagnosed: the vendor's boot package
    had been destroyed by this project's own 32-bit smoke-test FIT, flashed to
    raw LBA `0x4000` during early bring-up, which sat on top of both package
@@ -336,12 +336,12 @@ In rough order of cost.
 
 | what | where |
 | --- | --- |
-| bench command | `h713_disp panel-test 0x33 bl-sweep` — 6 steps, 100/75/50/25/0/100, white field, prints `CNT` twice per step and warns if static |
+| bench command | `h713_disp panel-test 0x33 bl-sweep` - 6 steps, 100/75/50/25/0/100, white field, prints `CNT` twice per step and warns if static |
 | our implementation | `external/u-boot/arch/arm/mach-sunxi/h713_mips.c`, `h713_disp_backlight_set()` |
 | board photographs | `local/board_images/` (53) |
 | retail OTA firmware | `~/Documents/projector_firmware/H713 Magcubic projector.20250922.093247/update.img` |
 | extracted stock boot parts | `local/stock-boot/` (`boot0_sdcard.fex`, `u-boot.fex`, `boot_package.fex`, `sunxi.fex`, `env.fex`) |
-| stock U-Boot (identical copy) | `local/mips-display/board-b-stock/u-boot-stock.bin` — sha256 matches `u-boot.fex` |
+| stock U-Boot (identical copy) | `local/mips-display/board-b-stock/u-boot-stock.bin` - sha256 matches `u-boot.fex` |
 | MIPS firmware | `local/mips-display/board-b-mips/display.bin` (MIPS32LE, VA `0x8b100000` = file offset 0 = ARM `0x4b100000`) |
 | chronological detail | `docs/mips-display-recovery.md`, top sections |
 
@@ -349,7 +349,7 @@ In rough order of cost.
 (`docs/flash.md` claimed one; it does not exist). `mmc dev 1;` must be on the
 same line as any `mmc read`/`write`, because a failed read leaves plausible
 looking stale DRAM and this has corrupted three results including a "backup".
-`backup_8020.bin` currently on `mmc 1:2` is 1.2 MB of uninitialised DRAM — not a
+`backup_8020.bin` currently on `mmc 1:2` is 1.2 MB of uninitialised DRAM - not a
 backup. And never drive PB5 low.
 
 ---
@@ -358,8 +358,8 @@ backup. And never drive PB5 low.
 
 Dimming via PWM-of-enable on PB5 **works but will not be used**: it dims by
 starving the boost converter, so the LED runs below its designed forward
-voltage, the usable window is a narrow 7–14 % duty that will drift with
-temperature and input rail, and — decisively — PB5 also powers the fan, so the
+voltage, the usable window is a narrow 7-14 % duty that will drift with
+temperature and input rail, and - decisively - PB5 also powers the fan, so the
 whole usable band starves cooling. `h713_disp bl-gpio` stays as a diagnostic,
 not an implementation.
 
@@ -369,14 +369,14 @@ converter then runs undisturbed at a steady 52.6 V, PB5 stays statically high,
 and the fan is unaffected. That is the isolation the enable-PWM approach cannot
 give.
 
-Module on hand: dual parallel MOSFETs, DC 4–60 V, 10 A / 600 W, trigger input
-3.0–24 V high-level or 0–0.6 V low-level. Comfortably over-specced for ~1 A at
+Module on hand: dual parallel MOSFETs, DC 4-60 V, 10 A / 600 W, trigger input
+3.0-24 V high-level or 0-0.6 V low-level. Comfortably over-specced for ~1 A at
 52.6 V, and 3.3 V drives it directly with no level shifter.
 
 **Constraints to honour when it is fitted:**
 
-- **Its PWM input is rated 0–2.5 kHz.** `H713_BL_PWM_HZ` is 25 kHz and DT patch
-  0032 uses `pwms = <&pwm 2 40000 0>` (40000 ns). Both must drop to ≤ 2.5 kHz —
+- **Its PWM input is rated 0-2.5 kHz.** `H713_BL_PWM_HZ` is 25 kHz and DT patch
+  0032 uses `pwms = <&pwm 2 40000 0>` (40000 ns). Both must drop to ≤ 2.5 kHz -
   1 kHz gives 2.5x margin and stays above flicker fusion. Driving the module's
   gate stage at 25 kHz would hold its FETs in the linear region for much of
   each cycle. Left at 25 kHz for now so the constant keeps matching the
@@ -384,7 +384,7 @@ Module on hand: dual parallel MOSFETs, DC 4–60 V, 10 A / 600 W, trigger input
 - **Establish whether the converter is CV or CC first**, by measuring the `LED`
   header with the light unplugged. Still ~52.6 V means constant-voltage and
   chopping the load is straightforward. Climbing or hiccuping means constant
-  current with the LED in the feedback path — and at ≤ 2.5 kHz the off-time is
+  current with the LED in the feedback path - and at ≤ 2.5 kHz the off-time is
   long enough for that loop to respond. The output capacitor then charges while
   the LED is disconnected (`dV = I·t/C`: at 0.7 A and 500 µs, a 10 µF cap rises
   ~35 V, a 100 µF cap ~3.5 V), and reconnecting drives an inrush through the

@@ -26,7 +26,7 @@ mmc write 0x50000000 0x10 0x40
 eigenen Flash und byte-identisch mit Sektor 16 **und** 256 des Dumps.
 
 **Die eMMC hat verschiedene Nummern:** im Stock-U-Boot `mmc dev 2`, in unserem
-`mmc dev 1`. `mmc dev 0` gibt es in beiden nicht — `sunxi_card0_probe` ist der
+`mmc dev 1`. `mmc dev 0` gibt es in beiden nicht - `sunxi_card0_probe` ist der
 SD-Slot und schlägt fehl.
 
 ## Auslesen und vergleichen
@@ -42,7 +42,7 @@ Leitung und die Ausgabe landet im falschen Fenster.
 
 `regdiff.py` liest beide Mitschnitte, legt sie adressweise übereinander und
 meldet jede Abweichung. Das war der Punkt: vorher habe ich einzelne Register
-verglichen, die ich mir **vorher ausgesucht** hatte — so findet man nur, was
+verglichen, die ich mir **vorher ausgesucht** hatte - so findet man nur, was
 man ohnehin vermutet.
 
 Die Referenz liegt in `re/captures/stock-reference.txt`.
@@ -69,7 +69,7 @@ Project id:0x30 version:21-12-14-0
 ```
 
 Und nebenbei, gegen unsere eigene Vermutung: `Failed to get bl id property`,
-`Failed to get pwm_id property` — **auch der Stock-Bootloader macht keine
+`Failed to get pwm_id property` - **auch der Stock-Bootloader macht keine
 Backlight-PWM.**
 
 ## Was danach noch offen ist
@@ -84,13 +84,13 @@ Der AFBD-Block, und dort nur Konfiguration, die wir nicht setzen:
 052800c0   00000a50   wir 00000250
 ```
 
-`05600178` unterscheidet sich zu Recht — das ist unsere eigene
+`05600178` unterscheidet sich zu Recht - das ist unsere eigene
 Framebuffer-Adresse. `05600184` und `05880000` sind laufende Zähler.
 
 ## Flash-Regel, teuer gelernt
 
 **Erst laden, den RAM prüfen, dann schreiben.** Ein `fatload` kann fehlschlagen
-(Stick nicht am Board, EHCI-Timeout) und `mmc write` schreibt trotzdem — dann
+(Stick nicht am Board, EHCI-Timeout) und `mmc write` schreibt trotzdem - dann
 landet uninitialisierter Speicher im Bootsektor:
 
 ```
@@ -102,5 +102,5 @@ mmc write 0x50000000 0x10 0x40
 Danach zurücklesen und vergleichen, **bevor** neu gestartet wird.
 
 Passiert es doch: **boot0 liegt doppelt**, bei LBA 16 und LBA 256. Das BROM
-weicht auf die zweite Kopie aus, und das Gerät bootet weiter — auf dem Stand,
+weicht auf die zweite Kopie aus, und das Gerät bootet weiter - auf dem Stand,
 der dort liegt. Genau das ist am 31.08. passiert und hat die Sitzung gerettet.

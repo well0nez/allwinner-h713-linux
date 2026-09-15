@@ -1,12 +1,12 @@
-# S40 — Vorarbeit Standby Stufe 2: ARISC-Reste und die MIPS-Frage
+# S40 - Vorarbeit Standby Stufe 2: ARISC-Reste und die MIPS-Frage
 
 Stand 09.09.2026. Rein statisch, kein Board, kein Bau, kein Netz. Grundlage:
 [`104-plan-standby-stufe2.md`](../104-plan-standby-stufe2.md), [`S39`](S39-re-stock-standby-ablauf.md) §1/§4/§5/§6,
 [`S35`](S35-re-arisc-standby-led-key.md).
 
 **Herkunft:** Der erste Durchlauf wurde nach ~40 min abgebrochen, bevor er schreiben konnte.
-Alles unter §1–§3 und §4.2/§4.3 ist **aus dem Transkript rekonstruiert** und, wo als „nachgeprüft"
-markiert, in dieser Sitzung noch einmal am Original belegt. §4.1 und §5–§7 sind neu.
+Alles unter §1 - §3 und §4.2/§4.3 ist **aus dem Transkript rekonstruiert** und, wo als „nachgeprüft"
+markiert, in dieser Sitzung noch einmal am Original belegt. §4.1 und §5 - §7 sind neu.
 
 **Adressregel wie S35/S39:** Blob-Offset = AR100-Adresse = Adresse im Disassemblat.
 `:N` = Zeile in `analyse/arisc-frame/full-disasm.txt`, es gilt `N = Adresse/4 + 1` (nachgeprüft).
@@ -28,18 +28,18 @@ markiert, in dieser Sitzung noch einmal am Original belegt. §4.1 und §5–§7 
 |---|---|---|
 | `0x5fd0` :6101 | `0x5b84` :5858 | Freigeben: `base+0x40`/`+0x44` Bit setzen; IRQ 0 zusätzlich `base+0x10 = 1` |
 | `0x6028` :6155 | `0x5d68` :5979 | Feld in `base+0x50`/`+0x54` löschen und aus `r4` neu setzen |
-| `0x6040` :6161 | `0x5e2c` :6028 | Dasselbe in `base+0xc0`/`+0xc4` — der Pfad, den `0xc830` benutzt |
-| `0x6000` :6145 | — | `[base+0x0c] = r3`; Bit 0 in `base+0x50` setzen |
+| `0x6040` :6161 | `0x5e2c` :6028 | Dasselbe in `base+0xc0`/`+0xc4` - der Pfad, den `0xc830` benutzt |
+| `0x6000` :6145 | - | `[base+0x0c] = r3`; Bit 0 in `base+0x50` setzen |
 
 **`0xc830` ist im Standby-Pfad wirkungslos** (nachgeprüft): `0xc7c8` (:12787-12791) ist
 `return (x == 0xffffffe0) ? 0 : −1`; übergeben wird ihm aber Feld A = `p[0] & 0x3ff`, also
-`0…1023` — der Vergleich trifft nie, `0xc830` kommt nie zu `0x6040`. Freigeschaltet wird die
+`0…1023` - der Vergleich trifft nie, `0xc830` kommt nie zu `0x6040`. Freigeschaltet wird die
 Weckquelle von den drei Aufrufen **danach** (`0x6058`, `0x5fd0`, `0x6028`, §2). Ob `−32` eine
 Sentinel-Kennung eines anderen Aufrufers ist oder der Zweig tot: am Gerät prüfen (R13).
 
 ---
 
-## 2. `set_wakeup_src` — die Felder von `p[0]` (Aufgabe A)
+## 2. `set_wakeup_src` - die Felder von `p[0]` (Aufgabe A)
 
 Handler ab `0xc994` (:12902). `r16 = p[0]` (:12903-12905).
 
@@ -59,15 +59,15 @@ Handler ab `0xc994` (:12902). `r16 = p[0]` (:12903-12905).
 `{ Typ = Bits 31..30, C = Bits 29..20, B = Bits 19..10, A = Bits 9..0 }`.
 
 * **A** ist die Quellenkennung. Sie geht durch `0xc768` (:12763), das die Tabelle bei **`0x15a40`**
-  durchsucht — Paare à 8 Byte `{IRQ-Nummer, Quelle + 0x20}`, bis zu 14 Einträge — und die
+  durchsucht - Paare à 8 Byte `{IRQ-Nummer, Quelle + 0x20}`, bis zu 14 Einträge - und die
   **IRQ-Nummer** liefert (:12763-12783, Schlüsselbildung `r3 + 0x20` :12768). Dieselbe Tabelle
   liest der ISR `0xc864` (:12826) rückwärts: er vergleicht die IRQ-Nummer gegen Wort 0, nimmt
   Wort 1, zieht `0x20` ab (:12834-12852) und schreibt das Ergebnis nach **`0x17114`**
-  (:12855-12856) — das Weckgrund-Wort, das die ARISC nach S39 §0 an den ARM zurückmeldet.
+  (:12855-12856) - das Weckgrund-Wort, das die ARISC nach S39 §0 an den ARM zurückmeldet.
   Findet er nichts, schreibt er `0xffff` (:12852).
 * **B** und **C** sind zwei 10-bit-Parameter der Quelle. Sie werden zusammen mit A als
   3-Wort-Block an `0xc830` gereicht, das aber **nur `arr[0]` liest** (:12814) und damit nichts
-  tut (§1). B und C werden im Stock also entgegengenommen und im Standby-Pfad nicht ausgewertet —
+  tut (§1). B und C werden im Stock also entgegengenommen und im Standby-Pfad nicht ausgewertet -
   vermutlich Pegel/Flanke und Entprellung für Quellen, die dieser Zweig nicht bedient.
   **Für unseren Nachbau: 0 setzen.**
 * **Typ 3** ist kein IRQ, sondern ein **Weck-Zeitgeber**: `p[0] & 0x3fffffff` wird zur Periode des
@@ -83,7 +83,7 @@ Sprung nach `0xc978` (Timer stoppen) (:13872-13880).
 
 ---
 
-## 3. Baut der Stock-BL31 wirklich Typ `0x22`? — **Ja, bewiesen** (Aufgabe A)
+## 3. Baut der Stock-BL31 wirklich Typ `0x22`? - **Ja, bewiesen** (Aufgabe A)
 
 `analyse/arisc/monitor.asm`, Funktion **`0x66b4`** (Zeile 6541 ff.):
 
@@ -100,10 +100,10 @@ Sprung nach `0xc978` (Timer stoppen) (:13872-13880).
 Das ist **genau der 5-Wort-Block** `{mpidr, entrypoint, cpu_state, cluster_state, system_state}`
 aus S39 §1.3. Die Senderoutine `0x60a0` (Zeile 6259 ff.) belegt auch den Rahmen:
 sie schreibt das Kopfwort `*x19` nach **`0x0300347c`** (Zeile 6296-6300), danach das Byte
-`x19+0x4` (`count`) und dann `count` Wörter aus `*(x19+0x20)` — jeweils mit Warteschleife auf
+`x19+0x4` (`count`) und dann `count` Wörter aus `*(x19+0x20)` - jeweils mit Warteschleife auf
 `0x0300346c` ≠ 8 (FIFO voll). Antwort wird aus `0x0300307c` gelesen, nachdem `0x0300306c` ≠ 0 ist
 (Zeile 6339-6350). Damit ist auch S39 §1.2 bestätigt: **auf der Leitung liegen Kopfwort, `count`,
-Datenwörter — Port 3.**
+Datenwörter - Port 3.**
 
 **Zwei Aufrufer** von `0x66b4`:
 
@@ -130,13 +130,13 @@ Im gesamten Disassemblat (44032 Zeilen) kommt **keine** MIPS-Adresse vor:
 | DRAM-Fenster `0x4b10…`, `0x4be0…`, `0x4bf4…`, `0x4d94…`, `0x4e30…` | je **0** |
 | **Positivkontrolle:** `l.movhi …,0x0200` (CCU) | **20** Treffer, z. B. `0x02001010`, `0x02001020`, `0x02001028`, `0x0200171c`, `0x02001540`, `0x0200180c` |
 
-Die Messung könnte einen Treffer zeigen — sie zeigt nur keinen für die MIPS.
+Die Messung könnte einen Treffer zeigen - sie zeigt nur keinen für die MIPS.
 **Die ARISC hält die MIPS weder an noch startet sie sie.** Sie kann es auch nicht sinnvoll:
 `vdd-cpu`, `vdd-sys`, `vcc-pll` und `vcc-dram` liegen im Stock-`standby_param` alle auf demselben
 Pin `PL6` (`re/vendor/HY310/extracted/dtb_extracted/hy310-board.dts`:2548-2558), der Kern bleibt
 also unter Spannung, weil das DRAM es muss.
 
-### 4.2 Der Stock erledigt es im Kernel — und zwar vollständig
+### 4.2 Der Stock erledigt es im Kernel - und zwar vollständig
 
 `re/vendor/HY310/extracted/kallsyms.txt` (UTF-16LE) hat den kompletten Satz:
 
@@ -147,18 +147,18 @@ also unter Spannung, weil das DRAM es muss.
 | `mipsloader_probe` | `c05d4ec8` | 488 B | 26780 |
 | `mips_powerdown` | `c05d50c0` | 244 B | 26782 |
 | `mipsloader_suspend` | `c05d51b4` | **44 B** | 26783 |
-| `mipsloader_pm_ops` | `c0ea9300` | — | 55746 |
+| `mipsloader_pm_ops` | `c0ea9300` | - | 55746 |
 
 (Größen = Abstand zum nächsten Symbol, die Tabelle ist nach Adresse sortiert.) 44 Byte sind
 Prolog + ein Aufruf + Rücksprung: **`mipsloader_suspend` ist ein Mantel um `mips_powerdown`,
 `mipsloader_resume` einer um `mips_reset`.** Die einzigen `request_firmware`-Symbole im Stock sind
-der Kern-Lader (`c05c0458`-`c05c0fb8`, :26319-26331) und eine Kopie in `[ge2d_dev]` (:126119) —
+der Kern-Lader (`c05c0458`-`c05c0fb8`, :26319-26331) und eine Kopie in `[ge2d_dev]` (:126119) -
 in `c05d49xx…c05d51xx` keines. Das Abbild kommt über `mipsloader_ioctl` (`c05d51e0`, :26784) aus
 dem Userspace, wie in `legacy/drivers/Archived/sunxi-mipsloader.c`:249-307 (`request_firmware` +
 `memcpy_toio`) und :318-327 (Reset `MIPS_REG_CONTROL` 0x01 → 0x00).
 
-Die Nachbarn haben ebenfalls PM-Rückrufe — `cpu_comm_pm_ops` (:123948), `tvtop_runtime_pm_ops`
-(:129955), `dec_suspend`/`dec_resume` (:125481/:125497) —, aber **die eigentliche Arbeit steckt
+Die Nachbarn haben ebenfalls PM-Rückrufe - `cpu_comm_pm_ops` (:123948), `tvtop_runtime_pm_ops`
+(:129955), `dec_suspend`/`dec_resume` (:125481/:125497) - , aber **die eigentliche Arbeit steckt
 im `mipsloader`** (Inhalte siehe §4.3).
 
 ### 4.3 Unser Baum hat davon nichts
@@ -169,11 +169,11 @@ im `mipsloader`** (Inhalte siehe §4.3).
 * **`cpu_comm` hat keine PM-Ops.** `platform_driver` mit nur `.probe`/`.remove`
   (`mainline/patches/kernel/0014-soc-sunxi-add-cpu-comm-ipc.patch`:2903-2911). Die Funktionen
   `cpu_comm_suspend`/`cpu_comm_resume` (:1997-2008) sind ein **Zähler**, den der ioctl setzt
-  (:1300, :1136) — kein Aufruf vom PM-Kern. Im Stock sind dieselben Namen echte Rückrufe an
+  (:1300, :1136) - kein Aufruf vom PM-Kern. Im Stock sind dieselben Namen echte Rückrufe an
   `cpu_comm_pm_ops` und deutlich größer (`bf0e35e4`, ~248 B; `bf0e388c`, 172 B; kallsyms
   :123893/:123901/:123948).
 * **`tvtop` und `decd` haben PM-Ops, die nichts leisten.**
-  `0012-misc-add-sunxi-tvtop.patch`:888-891 (`.suspend`/`.resume`/`.complete`), `.pm` :934 —
+  `0012-misc-add-sunxi-tvtop.patch`:888-891 (`.suspend`/`.resume`/`.complete`), `.pm` :934 -
   die Rückrufe protokollieren nur, `sunxi_tvtop_complete` ruft `sunxi_smc_refresh_hdcp()`
   (`legacy/drivers/tvtop/sunxi_tvtop_drv.c`:363-403, `.pm` :448).
   `0013-misc-add-sunxi-decd.patch`:36-37 hat nur `RUNTIME_PM_OPS` (`legacy/drivers/decd/decd_core.c`:31-32,
@@ -187,7 +187,7 @@ im `mipsloader`** (Inhalte siehe §4.3).
 * **Der Speicher überlebt.** `mips-firmware@4b100000` (0xe41000), `framebuf@4bf41000`,
   `decoder@4d941000`, `cpu-comm@4e300000` sind alle `no-map` (`0024-…-board.patch`:63-98).
   Selfrefresh hält den Inhalt; der Kernel fasst ihn nicht an.
-* **Die Startsequenz** (U-Boot, `h713_mips.c`): `h713_mips_release_reset()` :3541-3567 —
+* **Die Startsequenz** (U-Boot, `h713_mips.c`): `h713_mips_release_reset()` :3541-3567 -
   `0x02001600 = 0x80000002`, dann `0x0200160c` in den Stufen `0`, `0x00010000`, `0x00030000`,
   `0x00030001`, je 12 ms, Share-Register `0x03061024`/`0x03061028`, Bootadresse
   `0x03061030 = 0x4b100000`, zuletzt `0x0200160c = 0x00070001`. Anhalten:
@@ -197,10 +197,10 @@ im `mipsloader`** (Inhalte siehe §4.3).
 
 **Die MIPS kann den Selfrefresh nicht überleben, und die ARISC hält sie nicht an.** Code, BSS,
 Heap und der CPU_COMM-Bereich liegen im DRAM (§4.3), im Selfrefresh antwortet der Controller
-nicht, und ihr Takt bleibt an (§4.1) — sie liefe gegen ein stehendes DRAM. Der Stock löst das
+nicht, und ihr Takt bleibt an (§4.1) - sie liefe gegen ein stehendes DRAM. Der Stock löst das
 **vor** dem `WFI` auf der ARM-Seite (`mipsloader_suspend` → `mips_powerdown`) und danach mit
 `mipsloader_resume` → `mips_reset` (§4.2). Das Bild kommt im Stock also nicht von selbst zurück,
-sondern weil der Kernel den Coprozessor neu startet — und der Resume läuft nie durch U-Boot.
+sondern weil der Kernel den Coprozessor neu startet - und der Resume läuft nie durch U-Boot.
 
 ---
 
@@ -210,20 +210,20 @@ sondern weil der Kernel den Coprozessor neu startet — und der Resume läuft ni
 lassen" (physikalisch unmöglich), nicht „ARISC lädt neu" (die Firmware kennt die MIPS nicht,
 das wäre Firmware-Arbeit und widerspricht H4 „Stock-`scp.bin` unverändert").
 
-Konkret als neues Paket **H7** neben H1–H6:
+Konkret als neues Paket **H7** neben H1-H6:
 
 1. **Vor dem Suspend** (Reihenfolge des Stock): `hy310-tv` stoppt Capture und Audio (H5), dann
-   MIPS parken — `0x0200160c = 0` und `0x02001600 = 0`, das ist `h713_mips_stop()`.
+   MIPS parken - `0x0200160c = 0` und `0x02001600 = 0`, das ist `h713_mips_stop()`.
 2. **Nach dem Resume:** Abbild wieder herstellen. `display.bin`, die vier `.TSE` und das
    `cfg`-Fenster neu in die Carveouts schreiben (die U-Boot-Reihenfolge aus `h713_disp_load_tse()`
    :5933-5972 ist bindend), Workspace löschen wie `h713_mips_clear_workspace()`, dann die
-   Reset-Treppe aus §4.3. **Nur `mips_reset` ohne Neuladen ist nicht belegt** — unser eigener
+   Reset-Treppe aus §4.3. **Nur `mips_reset` ohne Neuladen ist nicht belegt** - unser eigener
    U-Boot-Kommentar (`h713_mips.c`:52-58 und :3670 ff.) sagt, dass ein nicht gelöschter
    BSS/Heap Läufe unreproduzierbar macht.
 3. **`cpu_comm` neu aufsetzen:** die ARM-Seite muss ihre Sitzung wegwerfen und wie beim Kaltstart
    initialisieren (heute nur über `force_init`, :2108/:2262). Ohne das zeigen Kanaltabelle,
    Sequenznummern und Rückruf-Slots auf einen Zustand, den es nicht mehr gibt.
-4. **Ort:** ein kleiner `h713-mipsloader`-Treiber mit `dev_pm_ops` — genau die Lücke, die der
+4. **Ort:** ein kleiner `h713-mipsloader`-Treiber mit `dev_pm_ops` - genau die Lücke, die der
    Stock mit `mipsloader_pm_ops` füllt. Ein `/dev/mem`-Werkzeug in `hy310-tv` ginge auch, muss
    aber die `no-map`-Carveouts erst abbilden und läuft nach `cpu_comm`.
 5. **Erste Messung ohne Bild:** Stufe 2 zuerst mit geparkter MIPS und dunklem Panel messen
@@ -236,9 +236,9 @@ Konkret als neues Paket **H7** neben H1–H6:
 |---|---|---|
 | **R7** | MIPS im gehaltenen DRAM | **Geklärt** (§4.4): sie läuft nicht weiter, muss neu gestartet werden. Aus der offenen Frage wird Paket H7. |
 | **R9** *(neu)* | `cpu_comm`-Zustand nach dem MIPS-Neustart: Kanaltabelle, Sequenzzähler, Rückruf-Slots (bekannter Slot-Leck-Pfad, Patch 0124) zeigen ins Leere | Neu-Init-Weg fehlt; heute nur `force_init` |
-| **R10** *(neu)* | Kein `mipsloader` in mainline — es gibt gar keine Stelle, die nach dem Resume laden könnte | Treiber oder Werkzeug muss erst entstehen |
+| **R10** *(neu)* | Kein `mipsloader` in mainline - es gibt gar keine Stelle, die nach dem Resume laden könnte | Treiber oder Werkzeug muss erst entstehen |
 | **R11** *(neu)* | U-Boots „ein Start je Netzzyklus": ein zweiter Lauf ohne Teardown initialisiert in einen halb abgebauten Zustand (`h713_mips.c`:10369 ff., :5717) | Teardown vor dem Suspend muss die Regel erfüllen |
-| **R12** *(neu)* | Panel-Sequenz beim Resume (PF6/PH16, LVDS, INCAP) — U-Boot macht das heute, der Resume kommt dort nie vorbei | Ablauf aus `h713_disp_run()` nachbauen |
+| **R12** *(neu)* | Panel-Sequenz beim Resume (PF6/PH16, LVDS, INCAP) - U-Boot macht das heute, der Resume kommt dort nie vorbei | Ablauf aus `h713_disp_run()` nachbauen |
 | **R13** *(neu)* | `0xc7c8` akzeptiert nur eine einzige Quellenkennung (§1) | Am Gerät gegen die echte Weckquelle prüfen, sonst wird nichts eingetragen |
 | R1 | `arisc_para` ab `+0x4c` | unverändert offen |
 | R2 | Rahmen `count`+Zeiger | **erledigt** durch §3: Kopfwort, `count`, `count` Datenwörter |
@@ -248,7 +248,7 @@ Konkret als neues Paket **H7** neben H1–H6:
 ## 7. Was noch offen ist
 
 * `0xc7c8`: warum nur `0xffffffe0`? (R13)
-* Felder **B**/**C** von `set_wakeup_src`: im Standby-Zweig ungenutzt — welcher andere Zweig liest sie?
+* Felder **B**/**C** von `set_wakeup_src`: im Standby-Zweig ungenutzt - welcher andere Zweig liest sie?
 * Ob `mips_reset` im Stock das Abbild mitkopiert: dazu müsste `c05d4cfc` aus dem Stock-`vmlinux`
   disassembliert werden (`boot.fex.gz`). Nicht in dieser Sitzung.
 * `0x0701033c` Bit 27..24, das die Warteschleife um den Doze herum setzt und löscht (§2).

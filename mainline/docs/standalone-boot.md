@@ -14,7 +14,7 @@ and point `bootcmd` at it.
 
 - `build/build.sh kernel` produces `build/out/h713-kernel.fit` (gzip Image +
   `sun50i-h713-hy200-qz713df-a1` DTB, load/entry `0x48000000`).
-- `boot_a` is **GPT partition 5**, start LBA `0x32400` (205824), **64 MiB** —
+- `boot_a` is **GPT partition 5**, start LBA `0x32400` (205824), **64 MiB** -
   the factory Android boot slot, unused by our stack, so we repurpose it as a
   raw FIT blob (7.7 MiB fits with room to spare).
 - `bootcmd` reads `boot_a` into DRAM and `bootm`s it. The rootfs is already on
@@ -53,7 +53,7 @@ saveenv
 reset
 ```
 
-That's it — the board now boots to a Debian root login on its own.
+That's it - the board now boots to a Debian root login on its own.
 
 ## Why these values
 
@@ -61,7 +61,7 @@ That's it — the board now boots to a Debian root login on its own.
   the kernel's own load/entry (`0x48000000`, decompressed ~17 MiB), and every
   `reserved-memory` region in the DTS (all at `0x4b…`/`0x78…`). U-Boot reads
   the FIT here, `bootm` decompresses the kernel down to `0x48000000` and hands
-  over — arm64 needs no `fdt_high`/`initrd_high` juggling.
+  over - arm64 needs no `fdt_high`/`initrd_high` juggling.
 - **`part start/size … 5`** reads `boot_a` by partition number (robust to the
   exact LBA); the raw sectors are `0x32400` + `0x20000` if you prefer to
   hardcode `mmc read 0x50000000 0x32400 0x20000`.

@@ -160,7 +160,7 @@ if [ -e "$R/lib/firmware/regulatory.db-upstream" ]; then
 fi
 
 # AIC8800 Bluetooth: attach the HCI UART on ttyS1 (H4, 1.5 Mbaud). Use NO host
-# flow control — mainline dw-apb-uart RTS/CTS blocks the controller (HCI cmd
+# flow control - mainline dw-apb-uart RTS/CTS blocks the controller (HCI cmd
 # timeout), whereas 'noflow' works. hciattach returns 0 even when the controller
 # is mute, so the loop verifies 'hciconfig hci0 up' and retries.
 #

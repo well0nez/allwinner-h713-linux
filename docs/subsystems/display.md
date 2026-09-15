@@ -12,7 +12,7 @@ looks strange about this SoC.
 | MIPS (`display.bin`) | capture (INCAP `0x06940000`), window chain, scaler, panel output | everything between the source and the imager |
 
 The ARM *can* read and even write the MIPS-owned registers. It does not help: without the firmware's own
-recalculation the write is either ignored or harmful. Measured — a 960×540 processing window at 1080p
+recalculation the write is either ignored or harmful. Measured - a 960×540 processing window at 1080p
 changes nothing on screen, and hand-resetting the scaler after a firmware rebuild does not bring back a
 doubled image. The only lever that works is making the firmware recompute.
 
@@ -20,7 +20,7 @@ doubled image. The only lever that works is making the firmware recompute.
 
 1. **U-Boot** loads `display.bin` plus the panel tables, reserves the SMM heap the firmware allocates
    from, and starts the MIPS (`h713_disp init`). Without the heap, the firmware's `SetSource` dereferences
-   a null pointer and takes the ARM down with it — that cost three sessions to find.
+   a null pointer and takes the ARM down with it - that cost three sessions to find.
 2. **Linux** binds `sun50i-h713-afbd`, which registers a KMS device (`card1`): one CRTC with `GAMMA_LUT`
    and `CTM`, one plane that scans out the HDMI capture ring, and an `aspect` property for letter- and
    pillarboxing.
@@ -33,7 +33,7 @@ partitions cannot break them.
 
 ## What the KMS device gives you
 
-Anything that can draw on DRM/KMS works — `modetest`, a compositor, mpv. The shipped image runs `h713-tv`
+Anything that can draw on DRM/KMS works - `modetest`, a compositor, mpv. The shipped image runs `h713-tv`
 instead of a desktop because the projector's job here is the HDMI input, but nothing prevents a
 compositor from taking `card1`.
 

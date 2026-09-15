@@ -1,4 +1,4 @@
-# C2 — Der RPC-Verlust ist im Ruhezustand nicht messbar
+# C2 - Der RPC-Verlust ist im Ruhezustand nicht messbar
 
 07.09.2026, 13:40 · Board-Sitzung · Paket C, Vorarbeit zum neuen Plan
 
@@ -14,7 +14,7 @@ eingeschwungenen System (Kaltstart 13:10 abgeschlossen, `hy310-tv` läuft, Bild 
 Kein `no RETURN`, kein `ACK timeout` im dmesg. Davor bereits gemessen: 40 Rufe zwischen 20
 Anmelde-/Abmeldezyklen der Callback-Routine, ebenfalls fehlerfrei.
 
-`GetSource` ist ein reiner Lesevorgang und hat keine Nebenwirkung — deshalb sind 500 Rufe hier
+`GetSource` ist ein reiner Lesevorgang und hat keine Nebenwirkung - deshalb sind 500 Rufe hier
 möglich, ohne das Bild anzufassen.
 
 ## Was das heißt
@@ -23,7 +23,7 @@ möglich, ohne das Bild anzufassen.
 scheitern können, und es ist nicht gescheitert.
 
 Damit verengt sich der Suchraum: alle drei bisher beobachteten `-110` lagen im **Hochlauffenster**
-oder unmittelbar danach —
+oder unmittelbar danach -
 
 | Vorfall | Zeitpunkt |
 |---|---|
@@ -31,13 +31,13 @@ oder unmittelbar danach —
 | Init-Sequenz Schritt 17 `THal_Vp_DisableBlackScreen` | mitten in der Bring-up-Sequenz |
 | `SetSource(HDMI-1)` am Ende der Probe | ~0,2 s nach der EDID/HPD-Stufe |
 
-— und in genau diesem Fenster tut auch der **MIPS** noch seine eigene Arbeit, während ARISC die
+- und in genau diesem Fenster tut auch der **MIPS** noch seine eigene Arbeit, während ARISC die
 EDID/HPD-Folge fährt und der Anzeigetreiber den Descriptor veröffentlicht.
 
 ## Was daraus folgt, und was nicht
 
 **Folgt:** eine Messung im Ruhezustand kann das Problem nicht finden, egal wie viele Rufe man
-macht. Wer es reproduzieren will, muss es im Hochlauf messen — also über viele Kaltstarts, oder
+macht. Wer es reproduzieren will, muss es im Hochlauf messen - also über viele Kaltstarts, oder
 indem er die Nebenläufigkeit des Hochlaufs künstlich herstellt.
 
 **Folgt nicht:** dass die Nebenläufigkeit die Ursache ist. 500 Rufe schließen eine Rate von etwa

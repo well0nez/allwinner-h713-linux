@@ -10,8 +10,8 @@ Patch: `mainline/patches/kernel/0092-soc-sunxi-h713-cpu-comm-kernel-api.patch`.
 Der MIPS trägt HDMI-Empfang und Bildpipeline; alles, was er kann, ist eine
 `THal_Vp_*`-Fernprozedur über das Shared Memory. Bisher führte der einzige Weg
 dorthin über `/dev/cpu_comm`, also über ein Userspace-Programm. Die Treiber, die
-den Koprozessor wirklich brauchen — der V4L2-HDMI-RX-Treiber (Paket E) und der
-ARISC-Treiber (Paket B) —, bekommen mit diesem Patch einen direkten Weg.
+den Koprozessor wirklich brauchen - der V4L2-HDMI-RX-Treiber (Paket E) und der
+ARISC-Treiber (Paket B) - , bekommen mit diesem Patch einen direkten Weg.
 
 **Die Char-Devices bleiben, wie sie waren.** `/dev/cpu_comm`, `/dev/cpu_comm_fd`,
 alle ioctls, `read()`/`poll()` und das Shared-Memory-Protokoll sind unverändert;
@@ -43,12 +43,12 @@ Abhängigkeit übersetzt.
 `cpu_comm_unregister_callback()` steht nicht im Auftrag, ist aber Pflicht: ohne
 sie hinterlässt jedes entladene Modul einen Zeiger in der Tabelle.
 
-### `comp_id` — was das ist
+### `comp_id` - was das ist
 
 Eine Routine wird über eine 32-Bit-Zahl adressiert, nicht über ihren Namen. Die
 Zahl ist ein CRC-32 (LSB-first, Polynom `0xEDB88320`, **ohne** Vor- und
 Nachinvertierung) über den vollständigen Routinennamen, mit `0x00123456`
-vorbelegt — der Vendor nennt das `Trid_Util_Name2ID` (libUtility.so `@0x1DC61`).
+vorbelegt - der Vendor nennt das `Trid_Util_Name2ID` (libUtility.so `@0x1DC61`).
 Der Name, der gehasht wird, ist
 
 ```
@@ -97,20 +97,20 @@ Auf der Leitung landen sie in der 104-Byte-Nachricht so:
 Das ist dasselbe Layout, das `hdmi_seq.py` über `IOCTL_CALL` schreibt
 (dort `buf+64` = Anzahl, `buf+68…` = Werte, weil der ioctl den Zeiger auf
 `params` eine Struktur später ansetzt). **`+0x34` ist Argument 3 und kein
-pid-Feld** — die arm32-Vorlage hatte dort einen `tgid` abgelegt und damit den
+pid-Feld** - die arm32-Vorlage hatte dort einen `tgid` abgelegt und damit den
 dritten Ausgabezeiger von `Wce_GetWindow` zerstört; siehe doku/67, „Argument-ABI".
 
 Typinformation gibt es auf der Leitung nicht. Eine Routine, die einen Puffer
 nimmt, nimmt dessen **physische** Adresse als schlichtes `u32`, und der Puffer
 muss dort liegen, wo der MIPS ihn sieht. Beispiele aus `hdmi_seq.py`:
 
-* `THal_Vp_Init` — ParaCount 3, `Para[2]` = Staging-Adresse. Der Handler kopiert
+* `THal_Vp_Init` - ParaCount 3, `Para[2]` = Staging-Adresse. Der Handler kopiert
   55296 Byte aus seinem `.bss` dorthin; mit 0 ist das ein NULL-`memcpy` und reißt
   die Firmware mit. Benutzt wird Shmem + 4 MiB = `0x4E700000`
   (`hdmi_seq.py` Z. 75).
-* `THal_Vp_SetHDCP22Key` — ParaCount 2, `(0x4E336000, 912)`.
-* `THal_Vp_DisableBlackScreen` — ParaCount **0**, nicht 1.
-* `THal_Vp_SetSource` — ParaCount 1, `3` = HDMI-1.
+* `THal_Vp_SetHDCP22Key` - ParaCount 2, `(0x4E336000, 912)`.
+* `THal_Vp_DisableBlackScreen` - ParaCount **0**, nicht 1.
+* `THal_Vp_SetSource` - ParaCount 1, `3` = HDMI-1.
 
 Ergebnisse kommen genauso zurück: eine Anzahl und so viele Wörter.
 
@@ -144,7 +144,7 @@ und macht danach weiter, egal was war: `GetReturnbySessionId` meldet „keine
 passende Session" als Erfolg (Stock-Semantik, IDA `@0x59cc`), `*result` bleibt
 unberührt, die Funktion gibt 0 zurück. Eine Routine, die nichts zurückgibt, und
 ein Koprozessor, der nie geantwortet hat, sehen damit gleich aus. Für den
-ioctl-Pfad bleibt das so — er hat sich immer so verhalten und `IOCTL_CALL`
+ioctl-Pfad bleibt das so - er hat sich immer so verhalten und `IOCTL_CALL`
 verdeckt ohnehin jeden Fehler hinter `-EFAULT`. Ein Kernel-Aufrufer bekommt
 stattdessen `-ETIMEDOUT`.
 
@@ -156,7 +156,7 @@ int cpu_comm_call_ex(int comp_id, int *params, u32 *result,
                      unsigned int timeout_ms, bool strict);
 ```
 
-`CPUComm_CallEx()` ist der Aufruf mit `(0, false)` — Verhalten unverändert —,
+`CPUComm_CallEx()` ist der Aufruf mit `(0, false)` - Verhalten unverändert - ,
 `cpu_comm_call()` der mit `(timeout_ms, true)`.
 
 ---
@@ -176,7 +176,7 @@ cpu_comm_kernel_deliver((const void *)entry_base);      /* neu */
 ```
 
 **Reihenfolge: erst die Char-Devices, dann der Kernel-Handler.** Das ist keine
-Priorität und keine Bewertung — der Userspace-Pfad stand zuerst da und behält
+Priorität und keine Bewertung - der Userspace-Pfad stand zuerst da und behält
 seinen Platz. Beide sehen dieselbe 104-Byte-Nachricht, keiner kann den anderen
 unterdrücken, und keiner kann die Quittung an den MIPS verhindern, die direkt
 danach abgeht.
@@ -212,9 +212,9 @@ des Handlers; die API reicht rohe Wörter durch und deutet nichts.
 > **Diagnosedrucke** zählen dagegen ab 1: die `RX-CALL`-Zeile in
 > `cpu_comm_proto.c` („Para 1" für `+0x2c") und der Empfänger in `hdmi_seq.py`
 > („Para[1..4]"). Wer eine dmesg-Zeile gegen diese Doku hält, muss die um eins
-> verschieben — die Adressen stimmen, nur die Beschriftung zählt anders.
+> verschieben - die Adressen stimmen, nur die Beschriftung zählt anders.
 
-Die Kopie aus dem Shared Memory geht über `memcpy_fromio()` — die Region ist eine
+Die Kopie aus dem Shared Memory geht über `memcpy_fromio()` - die Region ist eine
 `ioremap()`-Abbildung, kein normaler Speicher.
 
 ### Regeln für Handler
@@ -234,35 +234,35 @@ Die Kopie aus dem Shared Memory geht über `memcpy_fromio()` — die Region ist 
 `comm_CallWorkAction()` las bisher einen Funktionszeiger aus `routine_info + 88`
 und sprang ihn an. Zwei Fehler übereinander, beide in doku/72 aufgeschrieben:
 
-1. `FindRoutineEx` füllt den Eintrag bei `+0/+2/+4/+8`, `+12..76` und `+80` —
+1. `FindRoutineEx` füllt den Eintrag bei `+0/+2/+4/+8`, `+12..76` und `+80` -
    die Bytes **88..95 bleiben Stack-Müll**. Das Sprungziel war also
    undefiniert; mal 0 (überlebt), mal ein Restwert (Tod). Das erklärt, warum
    manche Läufe minutenlang standen und andere sofort starben.
 2. Selbst am Offset, den der Vendor wirklich benutzt (`+80`), steht dort ein
    **MIPS-kseg0-Zeiger** (`0x8b10abb8` am Gerät). Die Routinentabelle enthält
-   Handler-Adressen des MIPS und die Namen, die der Userspace angemeldet hat —
+   Handler-Adressen des MIPS und die Namen, die der Userspace angemeldet hat -
    ein ARM-Kernel-Funktionszeiger stand dort nie.
 
 Es gab dort also nichts, was aufzurufen sich lohnt. Da der Kernel-Empfang jetzt
 einen eigenen, richtigen Mechanismus hat, fliegt der Sprung raus, statt ihn zu
-umzäunen. Die Quittung an den MIPS bleibt unverändert — genau so verhielt sich
+umzäunen. Die Quittung an den MIPS bleibt unverändert - genau so verhielt sich
 das Modul, das am 06.09. auf dem Tisch lief (dort war der Sprung über den
 Modulparameter `callwq_kernel_cb=0` abgeschaltet).
 
 > **Achtung, das ist zugleich eine Rückstufung, die ohne diesen Patch bliebe.**
 > Die Schutzmaßnahme vom 06.09. steht **nur** im damaligen Baubaum und im
-> Diagnosemodul `/root/hy310-cpu-comm-callwq-test.ko` — **nicht** in
+> Diagnosemodul `/root/hy310-cpu-comm-callwq-test.ko` - **nicht** in
 > `patches/kernel/0014-soc-sunxi-add-cpu-comm-ipc.patch`. Der Nachtbau von
 > Paket A (`build/linux-6.18.38-e62e8ee3…`) enthält sie folglich nicht.
 > Einzelheiten im Teillog.
 
 ### Muss die Routine im Shmem angemeldet sein?
 
-**Ja — dieser Abschnitt sagte bis zum 07.09. das Gegenteil und war falsch.**
+**Ja - dieser Abschnitt sagte bis zum 07.09. das Gegenteil und war falsch.**
 Richtigstellung samt Belegen: `doku/nachtlog/CALLBACK-luecke.md`.
 
 Kurz: die Zustellung auf dem ARM hängt tatsächlich an `command_action` und nicht
-an `FindRoutine` — nur beantwortet das die falsche Frage. Der MIPS sucht den
+an `FindRoutine` - nur beantwortet das die falsche Frage. Der MIPS sucht den
 Empfänger vor dem Senden in der Shmem-Routinentabelle und bricht ohne Eintrag mit
 `-3` ab, bevor irgendetwas auf die Leitung geht (`SendComm2CPUEx`, Schritt 2).
 Der zweite frühere „Beleg", doku/72 Lauf 18, hing an der Ursachenthese, die
@@ -271,7 +271,7 @@ Lauf 21 desselben Dokuments widerlegt hat.
 Seit `0092` in der jetzigen Fassung meldet `cpu_comm_register_callback()` die
 Routine selbst an (`AddInRoutine` + `Comm_AddNewChannel`, wie `IOCTL_INSTALL_RT`)
 und nimmt dafür den **Namen** statt der id. Phase 2 aus `hdmi_seq.py` ist für den
-Kernel-Weg damit nicht mehr nötig — und für eine Abnahme des Kernel-Wegs sogar
+Kernel-Weg damit nicht mehr nötig - und für eine Abnahme des Kernel-Wegs sogar
 schädlich, weil sie dieselben Deskriptoren aus dem Userspace anlegt und den
 Befund verdeckt.
 
@@ -290,7 +290,7 @@ Befund verdeckt.
 **Gegenseitiger Ausschluss.** `cpu_comm_call()` und `IOCTL_CALL` nehmen dieselbe
 `cpu_comm_call_mutex`. Unbestritten kostet das nichts und ändert am ioctl-Verhalten
 nichts; verhindert wird, dass zwei Aufrufe sich in `SendComm2CPUEx` verschränken.
-Dessen eigener Riegel — die Sequenz-Semaphore bei `seq_base + 8` bzw. `+ 1036` —
+Dessen eigener Riegel - die Sequenz-Semaphore bei `seq_base + 8` bzw. `+ 1036` -
 gibt nach 100 ms auf und macht **trotzdem weiter** („sem timeout, bypassing",
 `cpu_comm_proto.c` Schritt 5). Solange es nur einen Aufrufer gab, war das
 folgenlos. Ab jetzt gibt es zwei.
@@ -326,7 +326,7 @@ cat                           /sys/kernel/debug/cpu_comm/call
 echo '0xeaf13de5 3'         > /sys/kernel/debug/cpu_comm/call   # dasselbe roh
 ```
 
-Ein fehlgeschlagener Aufruf lässt den `write()` mit demselben Fehler scheitern —
+Ein fehlgeschlagener Aufruf lässt den `write()` mit demselben Fehler scheitern -
 `echo` meldet ihn, und die Zeile steht zusätzlich in `dmesg`
 (`cpu_comm: debugfs call …`).
 
@@ -350,12 +350,12 @@ angemeldet haben; die stehen dort als `(driver)`.
 
 **Gesperrte Routine:** `THal_Vp_EnableScreenCover` (`0x0152F134`) verklemmt
 CPU_COMM; nur ein Stromzyklus hilft (doku/67). Der Treiber führt **keine**
-Sperrliste — `hdmi_seq.py` tut das und bleibt dafür zuständig. Wer über debugfs
+Sperrliste - `hdmi_seq.py` tut das und bleibt dafür zuständig. Wer über debugfs
 ruft, ruft ungeschützt.
 
 ---
 
-## 5. Pflichtliste Punkt #6 — „ACK ohne Cache-Sync gegen Stock"
+## 5. Pflichtliste Punkt #6 - „ACK ohne Cache-Sync gegen Stock"
 
 **Ergebnis: kein fehlender Cache-Sync. Als Stock-gleichwertig abgehakt, ohne
 Codeänderung am ACK-Pfad.** Die Begründung im Einzelnen, weil der Punkt seit
@@ -401,7 +401,7 @@ Gegenüberstellung:
 | Reihenfolge | prüfen → verzögern | verzögern → prüfen |
 | Semaphore bei `+112` wecken | in `ack_action` | in `ack_action` |
 
-Es fehlt also **nicht** die Prüfung — sie findet an derselben Adresse und mit
+Es fehlt also **nicht** die Prüfung - sie findet an derselben Adresse und mit
 demselben Bit statt, nur eine Verzögerung später. Dass Stocks `ack_action` das
 Bit nicht noch einmal prüft (unser Kommentar vom 21.04. vermutete einen
 „vorherigen Verbraucher"), ist damit erklärt: **der vorherige Verbraucher ist
@@ -416,7 +416,7 @@ tatsächlich gelöscht zurückgelesen wird, bevor du weitergehst. Das setzt eine
 Cache voraus, der etwas zurückhalten könnte.
 
 `ShMemAddrBase` entsteht in `cpu_comm_init()` aus `ioremap()`. Auf arm64 ist das
-`PROT_DEVICE_nGnRE` (`arch/arm64/include/asm/io.h`) — Device-Speicher, ungecacht
+`PROT_DEVICE_nGnRE` (`arch/arm64/include/asm/io.h`) - Device-Speicher, ungecacht
 und **non-Reordering**: ein Lesen derselben Adresse nach dem Schreiben kann das
 Schreiben nicht überholen und liefert den geschriebenen Wert. Die Schleife würde
 beim ersten Durchlauf enden. Genau dieses Argument steht schon im Baum, als
@@ -435,20 +435,20 @@ Fassung könnte ein ACK nur verlieren, wenn ein **zweites** ACK derselben Richtu
 einträfe, bevor das erste Work-Item gelaufen ist. Das ist strukturell
 ausgeschlossen: `SendComm2CPUEx` nimmt die Sequenz-Semaphore (`seq_base + 8`
 lokal, `+1036` entfernt), bevor es den Slot schreibt, und gibt sie erst nach
-`cpu_comm_sem_down_timeout(sem_ptr + 16, …)` wieder her — und genau dieses `up()`
+`cpu_comm_sem_down_timeout(sem_ptr + 16, …)` wieder her - und genau dieses `up()`
 macht `ack_action`. Es ist also höchstens ein ACK je Richtung unterwegs.
 
 Der einzige Weg, diese Invariante zu brechen, war der 100-ms-Bypass derselben
-Semaphore bei zwei unabhängigen Aufrufern — und den schließt dieser Patch mit
+Semaphore bei zwei unabhängigen Aufrufern - und den schließt dieser Patch mit
 `cpu_comm_call_mutex` (Abschnitt 3).
 
 ### Und die Daten, die der ACK-Pfad überhaupt liest
 
 Zwei Wörter: das Flag bei `+105` und die Semaphor-Referenz bei `+112`. Die
-Referenz hat der ARM **selbst** veröffentlicht — `SendCommLow(…, cc_ref(sem_ptr + 16))`
+Referenz hat der ARM **selbst** veröffentlicht - `SendCommLow(…, cc_ref(sem_ptr + 16))`
 legt sie im Schreib-Share-Seq bei `+24` ab; die Firmware spiegelt sie nur zurück
 und dereferenziert sie nie (ihr Signalprimitiv `0x8b15c27c` prüft auf NULL und
-gibt einen Fehler zurück — deshalb darf U-Boot dort auch 0 hinterlegen, siehe
+gibt einen Fehler zurück - deshalb darf U-Boot dort auch 0 hinterlegen, siehe
 `cc_ref` in `cpu_comm.h`). Ein veralteter Wert dort scheitert **laut**
 (`ack_action: ungueltige Semaphor-Referenz 0x…`), er kann nicht still etwas
 zerstören.
@@ -469,7 +469,7 @@ keine Vermutung, sondern folgt direkt aus den beiden Codestellen; es steht so
 auch als Warnung im vorhandenen Kommentar.
 
 Eine wirklich stock-förmige Fassung müsste beides zugleich verschieben. Sie ist
-möglich und wäre nicht falsch — sie wurde hier **nicht** gemacht, weil sie einen
+möglich und wäre nicht falsch - sie wurde hier **nicht** gemacht, weil sie einen
 heute funktionierenden Pfad umbaut für einen auf dieser Abbildung nachweisbar
 nicht vorhandenen Gewinn.
 
@@ -485,8 +485,8 @@ wieder eine Invalidierung."
 
 | Datei | Art |
 |---|---|
-| `include/linux/soc/sunxi/h713-cpu-comm.h` | neu — die öffentliche Schnittstelle |
-| `drivers/soc/sunxi/cpu_comm/cpu_comm_api.c` | neu — Umsetzung + debugfs |
+| `include/linux/soc/sunxi/h713-cpu-comm.h` | neu - die öffentliche Schnittstelle |
+| `drivers/soc/sunxi/cpu_comm/cpu_comm_api.c` | neu - Umsetzung + debugfs |
 | `drivers/soc/sunxi/cpu_comm/cpu_comm.h` | interne Deklarationen, `<linux/mutex.h>` |
 | `drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c` | `CPUComm_CallEx` → dünne Hülle um `cpu_comm_call_ex`; der kaputte Zeigeraufruf in `comm_CallWorkAction` entfällt |
 | `drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c` | eine Zeile: `cpu_comm_kernel_deliver()` |
@@ -498,6 +498,6 @@ Nicht angefasst: das Shared-Memory-Protokoll, die Semaphorenlage, `cc_ref`,
 `SendComm2CPUEx` (bis auf den Aufrufer-Riegel darum herum), der ACK-Pfad,
 `cpu_comm_user.c`, alle ioctls außer der Klammer um `IOCTL_CALL`, und die
 Zustellung an die Char-Devices (auch die doppelte für `entry_cmd > 4`, die
-`comm_CallWorkAction` zusätzlich macht — die bleibt, wie sie ist).
+`comm_CallWorkAction` zusätzlich macht - die bleibt, wie sie ist).
 
 Der Prüfbau steht in [nachtlog/C-cpu-comm.md](nachtlog/C-cpu-comm.md).

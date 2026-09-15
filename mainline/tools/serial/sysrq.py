@@ -6,12 +6,12 @@ A wedged board used to mean walking to the power switch. Kernels built with
 CONFIG_MAGIC_SYSRQ + MAGIC_SYSRQ_SERIAL with an empty trigger sequence, so a
 UART BREAK followed by one character is a sysrq.
 
-    sysrq.py h      # help — proves sysrq is listening, changes nothing
+    sysrq.py h      # help - proves sysrq is listening, changes nothing
     sysrq.py b      # reboot immediately, no sync (the way back from a wedge)
     sysrq.py s      # emergency sync
     sysrq.py w      # dump blocked (D-state) tasks
 
-It cannot help against a true hard lockup — if every CPU is spinning with
+It cannot help against a true hard lockup - if every CPU is spinning with
 interrupts disabled, nothing gets to run the handler, and the power switch is
 still the answer. Try `h` first: silence there means sysrq is not being reached.
 """

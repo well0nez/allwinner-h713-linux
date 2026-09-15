@@ -1,6 +1,6 @@
-# S9 — RE: TFD-Attribute, `VINCAP_ICSC` und der RGB-Ring nach dem VidDec-Neubau
+# S9 - RE: TFD-Attribute, `VINCAP_ICSC` und der RGB-Ring nach dem VidDec-Neubau
 
-Agent: RE (MIPS/IDA, rein statisch). 08.09.2026, 00:10–01:10. Board und Zuspieler nicht angefasst,
+Agent: RE (MIPS/IDA, rein statisch). 08.09.2026, 00:10-01:10. Board und Zuspieler nicht angefasst,
 nichts unter `mainline/patches/` geändert.
 
 Datenbank: Arbeitskopie `analyse/ida/db-tfd/display.bin.i64`. Skripte `analyse/ida/ida_q60.py` … `ida_q72.py`
@@ -22,13 +22,13 @@ Die Hypothese trifft im Kern zu, mit einer Korrektur bei Attribut 1:
   SignalInfo dieses Ereignisses** (`sub_8B1078EC`), schreibt ihn in den persistenten Basisfilter des
   TFDManagers (letzter Schreiber gewinnt, ein Wert je Attribut) und führt die TSE-Module aus.
 * Aus `Signal_Format` (Attr 29) und `Signal_ColorSpace` (Attr 68) leitet `GetColorSpaceConfig` über eine
-  achtzeilige Tabelle in `database.TSE` die Attribute 101–104 ab: **YUV-Formate → `VINCAP_ICSC = BYPASS`,
+  achtzeilige Tabelle in `database.TSE` die Attribute 101-104 ab: **YUV-Formate → `VINCAP_ICSC = BYPASS`,
   RGB-Formate → `VINCAP_ICSC = <Signal_ColorSpace>`.** Der VidDec-Descriptor mit `color_format = 0`
   (yuv420_888) ergibt zwangsläufig BYPASS; das Modul `MP_ICSC_VINCAP` schreibt dann `0x06940824 = 0x8000000B`
   (Bit 31 = **Bypass**), und die Aufnahme legt rohes RGB in den Ring.
 * Stock endet bei BT709, weil dort **das HDMI-RX-Signalereignis (`Set Valid Signal … signal_format:11`) das
   letzte Ereignis ist**; es baut den Filter aus der HDMI-SignalInfo (`RGB_888`, `Full_Range`) und schreibt
-  State 2 (`0x0000000B`, Matrix rechnet). Alle VidDec-Auswertungen davor haben BYPASS geschrieben —
+  State 2 (`0x0000000B`, Matrix rechnet). Alle VidDec-Auswertungen davor haben BYPASS geschrieben -
   im Stock-LIVE-Log nachlesbar.
 * Ein firmware-eigener Weg ohne Quellenwechsel existiert: `THal_Vp_SetVideoRange` mit einem **anderen** Wert
   als dem gespeicherten löst genau die Doppelauswertung „erst VidDec-Cache, dann HDMI-Cache" aus, deren
@@ -64,7 +64,7 @@ LABEL_17:
 `Match` (`sub_8B19506C`) fragt je Bedingung **einen** Wert ab (`filter->GetValue(type)`, Slot +20) und prüft,
 ob er in der Werteliste des States liegt. `GetFilteredState` (`sub_8B197D70`) verlangt **genau einen**
 passenden State; bei zweien: `"Conflict %s : %s between state 0x%04X and state 0x%04X"`, bei keinem:
-`"Cannot find appropriate state in module:%s."` — in beiden Fällen bleiben die Register unverändert.
+`"Cannot find appropriate state in module:%s."` - in beiden Fällen bleiben die Register unverändert.
 `SendTo` (`sub_8B1979E8`) überspringt einen State, der dem zuletzt gesendeten gleicht (`[IGNORED]`),
 außer das Modul ist `always`.
 
@@ -83,14 +83,14 @@ name\0` (ab `0x3a200`); Bit 15 im Wert = Gruppe. Vollständig in `tfd-tse-woerte
 | 29 (0x1d) | Signal_Format | `0x1d0000` YUV422_101010, `01` RGB_101010, `02` RGB_121212, `03` YUV444_888, `04` YUV444_101010, `05` YUV444_121212, `06` YUV422_888, `07` **RGB_888**, `08` YUV422_121212, `09` **YUV420_888**, `0a` YUV420_101010, `0b` YUV420_121212; Gruppen `0x1d8000` RGB, `8001` YUV444, `8002` YUV422, `8003` YUV420, `8004` YUV |
 | 58 (0x3a) | Signal_Range | `0x3a0000` Limit_Range, `0x3a0001` Full_Range |
 | 68 (0x44) | Signal_ColorSpace | `0x440000` BT709, `01` BT601, `02` BT2020_NCLYCC, `03` xvYCC, `04` RGB, `09` BT2020_CLYCC |
-| 101–104 (0x65–0x68) | VINCAP_ICSC, VPROC_CSC1, VPROC_ICSC2, VPROC_CSC3 | je `..0000` **BYPASS**, `..0001` BT601, `..0002` **BT709**, `..0003` BT2020NCLYCC |
+| 101-104 (0x65-0x68) | VINCAP_ICSC, VPROC_CSC1, VPROC_ICSC2, VPROC_CSC3 | je `..0000` **BYPASS**, `..0001` BT601, `..0002` **BT709**, `..0003` BT2020NCLYCC |
 
 Damit korrigiert sich die Namensvergabe in `tools/tse_dump.py` (`0x1d` ist Signal_Format, nicht
 „colorspace"; `0x44` ist Signal_ColorSpace, nicht „picmode").
 
 ---
 
-## 2. Frage A — Wer setzt die Attribute 1, 29, 58, 68?
+## 2. Frage A - Wer setzt die Attribute 1, 29, 58, 68?
 
 ### 2.1 Die Funktion: `sub_8B1078EC(this, sig)` (belegt)
 
@@ -127,7 +127,7 @@ Mapper (Tabellen in `tfd-q61-mapper-20260908.log`):
   **hal 0 und alles ≥ 14 → Default `0x1d0009` YUV420_888.**
 * `sub_8B12C4FC` (Range → Attr 58): `2 → 0x3a0001 Full_Range`, sonst `0x3a0000 Limit_Range`.
 * `sub_8B1076F4(sig)`: `DeviceManager->GetStatus(sig->source_id)`; Status 3 (VideoDec) → `sig+80`
-  (`video_dec.b_full_range`), Status 1 (HDMI) → `sig+36` (`hdmi.b_full_range`, Union-Teil der SignalInfo —
+  (`video_dec.b_full_range`), Status 1 (HDMI) → `sig+36` (`hdmi.b_full_range`, Union-Teil der SignalInfo -
   die Feldnamen stammen aus `VidDec_dump_signal_info`), Ergebnis 2 = voll, 1 = begrenzt.
 
 ### 2.2 Welche SignalInfo? Die des auslösenden Ereignisses (belegt auf Maschinenebene)
@@ -157,7 +157,7 @@ Hex-Rays zeigt dort `sub_8B1078EC(a1)` mit nur einem Argument; die Disassembly k
 ```
 
 GCC verlässt sich per IPA-RA darauf, dass der Blattaufruf `sub_8B1085CC` `$a1` nicht zerstört. **Der Filter
-wird also aus der neuen SignalInfo des Ereignisses gebaut** — beim VidDec-Ereignis aus der VidDec-SignalInfo
+wird also aus der neuen SignalInfo des Ereignisses gebaut** - beim VidDec-Ereignis aus der VidDec-SignalInfo
 (`source_id 1`, `color_format` aus Descriptor idx16), beim HDMI-Ereignis aus der HDMI-SignalInfo
 (`source_id 3`, `color_format 11`). Die Hypothese stimmt für Attr 29/58/68.
 
@@ -166,18 +166,18 @@ HDMI-Caches `this+224` (das `source_id`-Feld der zuletzt gesehenen Nicht-VidDec-
 setzt es beim Quellenwechsel auf 0 bzw. die neue Quelle, `0 → 3`). Deshalb steht in allen Dumps nach
 `AppTopSetSource(3)` `HDMI1`, auch bei VidDec-Ereignissen. Die frühen Dumps mit `MPEG1` (Stock, t = 0, sechs
 Stück vor `WriteModules : group type[16]`) stammen aus einem anderen Aufbaupfad (Initialisierung/`tcd3`
-`write_cvd_setting` `sub_8B1452A0` baut eigene Filter) — **vermutet**, nicht verfolgt.
+`write_cvd_setting` `sub_8B1452A0` baut eigene Filter) - **vermutet**, nicht verfolgt.
 
 ### 2.3 Wo im Ablauf
 
 1. `sub_8B1085CC(cache, sig)` vergleicht `source_id, signal_id, frame_rate, b_interlace, color_format,
-   color_space, hdr_scheme`. Nur bei Änderung: `sub_8B1078EC` (Filter + Persistieren) und — wenn Flag
-   `this+221` („tfd update", `app tfd_on/off`) gesetzt — `sub_8B107B04(this, &sig, 16)`.
+   color_space, hdr_scheme`. Nur bei Änderung: `sub_8B1078EC` (Filter + Persistieren) und - wenn Flag
+   `this+221` („tfd update", `app tfd_on/off`) gesetzt - `sub_8B107B04(this, &sig, 16)`.
 2. `sub_8B107B04` ruft `sub_8B1078EC` **nochmals** und dann je nach `DeviceManager->GetStatus(sig->source_id)`:
    Status 1 (HDMI) → `WriteModules(filter, "V_INCAP")`; Status 0 → Gruppen `ADC`, `TCD`, `V_INCAP`; sonst
    (VidDec, Status 3) → `WriteModules(filter, type 16)`. Passt zum Log: HDMI-Ereignis `group name[V_INCAP]`,
    VidDec-Ereignis `group type[16]`.
-3. `WriteModules` (Slot +52/+56): `Prepare(filter)` (Slot +120, leitet Attr 10/34/35/…, **101–104**, 63… ab
+3. `WriteModules` (Slot +52/+56): `Prepare(filter)` (Slot +120, leitet Attr 10/34/35/…, **101-104**, 63… ab
    und schreibt sie per `SetItem` in den Filter) → `DumpFilter` → `TFDManager::WriteGroup` → je Modul
    `GetFilteredState` → `SendTo` → RegTableFW-Blob schreibt Register.
 4. `EnterWaitingWindowsReady` / `EnterWaitingPipeLineReady` / `EnterIdle` fassen TFD **nicht** an (nur
@@ -188,7 +188,7 @@ Stück vor `WriteModules : group type[16]`) stammen aus einem anderen Aufbaupfad
 
 ---
 
-## 3. Frage B — Wie werden 101 `VINCAP_ICSC`, 102, 103, 104 bestimmt?
+## 3. Frage B - Wie werden 101 `VINCAP_ICSC`, 102, 103, 104 bestimmt?
 
 ### 3.1 Regel (belegt): `GetColorSpaceConfig` `0x8b18737c` (`TFDHandler.cpp 322`)
 
@@ -198,7 +198,7 @@ Tabelle `tse:table:colorspace_config_mp` / `tse:group:mp_color_space_config` (ge
 die erste Zeile, deren `fmt` und `cs` passen; Werte mit Bit 15 sind Gruppen und werden über
 `TFDManager` Slot +80 (Mitgliedsliste) geprüft. Treffer → vier Werte werden per `SetItem` in den Filter
 geschrieben (`Prepare`, `sub_8B1887A4`). Kein Treffer → `"Get the config of color space failed!"`, **Attribute
-101–104 bleiben, wie sie im Basisfilter standen.**
+101-104 bleiben, wie sie im Basisfilter standen.**
 
 Die Tabelle steht in `database.TSE` ab `0x40db2` (Rohsuche nach `0065xxxx 0066xxxx 0067xxxx 0068xxxx`,
 `tfd-farbraumtabelle-20260908.log`), acht Zeilen:
@@ -216,7 +216,7 @@ Die Tabelle steht in `database.TSE` ab `0x40db2` (Rohsuche nach `0065xxxx 0066xx
 
 Kurzregel: **YUV-Eingang → Eingangswandler aus, RGB-Eingang → Eingangswandler nach Signal_ColorSpace;
 CSC1 folgt immer Signal_ColorSpace; ICSC2/CSC3 immer BT709.** `Signal_Range` und `Signal_Channel` spielen
-für 101–104 keine Rolle. Für `Signal_ColorSpace = xvYCC` oder `RGB` gibt es keine Zeile.
+für 101-104 keine Rolle. Für `Signal_ColorSpace = xvYCC` oder `RGB` gibt es keine Zeile.
 
 ### 3.2 Die Modulzustände (belegt, `hdmi-source4.txt`, Wörterbuch angewendet)
 
@@ -236,7 +236,7 @@ Bit 31 = 1 nur in State 3). `MP_ICSC2_VPROC` (0xf012) nur an 103: BT709→State 
 
 ---
 
-## 4. Frage C — Welche Register schreibt `MP_ICSC_VINCAP`?
+## 4. Frage C - Welche Register schreibt `MP_ICSC_VINCAP`?
 
 Alle Schreibziele liegen im INCAP-Block (ARM-physisch; MIPS = +`0xB5000000`, also `0xBB9408xx`). Kein
 Register in `0x06E0xxxx` oder `0x068Bxxxx` gehört zu diesem Modul (die RegTable enthält nur `0x069408xx`).
@@ -270,10 +270,10 @@ MOVIE, SSR, die zwischen `1920_1080/60` und `DTV_1920_1080_P/30` umschalten und 
 
 ---
 
-## 5. Frage D — `ConvertFrameInfo2SignalInfo` (`0x8b1471b0`)
+## 5. Frage D - `ConvertFrameInfo2SignalInfo` (`0x8b1471b0`)
 
 Struktur `VidDec_FrameInfo` (144 B) aus der Datenbank: idx16 `+0x40 color_format`, idx17 `+0x44 color_space`,
-**idx18 `+0x48 b_full_range`**, idx19–21 `color_primaries/transfer_characteristics/matrix_coefficients`
+**idx18 `+0x48 b_full_range`**, idx19-21 `color_primaries/transfer_characteristics/matrix_coefficients`
 (werden von der Firmware **nicht** in die SignalInfo übernommen), idx23 `b_compress_en`, idx24 `hdr_scheme`.
 `VidDec_SignalInfo` (172 B): `+0x10 color_format`, `+0x14 color_space`, `+0x50 b_full_range`, `+0x28 compress_mode`.
 
@@ -298,7 +298,7 @@ LOBYTE(signal_info_out->b_full_range) = frame->b_full_range != 0;
 | **11** | **rgb_888** | 11 | **RGB_888 (`0x1d0007`)** |
 | 12 / 13 | rgb_101010 / rgb_121212 | 12/13 | RGB_101010 / RGB_121212 |
 | **14** | rgb_101010_p010_low | **11** | **RGB_888** |
-| 15 / 16 / sonst | p010_high / detn_alpha / — | 15/14/0 | YUV420_888 (Default) |
+| 15 / 16 / sonst | p010_high / detn_alpha / - | 15/14/0 | YUV420_888 (Default) |
 
 `VidDec_MapColorSpace` (idx17): 0..5 → identisch (`bt601, bt709, bt2020_nclycc, bt2020_clycc, xvycc, rgb`),
 sonst 0. `sub_8B12C148` (Tabelle `dword_8B1F2500`): 0→`0x440001` BT601, **1→`0x440000` BT709**, 2→`0x440002`,
@@ -308,13 +308,13 @@ sonst 0. `sub_8B12C148` (Tabelle `dword_8B1F2500`): 0→`0x440001` BT601, **1→
 Der Wert wird von `this+212` (SetVideoRange-Override, §6.1) übersteuert, sobald der ungleich 0 ist.
 `compress_mode`: `b_compress_en == 0` → `0x4e0000` (Attr 78 `Signal_COM_Ratiio = PACK_1`).
 
-Es gibt also einen Wert, der RGB_888 ergibt (idx16 = 11 oder 14) — mit den Nebenwirkungen aus §6.4.
+Es gibt also einen Wert, der RGB_888 ergibt (idx16 = 11 oder 14) - mit den Nebenwirkungen aus §6.4.
 
 ---
 
-## 6. Frage E — Wege zurück nach BT709 ohne Quellenwechsel
+## 6. Frage E - Wege zurück nach BT709 ohne Quellenwechsel
 
-### 6.1 `THal_Vp_SetVideoRange` (RPC, FuncID `0x9817A1C1`) — der brauchbarste Weg (belegt, ungetestet)
+### 6.1 `THal_Vp_SetVideoRange` (RPC, FuncID `0x9817A1C1`) - der brauchbarste Weg (belegt, ungetestet)
 
 Kette: `THal_Vp_SetVideoRange(a1)` `0x8b14a4fc` → `sub_8B12BB1C` (kopiert nur) → `AppTopSetColorRange`
 `sub_8B1097B4` (Nachricht Typ 7, Wert `a1`) → `AppTopProjector_OnCommonEvent` `0x8b1089b4`:
@@ -344,7 +344,7 @@ Bedingungen und Nebenwirkungen:
   (z. B. `1`) = Limit_Range erzwingen. Ein Paar `2` → `0` stellt am Ende wieder Automatik her; jeder der
   beiden Aufrufe löst die Doppelauswertung aus.
 * Der Override gilt für **beide** Auswertungen; solange er `2` ist, läuft auch die VidDec-Auswertung mit
-  Full_Range (`MP_WB_VINCAP` State 1 statt 0 — für die INCAP unerheblich, weil die HDMI-Auswertung danach
+  Full_Range (`MP_WB_VINCAP` State 1 statt 0 - für die INCAP unerheblich, weil die HDMI-Auswertung danach
   ohnehin State 3 schreibt).
 * Voraussetzung `this+228 − 0x20002 ≥ 2`: der HDMI-Cache muss ein gültiges Signal tragen (nicht UNKNOW/NO_SIGNAL),
   d. h. es muss vorher ein HDMI-Signalereignis (`Set Valid Signal`) gegeben haben. Das ist nach Kaltstart der
@@ -387,9 +387,9 @@ nicht eindeutig ist. Passt zum Eintrag „Poke descriptor color_format" in `DEAD
 ### 6.5 Descriptor idx17 = 5 (color_space_rgb) (vermutet, ungetestet)
 
 `Signal_ColorSpace = RGB (0x440004)` hat keine Zeile in der Farbraumtabelle → `GetColorSpaceConfig` schlägt
-fehl (`ERROR "Get the config of color space failed!"`), 101–104 bleiben auf den Werten der letzten
+fehl (`ERROR "Get the config of color space failed!"`), 101-104 bleiben auf den Werten der letzten
 HDMI-Auswertung (BT709), und `MP_ICSC_VINCAP` findet **keinen** State (State 0 verlangt BT601/709/2020,
-States 1–3 RGB-Formate) → `"Cannot find appropriate state"` → `0x06940824` bleibt `0x0000000B`.
+States 1-3 RGB-Formate) → `"Cannot find appropriate state"` → `0x06940824` bleibt `0x0000000B`.
 Nebenwirkungen: `MP_CM_VPROC_0x0030`, `MP_DPA_VPROC_0X0030`, `MP_SSR_COLDEP` hängen ebenfalls an Attr 68 und
 fänden ggf. keinen State; `SignalInfo.color_space` wird außerdem vom Window-Manager/HDR-Pfad gelesen (nicht
 untersucht). Nur als Messidee notiert; ein Weg, der auf einem Tabellenfehltreffer beruht, ist kein
@@ -397,7 +397,7 @@ Stock-Verhalten.
 
 ### 6.6 Bildmodus (`app set_pm`, Nachricht 8) (belegt)
 
-`OnCommonEvent` Typ 8 macht dieselbe Doppelauswertung (VidDec-Cache, dann HDMI-Cache) — aber nur, wenn
+`OnCommonEvent` Typ 8 macht dieselbe Doppelauswertung (VidDec-Cache, dann HDMI-Cache) - aber nur, wenn
 `sub_8B10890C(alt, neu)` einen „echten" Moduswechsel sieht, und mit allen PQ-Nebenwirkungen eines
 Bildmoduswechsels. Typ 3 (`set_ll`, LowLatency) ebenso. Beide sind schlechtere Varianten von 6.1.
 
@@ -411,30 +411,30 @@ Ereignis auslösen, ist die Reihenfolge wie bei Stock. Welcher RPC-Schritt aus `
 
 ---
 
-## 7. Frage F — Wie macht es Stock?
+## 7. Frage F - Wie macht es Stock?
 
 Aus der chronologischen LIVE-Rohdatei (`elog-stock-LIVE.bin`, Auszug `tfd-stock-live-chrono-tfd-20260908.log`,
 Zeilennummern der entfärbten Datei):
 
 | Zeile | Tick | Ereignis | Filter (Attr 1 / 29 / 58 / 68) | Ergebnis |
 |---|---|---|---|---|
-| 70–680 | 0 | sechs Init-Dumps | MPEG1 / YUV422_101010 / Limit / BT709 | 101 = BYPASS |
-| 1045–1189 | 0 | `WriteModules : group type[16]` (VidDec-Ereignis) | HDMI1 / **YUV420_888** / Limit / BT709 | **`MP_ICSC_VINCAP State 0` gesendet** |
+| 70-680 | 0 | sechs Init-Dumps | MPEG1 / YUV422_101010 / Limit / BT709 | 101 = BYPASS |
+| 1045-1189 | 0 | `WriteModules : group type[16]` (VidDec-Ereignis) | HDMI1 / **YUV420_888** / Limit / BT709 | **`MP_ICSC_VINCAP State 0` gesendet** |
 | 1582, 5174, 5381, 5678 | 1…17541 | `WriteModulesByUI` (PQ) | HDMI1 / YUV420_888 / Limit / BT709 | BYPASS (unverändert) |
-| 5971–5973 | 17652 | `THal_Vp_SetVideoRange` → `AppTopSetColorRange` | — | keine neue Auswertung (Wert unverändert 0) |
-| 6585–7071 | 24498 | `EnterWaitingWindowsReady`, VidDec `DTV_1920_1080_P` | HDMI1 / YUV420_888 / Limit / BT709 | BYPASS |
-| 7991–8456 | 1157080 | `hal_source_id: 3`, `AppTopSetSource`, drei `WriteModulesByUI` | HDMI1 / YUV420_888 / Limit | BYPASS |
-| 9332–9357 | 1157528…830 | `hdmirx` „new timing", `Conver signalID … 0x20057`, **`Set Valid Signal dwSignal:0x20057 signal_format:11 color_space:0x440000`**, `CallbackOfSignalChange` | | |
-| 9379–9501 | 1157831…847 | **`WriteModules : group name[V_INCAP]`** | **HDMI1 / RGB_888 / Full_Range / BT709 → 101 = BT709** | **`MP_ICSC_VINCAP State 2` gesendet** |
-| 9512–9547 | 1157847 | `SetSignalInfo`, `UpdateWce`, `CapWinNode color_format:4` | | |
+| 5971-5973 | 17652 | `THal_Vp_SetVideoRange` → `AppTopSetColorRange` | - | keine neue Auswertung (Wert unverändert 0) |
+| 6585-7071 | 24498 | `EnterWaitingWindowsReady`, VidDec `DTV_1920_1080_P` | HDMI1 / YUV420_888 / Limit / BT709 | BYPASS |
+| 7991-8456 | 1157080 | `hal_source_id: 3`, `AppTopSetSource`, drei `WriteModulesByUI` | HDMI1 / YUV420_888 / Limit | BYPASS |
+| 9332-9357 | 1157528…830 | `hdmirx` „new timing", `Conver signalID … 0x20057`, **`Set Valid Signal dwSignal:0x20057 signal_format:11 color_space:0x440000`**, `CallbackOfSignalChange` | | |
+| 9379-9501 | 1157831…847 | **`WriteModules : group name[V_INCAP]`** | **HDMI1 / RGB_888 / Full_Range / BT709 → 101 = BT709** | **`MP_ICSC_VINCAP State 2` gesendet** |
+| 9512-9547 | 1157847 | `SetSignalInfo`, `UpdateWce`, `CapWinNode color_format:4` | | |
 | >9547 | | keine weitere TFD-Auswertung bis zum Ende des Mitschnitts | | |
 
 Antwort: Stock endet bei BT709, **weil das HDMI-RX-Signalereignis die letzte Auswertung ist** und die
-Firmware „letzter Schreiber gewinnt" spielt — nicht, weil Attribute aus der aktiven Quelle statt aus dem
+Firmware „letzter Schreiber gewinnt" spielt - nicht, weil Attribute aus der aktiven Quelle statt aus dem
 Ereignis kämen (das gilt nur für Attr 1) und nicht durch einen eigenen HDMI-Pfad in der Tabelle: die
 Regel ist für beide Quellen dieselbe, nur der Eingabewert `Signal_Format` unterscheidet sich (`11 → RGB_888`
 gegen `0 → YUV420_888`). Zwischen dem VidDec-Ereignis (Tick 24498) und dem HDMI-Ereignis (Tick 1157830) lief
-das Stock-Gerät lange mit BYPASS (~19 Minuten, falls die Ticks Millisekunden sind) — mit dem Bild des
+das Stock-Gerät lange mit BYPASS (~19 Minuten, falls die Ticks Millisekunden sind) - mit dem Bild des
 Videodecoders, das YUV ist und keinen Wandler braucht. Der Descriptor blieb danach unverändert (`UpdateWce` bei Stock nur bei Init, doku/96 §5),
 sodass BT709 stehen blieb.
 
@@ -447,12 +447,12 @@ entscheidet die Reihenfolge; das HDMI-Ereignis kommt vom `hdmirx`-Zustandsautoma
 
 ## 8. Belegt / vermutet / offen
 
-Belegt (Dekompilat + Disassembly + Datei): §1, §2.1–2.3 (bis auf den MPEG1-Ursprung), §3, §4, §5, §6.1–6.4,
+Belegt (Dekompilat + Disassembly + Datei): §1, §2.1-2.3 (bis auf den MPEG1-Ursprung), §3, §4, §5, §6.1-6.4,
 §6.6, §7 (Chronologie).
 Vermutet: Herkunft der sechs frühen `MPEG1`-Dumps (§2.2); Verhalten unter §6.5; Stock-Verhalten bei
 Laufzeit-Auflösungswechsel (§7).
 Nicht untersucht: der genaue RPC-Schritt, der `Set Valid Signal` auslöst (§6.7); die Nutzer von
-`SignalInfo.color_space` außerhalb TFD; `special_format`-Ableitung (Slot +132/+28, Attr 10/34/35/69/70) —
+`SignalInfo.color_space` außerhalb TFD; `special_format`-Ableitung (Slot +132/+28, Attr 10/34/35/69/70) -
 die Stock-Dumps zeigen dafür bei beiden Ereignissen dieselben Werte (`V_INCAP_MP_Format = YUV422_888`).
 
 Korrekturen an bestehender Doku, die sich ergeben:

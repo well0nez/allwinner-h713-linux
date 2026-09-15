@@ -1,6 +1,6 @@
-# S8 — Die Skalierung läuft, und was sie mitbringt: der Grünstich
+# S8 - Die Skalierung läuft, und was sie mitbringt: der Grünstich
 
-07./08.09.2026, 23:00–01:30 · Fortsetzung von [`S7`](S7-scaler-entschluesselt.md)
+07./08.09.2026, 23:00-01:30 · Fortsetzung von [`S7`](S7-scaler-entschluesselt.md)
 
 ## Das Ergebnis zuerst
 
@@ -17,21 +17,21 @@ INCAP   aktiv 1280x720, rowbyte 0x50 = 80, Freigabe Bit 31 gesetzt
 [`S3`](S3-scaler-gefunden-und-bewiesen.md) vorhergesagt hat. Die Firmware programmiert ihn selbst.
 
 **Aber:** ab dem ersten Wechsel hat das Bild einen **Grünstich**, und nach vier bis fünf Wechseln
-kippt der Zustand ganz. Damit ist der Stand *nicht* auslieferbar — wohl aber ein Durchbruch.
+kippt der Zustand ganz. Damit ist der Stand *nicht* auslieferbar - wohl aber ein Durchbruch.
 
 ## Die vier Patches und was jeder tut
 
 | Patch | Wirkung |
 |---|---|
-| **`0117`** | Veröffentlicht den VidDec-Descriptor neu, wenn sich die Quellgeometrie ändert. **Ohne ihn skaliert die Firmware nie** — gemessen: Scaler bleibt `0x43010000`, Bild bricht um. |
+| **`0117`** | Veröffentlicht den VidDec-Descriptor neu, wenn sich die Quellgeometrie ändert. **Ohne ihn skaliert die Firmware nie** - gemessen: Scaler bleibt `0x43010000`, Bild bricht um. |
 | **`0120`** | Hält die vier Fensterwörter (rec 28/30/32/34) auf der **Panelgröße**. Sie sind nicht die Bildgeometrie, sondern die Konfiguration des Fenstermanagers; standen dort Quellmaße, staucht `CalcPropRect` die Aufnahme proportional auf 853×480. |
-| **`0121`** | Schaltet die Aufnahme nach der Veröffentlichung direkt frei (Bit 31 in `0x06940928` **und** `0x06940968`), statt über einen Quellenwechsel — der würde einen zweiten, fehlerhaften Neubau auslösen. |
-| **`0122`** | Setzt dabei nach, bis die Freigabe hält: die Firmware löscht sie kurz nach unserem Schreibvorgang noch einmal. Gemessen 159–223 ms bis sie steht. |
+| **`0121`** | Schaltet die Aufnahme nach der Veröffentlichung direkt frei (Bit 31 in `0x06940928` **und** `0x06940968`), statt über einen Quellenwechsel - der würde einen zweiten, fehlerhaften Neubau auslösen. |
+| **`0122`** | Setzt dabei nach, bis die Freigabe hält: die Firmware löscht sie kurz nach unserem Schreibvorgang noch einmal. Gemessen 159-223 ms bis sie steht. |
 
 Zurückgenommen und in `mainline/patches/zurueckgenommen/`: `0108` (Sentinel-Fehldeutung) und
 `0118` (Ziel = Panel in den Wörtern 4/5, beruhte auf falsch gelesener Rechteckreihenfolge).
 
-## Was gemessen wurde — Wechselreihe
+## Was gemessen wurde - Wechselreihe
 
 Aus sauberem Kaltstart, Zuspieler gespiegelt auf die Testauflösung:
 
@@ -52,11 +52,11 @@ das Signal geht verloren.
 |---|---|---|
 | `SetSource(1)` → `SetSource(3)` → `DisableBlackScreen` | manchmal | nein |
 | HDMI am Zuspieler aus/an, danach Quellenwechsel | **ja** | nein |
-| Scaler-Register von Hand zurückschreiben | — | **nein** (PROC-Fenster greifen nicht) |
+| Scaler-Register von Hand zurückschreiben | - | **nein** (PROC-Fenster greifen nicht) |
 | **Kaltstart (`sonoff_ctl restart`) + Quellenwechsel** | **ja** | **ja** |
 
 Ein Neustart **allein** genügt nicht; der Quellenwechsel danach ist Pflicht. Und mehrfach ist das
-Board nach einem `reboot -f` gar nicht wiedergekommen — dann hilft nur die Steckdose.
+Board nach einem `reboot -f` gar nicht wiedergekommen - dann hilft nur die Steckdose.
 
 ## Der Grünstich
 
@@ -82,14 +82,14 @@ Image.open("<foto>.jpg").convert('RGB').crop((200,470,1180,590)).resize((980,120
 
 Ein angehobener Schwarzwert im Grünkanal ist ein **Versatz in der Farbkonvertierung**. Die
 Kandidatenregister aus dem Differenzabzug sind oben durch; der nächste Schritt wäre ein Abzug im
-**Stock-Zustand nach einem Auflösungswechsel** — den haben wir für diesen Fall nicht, und ohne ihn
+**Stock-Zustand nach einem Auflösungswechsel** - den haben wir für diesen Fall nicht, und ohne ihn
 ist alles Weitere geraten. Marcos Einwand dazu ist der Maßstab: **unter Stock passiert das nicht**,
 also fehlt uns etwas, das Stock tut.
 
 ## Zwei Messfehler, die Zeit gekostet haben
 
 **1. `wandcheck.py std` taugt nicht für Farbe.** Die Kamera macht automatischen Weißabgleich und
-rechnet einen globalen Farbstich weg — die Messung zeigte sogar einen leichten *Rot*überschuss,
+rechnet einen globalen Farbstich weg - die Messung zeigte sogar einen leichten *Rot*überschuss,
 während die Taskleiste sichtbar grün war. Für Farbfragen hilft nur der direkte Bildvergleich eines
 Ausschnitts mit bekanntem Sollwert (die Taskleiste), oder das Auge des Nutzers.
 
@@ -97,7 +97,7 @@ Ausschnitts mit bekanntem Sollwert (die Taskleiste), oder das Auge des Nutzers.
 gutes; ein zerrissenes sogar mehr (81,8 gegen 48). **Fotos ansehen, nicht Zahlen lesen.** Diese
 Sitzung hat mehrfach „sieht gut aus" gemeldet, wo das Bild doppelt oder gestaucht war.
 
-**3. Falsches Wartekriterium.** `h713_hdmirx_signal_present()` prüft die AFBD-Flip-Zeiger — die
+**3. Falsches Wartekriterium.** `h713_hdmirx_signal_present()` prüft die AFBD-Flip-Zeiger - die
 laufen auch von der Plane-Seite. Als Kriterium für „die Aufnahme läuft" ist es wertlos: der Treiber
 meldete Erfolg nach 12 ms, während das Freigabebit aus und die Wand schwarz war. Richtig ist
 `0x06940928` Bit 31.
@@ -108,6 +108,6 @@ meldete Erfolg nach 12 ms, während das Freigabebit aus und die Wand schwarz war
    gegen unseren Zustand. Alles andere ist Raten.
 2. **Das Kippen nach vier Wechseln klären.** Vermutung: die erzwungene Freigabe geht an der
    Zustandsmaschine der Firmware vorbei und häuft Fehlzustand an. Stock schließt jeden
-   Quellenwechsel mit `DisableBlackScreen` ab — das haben wir im neuen Pfad nie mitgesendet.
+   Quellenwechsel mit `DisableBlackScreen` ab - das haben wir im neuen Pfad nie mitgesendet.
 3. **Erst danach** die Konsolen-Sperre in `userspace/hy310-tv/main.c` entfernen und den
    Testschalter `H713_TV_SKALIERTEST` streichen.

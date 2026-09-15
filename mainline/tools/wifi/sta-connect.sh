@@ -8,7 +8,7 @@
 # 10.8 KB/s, and an ssh session moves them at wire speed. This script trades
 # one for the other until the next reboot, which restores the hotspot.
 #
-# It runs the supplicant as a bare process rather than via systemd on purpose —
+# It runs the supplicant as a bare process rather than via systemd on purpose -
 # the unit is masked in this image, and unmasking it would outlive the session.
 #
 #   usage: ./sta-connect.sh SSID PASSPHRASE [interface]

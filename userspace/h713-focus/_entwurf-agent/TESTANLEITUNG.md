@@ -1,12 +1,12 @@
 # `h713-focus` am Gerät abnehmen
 
-Für Marco. Stand 12.09.2026 — **`h713-focus` ist nie am Gerät gelaufen.** Alles unten ist gegen die Attrappe
+Für Marco. Stand 12.09.2026 - **`h713-focus` ist nie am Gerät gelaufen.** Alles unten ist gegen die Attrappe
 geprüft, nicht gegen Mechanik. Die erwarteten Ausgaben stammen aus einem Lauf gegen `tests/attrappe.py`, der
 mit den Werten des Geräts gefüttert wurde (`step_num=8`, `cycle=2`, `ctrl_time=1`, `back_step=5`,
 unterer Rand bei `-206`, wie am 12.09. gemessen).
 
 Dauer: ohne `range` rund fünf Minuten, mit `range` je nach Weg eine bis zwei Minuten mehr.
-**Ein Stromzyklus reicht** — nichts hier verlangt einen Neustart.
+**Ein Stromzyklus reicht** - nichts hier verlangt einen Neustart.
 
 ---
 
@@ -14,14 +14,14 @@ Dauer: ohne `range` rund fünf Minuten, mit `range` je nach Weg eine bis zwei Mi
 
 > * **Ein Schrittmotor am Anschlag rattert oder brummt hörbar**, statt gleichmäßig zu ticken.
 >   **Beim ersten anderen Geräusch: Strg-C.** Das ist das wichtigste Abbruchkriterium und es steht in keiner
->   Ausgabe — nur du hörst es.
+>   Ausgabe - nur du hörst es.
 > * **Nie zuerst aufwärts.** Wo die Mechanik steht, weiß niemand; aufwärts liegt der Anschlag.
 > * **Modul nur mit `homing=0` laden.** Ohne das fährt schon das Laden bis zu 100 msteps aufwärts.
 > * **`motor_ctrl_no_limit` niemals auf 1 setzen.** `h713-focus` schreibt es nicht; von Hand auch nicht.
 
 ---
 
-## Schritt 0 — die Notbremse, vorher merken
+## Schritt 0 - die Notbremse, vorher merken
 
 ```sh
 h713-focus stop          # leert die Warteschlange, der laufende mstep läuft zu Ende
@@ -32,7 +32,7 @@ Strg-C während eines Laufs macht dasselbe wie `stop` und beendet den Lauf geord
 
 ---
 
-## Schritt 1 — ohne Modul: sagt es das Richtige?
+## Schritt 1 - ohne Modul: sagt es das Richtige?
 
 Noch **bevor** das Modul geladen ist:
 
@@ -51,12 +51,12 @@ So wird es sicher geladen -- homing=0 ist Pflicht:
     ...
 ```
 
-**Abbruchkriterium:** kommt hier etwas anderes — etwa ein Python-Traceback oder ein Pfad, den es nicht gibt —
+**Abbruchkriterium:** kommt hier etwas anderes - etwa ein Python-Traceback oder ein Pfad, den es nicht gibt -
 nicht weitermachen. Dann stimmt die Suchkette nicht.
 
 ---
 
-## Schritt 2 — Modul laden und nachsehen
+## Schritt 2 - Modul laden und nachsehen
 
 ```sh
 modprobe hy310_focus_motor homing=0
@@ -102,17 +102,17 @@ motor_limit (roh)  1 up=1 dn=1 num=1 raw=1 act=1 edge_up=0 edge_dn=0 step=0
 
 | Zeile | erwartet | wenn anders |
 |---|---|---|
-| `sysfs` | `(gebunden an den Treiber …)` | Steht dort „Notweg" oder „vorgegeben", hat die Suche über den Treiber nicht getroffen — das ist ein Befund, notieren. |
+| `sysfs` | `(gebunden an den Treiber …)` | Steht dort „Notweg" oder „vorgegeben", hat die Suche über den Treiber nicht getroffen - das ist ein Befund, notieren. |
 | `Rohpegel` | `1` | `0` = die Mechanik steht **außerhalb**; `-1` = der Treiber kann den Pin nicht lesen. In beiden Fällen **abbrechen** und nachsehen, nicht fahren. |
 | `Limiter` | `num=1` | `num=0` heißt: kein Wächter angefordert → `h713-focus` fährt gar nicht, und das ist richtig so. Dann stimmt der Gerätebaum-Knoten nicht. |
 
 > Steht `Kante abwaerts GEMERKT` schon direkt nach dem Laden, ist die Mechanik noch in dem Zustand vom
-> 12.09. — dann hat das Modul die Kante nicht neu geladen, sondern der Knoten war noch offen. Ein `rmmod`
+> 12.09. - dann hat das Modul die Kante nicht neu geladen, sondern der Knoten war noch offen. Ein `rmmod`
 > und erneutes Laden setzt sie zurück.
 
 ---
 
-## Schritt 3 — der Trockenlauf: was **würde** geschrieben?
+## Schritt 3 - der Trockenlauf: was **würde** geschrieben?
 
 Bewegt nichts. Prüft, dass das Wortformat stimmt, bevor es zum ersten Mal ernst wird.
 
@@ -134,7 +134,7 @@ Was geschrieben worden waere:
   echo 2306 > /sys/devices/platform/motor-ctr/motor_ctrl
 ```
 
-**Abbruchkriterium:** steht dort ein anderes Wort als `2306` (`9 << 8 | 2`), oder ein Kommando 1 oder 2 —
+**Abbruchkriterium:** steht dort ein anderes Wort als `2306` (`9 << 8 | 2`), oder ein Kommando 1 oder 2 -
 nicht weitermachen. `2306` ist abwärts mit der Handbetrieb-Zeitgebung; 1/2 wären die Autofokus-Zeitgebung
 (busy-wait) und hier falsch.
 
@@ -142,7 +142,7 @@ Gegenprobe aufwärts: `h713-focus up 4 --trocken` muss **`2050`** nennen (`8 << 
 
 ---
 
-## Schritt 4 — die ersten vier msteps, abwärts
+## Schritt 4 - die ersten vier msteps, abwärts
 
 **Jetzt bewegt sich etwas. Hinhören.**
 
@@ -166,17 +166,17 @@ Ergebnis: fertig
 
 * Rattern/Brummen statt gleichmäßigem Ticken → Strg-C, dann `rmmod`, nicht weitermachen.
 * `raw=` springt hier schon auf `0` → die Mechanik stand näher am Rand als gedacht. Kein Schaden, aber
-  Schritt 6 (`range`) liefert dann eine viel kleinere Zahl als die 206 vom 12.09. — notieren.
+  Schritt 6 (`range`) liefert dann eine viel kleinere Zahl als die 206 vom 12.09. - notieren.
 * `[verworfen]` oder `gefahren 0 von 4` → der Treiber hat den Befehl geschluckt. Nicht wiederholen, sondern
   `h713-focus status` ansehen.
 * Ausgabe steht still und nichts bewegt sich → Strg-C. Die Frist je Häppchen ist rund **1,4 s**
-  (`(2 + 40 + 5) × 16 ms × 1,5 + 300 ms` = 1428 ms; die 40 sind `RECOVERY_MAX`, die 5 `back_step` — es wird
+  (`(2 + 40 + 5) × 16 ms × 1,5 + 300 ms` = 1428 ms; die 40 sind `RECOVERY_MAX`, die 5 `back_step` - es wird
   der schlimmste Fall veranschlagt, den der Treiber selbst vorsieht). Das Werkzeug bricht danach selbst ab
   und meldet `Frist abgelaufen`.
 
 ---
 
-## Schritt 5 — wieder hoch, und die Gegenprobe zur Kante
+## Schritt 5 - wieder hoch, und die Gegenprobe zur Kante
 
 ```sh
 h713-focus up 4
@@ -189,12 +189,12 @@ Aufwaerts ist die Richtung, in der der mechanische Anschlag
 liegt. Beim ersten anderen Geraeusch: Strg-C.
 ```
 
-Damit ist der Ausgangsstand wieder erreicht **im Zähler** — solange kein Rand berührt wurde, ist das auch die
+Damit ist der Ausgangsstand wieder erreicht **im Zähler** - solange kein Rand berührt wurde, ist das auch die
 Ausgangslage der Mechanik.
 
 ---
 
-## Schritt 6 — `range`: den unteren Rand suchen
+## Schritt 6 - `range`: den unteren Rand suchen
 
 Der eigentliche Test. Der obere Rand wird **nicht** angefahren.
 
@@ -204,7 +204,7 @@ h713-focus range --max 260
 
 Es fragt nach; mit `ja` antworten. (Über ssh ohne Terminal: `--ja` anhängen.)
 
-**Erwartet** — hier mit einem Start bei `step=-198`, damit die Ausgabe kurz bleibt; am Gerät stehen davor
+**Erwartet** - hier mit einem Start bei `step=-198`, damit die Ausgabe kurz bleibt; am Gerät stehen davor
 entsprechend mehr Häppchenzeilen:
 
 ```
@@ -243,7 +243,7 @@ Vermessung
 ```
 
 **Die Zahl, um die es geht:** `unterer Rand step=…`. Vom Ladepunkt aus gemessen sollte sie **nahe bei −206**
-liegen, wenn die Mechanik nach dem 12.09. nicht bewegt wurde. **Sie muss es nicht** — die Ausgangslage kann
+liegen, wenn die Mechanik nach dem 12.09. nicht bewegt wurde. **Sie muss es nicht** - die Ausgangslage kann
 eine andere sein, und dann ist jede andere Zahl genauso richtig.
 
 Ein Häppchen kann statt `[rand]` auch `[ausserhalb]` melden; dann folgt
@@ -266,7 +266,7 @@ nicht gesetzt. Der gemeldete Randstand ist dann **einen mstep kleiner**. Beide F
 
 ---
 
-## Schritt 7 — optional, und nur wenn Schritt 6 sauber lief: der obere Rand
+## Schritt 7 - optional, und nur wenn Schritt 6 sauber lief: der obere Rand
 
 **Das ist die Fahrt in Richtung Anschlag.** Sie ist bis heute nie gemacht worden.
 
@@ -274,7 +274,7 @@ nicht gesetzt. Der gemeldete Randstand ist dann **einen mstep kleiner**. Beide F
 h713-focus range --auch-oben --max 400 --schritt 1
 ```
 
-`--schritt 1` macht die Fahrt langsamer und die Zwischenmeldungen dichter — je eine Zeile pro mstep, rund
+`--schritt 1` macht die Fahrt langsamer und die Zwischenmeldungen dichter - je eine Zeile pro mstep, rund
 16 ms auseinander. Die Hand am Strg-C, das Ohr am Gerät.
 
 **Erwartet:** erst der Lauf aus Schritt 6, dann
@@ -299,7 +299,7 @@ und am Ende entweder ein `[rand]` mit `edge_up=1` und dem Block
 oder `oberer Rand NICHT gefunden innerhalb von 400 msteps`.
 
 **Beides ist ein Ergebnis.** 400 msteps ist die harte Obergrenze und lässt sich nicht hochsetzen; findet sich
-der obere Rand darin nicht, ist der Fahrweg länger als 400 msteps — und das allein widerlegt die 800 aus dem
+der obere Rand darin nicht, ist der Fahrweg länger als 400 msteps - und das allein widerlegt die 800 aus dem
 Gerätebaum schon nicht, aber es grenzt sie ein.
 
 **Abbruchkriterium, härter als sonst:** hier ist jedes untypische Geräusch ein sofortiges Strg-C. Aufwärts
@@ -307,7 +307,7 @@ ist die Richtung, in der in der Vergangenheit gegen den Anschlag gedrückt wurde
 
 ---
 
-## Schritt 8 — aufräumen
+## Schritt 8 - aufräumen
 
 ```sh
 rmmod hy310_focus_motor
@@ -315,16 +315,16 @@ rmmod hy310_focus_motor
 
 **Den Fokus nicht „zur Sicherheit" zurückfahren.** Er darf stehen bleiben, wo er steht; eine Fahrt ohne
 Bezugspunkt wäre genau das, was dieses Werkzeug vermeiden soll. Wer den Ausgangsstand wiederhaben will,
-nimmt das `h713-focus goto …`, das `range` am Ende ausgibt — und zwar **vor** dem `rmmod`, weil der Zähler
+nimmt das `h713-focus goto …`, das `range` am Ende ausgibt - und zwar **vor** dem `rmmod`, weil der Zähler
 mit dem Modul verschwindet.
 
 ---
 
 ## Was danach notiert gehört
 
-1. Die Zeile `motor_limit (roh)` aus Schritt 2 — der Zustand direkt nach dem Laden.
+1. Die Zeile `motor_limit (roh)` aus Schritt 2 - der Zustand direkt nach dem Laden.
 2. Der gemeldete **untere Rand** aus Schritt 6, und ob es `[rand]` oder `[ausserhalb]` war.
-3. Falls Schritt 7 gelaufen ist: der **obere Rand** und der Fahrweg — das ist die erste Vermessung des
+3. Falls Schritt 7 gelaufen ist: der **obere Rand** und der Fahrweg - das ist die erste Vermessung des
    gesamten Fahrwegs überhaupt und die Voraussetzung dafür, dass ein Autofokus über die Kamera überhaupt
    sinnvoll gebaut werden kann (README Abschnitt 6).
 4. Jede Stelle, an der die Ausgabe **anders** aussah als hier. Die erwarteten Ausgaben kommen aus einer

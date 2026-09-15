@@ -263,10 +263,10 @@ AIC_KO_DIR="$PROJECT_ROOT/build/out/modules"
 AIC_MODULES=(aic8800_bsp aic8800_fdrv aic8800_btlpm)
 for m in "${AIC_MODULES[@]}"; do
   ko="$AIC_KO_DIR/$m.ko"
-  [ -f "$ko" ] || { echo "error: missing $ko — run build/build.sh aic8800 first" >&2; exit 1; }
+  [ -f "$ko" ] || { echo "error: missing $ko - run build/build.sh aic8800 first" >&2; exit 1; }
   vm=$(modinfo -F vermagic "$ko" 2>/dev/null | awk '{print $1}')
   [ "$vm" = "$KERNEL_RELEASE" ] || {
-    echo "error: $m.ko vermagic '$vm' != kernel '$KERNEL_RELEASE' — rerun build/build.sh aic8800" >&2
+    echo "error: $m.ko vermagic '$vm' != kernel '$KERNEL_RELEASE' - rerun build/build.sh aic8800" >&2
     exit 1
   }
 done

@@ -18,7 +18,7 @@ class Fat:
     """Read-only FAT with long names (VFAT LFN).
 
     Needed for the vendor partitions bootloader_a/bootloader_b (FAT16, 32 MiB): that is where the MIPS/display
-    artefacts sit, and their 8.3 short names are useless — 'PR§÷pð~1.TSE' is really 'ProjectID_0x0032.TSE'.
+    artefacts sit, and their 8.3 short names are useless - 'PR§÷pð~1.TSE' is really 'ProjectID_0x0032.TSE'.
     Only the LFN entries (attribute 0x0F, 13 UTF-16 characters per entry, backwards in front of the 8.3 entry)
     yield the name that U-Boot expects in h713_disp_read().
     """
@@ -74,7 +74,7 @@ class Fat:
         log.info(f"{origin}: {self.description}")
         if self.total * self.bps > q.size:
             # bootloader_a/_b are 32 MiB while the BPB claims 128 MiB; boot-resource.fex is cut off behind the
-            # payload. Both are harmless as long as the used clusters lie inside the source — otherwise reading
+            # payload. Both are harmless as long as the used clusters lie inside the source - otherwise reading
             # the individual file fails and is reported there.
             note = (f"the FAT volume claims {self.total * self.bps} B, the source has {q.size} B -- "
                     f"only what is there is read")
@@ -137,7 +137,7 @@ class Fat:
     def entries(self, cluster: int = 0) -> list[dict]:
         """Entries of one directory; 'name' is the long name (fallback: 8.3), 'kurz' always the 8.3 name.
 
-        The dict keys stay as they are — the extractor's JSON and report depend on them (stage 1).
+        The dict keys stay as they are - the extractor's JSON and report depend on them (stage 1).
         """
         data = self._raw_directory(cluster if cluster else (self.root_cluster if self.type == "FAT32" else 0))
         out: list[dict] = []

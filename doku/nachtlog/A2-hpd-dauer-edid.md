@@ -1,4 +1,4 @@
-# A2 — Wie lange muss HPD beim EDID-Upload unten liegen? **200 ms.** (Board-Agent, 07.09. 08:33–08:36)
+# A2 - Wie lange muss HPD beim EDID-Upload unten liegen? **200 ms.** (Board-Agent, 07.09. 08:33-08:36)
 
 Auftrag: Fund **A2** der Regel-1-Durchsicht (`REGEL1-durchsicht.md`). Der Treiber aus `0091` hielt HPD
 **10 s** unten (`HPD_DOWN_MS 10000`, `msleep()` in `arisc_hdmi_edid_init()`), ohne Beleg für genau diese
@@ -7,13 +7,13 @@ Dauer. Der Wert stammte aus dem Diagnoseskript `arisc_edid_init.sh` (`sleep 10`)
 **Betriebspfad**: `arisc_hdmi_edid_init()` läuft im Probe, machte die Anbindung des Aufnahmegeräts zehn
 Sekunden lang und war der einzige Grund für `PROBE_PREFER_ASYNCHRONOUS`.
 
-Meine frühere Messung `M4-hpd-dauer.md` deckt diesen Fall **ausdrücklich nicht** — sie betraf den
+Meine frühere Messung `M4-hpd-dauer.md` deckt diesen Fall **ausdrücklich nicht** - sie betraf den
 Wiederanlauf-Zyklus, bei dem die Quelle das EDID schon hatte.
 
 ## Aufbau
 
 Ein Mitschreiber auf dem **Zuspieler** (`/tmp/hpdwatch.sh`, 50-ms-Raster) protokolliert jede Änderung von
-`/sys/class/drm/card0-HDMI-A-2/status` mit Zeitstempel — so werden echte Flanken sichtbar statt
+`/sys/class/drm/card0-HDMI-A-2/status` mit Zeitstempel - so werden echte Flanken sichtbar statt
 SSH-Latenz. Dann fünf `PullHotPlug`-Zyklen mit steigender Senkendauer.
 
 ## Messwerte
@@ -27,7 +27,7 @@ SSH-Latenz. Dann fünf `PullHotPlug`-Zyklen mit steigender Senkendauer.
 | 5 s | 08:34:19,385 | 08:34:25,950 | 6,57 s |
 
 **Jede** Dauer erzeugt eine saubere Flanke, auch die kürzeste. Die Trennung, die der Zuspieler sieht, ist
-durchgehend ~1,5 s länger als die Senke — das ist sein eigenes Abtast- und Entprellverhalten, nicht unseres.
+durchgehend ~1,5 s länger als die Senke - das ist sein eigenes Abtast- und Entprellverhalten, nicht unseres.
 
 ## Die Gegenprobe: wird dabei auch wirklich ein EDID gelesen?
 
@@ -47,8 +47,8 @@ Vollständige Modusliste aus dem hochgeladenen EDID. **200 ms genügen.**
 `HPD_DOWN_MS` in `0091` von `10000` auf **`200`** gesetzt, mit dem Messbefund im Kommentar. Der Wert ist
 doppelt gedeckt:
 
-1. **gemessen** — kleinste geprüfte Dauer, die Flanke *und* EDID-Neulesung erzeugt;
-2. **Stock-Wert** — `HDMI_SetHPDTimeInterval(0xC8)` = 200, im Stock-elog als
+1. **gemessen** - kleinste geprüfte Dauer, die Flanke *und* EDID-Neulesung erzeugt;
+2. **Stock-Wert** - `HDMI_SetHPDTimeInterval(0xC8)` = 200, im Stock-elog als
    `SetHPDTimeInterval from 200 to 200` (`re/captures/weltneuheit/elog-stock-LIVE.bin`).
 
 Messminimum und Stock-Wert fallen zusammen; eine längere Dauer bräuchte einen eigenen Grund.
@@ -58,6 +58,6 @@ Serie danach geprüft: **71/71 sauber**, im erzeugten Baum steht `HPD_DOWN_MS 20
 
 ## Was das nicht sagt
 
-Ob **unter** 200 ms noch etwas geht, ist nicht gemessen — und wäre auch uninteressant, weil HDMI selbst
+Ob **unter** 200 ms noch etwas geht, ist nicht gemessen - und wäre auch uninteressant, weil HDMI selbst
 mindestens 100 ms verlangt und Stock 200 nimmt. Ebenfalls offen bleibt, ob eine andere Quelle
 (nicht dieser ThinkPad) längere Senken braucht; das Entprellverhalten ist Sache der Quelle.

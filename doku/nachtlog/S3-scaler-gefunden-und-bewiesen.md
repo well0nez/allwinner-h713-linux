@@ -1,11 +1,11 @@
-# S3 — Der Scaler: Register gefunden, Formel hergeleitet, bitgenau gegengeprüft
+# S3 - Der Scaler: Register gefunden, Formel hergeleitet, bitgenau gegengeprüft
 
-07.09.2026, 20:40–22:15 · idalib + Board · Fortsetzung von [`S1`](S1-scaler-gefunden.md)/[`S2`](S2-scaler-anwenden-versuche.md)
+07.09.2026, 20:40-22:15 · idalib + Board · Fortsetzung von [`S1`](S1-scaler-gefunden.md)/[`S2`](S2-scaler-anwenden-versuche.md)
 
 ## Die Register
 
 `sub_8B1A5DF0` (aus `ProcWinNode__WriteReg`) schreibt den Block `0x05180000`. Dort steht die
-Skalierung — **nicht** in den Fensterregistern, wie `S1` noch annahm, und **nicht** bei
+Skalierung - **nicht** in den Fensterregistern, wie `S1` noch annahm, und **nicht** bei
 `0x05000174`, wie `doku/89` nahelegte:
 
 | Register | Bedeutung |
@@ -14,7 +14,7 @@ Skalierung — **nicht** in den Fensterregistern, wie `S1` noch annahm, und **ni
 | `0x05180008` [30:28] | Modusfeld waagerecht |
 | `0x05180008` [26:24] | Modusfeld senkrecht |
 | `0x0518003C` [21:0] | senkrechtes Verhältnis |
-| `0x05180014` Bit 27 | „keine Skalierung" — gesetzt, wenn beide Verhältnisse genau 1:1 |
+| `0x05180014` Bit 27 | „keine Skalierung" - gesetzt, wenn beide Verhältnisse genau 1:1 |
 | `0x05180000` [15:0] | Anfangsphase waagerecht |
 | `0x05180038` [15:0] | Anfangsphase senkrecht |
 
@@ -85,27 +85,27 @@ Marco hat ihn gefunden: der Zuspieler stand die ganze Zeit auf einem **X-Schirm 
 (interner Schirm `eDP-1`), während `HDMI-2` mit 1280×720 auf Position +0+0 nur den linken oberen
 Ausschnitt zeigte. Der „doppelte Inhalt rechts" in meinen Fotos war also teilweise die Quelle
 selbst. Behoben durch `xrandr --output eDP-1 --mode 1280x720 --output HDMI-2 --mode 1280x720
---same-as eDP-1` — X-Schirm exakt 1280×720, gespiegelt.
+--same-as eDP-1` - X-Schirm exakt 1280×720, gespiegelt.
 
 Mit sauberer Quelle nachgemessen: **der Umbruch bleibt**, die Diagnose aus `S2` steht also. Aber
-jede Bildbewertung davor ist unzuverlässig, und die Lehre gilt allgemein — **vor jeder
+jede Bildbewertung davor ist unzuverlässig, und die Lehre gilt allgemein - **vor jeder
 Bildbeurteilung die Quelle prüfen**, nicht nur den gemeldeten Modus.
 
-## Die Folge ist vollständig — und reicht trotzdem nicht
+## Die Folge ist vollständig - und reicht trotzdem nicht
 
 `sub_8B1A604C` nachgelesen: es schreibt `0x05140514/518/524/528/148/14C/160/164` aus einem
 u16-Feld `{x0, _, x1, _, y0, _, y1, _}` bei `a1+92`. Gegengelesen am Gerät:
 `0x0514014C = 0x00000780` → x0 = 0, x1 = 1920; `0x05140148 = 0x00000438` → y0 = 0, y1 = 1080.
-Das ist das **Ausgabefenster** und bleibt bei Panelgröße — für einen Quellwechsel also nichts zu
+Das ist das **Ausgabefenster** und bleibt bei Panelgröße - für einen Quellwechsel also nichts zu
 tun. Damit war die Schreibfolge vollständig bekannt.
 
 Sie wurde in einem Durchgang gesetzt (Gates gelöscht, PROC-Quellfenster `0x05140104/0108` auf
 1280×720, Zielfenster auf 1920×1080, Verhältnisse und Phasen hergeleitet, `0x0514011C` mit
-Freigabe) — **das Bild blieb falsch**, derselbe Umbruch.
+Freigabe) - **das Bild blieb falsch**, derselbe Umbruch.
 
 Damit ist auch der letzte aus dem Disassemblat ableitbare Versuch aus dem Userspace gescheitert.
 Bemerkenswert bleibt der Widerspruch: `0x05180008` **wirkt sofort** (die Vergrößerung war
-sichtbar), die PROC-Fensterregister dagegen bewirken nichts — auch nicht das Zielfenster bei
+sichtbar), die PROC-Fensterregister dagegen bewirken nichts - auch nicht das Zielfenster bei
 1080p, wo ein 960×540-Wert das Bild hätte vierteln müssen. Das spricht dafür, dass die
 PROC-Fensterstufe in unserer Kette **umgangen** ist und die Eingangsgeometrie des aktiven
 Scalers (`0x05180000`-Block) aus einer Quelle kommt, die ich noch nicht gefunden habe.
@@ -115,7 +115,7 @@ Scalers (`0x05180000`-Block) aus einer Quelle kommt, die ich noch nicht gefunden
 Die offene Frage ist jetzt eng: **woher nimmt der aktive Scaler bei `0x05180000` seine
 Eingangsgeometrie?** Alle Schreiber dieses Blocks in `display.bin` sind bekannt (`sub_8B1A5DF0`);
 die Felder `a1+64/72/80/88` tragen dort die Panelmaße. Zu klären ist, welches Register die
-*Eingangs*breite trägt — Kandidaten aus dem Abzug: `0x05180050` (`0x001E0438`), `0x0518002C`
+*Eingangs*breite trägt - Kandidaten aus dem Abzug: `0x05180050` (`0x001E0438`), `0x0518002C`
 (`0x006C0780`), `0x05180044` (`0x68`). Erst mit dieser Antwort ergibt ein Treiberpatch Sinn.
 Kein weiteres devmem-Probieren: es hat die Firmware zweimal hängen lassen (leerer Signalsatz,
 RPCs von <10 ms auf 537 ms; nur ein Netboot-Neustart half).

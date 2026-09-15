@@ -25,7 +25,7 @@ Die Kamera an Port 1 gehört zum Gerät, vermutlich für Autofokus und Keystone.
 ## Auf dem PC
 
 Adresse: **192.168.8.104** (per DHCP, `enp9s0`). Sie steht fest im
-Environment des Geräts — ändert sie sich, bootet nichts mehr. Eine feste
+Environment des Geräts - ändert sie sich, bootet nichts mehr. Eine feste
 Zuordnung im Router wäre die saubere Lösung.
 
 ### TFTP starten
@@ -60,7 +60,7 @@ h713-kernel-netboot.fit   der für Netboot (r8152 fest eingebaut)
 Nach Änderungen: `sudo exportfs -ra`.
 
 Das Wurzelverzeichnis liegt entpackt unter `/srv/h713-rootfs`, rund 970 MB,
-und **muss root gehören** — sonst stolpert das Zielsystem über `/etc` und die
+und **muss root gehören** - sonst stolpert das Zielsystem über `/etc` und die
 setuid-Binaries.
 
 ## Im Gerät gespeichert
@@ -84,12 +84,12 @@ Vier Dinge daran sind teuer gelernt:
 scheitert.
 
 **Die Server-IP steht literal in `bootcmd`, nicht als `${serverip}`.** `dhcp`
-überschreibt `serverip` mit dem, was der DHCP-Server anbietet — hier der
+überschreibt `serverip` mit dem, was der DHCP-Server anbietet - hier der
 Router unter 192.168.8.1. Die Variable zeigt danach auf die falsche Adresse.
 
 **`clk_ignore_unused pd_ignore_unused` sind nicht optional.** Ohne sie nimmt
 Linux beim `clk_disable_unused` PLL_VIDEO2, die Display-Modtakte und den
-MIPS-Coprozessor mit — das Panel verliert seinen Pixeltakt, das Bild wird
+MIPS-Coprozessor mit - das Panel verliert seinen Pixeltakt, das Bild wird
 schwarz, und jeder Atomic-Commit läuft in einen 10-Sekunden-Timeout. Sie
 stehen im `chosen`-Knoten des Devicetree, aber die U-Boot-Env überschreibt
 den, und beim Umstieg auf Netboot sind sie verlorengegangen. Im Kernel-Log
@@ -99,7 +99,7 @@ sichtbar an `clk: Not disabling unused clocks`. Ganze Geschichte in
 **`h713_disp auto 0x30 logo` gehört vor den Rest.** Der KMS-Treiber im Kernel
 richtet nichts selbst ein, er übernimmt nur, was U-Boot hinterlässt. Ohne
 diesen Schritt meldet er `display is not running`. Seine Fehlermeldung nennt
-`0x34` — das ist **seine** ProjectID, unsere ist `0x30`.
+`0x34` - das ist **seine** ProjectID, unsere ist `0x30`.
 
 ## Der Build
 
@@ -114,7 +114,7 @@ CONFIG_NET_RANDOM_ETHADDR
 **Andere Sektorenzahl:** `0x6bb` statt `0x688`, weil der Netzwerkstack das
 Image um 26 KB wachsen lässt.
 
-Der Kernel braucht die Treiber **fest eingebaut**, nicht als Modul — das Netz
+Der Kernel braucht die Treiber **fest eingebaut**, nicht als Modul - das Netz
 muss stehen, bevor das Wurzelverzeichnis da ist, und die Module liegen genau
 darauf. Dafür gibt es `patches/kernel/board/netboot.config`:
 
@@ -142,7 +142,7 @@ Drei Eigenheiten von U-Boots `loady`, alle am Gerät herausgefunden:
 
 - **128-Byte-Blöcke.** Mit 1K-Blöcken (STX) antwortet es endlos mit `C`.
 - **Der Batch-Abschlussblock ist Pflicht**, sonst bleibt es bei `C` hängen.
-- **Er muss aus Nullbytes bestehen**, nicht mit `0x1a` gefüllt — sonst
+- **Er muss aus Nullbytes bestehen**, nicht mit `0x1a` gefüllt - sonst
   "download aborted", obwohl alle Daten schon übertragen waren.
 
 ## Das Rootfs bauen
@@ -152,7 +152,7 @@ es nirgends nennt. Auf einem Debian-Abkömmling:
 
 | | |
 |---|---|
-| `pacman` in der Werkzeugprüfung | wird nur gebraucht, wenn das Debian-Keyring fehlt — verlangt wird es trotzdem immer. Platzhalter in den PATH legen. |
+| `pacman` in der Werkzeugprüfung | wird nur gebraucht, wenn das Debian-Keyring fehlt - verlangt wird es trotzdem immer. Platzhalter in den PATH legen. |
 | `binfmt`-Dateiname | er will `qemu-aarch64-static.conf`, Debian/Ubuntu nennen sie `qemu-aarch64.conf`. Symlink. |
 | `/etc/subuid` | `unshare --map-auto` braucht passende Bereiche. Im Container `root:1:65536`. |
 | Container ohne `--userns=keep-id` | sonst kein verschachtelter Namensraum |
@@ -175,5 +175,5 @@ Das Gerät hat kein eigenes Betriebssystem mehr. Wenn `dnsmasq` oder NFS
 stehen, kommt es nur bis U-Boot. In U-Boot einbrechen: Strg-C wiederholt
 senden, das bricht die TFTP-Schleife ab.
 
-**Aus Linux heraus geht das nicht** — dort landet Strg-C in der Shell des
+**Aus Linux heraus geht das nicht** - dort landet Strg-C in der Shell des
 Geräts, nicht in U-Boot. Dann hilft nur ein Neustart.

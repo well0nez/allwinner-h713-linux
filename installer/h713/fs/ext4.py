@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ext4 — read-only, in plain Python (standard library); the old way through debugfs stays as --use-debugfs.
+"""ext4 - read-only, in plain Python (standard library); the old way through debugfs stays as --use-debugfs.
 
 Stage 1 of plan doku/121: moved verbatim from `h713-extract` (X:1142-1673), identifiers and comments translated
 to English, every user-visible string and every key of the returned dicts kept byte-identical.
@@ -22,7 +22,7 @@ class Ext4Base:
     """Common surface of the two ext4 readers (Python reader and debugfs fallback).
 
     `exists` and `walk` sit here on purpose: the output of the tool depends on the order in which `walk` runs
-    and on the field names of the entries — for both ways these are guaranteed to be the same.
+    and on the field names of the entries - for both ways these are guaranteed to be the same.
     An entry is {'name', 'ino', 'mode', 'size', 'typ'} with 'typ' out of 'd' (directory), 'l' (symlink),
     'f' (everything else); 'size' is 0 for directories (that is how debugfs `ls -p` prints it).
     """
@@ -57,12 +57,12 @@ class Ext4Base:
 
 
 class Ext4(Ext4Base):
-    """Read-only ext2/3/4 in plain Python — no debugfs, no mount, no e2fsprogs, runs under Windows as well.
+    """Read-only ext2/3/4 in plain Python - no debugfs, no mount, no e2fsprogs, runs under Windows as well.
 
     Needed for the vendor partition (ext4, ~114 MB), the source of EDID, `libmspsound.so`, the PQ files and
     `panel_config.ini`. That partition never sits at the start of a file but as a range inside a bigger file
     (IMAGEWTY → super → LP extent, often Android-sparse on top); this is why the reader reads through a
-    `Source` — which is exactly "(file, start offset, length)" and replaces the `?offset=` of debugfs. Putting
+    `Source` - which is exactly "(file, start offset, length)" and replaces the `?offset=` of debugfs. Putting
     the partition down as an intermediate file is thereby not needed at all.
 
     Can do: superblock (magic 0xEF53), group descriptors (32 and 64 B, INCOMPAT_64BIT), inodes of any size,
@@ -125,7 +125,7 @@ class Ext4(Ext4Base):
         desc_size = u16(0xfe)
         blocks_hi = u32(0x150) if (self.feat_incompat & self.INCOMPAT_64BIT) else 0
         self.blocks_count = s_blocks_lo | (blocks_hi << 32)
-        # wording as before — it goes into the manifest (eingang.vendor_fs) and into the report exactly like this.
+        # wording as before - it goes into the manifest (eingang.vendor_fs) and into the report exactly like this.
         self.description = (f"ext4, block {self.block_size}, {s_blocks_lo} blocks = {s_blocks_lo * self.block_size} B, "
                             f"label '{vol}', feature_incompat {self.feat_incompat:#x}")
         self.log.info(f"{label}: {self.description}")
@@ -229,7 +229,7 @@ class Ext4(Ext4Base):
         ftype = self._type(mode)
         # debugfs `ls -p` prints no size for directories (the field stays empty -> 0)
         size = size_lo | (size_hi << 32)
-        # dict keys stay as they are — the extractor's JSON depends on them (stage 1)
+        # dict keys stay as they are - the extractor's JSON depends on them (stage 1)
         d = {"ino": ino, "mode": mode, "typ": ftype, "uid": uid_lo, "gid": gid_lo, "links": links,
              "flags": flags, "blocks_lo": blocks_lo, "file_acl": file_acl, "i_block": i_block,
              "groesse": size_lo if ftype == "d" else size, "groesse_ls": 0 if ftype == "d" else size}
@@ -241,7 +241,7 @@ class Ext4(Ext4Base):
             self.stat["indirekt_inodes"] += 1
         if ftype == "d":
             self.stat["verzeichnisse"] += 1
-            if flags & 0x1000:              # EXT4_INDEX_FL — hash tree, is read linearly
+            if flags & 0x1000:              # EXT4_INDEX_FL - hash tree, is read linearly
                 self.stat["htree_verzeichnisse"] += 1
         return d
 
@@ -266,7 +266,7 @@ class Ext4(Ext4Base):
                 if not written:
                     self.stat["unbelegte_extents"] += 1
                 self.stat["extents"] += 1
-                # Unwritten extents (fallocate) read as zeros — so treat them like a hole.
+                # Unwritten extents (fallocate) read as zeros - so treat them like a hole.
                 out.append((ee_block, length, (lo | (hi << 32)) if written else 0))
             else:
                 ei_block, leaf_lo, leaf_hi, _u = struct.unpack_from("<IIHH", raw, o)
@@ -459,7 +459,7 @@ class Ext4(Ext4Base):
 
 
 class Ext4Debugfs(Ext4Base):
-    """The old way through `debugfs` from e2fsprogs (`--use-debugfs`) — as a cross-check for the Python reader.
+    """The old way through `debugfs` from e2fsprogs (`--use-debugfs`) - as a cross-check for the Python reader.
 
     Needs an installed e2fsprogs and therefore does not run everywhere (under Windows not at all); on top of
     that it cannot always read the partition in place and then puts it down as a file in between.

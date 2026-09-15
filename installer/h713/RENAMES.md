@@ -3,7 +3,7 @@
 
 ## RENAMES-B1
 
-# RENAMES — package B1 (`h713/util.py`, `h713/imagewty.py`, `h713/fex.py`)
+# RENAMES - package B1 (`h713/util.py`, `h713/imagewty.py`, `h713/fex.py`)
 
 Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-fel/hy310-mkimage.py`,
 `X` = `…/r2-extract/h713-extract`. Line numbers are those of the source file.
@@ -15,8 +15,8 @@ Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-f
 | `mib(b)` | I:108, M:209 | `mib(b)` (unchanged) |
 | `dauer(sekunden)` | I:112 | `duration(seconds)` |
 | `_rel(p, basis)` | M:241 | `relpath_or_abs(p, base)` |
-| `sha256_datei(pfad, stueck=8 << 20)` | M:250 | `sha256_file(path, chunk=8 << 20, log=None)` — one function |
-| `sha256_datei(pfad, log=None)` | X:314 | `sha256_file(path, chunk=8 << 20, log=None)` — same function |
+| `sha256_datei(pfad, stueck=8 << 20)` | M:250 | `sha256_file(path, chunk=8 << 20, log=None)` - one function |
+| `sha256_datei(pfad, log=None)` | X:314 | `sha256_file(path, chunk=8 << 20, log=None)` - same function |
 | `sha256_bytes(b)` | X:310 | `sha256_bytes(b)` (unchanged) |
 | `hexdump_kurz(b, n=16)` | X:330 | `hexdump_short(b, n=16)` |
 | `crc32(b)` | X:627 | `crc32(b)` (unchanged; `import zlib` moved to module level) |
@@ -37,7 +37,7 @@ Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-f
 | `SunxiPackage.summe_ok` | X:892 | `SunxiPackage.checksum_ok` |
 | `SunxiPackage.item(name)` | X:916 | `SunxiPackage.item(name)` (unchanged) |
 | `suche_sunxi_packages(q, log, max_bytes)` | X:923 | `find_sunxi_packages(q, log, max_bytes)` |
-| locals `treffer`, `ueberlapp`, `ende` | X:925–927 | `hits`, `overlap`, `end` |
+| locals `treffer`, `ueberlapp`, `ende` | X:925-927 | `hits`, `overlap`, `end` |
 | `uboot_kennung(ub)` | X:941 | `uboot_version_string(ub)` |
 | `fdt_wurzel(dtb)` | X:947 | `fdt_root(dtb)` |
 | local `tiefe` | X:953 | `depth` |
@@ -48,12 +48,12 @@ Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-f
 
 | old | where | new |
 |---|---|---|
-| `stock_plan(ex, image_q) -> (img, partitionen, roh)` | I:1621 | `stock_plan(image) -> (partitions, raw)` — no longer builds the Imagewty, no longer returns it |
-| the `[partition]` loop inside `stock_plan` | I:1636–1650 | `parse_sys_partition(text)` (own function) |
-| locals `partitionen`, `sekt`, `roh` | I:1634–1653 | `partitions`, `sect`, `raw` |
-| (new, per brief) 24 u32 at boot0+0x38 | — | `dram_block(boot0)`, field names `DRAM_FIELDS` as in A1 `image_facts.py:39` = `fixtures-local/skripte/imgdump.py:38` |
+| `stock_plan(ex, image_q) -> (img, partitionen, roh)` | I:1621 | `stock_plan(image) -> (partitions, raw)` - no longer builds the Imagewty, no longer returns it |
+| the `[partition]` loop inside `stock_plan` | I:1636-1650 | `parse_sys_partition(text)` (own function) |
+| locals `partitionen`, `sekt`, `roh` | I:1634-1653 | `partitions`, `sect`, `raw` |
+| (new, per brief) 24 u32 at boot0+0x38 | - | `dram_block(boot0)`, field names `DRAM_FIELDS` as in A1 `image_facts.py:39` = `fixtures-local/skripte/imgdump.py:38` |
 | `lies_ini(text)` | X:1815 | `parse_ini(text)` |
-| locals `sekt`, `akt`, `z` | X:1817–1819 | `sect`, `cur`, `line` |
+| locals `sekt`, `akt`, `z` | X:1817-1819 | `sect`, `cur`, `line` |
 | `zahlen(v)` | X:1832 | `ini_numbers(v)` |
 | `panel_config_id(text)` | X:1987 | `panel_config_id(text)` (unchanged) |
 | locals `_sekt`, `paare` | X:1989 | `_sect`, `pairs` |
@@ -74,7 +74,7 @@ Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-f
 
 ## RENAMES-B2
 
-# B2 — `h713/gpt.py`: renames old → new
+# B2 - `h713/gpt.py`: renames old → new
 
 Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-fel/hy310-mkimage.py`,
 `X` = `…/r2-extract/h713-extract`.
@@ -86,16 +86,16 @@ Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-f
 | `Gpt` | X:632 | `Gpt` | reader, unchanged behaviour |
 | `Gpt.ist_gpt` | X:634 | `Gpt.is_gpt` | called at X:2196, X:2964 (B7) |
 | `Gpt.tabelle_ok` | X:646 | `Gpt.table_ok` | attribute |
-| `Gpt.header_ok`, `.disk_guid`, `.first`, `.last`, `.backup_lba`, `.parts` | X:643–655 | unchanged | `parts` stays per api-h713.md |
+| `Gpt.header_ok`, `.disk_guid`, `.first`, `.last`, `.backup_lba`, `.parts` | X:643-655 | unchanged | `parts` stays per api-h713.md |
 | `Gpt.partition` | X:660 | `Gpt.partition` | unchanged |
 | `gpt_bauen` | M:294 | `build_layout_gpt` | thin wrapper over `build_gpt` |
 | `stock_gpt_bauen` | I:1883 | `build_stock_gpt` | thin wrapper over `build_gpt` |
-| — (new, unification of M:294 + I:1883) | — | `build_gpt` | the one builder |
+| - (new, unification of M:294 + I:1883) | - | `build_gpt` | the one builder |
 | `gpt_pruefen` | M:344 | `check_gpt` | layout data now parameters, see REPORT.md |
 | `SECT` | M:77, I:44 | `SECTOR` | |
 | `ENTSZ` | M:81 | `GPT_ENTRY_SIZE` | |
-| `NENT` | M:81 | `GPT_ENTRIES` | value 26, **not** 128 — see REPORT.md |
-| — | M:337–338, I:1949–1950 | `GPT_HEADER_LBA` = 1, `GPT_ENTRIES_LBA` = 2 | were literals in the returned dict |
+| `NENT` | M:81 | `GPT_ENTRIES` | value 26, **not** 128 - see REPORT.md |
+| - | M:337-338, I:1949-1950 | `GPT_HEADER_LBA` = 1, `GPT_ENTRIES_LBA` = 2 | were literals in the returned dict |
 | `ARR_SEKT` | M:82 | local `array_sectors` in `build_gpt` | I:1937 computed it locally already |
 
 ## Parameters of `build_gpt` (old local names → new)
@@ -115,8 +115,8 @@ Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-f
 | `back_arr` | M:327, I:1938 | `backup_table_lba` |
 | `kopf(mylba, altlba, entlba)` | M:316, I:1923 | `header(my_lba, alt_lba, table_lba)` |
 | `tab` | M:334 | `table` |
-| `e`, `u`, `ende`, `attr`, `name`, `lba`, `sekt` | M:307–312, I:1909–1919 | `e`, `unique_of(...)`, `end`, `attributes_of(...)`, `name`, `lba`, `sectors` |
-| — (new: the two builders' differing reserved field, M:320 vs I:1930) | — | `header_reserved` |
+| `e`, `u`, `ende`, `attr`, `name`, `lba`, `sekt` | M:307-312, I:1909-1919 | `e`, `unique_of(...)`, `end`, `attributes_of(...)`, `name`, `lba`, `sectors` |
+| - (new: the two builders' differing reserved field, M:320 vs I:1930) | - | `header_reserved` |
 
 ## Locals of `check_gpt` (M:344 `gpt_pruefen`)
 
@@ -131,7 +131,7 @@ Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `M` = `…/r0-f
 | `entlba`, `nent`, `entsz`, `entcrc` | M:362 | `table_lba`, `nent`, `entsz`, `entry_crc` (the last three keep the header's own names) |
 | `gefunden` | M:374 | `found` |
 | `soll` | M:381 | `expected` |
-| `bhdr`, `bmy`, `balt`, `bent`, `btab`, `bhsz`, `bges`, `broh` | M:386–399 (`bent` M:391) | `bhdr`, `bmy`, `balt`, `btable_lba`, `btab`, `bhsz`, `bstored`, `braw` |
+| `bhdr`, `bmy`, `balt`, `bent`, `btab`, `bhsz`, `bges`, `broh` | M:386-399 (`bent` M:391) | `bhdr`, `bmy`, `balt`, `btable_lba`, `btab`, `bhsz`, `bstored`, `braw` |
 | `TEIL_C_LBA` | M:111 | parameter `part_c_lba` |
 | `FIRST_USABLE` | M:79 | parameter `first_usable` |
 | `PARTITIONEN` | M:87 | parameter `partitions` |
@@ -144,19 +144,19 @@ GPT-Kopfs stimmt nicht"`, `"GPT: Kopf-CRC …"`, `"Partitionen: …"`, `"Partiti
 
 ## RENAMES-B3
 
-# B3 — rename map (old → new)
+# B3 - rename map (old → new)
 
 Sources: `X` = `analyse/release/arbeit/r2-extract/h713-extract`, `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`.
 Line numbers point at the **old** definition. Public names follow the package API of doku/121 §4 (stage 1); private helpers, parameters
 and locals are translated freely. Every user-visible string and every **dict key** stays byte-identical (see the last
-section) — only identifiers change.
+section) - only identifiers change.
 
-## `h713/source.py` (X:338–546, X:1130–1136)
+## `h713/source.py` (X:338-546, X:1130-1136)
 
 | old | new | old line |
 |---|---|---|
 | `Quelle` | `Source` | X:338 |
-| `Quelle.backing` / `.sub` / `.read` / `.size` / `.name` | unchanged | X:341–350 |
+| `Quelle.backing` / `.sub` / `.read` / `.size` / `.name` | unchanged | X:341-350 |
 | `DateiQuelle` | `FileSource` | X:353 |
 | `DateiQuelle.pfad` (attr, param) | `FileSource.path` | X:354 |
 | `TeilQuelle` | `SliceSource` | X:370 |
@@ -167,11 +167,11 @@ section) — only identifiers change.
 | `SparseQuelle.bereiche` | `SparseSource.regions` | X:470 |
 | local `typen` | `types` | X:410 |
 | `KettenQuelle` | `ChainSource` | X:475 |
-| `KettenQuelle.teile` (attr, param) | `ChainSource.parts` | X:477–479 |
+| `KettenQuelle.teile` (attr, param) | `ChainSource.parts` | X:477-479 |
 | `NullQuelle` | `NullSource` | X:1130 |
 | `materialisiere(q, ziel, log)` | `materialize(q, target, log)` | X:508 |
 
-## `h713/fs/fat16.py` (X:674–866)
+## `h713/fs/fat16.py` (X:674-866)
 
 | old | new | old line |
 |---|---|---|
@@ -191,29 +191,29 @@ section) — only identifiers change.
 | local `roh` | `raw` | X:781 |
 | `_roh_verzeichnis` | `_raw_directory` | X:789 |
 | `eintraege(cluster=0)` | `entries(cluster=0)` | X:794 |
-| locals `basis`, `erw`, `kurz`, `lang`, `teil`, `groesse` | `base`, `ext`, `short`, `long_name`, `part`, `size` | X:812–825 |
+| locals `basis`, `erw`, `kurz`, `lang`, `teil`, `groesse` | `base`, `ext`, `short`, `long_name`, `part`, `size` | X:812-825 |
 | `verzeichnis(pfad)` | `directory(path)` | X:832 |
-| locals `teil`, `treffer` | `part`, `hits` | X:835–836 |
+| locals `teil`, `treffer` | `part`, `hits` | X:835-836 |
 | `lies(e)` | `read(e)` | X:842 |
-| locals `noetig`, `teile`, `gelesen` | `needed`, `parts`, `got` | X:844–846 |
+| locals `noetig`, `teile`, `gelesen` | `needed`, `parts`, `got` | X:844-846 |
 
 `ATTR_LFN`, `ATTR_VOLUME`, `ATTR_DIR`, `bps`, `spc`, `reserved`, `nfats`, `root_entries`, `total`, `fatsz`,
 `root_cluster`, `fat_start`, `root_start`, `data_start`, `cluster_bytes`, `eoc`, `label`, `_fat`: unchanged.
 
-## `h713/fs/lpsuper.py` (X:1024–1128)
+## `h713/fs/lpsuper.py` (X:1024-1128)
 
 | old | new | old line |
 |---|---|---|
 | `_lies_metadaten(moff, log, lage)` | `_read_metadata(moff, log, location)` | X:1062 |
 | `self.lage` | `self.location` | X:1106 |
 | `self.geraete` | `self.devices` | X:1107 |
-| locals `basis`, `kandidaten`, `gefunden` | `base`, `candidates`, `found` | X:1050–1053 |
-| locals `gruppen`, `geraete`, `groesse` | `groups`, `devices`, `size` | X:1090–1101 |
+| locals `basis`, `kandidaten`, `gefunden` | `base`, `candidates`, `found` | X:1050-1053 |
+| locals `gruppen`, `geraete`, `groesse` | `groups`, `devices`, `size` | X:1090-1101 |
 | local `teile` in `partition()` | `pieces` | X:1118 |
 | `SEKTOR` (X:273, module level) | `SECTOR` (module level here) | X:273 |
-| `partition(name, log)`, `self.parts`, `self.version`, `GEO_MAGIC`, `HDR_MAGIC` | unchanged | X:1024–1114 |
+| `partition(name, log)`, `self.parts`, `self.version`, `GEO_MAGIC`, `HDR_MAGIC` | unchanged | X:1024-1114 |
 
-## `h713/fs/ext4.py` (X:1142–1673)
+## `h713/fs/ext4.py` (X:1142-1673)
 
 | old | new | old line |
 |---|---|---|
@@ -222,7 +222,7 @@ section) — only identifiers change.
 | `lies(pfad, tmp)` | `read(path, tmp)` | X:1156, 1563, 1659 |
 | `existiert(pfad)` | `exists(path)` | X:1159 |
 | `gehe(wurzel, max_tiefe)` | `walk(root, max_depth)` | X:1166 |
-| locals `offen`, `pfad`, `tiefe`, `voll` | `open_list`, `path`, `depth`, `full` | X:1168–1175 |
+| locals `offen`, `pfad`, `tiefe`, `voll` | `open_list`, `path`, `depth`, `full` | X:1168-1175 |
 | `Ext4.WURZEL` | `Ext4.ROOT` | X:1194 |
 | `self.probleme` | `self.problems` | X:1223 |
 | `self.beschreibung` | `self.description` | X:1251, 1599 |
@@ -236,33 +236,33 @@ section) — only identifiers change.
 | `_block(nr, anzahl)` | `_block(nr, count)` | X:1304 |
 | local `hinweis` | `note` | X:1315 |
 | `_typ(mode)` (static) | `_type(mode)` | X:1331 |
-| locals `roh`, `typ`, `groesse` in `inode()` | `raw`, `ftype`, `size` | X:1343–1352 |
+| locals `roh`, `typ`, `groesse` in `inode()` | `raw`, `ftype`, `size` | X:1343-1352 |
 | `_extent_knoten(roh, ino, out, tiefe)` | `_extent_node(raw, ino, out, level)` | X:1371 |
-| locals `belegt`, `laenge`, `kind` | `written`, `length`, `child` | X:1385–1394 |
+| locals `belegt`, `laenge`, `kind` | `written`, `length`, `child` | X:1385-1394 |
 | `_indirekt(nr, stufe, start, karte, grenze)` | `_indirect(nr, level, start, mapping, limit)` | X:1397 |
-| locals `pro`, `spanne` | `per`, `span` | X:1399–1400 |
+| locals `pro`, `spanne` | `per`, `span` | X:1399-1400 |
 | `_karte(ino, inode)` | `_map(ino, inode)` | X:1415 |
 | local `karte` | `mapping` | X:1424 |
 | `_daten(ino, inode)` | `_data(ino, inode)` | X:1443 |
-| locals `groesse`, `belegt` | `size`, `filled` | X:1444–1450 |
+| locals `groesse`, `belegt` | `size`, `filled` | X:1444-1450 |
 | `_ist_schneller_symlink` | `_is_fast_symlink` | X:1465 |
 | `symlink_ziel(ino, inode)` | `symlink_target(ino, inode)` | X:1470 |
 | local `roh` | `raw` | X:1473 |
 | `_verzeichnis(ino)` | `_directory(ino)` | X:1481 |
-| locals `daten`, `kind` | `data`, `child` | X:1486–1492 |
+| locals `daten`, `kind` | `data`, `child` | X:1486-1492 |
 | `_kind(ino, name)` | `_child(ino, name)` | X:1509 |
 | local `kino` | `child_ino` | X:1510 |
 | `pfad_ino(pfad, folge_letzten)` | `path_inode(path, follow_last)` | X:1515 |
-| locals `komp`, `kind`, `kinode`, `ziel` | `parts`, `child`, `child_inode`, `target` | X:1518–1535 |
-| locals `eintraege`, `ki` in `ls()` | `entries`, `ci` | X:1549–1557 |
+| locals `komp`, `kind`, `kinode`, `ziel` | `parts`, `child`, `child_inode`, `target` | X:1518-1535 |
+| locals `eintraege`, `ki` in `ls()` | `entries`, `ci` | X:1549-1557 |
 | `statistik()` | `stats()` | X:1572 |
 | `Ext4Debugfs.datei` | `Ext4Debugfs.file` | X:1606 |
 | `_roh(cmds)` | `_raw(cmds)` | X:1619 |
 | local `akt` | `current` | X:1623 |
 | locals `eintraege`, `ziel` | `entries`, `target` | X:1637, 1660 |
-| `MAGIC`, `INCOMPAT_*`, `ROCOMPAT_*`, `FL_*`, `EXT_MAGIC`, `MAX_SYMLINK`, `BLOCK_CHUNK`, `ls`, `inode`, `stat`, `label_fs`, `dev`, `_cache`, `_dir_cache`, `_inode_cache` | unchanged | — |
+| `MAGIC`, `INCOMPAT_*`, `ROCOMPAT_*`, `FL_*`, `EXT_MAGIC`, `MAX_SYMLINK`, `BLOCK_CHUNK`, `ls`, `inode`, `stat`, `label_fs`, `dev`, `_cache`, `_dir_cache`, `_inode_cache` | unchanged | - |
 
-## `h713/fs/sparse.py` (I:1656–1731)
+## `h713/fs/sparse.py` (I:1656-1731)
 
 | old | new | old line |
 |---|---|---|
@@ -270,15 +270,15 @@ section) — only identifiers change.
 | `sparse_schreiben(platte, d, plba, trocken=False)` | `write_sparse(disk, data, part_lba, dry_run=False)` | I:1666 |
 | `platte.schreib(...)` (call) | `disk.write(...)` | I:1688 |
 | inner `schreib_am(bl, daten)` | `write_at(bl, buf)` | I:1687 |
-| locals `happen`, `pos`, `block`, `geschrieben` | `step`, `pos`, `block`, `written` | I:1684–1685 |
-| locals `typ`, `quelle`, `laenge` | `ctype`, `src`, `length` | I:1691–1692 |
-| locals `muster`, `gesamt`, `voll`, `null` | `pattern`, `total`, `full`, `zeros` | I:1701–1715 |
+| locals `happen`, `pos`, `block`, `geschrieben` | `step`, `pos`, `block`, `written` | I:1684-1685 |
+| locals `typ`, `quelle`, `laenge` | `ctype`, `src`, `length` | I:1691-1692 |
+| locals `muster`, `gesamt`, `voll`, `null` | `pattern`, `total`, `full`, `zeros` | I:1701-1715 |
 | `SECT` (I:44) | `SECTOR` (module level here) | I:44 |
-| `SPARSE_MAGIC`, `_CHUNK_RAW`, `_CHUNK_FILL`, `_CHUNK_DONT_CARE`, `_CHUNK_CRC32` | unchanged | I:1656–1657 |
+| `SPARSE_MAGIC`, `_CHUNK_RAW`, `_CHUNK_FILL`, `_CHUNK_DONT_CARE`, `_CHUNK_CRC32` | unchanged | I:1656-1657 |
 
 ## Deliberately **not** renamed (stage 1)
 
-* **Dict keys** — the extractor's JSON (`MANIFEST.json`) and `BERICHT.txt` are built from them:
+* **Dict keys** - the extractor's JSON (`MANIFEST.json`) and `BERICHT.txt` are built from them:
   * `Fat.entries()`: `name`, `kurz`, `lang`, `verzeichnis`, `cluster`, `groesse`, `attr`
   * `LpSuper.parts[…]`: `attrs`, `extents`, `size`, `gruppe`
   * `Ext4.ls()` / `Ext4Debugfs.ls()`: `name`, `ino`, `mode`, `size`, `typ`
@@ -302,10 +302,10 @@ section) — only identifiers change.
 
 ## RENAMES-B4
 
-# B4 — renames (old → new)
+# B4 - renames (old → new)
 
 Sources: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py`, `X` = `analyse/release/arbeit/r2-extract/h713-extract`.
-Line numbers are the **origin** line. Printed strings are not renamed — they are byte-identical (stage 1).
+Line numbers are the **origin** line. Printed strings are not renamed - they are byte-identical (stage 1).
 
 ## `h713/log.py`
 
@@ -337,7 +337,7 @@ B1 `util.py`'s `sha256_file(log=…)`) must use that name.
 
 | old | origin | new |
 |---|---|---|
-| `SECT` | I:44 | `SECT` (unchanged — see REPORT.md §4) |
+| `SECT` | I:44 | `SECT` (unchanged - see REPORT.md §4) |
 | `SECTORS_EXPECTED` | I:45 | `SECTORS_EXPECTED` |
 | `SPERRE_ERSTER` | I:104 | `LOCK_FIRST` |
 | `SPERRE_LETZTER` | I:105 | `LOCK_LAST` |
@@ -385,11 +385,11 @@ Locals: `hier`→`here`, `gefunden`→`found`.
 
 ## RENAMES-B5
 
-# B5 — renames (old → new)
+# B5 - renames (old → new)
 
 Source: `I` = `analyse/release/arbeit/r0-fel/hy310-install.py` (unchanged). Line numbers are the
 **origin** line in `I`. Printed strings, prompts, manifest keys, file names and exit codes are not
-renamed — they are byte-identical (stage 1). The attributes of `args` are argparse `dest` names and
+renamed - they are byte-identical (stage 1). The attributes of `args` are argparse `dest` names and
 therefore the CLI contract of B8: `args.abzug`, `args.sicherung`, `args.vendor`, `args.extraktor`,
 `args.arbeitskopie`, `args.env_neu`, `args._unser_layout`, `args.authorized_key`, `args.dry_run`
 stay German. The same holds for the keys of the image table (`teile`, `datei`, `lba`, `bytes`,
@@ -403,7 +403,7 @@ abstract syntax trees of old and new are equal.
 | old | origin | new |
 |---|---|---|
 | `VERSION` | I:42 | `VERSION` (tool version, see REPORT.txt §4.1) |
-| `EINMALIG` | I:95 | `UNIQUE_REGIONS` (with the orphaned comment I:48–50) |
+| `EINMALIG` | I:95 | `UNIQUE_REGIONS` (with the orphaned comment I:48-50) |
 | `abzug_klein(platte, ziel, log=K, unser_layout=False)` | I:462 | `dump_small(disk, target, log=console, our_layout=False)` |
 | `abzug_voll(platte, datei, log=K)` | I:526 | `dump_full(disk, file, log=console)` |
 | `pruefe_abzug(platte, datei, stichproben=8)` | I:554 | `verify_dump(disk, file, samples=8)` |
@@ -472,7 +472,7 @@ type), `treffer`→`hits`, `inhalt`→`content`, `nutzer`→`user`, `fremd`→`u
 `gewaehlt`→`chosen`, `voll`→`full`, `eigene`→`own`, `quelle_teil`→`source_part`, `datei`→`file`,
 `fehler`→`errors`, `vorher`→`before`, `nachher`→`after`, `hier`→`here`, `kandidat`→`candidate`.
 
-## Names of B1–B4 this package calls
+## Names of B1-B4 this package calls
 
 `K`→`console`, `_Still`→`Quiet` (`h713.log`); `Platte`→`Disk`, `lies`→`read`, `schreib`→`write`,
 `sektoren`→`sectors`, `pfad`→`path`, `SPERRE_ERSTER`→`LOCK_FIRST`, `SPERRE_LETZTER`→`LOCK_LAST`,
@@ -482,14 +482,14 @@ type), `treffer`→`hits`, `inhalt`→`content`, `nutzer`→`user`, `fremd`→`u
 
 ## RENAMES-B6
 
-# B6 — renames old → new
+# B6 - renames old → new
 
 `M` = `analyse/release/arbeit/r0-fel/hy310-mkimage.py` (1193 lines),
 `I` = `…/r0-fel/hy310-install.py`, `X` = `…/r2-extract/h713-extract`.
 Names fixed by the package API of doku/121 §4 (stage 1) are marked **api**; the rest are B6's
 choice and free for the reviewer to change.
 
-## `h713/layout.py` (from M:77–204, M:261–293)
+## `h713/layout.py` (from M:77-204, M:261-293)
 
 | old (M) | new | line |
 |---|---|---|
@@ -505,7 +505,7 @@ choice and free for the reviewer to change.
 | `PARTITIONEN` | `PARTITIONS` **api** | M:87 |
 | `SPERRE_ERSTER` | `LOCK_FIRST`, imported from `h713.blockdev` **api** | M:98 = I:104 |
 | `SPERRE_LETZTER` | `LOCK_LAST`, imported from `h713.blockdev` **api** | M:99 = I:105 |
-| `LBA_SPL/UBOOT/ENV/BOOT/ROOTFS` | unchanged **api** | M:101–106 |
+| `LBA_SPL/UBOOT/ENV/BOOT/ROOTFS` | unchanged **api** | M:101-106 |
 | `ENV_BYTES` | `ENV_BYTES` **api** (unchanged) | M:104 |
 | `TEIL_A_LBA` | `PART_A_LBA` | M:109 |
 | `TEIL_A_SEKT` | `PART_A_SECTORS` | M:109 |
@@ -522,13 +522,13 @@ choice and free for the reviewer to change.
 | `ist_nutzer_platzhalter(name)` | `is_user_placeholder(name)` **api** | M:274 |
 | `fuellung(name, laenge)` | `filling(name, length)` **api** | M:278 |
 
-## `h713/mkimage.py` (from M:408–1152)
+## `h713/mkimage.py` (from M:408-1152)
 
 | old (M) | new | line |
 |---|---|---|
 | `baum_boot(verz, fit, log)` | `tree_boot(directory, fit, log)` **api** | M:408 |
 | `baum_rootfs(verz, log)` | `tree_rootfs(directory, log)` **api** | M:437 |
-| `_extraktor_laden(pfad)` | **deleted** **api** — `Ext4`/`FileSource` are imported | M:473 |
+| `_extraktor_laden(pfad)` | **deleted** **api** - `Ext4`/`FileSource` are imported | M:473 |
 | `ext4_offsets(datei, pfade, extraktor, log)` | `ext4_offsets(image, paths, log)` **api** | M:494 |
 | `ext4_rechte_pruefen(datei, erwartung, extraktor, log)` | `ext4_check_permissions(image, expectation, log)` **api** | M:545 |
 | `_kopiere(ziel_f, quelle, log)` | `_copy(target_f, source, log)` **api** | M:582 |
@@ -538,13 +538,13 @@ choice and free for the reviewer to change.
 | `BETA_WARNUNG` | `BETA_WARNING` **api** | M:1019 |
 | `liesmich_text(d)` | `readme_text(d)` **api** | M:1040 |
 | `VERSION` | `VERSION` (unchanged, "0.1") | M:70 |
-| class `K` | `h713.log.console` **api** — see REPORT.md, finding 1 | M:213 |
+| class `K` | `h713.log.console` **api** - see REPORT.md, finding 1 | M:213 |
 | `mib` | `h713.util.mib` **api** | M:209 |
 | `_rel` | `h713.util.relpath_or_abs` **api** | M:241 |
 | `sha256_datei` | `h713.util.sha256_file` **api** | M:250 |
 | `gpt_bauen` | `h713.gpt.build_layout_gpt` **api** | M:294 |
 | `gpt_pruefen` | `h713.gpt.check_gpt` **api** | M:344 |
-| (new) | `_block_map(fs, ino, inode)` — wrapper around `Ext4._karte`, REPORT.md finding 2 | — |
+| (new) | `_block_map(fs, ino, inode)` - wrapper around `Ext4._karte`, REPORT.md finding 2 | - |
 
 ### local names inside the moved functions
 
@@ -568,21 +568,21 @@ choice and free for the reviewer to change.
 ### NOT renamed (deliberately)
 
 * every printed string, the wording of every `SystemExit`, `BETA_WARNING` and
-  the whole of `readme_text` — stage-1 rule, compared byte for byte by the
+  the whole of `readme_text` - stage-1 rule, compared byte for byte by the
   golden tests;
 * the keys of the table/manifest JSON (`teile`, `datei`, `sektoren`, `loch`,
   `bausteine`, `platzhalter`, `platzhalter_datei`, `platzhalter_nutzer`,
   `platzhalter_info`, `ziel`, `laenge`, `quelle`, `fuellung`,
   `sha256_muster`, `werkzeug`, `abbild`, `erzeugt`, `sektorgroesse`,
-  `disk_sektoren`, `warum`, `partitionen`, `eintraege`) — `hy310-install`
+  `disk_sektoren`, `warum`, `partitionen`, `eintraege`) - `hy310-install`
   reads them and the released v0.5-beta table carries them;
-* `inode["groesse"]` in `ext4_offsets` — B3's brief says the dicts of
+* `inode["groesse"]` in `ext4_offsets` - B3's brief says the dicts of
   `h713.fs.ext4` keep their keys (REPORT.md, finding 2);
 * `fs._karte` as the fallback spelling in `_block_map` (same finding).
 
 ## RENAMES-B7
 
-# RENAMES — package B7 (`h713/profiles/__init__.py`, `h713/identify.py`, `h713/vendorfiles.py`, `h713/extract.py`)
+# RENAMES - package B7 (`h713/profiles/__init__.py`, `h713/identify.py`, `h713/vendorfiles.py`, `h713/extract.py`)
 
 Sources: `X` = `analyse/release/arbeit/r2-extract/h713-extract` (3138 lines),
 `I` = `analyse/release/arbeit/r0-fel/hy310-install.py` (1961 lines). Line numbers are those of the
@@ -596,12 +596,12 @@ unchanged.
 | old | where | new |
 |---|---|---|
 | `PROFILES`, `get()`, `STATUS_VALUES` | A3 | unchanged (copied verbatim from `src/installer/h713/profiles/__init__.py`) |
-| `H713_MIPS_FW_REVS` | X:266 | `UBOOT_FW_REVS` — the rows `h713_mips_fw_revs[]` declares, keys as in X |
-| — (new, per brief) | X:266 + `installer/tests/fixtures/firmware-revisions.json` | `FIRMWARE_REVISIONS` — all four known display.bin revisions, plus `hdcp_wait_va`; `project_id`/`panel` are `None` where no U-Boot row declares them |
-| `GERAETE` | X:98 | `legacy_devices()` — builds the old dict from `PROFILES[...]["reference"]` / `["expected"]` |
+| `H713_MIPS_FW_REVS` | X:266 | `UBOOT_FW_REVS` - the rows `h713_mips_fw_revs[]` declares, keys as in X |
+| - (new, per brief) | X:266 + `installer/tests/fixtures/firmware-revisions.json` | `FIRMWARE_REVISIONS` - all four known display.bin revisions, plus `hdcp_wait_va`; `project_id`/`panel` are `None` where no U-Boot row declares them |
+| `GERAETE` | X:98 | `legacy_devices()` - builds the old dict from `PROFILES[...]["reference"]` / `["expected"]` |
 | `GERAETE[...]["beschreibung"]` | X:101, X:145 | `LEGACY_DESCRIPTIONS` (the German text; A3's profile carries an English `description`, and the extractor prints this one into `MANIFEST.json`/`BERICHT.txt`) |
-| the order of `GERAETE` | X:98 | `LEGACY_DEVICE_IDS = ("hy310", "l018")` — `', '.join(GERAETE)` and the profile loops depend on it |
-| `erwartung` key names | X:124 | `_LEGACY_EXPECTED_KEYS` — `paket_items` ↔ `package_items`, `paket_item_sha256` ↔ `package_item_sha256`, the other eight identical |
+| the order of `GERAETE` | X:98 | `LEGACY_DEVICE_IDS = ("hy310", "l018")` - `', '.join(GERAETE)` and the profile loops depend on it |
+| `erwartung` key names | X:124 | `_LEGACY_EXPECTED_KEYS` - `paket_items` ↔ `package_items`, `paket_item_sha256` ↔ `package_item_sha256`, the other eight identical |
 
 ## `h713/identify.py`
 
@@ -613,14 +613,14 @@ unchanged.
 | `merkmal_passt(name, ist, soll)` | X:194 | `feature_matches(name, actual, expected)` |
 | `BEKANNTE_IMAGES` | X:201 | `KNOWN_IMAGES` |
 | `fw_rev_zu(data)` | X:1961 | `firmware_revision_of(data)` (reads `profiles.UBOOT_FW_REVS`) |
-| `_PlatteQuelle(platte, ex)` | I:1456 | `DiskSource(disk)` — the `ex` parameter is gone |
+| `_PlatteQuelle(platte, ex)` | I:1456 | `DiskSource(disk)` - the `ex` parameter is gone |
 | `_PlatteQuelle._p` / `._TeilQuelle` | I:1459, I:1462 | `DiskSource._d` / dropped (`source.SliceSource` is imported) |
-| locals `erst`, `vorn`, `sekt` | I:1466–1468 | `first`, `front`, `sectors` |
-| `geraet_erkennen(platte, extraktor, log=K)` | I:1481 | `identify_device(disk, extractor=None, log=console)` — `extractor` is accepted and ignored (like B5's `restore_stock`) |
-| `_extraktor_laden(pfad)` | I:1436 | **deleted** (api-h713.md) — with it the `try/except` around it, the `ex.` prefixes and `getattr(ex, "GERAETE", {})`/`hasattr(ex, "kennung")` |
-| locals `aus`, `stumm`, `prof`, `z` | I:1493–1553 | `out`, `quiet`, `profile`, `line` |
+| locals `erst`, `vorn`, `sekt` | I:1466-1468 | `first`, `front`, `sectors` |
+| `geraet_erkennen(platte, extraktor, log=K)` | I:1481 | `identify_device(disk, extractor=None, log=console)` - `extractor` is accepted and ignored (like B5's `restore_stock`) |
+| `_extraktor_laden(pfad)` | I:1436 | **deleted** (api-h713.md) - with it the `try/except` around it, the `ex.` prefixes and `getattr(ex, "GERAETE", {})`/`hasattr(ex, "kennung")` |
+| locals `aus`, `stumm`, `prof`, `z` | I:1493-1553 | `out`, `quiet`, `profile`, `line` |
 | `_fingerprint_deuten(fp)` | I:1556 | `interpret_fingerprint(fp)` |
-| locals `teile`, `datum`, `marke`, `ziffern`, `tt`, `ss` | I:1569–1580 | `parts`, `date`, `mark`, `digits`, `dd`, `hh` |
+| locals `teile`, `datum`, `marke`, `ziffern`, `tt`, `ss` | I:1569-1580 | `parts`, `date`, `mark`, `digits`, `dd`, `hh` |
 | `geraet_melden(erk, log, schreibt)` | I:1587 | `report_device(found, log=console, writing=True)` |
 | `ist_unser_geraet` | I:347 | `blockdev.device_kind` (B4) |
 | `K` | I:145 | `log.console` (B4) |
@@ -631,7 +631,7 @@ unchanged.
 |---|---|---|
 | `PFLICHT` | X:208 | `REQUIRED_FILES` |
 | `PQ_DATEIEN` | X:211 | `PQ_FILES` |
-| `TVCONFIG`, `EDID_14`, `EDID_20` | X:221–223 | unchanged |
+| `TVCONFIG`, `EDID_14`, `EDID_20` | X:221-223 | unchanged |
 | `MSP_LIB_KANDIDATEN` | X:224 | `MSP_LIB_CANDIDATES` |
 | `AIC_FW_VERZ` / `AIC_FW_ZIEL` | X:235, 236 | `AIC_FW_DIR` / `AIC_FW_TARGET` |
 | `MIPS_QUELLVERZ` / `MIPS_AUSGABE` | X:245, 246 | `MIPS_SOURCE_DIR` / `MIPS_OUTPUT_DIR` |
@@ -639,7 +639,7 @@ unchanged.
 | `MIPS_PROJECTID` | X:248 | unchanged |
 | `MIPS_NICHT_UNSERE` | X:250 | `MIPS_NOT_OURS` |
 | `MIPS_PART_NAMEN` / `MIPS_TEIL_SCHLUESSEL` | X:253, 254 | `MIPS_PART_NAMES` / `MIPS_PART_KEYS` |
-| `MIPS_FEX`, `TSE_MAGIC`, `TSE_ID_OFFSET` | X:255–258 | unchanged |
+| `MIPS_FEX`, `TSE_MAGIC`, `TSE_ID_OFFSET` | X:255-258 | unchanged |
 | `PANEL_CONFIG_KANDIDATEN` | X:262 | `PANEL_CONFIG_CANDIDATES` |
 | `elf_symbol` | X:1674 | unchanged; local `typ` → `sh_type` |
 | `parse_mspm` | X:1731 | unchanged; locals `bloecke`→`blocks`, `probleme`→`problems`, `z`→`zero`, `ziel`→`target`, `laenge`→`length` (the returned dict keys `ziel`/`laenge`/`paare`/`offset` stay) |
@@ -657,7 +657,7 @@ unchanged.
 
 ## `h713/extract.py`
 
-`Lauf` (X:1999) → `Run`. `main` (X:3104) stays out (B8). `VERSION` (X:52) moved in with the class —
+`Lauf` (X:1999) → `Run`. `main` (X:3104) stays out (B8). `VERSION` (X:52) moved in with the class -
 `write_manifest()` writes `f"h713-extract {VERSION}"` into `MANIFEST.json` and `BERICHT.txt`, and the
 CLI needs it for `--version`; the package's own `h713.VERSION` ("0.2") is a different number.
 `DEVICES = legacy_devices()` at module level replaces the `GERAETE` literal.
