@@ -27,9 +27,18 @@ import fakedisk
 # is untouched (its FAT copy still wins, the vendor copy is only cross-checked).
 #   hy300-t08: was (1, None, 20, "f347466ecb7721bc8f982bddacdb6cd096a845202facff54c872db7dfa3c35e1")
 #   hy350:     was (1, None, 21, "7bfa4452385130b716684666608a52a9f7638bfddb019bcc89ac8453d1acd811")
+#
+# Re-frozen on 2026-09-15 by G1, the hy310 row only: the extractor now also takes bootlogo.bmp out
+# of the FAT ROOT of the bootloader partition (44 instead of 43 artefacts), because `h713_disp init
+# <id> logo` reads it (doku/40, last section). Exit code and device unchanged, and every other
+# artefact is byte for byte the one before.
+#   hy310: was (0, "hy310", 43, "ced1b8aeb61bb265d488d7ff09d39beb149ef4698f17cbf96a45d5e73bdce162")
+# The two ADT-3 rows did NOT move: their bootloader FAT carries no mips/, so the extractor reads
+# their display artefacts out of vendor:/etc/display/mips/, and that copy has no logo. Their FAT
+# root does hold one (2764854 B on the T08, 6220854 B on the HY350) -- see REPORT.txt of G1.
 MANIFESTS = {
-    "hy310": (0, "hy310", 43,
-              "ced1b8aeb61bb265d488d7ff09d39beb149ef4698f17cbf96a45d5e73bdce162"),
+    "hy310": (0, "hy310", 44,
+              "0d1a388784c31035805d9d0f6f2f20a85e5efdf00cec560a993384494623dcb7"),
     "hy300-t08": (1, None, 39,
                   "3c84815992b349d09f12b562e0e2ef7f1d74dbf351f2125d8866f577d62b9b9e"),
     "hy350": (1, None, 40,

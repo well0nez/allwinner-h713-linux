@@ -417,11 +417,19 @@ def check_package(directory, d, log=console):
 # finding and no special case -- then abort as with everything else.
 OPTIONAL_GROUPS = ("lib/firmware/aic8800_fw/",)
 
+# Placeholders a device may be missing ON ITS OWN, not only as a whole group. Today exactly one:
+# the boot logo. A dump without it, or with one too big for the placeholder, still installs -- the
+# placeholder keeps its fill pattern, and `h713_disp init <id> logo` in U-Boot treats a missing logo
+# as a warning, not as a failed boot (doku/40, last section). It costs a picture, not a boot.
+OPTIONAL_FILES = ("boot/bootlogo.bmp",)
+
 
 def vendor_sources(directory, table, log=console):
     """Read in the device's own files that h713-extract put down. The names in
     the table are exactly the paths below the --out of h713-extract, so this is
-    a putting-together and not a matching-up."""
+    a putting-together and not a matching-up. An OPTIONAL_FILES entry that is missing or too big
+    leaves `table` as well, so the caller neither looks for it nor counts it; everything else
+    missing is still an abort."""
     sources, missing, too_big = {}, [], []
     for name, (_off, length) in table.items():
         p = os.path.join(directory, name.replace("/", os.sep))
@@ -443,6 +451,21 @@ def vendor_sources(directory, table, log=console):
             for n in gone:
                 sources[n] = b""
                 missing.remove(n)
+    for name in OPTIONAL_FILES:
+        if name not in table:
+            continue
+        if name in missing:
+            why = "not in %s" % directory
+        elif len(sources.get(name, b"")) > table[name][1]:
+            why = "%d bytes, the placeholder holds %d" % (len(sources[name]), table[name][1])
+        else:
+            continue
+        log.warn("%s: %s -- no boot logo. The placeholder stays a pattern and U-Boot "
+                 "boots without a logo." % (name, why))
+        missing = [n for n in missing if n != name]
+        too_big = [t for t in too_big if not t.startswith(name + " (")]
+        sources.pop(name, None)
+        del table[name]
     if missing:
         raise RuntimeError("in %s %d file(s) are missing, e.g. %s"
                            % (directory, len(missing), ", ".join(sorted(missing)[:3])))
@@ -695,7 +718,8 @@ def write_package(args, disk, path, directory, tab, here=None):
             else:
                 console.error("There is neither --vendor nor a full dump in %s."
                               % args.dump_dir)
-                console.info("  The 43 files (display artefacts, firmware, PQ, WLAN) stand only")
+                console.info("  The %d files (display artefacts, boot logo, firmware, PQ, WLAN) stand only"
+                             % len(table))
                 console.info("  on your own device. Without them the picture stays black.")
                 console.info("  So: take the FULL dump (dump --full) or name a directory")
                 console.info("  from h713-extract with --vendor.")

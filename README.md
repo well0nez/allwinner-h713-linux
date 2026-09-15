@@ -142,8 +142,8 @@ release/build-all.sh --version v0.6-beta --board hy300-pro --test-image  # a tes
 installer/h713-install --help                                         # identify, dump, install, restore
 ```
 
-The image ships **no proprietary files**. Firmware for the display, the ARISC, Wi-Fi and the picture
-tables are placeholders that [`h713-extract`](docs/tools/h713-extract.md) fills from **your own** device
+The image ships **no proprietary files**. Firmware for the display, the ARISC, Wi-Fi, the picture
+tables and the boot logo are placeholders that [`h713-extract`](docs/tools/h713-extract.md) fills from **your own** device
 dump during installation. That is why the installer wants a dump, and why nothing here needs a licence
 you don't already have.
 

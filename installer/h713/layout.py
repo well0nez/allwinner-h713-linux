@@ -81,6 +81,11 @@ PLACEHOLDERS = [
     ("boot/mips/ProjectID_0x0034.TSE",   17328,   "hy310-boot",   "/mips/ProjectID_0x0034.TSE"),
     ("boot/mips/ProjectID_0x0035.TSE",   19992,   "hy310-boot",   "/mips/ProjectID_0x0035.TSE"),
     ("boot/mips/projecttable.TSE",       1384,    "hy310-boot",   "/mips/projecttable.TSE"),
+    # 1 boot logo -> hy310-boot:/ (the ROOT of the partition, where `h713_disp init <id> logo`
+    # looks for it). Sized for a 1080p logo; a 720p one (2764854 B) fits and the rest of the
+    # placeholder stays zero, which is harmless -- U-Boot takes every size from the BMP header,
+    # not from the file length.
+    ("boot/bootlogo.bmp",                6220854, "hy310-boot",   "/bootlogo.bmp"),
     # 3 firmware files -> hy310-rootfs:/lib/firmware/
     ("lib/firmware/h713-arisc.bin",      176132,  "hy310-rootfs", "/lib/firmware/h713-arisc.bin"),
     ("lib/firmware/h713/msp-patch.bin",  2896,    "hy310-rootfs", "/lib/firmware/h713/msp-patch.bin"),

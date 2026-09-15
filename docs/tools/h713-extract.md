@@ -29,9 +29,24 @@ each leave one group out; `-q` prints result lines only.
 Output under `--out` (default `./h713-extract-out`): `lib/firmware/h713-arisc.bin` (ARISC coprocessor
 firmware), `lib/firmware/hy310-edid.bin`, `lib/firmware/h713/msp-patch.bin` (audio DSP patch), `pq/*`
 (the picture-quality tables `h713-pq` reads), `boot/mips/*` (the 19 display artifacts U-Boot loads by
-name), `lib/firmware/aic8800_fw/SDIO/aic8800D80/*` (Wi-Fi firmware, added 12.09.2026, `--no-wlan` to skip
+name), `boot/bootlogo.bmp` (the vendor boot logo, added 15.09.2026),
+`lib/firmware/aic8800_fw/SDIO/aic8800D80/*` (Wi-Fi firmware, added 12.09.2026, `--no-wlan` to skip
 it), plus `MANIFEST.json` and `REPORT.txt`. The report is also written as `BERICHT.txt`, byte-identical,
 for one more release - the German name goes away with the next one.
+
+The boot logo is the one file that does not come from `mips/` but from the ROOT of the same FAT,
+because that is where U-Boot looks for it: `h713_disp init <id> logo` reads `bootlogo.bmp` at the root
+of whichever partition the display artifacts come from, which on our layout is `/boot/bootlogo.bmp`.
+It is checked like the rest - BMP signature, one plane, 24 bpp, uncompressed, and the geometry against
+the board profile's panel - but a finding there is reported, never fatal: U-Boot takes width and height
+from the file's own header, and a missing logo costs a picture during boot, not the boot.
+
+**Deliberately not extracted**, although they lie in the same partition: `fastbootlogo.bmp` (the
+fastboot-mode logo - our U-Boot has no such mode), `font24.sft`/`font32.sft` (the vendor bootloader's
+text fonts), `magic.bin` (512 bytes of ASCII, purpose unknown), `bat/` (battery icons of a tablet
+template - a projector has no battery) and `wavefile/` (that same template's e-paper waveforms). None of
+them is read by our chain and none stands for a stock behaviour we lack; the report names them, and the
+full device dump keeps them anyway.
 
 ## Structure checks and the manifest
 
@@ -75,8 +90,9 @@ Exit 2: a hard error, including an `--out` directory that already belongs to a d
 
 Pure Python standard library, including its own read-only ext4 and FAT reader - no `debugfs`, no
 `e2fsprogs`, so it runs the same on Windows (`--use-debugfs` is the counter-check and needs `e2fsprogs`).
-It only reads its input: HDCP/DRM keys are never touched even when present, and boot logos, fonts and
-battery-animation files from the same vendor partition are deliberately left out. It compares against the
+It only reads its input: HDCP/DRM keys are never touched even when present, and the fonts, the
+fastboot logo and the battery-animation files from the same vendor partition are deliberately left out
+(the list is above). It compares against the
 two profiles above and no others - the project carries board profiles for more H713 projectors, and
 `h713-install identify` uses all of them, but the extractor's reference table is the pair.
 

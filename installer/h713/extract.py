@@ -30,11 +30,12 @@ from h713.log import Abort, Log
 from h713.profiles import PROFILES, UBOOT_FW_REVS, legacy_devices
 from h713.source import FileSource, SparseSource, Source
 from h713.util import hexdump_short, sha256_bytes, sha256_file
-from h713.vendorfiles import (AIC_FW_DIR, AIC_FW_TARGET, EDID_14, EDID_20, FALLBACK_MIPS_SOURCES,
+from h713.vendorfiles import (AIC_FW_DIR, AIC_FW_TARGET, BOOT_ROOT_FILES, BOOT_ROOT_OUTPUT_DIR,
+                              EDID_14, EDID_20, FALLBACK_MIPS_SOURCES,
                               MIPS_FEX, MIPS_FILES, MIPS_OUTPUT_DIR, MIPS_PART_KEYS, MIPS_PART_NAMES,
                               MIPS_PROJECTID, MIPS_SOURCE_DIR, MSP_LIB_CANDIDATES,
                               PANEL_CONFIG_CANDIDATES, PQ_FILES, REQUIRED_FILES, TVCONFIG,
-                              VENDOR_MIPS_DIR, VENDOR_MIPS_SOURCE, check_display_cfg,
+                              VENDOR_MIPS_DIR, VENDOR_MIPS_SOURCE, check_bootlogo, check_display_cfg,
                               check_edid_block, check_pq, check_tse, edid_name, edid_vendor,
                               elf_symbol, find_mspm_chain, firmware_revision_of, parse_mspm,
                               read_vendor_mips)
@@ -599,14 +600,25 @@ class Run:
             short_names[e["name"]] = e["kurz"]
             if not e["lang"]:
                 problems.append(f"{e['name']}: no long name in the directory -- the 8.3 name was taken")
-        # What else lies in the partition (plan 108 §1: BOOTLOGO, fonts, BAT/, WAVEFILE/ -- not our chain)
+        # The FAT root: BOOT_ROOT_FILES comes with us (the boot logo, since 15.09.2026), the rest
+        # is only listed (plan 108 §1: fonts, MAGIC.BIN, BAT/, WAVEFILE/ -- not our chain).
+        root_files: Dict[str, bytes] = {}
         others = []
         for e in sorted(fs.entries(0), key=lambda x: x["name"]):
             if e["name"].lower() == MIPS_SOURCE_DIR:
                 continue
+            if not e["verzeichnis"] and e["name"] in BOOT_ROOT_FILES:
+                try:
+                    root_files[e["name"]] = fs.read(e)
+                    short_names[e["name"]] = e["kurz"]
+                except Abort as ex:
+                    problems.append(str(ex))
+                    self.log.warn(str(ex))
+                continue
             others.append(f"{e['name']}{'/' if e['verzeichnis'] else ''} ({'directory' if e['verzeichnis'] else str(e['groesse']) + ' B'})")
         return {"origin": origin, "fs": fs.description, "type": fs.type, "kind": "fat", "files": files,
-                "short_names": short_names, "problems": problems, "leftover": leftover, "others": others}
+                "root_files": root_files, "short_names": short_names, "problems": problems,
+                "leftover": leftover, "others": others}
 
     def _read_mips_vendor(self) -> Optional[dict]:
         """The second source (stage 2 C-D): the vendor copy of mips/ inside super (lpsuper + ext4).
@@ -627,8 +639,8 @@ class Run:
             self.log.warn(f"{VENDOR_MIPS_SOURCE}: {p}")
         self.log.info(f"{VENDOR_MIPS_SOURCE}: {len(files)} file(s) for our chain, {len(leftover)} more there")
         return {"origin": VENDOR_MIPS_SOURCE + "/", "fs": self.vendor.description, "type": "ext4",
-                "kind": "vendor", "files": files, "short_names": {}, "problems": problems,
-                "leftover": leftover, "others": []}
+                "kind": "vendor", "files": files, "root_files": {}, "short_names": {},
+                "problems": problems, "leftover": leftover, "others": []}
 
     def mips_source_order(self) -> tuple:
         """The source keys of the identified profile, or the fallback order of api-stufe2.md."""
@@ -885,6 +897,27 @@ class Run:
         if not found_ids:
             self.log.warn("not a single ProjectID_0x*.TSE found in mips/")
             self.not_extracted.append(f"{MIPS_OUTPUT_DIR}/ProjectID_0x*.TSE (none found)")
+        # The boot logo lies at the ROOT of the same FAT, not under mips/ -- and only there: the
+        # vendor copy inside super has none, so a source without a bootloader FAT yields a warning.
+        root_files = main_set.get("root_files") or {}
+        panel = ((PROFILES.get(self.device) or {}).get("panel") if self.device else None)
+        for n in BOOT_ROOT_FILES:
+            d = root_files.get(n)
+            if d is None:
+                self.log.warn(f"no boot logo in the source ({n} is not at the root of {main_set['origin']})")
+                self.not_extracted.append(f"{BOOT_ROOT_OUTPUT_DIR}/{n} (not at the root of {main_set['origin']})")
+                continue
+            checks = [f"from {main_set['origin']}, /{n} "
+                      f"(8.3 short name '{main_set['short_names'].get(n, '?')}')"]
+            problems = check_bootlogo(d, panel)
+            for x in problems:
+                self.log.warn(f"{n}: {x}")
+            checks += problems or ["BMP header sound: 24 bpp, uncompressed, one plane"
+                                   + (f", {panel['width']}x{panel['height']} = the panel of this board"
+                                      if panel and panel.get("width") else "")]
+            self.store(f"{BOOT_ROOT_OUTPUT_DIR}/{n}", d,
+                       origin=f"{main_set['origin']}: /{n} ({len(d)} B, FAT long name)",
+                       checks=checks, error=False)
 
     def observe(self):
         """Only establish, copy nothing: aic8800 firmware, HDCP hints."""

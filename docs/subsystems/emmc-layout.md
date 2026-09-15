@@ -13,8 +13,14 @@ touched - into the eMMC's first 8 MiB, and gives every one of those raw regions 
 | 2 | `hy310-uboot` | 2,048 | 5 MiB | Raw U-Boot proper - 5.9× today's 890 KiB, room to grow without another layout change |
 | 3 | `hy310-keys` | 12,288 | 1 MiB | Secure storage: HDCP 1.4/2.2 keys, Wi-Fi/BT MAC addresses, serial number - **never written, ever** |
 | 4 | `hy310-env` | 14,336 | 1 MiB | U-Boot environment (64 KiB) plus a fastboot SPL-parking slot |
-| 5 | `hy310-boot` | 16,384 | 128 MiB | ext4: kernel FIT, MIPS display firmware and tables |
+| 5 | `hy310-boot` | 16,384 | 128 MiB | ext4: kernel FIT, `mips/` (MIPS display firmware and tables) and `bootlogo.bmp` |
 | 6 | `hy310-rootfs` | 278,528 | 7.15 GiB | ext4: Debian root filesystem, including a `/data` directory |
+
+`hy310-boot` holds three things, and U-Boot reads all three off it before Linux starts: the kernel FIT,
+`mips/` with the 19 display artifacts the MIPS co-processor is handed, and `bootlogo.bmp` at the
+partition root. The logo has to sit at the root, not in `mips/`, because that is where
+`h713_disp init <id> logo` looks - on a stock device it lies at the root of the bootloader FAT, next to
+`mips/`, and our layout keeps that relationship.
 
 Only LBA 16 is prescribed, by the BootROM; everything else is free. U-Boot moved here from a leftover
 Android partition 2.3 GiB into the disk, and the old, mostly-empty `hy310-data` partition is gone - a

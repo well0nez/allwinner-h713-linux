@@ -86,6 +86,12 @@ Recorded on 2026-09-15 on an HY310 running the stock firmware, with `h713-instal
 directory (17 minutes, not shown). Progress lines are cut. The two regions reported as empty are a trait of this
 test device, which had been converted before; an untouched device saves content there.
 
+The numbers in the recording are the ones of v0.6-beta and are left as they were run. Since 15.09.2026 the
+boot logo travels with the image: the placeholder table has 44 entries instead of 43, the extraction hands
+over 44 files, and the dump saves 20 files per bootloader slot (`bootlogo.bmp` lies at the FAT root next to
+`mips/`). The `display firmware in bootloader_a 19 files` line of step `1b` still says 19 - that one counts
+`mips/` only.
+
 ```
 h713-install 0.1 (draft, doku/110)   (Linux)
 [1] the eMMC is already exposed as a drive

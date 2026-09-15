@@ -143,6 +143,10 @@ PROFILE = {
         "boot/mips/ProjectID_0x0033.TSE": (19992, "32bbb023bd37534b5a0622e23c78f47f7a5d3e2060e77d72106b2d517720185c"),
         "boot/mips/ProjectID_0x0034.TSE": (17328, "8008ebefb9e6bc320372d89126dcb82532a8dbe28e97512916112843fabcfe1b"),
         "boot/mips/ProjectID_0x0035.TSE": (19992, "0a93397d0a1bf741fc06ab37e1de8680905e4c7cd1e72cb095bd9fadba8e89e2"),
+        # The boot logo at the ROOT of the bootloader FAT, in both slots: 1920x1080 x 3 + 54,
+        # 24 bpp, uncompressed. Measured on the full dump of 15.09.2026; the same digest stands
+        # in h713_vendor_bootlogos[] in U-Boot (doku/40, last section).
+        "boot/bootlogo.bmp": (6220854, "9684ef71483eb19901adf25e55ad617eb2b41d7065d9e257e1081c5c26095033"),
         # X:107-122 AIC8800D80 SDIO WLAN firmware, checked on the device 12.09.2026.
         "lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt": (2807, "11901372e3183c98b2fad24bc730878429428eaf7df514a575fbe44f7be41e4e"),
         "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin": (261352, "a0f372c19b47e4a3f4703240d9d5c3780a42f27497f3b81d3c719058052d2fba"),

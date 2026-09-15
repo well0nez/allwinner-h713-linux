@@ -41,7 +41,11 @@ def _tool_module():
 # the image path, and the platform name; nothing else in these runs varies.
 # C-B froze (0, 36, "f75069a5c52094e4e29b3700f67b827576ef643d55915d8784c16794fc1dc5e2"); stage 2 C1 wired identify() into the installer (Fable);
 # was (0, 39, "2df06dfc7fa639b2a0f086108f209783cfeded689e02f0bdeaaac321b311dd54") until stage 3 texts (D1):
-DUMP_ONLY = (0, 39, "d1a21c7154f202072e2fbd350434093b27acbf104500ce734b8cda4008bfa823")
+# was (0, 39, "d1a21c7154f202072e2fbd350434093b27acbf104500ce734b8cda4008bfa823") until G1 put the
+# boot logo into the small dump: three lines of step 3 changed, "bootloader_a/_b 19 files 1.9 MiB"
+# -> "20 files 7.8 MiB" and "the same 19 files" -> "20 files". Exit code and 39 lines unchanged;
+# the identify line above still says "19 files" -- that one counts mips/ only (h713/facts.py).
+DUMP_ONLY = (0, 39, "e9b79974591406ce990b9d17b1dda4ed81bef3bdee0b8a843c236766a78e70b6")
 # was b6e41cd4… (D1): re-frozen once more for the stage 3 texts of D2 (h713/fs/ext4.py: the
 # "media_data not readable" line is English now); exit code and 39 lines unchanged (Fable, 14.09.).
 # was (0, 50, "da0ecc92e5649f29597bd72ca1da1fabe6954f0c756d1d068c9c5d13189f305c") until
