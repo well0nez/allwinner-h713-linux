@@ -65,6 +65,23 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | HDCP 1.4 | missing | path understood, one test costs a power cycle | `doku/112` |
 | HDCP 2.2 | works, device-local | key read from *your* device at boot, never shipped | `h713-hdcp-key.service` |
 
+## Changes on `main` since v0.6-beta, not yet run on the device
+
+Landed 15.09.2026 after a review of cstenger's branch `h713-display-video-path` (German account in
+`doku/124`); built from the series in the container, installer suite and block scan green, but no device
+run yet. The next install is the acceptance run.
+
+- kernel patch `0040` (cedrus: halt the VE before freeing DMA buffers) is retired to `zurueckgenommen/`:
+  it deadlocks concurrent decode clients, and the corruption it was written against came from the
+  1416 MHz OPP that `0055` already removes.
+- kernel patch `0013a` carries three decd corrections from his branch (`blue_en` register, a
+  self-deadlocking recycle lock, a missing slot copy). decd does not bind on this board, so this is dormant.
+- aic8800 patches `0008`-`0010`: log chatter through `aicwf_dbg_level`, the `rc_stat` queue drain with an
+  out-of-bounds fix, and the AP-mode debugfs unregister that a phantom `CONFIG_DEBUG_FS_AIC` had kept
+  out of the build.
+- `CONFIG_MAGIC_SYSRQ` (with `_SERIAL` and `DEFAULT_ENABLE=0x1`) in the shipping kernel, so a wedged
+  eMMC has a software way out (`echo b > /proc/sysrq-trigger`, or a BREAK on the UART).
+
 ## Boot chain: one change since the image on the device
 
 Everything built before 2026-09-12 20:00 shipped a **BL31 from 10.09. with assertions enabled**
