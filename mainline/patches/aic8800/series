@@ -4,3 +4,6 @@ aic8800-0003-H713-SDIO-clock-and-chip-up-timeout-tuning.patch
 aic8800-0004-guard-the-firmware-array-blob-include.patch
 aic8800-0006-make-the-regulatory-domain-settable.patch
 aic8800-0007-die-einschaltleitung-aus-dem-geraetebaum-holen.patch
+aic8800-0008-route-association-chatter-through-dbg-level.patch
+aic8800-0009-drain-the-rc-stat-queue.patch
+aic8800-0010-compile-in-the-ap-debugfs-unregister.patch

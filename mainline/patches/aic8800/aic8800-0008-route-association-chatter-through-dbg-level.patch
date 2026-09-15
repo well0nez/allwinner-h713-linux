@@ -1,0 +1,141 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Sun, 24 Aug 2026 17:05:00 -0700
+Subject: [PATCH] aic8800: route the association chatter through aicwf_dbg_level
+
+The kernel console is on the projector panel now (console=tty0, and the KMS
+driver is built in so fbcon takes over at 1.25 s).  That makes anything
+printed unconditionally a thing a user physically sees, and this driver
+prints a burst on every association:
+
+    rwnx_cfg80211_del_station_compat: 68:ef:dc:2f:c3:95
+    wlan0: Del sta 1 (68:ef:dc:2f:c3:95)
+    deinit:macaddr:68,ef,dc,2f,c3,95
+    reord_mac:8,5b,d6,d9,c2,13
+    wlan0: Add sta 2 (68:ef:dc:2f:c3:95) flags=[SHORT_PREAMBLE][WME]...
+    done=1 retry_required=0 sw_retry_required=0 acknowledged=1
+
+With a client that re-associates every few seconds that is enough to fill a
+45-row screen inside a minute and bury the login prompt.
+
+The driver already has the knob for this.  aicwf_dbg_level is a module
+parameter and the rootfs pins it to 0x1 (LOGERROR) in
+/etc/modprobe.d/aic8800.conf -- but these ten call sites are bare printk()
+and netdev_info(), so they never consulted it.  Route them through
+AICWFDBG(LOGINFO) like the rest of the driver.  Nothing is lost: raise
+aicwf_dbg_level to 0x3 and every line is back.
+
+netdev_info() carried the interface name, so the two station messages keep
+it explicitly rather than dropping the context.
+
+This is a logging change only; no control flow is touched.
+
+---
+ aic8800_fdrv/rwnx_main.c   | 18 +++++++++---------
+ aic8800_fdrv/rwnx_msg_rx.c |  4 ++--
+ aic8800_fdrv/rwnx_tx.c     |  2 +-
+ 3 files changed, 12 insertions(+), 12 deletions(-)
+---
+diff --git a/aic8800_fdrv/rwnx_main.c b/aic8800_fdrv/rwnx_main.c
+index 3602d2f..580c3c9 100644
+--- a/aic8800_fdrv/rwnx_main.c
++++ b/aic8800_fdrv/rwnx_main.c
+@@ -2950,8 +2950,8 @@ static int rwnx_cfg80211_add_station(struct wiphy *wiphy,
+ 		#define PRINT_STA_FLAG(f)                               \
+ 			(params->sta_flags_set & BIT(NL80211_STA_FLAG_##f) ? "["#f"]" : "")
+ 
+-		netdev_info(dev, "Add sta %d (%pM) flags=%s%s%s%s%s%s%s",
+-					sta->sta_idx, mac,
++		AICWFDBG(LOGINFO, "%s: Add sta %d (%pM) flags=%s%s%s%s%s%s%s\n",
++					dev->name, sta->sta_idx, mac,
+ 					PRINT_STA_FLAG(AUTHORIZED),
+ 					PRINT_STA_FLAG(SHORT_PREAMBLE),
+ 					PRINT_STA_FLAG(WME),
+@@ -3011,7 +3011,7 @@ static int rwnx_cfg80211_del_station_compat(struct wiphy *wiphy,
+     if (params)
+         mac = params->mac;
+ #endif
+-    printk("%s: %pM\n", __func__, mac);
++    AICWFDBG(LOGINFO, "%s: %pM\n", __func__, mac);
+ 
+ 	do {
+ 		spin_lock_bh(&rwnx_hw->cb_lock);
+@@ -3035,7 +3035,7 @@ static int rwnx_cfg80211_del_station_compat(struct wiphy *wiphy,
+ 		spin_unlock_bh(&rwnx_hw->cb_lock);
+ 
+ 		if(found) {
+-			netdev_info(dev, "Del sta %d (%pM)", cur->sta_idx, cur->mac_addr);
++			AICWFDBG(LOGINFO, "%s: Del sta %d (%pM)\n", dev->name, cur->sta_idx, cur->mac_addr);
+ 			if (cur->vif_idx != cur->vlan_idx) {
+ 				struct rwnx_vif *vlan_vif;
+ 				vlan_vif = rwnx_hw->vif_table[cur->vlan_idx];
+@@ -3069,11 +3069,11 @@ static int rwnx_cfg80211_del_station_compat(struct wiphy *wiphy,
+ 			}
+ 			else if ((rwnx_vif->wdev.iftype == NL80211_IFTYPE_AP) || (rwnx_vif->wdev.iftype == NL80211_IFTYPE_P2P_GO)){
+ 				macaddr = cur->mac_addr;
+-				printk("deinit:macaddr:%x,%x,%x,%x,%x,%x\r\n", macaddr[0],macaddr[1],macaddr[2], \
++				AICWFDBG(LOGINFO, "deinit:macaddr:%x,%x,%x,%x,%x,%x\r\n", macaddr[0],macaddr[1],macaddr[2], \
+ 									   macaddr[3],macaddr[4],macaddr[5]);
+ 				list_for_each_entry_safe(reord_info, reord_tmp,
+ 					&rx_priv->stas_reord_list, list) {
+-					printk("reord_mac:%x,%x,%x,%x,%x,%x\r\n", reord_info->mac_addr[0],reord_info->mac_addr[1],reord_info->mac_addr[2], \
++					AICWFDBG(LOGINFO, "reord_mac:%x,%x,%x,%x,%x,%x\r\n", reord_info->mac_addr[0],reord_info->mac_addr[1],reord_info->mac_addr[2], \
+ 										   reord_info->mac_addr[3],reord_info->mac_addr[4],reord_info->mac_addr[5]);
+ 					if (!memcmp(reord_info->mac_addr, macaddr, 6)) {
+ 						reord_deinit_sta(rx_priv, reord_info);
+@@ -3164,7 +3164,7 @@ void apm_staloss_work_process(struct work_struct *work)
+ 	spin_unlock_bh(&rwnx_hw->cb_lock);
+ 
+ 	if(found) {
+-		netdev_info(rwnx_vif->ndev, "Del sta %d (%pM)", cur->sta_idx, cur->mac_addr);
++		AICWFDBG(LOGINFO, "%s: Del sta %d (%pM)\n", rwnx_vif->ndev->name, cur->sta_idx, cur->mac_addr);
+ 		if (cur->vif_idx != cur->vlan_idx) {
+ 			struct rwnx_vif *vlan_vif;
+ 			vlan_vif = rwnx_hw->vif_table[cur->vlan_idx];
+@@ -3188,11 +3188,11 @@ void apm_staloss_work_process(struct work_struct *work)
+ 			BUG();//should be other function
+ 		} else if ((rwnx_vif->wdev.iftype == NL80211_IFTYPE_AP) || (rwnx_vif->wdev.iftype == NL80211_IFTYPE_P2P_GO)) {
+ 			macaddr = cur->mac_addr;
+-			printk("deinit:macaddr:%x,%x,%x,%x,%x,%x\r\n", macaddr[0], macaddr[1], macaddr[2], \
++			AICWFDBG(LOGINFO, "deinit:macaddr:%x,%x,%x,%x,%x,%x\r\n", macaddr[0], macaddr[1], macaddr[2], \
+ 								   macaddr[3], macaddr[4], macaddr[5]);
+ 			list_for_each_entry_safe(reord_info, reord_tmp,
+ 				&rx_priv->stas_reord_list, list) {
+-				printk("reord_mac:%x,%x,%x,%x,%x,%x\r\n", reord_info->mac_addr[0], reord_info->mac_addr[1], reord_info->mac_addr[2], \
++				AICWFDBG(LOGINFO, "reord_mac:%x,%x,%x,%x,%x,%x\r\n", reord_info->mac_addr[0], reord_info->mac_addr[1], reord_info->mac_addr[2], \
+ 									   reord_info->mac_addr[3], reord_info->mac_addr[4], reord_info->mac_addr[5]);
+ 				if (!memcmp(reord_info->mac_addr, macaddr, 6)) {
+ 					reord_deinit_sta(rx_priv, reord_info);
+diff --git a/aic8800_fdrv/rwnx_msg_rx.c b/aic8800_fdrv/rwnx_msg_rx.c
+index a9ba841..5c6f578 100644
+--- a/aic8800_fdrv/rwnx_msg_rx.c
++++ b/aic8800_fdrv/rwnx_msg_rx.c
+@@ -1118,13 +1118,13 @@ static inline int rwnx_rx_sm_disconnect_ind(struct rwnx_hw *rwnx_hw,
+ #endif
+ 	if ((rwnx_vif->wdev.iftype == NL80211_IFTYPE_STATION) || (rwnx_vif->wdev.iftype == NL80211_IFTYPE_P2P_CLIENT)) {
+ 		macaddr = (u8*)rwnx_vif->ndev->dev_addr;
+-		printk("deinit:macaddr:%x,%x,%x,%x,%x,%x\r\n", macaddr[0], macaddr[1], macaddr[2], \
++		AICWFDBG(LOGINFO, "deinit:macaddr:%x,%x,%x,%x,%x,%x\r\n", macaddr[0], macaddr[1], macaddr[2], \
+ 							   macaddr[3], macaddr[4], macaddr[5]);
+ 
+ 		//spin_lock_bh(&rx_priv->stas_reord_lock);
+ 		list_for_each_entry_safe(reord_info, tmp, &rx_priv->stas_reord_list, list) {
+ 			macaddr = (u8*)rwnx_vif->ndev->dev_addr;
+-			printk("reord_mac:%x,%x,%x,%x,%x,%x\r\n", reord_info->mac_addr[0], reord_info->mac_addr[1], reord_info->mac_addr[2], \
++			AICWFDBG(LOGINFO, "reord_mac:%x,%x,%x,%x,%x,%x\r\n", reord_info->mac_addr[0], reord_info->mac_addr[1], reord_info->mac_addr[2], \
+ 								   reord_info->mac_addr[3], reord_info->mac_addr[4], reord_info->mac_addr[5]);
+ 			if (!memcmp(reord_info->mac_addr, macaddr, 6)) {
+ 				reord_deinit_sta(rx_priv, reord_info);
+diff --git a/aic8800_fdrv/rwnx_tx.c b/aic8800_fdrv/rwnx_tx.c
+index 2f80cb6..393b111 100644
+--- a/aic8800_fdrv/rwnx_tx.c
++++ b/aic8800_fdrv/rwnx_tx.c
+@@ -2372,7 +2372,7 @@ int rwnx_txdatacfm(void *pthis, void *host_id)
+ 
+ 	/* Update txq and HW queue credits */
+ 	if (sw_txhdr->desc.host.flags & TXU_CNTRL_MGMT) {
+-		printk("done=%d retry_required=%d sw_retry_required=%d acknowledged=%d\n",
++		AICWFDBG(LOGINFO, "done=%d retry_required=%d sw_retry_required=%d acknowledged=%d\n",
+ 					 rwnx_txst.tx_done, rwnx_txst.retry_required,
+ 					 rwnx_txst.sw_retry_required, rwnx_txst.acknowledged);
+ #ifdef CREATE_TRACE_POINTS

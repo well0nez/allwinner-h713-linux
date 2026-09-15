@@ -1,0 +1,162 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: h713 <h713@local>
+Date: Sun, 24 Aug 2026 20:15:00 -0700
+Subject: [PATCH] aic8800: drain the rc_stat queue, and fix an out-of-bounds write
+
+Two defects in the rc_stat debugfs queue. Neither is the cause of the
+"already exists in 'rc'" errors -- that is a missing #ifdef and is fixed in
+0009. This patch was originally written believing it was the cause; the
+mistake and its correction are recorded there. Both defects below are real
+and were confirmed by reading the compiled configuration, so the patch stands
+on its own.
+
+ONE ENTRY PER RUN. rwnx_rc_stat_work() processed exactly one ring entry per
+invocation, but _rwnx_dbgfs_rc_stat_write() pushes an entry and calls
+schedule_work(), which is a no-op when the work is already PENDING. Two events
+close together therefore got one run between them and the second entry stayed
+in the ring until some later event happened to schedule the work again.
+
+That is worse than a delay, because this work infers "register" versus
+"unregister" from whether dir_sta[sta_idx] is NULL at the moment it runs -- the
+two exported wrappers have identical bodies and carry no intent. A deferred
+entry puts that inference out of phase with the station's real lifecycle.
+
+Split the body out as rwnx_rc_stat_one() and drain until rc_read == rc_write,
+so each push is processed exactly once and in order. No wakeup is lost by
+looping: schedule_work() on a RUNNING work queues it again, so a push racing
+the final emptiness check still gets its own run. The invalid-index path now
+consumes its entry too -- as a bare early return inside a drain loop it would
+have spun forever.
+
+AN OUT-OF-BOUNDS WRITE, which 0009 makes reachable. dir_sta[] and rc_config[]
+were sized NX_REMOTE_STA_MAX (32), but the index is validated against
+NX_REMOTE_STA_MAX + NX_VIRT_DEV_MAX (36) and the register path deliberately
+handles sta_idx >= NX_REMOTE_STA_MAX by naming the entry "bc_mc". The
+broadcast/multicast pseudo-stations therefore wrote up to four pointers past
+the end of both arrays, inside struct rwnx_debugfs. This mattered little while
+the AP-mode unregister was compiled out; 0009 turns that path on and doubles
+the traffic through here, so it is fixed in the same series rather than left
+latent. The arrays are sized to the range the code already accepts, the bound
+is >= rather than > (matching rwnx_msg_rx.c), and the three dir_sta[] accesses
+use the bounds-checked sta_idx instead of sta->sta_idx.
+
+---
+diff --git a/aic8800_fdrv/rwnx_debugfs.c b/aic8800_fdrv/rwnx_debugfs.c
+index 6f10fc2..3ad5e73 100644
+--- a/aic8800_fdrv/rwnx_debugfs.c
++++ b/aic8800_fdrv/rwnx_debugfs.c
+@@ -2380,10 +2380,10 @@ DEBUGFS_READ_WRITE_FILE_OPS(last_rx);
+ #endif /* CONFIG_RWNX_FULLMAC */
+ 
+ #ifdef CONFIG_RWNX_FULLMAC
+-static void rwnx_rc_stat_work(struct work_struct *ws)
++/* Process exactly one queued rc_sta entry. Callers must drain: see
++ * rwnx_rc_stat_work(). */
++static void rwnx_rc_stat_one(struct rwnx_debugfs *rwnx_debugfs)
+ {
+-	struct rwnx_debugfs *rwnx_debugfs = container_of(ws, struct rwnx_debugfs,
+-													 rc_stat_work);
+ 	struct rwnx_hw *rwnx_hw = container_of(rwnx_debugfs, struct rwnx_hw,
+ 										   debugfs);
+ 	struct rwnx_sta *sta;
+@@ -2391,8 +2391,12 @@ static void rwnx_rc_stat_work(struct work_struct *ws)
+ 
+ 	ridx = rwnx_debugfs->rc_read;
+ 	sta_idx = rwnx_debugfs->rc_sta[ridx];
+-	if (sta_idx > (NX_REMOTE_STA_MAX + NX_VIRT_DEV_MAX)) {
++	if (sta_idx >= (NX_REMOTE_STA_MAX + NX_VIRT_DEV_MAX)) {
+ 		WARN(1, "Invalid sta index %d", sta_idx);
++		/* Drop it, or the drain loop spins on it forever. */
++		rwnx_debugfs->rc_sta[ridx] = 0xFF;
++		rwnx_debugfs->rc_read = (ridx + 1) %
++			ARRAY_SIZE(rwnx_debugfs->rc_sta);
+ 		return;
+ 	}
+ 
+@@ -2425,7 +2429,7 @@ static void rwnx_rc_stat_work(struct work_struct *ws)
+ 		if (!dir_sta)
+ 			goto error;
+ 
+-		rwnx_debugfs->dir_sta[sta->sta_idx] = dir_sta;
++		rwnx_debugfs->dir_sta[sta_idx] = dir_sta;
+ 
+ 		file = debugfs_create_file("stats", S_IRUSR, dir_sta, rwnx_hw,
+ 								   &rwnx_dbgfs_rc_stats_ops);
+@@ -2505,19 +2509,50 @@ static void rwnx_rc_stat_work(struct work_struct *ws)
+ 		}
+ 
+ 		debugfs_remove_recursive(rwnx_debugfs->dir_sta[sta_idx]);
+-		rwnx_debugfs->dir_sta[sta->sta_idx] = NULL;
++		rwnx_debugfs->dir_sta[sta_idx] = NULL;
+ 	}
+ 
+ 	return;
+ 
+ error_after_dir:
+ 	debugfs_remove_recursive(rwnx_debugfs->dir_sta[sta_idx]);
+-	rwnx_debugfs->dir_sta[sta->sta_idx] = NULL;
++	rwnx_debugfs->dir_sta[sta_idx] = NULL;
+ error:
+ 	dev_err(rwnx_hw->dev,
+ 			"Error while (un)registering debug entry for sta %d\n", sta_idx);
+ }
+ 
++/* Drain the queue, do not process a single entry per run.
++ *
++ * _rwnx_dbgfs_rc_stat_write() pushes an entry and calls schedule_work(), which
++ * is a no-op when the work is already PENDING. Two events close together --
++ * exactly what a station leaving and rejoining produces -- therefore got one
++ * run between them, and the second entry stayed in the ring unprocessed. Since
++ * this work decides "register" versus "unregister" by testing whether
++ * dir_sta[sta_idx] is NULL *at the time it runs*, a skipped entry does not just
++ * get delayed, it puts that decision out of phase with the station's real
++ * lifecycle: a later register then finds the previous MAC-named directory still
++ * present and debugfs_create_dir() collides, which is the
++ *
++ *     debugfs: '<mac>' already exists in 'rc'
++ *     Error while (un)registering debug entry for sta N
++ *
++ * pair, once per rapid re-association. Draining restores one processed entry
++ * per push, in order.
++ *
++ * No wakeup is lost by looping: schedule_work() on a work that is RUNNING (as
++ * opposed to pending) queues it again, so a push racing the final emptiness
++ * check gets its own run.
++ */
++static void rwnx_rc_stat_work(struct work_struct *ws)
++{
++	struct rwnx_debugfs *rwnx_debugfs = container_of(ws, struct rwnx_debugfs,
++													 rc_stat_work);
++
++	while (rwnx_debugfs->rc_read != rwnx_debugfs->rc_write)
++		rwnx_rc_stat_one(rwnx_debugfs);
++}
++
+ void _rwnx_dbgfs_rc_stat_write(struct rwnx_debugfs *rwnx_debugfs, uint8_t sta_idx)
+ {
+ 	uint8_t widx = rwnx_debugfs->rc_write;
+diff --git a/aic8800_fdrv/rwnx_debugfs.h b/aic8800_fdrv/rwnx_debugfs.h
+index 7f5c7c9..2e4930a 100644
+--- a/aic8800_fdrv/rwnx_debugfs.h
++++ b/aic8800_fdrv/rwnx_debugfs.h
+@@ -158,12 +158,17 @@ struct rwnx_debugfs {
+ 
+ #ifdef CONFIG_RWNX_FULLMAC
+ 	struct work_struct rc_stat_work;
+-	uint8_t rc_sta[NX_REMOTE_STA_MAX];
++	/* Indexed by sta_idx, which rwnx_rc_stat_one() accepts up to
++	 * NX_REMOTE_STA_MAX + NX_VIRT_DEV_MAX - 1: the broadcast/multicast
++	 * pseudo-stations live above NX_REMOTE_STA_MAX, and the register path
++	 * names them "bc_mc" explicitly. Sized to NX_REMOTE_STA_MAX alone, those
++	 * indices wrote off the end of dir_sta[] and rc_config[]. */
++	uint8_t rc_sta[NX_REMOTE_STA_MAX + NX_VIRT_DEV_MAX];
+ 	uint8_t rc_write;
+ 	uint8_t rc_read;
+ 	struct dentry *dir_rc;
+-	struct dentry *dir_sta[NX_REMOTE_STA_MAX];
+-	int rc_config[NX_REMOTE_STA_MAX];
++	struct dentry *dir_sta[NX_REMOTE_STA_MAX + NX_VIRT_DEV_MAX];
++	int rc_config[NX_REMOTE_STA_MAX + NX_VIRT_DEV_MAX];
+ 	struct list_head rc_config_save;
+ #endif
+ };
