@@ -41,12 +41,20 @@ instead of a single file.
 
 ## Placeholders
 
-43 files that must not ship in this repository - 19 display artifacts, 3 firmware blobs, 8 picture-quality
-tables, 13 Wi-Fi firmware files - sit in the image as placeholders of the exact right size. The offset
+44 files that must not ship in this repository - 19 display artifacts, the boot logo, 3 firmware blobs,
+8 picture-quality tables, 13 Wi-Fi firmware files - sit in the image as placeholders of the exact right
+size. The offset
 table records where each one lives; `h713-install` overwrites them with what `h713-extract` pulled from
 the user's own device. The SSH `authorized_keys` placeholder works the same way but is found through the
 finished ext4 filesystem rather than a fixed raw offset, since its location depends on the filesystem
 layout, not on the partition table.
+
+The boot logo (`bootlogo.bmp`, 6,220,854 bytes, at the ROOT of `hy310-boot` rather than in `mips/`) is
+the one placeholder that may stay unfilled: a dump without a logo, or one too big for the placeholder,
+costs a warning and the fill pattern stays where it is - U-Boot then boots without a logo instead of
+not booting. A smaller logo (a 720p board's is 2,764,854 bytes) fits and the rest of the placeholder
+stays zero, which is harmless because U-Boot takes every size from the BMP header, not from the file
+length.
 
 ## Self-test
 

@@ -40,13 +40,16 @@ V3_ENV_ROW = ("uboot-env", 14336, 128,
 # mips/ of the stock bootloader partition (fixture hy310-stock-bootloader_b-20260831.fat),
 # frozen 2026-09-14 by C-B. Names and total size only -- the sha256 of every file is
 # checked against the saved bytes, so no vendor hash has to stand in the repository.
+# Re-frozen 2026-09-15 by G1: the small dump now also takes bootlogo.bmp from the FAT ROOT of
+# both slots, because `h713_disp init <id> logo` in U-Boot reads it (doku/40, last section).
+#   was 19 names without "bootlogo.bmp" and MIPS_BYTES = 1973242 (+ 6220854 B for the logo).
 MIPS_FILES = ("LogoRegData.bin", "ProjectID_0x0001.TSE", "ProjectID_0x0012.TSE",
               "ProjectID_0x0013.TSE", "ProjectID_0x0014.TSE", "ProjectID_0x0015.TSE",
               "ProjectID_0x0016.TSE", "ProjectID_0x0020.TSE", "ProjectID_0x0030.TSE",
               "ProjectID_0x0031.TSE", "ProjectID_0x0032.TSE", "ProjectID_0x0033.TSE",
-              "ProjectID_0x0034.TSE", "ProjectID_0x0035.TSE", "database.TSE",
+              "ProjectID_0x0034.TSE", "ProjectID_0x0035.TSE", "bootlogo.bmp", "database.TSE",
               "display.bin", "display_cfg.xml", "pq_custom.TSE", "projecttable.TSE")
-MIPS_BYTES = 1973242
+MIPS_BYTES = 8194096
 
 
 def _dump(cls, build, our_layout, *args):
@@ -116,7 +119,8 @@ class StockDisk(unittest.TestCase):
                 self.assertEqual(len(data), f["size"], name)
                 self.assertEqual(hashlib.sha256(data).hexdigest(), f["sha256"], name)
         self.assertEqual(mips["bootloader_a"], mips["bootloader_b"])
-        self.assertIn("OK mips/: the two bootloader slots hold the same 19 files",
+        # was "the same 19 files" until G1 added the boot logo at the FAT root (see MIPS_FILES)
+        self.assertIn("OK mips/: the two bootloader slots hold the same 20 files",
                       self.log.lines)
 
     def test_the_sources_that_this_disk_cannot_offer_are_named_not_thrown(self):
@@ -138,7 +142,8 @@ class StockDisk(unittest.TestCase):
 
 class Adt3Disk(unittest.TestCase):
     """A board we have never held: one single Reserve0, private 2 GiB further out,
-    and no mips/ in either bootloader slot."""
+    and no mips/ in either bootloader slot -- but bootloader_a does carry a boot logo
+    at the FAT root (1280x720, 2764854 B), which G1 made the dump take along."""
 
     @classmethod
     def setUpClass(cls):
@@ -148,22 +153,29 @@ class Adt3Disk(unittest.TestCase):
     def test_the_regions_sit_where_this_board_s_gpt_says(self):
         self.assertEqual([(n, l, s, z) for n, l, s, _h, z in self.manifest],
                          list(ADT3_REGIONS))
+        # was without "mips" until G1: bootloader_a has no mips/, but it has bootlogo.bmp
         self.assertEqual(sorted(os.listdir(self.out)),
-                         ["private.bin", "reserve0.bin", "secure-storage.bin"])
+                         ["mips", "private.bin", "reserve0.bin", "secure-storage.bin"])
         for name, lba, sectors, _p in ADT3_REGIONS[1:]:
             tag = {"private": "private", "reserve0": "Reserve0"}[name]
             self.assertEqual(_saved(self.out, "%s.bin" % name),
                              fakedisk.pattern(tag, lba, sectors), name)
 
     def test_no_mips_in_either_slot_and_the_vendor_copy_is_skipped_cleanly(self):
+        # G1 re-froze the three assertions about bootloader_a. Before, the slot was skipped
+        # whole and the log said "INFO mips/: bootloader_a has no mips/ directory"; now the
+        # boot logo at its root is a file we want, so the slot is saved with that one file in
+        # it and the "no mips/" line for this slot is gone (the ADT-3 line below still says it).
         mips = _info(self.manifest, "mips")
-        self.assertEqual([k for k, v in mips.items() if v], [])
-        self.assertIn("INFO mips/: bootloader_a has no mips/ directory", self.log.lines)
+        self.assertEqual([k for k, v in mips.items() if v], ["bootloader_a"])
+        self.assertEqual(sorted(mips["bootloader_a"]), ["bootlogo.bmp"])
+        self.assertIn("OK bootloader_a      1 files    2.6 MiB  -> mips/bootloader_a/",
+                      self.log.lines)
         self.assertIn("INFO mips/: bootloader_b carries no FAT filesystem", self.log.lines)
         self.assertIn("INFO mips/: a bootloader slot without mips/ is the normal state "
                       "of the ADT-3 family", self.log.lines)
         self.assertIn("mips/: vendor is not there or not readable", self.log.text)
-        self.assertFalse(os.path.exists(os.path.join(self.out, "mips")))
+        self.assertEqual(os.listdir(os.path.join(self.out, "mips")), ["bootloader_a"])
 
 
 class LayoutV3Disk(unittest.TestCase):

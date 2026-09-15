@@ -789,6 +789,7 @@ def readme_text(d):
     b("manufacturer and that we may not hand out:")
     b("")
     b("  * 19 display artefacts (mips/) -- without them the picture stays black")
+    b("  * the boot logo (bootlogo.bmp) -- without it the panel stays black until Linux")
     b("  * 3 firmware files (ARISC, EDID, MSP patch)")
     b("  * 8 PQ files (picture tuning)")
     b("  * 13 WLAN firmware files (aic8800)")

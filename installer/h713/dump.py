@@ -53,6 +53,9 @@ REGION_FILES = {
 MIPS_DIR = "mips"                        # in the bootloader FAT, in Reserve0 and in /oem
 VENDOR_MIPS = "/etc/display/mips"        # profiles/*.py -> mips.sources
 PANEL_CONFIG = "panel_config.ini"
+# At the ROOT of the bootloader FAT, next to mips/: since 15.09.2026 our U-Boot reads it too
+# (vendorfiles.BOOT_ROOT_FILES), so the small dump carries it as well -- 6 MB per slot.
+BOOT_LOGO = "bootlogo.bmp"
 SLOTS = ("bootloader_a", "bootloader_b")
 BOOT_CTRL_OFFSET = 2048                  # Android bootloader_control inside misc
 BOOT_CTRL_MAGIC = 0x42414342
@@ -293,7 +296,7 @@ def dump_mips(disk, target, log=console):
         log.info("mips/: this device has no readable partition table -- nothing to look for")
         return out, None
     for slot in SLOTS:
-        _store(out, target, slot, _from_fat(gpt, q, slot), log)
+        _store(out, target, slot, _from_fat(gpt, q, slot, (BOOT_LOGO,)), log)
     both = [out[s] for s in SLOTS]
     if any(out[s] is None and s in gpt.parts for s in SLOTS):
         log.info("mips/: a bootloader slot without mips/ is the normal state of the ADT-3 family")

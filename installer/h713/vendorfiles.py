@@ -62,8 +62,17 @@ MIPS_SOURCE_DIR = "mips"                # subdirectory in bootloader_a/bootloade
 MIPS_OUTPUT_DIR = "boot/mips"           # output under --out; exactly the names U-Boot expects
 MIPS_FILES = ("display.bin", "display_cfg.xml", "LogoRegData.bin", "database.TSE", "pq_custom.TSE", "projecttable.TSE")
 MIPS_PROJECTID = re.compile(r"^ProjectID_0x([0-9A-Fa-f]{4})\.TSE$")
-# Lies in the same partition, our chain does not use it (plan 108 §1) -- it is only named in the report, not copied.
-MIPS_NOT_OURS = ("bootlogo.bmp", "fastbootlogo.bmp", "font24.sft", "font32.sft", "magic.bin", "bat", "wavefile")
+# Taken from the ROOT of the same FAT, not from mips/ -- output boot/<name>. `h713_disp init <id> logo`
+# reads bootlogo.bmp there (fork 80eae99, device-proven 15.09.2026, doku/40 last section), so an
+# installed device needs /boot/bootlogo.bmp; plan 108 §1 left it out when nothing of ours read it.
+BOOT_ROOT_FILES = ("bootlogo.bmp",)
+BOOT_ROOT_OUTPUT_DIR = "boot"
+# Lies in the same partition, our chain does not use it (plan 108 §1) -- only named in the report,
+# not copied. Why each stays out (decision 15.09.2026): fastbootlogo.bmp is the fastboot-mode logo
+# and our U-Boot has no such mode; font24/32.sft are the vendor bootloader's text fonts; magic.bin
+# is 512 B of ASCII of unknown purpose; bat/ and wavefile/ are a tablet template's battery icons
+# and e-paper waveforms. None is read by our chain, none stands for a stock behaviour we lack.
+MIPS_NOT_OURS = ("fastbootlogo.bmp", "font24.sft", "font32.sft", "magic.bin", "bat", "wavefile")
 # Partition names (GPT) resp. --part keys behind which this FAT16 sits. bootloader_b first: that is the
 # partition U-Boot reads from today (mmc 1:2, plan 108 §1).
 MIPS_PART_NAMES = ("bootloader_b", "bootloader_a")
@@ -394,3 +403,29 @@ def check_display_cfg(data: bytes) -> List[str]:
     children = [k.tag for k in root]
     return notes + [f"display_cfg.xml: well formed, root <{root.tag}>, {len(children)} children"
                     + (": " + ", ".join(sorted(set(children))[:8]) if children else "")]
+
+
+def check_bootlogo(data: bytes, panel: Optional[dict] = None) -> List[str]:
+    """What h713_disp_publish_bmp() in U-Boot will accept, read off the BMP header here.
+
+    `panel` is the board profile's "panel" when the board is known, else None -- then only a
+    plausible geometry is asked for. Every entry of the result is a finding, never an abort."""
+    if len(data) < 54 or data[:2] != b"BM":
+        return [f"no BMP header ({hexdump_short(data, 8)}, {len(data)} B)"]
+    width, height, planes, bpp, compression = struct.unpack_from("<iiHHI", data, 18)
+    rows = -height if height < 0 else height
+    findings = []
+    if planes != 1:
+        findings.append(f"{planes} plane(s) instead of 1")
+    if bpp != 24:
+        findings.append(f"{bpp} bpp instead of 24 -- the blitter reads 24-bit BGR only")
+    if compression != 0:
+        findings.append(f"compression {compression} instead of 0 (BI_RGB) -- uncompressed only")
+    if height < 0:
+        findings.append(f"height {height}: top-down; the stock logo is bottom-up (positive height)")
+    if panel and panel.get("width") and panel.get("height"):
+        if (width, rows) != (panel["width"], panel["height"]):
+            findings.append(f"{width}x{rows}, but this board's panel is {panel['width']}x{panel['height']} -- U-Boot takes no other size")
+    elif not (320 <= width <= 4096 and 320 <= rows <= 4096):
+        findings.append(f"{width}x{rows} is not a plausible panel size (320..4096)")
+    return findings
