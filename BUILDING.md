@@ -60,8 +60,10 @@ no image for a board nobody has tested (doku/121 §5): boards/hy300-t08 is STATU
 
 A verified board that names no installer profile is refused as well, because `h713-install`
 identifies the device before it writes and would have nothing to identify it against. Today that
-leaves exactly one board: `hy310`. The HY200 bench board is verified by cstenger but has no profile
-of ours, and the other four are `profile-only` or `partial` — the table is in
+leaves exactly one board: `hy310`. The other five are `profile-only` or `partial` — including the
+HY200 bench board, which cstenger has booted in his own tree but on which no build of ours has ever
+run. Four of the five now carry an installer profile read out of a stock image; that describes the
+board, it does not test it, and `--board` still refuses them. The table is in
 [STATUS.md](STATUS.md), *Boards*.
 
 What a board below `verified` does get is everything that reads and nothing that writes: an installer
