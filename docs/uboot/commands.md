@@ -14,8 +14,8 @@ hardware more directly, for when `h713_disp` itself needs to be the suspect.
 
 | Subcommand | What it does |
 |---|---|
-| `init <project-id> [elog=<0-5>]` | bring the display up and stop: clocks, panel power sequencing, firmware handoff, no boot logo. This is what `bootcmd` runs before `boot_emmc`/`boot_net` |
-| `auto <project-id> [nowait] [logo [file.bmp]]` | load the display artifacts from eMMC and run; `logo` also publishes a boot logo and leaves it on screen |
+| `init <project-id> [elog=<0-5>] [logo [file.bmp]]` | bring the display up and stop: clocks, panel power sequencing, firmware handoff. This is what `bootcmd` runs before `boot_emmc`/`boot_net`. `logo` (15.09.2026, not yet run on a device) puts the boot logo on the panel with the firmware left running: the OSD buffer is filled before the panel powers up, and re-armed after the firmware is ready, the way the KMS driver later shows its console. It reads `bootlogo.bmp` from the root of the partition the display artifacts come from - `/boot/bootlogo.bmp` on an installed device, which the installer does not put there yet; a missing logo is a warning, not a failed boot |
+| `auto <project-id> [nowait] [logo [file.bmp]]` | load the display artifacts from eMMC and run; `logo` also publishes a boot logo and leaves it on screen - but parks the coprocessor as its last act, so Linux cannot switch to HDMI afterwards (`doku/67`). Not the product boot path |
 | `load <project-id>` | load the artifacts from eMMC without running them, so `display_cfg.xml` can be patched first |
 | `list <blob-addr>` | list every project ID a staged artifacts blob knows about |
 | `dump [force]` | dump the display register blocks |
