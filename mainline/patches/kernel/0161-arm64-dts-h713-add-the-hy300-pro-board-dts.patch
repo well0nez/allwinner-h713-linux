@@ -1,0 +1,52 @@
+arm64: dts: h713: add the HY300 Pro board dts
+
+The HY300 Pro (issue #1: DDR3 at 636 MHz, Android 10 firmware of 2024,
+project id 0x34, a 1280x720 single-port panel by every source we have) is
+the first board other than the HY310 that gets a device tree of its own,
+for the same reason the HY310 got one: boards/<id>/board.env names the
+DTB a board boots, and a test image built for this board must not
+carry another board's name.
+
+Like sun50i-h713-hy310.dts this is an include of the hy200 dts plus model
+and compatible. Nothing board-specific is known well enough to change:
+fan, focus motor and power key are assumed to sit where the HY310 has
+them; the panel is driven by the display coprocessor from the project id,
+not by this tree. The image built from it is a TEST image for the board's
+owner (doku/121 section 5, stage 5); a green report turns the board
+verified and this file into the place for what differs.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -58,6 +58,7 @@ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg35xx-sp.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy200-qz713df-a1.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy200-qz713-v2.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy310.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-pro.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-a527-cubie-a5e.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-h728-x96qpro+.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-t527-avaota-a1.dtb
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -0,0 +1,19 @@
++// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++/*
++ * MagCubic HY300 Pro projector (2024 board, DDR3 at 636 MHz; issue #1).
++ *
++ * The hardware description lives in sun50i-h713-hy200-qz713df-a1.dts; this
++ * board carries its own name so that the DTB it boots is not named after
++ * somebody else's board. Fan, focus motor and power key are assumed to sit
++ * where the HY310 has them -- nothing on this board has been measured by
++ * us; its owner tests it. The panel is programmed by the display
++ * coprocessor from the declared project id (0x34), not by this tree.
++ *
++ * Same pattern as sun50i-h713-hy310.dts.
++ */
++
++#include "sun50i-h713-hy200-qz713df-a1.dts"
++
++/ {
++	model = "MagCubic HY300 Pro";
++	compatible = "magcubic,hy300-pro", "allwinner,sun50i-h713";
++};
