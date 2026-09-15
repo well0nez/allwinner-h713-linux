@@ -5,8 +5,8 @@
 What is checked here is exactly what can go wrong between the image builder and
 the installer:
 
-  1. h713.install.fill_placeholders() takes our table and writes the 30
-     device-specific files into a copy of piece B.
+  1. h713.install.fill_placeholders() takes our table and writes the
+     device-specific files into a copy of piece B (optional ones may be absent).
   2. Afterwards the ext4 reader finds them again THROUGH THE FILE SYSTEM -- not
      at the raw offset, but as /mips/display.bin and friends. Only that proves
      that the offsets hit the right blocks.
@@ -41,7 +41,7 @@ from h713 import layout                                                     # no
 from h713.blockdev import LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED           # noqa: E402
 from h713.fs.ext4 import Ext4                                              # noqa: E402
 from h713.gpt import Gpt, check_gpt                                        # noqa: E402
-from h713.install import check_placeholders, fill_placeholders             # noqa: E402
+from h713.install import check_placeholders, fill_placeholders, vendor_sources   # noqa: E402
 from h713.log import Log                                                   # noqa: E402
 from h713.source import FileSource                                         # noqa: E402
 
@@ -86,15 +86,29 @@ def main():
 
     # ---------------------------------------------------------------- 2
     print("\n[2] fill_placeholders() with the real vendor files")
-    sources = {}
-    for name in d["platzhalter"]:
-        q = os.path.join(a.vendor, name)
-        if not os.path.isfile(q):
-            bad("source missing: %s" % q)
-            return 1
-        with open(q, "rb") as f:
-            sources[name] = f.read()
     table = {k: tuple(v) for k, v in d["platzhalter"].items()}
+
+    class Noted:
+        """vendor_sources() says what it leaves out; here that is a note, not a failure."""
+        @staticmethod
+        def warn(t):
+            print("  NOTE %s" % t)
+
+        @staticmethod
+        def info(t):
+            print("  NOTE %s" % t)
+
+    # The same reading the installer does: a missing WLAN set stays zeroed, a
+    # missing or oversized optional file (the boot logo) leaves the table with
+    # a note, everything else missing is an error.
+    try:
+        sources = vendor_sources(a.vendor, table, log=Noted)
+    except RuntimeError as e:
+        bad("vendor files: %s" % e)
+        return 1
+    skipped = [n for n in d["platzhalter"] if n not in table]
+    if skipped:
+        ok("optional and not in %s, skipped: %s" % (a.vendor, ", ".join(skipped)))
     probe = os.path.join(a.tmp, "probe-b-filled.img")
     t0 = time.time()
     shutil.copyfile(os.path.join(directory, d["platzhalter_datei"]), probe)
@@ -107,12 +121,12 @@ def main():
 
     t0 = time.time()
     fill_placeholders(probe, table, sources, log=Silent)
-    ok("30 files filled in %.2f s" % (time.time() - t0))
+    ok("%d files filled in %.2f s" % (len(table), time.time() - t0))
     wrong = check_placeholders(probe, table, sources)
     if wrong:
         bad("check_placeholders complains: %s" % wrong)
     else:
-        ok("check_placeholders: all 30 match at the raw offset")
+        ok("check_placeholders: all %d match at the raw offset" % len(table))
 
     # ---------------------------------------------------------------- 3
     print("\n[3] counter-check THROUGH the file system (not at the raw offset)")
@@ -125,14 +139,19 @@ def main():
         fs[part] = Ext4(q.sub(base[part], length[part], part), label=part)
         ok("%-13s opened as ext4: %s" % (part, fs[part].label_fs))
     good = 0
-    for name, size, part, path in layout.PLACEHOLDERS:
+    where = {name: (part, path) for name, _size, part, path in layout.PLACEHOLDERS}
+    for name in table:
+        part, path = where[name]
         read = fs[part].read(path)
-        if read == sources[name]:
+        expect = sources[name]
+        # A source smaller than its placeholder (a zeroed optional group, a
+        # 720p logo in a 1080p slot) is followed by zeros in the file system.
+        if read == expect or (read.startswith(expect) and not any(read[len(expect):])):
             good += 1
         else:
             bad("%s: read through the file system it deviates (%d vs %d bytes)"
-                % (path, len(read), len(sources[name])))
-    if good == len(layout.PLACEHOLDERS):
+                % (path, len(read), len(expect)))
+    if good == len(table):
         ok("all %d files read through ext4 byte-identical to the source" % good)
     # The kernel FIT has to be untouched. Until 12.09. a fixed length stood here
     # (7987476, the FIT of 11.09.) -- every new kernel then made the test report
