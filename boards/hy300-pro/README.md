@@ -10,10 +10,10 @@ Nothing was written to his device, and no image of his firmware exists here.
 | Status | **partial** — the description itself is incomplete |
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/hy300_pro.py` |
-| Image | never built (`STATUS` is not `verified`) |
-| Kernel DTB | none |
-| U-Boot base | `hy300-pro_defconfig` (does not exist yet) |
-| DRAM | DDR3 (type 3), **636 MHz**, 1 GiB — from his UART log, nothing else measured |
+| Image | a **test image** for its owner only (stage 5, `--test-image`); no release image until a green report |
+| Kernel DTB | `sun50i-h713-hy300-pro` (patch 0161, an include of the hy200 dts) |
+| U-Boot base | `hy300_pro_defconfig` (the owner's DRAM block, 636 MHz) |
+| DRAM | DDR3 (type 3), **636 MHz**, 1 GiB — all 24 boot0 words from his probe run of 2026-09-14 (`uboot.config`) |
 | Panel | declared project id `0x34`; resolution unknown |
 | eMMC | 7.28 GiB, 15 269 888 sectors — the same size as the HY310 |
 | Stock | Android 10 (32-bit, ARMv7 kernel 5.4.99), ADT-3 build 6245789 |
@@ -42,9 +42,9 @@ Everything comes from his serial log and his `h713-extract` run, quoted in
 
 ## What we do not know
 
-- 21 of the 24 DRAM words, `para2` and `tpr13` among them; the fragment borrows them and says so
 - whether 636 MHz or 792 MHz is the right clock for *sustained* operation on this board
-- the panel: resolution, timings, port count, backlight — only the declared project id is known
+- the panel: only the declared project id 0x34 is his; the 1280x720 timing the loader drives is what every
+  other 0x34 source shows (a bench board measured, three vendor inis) — likely, not measured on his board
 - the boot package contents, the stock `sunxi_version`, the exact build fingerprint
 - nothing about it is unique enough to identify it: its `display.bin` digest is not one of the
   identification features, and it shares the ADT-3 fingerprint with two other images. The profile's
