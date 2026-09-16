@@ -31,9 +31,9 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 
 | | |
 |---|---|
-| **Boots standalone** | power → U-Boot → Debian 13 (arm64) from eMMC, 20/20 cold starts, no host, no network |
+| **Boots standalone** | power → U-Boot → Debian 13 (arm64) from eMMC, 20/20 cold starts, no host, no network; the device's own boot logo two seconds after the power key |
 | **The projector image** | LVDS panel driven through the MIPS display firmware; KMS device for anything that draws |
-| **HDMI input** | a V4L2 capture device: signal detection, timings, source switch, picture controls, 1080p60 and five more modes |
+| **HDMI input** | a V4L2 capture device: signal detection, timings, hot plug, source switch, picture controls, 1080p60 and five more modes |
 | **HDMI audio** | HDMI sound out of the speaker, lip-sync verified, one volume control |
 | **Wi-Fi** | AIC8800D80 as an access point or as a client on your network, configured in `/etc/h713/wifi.env` |
 | **Focus motor** | manual focus with a range watcher that stops before the mechanical stop |
@@ -133,8 +133,8 @@ Wi-Fi, focus motor, camera, recovery) is described below for the HY310, the boar
 ## Getting it running
 
 ```bash
-release/build-all.sh --version v0.6-beta --vendor <your extraction>   # image, from a clean clone
-release/build-all.sh --version v0.6-beta --board hy300-pro --test-image  # a test image for a board in test
+release/build-all.sh --version v0.7-beta --vendor <your extraction>   # image, from a clean clone
+release/build-all.sh --version v0.7-beta --board hy300-pro --test-image  # a test image for a board in test
 installer/h713-install --help                                         # identify, dump, install, restore
 ```
 
