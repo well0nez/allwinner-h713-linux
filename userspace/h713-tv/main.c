@@ -151,7 +151,7 @@ static void warn(const char *fmt, ...)
 {
 	va_list ap;
 
-	fputs("warnung: ", stderr);
+	fputs("warning: ", stderr);
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
@@ -164,7 +164,7 @@ _Noreturn static void fail(const char *fmt, ...)
 {
 	va_list ap;
 
-	fputs("fehler: ", stderr);
+	fputs("error: ", stderr);
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
@@ -243,7 +243,7 @@ static void capture_open(struct capture *cap, const char *want_path)
 		}
 		if (cap->fd < 0) {
 			if (want_path)
-				fail("%s laesst sich nicht oeffnen: %s",
+				fail("%s cannot be opened: %s",
 				     cap->path, strerror(errno));
 			continue;
 		}
@@ -264,18 +264,18 @@ static void capture_open(struct capture *cap, const char *want_path)
 		if (!ioctl(cap->fd, VIDIOC_QUERYCAP, &vcap) &&
 		    !strncmp((const char *)vcap.driver, V4L2_DRIVER,
 			     sizeof(vcap.driver) - 1)) {
-			info("aufnahme    %s (%s, %s)", cap->path, vcap.driver,
+			info("capture         %s (%s, %s)", cap->path, vcap.driver,
 			     vcap.card);
 			return;
 		}
 		close(cap->fd);
 		cap->fd = -1;
 		if (want_path)
-			fail("%s gehoert nicht zu \"%.*s\", sondern zu \"%s\"",
+			fail("%s does not belong to \"%.*s\" but to \"%s\"",
 			     cap->path, (int)sizeof(vcap.driver) - 1,
 			     V4L2_DRIVER, vcap.driver);
 	}
-	fail("kein V4L2-Geraet mit dem Namen \"%s\" -- laeuft der Kernel mit Patch 0094, und ist der Probe durch? (dmesg | grep hdmirx; grep -H . /sys/class/video4linux/video*/name)",
+	fail("no V4L2 device with the name \"%s\" -- is the kernel running patch 0094, and is the probe through? (dmesg | grep hdmirx; grep -H . /sys/class/video4linux/video*/name)",
 	     V4L2_DRIVER);
 }
 
@@ -297,7 +297,7 @@ static void capture_select_input(struct capture *cap)
 	unsigned int input = 0;
 
 	if (ioctl(cap->fd, VIDIOC_S_INPUT, &input))
-		warn("S_INPUT(0) abgelehnt: %s -- die Firmware bleibt auf der Quelle, die sie hat",
+		warn("S_INPUT(0) refused: %s -- the firmware stays on the source it has",
 		     strerror(errno));
 }
 
@@ -308,7 +308,7 @@ static void capture_subscribe(struct capture *cap)
 	memset(&sub, 0, sizeof(sub));
 	sub.type = V4L2_EVENT_SOURCE_CHANGE;
 	if (ioctl(cap->fd, VIDIOC_SUBSCRIBE_EVENT, &sub))
-		fail("SUBSCRIBE_EVENT(SOURCE_CHANGE) abgelehnt: %s -- ohne Ereignisse gibt es nur Pollen, und das ist hier nicht vorgesehen",
+		fail("SUBSCRIBE_EVENT(SOURCE_CHANGE) refused: %s -- without events there is only polling, and that is not what this program does",
 		     strerror(errno));
 }
 
@@ -329,15 +329,15 @@ static unsigned int capture_drain_events(struct capture *cap)
 	while (!ioctl(cap->fd, VIDIOC_DQEVENT, &ev)) {
 		if (ev.type == V4L2_EVENT_SOURCE_CHANGE) {
 			seen |= EV_SOURCE_CHANGE;
-			info("ereignis    SOURCE_CHANGE (changes 0x%x, seq %u)",
+			info("event           SOURCE_CHANGE (changes 0x%x, seq %u)",
 			     ev.u.src_change.changes, ev.sequence);
 		} else if (ev.type == V4L2_EVENT_CTRL) {
 			seen |= EV_CTRL;
-			info("ereignis    CTRL 0x%08x = %d (changes 0x%x, seq %u)",
+			info("event           CTRL 0x%08x = %d (changes 0x%x, seq %u)",
 			     ev.id, ev.u.ctrl.value, ev.u.ctrl.changes,
 			     ev.sequence);
 		} else {
-			info("ereignis    Typ %u", ev.type);
+			info("event           type %u", ev.type);
 		}
 	}
 	if (errno != ENOENT && errno != EAGAIN)
@@ -394,13 +394,13 @@ static unsigned int capture_pitch(struct capture *cap, unsigned int width)
 	memset(&f, 0, sizeof(f));
 	f.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	if (ioctl(cap->fd, VIDIOC_G_FMT, &f)) {
-		warn("G_FMT: %s -- Zeilenabstand %u nach der 16er-Regel",
+		warn("G_FMT: %s -- line pitch %u by the rule of 16",
 		     strerror(errno), rounded);
 		return rounded;
 	}
 	if (f.fmt.pix_mp.width != width ||
 	    f.fmt.pix_mp.plane_fmt[0].bytesperline < width) {
-		warn("G_FMT meldet %ux%u mit Zeilenabstand %u statt Breite %u -- Zeilenabstand %u nach der 16er-Regel",
+		warn("G_FMT reports %ux%u with line pitch %u instead of width %u -- line pitch %u by the rule of 16",
 		     f.fmt.pix_mp.width, f.fmt.pix_mp.height,
 		     f.fmt.pix_mp.plane_fmt[0].bytesperline, width, rounded);
 		return rounded;
@@ -427,7 +427,7 @@ static bool props_get(int fd, uint32_t id, uint32_t type, struct props *p)
 		return false;
 	p->info = calloc(p->list->count_props, sizeof(*p->info));
 	if (!p->info)
-		fail("kein Speicher");
+		fail("out of memory");
 	for (i = 0; i < p->list->count_props; i++)
 		p->info[i] = drmModeGetProperty(fd, p->list->props[i]);
 
@@ -570,7 +570,7 @@ static int display_open_card(const char *want_path)
 		fd = open(path, O_RDWR | O_CLOEXEC);
 		if (fd < 0) {
 			if (want_path)
-				fail("%s laesst sich nicht oeffnen: %s", path,
+				fail("%s cannot be opened: %s", path,
 				     strerror(errno));
 			continue;
 		}
@@ -579,15 +579,15 @@ static int display_open_card(const char *want_path)
 		if (v)
 			drmFreeVersion(v);
 		if (match) {
-			info("anzeige     %s (%s)", path, DRM_DRIVER);
+			info("display         %s (%s)", path, DRM_DRIVER);
 			return fd;
 		}
 		close(fd);
 		if (want_path)
-			fail("%s wird nicht von \"%s\" bedient", path,
+			fail("%s is not served by \"%s\"", path,
 			     DRM_DRIVER);
 	}
-	fail("kein DRM-Geraet mit dem Treiber \"%s\"", DRM_DRIVER);
+	fail("no DRM device with the driver \"%s\"", DRM_DRIVER);
 
 	return -1;
 }
@@ -604,7 +604,7 @@ static void display_find_crtc(struct display *d)
 	unsigned int i;
 
 	if (!res)
-		fail("keine KMS-Betriebsmittel: %s", strerror(errno));
+		fail("no KMS resources: %s", strerror(errno));
 
 	for (i = 0; i < (unsigned int)res->count_crtcs; i++) {
 		drmModeCrtc *c = drmModeGetCrtc(d->fd, res->crtcs[i]);
@@ -623,8 +623,8 @@ static void display_find_crtc(struct display *d)
 	drmModeFreeResources(res);
 
 	if (!d->crtc_id)
-		fail("kein CRTC treibt einen Modus -- laeuft die Konsole? (dmesg | grep afbd)");
-	info("crtc        %u, Modus %ux%u", d->crtc_id, d->width, d->height);
+		fail("no CRTC drives a mode -- is the console running? (dmesg | grep afbd)");
+	info("crtc            %u, mode %ux%u", d->crtc_id, d->width, d->height);
 }
 
 /*
@@ -638,7 +638,7 @@ static void display_find_plane(struct display *d)
 	unsigned int i;
 
 	if (!planes)
-		fail("keine Plane-Betriebsmittel: %s", strerror(errno));
+		fail("no plane resources: %s", strerror(errno));
 
 	for (i = 0; i < planes->count_planes && !d->plane_id; i++) {
 		drmModePlane *p = drmModeGetPlane(d->fd, planes->planes[i]);
@@ -668,7 +668,7 @@ static void display_find_plane(struct display *d)
 	drmModeFreePlaneResources(planes);
 
 	if (!d->plane_id)
-		fail("keine Overlay-Plane mit NV16 und der Eigenschaft \"hdmi-ring\" -- laeuft der Kernel mit Patch 0093?");
+		fail("no overlay plane with NV16 and the property \"hdmi-ring\" -- is the kernel running patch 0093?");
 	/*
 	 * "aspect" (kernel 0133) is how the firmware fits a source that is not
 	 * the panel's shape; its start value is the kernel's default, and it
@@ -676,8 +676,8 @@ static void display_find_plane(struct display *d)
 	 * change it. A kernel without the property gets no such word.
 	 */
 	d->has_aspect = prop_value(&d->plane_props, "aspect", &d->aspect);
-	info("plane       %u, NV16, Betriebsart hdmi-ring%s%s", d->plane_id,
-	     d->has_aspect ? ", Format " : "",
+	info("plane           %u, NV16, mode hdmi-ring%s%s", d->plane_id,
+	     d->has_aspect ? ", format " : "",
 	     d->has_aspect ? prop_enum_name(&d->plane_props, "aspect", d->aspect) : "");
 }
 
@@ -720,7 +720,7 @@ static void display_create_fb(struct display *d)
 		fail("CREATE_DUMB %ux%u: %s", d->src_pitch, d->src_h * 2,
 		     strerror(errno));
 	if (creq.pitch != d->src_pitch)
-		fail("der Dumb-Puffer hat Zeilenabstand %u statt %u -- die Plane programmiert daraus den Ring-Stride, ein aufgefuellter Puffer wuerde die Hardware falsch einstellen",
+		fail("the dumb buffer has line pitch %u instead of %u -- the plane programs the ring stride from it, and a padded buffer would set the hardware up for data it does not own",
 		     creq.pitch, d->src_pitch);
 
 	d->fb_handle = creq.handle;
@@ -755,11 +755,11 @@ static bool add(drmModeAtomicReq *req, const struct display *d,
 	uint32_t id = prop_id(&d->plane_props, name);
 
 	if (!id) {
-		warn("die Plane hat keine Eigenschaft \"%s\"", name);
+		warn("the plane has no property \"%s\"", name);
 		return false;
 	}
 	if (drmModeAtomicAddProperty(req, d->plane_id, id, value) < 0) {
-		warn("%s=%llu laesst sich nicht einreihen: %s", name,
+		warn("%s=%llu cannot be queued: %s", name,
 		     (unsigned long long)value, strerror(errno));
 		return false;
 	}
@@ -783,7 +783,7 @@ static bool display_take_master(struct display *d)
 	if (d->master)
 		return true;
 	if (drmSetMaster(d->fd)) {
-		warn("SET_MASTER: %s -- ein anderer Client haelt die Anzeige",
+		warn("SET_MASTER: %s -- another client holds the display",
 		     strerror(errno));
 		return false;
 	}
@@ -833,25 +833,25 @@ static void display_gamma_load(struct display *d, const char *path)
 	if (!path || !strcasecmp(path, "none"))
 		return;
 	if (!props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props)) {
-		warn("gamma       CRTC-Eigenschaften nicht lesbar: %s", strerror(errno));
+		warn("gamma           CRTC properties not readable: %s", strerror(errno));
 		return;
 	}
 	if (!prop_id(&d->crtc_props, "GAMMA_LUT") ||
 	    !prop_value(&d->crtc_props, "GAMMA_LUT_SIZE", &size) ||
 	    size != GAMMA_ENTRIES) {
-		warn("gamma       CRTC %u hat kein GAMMA_LUT mit %u Eintraegen (Kernel 0095) -- Identitaet bleibt",
+		warn("gamma           CRTC %u has no GAMMA_LUT with %u entries (kernel 0095) -- the identity ramp stays",
 		     d->crtc_id, GAMMA_ENTRIES);
 		return;
 	}
 	f = fopen(path, "rb");
 	if (!f) {
-		warn("gamma       %s: %s -- Identitaet bleibt", path, strerror(errno));
+		warn("gamma           %s: %s -- the identity ramp stays", path, strerror(errno));
 		return;
 	}
 	got = fread(bank, 1, sizeof(bank), f);
 	fclose(f);
 	if (got != sizeof(bank)) {
-		warn("gamma       %s: %zu Byte statt %zu (eine DE2-Bank aus h713-pq) -- Identitaet bleibt",
+		warn("gamma           %s: %zu bytes instead of %zu (one DE2 bank from h713-pq) -- the identity ramp stays",
 		     path, got, sizeof(bank));
 		return;
 	}
@@ -864,11 +864,11 @@ static void display_gamma_load(struct display *d, const char *path)
 		lut[2 * i].reserved = lut[2 * i + 1].reserved = 0;
 	}
 	if (drmModeCreatePropertyBlob(d->fd, lut, sizeof(lut), &d->gamma_blob)) {
-		warn("gamma       Blob: %s -- Identitaet bleibt", strerror(errno));
+		warn("gamma           blob: %s -- the identity ramp stays", strerror(errno));
 		d->gamma_blob = 0;
 		return;
 	}
-	info("gamma       %s -> GAMMA_LUT (%u Eintraege, Mitte %u/65535)", path,
+	info("gamma           %s -> GAMMA_LUT (%u entries, middle %u/65535)", path,
 	     GAMMA_ENTRIES, lut[GAMMA_ENTRIES / 2].red);
 }
 
@@ -884,7 +884,7 @@ static bool add_gamma(drmModeAtomicReq *req, const struct display *d)
 		return true;
 	id = prop_id(&d->crtc_props, "GAMMA_LUT");
 	if (drmModeAtomicAddProperty(req, d->crtc_id, id, d->gamma_blob) < 0) {
-		warn("GAMMA_LUT laesst sich nicht einreihen: %s", strerror(errno));
+		warn("GAMMA_LUT cannot be queued: %s", strerror(errno));
 		return false;
 	}
 
@@ -907,7 +907,7 @@ static void display_gamma_apply(struct display *d)
 		return;
 	req = drmModeAtomicAlloc();
 	if (!req)
-		fail("kein Speicher");
+		fail("out of memory");
 	if (!add_gamma(req, d)) {
 		drmModeAtomicFree(req);
 		display_release_master(d);
@@ -916,7 +916,7 @@ static void display_gamma_apply(struct display *d)
 	ret = drmModeAtomicCommit(d->fd, req, 0, NULL);
 	drmModeAtomicFree(req);
 	if (ret)
-		warn("gamma       Commit abgelehnt: %s", strerror(errno));
+		warn("gamma           commit refused: %s", strerror(errno));
 	display_release_master(d);
 }
 
@@ -933,7 +933,7 @@ static bool display_show(struct display *d)
 
 	req = drmModeAtomicAlloc();
 	if (!req)
-		fail("kein Speicher");
+		fail("out of memory");
 
 	ok &= add(req, d, "FB_ID", d->fb_id);
 	ok &= add(req, d, "CRTC_ID", d->crtc_id);
@@ -967,17 +967,17 @@ static bool display_show(struct display *d)
 	drmModeAtomicFree(req);
 
 	if (ret) {
-		warn("Atomic-Commit abgelehnt: %s", strerror(errno));
+		warn("atomic commit refused: %s", strerror(errno));
 		if (errno == EOPNOTSUPP)
-			warn("  dem Display-Knoten fehlt memory-region-names = \"hdmi-ring\", \"viddec-info\" (DTB pruefen)");
+			warn("  the display node lacks memory-region-names = \"hdmi-ring\", \"viddec-info\" (check the DTB)");
 		if (errno == EINVAL)
-			warn("  Geometrie != Modus, nichtlinearer Modifier, ungleiche Zeilenabstaende oder Breite nicht durch 16 teilbar");
+			warn("  geometry != mode, a non-linear modifier, unequal line pitches, or a width not divisible by 16");
 		display_release_master(d);
 		return false;
 	}
 
 	d->on = true;
-	info("bild        Plane %u an, %ux%u aus dem Capture-Ring", d->plane_id,
+	info("picture         plane %u on, %ux%u out of the capture ring", d->plane_id,
 	     d->width, d->height);
 
 	return true;
@@ -1003,7 +1003,7 @@ static bool display_hide(struct display *d)
 
 	req = drmModeAtomicAlloc();
 	if (!req)
-		fail("kein Speicher");
+		fail("out of memory");
 
 	ok = add(req, d, "FB_ID", 0);
 	ok &= add(req, d, "CRTC_ID", 0);
@@ -1011,15 +1011,15 @@ static bool display_hide(struct display *d)
 	drmModeAtomicFree(req);
 
 	if (ret) {
-		warn("die Plane laesst sich nicht abschalten (%s) -- das Bild steht noch, die Konsole ist NICHT zurueck",
-		     ok ? strerror(errno) : "Eigenschaft fehlt");
+		warn("the plane cannot be switched off (%s) -- the picture is still up, the console is NOT back",
+		     ok ? strerror(errno) : "property missing");
 		return false;
 	}
 
 	d->on = false;
 	display_release_master(d);
 	console_restore();
-	info("konsole     Plane aus, RGB-Kanal und Selektor zurueck, Konsole entblankt");
+	info("console         plane off, RGB channel and selector back, console unblanked");
 
 	return true;
 }
@@ -1073,7 +1073,7 @@ static void retry_stop(struct retry *r)
 
 	memset(&its, 0, sizeof(its));
 	if (r->fd >= 0 && timerfd_settime(r->fd, 0, &its, NULL))
-		warn("timerfd_settime(aus): %s", strerror(errno));
+		warn("timerfd_settime(off): %s", strerror(errno));
 	r->n = 0;
 }
 
@@ -1087,7 +1087,7 @@ static void retry_arm(struct retry *r, unsigned int ms)
 	its.it_value.tv_sec = ms / 1000;
 	its.it_value.tv_nsec = (long)(ms % 1000) * 1000000L;
 	if (timerfd_settime(r->fd, 0, &its, NULL))
-		warn("timerfd_settime: %s -- der Wechsel wird erst beim naechsten Ereignis nachgesehen",
+		warn("timerfd_settime: %s -- the change is looked at again only on the next event",
 		     strerror(errno));
 }
 
@@ -1116,7 +1116,7 @@ static void console_restore(void)
 	fd = open(CONSOLE_TTY, O_WRONLY | O_NOCTTY | O_CLOEXEC);
 	if (fd < 0) {
 		if (!complained)
-			warn("%s: %s -- die Konsole wird nicht entblankt", CONSOLE_TTY,
+			warn("%s: %s -- the console is not unblanked", CONSOLE_TTY,
 			     strerror(errno));
 		complained = true;
 		return;
@@ -1127,7 +1127,7 @@ static void console_restore(void)
 	}
 	if (write(fd, seq, sizeof(seq) - 1) != (ssize_t)(sizeof(seq) - 1) &&
 	    !complained) {
-		warn("%s: Cursor-Sequenz nicht geschrieben: %s", CONSOLE_TTY,
+		warn("%s: cursor sequence not written: %s", CONSOLE_TTY,
 		     strerror(errno));
 		complained = true;
 	}
@@ -1610,7 +1610,7 @@ static const char *alsa_db_text(struct alsa_card *c, const char *name, long v,
 	if (snd_tlv_convert_to_dB(tlv, min, max, v, &db) < 0)
 		return buf;
 	/* db is in 1/100 dB; one decimal is what a listener can hear */
-	snprintf(buf, len, "%s%ld,%ld dB", db < 0 ? "-" : "", labs(db) / 100,
+	snprintf(buf, len, "%s%ld.%ld dB", db < 0 ? "-" : "", labs(db) / 100,
 		 (labs(db) % 100) / 10);
 
 	return buf;
@@ -1715,7 +1715,7 @@ static void audio_timer(int fd, unsigned int ms, bool repeat)
 	if (repeat)
 		its.it_interval = its.it_value;
 	if (timerfd_settime(fd, 0, &its, NULL))
-		warn("ton         timerfd_settime(%u ms): %s", ms, strerror(errno));
+		warn("audio           timerfd_settime(%u ms): %s", ms, strerror(errno));
 }
 
 static void audio_tick_rearm(struct audio *a)
@@ -1746,7 +1746,7 @@ static void audio_put(struct audio *a, struct alsa_card *c, const char *name,
 		return;
 	}
 	if (!a->write_failed)
-		warn("ton         \"%s\" auf Karte %s: %s -- der Tonpfad steht nicht so, wie dieses Programm ihn meldet",
+		warn("audio           \"%s\" on card %s: %s -- the audio path is not set the way this program reports it",
 		     name, c->id, strerror(-ret));
 	a->write_failed = true;
 }
@@ -1759,7 +1759,7 @@ static void audio_put_enum(struct audio *a, struct alsa_card *c,
 
 	if (ret) {
 		if (!a->write_failed)
-			warn("ton         \"%s\" kennt \"%s\" nicht (%s) -- der Tonpfad steht nicht so, wie dieses Programm ihn meldet",
+			warn("audio           \"%s\" does not know \"%s\" (%s) -- the audio path is not set the way this program reports it",
 			     name, item, strerror(-ret));
 		a->write_failed = true;
 		return;
@@ -1821,12 +1821,12 @@ static const char *audio_volume_text(struct audio *a, char *buf, size_t len)
 	int n = audio_volume_read(a, db, sizeof(db));
 
 	if (n < 0)
-		snprintf(buf, len, "Lautstaerke ohne Regler (\"%s\" fehlt)",
+		snprintf(buf, len, "volume without a control (\"%s\" is missing)",
 			 AUDIO_C_DACVOL);
 	else if (db[0])
-		snprintf(buf, len, "Lautstaerke %d (%s)", n, db);
+		snprintf(buf, len, "volume %d (%s)", n, db);
 	else
-		snprintf(buf, len, "Lautstaerke %d", n);
+		snprintf(buf, len, "volume %d", n);
 
 	return buf;
 }
@@ -1836,7 +1836,7 @@ static const char *audio_trim_text(const struct audio *a, char *buf, size_t len)
 {
 	long q = labs(a->trim_q);
 
-	snprintf(buf, len, "HDMI-Abgleich %s%ld,%02ld dB", a->trim_q < 0 ? "-" : "",
+	snprintf(buf, len, "HDMI trim %s%ld.%02ld dB", a->trim_q < 0 ? "-" : "",
 		 q / 4, (q % 4) * 25);
 
 	return buf;
@@ -1968,15 +1968,15 @@ static const char *audio_why_quiet(const struct audio *a, bool picture)
 	if (a->policy == AUDIO_OFF)
 		return "ctl audio off";
 	if (!a->have_source)
-		return "der Aufnahmeknoten meldet keinen Audiozustand";
+		return "the capture node reports no audio status";
 	if (!picture)
-		return "kein Bild";
+		return "no picture";
 	if (!a->present)
-		return "die Quelle sendet keinen Ton";
+		return "the source sends no audio";
 	if (a->compressed)
-		return "die Quelle sendet kein PCM (Bitstrom)";
+		return "the source sends no PCM (a bitstream)";
 
-	return "\"I2S Rate\" kennt die Quellrate nicht";
+	return "\"I2S Rate\" does not know the source rate";
 }
 
 static void audio_evaluate(struct audio *a, struct capture *cap, bool picture);
@@ -2001,15 +2001,15 @@ static void audio_settled(struct audio *a, struct capture *cap, bool picture)
 	a->state = AUDIO_LOUD;
 	audio_level(a);
 	if (a->applied_rate)
-		info("ton         an, %u Hz, %s, %s%s", a->applied_rate,
+		info("audio           on, %u Hz, %s, %s%s", a->applied_rate,
 		     audio_volume_text(a, vol, sizeof(vol)),
 		     audio_trim_text(a, trim, sizeof(trim)),
-		     a->mute ? ", stummgeschaltet (ctl mute)" : "");
+		     a->mute ? ", muted (ctl mute)" : "");
 	else
-		info("ton         an, Rate wie gehabt, %s, %s%s",
+		info("audio           on, rate unchanged, %s, %s%s",
 		     audio_volume_text(a, vol, sizeof(vol)),
 		     audio_trim_text(a, trim, sizeof(trim)),
-		     a->mute ? ", stummgeschaltet (ctl mute)" : "");
+		     a->mute ? ", muted (ctl mute)" : "");
 }
 
 /*
@@ -2033,7 +2033,7 @@ static void audio_evaluate(struct audio *a, struct capture *cap, bool picture)
 			a->state = AUDIO_STILL;
 			a->applied_rate = 0;
 			audio_timer(a->settle_fd, 0, false);
-			info("ton         stumm (%s)", audio_why_quiet(a, picture));
+			info("audio           silent (%s)", audio_why_quiet(a, picture));
 		}
 		return;
 	}
@@ -2047,13 +2047,13 @@ static void audio_evaluate(struct audio *a, struct capture *cap, bool picture)
 		return;				/* nothing to do */
 
 	if (a->state == AUDIO_LOUD)
-		info("ton         Ratenwechsel %u -> %u Hz, kurz stumm",
+		info("audio           rate change %u -> %u Hz, briefly silent",
 		     a->applied_rate, rate);
 	else if (a->state == AUDIO_STILL && rate)
-		info("ton         Quelle da, %u Hz -- Pfad an, %d ms Entprellung",
+		info("audio           source there, %u Hz -- path on, %d ms of debounce",
 		     rate, AUDIO_SETTLE_MS);
 	else if (a->state == AUDIO_STILL)
-		info("ton         Pfad an, Rate unbekannt (der Codec behaelt seine) -- %d ms Entprellung",
+		info("audio           path on, rate unknown (the codec keeps its own) -- %d ms of debounce",
 		     AUDIO_SETTLE_MS);
 
 	audio_route(a, rate);
@@ -2118,10 +2118,10 @@ static bool audio_search(struct audio *a)
 	a->codec_mute = NULL;
 	a->enabled = false;
 	snprintf(a->why, sizeof(a->why),
-		 "es fehlt %s%s%s (aplay -l zeigt die Karten, amixer -c N contents die Regler)",
-		 msp ? "" : "die Karte \"" AUDIO_MSP_CARD "\" mit \"" AUDIO_C_SWITCH "\"/\"" AUDIO_C_VOLUME "\"/\"" AUDIO_C_MUTE "\" (Kernel 0137)",
-		 !msp && !codec ? " und " : "",
-		 codec ? "" : "die Karte \"" AUDIO_CODEC_CARD "\" mit \"" AUDIO_C_SOURCE "\"/\"" AUDIO_C_RATE "\" (Kernel 0135)");
+		 "missing: %s%s%s (aplay -l shows the cards, amixer -c N contents their controls)",
+		 msp ? "" : "the card \"" AUDIO_MSP_CARD "\" with \"" AUDIO_C_SWITCH "\"/\"" AUDIO_C_VOLUME "\"/\"" AUDIO_C_MUTE "\" (kernel 0137)",
+		 !msp && !codec ? " and " : "",
+		 codec ? "" : "the card \"" AUDIO_CODEC_CARD "\" with \"" AUDIO_C_SOURCE "\"/\"" AUDIO_C_RATE "\" (kernel 0135)");
 
 	return false;
 }
@@ -2141,7 +2141,7 @@ static void audio_open_source(struct audio *a, struct capture *cap)
 			 ctrl_find(cap->fd, AUDIO_V_RATE, &a->q_rate) &&
 			 ctrl_find(cap->fd, AUDIO_V_COMPRESSED, &a->q_compressed);
 	if (!a->have_source) {
-		warn("ton         dem Aufnahmeknoten fehlen \"%s\"/\"%s\"/\"%s\" (Kernel 0136) -- kein Automat; \"h713-tv ctl audio on\" schaltet den Pfad von Hand",
+		warn("audio           the capture node lacks \"%s\"/\"%s\"/\"%s\" (kernel 0136) -- no automatic mode; \"h713-tv ctl audio on\" sets the path by hand",
 		     AUDIO_V_PRESENT, AUDIO_V_RATE, AUDIO_V_COMPRESSED);
 		return;
 	}
@@ -2158,7 +2158,7 @@ static void audio_open_source(struct audio *a, struct capture *cap)
 			a->events = false;
 	}
 	if (!a->events)
-		warn("ton         SUBSCRIBE_EVENT(CTRL) abgelehnt: %s -- der Audiozustand wird alle %d ms abgefragt",
+		warn("audio           SUBSCRIBE_EVENT(CTRL) refused: %s -- the audio status is polled every %d ms",
 		     strerror(errno), AUDIO_POLL_MS);
 }
 
@@ -2181,15 +2181,15 @@ static void audio_open(struct audio *a, struct capture *cap,
 	a->tick_fd = -1;
 	if (policy == AUDIO_NONE) {
 		snprintf(a->why, sizeof(a->why),
-			 "-a none: der Ton wird nicht angefasst");
-		info("ton         aus (-a none) -- es wird keine ALSA-Karte geoeffnet");
+			 "-a none: the audio is not touched");
+		info("audio           off (-a none) -- no ALSA card is opened");
 		return;
 	}
 
 	a->settle_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
 	a->tick_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
 	if (a->settle_fd < 0 || a->tick_fd < 0)
-		fail("timerfd_create fuer den Ton: %s", strerror(errno));
+		fail("timerfd_create for the audio: %s", strerror(errno));
 
 	audio_open_source(a, cap);
 	a->searching = true;
@@ -2198,17 +2198,17 @@ static void audio_open(struct audio *a, struct capture *cap,
 		char vol[64], trim[40];
 
 		audio_read_source(a, cap);
-		info("ton         %s (card %d) + %s (card %d), %s, %s, %s, Stummschalter %s, %s",
+		info("audio           %s (card %d) + %s (card %d), %s, %s, %s, mute switch %s, %s",
 		     a->msp.id, a->msp.index, a->codec.name, a->codec.index,
-		     !a->have_source ? "ohne Quellstatus" :
-				       a->events ? "Ereignisse" : "Abfrage",
+		     !a->have_source ? "without source status" :
+				       a->events ? "events" : "polling",
 		     audio_volume_text(a, vol, sizeof(vol)),
 		     audio_trim_text(a, trim, sizeof(trim)),
-		     a->codec_mute ? a->codec_mute : "nur im DSP",
-		     policy == AUDIO_ON ? "erzwungen an" :
-		     policy == AUDIO_OFF ? "erzwungen aus" : "folgt dem Bild");
+		     a->codec_mute ? a->codec_mute : "in the DSP only",
+		     policy == AUDIO_ON ? "forced on" :
+		     policy == AUDIO_OFF ? "forced off" : "follows the picture");
 	} else {
-		info("ton         noch keine Karten: %s", a->why);
+		info("audio           no cards yet: %s", a->why);
 	}
 	audio_tick_rearm(a);
 }
@@ -2219,13 +2219,13 @@ static void audio_tick(struct audio *a, struct capture *cap, bool picture)
 	if (a->searching) {
 		a->searched++;
 		if (audio_search(a))
-			info("ton         %s (card %d) + %s (card %d), im %u. Versuch gefunden",
+			info("audio           %s (card %d) + %s (card %d), found on attempt %u",
 			     a->msp.id, a->msp.index, a->codec.name,
 			     a->codec.index, a->searched);
 		else if (a->searched > AUDIO_SEARCH_MAX)
 			a->searching = false;
 		if (!a->searching && !a->enabled)
-			warn("ton         bleibt aus nach %u Versuchen in %u s: %s",
+			warn("audio           stays off after %u attempts in %u s: %s",
 			     a->searched, a->searched * AUDIO_SEARCH_MS / 1000,
 			     a->why);
 		audio_tick_rearm(a);
@@ -2273,12 +2273,12 @@ static const char *audio_state_text(const struct audio *a)
 {
 	switch (a->state) {
 	case AUDIO_LOUD:
-		return "an";
+		return "on";
 	case AUDIO_SETTLING:
-		return "Entprellung";
+		return "debounce";
 	case AUDIO_STILL:
 	default:
-		return "stumm";
+		return "silent";
 	}
 }
 
@@ -2441,7 +2441,7 @@ static void conf_read(struct conf *c)
 	if (!f) {
 		/* a missing file is the documented default; anything else is worth a line */
 		if (errno != ENOENT)
-			warn("%s: %s -- die Vorgaben gelten (start = auto)", c->path,
+			warn("%s: %s -- the defaults apply (start = auto)", c->path,
 			     strerror(errno));
 		conf_werte_pfad(c);
 		return;
@@ -2459,7 +2459,7 @@ static void conf_read(struct conf *c)
 			continue;
 		val = strpbrk(key, "= \t");
 		if (!val) {
-			warn("%s:%u: \"%s\" ohne Wert -- ignoriert", c->path, n, key);
+			warn("%s:%u: \"%s\" without a value -- ignored", c->path, n, key);
 			continue;
 		}
 		*val++ = '\0';
@@ -2547,7 +2547,7 @@ static void state_read(struct control *c)
 	f = fopen(c->state_path, "r");
 	if (!f) {
 		if (errno != ENOENT)
-			warn("%s: %s -- gilt als nicht gemerkt", c->state_path, strerror(errno));
+			warn("%s: %s -- counts as nothing saved", c->state_path, strerror(errno));
 		return;
 	}
 	if (fgets(line, sizeof(line), f)) {
@@ -2556,7 +2556,7 @@ static void state_read(struct control *c)
 		if (!strcmp(w, "auto") || !strcmp(w, "off"))
 			snprintf(c->state_known, sizeof(c->state_known), "%s", w);
 		else
-			warn("%s: \"%s\" ist kein Modus (auto, off) -- gilt als nicht gemerkt",
+			warn("%s: \"%s\" is not a mode (auto, off) -- counts as nothing saved",
 			     c->state_path, w);
 	}
 	fclose(f);
@@ -2576,7 +2576,7 @@ static void state_write(struct control *c, enum policy p)
 
 	if (!c->state_path || !strcmp(c->state_known, mode))
 		return;
-	snprintf(tmp, sizeof(tmp), "%s.neu", c->state_path);
+	snprintf(tmp, sizeof(tmp), "%s.new", c->state_path);
 	fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 	if (fd < 0 && errno == ENOENT) {
 		/* started by hand, without the unit's StateDirectory */
@@ -2590,21 +2590,21 @@ static void state_write(struct control *c, enum policy p)
 	}
 	if (fd < 0) {
 		if (!c->state_complained)
-			warn("%s: %s -- der Modus wird nicht gemerkt", tmp, strerror(errno));
+			warn("%s: %s -- the mode is not saved", tmp, strerror(errno));
 		c->state_complained = true;
 		return;
 	}
 	if (dprintf(fd, "%s\n", mode) < 0 || fsync(fd) || close(fd) ||
 	    rename(tmp, c->state_path)) {
 		if (!c->state_complained)
-			warn("%s: %s -- der Modus wird nicht gemerkt", c->state_path,
+			warn("%s: %s -- the mode is not saved", c->state_path,
 			     strerror(errno));
 		c->state_complained = true;
 		unlink(tmp);
 		return;
 	}
 	snprintf(c->state_known, sizeof(c->state_known), "%s", mode);
-	info("modus       %s -- gemerkt in %s", mode, c->state_path);
+	info("mode            %s -- saved in %s", mode, c->state_path);
 }
 
 /*
@@ -2631,9 +2631,9 @@ static enum policy start_policy(struct control *c)
 		why = cf->present ? "start = auto" : "Vorgabe start = auto";
 		break;
 	}
-	info("konfig      %s%s: %s -> %s; %s%s", cf->path, cf->present ? "" : " fehlt", why,
-	     console ? "Konsole, bis \"h713-tv ctl on\"" : "das Bild folgt dem Signal",
-	     c->state_path ? "Modus wird gemerkt in " : "Modus wird nicht gemerkt (zustand = none)",
+	info("config          %s%s: %s -> %s; %s%s", cf->path, cf->present ? "" : " missing", why,
+	     console ? "console until \"h713-tv ctl on\"" : "the picture follows the signal",
+	     c->state_path ? "the mode is saved in " : "the mode is not saved (zustand = none)",
 	     c->state_path ? c->state_path : "");
 
 	return console ? POLICY_OFF : POLICY_AUTO;
@@ -2692,23 +2692,23 @@ static void control_lock(struct control *c, const char *path)
 	c->policy = POLICY_AUTO;
 
 	if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path))
-		fail("%s: Socket-Pfad laenger als %zu Zeichen", path,
+		fail("%s: socket path longer than %zu characters", path,
 		     sizeof(((struct sockaddr_un *)0)->sun_path) - 1);
 
 	snprintf(dir, sizeof(dir), "%s", path);
 	slash = strrchr(dir, '/');
 	if (!slash || slash == dir)
-		fail("%s: der Socket braucht ein Verzeichnis", path);
+		fail("%s: the socket needs a directory", path);
 	*slash = '\0';
 	if (mkdir(dir, 0755) && errno != EEXIST)
 		fail("%s: %s", dir, strerror(errno));
 	snprintf(lock, sizeof(lock), "%s/lock", dir);
 	c->lock_fd = open(lock, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
 	if (c->lock_fd < 0)
-		fail("%s: %s -- ohne Einzelinstanz-Riegel startet h713-tv nicht", lock,
+		fail("%s: %s -- without the single-instance lock h713-tv does not start", lock,
 		     strerror(errno));
 	if (flock(c->lock_fd, LOCK_EX | LOCK_NB))
-		fail("%s: eine andere Instanz von h713-tv laeuft schon", lock);
+		fail("%s: another instance of h713-tv is already running", lock);
 }
 
 static void control_listen(struct control *c)
@@ -2718,7 +2718,7 @@ static void control_listen(struct control *c)
 
 	c->lfd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if (c->lfd < 0) {
-		warn("socket: %s -- kein Steuerkanal", strerror(errno));
+		warn("socket: %s -- no control channel", strerror(errno));
 		return;
 	}
 	memset(&addr, 0, sizeof(addr));
@@ -2727,12 +2727,12 @@ static void control_listen(struct control *c)
 	unlink(path);
 	if (bind(c->lfd, (struct sockaddr *)&addr, sizeof(addr)) ||
 	    chmod(path, 0660) || listen(c->lfd, 4)) {
-		warn("%s: %s -- kein Steuerkanal", path, strerror(errno));
+		warn("%s: %s -- no control channel", path, strerror(errno));
 		close(c->lfd);
 		c->lfd = -1;
 		return;
 	}
-	info("steuerung   %s (h713-tv ctl help)", path);
+	info("control         %s (h713-tv ctl help)", path);
 }
 
 static void control_close(struct control *c)
@@ -3092,7 +3092,7 @@ static bool edid_plausible(const uint8_t *e, char *why, size_t n)
 	/* two EDIDs back to back: byte 0 and byte 256 each start a header */
 	for (b = 0; b < EDID_BLOCKS; b += 2)
 		if (memcmp(e + b * 128, header, sizeof(header))) {
-			snprintf(why, n, "kein EDID-Kopf bei Byte %u (%02x %02x %02x %02x %02x %02x %02x %02x)",
+			snprintf(why, n, "no EDID header at byte %u (%02x %02x %02x %02x %02x %02x %02x %02x)",
 				 b * 128, e[b * 128], e[b * 128 + 1], e[b * 128 + 2],
 				 e[b * 128 + 3], e[b * 128 + 4], e[b * 128 + 5],
 				 e[b * 128 + 6], e[b * 128 + 7]);
@@ -3102,7 +3102,7 @@ static bool edid_plausible(const uint8_t *e, char *why, size_t n)
 		for (sum = 0, i = 0; i < 128; i++)
 			sum += e[b * 128 + i];
 		if (sum & 0xff) {
-			snprintf(why, n, "Block %u: Pruefsumme %02x statt 00", b, sum & 0xff);
+			snprintf(why, n, "block %u: checksum %02x instead of 00", b, sum & 0xff);
 			return false;
 		}
 	}
@@ -3136,7 +3136,7 @@ static bool edid_aus_datei(const char *pfad, uint8_t *out, char *why, size_t n)
 	got = read(fd, out, EDID_BYTES);
 	close(fd);
 	if (got != (ssize_t)EDID_BYTES) {
-		snprintf(why, n, "%s: %zd von %u Byte gelesen", pfad, got,
+		snprintf(why, n, "%s: read %zd of %u bytes", pfad, got,
 			 (unsigned int)EDID_BYTES);
 		return false;
 	}
@@ -3169,14 +3169,14 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 		char why2[160];
 
 		if (have_last) {
-			warn("replug      %s -- die Kopie der letzten guten Lesung geht zurueck", why);
+			warn("replug          %s -- the copy of the last good read goes back", why);
 			memcpy(buf, last_good, sizeof(buf));
-			woher = " (Kopie der letzten Lesung)";
+			woher = " (copy of the last read)";
 		} else if (edid_aus_datei(EDID_DATEI, buf, why2, sizeof(why2))) {
-			warn("replug      %s -- %s geht zurueck", why, EDID_DATEI);
+			warn("replug          %s -- %s goes back", why, EDID_DATEI);
 			memcpy(last_good, buf, sizeof(last_good));
 			have_last = true;
-			woher = " (aus " EDID_DATEI ")";
+			woher = " (from " EDID_DATEI ")";
 		} else {
 			reply_fail(r, "%s, und %s -- ohne EDID wird HPD nicht angefasst",
 				   why, why2);
@@ -3199,7 +3199,7 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 		reply_fail(r, "S_EDID(blocks=0): %s -- HPD nicht gezogen", strerror(errno));
 		return true;
 	}
-	info("replug      HPD unten (S_EDID blocks=0), %u ms", REPLUG_LOW_MS);
+	info("replug          HPD low (S_EDID blocks=0), %u ms", REPLUG_LOW_MS);
 	nanosleep(&low, NULL);
 
 	memset(&e, 0, sizeof(e));
@@ -3208,13 +3208,13 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	if (ioctl(cap->fd, VIDIOC_S_EDID, &e)) {
 		int err = errno;
 
-		warn("replug      S_EDID(%u Bloecke): %s -- HPD liegt UNTEN, die Quelle sieht kein Geraet",
+		warn("replug          S_EDID(%u blocks): %s -- HPD is LOW, the source sees no device",
 		     EDID_BLOCKS, strerror(err));
 		reply_fail(r, "S_EDID mit EDID: %s -- HPD liegt unten! noch einmal \"replug\" (nimmt die Kopie), sonst den Treiber neu binden",
 			   strerror(err));
 		return true;
 	}
-	info("replug      EDID neu geladen%s, HPD oben -- die Quelle verhandelt neu",
+	info("replug          EDID loaded again%s, HPD high -- the source renegotiates",
 	     woher);
 	reply_add(r, "ok replug -- HPD %u ms unten, EDID neu geladen%s, die Quelle verhandelt neu\n",
 		  REPLUG_LOW_MS, woher);
@@ -3693,7 +3693,7 @@ static bool pq_ernten(struct pq *p, int *status)
 				ts.tv_nsec -= 1000 * 1000;
 			}
 			snprintf(p->why, sizeof(p->why),
-				 "laenger als %d ms -- abgebrochen", PQ_FRIST_MS);
+				 "longer than %d ms -- aborted", PQ_FRIST_MS);
 			p->pid = -1;
 			return false;
 		}
@@ -3717,7 +3717,7 @@ static bool pq_deuten(struct pq *p)
 	while (b < e && *b != '{')
 		b++;
 	if (b >= e) {
-		snprintf(p->why, sizeof(p->why), "keine JSON-Ausgabe (%zu Byte)",
+		snprintf(p->why, sizeof(p->why), "no JSON output (%zu bytes)",
 			 p->len);
 		return false;
 	}
@@ -3727,7 +3727,7 @@ static bool pq_deuten(struct pq *p)
 
 	if (!js_zahl(b, e, "version", &v) || v != PQ_SATZ_VERSION) {
 		snprintf(p->why, sizeof(p->why),
-			 "Satz-Fassung %ld, dieses Programm kennt %d", v,
+			 "record version %ld, this program knows %d", v,
 			 PQ_SATZ_VERSION);
 		return false;
 	}
@@ -3738,7 +3738,7 @@ static bool pq_deuten(struct pq *p)
 	js_gleitkomma(b, e, "gamma_exponent", &p->gamma);
 
 	if (!js_gebilde(b, e, "presets", &ab, &ae)) {
-		snprintf(p->why, sizeof(p->why), "kein Feld \"presets\" im Satz");
+		snprintf(p->why, sizeof(p->why), "no field \"presets\" in the record");
 		return false;
 	}
 	pq_presets_n = 0;
@@ -3767,7 +3767,7 @@ static bool pq_deuten(struct pq *p)
 		pq_presets_n++;
 	}
 	if (!pq_presets_n) {
-		snprintf(p->why, sizeof(p->why), "kein brauchbares Preset im Satz");
+		snprintf(p->why, sizeof(p->why), "no usable preset in the record");
 		return false;
 	}
 
@@ -3786,7 +3786,7 @@ static void pq_collect(struct pq *p)
 
 	if (p->fd < 0) {
 		if (!p->why[0])
-			snprintf(p->why, sizeof(p->why), "nicht gestartet");
+			snprintf(p->why, sizeof(p->why), "not started");
 		return;
 	}
 	pfd.fd = p->fd;
@@ -3815,11 +3815,11 @@ static void pq_collect(struct pq *p)
 	p->ms = pq_verbraucht(p);
 	if (!WIFEXITED(status) || WEXITSTATUS(status)) {
 		if (WIFSIGNALED(status))
-			snprintf(p->why, sizeof(p->why), "durch Signal %d beendet",
+			snprintf(p->why, sizeof(p->why), "ended by signal %d",
 				 WTERMSIG(status));
 		else
-			snprintf(p->why, sizeof(p->why), "Rueckgabe %d "
-				 "(Datenverzeichnis unvollstaendig?)",
+			snprintf(p->why, sizeof(p->why), "exit code %d "
+				 "(data directory incomplete?)",
 				 WEXITSTATUS(status));
 		return;
 	}
@@ -3900,11 +3900,11 @@ static int preset_apply(struct capture *cap, const struct preset *p, char *msg,
 	int ret;
 
 	if (!ctrl_find(cap->fd, "mode", &q)) {
-		snprintf(msg, n, "kein Regler picture_mode (Kernel 0126)");
+		snprintf(msg, n, "no control picture_mode (kernel 0126)");
 		return -1;
 	}
 	if (p->mode > q.maximum) {
-		snprintf(msg, n, "%s braucht Bildmodus %d, der Kernel kennt nur 0..%lld (0132)",
+		snprintf(msg, n, "%s needs picture mode %d, the kernel knows only 0..%lld (0132)",
 			 p->name, p->mode, (long long)q.maximum);
 		return -1;
 	}
@@ -3929,7 +3929,7 @@ static int preset_apply(struct capture *cap, const struct preset *p, char *msg,
 				 p->value[i] > 0 ? p->value[i] - 1 : 1);
 		if (!ctrl_find(cap->fd, preset_ctrl[i], &q) ||
 		    (ret = ctrl_set(cap->fd, &q, p->value[i]))) {
-			l += (size_t)snprintf(msg + l, n - l, " %s=FEHLER", preset_ctrl[i]);
+			l += (size_t)snprintf(msg + l, n - l, " %s=ERROR", preset_ctrl[i]);
 			failed++;
 			continue;
 		}
@@ -4003,7 +4003,7 @@ static void werte_read(struct werte *w)
 	f = fopen(w->path, "r");
 	if (!f) {
 		if (errno != ENOENT)
-			warn("%s: %s -- es gilt das Preset allein", w->path,
+			warn("%s: %s -- the preset alone applies", w->path,
 			     strerror(errno));
 		return;
 	}
@@ -4022,7 +4022,7 @@ static void werte_read(struct werte *w)
 			continue;
 		val = strpbrk(key, "= \t");
 		if (!val) {
-			warn("%s:%u: \"%s\" ohne Wert -- ignoriert", w->path, n, key);
+			warn("%s:%u: \"%s\" without a value -- ignored", w->path, n, key);
 			continue;
 		}
 		*val++ = '\0';
@@ -4042,14 +4042,14 @@ static void werte_read(struct werte *w)
 			if (!strcasecmp(key, preset_ctrl[i]))
 				break;
 		if (i == 9) {
-			warn("%s:%u: unbekannter Schluessel \"%s\" -- ignoriert",
+			warn("%s:%u: unknown key \"%s\" -- ignored",
 			     w->path, n, key);
 			continue;
 		}
 		errno = 0;
 		x = strtol(val, &end, 10);
 		if (end == val || *end || errno || x < 0 || x > 10000) {
-			warn("%s:%u: %s = \"%s\" ist keine Zahl -- verworfen",
+			warn("%s:%u: %s = \"%s\" is not a number -- dropped",
 			     w->path, n, key, val);
 			continue;
 		}
@@ -4076,26 +4076,26 @@ static int werte_apply(struct capture *cap, const struct werte *w,
 	if (!w->path || !w->present)
 		return 0;
 	if (w->preset[0] && strcasecmp(w->preset, preset_name)) {
-		snprintf(msg, n, "gemerkt fuer Preset %s, gestartet wird %s -- "
-			 "nicht angewandt", w->preset, preset_name);
+		snprintf(msg, n, "saved for preset %s, starting with %s -- "
+			 "not applied", w->preset, preset_name);
 		return -1;
 	}
 	for (i = 0; i < 9; i++) {
 		if (!w->have[i])
 			continue;
 		if (!ctrl_find(cap->fd, preset_ctrl[i], &q)) {
-			warn("%s:%u: kein Regler \"%s\" -- verworfen", w->path,
+			warn("%s:%u: no control \"%s\" -- dropped", w->path,
 			     w->line[i], preset_ctrl[i]);
 			continue;
 		}
 		if (w->value[i] < q.minimum || w->value[i] > q.maximum) {
-			warn("%s:%u: %s = %d liegt ausserhalb %lld..%lld -- verworfen",
+			warn("%s:%u: %s = %d is outside %lld..%lld -- dropped",
 			     w->path, w->line[i], preset_ctrl[i], w->value[i],
 			     (long long)q.minimum, (long long)q.maximum);
 			continue;
 		}
 		if (ctrl_set(cap->fd, &q, w->value[i])) {
-			warn("%s:%u: %s = %d liess sich nicht setzen", w->path,
+			warn("%s:%u: %s = %d could not be set", w->path,
 			     w->line[i], preset_ctrl[i], w->value[i]);
 			continue;
 		}
@@ -4130,7 +4130,7 @@ static bool werte_write(struct werte *w, struct capture *cap,
 		snprintf(msg, n, "es wird nichts gemerkt (zustand = none in tv.conf)");
 		return false;
 	}
-	snprintf(tmp, sizeof(tmp), "%s.neu", w->path);
+	snprintf(tmp, sizeof(tmp), "%s.new", w->path);
 	fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 	if (fd < 0 && errno == ENOENT) {
 		/* started by hand, without the unit's StateDirectory */
@@ -4672,7 +4672,7 @@ static int client(int argc, char **argv, const char *path)
 	addr.sun_family = AF_UNIX;
 	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
 	if (strlen(path) >= sizeof(addr.sun_path))
-		fail("%s: Socket-Pfad laenger als %zu Zeichen", path, sizeof(addr.sun_path) - 1);
+		fail("%s: socket path longer than %zu characters", path, sizeof(addr.sun_path) - 1);
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)))
 		fail("%s: %s -- laeuft h713-tv? (systemctl status 'h713-tv@*')", path,
 		     strerror(errno));
@@ -4716,7 +4716,7 @@ static void evaluate(struct capture *cap, struct display *d,
 	if (sig == 2) {
 		if (rt->n < RETRY_MAX) {
 			if (!rt->n)
-				info("signal      Wechsel im Gang -- die Geometrie steht noch nicht, warte");
+				info("signal          change in flight -- the geometry is not settled yet, waiting");
 			rt->n++;
 			retry_arm(rt, RETRY_MS);
 			return;
@@ -4731,9 +4731,9 @@ static void evaluate(struct capture *cap, struct display *d,
 		 * follow -- so keep asking, slowly, until the driver decides.
 		 */
 		if (rt->n == RETRY_MAX) {
-			warn("die Geometrie ist nach %u Nachfragen nicht eingerastet -- %s",
-			     RETRY_MAX, d->on ? "das Bild bleibt, bis das naechste Ereignis kommt"
-					      : "die Konsole bleibt, es wird alle 500 ms nachgefragt");
+			warn("the geometry has not locked after %u retries -- %s",
+			     RETRY_MAX, d->on ? "the picture stays until the next event comes"
+					      : "the console stays, asking again every 500 ms");
 			rt->n++;
 		}
 		if (!d->on)
@@ -4745,18 +4745,18 @@ static void evaluate(struct capture *cap, struct display *d,
 
 	if (sig <= 0) {
 		if (sig == 0)
-			info("signal      kein Signal (Flip-Zeiger stehen)");
+			info("signal          no signal (the flip pointers stand still)");
 		display_hide(d);
 		return;
 	}
 
-	info("signal      %ux%u%s, %llu Hz Pixeltakt", t.bt.width, t.bt.height,
+	info("signal          %ux%u%s, %llu Hz pixel clock", t.bt.width, t.bt.height,
 	     t.bt.interlaced ? "i" : "p",
 	     (unsigned long long)t.bt.pixelclock);
 
 	if (t.bt.width > d->width || t.bt.height > d->height ||
 	    (t.bt.height & 1)) {
-		warn("Quellgeometrie %ux%u nimmt die Plane nicht an (groesser als Panel %ux%u, oder ungerade Hoehe) -- Konsole bleibt",
+		warn("the plane does not take the source geometry %ux%u (larger than the panel %ux%u, or an odd height) -- the console stays",
 		     t.bt.width, t.bt.height, d->width, d->height);
 		display_hide(d);
 		return;
@@ -4782,7 +4782,7 @@ static void evaluate(struct capture *cap, struct display *d,
 		d->src_h = t.bt.height;
 		d->src_pitch = capture_pitch(cap, t.bt.width);
 		display_create_fb(d);
-		info("puffer      %ux%u NV16, Zeilenabstand %u auf Panel %ux%u",
+		info("buffer          %ux%u NV16, line pitch %u on panel %ux%u",
 		     d->src_w, d->src_h, d->src_pitch, d->width, d->height);
 	}
 
@@ -4924,9 +4924,9 @@ int main(int argc, char **argv)
 	}
 
 	if (!audio_policy_parse(o.audio, &apol))
-		fail("-a %s: unbekannt (auto on off none)", o.audio);
+		fail("-a %s: unknown (auto on off none)", o.audio);
 	if (!audio_trim_parse(o.trim, &au.trim_q))
-		fail("--hdmi-trim %s: erwartet wird eine Zahl in dB von %d bis 0",
+		fail("--hdmi-trim %s: a number in dB from %d to 0 is expected",
 		     o.trim, AUDIO_TRIM_MIN_DB);
 
 	/* first the lock, then the devices -- see control_lock() */
@@ -4979,7 +4979,7 @@ int main(int argc, char **argv)
 	d.fd = display_open_card(o.card);
 	if (drmSetClientCap(d.fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) ||
 	    drmSetClientCap(d.fd, DRM_CLIENT_CAP_ATOMIC, 1))
-		fail("dieser Kernel gibt Atomic/Universal Planes nicht her: %s",
+		fail("this kernel does not hand out atomic and universal planes: %s",
 		     strerror(errno));
 	display_find_crtc(&d);
 	display_find_plane(&d);
@@ -4993,7 +4993,7 @@ int main(int argc, char **argv)
 	 * which is the state wanted anyway.
 	 */
 	if (drmDropMaster(d.fd) && errno != EINVAL)
-		warn("DROP_MASTER beim Start: %s", strerror(errno));
+		warn("DROP_MASTER at the start: %s", strerror(errno));
 	d.master = false;
 
 	/*
@@ -5003,10 +5003,10 @@ int main(int argc, char **argv)
 	if (!o.report_only) {
 		pq_collect(&pq);
 		if (pq.ok)
-			info("bildwerte   %u Presets und Gamma %.2f aus %s (h713-pq, %u ms)",
+			info("picture values  %u presets and gamma %.2f from %s (h713-pq, %u ms)",
 			     pq_presets_n, pq.gamma, pq.daten, pq.ms);
 		else
-			warn("bildwerte   %s -- es gilt die einkompilierte Tabelle",
+			warn("picture values  %s -- the compiled-in table applies",
 			     pq.why);
 		/*
 		 * The curve h713-pq just wrote is the one that belongs to
@@ -5024,9 +5024,9 @@ int main(int argc, char **argv)
 		struct v4l2_dv_timings t;
 		int sig = capture_signal(&cap, &t);
 
-		info("signal      %s", sig == 1 ? "vorhanden" :
-		     sig == 2 ? "Wechsel im Gang" :
-		     sig == 0 ? "kein Signal" : "nicht lesbar");
+		info("signal          %s", sig == 1 ? "present" :
+		     sig == 2 ? "change in flight" :
+		     sig == 0 ? "no signal" : "not readable");
 		/*
 		 * The audio chain, looked at and not touched: -n reports, it
 		 * does not switch. So no audio_open() here -- it would set the
@@ -5036,13 +5036,13 @@ int main(int argc, char **argv)
 			char vol[64];
 
 			if (audio_search(&au))
-				info("ton         %s (card %d) + %s (card %d), %s, Stummschalter %s",
+				info("audio           %s (card %d) + %s (card %d), %s, mute switch %s",
 				     au.msp.id, au.msp.index, au.codec.name,
 				     au.codec.index,
 				     audio_volume_text(&au, vol, sizeof(vol)),
-				     au.codec_mute ? au.codec_mute : "nur im DSP");
+				     au.codec_mute ? au.codec_mute : "in the DSP only");
 			else
-				info("ton         %s", au.why);
+				info("audio           %s", au.why);
 			if (au.msp.ctl)
 				snd_ctl_close(au.msp.ctl);
 			if (au.codec.ctl)
@@ -5083,20 +5083,20 @@ int main(int argc, char **argv)
 			 * data does not carry must not cost the picture
 			 * (plan 113 A.5).
 			 */
-			warn("preset      \"%s\" gibt es nicht (%s) -- standard", startpreset,
+			warn("preset          \"%s\" does not exist (%s) -- standard", startpreset,
 			     namen);
 			startpreset = "standard";
 			p = preset_find(startpreset);
 		}
 		ret = p ? preset_apply(&cap, p, msg, sizeof(msg)) : -1;
 		if (ret < 0)
-			warn("preset      %s -- nicht gesendet", p ? msg : "kein Preset");
+			warn("preset          %s -- not sent", p ? msg : "no preset");
 		else if (ret)
-			warn("preset      %s -- %d Werte nicht gesetzt", msg, ret);
+			warn("preset          %s -- %d values not set", msg, ret);
 		else
-			info("preset      %s (%s)", msg,
-			     preset_ist_aus_daten(p) ? "aus den Geraetedaten"
-						     : "einkompilierte Tabelle");
+			info("preset          %s (%s)", msg,
+			     preset_ist_aus_daten(p) ? "from the device data"
+						     : "the compiled-in table");
 		if (p && ret >= 0) {
 			snprintf(preset_aktuell, sizeof(preset_aktuell), "%s", p->name);
 			preset_aktuell_aus_daten = preset_ist_aus_daten(p);
@@ -5104,10 +5104,10 @@ int main(int argc, char **argv)
 			/* the third layer, on top of the second */
 			ret = werte_apply(&cap, &werte, p->name, msg, sizeof(msg));
 			if (ret < 0)
-				warn("gemerkt     %s", msg);
+				warn("saved           %s", msg);
 			else if (ret)
-				info("gemerkt     %d Wert%s aus %s: %s", ret,
-				     ret == 1 ? "" : "e", werte.path, msg);
+				info("saved           %d value%s from %s: %s", ret,
+				     ret == 1 ? "" : "s", werte.path, msg);
 		}
 	}
 	/*
@@ -5119,12 +5119,12 @@ int main(int argc, char **argv)
 
 		if (prop_enum_parse(&d.plane_props, "aspect", werte.aspect, &val)) {
 			d.aspect = val;
-			info("gemerkt     aspect %s", werte.aspect);
+			info("saved           aspect %s", werte.aspect);
 		} else {
 			char namen[128];
 
 			aspect_names(&d, namen, sizeof(namen));
-			warn("%s:%u: aspect = \"%s\" kennt die Plane nicht (%s) -- verworfen",
+			warn("%s:%u: the plane does not know aspect = \"%s\" (%s) -- dropped",
 			     werte.path, werte.aspect_line, werte.aspect, namen);
 		}
 	}
@@ -5174,11 +5174,11 @@ int main(int argc, char **argv)
 				si.ssi_signo = 0;
 			if (si.ssi_signo == SIGHUP) {
 				/* not an exit: look again, the way a reload would */
-				info("neu         SIGHUP -- Zustand neu bewertet");
+				info("reload          SIGHUP -- the state is evaluated again");
 				reevaluate(&cap, &d, &rt, &au);
 				continue;
 			}
-			info("ende        Signal %u erhalten", si.ssi_signo);
+			info("exit            signal %u received", si.ssi_signo);
 			break;
 		}
 		if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
@@ -5191,7 +5191,7 @@ int main(int argc, char **argv)
 			 * "inactive". Measured 08.09.2026: the unbind reached
 			 * this poll before systemd's stop did.
 			 */
-			info("ende        das Aufnahmegeraet ist weg (poll 0x%x) -- die Unit folgt dem Geraet",
+			info("exit            the capture device is gone (poll 0x%x) -- the unit follows the device",
 			     fds[0].revents);
 			break;
 		}
@@ -5199,7 +5199,7 @@ int main(int argc, char **argv)
 			uint64_t ticks;
 
 			if (read(rt.fd, &ticks, sizeof(ticks)) != sizeof(ticks))
-				warn("timerfd lesen: %s", strerror(errno));
+				warn("reading the timerfd: %s", strerror(errno));
 			reevaluate(&cap, &d, &rt, &au);
 		}
 		if (fds[0].revents & POLLPRI) {
@@ -5224,14 +5224,14 @@ int main(int argc, char **argv)
 			uint64_t ticks;
 
 			if (read(au.settle_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
-				warn("ton         timerfd lesen: %s", strerror(errno));
+				warn("audio           reading the timerfd: %s", strerror(errno));
 			audio_settled(&au, &cap, d.on);
 		}
 		if (fds[5].revents & POLLIN) {
 			uint64_t ticks;
 
 			if (read(au.tick_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
-				warn("ton         timerfd lesen: %s", strerror(errno));
+				warn("audio           reading the timerfd: %s", strerror(errno));
 			audio_tick(&au, &cap, d.on);
 		}
 	}
