@@ -141,6 +141,13 @@ class TheHandWrittenTable(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             partition_window(self.tab, "hy310-nonsense")
 
+    def test_a_run_that_writes_only_the_boot_chain_has_no_file_system_to_fill(self):
+        """Whoever writes part A alone -- to renew the bootloader -- touches neither file
+        system, and then there is nothing to copy and no working copy to make."""
+        only_a = dict(self.tab, teile=[self.tab["teile"][0]])
+        for name in ("hy310-boot", "hy310-rootfs"):
+            self.assertIsNone(partition_window(only_a, name), name)
+
     def test_the_user_file_says_its_modes_and_its_owner(self):
         self.assertEqual(self.tab["nutzer"], USER)
 
