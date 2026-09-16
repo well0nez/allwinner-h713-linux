@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
-"""h713-focus -- den Fokusmotor des HY310 von Hand fahren.
+"""h713-focus -- drive the focus motor of the HY310 by hand.
 
-Ersetzt legacy/tools/focus (63 Zeilen sh) und behaelt dessen Unterbefehle
-up/down/flush/status bei. Neu ist, dass vor und nach jeder Bewegung der
-Bereichswaechter gelesen wird, statt blind zu schreiben.
+Replaces legacy/tools/focus (63 lines of sh) and keeps its subcommands
+up/down/flush/status. New is that the range watcher is read before and after
+every move instead of writing blind.
 
-Was PH14 ist -- und was nicht
------------------------------
-PH14 ist ein BEREICHSWAECHTER, kein Endschalter. Er liest active_level (hier
-HIGH), *solange* die Mechanik im erlaubten Fahrbereich steht; der Rand wird am
-WEGFALL des Pegels erkannt. Belegt am Geraet, 12.09.2026
+What PH14 is -- and what it is not
+----------------------------------
+PH14 is a RANGE WATCHER, not a limit switch. It reads active_level (here HIGH)
+*while* the mechanism stands inside the permitted range; the edge is recognized
+when that level DROPS. Measured on the device, 12.09.2026
 (analyse/boot/motor-bereichswaechter-20260912.txt):
 
     raw=1 ... step=-204
-    raw=0 ... step=-206            <== Rand
-    raw=1 ... edge_dn=1 step=-207  (Treiber kehrt um, merkt die Kante, haelt)
+    raw=0 ... step=-206            <== edge
+    raw=1 ... edge_dn=1 step=-207  (the driver reverses, latches the edge, holds)
 
-Umkehren und Kantenmerken macht der Treiber selbst (motor_run_dn_control).
-Dieses Werkzeug baut das nicht nach -- es erkennt, dass es passiert ist, und
-hoert dann auf. Vor allem erkennt es die Faelle, in denen der Treiber gar nicht
-umkehren KANN: num=0 oder motor_ctrl_no_limit=1.
+Reversing and latching the edge is done by the driver itself
+(motor_run_dn_control). This tool does not rebuild that -- it recognizes that it
+happened and then stops. Above all it recognizes the cases in which the driver
+CANNOT reverse at all: num=0 or motor_ctrl_no_limit=1.
 
-Vier Sicherungen
-----------------
-1. Nie blind: vor jedem Haeppchen motor_limit lesen und pruefen, danach wieder.
-2. Harte Obergrenze je Lauf (LAUF_MAX), auch wenn der Waechter schweigt. Ein
-   Waechter, der nichts meldet, ist kein Beleg dafuer, dass noch Weg da ist.
-3. Strg-C wird abgefangen: Warteschlange leeren, geordnet enden.
-4. Ende bei jedem Zweifel -- Rand, Pegel weg, Befehl verworfen, Frist um.
+Four safeguards
+---------------
+1. Never blind: read and check motor_limit before every chunk, and again after.
+2. A hard cap per run (RUN_MAX), even when the watcher stays silent. A watcher
+   that reports nothing is no proof that there is still room.
+3. Ctrl-C is caught: drain the queue, end in an orderly way.
+4. Stop at every doubt -- edge, level gone, command dropped, deadline over.
 
-motor_ctrl_no_limit wird NIE geschrieben, und das Modul wird nicht selbst
-geladen (siehe LADEHINWEIS -- ohne homing=0 faehrt schon das Laden los).
+motor_ctrl_no_limit is NEVER written, and the module is not loaded by this tool
+(see LOAD_HINT -- without homing=0 the loading itself starts moving).
 """
 
 from __future__ import annotations
@@ -43,528 +43,529 @@ import sys
 import time
 from pathlib import Path
 
-# ── Treiber und Protokoll ────────────────────────────────────────────────
-# Geraetespezifisches behaelt "hy310": das Werkzeug heisst h713-focus, der
-# Treiber wird nicht umbenannt (doku/60-offen.md, "Werkzeugnamen").
-TREIBER = "hy310-focus-motor"
-MODUL = "hy310_focus_motor"
+# --- driver and protocol -------------------------------------------------
+# What is specific to the device keeps "hy310": the tool is called h713-focus,
+# the driver is not renamed (doku/60-offen.md, "tool names").
+DRIVER = "hy310-focus-motor"
+MODULE = "hy310_focus_motor"
 
 ATTR_CTRL = "motor_ctrl"
 ATTR_LIMIT = "motor_limit"
 ATTR_NO_LIMIT = "motor_ctrl_no_limit"
 
-#: motor_ctrl_store: (cmd << 8) | (steps & 0x7f). 8/9 sind die "manuellen"
-#: Befehle -- sie loeschen m->autofocus, der Treiber schlaeft je Phase. 1/2
-#: waeren dieselbe Bewegung mit Autofokus-Zeitgebung (mdelay, busy-wait); das
-#: alte focus-Skript nahm 1/2, fuer Handbetrieb ist das falsch.
-CMD_AUF, CMD_AB, CMD_LEEREN = 8, 9, 3
+#: motor_ctrl_store: (cmd << 8) | (steps & 0x7f). 8/9 are the "manual"
+#: commands -- they clear m->autofocus, the driver sleeps per phase. 1/2 would
+#: be the same movement with autofocus timing (mdelay, busy wait); the old
+#: focus script took 1/2, which is wrong for manual operation.
+CMD_UP, CMD_DOWN, CMD_FLUSH = 8, 9, 3
 
-#: Der Treiber kuerzt msteps je Schreibvorgang still auf MOVE_CLAMP_MAX = 18
-#: (motor_run_up_dn). Wer 30 schreibt, bekommt 18 und merkt es nicht.
-MSTEPS_JE_BEFEHL_MAX = 18
+#: The driver silently clamps msteps per write to MOVE_CLAMP_MAX = 18
+#: (motor_run_up_dn). Whoever writes 30 gets 18 and does not notice.
+MSTEPS_PER_COMMAND_MAX = 18
 
-#: Wie viele msteps der Treiber hoechstens zurueckfaehrt, um wieder in den
-#: Bereich zu kommen (RECOVERY_MAX). Steht in keinem sysfs-Attribut.
-ERHOLUNG_MAX = 40
+#: How many msteps the driver drives back at most to get into the range again
+#: (RECOVERY_MAX). It stands in no sysfs attribute.
+RECOVERY_MAX = 40
 
-#: Absolute Obergrenze fuer einen einzelnen Lauf. Der einzige gemessene Weg bis
-#: an einen Rand sind 206 msteps; der Geraetebaum behauptet 800 Gesamtweg (am
-#: Geraet NICHT geprueft). 400 ist das Doppelte des Gemessenen und die Haelfte
-#: des Behaupteten. Wird darin kein Rand gefunden, ist das ein Befund.
-LAUF_MAX = 400
+#: Absolute cap for a single run. The only measured way to an edge is 206
+#: msteps; the device tree claims 800 in total (NOT checked on the device). 400
+#: is twice the measured and half the claimed value. If no edge is found within
+#: it, that is a finding.
+RUN_MAX = 400
 
-#: Haeppchengroesse: das Raster, in dem die Messung vom 12.09. den Rand fand.
-SCHRITT_VORGABE = 2
+#: Chunk size: the grid in which the measurement of 12.09. found the edge.
+CHUNK_DEFAULT = 2
 
-TAKT_MS = 25              # Wartetakt beim Nachsehen
-MSTEP_MS = 16.0           # cycle(2) * step_num(8) * ctrl_time(1); Messung ~14,4
-BACK_STEP = 5             # DEFAULT_BACK_STEP, nur fuer die Fristrechnung
+POLL_MS = 25              # polling interval while looking
+MSTEP_MS = 16.0           # cycle(2) * step_num(8) * ctrl_time(1); measured ~14.4
+BACK_STEP = 5             # DEFAULT_BACK_STEP, only for the deadline computation
 
-LADEHINWEIS = f"""\
-Der Treiber ist nicht da. Normalerweise laedt udev ihn beim Booten selbst
-(=m, Knoten aktiv seit Patch 0157). Wenn nicht, von Hand:
+LOAD_HINT = f"""\
+The driver is not there. Normally udev loads it at boot by itself (=m, node
+active since patch 0157). If not, by hand:
 
-    modprobe {MODUL}
+    modprobe {MODULE}
 
-Seit Patch 0156 ist homing standardmaessig AUS, das Laden bewegt also nichts.
-Auf einem aelteren Kernel ist es standardmaessig an -- dort ist 'homing=0'
-Pflicht, sonst faehrt schon das Laden bis zu 100 msteps AUFWAERTS, in die
-Richtung des mechanischen Anschlags (HOMING_UP_MAX).
+Since patch 0156 homing is OFF by default, so loading moves nothing. On an
+older kernel it is on by default -- there 'homing=0' is mandatory, otherwise
+the loading alone drives up to 100 msteps UPWARDS, towards the mechanical stop
+(HOMING_UP_MAX).
 
-h713-focus laedt das Modul nicht selbst. Ein Werkzeug, das ungefragt Parameter
-waehlt, mit denen sich Mechanik bewegt, ist genau der Fehler, den es hier zu
-vermeiden gilt."""
-
-
-class Fehler(Exception):
-    """Etwas stimmt nicht -- Meldung raus, Rueckgabewert != 0, nichts fahren."""
+h713-focus does not load the module itself. A tool that picks parameters
+unasked which set mechanics in motion is exactly the mistake to be avoided
+here."""
 
 
-# ── Den Knoten suchen, nicht eintippen ───────────────────────────────────
-# Bei uns heisst er motor-ctr, bei Stock motor_ctr, kuenftig vielleicht anders.
-# Verlaesslich ist nur der Treibername. Am 11./12.09. sind in diesem Projekt
-# zwei Fehler genau daran gescheitert, dass eine Nummer aus einem fremden
-# Zusammenhang uebernommen wurde.
+class Error(Exception):
+    """Something is wrong -- message out, return value != 0, drive nothing."""
 
-def finde_basis(vorgabe: str | None) -> tuple[Path, str]:
-    """Liefert (Verzeichnis, wie es gefunden wurde)."""
-    vorgabe = vorgabe or os.environ.get("H713_FOCUS_SYSFS")
-    if vorgabe:
-        p = Path(vorgabe)
-        fehlt = [a for a in (ATTR_CTRL, ATTR_LIMIT) if not (p / a).exists()]
-        if fehlt:
-            raise Fehler(f"{p}: dort fehlt {', '.join(fehlt)}")
-        return p, "vorgegeben"
 
-    # Der belastbare Weg: was ist an den Treiber gebunden?
-    wurzel = Path("/sys/bus/platform/drivers") / TREIBER
-    if wurzel.is_dir():
-        for e in sorted(wurzel.iterdir()):
+# --- find the node, do not type it in -------------------------------------
+# Here it is called motor-ctr, on stock motor_ctr, in future perhaps something
+# else. The only reliable thing is the driver name. On 11./12.09. two mistakes
+# in this project came from taking a number out of a foreign context.
+
+def find_base(given: str | None) -> tuple[Path, str]:
+    """Returns (directory, how it was found)."""
+    given = given or os.environ.get("H713_FOCUS_SYSFS")
+    if given:
+        p = Path(given)
+        missing = [a for a in (ATTR_CTRL, ATTR_LIMIT) if not (p / a).exists()]
+        if missing:
+            raise Error(f"{p}: {', '.join(missing)} is missing there")
+        return p, "given"
+
+    # The reliable way: what is bound to the driver?
+    root = Path("/sys/bus/platform/drivers") / DRIVER
+    if root.is_dir():
+        for e in sorted(root.iterdir()):
             if e.name in ("bind", "unbind", "uevent", "module"):
                 continue
-            ziel = e.resolve()
-            if all((ziel / a).exists() for a in (ATTR_CTRL, ATTR_LIMIT)):
-                return ziel, f"gebunden an {TREIBER}"
+            target = e.resolve()
+            if all((target / a).exists() for a in (ATTR_CTRL, ATTR_LIMIT)):
+                return target, f"bound to {DRIVER}"
 
-    # Notweg, falls der Treiber nicht (mehr) registriert ist.
-    for muster in ("/sys/bus/platform/devices/*motor*",
-                   "/sys/devices/platform/*/" + ATTR_LIMIT):
-        for roh in sorted(glob.glob(muster)):
-            p = Path(roh)
+    # Fallback in case the driver is not (any longer) registered.
+    for pattern in ("/sys/bus/platform/devices/*motor*",
+                    "/sys/devices/platform/*/" + ATTR_LIMIT):
+        for raw in sorted(glob.glob(pattern)):
+            p = Path(raw)
             if p.name == ATTR_LIMIT:
                 p = p.parent
             p = p.resolve()
             if all((p / a).exists() for a in (ATTR_CTRL, ATTR_LIMIT)):
-                return p, "ueber den Namen gefunden"
+                return p, "found over the name"
 
-    if not wurzel.is_dir():
-        raise Fehler("Kein Motorknoten gefunden.\n\n" + LADEHINWEIS)
-    raise Fehler(f"Der Treiber {TREIBER} ist registriert, aber kein Geraet ist "
-                 f"daran gebunden -- der Knoten im Geraetebaum ist vermutlich "
-                 f"'disabled'.")
+    if not root.is_dir():
+        raise Error("No motor node found.\n\n" + LOAD_HINT)
+    raise Error(f"The driver {DRIVER} is registered, but no device is bound to "
+                f"it -- the node in the device tree is probably 'disabled'.")
 
 
 class Motor:
-    """Die einzige Naht zum Dateisystem."""
+    """The only seam to the file system."""
 
-    def __init__(self, basis: Path, trocken: bool = False):
-        self.basis, self.trocken = basis, trocken
+    def __init__(self, base: Path, dry: bool = False):
+        self.base, self.dry = base, dry
 
-    def lies(self, attr: str) -> str:
-        return (self.basis / attr).read_text().strip()
+    def read(self, attr: str) -> str:
+        return (self.base / attr).read_text().strip()
 
     def no_limit(self) -> int:
         try:
-            return int(self.lies(ATTR_NO_LIMIT))
+            return int(self.read(ATTR_NO_LIMIT))
         except (OSError, ValueError):
-            return 0        # Attribut fehlt -> der Treiber kennt es nicht
+            return 0        # attribute missing -> the driver does not know it
 
-    def befehl(self, cmd: int, msteps: int = 0) -> int:
-        """Ein Wort nach motor_ctrl. Im Trockenlauf wird nichts geschrieben."""
-        if msteps > MSTEPS_JE_BEFEHL_MAX:
-            raise Fehler(f"{msteps} msteps je Befehl -- der Treiber kuerzt "
-                         f"still auf {MSTEPS_JE_BEFEHL_MAX}.")
-        wort = (cmd << 8) | (msteps & 0x7F)
-        if not self.trocken:
-            (self.basis / ATTR_CTRL).write_text(str(wort))
-        return wort
+    def command(self, cmd: int, msteps: int = 0) -> int:
+        """One word into motor_ctrl. In a dry run nothing is written."""
+        if msteps > MSTEPS_PER_COMMAND_MAX:
+            raise Error(f"{msteps} msteps per command -- the driver silently "
+                        f"clamps to {MSTEPS_PER_COMMAND_MAX}.")
+        word = (cmd << 8) | (msteps & 0x7F)
+        if not self.dry:
+            (self.base / ATTR_CTRL).write_text(str(word))
+        return word
 
-    def leeren(self) -> None:
-        self.befehl(CMD_LEEREN)
+    def flush(self) -> None:
+        self.command(CMD_FLUSH)
 
 
-# ── motor_limit auslegen ─────────────────────────────────────────────────
+# --- reading motor_limit --------------------------------------------------
 #
 #   1 up=1 dn=1 num=1 raw=1 act=1 edge_up=0 edge_dn=1 step=-207
-#   ^ Stock-Feld: motor_limiter_status(0), also "im Bereich" 1/0
+#   ^ stock field: motor_limiter_status(0), that is "in range" 1/0
 #
-# Das erste Feld ist Stock-kompatibel, der Rest kam mit Patch 0154 dazu.
+# The first field is stock compatible, the rest came with patch 0154.
 
-PFLICHT = ("num", "act", "edge_up", "edge_dn", "step")
+REQUIRED = ("num", "act", "edge_up", "edge_dn", "step")
 
 
-class Grenze:
-    """Eine ausgelegte Zeile von motor_limit."""
+class Limit:
+    """One parsed line of motor_limit."""
 
-    def __init__(self, zeile: str):
-        self.roh = (zeile or "").strip()
-        if not self.roh:
-            raise Fehler("motor_limit war leer")
-        teile = self.roh.split()
+    def __init__(self, line: str):
+        self.raw_line = (line or "").strip()
+        if not self.raw_line:
+            raise Error("motor_limit was empty")
+        parts = self.raw_line.split()
         try:
-            self.im_bereich = bool(int(teile[0]))
+            self.in_range = bool(int(parts[0]))
         except ValueError:
-            raise Fehler(f"erstes Feld von motor_limit ist keine Zahl: "
-                         f"{teile[0]!r}") from None
+            raise Error(f"the first field of motor_limit is not a number: "
+                        f"{parts[0]!r}") from None
         p = {}
-        for t in teile[1:]:
+        for t in parts[1:]:
             if "=" in t:
                 k, v = t.split("=", 1)
                 try:
                     p[k] = int(v)
                 except ValueError:
                     pass
-        # Vor Patch 0154 gab motor_limit nur "%d up=%d dn=%d num=%d" aus.
-        # Daraus laesst sich weder Position noch Pegel ableiten -- und geraten
-        # wird hier nichts.
-        fehlt = [n for n in PFLICHT if n not in p]
-        if fehlt:
-            raise Fehler(
-                f"motor_limit ohne die Felder {', '.join(fehlt)} -- gelesen "
-                f"wurde: {self.roh!r}. Erwartet wird das Format ab Patch 0154; "
-                f"davor gab der Treiber nur 'N up=N dn=N num=N' aus.")
+        # Before patch 0154 motor_limit printed only "%d up=%d dn=%d num=%d".
+        # Neither the position nor the level can be derived from that -- and
+        # nothing is guessed here.
+        missing = [n for n in REQUIRED if n not in p]
+        if missing:
+            raise Error(
+                f"motor_limit without the fields {', '.join(missing)} -- what "
+                f"was read: {self.raw_line!r}. Expected is the format from "
+                f"patch 0154 on; before that the driver printed only "
+                f"'N up=N dn=N num=N'.")
         self.num, self.act = p["num"], p["act"]
         self.edge_up, self.edge_dn = bool(p["edge_up"]), bool(p["edge_dn"])
         self.step = p["step"]
         self.raw = p.get("raw")
 
-    def kante(self, auf: bool) -> bool:
-        return self.edge_up if auf else self.edge_dn
+    def edge(self, up: bool) -> bool:
+        return self.edge_up if up else self.edge_dn
 
 
-def lies_grenze(m: Motor) -> Grenze:
-    return Grenze(m.lies(ATTR_LIMIT))
+def read_limit(m: Motor) -> Limit:
+    return Limit(m.read(ATTR_LIMIT))
 
 
-# ── Die Sicherheitsregeln ────────────────────────────────────────────────
-# Eine Regel je Absatz, jede mit ihrem Beleg. Wer eine lockert, soll hier
-# nachlesen koennen, was sie verhindert hat.
+# --- the safety rules -----------------------------------------------------
+# One rule per paragraph, each with its evidence. Whoever loosens one should be
+# able to read here what it prevented.
 
-def pruefe(g: Grenze, auf: bool, no_limit: int) -> str | None:
-    """Darf in diese Richtung gefahren werden? None = ja, sonst der Grund."""
-    # 1. Ohne angeforderten Waechter gibt es keinen Schutz.
-    #    motor_limiter_status() liefert bei limiter_num == 0 bedingungslos 1
-    #    ("im Bereich"), und motor_run_*_control kehrt dann NIE um. Das erste
-    #    Feld sieht dabei aus wie im gesunden Fall -- es ist also gerade dann
-    #    wertlos, wenn es darauf ankaeme.
+def check(g: Limit, up: bool, no_limit: int) -> str | None:
+    """May this direction be driven? None = yes, otherwise the reason."""
+    # 1. Without a requested watcher there is no protection.
+    #    motor_limiter_status() returns 1 ("in range") unconditionally when
+    #    limiter_num == 0, and motor_run_*_control then NEVER reverses. The
+    #    first field looks like the healthy case while it does -- so it is
+    #    worthless exactly when it would matter.
     if g.num < 1:
-        return ("num=0 -- der Treiber hat keinen Bereichswaechter angefordert. "
-                "Dann meldet er dauerhaft 'im Bereich' und kehrt am Rand nicht "
-                "um; jede Fahrt geht ungebremst bis in den Anschlag.")
+        return ("num=0 -- the driver has not requested a range watcher. Then it "
+                "reports 'in range' permanently and does not reverse at the "
+                "edge; every run goes unbraked into the stop.")
 
-    # 2. motor_ctrl_no_limit schaltet die Pruefung ausdruecklich ab
-    #    (`if (!m->no_limit && !motor_limiter_status(...))`). Dieses Werkzeug
-    #    schreibt das Attribut nie -- aber jemand anders kann es gesetzt haben.
+    # 2. motor_ctrl_no_limit switches the check off explicitly
+    #    (`if (!m->no_limit && !motor_limiter_status(...))`). This tool never
+    #    writes the attribute -- but somebody else may have set it.
     if no_limit:
-        return (f"{ATTR_NO_LIMIT} = 1 -- die Bereichspruefung ist abgeschaltet, "
-                f"der Treiber kehrt am Rand nicht um. Erst von Hand "
-                f"'echo 0 > {ATTR_NO_LIMIT}', dann wieder hier weitermachen.")
+        return (f"{ATTR_NO_LIMIT} = 1 -- the range check is switched off, the "
+                f"driver does not reverse at the edge. First by hand "
+                f"'echo 0 > {ATTR_NO_LIMIT}', then carry on here.")
 
-    # 3. Der Rohpegel ist die einzige Groesse, die wirklich vom Pin kommt.
-    #    Beim NTC hat genau diese Luecke eine erfundene Temperatur aus einem
-    #    offenen Eingang erzeugt (analyse/boot/ntc-gpadc-messung-20260911.txt).
+    # 3. The raw level is the only quantity that really comes from the pin.
+    #    On the NTC exactly this gap produced an invented temperature out of an
+    #    open input (analyse/boot/ntc-gpadc-messung-20260911.txt).
     if g.raw is None:
-        return ("motor_limit nennt keinen Rohpegel (raw=) -- Treiber aelter als "
-                "Patch 0154 oder veraendert. Anzeigen ja, fahren nein.")
+        return ("motor_limit names no raw level (raw=) -- driver older than "
+                "patch 0154 or changed. Showing yes, driving no.")
     if g.raw < 0:
-        return ("raw=-1 -- der Treiber konnte den Pegel des Waechters nicht "
-                "lesen. Damit ist auch 'im Bereich' ohne Aussage.")
+        return ("raw=-1 -- the driver could not read the level of the watcher. "
+                "With that, 'in range' says nothing either.")
 
-    # 4. Der Rand selbst: in-Bereich ist act (hier HIGH).
+    # 4. The edge itself: in-range is act (here HIGH).
     if g.raw != g.act:
-        return (f"raw={g.raw}, erwartet wird act={g.act} -- die Mechanik steht "
-                f"ausserhalb des Fahrbereichs.")
+        return (f"raw={g.raw}, expected is act={g.act} -- the mechanism stands "
+                f"outside the permitted range.")
 
-    # 5. Und was der Treiber selbst schon gesehen hat.
-    if not g.im_bereich:
-        return ("motor_limit meldet 'ausserhalb' (erstes Feld 0), obwohl der "
-                "Rohpegel passt -- widerspruechlich. Nachsehen, nicht fahren.")
+    # 5. And what the driver has seen itself already.
+    if not g.in_range:
+        return ("motor_limit reports 'outside' (first field 0) although the raw "
+                "level fits -- contradictory. Look, do not drive.")
 
-    # 6. Die gemerkte Kante in Fahrtrichtung. Der Treiber verwirft solche
-    #    Befehle still (motor_run_up_dn prueft edge_up/edge_dn vor dem
-    #    Einreihen) -- still ist hier das Falsche.
-    if g.kante(auf):
-        return (f"edge_{'up' if auf else 'dn'}=1 -- der Rand in dieser Richtung "
-                f"ist gemerkt, der Treiber verwirft jeden weiteren Befehl "
-                f"dorthin. Ein mstep in die Gegenrichtung loescht die Kante.")
+    # 6. The latched edge in the direction of travel. The driver drops such
+    #    commands silently (motor_run_up_dn checks edge_up/edge_dn before
+    #    queueing) -- silently is the wrong thing here.
+    if g.edge(up):
+        return (f"edge_{'up' if up else 'dn'}=1 -- the edge in this direction is "
+                f"latched, the driver drops every further command towards it. "
+                f"One mstep the other way clears the edge.")
     return None
 
 
-# ── Der bewachte Lauf ────────────────────────────────────────────────────
+# --- the watched run ------------------------------------------------------
 
-def _zeile(g: Grenze, zusatz: str = "") -> str:
+def _line(g: Limit, extra: str = "") -> str:
     return (f"step={g.step:<6d} raw={'?' if g.raw is None else g.raw} "
             f"act={g.act} edge_up={int(g.edge_up)} edge_dn={int(g.edge_dn)}"
-            f"{zusatz}")
+            f"{extra}")
 
 
-def _frist_s(n: int) -> float:
-    """Wie lange darf ein Haeppchen von n msteps hoechstens dauern?
+def _deadline_s(n: int) -> float:
+    """How long may a chunk of n msteps take at most?
 
-    Gerechnet wird der schlimmste Fall, den der Treiber selbst vorsieht: die n
-    msteps plus eine volle Erholungsfahrt plus back_step, mal 1,5. Eine zu
-    knappe Frist waere ein Abbruch mitten in einer Bewegung -- schlechter, als
-    eine Sekunde zu lange zu warten.
+    Computed is the worst case the driver itself provides for: the n msteps
+    plus a full recovery run plus back_step, times 1.5. A deadline that is too
+    tight would abort in the middle of a movement -- worse than waiting a
+    second too long.
     """
-    return (n + ERHOLUNG_MAX + BACK_STEP) * MSTEP_MS * 1.5 / 1000.0 + 0.3
+    return (n + RECOVERY_MAX + BACK_STEP) * MSTEP_MS * 1.5 / 1000.0 + 0.3
 
 
-def _warte(m: Motor, auf: bool, vorher: Grenze, erwartet: int,
-           frist: float, abbruch: list) -> tuple[Grenze, str]:
-    """Auf das Ende eines Haeppchens warten. Liefert (Zustand, Grund).
+def _wait(m: Motor, up: bool, before: Limit, expected: int,
+          deadline: float, aborted: list) -> tuple[Limit, str]:
+    """Wait for the end of a chunk. Returns (state, reason).
 
-    Warum ueberhaupt gewartet werden muss: motor_ctrl reiht nur ein und stoesst
-    einen Workqueue-Handler an. Der Schreibaufruf kehrt sofort zurueck, die
-    Mechanik laeuft danach noch. Wer sofort wieder schreibt, faehrt in eine
-    Bewegung hinein, die er nicht gesehen hat.
+    Why waiting is necessary at all: motor_ctrl only queues and kicks a
+    workqueue handler. The write call returns at once, the mechanism runs on
+    afterwards. Whoever writes again immediately drives into a movement he has
+    not seen.
     """
-    ende = time.monotonic() + frist
-    jetzt = vorher
+    end = time.monotonic() + deadline
+    now = before
     while True:
-        if abbruch:
-            return jetzt, "abbruch"
+        if aborted:
+            return now, "abort"
         try:
-            jetzt = lies_grenze(m)
-        except (OSError, Fehler):
-            return jetzt, "zeit"   # misslungenes Lesen ist kein Grund weiterzufahren
-        # Reihenfolge: der Rand zuerst. Trifft das letzte mstep den Rand, ist
-        # der Zaehler zufaellig auch am Ziel -- dann ist "rand" die richtige
-        # Meldung, nicht "fertig".
-        if jetzt.kante(auf) and not vorher.kante(auf):
-            return jetzt, "rand"
-        if jetzt.raw is not None and jetzt.raw != jetzt.act:
-            return jetzt, "ausserhalb"
-        if jetzt.step == erwartet:
-            return jetzt, "fertig"
-        if time.monotonic() >= ende:
-            return jetzt, "zeit"
-        time.sleep(TAKT_MS / 1000.0)
+            now = read_limit(m)
+        except (OSError, Error):
+            return now, "timeout"   # a failed read is no reason to drive on
+        # Order: the edge first. If the last mstep hits the edge, the counter
+        # happens to be at the target as well -- then "edge" is the right
+        # message, not "done".
+        if now.edge(up) and not before.edge(up):
+            return now, "edge"
+        if now.raw is not None and now.raw != now.act:
+            return now, "outside"
+        if now.step == expected:
+            return now, "done"
+        if time.monotonic() >= end:
+            return now, "timeout"
+        time.sleep(POLL_MS / 1000.0)
 
 
-def _warte_auf_ruhe(m: Motor, abbruch: list) -> Grenze | None:
-    """Warten, bis der Treiber seine Erholungsfahrt beendet hat.
+def _wait_for_rest(m: Motor, aborted: list) -> Limit | None:
+    """Wait until the driver has finished its recovery run.
 
-    Wer raw=0 gesehen hat, hat einen ZWISCHENZUSTAND gesehen: der Pegel ist
-    weg, der Treiber faehrt gerade zurueck, der Zaehler ist noch nicht
-    weitergelaufen und die Kante noch nicht gesetzt. Wer das als Ergebnis
-    meldet, beschreibt etwas, das es eine Zehntelsekunde spaeter nicht mehr gibt.
+    Whoever has seen raw=0 has seen an INTERMEDIATE state: the level is gone,
+    the driver is driving back, the counter has not moved on yet and the edge is
+    not set yet. Whoever reports that as a result describes something that is
+    gone a tenth of a second later.
     """
-    ende = time.monotonic() + _frist_s(2)
+    end = time.monotonic() + _deadline_s(2)
     while True:
-        if abbruch:
+        if aborted:
             return None
         try:
-            jetzt = lies_grenze(m)
-        except (OSError, Fehler):
+            now = read_limit(m)
+        except (OSError, Error):
             return None
-        if jetzt.raw is not None and jetzt.raw == jetzt.act:
-            return jetzt
-        if time.monotonic() >= ende:
+        if now.raw is not None and now.raw == now.act:
+            return now
+        if time.monotonic() >= end:
             return None
-        time.sleep(TAKT_MS / 1000.0)
+        time.sleep(POLL_MS / 1000.0)
 
 
-def lauf(m: Motor, auf: bool, anzahl: int, schritt: int) -> int:
-    """anzahl msteps fahren -- bewacht, in Haeppchen. Liefert den Exit-Code."""
-    richtung = "up" if auf else "down"
-    if anzahl > LAUF_MAX:
-        print(f"Hinweis: {anzahl} msteps auf {LAUF_MAX} gekuerzt "
-              f"(harte Obergrenze fuer einen Lauf).")
-        anzahl = LAUF_MAX
+def run(m: Motor, up: bool, count: int, chunk: int) -> int:
+    """Drive count msteps -- watched, in chunks. Returns the exit code."""
+    direction = "up" if up else "down"
+    if count > RUN_MAX:
+        print(f"Note: {count} msteps cut to {RUN_MAX} "
+              f"(hard cap for one run).")
+        count = RUN_MAX
 
     no_limit = m.no_limit()
-    start = lies_grenze(m)
-    print(f"vorher:  {_zeile(start)}")
+    start = read_limit(m)
+    print(f"before:  {_line(start)}")
 
-    grund = pruefe(start, auf, no_limit)
-    if grund:
-        print(f"\nGesperrt: {grund}", file=sys.stderr)
+    reason = check(start, up, no_limit)
+    if reason:
+        print(f"\nBlocked: {reason}", file=sys.stderr)
         return 3
 
-    if m.trocken:
-        n = min(schritt, anzahl)
-        wort = (CMD_AUF if auf else CMD_AB) << 8 | n
-        print(f"\nTrockenlauf: es wuerde {anzahl} msteps '{richtung}' fahren, in "
-              f"Haeppchen zu {schritt}. Der erste Schreibvorgang waere '{wort}' "
-              f"nach {ATTR_CTRL} (= ({CMD_AUF if auf else CMD_AB} << 8) | {n}). "
-              f"Geschrieben wurde nichts.")
+    if m.dry:
+        n = min(chunk, count)
+        word = (CMD_UP if up else CMD_DOWN) << 8 | n
+        print(f"\nDry run: it would drive {count} msteps '{direction}', in "
+              f"chunks of {chunk}. The first write would be '{word}' "
+              f"into {ATTR_CTRL} (= ({CMD_UP if up else CMD_DOWN} << 8) | {n}). "
+              f"Nothing was written.")
         return 0
 
-    # Strg-C abfangen, statt den Prozess mitten im Haeppchen zu verlassen.
-    abbruch: list = []
-    alt = signal.signal(signal.SIGINT, lambda *_: abbruch.append(True))
-    cmd = CMD_AUF if auf else CMD_AB
-    vorzeichen = 1 if auf else -1
-    gefahren, rest, ergebnis = 0, anzahl, 0
+    # Catch Ctrl-C instead of leaving the process in the middle of a chunk.
+    aborted: list = []
+    old = signal.signal(signal.SIGINT, lambda *_: aborted.append(True))
+    cmd = CMD_UP if up else CMD_DOWN
+    sign = 1 if up else -1
+    moved, left, result = 0, count, 0
     try:
-        while rest > 0 and not abbruch:
-            vorher = lies_grenze(m)
-            grund = pruefe(vorher, auf, no_limit)
-            if grund:
-                print(f"\nAngehalten: {grund}", file=sys.stderr)
-                ergebnis = 3
+        while left > 0 and not aborted:
+            before = read_limit(m)
+            reason = check(before, up, no_limit)
+            if reason:
+                print(f"\nStopped: {reason}", file=sys.stderr)
+                result = 3
                 break
 
-            n = min(schritt, rest)
-            erwartet = vorher.step + vorzeichen * n
-            m.befehl(cmd, n)
-            nachher, wie = _warte(m, auf, vorher, erwartet, _frist_s(n), abbruch)
-            gefahren += abs(nachher.step - vorher.step)
-            rest -= n
-            print(f"  {richtung:>4} {n:2d} -> {_zeile(nachher)}"
-                  f"{'' if wie == 'fertig' else '   [' + wie + ']'}")
+            n = min(chunk, left)
+            expected = before.step + sign * n
+            m.command(cmd, n)
+            after, how = _wait(m, up, before, expected, _deadline_s(n), aborted)
+            moved += abs(after.step - before.step)
+            left -= n
+            print(f"  {direction:>4} {n:2d} -> {_line(after)}"
+                  f"{'' if how == 'done' else '   [' + how + ']'}")
 
-            if wie == "rand":
-                print(f"\nRand in Richtung '{richtung}' erreicht: der Treiber hat "
-                      f"umgekehrt und die Kante gemerkt.")
+            if how == "edge":
+                print(f"\nEdge in direction '{direction}' reached: the driver has "
+                      f"reversed and latched the edge.")
                 break
-            if wie == "ausserhalb":
-                print(f"\nDer Rohpegel ist weggefallen (raw={nachher.raw}, "
-                      f"act={nachher.act}) -- die Mechanik steht am Bereichsrand. "
-                      f"Angehalten, bevor der Treiber selbst nachzieht.")
-                print("Der Treiber faehrt zurueck; warte auf die Ruhelage ...")
-                ruhe = _warte_auf_ruhe(m, abbruch)
-                if ruhe is not None:
-                    print(f"Ruhelage: {_zeile(ruhe)}")
+            if how == "outside":
+                print(f"\nThe raw level has dropped (raw={after.raw}, "
+                      f"act={after.act}) -- the mechanism stands at the edge of "
+                      f"the range. Stopped before the driver itself follows.")
+                print("The driver is driving back; waiting for it to settle ...")
+                rest = _wait_for_rest(m, aborted)
+                if rest is not None:
+                    print(f"Settled: {_line(rest)}")
                 else:
-                    print("Der Treiber ist NICHT in den Bereich zurueckgekehrt "
-                          "-- nachsehen, bevor hier irgendetwas weiterfaehrt.",
+                    print("The driver has NOT come back into the range -- look "
+                          "before anything here drives on.",
                           file=sys.stderr)
-                    ergebnis = 3
+                    result = 3
                 break
-            if wie == "zeit":
-                if abs(nachher.step - vorher.step) == 0:
-                    print("\nDer Zaehler hat sich nicht bewegt -- der Treiber hat "
-                          "den Befehl verworfen. Haeufigster Grund: eine Kante in "
-                          "Fahrtrichtung, zwischen Pruefung und Schreibvorgang "
-                          "gesetzt.", file=sys.stderr)
+            if how == "timeout":
+                if abs(after.step - before.step) == 0:
+                    print("\nThe counter has not moved -- the driver dropped the "
+                          "command. Most frequent reason: an edge in the "
+                          "direction of travel, latched between the check and "
+                          "the write.", file=sys.stderr)
                 else:
-                    print(f"\nDie Frist fuer dieses Haeppchen ist abgelaufen "
-                          f"({abs(nachher.step - vorher.step)} von {n} msteps im "
-                          f"Zaehler). Angehalten.", file=sys.stderr)
-                ergebnis = 4
+                    print(f"\nThe deadline for this chunk has run out "
+                          f"({abs(after.step - before.step)} of {n} msteps in "
+                          f"the counter). Stopped.", file=sys.stderr)
+                result = 4
                 break
 
-        if abbruch:
-            print("\nAbgebrochen (Strg-C).")
+        if aborted:
+            print("\nAborted (Ctrl-C).")
             try:
-                m.leeren()
-                print("Warteschlange geleert. Der mstep, der gerade lief, laeuft "
-                      "noch zu Ende -- der Treiber kann ihn nicht abbrechen.")
+                m.flush()
+                print("Queue drained. The mstep that was running runs to its end "
+                      "-- the driver cannot abort it.")
             except OSError as e:
-                print(f"Warteschlange nicht zu leeren: {e}", file=sys.stderr)
-            ergebnis = 130
+                print(f"Queue could not be drained: {e}", file=sys.stderr)
+            result = 130
     finally:
-        signal.signal(signal.SIGINT, alt)
+        signal.signal(signal.SIGINT, old)
 
-    print(f"nachher: {_zeile(lies_grenze(m))}   ({gefahren} msteps gefahren)")
-    return ergebnis
+    print(f"after:   {_line(read_limit(m))}   ({moved} msteps driven)")
+    return result
 
 
-# ── Unterbefehle ─────────────────────────────────────────────────────────
+# --- subcommands ----------------------------------------------------------
 
-def zeige_status(m: Motor, wie: str) -> int:
-    g = lies_grenze(m)
-    print(f"Knoten:      {m.basis}  ({wie})")
-    print(f"{ATTR_LIMIT}: {g.roh}")
+def show_status(m: Motor, how: str) -> int:
+    g = read_limit(m)
+    print(f"Node:        {m.base}  ({how})")
+    print(f"{ATTR_LIMIT}: {g.raw_line}")
     try:
-        print(f"{ATTR_CTRL}:  {m.lies(ATTR_CTRL)}"
-              f"   (step_cur step_inc%10 im_bereich)")
+        print(f"{ATTR_CTRL}:  {m.read(ATTR_CTRL)}"
+              f"   (step_cur step_inc%10 in_range)")
     except OSError:
         pass
     no_limit = m.no_limit()
     print()
-    print(f"  Zaehlerstand   {g.step}   -- Zaehler, NICHT Position: nach einem "
-          f"Randereignis laufen beide um rund {1 + BACK_STEP} msteps auseinander")
-    print(f"  Waechter       raw={g.raw} act={g.act} -> "
-          f"{'im Bereich' if g.raw == g.act else 'AUSSERHALB'}"
+    print(f"  Counter        {g.step}   -- a counter, NOT a position: after an "
+          f"edge event the two drift apart by about {1 + BACK_STEP} msteps")
+    print(f"  Watcher        raw={g.raw} act={g.act} -> "
+          f"{'in range' if g.raw == g.act else 'OUTSIDE'}"
           f"   (num={g.num})")
-    print(f"  Kanten         edge_up={int(g.edge_up)} edge_dn={int(g.edge_dn)}")
+    print(f"  Edges          edge_up={int(g.edge_up)} edge_dn={int(g.edge_dn)}")
     if no_limit:
-        print(f"  {ATTR_NO_LIMIT} = 1 -- Bereichspruefung ABGESCHALTET")
+        print(f"  {ATTR_NO_LIMIT} = 1 -- range check SWITCHED OFF")
     print()
-    for auf, name in ((True, "up"), (False, "down")):
-        grund = pruefe(g, auf, no_limit)
-        print(f"  {name:<5} {'frei' if grund is None else 'gesperrt: ' + grund}")
+    for up, name in ((True, "up"), (False, "down")):
+        reason = check(g, up, no_limit)
+        print(f"  {name:<5} {'free' if reason is None else 'blocked: ' + reason}")
     return 0
 
 
-def entriegeln(m: Motor) -> int:
-    """Gemerkte Kanten loeschen (motor_limit beschreiben).
+def unlatch(m: Motor) -> int:
+    """Clear latched edges (write to motor_limit).
 
-    Normalerweise unnoetig: der Treiber loescht die Gegenkante selbst, sobald
-    in die andere Richtung gefahren wird. Gedacht fuer den Fall, dass beide
-    Kanten stehen -- dann nimmt der Treiber sonst gar keinen Befehl mehr an.
+    Normally unnecessary: the driver clears the opposite edge itself as soon as
+    the other direction is driven. Meant for the case that both edges stand --
+    then the driver otherwise takes no command at all any more.
     """
-    g = lies_grenze(m)
+    g = read_limit(m)
     if g.raw is not None and g.raw != g.act:
-        raise Fehler(f"raw={g.raw}, act={g.act} -- die Mechanik steht ausserhalb "
-                     f"des Fahrbereichs. Eine geloeschte Kante wuerde hier die "
-                     f"einzige Bremse wegnehmen. Erst zurueckfahren.")
+        raise Error(f"raw={g.raw}, act={g.act} -- the mechanism stands outside "
+                    f"the permitted range. A cleared edge would take away the "
+                    f"only brake here. Drive back first.")
     if not (g.edge_up or g.edge_dn):
-        print("Keine Kante gemerkt, nichts zu tun.")
+        print("No edge latched, nothing to do.")
         return 0
-    if m.trocken:
-        print(f"Trockenlauf: es wuerde edge_up={int(g.edge_up)} "
-              f"edge_dn={int(g.edge_dn)} loeschen. Geschrieben wurde nichts.")
+    if m.dry:
+        print(f"Dry run: it would clear edge_up={int(g.edge_up)} "
+              f"edge_dn={int(g.edge_dn)}. Nothing was written.")
         return 0
-    (m.basis / ATTR_LIMIT).write_text("0")
-    print(f"Kanten geloescht.  {_zeile(lies_grenze(m))}")
+    (m.base / ATTR_LIMIT).write_text("0")
+    print(f"Edges cleared.  {_line(read_limit(m))}")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="h713-focus",
-        description="Fokusmotor des HY310 von Hand fahren -- bewacht.",
-        epilog="msteps sind Mikroschritte. Der einzige gemessene Weg bis an "
-               "einen Rand sind 206; mehr als %d je Lauf gibt es nicht."
-               % LAUF_MAX)
-    p.add_argument("--sysfs", metavar="PFAD",
-                   help="Motorknoten vorgeben statt suchen ($H713_FOCUS_SYSFS)")
-    p.add_argument("-n", "--trocken", action="store_true",
-                   help="nur pruefen und zeigen, nichts schreiben")
-    p.add_argument("--schritt", type=int, default=SCHRITT_VORGABE,
+        description="drive the focus motor of the HY310 by hand -- watched.",
+        epilog="msteps are microsteps. The only measured way to an edge is "
+               "206; there is no more than %d per run. The switches --trocken "
+               "and --schritt keep their German names on purpose: a device in "
+               "the field may be driven from an older note."
+               % RUN_MAX)
+    p.add_argument("--sysfs", metavar="PATH",
+                   help="give the motor node instead of searching ($H713_FOCUS_SYSFS)")
+    p.add_argument("-n", "--trocken", action="store_true", dest="dry",
+                   help="only check and show, write nothing")
+    p.add_argument("--schritt", type=int, default=CHUNK_DEFAULT, dest="chunk",
                    metavar="N",
-                   help=f"msteps je Schreibvorgang (Vorgabe {SCHRITT_VORGABE}, "
-                        f"hoechstens {MSTEPS_JE_BEFEHL_MAX})")
-    unter = p.add_subparsers(dest="befehl", required=True)
+                   help=f"msteps per write (default {CHUNK_DEFAULT}, "
+                        f"at most {MSTEPS_PER_COMMAND_MAX})")
+    sub = p.add_subparsers(dest="command", required=True)
 
-    unter.add_parser("status", help="Waechter, Kanten, Zaehler und was frei ist")
-    for name, hilfe in (("up", "aufwaerts fahren"), ("down", "abwaerts fahren")):
-        s = unter.add_parser(name, help=hilfe + " (bewacht, in Haeppchen)")
+    sub.add_parser("status", help="watcher, edges, counter and what is free")
+    for name, helptext in (("up", "drive upwards"), ("down", "drive downwards")):
+        s = sub.add_parser(name, help=helptext + " (watched, in chunks)")
         s.add_argument("msteps", type=int)
-    unter.add_parser("flush", help="Warteschlange leeren (Not-Halt)")
-    unter.add_parser("unlatch", help="gemerkte Kanten loeschen")
+    sub.add_parser("flush", help="drain the queue (emergency stop)")
+    sub.add_parser("unlatch", help="clear latched edges")
 
     a = p.parse_args(argv)
-    # Meldungen gehen teils nach stdout, teils nach stderr. Ohne das hier
-    # stehen sie in einer Pipe in der falschen Reihenfolge -- und gerade bei
-    # einem Abbruch soll nachvollziehbar bleiben, was wann gesehen wurde.
+    # Messages go partly to stdout, partly to stderr. Without this line they
+    # stand in a pipe in the wrong order -- and it is exactly on an abort that
+    # what was seen when has to stay traceable.
     sys.stdout.reconfigure(line_buffering=True)
-    if not 1 <= a.schritt <= MSTEPS_JE_BEFEHL_MAX:
-        p.error(f"--schritt {a.schritt} ausserhalb 1..{MSTEPS_JE_BEFEHL_MAX} "
-                f"(der Treiber kuerzt alles darueber still)")
+    if not 1 <= a.chunk <= MSTEPS_PER_COMMAND_MAX:
+        p.error(f"--schritt {a.chunk} outside 1..{MSTEPS_PER_COMMAND_MAX} "
+                f"(the driver silently clamps everything above)")
 
-    basis, wie = finde_basis(a.sysfs)
-    m = Motor(basis, a.trocken)
+    base, how = find_base(a.sysfs)
+    m = Motor(base, a.dry)
 
-    if a.befehl == "status":
-        return zeige_status(m, wie)
-    if a.befehl == "flush":
-        if a.trocken:
-            print(f"Trockenlauf: es wuerde {CMD_LEEREN << 8} nach {ATTR_CTRL} "
-                  f"schreiben. Geschrieben wurde nichts.")
+    if a.command == "status":
+        return show_status(m, how)
+    if a.command == "flush":
+        if a.dry:
+            print(f"Dry run: it would write {CMD_FLUSH << 8} into {ATTR_CTRL}. "
+                  f"Nothing was written.")
             return 0
-        m.leeren()
-        print(f"Warteschlange geleert.  {_zeile(lies_grenze(m))}")
+        m.flush()
+        print(f"Queue drained.  {_line(read_limit(m))}")
         return 0
-    if a.befehl == "unlatch":
-        return entriegeln(m)
+    if a.command == "unlatch":
+        return unlatch(m)
 
     if a.msteps < 1:
-        p.error("msteps muss mindestens 1 sein")
-    return lauf(m, a.befehl == "up", a.msteps, a.schritt)
+        p.error("msteps must be at least 1")
+    return run(m, a.command == "up", a.msteps, a.chunk)
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Fehler as e:
+    except Error as e:
         print(f"h713-focus: {e}", file=sys.stderr)
         sys.exit(2)
     except PermissionError as e:
-        print(f"h713-focus: {e}\nsysfs des Motors gehoert root.", file=sys.stderr)
+        print(f"h713-focus: {e}\nthe motor's sysfs belongs to root.", file=sys.stderr)
         sys.exit(2)
     except KeyboardInterrupt:
         sys.exit(130)
