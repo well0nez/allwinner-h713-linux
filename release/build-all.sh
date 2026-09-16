@@ -341,7 +341,7 @@ else
 fi
 
 # --- 8. ext4 inputs ---------------------------------------------------------
-say "8/11 ext4 inputs (hy310-boot 128 MiB, hy310-rootfs 1 GiB with placeholders)"
+say "8/11 ext4 inputs (hy310-boot 128 MiB, hy310-rootfs 1 GiB, the vendor files come in at install time)"
 # Make tmp/ as the user beforehand: the container writes into it as root, but the
 # self-test (step 10) later puts probe-b-gefuellt.img next to it -- which does not
 # work in a root-owned directory (P3, 12.09.).
