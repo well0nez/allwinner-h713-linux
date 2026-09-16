@@ -171,6 +171,22 @@ The default access point is **published in this repo** - its SSID and password a
 device that installs the image unchanged. Change them in `/etc/h713/wifi.env` before the device stands
 anywhere but on your own desk ([docs/tools/h713-wifi.md](docs/tools/h713-wifi.md)).
 
+## Reinstalling over our own layout
+
+The second install on the same device asks for nothing: no dump, no `--vendor`. The GPT names say that
+this system is already on it (`hy310-*`), and then the 44 proprietary files are not gone - they sit in
+the placeholders the last install filled, where the offset table of the image says they are. The
+installer reads them back off the device (about 12 MiB, a couple of seconds), fills the new image with
+them and says so: `44 files read back from the device's own placeholders`. The mandatory small dump
+falls away too, because nothing stock-specific is left to save - `--dump DIR` still takes one, and
+`--vendor` or a full dump in the dump directory still beat the device. What the dump used to supply
+for the last two steps is read into memory instead: the secure storage is still compared byte for byte
+after writing, and `h713_gate` / `h713_boot` are still carried over from the old U-Boot environment. A
+placeholder that is not filled counts as a file the device does not have: the boot logo is then skipped
+with a warning, anything else stops the run with exit 8, naming the file and asking for `--vendor`.
+This is for **our** layout only. On a stock device nothing has changed: the dump is mandatory, it is the
+only way back to Android, and without it or `--vendor` the run stops before it writes.
+
 ## Useful variants
 
 | Task | Command |
@@ -180,6 +196,7 @@ anywhere but on your own desk ([docs/tools/h713-wifi.md](docs/tools/h713-wifi.md
 | Reinstall, keeping your U-Boot settings | (default: `h713_gate` and `h713_boot` are carried over) |
 | Reinstall, discarding them | `--fresh-env` |
 | Reuse an extraction you already have | `--vendor <dir from h713-extract>` |
+| Reinstall over this system, no dump needed | (default: the vendor files come off the device itself) |
 | Go back to your own dump | `h713-install restore ~/h713-dump/emmc-full.img` |
 | Go back to stock Android | `h713-install restore-stock UPDATE.IMG` |
 | Rehearse without writing | `--no-write` on any subcommand |
