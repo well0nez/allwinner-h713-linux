@@ -1,0 +1,106 @@
+soc: sunxi: cpu_comm: request only the msgbox line of the bank it owns
+
+0014b services every RX endpoint the driver owns from whichever line woke
+it, and 0024d gives the device tree all three lines the msgbox has. But
+requesting the lines of banks the driver does not own is wrong on this
+hardware: measured 16.09.2026 on the HY310 (umbau/test-20260915/boot-dev11-144133.log),
+SPI 109 - bank 1, the CPUS/ARISC inbox - asserted 100000 times within 1.3 s
+of registration, the handler had nothing of ours to drain there, and the
+kernel disabled the line ("irq 332: nobody cared"). Bank 1's pending status
+is the ARISC driver's business (it polls, doku/82), not this driver's.
+
+So the endpoint table carries the bank each endpoint lives in, the probe
+asks cpu_comm_msgbox_owns_bank() before requesting a line, and the lines
+of banks 1 and 2 are left to their owners with one info line each. The
+device tree keeps all three lines: that is what the hardware has.
+
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c	2026-09-16 14:55:12.401269671 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c	2026-09-16 14:55:12.411883969 +0200
+@@ -1508,9 +1508,14 @@
+ 	 * The msgbox has one GIC line per register bank and the device tree
+ 	 * lists them in bank order: index 0 = bank 0 = SPI 46 (this core's
+ 	 * inbox), index 1 = bank 1 = SPI 109 (CPUS/ARISC), index 2 = bank 2
+-	 * = SPI 108 (display MIPS). Request all three; they share one
+-	 * handler, which walks every RX endpoint this driver owns, so it
+-	 * does not matter which line the message woke us on.
++	 * = SPI 108 (display MIPS). Only bank 0 carries an endpoint this
++	 * driver owns (cpu_comm_hw.c, msgbox_rx_eps[]); the other two lines
++	 * belong to the ARISC and the MIPS side. Measured 16.09.2026 on the
++	 * HY310: with all three requested, SPI 109 asserted 100000 times in
++	 * 1.3 s right after registration - bank 1's pending status is nobody's
++	 * to clear here - and the kernel disabled it ("irq 332: nobody
++	 * cared"). So the lines stay in the device tree, as the hardware has
++	 * them, and this driver requests the one it services.
+ 	 */
+ 	{
+ 		struct platform_device *pdev =
+@@ -1524,6 +1529,11 @@
+ 					i, cpu_comm_msgbox_bank_name(i), irq);
+ 				continue;
+ 			}
++			if (!cpu_comm_msgbox_owns_bank(i)) {
++				pr_info("cpu_comm: msgbox IRQ[%d]=%d left to its owner, %s\n",
++					i, irq, cpu_comm_msgbox_bank_name(i));
++				continue;
++			}
+ 			ret = cpu_comm_msgbox_request_irq(irq,
+ 					(void *)cpu_comm_msg_cb);
+ 			if (ret) {
+@@ -1536,7 +1546,7 @@
+ 				total++;
+ 			}
+ 		}
+-		pr_info("cpu_comm: %d/3 msgbox IRQs registered\n", total);
++		pr_info("cpu_comm: %d msgbox IRQ line(s) registered\n", total);
+ 
+ 		/*
+ 		 * Only arm the polling fallback if no IRQ line was usable.
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-16 14:55:12.415986469 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-16 14:55:39.829607710 +0200
+@@ -763,6 +763,7 @@
+ /* H713 direct msgbox IRQ handler (replaces mailbox framework) */
+ int  cpu_comm_msgbox_request_irq(int irq, void *callback);
+ const char *cpu_comm_msgbox_bank_name(int index);
++bool cpu_comm_msgbox_owns_bank(int bank);
+ int  cpu_comm_msgbox_start_polling(void *callback);
+ void cpu_comm_msgbox_free_irq(void);
+ void cpu_comm_msgbox_probe_start(void);	/* legacy stub */
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-16 14:55:12.414874425 +0200
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-16 14:55:39.829366357 +0200
+@@ -210,15 +210,32 @@
+  */
+ struct msgbox_rx_endpoint {
+ 	const char *what;
++	int bank;		/* register bank = device tree interrupt index */
+ 	u32 irq_en, irq_stat, fifo, data, bit;
+ };
+ 
+ static const struct msgbox_rx_endpoint msgbox_rx_eps[] = {
+-	{ "bank 0 sub-block 1 port 1, display MIPS -> ARM",
++	{ "bank 0 sub-block 1 port 1, display MIPS -> ARM", 0,
+ 	  H713_MSGBOX_RX_IRQ_EN, H713_MSGBOX_RX_IRQ_CLR,
+ 	  H713_MSGBOX_RX_FIFO, H713_MSGBOX_RX_DATA, H713_MSGBOX_RX_IRQ_BIT },
+ };
+ 
++/*
++ * Whether an RX endpoint of this driver lives in the given bank, i.e.
++ * whether that bank's GIC line can ever mean something to us. The lines of
++ * the other banks belong to their owners (ARISC, MIPS); requesting them
++ * here only produces "nobody cared" (measured 16.09.2026, SPI 109).
++ */
++bool cpu_comm_msgbox_owns_bank(int bank)
++{
++	unsigned int i;
++
++	for (i = 0; i < ARRAY_SIZE(msgbox_rx_eps); i++)
++		if (msgbox_rx_eps[i].bank == bank)
++			return true;
++	return false;
++}
++
+ struct msgbox_irq_slot {
+ 	int  num;		/* Linux IRQ number (−1 if unused) */
+ 	bool registered;	/* request_irq succeeded for this slot */
