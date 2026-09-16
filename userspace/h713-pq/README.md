@@ -26,16 +26,16 @@ Data model and derivation: [`doku/81-pq-datenmodell.md`](../../doku/81-pq-datenm
 ./h713-pq saturation HDMI1 cinema                # saturation of a mode -> RPC argument
 ./h713-pq saturation HDMI1 72                    # saturation as a user value 0..100
 ./h713-pq gamma 2.2 --lut out.bin                # DE2 LUT from a gamma exponent
-./h713-pq gamma 2.2 --kanal all --lut rgb.bin    # R, G and B bank in a row
+./h713-pq gamma 2.2 --channel all --lut rgb.bin  # R, G and B bank in a row
 ./h713-pq show HDMI1 standard --json --lut g.bin # machine readable, for h713-tv (see below)
 ```
 
-`--daten DIRECTORY` sets the tvconfig directory. Without it the search goes, in order:
+`--data DIRECTORY` sets the tvconfig directory. Without it the search goes, in order:
 `$H713_TVCONFIG`, `/etc/h713/tvconfig`, then `re/vendor/HY310/extracted/vendor_a/etc/tvconfig` in the work tree.
 
-**The option names `--daten` and `--kanal` keep their German spelling.** They are the interface to `h713-tv`,
-which starts this program at every boot with exactly that command line (`main.c`, `pq_start()`); the JSON field
-names below are the same kind of interface. Both sides are renamed in one later step, together.
+**The German spellings `--daten` and `--kanal` still work, undocumented, until v0.8-beta is out.** These options
+are the interface to `h713-tv`, which starts this program at every boot with exactly that command line (`main.c`,
+`pq_start()`), so both sides were renamed together. The JSON field names below are renamed in a step of their own.
 
 It needs only the Python standard library (tested with 3.12), no package, no installation.
 
@@ -45,7 +45,7 @@ Since 11.09.2026 `h713-tv` calls this program once **at start** and applies what
 way (a): one source of truth instead of the same computation twice). That is what `--json` is for:
 
 ```bash
-h713-pq --daten /etc/h713/tvconfig show HDMI1 standard --json --lut /run/h713-tv/gamma-laufzeit.bin
+h713-pq --data /etc/h713/tvconfig show HDMI1 standard --json --lut /run/h713-tv/gamma-laufzeit.bin
 ```
 
 **On `stdout` there is then exactly one JSON object and nothing else**; every message - including the one about
