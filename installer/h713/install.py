@@ -3,16 +3,15 @@
 checking the image package, carrying the intent keys of the old U-Boot environment
 over, and writing everything onto the eMMC in one go.
 
-Stage 1 of plan doku/121: moved from hy310-install.py (I:656-694, 696-923,
-1222-1402, 1436-1453). Layout v4 (P-layout-v4, 16.09.2026) took the placeholders
-out: the files are no longer written into fixed-size holes at measured offsets but
-copied into the image's two ext4 file systems as ordinary files, so a firmware whose
-files are bigger than the HY310's (issue #1, HY300 Pro) simply fits.
+Stage 1 of plan doku/121: moved from hy310-install.py (I:656-694, 696-923, 1222-1402,
+1436-1453). Layout v4 (P-layout-v4, 16.09.2026) took the placeholders out: the files are
+no longer written into fixed-size holes at measured offsets but copied into the image's two
+ext4 file systems as ordinary files, so a firmware whose files are bigger than the HY310's
+(issue #1, HY300 Pro) simply fits.
 
-Plan and executor are apart. Everything here is pure Python on the table -- which
-file goes into which partition at which path, which ones a firmware may not have,
-what a rehearsal would do. The mounting itself is `h713.mountfs`, and only a real
-run reaches it.
+Plan and executor are apart: everything here is pure Python on the table -- what goes where,
+what a firmware may not have, what a rehearsal would do. The mounting is `h713.mountfs`, and
+only a real run reaches it.
 """
 
 from __future__ import annotations
@@ -54,11 +53,9 @@ KEY_MAX = 1 << 16                     # 64 KiB of authorized_keys is several hun
 def read_public_key(path):
     """--ssh-key: the public key as the content of /root/.ssh/authorized_keys.
 
-    What is checked is what a typo would cost: a private key (that must never go
-    into the image), a file without a single key line, NUL bytes. Nothing is
-    padded any more -- layout v4 writes the file with the length it has.
-    Return value: (content, number of keys).
-    """
+    What is checked is what a typo would cost: a private key (that must never go into the
+    image), a file without a single key line, NUL bytes. Nothing is padded any more -- layout
+    v4 writes the file with the length it has. Returns (content, number of keys)."""
     try:
         with open(path, "rb") as f:
             raw = f.read(KEY_MAX + 1)
@@ -89,14 +86,13 @@ def _mode(text, fallback):
 
 
 def user_entries(args, rows, log=console):
-    """The files the table lists under `nutzer` -- today just authorized_keys. Same
-    mechanics as the vendor files, other source: it does not come out of the device, and
-    it has to be settable without any vendor file at all. Modes and owner come from the
-    table, because sshd (StrictModes) refuses the key if they are wrong.
+    """The files the table lists under `nutzer` -- today just authorized_keys. Same mechanics
+    as the vendor files, other source: it does not come out of the device, and it has to be
+    settable without any vendor file at all. Modes and owner come from the table, because
+    sshd (StrictModes) refuses the key if they are wrong.
 
-    Returns partition -> [mountfs.Entry]; without --ssh-key nothing is written, and then
-    the device simply has no authorized_keys.
-    """
+    Returns partition -> [mountfs.Entry]; without --ssh-key nothing is written, and the device
+    then simply has no authorized_keys."""
     out = collections.OrderedDict()
     for row in rows:
         if row["name"] != "authorized_keys":
@@ -425,15 +421,11 @@ CONSEQUENCE = {
 
 def partition_window(tab, name):
     """(part file, byte offset in it, byte size) of the partition `name` -- everything the
-    mount needs, out of the table alone: `partitionen` says where the partition starts and
-    how long it is, `teile` where the part that carries it is written (P-layout-v4).
+    mount needs, out of the table alone (P-layout-v4). None when no part of this run holds
+    the partition: whoever writes only the boot chain does not touch the file systems.
 
-    None when no part of this run holds the partition: whoever writes only the boot chain
-    does not touch the file systems, and then there is nothing to fill.
-
-    The size is capped at what the part really holds. hy310-rootfs is 7.1 GiB on the device
-    but its file system in the image is 1 GiB (the partition is bigger than the ext4 in it),
-    and a window may not reach past the end of the file it is cut out of."""
+    The size is capped at what the part really holds: hy310-rootfs is 7.1 GiB on the device
+    and 1 GiB of it is in the image, and a window may not reach past the end of its file."""
     part = next((p for p in tab.get("partitionen") or [] if p["name"] == name), None)
     if part is None:
         raise RuntimeError("the table knows no partition %s" % name)
@@ -448,10 +440,9 @@ def partition_window(tab, name):
 
 def say_optional(tab, files, missing, where, absent, log=console):
     """Sort the files there is no source for into the ones a firmware may not have and the
-    ones that stop the run -- one line per group, as before.
-
-    `where` names the source in that line ("in the dump", "on this device"), `absent` says
-    what "missing" means there. Returns the names that are still a problem."""
+    ones that stop the run -- one line per group, as before. `where` names the source in that
+    line ("in the dump"), `absent` what "missing" means there ("not in DIR"). Returns the
+    names that are still a problem."""
     described = tab.get("gruppen") or {}
     optional = set(f["name"] for f in files if f.get("optional"))
     gone = [n for n in missing if n in optional]
@@ -475,9 +466,9 @@ def say_optional(tab, files, missing, where, absent, log=console):
 
 def vendor_sources(directory, tab, files, log=console):
     """Read in the device's own files that h713-extract put down. The names in the table are
-    exactly the paths below the --out of h713-extract, so this is a putting-together and not
-    a matching-up. A file this firmware may not have is said and left out; everything else
-    missing is an abort. Nothing is ever written empty."""
+    exactly the paths below its --out, so this is a putting-together and not a matching-up. A
+    file this firmware may not have is said and left out, everything else missing is an abort,
+    and nothing is ever written empty."""
     sources, missing = {}, []
     for f in files:
         p = os.path.join(directory, f["name"].replace("/", os.sep))
@@ -494,9 +485,9 @@ def vendor_sources(directory, tab, files, log=console):
 
 
 def copy_entries(files, sources):
-    """partition -> [mountfs.Entry], in the order of the table: everything there is a source
-    for, as root's file with mode 0644. A name whose source is None is a rehearsal entry --
-    it says WHERE the file would go without having read it (`--no-write`)."""
+    """partition -> [mountfs.Entry] in the order of the table: everything there is a source
+    for, as root's file with mode 0644. A source of None is a rehearsal entry -- it says WHERE
+    the file would go without anything having been read (`--no-write`)."""
     out = collections.OrderedDict()
     for f in files:
         if f["name"] in sources:
@@ -514,8 +505,7 @@ def copy_entries(files, sources):
 
 def gpt_partitions(disk):
     """name -> (number, first LBA, sectors), read out of the GPT the device carries. The
-    number is the GPT entry slot -- that is what Linux calls /dev/sdX<n>, and it is read
-    here, never assumed."""
+    number is the GPT entry slot -- what Linux calls /dev/sdX<n>, read here, never assumed."""
     head = disk.read(1, 1)
     if head[:8] != b"EFI PART":
         return {}
@@ -557,15 +547,14 @@ def readback_plan(disk, files):
 
 def device_sources(disk, tab, files, log=console):
     """Read the vendor files back out of the device's own file systems: every partition the
-    table names is mounted read-only and the files are copied out as files.
-
-    The window comes from the device's own GPT, so the mount is the same command as on the
-    working copy. The partition node is named in the log for the reader, but not mounted:
-    the installer holds the whole drive open exclusively (h713.blockdev.Disk), and while it
-    does, the kernel refuses to mount a partition of it.
+    table names is mounted read-only and the files are copied out as files. The window comes
+    from the device's own GPT, so the mount is the same command as on the working copy. The
+    partition node is named in the log but not mounted: the installer holds the whole drive
+    open exclusively (h713.blockdev.Disk), and while it does the kernel refuses to mount a
+    partition of it.
 
     Returns (sources, problem). `problem` is None when the set is complete; otherwise it is
-    the line that goes under the "no vendor source" block, and `sources` is unusable."""
+    the line under the "no vendor source" block, and `sources` is unusable."""
     sources = {}
     try:
         for name, node, offset, size, wanted in readback_plan(disk, files):
