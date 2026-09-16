@@ -11,6 +11,8 @@ Run:  python3 -m unittest discover -s tests -v
 
 from __future__ import annotations
 
+import contextlib
+import io
 import subprocess
 import sys
 import tempfile
@@ -20,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]            # userspace/h713-pq
 sys.path.insert(0, str(ROOT))
 
-from h713_pq import model, output, sources  # noqa: E402
+from h713_pq import cli, model, output, sources  # noqa: E402
 
 PROJECT = ROOT.parents[1]                              # /opt/Projekte/h713
 PQD = PROJECT / "legacy/userspace/hy310-pqd"
@@ -519,6 +521,37 @@ class TestGamma(unittest.TestCase):
             for v in model.gamma_compute(exp).lut:
                 self.assertGreaterEqual(v, 0)
                 self.assertLessEqual(v, model.LUT_MAX)
+
+
+# Command line: --data and --channel are the names, --daten and --kanal the
+# aliases kept for v0.8-beta (cli.py, the lines marked GERMAN ALIAS).
+
+class TestOptionNames(unittest.TestCase):
+    def _help(self, argv) -> str:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            cli._parser().parse_args(argv + ["--help"])
+        return out.getvalue()
+
+    def test_data_directory(self):
+        for flag in ("--data", "--daten"):
+            args = cli._parser().parse_args([flag, "/etc/h713/tvconfig", "list"])
+            self.assertEqual(args.data_dir, "/etc/h713/tvconfig", flag)
+
+    def test_channel(self):
+        for sub in (["show", "HDMI1", "standard"], ["gamma", "2.2"]):
+            self.assertEqual(cli._parser().parse_args(sub).channel, "r")
+            for flag in ("--channel", "--kanal"):
+                self.assertEqual(cli._parser().parse_args(sub + [flag, "all"]).channel,
+                                 "all", flag)
+
+    def test_german_aliases_are_not_documented(self):
+        for argv, shown in (([], "--data"), (["show"], "--channel"),
+                            (["gamma"], "--channel")):
+            text = self._help(argv)
+            self.assertIn(shown, text)
+            self.assertNotIn("--daten", text)
+            self.assertNotIn("--kanal", text)
 
 
 # ---------------------------------------------------------------------------
