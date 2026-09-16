@@ -86,6 +86,25 @@ and says so. Only the full dump is a way back to Android.
 | `--small` | secure storage, `private` and `Reserve0*` as the device's own partition table spells them; the display firmware from both bootloader slots, from the vendor partition, from `Reserve0` and from `media_data`; the U-Boot environment on our own layout. Enough for a later run on the **same** device | 49 MiB, about 10 seconds |
 | `--full` | `emmc-full.img`, the whole eMMC, with the small dump alongside it | 7.3 GB, about 17 minutes |
 
+## Reinstalling over our own layout
+
+A device whose GPT names begin `hy310-` already runs this system, and then `install` demands neither a
+dump nor `--vendor`. The 44 proprietary files are on it: the last install filled them into the
+placeholders, and the image's offset table says at which byte of which part they sit - part B is written
+at a known LBA, so that offset is an address on the device. The installer reads them back from there
+(about 12 MiB), trims nothing - a file shorter than its placeholder was zero padded when it was
+installed and goes back the same way - and logs `44 files read back from the device's own placeholders`.
+`--vendor` and a full dump in the dump directory keep precedence, in that order. The mandatory small
+dump is skipped as well (`our layout on the device -- nothing stock to save; --dump takes one anyway`);
+what the later steps took out of it is read into memory before the write instead, so step 7 still
+compares the secure storage byte for byte and the intent keys `h713_gate` / `h713_boot` are still
+carried over from the old environment. A placeholder that still holds the fill pattern, holds nothing
+but zeros, or holds a file of the wrong kind counts as one the device cannot supply: an optional one
+(the boot logo, the whole WLAN set) is skipped with a warning, anything else stops the run with the
+usual exit 8 plus the line `the device has no <name> -- give --vendor`. `--no-write` shows exactly the
+same decision and writes nothing. On a stock device none of this applies: the dump is mandatory and it
+is what the vendor files come out of.
+
 ## Safety nets
 
 Before the first byte is written the tool prints the beta warning and requires **`YES` typed out** - not a
