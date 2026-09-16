@@ -3,8 +3,8 @@
 """h713-mkimage -- build the installable image for the HY310/H713 projector.
 
 Out of the pieces we have (SPL, U-Boot proper, kernel FIT, the two ext4 file
-systems) it makes an image following layout v3 (doku/109 §2), plus the offset
-table, a manifest, checksums and a README file.
+systems) it makes an image following layout v4 (doku/109 §2), plus the table, a
+manifest, checksums and a README file.
 
 THE IMAGE HAS A HOLE. At LBA 12288..14335 sits the secure storage: HDCP keys, the
 WLAN and Bluetooth MAC addresses, the serial number. Device-specific, in no firmware
@@ -12,33 +12,36 @@ image, not restorable (doku/109 §2.3). That is why the image is not one continu
 file but three pieces, and the locked range is in none of them -- so even a dd by
 hand cannot overwrite it. Reasoning in doku/nachtlog/S47.
 
-THE PROPRIETARY FILES ARE PLACEHOLDERS. 43 files (19 display artefacts, 3
-firmware files, 8 PQ files, 13 WLAN firmware files) may not be handed out. The
-image carries placeholders of exactly the right size in their place;
-`h713-install` fills them from what `h713-extract` pulled out of the user's own
-device. Where they sit is in the offset table.
+THE PROPRIETARY FILES ARE NOT IN THE IMAGE. 44 files (19 display artefacts, the
+boot logo, 3 firmware files, 8 PQ files, 13 WLAN firmware files) may not be handed
+out. Layout v4 leaves their target DIRECTORIES empty; `h713-install` mounts the two
+file systems of its working copy and copies in what `h713-extract` pulled out of
+the user's own device, each with its real length. No size in this image has to
+match anybody's device -- that was layout v3, and it stopped the first foreign
+firmware that had bigger files (issue #1).
 
-THE USER'S SSH KEY IS A PLACEHOLDER TOO. /root/.ssh/authorized_keys is a file of
-fixed size (4096 B) filled with line breaks -- for sshd an empty file, so valid
-even if nobody fills it; `h713-install --ssh-key FILE` writes the public key
-into it. No key is handed out with the image (doku/107 §3). Owner and modes
-(root:root, /root/.ssh 0700, the file 0600) come from the tree, and step 5
+THE USER'S SSH KEY IS NOT IN THE IMAGE EITHER. `h713-install --ssh-key FILE`
+creates /root/.ssh/authorized_keys (root:root 0600) in /root/.ssh (0700) while it
+installs; without the switch the file is never created. No key is handed out with
+the image (doku/107 §3). The directory and its mode come from the tree, and step 5
 checks them in the finished ext4 -- sshd would otherwise ignore the key silently.
 
 Commands:
   build -o out/hy310-v0.1.img          image (three pieces), table, checksums, README
   check out/hy310-v0.1.tabelle.json    validate a finished image: sizes, checksums,
-                                       GPT, where the placeholders lie, hole untouched
-  tree-boot DIR / tree-rootfs DIR      only the file trees with the placeholders;
-                                       mkimage-inputs.sh makes the two ext4 out of
-                                       them (in the container, not at the user)
+                                       GPT, the file set, the target directories in
+                                       the ext4, hole untouched
+  tree-boot DIR / tree-rootfs DIR      only the file trees (kernel FIT and the empty
+                                       target directories); mkimage-inputs.sh makes
+                                       the two ext4 out of them (in the container,
+                                       not at the user)
 The old switches --out/--pruefen/--baum-boot/--baum-rootfs are still accepted for one
 release; each prints one line saying what it is called now.
 
 Runs under Linux and Windows: Python 3.9+, standard library only, no external
-programs. The one part that needs more is finding the placeholder offsets in the
-finished ext4 -- the pure-Python ext4 reader of h713-extract does that (S45), at
-build time, not at the user; `check` does without it.
+programs. Reading the finished ext4 -- `build` step 5 and `check` -- is done by the
+pure-Python ext4 reader of h713-extract (S45); nothing is mounted here. Mounting is
+the installer's business, on Linux, as root, at install time.
 """
 
 # Stage 3 of doku/121: the tool is a thin script over the h713 package; subcommands
@@ -93,7 +96,7 @@ def parser():
     b.add_argument("--env", help="U-Boot environment, 64 KiB with a CRC from mkenvimage "
                                  "(default: mainline/build/out/hy310-env-release.bin)")
     b.add_argument("--boot-ext4", help="finished hy310-boot.ext4 (128 MiB)")
-    b.add_argument("--rootfs-ext4", help="finished hy310-rootfs.ext4 with the placeholders")
+    b.add_argument("--rootfs-ext4", help="finished hy310-rootfs.ext4 (1 GiB)")
     b.add_argument("--test-for", dest="test_for", metavar="PROFILE_ID",
                    help="mark this build as a TEST IMAGE for one installer profile "
                         '(table key "test_for"): h713-install writes it only on that board '
@@ -105,7 +108,7 @@ def parser():
     tb = sub.add_parser("tree-boot", help="write the file tree for hy310-boot")
     tb.add_argument("directory", metavar="DIR")
     tb.add_argument("--fit", help="kernel FIT that goes into the tree")
-    sub.add_parser("tree-rootfs", help="write the rootfs placeholders (an overlay)").add_argument(
+    sub.add_parser("tree-rootfs", help="write the rootfs target directories (an overlay)").add_argument(
         "directory", metavar="DIR")
     return p
 
@@ -117,9 +120,11 @@ def main(argv=None):
     if getattr(args, "extraktor", None):
         print("note: --extraktor is gone -- the package brings its own reader (ignored)", file=sys.stderr)
     if args.command == "tree-boot":
-        return 0 if tree_boot(args.directory, args.fit) else 1
+        tree_boot(args.directory, args.fit)
+        return 0
     if args.command == "tree-rootfs":
-        return 0 if tree_rootfs(args.directory) else 1
+        tree_rootfs(args.directory)
+        return 0
     if args.command == "check":
         return check(args.table)
     if args.command == "build":
