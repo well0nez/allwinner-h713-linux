@@ -60,7 +60,7 @@ h713-tv ctl save               # remember all of it across reboots
 ```
 
 Presets come from the vendor's own picture tables, computed by [`h713-pq`](../tools/h713-pq.md), not
-invented by us. `save` writes your deviations to `/var/lib/h713-tv/`; `save --aus` forgets them again.
+invented by us. `save` writes your deviations to `/var/lib/h713-tv/`; `save off` forgets them again.
 
 Sound follows the picture by default. `h713-tv ctl volume 60`, `ctl mute on`, and `ctl audio off` if you
 want the speaker quiet while the picture stays.
