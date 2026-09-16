@@ -172,7 +172,26 @@ class ReadBack(unittest.TestCase):
         self.assertIsNone(problem, self.log.text)
         for name in WLAN:
             self.assertEqual(sources[name], b"", name)   # fill_placeholders zeroes the rest
-        self.assertIn("this device probably does not have the chip", self.log.text)
+        self.assertIn("this firmware has no WLAN firmware", self.log.text)
+
+    def test_part_of_an_optional_group_missing_stays_zeroed(self):
+        """Issue #1, 16.09.2026: the HY300 Pro's Android 10 firmware ships another WLAN set and
+        no pq_picturemode.ini -- one file of a group missing must not abort the install."""
+        table = self.table()
+        one = WLAN[:1]
+        _want, (sources, problem) = self._read(table, leave_out=one)
+        self.assertIsNone(problem, self.log.text)
+        self.assertEqual(sources[one[0]], b"")
+        self.assertNotEqual(sources[WLAN[1]], b"")
+        self.assertIn("1 of 2 files", self.log.text)
+        self.assertIn("WLAN firmware set", self.log.text)
+
+    def test_a_missing_pq_file_is_optional(self):
+        table = self.table()
+        _want, (sources, problem) = self._read(table, leave_out=("pq/portmap.cfg",))
+        self.assertIsNone(problem, self.log.text)
+        self.assertEqual(sources["pq/portmap.cfg"], b"")
+        self.assertIn("picture presets", self.log.text)
 
     def test_a_missing_mandatory_file_names_itself(self):
         _want, (sources, problem) = self._read(self.table(),
