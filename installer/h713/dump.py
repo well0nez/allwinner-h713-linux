@@ -28,7 +28,7 @@ from .blockdev import SECT, SECTORS_EXPECTED
 from .env import ENV_BYTES, ENV_CARRY_OVER, ENV_LBA, ENV_SECTORS, env_read
 from .fs import Ext4, Fat, LpSuper
 from .gpt import Gpt
-from .install import ask
+from .install import DUMP_FULL, ask
 from .log import Log, console
 from .util import duration, mib
 
@@ -361,6 +361,42 @@ def verify_dump(disk, file, samples=8):
             if disk.read(lba, n) != want:
                 bad += 1
     return bad
+
+
+def full_dump_state(dump_dir, file, disk_sectors):
+    """Is the full dump already in this directory, and is it whole? -> (row, why).
+
+    O1b item 1 (seen 15.09.2026): a second `--full` run into the same `--dump` directory
+    truncated the clone that was the way back. `row` is the manifest row of a complete file,
+    for the caller to carry over instead of taking a second 17-minute dump; `why` names in one
+    line what is wrong with one that is not, so the caller can say what it replaces. Complete
+    means: MANIFEST.json lists emmc-full, its sector count is the count of the device in front
+    of us, and the file is exactly that many bytes -- an aborted run leaves a shorter one.
+    """
+    if not os.path.isfile(file):
+        return None, None
+    name, shown = DUMP_FULL[:-4], os.path.basename(file)
+    row = None
+    try:
+        with open(os.path.join(dump_dir, "MANIFEST.json"), "rb") as f:
+            for entry in json.load(f).get("regions") or []:
+                if entry.get("name") == name:
+                    row = entry
+    except (OSError, ValueError):
+        pass
+    if row is None:
+        return None, "%s lies here but no MANIFEST.json row names it" % shown
+    sectors = int(row.get("sectors") or 0)
+    if sectors != disk_sectors:
+        return None, ("%s was taken off a disk of %d sectors, this one has %d"
+                      % (shown, sectors, disk_sectors))
+    have = os.path.getsize(file)
+    if have != sectors * SECT:
+        # Bytes, not MiB: an aborted run can be a single sector short, and "7456.0 of
+        # 7456.0 MiB" would tell the user nothing about what is wrong with the file.
+        return None, ("%s is incomplete: %d bytes, the manifest records %d (%.1f MiB)"
+                      % (shown, have, sectors * SECT, mib(sectors * SECT)))
+    return (name, 0, sectors, row.get("sha256"), row.get("purpose") or "complete clone"), None
 
 
 def write_manifest(directory, manifest, device):

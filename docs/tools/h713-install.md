@@ -94,6 +94,12 @@ and says so. Only the full dump is a way back to Android.
 | `--small` | secure storage, `private` and `Reserve0*` as the device's own partition table spells them; the display firmware from both bootloader slots, from the vendor partition, from `Reserve0` and from `media_data`; the U-Boot environment on our own layout. Enough for a later run on the **same** device | 49 MiB, about 10 seconds |
 | `--full` | `emmc-full.img`, the whole eMMC, with the small dump alongside it | 7.3 GB, about 17 minutes |
 
+A complete `emmc-full.img` in the dump directory is never overwritten by accident. `install --full`
+reuses it instead of dumping 7.3 GB a second time, and `dump --full` keeps it and says so in one line;
+`dump --full --force` takes a new one. Complete means: `MANIFEST.json` names `emmc-full`, its sector
+count is the count of the device in front of the tool, and the file is exactly that many bytes. A clone
+that an aborted run left short is named with both sizes and taken again.
+
 ## Reinstalling over our own layout
 
 A device whose GPT names begin `hy310-` already runs this system, and then `install` demands neither a
