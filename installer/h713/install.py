@@ -22,6 +22,7 @@ import time
 
 from .blockdev import LOCK_FIRST, LOCK_LAST, SECT, SECTORS_EXPECTED
 from .env import ENV_BYTES, ENV_CARRY_OVER, env_read, env_write
+from .layout import pattern
 from .log import Quiet, console
 from .util import duration, mib
 from .verify import verify_image, write_image
@@ -424,6 +425,41 @@ OPTIONAL_GROUPS = ("lib/firmware/aic8800_fw/",)
 OPTIONAL_FILES = ("boot/bootlogo.bmp",)
 
 
+def _sort_out_optional(sources, table, missing, too_big, where, absent, log):
+    """The two kinds of placeholder a device may not be able to supply, for both sources
+    (a directory from h713-extract, and the device's own filled placeholders).
+
+    `where` names the source in the WLAN line, `absent` says what "missing" means there.
+    Returns (missing, too_big) with the optional ones taken out -- `table` loses an optional
+    file, so the caller neither fills it nor counts it."""
+    for prefix in OPTIONAL_GROUPS:
+        group = [n for n in table if n.startswith(prefix)]
+        gone = [n for n in group if n in missing]
+        if group and len(gone) == len(group):
+            log.warn("%s: none of the %d files %s -- this device probably "
+                     "does not have the chip. The placeholders stay zeroed, WLAN stays off."
+                     % (prefix, len(group), where))
+            for n in gone:
+                sources[n] = b""
+                missing.remove(n)
+    for name in OPTIONAL_FILES:
+        if name not in table:
+            continue
+        if name in missing:
+            why = absent
+        elif len(sources.get(name, b"")) > table[name][1]:
+            why = "%d bytes, the placeholder holds %d" % (len(sources[name]), table[name][1])
+        else:
+            continue
+        log.warn("%s: %s -- no boot logo. The placeholder stays a pattern and U-Boot "
+                 "boots without a logo." % (name, why))
+        missing = [n for n in missing if n != name]
+        too_big = [t for t in too_big if not t.startswith(name + " (")]
+        sources.pop(name, None)
+        del table[name]
+    return missing, too_big
+
+
 def vendor_sources(directory, table, log=console):
     """Read in the device's own files that h713-extract put down. The names in
     the table are exactly the paths below the --out of h713-extract, so this is
@@ -441,31 +477,8 @@ def vendor_sources(directory, table, log=console):
         if len(b) > length:
             too_big.append("%s (%d > %d)" % (name, len(b), length))
         sources[name] = b
-    for prefix in OPTIONAL_GROUPS:
-        group = [n for n in table if n.startswith(prefix)]
-        gone = [n for n in group if n in missing]
-        if group and len(gone) == len(group):
-            log.warn("%s: none of the %d files in the dump -- this device probably "
-                     "does not have the chip. The placeholders stay zeroed, WLAN stays off."
-                     % (prefix, len(group)))
-            for n in gone:
-                sources[n] = b""
-                missing.remove(n)
-    for name in OPTIONAL_FILES:
-        if name not in table:
-            continue
-        if name in missing:
-            why = "not in %s" % directory
-        elif len(sources.get(name, b"")) > table[name][1]:
-            why = "%d bytes, the placeholder holds %d" % (len(sources[name]), table[name][1])
-        else:
-            continue
-        log.warn("%s: %s -- no boot logo. The placeholder stays a pattern and U-Boot "
-                 "boots without a logo." % (name, why))
-        missing = [n for n in missing if n != name]
-        too_big = [t for t in too_big if not t.startswith(name + " (")]
-        sources.pop(name, None)
-        del table[name]
+    missing, too_big = _sort_out_optional(sources, table, missing, too_big, "in the dump",
+                                          "not in %s" % directory, log)
     if missing:
         raise RuntimeError("in %s %d file(s) are missing, e.g. %s"
                            % (directory, len(missing), ", ".join(sorted(missing)[:3])))
@@ -480,6 +493,88 @@ def vendor_sources(directory, table, log=console):
                  "is zeroed. Other firmware than when the image was built?"
                  % (len(too_small), ", ".join(sorted(too_small)[:3])))
     return sources
+
+
+# ------------------------------------------------- the device's own placeholders (N2)
+# On a device that already runs our layout the 44 vendor files are not gone: they sit in
+# the placeholders the last install filled, and the table says where. Reading them back is
+# cheaper than a dump and needs nothing the owner has to keep (doku/61 B, Marco 15.09.).
+
+# What a filled placeholder must begin with, where the file kind says so -- the magics
+# h713-extract itself checks (h713.vendorfiles: TSE_MAGIC, check_bootlogo,
+# check_display_cfg, check_pq). It is the one cheap test that notices a read-back landing
+# on the wrong bytes because the device was installed by a build whose placeholders lie
+# somewhere else (see REPORT: they moved once, between v0.6-beta and v0.7-beta).
+# Every entry is measured against the HY310's real files, not assumed: display_cfg.xml
+# begins with a comment, not with "<?xml", and the ARISC firmware begins with 16 zero bytes
+# (out-hy310-20260912). Whoever adds a row here holds the real file next to it first.
+MAGIC = ((".TSE", b"TSE"), ("bootlogo.bmp", b"BM"), ("display_cfg.xml", b"<"),
+         ("tvpq.db", b"SQLite format 3\0"))
+
+
+def _unfilled(name, data):
+    """A placeholder nobody has filled: still the builder's fill pattern (h713.layout),
+    or all zeros -- which is what an install writes where the dump had no file, and what
+    an ext4 hands out for blocks no file of this build occupies."""
+    return data[:64] == pattern(name, 64) or data.count(0) == len(data)
+
+
+def _wrong_kind(name, data):
+    return any(name.endswith(end) and not data.startswith(magic) for end, magic in MAGIC)
+
+
+def read_placeholders(disk, tab, table, log=console):
+    """Read the vendor files back out of the device's own placeholders.
+
+    `table` is the image's placeholder table (name -> byte offset in the part named by
+    `platzhalter_datei`, and length); that part is written at a known LBA, so the offset is
+    an LBA on the device. Nothing is trimmed: a file shorter than its placeholder was zero
+    padded when it was installed and goes back in the same way.
+
+    Returns (sources, problem). `problem` is None when the set is complete; otherwise it is
+    the line that goes under the "no vendor source" block, and `sources` is unusable.
+    """
+    part_file = tab.get("platzhalter_datei")
+    part_lba = next((t["lba"] for t in tab.get("teile", []) if t["datei"] == part_file), None)
+    if part_lba is None:
+        return {}, "the table names no part %s to read the placeholders out of" % part_file
+    sources, missing, doubtful = {}, [], []
+    for name in sorted(table):
+        off, length = table[name]
+        lba, skip = part_lba + off // SECT, off % SECT
+        data = disk.read(lba, (skip + length + SECT - 1) // SECT)[skip:skip + length]
+        if len(data) != length or _unfilled(name, data):
+            missing.append(name)
+        elif _wrong_kind(name, data):
+            doubtful.append(name)
+        else:
+            sources[name] = data
+    if doubtful:
+        log.error("%d placeholder(s) hold something else than the file the table names: %s."
+                  % (len(doubtful), ", ".join(sorted(doubtful)[:3])))
+        return {}, ("this device was installed by a build whose placeholders lie elsewhere "
+                    "-- give --vendor or a full dump")
+    missing, _too_big = _sort_out_optional(sources, table, missing, [], "on this device",
+                                           "the placeholder was never filled", log)
+    if missing:
+        return {}, ("the device has no %s -- give --vendor"
+                    % ", ".join(sorted(missing)[:3]))
+    log.ok("%d files read back from the device's own placeholders" % len(sources))
+    return sources, None
+
+
+def no_vendor_source(dump_dir, count, log=console, extra=None):
+    """Exit 8: nothing to fill the placeholders with. Unchanged for a stock device; the
+    read-back adds one line saying what the device itself could not supply."""
+    log.error("There is neither --vendor nor a full dump in %s." % dump_dir)
+    log.info("  The %d files (display artefacts, boot logo, firmware, PQ, WLAN) stand only"
+             % count)
+    log.info("  on your own device. Without them the picture stays black.")
+    log.info("  So: take the FULL dump (dump --full) or name a directory")
+    log.info("  from h713-extract with --vendor.")
+    if extra:
+        log.error(extra)
+    return 8
 
 
 def _load_extractor(path=None, search_dir=None):
@@ -618,6 +713,24 @@ def write_env_keys(tab, work, part_file, keys, log=console):
     return rc
 
 
+def kept_copy(args, name):
+    """What the small dump would have left for the later steps, when it was skipped on our
+    own layout: the copy `keep_copy()` read into memory before the write (N2)."""
+    return (getattr(args, "_kept", None) or {}).get(name)
+
+
+def old_env(args):
+    """The environment the device had before this run: out of the small dump when one was
+    taken, else out of the copy read into memory instead. Returns (dict or None, path or
+    None) -- the path is what the user can still look at afterwards."""
+    path = os.path.join(args.dump_dir, "uboot-env.bin")
+    if os.path.isfile(path):
+        with open(path, "rb") as f:
+            return env_read(f.read()), path
+    raw = kept_copy(args, "uboot-env")
+    return (env_read(raw) if raw else None), None
+
+
 def carry_env(args, tab, work, part_file, log=console):
     """Write the intent keys of the old environment into the new one -- in the
     working copy of part B, before anything goes onto the eMMC.
@@ -633,11 +746,7 @@ def carry_env(args, tab, work, part_file, log=console):
     if not block:
         log.info("Environment: this image brings none along (older than 12.09.) -- nothing to carry over")
         return 0
-    old_path = os.path.join(args.dump_dir, "uboot-env.bin")
-    if not os.path.isfile(old_path):
-        return 0
-    with open(old_path, "rb") as f:
-        old = env_read(f.read())
+    old, old_path = old_env(args)
     if not old:
         return 0
     part_lba = next((t["lba"] for t in tab["teile"] if t["datei"] == part_file), None)
@@ -669,7 +778,11 @@ def carry_env(args, tab, work, part_file, log=console):
             log.error("the environment is not as expected after writing")
             return 11
     log.ok("Environment: carried over from the old one: %s" % "; ".join(taken))
-    log.info("  Everything else comes from the image's U-Boot. The old one lies in %s." % old_path)
+    if old_path:
+        log.info("  Everything else comes from the image's U-Boot. The old one lies in %s." % old_path)
+    else:
+        log.info("  Everything else comes from the image's U-Boot. The old one was read off the "
+                 "device and not saved -- --dump keeps a copy.")
     return 0
 
 
@@ -715,17 +828,17 @@ def write_package(args, disk, path, directory, tab, here=None):
                 vendor = in_dump(args.dump_dir, EXTRACT_DIR)
                 os.makedirs(vendor, exist_ok=True)
                 run_extractor(full, vendor, None, search_dir=here)
+            elif getattr(args, "_our_layout", False):
+                # Our layout is already on the device: the files are in its placeholders,
+                # so neither a dump nor --vendor is needed (N2).
+                sources, problem = read_placeholders(disk, tab, table, console)
+                if problem:
+                    return no_vendor_source(args.dump_dir, len(table), console, problem)
             else:
-                console.error("There is neither --vendor nor a full dump in %s."
-                              % args.dump_dir)
-                console.info("  The %d files (display artefacts, boot logo, firmware, PQ, WLAN) stand only"
-                             % len(table))
-                console.info("  on your own device. Without them the picture stays black.")
-                console.info("  So: take the FULL dump (dump --full) or name a directory")
-                console.info("  from h713-extract with --vendor.")
-                return 8
-        sources = vendor_sources(vendor, table, console)
-        console.ok("%d files from %s" % (len(sources), vendor))
+                return no_vendor_source(args.dump_dir, len(table), console)
+        if vendor:
+            sources = vendor_sources(vendor, table, console)
+            console.ok("%d files from %s" % (len(sources), vendor))
 
     # The user's key: same mechanics, other source. Here and not in
     # vendor_sources(), because it does not come out of the device -- and
@@ -748,6 +861,8 @@ def write_package(args, disk, path, directory, tab, here=None):
                          % (part_file, work, len(table)))
         else:
             console.info("Working copy: %s (%.0f MiB)" % (work, mib(os.path.getsize(source_part))))
+            # Without a dump nobody has made the directory yet (N2).
+            os.makedirs(os.path.dirname(os.path.abspath(work)), exist_ok=True)
             shutil.copyfile(source_part, work)
             fill_placeholders(work, table, sources, log=Quiet)
             bad = check_placeholders(work, table, sources)
@@ -789,13 +904,24 @@ def write_package(args, disk, path, directory, tab, here=None):
     # And the acid test: the locked region must not have changed. The small dump
     # has been there since step 3.
     ss = os.path.join(args.dump_dir, "secure-storage.bin")
+    before = None
     if os.path.isfile(ss):
         with open(ss, "rb") as f:
             before = f.read()
+    else:
+        # No dump on our own layout (N2): the comparison runs against the copy that was
+        # read into memory before the write -- the check is the point, not the file.
+        before = kept_copy(args, "secure-storage")
+    if before is not None:
         after = disk.read(LOCK_FIRST, len(before) // SECT)
         if after == before:
             console.ok("Secure Storage unchanged (compared byte for byte against the dump)")
         else:
+            if not os.path.isfile(ss):
+                # The copy in memory is now the only record of what stood there.
+                os.makedirs(args.dump_dir, exist_ok=True)
+                with open(ss, "wb") as f:
+                    f.write(before)
             console.error("THE SECURE STORAGE HAS CHANGED -- please report it, do "
                           "nothing further, keep %s." % ss)
             return 10
