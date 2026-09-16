@@ -147,6 +147,13 @@ DELIVERY="$INSTALLER/out"
 say()  { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 die()  { printf '\nerror: %s\n' "$*" >&2; exit 1; }
+# The eGON SPL image must be exactly 32 KiB: this script splits the sunxi image at 32768 and the
+# hy310-spl partition is 64 sectors. mkimage rounds to 8 KiB blocks, so anything else means the SPL
+# outgrew its 32672 bytes and would be cut in half - refuse before it reaches a device (M3/M4, 16.09.).
+spl_size_ok() {
+	local n; n=$(stat -c %s "$1" 2>/dev/null || echo 0)
+	[[ "$n" -eq 32768 ]] || die "$1 is $n bytes, not 32768 -- the SPL no longer fits its 32 KiB slot"
+}
 in_container()      { podman exec -e JOBS="$JOBS" "$CONTAINER" bash -lc "$*"; }
 in_container_root() { podman exec -u root -e JOBS="$JOBS" "$CONTAINER" bash -lc "$*"; }
 # host path -> container path
@@ -200,6 +207,7 @@ else
 	rm -rf "$UB_O"   # as with bl31: no old objects, no old .config
 	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
 	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "no $B"
+	spl_size_ok "$UB_O/spl/sunxi-spl.bin"
 	# SPL = the first 32 KiB (eGON.BT0), the rest is U-Boot proper (doku/50 §Bauen)
 	head -c 32768 "$B" > "$OUT/spl-release.bin"
 	tail -c +32769 "$B" > "$OUT/uboot-proper-release.bin"
@@ -231,6 +239,7 @@ else
 	rm -rf "$UBI_O"
 	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBI_O") $UBOOT_BASE $UBOOT_INSTALLER_ROLE" > "$OUT/uboot-installer-build.log" 2>&1 || { tail -20 "$OUT/uboot-installer-build.log"; die "installer U-Boot failed (log: $OUT/uboot-installer-build.log)"; }
 	[[ -f "$UBI_O/u-boot-sunxi-with-spl.bin" ]] || die "no $UBI_O/u-boot-sunxi-with-spl.bin"
+	spl_size_ok "$UBI_O/spl/sunxi-spl.bin"
 	cp "$UBI_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-installer.bin"
 	grep -q 'ums 0 mmc 1' "$OUT/u-boot-installer.bin" || die "the installer U-Boot carries no 'ums 0 mmc 1' in its bootcmd"
 fi
@@ -246,6 +255,7 @@ else
 	rm -rf "$UBP_O"
 	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBP_O") $UBOOT_PROBE_DEFCONFIG" > "$OUT/uboot-probe-build.log" 2>&1 || { tail -20 "$OUT/uboot-probe-build.log"; die "probe U-Boot failed (log: $OUT/uboot-probe-build.log)"; }
 	[[ -f "$UBP_O/u-boot-sunxi-with-spl.bin" ]] || die "no $UBP_O/u-boot-sunxi-with-spl.bin"
+	spl_size_ok "$UBP_O/spl/sunxi-spl.bin"
 	cp "$UBP_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-h713-probe.bin"
 	grep -q 'h713_probe' "$OUT/u-boot-h713-probe.bin" || die "the probe U-Boot knows no h713_probe"
 	# The probe must never be shipped with this board's clock: 792 on somebody
