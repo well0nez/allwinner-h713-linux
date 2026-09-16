@@ -5,9 +5,10 @@ talks to no board. A write path is printed as a command line or written as a
 file.
 
 The option names are the interface to h713-tv, which starts this program at
-every boot as `h713-pq --daten VERZ show INPUT PRESET --json --lut FILE`
-(main.c, pq_start()). `--daten` and `--kanal` therefore keep their German
-spelling; they are renamed in one later step, with both sides at once.
+every boot as `h713-pq --data DIR show INPUT PRESET --json --lut FILE`
+(main.c, pq_start()). `--daten` and `--kanal` stay accepted, hidden, for
+v0.8-beta, so an older script keeps working; the German field names of the
+JSON record are a step of their own.
 """
 
 from __future__ import annotations
@@ -34,8 +35,12 @@ Examples:
   h713-pq saturation HDMI1 cinema
   h713-pq saturation HDMI1 72
   h713-pq gamma 2.2 --lut out.bin
-  h713-pq gamma 2.2 --kanal all --lut gamma-rgb.bin
+  h713-pq gamma 2.2 --channel all --lut gamma-rgb.bin
 """
+
+# Lines marked GERMAN ALIAS take the name of v0.8-beta and earlier, hidden
+# from --help; they go out together after that release.
+CHANNELS = ("r", "g", "b", "all")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -45,9 +50,10 @@ def _parser() -> argparse.ArgumentParser:
         epilog=EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--daten", metavar="DIRECTORY", dest="data_dir", default=None,
+    p.add_argument("--data", metavar="DIRECTORY", dest="data_dir", default=None,
                    help="tvconfig directory (otherwise $H713_TVCONFIG, "
                         "/etc/h713/tvconfig, then re/vendor/... in the tree)")
+    p.add_argument("--daten", dest="data_dir", help=argparse.SUPPRESS)  # GERMAN ALIAS
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("list", help="inputs, picture modes, factory curves, data state")
@@ -57,9 +63,11 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("mode")
     s.add_argument("--lut", metavar="FILE", type=Path, default=None,
                    help="write the gamma LUT of this picture mode into FILE")
-    s.add_argument("--kanal", choices=("r", "g", "b", "all"), dest="channel",
+    s.add_argument("--channel", choices=CHANNELS, dest="channel",
                    default="r",
                    help="LUT bank (default r; all three banks are equal here)")
+    s.add_argument("--kanal", choices=CHANNELS, dest="channel",
+                   help=argparse.SUPPRESS)  # GERMAN ALIAS
     s.add_argument("--json", action="store_true",
                    help="instead of the table a machine readable record on "
                         "stdout: picture mode number, the nine controls, "
@@ -75,8 +83,10 @@ def _parser() -> argparse.ArgumentParser:
     g = sub.add_parser("gamma", help="gamma exponent -> DE2 LUT")
     g.add_argument("exponent", type=float)
     g.add_argument("--lut", metavar="FILE", type=Path, default=None)
-    g.add_argument("--kanal", choices=("r", "g", "b", "all"), dest="channel",
+    g.add_argument("--channel", choices=CHANNELS, dest="channel",
                    default="r")
+    g.add_argument("--kanal", choices=CHANNELS, dest="channel",
+                   help=argparse.SUPPRESS)  # GERMAN ALIAS
     return p
 
 
