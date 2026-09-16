@@ -147,6 +147,10 @@
 0135-ASoC-sun4i-codec-h713-add-the-i2s-input-path-for-the-msp-dsp.patch
 0135b-arm64-dts-h713-describe-the-codec-s-i2s-window.patch
 0136-media-h713-hdmirx-expose-the-audio-status.patch
+# 0136a: no source switch on a hot-plugged port (first plug after boot, 15.09.)
+0136a-media-h713-hdmirx-no-source-switch-on-a-hot-plugged-port.patch
+# 0136c: no console blip while the release runs (boot with the source plugged, 16.09.)
+0136c-media-h713-hdmirx-a-release-in-progress-is-a-change-in-flight.patch
 0137-ASoC-sunxi-add-the-h713-msp-audio-dsp-driver.patch
 0138-arm64-dts-h713-describe-the-msp-audio-dsp.patch
 0136b-arm64-dts-h713-describe-the-hdmi-receiver-link-window.patch
