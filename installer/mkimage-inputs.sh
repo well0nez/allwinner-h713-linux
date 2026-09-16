@@ -9,18 +9,22 @@
 # there on they are building blocks like the SPL or the U-Boot image. At the
 # user this never runs.
 #
-#   tmp/hy310-boot.ext4          128 MiB: h713-kernel.fit (real) + mips/ (19 placeholders)
+#   tmp/hy310-boot.ext4          128 MiB: h713-kernel.fit (real) + an empty mips/
 #   tmp/hy310-rootfs-platz.ext4    1 GiB: the rootfs from rootfs/out/hy310-rootfs.tar,
-#                                         extended by 24 placeholders (3 firmware, 8 PQ, 13 WLAN) + authorized_keys
-#                                         and /root/.ssh/authorized_keys (4096 B of
-#                                         line breaks, filled by h713-install)
+#                                         extended by the empty target directories
+#                                         (/lib/firmware/h713, the aic8800 path,
+#                                         /etc/h713/tvconfig, /root/.ssh 0700)
+#
+# Layout v4 (plan/briefs/P-layout-v4.md): NO placeholder file goes into either file
+# system. h713-install mounts the two and copies the device's own files in, each with
+# its real length -- so nothing here depends on how big anybody's vendor files are.
 #
 # Call IN THE CONTAINER -- AS ROOT:
 #   podman exec -u root h713-build bash /work/analyse/release/arbeit/r0-fel/mkimage-inputs.sh
 #
 # Why root: only root can make tar set the owner, and mke2fs -d takes uid/gid/mode
 # from the tree. Unpacked as user 1000, EVERYTHING in the ext4 belonged to uid 1000
-# -- /etc/shadow, /root, authorized_keys -- sshd then takes no key (StrictModes) and
+# -- /etc/shadow, /root, /root/.ssh -- sshd then takes no key (StrictModes) and
 # setgid bits (unix_chkpwd) are missing. That is how it was in image v0.5
 # (11.09.2026). build-rootfs.sh runs with -u root for the same reason; h713-mkimage
 # checks the ownership in the finished ext4 afterwards.
@@ -78,28 +82,33 @@ mke2fs -q -F -t ext4 -L hy310-boot -m 1 \
 e2fsck -fn "$TMP/hy310-boot.ext4" >/dev/null
 ok "$TMP/hy310-boot.ext4"
 
-# --- 2. hy310-rootfs with the placeholders -------------------------------
+# --- 2. hy310-rootfs with the target directories -------------------------
 say "hy310-rootfs-platz.ext4 (1 GiB)"
 mkdir -p "$TMP/rootfs-baum"
 # The accepted rootfs (doku/107 §9) comes out of the tar, not out of the finished
-# ext4: the placeholders have to be created as real files of the right size,
-# and mke2fs -d can do that in one go. --numeric-owner: the uid/gid out of the tar,
+# ext4: the target directories have to be created with their own modes, and
+# mke2fs -d can do that in one go. --numeric-owner: the uid/gid out of the tar,
 # not resolved through the names in the container's user database (0/0, 0/42 ...).
 # Then a spot check, before mke2fs bakes the tree in.
 tar --numeric-owner --xattrs --acls -xf "$ROOTFS_OUT/hy310-rootfs.tar" -C "$TMP/rootfs-baum"
 python3 "$HERE/h713-mkimage" tree-rootfs "$TMP/rootfs-baum"
-for pf in etc/passwd root root/.ssh root/.ssh/authorized_keys; do
+for pf in etc/passwd root root/.ssh lib/firmware/h713 etc/h713/tvconfig; do
 	owner=$(stat -c '%u:%g %a' "$TMP/rootfs-baum/$pf")
 	case "$pf $owner" in
-		"etc/passwd 0:0 644"|"root 0:0 700"|"root/.ssh 0:0 700"|"root/.ssh/authorized_keys 0:0 600") ;;
+		"etc/passwd 0:0 644"|"root 0:0 700"|"root/.ssh 0:0 700") ;;
+		"lib/firmware/h713 0:0 755"|"etc/h713/tvconfig 0:0 755") ;;
 		*) echo "tree wrong: /$pf is $owner" >&2; exit 1 ;;
 	esac
 done
-ok "tree: /etc/passwd, /root, /root/.ssh, authorized_keys belong to root, the modes match"
+ok "tree: /etc/passwd, /root, /root/.ssh and the target directories belong to root, the modes match"
+if [ -e "$TMP/rootfs-baum/root/.ssh/authorized_keys" ]; then
+	echo "tree wrong: authorized_keys is in it -- layout v4 leaves that file to h713-install" >&2
+	exit 1
+fi
 rm -f "$TMP/hy310-rootfs-platz.ext4"
 truncate -s 1G "$TMP/hy310-rootfs-platz.ext4"
 # Word for word the same as build-rootfs.sh, so that this file system is the same as
-# the accepted one -- only with the placeholders more.
+# the accepted one -- only with the empty target directories more.
 mke2fs -q -F -t ext4 -L hy310-rootfs -m 1 \
 	-E lazy_itable_init=0,lazy_journal_init=0 \
 	-d "$TMP/rootfs-baum" "$TMP/hy310-rootfs-platz.ext4"
