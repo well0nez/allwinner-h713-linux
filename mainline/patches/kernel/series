@@ -28,6 +28,10 @@
 0014-soc-sunxi-add-cpu-comm-ipc.patch
 #   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
 0014a-soc-sunxi-cpu-comm-der-h713-stand-vom-04-09.patch
+#   (follow-up well0nez, N1 -- 0014a stays byte-identical; the msgbox has three
+#    GIC lines, one per register bank, and one handler has to serve whichever
+#    of them fires)
+0014b-soc-sunxi-cpu-comm-service-every-msgbox-rx-endpoint.patch
 0015-misc-add-h713-driver-kconfig.patch
 0016-dt-bindings-add-h713-clock-reset-ids.patch
 0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch
