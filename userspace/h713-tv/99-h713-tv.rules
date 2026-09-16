@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# Startet h713-tv@videoN, sobald der HDMI-Empfaenger sein Aufnahmegeraet
-# anlegt. Der Treiber sun50i-h713-hdmirx probt asynchron (die EDID/HPD-Sequenz
-# dauert ueber zehn Sekunden), die Geraetenummer ist deshalb nicht
-# vorhersagbar. Getroffen wird am Namen des Treibers, nicht an videoN; die
-# Nummer wandert als Instanzname (%k = Kernelname, z. B. video1) in die
-# Template-Unit, die sich mit BindsTo an dev-videoN.device haengt und beim
-# Verschwinden des Geraets mit ihm stoppt.
+# Starts h713-tv@videoN as soon as the HDMI receiver creates its capture
+# device. The driver sun50i-h713-hdmirx probes asynchronously (the EDID/HPD
+# sequence takes over ten seconds), so the device number is not predictable.
+# The match is on the name of the driver, not on videoN; the number travels as
+# the instance name (%k = kernel name, e.g. video1) into the template unit,
+# which hangs itself on dev-videoN.device with BindsTo and stops with it when
+# the device goes away.
 #
-# ATTR{name} ist der Name des video_device, also genau H713_HDMIRX_NAME
-# aus Patch 0094. TAG+="systemd" legt die .device-Unit an, ohne die BindsTo
-# nichts haette.
+# ATTR{name} is the name of the video_device, that is exactly H713_HDMIRX_NAME
+# out of patch 0094. TAG+="systemd" creates the .device unit, without which
+# BindsTo would have nothing to hold on to.
 SUBSYSTEM=="video4linux", ACTION=="add", ATTR{name}=="sun50i-h713-hdmirx", \
     TAG+="systemd", ENV{SYSTEMD_WANTS}+="h713-tv@%k.service"

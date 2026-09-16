@@ -1,30 +1,29 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# Template-Unit: eine Instanz je Aufnahmegeraet, Instanzname = Kernelname des
-# Geraets (h713-tv@video1.service fuer /dev/video1). Gestartet wird sie von
-# der udev-Regel 99-h713-tv.rules (SYSTEMD_WANTS+="h713-tv@%k.service"),
-# sobald der HDMI-Empfaenger sein /dev/videoN anlegt -- nicht von
-# multi-user.target. Grund: der Probe von sun50i-h713-hdmirx laeuft asynchron
-# und haelt allein fuer die EDID/HPD-Sequenz ueber zehn Sekunden an; ein Start
-# "beim Booten" waere ein Wettlauf, den man nur mit einer Warteschleife
-# gewinnt, und die soll es hier nicht geben. Deshalb hat die Unit auch keinen
-# [Install]-Abschnitt: `systemctl enable` ist nicht der Weg, die udev-Regel
-# ist es.
+# Template unit: one instance per capture device, the instance name being the
+# kernel name of the device (h713-tv@video1.service for /dev/video1). It is
+# started by the udev rule 99-h713-tv.rules (SYSTEMD_WANTS+="h713-tv@%k.service")
+# as soon as the HDMI receiver creates its /dev/videoN -- not by
+# multi-user.target. The reason: the probe of sun50i-h713-hdmirx runs
+# asynchronously and takes over ten seconds for the EDID/HPD sequence alone; a
+# start "at boot" would be a race that can only be won with a wait loop, and
+# there is not going to be one here. That is also why the unit has no
+# [Install] section: `systemctl enable` is not the way, the udev rule is.
 [Unit]
-Description=HY310: HDMI-Eingang (%I) auf der Video-Plane
+Description=HY310: HDMI input (%I) on the video plane
 Documentation=file:/usr/local/share/doc/h713-tv/README.md
 
-# Die Unit haengt am Geraet in beide Richtungen: BindsTo stoppt sie, sobald
-# dev-videoN.device verschwindet (Treiber entladen oder unbind), statt sie
-# gegen ein fehlendes Geraet in die Neustartgrenze laufen zu lassen; kommt
-# das Geraet wieder, startet udev sie neu. After sorgt dafuer, dass der Start
-# nicht vor dem Geraet eingereiht wird.
+# The unit hangs on the device in both directions: BindsTo stops it as soon as
+# dev-videoN.device goes away (driver unloaded or unbound), instead of letting
+# it run into the restart limit against a missing device; when the device
+# comes back, udev starts it again. After makes sure the start is not queued
+# ahead of the device.
 BindsTo=dev-%i.device
 After=dev-%i.device
 
-# Nach drei Fehlstarts in einer Minute bleibt die Unit im Zustand "failed"
-# stehen, statt endlos zu starten. Was fehlgeschlagen ist, steht dann im
-# Journal -- das ist die Absicht.
+# After three failed starts within a minute the unit stays in the "failed"
+# state instead of starting for ever. What failed is then in the journal --
+# that is the intention.
 StartLimitIntervalSec=60
 StartLimitBurst=3
 
@@ -34,35 +33,35 @@ ExecStart=/usr/local/sbin/h713-tv -d /dev/%I
 Restart=on-failure
 RestartSec=5s
 
-# Der Steuerkanal (h713-tv ctl ...) liegt unter /run/h713-tv/ctl; das
-# Verzeichnis legt systemd an und raeumt es beim Stopp weg. Es gibt nur einen
-# HDMI-Empfaenger, also nur eine Instanz; eine zweite scheiterte an der
-# Sperre /run/h713-tv/lock, bevor sie das Geraet anfasst.
+# The control channel (h713-tv ctl ...) lives under /run/h713-tv/ctl; systemd
+# creates the directory and clears it away on stop. There is only one HDMI
+# receiver, so only one instance; a second one failed on the lock
+# /run/h713-tv/lock before it touched the device.
 RuntimeDirectory=h713-tv
 RuntimeDirectoryMode=0755
 
-# Der zuletzt per `h713-tv ctl auto|off` gesetzte Modus liegt in
-# /var/lib/h713-tv/modus (Konfiguration dazu: /etc/h713/tv.conf, Schluessel
-# start und zustand). StateDirectory legt das Verzeichnis an und macht genau
-# dieses eine unter ProtectSystem=strict beschreibbar; ohne die Zeile bliebe
-# der Modus stumm ungemerkt. Geschrieben wird nur, wenn sich der Modus aendert.
+# The mode last set with `h713-tv ctl auto|off` lives in
+# /var/lib/h713-tv/modus (its configuration: /etc/h713/tv.conf, keys start and
+# zustand). StateDirectory creates the directory and makes exactly this one
+# writable under ProtectSystem=strict; without the line the mode would
+# silently not be kept. It is written only when the mode changes.
 StateDirectory=h713-tv
 StateDirectoryMode=0755
 
-# SIGTERM ist der regulaere Weg hinaus: das Programm schaltet die Plane ab
-# und gibt die Konsole zurueck, bevor es endet. `systemctl stop` laesst also
-# kein Standbild auf der Wand stehen. SIGHUP bewertet den Zustand neu
-# (`systemctl reload`), ohne die Plane anzufassen.
+# SIGTERM is the regular way out: the program switches the plane off and hands
+# the console back before it ends. So `systemctl stop` leaves no still frame
+# standing on the wall. SIGHUP evaluates the state again (`systemctl reload`)
+# without touching the plane.
 KillSignal=SIGTERM
 TimeoutStopSec=10s
 ExecReload=/bin/kill -HUP $MAINPID
 
-# Das Programm braucht DRM-Master, das Aufnahmegeraet, /dev/tty0 und
-# /sys/class/graphics/fb0/blank (Konsole entblanken) und -- fuer
-# "h713-tv ctl rpc" -- den debugfs-Knoten von cpu_comm. ProtectSystem=strict
-# laesst /dev, /proc und /sys beschreibbar, alles andere ist nur lesbar;
-# ProtectKernelTunables darf deshalb NICHT dazu (es wuerde /sys sperren).
-# Keine neuen Privilegien.
+# The program needs DRM master, the capture device, /dev/tty0 and
+# /sys/class/graphics/fb0/blank (to unblank the console) and -- for
+# "h713-tv ctl rpc" -- the debugfs node of cpu_comm. ProtectSystem=strict
+# leaves /dev, /proc and /sys writable and everything else read-only;
+# ProtectKernelTunables must therefore NOT be added (it would lock /sys away).
+# No new privileges.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

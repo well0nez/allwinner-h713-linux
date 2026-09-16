@@ -1,22 +1,23 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# h713-tv -- HDMI-Eingang auf die Video-Plane, Konsole bei Signalverlust.
+# h713-tv -- the HDMI input on the video plane, the console on signal loss.
 #
-#   make                 nativ bauen (auf dem Board: gcc-14, pkg-config, libdrm,
-#                        libasound2-dev -- der Ton spricht die ALSA-Control-API)
-#   make cross           quer bauen auf dem Arbeitsrechner gegen das Board-Root
-#   make install         das NATIVE Binaerprogramm installieren (auf dem Board)
-#   make install-cross   das QUER gebaute Binaerprogramm installieren
-#                        (vom Arbeitsrechner, mit DESTDIR=/srv/h713-rootfs)
+#   make                 build natively (on the board: gcc-14, pkg-config,
+#                        libdrm, libasound2-dev -- the audio part speaks the
+#                        ALSA control API)
+#   make cross           cross-build on the workstation against the board root
+#   make install         install the NATIVE binary (on the board)
+#   make install-cross   install the CROSS-built binary (from the
+#                        workstation, with DESTDIR=/srv/h713-rootfs)
 #   make clean
 #
-# Der Kernel wird ausschliesslich ueber build/build.sh im Container gebaut
-# (doku/78 Regel 2). Dieses Programm ist Userspace: der Container sieht das
-# Board-Root nicht (er hat nur /opt/Projekte/h713 -> /work, mit
-# `podman inspect h713-build` am 07.09. erneut geprueft: genau ein Mount, /srv
-# ist im Container leer) und hat weder libdrm noch einen arm64-Sysroot,
-# deshalb baut `cross` mit dem Host-Clang gegen /srv/h713-rootfs -- nur
-# lesend. Begruendung siehe README.
+# The kernel is built through build/build.sh in the container and nowhere
+# else (doku/78 rule 2). This program is userspace: the container does not
+# see the board root (it has only /opt/Projekte/h713 -> /work, checked again
+# with `podman inspect h713-build` on 07.09.: exactly one mount, /srv is
+# empty inside the container) and has neither libdrm nor an arm64 sysroot,
+# so `cross` builds with the host clang against /srv/h713-rootfs -- reading
+# only. The reasoning is in the README.
 
 CC        ?= cc
 PKG_CONFIG ?= pkg-config
@@ -32,9 +33,10 @@ UDEVDIR   ?= /etc/udev/rules.d
 DOCDIR    ?= $(PREFIX)/share/doc/h713-tv
 DATADIR   ?= $(PREFIX)/share/h713-tv
 
-# Querbau: Board-Root als Sysroot, Host-Clang als Cross-Compiler. Header und
-# Linkernamen (libdrm-dev, libasound2-dev) muessen im Board-Root installiert
-# sein -- `apt install libasound2-dev` auf dem Board, das Root ist dasselbe.
+# Cross-build: the board root as the sysroot, the host clang as the cross
+# compiler. Headers and linker names (libdrm-dev, libasound2-dev) have to be
+# installed in the board root -- `apt install libasound2-dev` on the board,
+# the root is the same one.
 SYSROOT   ?= /srv/h713-rootfs
 TARGET    ?= aarch64-linux-gnu
 CROSS_CC  ?= clang
@@ -55,9 +57,9 @@ install: h713-tv
 	install -D -m 0755 h713-tv $(DESTDIR)$(SBINDIR)/h713-tv
 	$(MAKE) install-data
 
-# Vom Arbeitsrechner aus: das quer gebaute arm64-Programm ins Board-Root legen.
-# `install` wuerde hier das x86-Binaerprogramm einspielen -- deshalb ein
-# eigenes Ziel statt einer Fussnote.
+# From the workstation: put the cross-built arm64 program into the board
+# root. `install` would put the x86 binary there -- hence a target of its
+# own instead of a footnote.
 install-cross: h713-tv.$(TARGET)
 	install -D -m 0755 h713-tv.$(TARGET) $(DESTDIR)$(SBINDIR)/h713-tv
 	$(MAKE) install-data
