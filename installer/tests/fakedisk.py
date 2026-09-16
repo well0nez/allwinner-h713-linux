@@ -243,6 +243,29 @@ def make_our_layout_disk(path, partitions, disk_sectors=DISK_SECTORS):
     return path
 
 
+# A stock device whose table puts the two Android regions somewhere else than the HY310 does
+# (O1b item 2): `private` and a single `Reserve0`, both far from 4891648/5489664/5522432.
+# bootloader_a and super are in it because device_kind() calls a table without them no
+# projector at all. Built with the same GPT writer as make_our_layout_disk(), so it needs no
+# vendor bytes and runs in the default mode of run.sh.
+MOVED_PARTS = (("bootloader_a", 73728, 65536), ("misc", 40960, 2048),
+               ("super", 1048576, 4194304), ("private", 6291456, 32768),
+               ("Reserve0", 9437184, 32768))
+
+
+def make_moved_stock_disk(path, partitions=MOVED_PARTS, fill_cap=32768):
+    """A GPT of `partitions`, every one of at most `fill_cap` sectors filled with pattern(),
+    so a dump can be traced back to the LBA it really came from; the big ones stay sparse
+    holes, nothing here reads them. `partitions` without private/Reserve0 makes the disk for
+    the other half of the case: a table that names neither."""
+    make_our_layout_disk(path, list(partitions))
+    with open(path, "r+b") as fh:
+        for name, lba, sectors in partitions:
+            if sectors <= fill_cap:
+                _put(fh, lba, pattern(name, lba, sectors))
+    return path
+
+
 MKE2FS = ("mke2fs", "/usr/sbin/mke2fs", "/sbin/mke2fs")
 EXT4_BLANK = os.path.join(os.path.dirname(_HERE), "metadata-leer-16m.ext4.gz")
 EXT4_BLANK_BYTES = 16 << 20
