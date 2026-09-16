@@ -1,50 +1,49 @@
-# h713-cam - die interne Kamera ansprechen
+# h713-cam - talk to the internal camera
 
-Ein Skript, Python 3, ohne Abhängigkeiten. Realtek `0bda:5803` „Generic HD
-camera", UVC, an USB-Port 1 (VBUS über PL3). Ein Format: **YUYV 4:2:2,
-640×480**. Stock benutzt sie für den Autofokus (`doku/94`).
+One script, Python 3, without dependencies. Realtek `0bda:5803` "Generic HD
+camera", UVC, on USB port 1 (VBUS over PL3). One format: **YUYV 4:2:2,
+640x480**. Stock uses it for the autofocus (`doku/94`).
 
 ```
-h713-cam probe                    # Treiber, Formate, Bildgrößen
-h713-cam controls                 # alle Steuerungen mit Bereich und Istwert
-h713-cam get exposure             # eine Steuerung lesen (Name oder 0x-ID)
-h713-cam set brightness 100       # eine Steuerung setzen
-h713-cam grab                     # Einzelbild nach /data/cam.png
+h713-cam probe                    # driver, formats, frame sizes
+h713-cam controls                 # every control with range and current value
+h713-cam get exposure             # read one control (name or 0x ID)
+h713-cam set brightness 100       # write one control
+h713-cam grab                     # still image to /data/cam.png
 h713-cam grab /tmp/x.ppm --warm 30
 ```
 
-Der Geräteknoten wird **gesucht**, nicht geraten: `/dev/video2` ist die Kamera
-nur, weil Cedrus (`video0`) und HDMI-RX (`video1`) vorher geladen wurden. Das
-Skript geht über `/sys/class/video4linux/*/name` und nimmt den Knoten mit
-`VIDEO_CAPTURE` - der zweite mit demselben Namen ist der Metadatenknoten
-derselben Kamera, kein zweites Gerät. `--dev` übersteuert.
+The device node is **searched for**, not guessed: `/dev/video2` is the camera
+only because Cedrus (`video0`) and HDMI-RX (`video1`) were loaded before it. The
+script walks `/sys/class/video4linux/*/name` and takes the node with
+`VIDEO_CAPTURE` - the second one with the same name is the metadata node of the
+same camera, not a second device. `--dev` overrides that.
 
-Namen für `get`/`set` dürfen verkürzt sein (`exposure`, `bright`); ist der
-Treffer nicht eindeutig, sagt das Skript welche passen.
+Names for `get`/`set` may be abbreviated (`exposure`, `bright`); if the match is
+not unambiguous, the script says which ones fit.
 
-## Die Macke
+## The quirk
 
-Frisch geladen liefert die Kamera **schwarz** (Y ≈ 5, reines Rauschen), auch
-nach 90 verworfenen Bildern und mit hellem HDMI-Bild an der Wand. Sobald
-**irgendeine Steuerung geschrieben** wurde, ist das nächste Bild normal
-belichtet (Y ≈ 187) und die Automatik läuft. `grab` schreibt deshalb vor dem
-Stream die Belichtung einmal unverändert zurück. Kommt trotzdem Y < 16 heraus,
-sagt das Skript es dazu.
+Freshly loaded the camera delivers **black** (Y about 5, pure noise), even after
+90 discarded frames and with a bright HDMI picture on the wall. As soon as **any
+control has been written**, the next frame is exposed normally (Y about 187) and
+the automatic runs. That is why `grab` writes the exposure back unchanged once
+before the stream. If Y < 16 still comes out, the script says so.
 
-Gemessen 11.09.2026, Beleg `analyse/beamer-cam/README.md` und `foto-e313.png`.
+Measured 11.09.2026, evidence `analyse/beamer-cam/README.md` and `foto-e313.png`.
 
-## Warum ohne PIL, v4l2-ctl, ffmpeg
+## Why without PIL, v4l2-ctl, ffmpeg
 
-Das Release-Rootfs trägt nichts davon (`packages.txt`: „kein Paket für alle
-Fälle"). PNG entsteht aus `zlib` der Standardbibliothek, die YUYV→RGB-Rechnung
-ist BT.601 in reinem Python - auf dem A53 einige Sekunden für 640×480, dafür
-läuft es überall, wo `python3` liegt.
+The release rootfs carries none of them (`packages.txt`: "no package for every
+eventuality"). PNG comes out of `zlib` in the standard library, the YUYV->RGB
+computation is BT.601 in plain Python - a few seconds for 640x480 on the A53, but
+it runs wherever `python3` is.
 
-## Herkunft
+## Origin
 
-Zusammengelegt am 12.09.2026 aus `analyse/beamer-cam/{camprobe,camset,camgrab}.py`.
-Die Originale bleiben dort als Messbeleg. Neu gegenüber den dreien: die
-Gerätesuche, `controls`, Namen statt nur IDs, PNG.
+Merged on 12.09.2026 out of `analyse/beamer-cam/{camprobe,camset,camgrab}.py`.
+The originals stay there as evidence of the measurement. New against those three:
+the device search, `controls`, names instead of IDs only, PNG.
 
-Was die Kamera **tun** soll (Autofokus wie Stock, nur mit Testbild - siehe
-`h713-focus/README.md`), ist eine eigene Aufgabe nach dem Release.
+What the camera should **do** (autofocus like stock, only with a test image - see
+`h713-focus/README.md`) is a task of its own after the release.
