@@ -1,7 +1,7 @@
 From 80397f06b2602de3476eaf9eb5e03229a9ba9b2b Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 02:18:45 +0200
-Subject: [PATCH 35/40] sunxi: h713: find the HDCP wait site instead of pinning
+Subject: [PATCH 35/77] sunxi: h713: find the HDCP wait site instead of pinning
  its address
 
 The Rx_HDCP14_LoadKey timeout loop has to be defused before the

@@ -1,0 +1,196 @@
+From 7dda959ef5a6dfbff189595758c0b9b564bcf7da Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 17:17:05 +0200
+Subject: [PATCH 65/77] sunxi: h713: the vendor bootlogo digest identifies, it
+ does not gate
+
+h713_disp_publish_bmp() refused a bootlogo.bmp whose SHA-256 was not in
+h713_vendor_bootlogos[]. That table was a bring-up guard: a known-good
+stock asset as the control against a test pattern. On the product boot
+path, which bootcmd is about to take, the guard only costs - a board
+whose logo nobody has hashed gets no logo, and an owner who puts his own
+panel-sized 24-bit BMP at /boot/bootlogo.bmp is refused.
+
+So the digest is computed and printed as before, the table lookup still
+names a stock asset ("stock logo recognised (<board>)"), an unknown one
+now says "logo not in the vendor table, taking it as it is", and nothing
+is refused on the digest. verify_vendor keeps its meaning as the
+parameter that decides whether the digest is looked UP, so a custom file
+is still not hashed at all. What protects the framebuffer is the BMP
+format check - the panel's own width and height, one plane, 24 bpp,
+uncompressed - and that is untouched.
+
+One caller did rely on the refusal as a control: panel-test vendor-logo,
+whose h713_disp_verify_fb() bounds (rows 343..378, columns 368..912) are
+measured from the stock file and mean nothing about another picture. It
+keeps its behaviour through an explicit check on the new
+h713_disp_bmp_is_vendor, in that mode, not in the shared helper.
+
+Also: the "auto <id> logo" help text now says what that path does to the
+coprocessor. auto ends with h713_disp_quiesce_mips_owner(), so Linux
+finds a dead firmware and cannot switch to HDMI; the product boot path
+is "init <id> logo", which leaves the firmware running (device-proven
+15.09.2026, three runs on the HY310). The same line claimed the custom
+file is read from mmc 1:2, which stopped being true when the logo moved
+to the artifact device resolved by name.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 86 ++++++++++++++++++++++++---------
+ 1 file changed, 64 insertions(+), 22 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 2760025f6ab..21c576f18d7 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -590,6 +590,10 @@ static int h713_mips_accept_size(ulong len)
+  * content, and the geometry is simply each board's own panel. A single pinned
+  * size plus a single pinned digest rejected the other board twice before
+  * anything ever looked at the file.
++ *
++ * The table identifies, it does not gate: a logo that matches no row is still
++ * published, because the product boot has to show whatever the owner put at
++ * /boot/bootlogo.bmp on a board nobody has hashed.
+  */
+ static const struct {
+ 	const char *board;
+@@ -7783,8 +7787,8 @@ static void h713_disp_fill_pattern(uint phase)
+ /*
+  * Reproduce the Board-B stock fastlogo pixel path, independently of U-Boot's
+  * video uclass. The source is bootlogo.bmp from this board's own bootloader
+- * FAT partition, not a generated or board-A substitute. Its pinned identity
+- * comes from bootloader_a in the 2026-07-05 full-board dump.
++ * FAT partition, not a generated or board-A substitute. Its stock identity is
++ * one row of h713_vendor_bootlogos[], from the 2026-07-05 full-board dump.
+  *
+  * Stock's 24-bit blitter reads BMP B,G,R bytes, supplies alpha 0xff and writes
+  * one little-endian 0xffRRGGBB word per destination pixel. Positive-height
+@@ -7792,14 +7796,23 @@ static void h713_disp_fill_pattern(uint phase)
+  * for both the test-pattern contents and the presumed framebuffer byte order.
+  */
+ /*
+- * Convert a 1280x720 24-bit BMP at VENDOR_BMP_ADDR into the OSD framebuffer.
++ * Convert a 24-bit BMP at VENDOR_BMP_ADDR, in the panel's own geometry, into
++ * the OSD framebuffer.
++ *
++ * verify_vendor decides whether the digest is looked UP, never whether the
++ * image is allowed: it is on for "bootlogo.bmp" and off for a custom file the
++ * operator supplies (`init/auto <id> logo <file>`). The vendor table is
++ * identification, so a stock asset is named in the log and an unknown one is
++ * taken as it is. It began as a bring-up guard -- a known-good stock asset as
++ * the control against a test pattern -- and on the product boot path that
++ * guard only costs: a board whose logo nobody has hashed would get no logo,
++ * and an owner's own bootlogo.bmp would be refused. One caller still needs
++ * the control, panel-test vendor-logo, and it checks h713_disp_bmp_is_vendor
++ * itself.
+  *
+- * verify_vendor gates the bring-up guard -- exact size and SHA-256 against the
+- * known-good stock asset -- and is on for "bootlogo.bmp", off for a custom
+- * logo the operator supplies (`auto <id> logo <file>`). The BMP *format* checks
+- * are hardware constraints and run either way: 1280x720, one plane, 24 bpp,
+- * uncompressed. A custom image that is not exactly that is refused, not
+- * mangled.
++ * What protects the framebuffer is the BMP *format* check, and that runs
++ * either way: the panel's own width and height, one plane, 24 bpp,
++ * uncompressed. An image that is not exactly that is refused, not mangled.
+  */
+ /*
+  * Length of the BMP last read into H713_DISP_VENDOR_BMP_ADDR. A caller that
+@@ -7810,6 +7823,14 @@ static void h713_disp_fill_pattern(uint phase)
+  */
+ static loff_t h713_disp_bmp_loaded_len;
+ 
++/*
++ * Whether that BMP's digest matched a h713_vendor_bootlogos[] row, as of the
++ * last publish that looked one up; false when nothing was looked up. Only
++ * panel-test vendor-logo reads it, because that mode is a control whose
++ * framebuffer bounds are measured from the stock file.
++ */
++static bool h713_disp_bmp_is_vendor;
++
+ static int h713_disp_publish_bmp(bool load, const char *path,
+ 				 bool verify_vendor, bool chroma)
+ {
+@@ -7868,13 +7889,15 @@ static int h713_disp_publish_bmp(bool load, const char *path,
+ 			if (!memcmp(digest, h713_vendor_bootlogos[i].digest,
+ 				    SHA256_SUM_LEN))
+ 				break;
+-		if (i == ARRAY_SIZE(h713_vendor_bootlogos)) {
+-			printf("H713 panel: refusing non-vendor %s\n", path);
+-			return -EKEYREJECTED;
+-		}
+-		printf("H713 panel: stock logo recognised (%s)\n",
+-		       h713_vendor_bootlogos[i].board);
++		h713_disp_bmp_is_vendor = i < ARRAY_SIZE(h713_vendor_bootlogos);
++		if (h713_disp_bmp_is_vendor)
++			printf("H713 panel: stock logo recognised (%s)\n",
++			       h713_vendor_bootlogos[i].board);
++		else
++			printf("H713 panel: logo not in the vendor table, "
++			       "taking it as it is\n");
+ 	} else {
++		h713_disp_bmp_is_vendor = false;
+ 		printf("H713 panel: custom logo %s, %llu bytes (hash not "
+ 		       "checked)\n", path, len);
+ 	}
+@@ -7941,7 +7964,7 @@ static int h713_disp_publish_bmp(bool load, const char *path,
+ 	return 0;
+ }
+ 
+-/* The stock asset, hash-checked. Thin wrapper kept so callers read clearly. */
++/* The stock asset, identified by digest. Thin wrapper, so callers read well. */
+ static int h713_disp_publish_vendor_bootlogo(bool load, bool chroma)
+ {
+ 	return h713_disp_publish_bmp(load, "bootlogo.bmp", true, chroma);
+@@ -11474,6 +11497,21 @@ static int h713_disp_panel_test(u32 project, bool release_mips, bool full,
+ 						       vendor_chroma);
+ 		if (ret)
+ 			return h713_disp_fail(ret);
++		/*
++		 * The one caller that still needs the digest as a gate. This
++		 * mode is a control: h713_disp_verify_fb() below reads rows
++		 * 343..378 and columns 368..912, bounds measured from the
++		 * stock file, and "the logo is where it should be" means
++		 * nothing about some other picture. The shared helper stopped
++		 * refusing when the product boot started using it (a board
++		 * whose logo nobody has hashed must still get a logo), so the
++		 * refusal lives here instead.
++		 */
++		if (!h713_disp_bmp_is_vendor) {
++			printf("H713 panel: vendor-logo is a control and needs "
++			       "the stock bootlogo.bmp; refusing this one\n");
++			return h713_disp_fail(-EKEYREJECTED);
++		}
+ 		h713_disp_chroma_marker(2);
+ 		/* Bounds measured from the file: rows 343..378, cols 368..912. */
+ 		h713_disp_verify_fb(343, 378, 368, 912, vendor_chroma);
+@@ -11656,9 +11694,10 @@ static int h713_disp_auto_logo(u32 project, const char *logo_file)
+ 	h713_disp_enforce_layer_xoff("after the DE replay");
+ 
+ 	/*
+-	 * Publish the real artwork (chroma=false). A custom file is taken as-is
+-	 * with no hash check; the default hashes the stock asset. Format is
+-	 * validated either way -- 1280x720, 24 bpp, uncompressed.
++	 * Publish the real artwork (chroma=false). The default hashes the stock
++	 * asset to name it in the log, a custom file is not looked up at all,
++	 * and neither is refused on its digest. Format is validated either way
++	 * -- the panel's own size, 24 bpp, uncompressed.
+ 	 */
+ 	if (logo_file)
+ 		ret = h713_disp_publish_bmp(true, logo_file, false, false);
+@@ -12159,9 +12198,12 @@ U_BOOT_CMD(h713_disp, 15, 0, do_h713_disp,
+ 	   "                                      vendor-logo-early: loads before the display sequence -- known broken, kept to chase why\n"
+ 	   "       h713_disp panel-test <id> <mode> <stride>  - same, with AFBD 0x05600170 forced to <stride> bytes (hex)\n"
+ 	   "h713_disp auto <project-id> [nowait] [logo [file.bmp]] - load from eMMC and run\n"
+-	   "                                      logo: publish the boot logo and leave it up (product boot step)\n"
+-	   "                                            optional file.bmp on mmc 1:2 is a custom 24-bit logo the panel's own size (no hash);\n"
+-	   "                                            default is the hashed vendor bootlogo.bmp\n"
++	   "                                      logo: publish the boot logo and leave it up, but PARK the\n"
++	   "                                            coprocessor as the last act -- Linux then finds a dead\n"
++	   "                                            firmware and cannot switch to HDMI. NOT the product boot\n"
++	   "                                            path: that is \"init <id> logo\", firmware left running\n"
++	   "                                            optional file.bmp is a custom 24-bit logo the panel's own size;\n"
++	   "                                            default is the vendor bootlogo.bmp, identified by digest, not gated\n"
+ 	   "h713_disp load <project-id>         - load from eMMC only\n"
+ 	   "h713_disp <blob-addr> <project-id> [nowait] - run against a staged blob\n"
+ 	   "h713_disp list <blob-addr>          - show every project's tables\n"

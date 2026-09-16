@@ -1,0 +1,161 @@
+From 4c7e49bb01b3a30e34c3c75e5d820e7b4dcd2ab3 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 16 Sep 2026 11:07:29 +0200
+Subject: [PATCH 77/77] mmc: sunxi: repeat a failed IDMA transfer on the CPU,
+ and say so
+
+The SPL now loads the whole FIT with the IDMA. If the engine ever refuses
+there, the SPL stops at "Trying to boot from MMC2" and the board needs FEL
+and a reinstall - a very expensive way to find out that a descriptor was
+wrong. The PIO path is still in the binary, so use it.
+
+sunxi_mmc_send_cmd_common() becomes a two line wrapper around the old body,
+which grows an "allow_dma" flag and a "dma_fault" answer. The second attempt
+is made only when the engine is what failed:
+
+  - mmc_start_dma() could not reset the IDMAC.  No command has been written
+    at that point, so the repeat is a clean first attempt.
+  - mmc_finish_dma() found IDST[9,5,4,2] set: fatal bus error, invalid
+    descriptor, card error, abnormal interrupt.
+  - the data phase timed out while RINT shows no error bit at all, i.e. the
+    controller has nothing to complain about and the transfer simply never
+    finished.
+
+A card error is deliberately not a reason. CRC and data timeout are the
+card's answer, the PIO path would get the same answer, and HS200 tuning is
+built on getting it 63 times out of 64 - repeating those would turn the
+sweep into 64 extra reads and 64 lines of UART.
+
+The path out of the first attempt has already written GCTRL_RESET, run
+mmc_update_clk(), cleared RINT and reset the FIFO, and mmc_finish_dma() has
+stopped the engine and taken GCTRL_DMA_ENABLE down;
+mmc_trans_data_by_cpu() sets GCTRL_ACCESS_BY_AHB itself. So the repeat
+starts from a reset controller.
+
+The message is a printf, not a debug(): a boot that silently takes ten times
+as long is a bug report nobody can make sense of.
+
+hy310_defconfig, clang 20: spl/u-boot-spl.bin 31736 -> 31992 bytes against a
+CONFIG_SPL_MAX_SIZE of 0xbfa0 (49056), 65 % used. Not yet run on hardware.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ drivers/mmc/sunxi_mmc.c | 68 ++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 60 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/mmc/sunxi_mmc.c b/drivers/mmc/sunxi_mmc.c
+index 6bea747c723..29b72653132 100644
+--- a/drivers/mmc/sunxi_mmc.c
++++ b/drivers/mmc/sunxi_mmc.c
+@@ -639,9 +639,15 @@ static int mmc_rint_wait(struct sunxi_mmc_priv *priv, struct mmc *mmc,
+ 	return 0;
+ }
+ 
+-static int sunxi_mmc_send_cmd_common(struct sunxi_mmc_priv *priv,
+-				     struct mmc *mmc, struct mmc_cmd *cmd,
+-				     struct mmc_data *data)
++/*
++ * One attempt at one command.  @allow_dma is false for the PIO repeat that
++ * sunxi_mmc_send_cmd_common() makes after an IDMA fault; *@dma_fault comes
++ * back true only when the engine, and not the card, is what went wrong.
++ */
++static int sunxi_mmc_send_cmd_once(struct sunxi_mmc_priv *priv,
++				   struct mmc *mmc, struct mmc_cmd *cmd,
++				   struct mmc_data *data, bool allow_dma,
++				   bool *dma_fault)
+ {
+ 	unsigned int cmdval = SUNXI_MMC_CMD_START;
+ 	unsigned int timeout_msecs;
+@@ -698,7 +704,7 @@ static int sunxi_mmc_send_cmd_common(struct sunxi_mmc_priv *priv,
+ 
+ 		bytecnt = data->blocksize * data->blocks;
+ 		debug("trans data %d bytes\n", bytecnt);
+-		use_dma = sunxi_mmc_dma_capable(data, bytecnt);
++		use_dma = allow_dma && sunxi_mmc_dma_capable(data, bytecnt);
+ 		if (use_dma) {
+ 			/*
+ 			 * The descriptor chain and the DMA registers have to
+@@ -711,8 +717,11 @@ static int sunxi_mmc_send_cmd_common(struct sunxi_mmc_priv *priv,
+ 				/*
+ 				 * Leave use_dma set: the engine is half
+ 				 * programmed and mmc_finish_dma() below is
+-				 * what puts it back.
++				 * what puts it back.  No command has been
++				 * written yet, so the PIO repeat is a clean
++				 * first attempt.
+ 				 */
++				*dma_fault = true;
+ 				error = ret;
+ 				goto out;
+ 			}
+@@ -742,8 +751,21 @@ static int sunxi_mmc_send_cmd_common(struct sunxi_mmc_priv *priv,
+ 				      SUNXI_MMC_RINT_AUTO_COMMAND_DONE :
+ 				      SUNXI_MMC_RINT_DATA_OVER,
+ 				      "data");
+-		if (error)
++		if (error) {
++			/*
++			 * The data phase ran out of time and the controller
++			 * reports nothing wrong with the card - then it is the
++			 * engine that did not finish, and the CPU can try.  A
++			 * card error (CRC, timeout) is the card's answer and
++			 * repeating it on the PIO path would only ask twice;
++			 * the tuning sweep of HS200 lives on exactly that
++			 * answer 63 times out of 64.
++			 */
++			if (use_dma && !(readl(&priv->reg->rint) &
++					 SUNXI_MMC_RINT_INTERRUPT_ERROR_BIT))
++				*dma_fault = true;
+ 			goto out;
++		}
+ 	}
+ 
+ 	if (cmd->resp_type & MMC_RSP_BUSY) {
+@@ -776,8 +798,12 @@ out:
+ 	if (use_dma) {
+ 		int dma_error = mmc_finish_dma(priv, data, bytecnt);
+ 
+-		if (!error)
+-			error = dma_error;
++		/* mmc_finish_dma() only fails on the engine's own error bits. */
++		if (dma_error) {
++			*dma_fault = true;
++			if (!error)
++				error = dma_error;
++		}
+ 	}
+ 
+ 	if (error < 0) {
+@@ -791,6 +817,32 @@ out:
+ 	return error;
+ }
+ 
++static int sunxi_mmc_send_cmd_common(struct sunxi_mmc_priv *priv,
++				     struct mmc *mmc, struct mmc_cmd *cmd,
++				     struct mmc_data *data)
++{
++	bool dma_fault = false;
++	int error;
++
++	error = sunxi_mmc_send_cmd_once(priv, mmc, cmd, data, true, &dma_fault);
++	if (!error || !dma_fault)
++		return error;
++
++	/*
++	 * The IDMA engine, not the card, is what failed, and the path out of
++	 * sunxi_mmc_send_cmd_once() has already reset the controller and the
++	 * engine.  Do the transfer again on the CPU: in U-Boot proper that
++	 * costs a slow command, in the SPL it is the difference between a
++	 * device that boots and a device that needs FEL.  Say so on the UART
++	 * either way - a boot that quietly takes ten times as long is a bug
++	 * report nobody can make sense of.
++	 */
++	printf("mmc %u: IDMA failed (%d), repeating the transfer on the CPU\n",
++	       priv->mmc_no, error);
++
++	return sunxi_mmc_send_cmd_once(priv, mmc, cmd, data, false, &dma_fault);
++}
++
+ static void sunxi_mmc_reset(void *regs)
+ {
+ 	/* Reset controller */

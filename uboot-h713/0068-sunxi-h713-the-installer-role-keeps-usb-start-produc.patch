@@ -1,0 +1,55 @@
+From e2fae2d1481b244fe0dea0825ff347f80f47277d Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 19:39:43 +0200
+Subject: [PATCH 68/77] sunxi: h713: the installer role keeps "usb start";
+ product boot delay is one second
+
+d4b7979 dropped "usb start" from the base preboot, and with it the installer
+U-Boot stopped enumerating as a USB drive: three installs on 15.09.2026
+ended with "No drive has appeared" (host: "Cannot enable ... unable to
+enumerate USB device"), and the same image installed at once with the
+previous installer U-Boot. So the installer fragment now carries its own
+CONFIG_PREBOOT="usb start"; the product boot still runs without it, and
+that was measured on the installed image: 1.6 s from the power key to the
+panel scanning the logo (stamped console log, doku/40).
+
+CONFIG_BOOTDELAY in the release fragment goes to 1 rather than 0: Marco's
+rule, the prompt must stay reachable from the console.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ configs/fragments/h713_installer.config | 7 +++++++
+ configs/fragments/h713_release.config   | 8 +++-----
+ 2 files changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/configs/fragments/h713_installer.config b/configs/fragments/h713_installer.config
+index 313b52a77bf..d1b9cc160d9 100644
+--- a/configs/fragments/h713_installer.config
++++ b/configs/fragments/h713_installer.config
+@@ -14,3 +14,10 @@ CONFIG_BOOTDELAY=0
+ # CONFIG_ENV_IS_IN_MMC is not set
+ CONFIG_ENV_IS_NOWHERE=y
+ CONFIG_BOOTCOMMAND="echo H713 installer: exposing the eMMC as a USB drive; ums 0 mmc 1"
++# The drive exposure needs "usb start" before ums: without it the gadget never
++# enumerates on the host ("Cannot enable ... unable to enumerate USB device",
++# three failed installs on 15.09.2026 with a preboot that had dropped it; the
++# same image installed at once with the previous installer U-Boot). The product
++# boot does not run it (Marco: only the installer), so it lives here, not in the
++# base defconfig. The reboot-mode magics are pointless in a FEL-loaded U-Boot.
++CONFIG_PREBOOT="usb start"
+diff --git a/configs/fragments/h713_release.config b/configs/fragments/h713_release.config
+index b5e7f10a380..6d0b8a09df6 100644
+--- a/configs/fragments/h713_release.config
++++ b/configs/fragments/h713_release.config
+@@ -8,8 +8,6 @@
+ CONFIG_H713_POWER_GATE=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+ CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+-# No autoboot countdown on the product boot: the two seconds were the second
+-# largest item between the power key and the logo. A key pressed while the
+-# board still sits in the gate is buffered and still stops the boot, "reboot
+-# bootloader" from Linux lands at the prompt, and the reset button gives FEL.
+-CONFIG_BOOTDELAY=0
++# One second of autoboot countdown on the product boot, never zero (Marco,
++# 15.09.2026): the prompt must stay reachable from the console. It was two.
++CONFIG_BOOTDELAY=1

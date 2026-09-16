@@ -1,0 +1,394 @@
+From f10d708c0890d1b25e5cbbb6c12dba6037f7957e Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:22:25 +0200
+Subject: [PATCH 53/77] sunxi: h713: h713_probe, print the board as a profile
+ row
+
+The probe already reads everything a support entry needs, and prints it
+as prose: a sentence about the firmware here, a note about the panel
+there, a table of DRAM words above. That is right for the person at the
+console and wrong for what actually happens next, which is that somebody
+here reads a pasted log and writes profiles/<id>.py from it. Prose has to
+be translated, and a translation is where a value gets lost.
+
+So the probe now ends with a profile row: one "key: value" line per field,
+each key named exactly as the installer's identify() names it
+(umbau/plan/api-stufe2.md), in the order a profile is written. board,
+dram_clk_mhz, layout.entries, mips.display_bin.size and .sha256,
+panel.declared_project_id, hdcp_wait_va, active_slot, both bootloader
+slots and whether they agree, where panel_config.ini was found, and
+secure_storage. The values repeat what the sections above printed, on
+purpose: the sections are prose and change when the prose is wrong, the
+row is a record.
+
+Three of those fields are new work, not a reprint.
+
+Both bootloader slots are hashed, not just the one the board booted from.
+A stock device keeps display.bin twice and the copies are not always the
+same file -- on an HY310 the display_cfg.xml beside them differs -- so
+"which slot is live" and "does the other agree" are two questions and a
+restore needs both. The slots are addressed by partition name
+(1#bootloader_a, 1#bootloader_b), because an ADT-3 layout numbers them
+differently. The second copy is hashed in the logo buffer, which the
+sections above are done with by then, and refused if it is larger than
+the gap to the CPU_COMM share region.
+
+The declared project ID and the place panel_config.ini was read from come
+from the same resolution the boot path uses (h713_disp_declared_project:
+env h713_project, else the file by name on Reserve0_<slot>, Reserve0,
+media_data). The firmware table no longer names a board's ID, since one
+image serves boards with different panels.
+
+secure_storage reports whether LBA 12288 carries the sunxi signature --
+the store_object_t magic 0x17253948 of the map item, doku/68 -- and what
+that item calls itself. Nothing else: no contents, no digest, and when
+the magic is absent no bytes either, because those are HDCP keys, the
+WLAN and Bluetooth MACs and the serial number, none of it recoverable
+and none of it in any firmware image (doku/109 2.3). A foreign board's
+owner gets what his profile needs to lock the region, and our layout's
+hole is shown to sit where it should.
+
+The row ends by saying that the stock chain starts the MIPS in its logo
+path and that this probe never does. That sentence is there because the
+probe is run by people who have been told our port might brick their
+device, and the thing they are watching is the one moment where it
+visibly does not.
+
+Also: media_data is looked up unslotted for panel_config.ini as well (it
+is unslotted in all three vendor GPTs), and the leftover German
+identifier in do_h713_probe() is renamed.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 256 +++++++++++++++++++++++++++++++-
+ 1 file changed, 252 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 7490606f257..165d9a36958 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -6344,7 +6344,7 @@ static const char *h713_disp_fs_path(void)
+ 
+ static const struct h713_disp_part h713_disp_ini_parts[] = {
+ 	{ "Reserve0", true },
+-	{ "media_data", true },
++	{ "media_data", false },	/* unslotted in all three vendor GPTs */
+ };
+ 
+ static int h713_disp_ini_project(const char *dev, u32 *project)
+@@ -6392,14 +6392,24 @@ static int h713_disp_ini_project(const char *dev, u32 *project)
+ 	return -EINVAL;
+ }
+ 
++/*
++ * Where the last h713_disp_declared_project() found its answer: "env", a
++ * "1#<partition>" that panel_config.ini was read from, or "" for nowhere.
++ */
++static char h713_disp_project_src[24];
++
+ static int h713_disp_declared_project(u32 *project)
+ {
+ 	const char *s = env_get("h713_project");
+ 	char dev[24];
+ 	uint i;
+ 
++	h713_disp_project_src[0] = '\0';
++
+ 	if (s && *s) {
+ 		*project = hextoul(s, NULL);
++		strlcpy(h713_disp_project_src, "env",
++			sizeof(h713_disp_project_src));
+ 		return 0;
+ 	}
+ 
+@@ -6410,6 +6420,8 @@ static int h713_disp_declared_project(u32 *project)
+ 		if (h713_disp_ini_project(dev, project))
+ 			continue;
+ 
++		strlcpy(h713_disp_project_src, dev,
++			sizeof(h713_disp_project_src));
+ 		printf("H713 disp: project 0x%02x, from %s on %s %s\n",
+ 		       *project, H713_DISP_PANEL_INI, H713_DISP_FS_IF, dev);
+ 		return 0;
+@@ -12045,6 +12057,15 @@ static const char * const h713_probe_dram_names[H713_PROBE_DRAM_WORDS] = {
+ 
+ static u8 h713_probe_sector[512] __aligned(ARCH_DMA_MINALIGN);
+ 
++/*
++ * Two things the sections below find and the profile row at the end has to
++ * quote: the clock the vendor's own boot0 declares, and the partition the
++ * display artifacts were actually read from. Both are zero when the search
++ * for them came up empty, and the row says so rather than guessing.
++ */
++static u32 h713_probe_dram_clk;
++static char h713_probe_dev_used[16];
++
+ /*
+  * The vendor's own DRAM settings, from the boot0 header on the eMMC. Not from
+  * the firmware image: the flash tool patches para2 and tpr13 on the way in, so
+@@ -12130,8 +12151,10 @@ static void h713_probe_boot0(int devnum)
+ 
+ 			printf("   dram_%-6s 0x%08x", h713_probe_dram_names[i],
+ 			       v);
+-			if (i == 0)
++			if (i == 0) {
+ 				printf("   %u MHz", v);
++				h713_probe_dram_clk = v;
++			}
+ 			printf("\n");
+ 		}
+ 		return;
+@@ -12163,6 +12186,8 @@ static void h713_probe_report(void)
+ 
+ 	printf("H713 probe: read from %s %s:%s\n", H713_DISP_FS_IF,
+ 	       h713_disp_fs_dev(), h713_disp_fs_path());
++	strlcpy(h713_probe_dev_used, h713_disp_fs_dev(),
++		sizeof(h713_probe_dev_used));
+ 
+ 	if (h713_mips_accept_size((ulong)h713_probe_fw_len))
+ 		return;
+@@ -12244,10 +12269,232 @@ static void h713_probe_display(void)
+ 	env_set("h713_mips_dev", keep[0] ? keep : NULL);
+ }
+ 
++/*
++ * The profile row.
++ *
++ * Everything above is written for a person watching a console. This is
++ * written for the file that comes out of it. One key: value line per field,
++ * the field named exactly as the installer's identify() names it, so a
++ * stranger pastes his log into an issue and profiles/<id>.py is written from
++ * it by hand, without anyone here ever holding the board.
++ *
++ * It repeats values the sections above already printed. That is deliberate:
++ * the sections are prose and change when the prose is wrong, the row is a
++ * record and the two must not be the same thing.
++ */
++#define H713_PROBE_SECSTORE_LBA		12288U
++#define H713_PROBE_SECSTORE_MAGIC	0x17253948
++
++/*
++ * The one region of this eMMC that is never written and never read out: the
++ * sunxi secure storage, seven 4 KiB items from LBA 12288 holding the HDCP 1.4
++ * and 2.2 keys, the WLAN and Bluetooth MAC addresses and the serial number
++ * (doku/109 2.3, doku/68). None of it is recoverable if it is lost, and none
++ * of it exists in any firmware image.
++ *
++ * So the row reports the signature and nothing else: the store_object_t magic
++ * in the first four bytes of the map item, and what that item calls itself.
++ * No contents and no digest. The point is to tell a foreign board's owner
++ * where his keys are so his profile can lock the region, and to show that the
++ * hole our layout leaves is in the right place -- not to copy anything out.
++ *
++ * When the magic is not there, the row says only that. Whatever another
++ * scheme keeps at that address is unknown here, and unknown may mean keys.
++ */
++static void h713_probe_row_secure_storage(struct blk_desc *desc)
++{
++	const u8 *name = h713_probe_sector + 8;
++	uint i;
++
++	if (!desc || blk_dread(desc, H713_PROBE_SECSTORE_LBA, 1,
++			       h713_probe_sector) != 1) {
++		printf("secure_storage: unreadable at LBA %u\n",
++		       H713_PROBE_SECSTORE_LBA);
++		return;
++	}
++
++	/*
++	 * No sunxi signature: say so and nothing more. What sits there on a
++	 * board with another scheme is unknown, and it might be key material.
++	 */
++	if (get_unaligned_le32(h713_probe_sector) !=
++	    H713_PROBE_SECSTORE_MAGIC) {
++		printf("secure_storage: none at LBA %u -- no sunxi signature\n",
++		       H713_PROBE_SECSTORE_LBA);
++		return;
++	}
++
++	printf("secure_storage: sunxi at LBA %u (magic 0x%08x",
++	       H713_PROBE_SECSTORE_LBA, H713_PROBE_SECSTORE_MAGIC);
++	for (i = 0; i < 64 && name[i] >= 0x20 && name[i] <= 0x7e; i++)
++		;
++	if (i && i < 64 && !name[i])
++		printf(", item \"%s\"", (const char *)name);
++	printf(")\n");
++}
++
++static void h713_probe_row_layout(struct blk_desc *desc)
++{
++	struct disk_partition info;
++	int part, n = 0;
++
++	if (!desc) {
++		printf("layout.entries: unknown -- no mmc 1\n");
++		return;
++	}
++
++	for (part = 1; part <= MAX_SEARCH_PARTITIONS; part++)
++		if (!part_get_info(desc, part, &info))
++			n++;
++
++	printf("layout.entries: %d\n", n);
++}
++
++/*
++ * A stock device keeps display.bin twice, on bootloader_a and bootloader_b,
++ * and the two copies are not always the same file -- on an HY310 the
++ * display_cfg.xml beside them differs. Which one the board is using is the
++ * active slot, and whether the other agrees is the first thing a restore has
++ * to know, so both are hashed. The scratch address is the logo buffer, which
++ * the sections above are finished with by the time this runs.
++ */
++#define H713_PROBE_SLOT_MAX	0x300000UL	/* logo buffer to CPU_COMM */
++
++static int h713_probe_slot_digest(const char *dev, u8 *digest, loff_t *len)
++{
++	char path[64];
++
++	snprintf(path, sizeof(path), "%s/display.bin", h713_disp_fs_path());
++
++	if (fs_set_blk_dev(H713_DISP_FS_IF, dev, FS_TYPE_ANY))
++		return -ENODEV;
++	if (fs_size(path, len) || !*len)
++		return -ENOENT;
++	/* Unknown board, unknown file: the buffer ends at the share region. */
++	if ((ulong)*len > H713_PROBE_SLOT_MAX)
++		return -EFBIG;
++	if (fs_set_blk_dev(H713_DISP_FS_IF, dev, FS_TYPE_ANY))
++		return -ENODEV;
++	if (fs_read(path, H713_DISP_LOGO_ADDR, 0, 0, len) || !*len)
++		return -ENOENT;
++
++	sha256_csum_wd((const u8 *)H713_DISP_LOGO_ADDR, (uint)*len, digest,
++		       CHUNKSZ_SHA256);
++	return 0;
++}
++
++static void h713_probe_row_slot(const char *field, const char *dev,
++				u8 *digest, loff_t *len, int *ret)
++{
++	*ret = h713_probe_slot_digest(dev, digest, len);
++
++	printf("%s: ", field);
++	if (*ret == -EFBIG) {
++		printf("too large to hash here, %llu bytes (%s %s)\n", *len,
++		       H713_DISP_FS_IF, dev);
++		return;
++	}
++	if (*ret) {
++		printf("absent (%s %s)\n", H713_DISP_FS_IF, dev);
++		return;
++	}
++	h713_mips_print_digest(digest);
++	printf(" %llu\n", *len);
++}
++
++/*
++ * Where the board said what it is: the partition panel_config.ini was read
++ * from by h713_disp_declared_project() above, found by name (Reserve0_<slot>,
++ * Reserve0, media_data), or the environment. Nothing is searched twice.
++ */
++static void h713_probe_row_panel_ini(void)
++{
++	if (!h713_disp_project_src[0])
++		printf("panel_config.ini: not found (%s by name, then %s)\n",
++		       h713_disp_ini_parts[0].name, h713_disp_ini_parts[1].name);
++	else if (!strcmp(h713_disp_project_src, "env"))
++		printf("panel_config.ini: not read -- h713_project is set in "
++		       "the environment\n");
++	else
++		printf("panel_config.ini: %s %s\n", H713_DISP_FS_IF,
++		       h713_disp_project_src);
++}
++
++static void h713_probe_profile_row(void)
++{
++	u8 digest[SHA256_SUM_LEN], da[SHA256_SUM_LEN], db[SHA256_SUM_LEN];
++	struct blk_desc *desc;
++	loff_t la = 0, lb = 0;
++	int ra, rb;
++	ulong site;
++	u32 project;
++
++	desc = blk_get_devnum_by_uclass_id(UCLASS_MMC, 1);
++
++	printf("\n-- profile row --\n");
++
++	printf("board: %s\n", h713_mips_fw ? h713_mips_fw->board : "unknown");
++
++	if (h713_probe_dram_clk)
++		printf("dram_clk_mhz: %u\n", h713_probe_dram_clk);
++	else
++		printf("dram_clk_mhz: unknown -- no vendor boot0 on this "
++		       "eMMC; this build ran at %u\n", (uint)CONFIG_DRAM_CLK);
++
++	h713_probe_row_layout(desc);
++
++	if (h713_probe_fw_len) {
++		sha256_csum_wd((const u8 *)H713_MIPS_FW_ADDR,
++			       h713_mips_fw_size, digest, CHUNKSZ_SHA256);
++		printf("mips.display_bin.size: %llu\n", h713_probe_fw_len);
++		printf("mips.display_bin.sha256: ");
++		h713_mips_print_digest(digest);
++		printf("\n");
++	} else {
++		printf("mips.display_bin.size: unknown -- none found\n");
++		printf("mips.display_bin.sha256: unknown -- none found\n");
++	}
++
++	/*
++	 * The declared ID is a property of the board, read the way the boot
++	 * path reads it (env h713_project, else panel_config.ini by name on
++	 * Reserve0 or media_data); the firmware table does not name one, since
++	 * one image serves boards with different panels.
++	 */
++	if (!h713_disp_declared_project(&project))
++		printf("panel.declared_project_id: 0x%02x\n", project);
++	else
++		printf("panel.declared_project_id: unknown -- h713_project unset "
++		       "and no %s found\n", H713_DISP_PANEL_INI);
++
++	site = h713_mips_find_hdcp_wait();
++	if (site)
++		printf("hdcp_wait_va: 0x%08lx\n", site);
++	else
++		printf("hdcp_wait_va: not found\n");
++
++	printf("active_slot: %s\n",
++	       h713_probe_dev_used[0] ? h713_probe_dev_used : "none");
++
++	h713_probe_row_slot("mips.bootloader_a", "1#bootloader_a", da, &la, &ra);
++	h713_probe_row_slot("mips.bootloader_b", "1#bootloader_b", db, &lb, &rb);
++	printf("mips.bootloader_a_equals_b: %s\n",
++	       ra || rb ? "unknown -- one of the two is missing" :
++	       (la == lb && !memcmp(da, db, SHA256_SUM_LEN)) ? "yes" : "no");
++
++	h713_probe_row_panel_ini();
++
++	h713_probe_row_secure_storage(desc);
++
++	printf("\nThe stock boot chain starts the MIPS in its logo path. This\n"
++	       "probe never does: every line above was read, hashed or\n"
++	       "counted with the coprocessor held in reset and the panel dark.\n");
++}
++
+ static int do_h713_probe(struct cmd_tbl *cmdtp, int flag, int argc,
+ 			 char *const argv[])
+ {
+-	bool war = h713_probe_mode;
++	bool was = h713_probe_mode;
+ 
+ 	if (argc != 1)
+ 		return CMD_RET_USAGE;
+@@ -12263,8 +12510,9 @@ static int do_h713_probe(struct cmd_tbl *cmdtp, int flag, int argc,
+ 
+ 	h713_probe_boot0(1);
+ 	h713_probe_display();
++	h713_probe_profile_row();
+ 
+-	h713_probe_mode = war;
++	h713_probe_mode = was;
+ 
+ 	printf("\nH713 probe: done. Paste everything above into the issue.\n");
+ 

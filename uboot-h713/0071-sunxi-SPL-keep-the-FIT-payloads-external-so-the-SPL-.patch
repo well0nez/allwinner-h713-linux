@@ -1,0 +1,76 @@
+From 4fa6175880d0a7379b5417cc7873b8d58194c59e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 16 Sep 2026 10:26:01 +0200
+Subject: [PATCH 71/77] sunxi: SPL: keep the FIT payloads external so the SPL
+ stops copying them
+
+The SPL runs with the MMU off (nothing links dcache_enable()/mmu_setup()
+into it, only dcache_disable() for the exit path), so on arm64 every SPL
+load and store is a Device-nGnRnE access: no gathering, no early write
+acknowledge.
+
+With the payloads embedded in the FIT, spl_simple_fit_read()
+(common/spl/spl_fit.c:711-733) pulls the whole 941193-byte FIT into a
+scratch buffer and load_simple_fit() (common/spl/spl_fit.c:322, 356)
+memmove()s all three images out of it again.  memmove() forwards to
+memcpy() because dest < src (lib/string.c:633), and memcpy() only copies
+8-byte words when source and destination share 8-byte alignment
+(lib/string.c:604).  An embedded "data" property sits at a 4-byte aligned
+offset inside the FDT - 0x134, 0xd7874 and 0xe297c in the released image,
+all 4 mod 8 - while the load addresses are 0x4a000000 and 0x40000000, so
+the word loop is skipped and all 939228 bytes are copied one uncached
+byte at a time.
+
+Measured on the HY310: 1.610 to 1.618 s between "Trying to boot from
+MMC2" and BL31's first line, over five boots and two builds, and
+unchanged by the eMMC clock fix 2dbc927 - because almost none of it is
+eMMC transfer time.
+
+Ask mkimage for external data on 512-byte boundaries (-E -B 200).  Every
+data-offset is then a multiple of 512, so the overhead in
+load_simple_fit() is zero, each image is read straight to its load
+address, and the trailing memmove() sees dest == src and returns at once.
+The FIT header read shrinks from 1839 to 3 sectors and the total eMMC
+traffic from 1840 to 1833 sectors.
+
+The SPL binary is not touched (it has no device tree of its own;
+CONFIG_SPL_OF_CONTROL is off), and it already carries the external-data
+path: fit_image_get_data_offset() and fit_image_get_data_size() are in
+u-boot-spl.map.  An old SPL also reads a new FIT and a new SPL an old
+one, so the two can be flashed independently.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ arch/arm/dts/sunxi-u-boot.dtsi | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/arch/arm/dts/sunxi-u-boot.dtsi b/arch/arm/dts/sunxi-u-boot.dtsi
+index e1a9a7f5d4c..99ca78ecb35 100644
+--- a/arch/arm/dts/sunxi-u-boot.dtsi
++++ b/arch/arm/dts/sunxi-u-boot.dtsi
+@@ -44,6 +44,25 @@
+ 		fit {
+ 			description = "Configuration to load U-Boot and firmware";
+ 			#address-cells = <1>;
++			/*
++			 * Keep the payloads outside the FIT structure, on block
++			 * boundaries.  The SPL runs with the MMU off, so every
++			 * load and store goes to Device-nGnRnE memory.  With the
++			 * payloads embedded, spl_simple_fit_read() has to pull
++			 * the whole FIT into a scratch buffer and load_simple_fit()
++			 * then moves every image out of it again; lib/string.c
++			 * memcpy() only copies words when source and destination
++			 * share 8-byte alignment, which an embedded "data"
++			 * property (4-byte aligned inside the FDT) does not, so
++			 * the move degrades to one uncached byte at a time.  On
++			 * the H713 that is 1.4 s for a 940 KiB FIT.
++			 * With external data each image is read straight to its
++			 * load address; the 512-byte alignment makes the
++			 * source and destination of the trailing memmove()
++			 * identical, so the move is skipped entirely.
++			 */
++			fit,external-offset = <0>;
++			fit,align = <0x200>;
+ 			fit,fdt-list = "of-list";
+ 
+ 			images {

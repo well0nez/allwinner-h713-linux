@@ -1,0 +1,59 @@
+From 44b10d123956186264194bab20feab657b33659d Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 10:11:17 +0200
+Subject: [PATCH 61/77] sunxi: h713: say what the DDR3 path really does with
+ tpr0..tpr2 at 636
+
+Reading dram_sun50iw12.c for the 636 MHz case (brief F2a item 4) turned up one
+wrong sentence in the comment this base was born with, inherited from
+hy310_defconfig and from boards/hy300-pro/uboot.config: tpr0..tpr2 are not
+"computed from the clock" on the DDR3 path. They are not read at all. The DDR3
+arm of iw12_set_timing() builds DRAMC+0x02c..0x094 from a frozen cycle-count
+table with four clock-scaled init timers; only the LPDDR3 arm unpacks
+tpr0..tpr2 into register fields. Same outcome for the board -- the values are
+inert either way -- but the reason matters to the next person who changes one
+and wonders why nothing moved.
+
+The reading found nothing wrong for 636 MHz, and the comment now says why. The
+speed bin splits at 800 MHz, so 636 is in the low bin -- and so are the bench
+board's 624 and, less obviously, the HY310's 792. The only branch that
+separates the three is the PHY arm at clk > 672 in iw12_phy_train(), where 636
+takes the same low side as the bench board's 624: the side verified
+register-exact against that board's stock boot0, while 792 is the one that
+crosses. 636 also falls inside the 312..1200 MHz sweep the DDR3 timing block
+was generalised from.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ configs/hy300_pro_defconfig | 18 +++++++++++++++---
+ 1 file changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/configs/hy300_pro_defconfig b/configs/hy300_pro_defconfig
+index 538ecd598a8..40cfcaa50f9 100644
+--- a/configs/hy300_pro_defconfig
++++ b/configs/hy300_pro_defconfig
+@@ -26,9 +26,21 @@
+ #     dump, which proves "enough for a dump", not "stable in operation".
+ #   - tpr11/tpr12 0x44440000/0x00005555 are this board's, and differ from the
+ #     HY310's 0x44340000/0x00006666.
+-#   - tpr0..tpr2 are in the file for completeness only; the DDR3 path in
+-#     arch/arm/mach-sunxi/dram_sun50iw12.c recomputes them from CONFIG_DRAM_CLK
+-#     and overwrites whatever is configured here.
++#   - tpr0..tpr2 are in the file for completeness only and have no effect:
++#     the DDR3 arm of iw12_set_timing() in
++#     arch/arm/mach-sunxi/dram_sun50iw12.c never reads them. It builds
++#     DRAMC+0x02c..0x094 from a frozen cycle-count table plus four init
++#     timers scaled by the clock. Only the LPDDR3 arm unpacks tpr0..tpr2.
++#   - at 636 MHz nothing in the DDR3 path is new. Its speed bin splits at
++#     800 MHz, so this board is in the low bin -- CL/CWL 6/4, MR0 0x1c70,
++#     MR2 0x18, which is what this file happens to configure anyway (the
++#     path overrides mr0/mr2 itself and ignores the configured ones); so
++#     are the bench board's 624 and the HY310's 792. The one branch that
++#     does split the three is the PHY arm at clk > 672 in
++#     iw12_phy_train(): 636 takes the low side, exactly as the bench
++#     board's 624 does, and that is the side verified register-exact
++#     against that board's stock boot0. 636 also sits inside the
++#     312..1200 MHz sweep the DDR3 timing block was generalised from.
+ #   - para2 and tpr13 are the values the vendor flash tool writes, as on a
+ #     device.
+ #   - the device tree is sun50i-h713-hy300-pro, an include of the bench board's

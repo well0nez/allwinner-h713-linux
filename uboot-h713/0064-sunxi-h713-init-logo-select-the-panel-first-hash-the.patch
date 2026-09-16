@@ -1,0 +1,117 @@
+From 80eae99b99e805a89d0b0acb8c4156722ba7800f Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 16:56:28 +0200
+Subject: [PATCH 64/77] sunxi: h713: init logo -- select the panel first, hash
+ the loaded length, blank without a logo
+
+Three corrections from the first device runs of `h713_disp init 0x30 logo`
+(HY310, U-Boot loaded over FEL against the stock partitions, 15.09.2026):
+
+1. The BMP check and the OSD geometry read h713_disp_panel, which until
+   h713_disp_lookup() still points at the default board B (1280x720). The
+   logo was published before the lookup and the HY310's own 1920x1080 file was
+   refused ("need ... 1280x720"). The lookup now runs first; h713_disp_run()
+   repeats it, it is a table walk with no other side effect.
+
+2. The second publish after firmware readiness hashed a fixed size instead of
+   the bytes actually read, so the vendor file failed its own digest check
+   ("refusing non-vendor bootlogo.bmp"). The loaded length is kept and used.
+
+3. Without a logo the OSD buffer is filled black before the sequence, instead
+   of scanning whatever DRAM holds (white on a cold start, noise after a warm
+   one).
+
+Run 2 (fix 1 only): "published at 0x6c100000", MIPS status 1, scan counter
+advancing, and the operator saw the MagCubic logo on the wall. Run 3 (all
+three): both publishes accepted, "boot logo up at 0x6c100000 with the
+firmware running; MIPS reset=00070001 status=00000001", logo colours in the
+middle of the buffer (0xffe9cb37). Logs: umbau/test-20260915/logo-test-*.log.
+Nothing was written to the eMMC; bootcmd is still unchanged.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 43 ++++++++++++++++++++++++++++++++-
+ 1 file changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index f32b8446604..2760025f6ab 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -7801,6 +7801,15 @@ static void h713_disp_fill_pattern(uint phase)
+  * uncompressed. A custom image that is not exactly that is refused, not
+  * mangled.
+  */
++/*
++ * Length of the BMP last read into H713_DISP_VENDOR_BMP_ADDR. A caller that
++ * publishes again without loading (init ... logo, after the firmware is up)
++ * must hash the bytes that were read, not a fixed size: the fixed size is one
++ * board's asset, and hashing the HY310's 6.2 MB logo over it refused the
++ * vendor's own file on the second publish (device run 2, 15.09.2026).
++ */
++static loff_t h713_disp_bmp_loaded_len;
++
+ static int h713_disp_publish_bmp(bool load, const char *path,
+ 				 bool verify_vendor, bool chroma)
+ {
+@@ -7808,7 +7817,8 @@ static int h713_disp_publish_bmp(bool load, const char *path,
+ 	u8 digest[SHA256_SUM_LEN];
+ 	u8 *pixels;
+ 	u32 *fb = (u32 *)H713_DISP_OSD_FB_ADDR;
+-	loff_t len = H713_DISP_VENDOR_BMP_SIZE;
++	loff_t len = h713_disp_bmp_loaded_len ? h713_disp_bmp_loaded_len :
++					       H713_DISP_VENDOR_BMP_SIZE;
+ 	u32 data_offset, compression, row_bytes;
+ 	s32 width, height;
+ 	u16 planes, bpp;
+@@ -7838,6 +7848,7 @@ static int h713_disp_publish_bmp(bool load, const char *path,
+ 		}
+ 		printf("  %-28s -> 0x%08lx  %llu bytes\n", path,
+ 		       H713_DISP_VENDOR_BMP_ADDR, len);
++		h713_disp_bmp_loaded_len = len;
+ 	}
+ 
+ 	if (verify_vendor) {
+@@ -11101,6 +11112,22 @@ static int h713_disp_init_only(u32 project, bool release_mips, bool quiesce,
+ 		h713_cfg_set_tag("level", '0' + elog_level, "elog level");
+ 	}
+ 
++	/*
++	 * Select the panel before anything is sized from it: the BMP check
++	 * and the OSD geometry read h713_disp_panel, which until the lookup
++	 * still points at the default board B (1280x720). Publishing before
++	 * the lookup refused the HY310's own 1920x1080 logo on the first
++	 * device run of this path (15.09.2026). h713_disp_run() repeats the
++	 * lookup; it is a table walk with no side effect but the selection.
++	 */
++	{
++		struct h713_disp_sel sel;
++
++		ret = h713_disp_lookup(H713_DISP_LOGO_ADDR, project, &sel);
++		if (ret)
++			return h713_disp_fail(ret);
++	}
++
+ 	if (logo) {
+ 		if (logo_file)
+ 			ret = h713_disp_publish_bmp(true, logo_file, false, false);
+@@ -11112,6 +11139,20 @@ static int h713_disp_init_only(u32 project, bool release_mips, bool quiesce,
+ 		else
+ 			logo_up = true;
+ 	}
++	if (!logo_up) {
++		/*
++		 * No logo: black, not whatever DRAM holds. The records point
++		 * AFBD channel 1 at this buffer, and with the firmware up the
++		 * panel scans it until Linux publishes its console -- white on
++		 * a cold start, noise after a warm one.
++		 */
++		u32 *fb = (u32 *)H713_DISP_OSD_FB_ADDR;
++		uint n = H713_DISP_OSD_SIZE / sizeof(u32);
++
++		while (n--)
++			*fb++ = 0xff000000;
++		flush_cache(H713_DISP_OSD_FB_ADDR, H713_DISP_OSD_SIZE);
++	}
+ 
+ 	ret = h713_disp_run(H713_DISP_LOGO_ADDR, project, true, true, false,
+ 			    false, false, true, release_mips);

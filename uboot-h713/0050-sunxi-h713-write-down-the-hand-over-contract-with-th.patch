@@ -1,0 +1,88 @@
+From 97439f4c3a0f46919fe268fd79a550887a5af1a1 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:21:02 +0200
+Subject: [PATCH 50/77] sunxi: h713: write down the hand-over contract with the
+ vendor driver
+
+Two facts from the kernel side (A7 report, 5) that our code satisfies and
+never stated, so nobody editing it would know they are load-bearing.
+
+The vendor sunxi-mipsloader's first mips_reset() takes an "already
+powered" branch: it touches no reset line and records mips_status =
+RUNNING regardless. Hand over with the core in reset and the driver still
+says RUNNING, and the first ioctl start returns 0 having done nothing --
+a trap with no error message on any console. So the boot path must leave
+the core running, which is exactly what "h713_disp init" without noboot
+or quiesce does.
+
+And the driver reads 0x03061024/28/30 back as base[9], base[10] and
+base[12] rather than deriving them, then carries them through powerdown
+and resume unchanged. Whatever stands in them at hand-over is what Linux
+believes for the session. They are written and read back in
+h713_mips_release_reset() under publish_shmem, which the boot path sets;
+say so there, and say what the two bench flags give up.
+
+Comment only.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 39 +++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index d60d67d6f42..7feb28e58ae 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -3728,6 +3728,22 @@ static int h713_mips_release_reset(bool publish_shmem)
+ 	writel(H713_MIPS_RESET_STAGE3, H713_MIPS_RESET_REG);
+ 	mdelay(12);
+ 
++	/*
++	 * These two and the boot address below are the hand-over contract.
++	 *
++	 * The vendor kernel's sunxi-mipsloader reads exactly them back as
++	 * base[9], base[10] and base[12] -- 0x03061024, 0x03061028,
++	 * 0x03061030 -- and mips_powerdown()/mips_reset() then carry them
++	 * around unchanged; it never re-derives them. So whatever stands here
++	 * when we hand over is what the driver believes for the rest of the
++	 * session, and it has to keep agreeing with the memory map in
++	 * display_cfg.xml. The read-back below is not paranoia: if publication
++	 * failed, the driver would inherit whatever was in the register.
++	 *
++	 * publish_shmem is false only on the paths that start the firmware
++	 * without the CPU_COMM handshake -- "h713_mips start" and the bare
++	 * h713_disp run. Those are bench commands. The boot path passes true.
++	 */
+ 	if (publish_shmem) {
+ 		writel(H713_MIPS_SHMEM_ADDR, H713_MIPS_SHARE_ADDR_REG);
+ 		writel(H713_MIPS_SHMEM_SIZE, H713_MIPS_SHARE_SIZE_REG);
+@@ -10920,6 +10936,29 @@ static int h713_disp_call_table(uint raw_entries)
+  * back from Linux. Mode 2 is deliberately not offered: the knowledge base
+  * records that enabling it may break MIPS init.
+  */
++/*
++ * This is the hand-over point, and what it owes the next stage is exact.
++ *
++ * The vendor driver's first mips_reset() takes an "already powered" branch: it
++ * touches no reset line, records mips_status = RUNNING, and asks no questions.
++ * So the state we leave behind is the state Linux believes in, and there are
++ * two halves to leaving it right.
++ *
++ * The core must be running. Hand over with it in reset and the driver still
++ * reports RUNNING, and the first ioctl start returns 0 without doing anything
++ * -- a trap with no error message anywhere. That is what the default path
++ * gives: release_mips true, no quiesce.
++ *
++ * And 0x03061024/0x03061028/0x03061030 must hold the share address, the share
++ * size and the firmware's entry point, because the driver reads those three
++ * back rather than deriving them (A7 report, 5). They are written and verified
++ * in h713_mips_release_reset(), which this path reaches with publish_shmem
++ * true: h713_disp_run() is called below with prove_ready set.
++ *
++ * "noboot" and "quiesce" deliberately break both halves. They are bench modes
++ * for the register diagnostics -- nothing may follow them but a power cycle,
++ * and in particular not a kernel.
++ */
+ static int h713_disp_init_only(u32 project, bool release_mips, bool quiesce,
+ 			       int elog_level)
+ {

@@ -1,0 +1,57 @@
+From a6f12b529e22edc3feaedd11792db2ff19fd3862 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 10:07:45 +0200
+Subject: [PATCH 59/77] arm64: dts: allwinner: h713: device tree for the HY300
+ Pro
+
+Same pattern and same reason as sun50i-h713-hy310.dts: an include of the bench
+board's tree plus model and compatible, so that the two cannot drift and a boot
+log names the board it is on. The tree carries OF_UPSTREAM, so the file lands
+under dts/upstream/src/arm64/allwinner/ and its name carries the "allwinner/"
+prefix; there is no Makefile line to add.
+
+Nothing board-specific is overridden, because nothing board-specific has been
+measured: the one number known to differ is the DRAM clock, and that lives in
+the defconfig. The panel is unknown beyond the declared project id 0x34, and no
+tree describes the panel anyway -- the display coprocessor drives it from its
+own tables.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../arm64/allwinner/sun50i-h713-hy300-pro.dts | 27 +++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+ create mode 100644 dts/upstream/src/arm64/allwinner/sun50i-h713-hy300-pro.dts
+
+diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300-pro.dts b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300-pro.dts
+new file mode 100644
+index 00000000000..35f26a6d20d
+--- /dev/null
++++ b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300-pro.dts
+@@ -0,0 +1,27 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * "HY300 Pro" projector, reported in issue #1 of
++ * well0nez/allwinner-h713-linux by its owner. Nobody here has held one.
++ *
++ * Like the HY310's tree, this is an include of the bench board's rather than a
++ * copy, for the same reason: a board should boot a device tree named after
++ * itself, so that a boot log says which board it is running on instead of
++ * naming one nobody has built for. The DRAM clock that distinguishes this
++ * board (636 MHz) lives in configs/hy300_pro_defconfig, not here.
++ *
++ * What is *not* claimed by this file: the panel. It declares project id 0x34,
++ * and that is all that is known about its display -- resolution, timings and
++ * port count have never been read off it. No node here describes a panel in
++ * any case; the display coprocessor drives it from its own tables.
++ *
++ * Nothing else about this board has been measured as different from the bench
++ * board's tree, so nothing else is overridden. When something is measured, it
++ * belongs here.
++ */
++
++#include "sun50i-h713-hy200-qz713df-a1.dts"
++
++/ {
++	model = "MagCubic HY300 Pro";
++	compatible = "magcubic,hy300-pro", "allwinner,sun50i-h713";
++};

@@ -1,0 +1,62 @@
+From fd3d58a091ae9427852847c166a2becdb13c28ce Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:20:27 +0200
+Subject: [PATCH 49/77] sunxi: h713: say what the MIPS clock divider yields --
+ 400 MHz, as intended
+
+We write 0x80000002 to 0x02001600 and never stated a rate, while the
+vendor kernel calls clk_set_rate(mips_clk, 400000000) on its first
+mips_reset() -- which happens after we have already started the core (A7
+report, 5). If the two disagreed, the driver would silently re-rate a
+running coprocessor, so the number is worth having written down.
+
+It does not disagree. 0x80000002 is gate on, parent 0, no pre-divider,
+M = 2, so parent over three; parent 0 is PLL_PERI(2X), and our own SPL
+programs PLL6 from CCM_PLL6_DEFAULT 0xa8003100 for the H713 -- N+1 = 50,
+both output dividers 1 -- which is 600 MHz on 1X and 1200 MHz on 2X.
+1200 / 3 = 400 MHz, the rate the driver asks for.
+
+Comment only, nothing changes. The arithmetic assumes the standard
+sun50iw12 module-clock encoding, and the exact match with the vendor's
+400 MHz is the cross-check on that assumption.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 6eb9cd3b7da..d60d67d6f42 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -45,6 +45,30 @@
+ #define H713_MIPS_SHARE_SIZE_REG	0x03061028UL
+ #define H713_MIPS_BOOTADDR_REG		0x03061030UL
+ 
++/*
++ * The MIPS core clock: gate on, parent 0, no pre-divider, M = 2.
++ *
++ * bit 31 gates SCLK, bits 26:24 select the parent, bits 9:8 are the power-of-
++ * two pre-divider and bits 4:0 the divider M, which divides by M+1. 0x80000002
++ * is therefore parent 0 divided by three, and parent 0 of a module clock in
++ * this CCU is PLL_PERI(2X). Our own SPL programs PLL6 with CCM_PLL6_DEFAULT
++ * 0xa8003100 for the H713 -- N+1 = 50, both output dividers 1, so 24 MHz * 50
++ * / 2 = 600 MHz on the 1X output and 1200 MHz on the 2X.
++ *
++ *	1200 MHz / 3 = 400 MHz
++ *
++ * which is exactly what the vendor kernel asks for: sunxi-mipsloader calls
++ * clk_set_rate(mips_clk, 0x17d78400) -- 400000000 -- on its very first
++ * mips_reset(), i.e. after we have already started the core (A7 report, 5).
++ * The rate we hand over is the rate it wants, so its call is a no-op and there
++ * is nothing to change here. Had the two disagreed, the driver would have
++ * re-rated a running coprocessor.
++ *
++ * The arithmetic assumes the standard sun50iw12 module-clock encoding; the
++ * exact match with the vendor's 400 MHz is what makes that reading credible,
++ * and it is the only cross-check available without the CCU driver's parent
++ * table.
++ */
+ #define H713_MIPS_CLK_VALUE		0x80000002
+ #define H713_MIPS_CLK_DISABLED		0x00000000
+ 

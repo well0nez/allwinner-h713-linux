@@ -1,7 +1,7 @@
 From 310e56389c09ee868ac0742419695fa3a995fc8d Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Thu, 10 Sep 2026 16:45:35 +0200
-Subject: [PATCH 25/40] sunxi: h713: keep classic network interface names
+Subject: [PATCH 25/77] sunxi: h713: keep classic network interface names
 
 The default bootargs left net.ifnames at its default, which is fine
 while the kernel configures the network itself over NFS root. Booting

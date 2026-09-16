@@ -1,7 +1,7 @@
 From e5ca97a3c21311bdc317990c359fc9a0616d054b Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Thu, 10 Sep 2026 10:45:33 +0200
-Subject: [PATCH 23/40] sunxi: h713: make the display artifact location
+Subject: [PATCH 23/77] sunxi: h713: make the display artifact location
  configurable
 
 h713_disp_read() had the vendor FAT partition wired in as "mmc" "1:2" and

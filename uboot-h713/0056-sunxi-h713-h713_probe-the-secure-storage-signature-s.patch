@@ -1,0 +1,122 @@
+From 642214cea18064ec516eedccfc8734cf2aaa0416 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 01:29:27 +0200
+Subject: [PATCH 56/77] sunxi: h713: h713_probe, the secure-storage signature
+ sits in the first item, not the map
+
+On a stock HY310 the row said "none at LBA 12288 -- no sunxi signature"
+while the region was intact: the first 4 KiB item is the map, a plain
+NUL-separated "name:size" list without a magic; the store_object_t items
+with 0x17253948 begin at +0x2000. Read both, count the map's entries,
+test the magic sixteen sectors in, name the first item. Found at the
+device test of 15.09.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 75 +++++++++++++++++++++------------
+ 1 file changed, 47 insertions(+), 28 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index a6359dde338..f95de4f4b00 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -12284,52 +12284,71 @@ static void h713_probe_display(void)
+  */
+ #define H713_PROBE_SECSTORE_LBA		12288U
+ #define H713_PROBE_SECSTORE_MAGIC	0x17253948
++#define H713_PROBE_SECSTORE_ITEM0	16U	/* +0x2000: the first store_object_t */
+ 
+ /*
+  * The one region of this eMMC that is never written and never read out: the
+- * sunxi secure storage, seven 4 KiB items from LBA 12288 holding the HDCP 1.4
+- * and 2.2 keys, the WLAN and Bluetooth MAC addresses and the serial number
+- * (doku/109 2.3, doku/68). None of it is recoverable if it is lost, and none
+- * of it exists in any firmware image.
+- *
+- * So the row reports the signature and nothing else: the store_object_t magic
+- * in the first four bytes of the map item, and what that item calls itself.
+- * No contents and no digest. The point is to tell a foreign board's owner
+- * where his keys are so his profile can lock the region, and to show that the
+- * hole our layout leaves is in the right place -- not to copy anything out.
+- *
+- * When the magic is not there, the row says only that. Whatever another
+- * scheme keeps at that address is unknown here, and unknown may mean keys.
++ * sunxi secure storage from LBA 12288, holding the HDCP 1.4 and 2.2 keys, the
++ * WLAN and Bluetooth MAC addresses and the serial number (doku/109 2.3,
++ * doku/68). None of it is recoverable if it is lost, and none of it exists in
++ * any firmware image.
++ *
++ * Its shape, as read off an HY310 (doku/68): the first 4 KiB item is the map,
++ * a NUL-separated list of "name:size" entries in plain text; the items follow
++ * from +0x2000, each a store_object_t that starts with the magic 0x17253948,
++ * then an id and a 64-byte name. So the signature to look for is the first
++ * item's magic, sixteen sectors in -- not the map, which carries none.
++ *
++ * The row reports the shape and nothing else: how many entries the map lists,
++ * that the item magic is there, and what the first item calls itself. No
++ * contents and no digest: what is there are keys. The point is to tell a
++ * foreign board's owner where his keys are so his profile can lock the region,
++ * and to show that the hole our layout leaves is in the right place. When the
++ * signature is missing the row says only that; what another scheme keeps at
++ * that address is unknown here, and unknown may mean keys.
+  */
+ static void h713_probe_row_secure_storage(struct blk_desc *desc)
+ {
+-	const u8 *name = h713_probe_sector + 8;
+-	uint i;
++	static u8 item[512] __aligned(ARCH_DMA_MINALIGN);
++	const u8 *map = h713_probe_sector;
++	const u8 *name = item + 8;
++	uint i, j, entries = 0;
+ 
+-	if (!desc || blk_dread(desc, H713_PROBE_SECSTORE_LBA, 1,
+-			       h713_probe_sector) != 1) {
++	if (!desc ||
++	    blk_dread(desc, H713_PROBE_SECSTORE_LBA, 1, h713_probe_sector) != 1 ||
++	    blk_dread(desc, H713_PROBE_SECSTORE_LBA + H713_PROBE_SECSTORE_ITEM0,
++		      1, item) != 1) {
+ 		printf("secure_storage: unreadable at LBA %u\n",
+ 		       H713_PROBE_SECSTORE_LBA);
+ 		return;
+ 	}
+ 
+-	/*
+-	 * No sunxi signature: say so and nothing more. What sits there on a
+-	 * board with another scheme is unknown, and it might be key material.
+-	 */
+-	if (get_unaligned_le32(h713_probe_sector) !=
+-	    H713_PROBE_SECSTORE_MAGIC) {
+-		printf("secure_storage: none at LBA %u -- no sunxi signature\n",
+-		       H713_PROBE_SECSTORE_LBA);
++	/* The map: printable, NUL-terminated tokens until the first empty one. */
++	for (i = 0; i < sizeof(h713_probe_sector) && map[i]; i = j + 1) {
++		for (j = i; j < sizeof(h713_probe_sector) &&
++		     map[j] >= 0x20 && map[j] <= 0x7e; j++)
++			;
++		if (j == i || j >= sizeof(h713_probe_sector) || map[j])
++			break;
++		entries++;
++	}
++
++	if (get_unaligned_le32(item) != H713_PROBE_SECSTORE_MAGIC) {
++		printf("secure_storage: no sunxi item signature at LBA %u "
++		       "(map at LBA %u lists %u entries)\n",
++		       H713_PROBE_SECSTORE_LBA + H713_PROBE_SECSTORE_ITEM0,
++		       H713_PROBE_SECSTORE_LBA, entries);
+ 		return;
+ 	}
+ 
+-	printf("secure_storage: sunxi at LBA %u (magic 0x%08x",
+-	       H713_PROBE_SECSTORE_LBA, H713_PROBE_SECSTORE_MAGIC);
++	printf("secure_storage: sunxi at LBA %u (map lists %u entries; item "
++	       "magic 0x%08x at LBA %u", H713_PROBE_SECSTORE_LBA, entries,
++	       H713_PROBE_SECSTORE_MAGIC,
++	       H713_PROBE_SECSTORE_LBA + H713_PROBE_SECSTORE_ITEM0);
+ 	for (i = 0; i < 64 && name[i] >= 0x20 && name[i] <= 0x7e; i++)
+ 		;
+ 	if (i && i < 64 && !name[i])
+-		printf(", item \"%s\"", (const char *)name);
++		printf(", first item \"%s\"", (const char *)name);
+ 	printf(")\n");
+ }
+ 

@@ -1,7 +1,7 @@
 From fcc147d3efbd6a4f31fa0d2c3c24e9cb4e6faeb0 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 02:20:57 +0200
-Subject: [PATCH 36/40] sunxi: h713: h713_probe, describe an unidentified board
+Subject: [PATCH 36/77] sunxi: h713: h713_probe, describe an unidentified board
  instead of refusing it
 
 The firmware revision table can only ever describe boards someone has

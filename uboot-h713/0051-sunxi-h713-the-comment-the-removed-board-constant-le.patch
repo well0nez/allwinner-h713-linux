@@ -1,0 +1,68 @@
+From 67084f75a070d86b4e9cdda865733c2c3f48beba Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:21:35 +0200
+Subject: [PATCH 51/77] sunxi: h713: the comment the removed board constant
+ left behind
+
+doku/120 6 recorded a stale help line saying "this board's project ID is
+0x34". The line itself went with 218792f, but the same sentence stood in
+a second place: the comment that used to introduce
+H713_DISP_BOARD_PROJECT_ID. The constant was deleted, the comment was
+not, so a block explaining a board-wide constant was left floating above
+an unrelated struct, still calling the bench board's 0x34 "this board's"
+in a file that by then knew about three boards.
+
+Keep what is still worth having -- board B declares 0x34 in its
+panel_config.ini and in stock's log, its bring-up ran 0x33, and the A/B
+of 2026-08-06 showed the two select the same prologue and timing and
+differ only in the DE block, which is why every 0x33 result still stands
+-- and say whose board it is about. Which project a board declares is now
+read from the board.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 24 +++++++++++++++---------
+ 1 file changed, 15 insertions(+), 9 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 7feb28e58ae..47a30dadb64 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -5264,12 +5264,18 @@ static int h713_disp_stock_panel_power(void)
+ 
+ 
+ /*
+- * This board's project ID, and it comes from the same panel_config.ini the
+- * struct above transcribes: "ProjectID = 52", which is 0x34.
+- *
+- * Bring-up ran 0x33 throughout, on no evidence. Stock's own log settles it --
+- * "Project id:0x34 version:25-1-6-3", then mips/ProjectID_0x0034.TSE -- so the
+- * config file and the running firmware agree, and 0x33 was a guess.
++ * A note about project 0x33, kept because the results that rest on it are
++ * still quoted. It is about the bench board, board B, and about nothing else:
++ * this used to introduce a compiled-in H713_DISP_BOARD_PROJECT_ID, which was
++ * that board's 0x34 and wrong on every other one. The constant went in
++ * 218792f; the sentence that called it "this board's" outlived it. Which
++ * project a board declares is now read from the board -- h713_project, or its
++ * panel_config.ini -- and the panel follows from it.
++ *
++ * Board B declares 0x34, in the panel_config.ini the struct above transcribes
++ * ("ProjectID = 52") and in stock's own log -- "Project id:0x34
++ * version:25-1-6-3", then mips/ProjectID_0x0034.TSE. Its bring-up here ran
++ * 0x33 throughout, on no evidence, so 0x33 was a guess.
+  *
+  * It is a guess that cost nothing, which was checked rather than assumed: an
+  * A/B on 2026-08-06 found 0x33 and 0x34 select the same prologue and timing
+@@ -5277,9 +5283,9 @@ static int h713_disp_stock_panel_power(void)
+  * patch table has run. The panel is indistinguishable. So every 0x33 result
+  * stands; see docs/mips-display-recovery.md.
+  *
+- * Prefer this for new work anyway. That equivalence covers the ARM's
+- * LogoRegData replay, and the ProjectID_*.TSE payloads -- which differ by 2688
+- * bytes and feed the MIPS -- are not exercised by any test we have.
++ * Prefer 0x34 for new work on that board anyway. The equivalence covers the
++ * ARM's LogoRegData replay, and the ProjectID_*.TSE payloads -- which differ by
++ * 2688 bytes and feed the MIPS -- are not exercised by any test we have.
+  */
+ 
+ struct h713_panel_patch {

@@ -1,0 +1,64 @@
+From 5c4fc82f8e80f6b7c1989f52a8db91863ba86c9f Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:16:57 +0200
+Subject: [PATCH 41/77] sunxi: h713: a device tree named after the board that
+ boots it
+
+Every HY310 build so far has loaded "sun50i-h713-hy200-qz713df-a1", the
+bench board's tree. That is not a mistake in the electrical sense -- the
+two boards differ in the DRAM clock, which lives in the defconfig, and in
+the panel, which no node describes because the display coprocessor drives
+it from its own tables -- but it is one in every other sense. A boot log
+that names another board tells the reader this is a board nobody has built
+for, and the next person to add a third board has no example of how to.
+
+So: a tree of its own, as an include of the bench board's plus model and
+compatible. Nothing is copied, so nothing can drift. What we patched into
+the HY200 tree stays there for now; moving the board-specific parts out is
+a later cleanup, not this change.
+
+No Makefile entry goes with it. This tree builds device trees through
+scripts/Makefile.dts, which derives dtb-y from CONFIG_DEFAULT_DEVICE_TREE,
+CONFIG_OF_LIST and CONFIG_SPL_OF_LIST -- the per-vendor lists of the Linux
+tree do not exist here. Naming the tree in the defconfig is the whole
+wiring, and CONFIG_OF_LIST follows it by default.
+
+Checked by compiling both trees and comparing them: the HY310 dtb differs
+from the HY200 dtb in model and compatible and in nothing else.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../src/arm64/allwinner/sun50i-h713-hy310.dts | 24 +++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+ create mode 100644 dts/upstream/src/arm64/allwinner/sun50i-h713-hy310.dts
+
+diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy310.dts b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy310.dts
+new file mode 100644
+index 00000000000..b8270762d98
+--- /dev/null
++++ b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy310.dts
+@@ -0,0 +1,24 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * MagCubic HY310 projector, board silkscreen HY260_QZ713_V3.1.
++ *
++ * Electrically this is the bench board's device tree: DDR3, the same pin
++ * assignments, the same peripherals. What differs is the DRAM clock (792 MHz
++ * instead of 624, and that lives in the defconfig, not here) and the panel,
++ * which no node in this tree describes because the panel is driven by the
++ * display coprocessor's own tables.
++ *
++ * So the tree is an include, not a copy. The reason it exists at all is that
++ * a board should boot a device tree named after itself: until now the HY310
++ * shipped "sun50i-h713-hy200-qz713df-a1", which tells anyone reading a boot
++ * log that this is a board nobody has built for. Anything genuinely
++ * board-specific that we patched into the HY200 tree stays there for now;
++ * moving it out is a later cleanup, not this change.
++ */
++
++#include "sun50i-h713-hy200-qz713df-a1.dts"
++
++/ {
++	model = "MagCubic HY310 (HY260_QZ713_V3.1)";
++	compatible = "magcubic,hy310", "allwinner,sun50i-h713";
++};

@@ -1,0 +1,149 @@
+From 7c76985f607dcb3dbd4d5c7d74dd1674c05d1736 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:19:28 +0200
+Subject: [PATCH 47/77] sunxi: h713: try /oem before the bootloader partition
+ for the TSE group
+
+Stock does not read the four TSE blobs from one place. Its loader tries
+each of them three times: partition media_data, which Android mounts as
+/oem and which makes it print "loading tse from oem success"; then the
+bootloader partition; and for the project file only, a hard-coded
+ProjectID_0x0012.TSE from the bootloader partition. display.bin and
+display_cfg.xml get no such treatment -- bootloader only (A0 report, 1a).
+
+We read all four from one partition, so a device whose picture data was
+overridden in /oem was driven with the factory default underneath it and
+nothing said so. Do what stock does, in stock's order.
+
+The /oem attempt is silent when it misses, because missing is the normal
+case: our layout has no media_data partition at all, so it costs one GPT
+lookup per load and prints nothing. When it hits, the file's line says
+where it came from. The last resort only fires where the load previously
+failed outright, so nothing that worked before behaves differently.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 71 ++++++++++++++++++++++++++++-----
+ 1 file changed, 61 insertions(+), 10 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index b052fe60049..2fd5f70c841 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -6332,9 +6332,14 @@ static int h713_disp_declared_project(u32 *project)
+  */
+ #define H713_DISP_LOGO_ADDR	0x4e000000UL
+ 
+-static int h713_disp_read(const char *name, ulong addr, loff_t *len)
++/*
++ * "alt" means this is an alternative source being tried before the usual one:
++ * say where a file came from when it comes from there, and say nothing at all
++ * when it is not there, because a miss is the normal case and not an error.
++ */
++static int h713_disp_read_from(const char *dev, const char *name, ulong addr,
++			       loff_t *len, bool alt)
+ {
+-	const char *dev = h713_disp_fs_dev();
+ 	char path[64];
+ 	int ret;
+ 
+@@ -6342,21 +6347,57 @@ static int h713_disp_read(const char *name, ulong addr, loff_t *len)
+ 
+ 	ret = fs_set_blk_dev(H713_DISP_FS_IF, dev, FS_TYPE_ANY);
+ 	if (ret) {
+-		printf("H713 disp: cannot select %s %s\n",
+-		       H713_DISP_FS_IF, dev);
++		if (!alt)
++			printf("H713 disp: cannot select %s %s\n",
++			       H713_DISP_FS_IF, dev);
+ 		return ret;
+ 	}
+ 
+ 	ret = fs_read(path, addr, 0, 0, len);
+ 	if (ret) {
+-		printf("H713 disp: cannot read %s\n", path);
++		if (!alt)
++			printf("H713 disp: cannot read %s\n", path);
+ 		return ret;
+ 	}
+ 
+-	printf("  %-28s -> 0x%08lx  %llu bytes\n", path, addr, *len);
++	printf("  %-28s -> 0x%08lx  %llu bytes%s%s\n", path, addr, *len,
++	       alt ? "  <- " : "", alt ? dev : "");
++
+ 	return 0;
+ }
+ 
++static int h713_disp_read(const char *name, ulong addr, loff_t *len)
++{
++	return h713_disp_read_from(h713_disp_fs_dev(), name, addr, len, false);
++}
++
++/*
++ * The TSE group, and only it, has a second source and a last resort.
++ *
++ * Stock tries each of the four files three times (its loop at 0x4a0232f0):
++ * partition media_data -- mounted as /oem, and it prints "loading tse from oem
++ * success" when that works -- then the bootloader partition, and for the
++ * project file only a hard-coded ProjectID_0x0012.TSE from the bootloader
++ * partition. display.bin and display_cfg.xml have no /oem fallback at all
++ * (A0 report, 1a).
++ *
++ * The precedence is not cosmetic: /oem is where a per-unit override lands, so
++ * a device tuned in the factory carries picture data there that a read of the
++ * bootloader partition alone would silently miss. On our layout there is no
++ * media_data partition, so the attempt costs one GPT lookup and prints nothing.
++ */
++static const struct h713_disp_part h713_disp_oem_part = { "media_data", true };
++#define H713_DISP_TSE_LAST_RESORT	"ProjectID_0x0012.TSE"
++
++static int h713_disp_read_tse(const char *oem, const char *name, ulong addr,
++			      loff_t *len)
++{
++	if (oem && !h713_disp_read_from(oem, name, addr, len, true))
++		return 0;
++
++	return h713_disp_read(name, addr, len);
++}
++
+ /*
+  * The TSE window takes the vendor databases concatenated, project file last.
+  *
+@@ -6386,23 +6427,33 @@ static int h713_disp_load_tse(u32 project)
+ 		"projecttable.TSE",
+ 	};
+ 	char pid[40];
++	char oem_dev[24];
++	const char *oem;
+ 	ulong addr = H713_MIPS_TSE_ADDR;
+ 	loff_t len;
+ 	int i, ret;
+ 
+ 	memset((void *)H713_MIPS_TSE_ADDR, 0, H713_MIPS_TSE_SIZE);
+ 
++	oem = h713_disp_part_dev(&h713_disp_oem_part, oem_dev,
++				 sizeof(oem_dev));
++
+ 	for (i = 0; i < ARRAY_SIZE(fixed); i++) {
+-		ret = h713_disp_read(fixed[i], addr, &len);
++		ret = h713_disp_read_tse(oem, fixed[i], addr, &len);
+ 		if (ret)
+ 			return ret;
+ 		addr += len;
+ 	}
+ 
+ 	snprintf(pid, sizeof(pid), "ProjectID_0x%04x.TSE", project);
+-	ret = h713_disp_read(pid, addr, &len);
+-	if (ret)
+-		return ret;
++	ret = h713_disp_read_tse(oem, pid, addr, &len);
++	if (ret) {
++		printf("H713 disp: no %s -- falling back to %s, as stock does\n",
++		       pid, H713_DISP_TSE_LAST_RESORT);
++		ret = h713_disp_read(H713_DISP_TSE_LAST_RESORT, addr, &len);
++		if (ret)
++			return ret;
++	}
+ 	addr += len;
+ 
+ 	if (addr > H713_MIPS_TSE_ADDR + H713_MIPS_TSE_SIZE) {

@@ -1,0 +1,98 @@
+From 08507374e3aac6751f3fa48df0088243bb63eee4 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 16 Sep 2026 11:05:56 +0200
+Subject: [PATCH 76/77] mmc: sunxi: only maintain the cache when there is one
+
+flush_dcache_range() and invalidate_dcache_range() on armv8 are not
+conditional: arch/arm/cpu/armv8/cache_v8.c passes both straight to the
+"dc civac" and "dc ivac" loops in cache.S, which walk one cache line at a
+time whatever SCTLR says. dcache_status() is never consulted.
+
+That is fine in U-Boot proper, where the cache is on and the maintenance is
+what makes the DMA correct. In the SPL the cache is off for good - no
+mmu_setup() and no dcache_enable() are linked into spl/u-boot-spl - so with
+SCTLR.M clear every access is Device-nGnRnE, nothing is ever allocated into
+the data cache, and each of those instructions is an architectural no-op.
+The loop around them is not: the SPL's reads are 14728 cache lines, walked
+once to flush and once to invalidate, out of code that is itself fetched
+uncached from SRAM.
+
+So ask first. In U-Boot proper dcache_status() is 1 throughout - caches go
+on in board_init_r() before any MMC traffic and only off again in
+cleanup_before_linux() - and the behaviour is exactly as before. If a later
+package turns the D-cache on in the SPL, the guard turns the calls back on
+by itself.
+
+hy310_defconfig, clang 20: spl/u-boot-spl.bin 31648 -> 31736 bytes, SPL
+drivers/mmc/sunxi_mmc.o text 2871 -> 2907, U-Boot proper the same 36 bytes.
+Not yet run on hardware.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ drivers/mmc/sunxi_mmc.c | 39 ++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 34 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/mmc/sunxi_mmc.c b/drivers/mmc/sunxi_mmc.c
+index e337b8f0f94..6bea747c723 100644
+--- a/drivers/mmc/sunxi_mmc.c
++++ b/drivers/mmc/sunxi_mmc.c
+@@ -407,6 +407,35 @@ static u32 sunxi_mmc_dma_addr(uintptr_t addr)
+ 	return (u32)((u64)addr >> SUNXI_MMC_IDMA_DES_SHIFT);
+ }
+ 
++/*
++ * Cache maintenance, but only while there is a cache to maintain.
++ *
++ * arch/arm/cpu/armv8/cache_v8.c hands flush_dcache_range() and
++ * invalidate_dcache_range() straight to the "dc civac" and "dc ivac" loops of
++ * cache.S without ever looking at dcache_status(); they walk one cache line at
++ * a time no matter what the MMU is doing.  With the cache off each of those
++ * instructions is a no-op - nothing can be allocated into a cache that is not
++ * looked up - so the loop is pure cost: the SPL's largest read alone is 13792
++ * lines, walked twice, out of code that is itself fetched uncached.
++ *
++ * In the SPL the cache is off for the whole of the SPL's life: no mmu_setup()
++ * and no dcache_enable() are linked into spl/u-boot-spl (M3 report 2), and
++ * with the MMU off every access is Device-nGnRnE, which is exactly why the
++ * DMA needs no maintenance there.  In U-Boot proper the cache is on and both
++ * calls happen as before.
++ */
++static void sunxi_mmc_dma_flush(uintptr_t start, uintptr_t end)
++{
++	if (dcache_status())
++		flush_dcache_range(start, end);
++}
++
++static void sunxi_mmc_dma_invalidate(uintptr_t start, uintptr_t end)
++{
++	if (dcache_status())
++		invalidate_dcache_range(start, end);
++}
++
+ static bool sunxi_mmc_dma_capable(struct mmc_data *data, unsigned int bytecnt)
+ {
+ 	uintptr_t buf = sunxi_mmc_data_buf(data);
+@@ -475,10 +504,10 @@ static int mmc_start_dma(struct sunxi_mmc_priv *priv, struct mmc_data *data,
+ 	 * of what the engine wrote.  sunxi_mmc_dma_capable() has already
+ 	 * established that the payload owns whole cache lines.
+ 	 */
+-	flush_dcache_range(buf, buf + bytecnt);
+-	flush_dcache_range((uintptr_t)chain,
+-			   (uintptr_t)chain +
+-			   roundup(count * sizeof(*chain), ARCH_DMA_MINALIGN));
++	sunxi_mmc_dma_flush(buf, buf + bytecnt);
++	sunxi_mmc_dma_flush((uintptr_t)chain,
++			    (uintptr_t)chain +
++			    roundup(count * sizeof(*chain), ARCH_DMA_MINALIGN));
+ 
+ 	/* Take the data path off the AHB FIFO and hand it to the IDMA. */
+ 	clrbits_le32(&priv->reg->gctrl, SUNXI_MMC_GCTRL_ACCESS_BY_AHB);
+@@ -537,7 +566,7 @@ static int mmc_finish_dma(struct sunxi_mmc_priv *priv, struct mmc_data *data,
+ 	 * CPU sees what the engine put there instead of a stale line.
+ 	 */
+ 	if (data->flags & MMC_DATA_READ)
+-		invalidate_dcache_range(buf, buf + bytecnt);
++		sunxi_mmc_dma_invalidate(buf, buf + bytecnt);
+ 
+ 	if (idst & SUNXI_MMC_IDST_ERROR) {
+ 		debug("mmc %u: IDMA error, idst %08x\n", priv->mmc_no, idst);

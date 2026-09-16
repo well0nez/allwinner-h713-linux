@@ -1,0 +1,114 @@
+From bf41ecb69a2ba13c750fba84f698df01e8326298 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:30:00 +0200
+Subject: [PATCH 52/77] sunxi: h713: ask the GPT for a partition name once, not
+ once per load
+
+Finding a partition by name is not a cheap call: part_get_info_by_name()
+walks the table entry by entry, and for GPT every entry re-reads the
+header and the whole entry array, so one lookup is on the order of a
+hundred transfers. Two of the new lookups run on every display load --
+the misc slot, which sits behind every slotted name, and media_data,
+which is absent on our layout and so is asked and missed every time.
+
+Neither answer can change while we are running: the GPT is fixed, and
+Android rewrites misc and then reboots. Remember both. The artifacts
+partition was already cached; this brings the other two in line, and a
+load on our layout is back to the disk traffic it had before.
+
+media_data also stops being asked for with a slot suffix. All three
+vendor GPTs of 2026-09-14 carry it unslotted -- it is Reserve0 next to it
+that is Reserve0_a/_b on the HY310 and plain Reserve0 on the HY300 T08
+and the HY350 -- so the slotted attempt could only ever miss.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 45 ++++++++++++++++++++++++++++-----
+ 1 file changed, 38 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 47a30dadb64..7490606f257 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -6176,7 +6176,7 @@ static struct blk_desc *h713_disp_blk(void)
+ 	return blk_get_devnum_by_uclass_id(UCLASS_MMC, H713_DISP_MMC_DEV);
+ }
+ 
+-static const char *h713_disp_slot_suffix(void)
++static const char *h713_disp_read_slot(void)
+ {
+ 	static u8 sector[512] __aligned(ARCH_DMA_MINALIGN);
+ 	struct blk_desc *desc = h713_disp_blk();
+@@ -6195,6 +6195,23 @@ static const char *h713_disp_slot_suffix(void)
+ 	return (sector[0] == '_' && sector[1] == 'b') ? "_b" : "_a";
+ }
+ 
++/*
++ * Asked once. Finding a partition by name walks the GPT entry by entry, and
++ * every entry re-reads the header and the whole entry array, so each lookup
++ * costs on the order of a hundred transfers -- and this one sits behind every
++ * other lookup. The slot cannot change while we are running: Android rewrites
++ * misc, and then the board reboots.
++ */
++static const char *h713_disp_slot_suffix(void)
++{
++	static const char *cached;
++
++	if (!cached)
++		cached = h713_disp_read_slot();
++
++	return cached;
++}
++
+ /*
+  * Which partition holds the display artifacts is a property of the layout, and
+  * we now know three of them. "mmc 1:2" was this board's bootloader_b by index,
+@@ -6466,9 +6483,27 @@ static int h713_disp_read(const char *name, ulong addr, loff_t *len)
+  * bootloader partition alone would silently miss. On our layout there is no
+  * media_data partition, so the attempt costs one GPT lookup and prints nothing.
+  */
+-static const struct h713_disp_part h713_disp_oem_part = { "media_data", true };
++/* Unslotted in all three vendor layouts, unlike Reserve0 next to it. */
++static const struct h713_disp_part h713_disp_oem_part = {
++	"media_data", false
++};
+ #define H713_DISP_TSE_LAST_RESORT	"ProjectID_0x0012.TSE"
+ 
++/* Also asked once, and for the same reason: it is a GPT walk per load. */
++static const char *h713_disp_oem_dev(void)
++{
++	static char dev[24];
++	static bool asked;
++
++	if (!asked) {
++		asked = true;
++		if (!h713_disp_part_dev(&h713_disp_oem_part, dev, sizeof(dev)))
++			dev[0] = '\0';
++	}
++
++	return dev[0] ? dev : NULL;
++}
++
+ static int h713_disp_read_tse(const char *oem, const char *name, ulong addr,
+ 			      loff_t *len)
+ {
+@@ -6506,18 +6541,14 @@ static int h713_disp_load_tse(u32 project)
+ 		"database.TSE", "pq_custom.TSE",
+ 		"projecttable.TSE",
+ 	};
++	const char *oem = h713_disp_oem_dev();
+ 	char pid[40];
+-	char oem_dev[24];
+-	const char *oem;
+ 	ulong addr = H713_MIPS_TSE_ADDR;
+ 	loff_t len;
+ 	int i, ret;
+ 
+ 	memset((void *)H713_MIPS_TSE_ADDR, 0, H713_MIPS_TSE_SIZE);
+ 
+-	oem = h713_disp_part_dev(&h713_disp_oem_part, oem_dev,
+-				 sizeof(oem_dev));
+-
+ 	for (i = 0; i < ARRAY_SIZE(fixed); i++) {
+ 		ret = h713_disp_read_tse(oem, fixed[i], addr, &len);
+ 		if (ret)

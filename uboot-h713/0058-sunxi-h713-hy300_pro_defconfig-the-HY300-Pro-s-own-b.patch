@@ -1,0 +1,139 @@
+From 6432f7d46c14dee5d15ab650de6e368425edf59b Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 10:07:33 +0200
+Subject: [PATCH 58/77] sunxi: h713: hy300_pro_defconfig, the HY300 Pro's own
+ board base
+
+The HY300 Pro (issue #1) had no base of its own: boards/hy300-pro/uboot.config
+carried its DRAM block but named the bench board's device tree and said so in a
+comment, because the fragment was only ever meant for a probe build. Stage 5
+wants a test image for that board, and a test image needs a base.
+
+It is hy310_defconfig with three things changed, and nothing else, because
+nothing else has been measured as different: the DRAM block is this board's own
+24 words (its vendor boot0 at LBA 16, printed by h713_probe on the owner's
+device and confirmed against his full dump), the clock is his 636 MHz instead
+of the HY310's 792, and the device tree and identification string name the
+board. Against the HY310 that is the clock, tpr11/tpr12 (0x44440000/0x00005555
+rather than 0x44340000/0x00006666) and the two of tpr0..tpr2 the DDR3 path
+recomputes from the clock anyway.
+
+No image is shipped from this base. The board is below `verified` -- its owner
+has run the installer in dump-only mode and nothing else -- so the only build
+it is meant for is the stage 5 test image, built on purpose and flashed by that
+owner alone.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ configs/hy300_pro_defconfig | 102 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 102 insertions(+)
+ create mode 100644 configs/hy300_pro_defconfig
+
+diff --git a/configs/hy300_pro_defconfig b/configs/hy300_pro_defconfig
+new file mode 100644
+index 00000000000..538ecd598a8
+--- /dev/null
++++ b/configs/hy300_pro_defconfig
+@@ -0,0 +1,102 @@
++# HY300 Pro -- board base. Reported in issue #1 by its owner (GitHub
++# `fightforlife`); nobody here has ever held this board.
++#
++# Same shape as hy310_defconfig: this file says what the hardware is, a role
++# fragment in configs/fragments/ says what a build is for, and
++# build/uboot-build.sh merges the two (docs/uboot/README.md, "Which
++# defconfig"). Everything outside the DRAM block, the device tree name and the
++# identification string is the HY310 base, unchanged -- the two boards are the
++# same SoC, the same eMMC size, the same console, and no difference between
++# them has been measured anywhere else.
++#
++# **No image is shipped for this board.** It is below `verified`
++# (boards/hy300-pro/README.md, boards/README.md honesty rule): its owner has
++# run our installer in dump-only mode and nothing else. The only build this
++# base is meant for is the stage 5 *test image*, built on purpose
++# (`--test-image`), named `-TEST`, and flashed by that owner alone.
++#
++# Where the values come from:
++#   - the DRAM block below is boards/hy300-pro/uboot.config verbatim: the 24
++#     words of this board's own vendor boot0 at LBA 16, printed by h713_probe
++#     on the owner's device and confirmed against his dd of the full dump
++#     (issue #1, 2026-09-14). Nothing in it is borrowed.
++#   - CONFIG_DRAM_CLK=636 is his boot0's own clock, and his UART log agrees
++#     (`DRAM CLK = 636 MHz`, `Type = 3`, `SIZE = 1024 M`). It is *not* the
++#     HY310's 792: our installer SPL trained his board at 792 for a 17-minute
++#     dump, which proves "enough for a dump", not "stable in operation".
++#   - tpr11/tpr12 0x44440000/0x00005555 are this board's, and differ from the
++#     HY310's 0x44340000/0x00006666.
++#   - tpr0..tpr2 are in the file for completeness only; the DDR3 path in
++#     arch/arm/mach-sunxi/dram_sun50iw12.c recomputes them from CONFIG_DRAM_CLK
++#     and overwrites whatever is configured here.
++#   - para2 and tpr13 are the values the vendor flash tool writes, as on a
++#     device.
++#   - the device tree is sun50i-h713-hy300-pro, an include of the bench board's
++#     plus model and compatible -- the same pattern as the HY310's. The panel
++#     is not described there by anyone: it comes through the display
++#     coprocessor's own tables. This board's panel is unknown beyond its
++#     declared project id 0x34.
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy300-pro"
++CONFIG_DRAM_CLK=636
++CONFIG_SPL=y
++CONFIG_IDENT_STRING=" HY300 Pro"
++CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
++CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
++CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
++CONFIG_DRAM_SUNXI_ODT_EN=0x1
++CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
++CONFIG_DRAM_SUNXI_PARA1=0x000010f4
++CONFIG_DRAM_SUNXI_PARA2=0x04000000
++CONFIG_DRAM_SUNXI_MR0=0x00001c70
++CONFIG_DRAM_SUNXI_MR1=0x00000040
++CONFIG_DRAM_SUNXI_MR2=0x00000018
++CONFIG_DRAM_SUNXI_MR3=0x00000000
++CONFIG_DRAM_SUNXI_TPR0=0x00482151
++CONFIG_DRAM_SUNXI_TPR1=0x01b1a94d
++CONFIG_DRAM_SUNXI_TPR2=0x0007004e
++CONFIG_DRAM_SUNXI_TPR3=0xb4787896
++CONFIG_DRAM_SUNXI_TPR4=0x00000000
++CONFIG_DRAM_SUNXI_TPR5=0x48484848
++CONFIG_DRAM_SUNXI_TPR6=0x00000048
++CONFIG_DRAM_SUNXI_TPR7=0x1620121e
++CONFIG_DRAM_SUNXI_TPR8=0x00000000
++CONFIG_DRAM_SUNXI_TPR9=0x00000000
++CONFIG_DRAM_SUNXI_TPR10=0x00000000
++CONFIG_DRAM_SUNXI_TPR11=0x44440000
++CONFIG_DRAM_SUNXI_TPR12=0x00005555
++CONFIG_DRAM_SUNXI_TPR13=0xb4016103
++CONFIG_MACH_SUN50I_H713=y
++CONFIG_H713_POWERON_LIGHT_FAN=y
++CONFIG_H713_MIPS_BOOT=y
++CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
++CONFIG_MMC_SUNXI_SLOT_EXTRA=2
++CONFIG_MMC0_CD_PIN=""
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SUPPORT_EMMC_BOOT=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_OHCI_HCD=y
++# CONFIG_WATCHDOG is not set
++CONFIG_WDT=y
++CONFIG_USB_MUSB_GADGET=y
++CONFIG_CMD_USB_MASS_STORAGE=y
++# CONFIG_USB_ETHER is not set
++CONFIG_CONSOLE_MUX=y
++CONFIG_SYS_CONSOLE_IS_IN_ENV=y
++CONFIG_USB_FUNCTION_ACM=y
++# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
++CONFIG_SYSRESET=y
++CONFIG_SYSRESET_PSCI=y
++CONFIG_CMD_POWEROFF=y
++CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
++# CONFIG_ENV_IS_IN_FAT is not set
++CONFIG_ENV_IS_IN_MMC=y
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_MMC_DEVICE_INDEX=1
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
++CONFIG_H713_VENDOR_CHAINLOAD=y
++CONFIG_CMD_WDT=y
++CONFIG_CMD_GPIO=y

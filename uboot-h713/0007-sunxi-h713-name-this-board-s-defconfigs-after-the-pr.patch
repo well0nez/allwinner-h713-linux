@@ -1,7 +1,7 @@
 From 82f0ae32131ee5d9d5e256a4bdce4ddee05156d9 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:46:57 +0200
-Subject: [PATCH 07/40] sunxi: h713: name this board's defconfigs after the
+Subject: [PATCH 07/77] sunxi: h713: name this board's defconfigs after the
  product
 
 The board is sold as an HY310. Its silkscreen reads HY260_QZ713_V3.1 and

@@ -1,0 +1,55 @@
+From 71a27763b86d877afe038754482d17d03b9e339f Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 16 Sep 2026 11:04:00 +0200
+Subject: [PATCH 74/77] mmc: sunxi: let the SPL use the internal DMA too
+
+Package M1 added the IDMAC path but deliberately left the SPL on PIO:
+CONFIG_IS_ENABLED(MMC_SUNXI_IDMA) resolves to CONFIG_SPL_MMC_SUNXI_IDMA in
+the SPL build and no such symbol existed, so the whole block compiled out.
+
+The SPL is where the PIO path hurts most. It runs with the MMU and the data
+cache off, so every FIFO word it reads and every store into the load buffer
+is a Device-nGnRnE access. After package M2 the SPL reads 940 KB straight
+into the load addresses and that read alone is 0.68 s of the boot (HY310,
+16.09.2026, v0.7-dev9), against 0.25 s for the stock boot0 including its own
+MMC bring-up.
+
+Add the SPL half of the symbol. Nothing else changes: the descriptor code,
+the register sequence and the PIO fallback rules are M1's, and the SPL's own
+buffers already qualify under them - the FIT structure buffer comes from
+malloc_cache_aligned(), and load_simple_fit() rounds every image destination
+up to ARCH_DMA_MINALIGN and every length up to the 512 byte block size.
+
+hy310_defconfig, clang 20: spl/u-boot-spl.bin 30848 -> 31648 bytes against a
+CONFIG_SPL_MAX_SIZE of 0xbfa0 (49056), SPL .bss 448 -> 4552 against a
+CONFIG_SPL_BSS_MAX_SIZE of 0x80000. Not yet run on hardware.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ drivers/mmc/Kconfig | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/mmc/Kconfig b/drivers/mmc/Kconfig
+index eb0df80800b..5df333844ab 100644
+--- a/drivers/mmc/Kconfig
++++ b/drivers/mmc/Kconfig
+@@ -826,6 +826,19 @@ config MMC_SUNXI_IDMA
+ 
+ 	  Say N to keep every transfer on the PIO path.
+ 
++config SPL_MMC_SUNXI_IDMA
++	bool "Use the internal DMA of the sunxi MMC controller in SPL"
++	depends on SPL_MMC && MMC_SUNXI && SUN50I_GEN_H6
++	default y if MACH_SUN50I_H713
++	help
++	  Use the same internal DMA in the SPL, where it matters most: the SPL
++	  runs with the MMU and the data cache off, so every word the PIO path
++	  pulls out of the FIFO and every store into the load buffer is a
++	  Device access. On the H713 the SPL reads about 940 KB of FIT that
++	  way, which is most of its boot time; the engine does it at bus speed.
++
++	  Say N to keep every SPL transfer on the PIO path.
++
+ config MMC_SUNXI_HAS_NEW_MODE
+ 	bool
+ 	depends on MMC_SUNXI

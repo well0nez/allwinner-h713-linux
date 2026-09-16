@@ -1,7 +1,7 @@
 From 4863004b1e01cef8395f174b80eb0edf4a76ca9c Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:13:55 +0200
-Subject: [PATCH 09/40] sunxi: h713: take the display geometry from the panel,
+Subject: [PATCH 09/77] sunxi: h713: take the display geometry from the panel,
  not from defines
 
 The panel description was one static struct, selected by nothing, and the

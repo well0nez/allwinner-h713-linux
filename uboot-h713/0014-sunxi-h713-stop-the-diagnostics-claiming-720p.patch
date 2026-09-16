@@ -1,7 +1,7 @@
 From 8165297c30ed0f7d39933b17fa232d1144c8257d Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:17:50 +0200
-Subject: [PATCH 14/40] sunxi: h713: stop the diagnostics claiming 720p
+Subject: [PATCH 14/77] sunxi: h713: stop the diagnostics claiming 720p
 
 Seven test paths announce themselves "at panel 720p timing", the pattern
 publisher prints "1280x720 ARGB8888" whatever it just filled, and the edge
