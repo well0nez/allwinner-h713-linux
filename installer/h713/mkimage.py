@@ -2,23 +2,25 @@
 """Build and check the installable image for the HY310/H713 projector.
 
 Out of the available building blocks (SPL, U-Boot proper, kernel FIT, the two
-ext4 file systems) `build` makes an image following layout v3 (doku/109 §2),
-plus the offset table, a manifest, checksums and a README file; `check`
-validates a finished image against its table. The trees for the two ext4 file
-systems come from `tree_boot`/`tree_rootfs` -- what is in them and where it
-goes is `h713.layout`.
+ext4 file systems) `build` makes an image following layout v4 (doku/109 §2),
+plus the table, a manifest, checksums and a README file; `check` validates a
+finished image against its table. The trees for the two ext4 file systems come
+from `tree_boot`/`tree_rootfs` -- what is in them and where the device's own
+files go later is `h713.layout`.
 
 Moved from hy310-mkimage.py (M:408-1152), stage 1 (doku/121); stage 3 made
 every printed line and the README English and renamed the README file from
-<stem>-LIESMICH.txt to <stem>-README.txt. The table keys are unchanged
-(format string "hy310-abbild-tabelle" included) until stage 4. The CLI
-(`main()`, the argument parser and the tool docstring shown as its epilog)
-stays in installer/h713-mkimage.
+<stem>-LIESMICH.txt to <stem>-README.txt. Layout v4 (16.09.2026,
+plan/briefs/P-layout-v4.md) took the placeholders out: the image carries no
+vendor file and no offset for one, only the empty target directories, and
+`h713-install` mounts the two file systems and copies the files in. The table
+says so in `format` -- an installer that knows only v3 refuses it, and this
+tool refuses a v3 table. The CLI (`main()`, the argument parser and the tool
+docstring shown as its epilog) stays in installer/h713-mkimage.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -26,16 +28,17 @@ import struct
 import sys
 import time
 import zlib
+from pathlib import Path
 
 from h713.blockdev import LOCK_FIRST, LOCK_LAST
 from h713.fs.ext4 import Ext4
 from h713.gpt import build_layout_gpt, check_gpt
 from h713.layout import (
-    DISK_SECTORS, ENV_BYTES, FIRST_USABLE, GPT_ARRAY_SECTORS, GPT_ENTRY_COUNT,
-    KERNEL_FIT, LBA_BOOT, LBA_ENV, LBA_ROOTFS, LBA_SPL, LBA_UBOOT,
+    DISK_SECTORS, ENV_BYTES, FILES,
+    FIRST_USABLE, GPT_ARRAY_SECTORS, GPT_ENTRY_COUNT, GROUPS, KERNEL_FIT,
+    LBA_BOOT, LBA_ENV, LBA_ROOTFS, LBA_SPL, LBA_UBOOT,
     PART_A_LBA, PART_A_SECTORS, PART_B_LBA, PART_C_LBA, PART_C_SECTORS,
-    PARTITIONS, PLACEHOLDERS, ROOTFS_PERMISSIONS, SECTOR, USER_DIRECTORIES,
-    USER_PLACEHOLDERS, filling, is_user_placeholder, pattern,
+    PARTITIONS, ROOTFS_PERMISSIONS, SECTOR, USER_FILES, target_directories,
 )
 from h713.log import Console
 from h713.source import FileSource
@@ -49,134 +52,111 @@ console = Console(style="mkimage")
 # tables that were written with it.
 VERSION = "0.1"
 
-
-def _block_map(fs, ino, inode):
-    """The block map of an inode: [(logical start, blocks, physical start)].
-
-    `Ext4._karte` (X:1415) is a private helper, so api-h713.md does not fix an
-    English name for it; accept both spellings until B3 is merged (REPORT.md).
-    """
-    fn = getattr(fs, "_map", None)
-    if fn is None:
-        fn = fs._karte
-    return fn(ino, inode)
+# What the table says it is. v4 is a different string from v3's plain
+# "hy310-abbild-tabelle" on purpose: the two are not interchangeable, and both
+# tools shall say so instead of reading half a table.
+TABLE_FORMAT = "hy310-abbild-tabelle-v4"
+TABLE_FORMAT_V3 = "hy310-abbild-tabelle"
+LAYOUT = "v4 (doku/109 section 2.2, files copied through a mount)"
 
 
 # ---------------------------------------------------------------- Trees
 
+def _make_directories(directory, wanted, log=console):
+    """The empty target directories below `directory`, with their modes.
+
+    The mode is set explicitly and not left to the umask. The owner is whoever
+    writes the tree -- so that has to be root (mkimage-inputs.sh checks it);
+    step 5 checks it in the finished ext4 afterwards.
+    """
+    for path, mode in wanted:
+        target = os.path.join(directory, path.lstrip("/").replace("/", os.sep))
+        os.makedirs(target, exist_ok=True)
+        os.chmod(target, mode)
+    log.ok("target directories in %s: %s"
+           % (directory, ", ".join("%s %04o" % (p, m) for p, m in wanted)))
+    return len(wanted)
+
+
 def tree_boot(directory, fit=None, log=console):
-    """The file tree hy310-boot.ext4 is made from."""
-    os.makedirs(os.path.join(directory, "mips"), exist_ok=True)
+    """The file tree hy310-boot.ext4 is made from: the kernel FIT, and /mips empty."""
     n = 0
     if fit:
         target = os.path.join(directory, KERNEL_FIT)
+        os.makedirs(directory, exist_ok=True)
         with open(fit, "rb") as src, open(target, "wb") as dst:
             while True:
                 b = src.read(8 << 20)
                 if not b:
                     break
                 dst.write(b)
-        head = open(target, "rb").read(4)
+        with open(target, "rb") as check_fh:
+            head = check_fh.read(4)
         if head != b"\xd0\x0d\xfe\xed":
             raise SystemExit("%s carries no FIT identifier d00dfeed" % fit)
         log.ok("%-34s %9d bytes (real)" % (KERNEL_FIT, os.path.getsize(target)))
         n += 1
-    for name, size, part, path in PLACEHOLDERS:
-        if part != "hy310-boot":
-            continue
-        target = os.path.join(directory, path.lstrip("/").replace("/", os.sep))
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "wb") as dst:
-            dst.write(pattern(name, size))
-        n += 1
-    log.ok("%d files in %s" % (n, directory))
-    return n
+    return n + _make_directories(directory, target_directories("hy310-boot"), log)
 
 
 def tree_rootfs(directory, log=console):
-    """Only the placeholders that belong into the rootfs -- as an overlay over
-    the unpacked tree from hy310-rootfs.tar."""
-    n = 0
-    for name, size, part, path in PLACEHOLDERS:
-        if part != "hy310-rootfs":
-            continue
-        target = os.path.join(directory, path.lstrip("/").replace("/", os.sep))
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "wb") as dst:
-            dst.write(pattern(name, size))
-        n += 1
-    # The user placeholders: modes set explicitly, not left to the umask.
-    # The owner is whoever writes the tree -- so that has to be root
-    # (mkimage-inputs.sh checks it); step 5 checks it in the ext4 afterwards.
-    for path, mode in USER_DIRECTORIES:
-        target = os.path.join(directory, path.lstrip("/").replace("/", os.sep))
-        os.makedirs(target, exist_ok=True)
-        os.chmod(target, mode)
-    for name, size, part, path, mode in USER_PLACEHOLDERS:
-        if part != "hy310-rootfs":
-            continue
-        target = os.path.join(directory, path.lstrip("/").replace("/", os.sep))
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "wb") as dst:
-            dst.write(filling(name, size))
-        os.chmod(target, mode)
-        n += 1
-    log.ok("%d placeholders in %s (%d of them for the user to fill: %s)"
-           % (n, directory, len(USER_PLACEHOLDERS),
-              ", ".join(p for _n, _s, _t, p, _m in USER_PLACEHOLDERS)))
-    return n
+    """Only the target directories that belong into the rootfs -- as an overlay
+    over the unpacked tree from hy310-rootfs.tar. No file: everything that goes
+    into these directories comes off the user's own device (layout v4)."""
+    return _make_directories(directory, target_directories("hy310-rootfs"), log)
 
 
-# ---------------------------------------------------------------- ext4 offsets
+# ---------------------------------------------------------------- Reading the ext4
 
-def ext4_offsets(image, paths, log=console):
-    """Find the byte offset of the data of every path in the ext4 image.
+def ext4_check_tree(fs, partition, log=console):
+    """What the finished ext4 has to look like for the installer to work in it.
 
-    Condition: the file has to be ONE contiguous piece, otherwise a single
-    (offset, length) would be wrong. That is checked, not assumed. As a
-    counter-check every file is read once through the ext4 reader and once raw
-    at the computed offset, and the two are compared.
+    Every target directory is there, is a directory and carries the mode the
+    installer relies on -- and not one vendor file is in it: an image we hand
+    out carries nobody's firmware. Read with the project's own ext4 reader
+    (h713.fs.ext4, the one h713-extract uses), nothing is mounted, so this runs
+    on Windows too.
     """
-    from pathlib import Path
-    q = FileSource(Path(image))
-    fs = Ext4(q, label=os.path.basename(image))
-    bs = fs.block_size
-    raw = open(image, "rb")
-    try:
-        out = {}
-        for path in paths:
-            ino = fs.path_inode(path)
-            if ino is None:
-                raise SystemExit("%s: %s does not exist" % (image, path))
-            inode = fs.inode(ino)
-            size = inode["groesse"]
-            block_map = _block_map(fs, ino, inode)
-            if not block_map:
-                raise SystemExit("%s: %s has no data blocks" % (image, path))
-            lb0, _n0, pb0 = block_map[0]
-            if lb0 != 0:
-                raise SystemExit("%s: %s starts with a hole" % (image, path))
-            seen, expected_p = 0, pb0
-            for lb, n, pb in block_map:
-                if lb != seen or pb != expected_p:
-                    raise SystemExit(
-                        "%s: %s does not lie in one piece (%d fragments) -- a "
-                        "single offset would be wrong" % (image, path, len(block_map)))
-                seen += n
-                expected_p += n
-            if seen * bs < size:
-                raise SystemExit("%s: %s has a hole at the end" % (image, path))
-            off = pb0 * bs
-            raw.seek(off)
-            if raw.read(size) != fs.read(path):
-                raise SystemExit("%s: %s -- the counter-check at offset %d failed"
-                                 % (image, path, off))
-            out[path] = (off, size)
-        log.ok("%-22s block size %d, %d file(s) in one piece, counter-check equal"
-               % (os.path.basename(image), bs, len(out)))
-        return out
-    finally:
-        raw.close()
+    problems = []
+    for path, mode in target_directories(partition):
+        ino = fs.path_inode(path)
+        if ino is None:
+            problems.append("%s: %s is missing" % (partition, path))
+            continue
+        inode = fs.inode(ino)
+        if inode["typ"] != "d":
+            problems.append("%s: %s is not a directory" % (partition, path))
+        elif inode["mode"] & 0o7777 != mode:
+            problems.append("%s: %s has mode %04o instead of %04o"
+                            % (partition, path, inode["mode"] & 0o7777, mode))
+    here = [f for f in FILES if f.partition == partition]
+    carried = [f.path for f in here if fs.path_inode(f.path) is not None]
+    for path in carried:
+        problems.append("%s: %s is in the image -- no vendor file may be handed out" % (partition, path))
+    if not problems:
+        log.ok("%-13s %s -- and not one of the %d files that belong in them"
+               % (partition, ", ".join("%s %04o" % (p, m) for p, m in target_directories(partition)),
+                  len(here)))
+    return problems
+
+
+def partition_slices(d):
+    """Where the partitions sit inside the pieces: name -> (piece, byte offset, length).
+
+    Out of the table alone: a partition lies in the piece whose LBA range covers
+    its start, at (partition.lba - piece.lba) * 512, and never reaches past the
+    end of that piece (hy310-rootfs is 7.15 GiB, the ext4 in the image is 1 GiB).
+    That is the mount source h713-install works with.
+    """
+    out = {}
+    for p in d.get("partitionen", []):
+        for t in d.get("teile", []):
+            start = (p["lba"] - t["lba"]) * SECTOR
+            if 0 <= start < t["bytes"]:
+                out[p["name"]] = (t["datei"], start,
+                                  min(p["sektoren"] * SECTOR, t["bytes"] - start))
+                break
+    return out
 
 
 def ext4_check_permissions(image, expectation=ROOTFS_PERMISSIONS, log=console):
@@ -188,7 +168,6 @@ def ext4_check_permissions(image, expectation=ROOTFS_PERMISSIONS, log=console):
     key (StrictModes), and much else is wrong. That is exactly how it was in
     image v0.5 (11.09.2026). Which is why this aborts instead of warning.
     """
-    from pathlib import Path
     fs = Ext4(FileSource(Path(image)), label=os.path.basename(image))
     problems = []
     for path, mode, uid, gid in expectation:
@@ -208,8 +187,28 @@ def ext4_check_permissions(image, expectation=ROOTFS_PERMISSIONS, log=console):
         raise SystemExit("%s: owner/permissions are wrong -- was the tree unpacked as "
                          "root? (run mkimage-inputs.sh in the container with "
                          "`podman exec -u root`)" % os.path.basename(image))
-    log.ok("%-22s owner root:root and the modes checked (%d paths, among them /root/.ssh 0700, authorized_keys 0600)"
+    log.ok("%-22s owner root:root and the modes checked (%d paths, among them /root 0700 and /root/.ssh 0700 -- sshd's StrictModes)"
            % (os.path.basename(image), len(expectation)))
+
+
+# ---------------------------------------------------------------- The file section of the table
+
+def file_table():
+    """`dateien`, `gruppen` and `nutzer` of a v4 table -- pure data out of h713.layout.
+
+    `name` is the path below the output of h713-extract, `pfad` the absolute path
+    inside the target partition. Where that partition starts and how long it is
+    stands in `partitionen`, so the installer needs nothing else to find its
+    mount source. The modes are strings because that is how a mode is read.
+    """
+    return {
+        "dateien": [{"name": f.name, "partition": f.partition, "pfad": f.path,
+                     "gruppe": f.group, "optional": f.optional} for f in FILES],
+        "gruppen": dict(GROUPS),
+        "nutzer": [{"name": u.name, "partition": u.partition, "pfad": u.path,
+                    "modus": "%04o" % u.mode, "besitzer": u.owner,
+                    "verzeichnis_modus": "%04o" % u.directory_mode} for u in USER_FILES],
+    }
 
 
 # ---------------------------------------------------------------- Building
@@ -386,51 +385,21 @@ def build(args, here=None):
     console.info("hy310-env carries the built-in default of the U-Boot that ships with the image (%s) -- valid from the first start"
                  % (", ".join(env_gate) if env_gate else "without h713_gate"))
 
-    # --- 5. find the placeholder offsets
-    console.step(5, "find the placeholders in the image")
-    off_boot = ext4_offsets(boot, [p for _n, _g, t, p in PLACEHOLDERS if t == "hy310-boot"])
-    off_root = ext4_offsets(root, [p for _n, _g, t, p in PLACEHOLDERS if t == "hy310-rootfs"] +
-                            [p for _n, _g, t, p, _m in USER_PLACEHOLDERS if t == "hy310-rootfs"])
+    # --- 5. the two file systems: the installer's target directories, and nothing of
+    #        the vendor's in them
+    console.step(5, "the file systems the installer copies into")
+    problems = []
+    for image_file, partition in ((boot, "hy310-boot"), (root, "hy310-rootfs")):
+        fs = Ext4(FileSource(Path(image_file)), label=partition)
+        problems += ext4_check_tree(fs, partition)
+    if problems:
+        for x in problems:
+            console.error(x)
+        raise SystemExit("the file systems are not what layout v4 needs -- rebuild them "
+                         "with mkimage-inputs.sh")
     ext4_check_permissions(root)
-    base_boot = (LBA_BOOT - PART_B_LBA) * SECTOR
-    base_root = (LBA_ROOTFS - PART_B_LBA) * SECTOR
-
-    table, user, info = {}, {}, {}
-    all_entries = [(n, g, t, p, "h713-extract") for n, g, t, p in PLACEHOLDERS] + \
-                  [(n, g, t, p, "h713-install --ssh-key") for n, g, t, p, _m in USER_PLACEHOLDERS]
-    for name, size, part, path, source in all_entries:
-        if part == "hy310-boot":
-            o, g = off_boot[path]
-            o += base_boot
-        else:
-            o, g = off_root[path]
-            o += base_root
-        if g != size:
-            raise SystemExit("%s: %d bytes in the file system, %d in the table"
-                             % (name, g, size))
-        (user if is_user_placeholder(name) else table)[name] = [o, g]
-        info[name] = {
-            "ziel": "%s:%s" % (part, path),
-            "laenge": g,
-            "lba": (PART_B_LBA * SECTOR + o) // SECTOR,
-            "disk_offset": PART_B_LBA * SECTOR + o,
-            "quelle": source,
-            "fuellung": "zeilenumbrueche" if is_user_placeholder(name) else "muster",   # table keys/values: stage 4
-            "sha256_muster": hashlib.sha256(filling(name, g)).hexdigest(),
-        }
-    console.ok("%d placeholders for h713-extract, %d bytes in all"
-               % (len(table), sum(g for _o, g in table.values())))
-    console.ok("%d placeholder(s) for the user: %s"
-               % (len(user), ", ".join("%s (%d bytes, line breaks)" % (n, g)
-                                       for n, (_o, g) in user.items())))
-
-    # Counter-check: is the filling really at the computed offset in piece B?
-    with open(b_file, "rb") as f:
-        for name, (o, g) in list(table.items()) + list(user.items()):
-            f.seek(o)
-            if f.read(g) != filling(name, g):
-                raise SystemExit("%s: the expected filling is not at offset %d" % (name, o))
-    console.ok("all %d offsets counter-checked in piece B" % (len(table) + len(user)))
+    console.ok("%d files will be copied in by h713-install (%d of them optional), %d group(s)"
+               % (len(FILES), sum(1 for f in FILES if f.optional), len(GROUPS)))
 
     # --- 6. check the hole
     console.step(6, "the locked range")
@@ -457,7 +426,7 @@ def build(args, here=None):
             "dd": "dd if=%s of=/dev/sdX bs=512 seek=%d conv=fsync"
                   % (os.path.basename(file_name), lba),
         })
-    data = {"format": "hy310-abbild-tabelle"}
+    data = {"format": TABLE_FORMAT}
     # Stage 5: an image built on purpose for a board nobody has run this system on.
     # `h713-install` writes it only on that board and only when asked for it with
     # --test-image. A normal build passes no --test-for, the key stays out of the
@@ -471,7 +440,7 @@ def build(args, here=None):
         "abbild": base,
         "sektorgroesse": SECTOR,
         "disk_sektoren": DISK_SECTORS,
-        "layout": "v3 (doku/109 §2.2)",
+        "layout": LAYOUT,
         "partitionen": [{"name": n, "lba": l, "sektoren": s, "guid": g}
                         for n, l, s, g in PARTITIONS],
         "loch": {
@@ -500,17 +469,11 @@ def build(args, here=None):
             "rootfs_ext4": {"datei": relpath_or_abs(root, project_root), "bytes": n_root,
                             "sha256": sha256_file(root), "lba": LBA_ROOTFS},
         },
-        # Exactly the format that fill_placeholders() in h713.install expects:
-        # name -> (byte offset, length), offset inside the file named under
-        # "platzhalter_datei".
-        "platzhalter_datei": os.path.basename(b_file),
-        "platzhalter": table,
-        # Same shape, different source: h713-install fills these from --ssh-key,
-        # padded with line breaks. An installer that does not know about the key
-        # leaves the file empty (line breaks only) -- valid.
-        "platzhalter_nutzer": user,
-        "platzhalter_info": info,
     })
+    # What the installer copies in, where it goes, and what it may do without.
+    # No offset and no size: it mounts the partition out of the piece above
+    # (`partitionen` says where it starts) and writes ordinary files.
+    data.update(file_table())
     with open(t_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False, sort_keys=False)
         f.write("\n")
@@ -545,7 +508,13 @@ def check(table_file, log=console):
     directory = os.path.dirname(os.path.abspath(table_file))
     with open(table_file, encoding="utf-8") as f:
         d = json.load(f)
-    if d.get("format") != "hy310-abbild-tabelle":
+    if d.get("format") == TABLE_FORMAT_V3:
+        raise SystemExit(
+            "%s is a layout v3 table: it carries placeholders at fixed offsets, and this tool "
+            "builds and checks layout v4, where the installer copies the files in through a "
+            "mount. Check that image with the h713-mkimage it was built with (v0.7-beta or "
+            "older), or build it again." % table_file)
+    if d.get("format") != TABLE_FORMAT:
         raise SystemExit("%s is not an image table" % table_file)
     if d.get("test_for"):
         log.warn("TEST IMAGE for the board profile '%s' -- built for one board that nobody has "
@@ -612,53 +581,45 @@ def check(table_file, log=console):
                    % (FIRST_USABLE, GPT_ENTRY_COUNT))
             log.ok("the backup copy at the end of the disk is there and equal (finding S46 B7)")
 
-    log.step(4, "placeholders")
-    pd = d["platzhalter_datei"]
-    if pd not in pieces:
-        log.error("%s is missing -- the placeholders cannot be checked" % pd)
-        return 1
-    path, plba, pn = pieces[pd]
-    unfilled, filled, broken = 0, 0, 0
-    both = dict(d["platzhalter"])
-    both.update(d.get("platzhalter_nutzer", {}))
-    with open(path, "rb") as f:
-        for name in sorted(both):
-            off, length = both[name]
-            info = d.get("platzhalter_info", {}).get(name, {})
-            if off < 0 or off + length > pn:
-                log.error("%s: offset %d + %d lies outside %s"
-                          % (name, off, length, pd))
-                broken += 1
-                continue
-            disk = plba * SECTOR + off
-            if info.get("disk_offset") not in (None, disk):
-                log.error("%s: disk_offset in the table does not fit the piece" % name)
-                broken += 1
-                continue
-            lock_from, lock_to = first * SECTOR, (last + 1) * SECTOR
-            if disk < lock_to and disk + length > lock_from:
-                log.error("%s lies inside the locked range" % name)
-                broken += 1
-                continue
-            f.seek(off)
-            b = f.read(length)
-            if b == filling(name, length):
-                unfilled += 1
-            elif info.get("sha256_muster") and \
-                    hashlib.sha256(b).hexdigest() == info["sha256_muster"]:
-                unfilled += 1
-            else:
-                filled += 1
-    log.ok("%d placeholders checked: %d unfilled (the filling is in place), %d already filled"
-           % (len(both), unfilled, filled))
-    if broken:
-        log.error("%d placeholders are wrong" % broken)
-        bad += broken
-    if filled:
-        log.warn("this image is no longer the one to hand out -- it carries "
-                 "device-specific data and should not be passed on")
+    log.step(4, "the files h713-install copies in")
+    files = d.get("dateien", [])
+    groups = d.get("gruppen", {})
+    for name in sorted(groups):
+        rows = [f for f in files if f.get("gruppe") == name]
+        log.ok("%-9s %2d file(s), %s%s" % (name, len(rows), groups[name],
+                                           " (optional)" if all(f.get("optional") for f in rows) else ""))
+        for f in sorted(rows, key=lambda r: r["name"]):
+            log.info("  %-70s -> %s:%s" % (f["name"], f["partition"], f["pfad"]))
+    for u in d.get("nutzer", []):
+        log.ok("%-9s %s -> %s:%s, mode %s, owner %s (directory %s)"
+               % ("user", u["name"], u["partition"], u["pfad"], u["modus"],
+                  u["besitzer"], u["verzeichnis_modus"]))
 
-    log.step(5, "result")
+    log.step(5, "the target directories in the file systems")
+    where = partition_slices(d)
+    for partition in sorted({f["partition"] for f in files} | {u["partition"] for u in d.get("nutzer", [])}):
+        if partition not in where:
+            log.error("no piece of the image holds %s -- the table does not describe it"
+                      % partition)
+            bad += 1
+            continue
+        datei, offset, length = where[partition]
+        if datei not in pieces:
+            log.error("%s is missing -- %s cannot be read" % (datei, partition))
+            bad += 1
+            continue
+        try:
+            source = FileSource(Path(pieces[datei][0])).sub(offset, length, partition)
+            problems = ext4_check_tree(Ext4(source, label=partition), partition, log)
+        except Exception as e:                                   # noqa: BLE001 -- any reader complaint
+            log.error("%s: not readable as ext4 at offset %d (%s)" % (partition, offset, e))
+            bad += 1
+            continue
+        for x in problems:
+            log.error(x)
+        bad += len(problems)
+
+    log.step(6, "result")
     if bad:
         log.error("%d complaint(s)" % bad)
         return 1
@@ -727,7 +688,7 @@ def readme_text(d):
     b("")
     for t in d["teile"]:
         b("  %-34s %11d bytes   from sector %d" % (t["datei"], t["bytes"], t["lba"]))
-    b("  %-34s             where the placeholders lie" % (d["abbild"] + ".tabelle.json"))
+    b("  %-34s             what goes where" % (d["abbild"] + ".tabelle.json"))
     b("  %-34s             checksums" % (d["abbild"] + ".sha256"))
     b("")
     b("")
@@ -783,32 +744,32 @@ def readme_text(d):
     b("What is still missing afterwards")
     b("--------------------------------")
     b("")
-    b("The image holds %d placeholders: files of the right size, but with a fill"
-      % len(d["platzhalter"]))
-    b("pattern instead of content. They are the parts that belong to the")
-    b("manufacturer and that we may not hand out:")
+    files = d.get("dateien", [])
+    b("%d files that belong to the manufacturer are NOT in this image, and we may" % len(files))
+    b("not hand them out. Your device has them:")
     b("")
-    b("  * 19 display artefacts (mips/) -- without them the picture stays black")
-    b("  * the boot logo (bootlogo.bmp) -- without it the panel stays black until Linux")
-    b("  * 3 firmware files (ARISC, EDID, MSP patch)")
-    b("  * 8 PQ files (picture tuning)")
-    b("  * 13 WLAN firmware files (aic8800)")
+    for group, what in d.get("gruppen", {}).items():
+        rows = [f for f in files if f.get("gruppe") == group]
+        if rows:
+            b("  * %2d x %s%s" % (len(rows), what,
+                                  " (a device may be without it)" if all(f.get("optional") for f in rows) else ""))
     b("")
-    b("They come out of your own device: h713-extract reads them from the full")
-    b("dump you pulled beforehand, and h713-install writes them to the places")
-    b("listed in %s.tabelle.json -- on the PC, before anything" % d["abbild"])
-    b("goes onto the eMMC at all.")
+    b("h713-install takes the full dump you pulled beforehand, lets h713-extract")
+    b("pull these files out of it and copies them into the image -- on the PC,")
+    b("before anything goes onto the eMMC at all. It mounts the two file systems")
+    b("of its working copy for that, so every file keeps the length it has on your")
+    b("device: no size in this image has to match yours.")
     b("")
-    b("As long as they are not filled the system does start, but without a picture.")
+    b("Without the display files the system does start, but without a picture.")
     b("")
-    b("One more placeholder is yours: /root/.ssh/authorized_keys. In the image the")
-    b("file is empty (4096 line breaks). With")
+    b("One file is yours: /root/.ssh/authorized_keys. The image does not carry it.")
+    b("With")
     b("")
     b("    h713-install install ... --ssh-key ~/.ssh/id_ed25519.pub")
     b("")
     b("your public SSH key goes in, and you get onto the device over ssh as root.")
-    b("Without that switch only the serial console is left (password login is")
-    b("off). No key is ever handed out with the image.")
+    b("Without that switch the file is never created and only the serial console")
+    b("is left (password login is off). No key is ever handed out with the image.")
     b("")
     b("")
     b("If something goes wrong")
