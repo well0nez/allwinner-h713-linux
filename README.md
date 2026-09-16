@@ -31,7 +31,7 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 
 | | |
 |---|---|
-| **Boots standalone** | power → U-Boot → Debian 13 (arm64) from eMMC, 20/20 cold starts, no host, no network; the device's own boot logo two seconds after the power key |
+| **Boots standalone** | power → U-Boot → Debian 13 (arm64) from eMMC, 20/20 cold starts, no host, no network; the device's own boot logo 2 s after the power key (v0.6-beta: 7 s), the kernel at 3.5 s (was 9 s) |
 | **The projector image** | LVDS panel driven through the MIPS display firmware; KMS device for anything that draws |
 | **HDMI input** | a V4L2 capture device: signal detection, timings, hot plug, source switch, picture controls, 1080p60 and five more modes |
 | **HDMI audio** | HDMI sound out of the speaker, lip-sync verified, one volume control |
