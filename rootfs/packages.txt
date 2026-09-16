@@ -19,6 +19,22 @@ ifupdown            # /etc/network/interfaces: allow-hotplug eth0 / iface eth0 i
 isc-dhcp-client     # der DHCP-Client, den ifupdown aufruft; schreibt /etc/resolv.conf
 iproute2            # ip(8); ifupdown und jede Fehlersuche am Netz brauchen es
 
+# --- Network diagnostics (O2) ------------------------------------------------
+# The image had none of these, so "is the network up" could only be answered
+# from the other end of the cable. Sizes: packages.debian.org, trixie/arm64,
+# 16.09.2026; "installed" is the recursive cost over what the image already has.
+iputils-ping        # ping(8): tells "link down" from "no route" from "DNS".
+                    # 243 KiB installed, no package pulled in behind it.
+curl                # HTTP(S) client: fetch a file onto the device, check a
+                    # release URL. 14 packages, 10.2 MiB -- libcurl4t64, and
+                    # GnuTLS behind libldap2.
+wget                # next to curl because it retries and resumes without a
+                    # flag, and because half the recipes are written for it.
+                    # 5 packages, 9.6 MiB; shares GnuTLS with curl, so the two
+                    # together are 14.2 MiB, not 19.8.
+netcat-openbsd      # nc(1): is the port open, and a pipe when there is no scp
+                    # yet. 133 KiB installed, nothing pulled in behind it.
+
 # --- Fernzugang --------------------------------------------------------------
 openssh-server      # Fernzugang. KEIN Schluessel im Abbild (107 §3) -- der Installer legt einen,
                     # sonst kommt man nur ueber die serielle Konsole herein.
