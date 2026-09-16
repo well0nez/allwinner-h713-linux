@@ -1,12 +1,12 @@
-# userspace/ - was auf dem Board läuft
+# userspace/ - what runs on the board
 
-| Verzeichnis | Was | Stand |
+| Directory | What | State |
 |---|---|---|
-| [`h713-tv/`](h713-tv/README.md) | **Der HDMI-Eingang als Dienst.** C, ein Prozess: zeigt den Capture-Ring auf der KMS-Plane, bei Signalverlust die Konsole; sendet beim Start Preset und Gammakurve; Steuerkanal `h713-tv ctl …` (Regler, Presets, Einpassung, Bild an/aus, roher RPC). Läuft als Template-Unit `h713-tv@video1` (udev, `BindsTo`). | in Betrieb (08.09.2026) |
-| [`h713-pq/`](h713-pq/README.md) | **PQ-Rechner.** Python, liest die Stock-PQ-Daten (`pq_picturemode.ini`, `tvpq.db`, …) und rechnet RPC-Argumente und DE2-Gamma-LUTs. Schreibt nichts ans Gerät; `gamma-standard.bin` in `h713-tv/` stammt von hier. | fertig, Werkzeug |
-| [`h713-focus/`](h713-focus/README.md) | **Fokusmotor von Hand fahren.** Ein Python-Skript, ohne Abhängigkeiten. `status` / `up` / `down` / `flush` / `unlatch`; liest den Bereichswächter vor und nach jeder Bewegung, harte Obergrenze je Lauf, schreibt `motor_ctrl_no_limit` nie. Ersetzt `legacy/tools/focus`. | fertig (12.09.2026) |
-| [`h713-cam/`](h713-cam/README.md) | **Interne Kamera.** Ein Python-Skript, ohne Abhängigkeiten. `probe` / `controls` / `get` / `set` / `grab` (PNG); sucht den Knoten über den Namen statt `/dev/video2` zu raten; schreibt vor dem Bild einmal die Belichtung zurück (die Kamera liefert sonst schwarz). Aus `analyse/beamer-cam/`. | fertig (12.09.2026), am Gerät ungeprüft |
+| [`h713-tv/`](h713-tv/README.md) | **The HDMI input as a service.** C, one process: shows the capture ring on the KMS plane, and the console on signal loss; sends the preset and the gamma curve at the start; control channel `h713-tv ctl …` (controls, presets, aspect fit, picture on/off, a raw RPC). Runs as the template unit `h713-tv@video1` (udev, `BindsTo`). | in service (08.09.2026) |
+| [`h713-pq/`](h713-pq/README.md) | **The PQ calculator.** Python, reads the stock PQ data (`pq_picturemode.ini`, `tvpq.db`, …) and computes RPC arguments and DE2 gamma LUTs. Writes nothing to the device; `gamma-standard.bin` in `h713-tv/` comes from here. | finished, a tool |
+| [`h713-focus/`](h713-focus/README.md) | **Driving the focus motor by hand.** One Python script, without dependencies. `status` / `up` / `down` / `flush` / `unlatch`; reads the range guard before and after every movement, has a hard upper bound per run, and never writes `motor_ctrl_no_limit`. Replaces `legacy/tools/focus`. | finished (12.09.2026) |
+| [`h713-cam/`](h713-cam/README.md) | **The internal camera.** One Python script, without dependencies. `probe` / `controls` / `get` / `set` / `grab` (PNG); finds the node by its name instead of guessing `/dev/video2`; writes the exposure back once before the picture (the camera delivers black otherwise). Out of `analyse/beamer-cam/`. | finished (12.09.2026), unchecked on the device |
 
-Bauen und Einspielen: `doku/50-befehle.md`, Abschnitt Betrieb. Die alten Stock-Nachbauten `hy310-hdmird` und
-`hy310-pqd` (C++-Daemons mit eigener RPC-Schicht) liegen nur noch als Referenz in `legacy/`; ihr Wissen steckt in
-den Kernel-Treibern (`doku/77` §3).
+Building and installing: `doku/50-befehle.md`, the operation section. The old stock rebuilds `hy310-hdmird`
+and `hy310-pqd` (C++ daemons with an RPC layer of their own) are left in `legacy/` for reference only; their
+knowledge sits in the kernel drivers (`doku/77` §3).
