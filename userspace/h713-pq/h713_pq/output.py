@@ -240,7 +240,7 @@ def print_gamma(result: model.GammaResult, channel: str) -> None:
 # Machine readable: one JSON record on stdout (plan 113 section A.3)
 # --------------------------------------------------------------------------
 # One record, one line of a call, no daemon. The consumer is h713-tv, which
-# calls `h713-pq --daten V show INPUT PRESET --json --lut D` once at start and
+# calls `h713-pq --data DIR show INPUT PRESET --json --lut D` once at start and
 # applies the answer. Therefore:
 #   * **everything on stdout, nothing else.** Messages go to stderr so that the
 #     reader can push the record through a parser raw.
