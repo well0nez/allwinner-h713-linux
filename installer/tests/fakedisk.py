@@ -16,9 +16,11 @@ Reserve0.fex are 99.98 % zeros and could not tell "untouched" from "zeroed".
 """
 
 import collections
+import gzip
 import hashlib
 import os
 import struct
+import subprocess
 import zlib
 
 SECT = 512
@@ -218,6 +220,61 @@ def make_stock_gpt_disk(path):
         for name in ("misc", "private", "Reserve0_a", "Reserve0_b"):
             _put(fh, parts[name][0], pattern(name, *parts[name]))
     return path
+
+
+def make_our_layout_disk(path, partitions, disk_sectors=DISK_SECTORS):
+    """Our layout with partitions of our own choosing: the same GPT builder the image builder
+    uses (`h713.gpt.build_gpt`), so the names, the entry slots and both copies are the real
+    thing -- only the sizes are small enough for a test that puts real ext4 into them (layout
+    v4, P2). `partitions` are (name, lba, sectors) as layout.PARTITIONS spells them."""
+    import sys
+    sys.path.insert(0, os.path.dirname(_HERE))
+    from h713.gpt import GPT_ENTRIES, build_gpt
+    _blank(path, disk_sectors)
+    table = build_gpt(disk_sectors, partitions, first_usable=16,
+                      disk_guid="ab6f3888-569a-4926-9668-80941dcb40bc",
+                      type_guid="0fc63daf-8483-4772-8e79-3d69d8477de4",
+                      unique_guids="404b1401-5772-4781-88ab-1b56c4682a90",
+                      entry_count=GPT_ENTRIES)
+    with open(path, "r+b") as fh:
+        for lba, data in table.items():
+            _put(fh, lba, data)
+        _put(fh, LOCK_FIRST, pattern("secure-storage", LOCK_FIRST, LOCK_SECTORS))
+    return path
+
+
+MKE2FS = ("mke2fs", "/usr/sbin/mke2fs", "/sbin/mke2fs")
+EXT4_BLANK = os.path.join(os.path.dirname(_HERE), "metadata-leer-16m.ext4.gz")
+EXT4_BLANK_BYTES = 16 << 20
+
+
+def mke2fs():
+    """The mke2fs of this machine, or None. `shutil.which` alone is not enough: it lives in
+    /usr/sbin, which is not in a normal user's PATH on Mint."""
+    import shutil as _shutil
+    for candidate in MKE2FS:
+        found = _shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def make_ext4(path, size):
+    """An empty ext4 of `size` bytes -- with mke2fs where there is one, else out of the blank
+    16 MiB file system the installer ships for the stock restore. Returns which of the two it
+    was, so a test can say it; None when neither fits."""
+    tool = mke2fs()
+    if tool:
+        with open(path, "wb") as fh:
+            fh.truncate(size)
+        subprocess.run([tool, "-q", "-F", "-t", "ext4", "-O", "^has_journal", path],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return os.path.basename(tool)
+    if size == EXT4_BLANK_BYTES and os.path.isfile(EXT4_BLANK):
+        with gzip.open(EXT4_BLANK, "rb") as src, open(path, "wb") as fh:
+            fh.write(src.read())
+        return os.path.basename(EXT4_BLANK)
+    return None
 
 
 def make_adt3_disk(path, board):
