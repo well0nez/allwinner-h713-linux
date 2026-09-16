@@ -16,6 +16,20 @@ a startup handshake before the firmware services anything at all - a notificatio
 an acknowledgement expected back on another, both checked by type and result code, not assumed
 (`doku/82` §4, measured across six boots).
 
+The driver also reads and writes a handful of the firmware's own variables in that SRAM: the
+hot-plug counters, the two EDID flags, the port map, the buffer the firmware's receive pump takes
+commands out of. Those addresses are not fixed. The firmware keeps its state wherever its own build
+happened to put it, and every board's dump carries a different build - the HY300 Pro's is seven
+months older than the HY310's and has the same data 0x340 bytes lower. So the driver reads the eight
+addresses it needs out of the image at probe time: two signatures over the firmware's own code give
+two anchors, the other six are fixed distances from them, two more signatures cross-check the
+arithmetic against the firmware's own layout, and the image's BSS clear loop and stack-pointer init
+give the bound above which nothing may be written. An image whose layout cannot be established that
+way is not loaded at all - the probe refuses and names the step that failed, because an ARISC
+started with a guessed address set writes into its own stack and answers nothing but a timeout
+(`doku/126`, issue #1). The image's version string and the resolved addresses appear in the debugfs
+status file, and `tools/arisc-fw-addrs.py` prints the same table for a dump on the host.
+
 Once that handshake is done, the driver exposes the firmware's HDMI subcommands as a small kernel
 API: reset the EDID module, set the port map, write or read back an EDID block, pulse hot-plug
 up/down/reset, and two commands (5 V flag, audio mode) that this firmware accepts but does not act
