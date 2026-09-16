@@ -44,8 +44,8 @@ sys.path.insert(0, HERE)
 from h713 import install as install_mod                                     # noqa: E402
 from h713.blockdev import (Disk, LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED,   # noqa: E402
                            device_kind)
-from h713.dump import (choose_dump, dump_full, dump_small, mandatory_dump,  # noqa: E402
-                       verify_dump, write_manifest)
+from h713.dump import (choose_dump, dump_asked, dump_full, dump_small,     # noqa: E402
+                       keep_copy, mandatory_dump, verify_dump, write_manifest)
 from h713.env import ENV_CARRY_OVER                                         # noqa: E402
 from h713.fel import expose_drive                                           # noqa: E402
 from h713.identify import identify, report_device                           # noqa: E402
@@ -110,8 +110,10 @@ def parser():
     put.add_argument("--ssh-key", metavar="FILE",
                      help="public SSH key (e.g. ~/.ssh/id_ed25519.pub) for /root/.ssh/"
                           "authorized_keys in the image; without it there is no ssh access")
-    put.add_argument("--dump", dest="dump_dir", default=DUMP_DEFAULT, metavar="DIR",
-                     help="directory for the dump (default: %(default)s)")
+    # default=None so that the run can tell an explicit --dump from the default: on our own
+    # layout the mandatory dump falls away, and --dump is how the user asks for one anyway (N2).
+    put.add_argument("--dump", dest="dump_dir", default=None, metavar="DIR",
+                     help="directory for the dump (default: %s)" % DUMP_DEFAULT)
     put.add_argument("--vendor", metavar="DIR",
                      help="finished output of h713-extract; without it the full dump is used")
     put.add_argument("--table", help="offset table when the image is a single file")
@@ -139,8 +141,8 @@ def parser():
                                      "write the manufacturer's firmware (IMAGEWTY container)")):
         one = sub.add_parser(name, parents=[common], help=what_for)
         one.add_argument("image", metavar=metavar)
-        one.add_argument("--dump", dest="dump_dir", default=DUMP_DEFAULT, metavar="DIR",
-                         help="directory for the mandatory small dump (default: %(default)s)")
+        one.add_argument("--dump", dest="dump_dir", default=None, metavar="DIR",
+                         help="directory for the mandatory small dump (default: %s)" % DUMP_DEFAULT)
 
     # `extract` is listed here for the help, but never parsed: main() hands its whole tail
     # to h713-extract, which owns those flags (including its own -h).
@@ -274,6 +276,14 @@ def _restore(args, disk):
 
 def _dump(args, disk, path):
     """Step 3 -- the same step in the same place for `dump` and for `install`."""
+    if args.command == "install" and args._our_layout and not dump_asked(args):
+        # N2: nothing stock-specific is left on this device, and the way back is the dump
+        # of the first install. What the later steps took out of the dump -- the secure
+        # storage for the comparison, the old environment for the intent keys -- is read
+        # into memory instead.
+        console.info("our layout on the device -- nothing stock to save; --dump takes one anyway")
+        args._kept = keep_copy(disk)
+        return 0
     size = choose_dump(args.size)
     console.step(3, "Take the dump (%s)" % size)
     os.makedirs(args.dump_dir, exist_ok=True)
@@ -423,6 +433,10 @@ def main(argv=None):
         # guessing, and its exit code comes straight back.
         return install_mod._load_extractor(None, HERE).main(argv[1:])
     args = parser().parse_args(argv)
+    if hasattr(args, "dump_dir"):
+        # Whether the user named the directory is the question "did you ask for a dump?" (N2).
+        args._dump_given = args.dump_dir is not None
+        args.dump_dir = args.dump_dir or DUMP_DEFAULT
     print("h713-install %s   (%s)" % (VERSION, platform.system()))
     for line in hints:
         console.warn(line)

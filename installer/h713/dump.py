@@ -406,6 +406,22 @@ def write_manifest(directory, manifest, device):
                     % "".join("  %s/\n" % name for name in saved))
 
 
+def dump_asked(args):
+    """Did this run ask for a dump of its own? An explicit `--dump DIR` or a size
+    (`--small`/`--full`) is a yes; the defaults are not (N2). Only our own layout ever
+    asks -- on a stock device the dump is mandatory and nobody is asked."""
+    return bool(getattr(args, "_dump_given", False) or getattr(args, "size", None))
+
+
+def keep_copy(disk):
+    """What a skipped small dump would have left behind for the steps that come after it:
+    the secure storage (the installer compares against it once everything is written) and
+    the U-Boot environment (the intent keys are carried over from it). Read before the
+    write, kept in memory, never written anywhere (N2)."""
+    return {"secure-storage": disk.read(SECURE_STORAGE[1], SECURE_STORAGE[2]),
+            "uboot-env": disk.read(ENV_LBA, ENV_SECTORS)}
+
+
 def mandatory_dump(args, disk, path, log=console):
     """Plan 110 §2: the small dump before every write. It costs seconds and saves what no
     image brings back (finding S46 B2).
@@ -413,11 +429,12 @@ def mandatory_dump(args, disk, path, log=console):
     Stage 2 C5 (Marco, 14.09.): only while the device still carries the stock layout -- on
     our own layout nothing stock-specific is left to save, and the dump has existed since
     the first installation. Stage 3 moved it here out of the installer, where it stood
-    three times over (doku/121 §1 point 3).
+    three times over (doku/121 §1 point 3). N2: `--dump DIR` takes one on our layout too --
+    it is cheap, and the user asked for it.
     """
     if args.no_write:
         return
-    if args._our_layout:
+    if args._our_layout and not dump_asked(args):
         log.info("Our layout is on the device: no mandatory dump before the restore "
                  "(nothing stock-specific is left to save; use the dump of your first install).")
         return
