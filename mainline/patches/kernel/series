@@ -47,6 +47,10 @@
 #   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
 0024b-misc-hy310-keystone-motor-ist-der-fokusmotor.patch
 0024c-arm64-dts-h713-cpu-comm-einschalten-motor-kommentieren.patch
+#   (follow-up well0nez, N1 -- 0024a/0024b/0024c stay byte-identical; the msgbox
+#    node gets all three interrupt lines in the stock order, and the watchdog
+#    gets its own SPI 53 back instead of the msgbox's 46)
+0024d-arm64-dts-h713-msgbox-three-lines-watchdog-spi-53.patch
 0025-clk-sunxi-ng-h713-register-cpu-clock-notifiers.patch
 0026-arm64-dts-h713-add-cpu-opp-table-for-cpufreq.patch
 0027-clk-sunxi-ng-d1-r-add-r-pwm-gate-and-reset.patch
