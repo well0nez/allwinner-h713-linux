@@ -2404,7 +2404,7 @@ static void conf_werte_pfad(struct conf *c)
 
 static const char *start_mode_text(enum start_mode m)
 {
-	return m == START_MANUELL ? "manuell" : m == START_ZULETZT ? "zuletzt" : "auto";
+	return m == START_MANUELL ? "manual" : m == START_ZULETZT ? "last" : "auto";
 }
 
 static char *trim(char *s)
@@ -2469,19 +2469,26 @@ static void conf_read(struct conf *c)
 		if (!strcasecmp(key, "start")) {
 			if (!strcasecmp(val, "auto"))
 				c->start = START_AUTO;
-			else if (!strcasecmp(val, "manuell") || !strcasecmp(val, "manual"))
+			/*
+			 * "manuell" and "zuletzt" are the words this file used
+			 * before the tools spoke English. They stay accepted,
+			 * without a warning: a device may carry an older
+			 * tv.conf, and a start mode that silently fell back to
+			 * "auto" would be a picture nobody asked for.
+			 */
+			else if (!strcasecmp(val, "manual") || !strcasecmp(val, "manuell"))
 				c->start = START_MANUELL;
-			else if (!strcasecmp(val, "zuletzt") || !strcasecmp(val, "last"))
+			else if (!strcasecmp(val, "last") || !strcasecmp(val, "zuletzt"))
 				c->start = START_ZULETZT;
 			else
-				warn("%s:%u: start = \"%s\" unbekannt (auto manuell zuletzt) -- auto",
+				warn("%s:%u: start = \"%s\" unknown (auto manual last) -- auto",
 				     c->path, n, val);
 		} else if (!strcasecmp(key, "zustand")) {
 			if (!strcasecmp(val, "none") || !strcasecmp(val, "keiner") ||
 			    !strcasecmp(val, "nein"))
 				c->keep = false;
 			else if (*val != '/' || strlen(val) >= sizeof(c->state_path) - 8)
-				warn("%s:%u: zustand = \"%s\" ist kein absoluter Pfad (oder zu lang) -- Vorgabe %s",
+				warn("%s:%u: zustand = \"%s\" is not an absolute path (or too long) -- default %s",
 				     c->path, n, val, STATE_FILE);
 			else
 				snprintf(c->state_path, sizeof(c->state_path), "%s", val);
@@ -2494,24 +2501,24 @@ static void conf_read(struct conf *c)
 			 * where the preset is applied, and falls back there.
 			 */
 			if (strlen(val) >= sizeof(c->preset))
-				warn("%s:%u: preset = \"%s\" ist zu lang -- ignoriert",
+				warn("%s:%u: preset = \"%s\" is too long -- ignored",
 				     c->path, n, val);
 			else
 				snprintf(c->preset, sizeof(c->preset), "%s", val);
 		} else if (!strcasecmp(key, "daten")) {
 			if (strlen(val) >= sizeof(c->daten))
-				warn("%s:%u: daten = \"%s\" ist zu lang -- Vorgabe %s",
+				warn("%s:%u: daten = \"%s\" is too long -- default %s",
 				     c->path, n, val, PQ_DATEN);
 			else
 				snprintf(c->daten, sizeof(c->daten), "%s", val);
 		} else if (!strcasecmp(key, "rechner")) {
 			if (strlen(val) >= sizeof(c->rechner))
-				warn("%s:%u: rechner = \"%s\" ist zu lang -- Vorgabe %s",
+				warn("%s:%u: rechner = \"%s\" is too long -- default %s",
 				     c->path, n, val, PQ_BIN);
 			else
 				snprintf(c->rechner, sizeof(c->rechner), "%s", val);
 		} else {
-			warn("%s:%u: unbekannter Schluessel \"%s\" -- ignoriert (start, zustand, preset, daten, rechner)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (start, zustand, preset, daten, rechner)",
 			     c->path, n, key);
 		}
 	}
@@ -2620,15 +2627,15 @@ static enum policy start_policy(struct control *c)
 	switch (cf->start) {
 	case START_MANUELL:
 		console = true;
-		why = "start = manuell";
+		why = "start = manual";
 		break;
 	case START_ZULETZT:
 		console = !strcmp(c->state_known, "off");
-		why = c->state_known[0] ? "start = zuletzt, gemerkt" : "start = zuletzt, nichts gemerkt";
+		why = c->state_known[0] ? "start = last, saved" : "start = last, nothing saved";
 		break;
 	default:
 		console = false;
-		why = cf->present ? "start = auto" : "Vorgabe start = auto";
+		why = cf->present ? "start = auto" : "default start = auto";
 		break;
 	}
 	info("config          %s%s: %s -> %s; %s%s", cf->path, cf->present ? "" : " missing", why,
@@ -4154,12 +4161,12 @@ static bool werte_write(struct werte *w, struct capture *cap,
 		unlink(tmp);
 		return false;
 	}
-	fprintf(f, "# h713-tv: die Bildwerte, die \"h713-tv ctl save\" gemerkt\n"
-		"# hat. Beim Start werden sie ueber das Preset gelegt, das in\n"
-		"# der Zeile \"preset\" steht. \"h713-tv ctl save --aus\" loescht\n"
-		"# die Datei wieder. Von Hand aendern ist erlaubt: Werte ausserhalb\n"
-		"# des Reglerbereichs werden einzeln verworfen und im Journal mit\n"
-		"# ihrer Zeilennummer genannt.\n");
+	fprintf(f, "# h713-tv: the picture values that \"h713-tv ctl save\" has\n"
+		"# saved. At the start they are laid over the preset named in\n"
+		"# the \"preset\" line. \"h713-tv ctl save off\" deletes the file\n"
+		"# again. Editing it by hand is allowed: values outside a\n"
+		"# control's range are dropped one by one and named in the\n"
+		"# journal with their line number.\n");
 	/*
 	 * No preset line when none was sent (-p none): the values then belong
 	 * to no preset and are applied whatever the next start comes up with.
@@ -4963,7 +4970,7 @@ int main(int argc, char **argv)
 	werte.path = conf.werte_path[0] && !o.report_only ? conf.werte_path : NULL;
 	werte_read(&werte);
 	startpreset = o.preset ? o.preset : (conf.preset[0] ? conf.preset : "standard");
-	if (!strcasecmp(startpreset, "zuletzt") || !strcasecmp(startpreset, "last"))
+	if (!strcasecmp(startpreset, "last") || !strcasecmp(startpreset, "zuletzt"))
 		startpreset = werte.preset[0] ? werte.preset : "standard";
 
 	/*
