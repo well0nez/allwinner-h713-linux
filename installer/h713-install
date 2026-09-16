@@ -45,12 +45,13 @@ from h713 import install as install_mod                                     # no
 from h713.blockdev import (Disk, LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED,   # noqa: E402
                            device_kind)
 from h713.dump import (choose_dump, dump_asked, dump_full, dump_small,     # noqa: E402
-                       keep_copy, mandatory_dump, verify_dump, write_manifest)
+                       full_dump_state, keep_copy, mandatory_dump, verify_dump,
+                       write_manifest)
 from h713.env import ENV_CARRY_OVER                                         # noqa: E402
 from h713.fel import expose_drive                                           # noqa: E402
 from h713.identify import identify, report_device                           # noqa: E402
 from h713.install import (DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
-                          WRITES, confirm, image_package, release_files,
+                          WRITES, confirm, image_package, in_dump, release_files,
                           run_extractor, table_test_for, test_image_allowed,
                           translate, unpack_parts, write_package)
 from h713.log import console                                                # noqa: E402
@@ -105,6 +106,9 @@ def parser():
                       help="directory for the dump (default: %(default)s)")
     take.add_argument("--with-vendor", action="store_true",
                       help="also run h713-extract over the full dump")
+    take.add_argument("--force", action="store_true",
+                      help="take the full dump again even when a complete one lies in the "
+                           "directory (without this it is kept)")
 
     put = sub.add_parser("install", parents=[common], help="write our image onto the device")
     put.add_argument("image", metavar="RELEASE-DIR|TABLE.json",
@@ -294,24 +298,40 @@ def _dump(args, disk, path):
     os.makedirs(args.dump_dir, exist_ok=True)
     manifest = dump_small(disk, args.dump_dir, our_layout=args._our_layout)   # always, "full" too
     if size == "full":
-        file = os.path.join(args.dump_dir, DUMP_FULL)
-        console.info("7.3 GB, that takes a while. Progress:")
-        digest, seconds = dump_full(disk, file)
-        console.ok("%s  sha256 %s…  in %s" % (file, digest[:16], duration(seconds)))
-        console.info("Samples against the device:")     # an unchecked dump is no failsafe
-        bad = verify_dump(disk, file)
-        if bad:
-            console.error("%d sample(s) differ -- the dump is no good. Stopping before "
-                          "anything is written." % bad)
-            return 7
-        console.ok("the dump agrees with the device")
-        manifest.append((DUMP_FULL[:-4], 0, disk.sectors, digest, "complete clone"))
+        file = in_dump(args.dump_dir, DUMP_FULL)
+        # A complete clone in this directory is the way back and is never overwritten by
+        # accident (O1b item 1, seen 15.09.2026): `install` reuses it, `dump --full` keeps it
+        # and says so, `--force` takes a new one. Only an incomplete file is replaced.
+        kept, why = full_dump_state(args.dump_dir, file, disk.sectors)
+        if why:
+            console.warn("%s -- taking the full dump again" % why)
+        elif kept and getattr(args, "force", False):
+            console.warn("--force: %s is complete, taking it again all the same" % file)
+            kept = None
+        elif kept and args.command == "dump":
+            console.ok("%s is complete already -- kept as it is; --force takes a new one" % file)
+        elif kept:
+            console.ok("%s is complete already -- reused, no second 17-minute dump" % file)
+        if kept:
+            manifest.append(kept)
+        else:
+            console.info("7.3 GB, that takes a while. Progress:")
+            digest, seconds = dump_full(disk, file)
+            console.ok("%s  sha256 %s…  in %s" % (file, digest[:16], duration(seconds)))
+            console.info("Samples against the device:")   # an unchecked dump is no failsafe
+            bad = verify_dump(disk, file)
+            if bad:
+                console.error("%d sample(s) differ -- the dump is no good. Stopping before "
+                              "anything is written." % bad)
+                return 7
+            console.ok("the dump agrees with the device")
+            manifest.append((DUMP_FULL[:-4], 0, disk.sectors, digest, "complete clone"))
     write_manifest(args.dump_dir, manifest, path)
     console.ok("the dump lies in %s" % os.path.abspath(args.dump_dir))
     if args.command != "dump":
         return 0
     if args.with_vendor:
-        full = os.path.join(args.dump_dir, DUMP_FULL)
+        full = in_dump(args.dump_dir, DUMP_FULL)    # a kept v0.5-beta clone counts too
         if not os.path.isfile(full):
             console.error("--with-vendor needs the full dump (%s is not there) -- take --full."
                           % full)
