@@ -416,7 +416,14 @@ def check_package(directory, d, log=console):
 # If the WHOLE set is missing, the placeholders stay zeroed and h713-wifi
 # reports "Firmware fehlt" on the device. If only a part is missing, that is a
 # finding and no special case -- then abort as with everything else.
-OPTIONAL_GROUPS = ("lib/firmware/aic8800_fw/",)
+# Groups a firmware may supply only in part, or not at all. Missing files leave their
+# placeholder zeroed and are said, never an abort: the picture does not depend on them.
+# (HY300 Pro, issue #1, 16.09.2026: the Android 10 vendor image has no
+# fw_patch_8800d80_u02_ext0.bin, no pq_picturemode.ini and no pqcontrol_custom_setting.xml.)
+OPTIONAL_GROUPS = {
+    "lib/firmware/aic8800_fw/": ("WLAN firmware", "WLAN stays off"),
+    "pq/": ("picture presets", "h713-pq has no presets, the picture itself is unaffected"),
+}
 
 # Placeholders a device may be missing ON ITS OWN, not only as a whole group. Today exactly one:
 # the boot logo. A dump without it, or with one too big for the placeholder, still installs -- the
@@ -432,16 +439,23 @@ def _sort_out_optional(sources, table, missing, too_big, where, absent, log):
     `where` names the source in the WLAN line, `absent` says what "missing" means there.
     Returns (missing, too_big) with the optional ones taken out -- `table` loses an optional
     file, so the caller neither fills it nor counts it."""
-    for prefix in OPTIONAL_GROUPS:
+    for prefix, (what, consequence) in OPTIONAL_GROUPS.items():
         group = [n for n in table if n.startswith(prefix)]
         gone = [n for n in group if n in missing]
-        if group and len(gone) == len(group):
-            log.warn("%s: none of the %d files %s -- this device probably "
-                     "does not have the chip. The placeholders stay zeroed, WLAN stays off."
-                     % (prefix, len(group), where))
-            for n in gone:
-                sources[n] = b""
-                missing.remove(n)
+        if not gone:
+            continue
+        if len(gone) == len(group):
+            log.warn("%s: none of the %d files %s -- this firmware has no %s. "
+                     "The placeholders stay zeroed, %s."
+                     % (prefix, len(group), where, what, consequence))
+        else:
+            log.warn("%s: %d of %d files %s (%s) -- this firmware ships another %s "
+                     "set. Those placeholders stay zeroed, %s."
+                     % (prefix, len(gone), len(group), absent,
+                        ", ".join(n[len(prefix):] for n in sorted(gone)[:3]), what, consequence))
+        for n in gone:
+            sources[n] = b""
+            missing.remove(n)
     for name in OPTIONAL_FILES:
         if name not in table:
             continue
