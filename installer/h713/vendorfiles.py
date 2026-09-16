@@ -23,7 +23,7 @@ from h713.util import hexdump_short, sha256_bytes
 
 REQUIRED_FILES = ("lib/firmware/h713-arisc.bin", "lib/firmware/hy310-edid.bin", "lib/firmware/h713/msp-patch.bin")
 
-# Exactly the files userspace/h713-pq reads (h713_pq/quellen.py)
+# Exactly the files userspace/h713-pq reads (h713_pq/sources.py)
 PQ_FILES = (
     "tvpq.db",
     "pq_picturemode.ini",
