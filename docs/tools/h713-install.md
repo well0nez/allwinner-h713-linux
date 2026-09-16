@@ -100,6 +100,12 @@ reuses it instead of dumping 7.3 GB a second time, and `dump --full` keeps it an
 count is the count of the device in front of the tool, and the file is exactly that many bytes. A clone
 that an aborted run left short is named with both sizes and taken again.
 
+Where each region of the small dump was found stands in its `MANIFEST.json` row as `source`: `gpt` for
+the device's own partition table, `fixed` for the secure storage (raw at LBA 12288 - no partition entry
+points at it on any H713 seen so far), and `hy310-constant` for the last resort. A table that names no
+`private` and no `Reserve0*` at all falls back to the HY310's own LBAs for that group, and the run says
+on screen which region it guessed rather than read.
+
 ## Reinstalling over our own layout
 
 A device whose GPT names begin `hy310-` already runs this system, and then `install` demands neither a

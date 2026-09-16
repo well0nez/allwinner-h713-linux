@@ -6,6 +6,10 @@ Item 1 -- a complete `emmc-full.img` is the way back and is never overwritten by
 reuses it instead of dumping 7.3 GB a second time, `dump --full` keeps it and says so, `--force`
 takes a new one, and only an incomplete clone is named and replaced.
 
+Item 2 -- `private` and `Reserve0*` come out of the device's own GPT by name. Only a table that
+names neither falls back to the HY310's LBAs, and then the run says which region it guessed and
+MANIFEST.json marks the row. The secure storage stays the raw constant at LBA 12288 either way.
+
 Nothing here is frozen: every value is derived from the fake disk it was written onto, and the
 fake disks need no vendor bytes, so all of this runs in the default mode of run.sh.
 """
@@ -25,10 +29,15 @@ import fakedisk
 
 sys.path.insert(0, support.TOOLS)
 from h713.blockdev import Disk                                          # noqa: E402
+from h713.dump import (HY310_FALLBACK, SECURE_STORAGE, dump_small,      # noqa: E402
+                       write_manifest)
 
 SECT = 512
 TOOL = os.path.join(support.TOOLS, "h713-install")
 FULL = "emmc-full.img"
+MOVED = dict((n, (lba, s)) for n, lba, s in fakedisk.MOVED_PARTS)
+NO_ANDROID_PARTS = tuple(p for p in fakedisk.MOVED_PARTS
+                         if p[0] not in ("private", "Reserve0"))
 # Item 1 runs a real `--full`, so its disk is 16 MiB and not 7.3 GB. Our layout is on it: the
 # small dump then takes the secure storage and nothing else, which keeps every region of those
 # runs inside the file.
@@ -46,6 +55,73 @@ def _rows(directory):
 def _read(directory, name):
     with open(os.path.join(directory, name), "rb") as fh:
         return fh.read()
+
+
+class RegionsComeFromTheDevicesOwnTable(unittest.TestCase):
+    """Item 2, on three fake disks: a table that moves the two regions, one that has neither,
+    and our own layout, which is meant to guess nothing at all."""
+
+    def _small(self, make, our_layout=False):
+        """Fake disk, small dump, manifest -> (manifest, log, dump directory)."""
+        tmp = support.workdir(self)
+        path = make(os.path.join(tmp, "emmc.img"))
+        out, log = os.path.join(tmp, "backup"), support.Recorder()
+        disk = Disk(path, writable=False)
+        try:
+            manifest = dump_small(disk, out, log=log, our_layout=our_layout)
+        finally:
+            disk.close()
+        write_manifest(out, manifest, path)
+        return manifest, log, out
+
+    def test_a_table_that_moves_the_two_regions_is_followed_not_the_hy310_lbas(self):
+        manifest, log, out = self._small(fakedisk.make_moved_stock_disk)
+        rows = _rows(out)
+        for file_name, part in (("private", "private"), ("reserve0", "Reserve0")):
+            lba, sectors = MOVED[part]
+            self.assertEqual((rows[file_name]["lba"], rows[file_name]["sectors"],
+                              rows[file_name]["source"]), (lba, sectors, "gpt"), file_name)
+            self.assertEqual(_read(out, "%s.bin" % file_name),
+                             fakedisk.pattern(part, lba, sectors), file_name)
+        self.assertIs(manifest.info["regions_by_name"], True)
+        self.assertNotIn("HY310's own LBAs", log.text)
+        # The secure storage has no partition entry anywhere: raw constant, both disks.
+        self.assertEqual((rows["secure-storage"]["lba"], rows["secure-storage"]["sectors"],
+                          rows["secure-storage"]["source"]),
+                         (SECURE_STORAGE[1], SECURE_STORAGE[2], "fixed"))
+        self.assertEqual(_read(out, "secure-storage.bin"),
+                         fakedisk.pattern("secure-storage", *SECURE_STORAGE[1:]))
+
+    def test_a_table_with_neither_region_falls_back_to_the_hy310_lbas_and_says_so(self):
+        name, lba, sectors = HY310_FALLBACK[0]
+
+        def make(path):
+            """The HY310's own private LBA is filled, so the fallback can be traced to it."""
+            fakedisk.make_moved_stock_disk(path, NO_ANDROID_PARTS)
+            with open(path, "r+b") as fh:
+                fh.seek(lba * SECT)
+                fh.write(fakedisk.pattern(name, lba, sectors))
+            return path
+
+        manifest, log, out = self._small(make)
+        rows = _rows(out)
+        self.assertEqual([(rows[n]["lba"], rows[n]["sectors"], rows[n]["source"])
+                          for n in ("private", "reserve0-a", "reserve0-b")],
+                         [(l, s, "hy310-constant") for _n, l, s in HY310_FALLBACK])
+        self.assertEqual(_read(out, "private.bin"), fakedisk.pattern(name, lba, sectors))
+        self.assertIn("names no private, Reserve0_a, Reserve0_b", log.text)
+        self.assertIn("HY310's own LBAs", log.text)
+        self.assertIs(manifest.info["regions_by_name"], False)
+
+    def test_our_own_layout_guesses_nothing(self):
+        # It has no `private` and no `Reserve0*` at all; 48 MiB of zeros off the HY310's LBAs
+        # would be a backup of nothing.
+        manifest, log, out = self._small(
+            lambda p: fakedisk.make_our_layout_disk(p, SMALL_PARTS, SMALL_SECTORS),
+            our_layout=True)
+        self.assertEqual([row[0] for row in manifest], ["secure-storage"])
+        self.assertEqual(_rows(out)["secure-storage"]["source"], "fixed")
+        self.assertNotIn("HY310's own LBAs", log.text)
 
 
 class FullDumpIsNeverOverwrittenByAccident(unittest.TestCase):

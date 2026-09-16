@@ -36,12 +36,19 @@ from .util import duration, mib
 # (h713.VERSION): it goes into MANIFEST.json as "tool" and into README.txt.
 VERSION = "0.1 (draft, doku/110)"
 
-# Secure storage: no partition entry points at it, its position is fixed on every H713, so
-# it can only stand here (doku/109 §2.3, I:95). The other device-only regions are looked up
-# by name in the device's own GPT -- a constant LBA was the HY310's and would have saved
-# the wrong 16 MiB on a HY300 T08 (A0 §5). Key: GPT name lower case -> (file name, purpose).
+# Secure storage: no partition entry points at it, its position is fixed at LBA 12288 on
+# every H713 board seen so far, so it stays a RAW CONSTANT here -- there is no table to ask
+# (doku/109 §2.3, I:95). The other device-only regions are looked up by name in the device's
+# own GPT -- a constant LBA was the HY310's and would have saved the wrong 16 MiB on a
+# HY300 T08 (A0 §5). Key: GPT name lower case -> (file name, purpose).
 SECURE_STORAGE = ("secure-storage", 12288, 2048)
 BY_NAME = ("private", "Reserve0", "Reserve0_a", "Reserve0_b")
+# Where the two lay on the HY310 (hy310-install.py 0.1, UNIQUE_REGIONS): the last resort for a
+# device whose table cannot be read or names neither of them. A guess off another board is
+# still better than losing the region, but it IS a guess -- so it is taken only when the table
+# offers nothing, it is said on screen, and MANIFEST.json marks the row (O1b item 2).
+HY310_FALLBACK = (("private", 4891648, 32768), ("Reserve0_a", 5489664, 32768),
+                  ("Reserve0_b", 5522432, 32768))
 REGION_FILES = {
     "secure-storage": ("secure-storage", "HDCP keys, WLAN/BT MAC addresses, serial number"),
     "private":        ("private",        "Android secure storage partition"),
@@ -87,23 +94,34 @@ def _gpt(q):
         return None
 
 
-def regions_from_gpt(disk):
+def regions_from_gpt(disk, fallback=False, sources=None):
     """The device-unique regions BY NAME: {name: (first_lba, sectors)}.
 
     Secure storage is fixed; private and Reserve0* come out of the device's own
     partition table, spelled as the table spells them -- our own layout has none of
     them. Written so that C-A's identify() can fill Identification["regions"].
+
+    fallback: when the table names no `private` -- resp. no `Reserve0*` at all -- put the
+    HY310's own LBAs in for that one group (O1b item 2). `sources`, if a dict is handed in,
+    is filled with where each region's position came from: "fixed", "gpt", "hy310-constant".
     """
     out = collections.OrderedDict()
+    said = {} if sources is None else sources
     out[SECURE_STORAGE[0]] = (SECURE_STORAGE[1], SECURE_STORAGE[2])
+    said[SECURE_STORAGE[0]] = "fixed"
     gpt = _gpt(_source(disk))
-    if gpt is None:
-        return out
-    spelling = dict((name.lower(), name) for name in gpt.parts)
+    spelling = dict((name.lower(), name) for name in gpt.parts) if gpt is not None else {}
     for wanted in BY_NAME:
         found = spelling.get(wanted.lower())
         if found is not None:
             out[found] = gpt.parts[found]
+            said[found] = "gpt"
+    if fallback:
+        from_gpt = [name.lower() for name in out]
+        for name, lba, sectors in HY310_FALLBACK:
+            group = "reserve0" if name.lower().startswith("reserve0") else "private"
+            if not any(n.startswith(group) for n in from_gpt):
+                out[name], said[name] = (lba, sectors), "hy310-constant"
     return out
 
 
@@ -125,9 +143,21 @@ def dump_small(disk, target, log=console, our_layout=False, regions=None):
     os.makedirs(target, exist_ok=True)
     manifest = DumpResult()
     empty = []
-    regions = regions_from_gpt(disk) if regions is None else regions
+    found_by = {}
+    if regions is None:
+        # No fallback on our own layout: it has no `private` and no `Reserve0*` at all, and
+        # 48 MiB of zeros off the HY310's LBAs would be a backup of nothing (O1b item 2).
+        regions = regions_from_gpt(disk, fallback=not our_layout, sources=found_by)
+    guessed = [n for n, s in found_by.items() if s == "hy310-constant"]
+    if guessed:
+        log.warn("This device's partition table names no %s." % ", ".join(guessed))
+        log.info("  Saved from the HY310's own LBAs instead. That is a guess, not a")
+        log.info("  reading: MANIFEST.json marks those rows with source hy310-constant.")
+    sources = collections.OrderedDict()
     for name, (lba, sectors) in regions.items():
         file_name, purpose = _region_file(name)
+        sources[file_name] = found_by.get(
+            name, "fixed" if name == SECURE_STORAGE[0] else "gpt")
         data = disk.read(lba, sectors)
         path = os.path.join(target, "%s.bin" % file_name)
         with open(path, "wb") as f:
@@ -178,7 +208,8 @@ def dump_small(disk, target, log=console, our_layout=False, regions=None):
             log.info("uboot-env: our layout, but no valid environment lies at LBA %d "
                      "(empty or without CRC) -- nothing to save, nothing to carry over" % ENV_LBA)
     mips, active_slot = dump_mips(disk, target, log)
-    manifest.info["regions_by_name"] = True
+    manifest.info["regions_by_name"] = not guessed
+    manifest.info["region_sources"] = sources
     manifest.info["mips"] = mips
     manifest.info["active_slot"] = active_slot
     return manifest
@@ -414,6 +445,13 @@ def write_manifest(directory, manifest, device):
     # Stage 2 C-B: regions_by_name, mips and active_slot ride on dump_small()'s result
     # (DumpResult.info), so that no caller has to hand them in.
     data.update(getattr(manifest, "info", {}))
+    # O1b item 2: every region row says where its LBA came from -- "gpt" the device's own
+    # table, "hy310-constant" the fallback, "fixed" the raw secure-storage LBA. It rides in
+    # the row and not once more beside it, so a reader sees it where the LBA stands.
+    sources = data.pop("region_sources", None) or {}
+    for row in data["regions"]:
+        if row["name"] in sources:
+            row["source"] = sources[row["name"]]
     saved = ["%s/%s" % (MIPS_DIR, name)
              for name, files in (data.get("mips") or {}).items() if files]
     with open(os.path.join(directory, "MANIFEST.json"), "w") as f:
