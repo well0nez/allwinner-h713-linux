@@ -177,18 +177,22 @@ class AliasHints(unittest.TestCase):
 class NoMandatoryDumpOnOurLayout(unittest.TestCase):
     """Stage 2 C5: on our own layout the restore paths take no mandatory small dump."""
 
+    # N2 (Marco, 15.09.): `--dump DIR` now means "take one anyway" -- so this run may not
+    # name a directory any more, or it would ask for the very dump it is testing the absence
+    # of. Everything else about the test is unchanged; the directory it checks for is the
+    # default one, which would appear in the working directory of the run.
     def test_no_mandatory_dump_on_our_layout(self):
         support.need(fakedisk.NEEDS_V3 + (TOOL,))
         tmp = support.workdir(self)
         disk = fakedisk.make_v3_disk(os.path.join(tmp, "emmc-v3.img"))
         proc = subprocess.run(
             [sys.executable, TOOL, "restore-stock", fakedisk.IMAGES["hy310"], "--device", disk,
-             "--dump", os.path.join(tmp, "backup"), "--skip-identify"],
+             "--skip-identify"],
             input="no\n", capture_output=True, text=True, cwd=tmp)
         out = proc.stdout + proc.stderr
         self.assertNotIn("Small dump (mandatory", out)
         self.assertIn("no mandatory dump before the restore", out)
-        self.assertFalse(os.path.exists(os.path.join(tmp, "backup")))
+        self.assertFalse(os.path.exists(os.path.join(tmp, "h713-dump")))
         self.assertEqual(proc.returncode, 1, out)          # refused at the YES prompt, nothing written
 
 

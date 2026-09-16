@@ -75,6 +75,7 @@ NEEDS_STOCK = (STOCK_GPT, STOCK_BOOTLOADER, STOCK_ENV_A,
                os.path.join(FIXTURES_LOCAL, "images", "hy310", "boot0_sdcard.fex"),
                os.path.join(FIXTURES_LOCAL, "images", "hy310", "boot_package.fex"))
 NEEDS_V3 = (V3_GPT_PRIMARY, V3_GPT_BACKUP, V3_ENV)
+NEEDS_STOCK_GPT = (STOCK_GPT,)          # make_stock_gpt_disk(): the table, no vendor bytes
 
 
 def image_files(board):
@@ -199,6 +200,23 @@ def make_v3_disk(path):
         _put(fh, DISK_SECTORS - GPT_BACKUP_SECTORS, backup)
         _put(fh, LOCK_FIRST, pattern("secure-storage", LOCK_FIRST, LOCK_SECTORS))
         _put_file(fh, 14336, V3_ENV)
+    return path
+
+
+def make_stock_gpt_disk(path):
+    """A device that still carries the stock partition table and nothing else of the stock
+    firmware.  That is enough for every decision which hangs on the layout alone -- device_kind(),
+    the mandatory dump, the question where the vendor files come from -- and it needs no vendor
+    bytes, so it also runs in the default mode of run.sh, where make_stock_disk() skips (N2)."""
+    primary = _read(STOCK_GPT)
+    parts = dict((n, (l, s)) for n, l, s in gpt_parts(primary))
+    _blank(path)
+    with open(path, "r+b") as fh:
+        _put(fh, 0, primary)
+        _put_backup_gpt(fh, primary)
+        _put(fh, LOCK_FIRST, pattern("secure-storage", LOCK_FIRST, LOCK_SECTORS))
+        for name in ("misc", "private", "Reserve0_a", "Reserve0_b"):
+            _put(fh, parts[name][0], pattern(name, *parts[name]))
     return path
 
 
