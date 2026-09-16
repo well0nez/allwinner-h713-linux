@@ -3,7 +3,8 @@
 Layout v3 puts the entire boot chain - SPL, U-Boot, environment, and the one block that must never be
 touched - into the eMMC's first 8 MiB, and gives every one of those raw regions its own GPT entry so that
 `lsblk`, `gparted` or a stray `dd` see them as occupied instead of guessing. Two ext4 partitions,
-`hy310-boot` and `hy310-rootfs`, hold everything else.
+`hy310-boot` and `hy310-rootfs`, hold everything else. Layout v4 keeps every number on this page and
+changes only how the proprietary files get into those two partitions - last section.
 
 ## The six partitions
 
@@ -39,8 +40,20 @@ GPT partition nobody is told to format, and once as a hard-coded sector range in
 even `--force` lifts.
 
 Because LBA 12,288…14,335 must never appear in a flashable file, the release image itself is not one
-contiguous file but three, built around the gap - the split, its table, and the placeholders it leaves for
-proprietary files are covered in [`h713-mkimage.md`](../tools/h713-mkimage.md), not here.
+contiguous file but three, built around the gap - the split, its table, and how the proprietary files get
+into the two ext4 partitions afterwards are covered in [`h713-mkimage.md`](../tools/h713-mkimage.md),
+not here.
+
+## How the vendor files reach the two ext4 partitions
+
+Layout v4 (16.09.2026) is layout v3's partition table with one thing changed: the image carries the empty
+target directories, and the installer mounts `hy310-boot` and `hy310-rootfs` out of its working copy and
+copies the device's own files in with their real length. Nothing in this page's partition table moves -
+the start LBAs, the sizes, the GUIDs and the three image pieces are the same as v3's, and a device that
+runs v3 boots a v4 image without noticing. What changed is that no file in the image has a size any more,
+so a firmware whose `ProjectID_*.TSE` is bigger than the HY310's installs like any other (issue #1). The
+byte offset the installer mounts at is derived from this table alone: `(partition.lba - piece.lba) * 512`
+inside `-b-system.img`, bounded by the length of that piece.
 
 ## Restoring to stock
 
