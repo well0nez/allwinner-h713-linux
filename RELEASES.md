@@ -10,7 +10,7 @@ A release is a git tag plus the files a user needs to install without building a
 | File | What it is |
 |---|---|
 | `h713-hy310-vX.Y-a-bootkette.img`, `-b-system.img`, `-c-gptkopie.img` | the three image parts, uploaded `.zst`-packed |
-| `h713-hy310-vX.Y.tabelle.json` | the offset table: where each part goes, and where the placeholders lie |
+| `h713-hy310-vX.Y.tabelle.json` | the table: where each part goes, and which of your device's own files the installer copies into which partition (layout v4 - the image carries none of them, and no size of yours has to match) |
 | `h713-hy310-vX.Y.sha256` | checksums of the parts and of the table |
 | `h713-hy310-vX.Y-README.txt` | what to do with all of it, next to the files themselves |
 | `u-boot-installer.bin`, `sunxi-fel` | what [`h713-install`](FLASHING.md) needs to expose the eMMC over USB |
