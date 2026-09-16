@@ -1,19 +1,19 @@
 # Status
 
-Snapshot of **2026-09-12**. "Works" means *verified on the projector*, with the date and the log named -
+Snapshot of **2026-09-16**. "Works" means *verified on the projector*, with the date and the log named -
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is a development build from 10./12.09. (internally `v0.9`); the current
-build from a clean clone is a week younger and differs in one thing that matters - see *Boot chain*
-below. What the numbers mean: [RELEASES.md](RELEASES.md).
+The image on the test device is a development build of 16.09. (internally `v0.7-dev10`) from the
+commits the release is built from. What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
 
-- **Works:** standalone boot from eMMC, projector image, HDMI input with picture controls, HDMI audio,
-  Wi-Fi as an access point, focus motor, internal camera, fan tacho and thermals (reporting only),
-  power key, FEL recovery,
-  installer including restore-to-stock. The fan-stall poweroff is armed again since 12.09.
+- **Works:** standalone boot from eMMC with the device's own boot logo two seconds after the power key,
+  projector image, HDMI input with picture controls and hot plug, HDMI audio, Wi-Fi as an access point
+  and as a station, focus motor, internal camera (without a bootloader crutch since 15.09.), fan tacho and
+  thermals (reporting only), power key, FEL recovery, installer including restore-to-stock. The fan-stall
+  poweroff is armed since 12.09.
 - **Missing:** Bluetooth, AV1 decode, HDCP 1.4 for protected sources, any desktop.
 - **Not re-tested by us:** hardware video decode, IOMMU, Mali GPU - these come from cstenger's tree.
 
@@ -44,19 +44,19 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 
 | Subsystem | State | Where it lives | Evidence |
 |---|---|---|---|
-| Boot chain | works, with one caveat | SPL → BL31 → U-Boot → FIT, all from source | 20/20 cold starts (`analyse/boot/r5-20-kaltstarts-20260910.txt`) - but a fresh build now ships a different BL31 than the one those runs used; see *Boot chain* below |
+| Boot chain | works | SPL → BL31 → U-Boot → FIT, all from source; the SPL reads the FIT with DMA, the eMMC runs at HS200 with DMA in U-Boot | 20/20 cold starts (`analyse/boot/r5-20-kaltstarts-20260910.txt`); 16.09.: power key to the boot logo 2.0 s, to the kernel 3.5 s (1 s of it is the autoboot countdown), release BL31 on the device since 15.09. |
 | Power key gate | works | U-Boot `CONFIG_H713_POWER_GATE`, env `h713_gate` | 09.09.; standby 4 W, red LED, key starts |
 | eMMC layout v3 | works | six partitions, secure storage untouched by design | 10.09., [docs/subsystems/emmc-layout.md](docs/subsystems/emmc-layout.md) |
 | Debian 13 rootfs | works | `rootfs/`, 242 MiB, zram, ssh key-only | built by `build-all`, acceptance tests in the build log |
 | Projector image (LVDS/DLP) | works | MIPS firmware + `sun50i-h713-afbd` KMS driver | continuous since 08.09. |
-| HDMI input | works, one rough edge | `sun50i-h713-hdmirx`, node found by name (it was `/dev/video3` on 12.09., not `video1` - the camera enumerated first) | six modes at 60 Hz, colour-correct, 08.09.; a freshly plugged source may need `h713-tv ctl replug` (12.09., [docs/known-issues.md](docs/known-issues.md)) |
+| HDMI input | works | `sun50i-h713-hdmirx`, node found by name (it was `/dev/video3` on 12.09., not `video1` - the camera enumerated first) | six modes at 60 Hz, colour-correct, 08.09.; hot plug after boot, a boot with the source plugged in and unplug/replug verified 16.09. after the first-publication source switch was removed (kernel 0136a/0136c) |
 | Picture path userspace | works | `h713-tv` service, `h713-tv ctl …` | 08.09.; presets, gamma, aspect, controls |
 | HDMI audio | works | codec-I2S + MSP DSP driver, one volume control | 08.09. 22:05, lip-sync judged by ear |
 | ARM ↔ MIPS IPC | works | `cpu_comm` in-kernel API | callback slot leak fixed; [docs/subsystems/cpu-comm.md](docs/subsystems/cpu-comm.md) |
 | ARISC (PMU, HPD, EDID) | works | `sun50i-h713-arisc` | 17.65 s to hot-plug ready |
 | Wi-Fi AIC8800D80 | works | out-of-tree modules + `h713-wifi` | 12.09.: access point (−50 dBm, 5.7 MB/s, DHCP, SSH) and station against a real network (DHCP address, internet through `wlan0`) |
 | Focus motor | works | `hy310_focus_motor` + `h713-focus` | range watcher measured 12.09., `analyse/boot/motor-bereichswaechter-20260912.txt` |
-| Internal camera | works | `uvcvideo` + `h713-cam` | 12.09.: grab of the lit wall, mean brightness Y = 88.7, 3.2 s (`analyse/beamer-cam/p6-wand-20260912.png`) |
+| Internal camera | works | `uvcvideo` + `h713-cam`; the USB PHYs are powered by the kernel since 15.09. (SIDDQ, patch 0005a), no `usb start` in the boot loader | 12.09.: grab of the lit wall, mean brightness Y = 88.7, 3.2 s (`analyse/beamer-cam/p6-wand-20260912.png`) |
 | Fan, tacho, stall protection | works | `hy310-board-mgr` | 4860 RPM measured 11.09.; **the fan-stall poweroff is armed and was triggered on the device** 12.09.: rail cut, device shut itself down, next boot mounted the filesystem clean (`analyse/boot/p6-notaus-luefter-20260912.txt`). No NTC on this unit, so the tacho is the protection |
 | Power / standby | partial | standby is 4 W; deep sleep is designed, not built | plan `doku/104` |
 | Crypto engine | present, unused | measurement module loads, crypto disabled | `doku/114` |
@@ -65,33 +65,27 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | HDCP 1.4 | missing | path understood, one test costs a power cycle | `doku/112` |
 | HDCP 2.2 | works, device-local | key read from *your* device at boot, never shipped | `h713-hdcp-key.service` |
 
-## Changes on `main` since v0.6-beta, not yet run on the device
+## Changes since v0.6-beta
 
-Landed 15.09.2026 after a review of cstenger's branch `h713-display-video-path` (German account in
-`doku/124`); built from the series in the container, installer suite and block scan green, but no device
-run yet. The next install is the acceptance run.
+All of these have been through device runs on the HY310 on 15./16.09.2026 (German account in `doku/125`,
+`doku/124` and `doku/61`):
 
-- kernel patch `0040` (cedrus: halt the VE before freeing DMA buffers) is retired to `zurueckgenommen/`:
-  it deadlocks concurrent decode clients, and the corruption it was written against came from the
-  1416 MHz OPP that `0055` already removes.
-- kernel patch `0013a` carries three decd corrections from his branch (`blue_en` register, a
-  self-deadlocking recycle lock, a missing slot copy). decd does not bind on this board, so this is dormant.
-- aic8800 patches `0008`-`0010`: log chatter through `aicwf_dbg_level`, the `rc_stat` queue drain with an
-  out-of-bounds fix, and the AP-mode debugfs unregister that a phantom `CONFIG_DEBUG_FS_AIC` had kept
-  out of the build.
-- `CONFIG_MAGIC_SYSRQ` (with `_SERIAL` and `DEFAULT_ENABLE=0x1`) in the shipping kernel, so a wedged
-  eMMC has a software way out (`echo b > /proc/sysrq-trigger`, or a BREAK on the UART).
-
-## Boot chain: one change since the image on the device
-
-Everything built before 2026-09-12 20:00 shipped a **BL31 from 10.09. with assertions enabled**
-(49 260 bytes). `make` considered it current and kept copying it forward, so it sits in v0.8, v0.9 and
-v0.10 - including the image on the device. A clean build produces the intended release BL31
-(45 164 bytes). `release/build-all.sh` now wipes the TF-A and U-Boot build directories before building.
-
-The next image you install therefore has a *different* EL3 firmware than anything tested so far.
-Nothing about it is expected to behave differently - it is the same source, minus the assertions -
-but it has not been through a device acceptance run yet. That run is the next thing on our list.
+- **Boot logo:** U-Boot shows the device's own `bootlogo.bmp` with the display firmware left running
+  (`h713_disp init <id> logo`); the installer carries the file from the stock bootloader partition to
+  `/boot/bootlogo.bmp`. No hash gate, no white flash.
+- **Boot time:** no `usb start` and no USB scan in the product boot, autoboot countdown 1 s, no logo
+  hashing, the eMMC clock corrected (the driver assumed the H6's PLL layout and ran the eMMC at 33 MHz),
+  IDMAC DMA and HS200 in U-Boot (87 MiB/s), the SPL reads the FIT images with DMA straight to their
+  addresses (SPL to BL31 1.6 s -> 0.14 s). Power key to the logo 2.0 s, to the kernel 3.5 s.
+- **USB:** the kernel clears the SIDDQ bit of the HCI PHYs itself (patch 0005a, as the vendor kernel
+  does); the camera no longer depends on the boot loader. `usb start` stays in the installer U-Boot only.
+- **HDMI hot plug:** the capture driver no longer switches the firmware's source away and back after the
+  first publication (0136a) and reports a release in progress as a change in flight (0136c). A source
+  plugged in after boot keeps its picture; `ctl replug` is no longer needed.
+- **Hygiene from the review of cstenger's branch:** `0040` retired, decd corrections in `0013a` (dormant on
+  this board), aic8800 `0008`-`0010`, `CONFIG_MAGIC_SYSRQ` in the shipping kernel.
+- **HY300 Pro:** profile with the device's identity features from the owner's probe run (issue #1).
+- **Release script:** refuses an SPL that outgrew its 32 KiB slot.
 
 ## Verified display modes
 
