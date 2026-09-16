@@ -2317,7 +2317,7 @@ static bool audio_policy_parse(const char *text, enum audio_policy *p)
  * The control socket
  *
  * One line in, a few lines out, connection closed. Lines start with "ok"
- * or "fehler", so the client's exit code is decided by the first word.
+ * or "error", so the client's exit code is decided by the first word.
  * ------------------------------------------------------------------ */
 
 #define GAMMA_FILE	"/usr/local/share/h713-tv/gamma-standard.bin"
@@ -2339,12 +2339,20 @@ enum policy { POLICY_AUTO, POLICY_OFF };
  *
  *   /etc/h713/tv.conf          read once at start, "key = value", # comments
  *       start = auto            picture follows the signal (as without the file)
- *       start = manuell         console until "ctl on" or "ctl auto"
- *       start = zuletzt         the mode last set with ctl; auto when none is known
- *       zustand = PFAD | none   where the last mode is kept; none = do not keep
- *       preset = NAME|zuletzt   which picture preset to come up with (11.09.)
- *       daten = VERZ | none     the extracted vendor data; none = do not use it
- *       rechner = PFAD | none   h713-pq; none = do not compute anything
+ *       start = manual          console until "ctl on" or "ctl auto"
+ *       start = last            the mode last set with ctl; auto when none is known
+ *       zustand = PATH | none   where the last mode is kept; none = do not keep
+ *       preset = NAME|last      which picture preset to come up with (11.09.)
+ *       daten = DIR | none      the extracted vendor data; none = do not use it
+ *       rechner = PATH | none   h713-pq; none = do not compute anything
+ *
+ * The keys are the file format and keep the names they have had since
+ * 11.09.2026; only their values speak English now, and the two words this
+ * file used before ("manuell", "zuletzt") are still accepted for them. The
+ * same holds for the two state files below: /var/lib/h713-tv/modus and its
+ * sibling "werte" keep their names and their content, because renaming
+ * either would throw away what a device running an older release has
+ * saved -- the mode it came up in, and the sliders somebody set by hand.
  *
  *   /var/lib/h713-tv/modus     one word, "auto" or "off". Written when a ctl
  *       command changes the mode and only then -- the eMMC is not a place for
@@ -2379,9 +2387,9 @@ struct conf {
 	bool keep;		/* zustand != none */
 	char state_path[200];
 	char werte_path[208];	/* <dirname(state_path)>/werte, "" when not kept */
-	char preset[32];	/* preset = NAME | zuletzt; "" = not said here */
-	char daten[160];	/* daten = VERZ; "none" = do not use vendor data */
-	char rechner[160];	/* rechner = PFAD; "none" = do not compute */
+	char preset[32];	/* preset = NAME | last; "" = not said here */
+	char daten[160];	/* daten = DIR; "none" = do not use vendor data */
+	char rechner[160];	/* rechner = PATH; "none" = do not compute */
 	char eingang[24];	/* --eingang; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
@@ -3337,7 +3345,7 @@ static const char *const preset_pq_key[9] = {
  *
  * How it asks:
  *
- *   h713-pq --daten VERZ show EINGANG PRESET --json --lut /run/.../gamma.bin
+ *   h713-pq --daten DIR show INPUT PRESET --json --lut /run/.../gamma.bin
  *
  * One child process, started as early as possible -- before the capture and
  * the DRM device are opened, which is where the start spends its time anyway
@@ -3973,7 +3981,7 @@ static int preset_apply(struct capture *cap, const struct preset *p, char *msg,
  * deviations *from a preset*; laying vivid's numbers over a start in cinema
  * would silently turn cinema into vivid. So they are applied when they belong
  * to the preset being started, and otherwise named in the journal and left
- * alone. With "preset = zuletzt" in tv.conf -- the setting this was built for
+ * alone. With "preset = last" in tv.conf -- the setting this was built for
  * -- the two always agree.
  * ------------------------------------------------------------------ */
 
@@ -4647,7 +4655,7 @@ static bool control_serve(struct control *c, struct capture *cap,
 }
 
 /* ------------------------------------------------------------------ *
- * Client mode: h713-tv ctl BEFEHL [ARG...]
+ * Client mode: h713-tv ctl COMMAND [ARG...]
  * ------------------------------------------------------------------ */
 
 static int client(int argc, char **argv, const char *path)
