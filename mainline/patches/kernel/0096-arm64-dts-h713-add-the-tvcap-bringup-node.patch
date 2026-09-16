@@ -24,7 +24,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 ---
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:09:53.442215090 +0200
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:09:53.449104951 +0200
-@@ -1469,6 +1469,32 @@
+@@ -1533,6 +1533,32 @@
  			status = "okay";
  		};
  

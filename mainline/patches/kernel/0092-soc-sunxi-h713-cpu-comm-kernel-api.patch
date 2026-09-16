@@ -1029,7 +1029,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_co
  		if (ret)
  			return -EFAULT;
  		if (copy_to_user((void __user *)arg, call_buf, 168))
-@@ -1740,6 +1750,7 @@
+@@ -1743,6 +1753,7 @@
  
  	/* Create proc entries */
  	cpu_comm_proc_init();
@@ -1037,7 +1037,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_co
  
  	/* Y2 2026-05-04: pre-init queueAction work_structs so the lazy-init
  	 * race in IRQ-context can't happen. */
-@@ -1803,6 +1814,7 @@
+@@ -1806,6 +1817,7 @@
  
  void cpu_comm_cleanup(void)
  {
@@ -1056,7 +1056,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/c
  #include <linux/semaphore.h>
  #include <linux/workqueue.h>
  #include <linux/cdev.h>
-@@ -781,4 +782,44 @@
+@@ -782,4 +783,44 @@
                                  struct poll_table_struct *wait);
  void    cpu_comm_userspace_deliver(const void *msg);
  

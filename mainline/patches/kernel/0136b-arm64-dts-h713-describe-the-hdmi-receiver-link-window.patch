@@ -8,7 +8,7 @@ to read the audio status bytes. Applies after 0135b and 0138.
 diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:54:57.499444516 +0200
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:54:57.503659213 +0200
-@@ -1676,6 +1676,30 @@
+@@ -1683,6 +1683,30 @@
  			reg = <0x06940000 0x1000>;
  		};
  
@@ -39,7 +39,7 @@ diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  		/* R-domain pinctrl for PL/PM banks (IR, S_PWM, WLAN/BT GPIOs) */
  		r_pio: pinctrl@7022000 {
  			compatible = "allwinner,sun50i-h713-r-pinctrl";
-@@ -2030,6 +2054,11 @@
+@@ -2047,6 +2071,11 @@
  	 *                    timing it reports -- the firmware's own signal
  	 *                    record has the active size and the frame rate
  	 *                    but no totals (doku/nachtlog/E4).
@@ -51,7 +51,7 @@ diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  	 *
  	 * No interrupt: three independent searches of the firmware image found
  	 * the capture interrupt only inside the MIPS interrupt controller, and
-@@ -2041,6 +2070,7 @@
+@@ -2058,6 +2087,7 @@
  		memory-region = <&mips_framebuf>, <&cpu_comm_reserved>;
  		memory-region-names = "hdmi-ring", "cpu-comm-shmem";
  		allwinner,incap = <&incap>;

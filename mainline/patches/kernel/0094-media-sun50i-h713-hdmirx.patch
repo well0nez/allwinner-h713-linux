@@ -106,7 +106,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 09:22:33.397102793 +0200
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 09:22:34.642673757 +0200
-@@ -1886,6 +1886,47 @@
+@@ -1903,6 +1903,47 @@
  		};
  	};
  

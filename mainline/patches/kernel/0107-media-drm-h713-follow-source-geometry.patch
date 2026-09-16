@@ -152,7 +152,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
 diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 18:04:14.986654532 +0200
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 18:04:14.986892722 +0200
-@@ -1570,6 +1570,26 @@
+@@ -1577,6 +1577,26 @@
  			status = "okay";
  		};
  
@@ -179,7 +179,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  		/* R-domain pinctrl for PL/PM banks (IR, S_PWM, WLAN/BT GPIOs) */
  		r_pio: pinctrl@7022000 {
  			compatible = "allwinner,sun50i-h713-r-pinctrl";
-@@ -1900,7 +1920,8 @@
+@@ -1917,7 +1937,8 @@
  	 * from the flip notifier of display@5600000 -- that node owns the
  	 * register pair, claims it, and reads it on every vsync anyway. All
  	 * three are dependencies in Kconfig, not resources here. What is left
@@ -189,7 +189,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  	 *
  	 * Binding:
  	 *   compatible     "allwinner,sun50i-h713-hdmirx"
-@@ -1915,6 +1936,14 @@
+@@ -1932,6 +1953,14 @@
  	 *                       rectangles, the Vp_Init staging area -- have to
  	 *                       live where the MIPS can address them, and this
  	 *                       is that place. Named, not hard coded.
@@ -204,7 +204,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  	 *
  	 * No interrupt: three independent searches of the firmware image found
  	 * the capture interrupt only inside the MIPS interrupt controller, and
-@@ -1925,6 +1954,7 @@
+@@ -1942,6 +1971,7 @@
  		compatible = "allwinner,sun50i-h713-hdmirx";
  		memory-region = <&mips_framebuf>, <&cpu_comm_reserved>;
  		memory-region-names = "hdmi-ring", "cpu-comm-shmem";

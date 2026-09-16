@@ -50,16 +50,16 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c b/drivers/soc/sunxi/cp
 diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
 --- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-07 17:42:50.563490858 +0200
 +++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-07 17:43:18.441279550 +0200
-@@ -232,7 +232,7 @@
- 	while (readl(msgbox_ctrl_base + H713_MSGBOX_RX_FIFO)) {
- 		raw = readl(msgbox_ctrl_base + H713_MSGBOX_RX_DATA);
+@@ -277,7 +277,7 @@
+ 	while (readl(msgbox_ctrl_base + ep->fifo)) {
+ 		raw = readl(msgbox_ctrl_base + ep->data);
  
 -		pr_info_ratelimited("cpu_comm: msgbox rx raw=0x%08x (%s)\n",
 +		pr_debug("cpu_comm: msgbox rx raw=0x%08x (%s)\n",
  				    raw, cpu_comm_msgbox_type_name(raw));
  
  		if (raw > MSG_TYPE_RETURN_ACK)
-@@ -1201,7 +1201,7 @@
+@@ -1257,7 +1257,7 @@
  	udelay(10);
  	writel(0, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
  
@@ -68,7 +68,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_com
  			    raw, cpu_comm_msgbox_type_name(raw),
  			    readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO));
  	writel(raw, msgbox_ctrl_base + H713_MSGBOX_TX_DATA);
-@@ -1209,7 +1209,7 @@
+@@ -1265,7 +1265,7 @@
  	udelay(10);
  	writel(0, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
  

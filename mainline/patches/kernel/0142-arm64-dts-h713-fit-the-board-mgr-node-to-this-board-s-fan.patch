@@ -43,7 +43,7 @@ the module was never built, and 0141 removes that parameter.
 diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-11 18:24:53.285079403 +0200
 +++ dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-11 18:24:53.299594353 +0200
-@@ -2393,35 +2393,47 @@
+@@ -2410,35 +2410,47 @@
  	};
  
  	/*
@@ -108,7 +108,7 @@ diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi dtsb/arch/arm64/boo
  		battery {
  			enable = <0>;
  			source = <1>;
-@@ -2457,20 +2469,22 @@
+@@ -2474,20 +2486,22 @@
  			};
  		};
  
