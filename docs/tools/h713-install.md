@@ -2,8 +2,10 @@
 
 `h713-install` turns a stock HY310/L018 into this system, entirely from the user's PC - nothing
 proprietary is downloaded, and nothing runs on the device beyond U-Boot. It talks to the eMMC as a plain
-USB block device, so it needs Python 3.9+ and no other package, on Linux or Windows. It replaces
-`hy310-install.py`, which stays one release as a forwarder.
+USB block device, so it needs Python 3.9+ and no other package. `install` also mounts the image's own file
+systems to copy those parts in, which needs a Linux kernel and root; `identify`, `dump` and `extract` mount
+nothing and run on Windows as well. It replaces `hy310-install.py`, which stays one release as a
+forwarder.
 
 ## The path
 
@@ -16,8 +18,14 @@ USB block device, so it needs Python 3.9+ and no other package, on Linux or Wind
    reported a green run on. There is no flag to skip the dump: the choice is which size, not whether. Only
    a device that already runs this system is spared - nothing stock-specific is left on it.
 4. **The proprietary parts are extracted from that dump** with [`h713-extract`](h713-extract.md) and
-   filled into the image's placeholders on the PC, together with the user's SSH public key if one was
-   given. The filled copy is read back before anything goes onto the eMMC, in one pass.
+   copied into the image on the PC, together with the user's SSH public key if one was given. How they get
+   in: the installer makes a working copy of the part that carries the two file systems, mounts
+   `hy310-boot` and `hy310-rootfs` inside it (`mount -o loop,offset=,sizelimit=`, the offset and the size
+   out of the table alone), writes each file as an ordinary file with its real length and the mode it must
+   have, and unmounts. Sizes therefore never have to match anything - the layout before this one wrote
+   into placeholders of a measured size, and a firmware whose files are bigger had nowhere to go. Every
+   file is read back out of the working copy and compared byte for byte before anything goes onto the
+   eMMC, in one pass.
 5. **Verified**: a full dump is sampled against the device before extraction starts; after writing, every
    part is spot-checked and the secure storage compared byte for byte against the dump. A mismatch is
    reported as a clear failure - "do not reboot, ask" - never as a quiet success.
@@ -41,7 +49,7 @@ common: --device PATH  --sunxi-fel PATH  --uboot PATH  --no-write  --skip-identi
 |---|---|---|
 | `identify` | prints the profile row of a device, a dump or a vendor firmware image; given a release table (`*.tabelle.json`), lists the pieces and whether they lie next to it | writes nothing |
 | `dump` | saves what exists only on this device; `--with-vendor` also runs the extractor | writes nothing |
-| `install` | dump, extract, fill, write, compare back; `--test-image` accepts an image built for one untested board, on that board only | writes |
+| `install` | dump, extract, copy in, write, compare back; `--test-image` accepts an image built for one untested board, on that board only | writes. Linux and root |
 | `restore` | writes a previous full dump back | writes |
 | `restore-stock` | rebuilds the stock partition table and writes the vendor firmware back | writes |
 | `extract` | hands everything behind it to [`h713-extract`](h713-extract.md) | writes nothing |
@@ -89,21 +97,25 @@ and says so. Only the full dump is a way back to Android.
 ## Reinstalling over our own layout
 
 A device whose GPT names begin `hy310-` already runs this system, and then `install` demands neither a
-dump nor `--vendor`. The 44 proprietary files are on it: the last install filled them into the
-placeholders, and the image's offset table says at which byte of which part they sit - part B is written
-at a known LBA, so that offset is an address on the device. The installer reads them back from there
-(about 12 MiB), trims nothing - a file shorter than its placeholder was zero padded when it was
-installed and goes back the same way - and logs `44 files read back from the device's own placeholders`.
-`--vendor` and a full dump in the dump directory keep precedence, in that order. The mandatory small
-dump is skipped as well (`our layout on the device -- nothing stock to save; --dump takes one anyway`);
-what the later steps took out of it is read into memory before the write instead, so step 7 still
-compares the secure storage byte for byte and the intent keys `h713_gate` / `h713_boot` are still
-carried over from the old environment. A placeholder that still holds the fill pattern, holds nothing
-but zeros, or holds a file of the wrong kind counts as one the device cannot supply: an optional one
-(the boot logo, the whole WLAN set) is skipped with a warning, anything else stops the run with the
-usual exit 8 plus the line `the device has no <name> -- give --vendor`. `--no-write` shows exactly the
-same decision and writes nothing. On a stock device none of this applies: the dump is mandatory and it
-is what the vendor files come out of.
+dump nor `--vendor`. The 44 proprietary files are on it, in its own `hy310-boot` and `hy310-rootfs`, under
+exactly the paths the image's table names. The installer mounts those two partitions read-only and copies
+the files out (about 12 MiB), then puts them into the new image the same way it would put an extraction
+in, and logs `44 files read back from the device`. Where the two partitions are comes out of the device's
+own GPT: the entry slot is what Linux calls `/dev/sdX5` and `/dev/sdX6`, and both the node and the window
+are named in the log. The window is what is mounted, not the node - the installer holds the whole drive
+open exclusively while it works, and the kernel will not mount a partition of a drive somebody holds like
+that.
+
+`--vendor` and a full dump in the dump directory keep precedence, in that order. The mandatory small dump
+is skipped as well (`our layout on the device -- nothing stock to save; --dump takes one anyway`); what
+the later steps took out of it is read into memory before the write instead, so step 7 still compares the
+secure storage byte for byte and the intent keys `h713_gate` / `h713_boot` are still carried over from the
+old environment. A file that is not on the device counts exactly as one a dump could not supply: an
+optional one (the boot logo, the Wi-Fi firmware, the picture tables) is skipped with one line per group,
+anything else stops the run with the usual exit 8 plus the line `the device has no <name> -- give
+--vendor`. `--no-write` mounts nothing at all - it prints which files it would read back from which
+partition and where they would go, and that plan is the same code that does the work. On a stock device
+none of this applies: the dump is mandatory and it is what the vendor files come out of.
 
 ## Safety nets
 
@@ -130,8 +142,10 @@ stock U-Boot reads the display firmware from the slot `misc` selects.
 
 The steps above ran on a device with the German command line of v0.5-beta ([STATUS.md](../../STATUS.md)).
 The English subcommands are the same steps behind a new front, but that front is **unverified**: no run
-over `h713-install install` has happened on hardware yet. The Windows path is unverified too - the tool is
-written for it and refuses nothing, and nobody has run it. Every German switch of v0.5-beta
+over `h713-install install` has happened on hardware yet, and neither has layout v4 - the copy through a
+mount is covered by tests that mount a real ext4, not by a device run. The Windows path is unverified too:
+`identify`, `dump` and `extract` are written for it and refuse nothing, `install` says in one sentence that
+it needs Linux, and nobody has run any of it there. Every German switch of v0.5-beta
 (`--abbild`, `--abzug`, `--nur-abzug`, `--dry-run` and the rest) is still accepted for one release and
 prints one line with its new name.
 

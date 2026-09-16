@@ -16,8 +16,10 @@ until you have a dump of what was there before.
 ## What you need
 
 - The projector, its power supply, and a **USB A-to-A cable** to the PC.
-- Linux with Python 3.9+. No extra packages. (Windows works in principle - the installer is written for
-  it and refuses nothing - but **nobody has run the Windows path**. Treat it as untested.)
+- Linux with Python 3.9+, and `sudo`. No extra packages. `install` mounts the image's own file systems
+  to copy your device's files into them, and that needs a Linux kernel and root; it says so in one
+  sentence instead of failing somewhere deeper. `identify`, `dump` and `extract` do not mount anything
+  and run on Windows too - but **nobody has run the Windows path**, so treat it as untested.
 - An image: from a release tag if there is one for your version, otherwise built yourself with
   `release/build-all.sh` ([BUILDING.md](BUILDING.md); the first time also
   [docs/build-container.md](docs/build-container.md)). Building takes about 20 minutes and needs no device.
@@ -55,7 +57,7 @@ If you built the image yourself with `release/build-all.sh`, the same files are 
 sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.7-beta \
     --ssh-key ~/.ssh/id_ed25519.pub \
     --full --dump ~/hy310-dump
-# 3. it dumps, extracts your device's own files, fills the image, writes it, verifies
+# 3. it dumps, extracts your device's own files, copies them into the image, writes it, verifies
 # 4. power off, power on - and press the power key
 ```
 
@@ -63,8 +65,8 @@ You name the release folder, not six files: the installer finds the offset table
 and `sunxi-fel` inside it, and unpacks `*.img.zst` itself if `zstd` is installed. `--uboot` and
 `--sunxi-fel` override that when your copies live elsewhere.
 
-`sudo` because it writes a block device. The dump and the filled copy of the image land in `~/hy310-dump`
-- about 8.5 GB with the full dump.
+`sudo` because it writes a block device and mounts the image's file systems. The dump and the filled copy
+of the image land in `~/hy310-dump` - about 8.5 GB with the full dump.
 
 U-Boot exposes the eMMC as a normal USB drive; that is how the PC reads and writes it. The only way out
 of that mode is a power cycle, which is also the end of the procedure.
@@ -76,10 +78,11 @@ exists for development and is exactly as dangerous as it sounds).
 ## What a successful run looks like
 
 The run is a numbered list of steps, with `OK`, `!` and `ERROR:` in front of the lines that matter. Step
-`1b` is the check that refuses a device it does not recognise. Step `3` takes the dump, step `5` fills the
-placeholders on the PC and reads them back, step `6` is the only one that writes, and step `7` compares
-the secure storage byte by byte against the dump from step `3`, so you know it was not touched. Writing
-takes about three minutes with the full image; everything else is seconds.
+`1b` is the check that refuses a device it does not recognise. Step `3` takes the dump, step `5` copies
+your device's own files into the image's two file systems on the PC and reads every one of them back,
+step `6` is the only one that writes, and step `7` compares the secure storage byte by byte against the
+dump from step `3`, so you know it was not touched. Writing takes about three minutes with the full
+image; everything else is seconds.
 
 Recorded on 2026-09-15 on an HY310 running the stock firmware, with `h713-install install ~/h713-hy310-v0.6-beta
 --ssh-key ~/.ssh/id_ed25519.pub --dump ~/h713-dump-T --small --yes` after a full dump had been taken into the same
@@ -87,10 +90,25 @@ directory (17 minutes, not shown). Progress lines are cut. The two regions repor
 test device, which had been converted before; an untouched device saves content there.
 
 The numbers in the recording are the ones of v0.6-beta and are left as they were run. Since 15.09.2026 the
-boot logo travels with the image: the placeholder table has 44 entries instead of 43, the extraction hands
-over 44 files, and the dump saves 20 files per bootloader slot (`bootlogo.bmp` lies at the FAT root next to
+boot logo travels with the image: the file set has 44 entries instead of 43, the extraction hands over 44
+files, and the dump saves 20 files per bootloader slot (`bootlogo.bmp` lies at the FAT root next to
 `mips/`). The `display firmware in bootloader_a 19 files` line of step `1b` still says 19 - that one counts
 `mips/` only.
+
+Step `5` also reads differently since layout v4 (16.09.2026). It used to fill placeholders: files of a
+measured size, sitting at a known byte offset in the image, which a firmware with bigger files could not
+fit into. Now the installer mounts the image's two file systems in its working copy and copies the files
+in as ordinary files, so sizes never come into it. The lines of that step are now
+
+```
+[5] Put the device's own files in (44 files)
+  OK 44 files from h713-dump-T/extract
+  OK authorized_keys: 1 key(s) from ~/.ssh/id_ed25519.pub, 104 bytes -> /root/.ssh/authorized_keys (mode 0600, root)
+  Working copy: h713-dump-T/image-filled.img (1153 MiB)
+  hy310-boot: 20 file(s)
+  hy310-rootfs: 25 file(s)
+  OK 45 files copied in and read back -- all equal
+```
 
 ```
 h713-install 0.1 (draft, doku/110)   (Linux)
@@ -174,18 +192,21 @@ anywhere but on your own desk ([docs/tools/h713-wifi.md](docs/tools/h713-wifi.md
 ## Reinstalling over our own layout
 
 The second install on the same device asks for nothing: no dump, no `--vendor`. The GPT names say that
-this system is already on it (`hy310-*`), and then the 44 proprietary files are not gone - they sit in
-the placeholders the last install filled, where the offset table of the image says they are. The
-installer reads them back off the device (about 12 MiB, a couple of seconds), fills the new image with
-them and says so: `44 files read back from the device's own placeholders`. The mandatory small dump
-falls away too, because nothing stock-specific is left to save - `--dump DIR` still takes one, and
-`--vendor` or a full dump in the dump directory still beat the device. What the dump used to supply
-for the last two steps is read into memory instead: the secure storage is still compared byte for byte
-after writing, and `h713_gate` / `h713_boot` are still carried over from the old U-Boot environment. A
-placeholder that is not filled counts as a file the device does not have: the boot logo is then skipped
-with a warning, anything else stops the run with exit 8, naming the file and asking for `--vendor`.
-This is for **our** layout only. On a stock device nothing has changed: the dump is mandatory, it is the
-only way back to Android, and without it or `--vendor` the run stops before it writes.
+this system is already on it (`hy310-*`), and then the 44 proprietary files are not gone - they lie in
+its own `hy310-boot` and `hy310-rootfs`, under the paths the image's table names. The installer mounts
+those two partitions read-only, copies the files out (about 12 MiB, a couple of seconds), puts them into
+the new image and says so: `44 files read back from the device`. Which partitions those are it reads out
+of the device's own GPT, not out of a constant. The mandatory small dump falls away too, because nothing
+stock-specific is left to save - `--dump DIR` still takes one, and `--vendor` or a full dump in the dump
+directory still beat the device. What the dump used to supply for the last two steps is read into memory
+instead: the secure storage is still compared byte for byte after writing, and `h713_gate` / `h713_boot`
+are still carried over from the old U-Boot environment. A file the device does not have is treated the
+way a missing one from a dump is: the boot logo, the Wi-Fi firmware and the picture tables are optional
+and are skipped with one line, anything else stops the run with exit 8, naming the file and asking for
+`--vendor`. `--no-write` is a rehearsal and mounts nothing at all, so it says which files it *would* read
+back and where they would go, instead of reading them. This is for **our** layout only. On a stock device
+nothing has changed: the dump is mandatory, it is the only way back to Android, and without it or
+`--vendor` the run stops before it writes.
 
 ## Useful variants
 
