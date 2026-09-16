@@ -1,0 +1,789 @@
+soc: sunxi: h713-arisc: resolve the firmware's SRAM addresses from the image
+
+The eight SRAM addresses this driver used were the addresses of one ARISC
+firmware build: the HY310's projector-tv303-android11-v1.3-3-g293ff69, built
+Jul 24 2025, the image this driver was reverse-engineered on. They are not
+properties of the SoC. Every H713 board runs the ARISC build out of its own
+vendor dump, and the HY300 Pro's dump carries a v0.8 build from Dec 25 2024:
+instruction-for-instruction the same code with its data 0x340 (g_Data family)
+and 0x338 (receive pump) bytes lower. The T08 image of the same git revision
+is shifted by 0x344/0x33c, four bytes differently again, so no table keyed on
+a version string can be right either (doku/126, analysis A9 sections 5, 8, 10).
+
+What that costs on such a board, measured on the owner's own image:
+
+  * the payload is deposited at 0x115f59 while his receive pump reads its
+    buffer at 0x115c21, so the classifier reads a zero byte as sub_cmd_lo,
+    (0 - 0x10) & 0xff = 240 > 5 fails the range check at 0x11244 and the
+    command is never dispatched. 0x115f59 is inside the firmware's infrared
+    sample array (256 entries of 8 bytes at 0x15f54), so the write also
+    corrupts eight IR samples.
+  * the 65-byte handler probe at 0x117320 lands 784 bytes deep in his
+    firmware's 1 KiB stack (0x17270..0x1766f). It is harmless only while the
+    call depth stays below that, and it permanently falsifies the firmware's
+    own stack watermark routine.
+  * the acknowledgement is awaited at 0x117320 while his handler marks
+    0x116fe0, so even a dispatched command could not be acknowledged. The
+    user sees -ETIMEDOUT, the EDID module is never reset, and the HDMI-RX
+    driver cannot probe.
+
+So the set is resolved from the loaded image at probe time, before a single
+byte of it is written to SRAM. Two anchors carry all of it, because the
+distances inside the two structures did not move in fifteen months of vendor
+development: anchor A is the g_Data base, which the command executor
+materialises before storing bEdidDataReady at +2, and anchor B is the receive
+pump's context, which the pump completes with +136 (its channel-2 context) and
++5 (the payload buffer). Each is found by a short signature over the image
+words with the address field wildcarded and has to match exactly once; the
+other six addresses are A - 16, A + 2, A + 3, A + 12, A + 228 and B + 5.
+
+Two further signatures cross-check the arithmetic against the firmware's own
+code: the 0x11 group handler's memset target must come out as A + 228, and the
+init copier's store target -- located through the 20-byte ROM port map table
+literal, byte-identical in every build seen -- as A + 12. The image states its
+own memory map as well, in the BSS clear loop and the sp init, and every byte
+this driver reads or writes has to lie inside that BSS. A missing or ambiguous
+anchor, a cross-check that disagrees, an unusable memory map or an address
+outside the BSS refuses the probe with a message naming the step: an ARISC
+that is started with a guessed address set writes into its own stack and
+reports nothing but a timeout, which is the whole story above.
+
+The HY310 build is recognised by its git describe in the image and asserted
+against the constants this file used to carry, so that board's behaviour is
+unchanged by construction and a change to a signature cannot move its
+addresses quietly. tools/arisc-fw-addrs.py is the same resolver on the host --
+same signatures, same windows, same arithmetic -- and on the three images we
+hold it resolves:
+
+  symbol        HY310 v1.3   T08 v0.8     owner v0.8-dirty
+  gdata         0x1723c      0x16ef8      0x16efc
+  rpm_state     0x15f54      0x15c18      0x15c1c
+  rpm_buf       0x15f59      0x15c1d      0x15c21
+  hpd_counter   0x1722c      0x16ee8      0x16eec
+  edid_ready    0x1723e      0x16efa      0x16efe
+  edid_gate     0x1723f      0x16efb      0x16eff
+  portmap       0x17248      0x16f04      0x16f08
+  scratch       0x17320      0x16fdc      0x16fe0
+  bss_start     0x15f38      0x15c00      0x15c00
+  bss_end       0x175b0      0x17268      0x17270
+  stack_top     0x179b0      0x17668      0x17670
+
+The HY310 column is the set of #defines this patch removes, value for value.
+0x04008 (struct arisc_para) stays a constant: it is a contract with the vendor
+monitor, materialised from the same immediate in every build.
+
+debugfs gains the image's version string, the resolved addresses and the
+memory map, so a log from an unfamiliar board says what the driver is talking
+to instead of leaving it to be guessed:
+
+  image_version: projector-tv303-android11-v0.8-4-g792f93b-dirty
+  firmware_addrs: para=0x04008 gdata=0x16efc rpm_state=0x15c1c rpm_buf=0x15c21
+  firmware_addrs: hpd=0x16eec edid_ready=0x16efe edid_gate=0x16eff portmap=0x16f08 scratch=0x16fe0
+  firmware_map: bss=0x15c00..0x1726f stack=0x17270..0x1766f
+
+Follow-up to 0091, which stays byte-identical. No behaviour change on the
+HY310: the addresses it resolves are the ones it used, asserted at probe.
+
+diff -ru a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -118,19 +118,21 @@
+ 
+ #define SRAM_PARA		0x04008	/* struct arisc_para, 128 bytes */
+ #define SRAM_PARA_WORDS		32
+-#define SRAM_RPM_STATE		0x15f54	/* receive pump context, 0 = idle */
+-#define SRAM_RPM_BUF		0x15f59	/* payload the classifier reads */
+-#define SRAM_HPD_COUNTER	0x1722c	/* one tick counter per HDMI port */
+-#define SRAM_EDID_READY		0x1723e	/* g_Data.bEdidDataReady, see below */
+-#define SRAM_EDID_GATE		0x1723f	/* publish routine done, see below */
+-#define SRAM_PORTMAP		0x17248	/* one record per port, see below */
+-#define SRAM_SCRATCH		0x17320	/* the 0x11 handler's working copy */
+ 
+ /*
+- * The port map records at SRAM offset 0x17248 -- 0x00117248 seen from the
+- * ARM, which is worth writing down because reading it as an address lands in
+- * a page of zeroes and looks like a contradiction. Eight bytes apart, one
+- * record per HDMI port.
++ * 0x04008 is the one SRAM address that belongs to the SoC rather than to a
++ * firmware build: it is a contract with the vendor monitor and the same
++ * constant in every image seen (materialised at HY310 0x0e19c, in the v0.8
++ * builds at 0x0dd50). The receive pump's context, g_Data and the 0x11
++ * handler's scratch move with the build and are resolved from the loaded
++ * image at probe time -- see "resolving the firmware's addresses" below and
++ * struct h713_arisc_offsets. The addresses quoted in the comments from here
++ * on are the HY310 build's, the one this driver was written on.
++ *
++ * The port map records at SRAM offset 0x17248 on that build -- 0x00117248
++ * seen from the ARM, which is worth writing down because reading it as an
++ * address lands in a page of zeroes and looks like a contradiction. Eight
++ * bytes apart, one record per HDMI port.
+  * Byte 2 is the hotplug *pin* of that port and it is the byte the pin driver
+  * at 0x121e4 reads (0x12220) to decide which of the three bits of the aux
+  * register it touches; byte 3 is 1 << pin; byte 4 is the reverse map, the
+@@ -320,6 +322,27 @@
+ #define FW_NAME_ARISC		"h713-arisc.bin"
+ #define FW_NAME_EDID		"hy310-edid.bin"
+ 
++/*
++ * Where the loaded firmware keeps the objects this driver reads and writes.
++ * Resolved from the image before a single byte of it goes into SRAM; see
++ * arisc_resolve_offsets(). ->para is the fixed contract above, everything
++ * else belongs to the build.
++ */
++struct h713_arisc_offsets {
++	u32	para;		/* struct arisc_para, SRAM_PARA */
++	u32	gdata;		/* anchor A: g_Data base */
++	u32	rpm_state;	/* anchor B: receive pump context, 0 = idle */
++	u32	rpm_buf;	/* B + 5: payload the classifier reads */
++	u32	hpd_counter;	/* A - 16: one tick counter per HDMI port */
++	u32	edid_ready;	/* A + 2: g_Data.bEdidDataReady */
++	u32	edid_gate;	/* A + 3: publish routine done */
++	u32	portmap;	/* A + 12: one record per port */
++	u32	scratch;	/* A + 228: the 0x11 handler's working copy */
++	u32	bss_start;	/* what the firmware's clear loop zeroes ... */
++	u32	bss_end;
++	u32	stack_top;	/* ... and the sp it starts with, above it */
++};
++
+ struct h713_arisc {
+ 	struct device		*dev;
+ 	void __iomem		*sram;
+@@ -336,6 +359,9 @@
+ 	int			notify_result;
+ 	char			notify_version[64];
+ 
++	struct h713_arisc_offsets off;		/* resolved from the image */
++	char			image_version[64];	/* its git describe */
++
+ 	u8			edid[ARISC_HDMI_EDID_SIZE];
+ 	bool			edid_valid;
+ 
+@@ -362,7 +388,7 @@
+ 
+ static u8 hpd_counter(struct h713_arisc *a, unsigned int port)
+ {
+-	return readb(sram_at(a, SRAM_HPD_COUNTER) + port);
++	return readb(sram_at(a, a->off.hpd_counter) + port);
+ }
+ 
+ static void arisc_report(struct h713_arisc *a, const char *fmt, ...)
+@@ -374,6 +400,406 @@
+ 	va_end(args);
+ }
+ 
++/* ---- resolving the firmware's addresses --------------------------------- */
++/*
++ * Those addresses belong to the ARISC build that happens to sit in
++ * /lib/firmware, not to the SoC, and every board brings its own out of its own
++ * vendor dump. This driver was reverse-engineered on the HY310's build
++ * (projector-tv303-android11-v1.3-3-g293ff69, Jul 2025); the HY300 Pro's dump
++ * carries a v0.8 build from Dec 2024, instruction-for-instruction the same
++ * code with its data 0x340 (g_Data) and 0x338 (receive pump) bytes lower. With
++ * the HY310's numbers on that board the payload lands in the firmware's
++ * infrared sample array, the 65-byte handler probe lands in its 1 KiB stack,
++ * the command is never classified and the user sees nothing but -ETIMEDOUT
++ * (doku/126, analysis A9).
++ *
++ * So the set is read out of the image first. Two anchors carry all of it,
++ * because the distances inside the two structures did not move in fifteen
++ * months of vendor development:
++ *
++ *   anchor A  g_Data base    the command executor materialises it and stores
++ *                            bEdidDataReady at +2
++ *   anchor B  pump context   the receive pump keeps it; +136 is its channel-2
++ *                            context, +5 the payload buffer the classifier
++ *                            reads the sub-command from
++ *
++ * Each is found by a short signature over the image words with the address
++ * field wildcarded, and each must match exactly once. Two more signatures
++ * cross-check the arithmetic: the 0x11 group handler's own memset target must
++ * come out as A + 228, and the init copier's store target -- found through the
++ * ROM port map table literal, byte-identical in every build -- as A + 12. The
++ * image states its own memory map too, in the BSS clear loop and the sp init,
++ * which gives the bound nothing may be written above.
++ *
++ * A missing or ambiguous anchor, a cross-check that disagrees or an address
++ * outside the BSS refuses the probe: poking SRAM at a guessed address is how
++ * 0xff bytes ended up in a live firmware's stack. tools/arisc-fw-addrs.py is
++ * the same resolver on the host -- what it prints for an image is what this
++ * resolves for it.
++ */
++#define SIG_SCAN_START		0x01000	/* first word of code the scan reads */
++#define SIG_SCAN_END		0x14000	/* code ends here, rodata follows */
++#define SIG_PAIR_SPAN		9	/* l.movhi .. l.ori distance, in words */
++#define SIG_WIN_GDATA		5	/* l.sb 2(r5) after the l.ori */
++#define SIG_WIN_PUMP		16	/* the two l.addi after the l.ori */
++#define SIG_WIN_SCRATCH		5	/* memset length, call, payload read */
++
++#define OR1K_OP(w)		((w) >> 26)
++#define OR1K_RD(w)		(((w) >> 21) & 31)
++#define OR1K_RA(w)		(((w) >> 16) & 31)
++#define OR1K_OP_JAL		0x01
++#define OR1K_OP_MOVHI		0x06
++#define OR1K_OP_ORI		0x2a
++#define OR1K_OP_SB		0x36
++#define OR1K_REG_SP		1
++#define OR1K_REG_FP		2
++#define OR1K_MOVHI1(rd)		(((u32)OR1K_OP_MOVHI << 26) | ((rd) << 21) | 1)
++#define OR1K_ORI_SELF(rd)	(((u32)OR1K_OP_ORI << 26) | ((rd) << 21) | \
++				 ((rd) << 16))
++#define OR1K_STORE_IMM(w)	((((w) >> 21) & 31) << 11 | ((w) & 0x7ff))
++
++/* Whole words, identical in every build seen, that the signatures pin on. */
++#define W_ADDI_FP_FP_136	0x9c420088	/* l.addi fp, fp, 136 */
++#define W_ADDI_R22_FP_5		0x9ec20005	/* l.addi r22, fp, 5 */
++#define W_ADDI_R5_R0_65		0x9ca00041	/* l.addi r5, r0, 65 */
++#define W_LBZ_R3_1_FP		0x8c620001	/* l.lbz r3, 1(fp) */
++#define W_SW_0_R5_R0		0xd4050000	/* l.sw 0(r5), r0 */
++#define W_SFLTU_R5_R6		0xe4853000	/* l.sfltu r5, r6 */
++#define W_BF_BACK_2		0x13fffffe	/* l.bf -2 */
++#define W_ADDI_R5_R5_4		0x9ca50004	/* l.addi r5, r5, 4 */
++
++/* The distances the two anchors carry the other six addresses over. */
++#define GDATA_HPD_COUNTER	(-16)
++#define GDATA_EDID_READY	2
++#define GDATA_EDID_GATE		3
++#define GDATA_PORTMAP		12
++#define GDATA_SCRATCH		228
++#define PUMP_BUF		5
++
++/* mask, an unused tag, pin, 1 << pin -- three ports, as the file holds it. */
++static const u32 arisc_rom_table[] = {
++	0x01100001, 0x00000000, 0x02200102, 0x01000000, 0x04300204,
++};
++
++#define FW_VERSION_PREFIX	"projector-tv303-"
++#define FW_VERSION_HY310	"projector-tv303-android11-v1.3-3-g293ff69"
++
++/*
++ * What the build this driver was written on has to resolve to: the constants
++ * the source carried before the resolver replaced them. Asserted whenever
++ * that build is loaded, so a change to a signature cannot quietly move the
++ * addresses of the board the driver was proven on.
++ */
++static const struct h713_arisc_offsets arisc_hy310_expected = {
++	.gdata = 0x1723c, .rpm_state = 0x15f54, .rpm_buf = 0x15f59,
++	.hpd_counter = 0x1722c, .edid_ready = 0x1723e, .edid_gate = 0x1723f,
++	.portmap = 0x17248, .scratch = 0x17320,
++	.bss_start = 0x15f38, .bss_end = 0x175b0, .stack_top = 0x179b0,
++};
++
++enum arisc_sig {
++	SIG_GDATA,	/* l.movhi r5,1 ; l.ori r5,r5,A ; .. l.sb 2(r5),rX */
++	SIG_PUMP,	/* l.movhi fp,1 ; l.ori fp,fp,B ; .. +136 and +5 */
++	SIG_SCRATCH,	/* the 0x11 handler's memset(scratch, 0, 65) */
++	SIG_PORTMAP,	/* the init copier's store, next to the ROM table */
++};
++
++static u32 arisc_image_word(const u8 *data, u32 pc)
++{
++	return get_unaligned_le32(data + pc);
++}
++
++/* Logical byte at @off: the image stores every 32-bit word byte-reversed. */
++static u8 arisc_image_byte(const u8 *data, u32 off)
++{
++	return data[(off & ~3u) + 3 - (off & 3)];
++}
++
++/*
++ * Address of the l.ori rd,rd,lo that completes a l.movhi rd,1 at @pc, or 0
++ * when rd is loaded again first -- then that l.movhi belonged to something
++ * else. Together the two make a 32-bit constant 0x10000 | lo.
++ */
++static u32 arisc_sig_pair(const u8 *data, u32 pc, unsigned int rd)
++{
++	u32 p;
++
++	for (p = pc + 4; p <= pc + 4 * SIG_PAIR_SPAN; p += 4) {
++		u32 w = arisc_image_word(data, p);
++
++		if (OR1K_OP(w) == OR1K_OP_ORI && OR1K_RD(w) == rd &&
++		    OR1K_RA(w) == rd)
++			return p;
++		if (OR1K_OP(w) == OR1K_OP_MOVHI && OR1K_RD(w) == rd)
++			return 0;
++	}
++	return 0;
++}
++
++/*
++ * Walk the code for one signature. Returns how many distinct addresses
++ * matched -- one is a hit, everything else refuses the probe -- and stores
++ * the last of them in @out.
++ */
++static unsigned int arisc_sig_scan(const u8 *data, enum arisc_sig sig, u32 rom,
++				   u32 *out)
++{
++	static const u8 sig_reg[] = { 5, OR1K_REG_FP, 14, 3 };
++	unsigned int rd = sig_reg[sig], hits = 0, k;
++	u32 pc, value = 0;
++
++	for (pc = SIG_SCAN_START; pc < SIG_SCAN_END - 4 * (SIG_PAIR_SPAN +
++							  SIG_WIN_PUMP + 2);
++	     pc += 4) {
++		bool ok = false, first = false, second = false, third = false;
++		u32 ori, cand, w;
++
++		if (arisc_image_word(data, pc) != OR1K_MOVHI1(rd))
++			continue;
++		ori = arisc_sig_pair(data, pc, rd);
++		if (!ori)
++			continue;
++		cand = 0x10000 | (arisc_image_word(data, ori) & 0xffff);
++
++		switch (sig) {
++		case SIG_GDATA:
++			for (k = 1; k <= SIG_WIN_GDATA; k++) {
++				w = arisc_image_word(data, ori + 4 * k);
++				if (OR1K_OP(w) == OR1K_OP_SB &&
++				    OR1K_RA(w) == rd &&
++				    OR1K_STORE_IMM(w) == GDATA_EDID_READY)
++					ok = true;
++			}
++			break;
++		case SIG_PUMP:
++			for (k = 1; k <= SIG_WIN_PUMP; k++) {
++				w = arisc_image_word(data, ori + 4 * k);
++				first |= (w == W_ADDI_FP_FP_136);
++				second |= (w == W_ADDI_R22_FP_5);
++			}
++			ok = first && second;
++			break;
++		case SIG_SCRATCH:
++			for (k = 1; k <= SIG_WIN_SCRATCH; k++) {
++				w = arisc_image_word(data, ori + 4 * k);
++				if (k <= 3 && w == W_ADDI_R5_R0_65)
++					first = true;
++				if (k <= 3 && OR1K_OP(w) == OR1K_OP_JAL)
++					second = true;
++				if (k >= 2 && w == W_LBZ_R3_1_FP)
++					third = true;
++			}
++			ok = first && second && third;
++			break;
++		case SIG_PORTMAP:
++			if (cand != rom ||
++			    ori < SIG_SCAN_START + 4 * (SIG_PAIR_SPAN + 1))
++				break;
++			w = arisc_image_word(data, ori - 4);
++			if (OR1K_OP(w) != OR1K_OP_ORI || OR1K_RD(w) == rd ||
++			    OR1K_RA(w) != OR1K_RD(w))
++				break;
++			for (k = 1; k <= SIG_PAIR_SPAN; k++)
++				if (arisc_image_word(data, ori - 4 - 4 * k) ==
++				    OR1K_MOVHI1(OR1K_RD(w))) {
++					cand = 0x10000 | (w & 0xffff);
++					ok = true;
++					break;
++				}
++			break;
++		}
++
++		if (!ok || (hits && cand == value))
++			continue;
++		value = cand;
++		hits++;
++	}
++	*out = value;
++	return hits;
++}
++
++/* Offset of the ROM port map table literal; 0 unless it is there exactly once. */
++static u32 arisc_sig_rom_table(const u8 *data)
++{
++	unsigned int i, hits = 0;
++	u32 off, found = 0;
++
++	for (off = SIG_SCAN_END;
++	     off < SRAM_IMAGE_SIZE - sizeof(arisc_rom_table); off += 4) {
++		for (i = 0; i < ARRAY_SIZE(arisc_rom_table); i++)
++			if (arisc_image_word(data, off + 4 * i) !=
++			    arisc_rom_table[i])
++				break;
++		if (i == ARRAY_SIZE(arisc_rom_table)) {
++			found = off;
++			hits++;
++		}
++	}
++	return hits == 1 ? found : 0;
++}
++
++/*
++ * The firmware's own memory map, straight out of two places in its startup:
++ * the loop that zeroes the BSS word by word, and the l.movhi/l.ori pair that
++ * loads the initial sp. Both must be there exactly once.
++ */
++static bool arisc_sig_memory_map(const u8 *data, struct h713_arisc_offsets *o)
++{
++	unsigned int bss_hits = 0, sp_hits = 0, k;
++	u32 pc, w[8];
++
++	for (pc = SIG_SCAN_START; pc < SIG_SCAN_END - 4 * ARRAY_SIZE(w);
++	     pc += 4) {
++		for (k = 0; k < ARRAY_SIZE(w); k++)
++			w[k] = arisc_image_word(data, pc + 4 * k);
++
++		if (w[0] == OR1K_MOVHI1(5) &&
++		    (w[1] & 0xffff0000) == OR1K_ORI_SELF(5) &&
++		    w[2] == OR1K_MOVHI1(6) &&
++		    (w[3] & 0xffff0000) == OR1K_ORI_SELF(6) &&
++		    w[4] == W_SW_0_R5_R0 && w[5] == W_SFLTU_R5_R6 &&
++		    w[6] == W_BF_BACK_2 && w[7] == W_ADDI_R5_R5_4) {
++			o->bss_start = 0x10000 | (w[1] & 0xffff);
++			o->bss_end = 0x10000 | (w[3] & 0xffff);
++			bss_hits++;
++		}
++		if (w[0] == OR1K_MOVHI1(OR1K_REG_SP) &&
++		    (w[1] & 0xffff0000) == OR1K_ORI_SELF(OR1K_REG_SP)) {
++			o->stack_top = 0x10000 | (w[1] & 0xffff);
++			sp_hits++;
++		}
++	}
++	return bss_hits == 1 && sp_hits == 1;
++}
++
++/*
++ * The image's own git describe. The startup notify carries the same string,
++ * but only once the core is already running and has been written to.
++ */
++static void arisc_image_version(const u8 *data, char *out, size_t len)
++{
++	static const char prefix[] = FW_VERSION_PREFIX;
++	size_t i, n = sizeof(prefix) - 1;
++	u32 off;
++
++	strscpy(out, "?", len);
++	for (off = SIG_SCAN_END; off < SRAM_IMAGE_SIZE - len; off++) {
++		for (i = 0; i < n && arisc_image_byte(data, off + i) == prefix[i]; i++)
++			;
++		if (i < n)
++			continue;
++		for (i = 0; i < len - 1; i++) {
++			u8 b = arisc_image_byte(data, off + i);
++
++			if (b < 0x20 || b > 0x7e)
++				break;
++			out[i] = b;
++		}
++		out[i] = '\0';
++		return;
++	}
++}
++
++/* Is [@addr, @addr + @len) inside the area the firmware zeroes at start? */
++static bool arisc_in_bss(const struct h713_arisc_offsets *o, u32 addr, u32 len)
++{
++	return addr >= o->bss_start && addr + len <= o->bss_end;
++}
++
++static bool arisc_offsets_equal(const struct h713_arisc_offsets *x,
++				const struct h713_arisc_offsets *y)
++{
++	return x->gdata == y->gdata && x->rpm_state == y->rpm_state &&
++	       x->rpm_buf == y->rpm_buf && x->hpd_counter == y->hpd_counter &&
++	       x->edid_ready == y->edid_ready && x->edid_gate == y->edid_gate &&
++	       x->portmap == y->portmap && x->scratch == y->scratch &&
++	       x->bss_start == y->bss_start && x->bss_end == y->bss_end &&
++	       x->stack_top == y->stack_top;
++}
++
++/*
++ * Runs on fw->data before anything is written to SRAM. On success a->off is
++ * the address set of this image; on failure nothing has been touched and the
++ * message says which step refused.
++ */
++static int arisc_resolve_offsets(struct h713_arisc *a, const u8 *data,
++				 const char *name)
++{
++	struct h713_arisc_offsets o = { .para = SRAM_PARA };
++	unsigned int hits;
++	u32 cross, rom;
++
++	arisc_image_version(data, a->image_version, sizeof(a->image_version));
++
++	hits = arisc_sig_scan(data, SIG_GDATA, 0, &o.gdata);
++	if (hits != 1)
++		return dev_err_probe(a->dev, -ENOEXEC,
++			"\"%s\" (%s): g_Data anchor matches %u times, not once -- unknown build, refusing to guess its addresses\n",
++			name, a->image_version, hits);
++	hits = arisc_sig_scan(data, SIG_PUMP, 0, &o.rpm_state);
++	if (hits != 1)
++		return dev_err_probe(a->dev, -ENOEXEC,
++			"\"%s\" (%s): pump anchor matches %u times, not once -- unknown build, refusing to guess its addresses\n",
++			name, a->image_version, hits);
++
++	o.hpd_counter = o.gdata + GDATA_HPD_COUNTER;
++	o.edid_ready = o.gdata + GDATA_EDID_READY;
++	o.edid_gate = o.gdata + GDATA_EDID_GATE;
++	o.portmap = o.gdata + GDATA_PORTMAP;
++	o.scratch = o.gdata + GDATA_SCRATCH;
++	o.rpm_buf = o.rpm_state + PUMP_BUF;
++
++	hits = arisc_sig_scan(data, SIG_SCRATCH, 0, &cross);
++	if (hits != 1 || cross != o.scratch)
++		return dev_err_probe(a->dev, -ENOEXEC,
++			"\"%s\": handler scratch 0x%05x (%u hits), g_Data + %d is 0x%05x -- the image's own layout disagrees with the anchor\n",
++			name, cross, hits, GDATA_SCRATCH, o.scratch);
++
++	rom = arisc_sig_rom_table(data);
++	if (!rom)
++		return dev_err_probe(a->dev, -ENOEXEC,
++			"\"%s\": ROM port map table not in this image exactly once -- port map not cross-checkable\n",
++			name);
++	hits = arisc_sig_scan(data, SIG_PORTMAP, rom, &cross);
++	if (hits != 1 || cross != o.portmap)
++		return dev_err_probe(a->dev, -ENOEXEC,
++			"\"%s\": init copier writes the port map at 0x%05x (%u hits), g_Data + %d is 0x%05x -- the image's own layout disagrees with the anchor\n",
++			name, cross, hits, GDATA_PORTMAP, o.portmap);
++
++	if (!arisc_sig_memory_map(data, &o) || o.bss_start >= o.bss_end ||
++	    o.bss_end > o.stack_top || o.stack_top > SRAM_IMAGE_SIZE)
++		return dev_err_probe(a->dev, -ENOEXEC,
++			"\"%s\": no usable memory map in the image (BSS 0x%05x..0x%05x, stack top 0x%05x)\n",
++			name, o.bss_start, o.bss_end, o.stack_top);
++
++	if (!arisc_in_bss(&o, o.hpd_counter, ARISC_HDMI_PORTS) ||
++	    !arisc_in_bss(&o, o.edid_ready, 1) ||
++	    !arisc_in_bss(&o, o.edid_gate, 1) ||
++	    !arisc_in_bss(&o, o.portmap, ARISC_HDMI_PORTS * PORTMAP_STRIDE) ||
++	    !arisc_in_bss(&o, o.scratch, SCRATCH_LEN) ||
++	    !arisc_in_bss(&o, o.rpm_state, sizeof(u32)) ||
++	    !arisc_in_bss(&o, o.rpm_buf, PAYLOAD_MAX))
++		return dev_err_probe(a->dev, -ENOEXEC,
++			"\"%s\": payload 0x%05x / scratch 0x%05x leave the BSS 0x%05x..0x%05x -- refusing to write into the firmware's stack 0x%05x..0x%05x\n",
++			name, o.rpm_buf, o.scratch, o.bss_start, o.bss_end - 1,
++			o.bss_end, o.stack_top - 1);
++
++	if (!strcmp(a->image_version, FW_VERSION_HY310) &&
++	    !arisc_offsets_equal(&o, &arisc_hy310_expected))
++		return dev_err_probe(a->dev, -ENOEXEC,
++			"\"%s\" is the HY310 build but resolves g_Data 0x%05x, pump 0x%05x instead of 0x%05x, 0x%05x -- the resolver has drifted\n",
++			name, o.gdata, o.rpm_state, arisc_hy310_expected.gdata,
++			arisc_hy310_expected.rpm_state);
++
++	a->off = o;
++	dev_info(a->dev,
++		 "\"%s\" (%s): g_Data 0x%05x, pump 0x%05x, scratch 0x%05x, port map 0x%05x, BSS 0x%05x..0x%05x, stack 0x%05x..0x%05x\n",
++		 name, a->image_version, o.gdata, o.rpm_state, o.scratch,
++		 o.portmap, o.bss_start, o.bss_end - 1, o.bss_end,
++		 o.stack_top - 1);
++	return 0;
++}
++
+ /* ---- bringing the core up ----------------------------------------------- */
+ 
+ static void arisc_enable_cpus_clocks(struct h713_arisc *a)
+@@ -458,9 +884,9 @@
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < SRAM_PARA_WORDS; i++)
+-		writel_relaxed(0, sram_at(a, SRAM_PARA) + 4 * i);
+-	writel_relaxed(PARA_POOL_PHYS, sram_at(a, SRAM_PARA) + 3 * 4);
+-	writel_relaxed(PARA_POOL_SIZE, sram_at(a, SRAM_PARA) + 4 * 4);
++		writel_relaxed(0, sram_at(a, a->off.para) + 4 * i);
++	writel_relaxed(PARA_POOL_PHYS, sram_at(a, a->off.para) + 3 * 4);
++	writel_relaxed(PARA_POOL_SIZE, sram_at(a, a->off.para) + 4 * 4);
+ }
+ 
+ /*
+@@ -669,7 +1095,7 @@
+ 
+ 	do {
+ 		for (i = 0; i < SCRATCH_LEN; i++)
+-			if (readb(sram_at(a, SRAM_SCRATCH) + i) != expected[i])
++			if (readb(sram_at(a, a->off.scratch) + i) != expected[i])
+ 				break;
+ 		if (i == SCRATCH_LEN)
+ 			return 0;
+@@ -677,7 +1103,7 @@
+ 	} while (ktime_ms_delta(ktime_get(), start) < HANDLER_TIMEOUT_MS);
+ 
+ 	dev_dbg(a->dev, "scratch mismatch at byte %u: got 0x%02x, want 0x%02x\n",
+-		i, readb(sram_at(a, SRAM_SCRATCH) + i), expected[i]);
++		i, readb(sram_at(a, a->off.scratch) + i), expected[i]);
+ 
+ 	return -ETIMEDOUT;
+ }
+@@ -695,7 +1121,7 @@
+ 	arisc_expected_scratch(payload, expected);
+ 
+ 	for (i = 0; i < SCRATCH_LEN; i++)
+-		writeb((u8)~expected[i], sram_at(a, SRAM_SCRATCH) + i);
++		writeb((u8)~expected[i], sram_at(a, a->off.scratch) + i);
+ }
+ 
+ /*
+@@ -746,7 +1172,7 @@
+ 
+ 	arisc_arm_handler_probe(a, payload);
+ 	for (i = 0; i < PAYLOAD_MAX; i++)
+-		writeb(payload[i], sram_at(a, SRAM_RPM_BUF) + i);
++		writeb(payload[i], sram_at(a, a->off.rpm_buf) + i);
+ 
+ 	writel(BOP_MARKER | ((u32)a->seq << 8), a->tx + U1_MSG_DATA(PORT_HDMI));
+ 	writel(0, a->tx + U1_MSG_DATA(PORT_HDMI));
+@@ -1004,8 +1430,8 @@
+  *
+  * Reading those records is not enough on its own, and the first revision of
+  * this check made exactly that mistake. The map the stock sequence asks for
+- * is 0,1,2, and 0,1,2 is what the ROM table at 0x15edc already put there when
+- * the firmware started (see SRAM_PORTMAP). A wait for "the records carry
++ * is 0,1,2, and 0,1,2 is what the ROM table already put there when the
++ * firmware started (see ->off.portmap). A wait for "the records carry
+  * 0,1,2" therefore returns in its first pass on any freshly started firmware,
+  * whether the handler ran or not: it cannot fail, so it proves nothing, and
+  * "portmap: 0,1,2" in debugfs after a run is not evidence either.
+@@ -1052,7 +1478,7 @@
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
+-		void __iomem *rec = sram_at(a, SRAM_PORTMAP) +
++		void __iomem *rec = sram_at(a, a->off.portmap) +
+ 				    i * PORTMAP_STRIDE;
+ 
+ 		saved[2 * i] = readb(rec + PORTMAP_PIN);
+@@ -1069,7 +1495,7 @@
+ 	 * complete by now, so the caller can undo whatever did land.
+ 	 */
+ 	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
+-		void __iomem *rec = sram_at(a, SRAM_PORTMAP) +
++		void __iomem *rec = sram_at(a, a->off.portmap) +
+ 				    i * PORTMAP_STRIDE;
+ 		u8 pin = readb(rec + PORTMAP_PIN);
+ 		u8 bit = readb(rec + PORTMAP_PIN_BIT);
+@@ -1097,7 +1523,7 @@
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
+-		void __iomem *rec = sram_at(a, SRAM_PORTMAP) +
++		void __iomem *rec = sram_at(a, a->off.portmap) +
+ 				    i * PORTMAP_STRIDE;
+ 
+ 		writeb(saved[2 * i], rec + PORTMAP_PIN);
+@@ -1113,7 +1539,7 @@
+ 
+ 	do {
+ 		for (i = 0; i < ARISC_HDMI_PORTS; i++) {
+-			void __iomem *rec = sram_at(a, SRAM_PORTMAP) +
++			void __iomem *rec = sram_at(a, a->off.portmap) +
+ 					    i * PORTMAP_STRIDE;
+ 
+ 			pin = readb(rec + PORTMAP_PIN);
+@@ -1309,16 +1735,17 @@
+ 	}
+ 	if (a->edid_status[EDID_STATUS_READY_BYTE] != EDID_DATA_READY) {
+ 		dev_err(a->dev,
+-			"EDID nicht uebernommen: bEdidDataReady = %u statt %u, SRAM [0x1723e]=%u [0x1723f]=%u -- Fragment 7 hat die Ausgabe nicht ausgeloest\n",
++			"EDID nicht uebernommen: bEdidDataReady = %u statt %u, SRAM [0x%05x]=%u [0x%05x]=%u -- Fragment 7 hat die Ausgabe nicht ausgeloest\n",
+ 			a->edid_status[EDID_STATUS_READY_BYTE], EDID_DATA_READY,
+-			readb(sram_at(a, SRAM_EDID_READY)),
+-			readb(sram_at(a, SRAM_EDID_GATE)));
++			a->off.edid_ready, readb(sram_at(a, a->off.edid_ready)),
++			a->off.edid_gate, readb(sram_at(a, a->off.edid_gate)));
+ 		ret = -EPROTO;
+ 		goto out;
+ 	}
+-	dev_info(a->dev, "EDID uebernommen, Status %*ph, Ausgabe-Gate [0x1723f]=%u\n",
++	dev_info(a->dev, "EDID uebernommen, Status %*ph, Ausgabe-Gate [0x%05x]=%u\n",
+ 		 (int)min_t(size_t, a->edid_status_len, EDID_STATUS_LEN),
+-		 a->edid_status, readb(sram_at(a, SRAM_EDID_GATE)));
++		 a->edid_status, a->off.edid_gate,
++		 readb(sram_at(a, a->off.edid_gate)));
+ 	ret = 0;
+ out:
+ 	arisc_report(a, "set-edid rc=%d\n", ret);
+@@ -1482,10 +1909,10 @@
+ 	int ret;
+ 
+ 	if (action != ARISC_HDMI_HPD_DOWN &&
+-	    !readb(sram_at(a, SRAM_EDID_GATE))) {
++	    !readb(sram_at(a, a->off.edid_gate))) {
+ 		dev_err(a->dev,
+-			"PullHotPlug Port %u: Ausgabe-Gate [0x1723f] ist 0 -- die Firmware zwingt den Pin low, EDID wurde nie ausgegeben\n",
+-			port);
++			"PullHotPlug Port %u: Ausgabe-Gate [0x%05x] ist 0 -- die Firmware zwingt den Pin low, EDID wurde nie ausgegeben\n",
++			port, a->off.edid_gate);
+ 		return -EIO;
+ 	}
+ 
+@@ -1614,6 +2041,21 @@
+ 		   a->notify_result == 0 ? "acked" :
+ 		   a->notify_result == -ETIMEDOUT ? "not seen" : "malformed");
+ 	seq_printf(s, "firmware_version: %s\n", a->notify_version);
++	seq_printf(s, "image_version: %s\n", a->image_version);
++	/*
++	 * The addresses this image was resolved to. Every board runs its own
++	 * ARISC build and they do not agree on where the data sits, so a log
++	 * from an unfamiliar board is only useful with these lines in it.
++	 */
++	seq_printf(s, "firmware_addrs: para=0x%05x gdata=0x%05x rpm_state=0x%05x rpm_buf=0x%05x\n",
++		   a->off.para, a->off.gdata, a->off.rpm_state,
++		   a->off.rpm_buf);
++	seq_printf(s, "firmware_addrs: hpd=0x%05x edid_ready=0x%05x edid_gate=0x%05x portmap=0x%05x scratch=0x%05x\n",
++		   a->off.hpd_counter, a->off.edid_ready, a->off.edid_gate,
++		   a->off.portmap, a->off.scratch);
++	seq_printf(s, "firmware_map: bss=0x%05x..0x%05x stack=0x%05x..0x%05x\n",
++		   a->off.bss_start, a->off.bss_end - 1, a->off.bss_end,
++		   a->off.stack_top - 1);
+ 	seq_printf(s, "arisc: %s\n", a->running ? "running" : "not running");
+ 	seq_printf(s, "edid_module: %s\n",
+ 		   a->edid_module_ready ? "ready" : "not reset");
+@@ -1631,8 +2073,8 @@
+ 	 * touched, so this file stays safe to read at any time.
+ 	 */
+ 	seq_printf(s, "edid_ready: %u\nedid_gate: %u\n",
+-		   readb(sram_at(a, SRAM_EDID_READY)),
+-		   readb(sram_at(a, SRAM_EDID_GATE)));
++		   readb(sram_at(a, a->off.edid_ready)),
++		   readb(sram_at(a, a->off.edid_gate)));
+ 	/*
+ 	 * The port map as the firmware holds it, not as the driver asked for
+ 	 * it: byte 2 of each record is the pin the hotplug driver at 0x121e4
+@@ -1647,12 +2089,14 @@
+ 	 * payload the firmware read instead.
+ 	 */
+ 	seq_printf(s, "portmap: %u,%u,%u\n",
+-		   readb(sram_at(a, SRAM_PORTMAP) + PORTMAP_PIN),
+-		   readb(sram_at(a, SRAM_PORTMAP) + PORTMAP_STRIDE + PORTMAP_PIN),
+-		   readb(sram_at(a, SRAM_PORTMAP) + 2 * PORTMAP_STRIDE + PORTMAP_PIN));
++		   readb(sram_at(a, a->off.portmap) + PORTMAP_PIN),
++		   readb(sram_at(a, a->off.portmap) + PORTMAP_STRIDE +
++			 PORTMAP_PIN),
++		   readb(sram_at(a, a->off.portmap) + 2 * PORTMAP_STRIDE +
++			 PORTMAP_PIN));
+ 	seq_printf(s, "hpd_counter: %u %u %u\n", hpd_counter(a, 0),
+ 		   hpd_counter(a, 1), hpd_counter(a, 2));
+-	seq_printf(s, "rpm_state: %u\n", readl(sram_at(a, SRAM_RPM_STATE)));
++	seq_printf(s, "rpm_state: %u\n", readl(sram_at(a, a->off.rpm_state)));
+ 	seq_printf(s, "fifo_tx: port0=%u port3=%u\n",
+ 		   readl(a->tx + U1_FIFO_STAT(PORT_HDMI)),
+ 		   readl(a->tx + U1_FIFO_STAT(PORT_STANDBY)));
+@@ -1805,6 +2249,19 @@
+ 		return -EINVAL;
+ 	}
+ 
++	/*
++	 * Before the image is written, and before the core is touched at all:
++	 * find out where this build keeps the objects the HDMI path reads and
++	 * writes. An image whose layout cannot be established does not get
++	 * loaded -- an ARISC running with the wrong address set scribbles into
++	 * its own stack and reports nothing but a timeout.
++	 */
++	ret = arisc_resolve_offsets(a, fw->data, name);
++	if (ret) {
++		release_firmware(fw);
++		return ret;
++	}
++
+ 	arisc_enable_cpus_clocks(a);
+ 	arisc_set_reset(a, true);
+ 	arisc_drain_rx(a);
+@@ -1881,6 +2338,7 @@
+ 	a->seq = 1;
+ 	a->notify_result = -ENODATA;
+ 	strscpy(a->notify_version, "-", sizeof(a->notify_version));
++	strscpy(a->image_version, "-", sizeof(a->image_version));
+ 	strscpy(a->last_cmd, "noch kein Befehl\n", sizeof(a->last_cmd));
+ 	mutex_init(&a->lock);
+ 

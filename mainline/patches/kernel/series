@@ -107,6 +107,11 @@
 # --- 4. HY310 (well0nez): ARISC, cpu_comm-Kernel-API, HDMI-RX-Callbacks -------
 #     doku/82, 83, 88, 91, nachtlog/S1-S13. Abgenommen 07./08.09.
 0091-soc-sunxi-h713-arisc.patch
+#   (follow-up well0nez, K1 -- 0091 stays byte-identical; the eight SRAM
+#    addresses belong to the loaded ARISC build, so they are resolved from
+#    the image at probe time and an unknown layout refuses the probe,
+#    issue #1 / doku/126)
+0091a-soc-sunxi-h713-arisc-resolve-the-firmware-s-sram-addresses.patch
 0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
 0097-soc-sunxi-cpu-comm-fix-the-call-argument-abi-and-the-callwq-pointer.patch
 0092-soc-sunxi-h713-cpu-comm-kernel-api.patch
