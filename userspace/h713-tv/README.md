@@ -454,7 +454,7 @@ a different one.
 ```
 # /etc/h713/tv.conf -- "key = value", # comment
 start = last             # auto | manual | last
-#zustand = /var/lib/h713-tv/modus   # or none
+#state = /var/lib/h713-tv/modus     # or none
 ```
 
 | `start =` | at the start | afterwards |
@@ -475,7 +475,7 @@ changes** (the word into a sibling file, `fsync`, `rename` - after a power cut t
 stands there, never half a line). `/var/lib`, because this is state and not configuration, and because the
 journal is volatile on this device (doku/107 §4). The unit hands the directory over with
 `StateDirectory=h713-tv` - under `ProtectSystem=strict` that is the only writable place besides `/run`.
-`zustand = none` switches the saving off, `zustand = /path` moves it. The mode is written with
+`state = none` switches the saving off, `state = /path` moves it. The mode is written with
 `start = auto` and `start = manual` as well; it is only read with `last` - whoever switches to `last` later
 gets the state that really was the last one.
 
@@ -543,7 +543,7 @@ Every one of these cases ends in the compiled-in table, one line in the journal 
 abort:
 
 ```
-warning: picture values  rechner = none -- the compiled-in table applies
+warning: picture values  calculator = none -- the compiled-in table applies
 warning: picture values  /usr/local/bin/h713-pq: No such file or directory -- ...
 warning: picture values  exit code 2 (data directory incomplete?) -- ...
 warning: picture values  longer than 2000 ms -- aborted -- ...
@@ -596,12 +596,15 @@ warning: /var/lib/h713-tv/werte:17: the plane does not know aspect = "quetschen"
 ### The keys in `tv.conf`
 
 ```
-preset  = NAME | last        # NAME out of ctl help; last = the saved preset. Default standard
-daten   = DIR | none         # default /etc/h713/tvconfig; none = do not use the device data
-rechner = PATH | none        # default /usr/local/bin/h713-pq; none = do not compute
+preset     = NAME | last     # NAME out of ctl help; last = the saved preset. Default standard
+data       = DIR | none      # default /etc/h713/tvconfig; none = do not use the device data
+calculator = PATH | none     # default /usr/local/bin/h713-pq; none = do not compute
 ```
 
-On the command line they are called `-p`, `--data` and `--rechner`; on top of that `--input` (default
+The German key names of the releases up to v0.8-beta - `zustand`, `daten`, `rechner` - are still accepted
+without a warning, so an existing `tv.conf` keeps working; they go out after that release.
+
+On the command line they are called `-p`, `--data` and `--calculator`; on top of that `--input` (default
 `HDMI1`) and `--lut` (default `/run/h713-tv/gamma-laufzeit.bin`). The command line has the last word, the
 file is the standing setting. `-g` still counts as an explicit order and beats the curve from `h713-pq`.
 
