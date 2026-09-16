@@ -206,9 +206,8 @@ def main():
               "installer/tests/test_install_readback.py does it with root.")
         probe = None
     else:
-        # INTEGRATOR: h713.mountfs is package P2's module (P-layout-v4.md, "Who does what").
-        # Interface: copy_in(image_path, partition_offset, partition_size, files) with
-        # files = [(source path, target path, mode, owner)]. Wire this up when P2 lands.
+        # h713.mountfs is the installer's executor (package P2): copy_in(image_path,
+        # partition_offset, partition_size, files), files = [(source, target, mode, owner)].
         from h713 import mountfs                                            # noqa: F401
         piece = {where[p][0] for p in ("hy310-boot", "hy310-rootfs")}
         if len(piece) != 1:
