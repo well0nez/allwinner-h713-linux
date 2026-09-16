@@ -62,7 +62,7 @@ def dram_block(boot0: bytes) -> dict:
 
 
 def parse_ini(text: str) -> dict[str, list[tuple[str, str]]]:
-    """Like h713_pq/quellen.py: vendor INI with duplicate keys and ',\\' continuations."""
+    """Like h713_pq/sources.py: vendor INI with duplicate keys and ',\\' continuations."""
     sect: dict[str, list[tuple[str, str]]] = {}
     cur: list[tuple[str, str]] = []
     for line in text.splitlines():
