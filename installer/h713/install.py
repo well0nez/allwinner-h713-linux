@@ -574,7 +574,8 @@ def device_sources(disk, tab, files, log=console):
 
 def check_copies(work, windows, plan, log=Quiet):
     """Read the files back out of the working copy and compare byte for byte -- on the PC,
-    costs seconds. Returns the paths that differ."""
+    costs seconds. Returns the paths that differ. Every entry the plan makes carries its
+    bytes; an entry that names a `source` path instead would have to be read here too."""
     bad = []
     for name, (_file, offset, size) in windows.items():
         entries = plan.get(name) or []
