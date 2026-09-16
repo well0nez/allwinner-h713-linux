@@ -4925,7 +4925,7 @@ int main(int argc, char **argv)
 		} else if ((!strcmp(argv[arg], "--calculator") ||
 			    !strcmp(argv[arg], "--rechner")) && arg + 1 < argc)	/* GERMAN ALIAS */
 			o.calculator = argv[++arg];
-		/* the two GERMAN ALIAS names go out after v0.8-beta */
+		/* every GERMAN ALIAS name here goes out after v0.8-beta */
 		else if ((!strcmp(argv[arg], "--data") ||
 			  !strcmp(argv[arg], "--daten")) && arg + 1 < argc)	/* GERMAN ALIAS */
 			o.data = argv[++arg];
