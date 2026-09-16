@@ -1,8 +1,13 @@
-"""cli.py -- Befehlszeile von h713-pq.
+"""cli.py -- command line of h713-pq.
 
-h713-pq rechnet und druckt. Es fasst keine Register an, oeffnet kein
-/dev/mem und redet mit keinem Board. Ein Schreibpfad wird als Befehlszeile
-oder als Datei ausgegeben.
+h713-pq computes and prints. It touches no register, opens no /dev/mem and
+talks to no board. A write path is printed as a command line or written as a
+file.
+
+The option names are the interface to h713-tv, which starts this program at
+every boot as `h713-pq --daten VERZ show INPUT PRESET --json --lut FILE`
+(main.c, pq_start()). `--daten` and `--kanal` therefore keep their German
+spelling; they are renamed in one later step, with both sides at once.
 """
 
 from __future__ import annotations
@@ -11,18 +16,18 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import ausgabe, modell, quellen
+from . import model, output, sources
 
-BESCHREIBUNG = """\
-Stock-PQ-Daten des HY310 lesen und in Kernel-Schnittstellen umrechnen.
+DESCRIPTION = """\
+Read the stock PQ data of the HY310 and convert it into kernel interfaces.
 
-Datenquellen (Vendor, werden nur gelesen):
+Data sources (vendor, read only):
   tvpq.db, pq_picturemode.ini, pq_factory_extern.ini, pq_colortemp.ini,
   pqcontrol_config_setting.xml, pqcontrol_custom_setting.xml, portmap.cfg
 """
 
-BEISPIELE = """\
-Beispiele:
+EXAMPLES = """\
+Examples:
   h713-pq list
   h713-pq show HDMI1 vivid
   h713-pq show HDMI1 standard --lut gamma-standard.bin
@@ -36,145 +41,147 @@ Beispiele:
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="h713-pq",
-        description=BESCHREIBUNG,
-        epilog=BEISPIELE,
+        description=DESCRIPTION,
+        epilog=EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--daten", metavar="VERZEICHNIS", default=None,
-                   help="tvconfig-Verzeichnis (sonst $H713_TVCONFIG, "
-                        "/etc/h713/tvconfig, dann re/vendor/... im Baum)")
-    unter = p.add_subparsers(dest="befehl", required=True)
+    p.add_argument("--daten", metavar="DIRECTORY", dest="data_dir", default=None,
+                   help="tvconfig directory (otherwise $H713_TVCONFIG, "
+                        "/etc/h713/tvconfig, then re/vendor/... in the tree)")
+    sub = p.add_subparsers(dest="command", required=True)
 
-    unter.add_parser("list", help="Eingaenge, Bildmodi, Werkskurven, Datenlage")
+    sub.add_parser("list", help="inputs, picture modes, factory curves, data state")
 
-    s = unter.add_parser("show", help="Kette Eingang x Bildmodus -> Zielwerte")
-    s.add_argument("eingang")
-    s.add_argument("modus")
-    s.add_argument("--lut", metavar="DATEI", type=Path, default=None,
-                   help="Gamma-LUT dieses Bildmodus in DATEI schreiben")
-    s.add_argument("--kanal", choices=("r", "g", "b", "all"), default="r",
-                   help="LUT-Bank (Vorgabe r; alle drei Baenke sind hier gleich)")
+    s = sub.add_parser("show", help="chain input x picture mode -> target values")
+    s.add_argument("input")
+    s.add_argument("mode")
+    s.add_argument("--lut", metavar="FILE", type=Path, default=None,
+                   help="write the gamma LUT of this picture mode into FILE")
+    s.add_argument("--kanal", choices=("r", "g", "b", "all"), dest="channel",
+                   default="r",
+                   help="LUT bank (default r; all three banks are equal here)")
     s.add_argument("--json", action="store_true",
-                   help="statt der Tabelle einen maschinenlesbaren Satz auf "
-                        "stdout: Bildmodusnummer, die neun Regler, "
-                        "Gamma-Exponent, LUT-Pfad und -Pruefsumme, die "
-                        "Bildmodi dieses Eingangs (siehe README)")
+                   help="instead of the table a machine readable record on "
+                        "stdout: picture mode number, the nine controls, "
+                        "gamma exponent, LUT path and checksum, the picture "
+                        "modes of this input (see README)")
 
-    t = unter.add_parser("saturation",
-                         help="Saettigung -> RPC-Argument (plus Kontrollwerte "
-                              "0x05001238 und Chroma-Gain 0x05140508)")
-    t.add_argument("eingang")
-    t.add_argument("wert", help="Bildmodus oder Benutzerwert 0..100")
+    t = sub.add_parser("saturation",
+                       help="saturation -> RPC argument (plus the control values "
+                            "0x05001238 and chroma gain 0x05140508)")
+    t.add_argument("input")
+    t.add_argument("value", help="picture mode or user value 0..100")
 
-    g = unter.add_parser("gamma", help="Gamma-Exponent -> DE2-LUT")
+    g = sub.add_parser("gamma", help="gamma exponent -> DE2 LUT")
     g.add_argument("exponent", type=float)
-    g.add_argument("--lut", metavar="DATEI", type=Path, default=None)
-    g.add_argument("--kanal", choices=("r", "g", "b", "all"), default="r")
+    g.add_argument("--lut", metavar="FILE", type=Path, default=None)
+    g.add_argument("--kanal", choices=("r", "g", "b", "all"), dest="channel",
+                   default="r")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    # Mit --json liest h713-tv beim Start mit. Dann wird nur gelesen, was in
-    # den Satz eingeht -- das spart auf dem Geraet rund 90 ms Bild (siehe
-    # quellen.DATEIEN_FUER_SATZ). Jede andere Ausgabe zeigt alles und liest
-    # deshalb auch alles.
-    nur = quellen.DATEIEN_FUER_SATZ if getattr(args, "json", False) else None
+    # With --json h713-tv reads along at start. Then only what goes into the
+    # record is read -- that saves about 90 ms of picture on the device (see
+    # sources.FILES_FOR_RECORD). Every other output shows everything and
+    # therefore reads everything.
+    only = sources.FILES_FOR_RECORD if getattr(args, "json", False) else None
     try:
-        best = quellen.lade(args.daten, nur)
+        data = sources.load(args.data_dir, only)
     except FileNotFoundError as e:
         print(f"h713-pq: {e}", file=sys.stderr)
         return 2
 
-    if args.befehl == "list":
-        ausgabe.drucke_liste(best)
+    if args.command == "list":
+        output.print_list(data)
         return 0
 
-    if args.befehl == "show":
+    if args.command == "show":
         try:
-            k = modell.kette(best, args.eingang, args.modus)
+            k = model.chain(data, args.input, args.mode)
         except KeyError as e:
             print(f"h713-pq: {e.args[0] if e.args else e}", file=sys.stderr)
-            if args.eingang in best.presets:
-                print("Bekannte Bildmodi: "
-                      + ", ".join(modell.modi(best, args.eingang)), file=sys.stderr)
+            if args.input in data.presets:
+                print("Known picture modes: "
+                      + ", ".join(model.modes(data, args.input)), file=sys.stderr)
             else:
-                print("Bekannte Eingaenge: " + ", ".join(modell.eingaenge(best)),
+                print("Known inputs: " + ", ".join(model.inputs(data)),
                       file=sys.stderr)
             return 2
 
-        # Die LUT wird in beiden Faellen gleich geschrieben; nur die Meldung
-        # daneben unterscheidet sich. Mit --json geht sie nach stderr, damit
-        # auf stdout nichts steht als der Satz selbst.
-        lut_pfad = lut_summe = None
+        # The LUT is written the same way in both cases; only the message
+        # beside it differs. With --json it goes to stderr, so that nothing
+        # stands on stdout but the record itself.
+        lut_path = lut_sum = None
         lut_bytes = 0
         if args.lut is not None:
             if k.gamma_exponent is None:
-                print("h713-pq: kein Gamma-Exponent fuer diesen Modus "
-                      "(pqcontrol_config_setting.xml fehlt?)", file=sys.stderr)
+                print("h713-pq: no gamma exponent for this mode "
+                      "(pqcontrol_config_setting.xml missing?)", file=sys.stderr)
                 return 2
-            erg = modell.gamma_rechnen(k.gamma_exponent)
+            result = model.gamma_compute(k.gamma_exponent)
             try:
-                lut_bytes = ausgabe.schreibe_lut(args.lut, erg, args.kanal)
+                lut_bytes = output.write_lut(args.lut, result, args.channel)
             except OSError as e:
                 print(f"h713-pq: {args.lut}: {e.strerror}", file=sys.stderr)
                 return 2
-            lut_pfad = str(args.lut)
-            lut_summe = ausgabe.sha256_datei(args.lut)
+            lut_path = str(args.lut)
+            lut_sum = output.sha256_file(args.lut)
 
         if args.json:
-            ausgabe.drucke_satz(modell.satz(best, args.eingang, args.modus,
-                                            lut_pfad, lut_bytes, lut_summe))
-            if lut_pfad:
-                print(f"h713-pq: LUT geschrieben: {lut_pfad} ({lut_bytes} Byte, "
-                      f"Kanal {args.kanal}, Exponent {k.gamma_exponent})",
+            output.print_record(model.record(data, args.input, args.mode,
+                                             lut_path, lut_bytes, lut_sum))
+            if lut_path:
+                print(f"h713-pq: LUT written: {lut_path} ({lut_bytes} byte, "
+                      f"channel {args.channel}, exponent {k.gamma_exponent})",
                       file=sys.stderr)
             return 0
 
-        ausgabe.drucke_kette(best, k)
-        if lut_pfad:
+        output.print_chain(data, k)
+        if lut_path:
             print()
-            print(f"LUT geschrieben: {lut_pfad} ({lut_bytes} Byte, "
-                  f"Kanal {args.kanal}, Exponent {k.gamma_exponent})")
-            print(f"  sha256       : {lut_summe}")
+            print(f"LUT written: {lut_path} ({lut_bytes} byte, "
+                  f"channel {args.channel}, exponent {k.gamma_exponent})")
+            print(f"  sha256     : {lut_sum}")
         return 0
 
-    if args.befehl == "saturation":
-        if args.eingang not in best.presets:
-            print(f"h713-pq: unbekannter Eingang: {args.eingang}", file=sys.stderr)
-            print("Bekannte Eingaenge: " + ", ".join(modell.eingaenge(best)),
+    if args.command == "saturation":
+        if args.input not in data.presets:
+            print(f"h713-pq: unknown input: {args.input}", file=sys.stderr)
+            print("Known inputs: " + ", ".join(model.inputs(data)),
                   file=sys.stderr)
             return 2
-        gruppe = modell.EINGANG_GRUPPE.get(args.eingang)
-        # Die Werkskurve wird nur noch als Nebenbefund angezeigt. Sie liegt seit
-        # der Korrektur vom 07.09. nicht mehr auf dem Rechenweg, deshalb ist ihr
-        # Fehlen (VGA1..3) kein Abbruchgrund mehr.
-        stuetz = best.werkskurven.get(gruppe or "", {}).get("saturation")
-        if args.wert.lstrip("+-").isdigit():
-            u = int(args.wert)
-            bezeichner = f"Benutzerwert {u}"
+        group = model.INPUT_GROUP.get(args.input)
+        # The factory curve is only shown as a side note now. Since the
+        # correction of 07.09. it no longer sits on the computation path, so
+        # its absence (VGA1..3) is no reason to stop any more.
+        points = data.factory_curves.get(group or "", {}).get("saturation")
+        if args.value.lstrip("+-").isdigit():
+            u = int(args.value)
+            label = f"user value {u}"
         else:
             try:
-                bm = modell.preset(best, args.eingang, args.wert)
+                pm = model.preset(data, args.input, args.value)
             except KeyError as e:
                 print(f"h713-pq: {e.args[0] if e.args else e}", file=sys.stderr)
                 return 2
-            u = bm.werte["saturation"]
-            bezeichner = f"Bildmodus {args.wert}"
-        arg = modell.rpc_argument(u)
-        gain = modell.chroma_gain(arg)
-        kw = modell.kurvenwert(stuetz, u) if stuetz else None
-        kw_norm = modell.kurve_als_argument(stuetz, u) if stuetz else None
-        ausgabe.drucke_saettigung(args.eingang, gruppe, bezeichner, u, kw, arg,
-                                  gain, modell.chroma_gain_register(gain), kw_norm)
+            u = pm.values["saturation"]
+            label = f"picture mode {args.value}"
+        arg = model.rpc_argument(u)
+        gain = model.chroma_gain(arg)
+        cv = model.curve_value(points, u) if points else None
+        cv_norm = model.curve_as_argument(points, u) if points else None
+        output.print_saturation(args.input, group, label, u, cv, arg,
+                                gain, model.chroma_gain_register(gain), cv_norm)
         return 0
 
-    if args.befehl == "gamma":
-        erg = modell.gamma_rechnen(args.exponent)
-        ausgabe.drucke_gamma(erg, args.kanal)
+    if args.command == "gamma":
+        result = model.gamma_compute(args.exponent)
+        output.print_gamma(result, args.channel)
         if args.lut is not None:
-            n = ausgabe.schreibe_lut(args.lut, erg, args.kanal)
-            print(f"  Datei        : {args.lut} ({n} Byte)")
+            n = output.write_lut(args.lut, result, args.channel)
+            print(f"  File         : {args.lut} ({n} byte)")
         return 0
 
     return 2
