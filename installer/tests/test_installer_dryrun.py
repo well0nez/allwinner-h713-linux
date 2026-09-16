@@ -57,6 +57,13 @@ DUMP_ONLY = (0, 39, "e9b79974591406ce990b9d17b1dda4ed81bef3bdee0b8a843c236766a78
 RESTORE_STOCK = (0, 53, "f066a21a87d82f33d297a2727079816bdd49fb6820fb11ed418b8f069298e4e4")
 # was dd1faf56… (D1): re-frozen once more for the stage 3 texts of D2 (h713/imagewty.py: the five
 # IMAGEWTY reader lines are English now); exit code and 53 lines unchanged (Fable, 14.09.).
+#
+# Layout v4 (P2, 16.09.2026) did NOT re-freeze either of them, and that is the finding, not an
+# oversight: both runs are `dump` and `restore-stock`, and neither goes anywhere near the
+# install path that was rewritten (write_package, the file set, the mount). Checked by running
+# the two tests before and after the rewrite -- same exit code, same line count, same digest.
+# What layout v4 does change in this file is further down: `identify` on a release table now
+# counts files instead of placeholders, and says so when the table is a v3 one.
 
 
 class InstallerDryRun(unittest.TestCase):
@@ -254,22 +261,42 @@ class ReleaseFolder(unittest.TestCase):
         self.assertEqual(in_dump(new, EXTRACT_DIR, log), os.path.join(new, "extract"))
         self.assertEqual(len(log.lines), 2, log.text)      # nothing said for the new names
 
-    def test_identify_reads_the_table_itself(self):
-        """`identify TABLE.json` lists the pieces and what lies next to the table; exit 0,
-        nothing written (the device-test plan's "Vorher 2" check, stage 4)."""
+    def _identify(self, path):
         import contextlib
         import io
         tool = _tool_module()
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            code = tool.main(["identify", os.path.join(self.release, self.TABLE)])
-        text = buf.getvalue()
+            code = tool.main(["identify", path])
+        return code, buf.getvalue()
+
+    def test_identify_reads_the_table_itself(self):
+        """`identify TABLE.json` lists the pieces and what lies next to the table; exit 0,
+        nothing written (the device-test plan's "Vorher 2" check, stage 4)."""
+        code, text = self._identify(os.path.join(self.release, self.TABLE))
         self.assertEqual(code, 0, text)
         self.assertIn("release table  h713-hy310-v0.5-beta", text)
         for part in self.table["teile"]:
             self.assertIn(part["datei"], text)
         self.assertIn("truncated?", text)          # the fixture's parts are empty files
         self.assertIn("u-boot-installer.bin                     present", text)
+
+    def test_identify_says_when_a_table_is_a_layout_v3_one(self):
+        """The v0.5-beta table above is a placeholder table. `identify` never writes, so it
+        reports rather than refuses -- but it says the installer will not take it (v4)."""
+        code, text = self._identify(os.path.join(self.release, self.TABLE))
+        self.assertEqual(code, 0, text)
+        self.assertIn("this image was built for the placeholder layout v3", text)
+        self.assertNotIn("files: ", text)
+
+    def test_identify_counts_the_files_of_a_v4_table(self):
+        v4 = os.path.join(fakedisk.FIXTURES, "release", "h713-hy310-v4-example.tabelle.json")
+        support.need([v4])
+        code, text = self._identify(v4)
+        self.assertEqual(code, 0, text)
+        self.assertIn("release table  h713-hy310-v4-example", text)
+        self.assertIn("files: 44 from your own device, 1 of your own", text)
+        self.assertNotIn("placeholder layout v3", text)
 
     def test_the_tool_takes_uboot_and_fel_out_of_the_release_folder(self):
         """main() fills --uboot/--sunxi-fel from the folder before it goes looking for the

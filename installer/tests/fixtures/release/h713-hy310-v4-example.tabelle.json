@@ -1,0 +1,417 @@
+{
+  "format": "hy310-abbild-tabelle-v4",
+  "version": 1,
+  "werkzeug": "h713-mkimage 0.1 (fixture, hand written for P2)",
+  "erzeugt": "2026-09-16T00:00:00",
+  "abbild": "h713-hy310-v4-example",
+  "sektorgroesse": 512,
+  "disk_sektoren": 15269888,
+  "layout": "v4 (doku/109 section 2.2, files copied through a mount)",
+  "partitionen": [
+    {
+      "name": "hy310-spl",
+      "lba": 16,
+      "sektoren": 64,
+      "guid": "cf5e1195-48e8-41bf-9394-1afdeff2bf01"
+    },
+    {
+      "name": "hy310-uboot",
+      "lba": 2048,
+      "sektoren": 10240,
+      "guid": "3c05da4e-39e8-4472-bd09-17f0433da668"
+    },
+    {
+      "name": "hy310-keys",
+      "lba": 12288,
+      "sektoren": 2048,
+      "guid": "404b1401-5772-4781-88ab-1b56c4682a97"
+    },
+    {
+      "name": "hy310-env",
+      "lba": 14336,
+      "sektoren": 2048,
+      "guid": "0a175557-ceb7-4ce5-b247-45e28a588dfd"
+    },
+    {
+      "name": "hy310-boot",
+      "lba": 16384,
+      "sektoren": 262144,
+      "guid": "f6d66c6c-2079-4e06-b550-4f37e6c5ab84"
+    },
+    {
+      "name": "hy310-rootfs",
+      "lba": 278528,
+      "sektoren": 14991327,
+      "guid": "45f95906-692a-4dcf-94e5-10bf1672909d"
+    }
+  ],
+  "loch": {
+    "lba": 12288,
+    "sektoren": 2048,
+    "partition": "hy310-keys",
+    "warum": "secure storage: HDCP keys, the WLAN/BT MAC addresses and the serial number. Device-specific, in no firmware image, not restorable (doku/109 §2.3). That is why this range is in no piece of the image."
+  },
+  "teile": [
+    {
+      "datei": "h713-hy310-v4-example-a-bootkette.img",
+      "lba": 0,
+      "sektoren": 12288,
+      "bytes": 6291456,
+      "sha256": null,
+      "dd": "dd if=h713-hy310-v4-example-a-bootkette.img of=/dev/sdX bs=512 seek=0 conv=fsync"
+    },
+    {
+      "datei": "h713-hy310-v4-example-b-system.img",
+      "lba": 14336,
+      "sektoren": 2361344,
+      "bytes": 1209008128,
+      "sha256": null,
+      "dd": "dd if=h713-hy310-v4-example-b-system.img of=/dev/sdX bs=512 seek=14336 conv=fsync"
+    },
+    {
+      "datei": "h713-hy310-v4-example-c-gptkopie.img",
+      "lba": 15269855,
+      "sektoren": 33,
+      "bytes": 16896,
+      "sha256": null,
+      "dd": "dd if=h713-hy310-v4-example-c-gptkopie.img of=/dev/sdX bs=512 seek=15269855 conv=fsync"
+    }
+  ],
+  "bausteine": {
+    "env": {
+      "datei": "mainline/build/out/hy310-env-release.bin",
+      "bytes": 65536,
+      "sha256": "49d56493424a7760a78f73211c5e15e1996cf4eb95ae3308b7643bf131207e59",
+      "lba": 14336,
+      "crc32": "a6ad83aa",
+      "eintraege": 78
+    }
+  },
+  "dateien": [
+    {
+      "name": "boot/mips/database.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/database.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/display.bin",
+      "partition": "hy310-boot",
+      "pfad": "/mips/display.bin",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/display_cfg.xml",
+      "partition": "hy310-boot",
+      "pfad": "/mips/display_cfg.xml",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/LogoRegData.bin",
+      "partition": "hy310-boot",
+      "pfad": "/mips/LogoRegData.bin",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/pq_custom.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/pq_custom.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0001.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0001.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0012.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0012.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0013.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0013.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0014.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0014.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0015.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0015.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0016.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0016.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0020.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0020.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0030.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0030.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0031.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0031.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0032.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0032.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0033.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0033.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0034.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0034.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/ProjectID_0x0035.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/ProjectID_0x0035.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/mips/projecttable.TSE",
+      "partition": "hy310-boot",
+      "pfad": "/mips/projecttable.TSE",
+      "gruppe": "mips",
+      "optional": false
+    },
+    {
+      "name": "boot/bootlogo.bmp",
+      "partition": "hy310-boot",
+      "pfad": "/bootlogo.bmp",
+      "gruppe": "logo",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/h713-arisc.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/h713-arisc.bin",
+      "gruppe": "firmware",
+      "optional": false
+    },
+    {
+      "name": "lib/firmware/h713/msp-patch.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/h713/msp-patch.bin",
+      "gruppe": "firmware",
+      "optional": false
+    },
+    {
+      "name": "lib/firmware/hy310-edid.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/hy310-edid.bin",
+      "gruppe": "firmware",
+      "optional": false
+    },
+    {
+      "name": "pq/portmap.cfg",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/portmap.cfg",
+      "gruppe": "pq",
+      "optional": true
+    },
+    {
+      "name": "pq/pq_colortemp.ini",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/pq_colortemp.ini",
+      "gruppe": "pq",
+      "optional": true
+    },
+    {
+      "name": "pq/pq_factory_extern.ini",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/pq_factory_extern.ini",
+      "gruppe": "pq",
+      "optional": true
+    },
+    {
+      "name": "pq/pq_overscan_config.ini",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/pq_overscan_config.ini",
+      "gruppe": "pq",
+      "optional": true
+    },
+    {
+      "name": "pq/pq_picturemode.ini",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/pq_picturemode.ini",
+      "gruppe": "pq",
+      "optional": true
+    },
+    {
+      "name": "pq/pqcontrol_config_setting.xml",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/pqcontrol_config_setting.xml",
+      "gruppe": "pq",
+      "optional": true
+    },
+    {
+      "name": "pq/pqcontrol_custom_setting.xml",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/pqcontrol_custom_setting.xml",
+      "gruppe": "pq",
+      "optional": true
+    },
+    {
+      "name": "pq/tvpq.db",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/tvpq.db",
+      "gruppe": "pq",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin",
+      "gruppe": "wlan",
+      "optional": true
+    },
+    {
+      "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin",
+      "partition": "hy310-rootfs",
+      "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin",
+      "gruppe": "wlan",
+      "optional": true
+    }
+  ],
+  "gruppen": {
+    "mips": "display firmware and tables",
+    "logo": "boot logo",
+    "firmware": "ARISC, EDID, MSP",
+    "pq": "picture presets",
+    "wlan": "WLAN firmware"
+  },
+  "nutzer": [
+    {
+      "name": "authorized_keys",
+      "partition": "hy310-rootfs",
+      "pfad": "/root/.ssh/authorized_keys",
+      "modus": "0600",
+      "besitzer": "root",
+      "verzeichnis_modus": "0700"
+    }
+  ]
+}
