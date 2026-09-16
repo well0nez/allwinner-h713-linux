@@ -26,11 +26,13 @@ from h713.blockdev import SECTORS_EXPECTED                          # noqa: E402
 from h713.env import ENV_BYTES, env_read, env_write                 # noqa: E402
 from h713.install import (table_test_for, test_image_allowed,       # noqa: E402
                           write_env_keys)
-from h713.mkimage import LOCK_FIRST, LOCK_LAST, readme_text         # noqa: E402
+from h713.layout import PARTITIONS                                  # noqa: E402
+from h713.mkimage import (LAYOUT, LOCK_FIRST, LOCK_LAST,            # noqa: E402
+                          TABLE_FORMAT, TABLE_FORMAT_V3, file_table, readme_text)
 
 TOOL = os.path.join(support.TOOLS, "h713-install")
 SECT = 512
-PART_LBA = 14336                      # part B of layout v3 -- where the placeholders would sit
+PART_LBA = 14336                      # part B -- where the two file systems sit
 
 
 def _tool_module():
@@ -62,28 +64,39 @@ class Recorder(object):
         return "\n".join(self.lines)
 
 
-def _release(directory, test_for=None, name="h713-hy300-t08-v0.11-TEST"):
+def _release(directory, test_for=None, name="h713-hy300-t08-v0.11-TEST", v4=True):
     """A minimal but real release: one part at LBA 14336 and the table that describes it.
-    Enough for check_package(); the placeholders are what a bigger image adds, not this."""
+    Enough for check_package(); the two file systems are what a bigger image adds, not this.
+
+    INTEGRATOR: `v4=False` writes a layout v3 table, and the tests that drive `h713-install`
+    as a subprocess still ask for one -- the installer in this tree reads v3 until package P2
+    has rewritten it (P-layout-v4.md, "Who does what"). Flip those four calls to the default
+    when P2 lands; everything on the h713-mkimage side already uses v4 here.
+    """
     os.makedirs(directory, exist_ok=True)
     part = name + "-b-system.img"
     body = b"H713 test image\n" * (1 << 12)
     with open(os.path.join(directory, part), "wb") as fh:
         fh.write(body)
-    table = {"format": "hy310-abbild-tabelle"}
+    table = {"format": TABLE_FORMAT if v4 else TABLE_FORMAT_V3}
     if test_for:
         table["test_for"] = test_for
     table.update({
         "version": 1, "werkzeug": "h713-mkimage 0.1", "erzeugt": "2026-09-15T00:00:00",
         "abbild": name, "sektorgroesse": SECT, "disk_sektoren": SECTORS_EXPECTED,
-        "layout": "v3 (doku/109 §2.2)",
+        "layout": LAYOUT if v4 else "v3 (doku/109 §2.2)",
+        "partitionen": [{"name": n, "lba": l, "sektoren": s, "guid": g}
+                        for n, l, s, g in PARTITIONS],
         "loch": {"lba": LOCK_FIRST, "sektoren": LOCK_LAST - LOCK_FIRST + 1,
                  "partition": "hy310-keys", "warum": "secure storage"},
         "teile": [{"datei": part, "lba": PART_LBA, "sektoren": len(body) // SECT,
                    "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}],
-        "platzhalter_datei": part, "platzhalter": {}, "platzhalter_nutzer": {},
-        "platzhalter_info": {},
     })
+    if v4:
+        table.update(file_table())
+    else:
+        table.update({"platzhalter_datei": part, "platzhalter": {},
+                      "platzhalter_nutzer": {}, "platzhalter_info": {}})
     path = os.path.join(directory, name + ".tabelle.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(table, fh, indent=2, ensure_ascii=False, sort_keys=False)
@@ -103,7 +116,11 @@ class TableKey(unittest.TestCase):
         self.assertIsNone(table_test_for(released))
 
     def test_a_marked_table_is_read_before_the_device_is_touched(self):
-        table = _release(os.path.join(support.workdir(self), "rel"), test_for="hy300_t08")
+        # v4=False: table_test_for() is the installer's, and the installer in this tree
+        # reads v3 (see _release). A v4 table gives None there today -- which is the
+        # refusal we want from an old installer; P2 turns it into a message.
+        table = _release(os.path.join(support.workdir(self), "rel"), test_for="hy300_t08",
+                         v4=False)
         self.assertEqual(table_test_for(table), "hy300_t08")
         self.assertEqual(table_test_for(os.path.dirname(table)), "hy300_t08")
         self.assertEqual(table_test_for("nothing-here.img", table), "hy300_t08")
@@ -208,7 +225,7 @@ class OnTheBoardItIsFor(_Run):
         self.tmp = support.workdir(self)
         self.disk = fakedisk.make_adt3_disk(os.path.join(self.tmp, "t08.img"), "hy300-t08")
         self.before = fakedisk.journal(self.disk)
-        self.table = _release(os.path.join(self.tmp, "rel"), test_for="hy300_t08")
+        self.table = _release(os.path.join(self.tmp, "rel"), test_for="hy300_t08", v4=False)
 
     def test_without_the_flag_it_is_refused(self):
         code, out = self.run_install(self.disk, self.table)
@@ -228,7 +245,8 @@ class OnTheBoardItIsFor(_Run):
     def test_an_unmarked_image_takes_the_old_road(self):
         """Without the key nothing changes: report_device() keeps the verdict it always had
         -- a rehearsal is allowed to go on, a real write on this board is not (exit 10)."""
-        plain = _release(os.path.join(self.tmp, "rel-plain"), name="h713-hy300-t08-v0.11")
+        plain = _release(os.path.join(self.tmp, "rel-plain"), name="h713-hy300-t08-v0.11",
+                         v4=False)
         code, out = self.run_install(self.disk, plain)
         self.assertEqual(code, 0, out)
         self.assertNotIn("TEST IMAGE", out)
@@ -236,7 +254,8 @@ class OnTheBoardItIsFor(_Run):
         self.assertEqual(fakedisk.journal(self.disk), self.before, out)
 
     def test_the_flag_on_an_unmarked_image_says_it_changes_nothing(self):
-        plain = _release(os.path.join(self.tmp, "rel-plain"), name="h713-hy300-t08-v0.11")
+        plain = _release(os.path.join(self.tmp, "rel-plain"), name="h713-hy300-t08-v0.11",
+                         v4=False)
         code, out = self.run_install(self.disk, plain, "--test-image")
         self.assertEqual(code, 0, out)
         self.assertIn("this table carries no test_for", out)
@@ -257,7 +276,7 @@ class OnAnotherBoard(_Run):
         self.tmp = support.workdir(self)
         self.disk = fakedisk.make_stock_disk(os.path.join(self.tmp, "emmc.img"))
         self.before = fakedisk.journal(self.disk)
-        self.table = _release(os.path.join(self.tmp, "rel"), test_for="hy300_t08")
+        self.table = _release(os.path.join(self.tmp, "rel"), test_for="hy300_t08", v4=False)
 
     def test_the_flag_does_not_help_on_the_wrong_board(self):
         code, out = self.run_install(self.disk, self.table, "--test-image")

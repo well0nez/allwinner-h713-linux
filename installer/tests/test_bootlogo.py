@@ -2,8 +2,13 @@
 
 `h713_disp init <id> logo` reads `bootlogo.bmp` from the ROOT of the partition the display
 artefacts come from -- `/boot/bootlogo.bmp` on an installed device. So the extractor takes it out
-of the bootloader FAT, the image carries a placeholder for it, and the installer fills that
-placeholder -- but treats a missing or oversized logo as a warning, never as a failed install.
+of the bootloader FAT, the image leaves the place for it free, and the installer copies it in --
+but treats a missing logo as a warning, never as a failed install.
+
+Layout v4 (plan/briefs/P-layout-v4.md) took the size out of that: the image carries no
+placeholder for the logo any more, so no logo can be "too big" for it. What is left here is
+where the file goes and that it is optional; what the installer does with a missing one is
+tested with the installer (package P2).
 
 Nothing here freezes a new vendor hash: the one digest below already stands in
 `installer/h713/profiles/hy310.py` and in `h713_vendor_bootlogos[]` in U-Boot, and the test asserts
@@ -24,9 +29,8 @@ import fakedisk
 
 sys.path.insert(0, support.TOOLS)
 from h713 import extract, log                                        # noqa: E402
-from h713.install import OPTIONAL_FILES, vendor_sources              # noqa: E402
-from h713.layout import PLACEHOLDERS                                 # noqa: E402
-from h713.mkimage import readme_text, tree_boot                      # noqa: E402
+from h713.layout import FILES, File, target_directories              # noqa: E402
+from h713.mkimage import file_table, readme_text, tree_boot          # noqa: E402
 from h713.profiles import PROFILES                                   # noqa: E402
 from h713.vendorfiles import BOOT_ROOT_FILES, MIPS_NOT_OURS, check_bootlogo   # noqa: E402
 
@@ -89,11 +93,22 @@ class CheckBootlogo(unittest.TestCase):
 
 
 class TheTableAndTheTree(unittest.TestCase):
-    """The placeholder sits at the ROOT of hy310-boot, and the tree builder puts it there."""
+    """The logo goes to the ROOT of hy310-boot, and the image leaves that place free."""
 
-    def test_the_placeholder_is_in_the_table(self):
-        rows = [row for row in PLACEHOLDERS if row[0] == NAME]
-        self.assertEqual(rows, [(NAME, LOGO_SIZE, "hy310-boot", "/bootlogo.bmp")])
+    def test_the_logo_is_in_the_file_list(self):
+        rows = [f for f in FILES if f.name == NAME]
+        self.assertEqual(rows, [File(NAME, "hy310-boot", "/bootlogo.bmp", "logo", True)])
+
+    def test_the_table_carries_it_with_its_group_and_its_optional_flag(self):
+        rows = [f for f in file_table()["dateien"] if f["name"] == NAME]
+        self.assertEqual(rows, [{"name": NAME, "partition": "hy310-boot",
+                                 "pfad": "/bootlogo.bmp", "gruppe": "logo", "optional": True}])
+        self.assertIn("logo", file_table()["gruppen"])
+
+    def test_no_size_is_promised_any_more(self):
+        """v4: the image carries no placeholder, so no logo can be too big for one."""
+        for field in FILES[0]._fields:
+            self.assertNotIn(field, ("size", "groesse", "laenge"))
 
     def test_the_profile_and_this_test_agree_on_the_digest(self):
         self.assertEqual(PROFILES["hy310"]["reference"][NAME], (LOGO_SIZE, LOGO_SHA))
@@ -104,78 +119,44 @@ class TheTableAndTheTree(unittest.TestCase):
         self.assertEqual(MIPS_NOT_OURS, ("fastbootlogo.bmp", "font24.sft", "font32.sft",
                                          "magic.bin", "bat", "wavefile"))
 
-    def test_tree_boot_writes_it_at_the_partition_root(self):
+    def test_tree_boot_leaves_the_partition_root_free(self):
         directory = os.path.join(support.workdir(self), "boot")
         n = tree_boot(directory, log=support.Recorder())
-        self.assertEqual(n, len([r for r in PLACEHOLDERS if r[2] == "hy310-boot"]))
-        path = os.path.join(directory, "bootlogo.bmp")
-        self.assertEqual(os.path.getsize(path), LOGO_SIZE)
+        self.assertEqual(n, len(target_directories("hy310-boot")))
         self.assertTrue(os.path.isdir(os.path.join(directory, "mips")))
+        self.assertFalse(os.path.exists(os.path.join(directory, "bootlogo.bmp")))
+        self.assertEqual(os.listdir(directory), ["mips"])
 
     def test_the_readme_names_it(self):
-        text = readme_text({"abbild": "x", "erzeugt": "t", "werkzeug": "w",
-                            "teile": [], "loch": {"lba": 12288, "sektoren": 2048},
-                            "platzhalter": dict((r[0], [0, r[1]]) for r in PLACEHOLDERS)})
-        self.assertIn("The image holds %d placeholders" % len(PLACEHOLDERS), text)
-        self.assertIn("  * the boot logo (bootlogo.bmp) -- without it the panel stays black "
-                      "until Linux", text)
-        self.assertIn("  * 19 display artefacts (mips/)", text)
+        text = readme_text(dict({"abbild": "x", "erzeugt": "t", "werkzeug": "w",
+                                 "teile": [], "loch": {"lba": 12288, "sektoren": 2048}},
+                                **file_table()))
+        self.assertIn("%d files that belong to the manufacturer are NOT in this image"
+                      % len(FILES), text)
+        self.assertIn("  *  1 x boot logo (a device may be without it)", text)
+        self.assertIn("  * 19 x display firmware and tables", text)
 
 
-class OptionalForTheInstaller(unittest.TestCase):
-    """vendor_sources(): the logo is optional PER FILE -- missing or too big is a warning, and
-    the entry leaves the table so the placeholder keeps its fill pattern."""
+class OptionalInTheFileList(unittest.TestCase):
+    """The logo is optional PER FILE, and it is the only one of its group.
 
-    def setUp(self):
-        self.directory = support.workdir(self)
-        os.makedirs(os.path.join(self.directory, "boot"))
-        with open(os.path.join(self.directory, "keep.bin"), "wb") as fh:
-            fh.write(b"\xa5" * 8)
-        self.log = support.Recorder()
+    What the installer does with a logo that is not in the dump -- one warning, no failed
+    install -- is tested with the installer itself (package P2); since v4 there is no size
+    to compare it against, so there is nothing left to decide here."""
 
-    def _table(self):
-        return {"keep.bin": (0, 8), NAME: (16, 64)}
+    def test_the_logo_is_optional(self):
+        self.assertTrue([f for f in FILES if f.name == NAME][0].optional)
 
-    def _logo(self, size):
-        with open(os.path.join(self.directory, "boot", "bootlogo.bmp"), "wb") as fh:
-            fh.write(b"BM" + b"\0" * (size - 2))
+    def test_it_is_a_group_of_its_own(self):
+        self.assertEqual([f.name for f in FILES if f.group == "logo"], [NAME])
 
-    def test_the_logo_is_declared_optional(self):
-        self.assertEqual(OPTIONAL_FILES, (NAME,))
-
-    def test_a_logo_that_is_there_is_simply_used(self):
-        self._logo(64)
-        table = self._table()
-        sources = vendor_sources(self.directory, table, self.log)
-        self.assertEqual(sorted(sources), ["boot/bootlogo.bmp", "keep.bin"])
-        self.assertIn(NAME, table)
-        self.assertEqual(self.log.lines, [])
-
-    def test_a_missing_logo_is_a_warning_and_nothing_else(self):
-        table = self._table()
-        sources = vendor_sources(self.directory, table, self.log)
-        self.assertEqual(sorted(sources), ["keep.bin"])
-        self.assertNotIn(NAME, table)
-        self.assertEqual(len(self.log.lines), 1, self.log.text)
-        self.assertIn("no boot logo", self.log.text)
-        self.assertIn("The placeholder stays a pattern and U-Boot boots without a logo",
-                      self.log.text)
-
-    def test_a_logo_too_big_for_the_placeholder_is_skipped(self):
-        self._logo(65)
-        table = self._table()
-        sources = vendor_sources(self.directory, table, self.log)
-        self.assertEqual(sorted(sources), ["keep.bin"])
-        self.assertNotIn(NAME, table)
-        self.assertEqual(len(self.log.lines), 1, self.log.text)
-        self.assertIn("65 bytes, the placeholder holds 64", self.log.text)
-
-    def test_everything_else_missing_still_aborts(self):
-        self._logo(64)
-        os.remove(os.path.join(self.directory, "keep.bin"))
-        with self.assertRaises(RuntimeError) as caught:
-            vendor_sources(self.directory, self._table(), self.log)
-        self.assertIn("keep.bin", str(caught.exception))
+    def test_the_groups_that_are_optional_are_the_ones_a_firmware_may_be_without(self):
+        optional = sorted({f.group for f in FILES if f.optional})
+        self.assertEqual(optional, ["logo", "pq", "wlan"])
+        mandatory = sorted({f.group for f in FILES if not f.optional})
+        self.assertEqual(mandatory, ["firmware", "mips"])
+        for group in optional:
+            self.assertTrue(all(f.optional for f in FILES if f.group == group), group)
 
 
 class ASourceWithoutALogo(unittest.TestCase):

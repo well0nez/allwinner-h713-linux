@@ -16,7 +16,9 @@ Environment:
 | `H713_FIXTURES_LOCAL` | vendor bytes that never enter the repository (stock bootloader partition, `.fex` files); tests needing them skip when unset | `tests/fixtures-local` |
 | `H713_IMAGE_DIR` | the vendor firmware images (`update.img`, HY300 T08, HY350); tests needing them skip when absent | `~/Downloads` |
 | `H713_SLOW_TESTS=1` | run the extractor over the full images | off |
-| `H713_BUILD_OUT`, `H713_VENDOR_OUT` | inputs of `mkimage-selftest.py`; the test skips when they are missing | `$H713_TOOLS_DIR/out`, `.../out/vendor` |
+| `H713_BUILD_OUT` | the built image `mkimage-selftest.py` runs over; the test skips without one | `$H713_TOOLS_DIR/out` |
+| `H713_VENDOR_OUT` | an `h713-extract` output; since layout v4 only the root step of `mkimage-selftest.py` uses it | `$H713_TOOLS_DIR/out/vendor` |
+| `H713_ROOT_TESTS=1` | allow the steps that mount something (they also need a password-less `sudo -n true`); without it they say so and skip | off |
 
 `fixtures/device/README.md` says where every byte comes from. Nothing under `fixtures/` is a vendor
 file or a secret; the sperr-scan runs over this directory like over everything else.

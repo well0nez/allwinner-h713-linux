@@ -1,9 +1,8 @@
 """mkimage-selftest.py as a subprocess -- the one end-to-end check the tools
-already had.  It needs a built image (out/*.tabelle.json plus its three parts) and
-a vendor directory holding every placeholder the table names; without those it
-skips and says which.  It writes ~1.3 GB into --tmp and removes it again.  Its
-default --vendor (r2-extract/out-hy310, 10.09.) is stale for tables built after
-12.09. -- the 13 aic8800 WLAN files are missing there."""
+already had.  It needs a built image (out/*.tabelle.json plus its three parts); since
+layout v4 it needs no vendor directory any more, because there is nothing to fill: the
+copy through a mount is step 4 of the self-test and needs root, which this test does not
+have.  It writes the dummy disk into --tmp and removes it again."""
 
 import glob
 import json
@@ -16,52 +15,53 @@ import unittest
 import support                 # imported first: it puts the work dir on sys.path
 import fakedisk
 
-# frozen 2026-09-14 from mkimage-selbsttest.py (image h713-hy310-v0.12, vendor
-# out-hy310-20260912): 18 green checks, no red one, exit 0.
-OK_LINES = 18
+sys.path.insert(0, support.TOOLS)
+from h713.mkimage import TABLE_FORMAT                            # noqa: E402
+
+# re-frozen 2026-09-16 for layout v4 (plan/briefs/P-layout-v4.md): the self-test does
+# not fill placeholders any more.  Was 18 green lines with the image h713-hy310-v0.12 and
+# the vendor directory out-hy310-20260912; now 25 without a vendor directory -- step 2
+# (the table against h713.layout) and step 3 (the target directories, one line each)
+# replaced the two fill steps.  Exit code 0 and "no FAIL" are unchanged.
+OK_LINES = 25
 VENDOR_DIRS = (support.VENDOR_OUT + "-20260912", support.VENDOR_OUT)
 
-# doku/121 stage 3 ("stage 3 texts"): the self-test was renamed
-# mkimage-selbsttest.py -> mkimage-selftest.py and its output is English.
-#   was SELFTEST = support.SELFTEST_PY  (installer/mkimage-selbsttest.py)
-#   was the markers ("ALLES GRUEN", "Secure Storage unveraendert",
-#                    "eGON.BT0 steht bei LBA 16") and assertNotIn("FEHL")
-# The count of green lines (18) and the exit code are unchanged -- only the
-# wording moved, no check was added or dropped.
 SELFTEST = os.path.join(support.TOOLS, "mkimage-selftest.py")
-MARKERS = ("ALL GREEN", "Secure Storage unchanged", "eGON.BT0 sits at LBA 16")
+MARKERS = ("ALL GREEN", "Secure Storage unchanged", "eGON.BT0 sits at LBA 16",
+           "equal to layout.FILES", "none of the 44 files of h713.layout is in the image")
 
 
 def _pick():
-    """The newest usable table, by mtime -- not by name.
+    """The newest usable v4 table, by mtime -- not by name.
 
     The selftest compares the kernel FIT inside the image against whatever sits
     in r0-fel/tmp/boot-baum right now, so an older build fails a check that says
-    nothing about that build.
+    nothing about that build.  A v3 table (v0.7-beta and older) is not for this
+    tool: it carries placeholders, not a file list.
     """
     tables = glob.glob(os.path.join(support.BUILD_OUT, "*.tabelle.json"))
     for table in sorted(tables, key=os.path.getmtime, reverse=True):
         with open(table, encoding="utf-8") as fh:
             data = json.load(fh)
+        if data.get("format") != TABLE_FORMAT:
+            continue
         if fakedisk.missing([os.path.join(support.BUILD_OUT, t["datei"])
                              for t in data["teile"]]):
             continue
-        for vendor in VENDOR_DIRS:
-            if not fakedisk.missing([os.path.join(vendor, n)
-                                     for n in data["platzhalter"]]):
-                return table, vendor
-    return None, None
+        return table
+    return None
 
 
 class MkimageSelfTest(unittest.TestCase):
     def test_the_whole_way_once_through(self):
         support.need([SELFTEST])
-        table, vendor = _pick()
+        table = _pick()
         if not table:
             raise unittest.SkipTest(
-                "no built image in %s with a complete vendor directory "
-                "(mkimage-inputs.sh + h713-mkimage build one)" % support.BUILD_OUT)
+                "no built layout v4 image in %s (mkimage-inputs.sh + h713-mkimage build one)"
+                % support.BUILD_OUT)
         tmp = support.workdir(self)
+        vendor = next((v for v in VENDOR_DIRS if os.path.isdir(v)), VENDOR_DIRS[-1])
         proc = subprocess.Popen(
             [sys.executable, SELFTEST, table, "--vendor", vendor,
              "--tmp", os.path.join(tmp, "work")],
@@ -69,7 +69,11 @@ class MkimageSelfTest(unittest.TestCase):
             stderr=subprocess.STDOUT, cwd=tmp)
         text = proc.communicate()[0].decode("utf-8", "replace")
         self.assertEqual(proc.returncode, 0, text)
-        self.assertEqual(len(re.findall(r"^  OK   ", text, re.M)), OK_LINES, text)
         self.assertNotIn("FAIL", text)
         for marker in MARKERS:
             self.assertIn(marker, text)
+        found = len(re.findall(r"^  OK   ", text, re.M))
+        if os.environ.get("H713_ROOT_TESTS") == "1":
+            self.assertGreaterEqual(found, OK_LINES, text)     # step 4 adds lines with root
+        else:
+            self.assertEqual(found, OK_LINES, text)
