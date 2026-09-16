@@ -234,3 +234,14 @@ block `0x05001238` and everything that hangs on it. **`pq_saturation.py` also st
 formula** `round(0x4C x curve(u) / curve(50))`; it is thus 12 gain steps off for `standard`. The script does
 not belong to this package (and a copy lies on the board under `/root/`), which is why it was not touched
 here - but it should be withdrawn or moved onto the RPC path.
+
+## Running the tests without vendor data
+
+The tests read a tvconfig directory at run time and skip themselves when there is none. A synthetic
+one, built only from values this repository states in the open (no vendor byte), comes from
+`tests/make_fixture.py`:
+
+```bash
+python3 tests/make_fixture.py /tmp/tvconfig
+H713_TVCONFIG=/tmp/tvconfig python3 -m unittest discover -s tests -v   # 44 of 45 run
+```
