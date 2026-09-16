@@ -1,121 +1,129 @@
-# h713-focus - den Fokusmotor von Hand fahren
+# h713-focus - drive the focus motor by hand
 
-Ein Skript, `h713-focus`, Python 3, ohne Abhängigkeiten. Ersatz für
-`legacy/tools/focus` (63 Zeilen `sh`) mit denselben Unterbefehlen - nur dass es
-vor und nach jeder Bewegung nachsieht, statt blind zu schreiben.
+One script, `h713-focus`, Python 3, without dependencies. A replacement for
+`legacy/tools/focus` (63 lines of `sh`) with the same subcommands - only that it
+looks before and after every move instead of writing blind.
 
 ```
-h713-focus status          # Wächter, Kanten, Zähler, und was gerade frei ist
-h713-focus up 20           # 20 msteps aufwärts, in Häppchen zu 2
-h713-focus down 20         # abwärts
-h713-focus flush           # Warteschlange leeren (Not-Halt)
-h713-focus unlatch         # gemerkte Kanten löschen
+h713-focus status          # watcher, edges, counter, and what is free right now
+h713-focus up 20           # 20 msteps upwards, in chunks of 2
+h713-focus down 20         # downwards
+h713-focus flush           # drain the queue (emergency stop)
+h713-focus unlatch         # clear latched edges
 ```
 
-Zusätzlich: `-n` / `--trocken` (prüfen und zeigen, nichts schreiben),
-`--schritt N` (msteps je Schreibvorgang, Vorgabe 2, höchstens 18),
-`--sysfs PFAD` bzw. `$H713_FOCUS_SYSFS` (Knoten vorgeben statt suchen).
+In addition: `-n` / `--trocken` (check and show, write nothing),
+`--schritt N` (msteps per write, default 2, at most 18),
+`--sysfs PATH` or `$H713_FOCUS_SYSFS` (give the node instead of searching).
 
-Rückgabewerte: `0` erledigt · `2` Bedienfehler oder kein Knoten · `3` gesperrt
-oder am Rand angehalten · `4` Frist abgelaufen / Befehl verworfen · `130` Strg-C.
+**The two German switch names stay.** Messages, help texts and comments are
+English since the O4 pass, but `--trocken` and `--schritt` are the command line
+itself: a device in the field is driven from a written note, and a note that
+stops working is worse than a switch in the wrong language. They are renamed
+when the notes are, not before.
 
-## Vorher: das Modul
+Return values: `0` done - `2` misuse or no node - `3` blocked or stopped at an
+edge - `4` deadline over / command dropped - `130` Ctrl-C.
 
-Seit Patch **0157** ist der Knoten `motor_ctr` aktiv und seit **0156** ist
-`homing` standardmäßig **aus** - der Treiber wird beim Booten geladen (`=m`,
-über modalias), richtet die Pads ein, zeigt sysfs und bewegt dabei nichts.
-Normalerweise ist also nichts zu tun; `h713-focus status` sagt, ob er da ist.
+## First: the module
 
-Falls er fehlt (blacklistet, oder Kernel ohne 0157):
+Since patch **0157** the node `motor_ctr` is active and since **0156** `homing`
+is **off** by default - the driver is loaded at boot (`=m`, over modalias), sets
+up the pads, exposes sysfs and moves nothing while doing so. So normally there
+is nothing to do; `h713-focus status` says whether it is there.
+
+If it is missing (blacklisted, or a kernel without 0157):
 
 ```bash
 modprobe hy310_focus_motor
 ```
 
-Auf einem Kernel **vor 0156** ist `homing=0` dabei Pflicht: sonst läuft beim
-Laden die Homing-Folge, und die fährt bis zu 100 msteps **aufwärts** - in die
-Richtung des mechanischen Anschlags. Ob es dort überhaupt eine Wächterkante
-gibt, ist ungeprüft; gemessen wurde nur die untere. Genau deshalb lädt
-`h713-focus` den Treiber **nicht** selbst.
+On a kernel **before 0156** `homing=0` is mandatory with it: otherwise the
+homing sequence runs at load time, and it drives up to 100 msteps **upwards** -
+towards the mechanical stop. Whether there is a watcher edge there at all is
+unchecked; only the lower one has been measured. That is exactly why
+`h713-focus` does **not** load the driver itself.
 
-## Was PH14 ist - und was nicht
+## What PH14 is - and what it is not
 
-Ein **Bereichswächter**, kein Endschalter. Der Pin liest `active_level` (hier
-HIGH), *solange* die Mechanik im erlaubten Fahrbereich steht; der Rand wird am
-**Wegfall** des Pegels erkannt. Gemessen am 12.09.2026
+A **range watcher**, not a limit switch. The pin reads `active_level` (here
+HIGH) *while* the mechanism stands inside the permitted range; the edge is
+recognized when that level **drops**. Measured on 12.09.2026
 (`analyse/boot/motor-bereichswaechter-20260912.txt`):
 
 ```
 raw=1 ... step=-204
-raw=0 ... step=-206            <== Rand
-raw=1 ... edge_dn=1 step=-207  (Treiber kehrt um, merkt die Kante, hält)
+raw=0 ... step=-206            <== edge
+raw=1 ... edge_dn=1 step=-207  (the driver reverses, latches the edge, holds)
 ```
 
-Umkehren und Kantenmerken macht der Treiber selbst. Das Skript baut das nicht
-nach - es erkennt, dass es passiert ist, und hört dann auf.
+Reversing and latching the edge is done by the driver itself. The script does
+not rebuild that - it recognizes that it happened and then stops.
 
-`step` ist ein **Zählerstand, keine Position.** Bei einem Randereignis fährt die
-Mechanik physisch `1 + k + back_step` msteps, der Zähler aber nur einen. Nach dem
-ersten Rand laufen beide um rund 6 msteps auseinander, und jedes weitere
-Ereignis vergrößert den Versatz.
+`step` is a **counter, not a position.** At an edge event the mechanism
+physically moves `1 + k + back_step` msteps, the counter only one. After the
+first edge the two drift apart by about 6 msteps, and every further event
+increases the offset.
 
-## Wann es nicht fährt
+## When it does not drive
 
-| Befund | warum das zählt |
+| Finding | why it counts |
 |---|---|
-| `num=0` | Kein Wächter angefordert → `motor_limiter_status()` meldet bedingungslos „im Bereich", der Treiber kehrt **nie** um. Das erste Feld der Zeile sieht dabei gesund aus - es ist also gerade dann wertlos, wenn es darauf ankäme. |
-| `motor_ctrl_no_limit = 1` | Die Bereichsprüfung ist abgeschaltet. Das Skript **schreibt dieses Attribut nie**, aber jemand anders kann es gesetzt haben. |
-| kein `raw=`, oder `raw=-1` | Ohne Rohpegel ist nicht zu sehen, ob der Wächter überhaupt etwas liefert. Genau diese Lücke hat beim NTC eine erfundene Temperatur aus einem offenen Eingang erzeugt. Anzeigen ja, fahren nein. |
-| `raw != act` | Mechanik steht außerhalb des Fahrbereichs. |
-| `edge_up`/`edge_dn` in Fahrtrichtung | Der Treiber verwirft solche Befehle **still** - still ist hier das Falsche. |
+| `num=0` | No watcher requested -> `motor_limiter_status()` reports "in range" unconditionally, the driver **never** reverses. The first field of the line looks healthy while it does - so it is worthless exactly when it would matter. |
+| `motor_ctrl_no_limit = 1` | The range check is switched off. The script **never writes this attribute**, but somebody else may have set it. |
+| no `raw=`, or `raw=-1` | Without a raw level there is no way to see whether the watcher delivers anything at all. Exactly this gap produced an invented temperature out of an open input on the NTC. Showing yes, driving no. |
+| `raw != act` | The mechanism stands outside the permitted range. |
+| `edge_up`/`edge_dn` in the direction of travel | The driver drops such commands **silently** - silently is the wrong thing here. |
 
-Dazu eine harte Obergrenze von 400 msteps je Lauf, auch wenn der Wächter
-schweigt: ein Wächter, der nichts meldet, ist kein Beleg dafür, dass noch Weg da
-ist. Und Strg-C wird abgefangen - die Warteschlange wird geleert, statt den
-Prozess mitten in einem Häppchen zu verlassen. Der mstep, der gerade läuft,
-läuft zu Ende; den kann der Treiber nicht abbrechen.
+On top of that a hard cap of 400 msteps per run, even when the watcher stays
+silent: a watcher that reports nothing is no proof that there is still room. And
+Ctrl-C is caught - the queue is drained instead of leaving the process in the
+middle of a chunk. The mstep that is running runs to its end; the driver cannot
+abort it.
 
-## Das Protokoll
+## The protocol
 
-`motor_ctrl` nimmt `(cmd << 8) | (steps & 0x7f) | (full_limit ? 0x80 : 0)`.
+`motor_ctrl` takes `(cmd << 8) | (steps & 0x7f) | (full_limit ? 0x80 : 0)`.
 
-| cmd | Bedeutung |
+| cmd | meaning |
 |---|---|
-| 1 / 2 | auf/ab, **setzt** das Autofokus-Flag → Busy-wait-Timing (`mdelay`). Der Pfad des Stock-Autofokus; das alte `focus`-Skript nahm diesen. |
-| 3 | Warteschlange leeren |
-| 4 | Schrittzähler setzen |
-| 6 | `step_low` setzen |
-| 7 | auf Schritt fahren - **im Treiber nicht implementiert**, liefert `-EOPNOTSUPP` |
-| **8 / 9** | auf/ab, **löscht** das Autofokus-Flag → schlafendes Timing. Der Pfad für Handbedienung - **den nimmt dieses Skript.** |
+| 1 / 2 | up/down, **sets** the autofocus flag -> busy-wait timing (`mdelay`). The path of the stock autofocus; the old `focus` script took this one. |
+| 3 | drain the queue |
+| 4 | set the step counter |
+| 6 | set `step_low` |
+| 7 | drive to a step - **not implemented in the driver**, returns `-EOPNOTSUPP` |
+| **8 / 9** | up/down, **clears** the autofocus flag -> sleeping timing. The path for manual operation - **this script takes that one.** |
 
-Der Treiber kürzt msteps je Schreibvorgang still auf 18 (`MOVE_CLAMP_MAX`). Wer
-30 schreibt, bekommt 18 und merkt es nicht; deshalb prüft das Skript selbst und
-zerlegt längere Fahrten in Häppchen. Das Bit `0x80` (`full_limit`) ist im
-Treiberkopf beschrieben, aber nie geprüft worden - es wird nicht benutzt.
+The driver silently clamps msteps per write to 18 (`MOVE_CLAMP_MAX`). Whoever
+writes 30 gets 18 and does not notice; that is why the script checks itself and
+breaks longer runs into chunks. The bit `0x80` (`full_limit`) is described in
+the driver header but has never been checked - it is not used.
 
-## Was hier absichtlich fehlt
+## What is deliberately missing here
 
-**Autofokus.** Ein Autofokus misst die Schärfe an dem, was gerade projiziert
-wird. Auf einer dunklen Szene oder einem Schwarzbild misst er Unsinn und
-verstellt den Fokus ins Leere; er gehört auf ein Testbild mit harten Kanten.
-Eine automatische Regelung muss also entweder verlangen, dass ein geeignetes
-Testbild anliegt, oder es selbst herstellen (`h713-tv`) und danach den
-vorherigen Zustand wiederherstellen. Das ist ein eigenes Werkzeug, kein
-Unterbefehl hier. Ungeprüft: welches Testbild Stock dafür benutzt.
+**Autofocus.** An autofocus measures the sharpness of whatever is being
+projected. On a dark scene or a black picture it measures nonsense and drives
+the focus into the void; it belongs on a test image with hard edges. An
+automatic control would therefore have to either demand that a suitable test
+image is present, or produce one itself (`h713-tv`) and restore the previous
+state afterwards. That is a tool of its own, not a subcommand here. Unchecked:
+which test image stock uses for it.
 
-**Homing.** Es gibt keinen Referenzpunkt außer den beiden Rändern, und an einen
-Rand zu fahren, um ihn zu finden, ist genau das, was dieses Skript vermeidet.
+**Homing.** There is no reference point besides the two edges, and driving to an
+edge in order to find it is exactly what this script avoids.
 
-## `test-attrappe.py`
+## `test-stub.py`
 
-Spielt den Treiber in einem Verzeichnis nach (Rand bei step −206 wie gemessen), damit
-das Skript ohne Gerät durchläuft: `python3 test-attrappe.py VERZ &` und dann
-`H713_FOCUS_SYSFS=VERZ ./h713-focus down 20`. Reproduziert die Messung vom 12.09.
-exakt; schreibt `motor_limit` atomar, sonst bricht `h713-focus` an einer leeren
-Zeile richtigerweise ab.
+Plays the driver in a directory (edge at step -206, as measured), so that the
+script runs through without a device: `python3 test-stub.py DIR &` and then
+`H713_FOCUS_SYSFS=DIR ./h713-focus down 20`. Reproduces the measurement of
+12.09. exactly; writes `motor_limit` atomically, otherwise `h713-focus` rightly
+stops on an empty line.
 
 ## `_entwurf-agent/`
 
-Ein früherer Entwurf als Python-Paket, 2545 Zeilen. Beiseitegelegt, nicht
-weggeworfen - die ausformulierte Sicherheitslogik und die Testanleitung sind
-lesenswert, wenn jemand das Werkzeug erweitert. Siehe `_entwurf-agent/LIESMICH.md`.
+An earlier draft as a Python package, 2545 lines, still in German. Put aside,
+not thrown away - the safety logic written out in full and the test instructions
+are worth reading if somebody extends the tool. It is a draft and not shipped
+(`install-projekt.sh` installs `h713-focus` and this README, nothing else), so
+the English pass has left it as it was. See `_entwurf-agent/LIESMICH.md`.
