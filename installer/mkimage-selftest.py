@@ -5,12 +5,17 @@
 What is checked here is exactly what can go wrong between the image builder and
 the installer:
 
-  1. h713.install.fill_placeholders() takes our table and writes the
-     device-specific files into a copy of piece B (optional ones may be absent).
-  2. Afterwards the ext4 reader finds them again THROUGH THE FILE SYSTEM -- not
-     at the raw offset, but as /mips/display.bin and friends. Only that proves
-     that the offsets hit the right blocks.
-  3. A dd onto a dummy disk (sparse, 7.28 GiB) puts the three pieces at their
+  1. The table says what h713.layout says: every file with its target, its group
+     and its optional flag, and the user's authorized_keys. The installer reads
+     the table and nothing else, so the table is what has to be right.
+  2. The two file systems in piece B carry the empty target directories with the
+     modes the installer relies on -- and not one vendor file. Read THROUGH the
+     file system, not at a raw offset.
+  3. Only with root (H713_ROOT_TESTS=1 and `sudo -n true`): the real copy through
+     h713.mountfs onto a scratch copy of piece B, read back through the ext4
+     reader, byte for byte. Without root the step says so and everything else
+     still runs -- that is the ordinary case on a build machine.
+  4. A dd onto a dummy disk (sparse, 7.28 GiB) puts the three pieces at their
      sectors; after that the locked range must be unchanged and the GPT of the
      dummy must show our six partitions.
 
@@ -20,6 +25,9 @@ Call:
 
 Since doku/121 stage 1 the test runs over the h713 package (no loading by path
 any more); stage 3 renamed it from mkimage-selbsttest.py and made it English.
+Layout v4 (plan/briefs/P-layout-v4.md) took the placeholders out of it: there is
+nothing to fill any more, so step 2 checks the table and the empty trees, and the
+copy itself needs root and happens in step 3.
 """
 
 import argparse
@@ -28,6 +36,7 @@ import json
 import os
 import shutil
 import struct
+import subprocess
 import sys
 import time
 import zlib
@@ -41,11 +50,27 @@ from h713 import layout                                                     # no
 from h713.blockdev import LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED           # noqa: E402
 from h713.fs.ext4 import Ext4                                              # noqa: E402
 from h713.gpt import Gpt, check_gpt                                        # noqa: E402
-from h713.install import check_placeholders, fill_placeholders, vendor_sources   # noqa: E402
 from h713.log import Log                                                   # noqa: E402
+from h713.mkimage import file_table, partition_slices                      # noqa: E402
 from h713.source import FileSource                                         # noqa: E402
 
 SECT = 512
+
+
+def root_available():
+    """May this run mount something? Only then does step 3 do anything.
+
+    Two conditions, both deliberate: H713_ROOT_TESTS=1 says a human allowed it,
+    and `sudo -n true` says it works without asking for a password. An agent run
+    or a build machine has neither, and the rest of this test does not need them.
+    """
+    if os.environ.get("H713_ROOT_TESTS") != "1":
+        return False
+    try:
+        return subprocess.call(["sudo", "-n", "true"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+    except OSError:
+        return False
 
 
 def main():
@@ -85,74 +110,66 @@ def main():
         bad("the sector count deviates")
 
     # ---------------------------------------------------------------- 2
-    print("\n[2] fill_placeholders() with the real vendor files")
-    table = {k: tuple(v) for k, v in d["platzhalter"].items()}
-
-    class Noted:
-        """vendor_sources() says what it leaves out; here that is a note, not a failure."""
-        @staticmethod
-        def warn(t):
-            print("  NOTE %s" % t)
-
-        @staticmethod
-        def info(t):
-            print("  NOTE %s" % t)
-
-    # The same reading the installer does: a missing WLAN set stays zeroed, a
-    # missing or oversized optional file (the boot logo) leaves the table with
-    # a note, everything else missing is an error.
-    try:
-        sources = vendor_sources(a.vendor, table, log=Noted)
-    except RuntimeError as e:
-        bad("vendor files: %s" % e)
-        return 1
-    skipped = [n for n in d["platzhalter"] if n not in table]
-    if skipped:
-        ok("optional and not in %s, skipped: %s" % (a.vendor, ", ".join(skipped)))
-    probe = os.path.join(a.tmp, "probe-b-filled.img")
-    t0 = time.time()
-    shutil.copyfile(os.path.join(directory, d["platzhalter_datei"]), probe)
-    ok("copy of %s in %.1f s" % (d["platzhalter_datei"], time.time() - t0))
-
-    class Silent:
-        @staticmethod
-        def ok(_t):
-            pass
-
-    t0 = time.time()
-    fill_placeholders(probe, table, sources, log=Silent)
-    ok("%d files filled in %.2f s" % (len(table), time.time() - t0))
-    wrong = check_placeholders(probe, table, sources)
-    if wrong:
-        bad("check_placeholders complains: %s" % wrong)
+    print("\n[2] the table carries the file set of h713.layout")
+    wanted = file_table()
+    if d.get("dateien") == wanted["dateien"]:
+        ok("%d files, each with partition, path, group and optional flag -- equal to layout.FILES"
+           % len(wanted["dateien"]))
     else:
-        ok("check_placeholders: all %d match at the raw offset" % len(table))
+        have = {f["name"]: f for f in d.get("dateien", [])}
+        for f in wanted["dateien"]:
+            if have.get(f["name"]) != f:
+                bad("%s: the table says %s, h713.layout says %s" % (f["name"], have.get(f["name"]), f))
+        for name in sorted(set(have) - {f["name"] for f in wanted["dateien"]}):
+            bad("%s is in the table and not in h713.layout" % name)
+    if d.get("gruppen") == wanted["gruppen"]:
+        ok("%d groups: %s" % (len(wanted["gruppen"]), ", ".join(wanted["gruppen"])))
+    else:
+        bad("the groups deviate: %s" % d.get("gruppen"))
+    if d.get("nutzer") == wanted["nutzer"]:
+        ok("the user's file: %s -> %s:%s, mode %s, directory %s"
+           % tuple(wanted["nutzer"][0][k] for k in
+                   ("name", "partition", "pfad", "modus", "verzeichnis_modus")))
+    else:
+        bad("the user's file deviates: %s" % d.get("nutzer"))
+    optional = [f["name"] for f in wanted["dateien"] if f["optional"]]
+    ok("%d of %d files are optional (a device may be without them): %s"
+       % (len(optional), len(wanted["dateien"]),
+          ", ".join(sorted({f["gruppe"] for f in wanted["dateien"] if f["optional"]}))))
+    for key in ("platzhalter", "platzhalter_nutzer", "platzhalter_datei", "platzhalter_info"):
+        if key in d:
+            bad("the table still carries %s -- that is layout v3" % key)
 
     # ---------------------------------------------------------------- 3
-    print("\n[3] counter-check THROUGH the file system (not at the raw offset)")
-    q = FileSource(Path(probe))
-    base = {"hy310-boot": (layout.LBA_BOOT - layout.PART_B_LBA) * SECT,
-            "hy310-rootfs": (layout.LBA_ROOTFS - layout.PART_B_LBA) * SECT}
-    length = {"hy310-boot": 262144 * SECT, "hy310-rootfs": os.path.getsize(probe) - base["hy310-rootfs"]}
-    fs = {}
-    for part in base:
-        fs[part] = Ext4(q.sub(base[part], length[part], part), label=part)
-        ok("%-13s opened as ext4: %s" % (part, fs[part].label_fs))
-    good = 0
-    where = {name: (part, path) for name, _size, part, path in layout.PLACEHOLDERS}
-    for name in table:
-        part, path = where[name]
-        read = fs[part].read(path)
-        expect = sources[name]
-        # A source smaller than its placeholder (a zeroed optional group, a
-        # 720p logo in a 1080p slot) is followed by zeros in the file system.
-        if read == expect or (read.startswith(expect) and not any(read[len(expect):])):
-            good += 1
-        else:
-            bad("%s: read through the file system it deviates (%d vs %d bytes)"
-                % (path, len(read), len(expect)))
-    if good == len(table):
-        ok("all %d files read through ext4 byte-identical to the source" % good)
+    print("\n[3] the file systems in the image: target directories, and nothing of the vendor's")
+    where = partition_slices(d)
+    sources, fs = {}, {}
+    for partition in ("hy310-boot", "hy310-rootfs"):
+        datei, offset, length = where[partition]
+        sources[partition] = FileSource(Path(os.path.join(directory, datei)))
+        fs[partition] = Ext4(sources[partition].sub(offset, length, partition), label=partition)
+        ok("%-13s opened as ext4 at offset %d of %s: %s"
+           % (partition, offset, datei, fs[partition].label_fs))
+    for partition in ("hy310-boot", "hy310-rootfs"):
+        for path, mode in layout.target_directories(partition):
+            ino = fs[partition].path_inode(path)
+            inode = fs[partition].inode(ino) if ino is not None else None
+            if inode is None or inode["typ"] != "d":
+                bad("%s: %s is not a directory in the image" % (partition, path))
+            elif inode["mode"] & 0o7777 != mode:
+                bad("%s: %s has mode %04o instead of %04o"
+                    % (partition, path, inode["mode"] & 0o7777, mode))
+            else:
+                # Not "empty": /lib/firmware comes out of Debian with files of its own.
+                # That none of OUR files is in it is the check below, per file.
+                ok("%-13s %-42s mode %04o, %d entry(s)"
+                   % (partition, path, mode, len(fs[partition].ls(path))))
+    carried = [f.path for f in layout.FILES if fs[f.partition].path_inode(f.path) is not None]
+    if carried:
+        bad("the image carries %d file(s) that belong to the manufacturer: %s"
+            % (len(carried), ", ".join(carried[:3])))
+    else:
+        ok("none of the %d files of h713.layout is in the image" % len(layout.FILES))
     # The kernel FIT has to be untouched. Until 12.09. a fixed length stood here
     # (7987476, the FIT of 11.09.) -- every new kernel then made the test report
     # "damaged". Now: the identifier d00dfeed, and the total length out of the FDT
@@ -174,7 +191,6 @@ def main():
         ok("h713-kernel.fit unchanged: %d bytes, identifier d00dfeed, FDT length matches" % len(fit))
     else:
         bad("h713-kernel.fit damaged (identifier or FDT length)")
-    # a file that is NOT a placeholder must not have changed
     fstab = fs["hy310-rootfs"].read("/etc/fstab")
     if b"hy310-rootfs" in fstab:
         ok("/etc/fstab in the rootfs intact (%d bytes)" % len(fstab))
@@ -182,7 +198,59 @@ def main():
         bad("/etc/fstab looks wrong")
 
     # ---------------------------------------------------------------- 4
-    print("\n[4] dd onto a dummy disk (sparse, %d sectors)" % d["disk_sektoren"])
+    print("\n[4] the real copy through a mount (needs root)")
+    probe = os.path.join(a.tmp, "probe-b-filled.img")
+    if not root_available():
+        print("  NOTE no root (H713_ROOT_TESTS=1 and `sudo -n true` decide) -- the copy is "
+              "not played through here. h713-install does it while installing, and "
+              "installer/tests/test_install_readback.py does it with root.")
+        probe = None
+    else:
+        # INTEGRATOR: h713.mountfs is package P2's module (P-layout-v4.md, "Who does what").
+        # Interface: copy_in(image_path, partition_offset, partition_size, files) with
+        # files = [(source path, target path, mode, owner)]. Wire this up when P2 lands.
+        from h713 import mountfs                                            # noqa: F401
+        piece = {where[p][0] for p in ("hy310-boot", "hy310-rootfs")}
+        if len(piece) != 1:
+            bad("hy310-boot and hy310-rootfs lie in different pieces (%s) -- this test "
+                "copies into one" % ", ".join(sorted(piece)))
+            return 1
+        t0 = time.time()
+        shutil.copyfile(os.path.join(directory, piece.pop()), probe)
+        ok("copy of %s in %.1f s" % (where["hy310-boot"][0], time.time() - t0))
+        missing, jobs = [], {}
+        for f in layout.FILES:
+            source = os.path.join(a.vendor, f.name.replace("/", os.sep))
+            if os.path.isfile(source):
+                jobs.setdefault(f.partition, []).append(
+                    (source, f.path, layout.FILE_MODE, layout.FILE_OWNER))
+            elif f.optional:
+                missing.append(f.name)
+            else:
+                bad("%s is missing in %s and is not optional" % (f.name, a.vendor))
+        if missing:
+            ok("not in %s and optional, left out: %d file(s)" % (a.vendor, len(missing)))
+        t0 = time.time()
+        for partition, files in sorted(jobs.items()):
+            _datei, offset, length = where[partition]
+            mountfs.copy_in(probe, offset, length, files)
+        ok("%d files copied in in %.2f s" % (sum(len(v) for v in jobs.values()), time.time() - t0))
+        q = FileSource(Path(probe))
+        good = 0
+        for partition, files in sorted(jobs.items()):
+            _datei, offset, length = where[partition]
+            read_fs = Ext4(q.sub(offset, length, partition), label=partition)
+            for source, path, mode, _owner in files:
+                with open(source, "rb") as f:
+                    expect = f.read()
+                if read_fs.read(path) == expect:
+                    good += 1
+                else:
+                    bad("%s: read back through the file system it deviates" % path)
+        ok("all %d files read through ext4 byte-identical to the source" % good)
+
+    # ---------------------------------------------------------------- 5
+    print("\n[5] dd onto a dummy disk (sparse, %d sectors)" % d["disk_sektoren"])
     dummy = os.path.join(a.tmp, "dummy.img")
     mark = b"SECURE-STORAGE-MUST-NOT-BE-TOUCHED " * 30
     with open(dummy, "wb") as f:
@@ -214,7 +282,7 @@ def main():
     else:
         bad("SECURE STORAGE OVERWRITTEN -- %s instead of %s" % (after[:16], before[:16]))
 
-    print("\n[5] read the dummy as a drive")
+    print("\n[6] read the dummy as a drive")
     aq = FileSource(Path(dummy))
     if Gpt.is_gpt(aq):
         Gpt(aq, Log(quiet=True))
@@ -256,6 +324,8 @@ def main():
 
     if not a.keep:
         for x in (probe, dummy):
+            if not x:
+                continue
             try:
                 os.remove(x)
             except OSError:
