@@ -1033,10 +1033,10 @@ struct opts {
 	const char *card;
 	const char *preset;	/* -p; NULL: whatever tv.conf says, else "standard" */
 	const char *gamma;	/* DE2 bank file for GAMMA_LUT; "none" leaves the CRTC alone */
-	bool gamma_gesetzt;	/* -g was given: it wins over h713-pq's own LUT */
-	const char *rechner;	/* --rechner, overrides tv.conf's "rechner" */
-	const char *daten;	/* --daten,   overrides tv.conf's "daten" */
-	const char *eingang;	/* --eingang, which input h713-pq is asked about */
+	bool gamma_set;	/* -g was given: it wins over h713-pq's own LUT */
+	const char *calculator;	/* --rechner, overrides tv.conf's "rechner" */
+	const char *data;	/* --daten,   overrides tv.conf's "daten" */
+	const char *input;	/* --eingang, which input h713-pq is asked about */
 	const char *lut;	/* --lut,     where h713-pq writes its curve */
 	const char *audio;	/* auto|on|off|none, see enum audio_policy */
 	const char *trim;	/* --hdmi-trim, dB <= 0, see audio_trim_parse() */
@@ -1169,7 +1169,7 @@ static void ctrl_key(const char *name, char *out, size_t n)
 }
 
 /* a few short names on top of the kernel's own */
-static const struct { const char *kurz; const char *lang; } ctrl_alias[] = {
+static const struct { const char *short_name; const char *full_name; } ctrl_alias[] = {
 	{ "tnr", "temporal_noise_reduction" },
 	{ "snr", "spatial_noise_reduction" },
 	{ "dci", "dynamic_contrast" },
@@ -1185,9 +1185,9 @@ static bool ctrl_find(int fd, const char *want, struct v4l2_query_ext_ctrl *q)
 	unsigned int i;
 
 	ctrl_key(want, w, sizeof(w));
-	for (i = 0; ctrl_alias[i].kurz; i++)
-		if (!strcmp(w, ctrl_alias[i].kurz)) {
-			snprintf(w, sizeof(w), "%s", ctrl_alias[i].lang);
+	for (i = 0; ctrl_alias[i].short_name; i++)
+		if (!strcmp(w, ctrl_alias[i].short_name)) {
+			snprintf(w, sizeof(w), "%s", ctrl_alias[i].full_name);
 			break;
 		}
 
@@ -2370,15 +2370,15 @@ enum policy { POLICY_AUTO, POLICY_OFF };
 #define CONF_FILE	"/etc/h713/tv.conf"
 #define STATE_FILE	"/var/lib/h713-tv/modus"
 /* the values kept by "ctl save", a sibling of the mode file (plan 113 A.4) */
-#define WERTE_NAME	"werte"
+#define SAVED_NAME	"werte"
 
 /* h713-pq and what it is asked about; see "The picture values" below */
 #define PQ_BIN		"/usr/local/bin/h713-pq"
-#define PQ_DATEN	"/etc/h713/tvconfig"
-#define PQ_EINGANG	"HDMI1"
+#define PQ_DATA	"/etc/h713/tvconfig"
+#define PQ_INPUT	"HDMI1"
 #define PQ_LUT		"/run/h713-tv/gamma-laufzeit.bin"
 
-enum start_mode { START_AUTO, START_MANUELL, START_ZULETZT };
+enum start_mode { START_AUTO, START_MANUAL, START_LAST };
 
 struct conf {
 	const char *path;	/* -C; CONF_FILE by default */
@@ -2386,20 +2386,20 @@ struct conf {
 	enum start_mode start;
 	bool keep;		/* zustand != none */
 	char state_path[200];
-	char werte_path[208];	/* <dirname(state_path)>/werte, "" when not kept */
+	char saved_path[208];	/* <dirname(state_path)>/werte, "" when not kept */
 	char preset[32];	/* preset = NAME | last; "" = not said here */
-	char daten[160];	/* daten = DIR; "none" = do not use vendor data */
-	char rechner[160];	/* rechner = PATH; "none" = do not compute */
-	char eingang[24];	/* --eingang; the input h713-pq is asked about */
+	char data[160];	/* daten = DIR; "none" = do not use vendor data */
+	char calculator[160];	/* rechner = PATH; "none" = do not compute */
+	char input[24];	/* --eingang; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
 
 /* <dirname(state_path)>/werte -- the two files live together or not at all */
-static void conf_werte_pfad(struct conf *c)
+static void conf_saved_path(struct conf *c)
 {
 	char dir[200], *slash;
 
-	c->werte_path[0] = '\0';
+	c->saved_path[0] = '\0';
 	if (!c->keep)
 		return;
 	snprintf(dir, sizeof(dir), "%s", c->state_path);
@@ -2407,12 +2407,12 @@ static void conf_werte_pfad(struct conf *c)
 	if (!slash || slash == dir)
 		return;
 	*slash = '\0';
-	snprintf(c->werte_path, sizeof(c->werte_path), "%s/%s", dir, WERTE_NAME);
+	snprintf(c->saved_path, sizeof(c->saved_path), "%s/%s", dir, SAVED_NAME);
 }
 
 static const char *start_mode_text(enum start_mode m)
 {
-	return m == START_MANUELL ? "manual" : m == START_ZULETZT ? "last" : "auto";
+	return m == START_MANUAL ? "manual" : m == START_LAST ? "last" : "auto";
 }
 
 static char *trim(char *s)
@@ -2440,9 +2440,9 @@ static void conf_read(struct conf *c)
 	c->keep = true;
 	snprintf(c->state_path, sizeof(c->state_path), "%s", STATE_FILE);
 	c->preset[0] = '\0';
-	snprintf(c->daten, sizeof(c->daten), "%s", PQ_DATEN);
-	snprintf(c->rechner, sizeof(c->rechner), "%s", PQ_BIN);
-	snprintf(c->eingang, sizeof(c->eingang), "%s", PQ_EINGANG);
+	snprintf(c->data, sizeof(c->data), "%s", PQ_DATA);
+	snprintf(c->calculator, sizeof(c->calculator), "%s", PQ_BIN);
+	snprintf(c->input, sizeof(c->input), "%s", PQ_INPUT);
 	snprintf(c->lut, sizeof(c->lut), "%s", PQ_LUT);
 
 	f = fopen(c->path, "r");
@@ -2451,7 +2451,7 @@ static void conf_read(struct conf *c)
 		if (errno != ENOENT)
 			warn("%s: %s -- the defaults apply (start = auto)", c->path,
 			     strerror(errno));
-		conf_werte_pfad(c);
+		conf_saved_path(c);
 		return;
 	}
 	c->present = true;
@@ -2485,9 +2485,9 @@ static void conf_read(struct conf *c)
 			 * "auto" would be a picture nobody asked for.
 			 */
 			else if (!strcasecmp(val, "manual") || !strcasecmp(val, "manuell"))
-				c->start = START_MANUELL;
+				c->start = START_MANUAL;
 			else if (!strcasecmp(val, "last") || !strcasecmp(val, "zuletzt"))
-				c->start = START_ZULETZT;
+				c->start = START_LAST;
 			else
 				warn("%s:%u: start = \"%s\" unknown (auto manual last) -- auto",
 				     c->path, n, val);
@@ -2514,24 +2514,24 @@ static void conf_read(struct conf *c)
 			else
 				snprintf(c->preset, sizeof(c->preset), "%s", val);
 		} else if (!strcasecmp(key, "daten")) {
-			if (strlen(val) >= sizeof(c->daten))
+			if (strlen(val) >= sizeof(c->data))
 				warn("%s:%u: daten = \"%s\" is too long -- default %s",
-				     c->path, n, val, PQ_DATEN);
+				     c->path, n, val, PQ_DATA);
 			else
-				snprintf(c->daten, sizeof(c->daten), "%s", val);
+				snprintf(c->data, sizeof(c->data), "%s", val);
 		} else if (!strcasecmp(key, "rechner")) {
-			if (strlen(val) >= sizeof(c->rechner))
+			if (strlen(val) >= sizeof(c->calculator))
 				warn("%s:%u: rechner = \"%s\" is too long -- default %s",
 				     c->path, n, val, PQ_BIN);
 			else
-				snprintf(c->rechner, sizeof(c->rechner), "%s", val);
+				snprintf(c->calculator, sizeof(c->calculator), "%s", val);
 		} else {
 			warn("%s:%u: unknown key \"%s\" -- ignored (start, zustand, preset, daten, rechner)",
 			     c->path, n, key);
 		}
 	}
 	fclose(f);
-	conf_werte_pfad(c);
+	conf_saved_path(c);
 }
 
 struct control {
@@ -2633,11 +2633,11 @@ static enum policy start_policy(struct control *c)
 	bool console;
 
 	switch (cf->start) {
-	case START_MANUELL:
+	case START_MANUAL:
 		console = true;
 		why = "start = manual";
 		break;
-	case START_ZULETZT:
+	case START_LAST:
 		console = !strcmp(c->state_known, "off");
 		why = c->state_known[0] ? "start = last, saved" : "start = last, nothing saved";
 		break;
@@ -2855,7 +2855,7 @@ static void cmd_status_audio(struct reply *r, struct audio *a)
  * down with the presets, because that is where the state it reports lives;
  * declared here so the status keeps reading top to bottom.
  */
-static void cmd_status_bildwerte(struct reply *r);
+static void cmd_status_picture_values(struct reply *r);
 
 static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		       struct display *d, struct audio *a)
@@ -2894,7 +2894,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		reply_add(r, "format          %s (aspect %llu)\n",
 			  prop_enum_name(&d->plane_props, "aspect", d->aspect),
 			  (unsigned long long)d->aspect);
-	cmd_status_bildwerte(r);
+	cmd_status_picture_values(r);
 	cmd_status_audio(r, a);
 	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel          ");
 	reply_file_lines(r, "/sys/kernel/debug/cpu_comm/watch", comm, "cpu_comm        ");
@@ -3137,21 +3137,21 @@ static bool edid_plausible(const uint8_t *e, char *why, size_t n)
  * device by h713-extract (HDMI_EDID_14.bin and HDMI_EDID_20.bin back to
  * back). It is checked like any other source: header, four checksums.
  */
-#define EDID_DATEI	"/lib/firmware/hy310-edid.bin"
+#define EDID_FILE	"/lib/firmware/hy310-edid.bin"
 
-static bool edid_aus_datei(const char *pfad, uint8_t *out, char *why, size_t n)
+static bool edid_from_file(const char *path, uint8_t *out, char *why, size_t n)
 {
-	int fd = open(pfad, O_RDONLY | O_CLOEXEC);
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
 	ssize_t got;
 
 	if (fd < 0) {
-		snprintf(why, n, "%s: %s", pfad, strerror(errno));
+		snprintf(why, n, "%s: %s", path, strerror(errno));
 		return false;
 	}
 	got = read(fd, out, EDID_BYTES);
 	close(fd);
 	if (got != (ssize_t)EDID_BYTES) {
-		snprintf(why, n, "%s: read %zd of %u bytes", pfad, got,
+		snprintf(why, n, "%s: read %zd of %u bytes", path, got,
 			 (unsigned int)EDID_BYTES);
 		return false;
 	}
@@ -3168,7 +3168,7 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	uint8_t buf[EDID_BYTES];
 	struct v4l2_edid e;
 	char why[160];
-	const char *woher = "";
+	const char *origin = "";
 	bool copy = false;
 
 	memset(&e, 0, sizeof(e));
@@ -3186,12 +3186,12 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 		if (have_last) {
 			warn("replug          %s -- the copy of the last good read goes back", why);
 			memcpy(buf, last_good, sizeof(buf));
-			woher = " (copy of the last read)";
-		} else if (edid_aus_datei(EDID_DATEI, buf, why2, sizeof(why2))) {
-			warn("replug          %s -- %s goes back", why, EDID_DATEI);
+			origin = " (copy of the last read)";
+		} else if (edid_from_file(EDID_FILE, buf, why2, sizeof(why2))) {
+			warn("replug          %s -- %s goes back", why, EDID_FILE);
 			memcpy(last_good, buf, sizeof(last_good));
 			have_last = true;
-			woher = " (from " EDID_DATEI ")";
+			origin = " (from " EDID_FILE ")";
 		} else {
 			reply_fail(r, "%s, and %s -- without an EDID, HPD is not touched",
 				   why, why2);
@@ -3230,9 +3230,9 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 		return true;
 	}
 	info("replug          EDID loaded again%s, HPD high -- the source renegotiates",
-	     woher);
+	     origin);
 	reply_add(r, "ok replug -- HPD %u ms low, EDID loaded again%s, the source renegotiates\n",
-		  REPLUG_LOW_MS, woher);
+		  REPLUG_LOW_MS, origin);
 
 	return true;
 }
@@ -3361,7 +3361,7 @@ static const char *const preset_pq_key[9] = {
  *   * the data directory is missing or incomplete   -> h713-pq exits 2
  *   * h713-pq is not installed or not executable   -> not even started
  *   * it crashes, or writes something unparseable   -> record rejected
- *   * it takes longer than PQ_FRIST_MS              -> killed, record dropped
+ *   * it takes longer than PQ_DEADLINE_MS           -> killed, record dropped
  *   * "rechner = none" or "daten = none" in tv.conf -> not started at all
  *
  * The record carries *all* presets the data has for this input, not only the
@@ -3370,15 +3370,15 @@ static const char *const preset_pq_key[9] = {
  * starting a second Python process while the picture is running.
  * ------------------------------------------------------------------ */
 
-#define PQ_FRIST_MS	2000	/* plan 113 A.5: h713-pq must not hold the start */
-#define PQ_SATZ_VERSION	1	/* what h713-pq calls "version" in its record */
-#define PQ_ROH_MAX	16384	/* the record is ~3,5 kB for eight presets */
+#define PQ_DEADLINE_MS	2000	/* plan 113 A.5: h713-pq must not hold the start */
+#define PQ_RECORD_VERSION	1	/* what h713-pq calls "version" in its record */
+#define PQ_RAW_MAX	16384	/* the record is ~3,5 kB for eight presets */
 #define PQ_PRESETS_MAX	16
-#define PQ_WARTE_MS	5	/* poll interval while reaping the child */
+#define PQ_WAIT_MS	5	/* poll interval while reaping the child */
 
 /* the presets that came from the device's own data; empty without them */
 static struct preset pq_presets[PQ_PRESETS_MAX];
-static char pq_namen[PQ_PRESETS_MAX][32];
+static char pq_names[PQ_PRESETS_MAX][32];
 static double pq_gamma[PQ_PRESETS_MAX];
 static unsigned int pq_presets_n;
 
@@ -3390,12 +3390,12 @@ struct pq {
 	unsigned int ms;	/* how long the call took */
 	char why[224];		/* why not, in the words that go in the journal */
 	/* out of the record */
-	char daten[160];
+	char data[160];
 	char preset[32];
 	char lut[184];
 	long lut_bytes;
 	double gamma;
-	char roh[PQ_ROH_MAX];
+	char raw[PQ_RAW_MAX];
 	size_t len;
 };
 
@@ -3417,7 +3417,7 @@ static struct pq pq = { .pid = -1, .fd = -1 };
  */
 
 /* the end of the string that starts at b (on its opening quote) */
-static const char *js_string_ende(const char *b, const char *e)
+static const char *js_string_end(const char *b, const char *e)
 {
 	for (b++; b < e; b++) {
 		if (*b == '\\' && b + 1 < e)
@@ -3430,27 +3430,27 @@ static const char *js_string_ende(const char *b, const char *e)
 }
 
 /* the end of the value that starts at b: object, array, string or number */
-static const char *js_wert_ende(const char *b, const char *e)
+static const char *js_value_end(const char *b, const char *e)
 {
-	int tiefe = 0;
+	int depth = 0;
 
 	while (b < e) {
 		char c = *b;
 
 		if (c == '"') {
-			b = js_string_ende(b, e);
-			if (!tiefe)
+			b = js_string_end(b, e);
+			if (!depth)
 				return b;
 			continue;
 		}
 		if (c == '{' || c == '[') {
-			tiefe++;
+			depth++;
 		} else if (c == '}' || c == ']') {
-			if (!tiefe)
+			if (!depth)
 				return b;	/* the parent's closing bracket */
-			if (!--tiefe)
+			if (!--depth)
 				return b + 1;
-		} else if (!tiefe && c == ',') {
+		} else if (!depth && c == ',') {
 			return b;
 		}
 		b++;
@@ -3459,7 +3459,7 @@ static const char *js_wert_ende(const char *b, const char *e)
 	return e;
 }
 
-static const char *js_leer(const char *b, const char *e)
+static const char *js_space(const char *b, const char *e)
 {
 	while (b < e && (*b == ' ' || *b == '\t' || *b == '\n' || *b == '\r' ||
 			 *b == ','))
@@ -3469,18 +3469,18 @@ static const char *js_leer(const char *b, const char *e)
 }
 
 /* [b,e) is the inside of an object; returns the start of key's value */
-static const char *js_feld(const char *b, const char *e, const char *key)
+static const char *js_field(const char *b, const char *e, const char *key)
 {
 	size_t kl = strlen(key);
 
 	while (b < e) {
 		const char *ks, *ke;
 
-		b = js_leer(b, e);
+		b = js_space(b, e);
 		if (b >= e || *b != '"')
 			return NULL;
 		ks = b + 1;
-		b = js_string_ende(b, e);
+		b = js_string_end(b, e);
 		ke = b > ks ? b - 1 : ks;	/* the closing quote */
 		while (b < e && (*b == ' ' || *b == '\t' || *b == '\n' || *b == '\r'))
 			b++;
@@ -3491,7 +3491,7 @@ static const char *js_feld(const char *b, const char *e, const char *key)
 			;
 		if ((size_t)(ke - ks) == kl && !strncmp(ks, key, kl))
 			return b;
-		b = js_wert_ende(b, e);
+		b = js_value_end(b, e);
 	}
 
 	return NULL;
@@ -3500,16 +3500,16 @@ static const char *js_feld(const char *b, const char *e, const char *key)
 static bool js_text(const char *b, const char *e, const char *key, char *out,
 		    size_t n)
 {
-	const char *v = js_feld(b, e, key), *ende;
+	const char *v = js_field(b, e, key), *end;
 	size_t i = 0;
 
 	if (!v || *v != '"')
 		return false;
-	ende = js_string_ende(v, e);
-	if (ende > v)
-		ende--;				/* the closing quote */
-	for (v++; v < ende && i + 1 < n; v++) {
-		if (*v == '\\' && v + 1 < ende)
+	end = js_string_end(v, e);
+	if (end > v)
+		end--;				/* the closing quote */
+	for (v++; v < end && i + 1 < n; v++) {
+		if (*v == '\\' && v + 1 < end)
 			v++;			/* \" \\ \/ -- nothing else here */
 		out[i++] = *v;
 	}
@@ -3523,9 +3523,9 @@ static bool js_text(const char *b, const char *e, const char *key, char *out,
  * number in JSON always ends on one of , } ] or space, all of which stop the
  * conversion. So neither can run past its value.
  */
-static bool js_zahl(const char *b, const char *e, const char *key, long *out)
+static bool js_number(const char *b, const char *e, const char *key, long *out)
 {
-	const char *v = js_feld(b, e, key);
+	const char *v = js_field(b, e, key);
 	char *end;
 	long x;
 
@@ -3540,10 +3540,10 @@ static bool js_zahl(const char *b, const char *e, const char *key, long *out)
 	return true;
 }
 
-static bool js_gleitkomma(const char *b, const char *e, const char *key,
+static bool js_double(const char *b, const char *e, const char *key,
 			  double *out)
 {
-	const char *v = js_feld(b, e, key);
+	const char *v = js_field(b, e, key);
 	char *end;
 	double x;
 
@@ -3559,16 +3559,16 @@ static bool js_gleitkomma(const char *b, const char *e, const char *key,
 }
 
 /* the inside of the object or array under key */
-static bool js_gebilde(const char *b, const char *e, const char *key,
+static bool js_inside(const char *b, const char *e, const char *key,
 		       const char **ib, const char **ie)
 {
-	const char *v = js_feld(b, e, key), *ende;
+	const char *v = js_field(b, e, key), *end;
 
 	if (!v || (*v != '{' && *v != '['))
 		return false;
-	ende = js_wert_ende(v, e);
+	end = js_value_end(v, e);
 	*ib = v + 1;
-	*ie = ende > v + 1 ? ende - 1 : v + 1;
+	*ie = end > v + 1 ? end - 1 : v + 1;
 
 	return true;
 }
@@ -3577,23 +3577,23 @@ static bool js_gebilde(const char *b, const char *e, const char *key,
 static bool js_element(const char **b, const char *e, const char **ib,
 		       const char **ie)
 {
-	const char *p = *b, *ende;
+	const char *p = *b, *end;
 
 	while (p < e && *p != '{')
 		p++;
 	if (p >= e)
 		return false;
-	ende = js_wert_ende(p, e);
+	end = js_value_end(p, e);
 	*ib = p + 1;
-	*ie = ende > p + 1 ? ende - 1 : p + 1;
-	*b = ende;
+	*ie = end > p + 1 ? end - 1 : p + 1;
+	*b = end;
 
 	return true;
 }
 
 /* ---- running h713-pq ---- */
 
-static int pq_zeit_uebrig(const struct pq *p)
+static int pq_time_left(const struct pq *p)
 {
 	struct timespec now;
 	long used;
@@ -3602,10 +3602,10 @@ static int pq_zeit_uebrig(const struct pq *p)
 	used = (now.tv_sec - p->t0.tv_sec) * 1000 +
 	       (now.tv_nsec - p->t0.tv_nsec) / 1000000;
 
-	return used >= PQ_FRIST_MS ? 0 : (int)(PQ_FRIST_MS - used);
+	return used >= PQ_DEADLINE_MS ? 0 : (int)(PQ_DEADLINE_MS - used);
 }
 
-static unsigned int pq_verbraucht(const struct pq *p)
+static unsigned int pq_time_used(const struct pq *p)
 {
 	struct timespec now;
 	long used;
@@ -3629,16 +3629,16 @@ static void pq_start(struct pq *p, const struct conf *c, const char *preset)
 	p->pid = -1;
 	p->fd = -1;
 
-	if (!strcasecmp(c->rechner, "none")) {
+	if (!strcasecmp(c->calculator, "none")) {
 		snprintf(p->why, sizeof(p->why), "rechner = none");
 		return;
 	}
-	if (!strcasecmp(c->daten, "none")) {
+	if (!strcasecmp(c->data, "none")) {
 		snprintf(p->why, sizeof(p->why), "daten = none");
 		return;
 	}
-	if (access(c->rechner, X_OK)) {
-		snprintf(p->why, sizeof(p->why), "%s: %s", c->rechner,
+	if (access(c->calculator, X_OK)) {
+		snprintf(p->why, sizeof(p->why), "%s: %s", c->calculator,
 			 strerror(errno));
 		return;
 	}
@@ -3669,8 +3669,8 @@ static void pq_start(struct pq *p, const struct conf *c, const char *preset)
 			dup2(null, STDIN_FILENO);
 		if (dup2(fds[1], STDOUT_FILENO) < 0)
 			_exit(127);
-		execl(c->rechner, "h713-pq", "--daten", c->daten, "show",
-		      c->eingang, preset, "--json", "--lut", c->lut,
+		execl(c->calculator, "h713-pq", "--daten", c->data, "show",
+		      c->input, preset, "--json", "--lut", c->lut,
 		      (char *)NULL);
 		_exit(127);
 	}
@@ -3680,7 +3680,7 @@ static void pq_start(struct pq *p, const struct conf *c, const char *preset)
 }
 
 /* reap the child inside what is left of the budget; SIGKILL when it is up */
-static bool pq_ernten(struct pq *p, int *status)
+static bool pq_reap(struct pq *p, int *status)
 {
 	if (p->pid < 0)
 		return false;
@@ -3695,27 +3695,27 @@ static bool pq_ernten(struct pq *p, int *status)
 			p->pid = -1;
 			return false;
 		}
-		if (pq_zeit_uebrig(p) <= 0) {
+		if (pq_time_left(p) <= 0) {
 			struct timespec ts = { 0, 200 * 1000 * 1000 };
 
 			kill(p->pid, SIGKILL);
 			/* after SIGKILL the wait is bounded by the kernel */
 			while (waitpid(p->pid, status, WNOHANG) != p->pid &&
 			       ts.tv_nsec > 0) {
-				struct timespec kurz = { 0, 1000 * 1000 };
+				struct timespec nap = { 0, 1000 * 1000 };
 
-				nanosleep(&kurz, NULL);
+				nanosleep(&nap, NULL);
 				ts.tv_nsec -= 1000 * 1000;
 			}
 			snprintf(p->why, sizeof(p->why),
-				 "longer than %d ms -- aborted", PQ_FRIST_MS);
+				 "longer than %d ms -- aborted", PQ_DEADLINE_MS);
 			p->pid = -1;
 			return false;
 		}
 		{
-			struct timespec kurz = { 0, PQ_WARTE_MS * 1000 * 1000 };
+			struct timespec nap = { 0, PQ_WAIT_MS * 1000 * 1000 };
 
-			nanosleep(&kurz, NULL);
+			nanosleep(&nap, NULL);
 		}
 	}
 	p->pid = -1;
@@ -3724,9 +3724,9 @@ static bool pq_ernten(struct pq *p, int *status)
 }
 
 /* the record -> pq_presets[]; false means "use the compiled table" */
-static bool pq_deuten(struct pq *p)
+static bool pq_parse(struct pq *p)
 {
-	const char *b = p->roh, *e = p->roh + p->len, *ab, *ae, *lb, *le;
+	const char *b = p->raw, *e = p->raw + p->len, *ab, *ae, *lb, *le;
 	long v;
 
 	while (b < e && *b != '{')
@@ -3736,23 +3736,23 @@ static bool pq_deuten(struct pq *p)
 			 p->len);
 		return false;
 	}
-	le = js_wert_ende(b, e);
+	le = js_value_end(b, e);
 	b++;
 	e = le > b ? le - 1 : b;
 
-	if (!js_zahl(b, e, "version", &v) || v != PQ_SATZ_VERSION) {
+	if (!js_number(b, e, "version", &v) || v != PQ_RECORD_VERSION) {
 		snprintf(p->why, sizeof(p->why),
 			 "record version %ld, this program knows %d", v,
-			 PQ_SATZ_VERSION);
+			 PQ_RECORD_VERSION);
 		return false;
 	}
-	js_text(b, e, "daten", p->daten, sizeof(p->daten));
+	js_text(b, e, "daten", p->data, sizeof(p->data));
 	js_text(b, e, "preset", p->preset, sizeof(p->preset));
-	if (js_zahl(b, e, "lut_bytes", &v))
+	if (js_number(b, e, "lut_bytes", &v))
 		p->lut_bytes = v;
-	js_gleitkomma(b, e, "gamma_exponent", &p->gamma);
+	js_double(b, e, "gamma_exponent", &p->gamma);
 
-	if (!js_gebilde(b, e, "presets", &ab, &ae)) {
+	if (!js_inside(b, e, "presets", &ab, &ae)) {
 		snprintf(p->why, sizeof(p->why), "no field \"presets\" in the record");
 		return false;
 	}
@@ -3763,22 +3763,22 @@ static bool pq_deuten(struct pq *p)
 		unsigned int i;
 		long mode;
 
-		if (!js_text(lb, le, "name", pq_namen[pq_presets_n],
-			     sizeof(pq_namen[0])) ||
-		    !js_zahl(lb, le, "modus", &mode) ||
-		    !js_gebilde(lb, le, "regler", &rb, &re))
+		if (!js_text(lb, le, "name", pq_names[pq_presets_n],
+			     sizeof(pq_names[0])) ||
+		    !js_number(lb, le, "modus", &mode) ||
+		    !js_inside(lb, le, "regler", &rb, &re))
 			continue;
 		for (i = 0; i < 9; i++) {
-			if (!js_zahl(rb, re, preset_pq_key[i], &v))
+			if (!js_number(rb, re, preset_pq_key[i], &v))
 				break;
 			t->value[i] = (int)v;
 		}
 		if (i < 9)
 			continue;		/* incomplete -- not guessed */
-		t->name = pq_namen[pq_presets_n];
+		t->name = pq_names[pq_presets_n];
 		t->mode = (int)mode;
 		pq_gamma[pq_presets_n] = 0.0;
-		js_gleitkomma(lb, le, "gamma_exponent", &pq_gamma[pq_presets_n]);
+		js_double(lb, le, "gamma_exponent", &pq_gamma[pq_presets_n]);
 		pq_presets_n++;
 	}
 	if (!pq_presets_n) {
@@ -3807,27 +3807,27 @@ static void pq_collect(struct pq *p)
 	pfd.fd = p->fd;
 	pfd.events = POLLIN;
 	for (;;) {
-		int rest = pq_zeit_uebrig(p);
+		int rest = pq_time_left(p);
 		ssize_t k;
 
 		if (rest <= 0 || poll(&pfd, 1, rest) <= 0)
 			break;
-		k = read(p->fd, p->roh + p->len, sizeof(p->roh) - 1 - p->len);
+		k = read(p->fd, p->raw + p->len, sizeof(p->raw) - 1 - p->len);
 		if (k <= 0)
 			break;
 		p->len += (size_t)k;
-		if (p->len >= sizeof(p->roh) - 1)
+		if (p->len >= sizeof(p->raw) - 1)
 			break;
 	}
-	p->roh[p->len] = '\0';
+	p->raw[p->len] = '\0';
 	close(p->fd);
 	p->fd = -1;
 
-	if (!pq_ernten(p, &status)) {
-		p->ms = pq_verbraucht(p);
+	if (!pq_reap(p, &status)) {
+		p->ms = pq_time_used(p);
 		return;
 	}
-	p->ms = pq_verbraucht(p);
+	p->ms = pq_time_used(p);
 	if (!WIFEXITED(status) || WEXITSTATUS(status)) {
 		if (WIFSIGNALED(status))
 			snprintf(p->why, sizeof(p->why), "ended by signal %d",
@@ -3838,11 +3838,11 @@ static void pq_collect(struct pq *p)
 				 WEXITSTATUS(status));
 		return;
 	}
-	p->ok = pq_deuten(p);
+	p->ok = pq_parse(p);
 }
 
 /* which presets can be offered right now, for a message */
-static void preset_namen(char *buf, size_t n)
+static void preset_names(char *buf, size_t n)
 {
 	unsigned int i;
 	size_t l = 0;
@@ -3863,7 +3863,7 @@ static void preset_namen(char *buf, size_t n)
  * The device's own data first, the compiled table second. Both are searched,
  * not only the first: if the extraction is missing exactly one preset the
  * user asks for, the table can still answer -- and the answer says where it
- * came from, because preset_ist_aus_daten() below is what the status line
+ * came from, because preset_is_from_data() below is what the status line
  * reports.
  */
 static const struct preset *preset_find(const char *name)
@@ -3882,7 +3882,7 @@ static const struct preset *preset_find(const char *name)
 	return NULL;
 }
 
-static bool preset_ist_aus_daten(const struct preset *p)
+static bool preset_is_from_data(const struct preset *p)
 {
 	return p >= &pq_presets[0] && p < &pq_presets[PQ_PRESETS_MAX];
 }
@@ -3890,7 +3890,7 @@ static bool preset_ist_aus_daten(const struct preset *p)
 /* the gamma exponent that belongs to a preset, 0 when it is not known */
 static double preset_gamma(const struct preset *p)
 {
-	if (!preset_ist_aus_daten(p))
+	if (!preset_is_from_data(p))
 		return 0.0;
 
 	return pq_gamma[p - &pq_presets[0]];
@@ -3985,7 +3985,7 @@ static int preset_apply(struct capture *cap, const struct preset *p, char *msg,
  * -- the two always agree.
  * ------------------------------------------------------------------ */
 
-struct werte {
+struct saved_values {
 	const char *path;	/* NULL: nothing is kept */
 	bool present;
 	char preset[32];
@@ -3997,13 +3997,13 @@ struct werte {
 	bool complained;
 };
 
-static struct werte werte;
+static struct saved_values saved;
 
 /* which preset is in force right now, and where it came from */
-static char preset_aktuell[32] = "";
-static bool preset_aktuell_aus_daten;
+static char preset_current[32] = "";
+static bool preset_current_from_data;
 
-static void werte_read(struct werte *w)
+static void saved_read(struct saved_values *w)
 {
 	char line[256];
 	unsigned int n = 0;
@@ -4080,11 +4080,11 @@ static void werte_read(struct werte *w)
  * the driver's own (VIDIOC_QUERY_EXT_CTRL), not a second table here -- so a
  * kernel that widens a control does not need a change in this file.
  */
-static int werte_apply(struct capture *cap, const struct werte *w,
+static int saved_apply(struct capture *cap, const struct saved_values *w,
 		       const char *preset_name, char *msg, size_t n)
 {
 	struct v4l2_query_ext_ctrl q;
-	unsigned int i, gesetzt = 0;
+	unsigned int i, applied = 0;
 	size_t l = 0;
 
 	msg[0] = '\0';
@@ -4117,10 +4117,10 @@ static int werte_apply(struct capture *cap, const struct werte *w,
 		if (l + 1 < n)
 			l += (size_t)snprintf(msg + l, n - l, "%s%s=%d", l ? " " : "",
 					      preset_ctrl[i], w->value[i]);
-		gesetzt++;
+		applied++;
 	}
 
-	return (int)gesetzt;
+	return (int)applied;
 }
 
 /*
@@ -4131,7 +4131,7 @@ static int werte_apply(struct capture *cap, const struct werte *w,
  * that "ctl preset" discards the kept deviations -- after a preset the
  * driver holds the preset's values, so that is what a later save writes.
  */
-static bool werte_write(struct werte *w, struct capture *cap,
+static bool saved_write(struct saved_values *w, struct capture *cap,
 			const struct display *d, char *msg, size_t n)
 {
 	struct v4l2_query_ext_ctrl q;
@@ -4179,8 +4179,8 @@ static bool werte_write(struct werte *w, struct capture *cap,
 	 * No preset line when none was sent (-p none): the values then belong
 	 * to no preset and are applied whatever the next start comes up with.
 	 */
-	if (preset_aktuell[0])
-		fprintf(f, "preset      = %s\n", preset_aktuell);
+	if (preset_current[0])
+		fprintf(f, "preset      = %s\n", preset_current);
 	for (i = 0; i < 9; i++) {
 		int64_t v;
 
@@ -4209,12 +4209,12 @@ static bool werte_write(struct werte *w, struct capture *cap,
 		unlink(tmp);
 		return false;
 	}
-	werte_read(w);		/* what is on disk is now the truth again */
+	saved_read(w);		/* what is on disk is now the truth again */
 
 	return true;
 }
 
-static bool werte_loeschen(struct werte *w, char *msg, size_t n)
+static bool saved_delete(struct saved_values *w, char *msg, size_t n)
 {
 	if (!w->path) {
 		snprintf(msg, n, "nothing is saved (zustand = none in tv.conf)");
@@ -4235,13 +4235,13 @@ static bool werte_loeschen(struct werte *w, char *msg, size_t n)
 static void cmd_preset(struct reply *r, struct capture *cap, const char *name)
 {
 	const struct preset *p = preset_find(name);
-	char msg[256], namen[192];
+	char msg[256], names[192];
 	double g;
 	int ret;
 
-	preset_namen(namen, sizeof(namen));
+	preset_names(names, sizeof(names));
 	if (!p) {
-		reply_fail(r, "preset needs a name: %s", namen);
+		reply_fail(r, "preset needs a name: %s", names);
 		return;
 	}
 	ret = preset_apply(cap, p, msg, sizeof(msg));
@@ -4249,11 +4249,11 @@ static void cmd_preset(struct reply *r, struct capture *cap, const char *name)
 		reply_fail(r, "%s", msg);
 		return;
 	}
-	snprintf(preset_aktuell, sizeof(preset_aktuell), "%s", p->name);
-	preset_aktuell_aus_daten = preset_ist_aus_daten(p);
+	snprintf(preset_current, sizeof(preset_current), "%s", p->name);
+	preset_current_from_data = preset_is_from_data(p);
 	reply_add(r, "ok preset %s%s (%s)\n", msg,
 		  ret ? " (not everything was set)" : "",
-		  preset_aktuell_aus_daten ? "from the device data"
+		  preset_current_from_data ? "from the device data"
 					   : "the compiled-in table");
 	/*
 	 * The gamma curve is loaded once, at start, for the preset started
@@ -4273,7 +4273,7 @@ static void cmd_preset(struct reply *r, struct capture *cap, const char *name)
 /*
  * save [--aus]: write the nine sliders, the preset they belong to and the
  * aspect, or throw the file away again. Deliberately explicit -- see the
- * comment above struct werte.
+ * comment above struct saved_values.
  */
 static void cmd_save(struct reply *r, struct capture *cap,
 		     const struct display *d, const char *arg)
@@ -4282,7 +4282,7 @@ static void cmd_save(struct reply *r, struct capture *cap,
 
 	if (arg && (!strcmp(arg, "--aus") || !strcmp(arg, "aus") ||
 		    !strcmp(arg, "off"))) {
-		if (werte_loeschen(&werte, msg, sizeof(msg)))
+		if (saved_delete(&saved, msg, sizeof(msg)))
 			reply_add(r, "ok nothing saved any more -- at the next start "
 				  "the preset alone applies\n");
 		else
@@ -4293,49 +4293,49 @@ static void cmd_save(struct reply *r, struct capture *cap,
 		reply_fail(r, "save knows only \"off\" (or \"--aus\") as its argument");
 		return;
 	}
-	if (werte_write(&werte, cap, d, msg, sizeof(msg)))
-		reply_add(r, "ok saved in %s: preset=%s %s\n", werte.path,
-			  preset_aktuell[0] ? preset_aktuell : "-", msg);
+	if (saved_write(&saved, cap, d, msg, sizeof(msg)))
+		reply_add(r, "ok saved in %s: preset=%s %s\n", saved.path,
+			  preset_current[0] ? preset_current : "-", msg);
 	else
 		reply_fail(r, "%s", msg);
 }
 
 /* the three layers, each with where it came from (declared above cmd_status) */
-static void cmd_status_bildwerte(struct reply *r)
+static void cmd_status_picture_values(struct reply *r)
 {
 	unsigned int i;
 
 	if (pq.ok)
 		reply_add(r, "picture values  %u presets from %s (h713-pq, %u ms), "
 			  "gamma %.2f, LUT %ld bytes\n", pq_presets_n,
-			  pq.daten[0] ? pq.daten : "the device data", pq.ms,
+			  pq.data[0] ? pq.data : "the device data", pq.ms,
 			  pq.gamma, pq.lut_bytes);
 	else
 		reply_add(r, "picture values  the compiled-in table -- %s\n",
 			  pq.why[0] ? pq.why : "h713-pq was not asked");
 	reply_add(r, "preset          %s (%s)\n",
-		  preset_aktuell[0] ? preset_aktuell : "-",
-		  preset_aktuell_aus_daten ? "from the device data"
+		  preset_current[0] ? preset_current : "-",
+		  preset_current_from_data ? "from the device data"
 					   : "the compiled-in table");
-	if (!werte.path)
+	if (!saved.path)
 		reply_add(r, "saved           nothing (zustand = none in tv.conf)\n");
-	else if (!werte.present)
+	else if (!saved.present)
 		reply_add(r, "saved           nothing in %s -- \"ctl save\" writes it\n",
-			  werte.path);
+			  saved.path);
 	else {
-		char liste[256];
+		char list[256];
 		size_t l = 0;
 
-		liste[0] = '\0';
+		list[0] = '\0';
 		for (i = 0; i < 9; i++)
-			if (werte.have[i] && l + 1 < sizeof(liste))
-				l += (size_t)snprintf(liste + l, sizeof(liste) - l,
+			if (saved.have[i] && l + 1 < sizeof(list))
+				l += (size_t)snprintf(list + l, sizeof(list) - l,
 						      "%s%s=%d", l ? " " : "",
-						      preset_ctrl[i], werte.value[i]);
-		reply_add(r, "saved           %s: preset=%s %s%s%s\n", werte.path,
-			  werte.preset[0] ? werte.preset : "-", liste,
-			  werte.aspect[0] ? " aspect=" : "",
-			  werte.aspect[0] ? werte.aspect : "");
+						      preset_ctrl[i], saved.value[i]);
+		reply_add(r, "saved           %s: preset=%s %s%s%s\n", saved.path,
+			  saved.preset[0] ? saved.preset : "-", list,
+			  saved.aspect[0] ? " aspect=" : "",
+			  saved.aspect[0] ? saved.aspect : "");
 	}
 }
 
@@ -4456,9 +4456,9 @@ static void cmd_mute(struct reply *r, struct audio *a, const char *text)
 
 static void cmd_help(struct reply *r, const struct control *c)
 {
-	char namen[192];
+	char names[192];
 
-	preset_namen(namen, sizeof(namen));
+	preset_names(names, sizeof(names));
 	reply_add(r, "ok commands\n"
 		  "  status (st)           state of the program, the kernel and cpu_comm\n"
 		  "  auto (on)             the picture follows the signal (the default without tv.conf)\n"
@@ -4493,7 +4493,7 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        (raw; blocks the program for the duration of the call)\n"
 		  "  help                  this list\n"
 		  "The answer starts with ok or error; socket %s (root, 0660)\n",
-		  namen, werte.path ? werte.path : "switched off", c->path);
+		  names, saved.path ? saved.path : "switched off", c->path);
 }
 
 /* true if the caller has to run evaluate() afterwards */
@@ -4871,7 +4871,7 @@ _Noreturn static void usage(const char *me)
 		"  Controls, picture on/off, audio, RPCs while it runs: h713-tv ctl help\n"
 		"  -n          only report what was found, then exit -- the display is untouched\n",
 		me, me, CTL_SOCKET, CONF_FILE, STATE_FILE, V4L2_DRIVER, DRM_DRIVER,
-		PQ_BIN, PQ_DATEN, PQ_EINGANG, PQ_LUT, GAMMA_FILE);
+		PQ_BIN, PQ_DATA, PQ_INPUT, PQ_LUT, GAMMA_FILE);
 	exit(2);
 }
 
@@ -4917,13 +4917,13 @@ int main(int argc, char **argv)
 			o.preset = argv[++arg];
 		else if (!strcmp(argv[arg], "-g") && arg + 1 < argc) {
 			o.gamma = argv[++arg];
-			o.gamma_gesetzt = true;
+			o.gamma_set = true;
 		} else if (!strcmp(argv[arg], "--rechner") && arg + 1 < argc)
-			o.rechner = argv[++arg];
+			o.calculator = argv[++arg];
 		else if (!strcmp(argv[arg], "--daten") && arg + 1 < argc)
-			o.daten = argv[++arg];
+			o.data = argv[++arg];
 		else if (!strcmp(argv[arg], "--eingang") && arg + 1 < argc)
-			o.eingang = argv[++arg];
+			o.input = argv[++arg];
 		else if (!strcmp(argv[arg], "--lut") && arg + 1 < argc)
 			o.lut = argv[++arg];
 		else if (!strcmp(argv[arg], "-a") && arg + 1 < argc)
@@ -4954,12 +4954,12 @@ int main(int argc, char **argv)
 	 * one that puts the picture up or leaves the console.
 	 */
 	conf_read(&conf);
-	if (o.rechner)
-		snprintf(conf.rechner, sizeof(conf.rechner), "%s", o.rechner);
-	if (o.daten)
-		snprintf(conf.daten, sizeof(conf.daten), "%s", o.daten);
-	if (o.eingang)
-		snprintf(conf.eingang, sizeof(conf.eingang), "%s", o.eingang);
+	if (o.calculator)
+		snprintf(conf.calculator, sizeof(conf.calculator), "%s", o.calculator);
+	if (o.data)
+		snprintf(conf.data, sizeof(conf.data), "%s", o.data);
+	if (o.input)
+		snprintf(conf.input, sizeof(conf.input), "%s", o.input);
 	if (o.lut)
 		snprintf(conf.lut, sizeof(conf.lut), "%s", o.lut);
 	ctl.conf = &conf;
@@ -4972,14 +4972,15 @@ int main(int argc, char **argv)
 	/*
 	 * Which preset to come up with, and which values were kept for it.
 	 * The order is -p, then tv.conf, then "standard" -- the command line
-	 * is the last word, the file the standing setting. "zuletzt" takes
-	 * the name out of the kept values; without them it is "standard".
+	 * is the last word, the file the standing setting. "last" (and the
+	 * older "zuletzt") takes the name out of the kept values; without
+	 * them it is "standard".
 	 */
-	werte.path = conf.werte_path[0] && !o.report_only ? conf.werte_path : NULL;
-	werte_read(&werte);
+	saved.path = conf.saved_path[0] && !o.report_only ? conf.saved_path : NULL;
+	saved_read(&saved);
 	startpreset = o.preset ? o.preset : (conf.preset[0] ? conf.preset : "standard");
 	if (!strcasecmp(startpreset, "last") || !strcasecmp(startpreset, "zuletzt"))
-		startpreset = werte.preset[0] ? werte.preset : "standard";
+		startpreset = saved.preset[0] ? saved.preset : "standard";
 
 	/*
 	 * h713-pq is started here and collected after the devices are open:
@@ -5020,7 +5021,7 @@ int main(int argc, char **argv)
 		pq_collect(&pq);
 		if (pq.ok)
 			info("picture values  %u presets and gamma %.2f from %s (h713-pq, %u ms)",
-			     pq_presets_n, pq.gamma, pq.daten, pq.ms);
+			     pq_presets_n, pq.gamma, pq.data, pq.ms);
 		else
 			warn("picture values  %s -- the compiled-in table applies",
 			     pq.why);
@@ -5030,7 +5031,7 @@ int main(int argc, char **argv)
 		 * is an explicit order, and it is how a curve can be tried
 		 * without touching anything else.
 		 */
-		if (pq.ok && pq.lut_bytes && !o.gamma_gesetzt)
+		if (pq.ok && pq.lut_bytes && !o.gamma_set)
 			o.gamma = pq.lut;
 	}
 	if (!o.report_only)
@@ -5086,10 +5087,10 @@ int main(int argc, char **argv)
 	 */
 	if (strcasecmp(startpreset, "none")) {
 		const struct preset *p = preset_find(startpreset);
-		char msg[512], namen[192];
+		char msg[512], names[192];
 		int ret;
 
-		preset_namen(namen, sizeof(namen));
+		preset_names(names, sizeof(names));
 		if (!p) {
 			/*
 			 * A name that does not exist is not a reason to leave
@@ -5100,7 +5101,7 @@ int main(int argc, char **argv)
 			 * (plan 113 A.5).
 			 */
 			warn("preset          \"%s\" does not exist (%s) -- standard", startpreset,
-			     namen);
+			     names);
 			startpreset = "standard";
 			p = preset_find(startpreset);
 		}
@@ -5111,37 +5112,37 @@ int main(int argc, char **argv)
 			warn("preset          %s -- %d values not set", msg, ret);
 		else
 			info("preset          %s (%s)", msg,
-			     preset_ist_aus_daten(p) ? "from the device data"
+			     preset_is_from_data(p) ? "from the device data"
 						     : "the compiled-in table");
 		if (p && ret >= 0) {
-			snprintf(preset_aktuell, sizeof(preset_aktuell), "%s", p->name);
-			preset_aktuell_aus_daten = preset_ist_aus_daten(p);
+			snprintf(preset_current, sizeof(preset_current), "%s", p->name);
+			preset_current_from_data = preset_is_from_data(p);
 
 			/* the third layer, on top of the second */
-			ret = werte_apply(&cap, &werte, p->name, msg, sizeof(msg));
+			ret = saved_apply(&cap, &saved, p->name, msg, sizeof(msg));
 			if (ret < 0)
 				warn("saved           %s", msg);
 			else if (ret)
 				info("saved           %d value%s from %s: %s", ret,
-				     ret == 1 ? "" : "s", werte.path, msg);
+				     ret == 1 ? "" : "s", saved.path, msg);
 		}
 	}
 	/*
 	 * The aspect is part of what was kept. It is set before the first
 	 * picture, so no plane has to be taken down for it.
 	 */
-	if (werte.present && werte.aspect[0] && d.has_aspect) {
+	if (saved.present && saved.aspect[0] && d.has_aspect) {
 		uint64_t val;
 
-		if (prop_enum_parse(&d.plane_props, "aspect", werte.aspect, &val)) {
+		if (prop_enum_parse(&d.plane_props, "aspect", saved.aspect, &val)) {
 			d.aspect = val;
-			info("saved           aspect %s", werte.aspect);
+			info("saved           aspect %s", saved.aspect);
 		} else {
-			char namen[128];
+			char names[128];
 
-			aspect_names(&d, namen, sizeof(namen));
+			aspect_names(&d, names, sizeof(names));
 			warn("%s:%u: the plane does not know aspect = \"%s\" (%s) -- dropped",
-			     werte.path, werte.aspect_line, werte.aspect, namen);
+			     saved.path, saved.aspect_line, saved.aspect, names);
 		}
 	}
 	capture_subscribe(&cap);
