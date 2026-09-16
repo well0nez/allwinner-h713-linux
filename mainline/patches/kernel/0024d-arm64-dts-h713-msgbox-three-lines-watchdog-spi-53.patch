@@ -1,0 +1,91 @@
+arm64: dts: h713: the msgbox's three interrupt lines, and SPI 53 for the watchdog
+
+Two corrections in one file, both of them the stock device tree's values.
+
+1. cpu-comm@3003000 had one interrupt, GIC_SPI 46. The msgbox has three
+   register banks and one GIC line per bank, and the driver asks for all
+   three (platform_get_irq(pdev, 0..2) in cpu_comm_dev.c, from 0014a), so
+   every boot printed
+
+       hy310-cpu-comm 3003000.cpu-comm: error -ENXIO: IRQ index 1 not found
+       hy310-cpu-comm 3003000.cpu-comm: error -ENXIO: IRQ index 2 not found
+
+   The node now lists all three in the stock order. Stock
+   msgbox@3003000 (material/stock-hy310-board.dts, decompiled from the
+   device's own DTB):
+
+       reg        = <0x3003000 0x400  0x3003400 0x400  0x3003800 0x400>
+       interrupts = <0 0x2E 4  0 0x6D 4  0 0x6C 4>   = SPI 46, 109, 108
+       msgbox_amp_counts = <3>, msgbox_amp_local = <0>
+
+   reg[i] and interrupts[i] belong together: the vendor driver builds
+   base[i] from reg[i] and irq[i] from interrupt i and reorders neither
+   (sunxi_msgbox_probe at 0xc07db360, IDA database
+   analyse/ida/db-audio-vmlinux/vmlinux.elf.i64). So index 0 = bank 0
+   @0x03003000 = this core's inbox, index 1 = bank 1 @0x03003400 =
+   CPUS/ARISC, index 2 = bank 2 @0x03003800 = display MIPS. Patch 0014b
+   derives that in full and makes the handler serve any of the three.
+
+   No interrupt-names: the driver takes the lines by index, and adding
+   names would invite a later reader to reorder the list.
+
+   Our node keeps its single 0x1000 reg window (0024a) rather than the
+   stock three windows -- the driver ioremaps once and addresses the
+   banks by offset.
+
+2. watchdog@2051000 had GIC_SPI 46 as well, which is the msgbox's bank 0
+   line, so the device tree named one GIC line for two devices. Stock
+   watchdog@2051000 has interrupts = <0 0x35 4> = SPI 53. This is a
+   correction without a behaviour change: the sun6i-a31-wdt driver takes
+   no interrupt at all (it drives the reset through the watchdog's own
+   registers), so nothing ever requested 46 from this node and nothing
+   requests 53 now. It only stops a future reader -- or a future driver
+   that does want the line -- from inheriting the clash.
+
+Every other node: no node in sun50i-h713.dtsi or in any board dts of the
+series names SPI 46, 53, 108 or 109 besides these two (checked with grep
+over the materialised tree after the whole series). SPI 108 and 109 are
+new to the tree with this patch; SPI 53 is new as well. arisc@100000 maps
+two msgbox windows but declares no interrupt, so it does not clash.
+
+Sources: material/stock-hy310-board.dts, material/boot-v0.7-beta-130024.log
+(the two error lines), doku/61 B, doku/69, doku/125 section 3.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1172,7 +1172,14 @@
+ 			compatible = "allwinner,sun50i-h6-wdt",
+ 				     "allwinner,sun6i-a31-wdt";
+ 			reg = <0x02051000 0x20>;
+-			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
++			/*
++			 * 53, not 46: 46 is the msgbox's bank 0 line (stock
++			 * watchdog@2051000: interrupts = <0 0x35 4>). No
++			 * behaviour change -- sun6i-a31-wdt never requests
++			 * the interrupt -- but it stops the device tree from
++			 * naming one line twice.
++			 */
++			interrupts = <GIC_SPI 53 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&osc24M>;
+ 		};
+ 
+@@ -1500,7 +1507,17 @@
+ 		cpu_comm: cpu-comm@3003000 {
+ 			compatible = "allwinner,sunxi-cpu-comm";
+ 			reg = <0x03003000 0x1000>;
+-			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;	/* 46, nicht 21 -- 21 ist S/PDIF */
++			/*
++			 * One line per register bank, in the order the stock
++			 * device tree lists them: bank 0 @0x03003000 (this
++			 * core's inbox) = 46, bank 1 @0x03003400 (CPUS/ARISC)
++			 * = 109, bank 2 @0x03003800 (display MIPS) = 108.
++			 * 21 is S/PDIF and was the wrong number here until
++			 * 0024a. The driver takes them by index.
++			 */
++			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_BUS_MSGBOX>;
+ 			resets = <&ccu RST_BUS_MSGBOX>;
+ 			shared-memory = <&cpu_comm_reserved>;
