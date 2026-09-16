@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from h713.blockdev import LOCK_FIRST, LOCK_LAST, device_kind
+from h713.blockdev import LOCK_FIRST, LOCK_LAST, device_kind, is_our_layout
 from h713.facts import (DiskSource, MIPS_SOURCES, as_source, close_source, device_facts,
                         image_facts, VENDOR_PARTITIONS)
 from h713.fs import Ext4, LpSuper
@@ -187,7 +187,7 @@ def _kind_of(layout: dict) -> str:
     names = [name for name, _start, _sectors in layout["partitions"]]
     if not names:
         return "no-gpt"
-    if any(n.startswith("hy310-") for n in names):
+    if is_our_layout(names):
         return "ours"
     if "bootloader_a" in names and "super" in names:
         return "stock"

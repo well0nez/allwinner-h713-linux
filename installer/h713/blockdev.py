@@ -31,6 +31,16 @@ SECTORS_EXPECTED = 15269888          # 7.28 GiB -- the eMMC of the HY310
 LOCK_FIRST = 12288
 LOCK_LAST = 14335
 
+# Every partition of layout v3 is called hy310-* (doku/109 §2.2, h713.layout.PARTITIONS).
+OUR_PREFIX = "hy310-"
+
+
+def is_our_layout(names):
+    """Does this partition table belong to us? One test in one place: `identify()` asks it
+    about the entries it has already read, `device_kind()` about the ones it reads itself,
+    and the installer about the device in front of it -- so the three cannot drift apart."""
+    return any(n.startswith(OUR_PREFIX) for n in names)
+
 
 class Disk:
     """Raw access to a block device -- /dev/sdX on Linux, \\\\.\\PhysicalDriveN
@@ -269,8 +279,8 @@ def device_kind(path):
             names.append(e[56:56 + 72].decode("utf-16-le", "replace").rstrip("\0"))
     finally:
         p.close()
-    if any(n.startswith("hy310-") for n in names):
-        return "our layout (%s)" % ", ".join(n for n in names if n.startswith("hy310-"))
+    if is_our_layout(names):
+        return "our layout (%s)" % ", ".join(n for n in names if n.startswith(OUR_PREFIX))
     if "bootloader_a" in names and "super" in names:
         return "stock layout, %d partitions" % len(names)
     return None
