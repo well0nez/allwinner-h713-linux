@@ -1,23 +1,32 @@
 # -*- coding: utf-8 -*-
-"""Layout v3 of the HY310/H713 eMMC as data (doku/109 §2).
+"""Layout v4 of the HY310/H713 eMMC as data (doku/109 §2).
 
 Everything the image builder and the installer have to agree on: the partition
 table, the three pieces of the image, the locked range in the middle, and the
-list of placeholders that stand in for the files we may not redistribute.
+list of files that do not travel with the image because they belong to the
+manufacturer -- the installer copies them out of the user's own device.
 Numbers only -- who writes them where is in `h713.mkimage` and `h713.install`.
 
-Moved from hy310-mkimage.py (M:77-204, M:261-293), stage 1 (doku/121). Stage 3
-changed no value here: the fill pattern of `pattern()` is image content, not a
-printed line -- see the note there.
+Moved from hy310-mkimage.py (M:77-204, M:261-293), stage 1 (doku/121).
+Layout v4 (16.09.2026, plan/briefs/P-layout-v4.md) dropped the placeholders:
+no file in this list has a size any more, because none of them is written into
+the image at a fixed offset. The image carries the two ext4 file systems with
+the target DIRECTORIES only; `h713-install` mounts them and copies the files in
+with their real length. What a file is called, where it goes, which group it
+belongs to and whether a device may be without it is all that is left here.
 """
 
 from __future__ import annotations
+
+import posixpath
+from collections import namedtuple
 
 # The locked range. Identical to LOCK_FIRST/LOCK_LAST in h713.blockdev --
 # the two values belong together and are checked here.
 from h713.blockdev import LOCK_FIRST, LOCK_LAST
 
-# ---------------------------------------------------------------- Layout v3
+# ---------------------------------------------------------------- Layout v3/v4
+# The partition layout is the one of v3 and does not change with v4.
 # All numbers from doku/109 §2.1/§2.2, the GUIDs read off the device
 # (10.09.2026, /dev/sda after the run from doku/109 §12) -- so that the image
 # carries, byte for byte, the table the device is known to boot from.
@@ -54,139 +63,150 @@ PART_B_LBA = LOCK_LAST + 1                            # 14336 = 7 MiB
 PART_C_LBA = DISK_SECTORS - 33                        # 15269855, 33 sectors
 PART_C_SECTORS = 33
 
-# ---------------------------------------------------------------- Placeholders
-# name (the file is called that in the output of h713-extract too)
-#   -> (size in bytes, target partition, path in the file system)
-# The sizes are measured on the HY310 (r2-extract/out-hy310, 10.09.2026) and
-# written down here: the image is built once and then distributed.
+# ---------------------------------------------------------------- The files
+# The groups, in the order the table and the README list them. The text is what
+# a user is told the group is good for.
+GROUPS = {
+    "mips": "display firmware and tables",
+    "logo": "boot logo",
+    "wlan": "WLAN firmware",
+    "pq": "picture presets",
+    "firmware": "ARISC, EDID, MSP",
+}
 
-PLACEHOLDERS = [
+# name      the path below the output of h713-extract (its name in the dump)
+# partition where it goes
+# path      the absolute path inside that partition -- what U-Boot and the kernel see
+# group     one of GROUPS
+# optional  True: a firmware may be without it. The device then runs without that
+#           group, and h713-install says so once per group instead of stopping.
+#           Which ones are optional was h713.install's OPTIONAL_GROUPS/OPTIONAL_FILES
+#           until v4; the truth is here now, so the table carries it and the
+#           installer reads it out of the table.
+File = namedtuple("File", "name partition path group optional")
+
+FILES = [File(*row) for row in (
     # 19 display artefacts -> hy310-boot:/mips/
-    ("boot/mips/database.TSE",           282464,  "hy310-boot",   "/mips/database.TSE"),
-    ("boot/mips/display.bin",            1256216, "hy310-boot",   "/mips/display.bin"),
-    ("boot/mips/display_cfg.xml",        4766,    "hy310-boot",   "/mips/display_cfg.xml"),
-    ("boot/mips/LogoRegData.bin",        15652,   "hy310-boot",   "/mips/LogoRegData.bin"),
-    ("boot/mips/pq_custom.TSE",          15016,   "hy310-boot",   "/mips/pq_custom.TSE"),
-    ("boot/mips/ProjectID_0x0001.TSE",   19992,   "hy310-boot",   "/mips/ProjectID_0x0001.TSE"),
-    ("boot/mips/ProjectID_0x0012.TSE",   48952,   "hy310-boot",   "/mips/ProjectID_0x0012.TSE"),
-    ("boot/mips/ProjectID_0x0013.TSE",   47880,   "hy310-boot",   "/mips/ProjectID_0x0013.TSE"),
-    ("boot/mips/ProjectID_0x0014.TSE",   47880,   "hy310-boot",   "/mips/ProjectID_0x0014.TSE"),
-    ("boot/mips/ProjectID_0x0015.TSE",   47880,   "hy310-boot",   "/mips/ProjectID_0x0015.TSE"),
-    ("boot/mips/ProjectID_0x0016.TSE",   47880,   "hy310-boot",   "/mips/ProjectID_0x0016.TSE"),
-    ("boot/mips/ProjectID_0x0020.TSE",   19992,   "hy310-boot",   "/mips/ProjectID_0x0020.TSE"),
-    ("boot/mips/ProjectID_0x0030.TSE",   19992,   "hy310-boot",   "/mips/ProjectID_0x0030.TSE"),
-    ("boot/mips/ProjectID_0x0031.TSE",   19992,   "hy310-boot",   "/mips/ProjectID_0x0031.TSE"),
-    ("boot/mips/ProjectID_0x0032.TSE",   19992,   "hy310-boot",   "/mips/ProjectID_0x0032.TSE"),
-    ("boot/mips/ProjectID_0x0033.TSE",   19992,   "hy310-boot",   "/mips/ProjectID_0x0033.TSE"),
-    ("boot/mips/ProjectID_0x0034.TSE",   17328,   "hy310-boot",   "/mips/ProjectID_0x0034.TSE"),
-    ("boot/mips/ProjectID_0x0035.TSE",   19992,   "hy310-boot",   "/mips/ProjectID_0x0035.TSE"),
-    ("boot/mips/projecttable.TSE",       1384,    "hy310-boot",   "/mips/projecttable.TSE"),
+    ("boot/mips/database.TSE",           "hy310-boot",   "/mips/database.TSE",           "mips", False),
+    ("boot/mips/display.bin",            "hy310-boot",   "/mips/display.bin",            "mips", False),
+    ("boot/mips/display_cfg.xml",        "hy310-boot",   "/mips/display_cfg.xml",        "mips", False),
+    ("boot/mips/LogoRegData.bin",        "hy310-boot",   "/mips/LogoRegData.bin",        "mips", False),
+    ("boot/mips/pq_custom.TSE",          "hy310-boot",   "/mips/pq_custom.TSE",          "mips", False),
+    ("boot/mips/ProjectID_0x0001.TSE",   "hy310-boot",   "/mips/ProjectID_0x0001.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0012.TSE",   "hy310-boot",   "/mips/ProjectID_0x0012.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0013.TSE",   "hy310-boot",   "/mips/ProjectID_0x0013.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0014.TSE",   "hy310-boot",   "/mips/ProjectID_0x0014.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0015.TSE",   "hy310-boot",   "/mips/ProjectID_0x0015.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0016.TSE",   "hy310-boot",   "/mips/ProjectID_0x0016.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0020.TSE",   "hy310-boot",   "/mips/ProjectID_0x0020.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0030.TSE",   "hy310-boot",   "/mips/ProjectID_0x0030.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0031.TSE",   "hy310-boot",   "/mips/ProjectID_0x0031.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0032.TSE",   "hy310-boot",   "/mips/ProjectID_0x0032.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0033.TSE",   "hy310-boot",   "/mips/ProjectID_0x0033.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0034.TSE",   "hy310-boot",   "/mips/ProjectID_0x0034.TSE",   "mips", False),
+    ("boot/mips/ProjectID_0x0035.TSE",   "hy310-boot",   "/mips/ProjectID_0x0035.TSE",   "mips", False),
+    ("boot/mips/projecttable.TSE",       "hy310-boot",   "/mips/projecttable.TSE",       "mips", False),
     # 1 boot logo -> hy310-boot:/ (the ROOT of the partition, where `h713_disp init <id> logo`
-    # looks for it). Sized for a 1080p logo; a 720p one (2764854 B) fits and the rest of the
-    # placeholder stays zero, which is harmless -- U-Boot takes every size from the BMP header,
-    # not from the file length.
-    ("boot/bootlogo.bmp",                6220854, "hy310-boot",   "/bootlogo.bmp"),
+    # looks for it). Optional per file: a dump without a logo still installs, U-Boot then
+    # boots without one (doku/40, last section). Every size is taken from the BMP header,
+    # so a 720p logo is as good as a 1080p one.
+    ("boot/bootlogo.bmp",                "hy310-boot",   "/bootlogo.bmp",                "logo", True),
     # 3 firmware files -> hy310-rootfs:/lib/firmware/
-    ("lib/firmware/h713-arisc.bin",      176132,  "hy310-rootfs", "/lib/firmware/h713-arisc.bin"),
-    ("lib/firmware/h713/msp-patch.bin",  2896,    "hy310-rootfs", "/lib/firmware/h713/msp-patch.bin"),
-    ("lib/firmware/hy310-edid.bin",      512,     "hy310-rootfs", "/lib/firmware/hy310-edid.bin"),
-    # 8 PQ files -> hy310-rootfs:/etc/h713/tvconfig/
-    ("pq/portmap.cfg",                   312,     "hy310-rootfs", "/etc/h713/tvconfig/portmap.cfg"),
-    ("pq/pq_colortemp.ini",              865,     "hy310-rootfs", "/etc/h713/tvconfig/pq_colortemp.ini"),
-    ("pq/pq_factory_extern.ini",         592528,  "hy310-rootfs", "/etc/h713/tvconfig/pq_factory_extern.ini"),
-    ("pq/pq_overscan_config.ini",        10877,   "hy310-rootfs", "/etc/h713/tvconfig/pq_overscan_config.ini"),
-    ("pq/pq_picturemode.ini",            10216,   "hy310-rootfs", "/etc/h713/tvconfig/pq_picturemode.ini"),
-    ("pq/pqcontrol_config_setting.xml",  1055,    "hy310-rootfs", "/etc/h713/tvconfig/pqcontrol_config_setting.xml"),
-    ("pq/pqcontrol_custom_setting.xml",  1326,    "hy310-rootfs", "/etc/h713/tvconfig/pqcontrol_custom_setting.xml"),
-    ("pq/tvpq.db",                       36864,   "hy310-rootfs", "/etc/h713/tvconfig/tvpq.db"),
+    ("lib/firmware/h713-arisc.bin",      "hy310-rootfs", "/lib/firmware/h713-arisc.bin",     "firmware", False),
+    ("lib/firmware/h713/msp-patch.bin",  "hy310-rootfs", "/lib/firmware/h713/msp-patch.bin", "firmware", False),
+    ("lib/firmware/hy310-edid.bin",      "hy310-rootfs", "/lib/firmware/hy310-edid.bin",     "firmware", False),
+    # 8 PQ files -> hy310-rootfs:/etc/h713/tvconfig/. Optional: a firmware may ship only
+    # part of the set (HY300 Pro, issue #1) -- h713-pq then has fewer presets, the picture
+    # itself does not depend on them.
+    ("pq/portmap.cfg",                   "hy310-rootfs", "/etc/h713/tvconfig/portmap.cfg",                  "pq", True),
+    ("pq/pq_colortemp.ini",              "hy310-rootfs", "/etc/h713/tvconfig/pq_colortemp.ini",             "pq", True),
+    ("pq/pq_factory_extern.ini",         "hy310-rootfs", "/etc/h713/tvconfig/pq_factory_extern.ini",        "pq", True),
+    ("pq/pq_overscan_config.ini",        "hy310-rootfs", "/etc/h713/tvconfig/pq_overscan_config.ini",       "pq", True),
+    ("pq/pq_picturemode.ini",            "hy310-rootfs", "/etc/h713/tvconfig/pq_picturemode.ini",           "pq", True),
+    ("pq/pqcontrol_config_setting.xml",  "hy310-rootfs", "/etc/h713/tvconfig/pqcontrol_config_setting.xml", "pq", True),
+    ("pq/pqcontrol_custom_setting.xml",  "hy310-rootfs", "/etc/h713/tvconfig/pqcontrol_custom_setting.xml", "pq", True),
+    ("pq/tvpq.db",                       "hy310-rootfs", "/etc/h713/tvconfig/tvpq.db",                      "pq", True),
     # 13 WLAN firmware files -> hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/
-    # (12.09.2026, sizes from h713-extract, profile hy310: byte-identical with
-    # the set that brought wlan0 up the same day.) The target path is the
+    # (12.09.2026, the set that brought wlan0 up the same day.) The target path is the
     # driver's CONFIG_AIC_FW_PATH -- if it differs, fdrv silently loads nothing.
-    # OPTIONAL for the installer: if the whole set is missing from the dump the
-    # device has no chip, and the placeholders stay zeroed (h713-wifi then says
-    # "Firmware fehlt" instead of loading the driver).
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt",      2807,   "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin",              261352, "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin",        328912, "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin",          328720, "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin",             1680,   "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin",         1708,   "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin",            8348,   "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin",        31592,  "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin",   10956,  "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin",      648,    "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin",  23472,  "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin",           302105, "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin"),
-    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin",       256810, "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin"),
+    # Optional: a firmware without the set means the device has no such chip, and
+    # h713-wifi says the firmware is missing instead of loading the driver.
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt",      "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt",      "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin",              "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80.bin",              "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin",        "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_h_u02.bin",        "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin",          "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_8800d80_u02.bin",          "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin",             "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80.bin",             "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin",         "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_8800d80_u02.bin",         "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin",            "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin",            "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin",        "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02.bin",        "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin",   "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80_u02_ext0.bin",   "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin",      "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80.bin",      "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin",  "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin",  "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin",           "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin",           "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin",       "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin",       "wlan", True),
+)]
+
+# What a copied-in file is owned by and how it is allowed to be read. The device
+# runs everything in FILES as root; nothing in there is secret, nothing is a program.
+FILE_OWNER = "root"
+FILE_MODE = 0o644
+DIRECTORY_MODE = 0o755
+
+# The one file that does NOT come from the device but from the user: the public
+# SSH key. Same mechanics, different source, and sshd's StrictModes decides the
+# modes -- /root/.ssh 0700, the file 0600, both root. Without --ssh-key the file
+# is never created, and only the serial console is left.
+UserFile = namedtuple("UserFile", "name partition path mode owner directory_mode")
+
+USER_FILES = [
+    UserFile("authorized_keys", "hy310-rootfs", "/root/.ssh/authorized_keys", 0o600, "root", 0o700),
 ]
 
-# Placeholders that do NOT come from h713-extract but from the user:
-# same mechanics (fixed size, offset out of the ext4), different source and
-# different filling. h713-install lists them under "platzhalter_nutzer" in the
-# table; an older installer does not know the key and leaves the file as it is
-# -- and as it is, it is valid (line breaks only).
-#   name -> (size, target partition, path, mode)
-USER_PLACEHOLDERS = [
-    ("authorized_keys", 4096, "hy310-rootfs", "/root/.ssh/authorized_keys", 0o600),
-]
-# Directories the tree creates for that, with a fixed mode (path, mode).
-USER_DIRECTORIES = [
-    ("/root/.ssh", 0o700),
-]
+# Directories the ext4 trees carry with a fixed mode (path, mode) -- the user's
+# ones out of USER_FILES, so there is one truth.
+USER_DIRECTORIES = [(posixpath.dirname(u.path), u.directory_mode) for u in USER_FILES]
+
 # What has to be right in the finished ext4, otherwise sshd will not take the
 # key (StrictModes): owner root, and these modes. /etc/passwd is in the list
 # because a tree unpacked as a user gives EVERY file uid 1000 -- that is how it
 # was in image v0.5 on 11.09. (mkimage-inputs.sh did not run as root).
 # (path, expected mode or None, uid, gid)
+# v4: /root/.ssh/authorized_keys left this list -- the image does not carry the
+# file any more, h713-install creates it from --ssh-key. The directory is here,
+# and that is what sshd looks at before it reads a key.
 ROOTFS_PERMISSIONS = [
     ("/etc/passwd", 0o644, 0, 0),
     ("/etc/shadow", 0o640, 0, 42),          # root:shadow
     ("/usr/sbin/unix_chkpwd", 0o2755, 0, 42),   # setgid shadow -- lost when unpacked as a user
     ("/root", 0o700, 0, 0),
     ("/root/.ssh", 0o700, 0, 0),
-    ("/root/.ssh/authorized_keys", 0o600, 0, 0),
     ("/usr/local/sbin/h713-tv", 0o755, 0, 0),
 ]
 
-KERNEL_FIT = "h713-kernel.fit"        # real, ours, not a placeholder
+KERNEL_FIT = "h713-kernel.fit"        # real, ours, and the only file the image brings
 
 
-# ---------------------------------------------------------------- Filling
+# ---------------------------------------------------------------- Directories
 
-def pattern(name, length):
-    """The content of an unfilled placeholder.
+def target_directories(partition=None):
+    """The directories the ext4 file systems have to carry, as (path, mode).
 
-    Deliberately not a block of zeros: (1) in a hexdump you see at once that
-    the file is not filled yet and which one it is, (2) for nothing but zeros
-    mke2fs may create a hole (sparse) -- then there would be no physical
-    blocks for the installer to write into.
+    Derived from FILES and USER_FILES: every directory a file goes into, and no
+    other. The image ships them empty -- that is the whole difference to v3 --
+    so that the installer creates files and never a directory, and so that
+    `h713-mkimage check` can say from the finished ext4 alone whether a build is
+    installable.
 
-    Stage 3 does NOT translate this string. It is not a printed line but the
-    content of the image: it stands in every built image, its sha256 is in the
-    table under "sha256_muster", and `h713-mkimage check` decides from it
-    whether a placeholder is still unfilled. Translating it would make every
-    image built before stage 3 read as "already filled". It goes when the
-    release format changes (stage 4).
+    Only the directory a file lies in is listed, not the ones above it: /root
+    (0700) and /lib/firmware come out of the rootfs tar with their own modes and
+    are none of our business.
     """
-    core = ("HY310-PLATZHALTER %s -- hy310-install fuellt das. " % name).encode("ascii", "replace")
-    n = -(-length // len(core))
-    return (core * n)[:length]
-
-
-def is_user_placeholder(name):
-    return any(name == n for n, _s, _t, _p, _m in USER_PLACEHOLDERS)
-
-
-def filling(name, length):
-    """The content of an unfilled placeholder, depending on its kind.
-
-    Vendor files carry the pattern (see pattern()). authorized_keys consists
-    of line breaks: sshd skips over empty lines, so the file is valid and
-    empty whether an installer fills it or not. Zero bytes or the pattern
-    would sit in authorized_keys as garbage. No block of zeros -- mke2fs -d
-    would otherwise create a hole instead of a data block.
-    """
-    if is_user_placeholder(name):
-        return b"\n" * length
-    return pattern(name, length)
+    out = {}
+    for f in FILES:
+        directory = posixpath.dirname(f.path)
+        if directory and directory != "/":
+            out.setdefault((f.partition, directory), DIRECTORY_MODE)
+    for u in USER_FILES:
+        out[(u.partition, posixpath.dirname(u.path))] = u.directory_mode
+    return [(path, mode) for (part, path), mode in sorted(out.items())
+            if partition is None or part == partition]
