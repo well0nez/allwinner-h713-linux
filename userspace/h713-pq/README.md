@@ -1,230 +1,236 @@
-# h713-pq - Stock-PQ-Daten lesen und in Kernel-Schnittstellen umrechnen
+# h713-pq - read the stock PQ data and convert it into kernel interfaces
 
-`h713-pq` liest die Bildqualitäts-Daten der Stock-Firmware des HY310 und rechnet daraus die Werte, die unsere
-Kernel-Schnittstellen brauchen: das **Argument der PQ-RPCs** (Sättigung, Kontrast, …) und die 512-Einträge-LUT
-im DE2-Format für Gamma (Paket G des Nachtplans `doku/78-nachtplan-hdmi-switch.md`).
+`h713-pq` reads the picture quality data of the HY310's stock firmware and computes from it the values our
+kernel interfaces need: the **argument of the PQ RPCs** (saturation, contrast, ...) and the 512-entry LUT in
+DE2 format for gamma (package G of the night plan `doku/78-nachtplan-hdmi-switch.md`).
 
-> **Korrektur vom 07.09.2026.** Die erste Fassung rechnete die Sättigung auf einen **Registerwert**
-> (Benutzerwert → Werkskurve → Gain-Byte) und gab für `standard` `0x4C` aus. Die Messung am Gerät
-> (`doku/nachtlog/K5-board-verifikation.md` Abschnitt f) hat das widerlegt: die Firmware nimmt ein
-> **RPC-Argument 0..100** und rechnet den Gain selbst als `floor(Argument × 1,28)`; `0x4C` gehört zu
-> `SetSaturation 60`, nicht zu 50. `h713-pq` gibt seitdem das RPC-Argument aus, der Registerwert ist nur noch
-> Kontrollausgabe. Hergang: `doku/nachtlog/G-korrektur-saettigung.md`.
+> **Correction of 07.09.2026.** The first version computed the saturation into a **register value**
+> (user value -> factory curve -> gain byte) and printed `0x4C` for `standard`. The measurement on the device
+> (`doku/nachtlog/K5-board-verifikation.md` section f) refuted that: the firmware takes an
+> **RPC argument 0..100** and computes the gain itself as `floor(argument x 1.28)`; `0x4C` belongs to
+> `SetSaturation 60`, not to 50. Since then `h713-pq` prints the RPC argument, and the register value is only
+> a control output. The story: `doku/nachtlog/G-korrektur-saettigung.md`.
 
-**Das Werkzeug rechnet und druckt.** Es öffnet kein `/dev/mem`, schreibt kein Register, spricht mit keinem Board
-und startet keinen Dienst. Wo ein Schreibpfad sinnvoll ist, wird er als **Befehlszeile** oder als **Datei**
-ausgegeben; das Schreiben ist Sache des Kernels (Paket H/I) oder eines Board-Skripts.
+**The tool computes and prints.** It opens no `/dev/mem`, writes no register, talks to no board and starts no
+service. Where a write path makes sense it is printed as a **command line** or written as a **file**; the
+writing is the business of the kernel (package H/I) or of a board script.
 
-Datenmodell und Herleitung: [`doku/81-pq-datenmodell.md`](../../doku/81-pq-datenmodell.md).
+Data model and derivation: [`doku/81-pq-datenmodell.md`](../../doku/81-pq-datenmodell.md).
 
-## Aufrufe
+## Calls
 
 ```bash
-./h713-pq list                                   # Eingänge, Modi, Werkskurven, Datenlage
-./h713-pq show HDMI1 vivid                       # ganze Kette für einen Bildmodus
-./h713-pq show HDMI1 standard --lut gamma.bin    # dazu die LUT dieses Modus schreiben
-./h713-pq saturation HDMI1 cinema                # Sättigung eines Modus -> RPC-Argument
-./h713-pq saturation HDMI1 72                    # Sättigung als Benutzerwert 0..100
-./h713-pq gamma 2.2 --lut out.bin                # DE2-LUT aus einem Gamma-Exponenten
-./h713-pq gamma 2.2 --kanal all --lut rgb.bin    # R-, G- und B-Bank hintereinander
-./h713-pq show HDMI1 standard --json --lut g.bin # maschinenlesbar, für h713-tv (siehe unten)
+./h713-pq list                                   # inputs, modes, factory curves, data state
+./h713-pq show HDMI1 vivid                       # the whole chain for one picture mode
+./h713-pq show HDMI1 standard --lut gamma.bin    # plus the LUT of that mode
+./h713-pq saturation HDMI1 cinema                # saturation of a mode -> RPC argument
+./h713-pq saturation HDMI1 72                    # saturation as a user value 0..100
+./h713-pq gamma 2.2 --lut out.bin                # DE2 LUT from a gamma exponent
+./h713-pq gamma 2.2 --kanal all --lut rgb.bin    # R, G and B bank in a row
+./h713-pq show HDMI1 standard --json --lut g.bin # machine readable, for h713-tv (see below)
 ```
 
-`--daten VERZEICHNIS` setzt das tvconfig-Verzeichnis. Ohne Angabe wird der Reihe nach gesucht:
-`$H713_TVCONFIG`, `/etc/h713/tvconfig`, dann `re/vendor/HY310/extracted/vendor_a/etc/tvconfig` im Arbeitsbaum.
+`--daten DIRECTORY` sets the tvconfig directory. Without it the search goes, in order:
+`$H713_TVCONFIG`, `/etc/h713/tvconfig`, then `re/vendor/HY310/extracted/vendor_a/etc/tvconfig` in the work tree.
 
-Es braucht nur die Python-Standardbibliothek (getestet mit 3.12), kein Paket, keine Installation.
+**The option names `--daten` and `--kanal` keep their German spelling.** They are the interface to `h713-tv`,
+which starts this program at every boot with exactly that command line (`main.c`, `pq_start()`); the JSON field
+names below are the same kind of interface. Both sides are renamed in one later step, together.
 
-## Maschinenlesbare Ausgabe: `show … --json`
+It needs only the Python standard library (tested with 3.12), no package, no installation.
 
-`h713-tv` ruft dieses Programm seit dem 11.09.2026 **beim Start** einmal auf und wendet an, was
-zurückkommt (Plan 113 §A.3, Weg (a): eine Quelle der Wahrheit statt derselben Rechnung zweimal). Dafür gibt
-es `--json`:
+## Machine readable output: `show ... --json`
+
+Since 11.09.2026 `h713-tv` calls this program once **at start** and applies what comes back (plan 113 §A.3,
+way (a): one source of truth instead of the same computation twice). That is what `--json` is for:
 
 ```bash
 h713-pq --daten /etc/h713/tvconfig show HDMI1 standard --json --lut /run/h713-tv/gamma-laufzeit.bin
 ```
 
-**Auf `stdout` steht dann genau ein JSON-Objekt und sonst nichts**; jede Meldung - auch die über die
-geschriebene LUT - geht nach `stderr`. Der Exitcode ist 0 oder 2 wie sonst auch.
+**On `stdout` there is then exactly one JSON object and nothing else**; every message - including the one about
+the written LUT - goes to `stderr`. The exit code is 0 or 2 as everywhere else.
 
-| Feld | Bedeutung |
+The field names are the interface and stay as they are, German words included:
+
+| Field | Meaning |
 |---|---|
-| `version` | Fassung des Satzes (`1`). Der Leser verwirft, was er nicht kennt |
-| `erzeuger`, `daten` | wer gerechnet hat und aus welchem Verzeichnis |
-| `eingang`, `preset`, `quelle` | wonach gefragt wurde und aus welcher Datei die Zeile stammt |
-| `modus`, `modus_eigen` | Bildmodusnummer für `THal_Vp_SetPictureMode`; `modus_eigen: false` heißt „die Firmware hat für diesen Namen keinen eigenen Modus" (`energy_saving`, `custom` → Standard) |
-| `regler` | die neun Werte, die nach dem Modus gesendet werden, unter den Spaltennamen der Vendor-INI: `brightness contrast saturation hue sharpness tnr snr dci blackextension` |
-| `weitere` | `colortemperature`, `gamma`, `backlight`, `dynamic_backlight` - die vier Spalten, für die es heute kein Control gibt |
-| `gamma_index`, `gamma_exponent` | Stufe 0…4 und der Exponent dazu |
-| `lut`, `lut_bytes`, `lut_sha256` | die mit `--lut` geschriebene Datei; ohne `--lut` alle drei `null`/`0` |
-| `presets` | **alle** Bildmodi dieses Eingangs, jeder mit `name`, `modus`, `regler`, `weitere`, `gamma_*` |
-| `fehlende_dateien` | was nicht gelesen wurde, mit Grund |
+| `version` | version of the record (`1`). The reader discards what it does not know |
+| `erzeuger`, `daten` | who computed and out of which directory |
+| `eingang`, `preset`, `quelle` | what was asked for and which file the row came from |
+| `modus`, `modus_eigen` | picture mode number for `THal_Vp_SetPictureMode`; `modus_eigen: false` means "the firmware has no mode of its own for this name" (`energy_saving`, `custom` -> standard) |
+| `regler` | the nine values sent after the mode, under the column names of the vendor INI: `brightness contrast saturation hue sharpness tnr snr dci blackextension` |
+| `weitere` | `colortemperature`, `gamma`, `backlight`, `dynamic_backlight` - the four columns for which there is no control today |
+| `gamma_index`, `gamma_exponent` | level 0..4 and the exponent belonging to it |
+| `lut`, `lut_bytes`, `lut_sha256` | the file written with `--lut`; without `--lut` all three `null`/`0` |
+| `presets` | **all** picture modes of this input, each with `name`, `modus`, `regler`, `weitere`, `gamma_*` |
+| `fehlende_dateien` | what was not read, with the reason |
 
-`presets` liegt bei, damit der Leser `ctl preset energy_saving` beantworten kann, ohne einen zweiten
-Python-Prozess zu starten; die angeforderte Zeile steht zusätzlich flach im Satz. Beides kommt aus
-`modell._preset_satz` und kann deshalb nicht auseinanderlaufen (Test
-`test_flache_felder_und_liste_sind_dieselben`).
+`presets` comes along so that the reader can answer `ctl preset energy_saving` without starting a second
+Python process; the requested row stands in the record flat as well. Both come out of `model._preset_record`
+and therefore cannot drift apart (test `test_flat_fields_and_list_are_the_same`).
 
-**Die Bildmodusnummer steht in keiner der acht Vendor-Dateien.** `tvpq.db` führt eine eigene Zählung
-(0 standard, 1 cinema, 2 vivid …), die ARM-Bibliothek eine dritte; für den RPC zählt allein die
-MIPS-Firmware (0 Vivid, 1 Standard, 3 Game, 6 Computer, 7 Cinema, 12 HDR). Die Tabelle steht mit ihrem Beleg
-in `modell.FIRMWARE_MODUS`, Herkunft
-[`doku/nachtlog/S14`](../../doku/nachtlog/S14-re-picture-mode.md) §1.2 - sie gehört hierher, weil sie die
-letzte Größe war, die dem Satz „Eingang × Bildmodus → was zu senden ist" noch fehlte.
+**The picture mode number stands in none of the eight vendor files.** `tvpq.db` keeps a counting of its own
+(0 standard, 1 cinema, 2 vivid ...), the ARM library a third; for the RPC only the MIPS firmware counts
+(0 Vivid, 1 Standard, 3 Game, 6 Computer, 7 Cinema, 12 HDR). The table stands with its evidence in
+`model.FIRMWARE_MODE`, origin
+[`doku/nachtlog/S14`](../../doku/nachtlog/S14-re-picture-mode.md) §1.2 - it belongs here because it was the
+last quantity the sentence "input x picture mode -> what has to be sent" was still missing.
 
-**`--json` liest weniger.** Für den Satz werden nur `pq_picturemode.ini`, `tvpq.db` und
-`pqcontrol_config_setting.xml` gebraucht (`quellen.DATEIEN_FUER_SATZ`). `pq_factory_extern.ini` ist 592 kB
-groß und allein 85 ms wert - am Gerät gemessen - und liegt seit der Korrektur vom 07.09. nicht mehr auf dem
-Rechenweg. Jede andere Ausgabe zeigt alles und liest darum auch alles. Was übersprungen wurde, steht in
-`fehlende_dateien` mit dem Vermerk „nicht angefordert"; keine Ausgabe tut so, als hätte sie die Datei
-gesehen.
+**`--json` reads less.** For the record only `pq_picturemode.ini`, `tvpq.db` and
+`pqcontrol_config_setting.xml` are needed (`sources.FILES_FOR_RECORD`). `pq_factory_extern.ini` is 592 kB and
+worth 85 ms on its own - measured on the device - and since the correction of 07.09. it is no longer on the
+computation path. Every other output shows everything and therefore reads everything. What was skipped stands
+in `fehlende_dateien` with the note "not requested"; no output pretends it had seen the file.
 
-**Eine unlesbare Datei ist nicht tödlich.** Seit h713-tv beim Start mitliest, wäre ein Abbruch beim Lesen
-ein Bild weniger: `quellen.lade` fängt Lesefehler je Datei ab und vermerkt sie. Eine zerschossene `tvpq.db`
-kostet dann die Kreuzprobe und den Modus `custom`, nicht die Presets. Was danach wirklich fehlt, fällt beim
-Rechnen auf - mit dem Namen, um den es geht.
+**An unreadable file is not fatal.** Since h713-tv reads along at start, an abort while reading would be one
+picture less: `sources.load` catches read errors per file and notes them. A wrecked `tvpq.db` then costs the
+cross-check and the mode `custom`, not the presets. What is really missing after that shows up while
+computing - with the name in question.
 
-## Datenquellen
+## Data sources
 
-Alle Dateien werden **nur gelesen und nie kopiert** - Vendor-Binärdaten bleiben unter `re/vendor/…`.
+Every file is **only read and never copied** - vendor binary data stay under `re/vendor/...`.
 
-| Datei | Was daraus benutzt wird |
+| File | What is used from it |
 |---|---|
-| `pq_picturemode.ini` | Bildmodus-Presets je **benanntem** Eingang (ATV, DTV, HDMI1-3, VGA1-3, CVBS, VIDEODEC): 13 Benutzerwerte je Modus |
-| `pq_factory_extern.ini` | `[PICTURE_CURVE_<Gruppe>]` - Werkskurven Helligkeit/Kontrast/Sättigung/Farbton/Schärfe mit fünf Stützstellen bei 0/25/50/75/100; `[PQ_ENABLE]` - Schalter |
-| `pq_colortemp.ini` | `[COLOR_TEMP_<Gruppe>]` - Weißabgleich (Gain 0..1023, Offset ±512) je Farbtemperatur |
-| `tvpq.db` | `Picture_Mode` (25 Zeilen), `White_Balance_Mode` (20), `Gamma_Point` (33) - als **Kreuzprobe** zur INI |
-| `pqcontrol_config_setting.xml` | `<transform name="gamma">` - Gamma-Index 0..4 → Exponent 1.8/2.0/2.1/2.2/2.4; Vorgabewerte |
-| `pqcontrol_custom_setting.xml` | zuletzt am Stock eingestellte Werte, aktive Quelle und Modus je Eingang |
-| `portmap.cfg` | Port ↔ Source-ID ↔ Name (HDMI1=1 … ATV=6) |
+| `pq_picturemode.ini` | picture mode presets per **named** input (ATV, DTV, HDMI1-3, VGA1-3, CVBS, VIDEODEC): 13 user values per mode |
+| `pq_factory_extern.ini` | `[PICTURE_CURVE_<group>]` - factory curves brightness/contrast/saturation/hue/sharpness with five sample points at 0/25/50/75/100; `[PQ_ENABLE]` - switches |
+| `pq_colortemp.ini` | `[COLOR_TEMP_<group>]` - white balance (gain 0..1023, offset +-512) per colour temperature |
+| `tvpq.db` | `Picture_Mode` (25 rows), `White_Balance_Mode` (20), `Gamma_Point` (33) - as a **cross-check** against the INI |
+| `pqcontrol_config_setting.xml` | `<transform name="gamma">` - gamma index 0..4 -> exponent 1.8/2.0/2.1/2.2/2.4; default values |
+| `pqcontrol_custom_setting.xml` | the values last set on stock, the active source and mode per input |
+| `portmap.cfg` | port - source ID - name (HDMI1=1 ... ATV=6) |
 
-Nicht ausgewertet, weil nicht Teil der PQ-Kette: `pq_overscan_config.ini` (Geometrie/Overscan),
-`atsc_system.xml`, `dvb_system.xml`, `tv_scan_list.xml` (Tuner/Demodulator, Kanalsuche),
-`panel_config/panel_config.ini` (Paneltiming), `HDMI_EDID_14/20.bin`.
+Not evaluated, because they are not part of the PQ chain: `pq_overscan_config.ini` (geometry/overscan),
+`atsc_system.xml`, `dvb_system.xml`, `tv_scan_list.xml` (tuner/demodulator, channel search),
+`panel_config/panel_config.ini` (panel timing), `HDMI_EDID_14/20.bin`.
 
-## Die Kette
+## The chain
 
 ```
-Eingang × Bildmodus                     pq_picturemode.ini  (Namen), tvpq.db (Kreuzprobe)
-   -> Benutzerwert 0..100               belegt: Vendor-Datei
-   -> RPC-Argument 0..100               NICHT gemessen - 1:1 durchgereicht, siehe unten
-   -> Register                          rechnet die Firmware, nicht wir
+input x picture mode                    pq_picturemode.ini  (names), tvpq.db (cross-check)
+   -> user value 0..100                 proven: vendor file
+   -> RPC argument 0..100               NOT measured - passed through 1:1, see below
+   -> register                          computed by the firmware, not by us
 ```
 
-Die **Werkskurve** aus `pq_factory_extern.ini` steht bewusst *nicht* mehr in dieser Kette. Sie bleibt als
-Vendor-Datum in der Ausgabe, ihr Verbraucher ist offen - siehe unten.
+The **factory curve** from `pq_factory_extern.ini` deliberately no longer stands in this chain. It stays in
+the output as a vendor datum, its consumer is open - see below.
 
-## Was belegt ist und was nicht
+## What is proven and what is not
 
-**Belegt - die Register der fünf PQ-Größen.** Aus der statischen RE der `UIvalueMapping`-Tabelle
-(`doku/85-re-pq-register.md` §A.1) und der Board-Abnahme (`doku/nachtlog/K5-board-verifikation.md` c/e/f):
+**Proven - the registers of the five PQ controls.** From the static RE of the `UIvalueMapping` table
+(`doku/85-re-pq-register.md` §A.1) and the board acceptance (`doku/nachtlog/K5-board-verifikation.md` c/e/f):
 
-| Größe | RPC | Item | Register | Feld | Registerinhalt | Stand |
+| Control | RPC | Item | Register | Field | Register content | State |
 |---|---|---|---|---|---|---|
-| Helligkeit | `SetBrightness` | 3 | `0x05001234` | `[15:0]` | = Argument | gemessen, wirkt (dunkles Material: std 12,6→22,7, `nachtlog/I0`) |
-| Kontrast | `SetContrast` | 4 | `0x05001234` | `[31:16]` | = Argument | gemessen, wirkt (0→100 = 12,16 % der Bildpunkte) |
-| Sättigung | `SetSaturation` | 5 | `0x05001238` | `[15:0]` | = Argument | gemessen, wirkt |
-| Farbton | `SetHue` | 6 | `0x05001238` | `[31:16]` | = Argument | gemessen 11.09., wirkt (0 magenta, 100 grün) |
-| Schärfe | `SetSharpness` | 7 | `0x05001228` | `[23:8]` | = Argument | gemessen 11.09.; Bildwirkung nicht einzeln vermessen |
+| brightness | `SetBrightness` | 3 | `0x05001234` | `[15:0]` | = argument | measured, effective (dark material: std 12.6->22.7, `nachtlog/I0`) |
+| contrast | `SetContrast` | 4 | `0x05001234` | `[31:16]` | = argument | measured, effective (0->100 = 12.16 % of the pixels) |
+| saturation | `SetSaturation` | 5 | `0x05001238` | `[15:0]` | = argument | measured, effective |
+| hue | `SetHue` | 6 | `0x05001238` | `[31:16]` | = argument | measured 11.09., effective (0 magenta, 100 green) |
+| sharpness | `SetSharpness` | 7 | `0x05001228` | `[23:8]` | = argument | measured 11.09.; effect on the picture not measured separately |
 
-**Alle fünf Felder dieses Blocks enthalten das RPC-Argument unverändert - 1:1, ohne Faktor.** Die drei
-Nachträge vom 11.09.2026 (Helligkeit wirkt doch, Farbton und Schärfe gemessen) stehen mit ihrer Herkunft in
-`doku/81-pq-datenmodell.md` §7 Punkte 3 und 4; Plan 113 §A.6 hat sie angefordert.
+**All five fields of this block hold the RPC argument unchanged - 1:1, without a factor.** The three
+additions of 11.09.2026 (brightness does work after all, hue and sharpness measured) stand with their origin
+in `doku/81-pq-datenmodell.md` §7 points 3 and 4; plan 113 §A.6 asked for them. The state column says what
+this table knows: "measured" means the register was read back on the device, "effective" means the change was
+seen on the picture as well. The older reading "measured, no effect" at brightness was refuted on 07.09.
+against dark material (`nachtlog/I0`) and is gone.
 
-**Belegt - der Sonderfall Sättigung.** `SetSaturation` schreibt als einziger der drei gemessenen RPCs ein
-**zweites** Register, den Chroma-Gain `0x05140508` Bits [23:16] im PROC-Block:
+**Proven - the special case saturation.** `SetSaturation` is the only one of the three measured RPCs that
+writes a **second** register, the chroma gain `0x05140508` bits [23:16] in the PROC block:
 
 ```
 SetSaturation(N)  ->  0x05001238 [15:0]  = N
-                  ->  0x05140508 [23:16] = floor(N × 1,28)
+                  ->  0x05140508 [23:16] = floor(N x 1.28)
 ```
 
-Gemessen bei `N` = 0 / 50 / 59 / 60 / 100 → `0x00` / `0x40` / `0x4B` / `0x4C` / `0x80`. Die Nachbarpunkte 59
-und 60 entscheiden die Rundungsart: 59 × 1,28 = 75,52, gemessen ist 75 - also **abrunden**. Der Faktor sitzt
-damit **nicht** zwischen RPC und PQ-Block (dort ist es 1:1), sondern auf diesem zweiten, nachgelagerten
-Schreibzugriff. Der Ruhewert der Firmware `0x144C0000` (`0x4C` = 76) entspricht genau `SetSaturation 60`;
-`prep_after_boot.sh` ruft `SetSaturation` gar nicht auf. Der Feldbereich, den die RPC-Skala 0..100 erreicht,
-ist damit `0x00..0x80` - `0xFF` (cstenger: übersättigt) ist über den RPC nicht erreichbar.
+Measured at `N` = 0 / 50 / 59 / 60 / 100 -> `0x00` / `0x40` / `0x4B` / `0x4C` / `0x80`. The neighbouring
+points 59 and 60 decide the kind of rounding: 59 x 1.28 = 75.52, measured is 75 - so **round down**. The
+factor therefore does **not** sit between RPC and PQ block (there it is 1:1) but on this second, downstream
+write. The firmware's idle value `0x144C0000` (`0x4C` = 76) is exactly `SetSaturation 60`;
+`prep_after_boot.sh` does not call `SetSaturation` at all. The field range the RPC scale 0..100 reaches is
+thus `0x00..0x80` - `0xFF` (cstenger: oversaturated) cannot be reached through the RPC.
 
-**Offen - hat Kontrast/Helligkeit ein solches zweites Register auch?** Unbekannt, und nicht geraten. Die
-Board-Abnahme hat für Kontrast und Helligkeit nur den PQ-Block `0x05001xxx` abgezogen, nicht den PROC-Block;
-und `doku/85` §A.7 hält fest, dass für `0x05140508` im Abbild **kein** statischer Schreiber existiert (der
-Zugriff ist registerindirekt). Messvorschrift: die Messung aus K5-Abnahme (c)/(e) wiederholen und dabei
-`0x05140000…0x051405FC` mit abziehen.
+**Open - does contrast/brightness have such a second register too?** Unknown, and not guessed. The board
+acceptance dumped only the PQ block `0x05001xxx` for contrast and brightness, not the PROC block; and
+`doku/85` §A.7 records that for `0x05140508` **no** static writer exists in the image (the access is register
+indirect). How to measure it: repeat the measurement from the K5 acceptance (c)/(e) and dump
+`0x05140000...0x051405FC` along with it.
 
-**Offen - die Stufe Benutzerwert → RPC-Argument.** Sie ist nicht gemessen. Belegt ist nur, was links und
-rechts davon steht: die Vendor-Presets laufen 0..100, und der RPC nimmt 0..100 (`SetContrast 20/80/100`,
-`SetSaturation 0/50/100`). `h713-pq` reicht den Benutzerwert deshalb unverändert durch und schreibt das an
-jeder Ausgabestelle dazu.
+**Open - the step user value -> RPC argument.** It is not measured. Proven is only what stands left and right
+of it: the vendor presets run 0..100, and the RPC takes 0..100 (`SetContrast 20/80/100`,
+`SetSaturation 0/50/100`). `h713-pq` therefore passes the user value through unchanged and writes that at
+every point of output.
 
-**Offen - wer verbraucht die Werkskurve?** Die Kurve kann diese Stufe **nicht** sein: ihre Werte laufen bis
-192 (Sättigung) bzw. 3588 (Kontrast), das Argument nachweislich nur bis 100, und der Registerinhalt ist das
-Argument, nicht der Kurvenwert. Legte man die Kurve trotzdem darüber (auf 0..100 normiert), wäre das Ergebnis
-für **jeden** Sättigungswert dieser Vendor-Daten identisch: die einzige Abweichung im ganzen Bereich liegt bei
-Benutzerwert 75 (→ 76), und 75 kommt in keinem Preset vor (vorkommende Werte: 45, 50, 60). Die offene Stufe
-ändert heute also nichts - das ist der Grund, warum sie offen bleiben darf, statt geraten zu werden. Ein Test
-sichert genau das ab (`test_offene_stufe_aendert_heute_nichts`).
+**Open - who consumes the factory curve?** The curve **cannot** be this step: its values run up to 192
+(saturation) and 3588 (contrast), the argument demonstrably only up to 100, and the register content is the
+argument, not the curve value. Laying the curve over it anyway (normalized onto 0..100), the result would be
+identical for **every** saturation value of these vendor data: the only deviation in the whole range sits at
+user value 75 (-> 76), and 75 occurs in no preset (values that occur: 45, 50, 60). So the open step changes
+nothing today - that is the reason why it may stay open instead of being guessed. A test locks exactly that
+down (`test_open_step_changes_nothing_today`).
 
-**Belegt - Gamma-LUT-Format.** DE2-Bänke `0x05208000` (R), `0x05208800` (G), `0x05209000` (B), je 512 × u32 mit
-`u32[i] = (lut[2i+1] << 12) | lut[2i]`; Steuerung `0x051C00E8`, Status `0x051C0174`, Schreibsequenz in
-`legacy/userspace/hy310-pqd/BACKGROUND.md` §5.3. Die Sequenz führt **Paket H im Kernel** aus, nicht dieses
-Werkzeug. Der Gamma-Index→Exponent-Bezug ist dreifach belegt: `pqcontrol_config_setting.xml`
-(`level0..level4` = 1.8/2.0/2.1/2.2/2.4), der Kommentarkopf von `pq_picturemode.ini`
-(`#gamma :0-1.8,1-2.0,2-2.1,3-2.2,4-2.4`) und die Tabelle `dword_4A50` (180/200/210/220/240) aus
-`libhaldisplay.so`.
+**Proven - the gamma LUT format.** DE2 banks `0x05208000` (R), `0x05208800` (G), `0x05209000` (B), each
+512 x u32 with `u32[i] = (lut[2i+1] << 12) | lut[2i]`; control `0x051C00E8`, status `0x051C0174`, write
+sequence in `legacy/userspace/hy310-pqd/BACKGROUND.md` §5.3. The sequence is carried out by **package H in the
+kernel**, not by this tool. The relation gamma index -> exponent is proven three times over:
+`pqcontrol_config_setting.xml` (`level0..level4` = 1.8/2.0/2.1/2.2/2.4), the comment header of
+`pq_picturemode.ini` (`#gamma :0-1.8,1-2.0,2-2.1,3-2.2,4-2.4`) and the table `dword_4A50`
+(180/200/210/220/240) from `libhaldisplay.so`.
 
-**Offen - die `tvin`-Nummerierung von `tvpq.db`.** Die INI benennt ihre Eingänge, die Datenbank nummeriert sie.
-Aus den ausgelieferten Dateien lässt sich die Nummer nur eingrenzen (`list` zeigt die Kandidaten), nicht
-auflösen. Deshalb rechnet `h713-pq` über die **benannten INI-Sektionen** und benutzt die Datenbank nur zur
-Kreuzprobe über die Spalte `name`.
+**Open - the `tvin` numbering of `tvpq.db`.** The INI names its inputs, the database numbers them. From the
+shipped files the number can only be narrowed down (`list` shows the candidates), not resolved. Therefore
+`h713-pq` computes over the **named INI sections** and uses the database only as a cross-check over the column
+`name`.
 
-**Leer in den Daten.** `Gamma_Point` ist durchgängig 0 (als Kurve unbrauchbar - Stock rechnet die Punkte zur
-Laufzeit, BACKGROUND.md §6.2), und der Weißabgleich ist überall neutral (Gain 512/512/512, Offset 0). Deshalb
-sind die drei LUT-Bänke identisch, und `h713-pq gamma` geht vom Exponenten aus.
+**Empty in the data.** `Gamma_Point` is zero throughout (unusable as a curve - stock computes the points at
+run time, BACKGROUND.md §6.2), and the white balance is neutral everywhere (gain 512/512/512, offset 0). That
+is why the three LUT banks are identical and `h713-pq gamma` works from the exponent alone.
 
-## Aufbau
+## Layout
 
-Drei Module, streng getrennt - eins liest, eins rechnet, eins gibt aus:
+Three modules, strictly separated - one reads, one computes, one prints:
 
-| Datei | Rolle |
+| File | Role |
 |---|---|
-| `h713_pq/quellen.py` | liest SQLite, INI (eigener Parser), XML, `portmap.cfg`; rechnet nichts |
-| `h713_pq/modell.py` | RPC-Argumente und ihre Zielregister (`PQ_ZIELE`), Chroma-Gain als Kontrollwert, Werkskurve, Gamma-Stützpunkte → LUT → DE2-Packung; liest keine Dateien |
-| `h713_pq/ausgabe.py` | Tabellen, LUT-Datei, Board-Befehlszeilen |
-| `h713_pq/cli.py` | Befehlszeile |
+| `h713_pq/sources.py` | reads SQLite, INI (its own parser), XML, `portmap.cfg`; computes nothing |
+| `h713_pq/model.py` | RPC arguments and their target registers (`PQ_TARGETS`), chroma gain as a control value, factory curve, gamma sample points -> LUT -> DE2 packing; reads no files |
+| `h713_pq/output.py` | tables, LUT file, board command lines |
+| `h713_pq/cli.py` | command line |
 
-Der Vendor-INI-Dialekt (Werte mit Fortsetzungs-`\`, indizierte Schlüssel wie `PICTURE_CURVE_SETTINGS[3]`,
-doppelte Schlüssel in einer Sektion) verträgt sich nicht mit `configparser`; `quellen.py` bringt deshalb einen
-eigenen, sehr kleinen Leser mit.
+The vendor INI dialect (values with a continuation `\`, indexed keys such as `PICTURE_CURVE_SETTINGS[3]`,
+duplicate keys inside one section) does not agree with `configparser`; `sources.py` therefore brings its own,
+very small reader.
 
 ## Tests
 
 ```bash
-python3 tests/test_h713_pq.py            # 33 Tests
+python3 tests/test_h713_pq.py            # 45 tests
 ```
 
-Die Tests lesen die **echten** Vendor-Dateien zur Laufzeit und überspringen sich sauber, wenn das
-tvconfig-Verzeichnis fehlt. `tests/legacy_ref.cpp` ist der Vergleichsharness: er baut gegen
-`legacy/userspace/hy310-pqd/src/pqgamma.cpp` und schreibt dieselbe DE2-Bank; der Test `TestGegenLegacy` vergleicht
-sie byteweise für die Exponenten 1.0/1.8/2.0/2.1/2.2/2.4 (fehlt der Legacy-Baum oder `g++`, wird übersprungen).
-Der Legacy-Rechner und `h713-pq` sind bitgleich.
+The tests read the **real** vendor files at run time and skip themselves cleanly when the tvconfig directory
+is missing. `tests/legacy_ref.cpp` is the comparison harness: it builds against
+`legacy/userspace/hy310-pqd/src/pqgamma.cpp` and writes the same DE2 bank; the test `TestAgainstLegacy`
+compares them byte by byte for the exponents 1.0/1.8/2.0/2.1/2.2/2.4 (if the legacy tree or `g++` is missing,
+it is skipped). The legacy calculator and `h713-pq` are bit-identical.
 
-Die Sättigungs-Tests prüfen die **gemessenen** Punkte aus K5-Abnahme (f) direkt (`0/50/59/60/100` →
-`0x00/0x40/0x4B/0x4C/0x80`), nicht mehr eine Zwischenrechnung. Wo die Korrektur einen Erwartungswert geändert
-hat, steht die Begründung im Test selbst.
+The saturation tests check the **measured** points from the K5 acceptance (f) directly (`0/50/59/60/100` ->
+`0x00/0x40/0x4B/0x4C/0x80`), no longer an intermediate computation. Where the correction changed an expected
+value, the reason stands in the test itself.
 
-## Schreiben - über den RPC, nicht ins Register
+## Writing - over the RPC, not into the register
 
-`h713-pq` schreibt nichts. Der ausgegebene Schreibpfad für die Sättigung ist seit der Korrektur der **RPC**,
-so wie Stock ihn benutzt:
+`h713-pq` writes nothing. Since the correction, the write path it prints for the saturation is the **RPC**,
+the way stock uses it:
 
 ```
 ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetSaturation 60'
 ```
 
-Das Gain-Byte von Hand ins Register zu schreiben (wie es `analyse/hdmi-seq/pq_saturation.py` tut) umgeht den
-PQ-Block `0x05001238` und alles, was daran hängt. **`pq_saturation.py` trägt außerdem noch die widerlegte
-Formel** `round(0x4C × Kurve(u) / Kurve(50))`; es ist damit für `standard` um 12 Gain-Stufen daneben. Das
-Skript gehört nicht zu diesem Paket (und eine Kopie liegt auf dem Board unter `/root/`), deshalb wurde es hier
-nicht angefasst - es sollte aber zurückgezogen oder auf den RPC-Weg umgestellt werden.
+Writing the gain byte into the register by hand (as `analyse/hdmi-seq/pq_saturation.py` does) bypasses the PQ
+block `0x05001238` and everything that hangs on it. **`pq_saturation.py` also still carries the refuted
+formula** `round(0x4C x curve(u) / curve(50))`; it is thus 12 gain steps off for `standard`. The script does
+not belong to this package (and a copy lies on the board under `/root/`), which is why it was not touched
+here - but it should be withdrawn or moved onto the RPC path.
