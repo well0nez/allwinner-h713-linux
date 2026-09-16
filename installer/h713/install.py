@@ -842,6 +842,13 @@ def write_package(args, disk, path, directory, tab, here=None):
                                "table without `nutzer`, older than layout v4) -- the key "
                                "would not arrive. Aborted.")
         console.warn("--ssh-key therefore has no effect")
+    # Asked once, here, and not where the first mount happens: a run that cannot mount cannot
+    # install, and the user should hear that before the extraction has cost them ten minutes.
+    if (files or user) and not args.no_write:
+        why = mountfs.unusable()
+        if why:
+            console.error(why)
+            return 2
 
     sources = {}
     if files:
@@ -870,10 +877,6 @@ def write_package(args, disk, path, directory, tab, here=None):
                 return no_vendor_source(args.dump_dir, len(files), console, str(e))
             sources = dict((f["name"], None) for f in files)
         else:
-            why = mountfs.unusable()
-            if why:
-                console.error(why)
-                return 2
             sources, problem = device_sources(disk, tab, files, console)
             if problem:
                 return no_vendor_source(args.dump_dir, len(files), console, problem)
