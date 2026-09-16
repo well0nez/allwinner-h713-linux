@@ -1,0 +1,85 @@
+media: sun50i-h713-hdmirx: no source switch on a hot-plugged port
+
+The first publication of a boot ends in the source switch (away to VideoDec
+and back to HDMI-1) that makes the firmware rebuild its V_INCAP group. That
+switch kills a port that was plugged in after boot. Measured 15.09.2026 on
+the HY310, three times (umbau/test-20260915/hdmi-firstplug-dev3-211334.log,
+plug-dev4-*.log): source plugged in, firmware locks, h713-tv shows the
+picture, the switch runs, and from then on the firmware's record says no
+signal, the flip pointers stand, the repeat of 0130 finds nothing to repeat
+on, and the console is back until the cable is pulled and put back. The
+same 120 ms, 2 s and 54 s after the lock - it is the switch on a hot-plugged
+port, not its timing. That is the known issue "No picture after plugging a
+source in" (docs/known-issues.md), and the reason "ctl replug" helped: after
+an HPD cycle the firmware enables the capture by itself ("Capture laeuft
+inzwischen von selbst", 12.09.).
+
+So a first publication after a hot plug (a HotPlug callback was seen since
+boot; a boot with the source already plugged has none and keeps the switch,
+which is measured to work there) takes the path of a republication: the
+window chain was built when the port locked, so the capture is released
+directly and held. If that does not hold, the slow repeat of 0130 follows -
+never the fast switch.
+
+Also say at info level when the repeat waits for a signal; it was a dev_dbg
+and the release kernel has no dynamic debug.
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-16 01:23:07.163098365 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-16 01:23:07.182257037 +0200
+@@ -2186,9 +2186,27 @@
+ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ {
+ 	bool erste = !rx->desc_seen;
+-	bool wechsel = erste;
++	/*
++	 * The fast source switch kills a port that has been locked for a while.
++	 * Measured 15./16.09.2026 on the HY310, five runs: a source plugged in
++	 * after boot (the switch 120 ms, 2 s and 54 s after the lock) and a
++	 * source plugged in at boot with the switch 48 s after the lock - the
++	 * firmware reports no signal from the switch on until the cable is pulled
++	 * and put back. Only the switch right after the boot lock (100 ms) is
++	 * measured to work. So every first publication now takes the path of a
++	 * republication first: the window chain was built when the port locked,
++	 * so the capture is released directly and held (measured to work for a
++	 * hot-plugged port, 16.09.). The switch stays as the fallback, and after
++	 * a hot plug the slow repeat (0130) takes its place, never the fast switch.
++	 */
++	bool heiss = erste && READ_ONCE(rx->hotplug_count);
++	bool wechsel = false;
+ 
+ 	rx->desc_seen = true;
++	if (erste)
++		dev_info(rx->dev,
++			 "Freigabe: erste Veroeffentlichung%s -- Capture wird direkt freigegeben, Quellenwechsel nur als Rueckfall\n",
++			 heiss ? " nach Hot-Plug" : "");
+ 
+ 	/*
+ 	 * The source switch below is right for the FIRST publication and wrong
+@@ -2297,6 +2315,17 @@
+ 			dev_warn(rx->dev,
+ 				 "Freigabe: direkte Freigabe hat nach %u ms nicht gehalten; Quellenwechsel als Rueckfall -- der baut die Fensterkette neu und verliert dabei die Geometrie (doku/nachtlog/S7)\n",
+ 				 H713_REARM_TIMEOUT_MS);
++		if (heiss) {
++			/* not the fast switch: it kills a hot-plugged port (see above) */
++			dev_warn(rx->dev,
++				 "Freigabe: heiss gesteckter Port -- statt des Quellenwechsels folgt die langsame Wiederholung in %u ms\n",
++				 H713_RETRY_SETTLE_MS);
++			rx->rearm_pending = true;
++			rx->rearm_retries = 0;
++			mod_delayed_work(system_wq, &rx->rearm_retry_work,
++					 msecs_to_jiffies(H713_RETRY_SETTLE_MS));
++			return;
++		}
+ 	}
+ 
+ 	if (h713_hdmirx_switch_source(rx))
+@@ -2371,7 +2400,7 @@
+ 	    sig.signal_id == H713_SIGNAL_ID_NONE ||
+ 	    sig.signal_id == H713_SIGNAL_ID_UNKNOWN ||
+ 	    !sig.h_size || !sig.v_size) {
+-		dev_dbg(rx->dev, "Freigabe: Wiederholung wartet auf ein Signal\n");
++		dev_info(rx->dev, "Freigabe: Wiederholung wartet auf ein Signal -- die Firmware meldet keines\n");
+ 		return;
+ 	}
+ 

@@ -1,0 +1,54 @@
+media: sun50i-h713-hdmirx: a release in progress is a change in flight
+
+While the driver releases the capture after a publication - the source
+switch of a first publication (536..544 ms) or the direct release (up to
+150 ms) - the flip pointers stand, and QUERY_DV_TIMINGS answered "no
+signal" (-ENOLINK). h713-tv then took the plane down and put the console
+on the wall, and a second later the next event brought the picture back.
+Measured 16.09.2026 at a boot with the source plugged in: plane on at
+7.2 s, console at 7.3 s, plane on again at 8.3 s.
+
+Say "a change in flight" (-ENOLCK) instead while the release runs: that is
+what it is, and h713-tv already handles it - it keeps what is on the wall
+and asks again, for up to two seconds.
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-16 01:17:59.966289310 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-16 01:17:59.977183510 +0200
+@@ -1028,6 +1028,7 @@
+ 	unsigned int rearm_retries;
+ 	bool desc_seen;			/* eine Descriptor-Veroeffentlichung lag schon an */
+ 	bool rearm_pending;		/* der Quellenwechsel fand kein Signal: beim naechsten wiederholen */
++	bool rearm_busy;		/* the release after a publication is running: no signal verdict yet */
+ 
+ 	/* last callback payloads, for debugfs and the source change event */
+ 	spinlock_t event_lock;
+@@ -2451,7 +2452,19 @@
+ 	struct h713_hdmirx *rx = container_of(work, struct h713_hdmirx,
+ 					      rearm_work);
+ 
++	/*
++	 * While the release runs, the flip pointers stand for up to a second
++	 * (the source switch of a first publication takes 536..544 ms, the
++	 * direct release up to 150 ms). QUERY_DV_TIMINGS reports that as "a
++	 * change in flight" (-ENOLCK) instead of "no signal" (-ENOLINK), so
++	 * that h713-tv keeps the plane up and asks again, rather than putting
++	 * the console on the wall for a second right after the picture came
++	 * up -- measured 16.09.2026 at a boot with the source plugged: plane
++	 * on at 7.2 s, console at 7.3 s, plane on again at 8.3 s.
++	 */
++	WRITE_ONCE(rx->rearm_busy, true);
+ 	h713_hdmirx_rearm(rx);
++	WRITE_ONCE(rx->rearm_busy, false);
+ }
+ 
+ /*
+@@ -2852,7 +2865,7 @@
+ 	h713_hdmirx_watch_ring(rx, &ring, H713_RING_WATCH_FLIPS,
+ 			       H713_RING_WATCH_MS);
+ 	if (!ring.flips)
+-		return -ENOLINK;
++		return READ_ONCE(rx->rearm_busy) ? -ENOLCK : -ENOLINK;
+ 
+ 	ret = h713_hdmirx_read_signal_info(rx, &sig);
+ 	if (ret && ret != -ENOENT)

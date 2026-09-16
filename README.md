@@ -46,10 +46,6 @@ Not there yet: **Bluetooth** (driver builds, the firmware split has not been don
 not a compositor. Hardware video decode, the IOMMU and the Mali GPU come from cstenger's tree and are
 verified there, not re-tested in this image. Details and honest limits: [docs/known-issues.md](docs/known-issues.md).
 
-**Source switching is not reliable yet.** Leave the service in its automatic mode (`h713-tv ctl auto`,
-the default) - that is where it behaves best. Plugging a source in while the projector runs sometimes
-gives no picture; `h713-tv ctl replug` fixes it. Details: [docs/known-issues.md](docs/known-issues.md).
-
 **These projectors have no HDMI output.** The projector itself is the only display. HDMI is an *input*.
 
 ## Read order
