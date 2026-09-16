@@ -4,7 +4,7 @@ Snapshot of **2026-09-16**. "Works" means *verified on the projector*, with the 
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is a development build of 16.09. (internally `v0.7-dev10`) from the
+The image on the test device is a development build of 16.09. (internally `v0.7-dev14`) from the
 commits the release is built from. What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
@@ -65,7 +65,21 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | HDCP 1.4 | missing | path understood, one test costs a power cycle | `doku/112` |
 | HDCP 2.2 | works, device-local | key read from *your* device at boot, never shipped | `h713-hdcp-key.service` |
 
-## Changes since v0.6-beta
+## Changes since v0.7-beta
+
+Device runs on the HY310 on 16.09.2026 (`v0.7-dev13`, `v0.7-dev14`; German account in `umbau/reviews/P1.md`,
+`P2.md`, `N1.md`, `N2.md` and `doku/61`):
+
+- **Layout v4 - no placeholders.** The image carries only target directories; `h713-install` mounts its working copy's
+  two file systems and copies the device's files in with their real size, mode and owner, and reads them back from an
+  installed device the same way (read-only mount). A v0.7-beta image and the current installer refuse each other.
+- **Reinstall over our layout** without a dump and without `--vendor`; the small dump only with `--dump`.
+- **Optional groups:** Wi-Fi firmware and picture-preset files a firmware lacks are said and left out (issue #1).
+- **Device tools in English:** `h713-tv`, `h713-pq`, `h713-fel`, `h713-focus`, `h713-cam`; old `tv.conf` words stay accepted.
+- **Msgbox lines** 46/109/108 in the device tree, watchdog on 53, `cpu_comm` requests only its own line; the two
+  `IRQ index not found` lines are gone. Sixteen kernel patches refreshed; `ping`, `curl`, `wget`, `nc` in the rootfs.
+
+## Changes since v0.6-beta (in v0.7-beta)
 
 All of these have been through device runs on the HY310 on 15./16.09.2026 (German account in `doku/125`,
 `doku/124` and `doku/61`):

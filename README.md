@@ -133,15 +133,15 @@ Wi-Fi, focus motor, camera, recovery) is described below for the HY310, the boar
 ## Getting it running
 
 ```bash
-release/build-all.sh --version v0.7-beta --vendor <your extraction>   # image, from a clean clone
-release/build-all.sh --version v0.7-beta --board hy300-pro --test-image  # a test image for a board in test
+release/build-all.sh --version v0.8-beta --vendor <your extraction>   # image, from a clean clone
+release/build-all.sh --version v0.8-beta --board hy300-pro --test-image  # a test image for a board in test
 installer/h713-install --help                                         # identify, dump, install, restore
 ```
 
 The image ships **no proprietary files**. Firmware for the display, the ARISC, Wi-Fi, the picture
-tables and the boot logo are placeholders that [`h713-extract`](docs/tools/h713-extract.md) fills from **your own** device
-dump during installation. That is why the installer wants a dump, and why nothing here needs a licence
-you don't already have.
+tables and the boot logo come from **your own** device: [`h713-extract`](docs/tools/h713-extract.md) takes them out of
+your dump and the installer copies them into the image while installing, as ordinary files of any size. That is
+why the installer wants a dump, and why nothing here needs a licence you don't already have.
 
 ## Layout
 
