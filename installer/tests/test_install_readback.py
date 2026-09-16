@@ -423,6 +423,17 @@ class OurLayout(Driven):
         self.assertNotIn("mount -t ext4", out)
         self.assertNotIn("needs root", out)
 
+    def test_a_run_that_means_it_says_in_one_sentence_that_it_needs_root(self):
+        """The files go in through a mount, so a run that cannot mount stops at step 4 --
+        before the extraction has cost anybody ten minutes and before anything is written."""
+        if mountfs.unusable() is None:
+            raise unittest.SkipTest("this run can mount (root), so the refusal cannot happen")
+        code, out = self.install()                  # no --no-write: this one means it
+        self.assertEqual(code, 2, out)
+        self.assertIn("mounting the image needs root -- start h713-install with sudo", out)
+        self.assertNotIn("Type YES to continue", out)
+        self.untouched(out)
+
     def test_vendor_still_wins_over_the_device(self):
         out_dir = extraction(os.path.join(self.tmp, "vendor"),
                              self.release.table()["dateien"])
