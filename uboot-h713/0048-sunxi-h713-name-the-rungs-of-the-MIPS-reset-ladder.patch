@@ -1,0 +1,88 @@
+From fa814f5afdc739c34c6ff7c9f5786ef528ba32fd Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:20:08 +0200
+Subject: [PATCH 48/77] sunxi: h713: name the rungs of the MIPS reset ladder
+
+The four values written to 0x0200160c were called STAGE1..STAGE3 and
+RELEASED, which says they are ordered and nothing else. The vendor device
+tree names every bit of that register: mipsloader@3061000 declares resets
+<&ccu 1>, <&ccu 2>, <&ccu 3> as "bus-reset", "cold-reset", "soft-reset",
+and entries 1/2/3 of sun50iw12_ccu_resets are bits 16, 17 and 18 (A7
+report, 5). Bit 0 is the bus-clk gate, as in every other Allwinner BGR
+register.
+
+So write it down: 0x00010000 is bus-reset released, 0x00030000 adds
+cold-reset, 0x00030001 turns the bus clock on, and 0x00070001 releases
+soft-reset -- which is the whole of what the vendor kernel's ioctl start
+does, right after writing the boot address, and therefore why we write
+0x03061030 immediately before it. The ladder was already the kernel's
+mips_reset() order exactly; now that is auditable instead of asserted.
+
+Comment only, no value changes.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 42 +++++++++++++++++++++++++++++----
+ 1 file changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 2fd5f70c841..6eb9cd3b7da 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -47,11 +47,39 @@
+ 
+ #define H713_MIPS_CLK_VALUE		0x80000002
+ #define H713_MIPS_CLK_DISABLED		0x00000000
++
++/*
++ * The reset ladder, with the vendor's own names for its rungs.
++ *
++ * 0x0200160c is the MIPS bus-gating-and-reset register, and the vendor device
++ * tree names every bit in it. mipsloader@3061000 declares
++ *
++ *	resets      = <&ccu 1>, <&ccu 2>, <&ccu 3>;
++ *	reset-names = "bus-reset", "cold-reset", "soft-reset";
++ *	clocks      = <&ccu 27>, <&ccu 26>;
++ *	clock-names = "bus-clk", "mips-clk";
++ *
++ * and entries 1/2/3 of sun50iw12_ccu_resets are bits 16, 17 and 18 of this
++ * register (A7 report, 5). Bit 0 is the bus-clk gate, as in every other
++ * Allwinner BGR register. So the stages are, in the order the kernel's
++ * mips_reset() issues them:
++ *
++ *	0x00000000  everything asserted, gate off -- the parked state
++ *	0x00010000  bus-reset deasserted
++ *	0x00030000  cold-reset deasserted as well
++ *	0x00030001  bus clock gated on
++ *	0x00070001  soft-reset deasserted: the core starts fetching
++ *
++ * The last line is what the vendor kernel's ioctl start does and nothing
++ * else: mips_reset() brings the first four up, and the "start" opcode of
++ * ioctl 0x10648 writes the boot address and then deasserts bit 18. That is
++ * why we write 0x03061030 immediately before it.
++ */
+ #define H713_MIPS_RESET_ASSERTED	0x00000000
+-#define H713_MIPS_RESET_STAGE1		0x00010000
+-#define H713_MIPS_RESET_STAGE2		0x00030000
+-#define H713_MIPS_RESET_STAGE3		0x00030001
+-#define H713_MIPS_RESET_RELEASED	0x00070001
++#define H713_MIPS_RESET_STAGE1		0x00010000	/* bus-reset    */
++#define H713_MIPS_RESET_STAGE2		0x00030000	/* + cold-reset */
++#define H713_MIPS_RESET_STAGE3		0x00030001	/* + bus clock  */
++#define H713_MIPS_RESET_RELEASED	0x00070001	/* + soft-reset */
+ #define H713_MIPS_STATUS_RELEASED	0x00000001
+ 
+ /*
+@@ -3658,6 +3686,12 @@ static void h713_mips_print_trace(void)
+ 				   H713_MIPS_SHMEM_CALL_NEXT_OFF));
+ }
+ 
++/*
++ * The whole ladder in one place: clock, then bus-reset, cold-reset, bus gate,
++ * and finally soft-reset with the boot address already written. The stages and
++ * their order are the vendor kernel's mips_reset() exactly; see the reset
++ * register's own comment for which bit is which.
++ */
+ static int h713_mips_release_reset(bool publish_shmem)
+ {
+ 	writel(H713_MIPS_CLK_VALUE, H713_MIPS_CLK_REG);

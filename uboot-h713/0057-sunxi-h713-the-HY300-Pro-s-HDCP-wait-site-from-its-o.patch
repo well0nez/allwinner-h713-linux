@@ -1,0 +1,42 @@
+From 0b2a9645dff515547e9763351741177f059f5b0b Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 09:32:20 +0200
+Subject: [PATCH 57/77] sunxi: h713: the HY300 Pro's HDCP wait site, from its
+ owner's probe run
+
+issue #1, probe of 2026-09-14: display.bin 0x131f10 / cf9649bc..., wait
+loop at 0x4b13d1b0. The row had zero; the run-time search now has a value
+to agree with.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index f95de4f4b00..45c3121219b 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -480,10 +480,10 @@ static const struct h713_mips_fw_rev h713_mips_fw_revs[] = {
+ 	{
+ 		/*
+ 		 * The HY300 Pro's, build 24-5-7, from the size and SHA-256 its
+-		 * owner reported in issue #1. Nobody here has the image, so
+-		 * the wait site is unknown and stays zero: the search finds it
+-		 * on the device, and there is nothing to cross-check it
+-		 * against until someone posts a probe run.
++		 * owner reported in issue #1. Nobody here has the image; the
++		 * wait site is the one the probe found on his device
++		 * (issue #1, probe run of 2026-09-14), so the run-time search
++		 * now has something to agree with.
+ 		 *
+ 		 * Without this row that board is refused on its size alone,
+ 		 * before anything has been read -- which is the refusal
+@@ -491,6 +491,7 @@ static const struct h713_mips_fw_rev h713_mips_fw_revs[] = {
+ 		 */
+ 		.board = "HY300 Pro",
+ 		.size = 0x131f10,
++		.hdcp_wait_va = 0x4b13d1b0,
+ 		.digest = {
+ 			0xcf, 0x96, 0x49, 0xbc, 0xc8, 0x4a, 0x11, 0x1c,
+ 			0xe5, 0x90, 0xfc, 0x7a, 0xcd, 0xe7, 0x23, 0xc2,

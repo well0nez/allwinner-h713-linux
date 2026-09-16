@@ -1,7 +1,7 @@
 From f992ea51e6286d6475203287799ffbd4bea285ab Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Thu, 10 Sep 2026 00:11:41 +0200
-Subject: [PATCH 22/40] env: mmc: keep a default offset of 2 GiB or more intact
+Subject: [PATCH 22/77] env: mmc: keep a default offset of 2 GiB or more intact
 
 mmc_offset() hands the Kconfig default to ofnode_conf_read_int(), whose
 default parameter and return value are int. An offset of 2 GiB or more

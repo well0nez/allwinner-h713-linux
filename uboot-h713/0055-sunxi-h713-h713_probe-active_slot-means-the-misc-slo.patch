@@ -1,0 +1,35 @@
+From e4dadcbeb5b1de05430927f89c1e246b428af9d6 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 21:15:52 +0200
+Subject: [PATCH 55/77] sunxi: h713: h713_probe, active_slot means the misc
+ slot, not the partition
+
+The row printed the partition the artifacts were read from under the key
+the installer's identify() uses for the A/B slot suffix. Print the suffix
+there and the partition as mips.source.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 165d9a36958..a6359dde338 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -12473,7 +12473,14 @@ static void h713_probe_profile_row(void)
+ 	else
+ 		printf("hdcp_wait_va: not found\n");
+ 
+-	printf("active_slot: %s\n",
++	/*
++	 * active_slot is what misc says ("_a"/"_b"; "_a" when there is no misc
++	 * or no control block), the same meaning the installer's identify()
++	 * gives that key. Where the artifacts were actually read from is the
++	 * next line, since on our layout that is neither slot.
++	 */
++	printf("active_slot: %s\n", h713_disp_slot_suffix());
++	printf("mips.source: %s %s\n", H713_DISP_FS_IF,
+ 	       h713_probe_dev_used[0] ? h713_probe_dev_used : "none");
+ 
+ 	h713_probe_row_slot("mips.bootloader_a", "1#bootloader_a", da, &la, &ra);

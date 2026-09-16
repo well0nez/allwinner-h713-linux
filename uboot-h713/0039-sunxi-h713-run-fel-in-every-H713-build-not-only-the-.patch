@@ -1,7 +1,7 @@
 From 359e96cda5b3f415fd67003eebb63f9491fe14ea Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 11:20:55 +0200
-Subject: [PATCH 39/40] sunxi: h713: "run fel" in every H713 build, not only
+Subject: [PATCH 39/77] sunxi: h713: "run fel" in every H713 build, not only
  the three that load hy310.env
 
 "run fel" -- set the efex flag in RTC GP2 until it reads back, wait,

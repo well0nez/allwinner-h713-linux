@@ -1,0 +1,49 @@
+From 3af177de26fc5c0c55ea4c5b02b504c699aa76ba Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 16 Sep 2026 11:04:26 +0200
+Subject: [PATCH 75/77] mmc: sunxi: cap a legacy-path command at the descriptor
+ chain as well
+
+The DM probe already does this; the legacy path that the SPL uses kept the
+full CONFIG_SYS_MMC_MAX_BLK_COUNT of 65535 blocks. With the IDMA on in the
+SPL that is a trap: a single command larger than the 1 MiB the chain covers
+is rejected by sunxi_mmc_dma_capable() and quietly served by the PIO path
+instead, so the SPL would get slower the moment U-Boot grows past 1 MiB,
+with nothing on the UART to say why.
+
+mmc_bread() splits at b_max already (drivers/mmc/mmc.c:552), so capping it
+costs one more command per megabyte and nothing else. Today's largest SPL
+read is the U-Boot image at 1724 blocks, still one command.
+
+Without CONFIG_MMC_SUNXI_IDMA, SUNXI_MMC_IDMA_MAX_BLOCKS is
+CONFIG_SYS_MMC_MAX_BLK_COUNT and the line is a no-op, so no other sunxi
+board changes. hy310_defconfig, clang 20: spl/u-boot-spl.bin unchanged at
+31648 bytes - the minimum folds at compile time.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ drivers/mmc/sunxi_mmc.c | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/mmc/sunxi_mmc.c b/drivers/mmc/sunxi_mmc.c
+index c3d23ad10fd..e337b8f0f94 100644
+--- a/drivers/mmc/sunxi_mmc.c
++++ b/drivers/mmc/sunxi_mmc.c
+@@ -877,7 +877,16 @@ struct mmc *sunxi_mmc_init(int sdc_no)
+ 		cfg->host_caps = MMC_MODE_8BIT;
+ 
+ 	cfg->host_caps |= MMC_MODE_HS_52MHz | MMC_MODE_HS;
+-	cfg->b_max = CONFIG_SYS_MMC_MAX_BLK_COUNT;
++	/*
++	 * One command has to fit into one descriptor chain, as in the DM probe
++	 * below.  Without the IDMA this is CONFIG_SYS_MMC_MAX_BLK_COUNT again
++	 * and nothing changes.  It matters here because the SPL's largest read
++	 * is the U-Boot image: 1724 blocks today, but a chain that cannot hold
++	 * the whole command would take that read back to the PIO path without
++	 * saying so, and mmc_bread() splits at b_max for free.
++	 */
++	cfg->b_max = min_t(unsigned int, CONFIG_SYS_MMC_MAX_BLK_COUNT,
++			   SUNXI_MMC_IDMA_MAX_BLOCKS);
+ 
+ 	cfg->f_min = 400000;
+ 	cfg->f_max = 52000000;

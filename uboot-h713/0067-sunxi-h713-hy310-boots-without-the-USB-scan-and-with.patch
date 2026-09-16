@@ -1,0 +1,56 @@
+From d4b797937669106aca5c340b2f315b1caf1b248d Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 18:55:30 +0200
+Subject: [PATCH 67/77] sunxi: h713: hy310 boots without the USB scan and
+ without the autoboot countdown
+
+Marco timed the installed v0.7-dev at 7 s from the power key to the boot
+logo (15.09.2026). Two of those seconds were CONFIG_BOOTDELAY=2, and two to
+five were "usb start" in CONFIG_PREBOOT, inherited from the bench config for
+a USB keyboard: the host-side USB scan runs on every boot and nothing in the
+product boot reads a USB device (the installer role uses the gadget, not the
+host). The preboot keeps the two reboot-mode magics ("reboot fastboot",
+"reboot bootloader" from Linux); the release role gets CONFIG_BOOTDELAY=0.
+A key pressed while the board waits in the power gate is still buffered and
+stops the boot, "reboot bootloader" lands at the prompt, and the reset button
+gives FEL, so the prompt stays reachable. h713_disp init itself measured
+about 2 s in the FEL runs of 15.09., with the picture up at the panel power
+step inside it, so the logo should now follow the key by roughly 1.5 s.
+Built (hy310 release); to be measured on the device with per-line stamps.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ configs/fragments/h713_release.config | 5 +++++
+ configs/hy310_defconfig               | 6 +++++-
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/configs/fragments/h713_release.config b/configs/fragments/h713_release.config
+index 2a89fa68a2b..b5e7f10a380 100644
+--- a/configs/fragments/h713_release.config
++++ b/configs/fragments/h713_release.config
+@@ -8,3 +8,8 @@
+ CONFIG_H713_POWER_GATE=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+ CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
++# No autoboot countdown on the product boot: the two seconds were the second
++# largest item between the power key and the logo. A key pressed while the
++# board still sits in the gate is buffered and still stops the boot, "reboot
++# bootloader" from Linux lands at the prompt, and the reset button gives FEL.
++CONFIG_BOOTDELAY=0
+diff --git a/configs/hy310_defconfig b/configs/hy310_defconfig
+index 2a77ed39324..3cdbba05ec5 100644
+--- a/configs/hy310_defconfig
++++ b/configs/hy310_defconfig
+@@ -70,7 +70,11 @@ CONFIG_SYSRESET=y
+ CONFIG_SYSRESET_PSCI=y
+ CONFIG_CMD_POWEROFF=y
+ CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
++# No "usb start" in the preboot: the host-side USB scan cost 2 to 5 s on every
++# boot and nothing in the product boot reads a USB device (no keyboard, no USB
++# boot medium; the installer role uses the gadget, not the host). The two
++# reboot-mode magics stay: "reboot fastboot" and "reboot bootloader" from Linux.
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+ CONFIG_ENV_OFFSET=0x700000

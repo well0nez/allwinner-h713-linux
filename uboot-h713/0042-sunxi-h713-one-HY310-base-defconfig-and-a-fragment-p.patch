@@ -1,0 +1,660 @@
+From e0bcfc084ea423dec00cdd01000300d0c0a0a077 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:17:16 +0200
+Subject: [PATCH 42/77] sunxi: h713: one HY310 base defconfig and a fragment
+ per role
+
+Six defconfigs described one board. They agreed on 53 lines -- the SoC,
+the DRAM block the board's own boot0 declares, the console, the eMMC, the
+power lines -- and disagreed on 28. Every DRAM fix therefore had to be
+made six times, and the one that was not, was not: the comment above
+CONFIG_DRAM_CLK announced the bench board's 624 MHz above a 792 for a year
+because six copies is five chances to miss one.
+
+Now the board is hy310_defconfig and what a build is *for* is a fragment
+in configs/fragments/, merged with scripts/kconfig/merge_config.sh -m and
+make olddefconfig. Six roles: release, installer, netboot, netboot_gate,
+felmmc, host.
+
+The base is the shipping build minus the three lines that make it the
+shipping build -- the power gate, the environment file, the boot command
+-- and not the intersection of the six, which is what it looked like it
+should be. The reason is that a merged fragment subtracts reliably and
+adds unreliably. Kconfig lowers a symbol when its dependencies stop being
+met, but not when the thing that merely raised it goes away, so a base
+without the USB gadget left ANDROID_BOOT_IMAGE, CMD_FASTBOOT and their
+neighbours at n and the fragment that switched the gadget on did not bring
+them back. With the gadget in the base the three roles that do not want it
+switch it off and the dependent symbols follow by themselves. Four do not
+-- CMD_BIND is implied, ANDROID_BOOT_IMAGE and USB_MUSB_PIO_ONLY are
+defaulted, CIRCBUF is selected -- and those four are named in the
+fragments, with the reason.
+
+Proven, not asserted: for each of the six, base + fragment through
+merge_config.sh -m and olddefconfig produces the same .config as the old
+defconfig did, symbol for symbol. The only difference is the device tree,
+which is the point of the commit before this one, and CONFIG_OF_LIST,
+whose default follows it. The script is umbau/work/E3b/prove-fragments.sh
+and it needs no cross toolchain: config targets only.
+
+Two things deliberately kept as they are. The installer's German boot
+message is copied verbatim, because translating it is a text change and
+this commit changes no build. And h713_probe_defconfig stays a base of its
+own rather than becoming a role: it runs at 624 MHz on boards nobody has
+measured, which is a board statement, not a role statement.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ configs/fragments/h713_felmmc.config          | 20 +++++
+ configs/fragments/h713_host.config            | 20 +++++
+ configs/fragments/h713_installer.config       | 15 ++++
+ configs/fragments/h713_netboot.config         | 33 ++++++++
+ configs/fragments/h713_netboot_gate.config    | 26 +++++++
+ configs/fragments/h713_release.config         | 10 +++
+ ...0_qz713_v3_1_defconfig => hy310_defconfig} | 19 ++++-
+ configs/hy310_felmmc_defconfig                | 67 ----------------
+ configs/hy310_host_defconfig                  | 66 ----------------
+ configs/hy310_installer_defconfig             | 69 -----------------
+ configs/hy310_netboot_defconfig               | 76 -------------------
+ configs/hy310_netboot_gate_defconfig          | 76 -------------------
+ 12 files changed, 139 insertions(+), 358 deletions(-)
+ create mode 100644 configs/fragments/h713_felmmc.config
+ create mode 100644 configs/fragments/h713_host.config
+ create mode 100644 configs/fragments/h713_installer.config
+ create mode 100644 configs/fragments/h713_netboot.config
+ create mode 100644 configs/fragments/h713_netboot_gate.config
+ create mode 100644 configs/fragments/h713_release.config
+ rename configs/{hy310_qz713_v3_1_defconfig => hy310_defconfig} (71%)
+ delete mode 100644 configs/hy310_felmmc_defconfig
+ delete mode 100644 configs/hy310_host_defconfig
+ delete mode 100644 configs/hy310_installer_defconfig
+ delete mode 100644 configs/hy310_netboot_defconfig
+ delete mode 100644 configs/hy310_netboot_gate_defconfig
+
+diff --git a/configs/fragments/h713_felmmc.config b/configs/fragments/h713_felmmc.config
+new file mode 100644
+index 00000000000..fc50e26c38f
+--- /dev/null
++++ b/configs/fragments/h713_felmmc.config
+@@ -0,0 +1,20 @@
++# Role: felmmc -- not a bootable image.
++#
++# An SPL that writes the original vendor boot0 back to the eMMC over FEL, for
++# the one case where the first boot stage has to be restored. That is why this
++# is the only role with SPL_MMC_WRITE and why its SPL may be 80 KiB; U-Boot
++# proper is never reached, so it carries no boot command at all.
++#
++# The four lines that put values back are not decoration: they are Kconfig
++# defaults the base overrides, and this role predates our layout. It writes to
++# a device that still has the vendor's boot chain on it, so it must not take
++# our U-Boot sector, our environment slot or our chainload with it.
++# CONFIG_H713_POWER_GATE is not set
++CONFIG_ENV_OFFSET=0x400000
++CONFIG_ENV_MMC_DEVICE_INDEX=0
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x40
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x10
++# CONFIG_H713_VENDOR_CHAINLOAD is not set
++CONFIG_H713_SPL_FORCE_MMC=y
++CONFIG_SPL_MMC_WRITE=y
++CONFIG_SPL_MAX_SIZE=0x14000
+diff --git a/configs/fragments/h713_host.config b/configs/fragments/h713_host.config
+new file mode 100644
+index 00000000000..849cb350f5a
+--- /dev/null
++++ b/configs/fragments/h713_host.config
+@@ -0,0 +1,20 @@
++# Role: host -- bench development.
++#
++# Makes the USB-A socket a host instead of a gadget, which is what the
++# internal camera needs, and changes nothing else: eMMC environment, vendor
++# chainload, no networking, and no boot command of its own, so the built-in
++# default runs and stops at the prompt. Gate off.
++#
++# The four lines after USB_GADGET are that switch-off finished by hand. Each
++# of those symbols took its value from the gadget the base has -- implied
++# (CMD_BIND), defaulted (ANDROID_BOOT_IMAGE, USB_MUSB_PIO_ONLY) or selected
++# (CIRCBUF) -- and Kconfig does not lower a symbol again when the thing that
++# raised it goes away. Only unmet dependencies do that, and these four have
++# none. So they are named.
++# CONFIG_H713_POWER_GATE is not set
++# CONFIG_USB_MUSB_SUNXI is not set
++# CONFIG_USB_GADGET is not set
++# CONFIG_CMD_BIND is not set
++# CONFIG_ANDROID_BOOT_IMAGE is not set
++# CONFIG_USB_MUSB_PIO_ONLY is not set
++# CONFIG_CIRCBUF is not set
+diff --git a/configs/fragments/h713_installer.config b/configs/fragments/h713_installer.config
+new file mode 100644
+index 00000000000..a6151f5fd7f
+--- /dev/null
++++ b/configs/fragments/h713_installer.config
+@@ -0,0 +1,15 @@
++# Role: installer -- exposes the eMMC as a USB drive, from FEL.
++#
++# Started over FEL by hy310-install, so it must not read or write an
++# environment on the device it is about to write: ENV_IS_NOWHERE, which also
++# drops ENV_OFFSET and ENV_MMC_DEVICE_INDEX from the base. And it must not
++# boot anything -- the boot command ends in ums and stays there, with no delay
++# in front of it. Gate off: the board is on a bench with a cable in it.
++#
++# The message is German because it is the one the installer ships today;
++# translating it is a text change, not a config change (REPORT.txt, E3b).
++CONFIG_BOOTDELAY=0
++# CONFIG_H713_POWER_GATE is not set
++# CONFIG_ENV_IS_IN_MMC is not set
++CONFIG_ENV_IS_NOWHERE=y
++CONFIG_BOOTCOMMAND="echo HY310 installer: eMMC wird als USB-Laufwerk freigegeben; ums 0 mmc 1"
+diff --git a/configs/fragments/h713_netboot.config b/configs/fragments/h713_netboot.config
+new file mode 100644
+index 00000000000..31f475907e2
+--- /dev/null
++++ b/configs/fragments/h713_netboot.config
+@@ -0,0 +1,33 @@
++# Role: netboot -- development, boots over TFTP/NFS.
++#
++# The USB-A socket becomes a host so a USB ethernet adapter can live in it,
++# and that costs the gadget: no ums, no fastboot, no ACM console. Everything
++# the base hangs off USB_GADGET by a dependency follows on its own.
++#
++# The four lines after USB_GADGET are that switch-off finished by hand. Each
++# of those symbols took its value from the gadget the base has -- implied
++# (CMD_BIND), defaulted (ANDROID_BOOT_IMAGE, USB_MUSB_PIO_ONLY) or selected
++# (CIRCBUF) -- and Kconfig does not lower a symbol again when the thing that
++# raised it goes away. Only unmet dependencies do that, and these four have
++# none. So they are named.
++#
++# The environment still comes from the eMMC, so a netbooted board keeps the
++# settings of the installed one. Gate off: a bench board should come up when
++# it is powered.
++# CONFIG_H713_POWER_GATE is not set
++# CONFIG_USB_MUSB_SUNXI is not set
++# CONFIG_USB_GADGET is not set
++# CONFIG_CMD_BIND is not set
++# CONFIG_ANDROID_BOOT_IMAGE is not set
++# CONFIG_USB_MUSB_PIO_ONLY is not set
++# CONFIG_CIRCBUF is not set
++CONFIG_NET=y
++CONFIG_CMD_NET=y
++CONFIG_CMD_DHCP=y
++CONFIG_CMD_PING=y
++CONFIG_CMD_NFS=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_USB_HOST_ETHER=y
++CONFIG_USB_ETHER_RTL8152=y
++CONFIG_ENV_SOURCE_FILE="hy310"
++CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/fragments/h713_netboot_gate.config b/configs/fragments/h713_netboot_gate.config
+new file mode 100644
+index 00000000000..38e2325ab0b
+--- /dev/null
++++ b/configs/fragments/h713_netboot_gate.config
+@@ -0,0 +1,26 @@
++# Role: netboot_gate -- netboot with the power gate compiled in.
++#
++# h713_netboot.config plus CONFIG_H713_POWER_GATE=y, and kept as a full copy
++# rather than a delta on it: uboot-build.sh applies exactly one role, and a
++# fragment that only makes sense stacked on another is a trap for whoever
++# reads it next. It exists because the gate had to be proven before it was
++# allowed into the shipping build, and a netboot round trip is a much cheaper
++# way to fail than an eMMC write. h713_netboot.config explains the four
++# switch-off lines that follow USB_GADGET.
++CONFIG_H713_POWER_GATE=y
++# CONFIG_USB_MUSB_SUNXI is not set
++# CONFIG_USB_GADGET is not set
++# CONFIG_CMD_BIND is not set
++# CONFIG_ANDROID_BOOT_IMAGE is not set
++# CONFIG_USB_MUSB_PIO_ONLY is not set
++# CONFIG_CIRCBUF is not set
++CONFIG_NET=y
++CONFIG_CMD_NET=y
++CONFIG_CMD_DHCP=y
++CONFIG_CMD_PING=y
++CONFIG_CMD_NFS=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_USB_HOST_ETHER=y
++CONFIG_USB_ETHER_RTL8152=y
++CONFIG_ENV_SOURCE_FILE="hy310"
++CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/fragments/h713_release.config b/configs/fragments/h713_release.config
+new file mode 100644
+index 00000000000..2a89fa68a2b
+--- /dev/null
++++ b/configs/fragments/h713_release.config
+@@ -0,0 +1,10 @@
++# Role: release -- the shipping build (release/build-all.sh).
++#
++# The base already is this build except for three lines, and these are they:
++# the environment file the board boots from, the command that runs it, and the
++# power gate. The gate is on in exactly one shipping role, because this is the
++# only one where the projector stands in a room and has to decide for itself
++# whether mains-on means "start".
++CONFIG_H713_POWER_GATE=y
++CONFIG_ENV_SOURCE_FILE="hy310"
++CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/hy310_qz713_v3_1_defconfig b/configs/hy310_defconfig
+similarity index 71%
+rename from configs/hy310_qz713_v3_1_defconfig
+rename to configs/hy310_defconfig
+index 0c30fc203ad..96793be6c68 100644
+--- a/configs/hy310_qz713_v3_1_defconfig
++++ b/configs/hy310_defconfig
+@@ -1,6 +1,20 @@
++# MagCubic HY310 (HY260_QZ713_V3.1) -- board base.
++#
++# This is what the board is. What a build is *for* comes from a role fragment
++# in configs/fragments/, merged on top with scripts/kconfig/merge_config.sh -m
++# and make olddefconfig; build/uboot-build.sh does both. Six builds of this
++# board exist and docs/uboot/README.md has the matrix.
++#
++# The base is the shipping build minus the three lines that make it the
++# shipping build: the power gate, the environment file and the boot command.
++# Everything else stays here, including the USB gadget and the eMMC
++# environment, because a fragment can switch those off and have every symbol
++# that hangs off them follow, while a fragment that switches them on leaves
++# their dependants at whatever the base already decided. Merged fragments
++# subtract reliably and add unreliably, so the base carries the superset.
+ CONFIG_ARM=y
+ CONFIG_ARCH_SUNXI=y
+-CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy310"
+ CONFIG_DRAM_CLK=792
+ CONFIG_SPL=y
+ # DDR3 (type 3). The value set below is the bench board's; only the clock
+@@ -34,7 +48,6 @@ CONFIG_DRAM_SUNXI_TPR12=0x00006666
+ CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+ CONFIG_MACH_SUN50I_H713=y
+ CONFIG_H713_POWERON_LIGHT_FAN=y
+-CONFIG_H713_POWER_GATE=y
+ CONFIG_H713_MIPS_BOOT=y
+ CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+ CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+@@ -66,5 +79,3 @@ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+ CONFIG_CMD_GPIO=y
+-CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/hy310_felmmc_defconfig b/configs/hy310_felmmc_defconfig
+deleted file mode 100644
+index 4b714905c3a..00000000000
+--- a/configs/hy310_felmmc_defconfig
++++ /dev/null
+@@ -1,67 +0,0 @@
+-CONFIG_ARM=y
+-CONFIG_ARCH_SUNXI=y
+-CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+-CONFIG_DRAM_CLK=792
+-CONFIG_SPL=y
+-# DDR3 (type 3). The value set below is the bench board's; only the clock
+-# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
+-# para2 and tpr13 are what the flash tool writes; the rest is this board's own
+-# boot0. See docs/tools/h713-probe.md.
+-CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+-CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+-CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+-CONFIG_DRAM_SUNXI_ODT_EN=0x1
+-CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
+-CONFIG_DRAM_SUNXI_PARA1=0x000010f4
+-CONFIG_DRAM_SUNXI_PARA2=0x04000000
+-CONFIG_DRAM_SUNXI_MR0=0x00001c70
+-CONFIG_DRAM_SUNXI_MR1=0x00000040
+-CONFIG_DRAM_SUNXI_MR2=0x00000018
+-CONFIG_DRAM_SUNXI_MR3=0x00000000
+-CONFIG_DRAM_SUNXI_TPR0=0x00482151
+-CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
+-CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
+-CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+-CONFIG_DRAM_SUNXI_TPR4=0x00000000
+-CONFIG_DRAM_SUNXI_TPR5=0x48484848
+-CONFIG_DRAM_SUNXI_TPR6=0x00000048
+-CONFIG_DRAM_SUNXI_TPR7=0x1620121e
+-CONFIG_DRAM_SUNXI_TPR8=0x00000000
+-CONFIG_DRAM_SUNXI_TPR9=0x00000000
+-CONFIG_DRAM_SUNXI_TPR10=0x00000000
+-CONFIG_DRAM_SUNXI_TPR11=0x44340000
+-CONFIG_DRAM_SUNXI_TPR12=0x00006666
+-CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+-CONFIG_MACH_SUN50I_H713=y
+-CONFIG_H713_POWERON_LIGHT_FAN=y
+-# CONFIG_H713_POWER_GATE is not set
+-CONFIG_H713_MIPS_BOOT=y
+-CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+-CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+-CONFIG_MMC0_CD_PIN=""
+-# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+-CONFIG_SUPPORT_EMMC_BOOT=y
+-CONFIG_USB_EHCI_HCD=y
+-CONFIG_USB_OHCI_HCD=y
+-# CONFIG_WATCHDOG is not set
+-CONFIG_WDT=y
+-CONFIG_USB_MUSB_GADGET=y
+-CONFIG_CMD_USB_MASS_STORAGE=y
+-# CONFIG_USB_ETHER is not set
+-CONFIG_CONSOLE_MUX=y
+-CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+-CONFIG_USB_FUNCTION_ACM=y
+-# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
+-CONFIG_SYSRESET=y
+-CONFIG_SYSRESET_PSCI=y
+-CONFIG_CMD_POWEROFF=y
+-CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+-# CONFIG_ENV_IS_IN_FAT is not set
+-CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x400000
+-CONFIG_CMD_WDT=y
+-CONFIG_CMD_GPIO=y
+-CONFIG_H713_SPL_FORCE_MMC=y
+-CONFIG_SPL_MMC_WRITE=y
+-CONFIG_SPL_MAX_SIZE=0x14000
+diff --git a/configs/hy310_host_defconfig b/configs/hy310_host_defconfig
+deleted file mode 100644
+index 0f43dea0f0a..00000000000
+--- a/configs/hy310_host_defconfig
++++ /dev/null
+@@ -1,66 +0,0 @@
+-CONFIG_ARM=y
+-CONFIG_ARCH_SUNXI=y
+-CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+-CONFIG_DRAM_CLK=792
+-CONFIG_SPL=y
+-# DDR3 (type 3). The value set below is the bench board's; only the clock
+-# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
+-# para2 and tpr13 are what the flash tool writes; the rest is this board's own
+-# boot0. See docs/tools/h713-probe.md.
+-CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+-CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+-CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+-CONFIG_DRAM_SUNXI_ODT_EN=0x1
+-CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
+-CONFIG_DRAM_SUNXI_PARA1=0x000010f4
+-CONFIG_DRAM_SUNXI_PARA2=0x04000000
+-CONFIG_DRAM_SUNXI_MR0=0x00001c70
+-CONFIG_DRAM_SUNXI_MR1=0x00000040
+-CONFIG_DRAM_SUNXI_MR2=0x00000018
+-CONFIG_DRAM_SUNXI_MR3=0x00000000
+-CONFIG_DRAM_SUNXI_TPR0=0x00482151
+-CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
+-CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
+-CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+-CONFIG_DRAM_SUNXI_TPR4=0x00000000
+-CONFIG_DRAM_SUNXI_TPR5=0x48484848
+-CONFIG_DRAM_SUNXI_TPR6=0x00000048
+-CONFIG_DRAM_SUNXI_TPR7=0x1620121e
+-CONFIG_DRAM_SUNXI_TPR8=0x00000000
+-CONFIG_DRAM_SUNXI_TPR9=0x00000000
+-CONFIG_DRAM_SUNXI_TPR10=0x00000000
+-CONFIG_DRAM_SUNXI_TPR11=0x44340000
+-CONFIG_DRAM_SUNXI_TPR12=0x00006666
+-CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+-CONFIG_MACH_SUN50I_H713=y
+-CONFIG_H713_POWERON_LIGHT_FAN=y
+-# CONFIG_H713_POWER_GATE is not set
+-CONFIG_H713_MIPS_BOOT=y
+-CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+-CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+-CONFIG_MMC0_CD_PIN=""
+-# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+-CONFIG_SUPPORT_EMMC_BOOT=y
+-CONFIG_USB_EHCI_HCD=y
+-CONFIG_USB_OHCI_HCD=y
+-# CONFIG_WATCHDOG is not set
+-CONFIG_WDT=y
+-# CONFIG_USB_ETHER is not set
+-CONFIG_CONSOLE_MUX=y
+-CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+-# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
+-CONFIG_SYSRESET=y
+-CONFIG_SYSRESET_PSCI=y
+-CONFIG_CMD_POWEROFF=y
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+-# CONFIG_ENV_IS_IN_FAT is not set
+-CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x700000
+-CONFIG_ENV_MMC_DEVICE_INDEX=1
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+-CONFIG_H713_VENDOR_CHAINLOAD=y
+-CONFIG_CMD_WDT=y
+-CONFIG_CMD_GPIO=y
+-# CONFIG_USB_MUSB_SUNXI is not set
+-# CONFIG_USB_GADGET is not set
+diff --git a/configs/hy310_installer_defconfig b/configs/hy310_installer_defconfig
+deleted file mode 100644
+index fbf8de2e3d5..00000000000
+--- a/configs/hy310_installer_defconfig
++++ /dev/null
+@@ -1,69 +0,0 @@
+-CONFIG_ARM=y
+-CONFIG_BOOTDELAY=0
+-CONFIG_ARCH_SUNXI=y
+-CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+-CONFIG_DRAM_CLK=792
+-CONFIG_SPL=y
+-# DDR3 (type 3). The value set below is the bench board's; only the clock
+-# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
+-# para2 and tpr13 are what the flash tool writes; the rest is this board's own
+-# boot0. See docs/tools/h713-probe.md.
+-CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+-CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+-CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+-CONFIG_DRAM_SUNXI_ODT_EN=0x1
+-CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
+-CONFIG_DRAM_SUNXI_PARA1=0x000010f4
+-CONFIG_DRAM_SUNXI_PARA2=0x04000000
+-CONFIG_DRAM_SUNXI_MR0=0x00001c70
+-CONFIG_DRAM_SUNXI_MR1=0x00000040
+-CONFIG_DRAM_SUNXI_MR2=0x00000018
+-CONFIG_DRAM_SUNXI_MR3=0x00000000
+-CONFIG_DRAM_SUNXI_TPR0=0x00482151
+-CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
+-CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
+-CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+-CONFIG_DRAM_SUNXI_TPR4=0x00000000
+-CONFIG_DRAM_SUNXI_TPR5=0x48484848
+-CONFIG_DRAM_SUNXI_TPR6=0x00000048
+-CONFIG_DRAM_SUNXI_TPR7=0x1620121e
+-CONFIG_DRAM_SUNXI_TPR8=0x00000000
+-CONFIG_DRAM_SUNXI_TPR9=0x00000000
+-CONFIG_DRAM_SUNXI_TPR10=0x00000000
+-CONFIG_DRAM_SUNXI_TPR11=0x44340000
+-CONFIG_DRAM_SUNXI_TPR12=0x00006666
+-CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+-CONFIG_MACH_SUN50I_H713=y
+-CONFIG_H713_POWERON_LIGHT_FAN=y
+-# CONFIG_H713_POWER_GATE is not set
+-CONFIG_H713_MIPS_BOOT=y
+-CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+-CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+-CONFIG_MMC0_CD_PIN=""
+-# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+-CONFIG_SUPPORT_EMMC_BOOT=y
+-CONFIG_USB_EHCI_HCD=y
+-CONFIG_USB_OHCI_HCD=y
+-# CONFIG_WATCHDOG is not set
+-CONFIG_WDT=y
+-CONFIG_USB_MUSB_GADGET=y
+-CONFIG_CMD_USB_MASS_STORAGE=y
+-# CONFIG_USB_ETHER is not set
+-CONFIG_CONSOLE_MUX=y
+-CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+-CONFIG_USB_FUNCTION_ACM=y
+-# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
+-CONFIG_SYSRESET=y
+-CONFIG_SYSRESET_PSCI=y
+-CONFIG_CMD_POWEROFF=y
+-CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+-# CONFIG_ENV_IS_IN_FAT is not set
+-# CONFIG_ENV_IS_IN_MMC is not set
+-CONFIG_ENV_IS_NOWHERE=y
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+-CONFIG_H713_VENDOR_CHAINLOAD=y
+-CONFIG_CMD_WDT=y
+-CONFIG_CMD_GPIO=y
+-CONFIG_BOOTCOMMAND="echo HY310 installer: eMMC wird als USB-Laufwerk freigegeben; ums 0 mmc 1"
+diff --git a/configs/hy310_netboot_defconfig b/configs/hy310_netboot_defconfig
+deleted file mode 100644
+index 2f66e874dca..00000000000
+--- a/configs/hy310_netboot_defconfig
++++ /dev/null
+@@ -1,76 +0,0 @@
+-CONFIG_ARM=y
+-CONFIG_ARCH_SUNXI=y
+-CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+-CONFIG_DRAM_CLK=792
+-CONFIG_SPL=y
+-# DDR3 (type 3). The value set below is the bench board's; only the clock
+-# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
+-# para2 and tpr13 are what the flash tool writes; the rest is this board's own
+-# boot0. See docs/tools/h713-probe.md.
+-CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+-CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+-CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+-CONFIG_DRAM_SUNXI_ODT_EN=0x1
+-CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
+-CONFIG_DRAM_SUNXI_PARA1=0x000010f4
+-CONFIG_DRAM_SUNXI_PARA2=0x04000000
+-CONFIG_DRAM_SUNXI_MR0=0x00001c70
+-CONFIG_DRAM_SUNXI_MR1=0x00000040
+-CONFIG_DRAM_SUNXI_MR2=0x00000018
+-CONFIG_DRAM_SUNXI_MR3=0x00000000
+-CONFIG_DRAM_SUNXI_TPR0=0x00482151
+-CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
+-CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
+-CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+-CONFIG_DRAM_SUNXI_TPR4=0x00000000
+-CONFIG_DRAM_SUNXI_TPR5=0x48484848
+-CONFIG_DRAM_SUNXI_TPR6=0x00000048
+-CONFIG_DRAM_SUNXI_TPR7=0x1620121e
+-CONFIG_DRAM_SUNXI_TPR8=0x00000000
+-CONFIG_DRAM_SUNXI_TPR9=0x00000000
+-CONFIG_DRAM_SUNXI_TPR10=0x00000000
+-CONFIG_DRAM_SUNXI_TPR11=0x44340000
+-CONFIG_DRAM_SUNXI_TPR12=0x00006666
+-CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+-CONFIG_MACH_SUN50I_H713=y
+-CONFIG_H713_POWERON_LIGHT_FAN=y
+-# CONFIG_H713_POWER_GATE is not set
+-CONFIG_H713_MIPS_BOOT=y
+-CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+-CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+-CONFIG_MMC0_CD_PIN=""
+-# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+-CONFIG_SUPPORT_EMMC_BOOT=y
+-CONFIG_USB_EHCI_HCD=y
+-CONFIG_USB_OHCI_HCD=y
+-# CONFIG_WATCHDOG is not set
+-CONFIG_WDT=y
+-# CONFIG_USB_ETHER is not set
+-CONFIG_CONSOLE_MUX=y
+-CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+-# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
+-CONFIG_SYSRESET=y
+-CONFIG_SYSRESET_PSCI=y
+-CONFIG_CMD_POWEROFF=y
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+-# CONFIG_ENV_IS_IN_FAT is not set
+-CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x700000
+-CONFIG_ENV_MMC_DEVICE_INDEX=1
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+-CONFIG_H713_VENDOR_CHAINLOAD=y
+-CONFIG_CMD_WDT=y
+-CONFIG_CMD_GPIO=y
+-# CONFIG_USB_MUSB_SUNXI is not set
+-# CONFIG_USB_GADGET is not set
+-CONFIG_NET=y
+-CONFIG_CMD_NET=y
+-CONFIG_CMD_DHCP=y
+-CONFIG_CMD_PING=y
+-CONFIG_CMD_NFS=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_USB_HOST_ETHER=y
+-CONFIG_USB_ETHER_RTL8152=y
+-CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+diff --git a/configs/hy310_netboot_gate_defconfig b/configs/hy310_netboot_gate_defconfig
+deleted file mode 100644
+index 9af77b0fa40..00000000000
+--- a/configs/hy310_netboot_gate_defconfig
++++ /dev/null
+@@ -1,76 +0,0 @@
+-CONFIG_ARM=y
+-CONFIG_ARCH_SUNXI=y
+-CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+-CONFIG_DRAM_CLK=792
+-CONFIG_SPL=y
+-# DDR3 (type 3). The value set below is the bench board's; only the clock
+-# differs (bench 624, this board 792). tpr0..tpr2 are computed from the clock,
+-# para2 and tpr13 are what the flash tool writes; the rest is this board's own
+-# boot0. See docs/tools/h713-probe.md.
+-CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+-CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+-CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+-CONFIG_DRAM_SUNXI_ODT_EN=0x1
+-CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
+-CONFIG_DRAM_SUNXI_PARA1=0x000010f4
+-CONFIG_DRAM_SUNXI_PARA2=0x04000000
+-CONFIG_DRAM_SUNXI_MR0=0x00001c70
+-CONFIG_DRAM_SUNXI_MR1=0x00000040
+-CONFIG_DRAM_SUNXI_MR2=0x00000018
+-CONFIG_DRAM_SUNXI_MR3=0x00000000
+-CONFIG_DRAM_SUNXI_TPR0=0x00482151
+-CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
+-CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
+-CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+-CONFIG_DRAM_SUNXI_TPR4=0x00000000
+-CONFIG_DRAM_SUNXI_TPR5=0x48484848
+-CONFIG_DRAM_SUNXI_TPR6=0x00000048
+-CONFIG_DRAM_SUNXI_TPR7=0x1620121e
+-CONFIG_DRAM_SUNXI_TPR8=0x00000000
+-CONFIG_DRAM_SUNXI_TPR9=0x00000000
+-CONFIG_DRAM_SUNXI_TPR10=0x00000000
+-CONFIG_DRAM_SUNXI_TPR11=0x44340000
+-CONFIG_DRAM_SUNXI_TPR12=0x00006666
+-CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+-CONFIG_MACH_SUN50I_H713=y
+-CONFIG_H713_POWERON_LIGHT_FAN=y
+-CONFIG_H713_POWER_GATE=y
+-CONFIG_H713_MIPS_BOOT=y
+-CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+-CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+-CONFIG_MMC0_CD_PIN=""
+-# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+-CONFIG_SUPPORT_EMMC_BOOT=y
+-CONFIG_USB_EHCI_HCD=y
+-CONFIG_USB_OHCI_HCD=y
+-# CONFIG_WATCHDOG is not set
+-CONFIG_WDT=y
+-# CONFIG_USB_ETHER is not set
+-CONFIG_CONSOLE_MUX=y
+-CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+-# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
+-CONFIG_SYSRESET=y
+-CONFIG_SYSRESET_PSCI=y
+-CONFIG_CMD_POWEROFF=y
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
+-# CONFIG_ENV_IS_IN_FAT is not set
+-CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x700000
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+-CONFIG_H713_VENDOR_CHAINLOAD=y
+-CONFIG_CMD_WDT=y
+-CONFIG_CMD_GPIO=y
+-# CONFIG_USB_MUSB_SUNXI is not set
+-# CONFIG_USB_GADGET is not set
+-CONFIG_NET=y
+-CONFIG_CMD_NET=y
+-CONFIG_CMD_DHCP=y
+-CONFIG_CMD_PING=y
+-CONFIG_CMD_NFS=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_USB_HOST_ETHER=y
+-CONFIG_USB_ETHER_RTL8152=y
+-CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+-CONFIG_ENV_MMC_DEVICE_INDEX=1

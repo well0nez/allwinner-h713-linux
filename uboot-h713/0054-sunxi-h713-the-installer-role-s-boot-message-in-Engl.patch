@@ -1,0 +1,33 @@
+From 893baa383da9a76c23ab454431e893ffd574d46b Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 20:53:42 +0200
+Subject: [PATCH 54/77] sunxi: h713: the installer role's boot message in
+ English
+
+It is what a person with a UART lead sees while h713-install writes, and
+it named one board for a fragment that serves every board base.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ configs/fragments/h713_installer.config | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/configs/fragments/h713_installer.config b/configs/fragments/h713_installer.config
+index a6151f5fd7f..313b52a77bf 100644
+--- a/configs/fragments/h713_installer.config
++++ b/configs/fragments/h713_installer.config
+@@ -6,10 +6,11 @@
+ # boot anything -- the boot command ends in ums and stays there, with no delay
+ # in front of it. Gate off: the board is on a bench with a cable in it.
+ #
+-# The message is German because it is the one the installer ships today;
+-# translating it is a text change, not a config change (REPORT.txt, E3b).
++# The message is what a person with a UART lead sees while h713-install
++# writes; it names the role, not a board, because the fragment is one for
++# every board base.
+ CONFIG_BOOTDELAY=0
+ # CONFIG_H713_POWER_GATE is not set
+ # CONFIG_ENV_IS_IN_MMC is not set
+ CONFIG_ENV_IS_NOWHERE=y
+-CONFIG_BOOTCOMMAND="echo HY310 installer: eMMC wird als USB-Laufwerk freigegeben; ums 0 mmc 1"
++CONFIG_BOOTCOMMAND="echo H713 installer: exposing the eMMC as a USB drive; ums 0 mmc 1"

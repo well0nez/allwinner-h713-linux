@@ -1,0 +1,52 @@
+From 71f6d76a95d09c9bc79f6b3694359410540fcd24 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 17:17:14 +0200
+Subject: [PATCH 66/77] sunxi: h713: bootcmd shows the boot logo
+
+bootcmd becomes "h713_disp init ${h713_project} logo; run
+boot_${h713_boot}; run boot_net". The logo with the display firmware
+left running was proven on the HY310 on 15.09.2026 (three FEL runs
+against the stock partitions: MagCubic logo on the panel from the first
+frame, MIPS status 1, scan counter advancing), so the product boot can
+have it.
+
+The word is optional in the sense that a missing file costs nothing but
+a warning: without bootlogo.bmp in the root of the artifact partition -
+/boot/bootlogo.bmp on our layout - init warns once and boots on, and the
+panel stays black until Linux, because the init path fills the OSD
+buffer with black when there is no logo. Putting the file there is the
+installer's job.
+
+Three roles take this line, because they set CONFIG_ENV_SOURCE_FILE and
+the environment text is imported after CONFIG_BOOTCOMMAND: release,
+netboot and netboot_gate. The installer role has no environment file and
+keeps its own "ums 0 mmc 1" command; host and felmmc keep the base
+default.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ board/sunxi/hy310.env | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index dfb383eb9a4..dd86bb5493c 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -22,7 +22,10 @@
+  * cannot break it. Without h713_mips_dev, h713_mips.c looks the partition up
+  * by name itself -- bootloader_a/_b per the slot in misc on a stock device,
+  * hy310-boot on ours -- so the variable is an override, not a requirement.
+- * See doku/108. */
++ * See doku/108. The "logo" in bootcmd is optional: without bootlogo.bmp in
++ * that partition's root (/boot/bootlogo.bmp on our layout) init only warns and
++ * the panel stays black until Linux, because the init path fills the OSD
++ * buffer black. The installer puts the file there. */
+ h713_boot=emmc
+ h713_gate=1
+ h713_project=0x30
+@@ -42,4 +45,4 @@ boot_net=
+ 	setenv bootargs "${bootargs_base} earlycon root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp";
+ 	tftpboot 0x60000000 ${serverip}:${bootfile};
+ 	bootm 0x60000000
+-bootcmd=h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net
++bootcmd=h713_disp init ${h713_project} logo; run boot_${h713_boot}; run boot_net

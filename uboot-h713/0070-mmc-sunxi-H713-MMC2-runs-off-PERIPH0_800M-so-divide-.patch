@@ -1,0 +1,44 @@
+From 2dbc92744761e57e50c15736e8d433bff3d06cbc Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 16 Sep 2026 02:53:23 +0200
+Subject: [PATCH 70/77] mmc: sunxi: H713 MMC2 runs off PERIPH0_800M, so divide
+ for 400 MHz
+
+On the H713 the mux input 1 of the MMC2 (eMMC) clock is pll-periph0-800M
+with the hidden divider of 2, i.e. 400 MHz effective - not the 600 MHz
+of PLL_PERIPH0(2x) that the driver assumes for the H6 generation. Asked
+for 52 MHz the driver programmed M = 12 (register 0x8100000b) and the
+eMMC ran at 33 MHz. Measured on the HY310, 16.09.2026, at the U-Boot
+prompt: raw reads 14 MB/s, ext4load 15 MiB/s.
+
+Treat MMC2 like the A523 branch above does: pll_hz * 2 / 3 = 400 MHz,
+M = 8 (register 0x81000007), 50 MHz. Raw reads 20 MB/s, ext4load
+22.5 MiB/s, the 6.2 MB boot logo in 264 ms instead of 396 ms, the kernel
+FIT in 323 ms instead of 485 ms, and the installer writes the image in
+2 min instead of 3. MMC0/1 keep PLL_PERIPH0(2x) at mux 1 and are unchanged.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ drivers/mmc/sunxi_mmc.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/mmc/sunxi_mmc.c b/drivers/mmc/sunxi_mmc.c
+index 412b415cb13..bc08fc5e8ea 100644
+--- a/drivers/mmc/sunxi_mmc.c
++++ b/drivers/mmc/sunxi_mmc.c
+@@ -112,6 +112,15 @@ static int mmc_set_mod_clk(struct sunxi_mmc_priv *priv, unsigned int hz)
+ 			if (priv->mmc_no == 2)
+ 				pll_hz *= 2;
+ 		}
++		/*
++		 * The H713 keeps PLL_PERIPH0(2x) at mux 1 for MMC0/1, but its
++		 * MMC2 (the eMMC) has PERIPH0_800M there, with the hidden
++		 * divider of 2: 400 MHz effective, not the 600 MHz assumed
++		 * above. Measured 16.09.2026 on the HY310: asked for 52 MHz,
++		 * the register held M = 12 and the eMMC ran at 33 MHz.
++		 */
++		if (IS_ENABLED(CONFIG_MACH_SUN50I_H713) && priv->mmc_no == 2)
++			pll_hz = pll_hz * 2 / 3;
+ 	}
+ 
+ 	div = pll_hz / hz;
