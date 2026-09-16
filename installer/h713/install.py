@@ -1,63 +1,46 @@
 # SPDX-License-Identifier: GPL-2.0
-"""The installation path itself: filling the placeholders of a built image with
-the device's own files, checking the image package, carrying the intent keys of
-the old U-Boot environment over, and writing everything onto the eMMC in one go.
+"""The installation path itself: putting the device's own files into a built image,
+checking the image package, carrying the intent keys of the old U-Boot environment
+over, and writing everything onto the eMMC in one go.
 
 Stage 1 of plan doku/121: moved from hy310-install.py (I:656-694, 696-923,
-1222-1402, 1436-1453). Every printed string, every prompt and every exit code is
-unchanged.
+1222-1402, 1436-1453). Layout v4 (P-layout-v4, 16.09.2026) took the placeholders
+out: the files are no longer written into fixed-size holes at measured offsets but
+copied into the image's two ext4 file systems as ordinary files, so a firmware whose
+files are bigger than the HY310's (issue #1, HY300 Pro) simply fits.
+
+Plan and executor are apart. Everything here is pure Python on the table -- which
+file goes into which partition at which path, which ones a firmware may not have,
+what a rehearsal would do. The mounting itself is `h713.mountfs`, and only a real
+run reaches it.
 """
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import importlib.machinery
 import importlib.util
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import time
 
+from . import mountfs
 from .blockdev import LOCK_FIRST, LOCK_LAST, SECT, SECTORS_EXPECTED
 from .env import ENV_BYTES, ENV_CARRY_OVER, env_read, env_write
-from .layout import pattern
 from .log import Quiet, console
 from .util import duration, mib
 from .verify import verify_image, write_image
 
-
-def fill_placeholders(image, table, sources, log=console):
-    """Write the device's own files into the LOCAL image file, before anything
-    at all goes onto the eMMC.
-
-    The order is on purpose (Marco, 10.09.): the image is finished on the PC and
-    then written ONCE. The other way round -- write first, add later -- costs a
-    second pass at 7.7 MB/s, and an abort in between would leave half a system.
-
-    'table' is the offset table that comes out of building the image:
-    name -> (byte_offset, length). The image carries placeholders of the right
-    size there, so nobody needs an ext4 writer.
-    """
-    missing = [n for n in table if n not in sources]
-    if missing:
-        raise RuntimeError("no source for: %s" % ", ".join(sorted(missing)))
-    with open(image, "r+b") as f:
-        for name in sorted(table):
-            off, length = table[name]
-            data = sources[name]
-            if len(data) > length:
-                raise RuntimeError(
-                    "%s is %d bytes, the placeholder only holds %d"
-                    % (name, len(data), length))
-            f.seek(off)
-            f.write(data)
-            if len(data) < length:
-                f.write(b"\0" * (length - len(data)))   # zero the rest cleanly
-            log.ok("%-28s %7d bytes at offset 0x%x" % (name, len(data), off))
-        f.flush()
-        os.fsync(f.fileno())
+# What a vendor file looks like in the finished file system (P-layout-v4): root's, readable
+# by everyone, in directories everyone may walk through. The user's own file says its own
+# modes in the table -- sshd's StrictModes has an opinion about those.
+VENDOR_MODE, DIR_MODE = 0o644, 0o755
+OWNERS = {"root": (0, 0)}
 
 
 # ---------------------------------------------------------------- SSH key
@@ -65,22 +48,20 @@ def fill_placeholders(image, table, sources, log=console):
 KEY_TYPES = (b"ssh-ed25519", b"ssh-rsa", b"ecdsa-sha2-nistp256",
              b"ecdsa-sha2-nistp384", b"ecdsa-sha2-nistp521",
              b"sk-ssh-ed25519@openssh.com", b"sk-ecdsa-sha2-nistp256@openssh.com")
+KEY_MAX = 1 << 16                     # 64 KiB of authorized_keys is several hundred keys
 
 
-def read_public_key(path, length):
-    """--ssh-key: prepare the public key as the content for the
-    placeholder /root/.ssh/authorized_keys.
+def read_public_key(path):
+    """--ssh-key: the public key as the content of /root/.ssh/authorized_keys.
 
-    What is checked is what a typo would cost: a private key (that must never
-    go into the image), a file without a single key line, NUL bytes, overlength.
-    Padding is done with newlines up to the placeholder length -- sshd skips
-    empty lines, NUL bytes would make the file unusable (doku/60 point 13, here
-    the special case "file smaller than the placeholder"). Return value: exactly
-    `length` bytes.
+    What is checked is what a typo would cost: a private key (that must never go
+    into the image), a file without a single key line, NUL bytes. Nothing is
+    padded any more -- layout v4 writes the file with the length it has.
+    Return value: (content, number of keys).
     """
     try:
         with open(path, "rb") as f:
-            raw = f.read(length + 1)
+            raw = f.read(KEY_MAX + 1)
     except OSError as e:
         raise RuntimeError("--ssh-key %s: %s" % (path, e))
     if b"PRIVATE KEY" in raw:
@@ -88,6 +69,9 @@ def read_public_key(path, length):
                            "the .pub file. Nothing written." % path)
     if b"\0" in raw:
         raise RuntimeError("--ssh-key %s contains NUL bytes -- no key file" % path)
+    if len(raw) > KEY_MAX:
+        raise RuntimeError("--ssh-key %s is longer than %d bytes -- no key file"
+                           % (path, KEY_MAX))
     text = raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     lines = [line.strip() for line in text.split(b"\n")]
     lines = [line for line in lines if line]
@@ -97,48 +81,44 @@ def read_public_key(path, length):
         raise RuntimeError("--ssh-key %s: no line looks like a public "
                            "OpenSSH key (%s ...)"
                            % (path, ", ".join(kind.decode() for kind in KEY_TYPES[:3])))
-    content = b"\n".join(lines) + b"\n"
-    if len(content) > length:
-        raise RuntimeError("--ssh-key %s: %d bytes, the placeholder holds %d -- fewer "
-                           "keys or shorter comments" % (path, len(content), length))
-    return content.ljust(length, b"\n"), len(hits)
+    return b"\n".join(lines) + b"\n", len(hits)
 
 
-def user_sources(args, user, log=console):
-    """Fill the user placeholders of the table (today: authorized_keys).
-    Return value: name -> bytes in the full placeholder length, or {} when there
-    is nothing to do (then the file stays as built: empty, only newlines)."""
-    sources = {}
-    if "authorized_keys" in user:
-        off, length = user["authorized_keys"]
-        if args.ssh_key:
-            data, n = read_public_key(args.ssh_key, length)
-            sources["authorized_keys"] = data
-            log.ok("authorized_keys: %d key(s) from %s, %d bytes, padded with newlines to %d"
-                   % (n, args.ssh_key, len(data.rstrip(b"\n")) + 1, length))
-        else:
-            log.warn("no --ssh-key: /root/.ssh/authorized_keys stays empty -- the device "
-                     "is then reachable only over the serial console")
-    elif args.ssh_key:
-        raise RuntimeError("--ssh-key: this image has no placeholder for "
-                           "authorized_keys (table without platzhalter_nutzer, older than "
-                           "11.09.2026) -- the key would not arrive. Aborted.")
-    unknown = [n for n in user if n != "authorized_keys"]
-    if unknown:
-        raise RuntimeError("the table names user placeholders this script does not "
-                           "know: %s -- a newer h713-install is needed" % ", ".join(unknown))
-    return sources
+def _mode(text, fallback):
+    return int(text, 8) if text else fallback
 
 
-def check_placeholders(image, table, sources):
-    """Compare back after filling -- on the PC, costs seconds."""
-    bad = []
-    with open(image, "rb") as f:
-        for name, (off, length) in table.items():
-            f.seek(off)
-            if f.read(len(sources[name])) != sources[name]:
-                bad.append(name)
-    return bad
+def user_entries(args, rows, log=console):
+    """The files the table lists under `nutzer` -- today just authorized_keys. Same
+    mechanics as the vendor files, other source: it does not come out of the device, and
+    it has to be settable without any vendor file at all. Modes and owner come from the
+    table, because sshd (StrictModes) refuses the key if they are wrong.
+
+    Returns partition -> [mountfs.Entry]; without --ssh-key nothing is written, and then
+    the device simply has no authorized_keys.
+    """
+    out = collections.OrderedDict()
+    for row in rows:
+        if row["name"] != "authorized_keys":
+            raise RuntimeError("the table names a file of the user this script does not "
+                               "know: %s -- a newer h713-install is needed" % row["name"])
+        owner = row.get("besitzer", "root")
+        if owner not in OWNERS:
+            raise RuntimeError("%s is to belong to %s -- this script only writes root's"
+                               % (row["pfad"], owner))
+        if not args.ssh_key:
+            log.warn("no --ssh-key: %s is not written -- the device is then reachable "
+                     "only over the serial console" % row["pfad"])
+            continue
+        data, n = read_public_key(args.ssh_key)
+        uid, gid = OWNERS[owner]
+        out.setdefault(row["partition"], []).append(mountfs.Entry(
+            row["pfad"], data, None, _mode(row.get("modus"), 0o600), uid, gid,
+            _mode(row.get("verzeichnis_modus"), 0o700)))
+        log.ok("authorized_keys: %d key(s) from %s, %d bytes -> %s (mode %s, %s)"
+               % (n, args.ssh_key, len(data), row["pfad"],
+                  row.get("modus", "0600"), owner))
+    return out
 
 
 # ---------------------------------------------------------------- the old command line
@@ -238,6 +218,24 @@ def translate(argv):
 RELEASE_FILES = {"uboot": ("u-boot-installer.bin",),
                  "fel": ("sunxi-fel.exe", "sunxi-fel")}
 
+# The `format` key of every table h713-mkimage has ever written starts with this; what tells
+# the layouts apart are the keys, not the string, so a suffix P1 adds to it changes nothing
+# here. A v4 table lists `dateien`, a v3 one `platzhalter`.
+TABLE_FORMAT = "hy310-abbild-tabelle"
+V3_REFUSED = ("this image was built for the placeholder layout v3 - use the installer of its "
+              "release, or a v4 image")
+
+
+def table_layout(tab):
+    """"v4" for a table that lists its files, "v3" for one that lists placeholders, None for
+    anything else. Read off the keys the installer actually uses, so no image can be half
+    accepted: what it does not find, it does not fill in."""
+    if isinstance(tab.get("dateien"), list):
+        return "v4"
+    if "platzhalter" in tab or "platzhalter_datei" in tab:
+        return "v3"
+    return None
+
 
 # The dump's file and directory names, English since stage 4. A dump made by
 # v0.5-beta carries the German names; in_dump() still finds those, so the way
@@ -320,7 +318,7 @@ def image_package(path):
     if path.endswith(".json"):
         with open(path, encoding="utf-8") as f:
             d = json.load(f)
-        if d.get("format") != "hy310-abbild-tabelle":
+        if not str(d.get("format", "")).startswith(TABLE_FORMAT):
             raise RuntimeError("%s is no image table of h713-mkimage" % path)
         return os.path.dirname(os.path.abspath(path)), d
     return os.path.dirname(os.path.abspath(path)), None
@@ -410,175 +408,197 @@ def check_package(directory, d, log=console):
                            % (d.get("disk_sektoren"), SECTORS_EXPECTED))
 
 
-# Placeholders a device may also NOT have. Today only the WLAN firmware: not
-# every H713 device carries the AIC8800 chip, and h713-extract expressly does
-# not treat a missing vendor:/etc/firmware/aic8800d80/ as an error (12.09.2026).
-# If the WHOLE set is missing, the placeholders stay zeroed and h713-wifi
-# reports "Firmware fehlt" on the device. If only a part is missing, that is a
-# finding and no special case -- then abort as with everything else.
-# Groups a firmware may supply only in part, or not at all. Missing files leave their
-# placeholder zeroed and are said, never an abort: the picture does not depend on them.
+# ------------------------------------------------- the file set of layout v4
+# Where each vendor file goes is in the table (`dateien`: name, partition, path, group,
+# optional); this here is what the ABSENCE of one costs. The table says what a group is,
+# the installer says what the device does without it.
 # (HY300 Pro, issue #1, 16.09.2026: the Android 10 vendor image has no
-# fw_patch_8800d80_u02_ext0.bin, no pq_picturemode.ini and no pqcontrol_custom_setting.xml.)
-OPTIONAL_GROUPS = {
-    "lib/firmware/aic8800_fw/": ("WLAN firmware", "WLAN stays off"),
-    "pq/": ("picture presets", "h713-pq has no presets, the picture itself is unaffected"),
+# fw_patch_8800d80_u02_ext0.bin, no pq_picturemode.ini and no pqcontrol_custom_setting.xml;
+# a firmware may also ship no WLAN firmware at all, because not every H713 board carries the
+# AIC8800 chip, and h713-extract expressly does not treat that as an error.)
+CONSEQUENCE = {
+    "wlan": "WLAN stays off",
+    "pq": "h713-pq has no presets, the picture itself is unaffected",
+    "logo": "U-Boot boots without a logo",
 }
 
-# Placeholders a device may be missing ON ITS OWN, not only as a whole group. Today exactly one:
-# the boot logo. A dump without it, or with one too big for the placeholder, still installs -- the
-# placeholder keeps its fill pattern, and `h713_disp init <id> logo` in U-Boot treats a missing logo
-# as a warning, not as a failed boot (doku/40, last section). It costs a picture, not a boot.
-OPTIONAL_FILES = ("boot/bootlogo.bmp",)
+
+def partition_window(tab, name):
+    """(part file, byte offset in it, byte size) of the partition `name` -- everything the
+    mount needs, out of the table alone: `partitionen` says where the partition starts and
+    how long it is, `teile` where the part that carries it is written (P-layout-v4).
+
+    None when no part of this run holds the partition: whoever writes only the boot chain
+    does not touch the file systems, and then there is nothing to fill.
+
+    The size is capped at what the part really holds. hy310-rootfs is 7.1 GiB on the device
+    but its file system in the image is 1 GiB (the partition is bigger than the ext4 in it),
+    and a window may not reach past the end of the file it is cut out of."""
+    part = next((p for p in tab.get("partitionen") or [] if p["name"] == name), None)
+    if part is None:
+        raise RuntimeError("the table knows no partition %s" % name)
+    piece = next((t for t in tab["teile"]
+                  if t["lba"] <= part["lba"] < t["lba"] + t["sektoren"]), None)
+    if piece is None:
+        return None
+    offset = (part["lba"] - piece["lba"]) * SECT
+    return (piece["datei"], offset,
+            min(part["sektoren"] * SECT, piece["sektoren"] * SECT - offset))
 
 
-def _sort_out_optional(sources, table, missing, too_big, where, absent, log):
-    """The two kinds of placeholder a device may not be able to supply, for both sources
-    (a directory from h713-extract, and the device's own filled placeholders).
+def say_optional(tab, files, missing, where, absent, log=console):
+    """Sort the files there is no source for into the ones a firmware may not have and the
+    ones that stop the run -- one line per group, as before.
 
-    `where` names the source in the WLAN line, `absent` says what "missing" means there.
-    Returns (missing, too_big) with the optional ones taken out -- `table` loses an optional
-    file, so the caller neither fills it nor counts it."""
-    for prefix, (what, consequence) in OPTIONAL_GROUPS.items():
-        group = [n for n in table if n.startswith(prefix)]
-        gone = [n for n in group if n in missing]
-        if not gone:
-            continue
-        if len(gone) == len(group):
-            log.warn("%s: none of the %d files %s -- this firmware has no %s. "
-                     "The placeholders stay zeroed, %s."
-                     % (prefix, len(group), where, what, consequence))
+    `where` names the source in that line ("in the dump", "on this device"), `absent` says
+    what "missing" means there. Returns the names that are still a problem."""
+    described = tab.get("gruppen") or {}
+    optional = set(f["name"] for f in files if f.get("optional"))
+    gone = [n for n in missing if n in optional]
+    for group in sorted(set(f["gruppe"] for f in files if f["name"] in gone)):
+        whole = [f["name"] for f in files if f["gruppe"] == group]
+        out = [n for n in whole if n in gone]
+        what = described.get(group, group)
+        why = CONSEQUENCE.get(group, "the device does without it")
+        if len(whole) == 1:
+            log.warn("%s: %s -- no %s. %s." % (out[0], absent, what, why))
+        elif len(out) == len(whole):
+            log.warn("%s: none of the %d files %s -- this firmware has no %s. They are not "
+                     "installed, %s." % (group, len(whole), where, what, why))
         else:
-            log.warn("%s: %d of %d files %s (%s) -- this firmware ships another %s "
-                     "set. Those placeholders stay zeroed, %s."
-                     % (prefix, len(gone), len(group), absent,
-                        ", ".join(n[len(prefix):] for n in sorted(gone)[:3]), what, consequence))
-        for n in gone:
-            sources[n] = b""
-            missing.remove(n)
-    for name in OPTIONAL_FILES:
-        if name not in table:
-            continue
-        if name in missing:
-            why = absent
-        elif len(sources.get(name, b"")) > table[name][1]:
-            why = "%d bytes, the placeholder holds %d" % (len(sources[name]), table[name][1])
-        else:
-            continue
-        log.warn("%s: %s -- no boot logo. The placeholder stays a pattern and U-Boot "
-                 "boots without a logo." % (name, why))
-        missing = [n for n in missing if n != name]
-        too_big = [t for t in too_big if not t.startswith(name + " (")]
-        sources.pop(name, None)
-        del table[name]
-    return missing, too_big
+            log.warn("%s: %d of %d files %s (%s) -- this firmware ships another %s set. "
+                     "Those are not installed, %s."
+                     % (group, len(out), len(whole), absent,
+                        ", ".join(os.path.basename(n) for n in sorted(out)[:3]), what, why))
+    return [n for n in missing if n not in optional]
 
 
-def vendor_sources(directory, table, log=console):
-    """Read in the device's own files that h713-extract put down. The names in
-    the table are exactly the paths below the --out of h713-extract, so this is
-    a putting-together and not a matching-up. An OPTIONAL_FILES entry that is missing or too big
-    leaves `table` as well, so the caller neither looks for it nor counts it; everything else
-    missing is still an abort."""
-    sources, missing, too_big = {}, [], []
-    for name, (_off, length) in table.items():
-        p = os.path.join(directory, name.replace("/", os.sep))
+def vendor_sources(directory, tab, files, log=console):
+    """Read in the device's own files that h713-extract put down. The names in the table are
+    exactly the paths below the --out of h713-extract, so this is a putting-together and not
+    a matching-up. A file this firmware may not have is said and left out; everything else
+    missing is an abort. Nothing is ever written empty."""
+    sources, missing = {}, []
+    for f in files:
+        p = os.path.join(directory, f["name"].replace("/", os.sep))
         if not os.path.isfile(p):
-            missing.append(name)
+            missing.append(f["name"])
             continue
-        with open(p, "rb") as f:
-            b = f.read()
-        if len(b) > length:
-            too_big.append("%s (%d > %d)" % (name, len(b), length))
-        sources[name] = b
-    missing, too_big = _sort_out_optional(sources, table, missing, too_big, "in the dump",
-                                          "not in %s" % directory, log)
-    if missing:
+        with open(p, "rb") as fh:
+            sources[f["name"]] = fh.read()
+    left = say_optional(tab, files, missing, "in the dump", "not in %s" % directory, log)
+    if left:
         raise RuntimeError("in %s %d file(s) are missing, e.g. %s"
-                           % (directory, len(missing), ", ".join(sorted(missing)[:3])))
-    if too_big:
-        raise RuntimeError("does not fit into the placeholder: %s" % ", ".join(too_big))
-    too_small = [n for n, b in sources.items() if len(b) < table[n][1]]
-    if too_small:
-        # No abort: the placeholder is filled up with zeros. But it means that
-        # this firmware has other sizes than the one the image was built
-        # against -- that belongs said.
-        log.warn("%d file(s) are smaller than their placeholder (%s) -- the rest "
-                 "is zeroed. Other firmware than when the image was built?"
-                 % (len(too_small), ", ".join(sorted(too_small)[:3])))
+                           % (directory, len(left), ", ".join(sorted(left)[:3])))
     return sources
 
 
-# ------------------------------------------------- the device's own placeholders (N2)
-# On a device that already runs our layout the 44 vendor files are not gone: they sit in
-# the placeholders the last install filled, and the table says where. Reading them back is
-# cheaper than a dump and needs nothing the owner has to keep (doku/61 B, Marco 15.09.).
-
-# What a filled placeholder must begin with, where the file kind says so -- the magics
-# h713-extract itself checks (h713.vendorfiles: TSE_MAGIC, check_bootlogo,
-# check_display_cfg, check_pq). It is the one cheap test that notices a read-back landing
-# on the wrong bytes because the device was installed by a build whose placeholders lie
-# somewhere else (see REPORT: they moved once, between v0.6-beta and v0.7-beta).
-# Every entry is measured against the HY310's real files, not assumed: display_cfg.xml
-# begins with a comment, not with "<?xml", and the ARISC firmware begins with 16 zero bytes
-# (out-hy310-20260912). Whoever adds a row here holds the real file next to it first.
-MAGIC = ((".TSE", b"TSE"), ("bootlogo.bmp", b"BM"), ("display_cfg.xml", b"<"),
-         ("tvpq.db", b"SQLite format 3\0"))
+def copy_entries(files, sources):
+    """partition -> [mountfs.Entry], in the order of the table: everything there is a source
+    for, as root's file with mode 0644. A name whose source is None is a rehearsal entry --
+    it says WHERE the file would go without having read it (`--no-write`)."""
+    out = collections.OrderedDict()
+    for f in files:
+        if f["name"] in sources:
+            out.setdefault(f["partition"], []).append(mountfs.Entry(
+                f["pfad"], sources[f["name"]], None, VENDOR_MODE, 0, 0, DIR_MODE))
+    return out
 
 
-def _unfilled(name, data):
-    """A placeholder nobody has filled: still the builder's fill pattern (h713.layout),
-    or all zeros -- which is what an install writes where the dump had no file, and what
-    an ext4 hands out for blocks no file of this build occupies."""
-    return data[:64] == pattern(name, 64) or data.count(0) == len(data)
+# ------------------------------------------- the device's own file systems (N2, layout v4)
+# On a device that already runs our layout the 44 vendor files are not gone: they lie in its
+# two ext4 file systems under the very paths the table names. Reading them back is cheaper
+# than a dump and needs nothing the owner has to keep (doku/61 B, Marco 15.09.). Under
+# layout v3 that was raw block arithmetic and needed a magic-byte check to notice a
+# read-back landing on the wrong bytes; a file read out of a file system is the file.
+
+def gpt_partitions(disk):
+    """name -> (number, first LBA, sectors), read out of the GPT the device carries. The
+    number is the GPT entry slot -- that is what Linux calls /dev/sdX<n>, and it is read
+    here, never assumed."""
+    head = disk.read(1, 1)
+    if head[:8] != b"EFI PART":
+        return {}
+    entry_lba, count, size = struct.unpack_from("<QII", head, 72)
+    if count > 128 or size not in (128, 256):
+        return {}
+    table = disk.read(entry_lba, (count * size + SECT - 1) // SECT)
+    found = {}
+    for i in range(count):
+        e = table[i * size:(i + 1) * size]
+        if len(e) < 128 or e[:16] == b"\0" * 16:
+            continue
+        first, last = struct.unpack_from("<QQ", e, 32)
+        found[e[56:128].decode("utf-16-le", "replace").rstrip("\0")] = (i + 1, first,
+                                                                       last - first + 1)
+    return found
 
 
-def _wrong_kind(name, data):
-    return any(name.endswith(end) and not data.startswith(magic) for end, magic in MAGIC)
+def partition_node(device, number):
+    """What Linux calls that partition: /dev/sdb + 5 -> /dev/sdb5; mmcblk0, nvme0n1 and
+    loop0 take a `p` in between."""
+    return "%s%s%d" % (device, "p" if device[-1:].isdigit() else "", number)
 
 
-def read_placeholders(disk, tab, table, log=console):
-    """Read the vendor files back out of the device's own placeholders.
+def readback_plan(disk, files):
+    """What has to be read to get the file set off a device that runs our layout:
+    [(partition, node, byte offset, byte size, {path in it: name})]. Pure Python -- only the
+    GPT is read and nothing is mounted, so a rehearsal can print it."""
+    found = gpt_partitions(disk)
+    plan = []
+    for name in sorted(set(f["partition"] for f in files)):
+        if name not in found:
+            raise RuntimeError("the device has no partition %s -- give --vendor" % name)
+        number, lba, sectors = found[name]
+        plan.append((name, partition_node(disk.path, number), lba * SECT, sectors * SECT,
+                     dict((f["pfad"], f["name"]) for f in files if f["partition"] == name)))
+    return plan
 
-    `table` is the image's placeholder table (name -> byte offset in the part named by
-    `platzhalter_datei`, and length); that part is written at a known LBA, so the offset is
-    an LBA on the device. Nothing is trimmed: a file shorter than its placeholder was zero
-    padded when it was installed and goes back in the same way.
+
+def device_sources(disk, tab, files, log=console):
+    """Read the vendor files back out of the device's own file systems: every partition the
+    table names is mounted read-only and the files are copied out as files.
+
+    The window comes from the device's own GPT, so the mount is the same command as on the
+    working copy. The partition node is named in the log for the reader, but not mounted:
+    the installer holds the whole drive open exclusively (h713.blockdev.Disk), and while it
+    does, the kernel refuses to mount a partition of it.
 
     Returns (sources, problem). `problem` is None when the set is complete; otherwise it is
-    the line that goes under the "no vendor source" block, and `sources` is unusable.
-    """
-    part_file = tab.get("platzhalter_datei")
-    part_lba = next((t["lba"] for t in tab.get("teile", []) if t["datei"] == part_file), None)
-    if part_lba is None:
-        return {}, "the table names no part %s to read the placeholders out of" % part_file
-    sources, missing, doubtful = {}, [], []
-    for name in sorted(table):
-        off, length = table[name]
-        lba, skip = part_lba + off // SECT, off % SECT
-        data = disk.read(lba, (skip + length + SECT - 1) // SECT)[skip:skip + length]
-        if len(data) != length or _unfilled(name, data):
-            missing.append(name)
-        elif _wrong_kind(name, data):
-            doubtful.append(name)
-        else:
-            sources[name] = data
-    if doubtful:
-        log.error("%d placeholder(s) hold something else than the file the table names: %s."
-                  % (len(doubtful), ", ".join(sorted(doubtful)[:3])))
-        return {}, ("this device was installed by a build whose placeholders lie elsewhere "
-                    "-- give --vendor or a full dump")
-    missing, _too_big = _sort_out_optional(sources, table, missing, [], "on this device",
-                                           "the placeholder was never filled", log)
-    if missing:
-        return {}, ("the device has no %s -- give --vendor"
-                    % ", ".join(sorted(missing)[:3]))
-    log.ok("%d files read back from the device's own placeholders" % len(sources))
+    the line that goes under the "no vendor source" block, and `sources` is unusable."""
+    sources = {}
+    try:
+        for name, node, offset, size, wanted in readback_plan(disk, files):
+            log.info("  %s = %s, %d file(s) wanted" % (name, node, len(wanted)))
+            for path, data in mountfs.copy_out(disk.path, offset, size,
+                                               sorted(wanted), log).items():
+                sources[wanted[path]] = data
+    except RuntimeError as e:
+        return {}, str(e)
+    missing = [f["name"] for f in files if f["name"] not in sources]
+    left = say_optional(tab, files, missing, "on this device", "not on the device", log)
+    if left:
+        return {}, "the device has no %s -- give --vendor" % ", ".join(sorted(left)[:3])
+    log.ok("%d files read back from the device" % len(sources))
     return sources, None
 
 
+def check_copies(work, windows, plan, log=Quiet):
+    """Read the files back out of the working copy and compare byte for byte -- on the PC,
+    costs seconds. Returns the paths that differ."""
+    bad = []
+    for name, (_file, offset, size) in windows.items():
+        entries = plan.get(name) or []
+        if not entries:
+            continue
+        back = mountfs.copy_out(work, offset, size, [e.path for e in entries], log)
+        bad += [e.path for e in entries if back.get(e.path) != e.data]
+    return bad
+
+
+
 def no_vendor_source(dump_dir, count, log=console, extra=None):
-    """Exit 8: nothing to fill the placeholders with. Unchanged for a stock device; the
+    """Exit 8: no source for the device's own files. Unchanged for a stock device; the
     read-back adds one line saying what the device itself could not supply."""
     log.error("There is neither --vendor nor a full dump in %s." % dump_dir)
     log.info("  The %d files (display artefacts, boot logo, firmware, PQ, WLAN) stand only"
@@ -669,14 +689,14 @@ def confirm(what):
 
 def _image_env_block(tab, work, part_file, log):
     """Locate the U-Boot environment inside the working copy of the part that carries the
-    placeholders. Returns (offset, env dict) or None (no block, wrong part) -- a broken CRC
+    file systems. Returns (offset, env dict) or None (no block, wrong part) -- a broken CRC
     is reported and returned as (offset, None)."""
     block = (tab.get("bausteine") or {}).get("env")
     if not block:
         return None
     part_lba = next((t["lba"] for t in tab["teile"] if t["datei"] == part_file), None)
     if part_lba is None or block["lba"] < part_lba:
-        log.warn("the environment does not lie in the part with the placeholders -- carry-over skipped")
+        log.warn("the environment does not lie in the part with the file systems -- carry-over skipped")
         return None
     off = (block["lba"] - part_lba) * SECT
     with open(work, "rb") as f:
@@ -765,7 +785,7 @@ def carry_env(args, tab, work, part_file, log=console):
         return 0
     part_lba = next((t["lba"] for t in tab["teile"] if t["datei"] == part_file), None)
     if part_lba is None or block["lba"] < part_lba:
-        log.warn("the environment does not lie in the part with the placeholders -- carry-over skipped")
+        log.warn("the environment does not lie in the part with the file systems -- carry-over skipped")
         return 0
     off = (block["lba"] - part_lba) * SECT
     with open(work, "r+b") as f:
@@ -803,38 +823,40 @@ def carry_env(args, tab, work, part_file, log=console):
 def write_package(args, disk, path, directory, tab, here=None):
     """The installation path out of plan 110 §1, steps 4 and 5.
 
-    The order is on purpose (see fill_placeholders): first a working copy of the
-    part with the placeholders is filled and read back on the PC, then
-    EVERYTHING goes onto the eMMC in one go. An abort on the PC costs nothing;
-    an abort in the middle of a second write pass would have left half a system.
+    The order is on purpose (Marco, 10.09.): a working copy of the part that carries the two
+    file systems is filled and read back HERE, on the PC, and only then does EVERYTHING go
+    onto the eMMC in one go. The other way round -- write first, add later -- costs a second
+    pass at 7.7 MB/s, and an abort in between would leave half a system.
     """
     console.step(4, "Check the image (%s, %s)" % (tab.get("abbild"), tab.get("layout")))
+    if table_layout(tab) != "v4":
+        console.error(V3_REFUSED)
+        return 2
     check_package(directory, tab, console)
     console.info("Hole at LBA %d..%d (%s) -- stays untouched"
                  % (tab["loch"]["lba"], tab["loch"]["lba"] + tab["loch"]["sektoren"] - 1,
                     tab["loch"]["partition"]))
 
-    table = {k: tuple(v) for k, v in tab.get("platzhalter", {}).items()}
-    user = {k: tuple(v) for k, v in tab.get("platzhalter_nutzer", {}).items()}
-    part_file = tab.get("platzhalter_datei")
-    work = None
-
-    # Whoever writes only ONE part -- the boot chain for instance, to renew the
-    # bootloader without loading the whole system anew -- does not need the
-    # placeholders: they sit in a part that is not touched at all. Without this
-    # check the tool laid down a 1.15 GB working copy, filled it and threw it
-    # away.
-    chosen = {t["datei"] for t in tab["teile"]}
-    if (table or user) and part_file not in chosen:
-        console.info("placeholders skipped: %s is not written in this run"
-                     % part_file)
-        if args.ssh_key:
-            console.warn("--ssh-key therefore has no effect")
-        table, user = {}, {}
+    # Whoever writes only ONE part -- the boot chain for instance, to renew the bootloader
+    # without loading the whole system anew -- does not touch the file systems at all:
+    # partition_window() finds no part for them, and they fall away here. Without this the
+    # tool laid down a 1.15 GB working copy, filled it and threw it away.
+    rows = list(tab.get("dateien") or [])
+    files = [f for f in rows if partition_window(tab, f["partition"])]
+    user = [u for u in (tab.get("nutzer") or []) if partition_window(tab, u["partition"])]
+    if len(files) != len(rows):
+        console.info("%d file(s) skipped: the part they live in is not written in this run"
+                     % (len(rows) - len(files)))
+    if args.ssh_key and not user:
+        if not tab.get("nutzer"):
+            raise RuntimeError("--ssh-key: this image has no place for authorized_keys (a "
+                               "table without `nutzer`, older than layout v4) -- the key "
+                               "would not arrive. Aborted.")
+        console.warn("--ssh-key therefore has no effect")
 
     sources = {}
-    if table:
-        console.step(5, "Put the device's own files in (%d placeholders)" % len(table))
+    if files:
+        console.step(5, "Put the device's own files in (%d files)" % len(files))
         vendor = args.vendor
         if not vendor:
             full = in_dump(args.dump_dir, DUMP_FULL)
@@ -842,48 +864,76 @@ def write_package(args, disk, path, directory, tab, here=None):
                 vendor = in_dump(args.dump_dir, EXTRACT_DIR)
                 os.makedirs(vendor, exist_ok=True)
                 run_extractor(full, vendor, None, search_dir=here)
-            elif getattr(args, "_our_layout", False):
-                # Our layout is already on the device: the files are in its placeholders,
-                # so neither a dump nor --vendor is needed (N2).
-                sources, problem = read_placeholders(disk, tab, table, console)
-                if problem:
-                    return no_vendor_source(args.dump_dir, len(table), console, problem)
-            else:
-                return no_vendor_source(args.dump_dir, len(table), console)
+            elif not getattr(args, "_our_layout", False):
+                return no_vendor_source(args.dump_dir, len(files), console)
         if vendor:
-            sources = vendor_sources(vendor, table, console)
+            sources = vendor_sources(vendor, tab, files, console)
             console.ok("%d files from %s" % (len(sources), vendor))
-
-    # The user's key: same mechanics, other source. Here and not in
-    # vendor_sources(), because it does not come out of the device -- and
-    # because it must be settable without vendor files as well.
-    if user:
-        if not table:
-            console.step(5, "Put your own SSH key in")
-        own = user_sources(args, user, console)
-        # Only the filled ones are written; an empty placeholder stays as it was
-        # built (newlines), and is valid that way.
-        for name in own:
-            table[name] = user[name]
-            sources[name] = own[name]
-
-    if table:
-        work = args.work_copy or os.path.join(args.dump_dir, WORK_COPY)
-        source_part = os.path.join(directory, part_file)
-        if args.no_write:
-            console.info("WOULD: copy %s to %s and fill %d placeholders"
-                         % (part_file, work, len(table)))
+        elif args.no_write:
+            # Our layout is on the device and the files sit in its file systems (N2). Reading
+            # them back is a mount; a rehearsal mounts nothing, so it says what it would read
+            # and which files it would look for, and leaves it at that.
+            try:
+                for name, node, offset, size, wanted in readback_plan(disk, files):
+                    console.info("WOULD: read %d file(s) back from %s (%s, LBA %d)"
+                                 % (len(wanted), name, node, offset // SECT))
+            except RuntimeError as e:
+                return no_vendor_source(args.dump_dir, len(files), console, str(e))
+            sources = dict((f["name"], None) for f in files)
         else:
+            why = mountfs.unusable()
+            if why:
+                console.error(why)
+                return 2
+            sources, problem = device_sources(disk, tab, files, console)
+            if problem:
+                return no_vendor_source(args.dump_dir, len(files), console, problem)
+
+    # The user's key: same mechanics, other source. Here and not in vendor_sources(), because
+    # it does not come out of the device -- and because it must be settable without vendor
+    # files as well.
+    plan = copy_entries(files, sources)
+    if user:
+        if not files:
+            console.step(5, "Put your own SSH key in")
+        for part, entries in user_entries(args, user, console).items():
+            plan.setdefault(part, []).extend(entries)
+
+    # Every partition that gets something, with the window to mount it through. They all lie
+    # in one part of the image (layout v4: part B carries hy310-boot and hy310-rootfs), and
+    # that is the part the working copy is made of.
+    windows = collections.OrderedDict()
+    for row in files + user:
+        windows.setdefault(row["partition"], partition_window(tab, row["partition"]))
+    part_files = sorted(set(w[0] for w in windows.values()))
+    if len(part_files) > 1:
+        raise RuntimeError("the file systems lie in %d different parts (%s) -- this installer "
+                           "fills one working copy" % (len(part_files), ", ".join(part_files)))
+
+    part_file, work = (part_files[0] if part_files else None), None
+    if windows:
+        work = args.work_copy or os.path.join(args.dump_dir, WORK_COPY)
+        total = sum(len(v) for v in plan.values())
+        if args.no_write:
+            console.info("WOULD: copy %s to %s and put %d file(s) into it"
+                         % (part_file, work, total))
+            for name, (_f, offset, size) in windows.items():
+                console.info("WOULD: %-13s %2d file(s), mounted at offset %d (%d bytes)"
+                             % (name, len(plan.get(name, ())), offset, size))
+        else:
+            source_part = os.path.join(directory, part_file)
             console.info("Working copy: %s (%.0f MiB)" % (work, mib(os.path.getsize(source_part))))
-            # Without a dump nobody has made the directory yet (N2).
-            os.makedirs(os.path.dirname(os.path.abspath(work)), exist_ok=True)
+            os.makedirs(os.path.dirname(os.path.abspath(work)), exist_ok=True)   # N2: no dump made it
             shutil.copyfile(source_part, work)
-            fill_placeholders(work, table, sources, log=Quiet)
-            bad = check_placeholders(work, table, sources)
+            for name, (_f, offset, size) in windows.items():
+                if plan.get(name):
+                    console.info("  %s: %d file(s)" % (name, len(plan[name])))
+                    mountfs.copy_in(work, offset, size, plan[name], log=Quiet)
+            bad = check_copies(work, windows, plan)
             if bad:
-                console.error("differ after filling: %s" % ", ".join(bad))
+                console.error("differ after copying: %s" % ", ".join(bad))
                 return 9
-            console.ok("%d placeholders filled and read back -- all equal" % len(table))
+            console.ok("%d files copied in and read back -- all equal" % total)
             rc = carry_env(args, tab, work, part_file, console)
             if rc:
                 return rc
