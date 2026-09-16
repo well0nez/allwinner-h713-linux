@@ -1034,8 +1034,8 @@ struct opts {
 	const char *preset;	/* -p; NULL: whatever tv.conf says, else "standard" */
 	const char *gamma;	/* DE2 bank file for GAMMA_LUT; "none" leaves the CRTC alone */
 	bool gamma_set;	/* -g was given: it wins over h713-pq's own LUT */
-	const char *calculator;	/* --rechner, overrides tv.conf's "rechner" */
-	const char *data;	/* --data,  overrides tv.conf's "daten" */
+	const char *calculator;	/* --calculator, overrides "calculator" */
+	const char *data;	/* --data,       overrides "data" */
 	const char *input;	/* --input, which input h713-pq is asked about */
 	const char *lut;	/* --lut,     where h713-pq writes its curve */
 	const char *audio;	/* auto|on|off|none, see enum audio_policy */
@@ -2341,14 +2341,14 @@ enum policy { POLICY_AUTO, POLICY_OFF };
  *       start = auto            picture follows the signal (as without the file)
  *       start = manual          console until "ctl on" or "ctl auto"
  *       start = last            the mode last set with ctl; auto when none is known
- *       zustand = PATH | none   where the last mode is kept; none = do not keep
+ *       state = PATH | none     where the last mode is kept; none = do not keep
  *       preset = NAME|last      which picture preset to come up with (11.09.)
- *       daten = DIR | none      the extracted vendor data; none = do not use it
- *       rechner = PATH | none   h713-pq; none = do not compute anything
+ *       data = DIR | none       the extracted vendor data; none = do not use it
+ *       calculator = PATH|none  h713-pq; none = do not compute anything
  *
- * The keys are the file format and keep the names they have had since
- * 11.09.2026; only their values speak English now, and the two words this
- * file used before ("manuell", "zuletzt") are still accepted for them. The
+ * The keys are the file format, and since v0.8-beta they speak English like
+ * the values. Their German spellings ("zustand", "daten", "rechner") and the
+ * value words ("manuell", "zuletzt") are still accepted without a warning. The
  * same holds for the two state files below: /var/lib/h713-tv/modus and its
  * sibling "werte" keep their names and their content, because renaming
  * either would throw away what a device running an older release has
@@ -2384,12 +2384,12 @@ struct conf {
 	const char *path;	/* -C; CONF_FILE by default */
 	bool present;		/* the file was there and has been read */
 	enum start_mode start;
-	bool keep;		/* zustand != none */
+	bool keep;		/* state != none */
 	char state_path[200];
 	char saved_path[208];	/* <dirname(state_path)>/werte, "" when not kept */
 	char preset[32];	/* preset = NAME | last; "" = not said here */
-	char data[160];	/* daten = DIR; "none" = do not use vendor data */
-	char calculator[160];	/* rechner = PATH; "none" = do not compute */
+	char data[160];	/* data = DIR; "none" = do not use vendor data */
+	char calculator[160];	/* calculator = PATH; "none" = do not compute */
 	char input[24];	/* --input; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
@@ -2491,13 +2491,14 @@ static void conf_read(struct conf *c)
 			else
 				warn("%s:%u: start = \"%s\" unknown (auto manual last) -- auto",
 				     c->path, n, val);
-		} else if (!strcasecmp(key, "zustand")) {
+		} else if (!strcasecmp(key, "state") ||
+			   !strcasecmp(key, "zustand")) {	/* GERMAN ALIAS */
 			if (!strcasecmp(val, "none") || !strcasecmp(val, "keiner") ||
 			    !strcasecmp(val, "nein"))
 				c->keep = false;
 			else if (*val != '/' || strlen(val) >= sizeof(c->state_path) - 8)
-				warn("%s:%u: zustand = \"%s\" is not an absolute path (or too long) -- default %s",
-				     c->path, n, val, STATE_FILE);
+				warn("%s:%u: %s = \"%s\" is not an absolute path (or too long) -- default %s",
+				     c->path, n, key, val, STATE_FILE);
 			else
 				snprintf(c->state_path, sizeof(c->state_path), "%s", val);
 		} else if (!strcasecmp(key, "preset")) {
@@ -2513,20 +2514,22 @@ static void conf_read(struct conf *c)
 				     c->path, n, val);
 			else
 				snprintf(c->preset, sizeof(c->preset), "%s", val);
-		} else if (!strcasecmp(key, "daten")) {
+		} else if (!strcasecmp(key, "data") ||
+			   !strcasecmp(key, "daten")) {	/* GERMAN ALIAS */
 			if (strlen(val) >= sizeof(c->data))
-				warn("%s:%u: daten = \"%s\" is too long -- default %s",
-				     c->path, n, val, PQ_DATA);
+				warn("%s:%u: %s = \"%s\" is too long -- default %s",
+				     c->path, n, key, val, PQ_DATA);
 			else
 				snprintf(c->data, sizeof(c->data), "%s", val);
-		} else if (!strcasecmp(key, "rechner")) {
+		} else if (!strcasecmp(key, "calculator") ||
+			   !strcasecmp(key, "rechner")) {	/* GERMAN ALIAS */
 			if (strlen(val) >= sizeof(c->calculator))
-				warn("%s:%u: rechner = \"%s\" is too long -- default %s",
-				     c->path, n, val, PQ_BIN);
+				warn("%s:%u: %s = \"%s\" is too long -- default %s",
+				     c->path, n, key, val, PQ_BIN);
 			else
 				snprintf(c->calculator, sizeof(c->calculator), "%s", val);
 		} else {
-			warn("%s:%u: unknown key \"%s\" -- ignored (start, zustand, preset, daten, rechner)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator)",
 			     c->path, n, key);
 		}
 	}
@@ -2648,7 +2651,7 @@ static enum policy start_policy(struct control *c)
 	}
 	info("config          %s%s: %s -> %s; %s%s", cf->path, cf->present ? "" : " missing", why,
 	     console ? "console until \"h713-tv ctl on\"" : "the picture follows the signal",
-	     c->state_path ? "the mode is saved in " : "the mode is not saved (zustand = none)",
+	     c->state_path ? "the mode is saved in " : "the mode is not saved (state = none)",
 	     c->state_path ? c->state_path : "");
 
 	return console ? POLICY_OFF : POLICY_AUTO;
@@ -2875,7 +2878,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		reply_add(r, "config          %s%s: start=%s; saved=%s%s%s\n", c->conf->path,
 			  c->conf->present ? "" : " (missing)", start_mode_text(c->conf->start),
 			  c->state_known[0] ? c->state_known : "-",
-			  c->state_path ? " in " : " (zustand = none)",
+			  c->state_path ? " in " : " (state = none)",
 			  c->state_path ? c->state_path : "");
 	if (sig == 1)
 		reply_add(r, "signal          %ux%u%s, %llu Hz (last measured)\n", t->bt.width,
@@ -3362,7 +3365,7 @@ static const char *const preset_pq_key[9] = {
  *   * h713-pq is not installed or not executable   -> not even started
  *   * it crashes, or writes something unparseable   -> record rejected
  *   * it takes longer than PQ_DEADLINE_MS           -> killed, record dropped
- *   * "rechner = none" or "daten = none" in tv.conf -> not started at all
+ *   * "calculator = none" or "data = none" in tv.conf -> not started at all
  *
  * The record carries *all* presets the data has for this input, not only the
  * one asked for. That is why "ctl preset energy_saving" works on a device
@@ -3630,11 +3633,11 @@ static void pq_start(struct pq *p, const struct conf *c, const char *preset)
 	p->fd = -1;
 
 	if (!strcasecmp(c->calculator, "none")) {
-		snprintf(p->why, sizeof(p->why), "rechner = none");
+		snprintf(p->why, sizeof(p->why), "calculator = none");
 		return;
 	}
 	if (!strcasecmp(c->data, "none")) {
-		snprintf(p->why, sizeof(p->why), "daten = none");
+		snprintf(p->why, sizeof(p->why), "data = none");
 		return;
 	}
 	if (access(c->calculator, X_OK)) {
@@ -4142,7 +4145,7 @@ static bool saved_write(struct saved_values *w, struct capture *cap,
 	FILE *f;
 
 	if (!w->path) {
-		snprintf(msg, n, "nothing is saved (zustand = none in tv.conf)");
+		snprintf(msg, n, "nothing is saved (state = none in tv.conf)");
 		return false;
 	}
 	snprintf(tmp, sizeof(tmp), "%s.new", w->path);
@@ -4217,7 +4220,7 @@ static bool saved_write(struct saved_values *w, struct capture *cap,
 static bool saved_delete(struct saved_values *w, char *msg, size_t n)
 {
 	if (!w->path) {
-		snprintf(msg, n, "nothing is saved (zustand = none in tv.conf)");
+		snprintf(msg, n, "nothing is saved (state = none in tv.conf)");
 		return false;
 	}
 	if (unlink(w->path) && errno != ENOENT) {
@@ -4318,7 +4321,7 @@ static void cmd_status_picture_values(struct reply *r)
 		  preset_current_from_data ? "from the device data"
 					   : "the compiled-in table");
 	if (!saved.path)
-		reply_add(r, "saved           nothing (zustand = none in tv.conf)\n");
+		reply_add(r, "saved           nothing (state = none in tv.conf)\n");
 	else if (!saved.present)
 		reply_add(r, "saved           nothing in %s -- \"ctl save\" writes it\n",
 			  saved.path);
@@ -4463,7 +4466,7 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "  status (st)           state of the program, the kernel and cpu_comm\n"
 		  "  auto (on)             the picture follows the signal (the default without tv.conf)\n"
 		  "  off                   force the console, until auto\n"
-		  "                        auto/off are saved (zustand in /etc/h713/tv.conf);\n"
+		  "                        auto/off are saved (state in /etc/h713/tv.conf);\n"
 		  "                        what applies at the start is start = auto|manual|last there\n"
 		  "  console               unblank the console, show the cursor\n"
 		  "  list                  all picture controls with value and range\n"
@@ -4838,13 +4841,13 @@ _Noreturn static void usage(const char *me)
 {
 	fprintf(stderr,
 		"usage: %s [-d /dev/videoN] [-c /dev/dri/cardN] [-s SOCKET] [-p PRESET] [-g LUT]\n"
-		"                 [-a AUDIO] [-t DB] [-C CONFIG] [--rechner PATH] [--data DIR]\n"
+		"                 [-a AUDIO] [-t DB] [-C CONFIG] [--calculator PATH] [--data DIR]\n"
 		"                 [--input NAME] [--lut PATH] [-n]\n"
 		"        %s ctl [-s SOCKET] COMMAND [ARG...]      (h713-tv ctl help)\n"
 		"\n"
 		"  -s PATH     control socket; default %s\n"
-		"  -C FILE     configuration (start = auto|manual|last, zustand = PATH|none,\n"
-		"              preset = NAME|last, daten = DIR|none, rechner = PATH|none);\n"
+		"  -C FILE     configuration (start = auto|manual|last, state = PATH|none,\n"
+		"              preset = NAME|last, data = DIR|none, calculator = PATH|none);\n"
 		"              default %s; without it: start = auto, the mode saved in %s\n"
 		"  -d DEVICE   capture device; without it the name \"%s\" is searched for\n"
 		"              (on this board /dev/video1 -- video0 is cedrus)\n"
@@ -4855,8 +4858,9 @@ _Noreturn static void usage(const char *me)
 		"              none = send nothing). Without it the preset from the configuration\n"
 		"              applies, else standard. Otherwise the firmware starts with empty\n"
 		"              contrast and brightness registers and saturation 60\n"
-		"  --rechner P h713-pq, which computes the values from the device data (none = do\n"
-		"              not compute, take the compiled-in table); default %s\n"
+		"  --calculator P\n"
+		"              h713-pq, which computes the values from the device data (none =\n"
+		"              do not compute, take the compiled-in table); default %s\n"
 		"  --data D    directory of the unpacked vendor data (none = do not use it);\n"
 		"              default %s\n"
 		"  --input N   the input h713-pq is asked about; default %s\n"
@@ -4918,7 +4922,8 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[arg], "-g") && arg + 1 < argc) {
 			o.gamma = argv[++arg];
 			o.gamma_set = true;
-		} else if (!strcmp(argv[arg], "--rechner") && arg + 1 < argc)
+		} else if ((!strcmp(argv[arg], "--calculator") ||
+			    !strcmp(argv[arg], "--rechner")) && arg + 1 < argc)	/* GERMAN ALIAS */
 			o.calculator = argv[++arg];
 		/* the two GERMAN ALIAS names go out after v0.8-beta */
 		else if ((!strcmp(argv[arg], "--data") ||

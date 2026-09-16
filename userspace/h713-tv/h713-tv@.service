@@ -42,7 +42,7 @@ RuntimeDirectoryMode=0755
 
 # The mode last set with `h713-tv ctl auto|off` lives in
 # /var/lib/h713-tv/modus (its configuration: /etc/h713/tv.conf, keys start and
-# zustand). StateDirectory creates the directory and makes exactly this one
+# state). StateDirectory creates the directory and makes exactly this one
 # writable under ProtectSystem=strict; without the line the mode would
 # silently not be kept. It is written only when the mode changes.
 StateDirectory=h713-tv
