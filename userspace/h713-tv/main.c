@@ -1035,8 +1035,8 @@ struct opts {
 	const char *gamma;	/* DE2 bank file for GAMMA_LUT; "none" leaves the CRTC alone */
 	bool gamma_set;	/* -g was given: it wins over h713-pq's own LUT */
 	const char *calculator;	/* --rechner, overrides tv.conf's "rechner" */
-	const char *data;	/* --daten,   overrides tv.conf's "daten" */
-	const char *input;	/* --eingang, which input h713-pq is asked about */
+	const char *data;	/* --data,  overrides tv.conf's "daten" */
+	const char *input;	/* --input, which input h713-pq is asked about */
 	const char *lut;	/* --lut,     where h713-pq writes its curve */
 	const char *audio;	/* auto|on|off|none, see enum audio_policy */
 	const char *trim;	/* --hdmi-trim, dB <= 0, see audio_trim_parse() */
@@ -2390,7 +2390,7 @@ struct conf {
 	char preset[32];	/* preset = NAME | last; "" = not said here */
 	char data[160];	/* daten = DIR; "none" = do not use vendor data */
 	char calculator[160];	/* rechner = PATH; "none" = do not compute */
-	char input[24];	/* --eingang; the input h713-pq is asked about */
+	char input[24];	/* --input; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
 
@@ -3345,7 +3345,7 @@ static const char *const preset_pq_key[9] = {
  *
  * How it asks:
  *
- *   h713-pq --daten DIR show INPUT PRESET --json --lut /run/.../gamma.bin
+ *   h713-pq --data DIR show INPUT PRESET --json --lut /run/.../gamma.bin
  *
  * One child process, started as early as possible -- before the capture and
  * the DRM device are opened, which is where the start spends its time anyway
@@ -3669,7 +3669,7 @@ static void pq_start(struct pq *p, const struct conf *c, const char *preset)
 			dup2(null, STDIN_FILENO);
 		if (dup2(fds[1], STDOUT_FILENO) < 0)
 			_exit(127);
-		execl(c->calculator, "h713-pq", "--daten", c->data, "show",
+		execl(c->calculator, "h713-pq", "--data", c->data, "show",
 		      c->input, preset, "--json", "--lut", c->lut,
 		      (char *)NULL);
 		_exit(127);
@@ -4838,8 +4838,8 @@ _Noreturn static void usage(const char *me)
 {
 	fprintf(stderr,
 		"usage: %s [-d /dev/videoN] [-c /dev/dri/cardN] [-s SOCKET] [-p PRESET] [-g LUT]\n"
-		"                 [-a AUDIO] [-t DB] [-C CONFIG] [--rechner PATH] [--daten DIR]\n"
-		"                 [--eingang NAME] [--lut PATH] [-n]\n"
+		"                 [-a AUDIO] [-t DB] [-C CONFIG] [--rechner PATH] [--data DIR]\n"
+		"                 [--input NAME] [--lut PATH] [-n]\n"
 		"        %s ctl [-s SOCKET] COMMAND [ARG...]      (h713-tv ctl help)\n"
 		"\n"
 		"  -s PATH     control socket; default %s\n"
@@ -4857,9 +4857,9 @@ _Noreturn static void usage(const char *me)
 		"              contrast and brightness registers and saturation 60\n"
 		"  --rechner P h713-pq, which computes the values from the device data (none = do\n"
 		"              not compute, take the compiled-in table); default %s\n"
-		"  --daten D   directory of the unpacked vendor data (none = do not use it);\n"
+		"  --data D    directory of the unpacked vendor data (none = do not use it);\n"
 		"              default %s\n"
-		"  --eingang N the input h713-pq is asked about; default %s\n"
+		"  --input N   the input h713-pq is asked about; default %s\n"
 		"  --lut PATH  where h713-pq writes its gamma curve; default %s\n"
 		"  -g LUT      gamma curve for the CRTC when h713-pq delivers none (one DE2 bank,\n"
 		"              2048 bytes; none = leave the identity ramp); default %s\n"
@@ -4920,9 +4920,12 @@ int main(int argc, char **argv)
 			o.gamma_set = true;
 		} else if (!strcmp(argv[arg], "--rechner") && arg + 1 < argc)
 			o.calculator = argv[++arg];
-		else if (!strcmp(argv[arg], "--daten") && arg + 1 < argc)
+		/* the two GERMAN ALIAS names go out after v0.8-beta */
+		else if ((!strcmp(argv[arg], "--data") ||
+			  !strcmp(argv[arg], "--daten")) && arg + 1 < argc)	/* GERMAN ALIAS */
 			o.data = argv[++arg];
-		else if (!strcmp(argv[arg], "--eingang") && arg + 1 < argc)
+		else if ((!strcmp(argv[arg], "--input") ||
+			  !strcmp(argv[arg], "--eingang")) && arg + 1 < argc)	/* GERMAN ALIAS */
 			o.input = argv[++arg];
 		else if (!strcmp(argv[arg], "--lut") && arg + 1 < argc)
 			o.lut = argv[++arg];
