@@ -207,8 +207,8 @@ def main():
         probe = None
     else:
         # h713.mountfs is the installer's executor (package P2): copy_in(image_path,
-        # partition_offset, partition_size, files), files = [(source, target, mode, owner)].
-        from h713 import mountfs                                            # noqa: F401
+        # partition_offset, partition_size, entries) with mountfs.Entry rows.
+        from h713 import mountfs
         piece = {where[p][0] for p in ("hy310-boot", "hy310-rootfs")}
         if len(piece) != 1:
             bad("hy310-boot and hy310-rootfs lie in different pieces (%s) -- this test "
@@ -222,7 +222,7 @@ def main():
             source = os.path.join(a.vendor, f.name.replace("/", os.sep))
             if os.path.isfile(source):
                 jobs.setdefault(f.partition, []).append(
-                    (source, f.path, layout.FILE_MODE, layout.FILE_OWNER))
+                    mountfs.Entry(path=f.path, source=source, mode=layout.FILE_MODE))
             elif f.optional:
                 missing.append(f.name)
             else:
@@ -239,13 +239,13 @@ def main():
         for partition, files in sorted(jobs.items()):
             _datei, offset, length = where[partition]
             read_fs = Ext4(q.sub(offset, length, partition), label=partition)
-            for source, path, mode, _owner in files:
-                with open(source, "rb") as f:
+            for e in files:
+                with open(e.source, "rb") as f:
                     expect = f.read()
-                if read_fs.read(path) == expect:
+                if read_fs.read(e.path) == expect:
                     good += 1
                 else:
-                    bad("%s: read back through the file system it deviates" % path)
+                    bad("%s: read back through the file system it deviates" % e.path)
         ok("all %d files read through ext4 byte-identical to the source" % good)
 
     # ---------------------------------------------------------------- 5
