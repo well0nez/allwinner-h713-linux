@@ -118,7 +118,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  #include <media/v4l2-dev.h>
  #include <media/v4l2-device.h>
  #include <media/v4l2-dv-timings.h>
-@@ -337,6 +338,226 @@
+@@ -346,6 +347,226 @@
  	},
  };
  
@@ -345,7 +345,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  /* ------------------------------------------------------------------ */
  
  struct h713_hdmirx;
-@@ -401,6 +622,11 @@
+@@ -410,6 +631,11 @@
  
  	struct v4l2_dv_timings timings;
  
@@ -357,7 +357,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	/* slot bookkeeping, all of it under slot_lock */
  	spinlock_t slot_lock;
  	struct vb2_v4l2_buffer *slot_buf[H713_HDMIRX_SLOTS];
-@@ -577,6 +803,154 @@
+@@ -586,6 +812,154 @@
  }
  
  /* ------------------------------------------------------------------ *
@@ -512,7 +512,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
   * Callbacks from the firmware
   * ------------------------------------------------------------------ */
  
-@@ -1430,7 +1804,7 @@
+@@ -1467,7 +1841,7 @@
  	case V4L2_EVENT_SOURCE_CHANGE:
  		return v4l2_src_change_event_subscribe(fh, sub);
  	default:
@@ -521,7 +521,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	}
  }
  
-@@ -1701,6 +2075,24 @@
+@@ -1738,6 +2112,24 @@
  			   (u64)h713_hdmirx_slot_y[i],
  			   (u64)h713_hdmirx_slot_c[i]);
  
@@ -546,7 +546,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	return 0;
  }
  DEFINE_SHOW_ATTRIBUTE(h713_hdmirx_status);
-@@ -1866,6 +2258,13 @@
+@@ -1903,6 +2295,13 @@
  	}
  
  	/*
@@ -560,7 +560,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	 * Stage 4: EDID into the receiver and hotplug up. This is the ARISC's
  	 * job and it takes the ten seconds the hotplug pulse needs, which is
  	 * why this driver probes asynchronously.
-@@ -1903,6 +2302,11 @@
+@@ -1940,6 +2339,11 @@
  	if (ret)
  		return ret;
  
@@ -572,7 +572,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	rx->vdev.fops = &h713_hdmirx_fops;
  	rx->vdev.ioctl_ops = &h713_hdmirx_ioctl_ops;
  	rx->vdev.v4l2_dev = &rx->v4l2_dev;
-@@ -1916,7 +2320,7 @@
+@@ -1953,7 +2357,7 @@
  
  	ret = video_register_device(&rx->vdev, VFL_TYPE_VIDEO, -1);
  	if (ret)
@@ -581,7 +581,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	/*
  	 * From here on the display tells this driver when it has published the
-@@ -1967,6 +2371,8 @@
+@@ -2004,6 +2408,8 @@
  
  err_vdev:
  	vb2_video_unregister_device(&rx->vdev);
@@ -590,7 +590,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  err_v4l2:
  	v4l2_device_unregister(&rx->v4l2_dev);
  
-@@ -1981,6 +2387,7 @@
+@@ -2018,6 +2424,7 @@
  	cancel_work_sync(&rx->rearm_work);
  	debugfs_remove_recursive(rx->debugfs);
  	vb2_video_unregister_device(&rx->vdev);

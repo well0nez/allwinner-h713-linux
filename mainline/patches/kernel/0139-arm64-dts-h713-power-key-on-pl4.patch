@@ -30,7 +30,7 @@ diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  #include <dt-bindings/thermal/thermal.h>
  
  / {
-@@ -2316,6 +2317,33 @@
+@@ -2333,6 +2334,33 @@
  	};
  
  	/*

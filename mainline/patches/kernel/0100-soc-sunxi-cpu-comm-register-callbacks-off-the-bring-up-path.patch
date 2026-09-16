@@ -95,7 +95,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
   *
   * Documentation: doku/88-v4l2-hdmirx.md, doku/78-nachtplan-hdmi-switch.md
   * appendix A (the seven stages of a source change).
-@@ -382,6 +387,8 @@
+@@ -391,6 +396,8 @@
  	struct video_device vdev;
  	struct vb2_queue queue;
  	struct mutex lock;		/* serialises ioctl and queue */
@@ -104,7 +104,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	struct dentry *debugfs;
  
  	void __iomem *shm;		/* cpu_comm shared memory window */
-@@ -581,12 +588,13 @@
+@@ -590,12 +597,13 @@
  	};
  
  	/*
@@ -124,7 +124,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	 */
  	if (!video_is_registered(&rx->vdev))
  		return;
-@@ -1463,10 +1471,133 @@
+@@ -1500,10 +1508,133 @@
  	.vidioc_unsubscribe_event	= v4l2_event_unsubscribe,
  };
  
@@ -260,7 +260,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	.poll		= vb2_fop_poll,
  	.unlocked_ioctl	= video_ioctl2,
  	.mmap		= vb2_fop_mmap,
-@@ -1640,40 +1771,6 @@
+@@ -1677,40 +1808,6 @@
  	return 0;
  }
  
@@ -301,7 +301,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  static int h713_hdmirx_probe(struct platform_device *pdev)
  {
  	struct device *dev = &pdev->dev;
-@@ -1694,6 +1791,7 @@
+@@ -1731,6 +1828,7 @@
  	rx->timings = h713_hdmirx_timings;
  	rx->last_slot = -1;
  	mutex_init(&rx->lock);
@@ -309,7 +309,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	spin_lock_init(&rx->slot_lock);
  	spin_lock_init(&rx->event_lock);
  
-@@ -1743,12 +1841,15 @@
+@@ -1780,12 +1878,15 @@
  		return dev_err_probe(dev, -ENOMEM,
  				     "cpu_comm-Shmem-Fenster nicht abbildbar\n");
  
@@ -331,7 +331,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	ret = h713_hdmirx_run_init_seq(rx);
  	if (ret) {
  		/*
-@@ -1760,7 +1861,8 @@
+@@ -1797,7 +1898,8 @@
  		 */
  		if (ret == -EAGAIN || ret == -ENODEV)
  			ret = -EPROBE_DEFER;
@@ -341,7 +341,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	}
  
  	/*
-@@ -1770,10 +1872,10 @@
+@@ -1807,10 +1909,10 @@
  	 */
  	ret = arisc_hdmi_edid_init(H713_HDMI_PORT, NULL, 0);
  	if (ret) {
@@ -354,7 +354,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	}
  
  	q = &rx->queue;
-@@ -1795,11 +1897,11 @@
+@@ -1832,11 +1934,11 @@
  
  	ret = vb2_queue_init(q);
  	if (ret)
@@ -368,7 +368,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	rx->vdev.fops = &h713_hdmirx_fops;
  	rx->vdev.ioctl_ops = &h713_hdmirx_ioctl_ops;
-@@ -1867,8 +1969,6 @@
+@@ -1904,8 +2006,6 @@
  	vb2_video_unregister_device(&rx->vdev);
  err_v4l2:
  	v4l2_device_unregister(&rx->v4l2_dev);
@@ -377,7 +377,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	return ret;
  }
-@@ -1882,7 +1982,7 @@
+@@ -1919,7 +2019,7 @@
  	debugfs_remove_recursive(rx->debugfs);
  	vb2_video_unregister_device(&rx->vdev);
  	v4l2_device_unregister(&rx->v4l2_dev);

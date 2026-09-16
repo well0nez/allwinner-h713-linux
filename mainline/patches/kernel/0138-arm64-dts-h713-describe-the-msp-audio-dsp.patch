@@ -10,7 +10,7 @@ Applies on top of 0135b (codec I2S window in the same file).
 diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:37:49.876474001 +0200
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:37:49.886049833 +0200
-@@ -1591,6 +1591,86 @@
+@@ -1598,6 +1598,86 @@
  		 * section 0, rule 6). It lives in the TVFE/TVCAP power
  		 * domain; while that is off the whole block reads zero.
  		 */

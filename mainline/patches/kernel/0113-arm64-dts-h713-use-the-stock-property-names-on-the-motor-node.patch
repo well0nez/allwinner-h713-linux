@@ -27,7 +27,7 @@ No values change; the built DTB differs only in those two property names.
 
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -1915,10 +1915,27 @@
+@@ -2167,10 +2167,27 @@
  	 */
  
  	/*
@@ -59,7 +59,7 @@ No values change; the built DTB differs only in those two property names.
  	 * GPIO format: <&pio bank pin flags>  bank 7 = PH
  	 */
  	motor_ctr: motor-ctr {
-@@ -1932,9 +1949,9 @@
+@@ -2184,9 +2201,9 @@
  		motor-gpio-phase3 = <&pio 7 7 0>;	/* PH7 */
  
  		limiter-up-gpio = <&pio 7 14 0>;	/* PH14 */
@@ -71,7 +71,7 @@ No values change; the built DTB differs only in those two property names.
  		motor-step-num = <8>;			/* 8 half-steps per sequence */
  		motor-cycle = <2>;			/* 2 cycles per mstep */
  		motor-step-type = <8>;
-@@ -1943,8 +1960,8 @@
+@@ -2195,8 +2212,8 @@
  		motor-cw-table = [01 09 08 0A 02 06 04 05];
  		motor-ccw-table = [05 04 06 02 0A 08 09 01];
  

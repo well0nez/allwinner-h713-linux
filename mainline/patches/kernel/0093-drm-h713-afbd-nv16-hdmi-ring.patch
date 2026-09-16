@@ -175,7 +175,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  			no-map;
  		};
  
-@@ -1813,6 +1831,18 @@
+@@ -1820,6 +1838,18 @@
  			clocks = <&ccu CLK_AFBD>,
  				 <&ccu CLK_BUS_DISP>;
  			clock-names = "clk_afbd", "clk_bus_disp";
