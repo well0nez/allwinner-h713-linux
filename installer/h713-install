@@ -63,9 +63,11 @@ VERSION = "0.1 (draft, doku/110)"
 
 EPILOG = """exit codes:
   0 ok                  4 wrong size         8 no vendor source
-  1 refused/aborted     5 file missing       9 fill mismatch
-  2 usage               6 verify failed     10 unknown device or secure storage changed
-  3 no drive            7 dump mismatch     11 broken env in image
+  1 refused/aborted     5 file missing       9 copied files differ
+  2 usage, or an image  6 verify failed     10 unknown device or secure storage changed
+    this installer      7 dump mismatch     11 broken env in image
+    cannot take
+  3 no drive
 """
 
 def parser():
