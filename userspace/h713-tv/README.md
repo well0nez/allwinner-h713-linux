@@ -523,7 +523,7 @@ and is not rebuilt in C - maintaining the same computation twice is exactly the 
 correction of 07.09. came out of (plan 113 §A.3, way (a)).
 
 ```
-h713-pq --daten /etc/h713/tvconfig show HDMI1 standard --json --lut /run/h713-tv/gamma-laufzeit.bin
+h713-pq --data /etc/h713/tvconfig show HDMI1 standard --json --lut /run/h713-tv/gamma-laufzeit.bin
 ```
 
 One JSON record on `stdout`, everything else to `stderr` (and thus into the journal). The record carries the
@@ -601,7 +601,7 @@ daten   = DIR | none         # default /etc/h713/tvconfig; none = do not use the
 rechner = PATH | none        # default /usr/local/bin/h713-pq; none = do not compute
 ```
 
-On the command line they are called `-p`, `--daten` and `--rechner`; on top of that `--eingang` (default
+On the command line they are called `-p`, `--data` and `--rechner`; on top of that `--input` (default
 `HDMI1`) and `--lut` (default `/run/h713-tv/gamma-laufzeit.bin`). The command line has the last word, the
 file is the standing setting. `-g` still counts as an explicit order and beats the curve from `h713-pq`.
 
@@ -654,7 +654,7 @@ fail.
 - **The gamma curve is loaded once, at the start.** A `ctl preset` onto a mode with a different gamma stage
   sets the nine controls, not the curve - and says so in its answer. In this device's data the case does not
   arise (all eight modes are on stage 3 = 2.2).
-- **`HDMI1` only.** `h713-pq` is asked about exactly this input (`--eingang`); the INI carries the same
+- **`HDMI1` only.** `h713-pq` is asked about exactly this input (`--input`); the INI carries the same
   lines for `HDMI1`, `HDMI2` and `HDMI3` anyway.
 - **A resolution change costs ~1 s of console** - that is the source's real signal loss during the mode
   change.
