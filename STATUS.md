@@ -76,8 +76,10 @@ Device runs on the HY310 on 16.09.2026 (`v0.7-dev13`, `v0.7-dev14`; German accou
 - **Reinstall over our layout** without a dump and without `--vendor`; the small dump only with `--dump`.
 - **Optional groups:** Wi-Fi firmware and picture-preset files a firmware lacks are said and left out (issue #1).
 - **Device tools in English:** `h713-tv`, `h713-pq`, `h713-fel`, `h713-focus`, `h713-cam`; old `tv.conf` words stay accepted.
-- **The last German switches:** `h713-pq --daten/--kanal` are `--data`/`--channel` now, `h713-tv --daten/--eingang`
-  are `--data`/`--input`; the old spellings still work, undocumented, and go out after this release.
+- **The last German switches and keys:** `h713-pq --daten/--kanal` are `--data`/`--channel` now, `h713-tv`'s
+  `--daten/--eingang/--rechner` are `--data`/`--input`/`--calculator`, and the `tv.conf` keys `zustand`, `daten`
+  and `rechner` are `state`, `data` and `calculator`. Every old spelling is still accepted without a warning, so
+  an existing `tv.conf`, unit file or script keeps working; they go out after this release.
 - **Msgbox lines** 46/109/108 in the device tree, watchdog on 53, `cpu_comm` requests only its own line; the two
   `IRQ index not found` lines are gone. Sixteen kernel patches refreshed; `ping`, `curl`, `wget`, `nc` in the rootfs.
 
