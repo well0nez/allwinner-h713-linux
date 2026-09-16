@@ -2671,7 +2671,7 @@ static void reply_fail(struct reply *r, const char *fmt, ...)
 	vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
 	r->failed = true;
-	reply_add(r, "fehler %s\n", msg);
+	reply_add(r, "error %s\n", msg);
 }
 
 /*
@@ -2784,23 +2784,23 @@ static void cmd_status_audio(struct reply *r, struct audio *a)
 	char dac[32], cmu[32];
 
 	if (a->policy == AUDIO_NONE) {
-		reply_add(r, "ton         nicht angefasst (-a none)\n");
+		reply_add(r, "audio           not touched (-a none)\n");
 		return;
 	}
 	if (!a->enabled) {
-		reply_add(r, "ton         aus -- %s\n", a->why);
+		reply_add(r, "audio           off -- %s\n", a->why);
 		return;
 	}
 	if (a->state == AUDIO_LOUD && a->applied_rate)
-		reply_add(r, "ton         %s (%s), %u Hz, %s, %s%s\n",
+		reply_add(r, "audio           %s (%s), %u Hz, %s, %s%s\n",
 			  audio_state_text(a), audio_policy_text(a),
 			  a->applied_rate, audio_volume_text(a, text, sizeof(text)),
 			  audio_trim_text(a, trim, sizeof(trim)),
 			  a->mute ? ", ctl mute on" : "");
 	else
-		reply_add(r, "ton         %s (%s)%s, %s, %s%s\n",
+		reply_add(r, "audio           %s (%s)%s, %s, %s%s\n",
 			  audio_state_text(a), audio_policy_text(a),
-			  a->state == AUDIO_STILL ? "" : ", Rate unbekannt",
+			  a->state == AUDIO_STILL ? "" : ", rate unknown",
 			  audio_volume_text(a, text, sizeof(text)),
 			  audio_trim_text(a, trim, sizeof(trim)),
 			  a->mute ? ", ctl mute on" : "");
@@ -2812,27 +2812,27 @@ static void cmd_status_audio(struct reply *r, struct audio *a)
 	if (a->have_dacvol)
 		alsa_read_text(&a->codec, AUDIO_C_DACVOL, dac, sizeof(dac));
 	else
-		snprintf(dac, sizeof(dac), "fehlt");
+		snprintf(dac, sizeof(dac), "missing");
 	if (a->codec_mute)
 		alsa_read_text(&a->codec, a->codec_mute, cmu, sizeof(cmu));
 	else
-		snprintf(cmu, sizeof(cmu), "keiner");
-	reply_add(r, "ton-karten  %s (card %d): Switch %s, Volume %s, Mute %s | %s (card %d): Source %s, Rate %s, DAC Volume %s, Schalter %s%s%s\n",
+		snprintf(cmu, sizeof(cmu), "none");
+	reply_add(r, "audio cards     %s (card %d): Switch %s, Volume %s, Mute %s | %s (card %d): Source %s, Rate %s, DAC Volume %s, switch %s%s%s\n",
 		  a->msp.id, a->msp.index, sw, vol, mu, a->codec.id,
 		  a->codec.index, src, rate, dac,
 		  a->codec_mute ? a->codec_mute : "", a->codec_mute ? " " : "",
 		  cmu);
 	if (!a->have_source)
-		reply_add(r, "ton-quelle  keine Regler \"%s\"/\"%s\"/\"%s\" am Aufnahmeknoten (Kernel 0136)\n",
+		reply_add(r, "audio source    no controls \"%s\"/\"%s\"/\"%s\" on the capture node (kernel 0136)\n",
 			  AUDIO_V_PRESENT, AUDIO_V_RATE, AUDIO_V_COMPRESSED);
 	else
-		reply_add(r, "ton-quelle  present=%d rate=%u compressed=%d (%s)\n",
+		reply_add(r, "audio source    present=%d rate=%u compressed=%d (%s)\n",
 			  a->present, a->rate, a->compressed,
-			  a->events ? "Ereignisse" : "Abfrage");
+			  a->events ? "events" : "polling");
 	if (card_sysfs(&a->msp, "state", sw, sizeof(sw)))
-		reply_add(r, "ton-msp     state=%s\n", sw);
+		reply_add(r, "audio msp       state=%s\n", sw);
 	if (card_sysfs(&a->msp, "levels", vol, sizeof(vol)))
-		reply_add(r, "ton-pegel   %s\n", vol);
+		reply_add(r, "audio level     %s\n", vol);
 }
 
 /*
@@ -2854,35 +2854,35 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	int sig = cap->last_sig;
 
 	reply_add(r, "ok status\n");
-	reply_add(r, "betrieb     %s\n", c->policy == POLICY_OFF ? "aus (Konsole erzwungen)"
-							       : "automatisch");
+	reply_add(r, "mode            %s\n", c->policy == POLICY_OFF ? "off (console forced)"
+								  : "automatic");
 	if (c->conf)
-		reply_add(r, "konfig      %s%s: start=%s; gemerkt=%s%s%s\n", c->conf->path,
-			  c->conf->present ? "" : " (fehlt)", start_mode_text(c->conf->start),
+		reply_add(r, "config          %s%s: start=%s; saved=%s%s%s\n", c->conf->path,
+			  c->conf->present ? "" : " (missing)", start_mode_text(c->conf->start),
 			  c->state_known[0] ? c->state_known : "-",
 			  c->state_path ? " in " : " (zustand = none)",
 			  c->state_path ? c->state_path : "");
 	if (sig == 1)
-		reply_add(r, "signal      %ux%u%s, %llu Hz (zuletzt gemessen)\n", t->bt.width,
+		reply_add(r, "signal          %ux%u%s, %llu Hz (last measured)\n", t->bt.width,
 			  t->bt.height, t->bt.interlaced ? "i" : "p",
 			  (unsigned long long)t->bt.pixelclock);
 	else if (sig == 2)
-		reply_add(r, "signal      Wechsel im Gang (Geometrie noch nicht eingerastet)\n");
+		reply_add(r, "signal          change in flight (the geometry has not locked yet)\n");
 	else
-		reply_add(r, "signal      %s\n", sig == 0 ? "kein Signal" : "nicht lesbar");
-	reply_add(r, "bild        %s%s\n", d->on ? "Plane an" : "Konsole",
-		  d->master ? ", DRM-Master gehalten" : "");
+		reply_add(r, "signal          %s\n", sig == 0 ? "no signal" : "not readable");
+	reply_add(r, "picture         %s%s\n", d->on ? "plane on" : "console",
+		  d->master ? ", DRM master held" : "");
 	if (d->src_w)
-		reply_add(r, "puffer      %ux%u NV16, Zeilenabstand %u auf Panel %ux%u\n", d->src_w, d->src_h, d->src_pitch,
+		reply_add(r, "buffer          %ux%u NV16, line pitch %u on panel %ux%u\n", d->src_w, d->src_h, d->src_pitch,
 			  d->width, d->height);
 	if (d->has_aspect)
-		reply_add(r, "format      %s (aspect %llu)\n",
+		reply_add(r, "format          %s (aspect %llu)\n",
 			  prop_enum_name(&d->plane_props, "aspect", d->aspect),
 			  (unsigned long long)d->aspect);
 	cmd_status_bildwerte(r);
 	cmd_status_audio(r, a);
-	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel      ");
-	reply_file_lines(r, "/sys/kernel/debug/cpu_comm/watch", comm, "cpu_comm    ");
+	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel          ");
+	reply_file_lines(r, "/sys/kernel/debug/cpu_comm/watch", comm, "cpu_comm        ");
 }
 
 static void cmd_list(struct reply *r, struct capture *cap)
@@ -2891,7 +2891,7 @@ static void cmd_list(struct reply *r, struct capture *cap)
 	char key[64], menu[64];
 	int64_t val;
 
-	reply_add(r, "ok regler\n");
+	reply_add(r, "ok controls\n");
 	memset(&q, 0, sizeof(q));
 	q.id = V4L2_CTRL_FLAG_NEXT_CTRL;
 	while (!ioctl(cap->fd, VIDIOC_QUERY_EXT_CTRL, &q)) {
@@ -2902,7 +2902,7 @@ static void cmd_list(struct reply *r, struct capture *cap)
 				reply_add(r, "  %-26s ?  (%lld..%lld)\n", key,
 					  (long long)q.minimum, (long long)q.maximum);
 			else if (ctrl_menu_text(cap->fd, &q, val, menu, sizeof(menu)))
-				reply_add(r, "  %-26s %lld (%s)  Menue 0..%lld\n", key,
+				reply_add(r, "  %-26s %lld (%s)  menu 0..%lld\n", key,
 					  (long long)val, menu, (long long)q.maximum);
 			else
 				reply_add(r, "  %-26s %lld  (%lld..%lld)\n", key,
@@ -2921,12 +2921,12 @@ static void cmd_get(struct reply *r, struct capture *cap, const char *name)
 	int ret;
 
 	if (!ctrl_find(cap->fd, name, &q)) {
-		reply_fail(r, "kein Regler \"%s\" (h713-tv ctl list)", name);
+		reply_fail(r, "no control \"%s\" (h713-tv ctl list)", name);
 		return;
 	}
 	ret = ctrl_get(cap->fd, &q, &val);
 	if (ret) {
-		reply_fail(r, "%s lesen: %s", q.name, strerror(-ret));
+		reply_fail(r, "reading %s: %s", q.name, strerror(-ret));
 		return;
 	}
 	if (ctrl_menu_text(cap->fd, &q, val, menu, sizeof(menu)))
@@ -2944,7 +2944,7 @@ static void cmd_set(struct reply *r, struct capture *cap, const char *name,
 	int ret;
 
 	if (!ctrl_find(cap->fd, name, &q)) {
-		reply_fail(r, "kein Regler \"%s\" (h713-tv ctl list)", name);
+		reply_fail(r, "no control \"%s\" (h713-tv ctl list)", name);
 		return;
 	}
 	val = strtoll(value, &end, 0);
@@ -2961,15 +2961,15 @@ static void cmd_set(struct reply *r, struct capture *cap, const char *name,
 				break;
 		}
 		if (val > q.maximum) {
-			reply_fail(r, "%s kennt \"%s\" nicht", q.name, value);
+			reply_fail(r, "%s does not know \"%s\"", q.name, value);
 			return;
 		}
 	} else if (*end) {
-		reply_fail(r, "\"%s\" ist keine Zahl", value);
+		reply_fail(r, "\"%s\" is not a number", value);
 		return;
 	}
 	if (val < q.minimum || val > q.maximum) {
-		reply_fail(r, "%s: %lld liegt ausserhalb %lld..%lld", q.name, val,
+		reply_fail(r, "%s: %lld is outside %lld..%lld", q.name, val,
 			   (long long)q.minimum, (long long)q.maximum);
 		return;
 	}
@@ -3001,7 +3001,7 @@ static void cmd_rpc(struct reply *r, const char *line)
 
 	/* the kernel's line buffer is 160 bytes; say so instead of a bare EINVAL */
 	if (strlen(line) >= 159) {
-		reply_fail(r, "RPC-Zeile laenger als 158 Zeichen");
+		reply_fail(r, "RPC line longer than 158 characters");
 		return;
 	}
 	fd = open(path, O_WRONLY | O_CLOEXEC);
@@ -3017,13 +3017,13 @@ static void cmd_rpc(struct reply *r, const char *line)
 	}
 	fd = open(path, O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
-		reply_fail(r, "%s lesen: %s", path, strerror(errno));
+		reply_fail(r, "reading %s: %s", path, strerror(errno));
 		return;
 	}
 	n = read(fd, out, sizeof(out) - 1);
 	close(fd);
 	if (n <= 0) {
-		reply_fail(r, "keine Antwort auf %s", line);
+		reply_fail(r, "no answer to %s", line);
 		return;
 	}
 	out[n] = '\0';
@@ -3178,7 +3178,7 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 			have_last = true;
 			woher = " (from " EDID_DATEI ")";
 		} else {
-			reply_fail(r, "%s, und %s -- ohne EDID wird HPD nicht angefasst",
+			reply_fail(r, "%s, and %s -- without an EDID, HPD is not touched",
 				   why, why2);
 			return false;
 		}
@@ -3190,13 +3190,13 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	/* the picture goes first, or the ring freezes on its last frame for a second */
 	retry_stop(rt);
 	if (d->on && !display_hide(d)) {
-		reply_fail(r, "die Plane laesst sich nicht abschalten -- kein replug");
+		reply_fail(r, "the plane cannot be switched off -- no replug");
 		return false;
 	}
 
 	memset(&e, 0, sizeof(e));	/* blocks == 0: no EDID, pin low */
 	if (ioctl(cap->fd, VIDIOC_S_EDID, &e)) {
-		reply_fail(r, "S_EDID(blocks=0): %s -- HPD nicht gezogen", strerror(errno));
+		reply_fail(r, "S_EDID(blocks=0): %s -- HPD not pulled", strerror(errno));
 		return true;
 	}
 	info("replug          HPD low (S_EDID blocks=0), %u ms", REPLUG_LOW_MS);
@@ -3210,13 +3210,13 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 
 		warn("replug          S_EDID(%u blocks): %s -- HPD is LOW, the source sees no device",
 		     EDID_BLOCKS, strerror(err));
-		reply_fail(r, "S_EDID mit EDID: %s -- HPD liegt unten! noch einmal \"replug\" (nimmt die Kopie), sonst den Treiber neu binden",
+		reply_fail(r, "S_EDID with the EDID: %s -- HPD is low! run \"replug\" once more (it takes the copy), or rebind the driver",
 			   strerror(err));
 		return true;
 	}
 	info("replug          EDID loaded again%s, HPD high -- the source renegotiates",
 	     woher);
-	reply_add(r, "ok replug -- HPD %u ms unten, EDID neu geladen%s, die Quelle verhandelt neu\n",
+	reply_add(r, "ok replug -- HPD %u ms low, EDID loaded again%s, the source renegotiates\n",
 		  REPLUG_LOW_MS, woher);
 
 	return true;
@@ -3236,36 +3236,36 @@ static bool cmd_aspect(struct reply *r, struct display *d, const char *text)
 	uint64_t val;
 
 	if (!d->has_aspect) {
-		reply_fail(r, "die Plane hat keine Eigenschaft \"aspect\" (Kernel 0133)");
+		reply_fail(r, "the plane has no property \"aspect\" (kernel 0133)");
 		return false;
 	}
 	aspect_names(d, names, sizeof(names));
 	if (!text) {
-		reply_add(r, "ok aspect %s (%llu) -- moeglich: %s\n",
+		reply_add(r, "ok aspect %s (%llu) -- possible: %s\n",
 			  prop_enum_name(&d->plane_props, "aspect", d->aspect),
 			  (unsigned long long)d->aspect, names);
 		return false;
 	}
 	if (!prop_enum_parse(&d->plane_props, "aspect", text, &val)) {
-		reply_fail(r, "aspect kennt \"%s\" nicht -- moeglich: %s", text, names);
+		reply_fail(r, "aspect does not know \"%s\" -- possible: %s", text, names);
 		return false;
 	}
 	if (val == d->aspect) {
-		reply_add(r, "ok aspect %s (%llu), unveraendert\n",
+		reply_add(r, "ok aspect %s (%llu), unchanged\n",
 			  prop_enum_name(&d->plane_props, "aspect", val),
 			  (unsigned long long)val);
 		return false;
 	}
 	d->aspect = val;
 	if (d->on && !display_hide(d)) {
-		reply_fail(r, "aspect %s gemerkt, aber die Plane liess sich nicht abschalten -- gilt ab dem naechsten Bildaufbau",
+		reply_fail(r, "aspect %s saved, but the plane could not be switched off -- it applies from the next picture on",
 			   prop_enum_name(&d->plane_props, "aspect", val));
 		return false;
 	}
 	reply_add(r, "ok aspect %s (%llu)%s\n",
 		  prop_enum_name(&d->plane_props, "aspect", val),
 		  (unsigned long long)val,
-		  d->master ? " -- Bild wird neu aufgebaut" : "");
+		  d->master ? " -- the picture is rebuilt" : "");
 
 	return true;
 }
@@ -4127,7 +4127,7 @@ static bool werte_write(struct werte *w, struct capture *cap,
 	FILE *f;
 
 	if (!w->path) {
-		snprintf(msg, n, "es wird nichts gemerkt (zustand = none in tv.conf)");
+		snprintf(msg, n, "nothing is saved (zustand = none in tv.conf)");
 		return false;
 	}
 	snprintf(tmp, sizeof(tmp), "%s.new", w->path);
@@ -4202,7 +4202,7 @@ static bool werte_write(struct werte *w, struct capture *cap,
 static bool werte_loeschen(struct werte *w, char *msg, size_t n)
 {
 	if (!w->path) {
-		snprintf(msg, n, "es wird nichts gemerkt (zustand = none in tv.conf)");
+		snprintf(msg, n, "nothing is saved (zustand = none in tv.conf)");
 		return false;
 	}
 	if (unlink(w->path) && errno != ENOENT) {
@@ -4226,7 +4226,7 @@ static void cmd_preset(struct reply *r, struct capture *cap, const char *name)
 
 	preset_namen(namen, sizeof(namen));
 	if (!p) {
-		reply_fail(r, "preset braucht einen Namen: %s", namen);
+		reply_fail(r, "preset needs a name: %s", namen);
 		return;
 	}
 	ret = preset_apply(cap, p, msg, sizeof(msg));
@@ -4237,9 +4237,9 @@ static void cmd_preset(struct reply *r, struct capture *cap, const char *name)
 	snprintf(preset_aktuell, sizeof(preset_aktuell), "%s", p->name);
 	preset_aktuell_aus_daten = preset_ist_aus_daten(p);
 	reply_add(r, "ok preset %s%s (%s)\n", msg,
-		  ret ? " (nicht alles gesetzt)" : "",
-		  preset_aktuell_aus_daten ? "aus den Geraetedaten"
-					   : "einkompilierte Tabelle");
+		  ret ? " (not everything was set)" : "",
+		  preset_aktuell_aus_daten ? "from the device data"
+					   : "the compiled-in table");
 	/*
 	 * The gamma curve is loaded once, at start, for the preset started
 	 * with; changing it at run time would mean another h713-pq call and
@@ -4249,10 +4249,10 @@ static void cmd_preset(struct reply *r, struct capture *cap, const char *name)
 	 */
 	g = preset_gamma(p);
 	if (g > 0.0 && pq.gamma > 0.0 && g != pq.gamma)
-		reply_add(r, "   Hinweis: %s will Gamma %.2f, geladen ist %.2f -- "
-			  "dafuer den Dienst neu starten\n", p->name, g, pq.gamma);
-	reply_add(r, "   gemerkte Abweichungen sind verworfen; \"ctl save\" "
-		  "schreibt diesen Stand fest\n");
+		reply_add(r, "   note: %s wants gamma %.2f, loaded is %.2f -- "
+			  "restart the service for that\n", p->name, g, pq.gamma);
+	reply_add(r, "   the saved deviations are dropped; \"ctl save\" "
+		  "writes this state down\n");
 }
 
 /*
@@ -4268,18 +4268,18 @@ static void cmd_save(struct reply *r, struct capture *cap,
 	if (arg && (!strcmp(arg, "--aus") || !strcmp(arg, "aus") ||
 		    !strcmp(arg, "off"))) {
 		if (werte_loeschen(&werte, msg, sizeof(msg)))
-			reply_add(r, "ok nichts mehr gemerkt -- beim naechsten Start "
-				  "gilt das Preset allein\n");
+			reply_add(r, "ok nothing saved any more -- at the next start "
+				  "the preset alone applies\n");
 		else
 			reply_fail(r, "%s", msg);
 		return;
 	}
 	if (arg) {
-		reply_fail(r, "save kennt nur \"--aus\" als Argument");
+		reply_fail(r, "save knows only \"off\" (or \"--aus\") as its argument");
 		return;
 	}
 	if (werte_write(&werte, cap, d, msg, sizeof(msg)))
-		reply_add(r, "ok gemerkt in %s: preset=%s %s\n", werte.path,
+		reply_add(r, "ok saved in %s: preset=%s %s\n", werte.path,
 			  preset_aktuell[0] ? preset_aktuell : "-", msg);
 	else
 		reply_fail(r, "%s", msg);
@@ -4291,21 +4291,21 @@ static void cmd_status_bildwerte(struct reply *r)
 	unsigned int i;
 
 	if (pq.ok)
-		reply_add(r, "bildwerte   %u Presets aus %s (h713-pq, %u ms), "
-			  "Gamma %.2f, LUT %ld Byte\n", pq_presets_n,
-			  pq.daten[0] ? pq.daten : "den Geraetedaten", pq.ms,
+		reply_add(r, "picture values  %u presets from %s (h713-pq, %u ms), "
+			  "gamma %.2f, LUT %ld bytes\n", pq_presets_n,
+			  pq.daten[0] ? pq.daten : "the device data", pq.ms,
 			  pq.gamma, pq.lut_bytes);
 	else
-		reply_add(r, "bildwerte   einkompilierte Tabelle -- %s\n",
-			  pq.why[0] ? pq.why : "h713-pq nicht befragt");
-	reply_add(r, "preset      %s (%s)\n",
+		reply_add(r, "picture values  the compiled-in table -- %s\n",
+			  pq.why[0] ? pq.why : "h713-pq was not asked");
+	reply_add(r, "preset          %s (%s)\n",
 		  preset_aktuell[0] ? preset_aktuell : "-",
-		  preset_aktuell_aus_daten ? "aus den Geraetedaten"
-					   : "einkompilierte Tabelle");
+		  preset_aktuell_aus_daten ? "from the device data"
+					   : "the compiled-in table");
 	if (!werte.path)
-		reply_add(r, "gemerkt     nichts (zustand = none in tv.conf)\n");
+		reply_add(r, "saved           nothing (zustand = none in tv.conf)\n");
 	else if (!werte.present)
-		reply_add(r, "gemerkt     nichts in %s -- \"ctl save\" schreibt\n",
+		reply_add(r, "saved           nothing in %s -- \"ctl save\" writes it\n",
 			  werte.path);
 	else {
 		char liste[256];
@@ -4317,7 +4317,7 @@ static void cmd_status_bildwerte(struct reply *r)
 				l += (size_t)snprintf(liste + l, sizeof(liste) - l,
 						      "%s%s=%d", l ? " " : "",
 						      preset_ctrl[i], werte.value[i]);
-		reply_add(r, "gemerkt     %s: preset=%s %s%s%s\n", werte.path,
+		reply_add(r, "saved           %s: preset=%s %s%s%s\n", werte.path,
 			  werte.preset[0] ? werte.preset : "-", liste,
 			  werte.aspect[0] ? " aspect=" : "",
 			  werte.aspect[0] ? werte.aspect : "");
@@ -4340,18 +4340,18 @@ static bool cmd_audio(struct reply *r, struct audio *a, const char *text)
 		return false;
 	}
 	if (a->policy == AUDIO_NONE) {
-		reply_fail(r, "der Ton ist mit \"-a none\" abgeschaltet -- dafuer den Dienst ohne diese Option starten");
+		reply_fail(r, "the audio is switched off with \"-a none\" -- start the service without that option for this");
 		return false;
 	}
 	if (!audio_policy_parse(text, &p) || p == AUDIO_NONE) {
-		reply_fail(r, "audio kennt \"%s\" nicht -- moeglich: on off auto", text);
+		reply_fail(r, "audio does not know \"%s\" -- possible: on off auto", text);
 		return false;
 	}
 	a->policy = p;
 	if (a->enabled)
 		reply_add(r, "ok audio %s\n", audio_policy_text(a));
 	else
-		reply_add(r, "ok audio %s -- gemerkt, aber %s\n",
+		reply_add(r, "ok audio %s -- saved, but %s\n",
 			  audio_policy_text(a), a->why);
 
 	return true;
@@ -4368,37 +4368,37 @@ static void cmd_volume(struct reply *r, struct audio *a, const char *text)
 	long n;
 
 	if (a->policy == AUDIO_NONE) {
-		reply_fail(r, "der Ton ist mit \"-a none\" abgeschaltet -- dafuer den Dienst ohne diese Option starten");
+		reply_fail(r, "the audio is switched off with \"-a none\" -- start the service without that option for this");
 		return;
 	}
 	if (text) {
 		n = strtol(text, &end, 0);
 		if (*end || n < 0 || n > 100) {
-			reply_fail(r, "volume braucht 0..100 (0 = leiseste Stufe, 100 = 0 dB), nicht \"%s\"",
+			reply_fail(r, "volume needs 0..100 (0 = the quietest step, 100 = 0 dB), not \"%s\"",
 				   text);
 			return;
 		}
 		a->volume = (int)n;
 		a->volume_set = true;
 		if (!a->enabled) {
-			reply_add(r, "ok volume %d -- gemerkt, %s\n", a->volume,
+			reply_add(r, "ok volume %d -- saved, %s\n", a->volume,
 				  a->why);
 			return;
 		}
 		if (!a->have_dacvol) {
-			reply_fail(r, "die Karte \"%s\" hat keinen Regler \"%s\" -- die Lautstaerke bleibt, wo sie ist",
+			reply_fail(r, "the card \"%s\" has no control \"%s\" -- the volume stays where it is",
 				   a->codec.name, AUDIO_C_DACVOL);
 			return;
 		}
 		audio_volume_apply(a);
 		if (a->write_failed) {
-			reply_fail(r, "\"%s\" liess sich nicht schreiben (journal)",
+			reply_fail(r, "\"%s\" could not be written (see the journal)",
 				   AUDIO_C_DACVOL);
 			return;
 		}
 	} else if (!a->enabled) {
 		reply_add(r, "ok volume %s -- %s\n",
-			  a->volume_set ? "gemerkt" : "unbekannt", a->why);
+			  a->volume_set ? "saved" : "unknown", a->why);
 		return;
 	}
 	reply_add(r, "ok %s\n", audio_volume_text(a, vol, sizeof(vol)));
@@ -4412,7 +4412,7 @@ static void cmd_volume(struct reply *r, struct audio *a, const char *text)
 static void cmd_mute(struct reply *r, struct audio *a, const char *text)
 {
 	if (a->policy == AUDIO_NONE) {
-		reply_fail(r, "der Ton ist mit \"-a none\" abgeschaltet -- dafuer den Dienst ohne diese Option starten");
+		reply_fail(r, "the audio is switched off with \"-a none\" -- start the service without that option for this");
 		return;
 	}
 	if (text) {
@@ -4423,7 +4423,7 @@ static void cmd_mute(struct reply *r, struct audio *a, const char *text)
 			 !strcmp(text, "0"))
 			a->mute = false;
 		else {
-			reply_fail(r, "mute kennt \"%s\" nicht -- moeglich: on off",
+			reply_fail(r, "mute does not know \"%s\" -- possible: on off",
 				   text);
 			return;
 		}
@@ -4431,11 +4431,11 @@ static void cmd_mute(struct reply *r, struct audio *a, const char *text)
 			audio_level(a);
 	}
 	if (!a->enabled)
-		reply_add(r, "ok mute %s -- gemerkt, %s\n", a->mute ? "on" : "off",
+		reply_add(r, "ok mute %s -- saved, %s\n", a->mute ? "on" : "off",
 			  a->why);
 	else
 		reply_add(r, "ok mute %s (DSP%s%s)\n", a->mute ? "on" : "off",
-			  a->codec_mute ? " und Codec " : ", der Codec hat keinen Schalter",
+			  a->codec_mute ? " and codec " : ", the codec has no switch",
 			  a->codec_mute ? a->codec_mute : "");
 }
 
@@ -4444,41 +4444,41 @@ static void cmd_help(struct reply *r, const struct control *c)
 	char namen[192];
 
 	preset_namen(namen, sizeof(namen));
-	reply_add(r, "ok befehle\n"
-		  "  status (st)           Zustand von Programm, Kernel und cpu_comm\n"
-		  "  auto (on)             Bild folgt dem Signal (Vorgabe ohne tv.conf)\n"
-		  "  off                   Konsole erzwingen, bis auto\n"
-		  "                        auto/off werden gemerkt (zustand in /etc/h713/tv.conf);\n"
-		  "                        was beim Start gilt, sagt dort start = auto|manuell|zuletzt\n"
-		  "  console               Konsole entblanken, Cursor zeigen\n"
-		  "  list                  alle Bildregler mit Wert und Bereich\n"
-		  "  get REGLER            einen Regler lesen\n"
-		  "  set REGLER WERT       einen Regler setzen (Zahl oder Menuetext)\n"
-		  "                        Regler: brightness contrast saturation hue sharpness\n"
+	reply_add(r, "ok commands\n"
+		  "  status (st)           state of the program, the kernel and cpu_comm\n"
+		  "  auto (on)             the picture follows the signal (the default without tv.conf)\n"
+		  "  off                   force the console, until auto\n"
+		  "                        auto/off are saved (zustand in /etc/h713/tv.conf);\n"
+		  "                        what applies at the start is start = auto|manual|last there\n"
+		  "  console               unblank the console, show the cursor\n"
+		  "  list                  all picture controls with value and range\n"
+		  "  get CONTROL           read one control\n"
+		  "  set CONTROL VALUE     set one control (a number or the menu text)\n"
+		  "                        controls: brightness contrast saturation hue sharpness\n"
 		  "                        tnr snr dci black range(auto|limited|full)\n"
-		  "                        mode(0..13 oder Name: standard cinema vivid game computer hdr ...)\n"
-		  "  preset NAME           Herstellervoreinstellung: Bildmodus + neun Regler.\n"
-		  "                        Moeglich: %s\n"
-		  "                        (aus /etc/h713/tvconfig, sonst einkompiliert);\n"
-		  "                        verwirft die gemerkten Abweichungen im Speicher\n"
-		  "  save [--aus]          den jetzigen Stand der neun Regler, das Preset und\n"
-		  "                        aspect merken (%s), --aus loescht die Datei.\n"
-		  "                        Nur hier wird geschrieben, nicht bei jedem \"set\"\n"
-		  "  aspect [NAME]         Einpassung der Quelle (auto proportional full 16:9 4:3 zoom);\n"
-		  "                        ohne NAME: anzeigen. Wechsel baut das Bild neu auf (~0,5 s)\n"
-		  "  audio [on|off|auto]   Ton: erzwungen an, erzwungen stumm, oder dem Bild folgen\n"
-		  "                        (Vorgabe auto); ohne Argument: anzeigen\n"
-		  "  volume [0..100]       Lautstaerke des Codecs (DAC Playback Volume, wirkt auf HDMI-\n"
-		  "                        und Geraetetoene): 0 = leiseste Stufe, 100 = 0 dB; ohne Zahl: anzeigen\n"
-		  "  mute [on|off]         Stummschaltung: DSP-Mute (HDMI) und der Schalter des Codecs\n"
-		  "  resync                Quelle neu waehlen (S_INPUT 0 = SetSource HDMI-1)\n"
-		  "  replug                der Quelle Aus- und Anstecken vorspielen: HPD 300 ms unten\n"
-		  "                        (S_EDID blocks=0), EDID neu laden, HPD oben (~1 s, blockiert)\n"
-		  "  rpc NAME [ARG...]     RPC an die Firmware, z. B. rpc THal_Vp_DisableBlackScreen\n"
-		  "                        (roh; blockiert das Programm fuer die Dauer des Aufrufs)\n"
-		  "  help                  diese Liste\n"
-		  "Antwort beginnt mit ok oder fehler; Socket %s (root, 0660)\n",
-		  namen, werte.path ? werte.path : "abgeschaltet", c->path);
+		  "                        mode(0..13 or a name: standard cinema vivid game computer hdr ...)\n"
+		  "  preset NAME           vendor preset: picture mode + nine controls.\n"
+		  "                        Possible: %s\n"
+		  "                        (from /etc/h713/tvconfig, else compiled in);\n"
+		  "                        drops the saved deviations in memory\n"
+		  "  save [off]            save the current state of the nine controls, the preset\n"
+		  "                        and aspect (%s); \"off\" deletes the file again.\n"
+		  "                        Only here is anything written, not on every \"set\"\n"
+		  "  aspect [NAME]         how the source is fitted (auto proportional full 16:9 4:3 zoom);\n"
+		  "                        without NAME: show it. A change rebuilds the picture (~0.5 s)\n"
+		  "  audio [on|off|auto]   audio: forced on, forced silent, or following the picture\n"
+		  "                        (default auto); without an argument: show it\n"
+		  "  volume [0..100]       volume of the codec (DAC Playback Volume, acts on HDMI and\n"
+		  "                        on the device's own tones): 0 = the quietest step, 100 = 0 dB; without a number: show it\n"
+		  "  mute [on|off]         mute: the DSP mute (HDMI) and the codec's switch\n"
+		  "  resync                select the source again (S_INPUT 0 = SetSource HDMI-1)\n"
+		  "  replug                play an unplug and a replug to the source: HPD 300 ms low\n"
+		  "                        (S_EDID blocks=0), load the EDID again, HPD high (~1 s, blocks)\n"
+		  "  rpc NAME [ARG...]     an RPC to the firmware, e.g. rpc THal_Vp_DisableBlackScreen\n"
+		  "                        (raw; blocks the program for the duration of the call)\n"
+		  "  help                  this list\n"
+		  "The answer starts with ok or error; socket %s (root, 0660)\n",
+		  namen, werte.path ? werte.path : "switched off", c->path);
 }
 
 /* true if the caller has to run evaluate() afterwards */
@@ -4492,7 +4492,7 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 	a1 = strtok_r(NULL, " \t", &save);
 	a2 = strtok_r(NULL, " \t", &save);
 	if (!cmd) {
-		reply_fail(r, "leer (h713-tv ctl help)");
+		reply_fail(r, "empty (h713-tv ctl help)");
 		return false;
 	}
 	if (!strcmp(cmd, "status") || !strcmp(cmd, "st")) {
@@ -4500,19 +4500,19 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 	} else if (!strcmp(cmd, "auto") || !strcmp(cmd, "on")) {
 		c->policy = POLICY_AUTO;
 		state_write(c, c->policy);
-		reply_add(r, "ok automatisch -- das Bild folgt dem Signal\n");
+		reply_add(r, "ok automatic -- the picture follows the signal\n");
 		return true;
 	} else if (!strcmp(cmd, "off")) {
 		c->policy = POLICY_OFF;
 		state_write(c, c->policy);
 		retry_stop(rt);
 		if (display_hide(d))
-			reply_add(r, "ok Konsole -- bis \"auto\"\n");
+			reply_add(r, "ok console -- until \"auto\"\n");
 		else
-			reply_fail(r, "die Plane laesst sich nicht abschalten");
+			reply_fail(r, "the plane cannot be switched off");
 	} else if (!strcmp(cmd, "console")) {
 		console_restore();
-		reply_add(r, "ok Konsole entblankt, Cursor an\n");
+		reply_add(r, "ok console unblanked, cursor on\n");
 	} else if (!strcmp(cmd, "list")) {
 		cmd_list(r, cap);
 	} else if (!strcmp(cmd, "get") && a1) {
@@ -4539,7 +4539,7 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		cmd_mute(r, a, a1);
 	} else if (!strcmp(cmd, "resync")) {
 		capture_select_input(cap);
-		reply_add(r, "ok Quelle neu gewaehlt\n");
+		reply_add(r, "ok source selected again\n");
 		return true;
 	} else if (!strcmp(cmd, "replug")) {
 		return cmd_replug(r, cap, d, rt);
@@ -4556,9 +4556,9 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 	} else if (!strcmp(cmd, "help")) {
 		cmd_help(r, c);
 	} else if (!strcmp(cmd, "get") || !strcmp(cmd, "set") || !strcmp(cmd, "rpc")) {
-		reply_fail(r, "%s braucht Argumente (h713-tv ctl help)", cmd);
+		reply_fail(r, "%s needs arguments (h713-tv ctl help)", cmd);
 	} else {
-		reply_fail(r, "unbekannt: %s (h713-tv ctl help)", cmd);
+		reply_fail(r, "unknown: %s (h713-tv ctl help)", cmd);
 	}
 
 	return false;
@@ -4616,7 +4616,7 @@ static bool control_serve(struct control *c, struct capture *cap,
 	line[strcspn(line, "\r\n")] = '\0';
 
 	if (off <= 0)
-		reply_fail(&r, "nichts empfangen");
+		reply_fail(&r, "nothing received");
 	else
 		reevaluate = control_dispatch(c, cap, d, rt, a, line, &r);
 
@@ -4657,7 +4657,7 @@ static int client(int argc, char **argv, const char *path)
 				 argv[i]);
 
 		if (k < 0 || (size_t)k >= sizeof(line) - len - 1)
-			fail("Befehl zu lang (hoechstens %zu Zeichen)", sizeof(line) - 2);
+			fail("command too long (at most %zu characters)", sizeof(line) - 2);
 		len += (size_t)k;
 	}
 	if (!len)
@@ -4674,10 +4674,10 @@ static int client(int argc, char **argv, const char *path)
 	if (strlen(path) >= sizeof(addr.sun_path))
 		fail("%s: socket path longer than %zu characters", path, sizeof(addr.sun_path) - 1);
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)))
-		fail("%s: %s -- laeuft h713-tv? (systemctl status 'h713-tv@*')", path,
+		fail("%s: %s -- is h713-tv running? (systemctl status 'h713-tv@*')", path,
 		     strerror(errno));
 	if (send(fd, line, strlen(line), MSG_NOSIGNAL) < 0)
-		fail("senden: %s", strerror(errno));
+		fail("sending: %s", strerror(errno));
 
 	rc = 1;
 	len = 0;
@@ -4690,7 +4690,7 @@ static int client(int argc, char **argv, const char *path)
 	}
 	close(fd);
 	if (!len)
-		fail("keine Antwort");
+		fail("no answer");
 
 	return rc;
 }
@@ -4822,38 +4822,39 @@ static int signal_fd(void)
 _Noreturn static void usage(const char *me)
 {
 	fprintf(stderr,
-		"Aufruf: %s [-d /dev/videoN] [-c /dev/dri/cardN] [-s SOCKET] [-p PRESET] [-g LUT]\n"
-		"                 [-a TON] [-t DB] [-C KONFIG] [--rechner PFAD] [--daten VERZ]\n"
-		"                 [--eingang NAME] [--lut PFAD] [-n]\n"
-		"        %s ctl [-s SOCKET] BEFEHL [ARG...]      (h713-tv ctl help)\n"
+		"usage: %s [-d /dev/videoN] [-c /dev/dri/cardN] [-s SOCKET] [-p PRESET] [-g LUT]\n"
+		"                 [-a AUDIO] [-t DB] [-C CONFIG] [--rechner PATH] [--daten DIR]\n"
+		"                 [--eingang NAME] [--lut PATH] [-n]\n"
+		"        %s ctl [-s SOCKET] COMMAND [ARG...]      (h713-tv ctl help)\n"
 		"\n"
-		"  -s PFAD     Steuer-Socket; Vorgabe %s\n"
-		"  -C DATEI    Konfiguration (start = auto|manuell|zuletzt, zustand = PFAD|none,\n"
-		"              preset = NAME|zuletzt, daten = VERZ|none, rechner = PFAD|none);\n"
-		"              Vorgabe %s, fehlt sie: start = auto, Modus gemerkt in %s\n"
-		"  -d GERAET   Aufnahmegeraet; ohne Angabe wird nach dem Namen \"%s\" gesucht\n"
-		"              (auf diesem Board /dev/video1 -- video0 ist cedrus)\n"
-		"  -c GERAET   DRM-Geraet; ohne Angabe wird nach dem Treiber \"%s\" gesucht\n"
-		"              (auf diesem Board /dev/dri/card1 -- card0 ist Panfrost)\n"
-		"  -p PRESET   Bildvoreinstellung beim Start (standard cinema vivid game computer hdr,\n"
-		"              mit Geraetedaten auch energy_saving und custom; zuletzt = das gemerkte,\n"
-		"              none = nichts senden). Ohne Angabe gilt preset aus der Konfiguration,\n"
-		"              sonst standard. Die Firmware startet sonst mit leeren Kontrast-/\n"
-		"              Helligkeitsregistern und Saettigung 60\n"
-		"  --rechner P h713-pq, das die Werte aus den Geraetedaten rechnet (none = nicht\n"
-		"              rechnen, einkompilierte Tabelle nehmen); Vorgabe %s\n"
-		"  --daten V   Verzeichnis der entpackten Herstellerdaten (none = nicht benutzen);\n"
-		"              Vorgabe %s\n"
-		"  --eingang N Eingang, nach dem h713-pq gefragt wird; Vorgabe %s\n"
-		"  --lut PFAD  wohin h713-pq seine Gammakurve schreibt; Vorgabe %s\n"
-		"  -g LUT      Gammakurve fuer den CRTC, wenn h713-pq keine liefert (eine DE2-Bank,\n"
-		"              2048 Byte; none = Identitaet lassen); Vorgabe %s\n"
-		"  -a TON      Ton beim Start: auto (folgt dem Bild, Vorgabe), on (erzwungen),\n"
-		"              off (erzwungen stumm), none (keine ALSA-Karte anfassen)\n"
-		"  -t DB       HDMI-Pegelabgleich im Audio-DSP (auch --hdmi-trim DB): 0 (Vorgabe)\n"
-		"              bis -100, Viertel-dB; die Lautstaerke selbst ist h713-tv ctl volume\n"
-		"  Regler, Bild an/aus, Ton, RPCs im Betrieb: h713-tv ctl help\n"
-		"  -n          nur berichten, was gefunden wurde, und beenden -- die Anzeige bleibt unberuehrt\n",
+		"  -s PATH     control socket; default %s\n"
+		"  -C FILE     configuration (start = auto|manual|last, zustand = PATH|none,\n"
+		"              preset = NAME|last, daten = DIR|none, rechner = PATH|none);\n"
+		"              default %s; without it: start = auto, the mode saved in %s\n"
+		"  -d DEVICE   capture device; without it the name \"%s\" is searched for\n"
+		"              (on this board /dev/video1 -- video0 is cedrus)\n"
+		"  -c DEVICE   DRM device; without it the driver \"%s\" is searched for\n"
+		"              (on this board /dev/dri/card1 -- card0 is Panfrost)\n"
+		"  -p PRESET   picture preset at the start (standard cinema vivid game computer hdr,\n"
+		"              with device data also energy_saving and custom; last = the saved one,\n"
+		"              none = send nothing). Without it the preset from the configuration\n"
+		"              applies, else standard. Otherwise the firmware starts with empty\n"
+		"              contrast and brightness registers and saturation 60\n"
+		"  --rechner P h713-pq, which computes the values from the device data (none = do\n"
+		"              not compute, take the compiled-in table); default %s\n"
+		"  --daten D   directory of the unpacked vendor data (none = do not use it);\n"
+		"              default %s\n"
+		"  --eingang N the input h713-pq is asked about; default %s\n"
+		"  --lut PATH  where h713-pq writes its gamma curve; default %s\n"
+		"  -g LUT      gamma curve for the CRTC when h713-pq delivers none (one DE2 bank,\n"
+		"              2048 bytes; none = leave the identity ramp); default %s\n"
+		"  -a AUDIO    audio at the start: auto (follows the picture, the default), on\n"
+		"              (forced), off (forced silent), none (do not touch any ALSA card)\n"
+		"  -t DB       HDMI level trim in the audio DSP (also --hdmi-trim DB): 0 (the\n"
+		"              default) down to -100, in quarter dB; the volume itself is\n"
+		"              h713-tv ctl volume\n"
+		"  Controls, picture on/off, audio, RPCs while it runs: h713-tv ctl help\n"
+		"  -n          only report what was found, then exit -- the display is untouched\n",
 		me, me, CTL_SOCKET, CONF_FILE, STATE_FILE, V4L2_DRIVER, DRM_DRIVER,
 		PQ_BIN, PQ_DATEN, PQ_EINGANG, PQ_LUT, GAMMA_FILE);
 	exit(2);
