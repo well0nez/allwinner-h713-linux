@@ -20,10 +20,10 @@ The whole procedure in four steps:
 The only way out of the drive exposure is a power cycle -- that is no defect
 but the end of the road: afterwards the new system starts anyway.
 
-With --ssh-key FILE your own public SSH key goes into the image (placeholder
-/root/.ssh/authorized_keys, 4096 bytes, padded with newlines). Without it there
-is no ssh access, only the serial console -- the image deliberately carries no
-key (doku/107 §3).
+With --ssh-key FILE your own public SSH key goes into the image, as
+/root/.ssh/authorized_keys (mode 0600, root's). Without it there is no ssh
+access, only the serial console -- the image deliberately carries no key
+(doku/107 §3).
 """
 
 # Stage 3 of doku/121: one tool with subcommands, English throughout, the files found by
@@ -184,7 +184,7 @@ def _identify_table(path):
     the pieces and whether they lie next to it. None when the file is not a table."""
     with open(path, "r", encoding="utf-8") as f:
         d = json.load(f)
-    if d.get("format") != "hy310-abbild-tabelle":
+    if not str(d.get("format", "")).startswith(install_mod.TABLE_FORMAT):
         return None
     here = os.path.dirname(os.path.abspath(path))
     console.info("release table  %s  (%s, built %s)" % (d.get("abbild"), d.get("werkzeug"), d.get("erzeugt")))
@@ -202,8 +202,11 @@ def _identify_table(path):
         else:
             state = "MISSING"
         console.info("  %-40s %11d bytes  %s" % (piece["datei"], piece["bytes"], state))
-    console.info("  placeholders: %d for h713-extract, %d for the user"
-                 % (len(d.get("platzhalter", [])), len(d.get("platzhalter_nutzer", []))))
+    if install_mod.table_layout(d) != "v4":
+        console.warn("  " + install_mod.V3_REFUSED)
+    else:
+        console.info("  files: %d from your own device, %d of your own"
+                     % (len(d.get("dateien", [])), len(d.get("nutzer", []))))
     for name in ("u-boot-installer.bin", "sunxi-fel"):
         console.info("  %-40s %s" % (name, "present" if os.path.isfile(os.path.join(here, name))
                                       else "not next to the table (--uboot / --sunxi-fel)"))
@@ -336,7 +339,7 @@ def _install(args, disk, path):
         unpack_parts(directory, table)
         return write_package(args, disk, path, directory, table, here=HERE)
 
-    # A single file without a table: one piece from LBA 0, without placeholders.
+    # A single file without a table: one piece from LBA 0, no file systems to fill.
     console.step(4, "Write the image")
     if args.no_write:
         console.info("WOULD: write %s onto %s (%.1f MiB)"
