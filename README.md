@@ -149,9 +149,9 @@ why the installer wants a dump, and why nothing here needs a licence you don't a
 mainline/        cstenger's tree as a git subtree + our kernel patch series (patches/kernel/series)
 uboot-h713/      our U-Boot commits as patches, generated from the fork (read-only mirror)
 installer/       h713-install, h713-mkimage, h713-extract and helpers
-rootfs/          the Debian 13 recipe: package list, overlay, install script, tests
+rootfs/          the Debian 13 recipe: package list, overlay, install script, tests (rootfs/README.md)
 userspace/       h713-tv, h713-pq, h713-focus, h713-cam
-release/         build-all.sh - clean clone to flashable image, --board picks the board
+release/         build-all.sh - clean clone to flashable image, --board picks the board (release/README.md)
 boards/          one directory per board: board.env, its U-Boot DRAM block, what is known about it
 tools/           host-side helpers from the bring-up: UART capture, register diffs, disassembly aids
 analyse/boot/    boot logs and acceptance records; analyse/beamer-cam/ camera findings
