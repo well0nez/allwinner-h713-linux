@@ -1,7 +1,7 @@
 From a9c63046d320565d2d46e91d7f91d13a28534360 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 10:51:29 +0200
-Subject: [PATCH 38/77] sunxi: h713: h713_probe, tell our SPL from the vendor
+Subject: [PATCH 38/82] sunxi: h713: h713_probe, tell our SPL from the vendor
  boot0 and find hy310-boot
 
 Two mistakes the first run on an HY310 showed.

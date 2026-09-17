@@ -1,7 +1,7 @@
 From e2fae2d1481b244fe0dea0825ff347f80f47277d Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 19:39:43 +0200
-Subject: [PATCH 68/77] sunxi: h713: the installer role keeps "usb start";
+Subject: [PATCH 68/82] sunxi: h713: the installer role keeps "usb start";
  product boot delay is one second
 
 d4b7979 dropped "usb start" from the base preboot, and with it the installer

@@ -1,7 +1,7 @@
 From 7c76985f607dcb3dbd4d5c7d74dd1674c05d1736 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:19:28 +0200
-Subject: [PATCH 47/77] sunxi: h713: try /oem before the bootloader partition
+Subject: [PATCH 47/82] sunxi: h713: try /oem before the bootloader partition
  for the TSE group
 
 Stock does not read the four TSE blobs from one place. Its loader tries

@@ -1,0 +1,56 @@
+From da74b898537209c2e83d9bc8cb2e41b04f04be83 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 16 Sep 2026 21:54:51 +0200
+Subject: [PATCH 82/82] sunxi: h713: refuse a LogoRegData container we cannot
+ measure
+
+h713_disp_size() derives the file's length from its own header, and
+every offset the replay uses is bounded by it. Check the "logo" magic
+and cap the result, so a corrupt or foreign file yields no groups at all
+-- h713_disp_group() then finds nothing and the lookup says so -- rather
+than a chain walk over open DRAM. Both known containers are about 15 KiB
+against the 1 MiB cap.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 25 +++++++++++++++++++++----
+ 1 file changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index e9c2e09e8dc..126f8a1ff6d 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -5080,12 +5080,29 @@ struct h713_disp_sel {
+ 	struct h713_disp_block prologue_range, timing_range, de_range;
+ };
+ 
+-/* The container's length, from the four words of its own header. */
++/*
++ * The container's length, from the four words of its own header:
++ *   0x10 + 0x0168 + 0x24 + 0x3b88 = 15652, the HY310's file
++ *   0x10 + 0x0138 + 0x24 + 0x36c8 = 14388, the HY300 Pro's
++ * Zero if this is not a LogoRegData container or the length is not credible.
++ * Every offset the replay uses is bounded by this, so a file we do not
++ * understand yields no groups at all rather than a walk over open DRAM --
++ * which is the fault this whole change is about.
++ */
++#define H713_DISP_HDR_MAGIC	0x6f676f6cU	/* "logo" */
++#define H713_DISP_MAX_SIZE	0x100000UL	/* both known files are ~15 KiB */
++
+ static ulong h713_disp_size(ulong blob)
+ {
+-	return H713_DISP_DESC_OFF + readw(blob + H713_DISP_HDR_TABLE_LEN) +
+-	       readw(blob + H713_DISP_HDR_HEAD_LEN) +
+-	       readl(blob + H713_DISP_HDR_REST);
++	ulong size = H713_DISP_DESC_OFF +
++		     readw(blob + H713_DISP_HDR_TABLE_LEN) +
++		     readw(blob + H713_DISP_HDR_HEAD_LEN) +
++		     readl(blob + H713_DISP_HDR_REST);
++
++	if (readl(blob) != H713_DISP_HDR_MAGIC || size > H713_DISP_MAX_SIZE)
++		return 0;
++
++	return size;
+ }
+ 
+ /*

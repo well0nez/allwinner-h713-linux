@@ -1,7 +1,7 @@
 From 1562527096f8c54ced60477e33246ca55c54d97d Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 02:27:34 +0200
-Subject: [PATCH 69/77] sunxi: h713: the boot path does not hash the logo
+Subject: [PATCH 69/82] sunxi: h713: the boot path does not hash the logo
 
 "init <id> logo" hashed bootlogo.bmp on both publishes (before the
 firmware starts and after it is ready) to print the board name of a stock

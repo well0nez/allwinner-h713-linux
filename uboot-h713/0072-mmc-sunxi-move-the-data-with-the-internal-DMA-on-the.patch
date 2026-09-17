@@ -1,7 +1,7 @@
 From 73dfed4ad1c9ac9013c0096846834e356e4b0a64 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 10:08:32 +0200
-Subject: [PATCH 72/77] mmc: sunxi: move the data with the internal DMA on the
+Subject: [PATCH 72/82] mmc: sunxi: move the data with the internal DMA on the
  H6 generation
 
 The mainline driver has one data path, mmc_trans_data_by_cpu(), which

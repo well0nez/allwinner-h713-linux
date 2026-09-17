@@ -1,7 +1,7 @@
 From 10c4783cf5f61d44e0732935a7b5f58695c80804 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 11 Sep 2026 09:35:16 +0200
-Subject: [PATCH 30/77] sunxi: h713: the display artifacts live on hy310-boot
+Subject: [PATCH 30/82] sunxi: h713: the display artifacts live on hy310-boot
 
 h713_mips_dev defaulted to "1:2", the stock vendor FAT partition, on the
 assumption that an installation would override it with saveenv. The

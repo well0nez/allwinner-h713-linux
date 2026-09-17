@@ -1,7 +1,7 @@
 From cd633ae1021f65759a38c079dc7c93814509615e Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:17:49 +0200
-Subject: [PATCH 46/77] sunxi: h713: two more firmware revisions, and a row
+Subject: [PATCH 46/82] sunxi: h713: two more firmware revisions, and a row
  that describes only an image
 
 A row in h713_mips_fw_revs[] carried a project ID and a panel next to the

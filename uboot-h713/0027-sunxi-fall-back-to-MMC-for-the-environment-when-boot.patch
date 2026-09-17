@@ -1,7 +1,7 @@
 From 14927d8e5fcae5f69de8f21b8e2582d4ef12b7df Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 11 Sep 2026 09:35:16 +0200
-Subject: [PATCH 27/77] sunxi: fall back to MMC for the environment when booted
+Subject: [PATCH 27/82] sunxi: fall back to MMC for the environment when booted
  over FEL
 
 env_get_location() derives the location from the boot medium. Booting

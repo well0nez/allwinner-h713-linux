@@ -1,7 +1,7 @@
 From 4091ea68c0620c590ad9af583c074a6bab463dad Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Sat, 12 Sep 2026 07:44:45 +0200
-Subject: [PATCH 33/77] sunxi: h713: the shipping boot path loses earlycon and
+Subject: [PATCH 33/82] sunxi: h713: the shipping boot path loses earlycon and
  gains loglevel=4
 
 Marco, 12.09.2026: "wir wollen kein debug in release". The eMMC path is the

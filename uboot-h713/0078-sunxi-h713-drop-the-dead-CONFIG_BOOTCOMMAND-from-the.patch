@@ -1,0 +1,69 @@
+From d88a7c6ba3dc2cea7e77c2380f3069953d2ca141 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 16 Sep 2026 17:11:17 +0200
+Subject: [PATCH 78/82] sunxi: h713: drop the dead CONFIG_BOOTCOMMAND from the
+ release and netboot fragments
+
+bootcmd comes from board/sunxi/hy310.env: env_default.h emits it after the
+Kconfig one and the last entry wins (lib/hashtable.c), so the copy in the
+fragments was dead and drifting (package G2, doku/61). The installer role
+keeps its own, live one. Proof by config targets on eight base/role
+combinations (package O2): exactly one line of the merged .config changes
+per touched role, the BOOTCOMMAND, which falls back to "run distro_bootcmd"
+and is never used.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ configs/fragments/h713_netboot.config      |  3 ++-
+ configs/fragments/h713_netboot_gate.config |  3 ++-
+ configs/fragments/h713_release.config      | 14 ++++++++------
+ 3 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/configs/fragments/h713_netboot.config b/configs/fragments/h713_netboot.config
+index 31f475907e2..80f7e0fbeb3 100644
+--- a/configs/fragments/h713_netboot.config
++++ b/configs/fragments/h713_netboot.config
+@@ -30,4 +30,5 @@ CONFIG_NET_RANDOM_ETHADDR=y
+ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_RTL8152=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
++# No CONFIG_BOOTCOMMAND: the environment source file carries bootcmd and its
++# entry wins, so a copy here would be dead (h713_release.config explains it).
+diff --git a/configs/fragments/h713_netboot_gate.config b/configs/fragments/h713_netboot_gate.config
+index 38e2325ab0b..f0ebf65adda 100644
+--- a/configs/fragments/h713_netboot_gate.config
++++ b/configs/fragments/h713_netboot_gate.config
+@@ -23,4 +23,5 @@ CONFIG_NET_RANDOM_ETHADDR=y
+ CONFIG_USB_HOST_ETHER=y
+ CONFIG_USB_ETHER_RTL8152=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
++# No CONFIG_BOOTCOMMAND: the environment source file carries bootcmd and its
++# entry wins, so a copy here would be dead (h713_release.config explains it).
+diff --git a/configs/fragments/h713_release.config b/configs/fragments/h713_release.config
+index 6d0b8a09df6..3b3dffc341e 100644
+--- a/configs/fragments/h713_release.config
++++ b/configs/fragments/h713_release.config
+@@ -1,13 +1,15 @@
+ # Role: release -- the shipping build (release/build-all.sh).
+ #
+-# The base already is this build except for three lines, and these are they:
+-# the environment file the board boots from, the command that runs it, and the
+-# power gate. The gate is on in exactly one shipping role, because this is the
+-# only one where the projector stands in a room and has to decide for itself
+-# whether mains-on means "start".
++# The base already is this build except for two lines, and these are they: the
++# environment file the board boots from and the power gate. The gate is on in
++# exactly one shipping role, because this is the only one where the projector
++# stands in a room and has to decide for itself whether mains-on means "start".
++#
++# No CONFIG_BOOTCOMMAND here: bootcmd comes from board/sunxi/hy310.env, which
++# env_default.h emits after the Kconfig one, and the last entry wins
++# (lib/hashtable.c). A copy here is dead and drifts (package G2, section 5.2).
+ CONFIG_H713_POWER_GATE=y
+ CONFIG_ENV_SOURCE_FILE="hy310"
+-CONFIG_BOOTCOMMAND="h713_disp init ${h713_project}; run boot_${h713_boot}; run boot_net"
+ # One second of autoboot countdown on the product boot, never zero (Marco,
+ # 15.09.2026): the prompt must stay reachable from the console. It was two.
+ CONFIG_BOOTDELAY=1

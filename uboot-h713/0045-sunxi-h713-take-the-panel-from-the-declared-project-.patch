@@ -1,7 +1,7 @@
 From 128b8c933e14b888e67291687aa3c00e8cddf6dc Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:16:13 +0200
-Subject: [PATCH 45/77] sunxi: h713: take the panel from the declared project
+Subject: [PATCH 45/82] sunxi: h713: take the panel from the declared project
  ID, not the image
 
 Commit 1e9daac moved the panel from the project ID to the display.bin

@@ -1,7 +1,7 @@
 From 2ba4003276ba15e828bba335b6c63c254d11b757 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 11:20:55 +0200
-Subject: [PATCH 40/77] sunxi: h713: h713_probe, say what the HDCP wait loop is
+Subject: [PATCH 40/82] sunxi: h713: h713_probe, say what the HDCP wait loop is
  instead of "not patched"
 
 The probe reports where it found the HDCP 1.4 key-wait loop and added

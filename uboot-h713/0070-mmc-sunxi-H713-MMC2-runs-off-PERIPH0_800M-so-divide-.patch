@@ -1,7 +1,7 @@
 From 2dbc92744761e57e50c15736e8d433bff3d06cbc Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 02:53:23 +0200
-Subject: [PATCH 70/77] mmc: sunxi: H713 MMC2 runs off PERIPH0_800M, so divide
+Subject: [PATCH 70/82] mmc: sunxi: H713 MMC2 runs off PERIPH0_800M, so divide
  for 400 MHz
 
 On the H713 the mux input 1 of the MMC2 (eMMC) clock is pll-periph0-800M

@@ -1,7 +1,7 @@
 From fd3d58a091ae9427852847c166a2becdb13c28ce Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:20:27 +0200
-Subject: [PATCH 49/77] sunxi: h713: say what the MIPS clock divider yields --
+Subject: [PATCH 49/82] sunxi: h713: say what the MIPS clock divider yields --
  400 MHz, as intended
 
 We write 0x80000002 to 0x02001600 and never stated a rate, while the

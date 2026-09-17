@@ -1,7 +1,7 @@
 From bf41ecb69a2ba13c750fba84f698df01e8326298 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:30:00 +0200
-Subject: [PATCH 52/77] sunxi: h713: ask the GPT for a partition name once, not
+Subject: [PATCH 52/82] sunxi: h713: ask the GPT for a partition name once, not
  once per load
 
 Finding a partition by name is not a cheap call: part_get_info_by_name()

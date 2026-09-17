@@ -1,7 +1,7 @@
 From 71a27763b86d877afe038754482d17d03b9e339f Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 11:04:00 +0200
-Subject: [PATCH 74/77] mmc: sunxi: let the SPL use the internal DMA too
+Subject: [PATCH 74/82] mmc: sunxi: let the SPL use the internal DMA too
 
 Package M1 added the IDMAC path but deliberately left the SPL on PIO:
 CONFIG_IS_ENABLED(MMC_SUNXI_IDMA) resolves to CONFIG_SPL_MMC_SUNXI_IDMA in

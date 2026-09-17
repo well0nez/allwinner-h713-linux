@@ -1,7 +1,7 @@
 From 642214cea18064ec516eedccfc8734cf2aaa0416 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 01:29:27 +0200
-Subject: [PATCH 56/77] sunxi: h713: h713_probe, the secure-storage signature
+Subject: [PATCH 56/82] sunxi: h713: h713_probe, the secure-storage signature
  sits in the first item, not the map
 
 On a stock HY310 the row said "none at LBA 12288 -- no sunxi signature"

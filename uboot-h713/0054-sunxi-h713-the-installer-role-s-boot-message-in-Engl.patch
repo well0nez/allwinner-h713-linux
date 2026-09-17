@@ -1,7 +1,7 @@
 From 893baa383da9a76c23ab454431e893ffd574d46b Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:53:42 +0200
-Subject: [PATCH 54/77] sunxi: h713: the installer role's boot message in
+Subject: [PATCH 54/82] sunxi: h713: the installer role's boot message in
  English
 
 It is what a person with a UART lead sees while h713-install writes, and

@@ -1,7 +1,7 @@
 From 6432f7d46c14dee5d15ab650de6e368425edf59b Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 10:07:33 +0200
-Subject: [PATCH 58/77] sunxi: h713: hy300_pro_defconfig, the HY300 Pro's own
+Subject: [PATCH 58/82] sunxi: h713: hy300_pro_defconfig, the HY300 Pro's own
  board base
 
 The HY300 Pro (issue #1) had no base of its own: boards/hy300-pro/uboot.config

@@ -1,7 +1,7 @@
 From 0b2a9645dff515547e9763351741177f059f5b0b Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 09:32:20 +0200
-Subject: [PATCH 57/77] sunxi: h713: the HY300 Pro's HDCP wait site, from its
+Subject: [PATCH 57/82] sunxi: h713: the HY300 Pro's HDCP wait site, from its
  owner's probe run
 
 issue #1, probe of 2026-09-14: display.bin 0x131f10 / cf9649bc..., wait

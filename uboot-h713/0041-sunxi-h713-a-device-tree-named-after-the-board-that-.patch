@@ -1,7 +1,7 @@
 From 5c4fc82f8e80f6b7c1989f52a8db91863ba86c9f Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:16:57 +0200
-Subject: [PATCH 41/77] sunxi: h713: a device tree named after the board that
+Subject: [PATCH 41/82] sunxi: h713: a device tree named after the board that
  boots it
 
 Every HY310 build so far has loaded "sun50i-h713-hy200-qz713df-a1", the

@@ -1,7 +1,7 @@
 From fa814f5afdc739c34c6ff7c9f5786ef528ba32fd Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:20:08 +0200
-Subject: [PATCH 48/77] sunxi: h713: name the rungs of the MIPS reset ladder
+Subject: [PATCH 48/82] sunxi: h713: name the rungs of the MIPS reset ladder
 
 The four values written to 0x0200160c were called STAGE1..STAGE3 and
 RELEASED, which says they are ordered and nothing else. The vendor device

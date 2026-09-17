@@ -1,7 +1,7 @@
 From 078d1ce8915e908056ad561ffa33e509a7066b14 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 11 Sep 2026 09:35:16 +0200
-Subject: [PATCH 28/77] sunxi: h713: the environment lives on the eMMC, which
+Subject: [PATCH 28/82] sunxi: h713: the environment lives on the eMMC, which
  is MMC device 1
 
 CONFIG_ENV_OFFSET already pointed into the eMMC layout, but without

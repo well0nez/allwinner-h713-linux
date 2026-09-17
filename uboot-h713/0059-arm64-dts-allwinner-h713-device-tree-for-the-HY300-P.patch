@@ -1,7 +1,7 @@
 From a6f12b529e22edc3feaedd11792db2ff19fd3862 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 10:07:45 +0200
-Subject: [PATCH 59/77] arm64: dts: allwinner: h713: device tree for the HY300
+Subject: [PATCH 59/82] arm64: dts: allwinner: h713: device tree for the HY300
  Pro
 
 Same pattern and same reason as sun50i-h713-hy310.dts: an include of the bench

@@ -1,7 +1,7 @@
 From 4fa6175880d0a7379b5417cc7873b8d58194c59e Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Wed, 16 Sep 2026 10:26:01 +0200
-Subject: [PATCH 71/77] sunxi: SPL: keep the FIT payloads external so the SPL
+Subject: [PATCH 71/82] sunxi: SPL: keep the FIT payloads external so the SPL
  stops copying them
 
 The SPL runs with the MMU off (nothing links dcache_enable()/mmu_setup()

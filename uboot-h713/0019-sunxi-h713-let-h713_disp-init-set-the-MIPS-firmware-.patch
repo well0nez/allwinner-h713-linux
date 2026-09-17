@@ -1,7 +1,7 @@
 From 2661414f37ede99820248d850b3d6634fb18da48 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 9 Sep 2026 19:26:22 +0200
-Subject: [PATCH 19/77] sunxi: h713: let h713_disp init set the MIPS firmware
+Subject: [PATCH 19/82] sunxi: h713: let h713_disp init set the MIPS firmware
  log level
 
 Diagnostic option from the SetSource nights (doku/74): `h713_disp init

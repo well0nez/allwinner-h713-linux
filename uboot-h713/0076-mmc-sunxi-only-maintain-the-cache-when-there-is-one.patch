@@ -1,7 +1,7 @@
 From 08507374e3aac6751f3fa48df0088243bb63eee4 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 11:05:56 +0200
-Subject: [PATCH 76/77] mmc: sunxi: only maintain the cache when there is one
+Subject: [PATCH 76/82] mmc: sunxi: only maintain the cache when there is one
 
 flush_dcache_range() and invalidate_dcache_range() on armv8 are not
 conditional: arch/arm/cpu/armv8/cache_v8.c passes both straight to the
