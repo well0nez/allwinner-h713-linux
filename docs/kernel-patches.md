@@ -14,9 +14,9 @@ two projects landing on the same chip and is grouped by **origin and topic**, no
 
 | # | Section | What it is |
 |---|---|---|
-| 1 | Base | cstenger's 46-patch H713 driver series, byte-identical to his tree |
+| 1 | Base | the 54 patches that come through cstenger's `main`: well0nez's H713 driver series `0001` - `0022` (carried there with attribution), cstenger's arm64 side `0023` - `0048`, and our lettered follow-ups behind their originals |
 | 2 | Bridge | one patch of ours between his main branch and his display branch |
-| 3 | Video-path branch | 16 patches from cstenger's `h713-display-video-path`, scanout/DECD/IOMMU/MMC/HDMI |
+| 3 | Video-path branch | 18 patches: 17 from cstenger's `h713-display-video-path` (scanout/DECD/IOMMU/MMC/HDMI) plus our follow-up `0078a` |
 | 4 | ARISC + cpu_comm | the second co-processor, the ARM↔MIPS IPC kernel API, HDMI-RX callbacks |
 | 5 | Focus motor, first pass | limit-switch read path, manual move commands |
 | 6 | Display path | geometry, republish-on-change, capture, picture controls, aspect |
@@ -28,16 +28,20 @@ two projects landing on the same chip and is grouped by **origin and topic**, no
 | 12 | Wi-Fi | the power-enable line in the devicetree |
 | 13 | Release | strips debug facilities from the shipping defconfig |
 | 14 | Protection | the fan-stall poweroff, armed again (`0159`) |
+| 15 | Boards | one DTB name per board: `0160` HY310, `0161` HY300 Pro - each an include of the bench DTS plus model and compatible |
 
-Sections 1 and 3 are cstenger's work, proven byte-identical against his tree (`doku/116` §4a P1,
-`diff -rq` against two independently patched trees: zero differences). The rest is this project's own
-projector work, dated in `doku/` by section.
+Sections 1 and 3 come through cstenger's tree and are proven byte-identical against it (`doku/116` §4a P1,
+`diff -rq` against two independently patched trees: zero differences) - the arm64 side is his, the driver
+series `0001` - `0022` in section 1 is well0nez's, carried in his tree with attribution
+([PROVENANCE.md](../PROVENANCE.md)). Everything else, the lettered follow-ups included, is this project's
+own projector work, dated in `doku/` by section.
 
 ## Why the numbers are history, not order
 
 A patch keeps the number it was given when it was written. When a later fix targets an already-numbered
-patch, it becomes a lettered addendum - `0014a`, `0024a/b/c`, `0078a` - placed **directly behind its
-original**, not at the end of the series, because the patches after it were written against the state the
+patch, it becomes a lettered addendum - `0005a`, `0013a`, `0014a` - `0014c`, `0024a` - `0024d`, `0078a`,
+`0091a`, `0135b`, `0136a` - `0136c` - placed **directly behind its original**, not at the end of the
+series, because the patches after it were written against the state the
 original plus its addenda leaves behind: `0024a` fixes a register and IRQ number `0024` got wrong, `0024b`
 renames the driver it introduced, and everything from `0025` on assumes both are already applied. Moving an
 addendum to the end would change what every later patch applies against. The two exceptions in section 9,

@@ -1,10 +1,10 @@
 # eMMC layout
 
-Layout v3 puts the entire boot chain - SPL, U-Boot, environment, and the one block that must never be
-touched - into the eMMC's first 8 MiB, and gives every one of those raw regions its own GPT entry so that
-`lsblk`, `gparted` or a stray `dd` see them as occupied instead of guessing. Two ext4 partitions,
-`hy310-boot` and `hy310-rootfs`, hold everything else. Layout v4 keeps every number on this page and
-changes only how the proprietary files get into those two partitions - last section.
+Layout v4 - v3's partition table, unchanged since 10.09.2026 - puts the entire boot chain - SPL, U-Boot,
+environment, and the one block that must never be touched - into the eMMC's first 8 MiB, and gives every
+one of those raw regions its own GPT entry so that `lsblk`, `gparted` or a stray `dd` see them as occupied
+instead of guessing. Two ext4 partitions, `hy310-boot` and `hy310-rootfs`, hold everything else. What v4
+changed is only how the proprietary files reach those two partitions - last section.
 
 ## The six partitions
 

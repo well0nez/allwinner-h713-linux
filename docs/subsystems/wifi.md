@@ -39,9 +39,10 @@ fallback.
 
 ## What was measured
 
-12.09.2026, on the v0.8 acceptance image: an access point named `h713` running under the `DE` domain
-on the self-managed phy, firmware loaded from the extracted placeholders (`doku/60-offen.md`, the v0.8
-acceptance run). Station mode has not been tried on this build.
+12.09.2026, on that week's acceptance build: an access point named `h713` running under the `DE` domain
+on the self-managed phy, with the firmware the installer copied in from the user's own dump
+(`doku/60-offen.md`, the acceptance run of that day). Station mode was verified the same day against a
+real network (DHCP address, internet through `wlan0`).
 
 ## Bluetooth is missing
 

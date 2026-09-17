@@ -14,7 +14,7 @@ before the input is ready.
 ssh root@h713          # over the access point, or over the network if you set mode=sta
 ```
 
-Key-only: the key you passed as `--authorized-key` during installation is the only way in over the
+Key-only: the key you passed as `--ssh-key` during installation is the only way in over the
 network. If you skipped it, the serial console on the UART pads is your way back - it **logs in as root
 without a password**, by design and by necessity ([why, and how to turn it off](../services.md)).
 
@@ -47,7 +47,7 @@ If the wall stays dark, work down this list:
 | Is the service running? | `systemctl status 'h713-tv@*'` | udev starts one instance per capture device; the node number varies |
 | Does the receiver see a signal? | `h713-tv ctl status` | "no signal" is also what an unsupported mode looks like |
 | Is the source in a supported mode? | on the source | six modes are verified, all at 60 Hz - [STATUS.md](../../STATUS.md) |
-| Just plugged the cable in and it stays dark? | `h713-tv ctl replug` | known: the firmware sometimes does not take a freshly plugged source until it sees a real hot-plug cycle ([known-issues](../known-issues.md)) |
+| Just plugged the cable in and it stays dark? | `h713-tv ctl replug` | fixed since 16.09.2026 (kernel `0136a`/`0136c`); on an older image this command brings the picture back ([known-issues](../known-issues.md)) |
 | Anything in the log? | `journalctl -u 'h713-tv@*' -b` | |
 
 ## 3. Make it look right

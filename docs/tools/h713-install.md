@@ -133,7 +133,7 @@ none of this applies: the dump is mandatory and it is what the vendor files come
 
 Before the first byte is written the tool prints the beta warning and requires **`YES` typed out** - not a
 `[y/N]` prompt - because a fast keypress is exactly the failure mode a full write should not allow. `JA`
-is accepted for one more release.
+is accepted alongside `YES` until the German aliases go out after `v0.9`.
 
 GPT partition names starting `hy310-` mean the device already runs this system; a stock layout is matched
 against the board profiles by several features at once, not by one fingerprint string. On a reinstall over
@@ -152,13 +152,12 @@ stock U-Boot reads the display firmware from the slot `misc` selects.
 
 ## What is proven and what is not
 
-The steps above ran on a device with the German command line of v0.5-beta ([STATUS.md](../../STATUS.md)).
-The English subcommands are the same steps behind a new front, but that front is **unverified**: no run
-over `h713-install install` has happened on hardware yet, and neither has layout v4 - the copy through a
-mount is covered by tests that mount a real ext4, not by a device run. The Windows path is unverified too:
-`identify`, `dump` and `extract` are written for it and refuse nothing, `install` says in one sentence that
-it needs Linux, and nobody has run any of it there. Every German switch of v0.5-beta
-(`--abbild`, `--abzug`, `--nur-abzug`, `--dry-run` and the rest) is still accepted for one release and
+The steps above have run on hardware with the English command line since 15.09.2026, and layout v4 - the
+copy through a mount - was installed and cold-started on the HY310 on 16.09.2026
+([STATUS.md](../../STATUS.md)). What stays unverified is the Windows path: `identify`, `dump` and
+`extract` are written for it and refuse nothing, `install` says in one sentence that it needs Linux, and
+nobody has run any of it there. Every German switch of v0.5-beta
+(`--abbild`, `--abzug`, `--nur-abzug`, `--dry-run` and the rest) is still accepted until after `v0.9` and
 prints one line with its new name.
 
 Details: doku/110-plan-installationsweg.md, doku/121-plan-werkzeug-umbau.md.

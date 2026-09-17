@@ -49,10 +49,11 @@ live - the self-managed wiphy only takes the domain at load time.
 
 ## Limits
 
-Access point mode with `country=DE` is verified on hardware, 12.09.2026. Station mode, and a client
-actually joining the access point, run through the same code path but are open device tests, not proven
-claims (STATUS.md). The AIC8800D80 firmware is not shipped: it is a zeroed placeholder until
-`h713-extract` fills it from the user's own device, and a device missing that firmware fails with a clear
-error instead of a silent non-start.
+Access point mode with `country=DE` and station mode against a real network are both verified on
+hardware, 12.09.2026. Still open: whether a phone accepts the access point's DNS behaviour (STATUS.md).
+The AIC8800D80 firmware is not shipped: the image carries only its target directory, and `h713-install`
+copies the files out of your own dump (or off a device already running this layout) into it. A board
+without the chip is told so and the group is left out, and a device missing that firmware fails with a
+clear error instead of a silent non-start.
 
 Details: doku/60-offen.md.

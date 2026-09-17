@@ -36,8 +36,8 @@ that cstenger's dead end really was the format, not the hardware.
 **Outstanding:** whether the non-secure world may use `Key-Select 3` (the RSSK) and the secure channel
 `CE_S` (`0x03040800`) at all is not yet tested. That test needs one power cycle and can hang the bus, so it
 is planned but not run. Its outcome decides where the eventual driver lives - a small Linux driver if
-non-secure access is permitted, otherwise an EL3 SMC call in TF-A. HDCP 1.4 itself is deferred past v0.1
-regardless of that result.
+non-secure access is permitted, otherwise an EL3 SMC call in TF-A. HDCP 1.4 itself stays on the open list
+(`ROADMAP.md`, `doku/112`) regardless of that result.
 
 The measurement module loads automatically by device-tree match and stays in the shipped kernel - a
 deliberate choice (the maintainer, 12.09.2026), not a leftover.
