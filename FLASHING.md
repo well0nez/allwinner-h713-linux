@@ -226,7 +226,7 @@ nothing has changed: the dump is mandatory, it is the only way back to Android, 
 `restore-stock` rebuilds the vendor partition table byte-for-byte, so the device comes back as a normal
 Android projector. The path has been used on hardware; the English command line for it has not, and
 neither has the Windows side ([STATUS.md](STATUS.md)). The German switches of v0.5-beta - `--abbild`,
-`--abzug`, `--nur-abzug`, `--dry-run` and the rest - still work for one release and each print one line
+`--abzug`, `--nur-abzug`, `--dry-run` and the rest - still work until after `v0.9` and each print one line
 with their new name, so an older recipe does not break.
 
 ## If something goes wrong
