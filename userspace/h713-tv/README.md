@@ -602,7 +602,7 @@ calculator = PATH | none     # default /usr/local/bin/h713-pq; none = do not com
 ```
 
 The German key names of the releases up to v0.8-beta - `zustand`, `daten`, `rechner` - are still accepted
-without a warning, so an existing `tv.conf` keeps working; they go out after that release.
+without a warning, so an existing `tv.conf` keeps working; they go out after `v0.9`.
 
 On the command line they are called `-p`, `--data` and `--calculator`; on top of that `--input` (default
 `HDMI1`) and `--lut` (default `/run/h713-tv/gamma-laufzeit.bin`). The command line has the last word, the

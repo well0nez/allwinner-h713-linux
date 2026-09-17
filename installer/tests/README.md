@@ -2,9 +2,17 @@
 
 Golden tests frozen on 2026-09-14 against the stand-alone tools of v0.5-beta (`hy310-install.py`,
 `hy310-mkimage.py`, `h713-extract`), plus a fake eMMC (`fakedisk.py`: a sparse regular file that the
-tools accept as a device on Linux). Run from this directory:
+tools accept as a device on Linux).
+
+`bash run.sh` is the normal way in: 213 tests by default, 220 with `--local` (vendor fixtures and the
+three vendor images), `--slow` adds the full-image extractor runs, `--old` runs the v0.5-beta scripts to
+re-freeze a golden value. The steps that mount something need `H713_ROOT_TESTS=1` and a password-less
+`sudo -n true`; without it they say so and skip. Everything `run.sh` does is set the variables below and
+call unittest, so from this directory
 
     python3 -m unittest discover -s . -v
+
+does the same in the default mode.
 
 Environment:
 
