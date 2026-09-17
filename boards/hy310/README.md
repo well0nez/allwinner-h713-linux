@@ -8,7 +8,7 @@ this unit; see the two `hy200-*` directories.
 | | |
 |---|---|
 | Status | **verified** |
-| Verified by | Marco Onorati, HY310, `v0.5-beta`, 13.09.2026 |
+| Verified by | Marco Onorati, HY310, `v0.8-beta`, 16.09.2026 |
 | Profile | `installer/h713/profiles/hy310.py` |
 | Image | `h713-hy310-<version>-{a-bootkette,b-system,c-gptkopie}.img` |
 | Kernel DTB | `sun50i-h713-hy310` |
@@ -20,7 +20,7 @@ this unit; see the two `hy200-*` directories.
 
 ## What was measured
 
-`STATUS.md` (snapshot 2026-09-12) is the long version; every row there names a date and a log. In
+`STATUS.md` (snapshot 2026-09-16) is the long version; every row there names a date and a log. In
 short, on this device:
 
 - standalone boot from eMMC, power-on to a Debian login, 20/20 cold starts
@@ -32,15 +32,12 @@ short, on this device:
   11./12.09.
 - FEL recovery and the installer including restore-to-stock, power key gate, standby at 4 W
 
-Open on this board, and written down because they are *not* done: 20 gate cycles with the power key,
-environment carry-over across a reinstall, a phone joining the access point. Missing entirely:
-Bluetooth, AV1 decode, HDCP 1.4, any desktop.
+Open on this board, and written down because they are *not* done: environment carry-over across a
+reinstall, a phone joining the access point. Missing entirely: Bluetooth, AV1 decode, HDCP 1.4,
+any desktop.
 
-**One caveat carried over from `STATUS.md`:** every image built before 2026-09-12 20:00 - including
-the one on the device - shipped a BL31 from 10.09. with assertions enabled (49 260 bytes). A clean
-build produces the intended release BL31 (45 164 bytes). Same source minus the assertions, but the
-next image installed on this board has an EL3 firmware that has not been through a device acceptance
-run yet.
+**Historical:** images built before 2026-09-12 20:00 shipped a BL31 from 10.09. with assertions
+enabled (49 260 bytes). The release BL31 (45 164 bytes) has been on this board since 15.09.2026.
 
 ## Where the numbers come from
 
@@ -63,6 +60,7 @@ run yet.
 
 `KERNEL_DTB=sun50i-h713-hy310` and `CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy310"` name a
 DTS that is an include of the HY200 bench DTS plus this board's model and compatible
-(`doku/121` §, stage 4). Until that patch is in the kernel series and in `arch/arm/dts/` of the
-U-Boot fork, `BOARD=hy310 build/build.sh kernel` stops at the missing DTB - by design: the FIT must
-not be built with a DTB named after a different board, which is what happened before stage 4.
+(`doku/121` §, stage 4). The patch is `0160` in the series and the DTS is in the fork, so
+`BOARD=hy310 build/build.sh kernel` builds it. A board whose DTB is missing still stops the build -
+by design: the FIT must not be built with a DTB named after a different board, which is what happened
+before stage 4.

@@ -14,7 +14,7 @@ PROFILE = {
     "description": "HY310 -- Allwinner H713, reference design h713_tuna_p3, "
                    "stock build 2025-07-24 (Projector07241019)",   # X:101, translated
     "status": "verified",
-    "verified_by": "Marco Onorati, HY310, v0.5-beta, 13.09.2026",
+    "verified_by": "Marco Onorati, HY310, v0.8-beta, 16.09.2026",
     "soc": "H713 (sun50iw12)",               # J boot_package.dtb_model / dtb_compatible
     "stock": {
         "android": "11 (64-bit)",            # J vendor_build_prop fingerprint ":11/"; doku/120 section 1
