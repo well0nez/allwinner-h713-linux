@@ -188,7 +188,8 @@ Built on the board itself the target is still `make install`.
 ## 6. Operation
 
 **One template unit, no `systemctl enable`.** The service is called `h713-tv@videoN` - one instance per
-capture device, `h713-tv@video1` on this board. The unit deliberately has no `[Install]` section: the
+capture device; the number varies with probe order (it was `video3` on 12.09., the camera enumerated
+first), so never assume one. The unit deliberately has no `[Install]` section: the
 capture device appears late and with an unpredictable number, because the probe of 0094 runs asynchronously
 and the EDID/HPD sequence alone takes over ten seconds. So it is started from the udev rule, as soon as the
 device is there, and the kernel name of the device becomes the instance name:
