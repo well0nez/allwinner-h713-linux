@@ -1,7 +1,7 @@
 From 88f6d7b9ca9f71acc026def0baad47cda3e6d223 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:11:34 +0200
-Subject: [PATCH 43/77] sunxi: h713: find the display artifacts by partition
+Subject: [PATCH 43/82] sunxi: h713: find the display artifacts by partition
  name and slot
 
 h713_disp_read() opened "mmc 1:2". That index is this board's

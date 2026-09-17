@@ -1,7 +1,7 @@
 From fabb9fb3179931761b7f7eb7d47b3c4c8cb8e65f Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:14:31 +0200
-Subject: [PATCH 10/77] sunxi: h713: read three per-panel registers on a second
+Subject: [PATCH 10/82] sunxi: h713: read three per-panel registers on a second
  board
 
 An HY310 still runs its stock bootloader, and its boot0 sits in a separate

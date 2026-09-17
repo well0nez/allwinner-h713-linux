@@ -1,7 +1,7 @@
 From d4b797937669106aca5c340b2f315b1caf1b248d Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 18:55:30 +0200
-Subject: [PATCH 67/77] sunxi: h713: hy310 boots without the USB scan and
+Subject: [PATCH 67/82] sunxi: h713: hy310 boots without the USB scan and
  without the autoboot countdown
 
 Marco timed the installed v0.7-dev at 7 s from the power key to the boot

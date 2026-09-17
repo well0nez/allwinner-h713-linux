@@ -1,7 +1,7 @@
 From 7dda959ef5a6dfbff189595758c0b9b564bcf7da Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 17:17:05 +0200
-Subject: [PATCH 65/77] sunxi: h713: the vendor bootlogo digest identifies, it
+Subject: [PATCH 65/82] sunxi: h713: the vendor bootlogo digest identifies, it
  does not gate
 
 h713_disp_publish_bmp() refused a bootlogo.bmp whose SHA-256 was not in

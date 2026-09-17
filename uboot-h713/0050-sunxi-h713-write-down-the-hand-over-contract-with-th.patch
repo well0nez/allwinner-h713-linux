@@ -1,7 +1,7 @@
 From 97439f4c3a0f46919fe268fd79a550887a5af1a1 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:21:02 +0200
-Subject: [PATCH 50/77] sunxi: h713: write down the hand-over contract with the
+Subject: [PATCH 50/82] sunxi: h713: write down the hand-over contract with the
  vendor driver
 
 Two facts from the kernel side (A7 report, 5) that our code satisfies and

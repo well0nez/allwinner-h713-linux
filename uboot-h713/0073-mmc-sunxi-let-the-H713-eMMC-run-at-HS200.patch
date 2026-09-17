@@ -1,7 +1,7 @@
 From 644feba7e43a2cc7d21b15f7430adc2116a95f21 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 10:15:13 +0200
-Subject: [PATCH 73/77] mmc: sunxi: let the H713 eMMC run at HS200
+Subject: [PATCH 73/82] mmc: sunxi: let the H713 eMMC run at HS200
 
 The eMMC node of the HY310 already says mmc-hs200-1_8v and its vqmmc rail
 is a fixed 1.8 V regulator, but U-Boot never offered the mode: f_max was

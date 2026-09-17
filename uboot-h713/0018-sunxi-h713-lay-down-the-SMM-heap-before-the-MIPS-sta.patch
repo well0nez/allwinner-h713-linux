@@ -1,7 +1,7 @@
 From 33e79587bcc158bb39180bb311299c5b376de890 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 9 Sep 2026 19:26:22 +0200
-Subject: [PATCH 18/77] sunxi: h713: lay down the SMM heap before the MIPS
+Subject: [PATCH 18/82] sunxi: h713: lay down the SMM heap before the MIPS
  starts
 
 The MIPS firmware's hal_adapter_init() calls smmMalloc() for a 44-byte

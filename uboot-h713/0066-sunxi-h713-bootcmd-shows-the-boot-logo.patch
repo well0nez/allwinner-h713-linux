@@ -1,7 +1,7 @@
 From 71f6d76a95d09c9bc79f6b3694359410540fcd24 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 17:17:14 +0200
-Subject: [PATCH 66/77] sunxi: h713: bootcmd shows the boot logo
+Subject: [PATCH 66/82] sunxi: h713: bootcmd shows the boot logo
 
 bootcmd becomes "h713_disp init ${h713_project} logo; run
 boot_${h713_boot}; run boot_net". The logo with the display firmware

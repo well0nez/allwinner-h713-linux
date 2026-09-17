@@ -1,7 +1,7 @@
 From 7879d9bdc8f2121fd6c7b3845d80e1ab38e1cc3e Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 9 Sep 2026 18:04:01 +0200
-Subject: [PATCH 17/77] sunxi: h713: add the power gate in front of the
+Subject: [PATCH 17/82] sunxi: h713: add the power gate in front of the
  power-on lines
 
 Stock keeps the projector in standby until the power key is pressed; our

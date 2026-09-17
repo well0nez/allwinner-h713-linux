@@ -1,7 +1,7 @@
 From a5eefc15a6175be8118003ed93c736a318a628bf Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 17:00:56 +0200
-Subject: [PATCH 05/77] sunxi: h713: set the fan and USB power lines in
+Subject: [PATCH 05/82] sunxi: h713: set the fan and USB power lines in
  board_late_init
 
 Two problems with doing this in board_init.

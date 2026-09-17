@@ -1,89 +1,91 @@
-# U-Boot-Änderungen für HY260_QZ713_V3.1
+# U-Boot changes for HY260_QZ713_V3.1
 
-**Die Patchdateien hier werden erzeugt, nicht gepflegt** (seit 12.09.2026, P3):
-`git format-patch --no-signature 8fe568cdfc46..<Kopf>` im Submodul-Checkout
-`mainline/external/u-boot` (Zweig `h713-hy310`, Basis ist cstengers `h713`),
-zuletzt am 16.09.2026 bis 4c7e49b. `SERIES.txt` nennt Basis, Kopf und Anzahl. Wer etwas ändern
-will, ändert den Fork und lässt neu erzeugen. Diese Seite erklärt, *warum* die
-Änderungen so aussehen - der ursprüngliche Text vom 31.08. steht unten.
+**The patch files here are generated, not maintained** (since 12.09.2026, P3):
+`git format-patch --no-signature 8fe568cdfc46..<head>` in the submodule checkout
+`mainline/external/u-boot` (branch `h713-hy310`, base is cstenger's `h713`),
+last regenerated on 17.09.2026 at the fork head `da74b89`. `SERIES.txt` names base,
+head and count, and is the only thing that says which fork commit this mirror stands
+on. Whoever wants to change something changes the fork and has the mirror generated
+again. This page explains *why* the changes look the way they do - the original text
+of 31.08. is below.
 
-Alle vier Befunde sind auf Hardware verifiziert und aus dem Vendor-U-Boot
-(`re/vendor/HY310/extracted/u-boot.fex`, Thumb-2, Basis `0x4a000000`) belegt.
+All four findings are verified on hardware and backed by the vendor U-Boot
+(`re/vendor/HY310/extracted/u-boot.fex`, Thumb-2, base `0x4a000000`).
 
-## Was drin ist
+## What is in it
 
-**`drivers/clk/sunxi/clk_h713.c`** - eigene CCU-Tabellen statt der
-D1-Wiederverwendung. Auf dem H713 liegen die USB-Register **8 Byte**
-auseinander, auf dem D1 nur 4: Port 1 ist `0xa78`, nicht `0xa74`, und es gibt
-einen dritten Port bei `0xa80`. Mit der D1-Vorgabe bekommt OHCI1 seinen Takt
-nie und der erste Registerzugriff hängt das Board auf.
-Belegt im Vendor-Binary bei `0x4a045e12`: `cmp r0, #1` gefolgt von
-`ldr r2, =0x02001a78`. Deckt sich mit dem H713-CCU-Treiber aus dem
-well0nez-Kernel (Patch 0001).
+**`drivers/clk/sunxi/clk_h713.c`** - CCU tables of its own instead of reusing the
+D1's. On the H713 the USB registers lie **8 bytes** apart, on the D1 only 4:
+port 1 is `0xa78`, not `0xa74`, and there is a third port at `0xa80`. With the D1
+values OHCI1 never gets its clock and the first register access hangs the board.
+Backed by the vendor binary at `0x4a045e12`: `cmp r0, #1` followed by
+`ldr r2, =0x02001a78`. Agrees with the H713 CCU driver from the well0nez kernel
+(patch 0001).
 
-**`drivers/phy/allwinner/phy-sun4i-usb.c`** - H713-Eintrag, den U-Boot gar
-nicht hatte:
+**`drivers/phy/allwinner/phy-sun4i-usb.c`** - an H713 entry, which U-Boot did not
+have at all:
 
-- `pmu_enable_bit0`, portiert aus well0nez' Kernel-Patch 0005. Ohne das
-  BIT(0) an der PMU-Basis bleibt die PHY aus.
-- `hci_phy_ctl_clear = PHY_CTL_SIDDQ`. Die HCI-PHYs starten mit SIDDQ
-  (Bit 3 bei PMU+0x10) gesetzt, also im Power-Down. Der Vendor löscht es
-  mit `bic r3, r3, #8` bei `0x4a045ee8`. Der Kernel darf das weglassen,
-  **weil dort vorher das Vendor-U-Boot lief** - siehe `usb.md` im
-  well0nez-Baum: „the kernel doesn't re-init from scratch". Ist U-Boot
-  selbst die erste Stufe, muss es das übernehmen.
-- `num_phys = 2`, nicht 3: U-Boots H713-CCU reicht nur bis Port 1.
+- `pmu_enable_bit0`, ported from well0nez' kernel patch 0005. Without BIT(0) at the
+  PMU base the PHY stays off.
+- `hci_phy_ctl_clear = PHY_CTL_SIDDQ`. The HCI PHYs start with SIDDQ (bit 3 at
+  PMU+0x10) set, that is in power-down. The vendor clears it with `bic r3, r3, #8`
+  at `0x4a045ee8`. The kernel may leave that out **because the vendor U-Boot ran
+  before it** - see `usb.md` in the well0nez tree: "the kernel doesn't re-init from
+  scratch". Where U-Boot is itself the first stage, it has to do the job.
+- `num_phys = 2`, not 3: U-Boot's H713 CCU only reaches port 1.
 
-**`sun50i-h713-hy200-qz713df-a1.dts`** - `r_pio` bei `0x07022000` ergänzt
-(die PL/PM-Bänke fehlten komplett, ohne sie schlägt jedes `gpio_request` auf
-PL mit `-ENOENT` fehl), dazu `ehci0`/`ohci0` und `ehci1`/`ohci1`.
+**`sun50i-h713-hy200-qz713df-a1.dts`** - `r_pio` added at `0x07022000` (the PL/PM
+banks were missing entirely, and without them every `gpio_request` on PL fails with
+`-ENOENT`), plus `ehci0`/`ohci0` and `ehci1`/`ohci1`.
 
-**`board/sunxi/board.c`** - PB5 und PL3 werden jetzt in `board_late_init`
-gesetzt statt in `board_init`, und **über Pin-Namen statt Legacy-Nummern**.
-In `board_init` ist die GPIO-Uclass noch nicht oben, `gpio_request` scheitert
-still. Und die lineare Nummerierung (32 Pins ab PA=0) passt nicht zu den aus
-dem DT registrierten Bänken: `SUNXI_GPB(5)` traf einen anderen Pin (Aufruf
-erfolgreich, Lüfter blieb aus), `SUNXI_GPL(3)` löste gar nicht auf. Die
-Rückgabewerte werden jetzt geprüft und gemeldet.
+**`board/sunxi/board.c`** - PB5 and PL3 are now set in `board_late_init` instead of
+`board_init`, and **by pin name instead of by legacy number**. In `board_init` the
+GPIO uclass is not up yet and `gpio_request` fails silently. And the linear
+numbering (32 pins from PA=0) does not match the banks registered from the DT:
+`SUNXI_GPB(5)` hit a different pin (call successful, fan stayed off) and
+`SUNXI_GPL(3)` did not resolve at all. The return values are checked and reported now.
 
 ## Defconfigs
 
-| | |
-|---|---|
-| `hy310_qz713_v3_1_defconfig` | wie sein Bench-Config, nur `CONFIG_DRAM_CLK=792`. Gadget-Modus, also `ums` und Fastboot nutzbar |
-| `hy310_host_defconfig` | dasselbe ohne MUSB und Gadget. Nur so geht die USB-A-Buchse als **Host** - die Weiche `phy0_dual_route` hängt in `phy-sun4i-usb.c` an `#ifdef CONFIG_USB_MUSB_SUNXI`, nicht an einer Laufzeit-Entscheidung |
-| `hy310_felmmc_defconfig` | Restore-SPL für FEL, mit `h713_spl_payload.h` |
+One base defconfig per board plus one role fragment - see
+[`docs/uboot/README.md`](../docs/uboot/README.md), which is the page that describes
+them. The old per-role names (`hy310_qz713_v3_1_defconfig`, `hy310_host_defconfig`,
+`hy310_felmmc_defconfig`) are gone since stage 4.
 
-## Was auf diesem Board wo hängt
+## What hangs where on this board
 
 | Port | | |
 |---|---|---|
-| 0 | externe USB-A-Buchse | OTG. FEL und `ums` laufen darüber. Als Host nur mit `hy310_host_defconfig` |
-| 1 | intern | Realtek `0bda:5803` „Generic HD camera", 480 Mb/s, Anschluss `CAM`. Versorgt über **PL3**, im Stock-GPIO-Map als `cam-usb-power-gpio` - der Name ist wörtlich gemeint |
-| 2 | | vom Kernel registriert, nichts dran |
+| 0 | external USB-A socket | OTG. FEL and `ums` run over it. As a host only with the host role |
+| 1 | internal | Realtek `0bda:5803` "Generic HD camera", 480 Mb/s, connector `CAM`. Powered over **PL3**, in the stock GPIO map as `cam-usb-power-gpio` - the name is meant literally |
+| 2 | | registered by the kernel, nothing attached |
 
-`PB5` schaltet Lüfter **und** Lampe gemeinsam. Niemals auf LOW.
+`PB5` switches fan **and** lamp together. Never set it LOW.
 
-## Stand 2026-08-31
+## State on 2026-08-31
 
-Mit `hy310_host_defconfig` geflasht bootet der arm64-Kernel 6.18.38 durch:
-vier Kerne bei EL2, alle sechs USB-Controller, an Bus 1 ein High-Speed-Hub
-mit vier Ports, eMMC bei HS400 mit allen 26 Partitionen. Die Panik am Ende
-ist erwartet - `root=/dev/mmcblk0p26` ist `UDISK` und leer.
+Flashed with the host defconfig of the time, the arm64 kernel 6.18.38 boots through:
+four cores at EL2, all six USB controllers, a high-speed hub with four ports on
+bus 1, eMMC at HS400 with all 26 partitions. The panic at the end is expected -
+`root=/dev/mmcblk0p26` is `UDISK` and empty.
 
-## Zurückspielen
+## Playing them back
 
-Die Serie liegt als `git format-patch`-Dateien daneben, fünfzehn Stück auf
-`8fe568cdfc4`. Sechs davon sind PR #1, neun sind die Display-Arbeit.
+The series lies next to this file as 82 `git format-patch` files on `8fe568cdfc4`.
+How many of them are upstream as PR #1, and what the rest is, is stated once in
+[`docs/uboot/README.md`](../docs/uboot/README.md).
 
 ```
 cd mainline/external/u-boot
 git am ../../../uboot-h713/00*.patch
 ```
 
-Der Arbeitsbaum steht auf dem Branch `h713-display` (Stand 10.09.2026: Commits bis `0022`, Arbeitsbaum sauber, 6 Commits vor `fork/h713-display`);
-die Patches sind nur die Sicherung, falls das Submodul zurückgesetzt wird.
+The working tree is on branch `h713-hy310` (17.09.2026: head `da74b89`, 82 commits
+on `8fe568c`); the patches are the mirror, not the source. A board still in test can
+have a branch of its own next to it (`hy300-pro-ab`), which this mirror does not carry.
 
-`0017`-`0021` sind Gate, SMM-Heap, elog-Option, GP5-Meldungen und die Default-Env (`doku/30` §15, `doku/105` §1.2). **`0022`** ist der
-einzige generische Patch der Serie: `env/mmc.c` reichte einen `CONFIG_ENV_OFFSET` ≥ 2 GiB durch ein `int`, wodurch die Env am HY310 bei
-`0x65d80000` statt `0x93d80000` landete (`doku/30` §16). Kandidat für einen PR an cstenger/upstream.
+`0017`-`0021` are the gate, the SMM heap, the elog option, the GP5 messages and the
+default environment (`doku/30` §15, `doku/105` §1.2). **`0022`** is the only generic
+patch of the series: `env/mmc.c` passed a `CONFIG_ENV_OFFSET` of 2 GiB or more through
+an `int`, so the environment on the HY310 ended up at `0x65d80000` instead of
+`0x93d80000` (`doku/30` §16). A candidate for a PR to cstenger/upstream.

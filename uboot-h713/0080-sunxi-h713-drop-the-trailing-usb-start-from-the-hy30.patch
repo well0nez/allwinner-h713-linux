@@ -1,0 +1,39 @@
+From 5259490aa49a86d6c71c0e7e2d1c61ee7dc27af8 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Wed, 16 Sep 2026 21:46:02 +0200
+Subject: [PATCH 80/82] sunxi: h713: drop the trailing "usb start" from the
+ hy300_pro preboot
+
+The HY310's preboot lost it on 15.09.: the host-side USB scan cost 2 to
+5 s on every boot and nothing in the product boot reads a USB device.
+The kernel brings the controllers up itself -- patch 0005a clears the
+SIDDQ bit of the HCI PHYs, which is what "usb start" was standing in
+for. Same change for the HY300 Pro. The installer role keeps its own
+PREBOOT ("usb start" in configs/fragments/h713_installer.config), where
+the gadget really is the point; the two reboot-mode magics stay.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ configs/hy300_pro_defconfig | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/configs/hy300_pro_defconfig b/configs/hy300_pro_defconfig
+index 40cfcaa50f9..bc943b6c8be 100644
+--- a/configs/hy300_pro_defconfig
++++ b/configs/hy300_pro_defconfig
+@@ -102,7 +102,14 @@ CONFIG_SYSRESET=y
+ CONFIG_SYSRESET_PSCI=y
+ CONFIG_CMD_POWEROFF=y
+ CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start"
++# No "usb start" in the preboot, as on the HY310 since 15.09.: the host-side
++# USB scan cost 2 to 5 s on every boot and nothing in the product boot reads a
++# USB device (no keyboard, no USB boot medium; the installer role brings its
++# own PREBOOT and uses the gadget, not the host). The kernel starts the
++# controllers itself -- patch 0005a clears the HCI PHYs' SIDDQ bit, which is
++# what "usb start" was standing in for. The two reboot-mode magics stay:
++# "reboot fastboot" and "reboot bootloader" from Linux.
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+ CONFIG_ENV_OFFSET=0x700000

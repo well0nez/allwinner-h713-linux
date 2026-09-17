@@ -1,7 +1,7 @@
 From f38476a9932dfe861049e050c3f0939d1040b3f8 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 10:15:36 +0200
-Subject: [PATCH 62/77] sunxi: h713: hy310_defconfig, tpr0..tpr2 are not read
+Subject: [PATCH 62/82] sunxi: h713: hy310_defconfig, tpr0..tpr2 are not read
  on the DDR3 path
 
 The comment said they are computed from the clock; dram_sun50iw12.c never

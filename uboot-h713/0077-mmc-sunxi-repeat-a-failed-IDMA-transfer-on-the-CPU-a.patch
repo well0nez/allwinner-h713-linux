@@ -1,7 +1,7 @@
 From 4c7e49bb01b3a30e34c3c75e5d820e7b4dcd2ab3 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 11:07:29 +0200
-Subject: [PATCH 77/77] mmc: sunxi: repeat a failed IDMA transfer on the CPU,
+Subject: [PATCH 77/82] mmc: sunxi: repeat a failed IDMA transfer on the CPU,
  and say so
 
 The SPL now loads the whole FIT with the IDMA. If the engine ever refuses

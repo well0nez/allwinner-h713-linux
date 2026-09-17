@@ -1,7 +1,7 @@
 From 44817b2310f7cd7769471645008b948cf9dacff5 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 16:38:33 +0200
-Subject: [PATCH 63/77] sunxi: h713: h713_disp init [logo [file.bmp]], the boot
+Subject: [PATCH 63/82] sunxi: h713: h713_disp init [logo [file.bmp]], the boot
  logo with the firmware running
 
 `auto <id> logo` renders the logo and then quiesces the MIPS as its last act,

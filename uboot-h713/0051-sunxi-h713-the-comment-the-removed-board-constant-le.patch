@@ -1,7 +1,7 @@
 From 67084f75a070d86b4e9cdda865733c2c3f48beba Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:21:35 +0200
-Subject: [PATCH 51/77] sunxi: h713: the comment the removed board constant
+Subject: [PATCH 51/82] sunxi: h713: the comment the removed board constant
  left behind
 
 doku/120 6 recorded a stale help line saying "this board's project ID is

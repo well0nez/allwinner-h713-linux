@@ -1,7 +1,7 @@
 From 80eae99b99e805a89d0b0acb8c4156722ba7800f Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 16:56:28 +0200
-Subject: [PATCH 64/77] sunxi: h713: init logo -- select the panel first, hash
+Subject: [PATCH 64/82] sunxi: h713: init logo -- select the panel first, hash
  the loaded length, blank without a logo
 
 Three corrections from the first device runs of `h713_disp init 0x30 logo`

@@ -1,7 +1,7 @@
 From e4dadcbeb5b1de05430927f89c1e246b428af9d6 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 21:15:52 +0200
-Subject: [PATCH 55/77] sunxi: h713: h713_probe, active_slot means the misc
+Subject: [PATCH 55/82] sunxi: h713: h713_probe, active_slot means the misc
  slot, not the partition
 
 The row printed the partition the artifacts were read from under the key

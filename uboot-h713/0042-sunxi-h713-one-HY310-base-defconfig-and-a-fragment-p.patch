@@ -1,7 +1,7 @@
 From e0bcfc084ea423dec00cdd01000300d0c0a0a077 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:17:16 +0200
-Subject: [PATCH 42/77] sunxi: h713: one HY310 base defconfig and a fragment
+Subject: [PATCH 42/82] sunxi: h713: one HY310 base defconfig and a fragment
  per role
 
 Six defconfigs described one board. They agreed on 53 lines -- the SoC,

@@ -1,7 +1,7 @@
 From 444dbd4d5d63cf673b8787124d12ac4e19cb65e9 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:14:26 +0200
-Subject: [PATCH 44/77] sunxi: h713: let the board say which project it is, not
+Subject: [PATCH 44/82] sunxi: h713: let the board say which project it is, not
  the command line
 
 "h713_disp init" required the project ID as an argument, and the boot

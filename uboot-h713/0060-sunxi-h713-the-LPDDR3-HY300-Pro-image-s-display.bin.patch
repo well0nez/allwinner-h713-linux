@@ -1,7 +1,7 @@
 From e529c573ddf2b8a8bf9d47743517d6f2f18b68db Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 10:10:49 +0200
-Subject: [PATCH 60/77] sunxi: h713: the LPDDR3 "HY300 Pro+" image's
+Subject: [PATCH 60/82] sunxi: h713: the LPDDR3 "HY300 Pro+" image's
  display.bin
 
 The second of the two vendor "HY300 Pro+" images of 2025 (the 0710 one, an

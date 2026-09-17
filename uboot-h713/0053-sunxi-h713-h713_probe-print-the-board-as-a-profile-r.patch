@@ -1,7 +1,7 @@
 From f10d708c0890d1b25e5cbbb6c12dba6037f7957e Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:22:25 +0200
-Subject: [PATCH 53/77] sunxi: h713: h713_probe, print the board as a profile
+Subject: [PATCH 53/82] sunxi: h713: h713_probe, print the board as a profile
  row
 
 The probe already reads everything a support entry needs, and prints it
