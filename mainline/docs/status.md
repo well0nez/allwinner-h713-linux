@@ -1,5 +1,9 @@
 # Status
 
+> This is the vendored tree of cstenger/allwinner-h713-mainline and describes his
+> bench board as of the date below. The status of *this* project is `STATUS.md` at
+> the repository root.
+
 What works on the H713 mainline stack, and what's next. All hardware results are
 on the **HY200 bench board (DDR3)** unless noted - the HY200 QZ713_V2 projector (LPDDR3)
 is not risked for bring-up.

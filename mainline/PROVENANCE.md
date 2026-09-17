@@ -26,7 +26,7 @@ in the series.
 ## VA-API shim patches (`patches/libva-v4l2-request/`)
 
 [bootlin/libva-v4l2-request](https://github.com/bootlin/libva-v4l2-request),
-**MIT**, carried as a two-patch series on the pinned head of its unmerged
+**MIT**, carried as a three-patch series on the pinned head of its unmerged
 **PR #38** rather than vendored - see that directory's README for the base
 commit and why `master` is the wrong starting point.
 
