@@ -1,5 +1,9 @@
 # H713 mainline bring-up
 
+> This is the vendored tree of cstenger/allwinner-h713-mainline and describes his
+> bench board as of the date below. The status of *this* project is `STATUS.md` at
+> the repository root.
+
 Mainline firmware and Linux for the **Allwinner H713 (sun50iw12)** SoC - a
 fully open boot chain (U-Boot SPL → TF-A BL31 → U-Boot → Linux) with a
 64-bit Debian userland, replacing the vendor Android stack.
