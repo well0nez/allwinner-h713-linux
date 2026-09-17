@@ -4,8 +4,8 @@ Snapshot of **2026-09-16**. "Works" means *verified on the projector*, with the 
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is a development build of 16.09. (internally `v0.7-dev14`) from the
-commits the release is built from. What the numbers mean: [RELEASES.md](RELEASES.md).
+The image on the test device is `v0.8-dev15`: the `v0.8-beta` release plus the U-Boot of the HY300 Pro
+test3 build (`da74b89`). What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
 
@@ -27,12 +27,13 @@ by `release/build-all.sh --board`: **no image for a board nobody has tested.** A
 
 | Board | State | Who ran it, and when | What exists for it |
 |---|---|---|---|
-| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | Marco Onorati, on his HY310, `v0.5-beta`, 13.09.2026 | everything else on this page. The only board an image is built for |
+| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | Marco Onorati, on his HY310, `v0.8-beta`, 16.09.2026 | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
 | **HY200 QZ713DF_A1** | profile-only | nobody has run a build of *ours* on it. cstenger ran his own tree on his own bench board - kernel 6.18.38 boot-good (`mainline/config/versions.env`); that is his run, not ours | kernel and U-Boot defconfigs, device tree, and since 15.09. the installer profile `hy200_qz713df_a1` - its stock firmware is the 2025-09-22 "HY300 Pro+" DDR3 image (624 MHz, `display.bin` `4380f1b3…`) |
 | **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too, plus the installer profile `hy200_qz713_v2` - its stock firmware is the 2025-07-10 "HY300 Pro+" LPDDR3 image (720 MHz, `display.bin` `4628cbaf…`, HDCP wait site `0x4b13d538`) |
 | **HY300 T08** | profile-only | nobody | installer profile and DRAM fragment, both read out of its stock image (`doku/121` §2). No device tree of ours |
 | **HY350** | profile-only | nobody | as above. It ships the same `display.bin` as the T08 and a different panel - which is why the panel comes from the declared project id, never from the firmware image |
-| **HY300 Pro** | partial | nobody. One owner report, [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1), 13.09.2026: a dump-only run, nothing written, no green run | installer profile with gaps - layout from his log, DRAM clock 636 MHz, HDCP wait site unknown |
+| **HY300 Pro** | partial | its owner, [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1): probe and dump 13.09., then the TEST images. `hy300-pro-test2` (16.09.) brought U-Boot up and hung in the display bring-up; `hy300-pro-test3` booted the kernel, with Wi-Fi as access point and station and HDCP 2.2 reported working, but no boot logo, no HDMI input and green stripes. `hy300-pro-test4` (kernel `0091a` for the ARISC, plus a first panel A/B) is built for him. No green run yet | installer profile with gaps - layout from his log, DRAM clock 636 MHz, HDCP wait site unknown |
+| **L018** | profile-only | nobody | the installer profile `l018` alone, read out of one extractor run over a real device; no board directory, no DRAM data, no firmware image here |
 
 `boards/<id>/board.env` carries these states machine-readably, and `bash boards/check.sh` holds each
 one against the installer profile in `installer/h713/profiles/`. What a board below *verified* gets
@@ -46,7 +47,7 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 |---|---|---|---|
 | Boot chain | works | SPL → BL31 → U-Boot → FIT, all from source; the SPL reads the FIT with DMA, the eMMC runs at HS200 with DMA in U-Boot | 20/20 cold starts (`analyse/boot/r5-20-kaltstarts-20260910.txt`); 16.09.: power key to the boot logo 2.0 s, to the kernel 3.5 s (1 s of it is the autoboot countdown), release BL31 on the device since 15.09. |
 | Power key gate | works | U-Boot `CONFIG_H713_POWER_GATE`, env `h713_gate` | 09.09.; standby 4 W, red LED, key starts |
-| eMMC layout v3 | works | six partitions, secure storage untouched by design | 10.09., [docs/subsystems/emmc-layout.md](docs/subsystems/emmc-layout.md) |
+| eMMC layout v4 | works | v3's six partitions, secure storage untouched by design; since 16.09. the files are copied in through a mount instead of into placeholders | 10.09. / 16.09., [docs/subsystems/emmc-layout.md](docs/subsystems/emmc-layout.md) |
 | Debian 13 rootfs | works | `rootfs/`, 242 MiB, zram, ssh key-only | built by `build-all`, acceptance tests in the build log |
 | Projector image (LVDS/DLP) | works | MIPS firmware + `sun50i-h713-afbd` KMS driver | continuous since 08.09. |
 | HDMI input | works | `sun50i-h713-hdmirx`, node found by name (it was `/dev/video3` on 12.09., not `video1` - the camera enumerated first) | six modes at 60 Hz, colour-correct, 08.09.; hot plug after boot, a boot with the source plugged in and unplug/replug verified 16.09. after the first-publication source switch was removed (kernel 0136a/0136c) |
@@ -67,9 +68,12 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 
 ## Changes since v0.7-beta
 
-Device runs on the HY310 on 16.09.2026 (`v0.7-dev13`, `v0.7-dev14`; German account in `umbau/reviews/P1.md`,
-`P2.md`, `N1.md`, `N2.md` and `doku/61`):
+Device runs on the HY310 on 16.09.2026 (`v0.8-dev13` to `v0.8-dev15`; German account in `umbau/reviews/P1.md`,
+`P2.md`, `N1.md`, `N2.md`, `E4.md` and `doku/61`):
 
+- **`v0.7-beta` is superseded**: its layout v3 image is refused by the installer on `main`; take v0.8-beta.
+- **The patch mirror `uboot-h713/`** was regenerated at the fork head `da74b89` (82 commits, 82 patch files),
+  so it again matches the fork it is generated from. The build still uses the submodule, not the mirror.
 - **Layout v4 - no placeholders.** The image carries only target directories; `h713-install` mounts its working copy's
   two file systems and copies the device's files in with their real size, mode and owner, and reads them back from an
   installed device the same way (read-only mount). A v0.7-beta image and the current installer refuse each other.
@@ -79,9 +83,10 @@ Device runs on the HY310 on 16.09.2026 (`v0.7-dev13`, `v0.7-dev14`; German accou
 - **The last German switches and keys:** `h713-pq --daten/--kanal` are `--data`/`--channel` now, `h713-tv`'s
   `--daten/--eingang/--rechner` are `--data`/`--input`/`--calculator`, and the `tv.conf` keys `zustand`, `daten`
   and `rechner` are `state`, `data` and `calculator`. Every old spelling is still accepted without a warning, so
-  an existing `tv.conf`, unit file or script keeps working; they go out after this release.
+  an existing `tv.conf`, unit file or script keeps working; they go out after `v0.9`.
 - **Msgbox lines** 46/109/108 in the device tree, watchdog on 53, `cpu_comm` requests only its own line; the two
   `IRQ index not found` lines are gone. Sixteen kernel patches refreshed; `ping`, `curl`, `wget`, `nc` in the rootfs.
+  The series stands at 142 patches in fifteen sections ([docs/kernel-patches.md](docs/kernel-patches.md)).
 
 ## Changes since v0.6-beta (in v0.7-beta)
 
@@ -115,9 +120,10 @@ All of these have been through device runs on the HY310 on 15./16.09.2026 (Germa
 These are written down because they are *not* done, not because they are expected to fail:
 
 - phone joins the access point, `ssh root@h713` over Wi-Fi
-- `mode=sta` against a real network
+- `mode=sta` with a second DHCP client on `eth0` - two default routes, metric undecided (station mode itself
+  is verified, 12.09., see *Wi-Fi AIC8800D80* above)
 - environment carry-over (`h713_gate`, `h713_boot`) across a reinstall - needs a changed value before the next install
-- 20 gate cycles with the power key
+- 20 gate cycles with the power key (dropped 16.09.; the gate has run on every device test since 09.09.)
 
 ## Reading the German journal
 

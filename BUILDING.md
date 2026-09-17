@@ -3,7 +3,7 @@
 One command turns a clean clone into a flashable image:
 
 ```bash
-release/build-all.sh --version v0.5-beta --vendor <output of h713-extract>
+release/build-all.sh --version v0.8-beta --vendor <output of h713-extract>
 ```
 
 Eleven steps: TF-A BL31 · U-Boot (release, installer, and `sunxi-fel`) · kernel with the patch series ·
@@ -24,9 +24,13 @@ built. Everything runs in a container; **nothing is built on your host**.
 - the submodules checked out: `git submodule update --init` (see below)
 - roughly 15 GB free
 
-`--vendor` is optional. Without it the image is still built and structurally checked, but the vendor
-placeholders stay empty and the full self-test cannot run. With it, the self-test compares every
-extracted file against the image.
+`--vendor` is optional. Without it the image is still built and structurally checked - it carries the
+empty target directories either way - but the self-test cannot copy a real file set in and read it back.
+With it, the self-test copies every extracted file through `h713.mountfs` and compares it byte for byte.
+
+The PC tools have a golden suite of their own: `bash installer/tests/run.sh` (213 tests; 220 with
+`--local`, which adds the vendor fixtures and the three vendor images). Every push is preceded by
+`release/sperr-scan.py`, which fails if a vendor blob, a key, a dump or an image reached the tree.
 
 ## Useful switches
 
