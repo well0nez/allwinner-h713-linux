@@ -31,8 +31,8 @@ firmware), `lib/firmware/hy310-edid.bin`, `lib/firmware/h713/msp-patch.bin` (aud
 (the picture-quality tables `h713-pq` reads), `boot/mips/*` (the 19 display artifacts U-Boot loads by
 name), `boot/bootlogo.bmp` (the vendor boot logo, added 15.09.2026),
 `lib/firmware/aic8800_fw/SDIO/aic8800D80/*` (Wi-Fi firmware, added 12.09.2026, `--no-wlan` to skip
-it), plus `MANIFEST.json` and `REPORT.txt`. The report is also written as `BERICHT.txt`, byte-identical,
-for one more release - the German name goes away with the next one.
+it), plus `MANIFEST.json` and `REPORT.txt`. The report is also written as `BERICHT.txt`, byte-identical;
+the German name goes out together with the German switches, after `v0.9`.
 
 The boot logo is the one file that does not come from `mips/` but from the ROOT of the same FAT,
 because that is where U-Boot looks for it: `h713_disp init <id> logo` reads `bootlogo.bmp` at the root

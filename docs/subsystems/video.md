@@ -61,7 +61,7 @@ have reopened that.
 ## Limits, honestly
 
 - **No AV1.** The H713 has AV1 decode hardware - the first Allwinner SoC that does - but whether the existing
-  reverse-engineering is a working driver or a research note is not established; not scheduled before v0.1.
+  reverse-engineering is a working driver or a research note is not established; not scheduled.
 - The 17 patches above ship in this repository's kernel series, but the decode, IOMMU and GPU behaviour they
   enable has not been re-tested end to end against this image's kernel, rootfs and `cpu_comm` stack.
 

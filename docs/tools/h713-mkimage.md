@@ -19,7 +19,7 @@ keys *inside* the table are still the German ones - `h713-install` reads them, a
 the release file names do.
 
 The switches of the old `hy310-mkimage.py` - `--out`, `--pruefen`, `--baum-boot`, `--baum-rootfs` - are
-still accepted for one release and print one line saying what they are called now; `hy310-mkimage.py`
+still accepted until after `v0.9` and print one line saying what they are called now; `hy310-mkimage.py`
 itself stays as a forwarder because `release/build-all.sh` still calls that name.
 
 ## Three files, not one
@@ -87,7 +87,7 @@ the expected six partitions. It prints `ALL GREEN` when nothing is red. With roo
 says so and runs everything else.
 The two ext4 filesystems it needs are built by `mkimage-inputs.sh` (in the build container, as root -
 `mke2fs -d` takes owner and mode from the tree). Both helpers kept their old names,
-`mkimage-selbsttest.py` and `mkimage-eingaben.sh`, as forwarders for one release.
+`mkimage-selbsttest.py` and `mkimage-eingaben.sh`, as forwarders until after `v0.9`.
 
 ## Limits
 

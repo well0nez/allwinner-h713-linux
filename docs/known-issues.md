@@ -32,7 +32,7 @@ git, not in the image" means the source has the fix but the image you can curren
 | Path | State |
 |---|---|
 | Installer on Windows | Not tried for this release; the documentation says so explicitly. `sunxi-fel.exe` for Windows is planned after feedback from Linux users (decision 2026-09-12, `doku/116` §2). Since layout v4 (2026-09-16) `install` is Linux-only in any case: it mounts the image's own file systems to copy your device's files into them, and says so in one sentence. `identify`, `dump` and `extract` mount nothing. |
-| The image's files are copied in through a mount | Layout v4 (2026-09-16, after issue #1): the installer no longer writes the proprietary files into placeholders of a measured size but mounts `hy310-boot` and `hy310-rootfs` and copies them in as ordinary files, so a firmware whose files are bigger than the HY310's fits. Covered by tests that mount a real ext4 and read every file back, including through this project's own ext4 reader - but **no device run** has gone through it yet. An image built for the old layout is refused by this installer with one sentence, and a v4 image likewise by the installer of its own release; use the installer that ships with the image you have. |
+| The image's files are copied in through a mount | Layout v4 (2026-09-16, after issue #1): the installer no longer writes the proprietary files into placeholders of a measured size but mounts `hy310-boot` and `hy310-rootfs` and copies them in as ordinary files, so a firmware whose files are bigger than the HY310's fits. Covered by tests that mount a real ext4 and read every file back, including through this project's own ext4 reader, and **accepted on the HY310 on 16.09.2026**: reinstall without a dump, files copied in through the mount, cold start, camera, Wi-Fi, HDMI hot plug. An image built for the old layout is refused by this installer with one sentence, and a v4 image likewise by the installer of its own release; use the installer that ships with the image you have. |
 | Wi-Fi station mode - two corners | Both modes are verified (2026-09-12): access point with a laptop, station against a real network. Still untried: whether Android accepts the access point's DNS behaviour (it answers only for the device's own name, `REFUSED` otherwise) without flagging "no internet", and how `dhclient` in station mode interacts with a second DHCP client on `eth0` (two default routes, metric not decided). |
 | Bright-image camera test | The internal camera is confirmed working as a V4L2 device, and a grab succeeds in 3.4 s - but every capture so far was of a dark room with nothing projected on the wall. A bright, in-focus picture from the camera has not been produced yet (2026-09-12, `analyse/boot/abnahme-v08-20260912.txt`). |
 
@@ -46,13 +46,12 @@ git, not in the image" means the source has the fix but the image you can curren
 
 ## The image on your device may not match a fresh build
 
-Everything built before 2026-09-12 20:00 - including what ships as `v0.8` through `v0.10` - carries a BL31
-(TF-A firmware) from 2026-09-10 with debug assertions still compiled in (49,260 bytes). The build script
-never rebuilt it because `make` considered the existing binary current; a clean build produces the intended
-release BL31 at 45,164 bytes, four bytes of which are just the embedded build time. `release/build-all.sh`
-now wipes the TF-A and U-Boot build directories first, so this is fixed in the source - but the fix has not
-yet been through a device acceptance run, and any image built before it is patched still has the old BL31.
-Nothing is expected to behave differently (same source, minus assertions), but treat that as unverified
-until the next device run confirms it (STATUS.md "Boot chain"; `doku/116` §4a P3.9).
+Everything built before 2026-09-12 20:00 - the development builds of that week, long before the beta
+releases - carries a BL31 (TF-A firmware) from 2026-09-10 with debug assertions still compiled in
+(49,260 bytes). The build script never rebuilt it because `make` considered the existing binary current;
+a clean build produces the intended release BL31 at 45,164 bytes, four bytes of which are just the
+embedded build time. `release/build-all.sh` now wipes the TF-A and U-Boot build directories first, so
+this is fixed in the source, and the release BL31 has been on the device since 2026-09-15
+(STATUS.md "Boot chain"; `doku/116` §4a P3.9). Only images built before 2026-09-12 still carry the old one.
 
 Details: `doku/61-todo.md`, `doku/60-offen.md`.
