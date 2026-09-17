@@ -1,30 +1,30 @@
-# Interne Kamera des Beamers
+# The projector's internal camera
 
-Realtek `0bda:5803` „Generic HD camera", UVC 1.00, an `ehci@4200000` (USB-Port 1, VBUS über PL3).
-Ein Format: **YUYV 4:2:2, 640×480**. Stock benutzt sie für den Autofokus ([`doku/94`](../../doku/94-fokusmotor-endschalter.md)).
+Realtek `0bda:5803` "Generic HD camera", UVC 1.00, on `ehci@4200000` (USB port 1, VBUS over PL3).
+One format: **YUYV 4:2:2, 640x480**. Stock uses it for autofocus ([`doku/94`](../../doku/94-fokusmotor-endschalter.md)).
 
-**Seit 11.09. angebunden.** Sie wurde vom Bus immer erkannt, aber es gab keinen Treiber: `uvcvideo` war
-nicht gebaut. Drei Schalter im defconfig (`MEDIA_CAMERA_SUPPORT`, `MEDIA_USB_SUPPORT`, `USB_VIDEO_CLASS=m`)
-— kein eigener Treiber nötig, kein Patch, kein Firmware-Blob. Das Modul lädt udev von selbst, sobald es im
-Rootfs liegt (`modroot.e88af5af` oder neuer).
+**Connected since 11.09.** The bus always saw it, but there was no driver: `uvcvideo` was not built.
+Three switches in the defconfig (`MEDIA_CAMERA_SUPPORT`, `MEDIA_USB_SUPPORT`, `USB_VIDEO_CLASS=m`) -
+no driver of our own, no patch, no firmware blob. udev loads the module by itself as soon as it is in
+the rootfs (`modroot.e88af5af` or newer).
 
-## Geräteknoten
+## Device nodes
 
-| Knoten | Was |
+| Node | What |
 |---|---|
-| `/dev/video2` | das Bild (`VIDEO_CAPTURE`) |
-| `/dev/video3` | **kein zweites Gerät** — der Metadatenknoten derselben Kamera (`META_CAPTURE`, Zeitstempel je Frame). Standard bei `uvcvideo`. |
+| `/dev/video2` | the picture (`VIDEO_CAPTURE`) |
+| `/dev/video3` | **not a second device** - the metadata node of the same camera (`META_CAPTURE`, one timestamp per frame). Standard with `uvcvideo`. |
 
-Die Nummern hängen von der Ladereihenfolge ab (`video0` Cedrus, `video1` HDMI-RX). Sicher finden:
+The numbers depend on probe order (`video0` Cedrus, `video1` HDMI-RX). The safe way to find it:
 `grep -l "HD camera" /sys/class/video4linux/*/name`.
 
-## Werkzeuge (laufen am Gerät mit blankem `python3`, kein `v4l2-ctl`, kein `ffmpeg`)
+## Tools (they run on the device with bare `python3`, no `v4l2-ctl`, no `ffmpeg`)
 
-| Skript | Zweck |
+| Script | What for |
 |---|---|
-| `camprobe.py DEV` | Fähigkeiten, Formate, Bildgrößen |
-| `camgrab.py DEV AUSGABE.ppm [WxH] [VORLAUF]` | ein Einzelbild per MMAP-Streaming, YUYV → PPM; `VORLAUF` = verworfene Bilder für die Belichtung |
-| `camset.py DEV ID [WERT]` | eine V4L2-Steuerung lesen/setzen (IDs siehe `analyse/hdmi-seq/camctl.py`) |
+| `camprobe.py DEV` | capabilities, formats, frame sizes |
+| `camgrab.py DEV OUTPUT.ppm [WxH] [WARMUP]` | one frame over MMAP streaming, YUYV to PPM; `WARMUP` = frames thrown away for the exposure |
+| `camset.py DEV ID [VALUE]` | read or set one V4L2 control (IDs in `analyse/hdmi-seq/camctl.py`) |
 
 ```bash
 scp camgrab.py root@192.168.8.141:/tmp/
@@ -32,12 +32,12 @@ ssh root@192.168.8.141 'python3 /tmp/camgrab.py /dev/video2 /tmp/foto.ppm 640x48
 scp root@192.168.8.141:/tmp/foto.ppm . && python3 -c "from PIL import Image; Image.open('foto.ppm').save('foto.png')"
 ```
 
-## Macke, gemessen 11.09.
+## The quirk, measured 11.09.
 
-Direkt nach dem Laden liefert die Kamera **schwarz** (Y ≈ 5, reines Rauschen 3…9), auch nach 90 verworfenen
-Bildern und auch mit hellem HDMI-Bild an der Wand. Sobald **eine beliebige Steuerung geschrieben** wurde
-(`Exposure Time` reichte), war das nächste Bild sofort normal belichtet (Y ≈ 187). Die Belichtungsautomatik
-läuft danach von selbst; manuelle Belichtung 313 vs. 800 ändert nichts am Ergebnis. `camgrab.py` schreibt
-deshalb vor dem Stream die Belichtung einmal unverändert zurück.
+Straight after loading, the camera delivers **black** (Y about 5, pure noise 3 to 9), even after 90
+discarded frames and even with a bright HDMI picture on the wall. As soon as **any control has been
+written** (`Exposure Time` was enough), the next frame was correctly exposed (Y about 187). Automatic
+exposure runs by itself from then on; manual exposure 313 against 800 changes nothing in the result.
+That is why `camgrab.py` writes the exposure back once, unchanged, before it starts the stream.
 
-Beispiel: [`foto-e313.png`](foto-e313.png) — die Wand vor dem Gerät, HDMI an.
+Example: [`foto-e313.png`](foto-e313.png) - the wall in front of the device, HDMI on.
