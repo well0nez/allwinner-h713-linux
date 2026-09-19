@@ -233,6 +233,11 @@ CONFIG_HY310_CPU_COMM=m
 CONFIG_SUN50I_H713_ARISC=m
 CONFIG_VIDEO_SUN50I_H713_HDMIRX=m
 CONFIG_SUN50I_H713_PPU=y
+# Holds the TVFE/TVCAP domains and the capture clocks from boot on. Built
+# in on purpose: the display firmware latches an HDMI signal only into a
+# powered, clocked receiver, and the display and receive drivers above are
+# modules that come too late for the first plug (patch 0096a, issue #1).
+CONFIG_SUN50I_H713_TVCAP=y
 CONFIG_IIO=y
 CONFIG_AXP20X_ADC=y
 CONFIG_SUN20I_GPADC=y
