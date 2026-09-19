@@ -113,6 +113,10 @@
 #    issue #1 / doku/126)
 0091a-soc-sunxi-h713-arisc-resolve-the-firmware-s-sram-addresses.patch
 0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
+#   (follow-up well0nez, K2 -- 0096 stays byte-identical; the driver for
+#    that node, in the tree and built in, so the TVFE/TVCAP domains and the
+#    capture clocks are held from boot on, issue #1 / A13)
+0096a-soc-sunxi-add-the-h713-tvcap-driver-and-hold-the-domains-from-boot.patch
 0097-soc-sunxi-cpu-comm-fix-the-call-argument-abi-and-the-callwq-pointer.patch
 0092-soc-sunxi-h713-cpu-comm-kernel-api.patch
 0093-drm-h713-afbd-nv16-hdmi-ring.patch

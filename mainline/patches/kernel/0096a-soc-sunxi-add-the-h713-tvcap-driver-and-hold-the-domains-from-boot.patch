@@ -1,0 +1,315 @@
+soc: sunxi: add the H713 TVFE/TVCAP driver and hold the domains from boot
+
+0096 put the node tvcap@50c0000 into the device tree, but its driver
+stayed outside the tree (analyse/tvcap/h713-tvcap.c, cstenger's
+EXPERIMENT patch 0087, carried as an out-of-tree module since 06.09.).
+Every kernel built from the series therefore has a node without a driver
+("sync_state() pending due to 50c0000.tvcap" in the HY300 Pro owner's
+dmesg) and nobody on the ARM holds the TVFE and TVCAP power domains or
+the capture clocks.
+
+That is not only a matter of readable registers. The display firmware
+(MIPS) detects an HDMI signal by polling its own HDMI-RX PHY at
+0x06840000, which sits in the TVCAP domain, and raises its SignalChange
+and HotPlug callbacks only when its port state machine reaches state 5.
+That needs the domain powered and the capture clocks running at the
+moment the source's TMDS edge arrives (analysis A13, sections 2, 5 and 8).
+Measured on the HY310 without a source (hy310-cmp 19.09., 01-idle): the
+INCAP total reads 0 and 0x0684037a gives a bus error - the domain is off.
+The HY310's firmware generation still wins the race on a plug (02-plug:
+three SignalChange callbacks, INCAP 1920x1080). The HY300 Pro's does not:
+its PHY never passes the lock gate from a cold domain, no callback, no
+capture, "no signal" although the audio locks (bridge session 18.09.,
+logs 09 and 16: INCAP active 0, total 0x04650898). It worked exactly once
+on that board, when the source was plugged right after boot while TVCAP
+was still warm from the ARISC EDID/HPD sequence.
+
+So the driver moves into the tree as drivers/soc/sunxi/sun50i-h713-tvcap.c
+and is built in: CONFIG_SUN50I_H713_TVCAP=y in the board defconfig, so the
+two domains and the four clocks are held from the first moment, before the
+display and receive drivers (modules) load, and for the whole uptime.
+The Kconfig entry is tristate with default m for arm64 sunxi - as a module
+a hang on the first access costs a reboot instead of a reflash, which is
+the safety cstenger's version did without; our defconfig says y.
+
+The file is the out-of-tree module translated to English, reasoning kept,
+with four deliberate differences: the reason it exists is now the warm
+receiver (comment at the top); probe_read - the eight-word read of the
+window after power on - defaults to off, because the read is a diagnostic
+and not a product step (sun50i_h713_tvcap.probe_read=1 turns it on); the
+two pm_runtime_get_sync() calls became pm_runtime_resume_and_get(), which
+drops the usage count again when the resume fails, where the original
+left it incremented on its error path; and a NULL from
+dev_pm_domain_attach_by_name() - a node with fewer than two domains -
+refuses the probe with -ENODEV instead of being dereferenced.
+
+The device tree comment on the node said the driver was a module outside
+the tree; it now says where it is and why it is built in. Nothing keyed on
+a board or a firmware build: the node is in the SoC dtsi, the domains are
+the SoC's.
+
+Follow-up to 0096, which stays byte-identical.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1534,16 +1534,17 @@
+ 		};
+ 
+ 		/*
+-		 * TVFE/TVCAP-Inbetriebnahme. Ohne Strom auf diesen beiden Bereichen
+-		 * haengt JEDER Zugriff auf ein HDMI-RX-Fenster den Bus -- ohne Abort,
+-		 * ohne Watchdog. Beansprucht bewusst KEINEN Interrupt: tvtops
+-		 * GIC_SPI 110 (hwirq 142) gehoert h713-afbd, am Geraet mit 615
+-		 * Ausloesungen belegt. Und bewusst keine Panel-Eigenschaften:
+-		 * tvtops panel_bl_en ist PB5, Hintergrundbeleuchtung UND Luefter.
++		 * TVFE/TVCAP bring-up. Without power on these two domains EVERY
++		 * access to an HDMI-RX window hangs the bus -- no abort, no
++		 * watchdog. Claims deliberately NO interrupt: tvtop's GIC_SPI 110
++		 * (hwirq 142) belongs to h713-afbd, proven on the device with 615
++		 * triggers. And deliberately no panel properties: tvtop's
++		 * panel_bl_en is PB5, the backlight AND the fan.
+ 		 *
+-		 * Herkunft: cstengers Patch 0087, bei ihm am 02.09.2026 belegt.
+-		 * Der Treiber ist bei uns ein Modul, nicht builtin -- siehe
+-		 * analyse/tvcap/h713-tvcap.c.
++		 * Origin: cstenger's patch 0087, proven on his board 02.09.2026.
++		 * The driver, sun50i-h713-tvcap, is built in and holds both
++		 * domains and the four clocks from boot on: the display firmware
++		 * latches an HDMI signal only into a powered, clocked receiver.
+ 		 */
+ 		tvcap_bringup: tvcap@50c0000 {
+ 			compatible = "allwinner,h713-tvcap";
+diff -ruN a/drivers/soc/sunxi/Kconfig b/drivers/soc/sunxi/Kconfig
+--- a/drivers/soc/sunxi/Kconfig
++++ b/drivers/soc/sunxi/Kconfig
+@@ -39,3 +39,25 @@
+ 	  is not there yet when a built-in driver probes.
+ 
+ 	  If unsure, say N.
++
++config SUN50I_H713_TVCAP
++	tristate "Allwinner H713 TVFE/TVCAP power and clock bring-up"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	depends on PM && OF
++	select PM_GENERIC_DOMAINS
++	default m if ARM64 && ARCH_SUNXI
++	help
++	  Holds the TVFE and TVCAP power domains and the TV capture clocks of
++	  the Allwinner H713 from boot on. The HDMI receiver, its PHY and the
++	  capture block live in those domains; while they are off every
++	  access to their windows hangs the bus, and the display firmware,
++	  which detects an HDMI signal by polling that PHY, cannot latch a
++	  signal whose TMDS edge arrives into a cold domain. Nothing else on
++	  the ARM holds them.
++
++	  Say y to hold the domains from the first moment, before the display
++	  and receive drivers load; that is the shipping configuration. As a
++	  module a hang on the first access costs a reboot instead of a
++	  reflash, which is why the default is m.
++
++	  The module will be called sun50i-h713-tvcap.
+diff -ruN a/drivers/soc/sunxi/Makefile b/drivers/soc/sunxi/Makefile
+--- a/drivers/soc/sunxi/Makefile
++++ b/drivers/soc/sunxi/Makefile
+@@ -3,3 +3,4 @@
+ obj-$(CONFIG_SUNXI_SRAM) +=	sunxi_sram.o
+ obj-$(CONFIG_HY310_CPU_COMM) += cpu_comm/
+ obj-$(CONFIG_SUN50I_H713_ARISC) += sun50i-h713-arisc.o
++obj-$(CONFIG_SUN50I_H713_TVCAP) += sun50i-h713-tvcap.o
+diff -ruN a/drivers/soc/sunxi/sun50i-h713-tvcap.c b/drivers/soc/sunxi/sun50i-h713-tvcap.c
+--- a/drivers/soc/sunxi/sun50i-h713-tvcap.c
++++ b/drivers/soc/sunxi/sun50i-h713-tvcap.c
+@@ -0,0 +1,192 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * sun50i-h713-tvcap.c -- hold the TVFE/TVCAP power domains and the TV
++ * capture clocks of the Allwinner H713 from boot on.
++ *
++ * Claims the two TV power domains and ungates the TV clocks so that the
++ * HDMI-RX windows become reachable at all. While both domains are off --
++ * and that is how the board starts -- every access to that address range
++ * hangs the bus, without an abort and without the watchdog noticing.
++ *
++ * Why this is built in and holds the domains for the whole uptime, not
++ * only while somebody reads the windows: the display firmware (MIPS)
++ * detects an HDMI signal by polling its own HDMI-RX PHY, which sits in
++ * the TVCAP domain, and it raises its SignalChange/HotPlug callbacks only
++ * when its port state machine has reached its locked state. That needs
++ * the PHY powered and the capture clocks running at the moment the
++ * source's TMDS edge arrives (analysis A13, sections 2, 5 and 8). Nothing
++ * else on the ARM holds the domains: measured on a HY310 without a source,
++ * the INCAP total reads 0 and the PHY window gives a bus error, i.e. the
++ * domain is off. The HY310's firmware generation still wins the race on a
++ * plug; the HY300 Pro's does not, and its receiver never latches a signal
++ * from a cold domain. Holding the domains from the first moment, before
++ * the display and receive drivers (modules) load, is what makes the edge
++ * land on a warm PHY on every board.
++ *
++ * Origin: cstenger's EXPERIMENT patch 0087 on the branch
++ * h713-display-video-path. Proven on his board (02.09.2026): after power
++ * on, the THDMIRX window reads structured values (+0x00 = 0x70f80029,
++ * +0x0c = 0xfe000115, +0x10 = 0x03ff00ff), genpd reports both domains
++ * "on", nothing else regresses. It ran as an out-of-tree module on the
++ * HY310 from 06.09.2026 (analyse/tvcap/); this is that file, in the tree,
++ * in English, with the domains held for the reason above.
++ *
++ * The read of the window (probe_read) is a diagnostic, not a product
++ * step, so it is off by default: whoever wants the proof that power and
++ * clock are what make the window readable boots with
++ * sun50i_h713_tvcap.probe_read=1 (or loads the module with probe_read=1).
++ * The reasoning behind that parameter has not changed: were the domains
++ * the whole explanation, data comes back; if the access hangs, the log
++ * ends exactly there and the next boot knows that power and clock are not
++ * enough.
++ *
++ * Do NOT take the vendor driver sunxi-tvtop for this: its node claims
++ * GIC_SPI 110 -- which our KMS driver holds for the AFBD -- and carries
++ * panel_bl_en = PB5, the backlight AND the fan. Neither may be touched to
++ * answer a read probe.
++ *
++ * Deliberately NOT here: no HPD, no EDID write, no PHY. The HPD pin lives
++ * at 0x07091014 and belongs to the ARISC (see doku/68); a read from the
++ * ARM hangs the SoC hard.
++ */
++#include <linux/clk.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/pm_domain.h>
++#include <linux/pm_runtime.h>
++
++static bool probe_read;
++module_param(probe_read, bool, 0444);
++MODULE_PARM_DESC(probe_read,
++	"read eight words of the THDMIRX window after power on (default: no)");
++
++struct h713_tvcap {
++	struct device		*dev;
++	struct device		*pd_tvfe;
++	struct device		*pd_tvcap;
++	struct clk_bulk_data	*clks;
++	int			num_clks;
++	void __iomem		*thdmirx;
++};
++
++static int h713_tvcap_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct h713_tvcap *tv;
++	int ret, i;
++
++	tv = devm_kzalloc(dev, sizeof(*tv), GFP_KERNEL);
++	if (!tv)
++		return -ENOMEM;
++	tv->dev = dev;
++
++	/*
++	 * Two domains, so they cannot attach implicitly -- the implicit path
++	 * handles exactly one. Attach both by name and have the PM core keep
++	 * them on for the lifetime of this device. NULL means the node names
++	 * fewer than two domains: not this SoC's node, refuse rather than
++	 * dereference it.
++	 */
++	tv->pd_tvfe = dev_pm_domain_attach_by_name(dev, "tvfe");
++	if (IS_ERR_OR_NULL(tv->pd_tvfe))
++		return dev_err_probe(dev, tv->pd_tvfe ? PTR_ERR(tv->pd_tvfe)
++						    : -ENODEV,
++				     "cannot attach the TVFE domain\n");
++
++	tv->pd_tvcap = dev_pm_domain_attach_by_name(dev, "tvcap");
++	if (IS_ERR_OR_NULL(tv->pd_tvcap)) {
++		ret = dev_err_probe(dev, tv->pd_tvcap ? PTR_ERR(tv->pd_tvcap)
++						      : -ENODEV,
++				    "cannot attach the TVCAP domain\n");
++		goto err_detach_tvfe;
++	}
++
++	ret = pm_runtime_resume_and_get(tv->pd_tvfe);
++	if (ret < 0)
++		goto err_detach_tvcap;
++	ret = pm_runtime_resume_and_get(tv->pd_tvcap);
++	if (ret < 0)
++		goto err_put_tvfe;
++
++	ret = devm_clk_bulk_get_all(dev, &tv->clks);
++	if (ret < 0)
++		goto err_put_tvcap;
++	tv->num_clks = ret;
++
++	ret = clk_bulk_prepare_enable(tv->num_clks, tv->clks);
++	if (ret)
++		goto err_put_tvcap;
++
++	dev_info(dev, "TVFE+TVCAP powered, %d clocks enabled, held from now on\n",
++		 tv->num_clks);
++
++	if (!probe_read) {
++		platform_set_drvdata(pdev, tv);
++		return 0;
++	}
++
++	tv->thdmirx = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(tv->thdmirx)) {
++		ret = PTR_ERR(tv->thdmirx);
++		goto err_disable_clks;
++	}
++
++	/*
++	 * The critical moment. Were the domains the whole explanation, data
++	 * comes back; if it hangs, the log ends exactly here -- and the next
++	 * boot knows that power and clock are not enough.
++	 */
++	dev_info(dev, "reading THDMIRX -- if this is the last line, it hung\n");
++	for (i = 0; i < 8; i++)
++		dev_info(dev, "  thdmirx+0x%02x = 0x%08x\n",
++			 i * 4, readl(tv->thdmirx + i * 4));
++
++	dev_info(dev, "THDMIRX window is readable\n");
++	platform_set_drvdata(pdev, tv);
++	return 0;
++
++err_disable_clks:
++	clk_bulk_disable_unprepare(tv->num_clks, tv->clks);
++err_put_tvcap:
++	pm_runtime_put(tv->pd_tvcap);
++err_put_tvfe:
++	pm_runtime_put(tv->pd_tvfe);
++err_detach_tvcap:
++	dev_pm_domain_detach(tv->pd_tvcap, true);
++err_detach_tvfe:
++	dev_pm_domain_detach(tv->pd_tvfe, true);
++	return ret;
++}
++
++static void h713_tvcap_remove(struct platform_device *pdev)
++{
++	struct h713_tvcap *tv = platform_get_drvdata(pdev);
++
++	clk_bulk_disable_unprepare(tv->num_clks, tv->clks);
++	pm_runtime_put(tv->pd_tvcap);
++	pm_runtime_put(tv->pd_tvfe);
++	dev_pm_domain_detach(tv->pd_tvcap, true);
++	dev_pm_domain_detach(tv->pd_tvfe, true);
++}
++
++static const struct of_device_id h713_tvcap_of_match[] = {
++	{ .compatible = "allwinner,h713-tvcap" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, h713_tvcap_of_match);
++
++static struct platform_driver h713_tvcap_driver = {
++	.probe	= h713_tvcap_probe,
++	.remove	= h713_tvcap_remove,
++	.driver	= {
++		.name		= "sun50i-h713-tvcap",
++		.of_match_table	= h713_tvcap_of_match,
++	},
++};
++module_platform_driver(h713_tvcap_driver);
++
++MODULE_DESCRIPTION("Allwinner H713 TVFE/TVCAP power and clock bring-up");
++MODULE_LICENSE("GPL");
