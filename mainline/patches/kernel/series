@@ -112,6 +112,10 @@
 #    the image at probe time and an unknown layout refuses the probe,
 #    issue #1 / doku/126)
 0091a-soc-sunxi-h713-arisc-resolve-the-firmware-s-sram-addresses.patch
+#   (follow-up well0nez, K2 -- 0091/0091a stay byte-identical; a second
+#    hotplug pulse the receive driver asks for at the end of its bring-up,
+#    so the source re-sends into a warm, armed receiver, issue #1 / A13)
+0091b-soc-sunxi-h713-arisc-export-a-late-hotplug-pulse.patch
 0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
 #   (follow-up well0nez, K2 -- 0096 stays byte-identical; the driver for
 #    that node, in the tree and built in, so the TVFE/TVCAP domains and the
@@ -177,6 +181,10 @@
 #   (follow-up well0nez, K2 -- 0136c stays byte-identical; 0136d holds the
 #    flip notifier from probe to remove so the vsync enable stays set (A12 D))
 0136d-media-h713-hdmirx-hold-the-slot-source-for-the-driver-s-lifetime.patch
+#   (follow-up well0nez, K2 -- 0136e repeats the ARISC hotplug pulse at the
+#    very end of the probe so the source re-sends into the armed receiver,
+#    issue #1 / A13)
+0136e-media-h713-hdmirx-pulse-hotplug-once-more-at-the-end-of-the-bring-up.patch
 0137-ASoC-sunxi-add-the-h713-msp-audio-dsp-driver.patch
 0138-arm64-dts-h713-describe-the-msp-audio-dsp.patch
 0136b-arm64-dts-h713-describe-the-hdmi-receiver-link-window.patch

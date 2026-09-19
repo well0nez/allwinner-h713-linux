@@ -1,0 +1,136 @@
+soc: sunxi: h713-arisc: export a late hotplug pulse for the receive driver
+
+The hotplug pulse this driver sends at the end of arisc_hdmi_edid_init() is
+the one that makes the source read the EDID. It comes early: the HDMI
+receive driver runs that sequence in the middle of its probe, before the
+pipeline behind the receiver has been switched to the HDMI source, and on
+the HY300 Pro before anyone holds the TVFE/TVCAP power domains at all.
+
+The display firmware (MIPS) detects a signal by polling its own HDMI-RX PHY
+and raises its SignalChange/HotPlug callbacks only when its port state
+machine reaches state 5. That needs the PHY powered and clocked and the
+state machine idle when the source's TMDS edge arrives (analysis A13,
+sections 2, 5 and 8). An edge that arrived too early is not repeated: a
+source that has settled on "connected" sends nothing new until its hotplug
+line moves again. On the HY310 the firmware wins that race on every plug;
+on the HY300 Pro it won it exactly once, when the source was plugged right
+after boot while the domain was still warm (issue #1, bridge session
+18.09., logs 09 and 16: audio locks, INCAP active stays 0).
+
+arisc_hdmi_hpd_pulse(port) is the second edge, for the receive driver to
+ask for at the very end of its bring-up: the same DOWN, the same 200 ms,
+the same UP, through arisc_hdmi_hpd() and therefore through the same gate
+and counter checks that decide whether the pin really moved. It is refused
+with -EAGAIN until arisc_hdmi_edid_init() has completed once on this boot
+(a new flag, hpd_sequence_done, shown in debugfs as hpd_sequence): before
+that the EDID is not published and the firmware forces the pin low anyway,
+and a first pulse belongs to the sequence, not to a repeat of it. One line
+in the log says when it ran.
+
+Nothing keyed on a board or a firmware build; the early pulse stays as it
+is. The caller arrives with 0136e (media: h713-hdmirx).
+
+Follow-up to 0091/0091a, which stay byte-identical.
+
+diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -356,6 +356,7 @@
+ 
+ 	bool			running;	/* handshake completed */
+ 	bool			edid_module_ready;	/* ResetEDIDModule done */
++	bool			hpd_sequence_done;	/* edid_init pulsed the pin */
+ 	int			notify_result;
+ 	char			notify_version[64];
+ 
+@@ -2025,11 +2026,58 @@
+ 	if (ret)
+ 		return ret;
+ 
++	a->hpd_sequence_done = true;
+ 	dev_info(a->dev, "EDID/HPD-Sequenz auf Port %u abgeschlossen\n", port);
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(arisc_hdmi_edid_init);
+ 
++/*
++ * The hotplug pulse once more, for a receiver that is ready this time.
++ *
++ * The pulse inside arisc_hdmi_edid_init() is what makes the source read the
++ * EDID, and it comes early: the HDMI receive driver runs the sequence in
++ * the middle of its probe, before the pipeline behind the receiver is
++ * switched to the HDMI source. The display firmware only latches a signal
++ * whose TMDS edge arrives while its HDMI-RX PHY is powered, clocked and its
++ * port state machine is idle (analysis A13, sections 5 and 8), and an edge
++ * that came too early is not repeated by anyone: a source that has settled
++ * on "connected" sends nothing new until its hotplug line moves again.
++ *
++ * So the receive driver asks for a second edge at the very end of its
++ * bring-up. The same DOWN, the same 200 ms, the same UP -- through the same
++ * checks, so the gate byte and the tick counter still decide whether the pin
++ * really moved. Refused until the sequence has run once: before that the
++ * EDID is not published and the firmware forces the pin low anyway, and a
++ * first pulse belongs to the sequence, not here.
++ */
++int arisc_hdmi_hpd_pulse(unsigned int port)
++{
++	struct h713_arisc *a = arisc_get(true);
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (port >= ARISC_HDMI_PORTS)
++		return -EINVAL;
++	if (!a->hpd_sequence_done)
++		return -EAGAIN;
++
++	ret = arisc_hdmi_hpd(port, ARISC_HDMI_HPD_DOWN);
++	if (ret)
++		return ret;
++	msleep(HPD_DOWN_MS);
++	ret = arisc_hdmi_hpd(port, ARISC_HDMI_HPD_UP);
++	if (ret)
++		return ret;
++
++	dev_info(a->dev,
++		 "late HPD pulse on port %u: pin low %u ms, then up -- the source re-sends into the armed receiver\n",
++		 port, HPD_DOWN_MS);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_hpd_pulse);
++
+ /* ---- debugfs ------------------------------------------------------------ */
+ 
+ static int h713_arisc_status_show(struct seq_file *s, void *unused)
+@@ -2059,6 +2107,8 @@
+ 	seq_printf(s, "arisc: %s\n", a->running ? "running" : "not running");
+ 	seq_printf(s, "edid_module: %s\n",
+ 		   a->edid_module_ready ? "ready" : "not reset");
++	seq_printf(s, "hpd_sequence: %s\n",
++		   a->hpd_sequence_done ? "done" : "not run");
+ 	seq_printf(s, "edid_firmware: %s\n",
+ 		   a->edid_valid ? FW_NAME_EDID " loaded" : "missing");
+ 	if (a->edid_status_len)
+diff -ruN a/include/linux/soc/sunxi/h713-arisc.h b/include/linux/soc/sunxi/h713-arisc.h
+--- a/include/linux/soc/sunxi/h713-arisc.h
++++ b/include/linux/soc/sunxi/h713-arisc.h
+@@ -56,6 +56,7 @@
+ int arisc_hdmi_5v(unsigned int port, bool on);
+ int arisc_hdmi_hpd(unsigned int port, enum arisc_hdmi_hpd_action action);
+ int arisc_hdmi_edid_init(unsigned int port, const void *edid, size_t len);
++int arisc_hdmi_hpd_pulse(unsigned int port);
+ 
+ #else
+ 
+@@ -100,6 +101,11 @@
+ {
+ 	return -ENODEV;
+ }
++
++static inline int arisc_hdmi_hpd_pulse(unsigned int port)
++{
++	return -ENODEV;
++}
+ 
+ #endif /* CONFIG_SUN50I_H713_ARISC */
+ 
