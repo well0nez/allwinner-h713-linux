@@ -40,7 +40,7 @@ own projector work, dated in `doku/` by section.
 
 A patch keeps the number it was given when it was written. When a later fix targets an already-numbered
 patch, it becomes a lettered addendum - `0005a`, `0013a`, `0014a` - `0014c`, `0024a` - `0024d`, `0078a`,
-`0091a`, `0135b`, `0136a` - `0136c` - placed **directly behind its original**, not at the end of the
+`0091a`, `0091b`, `0093a`, `0096a`, `0135b`, `0136a` - `0136e` - placed **directly behind its original**, not at the end of the
 series, because the patches after it were written against the state the
 original plus its addenda leaves behind: `0024a` fixes a register and IRQ number `0024` got wrong, `0024b`
 renames the driver it introduced, and everything from `0025` on assumes both are already applied. Moving an
