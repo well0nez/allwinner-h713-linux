@@ -1,0 +1,120 @@
+drm: h713-afbd: audit the vsync enable against its own bookkeeping
+
+The vsync interrupt enable, AFBD +0xc4 bit 0, has two users and one
+refcount: DRM's vblank machinery (vblank_on, which the ring follower of the
+passthrough plane holds through drm_crtc_vblank_get()) and the flip notifier
+(h713_afbd_flip_users, one per registered consumer). Either one keeps the
+bit set; only with both gone does h713_afbd_vsync_irq_update() clear it.
+Reading the code proves the refcount is right as it stands: a registered
+flip notifier is counted at register and unregister, and disable_vblank()
+re-derives the bit from both users instead of clearing it.
+
+What the bridge session on the HY300 Pro (18.09., logs 12-14) and the HY310
+comparison (19.09., 01-idle) actually show is the state in which neither
+user exists: the plane is off ("console"), so the ring follower holds no
+vblank reference, and no flip notifier is registered, because the receive
+driver registers it only while a V4L2 client streams and h713-tv never
+streams - it drives the passthrough plane. DRM's vblank-off timer then
+runs out and the bit goes to 0. That is bookkeeping working as written,
+with nobody left to hold the bit. The receive driver's side of this - hold
+the notifier for as long as the driver is bound - comes with 0136d.
+
+This patch adds the audit that makes a wrong bit visible instead of
+silent. The driver remembers what it last wrote (vsync_irq_on); every
+update, and every poll through h713_afbd_read_flip() - the one path that
+keeps running while nothing streams, because the receive driver's signal
+detection uses it - compares the register with that and, when the bit is
+found cleared while a consumer holds it, says so once per ratelimit window
+(drm_dbg_ratelimited, category DRIVER) and sets it again. The display
+firmware never writes +0xc4 (analysis A12 D: the 109 AFBD accesses of every
+firmware build stop at +0x90, none in the IRQ block), and no other ARM
+driver maps the window, so today the message can only report this driver's
+own bookkeeping going out of step; should a writer ever turn up, setting
+the bit again is still the right answer for a consumer that needs it.
+
+No behaviour change while the bookkeeping is right: the update path writes
+the same value as before, the audit finds the bit as it left it.
+
+Follow-up to 0093, which stays byte-identical.
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -185,6 +185,7 @@
+ 	u32 ring_y;
+ 	/* Under h713_afbd_flip_lock: it gates the same interrupt bit. */
+ 	bool vblank_on;
++	bool vsync_irq_on;	/* what the last update wrote to that bit */
+ 	u32 rgb_ctrl_active;
+ 	u32 video_ctrl_idle;
+ 	u32 video_c_stride_idle;
+@@ -406,6 +407,31 @@
+ static unsigned int h713_afbd_flip_users;
+ 
+ /*
++ * The enable bit is audited against what this driver last wrote to it. The
++ * display firmware never touches the IRQ block (analysis A12 D: the AFBD
++ * accesses of every firmware build seen stop at +0x90), and no other ARM
++ * driver maps the window, so a bit found cleared while it should be set can
++ * only mean this driver's own bookkeeping got out of step -- worth a line.
++ * Should a writer ever turn up, setting the bit again is still the right
++ * answer: a registered consumer needs the interrupt, whoever cleared it.
++ * Runs on every update and on every poll through h713_afbd_read_flip(),
++ * which is the one path that keeps running while nothing is streaming.
++ *
++ * The caller holds h713_afbd_flip_lock.
++ */
++static void h713_afbd_vsync_irq_audit(struct h713_afbd *h)
++{
++	u8 v = readb(h->regs + AFBD_IRQ_ENABLE);
++
++	if (!h->vsync_irq_on || (v & AFBD_IRQ_VSYNC))
++		return;
++	drm_dbg_ratelimited(&h->drm,
++			    "vsync enable found cleared (+0x%03x = 0x%02x) while a consumer holds it, setting it again\n",
++			    AFBD_IRQ_ENABLE, v);
++	writeb(v | AFBD_IRQ_VSYNC, h->regs + AFBD_IRQ_ENABLE);
++}
++
++/*
+  * Unmask the vsync interrupt while somebody needs it. It has two independent
+  * users -- DRM's vblank machinery and the flip notifier -- and either one is
+  * enough to keep it on.
+@@ -416,13 +442,17 @@
+  */
+ static void h713_afbd_vsync_irq_update(struct h713_afbd *h)
+ {
+-	u8 v = readb(h->regs + AFBD_IRQ_ENABLE);
++	bool want = h->vblank_on || h713_afbd_flip_users;
++	u8 v;
+ 
+-	if (h->vblank_on || h713_afbd_flip_users)
++	h713_afbd_vsync_irq_audit(h);
++	v = readb(h->regs + AFBD_IRQ_ENABLE);
++	if (want)
+ 		v |= AFBD_IRQ_VSYNC;
+ 	else
+ 		v &= ~AFBD_IRQ_VSYNC;
+ 	writeb(v, h->regs + AFBD_IRQ_ENABLE);
++	h->vsync_irq_on = want;
+ }
+ 
+ static bool h713_afbd_in_ring(struct h713_afbd *h, u32 addr)
+@@ -520,12 +550,12 @@
+ 
+ 	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
+ 	h = h713_afbd_flip_dev;
+-	if (!h)
++	if (!h) {
+ 		ret = -EPROBE_DEFER;
+-	else if (!h713_afbd_read_ring(h, &y, &c))
+-		ret = -EAGAIN;
+-	else
+-		ret = 0;
++	} else {
++		h713_afbd_vsync_irq_audit(h);
++		ret = h713_afbd_read_ring(h, &y, &c) ? 0 : -EAGAIN;
++	}
+ 	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
+ 
+ 	if (ret)
