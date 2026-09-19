@@ -1,0 +1,106 @@
+media: h713-hdmirx: pulse hotplug once more at the end of the bring-up
+
+At the very end of probe, after the source switch, the driver asks the
+ARISC for a second hotplug edge (arisc_hdmi_hpd_pulse(), 0091b).
+
+The first edge, inside arisc_hdmi_edid_init() in the middle of the probe,
+is what makes the source read the EDID; on the HY310 that is all it takes.
+The display firmware only latches a TMDS edge that arrives while its
+HDMI-RX PHY is powered, clocked and its port state machine idle (analysis
+A13, sections 5 and 8), and the HY300 Pro's firmware generation never
+manages that from the state the early edge finds: no callback, no capture,
+"no signal" with the audio locked (bridge session 18.09., logs 09 and 16).
+It managed it exactly once, when the source was plugged after boot into a
+receiver still warm from the sequence. Nobody repeats an edge that came
+too early: a source that has settled on "connected" sends nothing new
+until its hotplug line moves again.
+
+The late edge arrives when everything is in place: the TVFE/TVCAP domains
+and the capture clocks held (0096a), the ring known, the flip notifier
+registered (0136d), the pipeline switched to the HDMI source - so a source
+that was plugged all along re-sends into an armed receiver, exactly as a
+plug after boot would. Once per probe (late_hpd_done); the ARISC driver
+refuses it until its own sequence has run on this boot and logs the one
+line that says it happened ("late HPD pulse on port 0: ..."); a failure is
+a dev_warn, not a failed probe - the device works, the first plug then has
+to be a real one.
+
+On the HY310 the source therefore sees two hotplug cycles at boot, 200 ms
+low each, about half a second apart - what a quick unplug and replug looks
+like - and the lock that follows comes after the late edge, so a boot with
+the source plugged takes the hot-plugged path of 0136a when the HotPlug
+callback is already armed (h713-tv open) by then. The picture is expected
+the same, a fraction of a second later; the source switch at the end of
+probe still precedes the lock, as it does today.
+
+Nothing keyed on a board or a firmware build. Issue #1, analysis A13.
+
+Follow-up to 0136c/0136d, which stay byte-identical; needs 0091b (the
+ARISC export).
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -1038,6 +1038,7 @@
+ 	bool desc_seen;			/* eine Descriptor-Veroeffentlichung lag schon an */
+ 	bool rearm_pending;		/* der Quellenwechsel fand kein Signal: beim naechsten wiederholen */
+ 	bool rearm_busy;		/* the release after a publication is running: no signal verdict yet */
++	bool late_hpd_done;		/* the second hotplug edge of this probe has been asked for */
+ 
+ 	/* last callback payloads, for debugfs and the source change event */
+ 	spinlock_t event_lock;
+@@ -3654,6 +3655,44 @@
+ 	return 0;
+ }
+ 
++/*
++ * The second hotplug edge, at the end of the bring-up.
++ *
++ * The first one is inside arisc_hdmi_edid_init(), in the middle of the probe:
++ * it makes the source read the EDID, and on a board whose firmware latches a
++ * signal from a cold receiver that is all it takes. The display firmware only
++ * latches a TMDS edge that arrives while its HDMI-RX PHY is powered, clocked
++ * and its port state machine idle (analysis A13, sections 5 and 8), and the
++ * HY300 Pro's firmware generation never manages that from the state the early
++ * edge finds: no callback, no capture, "no signal" with the audio locked. It
++ * managed it exactly once, when the source was plugged right after boot into
++ * a receiver that was still warm.
++ *
++ * So the edge is asked for again here, when everything the receiver needs is
++ * in place: the TVFE/TVCAP domains and the capture clocks held (built-in
++ * sun50i-h713-tvcap), the ring known, the flip notifier registered, the
++ * pipeline switched to the HDMI source. A source that was plugged all along
++ * then re-sends into an armed receiver, exactly as a plug after boot would.
++ * Once per probe; the ARISC driver refuses it until its own sequence has run
++ * and logs the one line that says it happened. A failure is a warning, not a
++ * failed probe: the device works, it is the first plug that then has to be a
++ * real one.
++ */
++static void h713_hdmirx_late_hpd_pulse(struct h713_hdmirx *rx)
++{
++	int ret;
++
++	if (rx->late_hpd_done)
++		return;
++	rx->late_hpd_done = true;
++
++	ret = arisc_hdmi_hpd_pulse(H713_HDMI_PORT);
++	if (ret)
++		dev_warn(rx->dev,
++			 "late HPD pulse on port %u failed (%d) -- a source plugged all along shows up with the next plug\n",
++			 H713_HDMI_PORT, ret);
++}
++
+ static int h713_hdmirx_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -3918,6 +3957,9 @@
+ 	 */
+ 	h713_hdmirx_switch_source(rx);
+ 
++	/* Last of all: a fresh edge for a receiver that is now armed. */
++	h713_hdmirx_late_hpd_pulse(rx);
++
+ 	return 0;
+ 
+ err_desc:
