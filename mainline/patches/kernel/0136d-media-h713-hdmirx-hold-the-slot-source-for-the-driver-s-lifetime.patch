@@ -1,0 +1,171 @@
+media: h713-hdmirx: hold the slot source for the driver's lifetime
+
+The slot source - the display driver's flip notifier - is taken once at
+the end of probe and released in remove, no longer per V4L2 stream.
+
+A registered flip notifier is what keeps the display's vsync interrupt
+enabled (AFBD +0xc4 bit 0) while no plane follows the ring:
+h713_afbd_flip_users counts it and h713_afbd_vsync_irq_update() ORs it
+into the bit, and reading that code proves the refcount is right as it
+stands (0093a). What was missing was a holder. h713-tv does not stream, it
+drives the passthrough plane, so in the "no signal" state no notifier was
+registered, the plane held no vblank reference and DRM's vblank-off timer
+cleared the bit: HY300 Pro bridge session 18.09., logs 12-14 - 0x056000c4
+= 0 with h713-tv running, set by hand it ticks at 60 Hz (GIC 142: 636 ->
+756 in two seconds), a restart of h713-tv ends with it cleared again; HY310
+comparison 19.09., 01-idle - the same 0 on the board that works. With the
+notifier held from probe the bit is set for as long as this driver is
+bound, on both boards, and the display's vsync handler samples the ring
+pointers on every frame from the first one the capture writes.
+
+start_streaming() keeps resetting the bookkeeping, stop_streaming() keeps
+completing the buffers; an event that arrives while nobody streams costs
+one spinlock and a counter in h713_hdmirx_slot_event(). Because events can
+now race with a stop_streaming() on another CPU, the handler completes its
+buffer under slot_lock, the way stop_streaming() already does: a buffer
+taken out of slot_buf[] but not yet completed would otherwise be one vb2
+finds still owned by the driver after stop_streaming() returned.
+vb2_buffer_done() only takes the queue's own done_lock, and that nesting -
+slot_lock, then done_lock - is the one stop_streaming() established.
+
+The start_streaming() error path that returned the buffers when the source
+could not be started goes with it: nothing in there can fail any more.
+
+Nothing keyed on a board or a firmware build. Issue #1, analysis A12 D.
+
+Follow-up to 0136c, the last patch to shape this probe, which stays
+byte-identical.
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -885,9 +885,9 @@
+ /**
+  * struct h713_hdmirx_slot_source - where "this slot is finished" comes from
+  * @name: shown in the log and in debugfs, so a run says which one was used
+- * @start: begin delivering events, called from start_streaming()
+- * @stop: stop delivering them, called from stop_streaming(); after it returns
+- *	no further event may arrive
++ * @start: begin delivering events, called once at the end of probe()
++ * @stop: stop delivering them, called from remove(); after it returns no
++ *	further event may arrive
+  *
+  * Every implementation funnels into h713_hdmirx_slot_event(), which is where
+  * all of the queue handling lives; a slot source is nothing but the clock.
+@@ -895,6 +895,15 @@
+  * stays because a real capture interrupt could still turn up on the MIPS side
+  * (RE question K2, doku/84) and would need nothing from the rest of this
+  * driver but its own start/stop.
++ *
++ * Held for as long as the driver is bound, not per stream. A registered flip
++ * notifier is what keeps the display's vsync interrupt enabled (AFBD +0xc4
++ * bit 0) while no plane follows the ring: with the notifier taken only for a
++ * V4L2 stream, and h713-tv driving the passthrough plane instead of
++ * streaming, nothing held the bit in the "no signal" state and DRM's
++ * vblank-off timer cleared it (HY300 Pro bridge session 18.09., logs 12-14;
++ * HY310 19.09., 01-idle). An event that arrives while nobody streams costs
++ * one spinlock and a counter in h713_hdmirx_slot_event().
+  */
+ struct h713_hdmirx_slot_source {
+ 	const char *name;
+@@ -1815,9 +1824,15 @@
+ 				    vb2_plane_size(&vbuf->vb2_buf, 1)));
+ 	rx->stat.delivered++;
+ 
+-	spin_unlock_irqrestore(&rx->slot_lock, flags);
++	/*
++	 * Under the lock, like stop_streaming() completes its buffers: the
++	 * slot source runs for the lifetime of the driver, so this can race
++	 * with a stop_streaming() on another CPU, and a buffer taken out of
++	 * slot_buf[] but not yet completed would be one vb2 finds still owned
++	 * by the driver after stop_streaming() returned. The lock closes that
++	 * window; vb2_buffer_done() only takes the queue's own done_lock.
++	 */
+ 	vb2_buffer_done(&vbuf->vb2_buf, VB2_BUF_STATE_DONE);
+-	return;
+ 
+ out:
+ 	spin_unlock_irqrestore(&rx->slot_lock, flags);
+@@ -2658,9 +2673,12 @@
+ {
+ 	struct h713_hdmirx *rx = vb2_get_drv_priv(q);
+ 	unsigned long flags;
+-	unsigned int i;
+-	int ret;
+ 
++	/*
++	 * The slot source is already running -- it has been since probe -- so
++	 * this only resets the bookkeeping. Under the lock, because an event
++	 * can arrive at any time.
++	 */
+ 	spin_lock_irqsave(&rx->slot_lock, flags);
+ 	rx->sequence = 0;
+ 	rx->last_slot = -1;
+@@ -2669,24 +2687,7 @@
+ 	memset(&rx->stat, 0, sizeof(rx->stat));
+ 	spin_unlock_irqrestore(&rx->slot_lock, flags);
+ 
+-	ret = rx->slot_source->start(rx);
+-	if (ret)
+-		goto err;
+-
+ 	return 0;
+-
+-err:
+-	spin_lock_irqsave(&rx->slot_lock, flags);
+-	for (i = 0; i < H713_HDMIRX_SLOTS; i++) {
+-		struct vb2_v4l2_buffer *vbuf = rx->slot_buf[i];
+-
+-		rx->slot_buf[i] = NULL;
+-		if (vbuf)
+-			vb2_buffer_done(&vbuf->vb2_buf, VB2_BUF_STATE_QUEUED);
+-	}
+-	spin_unlock_irqrestore(&rx->slot_lock, flags);
+-
+-	return ret;
+ }
+ 
+ static void h713_hdmirx_stop_streaming(struct vb2_queue *q)
+@@ -2695,8 +2696,6 @@
+ 	unsigned long flags;
+ 	unsigned int i;
+ 
+-	rx->slot_source->stop(rx);
+-
+ 	spin_lock_irqsave(&rx->slot_lock, flags);
+ 	for (i = 0; i < H713_HDMIRX_SLOTS; i++) {
+ 		struct vb2_v4l2_buffer *vbuf = rx->slot_buf[i];
+@@ -3870,6 +3869,16 @@
+ 		goto err_vdev;
+ 	}
+ 
++	/*
++	 * And the slot source, for the lifetime of the driver: see struct
++	 * h713_hdmirx_slot_source for why it is not taken per stream.
++	 */
++	ret = rx->slot_source->start(rx);
++	if (ret) {
++		dev_err_probe(dev, ret, "cannot register the slot source\n");
++		goto err_desc;
++	}
++
+ 	rx->debugfs = debugfs_create_dir(H713_HDMIRX_NAME, NULL);
+ 	debugfs_create_file("status", 0444, rx->debugfs, rx,
+ 			    &h713_hdmirx_status_fops);
+@@ -3911,6 +3920,8 @@
+ 
+ 	return 0;
+ 
++err_desc:
++	h713_afbd_unregister_descriptor_notifier(&rx->desc_nb);
+ err_vdev:
+ 	vb2_video_unregister_device(&rx->vdev);
+ err_ctrl:
+@@ -3925,6 +3936,7 @@
+ {
+ 	struct h713_hdmirx *rx = platform_get_drvdata(pdev);
+ 
++	rx->slot_source->stop(rx);
+ 	h713_afbd_unregister_descriptor_notifier(&rx->desc_nb);
+ 	/*
+ 	 * Before the control handler goes, not after: the poll writes the

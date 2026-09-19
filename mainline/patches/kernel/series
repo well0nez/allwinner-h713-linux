@@ -120,6 +120,10 @@
 0097-soc-sunxi-cpu-comm-fix-the-call-argument-abi-and-the-callwq-pointer.patch
 0092-soc-sunxi-h713-cpu-comm-kernel-api.patch
 0093-drm-h713-afbd-nv16-hdmi-ring.patch
+#   (follow-up well0nez, K2 -- 0093 stays byte-identical; the vsync enable
+#    is audited against the driver's own bookkeeping and set again when
+#    found cleared while a consumer holds it, A12 D)
+0093a-drm-h713-afbd-audit-the-vsync-enable-against-its-bookkeeping.patch
 0094-media-sun50i-h713-hdmirx.patch
 0095-drm-h713-afbd-color-mgmt.patch
 0098-revert-cpu-comm-kernel-callback-registration.patch
@@ -170,6 +174,9 @@
 0136a-media-h713-hdmirx-no-source-switch-on-a-hot-plugged-port.patch
 # 0136c: no console blip while the release runs (boot with the source plugged, 16.09.)
 0136c-media-h713-hdmirx-a-release-in-progress-is-a-change-in-flight.patch
+#   (follow-up well0nez, K2 -- 0136c stays byte-identical; 0136d holds the
+#    flip notifier from probe to remove so the vsync enable stays set (A12 D))
+0136d-media-h713-hdmirx-hold-the-slot-source-for-the-driver-s-lifetime.patch
 0137-ASoC-sunxi-add-the-h713-msp-audio-dsp-driver.patch
 0138-arm64-dts-h713-describe-the-msp-audio-dsp.patch
 0136b-arm64-dts-h713-describe-the-hdmi-receiver-link-window.patch
