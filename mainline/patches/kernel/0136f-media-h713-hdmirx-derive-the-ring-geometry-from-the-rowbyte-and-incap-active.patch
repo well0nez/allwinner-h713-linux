@@ -1,0 +1,556 @@
+media: h713-hdmirx: derive the ring geometry from the rowbyte and INCAP active
+
+The V4L2 format has to describe the RING the firmware writes, not the
+SOURCE it receives. The two coincide on the HY310 (1920x1080 panel) and
+differ on a board whose panel is smaller than the source: the firmware scales
+inside its capture path, and the ring then holds fewer pixels than the source
+sends. Measured on the HY300 Pro (1280x720 panel) with a 1920x1080 source,
+19.09.2026: INCAP active (+0x874) 0x07800438 = 1920x1080, INCAP rowbyte
+(+0x924) 0x00360036 = 54 * 16 = 864 bytes per NV16 luma line. 864 bytes of
+luma are 864 pixels, not 1920. Until now G_FMT answered the source size with
+the ring's pitch - an inconsistent format (owner dmesg, test 5: "INCAP-
+Zeilenabstand 0x00500050 passt nicht zur Breite 1920") - and h713-tv refused
+the plane against the panel on the source's size (issue #1).
+
+The rule, with the rowbyte as the only primary source
+(h713_hdmirx_ring_geometry()):
+
+  pitch = rowbyte * 16 (a rowbyte of zero or unequal luma/chroma halves keep
+  the ALIGN(width, 16) fallback with its line).
+  pitch >= ALIGN(active width, 16): the firmware does not scale, the ring is
+  INCAP active - every HY310 case, byte-identical to today's format.
+  pitch < ALIGN(active width, 16): the firmware scales; ring width = pitch
+  (the tightest width a pitch admits), ring height = active height * pitch /
+  active width, rounded down to an even line count (479.25 measured as 478;
+  the plane refuses odd heights). 864 x 486 for the case above.
+  Cross-check, optional: the DE picture scaler's input window (+0x34 of
+  syscon@5180000, allwinner,scaler) names the ring exactly, 852x478 here. It
+  is taken only after the rowbyte said the firmware scales, only when
+  ALIGN(its width, 16) == pitch and its height is within two lines of the
+  source's aspect ratio applied to that width, and never on a board where
+  the rowbyte says the ring is the source. Without the phandle the
+  arithmetic stands.
+
+Why the scaler window may never be primary (K3 v1, dev17, HY310,
+20.09.2026): the firmware writes it only when it rebuilds its window chain -
+the first lock of a boot and every republished descriptor - not on every
+source change. After 720p -> 1080p it still read 1280x720 while INCAP and
+the rowbyte had moved to 1920x1080 / 0x78; taken as the ring it produced a
+1280x720 format with a 1920-byte pitch: a sheared picture, then the console,
+not recoverable by replugging. Under this rule that state gives 1920x1080 /
+1920 because the rowbyte equals the aligned width; the window is not even
+read.
+
+Two more things that kept h713-tv's status on "change in flight" over a
+picture that was up and right:
+
+  - The record the firmware writes after OUR descriptor republish (VideoDec,
+    30.00 Hz, color_format 0) echoes the descriptor's frame size, which is
+    the ring h713-tv put on the plane - not the source. Compared against
+    INCAP active it says "change in flight" for as long as the picture
+    stands whenever ring != source (852x478 against 1920x1080). It is now
+    recognised before that comparison and takes no part in it; a genuine
+    HDMI record is compared as before.
+  - A direct release after a republish ends without any word from the
+    firmware. A client that asked during the release was told -ENOLCK and
+    may have stopped asking (h713-tv gives up after 2 s; a release can take
+    longer). The release now ends with a source change event so that it
+    looks again.
+
+G_FMT reports ring width x ring height with bytesperline = pitch; the plane
+size, the queue and the debugfs "format:" line use the same numbers; the
+timing (QUERY/G_DV_TIMINGS) stays the source. One ratelimited line when the
+ring is not the source, none when it is: "source 1920x1080, ring 852x478
+pitch 864 - the firmware scales (by the picture scaler)".
+
+Host model over the five measured cases in umbau/work/K3v2/model (cases 1-3
+byte-identical to today's driver). Follow-up to 0136e, which stays
+byte-identical; 0136g adds the optional syscon node.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -195,11 +195,59 @@
+  * each. So lines are not "one width apart", they are one rowbyte apart, and
+  * that is what the format reports as bytesperline and what the plane
+  * programs as the stride. Both take it from here, so they agree.
++ *
++ * The rowbyte is also the one register that says how WIDE the ring is. INCAP
++ * active (+0x874) is the capture's input window -- the source -- and on a
++ * board whose panel is smaller than the source the firmware scales inside its
++ * capture path, so the ring holds fewer pixels than the source sends. Measured
++ * on the HY300 Pro (1280x720 panel), 19.09.2026, with a 1920x1080 source:
++ * active 0x07800438 (1920x1080) but rowbyte 0x00360036, 54 * 16 = 864 bytes per
++ * line, and 864 bytes of NV16 luma are 864 pixels, not 1920. On the HY310
++ * (1920x1080 panel) the rowbyte is ALIGN(width, 16) for every source seen. So
++ * the rule in h713_hdmirx_ring_geometry(): rowbyte * 16 == ALIGN(width, 16)
++ * means the ring is the source; a smaller pitch means the firmware scales and
++ * the pitch names the ring's width.
+  */
+ #define H713_INCAP_ROWBYTE	0x924
+ #define H713_INCAP_ROWBYTE_UNIT	16
+ 
+ /*
++ * The display engine's picture scaler at 0x05180000, and why it is only a
++ * cross-check. Its input window, +0x34 (width [31:16], height [15:0]), is the
++ * size the scaler reads the ring at -- 0x035401de = 852x478 on the HY300 Pro
++ * for the case above, where the rowbyte says 864 = ALIGN(852, 16). It names
++ * the ring exactly where the rowbyte can only name it to within 16 pixels.
++ *
++ * But the firmware writes it only when it rebuilds its window chain, which is
++ * at the first lock of a boot and whenever the display side republishes the
++ * VidDec descriptor (0117) -- not on every source change. Measured on the HY310,
++ * 20.09.2026 (dev17): after 720p -> 1080p the window still read 1280x720 while
++ * INCAP active and the rowbyte had long moved to 1920x1080 / 0x78. Taking that
++ * register as the ring's size reported a 1280x720 ring with a 1920-byte pitch:
++ * a sheared picture, then the console, not recoverable by replugging. So it is
++ * consulted only after the rowbyte has said that the firmware scales, only
++ * when what it says agrees with the rowbyte (ALIGN(width, 16) == pitch) and
++ * with the source's aspect ratio, and only through an optional phandle: a
++ * device tree without allwinner,scaler leaves the arithmetic alone in charge.
++ */
++#define H713_SCALER_IN_WIN	0x34
++
++/**
++ * struct h713_hdmirx_ring_geometry - what the capture writes into a ring slot
++ * @width: pixels per line the plane may show (NV16 luma: bytes = pixels)
++ * @height: lines
++ * @pitch: bytes from one line to the next, one NV16 plane; INCAP rowbyte * 16
++ *
++ * This is what G_FMT reports and what the plane is programmed with. It is the
++ * source signal only where the firmware does not scale in its capture path.
++ */
++struct h713_hdmirx_ring_geometry {
++	unsigned int width;
++	unsigned int height;
++	unsigned int pitch;
++};
++
++/*
+  * The capture output enables, one for luma and one for chroma. Bit 31 of each
+  * is what the firmware's memory_agent_onoff clears for its mask 0x008
+  * (re/notes/color-csc-blocker.md), and clearing it is how a descriptor
+@@ -979,7 +1027,9 @@
+ 	u32 id_setsource;
+ 	u32 id_setvideorange;
+ 
+-	struct v4l2_dv_timings timings;
++	struct v4l2_dv_timings timings;	/* the source signal (QUERY_DV_TIMINGS) */
++	u32 ring_width;			/* the ring: what the capture writes -- */
++	u32 ring_height;		/* the source, unless the firmware scales */
+ 	u32 stride;			/* bytes per ring line, INCAP rowbyte * 16 */
+ 	u32 plane_size;			/* bytes per plane of the current format */
+ 
+@@ -990,6 +1040,7 @@
+ 	 * read on demand, under sig_lock, through a mapping made on first use.
+ 	 */
+ 	struct regmap *incap;
++	struct regmap *scaler;		/* DE picture scaler, read only, optional */
+ 	struct mutex sig_lock;
+ 	void __iomem *sig_map;
+ 	phys_addr_t sig_map_base;
+@@ -2481,6 +2532,23 @@
+ 	WRITE_ONCE(rx->rearm_busy, true);
+ 	h713_hdmirx_rearm(rx);
+ 	WRITE_ONCE(rx->rearm_busy, false);
++
++	/*
++	 * The change that was in flight has landed, one way or the other, so
++	 * say so: a client that asked during the release was told -ENOLCK and
++	 * may have stopped asking. h713-tv gives a change two seconds of
++	 * retries, and a release can take longer than that (up to 1.5 s until
++	 * the firmware switches the capture off, then the converter, then the
++	 * enable held for 150 ms; the source switch fallback adds half a
++	 * second more). A direct release ends without any word from the
++	 * firmware, so without this line nobody would tell that client to
++	 * look again, and its status would stay "change in flight" over a
++	 * picture that is up and right. Where the release ended on a source
++	 * switch the firmware's own callbacks say the same thing once more,
++	 * which is harmless: the event carries no payload, and the client
++	 * answers it with the same QUERY_DV_TIMINGS it would run anyway.
++	 */
++	h713_hdmirx_src_change(rx);
+ }
+ 
+ /*
+@@ -2734,6 +2802,13 @@
+ static const struct v4l2_dv_timings h713_hdmirx_timings =
+ 	V4L2_DV_BT_CEA_1920X1080P60;
+ 
++/* The ring that goes with it: the panel, unscaled, one byte per pixel. */
++static const struct h713_hdmirx_ring_geometry h713_hdmirx_ring_default = {
++	.width = H713_HDMIRX_WIDTH,
++	.height = H713_HDMIRX_HEIGHT,
++	.pitch = H713_HDMIRX_WIDTH,
++};
++
+ /*
+  * What QUERY_DV_TIMINGS may answer and S_DV_TIMINGS may accept.
+  *
+@@ -2821,6 +2896,96 @@
+ }
+ 
+ /*
++ * The ring's geometry from the capture block, with the source's active size
++ * (@src_w x @src_h, INCAP +0x874) and the rowbyte word (+0x924) already read.
++ *
++ * The rule, in this order and with the rowbyte as the only primary source:
++ *
++ *  1. pitch = rowbyte * 16. A rowbyte of zero, or a luma pitch that differs
++ *     from the chroma pitch, is not a ring this driver knows how to describe;
++ *     then ALIGN(src_w, 16) stands in -- the rounding rule measured for every
++ *     width so far -- with a line in the log.
++ *
++ *  2. pitch >= ALIGN(src_w, 16): the firmware does not scale, the ring is the
++ *     source, src_w x src_h. This is every case on the HY310 (1920x1080 panel):
++ *     1920 for 1920, 1280 for 1280, 1376 for 1366 (doku/nachtlog/E4, 08.09.).
++ *     A pitch above the rounded width has never been measured as a steady
++ *     state; it is what a change in flight can leave for a moment (active
++ *     rewritten, rowbyte not yet), and it is reported as today: the source's
++ *     size with the pitch as read, a valid format with padding.
++ *
++ *  3. pitch < ALIGN(src_w, 16): the firmware scales down in its capture path
++ *     (HY300 Pro, 1280x720 panel, 1920x1080 source: rowbyte 0x36 -> 864). The
++ *     ring's width is the pitch -- NV16 luma bytes are pixels, and 864 is the
++ *     tightest width the pitch admits; the true width lies in (pitch - 15,
++ *     pitch] and only the picture scaler's window below can name it exactly.
++ *     The height follows the source's aspect ratio, rounded DOWN to an even
++ *     count: 852 * 1080 / 1920 = 479.25 was measured as 478, not 479 or 480
++ *     (19.09.2026), and the plane refuses an odd height in any case
++ *     (sun50i-h713-afbd atomic_check, fb->height % 2). With the pitch as the
++ *     width that is 864 x 486 for the case above.
++ *
++ *  4. Cross-check, only in case 3 and only with allwinner,scaler in the tree:
++ *     the picture scaler's input window (H713_SCALER_IN_WIN) is taken instead
++ *     of the arithmetic when it is consistent with what the rowbyte and the
++ *     source already said -- a non-empty window no wider than the pitch whose
++ *     rounded width IS the pitch (ALIGN(852, 16) == 864) and whose height is
++ *     within two lines of the source's aspect ratio applied to its width. Then
++ *     the ring is 852 x 478, exactly. A stale window fails the first test
++ *     (1280x720 against a pitch of 864 or 1920) or the second (another
++ *     source's shape) and is ignored; the arithmetic stands. The register is
++ *     never consulted when the rowbyte says the ring is the source, so on the
++ *     HY310 it is never read at all.
++ *
++ * One ratelimited line when the ring is not the source, none when it is:
++ * "source 1920x1080, ring 852x478 pitch 864 - the firmware scales".
++ */
++static void h713_hdmirx_ring_geometry(struct h713_hdmirx *rx,
++				      unsigned int src_w, unsigned int src_h,
++				      u32 rowbyte,
++				      struct h713_hdmirx_ring_geometry *ring)
++{
++	unsigned int pitch = (rowbyte & 0xffff) * H713_INCAP_ROWBYTE_UNIT;
++	const char *how = "by the rowbyte";
++	u32 win;
++
++	if (!pitch || (rowbyte >> 16) != (rowbyte & 0xffff)) {
++		dev_warn_ratelimited(rx->dev,
++				     "INCAP-Zeilenabstand %#010x passt nicht zur Breite %u; es gilt die Aufrundung auf 16\n",
++				     rowbyte, src_w);
++		pitch = ALIGN(src_w, H713_INCAP_ROWBYTE_UNIT);
++	}
++
++	ring->pitch = pitch;
++	if (pitch >= ALIGN(src_w, H713_INCAP_ROWBYTE_UNIT)) {
++		ring->width = src_w;
++		ring->height = src_h;
++		return;
++	}
++
++	ring->width = pitch;
++	ring->height = (src_h * pitch / src_w) & ~1U;
++
++	if (rx->scaler && !regmap_read(rx->scaler, H713_SCALER_IN_WIN, &win)) {
++		unsigned int w = win >> 16, h = win & 0xffff;
++		unsigned int expect = w ? src_h * w / src_w : 0;
++
++		if (w && h && w <= pitch &&
++		    ALIGN(w, H713_INCAP_ROWBYTE_UNIT) == pitch &&
++		    h <= expect + 2 && h + 2 >= expect) {
++			ring->width = w;
++			ring->height = h;
++			how = "by the picture scaler";
++		}
++	}
++
++	dev_info_ratelimited(rx->dev,
++			     "source %ux%u, ring %ux%u pitch %u - the firmware scales (%s)\n",
++			     src_w, src_h, ring->width, ring->height, ring->pitch,
++			     how);
++}
++
++/*
+  * What the source is sending, from the three things the ARM can see:
+  *
+  *  - The flip pointers: are frames arriving at all, and at what rate. Without
+@@ -2848,23 +3013,26 @@
+  * timings, the whole blanking in hsync/vsync and zero porches -- the
+  * convention v4l2_valid_dv_timings() spells out for receivers that cannot
+  * separate the three, not a number of this driver's making.
++ *
++ * The timing this returns is the SOURCE signal. What the capture writes into
++ * the ring can be smaller -- see h713_hdmirx_ring_geometry() -- and that is
++ * what @ring returns and what the format reports.
+  */
+ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 				      struct v4l2_dv_timings *t,
+-				      unsigned int *stride)
++				      struct h713_hdmirx_ring_geometry *ring)
+ {
+ 	struct h713_hdmirx_signal_info sig;
+-	struct h713_hdmirx_ring_sample ring;
++	struct h713_hdmirx_ring_sample flips;
+ 	struct v4l2_bt_timings *bt = &t->bt;
+ 	unsigned int width, height, htotal, vtotal, fps_x100, tolerance;
+-	unsigned int pitch;
+ 	u32 active, total, rowbyte;
+-	bool have_sig;
++	bool have_sig, own_record;
+ 	int ret;
+ 
+-	h713_hdmirx_watch_ring(rx, &ring, H713_RING_WATCH_FLIPS,
++	h713_hdmirx_watch_ring(rx, &flips, H713_RING_WATCH_FLIPS,
+ 			       H713_RING_WATCH_MS);
+-	if (!ring.flips)
++	if (!flips.flips)
+ 		return READ_ONCE(rx->rearm_busy) ? -ENOLCK : -ENOLINK;
+ 
+ 	ret = h713_hdmirx_read_signal_info(rx, &sig);
+@@ -2875,6 +3043,29 @@
+ 			 !sig.h_size || !sig.v_size))
+ 		return -ENOLINK;
+ 
++	/*
++	 * Whose record is this? After a resolution change the display side
++	 * republishes the VidDec descriptor (0117) and the firmware answers with
++	 * a VideoDec signal event; from then on the record at sig_phys carries
++	 * that descriptor's values -- yuv420_888 and the constant frame rate of
++	 * 30.00 -- and not the HDMI signal's. Measured 08.09.2026: after every
++	 * change the status file read "30.00 Hz, color_format 0" for a 60 Hz
++	 * 1080p source, and QUERY_DV_TIMINGS reported the 30 Hz preset
++	 * (74.25 MHz). Its rate is not the signal's; take the rate from the
++	 * ring instead, as for a missing record.
++	 *
++	 * Nor is its geometry the signal's: the descriptor carries the RING
++	 * that h713-tv put on the plane, so the record echoes the ring, and
++	 * the ring is not the source where the firmware scales (852x478 for a
++	 * 1920x1080 source on the HY300 Pro). Compared against INCAP active
++	 * below, that record would say "change in flight" for as long as the
++	 * picture stands -- which is what kept h713-tv's status on "change in
++	 * flight" while the plane was on and right. So it is recognised here,
++	 * before the comparison, and takes no part in it.
++	 */
++	own_record = have_sig && sig.color_format == 0 &&
++		     sig.frame_rate_x100 == H713_OWN_RECORD_FPS_X100;
++
+ 	ret = regmap_read(rx->incap, H713_INCAP_ACTIVE, &active);
+ 	if (!ret)
+ 		ret = regmap_read(rx->incap, H713_INCAP_TOTAL, &total);
+@@ -2897,47 +3088,22 @@
+ 				     active, total);
+ 		return -ENOLCK;
+ 	}
+-	if (have_sig && (sig.h_size != width || sig.v_size != height))
++	if (have_sig && !own_record &&
++	    (sig.h_size != width || sig.v_size != height))
+ 		return -ENOLCK;
+ 
+-	/*
+-	 * The line pitch of the ring, from the capture itself. The rounding
+-	 * rule (width / 16, rounded up) is what has been measured for every
+-	 * width so far; it is the fallback for a register that does not fit
+-	 * the width, with a line in the log, because a pitch below the width
+-	 * or a luma pitch that differs from the chroma pitch is not a ring
+-	 * this driver knows how to describe.
+-	 */
+-	pitch = (rowbyte & 0xffff) * H713_INCAP_ROWBYTE_UNIT;
+-	if (pitch < width || (rowbyte >> 16) != (rowbyte & 0xffff)) {
+-		dev_warn_ratelimited(rx->dev,
+-				     "INCAP-Zeilenabstand %#010x passt nicht zur Breite %u; es gilt die Aufrundung auf 16\n",
+-				     rowbyte, width);
+-		pitch = ALIGN(width, H713_INCAP_ROWBYTE_UNIT);
+-	}
++	h713_hdmirx_ring_geometry(rx, width, height, rowbyte, ring);
+ 
+-	/*
+-	 * Whose record is this? After a resolution change the display side
+-	 * republishes the VidDec descriptor (0117) and the firmware answers with
+-	 * a VideoDec signal event; from then on the record at sig_phys carries
+-	 * that descriptor's values -- yuv420_888 and the constant frame rate of
+-	 * 30.00 -- and not the HDMI signal's. Measured 08.09.2026: after every
+-	 * change the status file read "30.00 Hz, color_format 0" for a 60 Hz
+-	 * 1080p source, and QUERY_DV_TIMINGS reported the 30 Hz preset
+-	 * (74.25 MHz). The geometry in that record is still right, the rate is
+-	 * not; take the rate from the ring instead, as for a missing record.
+-	 */
+-	if (have_sig && sig.color_format == 0 &&
+-	    sig.frame_rate_x100 == H713_OWN_RECORD_FPS_X100)
++	if (own_record)
+ 		have_sig = false;
+ 
+ 	if (have_sig) {
+ 		fps_x100 = sig.frame_rate_x100;
+ 		tolerance = 1;
+ 	} else {
+-		if (ring.flips < 2)
++		if (flips.flips < 2)
+ 			return -ENOLCK;
+-		fps_x100 = div64_u64(100ULL * NSEC_PER_SEC, ring.period_ns);
++		fps_x100 = div64_u64(100ULL * NSEC_PER_SEC, flips.period_ns);
+ 		tolerance = 5;
+ 	}
+ 	if (!fps_x100)
+@@ -2960,19 +3126,24 @@
+ 	if (!v4l2_valid_dv_timings(t, &h713_hdmirx_timings_cap, NULL, NULL))
+ 		return -ERANGE;
+ 
+-	*stride = pitch;
+-
+ 	return 0;
+ }
+ 
++/*
++ * The current timing is the source; the current format is the ring. Both are
++ * set together, from one detection, so that they always describe the same
++ * moment.
++ */
+ static void h713_hdmirx_set_timings(struct h713_hdmirx *rx,
+ 				    const struct v4l2_dv_timings *t,
+-				    unsigned int stride)
++				    const struct h713_hdmirx_ring_geometry *ring)
+ {
+ 	rx->timings = *t;
+-	rx->stride = stride;
++	rx->ring_width = ring->width;
++	rx->ring_height = ring->height;
++	rx->stride = ring->pitch;
+ 	/* Read without a lock in the vsync path, hence the explicit store. */
+-	WRITE_ONCE(rx->plane_size, stride * t->bt.height);
++	WRITE_ONCE(rx->plane_size, ring->pitch * ring->height);
+ }
+ 
+ static int h713_hdmirx_querycap(struct file *file, void *priv,
+@@ -2985,12 +3156,15 @@
+ }
+ 
+ /*
+- * The format follows the timings: NV16M, two planes, lines one ring pitch
+- * apart -- which is how the capture writes the ring (INCAP +0x924, rowbyte =
+- * width / 16 rounded up: 1920 for 1920, 1280 for 1280, 1376 for 1366).
+- * v4l2_fill_pixfmt_mp() lays the planes out for the width; the pitch is then
+- * the capture's, not the core's, because the core cannot know about the
+- * padding the firmware puts after a 1366-byte line.
++ * The format follows the RING, not the source signal: NV16M, two planes, of
++ * the size the capture writes (rx->ring_width x rx->ring_height, the source
++ * only where the firmware does not scale in its capture path) and lines one
++ * ring pitch apart -- INCAP +0x924, rowbyte = width / 16 rounded up: 1920 for
++ * 1920, 1280 for 1280, 1376 for 1366, and 864 for the 852-wide ring a
++ * 1920x1080 source leaves on a 1280x720 panel. v4l2_fill_pixfmt_mp() lays the
++ * planes out for the width; the pitch is then the capture's, not the core's,
++ * because the core cannot know about the padding the firmware puts after a
++ * 1366-byte line.
+  */
+ static void h713_hdmirx_fill_fmt(struct h713_hdmirx *rx,
+ 				 struct v4l2_pix_format_mplane *pix)
+@@ -2998,8 +3172,8 @@
+ 	unsigned int i;
+ 
+ 	memset(pix, 0, sizeof(*pix));
+-	v4l2_fill_pixfmt_mp(pix, V4L2_PIX_FMT_NV16M, rx->timings.bt.width,
+-			    rx->timings.bt.height);
++	v4l2_fill_pixfmt_mp(pix, V4L2_PIX_FMT_NV16M, rx->ring_width,
++			    rx->ring_height);
+ 	for (i = 0; i < pix->num_planes; i++) {
+ 		pix->plane_fmt[i].bytesperline = rx->stride;
+ 		pix->plane_fmt[i].sizeimage = rx->stride * pix->height;
+@@ -3201,15 +3375,22 @@
+ 				    struct v4l2_dv_timings *t)
+ {
+ 	struct h713_hdmirx *rx = video_drvdata(file);
++	struct h713_hdmirx_ring_geometry ring;
+ 
+ 	if (!v4l2_valid_dv_timings(t, &h713_hdmirx_timings_cap, NULL, NULL))
+ 		return -ERANGE;
+ 	if (vb2_is_busy(&rx->queue))
+ 		return -EBUSY;
+ 
+-	/* a timing set by hand: the pitch follows the measured rounding rule */
+-	h713_hdmirx_set_timings(rx, t,
+-				ALIGN(t->bt.width, H713_INCAP_ROWBYTE_UNIT));
++	/*
++	 * A timing set by hand names the source and the ring alike: nothing
++	 * here has measured a firmware scale, so the ring is the source and
++	 * the pitch follows the measured rounding rule.
++	 */
++	ring.width = t->bt.width;
++	ring.height = t->bt.height;
++	ring.pitch = ALIGN(t->bt.width, H713_INCAP_ROWBYTE_UNIT);
++	h713_hdmirx_set_timings(rx, t, &ring);
+ 
+ 	return 0;
+ }
+@@ -3225,14 +3406,14 @@
+ 					struct v4l2_dv_timings *t)
+ {
+ 	struct h713_hdmirx *rx = video_drvdata(file);
+-	unsigned int stride;
++	struct h713_hdmirx_ring_geometry ring;
+ 	int ret;
+ 
+-	ret = h713_hdmirx_detect_timings(rx, t, &stride);
++	ret = h713_hdmirx_detect_timings(rx, t, &ring);
+ 	if (ret)
+ 		return ret;
+ 	if (!vb2_is_busy(&rx->queue))
+-		h713_hdmirx_set_timings(rx, t, stride);
++		h713_hdmirx_set_timings(rx, t, &ring);
+ 
+ 	return 0;
+ }
+@@ -3499,9 +3680,11 @@
+ 
+ 	seq_printf(s, "input:        HDMI-1 (SetSource %u)\n",
+ 		   H713_SOURCE_HDMI1);
+-	seq_printf(s, "format:       NV16M %ux%u, Zeilenabstand %u, 2 Ebenen a %u Byte\n",
+-		   rx->timings.bt.width, rx->timings.bt.height, rx->stride,
+-		   rx->plane_size);
++	seq_printf(s, "format:       NV16M %ux%u, Zeilenabstand %u, 2 Ebenen a %u Byte%s\n",
++		   rx->ring_width, rx->ring_height, rx->stride, rx->plane_size,
++		   rx->ring_width != rx->timings.bt.width ||
++		   rx->ring_height != rx->timings.bt.height ?
++		   " (the ring is smaller than the source: the firmware scales)" : "");
+ 	seq_printf(s, "slot-quelle:  %s\n", rx->slot_source->name);
+ 
+ 	ret = h713_afbd_read_flip(&flip);
+@@ -3712,7 +3895,7 @@
+ 	INIT_WORK(&rx->rearm_work, h713_hdmirx_rearm_work);
+ 	INIT_DELAYED_WORK(&rx->rearm_retry_work, h713_hdmirx_rearm_retry_work);
+ 	INIT_DELAYED_WORK(&rx->audio_work, h713_hdmirx_audio_work);
+-	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings, H713_HDMIRX_WIDTH);
++	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings, &h713_hdmirx_ring_default);
+ 	rx->last_slot = -1;
+ 	mutex_init(&rx->lock);
+ 	mutex_init(&rx->cb_lock);
+@@ -3805,6 +3988,19 @@
+ 			 "kein allwinner,hdmirx-link -- der Audiostatus des Empfaengers bleibt leer\n");
+ 
+ 	/*
++	 * The picture scaler's window, same shape and reason, read only and
++	 * optional. It is a cross-check for a ring the rowbyte has already
++	 * shown to be smaller than the source (see H713_SCALER_IN_WIN); a tree
++	 * without it leaves the arithmetic in charge and costs nothing where
++	 * the firmware does not scale, so its absence is not worth a warning.
++	 */
++	rx->scaler = syscon_regmap_lookup_by_phandle_optional(dev->of_node,
++							     "allwinner,scaler");
++	if (IS_ERR(rx->scaler))
++		return dev_err_probe(dev, PTR_ERR(rx->scaler),
++				     "kein Zugriff auf den Scaler-Block (allwinner,scaler)\n");
++
++	/*
+ 	 * Stage 3: the firmware bring-up sequence.
+ 	 *
+ 	 * Nothing above this line has touched the routine table, and nothing
