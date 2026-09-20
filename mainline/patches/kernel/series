@@ -193,6 +193,10 @@
 0137-ASoC-sunxi-add-the-h713-msp-audio-dsp-driver.patch
 0138-arm64-dts-h713-describe-the-msp-audio-dsp.patch
 0136b-arm64-dts-h713-describe-the-hdmi-receiver-link-window.patch
+#   (K3v2 -- 0136g: the DE picture-scaler syscon 0136f reads as an optional
+#    cross-check of the ring's size; drop this line and the patch to run
+#    without it)
+0136g-arm64-dts-h713-describe-the-de-picture-scaler-window.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

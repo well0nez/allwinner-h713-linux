@@ -1,0 +1,78 @@
+arm64: dts: h713: describe the DE picture-scaler window as an optional cross-check
+
+A read-only syscon over the display engine's picture scaler at 0x05180000
+and the optional allwinner,scaler phandle on the HDMI receiver node. The
+receiver driver (0136f) reads one word of it, +0x34, the scaler's input
+window, and only as a CROSS-CHECK: after INCAP's rowbyte has said that the
+firmware scales the source down inside its capture path (HY300 Pro, 1920x1080
+source on a 1280x720 panel, 864-byte lines) the window names the ring's exact
+size, 852x478, where the rowbyte can name it only to within 16 pixels - and
+only when it agrees with the rowbyte and the source's shape. Where the rowbyte
+says the ring is the source (the HY310, every case) it is never read.
+
+The register is not the ring's primary source because the firmware rewrites
+it only when it rebuilds its window chain; measured stale on the HY310 (dev17,
+20.09.2026). The driver works without this node - then the ring's width is
+the pitch (864 instead of 852, twelve padding bytes shown as picture) - so the
+node is optional and can be dropped with this one patch; it lives in
+sun50i-h713.dtsi so both boards get it. One software for both boards.
+
+Follow-up to 0136b (same node), needs nothing else; 0136f reads it.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1743,6 +1743,29 @@
+ 		};
+ 
+ 		/*
++		 * The display engine's picture scaler, the block at
++		 * 0x05180000. Like INCAP above it belongs to the MIPS firmware
++		 * and has no ARM driver; the HDMI receiver node reads one word
++		 * of it, +0x34 (the scaler's input window), and writes none.
++		 * The receiver driver uses it as a CROSS-CHECK only: after
++		 * INCAP's rowbyte has said that the firmware scales the source
++		 * down inside its capture path (HY300 Pro, 1920x1080 source on a
++		 * 1280x720 panel: 864-byte lines), this word names the ring's
++		 * exact size (852x478) where the rowbyte can name it only to
++		 * within 16 pixels. The firmware rewrites it only when it
++		 * rebuilds its window chain, so it can be stale (HY310, dev17,
++		 * 20.09.2026: 1280x720 left standing after 720p -> 1080p); the
++		 * driver takes it only when it agrees with the rowbyte and the
++		 * source's shape, and never on a board where the rowbyte says
++		 * the ring is the source. Optional in the driver.
++		 */
++		de_scaler: syscon@5180000 {
++			compatible = "allwinner,sun50i-h713-de-scaler",
++				     "syscon";
++			reg = <0x05180000 0x1000>;
++		};
++
++		/*
+ 		 * LINK, the HDMI receiver's port window. Like INCAP above it
+ 		 * belongs to the MIPS firmware and has no ARM driver: the
+ 		 * firmware detects the audio in the stream, programmes the
+@@ -2135,6 +2158,13 @@
+ 	 *                    read only, byte wide: without it everything
+ 	 *                    works except the three audio status controls,
+ 	 *                    which stay at zero.
++	 *   allwinner,scaler  the syscon over the DE picture scaler (syscon@
++	 *                    5180000 above). Optional, read only: a cross-check
++	 *                    for the ring's size where INCAP's rowbyte says the
++	 *                    firmware scales the source down in its capture
++	 *                    path. Without it that size is arithmetic from the
++	 *                    rowbyte (the width to within 16 pixels); where the
++	 *                    firmware does not scale it is never read.
+ 	 *
+ 	 * No interrupt: three independent searches of the firmware image found
+ 	 * the capture interrupt only inside the MIPS interrupt controller, and
+@@ -2147,6 +2177,7 @@
+ 		memory-region-names = "hdmi-ring", "cpu-comm-shmem";
+ 		allwinner,incap = <&incap>;
+ 		allwinner,hdmirx-link = <&hdmirx_link>;
++		allwinner,scaler = <&de_scaler>;
+ 		status = "okay";
+ 	};
+ 
