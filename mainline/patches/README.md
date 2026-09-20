@@ -5,7 +5,7 @@ are applied by different build stages, and must never be mixed.
 
 | Directory | Applies to | Filenames | Count |
 |-----------|-----------|-----------|-------|
-| [`kernel/`](kernel/README.md) | mainline Linux tarball, `config/versions.env` → `KERNEL_VERSION` | `0001-…` … `0161-…` | 147 |
+| [`kernel/`](kernel/README.md) | mainline Linux tarball, `config/versions.env` → `KERNEL_VERSION` | `0001-…` … `0161-…` | 149 |
 | [`aic8800/`](aic8800/README.md) | AIC8800 vendor driver tarball, `radxa-pkg/aic8800` @ pinned commit | `aic8800-0001-…` | 9 |
 | [`libva-v4l2-request/`](libva-v4l2-request/) | the VA-API backend, built only when the video tooling is wanted | `0001-…` | 3 |
 
