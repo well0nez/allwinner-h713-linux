@@ -255,3 +255,7 @@
 #     0161: the same for the HY300 Pro (issue #1) -- the tree a TEST image for
 #     its owner boots (stage 5, doku/121 section 5: no image is shipped).
 0161-arm64-dts-h713-add-the-hy300-pro-board-dts.patch
+#     0161a: PB5 is the LED-boost AND fan-rail enable on that board, GPIO high
+#     only (A14, 19.09.); the dtsi's pwm-backlight (PWM2/PB4) reaches nothing
+#     there and is disabled so systemd-backlight has nothing to write to.
+0161a-arm64-dts-h713-hy300-pro-no-backlight-device.patch

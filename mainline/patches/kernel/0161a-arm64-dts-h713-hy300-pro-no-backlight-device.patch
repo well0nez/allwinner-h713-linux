@@ -1,0 +1,63 @@
+arm64: dts: h713: the HY300 Pro has no backlight device (A14)
+
+On the HY300 Pro PB5 is the enable of the LED boost and of the fan rail
+at once, and the vendor drives it as a plain GPIO high - never as PWM3
+(its stock device tree names PB5 as panel_bl_en only, its vendor kernel
+5.4.99 has no PWM consumer on that pin, and the pwm3 node is disabled;
+analysis A14, 19.09.2026, umbau/reviews/A14.md). Writing a duty below
+100 percent on that pin, as an experiment on 19.09. did through a DTB
+with PB5 muxed to pwm3, switches light and fan off together; the board
+manager then sees the stalled fan and powers the device off, and
+systemd-backlight repeats the write on every boot.
+
+The dtsi's pwm-backlight node is the HY310's (PWM2 on PB4, patch 0032),
+which reaches nothing on this board, but it is a live /sys/class/backlight
+device that systemd-backlight restores at boot. Disable it for this board
+so nothing exists that could be written to by accident, and record the two
+pin facts in the board file. The fan_power_hog of the dtsi stays as it is;
+sunxi pinctrl is strict, so the hog also keeps any future node from muxing
+PB5 away. Not dimmable on this board is the correct state until a
+measured dimming input exists.
+
+Tested on the HY310: no change (the node is overridden only in the HY300
+Pro's board file). The HY300 Pro's owner boots the next TEST image with
+it.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -4,10 +4,22 @@
+  *
+  * The hardware description lives in sun50i-h713-hy200-qz713df-a1.dts; this
+  * board carries its own name so that the DTB it boots is not named after
+- * somebody else's board. Fan, focus motor and power key are assumed to sit
+- * where the HY310 has them -- nothing on this board has been measured by
+- * us; its owner tests it. The panel is programmed by the display
+- * coprocessor from the declared project id (0x34), not by this tree.
++ * somebody else's board. Focus motor and power key are assumed to sit
++ * where the HY310 has them; its owner tests it. The panel is programmed
++ * by the display coprocessor from the declared project id (0x34), not by
++ * this tree.
++ *
++ * Two facts from this board's own stock device tree and vendor kernel
++ * (19.09.2026, analysis A14): PB5 is the enable of the LED boost AND of
++ * the fan rail, driven as a plain GPIO high - the vendor never muxes it
++ * to PWM3, and any duty below 100 percent on it switches light and fan
++ * off together (the board manager then powers the device off on the
++ * stalled fan). PH17 is the fan tacho input only. So the fan_power_hog
++ * of the dtsi stays enabled, and this board has no backlight device: the
++ * dtsi's pwm-backlight sits on PWM2/PB4, which reaches nothing here, and
++ * a live /sys/class/backlight is exactly what systemd-backlight writes
++ * to at boot. The picture's brightness on this board is a display-path
++ * question (gamma, picture presets), not a PWM.
+  *
+  * Same pattern as sun50i-h713-hy310.dts.
+  */
+@@ -18,3 +30,7 @@
+ 	model = "MagCubic HY300 Pro";
+ 	compatible = "magcubic,hy300-pro", "allwinner,sun50i-h713";
+ };
++
++&backlight {
++	status = "disabled";
++};
