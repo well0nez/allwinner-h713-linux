@@ -180,7 +180,7 @@ struct capture {
 	int fd;
 	char path[32];
 	int last_sig;			/* last capture_signal() result seen by evaluate() */
-	struct v4l2_dv_timings last_t;
+	struct v4l2_dv_timings last_t;	/* the last timing measured (sig == 1), kept across a change in flight */
 };
 
 /*
@@ -376,37 +376,45 @@ static int capture_signal(struct capture *cap, struct v4l2_dv_timings *t)
 }
 
 /*
- * The ring's line pitch, as the capture driver reports it in the format
- * (bytesperline = INCAP rowbyte * 16, kernel 0131). It is the width for 1920
- * and 1280 and 1376 for 1366: the firmware rounds the pitch up to a multiple
- * of 16, and the plane must be told that pitch, not the width, or it reads
- * a 1366-wide picture with a 1366-byte stride and every line slips ten
- * bytes. Asked after QUERY_DV_TIMINGS, which is what makes the format
- * follow the signal. A format that does not carry the width just measured
- * is a race with a change in flight; then the rounding rule stands in, with
- * a line in the journal.
+ * The capture RING, as the driver reports it in the format: the size the
+ * capture writes and the line pitch (bytesperline = INCAP rowbyte * 16,
+ * kernel 0131). This is not the source signal. Where the firmware scales in
+ * its capture path the ring is smaller than the source -- a 1920x1080 source
+ * on a 1280x720 panel lands in the ring 864 bytes wide (kernel 0136f) -- and
+ * the ring is what the plane must be given, or it reads the ring with the
+ * wrong size and stride and the picture shears. The pitch is the width
+ * rounded up to a multiple of 16 (1920, 1280, 1376 for 1366, 864 for 852), and
+ * the plane must be told that pitch, not the width, or a 1366-wide picture
+ * slips ten bytes per line. Asked after QUERY_DV_TIMINGS, which is what makes
+ * the format follow the signal. When G_FMT fails the source stands in, with
+ * the rounding rule for the pitch and a line in the journal.
  */
-static unsigned int capture_pitch(struct capture *cap, unsigned int width)
+static void capture_format(struct capture *cap,
+			   const struct v4l2_dv_timings *sig,
+			   unsigned int *w, unsigned int *h, unsigned int *pitch)
 {
 	struct v4l2_format f;
-	unsigned int rounded = (width + 15) & ~15u;
 
 	memset(&f, 0, sizeof(f));
 	f.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	if (ioctl(cap->fd, VIDIOC_G_FMT, &f)) {
-		warn("G_FMT: %s -- line pitch %u by the rule of 16",
-		     strerror(errno), rounded);
-		return rounded;
+		*w = sig->bt.width;
+		*h = sig->bt.height;
+		*pitch = (*w + 15) & ~15u;
+		warn("G_FMT: %s -- ring %ux%u, line pitch %u by the rule of 16",
+		     strerror(errno), *w, *h, *pitch);
+		return;
 	}
-	if (f.fmt.pix_mp.width != width ||
-	    f.fmt.pix_mp.plane_fmt[0].bytesperline < width) {
-		warn("G_FMT reports %ux%u with line pitch %u instead of width %u -- line pitch %u by the rule of 16",
-		     f.fmt.pix_mp.width, f.fmt.pix_mp.height,
-		     f.fmt.pix_mp.plane_fmt[0].bytesperline, width, rounded);
-		return rounded;
-	}
+	*w = f.fmt.pix_mp.width;
+	*h = f.fmt.pix_mp.height;
+	*pitch = f.fmt.pix_mp.plane_fmt[0].bytesperline;
+	if (*pitch < *w) {
+		unsigned int rounded = (*w + 15) & ~15u;
 
-	return f.fmt.pix_mp.plane_fmt[0].bytesperline;
+		warn("G_FMT reports %ux%u with line pitch %u below the width -- line pitch %u by the rule of 16",
+		     *w, *h, *pitch, rounded);
+		*pitch = rounded;
+	}
 }
 
 /* ------------------------------------------------------------------ *
@@ -694,7 +702,7 @@ static void display_find_plane(struct display *d)
  *    fb->pitches[0] and the chroma stride from 2 * fb->pitches[1] (0093),
  *    and those strides describe the *ring*, whose lines are one capture
  *    rowbyte apart: the width rounded up to 16 (1376 for 1366, see
- *    capture_pitch()). The dumb buffer is therefore allocated with the pitch
+ *    capture_format()). The dumb buffer is therefore allocated with the pitch
  *    as its width, and a pitch the kernel padded any further would
  *    mis-program the hardware for data this buffer does not own. Hence the
  *    hard check.
@@ -2864,7 +2872,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		       struct display *d, struct audio *a)
 {
 	static const char *const kern[] = {
-		"incap:", "capture:", "farbwandler:", "signal:", "timings:", NULL,
+		"format:", "incap:", "capture:", "farbwandler:", "signal:", "timings:", NULL,
 	};
 	static const char *const comm[] = { "rx_calls", "eingehend", NULL };
 	/* the last measurement evaluate() made -- a status is a report, not a probe (S12 R7) */
@@ -2884,6 +2892,9 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		reply_add(r, "signal          %ux%u%s, %llu Hz (last measured)\n", t->bt.width,
 			  t->bt.height, t->bt.interlaced ? "i" : "p",
 			  (unsigned long long)t->bt.pixelclock);
+	else if (sig == 2 && t->bt.width)
+		reply_add(r, "signal          change in flight (the geometry has not locked yet; last measured %ux%u%s)\n",
+			  t->bt.width, t->bt.height, t->bt.interlaced ? "i" : "p");
 	else if (sig == 2)
 		reply_add(r, "signal          change in flight (the geometry has not locked yet)\n");
 	else
@@ -4719,6 +4730,7 @@ static void evaluate(struct capture *cap, struct display *d,
 		     struct retry *rt)
 {
 	struct v4l2_dv_timings t;
+	unsigned int ring_w, ring_h, ring_pitch;
 	int sig;
 
 	/* "off" over the control socket: the console stays, whatever the signal does */
@@ -4730,7 +4742,13 @@ static void evaluate(struct capture *cap, struct display *d,
 
 	sig = capture_signal(cap, &t);
 	cap->last_sig = sig;
-	cap->last_t = t;
+	/*
+	 * The last measurement, not the last attempt: a change in flight has
+	 * no timing, and ctl status is more useful naming what was measured
+	 * before it than naming nothing.
+	 */
+	if (sig != 2)
+		cap->last_t = t;
 	if (sig == 2) {
 		if (rt->n < RETRY_MAX) {
 			if (!rt->n)
@@ -4745,17 +4763,22 @@ static void evaluate(struct capture *cap, struct display *d,
 		 * said the signal is gone (that would be ENOLINK, not ENOLCK).
 		 * Measured 08.09.2026: treating this as "no signal" sent a correct
 		 * 1080p picture to the console for ten seconds (S12 Umsetzung).
-		 * With the console up there is nothing to keep, and no event may
-		 * follow -- so keep asking, slowly, until the driver decides.
+		 * And keep asking, slowly, until the driver decides -- with the
+		 * plane on as well. The wall does not need the answer, the
+		 * status does: measured 20.09.2026 (dev17), a release that ran
+		 * longer than this budget left "change in flight" standing over
+		 * a correct 720p picture for as long as no event came, because
+		 * a direct release ends without one. The driver now sends one
+		 * (0136f); this is the second line of defence, at a cost of one
+		 * QUERY_DV_TIMINGS every 500 ms for as long as the state lasts.
 		 */
 		if (rt->n == RETRY_MAX) {
-			warn("the geometry has not locked after %u retries -- %s",
-			     RETRY_MAX, d->on ? "the picture stays until the next event comes"
-					      : "the console stays, asking again every 500 ms");
+			warn("the geometry has not locked after %u retries -- %s stays, asking again every %u ms",
+			     RETRY_MAX, d->on ? "the picture" : "the console",
+			     RETRY_SLOW_MS);
 			rt->n++;
 		}
-		if (!d->on)
-			retry_arm(rt, RETRY_SLOW_MS);
+		retry_arm(rt, RETRY_SLOW_MS);
 		return;
 	}
 	/* decided: whatever is still scheduled would only measure again (S12 R4) */
@@ -4772,15 +4795,31 @@ static void evaluate(struct capture *cap, struct display *d,
 	     t.bt.interlaced ? "i" : "p",
 	     (unsigned long long)t.bt.pixelclock);
 
-	if (t.bt.width > d->width || t.bt.height > d->height ||
-	    (t.bt.height & 1)) {
-		warn("the plane does not take the source geometry %ux%u (larger than the panel %ux%u, or an odd height) -- the console stays",
-		     t.bt.width, t.bt.height, d->width, d->height);
+	/*
+	 * What goes on the plane is the capture RING, not the source signal.
+	 * Where the firmware scales in its capture path the ring is smaller
+	 * than the source -- a 1920x1080 source on a 1280x720 panel lands in
+	 * the ring 864 bytes wide (kernel 0136f) -- so the plane takes the ring
+	 * and the AFBD scales it up to the panel. The refusal therefore
+	 * compares the ring with the panel: a ring the firmware left larger
+	 * than the panel cannot be scaled down and is refused, whatever the
+	 * source is; a source larger than the panel whose ring fits is shown.
+	 * Until 0136f this compared the source, and a 1920x1080 source kept a
+	 * 1280x720 panel on the console although its ring fitted (issue #1).
+	 */
+	capture_format(cap, &t, &ring_w, &ring_h, &ring_pitch);
+	if (ring_w != t.bt.width || ring_h != t.bt.height)
+		info("ring            %ux%u, line pitch %u -- smaller than the source, the firmware scales",
+		     ring_w, ring_h, ring_pitch);
+
+	if (ring_w > d->width || ring_h > d->height || (ring_h & 1)) {
+		warn("the plane does not take the ring geometry %ux%u (larger than the panel %ux%u, or an odd height); source %ux%u -- the console stays",
+		     ring_w, ring_h, d->width, d->height, t.bt.width, t.bt.height);
 		display_hide(d);
 		return;
 	}
 	/*
-	 * Sub-panel sources are scaled to the panel by the firmware itself: the
+	 * Sub-panel rings are scaled to the panel by the firmware itself: the
 	 * rebuilt framebuffer below republishes the VidDec record with the new
 	 * geometry (kernel 0117/0120), the firmware recomputes its window chain
 	 * and programs the scaler (doku/96 sections 3-6), and the capture
@@ -4789,16 +4828,21 @@ static void evaluate(struct capture *cap, struct display *d,
 	 * non-panel geometry to the console, with H713_TV_SKALIERTEST as the
 	 * way around it for testing; both are gone since 720p and 1080p run
 	 * clean over any number of changes (doku/nachtlog/S11).
+	 *
+	 * The pitch is part of the geometry: the same 1280x720 ring can come
+	 * with a 1280-byte pitch (a 720p source) or, for one moment of a change
+	 * in flight, with the previous source's, and the plane programs the
+	 * stride from the framebuffer -- so a changed pitch rebuilds it too.
 	 */
-	if (t.bt.width != d->src_w || t.bt.height != d->src_h) {
+	if (ring_w != d->src_w || ring_h != d->src_h || ring_pitch != d->src_pitch) {
 		/* a refused disable is a plane still showing the old buffer -- say so and stop */
 		if (d->on && !display_hide(d))
 			return;
 		if (d->fb_id)
 			display_destroy_fb(d);
-		d->src_w = t.bt.width;
-		d->src_h = t.bt.height;
-		d->src_pitch = capture_pitch(cap, t.bt.width);
+		d->src_w = ring_w;
+		d->src_h = ring_h;
+		d->src_pitch = ring_pitch;
 		display_create_fb(d);
 		info("buffer          %ux%u NV16, line pitch %u on panel %ux%u",
 		     d->src_w, d->src_h, d->src_pitch, d->width, d->height);

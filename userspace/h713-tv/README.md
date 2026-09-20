@@ -281,8 +281,16 @@ picture         plane 38 on, 1920x1080 out of the capture ring
 
 On a resolution change the short console moment is the source's real signal loss. When the driver reports
 the change as not locked yet, the journal says `signal          change in flight -- the geometry is not
-settled yet, waiting`, and after forty retries a `warning:` that says what stays. `reload          SIGHUP --
-the state is evaluated again` is the answer to `systemctl reload`.
+settled yet, waiting`, and after forty retries a `warning:` that says what stays and that it keeps asking
+every 500 ms. `reload          SIGHUP -- the state is evaluated again` is the answer to `systemctl reload`.
+
+The `buffer` line is the capture RING as the driver reports it (`G_FMT`), not the source signal. On a panel
+smaller than the source the firmware scales inside its capture path and the ring is smaller than the
+source; then a `ring` line precedes it - `ring            852x478, line pitch 864 -- smaller than the
+source, the firmware scales` on the HY300 Pro (1280x720 panel) with a 1920x1080 source - and the plane
+takes the ring, which the AFBD scales up to the panel. The refusal `the plane does not take the ring
+geometry WxH (larger than the panel PxQ, or an odd height); source SxT -- the console stays` compares the
+ring with the panel, never the source with the panel (kernel 0136f).
 
 ---
 
