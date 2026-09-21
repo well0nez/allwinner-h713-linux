@@ -1,74 +1,68 @@
 #!/usr/bin/env bash
-# build/uboot-prove-fragments.sh -- equivalence proof for the HY310 U-Boot
-# defconfig matrix (docs/uboot/README.md "Which defconfig").
+# build/uboot-prove-fragments.sh -- what each U-Boot role fragment does to its
+# board's base defconfig, proven against the fork as it is today.
 #
-# For each role: the old single defconfig, and hy310_defconfig + the role
-# fragment merged the way build/uboot-build.sh merges it, must expand to the
-# same .config.
+# Until stage 3 it held every role against the single defconfig it replaced.
+# Those defconfigs are gone from the fork, so it had nothing left to compare
+# and was red (O2, 16.09.2026). What is worth proving now is what fragments
+# get wrong: Kconfig lowers a symbol when its dependencies stop being met but
+# does not raise one back, so a fragment line can be swallowed without a word
+# (docs/uboot/README.md, "fragments subtract reliably and add unreliably").
+# Every role is merged the way build/uboot-build.sh merges it, every line of
+# it has to survive, and the diff against the bare base says what it did.
 #
-# The old defconfigs are deleted in the same commit that adds the fragments,
-# so they are fetched back out of git for the length of the run -- from the
-# parent of whichever commit deleted them -- and removed again at the end.
-#
-# Two differences are intended and are normalised away here: the base names
-# the board's own device tree and the old defconfigs named the bench board's,
-# so CONFIG_DEFAULT_DEVICE_TREE differs, and CONFIG_OF_LIST with it because
-# its default is the default device tree; and the installer role's boot
-# message is English now. Every other difference is a failure.
-#
-# Config targets only: no cross toolchain, no compile, nothing written outside
-# the work directory (build/uboot-proof/, ignored by git). Runs on the host or
-# in the container. Usage: build/uboot-prove-fragments.sh [u-boot-dir] [work-dir]
+# Config targets only: no cross toolchain, no compile, nothing outside the work
+# directory (build/uboot-proof/, ignored by git). Host or container.
+# Usage: build/uboot-prove-fragments.sh [u-boot-dir] [work-dir]
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 UBOOT=${1:-$ROOT/external/u-boot}
 WORK=${2:-$ROOT/build/uboot-proof}
 MAKE=(make -C "$UBOOT" ARCH=arm HOSTCC=cc)
-OLD_DT=allwinner/sun50i-h713-hy200-qz713df-a1
-NEW_DT=allwinner/sun50i-h713-hy310
-ROLES="release:hy310_qz713_v3_1 installer:hy310_installer
-       netboot:hy310_netboot netboot_gate:hy310_netboot_gate
-       felmmc:hy310_felmmc host:hy310_host"
-
-restored=()
-cleanup() { for f in ${restored+"${restored[@]}"}; do rm "$f"; done; }
-trap cleanup EXIT
-
+# Base and role as release/build-all.sh pairs them, from boards/<id>/board.env.
+MATRIX="hy310:release hy310:installer hy310:netboot hy310:netboot_gate
+	hy310:felmmc hy310:host hy300_pro:release hy300_pro:installer"
 mkdir -p "$WORK"
 rc=0
-printf '%-30s %-34s %s\n' "old defconfig" "base + fragment" "result"
-for pair in $ROLES; do
-	role=${pair%%:*}; old=${pair#*:}_defconfig
-	ref=$WORK/ref-$role; new=$WORK/new-$role
-	mkdir -p "$ref" "$new"
-
-	if [ ! -f "$UBOOT/configs/$old" ]; then
-		gone=$(git -C "$UBOOT" log --diff-filter=D --format=%H -1 \
-			-- "configs/$old")
-		[ -n "$gone" ] || { echo "$old: not in the tree and never deleted" >&2; exit 1; }
-		git -C "$UBOOT" show "$gone^:configs/$old" > "$UBOOT/configs/$old"
-		restored+=("$UBOOT/configs/$old")
+printf '%-34s %-22s %s\n' "base + fragment" "fragment lines" "against the bare base"
+for pair in $MATRIX; do
+	base=${pair%%:*}; role=${pair#*:}
+	frag=$UBOOT/configs/fragments/h713_$role.config
+	[ -f "$frag" ] || { echo "no fragment $frag" >&2; exit 1; }
+	# the bare base, once per base, normalised the same way as the merge
+	b=$WORK/base-$base
+	if [ ! -f "$b/.config" ]; then
+		mkdir -p "$b"
+		"${MAKE[@]}" O="$b" "${base}_defconfig" >/dev/null
+		"${MAKE[@]}" O="$b" olddefconfig >/dev/null
 	fi
+	m=$WORK/$base-$role
+	mkdir -p "$m"
+	cp "$b/.config" "$m/.config"
+	"$UBOOT"/scripts/kconfig/merge_config.sh -m -O "$m" "$m/.config" "$frag" \
+		>"$WORK/merge-$base-$role.log" 2>&1
+	"${MAKE[@]}" O="$m" olddefconfig >/dev/null
 
-	"${MAKE[@]}" O="$ref" "$old"          >/dev/null
-	"${MAKE[@]}" O="$new" hy310_defconfig >/dev/null
-	"$UBOOT"/scripts/kconfig/merge_config.sh -m -O "$new" \
-		"$new/.config" "$UBOOT/configs/fragments/h713_$role.config" \
-		>"$WORK/merge-$role.log" 2>&1
-	"${MAKE[@]}" O="$new" olddefconfig >/dev/null
-	sed -i "s|$NEW_DT|$OLD_DT|" "$new/.config"
-	# The second intended difference: stage 3 put the installer role's boot
-	# message into English (fragment h713_installer.config); the defconfig it
-	# replaced still carries the German one. Same command, other words.
-	sed -i 's|echo H713 installer: exposing the eMMC as a USB drive; ums 0 mmc 1|echo HY310 installer: eMMC wird als USB-Laufwerk freigegeben; ums 0 mmc 1|' "$new/.config"
+	# A "=value" line has to stand in the merged .config literally; an "is
+	# not set" line counts as kept when the symbol is off AND when Kconfig
+	# dropped it with the dependency that carried it - both mean it is out.
+	lines=0 missing=0
+	while IFS= read -r l; do
+		sym=${l#\# }; sym=${sym%%[ =]*}
+		case "$l" in
+		CONFIG_*=*)                grep -qxF "$l" "$m/.config" ;;
+		'# CONFIG_'*' is not set') ! grep -q "^$sym=" "$m/.config" ;;
+		*) continue ;;
+		esac || { missing=$((missing + 1)); echo "      swallowed: $l"; }
+		lines=$((lines + 1))
+	done < "$frag"
 
-	if diff -u "$ref/.config" "$new/.config" >"$WORK/diff-$role.txt"; then
-		verdict=identical
-	else
-		verdict="DIFFERENT -- $WORK/diff-$role.txt"
-		rc=1
-	fi
-	printf '%-30s %-34s %s\n' "$old" "hy310_defconfig + h713_$role" "$verdict"
+	d=$WORK/diff-$base-$role.txt
+	diff -u "$b/.config" "$m/.config" >"$d" || true
+	changed=$(grep -c '^[-+]\(CONFIG\|# CONFIG\)' "$d" || true)
+	printf '%-34s %-22s %s\n' "${base}_defconfig + h713_$role" \
+		"$lines asked, $missing lost" "$changed lines -> $d"
+	[ "$missing" -eq 0 ] || rc=1
 done
-[ $rc -eq 0 ] && echo "all six identical (device tree normalised)"
+[ $rc -eq 0 ] && echo "every fragment line stands in its merged .config"
 exit $rc

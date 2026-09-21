@@ -105,6 +105,11 @@ off. Four symbols do not follow even then (`CMD_BIND` is implied, `ANDROID_BOOT_
 `USB_MUSB_PIO_ONLY` are defaulted, `CIRCBUF` is selected) and the fragments name those four explicitly.
 
 Each of the six roles was proven to reproduce the defconfig it replaced, symbol for symbol, apart from
-the device tree: `build/uboot-prove-fragments.sh` (from `mainline/`), config targets only, no toolchain needed.
+the device tree, when the fragments were written. Those defconfigs have since been deleted from the fork,
+so `build/uboot-prove-fragments.sh` (from `mainline/`) proves the thing that can still go wrong instead:
+it merges every base and role the way `build/uboot-build.sh` does and holds every line of the fragment
+against the merged `.config`, because a line whose symbol Kconfig will not raise is swallowed in silence.
+An "is not set" line counts as kept when the symbol is off and when it fell out with its dependency. The
+diff of each role against its bare base is written next to the run. Config targets only, no toolchain.
 
 Details: `doku/30-uboot-aenderungen.md`, `doku/109-plan-layout-v3.md`, `doku/10-hardware.md`.
