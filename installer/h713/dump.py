@@ -452,7 +452,14 @@ def full_dump_state(dump_dir, file, disk_sectors):
     return (name, 0, sectors, row.get("sha256"), row.get("purpose") or "complete clone"), None
 
 
-def write_manifest(directory, manifest, device):
+def board_of(args):
+    """The board identify() settled on, by the name its profile carries -- None when nothing
+    identified this device (`--skip-identify`). For the texts that would otherwise name the
+    HY310 on somebody else's board (R1 item 4)."""
+    return (getattr(args, "_profile", None) or {}).get("name")
+
+
+def write_manifest(directory, manifest, device, board=None):
     # Stage 3: the keys are English (api-stufe3.md) -- "erzeugt"/"werkzeug"/"geraet"/
     # "sektoren"/"teile" became created/tool/device/sectors/regions, the row keys
     # "sektoren"/"zweck" sectors/purpose. The file names inside the dump are unchanged.
@@ -460,6 +467,7 @@ def write_manifest(directory, manifest, device):
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "tool": "h713-install " + VERSION,
         "device": device,
+        "board": board,
         "sectors": SECTORS_EXPECTED,
         "regions": [{"name": n, "lba": l, "sectors": s, "sha256": h, "purpose": p}
                     for n, l, s, h, p in manifest],
@@ -479,10 +487,14 @@ def write_manifest(directory, manifest, device):
     with open(os.path.join(directory, "MANIFEST.json"), "w") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     with open(os.path.join(directory, "README.txt"), "w") as f:
+        # R1 item 4: the heading named the HY310, and this dump is taken on whatever board the
+        # owner has (boards/, issue #1). Which board it was stands in the line below it -- when
+        # the identification knew it, and not as a guess when it did not.
         f.write(
-            "Dump of an HY310/H713 projector\n"
-            "===============================\n\n"
-            "Created on %s by h713-install %s.\n\n"
+            "Dump of an H713 projector\n"
+            "=========================\n\n"
+            "Created on %s by h713-install %s.\n"
+            "%s\n"
             "What lies here:\n%s\n"
             "Restoring (put the device into FEL mode first: hold reset,\n"
             "plug the power in):\n\n"
@@ -491,6 +503,7 @@ def write_manifest(directory, manifest, device):
             "firmware image -- without them the device loses HDCP, its MAC\n"
             "addresses and its serial number. Keep them well.\n"
             % (data["created"], VERSION,
+               "Board: %s.\n" % board if board else "",
                "".join("  %-18s %s\n" % (t["name"] + (".img" if t["name"] == "emmc-full" else ".bin"),
                                            t["purpose"])
                        for t in data["regions"])))
@@ -537,7 +550,7 @@ def mandatory_dump(args, disk, path, log=console):
     console.step(2, "Small dump (mandatory, before a restore too)")
     os.makedirs(args.dump_dir, exist_ok=True)
     write_manifest(args.dump_dir, dump_small(disk, args.dump_dir, our_layout=args._our_layout),
-                   path)
+                   path, board_of(args))
 
 
 def choose_dump(chosen=None):
