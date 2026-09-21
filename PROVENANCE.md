@@ -6,7 +6,7 @@ Who made what, where it comes from, and what is deliberately absent.
 
 `mainline/` is a **git subtree** of [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline)
 at commit `8860991`, with full history - you can `git log` any of his commits here. On top of it,
-`mainline/patches/kernel/series` carries 158 patches in fifteen sections:
+`mainline/patches/kernel/series` carries 157 patches in fifteen sections:
 
 | Origin | Patches | Note |
 |---|---|---|

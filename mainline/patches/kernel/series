@@ -212,10 +212,9 @@
 #    own descriptor republish while INCAP still reads the same three words;
 #    576p50 and a CVT 720p stuck on "change in flight" without it, 21.09.)
 0136i-media-h713-hdmirx-a-lock-that-survives-our-own-republish.patch
-#   (T2 -- 0136j: where the firmware does not scale, the DE picture-scaler
-#    window of 0136g must agree with the ring or no timing is reported; the
-#    1024x768 shear of 21.09. was a window node the firmware did not commit)
-0136j-media-h713-hdmirx-withhold-a-timing-the-firmware-s-window-contradicts.patch
+#   (T2 -- 0136j withdrawn 21.09. evening: the pre-publish window veto blocked the
+#    very republish that makes the firmware re-commit the DE window (720p60 stayed
+#    on the console, HY310 dev19); a post-publish check follows as 0136j v2)
 #   (T2 -- 0136k: the source cap follows the firmware's table, 4096x2160 and
 #    297 MHz, because the ring rule of 0136f is what protects the plane;
 #    interlaced stays refused)
