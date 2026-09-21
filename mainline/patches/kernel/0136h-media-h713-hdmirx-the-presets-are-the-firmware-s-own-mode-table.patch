@@ -1,0 +1,470 @@
+media: h713-hdmirx: the presets are the firmware's own mode table
+
+The device does not lock on what this driver believes about timings, it locks
+on a table of its own. The display firmware's mode list is the TFD module
+"THDMI_ModeDetect" in database.TSE, 152 records of 54 bytes, which U-Boot
+loads into the TSE window of the MIPS reservation (1 MiB at ARM 0x4be41000)
+and leaves there for the boot; HY310 and HY300 Pro carry the same 152 records
+byte for byte (T1, 21.09.2026). Its match rule is all-or-nothing and stops at
+the first record that fits (GetMatchLevel MIPS 0x8b133290, GetSignalIndex
+0x8b1337cc), and a mode the table does not carry never gets a capture window
+at all: 1600x900 on 21.09.2026 left INCAP at the previous geometry, the
+firmware logged "Match signal failed!" and the wall showed the console.
+
+So where the device tree names the window (allwinner,firmware-tse, added to
+sun50i-h713.dtsi in this patch, optional) that table becomes the driver's
+list. At probe the window is memremap()ed write-back, read and unmapped
+again; the array is found the way the serialiser leaves it findable - the
+module name once, the end of the record array 22 bytes before it, then record
+steps back while the leading dword stays a vendor signal id 0x0002xxxx - and
+the enabled records are copied into an array of this driver's, in table order.
+Nothing keeps a pointer into a region no driver owns. The table is refused,
+with the built-in presets left in charge, when the property is absent, when
+the window holds no module name or two of them, when the count is 0 or 255 or
+more, or when no enabled record reads 1920x1080 active / 2200x1125 total /
+60 Hz - the raster every source here sends. One line at probe says which:
+"mode table: 152 records from the firmware's database.TSE (129 enabled)" or
+"mode table: built-in presets (<reason>)".
+
+h713_hdmirx_match_preset() then matches the measured INCAP geometry and the
+measured rate against that table with the firmware's own rule: the active
+size within +-5 pixels and +-3 lines where the record says so (+52), the
+totals otherwise with the measured line count halved when interlaced, the
+frame rate within 1.0 Hz at or above 30 Hz and 0.5 Hz below, the interlace
+flag equal, and the first record that passes wins. The three checks the ARM
+cannot make - sync width, sync polarity, back porch - count as passed; the
+firmware skips the sync-width one in all 152 records itself, and the other
+two are on in nine and twelve records. A hit reports the record's nominal
+timing: its totals, its rate, its scan type, pixelclock = HTotal * VTotal *
+rate, and CAN_REDUCE_FPS | REDUCED_FPS on a 1000/1001 row. Ten enabled
+records (the frame-packing rasters) carry no active size at all and match on
+their totals; there the measured active size is kept, which is what the
+firmware does with its own capture window.
+
+The rates are IEEE-754 doubles in the records, so they are decoded to
+thousandths of a hertz by hand - the kernel has no floating point. All 152
+decode to within a thousandth of the double (model, work/T2).
+
+Without the property, and with a refused table, everything is as before: the
+kernel's preset list, the same tolerances, the same result. The ring geometry
+(0136f) is untouched - it reads INCAP, not this table.
+
+Host model over all 152 rows and over the sixteen modes measured on
+21.09.2026 in umbau/work/T2/model, against T1's re-implementation of the
+firmware's rule.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2121,6 +2121,14 @@
+ 	 *                    path. Without it that size is arithmetic from the
+ 	 *                    rowbyte (the width to within 16 pixels); where the
+ 	 *                    firmware does not scale it is never read.
++	 *   allwinner,firmware-tse  address and size of the TSE window inside
++	 *                    mips-firmware@4b100000 above. Optional, read once
++	 *                    at probe and never written: U-Boot loads
++	 *                    database.TSE there, and the timing table the
++	 *                    display firmware locks on (the TFD module
++	 *                    THDMI_ModeDetect, 152 records) is inside it.
++	 *                    Without it the driver matches a measured timing
++	 *                    against the kernel's preset list instead.
+ 	 *
+ 	 * No interrupt: three independent searches of the firmware image found
+ 	 * the capture interrupt only inside the MIPS interrupt controller, and
+@@ -2134,6 +2142,7 @@
+ 		allwinner,incap = <&incap>;
+ 		allwinner,hdmirx-link = <&hdmirx_link>;
+ 		allwinner,scaler = <&de_scaler>;
++		allwinner,firmware-tse = <0x4be41000 0x100000>;
+ 		status = "okay";
+ 	};
+ 
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -232,6 +232,78 @@
+  */
+ #define H713_SCALER_IN_WIN	0x34
+ 
++/*
++ * The display firmware's own timing table -- the list the device locks on, and
++ * the only list it locks on: the firmware's match is all-or-nothing and stops
++ * at the first record that passes (GetMatchLevel MIPS 0x8b133290,
++ * GetSignalIndex 0x8b1337cc), and a mode the table does not carry gets no
++ * capture window at all (1600x900, 21.09.2026: INCAP kept the previous
++ * geometry and the wall the console).
++ *
++ * It is not in display.bin. The firmware asks its TFD manager for the module
++ * "THDMI_ModeDetect" and keeps pointers into the loaded database.TSE image
++ * (Init_ModeListCtx 0x8b132e04); U-Boot loads that file into the TSE window of
++ * the MIPS reservation, 1 MiB at ARM 0x4be41000, and leaves it there for the
++ * boot. 152 records of 54 bytes, byte for byte the same in the HY310's and the
++ * HY300 Pro's firmware (T1, 21.09.2026). The serialiser writes the module name
++ * 22 bytes behind the end of the array, which is how the array is found: back
++ * in record steps while the leading dword stays a signal id of the vendor's
++ * E_SIGNAL_ID space, 0x0002xxxx. Records are packed and the array is aligned
++ * to nothing, so every field is read unaligned.
++ */
++#define H713_TSE_RECORD		54
++#define H713_TSE_NAME		"THDMI_ModeDetect"
++#define H713_TSE_NAME_GAP	22	/* name to the end of the array */
++#define H713_TSE_ID_LO		0x00020000
++#define H713_TSE_ID_HI		0x000200ff
++#define H713_TSE_MAX		255	/* ucModeCnt is a byte (Init_ModeListCtx) */
++#define H713_TSE_MAX_WINDOW	(16 << 20)
++
++/* the fields of a record GetMatchLevel reads (T1 section 2b) */
++#define H713_TSE_HTOTAL		8
++#define H713_TSE_VTOTAL		10
++#define H713_TSE_HACTIVE	12
++#define H713_TSE_VACTIVE	14
++#define H713_TSE_RATE		25	/* IEEE-754 double, hertz */
++#define H713_TSE_SKIP_RATE	49
++#define H713_TSE_PROGRESSIVE	50	/* 0 = interlaced */
++#define H713_TSE_ON_ACTIVE	52	/* compare the active size, not the totals */
++#define H713_TSE_ENABLED	53
++
++/*
++ * Its tolerances, from the same routine: geometry within five pixels and three
++ * lines (the firmware tests |d| < 6 and |d| < 4), frame rate within 1.0 Hz at
++ * or above 30 Hz and 0.5 Hz below. Rates are thousandths of a hertz here, so
++ * 59.94 is 59940.
++ */
++#define H713_TSE_TOL_H		5
++#define H713_TSE_TOL_V		3
++#define H713_TSE_RATE_SPLIT	30000
++#define H713_TSE_TOL_RATE_HI	1000
++#define H713_TSE_TOL_RATE_LO	500
++
++/**
++ * struct h713_hdmirx_tse_mode - one enabled record of the firmware's table
++ * @h_active: active pixels per line, 0 where the record carries none
++ * @v_active: active lines, 0 where the record carries none
++ * @h_total: total pixels per line
++ * @v_total: total lines
++ * @rate_x1000: frame rate in thousandths of a hertz
++ * @on_active: compare the active size instead of the totals (record +52)
++ * @skip_rate: do not compare the frame rate at all (record +49)
++ * @interlaced: the record is interlaced (record +50 == 0)
++ */
++struct h713_hdmirx_tse_mode {
++	u16 h_active;
++	u16 v_active;
++	u16 h_total;
++	u16 v_total;
++	u32 rate_x1000;
++	u8 on_active;
++	u8 skip_rate;
++	u8 interlaced;
++};
++
+ /**
+  * struct h713_hdmirx_ring_geometry - what the capture writes into a ring slot
+  * @width: pixels per line the plane may show (NV16 luma: bytes = pixels)
+@@ -1041,6 +1113,15 @@
+ 	 */
+ 	struct regmap *incap;
+ 	struct regmap *scaler;		/* DE picture scaler, read only, optional */
++
++	/*
++	 * The firmware's mode table, copied out of the TSE window at probe:
++	 * the enabled records only, in table order, because table order is
++	 * what decides between two that both fit. Empty when the tree does not
++	 * point at the window or the window did not hold the table.
++	 */
++	const struct h713_hdmirx_tse_mode *tse_modes;
++	unsigned int tse_count;
+ 	struct mutex sig_lock;
+ 	void __iomem *sig_map;
+ 	phys_addr_t sig_map_base;
+@@ -2844,6 +2925,239 @@
+ 	},
+ };
+ 
++/* the firmware's |a - b| on unsigned values (GetMatchLevel, 0x8b133330) */
++static unsigned int h713_hdmirx_absdiff(unsigned int a, unsigned int b)
++{
++	return a > b ? a - b : b - a;
++}
++
++/*
++ * A record's frame rate is a little-endian IEEE-754 double (T1 2b: the
++ * firmware's own byte-swap helper takes the identity path). The kernel has no
++ * floating point, so it is decoded into thousandths of a hertz, rounded to
++ * nearest: 59.94 becomes 59940. Zero, subnormal, infinity, NaN and anything of
++ * an implausible size become 0, which leaves the record unmatchable rather
++ * than wrong.
++ */
++static u32 h713_hdmirx_tse_rate(u64 bits)
++{
++	unsigned int exp = (bits >> 52) & 0x7ff;
++	u64 mant = (bits & GENMASK_ULL(51, 0)) | BIT_ULL(52);
++	unsigned int shift;
++
++	if ((bits & BIT_ULL(63)) || exp < 1023 - 10 || exp > 1023 + 20)
++		return 0;
++	shift = 1075 - exp;		/* value = mant / 2^shift, 32 <= shift <= 62 */
++
++	return (u32)((mant * 1000 + (1ULL << (shift - 1))) >> shift);
++}
++
++/*
++ * Find the record array in a loaded database.TSE: the module name once, the
++ * end of the array 22 bytes before it, then record steps back while the
++ * leading dword stays a vendor signal id. Nothing outside @len is read, and a
++ * window carrying two module names is not this table and is refused rather
++ * than guessed at.
++ */
++static int h713_hdmirx_tse_find(const u8 *data, size_t len, size_t *start,
++				unsigned int *count)
++{
++	const size_t nlen = sizeof(H713_TSE_NAME) - 1;
++	size_t end, name = len, pos;
++	unsigned int n;
++
++	for (pos = 0; pos + nlen <= len; pos++) {
++		if (data[pos] != H713_TSE_NAME[0] ||
++		    memcmp(data + pos, H713_TSE_NAME, nlen))
++			continue;
++		if (name != len)
++			return -EINVAL;
++		name = pos;
++	}
++	if (name == len || name < H713_TSE_NAME_GAP + H713_TSE_RECORD)
++		return -ENOENT;
++
++	end = name - H713_TSE_NAME_GAP;
++	for (n = 0; n < H713_TSE_MAX && end >= (size_t)(n + 1) * H713_TSE_RECORD; n++) {
++		u32 id = get_unaligned_le32(data + end -
++					    (size_t)(n + 1) * H713_TSE_RECORD);
++
++		if (id < H713_TSE_ID_LO || id > H713_TSE_ID_HI)
++			break;
++	}
++	if (!n || n >= H713_TSE_MAX)
++		return -EINVAL;
++
++	*start = end - (size_t)n * H713_TSE_RECORD;
++	*count = n;
++
++	return 0;
++}
++
++/*
++ * Read the table out of the TSE window, once, at probe. The window is no-map
++ * DRAM the MIPS firmware reads, so it is mapped write-back and only ever read;
++ * the enabled records are copied into memory of this driver's and the mapping
++ * is dropped again, because a pointer into a region no driver owns is not a
++ * thing to keep for a boot. A window that does not hold this table -- no
++ * property, no module name, an implausible count, or no record for the raster
++ * every source here sends (1920x1080 active, 2200x1125 total, 60 Hz: row 14,
++ * signal id 0x00020000) -- leaves the preset list in charge. One line says
++ * which, and why.
++ */
++static void h713_hdmirx_tse_load(struct h713_hdmirx *rx)
++{
++	const char *why = "no allwinner,firmware-tse";
++	struct h713_hdmirx_tse_mode *modes = NULL;
++	unsigned int count = 0, i, n = 0;
++	u32 win[2] = { 0, 0 };
++	bool sane = false;
++	const u8 *data;
++	size_t start;
++	void *map;
++
++	if (of_property_read_u32_array(rx->dev->of_node,
++				       "allwinner,firmware-tse", win, 2) ||
++	    !win[0] || win[1] < H713_TSE_RECORD || win[1] > H713_TSE_MAX_WINDOW)
++		goto done;
++
++	map = memremap(win[0], win[1], MEMREMAP_WB);
++	if (!map) {
++		why = "the TSE window is not mappable";
++		goto done;
++	}
++	data = map;
++
++	why = "no THDMI_ModeDetect module in the TSE window";
++	if (h713_hdmirx_tse_find(data, win[1], &start, &count))
++		goto unmap;
++
++	why = "no memory for the mode table";
++	modes = devm_kcalloc(rx->dev, count, sizeof(*modes), GFP_KERNEL);
++	if (!modes)
++		goto unmap;
++
++	for (i = 0; i < count; i++) {
++		const u8 *rec = data + start + (size_t)i * H713_TSE_RECORD;
++		struct h713_hdmirx_tse_mode *m = &modes[n];
++
++		if (!rec[H713_TSE_ENABLED])
++			continue;	/* GetMatchLevel returns "no match" */
++		m->h_active = get_unaligned_le16(rec + H713_TSE_HACTIVE);
++		m->v_active = get_unaligned_le16(rec + H713_TSE_VACTIVE);
++		m->h_total = get_unaligned_le16(rec + H713_TSE_HTOTAL);
++		m->v_total = get_unaligned_le16(rec + H713_TSE_VTOTAL);
++		m->rate_x1000 =
++			h713_hdmirx_tse_rate(get_unaligned_le64(rec + H713_TSE_RATE));
++		m->on_active = rec[H713_TSE_ON_ACTIVE];
++		m->skip_rate = rec[H713_TSE_SKIP_RATE];
++		m->interlaced = !rec[H713_TSE_PROGRESSIVE];
++		if (m->h_active == 1920 && m->v_active == 1080 &&
++		    m->h_total == 2200 && m->v_total == 1125 &&
++		    m->rate_x1000 == 60000 && !m->interlaced)
++			sane = true;
++		n++;
++	}
++
++	why = "the TSE window holds no 1920x1080p60 record";
++	if (!sane)
++		goto unmap;
++
++	rx->tse_modes = modes;
++	rx->tse_count = n;
++	why = NULL;
++unmap:
++	memunmap(map);
++done:
++	if (why)
++		dev_info(rx->dev, "mode table: built-in presets (%s)\n", why);
++	else
++		dev_info(rx->dev,
++			 "mode table: %u records from the firmware's database.TSE (%u enabled)\n",
++			 count, n);
++}
++
++/*
++ * Report a matched record: its nominal timing, not the measurement that led to
++ * it. The blanking is not in the record either, so it stays whole in
++ * hsync/vsync as everywhere else here, and the porches stay at the zero the
++ * caller's memset left. Ten enabled records carry no active size at all (the
++ * frame-packing rows, totals 5500x1125, 3960x750 and the like): they match on
++ * their totals, and the firmware builds its capture window from the
++ * measurement in that case, so the measured active size is kept.
++ */
++static void h713_hdmirx_tse_fill(const struct h713_hdmirx_tse_mode *m,
++				 struct v4l2_dv_timings *t)
++{
++	struct v4l2_bt_timings *bt = &t->bt;
++	u32 nominal = DIV_ROUND_UP(m->rate_x1000, 1000) * 1000;
++
++	if (m->h_active && m->v_active) {
++		bt->width = m->h_active;
++		bt->height = m->v_active;
++	}
++	bt->interlaced = m->interlaced ? V4L2_DV_INTERLACED
++				      : V4L2_DV_PROGRESSIVE;
++	bt->pixelclock = div_u64((u64)m->h_total * m->v_total * m->rate_x1000,
++				 1000);
++	bt->hsync = m->h_total > bt->width ? m->h_total - bt->width : 0;
++	bt->vsync = m->v_total > bt->height ? m->v_total - bt->height : 0;
++	/* a 1000/1001 row -- 59.94 against 60, 23.976 against 24 */
++	if (m->rate_x1000 != nominal &&
++	    h713_hdmirx_absdiff(nominal * 1000 / 1001, m->rate_x1000) <= 1)
++		bt->flags |= V4L2_DV_FL_CAN_REDUCE_FPS | V4L2_DV_FL_REDUCED_FPS;
++}
++
++/*
++ * GetMatchLevel and GetSignalIndex (0x8b133290 and 0x8b1337cc) over the copied
++ * table, with the measured active size already in @t and the measured totals
++ * and rate beside it. The rule is all-or-nothing: every enabled check has to
++ * pass or the record is no match at all, and the scan stops at the first
++ * record that passes, so table order decides between several that could
++ * (T1 3b, 3c). Three checks cannot be made here -- sync width, sync polarity
++ * and back porch are in neither INCAP nor the firmware's record -- so they
++ * count as passed. That is wider than the firmware only for the nine records
++ * whose polarity check is on and the twelve whose back-porch check is; the
++ * sync-width check is off in all 152 anyway.
++ */
++static bool h713_hdmirx_tse_match(const struct h713_hdmirx_tse_mode *modes,
++				  unsigned int count, struct v4l2_dv_timings *t,
++				  unsigned int htotal, unsigned int vtotal,
++				  unsigned int fps_x1000)
++{
++	const struct v4l2_bt_timings *bt = &t->bt;
++	unsigned int i, tol, v;
++
++	for (i = 0; i < count; i++) {
++		const struct h713_hdmirx_tse_mode *m = &modes[i];
++
++		if (!m->interlaced != !bt->interlaced)
++			continue;
++		if (m->on_active) {
++			if (h713_hdmirx_absdiff(bt->width, m->h_active) > H713_TSE_TOL_H ||
++			    h713_hdmirx_absdiff(bt->height, m->v_active) > H713_TSE_TOL_V)
++				continue;
++		} else {
++			/* the measured line count is per field when interlaced */
++			v = bt->interlaced ? vtotal / 2 : vtotal;
++			if (h713_hdmirx_absdiff(htotal, m->h_total) > H713_TSE_TOL_H ||
++			    h713_hdmirx_absdiff(v, m->v_total) > H713_TSE_TOL_V)
++				continue;
++		}
++		if (!m->skip_rate) {
++			tol = fps_x1000 >= H713_TSE_RATE_SPLIT ? H713_TSE_TOL_RATE_HI
++							       : H713_TSE_TOL_RATE_LO;
++			if (h713_hdmirx_absdiff(fps_x1000, m->rate_x1000) > tol)
++				continue;
++		}
++		h713_hdmirx_tse_fill(m, t);
++
++		return true;
++	}
++
++	return false;
++}
++
+ /*
+  * Snap a measured timing to a preset when one describes the same signal:
+  * same active and total geometry, same scan type, pixel clock within
+@@ -2855,8 +3169,13 @@
+  * step the firmware takes when it maps a detected timing onto its mode table
+  * ("port1 detect new timing, signal ID=0x20000 index=14" in its log), not a
+  * guess of this driver's.
++ *
++ * Where the tree hands over that very table it is no longer the same step but
++ * the same list, and it replaces the presets outright: the device locks on the
++ * table and on nothing else.
+  */
+-static bool h713_hdmirx_match_preset(struct v4l2_dv_timings *t,
++static bool h713_hdmirx_match_preset(struct h713_hdmirx *rx,
++				     struct v4l2_dv_timings *t,
+ 				     unsigned int htotal, unsigned int vtotal,
+ 				     unsigned int fps_x100,
+ 				     unsigned int tolerance)
+@@ -2864,6 +3183,10 @@
+ 	const struct v4l2_bt_timings *bt = &t->bt;
+ 	unsigned int i;
+ 
++	if (rx->tse_count)
++		return h713_hdmirx_tse_match(rx->tse_modes, rx->tse_count, t,
++					     htotal, vtotal, fps_x100 * 10);
++
+ 	for (i = 0; v4l2_dv_timings_presets[i].bt.width; i++) {
+ 		const struct v4l2_bt_timings *p = &v4l2_dv_timings_presets[i].bt;
+ 		u64 delta = div_u64(p->pixelclock * tolerance, 100);
+@@ -3119,7 +3442,7 @@
+ 	bt->hsync = htotal - width;
+ 	bt->vsync = vtotal - height;
+ 
+-	if (!h713_hdmirx_match_preset(t, htotal, vtotal, fps_x100, tolerance) &&
++	if (!h713_hdmirx_match_preset(rx, t, htotal, vtotal, fps_x100, tolerance) &&
+ 	    !have_sig)
+ 		return -ENOLCK;
+ 
+@@ -4000,6 +4323,13 @@
+ 		return dev_err_probe(dev, PTR_ERR(rx->scaler),
+ 				     "kein Zugriff auf den Scaler-Block (allwinner,scaler)\n");
+ 
++	/*
++	 * The firmware's mode table, read once and copied. Optional in the same
++	 * sense as the two syscons above: without it the preset list decides
++	 * what QUERY_DV_TIMINGS may report. See H713_TSE_RECORD.
++	 */
++	h713_hdmirx_tse_load(rx);
++
+ 	/*
+ 	 * Stage 3: the firmware bring-up sequence.
+ 	 *
