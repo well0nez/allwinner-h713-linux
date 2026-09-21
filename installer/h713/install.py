@@ -657,6 +657,28 @@ def ask(text, default=None):
     return answer or default
 
 
+# README.md carries the beta warning, the installer did not (doku/61 A.2, plan 110 §9). Three
+# lines, said once, before the dump and before anything is written. Only on a stock device: on
+# our own layout there is no Android left to lose and the way back is the dump of the first
+# install (N2), and a test image says the same thing in its own words (test_image_allowed), so
+# it is never said twice.
+BETA_WARNING = (
+    "Beta: installing overwrites Android on this device -- it does not come back by itself.",
+    "The full dump taken in the next step is the way back; no download replaces it.",
+    "The keys and the WLAN/Bluetooth MAC addresses in its secure storage exist once, on it.",
+)
+
+
+def beta_warning(stock, test_image, log=console):
+    """Say it once, before the dump. Returns whether it was said."""
+    if not stock or test_image:
+        return False
+    log.warn(BETA_WARNING[0])
+    for line in BETA_WARNING[1:]:
+        log.info("  " + line)
+    return True
+
+
 def confirm(what):
     """A typed confirmation, not a comfortable [y/N] -- and the same abort rule
     at every place that writes (finding S46 B15, plan 110 §9)."""

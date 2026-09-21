@@ -51,8 +51,8 @@ from h713.env import ENV_CARRY_OVER                                         # no
 from h713.fel import expose_drive                                           # noqa: E402
 from h713.identify import identify, report_device                           # noqa: E402
 from h713.install import (DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
-                          WRITES, confirm, image_package, in_dump, release_files,
-                          run_extractor, table_test_for, test_image_allowed,
+                          WRITES, beta_warning, confirm, image_package, in_dump,
+                          release_files, run_extractor, table_test_for, test_image_allowed,
                           translate, unpack_parts, write_package)
 from h713.log import console                                                # noqa: E402
 from h713.profiles import PROFILES                                          # noqa: E402
@@ -402,6 +402,7 @@ def _work(args, path):
     # For the environment the GPT alone counts: hy310-* means our layout. That is independent
     # of --skip-identify, because it guesses nothing -- it reads partition names, 1 KiB.
     args._our_layout = (device_kind(path) or "").startswith("our layout")
+    ident = None
     try:
         # Before the first write: what are we dealing with? (plan 110 §8) Costs 1.2 MiB and
         # fractions of a second and keeps us from guessing on an unknown firmware.
@@ -440,6 +441,12 @@ def _work(args, path):
             return _restore_stock(args, disk)
         if args.command == "restore":
             return _restore(args, disk)
+        if args.command == "install":
+            # The warning of README's beta block, in the installer's own output -- before the
+            # dump and before anything is written (doku/61 A.2). What identify() saw decides;
+            # without it (--skip-identify) the GPT alone does, which is the question N2 asks.
+            beta_warning(ident["kind"] == "stock" if ident else not args._our_layout,
+                         bool(getattr(args, "_test_for", None)))
         code = _dump(args, disk, path)
         return code if code or args.command == "dump" else _install(args, disk, path)
     finally:

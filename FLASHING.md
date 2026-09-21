@@ -36,8 +36,8 @@ table.
 git clone https://github.com/well0nez/allwinner-h713-linux.git
 mkdir ~/hy310-v0.8-beta && cd ~/hy310-v0.8-beta
 #   download every file of the v0.8-beta release into this folder, then:
-zstd -d *.img.zst
-sha256sum -c h713-hy310-v0.8-beta.sha256
+zstd -d *.img.zst                            # optional, see below - the installer does it too
+sha256sum -c h713-hy310-v0.8-beta.sha256     # lists the unpacked .img parts, so unpack first
 chmod +x sunxi-fel
 ```
 
@@ -64,6 +64,12 @@ sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.8-beta \
 You name the release folder, not six files: the installer finds the offset table, `u-boot-installer.bin`
 and `sunxi-fel` inside it, and unpacks `*.img.zst` itself if `zstd` is installed. `--uboot` and
 `--sunxi-fel` override that when your copies live elsewhere.
+
+So the `zstd -d` line above is optional: run it if you want to check the `.sha256` file yourself
+(it lists the unpacked `.img` parts), or if `zstd` is not on the PC that runs the installer - then
+the installer stops and names the packed parts instead of unpacking them, and you unpack them by
+hand or on another machine. The installer checks the sha256 of every part before it writes either
+way, so `sha256sum -c` is a second pair of eyes, not a requirement.
 
 `sudo` because it writes a block device and mounts the image's file systems. The dump and the filled copy
 of the image land in `~/hy310-dump` - about 8.5 GB with the full dump.
