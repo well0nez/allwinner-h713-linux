@@ -167,6 +167,9 @@
 0131-media-drm-h713-follow-the-ring-pitch-for-widths-that-are-not-a-multiple-of-16.patch
 0132-media-h713-hdmirx-name-the-picture-modes.patch
 0133-drm-h713-afbd-expose-the-display-aspect-mode.patch
+#   (follow-up well0nez, R2 -- 0133 stays byte-identical; the three handoff
+#    words the probe insists on come from the board, not from the driver)
+0133a-drm-h713-afbd-the-handoff-state-is-a-board-fact.patch
 #
 # --- 7. HY310: HDMI-Audio -- Takte, Codec-I2S, MSP-DSP-Treiber -----------------
 #     doku/100, 101, nachtlog/S16. Abgenommen 08.09. (Lippensynchronitaet Marco).

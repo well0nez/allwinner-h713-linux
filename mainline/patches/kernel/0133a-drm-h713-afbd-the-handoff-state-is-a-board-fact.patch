@@ -1,0 +1,127 @@
+drm: h713-afbd: the expected handoff state is a board fact, and the refusal names it
+
+h713_afbd_probe() reads three register words the boot loader leaves behind
+and refuses with -ENODEV unless they are three literals: AFBD_CTRL 0x03001901
+(the RGB channel live with its commit armed), AFBD_VIDEO_CTRL 0x03000010
+(source 0 idle - the active word is H713_VIDEO_CTRL_ACTIVE 0x03000013), and
+the LVDS selector at lvds + 0x06c 0x29000000 (RGB selected downstream - the
+video variant is H713_VIDEO_SELECTOR 0x39000000). The driver restores exactly
+these three words when the video plane goes away again
+(h713_afbd_video_disable()), which is why it insists on them: it is the state
+it can put back.
+
+The refusal is right and stays. The three numbers, though, are a bench
+measurement on one board compiled into a driver that is otherwise carefully
+board-independent - it reads its geometry, its stride and its source address
+out of the hardware twenty lines earlier (analysis A11, 18.09.2026,
+umbau/reviews/A11.md section 6: "the one hardcoded board fact left in this
+driver"). A board with a different panel port count or a different firmware
+generation fails the check, and its owner has no way to describe his board
+and no way to see what was wrong.
+
+So two things change, and nothing else:
+
+(a) The refusal prints all six words - what was read and what was expected,
+    one pair per register - and says when the node carried no expectation of
+    its own. A foreign owner's log then states the fact instead of a verdict.
+
+(b) The expected triple comes from an optional device-tree property on the
+    afbd node, allwinner,handoff-state = <ctrl video_ctrl selector>. Absent,
+    the driver uses today's literals, now named and commented next to the
+    constants they belong with. The property is documented in the display
+    node's comment in sun50i-h713.dtsi; this node has no binding file in the
+    tree, so there is no binding text to follow.
+
+Tested on the HY310: byte-identical behaviour. Its device tree does not carry
+the property (of_property_read_u32_array returns -EINVAL, the defaults stay),
+the three comparisons are the same three comparisons, and the only reachable
+difference is the wording of a message that is not printed on a board that
+passes. The dtsi hunk is a comment; the compiled DTB is unchanged.
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -141,6 +141,24 @@
+ #define H713_VIDEO_CTRL_FORMAT	GENMASK(14, 8)
+ #define H713_VIDEO_SELECTOR	0x39000000
+ 
++/*
++ * The handoff this driver takes over from: AFBD_CTRL with the RGB channel
++ * live and its commit armed, AFBD_VIDEO_CTRL with source 0 idle (the active
++ * word is H713_VIDEO_CTRL_ACTIVE), and the downstream selector pointing at
++ * RGB (the video variant is H713_VIDEO_SELECTOR). The three words were
++ * measured on the HY310 and are the default. A board whose boot loader or
++ * panel port count leaves different words says its own in
++ * "allwinner,handoff-state" -- <ctrl video_ctrl selector> -- because this is
++ * a fact about the board, not about the chip, and a foreign board must be
++ * able to describe it instead of failing a check it cannot influence.
++ */
++#define H713_HANDOFF_WORDS	3
++static const u32 h713_afbd_handoff_default[H713_HANDOFF_WORDS] = {
++	0x03001901,	/* AFBD_CTRL     -- RGB channel active */
++	0x03000010,	/* AFBD_VIDEO_CTRL -- source 0 idle */
++	0x29000000,	/* LVDS + 0x06c  -- RGB selected downstream */
++};
++
+ /* The AFBD consumes the picture in 16x16 blocks. */
+ #define H713_VIDEO_BLOCK	16u
+ 
+@@ -1774,6 +1792,7 @@
+ 	struct h713_afbd *h;
+ 	struct drm_device *drm;
+ 	struct resource res;
++	u32 want[H713_HANDOFF_WORDS];
+ 	unsigned long flags;
+ 	int irq, ret;
+ 
+@@ -1912,11 +1931,22 @@
+ 	 */
+ 	h->video_c_stride_idle = readl(h->regs + AFBD_VIDEO_C_STRIDE);
+ 	h->selector_rgb = readl(h->lvds_regs + 0x06c);
+-	if (h->video_ctrl_idle != 0x03000010 ||
+-	    h->rgb_ctrl_active != 0x03001901 ||
+-	    h->selector_rgb != 0x29000000)
++
++	memcpy(want, h713_afbd_handoff_default, sizeof(want));
++	ret = of_property_read_u32_array(dev->of_node, "allwinner,handoff-state",
++					 want, H713_HANDOFF_WORDS);
++	if (ret && ret != -EINVAL)
++		return dev_err_probe(dev, ret,
++				     "bad allwinner,handoff-state\n");
++	if (h->rgb_ctrl_active != want[0] ||
++	    h->video_ctrl_idle != want[1] ||
++	    h->selector_rgb != want[2])
+ 		return dev_err_probe(dev, -ENODEV,
+-			"video handoff state is not the validated register configuration\n");
++			"video handoff state is not this board's: CTRL %08x (expected %08x), VIDEO_CTRL %08x (expected %08x), selector %08x (expected %08x)%s\n",
++			h->rgb_ctrl_active, want[0],
++			h->video_ctrl_idle, want[1],
++			h->selector_rgb, want[2],
++			ret ? " -- the node has no allwinner,handoff-state" : "");
+ 
+ 	ret = drmm_mode_config_init(drm);
+ 	if (ret)
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1872,6 +1872,20 @@
+ 			 */
+ 			memory-region = <&mips_framebuf>, <&viddec_info>;
+ 			memory-region-names = "hdmi-ring", "viddec-info";
++			/*
++			 * Optional: allwinner,handoff-state = <ctrl
++			 * video_ctrl selector>, the three register words the
++			 * boot loader must have left behind before this
++			 * driver takes over - AFBD_CTRL (0x140) with the RGB
++			 * channel live, AFBD_VIDEO_CTRL (0x010) with source 0
++			 * idle, and the LVDS selector (lvds + 0x06c) pointing
++			 * at RGB. Left out here, so the driver uses the words
++			 * measured on the HY310: 0x03001901, 0x03000010,
++			 * 0x29000000. A board whose boot loader or panel port
++			 * count hands over other words puts them in its own
++			 * board file; the driver still refuses to probe on a
++			 * mismatch, and names all six words when it does.
++			 */
+ 			status = "okay";
+ 		};
+ 
