@@ -56,7 +56,7 @@ from h713.install import (DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # n
                           translate, unpack_parts, write_package)
 from h713.log import console                                                # noqa: E402
 from h713.profiles import PROFILES                                          # noqa: E402
-from h713.stock import restore_stock                                        # noqa: E402
+from h713.stock import check_stock_gpt, restore_stock                       # noqa: E402
 from h713.util import duration, mib                                         # noqa: E402
 from h713.verify import verify_image, write_image                           # noqa: E402
 
@@ -246,6 +246,13 @@ def _restore_stock(args, disk):
     console.info("%s (%.0f MiB)" % (args.image, mib(os.path.getsize(args.image))))
     console.info("The Secure Storage (LBA %d..%d) stays untouched while doing it."
                  % (LOCK_FIRST, LOCK_LAST))
+    # doku/60 point 12: the container carries two partition tables and they contradict each
+    # other. Which one is written was never said; now it is, entry by entry -- and where the
+    # difference could cost a region that exists only on this device, nothing is written.
+    stop = check_stock_gpt(args.image, disk)
+    if stop:
+        console.error(stop)
+        return 2
     profile = getattr(args, "_profile", None)
     if args.no_write:
         restore_stock(disk, args.image, None, dry_run=True, data_dir=HERE, profile=profile)

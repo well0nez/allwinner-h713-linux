@@ -54,7 +54,12 @@ DUMP_ONLY = (0, 39, "e9b79974591406ce990b9d17b1dda4ed81bef3bdee0b8a843c236766a78
 # boot-resource.fex lines note the second copy in the container.
 # C-C froze "3f61d6c1…" with UDISK in the default preserve list; UDISK is zeroed again (Fable, C-C review);
 # was (0, 53, "09b955f14db23015d0e929180cdc5152f1e76062685ff3ef84955aafabfaee34") until stage 3 texts (D1):
-RESTORE_STOCK = (0, 53, "f066a21a87d82f33d297a2727079816bdd49fb6820fb11ed418b8f069298e4e4")
+# was (0, 53, "f066a21a87d82f33d297a2727079816bdd49fb6820fb11ed418b8f069298e4e4") until R1 item 2b:
+# `restore-stock` now compares the GPT it builds out of sys_partition.fex with the sunxi_gpt.fex
+# of the same container before it writes (doku/60 point 12). Six lines more -- one warning and
+# the five-row table of the four partitions the HY310 image's two tables spell differently
+# (media_data, Reserve0_a, Reserve0_b, UDISK). Exit code, the writes and their order unchanged.
+RESTORE_STOCK = (0, 59, "403480294280340d8fabbb04110ed5b06177cda6c04cf28d78c2ea9f2691c662")
 # was dd1faf56… (D1): re-frozen once more for the stage 3 texts of D2 (h713/imagewty.py: the five
 # IMAGEWTY reader lines are English now); exit code and 53 lines unchanged (Fable, 14.09.).
 #

@@ -242,10 +242,15 @@ def _render(ident: dict) -> list:
     add("info", "layout    %s, %d partitions, %s sectors"
         % (ident["kind"], len(layout["partitions"]),
            "?" if layout["disk_sectors"] is None else layout["disk_sectors"]))
-    for entry in layout["consistency"]:
-        add("warn", "sys_partition.fex and sunxi_gpt.fex disagree on %s: %s vs %s sectors "
+    if layout["consistency"]:
+        # One line, not one per partition: an image whose two tables drift apart drifts from
+        # the first one on, and the rest is arithmetic (doku/60 point 12). `restore-stock`
+        # prints the whole comparison, because there it decides what is written.
+        add("warn", "sunxi_gpt.fex and sys_partition.fex disagree on %d %s (from %s on) "
                     "-- the device follows sys_partition.fex"
-            % (entry["name"], entry["sys_partition_sectors"], entry["sunxi_gpt_sectors"]))
+            % (len(layout["consistency"]),
+               "partition" if len(layout["consistency"]) == 1 else "partitions",
+               layout["consistency"][0]["name"]))
     if ident["regions"]:
         add("info", "device-only %s" % ", ".join("%s@%d+%d" % (n, r[0], r[1])
                                                  for n, r in sorted(ident["regions"].items())))
