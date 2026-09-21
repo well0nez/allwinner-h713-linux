@@ -3,7 +3,7 @@
 # Armbians Weg (zram-Blockgeraet, ext4 darauf, /var/log dorthin, beim
 # Herunterfahren nach /var/log.hdd sichern) loest dasselbe Problem, ist aber
 # eine Konstruktion aus drei beweglichen Teilen. Wir loesen die Logs mit
-# Storage=volatile (10-hy310.conf) und benutzen zram nur fuer das, wofuer es
+# Storage=volatile (10-h713.conf) und benutzen zram nur fuer das, wofuer es
 # hier wirklich gebraucht wird: den tmpfs-Druck abfangen und das Geraet bei
 # knappem Speicher traege statt tot machen.
 #

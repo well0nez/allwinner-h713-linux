@@ -23,7 +23,7 @@ Beyond the tools in [docs/tools/](tools/):
 
 | Command | For |
 |---|---|
-| `hy310-logs volatile\|persistent\|status` | the journal lives in RAM by default, so a projector left running for weeks does not chew through eMMC write cycles. `persistent` bind-mounts `/var/log` onto `/data/log` when you need logs to survive a crash |
+| `h713-logs volatile\|persistent\|status` | the journal lives in RAM by default, so a projector left running for weeks does not chew through eMMC write cycles. `persistent` bind-mounts `/var/log` onto `/data/log` when you need logs to survive a crash. The old name `hy310-logs` is still there as a symlink and goes after `v0.9` |
 | `h713-fel` | put the running system into FEL from Linux ([details](tools/h713-fel.md)) |
 | `fw_printenv` / `fw_setenv` | read and change the U-Boot environment from Linux ([environment](uboot/environment.md)) |
 

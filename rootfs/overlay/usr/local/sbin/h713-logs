@@ -1,0 +1,160 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-logs -- the switch for troubleshooting (doku/107-plan-rootfs.md 4.3).
+#
+#   h713-logs volatile     journal in /run/log/journal (tmpfs). The default,
+#                          and the eMMC never sees the logs.
+#   h713-logs persistent   journal in /data/log, through a bind mount of
+#                          /var/log. Logs survive a restart.
+#   h713-logs status       what is in force right now, changing nothing.
+#
+# Storage=volatile is right for continuous use -- every write this eMMC is
+# spared is a write won (107 4) -- but after a crash exactly the last lines
+# are gone. /data is the place in the rootfs for everything that grows (107
+# 4.4), and the bind mount fixes the location of the logs in one spot. A
+# restart is due after every switch: journald reads its configuration when it
+# starts, and the bind mount cannot go up under a running journald.
+#
+# The board name is gone from this script and from the drop-in it writes (one
+# software, several boards). A device installed from v0.8-beta or earlier
+# carries the old 10-hy310.conf, which journald reads after this one and which
+# would therefore decide: `status` reports it, the two switches remove it.
+#
+# H713_LOGS_ROOT prefixes every path and is for TESTS ONLY (a dry run against
+# a scratch directory); on the device it is unset and nothing changes.
+set -eu
+
+ROOT=${H713_LOGS_ROOT:-}
+DROPIN=$ROOT/etc/systemd/journald.conf.d/10-h713.conf
+DROPIN_OLD=$ROOT/etc/systemd/journald.conf.d/10-hy310.conf
+MOUNT_UNIT=$ROOT/etc/systemd/system/var-log.mount
+DATA_LOG=$ROOT/data/log
+VAR_LOG=$ROOT/var/log
+RUN_LOG=$ROOT/run/log/journal
+
+usage() {
+	cat >&2 <<'EOF'
+Usage: h713-logs persistent|volatile|status
+  persistent  journal in /data/log (bind mount onto /var/log), Storage=persistent
+  volatile    journal in /run/log/journal (tmpfs), Storage=volatile  [default]
+  status      show the current state
+After persistent/volatile: `reboot`.
+EOF
+	exit 2
+}
+
+need_root() {
+	[ -n "$ROOT" ] || [ "$(id -u)" = 0 ] ||
+		{ echo "h713-logs: needs root" >&2; exit 1; }
+}
+
+systemctl_do() {
+	# A test root must not enable or reload anything on the test machine.
+	[ -z "$ROOT" ] ||
+		{ echo "h713-logs: test root -- not run: systemctl $*"; return 0; }
+	systemctl "$@"
+}
+
+drop_old_dropin() {
+	[ -e "$DROPIN_OLD" ] || return 0
+	rm -f "$DROPIN_OLD"
+	echo "h713-logs: removed the old drop-in $DROPIN_OLD"
+}
+
+write_dropin() {
+	# $1 = volatile|persistent, $2 = the RuntimeMaxUse or SystemMaxUse line
+	mkdir -p "$(dirname "$DROPIN")"
+	cat > "$DROPIN" <<EOF
+# Written by h713-logs ($(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)).
+# The image ships Storage=volatile; see doku/107-plan-rootfs.md 4.
+[Journal]
+Storage=$1
+$2
+EOF
+}
+
+write_mount_unit() {
+	mkdir -p "$(dirname "$MOUNT_UNIT")"
+	cat > "$MOUNT_UNIT" <<EOF
+# Written by h713-logs persistent. /var/log then lives on /data -- inside the
+# rootfs, but out of the system area, and gone again with one command.
+[Unit]
+Description=/var/log on $DATA_LOG (h713-logs persistent)
+Before=systemd-journald.service
+RequiresMountsFor=/data
+
+[Mount]
+What=$DATA_LOG
+Where=/var/log
+Type=none
+Options=bind
+
+[Install]
+WantedBy=local-fs.target
+EOF
+}
+
+state() {
+	# Old first: journald reads 10-hy310.conf last, so it decides.
+	for f in "$DROPIN_OLD" "$DROPIN"; do
+		[ -r "$f" ] || continue
+		grep -qi '^Storage=persistent' "$f" && echo persistent || echo volatile
+		return
+	done
+	echo volatile
+}
+
+case "${1:-}" in
+persistent)
+	need_root
+	mkdir -p "$DATA_LOG"
+	chmod 0755 "$ROOT/data"
+	# Take the existing logs along, -n, so the bind mount hides nothing.
+	if [ -d "$VAR_LOG" ] && ! mountpoint -q "$VAR_LOG" 2>/dev/null; then
+		cp -a -n "$VAR_LOG"/. "$DATA_LOG"/ 2>/dev/null || true
+	fi
+	write_mount_unit
+	# SystemMaxUse instead of RuntimeMaxUse: the journal now lies on a file
+	# system, not in tmpfs. 128 MiB is plenty for a troubleshooting session.
+	write_dropin persistent 'SystemMaxUse=128M'
+	drop_old_dropin
+	systemctl_do daemon-reload
+	systemctl_do enable var-log.mount >/dev/null
+	echo "h713-logs: persistent -- logs go to $DATA_LOG. Now: reboot"
+	;;
+volatile)
+	need_root
+	systemctl_do disable var-log.mount >/dev/null 2>&1 || true
+	rm -f "$MOUNT_UNIT"
+	write_dropin volatile 'RuntimeMaxUse=32M'
+	drop_old_dropin
+	systemctl_do daemon-reload
+	echo "h713-logs: volatile -- journal in /run/log/journal."
+	echo "h713-logs: $DATA_LOG stays where it is; remove it with: rm -rf $DATA_LOG"
+	echo "h713-logs: now: reboot"
+	;;
+status)
+	printf 'mode:         %s\n' "$(state)"
+	printf 'drop-in:      %s\n' "$DROPIN"
+	[ -e "$DROPIN_OLD" ] &&
+		printf 'old drop-in:  %s (goes on the next switch)\n' "$DROPIN_OLD"
+	if mountpoint -q "$VAR_LOG" 2>/dev/null; then
+		printf '/var/log:     bind mount active (%s)\n' "$DATA_LOG"
+	else
+		printf '/var/log:     no bind mount\n'
+	fi
+	if [ -d "$RUN_LOG" ]; then j=$RUN_LOG
+	elif [ -d "$VAR_LOG/journal" ]; then j=$VAR_LOG/journal
+	else j=
+	fi
+	if [ -n "$j" ]; then
+		printf 'journal now:  %s (%s)\n' "$j" "$(du -sh "$j" 2>/dev/null | cut -f1)"
+	else
+		printf 'journal now:  no directory found\n'
+	fi
+	;;
+*)
+	usage
+	;;
+esac

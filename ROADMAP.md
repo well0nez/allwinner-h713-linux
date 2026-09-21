@@ -45,7 +45,7 @@ Less exciting, and the part that decides whether anyone else can use this.
 | **Windows** | The installer is written to run there and refuses nothing, but nobody has ever run the Windows path. Until someone does, it is untested, not supported. |
 | **Reproducible builds** | Two builds of the same source differ: TF-A, U-Boot and the FIT embed a build time, the Wi-Fi module embeds kernel header paths. Fixable with `KBUILD_BUILD_TIMESTAMP`, `-ffile-prefix-map` and a fixed `mkimage -t`. |
 | **A second pair of eyes on the safety paths** | The fan-stall poweroff is armed (see STATUS). The gate, the recovery path and the installer's refusals deserve someone who did not write them trying to break them. |
-| **English tooling** | Done for everything a user sees: the PC tools since v0.6-beta, the device tools since v0.8-beta, `ctl` answers `ok`/`error`. Left over: `hy310-logs` is still a German script, `h713-focus` keeps `--trocken`/`--schritt` on purpose (a note in the field is written from them), and the hidden German aliases go out after `v0.9`. |
+| **English tooling** | Done for everything a user sees: the PC tools since v0.6-beta, the device tools since v0.8-beta, `ctl` answers `ok`/`error`. Left over: `h713-focus` keeps `--trocken`/`--schritt` on purpose (a note in the field is written from them), and the hidden German aliases go out after `v0.9`. |
 | **Pictures** | There is a video of the HDMI input running (linked from the README). Still photographs - the projected picture, the board, the UART pads - will follow. A recording of the install from FEL to first boot is still missing. |
 
 ## Upstreaming
