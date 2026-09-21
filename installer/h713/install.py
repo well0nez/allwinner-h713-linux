@@ -592,13 +592,11 @@ def full_dump_problem(dump_dir, file, sectors, log=console):
     or None (O1b follow-up a, doku/61).
 
     `dump` has asked `full_dump_state()` since O1b; `install`, which reads the device's own
-    files out of that very file, took it as it found it. An aborted dump is shorter than the
-    device, and what is missing is its tail -- where the vendor partitions sit. So the same
-    question, with the same sentence.
-
-    What the manifest cannot prove is not called incomplete: a dump of v0.5-beta, or a clone
-    copied here by hand, has no row of ours and is still exactly as long as this device. That
-    is said and used; only a file that is demonstrably not a whole clone stops the run.
+    files out of that very file, took it as it found it -- and an aborted dump is shorter than
+    the device, so what is missing is its tail, where the vendor partitions sit. Same question,
+    same sentence. What the manifest cannot prove is not called incomplete: a dump of v0.5-beta
+    or a clone copied here by hand has no row of ours and is still exactly as long as this
+    device, and that is said and read; only a demonstrably short file stops the run.
     """
     from .dump import full_dump_state, manifest_row   # late: dump.py imports this module
     _kept, why = full_dump_state(dump_dir, file, sectors)
@@ -682,10 +680,9 @@ def ask(text, default=None):
 
 
 # README.md carries the beta warning, the installer did not (doku/61 A.2, plan 110 §9). Three
-# lines, said once, before the dump and before anything is written. Only on a stock device: on
-# our own layout there is no Android left to lose and the way back is the dump of the first
-# install (N2), and a test image says the same thing in its own words (test_image_allowed), so
-# it is never said twice.
+# lines, said once, before the dump and before anything is written -- and only on a stock
+# device: our own layout has no Android left to lose (N2), and a test image says the same in
+# its own words (test_image_allowed), so it is never said twice.
 BETA_WARNING = (
     "Beta: installing overwrites Android on this device -- it does not come back by itself.",
     "The full dump taken in the next step is the way back; no download replaces it.",

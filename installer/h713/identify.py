@@ -163,10 +163,9 @@ def _regions_of(layout: dict, kind: str, sources=None) -> dict:
     secure-storage is fixed for every H713; private and Reserve0* come from the table of this very
     device, never from the HY310 constants -- the HY300 Pro has one Reserve0 elsewhere (issue #1).
 
-    The picking-out itself is `dump.unique_regions()`, the same call the dump makes, so the two
-    tools cannot judge one table differently (O1b follow-up b). That includes the fallback: a
-    stock table that names neither region falls back to the HY310's LBAs here as well, and
-    `sources` records for which names -- the report says it, because it is a guess.
+    The picking-out is `dump.unique_regions()`, the call the dump makes, fallback included, so
+    the two tools cannot judge one table differently (O1b follow-up b). `sources` records which
+    names the fallback had to supply -- the report says so, because it is a guess.
     """
     return unique_regions(layout["partitions"], fallback=kind != "ours", sources=sources)
 

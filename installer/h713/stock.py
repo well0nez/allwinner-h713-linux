@@ -132,12 +132,6 @@ def _preserved_by(name, patterns):
 
 
 # ----------------------------------------------------- the two tables of one container (doku/60)
-# An IMAGEWTY container carries a finished partition table (sunxi_gpt.fex) AND the list the table
-# is computed from (sys_partition.fex), and in the HY310 image the two contradict each other:
-# media_data is 256 MiB there and 272 MiB here, so everything behind it lies 16 MiB apart. The
-# device that came out of the factory agrees with sys_partition.fex (doku/60, the dump of
-# 10.09.2026), and that is the one restore_stock() builds its GPT from. Until now it preferred it
-# silently; now it says where the two differ, which side is written and why.
 
 SUNXI_GPT = "sunxi_gpt.fex"
 
@@ -145,13 +139,16 @@ SUNXI_GPT = "sunxi_gpt.fex"
 def stock_gpt_differences(img, partitions, disk_sectors):
     """Entry by entry: the GPT this restore would write against the container's own sunxi_gpt.fex.
 
+    A container carries a finished partition table AND the list it is computed from, and in the
+    HY310 image the two contradict each other: media_data is 256 MiB there and 272 MiB here, so
+    everything behind it lies 16 MiB apart (doku/60). The device that came out of the factory
+    agrees with sys_partition.fex, and that is what restore_stock() builds its GPT from.
+
     Returns [(name, lba, sectors, their lba, their sectors)] for every partition the two spell
     differently, in the order of sys_partition.fex; the last two fields are None for a name only
-    sys_partition.fex has. Empty when the container carries no sunxi_gpt.fex -- then there is
-    nothing to compare and nothing to say.
-
-    A partition declared with size 0 (UDISK) runs to the last usable sector, exactly as
-    build_gpt() writes it; without that the last row of every image would look like a difference.
+    sys_partition.fex has. Empty when the container carries no sunxi_gpt.fex. A partition
+    declared with size 0 (UDISK) runs to the last usable sector, exactly as build_gpt() writes
+    it; without that rule the last row of every image would look like a difference.
     """
     source = img.file(SUNXI_GPT)
     if source is None:
@@ -168,42 +165,30 @@ def stock_gpt_differences(img, partitions, disk_sectors):
     return rows
 
 
-def _is_unique_region(name):
-    """Is this one of the regions the installer treats as device-unique (dump.BY_NAME)?"""
-    return name.lower() in [wanted.lower() for wanted in BY_NAME]
-
-
 def covers_the_lock(partitions, disk_sectors):
     """Partitions of this image that would reach into the secure storage at LBA 12288..14335.
-
-    The stock table starts at 73728 and never does; a container that did would take the one
-    thing no firmware image brings back with it, so it is asked before anything is written.
-    """
-    out = []
-    for name, lba, sectors, _source in partitions:
-        end = lba + (sectors or disk_sectors - 33 - lba) - 1
-        if lba <= LOCK_LAST and end >= LOCK_FIRST:
-            out.append(name)
-    return out
+    The stock table starts at 73728 and never does; one that did would take the one thing no
+    firmware image brings back, so it is asked before anything is written."""
+    return [name for name, lba, sectors, _source in partitions
+            if lba <= LOCK_LAST and lba + (sectors or disk_sectors - 33 - lba) - 1 >= LOCK_FIRST]
 
 
 def moved_unique_regions(rows, device_regions):
     """The rows of stock_gpt_differences() that are more than information.
 
-    Everything the two tables spell differently is a note -- except a region that exists only on
-    this device (`private`, `Reserve0*`): if the table we are about to write puts one at an LBA
-    the device itself does not use, we would relabel bytes that no image can bring back. Returns
-    [(name, LBA on the device, LBA we would write)].
-
-    A region the device does not carry at all settles nothing and destroys nothing: our own
-    layout has neither `private` nor `Reserve0*`, and there the new table creates them.
+    Every difference is a note -- except a region that exists only on this device (dump.BY_NAME:
+    `private`, `Reserve0*`): if the table we are about to write puts one at an LBA the device
+    itself does not use, we would relabel bytes no image brings back. A region the device does
+    not carry at all settles nothing and destroys nothing -- our own layout has neither, and
+    there the new table creates them. Returns [(name, LBA on the device, LBA we would write)].
     """
+    unique = set(name.lower() for name in BY_NAME)
     out = []
     for name, lba, _sectors, their_lba, _their_sectors in rows:
-        if their_lba is None or their_lba == lba or not _is_unique_region(name):
-            continue
         here = (device_regions or {}).get(name)
-        if here is not None and here[0] != lba:
+        if their_lba in (None, lba) or name.lower() not in unique or here is None:
+            continue
+        if here[0] != lba:
             out.append((name, here[0], lba))
     return out
 
@@ -248,11 +233,9 @@ def check_stock_gpt(image_file, disk, log=console, device_regions=None):
         device_regions = regions_from_gpt(disk)
     moved = moved_unique_regions(rows, device_regions)
     if moved:
-        return ("nothing is written: %s exist%s only on this device, and this image's table "
-                "would put them where the device does not (%s)"
-                % (", ".join(name for name, _here, _there in moved),
-                   "s" if len(moved) == 1 else "",
-                   ", ".join("%s LBA %d, not %d" % row for row in moved)))
+        return ("nothing is written: this image's table would move %s, and a region that exists "
+                "only on this device is not moved by a table out of a container"
+                % ", ".join("%s from LBA %d to %d" % row for row in moved))
     return None
 
 

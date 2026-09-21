@@ -106,10 +106,8 @@ def unique_regions(partitions, fallback=False, sources=None):
     HY310's own LBAs in for that one group (O1b item 2). `sources`, if a dict is handed in,
     is filled with where each region's position came from: "fixed", "gpt", "hy310-constant".
 
-    This is the one place that answers "which regions exist only on this device". `dump`
-    asked it through regions_from_gpt() and identify() had its own copy without the
-    fallback, so on a stock table that names neither region the two judged differently
-    (O1b follow-up b, doku/61).
+    The one place that answers "which regions exist only on this device": identify() had a
+    copy without the fallback, so the two tools judged one table differently (O1b follow-up b).
     """
     out = collections.OrderedDict()
     said = {} if sources is None else sources
@@ -408,13 +406,9 @@ def verify_dump(disk, file, samples=8):
 
 
 def manifest_row(dump_dir, name):
-    """The MANIFEST.json row of one region of a dump directory, or None.
-
-    None also means "this directory keeps no record of ours": a dump of v0.5-beta writes German
-    keys, and a file copied in by hand brings no manifest at all. Callers say what they make of
-    that -- `full_dump_state()` replaces such a clone, `install` reads it when it is exactly as
-    long as the device (install.full_dump_problem).
-    """
+    """The MANIFEST.json row of one region of a dump directory, or None -- which also means
+    "this directory keeps no record of ours": a dump of v0.5-beta writes German keys, a file
+    copied in by hand brings no manifest at all. What that is worth is the caller's call."""
     try:
         with open(os.path.join(dump_dir, "MANIFEST.json"), "rb") as f:
             rows = json.load(f).get("regions") or []
