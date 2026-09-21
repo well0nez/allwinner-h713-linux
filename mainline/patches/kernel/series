@@ -216,6 +216,10 @@
 #    window of 0136g must agree with the ring or no timing is reported; the
 #    1024x768 shear of 21.09. was a window node the firmware did not commit)
 0136j-media-h713-hdmirx-withhold-a-timing-the-firmware-s-window-contradicts.patch
+#   (T2 -- 0136k: the source cap follows the firmware's table, 4096x2160 and
+#    297 MHz, because the ring rule of 0136f is what protects the plane;
+#    interlaced stays refused)
+0136k-media-h713-hdmirx-the-source-cap-is-what-the-firmware-locks.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

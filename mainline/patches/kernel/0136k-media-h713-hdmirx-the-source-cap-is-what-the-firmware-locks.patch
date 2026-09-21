@@ -1,0 +1,96 @@
+media: h713-hdmirx: the source cap is what the firmware locks, not the panel
+
+QUERY_DV_TIMINGS reports the SOURCE; G_FMT reports the ring (0136f). The cap
+that says which sources may be reported was still the panel, 1920x1080 and
+148.5 MHz, and that refused a source the rest of the chain handles.
+
+Measured 21.09.2026 with a 3840x2160p30 source: the firmware locked it (its
+own table row 126, signal id 0x0002008f, 4400x2250 at 30 Hz), INCAP read
+active 3840x2160 and total 4400x2250, and the rowbyte still read 0x78 -
+1920 bytes per luma line. That is the firmware scaling the source down inside
+its capture path (T1 4b, VIncap_ConfigDownScaler), and 0136f's ring rule
+turns it into exactly what it is: pitch 1920 is below ALIGN(3840, 16), so the
+firmware scales, the ring is 1920x1080, and the picture scaler's window
+confirms it to the pixel. Nothing downstream was in danger. Only the cap
+refused, with -ERANGE, and h713-tv put the console up over a picture the
+plane could have taken.
+
+So the cap follows the table: 4096x2160 and 297 MHz are the largest enabled
+records the firmware carries, and what the firmware can lock is what this
+driver may report. The plane is protected by the ring rule, which is where
+that protection belongs; the cap was never the thing that kept a 3840-wide
+picture off a 1920-wide plane.
+
+Interlaced stays refused. Since 0136h the reported scan type is the matched
+table row's, so a source that lands on one of the fifteen interlaced records
+- 1920x540i at 50 Hz is row 9, which a 1080i50 source matches when the
+receiver reports fields - is refused on the row, not only on the firmware
+record's own flag. How the capture lays fields out in the ring has still
+never been looked at, and a timing this driver cannot describe is better
+refused than described wrongly.
+
+Follow-up to 0136j. Host model in umbau/work/T2/model: the 4K30 case now
+reports 3840x2160p30 at 297 MHz with a 1920x1080 ring, and the interlaced
+row is still refused.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -2925,32 +2925,37 @@
+ /*
+  * What QUERY_DV_TIMINGS may answer and S_DV_TIMINGS may accept.
+  *
+- * The upper bound is the panel, which is also the largest source that has
+- * gone through the whole chain (1920x1080p60, doku/nachtlog/E-v4l2.md, E4).
+- * Downstream cannot show more: the plane does not scale down
+- * (sun50i-h713-afbd, atomic_check), and the two sources above 1080 lines
+- * that were tried never reached the ring (E3: 1600x1200 and 1920x1200 --
+- * INCAP kept the old height and the output enable dropped). The lower bound
+- * is the smallest mode in the EDID this driver presents: VIC 1, 640x480p60,
+- * 25.175 MHz (analyse/arisc/hy310-edid.bin). Between the bounds only
+- * 1280x720p60 has actually been captured so far; the range is what is
+- * accepted, not a list of what is measured.
++ * This is the SOURCE, and the upper bound is therefore what the firmware can
++ * lock, not what the panel can show: the largest enabled records of its own
++ * table are 4096x2160 at 297 MHz, and the firmware down-scales such a source
++ * into a ring the panel can take inside its capture path (T1 4b,
++ * VIncap_ConfigDownScaler). Measured 21.09.2026: a 3840x2160p30 source gave
++ * INCAP active 3840x2160, total 4400x2250 and a rowbyte that still read 0x78,
++ * so the ring stayed 1920 wide and only QUERY_DV_TIMINGS refused it (-ERANGE,
++ * "not readable", console). What protects the plane is the ring rule of 0136f
++ * -- pitch 1920 below ALIGN(3840, 16) means the firmware scales and the ring
++ * is 1920x1080 -- not this cap, and a cap that refuses a source the ring
++ * handles only hides a working picture. The lower bound is the smallest mode
++ * in the EDID this driver presents: VIC 1, 640x480p60, 25.175 MHz
++ * (analyse/arisc/hy310-edid.bin).
+  *
+- * Interlaced is not accepted. How the capture lays fields out in the ring
+- * has never been looked at, and a timing this driver cannot describe is
+- * better refused (-ERANGE) than described wrongly. CUSTOM, because a source
+- * with a non-standard blanking is reported as measured rather than snapped
+- * to the nearest standard.
++ * Interlaced is not accepted. How the capture lays fields out in the ring has
++ * never been looked at, and a timing this driver cannot describe is better
++ * refused (-ERANGE) than described wrongly. Since 0136h that refusal also
++ * catches a source whose matched table row is interlaced, not only one whose
++ * firmware record says so -- the reported scan type is the row's. CUSTOM,
++ * because a source with a non-standard blanking is reported as measured
++ * rather than snapped to the nearest standard.
+  */
+ static const struct v4l2_dv_timings_cap h713_hdmirx_timings_cap = {
+ 	.type = V4L2_DV_BT_656_1120,
+ 	.bt = {
+ 		.min_width	= 640,
+-		.max_width	= H713_HDMIRX_WIDTH,
++		.max_width	= 4096,
+ 		.min_height	= 480,
+-		.max_height	= H713_HDMIRX_HEIGHT,
++		.max_height	= 2160,
+ 		.min_pixelclock	= 25175000,
+-		.max_pixelclock	= 148500000,
++		.max_pixelclock	= 297000000,
+ 		.standards	= V4L2_DV_BT_STD_CEA861 | V4L2_DV_BT_STD_DMT,
+ 		.capabilities	= V4L2_DV_BT_CAP_PROGRESSIVE |
+ 				  V4L2_DV_BT_CAP_CUSTOM,
