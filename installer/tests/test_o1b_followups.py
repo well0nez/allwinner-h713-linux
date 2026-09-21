@@ -194,6 +194,51 @@ class OneHelperForBothTools(unittest.TestCase):
         self.assertEqual((rows["reserve0"]["lba"], rows["reserve0"]["source"]),
                          (ident["regions"]["Reserve0"][0], "gpt"))
 
+    def _locked_by_restore_stock(self, partitions):
+        """What `restore-stock` locks against writing on a disk with this table. The run stops
+        at the missing image (exit 5), well after the lock decision in _work()."""
+        import importlib.machinery
+        import importlib.util
+        tool_path = os.path.join(support.TOOLS, "h713-install")
+        support.need([tool_path])
+        spec = importlib.util.spec_from_loader(
+            "h713_install_lock", importlib.machinery.SourceFileLoader("h713_install_lock",
+                                                                      tool_path))
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        tmp = support.workdir(self)
+        path = fakedisk.make_moved_stock_disk(os.path.join(tmp, "emmc.img"), partitions)
+        opened, real = [], tool.Disk
+
+        def catch(where, writable=False, exclusive=None):
+            disk = real(where, writable=writable, exclusive=exclusive)
+            opened.append(disk)
+            return disk
+
+        tool.Disk = catch
+        try:
+            args = argparse.Namespace(command="restore-stock", no_write=True,
+                                      skip_identify=False, image=os.path.join(tmp, "none.img"),
+                                      dump_dir=os.path.join(tmp, "backup"), _dump_given=False,
+                                      size=None)
+            code, text = _capture(lambda: tool._work(args, path))
+        finally:
+            tool.Disk = real
+        self.assertEqual(code, 5, text)               # got past the lock, stopped at the image
+        return opened[0].locked
+
+    def test_a_private_the_table_really_names_is_locked_against_writing(self):
+        locked = self._locked_by_restore_stock(fakedisk.MOVED_PARTS)
+        lba, sectors = dict((n, (l, s)) for n, l, s in fakedisk.MOVED_PARTS)["private"]
+        self.assertEqual(locked, [(lba, lba + sectors - 1, "private")])
+
+    def test_a_guessed_private_is_not_locked_against_writing(self):
+        """The fallback answers "which regions exist only on this device" for the dump, where a
+        guess is better than losing the region. It must not answer "what may not be written":
+        that would refuse a legitimate write at the HY310's LBAs on somebody else's board."""
+        locked = self._locked_by_restore_stock(NO_PRIVATE)
+        self.assertEqual(locked, [])
+
     def test_our_own_layout_guesses_nothing_on_either_side(self):
         path = fakedisk.make_our_layout_disk(
             os.path.join(support.workdir(self), "emmc.img"),

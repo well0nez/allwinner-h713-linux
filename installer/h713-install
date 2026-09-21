@@ -432,9 +432,12 @@ def _work(args, path):
             args._profile = PROFILES.get(ident["profile"]) if ident.get("profile") else None
             project = _declared_project(ident)
             args._env_keys = {"h713_project": project} if project else {}
-            if args.command == "restore-stock" and ident["regions"].get("private"):
+            if args.command == "restore-stock" and ident["region_sources"].get("private") == "gpt":
                 # The vendor image never brings 'private'; the restore promises not to touch
-                # it, and the lock makes that promise hard (stage 2 C8).
+                # it, and the lock makes that promise hard (stage 2 C8). Only a `private` this
+                # device's own table really names is locked: since R1 item 3b identify() falls
+                # back to the HY310's LBAs where a table names none, as the dump does, and a
+                # guessed LBA must not refuse a write that is legitimate on that board.
                 disk.lock_regions({"private": ident["regions"]["private"]})
         else:
             code = _test_image_refused(args, None)
