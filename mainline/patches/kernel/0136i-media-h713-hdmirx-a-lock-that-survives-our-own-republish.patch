@@ -42,6 +42,15 @@ as a table of INCAP words and record kinds) in umbau/work/T2/model.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
+Amended 21.09.2026 (HY310, dev19): the SignalChange callback no longer
+forgets the lock. The firmware raises SignalChange as its answer to OUR
+descriptor republish (the VideoDec event, K3v2), so forgetting there threw the
+genuine lock away in the very moment the own record replaced it, and the
+re-derivation then measured the panel's 60 Hz on the flip pointers: 720p50
+became "720p60", 1080p24 "1080p25", 576p50 fell to -ENOLCK. A real source
+change still ends the lock through INCAP (active, total or rowbyte move),
+through HotPlug, and through "no signal".
+
 diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 --- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
@@ -81,15 +90,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  /*
   * MipsHalCallback_SignalChange. Measured behaviour (doku/nachtlog/K4): the
   * firmware fires this by itself both when the signal goes away and when it
-@@ -1764,6 +1786,7 @@
- 		rx->sig_phys = args[1];
- 	rx->signal_count++;
- 	spin_unlock_irqrestore(&rx->event_lock, flags);
-+	h713_hdmirx_forget_lock(rx);
- 
- 	dev_dbg(rx->dev, "SignalChange source=%u info=%#010x nargs=%u\n",
- 		nargs ? args[0] : 0, nargs > 1 ? args[1] : 0, nargs);
-@@ -1796,6 +1819,7 @@
+@@ -1796,6 +1818,7 @@
  		       rx->hotplug_nargs * sizeof(*args));
  	rx->hotplug_count++;
  	spin_unlock_irqrestore(&rx->event_lock, flags);
@@ -97,7 +98,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	dev_dbg(rx->dev, "HdmiHotPlugByPort port=%u\n", nargs ? args[0] : 0);
  
-@@ -3355,16 +3379,22 @@
+@@ -3355,16 +3378,22 @@
  
  	h713_hdmirx_watch_ring(rx, &flips, H713_RING_WATCH_FLIPS,
  			       H713_RING_WATCH_MS);
@@ -123,7 +124,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	/*
  	 * Whose record is this? After a resolution change the display side
-@@ -3417,6 +3447,30 @@
+@@ -3417,6 +3446,30 @@
  
  	h713_hdmirx_ring_geometry(rx, width, height, rowbyte, ring);
  
@@ -154,7 +155,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	if (own_record)
  		have_sig = false;
  
-@@ -3449,6 +3503,15 @@
+@@ -3449,6 +3502,15 @@
  	if (!v4l2_valid_dv_timings(t, &h713_hdmirx_timings_cap, NULL, NULL))
  		return -ERANGE;
  
