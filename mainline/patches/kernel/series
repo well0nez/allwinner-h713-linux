@@ -212,6 +212,10 @@
 #    own descriptor republish while INCAP still reads the same three words;
 #    576p50 and a CVT 720p stuck on "change in flight" without it, 21.09.)
 0136i-media-h713-hdmirx-a-lock-that-survives-our-own-republish.patch
+#   (T2 -- 0136j: where the firmware does not scale, the DE picture-scaler
+#    window of 0136g must agree with the ring or no timing is reported; the
+#    1024x768 shear of 21.09. was a window node the firmware did not commit)
+0136j-media-h713-hdmirx-withhold-a-timing-the-firmware-s-window-contradicts.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

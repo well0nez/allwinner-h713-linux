@@ -1,0 +1,123 @@
+media: h713-hdmirx: withhold a timing the firmware's window contradicts
+
+A 1024x768 source on 21.09.2026 gave a picture that was sheared, not a
+console: INCAP active read 1024x768, total 1344x806 and rowbyte 0x40, which
+is a clean lock on the firmware's own table row 49, while the DE picture
+scaler's input window (0x05180034) still read 1364x768 from the 1366x768 mode
+before it. The driver reported the timing, h713-tv put the ring on the plane,
+and what the panel was fed from was still the old window.
+
+T1 found why: the window manager commits its five nodes one at a time
+(sub_8B1A8220), each gated on its own bypass byte at node+4, so the capture
+node can be written while the picture node is skipped. It is not a table miss
+and not a lock failure - the firmware locked - it is a window node that was
+not re-committed, and nothing on the ARM side can make it commit.
+
+What the ARM side can do is not report a timing while the two disagree. Where
+the firmware does not scale in its capture path - pitch >= ALIGN(active
+width, 16), which is every mode on the HY310 - the ring is INCAP active, and
+the scaler's input window has to name the same picture: the width to within
+one rowbyte unit, the height to within two lines. Otherwise QUERY_DV_TIMINGS
+answers -ENOLCK and one ratelimited line says what was seen, "firmware window
+stale: scaler 1364x768, ring 1024x768". The console then stays instead of a
+sheared picture, and h713-tv's 500 ms re-ask (0136f) catches the moment the
+firmware does write the node.
+
+Three limits, all deliberate. Without allwinner,scaler (0136g) in the tree
+there is no veto and the behaviour is exactly today's. Where the firmware
+does scale - a panel smaller than the source, the HY300 Pro - the same
+register is already the ring's own cross-check in
+h713_hdmirx_ring_geometry(), and that is left as K3v2 wrote it. And an empty
+window is not a stale window: it means the firmware has committed no picture
+node in this boot at all, and vetoing on that would hold the console up
+through the first lock of every boot.
+
+Follow-up to 0136i; 0136f and 0136g stay byte-identical. Host model (the veto
+as a table of ring geometries against window words, the 1024x768 case among
+them) in umbau/work/T2/model.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -232,6 +232,14 @@
+  */
+ #define H713_SCALER_IN_WIN	0x34
+ 
++/*
++ * How far that window may sit from the ring before the panel is being fed from
++ * something else: one rowbyte unit wide, two lines high -- the same two lines
++ * the ring's own cross-check allows. See h713_hdmirx_window_agrees().
++ */
++#define H713_SCALER_WIN_TOL_W	16
++#define H713_SCALER_WIN_TOL_H	2
++
+ /*
+  * The display firmware's own timing table -- the list the device locks on, and
+  * the only list it locks on: the firmware's match is all-or-nothing and stops
+@@ -3332,6 +3340,48 @@
+ 			     how);
+ }
+ 
++/*
++ * Does the firmware's own display window still describe the ring?
++ *
++ * It commits its five window nodes one at a time and may write the capture
++ * node while skipping the picture node (T1 4b/4c, the per-node bypass byte at
++ * node+4). Measured 21.09.2026: a 1024x768 source gave INCAP active 1024x768
++ * and rowbyte 0x40, a clean lock on the firmware's own row 49 -- and the DE
++ * picture scaler's input window (+0x34) still read 1364x768 from the mode
++ * before it. The wall sheared. A timing reported in that state is a picture
++ * nobody can use, so it is withheld: the console stays until the firmware
++ * writes the node, and h713-tv's 500 ms re-ask catches that moment.
++ *
++ * Only where the firmware does not scale in its capture path (the HY310, every
++ * mode) and only with allwinner,scaler in the tree; where it does scale the
++ * window is the ring's own cross-check in h713_hdmirx_ring_geometry() and is
++ * not second-guessed here. An empty window is not a stale one -- the firmware
++ * has then committed no picture node in this boot at all, and vetoing on that
++ * would hold the console up through the first lock of every boot.
++ */
++static bool h713_hdmirx_window_agrees(struct h713_hdmirx *rx,
++				      const struct h713_hdmirx_ring_geometry *ring)
++{
++	unsigned int w, h;
++	u32 win;
++
++	if (!rx->scaler || regmap_read(rx->scaler, H713_SCALER_IN_WIN, &win))
++		return true;
++	w = win >> 16;
++	h = win & 0xffff;
++	if (!w || !h)
++		return true;
++	if (h713_hdmirx_absdiff(w, ring->width) <= H713_SCALER_WIN_TOL_W &&
++	    h713_hdmirx_absdiff(h, ring->height) <= H713_SCALER_WIN_TOL_H)
++		return true;
++
++	dev_warn_ratelimited(rx->dev,
++			     "firmware window stale: scaler %ux%u, ring %ux%u\n",
++			     w, h, ring->width, ring->height);
++
++	return false;
++}
++
+ /*
+  * What the source is sending, from the three things the ARM can see:
+  *
+@@ -3447,6 +3497,15 @@
+ 
+ 	h713_hdmirx_ring_geometry(rx, width, height, rowbyte, ring);
+ 
++	/*
++	 * Where the ring IS the source -- the condition ring_geometry() took
++	 * its "source" branch on -- the firmware's picture window has to agree
++	 * with it before any of this is worth reporting.
++	 */
++	if (ring->pitch >= ALIGN(width, H713_INCAP_ROWBYTE_UNIT) &&
++	    !h713_hdmirx_window_agrees(rx, ring))
++		return -ENOLCK;
++
+ 	/*
+ 	 * A lock that survives our own republish. The record at sig_phys is
+ 	 * the source's only until the display side republishes the VidDec
