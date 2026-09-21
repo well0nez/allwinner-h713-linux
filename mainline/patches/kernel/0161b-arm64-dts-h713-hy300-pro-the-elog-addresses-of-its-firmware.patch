@@ -1,0 +1,35 @@
+arm64: dts: h713: the HY300 Pro's display firmware elog addresses
+
+Its image keeps the event log 0xC00 below the HY310's: the mode-1 ring at
+0x4b27219c and the control block at 0x4b48b200, whose pointer group is the
+0x4b48b6a4.. that this board's own elog_mode1_ring100k_write writes (buffer
+base 0x8b27219c, write 0x8b48b6a8, read 0x8b48b6a4, overflow 0x8b48b6a1,
+enable 0x8b48b6ac in MIPS view; analysis A12, 18.09.2026,
+umbau/reviews/A12.md). The HY310's are 0x8b272d9c and 0x8b48c2a8/a4/a1/ac.
+
+cpu_comm reads those two addresses (patch 0092a); on this board it has been
+reading the HY310's and dumping an empty ring - "0 lines" - which reads like
+a dead coprocessor and is not one.
+
+Tested on the HY310: no change. The property is in this board's file only,
+and cpu_comm falls back to its built-in HY310 defaults when it is absent.
+The HY300 Pro's owner boots the next TEST image with it.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -34,3 +34,14 @@
+ &backlight {
+ 	status = "disabled";
+ };
++
++/*
++ * This board's display firmware keeps its event log 0xC00 below the HY310's:
++ * the mode-1 ring at 0x4b27219c and the control block at 0x4b48b200, whose
++ * pointer group is the 0x4b48b6a4.. that its own elog_mode1_ring100k_write
++ * uses (analysis A12, 18.09.2026). Without this, cpu_comm reads the HY310's
++ * addresses, finds DRAM that holds nothing, and prints an empty dump.
++ */
++&cpu_comm {
++	allwinner,elog = <0x4b48b200 0x4b27219c>;
++};

@@ -123,6 +123,9 @@
 0096a-soc-sunxi-add-the-h713-tvcap-driver-and-hold-the-domains-from-boot.patch
 0097-soc-sunxi-cpu-comm-fix-the-call-argument-abi-and-the-callwq-pointer.patch
 0092-soc-sunxi-h713-cpu-comm-kernel-api.patch
+#   (follow-up well0nez, R2 -- 0092 stays byte-identical; the display
+#    firmware's two elog addresses are board data, not driver constants)
+0092a-soc-sunxi-cpu-comm-the-elog-addresses-come-from-the-board.patch
 0093-drm-h713-afbd-nv16-hdmi-ring.patch
 #   (follow-up well0nez, K2 -- 0093 stays byte-identical; the vsync enable
 #    is audited against the driver's own bookkeeping and set again when
@@ -266,3 +269,6 @@
 #     only (A14, 19.09.); the dtsi's pwm-backlight (PWM2/PB4) reaches nothing
 #     there and is disabled so systemd-backlight has nothing to write to.
 0161a-arm64-dts-h713-hy300-pro-no-backlight-device.patch
+#     0161b: its display firmware's elog sits 0xC00 lower than the HY310's
+#     (A12); without the two addresses cpu_comm dumps an empty ring, R2
+0161b-arm64-dts-h713-hy300-pro-the-elog-addresses-of-its-firmware.patch

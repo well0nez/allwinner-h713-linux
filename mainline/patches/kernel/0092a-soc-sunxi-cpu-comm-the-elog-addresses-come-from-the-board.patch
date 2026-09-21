@@ -1,0 +1,163 @@
+soc: sunxi: cpu_comm: the display firmware's elog addresses come from the board
+
+cpu_comm reads the display coprocessor's event log at two ARM-physical
+addresses that are compiled in: the control block at 0x4B48BE00 (mode flag at
++0x9B, mode-2 enable at +0x4AD, mode-2 write pointer at +0x4B8), mapped twice
+in cpu_comm_init() - once before the MIPS is let go, once after the bring-up -
+and the mode-1 ring at 0x4B272D9C, which the second block dumps into the
+kernel log.
+
+Both are facts of the firmware image a board ships, not of the chip. The
+HY300 Pro's image keeps the same structure 0xC00 lower: ring 0x4B27219C,
+pointers 0x4B48B6A4.. (analysis A12, 18.09.2026, umbau/reviews/A12.md, out of
+its own elog_mode1_ring100k_write). On that board cpu_comm reads DRAM that
+holds nothing and prints an empty dump - "0 lines" - which reads like a dead
+coprocessor and is not one.
+
+So the two addresses become what they are, board data:
+
+  - module parameters elog_ctl= and elog_ring=, so a board can be tried from
+    the command line before anything is written down;
+  - failing those, the optional device-tree property
+    allwinner,elog = <ctl ring> on cpu-comm@3003000;
+  - failing those, the HY310's values, as before.
+
+One pr_info at probe names both addresses and where they came from.
+
+Nothing else in this driver is touched - not the message path, not the
+endpoint table, not the bring-up. Two derived quantities follow the ring
+address instead of being literals: the ring is mapped from the page it starts
+in (elog_ring & ~0xFFF) and scanned from its offset in that page for the same
+0x1CC24 bytes as before, never past the mapped window. With the default that
+is ioremap(0x4B272000, 0x20000), pos 0x0D9C, end 0x1D9C0 - the three numbers
+that stood there.
+
+The mode-2 buffer at 0x4B28BD9C stays a literal on purpose: it is a third
+address, and it is only read when the firmware runs in mode 2, which it never
+does - this driver deliberately leaves it in mode 1 and the MIPS ignores a
+switch. The comment says it is the HY310's.
+
+Tested on the HY310: byte-identical behaviour. Neither parameter is given and
+its device tree has no allwinner,elog, so both addresses are the defaults and
+every read is the read it was; the one new line says so.
+
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -67,6 +67,43 @@
+ MODULE_PARM_DESC(force_init,
+ 		 "reinitialise shared memory even if a running MIPS is using it (destructive)");
+ 
++/*
++ * The display firmware's event log sits at two ARM-physical addresses that
++ * belong to the firmware image, not to the chip: its control block and its
++ * mode-1 ring. The defaults are the HY310's (doku/63), the HY300 Pro's are
++ * 0xC00 lower (A12); a board says its own two in "allwinner,elog =
++ * <ctl ring>", or on the command line, which wins.
++ */
++static uint elog_ctl_param;
++static uint elog_ring_param;
++module_param_named(elog_ctl, elog_ctl_param, uint, 0444);
++MODULE_PARM_DESC(elog_ctl, "elog control block, ARM-physical (0: device tree, else 0x4B48BE00)");
++module_param_named(elog_ring, elog_ring_param, uint, 0444);
++MODULE_PARM_DESC(elog_ring, "elog mode-1 ring, ARM-physical (0: device tree, else 0x4B272D9C)");
++
++static u32 elog_ctl_addr = 0x4B48BE00;
++static u32 elog_ring_addr = 0x4B272D9C;
++
++static void cpu_comm_elog_resolve(struct device_node *np)
++{
++	const char *src = "built-in default";
++	u32 dt[2];
++
++	if (!of_property_read_u32_array(np, "allwinner,elog", dt, 2)) {
++		elog_ctl_addr = dt[0];
++		elog_ring_addr = dt[1];
++		src = "device tree";
++	}
++	if (elog_ctl_param)
++		elog_ctl_addr = elog_ctl_param;
++	if (elog_ring_param)
++		elog_ring_addr = elog_ring_param;
++	if (elog_ctl_param || elog_ring_param)
++		src = "module parameter";
++	pr_info("cpu_comm: MIPS elog control 0x%08x, mode-1 ring 0x%08x (%s)\n",
++		elog_ctl_addr, elog_ring_addr, src);
++}
++
+ /* ── Module globals ────────────────────────────────────────── */
+ 
+ static int cpu_comm_major;
+@@ -1460,7 +1497,7 @@
+ 	 * (2MB linear buffer) BEFORE we trigger MIPS to continue.
+ 	 * This captures all MIPS logs from the moment it sees ARM READY.
+ 	 *
+-	 * MIPS virtual → ARM physical: subtract 0x40000000
++	 * MIPS virtual → ARM physical: subtract 0x40000000 (HY310 addresses):
+ 	 *   Mode flag:       MIPS 0x8B48BE9B → phys 0x4B48BE9B
+ 	 *   Mode2 enable:    MIPS 0x8B48C2AD → phys 0x4B48C2AD
+ 	 *   Mode2 write ptr: MIPS 0x8B48C2B8 → phys 0x4B48C2B8
+@@ -1470,7 +1507,7 @@
+ 		void __iomem *elog_ctl;
+ 
+ 		/* Map MIPS elog control region (flags + pointers) */
+-		elog_ctl = ioremap(0x4B48BE00, 0x500);
++		elog_ctl = ioremap(elog_ctl_addr, 0x500);
+ 		if (elog_ctl) {
+ 			u8 old_mode = readb(elog_ctl + 0x9B);  /* 0x4B48BE9B */
+ 			u8 old_en2  = readb(elog_ctl + 0x4AD);  /* 0x4B48C2AD */
+@@ -1481,9 +1518,10 @@
+ 
+ 			/* Keep Mode 1 (ring buffer) — MIPS only logs in Mode 1.
+ 			 * Mode 2 capture buffer stays empty (MIPS ignores mode switch).
+-			 * Ring buffer at 0x4B272D9C, ~100KB.
++			 * Ring buffer at elog_ring_addr, ~100KB.
+ 			 */
+-			pr_info("cpu_comm: MIPS elog staying on Mode 1 (ring buffer at 0x4B272D9C)\n");
++			pr_info("cpu_comm: MIPS elog staying on Mode 1 (ring buffer at 0x%08x)\n",
++				elog_ring_addr);
+ 			iounmap(elog_ctl);
+ 		} else {
+ 			pr_warn("cpu_comm: failed to ioremap MIPS elog control\n");
+@@ -1675,13 +1713,13 @@
+ 		 */
+ 	}
+ 
+-	/* Dump MIPS elog Mode 1 ring buffer (100KB at 0x4B272D9C) */
++	/* Dump MIPS elog Mode 1 ring buffer (100KB at elog_ring_addr) */
+ 	{
+ 		void __iomem *elog_ctl;
+ 		void __iomem *elog_buf_m1 = NULL;
+ 		void __iomem *elog_buf_m2 = NULL;
+ 
+-		elog_ctl = ioremap(0x4B48BE00, 0x500);
++		elog_ctl = ioremap(elog_ctl_addr, 0x500);
+ 
+ 		if (elog_ctl) {
+ 			u8  cur_mode = readb(elog_ctl + 0x9B);
+@@ -1709,11 +1747,13 @@
+ 					end = scan_cap;
+ 					label = "Mode 2 linear";
+ 				} else {
+-					/* Mode 1: ring buffer at 0x4B272000 */
+-					elog_buf_m1 = ioremap(0x4B272000, 0x20000);
++					/* Mode 1: the ring, from its page on */
++					elog_buf_m1 = ioremap(elog_ring_addr & ~0xFFFu, 0x20000);
+ 					buf = elog_buf_m1;
+-					pos = 0x0D9C;
+-					end = 0x1D9C0;
++					pos = elog_ring_addr & 0xFFFu;
++					end = pos + 0x1CC24;
++					if (end > 0x20000)
++						end = 0x20000;
+ 					label = "Mode 1 ring buffer";
+ 				}
+ 
+@@ -1933,6 +1973,7 @@
+ 		 ShMemAddr, ShMemSize);
+ 
+ 	/* Initialize CPU_COMM */
++	cpu_comm_elog_resolve(np);
+ 	cpu_comm_mbox_dev = &pdev->dev;
+ 	ret = cpu_comm_init(0);
+ 	if (ret) {
