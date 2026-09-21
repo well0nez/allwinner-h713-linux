@@ -376,6 +376,38 @@ static int capture_signal(struct capture *cap, struct v4l2_dv_timings *t)
 }
 
 /*
+ * The signal as one string: geometry, scan type, frame rate and pixel clock,
+ * "1920x1080p50, 148.5 MHz". The frame rate is not a field of the timing -- it
+ * is the pixel clock over the whole raster -- and without it 50 and 60, and 24
+ * and 30, read alike in the journal and in ctl status (21.09.2026, finding 4).
+ * A rate that is not a whole number of hertz is printed with its two decimals,
+ * so 59.94 is not shown as 60.
+ */
+static const char *signal_text(const struct v4l2_dv_timings *t, char *buf,
+			       size_t len)
+{
+	const struct v4l2_bt_timings *bt = &t->bt;
+	unsigned long long raster = (unsigned long long)V4L2_DV_BT_FRAME_WIDTH(bt) *
+				    V4L2_DV_BT_FRAME_HEIGHT(bt);
+	unsigned long long clk = bt->pixelclock;
+	unsigned int hz100 = raster ? (unsigned int)((clk * 100 + raster / 2) / raster) : 0;
+	char rate[16];
+
+	if (!hz100)
+		snprintf(rate, sizeof(rate), "?");
+	else if (hz100 % 100)
+		snprintf(rate, sizeof(rate), "%u.%02u", hz100 / 100, hz100 % 100);
+	else
+		snprintf(rate, sizeof(rate), "%u", hz100 / 100);
+	/* rounded, not cut: the record of a 1024x768 says 64 995 840 Hz */
+	clk = (clk + 50000) / 100000;
+	snprintf(buf, len, "%ux%u%s%s, %llu.%llu MHz", bt->width, bt->height,
+		 bt->interlaced ? "i" : "p", rate, clk / 10, clk % 10);
+
+	return buf;
+}
+
+/*
  * The capture RING, as the driver reports it in the format: the size the
  * capture writes and the line pitch (bytesperline = INCAP rowbyte * 16,
  * kernel 0131). This is not the source signal. Where the firmware scales in
@@ -2878,6 +2910,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	/* the last measurement evaluate() made -- a status is a report, not a probe (S12 R7) */
 	const struct v4l2_dv_timings *t = &cap->last_t;
 	int sig = cap->last_sig;
+	char sigbuf[64];
 
 	reply_add(r, "ok status\n");
 	reply_add(r, "mode            %s\n", c->policy == POLICY_OFF ? "off (console forced)"
@@ -2889,12 +2922,11 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 			  c->state_path ? " in " : " (state = none)",
 			  c->state_path ? c->state_path : "");
 	if (sig == 1)
-		reply_add(r, "signal          %ux%u%s, %llu Hz (last measured)\n", t->bt.width,
-			  t->bt.height, t->bt.interlaced ? "i" : "p",
-			  (unsigned long long)t->bt.pixelclock);
+		reply_add(r, "signal          %s (last measured)\n",
+			  signal_text(t, sigbuf, sizeof(sigbuf)));
 	else if (sig == 2 && t->bt.width)
-		reply_add(r, "signal          change in flight (the geometry has not locked yet; last measured %ux%u%s)\n",
-			  t->bt.width, t->bt.height, t->bt.interlaced ? "i" : "p");
+		reply_add(r, "signal          change in flight (the geometry has not locked yet; last measured %s)\n",
+			  signal_text(t, sigbuf, sizeof(sigbuf)));
 	else if (sig == 2)
 		reply_add(r, "signal          change in flight (the geometry has not locked yet)\n");
 	else
@@ -4731,6 +4763,7 @@ static void evaluate(struct capture *cap, struct display *d,
 {
 	struct v4l2_dv_timings t;
 	unsigned int ring_w, ring_h, ring_pitch;
+	char sigbuf[64];
 	int sig;
 
 	/* "off" over the control socket: the console stays, whatever the signal does */
@@ -4791,9 +4824,7 @@ static void evaluate(struct capture *cap, struct display *d,
 		return;
 	}
 
-	info("signal          %ux%u%s, %llu Hz pixel clock", t.bt.width, t.bt.height,
-	     t.bt.interlaced ? "i" : "p",
-	     (unsigned long long)t.bt.pixelclock);
+	info("signal          %s", signal_text(&t, sigbuf, sizeof(sigbuf)));
 
 	/*
 	 * What goes on the plane is the capture RING, not the source signal.
