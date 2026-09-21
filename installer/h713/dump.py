@@ -94,35 +94,48 @@ def _gpt(q):
         return None
 
 
-def regions_from_gpt(disk, fallback=False, sources=None):
-    """The device-unique regions BY NAME: {name: (first_lba, sectors)}.
+def unique_regions(partitions, fallback=False, sources=None):
+    """The device-unique regions of ONE partition table: {name: (first_lba, sectors)}.
 
-    Secure storage is fixed; private and Reserve0* come out of the device's own
-    partition table, spelled as the table spells them -- our own layout has none of
-    them. Written so that C-A's identify() can fill Identification["regions"].
+    `partitions` is [(name, first lba, sectors)] as the table spells them -- the device's own
+    GPT, or the rows identify() read out of an image's sys_partition.fex. Secure storage is
+    fixed; private and Reserve0* are picked out by name, spelled as the table spells them --
+    our own layout has none of them.
 
     fallback: when the table names no `private` -- resp. no `Reserve0*` at all -- put the
     HY310's own LBAs in for that one group (O1b item 2). `sources`, if a dict is handed in,
     is filled with where each region's position came from: "fixed", "gpt", "hy310-constant".
+
+    This is the one place that answers "which regions exist only on this device". `dump`
+    asked it through regions_from_gpt() and identify() had its own copy without the
+    fallback, so on a stock table that names neither region the two judged differently
+    (O1b follow-up b, doku/61).
     """
     out = collections.OrderedDict()
     said = {} if sources is None else sources
     out[SECURE_STORAGE[0]] = (SECURE_STORAGE[1], SECURE_STORAGE[2])
     said[SECURE_STORAGE[0]] = "fixed"
-    gpt = _gpt(_source(disk))
-    spelling = dict((name.lower(), name) for name in gpt.parts) if gpt is not None else {}
+    spelling = dict((name.lower(), (name, lba, sectors)) for name, lba, sectors in partitions)
     for wanted in BY_NAME:
         found = spelling.get(wanted.lower())
         if found is not None:
-            out[found] = gpt.parts[found]
-            said[found] = "gpt"
+            out[found[0]] = (found[1], found[2])
+            said[found[0]] = "gpt"
     if fallback:
-        from_gpt = [name.lower() for name in out]
+        from_table = [name.lower() for name in out]
         for name, lba, sectors in HY310_FALLBACK:
             group = "reserve0" if name.lower().startswith("reserve0") else "private"
-            if not any(n.startswith(group) for n in from_gpt):
+            if not any(n.startswith(group) for n in from_table):
                 out[name], said[name] = (lba, sectors), "hy310-constant"
     return out
+
+
+def regions_from_gpt(disk, fallback=False, sources=None):
+    """unique_regions() of the partition table the device in front of us carries."""
+    gpt = _gpt(_source(disk))
+    rows = [] if gpt is None else [(name, lba, sectors)
+                                   for name, (lba, sectors) in gpt.parts.items()]
+    return unique_regions(rows, fallback, sources)
 
 
 def _region_file(name):
@@ -394,6 +407,22 @@ def verify_dump(disk, file, samples=8):
     return bad
 
 
+def manifest_row(dump_dir, name):
+    """The MANIFEST.json row of one region of a dump directory, or None.
+
+    None also means "this directory keeps no record of ours": a dump of v0.5-beta writes German
+    keys, and a file copied in by hand brings no manifest at all. Callers say what they make of
+    that -- `full_dump_state()` replaces such a clone, `install` reads it when it is exactly as
+    long as the device (install.full_dump_problem).
+    """
+    try:
+        with open(os.path.join(dump_dir, "MANIFEST.json"), "rb") as f:
+            rows = json.load(f).get("regions") or []
+    except (OSError, ValueError):
+        return None
+    return next((entry for entry in reversed(rows) if entry.get("name") == name), None)
+
+
 def full_dump_state(dump_dir, file, disk_sectors):
     """Is the full dump already in this directory, and is it whole? -> (row, why).
 
@@ -407,14 +436,7 @@ def full_dump_state(dump_dir, file, disk_sectors):
     if not os.path.isfile(file):
         return None, None
     name, shown = DUMP_FULL[:-4], os.path.basename(file)
-    row = None
-    try:
-        with open(os.path.join(dump_dir, "MANIFEST.json"), "rb") as f:
-            for entry in json.load(f).get("regions") or []:
-                if entry.get("name") == name:
-                    row = entry
-    except (OSError, ValueError):
-        pass
+    row = manifest_row(dump_dir, name)
     if row is None:
         return None, "%s lies here but no MANIFEST.json row names it" % shown
     sectors = int(row.get("sectors") or 0)

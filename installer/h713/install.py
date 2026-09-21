@@ -587,6 +587,30 @@ def check_copies(work, windows, plan, log=Quiet):
 
 
 
+def full_dump_problem(dump_dir, file, sectors, log=console):
+    """Is the `emmc-full.img` in the dump directory whole? -- the sentence that stops the run,
+    or None (O1b follow-up a, doku/61).
+
+    `dump` has asked `full_dump_state()` since O1b; `install`, which reads the device's own
+    files out of that very file, took it as it found it. An aborted dump is shorter than the
+    device, and what is missing is its tail -- where the vendor partitions sit. So the same
+    question, with the same sentence.
+
+    What the manifest cannot prove is not called incomplete: a dump of v0.5-beta, or a clone
+    copied here by hand, has no row of ours and is still exactly as long as this device. That
+    is said and used; only a file that is demonstrably not a whole clone stops the run.
+    """
+    from .dump import full_dump_state, manifest_row   # late: dump.py imports this module
+    _kept, why = full_dump_state(dump_dir, file, sectors)
+    if not why:
+        return None
+    if manifest_row(dump_dir, DUMP_FULL[:-4]) is None and os.path.getsize(file) == sectors * SECT:
+        log.warn("%s -- it is exactly %d sectors all the same, so it is read as it is."
+                 % (why, sectors))
+        return None
+    return why
+
+
 def no_vendor_source(dump_dir, count, log=console, extra=None):
     """Exit 8: no source for the device's own files. Unchanged for a stock device; the
     read-back adds one line saying what the device itself could not supply."""
@@ -880,6 +904,13 @@ def write_package(args, disk, path, directory, tab, here=None):
         if not vendor:
             full = in_dump(args.dump_dir, DUMP_FULL)
             if os.path.isfile(full):
+                why = full_dump_problem(args.dump_dir, full, disk.sectors, console)
+                if why:
+                    console.error(why)
+                    console.info("  An aborted dump is no way back, and the device's own files")
+                    console.info("  sit at its end. Take it again before you install:")
+                    console.info("  h713-install dump --full")
+                    return 8
                 vendor = in_dump(args.dump_dir, EXTRACT_DIR)
                 os.makedirs(vendor, exist_ok=True)
                 run_extractor(full, vendor, None, search_dir=here)

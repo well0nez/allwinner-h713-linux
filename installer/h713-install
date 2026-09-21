@@ -178,7 +178,7 @@ def _report(args, ident):
     if args.json:
         print(json.dumps(dict((k, ident.get(k)) for k in
                               ("input", "kind", "profile", "status", "candidates", "features",
-                               "matches", "layout", "regions", "mips", "text")),
+                               "matches", "layout", "regions", "region_sources", "mips", "text")),
                          indent=2, default=str))
     else:
         report_device(ident, writing=False)

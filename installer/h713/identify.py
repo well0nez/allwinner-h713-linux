@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from h713.blockdev import LOCK_FIRST, LOCK_LAST, device_kind, is_our_layout
+from h713.blockdev import device_kind, is_our_layout
+from h713.dump import unique_regions
 from h713.facts import (DiskSource, MIPS_SOURCES, as_source, close_source, device_facts,
                         image_facts, VENDOR_PARTITIONS)
 from h713.fs import Ext4, LpSuper
@@ -156,17 +157,18 @@ def _layout_of(facts: dict) -> dict:
             "consistency": list(facts.get("layout_consistency") or [])}
 
 
-def _regions_of(layout: dict) -> dict:
+def _regions_of(layout: dict, kind: str, sources=None) -> dict:
     """The regions no firmware image brings back, found BY NAME (I:95 EINMALIG, generalised).
 
     secure-storage is fixed for every H713; private and Reserve0* come from the table of this very
     device, never from the HY310 constants -- the HY300 Pro has one Reserve0 elsewhere (issue #1).
+
+    The picking-out itself is `dump.unique_regions()`, the same call the dump makes, so the two
+    tools cannot judge one table differently (O1b follow-up b). That includes the fallback: a
+    stock table that names neither region falls back to the HY310's LBAs here as well, and
+    `sources` records for which names -- the report says it, because it is a guess.
     """
-    regions = {"secure-storage": (LOCK_FIRST, LOCK_LAST - LOCK_FIRST + 1)}
-    for name, start, sectors in layout["partitions"]:
-        if name == "private" or name.startswith("Reserve0"):
-            regions[name] = (start, sectors)
-    return regions
+    return unique_regions(layout["partitions"], fallback=kind != "ours", sources=sources)
 
 
 def _mips_of(facts: dict) -> dict:
@@ -254,6 +256,13 @@ def _render(ident: dict) -> list:
     if ident["regions"]:
         add("info", "device-only %s" % ", ".join("%s@%d+%d" % (n, r[0], r[1])
                                                  for n, r in sorted(ident["regions"].items())))
+    guessed = sorted(n for n, where in (ident.get("region_sources") or {}).items()
+                     if where == "hy310-constant")
+    if guessed:
+        # The same guess the dump makes, and said in the same breath: this table names the
+        # region nowhere, so the HY310's own LBA stands in for it (O1b item 2).
+        add("warn", "this table names no %s -- the HY310's own LBAs stand in above, which is "
+                    "a guess, not a reading" % ", ".join(guessed))
     mips = ident["mips"]
     found = ["%s %d files" % (k, len(mips[k])) for k in ("bootloader_a", "bootloader_b", "vendor")
              if mips.get(k)]
@@ -286,12 +295,15 @@ def identify(source, *, log=None) -> dict:
     features = features_from_facts(facts)
     profile, candidates, matches = match_profiles(features)
     layout = _layout_of(facts)
+    kind, region_sources = _kind_of(layout), {}
     # "facts" is everything that was read, so no later step has to open the device a second
-    # time; it is an addition to the dict of api-stufe2.md, not part of its contract.
-    ident = {"input": kind_of_input, "kind": _kind_of(layout), "profile": profile,
+    # time; it is an addition to the dict of api-stufe2.md, not part of its contract. So is
+    # "region_sources": name -> fixed | gpt | hy310-constant, the same key MANIFEST.json uses.
+    ident = {"input": kind_of_input, "kind": kind, "profile": profile,
              "status": PROFILES[profile]["status"] if profile else None, "candidates": candidates,
              "features": features, "matches": matches, "layout": layout,
-             "regions": _regions_of(layout), "mips": _mips_of(facts), "facts": facts}
+             "regions": _regions_of(layout, kind, region_sources),
+             "region_sources": region_sources, "mips": _mips_of(facts), "facts": facts}
     # "text" is what report_device() prints; "_lines" carries the level per line, because a
     # warning must not arrive as a success (the api names only the plain lines).
     ident["_lines"] = _render(ident)
