@@ -208,6 +208,10 @@
 #    names the window it is loaded into; the same patch adds that property.
 #    Without it the kernel's preset list decides, as before)
 0136h-media-h713-hdmirx-the-presets-are-the-firmware-s-own-mode-table.patch
+#   (T2 -- 0136i: a detection made with a genuine firmware record survives our
+#    own descriptor republish while INCAP still reads the same three words;
+#    576p50 and a CVT 720p stuck on "change in flight" without it, 21.09.)
+0136i-media-h713-hdmirx-a-lock-that-survives-our-own-republish.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

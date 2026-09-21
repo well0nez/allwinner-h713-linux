@@ -1,0 +1,172 @@
+media: h713-hdmirx: a lock that survives our own republish
+
+576p50 and a CVT 720p at 1664x748 both came up on the wall on 21.09.2026 and
+both then read "change in flight" for good, over a picture that was standing
+and correct. The reason is not the signal, it is what is left of the record
+after our own republish.
+
+The record at sig_phys is the source's only until the display side
+republishes the VidDec descriptor; from then on the firmware writes the
+descriptor's values into it - 30.00 Hz, colour format 0, the ring as the
+geometry - and 0136f recognises that record and takes it out of the
+detection. What is left is the same path as before the first callback of a
+boot: the geometry from INCAP, the rate from the flip pointers, and only a
+preset the two agree on is reported. 576p50 is not in
+v4l2_dv_timings_presets[] at all and a 1664x748 raster is in no list, so the
+detection ended in -ENOLCK and h713-tv's status stayed on "change in flight"
+until the source was changed.
+
+Nothing about the signal had changed in that moment, though, and INCAP says
+so: active, total and rowbyte still read exactly what they read while the
+genuine record was there. So a detection that came from a genuine record is
+remembered together with those three words, and while the record is the own
+one - or absent - and the three words still read the same, that timing is
+reported unchanged. No preset is consulted, nothing is re-derived, and
+-ENOLCK is not returned.
+
+The memory is dropped on everything that can mean another source: a
+SignalChange or HotPlug callback, a ring whose flip pointers have stopped (a
+real "no signal", not a release in flight), a record that reports no signal,
+and any of the three INCAP words reading differently. It is filled only from
+a detection that had a genuine HDMI record behind it, never from one that
+was itself answered out of the memory, so it cannot carry an old timing
+forward across a real change.
+
+With 0136h this also settles the second half of those two rows: the table
+carries clean records for both (720x576p50 at index 6, 1280x720p60 at index
+8), so the first detection locks, and the memory keeps that lock through the
+republish that follows it.
+
+Follow-up to 0136h; 0136f stays byte-identical. Host model (the lock cache
+as a table of INCAP words and record kinds) in umbau/work/T2/model.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -1122,6 +1122,18 @@
+ 	 */
+ 	const struct h713_hdmirx_tse_mode *tse_modes;
+ 	unsigned int tse_count;
++
++	/*
++	 * The last timing detected from a genuine firmware record, and the
++	 * three INCAP words it came from. Written only in detect_timings(),
++	 * which the ioctl lock serialises; @lock_valid is also cleared from
++	 * the two firmware callbacks, hence the READ_ONCE/WRITE_ONCE.
++	 */
++	struct v4l2_dv_timings lock_timings;
++	u32 lock_active;
++	u32 lock_total;
++	u32 lock_rowbyte;
++	bool lock_valid;
+ 	struct mutex sig_lock;
+ 	void __iomem *sig_map;
+ 	phys_addr_t sig_map_base;
+@@ -1735,6 +1747,16 @@
+ 	v4l2_event_queue(&rx->vdev, &ev);
+ }
+ 
++/*
++ * Drop the remembered timing (struct h713_hdmirx). Everything that can mean
++ * another source does this: both firmware callbacks, a ring that has stopped
++ * moving, and INCAP reading other words than it read at the measurement.
++ */
++static void h713_hdmirx_forget_lock(struct h713_hdmirx *rx)
++{
++	WRITE_ONCE(rx->lock_valid, false);
++}
++
+ /*
+  * MipsHalCallback_SignalChange. Measured behaviour (doku/nachtlog/K4): the
+  * firmware fires this by itself both when the signal goes away and when it
+@@ -1764,6 +1786,7 @@
+ 		rx->sig_phys = args[1];
+ 	rx->signal_count++;
+ 	spin_unlock_irqrestore(&rx->event_lock, flags);
++	h713_hdmirx_forget_lock(rx);
+ 
+ 	dev_dbg(rx->dev, "SignalChange source=%u info=%#010x nargs=%u\n",
+ 		nargs ? args[0] : 0, nargs > 1 ? args[1] : 0, nargs);
+@@ -1796,6 +1819,7 @@
+ 		       rx->hotplug_nargs * sizeof(*args));
+ 	rx->hotplug_count++;
+ 	spin_unlock_irqrestore(&rx->event_lock, flags);
++	h713_hdmirx_forget_lock(rx);
+ 
+ 	dev_dbg(rx->dev, "HdmiHotPlugByPort port=%u\n", nargs ? args[0] : 0);
+ 
+@@ -3355,16 +3379,22 @@
+ 
+ 	h713_hdmirx_watch_ring(rx, &flips, H713_RING_WATCH_FLIPS,
+ 			       H713_RING_WATCH_MS);
+-	if (!flips.flips)
+-		return READ_ONCE(rx->rearm_busy) ? -ENOLCK : -ENOLINK;
++	if (!flips.flips) {
++		if (READ_ONCE(rx->rearm_busy))
++			return -ENOLCK;	/* a release is running, not a new source */
++		h713_hdmirx_forget_lock(rx);
++		return -ENOLINK;
++	}
+ 
+ 	ret = h713_hdmirx_read_signal_info(rx, &sig);
+ 	if (ret && ret != -ENOENT)
+ 		return ret;
+ 	have_sig = !ret;
+ 	if (have_sig && (sig.signal_id == H713_SIGNAL_ID_NONE ||
+-			 !sig.h_size || !sig.v_size))
++			 !sig.h_size || !sig.v_size)) {
++		h713_hdmirx_forget_lock(rx);
+ 		return -ENOLINK;
++	}
+ 
+ 	/*
+ 	 * Whose record is this? After a resolution change the display side
+@@ -3417,6 +3447,30 @@
+ 
+ 	h713_hdmirx_ring_geometry(rx, width, height, rowbyte, ring);
+ 
++	/*
++	 * A lock that survives our own republish. The record at sig_phys is
++	 * the source's only until the display side republishes the VidDec
++	 * descriptor; after that it is the descriptor's (own_record above), and
++	 * before the first callback of a boot there is none at all. Re-deriving
++	 * the timing then needs a preset or a table row to agree with a rate
++	 * measured on the flip pointers, and a source neither carries -- 576p50,
++	 * a CVT 720p at 1664x748 -- fell to -ENOLCK over a standing, correct
++	 * picture and stayed there (21.09.2026, run rows 576p50 and cvt-720p).
++	 * But nothing about the signal has changed in that moment: INCAP still
++	 * reads the active, total and rowbyte it read while the genuine record
++	 * was there, so the timing measured then is still the timing and is
++	 * reported unchanged. Any of the three words moving, either callback,
++	 * or the flips stopping drops the memory again.
++	 */
++	if (READ_ONCE(rx->lock_valid) &&
++	    (rx->lock_active != active || rx->lock_total != total ||
++	     rx->lock_rowbyte != rowbyte))
++		h713_hdmirx_forget_lock(rx);
++	if ((!have_sig || own_record) && READ_ONCE(rx->lock_valid)) {
++		*t = rx->lock_timings;
++		return 0;
++	}
++
+ 	if (own_record)
+ 		have_sig = false;
+ 
+@@ -3449,6 +3503,15 @@
+ 	if (!v4l2_valid_dv_timings(t, &h713_hdmirx_timings_cap, NULL, NULL))
+ 		return -ERANGE;
+ 
++	/* have_sig is by now exactly "a genuine HDMI record" (own_record above) */
++	if (have_sig) {
++		rx->lock_timings = *t;
++		rx->lock_active = active;
++		rx->lock_total = total;
++		rx->lock_rowbyte = rowbyte;
++		WRITE_ONCE(rx->lock_valid, true);
++	}
++
+ 	return 0;
+ }
+ 
