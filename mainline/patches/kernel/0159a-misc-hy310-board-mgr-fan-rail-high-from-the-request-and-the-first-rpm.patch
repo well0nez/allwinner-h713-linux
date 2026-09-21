@@ -1,0 +1,86 @@
+misc: hy310-board-mgr: hold the fan rail HIGH from the request on, and say the first RPM
+
+Two small things for a board this project cannot put on a bench, from
+analysis A14 (19.09.2026, umbau/reviews/A14.md section 5.2).
+
+1. devm_gpio_request_one(dev, fan->power_gpio, 0, "fan-power") asks for
+   flags 0, and flags 0 is GPIOF_OUT_INIT_LOW (include/linux/gpio.h in
+   linux-6.18.38). The line is driven LOW by the request and only goes
+   HIGH one statement later in gpio_direction_output(). On the HY310 this
+   is invisible: no fan node of ours carries a fan-power-gpio, and where
+   the device tree hogs PB5 the request fails with -EBUSY and the driver
+   takes the "managed by hog" branch. On a board that puts the pin into
+   the fan node instead of hogging it, the rail is LOW for that moment -
+   and on the HY300 Pro the same PB5 also enables the LED boost, so the
+   moment is a visible blink. GPIOF_OUT_INIT_HIGH, which is what the
+   usb-power request in the same driver already uses, removes it. The
+   driver's own comment already says the intent is HIGH.
+
+2. One dev_info with the first RPM reading the driver trusts (the first
+   poll after system_state reaches SYSTEM_RUNNING - before that the value
+   is not judged either). An owner who tests a board for us then has the
+   proof that the tacho is wired and the fan turns in the journal of a
+   normal boot, without a shell session and without asking him to read
+   sysfs. It is one line per boot and per fan; nothing else in the
+   polling, the warn threshold or fan_stall_shutdown changes.
+
+Tested on the HY310: no behaviour change. Its fan node has no
+fan-power-gpio, so hunk 3 cannot fire at all there, and the new line is
+one dev_info in the boot log next to the "fan0: ... RPM below ..." the
+driver could already print.
+
+diff -ruN a/drivers/misc/hy310-board-mgr.c b/drivers/misc/hy310-board-mgr.c
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -178,6 +178,7 @@
+  * @rpm_warn_speed:  RPM below which a warning cycle is counted
+  * @rpm_warn_cnt:    Threshold of consecutive warn cycles → power off
+  * @rpm_warn_cycles: Current consecutive warn cycle count
++ * @boot_rpm_logged: True once the first reading after boot has been logged
+  * @valid:           True if this fan slot is populated
+  */
+ struct hy310_fan {
+@@ -196,6 +197,7 @@
+ 	u32			 rpm_warn_speed;
+ 	u32			 rpm_warn_cnt;
+ 	u32			 rpm_warn_cycles;
++	bool			 boot_rpm_logged;
+ 	bool			 valid;
+ };
+ 
+@@ -451,6 +453,18 @@
+ 			continue;
+ 
+ 		/*
++		 * One line per boot with the first reading the driver
++		 * trusts. On a board nobody here can put on a bench, its
++		 * owner's journal is the only proof that the tacho is wired
++		 * and that the fan turns; after this line the driver is as
++		 * quiet as before.
++		 */
++		if (!fan->boot_rpm_logged) {
++			fan->boot_rpm_logged = true;
++			dev_info(priv->dev, "fan%d: %u RPM at boot\n", i, rpm);
++		}
++
++		/*
+ 		 * A stall is the one condition this board can detect and must
+ 		 * act on: the fan is an unregulated on/off load on the shared
+ 		 * PB5 rail, so the driver cannot restart it, and there is no
+@@ -1012,8 +1026,15 @@
+ 		 * Set fan power HIGH. Use gpio_request + gpio_direction_output
+ 		 * explicitly to ensure the pin is driven HIGH even after
+ 		 * rmmod/insmod cycles when the DTS gpio-hog is no longer active.
++		 *
++		 * The request itself already drives the pin HIGH. Flags 0 is
++		 * GPIOF_OUT_INIT_LOW (include/linux/gpio.h), which would put
++		 * the fan rail LOW for the moment between the request and the
++		 * gpio_direction_output() below -- on a board where the same
++		 * line also enables the LED boost, that moment is visible.
+ 		 */
+-		ret = devm_gpio_request_one(dev, fan->power_gpio, 0, "fan-power");
++		ret = devm_gpio_request_one(dev, fan->power_gpio,
++					    GPIOF_OUT_INIT_HIGH, "fan-power");
+ 		if (ret) {
+ 			/* Hog might still own it — just ensure it's HIGH */
+ 			dev_info(dev, "%s: fan-power-gpio %d (managed by hog)\n",

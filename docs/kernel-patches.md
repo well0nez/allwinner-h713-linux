@@ -27,7 +27,7 @@ two projects landing on the same chip and is grouped by **origin and topic**, no
 | 11 | Focus motor, second pass | the limit switch is a range watcher, not an end stop |
 | 12 | Wi-Fi | the power-enable line in the devicetree |
 | 13 | Release | strips debug facilities from the shipping defconfig |
-| 14 | Protection | the fan-stall poweroff, armed again (`0159`) |
+| 14 | Protection | the fan-stall poweroff, armed again (`0159`); `0159a` holds the fan rail HIGH from the GPIO request on and logs the first RPM reading of a boot |
 | 15 | Boards | one DTB name per board: `0160` HY310, `0161` HY300 Pro - each an include of the bench DTS plus model and compatible; `0161a` disables the backlight device on the HY300 Pro, whose PB5 is the LED-boost and fan-rail enable as a plain GPIO |
 
 Sections 1 and 3 come through cstenger's tree and are proven byte-identical against it (`doku/116` §4a P1,
@@ -40,7 +40,7 @@ own projector work, dated in `doku/` by section.
 
 A patch keeps the number it was given when it was written. When a later fix targets an already-numbered
 patch, it becomes a lettered addendum - `0005a`, `0013a`, `0014a` - `0014c`, `0024a` - `0024d`, `0078a`,
-`0091a`, `0091b`, `0093a`, `0096a`, `0135b`, `0136a` - `0136g`, `0161a` - placed **directly behind its original**, not at the end of the
+`0091a`, `0091b`, `0093a`, `0096a`, `0135b`, `0136a` - `0136g`, `0159a`, `0161a` - placed **directly behind its original**, not at the end of the
 series, because the patches after it were written against the state the
 original plus its addenda leaves behind: `0024a` fixes a register and IRQ number `0024` got wrong, `0024b`
 renames the driver it introduced, and everything from `0025` on assumes both are already applied. Moving an

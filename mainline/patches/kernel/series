@@ -241,6 +241,10 @@
 #     doku/60 §board-mgr; Marco 12.09.: der Tacho ist der Schutz, den dieses
 #     Geraet hat, und er ist belegt. thermal_shutdown bleibt aus (kein NTC).
 0159-misc-hy310-board-mgr-den-notaus-bei-luefterstillstand-scharf-schalten.patch
+#     0159a: the fan rail is HIGH from the request on (flags 0 is
+#     GPIOF_OUT_INIT_LOW), and the first RPM reading after SYSTEM_RUNNING is
+#     logged once, so a foreign owner's journal proves the tacho (A14, 20.09.)
+0159a-misc-hy310-board-mgr-fan-rail-high-from-the-request-and-the-first-rpm.patch
 #
 # --- 15. Boards: one DTB name per board (stage 4) -----------------------------
 #     doku/121 §3 "Kernel DTS". Until now the HY310
