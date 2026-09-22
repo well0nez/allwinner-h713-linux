@@ -1019,9 +1019,43 @@ static void display_gamma_apply(struct display *d)
 	display_release_master(d);
 }
 
+/*
+ * The part of the ring that carries a picture. The firmware scales into the
+ * ring by the window's share of the panel and leaves the ring's layout alone
+ * (dev20, 22.09.2026: at a 1536x864 window the DE picture scaler and the Proc
+ * node followed, INCAP's rowbyte stayed at 1920 bytes a line), so while a
+ * window is up the fresh picture is the ring scaled by that share, in the
+ * ring's top left corner, and the rest of the ring still holds the last frame
+ * that filled it. The plane reads exactly that and puts it in the window: the
+ * scaling is the firmware's, the placement on the panel is ours.
+ *
+ * At the full panel the firmware writes the whole ring and the ring is taken
+ * as it is -- which is what keeps a ring whose width is no multiple of 16
+ * (1366, kernel 0131) exactly the buffer it was before this. Otherwise the
+ * rectangle is rounded DOWN to a block of columns and an even line count, the
+ * geometry the plane takes: rounding up would show a strip of the old frame.
+ */
+static void display_source_rect(const struct display *d, unsigned int *w,
+				unsigned int *h)
+{
+	if (d->win_w == d->width && d->win_h == d->height) {
+		*w = d->src_w;
+		*h = d->src_h;
+		return;
+	}
+	*w = (unsigned int)((uint64_t)d->src_w * d->win_w / d->width) &
+	     ~(WINDOW_MIN - 1);
+	*h = (unsigned int)((uint64_t)d->src_h * d->win_h / d->height) & ~1u;
+	if (*w < WINDOW_MIN)
+		*w = WINDOW_MIN;
+	if (*h < WINDOW_MIN)
+		*h = WINDOW_MIN;
+}
+
 static bool display_show(struct display *d)
 {
 	drmModeAtomicReq *req;
+	unsigned int sw, sh;
 	bool ok = true;
 	int ret;
 
@@ -1038,8 +1072,9 @@ static bool display_show(struct display *d)
 	ok &= add(req, d, "CRTC_ID", d->crtc_id);
 	ok &= add(req, d, "SRC_X", 0);
 	ok &= add(req, d, "SRC_Y", 0);
-	ok &= add(req, d, "SRC_W", (uint64_t)d->src_w << 16);
-	ok &= add(req, d, "SRC_H", (uint64_t)d->src_h << 16);
+	display_source_rect(d, &sw, &sh);
+	ok &= add(req, d, "SRC_W", (uint64_t)sw << 16);
+	ok &= add(req, d, "SRC_H", (uint64_t)sh << 16);
 	ok &= add(req, d, "CRTC_X", d->win_x);
 	ok &= add(req, d, "CRTC_Y", d->win_y);
 	ok &= add(req, d, "CRTC_W", d->win_w);
@@ -1076,8 +1111,8 @@ static bool display_show(struct display *d)
 	}
 
 	d->on = true;
-	info("picture         plane %u on, %ux%u out of the capture ring", d->plane_id,
-	     d->width, d->height);
+	info("picture         plane %u on, %ux%u out of the capture ring in the window %u,%u %ux%u",
+	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h);
 
 	return true;
 }
@@ -3011,6 +3046,13 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		  d->win_y, d->win_w, d->win_h,
 		  d->win_w == d->width && d->win_h == d->height ?
 			  " (the whole panel)" : "");
+	if (d->src_w && (d->win_w != d->width || d->win_h != d->height)) {
+		unsigned int sw, sh;
+
+		display_source_rect(d, &sw, &sh);
+		reply_add(r, "                the firmware scales into the ring: %ux%u of it is the picture, the rest is the last full frame\n",
+			  sw, sh);
+	}
 	cmd_status_picture_values(r);
 	cmd_status_audio(r, a);
 	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel          ");
@@ -3436,9 +3478,13 @@ static bool zoom_parse(const struct display *d, const char *text,
 
 /*
  * zoom [PERCENT|x,y,w,h]: where on the panel the picture goes. The rectangle
- * becomes the plane's destination and from there descriptor words 31..34,
- * which the firmware's window chain scales into (kernel 0133b) - the vendor's
- * digital zoom by the vendor's own numbers. Read at the next publication, so a
+ * becomes the plane's destination and from there descriptor words 31..34
+ * (kernel 0133b) - the vendor's digital zoom by the vendor's own numbers. The
+ * firmware answers by scaling ITS picture into the capture ring by the
+ * window's share of the panel and leaving the ring's layout alone (dev20,
+ * 22.09.2026), so the plane also reads only the part of the ring that then
+ * carries the picture (kernel 0133c); where it lands is ours. Read at the
+ * next publication, so a
  * change on a live plane takes the plane down here and lets evaluate() bring
  * it up again. Returns true when evaluate() has to run.
  */
@@ -4688,7 +4734,8 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        without NAME: show it. A change rebuilds the picture (~0.5 s)\n"
 		  "  zoom [PCT|x,y,w,h]    where on the panel the picture goes: a percentage centred\n"
 		  "                        (100 = the whole panel, \"full\" likewise) or a rectangle in\n"
-		  "                        panel pixels; without an argument: show it. Rebuilds as aspect does\n"
+		  "                        panel pixels; without an argument: show it. Rebuilds as aspect does.\n"
+		  "                        The firmware scales into the capture ring, the placement is ours\n"
 		  "  audio [on|off|auto]   audio: forced on, forced silent, or following the picture\n"
 		  "                        (default auto); without an argument: show it\n"
 		  "  volume [0..100]       volume of the codec (DAC Playback Volume, acts on HDMI and\n"
