@@ -105,7 +105,13 @@ static int have_ctx, card = -1, vfd = -1, master, flipped, capfd[NCAP][2];
 static EGLImageKHR capimg[NCAP][2];
 static uint32_t crtc_id, plane_id, conn_id, mode_w, mode_h, pid[NPROP];
 static struct buf bufs[NBUF];
-static long n_commit, n_flip, n_err, n_slow, n_nofence, n_timeout, n_late;
+static long n_commit, n_flip, n_err, n_slow, n_nofence, n_timeout, n_late, n_over, n_fence;
+static double fence_sum, fence_max;	/* fence creation -> fence readable, in ms */
+
+static double fence_avg(void)
+{
+	return n_fence ? fence_sum / n_fence : 0.0;
+}
 
 static int fail(const char *what)
 {
@@ -142,8 +148,10 @@ static void tick(long frame, double t0, int last)
 	int i;
 	if (!t_f) t_f = t_s = t0;
 	if (frame % 100 == 0 || last) {
-		printf("frame %ld fps %.1f commits %ld flips %ld errors %ld slow_fence %ld\n",
-		       frame, (frame - f_f) / (t - t_f), n_commit, n_flip, n_err, n_slow);
+		printf("frame %ld fps %.1f commits %ld flips %ld errors %ld slow_fence %ld"
+		       " fence_ms avg %.1f max %.1f over16 %ld\n",
+		       frame, (frame - f_f) / (t - t_f), n_commit, n_flip, n_err, n_slow,
+		       fence_avg(), fence_max, n_over);
 		f_f = frame; t_f = t;
 	}
 	if (t - t_s < 10 && !last && frame) return;
@@ -383,7 +391,9 @@ static void on_flip(int fd, unsigned int q, unsigned int s, unsigned int us, voi
  * flip event: the fence timing costs one pollfd, no extra syscall, no blocking. A
  * poll on the fence before the commit would serialise exactly the overlap the fence
  * exists for, so it is not done -- slow_fence counts frames whose fence had not
- * signalled 8 ms after creation, seen from inside the flip wait. */
+ * signalled 8 ms after creation, and fence_sum/fence_max/n_over carry the same
+ * measurement in full: fence creation to fence readable, seen from inside the flip
+ * wait, and 0 ms when the fence was already readable at the first poll. */
 static int flip(struct buf *b, int first)
 {
 	uint64_t val[NPROP];
@@ -392,7 +402,7 @@ static int flip(struct buf *b, int first)
 	drmEventContext ev;
 	EGLSyncKHR sy;
 	double t0;
-	int fence = -1, ok = 1, rc, i;
+	int fence = -1, ok = 1, rc, i, pn;
 	uint32_t fl = DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT |
 		      (first ? DRM_MODE_ATOMIC_ALLOW_MODESET : 0u);
 	sy = p_sync_new(dpy, EGL_SYNC_NATIVE_FENCE_ANDROID, NULL);
@@ -402,6 +412,7 @@ static int flip(struct buf *b, int first)
 		p_sync_del(dpy, sy);
 	}
 	if (fence < 0) { glFinish(); n_nofence++; }	/* no fence: CPU wait, counted */
+	t0 = now();					/* the fence exists as of here */
 	val[0] = b->fb_id; val[1] = crtc_id; val[2] = val[3] = val[6] = val[7] = 0;
 	val[4] = (uint64_t)mode_w << 16; val[5] = (uint64_t)mode_h << 16;
 	val[8] = mode_w; val[9] = mode_h; val[10] = (uint64_t)fence;
@@ -418,11 +429,10 @@ static int flip(struct buf *b, int first)
 			   strerror(errno));
 	}
 	n_commit++;
-	t0 = now();
 	memset(&ev, 0, sizeof ev);
 	ev.version = 2; ev.page_flip_handler = on_flip;
 	pf[0].fd = card; pf[1].fd = fence; pf[0].events = pf[1].events = POLLIN;
-	for (flipped = 0; !flipped; ) {
+	for (flipped = 0, pn = 0; !flipped; pn++) {
 		rc = poll(pf, 2, 1000);
 		if (rc < 0 && errno == EINTR) continue;
 		if (rc <= 0) {
@@ -431,7 +441,13 @@ static int flip(struct buf *b, int first)
 			return ERR("no flip event within 1 s\n");
 		}
 		if (pf[1].fd >= 0 && pf[1].revents) {
-			n_slow += now() - t0 > 0.008;
+			double ms = pn ? (now() - t0) * 1e3 : 0.0;
+
+			n_slow += ms > 8.0;
+			n_over += ms > 16.7;
+			fence_sum += ms;
+			n_fence++;
+			if (ms > fence_max) fence_max = ms;
 			pf[1].fd = -1;
 		}
 		if (pf[0].revents) drmHandleEvent(card, &ev);
@@ -460,8 +476,9 @@ static int cmd_scanout(long frames)
 		if (flip(b, f == 1)) break;
 		tick(f, t0, f == frames);
 	}
-	printf("done frames %ld commits %ld flips %ld errors %ld slow_fence %ld no_fence %ld\n",
-	       f - 1, n_commit, n_flip, n_err, n_slow, n_nofence);
+	printf("done frames %ld commits %ld flips %ld errors %ld slow_fence %ld no_fence %ld"
+	       " fence_ms avg %.1f max %.1f over16 %ld\n",
+	       f - 1, n_commit, n_flip, n_err, n_slow, n_nofence, fence_avg(), fence_max, n_over);
 	return n_err || n_commit != frames || n_flip != frames;
 }
 
@@ -684,8 +701,10 @@ static int cmd_capture(long frames, const char *dev, int nv16)
 		tick(fr, t0, fr == frames);
 	}
 	ioctl(vfd, VIDIOC_STREAMOFF, &type);
-	printf("done frames %ld commits %ld flips %ld errors %ld slow_fence %ld timeouts %ld late %ld\n",
-	       fr - 1, n_commit, n_flip, n_err, n_slow, n_timeout, n_late);
+	printf("done frames %ld commits %ld flips %ld errors %ld slow_fence %ld timeouts %ld"
+	       " late %ld fence_ms avg %.1f max %.1f over16 %ld\n",
+	       fr - 1, n_commit, n_flip, n_err, n_slow, n_timeout, n_late,
+	       fence_avg(), fence_max, n_over);
 	return n_err || n_timeout || n_commit != n_flip;
 }
 
