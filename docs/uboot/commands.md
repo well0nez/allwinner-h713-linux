@@ -73,6 +73,55 @@ before reproducing the effect through `h713_disp panel-test vendor-logo`.
 => h713_logo dump 0x4a800000 0x10 0x40
 ```
 
+### What is inside LogoRegData.bin
+
+The container describes itself, and the vendor kernel's `ge2d_dev.ko` and our replay now read it the
+same way (`umbau/re-apps/AP3m`, part A):
+
+| Offset | What |
+|---|---|
+| `0x00` | magic `logo`, version, u16 descriptor-table bytes, u16 class-table bytes, u32 bytes behind both |
+| `0x10` | descriptor table, `0x18` bytes per project: project id, version, then one u16 per class |
+| `0x10 + tbl` | class table, 12 bytes per class: `{class id, offset from this table, length}` |
+| behind it | per class a chain of blocks `{u32 index, u32 length}`, each payload 16-byte records |
+
+The classes are replayed **in ascending id: 0 prologue, 1 timing, 2 DE**, one block per class, and
+which block is the u16 the project's descriptor holds for that class. Class 0's index-0 block is
+empty, which is why the prologue variant is 1-based where the other two are 0-based. The HY310's
+project `0x30` selects 1/2/0: 45 + 34 + 55 records, 113 writes, one pulse, 20 delays.
+
+**The plane gate is one record in the DE block**: `0x0524c01c <- 0x79860601`, bit 0 set. It is the
+only write to a `0x0524x01c` in either file we have, and plane 0's twin `0x0524801c` is never written
+at all - so the vendor boot logo runs on OSD plane 1, and replaying the DE block is itself what opens
+the plane. No separate gate write is needed.
+
+### How to verify a panel row on a device
+
+The vendor kernel does not take the OSD origin from the file; it reads it back out of four registers
+the MIPS/TCON publishes and that nothing in either file writes (AP3m part B). They are the check that
+a `h713_panel_cfg` row matches the panel actually attached:
+
+| Register | What it holds |
+|---|---|
+| `0x051c0180[31:16]` | horizontal origin minus one, so `h_start = value + 1` (res_type 2) |
+| `0x051c0184[31:16]` | vertical origin (res_type 2) |
+| `0x051c00bc[15:0]` | a back-porch-sized horizontal count, thresholds 49 and 300 (res_type 1/6/7/8) |
+| `0x051c00c0` | vertical origin for those res_types |
+| `0x05140050` | the vsync-delay register the derived origin is written back into |
+
+`h713_disp dump` stops below them, so read them by hand once the display is up:
+
+```
+=> h713_disp init 0x30 logo
+=> md 0x051c0180 4
+=> md 0x051c00b0 6
+=> md 0x05140050 1
+```
+
+The HY310's DE block presets `hsync+hbp = 84` and `vsync+vbp = 16`, which the panel patch table
+rewrites to 132 and 25 from the row. A readback that disagrees with the row accuses the row, not
+the panel.
+
 ## h713_i2c - bit-banged I2C bus scan (diagnostic)
 
 Scans TWI1's pins (PH2/PH3 by default) by bit-banging rather than bringing up a real I2C driver for a

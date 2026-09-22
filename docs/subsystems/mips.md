@@ -18,7 +18,7 @@ board (below). None of them are computed; all come straight from the vendor.
 | `database.TSE` | shared picture-quality database |
 | `pq_custom.TSE`, `projecttable.TSE` | picture-quality and per-project tables |
 | `ProjectID_0x*.TSE` (13 files) | one panel/timing profile per known board; the **declared project id** picks the file - `h713_project` in U-Boot's environment, else `panel_config.ini` (below) |
-| `LogoRegData.bin` | the register records replayed before the panel comes up (HY310: 113 in three groups of 32 + 26 + 55, with pulses and delays). The group boundaries are read out of the container since 16.09.2026 - another board's file has a different descriptor count, and fixed HY310 offsets ran past its end (HY300 Pro, issue #1) |
+| `LogoRegData.bin` | the register records replayed before the panel comes up (HY310: 113 in three groups of 32 + 26 + 55, with pulses and delays). The group boundaries are read out of the container since 16.09.2026 - another board's file has a different descriptor count, and fixed HY310 offsets ran past its end (HY300 Pro, issue #1) - and since 22.09.2026 out of the container's own class table rather than inferred from the block numbering, the way the vendor kernel reads it (`docs/uboot/commands.md`) |
 
 **None of this ships in the repo or the release image.** It is vendor material - the same files on every
 device of this model, but not ours to redistribute; `h713-extract` pulls them from the user's own device
