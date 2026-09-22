@@ -1310,7 +1310,8 @@ static bool display_hide(struct display *d)
  * gives the panel back (README 6e, docs/tools/h713-warp.md). The connection
  * IS the lifetime: a daemon that dies leaves a hangup here and this program
  * releases by itself. Video plane and warp are mutually exclusive, and this
- * program decides which is up.
+ * program decides which is up. The picture is up either way, so the audio
+ * follows d->on || d->warped - a warp must never mute the source.
  * ------------------------------------------------------------------ */
 
 #define WARP_BUFS	3
@@ -5319,7 +5320,7 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		 * device for its timings again (20 ms, S12 R7).
 		 */
 		if (cmd_audio(r, a, a1))
-			audio_evaluate(a, cap, d->on);
+			audio_evaluate(a, cap, d->on || d->warped);
 	} else if (!strcmp(cmd, "volume") || !strcmp(cmd, "vol")) {
 		cmd_volume(r, a, a1);
 	} else if (!strcmp(cmd, "mute")) {
@@ -5646,7 +5647,7 @@ static void reevaluate(struct capture *cap, struct display *d, struct retry *rt,
 		       struct audio *a)
 {
 	evaluate(cap, d, rt);
-	audio_evaluate(a, cap, d->on);
+	audio_evaluate(a, cap, d->on || d->warped);
 }
 
 static int signal_fd(void)
@@ -6111,7 +6112,7 @@ int main(int argc, char **argv)
 			 */
 			if (!seen || (seen & EV_SOURCE_CHANGE))
 				evaluate(&cap, &d, &rt);
-			audio_evaluate(&au, &cap, d.on);
+			audio_evaluate(&au, &cap, d.on || d.warped);
 		}
 		if (fds[6].fd >= 0 && fds[6].revents && warp_serve(&d))
 			reevaluate(&cap, &d, &rt, &au);
@@ -6124,14 +6125,14 @@ int main(int argc, char **argv)
 
 			if (read(au.settle_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
 				warn("audio           reading the timerfd: %s", strerror(errno));
-			audio_settled(&au, &cap, d.on);
+			audio_settled(&au, &cap, d.on || d.warped);
 		}
 		if (fds[5].revents & POLLIN) {
 			uint64_t ticks;
 
 			if (read(au.tick_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
 				warn("audio           reading the timerfd: %s", strerror(errno));
-			audio_tick(&au, &cap, d.on);
+			audio_tick(&au, &cap, d.on || d.warped);
 		}
 	}
 
