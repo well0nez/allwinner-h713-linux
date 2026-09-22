@@ -4,7 +4,7 @@ After=h713-warp.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/h713-keystone run
+ExecStart=/usr/local/bin/h713-keystone watch
 Restart=on-failure
 RestartSec=5
 

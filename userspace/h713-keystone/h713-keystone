@@ -50,6 +50,7 @@ import auto_keystone as ak                                    # noqa: E402
 import keystone_geometry as kge                               # noqa: E402
 
 CONF_PATH, REF_PATH = "/etc/h713/keystone.conf", "/etc/h713/keystone-ref"
+LAST_AUTO_PATH = "/var/lib/h713-keystone/last-auto"   # the set the automatic last applied
 IIO_DIR, WARP_TOOL, G_M_S2 = "/sys/bus/iio/devices", "h713-warp", 9.80665
 FALLBACK_COUNTS_PER_G = 1000.0    # measured: in_accel_x_scale 0.009806 m/s2
 EXIT_ERROR, EXIT_NO_SENSOR, EXIT_NOT_LEVEL, EXIT_WARP = 2, 3, 4, 5
@@ -144,6 +145,14 @@ def parse_zoom(text):
     return int(text)
 
 
+def _one_of(*choices):
+    def parse(text):
+        if text not in choices:
+            raise Error("one of %s" % " ".join(choices), EXIT_CONFIG)
+        return text
+    return parse
+
+
 def _above_zero(cast, what):
     def parse(text):
         value = cast(text)
@@ -164,6 +173,11 @@ DEFAULTS = (
     ("average_samples", "10", _above_zero(int, "at least one sample")),
     ("hysteresis_degrees", "1.0", _above_zero(float, "degrees above zero")),
     ("hold_seconds", "1.0", _above_zero(float, "seconds above zero")),
+    # the watch mode: what happens after the projector has been moved
+    ("after_move", "off", _one_of("off", "keystone", "keystone+focus")),
+    ("move_degrees", "3.0", _above_zero(float, "degrees above zero")),
+    ("settle_seconds", "2.0", _above_zero(float, "seconds above zero")),
+    ("focus_command", "h713-autofocus run", str),
 )
 
 
@@ -367,6 +381,38 @@ def warp_apply(tool, permille):
         warp_call(tool, ["keystone", "set", corner, axis, str(int(value))])
 
 
+def write_last_auto(path, permille):
+    """What the automatic applied last, so that status can say whether the
+    warp still carries it or a hand has changed it since (the gate)."""
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        _write_atomic(path, " ".join(str(int(v)) for v in permille) + "\n")
+    except OSError as exc:
+        _stderr("warning: %s: %s" % (path, exc))
+
+
+def read_last_auto(path):
+    text = _read(path)
+    if not text:
+        return None
+    try:
+        values = tuple(int(v) for v in text.split())
+    except ValueError:
+        return None
+    return values if len(values) == len(WARP_SLOTS) else None
+
+
+def keystone_by(warp_set, last_auto):
+    """The gate, as a word: whose values the warp carries."""
+    if warp_set is None:
+        return "unknown (the warp reports no values)"
+    if last_auto is None:
+        return "manual (the automatic has never applied anything)"
+    if tuple(warp_set) == tuple(last_auto):
+        return "auto (the last automatic set, untouched since)"
+    return "manual (changed by hand since the last automatic set %s)" % inset_text(last_auto)
+
+
 def inset_text(permille):
     if permille is None:
         return "no eight values in its status"
@@ -464,8 +510,85 @@ def do_once(args, conf, ini):
           % (row["gs_y"], row["gs_x"], inset_text(row["permille"])))
     if args.apply:
         warp_apply(args.warp, row["permille"])
+        write_last_auto(args.last_auto, row["permille"])
         print("ok applied through %s" % args.warp)
     return 0
+
+
+def angle_distance(a, b):
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def do_watch(args, conf, ini):
+    """The vendor's behaviour, not a control loop: nothing happens while the
+    projector stands still, whatever a hand has set. When it is moved by more
+    than move_degrees and has then been still for settle_seconds, the
+    automatic runs ONCE (after_move = keystone), and the autofocus after it
+    (keystone+focus); after_move = off only logs the move. The values a hand
+    set are therefore kept until the next move - that is the gate."""
+    sensor = open_sensor(args, conf)
+    reference = read_reference(args.reference, conf)
+    if reference is None:
+        raise Error("%s is missing -- `h713-keystone reference` with the "
+                    "projector level first" % args.reference)
+    stopped = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: stopped.append(True))
+    rest = None          # the angles the projector rests at
+    moving_since = None  # when the move began
+    still_since = None   # when the readings became still again
+    last = None
+    print("ok watch  after_move = %s, move %.1f degrees, settle %.1f s"
+          % (conf["after_move"], conf["move_degrees"], conf["settle_seconds"]))
+    until = time.monotonic() + args.for_seconds if args.for_seconds else None
+    while not stopped and (until is None or time.monotonic() < until):
+        row = reading(sensor, conf, reference, ini)
+        angles = (row["gs_x"], row["gs_y"])
+        now = time.monotonic()
+        if rest is None:
+            rest = angles
+        elif moving_since is None:
+            if angle_distance(angles, rest) > conf["move_degrees"]:
+                moving_since = now
+                still_since = None
+                print("ok moved  pitch %.2f roll %.2f, waiting for it to settle"
+                      % (row["gs_y"], row["gs_x"]))
+        else:
+            if last is not None and angle_distance(angles, last) <= 0.5:
+                still_since = still_since or now
+            else:
+                still_since = None
+            if still_since is not None and now - still_since >= conf["settle_seconds"]:
+                rest = angles
+                moving_since = None
+                still_since = None
+                if conf["after_move"] == "off":
+                    print("ok settled  pitch %.2f roll %.2f, after_move = off: nothing applied"
+                          % (row["gs_y"], row["gs_x"]))
+                else:
+                    if not args.dry_run:
+                        warp_apply(args.warp, row["permille"])
+                        write_last_auto(args.last_auto, row["permille"])
+                    print("ok apply  pitch %.3f  roll %.3f  %s%s"
+                          % (row["gs_y"], row["gs_x"], inset_text(row["permille"]),
+                             "  (dry run)" if args.dry_run else ""))
+                    if conf["after_move"] == "keystone+focus" and not args.dry_run:
+                        try:
+                            proc = subprocess.run(conf["focus_command"].split(),
+                                                  capture_output=True, text=True,
+                                                  timeout=120)
+                            print("ok focus  %s -> exit %d %s"
+                                  % (conf["focus_command"], proc.returncode,
+                                     (proc.stdout or proc.stderr).strip().splitlines()[-1:]
+                                     and (proc.stdout or proc.stderr).strip().splitlines()[-1]
+                                     or ""))
+                        except (OSError, subprocess.TimeoutExpired) as exc:
+                            _stderr("warning: the focus command failed: %s" % exc)
+        last = angles
+        deadline = time.monotonic() + POLL_S
+        while not stopped and time.monotonic() < deadline:
+            time.sleep(0.02)
+    return 130 if stopped else 0
 
 
 def do_run(args, conf, ini):
@@ -536,12 +659,16 @@ def do_status(args, conf, ini):
                         conf["zoom_scale"], ZOOM_WIDTH[conf["zoom_scale"]]))
     print("loop            %.2f degrees held for %.2f s, poll %.2f s"
           % (conf["hysteresis_degrees"], conf["hold_seconds"], POLL_S))
+    print("after a move    %s (more than %.1f degrees, then %.1f s still)"
+          % (conf["after_move"], conf["move_degrees"], conf["settle_seconds"]))
     for label, call in (
             ("sensor", lambda: _sensor_text(open_sensor(args, conf, False),
                                             conf)),
             ("reference", lambda: _reference_text(
                 args.reference, read_reference(args.reference, conf))),
-            ("warp", lambda: inset_text(warp_read_set(args.warp)))):
+            ("warp", lambda: inset_text(warp_read_set(args.warp))),
+            ("keystone by", lambda: keystone_by(warp_read_set(args.warp),
+                                                 read_last_auto(args.last_auto)))):
         try:
             print("%-16s%s" % (label, call()))
         except Error as exc:
@@ -555,13 +682,16 @@ def main(argv=None):
         description="the projector's auto keystone: accelerometer, the "
                     "vendor's geometry, h713-warp.",
         epilog="Measure the level pose once with `reference`, look at it with "
-               "`read` and `once`, let `run` hold it.")
+               "`read` and `once`; `watch` runs the automatic once after every "
+               "move, as the vendor does, and `once --apply` runs it now.")
     parser.add_argument("-C", "--config", default=CONF_PATH, metavar="PATH")
     parser.add_argument("--reference", default=REF_PATH, metavar="PATH")
     parser.add_argument("--device", metavar="PATH",
                         help="this IIO device instead of the one whose name "
                              "is iio_name")
     parser.add_argument("--warp", default=WARP_TOOL, metavar="PATH")
+    parser.add_argument("--last-auto", default=LAST_AUTO_PATH, metavar="PATH",
+                        help="where the automatic notes what it applied last")
     parser.add_argument("-q", "--quiet", action="store_true",
                         help="no warnings, only the ok and error lines")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -570,16 +700,23 @@ def main(argv=None):
     once = sub.add_parser("once", help="the eight insets for the current tilt")
     once.add_argument("--apply", action="store_true",
                       help="push them through `h713-warp ctl keystone set`")
-    run = sub.add_parser("run", help="the loop, until SIGTERM")
+    run = sub.add_parser("run", help="the control loop (not the vendor's way; "
+                                     "see watch), until SIGTERM")
     run.add_argument("--dry-run", action="store_true",
                      help="compute and log, never touch the warp")
+    watch = sub.add_parser("watch", help="the vendor's way: after a move, once "
+                                         "(after_move in the configuration)")
+    watch.add_argument("--dry-run", action="store_true",
+                       help="log what would be applied, never touch the warp")
+    watch.add_argument("--for", dest="for_seconds", type=float, default=None,
+                       metavar="SECONDS", help="stop after SECONDS (a try, the tests)")
     sub.add_parser("status", help="configuration, sensor, reference, warp")
     args = parser.parse_args(argv)
     # getattr: under a test that captures stdout it is not a real stream.
     getattr(sys.stdout, "reconfigure", lambda **_: None)(line_buffering=True)
     conf = load_conf(args.config)
     return {"read": do_read, "reference": do_reference, "once": do_once,
-            "run": do_run, "status": do_status}[args.command](
+            "run": do_run, "watch": do_watch, "status": do_status}[args.command](
                 args, conf, optics(conf))
 
 

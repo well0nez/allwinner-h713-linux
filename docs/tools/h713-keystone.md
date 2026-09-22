@@ -102,3 +102,14 @@ hysteresis, the poses table above, the configuration parser, the h713-warp verbs
   averaged. The one-degree hysteresis holds that back; it does not remove it.
 - The throw ratio is derived, not measured (AP2c question 1): if it is nearer 1.2, every correction is too strong.
 - It needs `model/` beside the real file: install under `/usr/local/lib/h713-keystone/`, symlink in `/usr/local/bin`.
+
+## After a move, once: `watch` and the gate
+
+The vendor's automatic is not a control loop, and neither is ours: `h713-keystone watch` (what the unit
+`h713-keystone-auto.service` runs) does nothing while the projector stands still, whatever a hand has set. When
+the tilt changes by more than `move_degrees` (3) and the readings have then been still for `settle_seconds` (2),
+it runs the automatic ONCE and, with `after_move = keystone+focus`, the autofocus after it (`focus_command`,
+default `h713-autofocus run`). `after_move = off` (the default) only logs the move. So a keystone set by hand
+stays until the projector is moved again - that is the gate - and `h713-keystone status` says whose values the
+warp carries: `keystone by  auto` when they are the last automatic set untouched, `manual` when a hand changed
+them since. `once --apply` is the automatic on demand; `run` (the old loop) stays for experiments only.

@@ -28,6 +28,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
@@ -435,6 +436,43 @@ class Commands(unittest.TestCase):
         code, out = self.run_tool("once")
         self.assertEqual(code, 0)
         self.assertIn("tl 0,0  tr 0,0  bl 0,0  br 0,0", out)
+
+    def _watch(self, after_move, seconds=3.0):
+        """rest, then the nose-up pose after 0.4 s, then still: one move."""
+        import threading
+        with open(os.path.join(self.dir, "keystone.conf"), "w") as fh:
+            fh.write("after_move = %s\naverage_samples = 1\nmove_degrees = 3\n"
+                     "settle_seconds = 0.5\n" % after_move)
+        self.assertEqual(self.run_tool("reference")[0], 0)
+
+        def tilt():
+            time.sleep(0.4)
+            for axis, value in zip("xyz", POSES[1][1:4]):
+                self.iio.write("iio:device2/in_accel_%s_raw" % axis, str(value))
+        threading.Thread(target=tilt, daemon=True).start()
+        return self.run_tool("--last-auto", os.path.join(self.dir, "last-auto"),
+                             "watch", "--dry-run", "--for", str(seconds))
+
+    def test_watch_applies_once_after_a_move_has_settled(self):
+        code, out = self._watch("keystone")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.count("ok moved"), 1)
+        self.assertEqual(out.count("ok apply"), 1, out)
+        self.assertIn("pitch 20.586", out)
+
+    def test_watch_with_after_move_off_only_logs_the_move(self):
+        code, out = self._watch("off")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.count("ok moved"), 1)
+        self.assertIn("after_move = off: nothing applied", out)
+        self.assertNotIn("ok apply", out)
+
+    def test_the_gate_names_whose_values_the_warp_carries(self):
+        auto = (10, 0, 6, 12, 4, 12, 8, 0)
+        self.assertTrue(ks.keystone_by(auto, auto).startswith("auto"))
+        self.assertTrue(ks.keystone_by((10, 0, 6, 12, 4, 12, 9, 0), auto).startswith("manual"))
+        self.assertTrue(ks.keystone_by(auto, None).startswith("manual"))
+        self.assertTrue(ks.keystone_by(None, auto).startswith("unknown"))
 
     def test_reference_refuses_a_pose_on_its_side(self):
         for axis, value in zip("xyz", (900, 100, 400)):
