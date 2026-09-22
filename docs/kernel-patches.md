@@ -14,7 +14,7 @@ two projects landing on the same chip and is grouped by **origin and topic**, no
 
 | # | Section | What it is |
 |---|---|---|
-| 1 | Base | the 56 patches that come through cstenger's `main`: well0nez's H713 driver series `0001` - `0022` (carried there with attribution), cstenger's arm64 side `0023` - `0048`, and our lettered follow-ups behind their originals. `0011` was withdrawn on 22.09.2026 - the file stays where it is and `series` carries the reason |
+| 1 | Base | the 53 patches that come through cstenger's `main`: well0nez's H713 driver series `0001` - `0022` (carried there with attribution), cstenger's arm64 side `0023` - `0048`, and our lettered follow-ups behind their originals. `0011` was withdrawn on 22.09.2026 - the file stays where it is and `series` carries the reason |
 | 2 | Bridge | one patch of ours between his main branch and his display branch |
 | 3 | Video-path branch | 18 patches: 17 from cstenger's `h713-display-video-path` (scanout/DECD/IOMMU/MMC/HDMI) plus our follow-up `0078a` |
 | 4 | ARISC + cpu_comm | the second co-processor, the ARM↔MIPS IPC kernel API, HDMI-RX callbacks; `0092a` takes the display firmware's two elog addresses from the board instead of from the driver |
@@ -47,7 +47,12 @@ renames the driver it introduced, and everything from `0025` on assumes both are
 addendum to the end would change what every later patch applies against. The two exceptions in section 9,
 `0143`/`0144`, are a generic fix to base patches `0004`/base-defconfig rather than an addendum to one
 projector patch, and are numbered on their own merit; `0152` and `0155` were deliberately re-sorted into
-their topical sections after being written, with tree identity re-proven each time.
+their topical sections after being written, with tree identity re-proven each time. A third kind of
+exception is `0014d` - `0014f`: they are addenda to `0014`/`0014a` and belong behind `0014c`, but a later
+patch, `0106`, rewrites the very lines `0014d` deletes, so behind `0014c` they would break it. They sit
+behind `0125` instead, the last patch in the series that touches `cpu_comm` at all, and everything in
+between stays byte-identical. The rule is the reason, not the position: an addendum goes wherever the
+patches that were written against the old state have already had their say.
 
 ## Building it, and adding to it
 

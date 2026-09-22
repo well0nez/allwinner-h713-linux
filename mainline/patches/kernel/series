@@ -45,13 +45,6 @@
 0014b-soc-sunxi-cpu-comm-service-every-msgbox-rx-endpoint.patch
 # 0014c: only the line of the bank it owns (SPI 109 stormed with all three, 16.09.)
 0014c-soc-sunxi-cpu-comm-request-only-the-line-of-the-bank-it-owns.patch
-# 0014d: one doorbell per message (the write block stood twice in 0014a; AP3s 3 and 4)
-0014d-soc-sunxi-cpu-comm-one-doorbell-per-message.patch
-# 0014e: the register whitelist is the hwspinlock's, not the msgbox's (AP3o 7)
-0014e-soc-sunxi-cpu-comm-the-whitelist-is-the-hwspinlock-s.patch
-#   (0014f: the TX FIFO is eight words deep and a word past it is lost; the
-#    TX_IRQ_EN pulse stays until one device run decides it, AP3s 2)
-0014f-soc-sunxi-cpu-comm-never-write-into-a-full-tx-fifo.patch
 0015-misc-add-h713-driver-kconfig.patch
 0016-dt-bindings-add-h713-clock-reset-ids.patch
 0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch
@@ -180,6 +173,22 @@
 0123-media-h713-hdmirx-restore-the-capture-input-converter-after-a-republish.patch
 0124-soc-sunxi-cpu-comm-release-the-call-slot-after-a-callback.patch
 0125-soc-sunxi-cpu-comm-drop-the-unread-channel-ring-and-fix-the-pid-match.patch
+#   (Q1 -- 0014d, 0014e and 0014f are addenda to 0014/0014a and belong behind
+#    0014c by the rule above, but they cannot sit there: 0106 rewrites BOTH
+#    copies of the doorbell block 0014d removes, so behind 0014c it would take
+#    0106's second hunk away with it. They therefore sit behind 0125, the last
+#    patch in the series that touches cpu_comm at all, and 0014 - 0014c and
+#    everything in between stay byte-identical.
+#    0014d: one doorbell per message -- the write block stood twice in 0014a,
+#      so every message went out as two words (AP3s sections 3 and 4).
+#    0014e: the two whitelist words the vendor array really holds are the
+#      hardware spinlock's 0x03004000/0x03004010, not the msgbox's (AP3o 7).
+#    0014f: the TX FIFO is eight words deep and a word written past it is lost
+#      without a trace; the TX_IRQ_EN pulse stays until one device run decides
+#      it (AP3s section 2).)
+0014d-soc-sunxi-cpu-comm-one-doorbell-per-message.patch
+0014e-soc-sunxi-cpu-comm-the-whitelist-is-the-hwspinlock-s.patch
+0014f-soc-sunxi-cpu-comm-never-write-into-a-full-tx-fifo.patch
 0126-media-h713-hdmirx-video-range-and-picture-mode-controls.patch
 0127-fbcon-re-arm-the-cursor-blink-when-the-console-lock-is-busy.patch
 0128-media-h713-hdmirx-repeat-the-first-re-arm-when-the-signal-comes-back.patch
