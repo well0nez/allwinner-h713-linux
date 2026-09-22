@@ -129,8 +129,20 @@
 #define DRM_DRIVER	"sun50i-h713-afbd"	/* patch 0093 */
 #define V4L2_DRIVER	"sun50i-h713-hdmirx"	/* patch 0094 */
 
-/* the smallest destination window the driver publishes, one AFBD block (0133b) */
+/* the smallest window the driver publishes, one AFBD block (0133f) */
 #define WINDOW_MIN	16u
+
+/*
+ * The payload of the plane properties "src-window" and "dst-window" (kernel
+ * 0133f): one window in panel pixels, as the driver's struct h713_window.
+ * w = 0 means "do not send this one", which is the firmware's own default.
+ */
+struct window {
+	uint32_t x, y, w, h;
+};
+
+/* The three zooms; what each one sends is in display_zoom_apply(). */
+enum zoom_mode { ZOOM_OFF, ZOOM_IN, ZOOM_OUT };
 
 
 /* ------------------------------------------------------------------ *
@@ -628,11 +640,12 @@ struct display {
 	unsigned int src_pitch;		/* ring line pitch (capture bytesperline) */
 	bool has_aspect;		/* the plane offers the "aspect" property (0133) */
 	uint64_t aspect;		/* its value, sent with every show */
-	/*
-	 * The plane's destination rectangle: descriptor words 31..34, which the
-	 * firmware scales into (0133b). The whole panel until somebody zooms.
-	 */
-	unsigned int win_x, win_y, win_w, win_h;
+	bool has_windows;		/* it offers src-window/dst-window (0133f) */
+	/* the zoom, and the three things display_zoom_apply() derives from it */
+	enum zoom_mode zoom;
+	unsigned int zoom_arg;		/* ZOOM_IN: factor x 100; ZOOM_OUT: percent */
+	struct window src_win, dst_win;	/* w = 0: not sent, the firmware's default */
+	unsigned int win_x, win_y, win_w, win_h;	/* the plane on the panel */
 	struct props crtc_props;
 	uint32_t gamma_blob;		/* GAMMA_LUT blob from -g, 0 = none */
 	struct props plane_props;
@@ -775,9 +788,17 @@ static void display_find_plane(struct display *d)
 	 * change it. A kernel without the property gets no such word.
 	 */
 	d->has_aspect = prop_value(&d->plane_props, "aspect", &d->aspect);
-	info("plane           %u, NV16, mode hdmi-ring%s%s", d->plane_id,
+	/*
+	 * "src-window" and "dst-window" (kernel 0133f) are the descriptor's own
+	 * two windows, in panel pixels and independent of where the plane sits.
+	 * Without them only "zoom off" is possible.
+	 */
+	d->has_windows = prop_id(&d->plane_props, "src-window") &&
+			 prop_id(&d->plane_props, "dst-window");
+	info("plane           %u, NV16, mode hdmi-ring%s%s%s", d->plane_id,
 	     d->has_aspect ? ", format " : "",
-	     d->has_aspect ? prop_enum_name(&d->plane_props, "aspect", d->aspect) : "");
+	     d->has_aspect ? prop_enum_name(&d->plane_props, "aspect", d->aspect) : "",
+	     d->has_windows ? ", zoom windows" : ", no zoom windows (kernel < 0133f)");
 }
 
 /*
@@ -1019,42 +1040,148 @@ static void display_gamma_apply(struct display *d)
 	display_release_master(d);
 }
 
+/* a width down to a whole AFBD block, a height down to an even line count */
+static unsigned int zoom_block(unsigned int v)
+{
+	return v & ~(WINDOW_MIN - 1);
+}
+
+static unsigned int zoom_even(unsigned int v)
+{
+	return v & ~1u;
+}
+
+/* and never below the one block the driver insists on (kernel 0133f) */
+static unsigned int zoom_floor(unsigned int v)
+{
+	return v < WINDOW_MIN ? WINDOW_MIN : v;
+}
+
 /*
- * The part of the ring that carries a picture. The firmware scales into the
- * ring by the window's share of the panel and leaves the ring's layout alone
- * (dev20, 22.09.2026: at a 1536x864 window the DE picture scaler and the Proc
- * node followed, INCAP's rowbyte stayed at 1920 bytes a line), so while a
- * window is up the fresh picture is the ring scaled by that share, in the
- * ring's top left corner, and the rest of the ring still holds the last frame
- * that filled it. The plane reads exactly that and puts it in the window: the
- * scaling is the firmware's, the placement on the panel is ours.
+ * The three numbers a zoom is sent as, out of the mode and its argument.
+ * Measured on 22.09.2026 (dev21, "Q15 bench"), step by step:
  *
- * At the full panel the firmware writes the whole ring and the ring is taken
- * as it is -- which is what keeps a ring whose width is no multiple of 16
- * (1366, kernel 0131) exactly the buffer it was before this. Otherwise the
- * rectangle is rounded DOWN to a block of columns and an even line count, the
- * geometry the plane takes: rounding up would show a strip of the old frame.
+ *   in f   source window = the centre 1/f of the frame, destination absent,
+ *          plane over the whole panel. The firmware scales that window up
+ *          into the whole ring - at f = 2 the centre quarter filled the panel
+ *          and the cell pitch of the test pattern doubled (step c).
+ *   out p  destination window = W x H at the RING's origin, W and H the panel
+ *          times p; source window = the frame less two pixels, because with a
+ *          source window the firmware calls full it skips its scaler and
+ *          nothing moves (steps a, f, g). The plane crops the region the
+ *          firmware filled and places it centred (step h).
+ *   off    neither window; the plane covers the panel, as before any of this.
+ */
+static void display_zoom_apply(struct display *d)
+{
+	unsigned int w, h;
+
+	memset(&d->src_win, 0, sizeof(d->src_win));
+	memset(&d->dst_win, 0, sizeof(d->dst_win));
+	d->win_x = 0;
+	d->win_y = 0;
+	d->win_w = d->width;
+	d->win_h = d->height;
+	if (d->zoom == ZOOM_IN) {
+		w = zoom_floor(zoom_block(d->width * 100 / d->zoom_arg));
+		h = zoom_floor(zoom_even(d->height * 100 / d->zoom_arg));
+		/* the origin needs no rounding: only the size decides what the
+		 * firmware scales, and half a pixel of centring is free
+		 */
+		d->src_win.x = (d->width - w) / 2;
+		d->src_win.y = (d->height - h) / 2;
+		d->src_win.w = w;
+		d->src_win.h = h;
+	} else if (d->zoom == ZOOM_OUT) {
+		w = zoom_floor(zoom_block(d->width * d->zoom_arg / 100));
+		h = zoom_floor(zoom_even(d->height * d->zoom_arg / 100));
+		d->src_win.w = d->width - 2;
+		d->src_win.h = d->height - 2;
+		d->dst_win.w = w;
+		d->dst_win.h = h;
+		d->win_x = (d->width - w) / 2;
+		d->win_y = (d->height - h) / 2;
+		d->win_w = w;
+		d->win_h = h;
+	}
+}
+
+/* the zoom as one word: "off", "in 2.00", "out 80" -- the saved file's form */
+static void zoom_text(const struct display *d, char *out, size_t n)
+{
+	if (d->zoom == ZOOM_IN)
+		snprintf(out, n, "in %u.%02u", d->zoom_arg / 100,
+			 d->zoom_arg % 100);
+	else if (d->zoom == ZOOM_OUT)
+		snprintf(out, n, "out %u", d->zoom_arg);
+	else
+		snprintf(out, n, "off");
+}
+
+/* one window for a status line */
+static const char *window_text(const struct window *w, char *buf, size_t n)
+{
+	if (w->w)
+		snprintf(buf, n, "%u,%u %ux%u", w->x, w->y, w->w, w->h);
+	else
+		snprintf(buf, n, "absent (the whole picture)");
+
+	return buf;
+}
+
+/*
+ * The part of the ring that carries a picture, which is what the plane reads
+ * (SRC_W/SRC_H, kernel 0133c; it crops from the ring's first byte and no
+ * other, so there is no SRC_X/SRC_Y here). At zoom off and zoom in the
+ * firmware fills the whole ring and the ring is taken as it is -- which keeps
+ * a ring whose width is no multiple of 16 (1366, kernel 0131) exactly the
+ * buffer it was. At zoom out it filled the ring's top left corner by the
+ * destination window's share, and the rest of the ring still holds the last
+ * frame that filled it; the rectangle is rounded DOWN to a block of columns
+ * and an even line count, because rounding up would show a strip of that old
+ * frame. On the HY310, where the ring is the panel, this is the destination
+ * window itself.
  */
 static void display_source_rect(const struct display *d, unsigned int *w,
 				unsigned int *h)
 {
-	if (d->win_w == d->width && d->win_h == d->height) {
+	if (d->zoom != ZOOM_OUT) {
 		*w = d->src_w;
 		*h = d->src_h;
 		return;
 	}
-	*w = (unsigned int)((uint64_t)d->src_w * d->win_w / d->width) &
-	     ~(WINDOW_MIN - 1);
-	*h = (unsigned int)((uint64_t)d->src_h * d->win_h / d->height) & ~1u;
-	if (*w < WINDOW_MIN)
-		*w = WINDOW_MIN;
-	if (*h < WINDOW_MIN)
-		*h = WINDOW_MIN;
+	*w = zoom_floor(zoom_block((unsigned int)((uint64_t)d->src_w *
+						  d->zoom_arg / 100)));
+	*h = zoom_floor(zoom_even((unsigned int)((uint64_t)d->src_h *
+						 d->zoom_arg / 100)));
+}
+
+/* one window as a property blob, 0 for "absent" and for a blob we cannot make */
+static uint32_t window_blob(const struct display *d, const struct window *win)
+{
+	uint32_t id = 0;
+
+	if (win->w && drmModeCreatePropertyBlob(d->fd, win, sizeof(*win), &id)) {
+		warn("window blob: %s -- the window is not sent", strerror(errno));
+		return 0;
+	}
+
+	return id;
+}
+
+/* the kernel keeps its own reference while the state lives, so drop ours */
+static void window_blobs_free(const struct display *d, uint32_t a, uint32_t b)
+{
+	if (a)
+		drmModeDestroyPropertyBlob(d->fd, a);
+	if (b)
+		drmModeDestroyPropertyBlob(d->fd, b);
 }
 
 static bool display_show(struct display *d)
 {
 	drmModeAtomicReq *req;
+	uint32_t sb = 0, db = 0;
 	unsigned int sw, sh;
 	bool ok = true;
 	int ret;
@@ -1082,6 +1209,12 @@ static bool display_show(struct display *d)
 	ok &= add(req, d, "hdmi-ring", 1);
 	if (d->has_aspect)
 		ok &= add(req, d, "aspect", d->aspect);
+	if (d->has_windows) {
+		sb = window_blob(d, &d->src_win);
+		db = window_blob(d, &d->dst_win);
+		ok &= add(req, d, "src-window", sb);
+		ok &= add(req, d, "dst-window", db);
+	}
 	ok &= add_gamma(req, d);
 	/*
 	 * No "saturation" here. The chroma gain has one owner -- the firmware's
@@ -1093,12 +1226,14 @@ static bool display_show(struct display *d)
 
 	if (!ok) {
 		drmModeAtomicFree(req);
+		window_blobs_free(d, sb, db);
 		display_release_master(d);
 		return false;
 	}
 
 	ret = drmModeAtomicCommit(d->fd, req, 0, NULL);
 	drmModeAtomicFree(req);
+	window_blobs_free(d, sb, db);
 
 	if (ret) {
 		warn("atomic commit refused: %s", strerror(errno));
@@ -1111,8 +1246,10 @@ static bool display_show(struct display *d)
 	}
 
 	d->on = true;
-	info("picture         plane %u on, %ux%u out of the capture ring in the window %u,%u %ux%u",
-	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h);
+	info("picture         plane %u on, %ux%u out of the capture ring at %u,%u %ux%u on the panel%s",
+	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h,
+	     d->zoom == ZOOM_IN ? ", zoomed in" :
+	     d->zoom == ZOOM_OUT ? ", zoomed out" : "");
 
 	return true;
 }
@@ -3044,16 +3181,26 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		reply_add(r, "format          %s (aspect %llu)\n",
 			  prop_enum_name(&d->plane_props, "aspect", d->aspect),
 			  (unsigned long long)d->aspect);
-	reply_add(r, "zoom            window %u,%u %ux%u%s\n", d->win_x,
-		  d->win_y, d->win_w, d->win_h,
-		  d->win_w == d->width && d->win_h == d->height ?
-			  " (the whole panel)" : "");
-	if (d->src_w && (d->win_w != d->width || d->win_h != d->height)) {
-		unsigned int sw, sh;
+	{
+		char zbuf[32], sbuf[48], dbuf[48];
 
-		display_source_rect(d, &sw, &sh);
-		reply_add(r, "                the firmware scales into the ring: %ux%u of it is the picture, the rest is the last full frame\n",
-			  sw, sh);
+		zoom_text(d, zbuf, sizeof(zbuf));
+		reply_add(r, "zoom            %s%s\n", zbuf,
+			  d->has_windows ? "" :
+				  " (the kernel has no zoom windows)");
+		reply_add(r, "                src-window %s, dst-window %s (descriptor words 27..30 / 31..34)\n",
+			  window_text(&d->src_win, sbuf, sizeof(sbuf)),
+			  window_text(&d->dst_win, dbuf, sizeof(dbuf)));
+		reply_add(r, "                plane %u,%u %ux%u on panel %ux%u\n",
+			  d->win_x, d->win_y, d->win_w, d->win_h, d->width,
+			  d->height);
+		if (d->src_w && d->zoom == ZOOM_OUT) {
+			unsigned int sw, sh;
+
+			display_source_rect(d, &sw, &sh);
+			reply_add(r, "                the firmware fits the picture into %ux%u of the ring, the rest is the last full frame\n",
+				  sw, sh);
+		}
 	}
 	cmd_status_picture_values(r);
 	cmd_status_audio(r, a);
@@ -3448,73 +3595,114 @@ static bool cmd_aspect(struct reply *r, struct display *d, const char *text)
 }
 
 /*
- * "80" (or "full") -> a centred window of that percentage, "x,y,w,h" -> that
- * rectangle in panel pixels. False for anything that is neither, or that does
- * not fit the panel with at least WINDOW_MIN pixels on each axis.
+ * "off" | "in [1.0..4.0]" | "out [1..100]". The factor and the percentage
+ * have defaults, because "zoom in" without a number is what a remote control
+ * sends. False for anything else.
  */
-static bool zoom_parse(const struct display *d, const char *text,
-		       unsigned int *x, unsigned int *y, unsigned int *w,
-		       unsigned int *h)
+static bool zoom_parse(const char *verb, const char *arg, enum zoom_mode *m,
+		       unsigned int *v)
 {
-	char tail, *end;
-	long v;
+	char *end;
+	double f;
+	long p;
 
-	if (sscanf(text, "%u,%u,%u,%u%c", x, y, w, h, &tail) != 4) {
-		if (!strcasecmp(text, "full") || !strcasecmp(text, "off")) {
-			v = 100;
-		} else {
-			errno = 0;
-			v = strtol(text, &end, 10);
-			if (end == text || *end || errno || v < 1 || v > 100)
+	if (!strcasecmp(verb, "off") || !strcasecmp(verb, "full")) {
+		*m = ZOOM_OFF;
+		*v = 0;
+		return !arg;
+	}
+	if (!strcasecmp(verb, "in")) {
+		errno = 0;
+		f = 2.0;
+		if (arg) {
+			f = strtod(arg, &end);
+			if (end == arg || *end || errno || f < 1.0 || f > 4.0)
 				return false;
 		}
-		*w = d->width * (unsigned long)v / 100;
-		*h = d->height * (unsigned long)v / 100;
-		*x = (d->width - *w) / 2;
-		*y = (d->height - *h) / 2;
+		*m = ZOOM_IN;
+		*v = (unsigned int)(f * 100 + 0.5);
+		return true;
+	}
+	if (!strcasecmp(verb, "out")) {
+		errno = 0;
+		p = 80;
+		if (arg) {
+			p = strtol(arg, &end, 10);
+			if (end == arg || *end || errno || p < 1 || p > 100)
+				return false;
+		}
+		*m = ZOOM_OUT;
+		*v = (unsigned int)p;
+		return true;
 	}
 
-	return *w >= WINDOW_MIN && *h >= WINDOW_MIN &&
-	       *x + *w <= d->width && *y + *h <= d->height;
+	return false;
+}
+
+/* the same as one string, which is the form the saved file keeps */
+static bool zoom_parse_text(const char *text, enum zoom_mode *m,
+			    unsigned int *v)
+{
+	char verb[12], arg[16], tail[4];
+	int n = sscanf(text, "%11s %15s %3s", verb, arg, tail);
+
+	if (n == 1)
+		return zoom_parse(verb, NULL, m, v);
+
+	return n == 2 && zoom_parse(verb, arg, m, v);
 }
 
 /*
- * zoom [PERCENT|x,y,w,h]: where on the panel the picture goes. The rectangle
- * becomes the plane's destination and from there descriptor words 31..34
- * (kernel 0133b) - the vendor's digital zoom by the vendor's own numbers. The
- * firmware answers by scaling ITS picture into the capture ring by the
- * window's share of the panel and leaving the ring's layout alone (dev20,
- * 22.09.2026), so the plane also reads only the part of the ring that then
- * carries the picture (kernel 0133c); where it lands is ours. Read at the
- * next publication, so a
- * change on a live plane takes the plane down here and lets evaluate() bring
- * it up again. Returns true when evaluate() has to run.
+ * zoom [off | in FACTOR | out PERCENT]: the two descriptor windows, and the
+ * plane's rectangle as the placement that follows from them (kernel 0133f;
+ * the model is the bench of 22.09.2026, see display_zoom_apply()). Nothing
+ * here scales: zoom in is the firmware blowing a smaller source window up
+ * into the whole ring, zoom out is the firmware fitting the picture into a
+ * smaller window of the ring and the plane cropping and placing that. Read at
+ * the next publication, so a change on a live plane takes the plane down here
+ * and lets evaluate() bring it up again. Returns true when evaluate() has to
+ * run.
  */
-static bool cmd_zoom(struct reply *r, struct display *d, const char *text)
+static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
+		     const char *arg)
 {
-	unsigned int x, y, w, h;
+	enum zoom_mode m;
+	unsigned int v;
+	char text[32];
 
-	if (!text) {
-		reply_add(r, "ok zoom %u,%u %ux%u on panel %ux%u\n", d->win_x,
-			  d->win_y, d->win_w, d->win_h, d->width, d->height);
+	if (!verb) {
+		zoom_text(d, text, sizeof(text));
+		reply_add(r, "ok zoom %s\n", text);
 		return false;
 	}
-	if (!zoom_parse(d, text, &x, &y, &w, &h)) {
-		reply_fail(r, "zoom takes 1..100 (percent, centred), \"full\", or \"x,y,w,h\" inside the panel %ux%u and at least %u pixels, not \"%s\"",
-			   d->width, d->height, WINDOW_MIN, text);
+	if (strchr(verb, ',')) {
+		reply_fail(r, "zoom no longer takes a rectangle. A window somewhere else in the ring would need the plane to crop at SRC_X/SRC_Y, and it crops from the ring's first byte only (kernel 0133c). Use \"in FACTOR\", \"out PERCENT\" or \"off\"");
 		return false;
 	}
-	if (x == d->win_x && y == d->win_y && w == d->win_w && h == d->win_h) {
-		reply_add(r, "ok zoom %u,%u %ux%u, unchanged\n", x, y, w, h);
+	if (!zoom_parse(verb, arg, &m, &v)) {
+		reply_fail(r, "zoom takes \"in [1.0..4.0]\", \"out [1..100]\" or \"off\", not \"%s%s%s\"",
+			   verb, arg ? " " : "", arg ? arg : "");
 		return false;
 	}
-	d->win_x = x; d->win_y = y; d->win_w = w; d->win_h = h;
+	if (m != ZOOM_OFF && !d->has_windows) {
+		reply_fail(r, "this plane has no \"src-window\"/\"dst-window\" -- the kernel is older than patch 0133f, and only \"zoom off\" is possible");
+		return false;
+	}
+	if (m == d->zoom && v == d->zoom_arg) {
+		zoom_text(d, text, sizeof(text));
+		reply_add(r, "ok zoom %s, unchanged\n", text);
+		return false;
+	}
+	d->zoom = m;
+	d->zoom_arg = v;
+	display_zoom_apply(d);
+	zoom_text(d, text, sizeof(text));
 	if (d->on && !display_hide(d)) {
-		reply_fail(r, "zoom %u,%u %ux%u saved, but the plane could not be switched off -- it applies from the next picture on",
-			   x, y, w, h);
+		reply_fail(r, "zoom %s saved, but the plane could not be switched off -- it applies from the next picture on",
+			   text);
 		return false;
 	}
-	reply_add(r, "ok zoom %u,%u %ux%u%s\n", x, y, w, h,
+	reply_add(r, "ok zoom %s%s\n", text,
 		  d->master ? " -- the picture is rebuilt" : "");
 
 	return true;
@@ -4198,8 +4386,7 @@ static int preset_apply(struct capture *cap, const struct preset *p, char *msg,
  *       brightness = 50             the nine, by their ctl names
  *       ...
  *       aspect = proportional       and how the source is fitted
- *       zoom = 0,0,1920,1080        and where on the panel it goes (a
- *                                   percentage is accepted when editing)
+ *       zoom = out 80               and the digital zoom: off, in F, out P
  *
  * Written by "h713-tv ctl save" and by nothing else -- **not** by every
  * "ctl set" (plan 113 A.4). Somebody looking for the right sharpness runs the
@@ -4444,11 +4631,14 @@ static bool saved_write(struct saved_values *w, struct capture *cap,
 		if (l + 1 < n)
 			l += (size_t)snprintf(msg + l, n - l, " aspect=%s", a);
 	}
-	fprintf(f, "zoom        = %u,%u,%u,%u\n", d->win_x, d->win_y, d->win_w,
-		d->win_h);
-	if (l + 1 < n)
-		l += (size_t)snprintf(msg + l, n - l, " zoom=%u,%u,%u,%u",
-				      d->win_x, d->win_y, d->win_w, d->win_h);
+	{
+		char zbuf[32];
+
+		zoom_text(d, zbuf, sizeof(zbuf));
+		fprintf(f, "zoom        = %s\n", zbuf);
+		if (l + 1 < n)
+			l += (size_t)snprintf(msg + l, n - l, " zoom=%s", zbuf);
+	}
 	if (fflush(f) || fsync(fileno(f)) || fclose(f)) {
 		snprintf(msg, n, "%s: %s", tmp, strerror(errno));
 		unlink(tmp);
@@ -4734,10 +4924,11 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        Only here is anything written, not on every \"set\"\n"
 		  "  aspect [NAME]         how the source is fitted (auto proportional full 16:9 4:3 zoom);\n"
 		  "                        without NAME: show it. A change rebuilds the picture (~0.5 s)\n"
-		  "  zoom [PCT|x,y,w,h]    where on the panel the picture goes: a percentage centred\n"
-		  "                        (100 = the whole panel, \"full\" likewise) or a rectangle in\n"
-		  "                        panel pixels; without an argument: show it. Rebuilds as aspect does.\n"
-		  "                        The firmware scales into the capture ring, the placement is ours\n"
+		  "  zoom [off|in F|out P] the digital zoom: \"in\" enlarges the centre of the picture by\n"
+		  "                        a factor 1.0..4.0 (default 2), \"out\" shrinks the whole picture\n"
+		  "                        to P percent of the panel, centred (1..100, default 80), \"off\"\n"
+		  "                        is the baseline; without an argument: show it. Rebuilds as\n"
+		  "                        aspect does. The firmware scales, the placement is ours\n"
 		  "  audio [on|off|auto]   audio: forced on, forced silent, or following the picture\n"
 		  "                        (default auto); without an argument: show it\n"
 		  "  volume [0..100]       volume of the codec (DAC Playback Volume, acts on HDMI and\n"
@@ -4798,7 +4989,7 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 	} else if (!strcmp(cmd, "aspect")) {
 		return cmd_aspect(r, d, a1);
 	} else if (!strcmp(cmd, "zoom")) {
-		return cmd_zoom(r, d, a1);
+		return cmd_zoom(r, d, a1, a2);
 	} else if (!strcmp(cmd, "audio")) {
 		/*
 		 * The sound is decided here and not by the caller's
@@ -5471,17 +5662,31 @@ int main(int argc, char **argv)
 			     saved.path, saved.aspect_line, saved.aspect, names);
 		}
 	}
-	/* and the window, for the same reason and at the same moment */
+	/* and the zoom, for the same reason and at the same moment */
 	if (saved.present && saved.zoom[0]) {
-		unsigned int x, y, w, hh;
+		enum zoom_mode m;
+		unsigned int v, x, y, w, hh;
 
-		if (zoom_parse(&d, saved.zoom, &x, &y, &w, &hh)) {
-			d.win_x = x; d.win_y = y; d.win_w = w; d.win_h = hh;
-			info("saved           zoom %u,%u %ux%u", x, y, w, hh);
+		if (zoom_parse_text(saved.zoom, &m, &v) &&
+		    (m == ZOOM_OFF || d.has_windows)) {
+			d.zoom = m;
+			d.zoom_arg = v;
+			display_zoom_apply(&d);
+			info("saved           zoom %s", saved.zoom);
+		} else if (sscanf(saved.zoom, "%u,%u,%u,%u", &x, &y, &w, &hh) == 4 &&
+			   !x && !y && w == d.width && hh == d.height) {
+			/*
+			 * The full-panel rectangle every version before 0133f
+			 * wrote. It meant "no zoom", and that is what it still
+			 * gets; any other rectangle of that era meant a window
+			 * this program no longer has and is dropped below.
+			 */
+			info("saved           zoom off (the rectangle of an older version)");
 		} else {
-			warn("%s:%u: zoom = \"%s\" is not a percentage or a window inside the panel %ux%u -- dropped",
-			     saved.path, saved.zoom_line, saved.zoom, d.width,
-			     d.height);
+			warn("%s:%u: zoom = \"%s\" is not \"off\", \"in FACTOR\" or \"out PERCENT\"%s -- dropped",
+			     saved.path, saved.zoom_line, saved.zoom,
+			     d.has_windows ? "" :
+				     ", and this kernel has no zoom windows");
 		}
 	}
 	capture_subscribe(&cap);
