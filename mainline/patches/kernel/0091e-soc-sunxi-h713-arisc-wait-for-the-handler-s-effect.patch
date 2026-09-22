@@ -1,0 +1,187 @@
+soc: sunxi: h713-arisc: wait for the handler's effect, not for the classifier
+
+0091d recorded that a masked upload leaves the firmware's EDID version byte
+at 0x0f where 0x01 was asked for, and left open whether the handler ORs the
+bits. It does neither: the byte is this driver's doing.
+
+SetEDIDVersion reads its argument out of the handler scratch twice - once at
+0x125c4 for the log line "Host Set EDID Version.  0x%x", and again at 0x125e0
+after that call has returned. Only the second read reaches the store at
+0x12600, which is a plain l.andi 0x0f plus l.sb; the five accesses to
+g_Data + 4 in the whole image are listed in Q13 section 6 and none of them is
+a read-modify-write. arisc_wait_handler() is satisfied as soon as the
+classifier has copied the payload into the scratch at 0x11680, which is
+before the dispatcher and long before that second read, so arisc_send()
+returns and the driver sends the next command - whose arisc_arm_handler_probe()
+writes the complement of its own expected scratch over all 65 bytes. Behind
+the guarded mask in arisc_hdmi_set_edid() that next command is
+CheckEDIDUpdateStatus with both arguments 0, whose complement is 0xff, and
+0xff & 0x0f = 0x0f. The firmware's log call is level gated and puts 28
+characters on a 115200 baud sink, about 2.4 ms, against the driver's
+usleep_range(500, 1000): the firmware loses by more than a millisecond, which
+is why this reproduces instead of flickering (Q13 sections 1 and 2,
+umbau/reviews/Q13.md).
+
+PullHotPlug carries the identical pattern behind its own print at 0x127d4:
+0x127dc re-reads the action and 0x127e4 the port.
+
+So wait for the handler's own effect instead of for the classifier's copy,
+which needs no timing argument at all. After SUB_SET_EDID_VERSION: until
+g_Data + 4 (a->off.edid_version, resolved by 0091a) reads the mask that was
+sent. After a PullHotPlug RESET: until the tick counter of that port reads
+the 84 the handler loads at 0x123d0. Both are bounded by HANDLER_TIMEOUT_MS,
+the deadline 0091 already uses for the scratch wait; on a timeout one
+dev_warn names the byte that is there and the byte that was asked for and
+the sequence goes on, because the byte is a readback and the status file
+shows it as "held want" either way. UP only increments the counter (0x12374)
+and the main loop zeroes it again as soon as it reads 1 (0x10f50..0x10f78),
+and DOWN writes no SRAM at all, so neither of those two has an effect to wait
+for; the settle loop stays exactly what it was for both.
+
+arisc_hdmi_edid_mask() ends with the pulse 0091b exports, under three
+conditions that are the API line: the mask differs from the one the firmware
+holds, the output gate is set (an upload since the last reset), and the
+bring-up sequence has run once on this boot. A publish never moves the
+hotplug pin (AP3l N3), so without the pulse a changed mask stays invisible to
+the source until something else moves the pin; "a re-upload is required" was
+never the condition. hpd_sequence_port records the port arisc_hdmi_edid_init()
+ran on so the pulse does not have to guess it.
+
+What the HY310 sees: nothing. allwinner,edid-version-mask is absent, so the
+board mask is 0 (0091c), the guard in arisc_hdmi_set_edid() finds the
+firmware's byte already 0 after ResetEDIDModule and SetEDIDVersion is not
+sent at all - the bring-up's mailbox traffic is byte for byte what it was,
+and the new wait sits inside a function that path does not call.
+arisc_hdmi_edid_mask() is reached only from the debugfs edid-version command
+and the RESET wait only from debugfs hpd <port> reset; the bring-up and the
+receive driver use DOWN and UP, whose code is untouched.
+
+Follow-up to 0091/0091a/0091b/0091c/0091d, which stay byte-identical.
+
+Tested on the HY310: not yet. The device proof is Q13's sequence on the debug
+kernel - reset-edid, then "edid-version 2", then edid - where the status file
+must end at "edid_version_mask: 0x02 want 0x02" and edid-port0 line 128 must
+start 02 03 4c. Before this patch the same sequence gives 0x0f and 02 03 54.
+
+diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -366,6 +366,7 @@
+ 	bool			running;	/* handshake completed */
+ 	bool			edid_module_ready;	/* ResetEDIDModule done */
+ 	bool			hpd_sequence_done;	/* edid_init pulsed the pin */
++	unsigned int		hpd_sequence_port;	/* ... on this port */
+ 	int			notify_result;
+ 	char			notify_version[64];
+ 
+@@ -1124,6 +1125,27 @@
+ 	return -ETIMEDOUT;
+ }
+ 
++/*
++ * arisc_wait_handler() proves that the classifier copied the payload
++ * (0x11680), not that the handler has read it, and the handlers that
++ * dispatch from the scratch re-read it behind a log call (SetEDIDVersion
++ * 0x125e0, PullHotPlug 0x127dc/0x127e4). The next command's probe pattern
++ * lands in that window and replaces the argument -- a mask of 1 came back
++ * as 0x0f (Q13 section 1). So wait for the handler's own effect instead.
++ */
++static bool arisc_wait_effect(struct h713_arisc *a, u32 off, u8 want)
++{
++	ktime_t start = ktime_get();
++
++	do {
++		if (readb(sram_at(a, off)) == want)
++			return true;
++		usleep_range(500, 1000);
++	} while (ktime_ms_delta(ktime_get(), start) < HANDLER_TIMEOUT_MS);
++
++	return false;
++}
++
+ /*
+  * Seed the scratch with the complement of what the handler is expected to
+  * leave behind, so that "unchanged" can never be mistaken for "handled" --
+@@ -1695,6 +1717,11 @@
+  * nothing more; the store is served with it at the next publish. Read back
+  * after a masked upload the byte was 0x0f where 0x01 was asked for, which
+  * the status file shows as "held want" (dev20, 22.09.2026).
++ *
++ * That 0x0f is ours: the handler re-reads its argument at 0x125e0, where
++ * the follower's probe had put 0xff, and 0xff & 0x0f = 0x0f (Q13 1); the
++ * effect wait below closes that window, and the device proof decides
++ * whether the command republishes. API line: changed value, upload, pulse.
+  */
+ static int arisc_edid_mask_locked(struct h713_arisc *a, u8 mask)
+ {
+@@ -1703,12 +1730,17 @@
+ 	if (ret)
+ 		dev_err(a->dev, "SetEDIDVersion 0x%02x not processed (%d)\n",
+ 			mask, ret);
++	else if (!arisc_wait_effect(a, a->off.edid_version, mask))
++		dev_warn(a->dev,
++			 "SetEDIDVersion: firmware holds 0x%02x, asked for 0x%02x\n",
++			 readb(sram_at(a, a->off.edid_version)), mask);
+ 	return ret;
+ }
+ 
+ int arisc_hdmi_edid_mask(u8 mask)
+ {
+ 	struct h713_arisc *a = arisc_get(true);
++	bool pulse;
+ 	int ret;
+ 
+ 	if (IS_ERR(a))
+@@ -1717,11 +1749,24 @@
+ 		return -EINVAL;
+ 
+ 	mutex_lock(&a->lock);
++	pulse = a->hpd_sequence_done &&
++		readb(sram_at(a, a->off.edid_gate)) &&
++		readb(sram_at(a, a->off.edid_version)) != mask;
+ 	ret = arisc_edid_mask_locked(a, mask);
+ 	if (!ret)
+ 		a->edid_mask = mask;
+ 	arisc_report(a, "edid-version 0x%02x rc=%d\n", mask, ret);
+ 	mutex_unlock(&a->lock);
++
++	/*
++	 * A publish never moves the hotplug pin (AP3l N3), so a changed mask
++	 * stays invisible to the source until the pin does (Q13 D2/D3). The
++	 * gate byte is the API line's "upload since the last reset": without
++	 * it the firmware forces the pin low anyway. The pulse takes the lock
++	 * itself, hence behind the unlock.
++	 */
++	if (!ret && pulse && arisc_hdmi_hpd_pulse(a->hpd_sequence_port))
++		dev_warn(a->dev, "mask 0x%02x: no hotplug pulse\n", mask);
+ 	return ret;
+ }
+ EXPORT_SYMBOL_GPL(arisc_hdmi_edid_mask);
+@@ -2000,6 +2045,19 @@
+ 	if (action == ARISC_HDMI_HPD_DOWN)
+ 		return 0;
+ 
++	/*
++	 * The same re-read behind the same log call (0x127dc/0x127e4), so wait
++	 * for the handler's effect: RESET loads the counter with 84 (0x123d0).
++	 * UP only increments it (0x12374) and the main loop zeroes it as soon
++	 * as it reads 1 (0x10f50), and DOWN writes no SRAM at all -- for those
++	 * two the settle loop below stays all there is.
++	 */
++	if (action == ARISC_HDMI_HPD_RESET &&
++	    !arisc_wait_effect(a, a->off.hpd_counter + port, HPD_RESET_COUNTER))
++		dev_warn(a->dev,
++			 "PullHotPlug RESET port %u: counter reads %u, not %u\n",
++			 port, hpd_counter(a, port), HPD_RESET_COUNTER);
++
+ 	start = ktime_get();
+ 	do {
+ 		cur = hpd_counter(a, port);
+@@ -2109,6 +2167,7 @@
+ 	if (ret)
+ 		return ret;
+ 
++	a->hpd_sequence_port = port;
+ 	a->hpd_sequence_done = true;
+ 	dev_info(a->dev, "EDID/HPD-Sequenz auf Port %u abgeschlossen\n", port);
+ 	return 0;

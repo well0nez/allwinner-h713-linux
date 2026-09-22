@@ -137,6 +137,11 @@
 #    applied where fragment 7 publishes and a mask change needs the upload
 #    behind it, dev20 22.09.)
 0091d-soc-sunxi-h713-arisc-what-the-device-says-about-the-edid-mask.patch
+#   (follow-up well0nez, Q14 -- 0091..0091d stay byte-identical; the 0x0f the
+#    mask read back is this driver's race, so the sub-commands whose handler
+#    re-reads the scratch wait for the handler's effect instead of for the
+#    classifier, and a changed mask ends with a hotplug pulse, Q13)
+0091e-soc-sunxi-h713-arisc-wait-for-the-handler-s-effect.patch
 0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
 #   (follow-up well0nez, K2 -- 0096 stays byte-identical; the driver for
 #    that node, in the tree and built in, so the TVFE/TVCAP domains and the
