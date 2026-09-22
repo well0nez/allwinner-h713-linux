@@ -236,6 +236,36 @@ def print_gamma(result: model.GammaResult, channel: str) -> None:
     print(f"  Channel      : {channel}")
 
 
+GAMMA_MARKS = (0, 128, 256, 384, 512, 640, 768, 896, 1023)
+
+
+def print_tse_gamma(result: model.TseGammaResult, channel: str) -> None:
+    """The vendor's own curve -- three banks, one per channel."""
+    s = result.state
+    print(f"Gamma from the TSE: {s.path}")
+    print(f"  Module       : {s.module} (project 0x{s.project_id:04X}), "
+          f"state {s.index} = {s.name}; selector UI_ColorTemp "
+          + ",".join(f"0x{v:08X}" for v in s.colour_temps)
+          + " -> slot " + ",".join(str(x) for x in s.slots))
+    print(f"  Gamma level  : {result.level} -> exponent {result.exponent:.6f}"
+          f" = level / {model.GAMMA_DIVISOR}  (CalculateGamma, AP3t 2.2)")
+    print("  End points   : R %d  G %d  B %d%s" % (
+        result.endpoints + (
+            "   -- per channel: the white balance is in the LUT (AP3r 1.4)"
+            if len(set(result.endpoints)) > 1 else "   -- equal everywhere",)))
+    print(table(["Sample", "R", "G", "B"],
+                [[str(x)] + [str(result.luts[c][x]) for c in range(3)]
+                 for x in GAMMA_MARKS], indent="  "))
+    print(f"  Banks        : R 0x{model.REG_LUT_R:08X}  "
+          f"G 0x{model.REG_LUT_G:08X}  B 0x{model.REG_LUT_B:08X}, "
+          f"{model.LUT_DWORDS} u32 each, u32[i] = (lut[2i+1] << 12) | lut[2i]")
+    print(f"  Channel      : {channel}")
+    print("  Behaviour change: written only with --source tse; the synthetic "
+          "curve stays the")
+    print("  default until a device test flips it (README, \"Where the gamma "
+          "curve comes from\").")
+
+
 # --------------------------------------------------------------------------
 # Machine readable: one JSON record on stdout (plan 113 section A.3)
 # --------------------------------------------------------------------------
@@ -267,9 +297,11 @@ def sha256_file(path: Path) -> str:
 def write_lut(path: Path, result: model.GammaResult, channel: str) -> int:
     """Write the LUT file. channel: r|g|b -> one bank, all -> R,G,B in a row.
 
-    The white balance in these vendor data is neutral (gain 512/512/512,
-    offset 0), so all three banks are equal; "all" exists only so that package
-    H gets a finished RGB file.
+    For the synthetic curve the white balance in these vendor data is neutral
+    (gain 512/512/512, offset 0), so all three banks are equal and "all"
+    exists only so that package H gets a finished RGB file. For a curve out
+    of the TSE the three banks differ -- that is the board's own white
+    balance (AP3r 1.4) -- so "all" is the only complete file there.
 
     Written over a neighbouring file with fsync and os.replace, the way h713-tv
     does it for its own state files: since h713-tv makes this call at start and
@@ -281,8 +313,7 @@ def write_lut(path: Path, result: model.GammaResult, channel: str) -> int:
     a name both programs leave behind on a crash is renamed on both sides at
     once, not here alone.
     """
-    one = result.bytes_one_bank
-    data = one * 3 if channel == "all" else one
+    data = result.bank_bytes(channel)
     neighbour = path.with_name(path.name + ".neu")
     with neighbour.open("wb") as f:
         f.write(data)

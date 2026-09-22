@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import math
 import subprocess
 import sys
 import tempfile
@@ -22,7 +23,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]            # userspace/h713-pq
 sys.path.insert(0, str(ROOT))
 
-from h713_pq import cli, model, output, sources  # noqa: E402
+from h713_pq import cli, model, output, sources, tse  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "tests"))
+import make_fixture  # noqa: E402
+import make_tse_fixture  # noqa: E402
 
 PROJECT = ROOT.parents[1]                              # /opt/Projekte/h713
 PQD = PROJECT / "legacy/userspace/hy310-pqd"
@@ -521,6 +526,140 @@ class TestGamma(unittest.TestCase):
             for v in model.gamma_compute(exp).lut:
                 self.assertGreaterEqual(v, 0)
                 self.assertLessEqual(v, model.LUT_MAX)
+
+
+# ---------------------------------------------------------------------------
+# Model: the gamma curve out of the vendor's own TSE (Q2 item 1)
+# ---------------------------------------------------------------------------
+# The TSE file these tests read is built by make_tse_fixture.py and contains no
+# vendor byte. The expected LUT is not taken from the program under test: it is
+# written out here from AP3t 2.2 -- with the stored gamma factor out of
+# dword_4A50 (180, 200, 210, 220, 240, i.e. the XML level times 100),
+#     g = (factor / 100.0) / 2.2
+#     out[c][x] = (unsigned)(pow(in[c][x] / end[c], g) * end[c])
+# and the C cast truncating towards zero.
+
+class TestTseGamma(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.TemporaryDirectory()
+        cls.path = Path(cls.dir.name) / "ProjectID_0x0030.TSE"
+        cls.banks = make_tse_fixture.build(cls.path, 0x0030)
+        cls.states = tse.gamma_states(cls.path)
+        # cli.main reads the tvconfig directory before it dispatches, even for
+        # `gamma`, which touches none of it -- see REPORT.txt.
+        cls.tvconfig = str(make_fixture.build(Path(cls.dir.name) / "tvconfig"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.dir.cleanup()
+
+    @staticmethod
+    def expected(samples, level):
+        """AP3t 2.2, written out here and not imported from the model."""
+        end = float(samples[1023])
+        factor = level * 100.0                    # the dword_4A50 entry
+        g = (factor / 100.0) / 2.2
+        return [int(math.pow(float(v) / end, g) * end) for v in samples]
+
+    def test_container_round_trip(self):
+        # Three states, in the vendor's own file order warm, cool, normal, and
+        # the slot each maps to (AP3r 1.1 and 1.2).
+        self.assertEqual([s.name for s in self.states],
+                         ["warm", "cool", "normal"])
+        self.assertEqual([s.slots for s in self.states], [(2,), (1,), (0,)])
+        for i, s in enumerate(self.states):
+            for c in range(3):
+                self.assertEqual(list(s.samples[c]), self.banks[i][c])
+
+    def test_formula_is_ap3t(self):
+        for level in (1.8, 2.0, 2.1, 2.2, 2.4):
+            for s in self.states:
+                got = model.gamma_from_tse(s, level)
+                for c in range(3):
+                    self.assertEqual(got.luts[c],
+                                     self.expected(s.samples[c], level),
+                                     f"state {s.index} channel {c} level {level}")
+
+    def test_endpoint_survives_every_level(self):
+        # x = 1023 maps to itself, so the white balance the board baked into
+        # the LUT cannot be disturbed by the gamma control (AP3t 2.2).
+        for level in (1.8, 2.0, 2.1, 2.2, 2.4):
+            for s in self.states:
+                self.assertEqual(model.gamma_from_tse(s, level).endpoints,
+                                 s.endpoints)
+
+    def test_neutral_level_gives_the_raw_curve_back(self):
+        # Level 2.2 is exponent 1.0. The only deviation allowed is the vendor's
+        # own truncation artefact, one count low (AP3t 2.4).
+        for s in self.states:
+            got = model.gamma_from_tse(s, model.GAMMA_LEVEL_NEUTRAL)
+            for c in range(3):
+                delta = [got.luts[c][x] - s.samples[c][x] for x in range(1024)]
+                self.assertGreaterEqual(min(delta), -1)
+                self.assertLessEqual(max(delta), 0)
+
+    def test_exponent_is_the_level_over_2_2(self):
+        self.assertEqual(model.GAMMA_FACTOR_TABLE, (180, 200, 210, 220, 240))
+        self.assertAlmostEqual(model.tse_exponent(1.8), 0.818182, places=6)
+        self.assertAlmostEqual(model.tse_exponent(2.2), 1.0, places=9)
+
+    def test_banks_differ_and_the_file_is_three_of_them(self):
+        got = model.gamma_from_tse(self.states[0], 2.2)
+        self.assertEqual(got.packed[0][0],
+                         (got.luts[0][1] << 12) | got.luts[0][0])
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "lut.bin"
+            self.assertEqual(output.write_lut(p, got, "r"), 2048)
+            self.assertEqual(output.write_lut(p, got, "all"), 3 * 2048)
+            raw = p.read_bytes()
+            # Unlike the synthetic curve the three banks are NOT equal -- that
+            # difference is the board's white balance.
+            self.assertNotEqual(raw[:2048], raw[2048:4096])
+            self.assertNotEqual(raw[2048:4096], raw[4096:])
+            self.assertEqual(raw[:2048], got.bank_bytes("r"))
+            self.assertEqual(raw[4096:], got.bank_bytes("b"))
+
+    def test_state_selection_and_its_negative_controls(self):
+        self.assertEqual(tse.state_for(self.states, "standard").index, 2)
+        self.assertEqual(tse.state_for(self.states, "0").index, 2)
+        self.assertEqual(tse.state_for(self.states, "warm").index, 0)
+        with self.assertRaises(KeyError):
+            tse.state_for(self.states, "lukewarm")
+        with self.assertRaises(KeyError):
+            tse.state_for(self.states, "computer")     # slot 8, not in the file
+        with self.assertRaises(ValueError):
+            model.tse_bank([0] * 1023, 2.2)            # wrong sample count
+
+    def test_default_stays_synthetic(self):
+        # The behaviour change is off unless it is asked for: the same call as
+        # before this package writes the same bytes.
+        with tempfile.TemporaryDirectory() as d:
+            a, b = Path(d) / "a.bin", Path(d) / "b.bin"
+            output.write_lut(a, model.gamma_compute(2.2), "all")
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = cli.main(["--data", self.tvconfig, "gamma", "2.2",
+                                 "--channel", "all", "--lut", str(b)])
+            self.assertEqual(code, 0)
+            self.assertEqual(a.read_bytes(), b.read_bytes())
+            self.assertEqual(len(b.read_bytes()), 3 * 2048)
+
+    def test_cli_from_tse(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "tse.bin"
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = cli.main(["--data", self.tvconfig, "gamma",
+                                 "--from-tse", "cool", "--tse", str(self.path),
+                                 "--channel", "all", "--lut", str(out)])
+            self.assertEqual(code, 0)
+            want = model.gamma_from_tse(tse.state_for(self.states, "cool"),
+                                        model.GAMMA_LEVEL_NEUTRAL)
+            self.assertEqual(out.read_bytes(), want.bank_bytes("all"))
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = cli.main(["--data", self.tvconfig, "gamma",
+                             "--from-tse", "cool",
+                             "--tse", str(self.path.parent / "no.TSE")])
+        self.assertEqual(code, 2)
 
 
 # Command line: --data and --channel are the names, --daten and --kanal the

@@ -484,11 +484,90 @@ class GammaResult:
     def bytes_one_bank(self) -> bytes:
         return lut_bytes(self.packed)
 
+    def bank_bytes(self, channel: str) -> bytes:
+        """r|g|b -> one bank, all -> three. The three are equal here: this
+        curve is computed from one exponent and has no white balance."""
+        one = self.bytes_one_bank
+        return one * 3 if channel == "all" else one
+
 
 def gamma_compute(exponent: float) -> GammaResult:
     points = points_from_exponent(exponent)
     lut = interpolate(points)
     return GammaResult(exponent, points, lut, pack(lut))
+
+
+# --------------------------------------------------------------------------
+# Gamma out of the vendor's own TSE curve (AP3t part B, AP3r 1.4)
+# --------------------------------------------------------------------------
+# The firmware computes no gamma curve. It unpacks a measured one per colour
+# temperature out of the board's ProjectID TSE, and CalculateGamma@0xBC48
+# (libhaldisplay) lays one exponent on top of the slot the colour temperature
+# picks -- per channel, keeping the end point, which is where a HY300 Pro's
+# white balance lives (AP3r 1.4):
+#
+#     g = (dword_4A50[index] / 100.0) / 2.2                       AP3t 2.2
+#     out[c][x] = (unsigned)(pow(in[c][x] / end[c], g) * end[c])
+#
+# dword_4A50 = {180, 200, 210, 220, 240} are the XML levels times 100, so
+# level 2.2 is the neutral one and gives the raw TSE curve back. The cast
+# truncates, which is why the vendor's LUT can come out one count low on a
+# board whose end point is not 4092 (AP3t 2.4). We reproduce that artefact:
+# the target is Android's first frame, not a nicer curve.
+
+#: dword_4A50@0x4A50 in libhaldisplay.so -- the only five factors that exist.
+GAMMA_FACTOR_TABLE = (180, 200, 210, 220, 240)
+GAMMA_DIVISOR = 2.2
+#: g = 1.0, the raw TSE curve -- AP3t 2.5's boot default.
+GAMMA_LEVEL_NEUTRAL = 2.2
+
+
+def tse_exponent(level: float) -> float:
+    """XML gamma level (1.8 .. 2.4) -> the vendor's exponent g."""
+    return float(level) / GAMMA_DIVISOR
+
+
+def tse_bank(samples, level: float) -> list[int]:
+    """CalculateGamma's 1024-sample loop for one channel, no knot points."""
+    if len(samples) != LUT_ENTRIES:
+        raise ValueError(f"{LUT_ENTRIES} samples expected, got {len(samples)}")
+    end = float(samples[LUT_ENTRIES - 1])
+    if end == 0.0:
+        return list(samples)
+    g = tse_exponent(level)
+    return [int(math.pow(float(v) / end, g) * end) for v in samples]
+
+
+@dataclass(frozen=True)
+class TseGammaResult:
+    """Three banks out of one TSE gamma state, in the 0095 LUT layout."""
+    state: object              # tse.GammaState
+    level: float
+    exponent: float
+    luts: list                 # three lists of 1024 samples
+    packed: list               # three lists of 512 u32
+
+    @property
+    def endpoints(self) -> tuple:
+        return tuple(bank[LUT_ENTRIES - 1] for bank in self.luts)
+
+    @property
+    def bytes_one_bank(self) -> bytes:
+        return lut_bytes(self.packed[0])
+
+    def bank_bytes(self, channel: str) -> bytes:
+        """r|g|b -> that bank, all -> R, G, B in a row. Unlike the synthetic
+        curve the three differ -- that is the board's white balance."""
+        if channel == "all":
+            return b"".join(lut_bytes(p) for p in self.packed)
+        return lut_bytes(self.packed["rgb".index(channel)])
+
+
+def gamma_from_tse(state, level: float = GAMMA_LEVEL_NEUTRAL) -> TseGammaResult:
+    """One TSE gamma state + one gamma level -> the three banks 0095 writes."""
+    luts = [tse_bank(state.samples[c], level) for c in range(3)]
+    return TseGammaResult(state, float(level), tse_exponent(level),
+                          luts, [pack(z) for z in luts])
 
 
 def gamma_exponent(data: sources.DataSet, index: int) -> float | None:

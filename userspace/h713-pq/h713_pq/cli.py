@@ -17,7 +17,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import model, output, sources
+from . import model, output, sources, tse
 
 DESCRIPTION = """\
 Read the stock PQ data of the HY310 and convert it into kernel interfaces.
@@ -68,6 +68,7 @@ def _parser() -> argparse.ArgumentParser:
                    help="LUT bank (default r; all three banks are equal here)")
     s.add_argument("--kanal", choices=CHANNELS, dest="channel",
                    help=argparse.SUPPRESS)  # GERMAN ALIAS
+    _tse_options(s)
     s.add_argument("--json", action="store_true",
                    help="instead of the table a machine readable record on "
                         "stdout: picture mode number, the nine controls, "
@@ -81,13 +82,44 @@ def _parser() -> argparse.ArgumentParser:
     t.add_argument("value", help="picture mode or user value 0..100")
 
     g = sub.add_parser("gamma", help="gamma exponent -> DE2 LUT")
-    g.add_argument("exponent", type=float)
+    g.add_argument("exponent", type=float, nargs="?", default=None,
+                   help="gamma level 1.8..2.4; with --source tse the default "
+                        "is 2.2, the vendor's neutral factor (raw curve)")
     g.add_argument("--lut", metavar="FILE", type=Path, default=None)
     g.add_argument("--channel", choices=CHANNELS, dest="channel",
                    default="r")
     g.add_argument("--kanal", choices=CHANNELS, dest="channel",
                    help=argparse.SUPPRESS)  # GERMAN ALIAS
+    _tse_options(g)
     return p
+
+
+def _tse_options(p: argparse.ArgumentParser) -> None:
+    """Where the gamma curve comes from. Default unchanged: synthetic."""
+    p.add_argument("--source", choices=("synthetic", "tse"), default="synthetic",
+                   help="synthetic (default, today's computed power curve) or "
+                        "tse (the board's own measured curve -- behaviour change)")
+    p.add_argument("--from-tse", metavar="STATE", dest="tse_state", default=None,
+                   help="gamma state by colour temperature (normal, cool, warm, "
+                        "user, ... or a slot 0..8); implies --source tse")
+    p.add_argument("--tse", metavar="PATH", dest="tse_path", default=None,
+                   help="TSE file or directory (else $H713_TSE_DIR, /boot/mips)")
+    p.add_argument("--project", metavar="ID", dest="tse_project", default=None,
+                   help=f"board ProjectID when --tse is a directory "
+                        f"(default 0x{tse.DEFAULT_PROJECT:04x}, the HY310)")
+
+
+def _wants_tse(args) -> bool:
+    return args.source == "tse" or args.tse_state is not None
+
+
+def _tse_gamma(args, level: float):
+    """Read the board's TSE and lay the gamma level on the picked state."""
+    project = (int(str(args.tse_project), 0) if args.tse_project is not None
+               else tse.DEFAULT_PROJECT)
+    states = tse.gamma_states(tse.find_file(args.tse_path, project))
+    return model.gamma_from_tse(tse.state_for(states, args.tse_state or "normal"),
+                                level)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -126,11 +158,20 @@ def main(argv: list[str] | None = None) -> int:
         lut_path = lut_sum = None
         lut_bytes = 0
         if args.lut is not None:
-            if k.gamma_exponent is None:
+            if k.gamma_exponent is None and not _wants_tse(args):
                 print("h713-pq: no gamma exponent for this mode "
                       "(pqcontrol_config_setting.xml missing?)", file=sys.stderr)
                 return 2
-            result = model.gamma_compute(k.gamma_exponent)
+            # Behaviour change, only under the flag: the board's own measured
+            # curve instead of the computed power law (AP3t 2.5).
+            try:
+                result = (_tse_gamma(args, k.gamma_exponent
+                                     or model.GAMMA_LEVEL_NEUTRAL)
+                          if _wants_tse(args)
+                          else model.gamma_compute(k.gamma_exponent))
+            except (FileNotFoundError, KeyError, ValueError) as e:
+                print(f"h713-pq: {e.args[0] if e.args else e}", file=sys.stderr)
+                return 2
             try:
                 lut_bytes = output.write_lut(args.lut, result, args.channel)
             except OSError as e:
@@ -187,8 +228,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "gamma":
-        result = model.gamma_compute(args.exponent)
-        output.print_gamma(result, args.channel)
+        if not _wants_tse(args):
+            if args.exponent is None:
+                print("h713-pq: gamma needs an exponent (or --source tse)",
+                      file=sys.stderr)
+                return 2
+            result = model.gamma_compute(args.exponent)
+            output.print_gamma(result, args.channel)
+        else:
+            try:
+                result = _tse_gamma(args, args.exponent
+                                    or model.GAMMA_LEVEL_NEUTRAL)
+            except (FileNotFoundError, KeyError, ValueError) as e:
+                print(f"h713-pq: {e.args[0] if e.args else e}", file=sys.stderr)
+                return 2
+            output.print_tse_gamma(result, args.channel)
         if args.lut is not None:
             n = output.write_lut(args.lut, result, args.channel)
             print(f"  File         : {args.lut} ({n} byte)")
