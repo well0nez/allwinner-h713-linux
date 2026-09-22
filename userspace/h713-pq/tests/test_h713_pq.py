@@ -510,6 +510,65 @@ class TestRecord(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# A firmware without pq_picturemode.ini (HY300 Pro, issue #1)
+#
+# The presets then come out of tvpq.db. What is asserted here is that the
+# answer does not change: the same nine values and the same gamma level as
+# with the ini, out of the same synthetic fixture with one file left out.
+# ---------------------------------------------------------------------------
+
+class TestPresetsFromDb(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.TemporaryDirectory()
+        cls.with_ini = sources.load(
+            str(make_fixture.build(Path(cls.dir.name) / "with-ini")))
+        cls.db_only = sources.load(
+            str(make_fixture.build(Path(cls.dir.name) / "db-only",
+                                   picturemode=False)))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.dir.cleanup()
+
+    def test_show_hdmi1_standard_is_the_same(self):
+        self.assertIn(sources.FILE_PICTUREMODE, self.db_only.missing_files)
+        want = model.chain(self.with_ini, "HDMI1", "standard")
+        got = model.chain(self.db_only, "HDMI1", "standard")
+        a = model.record(self.with_ini, "HDMI1", "standard")
+        b = model.record(self.db_only, "HDMI1", "standard")
+        self.assertEqual(b["regler"], a["regler"])          # the nine values
+        self.assertEqual(got.gamma_index, 3)                # gamma level 3
+        self.assertEqual(got.gamma_exponent, want.gamma_exponent)
+        self.assertEqual([t.argument for t in got.target_values],
+                         [t.argument for t in want.target_values])
+        # the levels still come out of the xml, not out of the database
+        self.assertEqual(self.db_only.gamma_levels, [1.8, 2.0, 2.1, 2.2, 2.4])
+
+    def test_the_origin_names_the_database_and_its_tvin(self):
+        # HDMI is tvin 0 for all three ports; CVBS is a source of its own.
+        for name in ("HDMI1", "HDMI3"):
+            self.assertEqual(model.preset(self.db_only, name, "standard").origin,
+                             "tvpq.db (Picture_Mode, tvin 0)")
+        self.assertEqual(model.preset(self.db_only, "CVBS", "standard").origin,
+                         "tvpq.db (Picture_Mode, tvin 1)")
+
+    def test_the_ini_still_wins_where_it_exists(self):
+        # Negative control: with the ini present nothing comes from the db.
+        for name, modes in self.with_ini.presets.items():
+            for pm in modes.values():
+                self.assertEqual(pm.origin, sources.FILE_PICTUREMODE, name)
+
+    def test_custom_is_not_taken_out_of_the_database(self):
+        # It is a node of pqcontrol_custom_setting.xml (AP3d 3); model.preset
+        # reaches the row by name, so the mode still answers.
+        self.assertNotIn("custom", self.db_only.preset_order["HDMI1"])
+        self.assertIn("custom", model.modes(self.db_only, "HDMI1"))
+        self.assertEqual(model.preset(self.db_only, "HDMI1", "custom").values,
+                         model.preset(self.with_ini, "HDMI1", "custom").values)
+
+
+# ---------------------------------------------------------------------------
 # Model: gamma
 # ---------------------------------------------------------------------------
 
