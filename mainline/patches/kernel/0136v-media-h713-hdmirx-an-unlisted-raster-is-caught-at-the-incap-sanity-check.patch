@@ -1,0 +1,66 @@
+media: h713-hdmirx: an unlisted raster is caught where it really ends - the INCAP sanity check
+
+1600x900 still read "change in flight" for ever on dev21, with 0136m, 0136r
+and 0136u in place. An instrumented driver (every -ENOLCK return numbered)
+showed which one answers: the INCAP sanity check "no geometry". For a raster
+its table does not carry the firmware writes its record (1600x900, signal_id
+1, 60.00 Hz) and the new TOTALS into INCAP (1800x1000), but leaves INCAP's
+ACTIVE word at the mode before (1920x1080) and the capture off. The totals
+then read smaller than the active size, the check takes that for "no
+geometry" and returns -ENOLCK on every poll - before the record, the
+stale-record test or the pre-check of 0136r/0136u are reached at all.
+
+So the record is consulted right there: when the totals are present, the
+record is genuine and its raster is in no table record (geometry only, the
+0136u rule), the answer is unlisted, with the record's raster and rate in the
+timing the ioctl hands back and one journal line per state. Everything else
+about that check stays as it was (the TVFE/TVCAP power-domain case reads all
+zeros and still gets its line and -ENOLCK).
+
+Measured on the HY310 (dev21 debug kernel, module swapped over the LAN):
+1600x900 -> "source 1600x900 at 60.00 Hz: in none of the firmware's mode
+records -- no lock" exactly once, h713-tv "not in the firmware's table --
+console"; 1024x768 after 1366x768 still locks (record lag, raster in the
+table); 1080p60 locks; no line at any 50/24 Hz mode. Open: h713-tv prints
+"0x0p?, 0.0 MHz" for the refused source although the timing is filled here -
+its capture_signal() keeps the timing only on success.
+
+Follow-up to 0136m/0136r/0136u (review Q9, device run 22.09.2026 afternoon).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -3682,6 +3682,32 @@
+ 	htotal = total & 0xffff;
+ 	if (!width || !height || htotal <= width || vtotal <= height) {
+ 		/*
++		 * A raster the firmware's table does not carry ends here, for
++		 * ever: the firmware writes its record (1600x900, signal_id 1)
++		 * and the new totals into INCAP (1800x1000), but leaves the
++		 * ACTIVE word at the mode before (1920x1080) and the capture
++		 * off - so the totals read smaller than the active size and
++		 * this check answered "change in flight" on every poll (dev21,
++		 * 22.09.2026, instrumented). The record can say what INCAP
++		 * cannot: a record raster in no table record is unlisted.
++		 */
++		if (htotal && vtotal && have_sig && !own_record &&
++		    rx->tse_count && sig.h_size && sig.v_size &&
++		    !h713_hdmirx_tse_carries(rx, sig.h_size, sig.v_size,
++					     htotal, vtotal)) {
++			/* the measurement travels with the error (0136m) */
++			memset(t, 0, sizeof(*t));
++			t->type = V4L2_DV_BT_656_1120;
++			t->bt.width = sig.h_size;
++			t->bt.height = sig.v_size;
++			t->bt.pixelclock = div_u64((u64)htotal * vtotal *
++						   sig.frame_rate_x100, 100);
++			return h713_hdmirx_unlisted(rx,
++					(sig.h_size << 16) | sig.v_size,
++					sig.frame_rate_x100,
++					"in none of the firmware's mode records");
++		}
++		/*
+ 		 * The whole block reads zero while the TVFE/TVCAP power
+ 		 * domain is off (doku/78 section 0). No capture runs in that
+ 		 * state either, so this deserves a line, not silence.

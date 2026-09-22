@@ -324,6 +324,9 @@
 #   (review Q9, 22.09. -- the unlisted pre-check judges the raster alone; the
 #    flip rate is the panel's and would refuse 576p50/1080p24 in the lag window)
 0136u-media-h713-hdmirx-the-unlisted-pre-check-asks-for-the-raster-not-the-rate.patch
+#   (device run 22.09. afternoon -- the INCAP sanity check is where an unlisted
+#    raster really ends: totals new, active word stale; ask the record there)
+0136v-media-h713-hdmirx-an-unlisted-raster-is-caught-at-the-incap-sanity-check.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------
