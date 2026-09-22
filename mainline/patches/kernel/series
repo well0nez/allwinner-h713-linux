@@ -426,3 +426,7 @@
 #     0161b: its display firmware's elog sits 0xC00 lower than the HY310's
 #     (A12); without the two addresses cpu_comm dumps an empty ring, R2
 0161b-arm64-dts-h713-hy300-pro-the-elog-addresses-of-its-firmware.patch
+#   (keystone S8, well0nez -- twi1 on again with one child, the accelerometer at 0x18 as
+#    silan,sc7a20; defconfig gains IIO_ST_ACCEL_3AXIS/I2C_3AXIS=m alongside. At the end
+#    of the series, not beside 0024e: 0082's board hunk carries the old twi1 line as context)
+0162-arm64-dts-h713-twi1-accelerometer-auto-keystone.patch

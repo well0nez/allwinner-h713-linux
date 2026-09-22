@@ -1,0 +1,78 @@
+arm64: dts: h713: twi1 with the accelerometer of the auto keystone (keystone S8)
+
+The vendor's auto keystone reads a 3-axis accelerometer on twi1 at 0x18: a Silan
+SC7A20 or a Sensortek STK83xx, decided at runtime by the vendor driver
+(re-apps AP2b). The stock DT listed four candidate children; ours had them
+copied and the bus disabled because nothing used it.
+
+twi1 is enabled again on the board and carries one node, compatible
+"silan,sc7a20", which mainline's st_accel binds (WHO_AM_I 0x11). If the part
+turns out to be the Sensortek one, the probe fails cleanly and one i2c read of
+register 0x00 through /dev/i2c-1 names it (plan/keystone S8, slot 9). The patch sits at the end of the
+series because 0082 carries the board's old twi1 line as context.. No
+interrupt property: the keystone reader polls in_accel_*_raw; no mount-matrix:
+the vendor's transform is an axis swap done in userspace (AP2h) and the three-
+pose measurement decides. The board defconfig adds CONFIG_IIO_ST_ACCEL_3AXIS
+and CONFIG_IIO_ST_ACCEL_I2C_3AXIS as modules (changed alongside).
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-22 20:07:23.607524539 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-22 20:07:23.626570484 +0200
+@@ -793,32 +793,20 @@
+ 			#size-cells = <0>;
+ 			status = "okay";
+ 
+-			/* Stock TWI1 children (from live DTS dump) */
+-			stk8ba58@18 {
+-				compatible = "stk,stk83xx";
++			/*
++			 * The accelerometer behind the vendor's auto keystone: one chip
++			 * at 0x18, a Silan SC7A20 (LIS2DH-compatible, st_accel) or a
++			 * Sensortek STK83xx, chosen at runtime by the vendor's driver
++			 * (re-apps AP2b). The stock DT listed four candidates; this is
++			 * the one mainline has a driver for. No interrupt line: the
++			 * reader polls, and the stock's PB0 pin is not wired here until
++			 * measured. No mount-matrix: the vendor's transform is an axis
++			 * swap in userspace (AP2h), settled by the three-pose
++			 * measurement of plan/keystone S8.
++			 */
++			accelerometer@18 {
++				compatible = "silan,sc7a20";
+ 				reg = <0x18>;
+-				status = "okay";
+-				stk,direction = <2>;
+-				stk,prj_pianzhou = <1>;
+-				stk,swipe_xy = <0>;
+-			};
+-
+-			kxttj3@e {
+-				compatible = "kxtj3";
+-				reg = <0x0e>;  /* stock: name @18 but reg=0x0e */
+-				status = "disabled";
+-			};
+-
+-			da228ec@27 {
+-				compatible = "mir3da";
+-				reg = <0x27>;  /* stock: name @0e but reg=0x27 */
+-				status = "okay";
+-			};
+-
+-			lsm6dsr@6a {
+-				compatible = "lsm6dsr";
+-				reg = <0x6a>;
+-				status = "disabled";
+ 			};
+ 
+ 			/*
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts	2026-09-22 20:07:23.609678275 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts	2026-09-22 20:07:23.626840867 +0200
+@@ -15,7 +15,9 @@
+ &cpu_comm_reserved { status = "okay"; };
+ &mips_framebuf { status = "okay"; };
+ &framebuf_reserved { status = "okay"; };
+-&twi1 { status = "disabled"; };
++/* twi1 carries the accelerometer of the auto keystone (plan/keystone S8) and the
++ * DLPC3435 node nothing binds to; it was disabled while nothing needed it. */
++&twi1 { status = "okay"; };
+ &codec { status = "okay"; };
+ &dummy_cpudai { status = "disabled"; };
+ &codec_machine { status = "disabled"; };
