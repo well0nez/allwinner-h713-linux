@@ -67,6 +67,8 @@ Working on the port rather than using it? Then also [BUILDING.md](BUILDING.md) w
 [docs/dead-ends.md](docs/dead-ends.md) - the explanations we ruled out on hardware, so nobody spends a
 week on them twice.
 
+Every documentation page is listed in one place: [docs/README.md](docs/README.md).
+
 Per-area pages live in [`docs/subsystems/`](docs/subsystems/) - display, MIPS, HDMI input, audio, video,
 picture quality, cpu_comm, ARISC, Wi-Fi, focus motor, board manager, crypto engine, eMMC layout. What we
 added to U-Boot is in [`docs/uboot/`](docs/uboot/): the [boot chain and defconfig matrix](docs/uboot/README.md),
