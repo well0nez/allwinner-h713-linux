@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-warp: the keystone warp. One instance, no template -- there is one
+# panel and one GPU, and the capture device it reads is found by name.
+#
+# ORDERING, and why there is none. h713-tv runs as the template instance
+# h713-tv@videoN.service, started by udev when the receiver's node appears
+# (99-h713-tv.rules); which N that is depends on probe order. "After=" needs
+# a unit NAME, and "h713-tv@.service" is a template, not a unit, so there is
+# no way to say "after whichever instance udev starts" in this file. Three
+# ways out were possible: hard-wire h713-tv@video1.service (wrong -- the
+# number moves, measured 12.09.2026 when the receiver landed on video3),
+# start h713-warp from the same udev rule (couples two services to one
+# device for no reason), or make the daemon tolerate a peer that is not there
+# yet. The third is what happens: with no h713-tv the daemon stays in bypass,
+# says so in "ctl status", and retries the connection once a second, which is
+# also what it does when h713-tv is restarted under it. So this unit may
+# start at any time, before or after the picture.
+[Unit]
+Description=HY310: keystone warp on the GPU
+Documentation=file:/usr/local/share/doc/h713-warp/docs-h713-warp.md
+After=multi-user.target
+
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/h713-warp run
+Restart=on-failure
+RestartSec=5s
+
+# The control channel (h713-warp ctl ...) lives under /run/h713-warp/ctl;
+# systemd creates the directory and clears it away on stop. A second instance
+# fails on /run/h713-warp/lock before it touches anything.
+RuntimeDirectory=h713-warp
+RuntimeDirectoryMode=0755
+
+# SIGTERM is the regular way out: the daemon gives the three panel buffers
+# back, h713-tv returns to the ring or the console, and the wall keeps a
+# picture. SIGHUP reads /etc/h713/warp.conf again.
+KillSignal=SIGTERM
+TimeoutStopSec=10s
+ExecReload=/bin/kill -HUP $MAINPID
+
+# The daemon needs the render node, the capture device and h713-tv's socket,
+# and it writes the eight corner values back into /etc/h713/warp.conf -- which
+# is the one path ProtectSystem=strict has to let through. It never opens a
+# card node and never takes DRM master.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/h713
+ProtectHome=yes
+PrivateTmp=yes
+MemoryDenyWriteExecute=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

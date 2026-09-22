@@ -1,0 +1,6 @@
+h713-warp
+h713-warp.*-linux-gnu
+*.o
+tests/test_matrix
+tests/test_gl
+tests/*.o

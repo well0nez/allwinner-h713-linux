@@ -1,0 +1,38 @@
+# /etc/h713/warp.conf -- the keystone of h713-warp.
+#
+# Eight inward offsets in per-mille of the panel, 0..1000. 0 = the corner is
+# untouched, larger pulls that corner towards the centre of the picture. The
+# names are the PHYSICAL corners as the picture stands on the wall:
+#
+#     tl ------- tr          tl = top left      tr = top right
+#      |         |           bl = bottom left   br = bottom right
+#     bl ------- br
+#
+# x of a corner is limited by the corner at the other end of its row (tl by
+# tr, bl by br), y by the one at the other end of its column (tl by bl, tr by
+# br), so the picture can never be pulled past its own width or height. That
+# is the vendor's own clamp, KeystoneUtils.setkeystoneValue.
+#
+# The file is also what "h713-warp ctl keystone set|nudge|reset" writes, whole
+# and atomically, so a keystone set with the remote survives a reboot. Editing
+# it by hand is allowed; a value that is not a number 0..1000 is dropped with
+# its line number in the journal.
+#
+# ALL EIGHT AT 0 IS THE IDENTITY: the daemon does not open the render node at
+# all, h713-tv shows the capture ring exactly as it does without this service,
+# and nothing costs latency or memory. That is the state a fresh image is in.
+
+tl_x  = 0
+tl_y  = 0
+tr_x  = 0
+tr_y  = 0
+bl_x  = 0
+bl_y  = 0
+br_x  = 0
+br_y  = 0
+
+# The state to come up in. "on" with all eight values 0 is the bypass above,
+# so it is safe; the warp only starts the GPU when a corner is not 0.
+# "h713-warp ctl on|off" changes the running state and does NOT change this
+# line -- this is what the next start does.
+warp  = off

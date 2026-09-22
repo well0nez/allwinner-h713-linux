@@ -331,6 +331,7 @@ h713-tv ctl mute [on|off]       mute: the DSP mute (HDMI) and the codec's switch
 h713-tv ctl resync              select the source again (S_INPUT 0 = THal_Vp_SetSource HDMI-1)
 h713-tv ctl replug              play an unplug and a replug to the source: HPD 300 ms low (S_EDID with
                                  blocks=0), load the EDID again (S_EDID, 4 blocks), HPD high -- ~1 s, blocks
+h713-tv ctl warp [status]       whether h713-warp has the primary plane, with its counters (6e)
 h713-tv ctl rpc NAME [ARG…]     any RPC to the firmware through /sys/kernel/debug/cpu_comm/call
 ```
 
@@ -644,6 +645,21 @@ picture values  8 presets from /etc/h713/tvconfig (h713-pq, 433 ms), gamma 2.20,
 preset          vivid (from the device data)
 saved           /var/lib/h713-tv/werte: preset=vivid brightness=50 contrast=55 saturation=60 hue=50 sharpness=30 tnr=2 snr=1 dci=3 black=1 aspect=proportional
 ```
+
+## 6e. The warp: `h713-warp` draws, this program shows
+
+Since the keystone (plan stage S5) there is a **third display mode** beside plane-on and console:
+*warped*. `h713-warp` renders the capture through the GPU, this program puts the result on the
+**primary** plane and keeps the video plane off - which by itself returns the encoder's selector to
+RGB (`afbd.c:864-867`). With all eight keystone values at 0 the daemon does not open the render node
+at all, so the wall shows exactly what it showed before. The two speak over this program's own
+control socket, in its own language, the file descriptors in `SCM_RIGHTS` on the same connection:
+`warp claim` answers `ok WIDTH HEIGHT PITCH` and three XRGB8888 dumb buffers of the mode;
+`warp frame N` carries the daemon's out-fence and commits buffer N with `IN_FENCE_FD`, answering
+`ok` or `ok busy` when the previous commit is still in flight (that frame is dropped);
+`warp release` gives the panel back. The connection is the lifetime - a daemon that dies leaves a
+hangup and the ring comes back by itself. While the warp is on, `h713-tv ctl zoom` is refused with
+`error the warp is on - use h713-warp ctl zoom`, and `h713-tv ctl off` releases the warp.
 
 ## 7. The descriptor, the firmware and what the program sees of it
 

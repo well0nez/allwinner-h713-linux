@@ -655,6 +655,7 @@ struct display {
 	uint64_t fb_size;
 	bool master;
 	bool on;
+	bool warped;			/* h713-warp draws on the primary plane */
 };
 
 /*
@@ -1268,7 +1269,8 @@ static bool display_hide(struct display *d)
 	int ret;
 
 	if (!d->on) {
-		display_release_master(d);
+		if (!d->warped)		/* the warp holds the master (A3) */
+			display_release_master(d);
 		return true;
 	}
 
@@ -1293,6 +1295,187 @@ static bool display_hide(struct display *d)
 	info("console         plane off, RGB channel and selector back, console unblanked");
 
 	return true;
+}
+
+/* ------------------------------------------------------------------ *
+ * The warp: h713-warp renders, this program shows (design AP2d A1-A4)
+ *
+ * h713-warp owns the render node, the capture buffers, the shader and the
+ * matrix and owns no display: this program stays the only DRM master and the
+ * only client that commits, so the two cannot race for the card. Three lines
+ * cross the control socket, the file descriptors in SCM_RIGHTS on the same
+ * connection: "warp claim" makes the three targets and hands their dma-bufs
+ * over, "warp frame N" commits buffer N on the PRIMARY plane with the
+ * daemon's out-fence as IN_FENCE_FD and the video plane off, "warp release"
+ * gives the panel back (README 6e, docs/tools/h713-warp.md). The connection
+ * IS the lifetime: a daemon that dies leaves a hangup here and this program
+ * releases by itself. Video plane and warp are mutually exclusive, and this
+ * program decides which is up.
+ * ------------------------------------------------------------------ */
+
+#define WARP_BUFS	3
+
+struct warp {
+	int peer;			/* the daemon's connection, -1: none */
+	bool claimed;
+	uint32_t plane_id;		/* the PRIMARY plane */
+	struct props props;
+	uint32_t handle[WARP_BUFS], fb_id[WARP_BUFS];
+	unsigned int pitch;
+	unsigned long commits, busy, errors;
+};
+
+static struct warp warp = { .peer = -1 };
+
+/* the PRIMARY plane of this CRTC that offers XRGB8888 and IN_FENCE_FD */
+static bool warp_find_plane(struct display *d)
+{
+	drmModePlaneRes *planes = drmModeGetPlaneResources(d->fd);
+	unsigned int i, f;
+
+	for (i = 0; planes && i < planes->count_planes && !warp.plane_id; i++) {
+		drmModePlane *p = drmModeGetPlane(d->fd, planes->planes[i]);
+		struct props pp = { 0 };
+		uint64_t type = 0;
+		bool rgb = false;
+
+		if (!p)
+			continue;
+		for (f = 0; f < p->count_formats; f++)
+			rgb |= p->formats[f] == DRM_FORMAT_XRGB8888;
+		if (rgb && (p->possible_crtcs & (1u << d->crtc_index)) &&
+		    props_get(d->fd, p->plane_id, DRM_MODE_OBJECT_PLANE, &pp)) {
+			prop_value(&pp, "type", &type);
+			if (type == DRM_PLANE_TYPE_PRIMARY &&
+			    prop_id(&pp, "IN_FENCE_FD")) {
+				warp.plane_id = p->plane_id;
+				warp.props = pp;
+			} else {
+				props_put(&pp);
+			}
+		}
+		drmModeFreePlane(p);
+	}
+	if (planes)
+		drmModeFreePlaneResources(planes);
+
+	return warp.plane_id != 0;
+}
+
+static void warp_free(struct display *d)
+{
+	struct drm_mode_destroy_dumb dreq;
+	int i;
+
+	for (i = 0; i < WARP_BUFS; i++) {
+		if (warp.fb_id[i])
+			drmModeRmFB(d->fd, warp.fb_id[i]);
+		if (warp.handle[i]) {
+			memset(&dreq, 0, sizeof(dreq));
+			dreq.handle = warp.handle[i];
+			drmIoctl(d->fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+		}
+		warp.fb_id[i] = 0;
+		warp.handle[i] = 0;
+	}
+}
+
+/* three targets (M9): 8 294 400 bytes each, 24.9 MB of the 128 MiB CMA */
+static bool warp_alloc(struct display *d, int *fds)
+{
+	struct drm_mode_create_dumb creq;
+	uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
+	int i;
+
+	for (i = 0; i < WARP_BUFS; i++) {
+		memset(&creq, 0, sizeof(creq));
+		creq.width = d->width;
+		creq.height = d->height;
+		creq.bpp = 32;
+		if (drmIoctl(d->fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq))
+			return false;
+		warp.handle[i] = creq.handle;
+		warp.pitch = creq.pitch;
+		handles[0] = creq.handle;
+		pitches[0] = creq.pitch;
+		if (drmModeAddFB2(d->fd, d->width, d->height, DRM_FORMAT_XRGB8888,
+				  handles, pitches, offsets, &warp.fb_id[i], 0) ||
+		    drmPrimeHandleToFD(d->fd, creq.handle, DRM_CLOEXEC | DRM_RDWR,
+				       &fds[i]))
+			return false;
+	}
+
+	return true;
+}
+
+/* One fenced commit: drm_atomic_helper_commit waits the IN_FENCE_FD out
+ * before the commit tail writes AFBD_SRC, so GPU and scanout never overlap on
+ * a buffer, and the fd stays ours. Non-blocking and without a page-flip
+ * event, because this program must not wait a vsync per frame -- the kernel's
+ * EBUSY for a commit still in flight is the "the daemon was early" answer.
+ */
+static bool warp_commit(struct display *d, int n, int fence, bool *busy)
+{
+	static const char *const name[] = {
+		"FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
+		"CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H", "IN_FENCE_FD",
+	};
+	uint64_t val[11] = {
+		warp.fb_id[n], d->crtc_id, 0, 0, (uint64_t)d->width << 16,
+		(uint64_t)d->height << 16, 0, 0, d->width, d->height,
+		(uint64_t)fence,
+	};
+	drmModeAtomicReq *req = drmModeAtomicAlloc();
+	uint32_t flags = DRM_MODE_ATOMIC_NONBLOCK |
+			 (warp.commits ? 0u : DRM_MODE_ATOMIC_ALLOW_MODESET);
+	bool ok = req != NULL;
+	unsigned int i;
+	int ret;
+
+	*busy = false;
+	for (i = 0; ok && i < (fence >= 0 ? 11u : 10u); i++) {
+		uint32_t id = prop_id(&warp.props, name[i]);
+
+		ok = id && drmModeAtomicAddProperty(req, warp.plane_id, id,
+						    val[i]) >= 0;
+	}
+	ret = ok ? drmModeAtomicCommit(d->fd, req, flags, NULL) : -EINVAL;
+	drmModeAtomicFree(req);
+	if (!ret) {
+		warp.commits++;
+		return true;
+	}
+	if (ok && errno == EBUSY) {
+		warp.busy++;
+		*busy = true;
+		return false;
+	}
+	warp.errors++;
+	warn("warp            commit refused: %s",
+	     ok ? strerror(errno) : "a plane property is missing");
+
+	return false;
+}
+
+/* the panel back: on "warp release", on the daemon's hangup, on "ctl off" and
+ * on the way out -- each has to end with a picture, so the console comes back
+ * here and evaluate() puts the ring up again
+ */
+static void warp_release(struct display *d)
+{
+	if (warp.peer >= 0)
+		close(warp.peer);
+	warp.peer = -1;
+	if (!warp.claimed)
+		return;
+	warp_free(d);
+	warp.claimed = false;
+	d->warped = false;
+	display_release_master(d);
+	console_restore();
+	info("warp            released: %lu commits, %lu busy, %lu refused -- the panel is ours again",
+	     warp.commits, warp.busy, warp.errors);
+	warp.commits = warp.busy = warp.errors = 0;
 }
 
 /* ------------------------------------------------------------------ *
@@ -3172,8 +3355,13 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	else
 		reply_add(r, "signal          %s\n", sig == 0 ? "no signal" : "not readable");
 	reply_add(r, "colour          %s\n", capture_colour(cap, colbuf, sizeof(colbuf)));
-	reply_add(r, "picture         %s%s\n", d->on ? "plane on" : "console",
+	reply_add(r, "picture         %s%s\n",
+		  d->warped ? "warped (h713-warp draws on the primary plane)" :
+		  d->on ? "plane on" : "console",
 		  d->master ? ", DRM master held" : "");
+	if (warp.claimed)
+		reply_add(r, "warp            on, primary plane %u: %lu commits, %lu busy, %lu refused\n",
+			  warp.plane_id, warp.commits, warp.busy, warp.errors);
 	if (d->src_w)
 		reply_add(r, "buffer          %ux%u NV16, line pitch %u on panel %ux%u\n", d->src_w, d->src_h, d->src_pitch,
 			  d->width, d->height);
@@ -3670,6 +3858,13 @@ static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
 	unsigned int v;
 	char text[32];
 
+	/* the video plane is off while the warp draws, so the firmware's two
+	 * windows would move nothing anybody can see (plan S7)
+	 */
+	if (warp.claimed) {
+		reply_fail(r, "the warp is on - use h713-warp ctl zoom");
+		return false;
+	}
 	if (!verb) {
 		zoom_text(d, text, sizeof(text));
 		reply_add(r, "ok zoom %s\n", text);
@@ -3706,6 +3901,128 @@ static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
 		  d->master ? " -- the picture is rebuilt" : "");
 
 	return true;
+}
+
+/* "warp claim" (A2): the three targets, their fds with the answer. The video
+ * plane goes down first and the master is taken for the whole warp; the
+ * answer goes out here, because the fds have to travel with that line.
+ */
+static void cmd_warp_claim(struct reply *r, struct display *d, int conn)
+{
+	char cbuf[CMSG_SPACE(sizeof(int) * WARP_BUFS)] = { 0 }, line[64];
+	int fds[WARP_BUFS] = { -1, -1, -1 };
+	struct iovec io = { line, 0 };
+	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
+			      .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
+	struct cmsghdr *cm;
+	int i, bad;
+
+	if (warp.claimed || conn < 0) {
+		reply_fail(r, "%s", warp.claimed ? "the warp is already claimed"
+			   : "\"warp claim\" needs the connection it is sent on");
+		return;
+	}
+	if (!warp.plane_id && !warp_find_plane(d)) {
+		reply_fail(r, "no PRIMARY plane with XRGB8888 and IN_FENCE_FD on CRTC %u",
+			   d->crtc_id);
+		return;
+	}
+	if ((d->on && !display_hide(d)) || !display_take_master(d)) {
+		reply_fail(r, "the video plane or the DRM master could not be taken over: %s",
+			   strerror(errno));
+		return;
+	}
+	bad = !warp_alloc(d, fds);
+	if (bad) {
+		reply_fail(r, "the three %ux%u XRGB8888 buffers could not be made (%s) -- the ring stays",
+			   d->width, d->height, strerror(errno));
+	} else {
+		io.iov_len = (size_t)snprintf(line, sizeof(line), "ok %u %u %u\n",
+					      d->width, d->height, warp.pitch);
+		cm = CMSG_FIRSTHDR(&msg);
+		cm->cmsg_level = SOL_SOCKET;
+		cm->cmsg_type = SCM_RIGHTS;
+		cm->cmsg_len = CMSG_LEN(sizeof(int) * WARP_BUFS);
+		memcpy(CMSG_DATA(cm), fds, sizeof(int) * WARP_BUFS);
+		bad = sendmsg(conn, &msg, MSG_NOSIGNAL) < 0;
+		if (bad)
+			reply_fail(r, "the buffers could not be handed over: %s",
+				   strerror(errno));
+	}
+	for (i = 0; i < WARP_BUFS; i++)
+		if (fds[i] >= 0)
+			close(fds[i]);	/* the peer has its own copies now */
+	if (bad) {
+		warp_free(d);
+		display_release_master(d);
+		return;
+	}
+	warp.claimed = true;
+	warp.peer = conn;
+	d->warped = true;
+	info("warp            claimed: three %ux%u XRGB8888 buffers, line pitch %u, primary plane %u",
+	     d->width, d->height, warp.pitch, warp.plane_id);
+}
+
+/* The peer's connection: one line per message, and the daemon waits for the
+ * answer before the next, so a line cannot arrive in halves. True when the
+ * caller has to run evaluate() -- the warp has just ended.
+ */
+static bool warp_serve(struct display *d)
+{
+	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, buf[128];
+	const char *answer = "error unknown (warp frame N | warp release)\n";
+	struct iovec io = { buf, sizeof(buf) - 1 };
+	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
+			      .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
+	struct cmsghdr *cm;
+	bool busy = false;
+	ssize_t got;
+	int fence = -1, n = -1;
+
+	got = recvmsg(warp.peer, &msg, MSG_DONTWAIT);
+	if (got <= 0) {			/* the daemon is gone: A2's lifetime */
+		warp_release(d);
+		return true;
+	}
+	buf[got] = '\0';
+	buf[strcspn(buf, "\r\n")] = '\0';
+	for (cm = CMSG_FIRSTHDR(&msg); cm; cm = CMSG_NXTHDR(&msg, cm))
+		if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SCM_RIGHTS)
+			memcpy(&fence, CMSG_DATA(cm), sizeof(fence));
+	if (!strcmp(buf, "warp release")) {
+		if (send(warp.peer, "ok\n", 3, MSG_NOSIGNAL) < 0)
+			warn("warp            answering the release: %s", strerror(errno));
+		warp_release(d);
+		return true;
+	}
+	if (sscanf(buf, "warp frame %d", &n) == 1 && n >= 0 && n < WARP_BUFS)
+		answer = warp_commit(d, n, fence, &busy) ? "ok\n" :
+			 busy ? "ok busy\n" : "error the commit was refused\n";
+	if (fence >= 0)
+		close(fence);
+	if (send(warp.peer, answer, strlen(answer), MSG_NOSIGNAL) >= 0)
+		return false;
+	warn("warp            answering \"%s\": %s", buf, strerror(errno));
+	warp_release(d);
+
+	return true;
+}
+
+/* warp [status] for the human; "claim" is h713-warp's (A1) */
+static void cmd_warp(struct reply *r, struct display *d, const char *what,
+		     int conn)
+{
+	if (what && !strcmp(what, "claim"))
+		cmd_warp_claim(r, d, conn);
+	else if (what && strcmp(what, "status"))
+		reply_fail(r, "warp knows \"status\" here; on, off and the keystone are h713-warp ctl");
+	else if (!warp.claimed)
+		reply_add(r, "ok warp off -- nothing claimed; \"h713-warp ctl status\" says why\n");
+	else
+		reply_add(r, "ok warp on -- h713-warp draws, primary plane %u, %ux%u, line pitch %u, %lu commits, %lu busy, %lu refused\n",
+			  warp.plane_id, d->width, d->height, warp.pitch,
+			  warp.commits, warp.busy, warp.errors);
 }
 
 /*
@@ -4937,7 +5254,8 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "  resync                select the source again (S_INPUT 0 = SetSource HDMI-1)\n"
 		  "  replug                play an unplug and a replug to the source: HPD 300 ms low\n"
 		  "                        (S_EDID blocks=0), load the EDID again, HPD high (~1 s, blocks)\n"
-		  "  rpc NAME [ARG...]     an RPC to the firmware, e.g. rpc THal_Vp_DisableBlackScreen\n"
+		  "  warp [status]         has h713-warp the primary plane? plus its counters\n"
+	  "  rpc NAME [ARG...]     an RPC to the firmware, e.g. rpc THal_Vp_DisableBlackScreen\n"
 		  "                        (raw; blocks the program for the duration of the call)\n"
 		  "  help                  this list\n"
 		  "The answer starts with ok or error; socket %s (root, 0660)\n",
@@ -4947,7 +5265,8 @@ static void cmd_help(struct reply *r, const struct control *c)
 /* true if the caller has to run evaluate() afterwards */
 static bool control_dispatch(struct control *c, struct capture *cap,
 			     struct display *d, struct retry *rt,
-			     struct audio *a, char *line, struct reply *r)
+			     struct audio *a, char *line, struct reply *r,
+			     int conn)
 {
 	char *save = NULL, *cmd, *a1, *a2;
 
@@ -4969,6 +5288,7 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		c->policy = POLICY_OFF;
 		state_write(c, c->policy);
 		retry_stop(rt);
+		warp_release(d);	/* the console was asked for, not a warp */
 		if (display_hide(d))
 			reply_add(r, "ok console -- until \"auto\"\n");
 		else
@@ -4990,6 +5310,8 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		return cmd_aspect(r, d, a1);
 	} else if (!strcmp(cmd, "zoom")) {
 		return cmd_zoom(r, d, a1, a2);
+	} else if (!strcmp(cmd, "warp")) {
+		cmd_warp(r, d, a1, conn);
 	} else if (!strcmp(cmd, "audio")) {
 		/*
 		 * The sound is decided here and not by the caller's
@@ -5083,7 +5405,7 @@ static bool control_serve(struct control *c, struct capture *cap,
 	if (off <= 0)
 		reply_fail(&r, "nothing received");
 	else
-		reevaluate = control_dispatch(c, cap, d, rt, a, line, &r);
+		reevaluate = control_dispatch(c, cap, d, rt, a, line, &r, fd);
 
 	off = 0;
 	pfd.events = POLLOUT;
@@ -5099,7 +5421,8 @@ static bool control_serve(struct control *c, struct capture *cap,
 			break;
 		off += n;
 	}
-	close(fd);
+	if (fd != warp.peer)		/* the warp's connection lives on (A2) */
+		close(fd);
 
 	return reevaluate;
 }
@@ -5170,6 +5493,17 @@ static void evaluate(struct capture *cap, struct display *d,
 	char sigbuf[64];
 	int sig, was;
 
+	/* while the warp is on the panel is h713-warp's: measure, report, and
+	 * touch nothing (A3)
+	 */
+	if (warp.claimed) {
+		retry_stop(rt);
+		sig = capture_signal(cap, &t);
+		cap->last_sig = sig;
+		if (sig != 2)
+			cap->last_t = t;
+		return;
+	}
 	/* "off" over the control socket: the console stays, whatever the signal does */
 	if (ctl.policy == POLICY_OFF) {
 		retry_stop(rt);
@@ -5390,7 +5724,7 @@ int main(int argc, char **argv)
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
 	enum audio_policy apol;
-	struct pollfd fds[6];
+	struct pollfd fds[7];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
 	int sfd, arg, rc = 0;
@@ -5721,6 +6055,8 @@ int main(int argc, char **argv)
 	fds[5].events = POLLIN;
 
 	for (;;) {
+		fds[6].fd = warp.peer;	/* only while the warp has claimed */
+		fds[6].events = POLLIN;
 		if (poll(fds, sizeof(fds) / sizeof(fds[0]), -1) < 0) {
 			if (errno == EINTR)
 				continue;
@@ -5777,6 +6113,8 @@ int main(int argc, char **argv)
 				evaluate(&cap, &d, &rt);
 			audio_evaluate(&au, &cap, d.on);
 		}
+		if (fds[6].fd >= 0 && fds[6].revents && warp_serve(&d))
+			reevaluate(&cap, &d, &rt, &au);
 		if (fds[3].revents & POLLIN) {
 			if (control_serve(&ctl, &cap, &d, &rt, &au))
 				reevaluate(&cap, &d, &rt, &au);
@@ -5805,6 +6143,7 @@ int main(int argc, char **argv)
 	 */
 	retry_stop(&rt);
 	audio_close(&au);
+	warp_release(&d);
 	if (!display_hide(&d))
 		rc = 1;
 	control_close(&ctl);
