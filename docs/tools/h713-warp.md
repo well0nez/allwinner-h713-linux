@@ -99,3 +99,9 @@ the wall with one nudge and one photo; if top and bottom ever come out exchanged
 Details: umbau/plan/keystone/PLAN.md (stage S5), umbau/re-apps/AP2d/design-h713-warp.txt (modules M1-M11),
 umbau/re-apps/AP2f/REPORT.txt (the matrix and its z trap), umbau/re-apps/AP2/REPORT.txt (the vendor's units
 and clamp), docs/tools/h713-tv.md.
+
+## Corner names, verified
+
+`tl`, `tr`, `bl`, `br` are the corners of the projected picture as the audience sees it. Verified on the
+HY310 on 22.09.2026: `ctl keystone set tl x 150` and `tl y 150` moved the top left corner of the picture
+inward (plan/keystone T21). The vendor's own slot names contradict each other; ours do not inherit them.

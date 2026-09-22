@@ -22,6 +22,9 @@
 # all, h713-tv shows the capture ring exactly as it does without this service,
 # and nothing costs latency or memory. That is the state a fresh image is in.
 
+# tl is the wall's TOP LEFT as the audience sees it, tr top right, bl bottom left,
+# br bottom right - verified on the HY310 on 22.09.2026 (plan/keystone T21: tl pulled
+# in by 150 per-mille moved the top left corner of the projected picture).
 tl_x  = 0
 tl_y  = 0
 tr_x  = 0
