@@ -227,6 +227,141 @@ def words_in_mem_ranges(raw):
         if 0x40000000 <= v <= 0x7FFFFFFF: hits.append((i, v))
     return hits
 
+# --------------------------------------------------------------- GammaFW and FeatureFW
+# Added 22.09.2026 for h713-pq (package Q2).  The three decoders below are the
+# only part of the TFD format h713-pq needs and the only part this file did not
+# have; everything above stays untouched.  New code here is English, the older
+# parts of this file are not -- translating them is a job of its own.
+# Evidence: AP3p 1.5 (gamma record), AP3f 1.3/1.4 (feature records),
+# AP3r 2.1 (the plugin payload split), AP3t tools/extract_pq_tse.py.
+
+GAMMA_WORDS = 512          # words per bank, TTFDGammaFW::Write sub_8B18F984
+GAMMA_RECORD = 9           # bytes per record, 512 * 9 = 4608 per state
+GAMMA_BANKS = (0x05208000, 0x05208800, 0x05209000)
+
+
+def plugin_states(payload):
+    """Split a plugin payload into its per-state blobs (sub_8B18B134).
+
+    u32 state count, then per state u32 length and that many bytes. Returns a
+    list of (offset inside the payload, blob) so a reviewer can hex-dump the
+    same bytes. Used by GammaFW, ColorManagementFW, DPAFW and their twins.
+    """
+    count = struct.unpack_from('<I', payload, 0)[0]
+    pos, out = 4, []
+    for _ in range(count):
+        length = struct.unpack_from('<I', payload, pos)[0]
+        out.append((pos + 4, payload[pos + 4:pos + 4 + length]))
+        pos += 4 + length
+    if pos != len(payload):
+        raise ValueError('plugin payload leaves %d bytes' % (len(payload) - pos))
+    return out
+
+
+def decode_gamma(blob):
+    """One TTFDGammaFW state -> 3 x 1024 samples of 12 bit and 3 x 512 words.
+
+    TTFDGammaFW::Write sub_8B18F984 (AP3p 1.5): 512 records of 9 bytes; in
+    record i the low sample of channel c is ((byte[6+c] & 0x0F) << 8) | byte[c]
+    and the high sample ((byte[6+c] & 0xF0) << 4) | byte[3+c]; the firmware
+    writes (high << 12) | low as word i of that channel's bank. So sample 2*i
+    is the low half and 2*i+1 the high half. No endianness is involved -- the
+    bytes are read one at a time.
+    """
+    if len(blob) != GAMMA_WORDS * GAMMA_RECORD:
+        raise ValueError('gamma state is %d bytes, not %d'
+                         % (len(blob), GAMMA_WORDS * GAMMA_RECORD))
+    samples = [[], [], []]
+    words = [[], [], []]
+    for i in range(GAMMA_WORDS):
+        rec = blob[i * GAMMA_RECORD:(i + 1) * GAMMA_RECORD]
+        for c in range(3):
+            low = ((rec[6 + c] & 0x0F) << 8) + rec[c]
+            high = ((rec[6 + c] & 0xF0) << 4) + rec[3 + c]
+            samples[c].append(low)
+            samples[c].append(high)
+            words[c].append((high << 12) | low)
+    return samples, words
+
+
+def _be_float(data, off):
+    """sub_8B19C9D4 reverses the four bytes unconditionally, then reads a float."""
+    return struct.unpack('<f', bytes(reversed(data[off:off + 4])))[0]
+
+
+def decode_registers(data, pos, count):
+    """reg.loadbin sub_8B19A4E8 -> sub_8B19A280 (AP3f 1.4).
+
+    Direct form (kind 0): u32 address, u8 width in bits, u32 mask, u8 constant
+    flag, then a u32 constant or one filler byte. The indirect form (kind != 0,
+    sub_8B19A39C) writes through a staging buffer and carries no address; no
+    picture parameter of the HY310 uses it.
+    """
+    regs = []
+    for _ in range(count):
+        kind = data[pos]
+        pos += 1
+        if kind:
+            sel = data[pos]
+            pos += 1
+            if sel:
+                pos += 14
+            width, mask, const_flag = data[pos], struct.unpack_from('<I', data, pos + 1)[0], data[pos + 5]
+            const = struct.unpack_from('<I', data, pos + 6)[0] if const_flag else None
+            pos += 10 if const_flag else 7
+            regs.append(dict(kind=kind, address=None, width=width, mask=mask, const=const))
+            continue
+        address = struct.unpack_from('<I', data, pos)[0]
+        width, mask, const_flag = data[pos + 4], struct.unpack_from('<I', data, pos + 5)[0], data[pos + 9]
+        const = struct.unpack_from('<I', data, pos + 10)[0] if const_flag else None
+        pos += 14 if const_flag else 11
+        regs.append(dict(kind=0, address=address, width=width, mask=mask, const=const))
+    return regs, pos
+
+
+def decode_feature(payload):
+    """A TTFDFeatureFW payload -> the picture parameters (AP3f 1.3/1.4).
+
+    TTFDFeatureFW::Load sub_8B18E1C8 is two length-prefixed sub-blobs, each
+    u16 tag + u32 length; the first is the feature collection
+    (FeatureCollection::loadbin sub_8B199CA0: u16 count, count times a
+    NUL-terminated name and a u32 id, then count records in the same order).
+    A record (Feature::loadbin sub_8B199844) is u32 id, u32 record length,
+    u8 flags, u16 set count, then that many (curve, register list) pairs; a
+    curve is a u16 point count and four BIG endian floats x0, x1, y0, y1 per
+    point. The firmware takes the segment with x0 <= ui <= x1 and writes
+    (ui - x0) * (y1 - y0) / (x1 - x0) + y0.
+    """
+    total = struct.unpack_from('<I', payload, 2)[0]
+    blob = payload[6:total]
+    count = struct.unpack_from('<H', blob, 0)[0]
+    pos = 2
+    out = []
+    for _ in range(count):
+        end = blob.index(b'\0', pos)
+        out.append(dict(name=blob[pos:end].decode('latin-1'),
+                        id=struct.unpack_from('<I', blob, end + 1)[0]))
+        pos = end + 5
+    for e in out:
+        ident, size = struct.unpack_from('<II', blob, pos)
+        flags, n_sets = blob[pos + 8], struct.unpack_from('<H', blob, pos + 9)[0]
+        p = pos + 11
+        sets = []
+        for _ in range(n_sets):
+            n_points = struct.unpack_from('<H', blob, p)[0]
+            p += 2
+            points = []
+            for _ in range(n_points):
+                points.append((_be_float(blob, p), _be_float(blob, p + 4),
+                               _be_float(blob, p + 8), _be_float(blob, p + 12)))
+                p += 16
+            n_regs = struct.unpack_from('<H', blob, p)[0]
+            regs, p = decode_registers(blob, p + 2, n_regs)
+            sets.append(dict(points=points, registers=regs))
+        e.update(record_id=ident, flags=flags, sets=sets)
+        pos += size
+    return out
+
 # ----------------------------------------------------------------------------- Ausgabe
 def attr_str(t, vals):
     return f'{ATTR_NAMES.get(t, "attr_%x" % t)}={",".join("%#x" % v for v in vals)}'
