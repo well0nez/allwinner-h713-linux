@@ -324,6 +324,13 @@ class Warp(unittest.TestCase):
             self.assertEqual(ks.warp_read_set("h713-warp"),
                              (1, 2, 3, 4, 5, 6, 7, 8))
 
+    def test_the_status_parser_takes_the_daemon_s_real_line(self):
+        """KS4 prints one line: keystone  tl A,B tr C,D bl E,F br G,H."""
+        self.answer("ok status\nwarp            on\n"
+                    "keystone        tl 1,2 tr 3,4 bl 5,6 br 7,8 (per-mille, positive inward)\n"
+                    "corners         tl -0.998,-1.000 tr +1.000,-1.000 bl -1.000,+1.000 br +1.000,+1.000\n")
+        self.assertEqual(ks.warp_read_set("h713-warp"), (1, 2, 3, 4, 5, 6, 7, 8))
+
     def test_a_status_without_all_eight_is_no_answer(self):
         self.answer("ok status\nwarp off\ntl_x = 1 tl_y = 2\n")
         self.assertIsNone(ks.warp_read_set("h713-warp"))

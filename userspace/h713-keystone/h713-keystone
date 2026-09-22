@@ -66,6 +66,8 @@ WARP_SLOTS = (("tl", "x"), ("tl", "y"), ("tr", "x"), ("tr", "y"),
 # Tolerant on purpose: the daemon is being written in parallel, so any of
 # "tl_x = 12", "tl x 12" or "tl-x: 12" in its status counts as that value.
 WARP_VALUE = re.compile(r"\b(tl|tr|bl|br)[ _-]?([xy])\b\s*[=:]?\s*(-?\d+)")
+# What the daemon really prints (KS4): "keystone  tl 1,0 tr 0,0 bl 0,0 br 0,0".
+WARP_PAIR = re.compile(r"\b(tl|tr|bl|br)\s+(-?\d+),(-?\d+)")
 
 
 class Error(Exception):
@@ -348,8 +350,12 @@ def warp_read_set(tool):
     """The eight values `h713-warp ctl status` reports, in APP order, or None
     when its answer does not carry all eight."""
     found = {}
-    for corner, axis, value in WARP_VALUE.findall(warp_call(tool, ["status"])):
-        found[(corner, axis)] = int(value)
+    status = warp_call(tool, ["status"])
+    for corner, x, y in WARP_PAIR.findall(status):
+        found[(corner, "x")] = int(x)
+        found[(corner, "y")] = int(y)
+    for corner, axis, value in WARP_VALUE.findall(status):
+        found.setdefault((corner, axis), int(value))
     if len(found) < len(WARP_SLOTS):
         return None
     return tuple(found[slot] for slot in WARP_SLOTS)
