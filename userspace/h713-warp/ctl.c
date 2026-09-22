@@ -233,8 +233,15 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 		warp_apply(r);
 		text_add(t, "ok on%s%s\n", r->state == WARP_ON ? "" : " -- ",
 			 r->state == WARP_ON ? "" : r->why);
+		/* "warp = on" in the file: the daemon comes up the way it was
+		 * left, like every other change (Marco, 23.09.: the warp was
+		 * on, the file still said off, the reboot came up without it) */
+		r->conf.start_on = true;
+		save(r, t);
 	} else if (!strcmp(cmd, "off")) {
 		r->on = false;
+		r->conf.start_on = false;
+		save(r, t);
 		warp_apply(r);
 		text_add(t, "ok off -- h713-tv is on its own mode again\n");
 	} else if (!strcmp(cmd, "keystone") && a1 &&
