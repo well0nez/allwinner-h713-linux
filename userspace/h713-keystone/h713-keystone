@@ -156,7 +156,7 @@ def _above_zero(cast, what):
 DEFAULTS = (
     ("iio_name", "sc7a20", str),
     ("axis_pitch", "+y", parse_axis),
-    ("axis_roll", "+x", parse_axis),
+    ("axis_roll", "-x", parse_axis),
     ("axis_vertical", "+z", parse_axis),
     ("throw_ratio", "ini", parse_throw),
     ("zoom_scale", "0", parse_zoom),

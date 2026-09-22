@@ -53,7 +53,7 @@ ks = _load("h713_keystone", TOOL)
 POSES = (
     ("rest",      26, 172, 1068,  0,  0),
     ("nose-up",   37, 531,  929, +1,  0),
-    ("rolled",  -292, 161, 1020,  0, -1),
+    ("rolled",  -292, 161, 1020,  0, +1),   # roll = -x: left side up -> GsX positive
 )
 REST = POSES[0][1:4]
 SCALE = "0.009806"                # in_accel_x_scale, 1000.07 counts per g
@@ -172,9 +172,11 @@ class AxisMap(unittest.TestCase):
             ks.model_triple(REST, self.conf))
 
     def test_the_default_map_is_the_measurement(self):
+        """pitch +y, roll -x (the wall, 22.09.2026: with +x the correction
+        tilted the picture further; -x kept it level), vertical +z."""
         self.assertEqual((self.conf["axis_pitch"], self.conf["axis_roll"],
                           self.conf["axis_vertical"]),
-                         ((1, 1), (0, 1), (2, 1)))
+                         ((1, 1), (0, -1), (2, 1)))
 
     def test_every_pose_moves_the_axis_the_table_says(self):
         for name, x, y, z, pitch_sign, roll_sign in POSES:
@@ -183,8 +185,8 @@ class AxisMap(unittest.TestCase):
             self.assertEqual(sign_of(gs_x), roll_sign, "%s roll" % name)
 
     def test_the_measured_angles_of_the_three_poses(self):
-        expected = {"rest": (0.0, 0.0), "nose-up": (0.6035, 20.5858),
-                    "rolled": (-17.1663, -0.5175)}
+        expected = {"rest": (0.0, 0.0), "nose-up": (-0.6035, 20.5858),
+                    "rolled": (17.1663, -0.5175)}
         for name, x, y, z, _, _ in POSES:
             gs_x, gs_y = angles((x, y, z), self.conf, self.reference)
             self.assertAlmostEqual(gs_x, expected[name][0], places=3)
@@ -218,7 +220,7 @@ class AxisMap(unittest.TestCase):
         self.assertEqual(
             gsa.iio_to_vendor_counts(*ks.model_triple(raw, swapped)),
             gsa.iio_to_vendor_counts(26, 172, 1068))
-        self.assertEqual(ks.model_triple(raw, conf_with()), (172, 26, 1068))
+        self.assertEqual(ks.model_triple(raw, conf_with()), (172, -26, 1068))
 
     def test_a_negative_sign_turns_the_angle_round(self):
         flipped = conf_with(axis_pitch="-y")
@@ -240,7 +242,7 @@ class Reference(unittest.TestCase):
         counts = ak.reference_from_iio(ks.model_triple(REST, self.conf))
         ks.write_reference(self.path, counts, (26.0, 172.0, 1068.0), self.conf)
         self.assertEqual(ks.read_reference(self.path, self.conf), counts)
-        self.assertEqual(counts, (26 * 16, 172 * 16, 1068 * 16))
+        self.assertEqual(counts, (-26 * 16, 172 * 16, 1068 * 16))
 
     def test_no_file_is_no_reference_and_not_an_error(self):
         self.assertIsNone(ks.read_reference(self.path, self.conf))
@@ -448,7 +450,7 @@ class Commands(unittest.TestCase):
         code, out = self.run_tool("once")
         self.assertEqual(code, 0)
         self.assertIn("pitch 20.586", out)
-        self.assertIn("tl 95,35  tr 101,20  bl 4,141  br 0,160", out)
+        self.assertIn("tl 101,20  tr 95,35  bl 0,160  br 4,141", out)
 
     def test_run_without_a_reference_says_what_to_do_first(self):
         with self.assertRaises(ks.Error) as caught:

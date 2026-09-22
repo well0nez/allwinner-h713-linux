@@ -36,8 +36,9 @@ So `z` is vertical, **`y` is the pitch** and **`x` is the roll** - the identity,
 not the vendor's swap, under which the same nose-up pose would read as a 20 degree *roll* and the correction would
 rotate the picture instead of trapezoiding it. Hence the three axis defaults, and hence no `mount-matrix` in the device
 tree (AP2h NOTE 4a): the transform lives here, where it is a configuration key and not a claim about the hardware.
-Lifting the **left** side (seen from behind the projector) makes raw x and so GsX negative; which corners the geometry
-pulls in for that is the wall test of slot 10, `axis_roll = -x` being the fix if it is the wrong pair.
+Lifting the **left** side (seen from behind the projector) makes raw x negative. The wall settled the sign on
+22.09.2026: with `axis_roll = +x` the correction tilted the picture further, with `-x` it stayed level, so `-x` is the
+default. A reference taken under one sign is refused under the other (`h713-keystone reference` again).
 
 **The sampling rate, the averaging and the hysteresis.** A sysfs read of `in_accel_*_raw` waits for the device's
 *next* sample and `st_accel` starts the SC7A20 at 1 Hz, so one reading would cost three seconds: the tool writes
@@ -61,7 +62,7 @@ optics by 0.3 % for nothing.
 # /etc/h713/keystone.conf -- "key = value", # comment
 iio_name           = sc7a20    # the IIO device's own name, not iio:deviceN
 axis_pitch         = +y        # which raw axis and sign is the pitch (GsY),
-axis_roll          = +x        # the roll (GsX), and the vertical one
+axis_roll          = -x        # the roll (GsX), and the vertical one
 axis_vertical      = +z
 throw_ratio        = ini       # ini = camprjspe.ini (0.8176), or a measured number
 zoom_scale         = 0         # 0/1/2 -> target width 1920/1728/1440 (16:9, 16:10, 4:3)
