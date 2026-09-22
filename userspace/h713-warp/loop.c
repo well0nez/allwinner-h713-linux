@@ -185,7 +185,13 @@ bool warp_pump(struct runtime *r)
 		}
 	}
 	t0 = now_s();
-	target = (int)(r->frames % WARP_TARGETS);
+	/* The target advances only after h713-tv has TAKEN a frame: after an
+	 * "ok busy" (the previous commit not yet latched) the same buffer is
+	 * drawn again. Advancing on every frame, drops included, put the
+	 * render into the buffer still on the wall two frames later - the
+	 * tearing Marco saw on fast motion (23.09.). Three buffers: one on
+	 * the wall, one pending, one drawn. */
+	target = r->target;
 	char label[5][40];
 	const char *labels[5] = { NULL, NULL, NULL, NULL, NULL };
 
@@ -226,6 +232,8 @@ bool warp_pump(struct runtime *r)
 	}
 	if (rc > 0)
 		r->dropped++;
+	else
+		r->target = (r->target + 1) % WARP_TARGETS;
 	/* only now: h713-tv has the frame, so the slot may be overwritten */
 	if (r->pattern == PATTERN_NONE)
 		source_queue(&r->source, slot);

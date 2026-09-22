@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-panel: the settings page on port 8080. One instance; the page itself
+# talks to no device, it only runs the other h713 tools as child processes.
+#
+# ORDERING. network-online.target is wanted, not required: the socket is bound
+# to 0.0.0.0, so the page comes up whether or not an address is there yet and
+# answers as soon as one is. There is deliberately no ordering against
+# h713-tv@videoN (a template, started by udev - see h713-warp.service for the
+# same reasoning) or h713-warp: a tool that is not running answers "error ..."
+# and that error is what the page shows.
+[Unit]
+Description=HY310: the projector's settings page for a phone or a browser
+Documentation=file:/usr/local/share/doc/h713-panel/docs-h713-panel.md
+Wants=network-online.target
+After=network-online.target multi-user.target
+
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/h713-panel/h713-panel --port 8080
+Restart=on-failure
+RestartSec=5s
+
+# It runs h713-keystone reference, h713-focus and the ctl clients, and it
+# writes after_move into /etc/h713/keystone.conf, so /etc/h713 is the one path
+# that stays writable. It opens no device node of its own.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/h713
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

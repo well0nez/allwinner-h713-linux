@@ -107,6 +107,7 @@ RUN_MSTEP_CAP, MSTEPS_PER_COMMAND_MAX = 400, 18   # both as in h713-focus
 # instead of five and does not overshoot the move by up to a poll interval.
 MSTEP_S, POLL_S = 0.016, 0.008
 CMD_UP, CMD_DOWN, CMD_FLUSH = 1, 2, 3             # the autofocus codes, AP1 6
+EDGE_BACKOFF = 40          # msteps away from a latched edge before a run
 PATTERN_CELL, PATTERN_ORIGIN = 69, (97, 92)       # AP1 2.2, bg_auto_focus.png
 EXIT_ERROR, EXIT_NO_PICTURE, EXIT_BLOCKED = 2, 3, 4
 EXIT_EDGE, EXIT_NO_PEAK = 5, 6
@@ -611,6 +612,63 @@ def chessboard(xres, yres, bpp, line_length, cell=PATTERN_CELL,
                     for y in range(yres))
 
 
+class Handover:
+    """The wall for the pattern, and the picture back afterwards.
+
+    The chessboard goes through the console's framebuffer, which is on the
+    wall only while h713-tv shows the console: with the HDMI picture up the
+    video plane covers it, and with h713-warp drawing, the GPU's buffers do.
+    So this takes the panel over - `h713-warp ctl off` when the warp is on,
+    then `h713-tv ctl off` - and gives it back the same way in reverse. A tool
+    that is not installed, or one that answers error, is noted and skipped:
+    the run still happens, the pattern may then not be seen (Marco, 23.09.:
+    an autofocus that does not put its picture up is worth nothing).
+    """
+
+    def __init__(self, tv="h713-tv", warp="h713-warp", log=None):
+        self.tv, self.warp, self.log = tv, warp, log or (lambda _: None)
+        self.warp_was_on = False
+        self.tv_was_auto = False
+        self.taken = False
+
+    def _run(self, argv, timeout=15):
+        try:
+            done = subprocess.run(argv, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, timeout=timeout,
+                                  text=True)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.log("%s: %s" % (" ".join(argv), exc))
+            return None
+        return done.stdout
+
+    def take(self):
+        out = self._run([self.warp, "ctl", "status"])
+        if out and "\nwarp            on" in "\n" + out:
+            self.warp_was_on = True
+            self._run([self.warp, "ctl", "off"])
+            self.log("the warp is off for the pattern")
+        out = self._run([self.tv, "ctl", "status"])
+        if out and "mode            automatic" in out:
+            self.tv_was_auto = True
+        if out is not None:
+            self._run([self.tv, "ctl", "off"])
+            self.log("the console has the panel for the pattern")
+        self.taken = True
+        time.sleep(0.4)     # the console comes back through the DRM commit
+
+    def give_back(self):
+        if not self.taken:
+            return
+        if self.tv_was_auto:
+            self._run([self.tv, "ctl", "auto"])
+            self.log("h713-tv is on automatic again")
+        if self.warp_was_on:
+            time.sleep(0.5)
+            self._run([self.warp, "ctl", "on"])
+            self.log("the warp is on again")
+        self.taken = False
+
+
 class Panel:
     """/dev/fb0 -- the console's surface, and the pattern's way to the wall."""
 
@@ -856,7 +914,7 @@ def build_metric(args, profile, yuyv=False):
 def do_run(args, profile):
     """Pattern, camera, warm-up, search -- the whole procedure (AP1 2)."""
     metric = build_metric(args, profile, yuyv=not args.dry_run)
-    panel = camera = None
+    panel = camera = handover = None
     if args.dry_run:
         motor = ReplayMotor(read_frames(args.dry_run), args.start,
                             args.direction)
@@ -864,7 +922,20 @@ def do_run(args, profile):
     else:
         motor = SysfsMotor(find_base(args.sysfs))
         motor.direction = args.direction
-        reason = motor.guard(motor.state(), motor.direction == 0)
+        st = motor.state()
+        up = motor.direction == 0
+        if st.edge_up if up else st.edge_dn:
+            # The last run ended at this edge and the driver latched it: every
+            # command towards it is dropped, away from it is fine. Back off,
+            # so that a click on "autofocus" works twice in a row.
+            _stderr("the %s edge is latched from the last run -- backing off "
+                    "%d msteps first" % ("upper" if up else "lower", EDGE_BACKOFF))
+            try:
+                motor._move(EDGE_BACKOFF, not up, st)
+            except Edge:
+                pass
+            st = motor.state()
+        reason = motor.guard(st, up)
         if reason:
             _stderr("the motor cannot start: " + reason)
             return EXIT_BLOCKED
@@ -873,6 +944,10 @@ def do_run(args, profile):
         camera.start()
         grab = camera.grab
         if not args.no_pattern:
+            if not args.no_handover:
+                handover = Handover(log=(lambda _: None) if args.quiet
+                                    else _stderr)
+                handover.take()
             panel = Panel()
             panel.save()
             panel.draw(args.cell)
@@ -904,6 +979,8 @@ def do_run(args, profile):
         if panel is not None:
             panel.restore()
             panel.close()
+        if handover is not None:
+            handover.give_back()
         if camera is not None:
             camera.close()
     return 130 if stopped else code
@@ -989,6 +1066,9 @@ def main(argv=None):
     run.add_argument("--timeout", type=float, default=22.0, metavar="S",
                      help="deadline in seconds, 0 = none (default 22, the "
                           "vendor's own watchdog)")
+    run.add_argument("--no-handover", action="store_true",
+                     help="do not take the panel over from h713-tv and "
+                          "h713-warp for the pattern (you did it yourself)")
     run.add_argument("--no-pattern", action="store_true",
                      help="leave the framebuffer alone")
     measure = sub.add_parser("measure", help="one metric value")

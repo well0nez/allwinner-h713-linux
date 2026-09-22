@@ -1,0 +1,457 @@
+#!/usr/bin/env python3
+"""h713-panel -- the projector's settings page, served by the projector.
+
+Until a remote control exists everything this projector can do is a command
+line, and (Marco, 23.09.) one cannot keep doing all of it by command: so one
+page, opened on a phone over the projector's own Wi-Fi or in a browser over
+the LAN, with the vendor's "Projection Settings" and "Display settings" entries
+in our own style.  NOTHING IS DECIDED HERE - every button is one existing
+command of this project (h713-warp, h713-keystone, h713-focus, h713-autofocus,
+h713-tv) and this file only chooses which one and reads the first `ok`/`error`
+line of the answer back to the page.  The browser never names a command: it
+names a verb out of COMMANDS, its arguments are checked against that table, and
+the argument vector goes to subprocess without a shell, so a hole in the page
+cannot become a hole in the projector.  There is no authentication;
+docs-h713-panel.md says so out loud.
+
+  h713-panel [--port 8080] [--address ADDR] [--tools DIR] [--page PATH]
+"""
+
+from __future__ import annotations
+
+import argparse
+import http.server
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+PAGE_PATH = os.path.join(HERE, "page.html")
+KEYSTONE_CONF, KEYSTONE_UNIT = "/etc/h713/keystone.conf", "h713-keystone-auto"
+THERMAL_DIR, DEFAULT_ADDRESS = "/sys/class/thermal", "0.0.0.0"
+DEFAULT_PORT = 8080
+TIMEOUT_S, TIMEOUT_LONG_S = 30, 120    # the autofocus walks a motor
+LOCK_WAIT_S = 5.0                      # how long a second button press waits
+MAX_BODY = 4096                        # a request is a verb and four words
+CORNERS, AXES = ("tl", "tr", "bl", "br"), ("x", "y")
+# h713-tv's own lists (docs/tools/h713-tv.md).  A preset the vendor data does
+# not carry is refused by h713-tv by name, and that refusal is what the page
+# shows: these lists are only what the page offers.
+PRESETS = ("standard", "cinema", "vivid", "game", "computer", "hdr",
+           "energy_saving", "custom")
+ASPECTS = ("auto", "proportional", "full", "16:9", "4:3", "zoom")
+PICTURE_CONTROLS = ("brightness", "contrast", "saturation", "hue", "sharpness")
+AFTER_MOVE = ("off", "keystone", "keystone+focus")
+SPECIALS = ("status", "controls", "picture_set", "after_move")  # Panel.do_*
+NUDGE_STEPS = (1, 10, 50)   # what one press of the pad may be worth
+
+
+class Refused(Exception):
+    """An argument is outside its range, or the verb is not in the table."""
+
+
+def no(line, **rest):
+    """An answer the page shows as an error; nothing was started."""
+    return dict(rest, ok=False, line=line)
+
+
+def _tame(value):
+    """The browser's word, shortened and stripped: it goes into a message."""
+    return re.sub(r"[^\w.:+-]", "?", str(value))[:32]
+
+
+def _choice(*names):
+    def check(value):
+        text = value if isinstance(value, str) else str(value)
+        if text not in names:
+            raise Refused("error \"%s\" is not one of %s"
+                          % (_tame(text), " ".join(names)))
+        return text
+    return check
+
+
+def _number(low, high, step=1):
+    def check(value):
+        try:
+            number = int(value)
+            if isinstance(value, bool) or not low <= number <= high \
+                    or (number - low) % step:
+                raise ValueError("out of range")
+        except (TypeError, ValueError):
+            raise Refused("error \"%s\" is not a whole number %d..%d in "
+                          "steps of %d" % (_tame(value), low, high, step))
+        return str(number)
+    return check
+
+
+WARP, KEY, FOCUS, AUTOF, TV = ("h713-warp", "h713-keystone", "h713-focus",
+                               "h713-autofocus", "h713-tv")
+CORNER, AXIS, ON_OFF = _choice(*CORNERS), _choice(*AXES), _choice("on", "off")
+# A nudge is one of the pad's steps either way; a drag sends PER_MILLE.
+STEP = _choice(*[str(sign * n) for n in NUDGE_STEPS for sign in (1, -1)])
+PER_MILLE = _number(0, 1000)
+PERCENT = _number(50, 100, 5)           # screen zoom and the firmware's "out"
+# `h713-tv ctl zoom in F` takes any factor 1.0..4.0; the page offers five.
+FACTOR = _choice("1.5", "2.0", "2.5", "3.0", "4.0")
+T, LONG = TIMEOUT_S, TIMEOUT_LONG_S
+
+# verb -> (tool, the fixed words, the checks for the browser's arguments,
+# timeout).  This table is the menu; SPECIALS are the four that are not one
+# plain command.
+COMMANDS = {
+    # Projection
+    "mask_on": (WARP, ("ctl", "test", "mask"), (CORNER,), T),
+    "mask_off": (WARP, ("ctl", "test", "off"), (), T),
+    "nudge": (WARP, ("ctl", "keystone", "nudge"), (CORNER, AXIS, STEP), T),
+    "keystone_set": (WARP, ("ctl", "keystone", "set"),
+                     (CORNER, AXIS, PER_MILLE), T),
+    "keystone_now": (KEY, ("once", "--apply"), (), T),
+    "keystone_ref": (KEY, ("reference",), (), T),
+    "keystone_res": (WARP, ("ctl", "keystone", "reset"), (), T),
+    "screen_zoom": (WARP, ("ctl", "zoom"), (PERCENT,), T),
+    "focus": (FOCUS, (), (_choice("up", "down"), _choice("5", "20")), T),
+    "autofocus": (AUTOF, ("run",), (), LONG),
+    "warp": (WARP, ("ctl",), (ON_OFF,), T),
+    # Picture
+    "preset": (TV, ("ctl", "preset"), (_choice(*PRESETS),), T),
+    "aspect": (TV, ("ctl", "aspect"), (_choice(*ASPECTS),), T),
+    "tv_zoom_in": (TV, ("ctl", "zoom", "in"), (FACTOR,), T),
+    "tv_zoom_out": (TV, ("ctl", "zoom", "out"), (PERCENT,), T),
+    "tv_zoom_off": (TV, ("ctl", "zoom", "off"), (), T),
+    "save": (TV, ("ctl", "save"), (), T),
+    # Sound
+    "volume": (TV, ("ctl", "volume"), (_number(0, 100),), T),
+    "mute": (TV, ("ctl", "mute"), (ON_OFF,), T),
+    "audio": (TV, ("ctl", "audio"), (_choice("auto", "on", "off"),), T),
+}
+
+# "label   value", the shape every status of this project prints: labels carry
+# spaces ("keystone by"), so two spaces is the seam and an indented
+# continuation line is skipped.
+LABEL = re.compile(r"^(\S.*?)\s{2,}(\S.*)$")
+PAIR = re.compile(r"\b(tl|tr|bl|br)\s+(-?\d+),(-?\d+)")   # warp's eight values
+FPS = re.compile(r"([\d.]+)\s*fps")
+FIRST_INT = re.compile(r"-?\d+")
+# `h713-tv ctl list`: "  brightness  50  (0..100)", "  mode  0 (x)  menu 0..5"
+LIST_ROW = re.compile(r"^\s{2,}(\S+)\s+(-?\d+|\?)\s*(.*)$")
+RANGE = re.compile(r"\((-?\d+)\.\.(-?\d+)\)")
+MENU = re.compile(r"menu\s+0\.\.(\d+)")
+CONF_KEY = re.compile(r"^(\s*)([A-Za-z_][A-Za-z_0-9]*)\s*=(.*)$")
+
+
+def read_bytes(path):
+    """A file or None: a status is a report and may not raise."""
+    try:
+        with open(path, "rb") as handle:
+            return handle.read()
+    except OSError:
+        return None
+
+
+def read_text(path):
+    blob = read_bytes(path)
+    return None if blob is None else blob.decode("utf-8", "replace")
+
+
+def first_int(text, default=None):
+    found = FIRST_INT.search(text or "")
+    return int(found.group(0)) if found else default
+
+
+def labelled(text):
+    """The "label   value" lines of a status as a dictionary, first wins."""
+    fields = {}
+    for line in (text or "").splitlines():
+        found = LABEL.match(line)
+        if found and found.group(1) not in fields:
+            fields[found.group(1)] = found.group(2).strip()
+    return fields
+
+
+def first_line(text, code):
+    """The first line beginning with ok or error - how every ctl of this
+    project answers - else the first line there is, or the exit code."""
+    other = ""
+    for line in (text or "").splitlines():
+        word = line.strip()
+        if word and word.split(None, 1)[0] in ("ok", "error"):
+            return code == 0 and word.startswith("ok"), word
+        other = other or word
+    # A tool that speaks in sentences (h713-autofocus): its refusal is the
+    # LAST line, not the first - the first is its metric line.
+    last = ""
+    for line in (text or "").splitlines():
+        if line.strip():
+            last = line.strip()
+        if line.startswith("stopped"):      # the autofocus verdict line
+            return code == 0, line.strip()
+    fallback = "ok" if code == 0 else "error exit code %d" % code
+    return code == 0, (last if code else other) or fallback
+
+
+def temperatures(root=THERMAL_DIR):
+    """Every thermal zone as degrees, under the name the zone gives itself."""
+    found = []
+    try:
+        names = [n for n in sorted(os.listdir(root)) if "thermal_zone" in n]
+    except OSError:
+        return found
+    for name in names:
+        milli = first_int(read_text(os.path.join(root, name, "temp")))
+        kind = read_text(os.path.join(root, name, "type")) or name
+        if milli is not None:
+            found.append({"name": kind.strip(), "c": round(milli / 1000.0, 1)})
+    return found
+
+
+def set_conf_key(path, key, value):
+    """One `key = value` line rewritten, every other line kept as it is:
+    comments, order, and the keys this page knows nothing about.  Written into
+    a .new file, fsynced and renamed over as h713-warp writes warp.conf."""
+    lines, written = (read_text(path) or "").splitlines(), False
+    for index, line in enumerate(lines):
+        found = CONF_KEY.match(line)
+        if found and found.group(2) == key:
+            rest = found.group(3)
+            lines[index] = "%s%s = %s%s" % (
+                found.group(1), key, value,
+                "   #" + rest.split("#", 1)[1] if "#" in rest else "")
+            written = True
+    if not written:
+        lines.append("%s = %s" % (key, value))
+    with open(path + ".new", "wb") as handle:
+        handle.write(("\n".join(lines) + "\n").encode("utf-8"))
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(path + ".new", path)
+
+
+def keystone_limits(values):
+    """How far each of the eight may still go: the vendor's clamp as h713-warp
+    applies it (matrix.c) - x limited by the corner across the row, y by the
+    one across the column.  The page draws value/max from it."""
+    across = {"x": {"tl": "tr", "tr": "tl", "bl": "br", "br": "bl"},
+              "y": {"tl": "bl", "bl": "tl", "tr": "br", "br": "tr"}}
+    return dict((c + "_" + a, max(0, 1000 - values.get(across[a][c] + "_" + a,
+                                                       0)))
+                for c in CORNERS for a in AXES)
+
+
+class Panel(object):
+    """The verbs, and the lock that keeps two browsers off one focus motor."""
+
+    def __init__(self, tools=None, keystone_conf=KEYSTONE_CONF,
+                 unit=KEYSTONE_UNIT, thermal=THERMAL_DIR):
+        self.tools, self.keystone_conf = tools, keystone_conf
+        self.unit, self.thermal = unit, thermal
+        self.lock, self.ranges = threading.Lock(), {}
+
+    def run(self, name, words, timeout):
+        """One tool, one argument vector, no shell, ever."""
+        argv = [os.path.join(self.tools, name) if self.tools else name]
+        try:
+            done = subprocess.run(argv + list(words), stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, timeout=timeout,
+                                  universal_newlines=True)
+        except subprocess.TimeoutExpired:
+            return False, "error %s %s did not answer within %d s" % (
+                name, " ".join(words), timeout), ""
+        except OSError as problem:
+            return False, "error %s: %s" % (name, problem), ""
+        return first_line(done.stdout, done.returncode) + (done.stdout or "",)
+
+    def control_ranges(self, refresh=False):
+        """`h713-tv ctl list` as {control: {value, min, max}}: what the
+        sliders are drawn with and what picture_set checks against."""
+        if self.ranges and not refresh:
+            return self.ranges
+        found = {}
+        for line in self.run(TV, ("ctl", "list"), T)[2].splitlines():
+            row = LIST_ROW.match(line)
+            span = RANGE.search(row.group(3)) if row else None
+            menu = MENU.search(row.group(3)) if row else None
+            if span or menu:
+                found[row.group(1)] = {
+                    "value": first_int(row.group(2)), "menu": bool(menu),
+                    "min": int(span.group(1)) if span else 0,
+                    "max": int(span.group(2) if span else menu.group(1))}
+        self.ranges = found or self.ranges
+        return self.ranges
+
+    def do_controls(self, args):
+        """What the page needs to draw itself: the sliders and the lists."""
+        ranges = self.control_ranges(refresh=True)
+        blank = {"min": 0, "max": 100}     # until ctl list has been read
+        return {"ok": True, "line": "ok controls", "steps": NUDGE_STEPS,
+                "controls": [dict(blank, name=n, **ranges.get(n, {}))
+                             for n in PICTURE_CONTROLS],
+                "presets": PRESETS, "aspects": ASPECTS,
+                "after_move": AFTER_MOVE, "corners": CORNERS}
+
+    def do_picture_set(self, args):
+        """`h713-tv ctl set CONTROL VALUE`, the range out of `ctl list`."""
+        if len(args) != 2:
+            raise Refused("error a control and a value were expected")
+        name = _choice(*PICTURE_CONTROLS)(args[0])
+        span = self.control_ranges().get(name) or {}
+        value = _number(span.get("min", 0), span.get("max", 100))(args[1])
+        ok, line, _ = self.run(TV, ("ctl", "set", name, value), T)
+        return {"ok": ok, "line": line}
+
+    def do_after_move(self, args):
+        """What the projector does after it has been moved.  The key goes into
+        /etc/h713/keystone.conf and the unit that reads it is restarted."""
+        if len(args) != 1:
+            raise Refused("error one of %s was wanted" % " ".join(AFTER_MOVE))
+        value = _choice(*AFTER_MOVE)(args[0])
+        try:
+            set_conf_key(self.keystone_conf, "after_move", value)
+        except OSError as problem:
+            return no("error %s could not be written (%s)"
+                      % (self.keystone_conf, problem))
+        ok, line, _ = self.run("systemctl", ("restart", self.unit), TIMEOUT_S)
+        if not ok:
+            return no("error after_move = %s is written, but %s did not "
+                      "restart (%s)" % (value, self.unit, line))
+        return {"ok": True, "line": "ok after_move = %s, %s restarted"
+                % (value, self.unit)}
+
+    def do_status(self, args):
+        """Three statuses and the thermal zones, every three seconds."""
+        warp, tv, keystone = [
+            labelled(self.run(tool, words, TIMEOUT_S)[2]) for tool, words in
+            (("h713-warp", ("ctl", "status")), ("h713-tv", ("ctl", "status")),
+             ("h713-keystone", ("status",)))]
+        values = dict((c + "_" + a, 0) for c in CORNERS for a in AXES)
+        for corner, x, y in PAIR.findall(warp.get("keystone", "")):
+            values[corner + "_x"], values[corner + "_y"] = int(x), int(y)
+        frames = FPS.search(warp.get("frames", ""))
+        return {"ok": True, "line": "ok status",
+                "temperatures": temperatures(self.thermal),
+                "warp": (warp.get("warp") or "unknown").split()[0],
+                "warp_why": warp.get("warp", "h713-warp did not answer"),
+                "pattern": warp.get("pattern", "-"),
+                "screen_zoom": first_int(warp.get("zoom", ""), 100),
+                "fps": float(frames.group(1)) if frames else None,
+                "keystone": values, "max": keystone_limits(values),
+                "signal": tv.get("signal", "h713-tv did not answer"),
+                "picture": tv.get("picture", "-"),
+                "audio": tv.get("audio", "-"),
+                "aspect": (tv.get("format") or "-").split()[0],
+                "tv_zoom": tv.get("zoom", "-"),
+                "keystone_by": (keystone.get("keystone by") or "-").split()[0],
+                "after_move": (keystone.get("after a move") or "-").split()[0]}
+
+    def call(self, request):
+        """The one door: {"verb": ..., "args": [...]}, anything else refused
+        before a single tool is started."""
+        if not isinstance(request, dict):
+            return no("error a request is a JSON object")
+        verb, args = request.get("verb"), request.get("args", [])
+        if not isinstance(args, list) or len(args) > 4:
+            return no("error args is a list of at most four")
+        if verb not in SPECIALS and verb not in COMMANDS:
+            return no("error \"%s\" is not a verb of this page" % _tame(verb))
+        # A status may never wait behind a running autofocus: it says "busy",
+        # and the page keeps its numbers.  A command waits LOCK_WAIT_S.
+        if not (self.lock.acquire(True, LOCK_WAIT_S) if verb != "status"
+                else self.lock.acquire(False)):
+            return no("error the projector is busy with the command before "
+                      "this one", busy=True)
+        try:
+            if verb in SPECIALS:
+                return getattr(self, "do_" + verb)(args)
+            tool, words, checks, timeout = COMMANDS[verb]
+            if len(args) != len(checks):
+                raise Refused("error %s takes %d argument(s), not %d"
+                              % (_tame(verb), len(checks), len(args)))
+            ok, line, _ = self.run(tool, list(words) + [
+                check(value) for check, value in zip(checks, args)], timeout)
+            return {"ok": ok, "line": line}
+        except Refused as refusal:
+            return no(str(refusal))
+        finally:
+            self.lock.release()
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    """GET / is the page, POST /api is every verb.  There is nothing else."""
+
+    server_version, protocol_version = "h713-panel", "HTTP/1.1"
+    PLAIN = "text/plain; charset=utf-8"
+    JSON = "application/json; charset=utf-8"
+
+    def _send(self, code, kind, body):
+        self.send_response(code)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path.split("?")[0] in ("/", "/index.html"):
+            self._send(200, "text/html; charset=utf-8", self.server.page)
+        else:
+            self._send(404, self.PLAIN, b"not this page\n")
+
+    def do_POST(self):
+        if self.path.split("?")[0] != "/api":
+            self._send(404, self.PLAIN, b"not this page\n")
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_BODY:
+                raise ValueError("too long")
+            answer = self.server.panel.call(
+                json.loads(self.rfile.read(length).decode("utf-8")))
+        except (ValueError, UnicodeDecodeError):
+            answer = no("error that is not a request this page makes")
+        self._send(200, self.JSON, json.dumps(answer).encode("utf-8"))
+
+    def log_message(self, fmt, *args):
+        """One line per request, and the browser's path stays out of it."""
+        sys.stderr.write("%s %s\n" % (self.address_string(), self.command))
+
+
+def serve(panel, page, address=DEFAULT_ADDRESS, port=DEFAULT_PORT):
+    server = http.server.ThreadingHTTPServer((address, port), Handler)
+    server.panel, server.page = panel, page
+    return server
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="h713-panel",
+        description="the projector's settings page: one HTML page and a verb "
+                    "list, every verb one existing h713 command.",
+        epilog="No authentication - the Wi-Fi password is the door.")
+    add = parser.add_argument
+    add("--port", type=int, default=DEFAULT_PORT)
+    add("--address", default=DEFAULT_ADDRESS, metavar="ADDR",
+        help="the default is every interface")
+    add("--page", default=PAGE_PATH, metavar="PATH", help="the HTML page")
+    add("--tools", metavar="DIR", help="the h713 tools; default $PATH")
+    add("--keystone-conf", default=KEYSTONE_CONF, metavar="PATH")
+    args = parser.parse_args(argv)
+    page = read_bytes(args.page)
+    if page is None:
+        sys.stderr.write("error %s is missing -- the page is one file beside "
+                         "this one\n" % args.page)
+        return 2
+    server = serve(Panel(args.tools, args.keystone_conf), page, args.address,
+                   args.port)
+    sys.stderr.write("ok h713-panel on http://%s:%d/ -- no authentication\n"
+                     % (args.address, args.port))
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

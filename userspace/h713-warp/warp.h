@@ -149,6 +149,7 @@ struct runtime {
 	bool on;			/* "ctl on"/"ctl off": run time only */
 	int pattern;			/* enum warp_pattern */
 	int mark_corner;		/* the mask's marked corner, 0..3 tl tr bl br, -1 none */
+	int target;			/* the next panel buffer to draw, advanced on an accepted commit */
 	char why[WARP_WHY];		/* why it is not WARP_ON */
 	const char *render_node;
 	double m[16];			/* the matrix in use, column major */

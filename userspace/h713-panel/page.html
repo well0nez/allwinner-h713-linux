@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<!-- The page h713-panel serves: an instrument, not a template. Dark grey, one
+     accent for "selected" and "active", flat rectangles, tabular numbers, an
+     8 px grid, no image, no font and no script from anywhere else. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>h713 panel</title>
+<style>
+:root {
+  --bg: #121212; --face: #181818; --sunk: #0e0e0e; --line: #2b2b2b; --ink: #d8d8d8;
+  --dim: #8b8b8b; --accent: #e08c2c; --u: 8px;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+       padding: var(--u); overflow-wrap: anywhere; }
+.num, #strip b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+h1, h2, h3 { text-transform: uppercase; letter-spacing: .16em; color: var(--dim);
+             font-weight: 600; font-size: 11px; }
+h1 { font-size: 13px; margin: 0 0 var(--u); }
+h2 { margin: 0 0 var(--u); padding-bottom: var(--u); border-bottom: 1px solid var(--line); }
+h3 { margin: calc(2 * var(--u)) 0 var(--u); }
+#strip { display: flex; flex-wrap: wrap; gap: 0 var(--u); font-size: 12px;
+         border: 1px solid var(--line); background: var(--sunk); padding: var(--u);
+         color: var(--dim); margin-bottom: var(--u); }
+#strip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+#strip span + span { border-left: 1px solid var(--line); padding-left: var(--u); }
+#strip b { color: var(--ink); font-weight: 500; }
+#strip b.on { color: var(--accent); }
+section { border: 1px solid var(--line); background: var(--face); padding: var(--u);
+          margin-bottom: var(--u); }
+.row { display: flex; flex-wrap: wrap; gap: var(--u); }
+.row > *, nav button, #steps button { flex: 1 1 auto; }
+button { min-height: 48px; padding: var(--u) calc(1.5 * var(--u)); background: #1f1f1f;
+         color: var(--ink); border: 1px solid var(--line); border-radius: 0;
+         font: inherit; font-size: 14px; cursor: pointer; }
+button:hover { background: #262626; } button:focus-visible { outline: 2px solid var(--accent); }
+button:active { background: var(--accent); color: #101010; border-color: var(--accent); }
+button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent);
+                              background: #201a12; }
+button.wide { flex: 1 1 100%; } label span { float: right; color: var(--ink); font-family: var(--mono); }
+label { display: block; font-size: 12px; color: var(--dim); letter-spacing: .06em;
+        margin: var(--u) 0 0; }
+input[type=range] { width: 100%; height: 40px; accent-color: var(--accent); background: none; }
+#keystone { display: flex; flex-wrap: wrap; gap: var(--u); align-items: flex-start; }
+#quad { flex: 1 1 280px; min-width: 0; max-width: 460px; background: var(--sunk);
+        border: 1px solid var(--line); touch-action: none; display: block; }
+#steps { display: flex; gap: 4px; margin: 4px 0 var(--u); }
+#keystone > div { flex: 0 0 176px; } #dpad button { min-height: 52px; padding: 0; }
+#dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+#dpad button:nth-child(1) { grid-area: 1/2; } #dpad button:nth-child(2) { grid-area: 2/1; }
+#dpad button:nth-child(3) { grid-area: 2/3; } #dpad button:nth-child(4) { grid-area: 3/2; }
+#steps button { min-height: 40px; padding: 0; font-family: var(--mono); }
+.edge { fill: none; stroke: #333; stroke-width: 1; stroke-dasharray: 3 3; }
+.shape { fill: rgba(224, 140, 44, .07); stroke: var(--accent); stroke-width: 1.5; }
+.grab { fill: #1f1f1f; stroke: var(--ink); stroke-width: 1.5; cursor: grab; }
+.tag { fill: var(--dim); font-size: 9px; font-family: var(--mono); }
+.grab.sel { fill: var(--accent); stroke: var(--accent); } .tag.sel { fill: var(--accent); }
+nav { display: flex; gap: var(--u); margin-bottom: var(--u); }
+.screen { display: none; } .screen.on { display: block; }
+footer { position: sticky; bottom: 0; background: var(--sunk); padding: var(--u);
+         border: 1px solid var(--line); font-size: 12px; font-family: var(--mono);
+         color: var(--dim); }
+footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
+@media (min-width: 900px) {
+  body { max-width: 1440px; margin: 0 auto; padding: calc(2 * var(--u)); }
+  nav { display: none; } .screen { display: block; } section { margin-bottom: 0; }
+  main { display: grid; gap: var(--u); align-items: start;
+         grid-template-columns: 2fr 1fr 1fr; }
+  button { min-height: 40px; }
+}
+</style>
+</head>
+<body>
+<h1>h713 panel</h1>
+<div id="strip"></div>
+
+<nav>
+  <button onclick="show('projection')" id="tab-projection" aria-pressed="true">Projection</button>
+  <button onclick="show('picture')" id="tab-picture" aria-pressed="false">Picture</button>
+  <button onclick="show('sound')" id="tab-sound" aria-pressed="false">Sound</button>
+</nav>
+
+<main>
+<section class="screen on" id="projection">
+  <h2>Keystone</h2>
+  <div id="keystone" onkeydown="padKey(event)">
+    <svg id="quad" viewBox="0 0 360 216" role="group" aria-label="the four corners">
+      <rect class="edge" x="20" y="18" width="320" height="180"></rect>
+      <polygon class="shape" id="shape" points=""></polygon>
+      <g id="handles"></g>
+    </svg>
+    <div>
+      <div id="dpad">
+        <button onclick="nudge('y', -1)" aria-label="up">&#9650;</button><button
+          onclick="nudge('x', -1)" aria-label="left">&#9664;</button><button
+          onclick="nudge('x', 1)" aria-label="right">&#9654;</button><button
+          onclick="nudge('y', 1)" aria-label="down">&#9660;</button>
+      </div>
+      <div id="steps"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button onclick="mask(true)" id="mask-on">Mask on</button><button
+      onclick="mask(false)" id="mask-off">Mask off</button>
+    <button onclick="act('keystone_now')">Auto now</button><button
+      onclick="act('keystone_res')">Reset</button>
+  </div>
+  <label for="zoom">Screen zoom <span id="zoom-v" class="num">100 %</span></label>
+  <input type="range" id="zoom" min="50" max="100" step="5" value="100" oninput="show_v('zoom', ' %')"
+         onchange="act('screen_zoom', [+this.value])">
+  <h3>After a move</h3>
+  <div class="row" id="after"></div>
+  <h3>Focus</h3>
+  <div class="row">
+    <button onclick="act('focus', ['down', '20'])">-20</button><button
+      onclick="act('focus', ['down', '5'])">-5</button>
+    <button onclick="act('focus', ['up', '5'])">+5</button><button
+      onclick="act('focus', ['up', '20'])">+20</button>
+    <button onclick="act('keystone_ref')">Level reference</button><button
+      onclick="act('autofocus')">Autofocus now</button>
+  </div>
+  <h3>Warp</h3>
+  <div class="row">
+    <button id="warp-on" onclick="act('warp', ['on'])">Warp on</button>
+    <button id="warp-off" onclick="act('warp', ['off'])">Warp off</button>
+  </div>
+</section>
+
+<section class="screen" id="picture">
+  <h2>Picture</h2>
+  <h3>Preset</h3>
+  <div class="row" id="presets"></div>
+  <div id="sliders"></div>
+  <h3>Aspect</h3>
+  <div class="row" id="aspects"></div>
+  <h3>Firmware zoom</h3>
+  <div class="row" id="tvzoom"></div>
+  <label for="out">Zoom out <span id="out-v" class="num">100 %</span></label>
+  <input type="range" id="out" min="50" max="100" step="5" value="100" oninput="show_v('out', ' %')"
+         onchange="act('tv_zoom_out', [+this.value])">
+  <div class="row" style="margin-top:8px"><button class="wide"
+    onclick="act('save')">Save picture settings</button></div>
+</section>
+
+<section class="screen" id="sound">
+  <h2>Sound</h2>
+  <label for="vol">Volume <span id="vol-v" class="num">50</span></label>
+  <input type="range" id="vol" min="0" max="100" step="1" value="50" oninput="show_v('vol', '')"
+         onchange="act('volume', [+this.value])">
+  <h3>Mute</h3>
+  <div class="row">
+    <button onclick="act('mute', ['on'])">Mute on</button>
+    <button onclick="act('mute', ['off'])">Mute off</button>
+  </div>
+  <h3>Audio</h3>
+  <div class="row">
+    <button onclick="act('audio', ['auto'])">Auto</button>
+    <button onclick="act('audio', ['on'])">On</button><button
+      onclick="act('audio', ['off'])">Off</button>
+  </div>
+</section>
+</main>
+
+<footer id="line">ready</footer>
+<script>
+"use strict";
+/* The panel in the diagram: 320 x 180 at (20, 18) of the 360 x 216 viewBox. */
+var X0 = 20, Y0 = 18, W = 320, H = 180;
+var ROW = {tl: "tr", tr: "tl", bl: "br", br: "bl"};   /* the x partner */
+var COL = {tl: "bl", bl: "tl", tr: "br", br: "tr"};   /* and the y partner */
+var ST = {}, KS = {}, CORNER = "tl", STEP = 10, BUSY = false;
+var DRAG = null, LAST = 0, FLYING = false, PENDING = null;
+function id(name) { return document.getElementById(name); }
+function say(text, kind) { var f = id("line"); f.textContent = text; f.className = kind || ""; }
+function esc(text) { var d = document.createElement("div"); d.textContent = text; return d.innerHTML; }
+function val(key) { return (KS[key] === undefined ? 0 : KS[key]); }
+/* h713-warp prints no maximum: the tool computes one with the vendor's clamp
+   and the page repeats that rule while a drag is in flight. */
+function limit(corner, axis) {
+  var known = (ST.max || {})[corner + "_" + axis];
+  return (DRAG || known === undefined)
+    ? 1000 - val((axis === "x" ? ROW : COL)[corner] + "_" + axis) : known;
+}
+function api(verb, args) {
+  return fetch("/api", {method: "POST", headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({verb: verb, args: args || []})})
+    .then(function (r) { return r.json(); })
+    .catch(function () { return {ok: false, line: "error the projector is not answering"}; });
+}
+/* Every button lands here: one verb, then the status is read again. */
+function act(verb, args) {
+  if (BUSY) { say("error one command at a time", "bad"); return Promise.resolve(); }
+  BUSY = true; say("... " + verb, "");
+  return api(verb, args).then(function (a) {
+    BUSY = false; say(a.line, a.ok ? "ok" : "bad"); return refresh();
+  });
+}
+function press(name, on) {
+  var b = id(name);
+  if (b) { b.setAttribute("aria-pressed", String(!!on)); }
+}
+function show(name) {
+  ["projection", "picture", "sound"].forEach(function (n) {
+    id(n).classList.toggle("on", n === name);
+    press("tab-" + n, n === name);
+  });
+}
+function show_v(name, unit) { id(name + "-v").textContent = id(name).value + unit; }
+
+function point(c) {                       /* per-mille inward -> the viewBox */
+  var x = val(c + "_x") / 1000 * W, y = val(c + "_y") / 1000 * H;
+  return [c[1] === "l" ? X0 + x : X0 + W - x, c[0] === "t" ? Y0 + y : Y0 + H - y];
+}
+function fromPoint(c, x, y) {             /* and back, for a drag */
+  return [Math.round((c[1] === "l" ? x - X0 : X0 + W - x) / W * 1000),
+          Math.round((c[0] === "t" ? y - Y0 : Y0 + H - y) / H * 1000)];
+}
+function clamp(v, high) { return v < 0 ? 0 : (v > high ? high : v); }
+function drawQuad() {
+  var corners = ["tl", "tr", "br", "bl"], marks = "";
+  id("shape").setAttribute("points",
+    corners.map(function (c) { return point(c).join(","); }).join(" "));
+  corners.forEach(function (c) {
+    var p = point(c), sel = c === CORNER ? " sel" : "", left = c[1] === "l",
+      tx = p[0] + (left ? 16 : -16), ty = p[1] + (c[0] === "t" ? 14 : -8);
+    marks += '<circle class="grab' + sel + '" cx="' + p[0] + '" cy="' + p[1] +
+      '" r="11" tabindex="0" role="button" aria-label="corner ' + c +
+      '" onpointerdown="grab(event, \'' + c + '\')"></circle><text class="tag' + sel +
+      '" x="' + tx + '" y="' + ty + '" text-anchor="' + (left ? "start" : "end") +
+      '">' + c + "  x " + val(c + "_x") + "/" + limit(c, "x") + "  y " +
+      val(c + "_y") + "/" + limit(c, "y") + "</text>";
+  });
+  id("handles").innerHTML = marks;
+}
+function masked() { return !!ST.pattern && ST.pattern.indexOf("mask") === 0; }
+function pick(corner) {
+  CORNER = corner; drawQuad();
+  if (masked()) { act("mask_on", [corner]); }   /* mark it on the wall */
+}
+/* A drag is absolute: the corner goes where the finger is, clamped here the
+   way h713-warp clamps it, and `keystone set` carries the number. */
+function grab(event, corner) {
+  event.preventDefault();
+  if (corner !== CORNER) { pick(corner); }
+  DRAG = corner; event.target.setPointerCapture(event.pointerId);
+  event.target.onpointermove = move;
+  event.target.onpointerup = event.target.onpointercancel = drop;
+}
+function move(event) {
+  if (!DRAG) { return; }
+  var svg = id("quad"), p = svg.createSVGPoint();
+  p.x = event.clientX; p.y = event.clientY;
+  p = p.matrixTransform(svg.getScreenCTM().inverse());
+  var v = fromPoint(DRAG, p.x, p.y);
+  KS[DRAG + "_x"] = clamp(v[0], limit(DRAG, "x"));
+  KS[DRAG + "_y"] = clamp(v[1], limit(DRAG, "y")); drawQuad();
+  if (Date.now() - LAST > 100) { LAST = Date.now(); push(DRAG); }
+}
+function drop() {
+  if (DRAG) { var corner = DRAG; DRAG = null; push(corner); }
+}
+/* One pair of set commands at a time; a newer position replaces a waiting one. */
+function push(corner) {
+  if (FLYING) { PENDING = corner; return; }
+  FLYING = true;
+  api("keystone_set", [corner, "x", val(corner + "_x")]).then(function () {
+    return api("keystone_set", [corner, "y", val(corner + "_y")]);
+  }).then(function (a) {
+    FLYING = false; say(a.line, a.ok ? "ok" : "bad");
+    if (PENDING) { var next = PENDING; PENDING = null; push(next); }
+  });
+}
+/* The arrows are WALL directions (left, right, up, down); the values are
+   insets, positive inward. So a right corner pulled to the right is a smaller
+   x inset, a bottom corner pushed down a smaller y inset. */
+function nudge(axis, sign) {
+  var flip = axis === "x" ? (CORNER[1] === "r" ? -1 : 1) : (CORNER[0] === "b" ? -1 : 1);
+  act("nudge", [CORNER, axis, sign * flip * STEP]);
+}
+/* Arrows move the corner the keyboard is on; the first arrow after the focus
+   has moved picks that corner instead. */
+function padKey(event) {
+  var keys = {ArrowLeft: ["x", -1], ArrowRight: ["x", 1], ArrowUp: ["y", -1], ArrowDown: ["y", 1]};
+  var on = (document.activeElement.getAttribute("aria-label") || "").slice(7);
+  if (!keys[event.key]) { return; }
+  event.preventDefault();
+  if (on && on !== CORNER) { pick(on); }
+  else { nudge(keys[event.key][0], keys[event.key][1]); }
+}
+function setStep(step) {
+  STEP = step;
+  (ST.steps || []).forEach(function (s) { press("st-" + s, s === step); });
+  drawQuad();
+}
+function mask(on) { act(on ? "mask_on" : "mask_off", on ? [CORNER] : []); }
+function bit(label, value, mark) {
+  return "<span>" + esc(label) + " <b class='" + (mark || "") + "'>" + esc(String(value)) + "</b></span>";
+}
+function draw() {
+  var temps = (ST.temperatures || []).map(function (t) { return t.name + " " + t.c + " C"; });
+  id("strip").innerHTML = bit("signal", ST.signal || "-") + bit("picture", ST.picture || "-") +
+    bit("warp", ST.warp || "-", ST.warp === "on" ? "on" : "") + bit("mask", ST.pattern || "-") +
+    bit("keystone", ST.keystone_by || "-") + bit("temp", temps.length ? temps.join("  ") : "-") +
+    bit("gpu", ST.fps === null || ST.fps === undefined ? "-" : ST.fps + " fps");
+  if (!DRAG) { KS = ST.keystone || {}; drawQuad(); }
+  press("warp-on", ST.warp === "on"); press("warp-off", ST.warp === "off");
+  press("mask-on", masked()); press("mask-off", !masked());
+  (ST.after_move_list || []).forEach(function (v) { press("am-" + v, ST.after_move === v); });
+  if (document.activeElement !== id("zoom") && ST.screen_zoom) {
+    id("zoom").value = ST.screen_zoom; show_v("zoom", " %");
+  }
+}
+function refresh() {
+  return api("status").then(function (s) {
+    if (s.busy || s.ok === false) { return; }
+    var keep = [ST.steps, ST.after_move_list];
+    ST = s; ST.steps = keep[0]; ST.after_move_list = keep[1]; draw();
+  });
+}
+
+function build() {     /* the page draws itself from the tool's own lists */
+  return api("controls").then(function (c) {
+    if (!c.ok) { say(c.line, "bad"); return; }
+    ST.steps = c.steps || [10]; ST.after_move_list = c.after_move || [];
+    id("steps").innerHTML = ST.steps.map(function (s) {
+      return '<button id="st-' + s + '" onclick="setStep(' + s + ')">' + s + "</button>"; }).join("");
+    [["after", c.after_move, "after_move", "am-"], ["presets", c.presets, "preset", ""],
+     ["aspects", c.aspects, "aspect", ""]].forEach(function (g) {
+      id(g[0]).innerHTML = (g[1] || []).map(function (v) {
+        return "<button " + (g[3] ? 'id="' + g[3] + v + '" ' : "") + "onclick=\"act('" +
+               g[2] + "', ['" + v + "'])\">" + esc(v) + "</button>";
+      }).join("");
+    });
+    id("tvzoom").innerHTML = "<button onclick=\"act('tv_zoom_off')\">Off</button>" +
+      ["1.5", "2.0", "2.5", "3.0", "4.0"].map(function (f) {
+        return "<button onclick=\"act('tv_zoom_in', ['" + f + "'])\">In " + f + "</button>"; }).join("");
+    id("sliders").innerHTML = (c.controls || []).map(function (t) {
+      var n = t.name, v = t.value === null || t.value === undefined ? t.min : t.value;
+      return '<label for="s-' + n + '">' + esc(n) + ' <span id="s-' + n + '-v">' + v +
+        '</span></label><input type="range" id="s-' + n + '" min="' + t.min + '" max="' +
+        t.max + '" step="1" value="' + v + '" oninput="show_v(\'s-' + n +
+        "', '')\" onchange=\"act('picture_set', ['" + n + "', +this.value])\">";
+    }).join("");
+    setStep(ST.steps.indexOf(10) >= 0 ? 10 : ST.steps[0]);
+  });
+}
+
+build().then(refresh); window.setInterval(refresh, 3000);
+</script>
+</body>
+</html>
