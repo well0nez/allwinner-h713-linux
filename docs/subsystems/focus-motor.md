@@ -26,6 +26,16 @@ read "out of range" everywhere except where the watcher itself was actively driv
 forced bias (patch `0153`) and exposing the raw level in `motor_limit` (patch `0154`) is what
 uncovered the real behaviour, and the node is active again since patch `0157`.
 
+`motor_ctrl_no_limit` is a **0/1 flag, not a command register**: any non-zero write switches the range
+check off. Writing a `motor_ctrl` command word into it by mistake therefore turns the bypass on instead
+of moving anything - which is how it was found on 22.09.2026. `h713-focus` refuses to drive while it
+reads 1, so the mistake announces itself rather than running the mechanism into a stop. Clear it with
+a zero and read it back:
+
+```
+echo 0 > /sys/devices/platform/motor-ctr/motor_ctrl_no_limit   # 0 = watcher on, 1 = bypassed
+```
+
 ## Homing is off by default
 
 Only the lower edge has ever been observed. Homing starts by driving up to 100 msteps **upward**
