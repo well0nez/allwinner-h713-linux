@@ -1,0 +1,198 @@
+drm: h713-afbd: the plane's destination rectangle is the firmware's window
+
+Words 31..34 of the VidDec descriptor are the window the firmware fits the
+picture into. This driver has always written the panel there, so the picture
+has always filled the panel. They are the other half of the pair 0120 named:
+words 27..30 are the window manager's m_src_cfg and stay the panel, words
+31..34 are its m_dst_cfg, {h_start, h_size, v_start, v_size} in 1/16 pixel,
+and it is the second one that decides where the picture lands.
+
+The vendor's own hardware composer does exactly this for a video layer:
+VideoInfo::setDisplayFrame writes the layer's rectangle into those four words
+and nothing is torn down for the change (AP3c section 4.2 and 5, AP3e sections
+2.2 and 2.5). Its second route, the co-processor call THal_Vp_Wce_SetWindow
+(AP3 section 2.2), carries the same numbers through three physically addressed
+shared buffers and a new RPC. We take the descriptor: it is already published
+on every geometry change, the words are already read, and the RPC stays as the
+fallback for a board that turns out not to re-run its window manager on a
+republished record.
+
+So the window is the plane's ordinary destination rectangle - CRTC_X, CRTC_Y,
+CRTC_W, CRTC_H - and not a private property. Every atomic client sets it
+already, and a private property would only be a second name for the same four
+numbers. What changes in the check is that the plane may now be positioned and
+need not cover its CRTC, and that a destination smaller than the source is
+allowed: nothing in the AFBD scales, the firmware's window chain does, and
+these four words are how it is told to. The bound is the smallest window this
+driver will publish, one AFBD block on each axis, so the helper's scale (source
+over destination) is capped at 128:1 where a 1920-wide source in a 16-wide
+window is 120:1. A rectangle that would have to be clipped is refused rather
+than silently shrunk.
+
+Nothing moves until somebody asks. A plane that covers its CRTC - which is what
+the check demanded until now, and what h713-tv sends - produces the identical
+36-word record: h_start and v_start are zero from the memset and h_size and
+v_size are the panel, word for word what 0120 wrote. Proven on the host by
+compiling h713_afbd_build_video_info() out of the tree before and after this
+patch and comparing all 36 words over 1920x1080, 1280x720 and 1366x768 panels
+with ring and non-ring inputs: identical for the full window, and different in
+exactly words 31..34 for a smaller one.
+
+On a 1920x1080 panel our 1/16-pixel reading and the vendor's fixed 30720x17280
+space are the same number (30720 * x / 1920 == x * 16). On a panel of another
+size they are not, and the 1/16-pixel reading is the one measured through our
+own record (0120: publishing w = 1280 put 20480 in m_src_cfg).
+
+Not measured on a device: whether a changed m_dst_cfg alone makes the firmware
+re-run its window manager (AP3c open question 7.4). If it does not, the aspect
+word 35 changes with it on the path h713-tv uses - it takes the plane down and
+up - and word 35 alone is known to count as a new frame (0133). The first run
+belongs on a bench: a window the firmware does not like is the one thing here
+that can need a power cycle.
+
+Follow-up to 0133 (same file, the other descriptor word a client can steer);
+needs nothing else. The device tree is unchanged - CRTC_X/Y/W/H are standard
+properties and need no node.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -170,6 +170,16 @@
+ #define H713_VIDEO_INFO_MAGIC	0x61770000
+ 
+ /*
++ * The smallest destination window this driver will hand to the firmware: one
++ * AFBD block on each axis. It also fixes the downscale the atomic helper is
++ * allowed to pass -- the helper's scale is source over destination, and a
++ * 1920-wide source in a 16-wide window is 120:1, so 128:1 covers every
++ * geometry this SoC carries.
++ */
++#define H713_WINDOW_MIN		H713_VIDEO_BLOCK
++#define H713_WINDOW_MAX_SCALE	(128 << 16)
++
++/*
+  * How long the firmware gets to answer a descriptor publication. This is the
+  * bound the board has measured, and deliberately not a shorter one that would
+  * merely feel right; see h713_afbd_wait_wce().
+@@ -351,6 +361,7 @@
+ static void h713_afbd_build_video_info(u32 *rec, unsigned int w,
+ 				       unsigned int h, unsigned int stride,
+ 				       unsigned int win_w, unsigned int win_h,
++				       const struct drm_rect *dst,
+ 				       enum h713_aspect aspect)
+ {
+ 	memset(rec, 0, H713_VIDEO_INFO_WORDS * sizeof(*rec));
+@@ -385,11 +396,22 @@
+ 	 * the ratio between them and the panel: a 1280x720 source came out as
+ 	 * 853x480 and the picture was a smeared band. With the panel here, the
+ 	 * capture size comes from the signal, which is where it belongs.
++	 *
++	 * m_dst_cfg is the other half and it is the plane's destination
++	 * rectangle: the window the firmware fits the picture into, {h_start,
++	 * h_size, v_start, v_size} like m_src_cfg and in the same 1/16 pixel.
++	 * Full panel is what this driver published before and what a plane that
++	 * covers its CRTC still publishes, word for word. The vendor's hardware
++	 * composer writes the same four words for its video layer, scaled into a
++	 * fixed 30720x17280 space instead -- the same number on a 1920x1080
++	 * panel (AP3c sections 4.2 and 5, AP3e section 2.2).
+ 	 */
+ 	rec[28] = win_w * 16;		/* window config, 1/16 pixel */
+ 	rec[30] = win_h * 16;
+-	rec[32] = win_w * 16;
+-	rec[34] = win_h * 16;
++	rec[31] = dst->x1 * 16;
++	rec[32] = drm_rect_width(dst) * 16;
++	rec[33] = dst->y1 * 16;
++	rec[34] = drm_rect_height(dst) * 16;
+ 	/*
+ 	 * The display aspect mode, raw (not 1/16): the window manager reads it
+ 	 * straight into m_aspect_ratio at every signal event and CompareFrameInfo
+@@ -499,7 +521,8 @@
+  */
+ static bool h713_afbd_publish_video_info(struct h713_afbd *h, unsigned int w,
+ 					 unsigned int hgt, unsigned int stride,
+-					 bool ring, enum h713_aspect aspect)
++					 bool ring, const struct drm_rect *dst,
++					 enum h713_aspect aspect)
+ {
+ 	u32 rec[H713_VIDEO_INFO_WORDS];
+ 	u32 ptr = lower_32_bits(h->video_info_dma);
+@@ -509,7 +532,7 @@
+ 	new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr;
+ 	h713_afbd_build_video_info(rec, w, hgt, stride,
+ 				   ring ? h->mode.hdisplay : w,
+-				   ring ? h->mode.vdisplay : hgt, aspect);
++				   ring ? h->mode.vdisplay : hgt, dst, aspect);
+ 	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
+ 	write_record = differs && (!h->video_info_published || ring);
+ 	if (differs && h->video_info_published && !ring)
+@@ -901,7 +924,8 @@
+  * programs it for the signal it detected, in the same UpdateWce that lays the
+  * ring out (doku/91 Punkt 2, step 6 of the stock chain). So in passthrough a
+  * source smaller than the panel is accepted and, as far as KMS is concerned,
+- * shown full screen -- src is the whole framebuffer, dst the whole CRTC -- and
++ * shown in the plane's destination rectangle -- src is the whole framebuffer,
++ * dst the whole CRTC unless somebody asks for a window -- and
+  * the plane programs source 0 for the framebuffer's size and nothing else.
+  * That the composition really follows is inferred from the stock chain and
+  * from INCAP following, not yet measured on the wall; the acceptance in
+@@ -938,11 +962,20 @@
+ 	 * A minimum scale of 1 means "any amount of upscaling": the bounds
+ 	 * that matter are the geometry checks below, which are about the
+ 	 * ring, not about a scaler whose limits nobody has measured.
++	 *
++	 * The maximum is the other side of the same coin. Nothing in the AFBD
++	 * scales; what scales is the firmware's window chain behind it, and
++	 * this plane's destination rectangle is how it is told where to put the
++	 * picture (see h713_afbd_build_video_info()). A destination smaller
++	 * than the source is therefore a downscale the firmware performs, not
++	 * one this block is being asked for, and the bound is the smallest
++	 * window this driver will publish. can_position follows for the same
++	 * reason: the plane no longer has to cover its CRTC.
+ 	 */
+ 	ret = drm_atomic_helper_check_plane_state(new_state, crtc_state,
+ 						  ring ? 1 : DRM_PLANE_NO_SCALING,
+-						  DRM_PLANE_NO_SCALING,
+-						  false, false);
++						  H713_WINDOW_MAX_SCALE,
++						  true, false);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -961,9 +994,11 @@
+ 	    new_state->src_x || new_state->src_y ||
+ 	    new_state->src_w != fb->width << 16 ||
+ 	    new_state->src_h != fb->height << 16 ||
+-	    new_state->crtc_x || new_state->crtc_y ||
+-	    new_state->crtc_w != mode->hdisplay ||
+-	    new_state->crtc_h != mode->vdisplay)
++	    new_state->crtc_x < 0 || new_state->crtc_y < 0 ||
++	    new_state->crtc_w < H713_WINDOW_MIN ||
++	    new_state->crtc_h < H713_WINDOW_MIN ||
++	    (u32)new_state->crtc_x + new_state->crtc_w > mode->hdisplay ||
++	    (u32)new_state->crtc_y + new_state->crtc_h > mode->vdisplay)
+ 		return -EINVAL;
+ 
+ 	if (ring) {
+@@ -1038,6 +1073,7 @@
+ 			writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
+ 		published = h713_afbd_publish_video_info(h, w, hgt,
+ 							 fb->pitches[0], ring,
++							 &new_state->dst,
+ 							 s->aspect);
+ 		if (published && nv16 && h713_afbd_wait_wce(h))
+ 			drm_err(&h->drm,
+@@ -1262,6 +1298,11 @@
+  *                 the plane comes up; a change on a live plane is applied by
+  *                 taking the plane down and up again, which is what a
+  *                 geometry change does anyway.
++ *
++ * There is deliberately no third property for the destination window. That
++ * rectangle is CRTC_X/Y/W/H, which every atomic client already sets, and it
++ * goes into descriptor words 31..34 unchanged; a private property would only
++ * be a second name for it. Like "aspect" it is read at the next publication.
+  */
+ static int h713_afbd_video_create_properties(struct h713_afbd *h)
+ {

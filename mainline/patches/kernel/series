@@ -173,6 +173,11 @@
 #   (follow-up well0nez, R2 -- 0133 stays byte-identical; the three handoff
 #    words the probe insists on come from the board, not from the driver)
 0133a-drm-h713-afbd-the-handoff-state-is-a-board-fact.patch
+#   (follow-up well0nez, Q4 -- descriptor words 31..34 are the window the
+#    firmware fits the picture into, so they become the plane's ordinary
+#    CRTC_X/Y/W/H; a plane that covers its CRTC publishes the same record as
+#    before, word for word. AP3c 4.2/5, AP3e 2.2/2.5)
+0133b-drm-h713-afbd-the-plane-s-destination-rectangle-is-the-firmware-s-window.patch
 #
 # --- 7. HY310: HDMI-Audio -- Takte, Codec-I2S, MSP-DSP-Treiber -----------------
 #     doku/100, 101, nachtlog/S16. Abgenommen 08.09. (Lippensynchronitaet Marco).
