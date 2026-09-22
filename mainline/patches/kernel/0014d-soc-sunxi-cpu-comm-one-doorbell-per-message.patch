@@ -1,0 +1,86 @@
+soc: sunxi: cpu-comm: one doorbell per message
+
+sunxi_cpu_comm_send_intr_to_mips() carried the write block twice in a row:
+TX_DATA, TX_IRQ_EN, udelay(10), TX_IRQ_EN = 0, log line - and then the same
+four writes again. Every CALL, RETURN, CALL_ACK and RETURN_ACK therefore
+went into the MIPS FIFO as two identical words. The second copy is an added
+line of 0014a, not context, and patch 0106 still shows it in the tree.
+
+The FIFO the words land in holds eight of them (AP3s section 2: the vendor's
+own ISR treats a count of 8 as full), so a four-message round trip already
+fills it with duplicates. The firmware's dispatcher at 0x8b122678 switches on
+the bare 32-bit word, so the duplicate is not a different message - it is the
+same message a second time - but it doubles the interrupt and FIFO load, and
+it is why doku/66's two log lines "fifo now 13" and "fifo now 14" are one
+call and not two. That counter reading has to be revised wherever it was
+used.
+
+The dead `raw = msg_type & 0x3;` above the live `raw = type & 0x3;` goes with
+it; it has been overwritten on every call since 0014a.
+
+What the HY310 sees: fewer interrupts, not different messages. The wire word
+is unchanged.
+
+The German comment block in the same function kept a line about the argument
+order that named a parameter (@cpu) this function no longer has. It is
+replaced by the divergence itself, from the vendor module: the vendor
+prototype is sunxi_cpu_comm_send_intr_to_mips(type, target, ack), argument 1
+is the wire word and argument 2 is only checked against CPU_MIPS = 2, and
+cpu_comm_dev.ko calls it as send_intr_to_mips(dir, 2, 0) (SendCommLow
+@0xCEEC, SendAckLow @0xD9B0). Ours reads the wire word out of argument 2.
+The order is kept, because all of our call sites pass it that way; moving to
+the vendor order without moving the call sites in the same patch re-creates
+the 2026-04-16 dead end, where every doorbell became 0x2 = CALL_ACK.
+
+Source: umbau/re-apps/AP3s/REVIEW.md and umbau/work/AP3s/REPORT.txt sections
+3 and 4 (F1). Follow-up to 0014a; 0014a, 0014b and 0014c stay byte-identical.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -1250,8 +1250,6 @@ void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
+ 		return;
+ 	}
+ 
+-	raw = msg_type & 0x3;
+-
+ 	/*
+ 	 * 2026-09-01 arm64-Merge: Das Wort auf dem Draht ist der blanke
+ 	 * Nachrichtentyp, nichts sonst — aus dem Dispatcher der Firmware bei
+@@ -1260,8 +1258,17 @@ void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
+ 	 * für einen frischen CALL 0x00000002 = CALL_ACK, und die Firmware
+ 	 * verwarf ihn.
+ 	 *
+-	 * Der Typ steht bei unseren Aufrufern im ZWEITEN Argument (@type);
+-	 * @cpu ist der Absender und geht nicht auf den Draht.
++	 * Argument order - ours diverges from the vendor's on purpose, and it
++	 * stays that way (AP3s section 4). The vendor prototype is
++	 * sunxi_cpu_comm_send_intr_to_mips(type, target, ack): argument 1 is
++	 * the word that goes on the wire, argument 2 is only validated against
++	 * CPU_MIPS = 2, and cpu_comm_dev.ko calls it as
++	 * send_intr_to_mips(dir, 2, 0) (SendCommLow @0xCEEC, SendAckLow
++	 * @0xD9B0). Ours takes the wire word from argument 2 (@type) and reads
++	 * argument 1 as the sender, which is what every call site here passes.
++	 * Do not move to the vendor order without moving the call sites in the
++	 * same patch: that is the 2026-04-16 dead end, where every doorbell
++	 * became 0x2 = CALL_ACK and the firmware dropped it.
+ 	 *
+ 	 * Dazu der TX_IRQ_EN-Puls: die H713-Msgbox ist flankengetriggert,
+ 	 * nicht pegelgetriggert wie die des H6. MSG_DATA allein lässt die
+@@ -1274,14 +1281,6 @@ void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
+ 	udelay(10);
+ 	writel(0, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
+ 
+-	pr_debug("cpu_comm: msgbox tx raw=0x%08x (%s), fifo now %u\n",
+-			    raw, cpu_comm_msgbox_type_name(raw),
+-			    readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO));
+-	writel(raw, msgbox_ctrl_base + H713_MSGBOX_TX_DATA);
+-	writel(H713_MSGBOX_TX_IRQ_BIT, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
+-	udelay(10);
+-	writel(0, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
+-
+ 	pr_debug("cpu_comm: msgbox tx raw=0x%08x (%s), fifo now %u\n",
+ 			    raw, cpu_comm_msgbox_type_name(raw),
+ 			    readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO));
