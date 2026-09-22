@@ -484,6 +484,38 @@ def vendor_sources(directory, tab, files, log=console):
     return sources
 
 
+#: The board's own name plate in the rootfs. h713-tv reads it at start to
+#: find out which ProjectID_0x00NN.TSE in /boot/mips is this board's own and
+#: asks h713-pq for that board's measured gamma curve; without the file the
+#: device tree decides, and without that the shipped curve applies. The id is
+#: the PROFILE's declared_project_id -- the board's, not the running device's
+#: Reserve0, which is what the U-Boot variable h713_project carries.
+BOARD_FILE = "/etc/h713/board"
+
+
+def board_entry(board_id, profile):
+    """The /etc/h713/board entry for the mounted rootfs, or None when the run
+    does not know which board this is (--skip-identify, or a profile without a
+    declared project id)."""
+    project = ((profile or {}).get("panel") or {}).get("declared_project_id")
+    if not board_id or not project:
+        return None
+    text = ("# written by h713-install; which board this is\n"
+            "board = %s\nproject_id = 0x%02x\n"
+            % (board_id.replace("_", "-"), project))
+    return mountfs.Entry(BOARD_FILE, text.encode(), None, VENDOR_MODE, 0, 0,
+                         DIR_MODE)
+
+
+def board_partition(files):
+    """Which partition /etc/h713 lives in -- read out of the table, so that
+    the board file follows the vendor files wherever they go."""
+    for f in files:
+        if f["pfad"].startswith(BOARD_FILE.rsplit("/", 1)[0] + "/"):
+            return f["partition"]
+    return None
+
+
 def copy_entries(files, sources):
     """partition -> [mountfs.Entry] in the order of the table: everything there is a source
     for, as root's file with mode 0644. A source of None is a rehearsal entry -- it says WHERE
@@ -936,6 +968,18 @@ def write_package(args, disk, path, directory, tab, here=None):
     # it does not come out of the device -- and because it must be settable without vendor
     # files as well.
     plan = copy_entries(files, sources)
+    # The board file: same step, same mount, but computed and not read off the
+    # device -- so it is written even where this firmware ships no PQ files.
+    entry = board_entry(getattr(args, "_board", None), getattr(args, "_profile", None))
+    part = board_partition(files)
+    if entry and part:
+        plan.setdefault(part, []).append(entry)
+        console.info("%s in %s: %s" % (BOARD_FILE, part,
+                     ", ".join(entry.data.decode().split("\n")[1:3])))
+    elif files:
+        console.warn("%s is not written -- this run does not know which board "
+                     "this is. h713-tv then reads the device tree, and without "
+                     "that it uses the curve it ships." % BOARD_FILE)
     if user:
         if not files:
             console.step(5, "Put your own SSH key in")

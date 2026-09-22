@@ -30,10 +30,12 @@ sys.path.insert(0, support.TOOLS)
 from h713 import mountfs                                       # noqa: E402
 from h713.blockdev import Disk                                 # noqa: E402
 from h713.env import ENV_BYTES, env_write                      # noqa: E402
-from h713.install import (copy_entries, device_sources, gpt_partitions,     # noqa: E402
+from h713.install import (BOARD_FILE, board_entry, board_partition,         # noqa: E402
+                          copy_entries, device_sources, gpt_partitions,
                           partition_node, partition_window, read_public_key,
                           readback_plan, say_optional, table_layout, user_entries,
                           vendor_sources)
+from h713.profiles import PROFILES                                          # noqa: E402
 
 SECT = 512
 TOOL = os.path.join(support.TOOLS, "h713-install")
@@ -218,6 +220,32 @@ class ThePlan(unittest.TestCase):
                             "in the dump", "not there", self.log)
         self.assertEqual(left, ["lib/firmware/hy310-edid.bin"])
         self.assertEqual(self.log.lines, [])
+
+
+class TheBoardFile(unittest.TestCase):
+    """/etc/h713/board: which board this is, and which ProjectID it declares. h713-tv reads
+    it to pick this board's own gamma curve out of /boot/mips."""
+
+    def test_the_two_boards_that_have_a_project_id_here(self):
+        for board, want in (("hy310", "0x30"), ("hy300_pro", "0x34")):
+            entry = board_entry(board, PROFILES[board])
+            self.assertEqual(entry.path, BOARD_FILE)
+            self.assertEqual((entry.mode, entry.uid, entry.gid), (0o644, 0, 0))
+            self.assertIn("board = %s\n" % board.replace("_", "-"), entry.data.decode())
+            self.assertIn("project_id = %s\n" % want, entry.data.decode())
+
+    def test_nothing_is_written_without_a_board_or_a_project_id(self):
+        # --skip-identify leaves both empty, and a profile may declare no id.
+        self.assertIsNone(board_entry(None, PROFILES["hy310"]))
+        self.assertIsNone(board_entry("hy310", None))
+        self.assertIsNone(board_entry("hy310", {"panel": {"declared_project_id": None}}))
+
+    def test_it_follows_the_vendor_files_into_their_partition(self):
+        rows = [{"partition": p, "pfad": t} for _n, p, t, _g, _o in FILES]
+        self.assertEqual(board_partition(rows), ROOTFS[0])
+        # a run that writes only the boot chain has no place for it
+        self.assertIsNone(board_partition([r for r in rows
+                                           if not r["pfad"].startswith("/etc/")]))
 
 
 class _Args(object):

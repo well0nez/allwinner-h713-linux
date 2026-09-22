@@ -429,6 +429,7 @@ def _work(args, path):
                     return code
             elif not report_device(ident, writing=writing) and writing:
                 return 10
+            args._board = ident.get("profile")        # the board id, for /etc/h713/board
             args._profile = PROFILES.get(ident["profile"]) if ident.get("profile") else None
             project = _declared_project(ident)
             args._env_keys = {"h713_project": project} if project else {}
