@@ -1,0 +1,173 @@
+soc: sunxi: cpu-comm: never write into a full TX FIFO
+
+What our send path does today: it writes the word to MSG_DATA at 0x03003874
+without ever looking at the FIFO count at 0x03003864, then sets BIT(3) in
+TX_IRQ_EN at 0x03003830, waits 10 us and clears it again. Two things about
+that are worth separating, and only one of them is settled.
+
+Settled (AP3s section 2, from the vendor's own ISR sunxi_msgbox_irq
+@0xC07DACC0): the block's TX FIFO is eight words deep, the vendor pushes a
+word only while the count register differs from 8, and a word written into a
+full FIFO is lost with no error and no trace. We never looked. This patch
+adds the look: the count is read before the write, and at 8 or above the
+word is not written, one ratelimited line names the count and the message
+type, and the caller gets -EBUSY. SendCommLow() already returns int and now
+returns that; the "msgbox not mapped" path returns -ENODEV for the same
+reason. Nothing else about the wire changes.
+
+Does it ever get full at our message rate? On a healthy link, no. A round
+trip costs the ARM two words (the CALL and the RETURN_ACK, or the RETURN and
+the CALL_ACK), the MIPS pops each one as it dispatches, and the count after
+a write reads 0 or 1. The counter only climbs when the far side is not
+draining at all - which is exactly doku/66's picture, 13 and 14 on a MIPS
+that doku/67 later found parked by `h713_disp auto 0x30 logo`, and with the
+doorbell block still doubled (0014d) those were two words per message. So
+the guard costs a healthy HY310 one extra register read per doorbell and
+fires on nothing; where it fires, it turns a silent loss into a line in the
+log. The count of 8 is the vendor's full mark and the only documented one;
+if a device run ever shows a healthy link standing above 8, that is the
+number to raise, and it is one define.
+
+NOT settled, and therefore not touched: the TX_IRQ_EN pulse. In the vendor
+driver the bit is a level, "I have bytes to push", set by
+sunxi_rpmsg_edp_send @0xC07DABEC and cleared by the ISR once the buffer is
+drained; the receiver's doorbell is the FIFO write itself and nothing is
+ever pulsed. Our pulse arms a TX interrupt for ten microseconds on a bank
+whose GIC line 0014c deliberately does not request, and it can leave the TX
+status bit at 0x03003834 latched, because nobody writes it back. But AP3s
+does not pick an end state: it offers "drop the pulse" or "keep it and add
+the W1C of 0x03003834", and the evidence for the edge claim in our own
+comment is confounded, so choosing between them from the report alone is not
+possible. The comment in the code now says so; the decision needs the device
+run below. Setting the bit as a level without a TX ISR to clear it would be
+the one clearly wrong option.
+
+What the HY310 sees: nothing, unless the MIPS has stopped draining. The word
+on the wire, the pulse and the register addresses are unchanged.
+
+FOLLOW-UP, device (HY310), settles AP3s F2:
+  1. Boot with the MIPS running, then
+       cat /proc/interrupts | grep -E '46|108|109'
+     and note the counts.
+  2. Drive traffic (h713-tv or the cpu_comm debugfs "call" file), repeat 1.
+     Expected: SPI 46 climbs, SPI 108 does not appear at all (its line is
+     not requested), no "fifo full" line in dmesg.
+  3. devmem2 0x03003834 (read only). Expected if the pulse latches a status
+     nobody clears: bit 3 set. That read decides between "drop the pulse"
+     and "W1C 0x03003834 after it".
+  4. devmem2 0x03003864 (read only) directly after nine sends with the MIPS
+     parked. Expected 8 if the vendor's full mark is this block's depth;
+     a higher number means the counter runs past the depth and AP3s section
+     12's first open question is answered the other way.
+
+Source: umbau/work/AP3s/REPORT.txt sections 2, 11 and 12 and
+umbau/re-apps/AP3s/REVIEW.md (F2). Follow-up to 0014a; 0014a to 0014e stay
+byte-identical.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -758,7 +758,7 @@ unsigned long  getShareSeqR(u32 cpu, u32 dir);
+ unsigned long  getShareSeqW(u32 cpu, u32 dir);
+ 
+ /* export for other modules (tvtop, decd, etc.) */
+-void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value);
++int sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value);
+ 
+ /* H713 direct msgbox IRQ handler (replaces mailbox framework) */
+ int  cpu_comm_msgbox_request_irq(int irq, void *callback);
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -90,6 +90,16 @@ static void __iomem *msgbox_ctrl_base;	/* ioremap of 0x03003000 */
+ #define H713_MSGBOX_VERSION_ALIVE 0x00020000
+ #define H713_MSGBOX_TX_IRQ_BIT	BIT(3)	/* BIT(2*port + 1), MIPS = port 1 */
+ 
++/*
++ * The vendor's own msgbox ISR (sunxi_msgbox_irq @0xC07DACC0, AP3s section 2)
++ * pushes a word only while the FIFO count register differs from 8, so 8 is
++ * the full mark of this block and a word written past it is lost without a
++ * trace. Our send path never looked. On a healthy link the MIPS drains the
++ * FIFO and this count stays at 0 or 1; it only climbs when the far side is
++ * not draining at all, which is exactly the state worth reporting.
++ */
++#define H713_MSGBOX_TX_FIFO_DEPTH	8
++
+ /*
+  * Every word in the RX FIFO is sent by the display MIPS, so the source
+  * is not encoded in the message and does not need decoding. This is
+@@ -1245,14 +1255,18 @@ void comm_SpinLockCleanUpInCPUReset(u32 cpu_id)
+  * @msg_type: 0=CALL, 1=RETURN, 2=CALL_ACK, 3=RETURN_ACK
+  * @type:     stock intr_type; not part of the wire format, ignored
+  * @value:    payload value (unused in current path)
++ *
++ * Returns 0 when the word was written, -ENODEV when the msgbox is not
++ * mapped, and -EBUSY when the TX FIFO is full - in that last case the word
++ * would have been lost without a trace, so it is not written at all.
+  */
+-void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
++int sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
+ {
+-	u32 raw;
++	u32 raw, fifo;
+ 
+ 	if (!msgbox_ctrl_base) {
+ 		pr_err("cpu_comm: msgbox not mapped, can't send intr!\n");
+-		return;
++		return -ENODEV;
+ 	}
+ 
+ 	/*
+@@ -1278,9 +1292,27 @@ void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
+ 	 * Dazu der TX_IRQ_EN-Puls: die H713-Msgbox ist flankengetriggert,
+ 	 * nicht pegelgetriggert wie die des H6. MSG_DATA allein lässt die
+ 	 * Nachricht in der FIFO liegen und weckt den Empfänger nicht.
++	 *
++	 * The paragraph above is not settled and the pulse is left alone here
++	 * on purpose. In the vendor driver TX_IRQ_EN is a level meaning "I
++	 * have bytes to push", set by sunxi_rpmsg_edp_send @0xC07DABEC and
++	 * cleared by the ISR when the buffer is drained; the receiver's
++	 * doorbell is the FIFO write itself, and nothing there is ever pulsed
++	 * (AP3s section 2). The measurement behind the edge claim is
++	 * confounded - doku/66 saw the FIFO count rise with the pulse in
++	 * place, and doku/67 found the real cause, a MIPS parked by
++	 * `h713_disp auto 0x30 logo`. Deciding this needs one device run:
++	 * see the FOLLOW-UP in 0014f.
+ 	 */
+ 	raw = type & 0x3;
+ 
++	fifo = readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO);
++	if (fifo >= H713_MSGBOX_TX_FIFO_DEPTH) {
++		pr_warn_ratelimited("cpu_comm: msgbox tx fifo full (%u), %s not sent\n",
++				    fifo, cpu_comm_msgbox_type_name(raw));
++		return -EBUSY;
++	}
++
+ 	writel(raw, msgbox_ctrl_base + H713_MSGBOX_TX_DATA);
+ 	writel(H713_MSGBOX_TX_IRQ_BIT, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
+ 	udelay(10);
+@@ -1289,6 +1321,7 @@ void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
+ 	pr_debug("cpu_comm: msgbox tx raw=0x%08x (%s), fifo now %u\n",
+ 			    raw, cpu_comm_msgbox_type_name(raw),
+ 			    readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO));
++	return 0;
+ }
+ 
+ /*
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+@@ -155,9 +155,9 @@ int SendCommLow(u8 *seq, u32 slot, u8 type, u32 param, u32 sem_ref)
+ 	{
+ 		u32 comm_type = (dir == 0) ? MSG_TYPE_CALL : MSG_TYPE_RETURN;
+ 
+-		sunxi_cpu_comm_send_intr_to_mips(0 /*sender=ARM*/, comm_type, 0);
++		return sunxi_cpu_comm_send_intr_to_mips(0 /*sender=ARM*/,
++							comm_type, 0);
+ 	}
+-	return 0;
+ }
+ 
+ /* ── SendComm2CPUEx — Extended message send ────────────────── */

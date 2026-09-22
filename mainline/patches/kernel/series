@@ -38,6 +38,9 @@
 0014d-soc-sunxi-cpu-comm-one-doorbell-per-message.patch
 # 0014e: the register whitelist is the hwspinlock's, not the msgbox's (AP3o 7)
 0014e-soc-sunxi-cpu-comm-the-whitelist-is-the-hwspinlock-s.patch
+#   (0014f: the TX FIFO is eight words deep and a word past it is lost; the
+#    TX_IRQ_EN pulse stays until one device run decides it, AP3s 2)
+0014f-soc-sunxi-cpu-comm-never-write-into-a-full-tx-fifo.patch
 0015-misc-add-h713-driver-kconfig.patch
 0016-dt-bindings-add-h713-clock-reset-ids.patch
 0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch
