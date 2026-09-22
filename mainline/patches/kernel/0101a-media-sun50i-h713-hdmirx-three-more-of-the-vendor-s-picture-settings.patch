@@ -1,0 +1,161 @@
+media: sun50i-h713-hdmirx: three more of the vendor's picture settings
+
+AP3 walked the vendor's tvserver down to the routine that writes each
+picture setting and listed the ones we do not have. Five were named. One of
+them, Video Range, has been here since 0101; three more are an existing
+routine id with one argument word each and are added here; the fifth needs
+more than this patch's shape and is left out with the reason.
+
+  Backlight Level - Thal_Vp_SetBacklightLevel (51ad877e), 0..100. The range
+      is the Picture_Mode.backlight column of the vendor's own tvpq.db,
+      "0..100, PQType 6" (AP3d tables/tvpq-schema.csv), and the vendor's
+      ThalDevice::deviceSetBackLight@0x46CD4 passes the number through
+      unchanged (it also writes it to /sys/class/backlight/tv/brightness,
+      which is an Android node and not ours). The lower case "Thal_" is the
+      vendor's typo and part of the hashed name.
+
+  Dynamic Backlight - THal_Vp_SetBacklightWorkMode (4d80db0e), 0 manual,
+      1 dynamic. deviceSetDynamicBackLight@0x46DD4 sends (mode == 1), so the
+      firmware only ever sees a flag; the panel ini's dynamic_backlight is 0
+      on this board (AP3d tables/panel-ini-keys.csv).
+
+  Low Latency - THal_Vp_SetLowLatencyMode (c201c220), a flag. Its HAL
+      wrapper at 0x7238 of system_a_libhaldisplay.so packs exactly one
+      argument word, and PQControl::setVideoLowLatency takes a bool - the
+      mangled symbol says so and the argument reaches the HAL unchanged.
+
+The first two the bring-up sequence has been sending since this driver
+existed (sessions 14 and 15, 100 and 0), so they arrive with a start value
+that is measured rather than presumed, and exposing them adds no call the
+device does not already get on every boot. Worth knowing on the HY310: the
+same dimmer is also a Linux pwm-backlight on PWM2/PB4 in the dtsi, so two
+paths reach one pin - which is the state today, not something this patch
+introduces.
+
+Low Latency starts Off, and that is an argument rather than a guess: the
+vendor's own PQControl::setVideoLowLatency and getVideoLowLatency are stubs
+that return 0 without calling the HAL, so nothing in the vendor stack has
+ever switched this on, and the firmware has never been told to leave the
+state it boots in.
+
+Not added: Test Pattern. AP3 D2 counts THal_Vp_EnableScreenCover (0152f134)
+among the "one argument word" five, and that is right about the userspace
+end and wrong about the RPC. The HAL wrapper at 0x9F20 allocates a twelve
+byte CPUComm buffer, writes R, G and B into it, and calls the routine with
+TWO words: the buffer's physical address and the blue-screen level (2 =
+kHalBlueScreenLevel_Default). Off is THal_Vp_DisableScreenCover(2), one
+word. So it needs a staging area in the cpu_comm shared memory of the kind
+h713_hdmirx_wce_args() builds for the window rectangles, a place for it in
+the H713_SHM_* layout, and a control whose value is the packed RGB
+(R = [29:20], G = [19:10], B = [9:0]). That is a patch of its own and it is
+left to one.
+
+Follow-up to 0101, which stays byte-identical. The Get routines still answer
+zero for everything (doku/nachtlog/I1), so these three stay write-only like
+the nine before them, and v4l2_ctrl_handler_setup() stays uncalled: nothing
+is written at probe that the bring-up sequence does not already send.
+
+Source: umbau/re-apps/AP3 section 3 and D2, tables/pq-controls.csv and
+tables/rpc-ids.csv; umbau/re-apps/AP3d tables/tvpq-schema.csv and
+tables/panel-ini-keys.csv; the two HAL wrappers re-read for this patch, see
+umbau/work/Q3/tmp/lowlatency.txt.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -849,6 +849,34 @@ static const struct h713_hdmirx_step h713_hdmirx_init_seq[] = {
+ #define V4L2_CID_H713_AUDIO_PRESENT	(V4L2_CID_USER_SUN50I_H713_BASE + 6)
+ #define V4L2_CID_H713_AUDIO_RATE	(V4L2_CID_USER_SUN50I_H713_BASE + 7)
+ #define V4L2_CID_H713_AUDIO_COMPRESSED	(V4L2_CID_USER_SUN50I_H713_BASE + 8)
++/*
++ * Three more of the vendor's picture settings, each an existing routine id
++ * that takes one argument word (AP3 section 3, tables/pq-controls.csv):
++ *
++ *   Backlight Level    Thal_Vp_SetBacklightLevel (51ad877e), 0..100 - the
++ *      range of the Picture_Mode.backlight column of the vendor's tvpq.db
++ *      (AP3d tables/tvpq-schema.csv, "0..100, PQType 6"). Note the lower
++ *      case "Thal_"; the name is hashed, so the typo is part of it.
++ *   Dynamic Backlight  THal_Vp_SetBacklightWorkMode (4d80db0e), 0 manual,
++ *      1 dynamic - ThalDevice::deviceSetDynamicBackLight@0x46DD4 passes
++ *      (mode == 1), so the firmware only ever sees a flag.
++ *   Low Latency        THal_Vp_SetLowLatencyMode (c201c220), a flag:
++ *      PQControl::setVideoLowLatency takes a bool, and the HAL wrapper at
++ *      0x7238 of libhaldisplay packs one argument word.
++ *
++ * The first two the bring-up sequence already sends (sessions 14 and 15), so
++ * they come with a start value that is the truth rather than a preset; the
++ * third the vendor's own userspace never sends at all - setVideoLowLatency
++ * and getVideoLowLatency are stubs that return 0 - so it starts Off, which
++ * is the state the firmware has never been told to leave.
++ *
++ * Video Range was already here, and the AUTO default it announces is right
++ * for the reason AP3i section 5 gives: the firmware resolves AUTO out of the
++ * AVI quantisation with the HDMI default rule.
++ */
++#define V4L2_CID_H713_BACKLIGHT_LEVEL	(V4L2_CID_USER_SUN50I_H713_BASE + 9)
++#define V4L2_CID_H713_DYNAMIC_BACKLIGHT	(V4L2_CID_USER_SUN50I_H713_BASE + 10)
++#define V4L2_CID_H713_LOW_LATENCY	(V4L2_CID_USER_SUN50I_H713_BASE + 11)
+ 
+ enum h713_hdmirx_audio_index {
+ 	H713_AUDIO_PRESENT,
+@@ -869,6 +897,14 @@ static const char * const h713_hdmirx_range_menu[] = {
+ 	"Auto", "Limited", "Full", NULL,
+ };
+ 
++static const char * const h713_hdmirx_backlight_menu[] = {
++	"Manual", "Dynamic", NULL,
++};
++
++static const char * const h713_hdmirx_off_on_menu[] = {
++	"Off", "On", NULL,
++};
++
+ /* The firmware's picture modes, in its own numbering (S14 section 1.2). */
+ static const char * const h713_hdmirx_picture_mode_menu[] = {
+ 	"Vivid", "Standard", "Mild", "Game", "Calibrated", "Calibrated Dark",
+@@ -888,6 +924,9 @@ enum h713_hdmirx_pq_index {
+ 	H713_PQ_BLACK_EXTENSION,
+ 	H713_PQ_VIDEO_RANGE,
+ 	H713_PQ_PICTURE_MODE,
++	H713_PQ_BACKLIGHT,
++	H713_PQ_DYNAMIC_BACKLIGHT,
++	H713_PQ_LOW_LATENCY,
+ 	H713_PQ_COUNT,
+ };
+ 
+@@ -1032,6 +1071,33 @@ static const struct h713_hdmirx_pq h713_hdmirx_pq_ctrls[H713_PQ_COUNT] = {
+ 		.name = "Picture Mode",
+ 		.menu = h713_hdmirx_picture_mode_menu,
+ 	},
++	[H713_PQ_BACKLIGHT] = {
++		.id = V4L2_CID_H713_BACKLIGHT_LEVEL,
++		.set = "Thal_Vp_SetBacklightLevel",
++		/*
++		 * The bring-up sequence sends 100 (session 14), so that is the
++		 * start value and this preset is never reached. On the HY310
++		 * the same dimmer is also a Linux pwm-backlight on PWM2/PB4,
++		 * so two paths reach one pin -- which is already the case
++		 * today, because the sequence sends this call on every boot.
++		 */
++		.max = 100, .preset = 100,
++		.name = "Backlight Level",
++	},
++	[H713_PQ_DYNAMIC_BACKLIGHT] = {
++		.id = V4L2_CID_H713_DYNAMIC_BACKLIGHT,
++		.set = "THal_Vp_SetBacklightWorkMode",
++		.max = 1, .preset = 0,
++		.name = "Dynamic Backlight",
++		.menu = h713_hdmirx_backlight_menu,
++	},
++	[H713_PQ_LOW_LATENCY] = {
++		.id = V4L2_CID_H713_LOW_LATENCY,
++		.set = "THal_Vp_SetLowLatencyMode",
++		.max = 1, .preset = 0,
++		.name = "Low Latency",
++		.menu = h713_hdmirx_off_on_menu,
++	},
+ };
+ 
+ /* ------------------------------------------------------------------ */

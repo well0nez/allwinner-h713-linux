@@ -267,6 +267,14 @@
 #    from the firmware's 44 byte record instead of a hardcoded BT.709 limited;
 #    the status file names the colour and the HDR scheme, AP3i/AP3k/AP3q)
 0136n-media-h713-hdmirx-report-the-colour-the-firmware-read-out-of-the-avi.patch
+#   (Q3 -- 0101a: three more of the vendor's picture settings as V4L2 controls
+#    - backlight level, dynamic backlight, low latency; each an existing
+#    routine id with one argument word (AP3 section 3 and D2). The number
+#    names 0101, which built the control table and the RPC mechanism it
+#    extends, but the line sits here: 0126, 0132 and 0136 grew that table
+#    afterwards, so the addendum has to follow them to apply at all. No later
+#    patch was written against it, so nothing moves under it)
+0101a-media-sun50i-h713-hdmirx-three-more-of-the-vendor-s-picture-settings.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------
