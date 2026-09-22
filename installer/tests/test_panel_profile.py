@@ -9,6 +9,7 @@ No vendor file is read: the two inis below are written from those very profile d
 further values AP3g 4.2 records, so nothing here is a copy of anything.
 """
 
+import os
 import sys
 import unittest
 
@@ -183,6 +184,28 @@ class TheGeneratedFile(unittest.TestCase):
         text, _c, values = panelrow.profile_from_ini("newboard", blank, "test")
         self.assertIn("MISSING KEY PanelHTotal", text)
         self.assertEqual(values["HTOTAL"], 0)
+
+
+class TheDocumentation(unittest.TestCase):
+    """Item 4: the two places a foreign owner is sent to have to name the command."""
+
+    def read(self, *parts):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), *parts)
+        if not os.path.exists(path):
+            self.skipTest("not next to this checkout: %s" % path)
+        with open(path, "rb") as handle:
+            return handle.read().decode("utf-8")
+
+    def test_the_tool_doc_explains_the_flag(self):
+        text = self.read("docs", "tools", "h713-extract.md")
+        self.assertIn("--profile", text)
+        self.assertIn("panel.env", text)
+        self.assertIn("PANEL_PIPELINE_COM", text)
+
+    def test_the_boards_readme_gives_the_three_commands(self):
+        text = self.read("boards", "README.md")
+        self.assertIn("--profile", text)
+        self.assertIn("out/boards/<your-board-id>/panel.env", text)
 
 
 if __name__ == "__main__":

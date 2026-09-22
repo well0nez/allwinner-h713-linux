@@ -24,6 +24,16 @@ REFRESH_MIN_HZ, REFRESH_MAX_HZ = 50.0, 75.0
 OUR_PWM_CHANNEL = 2               # h713_disp_backlight_set() is pinned to PWM2 on PB4
 KNOWN_PROJECT_IDS = {0x30: "the HY310 row", 0x34: "the board B row"}
 UNKNOWN = "unknown"
+#: The one further per-board fact besides the panel row (AP3t 1.5; its REVIEW confirms it is per
+#: board). It is not in panel_config.ini, so the writer can only name it - see the Q7 follow-ups.
+PIPELINE_NOTE = [
+    "", "# The only per-board pipeline difference besides this row (AP3t section 1.5): the",
+    "# compression tag in column 12 of this board's projecttable.TSE row - COM2 on the HY310,",
+    "# COM1 on the HY300 Pro, which decides whether its HDMI path runs uncompressed. Not in",
+    "# panel_config.ini; boot/mips/projecttable.TSE and boot/mips/database.TSE hold it and the",
+    "# reader for them is not written yet.",
+    "PANEL_PIPELINE_COM=" + UNKNOWN,
+]
 
 #: (env key, ini key) - AP3g section 2: 23 members of struct h713_panel_cfg, one to one.
 FROM_INI = (
@@ -239,6 +249,7 @@ def emit_env(board_id: str, values, traces, checks, origin: str) -> str:
         if key == "PROJECT_ID" and isinstance(value, int):
             text = "0x%02x" % value
         lines += ["# " + traces[key], "PANEL_%s=%s" % (key, text)]
+    lines += PIPELINE_NOTE
     counted = dict((level, len([c for c in checks if c[0] == level])) for level in ("OK", "WARN", "FAIL"))
     lines += ["", "# Checks (AP3g section 4). A FAIL means the row is not self-consistent."]
     lines += ["# %-4s %s %s" % (level, ident, text) for level, ident, text in checks]

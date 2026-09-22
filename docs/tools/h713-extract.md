@@ -35,6 +35,38 @@ name), `boot/bootlogo.bmp` (the vendor boot logo, added 15.09.2026),
 it), plus `MANIFEST.json` and `REPORT.txt`. The report is also written as `BERICHT.txt`, byte-identical;
 the German name goes out together with the German switches, after `v0.9`.
 
+### `--profile <board>`: a panel row out of the board's own `panel_config.ini`
+
+```
+installer/h713-extract update.img -o out --profile hy300-pro     # -> out/boards/hy300-pro/panel.env
+```
+
+Writes one further file, `boards/<board>/panel.env`, in the `boards/` profile format (shell
+`KEY=value`, see `boards/README.md`). Where every value comes from:
+
+| Part | Count | Source |
+|---|---|---|
+| straight out of the ini | 23 | one `PANEL_*` per member of the panel row, each with its ini section, spelling and line number in the comment above it |
+| derived | 1 | `PANEL_PLL_N_PLUS_1 = floor(PanelDCLK * 7 * 2 / links / 24 MHz)` - reproduces the three values anybody has measured (36, 41, 43) |
+| register reads | 5 | `unknown`, with the register to read named: `0x05800000[4:3]`, `0x0528008c`, `0x058c0018` (twice) and `0x05280084[31:16]` |
+
+Nine checks (`C1`..`C9`) run over the result and land in the file as comments plus a
+`PANEL_CHECKS` line: front porches, the total-minus-one convention, the sync polarities, the
+refresh and the PLL error, the LVDS bit rate per lane, the register field widths the vendor's own
+`setLvdsConfig` enforces, the project id against the table we already have, the backlight channel,
+and the spread-spectrum word. **A `FAIL` means the file is not self-consistent** and makes the run
+exit 1; a `WARN` is a thing to look at. A row with an `unknown` or a `MISSING KEY` in it describes
+the panel, but it is not a measurement and must not be committed as one.
+
+When the board named already has an installer profile, every field that profile carries is compared
+with what the ini says and each difference is reported. On the HY310's own image the answer is
+"every field the 'hy310' profile already carries comes out the same".
+
+`PANEL_PIPELINE_COM` is the one per-board fact the writer cannot answer: the compression tag in
+column 12 of the board's `projecttable.TSE` row (COM2 on the HY310, COM1 on the HY300 Pro). It is
+written as `unknown` so the format is complete; the file that holds it is extracted, the reader is
+not written yet.
+
 ### The two board description files in `pq/`
 
 Two of the files under `pq/` are not picture tables at all. They describe the **board**, they are

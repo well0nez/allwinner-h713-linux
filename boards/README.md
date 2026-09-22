@@ -108,6 +108,25 @@ was nothing for that somebody to run. `release/build-all.sh --test-image` closes
 Between 2 and 3 nothing about our claims changes. A board that has only been handed a test image is
 still `partial` or `profile-only` in `board.env`, in STATUS.md and in every sentence we write.
 
+## Getting a profile out of your own `update.img`
+
+If you have your projector's stock firmware image, three commands produce the panel part of a
+board directory. Nothing is written to the device and the image is only read.
+
+```
+git clone https://github.com/well0nez/allwinner-h713-linux && cd allwinner-h713-linux
+installer/h713-extract /path/to/update.img -o out --profile <your-board-id>
+cat out/boards/<your-board-id>/panel.env
+```
+
+`panel.env` holds the panel row of your board with the source line for every value. Put it in the
+issue, or into `boards/<your-board-id>/` next to `board.env`. Five values read `unknown` because
+they exist only as registers of a running stock bootloader, and `PANEL_CHECKS` at the end counts
+what passed - a `FAIL` there means the file contradicts itself and the row must not be built from.
+
+`out/` also holds the display firmware, the EDID, the Wi-Fi firmware and the picture tables of
+your device (`docs/tools/h713-extract.md`). None of it goes into this repository.
+
 ## Adding a board from a probe log
 
 A board that nobody here has held can still get a directory. The whole input is one
