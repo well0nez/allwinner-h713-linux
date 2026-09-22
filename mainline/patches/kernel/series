@@ -263,6 +263,10 @@
 #    -ERANGE with the measured timing instead of -ENOLCK for ever; 1600x900
 #    read "change in flight" until now, T2 7.3)
 0136m-media-h713-hdmirx-a-source-the-firmware-s-table-does-not-carry.patch
+#   (Q3 -- 0136n: colorspace, quantization, ycbcr_enc and the CE flag come
+#    from the firmware's 44 byte record instead of a hardcoded BT.709 limited;
+#    the status file names the colour and the HDR scheme, AP3i/AP3k/AP3q)
+0136n-media-h713-hdmirx-report-the-colour-the-firmware-read-out-of-the-avi.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

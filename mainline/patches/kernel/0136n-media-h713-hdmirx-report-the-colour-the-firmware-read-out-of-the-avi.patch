@@ -1,0 +1,262 @@
+media: h713-hdmirx: report the colour the firmware read out of the AVI
+
+The driver has answered V4L2_COLORSPACE_REC709 and
+V4L2_QUANTIZATION_LIM_RANGE for every source since the format was first
+filled in. That is right for 720p and everything above it and wrong for
+every SD source, for every source that sends its own colorimetry, and for
+every full-range one - and the information to be right with has been sitting
+unread in the firmware's 44 byte record all along.
+
+Where each field comes from, with the report section that proves it:
+
+  colorspace / ycbcr_enc   record color_space (kHalColorSpace_*), which
+        GetSignalColorSpace@0x8B133D2C produces from the colorimetry word of
+        the stored AVI InfoFrame - C of DB2 and EC of DB3 (AP3i sections 3
+        and 4). The mapping, one row per enumerator:
+            0 BT601         -> SMPTE170M
+            1 BT709         -> REC709
+            2 BT2020_NCLYCC -> BT2020
+            3 BT2020_CLYCC  -> BT2020 + YCBCR_ENC_BT2020_CONST_LUM
+            4 xvYCC         -> REC709 + YCBCR_ENC_XV709
+            5 RGB           -> SRGB
+        The two low codes are swapped against the firmware's internal
+        0x4400xx numbering, which is the obvious way to get this wrong
+        (AP3i section 2). Rows 4 and 5 cannot occur: xvYCC and sYCC fold
+        into plain 601/709 during the AVI parse and RGB is never produced
+        here. A value outside the table keeps REC709, as before.
+        Where the AVI carries no colorimetry at all the firmware has already
+        decided for us: BT2020_NCLYCC on a source that really sends HDR
+        signalling, BT709 on a PC timing, BT601 for exactly eleven SD signal
+        IDs, BT709 otherwise (AP3k section 6, AP3q section 5). So this
+        changes the report only for SD sources and for sources that do send
+        colorimetry - on the six verified HY310 modes it reports what it
+        reported before.
+
+  quantization             record b_full_range, which is GetQuantRange@
+        0x8B133F24: the HDMI default rule, YCbCr limited unless YQ says
+        otherwise, RGB with Q = default full only on a PC timing (AP3i
+        section 5).
+
+  V4L2_DV_FL_IS_CE_VIDEO   record b_dvi_mode, the firmware's own "this is
+        not HDMI video" verdict - the port's HDMI/DVI mode, raised for
+        fourteen XGA timings by the timing bitmask and overwritten by the
+        vendor's PC-mode config (AP3i sections 6, 9 and 10). It is the one
+        thing about the timing that a preset cannot know, so it decides the
+        flag rather than the preset that was matched.
+
+  xfer_func                left DEFAULT, deliberately. V4L2 has no HDR
+        metadata for a capture device, and an HDR transfer function would be
+        wrong in the other direction anyway: the firmware tone maps an HDR
+        source onto the panel before the capture ever sees it (AP3q sections
+        6 to 8), so what lands in the ring is already mapped.
+
+The three values are cached in struct h713_hdmirx and filled only from a
+genuine HDMI record, never from the record our own descriptor republish
+leaves behind (0136i's own_record test). G_FMT therefore costs no cpu_comm
+read, and a moment without a record keeps the last honest answer instead of
+falling back to a guess.
+
+The status file gains two lines a human can read, "colour:" and "hdr:". The
+HDR one names the kHalHdrScheme_* the record carries and says what the two
+surprising values mean: Sdr can also be plain HDR10, because the firmware
+has no pair for that internal code and mislabels it towards the ARM (AP3k
+section 11) while tone mapping it correctly all the same (AP3q section 9);
+and DbVision, on this firmware, means the Dolby Vision low-latency VSIF with
+PB4 bits [1:0] = 11b, because the EDR route that shares the value is never
+taken - nothing in display.bin ever writes the byte it needs (AP3q sections
+2, 3 and 4). Nothing on our side acts on hdr_mode, and nothing should.
+
+Nothing in the AVI beyond those fields belongs in what we report: of the ten
+fields the firmware parses it reads four, we already have all four through
+the record, and pixel repetition acts on the capture before INCAP, so
+reporting it would double-count (AP3k sections 7 to 9).
+
+h713-tv, in the same commit: `ctl status` gains a "colour" line from G_FMT
+and forwards the driver's two new status lines.
+
+Source: umbau/re-apps/AP3i (12), AP3k (13), AP3q (11), plus their REVIEW.md.
+Follow-up to 0136i; 0136f - 0136m stay byte-identical.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -150,6 +150,42 @@ struct h713_hdmirx_signal_info {
+ 
+ static_assert(sizeof(struct h713_hdmirx_signal_info) == 44);
+ 
++/*
++ * What one kHalColorSpace_* - the record's color_space - means in V4L2 terms,
++ * with the firmware's own reading of it for the status file.
++ *
++ * It is the firmware's verdict on the AVI InfoFrame, not a register:
++ * GetSignalColorSpace@0x8B133D2C indexes its own table with the colorimetry
++ * word (C and EC of DB2/DB3), and only a colorimetry of 0 falls back - to
++ * BT2020_NCLYCC on an HDR source, to BT709 on a PC timing, to BT601 for
++ * eleven SD signal IDs, to BT709 otherwise (AP3i 3 and 4, AP3k 6). xvYCC and
++ * sYCC fold into plain 601/709 on the way, so rows 4 and 5 cannot occur.
++ */
++struct h713_hdmirx_colour {
++	u32 colorspace;
++	u32 ycbcr_enc;
++	const char *name;
++};
++
++static const struct h713_hdmirx_colour h713_hdmirx_colour_map[] = {
++	{ V4L2_COLORSPACE_SMPTE170M, V4L2_YCBCR_ENC_DEFAULT, "BT.601" },
++	{ V4L2_COLORSPACE_REC709, V4L2_YCBCR_ENC_DEFAULT, "BT.709" },
++	{ V4L2_COLORSPACE_BT2020, V4L2_YCBCR_ENC_DEFAULT, "BT.2020 NCL" },
++	{ V4L2_COLORSPACE_BT2020, V4L2_YCBCR_ENC_BT2020_CONST_LUM, "BT.2020 CL" },
++	{ V4L2_COLORSPACE_REC709, V4L2_YCBCR_ENC_XV709, "xvYCC" },
++	{ V4L2_COLORSPACE_SRGB, V4L2_YCBCR_ENC_DEFAULT, "RGB" },
++};
++
++/*
++ * kHalHdrScheme_*, the record's hdr_mode. Only 0, 2, 5 and 6 are reachable:
++ * 1 (Hdr10) is paired with an internal code GetHdrWorkMode never returns, so
++ * plain HDR10 arrives here as Sdr (AP3k 11) although the firmware tone maps
++ * it correctly all the same (AP3q 9); 3 and 4 have a number and no name.
++ */
++static const char * const h713_hdmirx_hdr_scheme[] = {
++	"Sdr", "Hdr10", "Hdr10Plus", NULL, NULL, "Hlg", "DbVision",
++};
++
+ /*
+  * kHalSignalID_* as far as the name table in display.bin (0x8b14adc0) is
+  * decoded: the first three are the ones that mean "nothing to report". The
+@@ -1142,6 +1178,11 @@ struct h713_hdmirx {
+ 	 * detect_timings(), which the ioctl lock serialises.
+ 	 */
+ 	u32 unlisted_active;
++
++	/* what the format says about colour, from the last genuine record */
++	u32 fmt_colorspace;
++	u32 fmt_quantization;
++	u32 fmt_ycbcr_enc;
+ 	struct mutex sig_lock;
+ 	void __iomem *sig_map;
+ 	phys_addr_t sig_map_base;
+@@ -3344,6 +3385,33 @@ static void h713_hdmirx_ring_geometry(struct h713_hdmirx *rx,
+ 			     how);
+ }
+ 
++/*
++ * The colour the format reports, from the record's own two fields.
++ * b_full_range is GetQuantRange@0x8B133F24, the HDMI default rule: YCbCr is
++ * limited unless YQ says otherwise, RGB with Q = default is full only on a PC
++ * timing (AP3i 5). The driver said REC709 and LIM_RANGE for every source
++ * until now - right for 720p and up, wrong for SD and for anything that does
++ * send colorimetry (AP3k 6). Only called with a genuine HDMI record.
++ */
++static void h713_hdmirx_fill_colour(struct h713_hdmirx *rx,
++				    const struct h713_hdmirx_signal_info *sig)
++{
++	if (sig->color_space < ARRAY_SIZE(h713_hdmirx_colour_map)) {
++		const struct h713_hdmirx_colour *c;
++
++		c = &h713_hdmirx_colour_map[sig->color_space];
++		rx->fmt_colorspace = c->colorspace;
++		rx->fmt_ycbcr_enc = c->ycbcr_enc;
++	} else {
++		/* kHalColorSpace_Max or a value no name table covers */
++		rx->fmt_colorspace = V4L2_COLORSPACE_REC709;
++		rx->fmt_ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
++	}
++
++	rx->fmt_quantization = sig->b_full_range ? V4L2_QUANTIZATION_FULL_RANGE
++						 : V4L2_QUANTIZATION_LIM_RANGE;
++}
++
+ /*
+  * A source the receiver will not lock, said once.
+  *
+@@ -3567,6 +3635,16 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 
+ 	/* have_sig is by now exactly "a genuine HDMI record" (own_record above) */
+ 	if (have_sig) {
++		h713_hdmirx_fill_colour(rx, &sig);
++		/*
++		 * b_dvi_mode is the firmware's own "this is not HDMI video"
++		 * verdict (AP3i 6, 9 and 10) and the one thing about the
++		 * timing a preset cannot know, so it decides the CE flag.
++		 */
++		if (sig.b_dvi_mode)
++			bt->flags &= ~V4L2_DV_FL_IS_CE_VIDEO;
++		else
++			bt->flags |= V4L2_DV_FL_IS_CE_VIDEO;
+ 		rx->lock_timings = *t;
+ 		rx->lock_active = active;
+ 		rx->lock_total = total;
+@@ -3627,8 +3705,13 @@ static void h713_hdmirx_fill_fmt(struct h713_hdmirx *rx,
+ 		pix->plane_fmt[i].sizeimage = rx->stride * pix->height;
+ 	}
+ 	pix->field = V4L2_FIELD_NONE;
+-	pix->colorspace = V4L2_COLORSPACE_REC709;
+-	pix->quantization = V4L2_QUANTIZATION_LIM_RANGE;
++	/*
++	 * xfer_func stays DEFAULT on purpose: the firmware tone maps an HDR
++	 * source onto the panel before the capture sees it (AP3q 11 D1).
++	 */
++	pix->colorspace = rx->fmt_colorspace;
++	pix->quantization = rx->fmt_quantization;
++	pix->ycbcr_enc = rx->fmt_ycbcr_enc;
+ }
+ 
+ static int h713_hdmirx_enum_fmt(struct file *file, void *priv,
+@@ -4055,6 +4138,17 @@ static const struct v4l2_file_operations h713_hdmirx_fops = {
+  * be decoded, and its raw words have to come from somewhere.
+  * ------------------------------------------------------------------ */
+ 
++/* What the two surprises in hdr_mode mean, for a reader without the reports. */
++static const char *h713_hdmirx_hdr_note(u32 hdr_mode)
++{
++	if (hdr_mode == 0)
++		return " -- Sdr here can also be plain HDR10: the firmware has no pair for that internal code and mislabels it towards the ARM, and tone maps it correctly anyway";
++	if (hdr_mode == 6)
++		return " -- on this firmware DbVision means the Dolby Vision low-latency VSIF (PB4 bits 1:0 = 11b); the EDR route that shares this value is never taken";
++
++	return "";
++}
++
+ static void h713_hdmirx_show_signal_info(struct seq_file *s,
+ 					 struct h713_hdmirx *rx)
+ {
+@@ -4083,6 +4177,26 @@ static void h713_hdmirx_show_signal_info(struct seq_file *s,
+ 		   sig.b_interlace ? "interlaced" : "progressive",
+ 		   sig.h_size, sig.v_size, sig.color_format, sig.color_space,
+ 		   sig.hdr_mode, sig.b_full_range, sig.b_dvi_mode);
++
++	/*
++	 * The same record in words, so what G_FMT reports can be checked
++	 * against what the firmware said. b_interlace is a set lookup on the
++	 * matched signal ID, not a register or an AVI bit (AP3k 5).
++	 */
++	seq_printf(s,
++		   "colour:       %s, %s range, %s, %s source (color_space %u, b_full_range %u, b_interlace %u, b_dvi_mode %u)\n",
++		   sig.color_space < ARRAY_SIZE(h713_hdmirx_colour_map) ?
++			h713_hdmirx_colour_map[sig.color_space].name : "unknown",
++		   sig.b_full_range ? "full" : "limited",
++		   sig.b_interlace ? "interlaced" : "progressive",
++		   sig.b_dvi_mode ? "DVI/PC" : "HDMI",
++		   sig.color_space, sig.b_full_range, sig.b_interlace,
++		   sig.b_dvi_mode);
++	seq_printf(s, "hdr:          %s (hdr_mode %u)%s\n",
++		   sig.hdr_mode < ARRAY_SIZE(h713_hdmirx_hdr_scheme) &&
++		   h713_hdmirx_hdr_scheme[sig.hdr_mode] ?
++			h713_hdmirx_hdr_scheme[sig.hdr_mode] : "unnamed",
++		   sig.hdr_mode, h713_hdmirx_hdr_note(sig.hdr_mode));
+ }
+ 
+ /*
+@@ -4344,6 +4458,10 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 	INIT_DELAYED_WORK(&rx->rearm_retry_work, h713_hdmirx_rearm_retry_work);
+ 	INIT_DELAYED_WORK(&rx->audio_work, h713_hdmirx_audio_work);
+ 	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings, &h713_hdmirx_ring_default);
++	/* until the first genuine record: what the driver reported all along */
++	rx->fmt_colorspace = V4L2_COLORSPACE_REC709;
++	rx->fmt_quantization = V4L2_QUANTIZATION_LIM_RANGE;
++	rx->fmt_ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+ 	rx->last_slot = -1;
+ 	mutex_init(&rx->lock);
+ 	mutex_init(&rx->cb_lock);

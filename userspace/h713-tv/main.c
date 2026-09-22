@@ -459,6 +459,48 @@ static void capture_format(struct capture *cap,
 	}
 }
 
+/*
+ * What the capture format says about colour. Since kernel 0136n the driver
+ * fills it from the firmware's own signal record -- the colorimetry the AVI
+ * InfoFrame carried, the range out of the HDMI default rule -- instead of
+ * answering BT.709 limited for every source. So this is the source's verdict
+ * carried through, and it belongs in the status beside the geometry: a
+ * picture that comes out washed out or crushed is answered here.
+ */
+static const char *capture_colour(struct capture *cap, char *buf, size_t len)
+{
+	static const char *const space[] = {
+		[V4L2_COLORSPACE_SMPTE170M] = "BT.601",
+		[V4L2_COLORSPACE_REC709] = "BT.709",
+		[V4L2_COLORSPACE_SRGB] = "sRGB",
+		[V4L2_COLORSPACE_BT2020] = "BT.2020",
+	};
+	struct v4l2_pix_format_mplane *pix;
+	struct v4l2_format f;
+	const char *cs = NULL;
+	const char *enc = "";
+
+	memset(&f, 0, sizeof(f));
+	f.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	if (ioctl(cap->fd, VIDIOC_G_FMT, &f)) {
+		snprintf(buf, len, "not readable (%s)", strerror(errno));
+		return buf;
+	}
+	pix = &f.fmt.pix_mp;
+	if (pix->colorspace < sizeof(space) / sizeof(space[0]))
+		cs = space[pix->colorspace];
+	if (pix->ycbcr_enc == V4L2_YCBCR_ENC_BT2020_CONST_LUM)
+		enc = ", constant luminance";
+	else if (pix->ycbcr_enc == V4L2_YCBCR_ENC_XV709)
+		enc = ", xvYCC";
+	snprintf(buf, len, "%s, %s range%s", cs ? cs : "unnamed",
+		 pix->quantization == V4L2_QUANTIZATION_FULL_RANGE ? "full"
+								   : "limited",
+		 enc);
+
+	return buf;
+}
+
 /* ------------------------------------------------------------------ *
  * The display: one overlay plane, driven in "hdmi-ring" mode
  * ------------------------------------------------------------------ */
@@ -2921,7 +2963,9 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		       struct display *d, struct audio *a)
 {
 	static const char *const kern[] = {
-		"format:", "incap:", "capture:", "farbwandler:", "signal:", "timings:", NULL,
+		"format:", "incap:", "capture:", "farbwandler:", "signal:", "timings:",
+		/* what the firmware's own record says about the source (kernel 0136n) */
+		"colour:", "hdr:", NULL,
 	};
 	static const char *const comm[] = { "rx_calls", "eingehend", NULL };
 	/* which of the firmware's two EDID blocks each HDMI port is served */
@@ -2929,7 +2973,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	/* the last measurement evaluate() made -- a status is a report, not a probe (S12 R7) */
 	const struct v4l2_dv_timings *t = &cap->last_t;
 	int sig = cap->last_sig;
-	char sigbuf[64];
+	char sigbuf[64], colbuf[64];
 
 	reply_add(r, "ok status\n");
 	reply_add(r, "mode            %s\n", c->policy == POLICY_OFF ? "off (console forced)"
@@ -2953,6 +2997,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 			  signal_text(t, sigbuf, sizeof(sigbuf)));
 	else
 		reply_add(r, "signal          %s\n", sig == 0 ? "no signal" : "not readable");
+	reply_add(r, "colour          %s\n", capture_colour(cap, colbuf, sizeof(colbuf)));
 	reply_add(r, "picture         %s%s\n", d->on ? "plane on" : "console",
 		  d->master ? ", DRM master held" : "");
 	if (d->src_w)
