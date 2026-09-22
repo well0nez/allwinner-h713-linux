@@ -364,10 +364,15 @@ publication; a change on a running picture takes the plane down briefly and back
 the firmware's window chain fits the picture into. Nothing here scales - the four numbers go into the record
 and the firmware recomputes its capture, processing window and scaler from them, which is what the stock
 hardware composer does for its own video layer with the same arithmetic (`zoom 80` on 1920x1080 is the
-window 192,108 1536x864). A percentage is centred, a rectangle is taken as given and must lie inside the
-panel with at least 16 pixels on each axis. Read with the next publication, like `aspect`. Whether the
-firmware follows is decided on the wall: the scaler's own register `0x05180034` shows what it last did, not
-what was last asked, and it has been found stale.
+window 192,108 1536x864). What the firmware scales, it scales **into the capture ring**: measured on
+22.09.2026 the picture became 1536x864 while the ring stayed laid out for 1920x1080 (rowbyte `0x00780078`),
+so the fresh picture sits in the ring's top left corner and this program hands the plane exactly that part
+of it (`SRC_W`/`SRC_H`, kernel 0133c) in the window it was asked for. The firmware sizes, we place; `ctl
+status` shows both. A percentage is centred, a rectangle is taken as given and must lie inside the panel
+with at least 16 pixels on each axis; a width that is not a multiple of 16 loses up to 15 columns of the
+picture rather than showing a strip of the previous frame. Read with the next publication, like `aspect`.
+Whether the firmware follows is decided on the wall: the scaler's own register `0x05180034` shows what it
+last did, not what was last asked, and it has been found stale.
 
 **`replug`** is the HPD cycle out of S12 C: the source is to believe that the cable was pulled and plugged
 back in - for a mode that does not lock, or a source asleep on a link it believes to be up. The way is the
