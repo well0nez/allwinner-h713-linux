@@ -46,11 +46,34 @@ fragment 7 sets the data-ready flag and publishes, so the two halves cannot be u
 
 Which of the two a port serves is one byte of the firmware's own state, and that byte is a **per-port
 bitmask, not a version number**: bit N set means port N is served the second block, bit N clear the
-first. `SetEDIDVersion` masks the argument to four bits, stores it and republishes only the ports
-whose bit changed - an unchanged value publishes nothing at all, so the command cannot serve as a
-"publish again". `ResetEDIDModule` clears the byte, so after a reset every port is back on the first
+first. `SetEDIDVersion` masks the argument to four bits and stores it; it does not publish anything
+itself (see below), so the command can serve neither as a "publish again" nor as a change that takes
+effect on its own. `ResetEDIDModule` clears the byte, so after a reset every port is back on the first
 block. The kernel API calls it what it is (`arisc_hdmi_edid_mask()`), and a board can set it on the
 arisc node as `allwinner,edid-version-mask`; absent means 0, which is what both boards want.
+
+**The command stores the byte, fragment 7 applies it** (HY310, 22.09.2026 -
+`umbau/test-20260915/dev20-20260922.md`, "Q5 mask semantics"). `edid-version 1` on its own leaves the
+firmware holding 0x01 and port 0 still serving block 0: the PC reads byte 130 = 0x4c, unchanged across
+a hot-plug reset too. The same value followed by a full EDID upload publishes block 1 - byte 130 =
+0x54, and the source starts offering 1080p100/120. Mask 0 plus an upload brings block 0 back. So
+AP3l section 1's "republishes only the ports whose bit changed" does not hold on the device: the mask
+is read where fragment 7 publishes, and nowhere else.
+
+For a bench that means a mask change needs the upload behind it, two writes to the same debugfs file:
+
+```
+echo "edid-version 1" > /sys/kernel/debug/h713-arisc/cmd
+echo edid             > /sys/kernel/debug/h713-arisc/cmd
+```
+
+The default 0 needs no second step - the bring-up's own fragment 7 publishes with it - which is why
+the driver sends the command after fragment 7 rather than before (patch `0091c`, comment `0091d`).
+
+One oddity is open: after the sequence with mask 1 the firmware's byte read back as 0x0f, all four
+bits, where 0x01 had been asked for; with mask 0 it read 0x00. The status line carries both numbers
+(`edid_version_mask: 0x0f want 0x01`), so the divergence is visible rather than silent. Whether the
+handler ORs the bits or the publish path writes them is unanswered; it does not affect the default.
 
 **Block 0 is the right block on both boards, and not by default only.** Block 1 is not a newer or
 better EDID, it is a different CEA extension: it adds 3840x2160p50/p60 and 4096x2160p50/p60 in 4:2:0,
@@ -61,9 +84,10 @@ stops, at 4K30 / 297 MHz, which the HY310 does lock (`doku/128` §2). Advertisin
 cannot carry is worse than advertising fewer. The panel is not the argument on either board - both
 scale, and both firmwares lock 4K30.
 
-Five paths publish, and it is worth knowing which: the firmware's own init, the tail of `HostHDMIMAP`
-(writing the port map republishes all three ports as a side effect), `ResetEDIDModule`, `UpdateEDID`
-fragment 7, and `SetEDIDVersion`. None of them moves the hot-plug pin - a publish rewrites the DDC RAM,
+Four paths publish, and it is worth knowing which: the firmware's own init, the tail of `HostHDMIMAP`
+(writing the port map republishes all three ports as a side effect), `ResetEDIDModule`, and
+`UpdateEDID` fragment 7. `SetEDIDVersion` was read as a fifth out of the dispatcher and is not one on
+the device (above). None of them moves the hot-plug pin - a publish rewrites the DDC RAM,
 and making a source re-read it is the separate hot-plug pulse. The cheapest repeatable re-publish is
 therefore `HostHDMIMAP`, which the driver already sends.
 

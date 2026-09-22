@@ -132,6 +132,11 @@
 #    fragments, the board states it in the devicetree and debugfs reads back
 #    all 256 bytes port 0 publishes, AP3l)
 0091c-soc-sunxi-h713-arisc-the-edid-version-byte-is-a-per-port-block-mask.patch
+#   (follow-up well0nez, Q12 -- comment only, 0091..0091c stay byte-identical;
+#    the device says SetEDIDVersion alone republishes nothing, so the mask is
+#    applied where fragment 7 publishes and a mask change needs the upload
+#    behind it, dev20 22.09.)
+0091d-soc-sunxi-h713-arisc-what-the-device-says-about-the-edid-mask.patch
 0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
 #   (follow-up well0nez, K2 -- 0096 stays byte-identical; the driver for
 #    that node, in the tree and built in, so the TVFE/TVCAP domains and the

@@ -1,0 +1,64 @@
+soc: sunxi: h713-arisc: what the device says about the EDID mask (dev20)
+
+Comment only; no code, no behaviour, no build change.
+
+0091c argued the order of SetEDIDVersion from the firmware's own dispatcher
+(AP3l section 1.4): the handler masks the byte to four bits, keeps it at
+g_Data + 4 and republishes the ports whose bit changed, so the command sent
+before fragment 0 would publish the firmware's ROM default and the command
+sent behind fragment 7 is idempotent. The order was right; one sentence of
+the reasoning was not.
+
+The HY310 run of 22.09.2026 (debug kernel, umbau/test-20260915/dev20-20260922.md,
+"Q5 mask semantics") exercised it. `edid-version 1` alone: the firmware holds
+0x01, and port 0 still serves block 0 - the PC reads byte 130 = 0x4c, also
+after `hpd 0 reset`. `edid-version 1` followed by the full `edid` sequence:
+port 0 publishes block 1, the PC reads byte 130 = 0x54 and offers 1080p120.
+Mask 0 plus the sequence brings block 0 back. So SetEDIDVersion does not
+republish anything by itself; the mask is applied where fragment 7 publishes.
+
+That makes 0091c's order load-bearing rather than tidy. The default 0 is
+unaffected - fragment 7 publishes with it, and the review's guard sends the
+command at all only when the firmware's byte differs - but a mask *change*
+needs the upload behind it, which on a bench is `edid-version N` and then
+`edid` on the debugfs cmd file. Both comment blocks now say so.
+
+One oddity goes in with it: after the sequence with mask 1 the byte read back
+as 0x0f, all four bits, where 0x01 was asked for; with 0 it read 0x00. The
+status file reports it as "held want", so the divergence is visible rather
+than silent. Whether the handler ORs the bits or the publish path writes it
+is open - it changes nothing for the default, and the byte is a readback, not
+an input.
+
+Tested on the HY310: no code changed, so nothing to test; the comments were
+written from that device run.
+
+diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -1688,6 +1688,13 @@
+  * not a description. The handler masks it to four bits, stores it at
+  * g_Data + 4 and republishes only the ports whose bit changed; an unchanged
+  * value returns at 0x125f0 having published nothing (AP3l 1).
++ *
++ * The device contradicts that republish. With the mask moved to 1 and
++ * nothing else done, port 0 kept block 0 -- byte 130 still 0x4c at the PC,
++ * across a hot-plug reset as well. So this command stores the byte and
++ * nothing more; the store is served with it at the next publish. Read back
++ * after a masked upload the byte was 0x0f where 0x01 was asked for, which
++ * the status file shows as "held want" (dev20, 22.09.2026).
+  */
+ static int arisc_edid_mask_locked(struct h713_arisc *a, u8 mask)
+ {
+@@ -1769,6 +1776,11 @@
+ 	 * ResetEDIDModule the byte is 0 - the default mask - on every probe.
+ 	 * The byte is readable, so a mask the firmware already holds is not
+ 	 * sent at all (Q5 review, O2).
++	 *
++	 * The device makes this order load-bearing rather than merely tidy: a
++	 * mask change takes effect only with the upload behind it, so changing
++	 * one at a bench means "edid-version N" and then "edid" on cmd. The
++	 * guarded default 0 needs no second step (dev20, 22.09.2026).
+ 	 */
+ 	if (readb(sram_at(a, a->off.edid_version)) != a->edid_mask) {
+ 		ret = arisc_edid_mask_locked(a, a->edid_mask);
