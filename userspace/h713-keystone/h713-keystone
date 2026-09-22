@@ -1,0 +1,591 @@
+#!/usr/bin/env python3
+"""h713-keystone -- the projector's own auto keystone, rebuilt for Linux.
+
+The stock feature reads the accelerometer, turns the tilt into two angles,
+searches the largest inscribed rectangle of the trapezoid a tilted projector
+throws and hands eight corner insets to SurfaceFlinger.  That whole chain is a
+tested host model already and sits unchanged in model/ beside this file (AP2g
+sensor, AP2c geometry, AP2f matrix, AP2h the join; 1091 lines, 87 tests), and
+none of its arithmetic is repeated here.  What this file adds is the four
+things a model cannot have: the sensor, a reference pose, a hysteresis, and
+the loop that pushes the result into `h713-warp ctl keystone set`.
+
+  read       one reading: raw counts, the g vector, pitch and roll
+  reference  store the current pose as the level pose to correct against
+  once       the eight per-mille insets for the current tilt, --apply pushes
+  run        the loop; SIGTERM puts the manual set back
+  status     what is configured, what was found, what the warp carries
+
+Two measured facts shape the reader (device, 22.09.2026).  A sysfs read of
+in_accel_*_raw WAITS for the device's next sample, so at the driver default of
+1 Hz one reading would cost three seconds: `sampling_rate` is written into
+sampling_frequency at the start.  And a single raw triple is noisy - 77/102/85
+LSB peak to peak at rest against about 1000 LSB per g, five degrees of nothing
+- while `average_samples` triples averaged spread only 16/12/11 LSB, about one
+degree.  That is why `hysteresis_degrees` defaults to 1.0 and not to the
+vendor's 0.3 degree step or to the 0.1146 degree ADC digit of AP2h 4a: the
+threshold has to be sized from the averaged reading, not from the digit.
+
+The axis map is a config key for the same reason, and its default is the
+three-pose measurement of this device, not a candidate read out of a binary:
+docs-h713-keystone.md says which pose gave which number.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+
+# realpath, not abspath: the tool is installed as a symlink in /usr/local/bin
+# and model/ stays beside the real file.
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.join(HERE, "model"))
+
+import auto_keystone as ak                                    # noqa: E402
+import keystone_geometry as kge                               # noqa: E402
+
+CONF_PATH, REF_PATH = "/etc/h713/keystone.conf", "/etc/h713/keystone-ref"
+IIO_DIR, WARP_TOOL, G_M_S2 = "/sys/bus/iio/devices", "h713-warp", 9.80665
+FALLBACK_COUNTS_PER_G = 1000.0    # measured: in_accel_x_scale 0.009806 m/s2
+EXIT_ERROR, EXIT_NO_SENSOR, EXIT_NOT_LEVEL, EXIT_WARP = 2, 3, 4, 5
+AXES = {"x": 0, "y": 1, "z": 2}
+ZOOM_WIDTH = {0: 1920, 1: 1728, 2: 1440}          # AP2c 3, the aspect selector
+# The loop's own pause.  One averaged reading already costs about 0.3 s at
+# 100 Hz, so this is a floor and not the sampling rate.
+POLL_S = 0.1
+# The eight insets in the APP order of AP2h (LT.x LT.y RT.x RT.y LB.x LB.y
+# RB.x RB.y) against the words h713-warp takes (KS4): `ctl keystone set CORNER
+# AXIS VALUE`, CORNER in tl tr bl br, AXIS in x y, per-mille inward.
+WARP_SLOTS = (("tl", "x"), ("tl", "y"), ("tr", "x"), ("tr", "y"),
+              ("bl", "x"), ("bl", "y"), ("br", "x"), ("br", "y"))
+# Tolerant on purpose: the daemon is being written in parallel, so any of
+# "tl_x = 12", "tl x 12" or "tl-x: 12" in its status counts as that value.
+WARP_VALUE = re.compile(r"\b(tl|tr|bl|br)[ _-]?([xy])\b\s*[=:]?\s*(-?\d+)")
+
+
+class Error(Exception):
+    """Something is wrong: message out, this exit code, drive nothing."""
+
+    def __init__(self, message, code=EXIT_ERROR):
+        Exception.__init__(self, message)
+        self.code = code
+
+
+def _stderr(line):
+    print(line, file=sys.stderr)
+
+
+def _read(path):
+    """One file as text, or None when it is not there."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read().decode("ascii", "replace").strip()
+    except (OSError, IOError):
+        return None
+
+
+def _write_atomic(path, text):
+    """Sibling, fsync, rename: after a power cut the old file or the new one
+    stands there, never half a line."""
+    with open(path + ".new", "wb") as fh:
+        fh.write(text.encode("utf-8"))
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(path + ".new", path)
+
+
+def _pairs(text):
+    """The (line number, key, value) triples of a "key = value" file; value is
+    None where a line carries no "=" at all.  Comments and blanks drop out."""
+    out = []
+    for number, line in enumerate((text or "").splitlines(), 1):
+        line = line.split("#", 1)[0].strip()
+        if line:
+            key, sign, value = [p.strip() for p in line.partition("=")]
+            out.append((number, key, value if sign else None))
+    return out
+
+
+# --- configuration --------------------------------------------------------
+
+def parse_axis(text):
+    """"+y", "-x", "z": which raw axis, with which sign, plays a role."""
+    t = text.strip().lower()
+    sign = -1 if t[:1] == "-" else 1
+    t = t[1:] if t[:1] in "+-" else t
+    if t not in AXES:
+        raise ValueError("expected +x -x +y -y +z or -z")
+    return (AXES[t], sign)
+
+
+def axis_text(pair):
+    return ("+" if pair[1] > 0 else "-") + "xyz"[pair[0]]
+
+
+def parse_throw(text):
+    """A measured throw ratio, or "ini" for the vendor optics untouched."""
+    if text.strip().lower() == "ini":
+        return None
+    if not 0.1 <= float(text) <= 10.0:
+        raise ValueError("a small positive number, or \"ini\"")
+    return float(text)
+
+
+def parse_zoom(text):
+    if int(text) not in ZOOM_WIDTH:
+        raise ValueError("0, 1 or 2 (target width 1920, 1728, 1440)")
+    return int(text)
+
+
+def _above_zero(cast, what):
+    def parse(text):
+        value = cast(text)
+        if value <= 0:
+            raise ValueError(what)
+        return value
+    return parse
+
+
+DEFAULTS = (
+    ("iio_name", "sc7a20", str),
+    ("axis_pitch", "+y", parse_axis),
+    ("axis_roll", "+x", parse_axis),
+    ("axis_vertical", "+z", parse_axis),
+    ("throw_ratio", "ini", parse_throw),
+    ("zoom_scale", "0", parse_zoom),
+    ("sampling_rate", "100", _above_zero(float, "a rate in Hz above zero")),
+    ("average_samples", "10", _above_zero(int, "at least one sample")),
+    ("hysteresis_degrees", "1.0", _above_zero(float, "degrees above zero")),
+    ("hold_seconds", "1.0", _above_zero(float, "seconds above zero")),
+)
+
+
+def load_conf(path):
+    """/etc/h713/keystone.conf in the house format: "key = value" with #
+    comments.  An unknown key or an unreadable value is named and dropped, as
+    in tv.conf; a typo does not silently become a default."""
+    text = dict((name, default) for name, default, _ in DEFAULTS)
+    for number, key, value in _pairs(_read(path)):
+        if value is None:
+            _stderr("warning: %s:%d: \"%s\" is not \"key = value\" -- dropped"
+                    % (path, number, key))
+        elif key not in text:
+            _stderr("warning: %s:%d: %s is not a key of this file -- dropped"
+                    % (path, number, key))
+        else:
+            text[key] = value
+    conf = {"_text": text, "_path": path}
+    for name, _, parse in DEFAULTS:
+        try:
+            conf[name] = parse(text[name])
+        except ValueError as exc:
+            raise Error("%s: %s = \"%s\": %s" % (path, name, text[name], exc))
+    return conf
+
+
+def implied_ratio(ini):
+    """Throw ratio = distance / image width = 1 / (2 tan of the half field)."""
+    opt = kge.reset_tou_she_bi(ini, kge.itrunc(kge.f32(ini["fdd"])))
+    return 1.0 / (2.0 * opt["tan_lr_v"])
+
+
+def optics(conf):
+    """The ini dict AP2c's model takes, with the throw ratio honoured.
+
+    Whalf and Hhalf scale the two half-field tangents and enter nothing else
+    (not v, not u, not CELIANF_D), so one factor on both moves the throw ratio
+    and leaves the panel aspect where it is.  `throw_ratio = ini` is the
+    default because 0.82 is a rounding of the 0.8176 camprjspe.ini implies,
+    and writing the rounding back would move the vendor optics by 0.3 % for
+    nothing.  A tape measure at the wall replaces it with a real number.
+    """
+    ini = dict(kge.HY310_INI)
+    if conf["throw_ratio"] is not None:
+        factor = implied_ratio(ini) / conf["throw_ratio"]
+        ini["Whalf"] = ini["Whalf"] * factor
+        ini["Hhalf"] = ini["Hhalf"] * factor
+    return ini
+
+
+# --- the sensor -----------------------------------------------------------
+
+class Sensor(object):
+    """One IIO accelerometer, read through sysfs and averaged."""
+
+    def __init__(self, path, rate=None):
+        self.path = path
+        self.name = _read(os.path.join(path, "name")) or "?"
+        self.files = tuple(os.path.join(path, "in_accel_%s_raw" % a)
+                           for a in ("x", "y", "z"))
+        # Display only: every angle of the chain is a ratio of counts, so the
+        # scale cancels exactly (AP2g 5) and a wrong one costs no accuracy.
+        try:
+            self.counts_per_g = G_M_S2 / float(
+                _read(os.path.join(path, "in_accel_x_scale")))
+        except (TypeError, ValueError, ZeroDivisionError):
+            self.counts_per_g = FALLBACK_COUNTS_PER_G
+        self.rate = self.set_rate(rate) if rate else \
+            float(_read(os.path.join(path, "sampling_frequency")) or 0.0)
+
+    @staticmethod
+    def find(name, given=None, directory=IIO_DIR):
+        """The device whose `name` is the configured one.  The N in
+        iio:deviceN is the probe order and not ours to assume."""
+        if given:
+            return given
+        for entry in sorted(os.listdir(directory)
+                            if os.path.isdir(directory) else []):
+            path = os.path.join(directory, entry)
+            if entry.startswith("iio:device") \
+                    and _read(os.path.join(path, "name")) == name:
+                return path
+        raise Error("no IIO device called \"%s\" under %s -- is the "
+                    "accelerometer in the device tree and st_accel loaded?"
+                    % (name, directory), EXIT_NO_SENSOR)
+
+    def set_rate(self, rate):
+        """Write sampling_frequency.  At the driver's default of 1 Hz every
+        read of in_accel_*_raw blocks for a second, so this is not a nicety.
+        A device that refuses the value says which ones it has."""
+        path = os.path.join(self.path, "sampling_frequency")
+        try:
+            with open(path, "wb") as fh:
+                fh.write(("%g\n" % rate).encode("ascii"))
+        except (OSError, IOError) as exc:
+            _stderr("warning: %s = %g: %s -- the device offers %s, and until "
+                    "one of those is set every reading comes at the rate it "
+                    "already has"
+                    % (path, rate, exc, _read(path + "_available")))
+        return float(_read(path) or rate)
+
+    def sample(self, count):
+        """`count` raw triples, averaged.  Each read waits for the device's
+        next sample, so this costs about 3 * count / rate seconds - 0.3 s for
+        the default ten triples at 100 Hz."""
+        total = [0.0, 0.0, 0.0]
+        for _ in range(count):
+            for index, path in enumerate(self.files):
+                text = _read(path)
+                if text is None:
+                    raise Error("%s: cannot be read" % path, EXIT_NO_SENSOR)
+                total[index] += float(int(text))
+        return tuple(value / count for value in total)
+
+
+def model_triple(raw, conf):
+    """The averaged raw triple in the order the models want, which is the one
+    AP2g's iio_to_vendor_counts() reads: index 0 the PITCH source (the
+    vendor's Y, GsY), index 1 the ROLL source (its X, GsX), index 2 the
+    vertical one.  Rounding to whole digits loses nothing here: the averaged
+    noise is 11 to 16 digits, not a fraction of one."""
+    out = []
+    for key in ("axis_pitch", "axis_roll", "axis_vertical"):
+        index, sign = conf[key]
+        out.append(int(round(sign * raw[index])))
+    return tuple(out)
+
+
+# --- the reference pose ---------------------------------------------------
+
+def write_reference(path, counts, raw, conf):
+    """counts are the vendor's units (the IIO digit times 16, AP2g 5).  The
+    axis map is written with them, because a reference taken under another
+    map is silently about a different pose."""
+    _write_atomic(path, "\n".join(
+        ["# h713-keystone reference: the level pose this device corrects",
+         "# against.  Measure it again after the projector has been moved.",
+         "counts = %d %d %d" % tuple(counts),
+         "raw = %.2f %.2f %.2f" % raw]
+        + ["%s = %s" % (key, axis_text(conf[key])) for key in
+           ("axis_pitch", "axis_roll", "axis_vertical")]
+        + ["taken = %s" % time.strftime("%Y-%m-%dT%H:%M:%S"), ""]))
+
+
+def read_reference(path, conf):
+    """The stored reference, or None when there is no file yet.  A reference
+    from another axis map is refused rather than used."""
+    text = _read(path)
+    if text is None:
+        return None
+    values = dict((key, value) for _, key, value in _pairs(text) if value)
+    for key in ("axis_pitch", "axis_roll", "axis_vertical"):
+        if values.get(key) != axis_text(conf[key]):
+            raise Error("%s was taken with %s = %s, the configuration says %s "
+                        "-- run `h713-keystone reference` again"
+                        % (path, key, values.get(key), axis_text(conf[key])))
+    counts = tuple(int(v) for v in values.get("counts", "").split()
+                   if v.lstrip("-").isdigit())
+    if len(counts) != 3:
+        raise Error("%s needs a \"counts = X Y Z\" line" % path)
+    return counts
+
+
+# --- h713-warp ------------------------------------------------------------
+
+def warp_call(tool, args):
+    """One `h713-warp ctl ...` call; its answer starts with ok or error."""
+    try:
+        proc = subprocess.Popen([tool, "ctl"] + list(args),
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+        out = proc.communicate()[0].decode("utf-8", "replace")
+    except (OSError, IOError) as exc:
+        raise Error("%s: %s -- is the warp daemon installed and running?"
+                    % (tool, exc), EXIT_WARP)
+    if proc.returncode or out.startswith("error"):
+        raise Error("%s ctl %s: %s" % (tool, " ".join(args), out.strip()
+                                       or "exit %d" % proc.returncode),
+                    EXIT_WARP)
+    return out
+
+
+def warp_read_set(tool):
+    """The eight values `h713-warp ctl status` reports, in APP order, or None
+    when its answer does not carry all eight."""
+    found = {}
+    for corner, axis, value in WARP_VALUE.findall(warp_call(tool, ["status"])):
+        found[(corner, axis)] = int(value)
+    if len(found) < len(WARP_SLOTS):
+        return None
+    return tuple(found[slot] for slot in WARP_SLOTS)
+
+
+def warp_apply(tool, permille):
+    """One corner and one axis per call, as KS4 specifies the verb."""
+    for (corner, axis), value in zip(WARP_SLOTS, permille):
+        warp_call(tool, ["keystone", "set", corner, axis, str(int(value))])
+
+
+def inset_text(permille):
+    if permille is None:
+        return "no eight values in its status"
+    return "tl %d,%d  tr %d,%d  bl %d,%d  br %d,%d" % tuple(permille)
+
+
+# --- the loop -------------------------------------------------------------
+
+class Hysteresis(object):
+    """Apply when the tilt has moved by `degrees` and stayed there for `hold`
+    seconds.  The first reading of a run is applied at once: a projector that
+    waits a second before it corrects anything looks broken."""
+
+    def __init__(self, degrees, hold):
+        self.degrees, self.hold = degrees, hold
+        self.applied = None       # the (GsX, GsY) the warp currently carries
+        self.since = None         # when the reading first left the band
+
+    def update(self, angles, now):
+        if self.applied is None:
+            self.applied, self.since = angles, None
+            return True
+        moved = max(abs(angles[0] - self.applied[0]),
+                    abs(angles[1] - self.applied[1]))
+        if moved < self.degrees:
+            self.since = None
+            return False
+        if self.since is None:
+            self.since = now
+        if now - self.since < self.hold:
+            return False
+        self.applied, self.since = angles, None
+        return True
+
+
+def open_sensor(args, conf, rate=True):
+    """`rate` False leaves sampling_frequency alone, which is what a status
+    that only reports wants."""
+    return Sensor(Sensor.find(conf["iio_name"], args.device),
+                  conf["sampling_rate"] if rate else None)
+
+
+def reading(sensor, conf, reference, ini):
+    """One averaged sample through the whole AP2h chain."""
+    raw = sensor.sample(conf["average_samples"])
+    row = ak.auto_keystone(model_triple(raw, conf), reference=reference,
+                           zoom_scale=conf["zoom_scale"], ini=ini)
+    row["raw"] = raw
+    return row
+
+
+def no_reference_warning(args):
+    _stderr("warning: no %s -- the angles are absolute, and a correction "
+            "would be against a level pose this device has never been shown"
+            % args.reference)
+
+
+# --- the commands ---------------------------------------------------------
+
+def do_read(args, conf, ini):
+    sensor = open_sensor(args, conf)
+    reference = read_reference(args.reference, conf)
+    if reference is None and not args.quiet:
+        no_reference_warning(args)
+    row = reading(sensor, conf, reference or ak.LEVEL_REFERENCE, ini)
+    g_vector = tuple(v / sensor.counts_per_g for v in row["raw"])
+    print("ok read  raw %7.1f %7.1f %7.1f  g %6.3f %6.3f %6.3f  pitch %7.3f  "
+          "roll %7.3f" % (row["raw"] + g_vector
+                          + (row["gs_y"], row["gs_x"])))
+    return 0
+
+
+def do_reference(args, conf, ini):
+    raw = open_sensor(args, conf).sample(conf["average_samples"])
+    try:
+        counts = ak.reference_from_iio(model_triple(raw, conf))
+    except ValueError:
+        raise Error("this pose is more than 45 degrees off flat (raw %.0f "
+                    "%.0f %.0f) -- checkGsensorDataOk refuses it as a "
+                    "reference.  Stand the projector level and try again."
+                    % raw, EXIT_NOT_LEVEL)
+    write_reference(args.reference, counts, raw, conf)
+    print("ok reference  raw %.1f %.1f %.1f  counts %d %d %d  -> %s"
+          % (raw + tuple(counts) + (args.reference,)))
+    return 0
+
+
+def do_once(args, conf, ini):
+    sensor = open_sensor(args, conf)
+    reference = read_reference(args.reference, conf)
+    if reference is None and not args.quiet:
+        no_reference_warning(args)
+    row = reading(sensor, conf, reference or ak.LEVEL_REFERENCE, ini)
+    print("ok once  pitch %.3f  roll %.3f  %s"
+          % (row["gs_y"], row["gs_x"], inset_text(row["permille"])))
+    if args.apply:
+        warp_apply(args.warp, row["permille"])
+        print("ok applied through %s" % args.warp)
+    return 0
+
+
+def do_run(args, conf, ini):
+    sensor = open_sensor(args, conf)
+    reference = read_reference(args.reference, conf)
+    if reference is None:
+        raise Error("%s is missing -- `h713-keystone reference` with the "
+                    "projector level first; without it every tilt would be "
+                    "measured against a pose this device has never had"
+                    % args.reference)
+    saved = None if args.dry_run else warp_read_set(args.warp)
+    if saved is None and not args.dry_run and not args.quiet:
+        _stderr("warning: %s ctl status did not report eight values -- there "
+                "is nothing to put back at the end" % args.warp)
+    stopped = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: stopped.append(True))
+    gate = Hysteresis(conf["hysteresis_degrees"], conf["hold_seconds"])
+    try:
+        while not stopped:
+            row = reading(sensor, conf, reference, ini)
+            if gate.update((row["gs_x"], row["gs_y"]), time.monotonic()):
+                if not args.dry_run:
+                    warp_apply(args.warp, row["permille"])
+                print("ok apply  pitch %.3f  roll %.3f  %s%s"
+                      % (row["gs_y"], row["gs_x"], inset_text(row["permille"]),
+                         "  (dry run)" if args.dry_run else ""))
+            deadline = time.monotonic() + POLL_S
+            while not stopped and time.monotonic() < deadline:
+                time.sleep(0.02)
+    finally:
+        if saved is not None:
+            try:
+                warp_apply(args.warp, saved)
+                print("ok stopped  the manual set %s is back"
+                      % inset_text(saved))
+            except Error as exc:
+                _stderr("the manual set could not be put back: %s" % exc)
+    return 130 if stopped else 0
+
+
+def _sensor_text(sensor, conf):
+    return "%s \"%s\", %g Hz, %d samples averaged, %.0f counts per g" % (
+        sensor.path, sensor.name, sensor.rate, conf["average_samples"],
+        sensor.counts_per_g)
+
+
+def _reference_text(path, counts):
+    if not counts:
+        return "none -- run `h713-keystone reference`"
+    return "%s: counts %d %d %d" % ((path,) + counts)
+
+
+def do_status(args, conf, ini):
+    """A status is a report, not a probe: what cannot be read is said and not
+    raised, and sampling_frequency is left as the device has it."""
+    print("ok status")
+    print("config          %s%s"
+          % (conf["_path"], "" if _read(conf["_path"]) is not None
+             else " (missing, the defaults apply)"))
+    print("                "
+          + ", ".join("%s = %s" % (name, conf["_text"][name])
+                      for name, _, _ in DEFAULTS))
+    print("optics          throw ratio %.4f (%s), zoom_scale %d -> target "
+          "width %d" % (implied_ratio(ini),
+                        "camprjspe.ini" if conf["throw_ratio"] is None
+                        else "measured, from the configuration",
+                        conf["zoom_scale"], ZOOM_WIDTH[conf["zoom_scale"]]))
+    print("loop            %.2f degrees held for %.2f s, poll %.2f s"
+          % (conf["hysteresis_degrees"], conf["hold_seconds"], POLL_S))
+    for label, call in (
+            ("sensor", lambda: _sensor_text(open_sensor(args, conf, False),
+                                            conf)),
+            ("reference", lambda: _reference_text(
+                args.reference, read_reference(args.reference, conf))),
+            ("warp", lambda: inset_text(warp_read_set(args.warp)))):
+        try:
+            print("%-16s%s" % (label, call()))
+        except Error as exc:
+            print("%-16s%s" % (label, exc))
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="h713-keystone",
+        description="the projector's auto keystone: accelerometer, the "
+                    "vendor's geometry, h713-warp.",
+        epilog="Measure the level pose once with `reference`, look at it with "
+               "`read` and `once`, let `run` hold it.")
+    parser.add_argument("-C", "--config", default=CONF_PATH, metavar="PATH")
+    parser.add_argument("--reference", default=REF_PATH, metavar="PATH")
+    parser.add_argument("--device", metavar="PATH",
+                        help="this IIO device instead of the one whose name "
+                             "is iio_name")
+    parser.add_argument("--warp", default=WARP_TOOL, metavar="PATH")
+    parser.add_argument("-q", "--quiet", action="store_true",
+                        help="no warnings, only the ok and error lines")
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("read", help="one reading: raw, g vector, pitch and roll")
+    sub.add_parser("reference", help="store this pose as the level reference")
+    once = sub.add_parser("once", help="the eight insets for the current tilt")
+    once.add_argument("--apply", action="store_true",
+                      help="push them through `h713-warp ctl keystone set`")
+    run = sub.add_parser("run", help="the loop, until SIGTERM")
+    run.add_argument("--dry-run", action="store_true",
+                     help="compute and log, never touch the warp")
+    sub.add_parser("status", help="configuration, sensor, reference, warp")
+    args = parser.parse_args(argv)
+    # getattr: under a test that captures stdout it is not a real stream.
+    getattr(sys.stdout, "reconfigure", lambda **_: None)(line_buffering=True)
+    conf = load_conf(args.config)
+    return {"read": do_read, "reference": do_reference, "once": do_once,
+            "run": do_run, "status": do_status}[args.command](
+                args, conf, optics(conf))
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Error as exc:
+        _stderr("h713-keystone: %s" % exc)
+        sys.exit(exc.code)
+    except PermissionError as exc:
+        _stderr("h713-keystone: %s\n/etc/h713 and the IIO node belong to root."
+                % exc)
+        sys.exit(EXIT_ERROR)
+    except KeyboardInterrupt:
+        sys.exit(130)

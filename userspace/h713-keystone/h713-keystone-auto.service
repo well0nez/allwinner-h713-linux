@@ -1,0 +1,12 @@
+[Unit]
+Description=H713 auto keystone (accelerometer tilt into h713-warp)
+After=h713-warp.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/h713-keystone run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
