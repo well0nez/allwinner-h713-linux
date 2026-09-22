@@ -23,7 +23,7 @@ doubled image. The only lever that works is making the firmware recompute.
    a null pointer and takes the ARM down with it - that cost three sessions to find.
 2. **Linux** binds `sun50i-h713-afbd`, which registers a KMS device (`card1`): one CRTC with `GAMMA_LUT`
    and `CTM`, one plane that scans out the HDMI capture ring, an `aspect` property for letter- and
-   pillarboxing, and a destination rectangle the firmware scales into (below).
+   pillarboxing, and the two window properties the zoom is made of (below).
 3. **`h713-tv`** puts the capture ring on the plane, and the framebuffer console back when the signal
    disappears.
 
@@ -40,41 +40,42 @@ compositor from taking `card1`.
 Gamma and white balance are ordinary CRTC properties, computed from the vendor picture tables by
 [`h713-pq`](../tools/h713-pq.md); they are not baked into the driver.
 
-## The window words: where the picture is put, and who scales it
+## The window words: one transform into the capture ring
 
-The plane's destination rectangle - the ordinary `CRTC_X`, `CRTC_Y`, `CRTC_W`, `CRTC_H` - is not programmed
-into any register here. It is written into **words 31..34 of the VidDec descriptor** the driver publishes,
-in the firmware's own coordinate space (below), and its window chain reads them as `m_dst_cfg` and
-recomputes capture, noise reduction, processing window, scaler and panel output from it. Words 27..30 next
-to it are `m_src_cfg` and stay the whole picture unless somebody says otherwise (below); the frame's own
-geometry lives in words 2..5, separately. Setting `CRTC_W` to 80 % of the
-panel is what the vendor's Android stack calls a digital zoom, and it reaches the same firmware code by the
-same numbers.
+The eight window words of the VidDec descriptor describe **one transform into the capture ring**, and
+nothing else in the chain does. Words 27..30 (`m_src_cfg`) are the part of the source the firmware reads,
+words 31..34 (`m_dst_cfg`) the part of the ring it writes the result into, both as fractions of the
+firmware's own coordinate space (below); the frame's own geometry lives in words 2..5, separately. The
+firmware **skips its scaler entirely while the source window is the whole frame**, which is why a
+destination window on its own does nothing. The plane always shows (part of) the ring and its
+`CRTC_X/Y/W/H` is the placement on the panel - it reaches no descriptor word. So there are exactly two
+zooms:
 
-**The two windows, and what each one moves.** Words 27..30 (`m_src_cfg`) are the window the firmware reads
-out of its capture; words 31..34 (`m_dst_cfg`) are the window it puts the result into. The vendor pins the
-first to the whole space and writes its video layer's display frame into the second, and its own
-"zoom 80 %" is the other way round: a shrunk capture window with the display window left whole, which the
-scaler then blows back up to the full panel (`AP3` section 2.2). So a smaller source window is a zoom
-**in** and a smaller destination window a zoom **out**. Both can be driven without touching the plane at
-all - the AFBD module takes `src_window` and `dst_window` as `x,y,w,h` in panel pixels, empty means the
-whole picture and the whole panel, and a write republishes the record on the spot (kernel `0133e`). Every
-publication logs the eight words.
+- **in**: source window = the centre 1/f of the frame, destination absent, plane over the whole panel. The
+  firmware blows that window up into the whole ring.
+- **out**: source window = the frame less two pixels (any crop at all, to defeat the skip), destination
+  window = W x H at the **ring's origin**, and the plane crops that region out of the ring (`SRC 0,0 WxH`,
+  kernel `0133c`, which crops from the first byte and no other) and places it where it belongs
+  (`CRTC x,y WxH`). Outside the plane the panel shows the primary plane: console or black.
 
-**What was measured on 22.09.2026, and what it corrected.** With the destination window at 192,108
-1536x864 the DE picture scaler's window `0x05180034` went `0x07800438` -> `0x06000360` and the processing
-node `0x05140124/28` to 1536/864, while INCAP's active geometry `0x06940874` stayed 1920x1080 and its
-rowbyte `0x06940924` stayed `0x00780078`. So the firmware does re-run its window chain for these words.
-What it does **not** do is scale into the capture ring, which an earlier reading of that run assumed: with
-a window of 480,270 960x540 the wall carried the source's top-left quarter at 1:1, and after the test
-pattern was closed the live desktop's top-left corner at 1:1, so the ring goes on receiving the whole
-picture and the registers that followed belong to the display side of the chain. The other direction is
-closed too: with the plane's own rectangle at 192,108 1536x864 and the full ring as its source the wall was
-smeared, and stayed smeared after the DE window had been written back to 1920x1080 by hand - this
-composition block does not downscale a 1920x1080 NV16 ring. The plane may still be given a source rectangle
-smaller than its framebuffer (kernel `0133c`), but that is a crop of the ring, not a zoom. Whether the
-descriptor's windows alone put four fifths of the picture on a black panel is open; nothing on the wall has
-answered it yet.
+Both windows are plane properties - `src-window` and `dst-window`, a blob of `x, y, w, h` in **panel
+pixels**, absent meaning the whole thing and publishing the record of before word for word (kernel
+`0133f`). Every publication logs the eight words.
+
+**The measurement this rests on** (HY310, 1080p60, test pattern and camera, 22.09.2026, `dev21`
+"Q15 bench"): destination 192,108 1536x864 with a full source window - the DE picture scaler's window
+`0x05180034` followed to `0x06000360` and the processing node `0x05140124/28` to 1536/864, and the wall did
+not change at all (cell pitch 63 px, as at the baseline). Source 480,270 960x540 with no destination - DE
+960x540, processing node still 1920/1080, and the centre quarter filled the panel at twice the cell pitch.
+Source 1918x1078 with destination 0,0 1536x864 and the plane cropping and placing it - the whole picture at
+four fifths, centred, with a black band where it ends. Source at exactly full, or at 1918x1078 with a
+destination but the plane left over the whole panel: the baseline again. INCAP's active geometry
+`0x06940874` and its rowbyte `0x06940924` never moved in any of it - the ring's layout is not what changes.
+
+**What the plane cannot do.** With the full ring as its source and a smaller rectangle as its destination
+the wall was smeared, and stayed smeared after the DE window had been written back to 1920x1080 by hand:
+this composition block does not downscale an NV16 ring. A zoom out is therefore a 1:1 crop placed on the
+panel, never a plane downscale, and the driver refuses a request that would need one.
 
 **The V4L2 format does not move with a window.** The ring geometry (`0136f`) comes from the rowbyte and
 INCAP active, and neither moves: the ring is still 1920x1080 with a 1920-byte pitch, which is what it really
@@ -108,7 +109,7 @@ change. What a window change is worth is decided on the wall, not in that regist
   for this use, marked "transitional" in the driver, and the reason the display path and the HDMI input
   are more coupled than they should be.
 - The picture geometry is whatever the firmware decides. We can ask for a different aspect handling and for
-  a destination window (above); we do not scale anything ourselves, and a window is a request the firmware
+  the two windows above; we do not scale anything ourselves, and a window is a request the firmware
   may answer late or not at all.
 - There is **no HDMI output** on this device. The imager is the only display.
 

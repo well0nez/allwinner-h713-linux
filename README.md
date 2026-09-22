@@ -79,7 +79,7 @@ Everything here is ours and documented; nothing needs a vendor daemon.
 
 | On the device | |
 |---|---|
-| [`h713-tv`](docs/tools/h713-tv.md) | the HDMI input as a service: picture on the wall, console back when the signal drops, one control channel for picture, volume, presets and aspect |
+| [`h713-tv`](docs/tools/h713-tv.md) | the HDMI input as a service: picture on the wall, console back when the signal drops, one control channel for picture, volume, presets, aspect and zoom |
 | [`h713-focus`](docs/tools/h713-focus.md) | move the focus motor by hand, with the range watcher read before and after every step |
 | [`h713-cam`](docs/tools/h713-cam.md) | the built-in camera: probe, controls, still image |
 | [`h713-wifi`](docs/tools/h713-wifi.md) | access point or station, from one file, `/etc/h713/wifi.env` |

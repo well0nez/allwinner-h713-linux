@@ -318,9 +318,10 @@ h713-tv ctl save [off]          save the nine controls, the preset, aspect and z
                                  `off` deletes the file. Only here is anything written, not on every `set`
 h713-tv ctl aspect [NAME]       how the source is fitted into the panel (auto proportional full 16:9 4:3
                                  zoom); without NAME it is shown. A change rebuilds the picture (~0.5 s console)
-h713-tv ctl zoom [PCT|x,y,w,h]  where on the panel the picture goes: a percentage centred (80), a rectangle
-                                 in panel pixels (192,108,1536,864) or `full`; without an argument it is
-                                 shown. A change rebuilds the picture, as aspect does
+h713-tv ctl zoom [off|in F|out P] the digital zoom: `in` enlarges the centre of the picture by a factor
+                                 1.0..4.0 (default 2), `out` shrinks the whole picture to P percent of the
+                                 panel, centred (1..100, default 80), `off` is the baseline; without an
+                                 argument it is shown. A change rebuilds the picture, as aspect does
 h713-tv ctl audio [on|off|auto] audio forced on / forced silent / following the picture (default); without a
                                  word it is shown
 h713-tv ctl volume [0..100]     volume of the codec (`DAC Playback Volume`, acts on HDMI and on the device's
@@ -360,19 +361,20 @@ measured 08.09.), `full` stretches, `16:9`/`4:3` force, `zoom` crops. The word i
 publication; a change on a running picture takes the plane down briefly and back up
 ([S15](../../doku/nachtlog/S15-re-aspect-regel.md)).
 
-**`zoom`** is descriptor words 31..34 through the plane's ordinary `CRTC_X/Y/W/H` (kernel 0133b): the window
-the firmware's window chain fits the picture into. Nothing here scales - the four numbers go into the record
-and the firmware recomputes its capture, processing window and scaler from them, which is what the stock
-hardware composer does for its own video layer with the same arithmetic (`zoom 80` on 1920x1080 is the
-window 192,108 1536x864). What the firmware scales, it scales **into the capture ring**: measured on
-22.09.2026 the picture became 1536x864 while the ring stayed laid out for 1920x1080 (rowbyte `0x00780078`),
-so the fresh picture sits in the ring's top left corner and this program hands the plane exactly that part
-of it (`SRC_W`/`SRC_H`, kernel 0133c) in the window it was asked for. The firmware sizes, we place; `ctl
-status` shows both. A percentage is centred, a rectangle is taken as given and must lie inside the panel
-with at least 16 pixels on each axis; a width that is not a multiple of 16 loses up to 15 columns of the
-picture rather than showing a strip of the previous frame. Read with the next publication, like `aspect`.
-Whether the firmware follows is decided on the wall: the scaler's own register `0x05180034` shows what it
-last did, not what was last asked, and it has been found stale.
+**`zoom`** is the descriptor's two windows through the plane properties `src-window` and `dst-window`
+(kernel 0133f, `x,y,w,h` in panel pixels): the part of the source the firmware reads and the part of the
+capture ring it writes its result into. Nothing here scales. `in F` sends the centre 1/F of the frame as
+the source window and leaves the plane over the whole panel - the firmware blows that window up into the
+ring (measured 22.09.2026: at F = 2 the centre quarter filled the panel and the test pattern's cell pitch
+doubled). `out P` sends a source window of the frame less two pixels - a source window the firmware calls
+*full* makes it skip its scaler, and then nothing moves - plus a destination window of P percent at the
+ring's origin, and this program crops exactly that region out of the ring (`SRC 0,0 WxH`, kernel 0133c,
+which crops from the first byte only) and places it centred (measured: the whole picture at four fifths,
+centred, black band at the end). `off` sends neither. A rectangle as an argument is refused: a window
+somewhere else in the ring would need `SRC_X/SRC_Y`. Sizes are rounded down to a whole AFBD block and an
+even line count. The firmware sizes, we place; `ctl status` shows both windows and the placement. Read with
+the next publication, like `aspect`. Whether the firmware follows is decided on the wall: the scaler's own
+register `0x05180034` shows what it last did, not what was last asked, and it has been found stale.
 
 **`replug`** is the HPD cycle out of S12 C: the source is to believe that the cable was pulled and plugged
 back in - for a mode that does not lock, or a source asleep on a link it believes to be up. The way is the
@@ -587,7 +589,7 @@ brightness  = 50
 …
 sharpness   = 30
 aspect      = proportional
-zoom        = 0,0,1920,1080
+zoom        = out 80
 ```
 
 Written **only by `h713-tv ctl save`**; `ctl save off` deletes the file. Not on every slider movement:
