@@ -3,13 +3,14 @@
  * h713-gpu-probe -- the GPU foundation tool for keystone stages S1 and S2:
  * GBM + EGL + GLES2 on the render node, no window system, no display.
  *
- *   h713-gpu-probe [-d /dev/dri/renderD128] info | render N | load SECONDS
+ *   h713-gpu-probe [-d /dev/dri/renderD128] info | render N | load SECONDS [TAPS]
  *
  * info: EGL/GL strings and "present"/"MISSING" for the four extensions the warp
  * needs (AP2d M6); exit 0 only with all four. render: a 256x256 test texture,
  * nearest sampled on one full-viewport quad into a 1920x1080 RGBA8 FBO for N
  * frames; every 100th frame is read back and its CRC32 checked against the CPU
- * rule stated at expect_crc(). load: 64 dependent texture fetches per fragment
+ * rule stated at expect_crc(). load: TAPS (default 2, max 64) dependent, cache-hostile texture fetches per
+ * fragment - 64 took over 500 ms a frame on the G31 and ran into panfrost's job timeout
  * for SECONDS; every 100th frame's CRC32 against the first sample's. Both modes
  * glFinish per frame (one frame in flight, as the warp runs), so the fps carry
  * the submit gap. Exit 0 only if every sample matched. CRC32 is zlib's.
@@ -43,11 +44,12 @@ static const char *FS_RENDER =
 	"precision highp float; varying vec2 v_uv; uniform sampler2D u_tex;\n"
 	"void main() { gl_FragColor = texture2D(u_tex, v_uv); }\n";
 static const char *FS_LOAD =
-	"precision highp float; varying vec2 v_uv; uniform sampler2D u_tex;\n"
+	"precision highp float; varying vec2 v_uv; uniform sampler2D u_tex; uniform int u_taps;\n"
 	"void main() { vec2 p = v_uv; vec4 acc = vec4(0.0);\n"
-	"  for (int i = 0; i < 64; i++) { vec4 t = texture2D(u_tex, p);\n"
+	"  for (int i = 0; i < 64; i++) { if (i >= u_taps) break; vec4 t = texture2D(u_tex, p);\n"
 	"    acc += t; p = fract(p + t.xy * 0.37 + vec2(0.013, 0.029)); }\n"
-	"  gl_FragColor = acc / 64.0; }\n";
+	"  gl_FragColor = acc / float(u_taps); }\n";
+static int taps = 2;
 static const char *NEED[] = { "EGL_EXT_image_dma_buf_import", "EGL_KHR_surfaceless_context",
 			      "EGL_ANDROID_native_fence_sync", "GL_OES_EGL_image" };
 static const char *SYS[][2] = {
@@ -192,6 +194,8 @@ static int scene(const char *fs)
 	glViewport(0, 0, W, H);
 	glUseProgram(prog);
 	glUniform1i(glGetUniformLocation(prog, "u_tex"), 0);
+	if (glGetUniformLocation(prog, "u_taps") >= 0)
+		glUniform1i(glGetUniformLocation(prog, "u_taps"), taps);
 	for (i = 0; i < 2; i++) {
 		glVertexAttribPointer(i, 2, GL_FLOAT, GL_FALSE, 16, quad + 2 * i);
 		glEnableVertexAttribArray(i);
@@ -279,9 +283,11 @@ int main(int argc, char **argv)
 		dev = argv[2]; argv += 2; argc -= 2;
 	}
 	frames = argc == 3 && !strcmp(argv[1], "render") ? atol(argv[2]) : 0;
-	seconds = argc == 3 && !strcmp(argv[1], "load") ? atof(argv[2]) : 0;
+	seconds = argc >= 3 && !strcmp(argv[1], "load") ? atof(argv[2]) : 0;
+	if (seconds > 0 && argc == 4)
+		taps = atoi(argv[3]) < 1 ? 1 : atoi(argv[3]) > 64 ? 64 : atoi(argv[3]);
 	if (frames <= 0 && seconds <= 0 && (argc != 2 || strcmp(argv[1], "info"))) {
-		fputs("h713-gpu-probe [-d /dev/dri/renderD128] info | render N | load SECONDS\n",
+		fputs("h713-gpu-probe [-d /dev/dri/renderD128] info | render N | load SECONDS [TAPS]\n",
 		      stderr);
 		return 2;
 	}

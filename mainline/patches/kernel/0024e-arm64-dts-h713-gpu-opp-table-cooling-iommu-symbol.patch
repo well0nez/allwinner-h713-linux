@@ -1,0 +1,133 @@
+arm64: dts: h713: GPU operating points, a cooling map for the GPU, and the IOMMU symbol
+
+Measured on the HY310 with the v0.9-beta image and the panfrost-only mesa of
+keystone S0 (userspace/h713-gpu-probe, 22.09.2026): Panfrost probes and renders
+(Mali-G31, OpenGL ES 3.1 Mesa 25.0.7, a textured 1080p quad at 236 fps with
+0 CRC mismatches, gpu-thermal 58 C), but dmesg says
+
+    panfrost 1800000.gpu: clock rate = 864000000
+
+and /sys/class/devfreq is empty. The stock DTB's gpu-opp-table ends at
+700 MHz; our gpu node had no operating-points-v2, so panfrost_devfreq_init
+left with -ENODEV and the core ran at the PLL's boot rate, fixed, 23 %
+above the vendor's ceiling, with no cooling device behind the gpu-thermal
+zone (which had no trips either).
+
+1. opp-table-gpu with 288, 432, 600 and 696 MHz - the points PLL-GPU makes
+   with M = 1 - at the fixed rail's 960000 uV (vdd_sys is a fixed
+   regulator; a matching voltage makes the OPP regulator call a no-op).
+   The gpu node references it; Panfrost brings devfreq, the simple_ondemand
+   governor and the devfreq cooling device with it.
+2. gpu-thermal gets a passive trip at 85 C mapped onto the GPU and a
+   critical trip at 105 C, like cpu-thermal; polling-delay-passive 250 ms.
+3. The IOMMU comment no longer warns about an ARM32 problem: the node is
+   disabled, nothing on this board references it, the GPU has its own MMU,
+   and the board defconfig drops CONFIG_SUN50I_IOMMU together with
+   CONFIG_DRM_LIMA (Utgard only, binds nothing on a Bifrost G31) and adds
+   CONFIG_DEVFREQ_THERMAL for the cooling device (patches/kernel/board/
+   hy200_qz713df_a1_defconfig, changed alongside this patch).
+
+Plan: umbau/plan/keystone/PLAN.md, stage S2.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-22 18:36:27.310124738 +0200
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-22 18:36:27.323146272 +0200
+@@ -359,6 +359,39 @@
+ 	};
+ 
+ 	/* Thermal zones for CPU thermal management */
++	/*
++	 * GPU operating points. The stock DTB's gpu-opp-table tops out at
++	 * 700 MHz; without a table of our own Panfrost ran the core at the
++	 * PLL's boot rate of 864 MHz, fixed - panfrost_devfreq_init returns
++	 * early with -ENODEV, so there was no devfreq and no cooling device.
++	 * These four points are what PLL-GPU makes with M = 1 (24 MHz x N):
++	 * 288, 432, 600, 696 MHz. The rail is the fixed 0.96 V vdd_sys, so
++	 * every point names that voltage and the regulator call is a no-op.
++	 * The exact stock points (150 .. 348, 600, 700 MHz) would need the
++	 * gpu clock's M divider modelled in the CCU - later, if the
++	 * measurements ask for it.
++	 */
++	gpu_opp_table: opp-table-gpu {
++		compatible = "operating-points-v2";
++
++		opp-288000000 {
++			opp-hz = /bits/ 64 <288000000>;
++			opp-microvolt = <960000>;
++		};
++		opp-432000000 {
++			opp-hz = /bits/ 64 <432000000>;
++			opp-microvolt = <960000>;
++		};
++		opp-600000000 {
++			opp-hz = /bits/ 64 <600000000>;
++			opp-microvolt = <960000>;
++		};
++		opp-696000000 {
++			opp-hz = /bits/ 64 <696000000>;
++			opp-microvolt = <960000>;
++		};
++	};
++
+ 	thermal-zones {
+ 		cpu-thermal {
+ 			polling-delay-passive = <250>;
+@@ -396,9 +429,29 @@
+ 		};
+ 
+ 		gpu-thermal {
+-			polling-delay-passive = <0>;
++			polling-delay-passive = <250>;
+ 			polling-delay = <1000>;
+ 			thermal-sensors = <&ths 1>;
++
++			trips {
++				gpu_warm: gpu-warm {
++					temperature = <85000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++				gpu_crit: gpu-crit {
++					temperature = <105000>;
++					hysteresis = <5000>;
++					type = "critical";
++				};
++			};
++
++			cooling-maps {
++				map0 {
++					trip = <&gpu_warm>;
++					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 	};
+ 
+@@ -1201,12 +1254,14 @@
+ 		};
+ 
+ 		/*
+-		 * IOMMU — disabled and NOT used by Panfrost.
+-		 * Panfrost uses the Mali GPU's internal MMU via io-pgtable.
+-		 * Do NOT enable CONFIG_SUN50I_IOMMU — selects ARM_DMA_USE_IOMMU
+-		 * on ARM32, which corrupts of_node pointers and crashes all
+-		 * module probes. This is a confirmed, tested showstopper.
+-		 * Address 0x02010000 is the H713 IOMMU MMIO base (unverified).
++		 * IOMMU - disabled, and not used by Panfrost, which maps its
++		 * buffers through the Mali's own MMU (io-pgtable LPAE). The
++		 * stock kernel puts the codecs and the TV capture/display path
++		 * behind its IOMMU, never the GPU. CONFIG_SUN50I_IOMMU is off
++		 * since 0024e: with this node disabled the symbol was dead code
++		 * (the older warning about ARM_DMA_USE_IOMMU was an ARM32 one
++		 * and does not apply on arm64). Address 0x02010000 is the H713
++		 * IOMMU MMIO base (unverified).
+ 		 */
+ 		/*
+ 		 * DISABLED 2026-08-09 -- this node is inert on H713 and was
+@@ -1411,6 +1466,7 @@
+ 			clocks = <&ccu CLK_GPU>, <&ccu CLK_BUS_GPU>;
+ 			clock-names = "core", "bus";
+ 			resets = <&ccu RST_BUS_GPU>;
++			operating-points-v2 = <&gpu_opp_table>;
+ 			mali-supply = <&reg_vdd_sys>;
+ 			/*
+ 			 * Power domain index 0 = GPU, per the stock DTB's pd_gpu@0.

@@ -73,7 +73,7 @@ UBOOT_PROBE_DEFCONFIG=h713_probe_defconfig            # FEL -> h713_probe, for u
 KEYRING_DEB_URL="https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
 KEYRING_DEB_SHA256=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
 KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byte-identical to the .gpg used so far (12.09.)
-SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev
+SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev,zlib1g-dev
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 

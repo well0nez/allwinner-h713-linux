@@ -64,6 +64,10 @@
 #    node gets all three interrupt lines in the stock order, and the watchdog
 #    gets its own SPI 53 back instead of the msgbox's 46)
 0024d-arm64-dts-h713-msgbox-three-lines-watchdog-spi-53.patch
+#   (keystone S2, well0nez -- GPU operating points 288..696 MHz with devfreq and a cooling
+#    map, the IOMMU comment; the board defconfig drops DRM_LIMA and SUN50I_IOMMU and adds
+#    DEVFREQ_THERMAL alongside)
+0024e-arm64-dts-h713-gpu-opp-table-cooling-iommu-symbol.patch
 0025-clk-sunxi-ng-h713-register-cpu-clock-notifiers.patch
 0026-arm64-dts-h713-add-cpu-opp-table-for-cpufreq.patch
 0027-clk-sunxi-ng-d1-r-add-r-pwm-gate-and-reset.patch
