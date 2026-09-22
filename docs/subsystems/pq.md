@@ -96,6 +96,12 @@ curve identical on all three channels - ours - discards it, and KMS clearing `GA
 ramp is a visible colour change there and not on a HY310 (AP3r 1.4, AP3t D4). `h713-pq gamma --source tse`
 produces the vendor's curve instead; it is off by default until a device test says otherwise.
 
+That device test has now been run on the HY310 and it says nothing either way: the board's own TSE
+"normal" bank went on the wall against our computed 2.2 curve, **no visible difference** (22.09.2026,
+`umbau/test-20260915/dev20-20260922.md`; the swap recipe is in the tool doc). Expected there - all
+three end points are 4092, so only the shape differs - and no evidence for the default. The board that
+would show it is the HY300 Pro, whose end points are not equal; until one is on a wall, tse stays off.
+
 `display.md` covers how that LUT and the CTM matrix reach the CRTC as ordinary KMS properties; a
 white-balance gain lands on the CTM diagonal, but the KMS property has no offset term - harmless here only
 because every offset in the vendor data is zero. Kernel patch `0095` is confirmed register for register
