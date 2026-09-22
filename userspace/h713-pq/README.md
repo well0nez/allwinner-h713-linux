@@ -28,7 +28,16 @@ Data model and derivation: [`doku/81-pq-datenmodell.md`](../../doku/81-pq-datenm
 ./h713-pq gamma 2.2 --lut out.bin                # DE2 LUT from a gamma exponent
 ./h713-pq gamma 2.2 --channel all --lut rgb.bin  # R, G and B bank in a row
 ./h713-pq show HDMI1 standard --json --lut g.bin # machine readable, for h713-tv (see below)
+./h713-pq curves 60                              # OSD value -> register, out of the ini
+./h713-pq curves 60 --source tse                 # ... and out of pq_custom.TSE, with registers
+./h713-pq gamma --from-tse normal --channel all --lut rgb.bin   # the board's OWN curve
 ```
+
+`--source tse` and `--from-tse` read the vendor's firmware database instead of the ini. On a device the
+files are at `/boot/mips` (that is where `h713-extract` puts `boot/mips/*` and the installer writes it,
+`installer/tests/test_install_readback.py`); elsewhere give `--tse FILE-OR-DIRECTORY` or set
+`$H713_TSE_DIR`. `--project 0x0034` picks another board's `ProjectID_0x00NN.TSE` inside a directory; the
+default `0x0030` is the HY310's.
 
 `--data DIRECTORY` sets the tvconfig directory. Without it the search goes, in order:
 `$H713_TVCONFIG`, `/etc/h713/tvconfig`, then `re/vendor/HY310/extracted/vendor_a/etc/tvconfig` in the work tree.
@@ -101,6 +110,14 @@ Every file is **only read and never copied** - vendor binary data stay under `re
 | `pqcontrol_config_setting.xml` | `<transform name="gamma">` - gamma index 0..4 -> exponent 1.8/2.0/2.1/2.2/2.4; default values |
 | `pqcontrol_custom_setting.xml` | the values last set on stock, the active source and mode per input |
 | `portmap.cfg` | port - source ID - name (HDMI1=1 ... ATV=6) |
+| `ProjectID_0x00NN.TSE` | the board's nine measured gamma curves, 3 x 1024 samples of 12 bit each - only with `--source tse` |
+| `pq_custom.TSE` | group `UI_Feature`: the OSD-to-register curve of each picture parameter, with its register and bit field - only with `--source tse` |
+
+Both TSE files are read through `tools/tse_dump.py`, the project's one TFD parser; `h713_pq/tse.py` only
+selects and hands over. `tvpq.db`'s `tvin` column is `TvSourceType` (0 HDMI, 1 CVBS, 2 ATV, 3 DTV,
+4 VIDEODEC, 5 VGA) and the database is the **factory-reset** source, not a second live one - the live one
+is `pq_picturemode.ini`. The picture mode `custom` is not a row of it either but a node per source in
+`pqcontrol_custom_setting.xml` (`custom_hdmi1`, `custom_cvbs`, ...). All three: AP3d sections 2 and 3.
 
 Not evaluated, because they are not part of the PQ chain: `pq_overscan_config.ini` (geometry/overscan),
 `atsc_system.xml`, `dvb_system.xml`, `tv_scan_list.xml` (tuner/demodulator, channel search),
@@ -117,6 +134,34 @@ input x picture mode                    pq_picturemode.ini  (names), tvpq.db (cr
 
 The **factory curve** from `pq_factory_extern.ini` deliberately no longer stands in this chain. It stays in
 the output as a vendor datum, its consumer is open - see below.
+
+## Where the gamma curve comes from
+
+`h713-pq` computes a synthetic power curve, `lround(pow(i/32, exponent) * 4095)` over 33 points, the same
+for all three channels. **The firmware does not do that.** It unpacks a *measured* curve per colour
+temperature out of the board's own `ProjectID_0x00NN.TSE` and lays one exponent on top of it, per channel,
+keeping each channel's end point:
+
+```
+g = (dword_4A50[index] / 100) / 2.2          # 180, 200, 210, 220, 240 -> the XML levels / 2.2
+out[c][x] = (unsigned)(pow(in[c][x] / end[c], g) * end[c])
+```
+
+On the HY310 all three end points are 4092, so the difference is a curve shape. On the HY300 Pro they are
+4087 / 3863 / 3459 in the warm state and different again in the others: that board bakes its **white
+balance into the gamma LUT**, and a curve identical on all three channels throws it away. That is the most
+concrete lead so far for the owner's dim picture (AP3r 1.4, AP3p 1.7, AP3t 2.5).
+
+`--source tse` is therefore offered and **off by default**: it is a behaviour change nobody has seen on a
+projector yet, and the synthetic curve is what every release so far shipped. It stays off until a device
+test says otherwise. What is checked without a device: the transform reproduces the raw TSE curve at the
+neutral level 2.2 over all 414 gamma banks of both boards, off by at most the one count the vendor's own
+cast loses (AP3t 2.4).
+
+Two more facts that belong here. Nothing programs the LUT before Android does - the vendor firmware's own
+gamma path is dead code (AP3r 1.3) - and Android programs nothing until both a gamma factor and a colour
+temperature have arrived (AP3t 2.1). So at first picture the vendor shows the raw TSE curve of the state
+`UI_ColourTemp_Normal`, which is slot 0 on both boards: `./h713-pq gamma --from-tse normal`.
 
 ## What is proven and what is not
 
@@ -207,7 +252,7 @@ very small reader.
 ## Tests
 
 ```bash
-python3 tests/test_h713_pq.py            # 45 tests
+python3 tests/test_h713_pq.py            # 64 tests
 ```
 
 The tests read the **real** vendor files at run time and skip themselves cleanly when the tvconfig directory
