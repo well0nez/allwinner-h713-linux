@@ -1,0 +1,154 @@
+drm: h713-afbd: the ring's source rectangle is what the plane reads
+
+The window of 0133b turned out to be a window in the RING, not on the panel.
+Measured on the HY310 with the debug kernel (dev20, 22.09.2026, 1080p60
+source): at `h713-tv ctl zoom 80` the DE picture scaler's window 0x05180034
+went 0x07800438 -> 0x06000360 and the Proc node 0x05140124/0x05140128 to
+1536/864, while INCAP's active geometry 0x06940874 stayed 1920x1080 and its
+rowbyte 0x06940924 stayed 0x00780078, 1920 bytes a line. So the firmware took
+words 31..34, re-ran its window chain and scaled its picture down to 1536x864
+- and wrote it into a ring it did not re-lay-out. The fresh picture lies in the
+top left corner of a 1920-byte-pitch ring and the rest of that ring is the last
+frame that filled it. The plane went on reading all of it, so the wall showed a
+shrunken picture with a band of stale pixels: "distorted", correctly.
+
+The ring's layout stands still because the capture node is committed on its
+own. The firmware's window manager walks five nodes (Cap, NR, DETN, Proc,
+Panel) and commits each only if its own bypass byte is clear; T1 measured the
+other direction of the same thing, a Cap node written and a Proc node skipped
+(AP3c section 5, the T1 4b case). Here Proc and the scaler moved and Cap did
+not, which is exactly the state the registers show.
+
+What follows is one line of KMS: the part of the ring that carries a picture is
+the plane's source rectangle. In passthrough it may now be smaller than the
+framebuffer - starting at the ring's first byte, whole pixels, an even number
+of lines - and the geometry, block and crop registers are programmed from it
+while the stride stays the ring's. That is a crop, the one the AFBD's crop
+registers are for, and it costs no register this driver did not already write.
+
+Two things deliberately stay as they are. The record still carries the ring's
+geometry and not the crop: the firmware rebuilds its capture window chain from
+that record and derives what it scales to from the frame size and the window
+words together, so a cropped frame size would carry the window ratio twice and
+shrink the fresh area a second time. And the capture driver's ring geometry
+(0136f) is untouched: the rowbyte and INCAP active did not move, so V4L2 goes
+on reporting 1920x1080 with a 1920-byte pitch, which is what the ring really
+is. The window is not a property of the signal - it is what a client asked
+for, and the client that asked knows it.
+
+What the HY310 sees: nothing, until somebody zooms. A plane whose source
+rectangle is its whole framebuffer - which is what the check demanded until now
+and what h713-tv sends at zoom 100 - programs the same four registers with the
+same values and publishes the same record, word for word. Without a ring the
+source rectangle must still be the whole framebuffer; that rule only moved from
+the common block into the branch that owns it.
+
+Not measured: whether the firmware writes the scaled picture to the ring's base
+or at the window's own offset inside the ring. The registers that moved carry
+sizes only, and the capture writes from the buffer base every other time we
+have watched it, so the base is what this patch assumes. If the bench run shows
+the picture shifted instead of complete, the answer is SRC_X/SRC_Y in h713-tv
+- one line, no kernel change.
+
+Follow-up to 0133b (same file, the other half of the same window); needs
+nothing else.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -924,9 +924,10 @@
+  * programs it for the signal it detected, in the same UpdateWce that lays the
+  * ring out (doku/91 Punkt 2, step 6 of the stock chain). So in passthrough a
+  * source smaller than the panel is accepted and, as far as KMS is concerned,
+- * shown in the plane's destination rectangle -- src is the whole framebuffer,
+- * dst the whole CRTC unless somebody asks for a window -- and
+- * the plane programs source 0 for the framebuffer's size and nothing else.
++ * shown in the plane's destination rectangle -- dst the whole CRTC unless
++ * somebody asks for a window, src the whole ring unless the firmware scales
++ * into it -- and the plane programs source 0 for that source rectangle and
++ * nothing else.
+  * That the composition really follows is inferred from the stock chain and
+  * from INCAP following, not yet measured on the wall; the acceptance in
+  * doku/91 Punkt 2 is where that gets measured. A source larger than the panel
+@@ -992,8 +993,8 @@
+ 	    fb->width < H713_VIDEO_BLOCK ||
+ 	    fb->height < H713_VIDEO_BLOCK ||
+ 	    new_state->src_x || new_state->src_y ||
+-	    new_state->src_w != fb->width << 16 ||
+-	    new_state->src_h != fb->height << 16 ||
++	    new_state->src_w > fb->width << 16 ||
++	    new_state->src_h > fb->height << 16 ||
+ 	    new_state->crtc_x < 0 || new_state->crtc_y < 0 ||
+ 	    new_state->crtc_w < H713_WINDOW_MIN ||
+ 	    new_state->crtc_h < H713_WINDOW_MIN ||
+@@ -1020,11 +1021,27 @@
+ 			return -EOPNOTSUPP;
+ 		if (fb->pitches[0] != ALIGN(fb->width, H713_VIDEO_BLOCK))
+ 			return -EINVAL;
++		/*
++		 * The source rectangle is the part of the ring that carries a
++		 * picture, and it starts at the ring's first byte: the capture
++		 * writes from the buffer base with the pitch it was laid out
++		 * with. Whole pixels and an even number of lines, because the
++		 * chroma crop is half the height; a width that is not a whole
++		 * block truncates its last columns as a 1366-wide ring does
++		 * today (0131), which is the client's business.
++		 */
++		if ((new_state->src_w | new_state->src_h) & 0xffff ||
++		    (new_state->src_h >> 16) % 2 ||
++		    new_state->src_w < H713_VIDEO_BLOCK << 16 ||
++		    new_state->src_h < H713_VIDEO_BLOCK << 16)
++			return -EINVAL;
+ 		return 0;
+ 	}
+ 
+ 	if (fb->width != mode->hdisplay || fb->height != mode->vdisplay ||
+-	    fb->pitches[0] != fb->width)
++	    fb->pitches[0] != fb->width ||
++	    new_state->src_w != fb->width << 16 ||
++	    new_state->src_h != fb->height << 16)
+ 		return -EINVAL;
+ 
+ 	y = drm_fb_dma_get_gem_addr(fb, new_state, 0);
+@@ -1051,8 +1068,19 @@
+ 	new_state = drm_atomic_get_new_plane_state(state, plane);
+ 	s = to_h713_plane_state(new_state);
+ 	fb = new_state->fb;
+-	w = fb->width;
+-	hgt = fb->height;
++	/*
++	 * What this plane reads is the source rectangle, not the whole
++	 * framebuffer: the firmware scales its picture INTO the ring and
++	 * leaves the ring's layout alone (dev20, 22.09.2026), so a window
++	 * leaves the fresh picture in the ring's top left corner and the rest
++	 * of the ring standing at the last frame that filled it. The crop is
++	 * the geometry, block and crop registers below, with the stride left
++	 * at the ring's - which is what makes it a crop. Without a ring the
++	 * source rectangle is the whole framebuffer and these are fb->width
++	 * and fb->height as before.
++	 */
++	w = drm_rect_width(&new_state->src) >> 16;
++	hgt = drm_rect_height(&new_state->src) >> 16;
+ 	nv16 = fb->format->format == DRM_FORMAT_NV16;
+ 	ring = s->hdmi_ring;
+ 
+@@ -1071,7 +1099,16 @@
+ 		 */
+ 		if (nv16)
+ 			writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
+-		published = h713_afbd_publish_video_info(h, w, hgt,
++		/*
++		 * The record keeps the RING's geometry, not the crop: the
++		 * firmware rebuilds its capture chain from it
++		 * (ConvertFrameInfo2SignalInfo) and derives what it scales to
++		 * from the frame size and the window words together, so a
++		 * cropped frame size would carry the window ratio twice and
++		 * shrink the fresh area again.
++		 */
++		published = h713_afbd_publish_video_info(h, fb->width,
++							 fb->height,
+ 							 fb->pitches[0], ring,
+ 							 &new_state->dst,
+ 							 s->aspect);

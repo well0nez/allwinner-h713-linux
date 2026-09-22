@@ -215,6 +215,11 @@
 #    CRTC_X/Y/W/H; a plane that covers its CRTC publishes the same record as
 #    before, word for word. AP3c 4.2/5, AP3e 2.2/2.5)
 0133b-drm-h713-afbd-the-plane-s-destination-rectangle-is-the-firmware-s-window.patch
+#   (follow-up well0nez, Q10 -- the window of 0133b is a window in the RING:
+#    the firmware scales into it and leaves its layout alone (dev20,
+#    22.09.2026), so what the plane reads is the source rectangle and the
+#    record keeps the ring's own geometry)
+0133c-drm-h713-afbd-the-ring-s-source-rectangle-is-what-the-plane-reads.patch
 #
 # --- 7. HY310: HDMI-Audio -- Takte, Codec-I2S, MSP-DSP-Treiber -----------------
 #     doku/100, 101, nachtlog/S16. Abgenommen 08.09. (Lippensynchronitaet Marco).
