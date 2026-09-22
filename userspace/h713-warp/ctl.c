@@ -129,6 +129,8 @@ static void cmd_keystone(struct runtime *r, struct textbuf *t, const char *verb,
 	memcpy(before, r->conf.v, sizeof(before));
 	want = !strcmp(verb, "set") ? (int)x : r->conf.v[k] + (int)x;
 	got = warp_clamp_key(r->conf.v, k, want);
+	if (r->pattern == PATTERN_MASK)
+		r->mark_corner = k / 2;
 	text_add(t, "ok %s = %d%s\n", warp_key_name[k], got,
 		 got == want ? "" : " (clamped against the corner at the other end)");
 	if (memcmp(before, r->conf.v, sizeof(before))) {
@@ -140,7 +142,8 @@ static void cmd_keystone(struct runtime *r, struct textbuf *t, const char *verb,
 		text_add(t, "   note: %s\n", r->why);
 }
 
-static void cmd_test(struct runtime *r, struct textbuf *t, const char *what)
+static void cmd_test(struct runtime *r, struct textbuf *t, const char *what,
+		     const char *corner)
 {
 	int pattern;
 
@@ -150,9 +153,20 @@ static void cmd_test(struct runtime *r, struct textbuf *t, const char *what)
 		pattern = PATTERN_GRID;
 	else if (!strcasecmp(what, "border"))
 		pattern = PATTERN_BORDER;
+	else if (!strcasecmp(what, "mask"))
+		pattern = PATTERN_MASK;
 	else {
-		text_add(t, "error test knows grid, border and off, not \"%s\"\n", what);
+		text_add(t, "error test knows mask, grid, border and off, not \"%s\"\n", what);
 		return;
+	}
+	if (corner) {
+		int k = warp_key(corner, "x");
+
+		if (k < 0) {
+			text_add(t, "error test mask takes a corner tl tr bl br, not \"%s\"\n", corner);
+			return;
+		}
+		r->mark_corner = k / 2;
 	}
 	if (pattern != r->pattern) {
 		/* the pattern needs no capture and the capture no pattern: the
@@ -163,10 +177,15 @@ static void cmd_test(struct runtime *r, struct textbuf *t, const char *what)
 		r->pattern = pattern;
 		warp_apply(r);
 	}
-	text_add(t, "ok test %s%s\n",
-		 pattern == PATTERN_GRID ? "grid" :
-		 pattern == PATTERN_BORDER ? "border" : "off",
-		 r->state == WARP_ON ? "" : " -- nothing is drawn yet");
+	if (pattern == PATTERN_MASK)
+		text_add(t, "ok test mask%s%s%s\n", r->mark_corner >= 0 ? " " : "",
+			 r->mark_corner >= 0 ? warp_corner_name[r->mark_corner] : "",
+			 r->state == WARP_ON ? "" : " -- nothing is drawn yet");
+	else
+		text_add(t, "ok test %s%s\n",
+			 pattern == PATTERN_GRID ? "grid" :
+			 pattern == PATTERN_BORDER ? "border" : "off",
+			 r->state == WARP_ON ? "" : " -- nothing is drawn yet");
 	if (r->state != WARP_ON && r->why[0])
 		text_add(t, "   note: %s\n", r->why);
 }
@@ -185,6 +204,9 @@ static void cmd_help(struct textbuf *t)
 		 "                             wall; AXIS: x y. Every change is saved at once\n"
 		 "  zoom [PERCENT]             the screen zoom, 10..100 (100 = none): every corner\n"
 		 "                             pulled in by (100 - PERCENT) * 5 per-mille (S7)\n"
+		 "  test mask [CORNER]         the calibration picture of the manual keystone,\n"
+		 "                             CORNER tl tr bl br marked; keystone set/nudge marks\n"
+		 "                             the corner it touches while the mask is up\n"
 		 "  test grid|border|off       draw a pattern instead of the capture, to aim a\n"
 		 "                             corner with no source plugged in\n"
 		 "  help                       this list\n"
@@ -246,7 +268,7 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 				 z, (100 - z) * 5);
 		}
 	} else if (!strcmp(cmd, "test")) {
-		cmd_test(r, t, a1);
+		cmd_test(r, t, a1, a2);
 	} else if (!strcmp(cmd, "help")) {
 		cmd_help(t);
 	} else {

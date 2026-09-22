@@ -114,7 +114,7 @@ bool source_queue(struct source *s, int slot);
 bool source_geometry_changed(struct source *s);	/* drains the V4L2 events */
 
 /* ---------------- EGL/GLES on the render node (gl.c) ------------------- */
-enum warp_pattern { PATTERN_NONE, PATTERN_GRID, PATTERN_BORDER };
+enum warp_pattern { PATTERN_NONE, PATTERN_GRID, PATTERN_BORDER, PATTERN_MASK };
 
 int gl_open(const char *node, char *why, size_t n);
 void gl_close(void);
@@ -122,7 +122,7 @@ const char *gl_renderer(void);
 bool gl_targets(const struct peer *p, char *why, size_t n);
 bool gl_source(const struct source *s, char *why, size_t n);
 void gl_source_drop(void);
-bool gl_draw(int target, int slot, const float m[16], int pattern,
+bool gl_draw(int target, int slot, const float m[16], int pattern, int mark_corner,
 	     char *why, size_t n);
 int gl_fence(void);			/* an out-fence fd, or -1 */
 
@@ -145,6 +145,7 @@ struct runtime {
 	enum warp_state state;
 	bool on;			/* "ctl on"/"ctl off": run time only */
 	int pattern;			/* enum warp_pattern */
+	int mark_corner;		/* the mask's marked corner, 0..3 tl tr bl br, -1 none */
 	char why[WARP_WHY];		/* why it is not WARP_ON */
 	const char *render_node;
 	double m[16];			/* the matrix in use, column major */

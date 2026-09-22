@@ -186,7 +186,7 @@ bool warp_pump(struct runtime *r)
 	}
 	t0 = now_s();
 	target = (int)(r->frames % WARP_TARGETS);
-	if (!gl_draw(target, slot, r->mf, r->pattern, why, sizeof(why))) {
+	if (!gl_draw(target, slot, r->mf, r->pattern, r->mark_corner, why, sizeof(why))) {
 		if (r->pattern == PATTERN_NONE)
 			source_queue(&r->source, slot);
 		if (++r->fails >= FAILS_MAX) {
@@ -253,6 +253,7 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 		text_add(&t, " (NDC, y = -1 is the top of the panel)\n");
 	}
 	text_add(&t, "pattern         %s\n",
+		 r->pattern == PATTERN_MASK ? (r->mark_corner >= 0 ? "mask (a corner marked)" : "mask") :
 		 r->pattern == PATTERN_GRID ? "grid" :
 		 r->pattern == PATTERN_BORDER ? "border" : "none (the capture)");
 	if (r->source.width)

@@ -48,15 +48,40 @@ const char *const gl_fragment_shader =
 	"  gl_FragColor = vec4(y + 1.7927411 * c.y, y - 0.2132486 * c.x - 0.5329093 * c.y,\n"
 	"                      y + 2.1124018 * c.x, 1.0); }\n";
 
+/* grid and border as before; the MASK is the calibration picture of the
+ * manual keystone, drawn in our own style after the vendor's: a grey field, a
+ * white rounded frame, a large circle with a crosshair and a dark centre dot,
+ * and the corner being edited marked with a ring. Coordinates are in units of
+ * the panel height (u_aspect = width / height), so circles are round. */
 const char *const gl_pattern_shader =
-	"precision highp float; varying vec2 v_uv; uniform float u_grid;\n"
+	"precision highp float; varying vec2 v_uv;\n"
+	"uniform float u_grid, u_mask, u_aspect; uniform int u_corner;\n"
+	"float ring(vec2 p, vec2 c, float r, float w) { return 1.0 - step(w, abs(length(p - c) - r)); }\n"
 	"void main() {\n"
 	"  vec2 e = min(v_uv, 1.0 - v_uv);\n"
-	"  float border = 1.0 - step(0.004, min(e.x, e.y));\n"
-	"  vec2 g = abs(fract(v_uv * vec2(16.0, 9.0)) - 0.5);\n"
-	"  float grid = u_grid * step(0.47, max(g.x, g.y));\n"
-	"  float mark = 1.0 - step(0.06, max(e.x, e.y));\n"
-	"  gl_FragColor = vec4(vec3(max(border, max(grid, mark * 0.5))), 1.0); }\n";
+	"  if (u_mask < 0.5) {\n"
+	"    float border = 1.0 - step(0.004, min(e.x, e.y));\n"
+	"    vec2 g = abs(fract(v_uv * vec2(16.0, 9.0)) - 0.5);\n"
+	"    float grid = u_grid * step(0.47, max(g.x, g.y));\n"
+	"    float mark = 1.0 - step(0.06, max(e.x, e.y));\n"
+	"    gl_FragColor = vec4(vec3(max(border, max(grid, mark * 0.5))), 1.0); return; }\n"
+	"  vec2 p = vec2(v_uv.x * u_aspect, v_uv.y);\n"
+	"  vec2 c = vec2(0.5 * u_aspect, 0.5);\n"
+	"  vec2 ep = vec2(min(p.x, u_aspect - p.x), min(p.y, 1.0 - p.y));\n"
+	"  float col = 0.5;\n"
+	"  float frame = 1.0 - step(0.004, abs(min(ep.x, ep.y) - 0.06));\n"
+	"  float cross = max(1.0 - step(0.0015, abs(p.x - c.x)), 1.0 - step(0.0015, abs(p.y - c.y)));\n"
+	"  cross *= step(0.06, min(ep.x, ep.y));\n"
+	"  float circle = ring(p, c, 0.42, 0.003);\n"
+	"  float dot = 1.0 - step(0.13, length(p - c));\n"
+	"  col = mix(col, 0.85, max(frame, max(cross, circle)));\n"
+	"  col = mix(col, 0.25, dot);\n"
+	"  if (u_corner >= 0) {\n"
+	"    vec2 k = vec2(u_corner == 1 || u_corner == 3 ? u_aspect - 0.14 : 0.14,\n"
+	"                  u_corner >= 2 ? 1.0 - 0.14 : 0.14);\n"
+	"    float mk = max(ring(p, k, 0.045, 0.006), 1.0 - step(0.014, length(p - k)));\n"
+	"    col = mix(col, 1.0, mk); }\n"
+	"  gl_FragColor = vec4(vec3(col), 1.0); }\n";
 
 static const char *const NEED[] = {
 	"EGL_EXT_image_dma_buf_import", "EGL_KHR_surfaceless_context",
@@ -333,7 +358,7 @@ void gl_source_drop(void)
 }
 
 bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
-	     char *why, size_t n)
+	     int mark_corner, char *why, size_t n)
 {
 	static const GLfloat quad[] = {
 		-1, -1, 0, 0,   1, -1, 1, 0,   -1, 1, 0, 1,   1, 1, 1, 1,
@@ -358,6 +383,12 @@ bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
 	} else {
 		glUniform1f(glGetUniformLocation(prog, "u_grid"),
 			    pattern == PATTERN_GRID ? 1.0f : 0.0f);
+		glUniform1f(glGetUniformLocation(prog, "u_mask"),
+			    pattern == PATTERN_MASK ? 1.0f : 0.0f);
+		glUniform1f(glGetUniformLocation(prog, "u_aspect"),
+			    panel_h ? (float)panel_w / (float)panel_h : 1.0f);
+		glUniform1i(glGetUniformLocation(prog, "u_corner"),
+			    pattern == PATTERN_MASK ? mark_corner : -1);
 	}
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, quad);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, quad + 2);
