@@ -336,6 +336,10 @@
 #   (device run 22.09. afternoon -- the INCAP sanity check is where an unlisted
 #    raster really ends: totals new, active word stale; ask the record there)
 0136v-media-h713-hdmirx-an-unlisted-raster-is-caught-at-the-incap-sanity-check.patch
+#   (follow-up well0nez, Q16 -- 0136m/0136v stay byte-identical; v4l2 core
+#    dropped the timing they fill, because a read-only ioctl takes the
+#    shortcut in video_get_user() before its ALWAYS_COPY flag is read)
+0136w-media-v4l2-core-a-read-only-ioctl-keeps-its-always-copy-flag.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

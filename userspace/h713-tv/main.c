@@ -3027,9 +3027,11 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 			  signal_text(t, sigbuf, sizeof(sigbuf)));
 	else if (sig == 2)
 		reply_add(r, "signal          change in flight (the geometry has not locked yet)\n");
-	else if (sig == 3)
+	else if (sig == 3 && t->bt.width)
 		reply_add(r, "signal          %s not in the firmware's table -- console\n",
 			  signal_text(t, sigbuf, sizeof(sigbuf)));
+	else if (sig == 3)
+		reply_add(r, "signal          a source the firmware's table does not carry -- console\n");
 	else
 		reply_add(r, "signal          %s\n", sig == 0 ? "no signal" : "not readable");
 	reply_add(r, "colour          %s\n", capture_colour(cap, colbuf, sizeof(colbuf)));
@@ -5037,9 +5039,11 @@ static void evaluate(struct capture *cap, struct display *d,
 	 * driver ratelimits its own line the same way.
 	 */
 	if (sig == 3) {
-		if (was != 3)
+		if (was != 3 && t.bt.width)
 			info("signal          %s not in the firmware's table -- console",
 			     signal_text(&t, sigbuf, sizeof(sigbuf)));
+		else if (was != 3)
+			info("signal          a source the firmware's table does not carry -- console");
 		display_hide(d);
 		return;
 	}
@@ -5349,12 +5353,23 @@ int main(int argc, char **argv)
 
 	if (o.report_only) {
 		struct v4l2_dv_timings t;
+		char sigbuf[64];
 		int sig = capture_signal(&cap, &t);
 
-		info("signal          %s", sig == 1 ? "present" :
-		     sig == 2 ? "change in flight" :
-		     sig == 3 ? "not in the firmware's table" :
-		     sig == 0 ? "no signal" : "not readable");
+		/*
+		 * A refused source is measured, only not locked, and -n is
+		 * the command someone runs to find out what is on the cable.
+		 * QUERY_DV_TIMINGS hands the measurement back with the error
+		 * (kernel 0136m/0136v), so name it here too.
+		 */
+		if (sig == 3 && t.bt.width)
+			info("signal          %s, not in the firmware's table",
+			     signal_text(&t, sigbuf, sizeof(sigbuf)));
+		else
+			info("signal          %s", sig == 1 ? "present" :
+			     sig == 2 ? "change in flight" :
+			     sig == 3 ? "not in the firmware's table" :
+			     sig == 0 ? "no signal" : "not readable");
 		/*
 		 * The audio chain, looked at and not touched: -n reports, it
 		 * does not switch. So no audio_open() here -- it would set the

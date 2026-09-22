@@ -1,0 +1,91 @@
+media: v4l2-core: a read-only ioctl keeps its ALWAYS_COPY flag
+
+0136m gave a source the display firmware's mode table does not carry its own
+answer, -ERANGE with the measured timing, and 0136v filled that timing in at
+the INCAP sanity check, where such a source really ends. Both wrote the
+measurement into the ioctl argument on the strength of VIDIOC_QUERY_DV_TIMINGS
+carrying INFO_FL_ALWAYS_COPY, which is what makes v4l2 hand results back
+although the call failed. The device said otherwise: dev21, 22.09.2026, the
+kernel printed "source 1600x900 at 60.00 Hz: in none of the firmware's mode
+records -- no lock" while h713-tv printed 0x0p?, 0.0 MHz for the same source.
+
+The flag never reached the decision. video_get_user() takes the read-only
+shortcut
+
+	if (!(_IOC_DIR(cmd) & _IOC_WRITE)) {
+		memset(parg, 0, n);
+		return 0;
+	}
+
+before it looks the ioctl's flags up, so *always_copy is still false when
+video_usercopy() asks
+
+	if (err < 0 && !always_copy)
+		goto out;
+
+and the filled struct is thrown away. VIDIOC_QUERY_DV_TIMINGS is _IOR('V', 99,
+struct v4l2_dv_timings) - read-only - and it is the only entry in v4l2_ioctls[]
+that is both read-only and ALWAYS_COPY (G_EDID, S_EDID and the three EXT_CTRLS
+are _IOWR and take the long path), so for that one ioctl the flag has had no
+effect at all.
+
+The lookup moves in front of the shortcut. Nothing else changes: the flags word
+is read exactly where it was used, INFO_FL_CLEAR_MASK still only narrows the
+copy-in of a writing ioctl, and for a read-only ioctl without the flag
+always_copy stays false, as before. The blast radius is one ioctl on failure,
+where the caller gets the zeroed or driver-filled struct v4l2_ioctls already
+promises it.
+
+What the HY310 sees: on a locked source QUERY_DV_TIMINGS returns 0 and this
+code path is not reached - err < 0 is the only case the flag decides. What
+changes is the refused source: h713-tv's `ctl status` and its journal line name
+the raster and the pixel clock instead of 0x0p?, 0.0 MHz.
+
+Follow-up to 0136m/0136v (Q16, from the dev21 run of 22.09.2026). Not a
+h713 file: this is v4l2 core, and the fix is upstream material - the flag is
+documented behaviour that one direction of ioctl silently loses.
+
+Tested on the HY310: not yet. The device proof is a 1600x900 source on the
+debug kernel: `h713-tv ctl status` must show
+"signal          1600x900p60, 108.0 MHz not in the firmware's table -- console".
+
+diff -ruN a/drivers/media/v4l2-core/v4l2-ioctl.c b/drivers/media/v4l2-core/v4l2-ioctl.c
+--- a/drivers/media/v4l2-core/v4l2-ioctl.c
++++ b/drivers/media/v4l2-core/v4l2-ioctl.c
+@@ -3271,8 +3271,20 @@
+ 			  bool *always_copy)
+ {
+ 	unsigned int n = _IOC_SIZE(real_cmd);
++	u32 flags = 0;
+ 	int err = 0;
+ 
++	/*
++	 * INFO_FL_ALWAYS_COPY is read below the read-only shortcut, so it has
++	 * to be taken before it: a _IOR ioctl that carries the flag returns
++	 * results the caller needs even when it fails, and dropping them is
++	 * the one thing the flag exists to prevent.
++	 */
++	if (v4l2_is_known_ioctl(real_cmd)) {
++		flags = v4l2_ioctls[_IOC_NR(real_cmd)].flags;
++		*always_copy = flags & INFO_FL_ALWAYS_COPY;
++	}
++
+ 	if (!(_IOC_DIR(cmd) & _IOC_WRITE)) {
+ 		/* read-only ioctl */
+ 		memset(parg, 0, n);
+@@ -3286,13 +3298,8 @@
+ 	 * with that index.  We only need to copy up the first
+ 	 * non-input field.
+ 	 */
+-	if (v4l2_is_known_ioctl(real_cmd)) {
+-		u32 flags = v4l2_ioctls[_IOC_NR(real_cmd)].flags;
+-
+-		if (flags & INFO_FL_CLEAR_MASK)
+-			n = (flags & INFO_FL_CLEAR_MASK) >> 16;
+-		*always_copy = flags & INFO_FL_ALWAYS_COPY;
+-	}
++	if (flags & INFO_FL_CLEAR_MASK)
++		n = (flags & INFO_FL_CLEAR_MASK) >> 16;
+ 
+ 	if (cmd == real_cmd) {
+ 		if (copy_from_user(parg, (void __user *)arg, n))
