@@ -12,3 +12,4 @@ and the scripts under `analyse/hdmi-seq/` (see `doku/50-befehle.md`).
 | `tse_dump.py` | parser for the TSE register database of the MIPS firmware |
 | `vendor_ccu_parse.py`, `regdiff.py` | read vendor CCU tables, compare register dumps |
 | `oops_resolve.sh` | disassemble oops addresses in `vmlinux` |
+| `check-links.py` | the documentation's own check: every relative Markdown link in the top-level pages and under `docs/` points at a file that exists, and no page under `docs/` is an orphan. `python3 tools/check-links.py`, exit 1 on a finding. Run it before a release |
