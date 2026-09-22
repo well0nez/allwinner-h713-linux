@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0
 """A board's panel row, derived from its own vendor panel_config.ini.
 
-Source: AP3g section 2 (23 fields one to one out of the ini), section 3 (pll_n_plus_1, the one
-derived field), section 4 (the nine checks C1..C9), section 5 (the archived boards through the
-generator). The five remaining members of `struct h713_panel_cfg` stand in no ini anywhere - they
-are register reads off a running stock bootloader - so they come out as "unknown" with the register
-to read named (AP3m part B for the two plane-geometry words). A row with an unknown or a MISSING
-KEY in it describes the panel but is not a measurement.
+Source: AP3g section 2 (23 fields one to one out of the ini), section 3 (pll_n_plus_1), section 4
+(the nine checks C1..C9), section 5 (the archived boards through the generator), AP3m part B and
+the device run of 22.09.2026 (layer_x). Two fields are derived from the ini rather than copied out
+of it. The four remaining members of `struct h713_panel_cfg` stand in no ini anywhere - they are
+register reads off a running stock bootloader - so they come out as "unknown" with the register to
+read named. A row with an unknown or a MISSING KEY in it describes the panel but is not a
+measurement.
 
 Nothing here writes to a device and nothing here runs on one: this is host-side description.
 Standard library, Python 3.9, Windows-safe.
@@ -21,6 +22,7 @@ XTAL_HZ = 24000000                # the PLL reference of every H713 board seen s
 LVDS_BITS = 7                     # 7:1 serialiser, both in 6 bit and in 8 bit mode
 LVDS_LINK_LIMIT_BPS = 1000000000  # one LVDS link; above this a panel needs two
 REFRESH_MIN_HZ, REFRESH_MAX_HZ = 50.0, 75.0
+LAYER_X_BIAS = 77                 # __update_panel_setting's SUBS R3, R3, #0x4D at 0xFAA8 (AP3m B)
 OUR_PWM_CHANNEL = 2               # h713_disp_backlight_set() is pinned to PWM2 on PB4
 KNOWN_PROJECT_IDS = {0x30: "the HY310 row", 0x34: "the board B row"}
 UNKNOWN = "unknown"
@@ -48,10 +50,9 @@ FROM_INI = (
     ("WIDTH", "PanelWidth"), ("HEIGHT", "PanelHeight"),
     ("HSYNC_POL", "PanelHsyncPol"), ("VSYNC_POL", "PanelVsyncPol"),
 )
-#: (env key, register to read) - the five the ini never states (AP3g section 2, AP3m part B).
+#: (env key, register to read) - the four the ini never states and nothing derives (AP3g section 2).
 FROM_REGISTER = (
     ("LVDS_BITSEL", "0x05800000[4:3], LVDS port/bit selector"),
-    ("LAYER_X", "0x0528008c, plane 1 geometry +0x0C = h_start + frame_x (AP3m part B)"),
     ("SSC_MASK", "0x058c0018, which bits of the spread-spectrum word this board owns"),
     ("SSC_REG", "0x058c0018, the spread-spectrum word (Step and Span do not give it, AP3g 4.3)"),
     ("LAYER_H_MASK", "0x05280084[31:16], plane 1 geometry +0x04 (AP3m part B)"),
@@ -113,6 +114,21 @@ def derive_pll(dclk: Optional[int], dual_port: Optional[int]) -> Tuple[Optional[
         dclk, LVDS_BITS, links, XTAL_HZ, exact)
 
 
+def derive_layer_x(hsync: Optional[int], hbp: Optional[int]) -> Tuple[Optional[int], str]:
+    """layer_x = max(hsync + hbp - 77, 0) - AP3m part B, confirmed at the U-Boot prompt 22.09.2026.
+
+    0x0528008c is a LogoRegData entry, so the vendor file carries a number (115 in the HY310's file,
+    123 in board B's) rather than a formula; the stock bootloader's __update_panel_setting overwrites
+    it from the raster it just programmed, and that is where the 77 comes from (SUBS R3, R3, #0x4D at
+    0xFAA8). `md 0x0528008c 1` at the U-Boot prompt gave 0x37 = 55 on the HY310, which is 44 + 88 - 77
+    (dev20 22.09.2026 Q7 F3, umbau/reviews/Q7.md open point c); board B's 20 + 40 - 77 clamps to 0.
+    So this is derived, not read: AP3m's "live 115" was the file's number, not a bootloader's leaving.
+    """
+    if hsync is None or hbp is None:
+        return None, "PanelHsync or PanelHBP missing"
+    return max(hsync + hbp - LAYER_X_BIAS, 0), "max(%d + %d - %d, 0)" % (hsync, hbp, LAYER_X_BIAS)
+
+
 def build_row(ini) -> Tuple["OrderedDict[str, object]", "OrderedDict[str, str]"]:
     """(values, traces). A missing key is written as 0 and named; it is never defaulted quietly."""
     values: "OrderedDict[str, object]" = OrderedDict()
@@ -132,6 +148,11 @@ def build_row(ini) -> Tuple["OrderedDict[str, object]", "OrderedDict[str, str]"]
     pll, note = derive_pll(dclk, number(ini, "PanelDualPort"))
     values["PLL_N_PLUS_1"] = 0 if pll is None else pll
     traces["PLL_N_PLUS_1"] = ("NOT DERIVED - " + note) if pll is None else ("derived: " + note)
+    layer_x, note = derive_layer_x(number(ini, "PanelHsync"), number(ini, "PanelHBP"))
+    values["LAYER_X"] = 0 if layer_x is None else layer_x
+    traces["LAYER_X"] = ("NOT DERIVED - " + note) if layer_x is None else (
+        "derived: " + note + " -> 0x0528008c, plane 1 geometry +0x0C (AP3m part B; the HY310 read "
+        "back 0x37 = 55 at the U-Boot prompt, dev20 22.09.2026)")
     for env_key, register in FROM_REGISTER:
         values[env_key] = UNKNOWN
         traces[env_key] = "unknown, read on the device: " + register
@@ -154,6 +175,9 @@ def run_checks(ini, v) -> List[Tuple[str, str, str]]:
         say("OK" if front > 0 else "FAIL", "C1", "%stotal %d, front porch %d" % (tag, total, front))
     say("OK", "C2", "raw ini totals %dx%d; 0x0525c000/0x0524c010 take %d/%d, 0x05880020 the raw pair"
         % (htotal, vtotal, htotal - 1, vtotal - 1))
+    say("OK", "C2", "layer_x %d = max(hsync %d + hbp %d - %d, 0) -> 0x0528008c; the HY310 reads back "
+        "0x37 = 55 there (dev20 22.09.2026), its vendor file record holds 115"
+        % (v["LAYER_X"], v["HSYNC"], v["HBP"], LAYER_X_BIAS))
     for key, total, tag in (("HTotal", htotal, "h"), ("VTotal", vtotal, "v")):
         lo, hi = number(ini, "PanelMin" + key), number(ini, "PanelMax" + key)
         if lo is not None and hi is not None and not lo <= total <= hi:
@@ -239,9 +263,10 @@ def emit_env(board_id: str, values, traces, checks, origin: str) -> str:
     """The panel row in the boards/ profile format: shell KEY=value, one fact per line, sourced."""
     lines = ["# Panel row of %s, written by h713-extract --profile." % board_id,
              "# Source: %s" % origin,
-             "# 23 values come out of that file one to one, PANEL_PLL_N_PLUS_1 is derived from",
-             "# PanelDCLK and PanelDualPort, five are register reads no ini carries and say 'unknown'",
-             "# with the register to read. A row with an unknown or a MISSING KEY in it describes the",
+             "# 23 values come out of that file one to one, two are derived from it",
+             "# (PANEL_PLL_N_PLUS_1 from PanelDCLK and PanelDualPort, PANEL_LAYER_X from PanelHsync",
+             "# and PanelHBP), four are register reads no ini carries and say 'unknown' with the",
+             "# register to read. A row with an unknown or a MISSING KEY in it describes the",
              "# panel but is not a measurement: do not commit it as one.",
              "BOARD_ID=%s" % board_id, ""]
     for key, value in values.items():

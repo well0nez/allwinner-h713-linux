@@ -47,8 +47,8 @@ Writes one further file, `boards/<board>/panel.env`, in the `boards/` profile fo
 | Part | Count | Source |
 |---|---|---|
 | straight out of the ini | 23 | one `PANEL_*` per member of the panel row, each with its ini section, spelling and line number in the comment above it |
-| derived | 1 | `PANEL_PLL_N_PLUS_1 = floor(PanelDCLK * 7 * 2 / links / 24 MHz)` - reproduces the three values anybody has measured (36, 41, 43) |
-| register reads | 5 | `unknown`, with the register to read named: `0x05800000[4:3]`, `0x0528008c`, `0x058c0018` (twice) and `0x05280084[31:16]` |
+| derived | 2 | `PANEL_PLL_N_PLUS_1 = floor(PanelDCLK * 7 * 2 / links / 24 MHz)` - reproduces the three values anybody has measured (36, 41, 43); `PANEL_LAYER_X = max(PanelHsync + PanelHBP - 77, 0)` - the HY310 read 0x37 = 55 back from `0x0528008c` at the U-Boot prompt on 22.09.2026 |
+| register reads | 4 | `unknown`, with the register to read named: `0x05800000[4:3]`, `0x058c0018` (twice) and `0x05280084[31:16]` |
 
 Nine checks (`C1`..`C9`) run over the result and land in the file as comments plus a
 `PANEL_CHECKS` line: front porches, the total-minus-one convention, the sync polarities, the

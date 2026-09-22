@@ -58,7 +58,8 @@ class TheTwoArchivedBoards(unittest.TestCase):
         _text, checks, values = self.run_for("hy310", ssc=1)
         self.assertEqual(panelrow.compare_with_profile(values, PROFILES["hy310"]["panel"]), [])
         self.assertEqual(values["PLL_N_PLUS_1"], 41)       # the "n:41" of the stock boot log
-        self.assertEqual(levels(checks), {"OK": 9, "WARN": 2, "FAIL": 0})
+        self.assertEqual(values["LAYER_X"], 55)           # 0x37 at the U-Boot prompt, dev20
+        self.assertEqual(levels(checks), {"OK": 10, "WARN": 2, "FAIL": 0})
 
     def test_the_archived_hy300_pro_plus_row_equals_what_ap3g_derived(self):
         """cstenger's HY200 QZ713DF_A1 - the image the identifier calls HY300 Pro+ (2025, DDR3).
@@ -69,7 +70,8 @@ class TheTwoArchivedBoards(unittest.TestCase):
         _text, checks, values = self.run_for("hy200_qz713df_a1")
         self.assertEqual(panelrow.compare_with_profile(values, PROFILES["hy200_qz713df_a1"]["panel"]), [])
         self.assertEqual(values["PLL_N_PLUS_1"], 36)       # A10's PLL sweep on board B
-        self.assertEqual(levels(checks), {"OK": 8, "WARN": 2, "FAIL": 0})
+        self.assertEqual(values["LAYER_X"], 0)            # 20 + 40 - 77 clamps
+        self.assertEqual(levels(checks), {"OK": 9, "WARN": 2, "FAIL": 0})
 
     def test_a_row_from_another_board_is_reported_as_a_difference(self):
         _text, _checks, values = self.run_for("hy350")
@@ -99,7 +101,22 @@ class ThePll(unittest.TestCase):
         self.assertEqual(panelrow.derive_pll(62000000, 2)[0], None)
 
 
-class TheFiveRegisterReads(unittest.TestCase):
+class TheLayerX(unittest.TestCase):
+    """AP3m part B: layer_x is derived, not read. Anchored by the U-Boot prompt read of 22.09.2026."""
+
+    def test_the_two_known_boards(self):
+        self.assertEqual(panelrow.derive_layer_x(44, 88)[0], 55)   # HY310, md 0x0528008c -> 0x37
+        self.assertEqual(panelrow.derive_layer_x(20, 40)[0], 0)    # board B, 20 + 40 - 77 clamps
+
+    def test_the_vendor_file_record_115_is_not_what_the_formula_gives(self):
+        self.assertNotEqual(panelrow.derive_layer_x(44, 88)[0], 115)
+
+    def test_without_the_two_raster_fields_nothing_is_derived(self):
+        self.assertEqual(panelrow.derive_layer_x(None, 88)[0], None)
+        self.assertEqual(panelrow.derive_layer_x(44, None)[0], None)
+
+
+class TheFourRegisterReads(unittest.TestCase):
 
     def test_they_are_unknown_and_name_the_register(self):
         ini = panelrow.read_ini(ini_for("hy310"))
@@ -108,15 +125,18 @@ class TheFiveRegisterReads(unittest.TestCase):
             self.assertEqual(values[key], panelrow.UNKNOWN)
             self.assertEqual(traces[key], "unknown, read on the device: " + register)
 
-    def test_the_two_plane_words_carry_the_ap3m_names(self):
-        registers = dict(panelrow.FROM_REGISTER)
-        self.assertIn("0x0528008c", registers["LAYER_X"])
-        self.assertIn("0x05280084[31:16]", registers["LAYER_H_MASK"])
+    def test_layer_x_is_no_longer_one_of_them(self):
+        self.assertEqual(len(panelrow.FROM_REGISTER), 4)
+        self.assertNotIn("LAYER_X", dict(panelrow.FROM_REGISTER))
+
+    def test_the_remaining_plane_word_carries_the_ap3m_name(self):
+        self.assertIn("0x05280084[31:16]", dict(panelrow.FROM_REGISTER)["LAYER_H_MASK"])
 
     def test_the_generated_file_says_unknown_in_the_value(self):
         text, _checks, _values = panelrow.profile_from_ini("hy310", ini_for("hy310"), "test")
-        self.assertIn("PANEL_LAYER_X=unknown", text)
-        self.assertIn("# unknown, read on the device: 0x0528008c", text)
+        self.assertIn("PANEL_LAYER_X=55", text)
+        self.assertIn("# derived: max(44 + 88 - 77, 0)", text)
+        self.assertNotIn("PANEL_LAYER_X=unknown", text)
 
 
 class TheChecks(unittest.TestCase):
@@ -172,7 +192,7 @@ class TheGeneratedFile(unittest.TestCase):
         self.assertEqual(keys["BOARD_ID"], "hy310")
         self.assertEqual(keys["PANEL_PROJECT_ID"], "0x30")
         self.assertEqual(keys["PANEL_HTOTAL"], str(values["HTOTAL"]))
-        self.assertEqual(keys["PANEL_CHECKS"], "9 OK, 2 WARN, 0 FAIL")
+        self.assertEqual(keys["PANEL_CHECKS"], "10 OK, 2 WARN, 0 FAIL")
 
     def test_every_field_carries_the_ini_line_it_came_from(self):
         text, _c, _v = panelrow.profile_from_ini("hy310", ini_for("hy310"), "vendor:/x/panel_config.ini")
