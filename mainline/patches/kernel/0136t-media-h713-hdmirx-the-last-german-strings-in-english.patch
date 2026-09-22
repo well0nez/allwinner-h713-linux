@@ -1,0 +1,578 @@
+media: h713-hdmirx: the last German strings in English
+
+0136l took the twenty-one German strings and comments that T2 8.2 named and
+then counted what was left: 63 more lines in fifteen functions, the whole
+release path, the colour-converter path, the init sequence, the streaming
+summary and the entire debugfs status file. That was a patch of a different
+size, and it had to wait, because 0136m, 0136n and 0136s change the status
+file's wording anyway and nothing should be translated twice. They have
+landed, so this is the rest.
+
+Counted again on this tree before the change: 66 lines carry a German string
+(0136l's 63 plus two "%u mal" in the event counters and one of the two audio
+lines that the earlier count took together), and five identifiers are German
+as well - wann, erste, heiss, wechsel, stabil. All of them are here.
+
+Same meaning, no behaviour change. Every message keeps its severity, its
+format specifiers in the same order, its "--" continuation and its
+references; only the words are English now. Where the German used a compound
+the English uses the term this tree already uses elsewhere: "Freigabe:"
+becomes "release:", "Farbwandler:" becomes "converter:", "Quellenwechsel"
+the source switch, "Wiederholung" the repeat, "Flip-Zeiger" the flip
+pointers.
+
+Four keys of the debugfs status file are renamed, because their names were
+the German words themselves and a key cannot be half translated:
+
+  slot-quelle:  ->  slot-source:
+  zeilen:       ->  pitch:
+  farbwandler:  ->  converter:
+  bild:         ->  picture:
+
+The column the values start in is unchanged (14 characters), so the file
+still reads as a table. h713-tv filters the kernel's status file by key
+prefix and carries "farbwandler:" in that list; it is changed to
+"converter:" in the same commit, and its README with it. The other three
+keys are read by nothing in this tree. `format:`, `incap:`, `capture:`,
+`signal:`, `timings:`, `colour:` and `hdr:` - the keys h713-tv forwards -
+keep their names; only the text after them changes.
+
+One correction rather than a translation, and it is named here rather than
+made silently: the give-up message of the repeat told the reader to run
+"hy310-tv ctl resync". That program is called h713-tv and has been for
+months, so the English line says h713-tv.
+
+The scan that says this is done. `grep -n "[aouAOU umlauts]"` was never the
+test for this file: its German is transcribed (ae, oe, ue), which is why
+0136l's report says the umlaut grep had been empty all along. What was used
+here is a German word list over every line of the driver, transcriptions
+included, with the English homographs (in, an, so, die, man, war, byte)
+left out of the list and checked by hand instead. Before: 66 lines. After:
+three, all of them the file name doku/nachtlog/E2-freigabe.md in a citation
+- a document that exists under that name.
+
+Source: umbau/work/Q3/REPORT.txt section 1.1 and follow-up N1, review
+umbau/reviews/Q3.md ("63 remaining German lines ... its own patch after the
+status file's wording settled").
+Follow-up to 0136l, 0136n and 0136s; all three stay byte-identical.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -1382,7 +1382,7 @@ static int h713_hdmirx_load_hdcp_key(struct h713_hdmirx *rx, u32 *args)
+ 		return ret;
+ 
+ 	if (fw->size != H713_HDCP22_SIZE) {
+-		dev_err(rx->dev, "%s ist %zu Byte gross, erwartet sind %d\n",
++		dev_err(rx->dev, "%s is %zu bytes, expected %d\n",
+ 			H713_FW_HDCP22, fw->size, H713_HDCP22_SIZE);
+ 		release_firmware(fw);
+ 		return -EINVAL;
+@@ -1423,7 +1423,7 @@ static int h713_hdmirx_run_init_seq(struct h713_hdmirx *rx)
+ 			ret = h713_hdmirx_load_hdcp_key(rx, args);
+ 			if (ret) {
+ 				dev_warn(rx->dev,
+-					 "Schritt %u %s uebersprungen: %s nicht ladbar (%d)\n",
++					 "step %u %s skipped: %s cannot be loaded (%d)\n",
+ 					 i, s->name, H713_FW_HDCP22, ret);
+ 				continue;
+ 			}
+@@ -1434,13 +1434,13 @@ static int h713_hdmirx_run_init_seq(struct h713_hdmirx *rx)
+ 				       s->timeout_ms);
+ 		if (ret) {
+ 			dev_err(rx->dev,
+-				"Schritt %u %s (Stock-Session %u) fehlgeschlagen: %d\n",
++				"step %u %s (stock session %u) failed: %d\n",
+ 				i, s->name, s->session, ret);
+ 			return ret;
+ 		}
+ 	}
+ 
+-	dev_info(rx->dev, "Init-Sequenz vollstaendig (%zu Aufrufe)\n",
++	dev_info(rx->dev, "init sequence complete (%zu calls)\n",
+ 		 ARRAY_SIZE(h713_hdmirx_init_seq));
+ 
+ 	return 0;
+@@ -1526,7 +1526,7 @@ static void h713_hdmirx_pq_start_values(struct h713_hdmirx *rx)
+ 	}
+ 
+ 	dev_info(rx->dev,
+-		 "Bildwerte: %u von %u aus der Init-Sequenz, der Rest im Ruhewert\n",
++		 "picture values: %u of %u from the init sequence, the rest at the idle value\n",
+ 		 from_seq, H713_PQ_COUNT);
+ }
+ 
+@@ -1805,11 +1805,11 @@ static void h713_hdmirx_audio_publish(struct h713_hdmirx *rx,
+ 	if (a->present)
+ 		dev_info(rx->dev,
+ 			 "Audio: %u Hz, %s (N %u, CTS %u, +0x40 = 0x%02x)\n",
+-			 a->rate, a->compressed ? "nicht PCM" : "PCM",
++			 a->rate, a->compressed ? "not PCM" : "PCM",
+ 			 a->n, a->cts, a->actl);
+ 	else
+ 		dev_info(rx->dev,
+-			 "Audio: keins (+0x40 = 0x%02x, +0x15f = 0x%02x, N %u)\n",
++			 "Audio: none (+0x40 = 0x%02x, +0x15f = 0x%02x, N %u)\n",
+ 			 a->actl, a->fs, a->n);
+ 
+ 	v4l2_ctrl_s_ctrl(rx->audio_ctrl[H713_AUDIO_PRESENT], a->present);
+@@ -2255,7 +2255,7 @@ static int h713_hdmirx_switch_source(struct h713_hdmirx *rx)
+ 	ret = cpu_comm_call(rx->id_setsource, &arg, 1, NULL, 0, 0);
+ 	if (ret) {
+ 		dev_err(rx->dev,
+-			"Freigabe: SetSource(VideoDec) fehlgeschlagen: %d -- die Quelle steht unveraendert\n",
++			"release: SetSource(VideoDec) failed: %d -- the source is unchanged\n",
+ 			ret);
+ 		return ret;
+ 	}
+@@ -2279,18 +2279,18 @@ static int h713_hdmirx_switch_source(struct h713_hdmirx *rx)
+ 		if (!ret) {
+ 			if (try > 1)
+ 				dev_info(rx->dev,
+-					 "Freigabe: SetSource(HDMI-1) im %u. Anlauf angekommen\n",
++					 "release: SetSource(HDMI-1) arrived on attempt %u\n",
+ 					 try);
+ 			return 0;
+ 		}
+ 
+ 		dev_warn(rx->dev,
+-			 "Freigabe: SetSource(HDMI-1) Anlauf %u von %u fehlgeschlagen: %d\n",
++			 "release: SetSource(HDMI-1) attempt %u of %u failed: %d\n",
+ 			 try, H713_SOURCE_RETRIES, ret);
+ 	}
+ 
+ 	dev_err(rx->dev,
+-		"Freigabe: SetSource(HDMI-1) blieb nach %u Anlaeufen aus -- die Quelle steht auf VideoDec, es kommt kein Bild\n",
++		"release: SetSource(HDMI-1) never arrived in %u attempts -- the source stays on VideoDec, there will be no picture\n",
+ 		H713_SOURCE_RETRIES);
+ 
+ 	return ret;
+@@ -2332,7 +2332,7 @@ static void h713_hdmirx_reapply_saturation(struct h713_hdmirx *rx)
+ 	arg = v4l2_ctrl_g_ctrl(ctrl);
+ 	ret = h713_hdmirx_call(rx, pq->set, &arg, 1, 0);
+ 	if (ret)
+-		dev_warn(rx->dev, "Saettigung %u nach dem Einschalten nicht gesetzt: %d\n",
++		dev_warn(rx->dev, "saturation %u not set after the switch-on: %d\n",
+ 			 arg, ret);
+ }
+ 
+@@ -2353,7 +2353,7 @@ static bool h713_hdmirx_wait_enable(struct h713_hdmirx *rx, const char *why)
+ 	do {
+ 		if (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val) &&
+ 		    (val & H713_INCAP_ENABLE_BIT)) {
+-			dev_info(rx->dev, "Freigabe: %s, nach %lld ms\n",
++			dev_info(rx->dev, "release: %s, after %lld ms\n",
+ 				 why, ktime_ms_delta(ktime_get(), start));
+ 			return true;
+ 		}
+@@ -2423,7 +2423,7 @@ static bool h713_hdmirx_icsc_bypassed(struct h713_hdmirx *rx)
+  * ring; the wall holds the previous picture until the capture is enabled
+  * after this. Also called as a check where the state should already be right.
+  */
+-static void h713_hdmirx_restore_icsc(struct h713_hdmirx *rx, const char *wann)
++static void h713_hdmirx_restore_icsc(struct h713_hdmirx *rx, const char *when_)
+ {
+ 	struct v4l2_ctrl *range;
+ 	ktime_t start;
+@@ -2435,8 +2435,8 @@ static void h713_hdmirx_restore_icsc(struct h713_hdmirx *rx, const char *wann)
+ 
+ 	if (!rx->id_setvideorange) {
+ 		dev_warn_once(rx->dev,
+-			      "Farbwandler: steht auf Bypass (%s) und SetVideoRange fehlt -- das Bild bleibt gruen\n",
+-			      wann);
++			      "converter: on bypass (%s) and SetVideoRange is missing -- the picture stays green\n",
++			      when_);
+ 		return;
+ 	}
+ 
+@@ -2456,8 +2456,8 @@ static void h713_hdmirx_restore_icsc(struct h713_hdmirx *rx, const char *wann)
+ 	}
+ 	if (ret) {
+ 		dev_warn(rx->dev,
+-			 "Farbwandler: SetVideoRange fehlgeschlagen: %d (%s) -- das Bild ist gruen\n",
+-			 ret, wann);
++			 "converter: SetVideoRange failed: %d (%s) -- the picture is green\n",
++			 ret, when_);
+ 		return;
+ 	}
+ 
+@@ -2465,21 +2465,21 @@ static void h713_hdmirx_restore_icsc(struct h713_hdmirx *rx, const char *wann)
+ 	do {
+ 		if (!h713_hdmirx_icsc_bypassed(rx)) {
+ 			dev_info(rx->dev,
+-				 "Farbwandler: wieder BT.709 (%s), nach %lld ms\n",
+-				 wann, ktime_ms_delta(ktime_get(), start));
++				 "converter: back on BT.709 (%s), after %lld ms\n",
++				 when_, ktime_ms_delta(ktime_get(), start));
+ 			return;
+ 		}
+ 		usleep_range(2000, 4000);
+ 	} while (ktime_ms_delta(ktime_get(), start) < H713_ICSC_TIMEOUT_MS);
+ 
+ 	dev_warn(rx->dev,
+-		 "Farbwandler: bleibt nach SetVideoRange auf Bypass (%s) -- das Bild ist gruen\n",
+-		 wann);
++		 "converter: still on bypass after SetVideoRange (%s) -- the picture is green\n",
++		 when_);
+ }
+ 
+ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ {
+-	bool erste = !rx->desc_seen;
++	bool first = !rx->desc_seen;
+ 	/*
+ 	 * The fast source switch kills a port that has been locked for a while.
+ 	 * Measured 15./16.09.2026 on the HY310, five runs: a source plugged in
+@@ -2493,14 +2493,14 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 	 * hot-plugged port, 16.09.). The switch stays as the fallback, and after
+ 	 * a hot plug the slow repeat (0130) takes its place, never the fast switch.
+ 	 */
+-	bool heiss = erste && READ_ONCE(rx->hotplug_count);
+-	bool wechsel = false;
++	bool hot = first && READ_ONCE(rx->hotplug_count);
++	bool use_switch = false;
+ 
+ 	WRITE_ONCE(rx->desc_seen, true);
+-	if (erste)
++	if (first)
+ 		dev_info(rx->dev,
+-			 "Freigabe: erste Veroeffentlichung%s -- Capture wird direkt freigegeben, Quellenwechsel nur als Rueckfall\n",
+-			 heiss ? " nach Hot-Plug" : "");
++			 "release: first publication%s -- the capture is enabled directly, the source switch is only the fallback\n",
++			 hot ? " after a hot plug" : "");
+ 
+ 	/*
+ 	 * The source switch below is right for the FIRST publication and wrong
+@@ -2528,7 +2528,7 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 	 * because a capture that never comes back is worse than a geometry that
+ 	 * is wrong -- and the log says which of the two happened.
+ 	 */
+-	if (!wechsel) {
++	if (!use_switch) {
+ 		/*
+ 		 * Setting the bit once is not enough: the firmware clears it
+ 		 * again a little later in its own sequence, so a write that is
+@@ -2540,7 +2540,7 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 		 * not, it is clear again within 100 ms.
+ 		 */
+ 		ktime_t start = ktime_get();
+-		unsigned int stabil = 0;
++		unsigned int stable = 0;
+ 		unsigned int val = 0;
+ 		int ret = 0;
+ 
+@@ -2559,7 +2559,7 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 			usleep_range(5000, 10000);
+ 		if (val & H713_INCAP_ENABLE_BIT)
+ 			dev_info(rx->dev,
+-				 "Freigabe: Firmware hat die Capture nach %u ms nicht abgeschaltet -- kein Neubau gesehen\n",
++				 "release: the firmware did not switch the capture off within %u ms -- no rebuild seen\n",
+ 				 H713_REBUILD_TIMEOUT_MS);
+ 
+ 		/*
+@@ -2568,7 +2568,7 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 		 * This is the order that makes the change invisible; converter
+ 		 * after enable shows one green picture until the fix lands.
+ 		 */
+-		h713_hdmirx_restore_icsc(rx, "vor der Freigabe");
++		h713_hdmirx_restore_icsc(rx, "before the release");
+ 
+ 		start = ktime_get();
+ 		do {
+@@ -2576,9 +2576,9 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 				break;
+ 
+ 			if (val & H713_INCAP_ENABLE_BIT) {
+-				if (++stabil >= 3) {
++				if (++stable >= 3) {
+ 					dev_info(rx->dev,
+-						 "Freigabe: Capture direkt freigegeben, kein Quellenwechsel, nach %lld ms\n",
++						 "release: capture enabled directly, no source switch, after %lld ms\n",
+ 						 ktime_ms_delta(ktime_get(), start));
+ 					rx->rearm_pending = false;
+ 					cancel_delayed_work(&rx->rearm_retry_work);
+@@ -2589,11 +2589,11 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 					 * one green picture instead of a green
+ 					 * boot, and the log says so.
+ 					 */
+-					h713_hdmirx_restore_icsc(rx, "nach der Freigabe");
++					h713_hdmirx_restore_icsc(rx, "after the release");
+ 					return;
+ 				}
+ 			} else {
+-				stabil = 0;
++				stable = 0;
+ 				ret = h713_hdmirx_capture_enable(rx);
+ 				if (ret)
+ 					break;
+@@ -2603,16 +2603,16 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 
+ 		if (ret)
+ 			dev_warn(rx->dev,
+-				 "Freigabe: Capture-Freigabe nicht schreibbar: %d\n",
++				 "release: the capture enable is not writable: %d\n",
+ 				 ret);
+ 		else
+ 			dev_warn(rx->dev,
+-				 "Freigabe: direkte Freigabe hat nach %u ms nicht gehalten; Quellenwechsel als Rueckfall -- der baut die Fensterkette neu und verliert dabei die Geometrie (doku/nachtlog/S7)\n",
++				 "release: the direct enable did not hold for %u ms; the source switch as the fallback -- it rebuilds the window chain and loses the geometry on the way (doku/nachtlog/S7)\n",
+ 				 H713_REARM_TIMEOUT_MS);
+-		if (heiss) {
++		if (hot) {
+ 			/* not the fast switch: it kills a hot-plugged port (see above) */
+ 			dev_warn(rx->dev,
+-				 "Freigabe: heiss gesteckter Port -- statt des Quellenwechsels folgt die langsame Wiederholung in %u ms\n",
++				 "release: hot-plugged port -- the slow repeat in %u ms takes the place of the source switch\n",
+ 				 H713_RETRY_SETTLE_MS);
+ 			rx->rearm_pending = true;
+ 			rx->rearm_retries = 0;
+@@ -2627,11 +2627,11 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 
+ 	h713_hdmirx_reapply_saturation(rx);
+ 
+-	if (h713_hdmirx_wait_enable(rx, "Capture laeuft wieder")) {
++	if (h713_hdmirx_wait_enable(rx, "capture running again")) {
+ 		rx->rearm_pending = false;
+ 		cancel_delayed_work(&rx->rearm_retry_work);
+ 		/* the source switch ends on the HDMI signal; this only checks */
+-		h713_hdmirx_restore_icsc(rx, "nach dem Quellenwechsel");
++		h713_hdmirx_restore_icsc(rx, "after the source switch");
+ 		return;
+ 	}
+ 
+@@ -2650,7 +2650,7 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 	rx->rearm_pending = true;
+ 	rx->rearm_retries = 0;
+ 	dev_info(rx->dev,
+-		 "Freigabe: nach %u ms bewegen sich die Flip-Zeiger nicht; liegt ein Signal an? Der Quellenwechsel wird wiederholt, sobald eines da ist\n",
++		 "release: the flip pointers do not move after %u ms; is a signal there? The source switch is repeated as soon as one is\n",
+ 		 H713_REARM_TIMEOUT_MS);
+ }
+ 
+@@ -2684,9 +2684,9 @@ static void h713_hdmirx_rearm_retry_work(struct work_struct *work)
+ 	/* did the firmware bring the capture back by itself meanwhile? */
+ 	if (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val) &&
+ 	    (val & H713_INCAP_ENABLE_BIT)) {
+-		dev_info(rx->dev, "Freigabe: Capture laeuft inzwischen von selbst\n");
++		dev_info(rx->dev, "release: the capture is running by itself meanwhile\n");
+ 		rx->rearm_pending = false;
+-		h713_hdmirx_restore_icsc(rx, "nach der Wiederholung");
++		h713_hdmirx_restore_icsc(rx, "after the repeat");
+ 		return;
+ 	}
+ 
+@@ -2694,22 +2694,22 @@ static void h713_hdmirx_rearm_retry_work(struct work_struct *work)
+ 	    sig.signal_id == H713_SIGNAL_ID_NONE ||
+ 	    sig.signal_id == H713_SIGNAL_ID_UNKNOWN ||
+ 	    !sig.h_size || !sig.v_size) {
+-		dev_info(rx->dev, "Freigabe: Wiederholung wartet auf ein Signal -- die Firmware meldet keines\n");
++		dev_info(rx->dev, "release: the repeat is waiting for a signal -- the firmware reports none\n");
+ 		return;
+ 	}
+ 
+ 	rx->rearm_retries++;
+ 	dev_info(rx->dev,
+-		 "Freigabe: Signal da (%ux%u), Quellenwechsel wird wiederholt (%u. Mal, mit %u ms Pause)\n",
++		 "release: signal there (%ux%u), the source switch is repeated (attempt %u, with a %u ms gap)\n",
+ 		 sig.h_size, sig.v_size, rx->rearm_retries, H713_RETRY_GAP_MS);
+ 
+ 	ret = cpu_comm_call(rx->id_setsource, &arg, 1, NULL, 0, 0);
+ 	if (ret)
+-		dev_warn(rx->dev, "Freigabe: SetSource(VideoDec) fehlgeschlagen: %d\n", ret);
++		dev_warn(rx->dev, "release: SetSource(VideoDec) failed: %d\n", ret);
+ 	msleep(H713_RETRY_GAP_MS);
+ 	ret = h713_hdmirx_set_source(rx);
+ 	if (ret)
+-		dev_warn(rx->dev, "Freigabe: SetSource(HDMI-1) fehlgeschlagen: %d\n", ret);
++		dev_warn(rx->dev, "release: SetSource(HDMI-1) failed: %d\n", ret);
+ 	h713_hdmirx_reapply_saturation(rx);
+ 
+ 	start = ktime_get();
+@@ -2717,10 +2717,10 @@ static void h713_hdmirx_rearm_retry_work(struct work_struct *work)
+ 		if (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val) &&
+ 		    (val & H713_INCAP_ENABLE_BIT)) {
+ 			dev_info(rx->dev,
+-				 "Freigabe: Capture laeuft wieder, nach %lld ms (Wiederholung)\n",
++				 "release: capture running again, after %lld ms (repeat)\n",
+ 				 ktime_ms_delta(ktime_get(), start));
+ 			rx->rearm_pending = false;
+-			h713_hdmirx_restore_icsc(rx, "nach der Wiederholung");
++			h713_hdmirx_restore_icsc(rx, "after the repeat");
+ 			return;
+ 		}
+ 		msleep(20);
+@@ -2728,13 +2728,13 @@ static void h713_hdmirx_rearm_retry_work(struct work_struct *work)
+ 
+ 	if (rx->rearm_retries >= H713_RETRY_MAX) {
+ 		dev_warn(rx->dev,
+-			 "Freigabe: auch nach %u Wiederholungen keine Capture -- aufgegeben; hy310-tv ctl resync oder Kaltstart\n",
++			 "release: no capture even after %u repeats -- given up; h713-tv ctl resync or a cold start\n",
+ 			 rx->rearm_retries);
+ 		rx->rearm_pending = false;
+ 		return;
+ 	}
+ 	dev_info(rx->dev,
+-		 "Freigabe: Wiederholung %u ohne Erfolg, naechster Versuch in %u ms\n",
++		 "release: repeat %u without success, next attempt in %u ms\n",
+ 		 rx->rearm_retries, H713_RETRY_AGAIN_MS);
+ 	queue_delayed_work(system_wq, &rx->rearm_retry_work,
+ 			   msecs_to_jiffies(H713_RETRY_AGAIN_MS));
+@@ -3002,7 +3002,7 @@ static void h713_hdmirx_stop_streaming(struct vb2_queue *q)
+ 	spin_unlock_irqrestore(&rx->slot_lock, flags);
+ 
+ 	dev_dbg(rx->dev,
+-		"Streaming beendet: %u Vsync-Ereignisse, %u geliefert, %u ohne Puffer, %u uebersprungen, %u unveraendert, %u fremd\n",
++		"streaming stopped: %u vsync events, %u delivered, %u without a buffer, %u skipped, %u unchanged, %u stray\n",
+ 		rx->stat.events, rx->stat.delivered, rx->stat.no_buffer,
+ 		rx->stat.skipped, rx->stat.unchanged, rx->stat.stray);
+ }
+@@ -4237,7 +4237,7 @@ static int h713_hdmirx_open(struct file *file)
+ 		if (ret) {
+ 			mutex_unlock(&rx->cb_lock);
+ 			dev_warn(rx->dev,
+-				 "Callbacks nicht registrierbar (%d) -- open abgelehnt, Wiederholung ist gefahrlos\n",
++				 "the callbacks cannot be registered (%d) -- open refused, trying again is harmless\n",
+ 				 ret);
+ 			v4l2_fh_release(file);
+ 			return ret;
+@@ -4326,11 +4326,11 @@ static void h713_hdmirx_show_signal_info(struct seq_file *s,
+ 
+ 	ret = h713_hdmirx_read_signal_info(rx, &sig);
+ 	if (ret == -ENOENT) {
+-		seq_puts(s, "signal-info:  noch kein SignalChange in diesem Boot\n");
++		seq_puts(s, "signal-info:  no SignalChange in this boot yet\n");
+ 		return;
+ 	}
+ 	if (ret) {
+-		seq_printf(s, "signal-info:  nicht lesbar (%d)\n", ret);
++		seq_printf(s, "signal-info:  not readable (%d)\n", ret);
+ 		return;
+ 	}
+ 
+@@ -4392,11 +4392,11 @@ static void h713_hdmirx_show_audio(struct seq_file *s, struct h713_hdmirx *rx)
+ 
+ 	ret = h713_hdmirx_read_audio(rx, &a);
+ 	if (ret == -ENODEV) {
+-		seq_puts(s, "audio:        kein LINK-Fenster (allwinner,hdmirx-link fehlt)\n");
++		seq_puts(s, "audio:        no LINK window (allwinner,hdmirx-link is missing)\n");
+ 		return;
+ 	}
+ 	if (ret) {
+-		seq_printf(s, "audio:        nicht lesbar (%d)\n", ret);
++		seq_printf(s, "audio:        not readable (%d)\n", ret);
+ 		return;
+ 	}
+ 
+@@ -4405,8 +4405,8 @@ static void h713_hdmirx_show_audio(struct seq_file *s, struct h713_hdmirx *rx)
+ 		   a.present, a.rate, a.compressed, a.n, a.cts);
+ 	cs = FIELD_GET(H713_LINK_CS_FS_MASK, a.cs_fs);
+ 	seq_printf(s,
+-		   "              0x40=0x%02x (Ausgang %s, Nibble %lu) 0x15f=0x%02x 0x56=0x%02x (%u Hz gemeldet) 0x160=0x%02x\n",
+-		   a.actl, h713_hdmirx_audio_out_on(a.actl) ? "an" : "stumm",
++		   "              0x40=0x%02x (output %s, nibble %lu) 0x15f=0x%02x 0x56=0x%02x (%u Hz reported) 0x160=0x%02x\n",
++		   a.actl, h713_hdmirx_audio_out_on(a.actl) ? "on" : "muted",
+ 		   FIELD_GET(H713_LINK_ACTL_STATUS, a.actl), a.fs, a.cs_fs,
+ 		   h713_hdmirx_audio_cs_rates[cs], a.raw);
+ }
+@@ -4422,64 +4422,64 @@ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
+ 
+ 	seq_printf(s, "input:        HDMI-1 (SetSource %u)\n",
+ 		   H713_SOURCE_HDMI1);
+-	seq_printf(s, "format:       NV16M %ux%u, Zeilenabstand %u, 2 Ebenen a %u Byte%s\n",
++	seq_printf(s, "format:       NV16M %ux%u, pitch %u, 2 planes of %u bytes%s\n",
+ 		   rx->ring_width, rx->ring_height, rx->stride, rx->plane_size,
+ 		   rx->ring_width != rx->timings.bt.width ||
+ 		   rx->ring_height != rx->timings.bt.height ?
+ 		   " (the ring is smaller than the source: the firmware scales)" : "");
+-	seq_printf(s, "slot-quelle:  %s\n", rx->slot_source->name);
++	seq_printf(s, "slot-source:  %s\n", rx->slot_source->name);
+ 
+ 	ret = h713_afbd_read_flip(&flip);
+ 	if (!ret)
+ 		seq_printf(s, "flip:         y=%#010x c=%#010x slot=%d\n",
+ 			   flip.y, flip.c, h713_hdmirx_slot_of(flip.y));
+ 	else
+-		seq_printf(s, "flip:         nicht lesbar (%d)\n", ret);
++		seq_printf(s, "flip:         not readable (%d)\n", ret);
+ 
+ 	seq_printf(s, "signal:       %s\n",
+-		   h713_hdmirx_signal_present(rx) ? "vorhanden (Flip-Zeiger wandern)"
+-						  : "kein Signal (Flip-Zeiger stehen)");
+-	seq_printf(s, "timings:      %ux%u%s, %llu Hz Pixeltakt\n",
++		   h713_hdmirx_signal_present(rx) ? "present (the flip pointers move)"
++						  : "no signal (the flip pointers stand still)");
++	seq_printf(s, "timings:      %ux%u%s, %llu Hz pixel clock\n",
+ 		   rx->timings.bt.width, rx->timings.bt.height,
+ 		   rx->timings.bt.interlaced ? "i" : "p",
+ 		   rx->timings.bt.pixelclock);
+ 	if (!regmap_read(rx->incap, H713_INCAP_ROWBYTE, &y))
+-		seq_printf(s, "zeilen:       %u Byte Abstand (0x924 = %#010x)\n",
++		seq_printf(s, "pitch:        %u bytes a line (0x924 = %#010x)\n",
+ 			   rx->stride, y);
+ 	if (!regmap_read(rx->incap, H713_INCAP_ACTIVE, &y) &&
+ 	    !regmap_read(rx->incap, H713_INCAP_TOTAL, &c))
+-		seq_printf(s, "incap:        aktiv %ux%u, total %ux%u\n",
++		seq_printf(s, "incap:        active %ux%u, total %ux%u\n",
+ 			   y >> 16, y & 0xffff, c & 0xffff, c >> 16);
+ 	else
+-		seq_puts(s, "incap:        nicht lesbar\n");
++		seq_puts(s, "incap:        not readable\n");
+ 	if (!regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &y))
+ 		seq_printf(s, "capture:      %s (0x928 = %#010x)\n",
+-			   (y & H713_INCAP_ENABLE_BIT) ? "freigegeben" : "aus", y);
++			   (y & H713_INCAP_ENABLE_BIT) ? "enabled" : "off", y);
+ 	if (!regmap_read(rx->incap, H713_INCAP_ICSC, &y))
+-		seq_printf(s, "farbwandler:  %s (0x824 = %#010x)\n",
+-			   (y & H713_INCAP_ICSC_BYPASS) ? "BYPASS -- das Bild waere gruen"
++		seq_printf(s, "converter:    %s (0x824 = %#010x)\n",
++			   (y & H713_INCAP_ICSC_BYPASS) ? "BYPASS -- the picture would be green"
+ 						       : "BT.709", y);
+ 	h713_hdmirx_show_audio(s, rx);
+ 	seq_printf(s, "streaming:    %s\n",
+-		   vb2_is_streaming(&rx->queue) ? "ja" : "nein");
++		   vb2_is_streaming(&rx->queue) ? "yes" : "no");
+ 
+ 	spin_lock_irqsave(&rx->slot_lock, flags);
+ 	seq_printf(s,
+-		   "vsync:        %u Ereignisse, zuletzt y=%#010x c=%#010x slot=%d\n",
++		   "vsync:        %u events, last y=%#010x c=%#010x slot=%d\n",
+ 		   rx->stat.events, rx->last_flip_y, rx->last_flip_c,
+ 		   rx->last_slot);
+ 	seq_printf(s,
+-		   "frames:       %u geliefert, %u ohne Puffer, %u uebersprungen, %u unveraendert, %u fremd\n",
++		   "frames:       %u delivered, %u without a buffer, %u skipped, %u unchanged, %u stray\n",
+ 		   rx->stat.delivered, rx->stat.no_buffer, rx->stat.skipped,
+ 		   rx->stat.unchanged, rx->stat.stray);
+ 	spin_unlock_irqrestore(&rx->slot_lock, flags);
+ 
+ 	spin_lock_irqsave(&rx->event_lock, flags);
+-	seq_printf(s, "SignalChange: %u mal, Para[]", rx->signal_count);
++	seq_printf(s, "SignalChange: %u times, Para[]", rx->signal_count);
+ 	for (i = 0; i < rx->signal_nargs; i++)
+ 		seq_printf(s, " %#010x", rx->signal_args[i]);
+ 	seq_puts(s, "\n");
+-	seq_printf(s, "HotPlug:      %u mal, Para[]", rx->hotplug_count);
++	seq_printf(s, "HotPlug:      %u times, Para[]", rx->hotplug_count);
+ 	for (i = 0; i < rx->hotplug_nargs; i++)
+ 		seq_printf(s, " %#010x", rx->hotplug_args[i]);
+ 	seq_puts(s, "\n");
+@@ -4496,7 +4496,7 @@ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
+ 	 * The board has no v4l2-ctl, so without this the picture controls
+ 	 * could be set from a test program but never looked at.
+ 	 */
+-	seq_puts(s, "bild:\n");
++	seq_puts(s, "picture:\n");
+ 	for (i = 0; i < H713_PQ_COUNT; i++) {
+ 		const struct h713_hdmirx_pq *pq = &h713_hdmirx_pq_ctrls[i];
+ 		struct v4l2_ctrl *ctrl = v4l2_ctrl_find(&rx->ctrl_hdl, pq->id);
+@@ -4506,7 +4506,7 @@ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
+ 
+ 		seq_printf(s, "  %-24s %3d   Start %d (%s), %s\n",
+ 			   ctrl->name, v4l2_ctrl_g_ctrl(ctrl), rx->pq_start[i],
+-			   rx->pq_from_seq[i] ? "Init-Sequenz" : "Ruhewert",
++			   rx->pq_from_seq[i] ? "init sequence" : "idle value",
+ 			   pq->set);
+ 	}
+ 

@@ -302,7 +302,7 @@ answer starts with `ok` or `error`; `h713-tv ctl` prints it and returns 0 or 1.
 ```
 h713-tv ctl status              state: mode, signal, plane/console, buffer, audio (audio/audio cards/
                                  audio source/audio msp/audio level), plus the kernel lines
-                                 incap/capture/farbwandler/signal/timings and the cpu_comm lines
+                                 incap/capture/converter/signal/timings and the cpu_comm lines
                                  rx_calls/eingehend
 h713-tv ctl auto                the picture follows the signal (the default without tv.conf); `on` is the same
 h713-tv ctl off                 force the console (plane off, master gone, console unblanked), until "auto"

@@ -2998,7 +2998,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		       struct display *d, struct audio *a)
 {
 	static const char *const kern[] = {
-		"format:", "incap:", "capture:", "farbwandler:", "signal:", "timings:",
+		"format:", "incap:", "capture:", "converter:", "signal:", "timings:",
 		/* what the firmware's own record says about the source (kernel 0136n) */
 		"colour:", "hdr:", NULL,
 	};

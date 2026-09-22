@@ -307,6 +307,11 @@
 #    and not the source's (dev20, row "Q3 status file"). One line under the
 #    two names the state and the cached values; debugfs only)
 0136s-media-h713-hdmirx-say-when-the-status-file-reads-our-own-record.patch
+#   (Q9 -- 0136t: 0136l's follow-up N1, the 66 remaining German strings and
+#    the five German identifiers in English. Four status-file keys are
+#    renamed with them (slot-source:, pitch:, converter:, picture:);
+#    h713-tv's key filter follows in the same commit. No behaviour change)
+0136t-media-h713-hdmirx-the-last-german-strings-in-english.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------
