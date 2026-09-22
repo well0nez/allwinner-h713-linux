@@ -74,7 +74,7 @@ In the source, not in a release yet. Three device runs on the HY310 on 22.09.202
 
 - **The HDMI input locks on the firmware's own mode table.** The driver reads the display firmware's 152 mode
   records (129 enabled) out of `database.TSE` and uses them as the preset list instead of a built-in one. A
-  source whose raster is in no record is now refused *by name*: `h713-tv` says `1600x900p60, 108.0 MHz not in
+  source whose raster is in no record is now refused *by name*: `h713-tv` says `1600x900p75, 108.0 MHz not in
   the firmware's table` and shows the console, with exactly one journal line. Measured on `v0.8-dev22`:
   1080p60/50/24, 720p50, 576p50, 1366x768, 1024x768 and 4K30 all lock, no spurious lines. The firmware needs
   more than six seconds to write a record for a raster it does not carry, so the first read after plugging
@@ -120,8 +120,9 @@ In the source, not in a release yet. Three device runs on the HY310 on 22.09.202
   `dynamic_backlight`. The last two are **accepted by the firmware and do nothing on the HY310** - at 60 and
   at 10 the lamp does not change, which is what [docs/dead-ends.md](docs/dead-ends.md) already records about
   this board's backlight path. They are there for a board that wires it up.
-- **Not tested on a device:** the p60 wording for a refused source (written after the `v0.8-dev22` run), the
-  `h713-afmetric` cross-build in `release/build-all.sh`, and all of the above on any board but the HY310.
+- **Not tested on a device:** the blanking that the refused source's timing now carries - the device printed
+  `p75`, the rate computed over the active size, and the source should say `p60` since; the `h713-afmetric`
+  cross-build in `release/build-all.sh`; and all of the above on any board but the HY310.
 - The series stands at **182 patches** in fifteen sections
   ([docs/kernel-patches.md](docs/kernel-patches.md)).
 
