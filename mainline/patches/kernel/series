@@ -20,7 +20,18 @@
 0007-pwm-add-sun8i-8channel-driver.patch
 0008-misc-add-hy310-board-mgr.patch
 0009-misc-add-hy310-keystone-motor.patch
-0011-misc-add-sunxi-nsi.patch
+#   (Q1 -- 0011 withdrawn 22.09.: drivers/misc/sunxi-nsi.c is not an NSI driver.
+#    It calls itself an ARM-MIPS interface "based on factory 0x3061000 base" and
+#    invents a register map (CTRL 0x00, IRQ_EN 0x08, MEM_BASE 0x10, MEM_SIZE 0x14)
+#    for nsi-controller@2020000, whose real layout is base + 0x200*port, +0x10 mode,
+#    +0x14 priority, +0x18 io, port 0 = the CPU master (vendor nsi_port_setmode
+#    @0xC05404C0 / nsi_port_setpri @0xC0540520, AP3s section 11). Its probe would
+#    write a DMA address into the CPU master's MBUS mode register and a buffer
+#    length into its priority register. Nothing calls into it - its three exports
+#    have no user, the nsi@2020000 node carries another compatible, and the ARM-MIPS
+#    IPC it claims to be is 0014/0092. The file stays in patches/kernel/ as history.
+#    A real NSI driver, if one is ever wanted, starts from the vendor layout, not
+#    from this file.)
 0012-misc-add-sunxi-tvtop.patch
 0013-misc-add-sunxi-decd.patch
 #   (Nachtrag well0nez, doku/124 -- Original bleibt byteidentisch; die drei Korrekturen aus cstengers Zweig vom 28.08.)
