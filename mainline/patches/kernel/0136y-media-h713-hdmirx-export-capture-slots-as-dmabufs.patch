@@ -1,0 +1,190 @@
+media: sun50i-h713-hdmirx: export the capture slots as dma-bufs (VIDIOC_EXPBUF)
+
+The three capture slots are the firmware's own no-map ring; the queue hands
+them out as they are, mapped write-combining (VB2_MMAP), and that was the whole
+memory story. The keystone chain needs the GPU to read a live frame without a
+copy (umbau/plan/keystone/PLAN.md, S4; the design in re-apps/AP2d), and the
+GPU imports dma-bufs, so the queue gets a .get_dmabuf.
+
+The exporter wraps one slot plane: .map_dma_buf builds a one-entry scatterlist
+whose DMA address is dma_map_resource() over the slot's physical range and
+which carries no page - there is none behind a no-map reservation - .mmap
+reuses the write-combining path the plain mmap already uses, .release drops
+the reference the export took on the plane, and there is no .vmap. Importers
+that read sg_dma_address()/sg_dma_len() work, which Panfrost does
+(panfrost_mmu_map walks for_each_sgtable_dma_sg); one that insists on pages
+fails at import and not later. The same construction has run on this SoC in
+patch 0036 (the scanout carveout exporter) with Panfrost as the importer.
+
+It is not a fence, and the header says so: the firmware reuses a slot every
+third frame, 50 ms at 60 Hz, whoever holds a dma-buf on it. The V4L2 buffer
+states stay the only ordering; the reader has to be done inside that time.
+
+io_modes stays VB2_MMAP - export needs the mem op, the ioctl in the table
+(vb2_ioctl_expbuf; without it the ioctl core answers -ENOTTY) and a MMAP
+queue, nothing else; import (V4L2_MEMORY_DMABUF) is not offered.
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-22 19:22:22.653829481 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-22 19:24:11.405139717 +0200
+@@ -56,6 +56,8 @@
+ #include <linux/build_bug.h>
+ #include <linux/delay.h>
+ #include <linux/debugfs.h>
++#include <linux/dma-buf.h>
++#include <linux/dma-mapping.h>
+ #include <linux/firmware.h>
+ #include <linux/io.h>
+ #include <linux/ktime.h>
+@@ -68,6 +70,7 @@
+ #include <linux/of_address.h>
+ #include <linux/platform_device.h>
+ #include <linux/regmap.h>
++#include <linux/scatterlist.h>
+ #include <linux/seq_file.h>
+ #include <linux/slab.h>
+ #include <linux/spinlock.h>
+@@ -2902,11 +2905,130 @@
+ 	return 0;
+ }
+ 
++/*
++ * Hand a slot plane out as a dma-buf (VIDIOC_EXPBUF), so that the GPU can read
++ * the capture without a copy: the warp daemon imports the fd on the render
++ * node and Panfrost maps it through the Mali's own MMU.
++ *
++ * The ring is the firmware's no-map reservation, so there are no struct pages
++ * behind it: the scatterlist has one entry whose DMA address comes from
++ * dma_map_resource() and no page. Importers that read sg_dma_address() and
++ * sg_dma_len() - Panfrost among them - are content with that; one that insists
++ * on pages fails at import, not later.
++ *
++ * What this is NOT is a fence. The firmware writes the three slots in turn and
++ * reuses one every third frame, 50 ms at 60 Hz, whoever holds a dma-buf on it:
++ * the reader has to be done with a frame inside that time or it reads a torn
++ * one. The V4L2 buffer states (DQBUF, QBUF) are the only ordering there is.
++ * Write combining on both sides, no caches involved - the same story the mmap
++ * above tells.
++ */
++struct h713_hdmirx_dmabuf_map {
++	struct sg_table sgt;
++	dma_addr_t dma;
++	size_t size;
++};
++
++static struct sg_table *
++h713_hdmirx_dmabuf_map(struct dma_buf_attachment *attach,
++		       enum dma_data_direction dir)
++{
++	struct h713_hdmirx_plane *p = attach->dmabuf->priv;
++	struct h713_hdmirx_dmabuf_map *m;
++	int ret;
++
++	m = kzalloc(sizeof(*m), GFP_KERNEL);
++	if (!m)
++		return ERR_PTR(-ENOMEM);
++
++	ret = sg_alloc_table(&m->sgt, 1, GFP_KERNEL);
++	if (ret) {
++		kfree(m);
++		return ERR_PTR(ret);
++	}
++
++	m->dma = dma_map_resource(attach->dev, p->phys, p->size, dir,
++				  DMA_ATTR_SKIP_CPU_SYNC);
++	if (dma_mapping_error(attach->dev, m->dma)) {
++		sg_free_table(&m->sgt);
++		kfree(m);
++		return ERR_PTR(-ENOMEM);
++	}
++	m->size = p->size;
++	sg_dma_address(m->sgt.sgl) = m->dma;
++	sg_dma_len(m->sgt.sgl) = p->size;
++	m->sgt.sgl->length = p->size;
++	/* No sg_set_page(): a page for a no-map reservation would be a lie. */
++
++	attach->priv = m;
++
++	return &m->sgt;
++}
++
++static void h713_hdmirx_dmabuf_unmap(struct dma_buf_attachment *attach,
++				     struct sg_table *sgt,
++				     enum dma_data_direction dir)
++{
++	struct h713_hdmirx_dmabuf_map *m = attach->priv;
++
++	if (!m)
++		return;
++
++	dma_unmap_resource(attach->dev, m->dma, m->size, dir,
++			   DMA_ATTR_SKIP_CPU_SYNC);
++	sg_free_table(&m->sgt);
++	kfree(m);
++	attach->priv = NULL;
++}
++
++/* Drops the reference h713_hdmirx_get_dmabuf() took on the plane. */
++static void h713_hdmirx_dmabuf_release(struct dma_buf *dbuf)
++{
++	h713_hdmirx_plane_put(dbuf->priv);
++}
++
++static int h713_hdmirx_dmabuf_mmap(struct dma_buf *dbuf,
++				   struct vm_area_struct *vma)
++{
++	return h713_hdmirx_mmap(dbuf->priv, vma);
++}
++
++static const struct dma_buf_ops h713_hdmirx_dmabuf_ops = {
++	.map_dma_buf	= h713_hdmirx_dmabuf_map,
++	.unmap_dma_buf	= h713_hdmirx_dmabuf_unmap,
++	.release	= h713_hdmirx_dmabuf_release,
++	.mmap		= h713_hdmirx_dmabuf_mmap,
++};
++
++static struct dma_buf *h713_hdmirx_get_dmabuf(struct vb2_buffer *vb,
++					      void *buf_priv,
++					      unsigned long flags)
++{
++	struct h713_hdmirx_plane *p = buf_priv;
++	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
++	struct dma_buf *dbuf;
++
++	exp_info.ops = &h713_hdmirx_dmabuf_ops;
++	exp_info.size = p->size;
++	exp_info.flags = flags;
++	exp_info.priv = p;
++
++	dbuf = dma_buf_export(&exp_info);
++	if (IS_ERR(dbuf))
++		return NULL;
++
++	/* The dma-buf keeps the plane alive until its own release. */
++	refcount_inc(&p->refcount);
++
++	return dbuf;
++}
++
+ static const struct vb2_mem_ops h713_hdmirx_mem_ops = {
+ 	.alloc		= h713_hdmirx_alloc,
+ 	.put		= h713_hdmirx_put,
+ 	.num_users	= h713_hdmirx_num_users,
+ 	.mmap		= h713_hdmirx_mmap,
++	.get_dmabuf	= h713_hdmirx_get_dmabuf,
+ };
+ 
+ static int h713_hdmirx_queue_setup(struct vb2_queue *q, unsigned int *nbuffers,
+@@ -4184,6 +4306,7 @@
+ 	.vidioc_qbuf			= vb2_ioctl_qbuf,
+ 	.vidioc_dqbuf			= vb2_ioctl_dqbuf,
+ 	.vidioc_prepare_buf		= vb2_ioctl_prepare_buf,
++	.vidioc_expbuf			= vb2_ioctl_expbuf,
+ 	.vidioc_streamon		= vb2_ioctl_streamon,
+ 	.vidioc_streamoff		= vb2_ioctl_streamoff,
+ 
+@@ -5009,4 +5132,5 @@
+ MODULE_DESCRIPTION("Allwinner H713 HDMI receiver");
+ MODULE_AUTHOR("well0nez <well0nez@users.noreply.github.com>");
+ MODULE_LICENSE("GPL");
++MODULE_IMPORT_NS("DMA_BUF");
+ MODULE_FIRMWARE(H713_FW_HDCP22);

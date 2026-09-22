@@ -349,6 +349,9 @@
 #    dropped the timing they fill, because a read-only ioctl takes the
 #    shortcut in video_get_user() before its ALWAYS_COPY flag is read)
 0136w-media-v4l2-core-a-read-only-ioctl-keeps-its-always-copy-flag.patch
+#   (keystone S4, well0nez -- VIDIOC_EXPBUF: a capture slot plane as a dma-buf for the GPU,
+#    one-entry scatterlist over dma_map_resource, no pages, no fence beyond the V4L2 states)
+0136y-media-h713-hdmirx-export-capture-slots-as-dmabufs.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------
