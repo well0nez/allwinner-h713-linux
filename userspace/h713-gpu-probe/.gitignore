@@ -1,3 +1,4 @@
 h713-gpu-probe
 h713-gpu-probe.*-linux-gnu
+h713-gpu-probe-scanout.*-linux-gnu
 *.o
