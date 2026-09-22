@@ -122,6 +122,12 @@ PROFILE = {
         "lib/firmware/h713-arisc.bin": (176132, "d41731fa783dace3070264397064b28e2359a27b9e4708f3f7d40f1c3d876b7e"),
         "lib/firmware/hy310-edid.bin": (512, "70d10294e3f1f1ba3aceaf684c90d2dcdcafc9ba4ed265956520bdf4adfb60ef"),
         "lib/firmware/h713/msp-patch.bin": (2896, "8e31db199e0078d142f622436ff0b7249b333dbb6df8ec3fbabc0d8fea6ea0c5"),
+        # Q7: the two vendor TEXT files, measured 22.09.2026 on firmware/hy310/2025-07-24_Projector07241019/
+        # update.img (vendor_a:/etc/tvconfig/panel_config/panel_config.ini and system_a:/system/
+        # camprjspe.ini). Both digests are the ones AP3g 0 and AP1 0 name for their own copies, so the
+        # image and the material agree. They also arm rule 5 of release/sperr-scan.py for these two names.
+        "pq/panel_config.ini": (2709, "b024f6e060580d2a7a4ede4b83e5669c184458437342050a1ba7f33dfd03db99"),
+        "pq/camprjspe.ini": (475, "7ff05ee22562dc721d5701aa2a046ef530c1dc6b03ae96de7e541313ea5f8cc5"),
         # X:74-94 _MIPS_REF -- mips/ of boot-resource.fex, measured 10.09.2026 from
         # update.img and from the eMMC dump of the dev device (LBA 73728 / 139264).
         "boot/mips/display.bin": (1256216, "16c74a28187f342de657828fab65145b140ac9411c40cccc02eed25047472ee9"),

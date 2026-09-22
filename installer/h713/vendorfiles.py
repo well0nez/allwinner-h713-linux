@@ -39,6 +39,25 @@ EDID_14 = TVCONFIG + "/HDMI_EDID_14.bin"
 EDID_20 = TVCONFIG + "/HDMI_EDID_20.bin"
 MSP_LIB_CANDIDATES = ("/lib/libmspsound.so", "/lib64/libmspsound.so", "/lib/hw/libmspsound.so")
 
+# Two vendor TEXT configuration files that describe the *board*, not the picture. They land next to
+# the PQ set because they are read on the host, never by the kernel. Sources:
+#   panel_config.ini  AP3g section 9 D1 -- PanelControl's own panel description. Without it a foreign
+#       board's panel row has to be typed off a photograph; with it `h713-extract --profile` answers.
+#       PanelControl looks in /oem, /Reserve0 and vendor:/etc/tvconfig/panel_config/ (AP3d 7); of the
+#       three only the vendor copy is in every input we can open, so that is the one taken.
+#   camprjspe.ini     AP1 section 3 -- the autofocus/keystone optics constants (F, Whalf, Hhalf, U1,
+#       U2, Vdec, LCD_O, DLP_AXIS, fdd, ... plus the camera PID/VID and the CRC over five of them).
+#       read_ini_flle@0x37E04 tries /oem/camprjspe.ini first and /system/camprjspe.ini second; /oem is
+#       the media_data partition, which is in no input the extractor opens, so /system it is.
+PANEL_CONFIG_OUTPUT = "pq/panel_config.ini"
+CAMPRJSPE_CANDIDATES = ("/system/camprjspe.ini", "/camprjspe.ini")
+CAMPRJSPE_OUTPUT = "pq/camprjspe.ini"
+SYSTEM_PARTITIONS = ("system_a", "system")
+#: the keys whose absence makes the file useless to us, per file name
+TEXT_CONFIG_KEYS = {"panel_config.ini": ("ProjectID", "PanelWidth", "PanelHeight", "PanelDCLK",
+                                         "PanelHTotal", "PanelVTotal", "PanelDualPort"),
+                    "camprjspe.ini": ("F", "Whalf", "Hhalf", "U1", "U2", "Vdec", "CRC")}
+
 # WLAN firmware of the AIC8800D80 (SDIO), relative to the root of the vendor partition.
 # The target directory MUST match the driver's CONFIG_AIC_FW_PATH; radxa's
 # patch fix-sdio-firmware-path.patch sets it to /lib/firmware/aic8800_fw/SDIO/aic8800D80
@@ -235,6 +254,23 @@ def edid_name(b: bytes) -> str:
 # --------------------------------------------------------------------------------------------------
 # Check the PQ files
 # --------------------------------------------------------------------------------------------------
+
+def check_text_config(name: str, data: bytes) -> List[str]:
+    """Empty list = ok. The mandatory keys of panel_config.ini / camprjspe.ini (TEXT_CONFIG_KEYS).
+
+    Both files are read case-insensitively by their vendor readers, and camprjspe.ini states every
+    key before any section header at all, so only the key names are looked at -- never a section.
+    (`parse_ini` cannot be used here: it drops every pair that stands before the first [section],
+    which is all of camprjspe.ini. Finding, not fixed here -- see the Q7 report.) The line is cut at
+    '#' and at ';' the way the vendor readers cut it (PanelControl and read_ini_flle@0x37E04).
+    """
+    seen = set()
+    for line in data.decode("utf-8", "replace").splitlines():
+        line = line.split("#", 1)[0].split(";", 1)[0].strip()
+        if "=" in line and not line.startswith("["):
+            seen.add(line.split("=", 1)[0].strip().lower())
+    return ["%s missing" % key for key in TEXT_CONFIG_KEYS.get(name, ()) if key.lower() not in seen]
+
 
 def check_pq(name: str, data: bytes, tmp: Path) -> List[str]:
     """Empty list = ok. Otherwise findings (each one is trouble ahead)."""

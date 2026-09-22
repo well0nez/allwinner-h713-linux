@@ -18,7 +18,7 @@ Output (under --out, default ./h713-extract-out):
   lib/firmware/h713-arisc.bin        (= the scp item of the sunxi-package)
   lib/firmware/hy310-edid.bin        (= HDMI_EDID_14.bin + HDMI_EDID_20.bin, 512 B)
   lib/firmware/h713/msp-patch.bin    (= symbol patch_msp out of libmspsound.so, MSPM blocks)
-  pq/...                             (the files h713-pq reads)
+  pq/...                             (the files h713-pq reads, plus panel_config.ini and camprjspe.ini)
   boot/mips/...                      (= MIPS/display artefacts from bootloader_a/bootloader_b, what U-Boot reads)
   lib/firmware/aic8800_fw/SDIO/aic8800D80/...  (= WLAN firmware of the AIC8800D80 from vendor:/etc/firmware/aic8800d80/)
   MANIFEST.json, REPORT.txt (BERICHT.txt is written as a copy for one more release)
@@ -45,8 +45,15 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from h713.extract import VERSION, Run   # noqa: E402
-from h713.log import Log                # noqa: E402
+from h713.extract import VERSION, Run      # noqa: E402
+from h713.log import Log                   # noqa: E402
+from h713.profiles import legacy_devices   # noqa: E402
+
+#: The vendor-blob hash table release/sperr-scan.py reads off this script (rule 5 of doku/116 section 2:
+#: a renamed vendor blob is still caught by its sha256). Stage 3 moved the table into h713.profiles, and
+#: with it this name disappeared -- the scan has been reading 0 reference hashes ever since (measured on
+#: 12b5943). The name is sperr-scan's interface, so it stays spelled the way that script asks for it.
+GERAETE = legacy_devices()
 
 
 def main(argv=None) -> int:

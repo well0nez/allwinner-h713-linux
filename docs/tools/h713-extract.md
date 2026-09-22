@@ -28,11 +28,29 @@ each leave one group out; `-q` prints result lines only.
 
 Output under `--out` (default `./h713-extract-out`): `lib/firmware/h713-arisc.bin` (ARISC coprocessor
 firmware), `lib/firmware/hy310-edid.bin`, `lib/firmware/h713/msp-patch.bin` (audio DSP patch), `pq/*`
-(the picture-quality tables `h713-pq` reads), `boot/mips/*` (the 19 display artifacts U-Boot loads by
+(the picture-quality tables `h713-pq` reads, plus the two board description files below),
+`boot/mips/*` (the 19 display artifacts U-Boot loads by
 name), `boot/bootlogo.bmp` (the vendor boot logo, added 15.09.2026),
 `lib/firmware/aic8800_fw/SDIO/aic8800D80/*` (Wi-Fi firmware, added 12.09.2026, `--no-wlan` to skip
 it), plus `MANIFEST.json` and `REPORT.txt`. The report is also written as `BERICHT.txt`, byte-identical;
 the German name goes out together with the German switches, after `v0.9`.
+
+### The two board description files in `pq/`
+
+Two of the files under `pq/` are not picture tables at all. They describe the **board**, they are
+plain text, and nothing on the device reads them - they are read here, on the host, by the tools
+that have to answer what a foreign projector's hardware is.
+
+| File | Vendor path | What it is for |
+|---|---|---|
+| `pq/panel_config.ini` | `vendor:/etc/tvconfig/panel_config/panel_config.ini` | the panel: raster, LVDS ports, currents, spread spectrum, the backlight PWM. `h713-extract --profile` turns it into the panel row of a board profile |
+| `pq/camprjspe.ini` | `system:/system/camprjspe.ini` | the optics constants of autofocus and auto-keystone (`F`, `Whalf`, `Hhalf`, `U1`, `U2`, `Vdec`, `LCD_O`, `DLP_AXIS`, `fdd` ...), the camera's PID/VID, and a CRC the vendor checks over five of them |
+
+Both are checked for their mandatory keys and hashed into the manifest like every other artifact.
+The vendor reads each of them from more than one place - `PanelControl` tries `/oem`, `/Reserve0`
+and the vendor path, and `read_ini_flle` tries `/oem/camprjspe.ini` before `/system/camprjspe.ini`.
+`/oem` is the `media_data` partition, which is in none of the inputs this tool opens, so the copies
+above are the ones it takes; the report names the partition each came from.
 
 The boot logo is the one file that does not come from `mips/` but from the ROOT of the same FAT,
 because that is where U-Boot looks for it: `h713_disp init <id> logo` reads `bootlogo.bmp` at the root

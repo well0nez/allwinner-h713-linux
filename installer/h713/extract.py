@@ -34,9 +34,10 @@ from h713.vendorfiles import (AIC_FW_DIR, AIC_FW_TARGET, BOOT_ROOT_FILES, BOOT_R
                               EDID_14, EDID_20, FALLBACK_MIPS_SOURCES,
                               MIPS_FEX, MIPS_FILES, MIPS_OUTPUT_DIR, MIPS_PART_KEYS, MIPS_PART_NAMES,
                               MIPS_PROJECTID, MIPS_SOURCE_DIR, MSP_LIB_CANDIDATES,
-                              PANEL_CONFIG_CANDIDATES, PQ_FILES, REQUIRED_FILES, TVCONFIG,
+                              CAMPRJSPE_CANDIDATES, CAMPRJSPE_OUTPUT, PANEL_CONFIG_CANDIDATES,
+                              PANEL_CONFIG_OUTPUT, PQ_FILES, REQUIRED_FILES, SYSTEM_PARTITIONS, TVCONFIG,
                               VENDOR_MIPS_DIR, VENDOR_MIPS_SOURCE, check_bootlogo, check_display_cfg,
-                              check_edid_block, check_pq, check_tse, edid_name, edid_vendor,
+                              check_edid_block, check_pq, check_text_config, check_tse, edid_name, edid_vendor,
                               elf_symbol, find_mspm_chain, firmware_revision_of, parse_mspm,
                               read_vendor_mips)
 
@@ -94,6 +95,8 @@ class Run:
         self.super_source: Optional[Source] = None
         self.vendor_source: Optional[Source] = None
         self.vendor: Optional[Ext4Base] = None
+        self.lp: Optional[LpSuper] = None      # the LP metadata of super, so a second partition can be opened
+        self.system: Optional[Ext4Base] = None  # the Android system partition (camprjspe.ini lives there)
         self.open_sources: List[FileSource] = []
         self.mips_sources: List[tuple] = []    # FAT16 images with mips/ (bootloader_b/_a, boot-resource.fex)
         self.mips: Dict[str, object] = {}      # findings for the manifest (project ids, sources, what was not taken)
@@ -371,7 +374,7 @@ class Run:
         else:
             self.log.info(f"{q.name}: no sparse header, read as a raw image")
         self.super_source = q
-        lp = LpSuper(q, self.log)
+        self.lp = lp = LpSuper(q, self.log)
         self.input_facts["lp"] = {"version": lp.version, "location": lp.location,
                                   "partitions": {n: {"size": p["size"], "group": p["group"],
                                                      "extents": [list(e) for e in p["extents"]]} for n, p in lp.parts.items()}}
@@ -521,6 +524,43 @@ class Run:
                 self.log.warn(f"{n}: {p}")
             self.store(f"pq/{n}", b, origin=f"vendor:{TVCONFIG}/{n}",
                        checks=(["mandatory keys ok"] if not problems else problems), error=bool(problems))
+
+    def open_system(self) -> Optional[Ext4Base]:
+        """The Android system partition, opened read-only for camprjspe.ini and nothing else."""
+        if self.system is None and self.lp is not None:
+            for name in SYSTEM_PARTITIONS:
+                q = self.lp.partition(name, self.log)
+                if q is not None:
+                    reader = Ext4Debugfs if getattr(self.args, "use_debugfs", False) else Ext4
+                    self.system = reader(q, self.tmp, name, self.log)
+                    break
+        return self.system
+
+    def extract_text_configs(self):
+        """pq/panel_config.ini (AP3g 9 D1) and pq/camprjspe.ini (AP1 3) -- the two board TEXT files."""
+        self.log.heading("board configuration files (panel_config.ini, camprjspe.ini)")
+        found = None
+        if self.open_vendor():
+            found = next((p for p in PANEL_CONFIG_CANDIDATES if self.vendor.exists(p)), None)
+        if found is None:
+            self.log.warn("panel_config.ini not found in vendor (" + ", ".join(PANEL_CONFIG_CANDIDATES) + ")")
+            self.not_extracted.append(f"{PANEL_CONFIG_OUTPUT} (panel_config.ini not in the vendor partition)")
+        else:
+            self.take_text_config(PANEL_CONFIG_OUTPUT, self.vendor.read(found, self.tmp), "vendor:" + found)
+        system = self.open_system()
+        path = None if system is None else next((p for p in CAMPRJSPE_CANDIDATES if system.exists(p)), None)
+        if path is None:
+            self.log.warn("camprjspe.ini not found in the system partition (" + ", ".join(CAMPRJSPE_CANDIDATES) + ")")
+            self.not_extracted.append(f"{CAMPRJSPE_OUTPUT} (camprjspe.ini not in the system partition)")
+        else:
+            self.take_text_config(CAMPRJSPE_OUTPUT, system.read(path, self.tmp), "system:" + path)
+
+    def take_text_config(self, rel: str, data: bytes, origin: str):
+        problems = check_text_config(rel.rsplit("/", 1)[-1], data)
+        for p in problems:
+            self.log.warn(f"{rel}: {p}")
+        self.store(rel, data, origin=origin, error=bool(problems),
+                   checks=problems or ["mandatory keys ok"])
 
     def extract_wlan(self):
         """Take over the AIC8800D80 firmware from vendor:/etc/firmware/aic8800d80/.
@@ -1218,6 +1258,7 @@ class Run:
             self.extract_msp()
             if not self.args.no_pq:
                 self.extract_pq()
+                self.extract_text_configs()
             if not self.args.no_mips:
                 self.extract_mips()
             if not self.args.no_wlan:
