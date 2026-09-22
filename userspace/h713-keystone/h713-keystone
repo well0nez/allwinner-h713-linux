@@ -177,6 +177,7 @@ DEFAULTS = (
     ("after_move", "off", _one_of("off", "keystone", "keystone+focus")),
     ("move_degrees", "3.0", _above_zero(float, "degrees above zero")),
     ("settle_seconds", "2.0", _above_zero(float, "seconds above zero")),
+    ("settle_degrees", "1.0", _above_zero(float, "degrees above zero")),
     ("focus_command", "h713-autofocus run", str),
 )
 
@@ -538,8 +539,9 @@ def do_watch(args, conf, ini):
     moving_since = None  # when the move began
     still_since = None   # when the readings became still again
     last = None
-    print("ok watch  after_move = %s, move %.1f degrees, settle %.1f s"
-          % (conf["after_move"], conf["move_degrees"], conf["settle_seconds"]))
+    print("ok watch  after_move = %s, move %.1f degrees, settle %.1f s within %.1f degrees, a reading every ~%.1f s"
+          % (conf["after_move"], conf["move_degrees"], conf["settle_seconds"],
+             conf["settle_degrees"], conf["average_samples"] / 30.0))
     until = time.monotonic() + args.for_seconds if args.for_seconds else None
     while not stopped and (until is None or time.monotonic() < until):
         row = reading(sensor, conf, reference, ini)
@@ -554,14 +556,16 @@ def do_watch(args, conf, ini):
                 print("ok moved  pitch %.2f roll %.2f, waiting for it to settle"
                       % (row["gs_y"], row["gs_x"]))
         else:
-            if last is not None and angle_distance(angles, last) <= 0.5:
+            if last is not None and angle_distance(angles, last) <= conf["settle_degrees"]:
                 still_since = still_since or now
             else:
                 still_since = None
             if still_since is not None and now - still_since >= conf["settle_seconds"]:
                 rest = angles
+                took = now - moving_since
                 moving_since = None
                 still_since = None
+                print("ok settled  after %.1f s" % took)
                 if conf["after_move"] == "off":
                     print("ok settled  pitch %.2f roll %.2f, after_move = off: nothing applied"
                           % (row["gs_y"], row["gs_x"]))
