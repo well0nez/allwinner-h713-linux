@@ -1,0 +1,190 @@
+drm: h713-afbd: the descriptor's two windows as parameters, plane untouched
+
+The zoom runs of 22.09.2026 moved the plane and the descriptor together and
+could not tell the two apart. dev20 changed words 31..34 through the plane's
+CRTC rectangle: the firmware's DE scaler window 0x05180034 went 0x07800438 ->
+0x06000360 and the Proc node 0x05140124/28 to 1536/864, so the firmware really
+does read those words and re-runs its window chain. dev21 then showed what it
+does NOT do: with the window at 480,270 960x540 the wall carried the source's
+top-left quarter at 1:1 and, after the test pattern was closed, the live
+desktop's top-left corner at 1:1 - the ring keeps receiving the whole picture,
+so the firmware does not scale INTO the ring, and Q10's premise is falsified.
+The other direction (dev21 "Slot 2b") is closed too: with SRC at the full ring
+and the plane's CRTC at 192,108 1536x864 the wall was smeared, unchanged after
+writing the DE window back to 1920x1080 by hand, so our composition block does
+not downscale a 1920x1080 NV16 ring either.
+
+What was never tried is the plane at the FULL panel with only the descriptor
+words changed. That is what this patch makes possible, and it needs no plane
+plumbing at all: two module parameters, "x,y,w,h" in panel pixels, that
+override words 27..30 (m_src_cfg) and 31..34 (m_dst_cfg) after
+build_video_info() has written them, through 0133d's fixed-space formula and
+clamped to that space so no value can name a rectangle the firmware's own
+30720x17280 space does not contain.
+
+Two windows, two different things, which is why there are two parameters and
+not one. m_dst_cfg is where the firmware puts its result: the vendor's
+hardware composer writes the video layer's display frame there and nothing is
+torn down for the change (AP3c 4.2 and 5, AP3e 2.2 and 2.5). m_src_cfg is what
+it reads out of its capture: the vendor's own "zoom 80 %" is exactly a shrunk
+capture window with the display window left whole, and "the firmware's scaler
+then blows the crop up to full panel" (AP3 section 2.2). So a smaller
+src_window is a zoom IN and a smaller dst_window is a zoom OUT, and until a
+bench run says otherwise that is a prediction, not a measurement.
+
+Empty is byte-identical. Both parameters default to an empty rectangle, the
+overrides are guarded by drm_rect_width() > 0, and nothing else in the record,
+the plane's checks or its registers moves: the HY310 publishes the same 36
+words it published before this patch, for every geometry, ring and non-ring.
+
+A change at runtime republishes, because the firmware reads the record on a
+publication and at no other time. The trigger is the sysfs file the parameter
+already has: the setter parses the value and calls the publish path with the
+inputs the live plane last published, read back out of the plane's committed
+state under the modeset lock an atomic commit also takes. Nothing smaller
+exists here - a plane update of its own never comes, since in passthrough the
+addresses follow the ring from the vsync handler without a commit, and a new
+debugfs file would only be a second name for a sysfs file that is already
+there. The descriptor notifier fires exactly as it does after a plane enable,
+so the capture owner switches its source back on the same way.
+
+One line per publication names the eight words, at info level and not behind a
+debug mask: they are what an experiment changes and the only place the result
+can be read before the wall shows it. A publication is a plane enable or a
+geometry change in ring mode, so this is a handful of lines per session. It is
+the one visible change on the HY310's default path; the record itself is not
+touched.
+
+Not measured: everything the parameters are for. The bench run is in the Q15
+report - dst_window=192,108,1536,864 with the plane full (does the wall show
+four fifths on black?), then src_window=480,270,960,540 (does the centre
+quarter fill the panel?), then both. 0133b's caveat stands for both: a window
+the firmware does not like is the one thing here that can need a power cycle.
+
+Follow-up to 0133d (same file, the same eight words); needs nothing else.
+Sources: dev21-20260922 rows "Slot 2 zoom (Q10)" and "Slot 2b zoom
+experiment", dev20-20260922 row "Q4 zoom 80 with registers", AP3 section 2,
+AP3c sections 3.4/4.2/5, AP3e sections 2.2/2.5.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -188,6 +188,21 @@ static const u32 h713_afbd_handoff_default[H713_HANDOFF_WORDS] = {
+ #define H713_WIN_SPACE_W	30720
+ #define H713_WIN_SPACE_H	17280
+ 
++/* The two window overrides, "x,y,w,h" in panel pixels, empty = off. */
++static struct drm_rect h713_src_window, h713_dst_window;
++
++/* One window into its four words {h_start, h_size, v_start, v_size}, clamped to the space. */
++static void h713_afbd_window_words(u32 *w4, const struct drm_rect *r,
++				   unsigned int panel_w, unsigned int panel_h)
++{
++	w4[0] = min_t(u32, H713_WIN_SPACE_W * r->x1 / panel_w, H713_WIN_SPACE_W);
++	w4[2] = min_t(u32, H713_WIN_SPACE_H * r->y1 / panel_h, H713_WIN_SPACE_H);
++	w4[1] = min_t(u32, H713_WIN_SPACE_W * drm_rect_width(r) / panel_w,
++		      H713_WIN_SPACE_W - w4[0]);
++	w4[3] = min_t(u32, H713_WIN_SPACE_H * drm_rect_height(r) / panel_h,
++		      H713_WIN_SPACE_H - w4[2]);
++}
++
+ /*
+  * How long the firmware gets to answer a descriptor publication. This is the
+  * bound the board has measured, and deliberately not a shorter one that would
+@@ -434,6 +449,15 @@ static void h713_afbd_build_video_info(u32 *rec, unsigned int w,
+ 	rec[32] = H713_WIN_SPACE_W * drm_rect_width(dst) / panel_w;
+ 	rec[33] = H713_WIN_SPACE_H * dst->y1 / panel_h;
+ 	rec[34] = H713_WIN_SPACE_H * drm_rect_height(dst) / panel_h;
++	/*
++	 * The bench override last, so it is the only thing that can have
++	 * written these words. Smaller source window = zoom IN (the vendor's
++	 * own "zoom 80 %", AP3 2.2), smaller destination = zoom OUT (AP3c 4.2).
++	 */
++	if (drm_rect_width(&h713_src_window) > 0)
++		h713_afbd_window_words(&rec[27], &h713_src_window, panel_w, panel_h);
++	if (drm_rect_width(&h713_dst_window) > 0)
++		h713_afbd_window_words(&rec[31], &h713_dst_window, panel_w, panel_h);
+ 	/*
+ 	 * The display aspect mode, raw (not 1/16): the window manager reads it
+ 	 * straight into m_aspect_ratio at every signal event and CompareFrameInfo
+@@ -571,6 +595,11 @@ static bool h713_afbd_publish_video_info(struct h713_afbd *h, unsigned int w,
+ 	}
+ 	h->video_info_published = true;
+ 
++	/* One line per publication: these eight words are what an experiment moves. */
++	drm_info(&h->drm, "descriptor window: src %u %u %u %u, dst %u %u %u %u\n",
++		 rec[27], rec[28], rec[29], rec[30],
++		 rec[31], rec[32], rec[33], rec[34]);
++
+ 	for (i = 0; i < H713_VIDEO_SLOTS; i++)
+ 		writel(ptr, h->regs + AFBD_VIDEO_INFO0 + i * 4);
+ 
+@@ -1251,6 +1280,67 @@ static const struct drm_plane_helper_funcs h713_afbd_video_helper_funcs = {
+ 	.atomic_disable = h713_afbd_video_atomic_disable,
+ };
+ 
++/*
++ * A window parameter changed: publish the record again, because the firmware
++ * reads it on a publication and at no other time, and in passthrough no plane
++ * update of its own ever comes (the addresses follow the ring from the vsync
++ * handler, without a commit). The inputs come back out of the plane's
++ * committed state under the modeset lock an atomic commit also takes.
++ */
++static void h713_afbd_window_republish(void)
++{
++	struct h713_afbd *h = READ_ONCE(h713_afbd_flip_dev);
++	struct drm_plane_state *ps;
++
++	if (!h)
++		return;
++	drm_modeset_lock_all(&h->drm);
++	ps = h->video_plane.state;
++	if (h->video_active && ps && ps->fb &&
++	    h713_afbd_publish_video_info(h, ps->fb->width, ps->fb->height,
++					 ps->fb->pitches[0],
++					 to_h713_plane_state(ps)->hdmi_ring,
++					 &ps->dst, to_h713_plane_state(ps)->aspect))
++		blocking_notifier_call_chain(&h713_afbd_desc_chain,
++					     H713_AFBD_EVENT_DESCRIPTOR, NULL);
++	drm_modeset_unlock_all(&h->drm);
++}
++
++static int h713_afbd_window_set(const char *val, const struct kernel_param *kp)
++{
++	struct drm_rect r = {};
++	int x, y, w, hgt;
++	char junk;
++
++	if (val && sscanf(val, "%d,%d,%d,%d %c", &x, &y, &w, &hgt, &junk) == 4 &&
++	    x >= 0 && y >= 0 && w > 0 && hgt > 0 && x <= 0xffff - w && y <= 0xffff - hgt)
++		r = (struct drm_rect){ x, y, x + w, y + hgt };
++	else if (!val || strcspn(val, " \t\n"))
++		return -EINVAL;
++	*(struct drm_rect *)kp->arg = r;
++	h713_afbd_window_republish();
++	return 0;
++}
++
++static int h713_afbd_window_get(char *buffer, const struct kernel_param *kp)
++{
++	const struct drm_rect *r = kp->arg;
++
++	return drm_rect_width(r) <= 0 ? sysfs_emit(buffer, "\n") :
++		sysfs_emit(buffer, "%d,%d,%d,%d\n", r->x1, r->y1,
++			   drm_rect_width(r), drm_rect_height(r));
++}
++
++static const struct kernel_param_ops h713_afbd_window_ops = {
++	.set = h713_afbd_window_set,
++	.get = h713_afbd_window_get,
++};
++
++module_param_cb(src_window, &h713_afbd_window_ops, &h713_src_window, 0644);
++MODULE_PARM_DESC(src_window, "descriptor source window \"x,y,w,h\" in panel pixels, empty = the whole picture (smaller = zoom in)");
++module_param_cb(dst_window, &h713_afbd_window_ops, &h713_dst_window, 0644);
++MODULE_PARM_DESC(dst_window, "descriptor destination window \"x,y,w,h\" in panel pixels, empty = the whole panel (smaller = zoom out)");
++
+ static void h713_afbd_video_destroy_state(struct drm_plane *plane,
+ 					  struct drm_plane_state *state)
+ {
