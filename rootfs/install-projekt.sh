@@ -47,6 +47,9 @@ H713_PQ_SRC=${H713_PQ_SRC:-$PROJECT_ROOT/userspace/h713-pq}
 H713_FOCUS_SRC=${H713_FOCUS_SRC:-$PROJECT_ROOT/userspace/h713-focus}
 H713_CAM_SRC=${H713_CAM_SRC:-$PROJECT_ROOT/userspace/h713-cam}
 H713_AF_SRC=${H713_AF_SRC:-$PROJECT_ROOT/userspace/h713-autofocus}
+# The C metric beside h713-autofocus. OPTIONAL on purpose: without it the tool
+# measures in Python, which works and is only slower (Q11 item 2).
+H713_AF_BIN=${H713_AF_BIN:-$H713_AF_SRC/h713-afmetric.aarch64-linux-gnu}
 # build.sh builds the WLAN modules OUTSIDE the kernel tree (out-of-tree, radxa
 # source + patches/aic8800/) and puts them into build/out/modules/ -- they are
 # in no modroot. Without this step the image would have packages, service and
@@ -153,6 +156,16 @@ check_sources() {
 		{ warn "missing: $H713_CAM_SRC/h713-cam"; errors=1; }
 	[[ -x "$H713_AF_SRC/h713-autofocus" ]] || \
 		{ warn "missing: $H713_AF_SRC/h713-autofocus"; errors=1; }
+	if [[ -x "$H713_AF_BIN" ]]; then
+		local afkind; afkind=$(file -b "$H713_AF_BIN" 2>/dev/null || echo aarch64)
+		case "$afkind" in
+		*aarch64*) : ;;
+		*) warn "h713-afmetric is NOT aarch64: $afkind"; errors=1 ;;
+		esac
+	else
+		warn "h713-afmetric is missing: $H713_AF_BIN -- h713-autofocus will measure in Python (slower, same numbers)"
+		info "cross-build it:  make -C ${H713_AF_SRC#"$PROJECT_ROOT"/} cross"
+	fi
 	for ko in aic8800_bsp aic8800_fdrv; do
 		[[ -f "$AIC8800_MODULES/$ko.ko" ]] || \
 			{ warn "missing: $AIC8800_MODULES/$ko.ko (build/build.sh aic8800)"; errors=1; }
@@ -209,6 +222,10 @@ if ((DRY_RUN)); then
            -> /usr/local/bin/h713-autofocus               0755
        (one file, pure Python; the stock autofocus search rebuilt: chessboard
         on /dev/fb0, camera frames, focus motor cmd 1/2. Q6, 22.09.2026.)
+       ${H713_AF_BIN#"$PROJECT_ROOT"/}
+           -> /usr/local/bin/h713-afmetric               0755, if it exists
+       (the metric in C, cross-built; without it the tool falls back to
+        Python and says so on every run. Q11, 22.09.2026.)
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -343,6 +360,12 @@ info "/usr/local/bin/h713-cam ($(wc -l < "$H713_CAM_SRC/h713-cam") lines)"
 say "h713-autofocus"
 install -m 0755 "$H713_AF_SRC/h713-autofocus" "$TREE/usr/local/bin/h713-autofocus"
 info "/usr/local/bin/h713-autofocus ($(wc -l < "$H713_AF_SRC/h713-autofocus") lines)"
+if [[ -x "$H713_AF_BIN" ]]; then
+	install -m 0755 "$H713_AF_BIN" "$TREE/usr/local/bin/h713-afmetric"
+	info "/usr/local/bin/h713-afmetric (the metric in C, $(du -h "$H713_AF_BIN" | cut -f1))"
+else
+	warn "no h713-afmetric in the image -- the search will measure in Python"
+fi
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"

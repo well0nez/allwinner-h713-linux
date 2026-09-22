@@ -40,8 +40,10 @@ import errno
 import glob
 import os
 import select
+import shutil
 import signal
 import struct
+import subprocess
 import sys
 import time
 from collections import namedtuple
@@ -157,14 +159,68 @@ def pick_divisor(total):
 class Metric:
     """The metric plus the divisor it keeps for the length of one run."""
 
-    def __init__(self, window="full", stride=1):
+    def __init__(self, window="full", stride=1, sums=None):
         self.window, self.stride, self.lev = window, stride, 0
+        self.sums = sums or sharpness_sum
 
     def __call__(self, frame):
-        total = sharpness_sum(frame, self.window, self.stride)
+        total = self.sums(frame, self.window, self.stride)
         if not self.lev:
             self.lev = pick_divisor(total)
         return total // self.lev
+
+    def close(self):
+        if hasattr(self.sums, "close"):
+            self.sums.close()
+
+
+HELPER = "h713-afmetric"
+
+
+def find_helper(given=None):
+    """The C metric: the given path, one beside this file, or one on PATH."""
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), HELPER)
+    for path in [given] if given else [here, shutil.which(HELPER)]:
+        if path and os.access(path, os.X_OK):
+            return path
+    if given:
+        raise Error("%s: not an executable" % given)
+    return None
+
+
+class Helper:
+    """The C metric as ONE long-lived process: a frame in, its raw sum out.
+
+    One process per run, not per frame: a fork and an exec per frame would
+    cost more than the metric they save. `yuyv` feeds the camera's buffer in
+    unchanged and lets C read the even bytes (Q11 3).
+    """
+
+    def __init__(self, path, window, stride, yuyv=False):
+        self.path = path
+        self.proc = subprocess.Popen(
+            [path, "--window", window, "--stride", str(stride)]
+            + (["--yuyv"] if yuyv else []),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
+    def __call__(self, frame, window=None, stride=None):
+        try:
+            self.proc.stdin.write(frame)
+            self.proc.stdin.flush()
+            line = self.proc.stdout.readline()
+        except (OSError, ValueError) as exc:
+            raise Error("%s stopped answering: %s" % (self.path, exc))
+        if not line.strip():
+            raise Error("%s gave no sum (exit %s) -- try --no-helper"
+                        % (self.path, self.proc.poll()))
+        return int(line)
+
+    def close(self):
+        try:
+            self.proc.stdin.close()
+            self.proc.wait(timeout=2)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            self.proc.kill()
 
 
 def picture_present(frame):
@@ -766,9 +822,21 @@ def warm_up(camera, profile, metric):
     return 0 if level >= NO_PICTURE_LIMIT else EXIT_NO_PICTURE
 
 
+def build_metric(args, profile, yuyv=False):
+    """The metric, measured by the C helper when there is one (Q11 2)."""
+    path = None if args.no_helper else find_helper(args.helper)
+    if not args.quiet:
+        _stderr("metric: %s" % (path or "python (%s)"
+                                % ("--no-helper" if args.no_helper
+                                   else "no %s found" % HELPER)))
+    return Metric(profile.window, profile.stride,
+                  Helper(path, profile.window, profile.stride, yuyv)
+                  if path else None)
+
+
 def do_run(args, profile):
     """Pattern, camera, warm-up, search -- the whole procedure (AP1 2)."""
-    metric = Metric(profile.window, profile.stride)
+    metric = build_metric(args, profile)
     panel = camera = None
     if args.dry_run:
         motor = ReplayMotor(read_frames(args.dry_run), args.start,
@@ -812,6 +880,7 @@ def do_run(args, profile):
         code = EXIT_EDGE
     finally:
         motor.flush()
+        metric.close()
         if panel is not None:
             panel.restore()
             panel.close()
@@ -828,23 +897,26 @@ def do_measure(args, profile):
         if len(frame) < FRAME_BYTES:
             raise Error("%s holds %d bytes; a 640x480 luma frame has %d"
                         % (args.metric_only, len(frame), FRAME_BYTES))
+        metric = build_metric(args, profile)
         started = time.perf_counter()
-        total = sharpness_sum(frame, profile.window, profile.stride)
+        total = metric.sums(frame, profile.window, profile.stride)
         spent = time.perf_counter() - started
+        metric.close()
         print("window %-5s stride %d   sum %d   normalised %d   %.4f s"
               % (profile.window, profile.stride, total,
                  total // pick_divisor(total), spent))
         return 0
+    metric = build_metric(args, profile)
     camera = Camera(find_camera(args.dev, profile.camera))
     try:
         camera.expose(profile.exposure[0])
         camera.start()
         frame = camera.grab()
-        print("%d   (picture level %d)"
-              % (Metric(profile.window, profile.stride)(frame),
-                 picture_present(frame)))
+        print("%d   (picture level %d)" % (metric(frame),
+                                           picture_present(frame)))
     finally:
         camera.close()
+        metric.close()
     return 0
 
 
@@ -881,6 +953,10 @@ def main(argv=None):
     parser.add_argument("--sysfs", metavar="PATH")
     parser.add_argument("--dev", metavar="NODE")
     parser.add_argument("--cell", type=int, default=PATTERN_CELL, metavar="PX")
+    parser.add_argument("--helper", metavar="PATH",
+                        help="use this C metric instead of searching for it")
+    parser.add_argument("--no-helper", action="store_true",
+                        help="measure in Python even when %s is there" % HELPER)
     parser.add_argument("-q", "--quiet", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="the whole search")

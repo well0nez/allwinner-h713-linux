@@ -14,6 +14,7 @@ import importlib.machinery
 import importlib.util
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -110,6 +111,116 @@ class Metric(unittest.TestCase):
         self.assertEqual(af.picture_present(bytes(af.FRAME_BYTES)), 0)
         self.assertGreater(af.picture_present(mf.frame(1.5)),
                            af.NO_PICTURE_LIMIT)
+
+
+class NativeMetric(unittest.TestCase):
+    """The C helper must give the Python metric's integer, not one near it.
+
+    The helper is built here the way the Makefile builds it natively, so the
+    test needs a compiler; without one it skips rather than pass quietly. The
+    cross build for the device is the same source and the same flags.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.binary = None
+        cc = os.environ.get("CC") or "cc"
+        source = os.path.join(os.path.dirname(HERE), "afmetric.c")
+        if not shutil.which(cc) or not os.path.exists(source):
+            return
+        cls.box = tempfile.TemporaryDirectory()
+        binary = os.path.join(cls.box.name, "h713-afmetric")
+        built = subprocess.run([cc, "-O2", "-Wall", "-Wextra", "-Wshadow",
+                                "-Wvla", "-o", binary, source],
+                               stderr=subprocess.PIPE)
+        if built.returncode:
+            cls.box.cleanup()
+            raise AssertionError("afmetric.c does not compile:\n"
+                                 + built.stderr.decode())
+        cls.binary = binary
+        cls.frame = mf.frame(2.0)
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.binary:
+            cls.box.cleanup()
+
+    def setUp(self):
+        if not self.binary:
+            self.skipTest("no C compiler -- the helper cannot be built here")
+
+    def _sums(self, data, args):
+        out = subprocess.run([self.binary] + args, input=data,
+                             stdout=subprocess.PIPE, check=True)
+        return [int(line) for line in out.stdout.split()]
+
+    def test_the_c_helper_equals_the_python_metric(self):
+        for window in sorted(af.WINDOWS):
+            for stride in (1, 2, 3, 5):
+                got = self._sums(self.frame, ["--window", window,
+                                              "--stride", str(stride)])
+                self.assertEqual(got, [af.sharpness_sum(self.frame, window,
+                                                        stride)],
+                                 "%s stride %d" % (window, stride))
+
+    def test_the_c_helper_is_not_the_wrong_grouping(self):
+        """Negative control: the cheap mistake gives a different number."""
+        w, one = af.FRAME_W, self.frame
+        wrong = 0
+        for y in range(120, 360, 3):
+            for x in range(106, 530, 3):
+                r0, r1, r2 = (y - 1) * w, y * w, (y + 1) * w
+                right3 = (one[r0 + x + 1] + one[r1 + x + 1]
+                          + one[r2 + x + 1]) // 3
+                bot3 = (one[r2 + x - 1] + one[r2 + x] + one[r2 + x + 1]) // 3
+                dx = abs(((one[r1 + x - 1] + one[r1 + x]) >> 1) - right3) >> 1
+                dy = abs(((one[r0 + x] + one[r1 + x]) >> 1) - bot3) >> 1
+                wrong += (dx ** 3 + dy ** 3) >> 2
+        right = self._sums(self.frame, ["--window", "crect", "--stride", "3"])
+        self.assertEqual(right, [af.sharpness_sum(self.frame, "crect", 3)])
+        self.assertNotEqual(right[0], wrong)
+
+    def test_the_yuyv_mode_reads_the_even_bytes(self):
+        """The camera buffer straight in: C takes the luma plane itself."""
+        rnd = random.Random(713)
+        buffer_ = bytearray(len(self.frame) * 2)
+        buffer_[0::2] = self.frame
+        buffer_[1::2] = bytes(rnd.randrange(256)
+                              for _ in range(len(self.frame)))
+        got = self._sums(bytes(buffer_), ["--window", "crect", "--stride", "3",
+                                          "--yuyv"])
+        self.assertEqual(got, [af.sharpness_sum(self.frame, "crect", 3)])
+
+    def test_one_process_answers_frame_after_frame(self):
+        """The run mode: three frames over one pipe, three sums, in order."""
+        frames = [mf.frame(r) for r in (1.5, 3.0, 6.0)]
+        got = self._sums(b"".join(frames), ["--window", "crect",
+                                            "--stride", "3"])
+        self.assertEqual(got, [af.sharpness_sum(f, "crect", 3)
+                               for f in frames])
+        self.assertEqual(got, sorted(got, reverse=True))   # blur lowers it
+
+    def test_the_helper_refuses_a_short_frame(self):
+        out = subprocess.run([self.binary], input=b"\0" * 100,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(out.returncode, 2)
+        self.assertIn(b"640x480 frame has", out.stderr)
+
+    def test_the_tool_uses_the_helper_and_agrees_with_python(self):
+        """End to end: `measure --metric-only` with and without the helper."""
+        with tempfile.TemporaryDirectory() as box:
+            path = os.path.join(box, "one.gray")
+            with open(path, "wb") as fh:
+                fh.write(self.frame)
+            lines = []
+            for extra in (["--helper", self.binary], ["--no-helper"]):
+                out = subprocess.run([sys.executable, TOOL] + extra
+                                     + ["measure", "--metric-only", path],
+                                     stdout=subprocess.PIPE, check=True)
+                lines.append(out.stdout.decode().split("   ")[:3])
+            self.assertEqual(lines[0], lines[1])
+            self.assertIn("sum %d" % af.sharpness_sum(self.frame, "crect", 3),
+                          lines[0][1])
 
 
 class Frames(unittest.TestCase):

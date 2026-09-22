@@ -18,6 +18,9 @@ rootfs/wifi.env
 userspace/h713-tv/h713-tv
 userspace/h713-tv/*.aarch64-linux-gnu
 userspace/h713-tv/*.aarch64-linux-gnu.*
+userspace/h713-autofocus/h713-afmetric
+userspace/h713-autofocus/*.aarch64-linux-gnu
+userspace/h713-autofocus/*.aarch64-linux-gnu.*
 # Never: images, dumps, keys, vendor blobs (release/sperr-scan.py enforces this before a push)
 *.img
 *.ext4
