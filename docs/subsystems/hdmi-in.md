@@ -13,8 +13,13 @@ calls into the firmware - noise reduction, picture mode, HDCP key, port map, and
 `cpu_comm` link, then brings up EDID and hot-plug through the ARISC co-processor. Measured on the
 09:02 boot: the whole sequence, including EDID, finished **17.65 s** after power-on (`doku/88`,
 07.09.2026). The EDID the device advertises is fixed: HDMI 1.4 + HDMI 2.0 blocks concatenated into one
-512-byte image, patched by the firmware itself (physical address, checksum) - a read-back is therefore
-not byte-identical to what was written, and `VIDIOC_S/G_EDID` treat it as four blocks, not one.
+512-byte image, of which a source is served one 256-byte block. The firmware rewrites exactly two
+bytes of it - the HDMI vendor block's physical-address byte and the extension checksum that follows
+from it - so a read-back is not byte-identical to what was written, and `VIDIOC_S/G_EDID` treat the
+image as four blocks, not one. Which of the two blocks a port gets is a per-port bitmask inside the
+ARISC firmware and not a version number; this board serves the HDMI 1.4 block on purpose, because the
+2.0 block advertises four 4K50/60 modes the display firmware's own mode table cannot lock and lowers
+the TMDS ceiling while doing it ([arisc.md](arisc.md)).
 
 ## Signal, timings, source switch
 
