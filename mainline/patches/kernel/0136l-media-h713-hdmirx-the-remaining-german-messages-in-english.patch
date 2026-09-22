@@ -1,0 +1,212 @@
+media: h713-hdmirx: the driver's remaining German messages, in English
+
+Every line this driver has added since 0136f is English, but the strings it
+started with are German, so a boot log reads in two languages and a user who
+does not speak one of them gets half a message. T2's report (section 8.2)
+names them and leaves them alone on purpose - they belong in a patch of
+their own rather than folded into a change that does something else.
+
+Translated, same meaning, no behaviour change:
+
+  - the INCAP rowbyte fallback warning in h713_hdmirx_ring_geometry(),
+  - "INCAP reports no geometry" in h713_hdmirx_detect_timings(),
+  - the signal-info bounds warning in h713_hdmirx_read_signal_info(),
+  - every dev_err_probe()/dev_warn()/dev_info() string of probe() and of the
+    two helpers it calls (h713_hdmirx_get_region, h713_hdmirx_check_ring),
+  - the two struct h713_hdmirx member comments T2 names.
+
+Twenty-one lines, all of them string literals or comments; the code around
+them is untouched and checkpatch counts the same 0 errors / 25 warnings as
+before.
+
+What this patch does NOT translate, and a correction: T2 8.2 calls the
+German strings "five places". They are not. After this patch a German-word
+scan over the file still names sixty-three lines: the whole release path
+(h713_hdmirx_rearm and its two work handlers, every "Freigabe:" line), the
+colour-converter path ("Farbwandler:"), the init-sequence lines, the
+bring-up value line, the saturation warning, the streaming summary, the open
+refusal, and all of the debugfs status file. They are user-visible too and
+want exactly the same treatment. They are left out here because the scope of
+this patch is the list T2 names, because sixty-three more lines is a patch
+of a different size, and because the status file's wording changes again in
+0136n and 0136m - so translating it twice would be wasted work. The full
+line list is in umbau/work/Q3/REPORT.txt.
+
+Source: umbau/work/T2/REPORT.txt section 8.2, doku/128 section 3 item 3.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -1179,8 +1179,8 @@ struct h713_hdmirx {
+ 	struct work_struct rearm_work;
+ 	struct delayed_work rearm_retry_work;	/* the repeat of a failed first switch */
+ 	unsigned int rearm_retries;
+-	bool desc_seen;			/* eine Descriptor-Veroeffentlichung lag schon an */
+-	bool rearm_pending;		/* der Quellenwechsel fand kein Signal: beim naechsten wiederholen */
++	bool desc_seen;			/* a descriptor publication was already pending */
++	bool rearm_pending;		/* the source switch found no signal: repeat at the next one */
+ 	bool rearm_busy;		/* the release after a publication is running: no signal verdict yet */
+ 	bool late_hpd_done;		/* the second hotplug edge of this probe has been asked for */
+ 
+@@ -1859,7 +1859,7 @@ static int h713_hdmirx_read_signal_info(struct h713_hdmirx *rx,
+ 	if (phys < rx->shm_base ||
+ 	    phys + sizeof(*sig) > rx->shm_base + rx->shm_size) {
+ 		dev_warn_ratelimited(rx->dev,
+-				     "Signal-Info %#010x liegt nicht im cpu_comm-Shmem\n",
++				     "signal info %#010x is not inside the cpu_comm shmem\n",
+ 				     phys);
+ 		return -EFAULT;
+ 	}
+@@ -3302,7 +3302,7 @@ static void h713_hdmirx_ring_geometry(struct h713_hdmirx *rx,
+ 
+ 	if (!pitch || (rowbyte >> 16) != (rowbyte & 0xffff)) {
+ 		dev_warn_ratelimited(rx->dev,
+-				     "INCAP-Zeilenabstand %#010x passt nicht zur Breite %u; es gilt die Aufrundung auf 16\n",
++				     "INCAP line pitch %#010x does not match the width %u; the rounding up to 16 applies\n",
+ 				     rowbyte, src_w);
+ 		pitch = ALIGN(src_w, H713_INCAP_ROWBYTE_UNIT);
+ 	}
+@@ -3441,7 +3441,7 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 		 * state either, so this deserves a line, not silence.
+ 		 */
+ 		dev_warn_ratelimited(rx->dev,
+-				     "INCAP meldet keine Geometrie (aktiv %#010x, total %#010x)\n",
++				     "INCAP reports no geometry (active %#010x, total %#010x)\n",
+ 				     active, total);
+ 		return -ENOLCK;
+ 	}
+@@ -4188,17 +4188,17 @@ static int h713_hdmirx_get_region(struct device *dev, const char *name,
+ 	np = h713_hdmirx_region(dev, name);
+ 	if (!np)
+ 		return dev_err_probe(dev, -EINVAL,
+-				     "memory-region \"%s\" fehlt\n", name);
++				     "memory-region \"%s\" is missing\n", name);
+ 
+ 	ret = of_address_to_resource(np, 0, &res);
+ 	of_node_put(np);
+ 	if (ret)
+ 		return dev_err_probe(dev, ret,
+-				     "memory-region \"%s\" unbrauchbar\n",
++				     "memory-region \"%s\" is unusable\n",
+ 				     name);
+ 	if (upper_32_bits(res.end))
+ 		return dev_err_probe(dev, -ERANGE,
+-				     "memory-region \"%s\" liegt oberhalb 4 GiB -- der MIPS sieht sie nicht\n",
++				     "memory-region \"%s\" lies above 4 GiB -- the MIPS cannot see it\n",
+ 				     name);
+ 
+ 	*base = res.start;
+@@ -4221,7 +4221,7 @@ static int h713_hdmirx_check_ring(struct h713_hdmirx *rx)
+ 		    !h713_hdmirx_in_ring(rx, c) ||
+ 		    !h713_hdmirx_in_ring(rx, c + H713_HDMIRX_SLOT_PITCH - 1))
+ 			return dev_err_probe(rx->dev, -ERANGE,
+-					     "Slot %u (%pa/%pa) liegt nicht in der hdmi-ring-Region\n",
++					     "slot %u (%pa/%pa) is not inside the hdmi-ring region\n",
+ 					     i, &y, &c);
+ 	}
+ 
+@@ -4306,7 +4306,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 						CPU_COMM_CPU_MIPS);
+ 	if (!rx->id_setvideorange)
+ 		dev_warn(dev,
+-			 "THal_Vp_SetVideoRange unbekannt -- der Farbwandler der Capture kann nach einem Aufloesungswechsel nicht zurueckgesetzt werden\n");
++			 "THal_Vp_SetVideoRange is unknown -- the capture colour converter cannot be restored after a resolution change\n");
+ 
+ 	/*
+ 	 * The display driver is where the finished-slot events come from, and
+@@ -4319,7 +4319,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 	ret = h713_afbd_read_flip(&flip);
+ 	if (ret == -EPROBE_DEFER || ret == -ENODEV)
+ 		return dev_err_probe(dev, ret,
+-				     "kein AFBD-Vsync-Notifier -- ohne sun50i-h713-afbd gibt es kein Slot-Ereignis\n");
++				     "no AFBD vsync notifier -- without sun50i-h713-afbd there is no slot event\n");
+ 
+ 	ret = h713_hdmirx_get_region(dev, "hdmi-ring", &rx->ring_base,
+ 				     &rx->ring_size);
+@@ -4336,7 +4336,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 		return ret;
+ 	if (rx->shm_size < H713_SHM_VP_INIT)
+ 		return dev_err_probe(dev, -ERANGE,
+-				     "cpu-comm-shmem ist zu klein fuer den Vp_Init-Puffer\n");
++				     "cpu-comm-shmem is too small for the Vp_Init buffer\n");
+ 
+ 	/*
+ 	 * Only the two pages that hold call arguments are mapped. Write
+@@ -4347,7 +4347,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 				  H713_SHM_WINDOW);
+ 	if (!rx->shm)
+ 		return dev_err_probe(dev, -ENOMEM,
+-				     "cpu_comm-Shmem-Fenster nicht abbildbar\n");
++				     "the cpu_comm shmem window cannot be mapped\n");
+ 
+ 	/*
+ 	 * The capture block, read-only, as a syscon behind a phandle rather
+@@ -4359,7 +4359,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 						    "allwinner,incap");
+ 	if (IS_ERR(rx->incap))
+ 		return dev_err_probe(dev, PTR_ERR(rx->incap),
+-				     "kein Zugriff auf den INCAP-Block (allwinner,incap)\n");
++				     "no access to the INCAP block (allwinner,incap)\n");
+ 
+ 	/*
+ 	 * The receiver's port window, in the same shape and for the same
+@@ -4372,10 +4372,10 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 							    "allwinner,hdmirx-link");
+ 	if (IS_ERR(rx->link))
+ 		return dev_err_probe(dev, PTR_ERR(rx->link),
+-				     "kein Zugriff auf das LINK-Fenster (allwinner,hdmirx-link)\n");
++				     "no access to the LINK window (allwinner,hdmirx-link)\n");
+ 	if (!rx->link)
+ 		dev_warn(dev,
+-			 "kein allwinner,hdmirx-link -- der Audiostatus des Empfaengers bleibt leer\n");
++			 "no allwinner,hdmirx-link -- the receiver audio status stays empty\n");
+ 
+ 	/*
+ 	 * The picture scaler's window, same shape and reason, read only and
+@@ -4388,7 +4388,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 							     "allwinner,scaler");
+ 	if (IS_ERR(rx->scaler))
+ 		return dev_err_probe(dev, PTR_ERR(rx->scaler),
+-				     "kein Zugriff auf den Scaler-Block (allwinner,scaler)\n");
++				     "no access to the scaler block (allwinner,scaler)\n");
+ 
+ 	/*
+ 	 * The firmware's mode table, read once and copied. Optional in the same
+@@ -4418,7 +4418,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 		if (ret == -EAGAIN || ret == -ENODEV)
+ 			ret = -EPROBE_DEFER;
+ 		return dev_err_probe(dev, ret,
+-				     "Init-Sequenz fehlgeschlagen\n");
++				     "the init sequence failed\n");
+ 	}
+ 
+ 	/*
+@@ -4438,7 +4438,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 		if (ret == -ENODEV)
+ 			ret = -EPROBE_DEFER;
+ 		return dev_err_probe(dev, ret,
+-				     "EDID/HPD-Sequenz fehlgeschlagen\n");
++				     "the EDID/HPD sequence failed\n");
+ 	}
+ 
+ 	q = &rx->queue;
+@@ -4497,7 +4497,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 	ret = h713_afbd_register_descriptor_notifier(&rx->desc_nb);
+ 	if (ret) {
+ 		dev_err_probe(dev, ret,
+-			      "Descriptor-Notifier nicht anmeldbar\n");
++			      "the descriptor notifier cannot be registered\n");
+ 		goto err_vdev;
+ 	}
+ 
+@@ -4525,7 +4525,7 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 		queue_delayed_work(system_wq, &rx->audio_work, 0);
+ 
+ 	platform_set_drvdata(pdev, rx);
+-	dev_info(dev, "/dev/video%d, Slot-Quelle: %s\n", rx->vdev.num,
++	dev_info(dev, "/dev/video%d, slot source: %s\n", rx->vdev.num,
+ 		 rx->slot_source->name);
+ 
+ 	/*
