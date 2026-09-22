@@ -1,0 +1,92 @@
+media: h713-hdmirx: our own record cannot exist before we published one
+
+The record at sig_phys is the HDMI source's until the display side
+republishes the VidDec descriptor; from then on it carries the descriptor's
+values, and 0136f recognises it by two of them - colour format 0 and a frame
+rate of exactly 30.00 Hz. Those two are the descriptor's constants, but they
+are not impossible for a real source, and a real source that had them would
+have its rate thrown away and its geometry taken out of the comparison
+(doku/128 section 3 item 4).
+
+One more thing has to be true for the record to be ours: the descriptor must
+have been written. The firmware cannot be echoing a publication that never
+happened, so before the first one of a boot there is no own record at all,
+whatever the record says. rx->desc_seen already carries exactly that, set by
+h713_hdmirx_rearm() the moment the display side publishes, and it is now the
+third term of the test.
+
+That is the whole of the second distinguishing feature this driver can be
+sure of, and the report of this package says so rather than pretending
+otherwise: the 44 byte record carries no source field (AP3i section 1 lists
+all eleven words), and where the firmware does not scale - every case on the
+HY310 - the descriptor carries the ring, the ring IS the source, and the
+geometry of the two records is the same. Whether the record's signal_id
+differs between the two is not in any dump in this tree; reading the status
+file once while the plane is on answers it, and if it does, the test can be
+tightened again.
+
+The frame rate taken off the flip pointers in that state is a second,
+separate question and is left open on purpose. It is the panel's rate rather
+than the source's whenever the plane is publishing (measured 21.09.2026:
+720p50 came out as "720p60", 1080p24 as "1080p25"), and refusing it outright
+would be the clean answer - except that a genuine 30.00 Hz source which
+trips the two record fields above would then get -ENOLCK where it gets a
+correct timing today, and 4K30 is exactly such a candidate. That trade needs
+the device, not an argument; the package report names the check.
+
+Follow-up to 0136f and 0136i, which stay byte-identical. The store in
+h713_hdmirx_rearm() becomes a WRITE_ONCE because the flag is now read
+outside that work.
+
+Source: doku/128 section 3 item 4, umbau/work/T2/REPORT.txt sections 7.5 and
+4e, umbau/re-apps/AP3i section 1.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -2489,7 +2489,7 @@ static void h713_hdmirx_rearm(struct h713_hdmirx *rx)
+ 	bool heiss = erste && READ_ONCE(rx->hotplug_count);
+ 	bool wechsel = false;
+ 
+-	rx->desc_seen = true;
++	WRITE_ONCE(rx->desc_seen, true);
+ 	if (erste)
+ 		dev_info(rx->dev,
+ 			 "Freigabe: erste Veroeffentlichung%s -- Capture wird direkt freigegeben, Quellenwechsel nur als Rueckfall\n",
+@@ -3589,6 +3589,16 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 	 * (74.25 MHz). Its rate is not the signal's; take the rate from the
+ 	 * ring instead, as for a missing record.
+ 	 *
++	 * The test also asks whether a descriptor was ever published. The two
++	 * record fields alone would call a genuine 30.00 Hz source with colour
++	 * format 0 our own record and drop its rate, and the firmware cannot
++	 * be echoing a descriptor that was never written: before the first
++	 * publication of a boot there IS no own record. That is the whole of
++	 * the second distinguishing feature this driver can be sure of - the
++	 * record carries no source field, and where the firmware does not
++	 * scale its geometry is the source's geometry as well, so on the HY310
++	 * nothing in the record itself tells the two apart (0136o).
++	 *
+ 	 * Nor is its geometry the signal's: the descriptor carries the RING
+ 	 * that h713-tv put on the plane, so the record echoes the ring, and
+ 	 * the ring is not the source where the firmware scales (852x478 for a
+@@ -3599,7 +3609,8 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 	 * before the comparison, and takes no part in it.
+ 	 */
+ 	own_record = have_sig && sig.color_format == 0 &&
+-		     sig.frame_rate_x100 == H713_OWN_RECORD_FPS_X100;
++		     sig.frame_rate_x100 == H713_OWN_RECORD_FPS_X100 &&
++		     READ_ONCE(rx->desc_seen);
+ 
+ 	ret = regmap_read(rx->incap, H713_INCAP_ACTIVE, &active);
+ 	if (!ret)
+@@ -3987,6 +3998,7 @@ static int h713_hdmirx_s_dv_timings(struct file *file, void *priv,
+ 	ring.width = t->bt.width;
+ 	ring.height = t->bt.height;
+ 	ring.pitch = ALIGN(t->bt.width, H713_INCAP_ROWBYTE_UNIT);
++
+ 	h713_hdmirx_set_timings(rx, t, &ring);
+ 
+ 	return 0;

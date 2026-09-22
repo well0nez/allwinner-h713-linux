@@ -275,6 +275,10 @@
 #    afterwards, so the addendum has to follow them to apply at all. No later
 #    patch was written against it, so nothing moves under it)
 0101a-media-sun50i-h713-hdmirx-three-more-of-the-vendor-s-picture-settings.patch
+#   (Q3 -- 0136o: the own-record test also asks whether a descriptor was ever
+#    published, so a genuine 30.00 Hz source before the first publication of a
+#    boot is not mistaken for the firmware's echo of ours)
+0136o-media-h713-hdmirx-our-own-record-cannot-exist-before-we-published-one.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------
