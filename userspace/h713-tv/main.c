@@ -2141,11 +2141,21 @@ static bool audio_trim_parse(const char *text, long *q)
 }
 
 /* silence, in the order that cannot click: mute, switch off, source away */
-static void audio_silence(struct audio *a)
+/*
+ * Quiet. With a picture up the DAC STAYS on I2S: a source whose player closes
+ * its stream between two sounds, or changes the rate between two apps, goes
+ * "no audio" and comes back a dozen times an evening, and every flip of the
+ * DAC's source between I2S and APB was a pop from the box (Marco, 23.09.2026).
+ * The DSP mute and the switch are silent; the source only moves back to APB
+ * when the picture itself is gone, which is when the box's own tones may want
+ * the DAC.
+ */
+static void audio_silence(struct audio *a, bool picture)
 {
 	audio_put(a, &a->msp, AUDIO_C_MUTE, 1);
 	audio_put(a, &a->msp, AUDIO_C_SWITCH, 0);
-	audio_put_enum(a, &a->codec, AUDIO_C_SOURCE, "APB");
+	if (!picture)
+		audio_put_enum(a, &a->codec, AUDIO_C_SOURCE, "APB");
 }
 
 /* the path, still muted: rate first, then the route, then the switch */
@@ -2300,7 +2310,7 @@ static void audio_evaluate(struct audio *a, struct capture *cap, bool picture)
 	if (!audio_want(a, picture) ||
 	    (a->policy == AUDIO_AUTO && !audio_rate_known(a, a->rate))) {
 		if (a->state != AUDIO_STILL) {
-			audio_silence(a);
+			audio_silence(a, picture && a->have_source);
 			a->state = AUDIO_STILL;
 			a->applied_rate = 0;
 			audio_timer(a->settle_fd, 0, false);
@@ -2512,7 +2522,7 @@ static void audio_tick(struct audio *a, struct capture *cap, bool picture)
 static void audio_close(struct audio *a)
 {
 	if (a->enabled) {
-		audio_silence(a);
+		audio_silence(a, false);
 		a->state = AUDIO_STILL;
 		/*
 		 * A "ctl mute" is this program's, not the box's: it does not
