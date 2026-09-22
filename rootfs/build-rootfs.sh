@@ -80,6 +80,7 @@ WIFI_ENV=
 MODROOT="$PROJECT_ROOT/mainline/build/modroot.GUT-bad2f16b"
 H713_TV_SRC="$PROJECT_ROOT/userspace/h713-tv"
 H713_TV_BIN="$H713_TV_SRC/h713-tv.aarch64-linux-gnu"
+MESA_TAR="$PROJECT_ROOT/mainline/build/out/mesa-panfrost-25.0.7.tar"   # rootfs/mesa/build-mesa.sh
 H713_PQ_SRC="$PROJECT_ROOT/userspace/h713-pq"
 
 usage() {
@@ -104,6 +105,9 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
   --modroot DIR         kernel module tree (default: ${MODROOT#"$PROJECT_ROOT"/})
   --h713-tv FILE       cross-built h713-tv (default:
                         ${H713_TV_BIN#"$PROJECT_ROOT"/})
+  --mesa FILE          the panfrost-only mesa tarball out of rootfs/mesa/build-mesa.sh
+                        (default: ${MESA_TAR#"$PROJECT_ROOT"/}); "none" builds without a GPU
+                        userspace
   --authorized-key FILE optionally build in an SSH key. NOT the default and
                         not the release way (107 §3).
   --wifi-env FILE       your own /etc/h713/wifi.env (mode=ap|sta|off, ssid,
@@ -132,6 +136,7 @@ while (($#)); do
 	--no-ext4)         MAKE_EXT4=0; shift ;;
 	--modroot)         MODROOT=${2:?missing value for --modroot}; shift 2 ;;
 	--h713-tv)        H713_TV_BIN=${2:?missing value for --h713-tv}; shift 2 ;;
+	--mesa)           MESA_TAR=${2:?missing value for --mesa}; shift 2 ;;
 	--authorized-key)  AUTHORIZED_KEY=${2:?missing value for --authorized-key}; shift 2 ;;
 	--wifi-env)        WIFI_ENV=${2:?missing value for --wifi-env}; shift 2 ;;
 	--skip-project|--skip-projekt) SKIP_PROJECT=1; shift ;;
@@ -527,6 +532,16 @@ info "$(cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) fi
 install -m 0600 -o 0 -g 0 "$WIFI_ENV" "$TREE/etc/h713/wifi.env" 2>/dev/null || \
 	{ install -m 0600 "$WIFI_ENV" "$TREE/etc/h713/wifi.env"; chown 0:0 "$TREE/etc/h713/wifi.env" 2>/dev/null || true; }
 info "/etc/h713/wifi.env from $WIFI_ENV_ORIGIN"
+# mesa: EGL, GLES2, GBM and the panfrost driver under /usr/local, cross-built without LLVM
+# (rootfs/mesa/build-mesa.sh, plan/keystone S0). Debian's own mesa would cost 187 MiB.
+if [[ "$MESA_TAR" != none ]]; then
+	[[ -f "$MESA_TAR" ]] || die "no mesa tarball at $MESA_TAR (rootfs/mesa/build-mesa.sh makes it; --mesa none builds without)"
+	tar -C "$TREE" --no-same-owner -xf "$MESA_TAR"
+	(cd "$TREE" && tar -tf "$MESA_TAR" | while read -r rel; do chown 0:0 "$rel" 2>/dev/null || true; done)
+	info "mesa: $(tar -tf "$MESA_TAR" | grep -c "\.so") libraries, $(du -sh "$TREE/usr/local/lib" | cut -f1) under /usr/local/lib ($(basename "$MESA_TAR"))"
+else
+	info "mesa: none (--mesa none)"
+fi
 
 # --- 4. rework -------------------------------------------------------------
 say "4/6 rework"
@@ -727,6 +742,7 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "installed=$(chroot_count=$(grep -c '^Package: ' "$TREE/var/lib/dpkg/status" 2>/dev/null || echo 0); echo "$chroot_count")"
 	echo "modroot=${MODROOT#"$PROJECT_ROOT"/}"
 	echo "h713_tv=${H713_TV_BIN#"$PROJECT_ROOT"/}"
+	echo "mesa=$( [[ "$MESA_TAR" == none ]] && echo none || echo "${MESA_TAR#"$PROJECT_ROOT"/}" )"
 	echo "ssh_key_built_in=$( [[ -n "$AUTHORIZED_KEY" ]] && echo yes || echo no )"
 	echo "image_size=$( ((MAKE_EXT4)) && echo "$IMAGE_SIZE" || echo none )"
 } > "$MANIFEST"

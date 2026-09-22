@@ -1,0 +1,22 @@
+# meson cross file for the board: clang + lld against the arm64 sysroot.
+# @SYSROOT@ is filled in by build-mesa.sh (the sysroot path inside the container).
+[binaries]
+c = ['clang', '--target=aarch64-linux-gnu', '--sysroot=@SYSROOT@']
+cpp = ['clang++', '--target=aarch64-linux-gnu', '--sysroot=@SYSROOT@']
+ar = 'llvm-ar'
+strip = 'llvm-strip'
+pkg-config = 'pkg-config'
+
+[built-in options]
+c_link_args = ['-fuse-ld=lld']
+cpp_link_args = ['-fuse-ld=lld']
+
+[properties]
+sys_root = '@SYSROOT@'
+pkg_config_libdir = '@SYSROOT@/usr/lib/aarch64-linux-gnu/pkgconfig:@SYSROOT@/usr/share/pkgconfig'
+
+[host_machine]
+system = 'linux'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'

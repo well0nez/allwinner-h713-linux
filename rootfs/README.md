@@ -10,6 +10,7 @@ captured from a running machine: same inputs, same tree, every time.
 | `install-projekt.sh` | everything of ours that goes into an unpacked tree: the overlay, the kernel modules, `h713-tv` and the other device tools, the units. Usable on its own against an existing tree (`./install-projekt.sh /srv/h713-rootfs`), which is how the NFS root on the bench is refreshed |
 | `overlay/` | the files that are simply copied in: `etc/fstab`, `etc/network/interfaces`, the zram and journald settings, the sshd drop-in, `etc/h713/`, the udev rules, and the device scripts under `usr/local/sbin` |
 | `tests/` | checks that run on the device, not here: `h713-wifi-check.sh` |
+| `mesa/` | `build-mesa.sh` and the meson cross file: mesa 25.0.7 with the panfrost driver, EGL, GLES2 and GBM only, cross-built with clang against the arm64 sysroot, no LLVM - 15 MiB under `/usr/local` instead of Debian's 187 MiB. `build-rootfs.sh --mesa` lays the tarball in (`--mesa none` leaves the GPU userspace out). For the GPU and keystone path (`docs/subsystems/video.md`). |
 
 It is built inside the container `h713-build` like everything else - nothing is built on the host -
 and `release/build-all.sh` calls it as step 7. Building it by hand is only useful for a bench root;

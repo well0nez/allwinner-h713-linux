@@ -27,8 +27,12 @@ podman exec -u root h713-build apt-get install -y --no-install-recommends \
   ca-certificates xz-utils cpio rsync libgnutls28-dev uuid-dev \
   libncurses-dev pkg-config libusb-1.0-0-dev libfdt-dev python3-capstone \
   python3-setuptools python3-pyelftools \
-  mmdebstrap e2fsprogs zstd
+  mmdebstrap e2fsprogs zstd \
+  meson ninja-build python3-mako python3-yaml python3-packaging
 ```
+
+The last line is for mesa (`rootfs/mesa/build-mesa.sh`, cross-built with the same clang against the arm64
+sysroot; the sysroot carries `libstdc++-14-dev` for mesa's C++ parts).
 
 `python3-setuptools` is needed by U-Boot's in-tree `pylibfdt`; `mmdebstrap` and `e2fsprogs` build the
 root filesystem and its ext4 images; `libusb-1.0-0-dev` builds `sunxi-fel`.

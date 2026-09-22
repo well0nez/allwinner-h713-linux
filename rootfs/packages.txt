@@ -102,7 +102,13 @@ debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg -- ohne
 # build-essential, gcc, *-dev, meson, ninja, gdb, strace
 #     107 §3: gebaut wird quer (userspace/h713-tv/Makefile, Ziel install-cross).
 #     Das Geraet compiliert nichts.
-# gstreamer1.0-*, libgles2, libegl1, libgl1-mesa-dri, mpv, ffmpeg, v4l-utils
+# libgles2, libegl1, libgbm1, libgl1-mesa-dri
+#     Seit 22.09.2026 kommt mesa NICHT aus Debian: schon libgbm1 zieht mesa-libgallium
+#     und libllvm19 nach (187 MiB installiert). rootfs/mesa/build-mesa.sh baut mesa
+#     25.0.7 nur mit dem Panfrost-Treiber, EGL, GLES2 und GBM quer (15 MiB, kein LLVM),
+#     build-rootfs.sh legt es unter /usr/local (--mesa). Grund: der Keystone-Pfad
+#     (umbau/plan/keystone).
+# gstreamer1.0-*, mpv, ffmpeg, v4l-utils
 #     cstengers Video-Runtime (mainline/tools/rootfs/build.sh, VIDEO_RUNTIME_PACKAGES).
 #     Zieht GTK3, x265, aom, libllvm nach -- 107 §1: der groesste Einzelposten des
 #     heutigen Netboot-Roots. Der Beamer schiebt HDMI-Eingang auf eine DRM-Plane,

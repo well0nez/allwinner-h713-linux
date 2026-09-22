@@ -73,7 +73,7 @@ UBOOT_PROBE_DEFCONFIG=h713_probe_defconfig            # FEL -> h713_probe, for u
 KEYRING_DEB_URL="https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
 KEYRING_DEB_SHA256=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
 KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byte-identical to the .gpg used so far (12.09.)
-SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libdrm-dev,libasound2-dev
+SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
@@ -337,11 +337,17 @@ in_container "cd $WORK/userspace/h713-autofocus && make -s -B cross SYSROOT=$(c 
 AF="$USERSPACE/h713-autofocus/h713-afmetric.aarch64-linux-gnu"; [[ -f "$AF" ]] || die "no $AF"
 info "h713-afmetric $(stat -c %s "$AF") bytes, $(file -b "$AF" 2>/dev/null | cut -d, -f1-2)"
 
+# --- 6b. mesa (panfrost only, no LLVM) for the GPU path -----------------------
+say "6b/11 mesa cross-built (panfrost, EGL, GLES2, GBM; rootfs/mesa/build-mesa.sh)"
+in_container "cd $WORK && rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&1 || { tail -20 "$OUT/mesa-cross.log"; die "mesa build failed (log: $OUT/mesa-cross.log, $OUT/mesa-build.log)"; }
+MESA="$OUT/mesa-panfrost-25.0.7.tar"; [[ -f "$MESA" ]] || die "no $MESA"
+grep -E "NEEDED|installed" "$OUT/mesa-cross.log" | sed 's/^ *//; s/^/    /'
+
 # --- 7. rootfs --------------------------------------------------------------
 if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 rootfs -- skipped (--skip-rootfs)"
 else
 	say "7/11 rootfs ($DEBIAN_SUITE/arm64, mmdebstrap in the container as root)"
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
@@ -397,6 +403,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 		printf '  %-28s %s\n' "$f" "$(sha256sum "$OUT/$f" | cut -c1-16)"
 	done
 	printf '  %-28s %s\n' "h713-tv.aarch64-linux-gnu" "$(sha256sum "$TV" | cut -c1-16)"
+	printf '  %-28s %s\n' "mesa-panfrost-25.0.7.tar" "$(sha256sum "$MESA" | cut -c1-16)"
 	printf '  %-28s %s\n' "hy310-rootfs.tar" "$(sha256sum "$ROOTFS/out/hy310-rootfs.tar" | cut -c1-16)"
 } > "$STAMP"
 sed 's/^/    /' "$STAMP"
