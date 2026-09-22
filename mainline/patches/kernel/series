@@ -127,6 +127,11 @@
 #    hotplug pulse the receive driver asks for at the end of its bring-up,
 #    so the source re-sends into a warm, armed receiver, issue #1 / A13)
 0091b-soc-sunxi-h713-arisc-export-a-late-hotplug-pulse.patch
+#   (follow-up well0nez, Q5 -- 0091/0091a/0091b stay byte-identical; the
+#    EDID version byte is a per-port block mask, it moves behind the eight
+#    fragments, the board states it in the devicetree and debugfs reads back
+#    all 256 bytes port 0 publishes, AP3l)
+0091c-soc-sunxi-h713-arisc-the-edid-version-byte-is-a-per-port-block-mask.patch
 0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
 #   (follow-up well0nez, K2 -- 0096 stays byte-identical; the driver for
 #    that node, in the tree and built in, so the TVFE/TVCAP domains and the

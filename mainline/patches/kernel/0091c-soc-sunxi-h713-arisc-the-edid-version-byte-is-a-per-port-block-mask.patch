@@ -1,0 +1,456 @@
+soc: sunxi: h713-arisc: the EDID version byte is a per-port block mask
+
+SetEDIDVersion does not take a version. Its byte is a bitmask over the
+firmware's three HDMI ports: the publish routine walks the port map records
+and gives a port the second of the two 256-byte blocks in the store when that
+port's bit is set in it, and the first block otherwise (0x11df0..0x11e28).
+The handler masks the argument to four bits, keeps it at g_Data + 4 and
+republishes only the ports whose bit changed; ResetEDIDModule clears it, so a
+reset puts every port back on the first block (0x12188). This driver has been
+sending the constant 2 -- bit 1, port 1, a port with no socket on any board we
+have -- and calling it "version 2", which left "what do 0 and 1 mean" on the
+open list for two weeks while the answer was in the dispatcher (analysis
+AP3l section 1, confirming AP3h section 5).
+
+So the byte gets the name it has. arisc_hdmi_edid_mask() is the kernel API,
+one bit per port, values above 0x0f refused rather than silently truncated
+the way the firmware would truncate them, and the value in force is board
+policy on the arisc node: allwinner,edid-version-mask, optional, default 0.
+
+0 is not merely the safe value, it is the right one on both boards, and the
+argument is the display firmware's mode table rather than the panel. The two
+halves of the EDID file are identical up to byte 129 and carry two different
+CEA extensions from byte 130 on. The second adds 3840x2160p50/p60 and
+4096x2160p50/p60 in 4:2:0, 1080p100/120 and a Dolby Vision block, and lowers
+the HDMI vendor block's maximum TMDS clock from 340 MHz to 300 MHz. Those
+four 4K modes are exactly the rows the display firmware's own table has
+marked disabled (T1 section 5), so serving the second block invites every
+source into modes this receiver is structurally unable to lock while lowering
+the ceiling for the ones it can. The first block stops where that table
+stops, at 4K30 / 297 MHz, which the HY310 locked on 21.09. (doku/128 §2).
+Both panels scale, so panel resolution does not enter into it on either
+machine.
+
+Nothing changes for a source on port 0. Bit 0 of the constant 2 was clear, so
+port 0 has been served the first block since the first successful sequence,
+and the default mask 0 serves it the same block. What changes is port 1,
+which loses a second block nothing was reading, and the driver's own story
+about why.
+
+The command also moves behind the eight fragments. Sent before the upload it
+publishes on every port whose bit moves -- and what it publishes then is the
+firmware's own ROM default, because the store still holds it. With the old
+constant that was port 1 and nobody saw it; with a mask containing port 0 it
+would be a stale EDID at the source until ours followed. Behind fragment 7 it
+is idempotent by construction: fragment 7 has already published all three
+ports with the mask in force, so the command republishes only what changed,
+or returns at 0x125f0 having done nothing. CheckEDIDUpdateStatus stays last
+and remains the proof that fragment 7 arrived. This is not "as the vendor
+does it": nothing in tvserver or libvideo ever calls the EDID path at all
+(AP3h section 4), so there is no stock order to copy.
+
+Two readbacks come with it, because the one this driver had could not tell
+the two blocks apart: it asked for 64 bytes and logged 16, and the blocks
+agree for their first 130. The bring-up now reads all 256 and logs the 16
+bytes from offset 128, where byte 130 alone separates them (0x4c against
+0x54), and debugfs gains edid-port0 with the whole block as the DDC RAM
+holds it. The debugfs status file gains the mask the firmware holds next to
+the one the board asked for -- they part company if anything else resets the
+EDID module -- and cmd gains "edid-version <mask>" so the choice can be made
+on a bench without a rebuild.
+
+Two corrections ride along, both comments. The port map record's byte +1 is
+not an unused tag: the publish routine copies it into the published EDID at
+the HDMI vendor block's physical-address byte and then recomputes the
+extension checksum, which is where the two-byte difference between the file
+and what a source reads comes from. And HPD_DOWN_MS loses its second
+justification: the stock HDMI_SetHPDTimeInterval(0xc8) this file cited goes
+through THal_Vp_HDMI_SetHPDTimeInterval, a cpu_comm call into the MIPS
+receiver, and never reaches this core (AP3h section 6, R3). The value is
+unchanged; the device measurement in doku/nachtlog/A2-hpd-dauer-edid.md was
+always the real source.
+
+Source: umbau/re-apps/AP3l/ (REVIEW.md and design A), AP3h sections 4-6.
+The HY310 sees: port 0 keeps block 0, byte for byte. Only port 1's block and
+the driver's log lines change.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1470,6 +1470,15 @@
+ 		 *   firmware-name index 0 the ARISC image, index 1 the default
+ 		 *                 EDID (both blocks, 512 bytes) the driver hands
+ 		 *                 to the firmware.
++		 *   allwinner,edid-version-mask
++		 *                 optional u32, 0..15, default 0. One bit per
++		 *                 HDMI input port: bit N set serves port N the
++		 *                 second of that EDID's two 256-byte blocks -
++		 *                 a port mask, not an HDMI version. 0 is right
++		 *                 here and not merely safe: the second block
++		 *                 advertises four 4K50/60 modes the display
++		 *                 firmware's own table has disabled, and drops
++		 *                 its TMDS ceiling from 340 to 300 MHz.
+ 		 *
+ 		 * Two of the windows deliberately overlap a block another node
+ 		 * already describes, so the driver maps them without claiming the
+@@ -1494,6 +1503,7 @@
+ 			reg-names = "sram", "msgbox-rx", "msgbox-tx",
+ 				    "reset", "cpus-clk";
+ 			firmware-name = "h713-arisc.bin", "hy310-edid.bin";
++			allwinner,edid-version-mask = <0>;
+ 			status = "okay";
+ 		};
+ 
+diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -150,11 +150,17 @@
+  *
+  *   0x15edc  01 10 00 01 | 0x15ee4  02 20 01 02 | 0x15eec  04 30 02 04
+  *
+- * -- mask, an unused tag, pin, 1 << pin -- so the firmware comes up with
++ * -- mask, physical address, pin, 1 << pin -- so the firmware comes up with
+  * port 0 on pin 0, port 1 on pin 1, port 2 on pin 2. That is the identity,
+  * and it is exactly the map the stock sequence asks HostHDMIMAP for.
+  */
+ #define PORTMAP_STRIDE		8
++/*
++ * +1 is no unused tag: the publish routine copies it into the EDID at the
++ * HDMI vendor block's physical-address byte (0x11bc0/0x11bcc), and
++ * HostHDMIMAP writes only +2..+4, so it keeps what the ROM table left.
++ */
++#define PORTMAP_PHYS		1	/* +1: goes into the published EDID */
+ #define PORTMAP_PIN		2	/* +2: hotplug pin of this port */
+ #define PORTMAP_PIN_BIT		3	/* +3: 1 << pin */
+ 
+@@ -207,6 +213,7 @@
+ 
+ #define EDID_FRAGMENTS		8
+ #define EDID_FRAGMENT_LEN	64
++#define EDID_EXT_OFF		128	/* where the two blocks start to differ */
+ 
+ /* PullHotPlug, firmware case 7 */
+ #define HPD_RESET_COUNTER	84	/* ticks the RESET case loads          */
+@@ -233,10 +240,11 @@
+  * doku/nachtlog/A2-hpd-dauer-edid.md): the source logs a clean
+  * disconnect/reconnect for every low time from 200 ms upwards, and after a
+  * 200 ms cycle it holds a valid EDID (header 00 ff ff ff ff ff ff 00,
+- * manufacturer 5e 78) and its full mode list. 200 ms is also what the stock
+- * firmware programs -- HDMI_SetHPDTimeInterval(0xc8), and the stock elog
+- * records "SetHPDTimeInterval from 200 to 200". Measured minimum and stock
+- * value agree, so that is the value; a longer one would need its own reason.
++ * manufacturer 5e 78) and its full mode list -- the only source for the
++ * value. The stock HDMI_SetHPDTimeInterval(0xc8) this comment used to cite
++ * as a second one never reaches this core: deviceHDMISetHpdTimeInterval
++ * forwards to THal_Vp_HDMI_SetHPDTimeInterval, a cpu_comm call into the MIPS
++ * receiver (AP3h 6, R3). A longer value still needs its own reason.
+  */
+ #define HPD_DOWN_MS		200
+ 
+@@ -336,6 +344,7 @@
+ 	u32	hpd_counter;	/* A - 16: one tick counter per HDMI port */
+ 	u32	edid_ready;	/* A + 2: g_Data.bEdidDataReady */
+ 	u32	edid_gate;	/* A + 3: publish routine done */
++	u32	edid_version;	/* A + 4: per-port EDID block mask */
+ 	u32	portmap;	/* A + 12: one record per port */
+ 	u32	scratch;	/* A + 228: the 0x11 handler's working copy */
+ 	u32	bss_start;	/* what the firmware's clear loop zeroes ... */
+@@ -365,6 +374,7 @@
+ 
+ 	u8			edid[ARISC_HDMI_EDID_SIZE];
+ 	bool			edid_valid;
++	u8			edid_mask;	/* block per port, board policy */
+ 
+ 	u8			edid_status[EDID_STATUS_LEN];	/* last 0x0215 reply */
+ 	size_t			edid_status_len;
+@@ -473,6 +483,7 @@
+ #define GDATA_HPD_COUNTER	(-16)
+ #define GDATA_EDID_READY	2
+ #define GDATA_EDID_GATE		3
++#define GDATA_EDID_VERSION	4
+ #define GDATA_PORTMAP		12
+ #define GDATA_SCRATCH		228
+ #define PUMP_BUF		5
+@@ -494,6 +505,7 @@
+ static const struct h713_arisc_offsets arisc_hy310_expected = {
+ 	.gdata = 0x1723c, .rpm_state = 0x15f54, .rpm_buf = 0x15f59,
+ 	.hpd_counter = 0x1722c, .edid_ready = 0x1723e, .edid_gate = 0x1723f,
++	.edid_version = 0x17240,
+ 	.portmap = 0x17248, .scratch = 0x17320,
+ 	.bss_start = 0x15f38, .bss_end = 0x175b0, .stack_top = 0x179b0,
+ };
+@@ -713,6 +725,7 @@
+ 	return x->gdata == y->gdata && x->rpm_state == y->rpm_state &&
+ 	       x->rpm_buf == y->rpm_buf && x->hpd_counter == y->hpd_counter &&
+ 	       x->edid_ready == y->edid_ready && x->edid_gate == y->edid_gate &&
++	       x->edid_version == y->edid_version &&
+ 	       x->portmap == y->portmap && x->scratch == y->scratch &&
+ 	       x->bss_start == y->bss_start && x->bss_end == y->bss_end &&
+ 	       x->stack_top == y->stack_top;
+@@ -746,6 +759,7 @@
+ 	o.hpd_counter = o.gdata + GDATA_HPD_COUNTER;
+ 	o.edid_ready = o.gdata + GDATA_EDID_READY;
+ 	o.edid_gate = o.gdata + GDATA_EDID_GATE;
++	o.edid_version = o.gdata + GDATA_EDID_VERSION;
+ 	o.portmap = o.gdata + GDATA_PORTMAP;
+ 	o.scratch = o.gdata + GDATA_SCRATCH;
+ 	o.rpm_buf = o.rpm_state + PUMP_BUF;
+@@ -776,6 +790,7 @@
+ 	if (!arisc_in_bss(&o, o.hpd_counter, ARISC_HDMI_PORTS) ||
+ 	    !arisc_in_bss(&o, o.edid_ready, 1) ||
+ 	    !arisc_in_bss(&o, o.edid_gate, 1) ||
++	    !arisc_in_bss(&o, o.edid_version, 1) ||
+ 	    !arisc_in_bss(&o, o.portmap, ARISC_HDMI_PORTS * PORTMAP_STRIDE) ||
+ 	    !arisc_in_bss(&o, o.scratch, SCRATCH_LEN) ||
+ 	    !arisc_in_bss(&o, o.rpm_state, sizeof(u32)) ||
+@@ -1668,6 +1683,43 @@
+ EXPORT_SYMBOL_GPL(arisc_hdmi_set_portmap);
+ 
+ /*
++ * SetEDIDVersion: a bitmask over the firmware's three ports, bit N set
++ * serving port N the second of the two blocks. The name is the firmware's,
++ * not a description. The handler masks it to four bits, stores it at
++ * g_Data + 4 and republishes only the ports whose bit changed; an unchanged
++ * value returns at 0x125f0 having published nothing (AP3l 1).
++ */
++static int arisc_edid_mask_locked(struct h713_arisc *a, u8 mask)
++{
++	int ret = arisc_send(a, SUB_SET_EDID_VERSION, mask, 0, NULL, 0);
++
++	if (ret)
++		dev_err(a->dev, "SetEDIDVersion 0x%02x not processed (%d)\n",
++			mask, ret);
++	return ret;
++}
++
++int arisc_hdmi_edid_mask(u8 mask)
++{
++	struct h713_arisc *a = arisc_get(true);
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++	if (mask > ARISC_HDMI_EDID_MASK_MAX)
++		return -EINVAL;
++
++	mutex_lock(&a->lock);
++	ret = arisc_edid_mask_locked(a, mask);
++	if (!ret)
++		a->edid_mask = mask;
++	arisc_report(a, "edid-version 0x%02x rc=%d\n", mask, ret);
++	mutex_unlock(&a->lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(arisc_hdmi_edid_mask);
++
++/*
+  * Upload the EDID. Both versions go up together and in this order because
+  * the firmware only publishes anything once fragment 7 has arrived: every
+  * fragment 0..6 clears the "data ready" byte (delay slot at 0x1256c) and
+@@ -1692,12 +1744,6 @@
+ 
+ 	mutex_lock(&a->lock);
+ 
+-	ret = arisc_send(a, SUB_SET_EDID_VERSION, 2, 0, NULL, 0);
+-	if (ret) {
+-		dev_err(a->dev, "SetEDIDVersion nicht verarbeitet (%d)\n", ret);
+-		goto out;
+-	}
+-
+ 	for (frag = 0; frag < EDID_FRAGMENTS; frag++) {
+ 		const u8 *p = bytes + frag * EDID_FRAGMENT_LEN;
+ 
+@@ -1712,6 +1758,16 @@
+ 	}
+ 
+ 	/*
++	 * After fragment 7, not before it: beforehand the command republishes
++	 * the store the firmware still holds -- its own ROM default -- on
++	 * every port whose bit moves. Afterwards it is idempotent, fragment 7
++	 * having published all three ports with the mask in force (AP3l 1.4).
++	 */
++	ret = arisc_edid_mask_locked(a, a->edid_mask);
++	if (ret)
++		goto out;
++
++	/*
+ 	 * CheckEDIDUpdateStatus is the firmware's own confirmation that the
+ 	 * store is complete: payload ff f8 01 01 <ready> on channel 1, with
+ 	 * <ready> = [0x1723e] = g_Data.bEdidDataReady. Fragments 0..6 clear
+@@ -1968,8 +2024,8 @@
+ /*
+  * The whole stock bring-up in one call, in the order that has been proven on
+  * hardware (doku/75, doku/82): reset the EDID module, hand it the port map,
+- * select EDID version 2, upload both blocks, confirm, read back, set the
+- * audio mode and the +5V flag, then pulse the hotplug pin.
++ * upload both blocks, select the block each port serves, confirm, read back,
++ * set the audio mode and the +5V flag, then pulse the hotplug pin.
+  *
+  * It is exported because the HDMI receive driver has to run exactly this at
+  * probe time and splitting it across the callers would invite reordering --
+@@ -1978,7 +2034,7 @@
+ int arisc_hdmi_edid_init(unsigned int port, const void *edid, size_t len)
+ {
+ 	struct h713_arisc *a = arisc_get(false);
+-	u8 readback[EDID_FRAGMENT_LEN];
++	u8 readback[ARISC_HDMI_EDID_BLOCK];
+ 	int ret;
+ 
+ 	if (IS_ERR(a))
+@@ -2008,8 +2064,14 @@
+ 	ret = arisc_hdmi_get_edid(port, readback, sizeof(readback));
+ 	if (ret < 0)
+ 		return ret;
+-	dev_info(a->dev, "EDID zurueckgelesen (%d B): %*ph\n", ret,
+-		 min(ret, 16), readback);
++	/*
++	 * From byte 128 on: the blocks are identical before it, so a shorter
++	 * window cannot say which one a source is served. Byte 130 is 0x4c for
++	 * the first and 0x54 for the second; all 256 are in edid-port0.
++	 */
++	dev_info(a->dev, "EDID port %u read back (%d B), extension %*ph\n",
++		 port, ret, ret > EDID_EXT_OFF ? min(ret - EDID_EXT_OFF, 16) : 0,
++		 readback + EDID_EXT_OFF);
+ 
+ 	ret = arisc_hdmi_audio_mode(port, 0);
+ 	if (ret)
+@@ -2098,9 +2160,9 @@
+ 	seq_printf(s, "firmware_addrs: para=0x%05x gdata=0x%05x rpm_state=0x%05x rpm_buf=0x%05x\n",
+ 		   a->off.para, a->off.gdata, a->off.rpm_state,
+ 		   a->off.rpm_buf);
+-	seq_printf(s, "firmware_addrs: hpd=0x%05x edid_ready=0x%05x edid_gate=0x%05x portmap=0x%05x scratch=0x%05x\n",
++	seq_printf(s, "firmware_addrs: hpd=0x%05x edid_ready=0x%05x edid_gate=0x%05x edid_version=0x%05x portmap=0x%05x scratch=0x%05x\n",
+ 		   a->off.hpd_counter, a->off.edid_ready, a->off.edid_gate,
+-		   a->off.portmap, a->off.scratch);
++		   a->off.edid_version, a->off.portmap, a->off.scratch);
+ 	seq_printf(s, "firmware_map: bss=0x%05x..0x%05x stack=0x%05x..0x%05x\n",
+ 		   a->off.bss_start, a->off.bss_end - 1, a->off.bss_end,
+ 		   a->off.stack_top - 1);
+@@ -2125,6 +2187,9 @@
+ 	seq_printf(s, "edid_ready: %u\nedid_gate: %u\n",
+ 		   readb(sram_at(a, a->off.edid_ready)),
+ 		   readb(sram_at(a, a->off.edid_gate)));
++	/* The block mask the firmware holds, and the one the board asked for. */
++	seq_printf(s, "edid_version_mask: 0x%02x want 0x%02x\n",
++		   readb(sram_at(a, a->off.edid_version)), a->edid_mask);
+ 	/*
+ 	 * The port map as the firmware holds it, not as the driver asked for
+ 	 * it: byte 2 of each record is the pin the hotplug driver at 0x121e4
+@@ -2160,12 +2225,32 @@
+ DEFINE_SHOW_ATTRIBUTE(h713_arisc_status);
+ 
+ /*
++ * All 256 bytes port 0 publishes, out of the DDC RAM a source reads. The
++ * RequestEDID behind it closes the EDID output gate of all three ports while
++ * it runs (0x1269c/0x12724, AP3l C4).
++ */
++static int h713_arisc_edid_port0_show(struct seq_file *s, void *unused)
++{
++	u8 block[ARISC_HDMI_EDID_BLOCK];
++	int ret, i;
++
++	ret = arisc_hdmi_get_edid(0, block, sizeof(block));
++	if (ret < 0)
++		return ret;
++	for (i = 0; i < ret; i += 16)
++		seq_printf(s, "%03d: %*ph\n", i, min(ret - i, 16), block + i);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(h713_arisc_edid_port0);
++
++/*
+  * cmd: the whole HDMI interface from the shell, so a bring-up needs no
+  * userspace helper at all.
+  *
+  *	edid [port]		full EDID/HPD sequence (~13 s, includes the
+  *				10 s the hotplug pin stays low)
+  *	reset-edid		ResetEDIDModule, unlocks the rest
++ *	edid-version <mask>	bit per port, set = serve the second block
+  *	portmap a b c		HostHDMIMAP
+  *	hpd <port> up|down|reset
+  *	5v <port> on|off
+@@ -2192,6 +2277,9 @@
+ 		ret = arisc_hdmi_edid_init(port, NULL, 0);
+ 	else if (!strcmp(cmd, "reset-edid"))
+ 		ret = arisc_hdmi_reset_edid();
++	else if (sscanf(cmd, "edid-version %u", &m0) == 1)
++		ret = m0 > ARISC_HDMI_EDID_MASK_MAX ? -EINVAL :
++						      arisc_hdmi_edid_mask(m0);
+ 	else if (!strcmp(cmd, "portmap"))
+ 		ret = arisc_hdmi_set_portmap(default_portmap, ARISC_HDMI_PORTS);
+ 	else if (sscanf(cmd, "portmap %u %u %u", &m0, &m1, &m2) == 3) {
+@@ -2375,6 +2463,7 @@
+ static int h713_arisc_probe(struct platform_device *pdev)
+ {
+ 	struct h713_arisc *a;
++	u32 mask = 0;
+ 	int ret;
+ 
+ 	if (h713_arisc)
+@@ -2408,6 +2497,18 @@
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * Board policy, not a debugging knob: one byte covers all three ports.
++	 * Absent is 0 -- every port on block 0, as since the first sequence.
++	 */
++	if (!of_property_read_u32(pdev->dev.of_node,
++				  "allwinner,edid-version-mask", &mask) &&
++	    mask > ARISC_HDMI_EDID_MASK_MAX)
++		return dev_err_probe(&pdev->dev, -EINVAL,
++				     "allwinner,edid-version-mask is 0x%x, but it is one bit per HDMI port and the firmware masks it to 0x%02x\n",
++				     mask, ARISC_HDMI_EDID_MASK_MAX);
++	a->edid_mask = mask;
++
+ 	platform_set_drvdata(pdev, a);
+ 	h713_arisc_load_edid(a);
+ 
+@@ -2419,6 +2520,8 @@
+ 	debugfs_create_file("status", 0400, a->debugfs, a,
+ 			    &h713_arisc_status_fops);
+ 	debugfs_create_file("cmd", 0600, a->debugfs, a, &h713_arisc_cmd_fops);
++	debugfs_create_file("edid-port0", 0400, a->debugfs, a,
++			    &h713_arisc_edid_port0_fops);
+ 
+ 	h713_arisc = a;
+ 	return 0;
+diff -ruN a/include/linux/soc/sunxi/h713-arisc.h b/include/linux/soc/sunxi/h713-arisc.h
+--- a/include/linux/soc/sunxi/h713-arisc.h
++++ b/include/linux/soc/sunxi/h713-arisc.h
+@@ -39,6 +39,14 @@
+  */
+ #define ARISC_HDMI_EDID_SIZE		512
+ 
++/*
++ * One published block: a port is served one of the two, and which one is a
++ * bitmask over the ports -- bit N set means port N gets the second block --
++ * not an HDMI version. The firmware masks it to four bits.
++ */
++#define ARISC_HDMI_EDID_BLOCK		(ARISC_HDMI_EDID_SIZE / 2)
++#define ARISC_HDMI_EDID_MASK_MAX	0x0f
++
+ /* PullHotPlug values, firmware case 7 */
+ enum arisc_hdmi_hpd_action {
+ 	ARISC_HDMI_HPD_UP	= 1,	/* raise the pin (via the tick counter) */
+@@ -51,6 +59,7 @@
+ int arisc_hdmi_reset_edid(void);
+ int arisc_hdmi_set_portmap(const u8 *map, size_t count);
+ int arisc_hdmi_set_edid(const void *edid, size_t len);
++int arisc_hdmi_edid_mask(u8 mask);
+ int arisc_hdmi_get_edid(unsigned int port, void *buf, size_t len);
+ int arisc_hdmi_audio_mode(unsigned int port, u8 mode);
+ int arisc_hdmi_5v(unsigned int port, bool on);
+@@ -74,6 +83,11 @@
+ {
+ 	return -ENODEV;
+ }
++
++static inline int arisc_hdmi_edid_mask(u8 mask)
++{
++	return -ENODEV;
++}
+ 
+ static inline int arisc_hdmi_get_edid(unsigned int port, void *buf, size_t len)
+ {
