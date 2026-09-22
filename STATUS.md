@@ -4,7 +4,7 @@ Snapshot of **2026-09-22**. "Works" means *verified on the projector*, with the 
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is `v0.8-dev22`: the 182-patch series of this night with U-Boot `946d26c`.
+The image on the test device is `v0.8-dev22`: the 182-patch series of this night with U-Boot `4cecddd`.
 The last release is still `v0.8-beta`. What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
@@ -115,7 +115,7 @@ In the source, not in a release yet. Three device runs on the HY310 on 22.09.202
   `VIDIOC_QUERY_DV_TIMINGS` copy its result at all (`0136w`), which is what lets a refused source be named.
 - **U-Boot walks `LogoRegData` by its class table** instead of a fixed layout, so a logo container with other
   classes is read correctly. The new walker was proved to give the same bytes as the old one on all 15 HY310
-  and 13 HY300 Pro projects before it was swapped in. U-Boot on the device: `946d26c`.
+  and 13 HY300 Pro projects before it was swapped in. U-Boot on the device: `4cecddd`.
 - **Three more of the vendor's picture settings** are V4L2 controls: `low_latency`, `backlight_level` and
   `dynamic_backlight`. The last two are **accepted by the firmware and do nothing on the HY310** - at 60 and
   at 10 the lamp does not change, which is what [docs/dead-ends.md](docs/dead-ends.md) already records about

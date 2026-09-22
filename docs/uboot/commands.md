@@ -134,7 +134,7 @@ the panel.
 ### What the HY310 reads back
 
 Read at the prompt on 22.09.2026 (`umbau/test-20260915/dev20-20260922.md`, Q8 F2/F3 and Q7 F3),
-U-Boot `2026.07-rc5-g946d26c05967`. This is the reference another board's readback is held against:
+U-Boot `2026.07-rc5-g4cecddd55613`. This is the reference another board's readback is held against:
 
 | Command | HY310 | What it is |
 |---|---|---|
