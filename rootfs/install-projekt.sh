@@ -18,6 +18,7 @@
 #   3. h713-pq
 #   4. h713-focus
 #   5. h713-cam
+#   5b. h713-autofocus
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -45,6 +46,7 @@ H713_TV_BIN=${H713_TV_BIN:-$H713_TV_SRC/h713-tv.aarch64-linux-gnu}
 H713_PQ_SRC=${H713_PQ_SRC:-$PROJECT_ROOT/userspace/h713-pq}
 H713_FOCUS_SRC=${H713_FOCUS_SRC:-$PROJECT_ROOT/userspace/h713-focus}
 H713_CAM_SRC=${H713_CAM_SRC:-$PROJECT_ROOT/userspace/h713-cam}
+H713_AF_SRC=${H713_AF_SRC:-$PROJECT_ROOT/userspace/h713-autofocus}
 # build.sh builds the WLAN modules OUTSIDE the kernel tree (out-of-tree, radxa
 # source + patches/aic8800/) and puts them into build/out/modules/ -- they are
 # in no modroot. Without this step the image would have packages, service and
@@ -149,6 +151,8 @@ check_sources() {
 		{ warn "missing: $H713_FOCUS_SRC/h713-focus"; errors=1; }
 	[[ -x "$H713_CAM_SRC/h713-cam" ]] || \
 		{ warn "missing: $H713_CAM_SRC/h713-cam"; errors=1; }
+	[[ -x "$H713_AF_SRC/h713-autofocus" ]] || \
+		{ warn "missing: $H713_AF_SRC/h713-autofocus"; errors=1; }
 	for ko in aic8800_bsp aic8800_fdrv; do
 		[[ -f "$AIC8800_MODULES/$ko.ko" ]] || \
 			{ warn "missing: $AIC8800_MODULES/$ko.ko (build/build.sh aic8800)"; errors=1; }
@@ -200,6 +204,11 @@ if ((DRY_RUN)); then
        README.md           -> /usr/local/share/doc/h713-cam/
        (one file, pure Python; probe/controls/get/set/grab on the internal
         UVC camera. uvcvideo comes out of the module tree, step 2.)
+    5b. h713-autofocus
+       ${H713_AF_SRC#"$PROJECT_ROOT"/}/h713-autofocus
+           -> /usr/local/bin/h713-autofocus               0755
+       (one file, pure Python; the stock autofocus search rebuilt: chessboard
+        on /dev/fb0, camera frames, focus motor cmd 1/2. Q6, 22.09.2026.)
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -329,6 +338,11 @@ if ! find "$DST_MOD" -name 'uvcvideo.ko*' -print -quit | grep -q .; then
 	warn "uvcvideo.ko is missing from the module tree $MODROOT -- h713-cam will then find no camera"
 fi
 info "/usr/local/bin/h713-cam ($(wc -l < "$H713_CAM_SRC/h713-cam") lines)"
+
+# --- 5b. h713-autofocus ----------------------------------------------------
+say "h713-autofocus"
+install -m 0755 "$H713_AF_SRC/h713-autofocus" "$TREE/usr/local/bin/h713-autofocus"
+info "/usr/local/bin/h713-autofocus ($(wc -l < "$H713_AF_SRC/h713-autofocus") lines)"
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"
