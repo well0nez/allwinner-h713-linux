@@ -1,0 +1,168 @@
+media: h713-hdmirx: a source the firmware's table does not carry
+
+A 1600x900 source on the HY310 reads "change in flight" and keeps reading it
+for as long as it is plugged in (21.09.2026, dev19). Nothing is in flight:
+the source is steady, the flip pointers move, INCAP names the geometry, and
+the display firmware simply has no record for that raster - so it will never
+lock it, and the driver has known that since 0136h without being able to say
+it. QUERY_DV_TIMINGS answered -ENOLCK, whose documented meaning is "the
+signal was unstable and the hardware could not lock on to it", and h713-tv
+did the only sensible thing with that: it waited.
+
+This patch gives that case its own answer, -ERANGE.
+
+Why -ERANGE and not a new errno. QUERY_DV_TIMINGS documents four: ENODATA
+(no DV timings on this input), ENOLINK (no signal), ENOLCK (unstable, could
+not lock), ERANGE (timings were found, but they are out of range of the
+hardware capabilities). Three are taken here, and the fourth already says
+this exactly. What this receiver can lock IS the display firmware's mode
+table: 0136h matches against it, and 0136k derives the capability cap from
+its largest active records. A geometry in neither is out of the receiver's
+range in the precise sense the documentation means, and it stays out of it
+for as long as the source sends it - which is the difference to ENOLCK.
+ENOENT or EPROTO would carry the distinction as well, but no generic V4L2
+client has a word for either, and v4l2-ctl would print "Unknown error" where
+ERANGE already prints the right sentence.
+
+The timing is returned with the error. VIDIOC_QUERY_DV_TIMINGS carries
+INFO_FL_ALWAYS_COPY, so the measurement reaches userspace together with the
+-ERANGE, and h713-tv can name the source it is refusing instead of printing
+a bare error.
+
+Only with the table loaded. Without allwinner,firmware-tse the list is the
+kernel's preset array, which has gaps a later poll may still close (576p50
+is not in it at all), so a non-match there stays -ENOLCK as before. With the
+table the list is complete and the answer is final. The pre-existing -ERANGE
+of the capability check goes through the same path, because it is the same
+statement about the same list.
+
+One line per state, not per poll. The INCAP active word of the refused
+source is remembered, and the line is printed only when it changes; it is
+cleared again on a lock and on "no signal", so unplugging and replugging the
+same source says it once more. The mid-day run's 158 lines in 30 seconds
+came from a per-poll line (doku/128 section 3 item 1) and this does not
+repeat that.
+
+h713-tv, in the same commit: capture_signal() answers 3 for -ERANGE,
+evaluate() stops retrying, hides the plane and logs "signal 1600x900p60,
+108.0 MHz not in the firmware's table -- console" once per state change, and
+`ctl status` and `-n` say the same. The retry budget is not spent on a
+source that cannot lock.
+
+Source: umbau/work/T2/REPORT.txt section 7.3, doku/128 section 3 item 2,
+Documentation/userspace-api/media/v4l/vidioc-query-dv-timings.rst.
+Follow-up to 0136h and 0136k; both stay byte-identical.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -1134,6 +1134,14 @@ struct h713_hdmirx {
+ 	u32 lock_total;
+ 	u32 lock_rowbyte;
+ 	bool lock_valid;
++
++	/*
++	 * The INCAP active word of the source the receiver last refused as
++	 * unlisted, so the line below is printed once per state and not once
++	 * per QUERY_DV_TIMINGS. Zero means "nothing refused". Written only in
++	 * detect_timings(), which the ioctl lock serialises.
++	 */
++	u32 unlisted_active;
+ 	struct mutex sig_lock;
+ 	void __iomem *sig_map;
+ 	phys_addr_t sig_map_base;
+@@ -3336,6 +3344,40 @@ static void h713_hdmirx_ring_geometry(struct h713_hdmirx *rx,
+ 			     how);
+ }
+ 
++/*
++ * A source the receiver will not lock, said once.
++ *
++ * Which errno: QUERY_DV_TIMINGS defines four, and three of them are already
++ * spoken for here -- ENODATA "no DV timings on this input", ENOLINK "no
++ * signal", ENOLCK "the signal was unstable and the hardware could not lock on
++ * to it". The fourth is ERANGE, "timings were found, but they are out of
++ * range of the hardware capabilities", and that is exactly this case: the
++ * timing was measured, and the list of what this receiver can lock is the
++ * display firmware's own mode table (0136h), from which the capability cap of
++ * 0136k is also derived. A geometry that is in neither is out of the
++ * receiver's range, and it will stay out of it for as long as the source
++ * sends it -- which is the difference to ENOLCK, and the reason 1600x900 read
++ * "change in flight" for ever until now (T2 7.3, doku/128 section 3 item 2).
++ *
++ * An errno outside the four (ENOENT, EPROTO) would carry the distinction too,
++ * but no generic client has a word for it. The measured timing is left in @t:
++ * QUERY_DV_TIMINGS is INFO_FL_ALWAYS_COPY, so userspace gets it with the
++ * error and can name the source it is refusing.
++ */
++static int h713_hdmirx_unlisted(struct h713_hdmirx *rx, u32 active,
++				unsigned int fps_x100, const char *why)
++{
++	if (rx->unlisted_active != active) {
++		rx->unlisted_active = active;
++		dev_info(rx->dev,
++			 "source %ux%u at %u.%02u Hz: %s -- no lock\n",
++			 active >> 16, active & 0xffff, fps_x100 / 100,
++			 fps_x100 % 100, why);
++	}
++
++	return -ERANGE;
++}
++
+ /*
+  * What the source is sending, from the three things the ARM can see:
+  *
+@@ -3387,6 +3429,7 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 		if (READ_ONCE(rx->rearm_busy))
+ 			return -ENOLCK;	/* a release is running, not a new source */
+ 		h713_hdmirx_forget_lock(rx);
++		rx->unlisted_active = 0;
+ 		return -ENOLINK;
+ 	}
+ 
+@@ -3397,6 +3440,7 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 	if (have_sig && (sig.signal_id == H713_SIGNAL_ID_NONE ||
+ 			 !sig.h_size || !sig.v_size)) {
+ 		h713_hdmirx_forget_lock(rx);
++		rx->unlisted_active = 0;
+ 		return -ENOLINK;
+ 	}
+ 
+@@ -3472,6 +3516,7 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 		h713_hdmirx_forget_lock(rx);
+ 	if ((!have_sig || own_record) && READ_ONCE(rx->lock_valid)) {
+ 		*t = rx->lock_timings;
++		rx->unlisted_active = 0;
+ 		return 0;
+ 	}
+ 
+@@ -3501,11 +3546,24 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 	bt->vsync = vtotal - height;
+ 
+ 	if (!h713_hdmirx_match_preset(rx, t, htotal, vtotal, fps_x100, tolerance) &&
+-	    !have_sig)
+-		return -ENOLCK;
++	    !have_sig) {
++		/*
++		 * Without the firmware's table this is still "no preset agreed
++		 * with the measurement", which a later poll can resolve. With
++		 * it, the list is complete and the answer is final.
++		 */
++		if (!rx->tse_count)
++			return -ENOLCK;
++
++		return h713_hdmirx_unlisted(rx, active, fps_x100,
++					    "in none of the firmware's mode records");
++	}
+ 
+ 	if (!v4l2_valid_dv_timings(t, &h713_hdmirx_timings_cap, NULL, NULL))
+-		return -ERANGE;
++		return h713_hdmirx_unlisted(rx, active, fps_x100,
++					    "beyond what the firmware's table locks");
++
++	rx->unlisted_active = 0;
+ 
+ 	/* have_sig is by now exactly "a genuine HDMI record" (own_record above) */
+ 	if (have_sig) {

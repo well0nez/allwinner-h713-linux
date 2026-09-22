@@ -361,7 +361,10 @@ static unsigned int capture_drain_events(struct capture *cap)
  * That ambiguity is real and is named in the README; it is not papered over
  * with a guess.
  *
- * Returns 1 with *t filled in, 0 for "no signal", -1 for a broken device.
+ * Returns 1 with *t filled in, 2 for a change in flight, 3 for a source the
+ * receiver will not lock, 0 for "no signal", -1 for a broken device. In case
+ * 3 *t is filled in as well -- QUERY_DV_TIMINGS returns its measurement
+ * together with the error.
  */
 static int capture_signal(struct capture *cap, struct v4l2_dv_timings *t)
 {
@@ -370,6 +373,10 @@ static int capture_signal(struct capture *cap, struct v4l2_dv_timings *t)
 		return 1;
 	if (errno == ENOLCK)
 		return 2;	/* a change in flight, see struct retry */
+	if (errno == ERANGE)
+		return 3;	/* measured, but in none of the firmware's mode
+				 * records, so it will never lock (kernel 0136m)
+				 */
 	if (errno == ENOLINK || errno == ENODATA)
 		return 0;
 
@@ -2941,6 +2948,9 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 			  signal_text(t, sigbuf, sizeof(sigbuf)));
 	else if (sig == 2)
 		reply_add(r, "signal          change in flight (the geometry has not locked yet)\n");
+	else if (sig == 3)
+		reply_add(r, "signal          %s not in the firmware's table -- console\n",
+			  signal_text(t, sigbuf, sizeof(sigbuf)));
 	else
 		reply_add(r, "signal          %s\n", sig == 0 ? "no signal" : "not readable");
 	reply_add(r, "picture         %s%s\n", d->on ? "plane on" : "console",
@@ -4873,7 +4883,7 @@ static void evaluate(struct capture *cap, struct display *d,
 	struct v4l2_dv_timings t;
 	unsigned int ring_w, ring_h, ring_pitch;
 	char sigbuf[64];
-	int sig;
+	int sig, was;
 
 	/* "off" over the control socket: the console stays, whatever the signal does */
 	if (ctl.policy == POLICY_OFF) {
@@ -4883,6 +4893,7 @@ static void evaluate(struct capture *cap, struct display *d,
 	}
 
 	sig = capture_signal(cap, &t);
+	was = cap->last_sig;
 	cap->last_sig = sig;
 	/*
 	 * The last measurement, not the last attempt: a change in flight has
@@ -4925,6 +4936,21 @@ static void evaluate(struct capture *cap, struct display *d,
 	}
 	/* decided: whatever is still scheduled would only measure again (S12 R4) */
 	retry_stop(rt);
+
+	/*
+	 * The driver measured the source and the display firmware's own mode
+	 * table has no record for it (kernel 0136m, -ERANGE). That is not a
+	 * change in flight: it will not lock, now or later, so nothing is
+	 * retried and the console stays. One line per state change -- the
+	 * driver ratelimits its own line the same way.
+	 */
+	if (sig == 3) {
+		if (was != 3)
+			info("signal          %s not in the firmware's table -- console",
+			     signal_text(&t, sigbuf, sizeof(sigbuf)));
+		display_hide(d);
+		return;
+	}
 
 	if (sig <= 0) {
 		if (sig == 0)
@@ -5235,6 +5261,7 @@ int main(int argc, char **argv)
 
 		info("signal          %s", sig == 1 ? "present" :
 		     sig == 2 ? "change in flight" :
+		     sig == 3 ? "not in the firmware's table" :
 		     sig == 0 ? "no signal" : "not readable");
 		/*
 		 * The audio chain, looked at and not touched: -n reports, it

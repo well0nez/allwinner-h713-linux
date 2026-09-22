@@ -259,6 +259,10 @@
 #   (Q3 -- 0136l: the driver's remaining German log messages in English, the
 #    list T2's report 8.2 names; string literals and two comments only)
 0136l-media-h713-hdmirx-the-remaining-german-messages-in-english.patch
+#   (Q3 -- 0136m: a geometry the firmware's mode table does not carry answers
+#    -ERANGE with the measured timing instead of -ENOLCK for ever; 1600x900
+#    read "change in flight" until now, T2 7.3)
+0136m-media-h713-hdmirx-a-source-the-firmware-s-table-does-not-carry.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------
