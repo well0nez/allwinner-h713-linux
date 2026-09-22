@@ -2917,6 +2917,8 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		"format:", "incap:", "capture:", "farbwandler:", "signal:", "timings:", NULL,
 	};
 	static const char *const comm[] = { "rx_calls", "eingehend", NULL };
+	/* which of the firmware's two EDID blocks each HDMI port is served */
+	static const char *const edid[] = { "edid_version_mask:", NULL };
 	/* the last measurement evaluate() made -- a status is a report, not a probe (S12 R7) */
 	const struct v4l2_dv_timings *t = &cap->last_t;
 	int sig = cap->last_sig;
@@ -2958,6 +2960,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	cmd_status_audio(r, a);
 	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel          ");
 	reply_file_lines(r, "/sys/kernel/debug/cpu_comm/watch", comm, "cpu_comm        ");
+	reply_file_lines(r, "/sys/kernel/debug/h713-arisc/status", edid, "arisc           ");
 }
 
 static void cmd_list(struct reply *r, struct capture *cap)
