@@ -226,6 +226,8 @@ class Helper:
             self.proc.wait(timeout=2)
         except (OSError, ValueError, subprocess.TimeoutExpired):
             self.proc.kill()
+        finally:
+            self.proc.stdout.close()
 
 
 def picture_present(frame):
