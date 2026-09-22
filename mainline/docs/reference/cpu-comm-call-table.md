@@ -19,9 +19,12 @@ firmware abandon init).
 | `+0x50` | handler VA |
 | `+0x5c` | `0xffffffff` free sentinel |
 
-Stride `0x60`. Ids are **not** derivable from the name: crc32, ~crc32, djb2,
-djb2-xor, sdbm, FNV-1, FNV-1a and ELF hash all fail against
-`THal_Vp_GetImageBufferAddr -> 0x2f02f7dd`. Read them from the table.
+Stride `0x60`. Ids **are** derivable from the name - the earlier note here said
+they were not, because it hashed the bare name. The vendor hashes the full
+`<name>_<cpu>_<pid>` string: `crc32_le(0x00123456, "THal_Vp_GetImageBufferAddr_1_000")`
+is `0x2f02f7dd`. The rule, the Python and thirteen worked entries are in
+`docs/subsystems/cpu-comm.md`; the table stays the source for the handler
+addresses and for which routines a firmware actually populates.
 
 Invocation form, known good:
 
