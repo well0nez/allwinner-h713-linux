@@ -36,6 +36,8 @@
 0014c-soc-sunxi-cpu-comm-request-only-the-line-of-the-bank-it-owns.patch
 # 0014d: one doorbell per message (the write block stood twice in 0014a; AP3s 3 and 4)
 0014d-soc-sunxi-cpu-comm-one-doorbell-per-message.patch
+# 0014e: the register whitelist is the hwspinlock's, not the msgbox's (AP3o 7)
+0014e-soc-sunxi-cpu-comm-the-whitelist-is-the-hwspinlock-s.patch
 0015-misc-add-h713-driver-kconfig.patch
 0016-dt-bindings-add-h713-clock-reset-ids.patch
 0017-iommu-sun50i-decouple-arm-dma-use-iommu.patch

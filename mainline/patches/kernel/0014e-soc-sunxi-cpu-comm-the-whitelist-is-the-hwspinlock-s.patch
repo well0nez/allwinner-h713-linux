@@ -1,0 +1,63 @@
+soc: sunxi: cpu-comm: the register whitelist is the hwspinlock's
+
+known_regs[] is copied from the vendor module and the comment says so -
+"known_regs @ 0x16350 in cpu_comm_dev.ko" - but the last two entries do not
+say what the module says. The vendor bytes at file offset 0x16398 read
+0x03061024, 0x03061028, 0x03004000, 0x03004010; ours listed 0x03003000 and
+0x03003010 and called them "Msgbox channel register". Both are wrong by one
+hex digit, and the label is wrong too.
+
+Which block is which is settled by the board's own device tree, not by a
+guess: hy310-stock.dts has msgbox@3003000 (reg 0x3003000/0x3003400/0x3003800,
+0x400 each) at line 1403 and hwspinlock@3004000 (reg 0x3004000 size 0x1000,
+num-locks 32) at line 1650. So the vendor whitelists two words of the
+hardware spinlock controller - which is the block cpu_comm really uses, over
+getRegbySpinID()'s logical id + 8 - and not the msgbox at all.
+
+What a reader of those two words got before, and gets now: before, they were
+inside reg_to_iomem()'s 0x03003000..0x03003fff window, so comm_ReadRegWord()
+would have returned msgbox bank 0 at +0x00 and +0x10 - registers below the
++0x20 RX enable where the vendor's own address arithmetic starts, i.e. two
+words of the wrong block. Now they name the hwspinlock controller's status
+words (+0x00 is SPINLOCK_SYSSTATUS_REG in the in-tree sun6i_hwspinlock
+driver), for which reg_to_iomem() has no window: a call would take the
+"reg 0x%08x not mapped" branch and return 0 instead of a foreign register.
+
+Nothing on the HY310 changes. comm_ReadRegWord() and comm_WriteRegWord() are
+the only consumers of the array (is_known_reg()), no ioctl and no debugfs
+file reaches them, and their only callers in the whole tree pass 0x03061024
+(cpu_comm_dev.c, the shared-memory adoption check) and getShareRegbyID()'s
+0x03061024 / 0x03061028. Neither of the two changed words is asked for
+anywhere. Access to the spinlocks themselves goes through the hwspinlock
+framework (comm_InitHwSpinLock), not through this array.
+
+Source: umbau/work/AP3o/REPORT.txt section 7 and umbau/re-apps/AP3o/REVIEW.md
+(F1), with the block assignment from hy310-stock.dts. Follow-up to 0014;
+0014, 0014a to 0014d stay byte-identical.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -29,13 +29,18 @@ u32 hwlock_counters[HW_SPINLOCK_COUNT];
+ /*
+  * Known register addresses — the only registers io_accessor will touch.
+  * From IDA: known_regs @ 0x16350 in cpu_comm_dev.ko
++ *
++ * The last two are the vendor array's own words, read out of the module
++ * bytes (AP3o section 7). They belong to hwspinlock@3004000, not to
++ * msgbox@3003000 - reg_to_iomem() has no window for them, so a call for one
++ * of them is refused there; nothing in this driver asks for one.
+  */
+ static const u32 known_regs[] = {
+ 	0x0306101c,	/* MIPS status — bit 0 set when out of reset */
+ 	0x03061024,	/* MIPS ShareReg14 — SharedMemAddr */
+ 	0x03061028,	/* MIPS ShareReg13 — SharedMemSize */
+-	0x03003000,	/* Msgbox channel register */
+-	0x03003010,	/* Msgbox channel register */
++	0x03004000,	/* hwspinlock@3004000 +0x00 - SYSSTATUS */
++	0x03004010,	/* hwspinlock@3004000 +0x10 - lock status word */
+ };
+ 
+ static void __iomem *mips_ctrl_base;	/* ioremap of 0x03061000 */
