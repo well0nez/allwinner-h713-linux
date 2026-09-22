@@ -52,6 +52,16 @@ happens, and further with every following edge. `step` tells you whether and whi
 turned; it is not a coordinate, and nothing recalibrates it - there is no absolute reference besides
 the two travel-range edges themselves, and only one of them is known.
 
+## How fast it moves, and that both command pairs move it
+
+Measured on the HY310 on 22.09.2026 (`umbau/test-20260915/dev20-20260922.md`, row "Q6 timing breakdown"):
+**6 msteps take about 100 ms, so 16 ms per mstep**, and the autofocus codes `cmd 1/2` and the manual
+`cmd 8/9` take the same time - the driver's `phase_udelay=1`/`step_mdelay=1` are the stock device-tree
+values, and the two pairs differ in the `autofocus` flag and the busy-wait, not in speed. Two consequences
+worth writing down: a move is the largest single cost in an autofocus pass, so a search is not made fast by
+measuring faster alone; and "the motor did not move" for an 8-mstep command is usually a move too small to
+see rather than a command that was dropped - `motor_limit`'s counter says which.
+
 ## Two read-back layouts, on purpose
 
 `motor_ctrl` reads back `step_cur step_inc%10 in_range`, and `motor_limit` since patch `0154` adds the raw
@@ -95,7 +105,9 @@ after every move and never touches homing. See [`docs/tools/h713-focus.md`](../t
 - The upper travel edge is **unverified** - nobody has driven the mechanism there to look.
 - Whether the 800-mstep travel figure in the device tree matches the real range is **unverified**;
   only the lower end, at `step = -206` from an arbitrary power-on position, is measured.
-- Autofocus through the camera is built as a tool, not as a mode of this driver, and it is **unverified**:
-  `h713-autofocus` has never run on the projector.
+- Autofocus through the camera is built as a tool, not as a mode of this driver. Since 22.09.2026 it has
+  run on the projector: the search climbs and sharpens the picture, but on a bench pointing at objects about
+  30 cm away every run ends at the range watcher's edge with the metric still rising, because the sharp point
+  for that distance lies past the mechanism's travel. A convergence run needs a wall.
 
 Details: `doku/94-fokusmotor-endschalter.md`.

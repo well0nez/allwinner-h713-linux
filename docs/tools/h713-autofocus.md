@@ -15,6 +15,12 @@ h713-autofocus run --dry-run DIR    # replay recorded frames, no device at all
 h713-autofocus measure --metric-only FRAME    # time the metric on one frame
 ```
 
+The metric itself is C when `h713-afmetric` is beside the tool or on `PATH`, and Python otherwise; every run
+says which of the two it used. `--no-helper` forces Python, `--helper PATH` names another binary. Both give
+the same integer - that is a golden test, not a hope. Cross-build and install it with
+`make -C userspace/h713-autofocus cross` and `make install-cross DESTDIR=/srv/h713-rootfs`;
+`rootfs/install-projekt.sh` picks it up if it is there and warns if it is not.
+
 Options: `--profile hy310|vafo8|hy300-pro` picks the board table, `--window full|band|crect|nocen` and
 `--stride N` pick the measuring window and the subsampling (default `crect` at stride 3, see below), `--sysfs PATH` and `--dev NODE` skip the searches,
 `--cell PX` changes the chessboard's cell size, `-q` silences the per-pass log. `run` also takes
@@ -101,7 +107,8 @@ real search with a simulated motor whose position indexes the directory. The ste
 digits in the file name, with a leading minus only when no letter or digit comes before it - so
 `step-0012.gray` is 12 and `step_-0012.gray` is -12 (this motor's counter really does go negative).
 
-Nobody has recorded the real fixture yet; it needs the device. `tests/make_fixture.py` builds a synthetic one -
+`h713-cam grab --raw /data/af-frames/step-0012.gray` writes one such frame; one per motor position, walked with
+`h713-focus down 2`, is the fixture. Nobody has recorded it yet. `tests/make_fixture.py` builds a synthetic one -
 the same chessboard, blurred by an amount that grows with the distance from a chosen position, so the sharpest
 step is known and "does the search converge" has an answer. On it the search lands 4 msteps either side of the
 true peak, from both directions, in 28 passes.
@@ -111,26 +118,48 @@ python3 -m unittest discover -s tests -v      # from userspace/h713-autofocus/
 python3 tests/make_fixture.py /tmp/frames --span 200 --peak 100
 ```
 
-## How slow the metric is
+## How long it takes
 
-Pure Python, on one 640x480 frame, measured with `measure --metric-only` on an i7-11390H (Python 3.12):
+One 640x480 frame through `measure --metric-only`, in seconds - the projector's A53 measured on 22.09.2026,
+the host an i7-11390H with Python 3.12 and with `h713-afmetric` built by `cc -O2`:
 
-| window | stride 1 | stride 2 | stride 3 |
+| window, stride | A53, Python | host, Python | host, C |
 |---|---|---|---|
-| `full` (rows 8..471, cols 8..631) | 0.077 s | 0.021 s | 0.010 s |
-| `band` (a 320 px band, centre) | 0.038 s | 0.010 s | 0.005 s |
-| `crect` (rows 120..359, 424 cols) | 0.027 s | 0.007 s | 0.003 s |
+| `full` 1 | 1.00 | 0.0731 | 0.0016 |
+| `full` 2 | 0.25 | 0.0190 | 0.0007 |
+| `full` 3 | 0.11 | 0.0085 | 0.0008 |
+| `crect` 2 | 0.09 | 0.0070 | 0.0006 |
+| `crect` 3 | - | 0.0032 | 0.0005 |
 
-The A53 in this projector is several times slower than that host, and a pass costs two frames, so the full
-window at stride 1 would be roughly a second per pass - too slow for a search with a 280-pass budget. The
-default is therefore **`crect` at stride 3**, the cheapest of the vendor's own combinations, and the wider
-windows are there for a board that needs them. None of this changes the thresholds: the normalising divisor
-takes the scale out.
+The A53 is about **13x** slower than that host on the same Python work, and the C helper is 7x to 45x faster
+than the Python on the same frame; the host C figures include the pipe the tool feeds the frame through, so
+they are the whole cost and not just the arithmetic. Hence the two defaults, `crect` at stride 3: on the
+board that turned a search from about a minute into 14 s, and from -49 to +43 into 5.7 s. None of it moves a
+threshold - the normalising divisor takes the scale out, and all nine window/stride pairs measured on the
+board normalised to 5046..5151.
+
+A pass costs roughly 100 ms for the move (6 msteps at 16 ms each), 66 ms for the two frames, and the metric.
+The first two are the stock's own cost and cannot be argued away; the metric is ours, which is why it is in C.
+
+## The range watcher will stop a bench run
+
+The search obeys `h713-focus`'s rules, and the strongest of them is the travel-range watcher: when the
+mechanism reaches the end of its range the driver latches an edge, the run stops and the tool exits **5**.
+On the bench that is the normal outcome and not a fault. A projector pointed at objects about 30 cm away has
+its sharp point **beyond** the lens's design range, so every run climbs, keeps getting sharper, and then hits
+the edge with the metric still rising (measured twice on 22.09.2026, at counter +31 and +46). **Point it at a
+wall** for a run that converges; a bench run tells you the climb works, not where the peak is.
+
+`motor_ctrl_no_limit` is a **0/1 flag**, not a command word. Writing a command word into it - 258, say -
+switches the range check off, and then nothing stops the mechanism at its end. `h713-focus` and this tool both
+refuse to move while it reads 1, and neither of them ever writes it; if a run stops with
+"`motor_ctrl_no_limit=1`", write a plain `0` back yourself and look at what set it.
 
 ## Limits, honestly
 
-- Nothing here has run on the projector yet. The metric, the state machine, the thresholds and the failure
-  paths are proven against recorded and synthetic frames only.
+- It has run on the projector (22.09.2026): the pattern reaches the wall, the camera delivers, the motor moves
+  on `cmd 1/2` and the metric climbs monotonically over a 60-mstep sweep. What is still **unproven** is
+  convergence - every bench run so far ended at the range watcher's edge, see above. Run it at a wall.
 - The vendor's exposure re-check inside the search (`check_gray_level`, every fifth pass) is **not** built:
   AP1's section 8 says that function was summarised, not reconstructed. The gain flag it would set is a profile
   value instead, and it defaults to 1, the sensitive `+-11/+-5` threshold pair.
