@@ -279,6 +279,10 @@
 #    published, so a genuine 30.00 Hz source before the first publication of a
 #    boot is not mistaken for the firmware's echo of ours)
 0136o-media-h713-hdmirx-our-own-record-cannot-exist-before-we-published-one.patch
+#   (Q3 -- 0136p: S_DV_TIMINGS checks the ring it would set against the
+#    capture slot instead of letting REQBUFS answer -EINVAL three calls
+#    later; since 0136k a hand-given 4K timing gets that far, T2 8.1)
+0136p-media-h713-hdmirx-s-dv-timings-refuses-a-ring-no-slot-can-hold.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

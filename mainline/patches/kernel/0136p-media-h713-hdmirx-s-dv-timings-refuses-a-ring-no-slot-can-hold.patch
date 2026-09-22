@@ -1,0 +1,62 @@
+media: h713-hdmirx: S_DV_TIMINGS refuses a ring no slot can hold
+
+Since 0136k the capability cap is the firmware's own mode table, up to
+4096x2160 at 297 MHz, because the ring rule of 0136f is what keeps the plane
+safe and not the cap. That is right for QUERY_DV_TIMINGS, where the ring
+comes from INCAP's rowbyte and the firmware never writes a ring larger than
+a slot. It left one door open on the way in, though: S_DV_TIMINGS takes a
+timing by hand and sets the ring from it directly,
+
+	ring.width  = t->bt.width;
+	ring.height = t->bt.height;
+	ring.pitch  = ALIGN(t->bt.width, H713_INCAP_ROWBYTE_UNIT);
+
+with no INCAP in sight, so S_DV_TIMINGS(4096x2160) now succeeds and hands
+the queue a plane size of 8 847 360 bytes against a slot of 2 093 056.
+Nothing overruns - h713_hdmirx_alloc() checks the size against the slot
+pitch and holds - but the refusal comes out of REQBUFS as -EINVAL, three
+calls later and in a place where it reads like a driver bug rather than an
+answer (T2 report 8.1).
+
+So the check moves to where the decision is made: one comparison of pitch
+times height against H713_HDMIRX_SLOT_PITCH, -ERANGE, and one line naming
+both numbers. -ERANGE is what S_DV_TIMINGS already answers for a timing the
+cap refuses, so nothing new has to be learned by a caller.
+
+h713-tv is not affected either way: it uses QUERY, never S_DV_TIMINGS.
+
+Follow-up to 0136k, which stays byte-identical. Source: umbau/work/T2/
+REPORT.txt section 8.1, doku/128 section 3 item 7.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -3999,6 +3999,26 @@ static int h713_hdmirx_s_dv_timings(struct file *file, void *priv,
+ 	ring.height = t->bt.height;
+ 	ring.pitch = ALIGN(t->bt.width, H713_INCAP_ROWBYTE_UNIT);
+ 
++	/*
++	 * A capture slot is H713_HDMIRX_SLOT_PITCH bytes and the plane cannot
++	 * be told to write anywhere else, so a hand-given timing whose ring
++	 * does not fit one is not a format this device can have. Until 0136k
++	 * the capability cap refused those timings first; since the cap
++	 * follows the firmware's table, S_DV_TIMINGS(4096x2160) gets this far
++	 * and the refusal used to come out of REQBUFS as -EINVAL, which reads
++	 * like a driver bug instead of an answer (T2 report 8.1). QUERY is not
++	 * affected: there the ring comes from the rowbyte, and the firmware
++	 * never writes a ring larger than a slot.
++	 */
++	if ((u64)ring.pitch * ring.height > H713_HDMIRX_SLOT_PITCH) {
++		dev_info(rx->dev,
++			 "%ux%u needs %llu bytes a slot, the capture has %u\n",
++			 ring.width, ring.height,
++			 (u64)ring.pitch * ring.height,
++			 (unsigned int)H713_HDMIRX_SLOT_PITCH);
++		return -ERANGE;
++	}
++
+ 	h713_hdmirx_set_timings(rx, t, &ring);
+ 
+ 	return 0;
