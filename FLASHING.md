@@ -34,14 +34,14 @@ table.
 
 ```bash
 git clone https://github.com/well0nez/allwinner-h713-linux.git
-mkdir ~/hy310-v0.8-beta && cd ~/hy310-v0.8-beta
-#   download every file of the v0.8-beta release into this folder, then:
+mkdir ~/hy310-v0.9-beta && cd ~/hy310-v0.9-beta
+#   download every file of the v0.9-beta release into this folder, then:
 zstd -d *.img.zst                            # optional, see below - the installer does it too
-sha256sum -c h713-hy310-v0.8-beta.sha256     # lists the unpacked .img parts, so unpack first
+sha256sum -c h713-hy310-v0.9-beta.sha256     # lists the unpacked .img parts, so unpack first
 chmod +x sunxi-fel
 ```
 
-The folder then holds the three `.img` parts, `h713-hy310-v0.8-beta.tabelle.json`, `u-boot-installer.bin`
+The folder then holds the three `.img` parts, `h713-hy310-v0.9-beta.tabelle.json`, `u-boot-installer.bin`
 (the U-Boot that exposes the eMMC over USB) and `sunxi-fel` (the FEL tool, built with the H713 trap door -
 the stock `sunxi-fel` from your distribution does **not** work here). `sunxi-fel` needs `libusb-1.0` on your
 PC; on Debian and Ubuntu that is `apt install libusb-1.0-0`.
@@ -54,7 +54,7 @@ If you built the image yourself with `release/build-all.sh`, the same files are 
 ```bash
 # 1. put the device into FEL: hold the reset button, then plug in power
 # 2. run the installer (it loads U-Boot over USB - nothing is written yet)
-sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.8-beta \
+sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.9-beta \
     --ssh-key ~/.ssh/id_ed25519.pub \
     --full --dump ~/hy310-dump
 # 3. it dumps, extracts your device's own files, copies them into the image, writes it, verifies
@@ -144,10 +144,10 @@ h713-install 0.1 (draft, doku/110)   (Linux)
   OK reserve0          1 files    0.0 MiB  -> mips/reserve0/
   mips/: media_data not readable (media_data: no ext4 superblock (no magic at 0x438) -- erofs/f2fs? Not supported.)
   OK the dump lies in ~/h713-dump-T
-[4] Check the image (h713-hy310-v0.8-beta, v4 (doku/109 section 2.2, files copied through a mount))
-  OK h713-hy310-v0.8-beta-a-bootkette.img LBA 0             6291456 bytes  sha256 ok
-  OK h713-hy310-v0.8-beta-b-system.img  LBA 14336      1209008128 bytes  sha256 ok
-  OK h713-hy310-v0.8-beta-c-gptkopie.img LBA 15269855        16896 bytes  sha256 ok
+[4] Check the image (h713-hy310-v0.9-beta, v4 (doku/109 section 2.2, files copied through a mount))
+  OK h713-hy310-v0.9-beta-a-bootkette.img LBA 0             6291456 bytes  sha256 ok
+  OK h713-hy310-v0.9-beta-b-system.img  LBA 14336      1209008128 bytes  sha256 ok
+  OK h713-hy310-v0.9-beta-c-gptkopie.img LBA 15269855        16896 bytes  sha256 ok
   Hole at LBA 12288..14335 (hy310-keys) -- stays untouched
 [5] Put the device's own files in (44 files)
   h713-extract emmc-full.img -> h713-dump-T/extract
@@ -159,18 +159,18 @@ h713-install 0.1 (draft, doku/110)   (Linux)
   OK 45 files copied in and read back -- all equal
   OK Environment: h713_project=0x30 already set as declared
 [6] Write onto the eMMC
-    h713-hy310-v0.8-beta-a-bootkette.img from LBA 0             6291456 bytes
-    h713-hy310-v0.8-beta-b-system.img  from LBA 14336      1209008128 bytes
-    h713-hy310-v0.8-beta-c-gptkopie.img from LBA 15269855        16896 bytes
+    h713-hy310-v0.9-beta-a-bootkette.img from LBA 0             6291456 bytes
+    h713-hy310-v0.9-beta-b-system.img  from LBA 14336      1209008128 bytes
+    h713-hy310-v0.9-beta-c-gptkopie.img from LBA 15269855        16896 bytes
   ! This overwrites the eMMC.
     This here is a beta. If something goes wrong while it writes:
     do NOT pull the power and reboot. Put the device into FEL mode
     (hold reset, plug the power in) and start from the beginning --
     the boot chain is always reachable from there.
     Type YES to continue: YES   (--yes on the command line)
-  OK h713-hy310-v0.8-beta-a-bootkette.img written
-  OK h713-hy310-v0.8-beta-b-system.img written
-  OK h713-hy310-v0.8-beta-c-gptkopie.img written
+  OK h713-hy310-v0.9-beta-a-bootkette.img written
+  OK h713-hy310-v0.9-beta-b-system.img written
+  OK h713-hy310-v0.9-beta-c-gptkopie.img written
   OK everything written in 3 min
 [7] Compare back
   OK samples match

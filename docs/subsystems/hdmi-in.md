@@ -120,10 +120,10 @@ does not exist yet; nothing needs the ring as a dma-buf today.
 
 ## Verified
 
-Six modes are verified on hardware - the list is in [STATUS.md](../../STATUS.md) - each at 60 Hz and
-colour-correct, across arbitrarily many source switches, HDMI unplug/replug, and a cold start with no
-operator. They come out BT.709 because that is what the sources send and what the firmware reads; a
-standard-definition source now comes out `SMPTE170M`, which is the correction, not a regression.
+The modes in [STATUS.md](../../STATUS.md) - 1080p at 60, 50 and 24 Hz, 720p50, 576p50, 1366×768, 1024×768
+and 4K30 - are verified on hardware, colour-correct, across arbitrarily many source switches, HDMI
+unplug/replug, and a cold start with no operator. The colour space comes from the firmware's record for the
+mode: BT.709 for HD, BT.601 (`SMPTE170M`) for 576p and 480p, and the range is what the source declared.
 1280×1024 is pillarboxed by the `aspect` property described in [display.md](display.md). A source geometry
 the firmware itself does not lock onto is its own answer since the mode table is read (`-ERANGE`, above),
 not the same one as no signal at all.

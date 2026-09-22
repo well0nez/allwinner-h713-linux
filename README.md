@@ -136,8 +136,8 @@ Wi-Fi, focus motor, camera, recovery) is described below for the HY310, the boar
 ## Getting it running
 
 ```bash
-release/build-all.sh --version v0.8-beta --vendor <your extraction>   # image, from a clean clone
-release/build-all.sh --version v0.8-beta --board hy300-pro --test-image  # a test image for a board in test
+release/build-all.sh --version v0.9-beta --vendor <your extraction>   # image, from a clean clone
+release/build-all.sh --version v0.9-beta --board hy300-pro --test-image  # a test image for a board in test
 installer/h713-install --help                                         # identify, dump, install, restore
 ```
 

@@ -37,26 +37,26 @@ by someone who did not write the installer.
 Every image carries `<name>.BUILD.txt`. That, not the version string, identifies a build:
 
 ```
-h713-hy310-v0.8-beta  built 2026-09-16T18:00:26Z in 19 min 24 s
+h713-hy310-v0.9-beta  built 2026-09-22T14:55:40Z in 18 min 12 s
 board:    hy310 (verified; profile hy310, DTB sun50i-h713-hy310, U-Boot hy310 + release/installer, probe h713_probe_defconfig)
-series:   43ce4ea197dd73c7  141 patches
-kernel defconfig: hy200_qz713df_a1_defconfig bcf80cf8d63707f6
-kernel tree: a04df07f  release 6.18.38
-u-boot: d88a7c6ba3d
+series:   325196d738badd94  182 patches
+kernel defconfig: hy200_qz713df_a1_defconfig 00c052ced1a85a91
+kernel tree: 41b71e61  release 6.18.38
+u-boot: 4cecddd5561
 arm-trusted-firmware: dfa9fab44
 sunxi-tools: 269dfa2
-repo: 00f896a8e84 (3 local changes)
-U-Boot:   U-Boot 2026.07-rc5-gd88a7c6ba3dc
+repo: 074b5835404 (0 local changes)
+U-Boot:   U-Boot 2026.07-rc5-g4cecddd55613
 building blocks (sha256, 16 characters):
-  spl-release.bin              418e367596c194bb
-  uboot-proper-release.bin     bc667f8d9da917b2
+  spl-release.bin              e36bef37a7fffbd5
+  uboot-proper-release.bin     cc4f47d0945bac19
   hy310-env-release.bin        c13a84eefa0df626
-  u-boot-installer.bin         eed278d7acb967b0
-  h713-kernel.fit              11bf9e79f282a170
+  u-boot-installer.bin         e3701352bf687bbe
+  h713-kernel.fit              1f90d009aebe75ab
   modules/aic8800_bsp.ko       cac577a9e9656fd1
-  modules/aic8800_fdrv.ko      1e660b556ac29df0
-  h713-tv.aarch64-linux-gnu    a91e3cd10262bc07
-  hy310-rootfs.tar             68ce688419b6b262
+  modules/aic8800_fdrv.ko      a73bff13e8b3da52
+  h713-tv.aarch64-linux-gnu    056073ce803648da
+  hy310-rootfs.tar             3a80f4fbdd5a9e4b
 ```
 
 Two builds of the same sources are not byte-identical (build timestamps and paths get embedded), so

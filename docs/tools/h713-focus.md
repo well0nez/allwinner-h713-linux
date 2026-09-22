@@ -46,8 +46,8 @@ because the driver cannot abort it.
 ## What this deliberately does not do
 
 **Autofocus** - judging sharpness needs a test image with hard edges, and on a dark scene or a blank wall an
-autofocus measures noise and drives the focus into it. Producing or checking for such an image is a separate
-tool's job, not a subcommand here. **Homing** - there is no reference point besides the two edges, and driving
+autofocus measures noise and drives the focus into it. That is [h713-autofocus](h713-autofocus.md)'s job - it
+puts the pattern up itself and restores the picture afterwards - not a subcommand here. **Homing** - there is no reference point besides the two edges, and driving
 to an edge just to find it is the exact blind write this tool exists to avoid.
 
 Details: doku/94-fokusmotor-endschalter.md, analyse/boot/motor-bereichswaechter-20260912.txt

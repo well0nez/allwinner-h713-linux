@@ -106,8 +106,8 @@ projected. On a dark scene or a black picture it measures nonsense and drives
 the focus into the void; it belongs on a test image with hard edges. An
 automatic control would therefore have to either demand that a suitable test
 image is present, or produce one itself (`h713-tv`) and restore the previous
-state afterwards. That is a tool of its own, not a subcommand here. Unchecked:
-which test image stock uses for it.
+state afterwards. That tool exists since v0.9-beta: `h713-autofocus` (`../h713-autofocus/`) puts a
+chessboard up through `h713-tv` and restores the picture afterwards. Not a subcommand here.
 
 **Homing.** There is no reference point besides the two edges, and driving to an
 edge in order to find it is exactly what this script avoids.
