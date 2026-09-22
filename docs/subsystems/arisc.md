@@ -67,6 +67,20 @@ echo "edid-version 1" > /sys/kernel/debug/h713-arisc/cmd
 echo edid             > /sys/kernel/debug/h713-arisc/cmd
 ```
 
+The same file decides whether the byte above is the firmware's answer or ours. With
+`D=/sys/kernel/debug/h713-arisc`:
+
+```
+echo reset-edid       > $D/cmd; grep edid_version_mask $D/status   # 0x00 want 0x00
+echo "edid-version 2" > $D/cmd; grep edid_version_mask $D/status   # 0x02 want 0x02
+echo edid             > $D/cmd; grep edid_version_mask $D/status   # 0x0f want 0x02 <- the race
+sed -n '9p' $D/edid-port0                                          # 128: 02 03 54 <- block 1
+```
+
+Only port 1's bit was asked for, so port 0 on block 1 (`02 03 54`) is the mask the firmware was left
+holding, not the one that was sent. With `0091e` the last two lines must read `0x02 want 0x02` and
+`128: 02 03 4c`.
+
 The default 0 needs no second step - the bring-up's own fragment 7 publishes with it - which is why
 the driver sends the command after fragment 7 rather than before (patch `0091c`, comment `0091d`).
 
@@ -74,6 +88,10 @@ One oddity is open: after the sequence with mask 1 the firmware's byte read back
 bits, where 0x01 had been asked for; with mask 0 it read 0x00. The status line carries both numbers
 (`edid_version_mask: 0x0f want 0x01`), so the divergence is visible rather than silent. Whether the
 handler ORs the bits or the publish path writes them is unanswered; it does not affect the default.
+The disassembly says neither: the handler re-reads its argument after its own log line and the
+driver's next command had already overwritten it, so the 0x0f is this driver's race and patch `0091e`
+waits for the handler's effect instead - the second bench sequence above is the proof, and the
+paragraph that opens this section is corrected after it, not before (Q13, `umbau/reviews/Q13.md`).
 
 **Block 0 is the right block on both boards, and not by default only.** Block 1 is not a newer or
 better EDID, it is a different CEA extension: it adds 3840x2160p50/p60 and 4096x2160p50/p60 in 4:2:0,
