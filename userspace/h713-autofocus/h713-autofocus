@@ -101,6 +101,11 @@ DROP_FROM_MAX, DEBOUNCE, CONFIRM_PASSES = 201, 4, 3
 FINE_PASS_CAP, PEAK_WINDOW, OVERSHOOT_TRIGGER = 16, 50, 501
 SCALE_CEILING, SCALE_STEP = 14000, 2000
 RUN_MSTEP_CAP, MSTEPS_PER_COMMAND_MAX = 400, 18   # both as in h713-focus
+# A move's own duration, measured on the HY310: 6 msteps = 100 ms with the
+# autofocus commands AND with the manual ones (dev20-20260922, "Q6 timing
+# breakdown"). Waiting it out first and only then polling costs two read-backs
+# instead of five and does not overshoot the move by up to a poll interval.
+MSTEP_S, POLL_S = 0.016, 0.008
 CMD_UP, CMD_DOWN, CMD_FLUSH = 1, 2, 3             # the autofocus codes, AP1 6
 PATTERN_CELL, PATTERN_ORIGIN = 69, (97, 92)       # AP1 2.2, bg_auto_focus.png
 EXIT_ERROR, EXIT_NO_PICTURE, EXIT_BLOCKED = 2, 3, 4
@@ -266,13 +271,14 @@ class Motor:
     def loop(self, steps):
         """One watched move in the current search direction."""
         up = self.direction == 0
-        reason = self.guard(self.state(), up)
+        state = self.state()                # the guard's read-back is also
+        reason = self.guard(state, up)      # the move's "before": one read
         if reason:
             raise Edge(reason)
         if self.moved + steps > RUN_MSTEP_CAP:
             raise Edge("the hard cap of %d msteps per run" % RUN_MSTEP_CAP)
         self.moved += steps
-        self._move(min(steps, MSTEPS_PER_COMMAND_MAX), up)
+        self._move(min(steps, MSTEPS_PER_COMMAND_MAX), up, state)
 
 
 def find_base(given):
@@ -350,11 +356,12 @@ class SysfsMotor(Motor):
                    "towards it is dropped" % ("up" if up else "dn")
         return None
 
-    def _move(self, steps, up):
-        before = self.state()
+    def _move(self, steps, up, before=None):
+        before = self.state() if before is None else before
         self._command(((CMD_UP if up else CMD_DOWN) << 8) | (steps & 0x7F))
         target = before.step + (steps if up else -steps)
         deadline = time.monotonic() + (steps + 45) * 0.024 + 0.3
+        time.sleep(max(steps * MSTEP_S - POLL_S, 0))    # the move's own time
         while time.monotonic() < deadline:
             now = self.state()
             if (now.edge_up and not before.edge_up) or \
@@ -362,7 +369,7 @@ class SysfsMotor(Motor):
                 raise Edge("an edge was reached during the run")
             if now.step == target:
                 return
-            time.sleep(0.025)
+            time.sleep(POLL_S)
 
     def flush(self):
         try:
@@ -390,7 +397,7 @@ class ReplayMotor(Motor):
         return ("edge_%s=1" % ("up" if up else "dn")) \
             if (st.edge_up if up else st.edge_dn) else None
 
-    def _move(self, steps, up):
+    def _move(self, steps, up, before=None):
         new = self.index + (steps if up else -steps)
         if new >= len(self.frames):
             new, self.edge_up = len(self.frames) - 1, True
@@ -488,11 +495,16 @@ def find_camera(given, ids):
 
 
 class Camera:
-    """YUYV 640x480 over MMAP streaming; one frame is the luma plane."""
+    """YUYV 640x480 over MMAP streaming; one frame is the luma plane.
+
+    With `raw` set, grab() hands the buffer over as it came and leaves the even
+    bytes to whoever measures it - the C helper's --yuyv mode does that for
+    free, so the search stops copying 614 KB down to 307 KB per frame (Q11 3).
+    """
 
     def __init__(self, node):
         self.fd, self.maps, self.streaming = os.open(node, os.O_RDWR), [], False
-        self.bpl = FRAME_W * 2
+        self.bpl, self.raw = FRAME_W * 2, False
 
     def _control(self, cid, value):
         buf = bytearray(8)
@@ -551,9 +563,9 @@ class Camera:
                     raise
         index = struct.unpack_from("<I", buf, 0)[0]
         used = struct.unpack_from("<I", buf, 8)[0] or self.bpl * FRAME_H
-        luma = bytes(self.maps[index][:used])[0::2]
+        data = bytes(self.maps[index][:used])
         fcntl.ioctl(self.fd, VIDIOC_QBUF, buf, True)
-        return luma
+        return data if self.raw else data[0::2]
 
     def close(self):
         if self.streaming:
@@ -817,8 +829,13 @@ def warm_up(camera, profile, metric):
         for _ in range(4):
             frame = camera.grab()
     level = picture_present(frame)
+    # The warm-up frames are luma planes, the search's are whole buffers, so
+    # this one measurement goes through Python and not through a --yuyv
+    # helper. Same number: it is what metric(frame) does with lev still 0.
+    total = sharpness_sum(frame, metric.window, metric.stride)
+    metric.lev = pick_divisor(total)
     _stderr("picture level %d (floor %d), first metric %d"
-            % (level, NO_PICTURE_LIMIT, metric(frame)))
+            % (level, NO_PICTURE_LIMIT, total // metric.lev))
     return 0 if level >= NO_PICTURE_LIMIT else EXIT_NO_PICTURE
 
 
@@ -836,7 +853,7 @@ def build_metric(args, profile, yuyv=False):
 
 def do_run(args, profile):
     """Pattern, camera, warm-up, search -- the whole procedure (AP1 2)."""
-    metric = build_metric(args, profile)
+    metric = build_metric(args, profile, yuyv=not args.dry_run)
     panel = camera = None
     if args.dry_run:
         motor = ReplayMotor(read_frames(args.dry_run), args.start,
@@ -868,6 +885,7 @@ def do_run(args, profile):
                 _stderr("no picture: the camera streams but the frame is flat."
                         " Is the lamp on, is the pattern on the wall?")
                 return code
+            camera.raw = isinstance(metric.sums, Helper)
         deadline = time.monotonic() + args.timeout if args.timeout else None
         search = Search(motor, grab, metric, profile,
                         (lambda _: None) if args.quiet else _stderr, deadline)

@@ -200,6 +200,26 @@ class NativeMetric(unittest.TestCase):
                                for f in frames])
         self.assertEqual(got, sorted(got, reverse=True))   # blur lowers it
 
+    def test_a_yuyv_metric_equals_a_luma_metric_divisor_and_all(self):
+        """Q11 3: the search feeds whole buffers, the numbers may not move."""
+        rnd = random.Random(20260922)
+        frames = [mf.frame(r) for r in (1.5, 2.5, 4.0)]
+        buffers = []
+        for one in frames:
+            both = bytearray(len(one) * 2)
+            both[0::2] = one
+            both[1::2] = bytes(rnd.randrange(256) for _ in range(len(one)))
+            buffers.append(bytes(both))
+        helper = af.Helper(self.binary, "crect", 3, yuyv=True)
+        try:
+            over_yuyv = af.Metric("crect", 3, helper)
+            got = [over_yuyv(b) for b in buffers]
+        finally:
+            helper.close()
+        plain = af.Metric("crect", 3)
+        self.assertEqual(got, [plain(one) for one in frames])
+        self.assertEqual(over_yuyv.lev, plain.lev)
+
     def test_the_helper_refuses_a_short_frame(self):
         out = subprocess.run([self.binary], input=b"\0" * 100,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
