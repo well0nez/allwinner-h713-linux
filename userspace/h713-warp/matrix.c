@@ -79,6 +79,15 @@ int warp_key_by_name(const char *key)
 	return -1;
 }
 
+void warp_effective(const struct warp_conf *c, int out[WARP_KEYS])
+{
+	int i, in = (100 - c->zoom) * 5;
+
+	for (i = 0; i < WARP_KEYS; i++)
+		out[i] = c->v[i] + in;
+	warp_clamp(out);
+}
+
 bool warp_identity(const int v[WARP_KEYS])
 {
 	int i;

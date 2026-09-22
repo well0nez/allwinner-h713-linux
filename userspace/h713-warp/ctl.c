@@ -183,6 +183,8 @@ static void cmd_help(struct textbuf *t)
 		 "  keystone reset             all eight corners to 0 (the identity)\n"
 		 "                             CORNER: tl tr bl br as the picture stands on the\n"
 		 "                             wall; AXIS: x y. Every change is saved at once\n"
+		 "  zoom [PERCENT]             the screen zoom, 10..100 (100 = none): every corner\n"
+		 "                             pulled in by (100 - PERCENT) * 5 per-mille (S7)\n"
 		 "  test grid|border|off       draw a pattern instead of the capture, to aim a\n"
 		 "                             corner with no source plugged in\n"
 		 "  help                       this list\n"
@@ -228,6 +230,21 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 			       : "the warp is off");
 	} else if (!strcmp(cmd, "keystone")) {
 		text_add(t, "error keystone takes set, nudge or reset (h713-warp ctl help)\n");
+	} else if (!strcmp(cmd, "zoom")) {
+		int z = a1 ? atoi(a1) : -1;
+
+		if (!a1) {
+			text_add(t, "ok zoom %d\n", r->conf.zoom);
+		} else if (z < 10 || z > 100) {
+			text_add(t, "error zoom takes a percentage 10..100 (100 = none)\n");
+		} else {
+			r->conf.zoom = z;
+			warp_solve(r);
+			save(r, t);
+			warp_apply(r);
+			text_add(t, "ok zoom %d -- every corner pulled in by %d per-mille on top of the keystone\n",
+				 z, (100 - z) * 5);
+		}
 	} else if (!strcmp(cmd, "test")) {
 		cmd_test(r, t, a1);
 	} else if (!strcmp(cmd, "help")) {

@@ -27,7 +27,7 @@ HOST_CC       ?= cc
 HOST_CPPFLAGS ?= $(shell pkg-config --cflags egl glesv2 2>/dev/null)
 HOST_LDLIBS   ?= $(shell pkg-config --libs egl glesv2 2>/dev/null || echo "-lEGL -lGLESv2")
 PYTHON        ?= python3
-WARP           = ../h713-warp
+WARP           = ..
 
 all: test_matrix test_gl
 

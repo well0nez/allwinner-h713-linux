@@ -68,7 +68,13 @@ struct warp_conf {
 	bool present;			/* the file was there */
 	bool start_on;			/* "warp = on" */
 	int v[WARP_KEYS];
+	int zoom;			/* screen zoom in percent, 100 = none (S7) */
 };
+
+/* The eight the matrix sees: the keystone plus the screen zoom (the vendor's
+ * "Digital scaling": every corner pulled in by (100 - zoom) * 5 per-mille,
+ * AP2i rows 6-8), clamped the vendor's way. */
+void warp_effective(const struct warp_conf *c, int out[WARP_KEYS]);
 
 void conf_read(struct warp_conf *c);
 bool conf_write(const struct warp_conf *c, char *why, size_t n);

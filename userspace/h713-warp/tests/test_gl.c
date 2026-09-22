@@ -33,7 +33,7 @@
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
-#include "../h713-warp/warp.h"
+#include "../warp.h"
 
 #define TOL_LSB	1
 

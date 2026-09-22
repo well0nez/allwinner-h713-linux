@@ -61,6 +61,7 @@ void conf_read(struct warp_conf *c)
 
 	c->present = false;
 	c->start_on = false;
+	c->zoom = 100;
 	memset(c->v, 0, sizeof(c->v));
 
 	f = fopen(c->path, "r");
@@ -91,6 +92,16 @@ void conf_read(struct warp_conf *c)
 		while (*val == ' ' || *val == '\t' || *val == '=')
 			val++;
 		val = trim(val);
+		if (!strcasecmp(key, "zoom")) {
+			int z = atoi(val);
+
+			if (z >= 10 && z <= 100)
+				c->zoom = z;
+			else
+				warn("%s:%u: zoom = \"%s\" is not 10..100 percent -- 100",
+				     c->path, n, val);
+			continue;
+		}
 		if (!strcasecmp(key, "warp")) {
 			if (!strcasecmp(val, "on"))
 				c->start_on = true;
@@ -103,7 +114,7 @@ void conf_read(struct warp_conf *c)
 		}
 		k = warp_key_by_name(key);
 		if (k < 0) {
-			warn("%s:%u: unknown key \"%s\" -- ignored (tl_x .. br_y, warp)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (tl_x .. br_y, zoom, warp)",
 			     c->path, n, key);
 			continue;
 		}
@@ -175,6 +186,7 @@ bool conf_write(const struct warp_conf *c, char *why, size_t n)
 		"# service.\n");
 	for (i = 0; i < WARP_KEYS; i++)
 		fprintf(f, "%-5s = %d\n", warp_key_name[i], c->v[i]);
+	fprintf(f, "\n# The screen zoom in percent (100 = none): every corner pulled in by\n# (100 - zoom) * 5 per-mille on top of the eight above.\nzoom  = %d\n", c->zoom);
 	fprintf(f, "\n# The state to come up in.\nwarp  = %s\n",
 		c->start_on ? "on" : "off");
 	if (fflush(f) || fsync(fileno(f)) || fclose(f)) {

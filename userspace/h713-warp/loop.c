@@ -34,7 +34,10 @@ void warp_solve(struct runtime *r)
 	double m[16];
 	int i;
 
-	if (!warp_matrix(r->conf.v, m)) {
+	int eff[WARP_KEYS];
+
+	warp_effective(&r->conf, eff);
+	if (!warp_matrix(eff, m)) {
 		warn("keystone        a corner leaves the panel -- the previous matrix stays (the vendor does the same)");
 		return;
 	}
@@ -109,8 +112,11 @@ void warp_disengage(struct runtime *r, const char *why)
  */
 void warp_apply(struct runtime *r)
 {
-	bool want = r->on && (r->pattern != PATTERN_NONE ||
-			      !warp_identity(r->conf.v));
+	int eff[WARP_KEYS];
+	bool want;
+
+	warp_effective(&r->conf, eff);
+	want = r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff));
 
 	if (!want) {
 		if (r->state == WARP_ON)
@@ -233,6 +239,8 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 		text_add(&t, " %s %d,%d", warp_corner_name[c], r->conf.v[2 * c],
 			 r->conf.v[2 * c + 1]);
 	text_add(&t, " (per-mille, positive inward)\n");
+	text_add(&t, "zoom            %d percent%s\n", r->conf.zoom,
+		 r->conf.zoom == 100 ? " (none)" : " (every corner pulled in on top of the keystone)");
 	if (r->matrix_valid) {
 		text_add(&t, "corners        ");
 		for (c = 0; c < 4; c++) {

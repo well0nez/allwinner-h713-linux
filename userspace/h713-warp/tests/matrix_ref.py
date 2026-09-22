@@ -2,7 +2,7 @@
 
 This script does not test anything by itself. It writes the test vectors and
 the expected numbers to stdout, computed by the AP2f reference
-umbau/work/AP2f/model/keystone_matrix.py -- the tested port of the vendor's
+userspace/h713-keystone/model/keystone_matrix.py (AP2f) -- the tested port of the vendor's
 getKeyStoneMatrix -- and the C driver test_matrix.c reads them and compares
 them with what h713-warp/matrix.c computes.
 
@@ -31,7 +31,8 @@ import random
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "..", "AP2f", "model"))
+# the same file as work/AP2f/model, moved into the tree with h713-keystone
+sys.path.insert(0, os.path.join(HERE, "..", "..", "h713-keystone", "model"))
 
 import keystone_matrix as km    # noqa: E402
 
