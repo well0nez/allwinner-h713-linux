@@ -27,6 +27,7 @@ from h713.identify import ID_FEATURES, KNOWN_IMAGES, STRONG_FEATURES, feature_ma
 from h713.imagewty import (Imagewty, SunxiPackage, check_scp, fdt_root, find_sunxi_packages,
                            uboot_version_string)
 from h713.log import Abort, Log
+from h713.panelrow import compare_with_profile, profile_from_ini
 from h713.profiles import PROFILES, UBOOT_FW_REVS, legacy_devices
 from h713.source import FileSource, SparseSource, Source
 from h713.util import hexdump_short, sha256_bytes, sha256_file
@@ -97,6 +98,7 @@ class Run:
         self.vendor: Optional[Ext4Base] = None
         self.lp: Optional[LpSuper] = None      # the LP metadata of super, so a second partition can be opened
         self.system: Optional[Ext4Base] = None  # the Android system partition (camprjspe.ini lives there)
+        self.panel_config: Optional[tuple] = None   # (origin, bytes) of the board's panel_config.ini
         self.open_sources: List[FileSource] = []
         self.mips_sources: List[tuple] = []    # FAT16 images with mips/ (bootloader_b/_a, boot-resource.fex)
         self.mips: Dict[str, object] = {}      # findings for the manifest (project ids, sources, what was not taken)
@@ -556,11 +558,38 @@ class Run:
             self.take_text_config(CAMPRJSPE_OUTPUT, system.read(path, self.tmp), "system:" + path)
 
     def take_text_config(self, rel: str, data: bytes, origin: str):
+        if rel == PANEL_CONFIG_OUTPUT:
+            self.panel_config = (origin, data)
         problems = check_text_config(rel.rsplit("/", 1)[-1], data)
         for p in problems:
             self.log.warn(f"{rel}: {p}")
         self.store(rel, data, origin=origin, error=bool(problems),
                    checks=problems or ["mandatory keys ok"])
+
+    def write_profile(self, board_id: str):
+        """--profile <board>: the board's panel row in the boards/ format, from its own ini (AP3g 9)."""
+        rel = f"boards/{board_id}/panel.env"
+        self.log.heading(f"{rel} (panel row derived from panel_config.ini)")
+        if self.panel_config is None:
+            self.log.warn("no panel_config.ini in this input -- no panel row can be derived")
+            self.not_extracted.append(f"{rel} (no panel_config.ini in the input)")
+            return
+        origin, data = self.panel_config
+        text, checks, values = profile_from_ini(board_id, data, origin)
+        for level, ident, note in checks:
+            (self.log.info if level == "OK" else self.log.warn)(f"{level} {ident} {note}")
+        failed = [c for c in checks if c[0] == "FAIL"]
+        # boards/ uses hyphens (hy200-qz713df-a1), the profile module underscores -- same board.
+        known = (PROFILES.get(board_id.replace("-", "_")) or {}).get("panel") or {}
+        differences = compare_with_profile(values, known) if known else []
+        for note in differences:
+            self.log.warn(f"against the '{board_id}' profile -- {note}")
+        if known and not differences:
+            self.log.info(f"every field the '{board_id}' profile already carries comes out the same")
+        self.store(rel, text.encode("utf-8"), origin=origin, error=bool(failed),
+                   checks=[f"{len(checks) - len(failed)} checks passed, {len(failed)} FAIL"]
+                          + [f"against the '{board_id}' profile -- {n}" for n in differences]
+                          + ([f"equals the '{board_id}' profile field for field"] if known and not differences else []))
 
     def extract_wlan(self):
         """Take over the AIC8800D80 firmware from vendor:/etc/firmware/aic8800d80/.
@@ -1259,6 +1288,8 @@ class Run:
             if not self.args.no_pq:
                 self.extract_pq()
                 self.extract_text_configs()
+            if getattr(self.args, "profile", None):
+                self.write_profile(self.args.profile)
             if not self.args.no_mips:
                 self.extract_mips()
             if not self.args.no_wlan:

@@ -20,6 +20,7 @@ Output (under --out, default ./h713-extract-out):
   lib/firmware/h713/msp-patch.bin    (= symbol patch_msp out of libmspsound.so, MSPM blocks)
   pq/...                             (the files h713-pq reads, plus panel_config.ini and camprjspe.ini)
   boot/mips/...                      (= MIPS/display artefacts from bootloader_a/bootloader_b, what U-Boot reads)
+  boards/<board>/panel.env           (only with --profile: the panel row derived from panel_config.ini)
   lib/firmware/aic8800_fw/SDIO/aic8800D80/...  (= WLAN firmware of the AIC8800D80 from vendor:/etc/firmware/aic8800d80/)
   MANIFEST.json, REPORT.txt (BERICHT.txt is written as a copy for one more release)
 
@@ -75,7 +76,10 @@ def main(argv=None) -> int:
     ap.add_argument("--no-hash", action="store_true", help="skip the sha256 of the input (the device is then recognised by content alone)")
     ap.add_argument("--use-debugfs", action="store_true",
                     help="read ext4 through debugfs (e2fsprogs) instead of the built-in reader -- a counter-check, needs e2fsprogs")
-    ap.add_argument("--no-pq", action="store_true", help="do not copy the PQ files")
+    ap.add_argument("--profile", metavar="BOARD",
+                    help="also write boards/BOARD/panel.env: the board's panel row derived from its own "
+                         "panel_config.ini, with the nine sanity checks (needs the vendor partition)")
+    ap.add_argument("--no-pq", action="store_true", help="do not copy the PQ files (and the two board ini files)")
     ap.add_argument("--no-mips", action="store_true", help="do not extract the MIPS/display artefacts (boot/mips/...)")
     ap.add_argument("--no-wlan", action="store_true", help="do not extract the WLAN firmware (lib/firmware/aic8800_fw/...)")
     ap.add_argument("-q", "--quiet", action="store_true", help="result lines only")
