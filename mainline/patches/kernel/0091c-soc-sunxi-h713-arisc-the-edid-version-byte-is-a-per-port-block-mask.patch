@@ -70,6 +70,11 @@ receiver, and never reaches this core (AP3h section 6, R3). The value is
 unchanged; the device measurement in doku/nachtlog/A2-hpd-dauer-edid.md was
 always the real source.
 
+Review note (Q5, 22.09.): the command after fragment 7 goes out only when the
+byte the firmware holds differs from the board's mask, so the default of 0
+after ResetEDIDModule sends nothing and the unexercised "unchanged value"
+acknowledge path (report O2) is never taken on a probe.
+
 Source: umbau/re-apps/AP3l/ (REVIEW.md and design A), AP3h sections 4-6.
 The HY310 sees: port 0 keeps block 0, byte for byte. Only port 1's block and
 the driver's log lines change.
@@ -261,7 +266,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
  	for (frag = 0; frag < EDID_FRAGMENTS; frag++) {
  		const u8 *p = bytes + frag * EDID_FRAGMENT_LEN;
  
-@@ -1712,6 +1758,16 @@
+@@ -1712,6 +1758,25 @@
  	}
  
  	/*
@@ -269,16 +274,25 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
 +	 * the store the firmware still holds -- its own ROM default -- on
 +	 * every port whose bit moves. Afterwards it is idempotent, fragment 7
 +	 * having published all three ports with the mask in force (AP3l 1.4).
++	 *
++	 * And only when the byte the firmware holds differs: an unchanged value
++	 * is read to return at 0x125f0 without publishing, but whether that
++	 * path still acknowledges has never been exercised, and after
++	 * ResetEDIDModule the byte is 0 - the default mask - on every probe.
++	 * The byte is readable, so a mask the firmware already holds is not
++	 * sent at all (Q5 review, O2).
 +	 */
-+	ret = arisc_edid_mask_locked(a, a->edid_mask);
-+	if (ret)
-+		goto out;
++	if (readb(sram_at(a, a->off.edid_version)) != a->edid_mask) {
++		ret = arisc_edid_mask_locked(a, a->edid_mask);
++		if (ret)
++			goto out;
++	}
 +
 +	/*
  	 * CheckEDIDUpdateStatus is the firmware's own confirmation that the
  	 * store is complete: payload ff f8 01 01 <ready> on channel 1, with
  	 * <ready> = [0x1723e] = g_Data.bEdidDataReady. Fragments 0..6 clear
-@@ -1968,8 +2024,8 @@
+@@ -1968,8 +2033,8 @@
  /*
   * The whole stock bring-up in one call, in the order that has been proven on
   * hardware (doku/75, doku/82): reset the EDID module, hand it the port map,
@@ -289,7 +303,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
   *
   * It is exported because the HDMI receive driver has to run exactly this at
   * probe time and splitting it across the callers would invite reordering --
-@@ -1978,7 +2034,7 @@
+@@ -1978,7 +2043,7 @@
  int arisc_hdmi_edid_init(unsigned int port, const void *edid, size_t len)
  {
  	struct h713_arisc *a = arisc_get(false);
@@ -298,7 +312,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
  	int ret;
  
  	if (IS_ERR(a))
-@@ -2008,8 +2064,14 @@
+@@ -2008,8 +2073,14 @@
  	ret = arisc_hdmi_get_edid(port, readback, sizeof(readback));
  	if (ret < 0)
  		return ret;
@@ -315,7 +329,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
  
  	ret = arisc_hdmi_audio_mode(port, 0);
  	if (ret)
-@@ -2098,9 +2160,9 @@
+@@ -2098,9 +2169,9 @@
  	seq_printf(s, "firmware_addrs: para=0x%05x gdata=0x%05x rpm_state=0x%05x rpm_buf=0x%05x\n",
  		   a->off.para, a->off.gdata, a->off.rpm_state,
  		   a->off.rpm_buf);
@@ -327,7 +341,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
  	seq_printf(s, "firmware_map: bss=0x%05x..0x%05x stack=0x%05x..0x%05x\n",
  		   a->off.bss_start, a->off.bss_end - 1, a->off.bss_end,
  		   a->off.stack_top - 1);
-@@ -2125,6 +2187,9 @@
+@@ -2125,6 +2196,9 @@
  	seq_printf(s, "edid_ready: %u\nedid_gate: %u\n",
  		   readb(sram_at(a, a->off.edid_ready)),
  		   readb(sram_at(a, a->off.edid_gate)));
@@ -337,7 +351,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
  	/*
  	 * The port map as the firmware holds it, not as the driver asked for
  	 * it: byte 2 of each record is the pin the hotplug driver at 0x121e4
-@@ -2160,12 +2225,32 @@
+@@ -2160,12 +2234,32 @@
  DEFINE_SHOW_ATTRIBUTE(h713_arisc_status);
  
  /*
@@ -370,7 +384,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
   *	portmap a b c		HostHDMIMAP
   *	hpd <port> up|down|reset
   *	5v <port> on|off
-@@ -2192,6 +2277,9 @@
+@@ -2192,6 +2286,9 @@
  		ret = arisc_hdmi_edid_init(port, NULL, 0);
  	else if (!strcmp(cmd, "reset-edid"))
  		ret = arisc_hdmi_reset_edid();
@@ -380,7 +394,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
  	else if (!strcmp(cmd, "portmap"))
  		ret = arisc_hdmi_set_portmap(default_portmap, ARISC_HDMI_PORTS);
  	else if (sscanf(cmd, "portmap %u %u %u", &m0, &m1, &m2) == 3) {
-@@ -2375,6 +2463,7 @@
+@@ -2375,6 +2472,7 @@
  static int h713_arisc_probe(struct platform_device *pdev)
  {
  	struct h713_arisc *a;
@@ -388,7 +402,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
  	int ret;
  
  	if (h713_arisc)
-@@ -2408,6 +2497,18 @@
+@@ -2408,6 +2506,18 @@
  	if (ret)
  		return ret;
  
@@ -407,7 +421,7 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
  	platform_set_drvdata(pdev, a);
  	h713_arisc_load_edid(a);
  
-@@ -2419,6 +2520,8 @@
+@@ -2419,6 +2529,8 @@
  	debugfs_create_file("status", 0400, a->debugfs, a,
  			    &h713_arisc_status_fops);
  	debugfs_create_file("cmd", 0600, a->debugfs, a, &h713_arisc_cmd_fops);
