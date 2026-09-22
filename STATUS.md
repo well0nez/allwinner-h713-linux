@@ -4,7 +4,7 @@ Snapshot of **2026-09-22**. "Works" means *verified on the projector*, with the 
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is `v0.8-dev22`: the 182-patch series of this night with U-Boot `4cecddd`.
+The image on the test device is `v0.9-beta`: the 182-patch series with U-Boot `4cecddd`, installed from the release files.
 The last release is still `v0.8-beta`. What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
@@ -27,7 +27,7 @@ by `release/build-all.sh --board`: **no image for a board nobody has tested.** A
 
 | Board | State | Who ran it, and when | What exists for it |
 |---|---|---|---|
-| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.8-beta`, 16.09.2026; the development builds `v0.8-dev20` to `v0.8-dev22` on 22.09.2026 | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
+| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.9-beta`, 22.09.2026; the development builds `v0.8-dev20` to `v0.8-dev22` on 22.09.2026 | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
 | **HY200 QZ713DF_A1** | profile-only | nobody has run a build of *ours* on it. cstenger ran his own tree on his own bench board - kernel 6.18.38 boot-good (`mainline/config/versions.env`); that is his run, not ours | kernel and U-Boot defconfigs, device tree, and since 15.09. the installer profile `hy200_qz713df_a1` - its stock firmware is the 2025-09-22 "HY300 Pro+" DDR3 image (624 MHz, `display.bin` `4380f1b3…`) |
 | **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too, plus the installer profile `hy200_qz713_v2` - its stock firmware is the 2025-07-10 "HY300 Pro+" LPDDR3 image (720 MHz, `display.bin` `4628cbaf…`, HDCP wait site `0x4b13d538`) |
 | **HY300 T08** | profile-only | nobody | installer profile and DRAM fragment, both read out of its stock image (`doku/121` §2). No device tree of ours |

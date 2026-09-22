@@ -8,7 +8,7 @@ this unit; see the two `hy200-*` directories.
 | | |
 |---|---|
 | Status | **verified** |
-| Verified by | well0nez, HY310, `v0.8-beta`, 16.09.2026 |
+| Verified by | well0nez, HY310, `v0.9-beta`, 22.09.2026 |
 | Profile | `installer/h713/profiles/hy310.py` |
 | Image | `h713-hy310-<version>-{a-bootkette,b-system,c-gptkopie}.img` |
 | Kernel DTB | `sun50i-h713-hy310` |
