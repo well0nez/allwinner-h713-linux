@@ -302,6 +302,11 @@
 #    (dev20). The raster INCAP names is looked up in the table there; a
 #    raster in no record is unlisted whatever the stale record says)
 0136r-media-h713-hdmirx-a-raster-in-no-record-is-unlisted.patch
+#   (Q9 -- 0136s: under a standing picture the record is the descriptor we
+#    published, so the status file's colour:/hdr: lines carry its constants
+#    and not the source's (dev20, row "Q3 status file"). One line under the
+#    two names the state and the cached values; debugfs only)
+0136s-media-h713-hdmirx-say-when-the-status-file-reads-our-own-record.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

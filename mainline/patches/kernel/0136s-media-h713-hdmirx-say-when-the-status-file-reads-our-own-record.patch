@@ -1,0 +1,87 @@
+media: h713-hdmirx: say when the status file is reading our own record
+
+The debugfs status file reads the signal information record afresh on every
+open, and 0136n gave it two decoded lines, `colour:` and `hdr:`. Both are
+honest about what the record says and silent about whose record it is.
+
+Under a standing picture it is ours. The display side republishes the VidDec
+descriptor (0117), the firmware answers by writing that descriptor's values
+into the record, and from then on the record carries the descriptor's
+constants - colour format 0, exactly 30.00 Hz - and not the HDMI signal's.
+h713_hdmirx_detect_timings() has recognised that since 0136f and tightened
+the test with desc_seen in 0136o; the status file never learned it.
+
+Measured on the HY310 on 22.09.2026 with the debug kernel
+(umbau/test-20260915/dev20-20260922.md, row "Q3 status file"): with a
+1024x768 PC timing standing on the wall, `signal-info` read signal_id 19,
+30.00 Hz, color_format 0, color_space 1, full_range 0, so the `colour:` line
+said "limited range" - while G_FMT went on reporting the full range that the
+genuine record had carried, because 0136n caches the colour and writes the
+cache only from a genuine record. Two lines of the same file disagreeing,
+and the one that looks live is the wrong one.
+
+The same run also settled the question 0136o left open: signal_id is 19 for
+the own record as well, the genuine 720p value, so the record alone does not
+tell the two apart and the test stays detect_timings' three terms.
+
+This patch adds one line under the two, printed only in that state:
+
+  colour:       BT.709, limited range, progressive, DVI/PC source (...)
+  hdr:          Sdr (hdr_mode 0) -- ...
+                (own record - the source's values are the cached ones:
+                 BT.709, full range)
+
+The cached pair is named through h713_hdmirx_colour_map read backwards, the
+same table 0136n fills the cache from, so the wording of the two lines
+matches. Nothing else changes: the raw words, the decoded record line and
+both decoded lines are printed exactly as before, no state is written, and
+the driver's behaviour outside debugfs is untouched.
+
+Source: umbau/test-20260915/dev20-20260922.md (row "Q3 status file" and the
+debug-kernel table), umbau/work/Q3/REPORT.txt sections 1.3 and 1.5.
+Follow-up to 0136n and 0136o; both stay byte-identical.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -4304,6 +4304,18 @@ static const char *h713_hdmirx_hdr_note(u32 hdr_mode)
+ 	return "";
+ }
+ 
++/* 0136n's map read backwards: the name the cached fmt_* pair came from. */
++static const char *h713_hdmirx_cached_colour(const struct h713_hdmirx *rx)
++{
++	unsigned int i;
++
++	for (i = 0; i < ARRAY_SIZE(h713_hdmirx_colour_map); i++)
++		if (h713_hdmirx_colour_map[i].colorspace == rx->fmt_colorspace &&
++		    h713_hdmirx_colour_map[i].ycbcr_enc == rx->fmt_ycbcr_enc)
++			return h713_hdmirx_colour_map[i].name;
++	return "unknown";
++}
++
+ static void h713_hdmirx_show_signal_info(struct seq_file *s,
+ 					 struct h713_hdmirx *rx)
+ {
+@@ -4352,6 +4364,19 @@ static void h713_hdmirx_show_signal_info(struct seq_file *s,
+ 		   h713_hdmirx_hdr_scheme[sig.hdr_mode] ?
+ 			h713_hdmirx_hdr_scheme[sig.hdr_mode] : "unnamed",
+ 		   sig.hdr_mode, h713_hdmirx_hdr_note(sig.hdr_mode));
++
++	/*
++	 * Under a standing picture the record is the descriptor we published:
++	 * 1024x768 read "limited" there while G_FMT kept the genuine record's
++	 * full range (dev20, row "Q3 status file"). detect_timings()' test.
++	 */
++	if (sig.color_format == 0 && READ_ONCE(rx->desc_seen) &&
++	    sig.frame_rate_x100 == H713_OWN_RECORD_FPS_X100)
++		seq_printf(s,
++			   "              (own record - the source's values are the cached ones: %s, %s range)\n",
++			   h713_hdmirx_cached_colour(rx),
++			   rx->fmt_quantization == V4L2_QUANTIZATION_FULL_RANGE ?
++				"full" : "limited");
+ }
+ 
+ /*
