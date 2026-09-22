@@ -52,6 +52,13 @@ and the vendor path, and `read_ini_flle` tries `/oem/camprjspe.ini` before `/sys
 `/oem` is the `media_data` partition, which is in none of the inputs this tool opens, so the copies
 above are the ones it takes; the report names the partition each came from.
 
+**The two TSE databases need no extra step.** `database.TSE` (gamma states, the attribute names) and
+`pq_custom.TSE` (the PQ module curves) are part of the display artifact set and have been extracted
+since the beginning - they land as `boot/mips/database.TSE` and `boot/mips/pq_custom.TSE`, out of the
+bootloader FAT's `mips/` directory (with `vendor:/etc/display/mips/` as the cross-check). Anything
+reading gamma or PQ curves reads them from there. `boot/mips/database.TSE` is also the one display
+artifact that tells the two H713 projectors apart, so it is an identification feature as well.
+
 The boot logo is the one file that does not come from `mips/` but from the ROOT of the same FAT,
 because that is where U-Boot looks for it: `h713_disp init <id> logo` reads `bootlogo.bmp` at the root
 of whichever partition the display artifacts come from, which on our layout is `/boot/bootlogo.bmp`.

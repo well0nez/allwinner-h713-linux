@@ -1,4 +1,7 @@
-"""Q7 item 1: the two vendor TEXT files that describe the board.
+"""Q7 items 1 and 2: the two vendor TEXT files, and where the two TSE databases already come from.
+
+Item 2 - `database.TSE` and `pq_custom.TSE` need no new code: the MIPS/display extraction has carried
+them since plan 108, so only the path is documented (and pinned down here).
 
 Item 1 - `pq/panel_config.ini` (AP3g section 9 D1) and `pq/camprjspe.ini` (AP1 section 3) are copied
 out of the image, checked for their mandatory keys, hashed into the reference table, and documented.
@@ -126,6 +129,26 @@ class TheTableSperrScanReads(unittest.TestCase):
         self.assertIn("7ff05ee22562dc721d5701aa2a046ef530c1dc6b03ae96de7e541313ea5f8cc5", digests)
 
 
+class TheTwoTseDatabases(unittest.TestCase):
+    """Item 2: no new code. The display extraction has carried both since plan 108."""
+
+    def test_they_are_part_of_the_mips_set(self):
+        self.assertIn("database.TSE", vendorfiles.MIPS_FILES)
+        self.assertIn("pq_custom.TSE", vendorfiles.MIPS_FILES)
+
+    def test_they_land_under_boot_mips_and_are_pinned_by_the_reference(self):
+        reference = PROFILES["hy310"]["reference"]
+        self.assertEqual(vendorfiles.MIPS_OUTPUT_DIR, "boot/mips")
+        self.assertEqual(reference["boot/mips/database.TSE"][1],
+                         "133bbec3e9a297aa0bd42b294de3ffe0d74235e8683659dfd2dfc1f2f855bdfb")
+        self.assertIn("boot/mips/pq_custom.TSE", reference)
+
+    def test_the_database_digest_is_also_the_identification_feature(self):
+        """A board is told apart by exactly this file, so it can never be dropped silently."""
+        self.assertEqual(PROFILES["hy310"]["expected"]["mips_database_sha256"],
+                         PROFILES["hy310"]["reference"]["boot/mips/database.TSE"][1])
+
+
 class TheDocumentation(unittest.TestCase):
 
     def setUp(self):
@@ -137,6 +160,10 @@ class TheDocumentation(unittest.TestCase):
     def test_it_names_both_new_files_and_what_they_are_for(self):
         self.assertIn("panel_config.ini", self.text)
         self.assertIn("camprjspe.ini", self.text)
+
+    def test_it_names_the_path_of_the_two_tse_databases(self):
+        self.assertIn("boot/mips/database.TSE", self.text)
+        self.assertIn("boot/mips/pq_custom.TSE", self.text)
 
 
 
