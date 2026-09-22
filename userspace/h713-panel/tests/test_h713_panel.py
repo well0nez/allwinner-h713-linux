@@ -30,8 +30,8 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PACKAGE = os.path.dirname(HERE)
-TOOL = os.path.join(PACKAGE, "h713-panel", "h713-panel")
-PAGE = os.path.join(PACKAGE, "h713-panel", "page.html")
+TOOL = os.path.join(os.path.dirname(HERE), "h713-panel")
+PAGE = os.path.join(os.path.dirname(HERE), "page.html")
 POSIX = os.name == "posix"
 
 
