@@ -287,6 +287,10 @@ install -m 0755 "$H713_PQ_SRC/h713-pq" "$PQ_DST/h713-pq"
 # The host's __pycache__ has no business here (x86 bytecode paths, and it would
 # be made again on the first run anyway).
 tar -C "$H713_PQ_SRC" --exclude=__pycache__ -cf - h713_pq | tar -C "$PQ_DST" -xf -
+# The TSE reader (h713_pq/tse.py) loads the project's one TFD walk, tools/tse_dump.py,
+# and looks for it next to the package on a device (Q2). Without it "--source tse"
+# fails with a clear message; with it the board's own gamma curve is one command away.
+install -m 0644 "$PROJECT_ROOT/tools/tse_dump.py" "$PQ_DST/h713_pq/tse_dump.py"
 [[ -r "$H713_PQ_SRC/README.md" ]] && \
 	install -D -m 0644 "$H713_PQ_SRC/README.md" "$TREE/usr/local/share/doc/h713-pq/README.md"
 # The entry point does sys.path.insert(0, Path(__file__).resolve().parent);

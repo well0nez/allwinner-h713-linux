@@ -99,8 +99,9 @@ produces the vendor's curve instead; it is off by default until a device test sa
 `display.md` covers how that LUT and the CTM matrix reach the CRTC as ordinary KMS properties; a
 white-balance gain lands on the CTM diagonal, but the KMS property has no offset term - harmless here only
 because every offset in the vendor data is zero. Kernel patch `0095` is confirmed register for register
-from the firmware side, with one detail it lacks: the vendor writes `DBUF_FLIP` as the inverse of the bit
-it read before the transfer, alternating the buffer on every write (AP3p 1.5).
+from the firmware side, `DBUF_FLIP` included: both write the inverse of the bit read before the transfer,
+alternating the buffer on every write (AP3p 1.5, checked against the tree in the Q4 review). The one
+difference is ours: `0095` clears `COMMIT` before the flip, the firmware does not - unmeasured.
 
 ## Runtime and persistence
 
