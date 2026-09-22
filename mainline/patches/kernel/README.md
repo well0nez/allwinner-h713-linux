@@ -24,7 +24,7 @@ the 32-bit port also builds on arm64. Six were adapted from their original
 | 0006 | mmc: sunxi H713 (v5p3x) |
 | 0007 | pwm: sun8i 8-channel |
 | 0008-0009 | misc: HY310 board-mgr / focus-motor |
-| 0011-0014 | misc/soc: nsi, tvtop, decd, cpu-comm IPC |
+| 0012-0014 | misc/soc: tvtop, decd, cpu-comm IPC (`0011`, nsi, withdrawn 22.09.2026) |
 | 0015-0016 | H713 driver Kconfig + clock/reset dt-binding IDs |
 | 0017 | iommu: sun50i decouple ARM_DMA_USE_IOMMU |
 | 0019 | iio-adc: H713 LRADC |

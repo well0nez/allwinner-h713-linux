@@ -14,7 +14,7 @@ two projects landing on the same chip and is grouped by **origin and topic**, no
 
 | # | Section | What it is |
 |---|---|---|
-| 1 | Base | the 54 patches that come through cstenger's `main`: well0nez's H713 driver series `0001` - `0022` (carried there with attribution), cstenger's arm64 side `0023` - `0048`, and our lettered follow-ups behind their originals |
+| 1 | Base | the 56 patches that come through cstenger's `main`: well0nez's H713 driver series `0001` - `0022` (carried there with attribution), cstenger's arm64 side `0023` - `0048`, and our lettered follow-ups behind their originals. `0011` was withdrawn on 22.09.2026 - the file stays where it is and `series` carries the reason |
 | 2 | Bridge | one patch of ours between his main branch and his display branch |
 | 3 | Video-path branch | 18 patches: 17 from cstenger's `h713-display-video-path` (scanout/DECD/IOMMU/MMC/HDMI) plus our follow-up `0078a` |
 | 4 | ARISC + cpu_comm | the second co-processor, the ARM↔MIPS IPC kernel API, HDMI-RX callbacks; `0092a` takes the display firmware's two elog addresses from the board instead of from the driver |
@@ -39,7 +39,7 @@ own projector work, dated in `doku/` by section.
 ## Why the numbers are history, not order
 
 A patch keeps the number it was given when it was written. When a later fix targets an already-numbered
-patch, it becomes a lettered addendum - `0005a`, `0013a`, `0014a` - `0014c`, `0024a` - `0024d`, `0078a`,
+patch, it becomes a lettered addendum - `0005a`, `0013a`, `0014a` - `0014f`, `0024a` - `0024d`, `0078a`,
 `0091a`, `0091b`, `0093a`, `0096a`, `0092a`, `0133a`, `0133b`, `0135b`, `0136a` - `0136k`, `0159a`, `0161a`, `0161b` - placed **directly behind its original**, not at the end of the
 series, because the patches after it were written against the state the
 original plus its addenda leaves behind: `0024a` fixes a register and IRQ number `0024` got wrong, `0024b`
