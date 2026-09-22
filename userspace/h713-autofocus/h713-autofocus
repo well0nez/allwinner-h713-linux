@@ -1,0 +1,921 @@
+#!/usr/bin/env python3
+"""h713-autofocus -- the vendor's autofocus search, rebuilt for Linux.
+
+The stock autofocus is an Android service plus libduRYXtp.so: it puts a
+chessboard on the wall, films it with the internal USB camera, measures how
+sharp the picture is and walks the focus motor until the measurement stops
+growing. This is that procedure without Android and without the vendor binary.
+Built from AP1 (sections 2, 3, 6, 7) and AP1b (4, 9, 10, 11); every constant
+below names the section it comes from. Four parts, in the order a run uses:
+
+  pattern  a chessboard, generated here, written to /dev/fb0. The framebuffer
+           is the console's surface, so `h713-tv ctl off` hands the panel over
+           first; that needs no DRM master and so cannot fight h713-tv for one
+           (AP1 7, the first of its three routes).
+  camera   YUYV 640x480 over MMAP streaming; the even bytes of a buffer are
+           the luma plane. The exposure is written before the first frame,
+           which is what wakes this camera out of its black-frame state.
+  metric   the vendor's cubed-gradient sum over a window, divided by a divisor
+           the first measurement fixes. That divisor is why the thresholds do
+           not depend on window or stride: whatever is measured, the first
+           reading lands near 5012 (AP1 2.7).
+  search   five states -- settle, wait for a quiet picture, coarse hill climb,
+           peak confirmation, fine return. The move sizes come from the board
+           profile, not from the code (AP1b 10/11).
+
+Without a device: `run --dry-run DIR` replays recorded luma frames through the
+real search with a simulated motor, `measure --metric-only FILE` times the
+metric on one frame. Neither opens anything under /dev or /sys.
+
+Safety, the four rules of h713-focus for its reasons: motor_limit is read
+before and after every move, an edge stops the run, motor_ctrl_no_limit is
+never written, a run has a hard mstep cap. The search writes the stock
+autofocus commands 1/2, not h713-focus's manual 8/9 (AP1 6).
+"""
+
+from __future__ import annotations
+
+import argparse
+import errno
+import glob
+import os
+import select
+import signal
+import struct
+import sys
+import time
+from collections import namedtuple
+
+try:                                # Linux only. Replay and the bench run
+    import fcntl                    # without it, which is what the tests use.
+    import mmap
+except ImportError:                 # pragma: no cover - not Linux
+    fcntl = mmap = None
+
+FRAME_W, FRAME_H = 640, 480
+FRAME_BYTES = FRAME_W * FRAME_H
+
+# --- the board table (AP1 3, AP1b 10/11) ----------------------------------
+# steps = (coarse, confirm, fine) move sizes; exposure = the ini's l* block
+# (default, short, long, shortest); gain 1 = the +-11/+-5 threshold pair,
+# 0 = +-31/+-10. "verified" says whether that board's own camprjspe.ini was
+# read. Without it the numbers are the HY310's, carried over because it is one
+# product line (AP1b 11) -- an argument, not a fact.
+Profile = namedtuple("Profile", "name vafocus steps exposure camera window "
+                                "stride gain budget verified note")
+PROFILES = {
+    "hy310": Profile("hy310", 10, (8, 6, 2), (60, 25, 140, 6), (0x0BDA, 0x5803),
+                     "full", 2, 1, 280, True,
+                     "camprjspe.ini of the HY310: VaFocus 10 -> vafo10_HY260"),
+    "vafo8": Profile("vafo8", 8, (2, 2, 1), (60, 25, 140, 6), (0x0BDA, 0x5803),
+                     "full", 2, 1, 280, False,
+                     "vafo8_HY350: vafo10's thresholds with smaller moves, the "
+                     "fallback for a drive that overshoots with 8-step moves"),
+    "hy300-pro": Profile("hy300-pro", 10, (8, 6, 2), (60, 25, 140, 6),
+                         (0x0BDA, 0x5803), "full", 2, 1, 280, False,
+                         "unknown - needs the owner's camprjspe.ini (VaFocus, "
+                         "DLP_AXIS, F, PID/VID; AP1b follow-ups 3 and 5). "
+                         "These are the HY310's numbers; doubt the step sizes "
+                         "first, profile 'vafo8' is the fallback"),
+}
+# The four vendor measuring windows (AP1b 9) as (row0, row1, col0, col1) into
+# the luma plane. "nocen" also excludes an open rectangle, but its own
+# defaults (274, 205, 274, 365) have x0 == x1, so nothing is excluded and it
+# measures the full window: it is that alias here, not a fifth code path.
+WINDOWS = {"full": (8, 471, 8, 631), "nocen": (8, 471, 8, 631),
+           "band": (8, 471, 160, 479), "crect": (120, 359, 106, 529)}
+
+# Search constants, AP1 tables/focus-loop.txt section 0.
+WARMUP_FRAMES, EXPOSURE_PROBE_LIMIT, NO_PICTURE_LIMIT = 28, 160, 100
+SELECT_TIMEOUT_S = 2.0
+SETTLE_PASSES, SETTLE_PASSES_LONG, SETTLE_JUMP = 8, 16, 300
+STABLE_DELTA, RISE_RUN, FALL_RUN, FLAT_RUN = 99, 4, 4, 10
+DROP_FROM_MAX, DEBOUNCE, CONFIRM_PASSES = 201, 4, 3
+FINE_PASS_CAP, PEAK_WINDOW, OVERSHOOT_TRIGGER = 16, 50, 501
+SCALE_CEILING, SCALE_STEP = 14000, 2000
+RUN_MSTEP_CAP, MSTEPS_PER_COMMAND_MAX = 400, 18   # both as in h713-focus
+CMD_UP, CMD_DOWN, CMD_FLUSH = 1, 2, 3             # the autofocus codes, AP1 6
+PATTERN_CELL, PATTERN_ORIGIN = 69, (97, 92)       # AP1 2.2, bg_auto_focus.png
+EXIT_ERROR, EXIT_NO_PICTURE, EXIT_BLOCKED = 2, 3, 4
+EXIT_EDGE, EXIT_NO_PEAK = 5, 6
+
+
+class Error(Exception):
+    """Something is wrong: message out, non-zero exit, drive nothing."""
+
+
+class Edge(Exception):
+    """The travel range ended, or a guard refused: stop, do not unlatch."""
+
+
+def _stderr(line):
+    print(line, file=sys.stderr)
+
+
+# --- the metric -----------------------------------------------------------
+
+def _strip(p, w, y, x0, x1, s):
+    """The vendor's per-pixel sum over one row (detect_yuvY_buffer_Auto).
+
+    Two 3-tap gradients, each halved, cubed and shifted right by two --
+    separately, which is not the same as cubing, adding and shifting once.
+    The vendor's "/ 3" is (21846 * v) >> 16, exactly v // 3 for every sum a
+    byte triple can make, so this is the arithmetic and not an estimate of it.
+    """
+    n = x1 - x0 + 1
+    if n < 1:
+        return 0
+    ra, rb, rc = (y - 1) * w + x0, y * w + x0, (y + 1) * w + x0
+    total = 0
+    for a_i, a_1, b_m, b_i, b_1, c_m, c_i, c_1 in zip(
+            p[ra:ra + n:s], p[ra + 1:ra + n + 1:s],
+            p[rb - 1:rb + n - 1:s], p[rb:rb + n:s], p[rb + 1:rb + n + 1:s],
+            p[rc - 1:rc + n - 1:s], p[rc:rc + n:s], p[rc + 1:rc + n + 1:s]):
+        dx = abs(((b_m + b_i) >> 1) - (a_1 + b_1 + c_1) // 3) >> 1
+        dy = abs(((a_i + b_i) >> 1) - (c_m + c_i + c_1) // 3) >> 1
+        total += ((dx * dx * dx) >> 2) + ((dy * dy * dy) >> 2)
+    return total
+
+
+def sharpness_sum(frame, window="full", stride=1, w=FRAME_W):
+    """The raw, un-normalised sum over one of the four windows."""
+    y0, y1, x0, x1 = WINDOWS[window]
+    return sum(_strip(frame, w, y, x0, x1, stride)
+               for y in range(y0, y1 + 1, stride))
+
+
+def pick_divisor(total):
+    """The divisor the first measurement of a run fixes (AP1 2.7)."""
+    return 10 if total < 12001 else total // ((total & 0xFB) + 5012)
+
+
+class Metric:
+    """The metric plus the divisor it keeps for the length of one run."""
+
+    def __init__(self, window="full", stride=1):
+        self.window, self.stride, self.lev = window, stride, 0
+
+    def __call__(self, frame):
+        total = sharpness_sum(frame, self.window, self.stride)
+        if not self.lev:
+            self.lev = pick_divisor(total)
+        return total // self.lev
+
+
+def picture_present(frame):
+    """The vendor's "is there a picture at all" gate (AP1 2.7, cha_sum).
+
+    Squared differences of neighbouring bytes over frame[6402 .. 281599], each
+    shifted right by two, divided by 100; below 100 the run gives up. Only the
+    scalar tail of the vendor's NEON loop was reconstructed, so this is the
+    same quantity computed plainly: it tells black from not-black, no finer.
+    """
+    a, b = 6402, min(281600, len(frame))
+    return sum(((x - y) * (x - y)) >> 2
+               for x, y in zip(frame[a:b], frame[a - 1:b - 1])) // 100
+
+
+# --- the motor ------------------------------------------------------------
+
+State = namedtuple("State", "step edge_up edge_dn in_range num raw act")
+DRIVER = "hy310-focus-motor"
+ATTR_CTRL, ATTR_LIMIT, ATTR_NO_LIMIT = ("motor_ctrl", "motor_limit",
+                                        "motor_ctrl_no_limit")
+
+
+class Motor:
+    """What the search may ask of a motor, real or replayed."""
+
+    direction = moved = 0
+
+    def state(self):
+        raise NotImplementedError
+
+    def guard(self, st, up):
+        """None = this direction may be driven, else the reason it may not."""
+        return None
+
+    def flush(self):
+        pass
+
+    def change_direct(self):
+        self.direction ^= 1
+        self.flush()
+
+    def loop(self, steps):
+        """One watched move in the current search direction."""
+        up = self.direction == 0
+        reason = self.guard(self.state(), up)
+        if reason:
+            raise Edge(reason)
+        if self.moved + steps > RUN_MSTEP_CAP:
+            raise Edge("the hard cap of %d msteps per run" % RUN_MSTEP_CAP)
+        self.moved += steps
+        self._move(min(steps, MSTEPS_PER_COMMAND_MAX), up)
+
+
+def find_base(given):
+    """The motor node, found the way h713-focus finds it: over the driver."""
+    given = given or os.environ.get("H713_FOCUS_SYSFS")
+    if given:
+        if not os.path.exists(os.path.join(given, ATTR_LIMIT)):
+            raise Error("%s: no %s there" % (given, ATTR_LIMIT))
+        return given
+    root = os.path.join("/sys/bus/platform/drivers", DRIVER)
+    for entry in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+        target = os.path.realpath(os.path.join(root, entry))
+        if os.path.exists(os.path.join(target, ATTR_LIMIT)):
+            return target
+    for found in sorted(glob.glob("/sys/devices/platform/*/" + ATTR_LIMIT)):
+        return os.path.dirname(found)
+    raise Error("no motor node found -- `h713-focus status` says more about "
+                "that than this tool can.")
+
+
+class SysfsMotor(Motor):
+    """The real motor: our own motor_limit is read, stock commands written."""
+
+    def __init__(self, base):
+        self.base = base
+
+    def _read(self, attr):
+        with open(os.path.join(self.base, attr), "rb") as fh:
+            return fh.read().decode("ascii", "replace").strip()
+
+    def _command(self, word):
+        with open(os.path.join(self.base, ATTR_CTRL), "wb") as fh:
+            fh.write(str(word).encode("ascii"))
+
+    def state(self):
+        """motor_limit as patch 0154 prints it: in_range plus named fields."""
+        parts = self._read(ATTR_LIMIT).split()
+        fields = {}
+        for token in parts[1:]:
+            key, sep, value = token.partition("=")
+            if sep and value.lstrip("-").isdigit():
+                fields[key] = int(value)
+        missing = [k for k in ("num", "act", "edge_up", "edge_dn", "step")
+                   if k not in fields]
+        if missing:
+            raise Error("motor_limit without %s -- a driver older than patch "
+                        "0154. Read: %r" % (", ".join(missing), parts))
+        return State(fields["step"], bool(fields["edge_up"]),
+                     bool(fields["edge_dn"]), bool(int(parts[0])),
+                     fields["num"], fields.get("raw"), fields["act"])
+
+    def no_limit(self):
+        try:
+            return int(self._read(ATTR_NO_LIMIT))
+        except (OSError, ValueError):
+            return 0
+
+    def guard(self, st, up):
+        if st.num < 1:
+            return ("num=0 -- no range watcher requested, so the driver says "
+                    "'in range' for ever and never reverses at an edge")
+        if self.no_limit():
+            return "%s=1 -- the range check is off, set it to 0 first" \
+                % ATTR_NO_LIMIT
+        if st.raw is None or st.raw < 0:
+            return ("motor_limit gives no usable raw level -- a driver older "
+                    "than patch 0154, or the level could not be read")
+        if st.raw != st.act:
+            return "raw=%d, act=%d -- the mechanism stands outside its range" \
+                % (st.raw, st.act)
+        if not st.in_range:
+            return "motor_limit says 'outside' while the level fits -- look"
+        if st.edge_up if up else st.edge_dn:
+            return "edge_%s=1 -- that edge is latched and every command " \
+                   "towards it is dropped" % ("up" if up else "dn")
+        return None
+
+    def _move(self, steps, up):
+        before = self.state()
+        self._command(((CMD_UP if up else CMD_DOWN) << 8) | (steps & 0x7F))
+        target = before.step + (steps if up else -steps)
+        deadline = time.monotonic() + (steps + 45) * 0.024 + 0.3
+        while time.monotonic() < deadline:
+            now = self.state()
+            if (now.edge_up and not before.edge_up) or \
+                    (now.edge_dn and not before.edge_dn):
+                raise Edge("an edge was reached during the run")
+            if now.step == target:
+                return
+            time.sleep(0.025)
+
+    def flush(self):
+        try:
+            self._command(CMD_FLUSH << 8)
+        except OSError:
+            pass
+
+
+class ReplayMotor(Motor):
+    """A motor made of recorded frames: the position indexes the directory."""
+
+    def __init__(self, frames, start=None, direction=0):
+        self.frames, self.direction = frames, direction
+        steps = [s for s, _ in frames]
+        if start is None:
+            start = steps[len(steps) // 10]
+        self.index = min(range(len(steps)), key=lambda i: abs(steps[i] - start))
+        self.edge_up = self.edge_dn = False
+
+    def state(self):
+        return State(self.frames[self.index][0], self.edge_up, self.edge_dn,
+                     True, 1, 1, 1)
+
+    def guard(self, st, up):
+        return ("edge_%s=1" % ("up" if up else "dn")) \
+            if (st.edge_up if up else st.edge_dn) else None
+
+    def _move(self, steps, up):
+        new = self.index + (steps if up else -steps)
+        if new >= len(self.frames):
+            new, self.edge_up = len(self.frames) - 1, True
+        elif new < 0:
+            new, self.edge_dn = 0, True
+        self.index = new
+
+    def grab(self):
+        with open(self.frames[self.index][1], "rb") as fh:
+            return fh.read()
+
+
+def step_of(name):
+    """The step counter in a frame's file name, or None.
+
+    The last run of digits before the extension, with a leading minus only
+    when a letter or digit does not come first -- so "step-0012.gray" is 12
+    and "step_-0012.gray" and "-0012.gray" are -12. The counter really does
+    go negative on this motor, which is why the rule needs saying at all.
+    """
+    stem = os.path.basename(name).split(".")[0]
+    digits = ""
+    for i in range(len(stem) - 1, -1, -1):
+        if stem[i].isdigit():
+            digits = stem[i] + digits
+        elif digits:
+            if stem[i] == "-" and (i == 0 or not stem[i - 1].isalnum()):
+                digits = "-" + digits
+            break
+    return int(digits) if digits else None
+
+
+def read_frames(directory):
+    """Recorded luma frames, ordered by the step number in the file name."""
+    found = [(step_of(path), path)
+             for path in sorted(glob.glob(os.path.join(directory, "*")))
+             if step_of(path) is not None]
+    if not found:
+        raise Error("%s holds no file whose name carries a step number "
+                    "(expected one raw 640x480 luma frame per position)"
+                    % directory)
+    return sorted(found)
+
+
+# --- the camera -----------------------------------------------------------
+
+VIDIOC_QUERYCAP, VIDIOC_S_FMT, VIDIOC_REQBUFS = (0x80685600, 0xC0D05605,
+                                                 0xC0145608)
+VIDIOC_QUERYBUF, VIDIOC_QBUF, VIDIOC_DQBUF = 0xC0585609, 0xC058560F, 0xC0585611
+VIDIOC_STREAMON, VIDIOC_STREAMOFF, VIDIOC_S_CTRL = (0x40045612, 0x40045613,
+                                                    0xC008561C)
+BUF_TYPE_CAPTURE, MEMORY_MMAP, FMT_YUYV = 1, 1, 0x56595559
+CID_EXPOSURE_AUTO, CID_EXPOSURE_ABS = 0x009A0901, 0x009A0902
+CAMERA_NAME = "HD camera"
+
+
+def _is_capture(node):
+    """uvcvideo makes two nodes with one name; only one of them captures."""
+    try:
+        fd = os.open(node, os.O_RDWR | os.O_NONBLOCK)
+    except OSError:
+        return False
+    try:
+        buf = bytearray(104)
+        fcntl.ioctl(fd, VIDIOC_QUERYCAP, buf, True)
+        return bool(struct.unpack_from("<I", buf, 88)[0] & 0x1)
+    except OSError:
+        return False
+    finally:
+        os.close(fd)
+
+
+def find_camera(given, ids):
+    """h713-cam's search: the node whose name uvcvideo took from the device.
+
+    The vendor instead reads idProduct/idVendor of the USB port behind the
+    node and matches the ini's pair (get_vafocus_cam_id, AP1 4). That is the
+    stricter route and it is not built here: these boards carry one camera,
+    and the pair is in the profile, so it can be added without moving code.
+    """
+    if given:
+        return given
+    for path in sorted(glob.glob("/sys/class/video4linux/video*/name")):
+        node = "/dev/" + path.split("/")[-2]
+        try:
+            with open(path, "rb") as fh:
+                name = fh.read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        if CAMERA_NAME in name and _is_capture(node):
+            return node
+    raise Error("no capture node with '%s' in its name (the ini's pair is "
+                "%04x:%04x). Is uvcvideo loaded, is the camera on the bus?"
+                % (CAMERA_NAME, ids[0], ids[1]))
+
+
+class Camera:
+    """YUYV 640x480 over MMAP streaming; one frame is the luma plane."""
+
+    def __init__(self, node):
+        self.fd, self.maps, self.streaming = os.open(node, os.O_RDWR), [], False
+        self.bpl = FRAME_W * 2
+
+    def _control(self, cid, value):
+        buf = bytearray(8)
+        struct.pack_into("<Ii", buf, 0, cid, value)
+        try:
+            fcntl.ioctl(self.fd, VIDIOC_S_CTRL, buf, True)
+        except OSError:
+            pass                # a camera without that control: never mind
+
+    def expose(self, value):
+        """EXPOSURE_AUTO = 1 (manual), then the absolute value (AP1 2.5)."""
+        self._control(CID_EXPOSURE_AUTO, 1)
+        self._control(CID_EXPOSURE_ABS, value)
+
+    def start(self, nbuf=2):
+        fmt = bytearray(208)
+        struct.pack_into("<I", fmt, 0, BUF_TYPE_CAPTURE)
+        struct.pack_into("<IIII", fmt, 8, FRAME_W, FRAME_H, FMT_YUYV, 1)
+        fcntl.ioctl(self.fd, VIDIOC_S_FMT, fmt, True)
+        got = struct.unpack_from("<III", fmt, 8)
+        if got != (FRAME_W, FRAME_H, FMT_YUYV):
+            raise Error("the camera gave %dx%d 0x%08x, not YUYV 640x480" % got)
+        self.bpl = struct.unpack_from("<I", fmt, 24)[0]
+        req = bytearray(20)
+        struct.pack_into("<III", req, 0, nbuf, BUF_TYPE_CAPTURE, MEMORY_MMAP)
+        fcntl.ioctl(self.fd, VIDIOC_REQBUFS, req, True)
+        for i in range(struct.unpack_from("<I", req, 0)[0]):
+            buf = bytearray(88)
+            struct.pack_into("<III", buf, 0, i, BUF_TYPE_CAPTURE, 0)
+            struct.pack_into("<I", buf, 60, MEMORY_MMAP)
+            fcntl.ioctl(self.fd, VIDIOC_QUERYBUF, buf, True)
+            offset, length = (struct.unpack_from("<I", buf, 64)[0],
+                              struct.unpack_from("<I", buf, 72)[0])
+            self.maps.append(mmap.mmap(self.fd, length, mmap.MAP_SHARED,
+                                       mmap.PROT_READ | mmap.PROT_WRITE,
+                                       offset=offset))
+            fcntl.ioctl(self.fd, VIDIOC_QBUF, buf, True)
+        fcntl.ioctl(self.fd, VIDIOC_STREAMON,
+                    struct.pack("<I", BUF_TYPE_CAPTURE))
+        self.streaming = True
+
+    def grab(self):
+        """One luma plane: the even bytes of the YUYV buffer (AP1 2.4)."""
+        buf = bytearray(88)
+        struct.pack_into("<II", buf, 0, 0, BUF_TYPE_CAPTURE)
+        struct.pack_into("<I", buf, 60, MEMORY_MMAP)
+        while True:
+            if not select.select([self.fd], [], [], SELECT_TIMEOUT_S)[0]:
+                raise Error("no frame within %.0f s -- the camera stopped"
+                            % SELECT_TIMEOUT_S)
+            try:
+                fcntl.ioctl(self.fd, VIDIOC_DQBUF, buf, True)
+                break
+            except OSError as exc:
+                if exc.errno != errno.EAGAIN:
+                    raise
+        index = struct.unpack_from("<I", buf, 0)[0]
+        used = struct.unpack_from("<I", buf, 8)[0] or self.bpl * FRAME_H
+        luma = bytes(self.maps[index][:used])[0::2]
+        fcntl.ioctl(self.fd, VIDIOC_QBUF, buf, True)
+        return luma
+
+    def close(self):
+        if self.streaming:
+            try:
+                fcntl.ioctl(self.fd, VIDIOC_STREAMOFF,
+                            struct.pack("<I", BUF_TYPE_CAPTURE))
+            except OSError:
+                pass
+        for region in self.maps:
+            region.close()
+        os.close(self.fd)
+
+
+# --- the pattern ----------------------------------------------------------
+
+FB_DEV, FBIOGET_VSCREENINFO, FBIOGET_FSCREENINFO = "/dev/fb0", 0x4600, 0x4602
+
+
+def chessboard(xres, yres, bpp, line_length, cell=PATTERN_CELL,
+               origin=PATTERN_ORIGIN):
+    """The pattern, generated -- the vendor ships a PNG, we carry none.
+
+    Its bg_auto_focus.png is a 69 px chessboard from (97, 92), 26 by 14 cells,
+    with some cells left white so the black squares form a centre block and
+    four corner blocks (AP1 2.2). Which cells those are is only in that file,
+    which is vendor material, so this draws the plain board: more edges than
+    the vendor's, which the metric can only like.
+    """
+    pixel = max(bpp // 8, 1)
+    white = b"\xff" * pixel
+    black = b"\x00\x00\x00\xff" if pixel == 4 else b"\x00" * pixel
+    ox, oy = origin
+    rows = []
+    for parity in (0, 1):
+        row = bytearray()
+        for x in range(xres):
+            row += black if (x >= ox and ((x - ox) // cell + parity) % 2 == 0) \
+                else white
+        rows.append(bytes(row) + b"\x00" * max(line_length - len(row), 0))
+    return b"".join(rows[((y - oy) // cell) % 2 if y >= oy else 0]
+                    for y in range(yres))
+
+
+class Panel:
+    """/dev/fb0 -- the console's surface, and the pattern's way to the wall."""
+
+    def __init__(self):
+        try:
+            self.fd = os.open(FB_DEV, os.O_RDWR)
+        except OSError as exc:
+            raise Error("%s: %s. The pattern goes through the console's "
+                        "framebuffer; `h713-tv ctl off` hands the panel back."
+                        % (FB_DEV, exc.strerror))
+        var, fix = bytearray(160), bytearray(80)
+        fcntl.ioctl(self.fd, FBIOGET_VSCREENINFO, var, True)
+        fcntl.ioctl(self.fd, FBIOGET_FSCREENINFO, fix, True)
+        self.xres, self.yres = struct.unpack_from("<II", var, 0)
+        self.bpp = struct.unpack_from("<I", var, 24)[0]
+        self.line = struct.unpack_from("<I", fix, 48)[0] or \
+            self.xres * max(self.bpp // 8, 1)
+        self.saved = None
+
+    def _write(self, data):
+        os.lseek(self.fd, 0, os.SEEK_SET)
+        os.write(self.fd, data)
+
+    def save(self):
+        os.lseek(self.fd, 0, os.SEEK_SET)
+        self.saved = os.read(self.fd, self.line * self.yres)
+
+    def draw(self, cell=PATTERN_CELL):
+        self._write(chessboard(self.xres, self.yres, self.bpp, self.line, cell))
+
+    def restore(self):
+        self._write(self.saved if self.saved is not None
+                    else b"\x00" * (self.line * self.yres))
+
+    def close(self):
+        os.close(self.fd)
+
+
+# --- the search -----------------------------------------------------------
+
+class Search:
+    """The five-state search of AP1 tables/focus-loop.txt section 3.
+
+    0 settle with the motor standing still, 1 wait until the picture is quiet,
+    2 coarse hill climb, 3 confirm the peak, 4 fine return onto it. Only state
+    4 ends a run normally; the other two ways out are the pass budget and the
+    deadline -- the vendor has no clock in the loop either, its 22 s watchdog
+    sits on the Java side.
+    """
+
+    def __init__(self, motor, grab, metric, profile, log=None, deadline=None):
+        self.motor, self.grab, self.metric = motor, grab, metric
+        self.profile, self.log = profile, log or _stderr
+        self.deadline = deadline
+        self.coarse, self.middle, self.fine = profile.steps
+        self.thresholds = (11, 5, -11) if profile.gain else (31, 10, -31)
+        self.best_step = self.passes = 0
+
+    def run(self):                                  # noqa: C901 - one loop
+        state, move, step = 0, 0, self.fine
+        budget, scale_thr = self.profile.budget, SCALE_CEILING
+        total = prev = best = prev_delta = 0
+        settle, settle_cnt = SETTLE_PASSES, 0
+        rise = fall = flat = debounce = 0
+        confirm = fine_cap = best_delta = up_run = pos_run = 0
+        reason = "budget"
+        while True:
+            if move:
+                self.motor.loop(step)
+            if state <= 3:              # two frames per pass, averaged
+                one, two = self.metric(self.grab()), self.metric(self.grab())
+                if (one + two) // 2 <= scale_thr:
+                    prev, total = total, (one + two) // 2
+                else:                   # overflow: halve everything, keep room
+                    prev, best = prev // 2, best // 2
+                    total, scale_thr = (one + two) // 4, scale_thr + SCALE_STEP
+                    self.metric.lev *= 2
+            else:
+                prev, total = total, self.metric(self.grab())
+            delta = total - prev
+            position = self.motor.state().step
+            self.passes += 1
+            keep_going = True
+
+            if state == 0:                                      # settle
+                if prev and abs(delta) > SETTLE_JUMP:
+                    settle = SETTLE_PASSES_LONG
+                delta, move, best = 0, 0, total
+                if settle_cnt <= settle:
+                    if settle_cnt + 2 == settle:
+                        self.metric.lev = 0         # re-pick the divisor once
+                    settle_cnt += 1
+                else:
+                    state = 1
+            elif state == 1:                                    # quiet picture
+                if abs(delta) > STABLE_DELTA:
+                    move = 0
+                else:
+                    state, step, move = 2, self.coarse, 1
+                    rise = fall = debounce = 0
+            elif state == 2:                                    # coarse climb
+                rise_thr, dead, fall_thr = self.thresholds
+                move = 1
+                if delta >= rise_thr or delta >= -dead:
+                    if delta >= rise_thr:
+                        if rise >= RISE_RUN:
+                            state, confirm = 3, CONFIRM_PASSES
+                            step, best = self.middle, total
+                            rise = fall = flat = 0
+                        else:
+                            rise, fall, flat = rise + 1, 0, 0
+                    else:                                       # the dead zone
+                        fall, flat = (0 if delta > dead else fall), 0
+                    if best - total >= DROP_FROM_MAX and debounce <= 1:
+                        self.motor.change_direct()
+                        fall = flat = 0
+                        debounce, step = DEBOUNCE, self.coarse
+                    else:
+                        debounce = max(debounce - 1, 0)
+                elif delta <= fall_thr:                         # a clear fall
+                    rise = 0
+                    if fall >= FALL_RUN and debounce <= 1:
+                        self.motor.change_direct()
+                        fall, flat = 0, 1
+                        debounce, step = DEBOUNCE, self.middle
+                    else:
+                        fall += 1
+                        flat, debounce, step = self._drift(flat, debounce, step)
+                        fall = 0 if flat == 0 else fall
+                else:                                           # a mild fall
+                    rise = 0
+                    flat, debounce, step = self._drift(flat, debounce, step)
+                    fall = 0 if flat == 0 else fall
+            elif state == 3:                                    # confirm
+                move, step = 1, self.middle
+                if not (delta < 0 and prev_delta < 0):
+                    confirm = max(confirm - 1, 0)
+                elif confirm - 1 <= 0:
+                    self.motor.change_direct()
+                    state, step, fine_cap = 4, self.middle, FINE_PASS_CAP
+                    best_delta = up_run = pos_run = 0
+                else:
+                    state, confirm = 2, confirm - 1
+            else:                                               # fine return
+                step, fine_cap = self.fine, max(fine_cap - 1, 0)
+                if delta >= 21 and prev_delta >= 21 and best_delta > delta:
+                    up_run += 1
+                elif delta > prev_delta or delta < 0:
+                    up_run = 0
+                pos_run = 0 if delta < 0 else pos_run
+                if delta > 30:
+                    pos_run += 1
+                best_delta = max(best_delta, delta)
+                move = self._fine_move(total, best, delta, best_delta,
+                                       fine_cap, up_run, pos_run)
+                keep_going = bool(move)
+                if not move:
+                    reason = "peak"
+                    self._closing_correction(delta, best_delta)
+
+            if total >= best:
+                self.best_step = position
+            best = max(best, total)
+            self.log("%3d state:%d step:%2d dir:%d pos:%-6s sum:%6d d:%7d "
+                     "max:%6d lev:%8d R:%d W:%d fine:%2d"
+                     % (budget, state, step, self.motor.direction, position,
+                        total, delta, best, self.metric.lev, rise, fall,
+                        fine_cap))
+            if budget < 1 or not keep_going:
+                break
+            if self.deadline and time.monotonic() >= self.deadline:
+                reason = "deadline"
+                break
+            budget, prev_delta = budget - 1, delta
+        return reason, best
+
+    def _drift(self, flat, debounce, step):
+        """The "we have drifted for ten passes" reversal of state 2."""
+        if flat >= FLAT_RUN and debounce <= 1:
+            self.motor.change_direct()
+            return 0, DEBOUNCE, self.middle
+        return flat + 1, debounce, step
+
+    @staticmethod
+    def _fine_move(total, best, delta, best_delta, fine_cap, up_run, pos_run):
+        """State 4's six stop rules; any one of them ends the run."""
+        return 0 if (fine_cap == 0
+                     or abs(best - total) < PEAK_WINDOW or best < total
+                     or (fine_cap < 3 and delta < 0)
+                     or up_run >= 3
+                     or (best_delta >= DROP_FROM_MAX and delta < best_delta // 5)
+                     or (pos_run > 3 and delta < 20)) else 1
+
+    def _closing_correction(self, delta, best_delta):
+        """Stopping while still falling: turn round, give 2 to 4 steps back."""
+        if delta >= 0 or best_delta < OVERSHOOT_TRIGGER:
+            return
+        self.motor.change_direct()
+        for fraction, back in ((-0.6, 4), (-0.2, 3), (-0.1, 2)):
+            if delta < fraction * best_delta:
+                self.motor.loop(back)
+                return
+
+
+# --- the subcommands ------------------------------------------------------
+
+def warm_up(camera, profile, metric):
+    """28 frames, then the brightness probe and the picture gate (AP1 2.6)."""
+    frame = None
+    for _ in range(WARMUP_FRAMES):
+        frame = camera.grab()
+    dark = sum(1 for y in range(FRAME_H)
+               if frame[y * FRAME_W + FRAME_W // 2] < 160)
+    if dark < EXPOSURE_PROBE_LIMIT:
+        _stderr("only %d dark pixels in the centre column -- shortening the "
+                "exposure to %d" % (dark, profile.exposure[1]))
+        camera.expose(profile.exposure[1])
+        for _ in range(4):
+            frame = camera.grab()
+    level = picture_present(frame)
+    _stderr("picture level %d (floor %d), first metric %d"
+            % (level, NO_PICTURE_LIMIT, metric(frame)))
+    return 0 if level >= NO_PICTURE_LIMIT else EXIT_NO_PICTURE
+
+
+def do_run(args, profile):
+    """Pattern, camera, warm-up, search -- the whole procedure (AP1 2)."""
+    metric = Metric(profile.window, profile.stride)
+    panel = camera = None
+    if args.dry_run:
+        motor = ReplayMotor(read_frames(args.dry_run), args.start,
+                            args.direction)
+        grab = motor.grab
+    else:
+        motor = SysfsMotor(find_base(args.sysfs))
+        motor.direction = args.direction
+        reason = motor.guard(motor.state(), motor.direction == 0)
+        if reason:
+            _stderr("the motor cannot start: " + reason)
+            return EXIT_BLOCKED
+        camera = Camera(find_camera(args.dev, profile.camera))
+        camera.expose(profile.exposure[0])
+        camera.start()
+        grab = camera.grab
+        if not args.no_pattern:
+            panel = Panel()
+            panel.save()
+            panel.draw(args.cell)
+    stopped = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: stopped.append(True))
+    code = 0
+    try:
+        if camera is not None:
+            code = warm_up(camera, profile, metric)
+            if code:
+                _stderr("no picture: the camera streams but the frame is flat."
+                        " Is the lamp on, is the pattern on the wall?")
+                return code
+        deadline = time.monotonic() + args.timeout if args.timeout else None
+        search = Search(motor, grab, metric, profile,
+                        (lambda _: None) if args.quiet else _stderr, deadline)
+        reason, best = search.run()
+        print("stopped: %s   position %s   best %d   %d passes, %d msteps"
+              % (reason, search.best_step, best, search.passes, motor.moved))
+        code = 0 if reason == "peak" else EXIT_NO_PEAK
+    except Edge as exc:
+        _stderr("stopped at an edge: %s" % exc)
+        code = EXIT_EDGE
+    finally:
+        motor.flush()
+        if panel is not None:
+            panel.restore()
+            panel.close()
+        if camera is not None:
+            camera.close()
+    return 130 if stopped else code
+
+
+def do_measure(args, profile):
+    """One metric value: from the camera, or from a recorded frame."""
+    if args.metric_only:
+        with open(args.metric_only, "rb") as fh:
+            frame = fh.read()
+        if len(frame) < FRAME_BYTES:
+            raise Error("%s holds %d bytes; a 640x480 luma frame has %d"
+                        % (args.metric_only, len(frame), FRAME_BYTES))
+        started = time.perf_counter()
+        total = sharpness_sum(frame, profile.window, profile.stride)
+        spent = time.perf_counter() - started
+        print("window %-5s stride %d   sum %d   normalised %d   %.4f s"
+              % (profile.window, profile.stride, total,
+                 total // pick_divisor(total), spent))
+        return 0
+    camera = Camera(find_camera(args.dev, profile.camera))
+    try:
+        camera.expose(profile.exposure[0])
+        camera.start()
+        frame = camera.grab()
+        print("%d   (picture level %d)"
+              % (Metric(profile.window, profile.stride)(frame),
+                 picture_present(frame)))
+    finally:
+        camera.close()
+    return 0
+
+
+def do_pattern(args):
+    panel = Panel()
+    try:
+        if args.state == "on":
+            panel.draw(args.cell)
+            print("chessboard on %s (%dx%d, %d bpp, %d px cells). If the wall "
+                  "stays dark, `h713-tv ctl off` first."
+                  % (FB_DEV, panel.xres, panel.yres, panel.bpp, args.cell))
+        else:
+            panel.restore()
+            print("%s cleared -- `h713-tv ctl console` draws the console back."
+                  % FB_DEV)
+    finally:
+        panel.close()
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="h713-autofocus",
+        description="the projector's autofocus: chessboard, camera, motor.",
+        epilog="Without a device: `run --dry-run DIR` replays recorded luma "
+               "frames, `measure --metric-only FILE` times the metric.")
+    parser.add_argument("--profile", default="hy310", choices=sorted(PROFILES))
+    parser.add_argument("--window", choices=sorted(WINDOWS))
+    parser.add_argument("--stride", type=int, metavar="N",
+                        help="measure every Nth pixel in both directions")
+    parser.add_argument("--sysfs", metavar="PATH")
+    parser.add_argument("--dev", metavar="NODE")
+    parser.add_argument("--cell", type=int, default=PATTERN_CELL, metavar="PX")
+    parser.add_argument("-q", "--quiet", action="store_true")
+    sub = parser.add_subparsers(dest="command", required=True)
+    run = sub.add_parser("run", help="the whole search")
+    run.add_argument("--dry-run", metavar="DIR",
+                     help="replay recorded frames instead of using a device")
+    run.add_argument("--start", type=int, metavar="STEP",
+                     help="replay only: the position to start from")
+    run.add_argument("--direction", type=int, default=0, choices=(0, 1),
+                     help="0 = up, 1 = down (default 0)")
+    run.add_argument("--timeout", type=float, default=22.0, metavar="S",
+                     help="deadline in seconds, 0 = none (default 22, the "
+                          "vendor's own watchdog)")
+    run.add_argument("--no-pattern", action="store_true",
+                     help="leave the framebuffer alone")
+    measure = sub.add_parser("measure", help="one metric value")
+    measure.add_argument("--metric-only", metavar="FRAME",
+                         help="measure a recorded luma frame and time it")
+    pattern = sub.add_parser("pattern", help="draw or clear the chessboard")
+    pattern.add_argument("state", choices=("on", "off"))
+    args = parser.parse_args(argv)
+    sys.stdout.reconfigure(line_buffering=True)
+
+    profile = PROFILES[args.profile]._replace()
+    profile = profile._replace(window=args.window or profile.window,
+                               stride=args.stride or profile.stride)
+    if not profile.verified and not args.quiet:
+        _stderr("profile %s is not verified: %s" % (profile.name, profile.note))
+    if args.command == "pattern":
+        return do_pattern(args)
+    if args.command == "measure":
+        return do_measure(args, profile)
+    return do_run(args, profile)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Error as exc:
+        _stderr("h713-autofocus: %s" % exc)
+        sys.exit(EXIT_ERROR)
+    except PermissionError as exc:
+        _stderr("h713-autofocus: %s\nthe motor's sysfs and %s belong to root."
+                % (exc, FB_DEV))
+        sys.exit(EXIT_BLOCKED)
+    except KeyboardInterrupt:
+        sys.exit(130)
