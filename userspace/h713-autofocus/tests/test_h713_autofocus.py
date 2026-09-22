@@ -221,6 +221,12 @@ class Profiles(unittest.TestCase):
         self.assertEqual(hy310.vafocus, 10)
         self.assertTrue(hy310.verified)
 
+    def test_every_profile_measures_crect_at_stride_3(self):
+        """The device defaults (Q11 1): 4x cheaper, same normalised scale."""
+        for profile in af.PROFILES.values():
+            self.assertEqual((profile.window, profile.stride), ("crect", 3),
+                             profile.name)
+
     def test_the_second_board_is_marked_unknown(self):
         self.assertFalse(af.PROFILES["hy300-pro"].verified)
         self.assertIn("camprjspe.ini", af.PROFILES["hy300-pro"].note)
@@ -238,7 +244,7 @@ class CommandLine(unittest.TestCase):
                                   "--metric-only", path],
                                  stdout=subprocess.PIPE, check=True)
             line = out.stdout.decode()
-            self.assertIn("window full", line)
+            self.assertIn("window crect", line)     # the default since Q11 1
             self.assertIn("normalised", line)
 
     def test_metric_only_refuses_a_short_frame(self):

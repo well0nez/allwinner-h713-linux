@@ -16,7 +16,7 @@ h713-autofocus measure --metric-only FRAME    # time the metric on one frame
 ```
 
 Options: `--profile hy310|vafo8|hy300-pro` picks the board table, `--window full|band|crect|nocen` and
-`--stride N` pick the measuring window and the subsampling, `--sysfs PATH` and `--dev NODE` skip the searches,
+`--stride N` pick the measuring window and the subsampling (default `crect` at stride 3, see below), `--sysfs PATH` and `--dev NODE` skip the searches,
 `--cell PX` changes the chessboard's cell size, `-q` silences the per-pass log. `run` also takes
 `--direction 0|1` (up/down), `--timeout S` (default 22, the vendor's own watchdog; `0` removes it),
 `--start STEP` for a replay, and `--no-pattern` to leave the framebuffer alone.
@@ -123,9 +123,9 @@ Pure Python, on one 640x480 frame, measured with `measure --metric-only` on an i
 
 The A53 in this projector is several times slower than that host, and a pass costs two frames, so the full
 window at stride 1 would be roughly a second per pass - too slow for a search with a 280-pass budget. The
-default is therefore the vendor's own window at **stride 2**, a quarter of the work for a peak in the same
-place, and the narrower windows are there for a board that needs them. None of this changes the thresholds:
-the normalising divisor takes the scale out.
+default is therefore **`crect` at stride 3**, the cheapest of the vendor's own combinations, and the wider
+windows are there for a board that needs them. None of this changes the thresholds: the normalising divisor
+takes the scale out.
 
 ## Limits, honestly
 

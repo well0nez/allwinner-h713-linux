@@ -63,16 +63,21 @@ FRAME_BYTES = FRAME_W * FRAME_H
 # product line (AP1b 11) -- an argument, not a fact.
 Profile = namedtuple("Profile", "name vafocus steps exposure camera window "
                                 "stride gain budget verified note")
+# window/stride are crect/3 since the first device run: on the A53 the shipped
+# full/2 cost 0.25 s per frame and a whole search a minute, crect/3 costs 0.03 s
+# and the same search 5.7 s, and the normalising divisor keeps the thresholds
+# where they are - all nine window/stride pairs normalised to 5046..5151 on the
+# board (dev20-20260922 "Q6 metric on the A53", "Q6 search, timed").
 PROFILES = {
     "hy310": Profile("hy310", 10, (8, 6, 2), (60, 25, 140, 6), (0x0BDA, 0x5803),
-                     "full", 2, 1, 280, True,
+                     "crect", 3, 1, 280, True,
                      "camprjspe.ini of the HY310: VaFocus 10 -> vafo10_HY260"),
     "vafo8": Profile("vafo8", 8, (2, 2, 1), (60, 25, 140, 6), (0x0BDA, 0x5803),
-                     "full", 2, 1, 280, False,
+                     "crect", 3, 1, 280, False,
                      "vafo8_HY350: vafo10's thresholds with smaller moves, the "
                      "fallback for a drive that overshoots with 8-step moves"),
     "hy300-pro": Profile("hy300-pro", 10, (8, 6, 2), (60, 25, 140, 6),
-                         (0x0BDA, 0x5803), "full", 2, 1, 280, False,
+                         (0x0BDA, 0x5803), "crect", 3, 1, 280, False,
                          "unknown - needs the owner's camprjspe.ini (VaFocus, "
                          "DLP_AXIS, F, PID/VID; AP1b follow-ups 3 and 5). "
                          "These are the HY310's numbers; doubt the step sizes "
@@ -867,9 +872,12 @@ def main(argv=None):
         epilog="Without a device: `run --dry-run DIR` replays recorded luma "
                "frames, `measure --metric-only FILE` times the metric.")
     parser.add_argument("--profile", default="hy310", choices=sorted(PROFILES))
-    parser.add_argument("--window", choices=sorted(WINDOWS))
+    parser.add_argument("--window", choices=sorted(WINDOWS),
+                        help="measuring window (default crect, from the "
+                             "profile)")
     parser.add_argument("--stride", type=int, metavar="N",
-                        help="measure every Nth pixel in both directions")
+                        help="measure every Nth pixel in both directions "
+                             "(default 3, from the profile)")
     parser.add_argument("--sysfs", metavar="PATH")
     parser.add_argument("--dev", metavar="NODE")
     parser.add_argument("--cell", type=int, default=PATTERN_CELL, metavar="PX")
