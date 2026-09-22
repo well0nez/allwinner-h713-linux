@@ -220,6 +220,10 @@
 #    22.09.2026), so what the plane reads is the source rectangle and the
 #    record keeps the ring's own geometry)
 0133c-drm-h713-afbd-the-ring-s-source-rectangle-is-what-the-plane-reads.patch
+#   (Q10 5.3, 22.09. -- the window words are fractions of the firmware's fixed
+#    30720x17280 space; identical on a 1920x1080 panel, two thirds on the HY300
+#    Pro's 1280x720 = its 853x480 ring. Candidate for test7)
+0133d-drm-h713-afbd-the-window-words-are-fractions-of-30720x17280-not-1-16-pixel.patch
 #
 # --- 7. HY310: HDMI-Audio -- Takte, Codec-I2S, MSP-DSP-Treiber -----------------
 #     doku/100, 101, nachtlog/S16. Abgenommen 08.09. (Lippensynchronitaet Marco).
@@ -312,6 +316,9 @@
 #    renamed with them (slot-source:, pitch:, converter:, picture:);
 #    h713-tv's key filter follows in the same commit. No behaviour change)
 0136t-media-h713-hdmirx-the-last-german-strings-in-english.patch
+#   (review Q9, 22.09. -- the unlisted pre-check judges the raster alone; the
+#    flip rate is the panel's and would refuse 576p50/1080p24 in the lag window)
+0136u-media-h713-hdmirx-the-unlisted-pre-check-asks-for-the-raster-not-the-rate.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

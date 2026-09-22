@@ -1,0 +1,99 @@
+drm: h713-afbd: the window words are fractions of 30720x17280, not 1/16 pixel
+
+The eight window words of the VidDec descriptor - m_src_cfg 27..30 and
+m_dst_cfg 31..34 - were written as the panel and the plane's destination
+rectangle in 1/16 pixel. The vendor's hardware composer writes them as
+fractions of a fixed 30720x17280 space (AP3c section 3.4: h_start = 30720 *
+left / screen_width, ScreenWin {0, 30720, 0, 17280}), and the firmware maps
+that space onto the panel it drives. On a 1920x1080 panel the two are the same
+number - 30720 * x / 1920 is x * 16 without remainder, likewise 17280 / 1080 -
+so nothing on the HY310 ever told them apart.
+
+On a 1280x720 panel they are not the same number. "The panel in 1/16 pixel" is
+20480x11520, which the firmware reads as two thirds of the space, and two
+thirds of 1280x720 is 853x480: the very ring the HY300 Pro's owner measured
+(issue #1, 0136f: 852x478 beside an 864-byte rowbyte, the 864x486 buffer of
+his test6 report), and the same 853x480 "smeared band" 0120 saw on the HY310
+when it wrote a 1280x720 source's size into these words. The stale Cap node
+of doku/128 section 6 was the other reading of that report; this one needs no
+firmware misbehaviour at all.
+
+So the words are computed in the vendor's space from the panel the CRTC
+drives. HY310: byte-identical descriptor for every case (exact division, the
+Q4 harness's 60 cases hold unchanged). HY300 Pro: 30720x17280 instead of
+20480x11520 in words 28/30 and 32/34, which is what the vendor writes there.
+
+Not measured on a device: the HY300 Pro is the owner's. Candidate for test7.
+Follow-up to 0133b/0133c (Q10 report section 5.3, 22.09.2026); 0133 - 0133c
+stay byte-identical.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -180,6 +180,15 @@
+ #define H713_WINDOW_MAX_SCALE	(128 << 16)
+ 
+ /*
++ * The space the descriptor's window words are expressed in: the vendor's
++ * hardware composer scales every rectangle into 30720x17280 whatever the
++ * panel is (AP3c 3.4, ScreenWin {0, 30720, 0, 17280}), and the firmware maps
++ * that space onto the panel it drives. 16 x 1920 and 16 x 1080.
++ */
++#define H713_WIN_SPACE_W	30720
++#define H713_WIN_SPACE_H	17280
++
++/*
+  * How long the firmware gets to answer a descriptor publication. This is the
+  * bound the board has measured, and deliberately not a shorter one that would
+  * merely feel right; see h713_afbd_wait_wce().
+@@ -361,6 +370,7 @@
+ static void h713_afbd_build_video_info(u32 *rec, unsigned int w,
+ 				       unsigned int h, unsigned int stride,
+ 				       unsigned int win_w, unsigned int win_h,
++				       unsigned int panel_w, unsigned int panel_h,
+ 				       const struct drm_rect *dst,
+ 				       enum h713_aspect aspect)
+ {
+@@ -406,12 +416,24 @@
+ 	 * fixed 30720x17280 space instead -- the same number on a 1920x1080
+ 	 * panel (AP3c sections 4.2 and 5, AP3e section 2.2).
+ 	 */
+-	rec[28] = win_w * 16;		/* window config, 1/16 pixel */
+-	rec[30] = win_h * 16;
+-	rec[31] = dst->x1 * 16;
+-	rec[32] = drm_rect_width(dst) * 16;
+-	rec[33] = dst->y1 * 16;
+-	rec[34] = drm_rect_height(dst) * 16;
++	/*
++	 * Not 1/16 pixel after all: the eight window words are fractions of the
++	 * firmware's fixed 30720x17280 space, which it applies to the panel it
++	 * drives (AP3c 3.4). On a 1920x1080 panel 30720 * x / 1920 is x * 16
++	 * exactly, so this driver never saw the difference. On a 1280x720 panel
++	 * the old "panel in 1/16 pixel" = 20480x11520 reads as two thirds of the
++	 * panel, and two thirds of 1280x720 is 853x480 -- the very ring the
++	 * HY300 Pro's owner measured (issue #1, 0136f: 852x478 beside an
++	 * 864-byte rowbyte), and the same 853x480 band 0120 saw on the HY310
++	 * when it wrote a 1280x720 source's size here. Byte-identical on the
++	 * HY310: 30720 and 17280 divide by 1920 and 1080 without remainder.
++	 */
++	rec[28] = H713_WIN_SPACE_W * win_w / panel_w;	/* window config */
++	rec[30] = H713_WIN_SPACE_H * win_h / panel_h;
++	rec[31] = H713_WIN_SPACE_W * dst->x1 / panel_w;
++	rec[32] = H713_WIN_SPACE_W * drm_rect_width(dst) / panel_w;
++	rec[33] = H713_WIN_SPACE_H * dst->y1 / panel_h;
++	rec[34] = H713_WIN_SPACE_H * drm_rect_height(dst) / panel_h;
+ 	/*
+ 	 * The display aspect mode, raw (not 1/16): the window manager reads it
+ 	 * straight into m_aspect_ratio at every signal event and CompareFrameInfo
+@@ -532,7 +554,9 @@
+ 	new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr;
+ 	h713_afbd_build_video_info(rec, w, hgt, stride,
+ 				   ring ? h->mode.hdisplay : w,
+-				   ring ? h->mode.vdisplay : hgt, dst, aspect);
++				   ring ? h->mode.vdisplay : hgt,
++				   h->mode.hdisplay, h->mode.vdisplay, dst,
++				   aspect);
+ 	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
+ 	write_record = differs && (!h->video_info_published || ring);
+ 	if (differs && h->video_info_published && !ring)

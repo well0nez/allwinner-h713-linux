@@ -86,7 +86,7 @@ Device runs on the HY310 on 16.09.2026 (`v0.8-dev13` to `v0.8-dev15`; German acc
   an existing `tv.conf`, unit file or script keeps working; they go out after `v0.9`.
 - **Msgbox lines** 46/109/108 in the device tree, watchdog on 53, `cpu_comm` requests only its own line; the two
   `IRQ index not found` lines are gone. Sixteen kernel patches refreshed; `ping`, `curl`, `wget`, `nc` in the rootfs.
-  The series stands at 174 patches in fifteen sections ([docs/kernel-patches.md](docs/kernel-patches.md)).
+  The series stands at 176 patches in fifteen sections ([docs/kernel-patches.md](docs/kernel-patches.md)).
 
 ## Changes since v0.6-beta (in v0.7-beta)
 

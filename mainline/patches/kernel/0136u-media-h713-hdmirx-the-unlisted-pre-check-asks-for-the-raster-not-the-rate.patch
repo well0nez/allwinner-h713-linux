@@ -1,0 +1,87 @@
+media: h713-hdmirx: the unlisted pre-check asks for the raster, not the rate
+
+0136r looks the raster INCAP is writing up in the firmware's table before
+the stale-record test decides, and it did so with the frame rate measured on
+the flip pointers. In the record-lag window those pointers run at the
+PANEL's rate - 60 Hz on both boards (T2 report section 7, doku/128 T3 item
+5: 720p50 read "720p60", 1080p24 "1080p25") - so a 576p50, 720p50, 1080p24/25/
+30/50 source, probed at 60 Hz against records that carry their own rate with
+a 1.0 Hz tolerance, would be in no record for the length of that window and
+answer "unlisted" while it is about to lock. The dev20 mode list carries six
+such modes, all of which lock today.
+
+The question the pre-check has to answer is whether the raster exists in the
+table at ANY rate; the rate is judged by the locking path once the record is
+in. So the helper walks the records with the geometry test of
+h713_hdmirx_tse_match() alone - active size or totals per record, both scan
+types accepted - and the flip rate is kept only for the journal line.
+
+1600x900 stays unlisted: no record carries 1600x900 or 1800x1000. Amends
+0136r before its first device run (review Q9, 22.09.2026); 0136r - 0136t
+stay byte-identical.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -3538,21 +3538,32 @@
+  */
+ static bool h713_hdmirx_tse_carries(struct h713_hdmirx *rx, unsigned int width,
+ 				    unsigned int height, unsigned int htotal,
+-				    unsigned int vtotal, unsigned int fps_x100)
++				    unsigned int vtotal)
+ {
+-	struct v4l2_dv_timings probe;
+-	unsigned int scan;
++	unsigned int i;
+ 
+-	for (scan = 0; scan < 2; scan++) {
+-		memset(&probe, 0, sizeof(probe));
+-		probe.type = V4L2_DV_BT_656_1120;
+-		probe.bt.width = width;
+-		probe.bt.height = height;
+-		probe.bt.interlaced = scan ? V4L2_DV_INTERLACED
+-					   : V4L2_DV_PROGRESSIVE;
+-		if (h713_hdmirx_tse_match(rx->tse_modes, rx->tse_count, &probe,
+-					  htotal, vtotal, fps_x100 * 10))
++	/*
++	 * Geometry only, no rate: in the record-lag window the flip pointers
++	 * run at the PANEL's rate (60 Hz on both boards, T2 report 7, T3 item
++	 * 5), so a 576p50 or 1080p24 source probed with that rate would be in
++	 * no record for a moment and read "unlisted" while it is about to lock.
++	 * The question here is whether the raster exists in the table at any
++	 * rate; the rate is judged by the locking path once the record is in.
++	 * Per record the same geometry test as h713_hdmirx_tse_match(), both
++	 * scan types accepted (INCAP carries none).
++	 */
++	for (i = 0; i < rx->tse_count; i++) {
++		const struct h713_hdmirx_tse_mode *m = &rx->tse_modes[i];
++		unsigned int v = m->interlaced ? vtotal / 2 : vtotal;
++
++		if (m->on_active) {
++			if (h713_hdmirx_absdiff(width, m->h_active) <= H713_TSE_TOL_H &&
++			    h713_hdmirx_absdiff(height, m->v_active) <= H713_TSE_TOL_V)
++				return true;
++		} else if (h713_hdmirx_absdiff(htotal, m->h_total) <= H713_TSE_TOL_H &&
++			   h713_hdmirx_absdiff(v, m->v_total) <= H713_TSE_TOL_V) {
+ 			return true;
++		}
+ 	}
+ 
+ 	return false;
+@@ -3684,12 +3695,11 @@
+ 	    (sig.h_size != width || sig.v_size != height)) {
+ 		unsigned int seen = 0;
+ 
+-		/* the stale record's rate is the mode before it; measure */
++		/* for the line only: the flips run at the panel's rate */
+ 		if (flips.flips >= 2)
+ 			seen = div64_u64(100ULL * NSEC_PER_SEC, flips.period_ns);
+-		if (rx->tse_count && seen &&
+-		    !h713_hdmirx_tse_carries(rx, width, height, htotal, vtotal,
+-					     seen))
++		if (rx->tse_count &&
++		    !h713_hdmirx_tse_carries(rx, width, height, htotal, vtotal))
+ 			return h713_hdmirx_unlisted(rx, active, seen,
+ 					"in none of the firmware's mode records");
+ 		return -ENOLCK;
