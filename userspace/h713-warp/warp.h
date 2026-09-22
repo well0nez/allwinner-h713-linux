@@ -58,6 +58,7 @@ int warp_key(const char *corner, const char *axis);	/* 0..7, -1 unknown */
 int warp_key_by_name(const char *key);			/* "tl_x" -> 0..7 */
 void warp_clamp(int v[WARP_KEYS]);			/* all four, as the app does */
 int warp_clamp_key(int v[WARP_KEYS], int key, int want);	/* one, as a key press does */
+int warp_limit(const int v[WARP_KEYS], int key);		/* the most that key may take now */
 bool warp_identity(const int v[WARP_KEYS]);		/* all eight zero */
 bool warp_matrix(const int v[WARP_KEYS], double m[16]);	/* false: refused */
 void warp_point(const double m[16], double x, double y, double out[2]);
@@ -122,8 +123,10 @@ const char *gl_renderer(void);
 bool gl_targets(const struct peer *p, char *why, size_t n);
 bool gl_source(const struct source *s, char *why, size_t n);
 void gl_source_drop(void);
+/* labels: five strings drawn unwarped over the mask - the four corners and the
+ * centre line - or NULL; only the mask shows them */
 bool gl_draw(int target, int slot, const float m[16], int pattern, int mark_corner,
-	     char *why, size_t n);
+	     const char *const labels[5], char *why, size_t n);
 int gl_fence(void);			/* an out-fence fd, or -1 */
 
 /* the two shader pairs, so the host tests compile the very same strings */

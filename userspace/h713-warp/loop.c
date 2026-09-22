@@ -186,7 +186,24 @@ bool warp_pump(struct runtime *r)
 	}
 	t0 = now_s();
 	target = (int)(r->frames % WARP_TARGETS);
-	if (!gl_draw(target, slot, r->mf, r->pattern, r->mark_corner, why, sizeof(why))) {
+	char label[5][40];
+	const char *labels[5] = { NULL, NULL, NULL, NULL, NULL };
+
+	if (r->pattern == PATTERN_MASK) {
+		int c;
+
+		for (c = 0; c < 4; c++) {
+			snprintf(label[c], sizeof(label[c]), "%s%s x %d/%d y %d/%d",
+				 r->mark_corner == c ? "-" : "", warp_corner_name[c],
+				 r->conf.v[2 * c], warp_limit(r->conf.v, 2 * c),
+				 r->conf.v[2 * c + 1], warp_limit(r->conf.v, 2 * c + 1));
+			labels[c] = label[c];
+		}
+		snprintf(label[4], sizeof(label[4]), "zoom %d%%  per-mille inward, value/max",
+			 r->conf.zoom);
+		labels[4] = label[4];
+	}
+	if (!gl_draw(target, slot, r->mf, r->pattern, r->mark_corner, labels, why, sizeof(why))) {
 		if (r->pattern == PATTERN_NONE)
 			source_queue(&r->source, slot);
 		if (++r->fails >= FAILS_MAX) {

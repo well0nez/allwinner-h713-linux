@@ -16,6 +16,7 @@
  */
 #define EGL_NO_X11
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <EGL/egl.h>
@@ -101,6 +102,117 @@ static EGLContext ctx = EGL_NO_CONTEXT;
 static char renderer[128] = "not opened";
 static GLuint prog_warp, prog_pattern;
 static unsigned int panel_w, panel_h;
+
+/* Text over the mask: a 5x7 font for the digits, the lowercase letters and
+ * ". / : - %", built into a luminance texture once, drawn as one quad per
+ * glyph with the identity matrix, so the numbers stay upright and readable
+ * whatever the warp does to the picture. Each glyph is seven rows of five
+ * bits, MSB left. */
+static const unsigned char FONT_ROWS[][7] = {
+	/* 0..9 */
+	{0x0e,0x11,0x13,0x15,0x19,0x11,0x0e}, {0x04,0x0c,0x04,0x04,0x04,0x04,0x0e},
+	{0x0e,0x11,0x01,0x02,0x04,0x08,0x1f}, {0x1f,0x02,0x04,0x02,0x01,0x11,0x0e},
+	{0x02,0x06,0x0a,0x12,0x1f,0x02,0x02}, {0x1f,0x10,0x1e,0x01,0x01,0x11,0x0e},
+	{0x06,0x08,0x10,0x1e,0x11,0x11,0x0e}, {0x1f,0x01,0x02,0x04,0x08,0x08,0x08},
+	{0x0e,0x11,0x11,0x0e,0x11,0x11,0x0e}, {0x0e,0x11,0x11,0x0f,0x01,0x02,0x0c},
+	/* a..z */
+	{0x00,0x00,0x0e,0x01,0x0f,0x11,0x0f}, {0x10,0x10,0x16,0x19,0x11,0x11,0x1e},
+	{0x00,0x00,0x0e,0x10,0x10,0x11,0x0e}, {0x01,0x01,0x0d,0x13,0x11,0x11,0x0f},
+	{0x00,0x00,0x0e,0x11,0x1f,0x10,0x0e}, {0x06,0x09,0x08,0x1c,0x08,0x08,0x08},
+	{0x00,0x0f,0x11,0x11,0x0f,0x01,0x0e}, {0x10,0x10,0x16,0x19,0x11,0x11,0x11},
+	{0x04,0x00,0x0c,0x04,0x04,0x04,0x0e}, {0x02,0x00,0x06,0x02,0x02,0x12,0x0c},
+	{0x10,0x10,0x12,0x14,0x18,0x14,0x12}, {0x0c,0x04,0x04,0x04,0x04,0x04,0x0e},
+	{0x00,0x00,0x1a,0x15,0x15,0x11,0x11}, {0x00,0x00,0x16,0x19,0x11,0x11,0x11},
+	{0x00,0x00,0x0e,0x11,0x11,0x11,0x0e}, {0x00,0x00,0x1e,0x11,0x1e,0x10,0x10},
+	{0x00,0x00,0x0f,0x11,0x0f,0x01,0x01}, {0x00,0x00,0x16,0x19,0x10,0x10,0x10},
+	{0x00,0x00,0x0e,0x10,0x0e,0x01,0x1e}, {0x08,0x08,0x1c,0x08,0x08,0x09,0x06},
+	{0x00,0x00,0x11,0x11,0x11,0x13,0x0d}, {0x00,0x00,0x11,0x11,0x11,0x0a,0x04},
+	{0x00,0x00,0x11,0x11,0x15,0x15,0x0a}, {0x00,0x00,0x11,0x0a,0x04,0x0a,0x11},
+	{0x00,0x00,0x11,0x11,0x0f,0x01,0x0e}, {0x00,0x00,0x1f,0x02,0x04,0x08,0x1f},
+	/* space . / : - % */
+	{0,0,0,0,0,0,0}, {0x00,0x00,0x00,0x00,0x00,0x0c,0x0c},
+	{0x01,0x01,0x02,0x04,0x08,0x10,0x10}, {0x00,0x0c,0x0c,0x00,0x0c,0x0c,0x00},
+	{0x00,0x00,0x00,0x1f,0x00,0x00,0x00}, {0x18,0x19,0x02,0x04,0x08,0x13,0x03},
+};
+#define FONT_GLYPHS	((int)(sizeof(FONT_ROWS) / sizeof(FONT_ROWS[0])))
+#define FONT_CELL	8	/* texels per glyph in the atlas, 5 used + 3 gap */
+
+static int glyph_index(char ch)
+{
+	if (ch >= '0' && ch <= '9')
+		return ch - '0';
+	if (ch >= 'a' && ch <= 'z')
+		return 10 + ch - 'a';
+	switch (ch) {
+	case '.': return 37;
+	case '/': return 38;
+	case ':': return 39;
+	case '-': return 40;
+	case '%': return 41;
+	default: return 36;	/* space, and anything the font lacks */
+	}
+}
+
+const char *const gl_text_shader =
+	"precision mediump float; varying vec2 v_uv; uniform sampler2D u_font;\n"
+	"void main() { float a = texture2D(u_font, v_uv).r;\n"
+	"  gl_FragColor = vec4(vec3(1.0), 1.0) * a; }\n";
+
+static GLuint prog_text, font_tex;
+
+static void font_build(void)
+{
+	unsigned char *px = calloc((size_t)FONT_GLYPHS * FONT_CELL * FONT_CELL, 1);
+	int g, row, bit;
+
+	if (!px)
+		return;
+	for (g = 0; g < FONT_GLYPHS; g++)
+		for (row = 0; row < 7; row++)
+			for (bit = 0; bit < 5; bit++)
+				if (FONT_ROWS[g][row] & (0x10 >> bit))
+					px[row * FONT_GLYPHS * FONT_CELL + g * FONT_CELL + bit] = 255;
+	glGenTextures(1, &font_tex);
+	glBindTexture(GL_TEXTURE_2D, font_tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, FONT_GLYPHS * FONT_CELL, FONT_CELL, 0,
+		     GL_LUMINANCE, GL_UNSIGNED_BYTE, px);
+	free(px);
+}
+
+/* One string at (x, y) in NDC, glyphs `h` panel pixels high, upright, blended */
+static void text_draw(const char *s, float x, float y, float h)
+{
+	static const float ident[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+	float gw = h * 6.0f / 7.0f * 2.0f / (float)panel_w;	/* advance in NDC */
+	float gh = h * 2.0f / (float)panel_h;
+	float cw = h * 8.0f / 7.0f * 2.0f / (float)panel_w;	/* the 8-texel cell */
+
+	glUseProgram(prog_text);
+	glUniformMatrix4fv(glGetUniformLocation(prog_text, "u_k"), 1, GL_FALSE, ident);
+	glUniform1i(glGetUniformLocation(prog_text, "u_font"), 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, font_tex);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	for (; *s; s++, x += gw) {
+		float u0 = (float)glyph_index(*s) / (float)FONT_GLYPHS, u1 = u0 + 1.0f / (float)FONT_GLYPHS;
+		/* NDC y = -1 is the TOP of the panel here (the warp's convention),
+		 * so the glyph's top row (atlas v = 0) sits at y and its bottom
+		 * (v = 1) at y + gh */
+		float q[16] = { x, y + gh, u0, 1,   x + cw, y + gh, u1, 1,
+				x, y, u0, 0,   x + cw, y, u1, 0 };
+
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, q);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, q + 2);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	}
+	glDisable(GL_BLEND);
+}
+
 
 static struct {
 	EGLImageKHR img;
@@ -242,7 +354,10 @@ int gl_open(const char *node, char *why, size_t n)
 	}
 	prog_warp = program(gl_fragment_shader, why, n);
 	prog_pattern = prog_warp ? program(gl_pattern_shader, why, n) : 0;
-	if (!prog_warp || !prog_pattern)
+	prog_text = prog_pattern ? program(gl_text_shader, why, n) : 0;
+	if (prog_text)
+		font_build();
+	if (!prog_warp || !prog_pattern || !prog_text)
 		return 1;
 	why[0] = '\0';
 
@@ -358,7 +473,7 @@ void gl_source_drop(void)
 }
 
 bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
-	     int mark_corner, char *why, size_t n)
+	     int mark_corner, const char *const labels[5], char *why, size_t n)
 {
 	static const GLfloat quad[] = {
 		-1, -1, 0, 0,   1, -1, 1, 0,   -1, 1, 0, 1,   1, 1, 1, 1,
@@ -395,6 +510,25 @@ bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	if (pattern == PATTERN_MASK && labels) {
+		/* 22 panel pixels high; the corners just inside the frame, the
+		 * centre line below the dot; x steps are the glyph advance */
+		/* the frame line sits at 6 percent of the height from each edge (the
+		 * mask shader), 40 px glyphs are 7.4 percent of it: the top row
+		 * starts just under the top edge, the bottom row ends just above
+		 * the frame line at the bottom */
+		float h = 40.0f, left = -0.94f, top = -0.96f, bottom = 0.90f;
+		float right = 0.94f - (labels[1] ? (float)strlen(labels[1]) : 0) * h * 6.0f / 7.0f * 2.0f / (float)panel_w;
+		float right3 = 0.94f - (labels[3] ? (float)strlen(labels[3]) : 0) * h * 6.0f / 7.0f * 2.0f / (float)panel_w;
+
+		if (labels[0]) text_draw(labels[0], left, top, h);
+		if (labels[1]) text_draw(labels[1], right, top, h);
+		/* both rows in the band outside the frame line (6 percent), which the
+		 * warp never covers with picture */
+		if (labels[2]) text_draw(labels[2], left, bottom, h);
+		if (labels[3]) text_draw(labels[3], right3, bottom, h);
+		if (labels[4]) text_draw(labels[4], -0.42f, 0.34f, h);
+	}
 	err = glGetError();
 	if (err) {
 		snprintf(why, n, "draw: gl 0x%x", err);
@@ -444,6 +578,7 @@ void gl_close(void)
 	}
 	dpy = EGL_NO_DISPLAY;
 	ctx = EGL_NO_CONTEXT;
-	prog_warp = prog_pattern = 0;
+	prog_warp = prog_pattern = prog_text = 0;
+	font_tex = 0;
 	snprintf(renderer, sizeof(renderer), "not opened");
 }

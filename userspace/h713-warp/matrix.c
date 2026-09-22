@@ -121,6 +121,17 @@ void warp_clamp(int v[WARP_KEYS])
  * value being set gives way, the partner keeps what it has (warp_clamp above
  * is the app's "all four at once" form, for a hand-edited file).
  */
+/* The most a key may take, the partner keeping what it has: what the mask
+ * prints beside the current value. */
+int warp_limit(const int v[WARP_KEYS], int key)
+{
+	int c = key / 2, axis = key % 2;
+	int partner = axis ? COL_PARTNER[c] : ROW_PARTNER[c];
+	int limit = (axis ? MIN_V : MIN_H) - v[2 * partner + axis];
+
+	return limit < 0 ? 0 : limit;
+}
+
 int warp_clamp_key(int v[WARP_KEYS], int key, int want)
 {
 	int c = key / 2, axis = key % 2;
