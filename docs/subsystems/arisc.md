@@ -44,6 +44,20 @@ can tell the two blocks apart - they are identical for their first 130 bytes.
 all eight 64-byte fragments, 0-3 landing in the firmware's first block and 4-7 in its second. Only
 fragment 7 sets the data-ready flag and publishes, so the two halves cannot be uploaded separately.
 
+Each fragment is acknowledged before the next goes out (`0091f`). The handler copies its 64 bytes out
+of a scratch area the *next* command overwrites, and until `0091f` the driver waited only for the
+firmware to have taken the payload, not for that copy to have finished; three module swaps in a row on
+22.09.2026 were fast enough to land in the window, and the published block came out
+`00 ff ff ff ff ff ff e1 fd c5 7f ...` - seven correct bytes of fragment 0, then the next command's
+pattern - so the attached PC read no EDID at all. The driver now waits for the data-ready byte the
+handler writes behind its copy loop. A block corrupted by an older kernel is repaired by one full
+upload, which is also the first thing to check after a module swap:
+
+```
+sed -n '1p' /sys/kernel/debug/h713-arisc/edid-port0   # 000: 00 ff ff ff ff ff ff 00 5e 78 ...
+echo edid > /sys/kernel/debug/h713-arisc/cmd          # if the header reads anything else
+```
+
 Which of the two a port serves is one byte of the firmware's own state, and that byte is a **per-port
 bitmask, not a version number**: bit N set means port N is served the second block, bit N clear the
 first. `SetEDIDVersion` masks the argument to four bits and stores it; it does not publish anything
