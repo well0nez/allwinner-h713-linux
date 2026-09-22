@@ -429,7 +429,8 @@ decides only **when** the path is switched. Cards are searched for by their name
 probe order, as with `/dev/videoN`), for at most 30 s at one attempt a second, because the MSP driver brings
 its island and the DSP firmware up on a schedule of its own.
 
-**The automaton** (the rule out of doku/101 §1 E; "picture" = plane on):
+**The automaton** (the rule out of doku/101 §1 E; "picture" = the video plane is on **or** `h713-warp` draws,
+see 6e):
 
 | state | condition | what is set | next state |
 |---|---|---|---|
@@ -659,7 +660,15 @@ control socket, in its own language, the file descriptors in `SCM_RIGHTS` on the
 `ok` or `ok busy` when the previous commit is still in flight (that frame is dropped);
 `warp release` gives the panel back. The connection is the lifetime - a daemon that dies leaves a
 hangup and the ring comes back by itself. While the warp is on, `h713-tv ctl zoom` is refused with
-`error the warp is on - use h713-warp ctl zoom`, and `h713-tv ctl off` releases the warp.
+`error the warp is on - use h713-warp ctl zoom`, and `h713-tv ctl off` releases the warp. `ctl status` says
+`picture warped (h713-warp draws on the primary plane)`, and `ctl warp status` gives the plane, the geometry
+and the three counters (commits, busy, refused) without claiming anything.
+
+**The audio counts a warped picture as a picture** (fixed on the device, 22.09.2026). `audio_evaluate`,
+`audio_settled` and `audio_tick` were given `d->on`, the video plane's state; while the daemon draws, that is
+false and `d->warped` is true, so a source event during a warp - a player switching from 48 to 44.1 kHz - was
+evaluated as *no picture* and muted the path with a pop. All five call sites pass `d->on || d->warped` now. A
+warp must never mute the source.
 
 ## 7. The descriptor, the firmware and what the program sees of it
 

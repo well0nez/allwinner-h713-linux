@@ -95,7 +95,10 @@ hysteresis, the poses table above, the configuration parser, the h713-warp verbs
 
 ## Limits, honestly
 
-- **It has never run on the projector.** Angles, insets and corner names are all host work so far.
-- The roll *sign* is unproven: a wrong one corrects the wrong way round and doubles the trapezoid (AP2h NOTE 5).
+- **It has run on the projector once** (HY310, 22.09.2026): the sensor reads, the reference is taken, a 25-degree
+  nose-up tilt pulls the top edge in and a lifted side leaves the picture level. That is one evening, with a PC as
+  the source and no long run behind it.
+- At rest the eight values still scatter by about half a degree, some 14 per-mille, even with thirty samples
+  averaged. The one-degree hysteresis holds that back; it does not remove it.
 - The throw ratio is derived, not measured (AP2c question 1): if it is nearer 1.2, every correction is too strong.
 - It needs `model/` beside the real file: install under `/usr/local/lib/h713-keystone/`, symlink in `/usr/local/bin`.

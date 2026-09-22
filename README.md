@@ -42,9 +42,12 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 | **Recovery** | FEL from software (`h713-fel`), eMMC as a USB drive, stock Android restorable byte-for-byte |
 
 Not there yet: **Bluetooth** (driver builds, the firmware split has not been done), **AV1 decode**,
-**HDCP 1.4** for protected sources, **keystone correction** (not available), and there is **no desktop** in
-the shipped image - it runs `h713-tv`, not a compositor. Hardware video decode, the IOMMU and the Mali GPU come from cstenger's tree and are
-verified there, not re-tested in this image. Details and honest limits: [docs/known-issues.md](docs/known-issues.md).
+**HDCP 1.4** for protected sources, and there is **no desktop** in the shipped image - it runs `h713-tv`, not a
+compositor. **Keystone correction** exists since 22.09.2026 - by hand and following the projector's own tilt -
+but in the source only, and with it the Mali GPU, which that work rendered on in this image for the first time
+([h713-warp](docs/tools/h713-warp.md), [h713-keystone](docs/tools/h713-keystone.md)). Hardware video decode and
+the IOMMU come from cstenger's tree and are verified there, not re-tested in this image. Details and honest
+limits: [docs/known-issues.md](docs/known-issues.md).
 
 **These projectors have no HDMI output.** The projector itself is the only display. HDMI is an *input*.
 

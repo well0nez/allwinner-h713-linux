@@ -8,7 +8,7 @@ looks strange about this SoC.
 
 | Owner | Block | What it does |
 |---|---|---|
-| ARM (Linux) | AFBD at `0x05600000` | feeds the video plane from the capture ring, writes the VidDec descriptor |
+| ARM (Linux) | AFBD at `0x05600000` | feeds the video plane from the capture ring, writes the VidDec descriptor, and scans the primary plane out of DRAM - the console, or a frame the GPU rendered |
 | MIPS (`display.bin`) | capture (INCAP `0x06940000`), window chain, scaler, panel output | everything between the source and the imager |
 
 The ARM *can* read and even write the MIPS-owned registers. It does not help: without the firmware's own
@@ -103,15 +103,56 @@ cross-check and never as a source of truth. After a window change it did follow 
 (22.09.2026, above), but it says what the firmware **did**, not what was asked for, and it can lag by one
 change. What a window change is worth is decided on the wall, not in that register.
 
+## The other channel: the primary plane, and the GPU on it
+
+The AFBD block has two channels, and only one of them reads the capture ring. The **video** plane is the ring
+path described above and nothing about it changed. The **primary** plane scans an ordinary DRM framebuffer out
+of DRAM - normally the framebuffer console - and it takes an imported dma-buf as readily as its own. The
+framebuffer has to be the mode's size and sit at the CRTC's origin, which the simple-pipe helper enforces
+without any check of ours; there is no scaling and no positioning on this plane. That is where the keystone
+lives ([h713-warp](../tools/h713-warp.md)): the GPU reads the capture, draws the warped frame into a target
+buffer and `h713-tv` commits that buffer on the primary plane.
+
+**Measured on the HY310 on 22.09.2026** (`umbau/test-20260915/keystone-20260922.md`, stages S3 and S4), before a
+line of the daemon existed: two `XRGB8888` dumb buffers of `card1`, handed to the render node through PRIME,
+imported into EGL, drawn by the GPU and committed on the primary plane with the render's own fence as
+`IN_FENCE_FD` - 600 and 900 commits, one page flip each, 0 errors, 59.4 fps, and the gradient with its moving
+bar on the wall. With the live HDMI capture in front of it (`0136y`, `VIDIOC_EXPBUF`) the same loop ran 3,600
+frames in 60 seconds with 0 `DQBUF` timeouts, 0 dropped flips and one late frame. Every fence was readable at
+the first poll - the render of a 1080p frame finishes inside the commit path and adds no frame of latency.
+
+**What the registers do while that runs**, read at 10 Hz through `/dev/mem` in the `0x0560xxxx` block:
+`AFBD_SRC` (`0x05600178`) alternates between the two CMA buffers, 8 MiB apart; `AFBD_STRIDE` (`0x05600170`)
+stands at 7680, the panel's 1920 pixels of four bytes; `AFBD_CTRL` (`0x05600140`) reads `0x03001901`; and the
+encoder's selector (`0x051c006c`) reads `0x29000000`, RGB. Idle, with the console up, `AFBD_SRC` is the
+`fbcon`'s own buffer.
+
+**Nothing else writes that channel.** Over a 60-second watch with `h713-tv` going `auto`, `off`, `auto` and the
+source unplugged and replugged, the RGB channel's address and stride never moved; `AFBD_CTRL` and the selector
+toggled between console (`0x03001901` / `0x29000000`) and video plane on (`0x83001900` / `0x39000000`), which is
+our own driver's channel switch and nothing else. The display firmware is not a co-writer here, so the warp does
+not have to re-arm anything behind its back - and when the video plane goes off, the selector returns to RGB by
+itself (`afbd.c:864-867`). The two planes are mutually exclusive by this route, which is why `h713-tv ctl zoom`
+is refused while the warp is on.
+
+**What imports.** 52 dma-buf formats are offered, and the ring's `NV16` layout imports both ways: as a single
+external image, and as two planes, `R8` plus `GR88`. Both sampled a known grey and a saturated red back within
+2 of the expected values, so either route would have worked and the choice is ours to make. The
+daemon takes the two-plane form with its own BT.709 limited-range shader, so nothing depends on Mesa's internal
+lowering table.
+
 ## Limits, honestly
 
-- The plane reads the capture ring **directly** rather than importing a dma-buf. Functionally equivalent
-  for this use, marked "transitional" in the driver, and the reason the display path and the HDMI input
-  are more coupled than they should be.
+- The **video** plane reads the capture ring **directly** rather than importing a dma-buf - functionally
+  equivalent for this use, and the reason the display path and the HDMI input are more coupled than they should
+  be. It is not a limit of the block: the **primary** plane imports and scans out an ordinary dma-buf (above),
+  and since 22.09.2026 the HDMI receiver hands its capture slots out as dma-bufs too (kernel `0136y`).
 - The picture geometry is whatever the firmware decides. We can ask for a different aspect handling and for
   the two windows above; we do not scale anything ourselves, and a window is a request the firmware
   may answer late or not at all.
 - There is **no HDMI output** on this device. The imager is the only display.
 
 Details: `doku/96-anzeigekette.md` (the whole chain, measured), `doku/86` (video plane), `doku/87`
-(gamma/CTM), `doku/40-display.md` (bring-up history), `doku/74` (the null-pointer crash).
+(gamma/CTM), `doku/40-display.md` (bring-up history), `doku/74` (the null-pointer crash). For the primary
+plane and the GPU on it: `umbau/plan/keystone/PLAN.md` (stages S3 to S5) and the device readings in
+`umbau/test-20260915/keystone-20260922.md`.

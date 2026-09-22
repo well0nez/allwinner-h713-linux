@@ -12,7 +12,8 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 [eMMC layout](subsystems/emmc-layout.md)
 
 **Tools on the device:** [h713-tv](tools/h713-tv.md) · [h713-focus](tools/h713-focus.md) · [h713-autofocus](tools/h713-autofocus.md) ·
-[h713-cam](tools/h713-cam.md) · [h713-wifi](tools/h713-wifi.md) · [h713-pq](tools/h713-pq.md) · [h713-fel](tools/h713-fel.md).
+[h713-cam](tools/h713-cam.md) · [h713-wifi](tools/h713-wifi.md) · [h713-pq](tools/h713-pq.md) · [h713-fel](tools/h713-fel.md) ·
+[h713-warp](tools/h713-warp.md) - the keystone on the GPU · [h713-keystone](tools/h713-keystone.md) - the automatic one.
 **On your PC:** [h713-install](tools/h713-install.md) · [h713-extract](tools/h713-extract.md) · [h713-mkimage](tools/h713-mkimage.md) · [h713-probe](tools/h713-probe.md)
 
 **U-Boot:** [boot chain and defconfig matrix](uboot/README.md) · [the `h713_*` commands, with the register readback at the

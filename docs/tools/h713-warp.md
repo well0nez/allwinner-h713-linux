@@ -37,6 +37,7 @@ so the exit code is decided without parsing further.
 | `keystone set CORNER AXIS VALUE` | absolute, 0..1000 per-mille, positive inward |
 | `keystone nudge CORNER AXIS DELTA` | relative, -1000..1000 - the command a remote control sends |
 | `keystone reset` | all eight corners to 0, which is the identity |
+| `zoom [PERCENT]` | the screen zoom, 10..100 (100 = none): every corner pulled in by (100 - PERCENT) * 5 per-mille on top of the keystone, the vendor's "Digital scaling"; saved as `zoom =` in the file |
 | `test grid\|border\|off` | draw a pattern instead of the capture, to aim a corner with no source plugged in |
 
 `CORNER` is `tl tr bl br` **as the picture stands on the wall**, `AXIS` is `x` or `y`. Every change is clamped

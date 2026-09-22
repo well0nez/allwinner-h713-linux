@@ -4,8 +4,10 @@ Snapshot of **2026-09-22**. "Works" means *verified on the projector*, with the 
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is `v0.9-beta`: the 182-patch series with U-Boot `4cecddd`, installed from the release files.
-The last release is still `v0.8-beta`. What the numbers mean: [RELEASES.md](RELEASES.md).
+The image on the test device is `v0.9-beta` **with the keystone branch on top of it**: the 182-patch series with
+U-Boot `4cecddd` from the release files, and over it the branch's three kernel patches (185 patches), its mesa and
+its two new tools - brought in by FIT, module swap and `scp`, not by a new install. The last release is still
+`v0.8-beta`. What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
 
@@ -13,9 +15,11 @@ The last release is still `v0.8-beta`. What the numbers mean: [RELEASES.md](RELE
   projector image, HDMI input with picture controls and hot plug, HDMI audio, Wi-Fi as an access point
   and as a station, focus motor, internal camera (without a bootloader crutch since 15.09.), fan tacho and
   thermals (reporting only), power key, FEL recovery, installer including restore-to-stock. The fan-stall
-  poweroff is armed since 12.09.
+  poweroff is armed since 12.09. Since 22.09. also, in the source and not in a release yet: the **Mali GPU**,
+  and the **keystone** on it - by hand and following the projector's own tilt.
 - **Missing:** Bluetooth, AV1 decode, HDCP 1.4 for protected sources, any desktop.
-- **Not re-tested by us:** hardware video decode, IOMMU, Mali GPU - these come from cstenger's tree.
+- **Not re-tested by us:** hardware video decode and the IOMMU - these come from cstenger's tree. The Mali GPU
+  did too; since 22.09. it is measured here (*Changes since v0.9-beta*).
 
 ## Boards
 
@@ -27,7 +31,7 @@ by `release/build-all.sh --board`: **no image for a board nobody has tested.** A
 
 | Board | State | Who ran it, and when | What exists for it |
 |---|---|---|---|
-| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.9-beta`, 22.09.2026; the development builds `v0.8-dev20` to `v0.8-dev22` on 22.09.2026 | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
+| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.9-beta`, 22.09.2026; the development builds `v0.8-dev20` to `v0.8-dev22` on 22.09.2026, and the keystone slots of the same day (GPU, warp, accelerometer) on a `v0.9-beta` image with the branch on top | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
 | **HY200 QZ713DF_A1** | profile-only | nobody has run a build of *ours* on it. cstenger ran his own tree on his own bench board - kernel 6.18.38 boot-good (`mainline/config/versions.env`); that is his run, not ours | kernel and U-Boot defconfigs, device tree, and since 15.09. the installer profile `hy200_qz713df_a1` - its stock firmware is the 2025-09-22 "HY300 Pro+" DDR3 image (624 MHz, `display.bin` `4380f1b3…`) |
 | **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too, plus the installer profile `hy200_qz713_v2` - its stock firmware is the 2025-07-10 "HY300 Pro+" LPDDR3 image (720 MHz, `display.bin` `4628cbaf…`, HDCP wait site `0x4b13d538`) |
 | **HY300 T08** | profile-only | nobody | installer profile and DRAM fragment, both read out of its stock image (`doku/121` §2). No device tree of ours |
@@ -52,6 +56,7 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Projector image (LVDS/DLP) | works | MIPS firmware + `sun50i-h713-afbd` KMS driver | continuous since 08.09. |
 | HDMI input | works | `sun50i-h713-hdmirx`, node found by name (it was `/dev/video3` on 12.09., not `video1` - the camera enumerated first) | 1080p60/50/24, 720p50, 576p50, 1366x768, 1024x768 and 4K30, colour-correct from the firmware's own record, 22.09. (six modes at 60 Hz since 08.09.); hot plug after boot, a boot with the source plugged in and unplug/replug verified 16.09. after the first-publication source switch was removed (kernel 0136a/0136c); a source outside the firmware's mode table is refused by name since 22.09. (0136r-0136w) |
 | Picture path userspace | works | `h713-tv` service, `h713-tv ctl …` | 08.09.; presets, gamma, aspect, controls |
+| Keystone, by hand and automatic | works, beta, **source only** | `h713-warp` (the warp on the GPU) and `h713-keystone` (the accelerometer), with `h713-tv` committing | 22.09.: a corner set by hand moves that corner of the picture on the wall, and the automatic answers a 25-degree nose-up tilt by pulling the top edge in. The caveats are in [docs/known-issues.md](docs/known-issues.md); no release carries this yet |
 | HDMI audio | works | codec-I2S + MSP DSP driver, one volume control | 08.09. 22:05, lip-sync judged by ear |
 | ARM ↔ MIPS IPC | works | `cpu_comm` in-kernel API | callback slot leak fixed; [docs/subsystems/cpu-comm.md](docs/subsystems/cpu-comm.md) |
 | ARISC (PMU, HPD, EDID) | works | `sun50i-h713-arisc` | 17.65 s to hot-plug ready |
@@ -61,10 +66,69 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Fan, tacho, stall protection | works | `hy310-board-mgr` | 4860 RPM measured 11.09.; **the fan-stall poweroff is armed and was triggered on the device** 12.09.: rail cut, device shut itself down, next boot mounted the filesystem clean (`analyse/boot/p6-notaus-luefter-20260912.txt`). No NTC on this unit, so the tacho is the protection |
 | Power / standby | partial | standby is 4 W; deep sleep is designed, not built | plan `doku/104` |
 | Crypto engine | present, unused | measurement module loads, crypto disabled | `doku/114` |
-| Video decode, IOMMU, GPU | unverified here | cstenger's patches, in our series | verified in his tree, not in this image |
+| Mali-G31 GPU (Panfrost) | works, **source only** | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (`umbau/test-20260915/keystone-20260922.md`) |
+| Video decode, IOMMU | unverified here | cstenger's patches, in our series | verified in his tree, not in this image |
 | Bluetooth | missing | driver builds, firmware split not done | `rootfs/packages.txt` explains the choice |
 | HDCP 1.4 | missing | path understood, one test costs a power cycle | `doku/112` |
 | HDCP 2.2 | works, device-local | key read from *your* device at boot, never shipped | `h713-hdcp-key.service` |
+
+## Changes since v0.9-beta
+
+In the source, not in a release yet. A night of device slots on the HY310 on 22.09.2026 stands behind this list -
+from "no GPU has ever run in this image" to a picture that follows the projector's own tilt. Every reading quoted
+here is in `umbau/test-20260915/keystone-20260922.md`.
+
+- **The keystone exists - by hand and automatically.** [`h713-warp`](docs/tools/h713-warp.md) bends the HDMI
+  picture into a quadrilateral on the GPU: the vendor's own projective homography, eight corner insets in
+  per-mille, ported from `system_a_libkeystone.so` and tested against it. `h713-tv` stays the only DRM master and
+  commits the warped frame on the **primary** plane with the daemon's fence. On the wall, `ctl keystone set tl x
+  150` moved the **top left corner of the projected picture** inward, so the corner names are the wall's and not
+  the vendor's contradictory slot order. [`h713-keystone`](docs/tools/h713-keystone.md) reads the SC7A20
+  accelerometer, turns the tilt into the vendor's two angles, runs the vendor's corner geometry and pushes the
+  eight values in: a 25-degree nose-up tilt pulled the top edge in (`tl 107,74 tr 126,24 bl 13,151 br 0,216`), and
+  a lifted left side left the picture level once the roll sign was `-x`.
+- **The identity costs nothing.** With all eight values at 0 - what a fresh image comes up in - the daemon never
+  opens the render node, and the picture path is v0.9-beta's, bit for bit. The warp is entered by a value, left by
+  `ctl keystone reset` or `ctl off`, and the CMA it took came back within 3 MB.
+- **The Mali-G31 renders in this image**, for the first time: `h713-gpu-probe info` reports Mali-G31 (Panfrost)
+  and OpenGL ES 3.1 Mesa 25.0.7 with all four extensions the warp needs, and `render 3000` drew 3,000 textured
+  1080p frames with **0 CRC mismatches** at 236 fps, GPU zone 58 C, back to runtime-suspended afterwards.
+- **The GPU has operating points and a cooling map** (kernel `0024e`). It used to sit at the PLL's boot rate of
+  864 MHz, fixed - 23 per cent above the stock table's ceiling - because our device tree had no OPP table and
+  Panfrost's devfreq left with `-ENODEV`. Now: 288, 432, 600 and 696 MHz with `simple_ondemand`, a passive trip at
+  85 C and a critical one at 105 C with the GPU as its own cooling device. `CONFIG_DRM_LIMA` (Utgard only, binds
+  nothing here) and `CONFIG_SUN50I_IOMMU` (dead with the node disabled; Panfrost uses its own MMU) are off. Ten
+  minutes of load: 16,089 frames, 26.8 fps, 0 mismatches, 201 frequency transitions, 58.4 C at most, back at
+  288 MHz and suspended, `dmesg` clean.
+- **The capture slots can be handed to the GPU** (kernel `0136y`): `VIDIOC_EXPBUF` on the HDMI receiver wraps one
+  slot plane as a `dma-buf` - a one-entry scatterlist over `dma_map_resource`, because the ring is a no-map
+  reservation with no `struct page` behind it. Three buffers with both their planes export and map on the device,
+  and with a laptop's 1080p60 on the input the exported luma plane reads mean 124.9 over 16..235: a real picture,
+  read by the GPU without a copy. It is not a fence - the firmware reuses a slot every third frame, and the
+  header says so in one sentence.
+- **mesa is in the image** - 25.0.7, cross-built with clang, the panfrost driver, EGL, GLES2 and GBM and nothing
+  else: **15 MiB** under `/usr/local` against the 187 MiB Debian's packages cost, where even `libgbm1` pulls
+  `mesa-libgallium` and `libllvm19`. `build-rootfs.sh --mesa` lays the tarball in, `--mesa none` leaves the GPU
+  userspace out, and a rootfs built with it is 266 MiB.
+- **The accelerometer is on the bus again** (kernel `0162`): `twi1` with one child, the SC7A20 at 0x18
+  (`silan,sc7a20`), in place of the stock tree's four candidates, and `st_accel` as a module. It probes as
+  `iio:device2` named `sc7a20`. There is deliberately **no `mount-matrix`**: three poses on the bench say pitch is
+  raw y, roll is raw x and z is vertical - the identity, not the swap the vendor's own driver does - so the
+  transform lives in `keystone.conf` as a configuration key rather than in the device tree as a claim about the
+  hardware.
+- **`h713-tv` has a third display mode.** Beside plane-on and console there is now *warped*: `ctl status` says
+  `picture warped (h713-warp draws on the primary plane)`, `ctl warp status` gives the commit counters, and
+  `ctl zoom` is refused while the warp is on (the video plane is off, and the zoom is the firmware's). One bug
+  came out of the device run and is fixed: the audio automaton took "plane on" for "there is a picture", so a
+  source event during a warp - a player switching 48 to 44.1 kHz - re-evaluated the audio as *no picture* and
+  muted it with a pop. All five call sites take "plane on **or** warped" now.
+- **Not done, and named as such:** the write-back self-test of the identity warp (optional, debug kernel only),
+  the screen zoom through the warp and the projection-mode mirror RPC, and the vendor's edge-blend pass. The
+  hour-long soak has no result yet; the long run that exists is the one the audio bug came out of. The throw
+  ratio is still the optics' own 0.8176 out of `camprjspe.ini` and not a tape measure. None of this has been
+  near the HY300 Pro.
+- With `0024e`, `0136y` and `0162` the series stands at **185 patches**
+  ([docs/kernel-patches.md](docs/kernel-patches.md)).
 
 ## Changes since v0.8-beta
 
@@ -188,6 +252,11 @@ These are written down because they are *not* done, not because they are expecte
   is verified, 12.09., see *Wi-Fi AIC8800D80* above)
 - environment carry-over (`h713_gate`, `h713_boot`) across a reinstall - needs a changed value before the next install
 - 20 gate cycles with the power key (dropped 16.09.; the gate has run on every device test since 09.09.)
+- the keystone warp over an hour with a live source - the one long run so far is where the audio bug below was
+  found, and no soak has been recorded since; likewise a source that changes its resolution while the warp draws
+- the throw ratio with a tape measure, against the 0.8176 the optics data implies, which is what the automatic
+  keystone computes with today
+- the auto keystone standing still for ten minutes at rest, and both of them on any board but the HY310
 
 ## Reading the German journal
 
