@@ -36,6 +36,14 @@ answers `-ERANGE` **with the measured timing filled in**, because the timing was
 what this receiver can do. The two used to be one answer, and a 1600x900 source therefore read "change in
 flight" for as long as it was plugged in. `h713-tv` stops retrying on the second and says so.
 
+Which of the two it is, is decided on the raster the capture block is writing at that moment and not on
+the firmware's record. After a mode change the firmware leaves its record at the last raster it locked,
+and until 22.09.2026 that stale record answered "change in flight" before the table was ever consulted -
+so 1600x900 following 1366x768 still read the old answer on the device. The raster `INCAP` reports is
+therefore looked up in the table first, with the frame rate measured on the flip pointers: in none of the
+records is `-ERANGE` whatever the stale record says, in a record keeps `-ENOLCK` for the poll or two the
+record lags behind, which is a real change in flight towards a mode this receiver does lock.
+
 One quirk shapes how the picture behaves around a mode change: writing the video plane's descriptor
 (once per boot, see `display.md`) silently stops the firmware's capture engine as a side effect. The
 display driver publishes that event, and this driver answers on its own with a source switch away and
@@ -57,8 +65,8 @@ set a control is the only record of its value.
 | Hue | `V4L2_CID_HUE` | 11.09.2026, magenta at 0, green at 100 |
 | Sharpness | `V4L2_CID_SHARPNESS` | 11.09.2026 |
 | Noise reduction, dynamic contrast, black-level extension | vendor switches, no V4L2 standard CID | write no readable register; effect confirmed only in the firmware's own log |
-| Backlight level, dynamic backlight | vendor switches | the bring-up sequence has sent both since this driver existed (100 and "manual"); on the HY310 the same dimmer is also a Linux `pwm-backlight` on PWM2/PB4 |
-| Low latency | vendor switch | the routine and its id are the vendor's; the vendor's own userspace never calls it, so the firmware has never been asked to leave the state it boots in |
+| Backlight level, dynamic backlight | vendor switches | the bring-up sequence has sent both since this driver existed (100 and "manual"); the firmware accepts the call and answers it, and on the HY310 the lamp does not follow - `backlight_level` at 60 and at 10 changed nothing on the wall (22.09.2026). The lamp is not the MIPS's on our stack: neither the `pwm-backlight` on PWM2/PB4 nor these two calls reach it ([dead-ends.md](../dead-ends.md)). What once looked like a working dimmer was the picture brightness, which is a black-level offset and invisible on bright material |
+| Low latency | vendor switch | the routine and its id are the vendor's; the vendor's own userspace never calls it, so the firmware has never been asked to leave the state it boots in, and `low_latency` on this panel is unmeasured - setting it produces no error and no observed change |
 
 Video range defaults to *auto*, and that is right rather than merely convenient: the firmware resolves
 *auto* out of the AVI InfoFrame's quantisation field with the HDMI default rule, so *auto* is the source's
