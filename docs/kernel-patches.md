@@ -19,7 +19,7 @@ two projects landing on the same chip and is grouped by **origin and topic**, no
 | 3 | Video-path branch | 18 patches: 17 from cstenger's `h713-display-video-path` (scanout/DECD/IOMMU/MMC/HDMI) plus our follow-up `0078a` |
 | 4 | ARISC + cpu_comm | the second co-processor, the ARM↔MIPS IPC kernel API, HDMI-RX callbacks; `0091c` names the EDID version byte what it is, a per-port block mask, and lets a board state it; `0092a` takes the display firmware's two elog addresses from the board instead of from the driver |
 | 5 | Focus motor, first pass | limit-switch read path, manual move commands |
-| 6 | Display path | geometry, republish-on-change, capture, picture controls, aspect; `0133a` turns the AFBD's three hardcoded handoff words into an optional device-tree property, `0133b` makes the video plane's CRTC rectangle the destination window in the descriptor the firmware scales into; `0136h` - `0136k` make the display firmware's own mode table (`THDMI_ModeDetect` in `database.TSE`) the list the receiver matches against, keep a lock through our own descriptor republish, withhold a timing the firmware's picture window contradicts, and let the source cap follow that table |
+| 6 | Display path | geometry, republish-on-change, capture, picture controls, aspect; `0133a` turns the AFBD's three hardcoded handoff words into an optional device-tree property, `0133b` makes the video plane's CRTC rectangle the destination window in the descriptor the firmware scales into; `0136h` - `0136k` make the display firmware's own mode table (`THDMI_ModeDetect` in `database.TSE`) the list the receiver matches against, keep a lock through our own descriptor republish, withhold a timing the firmware's picture window contradicts, and let the source cap follow that table; `0136l` - `0136q` and `0101a` translate the last German messages, give a source the table does not carry its own answer, report colour space, quantisation and the CE flag out of the firmware's record, add three more of the vendor's picture settings, narrow the own-record test, check the slot in `S_DV_TIMINGS` and correct the table's module name |
 | 7 | HDMI audio | clocks, codec-I2S, the MSP DSP driver |
 | 8 | pinctrl | EINT mux for the power key |
 | 9 | board-mgr | fan tacho by IRQ, an unrelated pinctrl IRQ-bank fix, the NTC-phantom fix |
@@ -40,7 +40,7 @@ own projector work, dated in `doku/` by section.
 
 A patch keeps the number it was given when it was written. When a later fix targets an already-numbered
 patch, it becomes a lettered addendum - `0005a`, `0013a`, `0014a` - `0014f`, `0024a` - `0024d`, `0078a`,
-`0091a` - `0091c`, `0093a`, `0096a`, `0092a`, `0133a`, `0133b`, `0135b`, `0136a` - `0136k`, `0154a`, `0159a`, `0161a`, `0161b` - placed **directly behind its original**, not at the end of the
+`0091a` - `0091c`, `0093a`, `0096a`, `0092a`, `0133a`, `0133b`, `0135b`, `0136a` - `0136q`, `0101a`, `0154a`, `0159a`, `0161a`, `0161b` - placed **directly behind its original**, not at the end of the
 series, because the patches after it were written against the state the
 original plus its addenda leaves behind: `0024a` fixes a register and IRQ number `0024` got wrong, `0024b`
 renames the driver it introduced, and everything from `0025` on assumes both are already applied. Moving an
@@ -53,6 +53,11 @@ patch, `0106`, rewrites the very lines `0014d` deletes, so behind `0014c` they w
 behind `0125` instead, the last patch in the series that touches `cpu_comm` at all, and everything in
 between stays byte-identical. The rule is the reason, not the position: an addendum goes wherever the
 patches that were written against the old state have already had their say.
+
+`0101a` is the other addendum whose line does not sit behind its own number. It extends the picture-control
+table `0101` introduced, but `0126`, `0132` and `0136` grew that table afterwards, so behind `0101` it has
+nothing to apply to; its line therefore sits behind `0136n`. Nothing already written moves under it:
+`0101a` is newer than every patch it follows.
 
 ## Building it, and adding to it
 

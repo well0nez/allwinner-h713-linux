@@ -241,7 +241,7 @@
 #    without it)
 0136g-arm64-dts-h713-describe-the-de-picture-scaler-window.patch
 #   (T2 -- 0136h: the presets are the display firmware's own mode table, the
-#    TFD module THDMI_ModeDetect in database.TSE, where allwinner,firmware-tse
+#    TFD module THDMI_ModeList in database.TSE, where allwinner,firmware-tse
 #    names the window it is loaded into; the same patch adds that property.
 #    Without it the kernel's preset list decides, as before)
 0136h-media-h713-hdmirx-the-presets-are-the-firmware-s-own-mode-table.patch
@@ -283,6 +283,10 @@
 #    capture slot instead of letting REQBUFS answer -EINVAL three calls
 #    later; since 0136k a hand-given 4K timing gets that far, T2 8.1)
 0136p-media-h713-hdmirx-s-dv-timings-refuses-a-ring-no-slot-can-hold.patch
+#   (Q3 -- 0136q: the table is the TFD module THDMI_ModeList; the name the
+#    finder searches for belongs to the module behind it (AP3f). Comments and
+#    one word of a refusal, no code, both board DTBs byte-identical)
+0136q-media-h713-hdmirx-the-mode-table-is-thdmi-modelist.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

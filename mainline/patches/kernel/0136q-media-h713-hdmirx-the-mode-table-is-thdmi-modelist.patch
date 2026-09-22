@@ -1,0 +1,82 @@
+media: h713-hdmirx: the mode table is THDMI_ModeList, not THDMI_ModeDetect
+
+0136h calls the firmware's timing table by the name of the module that
+follows it. AP3f took the two apart (umbau/re-apps/T1-note.md): the records
+are the data payload of the TFD module THDMI_ModeList, and the ASCII string
+the finder walks back from - 22 bytes behind the end of the array - is the
+NAME of the next module, THDMI_ModeDetect.
+
+So the finder is right and stays exactly as it was: it searches for that
+string because that is what sits behind the array, and H713_TSE_NAME keeps
+its value. Only what the comments call the table changes, plus one word in
+the refusal, which now says "marker" instead of "module" because that is
+what is looked for.
+
+Comment and one string, in the driver and in the dtsi's description of
+allwinner,firmware-tse. No code. Both board DTBs compile byte-identical
+before and after (dtc, 34280 and 34327 bytes).
+
+Follow-up to 0136h, which stays byte-identical.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2126,7 +2126,7 @@
+ 	 *                    at probe and never written: U-Boot loads
+ 	 *                    database.TSE there, and the timing table the
+ 	 *                    display firmware locks on (the TFD module
+-	 *                    THDMI_ModeDetect, 152 records) is inside it.
++	 *                    THDMI_ModeList, 152 records) is inside it.
+ 	 *                    Without it the driver matches a measured timing
+ 	 *                    against the kernel's preset list instead.
+ 	 *
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -276,18 +276,25 @@ static const char * const h713_hdmirx_hdr_scheme[] = {
+  * capture window at all (1600x900, 21.09.2026: INCAP kept the previous
+  * geometry and the wall the console).
+  *
+- * It is not in display.bin. The firmware asks its TFD manager for the module
+- * "THDMI_ModeDetect" and keeps pointers into the loaded database.TSE image
+- * (Init_ModeListCtx 0x8b132e04); U-Boot loads that file into the TSE window of
+- * the MIPS reservation, 1 MiB at ARM 0x4be41000, and leaves it there for the
+- * boot. 152 records of 54 bytes, byte for byte the same in the HY310's and the
+- * HY300 Pro's firmware (T1, 21.09.2026). The serialiser writes the module name
+- * 22 bytes behind the end of the array, which is how the array is found: back
+- * in record steps while the leading dword stays a signal id of the vendor's
+- * E_SIGNAL_ID space, 0x0002xxxx. Records are packed and the array is aligned
+- * to nothing, so every field is read unaligned.
++ * It is not in display.bin. The records are the data payload of the TFD module
++ * THDMI_ModeList, which the firmware asks its TFD manager for and keeps
++ * pointers into inside the loaded database.TSE image (Init_ModeListCtx
++ * 0x8b132e04); U-Boot loads that file into the TSE window of the MIPS
++ * reservation, 1 MiB at ARM 0x4be41000, and leaves it there for the boot.
++ * 152 records of 54 bytes, byte for byte the same in the HY310's and the
++ * HY300 Pro's firmware (T1, 21.09.2026). Records are packed and the array is
++ * aligned to nothing, so every field is read unaligned.
++ *
++ * How the array is found is a separate thing from what it is called, and the
++ * two were one name until AP3f took them apart (umbau/re-apps/T1-note.md):
++ * the ASCII string 22 bytes behind the END of the array is the name of the
++ * NEXT module, THDMI_ModeDetect, not of this one. The finder below walks back
++ * from that string in record steps while the leading dword stays a signal id
++ * of the vendor's E_SIGNAL_ID space, 0x0002xxxx - which is unaffected by the
++ * correction and stays exactly as it was.
+  */
+ #define H713_TSE_RECORD		54
++/* the marker BEHIND the array: the next module's name, see above */
+ #define H713_TSE_NAME		"THDMI_ModeDetect"
+ #define H713_TSE_NAME_GAP	22	/* name to the end of the array */
+ #define H713_TSE_ID_LO		0x00020000
+@@ -3171,7 +3178,7 @@ static void h713_hdmirx_tse_load(struct h713_hdmirx *rx)
+ 	}
+ 	data = map;
+ 
+-	why = "no THDMI_ModeDetect module in the TSE window";
++	why = "no THDMI_ModeDetect marker in the TSE window";
+ 	if (h713_hdmirx_tse_find(data, win[1], &start, &count))
+ 		goto unmap;
+ 
