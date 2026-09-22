@@ -129,6 +129,9 @@
 #define DRM_DRIVER	"sun50i-h713-afbd"	/* patch 0093 */
 #define V4L2_DRIVER	"sun50i-h713-hdmirx"	/* patch 0094 */
 
+/* the smallest destination window the driver publishes, one AFBD block (0133b) */
+#define WINDOW_MIN	16u
+
 
 /* ------------------------------------------------------------------ *
  * Talking to the journal
@@ -576,6 +579,11 @@ struct display {
 	unsigned int src_pitch;		/* ring line pitch (capture bytesperline) */
 	bool has_aspect;		/* the plane offers the "aspect" property (0133) */
 	uint64_t aspect;		/* its value, sent with every show */
+	/*
+	 * The plane's destination rectangle: descriptor words 31..34, which the
+	 * firmware scales into (0133b). The whole panel until somebody zooms.
+	 */
+	unsigned int win_x, win_y, win_w, win_h;
 	struct props crtc_props;
 	uint32_t gamma_blob;		/* GAMMA_LUT blob from -g, 0 = none */
 	struct props plane_props;
@@ -653,6 +661,8 @@ static void display_find_crtc(struct display *d)
 			d->crtc_id = c->crtc_id;
 			d->width = c->mode.hdisplay;
 			d->height = c->mode.vdisplay;
+			d->win_w = d->width;
+			d->win_h = d->height;
 			d->crtc_index = i;
 			drmModeFreeCrtc(c);
 			break;
@@ -981,10 +991,10 @@ static bool display_show(struct display *d)
 	ok &= add(req, d, "SRC_Y", 0);
 	ok &= add(req, d, "SRC_W", (uint64_t)d->src_w << 16);
 	ok &= add(req, d, "SRC_H", (uint64_t)d->src_h << 16);
-	ok &= add(req, d, "CRTC_X", 0);
-	ok &= add(req, d, "CRTC_Y", 0);
-	ok &= add(req, d, "CRTC_W", d->width);
-	ok &= add(req, d, "CRTC_H", d->height);
+	ok &= add(req, d, "CRTC_X", d->win_x);
+	ok &= add(req, d, "CRTC_Y", d->win_y);
+	ok &= add(req, d, "CRTC_W", d->win_w);
+	ok &= add(req, d, "CRTC_H", d->win_h);
 	ok &= add(req, d, "hdmi-ring", 1);
 	if (d->has_aspect)
 		ok &= add(req, d, "aspect", d->aspect);
@@ -2940,6 +2950,10 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		reply_add(r, "format          %s (aspect %llu)\n",
 			  prop_enum_name(&d->plane_props, "aspect", d->aspect),
 			  (unsigned long long)d->aspect);
+	reply_add(r, "zoom            window %u,%u %ux%u%s\n", d->win_x,
+		  d->win_y, d->win_w, d->win_h,
+		  d->win_w == d->width && d->win_h == d->height ?
+			  " (the whole panel)" : "");
 	cmd_status_picture_values(r);
 	cmd_status_audio(r, a);
 	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel          ");
@@ -3326,6 +3340,75 @@ static bool cmd_aspect(struct reply *r, struct display *d, const char *text)
 	reply_add(r, "ok aspect %s (%llu)%s\n",
 		  prop_enum_name(&d->plane_props, "aspect", val),
 		  (unsigned long long)val,
+		  d->master ? " -- the picture is rebuilt" : "");
+
+	return true;
+}
+
+/*
+ * "80" (or "full") -> a centred window of that percentage, "x,y,w,h" -> that
+ * rectangle in panel pixels. False for anything that is neither, or that does
+ * not fit the panel with at least WINDOW_MIN pixels on each axis.
+ */
+static bool zoom_parse(const struct display *d, const char *text,
+		       unsigned int *x, unsigned int *y, unsigned int *w,
+		       unsigned int *h)
+{
+	char tail, *end;
+	long v;
+
+	if (sscanf(text, "%u,%u,%u,%u%c", x, y, w, h, &tail) != 4) {
+		if (!strcasecmp(text, "full") || !strcasecmp(text, "off")) {
+			v = 100;
+		} else {
+			errno = 0;
+			v = strtol(text, &end, 10);
+			if (end == text || *end || errno || v < 1 || v > 100)
+				return false;
+		}
+		*w = d->width * (unsigned long)v / 100;
+		*h = d->height * (unsigned long)v / 100;
+		*x = (d->width - *w) / 2;
+		*y = (d->height - *h) / 2;
+	}
+
+	return *w >= WINDOW_MIN && *h >= WINDOW_MIN &&
+	       *x + *w <= d->width && *y + *h <= d->height;
+}
+
+/*
+ * zoom [PERCENT|x,y,w,h]: where on the panel the picture goes. The rectangle
+ * becomes the plane's destination and from there descriptor words 31..34,
+ * which the firmware's window chain scales into (kernel 0133b) - the vendor's
+ * digital zoom by the vendor's own numbers. Read at the next publication, so a
+ * change on a live plane takes the plane down here and lets evaluate() bring
+ * it up again. Returns true when evaluate() has to run.
+ */
+static bool cmd_zoom(struct reply *r, struct display *d, const char *text)
+{
+	unsigned int x, y, w, h;
+
+	if (!text) {
+		reply_add(r, "ok zoom %u,%u %ux%u on panel %ux%u\n", d->win_x,
+			  d->win_y, d->win_w, d->win_h, d->width, d->height);
+		return false;
+	}
+	if (!zoom_parse(d, text, &x, &y, &w, &h)) {
+		reply_fail(r, "zoom takes 1..100 (percent, centred), \"full\", or \"x,y,w,h\" inside the panel %ux%u and at least %u pixels, not \"%s\"",
+			   d->width, d->height, WINDOW_MIN, text);
+		return false;
+	}
+	if (x == d->win_x && y == d->win_y && w == d->win_w && h == d->win_h) {
+		reply_add(r, "ok zoom %u,%u %ux%u, unchanged\n", x, y, w, h);
+		return false;
+	}
+	d->win_x = x; d->win_y = y; d->win_w = w; d->win_h = h;
+	if (d->on && !display_hide(d)) {
+		reply_fail(r, "zoom %u,%u %ux%u saved, but the plane could not be switched off -- it applies from the next picture on",
+			   x, y, w, h);
+		return false;
+	}
+	reply_add(r, "ok zoom %u,%u %ux%u%s\n", x, y, w, h,
 		  d->master ? " -- the picture is rebuilt" : "");
 
 	return true;
@@ -4009,6 +4092,8 @@ static int preset_apply(struct capture *cap, const struct preset *p, char *msg,
  *       brightness = 50             the nine, by their ctl names
  *       ...
  *       aspect = proportional       and how the source is fitted
+ *       zoom = 0,0,1920,1080        and where on the panel it goes (a
+ *                                   percentage is accepted when editing)
  *
  * Written by "h713-tv ctl save" and by nothing else -- **not** by every
  * "ctl set" (plan 113 A.4). Somebody looking for the right sharpness runs the
@@ -4040,6 +4125,8 @@ struct saved_values {
 	unsigned int line[9];
 	char aspect[24];
 	unsigned int aspect_line;
+	char zoom[24];
+	unsigned int zoom_line;
 	bool complained;
 };
 
@@ -4058,6 +4145,7 @@ static void saved_read(struct saved_values *w)
 	w->present = false;
 	w->preset[0] = '\0';
 	w->aspect[0] = '\0';
+	w->zoom[0] = '\0';
 	memset(w->have, 0, sizeof(w->have));
 	if (!w->path)
 		return;
@@ -4097,6 +4185,11 @@ static void saved_read(struct saved_values *w)
 		if (!strcasecmp(key, "aspect")) {
 			snprintf(w->aspect, sizeof(w->aspect), "%s", val);
 			w->aspect_line = n;
+			continue;
+		}
+		if (!strcasecmp(key, "zoom")) {
+			snprintf(w->zoom, sizeof(w->zoom), "%s", val);
+			w->zoom_line = n;
 			continue;
 		}
 		for (i = 0; i < 9; i++)
@@ -4245,6 +4338,11 @@ static bool saved_write(struct saved_values *w, struct capture *cap,
 		if (l + 1 < n)
 			l += (size_t)snprintf(msg + l, n - l, " aspect=%s", a);
 	}
+	fprintf(f, "zoom        = %u,%u,%u,%u\n", d->win_x, d->win_y, d->win_w,
+		d->win_h);
+	if (l + 1 < n)
+		l += (size_t)snprintf(msg + l, n - l, " zoom=%u,%u,%u,%u",
+				      d->win_x, d->win_y, d->win_w, d->win_h);
 	if (fflush(f) || fsync(fileno(f)) || fclose(f)) {
 		snprintf(msg, n, "%s: %s", tmp, strerror(errno));
 		unlink(tmp);
@@ -4272,6 +4370,7 @@ static bool saved_delete(struct saved_values *w, char *msg, size_t n)
 	}
 	w->present = false;
 	memset(w->have, 0, sizeof(w->have));
+	w->zoom[0] = '\0';
 	w->preset[0] = '\0';
 	w->aspect[0] = '\0';
 
@@ -4378,10 +4477,12 @@ static void cmd_status_picture_values(struct reply *r)
 				l += (size_t)snprintf(list + l, sizeof(list) - l,
 						      "%s%s=%d", l ? " " : "",
 						      preset_ctrl[i], saved.value[i]);
-		reply_add(r, "saved           %s: preset=%s %s%s%s\n", saved.path,
+		reply_add(r, "saved           %s: preset=%s %s%s%s%s%s\n", saved.path,
 			  saved.preset[0] ? saved.preset : "-", list,
 			  saved.aspect[0] ? " aspect=" : "",
-			  saved.aspect[0] ? saved.aspect : "");
+			  saved.aspect[0] ? saved.aspect : "",
+			  saved.zoom[0] ? " zoom=" : "",
+			  saved.zoom[0] ? saved.zoom : "");
 	}
 }
 
@@ -4522,11 +4623,14 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        Possible: %s\n"
 		  "                        (from /etc/h713/tvconfig, else compiled in);\n"
 		  "                        drops the saved deviations in memory\n"
-		  "  save [off]            save the current state of the nine controls, the preset\n"
-		  "                        and aspect (%s); \"off\" deletes the file again.\n"
+		  "  save [off]            save the current state of the nine controls, the preset,\n"
+		  "                        aspect and zoom (%s); \"off\" deletes the file again.\n"
 		  "                        Only here is anything written, not on every \"set\"\n"
 		  "  aspect [NAME]         how the source is fitted (auto proportional full 16:9 4:3 zoom);\n"
 		  "                        without NAME: show it. A change rebuilds the picture (~0.5 s)\n"
+		  "  zoom [PCT|x,y,w,h]    where on the panel the picture goes: a percentage centred\n"
+		  "                        (100 = the whole panel, \"full\" likewise) or a rectangle in\n"
+		  "                        panel pixels; without an argument: show it. Rebuilds as aspect does\n"
 		  "  audio [on|off|auto]   audio: forced on, forced silent, or following the picture\n"
 		  "                        (default auto); without an argument: show it\n"
 		  "  volume [0..100]       volume of the codec (DAC Playback Volume, acts on HDMI and\n"
@@ -4586,6 +4690,8 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		cmd_save(r, cap, d, a1);
 	} else if (!strcmp(cmd, "aspect")) {
 		return cmd_aspect(r, d, a1);
+	} else if (!strcmp(cmd, "zoom")) {
+		return cmd_zoom(r, d, a1);
 	} else if (!strcmp(cmd, "audio")) {
 		/*
 		 * The sound is decided here and not by the caller's
@@ -5226,6 +5332,19 @@ int main(int argc, char **argv)
 			aspect_names(&d, names, sizeof(names));
 			warn("%s:%u: the plane does not know aspect = \"%s\" (%s) -- dropped",
 			     saved.path, saved.aspect_line, saved.aspect, names);
+		}
+	}
+	/* and the window, for the same reason and at the same moment */
+	if (saved.present && saved.zoom[0]) {
+		unsigned int x, y, w, hh;
+
+		if (zoom_parse(&d, saved.zoom, &x, &y, &w, &hh)) {
+			d.win_x = x; d.win_y = y; d.win_w = w; d.win_h = hh;
+			info("saved           zoom %u,%u %ux%u", x, y, w, hh);
+		} else {
+			warn("%s:%u: zoom = \"%s\" is not a percentage or a window inside the panel %ux%u -- dropped",
+			     saved.path, saved.zoom_line, saved.zoom, d.width,
+			     d.height);
 		}
 	}
 	capture_subscribe(&cap);
