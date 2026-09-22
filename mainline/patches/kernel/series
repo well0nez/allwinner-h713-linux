@@ -297,6 +297,11 @@
 #    finder searches for belongs to the module behind it (AP3f). Comments and
 #    one word of a refusal, no code, both board DTBs byte-identical)
 0136q-media-h713-hdmirx-the-mode-table-is-thdmi-modelist.patch
+#   (Q9 -- 0136r: 0136m v2. The stale-record cross-check fired before the
+#    unlisted branch, so 1600x900 still read "change in flight" on the device
+#    (dev20). The raster INCAP names is looked up in the table there; a
+#    raster in no record is unlisted whatever the stale record says)
+0136r-media-h713-hdmirx-a-raster-in-no-record-is-unlisted.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
 #
 # --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------

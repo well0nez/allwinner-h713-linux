@@ -1,0 +1,149 @@
+media: h713-hdmirx: a raster in no record is unlisted whatever the record says
+
+0136m gave "the firmware's mode table has no record for this raster" its own
+answer, -ERANGE, and the HY310 run of 22.09.2026 showed that 1600x900 still
+does not reach it (umbau/test-20260915/dev20-20260922.md, row "Q3 0136m
+1600x900"): the status stayed on "change in flight", the ring stayed at the
+previous mode's 1366x768, and the journal had no line at all.
+
+Why it does not reach it. The mode before 1600x900 was 1366x768. The display
+firmware locks a raster it knows, and it leaves its record at the last one it
+locked - so with 1600x900 on the wire the record still reads 1366x768 while
+INCAP +0x874 reads 1600x900. That is exactly the shape of the cross-check
+0136f put in ahead of everything else:
+
+	if (have_sig && !own_record &&
+	    (sig.h_size != width || sig.v_size != height))
+		return -ENOLCK;
+
+and it is right for a mode change in flight, where the record catches up a
+poll or two later. It is wrong here, because the record will never catch up:
+there is no record to catch up to. The test fires first, on every poll, and
+the unlisted branch at the end of the detection is never reached.
+
+What this patch does. Where that cross-check would fire, the raster INCAP
+names is looked up in the firmware's table first, with the frame rate
+measured on the flip pointers - the stale record's rate belongs to the mode
+before it, so it is not used. If the table is loaded and no record carries
+that raster, the answer is h713_hdmirx_unlisted() right there, whatever the
+stale record says. If a record does carry it, the -ENOLCK stays: that is a
+change in flight towards a mode this receiver can lock, and one or two more
+polls settle it.
+
+The lookup is h713_hdmirx_tse_match() on a scratch timing, so it is the same
+rule the locking path applies further down - active size for the records that
+carry one, totals for the rest, and the frame rate unless the record switches
+that check off. Both scan types are tried, because INCAP carries none and the
+stale record's belongs to the other mode; a raster any record carries under
+either scan type stays on the -ENOLCK path. Without the table (no
+allwinner,firmware-tse) nothing changes at all, and nothing changes while the
+flip pointers give fewer than two frames to measure a rate from.
+
+The three cases of the dev19 and dev20 runs, on paper:
+
+  1600x900 after 1366x768. Record 1366x768 stale, INCAP 1600x900, flips
+  ~60 Hz. No record in the 152-record table carries 1600x900 under either
+  scan type, so: -ERANGE, one line "source 1600x900 at 60.00 Hz: in none of
+  the firmware's mode records -- no lock". The line is printed once because
+  h713_hdmirx_unlisted() keys on the INCAP active word and the firmware will
+  never lock this raster, so that word does not move. h713-tv hides the plane
+  and says "not in the firmware's table". Today: silent -ENOLCK for ever.
+
+  1024x768 after 1366x768. Same shape, but 1024x768 IS in the table (it
+  locked on the device, dev20 mode list). The lookup finds it, -ENOLCK as
+  before, and the poll after the record catches up locks the mode. Unchanged.
+
+  720p60 after 1080p60. Same: 1280x720 at 60 is in the table, -ENOLCK for the
+  polls the record lags by, then a lock. Unchanged.
+
+0136i's lock and forget rules are untouched: the new branch sits where the
+old -ENOLCK sat, before h713_hdmirx_ring_geometry() and before the lock
+memory is compared, and it neither sets nor drops a lock.
+
+Source: umbau/test-20260915/dev20-20260922.md (row "Q3 0136m 1600x900" and
+the verdict line for Q3), umbau/work/Q3/REPORT.txt section 1.2.
+Follow-up to 0136m, which stays byte-identical; 0136h, 0136i and 0136k too.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -3519,6 +3519,45 @@ static int h713_hdmirx_unlisted(struct h713_hdmirx *rx, u32 active,
+ 	return -ERANGE;
+ }
+ 
++/*
++ * Does the firmware's table carry the raster INCAP is writing, at all?
++ *
++ * 0136m asks that at the end of the detection, after a timing has been built
++ * and a record has had its chance to match it. The 1600x900 run never got
++ * that far (dev20, row "Q3 0136m 1600x900"): the mode before it was 1366x768,
++ * the firmware left its record at that geometry, and the stale-record test
++ * answered "change in flight" on every poll while INCAP named 1600x900 and
++ * nothing was in flight at all. The record is about the mode before it and
++ * cannot decide that case; INCAP is what the capture is writing now and can.
++ *
++ * The lookup is h713_hdmirx_tse_match() on a scratch timing, so it is the
++ * same rule the locking path uses below - active size or totals per record,
++ * and the frame rate unless the record skips it. Both scan types are tried:
++ * INCAP carries none and the stale record's belongs to the other mode, and a
++ * raster any record carries has to stay on the -ENOLCK path.
++ */
++static bool h713_hdmirx_tse_carries(struct h713_hdmirx *rx, unsigned int width,
++				    unsigned int height, unsigned int htotal,
++				    unsigned int vtotal, unsigned int fps_x100)
++{
++	struct v4l2_dv_timings probe;
++	unsigned int scan;
++
++	for (scan = 0; scan < 2; scan++) {
++		memset(&probe, 0, sizeof(probe));
++		probe.type = V4L2_DV_BT_656_1120;
++		probe.bt.width = width;
++		probe.bt.height = height;
++		probe.bt.interlaced = scan ? V4L2_DV_INTERLACED
++					   : V4L2_DV_PROGRESSIVE;
++		if (h713_hdmirx_tse_match(rx->tse_modes, rx->tse_count, &probe,
++					  htotal, vtotal, fps_x100 * 10))
++			return true;
++	}
++
++	return false;
++}
++
+ /*
+  * What the source is sending, from the three things the ARM can see:
+  *
+@@ -3538,8 +3577,8 @@ static int h713_hdmirx_unlisted(struct h713_hdmirx *rx, u32 active,
+  *    writing right now (doku/nachtlog/E4). The record has no totals, so the
+  *    pixel clock and the blanking come from here -- and the block is the
+  *    cross-check: a record that names another active size than the block is
+- *    a change in flight, and the answer is "not locked yet" (-ENOLCK), not
+- *    one of the two.
++ *    a change in flight, and the answer is "not locked yet" (-ENOLCK) -- or
++ *    "unlisted" where the block's raster is in no record at all (0136r).
+  *
+  * The blanking is known as a whole, not split: neither the record nor the
+  * block carries the sync positions. A preset that matches settles that; a
+@@ -3642,8 +3681,19 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
+ 		return -ENOLCK;
+ 	}
+ 	if (have_sig && !own_record &&
+-	    (sig.h_size != width || sig.v_size != height))
++	    (sig.h_size != width || sig.v_size != height)) {
++		unsigned int seen = 0;
++
++		/* the stale record's rate is the mode before it; measure */
++		if (flips.flips >= 2)
++			seen = div64_u64(100ULL * NSEC_PER_SEC, flips.period_ns);
++		if (rx->tse_count && seen &&
++		    !h713_hdmirx_tse_carries(rx, width, height, htotal, vtotal,
++					     seen))
++			return h713_hdmirx_unlisted(rx, active, seen,
++					"in none of the firmware's mode records");
+ 		return -ENOLCK;
++	}
+ 
+ 	h713_hdmirx_ring_geometry(rx, width, height, rowbyte, ring);
+ 
