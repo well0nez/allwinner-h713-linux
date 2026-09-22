@@ -44,22 +44,37 @@ Gamma and white balance are ordinary CRTC properties, computed from the vendor p
 
 The plane's destination rectangle - the ordinary `CRTC_X`, `CRTC_Y`, `CRTC_W`, `CRTC_H` - is not programmed
 into any register here. It is written into **words 31..34 of the VidDec descriptor** the driver publishes,
-in 1/16 pixel, and the firmware's window chain reads it as its `m_dst_cfg` and recomputes capture, noise
-reduction, processing window, scaler and panel output from it. Words 27..30 next to it are `m_src_cfg` and
-stay the panel; the frame's own geometry lives in words 2..5, separately. Setting `CRTC_W` to 80 % of the
+in the firmware's own coordinate space (below), and its window chain reads them as `m_dst_cfg` and
+recomputes capture, noise reduction, processing window, scaler and panel output from it. Words 27..30 next
+to it are `m_src_cfg` and stay the whole picture unless somebody says otherwise (below); the frame's own
+geometry lives in words 2..5, separately. Setting `CRTC_W` to 80 % of the
 panel is what the vendor's Android stack calls a digital zoom, and it reaches the same firmware code by the
 same numbers.
 
-**What the firmware does with them: it scales into the ring.** Measured on the HY310 on 22.09.2026 with a
-1080p60 source and a window of 192,108 1536x864: the DE picture scaler's window `0x05180034` went
-`0x07800438` -> `0x06000360` (1536x864) and the processing node `0x05140124/28` to 1536/864, while INCAP's
-active geometry `0x06940874` stayed 1920x1080 and its rowbyte `0x06940924` stayed `0x00780078`, 1920 bytes a
-line. The firmware sizes its picture down by the window's share of the panel and writes it into a capture
-ring it does **not** re-lay-out: the fresh picture lies in the ring's top left corner and the rest of the
-ring still holds the last frame that filled it - which is why the first run, with the plane still reading
-the whole ring, put a shrunken picture and a band of stale pixels on the wall instead of four fifths. The
-placement on the panel is the plane's, and the plane reads only that part of the ring (`SRC_W`/`SRC_H`
-follow the window, kernel 0133c).
+**The two windows, and what each one moves.** Words 27..30 (`m_src_cfg`) are the window the firmware reads
+out of its capture; words 31..34 (`m_dst_cfg`) are the window it puts the result into. The vendor pins the
+first to the whole space and writes its video layer's display frame into the second, and its own
+"zoom 80 %" is the other way round: a shrunk capture window with the display window left whole, which the
+scaler then blows back up to the full panel (`AP3` section 2.2). So a smaller source window is a zoom
+**in** and a smaller destination window a zoom **out**. Both can be driven without touching the plane at
+all - the AFBD module takes `src_window` and `dst_window` as `x,y,w,h` in panel pixels, empty means the
+whole picture and the whole panel, and a write republishes the record on the spot (kernel `0133e`). Every
+publication logs the eight words.
+
+**What was measured on 22.09.2026, and what it corrected.** With the destination window at 192,108
+1536x864 the DE picture scaler's window `0x05180034` went `0x07800438` -> `0x06000360` and the processing
+node `0x05140124/28` to 1536/864, while INCAP's active geometry `0x06940874` stayed 1920x1080 and its
+rowbyte `0x06940924` stayed `0x00780078`. So the firmware does re-run its window chain for these words.
+What it does **not** do is scale into the capture ring, which an earlier reading of that run assumed: with
+a window of 480,270 960x540 the wall carried the source's top-left quarter at 1:1, and after the test
+pattern was closed the live desktop's top-left corner at 1:1, so the ring goes on receiving the whole
+picture and the registers that followed belong to the display side of the chain. The other direction is
+closed too: with the plane's own rectangle at 192,108 1536x864 and the full ring as its source the wall was
+smeared, and stayed smeared after the DE window had been written back to 1920x1080 by hand - this
+composition block does not downscale a 1920x1080 NV16 ring. The plane may still be given a source rectangle
+smaller than its framebuffer (kernel `0133c`), but that is a crop of the ring, not a zoom. Whether the
+descriptor's windows alone put four fifths of the picture on a black panel is open; nothing on the wall has
+answered it yet.
 
 **The V4L2 format does not move with a window.** The ring geometry (`0136f`) comes from the rowbyte and
 INCAP active, and neither moves: the ring is still 1920x1080 with a 1920-byte pitch, which is what it really
@@ -74,10 +89,11 @@ for a window change; the RPC is the fallback if a board ever turns out not to re
 a republished record. Source (reverse engineering of the stock firmware): `umbau/re-apps/AP3c` sections 3-5,
 `AP3e` section 2, `AP3` section 2.
 
-**On a 1920x1080 panel the two agree exactly.** The vendor scales the rectangle into a fixed 30720x17280
-space (`30720 * x / panel_width`); this driver writes 1/16 pixel of the real panel (`x * 16`), which is the
-reading measured through our own record. For 1920x1080 they are the same number. On a panel of another size
-they are not, and the 1/16-pixel reading is the one that was measured here.
+**The space the words live in.** They are fractions of the firmware's fixed 30720x17280 space, not 1/16 of
+a pixel: `30720 * x / panel_width` and `17280 * y / panel_height` (`AP3c` 3.4). On a 1920x1080 panel the two
+readings are the same number, which is why this driver could not tell them apart for a long time; on a
+1280x720 panel they are not, and "the panel in 1/16 pixel" reads there as two thirds of the space - the
+853x480 ring the HY300 Pro's owner measured (kernel `0133d`).
 
 **The stale-window caveat.** The scaler's own window register, `0x05180034`, is rewritten only when the
 firmware rebuilds its window chain. It has been found standing at an old geometry on the HY310 (dev17,
