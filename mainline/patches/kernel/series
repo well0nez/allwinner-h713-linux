@@ -284,6 +284,11 @@
 #     homing standardmaessig aus, Knoten aktiv. Bedienung: userspace/h713-focus.
 0153-misc-hy310-motor-pad-bias-des-endschalters-nicht-mehr-erzwingen.patch
 0154-misc-hy310-motor-rohpegel-des-endschalters-in-motor-limit-zeigen.patch
+#     0154a: a read-only motor_state in stock's own packed layout
+#     ("%d%d.%02d.%d%d\n" = edge_up edge_dn step_cur step_inc%10 limiter), so a
+#     vendor-side caller can read the state at all; motor_ctrl and motor_limit
+#     keep their output byte for byte (Q6, 22.09., AP1 6 / AP1b 4)
+0154a-misc-hy310-motor-motor-state-in-the-stock-read-back-layout.patch
 0156-misc-hy310-motor-homing-standardmaessig-aus.patch
 0157-arm64-dts-h713-den-motorknoten-aktivieren.patch
 #

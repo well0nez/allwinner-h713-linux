@@ -1,0 +1,103 @@
+misc: hy310-motor: a read-only motor_state in the stock read-back layout
+
+Our motor_ctrl_show prints "step_cur step_inc in_range". Stock's
+motor_ctrl_show (0xc05d6a48) prints one packed string instead,
+
+	"%d%d.%02d.%d%d\n"	e.g. "00.18.01"
+
+with edge_Up, edge_Dn, step_cur, step_inc % 10 and the limiter, and the
+vendor autofocus parses exactly that: getMotorValue (0x0002fee0 in
+libduRYXtp.so) wants at least seven bytes and two '.' separators, takes
+buf[0] and buf[1] as the two edge flags and the decimal between the dots as
+the position. Fed our line it finds no dot, logs "CPP: %s data error" and
+keeps its old values - so a vendor-side caller starts in an arbitrary
+direction and never notices an edge (AP1 section 6).
+
+AP1b section 4 read the layout off the encoded sprintf argument slots
+(E58D3000, E58D1004, E58D3008 at 0xc05d6a58..0xc05d6ac8, where Hex-Rays
+mis-assigns them) and corrected one field against AP1: the fifth number is
+the limit switch, not the last direction. The app calls it g_motor_last_dir;
+the driver writes motor_limiter_status() there. Stock does keep a real last
+direction (g_last_dir 0xc146b0e0) and never prints it - neither does this.
+
+All five numbers exist here already: motor_ctrl has three of them and
+motor_limit has had the two edge flags since 0154. Nothing is invented, only
+laid out. It is a second, read-only attribute rather than a change to
+motor_ctrl_show, so h713-focus, docs/tools/h713-focus.md and every note
+written against the current output stay correct and the HY310's behaviour
+does not change at all - the driver gains one file in sysfs and nothing else.
+
+Not bug-compatible in one place, deliberately: the step counter is signed,
+so a mechanism that has passed the lower edge reads "00.-207.01", wider than
+the two digits "%02d" asks for. Stock's counter is a signed int as well and
+has the same property; clamping it here would make the field something the
+vendor parser does not expect.
+
+cmd 7 (goto step) is the other half of that follow-up list (AP1b follow-up 2)
+and is deliberately NOT touched: 0112 already answers it with -EOPNOTSUPP,
+and AP1b section 6d confirms from the vendor kernel image what 0112 argued
+from the library side - stock's motor_goto_step (0xc05d7cbc) cleans the
+queue, stores g_goto_step and kicks the work item, and nothing ever consumes
+or clears it. AP1b's own "ours is still a TODO" describes the state before
+0112, not the state of this tree.
+
+Source: umbau/re-apps/AP1b/REPORT.txt sections 4 and 6, follow-up 1;
+umbau/re-apps/AP1/REPORT.txt section 6, follow-up 1.
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -69,6 +69,8 @@
+  *	cmd 7    goto step -- see motor_goto_step below, not implemented
+  *	cmd 8/9  move up/down, clears autofocus (sleeping timing); this is the
+  *	         path for manual control
++ * Read-back: "step_cur step_inc in_range" in motor_ctrl, and stock's own
++ * packed layout in motor_state (see there).
+  *
+  * DTS binding: compatible = "allwinner,hy310-focus-motor", "motor-control"
+  */
+@@ -616,6 +618,38 @@
+ }
+ static DEVICE_ATTR_RW(motor_ctrl);
+ 
++/*
++ * motor_state - the stock read-back layout, read-only, beside the others.
++ *
++ * Stock's motor_ctrl_show @ c05d6a48 packs five fields into one string,
++ *	"%d%d.%02d.%d%d\n"   edge_up edge_dn . step_cur . step_inc%10 limiter
++ * and the vendor autofocus parses exactly that (getMotorValue @ 0x2fee0 in
++ * libduRYXtp.so: at least seven bytes, two dots). Fed our "step_cur step_inc
++ * in_range" it finds no dot, logs "data error" and keeps its previous values,
++ * so it would search in an arbitrary direction and never see an edge
++ * (AP1 section 6, AP1b section 4). Every one of the five numbers already
++ * exists here; only the layout was missing, so only the layout is added.
++ * motor_ctrl and motor_limit keep their output byte for byte.
++ *
++ * The last field is the limiter, not a direction: the app calls it last_dir,
++ * the driver writes motor_limiter_status() there (AP1b section 4, read off
++ * the sprintf argument slots at c05d6a58..c05d6ac8). A negative step_cur
++ * prints wider than the two digits "%02d" asks for, here as on stock.
++ */
++static ssize_t motor_state_show(struct device *dev,
++				struct device_attribute *attr, char *buf)
++{
++	struct hy310_motor *m = g_motor;
++
++	if (!m)
++		return -ENODEV;
++
++	return sysfs_emit(buf, "%d%d.%02d.%d%d\n", !!m->edge_up, !!m->edge_dn,
++			  m->step_cur, m->step_inc % 10,
++			  motor_limiter_status(m, 0) ? 1 : 0);
++}
++static DEVICE_ATTR_RO(motor_state);
++
+ /* motor_ctrl_no_limit — bypass limit checking */
+ static ssize_t motor_ctrl_no_limit_show(struct device *dev,
+ 					struct device_attribute *attr,
+@@ -796,6 +830,7 @@
+ 
+ static struct attribute *motor_attrs[] = {
+ 	&dev_attr_motor_ctrl.attr,
++	&dev_attr_motor_state.attr,
+ 	&dev_attr_motor_ctrl_no_limit.attr,
+ 	&dev_attr_motor_limit.attr,
+ 	&dev_attr_motor_step_delay.attr,

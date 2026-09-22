@@ -24,7 +24,7 @@ two projects landing on the same chip and is grouped by **origin and topic**, no
 | 8 | pinctrl | EINT mux for the power key |
 | 9 | board-mgr | fan tacho by IRQ, an unrelated pinctrl IRQ-bank fix, the NTC-phantom fix |
 | 10 | Crypto Engine | binding, devicetree, a vendor-format measurement module |
-| 11 | Focus motor, second pass | the limit switch is a range watcher, not an end stop |
+| 11 | Focus motor, second pass | the limit switch is a range watcher, not an end stop; `0154a` adds a read-only `motor_state` in the stock read-back layout beside the existing attributes |
 | 12 | Wi-Fi | the power-enable line in the devicetree |
 | 13 | Release | strips debug facilities from the shipping defconfig |
 | 14 | Protection | the fan-stall poweroff, armed again (`0159`); `0159a` holds the fan rail HIGH from the GPIO request on and logs the first RPM reading of a boot |
@@ -40,7 +40,7 @@ own projector work, dated in `doku/` by section.
 
 A patch keeps the number it was given when it was written. When a later fix targets an already-numbered
 patch, it becomes a lettered addendum - `0005a`, `0013a`, `0014a` - `0014f`, `0024a` - `0024d`, `0078a`,
-`0091a` - `0091c`, `0093a`, `0096a`, `0092a`, `0133a`, `0133b`, `0135b`, `0136a` - `0136k`, `0159a`, `0161a`, `0161b` - placed **directly behind its original**, not at the end of the
+`0091a` - `0091c`, `0093a`, `0096a`, `0092a`, `0133a`, `0133b`, `0135b`, `0136a` - `0136k`, `0154a`, `0159a`, `0161a`, `0161b` - placed **directly behind its original**, not at the end of the
 series, because the patches after it were written against the state the
 original plus its addenda leaves behind: `0024a` fixes a register and IRQ number `0024` got wrong, `0024b`
 renames the driver it introduced, and everything from `0025` on assumes both are already applied. Moving an
