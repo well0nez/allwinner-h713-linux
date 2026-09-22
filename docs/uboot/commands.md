@@ -122,6 +122,35 @@ The HY310's DE block presets `hsync+hbp = 84` and `vsync+vbp = 16`, which the pa
 rewrites to 132 and 25 from the row. A readback that disagrees with the row accuses the row, not
 the panel.
 
+> **A prompt session that has run `h713_disp init` ends with a power cycle, never with `boot`.**
+> U-Boot warns ("Power-cycle before another init") and `boot` runs the display init a second time;
+> the kernel's AFBD probe then refuses the handoff state it finds, and says which words are wrong -
+> `CTRL 03001900 (expected 03001901), VIDEO_CTRL 00000000 (expected 03000010)` (patch `0133a`).
+> The result is no display, no `/dev/video3`, `h713-tv` inactive and a black wall until the next
+> power cycle. That happened on 22.09.2026, and the refusal was the patch working as designed.
+> Nothing is lost by pulling the plug instead: the boot chain's own run prints the three range lines
+> too, so they are in every boot log already.
+
+### What the HY310 reads back
+
+Read at the prompt on 22.09.2026 (`umbau/test-20260915/dev20-20260922.md`, Q8 F2/F3 and Q7 F3),
+U-Boot `2026.07-rc5-g946d26c05967`. This is the reference another board's readback is held against:
+
+| Command | HY310 | What it is |
+|---|---|---|
+| `md 0x0524c01c 1` | `79860601` | the plane gate, bit 0 set, as the DE block leaves it |
+| `md 0x051c0180 4` | `006707e7 00190451 084f045f a4008440` | the four origin words above |
+| `md 0x051c00b0 6` | `00000200 00000000 00000038 07800067 04380019 c0000000` | the res_type 1/6/7/8 window |
+| `md 0x05140050 1` | `00000000` | the vsync-delay register |
+| `md 0x05800000 1` | `01e0a40c` | LVDS control; `lvds_bitsel` in `[4:3]` is 1 |
+| `md 0x0528008c 1` | `37` | the layer X origin = 55. The vendor file's record holds `0x73` = 115 and the panel patch table rewrites it; 55 is `max(hsync + hbp - 77, 0)`, so this field is derived rather than measured (`docs/tools/h713-extract.md`) |
+| `md 0x058c0018 1` | `c8d0362f` | the spread-spectrum word |
+| `md 0x05280084 1` | `04380780` | panel height and width; the patch entry writes `[31:16]` |
+
+`h713_disp init 0x30 logo` printed the three ranges the equivalence proof asserts in the same
+session: prologue `0x01ac..0x047c`, timing `0x0de4..0x1004`, de `0x214c..0x24bc`, and 19 panel
+fields patched of which 12 are guarded by the record mask.
+
 ## h713_i2c - bit-banged I2C bus scan (diagnostic)
 
 Scans TWI1's pins (PH2/PH3 by default) by bit-banging rather than bringing up a real I2C driver for a
