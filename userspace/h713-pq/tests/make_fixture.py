@@ -43,15 +43,17 @@ SECTIONS = [
     ("DTV", FIVE), ("VIDEODEC", FIVE),
 ]
 
-# 25 Picture_Mode rows over five tvin, arranged so that the ambiguity the tests
-# describe comes out: tvin 0 -> the HDMI/VGA sections, tvin 1 and 4 -> ATV/CVBS,
-# tvin 2 and 3 -> DTV/VIDEODEC.
+# 25 Picture_Mode rows over five tvin. tvin is TvSourceType (AP3d 2), so the
+# rows follow it: 0 HDMI, 1 CVBS, 2 ATV, 3 DTV, 4 VIDEODEC -- and the mode sets
+# are the ones those sections have. Until 22.09.2026 this table had 2 and 4
+# swapped, which produced the "ambiguous" tvin mapping the old test asserted;
+# AP3d 2 shows the device's own rows do not look like that.
 DB_ROWS = [
     (0, ["standard", "cinema", "vivid", "game", "computer", "hdr", "custom"]),
     (1, FOUR),
-    (2, FIVE),
+    (2, FOUR),
     (3, FIVE),
-    (4, FOUR),
+    (4, FIVE),
 ]
 
 CURVES = {
@@ -120,13 +122,24 @@ def write_config_xml(p):
         '</pqcontrol>\n', encoding="utf-8")
 
 
+#: The stored "custom" picture mode is a node per source, not a row of
+#: tvpq.db (AP3d 3): custom_hdmi<port> / custom_vga<port> for TvSourceType 0
+#: and 5, custom_cvbs / _atv / _dtv / _videodec for 1..4. The device's own file
+#: carries custom_videodec, custom_hdmi1, custom_hdmi2 and custom_cvbs.
+CUSTOM_NODES = ("custom_hdmi1", "custom_videodec")
+
+
 def write_custom_xml(p):
+    attributes = " ".join('%s="%d"' % (c, v) for c, v
+                          in zip(INI_ORDER, MODES["custom"]))
+    nodes = "".join("  <%s %s/>\n" % (n, attributes) for n in CUSTOM_NODES)
     p.write_text(
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<pqcontrol>\n'
         '  <current_source_type tvin="0"/>\n'
         '  <current_mode picture_mode="standard"/>\n'
         '  <current_data brightness="50" contrast="50" saturation="50"/>\n'
+        + nodes +
         '</pqcontrol>\n', encoding="utf-8")
 
 

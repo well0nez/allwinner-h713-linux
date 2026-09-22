@@ -175,6 +175,8 @@ class DataSet:
     xml_defaults: dict[str, str] = field(default_factory=dict)
     xml_current: dict[str, str] = field(default_factory=dict)
     xml_current_mode: dict[str, str] = field(default_factory=dict)
+    #: The stored picture mode "custom", one node per source (AP3d 3).
+    xml_custom: dict[str, dict[str, str]] = field(default_factory=dict)
     xml_source_tvin: int | None = None
     # portmap.cfg
     portmap: list[tuple[int, int, str]] = field(default_factory=list)
@@ -315,6 +317,12 @@ def read_custom_xml(path: Path, data: DataSet) -> None:
     mode = root.find("current_mode")
     if mode is not None:
         data.xml_current_mode = dict(mode.attrib)
+    # custom_<source> / custom_hdmi<n> / custom_vga<n>: the "custom" picture
+    # mode, stored per source -- AP3d 3 and AP3d 8c, which names this as one
+    # of the gaps of this reader.
+    for node in root:
+        if node.tag.startswith("custom_"):
+            data.xml_custom[node.tag] = dict(node.attrib)
 
 
 def read_portmap(path: Path, data: DataSet) -> None:

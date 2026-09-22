@@ -142,12 +142,20 @@ PRESET_CONTROLS = ("brightness", "contrast", "saturation", "hue", "sharpness",
 #: the record maps the INI line completely.
 EXTRA_CONTROLS = ("colortemperature", "gamma", "backlight", "dynamic_backlight")
 
+#: What a stored "custom" node has to carry before it is used as a preset --
+#: the nine of a preset plus the four extras, i.e. a whole INI line.
+INI_COLUMNS_REQUIRED = PRESET_CONTROLS + EXTRA_CONTROLS
+
 # --------------------------------------------------------------------------
 # Picture mode number of the firmware
 # --------------------------------------------------------------------------
-# This number stands in NONE of the eight vendor files: tvpq.db keeps its own
-# counting in Picture_Mode.mode (0 standard, 1 cinema, 2 vivid, 3 game,
-# 4 computer, 5 hdr, 6 custom), and the ARM library libvideo.so a third one.
+# This number stands in none of the eight vendor FILES, but there are three
+# more numberings for the same names and they are all in binaries: tvpq.db
+# counts its own rows in Picture_Mode.mode (0 standard, 1 cinema, 2 vivid,
+# 3 game, 4 computer, 5 hdr, 6 custom), libtvpq keeps PQ_PICTURE_MODE (below)
+# and libvideo.so a third one. Correction to the older wording of this
+# comment, from AP3d 8e: "the picture-mode number ... stands in libtvpq"
+# means that map, not this one.
 # For THal_Vp_SetPictureMode -- and thus for the driver's control
 # "picture_mode" -- only the MIPS firmware counts:
 #
@@ -169,6 +177,19 @@ FIRMWARE_MODE = {
     "computer": 6,
     "cinema": 7,
     "hdr": 12,
+}
+
+#: libtvpq's own enum, the static map<string,PictureMode> at dword_54B28 built
+#: by _GLOBAL__sub_I_PQPictureMode.cpp@0x36770 (AP3d 3). It is **not** the
+#: argument of THal_Vp_SetPictureMode -- it is what the HIDL calls and the XML
+#: nodes carry -- and it is here so that the two are never confused again.
+#: Slot 15 could not be read (a computed address), 18..20 are unused.
+PQ_PICTURE_MODE = {
+    "standard": 0, "cinema": 1, "vivid": 2, "sports": 3, "game": 4,
+    "bright": 5, "soft": 6, "computer": 7, "hdr": 8, "calibrated": 9,
+    "calibrateddark": 10, "home": 11, "shop": 12, "animation": 13,
+    "monitor": 14, "samsung": 16, "energy_saving": 17, "custom": 21,
+    "dynamic": 22,
 }
 
 #: energy_saving and custom have **no** firmware mode of their own (S14
@@ -692,15 +713,23 @@ def modes(data: sources.DataSet, input_name: str) -> list[str]:
 def preset(data: sources.DataSet, input_name: str, mode: str) -> sources.PictureMode:
     """User values of one picture mode.
 
-    The first source is pq_picturemode.ini -- only there are the inputs named.
-    If the INI does not know the mode (e.g. "custom"), tvpq.db::Picture_Mode is
-    used instead, over the column ``name``.
+    The first source is pq_picturemode.ini -- only there are the inputs named,
+    and it is what the vendor reads at run time (AP3d 3).
+    If the INI does not know the mode, the order is the vendor's own: "custom"
+    is a node of pqcontrol_custom_setting.xml, one per source (AP3d 3), and
+    only after that comes tvpq.db::Picture_Mode over the column ``name``,
+    which is the factory-reset source.
     """
     if input_name not in data.presets:
         raise KeyError(f"unknown input: {input_name}")
     ini_modes = data.presets[input_name]
     if mode in ini_modes:
         return ini_modes[mode]
+    node = custom_node(input_name) if mode == "custom" else None
+    stored = stored_values(data.xml_custom.get(node or ""))
+    if stored:
+        return sources.PictureMode(input_name, mode, stored,
+                                   f"{sources.FILE_CUSTOM_XML} (<{node}>)")
     hits = [z for z in data.db_picture_mode if z.name == mode]
     if hits:
         values = dict(hits[0].values)
@@ -709,13 +738,34 @@ def preset(data: sources.DataSet, input_name: str, mode: str) -> sources.Picture
     raise KeyError(f"unknown picture mode for {input_name}: {mode}")
 
 
-def db_crosscheck(data: sources.DataSet, pm: sources.PictureMode) -> str:
-    """Cross-check INI against tvpq.db over the mode name.
+def stored_values(node: dict | None) -> dict | None:
+    """The attributes of a custom_<source> node, or None if it is incomplete.
 
-    The database numbers the inputs (column ``tvin``), the INI names them. The
-    numbering cannot be resolved from the shipped files (see tvin_mapping),
-    therefore the comparison goes over the mode name -- and checks whether the
-    database carries the same values for that name across all tvin at all.
+    ``blackextenstion`` is the vendor's own spelling and is accepted as well;
+    sources.py normalises it everywhere else (AP3d 2, PQPictureInfo).
+    """
+    if not node:
+        return None
+    out = {}
+    for control in INI_COLUMNS_REQUIRED:
+        raw = node.get(control)
+        if raw is None and control == "blackextension":
+            raw = node.get("blackextenstion")
+        if raw is None:
+            return None
+        out[control] = int(raw)
+    return out
+
+
+def db_crosscheck(data: sources.DataSet, pm: sources.PictureMode) -> str:
+    """Check the INI against tvpq.db over the mode name.
+
+    The database numbers the inputs (``tvin`` = TvSourceType, see
+    tvin_mapping), the INI names them. The comparison still goes over the mode
+    name, because that is what makes a disagreement readable -- and the
+    database is not a second live source: it is what a factory reset falls
+    back to, while pq_picturemode.ini is what the vendor reads at run time
+    (AP3d 3, PQPictureMode::getPictureMode@0x3485C against PresetDataManager).
     """
     rows = [z for z in data.db_picture_mode if z.name == pm.name]
     if not rows:
@@ -923,32 +973,69 @@ def _color_temp_note(data: sources.DataSet, group: str | None, index: int) -> st
 
 
 # --------------------------------------------------------------------------
-# tvin numbering: what the data give and what they do not
+# tvin: resolved (AP3d section 2, the question of AP3d section 8a)
 # --------------------------------------------------------------------------
+#: ``tvpq.db``'s ``tvin`` column is **TvSourceType**, not TvSourceID. That
+#: closes the open question this module used to carry. Two independent proofs
+#: in AP3d 2: UpdateDataManager::UpdateDataManager@0x2D99C builds a
+#: map<SourceType,string> with 0 mode_hdmi, 1 mode_cvbs, 2 mode_atv,
+#: 3 mode_dtv, 4 mode_videodec, 5 mode_vga, and getCurrentMode@0x30924 reads
+#: that index out of the XML attribute current_source_type/tvin; and the
+#: device's own XML has current_source_type tvin="4" next to current_mode
+#: mode_videodec="standard".
+TV_SOURCE_TYPE = ("HDMI", "CVBS", "ATV", "DTV", "VIDEODEC", "VGA")
 
-def tvin_mapping(data: sources.DataSet) -> list[tuple[int, list[str], list[str]]]:
-    """Which inputs can a tvin number stand for?
+#: Which sections of pq_picturemode.ini belong to one TvSourceType. HDMI and
+#: VGA are ported, the other four are not (AP3d 3, TvFileTagToHdmi@0x30214).
+SOURCE_SECTIONS = {"HDMI": ("HDMI1", "HDMI2", "HDMI3"), "CVBS": ("CVBS",),
+                   "ATV": ("ATV",), "DTV": ("DTV",), "VIDEODEC": ("VIDEODEC",),
+                   "VGA": ("VGA1", "VGA2", "VGA3")}
 
-    The only thing that can be evaluated is the set of picture modes: the
-    database carries per ``tvin`` only the modes that input has. The mode name
-    stands in the column ``name``, so the set of modes per tvin can be compared
-    with the sections of pq_picturemode.ini. Ambiguities stay -- they are not
-    guessed.
+
+def source_of(input_name: str) -> str | None:
+    """INI section -> TvSourceType name."""
+    for source, sections in SOURCE_SECTIONS.items():
+        if input_name in sections:
+            return source
+    return None
+
+
+def custom_node(input_name: str) -> str | None:
+    """Where the picture mode "custom" of this input really lives.
+
+    Not a row of tvpq.db that gets overwritten but a node of its own in
+    pqcontrol_custom_setting.xml, one per source (AP3d 3):
+    UpdateDataManager::parseFileTagBySourceType@0x2EC14 gives custom_cvbs,
+    custom_atv, custom_dtv, custom_videodec for TvSourceType 1..4, and HDMI(0)
+    and VGA(5) go through TvFileTagToHdmi@0x30214, which appends the port.
     """
-    out: list[tuple[int, list[str], list[str]]] = []
-    ini_sets = {sect: set(m) for sect, m in data.preset_order.items()}
-    tvins = sorted({z.tvin for z in data.db_picture_mode})
-    for tvin in tvins:
+    source = source_of(input_name)
+    if source is None:
+        return None
+    if source in ("HDMI", "VGA"):
+        return "custom_%s%s" % (source.lower(), input_name[len(source):])
+    return "custom_" + source.lower()
+
+
+def tvin_mapping(data: sources.DataSet) -> list:
+    """(tvin, TvSourceType, modes of the rows, its INI sections, what differs).
+
+    The set of picture modes per tvin stays as the check it always was: it has
+    to agree with the sections of that source, and where it does not the row
+    says so instead of the whole mapping being called unresolvable.
+    """
+    out = []
+    for tvin in sorted({z.tvin for z in data.db_picture_mode}):
         names = sorted({z.name for z in data.db_picture_mode if z.tvin == tvin})
-        candidates = []
-        for sect, members in sorted(ini_sets.items()):
-            # energy_saving is missing from the database throughout; likewise
-            # the database knows "custom", which has no INI section. So the
-            # comparison uses both sets of mode names.
-            common = members | set(names)
-            missing_in_ini = set(names) - members - {"custom"}
-            missing_in_db = members - set(names) - {"energy_saving"}
-            if not missing_in_ini and not missing_in_db and common:
-                candidates.append(sect)
-        out.append((tvin, names, candidates))
+        source = TV_SOURCE_TYPE[tvin] if tvin < len(TV_SOURCE_TYPE) else "?"
+        sections = [s for s in SOURCE_SECTIONS.get(source, ())
+                    if s in data.preset_order]
+        # energy_saving is missing from the database throughout, and "custom"
+        # has no INI section of its own (AP3d 3) -- neither is a disagreement.
+        ini = set()
+        for s in sections:
+            ini |= set(data.preset_order[s])
+        gap = sorted((set(names) - ini - {"custom"})
+                     | (ini - set(names) - {"energy_saving"}))
+        out.append((tvin, source, names, sections, gap))
     return out

@@ -89,16 +89,33 @@ def print_list(data: sources.DataSet) -> None:
               + ("  -- 0 throughout, unusable as a curve" if max(gp) == 0 else ""))
     print()
 
-    print("tvin numbering of the database against the named INI sections")
+    print("tvin numbering of the database -- tvin is TvSourceType (AP3d 2)")
     rows = []
-    for tvin, names, candidates in model.tvin_mapping(data):
-        rows.append([str(tvin), ", ".join(names),
-                     ", ".join(candidates) if candidates else "(no match)"])
-    print(table(["tvin", "Picture modes of the rows", "possible inputs"], rows))
-    print("  The mapping tvin -> input cannot be resolved unambiguously from "
-          "the shipped files.")
-    print("  h713-pq therefore computes over the named INI sections and uses "
-          "the database only as a cross-check.")
+    for tvin, source, names, sections, gap in model.tvin_mapping(data):
+        rows.append([str(tvin), source, ", ".join(sections) or "-",
+                     ", ".join(names),
+                     ", ".join(gap) if gap else "agrees"])
+    print(table(["tvin", "TvSourceType", "INI sections", "Picture modes of "
+                 "the rows", "Difference"], rows))
+    print("  0 HDMI, 1 CVBS, 2 ATV, 3 DTV, 4 VIDEODEC, 5 VGA -- "
+          "UpdateDataManager@0x2D99C and the")
+    print("  device's own XML (current_source_type tvin=4 next to "
+          "mode_videodec). h713-pq still")
+    print("  computes over the named INI sections: that is the live source, "
+          "the database is what")
+    print("  a factory reset falls back to (AP3d 3, PQControl::"
+          "resetAllSettings@0x22D10).")
+    print()
+
+    print("Picture mode \"custom\" per source (AP3d 3 -- NOT a row of tvpq.db)")
+    rows = []
+    for e in model.inputs(data):
+        node = model.custom_node(e)
+        if node:
+            rows.append([e, model.source_of(e) or "-", node,
+                         "present" if node in data.xml_custom else "not in "
+                         "this file"])
+    print(table(["Input", "TvSourceType", "XML node", "State"], rows))
     print()
 
     print("Last set on stock (pqcontrol_custom_setting.xml)")

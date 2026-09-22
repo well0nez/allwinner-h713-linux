@@ -304,9 +304,24 @@ class TestChain(unittest.TestCase):
         self.assertIn("0x0500123C", by_control["dci"].target)
         self.assertIn("0x05001248", by_control["snr"].target)
 
-    def test_custom_comes_from_the_database(self):
+    def test_custom_comes_from_its_own_xml_node(self):
+        """Changed 22.09.2026, AP3d 3.
+
+        Before: "custom" was looked up in tvpq.db::Picture_Mode by name. That
+        is the factory-reset source. The live one is a node of its own per
+        source in pqcontrol_custom_setting.xml -- parseFileTagBySourceType
+        @0x2EC14 plus TvFileTagToHdmi@0x30214 for the ported sources. The
+        database stays as the fallback for a source that has no node yet.
+        """
+        self.assertEqual(model.custom_node("HDMI1"), "custom_hdmi1")
+        self.assertEqual(model.custom_node("VGA3"), "custom_vga3")
+        self.assertEqual(model.custom_node("CVBS"), "custom_cvbs")
+        self.assertEqual(model.custom_node("VIDEODEC"), "custom_videodec")
         pm = model.preset(DATA, "HDMI1", "custom")
-        self.assertIn("tvpq.db", pm.origin)
+        self.assertIn("custom_hdmi1", pm.origin)
+        self.assertIn(sources.FILE_CUSTOM_XML, pm.origin)
+        # ATV has no node in this file, so the database still answers.
+        self.assertIn("tvpq.db", model.preset(DATA, "ATV", "custom").origin)
 
     def test_vga_has_no_factory_curve_but_an_rpc_argument(self):
         """Before: without a factory curve no gain (assertIsNone).
@@ -326,14 +341,33 @@ class TestChain(unittest.TestCase):
         self.assertIsNone(sat.curve_value)
         self.assertIn("no curve group", sat.note)
 
-    def test_tvin_mapping_stays_ambiguous(self):
-        z = dict((tvin, cand) for tvin, _, cand in model.tvin_mapping(DATA))
-        self.assertEqual(set(z), {0, 1, 2, 3, 4})
-        self.assertIn("HDMI1", z[0])          # tvin 0 carries computer + hdr
-        self.assertNotIn("CVBS", z[0])
-        self.assertGreater(len(z[0]), 1)      # not unambiguous -- not guessed
-        self.assertEqual(set(z[1]), {"ATV", "CVBS"})
-        self.assertEqual(set(z[3]), {"DTV", "VIDEODEC"})
+    def test_tvin_is_tvsourcetype(self):
+        """Changed 22.09.2026, AP3d 2 (the question of AP3d 8a).
+
+        Before: the mapping was called unresolvable and the test asserted the
+        ambiguity. AP3d resolves it -- UpdateDataManager@0x2D99C builds
+        map<SourceType,string> {0 mode_hdmi, 1 mode_cvbs, 2 mode_atv,
+        3 mode_dtv, 4 mode_videodec, 5 mode_vga} and the device's own XML has
+        current_source_type tvin="4" beside current_mode mode_videodec.
+        """
+        rows = {tvin: (source, sections, gap)
+                for tvin, source, _names, sections, gap in model.tvin_mapping(DATA)}
+        self.assertEqual(set(rows), {0, 1, 2, 3, 4})
+        self.assertEqual([rows[t][0] for t in range(5)],
+                         ["HDMI", "CVBS", "ATV", "DTV", "VIDEODEC"])
+        self.assertEqual(rows[0][1], ["HDMI1", "HDMI2", "HDMI3"])
+        self.assertEqual(rows[4][1], ["VIDEODEC"])
+        for tvin in range(5):
+            self.assertEqual(rows[tvin][2], [], f"tvin {tvin} disagrees")
+        self.assertEqual(model.source_of("HDMI2"), "HDMI")
+        self.assertIsNone(model.source_of("NOSUCH"))
+
+    def test_the_two_picture_mode_numberings_stay_apart(self):
+        # AP3d 3/8e: libtvpq's own enum is not the firmware's argument.
+        self.assertEqual(model.firmware_mode("standard"), (1, True))
+        self.assertEqual(model.PQ_PICTURE_MODE["standard"], 0)
+        self.assertEqual(model.PQ_PICTURE_MODE["custom"], 21)
+        self.assertNotIn("custom", model.FIRMWARE_MODE)
 
 
 # ---------------------------------------------------------------------------
