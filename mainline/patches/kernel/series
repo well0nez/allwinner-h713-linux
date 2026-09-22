@@ -142,6 +142,11 @@
 #    re-reads the scratch wait for the handler's effect instead of for the
 #    classifier, and a changed mask ends with a hotplug pulse, Q13)
 0091e-soc-sunxi-h713-arisc-wait-for-the-handler-s-effect.patch
+#   (follow-up well0nez, Q16 -- 0091..0091e stay byte-identical; the EDID
+#    fragment upload gets the same effect wait, because rapid module swaps
+#    put the follower's probe into a running copy loop and published a
+#    corrupted block, dev21 22.09.)
+0091f-soc-sunxi-h713-arisc-wait-for-every-fragment-s-copy.patch
 0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
 #   (follow-up well0nez, K2 -- 0096 stays byte-identical; the driver for
 #    that node, in the tree and built in, so the TVFE/TVCAP domains and the

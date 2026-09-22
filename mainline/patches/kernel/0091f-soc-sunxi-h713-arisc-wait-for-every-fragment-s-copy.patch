@@ -1,0 +1,157 @@
+soc: sunxi: h713-arisc: wait for every fragment's copy, not for the classifier
+
+0091e gave SetEDIDVersion and PullHotPlug RESET an effect wait because their
+handlers re-read the scratch behind a log call and the follower's probe lands
+in that window. Q13 section 4 D1 called UpdateEDID "the lucky one": its copy
+loop starts a handful of instructions after the classifier with no print in
+between, so the eight fragments had always arrived byte for byte. Lucky is
+not immune. On 22.09.2026 three hdmirx module swaps in a row put the driver
+back-to-back with itself and the published block read
+
+  00 ff ff ff ff ff ff e1 fd c5 7f ...
+
+- bytes 0..6 of fragment 0 correct, bytes 7.. replaced - and the attached PC
+read no EDID at all and fell back to 848x480. A full `echo edid > cmd`
+repaired it (dev21, "DDC block corrupted by rapid module swaps"). That is the
+same defect Q13 reported as V1, on the one sub-command that had got away with
+it: arisc_wait_handler() is satisfied at 0x11680, when the classifier has
+copied the payload into the scratch, while the handler's own copy loop
+0x12538..0x12554 is still reading that scratch 64 bytes at a time, and the
+next fragment's arisc_arm_handler_probe() writes the complement of its own
+expected scratch over all 65 bytes.
+
+The byte to poll is bEdidDataReady, g_Data + 2 (0x1723e, resolved by 0091a as
+a->off.edid_ready), and it proves the copy rather than hinting at it. The
+store at 0x1256c is the delay slot of 0x12568, the branch that ends the
+handler, so it is reached only after the copy loop has exited; and the value
+it writes is r3, the very counter the loop counted down from 0x40 to 0
+(0x12530 loads it, 0x1253c decrements, 0x1254c tests). The byte reading 0
+therefore means all 64 l.sb at 0x12540 have run. Fragment 7 continues at
+0x12570, stores 1 and calls the publish routine at 0x12608, which is what
+CheckEDIDUpdateStatus reports and what this driver already judges.
+
+0 is also what the byte held before fragments 1..6, so the poll would answer
+at once and prove nothing. It is seeded with 0xff first - a value no handler
+writes - which is the rule arisc_arm_handler_probe() already applies to the
+scratch and arisc_hdmi_set_portmap() to the port records. The seed is safe in
+that window: the only readers of the byte are the output routine (0x11d18 in
+the gate helper, 0x11da4/0x11dd8 in the publish) and CheckEDIDUpdateStatus's
+payload at 0x125c0, and all of them run from a command handler - fragment 7,
+SetEDIDVersion, HostHDMIMAP, ResetEDIDModule - none of which can be in flight
+while arisc_hdmi_set_edid() holds the lock. A timeout writes 0 back, which is
+the truthful "no complete store", and fails the upload with -ETIMEDOUT:
+sending the next fragment onto an unfinished copy is the corruption this
+patch exists to prevent, and HANDLER_TIMEOUT_MS is 500 ms, so a timeout means
+the firmware is wedged, not that the bench is slow.
+
+Not done, and why: the per-fragment destination itself (0x15cdc + frag * 64,
+the two 256-byte EDID variants the publish chooses between at 0x11e1c/0x11e24)
+would be the most direct readback, but it is initialised data, not BSS, so
+0091a neither resolves it nor could arisc_in_bss() accept it, and a poll
+against bytes that may already be there is no proof without poisoning the
+firmware's own store. The bounded DDC readback via arisc_hdmi_get_edid() was
+the other candidate; it needs an unlocked variant, it sees only the one
+variant a port is served, and the publish rewrites two of its bytes (the
+physical address at 0x11bcc, the extension checksum at 0x11c00), so a
+byte-for-byte comparison against what was sent is not available there either.
+Both are named in the report; neither is needed once nothing is sent while a
+copy is running.
+
+What the HY310 sees: one upload at probe, the same eight UpdateEDID commands
+with the same payloads in the same order, the same SetEDIDVersion guard
+behind them and the same CheckEDIDUpdateStatus - the mailbox traffic is byte
+for byte what it was. What is new is eight SRAM writes to one byte the
+sequence overwrites anyway (ResetEDIDModule leaves it 1 at 0x121b8, fragment
+7 leaves it 1 at 0x12570) and up to eight waits that the measured handler
+finishes inside one poll interval.
+
+Follow-up to 0091/0091a/0091b/0091c/0091d/0091e, which stay byte-identical.
+
+Tested on the HY310: not yet. The device proof is the swap sequence of
+22.09.2026 - swap the arisc module, then three hdmirx modules in a row - after
+which `sed -n '1p' /sys/kernel/debug/h713-arisc/edid-port0` must still read
+000: 00 ff ff ff ff ff ff 00 5e 78 ..., with no "the 64-byte copy did not
+finish" line in dmesg. Before this patch the same sequence gave 00 ff ff ff
+ff ff ff e1 fd c5 7f.
+
+diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -214,6 +214,7 @@
+ #define EDID_FRAGMENTS		8
+ #define EDID_FRAGMENT_LEN	64
+ #define EDID_EXT_OFF		128	/* where the two blocks start to differ */
++#define EDID_READY_PROBE	0xff	/* neither 0 nor 1: no handler leaves it */
+ 
+ /* PullHotPlug, firmware case 7 */
+ #define HPD_RESET_COUNTER	84	/* ticks the RESET case loads          */
+@@ -1771,6 +1772,48 @@
+ }
+ EXPORT_SYMBOL_GPL(arisc_hdmi_edid_mask);
+ 
++/*
++ * The fragment handler carries the race 0091e closed for SetEDIDVersion, only
++ * without a log call to widen it: 0x124d4 picks the destination, the loop at
++ * 0x12538..0x12554 copies 64 bytes out of the scratch, and the next command's
++ * arisc_arm_handler_probe() writes the complement of its own expected scratch
++ * over all 65 bytes. After three hdmirx swaps in a row the published block
++ * read 00 ff ff ff ff ff ff e1 fd c5 7f, bytes 7.. of fragment 0 replaced by
++ * the follower's pattern, and the source read no EDID at all (dev21).
++ *
++ * The byte to poll is bEdidDataReady, g_Data + 2, and it is a proof of the
++ * copy rather than a hint: the store at 0x1256c sits in the delay slot of
++ * 0x12568, the branch that ends the handler, so it is reached only once the
++ * copy loop has exited -- and the value it writes is r3, the loop counter the
++ * loop itself counted down from 64 to 0 (0x1253c/0x12544/0x1254c). Seeing it
++ * means all 64 l.sb at 0x12540 have run. Fragment 7 then adds 0x12570, which
++ * stores 1 and publishes. Q13 section 4 D1, the listing in section 1.
++ *
++ * 0 is also what the byte held before fragments 1..6, so it would answer at
++ * once; the seed makes the answer an edge, the same rule
++ * arisc_arm_handler_probe() applies to the scratch and arisc_hdmi_set_portmap()
++ * to the port records. 0xff is safe in that window because the only reader is
++ * the output routine (0x11d18, 0x11da4), and that runs from fragment 7 and
++ * from SetEDIDVersion/HostHDMIMAP -- none of which is in flight here, the
++ * lock being held. A timeout puts the byte back to 0, the truthful "no
++ * complete store", and fails the upload: sending the next fragment onto an
++ * unfinished copy is the corruption this patch is about.
++ */
++static bool arisc_wait_fragment(struct h713_arisc *a, unsigned int frag)
++{
++	u8 want = frag == EDID_FRAGMENTS - 1 ? EDID_DATA_READY : 0;
++
++	if (arisc_wait_effect(a, a->off.edid_ready, want))
++		return true;
++
++	dev_warn(a->dev,
++		 "UpdateEDID fragment %u: bEdidDataReady [0x%05x] reads %u, not %u -- the 64-byte copy did not finish\n",
++		 frag, a->off.edid_ready,
++		 readb(sram_at(a, a->off.edid_ready)), want);
++	writeb(0, sram_at(a, a->off.edid_ready));
++	return false;
++}
++
+ /*
+  * Upload the EDID. Both versions go up together and in this order because
+  * the firmware only publishes anything once fragment 7 has arrived: every
+@@ -1799,14 +1842,20 @@
+ 	for (frag = 0; frag < EDID_FRAGMENTS; frag++) {
+ 		const u8 *p = bytes + frag * EDID_FRAGMENT_LEN;
+ 
++		writeb(EDID_READY_PROBE, sram_at(a, a->off.edid_ready));
+ 		ret = arisc_send(a, SUB_UPDATE_EDID, frag, p[0], p + 1,
+ 				 EDID_FRAGMENT_LEN - 1);
+ 		if (ret) {
++			writeb(0, sram_at(a, a->off.edid_ready));
+ 			dev_err(a->dev,
+ 				"UpdateEDID Fragment %u nicht verarbeitet (%d)\n",
+ 				frag, ret);
+ 			goto out;
+ 		}
++		if (!arisc_wait_fragment(a, frag)) {
++			ret = -ETIMEDOUT;
++			goto out;
++		}
+ 	}
+ 
+ 	/*
