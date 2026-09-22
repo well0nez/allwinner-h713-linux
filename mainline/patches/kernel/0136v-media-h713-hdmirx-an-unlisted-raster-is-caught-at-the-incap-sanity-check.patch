@@ -25,13 +25,16 @@ table); 1080p60 locks; no line at any 50/24 Hz mode. Open: h713-tv prints
 "0x0p?, 0.0 MHz" for the refused source although the timing is filled here -
 its capture_signal() keeps the timing only on success.
 
+Amended 22.09. night (dev22): the blanking is filled as well, so h713-tv shows
+1600x900p60 and not p75 (it computes the rate over the totals).
+
 Follow-up to 0136m/0136r/0136u (review Q9, device run 22.09.2026 afternoon).
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 
 --- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
-@@ -3682,6 +3682,32 @@
+@@ -3682,6 +3682,35 @@
  	htotal = total & 0xffff;
  	if (!width || !height || htotal <= width || vtotal <= height) {
  		/*
@@ -55,6 +58,9 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 +			t->bt.height = sig.v_size;
 +			t->bt.pixelclock = div_u64((u64)htotal * vtotal *
 +						   sig.frame_rate_x100, 100);
++			/* the totals too, or a client computes the rate over the active size */
++			t->bt.hbackporch = htotal - sig.h_size;
++			t->bt.vbackporch = vtotal - sig.v_size;
 +			return h713_hdmirx_unlisted(rx,
 +					(sig.h_size << 16) | sig.v_size,
 +					sig.frame_rate_x100,
