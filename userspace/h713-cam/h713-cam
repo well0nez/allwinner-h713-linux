@@ -9,6 +9,7 @@ YUYV 4:2:2, 640x480. Stock uses it for the autofocus (doku/94).
     h713-cam get NAME|ID           read one control
     h713-cam set NAME|ID VALUE     write one control
     h713-cam grab [FILE]           one still image (PNG, or PPM by extension)
+    h713-cam grab --raw FILE       the luma plane as a raw 640x480 file
 
 Runs with a bare python3 -- no v4l2-ctl, no ffmpeg, no PIL. That is on purpose:
 the release rootfs carries none of them (packages.txt), and a tool that fails on
@@ -263,6 +264,17 @@ def write_png(path: str, rgb: bytes, width: int, height: int) -> None:
         fh.write(chunk(b"IEND", b""))
 
 
+def luma_plane(frame: bytes, width: int, height: int, bpl: int) -> bytes:
+    """The even bytes of a YUYV buffer: Y0 U Y1 V -> Y0 Y1 (AP1 2.4).
+
+    Line by line, because bytesperline may be wider than 2*width. This is the
+    plane h713-autofocus measures, so `grab --raw` writes exactly the file its
+    `run --dry-run DIR` and `measure --metric-only FILE` read (Q6 follow-up 4).
+    """
+    return b"".join(frame[y * bpl:y * bpl + width * 2][0::2]
+                    for y in range(height))
+
+
 def write_ppm(path: str, rgb: bytes, width: int, height: int) -> None:
     with open(path, "wb") as fh:
         fh.write(b"P6\n%d %d\n255\n" % (width, height))
@@ -335,7 +347,8 @@ def cmd_set(fd: int, what: str, value: int) -> int:
     return 0
 
 
-def cmd_grab(fd: int, path: str, size: str, warmup: int, quiet: bool) -> int:
+def cmd_grab(fd: int, path: str, size: str, warmup: int, quiet: bool,
+             raw: bool = False) -> int:
     report = (lambda *_: None) if quiet else (lambda *a: print(*a, file=sys.stderr))
     try:
         w, h = (int(x) for x in size.lower().split("x"))
@@ -345,6 +358,12 @@ def cmd_grab(fd: int, path: str, size: str, warmup: int, quiet: bool) -> int:
     mean_y = sum(frame[0::2]) / (len(frame) / 2)
     report(f"{warmup} frames discarded, mean brightness Y = {mean_y:.1f}"
            + ("  -- BLACK: has the camera seen no control yet?" if mean_y < 16 else ""))
+    if raw:
+        plane = luma_plane(frame, w, h, bpl)
+        with open(path, "wb") as fh:
+            fh.write(plane)
+        print(f"{path}  {w}x{h}  raw luma, {len(plane)} bytes  Y={mean_y:.0f}")
+        return 0
     rgb = yuyv_to_rgb(frame, w, h, bpl)
     if path.lower().endswith(".ppm"):
         write_ppm(path, rgb, w, h)
@@ -370,6 +389,9 @@ def main(argv=None) -> int:
     r.add_argument("--size", default="640x480", metavar="WxH")
     r.add_argument("--warm", type=int, default=10, metavar="N",
                    help="discard frames until the exposure has settled (default 10)")
+    r.add_argument("--raw", action="store_true",
+                   help="write the luma plane raw instead of a picture -- "
+                        "what h713-autofocus reads (name it .gray)")
     r.add_argument("-q", "--quiet", action="store_true")
     a = p.parse_args(argv)
 
@@ -384,7 +406,7 @@ def main(argv=None) -> int:
             return cmd_get(fd, a.control)
         if a.command == "set":
             return cmd_set(fd, a.control, a.value)
-        return cmd_grab(fd, a.file, a.size, a.warm, a.quiet)
+        return cmd_grab(fd, a.file, a.size, a.warm, a.quiet, a.raw)
     finally:
         os.close(fd)
 

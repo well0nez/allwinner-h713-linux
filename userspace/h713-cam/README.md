@@ -11,7 +11,14 @@ h713-cam get exposure             # read one control (name or 0x ID)
 h713-cam set brightness 100       # write one control
 h713-cam grab                     # still image to /data/cam.png
 h713-cam grab /tmp/x.ppm --warm 30
+h713-cam grab --raw /data/af-frames/step-0012.gray   # the luma plane, raw
 ```
+
+`--raw` writes the even bytes of the YUYV buffer - the luma plane, 640x480 = 307200 bytes, line by line so a
+wider `bytesperline` does not skew it - instead of encoding a picture. That is the file `h713-autofocus` reads:
+one per motor position makes the replay fixture for `h713-autofocus run --dry-run DIR`, and a single one is what
+`h713-autofocus measure --metric-only FILE` times. It also skips the PPM/PNG conversion, which is the slow part
+of `grab` on the board.
 
 The device node is **searched for**, not guessed: `/dev/video2` is the camera
 only because Cedrus (`video0`) and HDMI-RX (`video1`) were loaded before it. The

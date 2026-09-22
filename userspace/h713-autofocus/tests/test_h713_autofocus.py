@@ -342,6 +342,45 @@ class SearchOnFrames(unittest.TestCase):
                                 or reason in ("budget", "deadline"), reason)
 
 
+class FixtureProducer(unittest.TestCase):
+    """What h713-cam writes must be what this tool reads (Q11 4)."""
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(HERE)),
+                            "h713-cam", "h713-cam")
+        if not os.path.exists(path):
+            self.skipTest("h713-cam is not beside this tool")
+        try:
+            self.cam = _load("h713_cam", path)
+        except ImportError as exc:          # fcntl/mmap: Linux only
+            self.skipTest(str(exc))
+        self.luma = mf.frame(2.0)
+        rnd = random.Random(4)
+        buffer_ = bytearray(len(self.luma) * 2)
+        buffer_[0::2] = self.luma
+        buffer_[1::2] = bytes(rnd.randrange(256)
+                              for _ in range(len(self.luma)))
+        self.buffer = bytes(buffer_)
+
+    def test_the_raw_grab_is_the_plane_the_metric_measures(self):
+        plane = self.cam.luma_plane(self.buffer, af.FRAME_W, af.FRAME_H,
+                                    af.FRAME_W * 2)
+        self.assertEqual(len(plane), af.FRAME_BYTES)
+        self.assertEqual(plane, self.luma)
+        self.assertEqual(af.sharpness_sum(plane, "crect", 3),
+                         af.sharpness_sum(self.luma, "crect", 3))
+
+    def test_a_padded_line_does_not_skew_the_plane(self):
+        """Why it goes line by line and not buffer[0::2] in one slice."""
+        bpl, line = af.FRAME_W * 2 + 16, af.FRAME_W * 2
+        padded = bytearray(bpl * af.FRAME_H)
+        for y in range(af.FRAME_H):
+            padded[y * bpl:y * bpl + line] = self.buffer[y * line:(y + 1) * line]
+        self.assertEqual(self.cam.luma_plane(bytes(padded), af.FRAME_W,
+                                             af.FRAME_H, bpl), self.luma)
+        self.assertNotEqual(bytes(padded)[0::2][:af.FRAME_BYTES], self.luma)
+
+
 class Profiles(unittest.TestCase):
 
     def test_hy310_carries_the_ini_values(self):
