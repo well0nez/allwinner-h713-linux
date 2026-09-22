@@ -139,6 +139,32 @@ def gamma_states(path) -> list:
     return out
 
 
+# --------------------------------------------------------------------------
+# Picture parameters (pq_custom.TSE, group UI_Feature) -- AP3f 1.3 to 1.5
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Feature:
+    """One picture parameter: piecewise-linear curves and their registers."""
+    name: str
+    id: int
+    sets: tuple                # ((points, registers), ...), AP3f 1.4
+
+
+def picture_features(path) -> list:
+    """The UI_Feature module of pq_custom.TSE, in file order."""
+    d = parser()
+    out = []
+    for _block, module in modules(path, PLUGIN_FEATURE):
+        for _kind, payload in module["blobs"]:
+            for e in d.decode_feature(payload):
+                out.append(Feature(e["name"], e["id"], tuple(
+                    (tuple(s["points"]), tuple(
+                        (r["address"], r["width"], r["mask"]) for r in s["registers"]))
+                    for s in e["sets"])))
+    return out
+
+
 def slot_of(selector: str) -> int:
     """Colour-temperature name or slot number -> slot index 0..8."""
     key = str(selector).strip().lower()

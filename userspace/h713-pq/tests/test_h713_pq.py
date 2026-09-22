@@ -662,6 +662,89 @@ class TestTseGamma(unittest.TestCase):
         self.assertEqual(code, 2)
 
 
+# ---------------------------------------------------------------------------
+# The OSD-to-register step out of pq_custom.TSE (Q2 item 2)
+# ---------------------------------------------------------------------------
+
+class TestTseCurves(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.TemporaryDirectory()
+        cls.path = Path(cls.dir.name) / "pq_custom.TSE"
+        make_tse_fixture.build_custom(cls.path)
+        cls.features = {f.name: f for f in tse.picture_features(cls.path)}
+        cls.tvconfig = str(make_fixture.build(Path(cls.dir.name) / "tvconfig"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.dir.cleanup()
+
+    def test_round_trip(self):
+        self.assertEqual(sorted(self.features),
+                         ["mp_brightness", "mp_saturation_1", "mp_tint_1"])
+        f = self.features["mp_saturation_1"]
+        self.assertEqual(f.id, 0x00EE0000)          # 0x00EE0000 + index, AP3f 1.5
+        points, registers = f.sets[0]
+        self.assertEqual(points, ((0.0, 50.0, 0.0, 64.0), (50.0, 75.0, 64.0, 96.0),
+                                  (75.0, 100.0, 96.0, 128.0)))
+        self.assertEqual(registers, ((0x05140508, 32, 0x00FF0000),))
+
+    def test_the_device_measurement_of_07_09(self):
+        # AP3f 1.5a: the three segments all have slope 1.28, so the TSE is
+        # where h713-pq's measured floor(argument * 1.28) comes from. 60 ->
+        # 64 + 10 * 32/25 = 76.8 -> 76 = 0x4C, which is what the board showed.
+        points = self.features["mp_saturation_1"].sets[0][0]
+        self.assertAlmostEqual(model.feature_value(points, 60), 76.8, places=6)
+        self.assertEqual(model.feature_field(0x00FF0000, 76.8) >> 16, 0x4C)
+        for u in (0, 50, 59, 60, 100):
+            self.assertEqual(model.feature_field(0x00FF0000,
+                                                 model.feature_value(points, u))
+                             >> 16, model.chroma_gain(u))
+
+    def test_curve_edges_and_outside(self):
+        points = self.features["mp_tint_1"].sets[0][0]
+        self.assertEqual(model.feature_value(points, 0), 256.0)
+        self.assertEqual(model.feature_value(points, 50), 0.0)
+        self.assertEqual(model.feature_value(points, 100), -256.0)
+        self.assertEqual(model.feature_value(points, 500), -256.0)   # clamped
+        self.assertEqual(model.feature_value(points, -5), 256.0)
+
+    def test_negative_value_is_twos_complement_in_its_field(self):
+        # mp_brightness is 10 bits at [17:8]: ui 0 -> 923, which the field
+        # holds as -101 (AP3f 1.5). The shift comes from the mask.
+        self.assertEqual(model.feature_field(0x0003FF00, -101) >> 8, 923)
+        self.assertEqual(model.feature_field(0x000003FF, -51.2), 1024 - 51)
+
+    def test_ini_path_is_the_four_segment_roundf(self):
+        # AP3 3.3a. The HY310's contrast points; the 75 % point of the ini
+        # (3010) is NOT on the TSE's line (2990) -- AP3f 1.5d.
+        points = [1196, 1794, 2392, 3010, 3588]
+        self.assertEqual(model.nlc_value(points, 0), 1196)
+        self.assertEqual(model.nlc_value(points, 50), 2392)
+        self.assertEqual(model.nlc_value(points, 75), 3010)
+        self.assertEqual(model.nlc_value(points, 100), 3588)
+        self.assertEqual(model.nlc_value(points, 60), 2639)
+        self.assertNotEqual(model.nlc_value(points, 75), 2990)
+
+    def test_cli(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cli.main(["--data", self.tvconfig, "curves", "60",
+                             "--source", "tse", "--tse", str(self.path)])
+        self.assertEqual(code, 0)
+        self.assertIn("0x05140508 [23:16] = 0x4C", out.getvalue())
+        self.assertIn("mp_saturation_1", out.getvalue())
+        # Default: the ini only, no TSE read at all.
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(cli.main(["--data", self.tvconfig, "curves"]), 0)
+        self.assertNotIn("mp_saturation_1", out.getvalue())
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cli.main(["--data", self.tvconfig, "curves",
+                                       "--source", "tse", "--tse",
+                                       str(self.path.parent / "no.TSE")]), 2)
+
+
 # Command line: --data and --channel are the names, --daten and --kanal the
 # aliases kept for v0.8-beta (cli.py, the lines marked GERMAN ALIAS).
 

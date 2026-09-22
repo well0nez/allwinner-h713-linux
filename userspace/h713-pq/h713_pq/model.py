@@ -347,6 +347,61 @@ def curve_as_argument(points: list[int], user_value: float) -> int:
     return int(round(USER_VALUE_MAX * y / points[-1]))
 
 
+# --------------------------------------------------------------------------
+# The OSD-to-register step, twice: the ini's and the TSE's (Q2 item 2)
+# --------------------------------------------------------------------------
+# Both exist on the device and they are not the same curve.
+#   ini   PQNonLinearCurve::UserValueToMappedValue@0x3AEE8 (AP3 3.3a) maps the
+#         five points of [PICTURE_CURVE_*] with a four-segment interpolation
+#         and roundf; that is the DIRECT path, the one libpq writes through
+#         /sys/class/sunxi_dump/write, and it is the default on stock.
+#   TSE   the UI_Feature module of pq_custom.TSE carries its own curves plus
+#         the register and bit field each one lands in (AP3f 1.4/1.5); that is
+#         what the FIRMWARE applies. The two disagree: for contrast the ini's
+#         75 % point is 3010 and the TSE's line gives 2990 (AP3f 1.5d).
+# Neither sits on our RPC path -- we hand 0..100 to the firmware (rpc_argument
+# below) -- so this is a report, not a change of what h713-pq sends.
+
+
+def nlc_value(points: list[int], osd: float) -> int:
+    """User value 0..100 -> mapped value, the vendor's ini path (AP3 3.3a).
+
+    ``i = clamp(osd/25, 0, 3); roundf((osd - 25*i) * (p[i+1]-p[i]) / 25 + p[i])``
+    """
+    i = max(0, min(3, int(osd) // 25))
+    y = (osd - 25 * i) * (points[i + 1] - points[i]) / 25.0 + points[i]
+    return _lround(y)
+
+
+def feature_value(points, ui: float) -> float:
+    """The TSE's own curve: the segment with x0 <= ui <= x1 (AP3f 1.4).
+
+    ``(ui - x0) * (y1 - y0) / (x1 - x0) + y0``. Outside the covered range the
+    firmware keeps the nearest end point.
+    """
+    for x0, x1, y0, y1 in points:
+        if x0 <= ui <= x1:
+            return y0 if x1 == x0 else (ui - x0) * (y1 - y0) / (x1 - x0) + y0
+    return points[-1][3] if ui > points[-1][1] else points[0][2]
+
+
+#: TSE feature name -> the control of ours it belongs to (AP3f 1.5). The
+#: features with no entry are extra fields (sharpness has three) or the white
+#: balance, which we do not drive at all yet.
+TSE_FEATURE_CONTROL = {"mp_brightness": "brightness", "mp_contrast": "contrast",
+                       "mp_saturation_1": "saturation", "mp_tint_1": "hue",
+                       "mp_sharpness_1": "sharpness", "mp_sharpness_7": "sharpness",
+                       "mp_sharpness_8": "sharpness"}
+
+
+def feature_field(mask: int, value: float) -> int:
+    """Value -> the register field (sub_8B19A530: shift by the mask's
+    trailing zero bits, then mask). Truncation, as the vendor's cast does --
+    proven at SetSaturation 60 -> 0x4C (AP3f 1.5a)."""
+    shift = (mask & -mask).bit_length() - 1
+    return (int(value) << shift) & mask
+
+
 def rpc_argument(user_value: int) -> int:
     """User value from pq_picturemode.ini -> argument of the PQ RPC.
 

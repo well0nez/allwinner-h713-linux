@@ -93,3 +93,57 @@ def build(path, project=0x0030):
 if __name__ == "__main__":
     build(sys.argv[1], int(sys.argv[2], 0) if len(sys.argv) > 2 else 0x0030)
     print(sys.argv[1])
+
+
+# --------------------------------------------------------------------------
+# pq_custom.TSE: the picture parameters (AP3f 1.3 to 1.5)
+# --------------------------------------------------------------------------
+FEATURE_PLUGIN = 0x0009101F
+#: name -> (segments as (x0, x1, y0, y1), registers as (address, width, mask)).
+#: The saturation curve carries the vendor's own slope of 1.28, so the device
+#: measurement of 07.09. (SetSaturation 60 -> 0x4C) is reproducible from it.
+FEATURES = (
+    ("mp_saturation_1", ((0, 50, 0, 64), (50, 75, 64, 96), (75, 100, 96, 128)),
+     ((0x05140508, 32, 0x00FF0000),)),
+    ("mp_tint_1", ((0, 50, 256, 0), (50, 100, 0, -256)),
+     ((0x05140508, 32, 0x000003FF),)),
+    ("mp_brightness", ((0, 50, 923, 0), (50, 100, 0, 100)),
+     ((0x051405BC, 32, 0x0003FF00),)),
+)
+
+
+def _be(value):
+    return bytes(reversed(struct.pack("<f", float(value))))
+
+
+def custom_module():
+    blob = struct.pack("<H", len(FEATURES))
+    for index, (label, _seg, _reg) in enumerate(FEATURES):
+        blob += label.encode("ascii") + b"\0" + struct.pack("<I", 0x00EE0000 + index)
+    for index, (_label, segments, regs) in enumerate(FEATURES):
+        body = struct.pack("<H", len(segments))
+        for point in segments:
+            body += b"".join(_be(v) for v in point)
+        body += struct.pack("<H", len(regs))
+        for address, width, mask in regs:
+            body += struct.pack("<BIBIB", 0, address, width, mask, 0)
+        blob += struct.pack("<IIBH", 0x00EE0000 + index, 11 + len(body), 0, 1) + body
+    payload = struct.pack("<HI", 0, 6 + len(blob)) + blob
+    body = struct.pack("<HHIIB", 13, 1, 1, 0x00049003, 0)
+    body += _name("UI_Feature") + struct.pack("<I", 1)
+    body += struct.pack("<HHHH", 8, 1, 0x3000, 0x4900) + _attrs([])
+    body += struct.pack("<II", FEATURE_PLUGIN, 1)
+    body += struct.pack("<II", 0x20000009, len(payload)) + payload + _attrs([])
+    return body
+
+
+def build_custom(path):
+    """A synthetic pq_custom.TSE with the group UI_Feature."""
+    group = struct.pack("<HHIIBHH", 17, 1, 1, 0x4A, 3, 0, 0)
+    group += _name("UI_Feature") + struct.pack("<I", 1) + custom_module()
+    body = struct.pack("<I", 1) + group
+    header = (b"TSE" + bytes([5]) + struct.pack("<HIIHHII", 26, 0x18816066,
+              0x66C6D8FC, 0, 0, 26 + len(body), zlib.crc32(body)))
+    with open(str(path), "wb") as f:
+        f.write(header + body)
+    return FEATURES

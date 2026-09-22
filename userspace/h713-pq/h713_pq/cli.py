@@ -81,6 +81,14 @@ def _parser() -> argparse.ArgumentParser:
     t.add_argument("input")
     t.add_argument("value", help="picture mode or user value 0..100")
 
+    c = sub.add_parser("curves", help="OSD value -> register, out of the ini "
+                                     "and out of pq_custom.TSE")
+    c.add_argument("value", type=float, nargs="?", default=50.0,
+                   help="user value 0..100 (default 50)")
+    c.add_argument("--group", default="HDMI",
+                   help="curve group of pq_factory_extern.ini (default HDMI)")
+    _tse_options(c, gamma=False)
+
     g = sub.add_parser("gamma", help="gamma exponent -> DE2 LUT")
     g.add_argument("exponent", type=float, nargs="?", default=None,
                    help="gamma level 1.8..2.4; with --source tse the default "
@@ -94,14 +102,18 @@ def _parser() -> argparse.ArgumentParser:
     return p
 
 
-def _tse_options(p: argparse.ArgumentParser) -> None:
-    """Where the gamma curve comes from. Default unchanged: synthetic."""
-    p.add_argument("--source", choices=("synthetic", "tse"), default="synthetic",
-                   help="synthetic (default, today's computed power curve) or "
-                        "tse (the board's own measured curve -- behaviour change)")
-    p.add_argument("--from-tse", metavar="STATE", dest="tse_state", default=None,
-                   help="gamma state by colour temperature (normal, cool, warm, "
-                        "user, ... or a slot 0..8); implies --source tse")
+def _tse_options(p: argparse.ArgumentParser, gamma: bool = True) -> None:
+    """Where the data come from. Default unchanged: not the TSE."""
+    p.add_argument("--source", choices=("synthetic", "tse") if gamma
+                   else ("ini", "tse"), default="synthetic" if gamma else "ini",
+                   help="the default (today's computed curve / the ini guess) "
+                        "or tse, the vendor's own data -- behaviour change")
+    if gamma:
+        p.add_argument("--from-tse", metavar="STATE", dest="tse_state",
+                       default=None,
+                       help="gamma state by colour temperature (normal, cool, "
+                            "warm, user, ... or a slot 0..8); implies "
+                            "--source tse")
     p.add_argument("--tse", metavar="PATH", dest="tse_path", default=None,
                    help="TSE file or directory (else $H713_TSE_DIR, /boot/mips)")
     p.add_argument("--project", metavar="ID", dest="tse_project", default=None,
@@ -110,7 +122,7 @@ def _tse_options(p: argparse.ArgumentParser) -> None:
 
 
 def _wants_tse(args) -> bool:
-    return args.source == "tse" or args.tse_state is not None
+    return args.source == "tse" or getattr(args, "tse_state", None) is not None
 
 
 def _tse_gamma(args, level: float):
@@ -225,6 +237,20 @@ def main(argv: list[str] | None = None) -> int:
         cv_norm = model.curve_as_argument(points, u) if points else None
         output.print_saturation(args.input, group, label, u, cv, arg,
                                 gain, model.chroma_gain_register(gain), cv_norm)
+        return 0
+
+    if args.command == "curves":
+        features = None
+        if _wants_tse(args):
+            try:
+                project = (int(str(args.tse_project), 0)
+                           if args.tse_project is not None else tse.DEFAULT_PROJECT)
+                features = tse.picture_features(
+                    tse.find_file(args.tse_path, project, "pq_custom.TSE"))
+            except (FileNotFoundError, KeyError, ValueError, IndexError) as e:
+                print(f"h713-pq: {e.args[0] if e.args else e}", file=sys.stderr)
+                return 2
+        output.print_curves(data, args.value, features, args.group)
         return 0
 
     if args.command == "gamma":

@@ -236,6 +236,73 @@ def print_gamma(result: model.GammaResult, channel: str) -> None:
     print(f"  Channel      : {channel}")
 
 
+def _field(register: tuple, value: float) -> str:
+    address, _width, mask = register
+    hi = mask.bit_length() - 1
+    lo = (mask & -mask).bit_length() - 1
+    return (f"0x{address:08X} [{hi}:{lo}] = "
+            f"0x{model.feature_field(mask, value) >> lo:X}")
+
+
+def _feature_rows(control, points, ini, f, value):
+    """One row per (curve, register list) pair of one feature."""
+    out = []
+    for segments, registers in f.sets:
+        v = model.feature_value(segments, value)
+        out.append([control, points, ini,
+                    "%s (%g..%g)" % (f.name, segments[0][0], segments[-1][1]),
+                    _number(v), ", ".join(_field(r, v) for r in registers)])
+    return out
+
+
+def print_curves(data: sources.DataSet, value: float, features=None,
+                 group: str = "HDMI") -> None:
+    """The OSD-to-register step out of both sources (Q2 item 2)."""
+    print(f"OSD-to-register mapping at user value {value}")
+    print(f"  ini: pq_factory_extern.ini [PICTURE_CURVE_{group}], four "
+          "segments with roundf -- the")
+    print("       direct path libpq writes (UserValueToMappedValue@0x3AEE8, "
+          "AP3 3.3a). Identical")
+    print("       in all five groups on the HY310 (AP3d 5).")
+    if features is None:
+        print("  tse: not read. --source tse adds the curves the FIRMWARE "
+              "uses (AP3f 1.5).")
+    else:
+        print("  tse: pq_custom.TSE, group UI_Feature -- the curve and the "
+              "register the firmware")
+        print("       itself applies (AP3f 1.4/1.5). Where the two differ the "
+              "TSE is what the")
+        print("       picture shows; the ini is the OSD slider's own curve.")
+    curves = data.factory_curves.get(group, {})
+    by_control = {}
+    for f in features or []:
+        by_control.setdefault(model.TSE_FEATURE_CONTROL.get(f.name, f.name),
+                              []).append(f)
+    rows = []
+    for control in model.CURVE_CONTROLS:
+        points = curves.get(control)
+        ini = str(model.nlc_value(points, value)) if points else "-"
+        for f in by_control.pop(control, [None]):
+            if f is None:
+                rows.append([control, ",".join(str(x) for x in points or []),
+                             ini, "-", "-", "-"])
+                continue
+            rows += _feature_rows(control, ",".join(str(x) for x in points or []),
+                                  ini, f, value)
+    for control, entries in sorted(by_control.items()):
+        for f in entries:
+            rows += _feature_rows(control, "-", "-", f, value)
+    print(table(["Control", "ini points 0/25/50/75/100", "ini",
+                 "TSE feature (its own ui range)", "TSE",
+                 "Register -- written by the firmware"], rows))
+    print()
+    print("h713-pq sends neither of these: our path is the RPC, which takes "
+          "0..100 and lets the")
+    print("  firmware map it (model.rpc_argument). The table answers which "
+          "register a value ends")
+    print("  in, so a future direct-write path has one implementation.")
+
+
 GAMMA_MARKS = (0, 128, 256, 384, 512, 640, 768, 896, 1023)
 
 
