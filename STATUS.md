@@ -1,11 +1,11 @@
 # Status
 
-Snapshot of **2026-09-16**. "Works" means *verified on the projector*, with the date and the log named -
+Snapshot of **2026-09-22**. "Works" means *verified on the projector*, with the date and the log named -
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is `v0.8-dev15`: the `v0.8-beta` release plus the U-Boot of the HY300 Pro
-test3 build (`da74b89`). What the numbers mean: [RELEASES.md](RELEASES.md).
+The image on the test device is `v0.8-dev22`: the 182-patch series of this night with U-Boot `946d26c`.
+The last release is still `v0.8-beta`. What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
 
@@ -27,7 +27,7 @@ by `release/build-all.sh --board`: **no image for a board nobody has tested.** A
 
 | Board | State | Who ran it, and when | What exists for it |
 |---|---|---|---|
-| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.8-beta`, 16.09.2026 | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
+| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.8-beta`, 16.09.2026; the development builds `v0.8-dev20` to `v0.8-dev22` on 22.09.2026 | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
 | **HY200 QZ713DF_A1** | profile-only | nobody has run a build of *ours* on it. cstenger ran his own tree on his own bench board - kernel 6.18.38 boot-good (`mainline/config/versions.env`); that is his run, not ours | kernel and U-Boot defconfigs, device tree, and since 15.09. the installer profile `hy200_qz713df_a1` - its stock firmware is the 2025-09-22 "HY300 Pro+" DDR3 image (624 MHz, `display.bin` `4380f1b3…`) |
 | **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too, plus the installer profile `hy200_qz713_v2` - its stock firmware is the 2025-07-10 "HY300 Pro+" LPDDR3 image (720 MHz, `display.bin` `4628cbaf…`, HDCP wait site `0x4b13d538`) |
 | **HY300 T08** | profile-only | nobody | installer profile and DRAM fragment, both read out of its stock image (`doku/121` §2). No device tree of ours |
@@ -65,6 +65,65 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Bluetooth | missing | driver builds, firmware split not done | `rootfs/packages.txt` explains the choice |
 | HDCP 1.4 | missing | path understood, one test costs a power cycle | `doku/112` |
 | HDCP 2.2 | works, device-local | key read from *your* device at boot, never shipped | `h713-hdcp-key.service` |
+
+## Changes since v0.8-beta
+
+In the source, not in a release yet. Three device runs on the HY310 on 22.09.2026 stand behind this list -
+`v0.8-dev20` (169 patches), `v0.8-dev21` (177) and `v0.8-dev22` (182); what was read out on the device is in
+`umbau/test-20260915/dev20-20260922.md`, `dev21-20260922.md` and `dev22-20260922.md`.
+
+- **The HDMI input locks on the firmware's own mode table.** The driver reads the display firmware's 152 mode
+  records (129 enabled) out of `database.TSE` and uses them as the preset list instead of a built-in one. A
+  source whose raster is in no record is now refused *by name*: `h713-tv` says `1600x900p60, 108.0 MHz not in
+  the firmware's table` and shows the console, with exactly one journal line. Measured on `v0.8-dev22`:
+  1080p60/50/24, 720p50, 576p50, 1366x768, 1024x768 and 4K30 all lock, no spurious lines. The firmware needs
+  more than six seconds to write a record for a raster it does not carry, so the first read after plugging
+  such a source in still says "change in flight".
+- **The colour space comes from the firmware's record** instead of from the resolution: BT.709 for HD,
+  BT.601 for 576p and 480p, full or limited range as the source declared it. Read back on eleven modes
+  (`v0.8-dev20`), no colour shift on the wall.
+- **The ARISC's EDID version byte is a per-port block mask**, with an in-kernel API, a device-tree property
+  `allwinner,edid-version-mask` and a debugfs read-back of what is actually published. **The default does not
+  move:** the mask stays 0, port 0 keeps block 0, and the 256 bytes the PC reads back are byte for byte the
+  capture of 21.09. A changed mask takes effect with the next EDID upload, not when it is set.
+- **`h713-tv ctl zoom` has three verbs** - `in F`, `out P`, `off`. The display firmware does the scaling,
+  two plane properties carry its source and destination window, and the plane places the result; nothing on
+  the ARM side scales. Both directions were **bench-tested with a test pattern** (`v0.8-dev22`): `in 2` puts
+  the centre quarter on the whole panel, `out 80` the whole picture at 80 per cent, centred, with a border.
+  The model and every measurement behind it: [docs/subsystems/display.md](docs/subsystems/display.md).
+- **`h713-autofocus` is new** - the vendor's own search rebuilt: a chessboard on the panel, frames from the
+  internal camera, the vendor's cubed-gradient metric (also as a C helper, `h713-afmetric`). On the device
+  the search runs, moves the motor and visibly sharpens the pattern, 4.3 s from 80 msteps out of focus.
+  **Convergence is not proven:** every run so far ended at the motor's range watcher, because the test
+  surface stands about 30 cm away and its sharp point lies beyond the watched range. A run against a wall at
+  one to three metres is the outstanding test.
+- **`h713-pq` can read the firmware's own gamma and curves** (`--source tse`) beside the existing guess out
+  of the ini. It is **off by default**, and on the HY310 it makes no visible difference: the board's own
+  "normal" curve has the endpoints 4092/4092/4092, like the synthetic 2.2 ramp. It was built for the HY300
+  Pro's white balance, which is where it has to prove itself.
+- **`h713-extract` also takes `panel_config.ini` and `camprjspe.ini`** out of your dump, and
+  `--profile <board>` writes a panel row from the board's own ini - every value names the ini line it came
+  from, and the five fields that exist only as registers say "unknown". That file is a description, not a
+  measurement, and its header says so.
+- **Board-neutral kernel work.** All of it leaves the HY310 as it was and lets a second board carry its own
+  numbers: the fan rail is driven high from the request on and the first RPM is logged (`0159a`); the display
+  handoff words are a device-tree property and a refusal names all six (`0133a`); the display firmware's
+  error-log addresses come from the board (`0092a`, `0161b`); `cpu_comm` sends one doorbell per message, its
+  register whitelist is the hwspinlock's, and it refuses to write into a full TX FIFO (`0014d` - `0014f`);
+  two races against the ARISC are closed by waiting for the handler's *effect* rather than its
+  acknowledgement (`0091e` for the version byte, `0091f` for every EDID fragment); and a v4l2-core fix makes
+  `VIDIOC_QUERY_DV_TIMINGS` copy its result at all (`0136w`), which is what lets a refused source be named.
+- **U-Boot walks `LogoRegData` by its class table** instead of a fixed layout, so a logo container with other
+  classes is read correctly. The new walker was proved to give the same bytes as the old one on all 15 HY310
+  and 13 HY300 Pro projects before it was swapped in. U-Boot on the device: `946d26c`.
+- **Three more of the vendor's picture settings** are V4L2 controls: `low_latency`, `backlight_level` and
+  `dynamic_backlight`. The last two are **accepted by the firmware and do nothing on the HY310** - at 60 and
+  at 10 the lamp does not change, which is what [docs/dead-ends.md](docs/dead-ends.md) already records about
+  this board's backlight path. They are there for a board that wires it up.
+- **Not tested on a device:** the p60 wording for a refused source (written after the `v0.8-dev22` run), the
+  `h713-afmetric` cross-build in `release/build-all.sh`, and all of the above on any board but the HY310.
+- The series stands at **182 patches** in fifteen sections
+  ([docs/kernel-patches.md](docs/kernel-patches.md)).
 
 ## Changes since v0.7-beta
 
@@ -114,6 +173,10 @@ All of these have been through device runs on the HY310 on 15./16.09.2026 (Germa
 
 1920×1080, 1280×720, 1024×768, 1440×900, 1280×1024 (pillarboxed), 1366×768 - each at 60 Hz, colour-correct
 (BT.709), across arbitrarily many source switches, HDMI unplug/replug, and a cold start with no operator.
+
+Since the firmware's own mode table became the lock list (*Changes since v0.8-beta*) the list of modes that
+lock is longer - 1080p50/30/24, 720p50, 576p50, 480p and 4K30 among them - but those were read back on the
+device, not each judged on the wall, so they are not in the line above.
 
 ## Open device tests
 
