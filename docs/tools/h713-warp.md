@@ -96,7 +96,18 @@ and `h713-tv ctl zoom` is refused with a pointer to `h713-warp ctl zoom`. The ad
 between the start and the end of its write (the bottom line still changed up to 11.5 ms after the publish, the
 top is rewritten no earlier than 33 ms after it - umbau/test-20260915/keystone-20260922.md). A held slot older
 than 28 ms is given back undrawn, a dropped frame instead of a torn one; a frame that arrives while the
-previous commit is still in flight is dropped rather than queued. `ctl check` proves the timing on any device. The warp costs about 1.0 GB/s of memory
+previous commit is still in flight is dropped rather than queued. `ctl check` proves the timing on any device.
+
+**Since 24.09.2026 the warp writes NV12 onto the video plane**, not RGB onto the primary: Y is resampled into
+the luma plane at full size and CbCr into the chroma plane at half size, both through the same matrix and
+without any colour maths, and `h713-tv` commits the three buffers on the video plane with `hdmi-ring` 0. That
+is the channel the firmware runs its nine picture controls on, so brightness, contrast and the rest act on the
+warped picture exactly as on the ring (they did not reach the primary plane at all - the RGB channel joins
+behind that block, re-apps AP2j). Measured against the RGB path on the HY310, same stream, a minute each: the
+GPU governor settles at 432 instead of 600 MHz, the die cools instead of warming, the bytes per frame halve
+(10.4 MB instead of 20.7), the warp's CPU rises by about three points for the second pass. NV16 on that plane
+shows with every other chroma line dropped, so NV12 loses nothing. Without a signal `h713-tv` releases the
+warp and shows the console; the warp asks again once a second and is back within a second of the signal. The warp costs about 1.0 GB/s of memory
 bandwidth (read 4.15 MB of NV16, write 8.29 MB of XRGB, scanout reads 8.29 MB instead of 4.15 MB per frame)
 and 24.9 MB of CMA for the three targets. The optional edge-blend pass of the vendor is not implemented. Which
 physical corner the vendor's slot 0 is has been derived from the framebuffer's orientation and is confirmed on
