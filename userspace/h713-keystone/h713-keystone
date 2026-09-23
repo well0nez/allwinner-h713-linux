@@ -527,14 +527,24 @@ def do_watch(args, conf, ini):
     automatic runs ONCE (after_move = keystone), and the autofocus after it
     (keystone+focus); after_move = off only logs the move. The values a hand
     set are therefore kept until the next move - that is the gate."""
-    sensor = open_sensor(args, conf)
-    reference = read_reference(args.reference, conf)
-    if reference is None:
-        raise Error("%s is missing -- `h713-keystone reference` with the "
-                    "projector level first" % args.reference)
     stopped = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stopped.append(True))
+    sensor = open_sensor(args, conf)
+    reference = read_reference(args.reference, conf)
+    if reference is None:
+        # A fresh image has no reference, and the unit runs from the first
+        # boot: exiting here made systemd restart it every five seconds for
+        # ever (23.09.2026). Wait for the file instead, quietly, and go on
+        # the moment it is there.
+        _stderr("%s is missing -- `h713-keystone reference` with the "
+                "projector level first; waiting for it" % args.reference)
+        while reference is None and not stopped:
+            time.sleep(10)
+            reference = read_reference(args.reference, conf)
+        if stopped:
+            return 130
+        _stderr("reference found, watching")
     rest = None          # the angles the projector rests at
     moving_since = None  # when the move began
     still_since = None   # when the readings became still again

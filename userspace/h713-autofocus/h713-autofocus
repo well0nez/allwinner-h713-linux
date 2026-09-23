@@ -977,10 +977,34 @@ def build_metric(args, profile, yuyv=False):
                   if path else None)
 
 
+def return_to_best(search, log):
+    """A run that ends without a peak leaves the focus where the search
+    stopped - at an edge after the fourth turn-around, or wherever the cap
+    fell - which is the blurriest place there is (Marco, 23.09.2026: "extrem
+    unscharf"). Go back to the best position the run has seen: guarded moves
+    as in the run, outside its cap. Returns the msteps moved."""
+    if search is None or not search.passes:
+        return 0
+    motor = search.motor
+    delta = search.best_step - motor.state().step
+    if abs(delta) < search.fine:
+        return 0
+    motor.moved = 0                      # the run's cap is spent; this is the way back
+    motor.direction = 0 if delta > 0 else 1
+    left = abs(delta)
+    while left > 0:
+        n = min(left, MSTEPS_PER_COMMAND_MAX)
+        motor.loop(n)
+        left -= n
+    log("back at the best position seen: %s (%d msteps)"
+        % (search.best_step, abs(delta)))
+    return delta
+
+
 def do_run(args, profile):
     """Pattern, camera, warm-up, search -- the whole procedure (AP1 2)."""
     metric = build_metric(args, profile, yuyv=not args.dry_run)
-    panel = camera = handover = None
+    panel = camera = handover = search = None
     if args.dry_run:
         motor = ReplayMotor(read_frames(args.dry_run), args.start,
                             args.direction)
@@ -1020,6 +1044,7 @@ def do_run(args, profile):
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stopped.append(True))
     code = 0
+    search = None
     try:
         if camera is not None:
             code = warm_up(camera, profile, metric)
@@ -1035,9 +1060,15 @@ def do_run(args, profile):
         print("stopped: %s   position %s   best %d   %d passes, %d msteps"
               % (reason, search.best_step, best, search.passes, motor.moved))
         code = 0 if reason == "peak" else EXIT_NO_PEAK
+        if reason != "peak":
+            return_to_best(search, _stderr)
     except Edge as exc:
         _stderr("stopped: %s" % exc)		# a guard, both edges, or a cap
         code = EXIT_EDGE
+        try:
+            return_to_best(search, _stderr)
+        except Edge as back:
+            _stderr("not back at the best position: %s" % back)
     finally:
         motor.flush()
         metric.close()

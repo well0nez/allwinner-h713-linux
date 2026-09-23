@@ -13,7 +13,7 @@
 Description=HY310: the projector's settings page for a phone or a browser
 Documentation=file:/usr/local/share/doc/h713-panel/docs-h713-panel.md
 Wants=network-online.target
-After=network-online.target multi-user.target
+After=network-online.target
 
 StartLimitIntervalSec=60
 StartLimitBurst=3

@@ -15,11 +15,14 @@
 # yet. The third is what happens: with no h713-tv the daemon stays in bypass,
 # says so in "ctl status", and retries the connection once a second, which is
 # also what it does when h713-tv is restarted under it. So this unit may
-# start at any time, before or after the picture.
+# start at any time, before or after the picture - and it must not say
+# "After=multi-user.target": a unit wanted BY that target and ordered AFTER
+# it is an ordering cycle, and systemd breaks a cycle by dropping a job. On
+# 23.09.2026 the job it dropped was this one (the boot before, the other
+# one), and the warp was simply not running after boot.
 [Unit]
 Description=HY310: keystone warp on the GPU
 Documentation=file:/usr/local/share/doc/h713-warp/docs-h713-warp.md
-After=multi-user.target
 
 StartLimitIntervalSec=60
 StartLimitBurst=3
