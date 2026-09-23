@@ -152,7 +152,13 @@ Every third slot is drawn a second time into a scratch buffer 4 ms after the fir
 sampled rows. A row that differs was read out of a slot the firmware had not finished writing. Zero
 differing rows over a few hundred frames of motion is the pass; a band of differing rows at the bottom is
 the source race. Measured with the settings page polling: 900 frames, 0 differing, 0 late samples, worst
-frame 4.5 ms. The control run with `hold off`: 106 of 212 frames differed.
+frame 4.5 ms. The control run with `hold off`: 106 of 212 frames differed. On the `v0.95-beta` image as
+installed, twice: 300 frames, 0 differing.
+
+The check costs frames while it runs: the second draw and its readback hold the loop long enough that
+the next held slot is often past the 28 ms and is skipped - `stale slots skipped` on the status line grows
+by about 1.6 per checked frame and the rate drops to about 30 fps for those seconds. Skipped is dropped,
+not torn. It is a diagnostic; it ends by itself.
 
 This is the way to check tearing without standing in front of the wall. `ctl trace N` logs the next N
 dequeues with their timestamps, the gaps between pumps and any slow phase.
