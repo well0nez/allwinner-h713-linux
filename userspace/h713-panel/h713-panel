@@ -400,15 +400,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_BODY:
                 raise ValueError("too long")
-            answer = self.server.panel.call(
-                json.loads(self.rfile.read(length).decode("utf-8")))
+            request = json.loads(self.rfile.read(length).decode("utf-8"))
+            self.verb = request.get("verb") if isinstance(request, dict) \
+                else None
+            answer = self.server.panel.call(request)
         except (ValueError, UnicodeDecodeError):
             answer = no("error that is not a request this page makes")
         self._send(200, self.JSON, json.dumps(answer).encode("utf-8"))
 
+    verb = None
+
     def log_message(self, fmt, *args):
-        """One line per request, and the browser's path stays out of it."""
-        sys.stderr.write("%s %s\n" % (self.address_string(), self.command))
+        """One line per request: who, what, and the verb - so the journal
+        says which button was pressed (the focus stood outside its range on
+        23.09.2026 and nobody could tell what had moved it). The browser's
+        path stays out of it."""
+        sys.stderr.write("%s %s%s\n" % (self.address_string(), self.command,
+                                          " " + str(self.verb)[:40]
+                                          if self.verb else ""))
 
 
 def serve(panel, page, address=DEFAULT_ADDRESS, port=DEFAULT_PORT):
