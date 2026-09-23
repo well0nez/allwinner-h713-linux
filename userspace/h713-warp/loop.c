@@ -28,6 +28,20 @@
 
 #define FAILS_MAX	5	/* consecutive render failures -> bypass (M10) */
 #define FPS_WINDOW	100	/* the last hundred frames, M11 */
+/*
+ * The firmware publishes a slot about a millisecond BEFORE its last lines have
+ * landed: measured on the HY310 on 23.09.2026 through /dev/mem, the bottom
+ * line of a slot changed 0.5 to 1.2 ms after the ring pointer moved to it
+ * (umbau/test-20260915/keystone-20260922.md, "the source race"). A raster
+ * display never notices, it reaches those lines 15 ms later; the GPU reads
+ * the whole slot in a millisecond and so, whenever the panel vsync that hands
+ * the slot on came right after the publish, drew the bottom of the previous
+ * frame under the top of the new one - the tearing on fast motion under the
+ * warp. So a slot younger than this is left to settle first. The timestamp
+ * is the vsync's, at or after the publish; four milliseconds is three times
+ * the measured tail and a quarter of a frame of latency.
+ */
+#define SOURCE_SETTLE_S	0.004
 
 void warp_solve(struct runtime *r)
 {
@@ -170,7 +184,7 @@ bool warp_pump(struct runtime *r)
 {
 	char why[WARP_WHY];
 	int slot = 0, target, fence, rc;
-	double t0;
+	double t0, age;
 
 	if (r->state != WARP_ON)
 		return false;
@@ -182,6 +196,11 @@ bool warp_pump(struct runtime *r)
 			if (why[0])
 				warn("capture         %s", why);
 			return true;		/* nothing ready: nothing to do */
+		}
+		age = now_s() - r->source.dq_s;
+		if (age >= 0 && age < SOURCE_SETTLE_S) {
+			usleep((useconds_t)((SOURCE_SETTLE_S - age) * 1e6));
+			r->source.settled++;
 		}
 	}
 	t0 = now_s();
@@ -298,8 +317,8 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 	text_add(&t, "frames          %lu at %.1f fps, dropped %lu, commits %lu, busy %lu, link errors %lu\n",
 		 r->frames, r->fps, r->dropped, r->peer.commits, r->peer.busy,
 		 r->peer.errors);
-	text_add(&t, "timing          last frame %.1f ms, worst %.1f ms (DQBUF to the answer), capture timeouts %lu\n",
-		 r->frame_ms, r->frame_ms_max, r->source.timeouts);
+	text_add(&t, "timing          last frame %.1f ms, worst %.1f ms (DQBUF to the answer), capture timeouts %lu, settled %lu\n",
+		 r->frame_ms, r->frame_ms_max, r->source.timeouts, r->source.settled);
 	text_add(&t, "config          %s%s, start %s\n", r->conf.path,
 		 r->conf.present ? "" : " (missing)",
 		 r->conf.start_on ? "on" : "off");

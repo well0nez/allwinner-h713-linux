@@ -105,6 +105,8 @@ struct source {
 	int dmabuf[WARP_SLOTS][2];
 	bool streaming;
 	unsigned long timeouts, frames;
+	double dq_s;			/* the last slot's timestamp: the vsync that handed it on */
+	unsigned long settled;		/* frames that had to wait for the slot's last lines */
 };
 
 void source_init(struct source *s, const char *want);

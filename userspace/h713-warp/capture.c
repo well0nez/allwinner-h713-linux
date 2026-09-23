@@ -218,6 +218,7 @@ int source_dequeue(struct source *s, char *why, size_t n)
 		return -1;
 	}
 	s->frames++;
+	s->dq_s = (double)b.timestamp.tv_sec + (double)b.timestamp.tv_usec / 1e6;
 
 	return (int)b.index;
 }
