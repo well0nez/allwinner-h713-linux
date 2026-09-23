@@ -137,6 +137,8 @@ int gl_fence(void);			/* an out-fence fd, or -1 */
 /* the self-check: draw the slot again into a scratch buffer and compare it
  * with the panel buffer the first draw went to; rows = differing rows,
  * lo/hi their span */
+/* the last drawn luma plane as a PGM file: eyes for a test without a wall */
+bool gl_dump_luma(int target, const char *path, char *why, size_t n);
 bool gl_check_compare(int target, int slot, const float m[16], unsigned long *rows,
 		      int *lo, int *hi, char *why, size_t n);
 

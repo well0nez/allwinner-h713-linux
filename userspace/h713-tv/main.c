@@ -3841,15 +3841,18 @@ static bool zoom_parse(const char *verb, const char *arg, enum zoom_mode *m,
 		return true;
 	}
 	if (!strcasecmp(verb, "out")) {
-		errno = 0;
-		p = 80;
-		if (arg) {
-			p = strtol(arg, &end, 10);
-			if (end == arg || *end || errno || p < 1 || p > 100)
-				return false;
-		}
-		*m = ZOOM_OUT;
-		*v = (unsigned int)p;
+		/*
+		 * Retired 24.09.2026: the DE's picture scaler only enlarges. A
+		 * destination window smaller than the frame left its ratio at
+		 * unity and showed the top-left crop of the picture, centred
+		 * (measured at 0x05180008 on the HY310; the vendor shrinks on the
+		 * GPU, AP3e). The projection area is h713-warp's zoom. A saved
+		 * "zoom = out N" from before reads as off.
+		 */
+		(void)p;
+		(void)end;
+		*m = ZOOM_OFF;
+		*v = 0;
 		return true;
 	}
 
@@ -3894,17 +3897,21 @@ static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
 		reply_fail(r, "the warp is on - use h713-warp ctl zoom");
 		return false;
 	}
+	if (verb && !strcasecmp(verb, "out")) {
+		reply_fail(r, "zoom out is gone (24.09.): the DE scaler only enlarges, it cropped instead of shrinking; the projection area is \"h713-warp ctl zoom PERCENT\"");
+		return false;
+	}
 	if (!verb) {
 		zoom_text(d, text, sizeof(text));
 		reply_add(r, "ok zoom %s\n", text);
 		return false;
 	}
 	if (strchr(verb, ',')) {
-		reply_fail(r, "zoom no longer takes a rectangle. A window somewhere else in the ring would need the plane to crop at SRC_X/SRC_Y, and it crops from the ring's first byte only (kernel 0133c). Use \"in FACTOR\", \"out PERCENT\" or \"off\"");
+		reply_fail(r, "zoom no longer takes a rectangle. A window somewhere else in the ring would need the plane to crop at SRC_X/SRC_Y, and it crops from the ring's first byte only (kernel 0133c). Use \"in FACTOR\" or \"off\"");
 		return false;
 	}
 	if (!zoom_parse(verb, arg, &m, &v)) {
-		reply_fail(r, "zoom takes \"in [1.0..4.0]\", \"out [1..100]\" or \"off\", not \"%s%s%s\"",
+		reply_fail(r, "zoom takes \"in [1.0..4.0]\" or \"off\", not \"%s%s%s\"",
 			   verb, arg ? " " : "", arg ? arg : "");
 		return false;
 	}
@@ -5293,7 +5300,7 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        Only here is anything written, not on every \"set\"\n"
 		  "  aspect [NAME]         how the source is fitted (auto proportional full 16:9 4:3 zoom);\n"
 		  "                        without NAME: show it. A change rebuilds the picture (~0.5 s)\n"
-		  "  zoom [off|in F|out P] the digital zoom: \"in\" enlarges the centre of the picture by\n"
+		  "  zoom [off|in F]       the digital zoom: \"in\" enlarges the centre of the picture by\n"
 		  "                        a factor 1.0..4.0 (default 2), \"out\" shrinks the whole picture\n"
 		  "                        to P percent of the panel, centred (1..100, default 80), \"off\"\n"
 		  "                        is the baseline; without an argument: show it. Rebuilds as\n"

@@ -165,7 +165,6 @@ class VerbTest(unittest.TestCase):
                 ("preset", ["cinema"], "h713-tv ctl preset cinema"),
                 ("aspect", ["16:9"], "h713-tv ctl aspect 16:9"),
                 ("tv_zoom_in", ["2.0"], "h713-tv ctl zoom in 2.0"),
-                ("tv_zoom_out", [80], "h713-tv ctl zoom out 80"),
                 ("tv_zoom_off", [], "h713-tv ctl zoom off"),
                 ("save", [], "h713-tv ctl save"),
                 ("volume", [42], "h713-tv ctl volume 42"),

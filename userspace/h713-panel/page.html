@@ -138,14 +138,10 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
   <div id="sliders"></div>
   <h3>Aspect</h3>
   <div class="row" id="aspects"></div>
-  <h3>Firmware zoom</h3>
-  <p class="note" id="tvzoom-note" hidden>While the warp is on, the firmware zoom acts on the capture
-    window only: "In" cuts a piece out, "out" does nothing. Use the zoom under Keystone, it shrinks the
-    projection area.</p>
+  <h3>Magnifier (firmware)</h3>
+  <p class="note" id="tvzoom-note" hidden>While the warp is on the magnifier is off: it is the firmware's
+    enlargement of the capture window. The projection area is the zoom under Keystone.</p>
   <div class="row" id="tvzoom"></div>
-  <label for="out">Firmware zoom out (scaling without the warp) <span id="out-v" class="num">100 %</span></label>
-  <input type="range" id="out" min="50" max="100" step="5" value="100" oninput="show_v('out', ' %')"
-         onchange="act('tv_zoom_out', [+this.value])">
   <div class="row" style="margin-top:8px"><button class="wide"
     onclick="act('save')">Save picture settings</button></div>
 </section>
@@ -316,7 +312,7 @@ function draw() {
   id("tvzoom-note").hidden = ST.warp !== "on";
   Array.prototype.forEach.call(id("tvzoom").querySelectorAll("button"), function (b) {
     b.disabled = ST.warp === "on"; });
-  id("out").disabled = ST.warp === "on";
+
   press("mask-on", masked()); press("mask-off", !masked());
   (ST.after_move_list || []).forEach(function (v) { press("am-" + v, ST.after_move === v); });
   if (document.activeElement !== id("zoom") && ST.screen_zoom) {

@@ -15,6 +15,7 @@
  * that; design M5 feared otherwise).
  */
 #define EGL_NO_X11
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -678,6 +679,60 @@ bool gl_check_compare(int target_index, int source_slot, const float m[16],
 			*hi = y;
 		}
 	}
+
+	return true;
+}
+
+/* The luma plane of one panel buffer, read back and written as a binary PGM:
+ * what the warp drew, seen without a wall (24.09.2026, for the zoom and the
+ * keystone to be judged from a file). One full readback, only on request. */
+bool gl_dump_luma(int target_index, const char *path, char *why, size_t n)
+{
+	size_t line = (size_t)panel_w * 4;
+	unsigned char *buf = malloc(line * panel_h);
+	FILE *f;
+	int y, x, bpp;
+
+	if (!buf)
+		return oops(why, n, "8 MB for the dump");
+	glFinish();
+	glBindFramebuffer(GL_FRAMEBUFFER, target[target_index].fbo[0]);
+	bpp = read_bpp();
+	memset(buf, 0x5a, line * panel_h);
+	glReadPixels(0, 0, (GLsizei)panel_w, (GLsizei)panel_h, bpp == 4 ? GL_RGBA : GL_RED_EXT,
+		     GL_UNSIGNED_BYTE, buf);
+	if (glGetError()) {
+		free(buf);
+		return oops(why, n, "the dump's readback");
+	}
+	/* what the driver really wrote: four bytes a pixel carry 0,0,255 behind
+	 * the red of an R8 plane, one byte a pixel does not (24.09.: the
+	 * implementation format said RGBA and the data came packed) */
+	if (bpp == 4) {
+		int packed = 1;
+
+		for (x = 0; x < 64; x++)
+			if (buf[x * 4 + 3] == 255 && buf[x * 4 + 1] == 0 && buf[x * 4 + 2] == 0)
+				packed = 0;
+		if (packed) {
+			bpp = 1;
+			snprintf(why, n, "packed");
+		}
+	}
+	f = fopen(path, "w");
+	if (!f) {
+		snprintf(why, n, "%s: %s", path, strerror(errno));
+		free(buf);
+		return false;
+	}
+	fprintf(f, "P5\n%u %u\n255\n", panel_w, panel_h);
+	for (y = 0; y < (int)panel_h; y++)
+		for (x = 0; x < (int)panel_w; x++)
+			fputc(buf[((size_t)y * panel_w + (size_t)x) * (size_t)bpp], f);
+	fclose(f);
+	free(buf);
+	if (strcmp(why, "packed"))
+		why[0] = '\0';
 
 	return true;
 }

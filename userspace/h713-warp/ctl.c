@@ -205,6 +205,7 @@ static void cmd_help(struct textbuf *t)
 		 "  hold on|off                draw a slot one vsync late (on, the default): the\n"
 		 "                             firmware hands a slot on before it is written to\n"
 		 "                             the end; off is the old timing, for the check\n"
+		 "  dump PATH                  the last drawn frame's luma plane as a PGM file\n"
 		 "  check [FRAMES]             the self-check: FRAMES frames (300) drawn twice, 12 ms\n"
 		 "                             apart, and compared; the result on the status line\n"
 		 "  zoom [PERCENT]             the screen zoom, 10..100 (100 = none): every corner\n"
@@ -275,6 +276,19 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 			}
 			text_add(t, "ok hold %s\n", a1);
 		}
+	} else if (!strcmp(cmd, "dump")) {
+		char why[WARP_WHY];
+		int last = (r->target + WARP_TARGETS - 1) % WARP_TARGETS;
+
+		if (r->state != WARP_ON)
+			text_add(t, "error dump needs the warp on\n");
+		else if (!a1)
+			text_add(t, "error dump takes a file path\n");
+		else if (gl_dump_luma(last, a1, why, sizeof(why)))
+			text_add(t, "ok dump %s -- the luma plane of the last drawn frame, PGM%s\n", a1,
+				 why[0] ? " (the readback came packed, one byte a pixel)" : "");
+		else
+			text_add(t, "error dump: %s\n", why);
 	} else if (!strcmp(cmd, "trace")) {
 		r->check.trace = a1 ? atoi(a1) : 300;
 		text_add(t, "ok trace %d dequeues to the journal\n", r->check.trace);
