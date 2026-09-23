@@ -88,6 +88,11 @@ stopped: peak   position 51   best 14328   38 passes, 444 msteps
 | `stopped: the hard cap of 1000 msteps per run` | 5 | the travel is used up |
 | `stopped: both edges are latched at once` | 5 | the range watcher gives nothing in either direction |
 | `stopped: turned round at an edge more than 4 times` | 5 | a picture the metric cannot climb |
+
+A run that ends without a peak (5 or 6) does not leave the focus where the search stopped - at an edge, the
+blurriest place there is - but moves back to the best position it has seen, and says so
+(`back at the best position seen: -23 (395 msteps)`). Since 23.09.2026; before, a run on a dark picture
+left the focus at the lower stop.
 | `the motor cannot start: ...` | 4 | a guard refused before anything moved; the sentence names which |
 | `no picture: the camera streams but the frame is flat` | 3 | no chessboard, or no lamp |
 | a usage or setup error | 2 | the message says what is missing |

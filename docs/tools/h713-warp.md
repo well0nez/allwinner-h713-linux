@@ -75,7 +75,10 @@ h713-warp ctl status
 The unit has **no ordering against `h713-tv`**, on purpose: `h713-tv` runs as the template instance
 `h713-tv@videoN.service` started by udev, and `After=` cannot name "whichever instance udev starts". Instead
 the daemon tolerates a peer that is not there: it stays in bypass, says so in `ctl status` and retries once a
-second - which is also what it does when `h713-tv` is restarted under it.
+second - which is also what it does when `h713-tv` is restarted under it. It carries no `After=` at all:
+the unit is wanted by `multi-user.target`, and a unit ordered after the target that wants it is an ordering
+cycle, which systemd breaks by dropping a job - on 23.09.2026 the warp's, so the warp was not running after
+boot (fixed the same day, `h713-panel` had the same line).
 
 ## What happens when something is missing
 

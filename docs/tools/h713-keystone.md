@@ -14,7 +14,7 @@ h713-keystone status                # configuration, sensor, reference, warp
 h713-keystone watch                 # after a move, run the automatic once (the unit's verb)
 ```
 
-`h713-keystone-auto.service` runs `watch`; it is enabled from the first boot and does nothing while `after_move = off` (the settings page's "After a move" buttons write that key and restart the unit). `-C PATH` names
+`h713-keystone-auto.service` runs `watch`; it is enabled from the first boot, waits quietly for the reference while there is none (a fresh image has none; until 23.09.2026 it exited instead and systemd restarted it every five seconds), and does nothing while `after_move = off` (the settings page's "After a move" buttons write that key and restart the unit). `-C PATH` names
 another configuration file, `--reference PATH` another reference file, `--device PATH` an IIO node instead of the one
 found by name, `--warp PATH` another warp tool, `-q` drops the warnings.
 
