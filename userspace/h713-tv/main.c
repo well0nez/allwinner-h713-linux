@@ -3936,7 +3936,7 @@ static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
  * plane goes down first and the master is taken for the whole warp; the
  * answer goes out here, because the fds have to travel with that line.
  */
-static void cmd_warp_claim(struct reply *r, struct display *d, int conn)
+static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display *d, int conn)
 {
 	char cbuf[CMSG_SPACE(sizeof(int) * WARP_BUFS)] = { 0 }, line[64];
 	int fds[WARP_BUFS] = { -1, -1, -1 };
@@ -3953,6 +3953,11 @@ static void cmd_warp_claim(struct reply *r, struct display *d, int conn)
 	}
 	if (!d->plane_id || !prop_id(&d->plane_props, "IN_FENCE_FD")) {
 		reply_fail(r, "no video plane with IN_FENCE_FD on CRTC %u", d->crtc_id);
+		return;
+	}
+	if (cap->last_sig != 1) {
+		/* the warp asks again once a second; the console stays until then */
+		reply_fail(r, "no signal to warp -- the console stays, ask again");
 		return;
 	}
 	if ((d->on && !display_hide(d)) || !display_take_master(d)) {
@@ -4056,11 +4061,11 @@ static bool warp_serve(struct display *d)
 }
 
 /* warp [status] for the human; "claim" is h713-warp's (A1) */
-static void cmd_warp(struct reply *r, struct display *d, const char *what,
+static void cmd_warp(struct reply *r, struct capture *cap, struct display *d, const char *what,
 		     int conn)
 {
 	if (what && !strcmp(what, "claim"))
-		cmd_warp_claim(r, d, conn);
+		cmd_warp_claim(r, cap, d, conn);
 	else if (what && strcmp(what, "status"))
 		reply_fail(r, "warp knows \"status\" here; on, off and the keystone are h713-warp ctl");
 	else if (!warp.claimed)
@@ -5359,7 +5364,7 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 	} else if (!strcmp(cmd, "zoom")) {
 		return cmd_zoom(r, d, a1, a2);
 	} else if (!strcmp(cmd, "warp")) {
-		cmd_warp(r, d, a1, conn);
+		cmd_warp(r, cap, d, a1, conn);
 	} else if (!strcmp(cmd, "audio")) {
 		/*
 		 * The sound is decided here and not by the caller's
@@ -5542,7 +5547,12 @@ static void evaluate(struct capture *cap, struct display *d,
 	int sig, was;
 
 	/* while the warp is on the panel is h713-warp's: measure, report, and
-	 * touch nothing (A3)
+	 * touch nothing (A3) - as long as there is a signal. Without one the
+	 * ring goes on handing out its last frame and the warp would go on
+	 * drawing it (the wall froze on the first unplug, 24.09.2026), so the
+	 * warp is released here: its peer connection closes, it falls back to
+	 * bypass and asks again once a second; "warp claim" is refused until a
+	 * signal is back, and the state below shows the console meanwhile.
 	 */
 	if (warp.claimed) {
 		retry_stop(rt);
@@ -5550,7 +5560,11 @@ static void evaluate(struct capture *cap, struct display *d,
 		cap->last_sig = sig;
 		if (sig != 2)
 			cap->last_t = t;
-		return;
+		if (sig == 1)
+			return;
+		info("signal          %s while the warp is on -- the warp is released, the console until a signal is back",
+		     sig == 0 ? "gone" : sig == 2 ? "changing" : sig == 3 ? "not in the firmware's table" : "not readable");
+		warp_release(d);
 	}
 	/* "off" over the control socket: the console stays, whatever the signal does */
 	if (ctl.policy == POLICY_OFF) {
