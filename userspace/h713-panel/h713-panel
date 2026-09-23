@@ -94,8 +94,6 @@ CORNER, AXIS, ON_OFF = _choice(*CORNERS), _choice(*AXES), _choice("on", "off")
 STEP = _choice(*[str(sign * n) for n in NUDGE_STEPS for sign in (1, -1)])
 PER_MILLE = _number(0, 1000)
 PERCENT = _number(50, 100, 5)           # the screen zoom
-# `h713-tv ctl zoom in F` takes any factor 1.0..4.0; the page offers five.
-FACTOR = _choice("1.5", "2.0", "2.5", "3.0", "4.0")
 T, LONG = TIMEOUT_S, TIMEOUT_LONG_S
 
 # verb -> (tool, the fixed words, the checks for the browser's arguments,
@@ -118,8 +116,6 @@ COMMANDS = {
     # Picture
     "preset": (TV, ("ctl", "preset"), (_choice(*PRESETS),), T),
     "aspect": (TV, ("ctl", "aspect"), (_choice(*ASPECTS),), T),
-    "tv_zoom_in": (TV, ("ctl", "zoom", "in"), (FACTOR,), T),
-    "tv_zoom_off": (TV, ("ctl", "zoom", "off"), (), T),
     "save": (TV, ("ctl", "save"), (), T),
     # Sound
     "volume": (TV, ("ctl", "volume"), (_number(0, 100),), T),
@@ -340,7 +336,6 @@ class Panel(object):
                 "picture": tv.get("picture", "-"),
                 "audio": tv.get("audio", "-"),
                 "aspect": (tv.get("format") or "-").split()[0],
-                "tv_zoom": tv.get("zoom", "-"),
                 "keystone_by": (keystone.get("keystone by") or "-").split()[0],
                 "after_move": (keystone.get("after a move") or "-").split()[0]}
 

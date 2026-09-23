@@ -138,10 +138,6 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
   <div id="sliders"></div>
   <h3>Aspect</h3>
   <div class="row" id="aspects"></div>
-  <h3>Magnifier (firmware)</h3>
-  <p class="note" id="tvzoom-note" hidden>While the warp is on the magnifier is off: it is the firmware's
-    enlargement of the capture window. The projection area is the zoom under Keystone.</p>
-  <div class="row" id="tvzoom"></div>
   <div class="row" style="margin-top:8px"><button class="wide"
     onclick="act('save')">Save picture settings</button></div>
 </section>
@@ -196,7 +192,20 @@ function act(verb, args) {
   if (BUSY) { say("error one command at a time", "bad"); return Promise.resolve(); }
   BUSY = true; say("... " + verb, "");
   return api(verb, args).then(function (a) {
-    BUSY = false; say(a.line, a.ok ? "ok" : "bad"); return refresh();
+    BUSY = false; say(a.line, a.ok ? "ok" : "bad");
+    return refresh().then(function () { if (verb === "preset") { return syncSliders(); } });
+  });
+}
+/* A preset sets the nine values behind the sliders: read them again and move
+   the sliders, except one the hand is on. Only after a preset - the read is
+   nine firmware questions, not something to poll. */
+function syncSliders() {
+  return api("controls").then(function (c) {
+    (c.controls || []).forEach(function (t) {
+      var s = id("s-" + t.name);
+      if (!s || document.activeElement === s || t.value === null || t.value === undefined) { return; }
+      s.value = t.value; show_v("s-" + t.name, "");
+    });
   });
 }
 function press(name, on) {
@@ -244,11 +253,16 @@ function pick(corner) {
 /* A drag is absolute: the corner goes where the finger is, clamped here the
    way h713-warp clamps it, and `keystone set` carries the number. */
 function grab(event, corner) {
+  var svg = id("quad");
   event.preventDefault();
   if (corner !== CORNER) { pick(corner); }
-  DRAG = corner; event.target.setPointerCapture(event.pointerId);
-  event.target.onpointermove = move;
-  event.target.onpointerup = event.target.onpointercancel = drop;
+  /* the handles are redrawn on every move, so the circle under the pointer
+     is replaced at once; the svg stays, so it holds the capture and the
+     handlers (the desktop drag died after the first move because of that) */
+  DRAG = corner;
+  try { svg.setPointerCapture(event.pointerId); } catch (e) {}
+  svg.onpointermove = move;
+  svg.onpointerup = svg.onpointercancel = drop;
 }
 function move(event) {
   if (!DRAG) { return; }
@@ -260,7 +274,12 @@ function move(event) {
   KS[DRAG + "_y"] = clamp(v[1], limit(DRAG, "y")); drawQuad();
   if (Date.now() - LAST > 100) { LAST = Date.now(); push(DRAG); }
 }
-function drop() {
+function drop(event) {
+  var svg = id("quad");
+  svg.onpointermove = svg.onpointerup = svg.onpointercancel = null;
+  if (event && event.pointerId !== undefined) {
+    try { svg.releasePointerCapture(event.pointerId); } catch (e) {}
+  }
   if (DRAG) { var corner = DRAG; DRAG = null; push(corner); }
 }
 /* One pair of set commands at a time; a newer position replaces a waiting one. */
@@ -309,9 +328,6 @@ function draw() {
   if (!DRAG) { KS = ST.keystone || {}; drawQuad(); }
   press("warp-on", ST.warp === "on"); press("warp-off", ST.warp === "off");
   /* the firmware zoom is the ring path's; under the warp it only cuts the capture */
-  id("tvzoom-note").hidden = ST.warp !== "on";
-  Array.prototype.forEach.call(id("tvzoom").querySelectorAll("button"), function (b) {
-    b.disabled = ST.warp === "on"; });
 
   press("mask-on", masked()); press("mask-off", !masked());
   (ST.after_move_list || []).forEach(function (v) { press("am-" + v, ST.after_move === v); });
@@ -340,9 +356,6 @@ function build() {     /* the page draws itself from the tool's own lists */
                g[2] + "', ['" + v + "'])\">" + esc(v) + "</button>";
       }).join("");
     });
-    id("tvzoom").innerHTML = "<button onclick=\"act('tv_zoom_off')\">Off</button>" +
-      ["1.5", "2.0", "2.5", "3.0", "4.0"].map(function (f) {
-        return "<button onclick=\"act('tv_zoom_in', ['" + f + "'])\">In " + f + "</button>"; }).join("");
     id("sliders").innerHTML = (c.controls || []).map(function (t) {
       var n = t.name, v = t.value === null || t.value === undefined ? t.min : t.value;
       return '<label for="s-' + n + '">' + esc(n) + ' <span id="s-' + n + '-v">' + v +

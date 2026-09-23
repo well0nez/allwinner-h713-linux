@@ -164,8 +164,6 @@ class VerbTest(unittest.TestCase):
         for verb, args, expected in (
                 ("preset", ["cinema"], "h713-tv ctl preset cinema"),
                 ("aspect", ["16:9"], "h713-tv ctl aspect 16:9"),
-                ("tv_zoom_in", ["2.0"], "h713-tv ctl zoom in 2.0"),
-                ("tv_zoom_off", [], "h713-tv ctl zoom off"),
                 ("save", [], "h713-tv ctl save"),
                 ("volume", [42], "h713-tv ctl volume 42"),
                 ("mute", ["on"], "h713-tv ctl mute on"),
@@ -200,7 +198,6 @@ class VerbTest(unittest.TestCase):
                            ("volume", [True]),
                            ("focus", ["up", "7"]),
                            ("preset", ["$(id)"]),
-                           ("tv_zoom_in", ["9.0"]),
                            ("after_move", ["keystone; reboot"]),
                            ("picture_set", ["gamma", 5])):
             answer = self.call(verb, args)
@@ -295,7 +292,7 @@ class VerbTest(unittest.TestCase):
 
     def test_a_tool_that_refuses_is_reported_as_it_answered(self):
         self.fake.tool("h713-tv", code=1)
-        answer = self.call("tv_zoom_in", ["2.0"])
+        answer = self.call("preset", ["cinema"])
         self.assertFalse(answer["ok"])
         self.assertTrue(answer["line"].startswith("ok h713-tv") is False
                         or answer["ok"] is False)
