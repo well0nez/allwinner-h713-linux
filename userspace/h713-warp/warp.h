@@ -85,6 +85,7 @@ struct peer {
 	int fd;				/* -1: no connection */
 	int target[WARP_TARGETS];	/* dma-buf fds of the panel buffers */
 	unsigned int width, height, pitch;
+	unsigned int coff;		/* NV12: the chroma plane's offset in each buffer */
 	unsigned long commits, busy, errors;
 };
 
@@ -141,7 +142,9 @@ bool gl_check_compare(int target, int slot, const float m[16], unsigned long *ro
 
 /* the two shader pairs, so the host tests compile the very same strings */
 extern const char *const gl_vertex_shader;
-extern const char *const gl_fragment_shader;	/* NV16 -> RGB, BT.709 */
+extern const char *const gl_fragment_shader;	/* NV16 -> RGB, BT.709 (kept for the tests) */
+extern const char *const gl_luma_shader;	/* Y in, Y out */
+extern const char *const gl_chroma_shader;	/* CbCr in, CbCr out */
 extern const char *const gl_pattern_shader;
 
 /* ---------------- what the daemon is doing (loop.c) -------------------- */

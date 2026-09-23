@@ -655,7 +655,7 @@ struct display {
 	uint64_t fb_size;
 	bool master;
 	bool on;
-	bool warped;			/* h713-warp draws on the primary plane */
+	bool warped;			/* h713-warp draws on the video plane (NV12) */
 };
 
 /*
@@ -1319,49 +1319,12 @@ static bool display_hide(struct display *d)
 struct warp {
 	int peer;			/* the daemon's connection, -1: none */
 	bool claimed;
-	uint32_t plane_id;		/* the PRIMARY plane */
-	struct props props;
 	uint32_t handle[WARP_BUFS], fb_id[WARP_BUFS];
-	unsigned int pitch;
+	unsigned int pitch, coff;	/* NV12: the line pitch, the chroma plane's offset */
 	unsigned long commits, busy, errors;
 };
 
 static struct warp warp = { .peer = -1 };
-
-/* the PRIMARY plane of this CRTC that offers XRGB8888 and IN_FENCE_FD */
-static bool warp_find_plane(struct display *d)
-{
-	drmModePlaneRes *planes = drmModeGetPlaneResources(d->fd);
-	unsigned int i, f;
-
-	for (i = 0; planes && i < planes->count_planes && !warp.plane_id; i++) {
-		drmModePlane *p = drmModeGetPlane(d->fd, planes->planes[i]);
-		struct props pp = { 0 };
-		uint64_t type = 0;
-		bool rgb = false;
-
-		if (!p)
-			continue;
-		for (f = 0; f < p->count_formats; f++)
-			rgb |= p->formats[f] == DRM_FORMAT_XRGB8888;
-		if (rgb && (p->possible_crtcs & (1u << d->crtc_index)) &&
-		    props_get(d->fd, p->plane_id, DRM_MODE_OBJECT_PLANE, &pp)) {
-			prop_value(&pp, "type", &type);
-			if (type == DRM_PLANE_TYPE_PRIMARY &&
-			    prop_id(&pp, "IN_FENCE_FD")) {
-				warp.plane_id = p->plane_id;
-				warp.props = pp;
-			} else {
-				props_put(&pp);
-			}
-		}
-		drmModeFreePlane(p);
-	}
-	if (planes)
-		drmModeFreePlaneResources(planes);
-
-	return warp.plane_id != 0;
-}
 
 static void warp_free(struct display *d)
 {
@@ -1388,18 +1351,30 @@ static bool warp_alloc(struct display *d, int *fds)
 	uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
 	int i;
 
+	/*
+	 * NV12, the luma plane and the chroma plane in one dumb buffer, the
+	 * chroma below the luma (24.09.2026): the warp's frames go on the VIDEO
+	 * plane, the channel the firmware runs its nine picture controls on,
+	 * so they act on the warped picture exactly as on the ring. The video
+	 * plane takes NV12 and NV16; NV16 shows with every other chroma line
+	 * dropped (measured on the wall, 24.09.), so NV12 loses nothing and
+	 * carries a third of the bytes XRGB did. The driver wants the pitch
+	 * equal to the width and the same pitch on both planes.
+	 */
 	for (i = 0; i < WARP_BUFS; i++) {
 		memset(&creq, 0, sizeof(creq));
 		creq.width = d->width;
-		creq.height = d->height;
-		creq.bpp = 32;
+		creq.height = d->height * 3 / 2;
+		creq.bpp = 8;
 		if (drmIoctl(d->fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq))
 			return false;
 		warp.handle[i] = creq.handle;
 		warp.pitch = creq.pitch;
-		handles[0] = creq.handle;
-		pitches[0] = creq.pitch;
-		if (drmModeAddFB2(d->fd, d->width, d->height, DRM_FORMAT_XRGB8888,
+		warp.coff = creq.pitch * d->height;
+		handles[0] = handles[1] = creq.handle;
+		pitches[0] = pitches[1] = creq.pitch;
+		offsets[1] = warp.coff;
+		if (drmModeAddFB2(d->fd, d->width, d->height, DRM_FORMAT_NV12,
 				  handles, pitches, offsets, &warp.fb_id[i], 0) ||
 		    drmPrimeHandleToFD(d->fd, creq.handle, DRM_CLOEXEC | DRM_RDWR,
 				       &fds[i]))
@@ -1434,12 +1409,11 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy)
 	int ret;
 
 	*busy = false;
-	for (i = 0; ok && i < (fence >= 0 ? 11u : 10u); i++) {
-		uint32_t id = prop_id(&warp.props, name[i]);
-
-		ok = id && drmModeAtomicAddProperty(req, warp.plane_id, id,
-						    val[i]) >= 0;
-	}
+	/* the VIDEO plane, without the ring: our NV12 frame, the whole panel */
+	for (i = 0; ok && i < (fence >= 0 ? 11u : 10u); i++)
+		ok = add(req, d, name[i], val[i]);
+	if (ok)
+		ok = add(req, d, "hdmi-ring", 0);
 	ret = ok ? drmModeAtomicCommit(d->fd, req, flags, NULL) : -EINVAL;
 	drmModeAtomicFree(req);
 	if (!ret) {
@@ -3403,12 +3377,12 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	reply_add(r, "colour          %s\n", capture_colour(cap, colbuf, sizeof(colbuf)));
 	st_colour = status_ms(&st_t);
 	reply_add(r, "picture         %s%s\n",
-		  d->warped ? "warped (h713-warp draws on the primary plane)" :
+		  d->warped ? "warped (h713-warp draws on the video plane)" :
 		  d->on ? "plane on" : "console",
 		  d->master ? ", DRM master held" : "");
 	if (warp.claimed)
-		reply_add(r, "warp            on, primary plane %u: %lu commits, %lu busy, %lu refused\n",
-			  warp.plane_id, warp.commits, warp.busy, warp.errors);
+		reply_add(r, "warp            on, video plane %u: %lu commits, %lu busy, %lu refused\n",
+			  d->plane_id, warp.commits, warp.busy, warp.errors);
 	if (d->src_w)
 		reply_add(r, "buffer          %ux%u NV16, line pitch %u on panel %ux%u\n", d->src_w, d->src_h, d->src_pitch,
 			  d->width, d->height);
@@ -3977,9 +3951,8 @@ static void cmd_warp_claim(struct reply *r, struct display *d, int conn)
 			   : "\"warp claim\" needs the connection it is sent on");
 		return;
 	}
-	if (!warp.plane_id && !warp_find_plane(d)) {
-		reply_fail(r, "no PRIMARY plane with XRGB8888 and IN_FENCE_FD on CRTC %u",
-			   d->crtc_id);
+	if (!d->plane_id || !prop_id(&d->plane_props, "IN_FENCE_FD")) {
+		reply_fail(r, "no video plane with IN_FENCE_FD on CRTC %u", d->crtc_id);
 		return;
 	}
 	if ((d->on && !display_hide(d)) || !display_take_master(d)) {
@@ -3989,11 +3962,11 @@ static void cmd_warp_claim(struct reply *r, struct display *d, int conn)
 	}
 	bad = !warp_alloc(d, fds);
 	if (bad) {
-		reply_fail(r, "the three %ux%u XRGB8888 buffers could not be made (%s) -- the ring stays",
+		reply_fail(r, "the three %ux%u NV12 buffers could not be made (%s) -- the ring stays",
 			   d->width, d->height, strerror(errno));
 	} else {
-		io.iov_len = (size_t)snprintf(line, sizeof(line), "ok %u %u %u\n",
-					      d->width, d->height, warp.pitch);
+		io.iov_len = (size_t)snprintf(line, sizeof(line), "ok %u %u %u nv12 %u\n",
+					      d->width, d->height, warp.pitch, warp.coff);
 		cm = CMSG_FIRSTHDR(&msg);
 		cm->cmsg_level = SOL_SOCKET;
 		cm->cmsg_type = SCM_RIGHTS;
@@ -4015,8 +3988,8 @@ static void cmd_warp_claim(struct reply *r, struct display *d, int conn)
 	warp.claimed = true;
 	warp.peer = conn;
 	d->warped = true;
-	info("warp            claimed: three %ux%u XRGB8888 buffers, line pitch %u, primary plane %u",
-	     d->width, d->height, warp.pitch, warp.plane_id);
+	info("warp            claimed: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u",
+	     d->width, d->height, warp.pitch, warp.coff, d->plane_id);
 }
 
 /* The peer's connection: one line per message, and the daemon waits for the
@@ -4093,8 +4066,8 @@ static void cmd_warp(struct reply *r, struct display *d, const char *what,
 	else if (!warp.claimed)
 		reply_add(r, "ok warp off -- nothing claimed; \"h713-warp ctl status\" says why\n");
 	else
-		reply_add(r, "ok warp on -- h713-warp draws, primary plane %u, %ux%u, line pitch %u, %lu commits, %lu busy, %lu refused\n",
-			  warp.plane_id, d->width, d->height, warp.pitch,
+		reply_add(r, "ok warp on -- h713-warp draws, video plane %u, %ux%u NV12, line pitch %u, %lu commits, %lu busy, %lu refused\n",
+			  d->plane_id, d->width, d->height, warp.pitch,
 			  warp.commits, warp.busy, warp.errors);
 }
 
@@ -5328,7 +5301,7 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "  resync                select the source again (S_INPUT 0 = SetSource HDMI-1)\n"
 		  "  replug                play an unplug and a replug to the source: HPD 300 ms low\n"
 		  "                        (S_EDID blocks=0), load the EDID again, HPD high (~1 s, blocks)\n"
-		  "  warp [status]         has h713-warp the primary plane? plus its counters\n"
+		  "  warp [status]         has h713-warp the video plane? plus its counters\n"
 	  "  rpc NAME [ARG...]     an RPC to the firmware, e.g. rpc THal_Vp_DisableBlackScreen\n"
 		  "                        (raw; blocks the program for the duration of the call)\n"
 		  "  help                  this list\n"

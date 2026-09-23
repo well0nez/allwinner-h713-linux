@@ -8,7 +8,7 @@
  * starting with "ok" or "error", exactly like its other commands -- with the
  * file descriptors in SCM_RIGHTS on the same connection:
  *
- *   "warp claim"    -> "ok WIDTH HEIGHT PITCH" + three dma-buf fds, the
+ *   "warp claim"    -> "ok WIDTH HEIGHT PITCH nv12 COFF" + three dma-buf fds, the
  *                      XRGB8888 dumb buffers of the panel mode
  *   "warp frame N"  -> the out-fence fd travels with the line; h713-tv commits
  *                      buffer N on the primary plane with IN_FENCE_FD = that
@@ -157,7 +157,7 @@ bool peer_claim(struct peer *p, char *why, size_t n)
 {
 	struct sockaddr_un addr;
 	char reply[WARP_LINE];
-	unsigned int w = 0, h = 0, pitch = 0;
+	unsigned int w = 0, h = 0, pitch = 0, coff = 0;
 
 	if (p->fd >= 0)
 		return true;
@@ -187,9 +187,12 @@ bool peer_claim(struct peer *p, char *why, size_t n)
 		return false;
 	}
 	if (strncmp(reply, "ok", 2) ||
-	    sscanf(reply, "ok %u %u %u", &w, &h, &pitch) != 3 || !w || !h ||
-	    pitch < w * 4) {
-		snprintf(why, n, "h713-tv answered \"%s\" to \"warp claim\" -- does it have the warp commands (patch h713-tv-warp)?",
+	    sscanf(reply, "ok %u %u %u nv12 %u", &w, &h, &pitch, &coff) != 4 || !w || !h ||
+	    pitch < w || coff < pitch * h) {
+		/* NV12 since 24.09.2026: the frames go on the video plane, the one
+		 * the firmware's picture controls act on; an answer without "nv12"
+		 * is an older h713-tv, which drew on the primary plane */
+		snprintf(why, n, "h713-tv answered \"%s\" to \"warp claim\" -- it must hand out NV12 buffers (h713-tv of 24.09. or later)",
 			 reply);
 		close_targets(p);
 		close(p->fd);
@@ -199,9 +202,10 @@ bool peer_claim(struct peer *p, char *why, size_t n)
 	p->width = w;
 	p->height = h;
 	p->pitch = pitch;
+	p->coff = coff;
 	p->commits = p->busy = p->errors = 0;
-	info("peer            %s: three XRGB8888 buffers %ux%u, line pitch %u",
-	     p->path, w, h, pitch);
+	info("peer            %s: three NV12 buffers %ux%u, line pitch %u, chroma at %u",
+	     p->path, w, h, pitch, coff);
 
 	return true;
 }

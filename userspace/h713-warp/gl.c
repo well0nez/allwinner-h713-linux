@@ -24,6 +24,9 @@
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 #include <drm_fourcc.h>
+#ifndef GL_RED_EXT
+#define GL_RED_EXT 0x1903	/* GL_EXT_texture_rg */
+#endif
 
 #include "warp.h"
 
@@ -42,6 +45,20 @@ const char *const gl_vertex_shader =
  * made T1b fail at its stated +-1 (measured, host test 22.09.2026).
  * h713-gpu-probe checked its own samples "within 2" and never saw it.
  */
+/* The warp writes NV12 (24.09.2026): Y is resampled into the luma plane and
+ * CbCr into the chroma plane, each through the same matrix, no colour maths
+ * at all - the values leave the ring as they came, only moved, and the
+ * firmware's picture controls, gamma and the rest act on them afterwards
+ * exactly as on the ring, because it is the same channel. The chroma pass
+ * draws at half size and the linear sampler averages the 4:2:2 source's two
+ * chroma lines into the 4:2:0 output's one. */
+const char *const gl_luma_shader =
+	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
+	"void main() { gl_FragColor = vec4(texture2D(u_y, v_uv).r, 0.0, 0.0, 1.0); }\n";
+const char *const gl_chroma_shader =
+	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
+	"void main() { gl_FragColor = vec4(texture2D(u_c, v_uv).rg, 0.0, 1.0); }\n";
+
 const char *const gl_fragment_shader =
 	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
 	"void main() { float y = 1.1643835 * (texture2D(u_y, v_uv).r - 0.0627451);\n"
@@ -100,7 +117,7 @@ static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC p_img_tex;
 static EGLDisplay dpy = EGL_NO_DISPLAY;
 static EGLContext ctx = EGL_NO_CONTEXT;
 static char renderer[128] = "not opened";
-static GLuint prog_warp, prog_pattern;
+static GLuint prog_warp, prog_pattern, prog_luma, prog_chroma;
 static unsigned int panel_w, panel_h;
 
 /* Text over the mask: a 5x7 font for the digits, the lowercase letters and
@@ -215,8 +232,8 @@ static void text_draw(const char *s, float x, float y, float h)
 
 
 static struct {
-	EGLImageKHR img;
-	GLuint rb, fbo;
+	EGLImageKHR img[2];		/* the luma plane as R8, the chroma plane as GR88 */
+	GLuint rb[2], fbo[2];
 } target[WARP_TARGETS];
 
 static struct {
@@ -353,11 +370,13 @@ int gl_open(const char *node, char *why, size_t n)
 		return 1;
 	}
 	prog_warp = program(gl_fragment_shader, why, n);
-	prog_pattern = prog_warp ? program(gl_pattern_shader, why, n) : 0;
+	prog_luma = prog_warp ? program(gl_luma_shader, why, n) : 0;
+	prog_chroma = prog_luma ? program(gl_chroma_shader, why, n) : 0;
+	prog_pattern = prog_chroma ? program(gl_pattern_shader, why, n) : 0;
 	prog_text = prog_pattern ? program(gl_text_shader, why, n) : 0;
 	if (prog_text)
 		font_build();
-	if (!prog_warp || !prog_pattern || !prog_text)
+	if (!prog_warp || !prog_luma || !prog_chroma || !prog_pattern || !prog_text)
 		return 1;
 	why[0] = '\0';
 
@@ -409,19 +428,27 @@ bool gl_targets(const struct peer *p, char *why, size_t n)
 	panel_w = p->width;
 	panel_h = p->height;
 	for (i = 0; i < WARP_TARGETS; i++) {
-		target[i].img = image(DRM_FORMAT_XRGB8888, (int)p->width,
-				      (int)p->height, p->target[i], 0, (int)p->pitch);
-		if (target[i].img == EGL_NO_IMAGE_KHR)
-			return oops(why, n, "XRGB8888 import of a panel buffer");
-		glGenRenderbuffers(1, &target[i].rb);
-		glGenFramebuffers(1, &target[i].fbo);
-		glBindRenderbuffer(GL_RENDERBUFFER, target[i].rb);
-		p_img_rb(GL_RENDERBUFFER, target[i].img);
-		glBindFramebuffer(GL_FRAMEBUFFER, target[i].fbo);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-					  GL_RENDERBUFFER, target[i].rb);
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			return oops(why, n, "FBO on an imported panel buffer");
+		int k;
+
+		/* one dma-buf, two planes: Y as R8 at 0, CbCr as GR88 at coff */
+		target[i].img[0] = image(DRM_FORMAT_R8, (int)p->width, (int)p->height,
+					 p->target[i], 0, (int)p->pitch);
+		target[i].img[1] = image(DRM_FORMAT_GR88, (int)p->width / 2, (int)p->height / 2,
+					 p->target[i], (int)p->coff, (int)p->pitch);
+		if (target[i].img[0] == EGL_NO_IMAGE_KHR || target[i].img[1] == EGL_NO_IMAGE_KHR)
+			return oops(why, n, "R8 + GR88 import of an NV12 panel buffer");
+		for (k = 0; k < 2; k++) {
+			glGenRenderbuffers(1, &target[i].rb[k]);
+			glGenFramebuffers(1, &target[i].fbo[k]);
+			glBindRenderbuffer(GL_RENDERBUFFER, target[i].rb[k]);
+			p_img_rb(GL_RENDERBUFFER, target[i].img[k]);
+			glBindFramebuffer(GL_FRAMEBUFFER, target[i].fbo[k]);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+						  GL_RENDERBUFFER, target[i].rb[k]);
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				return oops(why, n, k ? "FBO on the chroma plane (GR88) of a panel buffer"
+						      : "FBO on the luma plane (R8) of a panel buffer");
+		}
 	}
 	why[0] = '\0';
 
@@ -472,19 +499,22 @@ void gl_source_drop(void)
 	slots_up = 0;
 }
 
-static bool draw_into(GLuint fbo, int source_slot, const float m[16], int pattern,
+/* One pass into one plane: the quad through the matrix with the given program
+ * at the plane's size; what the quad does not cover is the clear colour (video
+ * black: Y 16, CbCr 128). Labels are drawn on the luma pass only. */
+static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GLuint prog,
+		      int source_slot, const float m[16], int pattern,
 		      int mark_corner, const char *const labels[5], char *why, size_t n)
 {
 	static const GLfloat quad[] = {
 		-1, -1, 0, 0,   1, -1, 1, 0,   -1, 1, 0, 1,   1, 1, 1, 1,
 	};
-	GLuint prog = pattern == PATTERN_NONE ? prog_warp : prog_pattern;
 	GLenum err;
 
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	glViewport(0, 0, (GLsizei)panel_w, (GLsizei)panel_h);
+	glViewport(0, 0, (GLsizei)fw, (GLsizei)fh);
 	/* the warp shrinks the picture, so what is outside the quad is defined */
-	glClearColor(0, 0, 0, 1);
+	glClearColor(clear0, clear1, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glUseProgram(prog);
 	glUniformMatrix4fv(glGetUniformLocation(prog, "u_k"), 1, GL_FALSE, m);
@@ -538,11 +568,28 @@ static bool draw_into(GLuint fbo, int source_slot, const float m[16], int patter
 	return true;
 }
 
+/* A frame: the luma pass at full size, the chroma pass at half size. A pattern
+ * is grey: its shader draws into the luma plane as it always did (0..1 becomes
+ * Y 0..255, the mask's white is the panel's white) and the chroma plane stays
+ * at 128. */
 bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
 	     int mark_corner, const char *const labels[5], char *why, size_t n)
 {
-	return draw_into(target[target_index].fbo, source_slot, m, pattern,
-			 mark_corner, labels, why, n);
+	if (!draw_into(target[target_index].fbo[0], (int)panel_w, (int)panel_h,
+		       16.0f / 255.0f, 0.0f,
+		       pattern == PATTERN_NONE ? prog_luma : prog_pattern,
+		       source_slot, m, pattern, mark_corner, labels, why, n))
+		return false;
+	if (pattern != PATTERN_NONE) {
+		glBindFramebuffer(GL_FRAMEBUFFER, target[target_index].fbo[1]);
+		glViewport(0, 0, (GLsizei)panel_w / 2, (GLsizei)panel_h / 2);
+		glClearColor(128.0f / 255.0f, 128.0f / 255.0f, 0, 1);
+		glClear(GL_COLOR_BUFFER_BIT);
+		return true;
+	}
+	return draw_into(target[target_index].fbo[1], (int)panel_w / 2, (int)panel_h / 2,
+			 128.0f / 255.0f, 128.0f / 255.0f, prog_chroma,
+			 source_slot, m, PATTERN_NONE, -1, NULL, why, n);
 }
 
 /*
@@ -559,11 +606,21 @@ static GLuint check_fbo, check_tex;
 static unsigned char *check_a, *check_b;
 #define CHECK_STEP	34		/* every 34th row: 32 rows of 1080, half a MB per check */
 
+/* bytes per pixel of the bound FBO's native readback: 4 for RGBA, 1 for RED */
+static int read_bpp(void)
+{
+	GLint fmt = GL_RGBA, type = GL_UNSIGNED_BYTE;
+
+	glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &fmt);
+	glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE, &type);
+	return fmt == GL_RED_EXT && type == GL_UNSIGNED_BYTE ? 1 : 4;
+}
+
 bool gl_check_compare(int target_index, int source_slot, const float m[16],
 		      unsigned long *rows, int *lo, int *hi, char *why, size_t n)
 {
 	size_t line = (size_t)panel_w * 4;
-	int y, x;
+	int y, x, bpp_a, bpp_b;
 
 	if (!check_fbo) {
 		glGenTextures(1, &check_tex);
@@ -583,18 +640,25 @@ bool gl_check_compare(int target_index, int source_slot, const float m[16],
 		if (!check_a || !check_b)
 			return oops(why, n, "16 MB for the self-check");
 	}
-	if (!draw_into(check_fbo, source_slot, m, PATTERN_NONE, -1, NULL, why, n))
+	/* the luma plane is what is compared: Y into the RGBA scratch's red */
+	if (!draw_into(check_fbo, (int)panel_w, (int)panel_h, 16.0f / 255.0f, 0.0f, prog_luma,
+		       source_slot, m, PATTERN_NONE, -1, NULL, why, n))
 		return false;
 	glFinish();
-	/* sampled rows, so the check costs a millisecond and not a frame */
+	/* sampled rows, so the check costs a millisecond and not a frame; each
+	 * FBO is read in the format its implementation offers (the R8 luma
+	 * plane as RED, the RGBA scratch as RGBA), which is the path without a
+	 * conversion - only the first byte of a pixel, Y, is compared */
 	glBindFramebuffer(GL_FRAMEBUFFER, check_fbo);
+	bpp_a = read_bpp();
 	for (y = 0; y < (int)panel_h; y += CHECK_STEP)
-		glReadPixels(0, y, (GLsizei)panel_w, 1, GL_RGBA, GL_UNSIGNED_BYTE,
-			     check_a + (size_t)(y / CHECK_STEP) * line);
-	glBindFramebuffer(GL_FRAMEBUFFER, target[target_index].fbo);
+		glReadPixels(0, y, (GLsizei)panel_w, 1, bpp_a == 4 ? GL_RGBA : GL_RED_EXT,
+			     GL_UNSIGNED_BYTE, check_a + (size_t)(y / CHECK_STEP) * line);
+	glBindFramebuffer(GL_FRAMEBUFFER, target[target_index].fbo[0]);
+	bpp_b = read_bpp();
 	for (y = 0; y < (int)panel_h; y += CHECK_STEP)
-		glReadPixels(0, y, (GLsizei)panel_w, 1, GL_RGBA, GL_UNSIGNED_BYTE,
-			     check_b + (size_t)(y / CHECK_STEP) * line);
+		glReadPixels(0, y, (GLsizei)panel_w, 1, bpp_b == 4 ? GL_RGBA : GL_RED_EXT,
+			     GL_UNSIGNED_BYTE, check_b + (size_t)(y / CHECK_STEP) * line);
 	if (glGetError())
 		return oops(why, n, "the self-check's readback");
 	*rows = 0;
@@ -604,10 +668,10 @@ bool gl_check_compare(int target_index, int source_slot, const float m[16],
 		const unsigned char *a = check_a + (size_t)(y / CHECK_STEP) * line;
 		const unsigned char *b = check_b + (size_t)(y / CHECK_STEP) * line;
 
-		for (x = 0; x < (int)line; x += 4)
-			if (a[x] != b[x] || a[x + 1] != b[x + 1] || a[x + 2] != b[x + 2])
+		for (x = 0; x < (int)panel_w; x++)
+			if (a[x * bpp_a] != b[x * bpp_b])
 				break;
-		if (x < (int)line) {
+		if (x < (int)panel_w) {
 			(*rows)++;
 			if (*lo < 0)
 				*lo = y;
@@ -648,16 +712,18 @@ void gl_close(void)
 		free(check_b);
 		check_a = check_b = NULL;
 	}
-	int i;
+	int i, k;
 
 	gl_source_drop();
 	for (i = 0; i < WARP_TARGETS; i++) {
-		if (target[i].fbo)
-			glDeleteFramebuffers(1, &target[i].fbo);
-		if (target[i].rb)
-			glDeleteRenderbuffers(1, &target[i].rb);
-		if (target[i].img && p_img_del)
-			p_img_del(dpy, target[i].img);
+		for (k = 0; k < 2; k++) {
+			if (target[i].fbo[k])
+				glDeleteFramebuffers(1, &target[i].fbo[k]);
+			if (target[i].rb[k])
+				glDeleteRenderbuffers(1, &target[i].rb[k]);
+			if (target[i].img[k] && p_img_del)
+				p_img_del(dpy, target[i].img[k]);
+		}
 		memset(&target[i], 0, sizeof(target[i]));
 	}
 	if (dpy != EGL_NO_DISPLAY) {
@@ -666,7 +732,7 @@ void gl_close(void)
 	}
 	dpy = EGL_NO_DISPLAY;
 	ctx = EGL_NO_CONTEXT;
-	prog_warp = prog_pattern = prog_text = 0;
+	prog_warp = prog_pattern = prog_text = prog_luma = prog_chroma = 0;
 	font_tex = 0;
 	snprintf(renderer, sizeof(renderer), "not opened");
 }

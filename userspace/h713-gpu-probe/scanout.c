@@ -18,6 +18,12 @@
  * capture N  S4: hdmirx slots by VIDIOC_EXPBUF, one EGLImage set per slot, the same
  *            fenced flips. Exit 0 on 0 timeouts and commits == flips. The exporter it
  *            needs is kernel patch 0136y, in since 22.09 (PLAN section 8): six planes.
+ * video S    24.09.: our own NV12 buffer on the VIDEO plane (hdmi-ring 0) for S seconds
+ *            while the capture ring keeps streaming on the side (the warp needs it), and
+ *            every third second the firmware's "brightness" control toggled 10/90 through
+ *            the capture node. What it tells: does the plane take an NV12 dma-buf at all,
+ *            does the capture survive it (timeouts), and - for the eyes - do the picture
+ *            controls act on a frame of ours on that channel. Takes master like scanout.
  */
 #define _GNU_SOURCE
 #define EGL_NO_X11
@@ -738,6 +744,171 @@ static void cleanup(void)
 	if (card >= 0) close(card);
 }
 
+/* ---- video S: an NV12 frame of ours on the video plane, the capture streaming beside it ---- */
+static uint32_t vplane_id, vpid[NPROP], ring_pid;
+
+static int find_video_plane(void)
+{
+	drmModePlaneRes *pr = drmModeGetPlaneResources(card);
+	static const char *RING[] = { "hdmi-ring" };
+	unsigned int i, j;
+	uint32_t tid;
+	for (i = 0; pr && i < pr->count_planes && !vplane_id; i++) {
+		drmModePlane *p = drmModeGetPlane(card, pr->planes[i]);
+		int nv12 = 0;
+		if (p && props(p->plane_id, DRM_MODE_OBJECT_PLANE, PTYPE, 1, &tid) ==
+		    DRM_PLANE_TYPE_OVERLAY) {
+			for (j = 0; j < p->count_formats; j++)
+				nv12 |= p->formats[j] == DRM_FORMAT_NV12;
+			vplane_id = nv12 ? p->plane_id : 0;
+		}
+		if (p) drmModeFreePlane(p);
+	}
+	if (pr) drmModeFreePlaneResources(pr);
+	if (!vplane_id) return ERR("no overlay plane with NV12\n");
+	props(vplane_id, DRM_MODE_OBJECT_PLANE, PROP, NPROP, vpid);
+	props(vplane_id, DRM_MODE_OBJECT_PLANE, RING, 1, &ring_pid);
+	printf("video plane %u, hdmi-ring property %s\n", vplane_id, ring_pid ? "yes" : "NO");
+	return 0;
+}
+
+/* the firmware's picture control by its V4L2 name, 0 when absent */
+static uint32_t ctrl_id(const char *name)
+{
+	struct v4l2_query_ext_ctrl q;
+	memset(&q, 0, sizeof q);
+	q.id = V4L2_CTRL_FLAG_NEXT_CTRL;
+	while (!ioctl(vfd, VIDIOC_QUERY_EXT_CTRL, &q)) {
+		if (!strcasecmp(q.name, name)) return q.id;
+		q.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+	}
+	return 0;
+}
+
+static int ctrl_set(uint32_t id, int value)
+{
+	struct v4l2_ext_control c;
+	struct v4l2_ext_controls cs;
+	memset(&c, 0, sizeof c); memset(&cs, 0, sizeof cs);
+	c.id = id; c.value = value;
+	cs.which = V4L2_CTRL_ID2WHICH(id); cs.count = 1; cs.controls = &c;
+	return VIOC(VIDIOC_S_EXT_CTRLS, &cs);
+}
+
+static int cmd_video(long seconds, const char *dev, int nv16)
+{
+	struct drm_mode_create_dumb c;
+	struct drm_mode_map_dumb m;
+	struct v4l2_requestbuffers rb;
+	struct v4l2_buffer b;
+	struct v4l2_plane pl[VIDEO_MAX_PLANES];
+	struct v4l2_format f;
+	uint32_t h[4] = { 0 }, p[4] = { 0 }, o[4] = { 0 }, fb_id = 0, bright, cx, cy;
+	unsigned char *px;
+	enum v4l2_buf_type type;
+	int caps, np, i, on = 0, rc;
+	long fr = 0, tout = 0;
+	double t0, tl;
+	uint64_t val[NPROP];
+	drmModeAtomicReq *req;
+	if (find_video_plane()) return 1;
+	/* the buffer: NV12, luma ramp left to right, chroma ramps, a 16 px black frame */
+	memset(&c, 0, sizeof c);
+	c.width = mode_w; c.height = nv16 ? mode_h * 2 : mode_h * 3 / 2; c.bpp = 8;
+	if (DIOC(DRM_IOCTL_MODE_CREATE_DUMB, &c)) return 1;
+	memset(&m, 0, sizeof m); m.handle = c.handle;
+	if (DIOC(DRM_IOCTL_MODE_MAP_DUMB, &m)) return 1;
+	px = mmap(NULL, c.size, PROT_READ | PROT_WRITE, MAP_SHARED, card, (off_t)m.offset);
+	if (px == MAP_FAILED) return ERR("mmap of the NV12 buffer: %s\n", strerror(errno));
+	for (cy = 0; cy < mode_h; cy++)
+		for (cx = 0; cx < mode_w; cx++)
+			px[cy * c.pitch + cx] = (cx < 16 || cy < 16 || cx >= mode_w - 16 || cy >= mode_h - 16)
+						? 16 : nv16 ? 140 : (unsigned char)(16 + (cx * 219) / mode_w);
+	if (nv16) {
+		/* the 4:2:2 test: even chroma rows red, odd rows blue. Read as 4:2:2 the
+		 * wall mixes them to purple; read as 4:2:0 (odd rows skipped) it is red */
+		for (cy = 0; cy < mode_h; cy++)
+			for (cx = 0; cx < mode_w / 2; cx++) {
+				px[(mode_h + cy) * c.pitch + 2 * cx] = (cy & 1) ? 220 : 90;	/* Cb */
+				px[(mode_h + cy) * c.pitch + 2 * cx + 1] = (cy & 1) ? 90 : 220;	/* Cr */
+			}
+	} else {
+		for (cy = 0; cy < mode_h / 2; cy++)
+			for (cx = 0; cx < mode_w / 2; cx++) {
+				px[(mode_h + cy) * c.pitch + 2 * cx] = (unsigned char)(16 + (cy * 224) / (mode_h / 2));
+				px[(mode_h + cy) * c.pitch + 2 * cx + 1] = (unsigned char)(240 - (cy * 224) / (mode_h / 2));
+			}
+	}
+	munmap(px, c.size);
+	h[0] = h[1] = c.handle; p[0] = p[1] = c.pitch; o[1] = c.pitch * mode_h;
+	if (drmModeAddFB2(card, mode_w, mode_h, nv16 ? DRM_FORMAT_NV16 : DRM_FORMAT_NV12, h, p, o, &fb_id, 0))
+		return ERR("AddFB2 %s: %s\n", nv16 ? "NV16" : "NV12", strerror(errno));
+	/* the capture beside it, streaming into its own slots, nothing drawn from it */
+	if (v4l_open(dev, &caps)) return 1;
+	type = (caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE) ? V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE
+						      : V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	memset(&f, 0, sizeof f); f.type = type;
+	if (VIOC(VIDIOC_G_FMT, &f)) return 1;
+	np = type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE ? (int)f.fmt.pix_mp.num_planes : 1;
+	memset(&rb, 0, sizeof rb); rb.count = NCAP; rb.type = type; rb.memory = V4L2_MEMORY_MMAP;
+	if (VIOC(VIDIOC_REQBUFS, &rb)) return 1;
+	for (i = 0; i < (int)rb.count; i++) {
+		memset(&b, 0, sizeof b); memset(pl, 0, sizeof pl);
+		b.type = type; b.memory = V4L2_MEMORY_MMAP; b.index = (uint32_t)i;
+		b.m.planes = pl; b.length = (uint32_t)np;
+		if (VIOC(VIDIOC_QBUF, &b)) return 1;
+	}
+	if (VIOC(VIDIOC_STREAMON, &type)) return 1;
+	bright = ctrl_id("brightness");
+	printf("brightness control %s\n", bright ? "found" : "MISSING");
+	/* the commit: our buffer on the video plane, hdmi-ring 0, blocking */
+	val[0] = fb_id; val[1] = crtc_id; val[2] = val[3] = val[6] = val[7] = 0;
+	val[4] = (uint64_t)mode_w << 16; val[5] = (uint64_t)mode_h << 16;
+	val[8] = mode_w; val[9] = mode_h;
+	req = drmModeAtomicAlloc();
+	for (i = 0, rc = 1; req && i < 10; i++)
+		if (vpid[i]) rc &= drmModeAtomicAddProperty(req, vplane_id, vpid[i], val[i]) >= 0;
+	if (req && ring_pid) rc &= drmModeAtomicAddProperty(req, vplane_id, ring_pid, 0) >= 0;
+	rc = req && rc ? drmModeAtomicCommit(card, req, DRM_MODE_ATOMIC_ALLOW_MODESET, NULL) : -EINVAL;
+	drmModeAtomicFree(req);
+	if (rc) return ERR("the video plane refused our NV12 frame: %s\n", strerror(errno));
+	printf("our %s frame is on the video plane (hdmi-ring 0); LOOK: %s\n", nv16 ? "NV16" : "NV12",
+	       nv16 ? "purple = 4:2:2 read, red = odd chroma rows skipped" : "a grey ramp with a colour ramp");
+	fflush(stdout);
+	t0 = tl = now();
+	while (now() - t0 < (double)seconds) {
+		struct pollfd pf = { vfd, POLLIN, 0 };
+		if (poll(&pf, 1, 100) <= 0) { tout++; }
+		else {
+			memset(&b, 0, sizeof b); memset(pl, 0, sizeof pl);
+			b.type = type; b.memory = V4L2_MEMORY_MMAP; b.m.planes = pl; b.length = (uint32_t)np;
+			if (VIOC(VIDIOC_DQBUF, &b)) break;
+			fr++;
+			if (VIOC(VIDIOC_QBUF, &b)) break;
+		}
+		if (bright && now() - tl >= 3.0) {
+			on = !on;
+			if (!ctrl_set(bright, on ? 90 : 10))
+				printf("%5.1f s: brightness %d, capture frames so far %ld, timeouts %ld\n",
+				       now() - t0, on ? 90 : 10, fr, tout);
+			fflush(stdout);
+			tl = now();
+		}
+	}
+	if (bright) ctrl_set(bright, 50);
+	ioctl(vfd, VIDIOC_STREAMOFF, &type);
+	req = drmModeAtomicAlloc();
+	if (req) {
+		drmModeAtomicAddProperty(req, vplane_id, vpid[0], 0);
+		drmModeAtomicAddProperty(req, vplane_id, vpid[1], 0);
+		drmModeAtomicCommit(card, req, DRM_MODE_ATOMIC_ALLOW_MODESET, NULL);
+		drmModeAtomicFree(req);
+	}
+	printf("done %ld s: capture frames %ld (%.1f/s), timeouts %ld\n", seconds, fr,
+	       fr / (double)seconds, tout);
+	return tout > 5 ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
 	const char *render = "/dev/dri/renderD128", *kms = "/dev/dri/card1", *video = NULL;
@@ -754,7 +925,7 @@ int main(int argc, char **argv)
 	n = argc == 3 ? atol(argv[2]) : 0;
 	if (argc < 2 || (n <= 0 && strcmp(argv[1], "formats"))) {
 		fputs("h713-gpu-probe-scanout [-r RENDER] [-c CARD] [-v VIDEO] [-y nv16|planes]\n"
-		      "                       scanout N | formats | capture N\n", stderr);
+		      "                       scanout N | formats | capture N | video SECONDS\n", stderr);
 		return 2;
 	}
 	if (setup(render)) goto out;
@@ -764,6 +935,7 @@ int main(int argc, char **argv)
 	else if (kms_find(kms)) rc = 1;
 	else if (!strcmp(argv[1], "scanout")) rc = cmd_scanout(n);
 	else if (!strcmp(argv[1], "capture")) rc = cmd_capture(n, video, nv16);
+	else if (!strcmp(argv[1], "video")) rc = cmd_video(n, video, nv16);
 out:
 	cleanup();
 	return rc;

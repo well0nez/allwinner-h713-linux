@@ -1,0 +1,56 @@
+drm: h713-afbd: a page flip on the video plane without the ring is the address slots and DIRTY
+
+The keystone warp's frames go on the video plane since 24.09.2026 (NV12, the channel the
+firmware's picture controls act on), sixty commits a second. The plane's update ran the
+whole enable sequence for every one of them - the size, stride and crop words, the gate,
+the mux, then VIDEO_READY and a poll on it until the next vsync - which held the commit
+worker for a frame per flip (three kworkers at 5-7 % each on the HY310) and, through the
+stall on the previous commit's cleanup, the daemon behind it.
+
+A flip on a plane that is already up without the ring, with the same format, size and
+pitch as before, now writes the four address slots and DIRTY under the ring lock and
+returns: the latch the ring's vsync notifier uses, taken by the hardware at the next
+vsync, the flip completed by the CRTC's vblank event as before. Measured after: the
+kworkers under 1.5 %, 59.4 frames a second, the warp's self-check 0 differing rows.
+The enable path is unchanged; a ring commit or a geometry change still takes it.
+---
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -1166,6 +1166,37 @@
+ 	nv16 = fb->format->format == DRM_FORMAT_NV16;
+ 	ring = s->hdmi_ring;
+ 
++	/*
++	 * A page flip on a plane that is already up without the ring (the
++	 * keystone warp's NV12 frames, 60 a second since 24.09.2026): the four
++	 * address slots and DIRTY, which the hardware takes at the next vsync -
++	 * the same latch the ring's notifier uses. The full sequence below
++	 * re-arms the channel and then polls VIDEO_READY until that vsync,
++	 * which held the commit worker for a frame on every flip (three
++	 * kworkers at 5-7 % each, measured) and, through the stall on the
++	 * previous commit's cleanup, the daemon with it. Geometry and format
++	 * cannot change here: the check refuses a source rectangle other than
++	 * the whole framebuffer, and h713-tv hands out three buffers of one
++	 * size.
++	 */
++	if (h->video_active && !ring && !h->ring_follow) {
++		const struct drm_plane_state *old_state =
++			drm_atomic_get_old_plane_state(state, plane);
++
++		if (old_state && old_state->fb &&
++		    old_state->fb->format->format == fb->format->format &&
++		    old_state->fb->width == fb->width &&
++		    old_state->fb->height == fb->height &&
++		    old_state->fb->pitches[0] == fb->pitches[0]) {
++			y = lower_32_bits(drm_fb_dma_get_gem_addr(fb, new_state, 0));
++			c = lower_32_bits(drm_fb_dma_get_gem_addr(fb, new_state, 1));
++			spin_lock_irqsave(&h->ring_lock, flags);
++			h713_afbd_queue_pair(h, y, c);
++			spin_unlock_irqrestore(&h->ring_lock, flags);
++			return;
++		}
++	}
++
+ 	/* The hardware mux is exclusive: quiesce RGB before source 0. */
+ 	if (!h->video_active) {
+ 		writel((h->rgb_ctrl_active | BIT(31)) & ~BIT(0),

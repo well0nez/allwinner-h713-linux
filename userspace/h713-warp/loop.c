@@ -411,7 +411,7 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 	else
 		text_add(&t, "source          not open\n");
 	if (r->peer.fd >= 0)
-		text_add(&t, "panel           %ux%u, line pitch %u, three buffers from %s\n",
+		text_add(&t, "panel           %ux%u, line pitch %u, three NV12 buffers from %s (the video plane)\n",
 			 r->peer.width, r->peer.height, r->peer.pitch, r->peer.path);
 	else
 		text_add(&t, "panel           nothing claimed (%s)\n", r->peer.path);
