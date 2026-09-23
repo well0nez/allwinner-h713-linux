@@ -19,6 +19,10 @@
 #   4. h713-focus
 #   5. h713-cam
 #   5b. h713-autofocus
+#   5c. h713-warp (cross-built) + unit + /etc/h713/warp.conf (warp = on) - the keystone
+#       warp; needs the mesa stage in the tree (build-rootfs.sh --mesa)
+#   5d. h713-keystone + model + unit (enabled; after_move = off in keystone.conf is the switch)
+#   5e. h713-panel + page + unit (enabled; port 8080, no authentication)
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -46,6 +50,10 @@ H713_TV_BIN=${H713_TV_BIN:-$H713_TV_SRC/h713-tv.aarch64-linux-gnu}
 H713_PQ_SRC=${H713_PQ_SRC:-$PROJECT_ROOT/userspace/h713-pq}
 H713_FOCUS_SRC=${H713_FOCUS_SRC:-$PROJECT_ROOT/userspace/h713-focus}
 H713_CAM_SRC=${H713_CAM_SRC:-$PROJECT_ROOT/userspace/h713-cam}
+H713_WARP_SRC=${H713_WARP_SRC:-$PROJECT_ROOT/userspace/h713-warp}
+H713_WARP_BIN=${H713_WARP_BIN:-$H713_WARP_SRC/h713-warp.aarch64-linux-gnu}
+H713_KS_SRC=${H713_KS_SRC:-$PROJECT_ROOT/userspace/h713-keystone}
+H713_PANEL_SRC=${H713_PANEL_SRC:-$PROJECT_ROOT/userspace/h713-panel}
 H713_AF_SRC=${H713_AF_SRC:-$PROJECT_ROOT/userspace/h713-autofocus}
 # The C metric beside h713-autofocus. OPTIONAL on purpose: without it the tool
 # measures in Python, which works and is only slower (Q11 item 2).
@@ -156,6 +164,21 @@ check_sources() {
 		{ warn "missing: $H713_CAM_SRC/h713-cam"; errors=1; }
 	[[ -x "$H713_AF_SRC/h713-autofocus" ]] || \
 		{ warn "missing: $H713_AF_SRC/h713-autofocus"; errors=1; }
+	if [[ -x "$H713_WARP_BIN" ]]; then
+		local wkind; wkind=$(file -b "$H713_WARP_BIN" 2>/dev/null || echo aarch64)
+		case "$wkind" in
+		*aarch64*) : ;;
+		*) warn "h713-warp is NOT aarch64: $wkind"; errors=1 ;;
+		esac
+	else
+		warn "missing: $H713_WARP_BIN (make -C ${H713_WARP_SRC#"$PROJECT_ROOT"/} cross ...)"; errors=1
+	fi
+	[[ -f "$H713_WARP_SRC/h713-warp.service" && -f "$H713_WARP_SRC/warp.conf.example" ]] || \
+		{ warn "missing: h713-warp.service or warp.conf.example in $H713_WARP_SRC"; errors=1; }
+	[[ -x "$H713_KS_SRC/h713-keystone" && -d "$H713_KS_SRC/model" && -f "$H713_KS_SRC/h713-keystone-auto.service" ]] || \
+		{ warn "missing: h713-keystone, model/ or h713-keystone-auto.service in $H713_KS_SRC"; errors=1; }
+	[[ -x "$H713_PANEL_SRC/h713-panel" && -f "$H713_PANEL_SRC/page.html" && -f "$H713_PANEL_SRC/h713-panel.service" ]] || \
+		{ warn "missing: h713-panel, page.html or h713-panel.service in $H713_PANEL_SRC"; errors=1; }
 	if [[ -x "$H713_AF_BIN" ]]; then
 		local afkind; afkind=$(file -b "$H713_AF_BIN" 2>/dev/null || echo aarch64)
 		case "$afkind" in
@@ -220,6 +243,20 @@ if ((DRY_RUN)); then
     5b. h713-autofocus
        ${H713_AF_SRC#"$PROJECT_ROOT"/}/h713-autofocus
            -> /usr/local/bin/h713-autofocus               0755
+    5c. h713-warp
+       ${H713_WARP_BIN#"$PROJECT_ROOT"/}
+           -> /usr/local/bin/h713-warp                    0755
+       h713-warp.service  -> /etc/systemd/system/ + multi-user.target.wants/
+       warp.conf.example  -> /etc/h713/warp.conf (warp = on)  0644
+    5d. h713-keystone
+       ${H713_KS_SRC#"$PROJECT_ROOT"/}/{h713-keystone,model/}
+           -> /usr/local/lib/h713-keystone/, /usr/local/bin/h713-keystone -> ../lib/...
+       h713-keystone-auto.service -> /etc/systemd/system/ + multi-user.target.wants/
+       /etc/h713/keystone.conf with the tool's defaults (after_move = off)
+    5e. h713-panel
+       ${H713_PANEL_SRC#"$PROJECT_ROOT"/}/{h713-panel,page.html}
+           -> /usr/local/lib/h713-panel/                  0755 / 0644
+       h713-panel.service -> /etc/systemd/system/ + multi-user.target.wants/
        (one file, pure Python; the stock autofocus search rebuilt: chessboard
         on /dev/fb0, camera frames, focus motor cmd 1/2. Q6, 22.09.2026.)
        ${H713_AF_BIN#"$PROJECT_ROOT"/}
@@ -366,6 +403,73 @@ if [[ -x "$H713_AF_BIN" ]]; then
 else
 	warn "no h713-afmetric in the image -- the search will measure in Python"
 fi
+
+# --- 5c. h713-warp ---------------------------------------------------------
+# The keystone warp: the GPU path behind keystone and zoom. Enabled, and
+# warp = on: it stays in bypass (no GPU, the ring shows) while the corners
+# and the zoom are neutral, so a fresh image costs nothing until a corner is
+# pulled. It needs libEGL/libGLESv2 from the mesa stage (build-rootfs.sh
+# --mesa); without them "ctl on" is refused by name and the ring stays.
+say "h713-warp"
+install -m 0755 "$H713_WARP_BIN" "$TREE/usr/local/bin/h713-warp"
+install -m 0644 "$H713_WARP_SRC/h713-warp.service" "$TREE/etc/systemd/system/h713-warp.service"
+mkdir -p "$TREE/etc/systemd/system/multi-user.target.wants" "$TREE/etc/h713"
+ln -sfn ../h713-warp.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-warp.service"
+if [[ ! -f "$TREE/etc/h713/warp.conf" ]]; then
+	sed 's/^warp *=.*/warp  = on/' "$H713_WARP_SRC/warp.conf.example" > "$TREE/etc/h713/warp.conf"
+	chmod 0644 "$TREE/etc/h713/warp.conf"
+	info "/etc/h713/warp.conf (warp = on, corners neutral)"
+else
+	info "/etc/h713/warp.conf kept"
+fi
+info "/usr/local/bin/h713-warp ($(du -h "$H713_WARP_BIN" | cut -f1)), h713-warp.service enabled"
+[[ -f "$TREE/usr/local/lib/libEGL.so.1" || -f "$TREE/usr/lib/aarch64-linux-gnu/libEGL.so.1" ]] || \
+	warn "no libEGL.so.1 in the tree -- the warp will refuse until build-rootfs.sh --mesa put the stage in"
+
+# --- 5d. h713-keystone -----------------------------------------------------
+# The automatic (accelerometer -> corners) and its watch unit. The unit is
+# enabled from the first boot and does nothing while after_move = off, which
+# is the default in keystone.conf; the settings page's "after move" buttons
+# write that key. The choice is stored like every other setting.
+say "h713-keystone"
+mkdir -p "$TREE/usr/local/lib/h713-keystone"
+install -m 0755 "$H713_KS_SRC/h713-keystone" "$TREE/usr/local/lib/h713-keystone/h713-keystone"
+rm -rf "$TREE/usr/local/lib/h713-keystone/model"
+cp -r "$H713_KS_SRC/model" "$TREE/usr/local/lib/h713-keystone/model"
+find "$TREE/usr/local/lib/h713-keystone/model" -name '__pycache__' -type d -prune -exec rm -rf {} +
+ln -sfn ../lib/h713-keystone/h713-keystone "$TREE/usr/local/bin/h713-keystone"
+install -m 0644 "$H713_KS_SRC/h713-keystone-auto.service" "$TREE/etc/systemd/system/h713-keystone-auto.service"
+ln -sfn ../h713-keystone-auto.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-keystone-auto.service"
+if [[ ! -f "$TREE/etc/h713/keystone.conf" ]]; then
+	{
+		printf '# h713-keystone: the automatic after a move. after_move = off leaves the picture\n'
+		printf '# alone and only logs a move; keystone or keystone+focus run the automatic ONCE\n'
+		printf '# after the projector has moved and settled. The settings page writes this key.\n'
+		python3 - "$H713_KS_SRC/h713-keystone" <<'PY'
+import sys
+from importlib.machinery import SourceFileLoader
+m = SourceFileLoader("h713_keystone", sys.argv[1]).load_module()
+for name, default, _ in m.DEFAULTS:
+    print("%s = %s" % (name, default))
+PY
+	} > "$TREE/etc/h713/keystone.conf"
+	chmod 0644 "$TREE/etc/h713/keystone.conf"
+	info "/etc/h713/keystone.conf (the tool's defaults, after_move = off)"
+else
+	info "/etc/h713/keystone.conf kept"
+fi
+info "/usr/local/lib/h713-keystone/{h713-keystone,model/}, h713-keystone-auto.service enabled"
+
+# --- 5e. h713-panel --------------------------------------------------------
+# The settings page on port 8080 for a phone or a browser, no authentication
+# (the LAN is the projector's). Enabled.
+say "h713-panel"
+mkdir -p "$TREE/usr/local/lib/h713-panel"
+install -m 0755 "$H713_PANEL_SRC/h713-panel" "$TREE/usr/local/lib/h713-panel/h713-panel"
+install -m 0644 "$H713_PANEL_SRC/page.html" "$TREE/usr/local/lib/h713-panel/page.html"
+install -m 0644 "$H713_PANEL_SRC/h713-panel.service" "$TREE/etc/systemd/system/h713-panel.service"
+ln -sfn ../h713-panel.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-panel.service"
+info "/usr/local/lib/h713-panel/{h713-panel,page.html}, h713-panel.service enabled (port 8080)"
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"
