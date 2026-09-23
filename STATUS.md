@@ -18,7 +18,7 @@ The last release is `v0.95-beta`; the last test image is `hy300-pro-test7` (24.0
   and the **keystone** on it - by hand and following the projector's own tilt.
 - **Missing:** Bluetooth, AV1 decode, HDCP 1.4 for protected sources, any desktop.
 - **Not re-tested by us:** hardware video decode and the IOMMU - these come from cstenger's tree. The Mali GPU
-  did too; since 22.09. it is measured here (*Changes since v0.9-beta*).
+  did too; since 22.09. it is measured here and since `v0.95-beta` it is in the image, under the keystone.
 
 ## Boards
 
@@ -66,7 +66,7 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Fan, tacho, stall protection | works | `hy310-board-mgr` | 4860 RPM measured 11.09.; **the fan-stall poweroff is armed and was triggered on the device** 12.09.: rail cut, device shut itself down, next boot mounted the filesystem clean (`analyse/boot/p6-notaus-luefter-20260912.txt`). No NTC on this unit, so the tacho is the protection |
 | Power / standby | partial | standby is 4 W; deep sleep is designed, not built | plan `doku/104` |
 | Crypto engine | present, unused | measurement module loads, crypto disabled | `doku/114` |
-| Mali-G31 GPU (Panfrost) | works, **source only** | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (`umbau/test-20260915/keystone-20260922.md`) |
+| Mali-G31 GPU (Panfrost) | works, in `v0.95-beta` | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (`umbau/test-20260915/keystone-20260922.md`) |
 | Video decode, IOMMU | unverified here | cstenger's patches, in our series | verified in his tree, not in this image |
 | Bluetooth | missing | driver builds, firmware split not done | `rootfs/packages.txt` explains the choice |
 | HDCP 1.4 | missing | path understood, one test costs a power cycle | `doku/112` |

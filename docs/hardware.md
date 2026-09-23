@@ -56,8 +56,9 @@ and `STATUS.md`.
 
 ## GPU
 
-Mali-G31, driven by the mainline Panfrost driver. It comes from cstenger's tree and is verified there,
-not re-tested on this image - see `known-issues.md`.
+Mali-G31, driven by the mainline Panfrost driver, with our own mesa (panfrost only) under `/usr/local`.
+Since `v0.95-beta` the keystone renders on it - `h713-warp` warps the HDMI picture into NV12 for the video
+plane, measured on the HY310 (`docs/guides/keystone.md`).
 
 ## Wi-Fi and Bluetooth
 
