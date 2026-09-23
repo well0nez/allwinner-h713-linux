@@ -65,6 +65,13 @@ stops until the budget ran out:
 Beside those, the safety rules of `h713-focus` hold unchanged: the range watcher is read before and after
 every move, `motor_ctrl_no_limit` is never written, and a run refuses to start while it reads 1.
 
+A run also refuses to start while the watcher says the mechanism stands **outside** its travel and no edge
+is latched, because then nobody knows which way is back. That state should not occur any more: since
+23.09.2026 the watcher's pad has its pull-up (kernel patch `0164` - it floated before, and read "in range"
+at boot with the focus 110 msteps out) and the driver's homing at boot walks the mechanism back the way the
+vendor's does (`0165`). If it happens anyway, reboot, or reload the module:
+`modprobe -r hy310_focus_motor && modprobe hy310_focus_motor`.
+
 ## How a run ends
 
 The last line names it:

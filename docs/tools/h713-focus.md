@@ -20,18 +20,25 @@ node, `3` locked or stopped at an edge, `4` deadline hit or command dropped, `13
 
 ## Why it does not load the driver
 
-Since patch 0157 the `motor_ctr` sysfs node is loaded automatically at boot and, since 0156, `homing` defaults
-to off - the module sets up the pads and exposes sysfs without moving anything. `h713-focus status` says
-whether it is present; if not, `modprobe hy310_focus_motor` loads it. On a kernel **before** 0156, that
-`modprobe` needs `homing=0` explicitly, because the homing sequence otherwise drives up to 100 msteps *toward
-the mechanical stop* on load, and only the lower edge has ever been confirmed to have a watcher at all. That
-risk is exactly why this tool never loads the module itself.
+Since patch 0157 the `motor_ctr` sysfs node is loaded automatically at boot, and since 0165 (23.09.2026)
+`homing` is on again, as in stock: if the mechanism stands outside its travel when the module loads, the
+driver walks it back - up to 100 msteps up, then down, reading the gate at every step - and says so in the
+kernel log. Between 0156 (12.09.) and 0165 it was off, because only the lower edge of the gate had been
+observed and homing drives upwards first; on 23.09. the upper edge was measured too. `h713-focus status`
+says whether the module is present; if not, `modprobe hy310_focus_motor` loads it (`homing=0` keeps a bench
+still). This tool never loads the module itself.
 
 ## What the range watcher actually is
 
 The pin (`PH14`) is a **range watcher**, not a limit switch: it reads high while the mechanism is inside its
 allowed range, and the edge is reached when that level *drops*. The driver reverses and latches the edge by
-itself; the script does not reproduce that logic, it recognizes that it happened and stops. Measured
+itself; the script does not reproduce that logic, it recognizes that it happened and stops. The switch is a
+contact to ground that closes outside the travel and is open inside, so the high level inside is the pad's
+pull-up - since patch `0164` a pinctrl group on the motor node. Before it the pad floated on our boot chain
+and read a stale level: on 23.09.2026 the HY310 came up reading "in range" with the focus 110 msteps above
+its travel, nothing was latched, and this tool refused every move (rule 4) until homing walked it back.
+Measured through the PIO registers that day: with pull-down the pad reads low everywhere, with pull-up it
+reads high over the travel, drops at the edge within 5 msteps and returns 10 msteps back in. Measured
 12.09.2026 (`analyse/boot/motor-bereichswaechter-20260912.txt`): the counter and the physical position drift
 apart by roughly 6 msteps at every edge event, because a reversal moves the mechanism `1 + k + back_step`
 msteps but the counter only one - `step` is a counter, not a position.

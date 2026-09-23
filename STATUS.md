@@ -5,7 +5,7 @@ not "compiles". Where a row says **unverified**, nobody has proven it on this ha
 treat it as a claim, not a fact.
 
 The image on the test device is `v0.95-beta`, installed over FEL the way a stranger would, from the release
-files: the 186-patch series with U-Boot `4cecddd`, mesa for the GPU, and the four tools of the keystone chain.
+files: the 188-patch series with U-Boot `4cecddd`, mesa for the GPU, and the four tools of the keystone chain.
 The last release is `v0.95-beta`; the last test image is `hy300-pro-test7` (23.09., for the HY300 Pro's owner). What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
@@ -61,7 +61,7 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | ARM ↔ MIPS IPC | works | `cpu_comm` in-kernel API | callback slot leak fixed; [docs/subsystems/cpu-comm.md](docs/subsystems/cpu-comm.md) |
 | ARISC (PMU, HPD, EDID) | works | `sun50i-h713-arisc` | 17.65 s to hot-plug ready |
 | Wi-Fi AIC8800D80 | works | out-of-tree modules + `h713-wifi` | 12.09.: access point (−50 dBm, 5.7 MB/s, DHCP, SSH) and station against a real network (DHCP address, internet through `wlan0`) |
-| Focus motor | works | `hy310_focus_motor` + `h713-focus` | range watcher measured 12.09., `analyse/boot/motor-bereichswaechter-20260912.txt` |
+| Focus motor | works | `hy310_focus_motor` + `h713-focus` | range watcher measured 12.09. (lower edge) and 23.09. (upper edge, the pad's pull-up, homing walks 110 msteps back), `analyse/boot/motor-bereichswaechter-20260912.txt`, `umbau/test-20260915/keystone-20260922.md` |
 | Internal camera | works | `uvcvideo` + `h713-cam`; the USB PHYs are powered by the kernel since 15.09. (SIDDQ, patch 0005a), no `usb start` in the boot loader | 12.09.: grab of the lit wall, mean brightness Y = 88.7, 3.2 s (`analyse/beamer-cam/p6-wand-20260912.png`) |
 | Fan, tacho, stall protection | works | `hy310-board-mgr` | 4860 RPM measured 11.09.; **the fan-stall poweroff is armed and was triggered on the device** 12.09.: rail cut, device shut itself down, next boot mounted the filesystem clean (`analyse/boot/p6-notaus-luefter-20260912.txt`). No NTC on this unit, so the tacho is the protection |
 | Power / standby | partial | standby is 4 W; deep sleep is designed, not built | plan `doku/104` |
@@ -127,7 +127,7 @@ here is in `umbau/test-20260915/keystone-20260922.md`.
   hour-long soak has no result yet; the long run that exists is the one the audio bug came out of. The throw
   ratio is still the optics' own 0.8176 out of `camprjspe.ini` and not a tape measure. None of this has been
   near the HY300 Pro.
-- With `0024e`, `0136y`, `0162` and `0163` the series stands at **186 patches**
+- With `0024e`, `0136y`, `0162`, `0163`, `0164` and `0165` the series stands at **188 patches**
   ([docs/kernel-patches.md](docs/kernel-patches.md)).
 
 ## Changes since v0.8-beta
