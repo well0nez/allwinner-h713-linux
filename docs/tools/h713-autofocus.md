@@ -58,8 +58,9 @@ follow-ups 3 and 5). Doubt the step sizes first.
 
 The vendor ships `bg_auto_focus.png`, a 1920x1080 chessboard of 69 px cells from (97, 92), with some cells left
 white so the black squares form a centre block and four corner blocks. That file is vendor material and is not
-carried here; the tool **generates** a plain chessboard of the same cell size and origin instead, which has more
-edges than the vendor's - the metric can only like that.
+carried here; the tool **generates** a plain chessboard of the same cell size instead, whole cells centred with
+a white margin all round (from the vendor's origin it showed a white band on the left and a doubled top row,
+23.09.2026), which has more edges than the vendor's - the metric can only like that.
 
 It goes onto the panel through `/dev/fb0`, the console's own surface (`CONFIG_DRM_FBDEV_EMULATION=y` in the
 board defconfig). That is the first of the three routes AP1 section 7 lists, and it was chosen because it needs

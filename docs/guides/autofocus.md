@@ -17,8 +17,8 @@ or **Autofocus now** on the [settings page](settings-page.md), which runs the sa
    only on the wall when nothing else is: so the tool switches `h713-warp` off if it was on, switches
    `h713-tv` off, and puts both back in reverse when it ends. It does that itself since 23.09.2026 - an
    autofocus that does not put its own picture up is worth nothing. `--no-handover` leaves it to you.
-2. **The chessboard is drawn**, 69 px cells from (97, 92), generated here rather than taken from the
-   vendor's PNG. The framebuffer's contents are saved first and written back at the end, including on
+2. **The chessboard is drawn**, 69 px cells, whole ones, centred with a white margin all round, generated
+   here rather than taken from the vendor's PNG. The framebuffer's contents are saved first and written back at the end, including on
    Ctrl-C and SIGTERM.
 3. **The camera starts**: YUYV 640x480 over the internal USB camera, the exposure written before the first
    frame because that is what wakes this camera out of its black-frame state.
