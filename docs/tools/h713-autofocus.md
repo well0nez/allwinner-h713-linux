@@ -144,11 +144,13 @@ board normalised to 5046..5151.
 A pass costs roughly 100 ms for the move (6 msteps at 16 ms each), 66 ms for the two frames, and the metric.
 The first two are the stock's own cost and cannot be argued away; the metric is ours, which is why it is in C.
 
-## The range watcher will stop a bench run
+## The range watcher and a bench run
 
 The search obeys `h713-focus`'s rules, and the strongest of them is the travel-range watcher: when the
-mechanism reaches the end of its range the driver latches an edge, the run stops and the tool exits **5**.
-On the bench that is the normal outcome and not a fault. A projector pointed at objects about 30 cm away has
+mechanism reaches the end of its range the driver latches an edge and backs the mechanism into range. Since
+24.09.2026 the search then turns round (the stock's behaviour); a run ends with exit **5** only when both
+edges are latched, the turn-arounds exceed four, or the 1000-mstep cap is used up. On the bench the peak is
+often beyond the range, so a run turns round at the far edge, climbs back and ends at the cap - not a fault. A projector pointed at objects about 30 cm away has
 its sharp point **beyond** the lens's design range, so every run climbs, keeps getting sharper, and then hits
 the edge with the metric still rising (measured twice on 22.09.2026, at counter +31 and +46). **Point it at a
 wall** for a run that converges; a bench run tells you the climb works, not where the peak is.
