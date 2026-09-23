@@ -263,10 +263,44 @@ class Frames(unittest.TestCase):
         motor.loop(5)
         self.assertTrue(motor.edge_up)
         self.assertEqual(motor.state().step, 9)
-        self.assertRaises(af.Edge, motor.loop, 1)
         motor = af.ReplayMotor(frames, start=5, direction=0)
         motor.moved = af.RUN_MSTEP_CAP
         self.assertRaises(af.Edge, motor.loop, 1)
+
+    def test_loop_turns_round_at_a_latched_edge(self):
+        """The vendor's motor_ctrl_loop (0x00030144): flip and move the same
+        number of steps the other way, in the same call. It is not a stop."""
+        frames = [(i, "/nonexistent/%d" % i) for i in range(10)]
+        motor = af.ReplayMotor(frames, start=8, direction=0)
+        motor.loop(5)                               # into the upper edge
+        self.assertTrue(motor.edge_up)
+        motor.loop(3)                               # the turn-around
+        self.assertEqual(motor.direction, 1)
+        self.assertEqual(motor.state().step, 6)
+        self.assertEqual(motor.reversals, 1)
+        self.assertFalse(motor.edge_up)             # the driver clears it
+
+    def test_too_many_turn_arounds_end_the_run(self):
+        """Ours, not the vendor's: a picture that gives no peak must not
+        bounce between the two stops for the whole budget."""
+        frames = [(i, "/nonexistent/%d" % i) for i in range(6)]
+        motor = af.ReplayMotor(frames, start=3, direction=0)
+        with self.assertRaises(af.Edge) as caught:
+            for _ in range(40):
+                motor.loop(5)
+        self.assertIn("turned round", str(caught.exception))
+        self.assertEqual(motor.reversals, af.EDGE_REVERSE_CAP + 1)
+        self.assertLessEqual(motor.moved, af.RUN_MSTEP_CAP)
+
+    def test_both_edges_at_once_still_ends_the_run(self):
+        """Unreachable through the driver - it clears the other edge on the
+        first mstep the other way - so it is asserted directly."""
+        frames = [(i, "/nonexistent/%d" % i) for i in range(6)]
+        motor = af.ReplayMotor(frames, start=3, direction=0)
+        motor.edge_up = motor.edge_dn = True
+        with self.assertRaises(af.Edge) as caught:
+            motor.loop(2)
+        self.assertIn("both edges", str(caught.exception))
 
 
 class Pattern(unittest.TestCase):
@@ -317,6 +351,16 @@ class SearchOnFrames(unittest.TestCase):
             landed.append(position)
         self.assertLess(abs(landed[0] - landed[1]), 16,
                         "the two directions landed at %s" % (landed,))
+
+    def test_a_run_that_walks_into_an_edge_still_finds_the_peak(self):
+        """The failure of 23.09.: the run ended at an edge and the picture
+        stayed unsharp. Starting two coarse moves below the top, the search
+        must hit the upper edge, turn round and converge anyway."""
+        reason, position, search, motor = self._run(self.frames, SPAN - 4, 0)
+        self.assertGreaterEqual(motor.reversals, 1)
+        self.assertEqual(reason, "peak")
+        self.assertLess(abs(position - PEAK), 12)
+        self.assertLessEqual(motor.moved, af.RUN_MSTEP_CAP)
 
     def test_a_smaller_step_profile_converges_too(self):
         reason, position, _, _ = self._run(self.frames, 60, 0, "vafo8")

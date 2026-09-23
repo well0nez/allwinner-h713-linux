@@ -188,6 +188,9 @@ int main(int argc, char **argv)
 	fds[0].events = POLLIN;
 	fds[1].fd = sfd;
 	fds[1].events = POLLIN;
+	r.hold = true;
+	r.check.slot = -1;
+	r.source.held = -1;
 	for (;;) {
 		bool live = r.state == WARP_ON;
 		int timeout = -1;
@@ -207,6 +210,8 @@ int main(int argc, char **argv)
 			timeout = PATTERN_MS;
 		else if (!live && r.on)
 			timeout = RETRY_MS;
+		if (r.check.slot >= 0)
+			timeout = 2;		/* the self-check's second draw is due */
 		if (poll(fds, 4, timeout) < 0) {
 			if (errno == EINTR)
 				continue;
@@ -240,6 +245,7 @@ int main(int argc, char **argv)
 			warp_pump(&r);
 		else if (!live && r.on)
 			warp_apply(&r);
+		warp_check_tick(&r);
 		if (fds[0].revents & POLLIN)
 			control_serve(&ctl, &r);
 	}

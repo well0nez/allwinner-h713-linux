@@ -202,6 +202,11 @@ static void cmd_help(struct textbuf *t)
 		 "  keystone reset             all eight corners to 0 (the identity)\n"
 		 "                             CORNER: tl tr bl br as the picture stands on the\n"
 		 "                             wall; AXIS: x y. Every change is saved at once\n"
+		 "  hold on|off                draw a slot one vsync late (on, the default): the\n"
+		 "                             firmware hands a slot on before it is written to\n"
+		 "                             the end; off is the old timing, for the check\n"
+		 "  check [FRAMES]             the self-check: FRAMES frames (300) drawn twice, 12 ms\n"
+		 "                             apart, and compared; the result on the status line\n"
 		 "  zoom [PERCENT]             the screen zoom, 10..100 (100 = none): every corner\n"
 		 "                             pulled in by (100 - PERCENT) * 5 per-mille (S7)\n"
 		 "  test mask [CORNER]         the calibration picture of the manual keystone,\n"
@@ -259,6 +264,33 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 			       : "the warp is off");
 	} else if (!strcmp(cmd, "keystone")) {
 		text_add(t, "error keystone takes set, nudge or reset (h713-warp ctl help)\n");
+	} else if (!strcmp(cmd, "hold")) {
+		if (!a1 || (strcmp(a1, "on") && strcmp(a1, "off"))) {
+			text_add(t, "error hold takes on or off\n");
+		} else {
+			r->hold = !strcmp(a1, "on");
+			if (!r->hold && r->source.held >= 0) {
+				source_queue(&r->source, r->source.held);
+				r->source.held = -1;
+			}
+			text_add(t, "ok hold %s\n", a1);
+		}
+	} else if (!strcmp(cmd, "trace")) {
+		r->check.trace = a1 ? atoi(a1) : 300;
+		text_add(t, "ok trace %d dequeues to the journal\n", r->check.trace);
+	} else if (!strcmp(cmd, "check")) {
+		int f = a1 ? atoi(a1) : 300;
+
+		if (f < 1 || f > 100000) {
+			text_add(t, "error check takes a frame count 1..100000\n");
+		} else if (r->state != WARP_ON || r->pattern != PATTERN_NONE) {
+			text_add(t, "error check needs the warp on with the capture\n");
+		} else {
+			r->check.want = f;
+			r->check.frames = r->check.differing = r->check.rows_max = r->check.late = 0;
+			r->check.row_lo = r->check.row_hi = -1;
+			text_add(t, "ok check %d frames -- see the journal or \"ctl status\"\n", f);
+		}
 	} else if (!strcmp(cmd, "zoom")) {
 		int z = a1 ? atoi(a1) : -1;
 

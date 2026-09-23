@@ -107,7 +107,9 @@ RUN_MSTEP_CAP, MSTEPS_PER_COMMAND_MAX = 400, 18   # both as in h713-focus
 # instead of five and does not overshoot the move by up to a poll interval.
 MSTEP_S, POLL_S = 0.016, 0.008
 CMD_UP, CMD_DOWN, CMD_FLUSH = 1, 2, 3             # the autofocus codes, AP1 6
-EDGE_BACKOFF = 40          # msteps away from a latched edge before a run
+EDGE_REVERSE_CAP = 4       # turn-arounds at an edge per run; ours, not the
+                           # vendor's -- it has none, but it also has the 22 s
+                           # watchdog of LocalService.calib_begin (AP1 2.1)
 PATTERN_CELL, PATTERN_ORIGIN = 69, (97, 92)       # AP1 2.2, bg_auto_focus.png
 EXIT_ERROR, EXIT_NO_PICTURE, EXIT_BLOCKED = 2, 3, 4
 EXIT_EDGE, EXIT_NO_PEAK = 5, 6
@@ -118,7 +120,12 @@ class Error(Exception):
 
 
 class Edge(Exception):
-    """The travel range ended, or a guard refused: stop, do not unlatch."""
+    """A guard refused, or the travel range is used up: stop, do not unlatch.
+
+    Reaching ONE edge is not this: the driver reverses out of it by itself and
+    the search turns round (Motor.loop). Only both edges at once, too many
+    turn-arounds or a guard that is not about direction end a run here.
+    """
 
 
 def _stderr(line):
@@ -255,14 +262,30 @@ ATTR_CTRL, ATTR_LIMIT, ATTR_NO_LIMIT = ("motor_ctrl", "motor_limit",
 class Motor:
     """What the search may ask of a motor, real or replayed."""
 
-    direction = moved = 0
+    direction = moved = reversals = 0
 
     def state(self):
         raise NotImplementedError
 
-    def guard(self, st, up):
-        """None = this direction may be driven, else the reason it may not."""
+    def blocked(self, st):
+        """None = the motor may be driven at all, else the reason it may not.
+
+        Direction-independent. A latched edge is deliberately NOT a reason
+        here: it is a reason to turn round, not to give up (`loop`).
+        """
         return None
+
+    @staticmethod
+    def edge_ahead(st, up):
+        """Is the edge that this direction would run into latched?"""
+        return st.edge_up if up else st.edge_dn
+
+    def guard(self, st, up):
+        """Everything that stops a move in this direction -- pre-flight."""
+        return self.blocked(st) or (
+            "edge_%s=1 -- that edge is latched and every command towards it "
+            "is dropped" % ("up" if up else "dn")
+            if self.edge_ahead(st, up) else None)
 
     def flush(self):
         pass
@@ -272,12 +295,36 @@ class Motor:
         self.flush()
 
     def loop(self, steps):
-        """One watched move in the current search direction."""
+        """One watched move in the current search direction.
+
+        Port of the vendor's motor_ctrl_loop (0x00030144 in libduRYXtp.so,
+        AP1c excerpts/lib-edge-path.c section 4): when the edge in the
+        direction of travel is latched, flip the direction and write the same
+        number of steps the other way, in the same call. An edge does not end
+        a vendor run -- vafo10_HY260, the HY310's own search, never even
+        reads the two flags. What ends a run is the peak, the budget or the
+        clock.
+
+        Ours adds two limits the vendor does not have: both edges latched at
+        once, and EDGE_REVERSE_CAP turn-arounds in one run. Without them a
+        flat or black picture could bounce between the two stops until the
+        budget runs out.
+        """
         up = self.direction == 0
         state = self.state()                # the guard's read-back is also
-        reason = self.guard(state, up)      # the move's "before": one read
+        reason = self.blocked(state)        # the move's "before": one read
         if reason:
             raise Edge(reason)
+        if self.edge_ahead(state, up):
+            if self.edge_ahead(state, not up):
+                raise Edge("both edges are latched at once -- the range "
+                           "watcher has nothing left to give")
+            self.reversals += 1
+            if self.reversals > EDGE_REVERSE_CAP:
+                raise Edge("turned round at an edge more than %d times in "
+                           "one run" % EDGE_REVERSE_CAP)
+            self.direction ^= 1
+            up = not up
         if self.moved + steps > RUN_MSTEP_CAP:
             raise Edge("the hard cap of %d msteps per run" % RUN_MSTEP_CAP)
         self.moved += steps
@@ -339,7 +386,7 @@ class SysfsMotor(Motor):
         except (OSError, ValueError):
             return 0
 
-    def guard(self, st, up):
+    def blocked(self, st):
         if st.num < 1:
             return ("num=0 -- no range watcher requested, so the driver says "
                     "'in range' for ever and never reverses at an edge")
@@ -354,9 +401,6 @@ class SysfsMotor(Motor):
                 % (st.raw, st.act)
         if not st.in_range:
             return "motor_limit says 'outside' while the level fits -- look"
-        if st.edge_up if up else st.edge_dn:
-            return "edge_%s=1 -- that edge is latched and every command " \
-                   "towards it is dropped" % ("up" if up else "dn")
         return None
 
     def _move(self, steps, up, before=None):
@@ -369,7 +413,13 @@ class SysfsMotor(Motor):
             now = self.state()
             if (now.edge_up and not before.edge_up) or \
                     (now.edge_dn and not before.edge_dn):
-                raise Edge("an edge was reached during the run")
+                # The driver has already handled it: reversed back into the
+                # range, added back_step and latched the flag
+                # (motor_run_up_control 0xc05d6ea0, patch 0111). What is left
+                # of this command will be refused mstep by mstep, so the
+                # counter never reaches the target -- stop waiting for it.
+                # The next loop() turns the search round, as stock does.
+                return
             if now.step == target:
                 return
             time.sleep(POLL_S)
@@ -396,16 +446,17 @@ class ReplayMotor(Motor):
         return State(self.frames[self.index][0], self.edge_up, self.edge_dn,
                      True, 1, 1, 1)
 
-    def guard(self, st, up):
-        return ("edge_%s=1" % ("up" if up else "dn")) \
-            if (st.edge_up if up else st.edge_dn) else None
-
     def _move(self, steps, up, before=None):
         new = self.index + (steps if up else -steps)
         if new >= len(self.frames):
             new, self.edge_up = len(self.frames) - 1, True
         elif new < 0:
             new, self.edge_dn = 0, True
+        if new != self.index:       # the driver clears the OTHER edge on the
+            if up:                  # first mstep the other way -- stock
+                self.edge_dn = False        # motor_run_up_control 0xc05d6ea0
+            else:                           # ends with g_motor_edge_Dn = 0,
+                self.edge_up = False        # ours in patch 0009 line 269
         self.index = new
 
     def grab(self):
@@ -924,17 +975,16 @@ def do_run(args, profile):
         motor.direction = args.direction
         st = motor.state()
         up = motor.direction == 0
-        if st.edge_up if up else st.edge_dn:
+        if motor.edge_ahead(st, up) and not motor.edge_ahead(st, not up):
             # The last run ended at this edge and the driver latched it: every
-            # command towards it is dropped, away from it is fine. Back off,
-            # so that a click on "autofocus" works twice in a row.
-            _stderr("the %s edge is latched from the last run -- backing off "
-                    "%d msteps first" % ("upper" if up else "lower", EDGE_BACKOFF))
-            try:
-                motor._move(EDGE_BACKOFF, not up, st)
-            except Edge:
-                pass
-            st = motor.state()
+            # command towards it is dropped, away from it is fine. Start the
+            # other way round -- that is what vafo4_L010 (0x0002b6c8) does
+            # before its loop, and what motor_ctrl_loop would do on the first
+            # move anyway. No msteps are spent on it.
+            _stderr("the %s edge is latched from the last run -- starting in "
+                    "the other direction" % ("upper" if up else "lower"))
+            motor.direction ^= 1
+            up = not up
         reason = motor.guard(st, up)
         if reason:
             _stderr("the motor cannot start: " + reason)

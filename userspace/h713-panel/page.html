@@ -110,7 +110,7 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
     <button onclick="act('keystone_now')">Auto now</button><button
       onclick="act('keystone_res')">Reset</button>
   </div>
-  <label for="zoom">Screen zoom <span id="zoom-v" class="num">100 %</span></label>
+  <label for="zoom">Zoom (the projection area) <span id="zoom-v" class="num">100 %</span></label>
   <input type="range" id="zoom" min="50" max="100" step="5" value="100" oninput="show_v('zoom', ' %')"
          onchange="act('screen_zoom', [+this.value])">
   <h3>After a move</h3>
@@ -139,8 +139,11 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
   <h3>Aspect</h3>
   <div class="row" id="aspects"></div>
   <h3>Firmware zoom</h3>
+  <p class="note" id="tvzoom-note" hidden>While the warp is on, the firmware zoom acts on the capture
+    window only: "In" cuts a piece out, "out" does nothing. Use the zoom under Keystone, it shrinks the
+    projection area.</p>
   <div class="row" id="tvzoom"></div>
-  <label for="out">Zoom out <span id="out-v" class="num">100 %</span></label>
+  <label for="out">Firmware zoom out (scaling without the warp) <span id="out-v" class="num">100 %</span></label>
   <input type="range" id="out" min="50" max="100" step="5" value="100" oninput="show_v('out', ' %')"
          onchange="act('tv_zoom_out', [+this.value])">
   <div class="row" style="margin-top:8px"><button class="wide"
@@ -309,6 +312,11 @@ function draw() {
     bit("gpu", ST.fps === null || ST.fps === undefined ? "-" : ST.fps + " fps");
   if (!DRAG) { KS = ST.keystone || {}; drawQuad(); }
   press("warp-on", ST.warp === "on"); press("warp-off", ST.warp === "off");
+  /* the firmware zoom is the ring path's; under the warp it only cuts the capture */
+  id("tvzoom-note").hidden = ST.warp !== "on";
+  Array.prototype.forEach.call(id("tvzoom").querySelectorAll("button"), function (b) {
+    b.disabled = ST.warp === "on"; });
+  id("out").disabled = ST.warp === "on";
   press("mask-on", masked()); press("mask-off", !masked());
   (ST.after_move_list || []).forEach(function (v) { press("am-" + v, ST.after_move === v); });
   if (document.activeElement !== id("zoom") && ST.screen_zoom) {

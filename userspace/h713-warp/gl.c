@@ -472,8 +472,8 @@ void gl_source_drop(void)
 	slots_up = 0;
 }
 
-bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
-	     int mark_corner, const char *const labels[5], char *why, size_t n)
+static bool draw_into(GLuint fbo, int source_slot, const float m[16], int pattern,
+		      int mark_corner, const char *const labels[5], char *why, size_t n)
 {
 	static const GLfloat quad[] = {
 		-1, -1, 0, 0,   1, -1, 1, 0,   -1, 1, 0, 1,   1, 1, 1, 1,
@@ -481,7 +481,7 @@ bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
 	GLuint prog = pattern == PATTERN_NONE ? prog_warp : prog_pattern;
 	GLenum err;
 
-	glBindFramebuffer(GL_FRAMEBUFFER, target[target_index].fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glViewport(0, 0, (GLsizei)panel_w, (GLsizei)panel_h);
 	/* the warp shrinks the picture, so what is outside the quad is defined */
 	glClearColor(0, 0, 0, 1);
@@ -538,6 +538,86 @@ bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
 	return true;
 }
 
+bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
+	     int mark_corner, const char *const labels[5], char *why, size_t n)
+{
+	return draw_into(target[target_index].fbo, source_slot, m, pattern,
+			 mark_corner, labels, why, n);
+}
+
+/*
+ * The self-check (no eyes needed): the same slot drawn a second time, into a
+ * scratch buffer, 12 ms after the first draw, and the two compared row by
+ * row. The capture ring carries no fence, so the only way to know whether the
+ * first draw read a slot the firmware was still writing is to draw it again
+ * once it is certainly written and look for rows that changed. Zero differing
+ * rows over a few hundred frames of motion is the pass; a band of differing
+ * rows at the bottom is the source race (loop.c). Two 8 MB readbacks per
+ * checked frame, so only on request ("ctl check").
+ */
+static GLuint check_fbo, check_tex;
+static unsigned char *check_a, *check_b;
+#define CHECK_STEP	34		/* every 34th row: 32 rows of 1080, half a MB per check */
+
+bool gl_check_compare(int target_index, int source_slot, const float m[16],
+		      unsigned long *rows, int *lo, int *hi, char *why, size_t n)
+{
+	size_t line = (size_t)panel_w * 4;
+	int y, x;
+
+	if (!check_fbo) {
+		glGenTextures(1, &check_tex);
+		glBindTexture(GL_TEXTURE_2D, check_tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)panel_w, (GLsizei)panel_h,
+			     0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glGenFramebuffers(1, &check_fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, check_fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+				       check_tex, 0);
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			return oops(why, n, "the self-check's scratch FBO");
+		check_a = malloc(line * (panel_h / CHECK_STEP + 1));
+		check_b = malloc(line * (panel_h / CHECK_STEP + 1));
+		if (!check_a || !check_b)
+			return oops(why, n, "16 MB for the self-check");
+	}
+	if (!draw_into(check_fbo, source_slot, m, PATTERN_NONE, -1, NULL, why, n))
+		return false;
+	glFinish();
+	/* sampled rows, so the check costs a millisecond and not a frame */
+	glBindFramebuffer(GL_FRAMEBUFFER, check_fbo);
+	for (y = 0; y < (int)panel_h; y += CHECK_STEP)
+		glReadPixels(0, y, (GLsizei)panel_w, 1, GL_RGBA, GL_UNSIGNED_BYTE,
+			     check_a + (size_t)(y / CHECK_STEP) * line);
+	glBindFramebuffer(GL_FRAMEBUFFER, target[target_index].fbo);
+	for (y = 0; y < (int)panel_h; y += CHECK_STEP)
+		glReadPixels(0, y, (GLsizei)panel_w, 1, GL_RGBA, GL_UNSIGNED_BYTE,
+			     check_b + (size_t)(y / CHECK_STEP) * line);
+	if (glGetError())
+		return oops(why, n, "the self-check's readback");
+	*rows = 0;
+	*lo = -1;
+	*hi = -1;
+	for (y = 0; y < (int)panel_h; y += CHECK_STEP) {
+		const unsigned char *a = check_a + (size_t)(y / CHECK_STEP) * line;
+		const unsigned char *b = check_b + (size_t)(y / CHECK_STEP) * line;
+
+		for (x = 0; x < (int)line; x += 4)
+			if (a[x] != b[x] || a[x + 1] != b[x + 1] || a[x + 2] != b[x + 2])
+				break;
+		if (x < (int)line) {
+			(*rows)++;
+			if (*lo < 0)
+				*lo = y;
+			*hi = y;
+		}
+	}
+
+	return true;
+}
+
 /* The out-fence: h713-tv passes it to the commit as IN_FENCE_FD, and
  * drm_atomic_helper_commit waits it out before the commit tail writes
  * AFBD_SRC, so GPU and scanout never overlap on a buffer. No fence: glFinish.
@@ -560,6 +640,14 @@ int gl_fence(void)
 
 void gl_close(void)
 {
+	if (check_fbo) {
+		glDeleteFramebuffers(1, &check_fbo);
+		glDeleteTextures(1, &check_tex);
+		check_fbo = check_tex = 0;
+		free(check_a);
+		free(check_b);
+		check_a = check_b = NULL;
+	}
 	int i;
 
 	gl_source_drop();

@@ -106,7 +106,10 @@ struct source {
 	bool streaming;
 	unsigned long timeouts, frames;
 	double dq_s;			/* the last slot's timestamp: the vsync that handed it on */
-	unsigned long settled;		/* frames that had to wait for the slot's last lines */
+	double slot_s[8];		/* the same, per slot */
+	int held;			/* the slot kept back one vsync, -1 none (see loop.c) */
+	unsigned long settled;		/* frames drawn from a slot one vsync old */
+	unsigned long stale;		/* held slots given back undrawn: too old, their next write may have begun */
 };
 
 void source_init(struct source *s, const char *want);
@@ -130,6 +133,11 @@ void gl_source_drop(void);
 bool gl_draw(int target, int slot, const float m[16], int pattern, int mark_corner,
 	     const char *const labels[5], char *why, size_t n);
 int gl_fence(void);			/* an out-fence fd, or -1 */
+/* the self-check: draw the slot again into a scratch buffer and compare it
+ * with the panel buffer the first draw went to; rows = differing rows,
+ * lo/hi their span */
+bool gl_check_compare(int target, int slot, const float m[16], unsigned long *rows,
+		      int *lo, int *hi, char *why, size_t n);
 
 /* the two shader pairs, so the host tests compile the very same strings */
 extern const char *const gl_vertex_shader;
@@ -152,6 +160,19 @@ struct runtime {
 	int pattern;			/* enum warp_pattern */
 	int mark_corner;		/* the mask's marked corner, 0..3 tl tr bl br, -1 none */
 	int target;			/* the next panel buffer to draw, advanced on an accepted commit */
+	bool hold;			/* draw a slot one vsync late (the source race, loop.c); off = the
+					 * old timing, kept as the self-check's control */
+	struct {			/* the self-check: a slot drawn twice, 12 ms apart, compared */
+		int want;		/* frames still to check, 0 = off */
+		int slot;		/* the slot kept back for the second draw, -1 none */
+		int target;		/* the panel buffer the first draw went to */
+		double due;		/* when the second draw is due */
+		double age0;		/* the slot's age at the first draw */
+		unsigned long frames, differing, rows_max, late;
+		int trace;		/* dequeues still to log with their timestamps */
+		double last_pump;	/* when the last pump ended: the loop's gaps */
+		int row_lo, row_hi;	/* the rows that differed, over all frames */
+	} check;
 	char why[WARP_WHY];		/* why it is not WARP_ON */
 	const char *render_node;
 	double m[16];			/* the matrix in use, column major */
@@ -171,6 +192,7 @@ bool warp_engage(struct runtime *r);	/* bypass -> on; why on failure */
 void warp_disengage(struct runtime *r, const char *why);
 void warp_apply(struct runtime *r);	/* put the state where the values ask */
 bool warp_pump(struct runtime *r);	/* one capture frame; false: fell back */
+void warp_check_tick(struct runtime *r);	/* the self-check's second draw, from the main loop */
 void warp_status(struct runtime *r, char *buf, size_t n);
 
 /* ---------------- the control socket and the client (ctl.c) ------------ */
