@@ -11,9 +11,10 @@ h713-keystone read                  # raw counts, the g vector, pitch and roll
 h713-keystone once [--apply]        # the eight insets for the tilt it has now
 h713-keystone run [--dry-run]       # the loop; SIGTERM puts the manual set back
 h713-keystone status                # configuration, sensor, reference, warp
+h713-keystone watch                 # after a move, run the automatic once (the unit's verb)
 ```
 
-`h713-warp ctl keystone auto on|off` starts and stops `h713-keystone-auto.service`, which is `run`. `-C PATH` names
+`h713-keystone-auto.service` runs `watch`; it is enabled from the first boot and does nothing while `after_move = off` (the settings page's "After a move" buttons write that key and restart the unit). `-C PATH` names
 another configuration file, `--reference PATH` another reference file, `--device PATH` an IIO node instead of the one
 found by name, `--warp PATH` another warp tool, `-q` drops the warnings.
 
@@ -70,6 +71,11 @@ sampling_rate      = 100       # Hz written into sampling_frequency at the start
 average_samples    = 10        # raw triples averaged per reading
 hysteresis_degrees = 1.0       # a change this big applies ...
 hold_seconds       = 1.0       # ... after it has stood this long
+after_move         = off       # watch: off | keystone | keystone+focus (the settings page writes it)
+move_degrees       = 3.0       # a tilt change this big counts as a move ...
+settle_seconds     = 2.0       # ... once the readings have then stood still this long
+settle_degrees     = 1.0       # ... within this much
+focus_command      = h713-autofocus run   # what keystone+focus runs afterwards
 ```
 
 Without the file the defaults above apply. An unknown key or an unreadable value goes into the journal by name
@@ -88,7 +94,7 @@ it back when it stops, so switching the automatic off leaves the picture as the 
 tolerantly (`tl_x = 12`, `tl x 12`, `tl-x: 12`), the daemon being written in parallel; one without all eight values
 counts as no answer.
 
-`python3 -m unittest discover -s tests -v` from `userspace/h713-keystone/` runs 126 tests: the 87 that came with the
+`python3 -m unittest discover -s tests -v` from `userspace/h713-keystone/` runs 130 tests: the 87 that came with the
 models, unchanged, and 39 for this tool - the IIO reader against a fake sysfs directory, the reference file, the
 hysteresis, the poses table above, the configuration parser, the h713-warp verbs against a recorder. `run
 --dry-run` does the whole loop on the real node and only prints.

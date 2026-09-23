@@ -318,9 +318,9 @@ h713-tv ctl save [off]          save the nine controls, the preset, aspect and z
                                  `off` deletes the file. Only here is anything written, not on every `set`
 h713-tv ctl aspect [NAME]       how the source is fitted into the panel (auto proportional full 16:9 4:3
                                  zoom); without NAME it is shown. A change rebuilds the picture (~0.5 s console)
-h713-tv ctl zoom [off|in F|out P] the digital zoom: `in` enlarges the centre of the picture by a factor
-                                 1.0..4.0 (default 2), `out` shrinks the whole picture to P percent of the
-                                 panel, centred (1..100, default 80), `off` is the baseline; without an
+h713-tv ctl zoom [off|in F]     the magnifier: `in` enlarges the centre of the picture by a factor
+                                 1.0..4.0 (default 2), `off` is the baseline (`out` is gone since 24.09.:
+                                 the projection area is `h713-warp ctl zoom`); without an
                                  argument it is shown. A change rebuilds the picture, as aspect does
 h713-tv ctl audio [on|off|auto] audio forced on / forced silent / following the picture (default); without a
                                  word it is shown
@@ -331,7 +331,7 @@ h713-tv ctl mute [on|off]       mute: the DSP mute (HDMI) and the codec's switch
 h713-tv ctl resync              select the source again (S_INPUT 0 = THal_Vp_SetSource HDMI-1)
 h713-tv ctl replug              play an unplug and a replug to the source: HPD 300 ms low (S_EDID with
                                  blocks=0), load the EDID again (S_EDID, 4 blocks), HPD high -- ~1 s, blocks
-h713-tv ctl warp [status]       whether h713-warp has the primary plane, with its counters (6e)
+h713-tv ctl warp [status]       whether h713-warp has the video plane, with its counters (6e)
 h713-tv ctl rpc NAME [ARG…]     any RPC to the firmware through /sys/kernel/debug/cpu_comm/call
 ```
 
@@ -367,7 +367,7 @@ publication; a change on a running picture takes the plane down briefly and back
 capture ring it writes its result into. Nothing here scales. `in F` sends the centre 1/F of the frame as
 the source window and leaves the plane over the whole panel - the firmware blows that window up into the
 ring (measured 22.09.2026: at F = 2 the centre quarter filled the panel and the test pattern's cell pitch
-doubled). `out P` sends a source window of the frame less two pixels - a source window the firmware calls
+doubled). `out P` (retired, see below) sent a source window of the frame less two pixels - a source window the firmware calls
 *full* makes it skip its scaler, and then nothing moves - plus a destination window of P percent at the
 ring's origin, and this program crops exactly that region out of the ring (`SRC 0,0 WxH`, kernel 0133c,
 which crops from the first byte only) and places it centred (measured: the whole picture at four fifths,
@@ -376,6 +376,9 @@ somewhere else in the ring would need `SRC_X/SRC_Y`. Sizes are rounded down to a
 even line count. The firmware sizes, we place; `ctl status` shows both windows and the placement. Read with
 the next publication, like `aspect`. Whether the firmware follows is decided on the wall: the scaler's own
 register `0x05180034` shows what it last did, not what was last asked, and it has been found stale.
+
+`out P` was retired on 24.09.2026: the DE's picture scaler only enlarges, so the destination window cropped
+instead of shrinking. Shrinking the projected picture is `h713-warp ctl zoom`, inside the keystone matrix.
 
 **`replug`** is the HPD cycle out of S12 C: the source is to believe that the cable was pulled and plugged
 back in - for a mode that does not lock, or a source asleep on a link it believes to be up. The way is the
@@ -614,7 +617,7 @@ brightness  = 50
 …
 sharpness   = 30
 aspect      = proportional
-zoom        = out 80
+zoom        = in 2.00
 ```
 
 Written **only by `h713-tv ctl save`**; `ctl save off` deletes the file. Not on every slider movement:
@@ -673,18 +676,20 @@ saved           /var/lib/h713-tv/werte: preset=vivid brightness=50 contrast=55 s
 ## 6e. The warp: `h713-warp` draws, this program shows
 
 Since the keystone (plan stage S5) there is a **third display mode** beside plane-on and console:
-*warped*. `h713-warp` renders the capture through the GPU, this program puts the result on the
-**primary** plane and keeps the video plane off - which by itself returns the encoder's selector to
+*warped*. `h713-warp` renders the capture through the GPU, this program puts the result as NV12 on the
+**video** plane with `hdmi-ring` 0, so the ring is off and the firmware's picture controls act on the warped frame
+(24.09.; until then RGB on the primary plane) - which by itself returns the encoder's selector to
 RGB (`afbd.c:864-867`). With all eight keystone values at 0 the daemon does not open the render node
 at all, so the wall shows exactly what it showed before. The two speak over this program's own
 control socket, in its own language, the file descriptors in `SCM_RIGHTS` on the same connection:
-`warp claim` answers `ok WIDTH HEIGHT PITCH` and three XRGB8888 dumb buffers of the mode;
+`warp claim` answers `ok WIDTH HEIGHT PITCH nv12 CHROMA_OFFSET` and three NV12 dumb buffers of the mode, the chroma
+plane below the luma in the same buffer;
 `warp frame N` carries the daemon's out-fence and commits buffer N with `IN_FENCE_FD`, answering
 `ok` or `ok busy` when the previous commit is still in flight (that frame is dropped);
 `warp release` gives the panel back. The connection is the lifetime - a daemon that dies leaves a
 hangup and the ring comes back by itself. While the warp is on, `h713-tv ctl zoom` is refused with
 `error the warp is on - use h713-warp ctl zoom`, and `h713-tv ctl off` releases the warp. `ctl status` says
-`picture warped (h713-warp draws on the primary plane)`, and `ctl warp status` gives the plane, the geometry
+`picture warped (h713-warp draws on the video plane)`, and `ctl warp status` gives the plane, the geometry
 and the three counters (commits, busy, refused) without claiming anything.
 
 **The audio counts a warped picture as a picture** (fixed on the device, 22.09.2026). `audio_evaluate`,

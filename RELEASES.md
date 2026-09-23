@@ -73,6 +73,9 @@ running, and a `-dev` build is never a release.
 
 If you did not build it yourself, you will never see one of these.
 
+**Current: `v0.9-beta`** for the HY310. Test images for boards in test carry the board's name and a number,
+`hy300-pro-test7` being the last; they are built for one owner and are not releases.
+
 ## Superseded releases
 
 | Release | Why |

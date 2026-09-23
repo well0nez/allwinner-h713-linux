@@ -38,7 +38,7 @@ wall, no signal → Linux console.
 ```bash
 h713-tv ctl status             # signal, mode, plane or console, audio
 h713-tv ctl list               # every picture control with its range
-h713-tv ctl zoom in 2          # the centre quarter on the whole panel; `out 80`, `off`
+h713-tv ctl zoom in 2          # the centre quarter on the whole panel; `off` is the baseline
 ```
 
 If the wall stays dark, work down this list:
@@ -50,6 +50,9 @@ If the wall stays dark, work down this list:
 | Is the source in a mode the firmware locks? | `h713-tv ctl status` | the verified list is in [STATUS.md](../../STATUS.md); a source outside the firmware's own mode table is refused by name, and `status` prints its size and rate |
 | Just plugged the cable in and it stays dark? | `h713-tv ctl replug` | fixed since 16.09.2026 (kernel `0136a`/`0136c`); on an older image this command brings the picture back ([known-issues](../known-issues.md)) |
 | Anything in the log? | `journalctl -u 'h713-tv@*' -b` | |
+
+Open `http://<the projector>:8080/` in a browser. Everything below can be done there, and the keystone can only be
+done comfortably there. There is no login. [The settings page](../guides/settings-page.md) is the walk-through.
 
 ## 3. Make it look right
 
@@ -76,7 +79,8 @@ h713-focus down 20
 
 The motor has no position sensor, only a **range watcher**: the driver notices when the mechanism leaves
 the permitted range and stops. Small steps, look at the wall, repeat - that is the whole method. `h713-autofocus run` does the search by
-itself ([how](../tools/h713-autofocus.md)); it has not been proven to converge on a wall yet, so keep the manual
+itself ([how](../tools/h713-autofocus.md)), taking the panel over for its chessboard and giving it back; it has not
+been proven to converge against a wall yet, so keep the manual
 method at hand.
 
 ## 5. The camera

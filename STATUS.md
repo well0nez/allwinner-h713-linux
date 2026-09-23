@@ -1,13 +1,13 @@
 # Status
 
-Snapshot of **2026-09-22**. "Works" means *verified on the projector*, with the date and the log named -
+Snapshot of **2026-09-24**. "Works" means *verified on the projector*, with the date and the log named -
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
 The image on the test device is `v0.9-beta` **with the keystone branch on top of it**: the 182-patch series with
-U-Boot `4cecddd` from the release files, and over it the branch's three kernel patches (185 patches), its mesa and
-its two new tools - brought in by FIT, module swap and `scp`, not by a new install. The last release is still
-`v0.8-beta`. What the numbers mean: [RELEASES.md](RELEASES.md).
+U-Boot `4cecddd` from the release files, and over it the branch's four kernel patches (186 patches), its mesa and
+its four new tools - brought in by FIT, module swap and `scp`, not by a new install. The last release is
+`v0.9-beta`; the last test image is `hy300-pro-test7` (24.09., for the HY300 Pro's owner). What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
 
@@ -31,12 +31,12 @@ by `release/build-all.sh --board`: **no image for a board nobody has tested.** A
 
 | Board | State | Who ran it, and when | What exists for it |
 |---|---|---|---|
-| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.9-beta`, 22.09.2026; the development builds `v0.8-dev20` to `v0.8-dev22` on 22.09.2026, and the keystone slots of the same day (GPU, warp, accelerometer) on a `v0.9-beta` image with the branch on top | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
+| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | well0nez, on his HY310, `v0.9-beta`, 22.09.2026; the development builds `v0.8-dev20` to `v0.8-dev22` on 22.09.2026, and the keystone slots of 22. to 24.09.2026 (GPU, warp, accelerometer) on a `v0.9-beta` image with the branch on top | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
 | **HY200 QZ713DF_A1** | profile-only | nobody has run a build of *ours* on it. cstenger ran his own tree on his own bench board - kernel 6.18.38 boot-good (`mainline/config/versions.env`); that is his run, not ours | kernel and U-Boot defconfigs, device tree, and since 15.09. the installer profile `hy200_qz713df_a1` - its stock firmware is the 2025-09-22 "HY300 Pro+" DDR3 image (624 MHz, `display.bin` `4380f1b3…`) |
 | **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too, plus the installer profile `hy200_qz713_v2` - its stock firmware is the 2025-07-10 "HY300 Pro+" LPDDR3 image (720 MHz, `display.bin` `4628cbaf…`, HDCP wait site `0x4b13d538`) |
 | **HY300 T08** | profile-only | nobody | installer profile and DRAM fragment, both read out of its stock image (`doku/121` §2). No device tree of ours |
 | **HY350** | profile-only | nobody | as above. It ships the same `display.bin` as the T08 and a different panel - which is why the panel comes from the declared project id, never from the firmware image |
-| **HY300 Pro** | partial | its owner, [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1): probe and dump 13.09., then the TEST images. `hy300-pro-test2` (16.09.) brought U-Boot up and hung in the display bring-up; `hy300-pro-test3` booted the kernel, with Wi-Fi as access point and station and HDCP 2.2 reported working, but no boot logo, no HDMI input and green stripes. `hy300-pro-test4` (kernel `0091a` for the ARISC, plus a first panel A/B) is built for him. No green run yet | installer profile with gaps - layout from his log, DRAM clock 636 MHz, HDCP wait site unknown |
+| **HY300 Pro** | partial | its owner, [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1): probe and dump 13.09., then the TEST images. `hy300-pro-test2` (16.09.) brought U-Boot up and hung in the display bring-up; `hy300-pro-test3` booted the kernel, with Wi-Fi as access point and station and HDCP 2.2 reported working, but no boot logo, no HDMI input and green stripes. `hy300-pro-test7` is the current one (24.09., ten files, built from main); test4 brought the ARISC fix and the first panel A/B. No green run yet | installer profile with gaps - layout from his log, DRAM clock 636 MHz, HDCP wait site unknown |
 | **L018** | profile-only | nobody | the installer profile `l018` alone, read out of one extractor run over a real device; no board directory, no DRAM data, no firmware image here |
 
 `boards/<id>/board.env` carries these states machine-readably, and `bash boards/check.sh` holds each
@@ -56,7 +56,8 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Projector image (LVDS/DLP) | works | MIPS firmware + `sun50i-h713-afbd` KMS driver | continuous since 08.09. |
 | HDMI input | works | `sun50i-h713-hdmirx`, node found by name (it was `/dev/video3` on 12.09., not `video1` - the camera enumerated first) | 1080p60/50/24, 720p50, 576p50, 1366x768, 1024x768 and 4K30, colour-correct from the firmware's own record, 22.09. (six modes at 60 Hz since 08.09.); hot plug after boot, a boot with the source plugged in and unplug/replug verified 16.09. after the first-publication source switch was removed (kernel 0136a/0136c); a source outside the firmware's mode table is refused by name since 22.09. (0136r-0136w) |
 | Picture path userspace | works | `h713-tv` service, `h713-tv ctl …` | 08.09.; presets, gamma, aspect, controls |
-| Keystone, by hand and automatic | works, beta, **source only** | `h713-warp` (the warp on the GPU) and `h713-keystone` (the accelerometer), with `h713-tv` committing | 22.09.: a corner set by hand moves that corner of the picture on the wall, and the automatic answers a 25-degree nose-up tilt by pulling the top edge in. The caveats are in [docs/known-issues.md](docs/known-issues.md); no release carries this yet |
+| Keystone, by hand and automatic | works, beta, **source only** | `h713-warp` (the warp on the GPU) and `h713-keystone` (the accelerometer), with `h713-tv` committing | 24.09.: the tearing measured and removed (a slot is drawn one vsync late), the warp draws NV12 on the video plane so the picture controls reach it, the projection area is `h713-warp ctl zoom`. 22.09.: a corner set by hand moves that corner of the picture on the wall, and the automatic answers a 25-degree nose-up tilt by pulling the top edge in. The caveats are in [docs/known-issues.md](docs/known-issues.md); no release carries this yet |
+| Settings page | works, beta, **source only** | `h713-panel`, port 8080, no authentication | 24.09.: the corners dragged, a preset and the zoom set from the page (Marco), [docs/guides/settings-page.md](docs/guides/settings-page.md) |
 | HDMI audio | works | codec-I2S + MSP DSP driver, one volume control | 08.09. 22:05, lip-sync judged by ear |
 | ARM ↔ MIPS IPC | works | `cpu_comm` in-kernel API | callback slot leak fixed; [docs/subsystems/cpu-comm.md](docs/subsystems/cpu-comm.md) |
 | ARISC (PMU, HPD, EDID) | works | `sun50i-h713-arisc` | 17.65 s to hot-plug ready |
@@ -81,7 +82,7 @@ here is in `umbau/test-20260915/keystone-20260922.md`.
 - **The keystone exists - by hand and automatically.** [`h713-warp`](docs/tools/h713-warp.md) bends the HDMI
   picture into a quadrilateral on the GPU: the vendor's own projective homography, eight corner insets in
   per-mille, ported from `system_a_libkeystone.so` and tested against it. `h713-tv` stays the only DRM master and
-  commits the warped frame on the **primary** plane with the daemon's fence. On the wall, `ctl keystone set tl x
+  commits the warped frame as NV12 on the **video** plane with the daemon's fence and the ring off (24.09.; until then RGB on the primary plane, which the firmware's picture controls never reached). On the wall, `ctl keystone set tl x
   150` moved the **top left corner of the projected picture** inward, so the corner names are the wall's and not
   the vendor's contradictory slot order. [`h713-keystone`](docs/tools/h713-keystone.md) reads the SC7A20
   accelerometer, turns the tilt into the vendor's two angles, runs the vendor's corner geometry and pushes the
@@ -117,17 +118,17 @@ here is in `umbau/test-20260915/keystone-20260922.md`.
   transform lives in `keystone.conf` as a configuration key rather than in the device tree as a claim about the
   hardware.
 - **`h713-tv` has a third display mode.** Beside plane-on and console there is now *warped*: `ctl status` says
-  `picture warped (h713-warp draws on the primary plane)`, `ctl warp status` gives the commit counters, and
+  `picture warped (h713-warp draws on the video plane)`, `ctl warp status` gives the commit counters, and
   `ctl zoom` is refused while the warp is on (the video plane is off, and the zoom is the firmware's). One bug
   came out of the device run and is fixed: the audio automaton took "plane on" for "there is a picture", so a
   source event during a warp - a player switching 48 to 44.1 kHz - re-evaluated the audio as *no picture* and
   muted it with a pop. All five call sites take "plane on **or** warped" now.
-- **Not done, and named as such:** the write-back self-test of the identity warp (optional, debug kernel only),
-  the screen zoom through the warp and the projection-mode mirror RPC, and the vendor's edge-blend pass. The
+- **Not done, and named as such:** the projection-mode mirror RPC (ceiling, rear), the vendor's edge-blend pass,
+  and the write-back self-test as a second opinion on the identity warp (the ordinary check is `h713-warp ctl check N`). The
   hour-long soak has no result yet; the long run that exists is the one the audio bug came out of. The throw
   ratio is still the optics' own 0.8176 out of `camprjspe.ini` and not a tape measure. None of this has been
   near the HY300 Pro.
-- With `0024e`, `0136y` and `0162` the series stands at **185 patches**
+- With `0024e`, `0136y`, `0162` and `0163` the series stands at **186 patches**
   ([docs/kernel-patches.md](docs/kernel-patches.md)).
 
 ## Changes since v0.8-beta
@@ -150,7 +151,9 @@ In the source, not in a release yet. Three device runs on the HY310 on 22.09.202
   `allwinner,edid-version-mask` and a debugfs read-back of what is actually published. **The default does not
   move:** the mask stays 0, port 0 keeps block 0, and the 256 bytes the PC reads back are byte for byte the
   capture of 21.09. A changed mask takes effect with the next EDID upload, not when it is set.
-- **`h713-tv ctl zoom` has three verbs** - `in F`, `out P`, `off`. The display firmware does the scaling,
+- **`h713-tv ctl zoom` has two verbs** - `in F` and `off`. `out` was retired on 24.09.2026: the DE scaler only
+  enlarges, so a smaller destination window cropped instead of shrinking (measured at 0x05180008); the projection
+  area is `h713-warp ctl zoom`, the GPU, as the vendor does it. The display firmware does the enlarging,
   two plane properties carry its source and destination window, and the plane places the result; nothing on
   the ARM side scales. Both directions were **bench-tested with a test pattern** (`v0.8-dev22`): `in 2` puts
   the centre quarter on the whole panel, `out 80` the whole picture at 80 per cent, centred, with a border.
@@ -158,8 +161,9 @@ In the source, not in a release yet. Three device runs on the HY310 on 22.09.202
 - **`h713-autofocus` is new** - the vendor's own search rebuilt: a chessboard on the panel, frames from the
   internal camera, the vendor's cubed-gradient metric (also as a C helper, `h713-afmetric`). On the device
   the search runs, moves the motor and visibly sharpens the pattern, 4.3 s from 80 msteps out of focus.
-  **Convergence is not proven:** every run so far ended at the motor's range watcher, because the test
-  surface stands about 30 cm away and its sharp point lies beyond the watched range. A run against a wall at
+  **Convergence against a wall is not proven:** the search turns round at an edge since 24.09. and reached a
+  peak on the bench (positions -2 to +31, 440 msteps from the lower edge); a surface too close has its sharp
+  point beyond the watched range. A run against a wall at
   one to three metres is the outstanding test.
 - **`h713-pq` can read the firmware's own gamma and curves** (`--source tse`) beside the existing guess out
   of the ini. It is **off by default**, and on the HY310 it makes no visible difference: the board's own
@@ -256,8 +260,8 @@ These are written down because they are *not* done, not because they are expecte
   is verified, 12.09., see *Wi-Fi AIC8800D80* above)
 - environment carry-over (`h713_gate`, `h713_boot`) across a reinstall - needs a changed value before the next install
 - 20 gate cycles with the power key (dropped 16.09.; the gate has run on every device test since 09.09.)
-- the keystone warp over an hour with a live source - the one long run so far is where the audio bug below was
-  found, and no soak has been recorded since; likewise a source that changes its resolution while the warp draws
+- the keystone warp over an hour with a live source, with `h713-warp ctl check` running - the longest clean
+  measurement so far is 900 frames with the settings page polling; likewise a source that changes its resolution while the warp draws
 - the throw ratio with a tape measure, against the 0.8176 the optics data implies, which is what the automatic
   keystone computes with today
 - the auto keystone standing still for ten minutes at rest, and both of them on any board but the HY310

@@ -343,6 +343,17 @@ in_container "cd $WORK && rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&
 MESA="$OUT/mesa-panfrost-25.0.7.tar"; [[ -f "$MESA" ]] || die "no $MESA"
 grep -E "NEEDED|installed" "$OUT/mesa-cross.log" | sed 's/^ *//; s/^/    /'
 
+# --- 6c. h713-warp cross-built against the mesa stage -------------------------
+# The keystone warp links libEGL and libGLESv2 out of the stage build-mesa.sh
+# leaves under mainline/build/mesa-stage; install-projekt.sh (5c) wants the
+# binary and refuses without it.
+say "6c/11 h713-warp cross-built (EGL, GLES2 from the mesa stage)"
+MESA_PREFIX="$MAINLINE/build/mesa-stage/usr/local"
+[[ -f "$MESA_PREFIX/lib/libEGL.so.1" ]] || die "no $MESA_PREFIX/lib/libEGL.so.1 after the mesa step"
+in_container "cd $WORK/userspace/h713-warp && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang MESA_PREFIX=$(c "$MESA_PREFIX")" > "$OUT/h713-warp-cross.log" 2>&1 || { tail -20 "$OUT/h713-warp-cross.log"; die "cross-building h713-warp failed (log: $OUT/h713-warp-cross.log)"; }
+WARP="$USERSPACE/h713-warp/h713-warp.aarch64-linux-gnu"; [[ -f "$WARP" ]] || die "no $WARP"
+info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut -d, -f1-2)"
+
 # --- 7. rootfs --------------------------------------------------------------
 if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 rootfs -- skipped (--skip-rootfs)"
 else

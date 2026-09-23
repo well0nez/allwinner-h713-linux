@@ -3,11 +3,11 @@
 One command turns a clean clone into a flashable image:
 
 ```bash
-release/build-all.sh --version v0.8-beta --vendor <output of h713-extract>
+release/build-all.sh --version v0.9-beta --vendor <output of h713-extract>
 ```
 
 Eleven steps: TF-A BL31 · U-Boot (release, installer, and `sunxi-fel`) · kernel with the patch series ·
-AIC8800 modules · a pinned Debian keyring · an arm64 sysroot and `h713-tv` cross-built against it ·
+AIC8800 modules · a pinned Debian keyring · an arm64 sysroot with `h713-tv`, `h713-afmetric` and `h713-warp` cross-built against it · mesa for the GPU path (panfrost only) ·
 the Debian 13 root filesystem · the ext4 inputs · the image · verification · a build stamp. With
 `--vendor` it ends in `ALL GREEN` - the self-test compared every extracted file against the image -
 or it stops. Without `--vendor` it ends after the structural check, which is a weaker statement.
@@ -28,7 +28,7 @@ built. Everything runs in a container; **nothing is built on your host**.
 empty target directories either way - but the self-test cannot copy a real file set in and read it back.
 With it, the self-test copies every extracted file through `h713.mountfs` and compares it byte for byte.
 
-The PC tools have a golden suite of their own: `bash installer/tests/run.sh` (213 tests; 220 with
+The PC tools have a golden suite of their own: `bash installer/tests/run.sh` (295 tests, 50 of them skipped without
 `--local`, which adds the vendor fixtures and the three vendor images). Every push is preceded by
 `release/sperr-scan.py`, which fails if a vendor blob, a key, a dump or an image reached the tree.
 

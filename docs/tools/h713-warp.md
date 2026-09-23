@@ -14,7 +14,7 @@ without this service.
 | | owns | does |
 |---|---|---|
 | `h713-warp` | `/dev/dri/renderD128` (panfrost), the capture buffers, the shader, the matrix | reads the HDMI capture as dma-bufs, draws one warped frame per capture frame, hands it over with a fence |
-| `h713-tv` | `/dev/dri/card1`, the DRM master, the panel | allocates the three target buffers, and commits them on the **primary** plane with `IN_FENCE_FD` |
+| `h713-tv` | `/dev/dri/card1`, the DRM master, the panel | allocates the three NV12 target buffers, and commits them on the **video** plane with `IN_FENCE_FD` and `hdmi-ring` 0 |
 | the kernel | the console | paints the console whenever neither of the two holds the master |
 
 There is exactly one DRM master, and it stays `h713-tv`'s: two masters on one card cannot coexist, and a
@@ -38,7 +38,8 @@ so the exit code is decided without parsing further.
 | `keystone nudge CORNER AXIS DELTA` | relative, -1000..1000 - the command a remote control sends |
 | `keystone reset` | all eight corners to 0, which is the identity |
 | `zoom [PERCENT]` | the screen zoom, 10..100 (100 = none): every corner pulled in by (100 - PERCENT) * 5 per-mille on top of the keystone, the vendor's "Digital scaling"; saved as `zoom =` in the file |
-| `test grid\|border\|off` | draw a pattern instead of the capture, to aim a corner with no source plugged in |
+| `test grid\|border\|mask [CORNER]\|off` | draw a pattern instead of the capture, to aim a corner with no source plugged in; `mask` is the calibration picture of the manual keystone with the named corner marked and every corner's value and maximum printed |
+| `dump PATH` | the last drawn frame's luma plane as a binary PGM - eyes for a test without a wall |
 | `hold on\|off` | draw a slot one vsync late (on, the default): the firmware hands a slot on before it is written to the end, measured 24.09.2026; off is the old timing, kept as the self-check's control |
 | `check [FRAMES]` | the self-check, no eyes needed: every third slot drawn a second time 4 ms later into a scratch buffer and compared in 32 rows; "N frames, 0 with differing rows" on the status line is the pass, one journal line per differing frame |
 | `trace [N]` | log the next N dequeues with their timestamps, gaps between pumps and slow phases (draw, the peer's answer) |
@@ -55,7 +56,8 @@ tl_x = 0    tl_y = 0        # eight inward offsets in per-mille of the panel
 tr_x = 0    tr_y = 0        # 0 = the corner untouched, larger pulls it inward
 bl_x = 0    bl_y = 0
 br_x = 0    br_y = 0
-warp  = off                 # the state to come up in
+zoom  = 100                 # the screen zoom in percent, 10..100 (100 = none)
+warp  = on                  # the state to come up in; `ctl on` and `ctl off` write it
 ```
 
 The file is also what `ctl keystone` writes - whole, into `warp.conf.new`, `fsync`ed and renamed over, so a
@@ -107,9 +109,9 @@ behind that block, re-apps AP2j). Measured against the RGB path on the HY310, sa
 GPU governor settles at 432 instead of 600 MHz, the die cools instead of warming, the bytes per frame halve
 (10.4 MB instead of 20.7), the warp's CPU rises by about three points for the second pass. NV16 on that plane
 shows with every other chroma line dropped, so NV12 loses nothing. Without a signal `h713-tv` releases the
-warp and shows the console; the warp asks again once a second and is back within a second of the signal. The warp costs about 1.0 GB/s of memory
-bandwidth (read 4.15 MB of NV16, write 8.29 MB of XRGB, scanout reads 8.29 MB instead of 4.15 MB per frame)
-and 24.9 MB of CMA for the three targets. The optional edge-blend pass of the vendor is not implemented. Which
+warp and shows the console; the warp asks again once a second and is back within a second of the signal. The warp costs about 0.6 GB/s of memory
+bandwidth (read 4.15 MB of NV16, write 3.1 MB of NV12, scanout reads 3.1 MB instead of 4.15 MB per frame)
+and 9.3 MB of CMA for the three targets. The optional edge-blend pass of the vendor is not implemented. Which
 physical corner the vendor's slot 0 is has been derived from the framebuffer's orientation and is confirmed on
 the wall with one nudge and one photo; if top and bottom ever come out exchanged, it is two lines in
 `matrix.c`.

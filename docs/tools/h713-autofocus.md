@@ -25,11 +25,11 @@ Options: `--profile hy310|vafo8|hy300-pro` picks the board table, `--window full
 `--stride N` pick the measuring window and the subsampling (default `crect` at stride 3, see below), `--sysfs PATH` and `--dev NODE` skip the searches,
 `--cell PX` changes the chessboard's cell size, `-q` silences the per-pass log. `run` also takes
 `--direction 0|1` (up/down), `--timeout S` (default 22, the vendor's own watchdog; `0` removes it),
-`--start STEP` for a replay, and `--no-pattern` to leave the framebuffer alone.
+`--start STEP` for a replay, and `--no-pattern` to leave the framebuffer alone, `--no-handover` to take the panel over yourself instead of letting `run` do it.
 
 Exit codes: `0` a peak was found, `2` a usage or setup error, `3` the camera streams but the picture is flat,
-`4` the motor may not move (no range watcher, `motor_ctrl_no_limit=1`, an edge already latched), `5` an edge
-was reached during the run or the run's mstep cap was hit, `6` the budget or the deadline ran out without a
+`4` the motor may not move (no range watcher, `motor_ctrl_no_limit=1`, an edge already latched), `5` both edges
+latched at once, more than four turn-arounds, a guard that is not about direction, or the 1000-mstep cap, `6` the budget or the deadline ran out without a
 peak, `130` Ctrl-C.
 
 ## Where the numbers come from

@@ -102,8 +102,9 @@ FINE_PASS_CAP, PEAK_WINDOW, OVERSHOOT_TRIGGER = 16, 50, 501
 SCALE_CEILING, SCALE_STEP = 14000, 2000
 RUN_MSTEP_CAP, MSTEPS_PER_COMMAND_MAX = 1000, 18  # the command size as in h713-focus;
 # the cap covers one sweep from edge to edge (800) plus the fine return: on 24.09. a
-# run from the lower edge reached the peak at +31 with 394 msteps used and the old
-# cap of 400 ended it there (AP1c: the vendor has no cap, only a 22 s watchdog)
+# run from the lower edge had 394 msteps used one pass before the peak and the old cap
+# of 400 ended it there; with the cap raised the same run found the peak at +31 after
+# 444 msteps (AP1c: the vendor has no cap, only a 22 s watchdog)
 # A move's own duration, measured on the HY310: 6 msteps = 100 ms with the
 # autofocus commands AND with the manual ones (dev20-20260922, "Q6 timing
 # breakdown"). Waiting it out first and only then polling costs two read-backs

@@ -33,7 +33,7 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 |---|---|
 | **Boots standalone** | power → U-Boot → Debian 13 (arm64) from eMMC, 20/20 cold starts, no host, no network; the device's own boot logo 2 s after the power key (v0.6-beta: 7 s), the kernel at 3.5 s (was 9 s) |
 | **The projector image** | LVDS panel driven through the MIPS display firmware; KMS device for anything that draws |
-| **HDMI input** | a V4L2 capture device: signal detection, timings, hot plug, source switch, picture controls, digital zoom, and the display firmware's own mode table as the list of what locks - a source whose raster is in no record of it is named and refused instead of left hanging |
+| **HDMI input** | a V4L2 capture device: signal detection, timings, hot plug, source switch, picture controls, a magnifier (zoom in), and the display firmware's own mode table as the list of what locks - a source whose raster is in no record of it is named and refused instead of left hanging |
 | **HDMI audio** | HDMI sound out of the speaker, lip-sync verified, one volume control |
 | **Wi-Fi** | AIC8800D80 as an access point or as a client on your network, configured in `/etc/h713/wifi.env` |
 | **Focus motor** | manual focus with a range watcher that stops before the mechanical stop; [`h713-autofocus`](docs/tools/h713-autofocus.md) is the vendor's own search rebuilt - on the device it runs, moves the motor and sharpens the picture, but convergence against a wall is **not proven yet** |
@@ -43,8 +43,8 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 
 Not there yet: **Bluetooth** (driver builds, the firmware split has not been done), **AV1 decode**,
 **HDCP 1.4** for protected sources, and there is **no desktop** in the shipped image - it runs `h713-tv`, not a
-compositor. **Keystone correction** exists since 22.09.2026 - by hand and following the projector's own tilt -
-but in the source only, and with it the Mali GPU, which that work rendered on in this image for the first time
+compositor. **Keystone correction** exists since 22.09.2026 - by hand, from the projector's own tilt, with a screen zoom
+and a settings page in the browser - but in the source only, and with it the Mali GPU, which that work rendered on in this image for the first time
 ([h713-warp](docs/tools/h713-warp.md), [h713-keystone](docs/tools/h713-keystone.md)). Hardware video decode and
 the IOMMU come from cstenger's tree and are verified there, not re-tested in this image. Details and honest
 limits: [docs/known-issues.md](docs/known-issues.md).
@@ -91,6 +91,9 @@ Everything here is ours and documented; nothing needs a vendor daemon.
 | [`h713-wifi`](docs/tools/h713-wifi.md) | access point or station, from one file, `/etc/h713/wifi.env` |
 | [`h713-pq`](docs/tools/h713-pq.md) | turn the vendor picture tables into register values and gamma curves |
 | [`h713-fel`](docs/tools/h713-fel.md) | put the running device back into USB recovery mode, without the reset button |
+| [`h713-warp`](docs/tools/h713-warp.md) | the keystone and the zoom, drawn on the GPU |
+| [`h713-keystone`](docs/tools/h713-keystone.md) | the automatic keystone from the accelerometer, once after a move |
+| [`h713-panel`](docs/tools/h713-panel.md) | the settings page in the browser, port 8080 ([guide](docs/guides/settings-page.md)) |
 | [everything else that runs](docs/services.md) | the services in the image, the journal switch, and the one security decision you should know about |
 | **On your PC** | |
 | [`h713-install`](docs/tools/h713-install.md) | dump, extract, install, verify - and the way back to stock, in one tool with subcommands |
@@ -124,7 +127,7 @@ run; from then on a release image exists for it). The rule behind it: no image f
 | Board id | Sold as | DRAM | Panel (project id) | State |
 |---|---|---|---|---|
 | `hy310` | MagCubic HY310, silkscreen HY260_QZ713_V3.1, Android 11 firmware of 2025-07 | DDR3, 792 MHz, 1 GiB | 1920x1080 dual-port (0x30) | **verified**: this system runs on it; install, boot, recovery and restore to stock were done on hardware for every release ([STATUS.md](STATUS.md), v0.8-beta, 2026-09-16), and the development builds up to `v0.8-dev22` ran on it on 2026-09-22 |
-| `hy300-pro` | MagCubic HY300 Pro, 2024 board, Android 10 firmware | DDR3, 636 MHz, 1 GiB | 0x34; 1280x720 single-port expected, not measured on this board | **in test**: TEST images for its owner ([issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1)). [`hy300-pro-test3`](https://github.com/well0nez/allwinner-h713-linux/releases/tag/hy300-pro-test3) booted the kernel on his board - Wi-Fi as access point and as station, HDCP 2.2 reported working - but showed no boot logo, no HDMI input and green stripes; the missing input was the ARISC not answering `ResetEDIDModule`, fixed by kernel patch `0091a`. `hy300-pro-test4` carries that fix and a first panel A/B. No green run yet. Its DRAM block, partition table and display-firmware revision come from his probe run |
+| `hy300-pro` | MagCubic HY300 Pro, 2024 board, Android 10 firmware | DDR3, 636 MHz, 1 GiB | 0x34; 1280x720 single-port expected, not measured on this board | **in test**: TEST images for its owner ([issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1)). [`hy300-pro-test3`](https://github.com/well0nez/allwinner-h713-linux/releases/tag/hy300-pro-test3) booted the kernel on his board - Wi-Fi as access point and as station, HDCP 2.2 reported working - but showed no boot logo, no HDMI input and green stripes; the missing input was the ARISC not answering `ResetEDIDModule`, fixed by kernel patch `0091a`. `hy300-pro-test7` (24.09.) is the current test image for him; test4 brought the ARISC fix and the first panel A/B. No green run yet. Its DRAM block, partition table and display-firmware revision come from his probe run |
 | `hy200-qz713df-a1` | sold as "HY300 Pro+" (2025, DDR3); cstenger's bench board HY200 QZ713DF_A1, Android 11 firmware of 2025-09 | DDR3, 624 MHz, 1 GiB | 1280x720 single-port (0x34) | **profile, testable**: cstenger verified the kernel of his tree on it; nobody has run this image there. Firmware, DRAM block and panel are known, a test image is one build away |
 | `hy200-qz713-v2` | sold as "HY300 Pro+" (2025, LPDDR3); HY200 QZ713_V2, Android 11 firmware of 2025-07 | LPDDR3, 720 MHz, 1 GiB | 1280x720 single-port (0x34) | **profile, testable**: firmware and panel known; which LPDDR3 timing words are the board's (the image's or cstenger's defconfig's) is undecided, so a probe run on a real board comes first |
 | `hy300-t08` | HY300 T08, 2024, Android 10 firmware | DDR3, 640 MHz, 1 GiB | 1280x720 single-port (0x34) | **profile only, testable**: everything known comes from the firmware image; a probe run by an owner would complete it |
@@ -156,7 +159,7 @@ mainline/        cstenger's tree as a git subtree + our kernel patch series (pat
 uboot-h713/      our U-Boot commits as patches, generated from the fork (read-only mirror)
 installer/       h713-install, h713-mkimage, h713-extract and helpers
 rootfs/          the Debian 13 recipe: package list, overlay, install script, tests (rootfs/README.md)
-userspace/       h713-tv, h713-pq, h713-focus, h713-autofocus, h713-cam
+userspace/       h713-tv, h713-pq, h713-focus, h713-autofocus, h713-cam, h713-warp, h713-keystone, h713-panel, h713-gpu-probe
 release/         build-all.sh - clean clone to flashable image, --board picks the board (release/README.md)
 boards/          one directory per board: board.env, its U-Boot DRAM block, what is known about it
 tools/           host-side helpers from the bring-up: UART capture, register diffs, disassembly aids

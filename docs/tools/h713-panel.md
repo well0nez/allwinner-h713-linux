@@ -11,13 +11,13 @@ names a command: it names a verb out of a fixed table, the arguments are checked
 the argument vector goes to `subprocess` without a shell.
 
 ```
-h713-panel [--port 8080] [--address ADDR] [--tools DIR] [--page PATH]
+h713-panel [--port 8080] [--address ADDR] [--tools DIR] [--page PATH] [--keystone-conf PATH]
 ```
 
 ## How to reach it
 
 After `systemctl enable --now h713-panel`: `http://<the projector>:8080/`, over the access point `h713` or
-over the projector's LAN address (`ip -4 addr`). The page reads its state every three seconds - three
+over the projector's LAN address (`ip -4 addr`). The page reads its state every three seconds (`h713-warp ctl status`, `h713-tv ctl status brief`, `h713-keystone status`; the `brief` matters, the full status asks the firmware and would hold the warp's frames) - three
 `ctl status` calls per interval, and nothing else while it sits open.
 
 ## What is on it
@@ -27,7 +27,7 @@ warp, warp on/off, whether the mask is up, whether the keystone standing in the 
 hand's, the GPU's frames per second and every thermal zone. The eight values are in the diagram below it.
 
 **Projection.** The keystone is a **diagram**, not a list of numbers: the panel as a dashed rectangle with
-the quadrilateral the eight values make inside it, and the four corners as round handles carrying
+the quadrilateral the eight values make inside it, and the four corners as round handles with their names, and under the drawing one button per corner carrying
 `x VALUE/MAX  y VALUE/MAX`. Tap a handle to pick it (it turns amber and, if the mask is up, is marked on the
 wall with `h713-warp ctl test mask CORNER`); **drag** it and the corner follows the finger, clamped the way
 `h713-warp` clamps it and sent as `ctl keystone set CORNER AXIS VALUE` - at most ten times a second while
