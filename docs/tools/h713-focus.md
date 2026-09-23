@@ -34,7 +34,7 @@ The pin (`PH14`) is a **range watcher**, not a limit switch: it reads high while
 allowed range, and the edge is reached when that level *drops*. The driver reverses and latches the edge by
 itself; the script does not reproduce that logic, it recognizes that it happened and stops. The switch is a
 contact to ground that closes outside the travel and is open inside, so the high level inside is the pad's
-pull-up - since patch `0164` a pinctrl group on the motor node. Before it the pad floated on our boot chain
+pull-up - since patch `0164` the driver's default bias (a pinctrl group cannot do it: the sunxi pinctrl is strict and would keep the pin from the driver). Before it the pad floated on our boot chain
 and read a stale level: on 23.09.2026 the HY310 came up reading "in range" with the focus 110 msteps above
 its travel, nothing was latched, and this tool refused every move (rule 4) until homing walked it back.
 Measured through the PIO registers that day: with pull-down the pad reads low everywhere, with pull-up it

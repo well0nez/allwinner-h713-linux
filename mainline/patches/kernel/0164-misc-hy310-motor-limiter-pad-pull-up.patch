@@ -1,0 +1,96 @@
+misc: hy310-motor: the range gate's pad gets its pull-up from the driver
+
+The limiter on PH14 is a switch to ground that closes outside the allowed travel and is open
+inside it, so the level inside is whatever the pad is biased to. Stock's driver sets no bias and
+neither did ours, and on our boot chain the pad came up with none: a floating input, which reads
+a stale level. On 23.09.2026 the HY310 came up reading "in range" while the focus stood 110 msteps
+above its travel, no edge was ever latched on the way there, and h713-focus and h713-autofocus
+refused every move.
+
+Measured through the PIO registers the same day, at the running device: with pull-down the pad
+reads LOW at every position (the switch cannot drive it HIGH), with pull-up it reads HIGH over the
+travel, drops to LOW at the edge within 5 msteps and comes back 10 msteps in. So limiter_bias,
+the override patch 0115 added and 0153 defaulted to "unchanged", now defaults to pull-up. It has to
+be the driver and not a pinctrl group: the sunxi pinctrl is strict, and a group claiming PH14 made
+the driver's gpio request fail with -22 at probe (the first build of 23.09., 0 limiters, homing
+skipped). The stock pinconf capture that says "pull down" for PH14 cannot be the level the vendor's
+driver works with, or it would read "outside" everywhere.
+---
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -909,25 +909,40 @@
+ /*
+  * Pad-Bias des Endschalter-Eingangs.
+  *
+- * Die Vorgabe ist "gar nicht anfassen", weil Stock ihn auch nicht anfasst
+- * (siehe Kommentar ueber motor_request_limiter()). Alles andere ist eine
+- * Diagnoseeinstellung und muss ausdruecklich gesetzt werden:
++ * Vorgabe seit 23.09.2026: Pull-up. Der Geber an PH14 ist ein Kontakt nach
++ * Masse, der ausserhalb des erlaubten Bereichs schliesst und innerhalb offen
++ * ist; der Pegel innerhalb ist also der, den der Pad-Bias vorgibt. Ohne Bias
++ * (unsere Bootkette laesst den Pad so) liest ein schwebender Eingang einen
++ * alten Pegel: am 23.09. kam die HY310 mit "im Bereich" hoch, waehrend der
++ * Fokus 110 msteps oberhalb seines Bereichs stand, keine Kante war gemerkt,
++ * und beide Werkzeuge verweigerten jede Fahrt. Am laufenden Geraet ueber die
++ * PIO-Register gemessen: mit Pull-down liest der Pad an JEDER Position 0
++ * (der Geber kann ihn nicht auf 1 ziehen), mit Pull-up liest er 1 ueber den
++ * ganzen Bereich, faellt an der Kante innerhalb von 5 msteps auf 0 und ist
++ * 10 msteps zurueck wieder 1. Stock setzt keinen Bias (motor_control_fdt_parse
++ * 0xc05d62c8, siehe Kommentar ueber motor_request_limiter()); der Abzug
++ * "pin 238 (PH14): input bias pull down" kann nicht der Betriebszustand des
++ * Herstellertreibers sein, sonst laese er ueberall "ausserhalb". Der Bias
++ * gehoert hierher und nicht in eine Pinctrl-Gruppe: der sunxi-Pinctrl ist
++ * strict, ein per Gruppe belegter Pin laesst sich nicht mehr als GPIO
++ * anfordern (-22 beim Probe, 23.09.).
+  *
+- *   -1 (Vorgabe)  Pad so lassen, wie die Bootkette ihn hinterlassen hat  = Stock
++ *   -1            Pad so lassen, wie die Bootkette ihn hinterlassen hat  = Stock
+  *    0            Bias ausdruecklich abschalten (hochohmiger Eingang)
+- *    1            Pull-up   -- macht einen Open-Drain-/hochohmigen Geber sichtbar
+- *    2            Pull-down -- erzwungen
++ *    1 (Vorgabe)  Pull-up   -- der Geber ist ein Kontakt nach Masse
++ *    2            Pull-down -- erzwungen (liest hier ueberall 0)
+  *    3            Gegenstueck zu active_level (das alte, unbelegte Verhalten)
+  *
+  * Warnung zur Mechanik: mit Pull-up liest der Bereichswaechter auch dann
+- * dauerhaft "innerhalb", wenn ueberhaupt kein Geber angeschlossen ist. Eine
+- * Fahrt in dieser Einstellung wird NICHT von der Elektronik gestoppt. Nur mit
+- * kleiner, ausdruecklich begrenzter Schrittzahl fahren.
++ * dauerhaft "innerhalb", wenn ueberhaupt kein Geber angeschlossen ist. Auf
++ * einem Board ohne diesen Geber wird eine Fahrt NICHT von der Elektronik
++ * gestoppt; dort limiter_bias=-1 oder 0 und nur mit kleiner, ausdruecklich
++ * begrenzter Schrittzahl fahren.
+  */
+-static int limiter_bias = -1;
++static int limiter_bias = 1;
+ module_param(limiter_bias, int, 0444);
+ MODULE_PARM_DESC(limiter_bias,
+-		 "Bias des Endschalter-Pads: -1 wie Stock (unveraendert), 0 keiner, 1 Pull-up, 2 Pull-down, 3 Gegenstueck zu active_level");
++		 "Bias des Endschalter-Pads: 1 Pull-up (Vorgabe, der Geber schliesst nach Masse), -1 wie Stock (unveraendert), 0 keiner, 2 Pull-down, 3 Gegenstueck zu active_level");
+ 
+ static int motor_request_limiter(struct hy310_motor *m, struct device_node *np,
+ 				 const char *prop, int *pin_out)
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2465,11 +2465,16 @@
+ 	 *
+ 	 * PH14 is a range gate, not an end stop: it reads active over
+ 	 * the whole allowed travel, and the driver reverses when it
+-	 * goes inactive (motor_run_up_control 0xc05d6ea0).  On stock it
+-	 * is a GPIO input with a pull-down, which is the idle level for
+-	 * active_level = 1 (re/captures/HY310-DEV/stock_pinconf_pio.txt,
+-	 * "pin 238 (PH14): input bias pull down").  The driver sets that
+-	 * bias itself, so no pinctrl group is needed here.
++	 * goes inactive (motor_run_up_control 0xc05d6ea0).  The switch
++	 * is a contact to ground that closes outside the travel and is
++	 * open inside, so the level inside is the pad's bias.  The driver
++	 * sets that bias itself (pull-up, limiter_bias, measured
++	 * 23.09.2026), and it must: the pinctrl driver is strict, a pin
++	 * claimed by a pinctrl group here can no longer be requested as
++	 * a GPIO by the driver.  The stock capture that says "pull down"
++	 * for PH14 (re/captures/HY310-DEV/stock_pinconf_pio.txt) cannot
++	 * be the level the vendor's driver works with - with pull-down
++	 * the pad reads "outside" at every position.
+ 	 *
+ 	 * GPIO format: <&pio bank pin flags>  bank 7 = PH
+ 	 */
