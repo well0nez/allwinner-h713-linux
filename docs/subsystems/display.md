@@ -109,7 +109,7 @@ The AFBD block has two channels, and only one of them reads the capture ring. Th
 path described above and nothing about it changed. The **primary** plane scans an ordinary DRM framebuffer out
 of DRAM - normally the framebuffer console - and it takes an imported dma-buf as readily as its own. The
 framebuffer has to be the mode's size and sit at the CRTC's origin, which the simple-pipe helper enforces
-without any check of ours; there is no scaling and no positioning on this plane. That was where the keystone lived until 24.09.2026; since then the warped frame is NV12 on the **video** plane with
+without any check of ours; there is no scaling and no positioning on this plane. That was where the keystone lived until 23.09.2026; since then the warped frame is NV12 on the **video** plane with
 `hdmi-ring` 0, because that is the channel the firmware's nine picture controls act on. That is where the keystone
 lives ([h713-warp](../tools/h713-warp.md)): the GPU reads the capture, draws the warped frame into a target
 buffer and `h713-tv` commits that buffer on the primary plane.

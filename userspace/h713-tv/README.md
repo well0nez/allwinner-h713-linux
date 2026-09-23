@@ -319,7 +319,7 @@ h713-tv ctl save [off]          save the nine controls, the preset, aspect and z
 h713-tv ctl aspect [NAME]       how the source is fitted into the panel (auto proportional full 16:9 4:3
                                  zoom); without NAME it is shown. A change rebuilds the picture (~0.5 s console)
 h713-tv ctl zoom [off|in F]     the magnifier: `in` enlarges the centre of the picture by a factor
-                                 1.0..4.0 (default 2), `off` is the baseline (`out` is gone since 24.09.:
+                                 1.0..4.0 (default 2), `off` is the baseline (`out` is gone since 23.09.:
                                  the projection area is `h713-warp ctl zoom`); without an
                                  argument it is shown. A change rebuilds the picture, as aspect does
 h713-tv ctl audio [on|off|auto] audio forced on / forced silent / following the picture (default); without a
@@ -377,7 +377,7 @@ even line count. The firmware sizes, we place; `ctl status` shows both windows a
 the next publication, like `aspect`. Whether the firmware follows is decided on the wall: the scaler's own
 register `0x05180034` shows what it last did, not what was last asked, and it has been found stale.
 
-`out P` was retired on 24.09.2026: the DE's picture scaler only enlarges, so the destination window cropped
+`out P` was retired on 23.09.2026: the DE's picture scaler only enlarges, so the destination window cropped
 instead of shrinking. Shrinking the projected picture is `h713-warp ctl zoom`, inside the keystone matrix.
 
 **`replug`** is the HPD cycle out of S12 C: the source is to believe that the cable was pulled and plugged
@@ -678,7 +678,7 @@ saved           /var/lib/h713-tv/werte: preset=vivid brightness=50 contrast=55 s
 Since the keystone (plan stage S5) there is a **third display mode** beside plane-on and console:
 *warped*. `h713-warp` renders the capture through the GPU, this program puts the result as NV12 on the
 **video** plane with `hdmi-ring` 0, so the ring is off and the firmware's picture controls act on the warped frame
-(24.09.; until then RGB on the primary plane) - which by itself returns the encoder's selector to
+(23.09.; until then RGB on the primary plane) - which by itself returns the encoder's selector to
 RGB (`afbd.c:864-867`). With all eight keystone values at 0 the daemon does not open the render node
 at all, so the wall shows exactly what it showed before. The two speak over this program's own
 control socket, in its own language, the file descriptors in `SCM_RIGHTS` on the same connection:

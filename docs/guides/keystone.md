@@ -101,7 +101,7 @@ per-mille on top of the eight values, and the result is clamped the vendor's way
 There is no second pass and no second cost: at 60 per cent the picture is smaller on the wall, sharp, and
 nothing is cut off.
 
-The display firmware's own "zoom out" was retired on 24.09.2026. Measured at the DE's picture scaler, a
+The display firmware's own "zoom out" was retired on 23.09.2026. Measured at the DE's picture scaler, a
 destination window smaller than the frame left the ratio at unity and the firmware put the top left crop
 into it: that scaler only enlarges. The vendor shrinks with the GPU inside the keystone matrix, and so do
 we. What is left of the firmware's is the magnifier, `h713-tv ctl zoom in F`, and it is refused while the
@@ -109,7 +109,7 @@ warp draws, because then the plane does not show the ring at all.
 
 ## What it costs
 
-Since 24.09.2026 the warp renders **NV12 onto the video plane**, not RGB onto the primary one: two passes,
+Since 23.09.2026 the warp renders **NV12 onto the video plane**, not RGB onto the primary one: two passes,
 luma at full size and chroma at half, through the same matrix and with no colour arithmetic at all. That is
 the channel the firmware runs its nine picture controls on, so brightness, contrast and the rest act on the
 warped picture exactly as on the ring. Measured on the HY310, same stream, one minute each:
@@ -131,7 +131,7 @@ happens: the daemon does not open the render node, and the picture path is the o
 ## The latency, and why
 
 The warp adds **one frame, 16.8 ms**, on purpose. The display firmware hands a ring slot on before it has
-finished writing it: measured through `/dev/mem` on 23./24.09.2026, the bottom line of a published slot
+finished writing it: measured through `/dev/mem` on 22./23.09.2026, the bottom line of a published slot
 still changed up to 11.5 ms after the publish and the middle up to 8.5 ms. A raster display never notices,
 because it reaches those lines later than the writer does; the GPU reads the whole slot in a millisecond
 and mixed the previous frame's bottom under the new frame's top - vertical lines on fast motion. A fixed

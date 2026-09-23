@@ -1353,11 +1353,11 @@ static bool warp_alloc(struct display *d, int *fds)
 
 	/*
 	 * NV12, the luma plane and the chroma plane in one dumb buffer, the
-	 * chroma below the luma (24.09.2026): the warp's frames go on the VIDEO
+	 * chroma below the luma (23.09.2026): the warp's frames go on the VIDEO
 	 * plane, the channel the firmware runs its nine picture controls on,
 	 * so they act on the warped picture exactly as on the ring. The video
 	 * plane takes NV12 and NV16; NV16 shows with every other chroma line
-	 * dropped (measured on the wall, 24.09.), so NV12 loses nothing and
+	 * dropped (measured on the wall, 23.09.), so NV12 loses nothing and
 	 * carries a third of the bytes XRGB did. The driver wants the pitch
 	 * equal to the width and the same pitch on both planes.
 	 */
@@ -3272,7 +3272,7 @@ static void cmd_status_audio(struct reply *r, struct audio *a, bool live)
 	 * The card lines read the controls back from the hardware, seven
 	 * reads that cost this single-threaded program about 50 ms in all -
 	 * long enough for the warp's frame to wait behind a status while the
-	 * settings page polls every three seconds (measured 24.09.2026: a
+	 * settings page polls every three seconds (measured 23.09.2026: a
 	 * 40-55 ms answer every poll, none without the page). "status brief"
 	 * reports what this program last wrote instead and reads nothing.
 	 */
@@ -3849,7 +3849,7 @@ static bool zoom_parse(const char *verb, const char *arg, enum zoom_mode *m,
 	}
 	if (!strcasecmp(verb, "out")) {
 		/*
-		 * Retired 24.09.2026: the DE's picture scaler only enlarges. A
+		 * Retired 23.09.2026: the DE's picture scaler only enlarges. A
 		 * destination window smaller than the frame left its ratio at
 		 * unity and showed the top-left crop of the picture, centred
 		 * (measured at 0x05180008 on the HY310; the vendor shrinks on the
@@ -3905,7 +3905,7 @@ static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
 		return false;
 	}
 	if (verb && !strcasecmp(verb, "out")) {
-		reply_fail(r, "zoom out is gone (24.09.): the DE scaler only enlarges, it cropped instead of shrinking; the projection area is \"h713-warp ctl zoom PERCENT\"");
+		reply_fail(r, "zoom out is gone (23.09.): the DE scaler only enlarges, it cropped instead of shrinking; the projection area is \"h713-warp ctl zoom PERCENT\"");
 		return false;
 	}
 	if (!verb) {
@@ -4055,7 +4055,7 @@ static bool warp_serve(struct display *d)
 				 busy ? "ok busy\n" : "error the commit was refused\n";
 			clock_gettime(CLOCK_MONOTONIC, &c1);
 			/* a frame that arrived late, or a commit that took long: the
-			 * loop was held (24.09.: a status with its two firmware-backed
+			 * loop was held (23.09.: a status with its two firmware-backed
 			 * sysfs reads, 50 ms; "status brief" reads nothing back) */
 			if (gap > 25.0 || (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6 > 10.0)
 				info("timing          frame %d received at %ld.%06ld, %.1f ms after the previous one, commit %.1f ms (%s)",
@@ -5726,7 +5726,7 @@ static void evaluate(struct capture *cap, struct display *d,
 	/* while the warp is on the panel is h713-warp's: measure, report, and
 	 * touch nothing (A3) - as long as there is a signal. Without one the
 	 * ring goes on handing out its last frame and the warp would go on
-	 * drawing it (the wall froze on the first unplug, 24.09.2026), so the
+	 * drawing it (the wall froze on the first unplug, 23.09.2026), so the
 	 * warp is released here: its peer connection closes, it falls back to
 	 * bypass and asks again once a second; "warp claim" is refused until a
 	 * signal is back, and the state below shows the console meanwhile.
@@ -5949,7 +5949,7 @@ _Noreturn static void usage(const char *me)
 	exit(2);
 }
 
-/* Loop instrumentation (24.09.2026): which handler holds the loop while the
+/* Loop instrumentation (23.09.2026): which handler holds the loop while the
  * warp waits for its answer. Logs any handler over 10 ms. */
 static double loop_ms(const struct timespec *a, const struct timespec *b)
 {

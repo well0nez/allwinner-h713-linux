@@ -113,7 +113,7 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 	x2 = now_s();
 	got = recvmsg(p->fd, &msg, 0);
 	x3 = now_s();
-	/* the peer took long: h713-tv was held by something (24.09.: its full
+	/* the peer took long: h713-tv was held by something (23.09.: its full
 	 * status, 50 ms of firmware-backed sysfs reads); the stale guard in
 	 * loop.c turns such a frame into a dropped one, this line names it */
 	if (x3 - x0 > 0.030)
@@ -189,10 +189,10 @@ bool peer_claim(struct peer *p, char *why, size_t n)
 	if (strncmp(reply, "ok", 2) ||
 	    sscanf(reply, "ok %u %u %u nv12 %u", &w, &h, &pitch, &coff) != 4 || !w || !h ||
 	    pitch < w || coff < pitch * h) {
-		/* NV12 since 24.09.2026: the frames go on the video plane, the one
+		/* NV12 since 23.09.2026: the frames go on the video plane, the one
 		 * the firmware's picture controls act on; an answer without "nv12"
 		 * is an older h713-tv, which drew on the primary plane */
-		snprintf(why, n, "h713-tv answered \"%s\" to \"warp claim\" -- it must hand out NV12 buffers (h713-tv of 24.09. or later)",
+		snprintf(why, n, "h713-tv answered \"%s\" to \"warp claim\" -- it must hand out NV12 buffers (h713-tv of 23.09. or later)",
 			 reply);
 		close_targets(p);
 		close(p->fd);

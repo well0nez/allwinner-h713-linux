@@ -96,7 +96,7 @@ movement, the driver's busy-wait timing instead of the sleeping one, which is wh
 move, and it keeps `h713-focus`'s rules: never blind, `motor_ctrl_no_limit` is never written, both edges at
 once or more than four turn-arounds end a run, and there is a hard cap of 1000 msteps per run (one sweep from
 edge to edge plus the fine return). ONE edge does not end a run: the driver has already reversed out of it and
-the search turns round, the way the stock does (AP1c, 24.09.2026); a latched edge from an earlier run only
+the search turns round, the way the stock does (AP1c, 23.09.2026); a latched edge from an earlier run only
 decides the starting direction.
 
 The packed read-back the *vendor* parser wants is a separate attribute, `motor_state` (patch `0154a`,
@@ -148,7 +148,7 @@ The first two are the stock's own cost and cannot be argued away; the metric is 
 
 The search obeys `h713-focus`'s rules, and the strongest of them is the travel-range watcher: when the
 mechanism reaches the end of its range the driver latches an edge and backs the mechanism into range. Since
-24.09.2026 the search then turns round (the stock's behaviour); a run ends with exit **5** only when both
+23.09.2026 the search then turns round (the stock's behaviour); a run ends with exit **5** only when both
 edges are latched, the turn-arounds exceed four, or the 1000-mstep cap is used up. On the bench the peak is
 often beyond the range, so a run turns round at the far edge, climbs back and ends at the cap - not a fault. A projector pointed at objects about 30 cm away has
 its sharp point **beyond** the lens's design range, so every run climbs, keeps getting sharper, and then hits

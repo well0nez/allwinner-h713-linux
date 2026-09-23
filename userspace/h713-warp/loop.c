@@ -222,7 +222,7 @@ bool warp_pump(struct runtime *r)
 			 * publish at the earliest, and the loop only gets here
 			 * this late when something stalled it (h713-tv answering
 			 * a status while the panel page polls it, 40-55 ms,
-			 * measured 24.09.). A dropped frame, not a torn one.
+			 * measured 23.09.). A dropped frame, not a torn one.
 			 */
 			if (now_s() - r->source.slot_s[slot] > 0.028) {
 				source_queue(&r->source, slot);

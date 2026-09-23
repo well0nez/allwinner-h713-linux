@@ -38,7 +38,7 @@ move - off, keystone or keystone+focus (written into `/etc/h713/keystone.conf`, 
 restarted), focus by 5 and 20 msteps, level reference, autofocus now, warp on/off.
 
 **Picture.** The vendor presets, brightness, contrast, saturation, hue and sharpness as sliders over the
-range `h713-tv ctl list` reports, the aspect fit, the firmware's zoom is not on the page any more (24.09.: `out` cropped, the DE only enlarges; the projection area is the warp's zoom under Keystone), and save.
+range `h713-tv ctl list` reports, the aspect fit, the firmware's zoom is not on the page any more (23.09.: `out` cropped, the DE only enlarges; the projection area is the warp's zoom under Keystone), and save.
 
 **Sound.** Volume 0..100, mute on/off, audio auto/on/off.
 

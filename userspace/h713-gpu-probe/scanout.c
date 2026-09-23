@@ -18,7 +18,7 @@
  * capture N  S4: hdmirx slots by VIDIOC_EXPBUF, one EGLImage set per slot, the same
  *            fenced flips. Exit 0 on 0 timeouts and commits == flips. The exporter it
  *            needs is kernel patch 0136y, in since 22.09 (PLAN section 8): six planes.
- * video S    24.09.: our own NV12 buffer on the VIDEO plane (hdmi-ring 0) for S seconds
+ * video S    23.09.: our own NV12 buffer on the VIDEO plane (hdmi-ring 0) for S seconds
  *            while the capture ring keeps streaming on the side (the warp needs it), and
  *            every third second the firmware's "brightness" control toggled 10/90 through
  *            the capture node. What it tells: does the plane take an NV12 dma-buf at all,

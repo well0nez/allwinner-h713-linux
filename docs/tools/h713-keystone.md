@@ -115,7 +115,7 @@ The vendor's automatic is not a control loop, and neither is ours: `h713-keyston
 `h713-keystone-auto.service` runs) does nothing while the projector stands still, whatever a hand has set. When
 the tilt changes by more than `move_degrees` (3) and the readings have then been still for `settle_seconds` (2),
 it runs the automatic ONCE and, with `after_move = keystone+focus`, the autofocus after it (`focus_command`,
-default `h713-autofocus run`). `after_move = off` (the default) only logs the move; the unit is enabled and running from the first boot, so the choice is the key in `/etc/h713/keystone.conf` alone - the settings page's "after move" buttons write it and restart the unit (Marco, 24.09.2026: the automatic stays off until it is asked for, and the choice is stored like every other setting). So a keystone set by hand
+default `h713-autofocus run`). `after_move = off` (the default) only logs the move; the unit is enabled and running from the first boot, so the choice is the key in `/etc/h713/keystone.conf` alone - the settings page's "after move" buttons write it and restart the unit (Marco, 23.09.2026: the automatic stays off until it is asked for, and the choice is stored like every other setting). So a keystone set by hand
 stays until the projector is moved again - that is the gate - and `h713-keystone status` says whose values the
 warp carries: `keystone by  auto` when they are the last automatic set untouched, `manual` when a hand changed
 them since. `once --apply` is the automatic on demand; `run` (the old loop) stays for experiments only.

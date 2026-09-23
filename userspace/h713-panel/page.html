@@ -252,7 +252,7 @@ function drawQuad() {
   });
   id("handles").innerHTML = marks;
   /* the numbers live under the drawing, not in it: two labels in one line
-     collided as soon as a corner was pulled far (Marco, 24.09.) */
+     collided as soon as a corner was pulled far (Marco, 23.09.) */
   id("corners").innerHTML = ["tl", "tr", "bl", "br"].map(function (c) {
     return '<button class="' + (c === CORNER ? "sel" : "") + '" onclick="pick(\'' + c +
       '\')"><b>' + c + "</b>x " + val(c + "_x") + "/" + limit(c, "x") + "&nbsp;&nbsp;y " +

@@ -46,7 +46,7 @@ const char *const gl_vertex_shader =
  * made T1b fail at its stated +-1 (measured, host test 22.09.2026).
  * h713-gpu-probe checked its own samples "within 2" and never saw it.
  */
-/* The warp writes NV12 (24.09.2026): Y is resampled into the luma plane and
+/* The warp writes NV12 (23.09.2026): Y is resampled into the luma plane and
  * CbCr into the chroma plane, each through the same matrix, no colour maths
  * at all - the values leave the ring as they came, only moved, and the
  * firmware's picture controls, gamma and the rest act on them afterwards
@@ -684,7 +684,7 @@ bool gl_check_compare(int target_index, int source_slot, const float m[16],
 }
 
 /* The luma plane of one panel buffer, read back and written as a binary PGM:
- * what the warp drew, seen without a wall (24.09.2026, for the zoom and the
+ * what the warp drew, seen without a wall (23.09.2026, for the zoom and the
  * keystone to be judged from a file). One full readback, only on request. */
 bool gl_dump_luma(int target_index, const char *path, char *why, size_t n)
 {
@@ -706,7 +706,7 @@ bool gl_dump_luma(int target_index, const char *path, char *why, size_t n)
 		return oops(why, n, "the dump's readback");
 	}
 	/* what the driver really wrote: four bytes a pixel carry 0,0,255 behind
-	 * the red of an R8 plane, one byte a pixel does not (24.09.: the
+	 * the red of an R8 plane, one byte a pixel does not (23.09.: the
 	 * implementation format said RGBA and the data came packed) */
 	if (bpp == 4) {
 		int packed = 1;

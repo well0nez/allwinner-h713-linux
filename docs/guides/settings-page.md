@@ -79,7 +79,7 @@ projected rectangle smaller on the wall without cutting anything off: every corn
 `(100 - percent) * 5` per-mille on top of the keystone, inside the same matrix, so the GPU shrinks the
 picture the way the vendor's "Digital scaling" does.
 
-The display firmware's own zoom used to be on this page as a second slider and is gone since 24.09.2026.
+The display firmware's own zoom used to be on this page as a second slider and is gone since 23.09.2026.
 Measured at the DE's picture scaler: asking it to shrink left the ratio at 1:1 and showed the top left crop
 of the picture. That scaler only enlarges. What is left of it is the magnifier, `h713-tv ctl zoom in F`,
 which is not on the page because it does something else - it enlarges a part of the source - and because it
@@ -131,7 +131,7 @@ nothing move. The lamp is not adjustable on the HY310.
 **Save picture settings** writes the nine values, the preset, the aspect and the zoom to the device, so they
 come back after a reboot. Nothing else on this tab is written until you press it.
 
-Since 24.09.2026 these controls reach the warped picture too: the warp draws NV12 onto the video plane, and
+Since 23.09.2026 these controls reach the warped picture too: the warp draws NV12 onto the video plane, and
 that is the channel the firmware runs its picture controls on. On the older RGB path they did nothing while
 the warp was drawing.
 
@@ -148,7 +148,7 @@ Volume 0 to 100, mute on/off, and the audio policy: `auto` follows the picture, 
 - **Three status calls every three seconds**: `h713-warp ctl status`, `h713-tv ctl status brief` and
   `h713-keystone status`. The `brief` is not cosmetic - the full status asks the firmware over sysfs and
   costs about 55 ms, long enough to hold a warp frame, which is how a tearing report was traced on
-  24.09.2026.
+  23.09.2026.
 - **No authentication, no upload, no shell.** The verb table is the whole surface: a verb that is not in it,
   or an argument outside its range, is refused before a tool is started.
 - **The page decides nothing.** If a tool is missing or refuses, the page repeats that tool's own sentence

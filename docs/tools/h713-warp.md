@@ -40,7 +40,7 @@ so the exit code is decided without parsing further.
 | `zoom [PERCENT]` | the screen zoom, 10..100 (100 = none): every corner pulled in by (100 - PERCENT) * 5 per-mille on top of the keystone, the vendor's "Digital scaling"; saved as `zoom =` in the file |
 | `test grid\|border\|mask [CORNER]\|off` | draw a pattern instead of the capture, to aim a corner with no source plugged in; `mask` is the calibration picture of the manual keystone with the named corner marked and every corner's value and maximum printed |
 | `dump PATH` | the last drawn frame's luma plane as a binary PGM - eyes for a test without a wall |
-| `hold on\|off` | draw a slot one vsync late (on, the default): the firmware hands a slot on before it is written to the end, measured 24.09.2026; off is the old timing, kept as the self-check's control |
+| `hold on\|off` | draw a slot one vsync late (on, the default): the firmware hands a slot on before it is written to the end, measured 23.09.2026; off is the old timing, kept as the self-check's control |
 | `check [FRAMES]` | the self-check, no eyes needed: every third slot drawn a second time 4 ms later into a scratch buffer and compared in 32 rows; "N frames, 0 with differing rows" on the status line is the pass, one journal line per differing frame. While it runs the loop skips about every second held slot as stale (dropped, not torn) and the rate falls to about 30 fps; it ends by itself |
 | `trace [N]` | log the next N dequeues with their timestamps, gaps between pumps and slow phases (draw, the peer's answer) |
 
@@ -100,7 +100,7 @@ top is rewritten no earlier than 33 ms after it - umbau/test-20260915/keystone-2
 than 28 ms is given back undrawn, a dropped frame instead of a torn one; a frame that arrives while the
 previous commit is still in flight is dropped rather than queued. `ctl check` proves the timing on any device.
 
-**Since 24.09.2026 the warp writes NV12 onto the video plane**, not RGB onto the primary: Y is resampled into
+**Since 23.09.2026 the warp writes NV12 onto the video plane**, not RGB onto the primary: Y is resampled into
 the luma plane at full size and CbCr into the chroma plane at half size, both through the same matrix and
 without any colour maths, and `h713-tv` commits the three buffers on the video plane with `hdmi-ring` 0. That
 is the channel the firmware runs its nine picture controls on, so brightness, contrast and the rest act on the

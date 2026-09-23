@@ -11,7 +11,7 @@ of his firmware exists here.
 | Status | **partial** - the description itself is incomplete |
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/hy300_pro.py` |
-| Image | **TEST images** for its owner only (stage 5, `--test-image`): `hy300-pro-test7` (24.09.) is current, `test1` and `test2` are deleted. No release image until a green report |
+| Image | **TEST images** for its owner only (stage 5, `--test-image`): `hy300-pro-test7` (23.09.) is current, `test1` and `test2` are deleted. No release image until a green report |
 | Kernel DTB | `sun50i-h713-hy300-pro` (patch 0161, an include of the hy200 dts) |
 | U-Boot base | `hy300_pro_defconfig` (the owner's DRAM block, 636 MHz) |
 | DRAM | DDR3 (type 3), **636 MHz**, 1 GiB - all 24 boot0 words from his probe run of 2026-09-14 (`uboot.config`) |
@@ -75,7 +75,7 @@ Steps 1-3 are done and step 4 is under way. Seven TEST images have existed:
 | `test3` | booted the kernel: Wi-Fi as access point and as station, HDCP 2.2 reported working. No boot logo (the panel stays dim white), no HDMI input, green stripes. The missing input was the ARISC not answering `ResetEDIDModule` - its firmware's SRAM addresses are not the HY310's, and the driver used the HY310's |
 | `test4` | kernel patch `0091a` resolves those addresses out of the loaded ARISC image (`tools/arisc-fw-addrs.py` does the same on the host), plus a first A/B for the `0x34` panel on U-Boot branch `hy300-pro-ab` |
 | `test5`, `test6` | 19. and 20.09.: the HDMI input detected (0136 series), then the picture at every resolution but skewed |
-| `test7` | current (24.09., published): the picture geometry fixed (`0133d`, the window words as fractions of 30720x17280), the gamma curve out of his own TSE and the presets out of his `tvpq.db` (PQ1), built from `main` 40c6175 |
+| `test7` | current (23.09., published): the picture geometry fixed (`0133d`, the window words as fractions of 30720x17280), the gamma curve out of his own TSE and the presets out of his `tvpq.db` (PQ1), built from `main` 40c6175 |
 
 **Open: his console output for `test7`.** The panel A/B is merged into `h713-hy310` only after a green
 owner report.
