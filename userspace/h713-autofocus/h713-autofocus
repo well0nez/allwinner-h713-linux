@@ -114,7 +114,7 @@ CMD_UP, CMD_DOWN, CMD_FLUSH = 1, 2, 3             # the autofocus codes, AP1 6
 EDGE_REVERSE_CAP = 4       # turn-arounds at an edge per run; ours, not the
                            # vendor's -- it has none, but it also has the 22 s
                            # watchdog of LocalService.calib_begin (AP1 2.1)
-PATTERN_CELL, PATTERN_ORIGIN = 69, (97, 92)       # AP1 2.2, bg_auto_focus.png
+PATTERN_CELL, PATTERN_ORIGIN = 69, (97, 92)       # AP1 2.2, bg_auto_focus.png; the origin is the vendor's, ours is centred
 EXIT_ERROR, EXIT_NO_PICTURE, EXIT_BLOCKED = 2, 3, 4
 EXIT_EDGE, EXIT_NO_PEAK = 5, 6
 
@@ -644,8 +644,7 @@ class Camera:
 FB_DEV, FBIOGET_VSCREENINFO, FBIOGET_FSCREENINFO = "/dev/fb0", 0x4600, 0x4602
 
 
-def chessboard(xres, yres, bpp, line_length, cell=PATTERN_CELL,
-               origin=PATTERN_ORIGIN):
+def chessboard(xres, yres, bpp, line_length, cell=PATTERN_CELL, origin=None):
     """The pattern, generated -- the vendor ships a PNG, we carry none.
 
     Its bg_auto_focus.png is a 69 px chessboard from (97, 92), 26 by 14 cells,
@@ -653,19 +652,29 @@ def chessboard(xres, yres, bpp, line_length, cell=PATTERN_CELL,
     four corner blocks (AP1 2.2). Which cells those are is only in that file,
     which is vendor material, so this draws the plain board: more edges than
     the vendor's, which the metric can only like.
+
+    Whole cells, centred, white all round. Drawn from the vendor's origin the
+    board had a 97 px white band on the left and a doubled top row, and looked
+    shifted on the wall (Marco, 23.09.2026). `origin` pins the top left corner
+    instead and lets the cells run to the edges - the tests use it.
     """
     pixel = max(bpp // 8, 1)
     white = b"\xff" * pixel
     black = b"\x00\x00\x00\xff" if pixel == 4 else b"\x00" * pixel
-    ox, oy = origin
+    if origin is None:
+        ox, oy = (xres % cell) // 2, (yres % cell) // 2
+        x_end, y_end = ox + xres // cell * cell, oy + yres // cell * cell
+    else:
+        (ox, oy), x_end, y_end = origin, xres, yres
     rows = []
     for parity in (0, 1):
         row = bytearray()
         for x in range(xres):
-            row += black if (x >= ox and ((x - ox) // cell + parity) % 2 == 0) \
-                else white
+            row += black if (ox <= x < x_end and
+                             ((x - ox) // cell + parity) % 2 == 0) else white
         rows.append(bytes(row) + b"\x00" * max(line_length - len(row), 0))
-    return b"".join(rows[((y - oy) // cell) % 2 if y >= oy else 0]
+    blank = white * xres + b"\x00" * max(line_length - xres * pixel, 0)
+    return b"".join(rows[((y - oy) // cell) % 2] if oy <= y < y_end else blank
                     for y in range(yres))
 
 
