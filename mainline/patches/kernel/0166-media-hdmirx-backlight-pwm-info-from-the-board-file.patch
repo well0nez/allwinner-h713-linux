@@ -1,0 +1,122 @@
+media: sun50i-h713-hdmirx: the lamp's PWM parameters go to the firmware, from the board file
+
+The display firmware owns the lamp's dimmer PWM, and the vendor's PanelControl tells it which
+channel, polarity, frequency, vsync lock, minimum and maximum duty to run before it sends the
+level: Thal_Vp_SetBacklightPwmInfo with six words out of the board's panel_config.ini
+[PWMSetting] (AP3 3.5). Our bring-up sent the level (100) and the work mode since the driver
+existed, never the PWM parameters, so the firmware kept whatever it boots with.
+
+On the HY310 that never showed: its dimmer on PB4 is not wired (cstenger 06.08.2026, A14). On
+the HY300 Pro it is the dark picture its owner photographed on 23.09.2026 against stock at the
+same exposure, unchanged by brightness 100, backlight_level 50, the video range or the gamma
+curve. His stock device tree muxes PA12 to its PWM function with a pull-up (pwm4@0), his ini
+says channel 5, polarity 1, 40 kHz, vsync lock 1, duty 1..100, default_backlight 100.
+
+The step takes its six words from allwinner,backlight-pwm-info on the hdmirx node and is
+skipped, with a line in the log, when the board file carries none - which is the HY310 today,
+so its boot is unchanged. The HY300 Pro's board file gets the property and the PA12 group.
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -589,6 +589,7 @@
+ 	H713_STEP_VP_INIT,	/* argument 2 is the staging address */
+ 	H713_STEP_WCE,		/* three shared-memory pointers */
+ 	H713_STEP_HDCP,		/* key address and key length */
++	H713_STEP_BL_PWM,	/* the six words of allwinner,backlight-pwm-info */
+ };
+ 
+ /**
+@@ -606,7 +607,7 @@
+ 	const char *name;
+ 	enum h713_step_kind kind;
+ 	u8 nargs;
+-	u32 args[3];
++	u32 args[6];
+ 	u16 session;
+ 	u16 timeout_ms;
+ 	const char *why;
+@@ -650,6 +651,20 @@
+ 	},
+ 	/* ---- phase 3: picture pipeline defaults --------------------- */
+ 	{
++		.name = "Thal_Vp_SetBacklightPwmInfo", .kind = H713_STEP_BL_PWM,
++		.nargs = 6,
++		.why = "The lamp's dimmer is a PWM the display firmware owns; "
++		       "which channel, polarity, frequency, vsync lock, minimum "
++		       "and maximum duty it runs is the board's [PWMSetting] in "
++		       "its panel_config.ini, which the vendor's PanelControl::"
++		       "initPWMConfig hands over with this call before the level "
++		       "(AP3 3.5). The six words come from the board file, "
++		       "allwinner,backlight-pwm-info; without the property the "
++		       "step is skipped and the firmware keeps its default, "
++		       "which on a HY300 Pro is a dark picture (23.09.2026, its "
++		       "owner's photos; the HY310's dimmer on PB4 is not wired).",
++	},
++	{
+ 		.name = "Thal_Vp_SetBacklightLevel", .kind = H713_STEP_PLAIN,
+ 		.nargs = 1, .args = { 0x64 }, .session = 14,
+ 		.why = "Lower case 'h' is the vendor's typo and part of the "
+@@ -1410,12 +1425,25 @@
+ 
+ 	for (i = 0; i < ARRAY_SIZE(h713_hdmirx_init_seq); i++) {
+ 		const struct h713_hdmirx_step *s = &h713_hdmirx_init_seq[i];
+-		u32 args[3] = { 0, 0, 0 };
++		u32 args[6] = { 0, 0, 0, 0, 0, 0 };
+ 
+ 		switch (s->kind) {
+ 		case H713_STEP_PLAIN:
+ 			memcpy(args, s->args, sizeof(args));
+ 			break;
++		case H713_STEP_BL_PWM:
++			if (of_property_read_u32_array(rx->dev->of_node,
++						       "allwinner,backlight-pwm-info",
++						       args, 6)) {
++				dev_info(rx->dev,
++					 "step %u %s skipped: no allwinner,backlight-pwm-info in the board file\n",
++					 i, s->name);
++				continue;
++			}
++			dev_info(rx->dev,
++				 "backlight PWM: channel %u polarity %u freq %u vs_lock %u min %u max %u\n",
++				 args[0], args[1], args[2], args[3], args[4], args[5]);
++			break;
+ 		case H713_STEP_VP_INIT:
+ 			args[2] = rx->shm_base + H713_SHM_VP_INIT;
+ 			break;
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -45,3 +45,34 @@
+ &cpu_comm {
+ 	allwinner,elog = <0x4b48b200 0x4b27219c>;
+ };
++
++/*
++ * The lamp's dimmer. On this board it is a PWM the display firmware owns
++ * and drives on PA12: the stock device tree muxes PA12 to its PWM function
++ * with a pull-up (its pwm4@0 group, drive 10), and the board's
++ * panel_config.ini [PWMSetting] says channel 5, polarity 1 (low active),
++ * 40 kHz, vsync lock 1, duty 1..100, default_backlight 100 (both from the
++ * owner's own dump, umbau/work/A12 and A14 material). The vendor's
++ * PanelControl hands those six numbers to the firmware at start
++ * (Thal_Vp_SetBacklightPwmInfo, AP3 3.5); the hdmirx driver does the same
++ * with allwinner,backlight-pwm-info before it sends the level. Without
++ * them the firmware never drives the dimmer and the picture is dark
++ * (23.09.2026, the owner's photos against stock at the same exposure).
++ * The pad's function is "pwm5" in the pinctrl table (mux 2, what the
++ * vendor names pwm4); the value is what matters. The HY310's dimmer on
++ * PB4 is not wired (cstenger 06.08.2026, A14), so it carries nothing here.
++ */
++&pio {
++	bl_pwm_pa12_pin: bl-pwm-pa12-pin {
++		pins = "PA12";
++		function = "pwm5";
++		drive-strength = <10>;
++		bias-pull-up;
++	};
++};
++
++&hdmirx {
++	pinctrl-names = "default";
++	pinctrl-0 = <&bl_pwm_pa12_pin>;
++	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
++};
