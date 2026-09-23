@@ -2817,6 +2817,13 @@ enum policy { POLICY_AUTO, POLICY_OFF };
 #define PQ_INPUT	"HDMI1"
 #define PQ_LUT		"/run/h713-tv/gamma-laufzeit.bin"
 
+/* the board's own gamma curve; see "The gamma curve of this board" below */
+#define BOARD_FILE	"/etc/h713/board"
+#define DT_COMPATIBLE	"/proc/device-tree/compatible"
+#define TSE_DIR	"/boot/mips"
+#define TSE_LUT	"/run/h713-tv/gamma-tse.bin"
+#define TSE_STATE	"normal"
+
 enum start_mode { START_AUTO, START_MANUAL, START_LAST };
 
 struct conf {
@@ -4657,6 +4664,160 @@ static void preset_names(char *buf, size_t n)
 				      presets[i].name);
 }
 
+/* ------------------------------------------------------------------ *
+ * The gamma curve of this board
+ *
+ * The shipped curve is a synthetic 2.2 power law; the panel's real one is
+ * measured and sits in the board's own ProjectID_0x00NN.TSE, one state per
+ * colour temperature. Measured over the bridge 22.09.2026: the HY300 Pro's
+ * panel curve runs at about 48 % where ours is at 22 %, and his wall said the
+ * same (doku/128). What is asked for here is that SHAPE -- one bank, loaded
+ * on all three channels as before; a board that bakes a different end point
+ * per channel into its curve (HY300 Pro: 4087/3863/3459) still loses that
+ * white balance, which would need a three-bank GAMMA_LUT.
+ *
+ *   h713-pq --data DIR gamma --from-tse normal --project 0xNN \
+ *           --tse /boot/mips/ProjectID_0x00NN.TSE --lut /run/.../gamma-tse.bin
+ *
+ * --data is a GLOBAL option, before the subcommand; h713-pq wants a tvconfig
+ * directory for `gamma` too ($H713_TVCONFIG does the same job). "normal" is
+ * colour temperature standard -- what every preset here asks for (tvpq.db
+ * colortemperature 0). WHICH ProjectID this board carries is not readable
+ * from /boot/mips, which holds all 13, so it is told: /etc/h713/board, written
+ * by the installer out of the board profile, and where that is missing the
+ * device tree (kernel patches 0160/0161). If none of it works the shipped
+ * file applies exactly as before, with one journal line saying why.
+ * ------------------------------------------------------------------ */
+
+static const struct {
+	const char *compatible;
+	int project;
+} board_of_dt[] = {
+	{ "magcubic,hy310", 0x30 },		/* patch 0160 */
+	{ "magcubic,hy300-pro", 0x34 },	/* patch 0161 */
+};
+
+/* this board's ProjectID, or -1 with `why` saying what was missing */
+static int board_project_id(char *why, size_t n)
+{
+	char line[256], buf[512], id[32], *end;
+	size_t got, i, k;
+	long v;
+	FILE *f;
+
+	/* /etc/h713/board is "key = value" like tv.conf; `board =` is for the
+	 * reader, only project_id is a number this program acts on. */
+	f = fopen(BOARD_FILE, "r");
+	while (f && fgets(line, sizeof(line), f)) {
+		if (sscanf(line, " project_id = %31s", id) != 1)
+			continue;
+		fclose(f);
+		v = strtol(id, &end, 0);
+		if (*end || v <= 0 || v > 0xffff) {
+			snprintf(why, n, "%s: project_id = \"%s\" is no id",
+				 BOARD_FILE, id);
+			return -1;
+		}
+		return (int)v;
+	}
+	if (f)
+		fclose(f);
+	f = fopen(DT_COMPATIBLE, "rb");
+	if (!f) {
+		snprintf(why, n, "neither %s nor %s: %s", BOARD_FILE,
+			 DT_COMPATIBLE, strerror(errno));
+		return -1;
+	}
+	got = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[got] = '\0';
+	/* the property is a list of strings, each one NUL terminated */
+	for (i = 0; i < got; i += strlen(buf + i) + 1)
+		for (k = 0; k < sizeof(board_of_dt) / sizeof(board_of_dt[0]); k++)
+			if (!strcmp(buf + i, board_of_dt[k].compatible))
+				return board_of_dt[k].project;
+	snprintf(why, n, "%s carries no project_id and %s no board this program "
+		 "knows", BOARD_FILE, DT_COMPATIBLE);
+	return -1;
+}
+
+struct tse_gamma {
+	pid_t pid;		/* -1: nothing running */
+	int project;
+	char why[240];		/* why the shipped curve applies instead */
+	bool ok;		/* TSE_LUT holds this board's own curve */
+};
+
+static struct tse_gamma tsegamma = { .pid = -1 };
+
+/* what display_gamma_load() was handed at start -- for `ctl status` */
+static const char *gamma_loaded;
+
+/*
+ * Start the child. Next to pq_start() and for its reason: two Python starts
+ * alongside the device opening cost what one of them costs.
+ */
+static void tse_gamma_start(struct tse_gamma *t, const struct conf *c)
+{
+	char tse[sizeof(TSE_DIR) + 32], project[16];
+
+	t->pid = -1;
+	t->ok = false;
+	if (!strcasecmp(c->calculator, "none") || !strcasecmp(c->data, "none")) {
+		snprintf(t->why, sizeof(t->why), "the computation is switched off");
+		return;
+	}
+	t->project = board_project_id(t->why, sizeof(t->why));
+	if (t->project < 0)
+		return;
+	snprintf(tse, sizeof(tse), "%s/ProjectID_0x%04x.TSE", TSE_DIR, t->project);
+	snprintf(project, sizeof(project), "0x%02x", t->project);
+	if (access(tse, R_OK)) {
+		snprintf(t->why, sizeof(t->why), "%s: %s", tse, strerror(errno));
+		return;
+	}
+	t->pid = fork();
+	if (t->pid < 0) {
+		snprintf(t->why, sizeof(t->why), "fork: %s", strerror(errno));
+		t->pid = -1;
+		return;
+	}
+	if (!t->pid) {
+		int null = open("/dev/null", O_RDWR);	/* its table reads nobody */
+
+		if (null >= 0) {
+			dup2(null, STDIN_FILENO);
+			dup2(null, STDOUT_FILENO);
+		}
+		execl(c->calculator, "h713-pq", "--data", c->data, "gamma",
+		      "--from-tse", TSE_STATE, "--project", project,
+		      "--tse", tse, "--lut", TSE_LUT, (char *)NULL);
+		_exit(127);
+	}
+}
+
+/* Wait for it and look at what it wrote; false means "the shipped curve". */
+static bool tse_gamma_collect(struct tse_gamma *t)
+{
+	struct stat st;
+	int status = 0;
+
+	if (t->pid < 0)
+		return false;
+	if (waitpid(t->pid, &status, 0) != t->pid)
+		snprintf(t->why, sizeof(t->why), "waitpid: %s", strerror(errno));
+	else if (!WIFEXITED(status) || WEXITSTATUS(status))
+		snprintf(t->why, sizeof(t->why), "h713-pq gamma --from-tse: "
+			 "exit code %d", WEXITSTATUS(status));
+	else if (stat(TSE_LUT, &st) || st.st_size != 4 * DE2_BANK_DWORDS)
+		snprintf(t->why, sizeof(t->why), "%s is not one DE2 bank", TSE_LUT);
+	else
+		t->ok = true;
+	t->pid = -1;
+
+	return t->ok;
+}
+
 /*
  * The device's own data first, the compiled table second. Both are searched,
  * not only the first: if the extraction is missing exactly one preset the
@@ -5133,6 +5294,15 @@ static void cmd_status_picture_values(struct reply *r)
 		  preset_current[0] ? preset_current : "-",
 		  preset_current_from_data ? "from the device data"
 					   : "the compiled-in table");
+	/* which curve is on the CRTC, and whose it is */
+	if (tsegamma.ok)
+		reply_add(r, "gamma curve     %s (this board's own, ProjectID "
+			  "0x%02x, state %s)\n", gamma_loaded, tsegamma.project,
+			  TSE_STATE);
+	else
+		reply_add(r, "gamma curve     %s (computed) -- %s\n",
+			  gamma_loaded ? gamma_loaded : "-",
+			  tsegamma.why[0] ? tsegamma.why : "no board TSE asked for");
 	if (!saved.path)
 		reply_add(r, "saved           nothing (state = none in tv.conf)\n");
 	else if (!saved.present)
@@ -5913,6 +6083,9 @@ int main(int argc, char **argv)
 	 */
 	if (!o.report_only && strcasecmp(startpreset, "none"))
 		pq_start(&pq, &conf, startpreset);
+	/* the board's own gamma curve, asked for alongside the first child */
+	if (!o.report_only)
+		tse_gamma_start(&tsegamma, &conf);
 
 	capture_open(&cap, o.video);
 
@@ -5956,9 +6129,26 @@ int main(int argc, char **argv)
 		 */
 		if (pq.ok && pq.lut_bytes && !o.gamma_set)
 			o.gamma = pq.lut;
+		/*
+		 * And the board's own measured curve beats both computed
+		 * ones -- it is this panel's, not a power law. -g is an
+		 * explicit order and still wins over all of it.
+		 */
+		if (tse_gamma_collect(&tsegamma) && o.gamma_set)
+			tsegamma.ok = false;		/* -g wins; said below */
+		if (tsegamma.ok) {
+			o.gamma = TSE_LUT;
+			info("gamma           this board's own curve: ProjectID "
+			     "0x%02x, state %s", tsegamma.project, TSE_STATE);
+		} else
+			warn("gamma           %s -- %s applies",
+			     tsegamma.why[0] ? tsegamma.why : "-g was given",
+			     o.gamma);
 	}
-	if (!o.report_only)
+	if (!o.report_only) {
+		gamma_loaded = o.gamma;
 		display_gamma_load(&d, o.gamma);
+	}
 
 	if (o.report_only) {
 		struct v4l2_dv_timings t;

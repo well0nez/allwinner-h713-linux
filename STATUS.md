@@ -232,6 +232,10 @@ All of these have been through device runs on the HY310 on 15./16.09.2026 (Germa
 - **Hygiene from the review of cstenger's branch:** `0040` retired, decd corrections in `0013a` (dormant on
   this board), aic8800 `0008`-`0010`, `CONFIG_MAGIC_SYSRQ` in the shipping kernel.
 - **HY300 Pro:** profile with the device's identity features from the owner's probe run (issue #1).
+  Its picture data are the device's own now: `h713-pq` takes the presets out of `tvpq.db` where a
+  firmware ships no `pq_picturemode.ini` (his does not), `h713-tv` loads the panel's measured gamma
+  curve out of that board's `ProjectID_0x0034.TSE` instead of the synthetic 2.2 one, and the
+  installer writes `/etc/h713/board` so the device knows which of the 13 TSE files is its own.
 - **Release script:** refuses an SPL that outgrew its 32 KiB slot.
 
 ## Verified display modes

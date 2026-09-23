@@ -12,7 +12,10 @@ repository itself already states in the open:
                                                  test_h713_pq.py and README.md
   * the INI dialect and the column order      -> h713_pq/sources.py
 
-Usage:  python3 make_fixture.py <directory>
+Usage:  python3 make_fixture.py <directory> [--no-picturemode]
+
+--no-picturemode leaves pq_picturemode.ini out, the way the HY300 Pro's
+firmware ships (issue #1): the presets then come out of tvpq.db.
 """
 
 import sqlite3
@@ -187,10 +190,17 @@ def write_db(p):
         con.close()
 
 
-def build(directory):
+def build(directory, picturemode=True):
+    """The synthetic tvconfig directory.
+
+    ``picturemode=False`` leaves pq_picturemode.ini out -- the shape of the
+    HY300 Pro's firmware (issue #1), where the presets have to come out of
+    tvpq.db (sources.presets_from_db).
+    """
     d = Path(directory)
     d.mkdir(parents=True, exist_ok=True)
-    write_picturemode(d / "pq_picturemode.ini")
+    if picturemode:
+        write_picturemode(d / "pq_picturemode.ini")
     write_factory(d / "pq_factory_extern.ini")
     write_colortemp(d / "pq_colortemp.ini")
     write_config_xml(d / "pqcontrol_config_setting.xml")
@@ -201,4 +211,5 @@ def build(directory):
 
 
 if __name__ == "__main__":
-    print(build(sys.argv[1]))
+    argv = [a for a in sys.argv[1:] if a != "--no-picturemode"]
+    print(build(argv[0], "--no-picturemode" not in sys.argv[1:]))

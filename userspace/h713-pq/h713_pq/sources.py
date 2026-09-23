@@ -337,6 +337,52 @@ def read_portmap(path: Path, data: DataSet) -> None:
 
 
 # --------------------------------------------------------------------------
+# The fallback: presets out of tvpq.db
+# --------------------------------------------------------------------------
+
+def presets_from_db(data: DataSet) -> None:
+    """Fill ``presets``/``preset_order`` out of ``tvpq.db``::Picture_Mode.
+
+    For a firmware that ships **no** ``pq_picturemode.ini`` -- the HY300 Pro's
+    does not (issue #1). Without this every ``show HDMI1 standard`` ended in
+    "unknown input: HDMI1" there, although the same rows sit in the database.
+
+    ``tvin`` is **TvSourceType** (0 HDMI, 1 CVBS, 2 ATV, 3 DTV, 4 VIDEODEC,
+    5 VGA -- AP3d 2), *not* the port number of portmap.cfg. So one row belongs
+    to every INI section of that source: tvin 0 fills HDMI1, HDMI2 and HDMI3.
+    On the HY310 all tvin carry the same values, on the HY300 Pro tvin 0
+    differs from 1..4 (tnr 2/snr 1/dci 2/black 1 against 1/0/0/0) -- which is
+    the reason the rows are not merged into one set here.
+
+    The database is the **factory-reset** source, the INI is the live one
+    (AP3d 3), so this runs only when no INI section was read at all. The gamma
+    levels are untouched: they come from pqcontrol_config_setting.xml.
+    """
+    # Imported here and not at the top of the file: model imports this module,
+    # and these two tables are all that is needed from it.
+    from . import model
+
+    for row in data.db_picture_mode:
+        if not row.name or row.tvin >= len(model.TV_SOURCE_TYPE):
+            continue
+        # "custom" is deliberately not taken from here. It is a node of
+        # pqcontrol_custom_setting.xml, one per source (AP3d 3), and where
+        # that node is missing model.preset() still finds the database row by
+        # name -- filling it in here would shadow the stored values.
+        if row.name == "custom":
+            continue
+        origin = f"{FILE_DB} (Picture_Mode, tvin {row.tvin})"
+        for section in model.SOURCE_SECTIONS[model.TV_SOURCE_TYPE[row.tvin]]:
+            modes = data.presets.setdefault(section, {})
+            order = data.preset_order.setdefault(section, [])
+            if row.name in modes:
+                continue
+            modes[row.name] = PictureMode(section, row.name,
+                                          dict(row.values), origin)
+            order.append(row.name)
+
+
+# --------------------------------------------------------------------------
 # The reader over all files
 # --------------------------------------------------------------------------
 
@@ -397,4 +443,8 @@ def load(directory: str | None = None,
             reader(p, data)
         except Exception as e:               # noqa: BLE001 -- see the docstring
             data.missing_files.append(f"{name} (unreadable: {e})")
+    # No INI section at all, but the database has rows: then the database is
+    # the only place the presets can come from (see presets_from_db).
+    if not data.presets and data.db_picture_mode:
+        presets_from_db(data)
     return data

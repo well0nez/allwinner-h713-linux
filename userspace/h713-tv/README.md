@@ -567,6 +567,29 @@ needs **430-530 ms**, the devices are open after 25 ms - so the start up to "pla
 **255-286 ms to 650-680 ms**. That is the price of the origin, and it is far inside the deadline of 2 s
 after which it is aborted.
 
+### The gamma curve comes from the board's own TSE
+
+A second `h713-pq` runs beside the first, and it asks for the curve this panel was measured with:
+
+```
+h713-pq --data /etc/h713/tvconfig gamma --from-tse normal --project 0x30 \
+        --tse /boot/mips/ProjectID_0x0030.TSE --lut /run/h713-tv/gamma-tse.bin
+```
+
+The ProjectID is the board's own - `/etc/h713/board` (`project_id = 0x30`), which the installer writes out
+of the board profile; without that file the device tree decides (`magcubic,hy310` -> `0x30`,
+`magcubic,hy300-pro` -> `0x34`). If anything in that chain is missing, the shipped `gamma-standard.bin`
+applies exactly as before and one journal line says which step failed. `-g` still beats all of it, and
+`ctl status` names the curve that is up:
+
+```
+gamma curve     /run/h713-tv/gamma-tse.bin (this board's own, ProjectID 0x30, state normal)
+```
+
+It is **one** bank, loaded on all three channels as before: what this brings is the shape of the panel's
+curve, not the per-channel white balance a board may have baked into it (that would need a three-bank
+`GAMMA_LUT`).
+
 ### When something is missing
 
 Every one of these cases ends in the compiled-in table, one line in the journal and a picture - never in an
