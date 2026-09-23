@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of **2026-09-24**. "Works" means *verified on the projector*, with the date and the log named -
+Snapshot of **2026-09-23**. "Works" means *verified on the projector*, with the date and the log named -
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 

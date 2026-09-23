@@ -430,6 +430,6 @@
 #    silan,sc7a20; defconfig gains IIO_ST_ACCEL_3AXIS/I2C_3AXIS=m alongside. At the end
 #    of the series, not beside 0024e: 0082's board hunk carries the old twi1 line as context)
 0162-arm64-dts-h713-twi1-accelerometer-auto-keystone.patch
-# 24.09.: the video plane flips the keystone warp's NV12 frames sixty times a second; a flip on a plane
+# 23.09.: the video plane flips the keystone warp's NV12 frames sixty times a second; a flip on a plane
 #   already up without the ring is the address slots and DIRTY, not the enable sequence with its poll
 0163-drm-h713-afbd-video-plane-flip-is-the-slots-and-dirty.patch

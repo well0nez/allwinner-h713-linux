@@ -262,7 +262,9 @@ def check(g: Limit, up: bool, no_limit: int) -> str | None:
     # 4. The edge itself: in-range is act (here HIGH).
     if g.raw != g.act:
         return (f"raw={g.raw}, expected is act={g.act} -- the mechanism stands "
-                f"outside the permitted range.")
+                f"outside the permitted range. The driver walks it back in at "
+                f"boot (homing): reboot, or 'modprobe -r hy310_focus_motor && "
+                f"modprobe hy310_focus_motor'.")
 
     # 5. And what the driver has seen itself already.
     if not g.in_range:

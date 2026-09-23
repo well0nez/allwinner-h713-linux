@@ -1,6 +1,6 @@
 drm: h713-afbd: a page flip on the video plane without the ring is the address slots and DIRTY
 
-The keystone warp's frames go on the video plane since 24.09.2026 (NV12, the channel the
+The keystone warp's frames go on the video plane since 23.09.2026 (NV12, the channel the
 firmware's picture controls act on), sixty commits a second. The plane's update ran the
 whole enable sequence for every one of them - the size, stride and crop words, the gate,
 the mux, then VIDEO_READY and a poll on it until the next vsync - which held the commit
@@ -22,7 +22,7 @@ The enable path is unchanged; a ring commit or a geometry change still takes it.
  
 +	/*
 +	 * A page flip on a plane that is already up without the ring (the
-+	 * keystone warp's NV12 frames, 60 a second since 24.09.2026): the four
++	 * keystone warp's NV12 frames, 60 a second since 23.09.2026): the four
 +	 * address slots and DIRTY, which the hardware takes at the next vsync -
 +	 * the same latch the ring's notifier uses. The full sequence below
 +	 * re-arms the channel and then polls VIDEO_READY until that vsync,
