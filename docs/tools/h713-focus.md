@@ -23,7 +23,9 @@ node, `3` locked or stopped at an edge, `4` deadline hit or command dropped, `13
 Since patch 0157 the `motor_ctr` sysfs node is loaded automatically at boot, and since 0165 (23.09.2026)
 `homing` is on again, as in stock: if the mechanism stands outside its travel when the module loads, the
 driver walks it back - up to 100 msteps up, then down, reading the gate at every step - and says so in the
-kernel log. Between 0156 (12.09.) and 0165 it was off, because only the lower edge of the gate had been
+kernel log. **Homing is not focusing**: it moves nothing while the mechanism is inside its travel ("limiter in
+range - nothing to do"), and when it does move, it stops at the first position inside, wherever the sharp
+picture may be. Sharpness is the autofocus's or the hand's business. Between 0156 (12.09.) and 0165 it was off, because only the lower edge of the gate had been
 observed and homing drives upwards first; on 23.09. the upper edge was measured too. `h713-focus status`
 says whether the module is present; if not, `modprobe hy310_focus_motor` loads it (`homing=0` keeps a bench
 still). This tool never loads the module itself.
