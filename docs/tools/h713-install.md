@@ -79,6 +79,15 @@ shows the same decision and writes nothing; `--skip-identify` does not open the 
 whole point is that the board must be identified. A normal image is unaffected: its table carries no
 `test_for`, and everything about it behaves as before.
 
+**The second test image on the same board.** Once a test image is on the device, the device carries our
+layout, and our layout has nothing a profile could match on - no Android, no vendor U-Boot. So the board is
+taken from the full dump of the first install instead: point `--dump` at that directory (the one with
+`emmc-full.img`) and the installer identifies the clone the way `identify <clone>` does, says "the board is
+known from the dump of the first install", and accepts the image. The files in that directory are left as
+they are - a small dump of our own layout would otherwise overwrite the stock environment - and the
+vendor files come out of the clone as before. Without the clone the board stays unknown and the run stops
+(23.09.2026: the HY300 Pro's owner, test7 on the device, test8 refused).
+
 Passing `--test-image` to an image that is not marked does nothing, and says so in one line. A green
 report from the owner is what turns the board `verified` and its next build into a real release.
 

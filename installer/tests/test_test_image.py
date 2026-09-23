@@ -203,12 +203,12 @@ class Decision(unittest.TestCase):
 class _Run(unittest.TestCase):
     """Drives h713-install as a subprocess against a fake disk, as a user would."""
 
-    def run_install(self, disk, table, *extra):
+    def run_install(self, disk, table, *extra, size="--small"):
         with open(table, encoding="utf-8") as fh:
             image = os.path.join(os.path.dirname(table), json.load(fh)["teile"][0]["datei"])
         proc = subprocess.Popen(
             [sys.executable, TOOL, "install", image, "--table", table, "--device", disk,
-             "--dump", os.path.join(self.tmp, "backup"), "--small", "--no-write"] + list(extra),
+             "--dump", os.path.join(self.tmp, "backup"), size, "--no-write"] + list(extra),
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             cwd=self.tmp, env=dict(os.environ, TERM="dumb", LC_ALL="C.UTF-8"))
         return proc.wait(), proc.communicate()[0].decode("utf-8", "replace")
@@ -323,3 +323,53 @@ class DeclaredProjectOnATestBoard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReinstalledOverOurLayout(_Run):
+    """The second install of a TEST IMAGE: the device carries our layout by then, which no
+    profile can match, so the board comes from the dump of the first install (23.09.2026, the
+    HY300 Pro's owner: test7 on the device, test8 refused with "no board we know")."""
+
+    OUR_PARTS = (("hy310-boot", 14336, 262144), ("hy310-rootfs", 276480, 2097152))
+
+    def setUp(self):
+        support.need(fakedisk.needs_adt3("hy300-t08") + (TOOL,))
+        self.tmp = support.workdir(self)
+        self.table = _release(os.path.join(self.tmp, "rel"), test_for="hy300_t08")
+        stock = fakedisk.make_adt3_disk(os.path.join(self.tmp, "t08.img"), "hy300-t08")
+        code, out = self.run_install(stock, self.table, "--test-image", size="--full")
+        self.assertEqual(code, 0, out)                      # the first install's full dump
+        self.backup = os.path.join(self.tmp, "backup")
+        self.assertTrue(os.path.isfile(os.path.join(self.backup, "emmc-full.img")), out)
+        self.ours = fakedisk.make_our_layout_disk(os.path.join(self.tmp, "ours.img"),
+                                                  self.OUR_PARTS)
+
+    def _files(self):
+        found = {}
+        for root, _, names in os.walk(self.backup):
+            for name in names:
+                path = os.path.join(root, name)
+                found[os.path.relpath(path, self.backup)] = fakedisk._read(path)
+        return found
+
+    def test_the_first_dump_names_the_board_and_is_left_alone(self):
+        before = self._files()
+        code, out = self.run_install(self.ours, self.table, "--test-image")
+        self.assertEqual(code, 0, out)
+        self.assertIn("the board is known from the dump of the first install", out)
+        self.assertIn("TEST IMAGE for 'hy300_t08'", out)
+        self.assertIn("its files are kept", out)
+        self.assertNotIn("Take the dump", out)
+        self.assertEqual(self._files(), before, "the first install's dump was rewritten")
+
+    def test_without_that_dump_the_board_stays_unknown(self):
+        proc = subprocess.Popen(
+            [sys.executable, TOOL, "install", os.path.join(self.tmp, "rel",
+             "h713-hy300-t08-v0.11-TEST-b-system.img"), "--table", self.table,
+             "--device", self.ours, "--dump", os.path.join(self.tmp, "fresh"), "--small",
+             "--no-write", "--test-image"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cwd=self.tmp, env=dict(os.environ, TERM="dumb", LC_ALL="C.UTF-8"))
+        code, out = proc.wait(), proc.communicate()[0].decode("utf-8", "replace")
+        self.assertEqual(code, 1, out)
+        self.assertIn("no board we know", out)

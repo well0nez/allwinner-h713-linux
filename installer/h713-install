@@ -290,6 +290,18 @@ def _restore(args, disk):
     return 0
 
 
+def _append_manifest_row(dump_dir, row):
+    """One more region row in an existing MANIFEST.json, everything else left as it is."""
+    path = os.path.join(dump_dir, "MANIFEST.json")
+    with open(path, "rb") as f:
+        data = json.load(f)
+    name, lba, sectors, digest, purpose = row
+    data.setdefault("regions", []).append(
+        {"name": name, "lba": lba, "sectors": sectors, "sha256": digest, "purpose": purpose})
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
 def _dump(args, disk, path):
     """Step 3 -- the same step in the same place for `dump` and for `install`."""
     if args.command == "install" and args._our_layout and not dump_asked(args):
@@ -301,9 +313,26 @@ def _dump(args, disk, path):
         args._kept = keep_copy(disk)
         return 0
     size = choose_dump(args.size)
-    console.step(3, "Take the dump (%s)" % size)
-    os.makedirs(args.dump_dir, exist_ok=True)
-    manifest = dump_small(disk, args.dump_dir, our_layout=args._our_layout)   # always, "full" too
+    first = args.command == "install" and args._our_layout and \
+        os.path.isfile(os.path.join(args.dump_dir, "MANIFEST.json"))
+    if first:
+        # The directory holds the dump of the first install: the stock environment and the
+        # stock secure storage, the way back. A small dump of OUR layout would overwrite
+        # those files with our environment (23.09.2026, the HY300 Pro's owner reinstalling
+        # with his first --dump directory). Keep them; read what the later steps need from
+        # the device. A full clone asked for here is still taken or reused below.
+        console.step(3, "The dump (%s)" % size)
+        console.ok("the dump in %s is the one from the first install -- its files are kept; "
+                   "the secure storage and the environment are read from the device"
+                   % os.path.abspath(args.dump_dir))
+        args._kept = keep_copy(disk)
+        if size != "full":
+            return 0
+        manifest = None
+    else:
+        console.step(3, "Take the dump (%s)" % size)
+        os.makedirs(args.dump_dir, exist_ok=True)
+        manifest = dump_small(disk, args.dump_dir, our_layout=args._our_layout)   # always, "full" too
     if size == "full":
         file = in_dump(args.dump_dir, DUMP_FULL)
         # A complete clone in this directory is the way back and is never overwritten by
@@ -320,7 +349,8 @@ def _dump(args, disk, path):
         elif kept:
             console.ok("%s is complete already -- reused, no second 17-minute dump" % file)
         if kept:
-            manifest.append(kept)
+            if manifest is not None:
+                manifest.append(kept)
         else:
             console.info("7.3 GB, that takes a while. Progress:")
             digest, seconds = dump_full(disk, file)
@@ -332,8 +362,13 @@ def _dump(args, disk, path):
                               "anything is written." % bad)
                 return 7
             console.ok("the dump agrees with the device")
-            manifest.append((DUMP_FULL[:-4], 0, disk.sectors, digest, "complete clone"))
-    write_manifest(args.dump_dir, manifest, path, board_of(args))
+            row = (DUMP_FULL[:-4], 0, disk.sectors, digest, "complete clone")
+            if manifest is not None:
+                manifest.append(row)
+            else:
+                _append_manifest_row(args.dump_dir, row)
+    if manifest is not None:
+        write_manifest(args.dump_dir, manifest, path, board_of(args))
     console.ok("the dump lies in %s" % os.path.abspath(args.dump_dir))
     if args.command != "dump":
         return 0
@@ -403,6 +438,42 @@ def _test_image_refused(args, ident):
     return None if test_image_allowed(ident, test_for, args.test_image, console) else 1
 
 
+def _board_from_dump(args, ident):
+    """A device that already carries our layout has nothing a profile could match on -- no
+    Android, no vendor U-Boot -- so a TEST IMAGE for one board could never be written a
+    second time (the HY300 Pro's owner, 23.09.2026: test7 on the device, test8 refused with
+    "no board we know"). The board is known all the same: the full dump of the first
+    install identifies it, the same way `h713-install identify <clone>` does. So when the
+    device is ours, the image names a board and the run names a dump directory with that
+    clone, the clone's identification stands in for the device's."""
+    test_for = getattr(args, "_test_for", None)
+    dump_dir = getattr(args, "dump_dir", None)
+    if not test_for or ident.get("profile") or ident.get("kind") != "ours" or not dump_dir:
+        return
+    clone = in_dump(dump_dir, DUMP_FULL)
+    if not os.path.isfile(clone):
+        console.info("our layout on the device and no full dump in %s that could name the "
+                     "board (%s)" % (dump_dir, DUMP_FULL))
+        return
+    try:
+        from_dump = identify(clone)
+    except Exception as exc:                                    # noqa: BLE001 - say so, go on
+        console.warn("%s: the dump could not be identified (%s)" % (dump_dir, exc))
+        return
+    found = from_dump.get("profile")
+    if found != test_for:
+        console.info("the dump in %s identifies as %s, not '%s'"
+                     % (dump_dir, "'%s'" % found if found else "no board we know", test_for))
+        return
+    console.ok("our layout on the device -- the board is known from the dump of the first "
+               "install in %s: %s" % (dump_dir, PROFILES.get(found, {}).get("name", found)))
+    ident["profile"], ident["status"] = found, from_dump.get("status")
+    if not (ident.get("facts") or {}).get("panel_config"):
+        facts = dict(ident.get("facts") or {})
+        facts["panel_config"] = (from_dump.get("facts") or {}).get("panel_config")
+        ident["facts"] = facts
+
+
 def _work(args, path):
     writing = args.command in WRITES and not args.no_write
     disk = Disk(path, writable=writing)
@@ -424,6 +495,7 @@ def _work(args, path):
             if getattr(args, "_test_for", None):
                 # A test image has its own verdict: report_device() speaks for released
                 # images, where an untested board is always a no.
+                _board_from_dump(args, ident)
                 code = _test_image_refused(args, ident)
                 if code is not None:
                     return code
