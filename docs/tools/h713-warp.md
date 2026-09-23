@@ -39,6 +39,9 @@ so the exit code is decided without parsing further.
 | `keystone reset` | all eight corners to 0, which is the identity |
 | `zoom [PERCENT]` | the screen zoom, 10..100 (100 = none): every corner pulled in by (100 - PERCENT) * 5 per-mille on top of the keystone, the vendor's "Digital scaling"; saved as `zoom =` in the file |
 | `test grid\|border\|off` | draw a pattern instead of the capture, to aim a corner with no source plugged in |
+| `hold on\|off` | draw a slot one vsync late (on, the default): the firmware hands a slot on before it is written to the end, measured 24.09.2026; off is the old timing, kept as the self-check's control |
+| `check [FRAMES]` | the self-check, no eyes needed: every third slot drawn a second time 4 ms later into a scratch buffer and compared in 32 rows; "N frames, 0 with differing rows" on the status line is the pass, one journal line per differing frame |
+| `trace [N]` | log the next N dequeues with their timestamps, gaps between pumps and slow phases (draw, the peer's answer) |
 
 `CORNER` is `tl tr bl br` **as the picture stands on the wall**, `AXIS` is `x` or `y`. Every change is clamped
 and saved at once. The clamp is the vendor's: the x of a corner is limited by the corner at the other end of
@@ -88,9 +91,12 @@ Every one of these leaves a picture on the wall; that is the rule.
 ## Limits
 
 The warp and the video plane are **mutually exclusive** - while the warp is on, the picture comes from the GPU
-and `h713-tv ctl zoom` is refused with a pointer to `h713-warp ctl zoom`. The added latency is zero frames
-when the render finishes inside a vsync interval and one frame when it does not; a frame that arrives while
-the previous commit is still in flight is dropped rather than queued. The warp costs about 1.0 GB/s of memory
+and `h713-tv ctl zoom` is refused with a pointer to `h713-warp ctl zoom`. The added latency is one frame
+(16.8 ms): a slot is drawn one vsync after it was handed on, because the firmware publishes a slot anywhere
+between the start and the end of its write (the bottom line still changed up to 11.5 ms after the publish, the
+top is rewritten no earlier than 33 ms after it - umbau/test-20260915/keystone-20260922.md). A held slot older
+than 28 ms is given back undrawn, a dropped frame instead of a torn one; a frame that arrives while the
+previous commit is still in flight is dropped rather than queued. `ctl check` proves the timing on any device. The warp costs about 1.0 GB/s of memory
 bandwidth (read 4.15 MB of NV16, write 8.29 MB of XRGB, scanout reads 8.29 MB instead of 4.15 MB per frame)
 and 24.9 MB of CMA for the three targets. The optional edge-blend pass of the vendor is not implemented. Which
 physical corner the vendor's slot 0 is has been derived from the framebuffer's orientation and is confirmed on

@@ -93,8 +93,11 @@ boards carry one camera, and the pair is in the profile, so it can be added with
 The search writes the stock autofocus commands `1`/`2` to `motor_ctrl`, not `h713-focus`'s manual `8`/`9`: same
 movement, the driver's busy-wait timing instead of the sleeping one, which is what the vendor's search uses
 (AP1 6). It reads `motor_limit` - our own format, with the fields patch `0154` added - before and after every
-move, and it keeps `h713-focus`'s four rules: never blind, an edge stops the run, `motor_ctrl_no_limit` is
-never written, and there is a hard cap of 400 msteps per run.
+move, and it keeps `h713-focus`'s rules: never blind, `motor_ctrl_no_limit` is never written, both edges at
+once or more than four turn-arounds end a run, and there is a hard cap of 1000 msteps per run (one sweep from
+edge to edge plus the fine return). ONE edge does not end a run: the driver has already reversed out of it and
+the search turns round, the way the stock does (AP1c, 24.09.2026); a latched edge from an earlier run only
+decides the starting direction.
 
 The packed read-back the *vendor* parser wants is a separate attribute, `motor_state` (patch `0154a`,
 [`docs/subsystems/focus-motor.md`](../subsystems/focus-motor.md)). This tool does not use it; it exists so a
