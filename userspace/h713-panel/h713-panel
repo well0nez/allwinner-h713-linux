@@ -323,7 +323,7 @@ class Panel(object):
         """Three statuses and the thermal zones, every three seconds."""
         warp, tv, keystone = [
             labelled(self.run(tool, words, TIMEOUT_S)[2]) for tool, words in
-            (("h713-warp", ("ctl", "status")), ("h713-tv", ("ctl", "status")),
+            (("h713-warp", ("ctl", "status")), ("h713-tv", ("ctl", "status", "brief")),
              ("h713-keystone", ("status",)))]
         values = dict((c + "_" + a, 0) for c in CORNERS for a in AXES)
         for corner, x, y in PAIR.findall(warp.get("keystone", "")):

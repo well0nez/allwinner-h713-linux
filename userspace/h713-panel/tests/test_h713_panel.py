@@ -124,7 +124,7 @@ class VerbTest(unittest.TestCase):
     def setUp(self):
         self.fake = Fakes()
         self.fake.tool("h713-warp", {"ctl status": WARP_STATUS})
-        self.fake.tool("h713-tv", {"ctl status": TV_STATUS, "ctl list": TV_LIST})
+        self.fake.tool("h713-tv", {"ctl status": TV_STATUS, "ctl status brief": TV_STATUS, "ctl list": TV_LIST})
         self.fake.tool("h713-keystone", {"status": KEYSTONE_STATUS})
         self.fake.tool("h713-focus")
         self.fake.tool("h713-autofocus")

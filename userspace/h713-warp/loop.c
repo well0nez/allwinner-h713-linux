@@ -278,8 +278,8 @@ bool warp_pump(struct runtime *r)
 	rc = peer_frame(&r->peer, target, fence, why, sizeof(why));
 	t2 = now_s();
 	if (r->check.trace > 0 && (t1 - t0 > 0.010 || t2 - t1 > 0.010))
-		info("trace           slow frame: draw+fence %.1f ms, h713-tv's answer %.1f ms",
-		     (t1 - t0) * 1e3, (t2 - t1) * 1e3);
+		info("trace           slow frame %d: draw+fence %.1f ms, sent at %.6f, h713-tv's answer %.1f ms later",
+		     target, (t1 - t0) * 1e3, t1, (t2 - t1) * 1e3);
 	if (fence >= 0)
 		close(fence);		/* the kernel does not take our fd */
 	if (rc < 0) {

@@ -87,6 +87,8 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 		cm->cmsg_len = CMSG_LEN(sizeof(int));
 		memcpy(CMSG_DATA(cm), &send_fd, sizeof(int));
 	}
+	double x0 = now_s(), x1, x2, x3;
+
 	if (sendmsg(p->fd, &msg, MSG_NOSIGNAL) < 0) {
 		snprintf(why, wn, "%s: sending \"%.*s\": %s", p->path,
 			 (int)strcspn(line, "\n"), line, strerror(errno));
@@ -94,6 +96,7 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 	}
 	pf.fd = p->fd;
 	pf.events = POLLIN;
+	x1 = now_s();
 	if (poll(&pf, 1, ms) <= 0) {
 		snprintf(why, wn, "%s: no answer to \"%.*s\" within %d ms", p->path,
 			 (int)strcspn(line, "\n"), line, ms);
@@ -107,7 +110,14 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 	msg.msg_iovlen = 1;
 	msg.msg_control = cbuf;
 	msg.msg_controllen = sizeof(cbuf);
+	x2 = now_s();
 	got = recvmsg(p->fd, &msg, 0);
+	x3 = now_s();
+	/* the peer took long: h713-tv was held by something (24.09.: its full
+	 * status, 50 ms of firmware-backed sysfs reads); the stale guard in
+	 * loop.c turns such a frame into a dropped one, this line names it */
+	if (x3 - x0 > 0.030)
+		info("trace           exchange at %.6f: sendmsg %.1f ms, poll %.1f ms, recvmsg %.1f ms (answer at %.6f)", x0, (x1 - x0) * 1e3, (x2 - x1) * 1e3, (x3 - x2) * 1e3, x3);
 	if (got <= 0) {
 		snprintf(why, wn, "%s: the connection closed (%s)", p->path,
 			 got ? strerror(errno) : "h713-tv hung up");

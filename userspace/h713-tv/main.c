@@ -3261,7 +3261,7 @@ static void reply_file_lines(struct reply *r, const char *path,
  * three answers that have to agree, and a status that hides the difference
  * would be worth nothing (S12 R7).
  */
-static void cmd_status_audio(struct reply *r, struct audio *a)
+static void cmd_status_audio(struct reply *r, struct audio *a, bool live)
 {
 	char text[64], trim[40], sw[32], vol[32], mu[32], src[32], rate[32];
 	char dac[32], cmu[32];
@@ -3287,19 +3287,37 @@ static void cmd_status_audio(struct reply *r, struct audio *a)
 			  audio_volume_text(a, text, sizeof(text)),
 			  audio_trim_text(a, trim, sizeof(trim)),
 			  a->mute ? ", ctl mute on" : "");
-	alsa_read_text(&a->msp, AUDIO_C_SWITCH, sw, sizeof(sw));
-	alsa_read_text(&a->msp, AUDIO_C_VOLUME, vol, sizeof(vol));
-	alsa_read_text(&a->msp, AUDIO_C_MUTE, mu, sizeof(mu));
-	alsa_read_text(&a->codec, AUDIO_C_SOURCE, src, sizeof(src));
-	alsa_read_text(&a->codec, AUDIO_C_RATE, rate, sizeof(rate));
-	if (a->have_dacvol)
-		alsa_read_text(&a->codec, AUDIO_C_DACVOL, dac, sizeof(dac));
-	else
-		snprintf(dac, sizeof(dac), "missing");
-	if (a->codec_mute)
-		alsa_read_text(&a->codec, a->codec_mute, cmu, sizeof(cmu));
-	else
-		snprintf(cmu, sizeof(cmu), "none");
+	/*
+	 * The card lines read the controls back from the hardware, seven
+	 * reads that cost this single-threaded program about 50 ms in all -
+	 * long enough for the warp's frame to wait behind a status while the
+	 * settings page polls every three seconds (measured 24.09.2026: a
+	 * 40-55 ms answer every poll, none without the page). "status brief"
+	 * reports what this program last wrote instead and reads nothing.
+	 */
+	if (!live) {
+		snprintf(sw, sizeof(sw), "-");
+		snprintf(vol, sizeof(vol), "-");
+		snprintf(mu, sizeof(mu), "-");
+		snprintf(src, sizeof(src), "-");
+		snprintf(rate, sizeof(rate), "-");
+		snprintf(dac, sizeof(dac), "-");
+		snprintf(cmu, sizeof(cmu), "-");
+	} else {
+		alsa_read_text(&a->msp, AUDIO_C_SWITCH, sw, sizeof(sw));
+		alsa_read_text(&a->msp, AUDIO_C_VOLUME, vol, sizeof(vol));
+		alsa_read_text(&a->msp, AUDIO_C_MUTE, mu, sizeof(mu));
+		alsa_read_text(&a->codec, AUDIO_C_SOURCE, src, sizeof(src));
+		alsa_read_text(&a->codec, AUDIO_C_RATE, rate, sizeof(rate));
+		if (a->have_dacvol)
+			alsa_read_text(&a->codec, AUDIO_C_DACVOL, dac, sizeof(dac));
+		else
+			snprintf(dac, sizeof(dac), "missing");
+		if (a->codec_mute)
+			alsa_read_text(&a->codec, a->codec_mute, cmu, sizeof(cmu));
+		else
+			snprintf(cmu, sizeof(cmu), "none");
+	}
 	reply_add(r, "audio cards     %s (card %d): Switch %s, Volume %s, Mute %s | %s (card %d): Source %s, Rate %s, DAC Volume %s, switch %s%s%s\n",
 		  a->msp.id, a->msp.index, sw, vol, mu, a->codec.id,
 		  a->codec.index, src, rate, dac,
@@ -3312,9 +3330,10 @@ static void cmd_status_audio(struct reply *r, struct audio *a)
 		reply_add(r, "audio source    present=%d rate=%u compressed=%d (%s)\n",
 			  a->present, a->rate, a->compressed,
 			  a->events ? "events" : "polling");
-	if (card_sysfs(&a->msp, "state", sw, sizeof(sw)))
+	/* the two sysfs reads below ask the firmware, about 25 ms each - brief skips them */
+	if (live && card_sysfs(&a->msp, "state", sw, sizeof(sw)))
 		reply_add(r, "audio msp       state=%s\n", sw);
-	if (card_sysfs(&a->msp, "levels", vol, sizeof(vol)))
+	if (live && card_sysfs(&a->msp, "levels", vol, sizeof(vol)))
 		reply_add(r, "audio level     %s\n", vol);
 }
 
@@ -3325,9 +3344,24 @@ static void cmd_status_audio(struct reply *r, struct audio *a)
  */
 static void cmd_status_picture_values(struct reply *r);
 
-static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
-		       struct display *d, struct audio *a)
+static double status_ms(struct timespec *a)
 {
+	struct timespec b;
+	double ms;
+
+	clock_gettime(CLOCK_MONOTONIC, &b);
+	ms = (b.tv_sec - a->tv_sec) * 1e3 + (b.tv_nsec - a->tv_nsec) / 1e6;
+	*a = b;
+	return ms;
+}
+
+static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
+		       struct display *d, struct audio *a, bool live)
+{
+	struct timespec st_t;
+	double st_head, st_colour, st_rest, st_pic, st_audio;
+
+	clock_gettime(CLOCK_MONOTONIC, &st_t);
 	static const char *const kern[] = {
 		"format:", "incap:", "capture:", "converter:", "signal:", "timings:",
 		/* what the firmware's own record says about the source (kernel 0136n) */
@@ -3365,7 +3399,9 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		reply_add(r, "signal          a source the firmware's table does not carry -- console\n");
 	else
 		reply_add(r, "signal          %s\n", sig == 0 ? "no signal" : "not readable");
+	st_head = status_ms(&st_t);
 	reply_add(r, "colour          %s\n", capture_colour(cap, colbuf, sizeof(colbuf)));
+	st_colour = status_ms(&st_t);
 	reply_add(r, "picture         %s%s\n",
 		  d->warped ? "warped (h713-warp draws on the primary plane)" :
 		  d->on ? "plane on" : "console",
@@ -3401,8 +3437,16 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 				  sw, sh);
 		}
 	}
+	st_rest = status_ms(&st_t);
 	cmd_status_picture_values(r);
-	cmd_status_audio(r, a);
+	st_pic = status_ms(&st_t);
+	cmd_status_audio(r, a, live);
+	st_audio = status_ms(&st_t);
+	if (st_head + st_colour + st_rest + st_pic + st_audio > 5.0)
+		info("timing          status: head %.1f, colour %.1f, display %.1f, picture %.1f, audio %.1f ms",
+		     st_head, st_colour, st_rest, st_pic, st_audio);
+	if (!live)
+		return;
 	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel          ");
 	reply_file_lines(r, "/sys/kernel/debug/cpu_comm/watch", comm, "cpu_comm        ");
 	reply_file_lines(r, "/sys/kernel/debug/h713-arisc/status", edid, "arisc           ");
@@ -4008,8 +4052,26 @@ static bool warp_serve(struct display *d)
 		return true;
 	}
 	if (sscanf(buf, "warp frame %d", &n) == 1 && n >= 0 && n < WARP_BUFS)
-		answer = warp_commit(d, n, fence, &busy) ? "ok\n" :
-			 busy ? "ok busy\n" : "error the commit was refused\n";
+		{
+			static struct timespec prev;
+			struct timespec c0, c1;
+			double gap;
+
+			clock_gettime(CLOCK_MONOTONIC, &c0);
+			gap = prev.tv_sec ? (c0.tv_sec - prev.tv_sec) * 1e3 + (c0.tv_nsec - prev.tv_nsec) / 1e6 : 0;
+			answer = warp_commit(d, n, fence, &busy) ? "ok\n" :
+				 busy ? "ok busy\n" : "error the commit was refused\n";
+			clock_gettime(CLOCK_MONOTONIC, &c1);
+			/* a frame that arrived late, or a commit that took long: the
+			 * loop was held (24.09.: a status with its two firmware-backed
+			 * sysfs reads, 50 ms; "status brief" reads nothing back) */
+			if (gap > 25.0 || (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6 > 10.0)
+				info("timing          frame %d received at %ld.%06ld, %.1f ms after the previous one, commit %.1f ms (%s)",
+				     n, (long)c0.tv_sec, c0.tv_nsec / 1000, gap,
+				     (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6,
+				     busy ? "busy" : "accepted");
+			prev = c1;
+		}
 	if (fence >= 0)
 		close(fence);
 	if (send(warp.peer, answer, strlen(answer), MSG_NOSIGNAL) >= 0)
@@ -5231,7 +5293,8 @@ static void cmd_help(struct reply *r, const struct control *c)
 
 	preset_names(names, sizeof(names));
 	reply_add(r, "ok commands\n"
-		  "  status (st)           state of the program, the kernel and cpu_comm\n"
+		  "  status (st) [brief]   state of the program, the kernel and cpu_comm; brief\n"
+		  "                        reads nothing back from the cards or the kernel\n"
 		  "  auto (on)             the picture follows the signal (the default without tv.conf)\n"
 		  "  off                   force the console, until auto\n"
 		  "                        auto/off are saved (state in /etc/h713/tv.conf);\n"
@@ -5289,7 +5352,8 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		return false;
 	}
 	if (!strcmp(cmd, "status") || !strcmp(cmd, "st")) {
-		cmd_status(r, c, cap, d, a);
+		/* "status brief": nothing read back from the cards or the kernel */
+		cmd_status(r, c, cap, d, a, !(a1 && !strcmp(a1, "brief")));
 	} else if (!strcmp(cmd, "auto") || !strcmp(cmd, "on")) {
 		c->policy = POLICY_AUTO;
 		state_write(c, c->policy);
@@ -5721,6 +5785,21 @@ _Noreturn static void usage(const char *me)
 	exit(2);
 }
 
+/* Loop instrumentation (24.09.2026): which handler holds the loop while the
+ * warp waits for its answer. Logs any handler over 10 ms. */
+static double loop_ms(const struct timespec *a, const struct timespec *b)
+{
+	return (b->tv_sec - a->tv_sec) * 1e3 + (b->tv_nsec - a->tv_nsec) / 1e6;
+}
+#define LOOP_TIMED(name, stmt) do { \
+	struct timespec _a, _b; \
+	clock_gettime(CLOCK_MONOTONIC, &_a); \
+	stmt; \
+	clock_gettime(CLOCK_MONOTONIC, &_b); \
+	if (loop_ms(&_a, &_b) > 10.0) \
+		info("timing          %s held the loop %.1f ms", name, loop_ms(&_a, &_b)); \
+} while (0)
+
 int main(int argc, char **argv)
 {
 	struct opts o = { .gamma = GAMMA_FILE, .audio = "auto", .trim = "0" };
@@ -6065,10 +6144,22 @@ int main(int argc, char **argv)
 	fds[5].fd = au.tick_fd;
 	fds[5].events = POLLIN;
 
+	int rc_poll;
+
 	for (;;) {
 		fds[6].fd = warp.peer;	/* only while the warp has claimed */
 		fds[6].events = POLLIN;
-		if (poll(fds, sizeof(fds) / sizeof(fds[0]), -1) < 0) {
+		{
+			static struct timespec last_ret;
+			struct timespec now;
+
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			if (last_ret.tv_sec && loop_ms(&last_ret, &now) > 10.0)
+				info("timing          the loop body took %.1f ms before polling again", loop_ms(&last_ret, &now));
+			rc_poll = poll(fds, sizeof(fds) / sizeof(fds[0]), -1);
+			clock_gettime(CLOCK_MONOTONIC, &last_ret);
+		}
+		if (rc_poll < 0) {
 			if (errno == EINTR)
 				continue;
 			warn("poll: %s", strerror(errno));
@@ -6108,7 +6199,7 @@ int main(int argc, char **argv)
 
 			if (read(rt.fd, &ticks, sizeof(ticks)) != sizeof(ticks))
 				warn("reading the timerfd: %s", strerror(errno));
-			reevaluate(&cap, &d, &rt, &au);
+			LOOP_TIMED("the retry timer\'s re-evaluation", reevaluate(&cap, &d, &rt, &au));
 		}
 		if (fds[0].revents & POLLPRI) {
 			unsigned int seen = capture_drain_events(&cap);
@@ -6121,28 +6212,45 @@ int main(int argc, char **argv)
 			 * to look at everything.
 			 */
 			if (!seen || (seen & EV_SOURCE_CHANGE))
-				evaluate(&cap, &d, &rt);
-			audio_evaluate(&au, &cap, d.on || d.warped);
+				LOOP_TIMED("a capture event's evaluation", evaluate(&cap, &d, &rt));
+			LOOP_TIMED("a capture event's audio evaluation", audio_evaluate(&au, &cap, d.on || d.warped));
 		}
-		if (fds[6].fd >= 0 && fds[6].revents && warp_serve(&d))
-			reevaluate(&cap, &d, &rt, &au);
+		if (fds[6].fd >= 0 && fds[6].revents) {
+			bool again = false;
+
+			LOOP_TIMED("the warp's frame", again = warp_serve(&d));
+			if (again)
+				LOOP_TIMED("the warp's re-evaluation", reevaluate(&cap, &d, &rt, &au));
+		}
 		if (fds[3].revents & POLLIN) {
-			if (control_serve(&ctl, &cap, &d, &rt, &au))
+			struct timespec t0, t1, t2;
+			bool again;
+
+			clock_gettime(CLOCK_MONOTONIC, &t0);
+			again = control_serve(&ctl, &cap, &d, &rt, &au);
+			clock_gettime(CLOCK_MONOTONIC, &t1);
+			if (again)
 				reevaluate(&cap, &d, &rt, &au);
+			clock_gettime(CLOCK_MONOTONIC, &t2);
+			if ((t2.tv_sec - t0.tv_sec) * 1e3 + (t2.tv_nsec - t0.tv_nsec) / 1e6 > 10.0)
+				info("timing          a control command took %.1f ms to serve%s%.1f ms to re-evaluate",
+				     (t1.tv_sec - t0.tv_sec) * 1e3 + (t1.tv_nsec - t0.tv_nsec) / 1e6,
+				     again ? " and " : " (no re-evaluation) ",
+				     again ? (t2.tv_sec - t1.tv_sec) * 1e3 + (t2.tv_nsec - t1.tv_nsec) / 1e6 : 0.0);
 		}
 		if (fds[4].revents & POLLIN) {
 			uint64_t ticks;
 
 			if (read(au.settle_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
 				warn("audio           reading the timerfd: %s", strerror(errno));
-			audio_settled(&au, &cap, d.on || d.warped);
+			LOOP_TIMED("the audio settle", audio_settled(&au, &cap, d.on || d.warped));
 		}
 		if (fds[5].revents & POLLIN) {
 			uint64_t ticks;
 
 			if (read(au.tick_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
 				warn("audio           reading the timerfd: %s", strerror(errno));
-			audio_tick(&au, &cap, d.on || d.warped);
+			LOOP_TIMED("the audio tick", audio_tick(&au, &cap, d.on || d.warped));
 		}
 	}
 
