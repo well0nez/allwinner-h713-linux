@@ -73,13 +73,14 @@ running, and a `-dev` build is never a release.
 
 If you did not build it yourself, you will never see one of these.
 
-**Current: `v0.9-beta`** for the HY310. Test images for boards in test carry the board's name and a number,
+**Current: `v0.95-beta`** for the HY310 - the keystone chain, the settings page and the autofocus in an image. Test images for boards in test carry the board's name and a number,
 `hy300-pro-test7` being the last; they are built for one owner and are not releases.
 
 ## Superseded releases
 
 | Release | Why |
 |---|---|
+| `v0.9-beta` | the keystone, the settings page, the autofocus and the tearing fix are in `v0.95-beta`; layout and installer are unchanged, so the upgrade is an ordinary reinstall |
 | `v0.7-beta` | its image is layout v3; the installer on `main` refuses it, and the v0.7-beta installer refuses a v4 image. Take `v0.8-beta` |
 
 ## Where to look

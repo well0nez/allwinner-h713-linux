@@ -40,14 +40,15 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 | **Camera** | the built-in camera works as a normal V4L2 device - probe, controls, still images ([`h713-cam`](docs/tools/h713-cam.md)) |
 | **Fan and power key** | fan tacho by interrupt, and the device powers itself off if the fan stalls - this board has no temperature sensor, so the tacho is the protection ([details](docs/subsystems/board-mgr.md)) |
 | **Recovery** | FEL from software (`h713-fel`), eMMC as a USB drive, stock Android restorable byte-for-byte |
+| **Keystone and zoom** | the picture squared up on the Mali GPU, by hand or from the projector's tilt sensor, and shrunk without cutting anything off; the firmware's picture controls still act on the corrected picture ([guide](docs/guides/keystone.md)) |
+| **Settings page** | `http://<the projector>:8080/` from a phone or a browser: keystone, zoom, focus and autofocus, picture presets and sliders, sound - no login ([guide](docs/guides/settings-page.md)) |
+| **Autofocus** | the vendor's search rebuilt: chessboard on the wall, the built-in camera, the focus motor - one command or one button, turns round at the ends of the travel ([guide](docs/guides/autofocus.md)) |
 
 Not there yet: **Bluetooth** (driver builds, the firmware split has not been done), **AV1 decode**,
-**HDCP 1.4** for protected sources, and there is **no desktop** in the shipped image - it runs `h713-tv`, not a
-compositor. **Keystone correction** exists since 22.09.2026 - by hand, from the projector's own tilt, with a screen zoom
-and a settings page in the browser - but in the source only, and with it the Mali GPU, which that work rendered on in this image for the first time
-([h713-warp](docs/tools/h713-warp.md), [h713-keystone](docs/tools/h713-keystone.md)). Hardware video decode and
-the IOMMU come from cstenger's tree and are verified there, not re-tested in this image. Details and honest
-limits: [docs/known-issues.md](docs/known-issues.md).
+**HDCP 1.4** for protected sources, the **projection modes** (ceiling, rear), and there is **no desktop** in the
+shipped image - it runs `h713-tv`, not a compositor. Hardware video decode and the IOMMU come from cstenger's tree
+and are verified there, not re-tested in this image. Details and honest limits:
+[docs/known-issues.md](docs/known-issues.md).
 
 **These projectors have no HDMI output.** The projector itself is the only display. HDMI is an *input*.
 

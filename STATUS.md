@@ -4,10 +4,9 @@ Snapshot of **2026-09-24**. "Works" means *verified on the projector*, with the 
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is `v0.9-beta` **with the keystone branch on top of it**: the 182-patch series with
-U-Boot `4cecddd` from the release files, and over it the branch's four kernel patches (186 patches), its mesa and
-its four new tools - brought in by FIT, module swap and `scp`, not by a new install. The last release is
-`v0.9-beta`; the last test image is `hy300-pro-test7` (24.09., for the HY300 Pro's owner). What the numbers mean: [RELEASES.md](RELEASES.md).
+The image on the test device is `v0.95-beta`, installed over FEL the way a stranger would, from the release
+files: the 186-patch series with U-Boot `4cecddd`, mesa for the GPU, and the four tools of the keystone chain.
+The last release is `v0.95-beta`; the last test image is `hy300-pro-test7` (24.09., for the HY300 Pro's owner). What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
 
@@ -56,8 +55,8 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Projector image (LVDS/DLP) | works | MIPS firmware + `sun50i-h713-afbd` KMS driver | continuous since 08.09. |
 | HDMI input | works | `sun50i-h713-hdmirx`, node found by name (it was `/dev/video3` on 12.09., not `video1` - the camera enumerated first) | 1080p60/50/24, 720p50, 576p50, 1366x768, 1024x768 and 4K30, colour-correct from the firmware's own record, 22.09. (six modes at 60 Hz since 08.09.); hot plug after boot, a boot with the source plugged in and unplug/replug verified 16.09. after the first-publication source switch was removed (kernel 0136a/0136c); a source outside the firmware's mode table is refused by name since 22.09. (0136r-0136w) |
 | Picture path userspace | works | `h713-tv` service, `h713-tv ctl …` | 08.09.; presets, gamma, aspect, controls |
-| Keystone, by hand and automatic | works, beta, **source only** | `h713-warp` (the warp on the GPU) and `h713-keystone` (the accelerometer), with `h713-tv` committing | 24.09.: the tearing measured and removed (a slot is drawn one vsync late), the warp draws NV12 on the video plane so the picture controls reach it, the projection area is `h713-warp ctl zoom`. 22.09.: a corner set by hand moves that corner of the picture on the wall, and the automatic answers a 25-degree nose-up tilt by pulling the top edge in. The caveats are in [docs/known-issues.md](docs/known-issues.md); no release carries this yet |
-| Settings page | works, beta, **source only** | `h713-panel`, port 8080, no authentication | 24.09.: the corners dragged, a preset and the zoom set from the page (Marco), [docs/guides/settings-page.md](docs/guides/settings-page.md) |
+| Keystone, by hand and automatic | works, beta, in `v0.95-beta` | `h713-warp` (the warp on the GPU) and `h713-keystone` (the accelerometer), with `h713-tv` committing | 24.09.: the tearing measured and removed (a slot is drawn one vsync late), the warp draws NV12 on the video plane so the picture controls reach it, the projection area is `h713-warp ctl zoom`. 22.09.: a corner set by hand moves that corner of the picture on the wall, and the automatic answers a 25-degree nose-up tilt by pulling the top edge in. The caveats are in [docs/known-issues.md](docs/known-issues.md); no release carries this yet |
+| Settings page | works, beta, in `v0.95-beta` | `h713-panel`, port 8080, no authentication | 24.09.: the corners dragged, a preset and the zoom set from the page (Marco), [docs/guides/settings-page.md](docs/guides/settings-page.md) |
 | HDMI audio | works | codec-I2S + MSP DSP driver, one volume control | 08.09. 22:05, lip-sync judged by ear |
 | ARM ↔ MIPS IPC | works | `cpu_comm` in-kernel API | callback slot leak fixed; [docs/subsystems/cpu-comm.md](docs/subsystems/cpu-comm.md) |
 | ARISC (PMU, HPD, EDID) | works | `sun50i-h713-arisc` | 17.65 s to hot-plug ready |
