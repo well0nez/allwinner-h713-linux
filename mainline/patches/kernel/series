@@ -433,3 +433,8 @@
 # 23.09.: the video plane flips the keystone warp's NV12 frames sixty times a second; a flip on a plane
 #   already up without the ring is the address slots and DIRTY, not the enable sequence with its poll
 0163-drm-h713-afbd-video-plane-flip-is-the-slots-and-dirty.patch
+# 23.09.: the focus motor's range gate on PH14 floated on our boot chain and read a stale level, so the
+#   focus stood 110 msteps outside its travel unnoticed; the pad gets the pull-up (DT), homing at probe walks
+#   the mechanism back as stock does
+0164-arm64-dts-h713-focus-motor-limiter-pull-up.patch
+0165-misc-hy310-motor-homing-on-by-default.patch

@@ -1,0 +1,51 @@
+misc: hy310-motor: homing at probe is on again, as in stock
+
+Patch 0156 turned it off on 12.09.2026 because only the lower edge of the range gate had
+been observed and homing drives up to 100 msteps upwards first. On 23.09.2026 the upper edge
+was measured as well (the gate opens 90 msteps above a position inside the travel, closes
+10 msteps back), and the same day showed what a boot has to be able to repair: the focus
+stood 110 msteps above its travel, nothing was latched, both tools refused, and homing at
+probe walked it back - "back in range after 110 DN msteps". That is the way back stock has
+and a user without a shell needs. homing=0 keeps the bench behaviour.
+---
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -891,20 +891,27 @@
+  * With homing=0 the driver probes, configures the pads and exposes sysfs
+  * without touching the mechanism. It then has no calibration, and says so.
+  *
+- * The default is off, and that is a decision about shipped devices rather than
+- * about benches: the module is =m and the node is enabled, so udev loads it at
+- * every boot. Homing drives up to HOMING_UP_MAX msteps upwards first, and only
+- * the LOWER limiter edge has ever been observed on this board (measured
+- * 12.09.2026, analyse/boot/motor-bereichswaechter-20260912.txt). If the watcher
+- * stays silent in that direction the driver never reverses and the run ends in
+- * the mechanical stop -- once per boot. A focus needs no calibration to be
+- * useful; step_cur is a counter and not a position anyway, since counter and
+- * mechanism drift apart at every edge event.
++ * The default is on, as it is in stock, since 23.09.2026. It was off from
++ * 12.09. because only the LOWER edge of the gate had been observed then
++ * (analyse/boot/motor-bereichswaechter-20260912.txt) and homing drives up to
++ * HOMING_UP_MAX msteps upwards first: a watcher silent in that direction would
++ * have let every boot end in the mechanical stop. On 23.09. the upper edge was
++ * measured too - the gate opens 90 msteps above a position inside the travel
++ * and closes again 10 msteps back - and the same day showed what the boot has
++ * to be able to repair: the mechanism stood 110 msteps above its travel after
++ * a boot, no edge was latched, and both tools refused to move it. Homing at
++ * probe walked it back ("back in range after 110 DN msteps"). A stale pad
++ * level was the way it got there (see the pinctrl group for PH14 in the DT),
++ * and homing is the way back that stock has and a user without a shell needs.
++ *
++ * homing=0 keeps the old behaviour for a bench that must not move anything:
++ * the driver probes, configures the pads and exposes sysfs without touching
++ * the mechanism, and says that it has no calibration.
+  */
+-static bool homing;
++static bool homing = true;
+ module_param(homing, bool, 0444);
+ MODULE_PARM_DESC(homing,
+-		 "run the homing sequence at probe (default no, it drives into an unverified upper end)");
++		 "run the homing sequence at probe (default yes, as stock does)");
+ 
+ /*
+  * Pad-Bias des Endschalter-Eingangs.
