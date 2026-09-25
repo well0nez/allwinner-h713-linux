@@ -1,0 +1,79 @@
+arm64: dts: h713: hy300-pro - the lamp's PWM words stay, the PA12 pin group goes
+
+test8 did not reach the login on the HY300 Pro (issue #1, 24.09.2026):
+"sun50i-h713-pinctrl 2000000.pinctrl: unsupported function pwm5 on pin
+PA12". 0166 put a pin group on the receiver node with the function name
+"pwm5"; our pinctrl table knows no pwm5 anywhere, PA12's mux 2 is "pwm4"
+there - so the receiver's default pinctrl could not be built, the receiver
+never probed, /dev/video1 never appeared and h713-hdcp-key stayed in
+"Starting".
+
+The group was wrong on its facts as well: PA12 (vendor pwm4@0) is the AC200
+codec's clock on both boards (ac200 tv_pwm_ch = 4, analysis A14), not the
+lamp. The lamp's channel is the hardware PWM 5 of the board's
+panel_config.ini [PWMSetting] (the HY310's ini names channel 2 = PB4, the
+one that is not wired there); the vendor's pwm5@2000c15 node carries no
+pins, so the pad is the firmware's business, as the panel registers are.
+
+So the six words stay - they are the fix - and the pin group goes, along
+with the pinctrl on the receiver node, so that no pin name can ever again
+keep the receiver from probing. Which pad channel 5 drives is read from the
+pin registers once the firmware runs with the words; it is not guessed here.
+
+Follow-up to 0166, which stays byte-identical.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -47,32 +47,26 @@
+ };
+ 
+ /*
+- * The lamp's dimmer. On this board it is a PWM the display firmware owns
+- * and drives on PA12: the stock device tree muxes PA12 to its PWM function
+- * with a pull-up (its pwm4@0 group, drive 10), and the board's
+- * panel_config.ini [PWMSetting] says channel 5, polarity 1 (low active),
+- * 40 kHz, vsync lock 1, duty 1..100, default_backlight 100 (both from the
+- * owner's own dump, umbau/work/A12 and A14 material). The vendor's
+- * PanelControl hands those six numbers to the firmware at start
+- * (Thal_Vp_SetBacklightPwmInfo, AP3 3.5); the hdmirx driver does the same
+- * with allwinner,backlight-pwm-info before it sends the level. Without
+- * them the firmware never drives the dimmer and the picture is dark
+- * (23.09.2026, the owner's photos against stock at the same exposure).
+- * The pad's function is "pwm5" in the pinctrl table (mux 2, what the
+- * vendor names pwm4); the value is what matters. The HY310's dimmer on
+- * PB4 is not wired (cstenger 06.08.2026, A14), so it carries nothing here.
++ * The lamp's dimmer is a PWM the display firmware owns. The board's
++ * panel_config.ini [PWMSetting] says hardware channel 5, polarity 1 (low
++ * active), 40 kHz, vsync lock 1, duty 1..100 (the owner's own dump,
++ * umbau/work/A12 material), and the vendor's PanelControl hands those six
++ * numbers to the firmware at start (Thal_Vp_SetBacklightPwmInfo, AP3d
++ * 3.5) before it sends the level. The hdmirx driver does the same with
++ * allwinner,backlight-pwm-info. Without them the firmware never drives the
++ * dimmer and the picture is dark (23.09.2026, the owner's photos against
++ * stock at the same exposure). The HY310's ini names channel 2, PB4, which
++ * is not wired on that board (cstenger 06.08.2026, A14) - which is why the
++ * HY310 was never dark and carries nothing here.
++ *
++ * No pin group for it: the vendor's pwm5@2000c15 node names no pins, and
++ * PA12 (vendor pwm4, our pinctrl table's pwm4 on mux 2) is the AC200
++ * codec's clock on both boards (ac200 tv_pwm_ch = 4, A14), not the lamp.
++ * A pinctrl group on the receiver node with a function the table does not
++ * know ("pwm5") failed the receiver's probe and left test8 without a login
++ * (issue #1, 24.09.2026). Which pad channel 5 leaves the SoC on is to be
++ * read from the pin registers once the firmware runs with these words.
+  */
+-&pio {
+-	bl_pwm_pa12_pin: bl-pwm-pa12-pin {
+-		pins = "PA12";
+-		function = "pwm5";
+-		drive-strength = <10>;
+-		bias-pull-up;
+-	};
+-};
+-
+ &hdmirx {
+-	pinctrl-names = "default";
+-	pinctrl-0 = <&bl_pwm_pa12_pin>;
+ 	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
+ };

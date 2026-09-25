@@ -441,3 +441,6 @@
 # 23.09.: the lamp's dimmer is a PWM the display firmware owns; the vendor tells it channel, polarity and
 #   frequency before the level, out of panel_config.ini [PWMSetting]. The HY300 Pro was dark without it.
 0166-media-hdmirx-backlight-pwm-info-from-the-board-file.patch
+#     0166a: the PA12 group of 0166 goes (AC200 clock, and "pwm5" is no function
+#     of our table - test8 lost its receiver and its login); the six words stay.
+0166a-arm64-dts-h713-hy300-pro-lamp-pwm-words-without-the-pa12-group.patch
