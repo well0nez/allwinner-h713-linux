@@ -54,6 +54,7 @@ LAST_AUTO_PATH = "/var/lib/h713-keystone/last-auto"   # the set the automatic la
 IIO_DIR, WARP_TOOL, G_M_S2 = "/sys/bus/iio/devices", "h713-warp", 9.80665
 FALLBACK_COUNTS_PER_G = 1000.0    # measured: in_accel_x_scale 0.009806 m/s2
 EXIT_ERROR, EXIT_NO_SENSOR, EXIT_NOT_LEVEL, EXIT_WARP = 2, 3, 4, 5
+EXIT_CONFIG = EXIT_ERROR        # a configuration value out of its choices (the docs: 2)
 AXES = {"x": 0, "y": 1, "z": 2}
 ZOOM_WIDTH = {0: 1920, 1: 1728, 2: 1440}          # AP2c 3, the aspect selector
 # The loop's own pause.  One averaged reading already costs about 0.3 s at
