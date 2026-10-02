@@ -944,9 +944,9 @@ static uint16_t gamma_12_to_16(uint32_t v)
 static void display_gamma_load(struct display *d, const char *path)
 {
 	struct drm_color_lut lut[GAMMA_ENTRIES];
-	uint32_t bank[DE2_BANK_DWORDS];
+	uint32_t bank[3][DE2_BANK_DWORDS];
 	uint64_t size = 0;
-	unsigned int i;
+	unsigned int i, channels;
 	size_t got;
 	FILE *f;
 
@@ -970,18 +970,25 @@ static void display_gamma_load(struct display *d, const char *path)
 		return;
 	}
 	got = fread(bank, 1, sizeof(bank), f);
+	bool invalid = ferror(f) || fgetc(f) != EOF;
 	fclose(f);
-	if (got != sizeof(bank)) {
-		warn("gamma           %s: %zu bytes instead of %zu (one DE2 bank from h713-pq) -- the identity ramp stays",
-		     path, got, sizeof(bank));
+	if (invalid || (got != sizeof(bank[0]) && got != sizeof(bank))) {
+		warn("gamma           %s: expected one or three complete DE2 banks (2048 or 6144 bytes) -- the identity ramp stays",
+		     path);
 		return;
 	}
+	channels = got / sizeof(bank[0]);
 	for (i = 0; i < DE2_BANK_DWORDS; i++) {
-		uint16_t a = gamma_12_to_16(bank[i] & 0xfff);
-		uint16_t b = gamma_12_to_16((bank[i] >> 12) & 0xfff);
+		uint32_t r = bank[0][i];
+		uint32_t g = bank[channels == 3 ? 1 : 0][i];
+		uint32_t b = bank[channels == 3 ? 2 : 0][i];
 
-		lut[2 * i].red = lut[2 * i].green = lut[2 * i].blue = a;
-		lut[2 * i + 1].red = lut[2 * i + 1].green = lut[2 * i + 1].blue = b;
+		lut[2 * i].red = gamma_12_to_16(r & 0xfff);
+		lut[2 * i].green = gamma_12_to_16(g & 0xfff);
+		lut[2 * i].blue = gamma_12_to_16(b & 0xfff);
+		lut[2 * i + 1].red = gamma_12_to_16((r >> 12) & 0xfff);
+		lut[2 * i + 1].green = gamma_12_to_16((g >> 12) & 0xfff);
+		lut[2 * i + 1].blue = gamma_12_to_16((b >> 12) & 0xfff);
 		lut[2 * i].reserved = lut[2 * i + 1].reserved = 0;
 	}
 	if (drmModeCreatePropertyBlob(d->fd, lut, sizeof(lut), &d->gamma_blob)) {
@@ -4792,7 +4799,7 @@ static void tse_gamma_start(struct tse_gamma *t, const struct conf *c)
 		}
 		execl(c->calculator, "h713-pq", "--data", c->data, "gamma",
 		      "--from-tse", TSE_STATE, "--project", project,
-		      "--tse", tse, "--lut", TSE_LUT, (char *)NULL);
+		      "--tse", tse, "--channel", "all", "--lut", TSE_LUT, (char *)NULL);
 		_exit(127);
 	}
 }
@@ -4810,8 +4817,8 @@ static bool tse_gamma_collect(struct tse_gamma *t)
 	else if (!WIFEXITED(status) || WEXITSTATUS(status))
 		snprintf(t->why, sizeof(t->why), "h713-pq gamma --from-tse: "
 			 "exit code %d", WEXITSTATUS(status));
-	else if (stat(TSE_LUT, &st) || st.st_size != 4 * DE2_BANK_DWORDS)
-		snprintf(t->why, sizeof(t->why), "%s is not one DE2 bank", TSE_LUT);
+	else if (stat(TSE_LUT, &st) || st.st_size != 3 * 4 * DE2_BANK_DWORDS)
+		snprintf(t->why, sizeof(t->why), "%s is not three DE2 banks", TSE_LUT);
 	else
 		t->ok = true;
 	t->pid = -1;
