@@ -448,3 +448,6 @@
 #   (channel 5, as its panel_config.ini says), its fan tacho PH13, no pwm-backlight or focus motor;
 #   the accelerometer node stays on so the first boot shows which chip is fitted (package GEU1)
 0167-arm64-dts-h713-add-the-hy300pro-g-eu-board-dts.patch
+# 03.10.: 0166 sent the six PWM words as six parameters; the firmware takes one, their address
+#   (display.bin 0x8B10A444, stock libhaldisplay 0xA20C) - the HY300 Pro crashes since test8 (GEU1 device test)
+0168-media-hdmirx-backlight-pwm-info-by-address.patch

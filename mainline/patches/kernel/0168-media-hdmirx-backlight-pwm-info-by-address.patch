@@ -1,0 +1,88 @@
+media: hdmirx: hand Thal_Vp_SetBacklightPwmInfo the address of its six words
+
+0166 sent the lamp's six PWM words (channel, polarity, freq, vs_lock, min,
+max) as six call parameters. The firmware's handler does not take six
+parameters: it takes one, the physical address of a 24-byte structure, and
+reads the six words from there (display.bin 0x8B10A444: Para[0] is masked
+into KSEG1 and dereferenced, then the six words go to the backend at
+0x8B1483E8). The stock HAL does exactly that - Trid_Util_CPUComm_Malloc(24),
+the six words in, ParaCount 1, Para[0] = Convert2PhyAddr(buffer)
+(libhaldisplay Thal_Vp_SetBacklightPwmInfo@0xA20C).
+
+Handed the channel number (5) as that address, the firmware loads from
+0xA0000005. Seen on the HY300PRO-G-EU (03.10.2026): with the property, two
+boots died about 0.6-0.9 s after this step (PID 1 on an undefined
+instruction, then ext4's in-memory counters disagreeing), without it the
+board boots to the login; issue #1's HY300 Pro stopped "at random places"
+since test8, the image that introduced the property.
+
+The words now go into the mapped window behind the Wce_SetWindow structures
+(+0x037100) and the call carries their address, as stock does.
+
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -502,10 +502,23 @@
+ #define H713_SHM_WCE		0x00037000
+ #define H713_SHM_VP_INIT	0x00400000
+ #define H713_SHM_WINDOW		0x00002000	/* covers HDCP22 and WCE */
++/*
++ * +0x037100  the six words of Thal_Vp_SetBacklightPwmInfo. The firmware's
++ * handler takes ONE argument, the physical address of a 24-byte structure
++ * {channel, polarity, freq, vs_lock, min, max}, and reads the six words from
++ * there (display.bin 0x8B10A444: Para[0] is masked into KSEG1 and
++ * dereferenced); the stock HAL puts them into a CPUComm buffer and passes
++ * its address (libhaldisplay Thal_Vp_SetBacklightPwmInfo@0xA20C). Handed
++ * the six words themselves, the firmware dereferences the channel number.
++ * The handler copies the structure at once, so any free slot of the mapped
++ * window will do; this one lies behind the Wce_SetWindow structures.
++ */
++#define H713_SHM_BLPWM		0x00037100
+ 
+ /* The same two, as offsets into the window that starts at H713_SHM_HDCP22. */
+ #define H713_MAP_HDCP22		(H713_SHM_HDCP22 - H713_SHM_HDCP22)
+ #define H713_MAP_WCE		(H713_SHM_WCE - H713_SHM_HDCP22)
++#define H713_MAP_BLPWM		(H713_SHM_BLPWM - H713_SHM_HDCP22)
+ 
+ #define H713_HDCP22_SIZE	912
+ #define H713_FW_HDCP22		"hy310-hdcp22.bin"
+@@ -652,7 +665,7 @@
+ 	/* ---- phase 3: picture pipeline defaults --------------------- */
+ 	{
+ 		.name = "Thal_Vp_SetBacklightPwmInfo", .kind = H713_STEP_BL_PWM,
+-		.nargs = 6,
++		.nargs = 1,
+ 		.why = "The lamp's dimmer is a PWM the display firmware owns; "
+ 		       "which channel, polarity, frequency, vsync lock, minimum "
+ 		       "and maximum duty it runs is the board's [PWMSetting] in "
+@@ -1431,10 +1444,13 @@
+ 		case H713_STEP_PLAIN:
+ 			memcpy(args, s->args, sizeof(args));
+ 			break;
+-		case H713_STEP_BL_PWM:
++		case H713_STEP_BL_PWM: {
++			u32 pwm[6];
++			unsigned int w;
++
+ 			if (of_property_read_u32_array(rx->dev->of_node,
+ 						       "allwinner,backlight-pwm-info",
+-						       args, 6)) {
++						       pwm, 6)) {
+ 				dev_info(rx->dev,
+ 					 "step %u %s skipped: no allwinner,backlight-pwm-info in the board file\n",
+ 					 i, s->name);
+@@ -1442,8 +1458,13 @@
+ 			}
+ 			dev_info(rx->dev,
+ 				 "backlight PWM: channel %u polarity %u freq %u vs_lock %u min %u max %u\n",
+-				 args[0], args[1], args[2], args[3], args[4], args[5]);
++				 pwm[0], pwm[1], pwm[2], pwm[3], pwm[4], pwm[5]);
++			/* one argument: the address of the six words (see H713_SHM_BLPWM) */
++			for (w = 0; w < ARRAY_SIZE(pwm); w++)
++				writel(pwm[w], rx->shm + H713_MAP_BLPWM + w * 4);
++			args[0] = rx->shm_base + H713_SHM_BLPWM;
+ 			break;
++		}
+ 		case H713_STEP_VP_INIT:
+ 			args[2] = rx->shm_base + H713_SHM_VP_INIT;
+ 			break;
