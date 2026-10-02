@@ -7,6 +7,11 @@ one runs an Android 10 firmware of 2024, DDR3 at 636 MHz, 25 partitions and a di
 own. This one is HY310-like in everything that has been measured, and it is here so that the
 maintainer can run the same software as issue #1's owner on a board of his own.
 
+The board's silkscreen reads **`HY200 QZ713DF A1`** (read off the board by the maintainer, 02.10.2026):
+the same PCB as `boards/hy200-qz713df-a1` (the HY300 Pro+ of 2025, DDR3), here with an earlier
+firmware generation, the HY310's display.bin revision, its boot0 at 792 MHz and a 15273600-sector eMMC.
+Merging the two board entries is a follow-up after the first device test.
+
 | | |
 |---|---|
 | Status | **profile-only** - a complete description from its own eMMC dump; nobody has run our firmware on it |
