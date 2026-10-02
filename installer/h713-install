@@ -43,7 +43,7 @@ sys.path.insert(0, HERE)
 
 from h713 import install as install_mod                                     # noqa: E402
 from h713.blockdev import (Disk, LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED,   # noqa: E402
-                           device_kind)
+                           SECTORS_KNOWN, device_kind)
 from h713.dump import (board_of, choose_dump, dump_asked, dump_full,       # noqa: E402
                        dump_small, full_dump_state, keep_copy, mandatory_dump,
                        verify_dump, write_manifest)
@@ -368,7 +368,7 @@ def _dump(args, disk, path):
             else:
                 _append_manifest_row(args.dump_dir, row)
     if manifest is not None:
-        write_manifest(args.dump_dir, manifest, path, board_of(args))
+        write_manifest(args.dump_dir, manifest, path, board_of(args), sectors=disk.sectors)
     console.ok("the dump lies in %s" % os.path.abspath(args.dump_dir))
     if args.command != "dump":
         return 0
@@ -474,6 +474,52 @@ def _board_from_dump(args, ident):
         ident["facts"] = facts
 
 
+def _sizes_allowed(args, ident):
+    """The eMMC sizes (sectors) this run accepts. Reading (`dump`) takes every size an H713
+    board is known with. A write takes the size of the board identified underneath -- its
+    profile's layout.disk_sectors -- and, where no profile names one (our layout without a
+    test image, or --skip-identify), every known size: the image's own table must then match
+    the device (check_package), and a dump the device (_restore). `restore-stock` rebuilds
+    the vendor table of an update.img, which exists for the HY310's size alone."""
+    if args.command == "dump":
+        return SECTORS_KNOWN
+    if args.command == "restore-stock":
+        return (SECTORS_EXPECTED,)
+    profile = PROFILES.get((ident or {}).get("profile") or "") or {}
+    size = (profile.get("layout") or {}).get("disk_sectors")
+    return (size,) if size else SECTORS_KNOWN
+
+
+def _image_size_problem(args, disk):
+    """Why the image or dump of this run cannot go onto this device, or None. Asked before the
+    mandatory dump. A table's piece C is the backup GPT at the end of the eMMC it was cut for
+    (h713-mkimage, profile layout.disk_sectors), so a table must name this device's size. A
+    file without a table that is a whole eMMC of another known size (a full dump, a raw
+    image) is another board's: a larger one write_image() refuses anyway, a smaller one would
+    leave the end of this disk -- where its backup GPT lies -- as it is."""
+    if args.command == "install":
+        table = None
+        for candidate in (args.image, getattr(args, "table", None)):
+            if candidate and table is None:
+                try:
+                    table = image_package(candidate)[1]
+                except (RuntimeError, OSError, ValueError):
+                    table = None                    # _install() reports it in its own words
+        if table is not None:
+            if table.get("disk_sektoren") != disk.sectors:
+                return ("this image is cut for an eMMC of %s sectors, %s has %d -- it was built "
+                        "for another board" % (table.get("disk_sektoren"), disk.path, disk.sectors))
+            return None
+    if not os.path.isfile(args.image):
+        return None
+    sectors, rest = divmod(os.path.getsize(args.image), 512)
+    if rest or sectors not in SECTORS_KNOWN or sectors == disk.sectors:
+        return None
+    what = "the full dump" if args.command == "restore" else "a whole-disk image"
+    return ("%s is %s of a %d-sector eMMC, this device has %d sectors -- it is not this "
+            "board's" % (args.image, what, sectors, disk.sectors))
+
+
 def _work(args, path):
     writing = args.command in WRITES and not args.no_write
     disk = Disk(path, writable=writing)
@@ -516,10 +562,22 @@ def _work(args, path):
             code = _test_image_refused(args, None)
             if code is not None:
                 return code
-        if disk.sectors != SECTORS_EXPECTED:
-            console.error("%s has %d sectors, expected %d -- wrong drive?"
-                          % (path, disk.sectors, SECTORS_EXPECTED))
+        allowed = _sizes_allowed(args, ident)
+        if disk.sectors not in allowed:
+            console.error("%s has %d sectors, expected %s -- wrong drive?"
+                          % (path, disk.sectors, " or ".join(str(n) for n in allowed)))
+            if args.command == "restore-stock" and disk.sectors in SECTORS_KNOWN:
+                console.info("  restore-stock rebuilds a vendor table for the HY310's eMMC size only;")
+                console.info("  the way back on this board is its full dump: h713-install restore <dump>")
+            elif ident and ident.get("profile") and disk.sectors in SECTORS_KNOWN:
+                console.info("  The device was identified as %s, whose eMMC has %s sectors."
+                             % (ident["profile"], " or ".join(str(n) for n in allowed)))
             return 4
+        if args.command in ("install", "restore"):
+            why = _image_size_problem(args, disk)
+            if why:
+                console.error(why)
+                return 4
         if args.command == "restore-stock":
             return _restore_stock(args, disk)
         if args.command == "restore":

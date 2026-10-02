@@ -453,7 +453,7 @@ def board_of(args):
     return (getattr(args, "_profile", None) or {}).get("name")
 
 
-def write_manifest(directory, manifest, device, board=None):
+def write_manifest(directory, manifest, device, board=None, sectors=None):
     # Stage 3: the keys are English (api-stufe3.md) -- "erzeugt"/"werkzeug"/"geraet"/
     # "sektoren"/"teile" became created/tool/device/sectors/regions, the row keys
     # "sektoren"/"zweck" sectors/purpose. The file names inside the dump are unchanged.
@@ -462,7 +462,7 @@ def write_manifest(directory, manifest, device, board=None):
         "tool": "h713-install " + VERSION,
         "device": device,
         "board": board,
-        "sectors": SECTORS_EXPECTED,
+        "sectors": sectors or SECTORS_EXPECTED,
         "regions": [{"name": n, "lba": l, "sectors": s, "sha256": h, "purpose": p}
                     for n, l, s, h, p in manifest],
     }
@@ -544,7 +544,7 @@ def mandatory_dump(args, disk, path, log=console):
     console.step(2, "Small dump (mandatory, before a restore too)")
     os.makedirs(args.dump_dir, exist_ok=True)
     write_manifest(args.dump_dir, dump_small(disk, args.dump_dir, our_layout=args._our_layout),
-                   path, board_of(args))
+                   path, board_of(args), sectors=disk.sectors)
 
 
 def choose_dump(chosen=None):

@@ -37,8 +37,9 @@ from h713.layout import (
     DISK_SECTORS, ENV_BYTES, FILES,
     FIRST_USABLE, GPT_ARRAY_SECTORS, GPT_ENTRY_COUNT, GROUPS, KERNEL_FIT,
     LBA_BOOT, LBA_ENV, LBA_ROOTFS, LBA_SPL, LBA_UBOOT,
-    PART_A_LBA, PART_A_SECTORS, PART_B_LBA, PART_C_LBA, PART_C_SECTORS,
-    PARTITIONS, ROOTFS_PERMISSIONS, SECTOR, USER_FILES, target_directories,
+    PART_A_LBA, PART_A_SECTORS, PART_B_LBA, PART_C_SECTORS,
+    ROOTFS_PERMISSIONS, SECTOR, USER_FILES, part_c_lba, partitions_for,
+    target_directories,
 )
 from h713.log import Console
 from h713.source import FileSource
@@ -243,6 +244,21 @@ def uboot_version(path):
     return m.group(0).decode("latin1") if m else None
 
 
+def disk_sectors_for(test_for):
+    """The eMMC size an image is cut for: the HY310's (layout.DISK_SECTORS), or for a TEST
+    image the one its board's installer profile states ("layout" -> "disk_sectors").
+    The table carries it as "disk_sektoren", and h713-install writes the image only onto
+    a device of exactly that size."""
+    if not test_for:
+        return DISK_SECTORS
+    from h713.profiles import PROFILES
+    profile = PROFILES.get(test_for)
+    if profile is None:
+        raise SystemExit("--test-for %s: no installer profile has that id, so h713-install "
+                         "could never identify the board this image is for" % test_for)
+    return (profile.get("layout") or {}).get("disk_sectors") or DISK_SECTORS
+
+
 def build(args, here=None):
     """`here`: the directory of the calling script (the installer directory, where
     mkimage-inputs.sh puts tmp/); the module's own directory when not given."""
@@ -279,6 +295,9 @@ def build(args, here=None):
             raise SystemExit("%s: %s not found" % (w, p))
 
     test_for = getattr(args, "test_for", None)
+    disk_sectors = disk_sectors_for(test_for)
+    part_c = part_c_lba(disk_sectors)
+    partitions = partitions_for(disk_sectors)
     target = os.path.abspath(args.out)
     directory = os.path.dirname(target) or "."
     os.makedirs(directory, exist_ok=True)
@@ -308,7 +327,8 @@ def build(args, here=None):
     if n_boot != 262144 * SECTOR:
         raise SystemExit("hy310-boot.ext4 is %d bytes, the partition has %d"
                          % (n_boot, 262144 * SECTOR))
-    if n_root % SECTOR or n_root > 14991327 * SECTOR:
+    root_sectors = [n for name, _lba, n, _g in partitions if name == "hy310-rootfs"][0]
+    if n_root % SECTOR or n_root > root_sectors * SECTOR:     # 14991327 on the HY310
         raise SystemExit("hy310-rootfs.ext4 does not fit (%d bytes)" % n_root)
     # The environment: 64 KiB, a CRC32 (little-endian) over the rest in front --
     # that is how U-Boot reads it (env/mmc.c, CONFIG_ENV_SIZE=0x10000, one
@@ -337,7 +357,7 @@ def build(args, here=None):
 
     # --- 2. Piece A: GPT + SPL + U-Boot, LBA 0..12287
     console.step(2, "piece A -- boot chain (LBA %d..%d)" % (PART_A_LBA, PART_A_SECTORS - 1))
-    gpt = build_layout_gpt()
+    gpt = build_layout_gpt(disk_sectors)
     a = bytearray(PART_A_SECTORS * SECTOR)
     a[0:SECTOR] = gpt[0]
     a[SECTOR:2 * SECTOR] = gpt[1]
@@ -352,17 +372,17 @@ def build(args, here=None):
 
     # --- 3. Piece C: backup copy of the GPT at the end of the disk (finding S46 B7)
     console.step(3, "piece C -- backup copy of the GPT (LBA %d, %d sectors)"
-                 % (PART_C_LBA, PART_C_SECTORS))
+                 % (part_c, PART_C_SECTORS))
     c = bytearray(PART_C_SECTORS * SECTOR)
-    back_arr = DISK_SECTORS - 1 - GPT_ARRAY_SECTORS
-    c[(back_arr - PART_C_LBA) * SECTOR:(back_arr - PART_C_LBA) * SECTOR + len(gpt[back_arr])] = gpt[back_arr]
-    c[(DISK_SECTORS - 1 - PART_C_LBA) * SECTOR:] = gpt[DISK_SECTORS - 1]
+    back_arr = disk_sectors - 1 - GPT_ARRAY_SECTORS
+    c[(back_arr - part_c) * SECTOR:(back_arr - part_c) * SECTOR + len(gpt[back_arr])] = gpt[back_arr]
+    c[(disk_sectors - 1 - part_c) * SECTOR:] = gpt[disk_sectors - 1]
     with open(c_file, "wb") as f:
         f.write(bytes(c))
     console.ok("%s  %d bytes -- it also clears away leftovers of the old table"
                % (os.path.basename(c_file), len(c)))
 
-    problems = check_gpt(bytes(a[:9 * SECTOR]), bytes(c))
+    problems = check_gpt(bytes(a[:9 * SECTOR]), bytes(c), disk_sectors)
     if problems:
         for x in problems:
             console.error(x)
@@ -403,7 +423,7 @@ def build(args, here=None):
 
     # --- 6. check the hole
     console.step(6, "the locked range")
-    pieces = [(a_file, PART_A_LBA), (b_file, PART_B_LBA), (c_file, PART_C_LBA)]
+    pieces = [(a_file, PART_A_LBA), (b_file, PART_B_LBA), (c_file, part_c)]
     for file_name, lba in pieces:
         end = lba + os.path.getsize(file_name) // SECTOR - 1
         if lba <= LOCK_LAST and end >= LOCK_FIRST:
@@ -439,10 +459,10 @@ def build(args, here=None):
         "erzeugt": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "abbild": base,
         "sektorgroesse": SECTOR,
-        "disk_sektoren": DISK_SECTORS,
+        "disk_sektoren": disk_sectors,
         "layout": LAYOUT,
         "partitionen": [{"name": n, "lba": l, "sektoren": s, "guid": g}
-                        for n, l, s, g in PARTITIONS],
+                        for n, l, s, g in partitions],
         "loch": {
             "lba": LOCK_FIRST,
             "sektoren": LOCK_LAST - LOCK_FIRST + 1,
@@ -565,7 +585,7 @@ def check(table_file, log=console):
 
     log.step(3, "partition table")
     a = [x for x in d["teile"] if x["lba"] == 0]
-    c = [x for x in d["teile"] if x["lba"] == DISK_SECTORS - 33]
+    c = [x for x in d["teile"] if x["lba"] == part_c_lba(d["disk_sektoren"])]
     if not a or a[0]["datei"] not in pieces:
         log.error("no piece at LBA 0 -- the GPT cannot be checked")
         bad += 1

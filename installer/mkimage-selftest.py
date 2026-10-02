@@ -47,7 +47,7 @@ sys.path.insert(0, HERE)
 from pathlib import Path                                                   # noqa: E402
 
 from h713 import layout                                                     # noqa: E402
-from h713.blockdev import LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED           # noqa: E402
+from h713.blockdev import LOCK_FIRST, LOCK_LAST, SECTORS_KNOWN              # noqa: E402
 from h713.fs.ext4 import Ext4                                              # noqa: E402
 from h713.gpt import Gpt, check_gpt                                        # noqa: E402
 from h713.log import Log                                                   # noqa: E402
@@ -104,10 +104,10 @@ def main():
     else:
         bad("the installer locks %d..%d, the table says %d.."
             % (LOCK_FIRST, LOCK_LAST, d["loch"]["lba"]))
-    if SECTORS_EXPECTED == d["disk_sektoren"]:
-        ok("sector count %d -- equal" % SECTORS_EXPECTED)
+    if d["disk_sektoren"] in SECTORS_KNOWN:
+        ok("sector count %d -- an eMMC size the installer knows" % d["disk_sektoren"])
     else:
-        bad("the sector count deviates")
+        bad("the sector count %s is no eMMC size the installer knows" % d["disk_sektoren"])
 
     # ---------------------------------------------------------------- 2
     print("\n[2] the table carries the file set of h713.layout")
@@ -290,7 +290,8 @@ def main():
         bad("the dummy carries no recognisable GPT")
     # read the partition table raw
     head = aq.read(0, 9 * SECT)
-    problems = check_gpt(head, aq.read(layout.PART_C_LBA * SECT, layout.PART_C_SECTORS * SECT),
+    problems = check_gpt(head, aq.read(layout.part_c_lba(d["disk_sektoren"]) * SECT,
+                                       layout.PART_C_SECTORS * SECT),
                          d["disk_sektoren"])
     for x in problems:
         bad(x)

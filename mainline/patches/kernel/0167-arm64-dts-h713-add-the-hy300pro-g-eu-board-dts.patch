@@ -1,0 +1,153 @@
+arm64: dts: h713: add the HY300PRO-G-EU board dts (the maintainer's own HY300 Pro)
+
+The maintainer's own HY300 Pro (box label HY300PRO-G-EU, stock Android 11 of
+2025-05-06) is not the HY300 Pro of issue #1. Its own eMMC dump (2026-10-02)
+makes it an HY310 in the DRAM words the HY310's U-Boot boots with (tpr0..tpr2
+aside, which the DDR3 path never reads), the 26-entry partition table on a
+3712-sector larger eMMC, the display.bin (16c74a28...) and LogoRegData.bin
+(0d00bcdd...). So its tree includes sun50i-h713-hy310.dts - which itself is
+the hy200 tree plus a name, so this board gets the same hardware description
+as the HY310 - and overrides what this board's own stock device tree
+(vendor_boot of the same dump) says differently, where one of our drivers
+reads it (package GEU1):
+
+- The lamp's PWM words. The board's panel_config.ini [PWMSetting] declares
+  hardware channel 5, polarity 1, 40 kHz, vsync lock 1, duty 1..100 (the
+  HY310's declares channel 2 at 25 kHz). The display firmware runs that PWM
+  only after Thal_Vp_SetBacklightPwmInfo with those six words, which the
+  hdmirx driver sends from allwinner,backlight-pwm-info (0166). Same words as
+  the hy300-pro tree (0166a), no pin group.
+
+- No pwm-backlight device: the dtsi's node muxes PB4 to PWM2, the HY310's
+  dimmer; nothing of this board says what PB4 is (as 0161a for hy300-pro).
+
+- Fan tachometer PH13: the stock fan0 fg-gpio is PH13 here, PH17 on the
+  HY310. hy310-board-mgr powers off after fg-warn-cnt seconds below
+  fg-warn-speed, so it must count the right pin. PH17 stays unclaimed.
+
+- No focus motor: the stock tree has motor_ctr disabled; the hy200 tree
+  enables it, this tree switches it off rather than drive PH4..PH7.
+
+- The accelerometer node is kept on purpose (maintainer, round 3). The
+  stock tree lists three candidates (lsm6dsr, stk83xx, kxtj3) and does not
+  say which is fitted; the HY310's stock tree does not list its SC7A20
+  either. The first boot's probe at 0x18 answers it: "failed to read
+  Who-Am-I register" (nothing there), "WhoAmI mismatch" (another chip), or
+  an IIO device "sc7a20".
+
+Not carried, and why: allwinner,elog (cpu_comm falls back to the HY310's
+addresses, which belong to the display.bin this board runs); the ARISC
+addresses (0091a reads them from the image); allwinner,handoff-state (the
+hy300-pro, the other single-port 0x34 board, adopted 1280x720 with the
+defaults); the panel (selected by h713_project). The stock tree's other
+differences (panel_power_en PF6, usb1-vbus PL3, ADC keys, codec
+pa_always_on) reach no driver of ours; U-Boot drives PF6 and PL3 itself.
+
+Checked offline only: host cpp+dtc compile the tree; decompiled against
+sun50i-h713-hy310.dtb it differs in model, compatible, the backlight and
+motor-ctr status, fan0 fg-gpio and the hdmirx property, and in nothing
+else. Nobody has booted it.
+
+---
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -59,6 +59,7 @@
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy200-qz713-v2.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy310.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-pro.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300pro-g-eu.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-a527-cubie-a5e.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-h728-x96qpro+.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-t527-avaota-a1.dtb
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300pro-g-eu.dts
+@@ -0,0 +1,89 @@
++// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++/*
++ * HY300 Pro projector, box label HY300PRO-G-EU (stock Android 11 of
++ * 2025-05-06) - the maintainer's own board. It is not the HY300 Pro of
++ * issue #1 (sun50i-h713-hy300-pro.dts: another firmware family, DDR3 at
++ * 636 MHz, another display.bin).
++ *
++ * An include of the HY310's tree, because this board is HY310-like where it
++ * has been measured (its own eMMC dump, 2026-10-02): the DRAM words the
++ * HY310's U-Boot boots with (tpr0..tpr2 aside, which the DDR3 path does not
++ * read), the HY310's 26-entry partition table, the HY310's display.bin and
++ * LogoRegData.bin byte for byte. So the display firmware keeps its event log
++ * where the HY310's does and cpu_comm's built-in elog addresses apply (no
++ * allwinner,elog here); the ARISC driver reads its SRAM addresses out of the
++ * board's own image (0091a), so nothing about it is board-borne either.
++ * The board's own stock device tree (vendor_boot of its eMMC dump) differs
++ * from the HY310's stock tree in nine places (package GEU1, round 2); the
++ * three that reach a driver of ours are listed below (fan and motor changed,
++ * the accelerometer kept on purpose), the other six reach
++ * nothing in this tree (no driver reads them, or U-Boot already drives the
++ * board's own line). The power key is PL4 on both.
++ *
++ * What differs from the HY310 and is carried here:
++ *
++ *  - The lamp's dimmer. The board's panel_config.ini [PWMSetting] says
++ *    hardware PWM channel 5, polarity 1 (low active), 40 kHz, vsync lock 1,
++ *    duty 1..100 - the HY310's says channel 2 at 25 kHz. The display
++ *    firmware owns that PWM and needs the six words before the level; the
++ *    hdmirx driver sends them from allwinner,backlight-pwm-info (0166), and
++ *    skips the step without the property - which is what left the HY300 Pro
++ *    of issue #1 dark until 0166a. No pin group: which pad channel 5 leaves
++ *    the SoC on is the firmware's business (0166a).
++ *
++ *  - No pwm-backlight device. The dtsi's node drives PWM2 on PB4, the
++ *    HY310's dimmer, which is not this board's declared channel; nothing of
++ *    this board says what PB4 is, so the tree does not mux it, and no
++ *    /sys/class/backlight exists for systemd-backlight to restore at boot.
++ *    The fan_power_hog on PB5 stays, as on both other boards.
++ *
++ *  - The fan tachometer is PH13: this board's stock fan0 says
++ *    fg-gpio = PH13, where the HY310's says PH17. The board manager counts
++ *    it and powers the device off after fg-warn-cnt seconds below
++ *    fg-warn-speed, so the input has to be the right one. PH17 is left
++ *    alone (an input, as nothing claims it); what it is on this board the
++ *    stock tree does not say.
++ *
++ *  - No focus motor. The stock tree has motor_ctr disabled (with another
++ *    step table); the hy200 tree this one includes enables it, and the
++ *    driver homes at probe by driving PH4..PH7. Off here until the board
++ *    shows a motor.
++ *
++ *  - The accelerometer node stays as on the HY310 (SC7A20 at 0x18 on
++ *    twi1), on purpose. The stock tree lists three candidate chips
++ *    (lsm6dsr at 0x6a, stk83xx at 0x18, kxtj3 at 0x0e) and does not say
++ *    which one is fitted; the HY310's stock tree does not list its SC7A20
++ *    either. The first boot answers it: nothing at 0x18 fails the probe
++ *    once ("failed to read Who-Am-I register"), another chip there says
++ *    "WhoAmI mismatch", the SC7A20 becomes an IIO device "sc7a20".
++ *
++ * The panel (declared project id 0x34, 1280x720 single port) is not
++ * described here: the display coprocessor drives it from its own tables,
++ * selected by h713_project, which the installer writes from the board's
++ * panel_config.ini.
++ */
++
++#include "sun50i-h713-hy310.dts"
++
++/ {
++	model = "HY300 Pro (HY300PRO-G-EU)";
++	compatible = "magcubic,hy300pro-g-eu", "allwinner,sun50i-h713";
++};
++
++&backlight {
++	status = "disabled";
++};
++
++&hdmirx {
++	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
++};
++
++&board_mgr {
++	fan0 {
++		fg-gpio = <&pio 7 13 GPIO_ACTIVE_HIGH>;	/* PH13, stock fan0 fg-gpio */
++	};
++};
++
++&motor_ctr {
++	status = "disabled";
++};

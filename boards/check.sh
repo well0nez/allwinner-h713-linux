@@ -10,9 +10,17 @@
 #      and CONFIG_DRAM_CLK equals the DRAM clock of the board's installer profile
 #   5. board.env and mainline/config/versions.env have not drifted apart
 #   6. the ddr3/lpddr3 aliases in build/build.sh resolve to board directories
+#   7. every board base release/build-all.sh builds from <UBOOT_BOARD>_defconfig has its
+#      release and installer roles in the MATRIX of build/uboot-prove-fragments.sh
+#   8. no file in these places names the fan stall parameter of hy310-board-mgr (any case,
+#      - or _): board directories, kernel and U-Boot defconfigs/fragments/environment files,
+#      rootfs overlay and scripts, userspace/, installer/, release/, mainline/build/*.sh; no
+#      added line of a patch names it outside the driver's own source, and none sets
+#      fg-warn-speed or fg-warn-cnt to 0
 #
 # Reads the installer profiles with python3 (stdlib only). Override their location with
-# H713_PROFILES=<dir> if the checkout is not the repository.
+# H713_PROFILES=<dir> if the checkout is not the repository. H713_EXTRA_PATCHES="<files>"
+# adds patch files to section 8 (a package's patches before they are integrated).
 #
 # Usage: bash boards/check.sh          exit 0 = green, 1 = something is wrong
 
@@ -23,6 +31,7 @@ ROOT=$(cd "$BOARDS/.." && pwd)
 PROFILES=${H713_PROFILES:-$ROOT/installer/h713/profiles}
 VERSIONS="$ROOT/mainline/config/versions.env"
 BUILD_SH="$ROOT/mainline/build/build.sh"
+PROVE_SH="$ROOT/mainline/build/uboot-prove-fragments.sh"
 STATUS_VALUES="verified profile-only partial"
 REQUIRED_KEYS="BOARD_ID STATUS PROFILE IMAGE_NAME KERNEL_DTB UBOOT_BOARD VERIFIED_BY"
 
@@ -230,6 +239,83 @@ if [ -f "$BUILD_SH" ]; then
 else
   fail "no $BUILD_SH"
 fi
+
+printf '\n== 7. uboot-prove-fragments.sh MATRIX ==\n'
+# only the value of MATRIX="..." (it spans lines), not comments or other code of the script
+matrix=$(awk '/^MATRIX="/ { on = 1; sub(/^MATRIX="/, "") }
+              on { if (index($0, "\"")) { sub(/".*/, ""); print; exit } print }' "$PROVE_SH" 2>/dev/null)
+assignments=$(grep -c '^MATRIX=' "$PROVE_SH" 2>/dev/null)
+if [ -f "$PROVE_SH" ] && [ "${assignments:-0}" -gt 1 ]; then
+  # only the first value is read above; a second one would be what the script really uses
+  fail "build/uboot-prove-fragments.sh: MATRIX= is assigned $assignments times, expected once"
+elif [ -f "$PROVE_SH" ] && [ -z "$matrix" ]; then
+  fail "build/uboot-prove-fragments.sh: no MATRIX=\"...\" value found"
+elif [ -f "$PROVE_SH" ]; then
+  for id in $boards; do
+    env_file="$BOARDS/$id/board.env"
+    [ -f "$env_file" ] || continue
+    ub=$(value_of "$env_file" UBOOT_BOARD)
+    # An image needs a DTB; cstenger's boards name a defconfig of their own and are not proven here.
+    [ -n "$(value_of "$env_file" KERNEL_DTB)" ] && [ -z "$(value_of "$env_file" UBOOT_DEFCONFIG)" ] || continue
+    for role in release installer; do
+      if printf '%s\n' $matrix | grep -qxF "$ub:$role"; then
+        ok "$ub:$role in the proof matrix"
+      else
+        fail "$ub:$role is not in the MATRIX of build/uboot-prove-fragments.sh ($id)"
+      fi
+    done
+  done
+else
+  note "no $PROVE_SH"
+fi
+
+printf '\n== 8. no file names the fan stall parameter ==\n'
+# hy310-board-mgr powers the projector off when the fan stalls (module parameter, default on).
+# No file in the places below may name that parameter. The kernel treats - and _ in parameter
+# names alike (kernel/params.c, parameq); the match also ignores case. The pattern is written
+# so that this file does not match itself.
+stall='fan[-_]stall[-_]shutdown'
+UB="$ROOT/mainline/external/u-boot"
+places="$BOARDS/*/ $ROOT/mainline/patches/kernel/board $ROOT/rootfs/overlay $ROOT/rootfs/*.sh
+        $ROOT/userspace $ROOT/installer $ROOT/release $ROOT/mainline/build/*.sh"
+if [ -d "$UB/configs" ]; then
+  places="$places $UB/configs/*_defconfig $UB/configs/fragments $UB/board/sunxi/*.env"
+else
+  note "no U-Boot fork at ${UB#$ROOT/}: its defconfigs are covered through uboot-h713/ only"
+fi
+before=$fails
+# text files only (a built hy310_board_mgr.ko names its own parameter); installer/out and
+# installer/tmp are build output (.gitignore) and are not read
+# shellcheck disable=SC2086
+named=$(find $places \( -path "$ROOT/installer/out" -o -path "$ROOT/installer/tmp" \
+          -o -name __pycache__ \) -prune -o -type f -print0 2>/dev/null |
+        xargs -0 -r grep -IilE -- "$stall" 2>/dev/null)
+for f in $named; do
+  fail "${f#$ROOT/} names the fan stall parameter"
+done
+# added lines of every patch a build applies (zurueckgenommen/ holds withdrawn ones): inside
+# the driver's own source only a default of false/0 counts; nowhere fg-warn-speed/-cnt = <0>
+patches="$(ls "$ROOT"/mainline/patches/*/*.patch "$ROOT"/uboot-h713/*.patch 2>/dev/null |
+           grep -v '/mainline/patches/zurueckgenommen/') ${H713_EXTRA_PATCHES:-}"
+n=0
+for p in $patches; do
+  [ -f "$p" ] || { fail "no patch file $p"; continue; }
+  n=$((n + 1))
+  hits=$(awk -v pat="$stall" -v drv="drivers/misc/hy310-board-mgr.c" '
+    /^\+\+\+ / { file = $2; sub(/^b\//, "", file); next }
+    /^\+/ {
+      low = tolower($0)
+      if (low ~ pat && (file != drv || low ~ (pat "[[:space:]]*=[[:space:]]*(false|0)[[:space:]]*;")))
+        printf "names the fan stall parameter: %d: %s\n", FNR, $0
+      else if (low ~ /fg-warn-(speed|cnt)[[:space:]]*=[[:space:]]*<[[:space:]]*(0|0x0+)[[:space:]]*>/)
+        printf "sets a fan warn threshold to 0: %d: %s\n", FNR, $0
+    }' "$p")
+  while IFS= read -r line; do
+    [ -n "$line" ] && fail "added line ${line%%: *}: ${p#$ROOT/}:${line#*: }"
+  done <<<"$hits"
+done
+[ "$fails" -eq "$before" ] && \
+  ok "fan stall parameter: named in no scanned file and no added line of $n patch(es); no fg-warn-* = <0>"
 
 printf '\n== summary ==\n'
 printf '  boards: %s\n' "$(printf '%s\n' "$boards" | tr '\n' ' ')"

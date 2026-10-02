@@ -182,10 +182,12 @@ def build_gpt(disk_sectors, partitions, *, first_usable, disk_guid, type_guid, u
 
 def build_layout_gpt(disk_sectors=None, partitions=None,
                      disk_guid=None, type_guid=None) -> Dict[int, bytes]:
-    """The GPT of our layout v3 (M:294 gpt_bauen), byte for byte. Defaults from h713.layout."""
+    """The GPT of our layout v3 (M:294 gpt_bauen), byte for byte. Defaults from h713.layout;
+    the partitions follow `disk_sectors` (layout.partitions_for), which for the HY310's
+    DISK_SECTORS is layout.PARTITIONS itself."""
     L = _layout()
     disk_sectors = L.DISK_SECTORS if disk_sectors is None else disk_sectors
-    partitions = L.PARTITIONS if partitions is None else partitions
+    partitions = L.partitions_for(disk_sectors) if partitions is None else partitions
     disk_guid = L.DISK_GUID if disk_guid is None else disk_guid
     type_guid = L.TYPE_GUID if type_guid is None else type_guid
     return build_gpt(disk_sectors, partitions,
@@ -242,12 +244,13 @@ def check_gpt(mbr_header_table, part_c, disk_sectors=None, *,
               entry_count=GPT_ENTRIES, entry_size=GPT_ENTRY_SIZE,
               part_c_lba=None) -> List[str]:
     """Recompute a built or read GPT (M:344 gpt_pruefen). Return value: list of problems.
-    Defaults (disk size, first usable LBA, partitions, part C) come from h713.layout."""
+    Defaults (disk size, first usable LBA, partitions, part C) come from h713.layout; the
+    partitions and part C follow `disk_sectors` (equal to the constants for the HY310)."""
     L = _layout()
     disk_sectors = L.DISK_SECTORS if disk_sectors is None else disk_sectors
     first_usable = L.FIRST_USABLE if first_usable is None else first_usable
-    partitions = L.PARTITIONS if partitions is None else partitions
-    part_c_lba = L.PART_C_LBA if part_c_lba is None else part_c_lba
+    partitions = L.partitions_for(disk_sectors) if partitions is None else partitions
+    part_c_lba = L.part_c_lba(disk_sectors) if part_c_lba is None else part_c_lba
     p = []
     if mbr_header_table[510:512] != b"\x55\xaa":
         p.append("Schutz-MBR ohne 55AA")

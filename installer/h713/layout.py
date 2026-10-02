@@ -63,6 +63,37 @@ PART_B_LBA = LOCK_LAST + 1                            # 14336 = 7 MiB
 PART_C_LBA = DISK_SECTORS - 33                        # 15269855, 33 sectors
 PART_C_SECTORS = 33
 
+
+# ---------------------------------------------------------------- Other disk sizes
+# The constants above are the HY310's eMMC. A board with another eMMC size (HY300PRO-G-EU:
+# 15273600 sectors, profiles/hy300pro_g_eu.py "layout") gets the same layout with the three
+# numbers that hang off the end of the disk recomputed: the last usable LBA, piece C (the
+# backup GPT, everything behind the last usable LBA) and hy310-rootfs, which runs to the
+# last usable LBA as it does on the HY310 (278528 + 14991327 = 15269855 = LAST_USABLE + 1).
+# For DISK_SECTORS every value is the constant above -- checked right below, at import.
+
+def last_usable(disk_sectors=DISK_SECTORS):
+    return disk_sectors - 34
+
+
+def part_c_lba(disk_sectors=DISK_SECTORS):
+    return disk_sectors - PART_C_SECTORS
+
+
+def partitions_for(disk_sectors=DISK_SECTORS):
+    """PARTITIONS for a disk of `disk_sectors`: hy310-rootfs ends at its last usable LBA."""
+    out = []
+    for name, lba, sectors, guid in PARTITIONS:
+        if name == "hy310-rootfs":
+            sectors = last_usable(disk_sectors) - lba + 1
+        out.append((name, lba, sectors, guid))
+    return out
+
+
+if (partitions_for() != PARTITIONS or last_usable() != LAST_USABLE
+        or part_c_lba() != PART_C_LBA):
+    raise ImportError("h713.layout: the computed HY310 layout differs from the constants")
+
 # ---------------------------------------------------------------- The files
 # The groups, in the order the table and the README list them. The text is what
 # a user is told the group is good for.

@@ -25,6 +25,12 @@ from .log import console
 
 from h713.util import SECTOR as SECT   # one definition for the whole package (`SECT` is the installer's old name)
 SECTORS_EXPECTED = 15269888          # 7.28 GiB -- the eMMC of the HY310
+# Every eMMC size seen on an H713 board. Finding and reading a drive accepts all of them;
+# a write takes the size of the board identified on the device (its profile's
+# layout.disk_sectors), and an image only a device of the size its table was cut for
+# (h713-install _sizes_allowed/_install, h713.layout.partitions_for).
+SECTORS_KNOWN = (SECTORS_EXPECTED,
+                 15273600)           # 7.28 GiB + 3712 sectors -- HY300PRO-G-EU (26 partitions)
 
 # The secure-storage block is NEVER written, not even with --force. It belongs
 # to this one device and cannot be restored (doku/109 §2.3).
@@ -286,11 +292,13 @@ def device_kind(path):
     return None
 
 
-def find_drive(expected=SECTORS_EXPECTED):
+def find_drive(expected=SECTORS_KNOWN):
     """Look for the exposed drive: right size AND removable medium.
+    `expected` is one sector count or a tuple of them.
     The content check happens in device_kind()."""
     system = platform.system()
     hits = []
+    expected = (expected,) if isinstance(expected, int) else tuple(expected)
     if system == "Linux":
         for name in sorted(os.listdir("/sys/block")):
             if not name.startswith(("sd", "vd")):
@@ -302,7 +310,7 @@ def find_drive(expected=SECTORS_EXPECTED):
                     removable = f.read().strip() == "1"
             except OSError:
                 continue
-            if n == expected and removable:
+            if n in expected and removable:
                 hits.append(("/dev/" + name, n, removable))
     elif system == "Windows":
         for i in range(16):
@@ -313,7 +321,7 @@ def find_drive(expected=SECTORS_EXPECTED):
                 p.close()
             except OSError:
                 continue
-            if n == expected:
+            if n in expected:
                 hits.append((path, n, True))
     else:
         raise SystemExit("unsupported system: %s" % system)

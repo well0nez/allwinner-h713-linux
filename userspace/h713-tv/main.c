@@ -4685,7 +4685,7 @@ static void preset_names(char *buf, size_t n)
  * colortemperature 0). WHICH ProjectID this board carries is not readable
  * from /boot/mips, which holds all 13, so it is told: /etc/h713/board, written
  * by the installer out of the board profile, and where that is missing the
- * device tree (kernel patches 0160/0161). If none of it works the shipped
+ * device tree (kernel patches 0160/0161/0167). If none of it works the shipped
  * file applies exactly as before, with one journal line saying why.
  * ------------------------------------------------------------------ */
 
@@ -4695,6 +4695,7 @@ static const struct {
 } board_of_dt[] = {
 	{ "magcubic,hy310", 0x30 },		/* patch 0160 */
 	{ "magcubic,hy300-pro", 0x34 },	/* patch 0161 */
+	{ "magcubic,hy300pro-g-eu", 0x34 },	/* patch 0167 (GEU1) */
 };
 
 /* this board's ProjectID, or -1 with `why` saying what was missing */

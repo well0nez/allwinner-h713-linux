@@ -68,6 +68,7 @@ the board base, which boots nothing on purpose.
 | `hy200_qz713df_a1` | cstenger's DDR3 bench board - verified by him, not by us | 624 MHz | `sun50i-h713-hy200-qz713df-a1` |
 | `hy200_qz713_v2` | an LPDDR3 board revision neither of us has ever booted - unverified | 720 MHz | `sun50i-h713-hy200-qz713-v2` |
 | `hy300_pro` | the HY300 Pro of issue #1, DDR3 at the owner's own 636 MHz - TEST images only, nobody has reported a green run | 636 MHz | `sun50i-h713-hy300-pro` |
+| `hy300pro_g_eu` | the maintainer's own HY300 Pro (HY300PRO-G-EU): `hy310` with its device tree, name and tpr0..tpr2 - TEST images only, nobody has run it | 792 MHz | `sun50i-h713-hy300pro-g-eu` |
 | `h713_probe` | **not a board** - the read-only probe for boards nobody has measured, at the conservative 624 MHz so an unknown board is more likely to train. It keeps its own base rather than being a role, because the clock is the whole point of it | 624 MHz | `sun50i-h713-hy200-qz713df-a1` |
 
 The HY310 got a device tree of its own in stage 4. It is an include of the bench board's plus `model`

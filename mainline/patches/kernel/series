@@ -444,3 +444,7 @@
 #     0166a: the PA12 group of 0166 goes (AC200 clock, and "pwm5" is no function
 #     of our table - test8 lost its receiver and its login); the six words stay.
 0166a-arm64-dts-h713-hy300-pro-lamp-pwm-words-without-the-pa12-group.patch
+# 02.10.: the maintainer's own HY300 Pro (HY300PRO-G-EU) - the HY310's tree, its lamp's PWM words
+#   (channel 5, as its panel_config.ini says), its fan tacho PH13, no pwm-backlight or focus motor;
+#   the accelerometer node stays on so the first boot shows which chip is fitted (package GEU1)
+0167-arm64-dts-h713-add-the-hy300pro-g-eu-board-dts.patch

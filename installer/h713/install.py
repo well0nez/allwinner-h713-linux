@@ -29,7 +29,7 @@ import sys
 import time
 
 from . import mountfs
-from .blockdev import LOCK_FIRST, LOCK_LAST, SECT, SECTORS_EXPECTED
+from .blockdev import LOCK_FIRST, LOCK_LAST, SECT, SECTORS_KNOWN
 from .env import ENV_BYTES, ENV_CARRY_OVER, env_read, env_write
 from .log import Quiet, console
 from .util import duration, mib
@@ -399,9 +399,11 @@ def check_package(directory, d, log=console):
                            "they do not belong together"
                            % (hole["lba"], hole["lba"] + hole["sektoren"] - 1,
                               LOCK_FIRST, LOCK_LAST))
-    if d.get("disk_sektoren") != SECTORS_EXPECTED:
-        raise RuntimeError("the table is built for %s sectors, %d are expected here"
-                           % (d.get("disk_sektoren"), SECTORS_EXPECTED))
+    # Any eMMC size a board is known with (blockdev.SECTORS_KNOWN); that it is the size of
+    # the device in front of us is checked by h713-install before this runs (_install).
+    if d.get("disk_sektoren") not in SECTORS_KNOWN:
+        raise RuntimeError("the table is built for %s sectors, %s are expected here"
+                           % (d.get("disk_sektoren"), " or ".join(str(n) for n in SECTORS_KNOWN)))
 
 
 # ------------------------------------------------- the file set of layout v4
