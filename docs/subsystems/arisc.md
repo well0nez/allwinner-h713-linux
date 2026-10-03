@@ -114,7 +114,9 @@ better EDID, it is a different CEA extension: it adds 3840x2160p50/p60 and 4096x
 own mode table, so the receiver can never lock one of them; block 0 stops exactly where that table
 stops, at 4K30 / 297 MHz, which the HY310 does lock (`doku/128` §2). Advertising modes the chain
 cannot carry is worse than advertising fewer. The panel is not the argument on either board - both
-scale, and both firmwares lock 4K30.
+scale, and both firmwares lock 4K30. The mask therefore stays board policy; whoever wants block 1's
+1080p100/120 in front of a source gets it without the mask, through the receiver's `S_EDID` with
+that half alone (kernel `0136z`, `h713-tv ctl edid block1`, [hdmi-in.md](hdmi-in.md)).
 
 Four paths publish, and it is worth knowing which: the firmware's own init, the tail of `HostHDMIMAP`
 (writing the port map republishes all three ports as a side effect), `ResetEDIDModule`, and

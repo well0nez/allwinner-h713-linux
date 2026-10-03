@@ -19,7 +19,11 @@ from it - so a read-back is not byte-identical to what was written, and `VIDIOC_
 image as four blocks, not one. Which of the two blocks a port gets is a per-port bitmask inside the
 ARISC firmware and not a version number; this board serves the HDMI 1.4 block on purpose, because the
 2.0 block advertises four 4K50/60 modes the display firmware's own mode table cannot lock and lowers
-the TMDS ceiling while doing it ([arisc.md](arisc.md)).
+the TMDS ceiling while doing it ([arisc.md](arisc.md)). Since kernel `0136z` `S_EDID` also takes two
+blocks - one 256-byte EDID - and makes it the served half, the other half keeping what it held; that
+is how `h713-tv ctl edid block1` puts the 2.0 set with its 1080p100/120 in front of a source without
+touching the mask, and `umbau/work/FB-EDID/tables/edid-vs-firmware.csv` lists what each half offers
+against what the table locks.
 
 ## Signal, timings, source switch
 
@@ -131,9 +135,12 @@ not the same one as no signal at all.
 ## Limits
 
 **HDMI here is an input, never an output** - the projector has no HDMI-out; the imager is the only
-display. Unencrypted and HDCP 2.2 sources work: the 2.2 key is read from *your* device's own extraction
-at boot (`h713-hdcp-key.service`) and handed to the firmware during the probe; if it is missing, that one
-step is skipped and unencrypted sources are unaffected. **HDCP 1.4 is not supported** - a protected 1.4
+display. Unencrypted sources work. For HDCP 2.2 the key is read from *your* device's own extraction at
+boot (`h713-hdcp-key.service`) and handed over to the firmware during the probe, which accepts it - but
+its "LoadKey ok" is a format check, not a negotiation, and **a protected 2.2 source has not been tested
+yet**; `h713-tv ctl hdcp` shows what a source negotiates (the `hdcp` attribute of the hdmirx device,
+kernel 0168). If the key is missing, that one step is skipped and unencrypted sources are unaffected.
+**HDCP 1.4 is not supported** - a protected 1.4
 source will not decrypt (`doku/112`). Power and clock setup for the capture engine itself (TVFE/TVCAP,
 fabric routing) happens once, in U-Boot and the firmware, before Linux starts; this driver assumes it and
 does not manage it, which is also why the mainline `tvtop` driver is not needed here (`doku/71`).

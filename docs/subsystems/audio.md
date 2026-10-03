@@ -56,9 +56,15 @@ judgement, not an instrument measurement.
 The codec's DAC accepts exactly one input at a time - the DSP's I2S output, or the ordinary Linux PCM
 device - never both. A PC source that keeps its HDMI audio stream open (as most do, even on silence) can
 therefore block device sounds entirely; the vendor stack avoided this by mixing both streams inside the
-DSP's own graph before the codec ever sees them. That mixing path is understood in outline (a second DSP
-graph, an audio "bridge" block that would carry the Linux PCM stream into it) but **not started** -
-planned as its own piece of work, not a gap in what shipped.
+DSP's own graph before the codec ever sees them. That mixing path is now built and was measured once, but
+is **not yet on main**: kernel patches 0169/0170 add a playback PCM `hw:hy310hdmi,0` (48 kHz, S16_LE,
+stereo) whose DMA ring feeds the audio bridge's input stream 2 and joins the HDMI branch inside the DSP
+(DECODER3 into MIXER2, the vendor's path 0x89); `h713-tv` keeps the DAC on I2S and mutes the HDMI branch
+alone in silence; `rootfs/overlay/usr/share/alsa/cards/H713-MSP.conf` makes that PCM ALSA's `default`
+while the card is present (a board without it keeps `plughw:0`, the codec), and `/etc/asound.conf` names
+the two paths `bridge` and `codec`. The first device test (27.09.2026) heard both tones together and the
+volume and mute acting on both; open before integration are the mixed levels (HDMI drops 3.5 dB while the
+bridge plays) and the driver's two test knobs. Plan and state: doku/102-plan-audio-mischung.md, section 6.
 
 Details: doku/100-plan-hdmi-audio.md, doku/101-plan-audio-treiber.md, doku/102-plan-audio-mischung.md,
 doku/00-STATUS.md

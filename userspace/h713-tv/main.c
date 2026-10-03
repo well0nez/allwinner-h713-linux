@@ -1725,18 +1725,31 @@ static const char *ctrl_menu_text(int fd, const struct v4l2_query_ext_ctrl *q,
  *    loud again -- not a re-route.
  *  - The DSP has a volume of its own (0x0052/0x0053 in quarter dB, measured:
  *    0xFB00 = -5 dB gave -4.9 dB at the microphone, S16 18:00) and the master
- *    mute above. Both stay with the automaton: the volume is a fixed level
- *    match between HDMI and the box's own tones (0 dB unless --hdmi-trim says
- *    otherwise), the mute is the automaton's silence. What the listener
- *    turns with "ctl volume" is the *codec's* "DAC Playback Volume", because
- *    that one sits behind both sources and a volume that changed with the
- *    input would be two volumes (decision 08.09. 22:10). "ctl mute" takes
- *    the DSP mute and, where the codec offers a switch, that one too.
+ *    mute above. The mute is the automaton's silence. The volume carries the
+ *    listener's slider on the stock curve where the DSP mixes both sources
+ *    (kernel 0169); otherwise it is a fixed level match between HDMI and the
+ *    box's own tones (0 dB unless --hdmi-trim says otherwise) and the slider
+ *    is the *codec's* "DAC Playback Volume", because that one then sits
+ *    behind both sources and a volume that changed with the input would be
+ *    two volumes (decision 08.09. 22:10; the curve: FB-DSPVOL). "ctl mute"
+ *    takes the DSP mute and, where the codec offers a switch, that one too.
  *  - "Present" follows the source's own decisions and can flap while a mode
  *    or a stream changes. The way up is therefore debounced by 100 ms: the
  *    path is set up and stays muted, and only a source that is still there
  *    afterwards is let through. The way *down* is never debounced -- silence
  *    is never worth waiting for.
+ *
+ * The box's own sounds (plan doku/102, package I). The DAC takes one source,
+ * and a PC keeps its HDMI stream open even in silence, so device sounds on
+ * the codec's own PCM were inaudible whenever HDMI played. With kernel 0169
+ * the MSP card carries a playback PCM of its own (hw:hy310hdmi,0, 48 kHz,
+ * S16_LE, stereo) that the DSP mixes into the HDMI audio, and a second mute,
+ * "HDMI Input Mute Switch", that silences the HDMI branch alone. Where that
+ * control exists this program keeps the DAC on I2S for good and parks the
+ * codec at 48 kHz whenever HDMI is silent, so that PCM is audible with a
+ * picture, without one and with a silent source; the automaton's silence is
+ * the input mute, and the master mute belongs to "ctl mute" alone. Without
+ * the control (an older kernel) everything behaves as before.
  *
  * All of this is optional. Without the cards, without their controls or
  * without the capture node's audio status the audio part switches itself
@@ -1750,6 +1763,7 @@ static const char *ctrl_menu_text(int fd, const struct v4l2_query_ext_ctrl *q,
 #define AUDIO_C_SWITCH		"HDMI Audio Switch"
 #define AUDIO_C_VOLUME		"HDMI Playback Volume"
 #define AUDIO_C_MUTE		"HDMI Mute Switch"
+#define AUDIO_C_INMUTE		"HDMI Input Mute Switch"	/* kernel 0169, optional */
 #define AUDIO_C_SOURCE		"DAC Source"
 #define AUDIO_C_RATE		"I2S Rate"
 #define AUDIO_V_PRESENT		"H713 Audio Present"	/* V4L2, 0136 */
@@ -1775,6 +1789,8 @@ static const char *const audio_codec_mutes[] = {
 #define AUDIO_SEARCH_MS		1000	/* retry while a card is still missing */
 #define AUDIO_SEARCH_MAX	30	/* ... this often, then it stays off */
 #define AUDIO_TRIM_MIN_DB	-100	/* --hdmi-trim: the DSP volume's floor (doku/101 section 2) */
+#define AUDIO_BRIDGE_RATE	"48000"	/* the bridge PCM's fixed rate (kernel 0169) */
+#define AUDIO_CURVE_OFF_Q	-512	/* slider 0: the stock curve's off (-128 dB) */
 
 struct alsa_card {
 	snd_ctl_t *ctl;
@@ -1808,6 +1824,8 @@ struct audio {
 	unsigned int applied_rate;	/* the rate "I2S Rate" is programmed for */
 	long trim_q;			/* --hdmi-trim in quarter dB, <= 0 */
 	bool have_dacvol;		/* the codec has AUDIO_C_DACVOL */
+	bool have_inmute;		/* the MSP has AUDIO_C_INMUTE: the mixed path */
+	bool dsp_stage;			/* the slider's stage is the DSP (= have_inmute) */
 	const char *codec_mute;		/* its mute switch, or NULL */
 	int volume;			/* 0..100 as last asked for with ctl volume */
 	bool volume_set;		/* ... and not yet written (cards were missing) */
@@ -2001,55 +2019,58 @@ static int alsa_enum_index(struct alsa_card *c, const char *name,
 	return -ENOENT;
 }
 
-/* the range the driver reports for an integer control */
-static int alsa_range(struct alsa_card *c, const char *name, long *min,
-		      long *max)
-{
-	snd_ctl_elem_info_t *ei;
-
-	snd_ctl_elem_info_alloca(&ei);
-	if (!alsa_find(c, name, ei))
-		return -ENOENT;
-	if (snd_ctl_elem_info_get_type(ei) != SND_CTL_ELEM_TYPE_INTEGER)
-		return -EINVAL;
-	*min = snd_ctl_elem_info_get_min(ei);
-	*max = snd_ctl_elem_info_get_max(ei);
-
-	return 0;
-}
-
 /*
- * A raw value of a volume control as decibels, from the control's own TLV
- * -- the driver says what its steps mean, this program does not assume it
- * (the codec's DAC counts 1.16 dB steps, the DSP quarter dB). Empty when
- * the control has no readable TLV.
+ * A volume control's TLV and range -- the driver says what its steps mean,
+ * this program does not assume it (the codec's DAC counts 1.16 dB steps,
+ * the DSP quarter dB). False when the control has no readable TLV.
  */
-static const char *alsa_db_text(struct alsa_card *c, const char *name, long v,
-				char *buf, size_t len)
+static bool alsa_tlv(struct alsa_card *c, const char *name, unsigned int *tlv,
+		     size_t tlv_size, long *min, long *max)
 {
 	snd_ctl_elem_info_t *ei;
 	snd_ctl_elem_id_t *id;
-	unsigned int tlv[64];
-	long min, max, db;
 
-	buf[0] = '\0';
 	snd_ctl_elem_info_alloca(&ei);
 	if (!alsa_find(c, name, ei) || !snd_ctl_elem_info_is_tlv_readable(ei) ||
 	    snd_ctl_elem_info_get_type(ei) != SND_CTL_ELEM_TYPE_INTEGER)
-		return buf;
+		return false;
 	snd_ctl_elem_id_alloca(&id);
 	snd_ctl_elem_info_get_id(ei, id);
-	if (snd_ctl_elem_tlv_read(c->ctl, id, tlv, sizeof(tlv)) < 0)
-		return buf;
-	min = snd_ctl_elem_info_get_min(ei);
-	max = snd_ctl_elem_info_get_max(ei);
-	if (snd_tlv_convert_to_dB(tlv, min, max, v, &db) < 0)
-		return buf;
-	/* db is in 1/100 dB; one decimal is what a listener can hear */
-	snprintf(buf, len, "%s%ld.%ld dB", db < 0 ? "-" : "", labs(db) / 100,
-		 (labs(db) % 100) / 10);
+	if (snd_ctl_elem_tlv_read(c->ctl, id, tlv, tlv_size) < 0)
+		return false;
+	*min = snd_ctl_elem_info_get_min(ei);
+	*max = snd_ctl_elem_info_get_max(ei);
 
-	return buf;
+	return true;
+}
+
+/* a raw value of a volume control as 1/100 dB */
+static bool alsa_db(struct alsa_card *c, const char *name, long v, long *db)
+{
+	unsigned int tlv[64];
+	long min, max;
+
+	return alsa_tlv(c, name, tlv, sizeof(tlv), &min, &max) &&
+	       snd_tlv_convert_to_dB(tlv, min, max, v, db) >= 0;
+}
+
+/*
+ * 1/100 dB -> the raw value of a volume control: the nearer of the two
+ * neighbouring steps, clamped into the control's range; -1 without a TLV.
+ */
+static long alsa_raw_from_db(struct alsa_card *c, const char *name, long db)
+{
+	unsigned int tlv[64];
+	long min, max, lo, hi, dlo, dhi;
+
+	if (!alsa_tlv(c, name, tlv, sizeof(tlv), &min, &max) ||
+	    snd_tlv_convert_from_dB(tlv, min, max, db, &lo, 0) < 0 ||
+	    snd_tlv_convert_from_dB(tlv, min, max, db, &hi, 1) < 0 ||
+	    snd_tlv_convert_to_dB(tlv, min, max, lo, &dlo) < 0 ||
+	    snd_tlv_convert_to_dB(tlv, min, max, hi, &dhi) < 0)
+		return -1;
+
+	return labs(dhi - db) < labs(db - dlo) ? hi : lo;
 }
 
 /*
@@ -2128,6 +2149,51 @@ static bool card_sysfs(const struct alsa_card *c, const char *attr, char *buf,
 	return true;
 }
 
+/* one "key: value" line of a PCM's proc file: the value's first word, no unit */
+static void proc_value(const char *line, const char *key, char *dst, size_t len)
+{
+	size_t k = strlen(key);
+
+	if (strncmp(line, key, k) || (line[k] != ':' && line[k] != ' ') ||
+	    !(line = strchr(line + k, ':')))
+		return;
+	line += strspn(line, ": ");
+	snprintf(dst, len, "%.*s", (int)strcspn(line, " \n"), line);
+}
+
+/*
+ * A card's first playback PCM out of /proc/asound/cardN/pcm0p/sub0: "closed",
+ * or its state, the pid that holds it and its hw_params -- what tells a program
+ * that claims to play from one that holds the device. A test hands in a copy.
+ */
+static const char *pcm_state_text(const char *dir, char *buf, size_t len)
+{
+	static const char *const key[] = { "state", "owner_pid", "rate", "format",
+					   "channels", "period_size", "buffer_size" };
+	char val[7][16] = { "" }, path[96], line[96];
+	unsigned int i, k;
+	FILE *f;
+
+	for (i = 0; i < 2; i++) {
+		snprintf(path, sizeof(path), "%s/%s", dir, i ? "hw_params" : "status");
+		f = fopen(path, "r");
+		if (!f)
+			break;
+		while (fgets(line, sizeof(line), f))
+			for (k = 0; k < 7; k++)
+				proc_value(line, key[k], val[k], sizeof(val[k]));
+		fclose(f);
+	}
+	if (!val[0][0])		/* no such card, or "closed": nobody holds it */
+		snprintf(buf, len, "%s", i ? "closed" : "no PCM");
+	else if (!val[2][0])	/* opened, hw_params not set yet */
+		snprintf(buf, len, "%s by pid %s, no hw_params yet", val[0], val[1]);
+	else
+		snprintf(buf, len, "%s by pid %s, %s Hz %s %s ch, period %s of %s frames",
+			 val[0], val[1], val[2], val[3], val[4], val[5], val[6]);
+	return buf;
+}
+
 /* ------------------------------------------------------------------ *
  * The two timers
  *
@@ -2204,65 +2270,101 @@ static void audio_put_enum(struct audio *a, struct alsa_card *c,
 }
 
 /* ------------------------------------------------------------------ *
- * The listener's volume: the codec's "DAC Playback Volume"
+ * The listener's volume: the stock curve on one stage
  *
- * 0..100 is mapped linearly onto the control's own range (0 = its minimum,
- * 100 = its maximum), and what that means in dB the control's TLV says --
- * on this codec 63 steps of 1.16 dB, so 50 is about -36 dB and 0 is
- * -73 dB, quiet but not off; off is "ctl mute". The card is the owner of
- * the value: this program reads it back for every answer instead of
- * repeating what it last wrote, so an "amixer" from elsewhere shows up in
- * "ctl status" rather than being overwritten at the next event.
+ * The slider 0..100 runs on the stock curve (FB-DSPVOL): the 101 quarter-dB
+ * values of [Volume] volume_curve[00..100] in the stock
+ * /vendor/etc/tvconfig/audio_config.ini, which the stock HAL (Set_Volume
+ * @0x10194 in audio.primary.ares.so) writes unchanged into the DSP's
+ * VOLUME1/2 (0x0052/0x0053): two linear pieces, 1..28 in half-dB steps
+ * (-41 .. -27.5 dB), 29..100 in quarter-dB steps (-27.25 .. -9.5 dB), 0 the
+ * vendor's off (-128 dB). Its stage is the DSP's "HDMI Playback Volume" (the
+ * vendor's) where the DSP mixes the box's own sounds into HDMI (kernel 0169,
+ * seen as "HDMI Input Mute Switch"), else the codec's "DAC Playback Volume",
+ * because on the older kernel that is where both sources meet (decision
+ * 08.09. 22:10); the other stage stays at 0 dB, the DSP also carries the
+ * HDMI trim. The card is the owner of the value: this program reads the
+ * stage back for every answer (the curve backwards) instead of repeating
+ * what it last wrote, so an "amixer" from elsewhere shows up in "ctl status".
  * ------------------------------------------------------------------ */
 
-/* 0..100 -> control value, and back; -1 when there is no such control */
-static long audio_volume_to_raw(struct audio *a, int n)
+/* slider -> quarter dB */
+static long audio_curve_q(int n)
 {
-	long min, max;
+	if (n <= 0)
+		return AUDIO_CURVE_OFF_Q;
 
-	if (!a->have_dacvol || alsa_range(&a->codec, AUDIO_C_DACVOL, &min, &max))
-		return -1;
-
-	return min + ((max - min) * n + 50) / 100;
+	return n <= 28 ? 2 * n - 166 : n - 138;
 }
 
-static int audio_volume_read(struct audio *a, char *db, size_t len)
+/* quarter dB -> the nearest slider position; below 1 (-41 dB) is off */
+static int audio_curve_n(long q)
 {
-	long min, max, v;
+	if (q < -164)
+		return 0;
+	if (q <= -110)
+		return (int)((q + 167) / 2);
 
-	db[0] = '\0';
-	if (!a->have_dacvol || alsa_range(&a->codec, AUDIO_C_DACVOL, &min, &max) ||
-	    alsa_read(&a->codec, AUDIO_C_DACVOL, &v) || max <= min)
-		return -1;
-	alsa_db_text(&a->codec, AUDIO_C_DACVOL, v, db, len);
-
-	return (int)(((v - min) * 100 + (max - min) / 2) / (max - min));
+	return q > -38 ? 100 : (int)(q + 138);
 }
 
-/* write the last "ctl volume" -- now, or as soon as the codec is there */
+static const char *audio_stage_name(const struct audio *a)
+{
+	return a->dsp_stage ? AUDIO_C_VOLUME : AUDIO_C_DACVOL;
+}
+
+/* the DSP's level: the slider on the DSP stage, else 0 dB; plus the trim */
+static long audio_dsp_raw(struct audio *a)
+{
+	long q = a->dsp_stage ? audio_curve_q(a->volume) : 0;
+
+	return alsa_raw_from_db(&a->msp, AUDIO_C_VOLUME, (q + a->trim_q) * 25);
+}
+
+/* the stage read back: the slider it stands for, and its dB (1/100) */
+static int audio_volume_read(struct audio *a, long *db)
+{
+	struct alsa_card *c = a->dsp_stage ? &a->msp : &a->codec;
+	long trim = a->dsp_stage ? a->trim_q : 0, v;
+
+	if ((!a->dsp_stage && !a->have_dacvol) ||
+	    alsa_read(c, audio_stage_name(a), &v) ||
+	    !alsa_db(c, audio_stage_name(a), v, db))
+		return -1;
+	/* what was asked for, as long as the card still holds it */
+	if (alsa_raw_from_db(c, audio_stage_name(a),
+			     (audio_curve_q(a->volume) + trim) * 25) == v)
+		return a->volume;
+
+	return audio_curve_n((*db + (*db < 0 ? -12 : 12)) / 25 - trim);
+}
+
+/* write the last "ctl volume" -- now, or as soon as the cards are there */
 static void audio_volume_apply(struct audio *a)
 {
-	long raw = audio_volume_to_raw(a, a->volume);
+	long q = a->dsp_stage ? 0 : audio_curve_q(a->volume), raw;
 
-	if (raw < 0)
-		return;
-	audio_put(a, &a->codec, AUDIO_C_DACVOL, raw);
+	raw = audio_dsp_raw(a);
+	if (raw >= 0)
+		audio_put(a, &a->msp, AUDIO_C_VOLUME, raw);
+	raw = a->have_dacvol ? alsa_raw_from_db(&a->codec, AUDIO_C_DACVOL, q * 25) : -1;
+	if (raw >= 0)
+		audio_put(a, &a->codec, AUDIO_C_DACVOL, raw);
 	a->volume_set = false;
 }
 
-/* "Lautstaerke 50 (-36,2 dB)" or, without the control, why not */
+/* "volume 50 (-22.0 dB)" or, without the control, why not */
 static const char *audio_volume_text(struct audio *a, char *buf, size_t len)
 {
-	char db[24];
-	int n = audio_volume_read(a, db, sizeof(db));
+	long db;
+	int n = audio_volume_read(a, &db);
 
 	if (n < 0)
 		snprintf(buf, len, "volume without a control (\"%s\" is missing)",
-			 AUDIO_C_DACVOL);
-	else if (db[0])
-		snprintf(buf, len, "volume %d (%s)", n, db);
-	else
-		snprintf(buf, len, "volume %d", n);
+			 audio_stage_name(a));
+	else	/* one decimal is what a listener can hear */
+		snprintf(buf, len, "volume %d (%s%ld.%ld dB)", n, db < 0 ? "-" : "",
+			 labs(db) / 100, (labs(db) % 100) / 10);
 
 	return buf;
 }
@@ -2317,10 +2419,28 @@ static bool audio_trim_parse(const char *text, long *q)
  */
 static void audio_silence(struct audio *a, bool picture)
 {
+	if (a->have_inmute) {
+		/*
+		 * The mixed path: HDMI goes quiet behind its own mute, the DAC
+		 * stays on I2S and the codec is parked at the bridge PCM's rate,
+		 * so the box's own sounds keep playing through the DSP.
+		 */
+		audio_put(a, &a->msp, AUDIO_C_INMUTE, 1);
+		audio_put(a, &a->msp, AUDIO_C_SWITCH, 0);
+		audio_put_enum(a, &a->codec, AUDIO_C_RATE, AUDIO_BRIDGE_RATE);
+		audio_put_enum(a, &a->codec, AUDIO_C_SOURCE, "I2S");
+		return;
+	}
 	audio_put(a, &a->msp, AUDIO_C_MUTE, 1);
 	audio_put(a, &a->msp, AUDIO_C_SWITCH, 0);
 	if (!picture)
 		audio_put_enum(a, &a->codec, AUDIO_C_SOURCE, "APB");
+}
+
+/* the mute the automaton hides its changes behind: the branch's own, if there is one */
+static const char *audio_auto_mute(const struct audio *a)
+{
+	return a->have_inmute ? AUDIO_C_INMUTE : AUDIO_C_MUTE;
 }
 
 /* the path, still muted: rate first, then the route, then the switch */
@@ -2328,7 +2448,7 @@ static void audio_route(struct audio *a, unsigned int rate)
 {
 	char text[16];
 
-	audio_put(a, &a->msp, AUDIO_C_MUTE, 1);
+	audio_put(a, &a->msp, audio_auto_mute(a), 1);
 	if (rate) {
 		snprintf(text, sizeof(text), "%u", rate);
 		audio_put_enum(a, &a->codec, AUDIO_C_RATE, text);
@@ -2348,17 +2468,26 @@ static void audio_route(struct audio *a, unsigned int rate)
 static void audio_level(struct audio *a)
 {
 	bool quiet = a->mute || a->state != AUDIO_LOUD;
-	long min, max;
+	long raw;
 
 	if (quiet)
-		audio_put(a, &a->msp, AUDIO_C_MUTE, 1);
+		audio_put(a, &a->msp, audio_auto_mute(a), 1);
+	/*
+	 * On the mixed path the master mute is the listener's alone: it sits
+	 * behind HDMI and the box's own sounds, which is what "ctl mute" means.
+	 */
+	if (a->have_inmute)
+		audio_put(a, &a->msp, AUDIO_C_MUTE, a->mute);
 	if (a->codec_mute)
 		audio_put(a, &a->codec, a->codec_mute, !a->mute);
-	/* 0 dB is the top of the control (doku/101 section 2), the trim below it */
-	if (!alsa_range(&a->msp, AUDIO_C_VOLUME, &min, &max))
-		audio_put(a, &a->msp, AUDIO_C_VOLUME, max + a->trim_q);
+	/* the slider, or 0 dB (the top, doku/101 section 2); the trim below it */
+	raw = audio_dsp_raw(a);
+	if (raw >= 0)
+		audio_put(a, &a->msp, AUDIO_C_VOLUME, raw);
 	if (!quiet)
-		audio_put(a, &a->msp, AUDIO_C_MUTE, 0);
+		audio_put(a, &a->msp, audio_auto_mute(a), 0);
+	else if (a->have_inmute && a->state == AUDIO_LOUD)
+		audio_put(a, &a->msp, AUDIO_C_INMUTE, 0);
 }
 
 /* ------------------------------------------------------------------ *
@@ -2534,20 +2663,56 @@ static bool audio_search(struct audio *a)
 		static const char *const dacvol[] = { AUDIO_C_DACVOL, NULL };
 		snd_ctl_elem_info_t *ei;
 		unsigned int i;
+		long db;
+		int n;
+
+		static const char *const inmute[] = { AUDIO_C_INMUTE, NULL };
 
 		a->enabled = true;
 		a->searching = false;
 		a->why[0] = '\0';
 		/* the listener's two controls are welcome, not required */
 		a->have_dacvol = alsa_has(&a->codec, dacvol);
+		a->have_inmute = alsa_has(&a->msp, inmute);
 		a->codec_mute = NULL;
 		snd_ctl_elem_info_alloca(&ei);
 		for (i = 0; audio_codec_mutes[i] && !a->codec_mute; i++)
 			if (alsa_find(&a->codec, audio_codec_mutes[i], ei))
 				a->codec_mute = audio_codec_mutes[i];
-		/* a volume or mute asked for while the cards were missing is owed */
+		/*
+		 * The mixed path starts parked: HDMI muted at its input, DAC on
+		 * I2S, codec at 48 kHz -- the box's own sounds are audible from
+		 * this moment, whether a picture ever comes or not.
+		 */
+		if (a->have_inmute) {
+			audio_silence(a, false);
+			/*
+			 * The master mute is ours alone on this path, and alsactl may
+			 * have restored the old automaton's exit state (muted): set it
+			 * to what the listener asked, or the box's sounds stay silent
+			 * until an HDMI source has played once (deep review F4).
+			 */
+			audio_put(a, &a->msp, AUDIO_C_MUTE, a->mute);
+		}
+		/* the slider's stage: the DSP where it mixes the box's sounds */
+		a->dsp_stage = a->have_inmute;
+		/*
+		 * A volume or mute asked for while the cards were missing is
+		 * owed; otherwise the slider starts where its stage stands.
+		 */
 		if (a->volume_set)
 			audio_volume_apply(a);
+		else if ((n = audio_volume_read(a, &db)) >= 0) {
+			a->volume = n;
+			/*
+			 * A stage above the curve's top (0 dB at boot, or a level the
+			 * old automaton left and alsactl restored) is put onto the
+			 * curve, else the box plays 9.5 dB louder than the slider's
+			 * maximum until the first change (deep review F3).
+			 */
+			if (db > (audio_curve_q(100) + (a->dsp_stage ? a->trim_q : 0)) * 25 + 12)
+				audio_volume_apply(a);
+		}
 		if (a->mute)
 			audio_level(a);
 		return true;
@@ -2561,6 +2726,8 @@ static bool audio_search(struct audio *a)
 	a->msp.index = -1;
 	a->codec.index = -1;
 	a->have_dacvol = false;
+	a->have_inmute = false;
+	a->dsp_stage = false;
 	a->codec_mute = NULL;
 	a->enabled = false;
 	snprintf(a->why, sizeof(a->why),
@@ -2691,11 +2858,15 @@ static void audio_close(struct audio *a)
 		a->state = AUDIO_STILL;
 		/*
 		 * A "ctl mute" is this program's, not the box's: it does not
-		 * outlive the process on the codec, or the next aplay would
-		 * be silent for a reason nobody can see any more.
+		 * outlive the process on the codec or in the DSP, or the next
+		 * aplay would be silent for a reason nobody can see any more.
+		 * On the mixed path the DAC stays on I2S: the DSP keeps mixing
+		 * without this program, and hw:hy310hdmi,0 keeps playing.
 		 */
 		if (a->mute && a->codec_mute)
 			audio_put(a, &a->codec, a->codec_mute, 1);
+		if (a->mute && a->have_inmute)
+			audio_put(a, &a->msp, AUDIO_C_MUTE, 0);
 	}
 	if (a->msp.ctl)
 		snd_ctl_close(a->msp.ctl);
@@ -2791,6 +2962,8 @@ enum policy { POLICY_AUTO, POLICY_OFF };
  *       preset = NAME|last      which picture preset to come up with (11.09.)
  *       data = DIR | none       the extracted vendor data; none = do not use it
  *       calculator = PATH|none  h713-pq; none = do not compute anything
+ *       edid = block0 | block1  which half of the EDID file port 0 serves
+ *                               (FB-EDID); absent: the driver's default, block 0
  *
  * The keys are the file format, and since v0.8-beta they speak English like
  * the values. Their German spellings ("zustand", "daten", "rechner") and the
@@ -2843,6 +3016,7 @@ struct conf {
 	char preset[32];	/* preset = NAME | last; "" = not said here */
 	char data[160];	/* data = DIR; "none" = do not use vendor data */
 	char calculator[160];	/* calculator = PATH; "none" = do not compute */
+	int edid;		/* edid = block0 | block1; -1 = not said */
 	char input[24];	/* --input; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
@@ -2893,6 +3067,7 @@ static void conf_read(struct conf *c)
 	c->keep = true;
 	snprintf(c->state_path, sizeof(c->state_path), "%s", STATE_FILE);
 	c->preset[0] = '\0';
+	c->edid = -1;
 	snprintf(c->data, sizeof(c->data), "%s", PQ_DATA);
 	snprintf(c->calculator, sizeof(c->calculator), "%s", PQ_BIN);
 	snprintf(c->input, sizeof(c->input), "%s", PQ_INPUT);
@@ -2981,8 +3156,16 @@ static void conf_read(struct conf *c)
 				     c->path, n, key, val, PQ_BIN);
 			else
 				snprintf(c->calculator, sizeof(c->calculator), "%s", val);
+		} else if (!strcasecmp(key, "edid")) {
+			if (!strcasecmp(val, "block0") || !strcmp(val, "0"))
+				c->edid = 0;
+			else if (!strcasecmp(val, "block1") || !strcmp(val, "1"))
+				c->edid = 1;
+			else
+				warn("%s:%u: edid = \"%s\" unknown (block0 block1) -- the driver's default stays",
+				     c->path, n, val);
 		} else {
-			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid)",
 			     c->path, n, key);
 		}
 	}
@@ -3111,7 +3294,10 @@ static enum policy start_policy(struct control *c)
 }
 
 struct reply {
-	char buf[4096];
+	/* status is the longest answer: its own lines, then the kernel's,
+	 * cpu_comm's, the ARISC's and the five HDCP lines (S12 R7 wants them
+	 * all in one place); 4 KiB was tight for that */
+	char buf[8192];
 	size_t len;
 	bool failed;
 };
@@ -3252,7 +3438,7 @@ static void reply_file_lines(struct reply *r, const char *path,
 static void cmd_status_audio(struct reply *r, struct audio *a, bool live)
 {
 	char text[64], trim[40], sw[32], vol[32], mu[32], src[32], rate[32];
-	char dac[32], cmu[32];
+	char dac[32], cmu[32], imu[32], pcm[96], dir[48];
 
 	if (a->policy == AUDIO_NONE) {
 		reply_add(r, "audio           not touched (-a none)\n");
@@ -3291,10 +3477,15 @@ static void cmd_status_audio(struct reply *r, struct audio *a, bool live)
 		snprintf(rate, sizeof(rate), "-");
 		snprintf(dac, sizeof(dac), "-");
 		snprintf(cmu, sizeof(cmu), "-");
+		snprintf(imu, sizeof(imu), "-");
 	} else {
 		alsa_read_text(&a->msp, AUDIO_C_SWITCH, sw, sizeof(sw));
 		alsa_read_text(&a->msp, AUDIO_C_VOLUME, vol, sizeof(vol));
 		alsa_read_text(&a->msp, AUDIO_C_MUTE, mu, sizeof(mu));
+		if (a->have_inmute)
+			alsa_read_text(&a->msp, AUDIO_C_INMUTE, imu, sizeof(imu));
+		else
+			snprintf(imu, sizeof(imu), "none");
 		alsa_read_text(&a->codec, AUDIO_C_SOURCE, src, sizeof(src));
 		alsa_read_text(&a->codec, AUDIO_C_RATE, rate, sizeof(rate));
 		if (a->have_dacvol)
@@ -3306,11 +3497,20 @@ static void cmd_status_audio(struct reply *r, struct audio *a, bool live)
 		else
 			snprintf(cmu, sizeof(cmu), "none");
 	}
-	reply_add(r, "audio cards     %s (card %d): Switch %s, Volume %s, Mute %s | %s (card %d): Source %s, Rate %s, DAC Volume %s, switch %s%s%s\n",
-		  a->msp.id, a->msp.index, sw, vol, mu, a->codec.id,
+	reply_add(r, "audio cards     %s (card %d): Switch %s, Volume %s, Mute %s, Input Mute %s | %s (card %d): Source %s, Rate %s, DAC Volume %s, switch %s%s%s\n",
+		  a->msp.id, a->msp.index, sw, vol, mu, imu, a->codec.id,
 		  a->codec.index, src, rate, dac,
 		  a->codec_mute ? a->codec_mute : "", a->codec_mute ? " " : "",
 		  cmu);
+	/* the PCM's own state: two proc reads, no firmware -- brief skips them all the same */
+	snprintf(dir, sizeof(dir), "/proc/asound/card%d/pcm0p/sub0",
+		 a->have_inmute ? a->msp.index : a->codec.index);
+	if (a->have_inmute)
+		reply_add(r, "audio sounds    the box's own sounds: hw:%s,0 (48 kHz, mixed into HDMI by the DSP), the DAC stays on I2S; PCM %s\n",
+			  a->msp.id, live ? pcm_state_text(dir, pcm, sizeof(pcm)) : "-");
+	else
+		reply_add(r, "audio sounds    the box's own sounds: hw:%s,0 (codec APB) -- audible only while HDMI is silent (no bridge PCM, kernel before 0169); PCM %s\n",
+			  a->codec.id, live ? pcm_state_text(dir, pcm, sizeof(pcm)) : "-");
 	if (!a->have_source)
 		reply_add(r, "audio source    no controls \"%s\"/\"%s\"/\"%s\" on the capture node (kernel 0136)\n",
 			  AUDIO_V_PRESENT, AUDIO_V_RATE, AUDIO_V_COMPRESSED);
@@ -3331,6 +3531,7 @@ static void cmd_status_audio(struct reply *r, struct audio *a, bool live)
  * declared here so the status keeps reading top to bottom.
  */
 static void cmd_status_picture_values(struct reply *r);
+static void cmd_status_edid(struct reply *r, struct capture *cap);
 
 static double status_ms(struct timespec *a)
 {
@@ -3341,6 +3542,29 @@ static double status_ms(struct timespec *a)
 	ms = (b.tv_sec - a->tv_sec) * 1e3 + (b.tv_nsec - a->tv_nsec) / 1e6;
 	*a = b;
 	return ms;
+}
+
+/*
+ * HDCP, as the kernel's hdcp file says it (kernel 0174): five lines copied
+ * through. "version:" and "authenticated:" are the two to read before and
+ * after a protected source is plugged in; "firmware:" is the display
+ * firmware's own last word on it, out of its log ring. The file is a sysfs
+ * attribute of the hdmirx platform device, which is the parent of the video
+ * node -- sysfs and not debugfs, because the release kernel has no debugfs
+ * ("unknown filesystem type" on the HY300 Pro's test image).
+ */
+static const char *const hdcp_keys[] = {
+	"version:", "authenticated:", "key-1.4:", "key-2.2:", "firmware:", NULL,
+};
+
+/* /sys/class/video4linux/videoN/device/hdcp for the node that was opened */
+static const char *hdcp_path(const struct capture *cap, char *buf, size_t len)
+{
+	const char *node = strrchr(cap->path, '/');
+
+	snprintf(buf, len, "/sys/class/video4linux/%s/device/hdcp",
+		 node ? node + 1 : cap->path);
+	return buf;
 }
 
 static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
@@ -3361,7 +3585,7 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	/* the last measurement evaluate() made -- a status is a report, not a probe (S12 R7) */
 	const struct v4l2_dv_timings *t = &cap->last_t;
 	int sig = cap->last_sig;
-	char sigbuf[64], colbuf[64];
+	char sigbuf[64], colbuf[64], hdcpbuf[64];
 
 	reply_add(r, "ok status\n");
 	reply_add(r, "mode            %s\n", c->policy == POLICY_OFF ? "off (console forced)"
@@ -3435,9 +3659,22 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		     st_head, st_colour, st_rest, st_pic, st_audio);
 	if (!live)
 		return;
+	cmd_status_edid(r, cap);
 	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel          ");
 	reply_file_lines(r, "/sys/kernel/debug/cpu_comm/watch", comm, "cpu_comm        ");
 	reply_file_lines(r, "/sys/kernel/debug/h713-arisc/status", edid, "arisc           ");
+	reply_file_lines(r, hdcp_path(cap, hdcpbuf, sizeof(hdcpbuf)), hdcp_keys,
+			 "hdcp            ");
+}
+
+/* "hdcp": the five HDCP lines alone, without the rest of status */
+static void cmd_hdcp(struct reply *r, struct capture *cap)
+{
+	char path[64];
+
+	reply_add(r, "ok hdcp\n");
+	reply_file_lines(r, hdcp_path(cap, path, sizeof(path)), hdcp_keys,
+			 "hdcp            ");
 }
 
 static void cmd_list(struct reply *r, struct capture *cap)
@@ -3633,6 +3870,12 @@ static void aspect_names(const struct display *d, char *buf, size_t n)
  * the driver's own 200 ms come on top. The program blocks for the whole
  * cycle, like it does for "rpc" -- about a second. Returns true when
  * evaluate() has to run.
+ *
+ * With half >= 0 the EDID that goes back is that half of the file alone, as
+ * one 256-byte EDID (S_EDID with two blocks, kernel 0136z): the firmware then
+ * serves it on port 0 whatever its per-port block mask says. That is how
+ * "edid = block1" in tv.conf and "ctl edid block1" put the file's second
+ * half - 1080p100/120 on the HY310 - in front of the source (FB-EDID).
  * ------------------------------------------------------------------ */
 
 #define EDID_BLOCKS	4
@@ -3699,18 +3942,26 @@ static bool edid_from_file(const char *path, uint8_t *out, char *why, size_t n)
 	return edid_plausible(out, why, n);
 }
 
+/* the half this program published last, -1 for none: the driver's default */
+static int edid_published = -1;
+static int edid_served = -3;	/* the half port 0 serves, as last known; -3: not read yet */
+
 static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
-		       struct retry *rt)
+		       struct retry *rt, int half)
 {
 	static uint8_t last_good[EDID_BYTES];
 	static bool have_last;
 	struct timespec low = { .tv_sec = 0, .tv_nsec = REPLUG_LOW_MS * 1000000L };
-	uint8_t buf[EDID_BYTES];
+	uint8_t buf[EDID_BYTES], file[EDID_BYTES];
 	struct v4l2_edid e;
-	char why[160];
+	char why[160], what[64] = "EDID loaded again";
 	const char *origin = "";
 	bool copy = false;
 
+	if (half >= 0 && !edid_from_file(EDID_FILE, file, why, sizeof(why))) {
+		reply_fail(r, "%s -- nothing to publish, HPD is not touched", why);
+		return false;
+	}
 	memset(&e, 0, sizeof(e));
 	e.blocks = EDID_BLOCKS;
 	e.edid = buf;
@@ -3760,21 +4011,175 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	memset(&e, 0, sizeof(e));
 	e.blocks = EDID_BLOCKS;
 	e.edid = buf;
+	if (half >= 0) {
+		e.blocks = EDID_BLOCKS / 2;
+		e.edid = file + half * (EDID_BYTES / 2);
+		snprintf(what, sizeof(what), "block %d of %s published", half, EDID_FILE);
+		origin = "";
+	}
 	if (ioctl(cap->fd, VIDIOC_S_EDID, &e)) {
 		int err = errno;
 
 		warn("replug          S_EDID(%u blocks): %s -- HPD is LOW, the source sees no device",
-		     EDID_BLOCKS, strerror(err));
+		     e.blocks, strerror(err));
 		reply_fail(r, "S_EDID with the EDID: %s -- HPD is low! run \"replug\" once more (it takes the copy), or rebind the driver",
 			   strerror(err));
 		return true;
 	}
-	info("replug          EDID loaded again%s, HPD high -- the source renegotiates",
-	     origin);
-	reply_add(r, "ok replug -- HPD %u ms low, EDID loaded again%s, the source renegotiates\n",
-		  REPLUG_LOW_MS, origin);
+	if (half >= 0)
+		edid_published = half;
+	if (half >= 0) {
+		edid_served = half;
+	} else {
+		/*
+		 * The four-block republish carries the half written last in its
+		 * first 256 bytes (the driver keeps it there, 0136z s_edid), so a
+		 * plain replug keeps the served half; only a copy from the file
+		 * is the first half again. Device test 02.10.2026, B1 step 6.
+		 */
+		uint8_t halves[EDID_BYTES];
+		unsigned int i, d0 = 0, d1 = 0;
+
+		if (edid_from_file(EDID_FILE, halves, why, sizeof(why))) {
+			for (i = 0; i < EDID_BYTES / 2; i++) {
+				d0 += buf[i] != halves[i];
+				d1 += buf[i] != halves[i + EDID_BYTES / 2];
+			}
+			edid_served = d0 > 8 && d1 > 8 ? -2 : (int)(d1 < d0);
+		}
+	}
+	info("replug          %s%s, HPD high -- the source renegotiates", what, origin);
+	reply_add(r, "ok replug -- HPD %u ms low, %s%s, the source renegotiates\n",
+		  REPLUG_LOW_MS, what, origin);
 
 	return true;
+}
+
+/*
+ * Which half of the EDID file the source is served: G_EDID reads the 256 bytes
+ * port 0 publishes (readable from boot on, unlike the four-block read), the
+ * firmware rewrites two of them and the file's halves differ in 73, so the
+ * half with the fewer differences is the one. -1: not readable, -2: neither.
+ */
+static int edid_half_served(struct capture *cap, uint8_t *served)
+{
+	struct v4l2_edid e = { .blocks = EDID_BLOCKS / 2, .edid = served };
+	uint8_t file[EDID_BYTES];
+	unsigned int i, diff[2] = { 0, 0 };
+	char why[160];
+
+	if (ioctl(cap->fd, VIDIOC_G_EDID, &e) || e.blocks != EDID_BLOCKS / 2)
+		return -1;
+	if (!edid_from_file(EDID_FILE, file, why, sizeof(why)))
+		return -2;
+	for (i = 0; i < EDID_BYTES; i++)
+		diff[i / (EDID_BYTES / 2)] += served[i % (EDID_BYTES / 2)] != file[i];
+	if (diff[0] > 8 && diff[1] > 8)
+		return -2;
+	return diff[1] < diff[0];
+}
+
+/*
+ * The served half, and how much of what it offers the firmware's table
+ * carries: ENUM_DV_TIMINGS lists the table's records with their CEA VIC
+ * (kernel 0136zb; an older kernel lists its presets there and this line then
+ * overstates), the CEA extension's video data block lists what the source is
+ * offered. A VIC that differs from a listed one in aspect only counts as
+ * that one, because the table is tagged with the lower of the two.
+ */
+/*
+ * The served half as last known. G_EDID with two blocks makes the ARISC take
+ * the EDID off all three ports for the read (RequestEDID, doku/82), which a
+ * status query must not do while a source may be reading it: one read at the
+ * first call, from then on the cache follows the publications, and the bytes
+ * come from the file's half (the firmware rewrites two of them, which the VIC
+ * list does not need). Deep review 27.09.2026.
+ */
+static int edid_served_known(struct capture *cap, uint8_t *served)
+{
+	uint8_t file[EDID_BYTES];
+	char why[160];
+
+	if (edid_served == -3)
+		edid_served = edid_half_served(cap, served);
+	else if (edid_served >= 0) {
+		if (!edid_from_file(EDID_FILE, file, why, sizeof(why)))
+			return -2;
+		memcpy(served, file + edid_served * (EDID_BYTES / 2), EDID_BYTES / 2);
+	}
+	return edid_served;
+}
+
+static void cmd_status_edid(struct reply *r, struct capture *cap)
+{
+	static const uint8_t twin[][2] = { { 3, 2 }, { 7, 6 }, { 18, 17 }, { 22, 21 } };
+	uint8_t served[EDID_BYTES / 2], have[16] = { 0 };	/* one bit per VIC 0..127 */
+	struct v4l2_enum_dv_timings et;
+	const uint8_t *ext = served + 128;
+	unsigned int i, k, n = 0, miss = 0;
+	char list[128] = "", which[96];
+	int half = edid_served_known(cap, served);
+
+	if (half == -1) {	/* no read-back: what this program published is still known */
+		if (edid_published < 0)
+			reply_add(r, "edid            the driver's default, block 0 of %s (nothing published from here; G_EDID: %s)\n", EDID_FILE, strerror(errno));
+		else
+			reply_add(r, "edid            block %d of %s published from here (G_EDID: %s)\n", edid_published, EDID_FILE, strerror(errno));
+		return;
+	}
+	memset(&et, 0, sizeof(et));
+	for (; !ioctl(cap->fd, VIDIOC_ENUM_DV_TIMINGS, &et); et.index++)
+		if ((et.timings.bt.flags & V4L2_DV_FL_HAS_CEA861_VIC) && et.timings.bt.cea861_vic < 128)
+			have[et.timings.bt.cea861_vic / 8] |= 1 << (et.timings.bt.cea861_vic % 8);
+	/* tag 2 is the video data block: one VIC per byte, 129..192 = 1..64 flagged native */
+	if (served[0x7e] && ext[0] == 0x02 && ext[2] >= 4)
+		for (i = 4; i < ext[2] && i < 127; i += (ext[i] & 0x1f) + 1) {
+			if (ext[i] >> 5 != 2)
+				continue;
+			for (k = 1; k <= (ext[i] & 0x1fu) && i + k < 127; k++, n++) {
+				unsigned int vic = ext[i + k], j, look;
+
+				vic = vic >= 129 && vic <= 192 ? vic - 128 : vic;
+				for (look = vic, j = 0; j < sizeof(twin) / sizeof(twin[0]); j++)
+					if (vic == twin[j][0])
+						look = twin[j][1];
+				if (look < 128 && have[look / 8] >> (look % 8) & 1)
+					continue;
+				miss++;
+				snprintf(list + strlen(list), sizeof(list) - strlen(list), " %u", vic);
+			}
+		}
+	if (half < 0)
+		snprintf(which, sizeof(which), "an EDID that is not a half of %s", EDID_FILE);
+	else
+		snprintf(which, sizeof(which), "block %d of %s", half, EDID_FILE);
+	reply_add(r, "edid            %s served (%u VICs offered, %s%s)\n", which, n,
+		  miss ? "not in the firmware's table: VIC" : "all in the firmware's table", list);
+}
+
+/*
+ * edid = block0 | block1 in tv.conf: once at start, before the first picture
+ * is judged. It costs the source one renegotiation (about a second of
+ * console), which is why the key is for the half the driver does not serve
+ * by itself. A refusal is a warning, not a stop.
+ */
+static void edid_apply_start(const struct conf *cf, struct capture *cap,
+			     struct display *d, struct retry *rt)
+{
+	uint8_t served[EDID_BYTES / 2];
+	struct reply r;
+
+	if (cf->edid < 0)
+		return;
+	/* already served, as after a restart of this program: no second sequence */
+	if (edid_served_known(cap, served) == cf->edid) {
+		info("edid            block %d of %s is served -- as tv.conf says", cf->edid, EDID_FILE);
+		return;
+	}
+	memset(&r, 0, sizeof(r));
+	cmd_replug(&r, cap, d, rt, cf->edid);
+	r.buf[strcspn(r.buf, "\n")] = '\0';
+	(r.failed ? warn : info)("edid            tv.conf edid = block%d: %s", cf->edid, r.buf);
 }
 
 /*
@@ -5369,9 +5774,9 @@ static bool cmd_audio(struct reply *r, struct audio *a, const char *text)
 }
 
 /*
- * volume [0..100]: the codec's "DAC Playback Volume", 0 = its minimum,
- * 100 = its maximum (see audio_volume_to_raw()). The answer is read back
- * from the card, not echoed. Without an argument: show.
+ * volume [0..100]: the slider on the stock curve (audio_curve_q()), on the
+ * DSP or on the codec (audio_volume_apply()). The answer is read back from
+ * the card, not echoed. Without an argument: show.
  */
 static void cmd_volume(struct reply *r, struct audio *a, const char *text)
 {
@@ -5385,7 +5790,7 @@ static void cmd_volume(struct reply *r, struct audio *a, const char *text)
 	if (text) {
 		n = strtol(text, &end, 0);
 		if (*end || n < 0 || n > 100) {
-			reply_fail(r, "volume needs 0..100 (0 = the quietest step, 100 = 0 dB), not \"%s\"",
+			reply_fail(r, "volume needs 0..100 (0 = the floor, 1 = -41 dB, 50 = -22 dB, 100 = -9.5 dB), not \"%s\"",
 				   text);
 			return;
 		}
@@ -5396,7 +5801,7 @@ static void cmd_volume(struct reply *r, struct audio *a, const char *text)
 				  a->why);
 			return;
 		}
-		if (!a->have_dacvol) {
+		if (!a->dsp_stage && !a->have_dacvol) {
 			reply_fail(r, "the card \"%s\" has no control \"%s\" -- the volume stays where it is",
 				   a->codec.name, AUDIO_C_DACVOL);
 			return;
@@ -5404,7 +5809,7 @@ static void cmd_volume(struct reply *r, struct audio *a, const char *text)
 		audio_volume_apply(a);
 		if (a->write_failed) {
 			reply_fail(r, "\"%s\" could not be written (see the journal)",
-				   AUDIO_C_DACVOL);
+				   audio_stage_name(a));
 			return;
 		}
 	} else if (!a->enabled) {
@@ -5485,13 +5890,18 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        aspect does. The firmware scales, the placement is ours\n"
 		  "  audio [on|off|auto]   audio: forced on, forced silent, or following the picture\n"
 		  "                        (default auto); without an argument: show it\n"
-		  "  volume [0..100]       volume of the codec (DAC Playback Volume, acts on HDMI and\n"
-		  "                        on the device's own tones): 0 = the quietest step, 100 = 0 dB; without a number: show it\n"
-		  "  mute [on|off]         mute: the DSP mute (HDMI) and the codec's switch\n"
+		  "  volume [0..100]       volume on the stock curve (0 = the floor, 1 = -41 dB, 50 = -22 dB,\n"
+		  "                        100 = -9.5 dB): in the DSP where it mixes the device's own tones\n"
+		  "                        (kernel 0169), else in the codec's DAC; without a number: show it\n"
+		  "  mute [on|off]         mute: the DSP master mute (HDMI and device sounds) and the codec's switch\n"
 		  "  resync                select the source again (S_INPUT 0 = SetSource HDMI-1)\n"
 		  "  replug                play an unplug and a replug to the source: HPD 300 ms low\n"
 		  "                        (S_EDID blocks=0), load the EDID again, HPD high (~1 s, blocks)\n"
+		  "  edid block0|block1    publish that half of " EDID_FILE " to the source (a replug\n"
+		  "                        with it); tv.conf \"edid =\" makes it the standing setting\n"
 		  "  warp [status]         has h713-warp the video plane? plus its counters\n"
+		  "  hdcp                  HDCP: version negotiated, authenticated, the 1.4 and 2.2 keys and the\n"
+		  "                        firmware's last HDCP line (sysfs, kernel 0174; status shows the same)\n"
 	  "  rpc NAME [ARG...]     an RPC to the firmware, e.g. rpc THal_Vp_DisableBlackScreen\n"
 		  "                        (raw; blocks the program for the duration of the call)\n"
 		  "  help                  this list\n"
@@ -5517,6 +5927,8 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 	if (!strcmp(cmd, "status") || !strcmp(cmd, "st")) {
 		/* "status brief": nothing read back from the cards or the kernel */
 		cmd_status(r, c, cap, d, a, !(a1 && !strcmp(a1, "brief")));
+	} else if (!strcmp(cmd, "hdcp")) {
+		cmd_hdcp(r, cap);
 	} else if (!strcmp(cmd, "auto") || !strcmp(cmd, "on")) {
 		c->policy = POLICY_AUTO;
 		state_write(c, c->policy);
@@ -5567,7 +5979,11 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		reply_add(r, "ok source selected again\n");
 		return true;
 	} else if (!strcmp(cmd, "replug")) {
-		return cmd_replug(r, cap, d, rt);
+		return cmd_replug(r, cap, d, rt, -1);
+	} else if (!strcmp(cmd, "edid") && a1 && (!strcmp(a1, "block0") || !strcmp(a1, "block1"))) {
+		return cmd_replug(r, cap, d, rt, a1[5] - '0');
+	} else if (!strcmp(cmd, "edid")) {
+		reply_fail(r, "edid needs block0 or block1 (h713-tv ctl help)");
 	} else if (!strcmp(cmd, "rpc") && a1) {
 		char call[CTL_MAXLINE];
 
@@ -5979,9 +6395,9 @@ int main(int argc, char **argv)
 	struct display d = { .fd = -1 };
 	struct retry rt = { .fd = -1 };
 	/*
-	 * The volume is the codec's and stays what it is until "ctl volume"
-	 * says otherwise; the DSP starts at 0 dB (S16's reference) and unmuted
-	 * as far as the listener is concerned -- the automaton mutes it.
+	 * The volume starts where its stage stands (audio_search()) and moves
+	 * only with "ctl volume"; the DSP starts at 0 dB (S16's reference) and
+	 * unmuted as far as the listener is concerned -- the automaton mutes it.
 	 */
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
@@ -6314,6 +6730,8 @@ int main(int argc, char **argv)
 		fail("timerfd_create: %s", strerror(errno));
 
 
+	/* the EDID half tv.conf asks for, before the first picture is judged */
+	edid_apply_start(&conf, &cap, &d, &rt);
 	/* The state at startup counts as much as any later change. */
 	reevaluate(&cap, &d, &rt, &au);
 
