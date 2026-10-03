@@ -451,11 +451,3 @@
 # 03.10.: 0166 sent the six PWM words as six parameters; the firmware takes one, their address
 #   (display.bin 0x8B10A444, stock libhaldisplay 0xA20C) - the HY300 Pro crashes since test8 (GEU1 device test)
 0168-media-hdmirx-backlight-pwm-info-by-address.patch
-# 03.10.: the IR receiver (FB-REMOTEb, measured on the HY310 and the HY300PRO-G-EU): sunxi-cir's integer
-#   rx_resolution truncates 2.667 us to 2 us at 24 MHz (every pulse 0.75 of NEC) - the DTS drops clock-frequency;
-#   0021's vendor register values go; the ARISC firmware's start stores 0x222222ff to PL_CFG1 (PL9 -> disabled),
-#   so sunxi-cir re-applies its pin state after the arisc driver binds and after a resume
-0169-arm64-dts-h713-ir-at-8-mhz-and-a-pl9-sleep-state.patch
-0170-media-sunxi-cir-h713-drop-the-vendor-register-values.patch
-0171-media-sunxi-cir-h713-re-apply-pl9-after-the-arisc-start.patch
-0172-media-sunxi-cir-h713-re-apply-pl9-after-resume.patch

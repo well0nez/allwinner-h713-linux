@@ -80,8 +80,6 @@ wireless-regdb      # regulatory.db fuer cfg80211. Der aic8800 ist self-managed 
 bluez               # bluetoothd, bluetoothctl, hciattach: HCI H4 on UART1 (h713-bluetooth.service);
                     # the hog plugin makes the stock BLE remote an evdev device through uhid,
                     # h713-remote-pair bonds it. The BT patch set IS in the dump (FB-BTFW).
-ir-keytable         # loads /etc/rc_keymaps/h713-fd02.toml on the sunxi-ir device (its udev rule +
-                    # /etc/rc_maps.cfg): the NEC remote as evdev keys.
 
 # --- U-Boot-Umgebung aus Linux ---------------------------------------------
 libubootenv-tool    # fw_printenv/fw_setenv nach /etc/fw_env.config (0x700000, 64 KiB).
