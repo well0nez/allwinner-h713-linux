@@ -43,8 +43,9 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 | **Keystone and zoom** | the picture squared up on the Mali GPU, by hand or from the projector's tilt sensor, and shrunk without cutting anything off; the firmware's picture controls still act on the corrected picture ([guide](docs/guides/keystone.md)) |
 | **Settings page** | `http://<the projector>:8080/` from a phone or a browser: keystone, zoom, focus and autofocus, picture presets and sliders, sound - no login ([guide](docs/guides/settings-page.md)) |
 | **Autofocus** | the vendor's search rebuilt: chessboard on the wall, the built-in camera, the focus motor - one command or one button, turns round at the ends of the travel ([guide](docs/guides/autofocus.md)) |
+| **Remote** | the stock Bluetooth remote: hold Left+Right to pair, all keys and the mouse mode work, it reconnects on a key press after a reboot ([details](docs/subsystems/wifi.md#bluetooth)) |
 
-Not there yet: **Bluetooth** (driver builds, the firmware split has not been done), **AV1 decode**,
+Not there yet: the **IR receiver** (the same remote over infrared; parked, two keys share one code), **AV1 decode**,
 **HDCP 1.4** for protected sources, the **projection modes** (ceiling, rear), and there is **no desktop** in the
 shipped image - it runs `h713-tv`, not a compositor. Hardware video decode and the IOMMU come from cstenger's tree
 and are verified there, not re-tested in this image. Details and honest limits:

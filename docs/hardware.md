@@ -62,9 +62,10 @@ plane, measured on the HY310 (`docs/guides/keystone.md`).
 
 ## Wi-Fi and Bluetooth
 
-Both live on one chip, **AIC8800D80**: Wi-Fi over SDIO, Bluetooth over UART1 at 1.5 Mbaud. Wi-Fi runs
-today (AP or station, out-of-tree modules plus `h713-wifi`); Bluetooth does not ship because its
-firmware has not been split out of the vendor dump yet. Details: [docs/subsystems/wifi.md](subsystems/wifi.md).
+Both live on one chip, **AIC8800D80**: Wi-Fi over SDIO, Bluetooth over UART1 at 1.5 Mbaud with RTS/CTS.
+Wi-Fi runs (AP or station, out-of-tree modules plus `h713-wifi`); Bluetooth runs on top of it - the
+Wi-Fi driver loads the chip's Bluetooth patch from the owner's dump, `hciattach` and bluez do the rest,
+and the stock remote pairs over BLE. Details: [docs/subsystems/wifi.md](subsystems/wifi.md).
 
 ## Audio
 

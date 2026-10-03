@@ -44,13 +44,35 @@ on the self-managed phy, with the firmware the installer copied in from the user
 (`doku/60-offen.md`, the acceptance run of that day). Station mode was verified the same day against a
 real network (DHCP address, internet through `wlan0`).
 
-## Bluetooth is missing
+## Bluetooth
 
-Not a driver problem - it is the same `aic8800` chip and the same module family. The Bluetooth
-firmware (`fmacfwbt_*`) does not exist in the vendor dump, only in an SDK-sourced set carried in
-another tree under an unclear license; without firmware, `bluez` would be a daemon with no radio
-behind it. Reasoning kept next to the package list itself:
-`rootfs/packages.txt`.
+The same chip, the same module family, one more UART. What ships:
+
+- **Firmware.** The Bluetooth patch set (`fw_patch_8800d80*.bin`, `fw_adid_8800d80*.bin`) is part of the
+  Wi-Fi firmware in the owner's dump; the SDIO driver uploads it at every boot (`aicbt_patch_table_load`
+  in `dmesg`) and power-cycles the chip on the way. There is no separate Bluetooth firmware file and no
+  Bluetooth-only power or reset line - which is why Bluetooth needs Wi-Fi's modules loaded (`h713-wifi`
+  with `mode=sta` or `mode=ap`; `mode=off` switches both off).
+- **Host side.** `h713-bluetooth.service`: `hciattach` on the 8250 port of `2500400.serial` (UART1,
+  1500000 Bd, hardware flow control), bluez on top. `/etc/bluetooth/main.conf` narrows the LE scan window
+  (96/16) so a scanning controller does not starve the Wi-Fi radio it shares the antenna with: measured on
+  the HY310 with the remote connected, 97 of 97 1400-byte pings and 8 MiB in 3.5 s over Wi-Fi.
+- **The stock remote.** BLE HID (`1d5a:c081`). `h713-remote-pair` pairs it: hold Left + Right until the
+  LED blinks, the unit `h713-remote-pair.service` scans and bonds. After that it reconnects on any key
+  press, also after a reboot. The kernel's `hid-h713-remote` fixes the remote's consumer report (its
+  report 3 is one byte shorter than the descriptor says) and maps Home and the two focus keys.
+- **`h713-bt-reset`.** The controller keeps its state across attaches: the kernel's `hci_uart` sends no
+  HCI_Reset at init and its close-time reset never reaches the wire once `hciattach` has exited (that is
+  the `hci0: Opcode 0x0c03 failed: -110` line in the journal on every stop - harmless). Without a reset the
+  next attach inherits the old LE scan and stops at `Opcode 0x2010 failed: -16` (Command Disallowed). The
+  helper sends HCI_Reset as a raw H4 frame on the bare UART before `hciattach` and after it exits, as the
+  vendor's `libbt-aic` does around every session, and the unit only counts as started once `hci0` is UP.
+  Details and the device log: `umbau/work/FB-BTRESET/REPORT.txt` in the working tree, not in this repo.
+
+Known and open: after a warm reboot the first HCI command sometimes goes unanswered (the helper retries;
+the cause is not found). The IR receiver is not used: the same remote sends the same NEC code for the
+mouse key and the microphone key, so the infrared path is parked. On the HY300PRO-G-EU Bluetooth after a
+cold start is not verified yet.
 
 ## Using it
 
@@ -73,5 +95,5 @@ Access point, 2.4 GHz channel 6, one client at −50 dBm (2026-09-12): link 72.2
 the same session swung between 3 ms and 2 s - throughput is unaffected, and the cause is unexamined; power
 saving on the radio is the obvious suspect.
 
-Details: `doku/60-offen.md` (§WLAN und Bluetooth, §WLAN vor dem Release),
+Details: `doku/60-offen.md` (§WLAN und Bluetooth, §WLAN vor dem Release), `doku/134` (remote and coexistence tests, 03.10.2026),
 `analyse/boot/wlan-aic8800-messung-20260912.txt`.
