@@ -354,13 +354,14 @@ class ReleaseFolder(unittest.TestCase):
         from h713.install import unpack_parts
         name = self.table["teile"][0]["datei"]
         self._pack(name)
-        keep = module.shutil
+        keep = module.shutil, module._zstd_module
         module.shutil = types.SimpleNamespace(which=lambda _n: None)
+        module._zstd_module = lambda: None            # and no Python 3.14 reader either
         try:
             with self.assertRaises(RuntimeError) as caught:
                 unpack_parts(self.release, self.table, support.Recorder())
         finally:
-            module.shutil = keep
+            module.shutil, module._zstd_module = keep
         self.assertIn(name + ".zst", str(caught.exception))
         self.assertIn("zstd", str(caught.exception))
 

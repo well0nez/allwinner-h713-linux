@@ -572,6 +572,14 @@ if [[ -f "$TREE/etc/shadow" ]]; then
 	root_hash=$(awk -F: '$1=="root"{print $2}' "$TREE/etc/shadow")
 	[[ "$root_hash" == '*' ]] || die "root password not locked (field: '$root_hash')"
 	info "root password locked ('*')"
+	# Field 3, the day the password last changed, is the build day for every
+	# account the packages created. With SOURCE_DATE_EPOCH (release/build-all.sh:
+	# the commit date) it is that day, so two builds of one commit agree.
+	if [[ -n "${SOURCE_DATE_EPOCH:-}" ]]; then
+		for f in shadow shadow-; do
+			[[ -f "$TREE/etc/$f" ]] && sed -i -E "s/^([^:]*:[^:]*):[0-9]*:/\1:$((SOURCE_DATE_EPOCH / 86400)):/" "$TREE/etc/$f"
+		done
+	fi
 fi
 
 # 4e. Optional key -- explicitly NOT the release way.
@@ -715,7 +723,13 @@ fi
 
 say "write the tar"
 TAR_OUT="$OUT_DIR/hy310-rootfs.tar"
-tar --numeric-owner --xattrs --acls --sort=name \
+# With SOURCE_DATE_EPOCH the archive is byte-identical between two builds of the
+# same packages: every mtime becomes that instant (overlay files carry checkout
+# times, built parts build times - neither is anyone else's), and the pax headers
+# that --xattrs/--acls bring along drop their atime/ctime records.
+REPRO_TAR=()
+[[ -n "${SOURCE_DATE_EPOCH:-}" ]] && REPRO_TAR=("--mtime=@$SOURCE_DATE_EPOCH" --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime)
+tar --numeric-owner --xattrs --acls --sort=name "${REPRO_TAR[@]+"${REPRO_TAR[@]}"}" \
 	--exclude=./dev/* -C "$TREE" -cf "$TAR_OUT" .
 info "$TAR_OUT ($(du -h "$TAR_OUT" | cut -f1))"
 
@@ -742,6 +756,7 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "mirror=$MIRROR"
 	echo "keyring=$KEYRING"
 	echo "built=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+	echo "source_date_epoch=${SOURCE_DATE_EPOCH:-unset}"
 	echo "tree_size_kib=$TREE_KIB"
 	echo "packages_beyond_minbase=$(read_packages | paste -sd,)"
 	echo "installed=$(chroot_count=$(grep -c '^Package: ' "$TREE/var/lib/dpkg/status" 2>/dev/null || echo 0); echo "$chroot_count")"

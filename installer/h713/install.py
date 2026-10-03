@@ -271,10 +271,35 @@ def release_files(directory):
     return found
 
 
-def unpack_parts(directory, table, log=console):
-    """Image parts that lie only as `.img.zst`: unpack them with the `zstd` binary.
+def release_beside(here):
+    """`install` without an image (doku/61 rows 81 and 82, doku/116 section 5): the release
+    folder beside the tool. The directory the tool is run from comes first, then its own; the
+    first that holds a *.tabelle.json is it, None when neither does. A folder holding several
+    tables is left to image_package(), which names them and asks for the right one."""
+    for place in (os.getcwd(), here):
+        try:
+            names = os.listdir(place)
+        except OSError:
+            continue
+        if any(name.endswith(".tabelle.json") for name in names):
+            return place
+    return None
 
-    The release ships the parts packed (1.15 GB -> 56 MiB). Without `zstd` on the PC
+
+def _zstd_module():
+    """Python 3.14 reads .zst itself (compression.zstd, PEP 784); before that, None."""
+    try:
+        from compression import zstd
+    except ImportError:
+        return None
+    return zstd
+
+
+def unpack_parts(directory, table, log=console):
+    """Image parts that lie only as `.img.zst`: unpack them next to the packed file.
+
+    The release ships the parts packed (1.15 GB -> 56 MiB). Python 3.14 brings its own zstd
+    reader and needs no program for it; an older Python uses the `zstd` binary. Without either
     this says so in one line and names the file instead of failing somewhere deeper.
     """
     packed = [t["datei"] for t in table["teile"]
@@ -282,16 +307,22 @@ def unpack_parts(directory, table, log=console):
               and os.path.isfile(os.path.join(directory, t["datei"] + ".zst"))]
     if not packed:
         return
-    zstd = shutil.which("zstd")
-    if not zstd:
+    zstd = _zstd_module()
+    tool = None if zstd else shutil.which("zstd")
+    if not zstd and not tool:
         raise RuntimeError("%d part(s) lie only packed (%s) and `zstd` is not on this PC -- "
-                           "install zstd or unpack by hand (`zstd -d *.img.zst`)"
+                           "install zstd or unpack by hand (`zstd -d *.img.zst`); Python 3.14 "
+                           "reads them by itself"
                            % (len(packed), ", ".join(name + ".zst" for name in packed)))
     for name in packed:
-        source = os.path.join(directory, name + ".zst")
-        log.info("unpacking %s (zstd, %.0f MiB packed)" % (name + ".zst", mib(os.path.getsize(source))))
-        subprocess.run([zstd, "-d", "-q", "-f", source, "-o", os.path.join(directory, name)],
-                       check=True)
+        source, target = os.path.join(directory, name + ".zst"), os.path.join(directory, name)
+        log.info("unpacking %s (%s, %.0f MiB packed)"
+                 % (name + ".zst", "Python's zstd" if zstd else "zstd", mib(os.path.getsize(source))))
+        if zstd:
+            with zstd.open(source, "rb") as src, open(target, "wb") as dst:
+                shutil.copyfileobj(src, dst, 8 << 20)
+        else:
+            subprocess.run([tool, "-d", "-q", "-f", source, "-o", target], check=True)
 
 
 def image_package(path):
@@ -711,6 +742,28 @@ def ask(text, default=None):
     except (EOFError, KeyboardInterrupt):
         raise SystemExit("\nAborted.")
     return answer or default
+
+
+def ask_path(text, default="", _input=input, _isatty=None):
+    """A path typed at the prompt: the case kept (ask() lowercases, which is right for
+    yes/no and wrong for /media/USB), and ~ the invoking user's home under sudo, where HOME
+    is root's (deep review 27.09.2026)."""
+    if not (sys.stdin.isatty() if _isatty is None else _isatty):
+        return default
+    try:
+        answer = _input(text).strip()
+    except (EOFError, KeyboardInterrupt):
+        raise SystemExit("\nAborted.")
+    if not answer:
+        return default
+    user = os.environ.get("SUDO_USER")
+    if user and (answer == "~" or answer.startswith("~/")):
+        import pwd
+        try:
+            answer = pwd.getpwnam(user).pw_dir + answer[1:]
+        except KeyError:
+            pass
+    return os.path.expanduser(answer)
 
 
 # README.md carries the beta warning, the installer did not (doku/61 A.2, plan 110 §9). Three

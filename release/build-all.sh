@@ -33,6 +33,12 @@
 #
 # The paths of the building blocks are in one block below, so that the move to
 # installer/ and rootfs/ (doku/116 P3) changes those lines and nothing else.
+#
+# Reproducible (ROADMAP "Reproducible builds"): SOURCE_DATE_EPOCH is the committer
+# date of the checkout and reaches every step in the container. build.sh turns it
+# into TF-A's build message, the kernel's uname line and relative module paths;
+# U-Boot, its mkimage (the FIT's timestamp), build-rootfs.sh and build-mesa.sh
+# read it themselves. The stamp says "reproducible: yes" or "no, because ...".
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -143,6 +149,25 @@ NAME="$IMAGE_NAME-$VERSION"
 ((TEST_IMAGE)) && NAME="$NAME-TEST"        # the name is the first place it has to say so
 OUT="$MAINLINE/build/out"
 DELIVERY="$INSTALLER/out"
+# --- reproducible build ---------------------------------------------------
+# One clock for everything that embeds a build time: the committer date of HEAD
+# (the release repository, else mainline/). The stamp's "reproducible:" line
+# names what would still make a second build differ: local changes (a dirty or
+# moved submodule counts as one), reused building blocks (--skip-*), a private
+# --wifi-env. The rootfs is reproducible only against the same mirror state.
+REPRO_GIT=$ROOT; git -C "$REPRO_GIT" rev-parse -q --verify HEAD >/dev/null 2>&1 || REPRO_GIT=$MAINLINE
+REPRO_WHY=()
+if SOURCE_DATE_EPOCH=$(git -C "$REPRO_GIT" log -1 --format=%ct 2>/dev/null) && [[ -n "$SOURCE_DATE_EPOCH" ]]; then
+	REPRO_COMMIT=$(git -C "$REPRO_GIT" rev-parse --short HEAD)
+	n=$(git -C "$REPRO_GIT" status --short 2>/dev/null | wc -l); ((n)) && REPRO_WHY+=("$n local changes")
+else
+	SOURCE_DATE_EPOCH=$(date +%s); REPRO_COMMIT=none; REPRO_WHY+=("not a git checkout")
+fi
+export SOURCE_DATE_EPOCH
+((SKIP_BL31 || SKIP_UBOOT || SKIP_KERNEL || SKIP_ROOTFS)) && REPRO_WHY+=("--skip-* reused earlier building blocks")
+[[ -n "$WIFI_ENV" ]] && REPRO_WHY+=("--wifi-env is a private input")
+REPRO_LINE="reproducible: yes (SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH, commit $REPRO_COMMIT)"
+((${#REPRO_WHY[@]})) && { w=$(printf '%s; ' "${REPRO_WHY[@]}"); REPRO_LINE="reproducible: no, because ${w%; }"; }
 
 say()  { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
@@ -154,8 +179,8 @@ spl_size_ok() {
 	local n; n=$(stat -c %s "$1" 2>/dev/null || echo 0)
 	[[ "$n" -eq 32768 ]] || die "$1 is $n bytes, not 32768 -- the SPL no longer fits its 32 KiB slot"
 }
-in_container()      { podman exec -e JOBS="$JOBS" "$CONTAINER" bash -lc "$*"; }
-in_container_root() { podman exec -u root -e JOBS="$JOBS" "$CONTAINER" bash -lc "$*"; }
+in_container()      { podman exec -e JOBS="$JOBS" -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" "$CONTAINER" bash -lc "$*"; }
+in_container_root() { podman exec -u root -e JOBS="$JOBS" -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" "$CONTAINER" bash -lc "$*"; }
 # host path -> container path
 c() { printf '%s' "${1/#$ROOT/$WORK}"; }
 T0=$(date +%s)
@@ -164,6 +189,7 @@ elapsed() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $(
 say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "root $ROOT"
 info "board $BOARD ($STATUS, profile $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles)"
+info "$REPRO_LINE"
 ((TEST_IMAGE)) && { say "TEST IMAGE for $BOARD (STATUS=$STATUS) -- not a release"
 	info "Nobody has reported a green run here. The table is marked test_for=$PROFILE, so h713-install"
 	info "writes it on this board alone and only with --test-image; the owner's full dump is the way back."; }
@@ -408,6 +434,9 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	# No directory name in the stamp: that is local and tells a reader nothing.
 	if [[ "$GIT_ROOT" == "$MAINLINE" ]]; then W=mainline; else W=repo; fi
 	echo "$W: $(git -C "$MAINLINE" rev-parse --short HEAD 2>/dev/null) ($(git -C "$MAINLINE" status --short 2>/dev/null | wc -l) local changes)"
+	echo "source date: $SOURCE_DATE_EPOCH ($(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ'), committer date of $REPRO_COMMIT)"
+	echo "$REPRO_LINE"
+	echo "rootfs packages: dpkg status $(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./var/lib/dpkg/status | sha256sum | cut -c1-16) -- the tar repeats only while $DEBIAN_MIRROR $DEBIAN_SUITE is at this state"
 	echo "U-Boot:   $(strings -n 8 "$OUT/uboot-proper-release.bin" | grep -m1 '^U-Boot 20')"
 	echo "building blocks (sha256, 16 characters):"
 	for f in spl-release.bin uboot-proper-release.bin hy310-env-release.bin u-boot-installer.bin h713-kernel.fit modules/aic8800_bsp.ko modules/aic8800_fdrv.ko; do

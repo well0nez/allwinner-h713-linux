@@ -75,9 +75,10 @@ if find "$STAGE" -name '*.so*' -type f -exec readelf -d {} + | grep -q "libLLVM"
 find "$STAGE" -name '*.so*' -type f -exec readelf -h {} + | grep -q "AArch64" || die "not aarch64?"
 find "$STAGE" -name '*.so*' -type f -exec readelf -d {} + | grep "NEEDED" | sed 's/.*\[\(.*\)\]/\1/' | sort -u | tr '\n' ' ' | sed 's/^/    NEEDED: /'; echo
 
-# 6. tarball + sizes
+# 6. tarball + sizes. Sorted, owner 0:0 (build-rootfs.sh chowns to 0:0 on the way in anyway) and, with
+#    SOURCE_DATE_EPOCH (release/build-all.sh), one mtime for all: the same stage gives the same tar.
 TAR="$OUT/mesa-panfrost-$MESA_VER.tar"
-tar -C "$STAGE" -cf "$TAR" usr
+tar -C "$STAGE" --sort=name --owner=0 --group=0 --numeric-owner ${SOURCE_DATE_EPOCH:+--mtime=@$SOURCE_DATE_EPOCH} -cf "$TAR" usr
 say "done: $TAR"
 printf '    installed %s, tar %s\n' "$(du -sh "$STAGE" | cut -f1)" "$(du -h "$TAR" | cut -f1)"
 find "$STAGE" -name '*.so*' -type f -printf '    %10s %P\n' | sort -k2

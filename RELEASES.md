@@ -59,10 +59,14 @@ building blocks (sha256, 16 characters):
   hy310-rootfs.tar             3a80f4fbdd5a9e4b
 ```
 
-Two builds of the same sources are not byte-identical (build timestamps and paths get embedded), so
-comparing image checksums between machines proves nothing. The series hash, the kernel tree digest, the
-three submodule commits and the nine building blocks do. Quote the stamp in a bug report. A TEST image
-for a board below *verified* says so in its first line and names the board it was built for.
+Two builds of the same commit are meant to give the same building-block hashes: the build clock is the
+commit's date (`source date:` in the stamp), so no part embeds the wall clock or the checkout's path.
+The stamp's `reproducible:` line says whether a build was made that way, and if not, why (local changes,
+`--skip-*`, a private `--wifi-env`). The rootfs tar repeats only while the Debian mirror is at the same
+state; `rootfs packages:` names the package set for that comparison. Image checksums still differ between
+builds (the ext4 inputs carry their own UUIDs and times), so compare the stamp, not the image. Quote the
+stamp in a bug report. A TEST image for a board below *verified* says so in its first line and names the
+board it was built for.
 
 ## What the development numbers are
 

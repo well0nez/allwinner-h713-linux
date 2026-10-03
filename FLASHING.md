@@ -62,13 +62,22 @@ sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.9-beta \
 ```
 
 You name the release folder, not six files: the installer finds the offset table, `u-boot-installer.bin`
-and `sunxi-fel` inside it, and unpacks `*.img.zst` itself if `zstd` is installed. `--uboot` and
-`--sunxi-fel` override that when your copies live elsewhere.
+and `sunxi-fel` inside it, and unpacks `*.img.zst` itself - with Python 3.14's own zstd module, or with
+the `zstd` binary on an older Python. `--uboot` and `--sunxi-fel` override that when your copies live
+elsewhere. Run from inside the release folder, even the folder can be left out:
+
+```bash
+cd ~/hy310-v0.9-beta && sudo ~/allwinner-h713-linux/installer/h713-install install
+```
+
+finds the table in the directory it is run from (or beside the tool itself) and asks for the two things
+no folder holds - your public key file and the dump directory. Enter takes the defaults, no key and
+`h713-dump`; every flag still beats the question.
 
 So the `zstd -d` line above is optional: run it if you want to check the `.sha256` file yourself
-(it lists the unpacked `.img` parts), or if `zstd` is not on the PC that runs the installer - then
-the installer stops and names the packed parts instead of unpacking them, and you unpack them by
-hand or on another machine. The installer checks the sha256 of every part before it writes either
+(it lists the unpacked `.img` parts), or if neither Python 3.14 nor `zstd` is on the PC that runs the
+installer - then the installer stops and names the packed parts instead of unpacking them, and you
+unpack them by hand or on another machine. The installer checks the sha256 of every part before it writes either
 way, so `sha256sum -c` is a second pair of eyes, not a requirement.
 
 `sudo` because it writes a block device and mounts the image's file systems. The dump and the filled copy
@@ -215,6 +224,41 @@ back and where they would go, instead of reading them. This is for **our** layou
 nothing has changed: the dump is mandatory, it is the only way back to Android, and without it or
 `--vendor` the run stops before it writes.
 
+## Reinstalling a test image
+
+A test image (`h713-mkimage build --test-for BOARD`, table key `test_for`) is written only on the board
+it was built for, and only with `--test-image`. The first time, the device still runs Android and the
+identification reads the board off it. The second time it runs our layout, which carries nothing a
+profile could match - no Android, no vendor U-Boot - so on its own the device is `no board we know`, and
+the run stops with exit 1 before anything is written. The proof of the board is the full dump of the
+first install: name its directory with `--dump`, and the installer identifies the clone in it
+(`emmc-full.img`) the way `h713-install identify <clone>` does, and takes that as the board (26.09.2026,
+`_board_from_dump`; the HY300 Pro's owner reinstalling test8 over test7).
+
+```bash
+sudo allwinner-h713-linux/installer/h713-install install ~/hy300-pro-test8 \
+    --test-image --dump ~/h713-dump --small --ssh-key ~/.ssh/id_ed25519.pub
+```
+
+`~/h713-dump` is the directory the first install dumped into. Its files are kept, nothing is dumped over
+them, and the device's own files come out of that clone as well. The run then says (cut to the lines
+that differ from a first install):
+
+```
+[1b] Identify the device
+  OK our layout on the device -- the board is known from the dump of the first install in ~/h713-dump: HY300 Pro
+  OK our layout (v3, doku/109) on this device -- this project's image is installed
+  ! TEST IMAGE for 'hy300_pro': this device is that board, and --test-image was given.
+    Nobody has reported a green run here yet. Your full dump is the way back.
+[3] The dump (small)
+  OK the dump in ~/h713-dump is the one from the first install -- its files are kept; the secure storage and the environment are read from the device
+```
+
+Without that directory, or with one that holds no `emmc-full.img`, the board stays unknown: `no board we
+know`, exit 1, nothing written. `--skip-identify` does not open the door either - the point of the flag is
+that the board is proven before anything is written. So keep the dump directory of the first install: it
+is the way back, and once Android is gone it is the only thing that names the board.
+
 ## Useful variants
 
 | Task | Command |
@@ -225,6 +269,7 @@ nothing has changed: the dump is mandatory, it is the only way back to Android, 
 | Reinstall, discarding them | `--fresh-env` |
 | Reuse an extraction you already have | `--vendor <dir from h713-extract>` |
 | Reinstall over this system, no dump needed | (default: the vendor files come off the device itself) |
+| Reinstall a test image over this system | `--test-image --dump <directory of the first install>` |
 | Go back to your own dump | `h713-install restore ~/h713-dump/emmc-full.img` |
 | Go back to stock Android | `h713-install restore-stock UPDATE.IMG` |
 | Rehearse without writing | `--no-write` on any subcommand |

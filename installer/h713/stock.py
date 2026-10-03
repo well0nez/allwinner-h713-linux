@@ -181,6 +181,10 @@ def moved_unique_regions(rows, device_regions):
     itself does not use, we would relabel bytes no image brings back. A region the device does
     not carry at all settles nothing and destroys nothing -- our own layout has neither, and
     there the new table creates them. Returns [(name, LBA on the device, LBA we would write)].
+
+    Asked only about the rows -- the partitions the container's two tables spell differently.
+    check_stock_gpt() asks relabelled_regions() instead since FB-INSTALL, which covers these and
+    the regions the rows never mention; this stays as the R1 contract its tests were written to.
     """
     unique = set(name.lower() for name in BY_NAME)
     out = []
@@ -193,13 +197,45 @@ def moved_unique_regions(rows, device_regions):
     return out
 
 
+def relabelled_regions(partitions, device_regions):
+    """The device-unique regions the DEVICE carries that the table this restore writes puts
+    somewhere else -- or nowhere.
+
+    moved_unique_regions() asks that only where the container's two tables disagree, and a
+    container whose tables agree (HY350, HY300 T08) never asked it at all: a device carrying
+    `private` at another LBA than sys_partition.fex says would have had its bytes relabelled
+    -- the new table names some other partition over them, and Android formats what it finds
+    there (FB-INSTALL item 1, doku/61 row 37). So the written table itself is held against what
+    the device's own table names (dump.BY_NAME, read by name and without the HY310 fallback).
+    A region the device does not carry settles nothing, as before. Returns [(name as the device
+    spells it, LBA on the device, LBA the table writes or None when it names no such partition)].
+    """
+    unique = set(name.lower() for name in BY_NAME)
+    written = dict((name.lower(), (lba, sectors)) for name, lba, sectors, _source in partitions)
+    out = []
+    for name, (lba, sectors) in sorted((device_regions or {}).items()):
+        if name.lower() not in unique:
+            continue
+        w = written.get(name.lower())
+        if w is None or w[0] != lba:
+            out.append((name, lba, None if w is None else w[0]))
+        elif w[1] and sectors and w[1] < sectors:
+            # same start, but shorter: the partition behind it lands on the region's tail
+            # (deep review F2: the start alone settled it before)
+            out.append((name, lba, "LBA %d, but %d sectors where the device has %d"
+                        % (w[0], w[1], sectors)))
+    return out
+
+
 def check_stock_gpt(image_file, disk, log=console, device_regions=None):
     """Say what the two tables of this container disagree on, and stop where it could cost
     something. Returns the one sentence that stops the restore, or None.
 
     `device_regions` is what the device's own table says about the device-unique regions
     ({name: (lba, sectors)}); by default it is read here, by name and without the HY310
-    fallback -- a guessed LBA must not settle a question about what may be overwritten.
+    fallback -- a guessed LBA must not settle a question about what may be overwritten. Two
+    things stop the restore: a partition reaching into the secure storage, and a device-unique
+    region the device carries where the written table does not put it (relabelled_regions).
     """
     q = FileSource(pathlib.Path(image_file))
     try:
@@ -231,11 +267,13 @@ def check_stock_gpt(image_file, disk, log=console, device_regions=None):
                 % (", ".join(covered), LOCK_FIRST, LOCK_LAST))
     if device_regions is None:
         device_regions = regions_from_gpt(disk)
-    moved = moved_unique_regions(rows, device_regions)
+    moved = relabelled_regions(partitions, device_regions)
     if moved:
         return ("nothing is written: this image's table would move %s, and a region that exists "
                 "only on this device is not moved by a table out of a container"
-                % ", ".join("%s from LBA %d to %d" % row for row in moved))
+                % ", ".join("%s from LBA %d to %s"
+                            % (name, here, "no partition of that name" if theirs is None else theirs)
+                            for name, here, theirs in moved))
     return None
 
 

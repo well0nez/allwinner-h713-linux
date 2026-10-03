@@ -13,3 +13,4 @@ and the scripts under `analyse/hdmi-seq/` (see `doku/50-befehle.md`).
 | `vendor_ccu_parse.py`, `regdiff.py` | read vendor CCU tables, compare register dumps |
 | `oops_resolve.sh` | disassemble oops addresses in `vmlinux` |
 | `check-links.py` | the documentation's own check: every relative Markdown link in the top-level pages and under `docs/` points at a file that exists, and no page under `docs/` is an orphan. `python3 tools/check-links.py`, exit 1 on a finding. Run it before a release |
+| `check-py39.py` | the PC tools against the Python 3.9 that FLASHING.md promises: parses `installer/` with the 3.9 grammar and looks for what it lets through but 3.9 does not run (PEP 604 unions in evaluated annotations without the future import, parenthesised `with`, library names of 3.10+). `python3 tools/check-py39.py`, exit 1 on a finding; the installer's tests run it too |

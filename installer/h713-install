@@ -52,8 +52,8 @@ from h713.fel import expose_drive                                           # no
 from h713.identify import identify, report_device                           # noqa: E402
 from h713.install import (DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
                           WRITES, beta_warning, confirm, image_package, in_dump,
-                          release_files, run_extractor, table_test_for, test_image_allowed,
-                          translate, unpack_parts, write_package)
+                          release_beside, release_files, run_extractor, table_test_for,
+                          test_image_allowed, translate, unpack_parts, write_package)
 from h713.log import console                                                # noqa: E402
 from h713.profiles import PROFILES                                          # noqa: E402
 from h713.stock import check_stock_gpt, restore_stock                       # noqa: E402
@@ -111,8 +111,10 @@ def parser():
                            "directory (without this it is kept)")
 
     put = sub.add_parser("install", parents=[common], help="write our image onto the device")
-    put.add_argument("image", metavar="RELEASE-DIR|TABLE.json",
-                     help="the release folder, its *.tabelle.json, or a single .img file")
+    put.add_argument("image", nargs="?", metavar="RELEASE-DIR|TABLE.json",
+                     help="the release folder, its *.tabelle.json, or a single .img file. Left "
+                          "out, the folder the tool is run from (or its own) is searched for a "
+                          "table, and only the key and the dump directory are asked for")
     put.add_argument("--ssh-key", metavar="FILE",
                      help="public SSH key (e.g. ~/.ssh/id_ed25519.pub) for /root/.ssh/"
                           "authorized_keys in the image; without it there is no ssh access")
@@ -438,7 +440,7 @@ def _test_image_refused(args, ident):
     return None if test_image_allowed(ident, test_for, args.test_image, console) else 1
 
 
-def _board_from_dump(args, ident):
+def _board_from_dump(args, ident, disk=None):
     """A device that already carries our layout has nothing a profile could match on -- no
     Android, no vendor U-Boot -- so a TEST IMAGE for one board could never be written a
     second time (the HY300 Pro's owner, 23.09.2026: test7 on the device, test8 refused with
@@ -455,6 +457,23 @@ def _board_from_dump(args, ident):
         console.info("our layout on the device and no full dump in %s that could name the "
                      "board (%s)" % (dump_dir, DUMP_FULL))
         return
+    # This device's dump, not another unit's: the secure storage (LBA 12288..14335) is unique
+    # per device and never rewritten, so the clone's copy must equal what the device holds.
+    # Otherwise the clone's vendor files and project id would go onto the wrong device, and
+    # the comparison that notices runs only after everything is written (deep review F3).
+    if disk is not None:
+        try:
+            with open(clone, "rb") as fh:
+                fh.seek(LOCK_FIRST * 512)
+                theirs = fh.read((LOCK_LAST - LOCK_FIRST + 1) * 512)
+            ours = disk.read(LOCK_FIRST, LOCK_LAST - LOCK_FIRST + 1)
+        except OSError as exc:
+            console.warn("%s: the dump's secure storage could not be compared (%s)" % (clone, exc))
+            return
+        if theirs != ours:
+            console.info("the dump in %s is another device's (its secure storage differs from "
+                         "this device's): it cannot name this board" % dump_dir)
+            return
     try:
         from_dump = identify(clone)
     except Exception as exc:                                    # noqa: BLE001 - say so, go on
@@ -541,7 +560,7 @@ def _work(args, path):
             if getattr(args, "_test_for", None):
                 # A test image has its own verdict: report_device() speaks for released
                 # images, where an untested board is always a no.
-                _board_from_dump(args, ident)
+                _board_from_dump(args, ident, disk)
                 code = _test_image_refused(args, ident)
                 if code is not None:
                     return code
@@ -619,6 +638,28 @@ def main(argv=None):
         if args.source:
             return _identify_file(args)
     if args.command == "install":
+        if not args.image:
+            # FB-INSTALL item 2 (doku/61 rows 81, 82): `install` alone looks beside itself -- the
+            # directory it is run from, then its own -- and asks only for the two things a
+            # release folder cannot hold. Table, parts, u-boot-installer.bin and sunxi-fel are
+            # found next to each other as before, and every flag still beats the question.
+            args.image = release_beside(HERE)
+            if not args.image:
+                console.error("no release folder: no *.tabelle.json in %s or in %s -- name it: "
+                              "h713-install install RELEASE-DIR" % (os.getcwd(), HERE))
+                return 5
+            console.info("release folder %s (found beside the tool)" % args.image)
+            if not args.ssh_key:
+                key = install_mod.ask_path(
+                    "  Your public SSH key file (Enter: none, serial console only): ", "")
+                if key and not os.path.isfile(key):
+                    console.error("%s not found" % key)
+                    return 5
+                args.ssh_key = key or None
+            if not args._dump_given:
+                asked = install_mod.ask_path("  Dump directory [%s]: " % DUMP_DEFAULT, "")
+                if asked:
+                    args.dump_dir, args._dump_given = asked, True
         # Read before the device is touched: is this an image built for one untested
         # board? The decision needs it early -- the identification is step 1b.
         args._test_for = table_test_for(args.image, args.table)

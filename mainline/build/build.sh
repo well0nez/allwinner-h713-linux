@@ -38,6 +38,27 @@ UBOOT="$ROOT/external/u-boot"
 ATF="$ROOT/external/arm-trusted-firmware"
 mkdir -p "$OUT" "$CACHE"
 
+# --- reproducible builds ----------------------------------------------------
+# With SOURCE_DATE_EPOCH set (release/build-all.sh: the commit date) nothing
+# below embeds the wall clock or the checkout's path. U-Boot reads the variable
+# itself (its Makefile writes timestamp.h from it), and so does its mkimage for
+# the FIT's timestamp (tools/imagetool.c, imagetool_get_source_date); the rest
+# is set here. Unset, everything behaves as before.
+if [ -n "${SOURCE_DATE_EPOCH:-}" ]; then
+  # TF-A: its Makefile has BUILD_MESSAGE_TIMESTAMP ?= __TIME__", "__DATE__ and
+  # wants a C string, quotes included - the same shape as the default.
+  BUILD_MESSAGE_TIMESTAMP="\"$(LC_ALL=C date -u -d "@$SOURCE_DATE_EPOCH" '+%T, %b %e %Y')\""
+  # kernel: the uname line "#1 SMP <date>" and its user@host. The "#1" would
+  # otherwise count up on every build in a cached tree (scripts/build-version).
+  KBUILD_BUILD_TIMESTAMP=$(LC_ALL=C date -u -d "@$SOURCE_DATE_EPOCH")
+  KBUILD_BUILD_USER=h713 KBUILD_BUILD_HOST=h713-build KBUILD_BUILD_VERSION=1
+  # modules: WARN_ON/BUG_ON in kernel headers put __FILE__ into .rodata, and for
+  # an external module (M=) that is the header's absolute path - three of them
+  # in aic8800_fdrv.ko. Map the tree away; in-tree code is relative already.
+  KCFLAGS="-ffile-prefix-map=$ROOT/=${KCFLAGS:+ $KCFLAGS}"
+  export BUILD_MESSAGE_TIMESTAMP KBUILD_BUILD_TIMESTAMP KBUILD_BUILD_USER KBUILD_BUILD_HOST KBUILD_BUILD_VERSION KCFLAGS
+fi
+
 # --- board profile ----------------------------------------------------------
 # One directory per board, boards/<id>/board.env (doku/121 §3). It sets BOARD_ID STATUS PROFILE IMAGE_NAME KERNEL_DTB
 # UBOOT_BOARD (and, for cstenger's boards, the defconfig names they use today).
@@ -246,7 +267,9 @@ build_kernel() {
     }
   fi
   make -C "$tree" ARCH="$KERNEL_ARCH" LLVM=1 -j"$JOBS" Image dtbs modules
-  gzip -9 -kf "$tree/arch/arm64/boot/Image"
+  # -n: no mtime and no name in the gzip header (the kernel's own Image.gz
+  # target does the same); with them two builds' FITs never matched.
+  gzip -9 -n -kf "$tree/arch/arm64/boot/Image"
   install -m 0644 "$tree/arch/arm64/boot/Image.gz" "$OUT/Image$suffix.gz"
   # The board's own DTB (board.env) plus cstenger's two HY200 DTBs, which stay
   # in the output so his bench runs keep working and a regression there is
@@ -439,6 +462,8 @@ build_kernel_fit() {
 	};
 };
 ITS
+  # The FIT's timestamp is SOURCE_DATE_EPOCH when set, else the time of the run
+  # (tools/imagetool.c). mkimage -t is not that knob: it re-stamps an existing FIT.
   "$mkimage" -f "$OUT/h713-kernel$suffix.its" "$OUT/h713-kernel$suffix.fit" >/dev/null
   log "FIT -> $OUT/h713-kernel$suffix.fit ($(stat -c%s "$OUT/h713-kernel$suffix.fit") bytes)"
   note "Boot: load to DRAM + 'bootm' (arch=arm64, load $KERNEL_LOAD). See docs/flash.md."
