@@ -76,6 +76,13 @@ wireless-regdb      # regulatory.db fuer cfg80211. Der aic8800 ist self-managed 
                     # nimmt seine Tabelle aus dem Treiber (default_ccode), aber das
                     # globale Reich soll trotzdem stimmen, falls custregd je faellt
 
+# --- Remote control: Bluetooth and infrared (FB-REMOTE, 27.09.2026) ----------
+bluez               # bluetoothd, bluetoothctl, hciattach: HCI H4 on UART1 (h713-bluetooth.service);
+                    # the hog plugin makes the stock BLE remote an evdev device through uhid,
+                    # h713-remote-pair bonds it. The BT patch set IS in the dump (FB-BTFW).
+ir-keytable         # loads /etc/rc_keymaps/h713-fd02.toml on the sunxi-ir device (its udev rule +
+                    # /etc/rc_maps.cfg): the NEC remote as evdev keys.
+
 # --- U-Boot-Umgebung aus Linux ---------------------------------------------
 libubootenv-tool    # fw_printenv/fw_setenv nach /etc/fw_env.config (0x700000, 64 KiB).
                     # Ohne das gab es die Konfigurationsdatei, aber kein Werkzeug dazu;
@@ -113,13 +120,7 @@ debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg -- ohne
 #     Zieht GTK3, x265, aom, libllvm nach -- 107 §1: der groesste Einzelposten des
 #     heutigen Netboot-Roots. Der Beamer schiebt HDMI-Eingang auf eine DRM-Plane,
 #     er decodiert nichts.
-# bluez
-#     Bluetooth bleibt draussen. Nicht wegen des Treibers -- der ist derselbe
-#     aic8800 --, sondern weil die BT-Firmware (fmacfwbt_*) NICHT im Vendor-Abzug
-#     liegt, nur im SDK-Satz mit ungeklaerter Lizenz (S42, 60-offen §WLAN und
-#     Bluetooth). Ohne Firmware ist bluez ein Daemon ohne Funk.
-#     (Bis 12.09. stand hier auch WLAN, mit der Begruendung "auf diesem Kernel
-#     ungeprueft, Firmware ohne Lizenzangabe". Beides ist seitdem erledigt.)
+# (bluez stood here until 27.09.2026 - "BT firmware not in the dump"; it is, FB-BTFW.)
 # dnsmasq (das volle Paket)
 #     bringt dnsmasq.service mit, der Port 53 auf allen Schnittstellen belegt.
 #     dnsmasq-base reicht; h713-wifi startet es selbst und nur auf wlan0.

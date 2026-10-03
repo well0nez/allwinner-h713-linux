@@ -1,0 +1,13 @@
+[Unit]
+Description=H713 remote control: keep the stock BLE remote bonded (scans while none is connected, as stock does)
+After=bluetooth.service h713-bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/h713-remote-pair watch
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

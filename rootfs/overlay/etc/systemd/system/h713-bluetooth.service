@@ -1,0 +1,27 @@
+[Unit]
+Description=H713 Bluetooth: HCI (H4, 1.5 MBd, RTS/CTS) on UART1 to the AIC8800D80
+# aic8800_fdrv powers the chip and uploads the BT patch (FB-BTFW); UART1 = 2500400.serial, ttyS by probe order.
+After=h713-wifi.service
+Wants=bluetooth.service
+# five attempts in five minutes, then it stops instead of retrying every 5 s for ever
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# The radio is h713-wifi's (mode, country, the firmware check): this unit only follows it.
+# With wifi.env mode=off there is no chip to attach to and the unit stays off (deep review F4).
+ExecCondition=/bin/test -d /sys/module/aic8800_fdrv
+ExecStartPre=/sbin/modprobe uhid
+ExecStartPre=/sbin/modprobe hci_uart
+ExecStartPre=/usr/sbin/rfkill unblock bluetooth
+# systemd expands $VAR and ${VAR} itself before the shell sees them: every shell
+# variable is written $$ here (device test 02.10.2026: "Invalid environment variable
+# name evaluates to an empty string: t##*/", then "no ttyS on 2500400.serial"); and the
+# device link reads "2500400.serial:0.0" (the 8250 port suffix), so the pattern ends in *.
+ExecStart=/bin/sh -c 'for t in /sys/class/tty/ttyS*; do case $$(readlink "$$t/device") in *2500400.serial*) exec /usr/bin/hciattach -n "/dev/$${t##*/}" any 1500000 flow;; esac; done; echo "no ttyS on 2500400.serial" >&2; exit 1'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

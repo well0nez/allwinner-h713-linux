@@ -55,6 +55,7 @@ H713_WARP_BIN=${H713_WARP_BIN:-$H713_WARP_SRC/h713-warp.aarch64-linux-gnu}
 H713_KS_SRC=${H713_KS_SRC:-$PROJECT_ROOT/userspace/h713-keystone}
 H713_PANEL_SRC=${H713_PANEL_SRC:-$PROJECT_ROOT/userspace/h713-panel}
 H713_AF_SRC=${H713_AF_SRC:-$PROJECT_ROOT/userspace/h713-autofocus}
+H713_REMOTE_SRC=${H713_REMOTE_SRC:-$PROJECT_ROOT/userspace/h713-remote-pair}
 # The C metric beside h713-autofocus. OPTIONAL on purpose: without it the tool
 # measures in Python, which works and is only slower (Q11 item 2).
 H713_AF_BIN=${H713_AF_BIN:-$H713_AF_SRC/h713-afmetric.aarch64-linux-gnu}
@@ -470,6 +471,12 @@ install -m 0644 "$H713_PANEL_SRC/page.html" "$TREE/usr/local/lib/h713-panel/page
 install -m 0644 "$H713_PANEL_SRC/h713-panel.service" "$TREE/etc/systemd/system/h713-panel.service"
 ln -sfn ../h713-panel.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-panel.service"
 info "/usr/local/lib/h713-panel/{h713-panel,page.html}, h713-panel.service enabled (port 8080)"
+
+# --- 5f. h713-remote-pair: bonds the stock BLE remote through bluez (FB-REMOTE);
+# h713-remote-pair.service in the overlay (linked in build-rootfs.sh 4f) runs its watch.
+say "h713-remote-pair"
+install -m 0755 "$H713_REMOTE_SRC/h713-remote-pair" "$TREE/usr/local/sbin/h713-remote-pair"
+info "/usr/local/sbin/h713-remote-pair"
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"

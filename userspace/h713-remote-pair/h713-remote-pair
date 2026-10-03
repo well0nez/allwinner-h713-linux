@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""h713-remote-pair - pair the projector's stock Bluetooth remote through bluez.
+
+The stock remote is a BLE HID device (HID over GATT, service 0x1812) that advertises
+under several names. On the tested HY300PRO-G-EU, hold LEFT + RIGHT to pair;
+other remotes may use a different combination. Stock Android scans for its name
+whenever no remote is connected and bonds without a dialog (FB-REMOTE). This does the
+same with bluez: bluetoothctl (bluez's D-Bus client) runs with a NoInputNoOutput agent,
+the remote is bonded, trusted and connected, and from then on bluez reconnects it.
+Commands: pair [--timeout 60], reconnect [--timeout 30], status, forget [ADDR],
+watch (reconnect a known remote; pair only when none is bonded). Exit: 0 done, 1 no remote seen, 2 bluez refused, 3 usage or no bluetoothctl.
+"""
+
+import argparse
+import os
+import queue
+import re
+import shlex
+import subprocess
+import sys
+import threading
+import time
+
+#: The names stock accepts (product/etc/bt_list.ini, ASCII part) - substring match.
+NAMES = ("BLE_X_RMC", "Great Wall", "RGE_A_CE1504", "Bt_Remote", "Bluetooth remote", "blueRemote", "JVIN")
+HOG_UUID = "00001812-0000-1000-8000-00805f9b34fb"
+EXIT_OK, EXIT_NOT_FOUND, EXIT_REFUSED, EXIT_USAGE = 0, 1, 2, 3
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\x01\x02]")
+DEVICE_LINE = re.compile(r"(?:\[NEW\] )?Device ([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}) (?:Name: )?(.+)$")
+
+
+def clean(line: str) -> str:
+    return ANSI.sub("", line).strip()
+
+
+def name_matches(name: str, names) -> bool:
+    return any(n in name for n in names)
+
+
+class ControllerUnavailable(RuntimeError):
+    pass
+
+
+class Ctl:
+    """One bluetoothctl process: commands in, cleaned lines out through a queue."""
+
+    def __init__(self, command: str):
+        self.p = subprocess.Popen(shlex.split(command) + ["--agent", "NoInputNoOutput"], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        self.q: "queue.Queue[str]" = queue.Queue()
+        threading.Thread(target=self._pump, daemon=True).start()
+
+    def _pump(self):
+        for raw in self.p.stdout:
+            for piece in raw.split("\r"):       # the prompt is redrawn with CR
+                if clean(piece):
+                    self.q.put(clean(piece))
+        self.q.put("")                          # end marker
+
+    def send(self, *cmds: str):
+        for cmd in cmds:
+            self.p.stdin.write(cmd + "\n")
+        self.p.stdin.flush()
+
+    def lines(self, timeout: float):     # the lines of the next timeout seconds
+        end = time.monotonic() + timeout
+        while end > time.monotonic():
+            try:
+                line = self.q.get(timeout=end - time.monotonic())
+            except queue.Empty:
+                return
+            if line == "":
+                return
+            yield line
+
+    def wait(self, ok: str, bad: str, timeout: float):   # (True|False, line) or (None, "")
+        for line in self.lines(timeout):
+            if re.search(ok, line):
+                return True, line
+            if re.search(bad, line):
+                return False, line
+        return None, ""
+
+    def close(self):
+        try:
+            self.send("quit")
+            self.p.wait(timeout=5)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            self.p.kill()
+
+
+def device_info(ctl: Ctl, addr: str):
+    """Only use fields belonging to the requested info block, not other events."""
+    ctl.send("info " + addr)
+    block, active, connected = [], False, False
+    for line in ctl.lines(1.5):
+        change = re.search(r"\[CHG\] Device ([0-9A-Fa-f:]{17}) Connected: (yes|no)$", line)
+        if change and change.group(1).upper() == addr.upper():
+            connected = change.group(2) == "yes"
+            continue
+        header = re.fullmatch(r"Device ([0-9A-Fa-f:]{17})(?: .*|$)", line)
+        if header:
+            active = header.group(1).upper() == addr.upper()
+        elif active and not line.startswith(("[", "Controller ")):
+            block.append(line)
+            if line in ("Connected: yes", "Connected: no"):
+                connected = line == "Connected: yes"
+    return {"hog": any(line.startswith("UUID:") and HOG_UUID in line for line in block),
+            "connected": connected}
+
+
+def scan_for(ctl: Ctl, names, timeout: float):
+    """LE scan for HoG advertisers until a name matches -> (addr, name) or None."""
+    ctl.send("power on")
+    done, line = ctl.wait(r"Changing power on succeeded|Powered: yes", r"No default controller", 5)
+    if done is False and "No default controller" in line:
+        print("error: no Bluetooth controller -- is h713-bluetooth.service up (hciattach on UART1)?", file=sys.stderr)
+        return None
+    ctl.send("scan le")
+    for line in ctl.lines(timeout):
+        m = DEVICE_LINE.search(line)
+        if m and name_matches(m.group(2).strip(), names) and device_info(ctl, m.group(1))["hog"]:
+            ctl.send("scan off")
+            return m.group(1).upper(), m.group(2).strip()
+    ctl.send("scan off")
+
+
+def pair(ctl: Ctl, addr: str, timeout: float) -> int:
+    steps = (("pair", r"Pairing successful|Already paired", r"Failed to pair|Authentication(Failed|Canceled)", timeout),
+             ("trust", r"trust succeeded|Trusted: yes", r"Failed to set trust", 10),
+             ("connect", r"Connection successful", r"Failed to connect", timeout))
+    for verb, ok, bad, t in steps:
+        ctl.send(verb + " " + addr)
+        done, line = ctl.wait(ok, bad, t)
+        if not done:
+            print("error: %s %s: %s" % (verb, addr, line or "no answer"), file=sys.stderr)
+            return EXIT_REFUSED
+    return EXIT_OK
+
+
+def bonded(ctl: Ctl, names):                     # [(addr, name, connected)] of the bonded remotes
+    ctl.send("devices Paired", "show")          # "show" prints a line that ends the listing
+    out = []
+    for line in ctl.lines(5):
+        if "No default controller" in line:
+            raise ControllerUnavailable("no Bluetooth controller -- start h713-bluetooth.service before using the remote")
+        m = DEVICE_LINE.search(line)
+        if m and name_matches(m.group(2), names):
+            out.append([m.group(1).upper(), m.group(2).strip(), False])
+        if line.startswith(("Controller ", "No default controller")):
+            break
+    for dev in out:
+        info = device_info(ctl, dev[0])
+        dev[2] = info["connected"]
+        dev.append(info["hog"])
+    return [tuple(d[:3]) for d in out if d[3]]
+
+
+def run_pair(ctl: Ctl, names, timeout: float) -> int:
+    found = scan_for(ctl, names, timeout)
+    if found is None:
+        print("no remote in pairing mode within %ds (use the remote pairing combination; HY300PRO-G-EU: LEFT + RIGHT)" % timeout)
+        return EXIT_NOT_FOUND
+    print("found %s %s" % found)
+    rc = pair(ctl, found[0], timeout)
+    if rc == EXIT_OK:
+        print("ok paired %s %s (trusted, bluez reconnects it)" % found)
+    return rc
+
+
+def cmd_status(ctl: Ctl, a) -> int:
+    devs = bonded(ctl, a.name)
+    for addr, name, connected in devs:
+        print("%s %s %s" % (addr, name, "connected" if connected else "bonded, not connected"))
+    print("" if devs else "no remote bonded", end="" if devs else "\n")
+    return EXIT_OK if devs else EXIT_NOT_FOUND
+
+
+def cmd_forget(ctl: Ctl, a) -> int:
+    addrs = [a.addr] if a.addr else [d[0] for d in bonded(ctl, a.name)]
+    for addr in addrs:
+        ctl.send("remove " + addr)
+        ok, line = ctl.wait(r"Device has been removed", r"not available|Failed to remove", 10)
+        if not ok:
+            print("error: forget %s: %s" % (addr, line or "no answer"), file=sys.stderr)
+            return EXIT_REFUSED
+        print("ok forgot " + addr)
+    return EXIT_OK if addrs else EXIT_NOT_FOUND
+
+
+def reconnect(ctl: Ctl, addr: str, timeout: float) -> int:
+    deadline = time.monotonic() + timeout
+    line = "no answer"
+    while time.monotonic() < deadline:
+        ctl.send("connect " + addr)
+        done, line = ctl.wait(r"Connection successful", r"Failed to connect|not available",
+                              max(0, deadline - time.monotonic()))
+        info = device_info(ctl, addr)
+        if info["hog"] and info["connected"]:
+            print("ok connected " + addr)
+            return EXIT_OK
+        # BlueZ can abort an attempt before the user wakes a sleeping remote.
+        # Retry only these temporary failures, never erase or re-pair the bond.
+        if done is None or not any(reason in (line or "") for reason in
+                                   ("le-connection-abort-by-local", "InProgress", "AlreadyConnected")):
+            break
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
+    print("error: reconnect %s: %s; wake the remote with one key, without pairing mode" %
+          (addr, line or "no answer"), file=sys.stderr)
+    return EXIT_REFUSED
+
+
+def cmd_reconnect(ctl: Ctl, a) -> int:
+    devs = bonded(ctl, a.name)
+    if not devs:
+        print("no remote bonded; use pair for first-time setup")
+        return EXIT_NOT_FOUND
+    if any(connected for _, _, connected in devs):
+        print("ok remote already connected")
+        return EXIT_OK
+    return reconnect(ctl, devs[0][0], a.timeout)
+
+
+def cmd_watch(ctl: Ctl, a) -> int:
+    while True:
+        devs = bonded(ctl, a.name)
+        rc = EXIT_OK
+        if not devs:
+            rc = run_pair(ctl, a.name, a.timeout)
+        elif not any(connected for _, _, connected in devs):
+            rc = reconnect(ctl, devs[0][0], a.timeout)
+        if a.once:
+            return rc
+        time.sleep(a.interval)
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(prog="h713-remote-pair", description=__doc__.split("\n\n")[1])
+    p.add_argument("--ctl", default=os.environ.get("H713_BLUETOOTHCTL", "bluetoothctl"),
+                   help="the bluetoothctl command (env H713_BLUETOOTHCTL)")
+    p.add_argument("--name", action="append", help="accepted name (substring), repeatable; default: the stock list")
+    sub = p.add_subparsers(dest="command", required=True)
+    s = sub.add_parser("pair", help="scan for a remote in pairing mode, bond, trust, connect")
+    s.add_argument("--timeout", type=int, default=60, help="seconds to wait for the remote (60)")
+    s = sub.add_parser("reconnect", help="connect a known remote without re-pairing or forgetting")
+    s.add_argument("--timeout", type=int, default=30)
+    sub.add_parser("status", help="bonded remotes and whether they are connected")
+    sub.add_parser("forget", help="remove the bond of ADDR, or of every bonded remote").add_argument("addr", nargs="?")
+    s = sub.add_parser("watch", help="reconnect a bonded remote; pair only if none is known")
+    s.add_argument("--interval", type=float, default=3.0)
+    s.add_argument("--timeout", type=int, default=20)
+    s.add_argument("--once", action="store_true", help="one round, then exit")
+    a = p.parse_args(argv)
+    a.name = tuple(a.name) if a.name else NAMES
+    try:
+        ctl = Ctl(a.ctl)
+    except OSError as e:
+        print("error: cannot run %s: %s" % (a.ctl, e), file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        if a.command == "pair":
+            return run_pair(ctl, a.name, a.timeout)
+        return {"status": cmd_status, "forget": cmd_forget, "watch": cmd_watch, "reconnect": cmd_reconnect}[a.command](ctl, a)
+    except ControllerUnavailable as e:
+        print("error: " + str(e), file=sys.stderr)
+        return EXIT_REFUSED
+    finally:
+        ctl.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

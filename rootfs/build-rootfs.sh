@@ -604,7 +604,12 @@ link_unit /etc/systemd/system/h713-hdcp-key.service \
 # The packages' own hostapd/wpa_supplicant units are masked in the overlay (-> /dev/null).
 link_unit /etc/systemd/system/h713-wifi.service \
 	etc/systemd/system/multi-user.target.wants h713-wifi.service
-info "units linked: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys, h713-hdcp-key, h713-wifi"
+# h713-bluetooth: HCI on UART1; h713-remote-pair keeps the stock remote bonded (FB-REMOTE).
+link_unit /etc/systemd/system/h713-bluetooth.service \
+	etc/systemd/system/multi-user.target.wants h713-bluetooth.service
+link_unit /etc/systemd/system/h713-remote-pair.service \
+	etc/systemd/system/multi-user.target.wants h713-remote-pair.service
+info "units linked: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys, h713-hdcp-key, h713-wifi, h713-bluetooth, h713-remote-pair"
 
 # 4g. resolv.conf has to be a real file, not a symlink to systemd-resolved --
 # that service does not exist here, isc-dhcp-client writes into it itself
