@@ -1,25 +1,25 @@
 #!/bin/sh
-# h713-wifi -- das WLAN des Geraets nach /etc/h713/wifi.env hochfahren.
+# h713-wifi - bring the device's Wi-Fi up as /etc/h713/wifi.env describes it.
 #
-#   h713-wifi up            lesen, pruefen, Modul laden, AP oder Station starten
-#   h713-wifi down          Daemons beenden, wlan0 herunternehmen
-#   h713-wifi status        was gerade laeuft
-#   h713-wifi check [DATEI] nur lesen und pruefen -- das benutzt build-rootfs.sh
-#                           auf dem Bau-Rechner, bevor eine Datei ins Abbild geht
+#   h713-wifi up            read, check, load the module, start AP or station
+#   h713-wifi down          stop the daemons, take wlan0 down
+#   h713-wifi status        what is running right now
+#   h713-wifi check [FILE]  read and check only - build-rootfs.sh uses this
+#                           on the build host before a file goes into the image
 #
-# Gerufen von h713-wifi.service (oneshot, RemainAfterExit). Ein Dienst, drei
-# Betriebsarten, eine Datei -- damit derselbe Weg fuer den gilt, der das Abbild
-# nur flasht, wie fuer den, der es baut.
+# Called by h713-wifi.service (oneshot, RemainAfterExit). One service, three
+# modes, one file - so the same path holds for whoever only flashes the image
+# and for whoever builds it.
 #
-# Was hier bewusst NICHT passiert:
-#  * Die Datei wird nicht mit '.' eingelesen. Sie kommt vom Nutzer; ein Tippfehler
-#    darf eine Fehlermeldung sein, kein ausgefuehrtes Kommando.
-#  * Kein offener Zugangspunkt. mode=ap ohne Passwort ist ein Fehler.
-#  * Die Passphrase steht nur in /etc/h713/wifi.env (0600) und in den erzeugten
-#    Konfigurationen unter /run (tmpfs, 0600). Nirgends sonst, nie im Journal.
-#  * Der Chip wird nur eingeschaltet, wenn er gebraucht wird: mode=off laedt das
-#    Modul gar nicht erst -- aic8800_bsp bestromt den Chip erst, wenn fdrv ihn
-#    anfordert (analyse/boot/wlan-aic8800-messung-20260912.txt, Befund 1).
+# What deliberately does NOT happen here:
+#  * The file is not read with '.'. It comes from the user; a typo may be an
+#    error message, never an executed command.
+#  * No open access point. mode=ap without a password is an error.
+#  * The passphrase lives only in /etc/h713/wifi.env (0600) and in the generated
+#    configs under /run (tmpfs, 0600). Nowhere else, never in the journal.
+#  * The chip is switched on only when it is needed: mode=off does not load the
+#    module at all - aic8800_bsp powers the chip only when fdrv asks for it
+#    (analyse/boot/wlan-aic8800-messung-20260912.txt, finding 1).
 
 set -u
 
@@ -30,36 +30,36 @@ MODUL=aic8800_fdrv
 FIRMWARE=/lib/firmware/aic8800_fw/SDIO/aic8800D80
 
 log()  { printf 'h713-wifi: %s\n' "$*"; }
-fail() { printf 'h713-wifi: FEHLER: %s\n' "$*" >&2; exit 1; }
+fail() { printf 'h713-wifi: ERROR: %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Lesen und pruefen
+# Read and check
 # ---------------------------------------------------------------------------
 mode= ssid= password= band= channel= country= ap_ip= ap_dhcp_start= ap_dhcp_end=
 
-lies_env() { # $1 = Datei
-	[ -r "$1" ] || fail "$1 nicht lesbar"
+lies_env() { # $1 = file
+	[ -r "$1" ] || fail "$1 is not readable"
 	zeile=0
 	while IFS= read -r roh || [ -n "$roh" ]; do
 		zeile=$((zeile + 1))
-		z=${roh%$(printf '\r')}                 # CRLF aus einem Windows-Editor
+		z=${roh%$(printf '\r')}                 # CRLF from a Windows editor
 		case "$z" in ''|'#'*) continue ;; esac
 		case "$z" in
 		*=*) k=${z%%=*}; v=${z#*=} ;;
-		*)   fail "$1 Zeile $zeile: kein 'schluessel=wert': $z" ;;
+		*)   fail "$1 line $zeile: not 'key=value': $z" ;;
 		esac
 		case "$k" in
 		mode|ssid|password|band|channel|country|ap_ip|ap_dhcp_start|ap_dhcp_end) ;;
-		*) fail "$1 Zeile $zeile: unbekannter Schluessel '$k' (Tippfehler?)" ;;
+		*) fail "$1 line $zeile: unknown key '$k' (typo?)" ;;
 		esac
-		# Kein '.'-Sourcing, also von Hand zuweisen -- die Schluessel sind oben
-		# auf eine feste Liste geprueft, deshalb ist eval hier ungefaehrlich.
+		# No '.' sourcing, so assign by hand - the keys are checked above
+		# against a fixed list, so eval is harmless here.
 		eval "$k=\$v"
 	done < "$1"
 }
 
 bytes()  { printf %s "$1" | wc -c; }
-# Steuerzeichen (0x00-0x1f, 0x7f) sind in keinem Feld erlaubt; Umlaute schon.
+# Control characters (0x00-0x1f, 0x7f) are allowed in no field; umlauts are.
 hat_steuerzeichen() { [ -n "$(printf %s "$1" | LC_ALL=C tr -d '\040-\176\200-\377')" ]; }
 ist_ipv4() {
 	printf %s "$1" | LC_ALL=C grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || return 1
@@ -70,64 +70,68 @@ EOF
 }
 
 pruefe_env() {
-	case "$mode" in ap|sta|off) ;; *) fail "mode muss ap, sta oder off sein (ist: '$mode')" ;; esac
+	case "$mode" in ap|sta|off) ;; *) fail "mode must be ap, sta or off (is: '$mode')" ;; esac
 	[ "$mode" = off ] && return 0
 
 	n=$(bytes "$ssid")
-	[ "$n" -ge 1 ] && [ "$n" -le 32 ] || fail "ssid muss 1..32 Byte lang sein (ist: $n)"
-	hat_steuerzeichen "$ssid" && fail "ssid enthaelt Steuerzeichen"
-	case "$ssid" in *'"'*|*'\'*) fail "ssid darf kein \" und kein \\ enthalten" ;; esac
+	[ "$n" -ge 1 ] && [ "$n" -le 32 ] || fail "ssid must be 1..32 bytes long (is: $n)"
+	hat_steuerzeichen "$ssid" && fail "ssid contains a control character"
+	case "$ssid" in *'"'*|*'\'*) fail "ssid must not contain \" or \\" ;; esac
 
 	n=$(bytes "$password")
 	if [ "$mode" = ap ] || [ "$n" -gt 0 ]; then
 		[ "$n" -ge 8 ] && [ "$n" -le 63 ] || {
 			[ "$mode" = ap ] && [ "$n" -eq 0 ] && \
-				fail "password fehlt -- ein offener Zugangspunkt wird nicht aufgespannt"
-			fail "password muss 8..63 Zeichen lang sein (ist: $n)"
+				fail "password is missing - an open access point is not started"
+			fail "password must be 8..63 characters long (is: $n)"
 		}
-		hat_steuerzeichen "$password" && fail "password enthaelt Steuerzeichen"
-		case "$password" in *'"'*|*'\'*) fail "password darf kein \" und kein \\ enthalten" ;; esac
+		hat_steuerzeichen "$password" && fail "password contains a control character"
+		case "$password" in *'"'*|*'\'*) fail "password must not contain \" or \\" ;; esac
 	fi
 
-	case "$country" in [A-Z][A-Z]) ;; *) fail "country muss ein Laenderkuerzel aus zwei Grossbuchstaben sein (ist: '$country')" ;; esac
+	case "$country" in
+	[A-Z][A-Z]) ;;
+	'') log "WARNING: country is empty in /etc/h713/wifi.env: using 00 (world); set a two-letter code"; country=00 ;;
+	*) fail "country must be a two-letter country code in capitals (is: '$country')" ;;
+	esac
 
 	[ "$mode" = sta ] && return 0
 
 	case "$band" in
-	2.4) case "$channel" in [1-9]|1[0-3]) ;; *) fail "band=2.4 erlaubt channel 1..13 (ist: '$channel')" ;; esac ;;
-	5)   case "$channel" in 36|40|44|48) ;; *) fail "band=5 erlaubt nur die radarfreien Kanaele 36, 40, 44, 48 (ist: '$channel')" ;; esac ;;
-	*)   fail "band muss 2.4 oder 5 sein (ist: '$band')" ;;
+	2.4) case "$channel" in [1-9]|1[0-3]) ;; *) fail "band=2.4 allows channel 1..13 (is: '$channel')" ;; esac ;;
+	5)   case "$channel" in 36|40|44|48) ;; *) fail "band=5 allows only the radar-free channels 36, 40, 44, 48 (is: '$channel')" ;; esac ;;
+	*)   fail "band must be 2.4 or 5 (is: '$band')" ;;
 	esac
 	for f in ap_ip ap_dhcp_start ap_dhcp_end; do
 		eval "w=\$$f"
-		ist_ipv4 "$w" || fail "$f ist keine IPv4-Adresse (ist: '$w')"
+		ist_ipv4 "$w" || fail "$f is not an IPv4 address (is: '$w')"
 	done
 	[ "${ap_ip%.*}" = "${ap_dhcp_start%.*}" ] && [ "${ap_ip%.*}" = "${ap_dhcp_end%.*}" ] || \
-		fail "ap_ip, ap_dhcp_start und ap_dhcp_end muessen im selben /24 liegen"
+		fail "ap_ip, ap_dhcp_start and ap_dhcp_end must be in the same /24"
 	return 0
 }
 
 zusammenfassung() {
 	case "$mode" in
-	off) log "mode=off -- Funk bleibt aus" ;;
+	off) log "mode=off - the radio stays off" ;;
 	ap)  log "mode=ap  ssid='$ssid'  band=$band channel=$channel  country=$country  $ap_ip ($ap_dhcp_start..$ap_dhcp_end)" ;;
-	sta) log "mode=sta ssid='$ssid'  $( [ -n "$password" ] && echo WPA2 || echo offen )  country=$country" ;;
+	sta) log "mode=sta ssid='$ssid'  $( [ -n "$password" ] && echo WPA2 || echo open )  country=$country" ;;
 	esac
 }
 
 # ---------------------------------------------------------------------------
-# Treiber und Schnittstelle
+# Driver and interface
 # ---------------------------------------------------------------------------
 firmware_pruefen() {
-	# Im Release-Abbild liegen die 13 Dateien als Platzhalter fester Groesse;
-	# hy310-install fuellt sie aus dem Abzug des Nutzers. Ein Geraet ohne Chip
-	# bekommt sie GENULLT -- die Datei ist da, aber leer. Deshalb nicht nur auf
-	# das Verzeichnis sehen, sondern in die Datei.
-	[ -d "$FIRMWARE" ] || fail "Firmware fehlt: $FIRMWARE -- sie kommt aus dem Abzug des Geraets (h713-extract, Schritt WLAN). Ohne sie startet der Chip nicht."
+	# In the release image the 13 files are placeholders of fixed size;
+	# hy310-install fills them from the user's dump. A device without the
+	# chip gets them ZEROED - the file is there but empty. So do not look
+	# only at the directory, look into the file.
+	[ -d "$FIRMWARE" ] || fail "firmware missing: $FIRMWARE - it comes from your device's dump (h713-extract, Wi-Fi step). Without it the chip does not start."
 	set -- "$FIRMWARE"/fmacfw_*.bin
-	[ -f "$1" ] || fail "Firmware fehlt: keine fmacfw_*.bin in $FIRMWARE"
+	[ -f "$1" ] || fail "firmware missing: no fmacfw_*.bin in $FIRMWARE"
 	if [ "$(head -c 16 "$1" | LC_ALL=C tr -d '\000' | wc -c)" -eq 0 ]; then
-		fail "$1 ist ein genullter Platzhalter -- dieses Geraet hat keinen WLAN-Chip, oder der Installer lief ohne den WLAN-Teil des Abzugs. mode=off in $ENV_DATEI beendet diese Meldung."
+		fail "$1 is a zeroed placeholder - this device has no Wi-Fi chip, or the installer ran without the Wi-Fi part of the dump. mode=off in $ENV_DATEI ends this message."
 	fi
 }
 
@@ -136,9 +140,9 @@ lade_modul() {
 	if [ -d /sys/module/$MODUL ]; then
 		ist=$(cat /sys/module/$MODUL/parameters/default_ccode 2>/dev/null || echo '?')
 		if [ "$ist" != "$country" ]; then
-			# Die Regulierungsdomaene ist ein Ladeparameter des self-managed
-			# wiphy; zur Laufzeit stellt sie niemand um. Also neu laden.
-			log "Regulierungsdomaene $ist -> $country: Modul wird neu geladen"
+			# The regulatory domain is a load parameter of the self-managed
+			# wiphy; nobody changes it at run time. So reload.
+			log "regulatory domain $ist -> $country: reloading the module"
 			modprobe -r $MODUL || fail "modprobe -r $MODUL"
 		fi
 	fi
@@ -148,14 +152,14 @@ lade_modul() {
 	i=0
 	while [ ! -e /sys/class/net/$IFACE ]; do
 		i=$((i + 1))
-		[ "$i" -le 30 ] || fail "$IFACE ist nach 30 s nicht erschienen (dmesg | grep -i aic)"
+		[ "$i" -le 30 ] || fail "$IFACE did not appear within 30 s (dmesg | grep -i aic)"
 		sleep 1
 	done
 	rfkill unblock wifi 2>/dev/null || true
 	iw reg set "$country" 2>/dev/null || true
 }
 
-toete() { # $1 = Pidfile
+toete() { # $1 = pidfile
 	[ -f "$1" ] || return 0
 	pid=$(cat "$1" 2>/dev/null)
 	[ -n "$pid" ] && kill "$pid" 2>/dev/null
@@ -180,15 +184,15 @@ runter() {
 }
 
 # ---------------------------------------------------------------------------
-# Zugangspunkt
+# Access point
 # ---------------------------------------------------------------------------
 starte_ap() {
-	# Die hostapd-Zeilen sind die am Geraet gemessenen aus cstengers Rootfs-Bau
-	# (mainline/tools/rootfs/customize.sh): 2,4 GHz HT40 4,85/7,65 MB/s,
-	# 5 GHz VHT80 13,25/14,41 MB/s. MAX-MPDU-11454 kann dieser Treiber nicht
-	# (meldet 7991); wer es verlangt, bekommt "Unable to setup interface".
-	# HT40 braucht einen Nachbarkanal: unten fuer die niedrigen Kanaele (+),
-	# oben fuer die hohen (-), sonst startet hostapd nicht.
+	# The hostapd lines are the ones measured on the device, from cstenger's
+	# rootfs build (mainline/tools/rootfs/customize.sh): 2.4 GHz HT40
+	# 4.85/7.65 MB/s, 5 GHz VHT80 13.25/14.41 MB/s. This driver cannot do
+	# MAX-MPDU-11454 (it reports 7991); asking for it gives "Unable to setup
+	# interface". HT40 needs a neighbour channel: below for the low channels
+	# (+), above for the high ones (-), otherwise hostapd does not start.
 	case "$band" in
 	5)
 		hw=a
@@ -226,20 +230,20 @@ EOF
 	umask 022
 	ip link set $IFACE down 2>/dev/null || true
 	ip addr flush dev $IFACE 2>/dev/null || true
-	hostapd -B -P "$LAUF/hostapd.pid" "$LAUF/hostapd.conf" || fail "hostapd startet nicht (journalctl -u h713-wifi)"
+	hostapd -B -P "$LAUF/hostapd.pid" "$LAUF/hostapd.conf" || fail "hostapd does not start (journalctl -u h713-wifi)"
 	ip addr add "$ap_ip/24" dev $IFACE || fail "ip addr add $ap_ip/24"
 	ip link set $IFACE up
-	# DHCP fuer die Clients, dazu ein Name fuer das Geraet selbst, damit
-	# 'ssh root@h713' vom Telefon aus geht. Kein Weiterreichen von DNS -- es
-	# gibt hinter dem AP nichts, wohin. Nur wlan0, damit eth0 unberuehrt bleibt.
+	# DHCP for the clients, plus a name for the device itself so that
+	# 'ssh root@h713' works from a phone. No DNS forwarding - there is
+	# nowhere to forward to behind the AP. wlan0 only, so eth0 is left alone.
 	dnsmasq --pid-file="$LAUF/dnsmasq.pid" --dhcp-leasefile="$LAUF/leases" \
 		--interface=$IFACE --bind-interfaces --except-interface=lo \
 		--no-resolv --no-hosts \
 		--address=/h713/"$ap_ip" --address=/"$(cat /etc/hostname 2>/dev/null || echo hy310)"/"$ap_ip" \
 		--dhcp-range="$ap_dhcp_start,$ap_dhcp_end,255.255.255.0,12h" \
 		--dhcp-authoritative \
-		|| fail "dnsmasq startet nicht"
-	log "Zugangspunkt '$ssid' steht auf $IFACE, $ap_ip"
+		|| fail "dnsmasq does not start"
+	log "access point '$ssid' is up on $IFACE, $ap_ip"
 }
 
 # ---------------------------------------------------------------------------
@@ -265,23 +269,23 @@ EOF
 	umask 022
 	ip link set $IFACE up || fail "ip link set $IFACE up"
 	wpa_supplicant -B -D nl80211 -i $IFACE -c "$LAUF/wpa_supplicant.conf" -P "$LAUF/wpa_supplicant.pid" \
-		|| fail "wpa_supplicant startet nicht"
-	# -nw: nicht auf eine Adresse warten. Der Dienst gilt als gestartet, sobald
-	# die Anmeldung laeuft; ob das Netz da ist, zeigt 'h713-wifi status'.
+		|| fail "wpa_supplicant does not start"
+	# -nw: do not wait for an address. The service counts as started once the
+	# association is running; 'h713-wifi status' shows whether the network is up.
 	dhclient -4 -nw -pf "$LAUF/dhclient.pid" -lf "$LAUF/dhclient.leases" $IFACE \
-		|| fail "dhclient startet nicht"
-	log "Station meldet sich an '$ssid' an; Adresse per DHCP"
+		|| fail "dhclient does not start"
+	log "station is joining '$ssid'; address by DHCP"
 }
 
 # ---------------------------------------------------------------------------
-# Unterbefehle
+# Subcommands
 # ---------------------------------------------------------------------------
 befehl_check() {
 	lies_env "${1:-$ENV_DATEI}"
 	pruefe_env
 	zusammenfassung
 	if [ "$mode" = ap ] && [ "$ssid" = h713 ] && [ "$password" = magcubic ]; then
-		log "HINWEIS: das ist die oeffentlich bekannte Vorgabe. Wer sie nicht aendert, laesst jeden in Funkreichweite herein."
+		log "NOTE: this is the publicly known default. Anyone who does not change it lets everybody in radio range in."
 	fi
 }
 
@@ -299,20 +303,20 @@ befehl_up() {
 befehl_down() {
 	install -d -m 0700 "$LAUF"
 	runter
-	log "$IFACE ist unten"
+	log "$IFACE is down"
 }
 
 befehl_status() {
 	if lies_env "$ENV_DATEI" 2>/dev/null && pruefe_env 2>/dev/null; then
 		zusammenfassung
 	else
-		log "$ENV_DATEI: fehlerhaft -- 'h713-wifi check' sagt, was"
+		log "$ENV_DATEI: invalid - 'h713-wifi check' says why"
 	fi
-	[ -d /sys/module/$MODUL ] && log "Modul geladen, Regulierungsdomaene $(cat /sys/module/$MODUL/parameters/default_ccode 2>/dev/null)" || log "Modul nicht geladen (Chip aus)"
-	[ -e /sys/class/net/$IFACE ] || { log "$IFACE gibt es nicht"; return 0; }
+	[ -d /sys/module/$MODUL ] && log "module loaded, regulatory domain $(cat /sys/module/$MODUL/parameters/default_ccode 2>/dev/null)" || log "module not loaded (chip off)"
+	[ -e /sys/class/net/$IFACE ] || { log "$IFACE does not exist"; return 0; }
 	for d in hostapd dnsmasq wpa_supplicant dhclient; do
 		if [ -f "$LAUF/$d.pid" ] && kill -0 "$(cat "$LAUF/$d.pid")" 2>/dev/null; then
-			log "$d laeuft (PID $(cat "$LAUF/$d.pid"))"
+			log "$d is running (PID $(cat "$LAUF/$d.pid"))"
 		fi
 	done
 	ip -4 -brief addr show dev $IFACE 2>/dev/null
@@ -327,5 +331,5 @@ up)     befehl_up ;;
 down)   befehl_down ;;
 status) befehl_status ;;
 check)  befehl_check "${2:-}" ;;
-*)      echo "Aufruf: h713-wifi up|down|status|check [DATEI]" >&2; exit 2 ;;
+*)      echo "usage: h713-wifi up|down|status|check [FILE]" >&2; exit 2 ;;
 esac

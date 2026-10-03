@@ -1,17 +1,17 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0
 #
-# zram-Swap an/aus. Aufgerufen von hy310-zram-swap.service (107 §4.2).
+# zram swap on/off. Called by hy310-zram-swap.service (doku/107, section 4.2).
 #
-# Drei Werte, mehr ist es nicht:
-#   Algorithmus  zstd       bestes Verhaeltnis Kompression/CPU auf diesem A53
-#   Groesse      halber RAM zram belegt seinerseits RAM; mehr als die Haelfte
-#                           als Swap anzubieten dreht sich um
-#   Prioritaet   100        hoeher als jeder spaetere Swap auf Blockgeraeten,
-#                           damit zuerst in den RAM ausgelagert wird
+# Three values, nothing more:
+#   Algorithm  zstd       best ratio of compression to CPU on this A53
+#   Size       half RAM   zram itself takes RAM; offering more than half
+#                         as swap is self-defeating
+#   Priority   100        higher than any later swap on block devices,
+#                         so that pages go out to RAM first
 #
-# vm.swappiness und vm.page-cluster stehen in /etc/sysctl.d/99-hy310-zram.conf
-# und werden nicht hier gesetzt -- ein Wert, ein Ort.
+# vm.swappiness and vm.page-cluster are in /etc/sysctl.d/99-hy310-zram.conf
+# and are not set here - one value, one place.
 set -eu
 
 DEV_NODE=/dev/zram0
@@ -20,34 +20,33 @@ ALGO=zstd
 PRIO=100
 
 fail_soft() {
-	# Kein Swap ist unangenehm, aber kein Grund, den Start scheitern zu
-	# lassen: das Geraet soll auch mit einem Kernel ohne CONFIG_ZRAM
-	# vollstaendig hochkommen.
-	echo "hy310-zram-swap: $1 -- weiter ohne zram" >&2
+	# No swap is unpleasant, but no reason to make the boot fail: the
+	# device should come up completely even with a kernel without
+	# CONFIG_ZRAM.
+	echo "hy310-zram-swap: $1 - continuing without zram" >&2
 	exit 0
 }
 
 start() {
 	[ -e "$SYS" ] || modprobe zram num_devices=1 2>/dev/null \
-		|| fail_soft "zram-Modul nicht ladbar (CONFIG_ZRAM fehlt?)"
-	[ -e "$SYS" ] || fail_soft "$SYS erscheint nicht"
+		|| fail_soft "zram module cannot be loaded (CONFIG_ZRAM missing?)"
+	[ -e "$SYS" ] || fail_soft "$SYS does not appear"
 
-	# Schon aktiv? Dann nichts tun (die Unit ist RemainAfterExit, aber ein
-	# Neustart von Hand soll nicht in einen Fehler laufen).
+	# Already active? Then do nothing (the unit is RemainAfterExit, but a
+	# restart by hand must not run into an error).
 	if grep -q "^$DEV_NODE " /proc/swaps 2>/dev/null; then
-		echo "hy310-zram-swap: $DEV_NODE ist bereits Swap"
+		echo "hy310-zram-swap: $DEV_NODE is already swap"
 		return 0
 	fi
 
-	# Halber RAM, in Byte. MemTotal steht in kB.
+	# Half the RAM, in bytes. MemTotal is in kB.
 	mem_kb=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)
-	[ -n "${mem_kb:-}" ] || fail_soft "MemTotal nicht lesbar"
+	[ -n "${mem_kb:-}" ] || fail_soft "MemTotal not readable"
 	size=$(( mem_kb / 2 * 1024 ))
 
-	# Reihenfolge zaehlt: comp_algorithm laesst sich nur setzen, solange
-	# disksize 0 ist.
+	# Order matters: comp_algorithm can only be set while disksize is 0.
 	echo "$ALGO" > "$SYS/comp_algorithm" 2>/dev/null \
-		|| echo "hy310-zram-swap: $ALGO nicht verfuegbar, Kernel-Vorgabe bleibt" >&2
+		|| echo "hy310-zram-swap: $ALGO not available, the kernel default stays" >&2
 	echo "$size" > "$SYS/disksize"
 
 	mkswap -U clear "$DEV_NODE" >/dev/null
@@ -64,5 +63,5 @@ stop() {
 case "${1:-}" in
 	start) start ;;
 	stop)  stop ;;
-	*) echo "Aufruf: ${0##*/} start|stop" >&2; exit 2 ;;
+	*) echo "usage: ${0##*/} start|stop" >&2; exit 2 ;;
 esac

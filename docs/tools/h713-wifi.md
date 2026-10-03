@@ -17,7 +17,7 @@ sourced, so a typo is an error message, not an executed command.
 | `password` | WPA2 passphrase, 8-63 characters. `ap` refuses to start without one; `sta` accepts an empty value for an open network |
 | `band` | `2.4` (longer range, every client supports it) or `5` (about three times the throughput - 13 vs. 5 MB/s, measured on the device - over a shorter range, only the DFS-free channels). `ap` only |
 | `channel` | 1-13 on `band=2.4`, one of 36/40/44/48 on `band=5`. `ap` only |
-| `country` | ISO-3166 regulatory domain (`DE`, `US`, `GB`, …); sets which channels and transmit power the radio may use for the country the device actually stands in |
+| `country` | ISO-3166 regulatory domain (`DE`, `US`, `GB`, ...); sets which channels and transmit power the radio may use for the country the device actually stands in. Left empty, it falls back to the driver's own `00` (world) with a warning in the log |
 | `ap_ip` | The device's own address on the network it opens |
 | `ap_dhcp_start`, `ap_dhcp_end` | The address range handed to clients by the built-in DHCP server; must share `ap_ip`'s /24 |
 
