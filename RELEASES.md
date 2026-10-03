@@ -60,7 +60,9 @@ building blocks (sha256, 16 characters):
 ```
 
 Two builds of the same commit are meant to give the same building-block hashes: the build clock is the
-commit's date (`source date:` in the stamp), so no part embeds the wall clock or the checkout's path.
+commit's date (`source date:` in the stamp), so no part embeds the wall clock. The checkout's path is
+still embedded by the three userspace cross builds (h713-tv, h713-warp, the focus metric carry `-g`), so the
+building-block hashes repeat only from the same checkout path until those take the prefix map.
 The stamp's `reproducible:` line says whether a build was made that way, and if not, why (local changes,
 `--skip-*`, a private `--wifi-env`). The rootfs tar repeats only while the Debian mirror is at the same
 state; `rootfs packages:` names the package set for that comparison. Image checksums still differ between
