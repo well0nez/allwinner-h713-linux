@@ -56,8 +56,8 @@ judgement, not an instrument measurement.
 The codec's DAC accepts exactly one input at a time - the DSP's I2S output, or the ordinary Linux PCM
 device - never both. A PC source that keeps its HDMI audio stream open (as most do, even on silence) can
 therefore block device sounds entirely; the vendor stack avoided this by mixing both streams inside the
-DSP's own graph before the codec ever sees them. That mixing path is now built and was measured once, but
-is **not yet on main**: kernel patches 0169/0170 add a playback PCM `hw:hy310hdmi,0` (48 kHz, S16_LE,
+DSP's own graph before the codec ever sees them. That mixing path is on main since 04.10.2026 (measured on
+the HY310 02./03.10.): kernel patches 0176-0178 add a playback PCM `hw:hy310hdmi,0` (48 kHz, S16_LE,
 stereo) whose DMA ring feeds the audio bridge's input stream 2 and joins the HDMI branch inside the DSP
 (DECODER3 into MIXER2, the vendor's path 0x89); `h713-tv` keeps the DAC on I2S and mutes the HDMI branch
 alone in silence; `rootfs/overlay/usr/share/alsa/cards/H713-MSP.conf` makes that PCM ALSA's `default`

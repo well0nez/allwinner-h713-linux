@@ -8,7 +8,7 @@ git, not in the image" means the source has the fix but the image you can curren
 
 | Issue | Why | Workaround |
 |---|---|---|
-| No Bluetooth | The driver builds, but the AIC8800D80's Bluetooth firmware (`fmacfwbt_*`) is not in the stock firmware - only in a separate SDK package with an unresolved licence. Wi-Fi is unaffected; it ships its own firmware set. | none |
+| No Bluetooth | The driver builds, but the AIC8800D80's Bluetooth patch set IS in the stock firmware and loads with the Wi-Fi driver (FB-BTFW); what is missing is the host side - the HCI line discipline on UART1, bluez and the input path (FB-REMOTE). Wi-Fi is unaffected; it ships its own firmware set. | none |
 | No AV1 decode | The H713 is the first Allwinner chip with AV1 hardware, and it is not yet clear whether the existing reverse-engineering covers a working driver or only the register layout. | none |
 | No HDCP 1.4 | Confirmed on this chip: HDCP 1.4 keys live in hardware, decrypted by the Crypto Engine straight into a key sink (`0x03041400`) that DRAM never sees. A Linux driver would have to program that engine with key-select 3 (RSSK) before the MIPS starts - untested whether the non-secure world is allowed to do that at all. That test costs a power cycle and is deferred past the first release. | Use an unprotected source, or one that only needs HDCP 2.2 |
 | HDCP 2.2 - one proof outstanding | Works: the 912-byte key is pulled from your device's own secure storage at boot and handed to the display firmware (verified 2026-09-11, key load at 6.4 s, driver sequence complete at 6.5 s). What is **unverified** is whether those 912 bytes are plaintext or a TEE-side ciphertext - that needs an actual HDCP-mandatory source (streaming stick, console, Blu-ray player) on the HDMI input to observe. | none needed unless the source refuses to negotiate |
@@ -59,7 +59,7 @@ git, not in the image" means the source has the fix but the image you can curren
 |---|---|
 | No audio mixing with HDMI | The internal DAC accepts only one source at a time, and a PC connected over HDMI holds that source open continuously - device sounds (UI, alerts) cannot currently be mixed in (`doku/102`). |
 | Standby is one stage only | Standby draws 4 W with the front LED red; a deeper sleep (under 1 W, instant-on, using the ARISC co-processor and IR/CEC wake) is designed but not implemented (`doku/104`). |
-| Autofocus is not finished | The tool exists since 22.09.2026 ([`h713-autofocus`](tools/h713-autofocus.md), the vendor's own search rebuilt) and is a separate tool rather than a mode of `h713-focus`, because it needs a test pattern to measure against - against an arbitrary dark scene the metric is nonsense. What is missing is the proof that it converges: see *Autofocus does not converge yet* above. |
+| Autofocus is not finished | The tool exists since 22.09.2026 ([`h713-autofocus`](tools/h713-autofocus.md), the vendor's own search rebuilt) and is a separate tool rather than a mode of `h713-focus`, because it needs a test pattern to measure against - against an arbitrary dark scene the metric is nonsense. What is missing is the proof that it converges: see *Autofocus convergence against a wall is open* above - the wait for the pattern is measured (26.09.2026), the search's turn-round on a long fall is not. |
 
 ## The image on your device may not match a fresh build
 
