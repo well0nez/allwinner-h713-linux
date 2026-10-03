@@ -2,8 +2,8 @@
 """h713-remote-pair - pair the projector's stock Bluetooth remote through bluez.
 
 The stock remote is a BLE HID device (HID over GATT, service 0x1812) that advertises
-under several names. On the tested HY300PRO-G-EU, hold LEFT + RIGHT to pair;
-other remotes may use a different combination. Stock Android scans for its name
+under several names. Hold LEFT + RIGHT to pair (the stock remote of the HY310 and the
+HY300PRO-G-EU, the same remote); other remotes may use a different combination. Stock Android scans for its name
 whenever no remote is connected and bonds without a dialog (FB-REMOTE). This does the
 same with bluez: bluetoothctl (bluez's D-Bus client) runs with a NoInputNoOutput agent,
 the remote is bonded, trusted and connected, and from then on bluez reconnects it.
@@ -159,7 +159,7 @@ def bonded(ctl: Ctl, names):                     # [(addr, name, connected)] of 
 def run_pair(ctl: Ctl, names, timeout: float) -> int:
     found = scan_for(ctl, names, timeout)
     if found is None:
-        print("no remote in pairing mode within %ds (use the remote pairing combination; HY300PRO-G-EU: LEFT + RIGHT)" % timeout)
+        print("no remote in pairing mode within %ds (hold LEFT + RIGHT on the stock remote)" % timeout)
         return EXIT_NOT_FOUND
     print("found %s %s" % found)
     rc = pair(ctl, found[0], timeout)
