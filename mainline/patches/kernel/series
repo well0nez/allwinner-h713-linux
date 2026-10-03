@@ -467,3 +467,4 @@
 0176-ASoC-sunxi-h713-msp-a-playback-pcm-for-device-sounds-mixed-into-hdmi.patch
 0177-ASoC-sunxi-h713-msp-deep-review-fixes.patch
 0178-arm64-dts-h713-the-audio-bridge-window-and-interrupts-for-the-msp.patch
+0179-media-h713-hdmirx-link-0x6d-is-the-firmware-s-connect-event-flag.patch

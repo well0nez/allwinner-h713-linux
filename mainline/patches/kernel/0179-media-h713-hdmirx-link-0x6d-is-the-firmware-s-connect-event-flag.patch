@@ -1,0 +1,36 @@
+media: h713-hdmirx: the hdcp file names LINK 0x6d for what it is - the firmware's connect-event flag, not a link state
+
+FB-HDCP22c (03.10.2026, finding 6d): +0x6d "link 0 connected" is 0 for the whole of a
+capture and its only reader is MVLinkConnectEventHandle; printing "link 0 connected / not
+connected" next to the 2.2 session bits suggested an HDCP state that it is not. The byte
+stays in the line, named honestly; nothing else changes (doku/141 Stufe 2, 9).
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -456,7 +456,9 @@
+  *  +0x422 [0]  a 2.2 session stands: cleared at AKE_Init, set by the
+  *              handler of the last message (SKE_Send_Eks). For 2.2 this bit
+  *              is "authenticated". A 1.4 pass clears it too.
+- *  +0x06d [0]  link 0 connected (sub_8B13E538).
++ *  +0x06d [0]  "link 0 connected" - the firmware's connect-event flag (its only reader is
++ *              MVLinkConnectEventHandle); 0 for the whole of a capture, so it says nothing
++ *              about HDCP (FB-HDCP22c 6d, 03.10.2026).
+  *
+  * Addresses and functions: display.bin, database
+  * umbau/work/FB-HDCP22/ida/display.bin.i64, FB-HDCP22 report and
+@@ -4975,13 +4977,12 @@
+ 		at += sysfs_emit_at(buf, at, "version:       %s -- LINK 0x422=0x%02x 0x3c0=0x%02x 0x161=0x%02x\n",
+ 				    h713_hdmirx_hdcp_version(&h), h.session, h.mode,
+ 				    h.hold);
+-		at += sysfs_emit_at(buf, at, "authenticated: %s (2.2 session, LINK 0x422[0]) -- rxstatus 0x41b/0x41c=0x%02x 0x%02x: message size %u, READY %s, REAUTH_REQ %s; link 0x6d=0x%02x, link 0 %s\n",
++		at += sysfs_emit_at(buf, at, "authenticated: %s (2.2 session, LINK 0x422[0]) -- rxstatus 0x41b/0x41c=0x%02x 0x%02x: message size %u, READY %s, REAUTH_REQ %s; link 0x6d=0x%02x (the firmware's connect-event flag, no HDCP meaning)\n",
+ 				    h.session & H713_LINK_HDCP22_SESSION_ON ? "yes" : "no",
+ 				    h.rx_lo, h.rx_hi, msg_size,
+ 				    h.rx_hi & H713_LINK_HDCP22_RXSTATUS_READY ? "1" : "0",
+ 				    h.rx_hi & H713_LINK_HDCP22_RXSTATUS_REAUTH ? "1" : "0",
+-				    h.linkstat,
+-				    h.linkstat & H713_LINK_LINKSTAT_LINK0 ? "connected" : "not connected");
++				    h.linkstat);
+ 		at += sysfs_emit_at(buf, at, "key-1.4:       %s (LINK 0x93=0x%02x)\n",
+ 				    h.key14 & H713_LINK_HDCP14_KEY_LOADED ? "loaded" :
+ 				    "not loaded -- nothing loads it before the firmware starts, its LoadKey times out at boot (doku/112)",

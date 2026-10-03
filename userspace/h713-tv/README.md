@@ -737,7 +737,7 @@ same five after the arisc line. The shape:
 
 ```
 hdcp            version:       2.2 (session stands) -- LINK 0x422=.. 0x3c0=.. 0x161=..
-hdcp            authenticated: yes (2.2 session, LINK 0x422[0]) -- rxstatus ...; link 0x6d=.., link 0 connected
+hdcp            authenticated: yes (2.2 session, LINK 0x422[0]) -- rxstatus ...; link 0x6d=.. (the firmware's connect-event flag, no HDCP meaning)
 hdcp            key-1.4:       not loaded -- nothing loads it before the firmware starts, ... (LINK 0x93=0x00)
 hdcp            key-2.2:       handed over at probe (THal_Vp_SetHDCP22Key accepted; 2.2 advertised to the source, ...)
 hdcp            firmware:      E/HdcpRx ... MsgHandle_SKE_SEND_EKS ... HDCP Process cost tick:N (ring write pointer N)
