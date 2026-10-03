@@ -451,3 +451,6 @@
 # 03.10.: 0166 sent the six PWM words as six parameters; the firmware takes one, their address
 #   (display.bin 0x8B10A444, stock libhaldisplay 0xA20C) - the HY300 Pro crashes since test8 (GEU1 device test)
 0168-media-hdmirx-backlight-pwm-info-by-address.patch
+# 03.10.: the stock BLE remote (1d5a:c081) declares two usages in its consumer report and sends one; 6.18's
+#   HID core drops such short reports, so none of its keys arrived (HY310 integration test)
+0169-hid-h713-remote-the-stock-ble-remote-s-consumer-report.patch

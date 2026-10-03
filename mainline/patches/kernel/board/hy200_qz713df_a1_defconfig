@@ -29,6 +29,8 @@ CONFIG_BT_HCIUART=m
 CONFIG_BT_HCIUART_H4=y
 # uhid: bluez's HID-over-GATT plugin feeds the stock BLE remote's reports in here (FB-REMOTE)
 CONFIG_UHID=y
+# the stock BLE remote: descriptor fixup for its consumer report (kernel 0169)
+CONFIG_HID_H713_REMOTE=y
 CONFIG_CFG80211=y
 CONFIG_MAC80211=y
 CONFIG_RFKILL=y
