@@ -1,13 +1,13 @@
-# Host-Schluessel beim ersten Start erzeugen.
+# Create the SSH host keys at the first boot.
 #
-# Ohne das haetten ALLE aus demselben Abbild bespielten Geraete dieselben
-# SSH-Host-Schluessel: das Postinst von openssh-server erzeugt sie im Chroot,
-# also beim Bau. build-rootfs.sh loescht sie wieder; diese Unit legt sie beim
-# ersten Start am Geraet an. Vorbild ist h713-ssh-host-keys.service aus dem
-# heutigen Netboot-Root.
+# Without this ALL devices flashed from the same image would have the same
+# SSH host keys: the postinst of openssh-server creates them in the chroot,
+# that is, at build time. build-rootfs.sh deletes them again; this unit
+# creates them at the first boot on the device. The model is
+# h713-ssh-host-keys.service from today's netboot root.
 
 [Unit]
-Description=HY310: fehlende SSH-Host-Schluessel erzeugen
+Description=HY310: create missing SSH host keys
 Before=ssh.service
 ConditionPathExists=|!/etc/ssh/ssh_host_ed25519_key
 

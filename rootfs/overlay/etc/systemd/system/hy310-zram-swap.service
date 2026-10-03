@@ -1,25 +1,25 @@
-# 107 §4.2 -- zram als SWAP, nicht fuer Logs.
+# doku/107, section 4.2 - zram as SWAP, not for logs.
 #
-# Armbians Weg (zram-Blockgeraet, ext4 darauf, /var/log dorthin, beim
-# Herunterfahren nach /var/log.hdd sichern) loest dasselbe Problem, ist aber
-# eine Konstruktion aus drei beweglichen Teilen. Wir loesen die Logs mit
-# Storage=volatile (10-h713.conf) und benutzen zram nur fuer das, wofuer es
-# hier wirklich gebraucht wird: den tmpfs-Druck abfangen und das Geraet bei
-# knappem Speicher traege statt tot machen.
+# Armbian's way (zram block device, ext4 on it, /var/log there, saved to
+# /var/log.hdd at shutdown) solves the same problem but is a construction of
+# three moving parts. We solve the logs with Storage=volatile (10-h713.conf)
+# and use zram only for what it is really needed for here: absorbing tmpfs
+# pressure and making the device sluggish instead of dead when memory is
+# short.
 #
-# Warum eine eigene Unit statt zram-tools (107 §6): zram-tools bringt ein
-# init-Skript, eine Konfigurationsdatei und eine Abhaengigkeitskette mit, um
-# drei Werte zu setzen. Die drei Werte stehen hier.
+# Why a unit of our own instead of zram-tools (doku/107, section 6): zram-tools
+# brings an init script, a configuration file and a chain of dependencies to
+# set three values. The three values are here.
 
 [Unit]
-Description=HY310: zram-Swap (zstd, halber RAM)
+Description=HY310: zram swap (zstd, half the RAM)
 Documentation=file:/usr/local/share/doc/hy310/rootfs.md
 DefaultDependencies=no
 Before=swap.target
 After=systemd-modules-load.service
-# Ohne CONFIG_ZRAM gibt es /sys/class/zram-control nicht. Dann startet die
-# Unit gar nicht erst, statt zu scheitern -- der Kernel kann das heute noch
-# nicht (siehe modules-load.d/hy310-zram.conf).
+# Without CONFIG_ZRAM there is no /sys/class/zram-control. Then the unit does
+# not start at all instead of failing - the kernel cannot do that yet today
+# (see modules-load.d/hy310-zram.conf).
 ConditionPathExists=/sys/class/zram-control
 
 [Service]

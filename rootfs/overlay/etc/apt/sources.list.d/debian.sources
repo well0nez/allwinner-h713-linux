@@ -1,10 +1,10 @@
-# apt bleibt benutzbar (107 §8). Signed-By zeigt auf das Keyring aus
-# debian-archive-keyring; kein trusted=yes, keine unsignierte Quelle.
+# apt stays usable (doku/107 section 8). Signed-By points to the keyring from
+# debian-archive-keyring; no trusted=yes, no unsigned source.
 #
-# Die Paketlisten sind NICHT eingebacken: `apt update` beim Bau wuerde rund
-# 40 MiB Listen mitliefern, die am ersten Tag veraltet sind. Der erste
-# `apt update` am Geraet holt sie -- und braucht dafuer eine gestellte Uhr,
-# also entweder Netz (systemd-timesyncd) oder `date -u -s`.
+# The package lists are NOT baked in: `apt update` at build time would ship
+# about 40 MiB of lists that are out of date on the first day. The first
+# `apt update` on the device fetches them - and needs a clock that is set for
+# that, so either network (systemd-timesyncd) or `date -u -s`.
 
 Types: deb
 URIs: http://deb.debian.org/debian

@@ -317,7 +317,7 @@ KO_N=$(find "$DST_MOD" -name '*.ko*' | wc -l)
 
 # aic8800 (WLAN), built out of tree. Into extra/, where depmod expects foreign
 # modules. Only bsp + fdrv: btlpm is Bluetooth, and its firmware is not in the
-# vendor dump (60-offen §WLAN und Bluetooth).
+# vendor dump (doku/60-offen, section "WLAN und Bluetooth").
 # Check the vermagic: a module built against another tree either does not load
 # or -- worse -- loads and does not match. Compared against an in-tree module
 # of the same modroot.

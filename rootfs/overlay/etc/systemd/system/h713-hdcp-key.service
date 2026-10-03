@@ -1,9 +1,9 @@
 [Unit]
-Description=HDCP-2.2-Schluessel vom Geraet an den HDMI-RX-Treiber geben
-# Der Schluessel liegt im Secure Storage auf der eMMC (Partition hy310-keys).
-# Er verlaesst das Geraet nie: kurz ins tmpfs, Treiber laden, Datei loeschen.
-# Der Treiber ist in /etc/modprobe.d/h713-hdcp-key.conf fuer udev gesperrt und
-# wird hier zum ersten Mal geladen; h713-tv@video1 folgt ueber udev von selbst.
+Description=Hand the HDCP 2.2 key from the device to the HDMI-RX driver
+# The key lies in the Secure Storage on the eMMC (partition hy310-keys).
+# It never leaves the device: briefly into tmpfs, load the driver, delete the file.
+# The driver is blocked for udev in /etc/modprobe.d/h713-hdcp-key.conf and
+# is loaded here for the first time; h713-tv@video1 follows by itself via udev.
 DefaultDependencies=no
 After=local-fs.target dev-disk-by\x2dpartlabel-hy310\x2dkeys.device
 Wants=dev-disk-by\x2dpartlabel-hy310\x2dkeys.device
@@ -13,7 +13,7 @@ ConditionPathExists=/sys/module/firmware_class/parameters/path
 Type=oneshot
 ExecStart=/usr/local/sbin/h713-hdcp-key
 RemainAfterExit=yes
-# Ohne Schluessel trotzdem laden, damit das Bild nicht am HDCP haengt.
+# Load the driver without a key anyway, so that the picture does not hang on HDCP.
 ExecStartPost=-/sbin/modprobe sun50i-h713-hdmirx
 
 [Install]

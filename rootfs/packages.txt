@@ -1,23 +1,23 @@
-# packages.txt -- Paketliste fuer das schlanke HY310-Rootfs (Debian trixie/arm64)
+# packages.txt - package list for the slim HY310 rootfs (Debian trixie/arm64)
 #
-# Grundlage: doku/107-plan-rootfs.md §6 (Entwurf) und §8 (Entschieden).
-# Basis ist `mmdebstrap --variant=minbase`; hier steht nur, was DARUEBER kommt.
+# Basis: doku/107-plan-rootfs.md section 6 (draft) and section 8 (decided).
+# The base is `mmdebstrap --variant=minbase`; this file lists only what comes ON TOP.
 #
-# Format: eine Zeile je Paket. Alles ab '#' ist Kommentar, Leerzeilen erlaubt.
-# build-rootfs.sh liest die Datei und macht daraus die --include-Liste.
+# Format: one line per package. Everything from '#' on is a comment, blank lines allowed.
+# build-rootfs.sh reads the file and turns it into the --include list.
 #
-# Regel fuer diese Liste: jede Zeile muss sich auf einen Bedarf zurueckfuehren
-# lassen, der im Projekt belegt ist -- kein Paket "fuer alle Faelle".
+# Rule for this list: every line has to trace back to a need that is written
+# down in the project - no package "just in case".
 
-# --- Init, Geraete, Bus ------------------------------------------------------
-systemd-sysv        # /sbin/init; minbase bringt systemd als Bibliothek, nicht als Init
-udev                # Geraeteerkennung; traegt 99-h713-tv.rules, ohne udev startet h713-tv nie
-dbus                # von systemd (logind, hostnamed) und udev-Regeln mit TAG+="systemd" erwartet
+# --- Init, devices, bus ------------------------------------------------------
+systemd-sysv        # /sbin/init; minbase brings systemd as a library, not as init
+udev                # device detection; carries 99-h713-tv.rules, without udev h713-tv never starts
+dbus                # expected by systemd (logind, hostnamed) and udev rules with TAG+="systemd"
 
-# --- Netz (wie heute im Netboot-Root, S41 §1) --------------------------------
+# --- Network (as today in the netboot root, S41 section 1) -------------------
 ifupdown            # /etc/network/interfaces: allow-hotplug eth0 / iface eth0 inet dhcp
-isc-dhcp-client     # der DHCP-Client, den ifupdown aufruft; schreibt /etc/resolv.conf
-iproute2            # ip(8); ifupdown und jede Fehlersuche am Netz brauchen es
+isc-dhcp-client     # the DHCP client that ifupdown calls; writes /etc/resolv.conf
+iproute2            # ip(8); ifupdown and any network troubleshooting need it
 
 # --- Network diagnostics (O2) ------------------------------------------------
 # The image had none of these, so "is the network up" could only be answered
@@ -35,98 +35,98 @@ wget                # next to curl because it retries and resumes without a
 netcat-openbsd      # nc(1): is the port open, and a pipe when there is no scp
                     # yet. 133 KiB installed, nothing pulled in behind it.
 
-# --- Fernzugang --------------------------------------------------------------
-openssh-server      # Fernzugang. KEIN Schluessel im Abbild (107 §3) -- der Installer legt einen,
-                    # sonst kommt man nur ueber die serielle Konsole herein.
+# --- Remote access -----------------------------------------------------------
+openssh-server      # remote access. NO key in the image (doku/107 section 3) - the installer
+                    # puts one in, otherwise you only get in over the serial console.
 
-# --- Dateisystem, Module, Blockgeraete ---------------------------------------
-e2fsprogs           # mkfs.ext4/e2fsck/resize2fs; x-systemd.growfs in der fstab braucht resize2fs
-kmod                # modprobe/depmod fuer die 28 Module des GUT-Standes
-util-linux-extra    # agetty (in trixie NICHT mehr in util-linux!) -- ohne das kein Autologin auf
-                    # ttyS0; dazu fstrim(8) fuer die eMMC und lsblk-Nachbarn
+# --- File system, modules, block devices -------------------------------------
+e2fsprogs           # mkfs.ext4/e2fsck/resize2fs; x-systemd.growfs in the fstab needs resize2fs
+kmod                # modprobe/depmod for the 28 modules of the GOOD state
+util-linux-extra    # agetty (NO longer in util-linux in trixie!) - without it no autologin on
+                    # ttyS0; also fstrim(8) for the eMMC and the lsblk neighbours
 
-# --- Ton ---------------------------------------------------------------------
-alsa-utils          # amixer/aplay: der Audioweg von h713-tv wird darueber geprueft (S25/S32)
+# --- Sound -------------------------------------------------------------------
+alsa-utils          # amixer/aplay: the audio path of h713-tv is checked with them (S25/S32)
 
-# --- Laufzeitbibliotheken von h713-tv ---------------------------------------
-# `readelf -d h713-tv.aarch64-linux-gnu` nennt genau drei: libdrm.so.2,
-# libasound.so.2, libc.so.6. libc kommt aus minbase, die anderen zwei hier.
-libdrm2             # libdrm.so.2 -- DRM/KMS-Plane
-libasound2t64       # libasound.so.2 -- ALSA-Control-API (t64-Umbenennung in trixie)
+# --- Runtime libraries of h713-tv --------------------------------------------
+# `readelf -d h713-tv.aarch64-linux-gnu` names exactly three: libdrm.so.2,
+# libasound.so.2, libc.so.6. libc comes from minbase, the other two from here.
+libdrm2             # libdrm.so.2 - DRM/KMS plane
+libasound2t64       # libasound.so.2 - ALSA control API (t64 rename in trixie)
 
 # --- h713-pq ----------------------------------------------------------------
-python3             # h713-pq rechnet Gamma/Presets zur Laufzeit aus /etc/hy310/tvconfig
-                    # (108 §6). Nur Standardbibliothek, ausdruecklich OHNE python3-dev.
+python3             # h713-pq computes gamma/presets at run time from /etc/hy310/tvconfig
+                    # (doku/108 section 6). Standard library only, explicitly WITHOUT python3-dev.
 
-# --- WLAN (Marco, 12.09.: "wird mit den gaengigen Tools ausgestattet") --------
-# Der Treiber laeuft seit dem 12.09. auf diesem Kernel, die Firmware zieht
-# h713-extract aus dem Abzug des Nutzers (analyse/boot/wlan-aic8800-messung-
-# 20260912.txt). Beides waren die Gruende, aus denen WLAN draussen war -- weg.
-# Betrieb: /etc/h713/wifi.env, ausgewertet von h713-wifi.service (overlay/).
-wpasupplicant       # Station (mode=sta): WPA2-Anmeldung an ein fremdes Netz
-hostapd             # Zugangspunkt (mode=ap, die Vorgabe): SSID h713 / magcubic
-dnsmasq-base        # DHCP fuer die AP-Clients. -base: nur das Programm, KEIN
-                    # dnsmasq.service, der sonst Port 53 auf allen Schnittstellen
-                    # belegt -- h713-wifi startet es selbst auf wlan0
-iw                  # iw(8): Scan, Verbindungsstand, Regulierungsdomaene -- die
-                    # Fehlersuche am Funk ohne v4l2-ctl-artige Umwege
-rfkill              # rfkill unblock wifi vor dem Hochfahren; ohne das bleibt ein
-                    # weich gesperrtes Funkteil stumm und keiner sieht warum
-wireless-regdb      # regulatory.db fuer cfg80211. Der aic8800 ist self-managed und
-                    # nimmt seine Tabelle aus dem Treiber (default_ccode), aber das
-                    # globale Reich soll trotzdem stimmen, falls custregd je faellt
+# --- Wi-Fi (Marco, 12.09.: "gets the common tools") ---------------------------
+# The driver has run on this kernel since 12.09., and h713-extract pulls the
+# firmware out of the user's dump (analyse/boot/wlan-aic8800-messung-
+# 20260912.txt). Those were the two reasons Wi-Fi was left out - gone.
+# Operation: /etc/h713/wifi.env, evaluated by h713-wifi.service (overlay/).
+wpasupplicant       # station (mode=sta): WPA2 login to someone else's network
+hostapd             # access point (mode=ap, the default): SSID h713 / magcubic
+dnsmasq-base        # DHCP for the AP clients. -base: only the program, NO
+                    # dnsmasq.service, which would otherwise take port 53 on all
+                    # interfaces - h713-wifi starts it itself on wlan0
+iw                  # iw(8): scan, link state, regulatory domain - troubleshooting
+                    # the radio without v4l2-ctl-style detours
+rfkill              # rfkill unblock wifi before bring-up; without it a soft-blocked
+                    # radio stays silent and nobody sees why
+wireless-regdb      # regulatory.db for cfg80211. The aic8800 is self-managed and
+                    # takes its table from the driver (default_ccode), but the
+                    # global realm should still be right in case custregd ever falls
 
 # --- Remote control: Bluetooth and infrared (FB-REMOTE, 27.09.2026) ----------
 bluez               # bluetoothd, bluetoothctl, hciattach: HCI H4 on UART1 (h713-bluetooth.service);
                     # the hog plugin makes the stock BLE remote an evdev device through uhid,
                     # h713-remote-pair bonds it. The BT patch set IS in the dump (FB-BTFW).
 
-# --- U-Boot-Umgebung aus Linux ---------------------------------------------
-libubootenv-tool    # fw_printenv/fw_setenv nach /etc/fw_env.config (0x700000, 64 KiB).
-                    # Ohne das gab es die Konfigurationsdatei, aber kein Werkzeug dazu;
-                    # h713_boot, h713_gate, h713_project sind sonst nur am U-Boot-Prompt
-                    # erreichbar. Klein (~100 KiB), kein u-boot-tools noetig.
+# --- U-Boot environment from Linux -------------------------------------------
+libubootenv-tool    # fw_printenv/fw_setenv per /etc/fw_env.config (0x700000, 64 KiB).
+                    # Without it there was the configuration file but no tool for it;
+                    # h713_boot, h713_gate, h713_project are otherwise only reachable
+                    # at the U-Boot prompt. Small (~100 KiB), no u-boot-tools needed.
 
-# --- Uhr (107 §8) ------------------------------------------------------------
-systemd-timesyncd   # ohne gepufferte RTC startet das System 1970: apt scheitert an der
-                    # Signaturpruefung, Logs sind unbrauchbar, jedes TLS bricht ab. ~1 MiB.
-                    # Ohne Netz bleibt es beim Startwert, dann weiter `date -u -s`.
+# --- Clock (doku/107 section 8) ----------------------------------------------
+systemd-timesyncd   # without a buffered RTC the system starts in 1970: apt fails at the
+                    # signature check, logs are useless, every TLS connection breaks. ~1 MiB.
+                    # Without a network it stays at the start value, then `date -u -s` as before.
 
-# --- apt bleibt benutzbar (107 §8) -------------------------------------------
-ca-certificates     # TLS-Wurzeln fuer deb.debian.org und alles andere ueber https
-debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg -- ohne das ist die
-                    # eingetragene Quelle nicht verifizierbar und `apt update` waere wertlos.
-                    # ACHTUNG: `apt update` findet beim BAU nicht statt (~40 MiB Listen, am
-                    # ersten Tag veraltet); build-rootfs.sh raeumt /var/lib/apt/lists.
+# --- apt stays usable (doku/107 section 8) -----------------------------------
+ca-certificates     # TLS roots for deb.debian.org and everything else over https
+debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg - without it the
+                    # configured source cannot be verified and `apt update` would be worthless.
+                    # WARNING: `apt update` does not happen at BUILD time (~40 MiB of lists, out of
+                    # date on the first day); build-rootfs.sh clears /var/lib/apt/lists.
 
 # =============================================================================
-# Bewusst NICHT enthalten -- als Liste, damit die Entscheidung nachlesbar ist
-# und nicht beim naechsten Bau still zurueckwandert.
+# Deliberately NOT included - as a list, so that the decision can be read
+# and does not quietly wander back in at the next build.
 # =============================================================================
 #
 # build-essential, gcc, *-dev, meson, ninja, gdb, strace
-#     107 §3: gebaut wird quer (userspace/h713-tv/Makefile, Ziel install-cross).
-#     Das Geraet compiliert nichts.
+#     doku/107 section 3: cross-built (userspace/h713-tv/Makefile, target install-cross).
+#     The device compiles nothing.
 # libgles2, libegl1, libgbm1, libgl1-mesa-dri
-#     Seit 22.09.2026 kommt mesa NICHT aus Debian: schon libgbm1 zieht mesa-libgallium
-#     und libllvm19 nach (187 MiB installiert). rootfs/mesa/build-mesa.sh baut mesa
-#     25.0.7 nur mit dem Panfrost-Treiber, EGL, GLES2 und GBM quer (15 MiB, kein LLVM),
-#     build-rootfs.sh legt es unter /usr/local (--mesa). Grund: der Keystone-Pfad
+#     Since 22.09.2026 mesa does NOT come from Debian: libgbm1 alone pulls in mesa-libgallium
+#     and libllvm19 (187 MiB installed). rootfs/mesa/build-mesa.sh cross-builds mesa
+#     25.0.7 with only the Panfrost driver, EGL, GLES2 and GBM (15 MiB, no LLVM),
+#     build-rootfs.sh puts it under /usr/local (--mesa). Reason: the keystone path
 #     (umbau/plan/keystone).
 # gstreamer1.0-*, mpv, ffmpeg, v4l-utils
-#     cstengers Video-Runtime (mainline/tools/rootfs/build.sh, VIDEO_RUNTIME_PACKAGES).
-#     Zieht GTK3, x265, aom, libllvm nach -- 107 §1: der groesste Einzelposten des
-#     heutigen Netboot-Roots. Der Beamer schiebt HDMI-Eingang auf eine DRM-Plane,
-#     er decodiert nichts.
+#     cstenger's video runtime (mainline/tools/rootfs/build.sh, VIDEO_RUNTIME_PACKAGES).
+#     Pulls in GTK3, x265, aom, libllvm - doku/107 section 1: the biggest single item of
+#     today's netboot root. The projector moves HDMI input onto a DRM plane,
+#     it decodes nothing.
 # (bluez stood here until 27.09.2026 - "BT firmware not in the dump"; it is, FB-BTFW.)
-# dnsmasq (das volle Paket)
-#     bringt dnsmasq.service mit, der Port 53 auf allen Schnittstellen belegt.
-#     dnsmasq-base reicht; h713-wifi startet es selbst und nur auf wlan0.
+# dnsmasq (the full package)
+#     brings dnsmasq.service, which takes port 53 on all interfaces.
+#     dnsmasq-base is enough; h713-wifi starts it itself and only on wlan0.
 # busybox
-#     zweite Werkzeugkiste ohne Aufgabe; util-linux und coreutils sind da.
+#     a second toolbox without a job; util-linux and coreutils are there.
 # zram-tools
-#     107 §6/§4.2: eigene Unit ist kleiner und macht genau die drei Einstellungen,
-#     die wir wollen. Siehe overlay/usr/local/sbin/hy310-zram-swap.
-# firmware-*, alle Blob-Pakete
-#     107 §5: keine proprietaeren Blobs im Abbild. Firmware und PQ-Daten spielt der
-#     Installer aus h713-extract ein.
+#     doku/107 section 6/4.2: a unit of our own is smaller and does exactly the three settings
+#     we want. See overlay/usr/local/sbin/hy310-zram-swap.
+# firmware-*, all blob packages
+#     doku/107 section 5: no proprietary blobs in the image. The installer puts firmware and PQ
+#     data in from h713-extract.
