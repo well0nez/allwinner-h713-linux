@@ -685,6 +685,7 @@ t "fw_env at 0x700000"        grep -q '^/dev/mmcblk0[[:space:]]*0x700000[[:space
 t "fw_printenv present"       test -x "$TREE/usr/bin/fw_printenv"
 t "network via ifupdown/DHCP" grep -q 'iface eth0 inet dhcp' "$TREE/etc/network/interfaces"
 t "h713-logs executable"      test -x "$TREE/usr/local/sbin/h713-logs"
+t "h713-bt-reset executable" test -x "$TREE/usr/local/sbin/h713-bt-reset"
 t "hy310-logs is the alias"   test "$(readlink "$TREE/usr/local/sbin/hy310-logs")" = h713-logs
 t "zram unit linked"          test -L "$TREE/etc/systemd/system/swap.target.wants/hy310-zram-swap.service"
 t "HDCP unit linked"         test -L "$TREE/etc/systemd/system/sysinit.target.wants/h713-hdcp-key.service"

@@ -15,11 +15,20 @@ ExecCondition=/bin/test -d /sys/module/aic8800_fdrv
 ExecStartPre=/sbin/modprobe uhid
 ExecStartPre=/sbin/modprobe hci_uart
 ExecStartPre=/usr/sbin/rfkill unblock bluetooth
+# HCI_Reset on the bare UART before the attach and after it, as stock's libbt-aic does
+# around every session (FB-BTRESET): the kernel resets neither at init nor - when
+# hciattach exits - at close, so a restart inherited the old LE scan and stopped at
+# 0x2010 (Command Disallowed), and after a warm reboot the first command went unanswered.
+ExecStartPre=/usr/local/sbin/h713-bt-reset
 # systemd expands $VAR and ${VAR} itself before the shell sees them: every shell
 # variable is written $$ here (device test 02.10.2026: "Invalid environment variable
 # name evaluates to an empty string: t##*/", then "no ttyS on 2500400.serial"); and the
 # device link reads "2500400.serial:0.0" (the 8250 port suffix), so the pattern ends in *.
 ExecStart=/bin/sh -c 'for t in /sys/class/tty/ttyS*; do case $$(readlink "$$t/device") in *2500400.serial*) exec /usr/bin/hciattach -n "/dev/$${t##*/}" any 1500000 flow;; esac; done; echo "no ttyS on 2500400.serial" >&2; exit 1'
+# hciattach succeeds even when the kernel's init stalls (hci0 stayed DOWN for good): the
+# start only counts once hci0 is UP, otherwise Restart= goes round reset and attach again.
+ExecStartPost=/usr/local/sbin/h713-bt-reset --wait-up 10
+ExecStopPost=-/usr/local/sbin/h713-bt-reset
 Restart=on-failure
 RestartSec=5
 

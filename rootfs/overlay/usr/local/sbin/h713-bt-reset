@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""h713-bt-reset - bring the AIC8800D80's Bluetooth controller to a known state on its UART.
+
+  h713-bt-reset [TTY]                 default TTY: the ttyS whose device is 2500400.serial
+  h713-bt-reset --wait-up SECONDS     after hciattach: wait until its hciN is UP
+
+Sends HCI_Reset as a raw H4 command (1500000 Bd, 8N1, RTS/CTS) while no line discipline
+holds the port: h713-bluetooth runs it before hciattach and after hciattach has exited.
+Stock does the same around every session (libbt-aic: hw_uart_config_start opens with
+HCI_Reset, close_with_hci_reset ends with one). Our kernel does neither: hci_uart sends no
+reset at init (HCI_QUIRK_RESET_ON_CLOSE) and its reset at close never reaches the wire when
+hciattach exits, so a new attach inherits the old LE scan on the accept list and the init
+stops at LE Clear Accept List (0x2010, Command Disallowed); after a warm reboot the first
+command can go unanswered (0x1003 -110). Measurements: umbau/work/FB-BTRESET/REPORT.txt.
+
+--wait-up turns an init that still stalls (the cause of the lost first command is open) into
+a failed start, so Restart= goes round stop (reset) and start (reset, attach) again.
+Exit 0 answered / UP, 1 no answer / not UP (the unit's Restart= tries again), 2 no UART.
+"""
+import fcntl
+import os
+import re
+import select
+import socket
+import struct
+import sys
+import termios
+import time
+
+RESET = b"\x01\x03\x0c\x00"                          # H4 command, opcode 0x0c03, no parameters
+RESET_DONE = re.compile(rb"\x04\x0e\x04.\x03\x0c(.)", re.S)  # its Command Complete -> status
+# One reset every 0.1 s for up to 8 s, never faster: that waits out a controller whose first
+# command is lost after a warm reboot, and 4 bytes per try fill up a half-received command of
+# up to 320 bytes until the H4 parser is in step again. 66 resets in one burst hung the BT
+# firmware (CTS stayed low until the next power cycle, FB-BTRESET evidence/11b).
+TRIES, GAP = 80, 0.1
+HCIGETDEVINFO, HCI_UP = 0x800448D3, 1     # _IOR('H', 211, int); struct hci_dev_info: flags at 16
+
+
+def log(msg):
+    print("h713-bt-reset: " + msg, flush=True)
+
+
+def find_tty():
+    for name in sorted(os.listdir("/sys/class/tty")):
+        if name.startswith("ttyS"):
+            try:
+                if "2500400.serial" in os.readlink("/sys/class/tty/%s/device" % name):
+                    return "/dev/" + name
+            except OSError:
+                pass
+    return None
+
+
+def open_uart(path):
+    fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    a = termios.tcgetattr(fd)
+    a[0] = a[1] = a[3] = 0                           # raw: no input, output or local processing
+    a[2] = termios.CS8 | termios.CREAD | termios.CLOCAL | termios.CRTSCTS
+    a[4] = a[5] = termios.B1500000
+    termios.tcsetattr(fd, termios.TCSANOW, a)
+    termios.tcflush(fd, termios.TCIOFLUSH)
+    return fd
+
+
+def read_for(fd, seconds, until=None, prior=b""):
+    """New bytes for up to `seconds`: until `until` matches prior + new, or (drain) 0.15 s quiet."""
+    buf, end = b"", time.monotonic() + seconds
+    while time.monotonic() < end:
+        if select.select([fd], [], [], min(0.15, max(0.0, end - time.monotonic())))[0]:
+            buf += os.read(fd, 4096)
+            if until is not None and until.search(prior + buf):
+                break
+        elif until is None:
+            break
+    return buf
+
+
+def cts(fd):
+    try:
+        return bool(struct.unpack("i", fcntl.ioctl(fd, termios.TIOCMGET, b"\0" * 4))[0] & termios.TIOCM_CTS)
+    except OSError:
+        return None
+
+
+def reset(fd):
+    """Return (try, status, bytes read) of the first answered reset, or None."""
+    tail, seen = b"", 0
+    for n in range(1, TRIES + 1):
+        os.write(fd, RESET)
+        new = read_for(fd, GAP, RESET_DONE, tail)
+        m, seen, tail = RESET_DONE.search(tail + new), seen + len(new), (tail + new)[-16:]
+        if m:
+            seen += len(read_for(fd, 1.0))           # late answers to earlier tries: none may be
+            return n, m.group(1)[0], seen            # left for the line discipline
+    return None
+
+
+def hci_up(tty, seconds):
+    """The hciN that hci_uart registered on `tty`, once it is UP within `seconds`, else None."""
+    end, want = time.monotonic() + seconds, "/" + os.path.basename(tty)
+    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI)
+    try:
+        while time.monotonic() < end:
+            devs = os.listdir("/sys/class/bluetooth") if os.path.isdir("/sys/class/bluetooth") else []
+            for dev in sorted(devs):
+                try:
+                    if not os.readlink("/sys/class/bluetooth/%s/device" % dev).endswith(want):
+                        continue
+                    info = bytearray(struct.pack("<H", int(dev[3:]))) + bytearray(90)
+                    fcntl.ioctl(sock.fileno(), HCIGETDEVINFO, info)
+                except (OSError, ValueError):
+                    continue
+                if struct.unpack_from("<I", info, 16)[0] & HCI_UP:
+                    return dev
+            time.sleep(0.2)
+    finally:
+        sock.close()
+    return None
+
+
+def main(argv):
+    wait = float(argv[2]) if argv[1:2] == ["--wait-up"] else None
+    argv = argv[:1] + argv[3:] if wait is not None else argv
+    tty = argv[1] if len(argv) > 1 else find_tty()
+    if not tty:
+        log("no ttyS on 2500400.serial")
+        return 2
+    t0 = time.monotonic()
+    if wait is not None:
+        dev = hci_up(tty, wait)
+        ms = (time.monotonic() - t0) * 1000
+        log("%s: %s" % (tty, "%s UP after %.0f ms" % (dev, ms) if dev else
+                        "no hci device UP after %.0f ms: the kernel's init did not get through" % ms))
+        return 0 if dev else 1
+    fd = open_uart(tty)
+    try:
+        r = reset(fd)
+        line = cts(fd)
+    finally:
+        termios.tcflush(fd, termios.TCIOFLUSH)       # never wait in close() on a stuck CTS
+        os.close(fd)
+    ms = (time.monotonic() - t0) * 1000
+    if r is None:
+        log("%s: no answer to HCI_Reset after %d tries, %.0f ms%s" % (tty, TRIES, ms,
+            ", CTS low: the controller takes no data (needs a power cycle)" if line is False else ""))
+        return 1
+    log("%s: reset answered on try %d (status 0x%02x) after %.0f ms, %d bytes read"
+        % (tty, r[0], r[1], ms, r[2]))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
