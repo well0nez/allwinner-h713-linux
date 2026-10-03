@@ -67,15 +67,13 @@ const char *const gl_fragment_shader =
 	"  gl_FragColor = vec4(y + 1.7927411 * c.y, y - 0.2132486 * c.x - 0.5329093 * c.y,\n"
 	"                      y + 2.1124018 * c.x, 1.0); }\n";
 
-/* grid and border as before; the MASK is the calibration picture of the
- * manual keystone, drawn in our own style after the vendor's: a grey field, a
- * white rounded frame, a large circle with a crosshair and a dark centre dot,
- * and the corner being edited marked with a ring. Coordinates are in units of
- * the panel height (u_aspect = width / height), so circles are round. */
+/* MASK: quiet grid, frame and circle. Height-relative coordinates keep circles
+ * round; pixel-relative line widths keep the 720p and 1080p views comparable.
+ * The diagnostic GRID/BORDER branch and the video shaders stay unchanged. */
 const char *const gl_pattern_shader =
 	"precision highp float; varying vec2 v_uv;\n"
-	"uniform float u_grid, u_mask, u_aspect; uniform int u_corner;\n"
-	"float ring(vec2 p, vec2 c, float r, float w) { return 1.0 - step(w, abs(length(p - c) - r)); }\n"
+	"uniform float u_grid, u_mask, u_aspect, u_panel_h; uniform int u_corner;\n"
+	"float ink(float d, float w, float px) { return 1.0 - smoothstep(w, w + px, d); }\n"
 	"void main() {\n"
 	"  vec2 e = min(v_uv, 1.0 - v_uv);\n"
 	"  if (u_mask < 0.5) {\n"
@@ -87,20 +85,25 @@ const char *const gl_pattern_shader =
 	"  vec2 p = vec2(v_uv.x * u_aspect, v_uv.y);\n"
 	"  vec2 c = vec2(0.5 * u_aspect, 0.5);\n"
 	"  vec2 ep = vec2(min(p.x, u_aspect - p.x), min(p.y, 1.0 - p.y));\n"
-	"  float col = 0.5;\n"
-	"  float frame = 1.0 - step(0.004, abs(min(ep.x, ep.y) - 0.06));\n"
-	"  float cross = max(1.0 - step(0.0015, abs(p.x - c.x)), 1.0 - step(0.0015, abs(p.y - c.y)));\n"
-	"  cross *= step(0.06, min(ep.x, ep.y));\n"
-	"  float circle = ring(p, c, 0.42, 0.003);\n"
-	"  float dot = 1.0 - step(0.13, length(p - c));\n"
-	"  col = mix(col, 0.85, max(frame, max(cross, circle)));\n"
-	"  col = mix(col, 0.25, dot);\n"
-	"  if (u_corner >= 0) {\n"
-	"    vec2 k = vec2(u_corner == 1 || u_corner == 3 ? u_aspect - 0.14 : 0.14,\n"
-	"                  u_corner >= 2 ? 1.0 - 0.14 : 0.14);\n"
-	"    float mk = max(ring(p, k, 0.045, 0.006), 1.0 - step(0.014, length(p - k)));\n"
-	"    col = mix(col, 1.0, mk); }\n"
-	"  gl_FragColor = vec4(vec3(col), 1.0); }\n";
+	"  float px = 1.0 / max(u_panel_h, 1.0), margin = 0.0666667;\n"
+	"  float inside = step(margin, min(ep.x, ep.y));\n"
+	"  float col = mix(0.035, 0.065, inside);\n"
+	"  vec2 g = abs(fract((p - c) * 9.0 + 0.5) - 0.5) / 9.0;\n"
+	"  float grid = ink(min(g.x, g.y), 0.45 * px, px) * inside;\n"
+	"  col = mix(col, 0.20, grid);\n"
+	"  float cross = ink(min(abs(p.x-c.x), abs(p.y-c.y)), 0.6*px, px) * inside;\n"
+	"  col = mix(col, 0.42, cross);\n"
+	"  float circle = ink(abs(length(p-c)-0.25), 0.75*px, px);\n"
+	"  col = mix(col, 0.68, circle);\n"
+	"  float dot = ink(abs(length(p-c)-0.0125), 0.65*px, px);\n"
+	"  col = mix(col, 0.9, dot);\n"
+	"  float frame = ink(abs(min(ep.x,ep.y)-margin), 0.8*px, px);\n"
+	"  col = mix(col, 0.86, frame);\n"
+	"  float corner = max(ink(abs(ep.x-margin),1.5*px,px) * step(ep.y,margin+0.045),\n"
+	"                     ink(abs(ep.y-margin),1.5*px,px) * step(ep.x,margin+0.045));\n"
+	"  corner *= step(margin-2.5*px,min(ep.x,ep.y));\n"
+	"  col = mix(col, 1.0, corner);\n"
+	"  gl_FragColor = vec4(vec3((16.0 + 219.0*col)/255.0), 1.0); }\n";
 
 static const char *const NEED[] = {
 	"EGL_EXT_image_dma_buf_import", "EGL_KHR_surfaceless_context",
@@ -172,9 +175,9 @@ static int glyph_index(char ch)
 }
 
 const char *const gl_text_shader =
-	"precision mediump float; varying vec2 v_uv; uniform sampler2D u_font;\n"
+	"precision mediump float; varying vec2 v_uv; uniform sampler2D u_font; uniform float u_luma;\n"
 	"void main() { float a = texture2D(u_font, v_uv).r;\n"
-	"  gl_FragColor = vec4(vec3(1.0), 1.0) * a; }\n";
+	"  gl_FragColor = vec4(vec3(u_luma), 1.0) * a; }\n";
 
 static GLuint prog_text, font_tex;
 
@@ -202,7 +205,7 @@ static void font_build(void)
 }
 
 /* One string at (x, y) in NDC, glyphs `h` panel pixels high, upright, blended */
-static void text_draw(const char *s, float x, float y, float h)
+static void text_draw(const char *s, float x, float y, float h, float luma)
 {
 	static const float ident[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
 	float gw = h * 6.0f / 7.0f * 2.0f / (float)panel_w;	/* advance in NDC */
@@ -212,6 +215,7 @@ static void text_draw(const char *s, float x, float y, float h)
 	glUseProgram(prog_text);
 	glUniformMatrix4fv(glGetUniformLocation(prog_text, "u_k"), 1, GL_FALSE, ident);
 	glUniform1i(glGetUniformLocation(prog_text, "u_font"), 0);
+	glUniform1f(glGetUniformLocation(prog_text, "u_luma"), luma);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, font_tex);
 	glEnable(GL_BLEND);
@@ -229,6 +233,65 @@ static void text_draw(const char *s, float x, float y, float h)
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	}
 	glDisable(GL_BLEND);
+}
+
+/* Labels stay upright in panel space, as before. Cards separate them from the
+ * moving geometry without changing the warp, corner identity or numeric units. */
+static void label_box(float x, float y, float w, float h, float luma)
+{
+	glEnable(GL_SCISSOR_TEST);
+	glScissor((GLint)x, (GLint)y, (GLsizei)w, (GLsizei)h);
+	glClearColor(luma, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glDisable(GL_SCISSOR_TEST);
+}
+
+static float label_width(const char *s, float h)
+{
+	return (float)strlen(s) * h * 6.0f / 7.0f;
+}
+
+static void label_text(const char *s, float x, float y, float h, float luma)
+{
+	text_draw(s, 2.0f*x/(float)panel_w-1.0f,
+		  2.0f*y/(float)panel_h-1.0f, h, luma);
+}
+
+static void mask_labels(const char *const labels[5], int active)
+{
+	float scale = (float)panel_h / 720.0f, pad = 12.0f*scale;
+	float margin = (48.0f+22.0f)*scale, w = 300.0f*scale, h = 60.0f*scale;
+	float number_h = 14.0f*scale, title_h = 18.0f*scale;
+	int c;
+
+	for (c = 0; c < 4; c++) {
+		char title[40], *numbers;
+		float x, y, nh = number_h;
+
+		if (!labels[c])
+			continue;
+		snprintf(title, sizeof(title), "%s", labels[c]);
+		numbers = strchr(title, '\n');
+		if (numbers)
+			*numbers++ = '\0';
+		x = c == 1 || c == 3 ? (float)panel_w-margin-w : margin;
+		y = c >= 2 ? (float)panel_h-margin-h : margin;
+		label_box(x, y, w, h, c == active ? 218.0f/255.0f : 80.0f/255.0f);
+		label_box(x+scale, y+scale, w-2*scale, h-2*scale, 20.0f/255.0f);
+		label_text(title, x+pad, y+9*scale, title_h, 225.0f/255.0f);
+		if (numbers) {
+			float needed = label_width(numbers, nh);
+			if (needed > w-2*pad)
+				nh *= (w-2*pad)/needed;
+			label_text(numbers, x+pad, y+34*scale, nh, 190.0f/255.0f);
+		}
+	}
+	if (labels[4])
+		label_text(labels[4], ((float)panel_w-label_width(labels[4],title_h))/2,
+			   (float)panel_h-116*scale, title_h, 225.0f/255.0f);
+	const char *hint = "per-mille inward, value/max";
+	label_text(hint, ((float)panel_w-label_width(hint,number_h))/2,
+		   (float)panel_h-32*scale, number_h, 150.0f/255.0f);
 }
 
 
@@ -533,6 +596,7 @@ static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GL
 			    pattern == PATTERN_MASK ? 1.0f : 0.0f);
 		glUniform1f(glGetUniformLocation(prog, "u_aspect"),
 			    panel_h ? (float)panel_w / (float)panel_h : 1.0f);
+		glUniform1f(glGetUniformLocation(prog, "u_panel_h"), (float)panel_h);
 		glUniform1i(glGetUniformLocation(prog, "u_corner"),
 			    pattern == PATTERN_MASK ? mark_corner : -1);
 	}
@@ -542,23 +606,7 @@ static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GL
 	glEnableVertexAttribArray(1);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	if (pattern == PATTERN_MASK && labels) {
-		/* 22 panel pixels high; the corners just inside the frame, the
-		 * centre line below the dot; x steps are the glyph advance */
-		/* the frame line sits at 6 percent of the height from each edge (the
-		 * mask shader), 40 px glyphs are 7.4 percent of it: the top row
-		 * starts just under the top edge, the bottom row ends just above
-		 * the frame line at the bottom */
-		float h = 40.0f, left = -0.94f, top = -0.96f, bottom = 0.90f;
-		float right = 0.94f - (labels[1] ? (float)strlen(labels[1]) : 0) * h * 6.0f / 7.0f * 2.0f / (float)panel_w;
-		float right3 = 0.94f - (labels[3] ? (float)strlen(labels[3]) : 0) * h * 6.0f / 7.0f * 2.0f / (float)panel_w;
-
-		if (labels[0]) text_draw(labels[0], left, top, h);
-		if (labels[1]) text_draw(labels[1], right, top, h);
-		/* both rows in the band outside the frame line (6 percent), which the
-		 * warp never covers with picture */
-		if (labels[2]) text_draw(labels[2], left, bottom, h);
-		if (labels[3]) text_draw(labels[3], right3, bottom, h);
-		if (labels[4]) text_draw(labels[4], -0.42f, 0.34f, h);
+		mask_labels(labels, mark_corner);
 	}
 	err = glGetError();
 	if (err) {

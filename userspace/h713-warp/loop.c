@@ -252,13 +252,13 @@ bool warp_pump(struct runtime *r)
 		int c;
 
 		for (c = 0; c < 4; c++) {
-			snprintf(label[c], sizeof(label[c]), "%s%s x %d/%d y %d/%d",
-				 r->mark_corner == c ? "-" : "", warp_corner_name[c],
+			snprintf(label[c], sizeof(label[c]), "%s%s\nx %d/%d  y %d/%d",
+				 warp_corner_name[c], r->mark_corner == c ? " active" : "",
 				 r->conf.v[2 * c], warp_limit(r->conf.v, 2 * c),
 				 r->conf.v[2 * c + 1], warp_limit(r->conf.v, 2 * c + 1));
 			labels[c] = label[c];
 		}
-		snprintf(label[4], sizeof(label[4]), "zoom %d%%  per-mille inward, value/max",
+		snprintf(label[4], sizeof(label[4]), "zoom %d%%",
 			 r->conf.zoom);
 		labels[4] = label[4];
 	}
