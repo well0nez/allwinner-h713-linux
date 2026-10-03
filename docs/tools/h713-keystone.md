@@ -6,7 +6,7 @@ geometry and pushes eight per-mille insets into `h713-warp`. One dependency-free
 byte-identical from AP2c, AP2f, AP2g and AP2h.
 
 ```
-h713-keystone reference             # once, with the projector standing level
+h713-keystone reference             # optional: refine the ideal with a pose taken on a level surface
 h713-keystone read                  # raw counts, the g vector, pitch and roll
 h713-keystone once [--apply]        # the eight insets for the tilt it has now
 h713-keystone run [--dry-run]       # the loop; SIGTERM puts the manual set back
@@ -14,7 +14,7 @@ h713-keystone status                # configuration, sensor, reference, warp
 h713-keystone watch                 # after a move, run the automatic once (the unit's verb)
 ```
 
-`h713-keystone-auto.service` runs `watch`; it is enabled from the first boot, waits quietly for the reference while there is none (a fresh image has none; until 23.09.2026 it exited instead and systemd restarted it every five seconds), and does nothing while `after_move = off` (the settings page's "After a move" buttons write that key and restart the unit). `-C PATH` names
+`h713-keystone-auto.service` runs `watch`; it is enabled from the first boot, watches against the ideal level pose while there is no reference file (a fresh image has none; until 26.09.2026 it waited for the file, and until 23.09.2026 it exited and systemd restarted it every five seconds), and does nothing while `after_move = off` (the settings page's "After a move" buttons write that key and restart the unit). `-C PATH` names
 another configuration file, `--reference PATH` another reference file, `--device PATH` an IIO node instead of the one
 found by name, `--warp PATH` another warp tool, `-q` drops the warnings.
 
@@ -83,10 +83,26 @@ Without the file the defaults above apply. An unknown key or an unreadable value
 
 ## The reference pose, and how it talks to `h713-warp`
 
-`h713-keystone reference` stores the pose the projector is corrected *against* in `/etc/h713/keystone-ref`, in the
-vendor's units (the IIO digit times 16, AP2g 5), with the axis map it was taken under. It refuses a pose more than 45
-degrees off flat (`checkGsensorDataOk`, LocalService.java:582, the vendor's own gate) and one from another axis map,
-whose numbers describe a different pose. Measure it again after a move.
+**Without a reference file the automatic corrects against the ideal level pose** `(0, 0, 1 g)`, and every result
+line of `read`, `once`, `watch` and `run` ends in `reference ideal (0, 0, 1 g) - h713-keystone reference refines it`;
+`status` prints `reference  ideal ...` or `reference  file (DATE): PATH, counts X Y Z`. The ideal is not a guess: the
+vendor's chain computes "current attitude minus factory attitude" (`get_gsensor_du`), the factory attitude is the jig
+value `GsInitXYZ`, this HY310 carries none (AP2e), and against all zeros `get_gsensor_du` gives the same GsX and GsY as
+against `(0, 0, 1 g)` - only the unused GsZ differs. Since 26.09.2026; before, `once` warned and used the ideal
+anyway, `watch` waited for the file and `run` refused.
+
+`h713-keystone reference` refines that ideal: it stores the pose the sensor reads in `/etc/h713/keystone-ref`, in the
+vendor's units (the IIO digit times 16, AP2g 5), with the axis map it was taken under and the date, and prints the
+pose's offset against the ideal (`ok offset  pitch 9.15  roll -1.38 degrees, ...`). Taken with the projector on a
+surface a spirit level has passed, that offset is the sensor's mounting offset. It refuses a pose more than 45 degrees
+off flat (`checkGsensorDataOk`, LocalService.java:582, the vendor's own gate); a file from another axis map is refused
+when it is read, because its numbers describe a different pose. A refused file is said once - a `warning:` line on
+stderr, the journal under the unit - and the automatic corrects against the ideal meanwhile: every result line ends in
+`reference refused - ideal (0, 0, 1 g) applies, h713-keystone status says why`, `status` prints `reference  refused
+(why)`, and `reference` taken again replaces the file. Nothing is replaced behind the user's back, and nothing exits:
+`v0.95-beta` exited with 2 over such a file, and systemd restarted the unit every five seconds. A reference taken where
+the projector happens to stand at first boot would be wrong - it rarely stands where it throws (Marco, 23.09.2026) -
+so nothing asks for one.
 
 Each correction is eight `h713-warp ctl keystone set CORNER AXIS VALUE` calls, `CORNER` in `tl tr bl br`, `VALUE` an
 integer per-mille inward. `run` reads `h713-warp ctl status` at the start, keeps whatever manual set it finds and writes
@@ -94,9 +110,9 @@ it back when it stops, so switching the automatic off leaves the picture as the 
 tolerantly (`tl_x = 12`, `tl x 12`, `tl-x: 12`), the daemon being written in parallel; one without all eight values
 counts as no answer.
 
-`python3 -m unittest discover -s tests -v` from `userspace/h713-keystone/` runs 130 tests: the 87 that came with the
-models, unchanged, and 39 for this tool - the IIO reader against a fake sysfs directory, the reference file, the
-hysteresis, the poses table above, the configuration parser, the h713-warp verbs against a recorder. `run
+`python3 -m unittest discover -s tests -v` from `userspace/h713-keystone/` runs 143 tests: the 87 that came with the
+models, unchanged, and 56 for this tool - the IIO reader against a fake sysfs directory, the reference file and the
+ideal, the hysteresis, the poses table above, the configuration parser, the h713-warp verbs against a recorder. `run
 --dry-run` does the whole loop on the real node and only prints.
 
 ## Limits, honestly

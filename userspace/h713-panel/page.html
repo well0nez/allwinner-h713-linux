@@ -73,6 +73,7 @@ footer { position: sticky; bottom: 0; background: var(--sunk); padding: var(--u)
          border: 1px solid var(--line); font-size: 12px; font-family: var(--mono);
          color: var(--dim); }
 footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
+.help { font-size: 12px; color: var(--dim); margin: 4px 0 0; } .help b { color: var(--ink); font-weight: 500; }
 @media (min-width: 900px) {
   body { max-width: 1440px; margin: 0 auto; padding: calc(2 * var(--u)); }
   nav { display: none; } .screen { display: block; } section { margin-bottom: 0; }
@@ -121,6 +122,10 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
   <label for="zoom">Zoom (the projection area) <span id="zoom-v" class="num">100 %</span></label>
   <input type="range" id="zoom" min="50" max="100" step="5" value="100" oninput="show_v('zoom', ' %')"
          onchange="act('screen_zoom', [+this.value])">
+  <h3>Mode</h3>
+  <div class="row" id="modes"></div>
+  <label>the mount: rear mirrors left-right, ceiling turns the picture over; the corners above
+    are named as the audience sees them in every mode</label>
   <h3>After a move</h3>
   <div class="row" id="after"></div>
   <h3>Focus</h3>
@@ -132,6 +137,11 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
     <button onclick="act('keystone_ref')">Level reference</button><button
       onclick="act('autofocus')">Autofocus now</button>
   </div>
+  <p class="help"><b>Level reference</b> is optional: the automatic already corrects against the ideal level
+    pose (0, 0, 1 g), shown as <b>ref ideal</b> above. Pressed with the projector on a surface a spirit level
+    has passed, it stores the pose the sensor reads there, which refines the ideal by the sensor's own mounting
+    offset - the strip then says <b>ref set</b>. <b>ref refused</b>: the stored file no longer matches the axis map
+    in keystone.conf; the ideal applies until the button is pressed again.</p>
   <h3>Warp</h3>
   <div class="row">
     <button id="warp-on" onclick="act('warp', ['on'])">Warp on</button>
@@ -337,7 +347,9 @@ function draw() {
   var temps = (ST.temperatures || []).map(function (t) { return t.name + " " + t.c + " C"; });
   id("strip").innerHTML = bit("signal", ST.signal || "-") + bit("picture", ST.picture || "-") +
     bit("warp", ST.warp || "-", ST.warp === "on" ? "on" : "") + bit("mask", ST.pattern || "-") +
-    bit("keystone", ST.keystone_by || "-") + bit("temp", temps.length ? temps.join("  ") : "-") +
+    bit("mode", ST.mode || "-", ST.mode && ST.mode !== "front" ? "on" : "") +
+    bit("keystone", ST.keystone_by || "-") + bit("ref", ST.reference || "-", ST.reference === "set" ? "on" : "") +
+    bit("temp", temps.length ? temps.join("  ") : "-") +
     bit("gpu", ST.fps === null || ST.fps === undefined ? "-" : ST.fps + " fps");
   if (!DRAG) { KS = ST.keystone || {}; drawQuad(); }
   press("warp-on", ST.warp === "on"); press("warp-off", ST.warp === "off");
@@ -345,6 +357,7 @@ function draw() {
 
   press("mask-on", masked()); press("mask-off", !masked());
   (ST.after_move_list || []).forEach(function (v) { press("am-" + v, ST.after_move === v); });
+  (ST.modes_list || []).forEach(function (v) { press("md-" + v, ST.mode === v); });
   if (document.activeElement !== id("zoom") && ST.screen_zoom) {
     id("zoom").value = ST.screen_zoom; show_v("zoom", " %");
   }
@@ -352,8 +365,8 @@ function draw() {
 function refresh() {
   return api("status").then(function (s) {
     if (s.busy || s.ok === false) { return; }
-    var keep = [ST.steps, ST.after_move_list];
-    ST = s; ST.steps = keep[0]; ST.after_move_list = keep[1]; draw();
+    var keep = [ST.steps, ST.after_move_list, ST.modes_list];
+    ST = s; ST.steps = keep[0]; ST.after_move_list = keep[1]; ST.modes_list = keep[2]; draw();
   });
 }
 
@@ -361,10 +374,11 @@ function build() {     /* the page draws itself from the tool's own lists */
   return api("controls").then(function (c) {
     if (!c.ok) { say(c.line, "bad"); return; }
     ST.steps = c.steps || [10]; ST.after_move_list = c.after_move || [];
+    ST.modes_list = c.modes || [];
     id("steps").innerHTML = ST.steps.map(function (s) {
       return '<button id="st-' + s + '" onclick="setStep(' + s + ')">' + s + "</button>"; }).join("");
     [["after", c.after_move, "after_move", "am-"], ["presets", c.presets, "preset", ""],
-     ["aspects", c.aspects, "aspect", ""]].forEach(function (g) {
+     ["aspects", c.aspects, "aspect", ""], ["modes", c.modes, "mode", "md-"]].forEach(function (g) {
       id(g[0]).innerHTML = (g[1] || []).map(function (v) {
         return "<button " + (g[3] ? 'id="' + g[3] + v + '" ' : "") + "onclick=\"act('" +
                g[2] + "', ['" + v + "'])\">" + esc(v) + "</button>";

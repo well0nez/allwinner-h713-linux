@@ -53,12 +53,47 @@ const char *const gl_vertex_shader =
  * exactly as on the ring, because it is the same channel. The chroma pass
  * draws at half size and the linear sampler averages the 4:2:2 source's two
  * chroma lines into the 4:2:0 output's one. */
+/* The vendor's soft border (FB-EDGEBLEND; draw_edge @ 0x3C64 in the stock
+ * libkeystone.so): a GL_ALPHA mask of w/4 by h/4 texels, each count rounded
+ * up to 16, its outermost texel ring at 255 - 20 and 0 inside, sampled
+ * GL_LINEAR over the warped quad and blended as black with SRC_ALPHA /
+ * ONE_MINUS_SRC_ALPHA. Seen from the quad's edge inward: half a texel at
+ * 20/255 of the picture, then a one-texel linear ramp up to the full picture.
+ * Here it is folded into the two passes instead of a third blended quad:
+ * u_edge is the mask's texel count across the quad (0 = off), r the ring as
+ * the linear filter sees it in each axis, and the bilinear sample of an OR of
+ * two rings is 1 - (1 - r.x)(1 - r.y). The blend runs towards the plane's
+ * clear colour, video black, so the band meets the border without a step;
+ * the vendor's residual 20/255 stays. */
+#define EDGE_GLSL \
+	"uniform vec2 u_edge;\n" \
+	"float edge_keep() { if (u_edge.x <= 0.0) return 1.0;\n" \
+	"  vec2 r = clamp(1.5 - min(v_uv, 1.0 - v_uv) * u_edge, 0.0, 1.0);\n" \
+	"  return 1.0 - 0.9215686 * (1.0 - (1.0 - r.x) * (1.0 - r.y)); }\n"
 const char *const gl_luma_shader =
 	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
-	"void main() { gl_FragColor = vec4(texture2D(u_y, v_uv).r, 0.0, 0.0, 1.0); }\n";
+	EDGE_GLSL
+	"void main() { gl_FragColor = vec4(mix(0.0627451, texture2D(u_y, v_uv).r, edge_keep()), 0.0, 0.0, 1.0); }\n";
 const char *const gl_chroma_shader =
 	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
-	"void main() { gl_FragColor = vec4(texture2D(u_c, v_uv).rg, 0.0, 1.0); }\n";
+	EDGE_GLSL
+	"void main() { gl_FragColor = vec4(mix(vec2(0.5019608), texture2D(u_c, v_uv).rg, edge_keep()), 0.0, 1.0); }\n";
+
+static int edge_px;	/* the soft border's width in panel pixels, 0 = off ("edge" in warp.conf) */
+
+void gl_edge(int px)
+{
+	edge_px = px;
+}
+
+/* The mask's texel count across the quad, the vendor's way: (w / px + 15) & ~15
+ * per axis (draw_edge @ 0x3C64, its two guarded statics), so 1920x1080 at 4 is
+ * 480x272 as on the stock; both 0 when off. */
+void gl_edge_mask(unsigned int w, unsigned int h, int px, int out[2])
+{
+	out[0] = px > 0 ? (int)((w / (unsigned int)px + 15u) & ~15u) : 0;
+	out[1] = px > 0 ? (int)((h / (unsigned int)px + 15u) & ~15u) : 0;
+}
 
 const char *const gl_fragment_shader =
 	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
@@ -126,9 +161,9 @@ static unsigned int panel_w, panel_h;
 
 /* Text over the mask: a 5x7 font for the digits, the lowercase letters and
  * ". / : - %", built into a luminance texture once, drawn as one quad per
- * glyph with the identity matrix, so the numbers stay upright and readable
- * whatever the warp does to the picture. Each glyph is seven rows of five
- * bits, MSB left. */
+ * glyph through the mode's flip alone (not the keystone), so the numbers
+ * stay upright and readable on the wall whatever the warp does to the
+ * picture. Each glyph is seven rows of five bits, MSB left. */
 static const unsigned char FONT_ROWS[][7] = {
 	/* 0..9 */
 	{0x0e,0x11,0x13,0x15,0x19,0x11,0x0e}, {0x04,0x0c,0x04,0x04,0x04,0x04,0x0e},
@@ -204,16 +239,16 @@ static void font_build(void)
 	free(px);
 }
 
-/* One string at (x, y) in NDC, glyphs `h` panel pixels high, upright, blended */
-static void text_draw(const char *s, float x, float y, float h, float luma)
+/* One string at (x, y) in NDC, glyphs `h` panel pixels high, upright on the
+ * wall (through `k`, the mode's flip, FB-MIRROR), blended */
+static void text_draw(const char *s, float x, float y, float h, float luma, const float k[16])
 {
-	static const float ident[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
 	float gw = h * 6.0f / 7.0f * 2.0f / (float)panel_w;	/* advance in NDC */
 	float gh = h * 2.0f / (float)panel_h;
 	float cw = h * 8.0f / 7.0f * 2.0f / (float)panel_w;	/* the 8-texel cell */
 
 	glUseProgram(prog_text);
-	glUniformMatrix4fv(glGetUniformLocation(prog_text, "u_k"), 1, GL_FALSE, ident);
+	glUniformMatrix4fv(glGetUniformLocation(prog_text, "u_k"), 1, GL_FALSE, k);
 	glUniform1i(glGetUniformLocation(prog_text, "u_font"), 0);
 	glUniform1f(glGetUniformLocation(prog_text, "u_luma"), luma);
 	glActiveTexture(GL_TEXTURE0);
@@ -237,8 +272,15 @@ static void text_draw(const char *s, float x, float y, float h, float luma)
 
 /* Labels stay upright in panel space, as before. Cards separate them from the
  * moving geometry without changing the warp, corner identity or numeric units. */
-static void label_box(float x, float y, float w, float h, float luma)
+/* A card's rectangle in panel pixels, mirrored as the mode flips the panel
+ * (lm[0] < 0: left-right, lm[5] < 0: top-bottom), so the card stands where the
+ * wall expects it; the text inside goes through the same flip. */
+static void label_box(float x, float y, float w, float h, float luma, const float lm[16])
 {
+	if (lm[0] < 0)
+		x = (float)panel_w - x - w;
+	if (lm[5] < 0)
+		y = (float)panel_h - y - h;
 	glEnable(GL_SCISSOR_TEST);
 	glScissor((GLint)x, (GLint)y, (GLsizei)w, (GLsizei)h);
 	glClearColor(luma, 0, 0, 1);
@@ -251,13 +293,13 @@ static float label_width(const char *s, float h)
 	return (float)strlen(s) * h * 6.0f / 7.0f;
 }
 
-static void label_text(const char *s, float x, float y, float h, float luma)
+static void label_text(const char *s, float x, float y, float h, float luma, const float lm[16])
 {
 	text_draw(s, 2.0f*x/(float)panel_w-1.0f,
-		  2.0f*y/(float)panel_h-1.0f, h, luma);
+		  2.0f*y/(float)panel_h-1.0f, h, luma, lm);
 }
 
-static void mask_labels(const char *const labels[5], int active)
+static void mask_labels(const char *const labels[5], int active, const float lm[16])
 {
 	float scale = (float)panel_h / 720.0f, pad = 12.0f*scale;
 	float margin = (48.0f+22.0f)*scale, w = 300.0f*scale, h = 60.0f*scale;
@@ -276,22 +318,22 @@ static void mask_labels(const char *const labels[5], int active)
 			*numbers++ = '\0';
 		x = c == 1 || c == 3 ? (float)panel_w-margin-w : margin;
 		y = c >= 2 ? (float)panel_h-margin-h : margin;
-		label_box(x, y, w, h, c == active ? 218.0f/255.0f : 80.0f/255.0f);
-		label_box(x+scale, y+scale, w-2*scale, h-2*scale, 20.0f/255.0f);
-		label_text(title, x+pad, y+9*scale, title_h, 225.0f/255.0f);
+		label_box(x, y, w, h, c == active ? 218.0f/255.0f : 80.0f/255.0f, lm);
+		label_box(x+scale, y+scale, w-2*scale, h-2*scale, 20.0f/255.0f, lm);
+		label_text(title, x+pad, y+9*scale, title_h, 225.0f/255.0f, lm);
 		if (numbers) {
 			float needed = label_width(numbers, nh);
 			if (needed > w-2*pad)
 				nh *= (w-2*pad)/needed;
-			label_text(numbers, x+pad, y+34*scale, nh, 190.0f/255.0f);
+			label_text(numbers, x+pad, y+34*scale, nh, 190.0f/255.0f, lm);
 		}
 	}
 	if (labels[4])
 		label_text(labels[4], ((float)panel_w-label_width(labels[4],title_h))/2,
-			   (float)panel_h-116*scale, title_h, 225.0f/255.0f);
+			   (float)panel_h-116*scale, title_h, 225.0f/255.0f, lm);
 	const char *hint = "per-mille inward, value/max";
 	label_text(hint, ((float)panel_w-label_width(hint,number_h))/2,
-		   (float)panel_h-32*scale, number_h, 150.0f/255.0f);
+		   (float)panel_h-32*scale, number_h, 150.0f/255.0f, lm);
 }
 
 
@@ -567,8 +609,8 @@ void gl_source_drop(void)
  * at the plane's size; what the quad does not cover is the clear colour (video
  * black: Y 16, CbCr 128). Labels are drawn on the luma pass only. */
 static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GLuint prog,
-		      int source_slot, const float m[16], int pattern,
-		      int mark_corner, const char *const labels[5], char *why, size_t n)
+		      int source_slot, const float m[16], int pattern, int mark_corner,
+		      const char *const labels[5], const float lm[16], char *why, size_t n)
 {
 	static const GLfloat quad[] = {
 		-1, -1, 0, 0,   1, -1, 1, 0,   -1, 1, 0, 1,   1, 1, 1, 1,
@@ -583,6 +625,10 @@ static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GL
 	glUseProgram(prog);
 	glUniformMatrix4fv(glGetUniformLocation(prog, "u_k"), 1, GL_FALSE, m);
 	if (pattern == PATTERN_NONE) {
+		int e[2];
+
+		gl_edge_mask(panel_w, panel_h, edge_px, e);
+		glUniform2f(glGetUniformLocation(prog, "u_edge"), (float)e[0], (float)e[1]);
 		glUniform1i(glGetUniformLocation(prog, "u_y"), 0);
 		glUniform1i(glGetUniformLocation(prog, "u_c"), 1);
 		glActiveTexture(GL_TEXTURE0);
@@ -606,7 +652,7 @@ static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GL
 	glEnableVertexAttribArray(1);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	if (pattern == PATTERN_MASK && labels) {
-		mask_labels(labels, mark_corner);
+		mask_labels(labels, mark_corner, lm);
 	}
 	err = glGetError();
 	if (err) {
@@ -622,12 +668,12 @@ static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GL
  * Y 0..255, the mask's white is the panel's white) and the chroma plane stays
  * at 128. */
 bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
-	     int mark_corner, const char *const labels[5], char *why, size_t n)
+	     int mark_corner, const char *const labels[5], const float lm[16], char *why, size_t n)
 {
 	if (!draw_into(target[target_index].fbo[0], (int)panel_w, (int)panel_h,
 		       16.0f / 255.0f, 0.0f,
 		       pattern == PATTERN_NONE ? prog_luma : prog_pattern,
-		       source_slot, m, pattern, mark_corner, labels, why, n))
+		       source_slot, m, pattern, mark_corner, labels, lm, why, n))
 		return false;
 	if (pattern != PATTERN_NONE) {
 		glBindFramebuffer(GL_FRAMEBUFFER, target[target_index].fbo[1]);
@@ -638,7 +684,7 @@ bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
 	}
 	return draw_into(target[target_index].fbo[1], (int)panel_w / 2, (int)panel_h / 2,
 			 128.0f / 255.0f, 128.0f / 255.0f, prog_chroma,
-			 source_slot, m, PATTERN_NONE, -1, NULL, why, n);
+			 source_slot, m, PATTERN_NONE, -1, NULL, NULL, why, n);
 }
 
 /*
@@ -691,7 +737,7 @@ bool gl_check_compare(int target_index, int source_slot, const float m[16],
 	}
 	/* the luma plane is what is compared: Y into the RGBA scratch's red */
 	if (!draw_into(check_fbo, (int)panel_w, (int)panel_h, 16.0f / 255.0f, 0.0f, prog_luma,
-		       source_slot, m, PATTERN_NONE, -1, NULL, why, n))
+		       source_slot, m, PATTERN_NONE, -1, NULL, NULL, why, n))
 		return false;
 	glFinish();
 	/* sampled rows, so the check costs a millisecond and not a frame; each

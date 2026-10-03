@@ -49,17 +49,25 @@ otherwise divide by zero. Each is one line in the journal.
 node probes as `iio:device2` named `sc7a20`), turns the tilt into the vendor's two angles, runs the
 vendor's own corner geometry and pushes the eight values in. Three poses on the bench on 22.09.2026 decided
 the axis map, which is why it is a configuration key and not a device-tree claim: pitch is raw `+y`, roll
-raw `-x`, vertical `+z`. It needs to be shown what level is, once:
+raw `-x`, vertical `+z`. Out of the box it corrects against the **ideal level pose** (0, 0, 1 g) - which is
+what the vendor's own chain does on a unit whose factory jig value (`GsInitXYZ`) is missing, as it is on this
+HY310 - and every result line says so: `reference ideal (0, 0, 1 g) - h713-keystone reference refines it`.
+A reference taken by hand refines it:
 
 ```
-h713-keystone reference      # with the projector standing the way it is meant to throw
+h713-keystone reference      # optional: with the projector on a surface a spirit level has passed
 h713-keystone once --apply   # the eight insets for the tilt it has right now
-h713-keystone status         # configuration, sensor, reference, and whose values the warp carries
+h713-keystone status         # configuration, sensor, reference (ideal or file), whose values the warp carries
 ```
 
 The reference is stored in `/etc/h713/keystone-ref` in the vendor's units, with the axis map it was taken
-under. A pose more than 45 degrees off flat is refused - that is the vendor's own gate - and so is a
-reference from another axis map, because its numbers describe a different pose.
+under, and `reference` prints the pose's offset against the ideal - on a level surface that is the sensor's
+mounting offset, the number that says how far the ideal is from the truth on this unit. A pose more than 45
+degrees off flat is refused - that is the vendor's own gate - and so is a reference from another axis map,
+because its numbers describe a different pose; a refused file is said once in the journal, the automatic
+corrects against the ideal meanwhile, `status` says `reference  refused (why)` and the settings page's strip
+`ref refused`, until `reference` is taken again. A reference taken at first boot would be wrong: the
+projector rarely stands where it throws (Marco, 23.09.2026), so nothing asks for one.
 
 ### After a move, once - and the gate
 
@@ -172,9 +180,10 @@ is back under a second after the signal is.
 
 ## Open points
 
-**Edge blending.** The vendor softens the edges of the warped quadrilateral (its `draw_edge` pass). We do
-not. On a dark wall the boundary of the corrected picture is a hard line rather than a fading one. It is
-cosmetic, it is understood, and it is left out.
+**Edge blending.** Done (27.09.2026). The vendor softens the edges of the warped quadrilateral (its
+`draw_edge` pass: a ring of about 6 panel pixels that keeps 20/255 of the picture at the very edge and
+ramps up linearly). `h713-warp` does the same in its two passes: `edge = 4` in `/etc/h713/warp.conf` (the
+vendor's width, the default), `h713-warp ctl edge N`, 0 for the old hard edge. Not yet judged on a wall.
 
 **The throw ratio.** The automatic computes with 0.8176, the ratio implied by the optics constants in the
 device's own `camprjspe.ini`, because nobody has measured this projector with a tape. If the real ratio

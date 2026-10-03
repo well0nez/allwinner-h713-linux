@@ -211,14 +211,19 @@ static void cmd_help(struct textbuf *t)
 		 "                             on the status line and one journal line per difference\n"
 		 "  zoom [PERCENT]             the screen zoom, 10..100 (100 = none): every corner\n"
 		 "                             pulled in by (100 - PERCENT) * 5 per-mille (S7)\n"
+		 "  edge [N]                   the soft border of the warped picture in panel pixels:\n"
+		 "                             0 = a hard edge, 4 = the vendor's (the default); saved\n"
+		 "  mode [MODE]                the mount: front, rear (mirrored left-right for a\n"
+		 "                             screen lit from behind), ceiling (turned over) or\n"
+		 "                             rear-ceiling; saved; the corner names stay the wall's\n"
 		 "  test mask [CORNER]         the calibration picture of the manual keystone,\n"
 		 "                             CORNER tl tr bl br marked; keystone set/nudge marks\n"
 		 "                             the corner it touches while the mask is up\n"
 		 "  test grid|border|off       draw a pattern instead of the capture, to aim a\n"
 		 "                             corner with no source plugged in\n"
 		 "  help                       this list\n"
-		 "With all eight values 0 the GPU is not started at all and h713-tv shows the\n"
-		 "capture ring as it does without this service.\n"
+		 "With all eight values 0 and mode front the GPU is not started at all and\n"
+		 "h713-tv shows the capture ring as it does without this service.\n"
 		 "The answer starts with ok or error; socket %s (root, 0660)\n", WARP_SOCKET);
 }
 
@@ -262,8 +267,9 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 		save(r, t);
 		warp_apply(r);
 		text_add(t, "ok keystone reset -- all eight corners 0, %s\n",
-			 r->on ? "h713-tv is back on the ring (the identity needs no GPU)"
-			       : "the warp is off");
+			 !r->on ? "the warp is off" :
+			 r->conf.mode != MODE_FRONT ? "the GPU keeps mirroring for the mount" :
+			 "h713-tv is back on the ring (the identity needs no GPU)");
 	} else if (!strcmp(cmd, "keystone")) {
 		text_add(t, "error keystone takes set, nudge or reset (h713-warp ctl help)\n");
 	} else if (!strcmp(cmd, "hold")) {
@@ -321,6 +327,36 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 			text_add(t, "ok zoom %d -- every corner pulled in by %d per-mille on top of the keystone\n",
 				 z, (100 - z) * 5);
 		}
+	} else if (!strcmp(cmd, "edge")) {
+		int e = a1 ? atoi(a1) : -1;
+
+		if (!a1) {
+			text_add(t, "ok edge %d\n", r->conf.edge);
+		} else if (e < 0 || e > EDGE_MAX || *a1 < '0' || *a1 > '9') {
+			text_add(t, "error edge takes a width in panel pixels 0..%d (0 = a hard edge, %d = the vendor's)\n",
+				 EDGE_MAX, EDGE_DEFAULT);
+		} else {
+			r->conf.edge = e;
+			gl_edge(warp_edge_for(r));	/* the next drawn frame has it; no rebuild */
+			save(r, t);
+			text_add(t, "ok edge %d%s\n", e,
+				 e ? " -- the picture fades into the border over that many pixels" : " -- a hard edge");
+		}
+	} else if (!strcmp(cmd, "mode") && a1 && warp_mode_by_name(a1) < 0) {
+		text_add(t, "error mode takes front, rear, ceiling or rear-ceiling, not \"%s\"\n", a1);
+	} else if (!strcmp(cmd, "mode")) {
+		int m = a1 ? warp_mode_by_name(a1) : r->conf.mode;
+
+		if (m != r->conf.mode) {
+			r->conf.mode = m;
+			warp_solve(r);
+			save(r, t);
+			warp_apply(r);
+		}
+		text_add(t, "ok mode %s%s\n", warp_mode_name[m],
+			 m == MODE_FRONT ? "" : " -- mirrored for the mount, the GPU runs even with all eight corners 0");
+		if (r->state != WARP_ON && r->why[0])
+			text_add(t, "   note: %s\n", r->why);
 	} else if (!strcmp(cmd, "test")) {
 		cmd_test(r, t, a1, a2);
 	} else if (!strcmp(cmd, "help")) {

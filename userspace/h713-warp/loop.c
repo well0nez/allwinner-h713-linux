@@ -50,11 +50,15 @@
 
 void warp_solve(struct runtime *r)
 {
-	double m[16];
+	double m[16], f[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	int i;
 
 	int eff[WARP_KEYS];
 
+	/* the flip alone, for the labels: set even when the keystone is refused */
+	warp_mirror(r->conf.mode, f);
+	for (i = 0; i < 16; i++)
+		r->lf[i] = (float)f[i];
 	warp_effective(&r->conf, eff);
 	if (!warp_matrix(eff, m)) {
 		warn("keystone        a corner leaves the panel -- the previous matrix stays (the vendor does the same)");
@@ -66,6 +70,7 @@ void warp_solve(struct runtime *r)
 			warn("keystone        the quad is degenerate (two corners coincide) -- the previous matrix stays");
 			return;
 		}
+	warp_mirror(r->conf.mode, m);	/* F * K: the wall picture onto the panel */
 	memcpy(r->m, m, sizeof(r->m));
 	for (i = 0; i < 16; i++)
 		r->mf[i] = (float)m[i];
@@ -99,6 +104,7 @@ bool warp_engage(struct runtime *r)
 		note(r, why);
 		return false;
 	}
+	gl_edge(warp_edge_for(r));
 	r->state = WARP_ON;
 	r->source.held = -1;
 	r->check.slot = -1;
@@ -131,13 +137,24 @@ void warp_disengage(struct runtime *r, const char *why)
  * values, of "on/off" and of the pattern, and once a second from the main loop
  * while the wanted state cannot be reached (no signal yet, no h713-tv yet).
  */
+/* The soft edge belongs to a warped picture: at the identity (a mirrored
+ * mount keeps the GPU on there) it would only darken the frame's border. */
+int warp_edge_for(struct runtime *r)
+{
+	int eff[WARP_KEYS];
+
+	warp_effective(&r->conf, eff);
+	return warp_identity(eff) ? 0 : r->conf.edge;
+}
+
 void warp_apply(struct runtime *r)
 {
 	int eff[WARP_KEYS];
 	bool want;
 
 	warp_effective(&r->conf, eff);
-	want = r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff));
+	want = r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff) ||
+			 r->conf.mode != MODE_FRONT);	/* a mirrored identity needs the GPU */
 
 	if (!want) {
 		if (r->state == WARP_ON)
@@ -150,6 +167,8 @@ void warp_apply(struct runtime *r)
 	}
 	if (r->state != WARP_ON)
 		warp_engage(r);
+	else
+		gl_edge(warp_edge_for(r));	/* a keystone change may have left the identity */
 }
 
 static bool source_rebuilt(struct runtime *r)
@@ -262,7 +281,7 @@ bool warp_pump(struct runtime *r)
 			 r->conf.zoom);
 		labels[4] = label[4];
 	}
-	if (!gl_draw(target, slot, r->mf, r->pattern, r->mark_corner, labels, why, sizeof(why))) {
+	if (!gl_draw(target, slot, r->mf, r->pattern, r->mark_corner, labels, r->lf, why, sizeof(why))) {
 		if (r->pattern == PATTERN_NONE)
 			source_queue(&r->source, slot);
 		if (++r->fails >= FAILS_MAX) {
@@ -387,6 +406,11 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 	text_add(&t, " (per-mille, positive inward)\n");
 	text_add(&t, "zoom            %d percent%s\n", r->conf.zoom,
 		 r->conf.zoom == 100 ? " (none)" : " (every corner pulled in on top of the keystone)");
+	text_add(&t, "edge            %d%s\n", r->conf.edge,
+		 r->conf.edge ? " px (the vendor's soft border: 20/255 over the outer half, a linear ramp over one width)"
+			      : " (off: a hard edge)");
+	text_add(&t, "mode            %s%s\n", warp_mode_name[r->conf.mode],
+		 r->conf.mode == MODE_FRONT ? "" : " (mirrored for the mount; the GPU runs even at the identity)");
 	if (r->matrix_valid) {
 		text_add(&t, "corners        ");
 		for (c = 0; c < 4; c++) {

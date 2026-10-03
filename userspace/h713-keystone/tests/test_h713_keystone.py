@@ -25,9 +25,12 @@ import importlib.machinery
 import importlib.util
 import io
 import os
+import re
 import shutil
+import signal
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -267,6 +270,67 @@ class Reference(unittest.TestCase):
         with self.assertRaises(ValueError):
             ak.reference_from_iio(ks.model_triple((900, 100, 400), self.conf))
 
+    def test_the_file_carries_the_date_it_was_taken(self):
+        counts = ak.reference_from_iio(ks.model_triple(REST, self.conf))
+        ks.write_reference(self.path, counts, (26.0, 172.0, 1068.0), self.conf)
+        found, taken = ks.read_reference_file(self.path, self.conf)
+        self.assertEqual(found, counts)
+        self.assertRegex(taken, r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$")
+
+    def test_without_a_file_the_automatic_corrects_against_the_ideal(self):
+        """26.09.2026: no file is the ideal level pose, said on the line - not
+        a wait, not a refusal, not a silent absolute angle."""
+        self.assertEqual(ks.load_reference(self.path, self.conf),
+                         (ak.LEVEL_REFERENCE, "reference ideal (0, 0, 1 g) - "
+                          "h713-keystone reference refines it"))
+
+    def test_with_a_file_the_automatic_corrects_against_it_and_names_the_date(self):
+        counts = ak.reference_from_iio(ks.model_triple(REST, self.conf))
+        ks.write_reference(self.path, counts, (26.0, 172.0, 1068.0), self.conf)
+        reference, note = ks.load_reference(self.path, self.conf)
+        self.assertEqual(reference, counts)
+        self.assertRegex(note, r"^reference file \(\d{4}-\d\d-\d\dT")
+
+    def test_a_refused_file_is_said_once_and_the_ideal_applies_meanwhile(self):
+        """The two refusals stay refusals - another axis map, a file without
+        counts - and read_reference still raises on them (the tests above).
+        load_reference no longer does (FB-KSREFb): one warning names why,
+        the ideal applies, and the note keeps the word `refused`, so the
+        stored pose is not replaced behind the user's back - and the unit
+        no longer exits over it (v0.95-beta did, restarted every 5 s)."""
+        counts = ak.reference_from_iio(ks.model_triple(REST, self.conf))
+        ks.write_reference(self.path, counts, (26.0, 172.0, 1068.0), self.conf)
+        err = io.StringIO()
+        with redirect_stderr(err):
+            found = ks.load_reference(self.path, conf_with(axis_roll="+x"))
+        self.assertEqual(found, (ak.LEVEL_REFERENCE, "reference refused - ideal "
+                                 "(0, 0, 1 g) applies, h713-keystone status says why"))
+        self.assertEqual(err.getvalue(), "warning: reference refused (%s was taken "
+                         "with axis_roll = -x, the configuration says +x -- run "
+                         "`h713-keystone reference` again) - correcting against the "
+                         "ideal (0, 0, 1 g) meanwhile\n" % self.path)
+        with open(self.path, "wb") as fh:
+            fh.write(b"axis_pitch = +y\naxis_roll = -x\naxis_vertical = +z\n")
+        err = io.StringIO()
+        with redirect_stderr(err):
+            found = ks.load_reference(self.path, self.conf, quiet=True)
+        self.assertEqual(found[0], ak.LEVEL_REFERENCE)
+        self.assertTrue(found[1].startswith("reference refused - ideal"), found)
+        self.assertEqual(err.getvalue(), "")    # -q drops the warning, never the word
+
+    def test_the_ideal_is_what_the_vendor_chain_sees_without_a_factory_value(self):
+        """setgsensorInit is never fed on a unit without GsInitXYZ (AP2e: this
+        HY310 has none), so get_gsensor_du subtracts the angles of (0, 0, 0)
+        - and for GsX and GsY those equal the angles of the ideal (0, 0, 1 g).
+        Only GsZ, which nothing reads, differs (0 against 90)."""
+        for _, x, y, z, _, _ in POSES:
+            counts = ak.reference_from_iio(ks.model_triple((x, y, z), self.conf))
+            against_zero = gsa.get_gsensor_du(*counts, init=[0, 0, 0])
+            against_ideal = gsa.get_gsensor_du(*counts,
+                                               init=list(ak.LEVEL_REFERENCE))
+            self.assertEqual(against_zero[:2], against_ideal[:2])
+            self.assertNotEqual(against_zero[2], against_ideal[2])
+
 
 class Loop(unittest.TestCase):
     """The hysteresis: 1.0 degree of change, held for a second."""
@@ -437,13 +501,13 @@ class Commands(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("tl 0,0  tr 0,0  bl 0,0  br 0,0", out)
 
-    def _watch(self, after_move, seconds=3.0):
+    def _watch(self, after_move, seconds=3.0, reference=True, conf_extra=""):
         """rest, then the nose-up pose after 0.4 s, then still: one move."""
-        import threading
         with open(os.path.join(self.dir, "keystone.conf"), "w") as fh:
             fh.write("after_move = %s\naverage_samples = 1\nmove_degrees = 3\n"
-                     "settle_seconds = 0.5\n" % after_move)
-        self.assertEqual(self.run_tool("reference")[0], 0)
+                     "settle_seconds = 0.5\n%s" % (after_move, conf_extra))
+        if reference:
+            self.assertEqual(self.run_tool("reference")[0], 0)
 
         def tilt():
             time.sleep(0.4)
@@ -490,10 +554,25 @@ class Commands(unittest.TestCase):
         self.assertIn("pitch 20.586", out)
         self.assertIn("tl 101,20  tr 95,35  bl 0,160  br 4,141", out)
 
-    def test_run_without_a_reference_says_what_to_do_first(self):
-        with self.assertRaises(ks.Error) as caught:
-            self.run_tool("run")
-        self.assertIn("h713-keystone reference", str(caught.exception))
+    def test_run_without_a_reference_uses_the_ideal_and_says_so(self):
+        """Until 26.09.2026 `run` refused to start without the file.  Now it
+        is the automatic against the ideal, like once and watch; the SIGINT
+        comes from a thread once the first apply line is out."""
+        out = io.StringIO()
+
+        def interrupt():
+            for _ in range(250):                  # up to 5 s
+                if "ok apply" in out.getvalue():
+                    break
+                time.sleep(0.02)
+            signal.raise_signal(signal.SIGINT)
+        threading.Thread(target=interrupt, daemon=True).start()
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = ks.main(self.base + ["run", "--dry-run"])
+        self.assertEqual(code, 130)
+        self.assertIn("ok apply  pitch 9.146  roll -1.377  tl 60,0  tr 47,37  "
+                      "bl 0,76  br 11,34  (dry run)  reference ideal",
+                      out.getvalue())
 
     def test_status_reports_and_does_not_raise(self):
         code, out = self.run_tool("--warp", "no-such-warp", "status")
@@ -501,6 +580,135 @@ class Commands(unittest.TestCase):
         self.assertIn("sc7a20", out)
         self.assertIn("axis_pitch = +y", out)
         self.assertIn("throw ratio 0.8176", out)
+
+    # --- the ideal reference (FB-KSREF, 26.09.2026) ------------------------
+
+    def test_read_without_a_reference_says_it_is_the_ideal(self):
+        code, out = self.run_tool("read")
+        self.assertEqual(code, 0)
+        self.assertIn("reference ideal (0, 0, 1 g) - h713-keystone reference "
+                      "refines it", out)
+
+    def test_once_without_a_reference_is_the_pose_against_the_ideal(self):
+        """The 22.09.2026 rest pose stands 9.15 degrees nose-up and 1.38
+        degrees rolled against the ideal - the number the device test
+        measures on a level surface, where it is the mounting offset."""
+        code, out = self.run_tool("once")
+        self.assertEqual(code, 0)
+        self.assertIn("ok once  pitch 9.146  roll -1.377  tl 60,0  tr 47,37  "
+                      "bl 0,76  br 11,34  reference ideal (0, 0, 1 g) - "
+                      "h713-keystone reference refines it", out)
+
+    def test_once_with_a_reference_names_the_file_and_its_date(self):
+        self.run_tool("reference")
+        code, out = self.run_tool("once")
+        self.assertEqual(code, 0)
+        self.assertRegex(out, r"tl 0,0  tr 0,0  bl 0,0  br 0,0  reference file "
+                              r"\(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\)")
+        self.assertNotIn("ideal", out)
+
+    def test_once_apply_pushes_the_ideal_correction_into_the_warp(self):
+        calls = []
+        real = ks.warp_call
+        ks.warp_call = lambda tool, args: calls.append(list(args)) or "ok"
+        self.addCleanup(setattr, ks, "warp_call", real)
+        last_auto = os.path.join(self.dir, "last-auto")
+        code, out = self.run_tool("--last-auto", last_auto, "once", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("ok applied through h713-warp", out)
+        sets = [c for c in calls if c[0] == "keystone"]
+        self.assertEqual(sets[0], ["keystone", "set", "tl", "x", "60"])
+        self.assertEqual(len(sets), 8)
+        # the mount is asked for twice: the reference rule and the permutation
+        self.assertEqual([c for c in calls if c[0] == "status"], [["status"]] * 2)
+        self.assertEqual(ks.read_last_auto(last_auto),
+                         (60, 0, 47, 37, 0, 76, 11, 34))
+
+    def test_once_apply_permutes_the_corners_for_a_rear_mount(self):
+        """h713-warp set to rear: the vendor's permutation (left and right
+        corners swapped) before the values reach the warp and last-auto;
+        the warp's own flip then puts them where the wall needs them."""
+        calls = []
+        real = ks.warp_call
+        ks.warp_call = lambda tool, args: calls.append(list(args)) or (
+            "ok\nmode            rear (mirrored for the mount)\n" if args == ["status"] else "ok")
+        self.addCleanup(setattr, ks, "warp_call", real)
+        last_auto = os.path.join(self.dir, "last-auto")
+        code, out = self.run_tool("--last-auto", last_auto, "once", "--apply")
+        self.assertEqual(code, 0)
+        sets = [c for c in calls if c[0] == "keystone"]
+        self.assertEqual(sets[0], ["keystone", "set", "tl", "x", "47"])
+        self.assertEqual(ks.read_last_auto(last_auto),
+                         (47, 37, 60, 0, 11, 34, 0, 76))
+
+    def test_once_with_a_refused_reference_says_so_and_uses_the_ideal(self):
+        """The axis map changed under the stored file: once runs against the
+        ideal, exit 0, the line says refused; without -q stderr says why, once."""
+        self.run_tool("reference")
+        with open(os.path.join(self.dir, "keystone.conf"), "w") as fh:
+            fh.write("axis_roll = +x\n")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = ks.main([a for a in self.base if a != "--quiet"] + ["once"])
+        self.assertEqual(code, 0)
+        self.assertRegex(out.getvalue(), r"^ok once  pitch 9\.146  roll 1\.377  tl .*"
+                         r"  reference refused - ideal \(0, 0, 1 g\) applies, "
+                         r"h713-keystone status says why\n$")
+        self.assertEqual(err.getvalue().count("warning: reference refused ("), 1)
+        self.assertIn("axis_roll = -x, the configuration says +x -- run `h713-keystone "
+                      "reference` again) - correcting against the ideal", err.getvalue())
+
+    def test_reference_prints_the_pose_against_the_ideal(self):
+        code, out = self.run_tool("reference")
+        self.assertEqual(code, 0)
+        self.assertIn("ok offset  pitch 9.15  roll -1.38 degrees, this pose "
+                      "against the ideal (0, 0, 1 g)", out)
+
+    def test_watch_without_a_reference_watches_against_the_ideal(self):
+        """Until 26.09.2026 the unit waited for the file; a fresh image now
+        watches from the first boot, and the ok line says against what."""
+        code, out = self._watch("keystone", reference=False)
+        self.assertEqual(code, 0)
+        self.assertRegex(out, r"^ok watch  .*  reference ideal \(0, 0, 1 g\)")
+        self.assertEqual(out.count("ok apply"), 1, out)
+        self.assertIn("pitch 29.732", out)    # nose-up, absolute against the ideal
+        self.assertIn("(dry run)  reference ideal", out)
+
+    def test_watch_with_a_refused_reference_watches_on_against_the_ideal(self):
+        """v0.95-beta exited with 2 when the axis map had changed under the
+        stored file, and systemd restarted the unit every five seconds (review
+        FB-KSREF, 26.09.2026).  Now the header says refused, the one apply
+        after the move is against the ideal, and the exit is 0."""
+        self.assertEqual(self.run_tool("reference")[0], 0)
+        code, out = self._watch("keystone", reference=False,
+                                conf_extra="axis_roll = +x\n")
+        self.assertEqual(code, 0)
+        self.assertRegex(out, r"^ok watch  .*  reference refused - ideal \(0, 0, 1 g\) "
+                              r"applies, h713-keystone status says why\n")
+        self.assertEqual(out.count("ok apply"), 1, out)
+        self.assertIn("pitch 29.732", out)    # nose-up against the ideal
+        self.assertIn("(dry run)  reference refused", out)
+
+    def test_status_says_refused_and_why(self):
+        """The first word is what the settings page shows as `ref refused`."""
+        self.run_tool("reference")
+        with open(os.path.join(self.dir, "keystone.conf"), "w") as fh:
+            fh.write("axis_roll = +x\n")
+        code, out = self.run_tool("--warp", "no-such-warp", "status")
+        self.assertEqual(code, 0)
+        self.assertIn("reference       refused (%s was taken with axis_roll = -x, "
+                      "the configuration says +x -- run `h713-keystone reference` "
+                      "again)\n" % self.reference, out)
+
+    def test_status_names_the_ideal_or_the_file(self):
+        code, out = self.run_tool("--warp", "no-such-warp", "status")
+        self.assertIn("reference       ideal (0, 0, 1 g) - h713-keystone "
+                      "reference refines it\n", out)
+        self.run_tool("reference")
+        code, out = self.run_tool("--warp", "no-such-warp", "status")
+        self.assertRegex(out, r"reference       file \(\d{4}-\d\d-\d\dT\d\d:\d\d:"
+                              r"\d\d\): %s, counts -416 2752 17088\n"
+                              % re.escape(self.reference))
 
 
 if __name__ == "__main__":

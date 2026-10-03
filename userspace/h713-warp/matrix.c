@@ -36,6 +36,15 @@ const char *const warp_corner_name[4] = { "tl", "tr", "bl", "br" };
 const char *const warp_key_name[WARP_KEYS] = {
 	"tl_x", "tl_y", "tr_x", "tr_y", "bl_x", "bl_y", "br_x", "br_y",
 };
+/* The projection modes, the vendor's "Installation mode" 0..3 (AP2i row 10):
+ * rear mirrors left-right, ceiling turns the picture over, rear ceiling is
+ * top-bottom alone. The vendor flips the composed frame in the firmware after
+ * its GPU (AP2i 2.3), so its keystone slots stay the wall's corners; we flip
+ * in the matrix instead, F * K, the same map as the vendor's permuted slots
+ * under its flip (LocalService.java:1154-1200, proven in tests/test_matrix.c). */
+const char *const warp_mode_name[4] = { "front", "rear", "ceiling", "rear-ceiling" };
+static const double MODE_FLIP_X[4] = { 1, -1, -1, 1 };	/* the RPC word's bit 0 */
+static const double MODE_FLIP_Y[4] = { 1, 1, -1, -1 };	/* its bit 1 (0 1 3 2) */
 
 /* vendor slot -> our corner: lb, lt, rt, rb (see the comment above) */
 static const int CORNER_OF_SLOT[4] = {
@@ -77,6 +86,28 @@ int warp_key_by_name(const char *key)
 			return i;
 
 	return -1;
+}
+
+int warp_mode_by_name(const char *name)
+{
+	int i;
+
+	for (i = 0; name && i < 4; i++)
+		if (!strcmp(name, warp_mode_name[i]))
+			return i;
+
+	return -1;
+}
+
+/* F * m, F = diag(+-1, +-1, 1, 1): the panel's x and y mirrored after the keystone */
+void warp_mirror(int mode, double m[16])
+{
+	int j;
+
+	for (j = 0; j < 4; j++) {
+		m[4 * j] *= MODE_FLIP_X[mode];
+		m[4 * j + 1] *= MODE_FLIP_Y[mode];
+	}
 }
 
 void warp_effective(const struct warp_conf *c, int out[WARP_KEYS])

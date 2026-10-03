@@ -45,6 +45,9 @@ PRESETS = ("standard", "cinema", "vivid", "game", "computer", "hdr",
 ASPECTS = ("auto", "proportional", "full", "16:9", "4:3", "zoom")
 PICTURE_CONTROLS = ("brightness", "contrast", "saturation", "hue", "sharpness")
 AFTER_MOVE = ("off", "keystone", "keystone+focus")
+# h713-warp's projection modes: how the picture is mirrored for the mount.
+# The corners keep their wall names in every mode (the warp flips underneath).
+MODES = ("front", "rear", "ceiling", "rear-ceiling")
 SPECIALS = ("status", "controls", "picture_set", "after_move")  # Panel.do_*
 NUDGE_STEPS = (1, 10, 50)   # what one press of the pad may be worth
 
@@ -110,6 +113,7 @@ COMMANDS = {
     "keystone_ref": (KEY, ("reference",), (), T),
     "keystone_res": (WARP, ("ctl", "keystone", "reset"), (), T),
     "screen_zoom": (WARP, ("ctl", "zoom"), (PERCENT,), T),
+    "mode": (WARP, ("ctl", "mode"), (_choice(*MODES),), T),
     "focus": (FOCUS, (), (_choice("up", "down"), _choice("5", "20")), T),
     "autofocus": (AUTOF, ("run",), (), LONG),
     "warp": (WARP, ("ctl",), (ON_OFF,), T),
@@ -283,7 +287,7 @@ class Panel(object):
         return {"ok": True, "line": "ok controls", "steps": NUDGE_STEPS,
                 "controls": [dict(blank, name=n, **ranges.get(n, {}))
                              for n in PICTURE_CONTROLS],
-                "presets": PRESETS, "aspects": ASPECTS,
+                "presets": PRESETS, "aspects": ASPECTS, "modes": MODES,
                 "after_move": AFTER_MOVE, "corners": CORNERS}
 
     def do_picture_set(self, args):
@@ -324,12 +328,16 @@ class Panel(object):
         for corner, x, y in PAIR.findall(warp.get("keystone", "")):
             values[corner + "_x"], values[corner + "_y"] = int(x), int(y)
         frames = FPS.search(warp.get("frames", ""))
+        # h713-keystone: "ideal (0, 0, 1 g) - ...", "file (DATE): PATH, counts
+        # ...", or "refused (WHY)" for a file from another axis map.
+        reference = (keystone.get("reference") or "-").split()[0]
         return {"ok": True, "line": "ok status",
                 "temperatures": temperatures(self.thermal),
                 "warp": (warp.get("warp") or "unknown").split()[0],
                 "warp_why": warp.get("warp", "h713-warp did not answer"),
                 "pattern": warp.get("pattern", "-"),
                 "screen_zoom": first_int(warp.get("zoom", ""), 100),
+                "mode": (warp.get("mode") or "-").split()[0],
                 "fps": float(frames.group(1)) if frames else None,
                 "keystone": values, "max": keystone_limits(values),
                 "signal": tv.get("signal", "h713-tv did not answer"),
@@ -337,7 +345,9 @@ class Panel(object):
                 "audio": tv.get("audio", "-"),
                 "aspect": (tv.get("format") or "-").split()[0],
                 "keystone_by": (keystone.get("keystone by") or "-").split()[0],
-                "after_move": (keystone.get("after a move") or "-").split()[0]}
+                "after_move": (keystone.get("after a move") or "-").split()[0],
+                "reference": {"ideal": "ideal", "file": "set",
+                              "-": "-"}.get(reference, "refused")}
 
     def call(self, request):
         """The one door: {"verb": ..., "args": [...]}, anything else refused

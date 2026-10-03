@@ -65,7 +65,7 @@ h713-warp: $(SRC) $(HDR)
 	$(HOST_CC) $(HOST_CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $(SRC) $(HOST_LDLIBS) -lm
 
 test:
-	$(MAKE) -C ../tests HOST_CPPFLAGS="$(HOST_CPPFLAGS)" HOST_LDLIBS="$(HOST_LDLIBS)" run
+	$(MAKE) -C tests HOST_CPPFLAGS="$(HOST_CPPFLAGS)" HOST_LDLIBS="$(HOST_LDLIBS)" run
 
 install-cross: h713-warp.$(TARGET)
 	install -D -m 0755 h713-warp.$(TARGET) $(DESTDIR)$(BINDIR)/h713-warp
@@ -74,6 +74,6 @@ install-cross: h713-warp.$(TARGET)
 
 clean:
 	rm -f h713-warp h713-warp.$(TARGET)
-	$(MAKE) -C ../tests clean
+	$(MAKE) -C tests clean
 
 .PHONY: cross host test install-cross clean

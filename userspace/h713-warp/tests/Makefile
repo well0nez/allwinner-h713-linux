@@ -4,7 +4,7 @@
 # needs a device, a dma-buf or h713-tv; T1a and T1b need a GLES driver of any
 # kind (llvmpipe, Intel, AMD, or panfrost when this is run on the board).
 #
-#   make run     build and run all three
+#   make run     build and run all of them (T1a, T1b, T2, T3)
 #   make clean
 #
 # On a host without the EGL/GLES development files, point CPPFLAGS at the mesa
@@ -29,11 +29,15 @@ HOST_LDLIBS   ?= $(shell pkg-config --libs egl glesv2 2>/dev/null || echo "-lEGL
 PYTHON        ?= python3
 WARP           = ..
 
-all: test_matrix test_gl
+all: test_matrix test_gl test_conf
 
 test_matrix: test_matrix.c $(WARP)/matrix.c $(WARP)/warp.h
 	$(HOST_CC) $(HOST_CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ test_matrix.c \
 	    $(WARP)/matrix.c -lm
+
+test_conf: test_conf.c $(WARP)/config.c $(WARP)/matrix.c $(WARP)/warp.h
+	$(HOST_CC) $(HOST_CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ test_conf.c \
+	    $(WARP)/config.c $(WARP)/matrix.c -lm
 
 test_gl: test_gl.c $(WARP)/gl.c $(WARP)/matrix.c $(WARP)/warp.h
 	$(HOST_CC) $(HOST_CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ test_gl.c \
@@ -42,10 +46,11 @@ test_gl: test_gl.c $(WARP)/gl.c $(WARP)/matrix.c $(WARP)/warp.h
 run: all
 	@$(PYTHON) matrix_ref.py > vectors.txt
 	@./test_matrix < vectors.txt
+	@./test_conf
 	@./test_gl; rc=$$?; test $$rc -ne 77 || echo "     (T1a/T1b skipped)"; \
 	 test $$rc -eq 0 -o $$rc -eq 77
 
 clean:
-	rm -f test_matrix test_gl vectors.txt
+	rm -f test_matrix test_gl test_conf vectors.txt
 
 .PHONY: all run clean

@@ -12,6 +12,16 @@
  * Tolerances are AP2d T2's: the sixteen floats to 1e-6, the four transformed
  * corner positions to 1e-5. The clamp and the range check are tested with the
  * same reference in the same run ("c" and "r" lines).
+ *
+ * The projection modes ("f" lines, FB-MIRROR): the reference lands six source
+ * points the VENDOR's way - the insets permuted into the slots of the mounted
+ * picture as LocalService does, the matrix solved on them, the source flipped
+ * underneath as the firmware flips the frame - and h713-warp's F * K (the wall
+ * keystone first, warp_mirror after) must put every point at the same place
+ * to 1e-5. Negative control: in any mode but front the flipped map must move
+ * at least one corner away from where the unflipped keystone puts it, and in
+ * front none (an inset of 450 per-mille leaves a corner 0.1 from the centre,
+ * so its flip moves it by 0.2 - the threshold is 0.05).
  */
 #include <math.h>
 #include <stdio.h>
@@ -83,6 +93,76 @@ static void line_clamp(char *p)
 	checked++;
 }
 
+#define FLIP_POINTS	6
+
+/* f MODE V0..V7 X0 Y0 .. X5 Y5: the four corners tl tr bl br, the centre and
+ * (0.3, -0.7), where the vendor's permuted slots under the firmware's flip put
+ * them; ours is warp_mirror(mode, warp_matrix(v)) */
+static void line_flip(char *p)
+{
+	static const double src[FLIP_POINTS][2] = {
+		{ -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 }, { 0, 0 }, { 0.3, -0.7 },
+	};
+	double want[2 * FLIP_POINTS], m[16], k[16], q[2], u[2];
+	int v[WARP_KEYS], mode, i, moved = 0;
+
+	mode = (int)next_number(&p);
+	for (i = 0; i < WARP_KEYS; i++)
+		v[i] = (int)next_number(&p);
+	for (i = 0; i < 2 * FLIP_POINTS; i++)
+		want[i] = next_number(&p);
+	if (mode < 0 || mode > 3 || !warp_matrix(v, k)) {
+		complain("flip refused", mode, v, 0, 0);
+		return;
+	}
+	memcpy(m, k, sizeof(m));
+	warp_mirror(mode, m);
+	for (i = 0; i < FLIP_POINTS; i++) {
+		warp_point(m, src[i][0], src[i][1], q);
+		if (fabs(q[0] - want[2 * i]) > TOL_P)
+			complain("flip x", mode * 10 + i, v, q[0], want[2 * i]);
+		if (fabs(q[1] - want[2 * i + 1]) > TOL_P)
+			complain("flip y", mode * 10 + i, v, q[1], want[2 * i + 1]);
+		warp_point(k, src[i][0], src[i][1], u);
+		if (i < 4 && (fabs(q[0] - u[0]) > 0.05 || fabs(q[1] - u[1]) > 0.05))
+			moved++;
+	}
+	/* the negative control (see the head of this file) */
+	if (mode ? moved < 1 : moved != 0)
+		complain("flip moved corners", mode, v, moved, mode ? 1 : 0);
+	checked++;
+}
+
+/* the names and the four flips themselves, with no reference needed */
+static void mode_table(void)
+{
+	static const char *const names[4] = { "front", "rear", "ceiling", "rear-ceiling" };
+	static const double sx[4] = { 1, -1, -1, 1 }, sy[4] = { 1, 1, -1, -1 };
+	int mode, i, bad = 0;
+
+	for (mode = 0; mode < 4; mode++) {
+		double m[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+
+		bad += warp_mode_by_name(names[mode]) != mode;
+		bad += strcmp(warp_mode_name[mode], names[mode]) != 0;
+		warp_mirror(mode, m);
+		for (i = 0; i < 16; i++) {
+			double want = i == 0 ? sx[mode] : i == 5 ? sy[mode] : (i % 5 == 0);
+
+			bad += m[i] != want;
+		}
+	}
+	bad += warp_mode_by_name("hv") != -1;
+	bad += warp_mode_by_name("Front") != -1;
+	bad += warp_mode_by_name("") != -1;
+	bad += warp_mode_by_name(NULL) != -1;
+	if (bad) {
+		printf("FAIL mode table: %d of the names or flips are wrong\n", bad);
+		failed++;
+	}
+	checked++;
+}
+
 static void line_reject(char *p)
 {
 	double m[16];
@@ -99,6 +179,7 @@ int main(void)
 {
 	char line[4096];
 
+	mode_table();
 	while (fgets(line, sizeof(line), stdin)) {
 		char *p = line + 1;
 
@@ -108,10 +189,12 @@ int main(void)
 			line_clamp(p);
 		else if (line[0] == 'r')
 			line_reject(p);
+		else if (line[0] == 'f')
+			line_flip(p);
 		else if (line[0] != '\n' && line[0] != '#')
 			printf("FAIL unknown line: %s", line);
 	}
-	printf("%s T2 matrix: %ld vectors, %ld deviations (16 floats to %g, corners to %g)\n",
+	printf("%s T2 matrix: %ld vectors, %ld deviations (16 floats to %g, corners to %g; the four projection modes against the vendor's permuted slots)\n",
 	       failed ? "FAIL" : "ok", checked, failed, TOL_M, TOL_P);
 
 	return failed || !checked ? 1 : 0;

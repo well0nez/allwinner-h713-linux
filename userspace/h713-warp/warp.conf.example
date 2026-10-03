@@ -34,6 +34,17 @@ bl_y  = 0
 br_x  = 0
 br_y  = 0
 
+# The soft border of the warped picture in panel pixels, the vendor's own
+# (libkeystone's draw_edge): the outer half of it stays at 20/255 of the
+# picture, then a linear ramp over one width. 0 = a hard edge. It only shows
+# while the warp is on; the identity has no edge and stays the bypass.
+edge  = 4
+
+# The projection mode: front, rear (mirrored left-right, for a screen lit from
+# behind), ceiling (turned over) or rear-ceiling (top-bottom only). The corner
+# names above stay the wall's; any mode but front keeps the GPU running.
+mode  = front
+
 # The state to come up in. "on" with all eight values 0 is the bypass above,
 # so it is safe; the warp only starts the GPU when a corner is not 0.
 # "h713-warp ctl on|off" changes the running state and does NOT change this

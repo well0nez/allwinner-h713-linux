@@ -24,7 +24,8 @@ over the projector's LAN address (`ip -4 addr`). The page reads its state every 
 
 **Status**: one dense strip at the top - signal, whether the picture is the console, the video plane or the
 warp, warp on/off, whether the mask is up, whether the keystone standing in the warp is the automatic's or a
-hand's, the GPU's frames per second and every thermal zone. The eight values are in the diagram below it.
+hand's, which reference the automatic corrects against (`ref ideal`, `ref set` or `ref refused`), the GPU's
+frames per second and every thermal zone. The eight values are in the diagram below it.
 
 **Projection.** The keystone is a **diagram**, not a list of numbers: the panel as a dashed rectangle with
 the quadrilateral the eight values make inside it, and the four corners as round handles with their names, and under the drawing one button per corner carrying
@@ -33,7 +34,9 @@ wall with `h713-warp ctl test mask CORNER`); **drag** it and the corner follows 
 `h713-warp` clamps it and sent as `ctl keystone set CORNER AXIS VALUE` - at most ten times a second while
 the drag runs, and once more when it ends. Beside it a pad of four arrows for the picked corner with a step
 of 1, 10 or 50 per-mille (`ctl keystone nudge`). Under it: mask on/off, auto keystone now
-(`h713-keystone once --apply`), reset, screen zoom 50..100 % in steps of 5 (`h713-warp ctl zoom`), after a
+(`h713-keystone once --apply`), reset, screen zoom 50..100 % in steps of 5 (`h713-warp ctl zoom`), the
+projection mode - front, rear, ceiling or rear-ceiling (`h713-warp ctl mode`; the corners keep their wall
+names in every mode, the warp flips underneath), after a
 move - off, keystone or keystone+focus (written into `/etc/h713/keystone.conf`, then `h713-keystone-auto`
 restarted), focus by 5 and 20 msteps, level reference, autofocus now, warp on/off.
 

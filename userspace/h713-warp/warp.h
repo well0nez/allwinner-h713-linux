@@ -30,6 +30,8 @@
 #define WARP_SLOTS	3	/* capture ring slots (M5) */
 #define WARP_LINE	512	/* one control line, as h713-tv's CTL_MAXLINE */
 #define WARP_WHY	256	/* why something is off -- journal and status */
+#define EDGE_DEFAULT	4	/* the soft border in panel pixels: the vendor's alias.scale (gl.c) */
+#define EDGE_MAX	64
 
 /* ---------------- the journal, h713-tv's house style (main.c) ---------- */
 __attribute__((format(printf, 1, 2))) void info(const char *fmt, ...);
@@ -50,9 +52,12 @@ void text_add(struct textbuf *t, const char *fmt, ...);
  * The vendor's parcel order is a different one and lives in matrix.c alone.
  */
 enum warp_corner { CORNER_TL, CORNER_TR, CORNER_BL, CORNER_BR };
+/* the projection mode: how the picture is mirrored for the mount (matrix.c) */
+enum warp_mode { MODE_FRONT, MODE_REAR, MODE_CEILING, MODE_REAR_CEILING };
 
 extern const char *const warp_corner_name[4];
 extern const char *const warp_key_name[WARP_KEYS];	/* "tl_x" .. "br_y" */
+extern const char *const warp_mode_name[4];		/* "front" .. "rear-ceiling" */
 
 int warp_key(const char *corner, const char *axis);	/* 0..7, -1 unknown */
 int warp_key_by_name(const char *key);			/* "tl_x" -> 0..7 */
@@ -61,6 +66,8 @@ int warp_clamp_key(int v[WARP_KEYS], int key, int want);	/* one, as a key press 
 int warp_limit(const int v[WARP_KEYS], int key);		/* the most that key may take now */
 bool warp_identity(const int v[WARP_KEYS]);		/* all eight zero */
 bool warp_matrix(const int v[WARP_KEYS], double m[16]);	/* false: refused */
+int warp_mode_by_name(const char *name);			/* 0..3, -1 unknown */
+void warp_mirror(int mode, double m[16]);		/* m = flip(mode) * m */
 void warp_point(const double m[16], double x, double y, double out[2]);
 void warp_corner_ndc(int corner, double out[2]);
 
@@ -70,6 +77,8 @@ struct warp_conf {
 	bool start_on;			/* "warp = on" */
 	int v[WARP_KEYS];
 	int zoom;			/* screen zoom in percent, 100 = none (S7) */
+	int edge;			/* the soft border in panel pixels, 0 = a hard edge */
+	int mode;			/* enum warp_mode, "mode =" in the file */
 };
 
 /* The eight the matrix sees: the keystone plus the screen zoom (the vendor's
@@ -132,8 +141,11 @@ void gl_source_drop(void);
 /* labels: five strings drawn unwarped over the mask - the four corners and the
  * centre line - or NULL; only the mask shows them */
 bool gl_draw(int target, int slot, const float m[16], int pattern, int mark_corner,
-	     const char *const labels[5], char *why, size_t n);
+	     const char *const labels[5], const float lm[16], char *why, size_t n);
 int gl_fence(void);			/* an out-fence fd, or -1 */
+void gl_edge(int px);			/* the soft border's width for the next draws, 0 = off */
+/* the mask's texel count across the quad for a panel of w x h, the vendor's rounding */
+void gl_edge_mask(unsigned int w, unsigned int h, int px, int out[2]);
 /* the self-check: draw the slot again into a scratch buffer and compare it
  * with the panel buffer the first draw went to; rows = differing rows,
  * lo/hi their span */
@@ -182,6 +194,7 @@ struct runtime {
 	const char *render_node;
 	double m[16];			/* the matrix in use, column major */
 	float mf[16];			/* ... as the uniform wants it */
+	float lf[16];			/* the mode's flip alone: what the mask's labels go through */
 	bool matrix_valid;
 	/* the last hundred frames, M11 */
 	unsigned long frames, dropped, refused;
@@ -196,6 +209,7 @@ void warp_solve(struct runtime *r);	/* the eight values -> r->m/r->mf */
 bool warp_engage(struct runtime *r);	/* bypass -> on; why on failure */
 void warp_disengage(struct runtime *r, const char *why);
 void warp_apply(struct runtime *r);	/* put the state where the values ask */
+int warp_edge_for(struct runtime *r);	/* the soft edge, 0 at the identity */
 bool warp_pump(struct runtime *r);	/* one capture frame; false: fell back */
 void warp_check_tick(struct runtime *r);	/* the self-check's second draw, from the main loop */
 void warp_status(struct runtime *r, char *buf, size_t n);

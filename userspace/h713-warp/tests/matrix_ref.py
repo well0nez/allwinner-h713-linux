@@ -17,6 +17,20 @@ what is being tested:
                                         order tl tr bl br
     c V0..V7  W0..W7                    the vendor's clamp, in and out
     r V0..V7                            a set the native range check refuses
+    f MODE V0..V7  X0 Y0 .. X5 Y5       the projection mode MODE (0 front, 1
+                                        rear, 2 ceiling, 3 rear-ceiling): six
+                                        source points (the four corners tl tr
+                                        bl br, the centre, one off-centre) as
+                                        the VENDOR's way lands them on the
+                                        panel - the eight insets permuted into
+                                        the slots of the mounted picture as
+                                        LocalService does before every auto
+                                        send, the matrix solved on them, the
+                                        source flipped underneath as the
+                                        firmware flips the composed frame.
+                                        h713-warp goes the other way round (the
+                                        wall keystone first, the flip after) and
+                                        must land the same points
 
 19 fixed vectors (the identity, one corner at a time in both axes, an opposite
 pair, the "straight lines" set of AP2f, two uniform pulls -- which is what the
@@ -82,6 +96,37 @@ REJECTS = [
     (0, 0, -1, 0, 0, 0, 0, 0),
 ]
 
+# The vendor's corner permutation per projection mode, transcribed from
+# tpjz_allwinner LocalService.java:1154-1200 (the auto path; persist.sys.
+# panelvalue 0..3 = the UI index front, rear front, front ceiling, rear
+# ceiling): for each of OUR corners (tl tr bl br), which wall corner's inset
+# the slot takes. 1: lt<->rt, lb<->rb; 2: lt<->rb, rt<->lb; 3: lt<->lb, rt<->rb.
+MODE_PERM = ((0, 1, 2, 3), (1, 0, 3, 2), (3, 2, 1, 0), (2, 3, 0, 1))
+# and the flip the firmware applies to the composed frame for that mode
+# (AP2i 2.2: the RPC word is 0, 1, 3, 2 = bit 0 H, bit 1 V)
+MODE_FLIP = ((1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0), (1.0, -1.0))
+FLIP_POINTS = CORNER_NDC + ((0.0, 0.0), (0.3, -0.7))
+
+
+def permuted(v, mode):
+    """The eight insets as the vendor's auto path sends them in MODE."""
+    out = []
+    for corner in range(4):
+        source = MODE_PERM[mode][corner]
+        out.extend([v[2 * source], v[2 * source + 1]])
+    return tuple(out)
+
+
+def emit_flip(v, mode):
+    m = km.keystone_matrix(vendor_order(permuted(v, mode)))
+    sx, sy = MODE_FLIP[mode]
+    points = []
+    for x, y in FLIP_POINTS:
+        p = km.apply_matrix(m, sx * x, sy * y)
+        points.extend([p[0], p[1]])
+    print("f %d %s %s" % (mode, " ".join("%d" % t for t in v),
+                          " ".join("%.17g" % x for x in points)))
+
 
 def vendor_order(v):
     """Our eight -> the eight floats the vendor's parcel carries."""
@@ -109,6 +154,12 @@ def main():
     rng = random.Random(20260922)
     for _ in range(200):
         emit(tuple(rng.randint(0, 400) for _ in range(8)))
+    rng = random.Random(20260926)
+    for mode in range(4):
+        for v in FIXED:
+            emit_flip(v, mode)
+        for _ in range(50):
+            emit_flip(tuple(rng.randint(0, 400) for _ in range(8)), mode)
     for v in CLAMPS:
         out = km.clamp_permille(vendor_order(v))
         ours = [0] * 8

@@ -64,8 +64,8 @@ picking a corner on the page marks it on the wall as well. **Mask off** goes bac
 ### Auto now
 
 `h713-keystone once --apply`: read the accelerometer, work out the eight values for the tilt the projector
-has right now, and push them into the warp. It needs a level reference (below) and it runs once - it is not
-a loop.
+has right now, and push them into the warp. Without a level reference (below) the tilt is measured against the
+ideal level pose and the strip says `ref ideal`; it runs once - it is not a loop.
 
 ### Reset
 
@@ -101,8 +101,12 @@ by hand stays until the next move.
 ### Focus
 
 `-20`, `-5`, `+5`, `+20` are `h713-focus down|up N` in microsteps, each one read against the driver's range
-watcher before and after. **Level reference** is `h713-keystone reference`: stand the projector the way it
-is meant to throw and press it once, so the automatic has a pose to correct against.
+watcher before and after. **Level reference** is `h713-keystone reference`, and it is optional: the automatic
+already corrects against the ideal level pose (0, 0, 1 g). Pressed with the projector on a surface a spirit
+level has passed, it stores the pose the sensor reads there, which refines the ideal by the sensor's own
+mounting offset; the strip then says `ref set` instead of `ref ideal`. `ref refused` means the stored file no
+longer matches the axis map in `keystone.conf`: the automatic corrects against the ideal meanwhile, and the
+button replaces the file. The help line under the button says the same.
 
 **Autofocus now** is `h713-autofocus run`, and the page gives it up to 120 seconds. It
 takes the panel over, puts a chessboard on the wall, walks the motor and gives the picture back. The line at

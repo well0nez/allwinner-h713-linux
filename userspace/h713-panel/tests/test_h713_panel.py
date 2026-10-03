@@ -52,6 +52,7 @@ WARP_STATUS = """ok status
 warp            on
 keystone        tl 120,40 tr 0,0 bl 0,0 br 30,0 (per-mille, positive inward)
 zoom            85 percent (every corner pulled in on top of the keystone)
+mode            rear-ceiling (mirrored for the mount; the GPU runs even at the identity)
 pattern         mask (a corner marked)
 source          /dev/video1 1920x1080, line pitch 1920/1920, 1 dma-buf per slot
 panel           1920x1080, line pitch 7680, three buffers from /run/h713-tv/ctl
@@ -80,8 +81,25 @@ KEYSTONE_STATUS = """ok status
 config          /etc/h713/keystone.conf
 optics          throw ratio 0.8176 (camprjspe.ini), zoom_scale 0
 after a move    keystone+focus (more than 3.0 degrees, then 2.0 s still)
+reference       file (2026-09-26T10:12:44): /etc/h713/keystone-ref, counts -416 2752 17088
 warp            tl 120,40 tr 0,0 bl 0,0 br 30,0
 keystone by     manual"""
+
+# The same status on a fresh image (FB-KSREF, 26.09.2026): no reference file,
+# the automatic corrects against the ideal level pose.
+KEYSTONE_STATUS_IDEAL = KEYSTONE_STATUS.replace(
+    "file (2026-09-26T10:12:44): /etc/h713/keystone-ref, counts -416 2752 17088",
+    "ideal (0, 0, 1 g) - h713-keystone reference refines it")
+KEYSTONE_STATUS_REFUSED = KEYSTONE_STATUS.replace(
+    "file (2026-09-26T10:12:44): /etc/h713/keystone-ref, counts -416 2752 17088",
+    "refused (/etc/h713/keystone-ref was taken with axis_roll = +x, the "
+    "configuration says -x -- run `h713-keystone reference` again)")
+# The same refusal as a tool without FB-KSREFb prints it: the raised message
+# itself.  A first word the page does not know is "refused" as well.
+KEYSTONE_STATUS_REFUSED_OLD = KEYSTONE_STATUS.replace(
+    "file (2026-09-26T10:12:44): /etc/h713/keystone-ref, counts -416 2752 17088",
+    "/etc/h713/keystone-ref was taken with axis_roll = +x, the configuration "
+    "says -x -- run `h713-keystone reference` again")
 
 
 class Fakes(object):
@@ -152,6 +170,8 @@ class VerbTest(unittest.TestCase):
                 ("keystone_ref", [], "h713-keystone reference"),
                 ("keystone_res", [], "h713-warp ctl keystone reset"),
                 ("screen_zoom", [85], "h713-warp ctl zoom 85"),
+                ("mode", ["ceiling"], "h713-warp ctl mode ceiling"),
+                ("mode", ["rear-ceiling"], "h713-warp ctl mode rear-ceiling"),
                 ("focus", ["up", "20"], "h713-focus up 20"),
                 ("autofocus", [], "h713-autofocus run"),
                 ("warp", ["off"], "h713-warp ctl off")):
@@ -194,6 +214,9 @@ class VerbTest(unittest.TestCase):
                            ("screen_zoom", [83]),
                            ("screen_zoom", [10]),
                            ("screen_zoom", ["85; reboot"]),
+                           ("mode", ["upside-down"]),
+                           ("mode", ["hv"]),
+                           ("mode", ["front; reboot"]),
                            ("volume", [101]),
                            ("volume", [True]),
                            ("focus", ["up", "7"]),
@@ -232,7 +255,9 @@ class VerbTest(unittest.TestCase):
         self.assertEqual(state["aspect"], "16:9")
         self.assertEqual(state["keystone_by"], "manual")
         self.assertEqual(state["after_move"], "keystone+focus")
+        self.assertEqual(state["reference"], "set")
         self.assertEqual(state["screen_zoom"], 85)
+        self.assertEqual(state["mode"], "rear-ceiling")
         self.assertEqual(state["fps"], 59.4)
         self.assertEqual(state["pattern"], "mask (a corner marked)")
         self.assertEqual(state["keystone"]["tl_x"], 120)
@@ -249,8 +274,20 @@ class VerbTest(unittest.TestCase):
         state = empty.call({"verb": "status"})
         self.assertTrue(state["ok"])
         self.assertEqual(state["warp"], "unknown")
+        self.assertEqual(state["mode"], "-")
         self.assertEqual(state["temperatures"], [])
         self.assertEqual(state["max"]["tl_x"], 1000)
+        self.assertEqual(state["reference"], "-")
+
+    def test_the_strip_word_for_the_reference(self):
+        """`ref ideal` on a fresh image, `ref set` once a level reference is
+        stored, `ref refused` when the file is from another axis map."""
+        for status, word in ((KEYSTONE_STATUS_IDEAL, "ideal"),
+                             (KEYSTONE_STATUS, "set"),
+                             (KEYSTONE_STATUS_REFUSED, "refused"),
+                             (KEYSTONE_STATUS_REFUSED_OLD, "refused")):
+            self.fake.tool("h713-keystone", {"status": status})
+            self.assertEqual(self.call("status")["reference"], word, word)
 
     def test_controls_carry_the_ranges_and_the_lists(self):
         answer = self.call("controls")
@@ -261,6 +298,7 @@ class VerbTest(unittest.TestCase):
         self.assertEqual(found["brightness"]["value"], 50)
         self.assertEqual(list(answer["presets"]), list(panel.PRESETS))
         self.assertEqual(list(answer["corners"]), list(panel.CORNERS))
+        self.assertEqual(list(answer["modes"]), list(panel.MODES))
         self.assertEqual(list(answer["steps"]), list(panel.NUDGE_STEPS))
 
     def test_after_move_writes_the_key_and_restarts_the_unit(self):
@@ -363,6 +401,15 @@ class PlainTest(unittest.TestCase):
         # the panel rectangle of the viewBox has to match what point() divides by
         self.assertIn('x="20" y="18" width="320" height="180"', page)
         self.assertIn("var X0 = 20, Y0 = 18, W = 320, H = 180;", page)
+
+    def test_the_page_shows_the_reference_and_says_what_the_button_refines(self):
+        with open(PAGE, "rb") as handle:
+            page = handle.read().decode("utf-8")
+        self.assertIn('bit("ref", ST.reference', page)
+        self.assertIn("ref ideal", page)
+        self.assertIn("ref set", page)
+        self.assertIn("refines the ideal", page)
+        self.assertIn(">Level reference</button>", page)
 
     def test_the_page_carries_no_external_reference(self):
         with open(PAGE, "rb") as handle:

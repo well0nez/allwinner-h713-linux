@@ -171,11 +171,12 @@ int main(int argc, char **argv)
 	r.on = r.conf.start_on;
 	r.state = r.on ? WARP_BYPASS : WARP_OFF;
 	warp_solve(&r);
-	info("config          %s%s: %s, corners %d,%d %d,%d %d,%d %d,%d (tl tr bl br, per-mille)",
+	info("config          %s%s: %s, corners %d,%d %d,%d %d,%d %d,%d (tl tr bl br, per-mille), mode %s",
 	     r.conf.path, r.conf.present ? "" : " missing",
 	     r.on ? "warp = on" : "warp = off",
 	     r.conf.v[0], r.conf.v[1], r.conf.v[2], r.conf.v[3],
-	     r.conf.v[4], r.conf.v[5], r.conf.v[6], r.conf.v[7]);
+	     r.conf.v[4], r.conf.v[5], r.conf.v[6], r.conf.v[7],
+	     warp_mode_name[r.conf.mode]);
 	/* a client that hangs up mid-answer must not take the daemon with it */
 	signal(SIGPIPE, SIG_IGN);
 	control_listen(&ctl);

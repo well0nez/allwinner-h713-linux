@@ -14,7 +14,18 @@ the loop that pushes the result into `h713-warp ctl keystone set`.
   reference  store the current pose as the level pose to correct against
   once       the eight per-mille insets for the current tilt, --apply pushes
   run        the loop; SIGTERM puts the manual set back
+  watch      the vendor's way: after a move, once
   status     what is configured, what was found, what the warp carries
+
+The reference pose is optional (26.09.2026).  The vendor's chain computes
+"current attitude minus factory attitude", and the factory attitude is a jig
+value (GsInitXYZ) this HY310 does not carry (AP2e), so its chain ran against
+all zeros - which gives the same GsX and GsY as the ideal level pose
+(0, 0, 1 g) does.  Without /etc/h713/keystone-ref the automatic therefore
+corrects against that ideal and says so on every result line; a reference
+taken on a level surface refines it by the sensor's mounting offset, which
+`reference` prints.  A reference at first boot would be wrong instead: the
+projector rarely stands where it throws (Marco, 23.09.2026).
 
 Two measured facts shape the reader (device, 22.09.2026).  A sysfs read of
 in_accel_*_raw WAITS for the device's next sample, so at the driver default of
@@ -47,9 +58,14 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(HERE, "model"))
 
 import auto_keystone as ak                                    # noqa: E402
+import gsensor_angles as gsa                                  # noqa: E402
 import keystone_geometry as kge                               # noqa: E402
 
 CONF_PATH, REF_PATH = "/etc/h713/keystone.conf", "/etc/h713/keystone-ref"
+# What the automatic corrects against while there is no reference file: the
+# ideal level pose ak.LEVEL_REFERENCE, said in the words of every result line.
+IDEAL_TEXT = "ideal (0, 0, 1 g) - h713-keystone reference refines it"
+REFUSED_TEXT = "refused - ideal (0, 0, 1 g) applies, h713-keystone status says why"
 LAST_AUTO_PATH = "/var/lib/h713-keystone/last-auto"   # the set the automatic last applied
 IIO_DIR, WARP_TOOL, G_M_S2 = "/sys/bus/iio/devices", "h713-warp", 9.80665
 FALLBACK_COUNTS_PER_G = 1000.0    # measured: in_accel_x_scale 0.009806 m/s2
@@ -89,8 +105,10 @@ def _read(path):
     try:
         with open(path, "rb") as fh:
             return fh.read().decode("ascii", "replace").strip()
-    except (OSError, IOError):
+    except FileNotFoundError:
         return None
+    except (OSError, IOError) as exc:   # there, but not readable: say so, do not fall back
+        raise Error("%s: %s" % (path, exc.strerror or exc))
 
 
 def _write_atomic(path, text):
@@ -324,9 +342,9 @@ def write_reference(path, counts, raw, conf):
         + ["taken = %s" % time.strftime("%Y-%m-%dT%H:%M:%S"), ""]))
 
 
-def read_reference(path, conf):
-    """The stored reference, or None when there is no file yet.  A reference
-    from another axis map is refused rather than used."""
+def read_reference_file(path, conf):
+    """(counts, taken) out of the stored file, or None when there is no file
+    yet.  A reference from another axis map is refused rather than used."""
     text = _read(path)
     if text is None:
         return None
@@ -337,10 +355,38 @@ def read_reference(path, conf):
                         "-- run `h713-keystone reference` again"
                         % (path, key, values.get(key), axis_text(conf[key])))
     counts = tuple(int(v) for v in values.get("counts", "").split()
-                   if v.lstrip("-").isdigit())
+                   if re.fullmatch(r"-?\d+", v))
     if len(counts) != 3:
         raise Error("%s needs a \"counts = X Y Z\" line" % path)
-    return counts
+    return counts, values.get("taken", "undated")
+
+
+def read_reference(path, conf):
+    """The stored counts alone, or None: what the model is fed."""
+    found = read_reference_file(path, conf)
+    return found[0] if found else None
+
+
+def load_reference(path, conf, quiet=False):
+    """What the automatic corrects against, and the words for the result
+    line: the stored pose when the file is there, else the ideal level pose.
+    The ideal is not a guess: on a unit without a factory GsInitXYZ the
+    vendor's chain computes against all zeros, and for GsX and GsY that is
+    the same number (only the unused GsZ differs).  A refused file (another
+    axis map, no counts) is said once on stderr - the journal under the unit
+    - and the ideal applies meanwhile; the note and `status` say `refused`,
+    so nothing is replaced behind the user's back and the unit does not
+    exit over it (v0.95-beta did, and systemd restarted it every 5 s)."""
+    try:
+        found = read_reference_file(path, conf)
+    except Error as exc:
+        if not quiet:
+            _stderr("warning: reference refused (%s) - correcting against "
+                    "the ideal (0, 0, 1 g) meanwhile" % exc)
+        return ak.LEVEL_REFERENCE, "reference " + REFUSED_TEXT
+    if found is None:
+        return ak.LEVEL_REFERENCE, "reference " + IDEAL_TEXT
+    return found[0], "reference file (%s)" % found[1]
 
 
 # --- h713-warp ------------------------------------------------------------
@@ -381,6 +427,44 @@ def warp_apply(tool, permille):
     """One corner and one axis per call, as KS4 specifies the verb."""
     for (corner, axis), value in zip(WARP_SLOTS, permille):
         warp_call(tool, ["keystone", "set", corner, axis, str(int(value))])
+
+
+# The mount. The vendor permutes the eight values by the projection mode
+# before they reach the warp (LocalService.optKeystoneFun 1154-1200), whose
+# flip acts on the output; without it a rear mount doubles the roll and a
+# ceiling mount puts the pitch on the wrong edge (deep review 27.09.2026,
+# umbau/work/_deepreview/geometry B1).  No sign flip: the model negates the
+# angles itself when the unit hangs upside down.
+MODE_PERM = {"front": (0, 1, 2, 3), "rear": (1, 0, 3, 2),
+             "ceiling": (3, 2, 1, 0), "rear-ceiling": (2, 3, 0, 1)}
+
+
+def mount_mode(tool):
+    """The projection mode h713-warp reports; front when it says nothing or
+    cannot be asked (the older h713-warp has no mode)."""
+    try:
+        found = re.search(r"^mode\s{2,}(\S+)", warp_call(tool, ["status"]), re.M)
+    except Error:
+        return "front"
+    return found.group(1) if found else "front"
+
+
+def for_the_mount(tool, permille):
+    """The eight corner values permuted for the mount h713-warp is set to."""
+    mode = mount_mode(tool)
+    order = MODE_PERM.get(mode)
+    if order is None:
+        raise Error("h713-warp reports the mode %s, which this tool does not know" % mode, EXIT_WARP)
+    return tuple(permille[2 * c + i] for c in order for i in (0, 1))
+
+
+def reference_for_mount(tool, reference, note):
+    """Upside down the vendor refuses a stored pose (its check wants z >= 0),
+    and a pose stored upright doubles the sensor's offset once the model has
+    negated the angles: a ceiling mount corrects against the ideal."""
+    if mount_mode(tool) in ("ceiling", "rear-ceiling") and reference is not ak.LEVEL_REFERENCE:
+        return ak.LEVEL_REFERENCE, "reference ideal (ceiling mount, the stored pose is upright)"
+    return reference, note
 
 
 def write_last_auto(path, permille):
@@ -457,33 +541,43 @@ def open_sensor(args, conf, rate=True):
                   conf["sampling_rate"] if rate else None)
 
 
-def reading(sensor, conf, reference, ini):
-    """One averaged sample through the whole AP2h chain."""
-    raw = sensor.sample(conf["average_samples"])
+def implausible(raw, sensor):
+    """Why an averaged triple is not a pose, or None.  A dead or loose sensor
+    reads (0, 0, 0) or no 1 g at all, and nothing else would notice now that
+    no reference is asked for (the device reads |g| 1.07 at rest)."""
+    g = sum(v * v for v in raw) ** 0.5 / sensor.counts_per_g
+    if 0.7 <= g <= 1.3:
+        return None
+    return "the accelerometer reads |g| = %.2f (raw %.0f %.0f %.0f), not about 1 g" % ((g,) + tuple(raw))
+
+
+def chain(raw, conf, reference, ini):
     row = ak.auto_keystone(model_triple(raw, conf), reference=reference,
                            zoom_scale=conf["zoom_scale"], ini=ini)
     row["raw"] = raw
     return row
 
 
-def no_reference_warning(args):
-    _stderr("warning: no %s -- the angles are absolute, and a correction "
-            "would be against a level pose this device has never been shown"
-            % args.reference)
+def reading(sensor, conf, reference, ini):
+    """One averaged sample through the whole AP2h chain."""
+    raw = sensor.sample(conf["average_samples"])
+    why = implausible(raw, sensor)
+    if why:
+        raise Error(why + " -- nothing computed", EXIT_NO_SENSOR)
+    return chain(raw, conf, reference, ini)
 
 
 # --- the commands ---------------------------------------------------------
 
 def do_read(args, conf, ini):
     sensor = open_sensor(args, conf)
-    reference = read_reference(args.reference, conf)
-    if reference is None and not args.quiet:
-        no_reference_warning(args)
-    row = reading(sensor, conf, reference or ak.LEVEL_REFERENCE, ini)
+    reference, note = load_reference(args.reference, conf, args.quiet)
+    reference, note = reference_for_mount(args.warp, reference, note)
+    row = reading(sensor, conf, reference, ini)
     g_vector = tuple(v / sensor.counts_per_g for v in row["raw"])
     print("ok read  raw %7.1f %7.1f %7.1f  g %6.3f %6.3f %6.3f  pitch %7.3f  "
-          "roll %7.3f" % (row["raw"] + g_vector
-                          + (row["gs_y"], row["gs_x"])))
+          "roll %7.3f  %s" % (row["raw"] + g_vector
+                              + (row["gs_y"], row["gs_x"], note)))
     return 0
 
 
@@ -499,20 +593,27 @@ def do_reference(args, conf, ini):
     write_reference(args.reference, counts, raw, conf)
     print("ok reference  raw %.1f %.1f %.1f  counts %d %d %d  -> %s"
           % (raw + tuple(counts) + (args.reference,)))
+    # This pose against the ideal.  On a surface a spirit level has passed it
+    # is the sensor's mounting offset - the number that decides whether the
+    # ideal is good enough as the shipped default (FB-KSREF).
+    offset = gsa.get_gsensor_du(counts[0], counts[1], counts[2],
+                                list(ak.LEVEL_REFERENCE))
+    print("ok offset  pitch %.2f  roll %.2f degrees, this pose against the "
+          "ideal (0, 0, 1 g)" % (offset[1], offset[0]))
     return 0
 
 
 def do_once(args, conf, ini):
     sensor = open_sensor(args, conf)
-    reference = read_reference(args.reference, conf)
-    if reference is None and not args.quiet:
-        no_reference_warning(args)
-    row = reading(sensor, conf, reference or ak.LEVEL_REFERENCE, ini)
-    print("ok once  pitch %.3f  roll %.3f  %s"
-          % (row["gs_y"], row["gs_x"], inset_text(row["permille"])))
+    reference, note = load_reference(args.reference, conf, args.quiet)
+    reference, note = reference_for_mount(args.warp, reference, note)
+    row = reading(sensor, conf, reference, ini)
+    print("ok once  pitch %.3f  roll %.3f  %s  %s"
+          % (row["gs_y"], row["gs_x"], inset_text(row["permille"]), note))
     if args.apply:
-        warp_apply(args.warp, row["permille"])
-        write_last_auto(args.last_auto, row["permille"])
+        applied = for_the_mount(args.warp, row["permille"])
+        warp_apply(args.warp, applied)
+        write_last_auto(args.last_auto, applied)
         print("ok applied through %s" % args.warp)
     return 0
 
@@ -532,30 +633,37 @@ def do_watch(args, conf, ini):
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stopped.append(True))
     sensor = open_sensor(args, conf)
-    reference = read_reference(args.reference, conf)
-    if reference is None:
-        # A fresh image has no reference, and the unit runs from the first
-        # boot: exiting here made systemd restart it every five seconds for
-        # ever (23.09.2026). Wait for the file instead, quietly, and go on
-        # the moment it is there.
-        _stderr("%s is missing -- `h713-keystone reference` with the "
-                "projector level first; waiting for it" % args.reference)
-        while reference is None and not stopped:
-            time.sleep(10)
-            reference = read_reference(args.reference, conf)
-        if stopped:
-            return 130
-        _stderr("reference found, watching")
+    # A fresh image has no reference file and the unit runs from the first
+    # boot; until 26.09.2026 this waited for the file (and until 23.09. it
+    # exited, and systemd restarted it every five seconds).  Now it watches
+    # against the ideal and the ok line says which reference it has - a
+    # refused file included: said once, never an exit.
+    reference, note = load_reference(args.reference, conf, args.quiet)
+    reference, note = reference_for_mount(args.warp, reference, note)
     rest = None          # the angles the projector rests at
     moving_since = None  # when the move began
     still_since = None   # when the readings became still again
     last = None
-    print("ok watch  after_move = %s, move %.1f degrees, settle %.1f s within %.1f degrees, a reading every ~%.1f s"
+    print("ok watch  after_move = %s, move %.1f degrees, settle %.1f s within %.1f degrees, a reading every ~%.1f s  %s"
           % (conf["after_move"], conf["move_degrees"], conf["settle_seconds"],
-             conf["settle_degrees"], conf["average_samples"] / 30.0))
+             conf["settle_degrees"], conf["average_samples"] / 30.0, note))
     until = time.monotonic() + args.for_seconds if args.for_seconds else None
+    bad = None
     while not stopped and (until is None or time.monotonic() < until):
-        row = reading(sensor, conf, reference, ini)
+        # the two angles alone (microseconds); the whole chain, whose search
+        # takes seconds near 60 degrees, only when something is applied
+        raw = sensor.sample(conf["average_samples"])
+        why = implausible(raw, sensor)
+        if why or bad:
+            if why != bad:
+                _stderr("warning: %s -- no move is watched meanwhile" % why if why
+                        else "the accelerometer reads 1 g again, watching")
+            bad = why
+            if why:
+                time.sleep(POLL_S)
+                continue
+        row = dict(zip(("gs_x", "gs_y"), gsa.opt_keystone_angles(
+            gsa.iio_to_vendor_counts(*model_triple(raw, conf)), list(reference))))
         angles = (row["gs_x"], row["gs_y"])
         now = time.monotonic()
         if rest is None:
@@ -581,12 +689,19 @@ def do_watch(args, conf, ini):
                     print("ok settled  pitch %.2f roll %.2f, after_move = off: nothing applied"
                           % (row["gs_y"], row["gs_x"]))
                 else:
+                    # a reference taken since the start (the page's button)
+                    # counts from this apply on; the start said a refusal once
+                    reference, note = load_reference(args.reference, conf, True)
+                    reference, note = reference_for_mount(args.warp, reference, note)
+                    row = chain(raw, conf, reference, ini)
+                    rest = angles = (row["gs_x"], row["gs_y"])   # re-based on it
                     if not args.dry_run:
-                        warp_apply(args.warp, row["permille"])
-                        write_last_auto(args.last_auto, row["permille"])
-                    print("ok apply  pitch %.3f  roll %.3f  %s%s"
+                        applied = for_the_mount(args.warp, row["permille"])
+                        warp_apply(args.warp, applied)
+                        write_last_auto(args.last_auto, applied)
+                    print("ok apply  pitch %.3f  roll %.3f  %s%s  %s"
                           % (row["gs_y"], row["gs_x"], inset_text(row["permille"]),
-                             "  (dry run)" if args.dry_run else ""))
+                             "  (dry run)" if args.dry_run else "", note))
                     if conf["after_move"] == "keystone+focus" and not args.dry_run:
                         try:
                             proc = subprocess.run(conf["focus_command"].split(),
@@ -608,12 +723,8 @@ def do_watch(args, conf, ini):
 
 def do_run(args, conf, ini):
     sensor = open_sensor(args, conf)
-    reference = read_reference(args.reference, conf)
-    if reference is None:
-        raise Error("%s is missing -- `h713-keystone reference` with the "
-                    "projector level first; without it every tilt would be "
-                    "measured against a pose this device has never had"
-                    % args.reference)
+    reference, note = load_reference(args.reference, conf, args.quiet)
+    reference, note = reference_for_mount(args.warp, reference, note)
     saved = None if args.dry_run else warp_read_set(args.warp)
     if saved is None and not args.dry_run and not args.quiet:
         _stderr("warning: %s ctl status did not report eight values -- there "
@@ -627,10 +738,10 @@ def do_run(args, conf, ini):
             row = reading(sensor, conf, reference, ini)
             if gate.update((row["gs_x"], row["gs_y"]), time.monotonic()):
                 if not args.dry_run:
-                    warp_apply(args.warp, row["permille"])
-                print("ok apply  pitch %.3f  roll %.3f  %s%s"
+                    warp_apply(args.warp, for_the_mount(args.warp, row["permille"]))
+                print("ok apply  pitch %.3f  roll %.3f  %s%s  %s"
                       % (row["gs_y"], row["gs_x"], inset_text(row["permille"]),
-                         "  (dry run)" if args.dry_run else ""))
+                         "  (dry run)" if args.dry_run else "", note))
             deadline = time.monotonic() + POLL_S
             while not stopped and time.monotonic() < deadline:
                 time.sleep(0.02)
@@ -651,10 +762,16 @@ def _sensor_text(sensor, conf):
         sensor.counts_per_g)
 
 
-def _reference_text(path, counts):
-    if not counts:
-        return "none -- run `h713-keystone reference`"
-    return "%s: counts %d %d %d" % ((path,) + counts)
+def _reference_text(path, conf):
+    """`ideal ...`, `file (date): path, counts X Y Z` or `refused (why)` -
+    the settings page reads the first word."""
+    try:
+        found = read_reference_file(path, conf)
+    except Error as exc:
+        return "refused (%s)" % exc
+    if found is None:
+        return IDEAL_TEXT
+    return "file (%s): %s, counts %d %d %d" % ((found[1], path) + found[0])
 
 
 def do_status(args, conf, ini):
@@ -679,8 +796,7 @@ def do_status(args, conf, ini):
     for label, call in (
             ("sensor", lambda: _sensor_text(open_sensor(args, conf, False),
                                             conf)),
-            ("reference", lambda: _reference_text(
-                args.reference, read_reference(args.reference, conf))),
+            ("reference", lambda: _reference_text(args.reference, conf)),
             ("warp", lambda: inset_text(warp_read_set(args.warp))),
             ("keystone by", lambda: keystone_by(warp_read_set(args.warp),
                                                  read_last_auto(args.last_auto)))):
@@ -696,9 +812,11 @@ def main(argv=None):
         prog="h713-keystone",
         description="the projector's auto keystone: accelerometer, the "
                     "vendor's geometry, h713-warp.",
-        epilog="Measure the level pose once with `reference`, look at it with "
-               "`read` and `once`; `watch` runs the automatic once after every "
-               "move, as the vendor does, and `once --apply` runs it now.")
+        epilog="The automatic corrects against the ideal level pose until "
+               "`reference`, taken on a level surface, has stored a better "
+               "one; look at it with `read` and `once`; `watch` runs the "
+               "automatic once after every move, as the vendor does, and "
+               "`once --apply` runs it now.")
     parser.add_argument("-C", "--config", default=CONF_PATH, metavar="PATH")
     parser.add_argument("--reference", default=REF_PATH, metavar="PATH")
     parser.add_argument("--device", metavar="PATH",
@@ -711,7 +829,8 @@ def main(argv=None):
                         help="no warnings, only the ok and error lines")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("read", help="one reading: raw, g vector, pitch and roll")
-    sub.add_parser("reference", help="store this pose as the level reference")
+    sub.add_parser("reference", help="store this pose as the level reference "
+                                     "(optional; it refines the ideal)")
     once = sub.add_parser("once", help="the eight insets for the current tilt")
     once.add_argument("--apply", action="store_true",
                       help="push them through `h713-warp ctl keystone set`")

@@ -38,6 +38,8 @@ so the exit code is decided without parsing further.
 | `keystone nudge CORNER AXIS DELTA` | relative, -1000..1000 - the command a remote control sends |
 | `keystone reset` | all eight corners to 0, which is the identity |
 | `zoom [PERCENT]` | the screen zoom, 10..100 (100 = none): every corner pulled in by (100 - PERCENT) * 5 per-mille on top of the keystone, the vendor's "Digital scaling"; saved as `zoom =` in the file |
+| `edge [N]` | the soft border of the warped picture in panel pixels, 0..64: 0 = a hard edge, 4 = the vendor's (the default). The outer half of that width keeps 20/255 of the picture, then a linear ramp over one width reaches the picture - the stock's `draw_edge` (libkeystone), folded into the two passes as a per-fragment factor, no third pass and no extra texture; takes effect with the next frame and is saved as `edge =` |
+| `mode [front\|rear\|ceiling\|rear-ceiling]` | the projection mode, the vendor's "Installation mode": `rear` mirrors the picture left-right for a screen lit from behind, `ceiling` turns it over, `rear-ceiling` flips it top-bottom only. Saved as `mode =` in the file. The flip is one sign change in the matrix after the keystone, so the corner names stay the wall's in every mode and the mask's labels land where they belong; any mode but `front` keeps the GPU running even with all eight corners 0, and it mirrors nothing while the warp is off (the plain ring path is the firmware's) |
 | `test grid\|border\|mask [CORNER]\|off` | draw a pattern instead of the capture, to aim a corner with no source plugged in; `mask` is the calibration picture of the manual keystone with the named corner marked and every corner's value and maximum printed |
 | `dump PATH` | the last drawn frame's luma plane as a binary PGM - eyes for a test without a wall |
 | `hold on\|off` | draw a slot one vsync late (on, the default): the firmware hands a slot on before it is written to the end, measured 23.09.2026; off is the old timing, kept as the self-check's control |
@@ -57,6 +59,8 @@ tr_x = 0    tr_y = 0        # 0 = the corner untouched, larger pulls it inward
 bl_x = 0    bl_y = 0
 br_x = 0    br_y = 0
 zoom  = 100                 # the screen zoom in percent, 10..100 (100 = none)
+edge  = 4                   # the soft border in panel pixels, 0 = a hard edge, 4 = the vendor's
+mode  = front               # front, rear, ceiling or rear-ceiling; the corners stay the wall's
 warp  = on                  # the state to come up in; `ctl on` and `ctl off` write it
 ```
 
@@ -114,7 +118,13 @@ GPU governor settles at 432 instead of 600 MHz, the die cools instead of warming
 shows with every other chroma line dropped, so NV12 loses nothing. Without a signal `h713-tv` releases the
 warp and shows the console; the warp asks again once a second and is back within a second of the signal. The warp costs about 0.6 GB/s of memory
 bandwidth (read 4.15 MB of NV16, write 3.1 MB of NV12, scanout reads 3.1 MB instead of 4.15 MB per frame)
-and 9.3 MB of CMA for the three targets. The optional edge-blend pass of the vendor is not implemented. Which
+and 9.3 MB of CMA for the three targets. The vendor's edge blend is in (`edge`, since 27.09.2026): the same
+darkening ring the stock draws as a blended alpha quad over its warped frame, computed here from the quad
+coordinate in the luma and chroma shaders - luma towards Y 16, chroma towards 128 by the same factor, so
+the band meets the border without a step and leaves no colour fringe; a few arithmetic instructions per
+fragment on top of the texture fetch, no extra pass, no extra bytes. The band follows the quad (the vendor's
+mask is stretched over it too), so a foreshortened edge gets a proportionally narrower band - within a pixel
+of the stock's at a 200 per-mille correction, which interpolates its mask affinely per triangle. Which
 physical corner the vendor's slot 0 is has been derived from the framebuffer's orientation and is confirmed on
 the wall with one nudge and one photo; if top and bottom ever come out exchanged, it is two lines in
 `matrix.c`.

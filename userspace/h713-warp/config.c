@@ -62,6 +62,8 @@ void conf_read(struct warp_conf *c)
 	c->present = false;
 	c->start_on = false;
 	c->zoom = 100;
+	c->edge = EDGE_DEFAULT;
+	c->mode = MODE_FRONT;
 	memset(c->v, 0, sizeof(c->v));
 
 	f = fopen(c->path, "r");
@@ -102,6 +104,23 @@ void conf_read(struct warp_conf *c)
 				     c->path, n, val);
 			continue;
 		}
+		if (!strcasecmp(key, "edge")) {
+			int e;
+
+			if (parse_permille(val, &e) && e <= EDGE_MAX)
+				c->edge = e;
+			else
+				warn("%s:%u: edge = \"%s\" is not a width 0..%d pixels -- %d",
+				     c->path, n, val, EDGE_MAX, EDGE_DEFAULT);
+			continue;
+		}
+		if (!strcasecmp(key, "mode")) {
+			if ((k = warp_mode_by_name(val)) >= 0)
+				c->mode = k;
+			else
+				warn("%s:%u: mode = \"%s\" unknown (front rear ceiling rear-ceiling) -- front", c->path, n, val);
+			continue;
+		}
 		if (!strcasecmp(key, "warp")) {
 			if (!strcasecmp(val, "on"))
 				c->start_on = true;
@@ -114,7 +133,7 @@ void conf_read(struct warp_conf *c)
 		}
 		k = warp_key_by_name(key);
 		if (k < 0) {
-			warn("%s:%u: unknown key \"%s\" -- ignored (tl_x .. br_y, zoom, warp)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (tl_x .. br_y, zoom, edge, mode, warp)",
 			     c->path, n, key);
 			continue;
 		}
@@ -187,6 +206,8 @@ bool conf_write(const struct warp_conf *c, char *why, size_t n)
 	for (i = 0; i < WARP_KEYS; i++)
 		fprintf(f, "%-5s = %d\n", warp_key_name[i], c->v[i]);
 	fprintf(f, "\n# The screen zoom in percent (100 = none): every corner pulled in by\n# (100 - zoom) * 5 per-mille on top of the eight above.\nzoom  = %d\n", c->zoom);
+	fprintf(f, "\n# The soft border of the warped picture in panel pixels, the vendor's 4:\n# the outer half of it at 20/255 of the picture, then a linear ramp over one\n# width. 0 = a hard edge.\nedge  = %d\n", c->edge);
+	fprintf(f, "\n# The projection mode: front, rear (mirrored left-right for a screen lit\n# from behind), ceiling (turned over) or rear-ceiling. The corner names\n# above stay the wall's in every mode.\nmode  = %s\n", warp_mode_name[c->mode]);
 	fprintf(f, "\n# The state to come up in.\nwarp  = %s\n",
 		c->start_on ? "on" : "off");
 	if (fflush(f) || fsync(fileno(f)) || fclose(f)) {
