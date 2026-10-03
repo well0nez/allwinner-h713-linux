@@ -1,4 +1,4 @@
-HID: h713-remote: the stock BLE remote's consumer report carries one usage, not two
+HID: h713-remote: the stock BLE remote's consumer report carries one usage, not two; its three own keys
 
 The stock remote of the HY310 and the HY300PRO-G-EU (BLE HID over GATT, 1d5a:c081) declares report 3
 (consumer control) as two 16-bit usages and sends one. The HID core refuses reports shorter than their
@@ -6,11 +6,14 @@ descriptor since the hardening in hid_report_raw_event ("Event data for report 3
 -EINVAL) instead of padding them as the vendor's 5.4 kernel did, so no key of the remote reached the input
 layer; only the mouse report 2 did. Measured on the HY310 03.10.2026: descriptor 176 bytes, report 3 at
 offset 71. The fixup sets its report count to one.
+
+Home (0x0c0023), focus up (0x0c00de) and focus down (0x0c00df) have no Linux key and arrived as
+KEY_UNKNOWN; they are mapped to KEY_HOMEPAGE, KEY_F4 and KEY_F5.
 ---
 diff -uNr a/drivers/hid/hid-h713-remote.c b/drivers/hid/hid-h713-remote.c
 --- a/drivers/hid/hid-h713-remote.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/hid/hid-h713-remote.c	2026-10-03 21:05:14.735965697 +0200
-@@ -0,0 +1,57 @@
++++ b/drivers/hid/hid-h713-remote.c	2026-10-03 21:18:50.550928754 +0200
+@@ -0,0 +1,85 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * The stock Bluetooth LE remote of H713 projectors (HY310, HY300PRO-G-EU),
@@ -22,6 +25,12 @@ diff -uNr a/drivers/hid/hid-h713-remote.c b/drivers/hid/hid-h713-remote.c
 + * data for report 3 was too short") instead of padding them, no key reached
 + * the input layer; only the mouse report 2 did. The vendor kernel (5.4)
 + * padded. Report 3 is fixed up to one usage, which is what the remote sends.
++ *
++ * Three consumer usages have no Linux key and would arrive as KEY_UNKNOWN:
++ * Home sends 0x0c0023, focus up 0x0c00de, focus down 0x0c00df (measured on
++ * the HY310). Stock's Vendor_1d5a_Product_c081.kl maps KEY_UNKNOWN to HOME
++ * and has its own focus keys; here they become KEY_HOMEPAGE, KEY_F4 and
++ * KEY_F5 - F4/F5 as the project's IR table names the two focus keys.
 + */
 +
 +#include <linux/hid.h>
@@ -53,6 +62,27 @@ diff -uNr a/drivers/hid/hid-h713-remote.c b/drivers/hid/hid-h713-remote.c
 +	return rdesc;
 +}
 +
++static int h713_remote_input_mapping(struct hid_device *hdev, struct hid_input *hi,
++				     struct hid_field *field, struct hid_usage *usage,
++				     unsigned long **bit, int *max)
++{
++	if ((usage->hid & HID_USAGE_PAGE) != HID_UP_CONSUMER)
++		return 0;
++
++	switch (usage->hid & HID_USAGE) {
++	case 0x023:
++		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, KEY_HOMEPAGE);
++		return 1;
++	case 0x0de:
++		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, KEY_F4);
++		return 1;
++	case 0x0df:
++		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, KEY_F5);
++		return 1;
++	}
++	return 0;
++}
++
 +static const struct hid_device_id h713_remote_devices[] = {
 +	{ HID_BLUETOOTH_DEVICE(H713_REMOTE_VENDOR, H713_REMOTE_PRODUCT) },
 +	{ }
@@ -63,6 +93,7 @@ diff -uNr a/drivers/hid/hid-h713-remote.c b/drivers/hid/hid-h713-remote.c
 +	.name = "h713-remote",
 +	.id_table = h713_remote_devices,
 +	.report_fixup = h713_remote_report_fixup,
++	.input_mapping = h713_remote_input_mapping,
 +};
 +module_hid_driver(h713_remote_driver);
 +
