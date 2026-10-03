@@ -626,13 +626,25 @@ class Camera:
                     struct.pack("<I", BUF_TYPE_CAPTURE))
         self.streaming = True
 
-    def grab(self):
-        """One luma plane: the even bytes of the YUYV buffer (AP1 2.4)."""
+    def grab(self, deadline=None):
+        """One luma plane: the even bytes of the YUYV buffer (AP1 2.4).
+        With a deadline (time.monotonic()) the wait ends there instead of
+        after SELECT_TIMEOUT_S per select - a camera that answers every
+        select with EAGAIN kept `measure` running until 03.10.2026."""
         buf = bytearray(88)
         struct.pack_into("<II", buf, 0, 0, BUF_TYPE_CAPTURE)
         struct.pack_into("<I", buf, 60, MEMORY_MMAP)
         while True:
-            if not select.select([self.fd], [], [], SELECT_TIMEOUT_S)[0]:
+            wait = SELECT_TIMEOUT_S
+            if deadline is not None:
+                wait = min(wait, deadline - time.monotonic())
+                if wait <= 0:
+                    raise Error("no frame before the deadline -- the camera "
+                                "stopped (--timeout)")
+            if not select.select([self.fd], [], [], wait)[0]:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise Error("no frame before the deadline -- the camera "
+                                "stopped (--timeout)")
                 raise Error("no frame within %.0f s -- the camera stopped"
                             % SELECT_TIMEOUT_S)
             try:
@@ -1187,10 +1199,11 @@ def do_measure(args, profile):
         return 0
     metric = build_metric(args, profile)
     camera = Camera(find_camera(args.dev, profile.camera))
+    deadline = time.monotonic() + args.timeout if args.timeout else None
     try:
         camera.expose(profile.exposure[0])
         camera.start()
-        frame = camera.grab()
+        frame = camera.grab(deadline)
         print("%d   (picture level %d)" % (metric(frame),
                                            picture_present(frame)))
     finally:
@@ -1256,6 +1269,9 @@ def main(argv=None):
     measure = sub.add_parser("measure", help="one metric value")
     measure.add_argument("--metric-only", metavar="FRAME",
                          help="measure a recorded luma frame and time it")
+    measure.add_argument("--timeout", type=float, default=10.0, metavar="S",
+                         help="give up on the camera after S seconds, 0 = "
+                              "never (default 10)")
     pattern = sub.add_parser("pattern", help="draw or clear the chessboard")
     pattern.add_argument("state", choices=("on", "off"))
     args = parser.parse_args(argv)

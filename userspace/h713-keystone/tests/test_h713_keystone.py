@@ -574,6 +574,24 @@ class Commands(unittest.TestCase):
                       "bl 0,76  br 11,34  (dry run)  reference ideal",
                       out.getvalue())
 
+    def test_run_without_a_reference_uses_the_ideal_and_says_so_sigterm_is_clean(self):
+        """The same stop by SIGTERM, as systemd sends it: exit 0."""
+        out = io.StringIO()
+
+        def interrupt():
+            for _ in range(250):                  # up to 5 s
+                if "ok apply" in out.getvalue():
+                    break
+                time.sleep(0.02)
+            signal.raise_signal(signal.SIGTERM)
+        threading.Thread(target=interrupt, daemon=True).start()
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = ks.main(self.base + ["run", "--dry-run"])
+        self.assertEqual(code, 0)   # systemd stops with SIGTERM: not "failed"
+        self.assertIn("ok apply  pitch 9.146  roll -1.377  tl 60,0  tr 47,37  "
+                      "bl 0,76  br 11,34  (dry run)  reference ideal",
+                      out.getvalue())
+
     def test_status_reports_and_does_not_raise(self):
         code, out = self.run_tool("--warp", "no-such-warp", "status")
         self.assertEqual(code, 0)

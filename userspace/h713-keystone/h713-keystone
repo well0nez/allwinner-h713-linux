@@ -622,6 +622,15 @@ def angle_distance(a, b):
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 
 
+def stop_code(stopped):
+    """The exit code after a signal: SIGTERM is how systemd stops the unit, so
+    it is a clean 0 (until 03.10.2026 it was 130 and every `systemctl stop`
+    left h713-keystone-auto "failed"); Ctrl-C keeps the shell's 130."""
+    if not stopped:
+        return 0
+    return 130 if signal.SIGINT in stopped else 0
+
+
 def do_watch(args, conf, ini):
     """The vendor's behaviour, not a control loop: nothing happens while the
     projector stands still, whatever a hand has set. When it is moved by more
@@ -631,7 +640,7 @@ def do_watch(args, conf, ini):
     set are therefore kept until the next move - that is the gate."""
     stopped = []
     for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, lambda *_: stopped.append(True))
+        signal.signal(sig, lambda signum, _: stopped.append(signum))
     sensor = open_sensor(args, conf)
     # A fresh image has no reference file and the unit runs from the first
     # boot; until 26.09.2026 this waited for the file (and until 23.09. it
@@ -718,7 +727,7 @@ def do_watch(args, conf, ini):
         deadline = time.monotonic() + POLL_S
         while not stopped and time.monotonic() < deadline:
             time.sleep(0.02)
-    return 130 if stopped else 0
+    return stop_code(stopped)
 
 
 def do_run(args, conf, ini):
@@ -731,7 +740,7 @@ def do_run(args, conf, ini):
                 "is nothing to put back at the end" % args.warp)
     stopped = []
     for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, lambda *_: stopped.append(True))
+        signal.signal(sig, lambda signum, _: stopped.append(signum))
     gate = Hysteresis(conf["hysteresis_degrees"], conf["hold_seconds"])
     try:
         while not stopped:
@@ -753,7 +762,7 @@ def do_run(args, conf, ini):
                       % inset_text(saved))
             except Error as exc:
                 _stderr("the manual set could not be put back: %s" % exc)
-    return 130 if stopped else 0
+    return stop_code(stopped)
 
 
 def _sensor_text(sensor, conf):
