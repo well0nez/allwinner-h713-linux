@@ -454,3 +454,16 @@
 # 03.10.: the stock BLE remote (1d5a:c081) declares two usages in its consumer report and sends one; 6.18's
 #   HID core drops such short reports, so none of its keys arrived (HY310 integration test)
 0169-hid-h713-remote-the-stock-ble-remote-s-consumer-report.patch
+# 04.10.: the Fable wave (umbau/reviews/deep-review-20260927.md, device tests doku/134), without standby, crust,
+#   MIPS reload, IR and HDCP 1.4. EDID: one 256-byte EDID per S_EDID, the refused raster named from the record, enum_dv_timings
+#   is the firmware's table (+ deep-review fixes). HDCP 2.2 state exposed for h713-tv (+ elog fixes). Audio: a playback PCM
+#   for device sounds mixed into HDMI by the DSP (+ fixes), its bridge window and interrupts in the DTS.
+0170-media-h713-hdmirx-s-edid-takes-one-256-byte-edid.patch
+0171-media-h713-hdmirx-a-refused-raster-is-named-from-the-record.patch
+0172-media-h713-hdmirx-enum-dv-timings-is-the-firmware-s-table.patch
+0173-media-h713-hdmirx-deep-review-fixes.patch
+0174-media-h713-hdmirx-and-cpu-comm-expose-the-hdcp-state.patch
+0175-soc-sunxi-cpu-comm-elog-last-deep-review-fixes.patch
+0176-ASoC-sunxi-h713-msp-a-playback-pcm-for-device-sounds-mixed-into-hdmi.patch
+0177-ASoC-sunxi-h713-msp-deep-review-fixes.patch
+0178-arm64-dts-h713-the-audio-bridge-window-and-interrupts-for-the-msp.patch

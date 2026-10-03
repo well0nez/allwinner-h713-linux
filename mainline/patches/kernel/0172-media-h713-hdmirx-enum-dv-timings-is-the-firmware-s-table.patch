@@ -1,0 +1,159 @@
+media: h713-hdmirx: ENUM_DV_TIMINGS is the firmware's table, each record with its CEA VIC
+
+Optional follow-up to 0136z (FB-EDID stage B; 0167 there, renumbered because
+FB-HDCP14 took 0167). Until now ENUM_DV_TIMINGS listed the kernel's preset
+table within the cap, which is not what this receiver locks: with the table
+loaded (0136h) the device locks on the firmware's records and on nothing
+else - the HY310 run of 26.09.2026 confirmed it for both EDID halves, block
+0 throughout and block 1's 1080p120/100 on records 15 and 13.
+
+With the table loaded the enumeration is that table: its enabled records
+that carry an active size, in table order, as the records state them - an
+interlaced record counts its lines per field, as the firmware compares them.
+Each record is tagged once at load with the CEA-861 VIC whose nominal raster
+it matches under the locking path's own rule (h713_hdmirx_tse_match on a
+scratch timing), out of the kernel's preset list, plus 63 and 64
+(1080p120/100), which the preset list does not carry; twins that differ in
+aspect only (2/3, 6/7, 17/18, 21/22) carry the lower VIC, and the tag
+travels in every timing tse_fill() reports. h713-tv ctl status holds the
+served EDID's video data block against that list and names the VICs the
+table does not carry (the HY310's second half: 96, 97, 101, 102). Without
+the table nothing changes.
+
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -338,6 +338,7 @@
+  * @on_active: compare the active size instead of the totals (record +52)
+  * @skip_rate: do not compare the frame rate at all (record +49)
+  * @interlaced: the record is interlaced (record +50 == 0)
++ * @vic: the CEA-861 VIC whose nominal raster this record matches, 0 for none
+  */
+ struct h713_hdmirx_tse_mode {
+ 	u16 h_active;
+@@ -348,8 +349,11 @@
+ 	u8 on_active;
+ 	u8 skip_rate;
+ 	u8 interlaced;
++	u8 vic;
+ };
+ 
++static u8 h713_hdmirx_record_vic(const struct h713_hdmirx_tse_mode *m);
++
+ /**
+  * struct h713_hdmirx_ring_geometry - what the capture writes into a ring slot
+  * @width: pixels per line the plane may show (NV16 luma: bytes = pixels)
+@@ -3352,6 +3356,7 @@
+ 		m->on_active = rec[H713_TSE_ON_ACTIVE];
+ 		m->skip_rate = rec[H713_TSE_SKIP_RATE];
+ 		m->interlaced = !rec[H713_TSE_PROGRESSIVE];
++		m->vic = h713_hdmirx_record_vic(m);
+ 		if (m->h_active == 1920 && m->v_active == 1080 &&
+ 		    m->h_total == 2200 && m->v_total == 1125 &&
+ 		    m->rate_x1000 == 60000 && !m->interlaced)
+@@ -3398,6 +3403,10 @@
+ 	}
+ 	bt->interlaced = m->interlaced ? V4L2_DV_INTERLACED
+ 				      : V4L2_DV_PROGRESSIVE;
++	if (m->vic) {
++		bt->flags |= V4L2_DV_FL_HAS_CEA861_VIC;
++		bt->cea861_vic = m->vic;
++	}
+ 	bt->pixelclock = div_u64((u64)m->h_total * m->v_total * m->rate_x1000,
+ 				 1000);
+ 	bt->hsync = m->h_total > bt->width ? m->h_total - bt->width : 0;
+@@ -3458,6 +3467,52 @@
+ 	return false;
+ }
+ 
++/* the two VICs of interest the kernel's preset list has no entry for */
++static const struct { u8 vic; u16 w, h, htot, vtot; u32 rate_x1000; } h713_hdmirx_vic_extra[] = {
++	{ 63, 1920, 1080, 2200, 1125, 120000 },
++	{ 64, 1920, 1080, 2640, 1125, 100000 },
++};
++
++/*
++ * Does this record match a VIC's nominal raster? The same rule as the locking
++ * path, on a scratch timing: the firmware counts an interlaced record's active
++ * lines per field and its rate per field. Twins that differ only in aspect
++ * (2/3, 6/7, 17/18, 21/22) get the preset list's VIC, the lower one.
++ */
++static bool h713_hdmirx_record_is(const struct h713_hdmirx_tse_mode *m,
++				  unsigned int w, unsigned int h, unsigned int htot,
++				  unsigned int vtot, unsigned int rate_x1000, bool il)
++{
++	struct v4l2_dv_timings t = { .type = V4L2_DV_BT_656_1120 };
++
++	t.bt.width = w;
++	t.bt.height = il ? h / 2 : h;
++	t.bt.interlaced = il;
++	return h713_hdmirx_tse_match(m, 1, &t, htot, vtot, il ? 2 * rate_x1000 : rate_x1000);
++}
++
++static u8 h713_hdmirx_record_vic(const struct h713_hdmirx_tse_mode *m)
++{
++	unsigned int i;
++
++	for (i = 0; v4l2_dv_timings_presets[i].bt.width; i++) {
++		const struct v4l2_bt_timings *bt = &v4l2_dv_timings_presets[i].bt;
++		u64 frame = (u64)V4L2_DV_BT_FRAME_WIDTH(bt) * V4L2_DV_BT_FRAME_HEIGHT(bt);
++
++		if ((bt->flags & V4L2_DV_FL_HAS_CEA861_VIC) &&
++		    h713_hdmirx_record_is(m, bt->width, bt->height,
++					  V4L2_DV_BT_FRAME_WIDTH(bt), V4L2_DV_BT_FRAME_HEIGHT(bt),
++					  div64_u64(bt->pixelclock * 1000, frame), bt->interlaced))
++			return bt->cea861_vic;
++	}
++	for (i = 0; i < ARRAY_SIZE(h713_hdmirx_vic_extra); i++)
++		if (h713_hdmirx_record_is(m, h713_hdmirx_vic_extra[i].w, h713_hdmirx_vic_extra[i].h,
++					  h713_hdmirx_vic_extra[i].htot, h713_hdmirx_vic_extra[i].vtot,
++					  h713_hdmirx_vic_extra[i].rate_x1000, false))
++			return h713_hdmirx_vic_extra[i].vic;
++	return 0;
++}
++
+ /*
+  * Snap a measured timing to a preset when one describes the same signal:
+  * same active and total geometry, same scan type, pixel clock within
+@@ -4240,14 +4295,39 @@
+ 	return 0;
+ }
+ 
++/*
++ * With the table loaded this list IS the firmware's: its enabled records that
++ * carry an active size, in table order, as the records state them - an
++ * interlaced record counts its lines per field, as the firmware compares them
++ * - each with the CEA VIC it matches, so a client can hold an EDID's video
++ * data block against it (h713-tv ctl status). The ten frame-packing rows
++ * without an active size are left out. Without the table it is the preset
++ * list within the cap, as before.
++ */
+ static int h713_hdmirx_enum_dv_timings(struct file *file, void *priv,
+ 				       struct v4l2_enum_dv_timings *t)
+ {
++	struct h713_hdmirx *rx = video_drvdata(file);
++	unsigned int i, n = 0;
++
+ 	if (t->pad)
+ 		return -EINVAL;
++	if (!rx->tse_count)
++		return v4l2_enum_dv_timings_cap(t, &h713_hdmirx_timings_cap,
++						NULL, NULL);
++	for (i = 0; i < rx->tse_count; i++) {
++		const struct h713_hdmirx_tse_mode *m = &rx->tse_modes[i];
+ 
+-	return v4l2_enum_dv_timings_cap(t, &h713_hdmirx_timings_cap, NULL,
+-					NULL);
++		if (!m->h_active || !m->v_active || n++ != t->index)
++			continue;
++		memset(t->reserved, 0, sizeof(t->reserved));
++		memset(&t->timings, 0, sizeof(t->timings));
++		t->timings.type = V4L2_DV_BT_656_1120;
++		h713_hdmirx_tse_fill(m, &t->timings);
++		return 0;
++	}
++
++	return -EINVAL;
+ }
+ 
+ static int h713_hdmirx_dv_timings_cap(struct file *file, void *priv,

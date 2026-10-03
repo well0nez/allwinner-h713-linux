@@ -1,0 +1,158 @@
+soc: sunxi: cpu_comm: elog_last searches the whole line, strips colour codes, says when the ring is full (27.09.2026)
+
+The walk copied the head of a long line and searched only that, so a long newest HDCP line
+lost to an older one; the firmware's ESC [ .. m codes stayed in the text; and a full ring
+(doku/63: nobody moves the read pointer) freezes the "last word" without a sign. Findings 5,
+6, N5 of umbau/work/_deepreview/hdmi. Applies after 0168 (and, for the hdmirx hunk, 0136z*).
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -134,6 +134,8 @@
+ #define CPU_COMM_ELOG_CTL_SIZE		0x500
+ #define CPU_COMM_ELOG_MODE		0x09b	/* u8: 1 = the 100 KiB ring */
+ #define CPU_COMM_ELOG_WRITE		0x4a8	/* u32: offset into the ring */
++#define CPU_COMM_ELOG_READ		0x4a4	/* u32: the consumer's offset, nobody moves it here */
++#define CPU_COMM_ELOG_OVERFLOW		0x4a1	/* u8: set, the firmware drops every new line */
+ #define CPU_COMM_ELOG_LINE		200
+ 
+ static DEFINE_MUTEX(cpu_comm_elog_lock);
+@@ -154,10 +156,30 @@
+ 	return false;
+ }
+ 
++/* Take the firmware's colour codes (ESC [ params final byte) out of a line. */
++static size_t cpu_comm_elog_strip_ansi(char *s, size_t l)
++{
++	size_t i, o = 0;
++
++	for (i = 0; i < l; i++) {
++		if (s[i] == 0x1b) {
++			if (i + 1 < l && s[i + 1] == '[') {
++				i += 2;
++				while (i < l && !(s[i] >= 0x40 && s[i] <= 0x7e))
++					i++;
++			}
++			continue;
++		}
++		s[o++] = s[i];
++	}
++	return o;
++}
++
+ int cpu_comm_elog_last(const char *needle, char *buf, size_t len,
+ 		       u32 *write_ptr)
+ {
+ 	char rev[CPU_COMM_ELOG_LINE];	/* the line at hand, newest byte first */
++	char fwd[CPU_COMM_ELOG_LINE];	/* the same, in reading order */
+ 	size_t nlen, l = 0, i;
+ 	u32 pos, scanned;
+ 	int ret;
+@@ -198,15 +220,23 @@
+ 		}
+ 		if (c && c != '\n') {
+ 			if (l < sizeof(rev))
+-				rev[l++] = (c >= 0x20 && c < 0x7f) ? c : ' ';
++				rev[l++] = (c >= 0x20 && c < 0x7f) || c == 0x1b ? c : ' ';
+ 			continue;
+ 		}
+-		/* a line boundary, the ring's start, or its unwritten part */
+-		for (i = 0; i < l && i < len - 1; i++)
+-			buf[i] = rev[l - 1 - i];
+-		buf[i] = '\0';
+-		if (l && cpu_comm_elog_has(buf, i, needle, nlen)) {
+-			ret = (int)i;
++		/*
++		 * A line boundary, the ring's start, or its unwritten part: the
++		 * whole line is searched, and returned as its tail when it does
++		 * not fit (deep review 27.09.2026: the head used to be searched).
++		 */
++		for (i = 0; i < l; i++)
++			fwd[i] = rev[l - 1 - i];
++		l = cpu_comm_elog_strip_ansi(fwd, l);
++		if (l && cpu_comm_elog_has(fwd, l, needle, nlen)) {
++			size_t n = min_t(size_t, l, len - 1);
++
++			memcpy(buf, fwd + l - n, n);
++			buf[n] = '\0';
++			ret = (int)n;
+ 			break;
+ 		}
+ 		l = 0;
+@@ -221,6 +251,31 @@
+ }
+ EXPORT_SYMBOL_GPL(cpu_comm_elog_last);
+ 
++/*
++ * The firmware drops new lines once the ring is full or its overflow flag is
++ * set (doku/63; nothing on our boards moves the read pointer), so the newest
++ * line found can be old: true when that is the case.
++ */
++bool cpu_comm_elog_full(void)
++{
++	bool full = false;
++	u32 wp, rp, used;
++
++	mutex_lock(&cpu_comm_elog_lock);
++	if (cpu_comm_elog_ctl &&
++	    readb(cpu_comm_elog_ctl + CPU_COMM_ELOG_MODE) == 1) {
++		wp = readl(cpu_comm_elog_ctl + CPU_COMM_ELOG_WRITE);
++		rp = readl(cpu_comm_elog_ctl + CPU_COMM_ELOG_READ);
++		used = wp >= rp ? wp - rp : wp + CPU_COMM_ELOG_RING_SIZE - rp;
++		full = readb(cpu_comm_elog_ctl + CPU_COMM_ELOG_OVERFLOW) != 0 ||
++		       (wp < CPU_COMM_ELOG_RING_SIZE && rp < CPU_COMM_ELOG_RING_SIZE &&
++			CPU_COMM_ELOG_RING_SIZE - used <= CPU_COMM_ELOG_LINE);
++	}
++	mutex_unlock(&cpu_comm_elog_lock);
++	return full;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_elog_full);
++
+ static void cpu_comm_elog_unmap(void)
+ {
+ 	mutex_lock(&cpu_comm_elog_lock);
+--- a/include/linux/soc/sunxi/h713-cpu-comm.h
++++ b/include/linux/soc/sunxi/h713-cpu-comm.h
+@@ -224,6 +224,7 @@
+  */
+ int cpu_comm_elog_last(const char *needle, char *buf, size_t len,
+ 		       u32 *write_ptr);
++bool cpu_comm_elog_full(void);
+ 
+ #else /* !CONFIG_HY310_CPU_COMM */
+ 
+@@ -252,6 +253,11 @@
+ 	return -ENODEV;
+ }
+ 
++static inline bool cpu_comm_elog_full(void)
++{
++	return false;
++}
++
+ static inline u32 cpu_comm_name2id(const char *base_name,
+ 				   unsigned int target_cpu)
+ {
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -4769,15 +4769,17 @@
+ {
+ 	char line[H713_HDCP_LOG_LINE];
+ 	u32 wp = 0;
++	bool full;
+ 	int ret;
+ 
+ 	ret = cpu_comm_elog_last("hdcp", line, sizeof(line), &wp);
++	full = cpu_comm_elog_full();
+ 	if (ret >= 0)
+-		return sysfs_emit_at(buf, at, "firmware:      %s (ring write pointer %u)\n",
+-				     line, wp);
++		return sysfs_emit_at(buf, at, "firmware:      %s (ring write pointer %u%s)\n",
++				     line, wp, full ? ", the log is full, newer lines are dropped" : "");
+ 	if (ret == -ENOENT)
+-		return sysfs_emit_at(buf, at, "firmware:      no HDCP line in the firmware log (ring write pointer %u)\n",
+-				     wp);
++		return sysfs_emit_at(buf, at, "firmware:      no HDCP line in the firmware log (ring write pointer %u%s)\n",
++				     wp, full ? ", the log is full" : "");
+ 	return sysfs_emit_at(buf, at, "firmware:      firmware log not readable (%d)\n",
+ 			     ret);
+ }

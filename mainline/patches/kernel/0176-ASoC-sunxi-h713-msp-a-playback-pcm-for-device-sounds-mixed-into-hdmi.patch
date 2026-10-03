@@ -1,0 +1,1262 @@
+ASoC: sunxi: h713-msp: a playback PCM for the box's own sounds, mixed into HDMI in the DSP
+
+The codec's DAC takes one source at a time, and a PC source keeps its HDMI
+audio stream open even in silence (PipeWire, 44.1 kHz of nothing), so a
+tone on the codec's own PCM was inaudible or refused whenever HDMI played
+(doku/102-plan-audio-mischung.md section 1, S16 21:35). Stock never has
+that problem: its Android HAL plays system sounds into TridentALSA device 0
+(pcm_open(card, 0, ...) in audio.primary.ares.so), the vendor module
+snd_alsa_trid.ko puts that device on the audio bridge's input stream 0, a
+ring in DRAM that the AUDBRG's RLB channel at 0x06148280 reads and the
+AUDIF's I2S transmitter ABPO1 sends into the DSP, and the DSP's path 0x89
+"HDMI2PCM_MIXED_TO_SPEAKER" mixes the module DECODER3 - the far end of that
+stream - with the HDMI branch in MIXER2 (S23 section 4, S25 section 6).
+
+This adds that ring to the MSP card as one playback PCM, hw:hy310hdmi,0,
+48 kHz S16_LE stereo, the format stock's HAL plays, and lets the driver
+build stock's mixed graph instead of the plain path 0xC1:
+
+  I2SIN1 -> SURRDEC -> SURRPOSTPRO -> MIXER2.in2/in3  (HDMI)
+  DECODER3 -> MIXER2.in0/in1                          (the PCM)
+  MIXER2.out0/out1 -> DRC1/DRC2 -> ... -> I2SOUT1      (as before)
+
+with the gain 32 stock's preset gives every mixer input (actions A37..A40)
+and, as before, without DELAY1.
+
+The ring is programmed register for register as audbrg_istream_config
+@0x32e8 does it - START/END in 16-byte units, the top address nibble in
+0x06142044[3:0], CFG 0xAA08 for S16 stereo, STEP one ALSA period so the
+channel's STEP interrupt (AUDBRG bit 10+n, SPI 115) is the period
+interrupt, a flush pulse and a UMACREQ pulse to start - and the ALSA
+pointer is the channel's own read pointer. The transmitter is fed frame by
+frame: its DATA register takes a word with the frame length, the channel
+in bits 23:22, bit 28 and bit 31, and bit 30 on the first frame
+(AudIf_i2so_activate, AudIf_i2so_NewFrameAvail); at the end of every frame
+it interrupts (AUDIF bit 18-n, SPI 113) and the handler writes the word
+for the next one, exactly what AudIf_i2so_Interrupt does with a full
+queue. The clock is 324 MHz / Fs in 8.8 fixed point (AudIf_i2so_setFs).
+A ring the channel has stopped reading is reported as an xrun after two
+seconds, with the frame count and the AUDIF error word, instead of
+leaving aplay waiting for ever. Both interrupt lines are disabled around
+every island reset, because an AUDIF access with the audio top clock down
+hangs the CPU (S21), and a running stream is stopped when the island goes
+down.
+
+A fourth control, "HDMI Input Mute Switch" (DSP 0x8017 bit 0, the mute
+stock holds at the I2S input during its own initialisation), silences the
+HDMI branch alone, so h713-tv can keep the box's sounds playing while it
+quiets HDMI; the master mute keeps its meaning.
+
+Two module parameters exist for the first device test and go away once it
+has decided them: istream (0..2, default 0) names the input stream, since
+no register we have read pairs an ABPO with DECODER3 - 0 is the one stock
+plays system sounds through while HDMI is mixed; graph (0 = path 0xC1 as
+today, 1 = path 0x89, 2 = path 0x89 without SURRDEC/SURRPOSTPRO) lets the
+surround pair, whose transparency plan 102 lists as open, be taken out
+without a rebuild. Without the "audbrg" window and the two interrupts in
+the device tree the card is the control-only card it was.
+
+Not written, on purpose: DECODER3's input pre-gain (0x0162 by the index
+table of MAPI_AUD_SetInputPrescale), which stock leaves at its reset value
+too; it is the first thing to try if the mixed path is silent while the
+ring pointer moves. Not decided by a measurement: whether DECODER3 (or the
+surround pair) resamples, so a 44.1 kHz HDMI source and the 48 kHz PCM
+meet at one rate; the device test of plan 102 section 4 measures it.
+
+RE: umbau/work/FB-AUDIO/excerpts (idalib on snd_alsa_trid.ko and
+audio.primary.ares.so), doku/nachtlog/S19, S20, S23, S25, S26.
+---
+--- a/sound/soc/sunxi/sun50i-h713-msp.c
++++ b/sound/soc/sunxi/sun50i-h713-msp.c
+@@ -13,12 +13,25 @@
+  * does all of it in one place, because on mainline there is no tvtop and no
+  * vendor HAL.
+  *
+- * There is no PCM device here on purpose. Nothing streams through the ARM:
+- * the receiver's I2S goes into the DSP, the DSP's I2SOUT1 goes into the
+- * codec's I2S window, and the only thing left for software is to switch the
+- * input on, set the volume and mute. That is a control-only card
++ * HDMI audio does not stream through the ARM: the receiver's I2S goes into
++ * the DSP, the DSP's I2SOUT1 goes into the codec's I2S window, and software
++ * only switches the input on, sets the volume and mutes
+  * (doku/101-plan-audio-treiber.md section 2).
+  *
++ * The card carries one playback PCM for the box's own sounds. The codec's
++ * DAC takes one source at a time, and a PC source keeps its HDMI stream open
++ * even in silence, so "aplay" on the codec's own PCM was inaudible while
++ * HDMI played (doku/102-plan-audio-mischung.md section 1). Stock mixes both
++ * inside the DSP: its Android HAL writes system sounds into an AUDBRG input
++ * stream ring (ISTREAM, 0x06148280), the AUDIF's I2S transmitter ABPO
++ * fetches the ring over the UMAC and sends it into the DSP, where the
++ * DECODER3 module feeds MIXER2 next to the HDMI branch (path 0x89
++ * "HDMI2PCM_MIXED_TO_SPEAKER", S23 section 4). The PCM here is that ring:
++ * the ALSA buffer is the hardware ring, the RLB channel reads it, the ABPO
++ * frame handshake is driven from the AUDIF interrupt exactly as the vendor
++ * module snd_alsa_trid.ko does it (umbau/work/FB-AUDIO/excerpts). It is
++ * fixed at 48 kHz, S16_LE, stereo - the format stock's HAL plays.
++ *
+  * Bring-up, measured on a HY310 on 08.09.2026 and written down in
+  * doku/101-plan-audio-treiber.md section 3.5 (reference implementation
+  * re/captures/weltneuheit/s16-audio-20260908/dsp_island2.py):
+@@ -62,8 +75,10 @@
+ #include <linux/debugfs.h>
+ #include <linux/delay.h>
+ #include <linux/device.h>
++#include <linux/dma-mapping.h>
+ #include <linux/err.h>
+ #include <linux/firmware.h>
++#include <linux/interrupt.h>
+ #include <linux/io.h>
+ #include <linux/kstrtox.h>
+ #include <linux/ktime.h>
+@@ -82,12 +97,15 @@
+ #include <linux/slab.h>
+ #include <linux/string.h>
+ #include <linux/sysfs.h>
++#include <linux/timer.h>
+ #include <linux/unaligned.h>
+ #include <linux/workqueue.h>
+ 
+ #include <sound/core.h>
+ #include <sound/control.h>
+ #include <sound/initval.h>
++#include <sound/pcm.h>
++#include <sound/pcm_params.h>
+ #include <sound/tlv.h>
+ 
+ #define MSP_FW_NAME		"h713/msp-patch.bin"
+@@ -119,19 +137,72 @@
+ /*
+  * +0x44 is the high-address control: bits 3:0 are the top address bits of
+  * the AUDBRG input stream, bits 7:4 those of the output stream (S17 section
+- * 3, S26 section 3). It is only ever *read* here. S17's step 14 proposed a
+- * 0x5a write-read-write probe on it to prove the block is alive; the same
+- * nibbles select the DRAM window of the running HDMI capture ring, so this
+- * driver proves liveness with the mailbox self-test instead, which costs
+- * nothing and touches nothing.
++ * 3, S26 section 3). The low nibble is written for the bridge PCM's ring
++ * (audbrg_istream_config does the same); the high one is never touched.
++ * S17's step 14 proposed a 0x5a write-read-write probe on it to prove the
++ * block is alive; this driver proves liveness with the mailbox self-test
++ * instead, which costs nothing and touches nothing.
+  */
+ #define MSP_CTRL_HIGH_ADDR	0x44
++#define MSP_CTRL_HIGH_ADDR_RLB	0x0f	/* A[31:28] of every input stream */
+ 
+-/* ---- AUDIF window, 0x06146000 (read only, S23 section 6.2 / S25 section 6) */
+-#define MSP_AUDIF_IRQ_STATUS	0x00
+-#define MSP_AUDIF_FRAME_LEN	0x1c
++/* ---- AUDIF window, 0x06146000 (S19 section 2, S25 section 6) ------------ */
++#define MSP_AUDIF_IRQ_STATUS	0x00	/* W1C */
++#define MSP_AUDIF_IRQ_MASK	0x04
++#define MSP_AUDIF_ERR_STATUS	0x08	/* W1C, the SCC under/overflow bits */
++#define MSP_AUDIF_ABPO_CLK(n)	(0x18 + 8 * (n))
++#define MSP_AUDIF_ABPO_DATA(n)	(0x1c + 8 * (n))
++#define MSP_AUDIF_FRAME_LEN	MSP_AUDIF_ABPO_DATA(0)
+ #define MSP_AUDIF_SPDI1_STATUS	0x3c
+ #define MSP_AUDIF_SPDI2_STATUS	0x4c
++/* IRQ status bit of ABPO n: 18, 17, 16 (AudIf_i2so_GetW1cMask). */
++#define MSP_AUDIF_ABPO_IRQ(n)	BIT(18 - (n))
++/* ERR_STATUS bits of ABPO n: underflow bit 2n, overflow bit 2n+1. */
++#define MSP_AUDIF_ABPO_ERR(n)	(0x3 << (2 * (n)))
++/*
++ * The ABPO frame word (AudIf_i2so_activate, AudIf_i2so_NewFrameAvail,
++ * AudIf_i2so_Interrupt, all in snd_alsa_trid.ko): bits 15:0 are the frame
++ * length in samples, bits 23:22 name the transmitter (the handle table holds
++ * 0, 0x00400000 and 0x00800000 for ABPO1..3), bit 20 pauses, bit 28 and bit
++ * 31 are set on every frame the vendor sends, bit 30 marks the first frame
++ * after activation. The word is a per-frame token: the interrupt at the end
++ * of a frame is answered with the word for the next one.
++ */
++#define MSP_ABPO_WORD_LEN	0xffff
++#define MSP_ABPO_WORD_CHANNEL(n) ((u32)(n) << 22)
++#define MSP_ABPO_WORD_PAUSE	BIT(20)
++#define MSP_ABPO_WORD_RUN	(BIT(31) | BIT(28))
++#define MSP_ABPO_WORD_FIRST	BIT(30)
++/* AudIf_i2so_setFs: 324 MHz / Fs as 8.8 fixed point, shifted up by eight. */
++#define MSP_ABPO_REF_HZ		324000000u
++
++/* ---- AUDBRG window, 0x06148000 (S19 section 3, snd_alsa_trid.ko) -------- */
++/* input stream n (DRAM -> DSP, the RLB channel): 0x280 + 0x40 n */
++#define MSP_BRG_ISTREAM(n)	(0x280 + 0x40 * (n))
++#define MSP_BRG_START		0x00	/* ring start, A[27:4] */
++#define MSP_BRG_END		0x04	/* last byte of the ring, A[27:4] */
++#define MSP_BRG_STEP		0x0c	/* interrupt every STEP bytes, >> 4 */
++#define MSP_BRG_CFG		0x10
++#define MSP_BRG_FLUSH		0x14	/* write 1, then 0 */
++#define MSP_BRG_UMACREQ		0x18	/* write 1, then 0: fetch request */
++#define MSP_BRG_PTR		0x1c	/* the hardware read pointer, A[27:4] */
++#define MSP_BRG_GLOBAL_IRQ_EN	0x384
++#define MSP_BRG_IRQ_MASK	0x388
++#define MSP_BRG_IRQ_STATUS	0x38c	/* W1C, 14 bits */
++#define MSP_BRG_STREAM_SYNC	0x390
++#define MSP_BRG_ISTREAM_IRQ(n)	BIT(10 + (n))
++#define MSP_BRG_IRQ_ALL		0x3fff
++/*
++ * CFG of an input stream, from audbrg_istream_config @0x32e8 and its caller
++ * Thal_Alsa_Audio_Play_Start @0x82a8 for S16_LE: channels << 14, format code
++ * 2 << 12, width flag 1 << 11, bytes per sample 2 << 8, and 0x08 in the low
++ * byte (the handle's fixed 0x80 >> 4, meaning unknown, value taken over).
++ */
++#define MSP_BRG_CFG_S16_STEREO	0xaa08
++/* Stock's own ring slot per input stream; the ALSA buffer is bounded by it. */
++#define MSP_BRG_RING_MAX	0x10000
++#define MSP_BRG_ALIGN		16
++#define MSP_BRG_NUM_ISTREAMS	3	/* the three that feed an ABPO */
+ 
+ /* ---- TVFE router, 0x06700000, one word behind a syscon phandle ---------- */
+ /*
+@@ -149,6 +220,14 @@
+ #define DSP_SPDIFRX2_CFG	0x0008	/* bit 15 = non-PCM detector (S27 4.1) */
+ #define DSP_I2SIN1_CFG		0x0012	/* bit 15 enable, format (S25 section 8) */
+ #define DSP_I2SIN1_PREGAIN	0x0013	/* mask 0xFF00, shift 8 */
++#define DSP_SURRDEC_SOURCE	0x0077	/* SURRDEC.in0/in1, one byte each */
++#define DSP_SURRPP_SOURCE_01	0x007c	/* SURRPOSTPRO.in0/in1 */
++#define DSP_SURRPP_SOURCE_23	0x007d
++#define DSP_SURRPP_SOURCE_45	0x007e
++#define DSP_MIXER2_GAIN_IN0	0x0100	/* out0 gain in bits 15:8, out1 in 7:0 */
++#define DSP_MIXER2_GAIN_IN1	0x0101
++#define DSP_MIXER2_GAIN_IN2	0x0102
++#define DSP_MIXER2_GAIN_IN3	0x0103
+ #define DSP_I2SOUT1_FORMAT	0x001e	/* cfg & 0x37FF (S23 section 6.1) */
+ #define DSP_I2SOUT1_CFG		0x001f	/* (cfg >> 16) & 0xF93F */
+ #define DSP_I2SOUT1_SOURCE	0x0020	/* two source ports, one per byte */
+@@ -163,9 +242,13 @@
+ #define DSP_QPEAK_R		0x00b3
+ #define DSP_CLOCK		0x00ee	/* mask 0x7F80 = DSP clock step */
+ #define DSP_FW_MINOR		0x00fc	/* 0x21FF once the patch is in */
+-#define DSP_I2SIN1_SOURCE	0x0118	/* I2SIN1.out0/1 -> DRC1/DRC2 */
++#define DSP_DRC_INPUT_SOURCE	0x0118	/* DRC1.in0 / DRC2.in0, one byte each */
+ #define DSP_HDMI_MUTE		0x8017	/* bit 0 = mute the HDMI I2S input */
+ #define DSP_HDMI_RX_ENABLE	0x8034	/* mask 0x90 (S20 step 7) */
++#define DSP_MIXER2_SOURCE_IN0	0x8100	/* MIXER2.in0..in3, one 8-bit register each */
++#define DSP_MIXER2_SOURCE_IN1	0x8101
++#define DSP_MIXER2_SOURCE_IN2	0x8102
++#define DSP_MIXER2_SOURCE_IN3	0x8103
+ #define DSP_PEQST1_SOURCE_L	0x8052
+ #define DSP_PEQST1_SOURCE_R	0x8053
+ #define DSP_DRC_SOURCE_L	0x8062
+@@ -179,6 +262,14 @@
+ /* Source ports used here, from the module descriptors in S23 section 4.2. */
+ #define DSP_PORT_I2SIN1_OUT0	0x16
+ #define DSP_PORT_I2SIN1_OUT1	0x17
++#define DSP_PORT_DECODER3_OUT0	0x4a
++#define DSP_PORT_DECODER3_OUT1	0x4b
++#define DSP_PORT_MIXER2_OUT0	0x7c
++#define DSP_PORT_MIXER2_OUT1	0x7d
++#define DSP_PORT_SURRPP_OUT0	0x86
++#define DSP_PORT_SURRPP_OUT1	0x87
++/* MAPI_AUD_SetMixer(0x8F01, out, in, 32): the gain stock gives every input. */
++#define DSP_MIXER2_GAIN		0x20
+ 
+ /* DSP clock: mask 0x7F80, step 3 -- the rate mbx.c downloads at (-s 3). */
+ #define DSP_CLOCK_MASK		0x7f80
+@@ -234,6 +325,38 @@
+ static const DECLARE_TLV_DB_SCALE(msp_volume_tlv, -10000, 25, 0);
+ 
+ /*
++ * Two knobs for the first device test of the mixed path (plan 102 section 4),
++ * so that the open questions of the design can be settled without a rebuild.
++ * Both go away once the measurement has decided them.
++ *
++ * istream: which of the three AUDBRG input streams (0..2, feeding ABPO1..3)
++ * reaches the DSP's DECODER3, the only bridge input path 0x89 wires into
++ * MIXER2. Stock's HAL opens TridentALSA device 0, and the vendor module maps
++ * device 0 to input stream 0 (Thal_Alsa_Audio_Open), so 0 is the one stock
++ * is known to play system sounds through while HDMI is mixed. Whether the
++ * silicon pairs ABPO1 with DECODER3 is not in any register we have read.
++ *
++ * graph: 0 keeps today's path 0xC1 (HDMI straight into DRC1/DRC2, no bridge
++ * input); 1 is stock's path 0x89 with SURRDEC and SURRPOSTPRO in front of
++ * MIXER2; 2 skips those two modules and puts I2SIN1 on MIXER2.in2/in3
++ * directly, for the case that the surround pair is not transparent (plan
++ * 102 section 2 lists that as open).
++ */
++enum msp_graph_kind {
++	MSP_GRAPH_HDMI_ONLY,
++	MSP_GRAPH_MIXED,
++	MSP_GRAPH_MIXED_DIRECT,
++};
++
++static unsigned int istream;
++module_param(istream, uint, 0444);
++MODULE_PARM_DESC(istream, "AUDBRG input stream of the bridge PCM, 0..2 (ABPO n+1); default 0");
++
++static unsigned int graph = MSP_GRAPH_MIXED;
++module_param(graph, uint, 0444);
++MODULE_PARM_DESC(graph, "DSP graph: 0 HDMI only (path 0xC1), 1 HDMI mixed with the bridge PCM (path 0x89, default), 2 mixed without SURRDEC/SURRPOSTPRO");
++
++/*
+  * The TVFE clock gates in the order dsp_island2.py turns them on
+  * (TVFE_CLKS, CCU offsets 0xd10..0xd60). All of them, not just the three
+  * audio ones: the island did not come up reliably with a subset, and stock's
+@@ -318,7 +441,11 @@
+ 	void __iomem *top;
+ 	void __iomem *ctrl;
+ 	void __iomem *audif;
++	void __iomem *brg;		/* AUDBRG, NULL when the DT has no window */
+ 	struct regmap *router;
++	int irq_brg;			/* SPI 115, the ring's STEP interrupt */
++	int irq_audif;			/* SPI 113, the ABPO frame interrupt */
++	bool irqs_live;			/* both enabled; false around an island reset */
+ 
+ 	struct clk_bulk_data tvfe[MSP_NUM_TVFE_CLOCKS];
+ 	struct clk *bus;
+@@ -345,8 +472,30 @@
+ 
+ 	/* Cached control values; re-applied after every successful bring-up. */
+ 	bool input_on;
++	bool input_mute;
+ 	bool mute;
+ 	long volume;
++
++	/*
++	 * The bridge PCM. pcm_lock guards the substream pointer and the
++	 * running flag between the PCM callbacks (atomic) and the two
++	 * interrupt handlers; everything the hardware is told about the ring
++	 * happens in prepare() and trigger() under ALSA's own stream lock.
++	 */
++	struct snd_pcm *pcm;
++	spinlock_t pcm_lock;		/* pcm_sub and pcm_running, see above */
++	struct snd_pcm_substream *pcm_sub;
++	bool pcm_running;
++	unsigned int pcm_istream;	/* the module parameter, validated */
++	u32 frame_word;			/* the ABPO word re-armed on every frame */
++	dma_addr_t ring_dma;
++	size_t ring_bytes;
++	struct timer_list stall_timer;
++	u32 stall_ptr;
++	unsigned int frames_sent;
++	unsigned int brg_irqs;
++	unsigned int abpo_errors;
++	unsigned int stalls;
+ };
+ 
+ /* ------------------------------------------------------------------------ */
+@@ -713,19 +862,64 @@
+ };
+ 
+ /*
+- * Path 0xC1 "HDMI2PCM_TO_SPEAKER" without DELAY1, in the order stock builds
+- * it (S23 section 4.4 plus the ground state of section 4.3, measured as
+- * dsp_graph_only.py and confirmed at the microphone with 1001 Hz at 75.9 dB
+- * over the noise floor, S16 18:00). DELAY1 is not broken -- it is simply off
++ * The graph is stock's path 0xC1 "HDMI2PCM_TO_SPEAKER" or its path 0x89
++ * "HDMI2PCM_MIXED_TO_SPEAKER", both without DELAY1, in the order stock builds
++ * them (S23 sections 4.2 to 4.4; 0xC1 measured as dsp_graph_only.py at
++ * 75.9 dB over the noise floor, S16 18:00). DELAY1 is not broken - it is off
+  * and would need the DRAM loop of S26; the HY310 runs it with spk_delay = 0,
+  * so bypassing it costs the 2 ms of lip sync stock spends and nothing else.
++ *
++ * Path 0x89 differs from 0xC1 in the middle only: I2SIN1 goes through
++ * SURRDEC and SURRPOSTPRO into MIXER2.in2/in3, DECODER3 - the DSP's end of
++ * the bridge PCM - sits on MIXER2.in0/in1 with the same gain 32 stock's
++ * preset gives every mixer input (actions A37..A40), and MIXER2.out0/out1
++ * replace I2SIN1 as the source of DRC1/DRC2. The preset writes no register
++ * for DECODER3 itself and never enables the module: its two output ports
++ * are simply selected at the mixer. Its input pre-gain (register 0x0162 by
++ * the numbering of MAPI_AUD_SetInputPrescale, index 10) is left at the
++ * reset value exactly as stock leaves it; it is the first knob to try if
++ * the mixed path stays silent while the ring pointer moves.
+  */
+-static const struct msp_graph_step msp_graph[] = {
+-	{ DSP_GLOBAL_ENABLE,	0x8000, 0x8000, "globales Enable" },
+-	{ DSP_HDMI_RX_ENABLE,	0x0090, 0x0010, "HDMI-Rx ein" },
+-	{ DSP_I2SIN1_CFG,	0xa3ff, 0x8180, "I2SIN1 Freigabe und Format" },
+-	{ DSP_I2SIN1_PREGAIN,	0xff00, 0x2000, "I2SIN1 Vorverstaerkung 32" },
+-	{ DSP_I2SIN1_SOURCE,	0xffff, 0x1617, "I2SIN1 -> DRC1/DRC2" },
++static const struct msp_graph_step msp_graph_head[] = {
++	{ DSP_GLOBAL_ENABLE,	0x8000, 0x8000, "global enable" },
++	{ DSP_HDMI_RX_ENABLE,	0x0090, 0x0010, "HDMI-Rx on" },
++	{ DSP_I2SIN1_CFG,	0xa3ff, 0x8180, "I2SIN1 enable and format" },
++	{ DSP_I2SIN1_PREGAIN,	0xff00, 0x2000, "I2SIN1 pre-gain 32" },
++};
++
++static const struct msp_graph_step msp_graph_hdmi_only[] = {
++	{ DSP_DRC_INPUT_SOURCE,	0xffff, 0x1617, "I2SIN1 -> DRC1/DRC2 (path 0xC1)" },
++};
++
++/* path 0x89, the HDMI branch: I2SIN1 -> SURRDEC -> SURRPOSTPRO -> MIXER2 */
++static const struct msp_graph_step msp_graph_surround[] = {
++	{ DSP_SURRDEC_SOURCE,	0xffff, 0x1617, "I2SIN1 -> SURRDEC.in0/in1" },
++	{ DSP_SURRPP_SOURCE_01,	0xffff, 0x8081, "SURRDEC.out0/1 -> SURRPOSTPRO.in0/1" },
++	{ DSP_SURRPP_SOURCE_23,	0xffff, 0x8283, "SURRDEC.out2/3 -> SURRPOSTPRO.in2/3" },
++	{ DSP_SURRPP_SOURCE_45,	0xffff, 0x8485, "SURRDEC.out4/5 -> SURRPOSTPRO.in4/5" },
++	{ DSP_MIXER2_SOURCE_IN2, 0x00ff, DSP_PORT_SURRPP_OUT0, "SURRPOSTPRO.out0 -> MIXER2.in2" },
++	{ DSP_MIXER2_SOURCE_IN3, 0x00ff, DSP_PORT_SURRPP_OUT1, "SURRPOSTPRO.out1 -> MIXER2.in3" },
++};
++
++/* the same without the surround pair, I2SIN1 straight onto the mixer */
++static const struct msp_graph_step msp_graph_direct[] = {
++	{ DSP_MIXER2_SOURCE_IN2, 0x00ff, DSP_PORT_I2SIN1_OUT0, "I2SIN1.out0 -> MIXER2.in2" },
++	{ DSP_MIXER2_SOURCE_IN3, 0x00ff, DSP_PORT_I2SIN1_OUT1, "I2SIN1.out1 -> MIXER2.in3" },
++};
++
++/* the mixer itself, shared by both mixed variants */
++static const struct msp_graph_step msp_graph_mixer[] = {
++	{ DSP_MIXER2_SOURCE_IN0, 0x00ff, DSP_PORT_DECODER3_OUT0, "DECODER3.out0 -> MIXER2.in0" },
++	{ DSP_MIXER2_SOURCE_IN1, 0x00ff, DSP_PORT_DECODER3_OUT1, "DECODER3.out1 -> MIXER2.in1" },
++	{ DSP_MIXER2_GAIN_IN0,	0xff00, DSP_MIXER2_GAIN << 8, "MIXER2 out0 <- in0, gain 32" },
++	{ DSP_MIXER2_GAIN_IN2,	0xff00, DSP_MIXER2_GAIN << 8, "MIXER2 out0 <- in2, gain 32" },
++	{ DSP_MIXER2_GAIN_IN1,	0x00ff, DSP_MIXER2_GAIN, "MIXER2 out1 <- in1, gain 32" },
++	{ DSP_MIXER2_GAIN_IN3,	0x00ff, DSP_MIXER2_GAIN, "MIXER2 out1 <- in3, gain 32" },
++	{ DSP_DRC_INPUT_SOURCE,	0xffff, 0x7c7d, "MIXER2.out0/1 -> DRC1/DRC2" },
++};
++
++/* from DRC1/DRC2 to the codec, identical in every variant */
++static const struct msp_graph_step msp_graph_tail[] = {
+ 	{ DSP_DRC_SOURCE_L,	0x00ff, 0x0092, "DRC1 -> TONECONTROL1.in0" },
+ 	{ DSP_DRC_SOURCE_R,	0x00ff, 0x0093, "DRC2 -> TONECONTROL1.in1" },
+ 	{ DSP_TONECTL_SOURCE,	0xffff, 0x7273, "TONECONTROL1 -> PEQST2" },
+@@ -733,20 +927,25 @@
+ 	{ DSP_PEQST1_SOURCE_L,	0x00ff, 0x0098, "PEQST1 -> VOLUME1" },
+ 	{ DSP_PEQST1_SOURCE_R,	0x00ff, 0x0099, "PEQST1 -> VOLUME2" },
+ 	{ DSP_DELAY1_SOURCE,	0xffff, 0x6263, "VOLUME1/2 -> DELAY1" },
+-	{ DSP_I2SOUT1_SOURCE,	0xffff, 0x6263, "VOLUME1/2 -> I2SOUT1 (DELAY1 umgangen)" },
++	{ DSP_I2SOUT1_SOURCE,	0xffff, 0x6263, "VOLUME1/2 -> I2SOUT1 (DELAY1 bypassed)" },
+ 	{ DSP_VOLUME_L,		MSP_VOL_MASK, 0x0000, "VOLUME1 0 dB" },
+ 	{ DSP_VOLUME_R,		MSP_VOL_MASK, 0x0000, "VOLUME2 0 dB" },
+-	{ DSP_MASTER_VOL_L,	MSP_VOL_MASK, 0x0000, "Master L 0 dB" },
+-	{ DSP_MASTER_VOL_R,	MSP_VOL_MASK, 0x0000, "Master R 0 dB" },
+-	{ DSP_I2SOUT1_FORMAT,	0xffff, 0xa440, "I2SOUT1 Format" },
+-	{ DSP_I2SOUT1_CFG,	0xf93f, 0x3000, "I2SOUT1 Freigabe" },
+-	{ DSP_HDMI_MUTE,	0x0001, 0x0000, "HDMI-Mute aus" },
++	{ DSP_MASTER_VOL_L,	MSP_VOL_MASK, 0x0000, "master L 0 dB" },
++	{ DSP_MASTER_VOL_R,	MSP_VOL_MASK, 0x0000, "master R 0 dB" },
++	{ DSP_I2SOUT1_FORMAT,	0xffff, 0xa440, "I2SOUT1 format" },
++	{ DSP_I2SOUT1_CFG,	0xf93f, 0x3000, "I2SOUT1 enable" },
+ 	/*
+ 	 * Non-PCM detection, on for good: it is a polled status register, it
+ 	 * costs nothing while nobody reads it, and the sysfs attribute
+ 	 * "compressed" would otherwise report a stale word (S27 section 4.1).
+ 	 */
+-	{ DSP_SPDIFRX2_CFG,	0x8000, 0x8000, "Nicht-PCM-Erkennung ein" },
++	{ DSP_SPDIFRX2_CFG,	0x8000, 0x8000, "non-PCM detection on" },
++};
++
++static const char * const msp_graph_names[] = {
++	[MSP_GRAPH_HDMI_ONLY]	= "HDMI only (path 0xC1)",
++	[MSP_GRAPH_MIXED]	= "HDMI mixed with the bridge PCM (path 0x89)",
++	[MSP_GRAPH_MIXED_DIRECT] = "mixed, I2SIN1 straight onto MIXER2",
+ };
+ 
+ static u16 msp_volume_to_reg(long value)
+@@ -772,6 +971,9 @@
+ 	ret = msp_dsp_update(msp, DSP_I2SIN1_CFG, 0x8000,
+ 			     msp->input_on ? 0x8000 : 0);
+ 	if (!ret)
++		ret = msp_dsp_update(msp, DSP_HDMI_MUTE, 0x0001,
++				     msp->input_mute ? 0x0001 : 0);
++	if (!ret)
+ 		ret = msp_dsp_update(msp, DSP_VOLUME_L, MSP_VOL_MASK, volume);
+ 	if (!ret)
+ 		ret = msp_dsp_update(msp, DSP_VOLUME_R, MSP_VOL_MASK, volume);
+@@ -783,18 +985,18 @@
+ 	return ret;
+ }
+ 
+-static int msp_build_graph(struct h713_msp *msp)
++static int msp_graph_steps(struct h713_msp *msp,
++			   const struct msp_graph_step *steps, unsigned int n)
+ {
+ 	unsigned int i;
+ 	int ret;
+ 
+-	for (i = 0; i < ARRAY_SIZE(msp_graph); i++) {
+-		const struct msp_graph_step *step = &msp_graph[i];
+-
+-		ret = msp_dsp_update(msp, step->addr, step->mask, step->val);
++	for (i = 0; i < n; i++) {
++		ret = msp_dsp_update(msp, steps[i].addr, steps[i].mask,
++				     steps[i].val);
+ 		if (ret) {
+-			dev_err(msp->dev, "Graph-Schritt \"%s\" (%#06x) gescheitert (%d)\n",
+-				step->what, step->addr, ret);
++			dev_err(msp->dev, "graph step \"%s\" (%#06x) failed (%d)\n",
++				steps[i].what, steps[i].addr, ret);
+ 			return ret;
+ 		}
+ 	}
+@@ -802,6 +1004,517 @@
+ 	return 0;
+ }
+ 
++static int msp_build_graph(struct h713_msp *msp)
++{
++	int ret;
++
++	ret = msp_graph_steps(msp, msp_graph_head, ARRAY_SIZE(msp_graph_head));
++	if (ret)
++		return ret;
++
++	switch (graph) {
++	case MSP_GRAPH_MIXED:
++		ret = msp_graph_steps(msp, msp_graph_surround,
++				      ARRAY_SIZE(msp_graph_surround));
++		break;
++	case MSP_GRAPH_MIXED_DIRECT:
++		ret = msp_graph_steps(msp, msp_graph_direct,
++				      ARRAY_SIZE(msp_graph_direct));
++		break;
++	default:
++		ret = msp_graph_steps(msp, msp_graph_hdmi_only,
++				      ARRAY_SIZE(msp_graph_hdmi_only));
++		break;
++	}
++	if (!ret && graph != MSP_GRAPH_HDMI_ONLY)
++		ret = msp_graph_steps(msp, msp_graph_mixer,
++				      ARRAY_SIZE(msp_graph_mixer));
++	if (ret)
++		return ret;
++
++	return msp_graph_steps(msp, msp_graph_tail, ARRAY_SIZE(msp_graph_tail));
++}
++
++/* ------------------------------------------------------------------------ */
++/* The bridge PCM                                                            */
++/* ------------------------------------------------------------------------ */
++
++/*
++ * The ring in DRAM is read by the AUDBRG's input-stream channel (an RLB, the
++ * "read line buffer") and handed to the AUDIF's I2S transmitter ABPO(n+1),
++ * which sends it into the DSP. Three things are fixed in silicon and in the
++ * vendor module and are taken over as they are:
++ *
++ *  - Input stream n and ABPO(n+1) are a pair (Trid_Audio_Output_Istream_Open:
++ *    0 -> abpo1, 1 -> abpo2, 2 -> abpo3). There is no routing register.
++ *  - The channel has no enable bit. It fetches once START/END/STEP/CFG stand,
++ *    the flush has been pulsed and UMACREQ has been kicked
++ *    (alsa_audbrg_istream_start), and it interrupts every STEP bytes
++ *    (Handle_RLB_Interrupt). STEP is one ALSA period here, so the STEP
++ *    interrupt is the period interrupt; the ALSA pointer is the channel's
++ *    own read pointer, so the accounting does not depend on it.
++ *  - The ABPO is fed frame by frame. Its DATA register takes a word that
++ *    names the frame length; the transmitter interrupts at the end of a
++ *    frame and expects the word for the next one (AudIf_i2so_Interrupt, or
++ *    the vendor's Write path when the queue was empty). Frame length here is
++ *    one period as well, and the word is the same every time, so the
++ *    interrupt handler only writes it again. A frame word that is not
++ *    re-armed stops the transmitter ("I2S output buffer underrun" in the
++ *    vendor's words); a ring the channel has stopped reading is caught by the
++ *    stall timer below and reported as an xrun instead of a hang.
++ *
++ * All of it runs only while the island is up. The interrupt lines are
++ * disabled around every island reset (msp_pcm_island_lost), because an AUDIF
++ * access with the audio top clock down hangs the CPU (S21).
++ */
++
++static const struct snd_pcm_hardware msp_pcm_hw = {
++	.info			= SNDRV_PCM_INFO_MMAP |
++				  SNDRV_PCM_INFO_MMAP_VALID |
++				  SNDRV_PCM_INFO_INTERLEAVED |
++				  SNDRV_PCM_INFO_BLOCK_TRANSFER,
++	.formats		= SNDRV_PCM_FMTBIT_S16_LE,
++	.rates			= SNDRV_PCM_RATE_48000,
++	.rate_min		= 48000,
++	.rate_max		= 48000,
++	.channels_min		= 2,
++	.channels_max		= 2,
++	.buffer_bytes_max	= MSP_BRG_RING_MAX,
++	.period_bytes_min	= 256,
++	.period_bytes_max	= MSP_BRG_RING_MAX / 2,
++	.periods_min		= 2,
++	.periods_max		= 64,
++};
++
++#define MSP_PCM_STALL_MS	2000
++
++static void msp_brg_pulse(struct h713_msp *msp, unsigned int reg)
++{
++	writel(1, msp->brg + reg);
++	writel(0, msp->brg + reg);
++}
++
++/* the substream to wake, or NULL - under pcm_lock, so a closing stream is safe */
++static struct snd_pcm_substream *msp_pcm_active(struct h713_msp *msp)
++{
++	struct snd_pcm_substream *sub = NULL;
++	unsigned long flags;
++
++	spin_lock_irqsave(&msp->pcm_lock, flags);
++	if (msp->pcm_running)
++		sub = msp->pcm_sub;
++	spin_unlock_irqrestore(&msp->pcm_lock, flags);
++
++	return sub;
++}
++
++/* SPI 115: the input-stream channel has read another STEP of the ring */
++static irqreturn_t msp_brg_irq(int irq, void *data)
++{
++	struct h713_msp *msp = data;
++	struct snd_pcm_substream *sub;
++	u32 status;
++
++	status = readl(msp->brg + MSP_BRG_IRQ_STATUS) & MSP_BRG_IRQ_ALL;
++	if (!status)
++		return IRQ_NONE;
++	writel(status, msp->brg + MSP_BRG_IRQ_STATUS);
++	msp->brg_irqs++;
++
++	if (status & MSP_BRG_ISTREAM_IRQ(msp->pcm_istream)) {
++		sub = msp_pcm_active(msp);
++		if (sub)
++			snd_pcm_period_elapsed(sub);
++	}
++
++	return IRQ_HANDLED;
++}
++
++/*
++ * SPI 113: the ABPO has sent a frame. Everything pending is acknowledged,
++ * as the vendor's Handle_AudIf_ISR_interrupt does - the line is level
++ * triggered and sources nobody listens to must not keep it up.
++ */
++static irqreturn_t msp_audif_irq(int irq, void *data)
++{
++	struct h713_msp *msp = data;
++	unsigned int n = msp->pcm_istream;
++	struct snd_pcm_substream *sub;
++	unsigned long flags;
++	u32 status, err;
++
++	status = readl(msp->audif + MSP_AUDIF_IRQ_STATUS);
++	if (!status)
++		return IRQ_NONE;
++	writel(status, msp->audif + MSP_AUDIF_IRQ_STATUS);
++
++	if (status & MSP_AUDIF_ABPO_IRQ(n)) {
++		spin_lock_irqsave(&msp->pcm_lock, flags);
++		if (msp->pcm_running) {
++			writel(msp->frame_word,
++			       msp->audif + MSP_AUDIF_ABPO_DATA(n));
++			msp->frames_sent++;
++		}
++		spin_unlock_irqrestore(&msp->pcm_lock, flags);
++
++		/* the frame is a period too; a second wake-up per period is harmless */
++		sub = msp_pcm_active(msp);
++		if (sub)
++			snd_pcm_period_elapsed(sub);
++	}
++
++	/* status bits 14/13/12: SCC error of stream 1/2/3 (AudIf_i2so_Interrupt) */
++	if (status & BIT(14 - n)) {
++		err = readl(msp->audif + MSP_AUDIF_ERR_STATUS);
++		writel(err & MSP_AUDIF_ABPO_ERR(n),
++		       msp->audif + MSP_AUDIF_ERR_STATUS);
++		msp->abpo_errors++;
++		dev_warn_ratelimited(msp->dev,
++				     "ABPO%u SCC %s (err %#010x, %u so far)\n",
++				     n + 1, err & (0x2 << (2 * n)) ? "overflow" :
++				     "underflow", err, msp->abpo_errors);
++	}
++
++	return IRQ_HANDLED;
++}
++
++static u32 msp_pcm_hw_ptr(struct h713_msp *msp)
++{
++	u64 phys;
++
++	phys = (u64)(readl(msp->ctrl + MSP_CTRL_HIGH_ADDR) &
++		     MSP_CTRL_HIGH_ADDR_RLB) << 28;
++	phys |= (u64)(readl(msp->brg + MSP_BRG_ISTREAM(msp->pcm_istream) +
++			    MSP_BRG_PTR) & 0xffffff) << 4;
++
++	return (u32)(phys - msp->ring_dma);
++}
++
++/*
++ * A channel that stopped reading leaves aplay waiting for ever, with nothing
++ * in the log. Two seconds without movement of the read pointer is reported
++ * as an xrun with the state that tells the two failure modes apart: the
++ * frame count says whether the ABPO is still taking frames, the error word
++ * whether it starved.
++ */
++static void msp_pcm_stall_timer(struct timer_list *t)
++{
++	struct h713_msp *msp = timer_container_of(msp, t, stall_timer);
++	struct snd_pcm_substream *sub = msp_pcm_active(msp);
++	u32 ptr;
++
++	if (!sub)
++		return;
++	ptr = msp_pcm_hw_ptr(msp);
++	if (ptr != msp->stall_ptr) {
++		msp->stall_ptr = ptr;
++		mod_timer(&msp->stall_timer,
++			  jiffies + msecs_to_jiffies(MSP_PCM_STALL_MS));
++		return;
++	}
++	msp->stalls++;
++	dev_warn(msp->dev,
++		 "bridge PCM stalled: input stream %u read pointer %#x unchanged for %u ms, %u frames sent, AUDIF err %#010x, AUDBRG status %#010x\n",
++		 msp->pcm_istream, ptr, MSP_PCM_STALL_MS, msp->frames_sent,
++		 readl(msp->audif + MSP_AUDIF_ERR_STATUS),
++		 readl(msp->brg + MSP_BRG_IRQ_STATUS));
++	snd_pcm_stop_xrun(sub);
++}
++
++static int msp_pcm_open(struct snd_pcm_substream *substream)
++{
++	struct h713_msp *msp = snd_pcm_substream_chip(substream);
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	unsigned long flags;
++	int ret = 0;
++
++	mutex_lock(&msp->lock);
++	if (graph == MSP_GRAPH_HDMI_ONLY) {
++		dev_warn_ratelimited(msp->dev,
++				     "bridge PCM opened with graph=0: that graph has no bridge input\n");
++		ret = -ENXIO;
++	} else if (msp->state != MSP_STATE_RUNNING) {
++		dev_warn_ratelimited(msp->dev,
++				     "bridge PCM opened while the DSP is \"%s\"\n",
++				     msp_state_names[msp->state]);
++		ret = -ENXIO;
++	}
++	mutex_unlock(&msp->lock);
++	if (ret)
++		return ret;
++
++	runtime->hw = msp_pcm_hw;
++	/* STEP and START/END count in 16-byte units; the ring holds whole periods */
++	ret = snd_pcm_hw_constraint_step(runtime, 0,
++					 SNDRV_PCM_HW_PARAM_PERIOD_BYTES,
++					 MSP_BRG_ALIGN);
++	if (ret < 0)
++		return ret;
++	ret = snd_pcm_hw_constraint_integer(runtime, SNDRV_PCM_HW_PARAM_PERIODS);
++	if (ret < 0)
++		return ret;
++
++	spin_lock_irqsave(&msp->pcm_lock, flags);
++	msp->pcm_sub = substream;
++	msp->pcm_running = false;
++	spin_unlock_irqrestore(&msp->pcm_lock, flags);
++
++	return 0;
++}
++
++static int msp_pcm_close(struct snd_pcm_substream *substream)
++{
++	struct h713_msp *msp = snd_pcm_substream_chip(substream);
++	unsigned long flags;
++
++	timer_delete_sync(&msp->stall_timer);
++	spin_lock_irqsave(&msp->pcm_lock, flags);
++	msp->pcm_running = false;
++	msp->pcm_sub = NULL;
++	spin_unlock_irqrestore(&msp->pcm_lock, flags);
++
++	return 0;
++}
++
++/*
++ * Program the ring: audbrg_istream_config @0x32e8 register for register,
++ * with the ALSA buffer as the ring and one period as STEP, then open the
++ * ABPO the way AudIf_i2so_Open does. Nothing moves yet: the channel has no
++ * data request before UMACREQ, the transmitter no frame word.
++ */
++static int msp_pcm_prepare(struct snd_pcm_substream *substream)
++{
++	struct h713_msp *msp = snd_pcm_substream_chip(substream);
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	unsigned int n = msp->pcm_istream;
++	void __iomem *ch = msp->brg + MSP_BRG_ISTREAM(n);
++	dma_addr_t dma = runtime->dma_addr;
++	size_t bytes = snd_pcm_lib_buffer_bytes(substream);
++	size_t period = snd_pcm_lib_period_bytes(substream);
++	u32 v;
++
++	/*
++	 * START/END/PTR carry A[27:4], the top nibble comes from 0x06142044
++	 * and is shared by every input stream: the ring has to be 16-byte
++	 * aligned, below 4 GiB and inside one 256 MiB window.
++	 */
++	if (upper_32_bits(dma) || (dma & (MSP_BRG_ALIGN - 1)) ||
++	    (bytes & (MSP_BRG_ALIGN - 1)) ||
++	    (dma >> 28) != ((dma + bytes - 1) >> 28)) {
++		dev_err(msp->dev,
++			"bridge ring %pad + %zu is not usable: needs 16-byte alignment, 32 bits and one 256 MiB window\n",
++			&dma, bytes);
++		return -EINVAL;
++	}
++	if (runtime->period_size > MSP_ABPO_WORD_LEN)
++		return -EINVAL;
++
++	msp->ring_dma = dma;
++	msp->ring_bytes = bytes;
++	msp->frame_word = MSP_ABPO_WORD_RUN | MSP_ABPO_WORD_CHANNEL(n) |
++			  (u32)runtime->period_size;
++
++	v = readl(msp->ctrl + MSP_CTRL_HIGH_ADDR);
++	writel((v & ~MSP_CTRL_HIGH_ADDR_RLB) |
++	       ((lower_32_bits(dma) >> 28) & MSP_CTRL_HIGH_ADDR_RLB),
++	       msp->ctrl + MSP_CTRL_HIGH_ADDR);
++	writel((lower_32_bits(dma) >> 4) & 0xffffff, ch + MSP_BRG_START);
++	writel((lower_32_bits(dma + bytes - 1) >> 4) & 0xffffff, ch + MSP_BRG_END);
++	writel(period >> 4, ch + MSP_BRG_STEP);
++	writel(MSP_BRG_CFG_S16_STEREO, ch + MSP_BRG_CFG);
++	writel(0, msp->brg + MSP_BRG_STREAM_SYNC);
++	msp_brg_pulse(msp, MSP_BRG_ISTREAM(n) + MSP_BRG_FLUSH);
++
++	/* the channel interrupt: acknowledge, unmask, enable the block's line */
++	writel(MSP_BRG_ISTREAM_IRQ(n), msp->brg + MSP_BRG_IRQ_STATUS);
++	v = readl(msp->brg + MSP_BRG_IRQ_MASK);
++	writel(v | MSP_BRG_ISTREAM_IRQ(n), msp->brg + MSP_BRG_IRQ_MASK);
++	v = readl(msp->brg + MSP_BRG_GLOBAL_IRQ_EN);
++	writel(v | BIT(0), msp->brg + MSP_BRG_GLOBAL_IRQ_EN);
++
++	/* AudIf_i2so_Open: acknowledge, clear the SCC errors, unmask */
++	writel(MSP_AUDIF_ABPO_IRQ(n), msp->audif + MSP_AUDIF_IRQ_STATUS);
++	writel(MSP_AUDIF_ABPO_ERR(n), msp->audif + MSP_AUDIF_ERR_STATUS);
++	v = readl(msp->audif + MSP_AUDIF_IRQ_MASK);
++	writel(v | MSP_AUDIF_ABPO_IRQ(n), msp->audif + MSP_AUDIF_IRQ_MASK);
++
++	return 0;
++}
++
++static int msp_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
++{
++	struct h713_msp *msp = snd_pcm_substream_chip(substream);
++	unsigned int n = msp->pcm_istream;
++	void __iomem *ch = msp->brg + MSP_BRG_ISTREAM(n);
++	unsigned long flags;
++	u32 div, v;
++
++	switch (cmd) {
++	case SNDRV_PCM_TRIGGER_START:
++		spin_lock_irqsave(&msp->pcm_lock, flags);
++		msp->pcm_running = true;
++		spin_unlock_irqrestore(&msp->pcm_lock, flags);
++
++		/* alsa_audbrg_istream_start: the fetch request, ring already flushed */
++		msp_brg_pulse(msp, MSP_BRG_ISTREAM(n) + MSP_BRG_UMACREQ);
++
++		/*
++		 * AudIf_i2so_activate: the first frame word, then the clock
++		 * (324 MHz / Fs in 8.8 fixed point, shifted up by eight), then
++		 * the next frame word is primed the way the vendor's Write path
++		 * primes it as soon as a second frame exists.
++		 */
++		writel(msp->frame_word | MSP_ABPO_WORD_FIRST,
++		       msp->audif + MSP_AUDIF_ABPO_DATA(n));
++		div = (MSP_ABPO_REF_HZ / 48000) << 8;
++		div += ((((MSP_ABPO_REF_HZ % 48000) << 9) / 48000) + 1) >> 1;
++		writel(div << 8, msp->audif + MSP_AUDIF_ABPO_CLK(n));
++		writel(msp->frame_word, msp->audif + MSP_AUDIF_ABPO_DATA(n));
++
++		msp->stall_ptr = msp_pcm_hw_ptr(msp);
++		mod_timer(&msp->stall_timer,
++			  jiffies + msecs_to_jiffies(MSP_PCM_STALL_MS));
++		return 0;
++
++	case SNDRV_PCM_TRIGGER_STOP:
++		spin_lock_irqsave(&msp->pcm_lock, flags);
++		msp->pcm_running = false;
++		spin_unlock_irqrestore(&msp->pcm_lock, flags);
++		/* not _sync: STOP may arrive from the timer's own xrun */
++		timer_delete(&msp->stall_timer);
++
++		/* AudIf_i2so_Close: clock off, frame word without its valid bit */
++		writel(0, msp->audif + MSP_AUDIF_ABPO_CLK(n));
++		writel(msp->frame_word & ~BIT(31),
++		       msp->audif + MSP_AUDIF_ABPO_DATA(n));
++		v = readl(msp->audif + MSP_AUDIF_IRQ_MASK);
++		writel(v & ~MSP_AUDIF_ABPO_IRQ(n), msp->audif + MSP_AUDIF_IRQ_MASK);
++
++		/* audbrg_istream_stop: request off, flush, interrupt masked */
++		writel(0, ch + MSP_BRG_UMACREQ);
++		msp_brg_pulse(msp, MSP_BRG_ISTREAM(n) + MSP_BRG_FLUSH);
++		v = readl(msp->brg + MSP_BRG_IRQ_MASK);
++		writel(v & ~MSP_BRG_ISTREAM_IRQ(n), msp->brg + MSP_BRG_IRQ_MASK);
++		return 0;
++
++	default:
++		return -EINVAL;
++	}
++}
++
++static snd_pcm_uframes_t msp_pcm_pointer(struct snd_pcm_substream *substream)
++{
++	struct h713_msp *msp = snd_pcm_substream_chip(substream);
++	u32 off = msp_pcm_hw_ptr(msp);
++
++	if (off >= msp->ring_bytes)
++		off = 0;
++
++	return bytes_to_frames(substream->runtime, off);
++}
++
++static const struct snd_pcm_ops msp_pcm_ops = {
++	.open		= msp_pcm_open,
++	.close		= msp_pcm_close,
++	.prepare	= msp_pcm_prepare,
++	.trigger	= msp_pcm_trigger,
++	.pointer	= msp_pcm_pointer,
++};
++
++/*
++ * Called with the lock held before the island goes down: a stream that is
++ * running has lost its ring and its transmitter, and the interrupt handlers
++ * must not touch a block that is about to hang the CPU.
++ */
++static void msp_pcm_island_lost(struct h713_msp *msp)
++{
++	struct snd_pcm_substream *sub;
++	unsigned long flags;
++
++	if (!msp->brg)
++		return;
++	if (msp->irqs_live) {
++		disable_irq(msp->irq_brg);
++		disable_irq(msp->irq_audif);
++		msp->irqs_live = false;
++	}
++	timer_delete_sync(&msp->stall_timer);
++
++	spin_lock_irqsave(&msp->pcm_lock, flags);
++	sub = msp->pcm_running ? msp->pcm_sub : NULL;
++	msp->pcm_running = false;
++	spin_unlock_irqrestore(&msp->pcm_lock, flags);
++	if (sub) {
++		dev_warn(msp->dev, "bridge PCM stopped: the island is being reset\n");
++		snd_pcm_stop_xrun(sub);
++	}
++}
++
++/* Called with the lock held once the island is up: quiet both blocks, listen. */
++static void msp_pcm_island_ready(struct h713_msp *msp)
++{
++	if (!msp->brg)
++		return;
++	writel(0, msp->brg + MSP_BRG_GLOBAL_IRQ_EN);
++	writel(0, msp->brg + MSP_BRG_IRQ_MASK);
++	writel(MSP_BRG_IRQ_ALL, msp->brg + MSP_BRG_IRQ_STATUS);
++	writel(0, msp->audif + MSP_AUDIF_IRQ_MASK);
++	writel(readl(msp->audif + MSP_AUDIF_IRQ_STATUS),
++	       msp->audif + MSP_AUDIF_IRQ_STATUS);
++	if (!msp->irqs_live) {
++		enable_irq(msp->irq_brg);
++		enable_irq(msp->irq_audif);
++		msp->irqs_live = true;
++	}
++}
++
++static int msp_pcm_probe(struct h713_msp *msp, struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	void __iomem *base;
++	int ret;
++
++	spin_lock_init(&msp->pcm_lock);
++	timer_setup(&msp->stall_timer, msp_pcm_stall_timer, 0);
++
++	base = devm_platform_ioremap_resource_byname(pdev, "audbrg");
++	msp->irq_brg = platform_get_irq_byname_optional(pdev, "audbrg");
++	msp->irq_audif = platform_get_irq_byname_optional(pdev, "audif");
++	if (IS_ERR(base) || msp->irq_brg < 0 || msp->irq_audif < 0) {
++		dev_info(dev,
++			 "no \"audbrg\" window or interrupts in the device tree: no bridge PCM\n");
++		return 0;
++	}
++	if (istream >= MSP_BRG_NUM_ISTREAMS) {
++		dev_warn(dev, "istream=%u is not one of 0..2, using 0\n", istream);
++		istream = 0;
++	}
++	if (graph > MSP_GRAPH_MIXED_DIRECT) {
++		dev_warn(dev, "graph=%u is not one of 0..2, using 1\n", graph);
++		graph = MSP_GRAPH_MIXED;
++	}
++	msp->pcm_istream = istream;
++
++	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
++	if (ret)
++		return ret;
++
++	/* IRQF_NO_AUTOEN: the lines stay off until the island is up */
++	ret = devm_request_irq(dev, msp->irq_brg, msp_brg_irq, IRQF_NO_AUTOEN,
++			       "h713-msp-audbrg", msp);
++	if (ret)
++		return dev_err_probe(dev, ret, "AUDBRG interrupt not available\n");
++	ret = devm_request_irq(dev, msp->irq_audif, msp_audif_irq,
++			       IRQF_NO_AUTOEN, "h713-msp-audif", msp);
++	if (ret)
++		return dev_err_probe(dev, ret, "AUDIF interrupt not available\n");
++
++	msp->brg = base;
++	dev_info(dev, "bridge PCM: input stream %u -> ABPO%u, graph %s\n",
++		 istream, istream + 1, msp_graph_names[graph]);
++	return 0;
++}
++
+ /* ------------------------------------------------------------------------ */
+ /* State machine                                                             */
+ /* ------------------------------------------------------------------------ */
+@@ -814,6 +1527,7 @@
+ 
+ 	msp->state = MSP_STATE_BOOTING;
+ 
++	msp_pcm_island_lost(msp);
+ 	msp_island_down(msp);
+ 	ret = msp_island_up(msp);
+ 	if (ret)
+@@ -836,8 +1550,9 @@
+ 	if (ret)
+ 		goto fail;
+ 
++	msp_pcm_island_ready(msp);
+ 	msp->state = MSP_STATE_RUNNING;
+-	dev_info(msp->dev, "MSP laeuft: HDMI -> I2SIN1 -> VOLUME -> I2SOUT1\n");
++	dev_info(msp->dev, "MSP running: %s\n", msp_graph_names[graph]);
+ 	return 0;
+ 
+ fail:
+@@ -965,6 +1680,48 @@
+ 	return ret ? -EIO : 1;
+ }
+ 
++/*
++ * "HDMI Input Mute Switch": the DSP's mute at the I2S input, 0x8017 bit 0
++ * (MAPI_ADU_CFG_SetHDMIMuteForI2sIn, S20 section 1.4). It silences the HDMI
++ * branch alone, so device sounds through the bridge PCM keep playing; the
++ * master mute above silences both. Stock keeps this bit set from
++ * sound_lowlevel_init until the path is connected.
++ */
++static int msp_input_mute_get(struct snd_kcontrol *kcontrol,
++			      struct snd_ctl_elem_value *ucontrol)
++{
++	struct h713_msp *msp = snd_kcontrol_chip(kcontrol);
++
++	mutex_lock(&msp->lock);
++	ucontrol->value.integer.value[0] = msp->input_mute;
++	mutex_unlock(&msp->lock);
++	return 0;
++}
++
++static int msp_input_mute_put(struct snd_kcontrol *kcontrol,
++			      struct snd_ctl_elem_value *ucontrol)
++{
++	struct h713_msp *msp = snd_kcontrol_chip(kcontrol);
++	bool mute = !!ucontrol->value.integer.value[0];
++	int ret = 0;
++
++	mutex_lock(&msp->lock);
++	if (msp->input_mute == mute) {
++		mutex_unlock(&msp->lock);
++		return 0;
++	}
++	msp->input_mute = mute;
++
++	if (msp->state == MSP_STATE_RUNNING) {
++		ret = msp_dsp_update(msp, DSP_HDMI_MUTE, 0x0001, mute ? 0x0001 : 0);
++		if (ret)
++			msp_mailbox_failed(msp, ret);
++	}
++	mutex_unlock(&msp->lock);
++
++	return ret ? -EIO : 1;
++}
++
+ static int msp_volume_info(struct snd_kcontrol *kcontrol,
+ 			   struct snd_ctl_elem_info *uinfo)
+ {
+@@ -1043,6 +1800,13 @@
+ 		.get	= msp_mute_get,
+ 		.put	= msp_mute_put,
+ 	},
++	{
++		.iface	= SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name	= "HDMI Input Mute Switch",
++		.info	= snd_ctl_boolean_mono_info,
++		.get	= msp_input_mute_get,
++		.put	= msp_input_mute_put,
++	},
+ };
+ 
+ static int msp_create_card(struct h713_msp *msp)
+@@ -1067,6 +1831,22 @@
+ 			return ret;
+ 	}
+ 
++	if (msp->brg) {
++		struct snd_pcm *pcm;
++
++		ret = snd_pcm_new(card, "H713 bridge", 0, 1, 0, &pcm);
++		if (ret)
++			return ret;
++		pcm->private_data = msp;
++		strscpy(pcm->name, "Device sounds, mixed into HDMI",
++			sizeof(pcm->name));
++		snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &msp_pcm_ops);
++		/* the ALSA buffer is the hardware ring: coherent, and no larger */
++		snd_pcm_set_managed_buffer_all(pcm, SNDRV_DMA_TYPE_DEV, msp->dev,
++					       MSP_BRG_RING_MAX, MSP_BRG_RING_MAX);
++		msp->pcm = pcm;
++	}
++
+ 	ret = snd_card_register(card);
+ 	if (ret)
+ 		return ret;
+@@ -1249,9 +2029,36 @@
+ 	seq_printf(s, "mbox_reissues: %u\n", msp->mbox_reissues);
+ 	seq_printf(s, "firmware: %s, %zu Byte, %u Bloecke\n",
+ 		   MSP_FW_NAME, msp->fw_size, msp->blocks);
+-	seq_printf(s, "controls: switch=%u volume=%ld (%d mdB) mute=%u\n",
++	seq_printf(s, "controls: switch=%u volume=%ld (%d mdB) mute=%u input_mute=%u\n",
+ 		   msp->input_on, msp->volume,
+-		   (int)(msp->volume - MSP_VOL_MAX) * 25, msp->mute);
++		   (int)(msp->volume - MSP_VOL_MAX) * 25, msp->mute,
++		   msp->input_mute);
++	seq_printf(s, "graph: %u (%s)\n", graph, msp_graph_names[graph]);
++	if (msp->brg) {
++		unsigned int n = msp->pcm_istream;
++		void __iomem *ch = msp->brg + MSP_BRG_ISTREAM(n);
++
++		seq_printf(s, "bridge: istream %u -> ABPO%u, %s, ring %pad + %zu, frame word %#010x\n",
++			   n, n + 1, msp->pcm_running ? "running" : "idle",
++			   &msp->ring_dma, msp->ring_bytes, msp->frame_word);
++		seq_printf(s, "bridge: start %#08x end %#08x step %#x cfg %#06x ptr %#08x\n",
++			   readl(ch + MSP_BRG_START), readl(ch + MSP_BRG_END),
++			   readl(ch + MSP_BRG_STEP), readl(ch + MSP_BRG_CFG),
++			   readl(ch + MSP_BRG_PTR));
++		seq_printf(s, "bridge: irq_en %#x mask %#06x status %#06x; audif mask %#010x err %#010x abpo clk %#010x data %#010x\n",
++			   readl(msp->brg + MSP_BRG_GLOBAL_IRQ_EN),
++			   readl(msp->brg + MSP_BRG_IRQ_MASK),
++			   readl(msp->brg + MSP_BRG_IRQ_STATUS),
++			   readl(msp->audif + MSP_AUDIF_IRQ_MASK),
++			   readl(msp->audif + MSP_AUDIF_ERR_STATUS),
++			   readl(msp->audif + MSP_AUDIF_ABPO_CLK(n)),
++			   readl(msp->audif + MSP_AUDIF_ABPO_DATA(n)));
++		seq_printf(s, "bridge: %u step irqs, %u frames sent, %u SCC errors, %u stalls\n",
++			   msp->brg_irqs, msp->frames_sent, msp->abpo_errors,
++			   msp->stalls);
++	} else {
++		seq_puts(s, "bridge: no AUDBRG window in the device tree\n");
++	}
+ 
+ 	if (regmap_read(msp->router, 0, &router))
+ 		router = 0;
+@@ -1477,6 +2284,9 @@
+ 	ret = msp_map(pdev, "audif", &msp->audif);
+ 	if (ret)
+ 		return ret;
++	ret = msp_pcm_probe(msp, pdev);
++	if (ret)
++		return ret;
+ 
+ 	/*
+ 	 * The TVFE router is one word at 0x06700000 and it sits inside the
+@@ -1559,6 +2369,7 @@
+ 	 * has been measured, instead of finding a half-configured DSP.
+ 	 */
+ 	mutex_lock(&msp->lock);
++	msp_pcm_island_lost(msp);
+ 	msp_island_down(msp);
+ 	msp->state = MSP_STATE_OFF;
+ 	mutex_unlock(&msp->lock);
+@@ -1585,7 +2396,7 @@
+ };
+ module_platform_driver(msp_driver);
+ 
+-MODULE_DESCRIPTION("Allwinner H713 MSP audio DSP (HDMI audio path)");
++MODULE_DESCRIPTION("Allwinner H713 MSP audio DSP (HDMI audio path and the bridge PCM)");
+ MODULE_AUTHOR("HY310 Mainline Port");
+ MODULE_LICENSE("GPL");
+ MODULE_FIRMWARE(MSP_FW_NAME);
+--- a/sound/soc/sunxi/Kconfig
++++ b/sound/soc/sunxi/Kconfig
+@@ -69,6 +69,7 @@
+ 	depends on OF
+ 	depends on (ARM64 && ARCH_SUNXI) || COMPILE_TEST
+ 	depends on MFD_SYSCON
++	select SND_PCM
+ 	help
+ 	  Say Y or M to add support for the MSP audio DSP of the Allwinner
+ 	  H713, the block the HDMI receiver's audio runs through on its way
+@@ -76,9 +77,10 @@
+ 
+ 	  The driver brings the audio island up, loads the DSP patch over
+ 	  the mailbox, builds the HDMI-to-speaker graph and registers an
+-	  ALSA card that carries only the three controls that path needs --
+-	  input switch, volume and mute. There is no PCM device: nothing
+-	  streams through the CPU.
++	  ALSA card with the controls that path needs -- input switch,
++	  volume and mute -- and one playback PCM for the device's own
++	  sounds, which the DSP mixes into the HDMI audio through the
++	  audio bridge's input stream ring.
+ 
+ 	  To compile this driver as a module, choose M here: the module will
+ 	  be called sun50i-h713-msp.
+--- a/Documentation/devicetree/bindings/sound/allwinner,sun50i-h713-msp.yaml
++++ b/Documentation/devicetree/bindings/sound/allwinner,sun50i-h713-msp.yaml
+@@ -13,9 +13,11 @@
+   The MSP is the Trident audio DSP of the H713. It sits on the demodulator
+   bus next to CIP and the demux, takes the HDMI receiver's I2S stream, runs
+   it through its module graph and hands it to the internal codec over
+-  I2SOUT1. Software only loads its patch and switches the input, the volume
+-  and mute, so the driver registers a control-only ALSA card and no PCM
+-  device.
++  I2SOUT1. Software loads its patch and switches the input, the volume and
++  mute. With the audio bridge (AUDBRG) window and its two interrupt lines the
++  driver also offers one playback PCM: a ring in DRAM that the bridge's input
++  stream channel reads and the AUDIF's I2S transmitter sends into the DSP,
++  where it is mixed with the HDMI audio.
+ 
+   The block is reachable only while the demod bus clock and reset are on and
+   the TVFE router at 0x06700000 has been written; that router word is shared
+@@ -27,18 +29,32 @@
+     const: allwinner,sun50i-h713-msp
+ 
+   reg:
++    minItems: 4
+     items:
+       - description: DSP mailbox, 0x06144000
+       - description: audio top clock control, 0x0614a000
+       - description: audio control block, 0x06142000
+       - description: AUDIF, 0x06146000
++      - description: AUDBRG, the audio bridge's DMA channels, 0x06148000
+ 
+   reg-names:
++    minItems: 4
+     items:
+       - const: mailbox
+       - const: audio-top
+       - const: ctrl
+       - const: audif
++      - const: audbrg
++
++  interrupts:
++    items:
++      - description: AUDBRG, the input stream's STEP interrupt
++      - description: AUDIF, the I2S transmitter's frame interrupt
++
++  interrupt-names:
++    items:
++      - const: audbrg
++      - const: audif
+ 
+   clocks:
+     maxItems: 17
+@@ -101,12 +117,17 @@
+   - |
+     #include <dt-bindings/clock/sun50i-h713-ccu.h>
+     #include <dt-bindings/reset/sun50i-h713-ccu.h>
++    #include <dt-bindings/interrupt-controller/arm-gic.h>
+ 
+     audio-dsp@6144000 {
+         compatible = "allwinner,sun50i-h713-msp";
+         reg = <0x06144000 0x20>, <0x0614a000 0x10>,
+-              <0x06142000 0x80>, <0x06146000 0x90>;
+-        reg-names = "mailbox", "audio-top", "ctrl", "audif";
++              <0x06142000 0x80>, <0x06146000 0x90>,
++              <0x06148000 0x394>;
++        reg-names = "mailbox", "audio-top", "ctrl", "audif", "audbrg";
++        interrupts = <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>,
++                     <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
++        interrupt-names = "audbrg", "audif";
+         clocks = <&ccu CLK_BUS_DEMOD>, <&ccu CLK_ADC>,
+                  <&ccu CLK_DTMB_120M>, <&ccu CLK_TVFE_1296M>,
+                  <&ccu CLK_I2H>, <&ccu CLK_CIP_TSX>,

@@ -1,0 +1,102 @@
+media: h713-hdmirx: a refused raster is named from the record where INCAP's active word is stale
+
+0136v caught a raster the firmware's table does not carry at the INCAP
+sanity check: the firmware writes its record (raster, signal_id 1, rate) and
+the new totals into INCAP, leaves the ACTIVE word at the mode before and the
+capture off, and 1600x900's totals read smaller than the stale 1920x1080.
+The HY310 run of 26.09.2026 showed what slips past it: 1600x1200 at 60 Hz,
+whose records (86, 115-118) the table has disabled and whose totals,
+2160x1250, are larger than the stale word - so the stale-record test behind
+it looks INCAP's raster up, 1920x1080, in the table, and answers -ENOLCK on
+every poll: "change in flight" for ever, no line. Now that test asks the
+record as well: its raster in no table record (geometry only, the 0136u
+rule) is unlisted, named from the record, with the timing 0136v hands back -
+one helper for both places. h713-tv then reads "signal 1600x1200p60, 162.0
+MHz not in the firmware's table -- console" (FB-EDIDb; not built here).
+
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -3720,6 +3720,33 @@
+ }
+ 
+ /*
++ * A raster the table does not carry, named from the firmware's record: for
++ * such a raster the firmware writes its record (raster, signal_id 1, rate)
++ * and the new totals into INCAP, but leaves INCAP's ACTIVE word at the mode
++ * before and the capture off (dev21, 22.09.2026). So the timing that travels
++ * with the error (0136m) is the record's raster and rate over INCAP's totals,
++ * the totals too, or a client computes the rate over the active size (0136v).
++ */
++static int h713_hdmirx_unlisted_record(struct h713_hdmirx *rx,
++				       const struct h713_hdmirx_signal_info *sig,
++				       unsigned int htotal, unsigned int vtotal,
++				       struct v4l2_dv_timings *t)
++{
++	memset(t, 0, sizeof(*t));
++	t->type = V4L2_DV_BT_656_1120;
++	t->bt.width = sig->h_size;
++	t->bt.height = sig->v_size;
++	t->bt.pixelclock = div_u64((u64)htotal * vtotal * sig->frame_rate_x100,
++				   100);
++	t->bt.hbackporch = htotal - sig->h_size;
++	t->bt.vbackporch = vtotal - sig->v_size;
++
++	return h713_hdmirx_unlisted(rx, (sig->h_size << 16) | sig->v_size,
++				    sig->frame_rate_x100,
++				    "in none of the firmware's mode records");
++}
++
++/*
+  * What the source is sending, from the three things the ARM can see:
+  *
+  *  - The flip pointers: are frames arriving at all, and at what rate. Without
+@@ -3844,22 +3871,9 @@
+ 		if (htotal && vtotal && have_sig && !own_record &&
+ 		    rx->tse_count && sig.h_size && sig.v_size &&
+ 		    !h713_hdmirx_tse_carries(rx, sig.h_size, sig.v_size,
+-					     htotal, vtotal)) {
+-			/* the measurement travels with the error (0136m) */
+-			memset(t, 0, sizeof(*t));
+-			t->type = V4L2_DV_BT_656_1120;
+-			t->bt.width = sig.h_size;
+-			t->bt.height = sig.v_size;
+-			t->bt.pixelclock = div_u64((u64)htotal * vtotal *
+-						   sig.frame_rate_x100, 100);
+-			/* the totals too, or a client computes the rate over the active size */
+-			t->bt.hbackporch = htotal - sig.h_size;
+-			t->bt.vbackporch = vtotal - sig.v_size;
+-			return h713_hdmirx_unlisted(rx,
+-					(sig.h_size << 16) | sig.v_size,
+-					sig.frame_rate_x100,
+-					"in none of the firmware's mode records");
+-		}
++					     htotal, vtotal))
++			return h713_hdmirx_unlisted_record(rx, &sig, htotal,
++							   vtotal, t);
+ 		/*
+ 		 * The whole block reads zero while the TVFE/TVCAP power
+ 		 * domain is off (doku/78 section 0). No capture runs in that
+@@ -3881,6 +3895,22 @@
+ 		    !h713_hdmirx_tse_carries(rx, width, height, htotal, vtotal))
+ 			return h713_hdmirx_unlisted(rx, active, seen,
+ 					"in none of the firmware's mode records");
++		/*
++		 * The other way round: a fresh record at a raster the table
++		 * does not carry, INCAP's ACTIVE word stale at the mode before
++		 * (0136v's shape), but totals LARGER than that stale word -
++		 * 1600x1200's 2160x1250 over a stale 1920x1080 - so the sanity
++		 * check passed and the lookup above found the stale raster in
++		 * the table: "change in flight" for ever (HY310, 26.09.2026).
++		 * The record decides; a record lagging at a refused raster
++		 * while INCAP already writes a lockable one keeps that answer
++		 * for the poll or two until the callback moves it on.
++		 */
++		if (rx->tse_count &&
++		    !h713_hdmirx_tse_carries(rx, sig.h_size, sig.v_size,
++					     htotal, vtotal))
++			return h713_hdmirx_unlisted_record(rx, &sig, htotal,
++							   vtotal, t);
+ 		return -ENOLCK;
+ 	}
+ 

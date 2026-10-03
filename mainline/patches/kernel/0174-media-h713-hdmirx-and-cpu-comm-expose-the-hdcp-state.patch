@@ -1,0 +1,549 @@
+media: sun50i-h713-hdmirx: the HDCP state as a sysfs file, the firmware's last HDCP line through cpu_comm
+
+HDCP 2.2 works in practice - the key comes out of the device's own storage at boot and the firmware
+takes it (h713-hdcp-key, step 20 of the init sequence) - but nothing on the board could say whether a
+protected source really negotiates, short of a photo of the screen. The firmware owns the receiver's
+HDCP side entirely and has no callback for it, so this reads what it leaves behind.
+
+A file "hdcp" in the hdmirx platform device's sysfs directory - a dev_groups attribute of the driver,
+so the core adds it once the probe is through, and userspace reaches it from the video node as
+/sys/class/video4linux/videoN/device/hdcp - five lines: the version negotiated, whether a session
+stands, the two keys, the firmware's own last HDCP log line. Sysfs and not debugfs because the release
+defconfig has no debugfs and the readout has to work on the shipped kernel; one file and not five
+because the lines are one measurement, the verdict and the raw bits come out of the same register
+read. The bits come out of the LINK window the driver already reads byte-wise for the audio status
+(0136): +0x422 [0] is the 2.2 session the firmware's HdcpRx thread clears at every AKE_Init
+(sub_8B13D970) and sets when the last message of a successful exchange has been handled - that is
+"authenticated" for 2.2; +0x3c0 [2] and +0x161 [7] are written at AKE_Init and say an exchange has
+begun; +0x41a [2] is set once the 2.2 key has been taken; +0x41b/+0x41c is the RxStatus the source
+polls (message size, READY, REAUTH_REQ); +0x093 [0] is the 1.4 key, which no boot of ours loads
+(doku/112). A finished 1.4 authentication is an interrupt the firmware clears in the same breath
+(HdmiRx_HDCP14_ISR_Handle_ByLink, 0x8b13d1a8) and leaves nothing to read; the file says so instead of
+guessing. Nothing here is key material, only status bits. The debugfs status file gets a one-line
+summary.
+
+The firmware's last word comes from its log ring, which cpu_comm already knows the address of (it is
+the board's, allwinner,elog, and differs on the HY300 Pro): cpu_comm_elog_last() walks the mode-1 ring
+backwards from the write pointer and returns the newest line containing a word, without touching the
+firmware's read pointer. The firmware logs its 2.2 success ("HDCP Process cost tick") and its failures
+at its error level, so they are in the ring at the default level; a 1.4 pass is an INFO line and is not.
+
+The init sequence remembers what became of the key step (handed over, skipped, not reached) for the
+same file. h713-tv ctl hdcp copies the five lines through (FB-HDCP22, FB-HDCP22b).
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -74,6 +74,7 @@
+ #include <linux/seq_file.h>
+ #include <linux/slab.h>
+ #include <linux/spinlock.h>
++#include <linux/sysfs.h>
+ #include <linux/unaligned.h>
+ #include <linux/v4l2-dv-timings.h>
+ #include <linux/workqueue.h>
+@@ -430,6 +431,53 @@
+ #define H713_LINK_RAW_ON	0xff
+ 
+ /*
++ * The HDCP status bits of the receiver, read only, for the sysfs file
++ * "hdcp" and the status file's one line. The display firmware owns the
++ * receiver's HDCP side entirely: HDCP 1.4 is a hardware block whose finished
++ * authentication arrives as an interrupt the firmware clears at once
++ * (HdmiRx_HDCP14_ISR_Handle_ByLink, 0x8b13d1a8, "port%d HDCP1.4 Pass!" at
++ * INFO level), so a 1.4 pass leaves nothing to read afterwards; HDCP 2.2 is
++ * a state machine in the firmware (its HdcpRx thread) and the hardware
++ * carries the DDC messages and the session. What stays readable, all bytes
++ * in the LINK window:
++ *
++ *  +0x093 [0]  the 1.4 key is in. 0 on our boots: nothing loads it before
++ *              the firmware starts (doku/112).
++ *  +0x41a [2]  the 2.2 key has been taken: the receiver advertises 2.2
++ *              (set right after "HdmiRx_HDCP22_LoadKey ok!!").
++ *  +0x41b, +0x41c [1:0]  the 2.2 RxStatus message size the source polls;
++ *              +0x41c [2] READY, [3] REAUTH_REQ.
++ *  +0x3c0 [2], +0x161 [7]  written at every AKE_Init (sub_8B13D970): a 2.2
++ *              exchange has begun. A 1.4 pass clears both.
++ *  +0x422 [0]  a 2.2 session stands: cleared at AKE_Init, set by the
++ *              handler of the last message (SKE_Send_Eks). For 2.2 this bit
++ *              is "authenticated". A 1.4 pass clears it too.
++ *  +0x06d [0]  link 0 connected (sub_8B13E538).
++ *
++ * Addresses and functions: display.bin, database
++ * umbau/work/FB-HDCP22/ida/display.bin.i64, FB-HDCP22 report and
++ * tables/hdcp-observables.csv.
++ */
++#define H713_LINK_HDCP14_KEY		0x093
++#define H713_LINK_HDCP14_KEY_LOADED	BIT(0)
++#define H713_LINK_LINKSTAT		0x06d
++#define H713_LINK_LINKSTAT_LINK0	BIT(0)
++#define H713_LINK_HDCP22_HOLD		0x161
++#define H713_LINK_HDCP22_HOLD_BIT	BIT(7)
++#define H713_LINK_HDCP22_MODE		0x3c0
++#define H713_LINK_HDCP22_MODE_BIT	BIT(2)
++#define H713_LINK_HDCP22_CAP		0x41a
++#define H713_LINK_HDCP22_CAP_BIT	BIT(2)
++#define H713_LINK_HDCP22_RXSTATUS_LO	0x41b
++#define H713_LINK_HDCP22_RXSTATUS_HI	0x41c
++#define H713_LINK_HDCP22_RXSTATUS_SIZE_HI	GENMASK(1, 0)
++#define H713_LINK_HDCP22_RXSTATUS_READY	BIT(2)
++#define H713_LINK_HDCP22_RXSTATUS_REAUTH	BIT(3)
++#define H713_LINK_HDCP22_SESSION	0x422
++#define H713_LINK_HDCP22_SESSION_ON	BIT(0)
++#define H713_HDCP_LOG_LINE		160	/* of the firmware's log line */
++
++/*
+  * The receiver's measured sample rate, code to hertz. The codes come out of
+  * the firmware's own jump table (sub_8B13C1D8, S18 section 3.4), which turns
+  * them into 32, 44, 48, 88, 96, 176 and 192 kHz.
+@@ -1207,6 +1255,13 @@
+ 	struct vb2_vmarea_handler handler;
+ };
+ 
++/* What became of the init sequence's key step, for the hdcp file. */
++enum h713_hdcp22_key_state {
++	H713_HDCP22_KEY_NOT_RUN,	/* the sequence has not reached the step */
++	H713_HDCP22_KEY_SKIPPED,	/* no key file: the step was left out */
++	H713_HDCP22_KEY_SENT,		/* THal_Vp_SetHDCP22Key accepted the key */
++};
++
+ struct h713_hdmirx {
+ 	struct device *dev;
+ 	struct v4l2_device v4l2_dev;
+@@ -1289,6 +1344,10 @@
+ 	struct delayed_work audio_work;
+ 	struct h713_hdmirx_audio audio_last;
+ 
++	/* the key step of the init sequence, for the hdcp file */
++	enum h713_hdcp22_key_state hdcp22_key;
++	int hdcp22_key_err;
++
+ 	/* picture quality, one entry per h713_hdmirx_pq_ctrls[] entry */
+ 	struct v4l2_ctrl_handler ctrl_hdl;
+ 	s32 pq_start[H713_PQ_COUNT];
+@@ -1456,6 +1515,8 @@
+ 				dev_warn(rx->dev,
+ 					 "step %u %s skipped: %s cannot be loaded (%d)\n",
+ 					 i, s->name, H713_FW_HDCP22, ret);
++				rx->hdcp22_key = H713_HDCP22_KEY_SKIPPED;
++				rx->hdcp22_key_err = ret;
+ 				continue;
+ 			}
+ 			break;
+@@ -1469,6 +1530,8 @@
+ 				i, s->name, s->session, ret);
+ 			return ret;
+ 		}
++		if (s->kind == H713_STEP_HDCP)
++			rx->hdcp22_key = H713_HDCP22_KEY_SENT;
+ 	}
+ 
+ 	dev_info(rx->dev, "init sequence complete (%zu calls)\n",
+@@ -4601,6 +4664,198 @@
+ 		   h713_hdmirx_audio_cs_rates[cs], a.raw);
+ }
+ 
++/* ------------------------------------------------------------------ *
++ * HDCP, for the status file and the hdcp file
++ *
++ * Read afresh at every look, like the audio bytes: a measurement is taken by
++ * reading the file before and after a protected source is plugged in.
++ * ------------------------------------------------------------------ */
++
++struct h713_hdmirx_hdcp {
++	unsigned int key14;	/* +0x093 */
++	unsigned int linkstat;	/* +0x06d */
++	unsigned int hold;	/* +0x161 */
++	unsigned int mode;	/* +0x3c0 */
++	unsigned int cap;	/* +0x41a */
++	unsigned int rx_lo;	/* +0x41b */
++	unsigned int rx_hi;	/* +0x41c */
++	unsigned int session;	/* +0x422 */
++};
++
++static int h713_hdmirx_read_hdcp(struct h713_hdmirx *rx,
++				 struct h713_hdmirx_hdcp *h)
++{
++	const struct {
++		unsigned int reg;
++		unsigned int *val;
++	} regs[] = {
++		{ H713_LINK_HDCP14_KEY, &h->key14 },
++		{ H713_LINK_LINKSTAT, &h->linkstat },
++		{ H713_LINK_HDCP22_HOLD, &h->hold },
++		{ H713_LINK_HDCP22_MODE, &h->mode },
++		{ H713_LINK_HDCP22_CAP, &h->cap },
++		{ H713_LINK_HDCP22_RXSTATUS_LO, &h->rx_lo },
++		{ H713_LINK_HDCP22_RXSTATUS_HI, &h->rx_hi },
++		{ H713_LINK_HDCP22_SESSION, &h->session },
++	};
++	unsigned int i;
++	int ret;
++
++	memset(h, 0, sizeof(*h));
++	if (!rx->link)
++		return -ENODEV;
++	for (i = 0; i < ARRAY_SIZE(regs); i++) {
++		ret = regmap_read(rx->link, regs[i].reg, regs[i].val);
++		if (ret)
++			return ret;
++	}
++
++	return 0;
++}
++
++/*
++ * The verdict both files share. The reset value of the two AKE_Init marks
++ * is not known; the boot baseline (the file read before a source is
++ * plugged in) says what they read when nothing has happened yet.
++ */
++static const char *h713_hdmirx_hdcp_version(const struct h713_hdmirx_hdcp *h)
++{
++	if (h->session & H713_LINK_HDCP22_SESSION_ON)
++		return "2.2 (session stands)";
++	if (h->mode & H713_LINK_HDCP22_MODE_BIT)
++		return "2.2 begun, no session (AKE_Init marks set; compare with the boot baseline)";
++	if (!(h->key14 & H713_LINK_HDCP14_KEY_LOADED))
++		return "none (no 2.2 exchange since boot; 1.4 is impossible without its key)";
++	return "none or 1.4 (no 2.2 exchange since boot; a 1.4 pass leaves no readable status)";
++}
++
++static const char *h713_hdmirx_hdcp_key22(const struct h713_hdmirx *rx)
++{
++	switch (rx->hdcp22_key) {
++	case H713_HDCP22_KEY_SENT:
++		return "handed over";
++	case H713_HDCP22_KEY_SKIPPED:
++		return "skipped";
++	default:
++		return "not yet";
++	}
++}
++
++/* One line in the status file; the hdcp file has the whole picture. */
++static void h713_hdmirx_show_hdcp_brief(struct seq_file *s,
++					struct h713_hdmirx *rx)
++{
++	struct h713_hdmirx_hdcp h;
++	int ret;
++
++	ret = h713_hdmirx_read_hdcp(rx, &h);
++	if (ret) {
++		seq_printf(s, "hdcp:         not readable (%d)\n", ret);
++		return;
++	}
++	seq_printf(s, "hdcp:         %s; key 1.4 %s, key 2.2 %s\n",
++		   h713_hdmirx_hdcp_version(&h),
++		   h.key14 & H713_LINK_HDCP14_KEY_LOADED ? "loaded" : "not loaded",
++		   h713_hdmirx_hdcp_key22(rx));
++}
++
++/*
++ * The newest line of the firmware's own log that mentions HDCP. The
++ * firmware logs its 2.2 success ("HDCP Process cost tick") and its failures
++ * at its error level, so they are in the ring at the default level; a 1.4
++ * pass is an INFO line and is not.
++ */
++static int h713_hdmirx_hdcp_firmware(char *buf, int at)
++{
++	char line[H713_HDCP_LOG_LINE];
++	u32 wp = 0;
++	int ret;
++
++	ret = cpu_comm_elog_last("hdcp", line, sizeof(line), &wp);
++	if (ret >= 0)
++		return sysfs_emit_at(buf, at, "firmware:      %s (ring write pointer %u)\n",
++				     line, wp);
++	if (ret == -ENOENT)
++		return sysfs_emit_at(buf, at, "firmware:      no HDCP line in the firmware log (ring write pointer %u)\n",
++				     wp);
++	return sysfs_emit_at(buf, at, "firmware:      firmware log not readable (%d)\n",
++			     ret);
++}
++
++/*
++ * The sysfs file "hdcp" of the platform device, read-only: five lines, in
++ * the order a test reads them - what was negotiated, whether a session
++ * stands, the two keys, the firmware's last word. Nothing here is key
++ * material, only status bits. Sysfs and not debugfs because the release
++ * kernel has no debugfs; one file and not five because the lines are one
++ * measurement: the verdict of the first and the bits of the second come out
++ * of the same register read, and a source in the middle of an exchange
++ * changes them between two reads. Userspace reaches it through the video
++ * node's parent, /sys/class/video4linux/videoN/device/hdcp; h713-tv ctl
++ * hdcp copies the lines through unchanged, so every line stays well under
++ * 250 bytes.
++ */
++static ssize_t hdcp_show(struct device *dev, struct device_attribute *attr,
++			 char *buf)
++{
++	struct h713_hdmirx *rx = dev_get_drvdata(dev);
++	struct h713_hdmirx_hdcp h;
++	const char *cap;
++	int at = 0, ret;
++
++	ret = h713_hdmirx_read_hdcp(rx, &h);
++	if (ret) {
++		at += sysfs_emit_at(buf, at, "version:       not readable (%d%s)\n", ret,
++				    ret == -ENODEV ? ": no LINK window, allwinner,hdmirx-link is missing" : "");
++		at += sysfs_emit_at(buf, at, "authenticated: not readable\n");
++		at += sysfs_emit_at(buf, at, "key-1.4:       not readable\n");
++		cap = "not readable";
++	} else {
++		/* FIELD_GET() yields an unsigned long; the line prints a %u */
++		unsigned int msg_size = h.rx_lo |
++			((unsigned int)FIELD_GET(H713_LINK_HDCP22_RXSTATUS_SIZE_HI, h.rx_hi) << 8);
++
++		at += sysfs_emit_at(buf, at, "version:       %s -- LINK 0x422=0x%02x 0x3c0=0x%02x 0x161=0x%02x\n",
++				    h713_hdmirx_hdcp_version(&h), h.session, h.mode,
++				    h.hold);
++		at += sysfs_emit_at(buf, at, "authenticated: %s (2.2 session, LINK 0x422[0]) -- rxstatus 0x41b/0x41c=0x%02x 0x%02x: message size %u, READY %s, REAUTH_REQ %s; link 0x6d=0x%02x, link 0 %s\n",
++				    h.session & H713_LINK_HDCP22_SESSION_ON ? "yes" : "no",
++				    h.rx_lo, h.rx_hi, msg_size,
++				    h.rx_hi & H713_LINK_HDCP22_RXSTATUS_READY ? "1" : "0",
++				    h.rx_hi & H713_LINK_HDCP22_RXSTATUS_REAUTH ? "1" : "0",
++				    h.linkstat,
++				    h.linkstat & H713_LINK_LINKSTAT_LINK0 ? "connected" : "not connected");
++		at += sysfs_emit_at(buf, at, "key-1.4:       %s (LINK 0x93=0x%02x)\n",
++				    h.key14 & H713_LINK_HDCP14_KEY_LOADED ? "loaded" :
++				    "not loaded -- nothing loads it before the firmware starts, its LoadKey times out at boot (doku/112)",
++				    h.key14);
++		cap = h.cap & H713_LINK_HDCP22_CAP_BIT ? "1" : "0";
++	}
++	switch (rx->hdcp22_key) {
++	case H713_HDCP22_KEY_SENT:
++		at += sysfs_emit_at(buf, at, "key-2.2:       handed over at probe (THal_Vp_SetHDCP22Key accepted; 2.2 advertised to the source, LINK 0x41a[2]=%s)\n",
++				    cap);
++		break;
++	case H713_HDCP22_KEY_SKIPPED:
++		at += sysfs_emit_at(buf, at, "key-2.2:       skipped at probe (%s not loadable, %d): no 2.2 this boot\n",
++				    H713_FW_HDCP22, rx->hdcp22_key_err);
++		break;
++	default:
++		at += sysfs_emit_at(buf, at, "key-2.2:       the init sequence has not reached the step\n");
++		break;
++	}
++	at += h713_hdmirx_hdcp_firmware(buf, at);
++
++	return at;
++}
++static DEVICE_ATTR_RO(hdcp);
++
++static struct attribute *h713_hdmirx_attrs[] = {
++	&dev_attr_hdcp.attr,
++	NULL,
++};
++ATTRIBUTE_GROUPS(h713_hdmirx);
++
+ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
+ {
+ 	struct h713_hdmirx *rx = s->private;
+@@ -4650,6 +4905,7 @@
+ 			   (y & H713_INCAP_ICSC_BYPASS) ? "BYPASS -- the picture would be green"
+ 						       : "BT.709", y);
+ 	h713_hdmirx_show_audio(s, rx);
++	h713_hdmirx_show_hdcp_brief(s, rx);
+ 	seq_printf(s, "streaming:    %s\n",
+ 		   vb2_is_streaming(&rx->queue) ? "yes" : "no");
+ 
+@@ -5148,6 +5404,8 @@
+ 	.driver	= {
+ 		.name		= H713_HDMIRX_NAME,
+ 		.of_match_table	= h713_hdmirx_of_match,
++		/* the hdcp file; the core adds it once the probe is through */
++		.dev_groups	= h713_hdmirx_groups,
+ 		/*
+ 		 * The EDID/hotplug part of the bring-up holds the pin low for
+ 		 * ten seconds. That must not sit in the middle of the boot.
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -57,6 +57,9 @@
+ #include <linux/cacheflush.h>
+ #include <linux/clk.h>
+ #include <linux/reset.h>
++#include <linux/mutex.h>
++#include <linux/string.h>
++#include <linux/soc/sunxi/h713-cpu-comm.h>
+ #include "cpu_comm.h"
+ 
+ #define DEVICE_NAME	"cpu_comm"
+@@ -104,6 +107,132 @@
+ 		elog_ctl_addr, elog_ring_addr, src);
+ }
+ 
++/*
++ * The newest line of the firmware's log that contains a word
++ * ===========================================================
++ *
++ * The display firmware logs into a 100 KiB ring inside its own memory (mode
++ * 1, doku/63-mips-elog.md): text from offset 0 upwards, the write pointer an
++ * offset into the ring that wraps at its end. Nobody moves the read pointer
++ * on our boards, so the firmware stops writing once the ring is full - which
++ * at the default log level takes a long time, the boot leaves under two
++ * kilobytes in it. This function does not move the read pointer either: it
++ * is a look, not a consumer, and the boot history the probe dumps into dmesg
++ * stays where it is.
++ *
++ * The walk goes backwards from the write pointer, so the first line that
++ * matches is the newest one. A NUL is memory the firmware never wrote and
++ * ends the walk. A line longer than the buffer is compared on, and returned
++ * as, its tail. The comparison ignores case because the firmware spells its
++ * modules HdcpRx, HDCP22 and hdcp22 in the same breath; bytes that are not
++ * printable are blanked in the copy.
++ *
++ * The first caller maps the ring and the control block; they stay mapped
++ * until the module goes. The mutex serialises the mapping and the walk.
++ */
++#define CPU_COMM_ELOG_RING_SIZE		102400
++#define CPU_COMM_ELOG_CTL_SIZE		0x500
++#define CPU_COMM_ELOG_MODE		0x09b	/* u8: 1 = the 100 KiB ring */
++#define CPU_COMM_ELOG_WRITE		0x4a8	/* u32: offset into the ring */
++#define CPU_COMM_ELOG_LINE		200
++
++static DEFINE_MUTEX(cpu_comm_elog_lock);
++static void __iomem *cpu_comm_elog_ctl;
++static void __iomem *cpu_comm_elog_ring;
++
++static bool cpu_comm_elog_has(const char *s, size_t len, const char *needle,
++			      size_t nlen)
++{
++	size_t i;
++
++	if (!nlen || nlen > len)
++		return false;
++	for (i = 0; i + nlen <= len; i++)
++		if (!strncasecmp(s + i, needle, nlen))
++			return true;
++
++	return false;
++}
++
++int cpu_comm_elog_last(const char *needle, char *buf, size_t len,
++		       u32 *write_ptr)
++{
++	char rev[CPU_COMM_ELOG_LINE];	/* the line at hand, newest byte first */
++	size_t nlen, l = 0, i;
++	u32 pos, scanned;
++	int ret;
++
++	if (!needle || !buf || len < 2)
++		return -EINVAL;
++	nlen = strlen(needle);
++	buf[0] = '\0';
++
++	mutex_lock(&cpu_comm_elog_lock);
++	if (!cpu_comm_elog_ctl)
++		cpu_comm_elog_ctl = ioremap(elog_ctl_addr, CPU_COMM_ELOG_CTL_SIZE);
++	if (!cpu_comm_elog_ring)
++		cpu_comm_elog_ring = ioremap(elog_ring_addr, CPU_COMM_ELOG_RING_SIZE);
++	if (!cpu_comm_elog_ctl || !cpu_comm_elog_ring) {
++		ret = -ENODEV;
++		goto out;
++	}
++	if (readb(cpu_comm_elog_ctl + CPU_COMM_ELOG_MODE) != 1) {
++		ret = -ENODEV;
++		goto out;
++	}
++	pos = readl(cpu_comm_elog_ctl + CPU_COMM_ELOG_WRITE);
++	if (write_ptr)
++		*write_ptr = pos;
++	if (pos >= CPU_COMM_ELOG_RING_SIZE) {
++		ret = -ENODEV;
++		goto out;
++	}
++
++	ret = -ENOENT;
++	for (scanned = 0; scanned <= CPU_COMM_ELOG_RING_SIZE; scanned++) {
++		u8 c = 0;
++
++		if (scanned < CPU_COMM_ELOG_RING_SIZE) {
++			pos = pos ? pos - 1 : CPU_COMM_ELOG_RING_SIZE - 1;
++			c = readb(cpu_comm_elog_ring + pos);
++		}
++		if (c && c != '\n') {
++			if (l < sizeof(rev))
++				rev[l++] = (c >= 0x20 && c < 0x7f) ? c : ' ';
++			continue;
++		}
++		/* a line boundary, the ring's start, or its unwritten part */
++		for (i = 0; i < l && i < len - 1; i++)
++			buf[i] = rev[l - 1 - i];
++		buf[i] = '\0';
++		if (l && cpu_comm_elog_has(buf, i, needle, nlen)) {
++			ret = (int)i;
++			break;
++		}
++		l = 0;
++		if (!c)
++			break;
++	}
++	if (ret < 0)
++		buf[0] = '\0';
++out:
++	mutex_unlock(&cpu_comm_elog_lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_elog_last);
++
++static void cpu_comm_elog_unmap(void)
++{
++	mutex_lock(&cpu_comm_elog_lock);
++	if (cpu_comm_elog_ring)
++		iounmap(cpu_comm_elog_ring);
++	if (cpu_comm_elog_ctl)
++		iounmap(cpu_comm_elog_ctl);
++	cpu_comm_elog_ring = NULL;
++	cpu_comm_elog_ctl = NULL;
++	mutex_unlock(&cpu_comm_elog_lock);
++}
++
+ /* ── Module globals ────────────────────────────────────────── */
+ 
+ static int cpu_comm_major;
+@@ -1988,6 +2117,7 @@
+ static void cpu_comm_drv_remove(struct platform_device *pdev)
+ {
+ 	cpu_comm_cleanup();
++	cpu_comm_elog_unmap();
+ }
+ 
+ static const struct of_device_id cpu_comm_of_match[] = {
+--- a/include/linux/soc/sunxi/h713-cpu-comm.h
++++ b/include/linux/soc/sunxi/h713-cpu-comm.h
+@@ -207,6 +207,24 @@
+  */
+ u32 cpu_comm_name2id(const char *base_name, unsigned int target_cpu);
+ 
++/**
++ * cpu_comm_elog_last() - the newest line of the display firmware's log that
++ *	contains a word
++ * @needle: what the line has to contain, compared without regard to case
++ * @buf: where the line goes, NUL terminated, non-printable bytes blanked
++ * @len: size of @buf; a longer line is returned as its tail
++ * @write_ptr: if not NULL, receives the ring's write pointer (an offset)
++ *
++ * Reads the firmware's mode-1 log ring in place. Nothing is consumed and the
++ * firmware's read pointer is not touched. Where the ring is comes from the
++ * board (allwinner,elog), so a caller never needs to know its addresses.
++ *
++ * Return: the length of the line, -ENOENT when no line matches, -ENODEV when
++ * the log is not in mode 1 or cannot be mapped, -EINVAL for a bad argument.
++ */
++int cpu_comm_elog_last(const char *needle, char *buf, size_t len,
++		       u32 *write_ptr);
++
+ #else /* !CONFIG_HY310_CPU_COMM */
+ 
+ static inline int cpu_comm_call(u32 comp_id, const u32 *args,
+@@ -227,6 +245,12 @@
+ {
+ 	return -ENODEV;
+ }
++
++static inline int cpu_comm_elog_last(const char *needle, char *buf,
++				     size_t len, u32 *write_ptr)
++{
++	return -ENODEV;
++}
+ 
+ static inline u32 cpu_comm_name2id(const char *base_name,
+ 				   unsigned int target_cpu)

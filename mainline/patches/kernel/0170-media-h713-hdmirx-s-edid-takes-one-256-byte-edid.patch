@@ -1,0 +1,69 @@
+media: h713-hdmirx: S_EDID takes one 256-byte EDID as well, and serves it
+
+The receiver's EDID store is two 256-byte halves; a source is served one of
+them, and which one is the ARISC firmware's per-port block mask, board policy
+on the arisc node (0091c) and 0 on both boards. The HY310's second half is the
+vendor's HDMI 2.0 set: it adds 1080p100/120, which the display firmware's own
+mode table carries as enabled records 13 and 15, plus 4K50/60, which that table
+has disabled (umbau/work/FB-EDID/tables/edid-vs-firmware.csv). Reaching the two
+100/120 Hz modes therefore needs the second half in front of the source.
+
+The mask is not the way there at run time. Measured twice (dev20 with the
+handler race, dev21 without it): SetEDIDVersion alone publishes nothing, the
+byte is read where fragment 7 publishes, and the sequence that ends in a
+publish - arisc_hdmi_edid_init() - begins with ResetEDIDModule, which zeroes
+the byte (AP3l P3). The one run that showed block 1 at the PC (dev20) went
+through the racy 0x0f, so whether the guarded SetEDIDVersion behind fragment 7
+republishes port 0 is open. And the release kernel has no debugfs, so the
+bench command is not a switch a service can use.
+
+So S_EDID gets a second shape. Four blocks stay what they were, the whole
+store. Two blocks are one EDID: it becomes the first half, the one every port
+is served under mask 0, and the second half keeps what it held - or a copy,
+when nothing was uploaded yet. Every firmware-side republish (HostHDMIMAP,
+ResetEDIDModule, fragment 7; AP3l P2-P4) serves the store with the mask it
+has, so the served half stays whatever the firmware does behind the driver.
+G_EDID is unchanged and returns the store as it is now.
+
+h713-tv uses it for "ctl edid block0|block1" and the tv.conf key "edid": the
+named half of /lib/firmware/hy310-edid.bin as one 256-byte S_EDID inside its
+replug cycle. Nothing changes for a client that sends four blocks, and the
+probe's own sequence is untouched.
+
+Not built here (FB-EDID wrote no kernel in this package); applies to the tree
+0136y leaves with patch -p1 --dry-run.
+
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-26 04:21:27.308799167 +0200
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-26 04:21:27.309675557 +0200
+@@ -4177,12 +4177,28 @@
+ 		return arisc_hdmi_hpd(H713_HDMI_PORT, ARISC_HDMI_HPD_DOWN);
+ 	}
+ 
+-	if (edid->blocks != ARISC_HDMI_EDID_SIZE / 128) {
++	if (edid->blocks != ARISC_HDMI_EDID_SIZE / 128 &&
++	    edid->blocks != ARISC_HDMI_EDID_BLOCK / 128) {
+ 		edid->blocks = ARISC_HDMI_EDID_SIZE / 128;
+ 		return -E2BIG;
+ 	}
+ 
+-	memcpy(rx->edid, edid->edid, ARISC_HDMI_EDID_SIZE);
++	/*
++	 * Two blocks are one 256-byte EDID: it becomes the half the port is
++	 * served (the first, under the board's mask 0), the other half keeps
++	 * what it held, or a copy when nothing was uploaded yet. That is how
++	 * h713-tv publishes the second half of hy310-edid.bin without touching
++	 * the ARISC's per-port mask (FB-EDID): every firmware-side republish
++	 * serves the store with the mask it has, so the served half stays.
++	 */
++	if (edid->blocks == ARISC_HDMI_EDID_BLOCK / 128) {
++		if (!rx->edid_valid)
++			memcpy(rx->edid + ARISC_HDMI_EDID_BLOCK, edid->edid,
++			       ARISC_HDMI_EDID_BLOCK);
++		memcpy(rx->edid, edid->edid, ARISC_HDMI_EDID_BLOCK);
++	} else {
++		memcpy(rx->edid, edid->edid, ARISC_HDMI_EDID_SIZE);
++	}
+ 
+ 	ret = arisc_hdmi_edid_init(H713_HDMI_PORT, rx->edid,
+ 				   ARISC_HDMI_EDID_SIZE);

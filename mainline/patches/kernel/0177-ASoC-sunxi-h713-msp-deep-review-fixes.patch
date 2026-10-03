@@ -1,0 +1,244 @@
+ASoC: sunxi: h713-msp: deep-review fixes for the bridge PCM (27.09.2026)
+
+Input stream 2 by default (the one measured to reach DECODER3; 0 and 1 are silent), the
+stall check counts STEP interrupts instead of comparing ring offsets (a ring size dividing
+the check period read the same offset every time), prepare and START touch AUDBRG/AUDIF
+only while the island is up and refuse a preparation older than the last island reset
+(the S21 hang window), a sync_stop for the handlers, the range checks before the early
+return, and the input-mute control only where the bridge PCM mixes. Findings B1, F1, F2,
+F7, N1, N2 of umbau/work/_deepreview/audio. Applies after 0169.
+---
+--- a/sound/soc/sunxi/sun50i-h713-msp.c
++++ b/sound/soc/sunxi/sun50i-h713-msp.c
+@@ -331,10 +331,10 @@
+  *
+  * istream: which of the three AUDBRG input streams (0..2, feeding ABPO1..3)
+  * reaches the DSP's DECODER3, the only bridge input path 0x89 wires into
+- * MIXER2. Stock's HAL opens TridentALSA device 0, and the vendor module maps
+- * device 0 to input stream 0 (Thal_Alsa_Audio_Open), so 0 is the one stock
+- * is known to play system sounds through while HDMI is mixed. Whether the
+- * silicon pairs ABPO1 with DECODER3 is not in any register we have read.
++ * MIXER2. Stock's HAL opens TridentALSA device 0 and the vendor
++ * module maps device 0 to input stream 0 (Thal_Alsa_Audio_Open), but on
++ * the device only stream 2 is audible (ABPO3, Trid_Audio_Output_Istream_Open
++ * pairs 2 with it): measured 27.09.2026, streams 0 and 1 stay silent.
+  *
+  * graph: 0 keeps today's path 0xC1 (HDMI straight into DRC1/DRC2, no bridge
+  * input); 1 is stock's path 0x89 with SURRDEC and SURRPOSTPRO in front of
+@@ -348,9 +348,9 @@
+ 	MSP_GRAPH_MIXED_DIRECT,
+ };
+ 
+-static unsigned int istream;
++static unsigned int istream = 2;	/* measured 27.09.2026: only stream 2 reaches DECODER3 */
+ module_param(istream, uint, 0444);
+-MODULE_PARM_DESC(istream, "AUDBRG input stream of the bridge PCM, 0..2 (ABPO n+1); default 0");
++MODULE_PARM_DESC(istream, "AUDBRG input stream of the bridge PCM, 0..2 (ABPO n+1); default 2");
+ 
+ static unsigned int graph = MSP_GRAPH_MIXED;
+ module_param(graph, uint, 0444);
+@@ -486,12 +486,16 @@
+ 	spinlock_t pcm_lock;		/* pcm_sub and pcm_running, see above */
+ 	struct snd_pcm_substream *pcm_sub;
+ 	bool pcm_running;
++	bool pcm_hw_up;			/* pcm_lock: AUDBRG/AUDIF may be touched (island up) */
++	unsigned int island_gen;	/* pcm_lock: bumped at every island reset */
++	unsigned int prep_gen;		/* the island generation prepare() programmed */
+ 	unsigned int pcm_istream;	/* the module parameter, validated */
+ 	u32 frame_word;			/* the ABPO word re-armed on every frame */
+ 	dma_addr_t ring_dma;
+ 	size_t ring_bytes;
+ 	struct timer_list stall_timer;
+-	u32 stall_ptr;
++	unsigned int brg_steps;		/* STEP interrupts of our stream, counted */
++	unsigned int stall_steps;	/* ... as seen at the last stall check */
+ 	unsigned int frames_sent;
+ 	unsigned int brg_irqs;
+ 	unsigned int abpo_errors;
+@@ -1122,6 +1126,7 @@
+ 	msp->brg_irqs++;
+ 
+ 	if (status & MSP_BRG_ISTREAM_IRQ(msp->pcm_istream)) {
++		msp->brg_steps++;
+ 		sub = msp_pcm_active(msp);
+ 		if (sub)
+ 			snd_pcm_period_elapsed(sub);
+@@ -1201,23 +1206,33 @@
+ {
+ 	struct h713_msp *msp = timer_container_of(msp, t, stall_timer);
+ 	struct snd_pcm_substream *sub = msp_pcm_active(msp);
+-	u32 ptr;
++	unsigned long flags;
++	u32 ptr = 0, err = 0, st = 0;
+ 
+ 	if (!sub)
+ 		return;
+-	ptr = msp_pcm_hw_ptr(msp);
+-	if (ptr != msp->stall_ptr) {
+-		msp->stall_ptr = ptr;
++	/*
++	 * Progress is counted in STEP interrupts, not read off the pointer: a
++	 * ring whose size divides the check period reads the same offset at
++	 * every check while playing (deep review 27.09.2026).
++	 */
++	if (READ_ONCE(msp->brg_steps) != msp->stall_steps) {
++		msp->stall_steps = READ_ONCE(msp->brg_steps);
+ 		mod_timer(&msp->stall_timer,
+ 			  jiffies + msecs_to_jiffies(MSP_PCM_STALL_MS));
+ 		return;
+ 	}
++	spin_lock_irqsave(&msp->pcm_lock, flags);
++	if (msp->pcm_hw_up) {	/* the registers only while the island is up */
++		ptr = msp_pcm_hw_ptr(msp);
++		err = readl(msp->audif + MSP_AUDIF_ERR_STATUS);
++		st = readl(msp->brg + MSP_BRG_IRQ_STATUS);
++	}
++	spin_unlock_irqrestore(&msp->pcm_lock, flags);
+ 	msp->stalls++;
+ 	dev_warn(msp->dev,
+-		 "bridge PCM stalled: input stream %u read pointer %#x unchanged for %u ms, %u frames sent, AUDIF err %#010x, AUDBRG status %#010x\n",
+-		 msp->pcm_istream, ptr, MSP_PCM_STALL_MS, msp->frames_sent,
+-		 readl(msp->audif + MSP_AUDIF_ERR_STATUS),
+-		 readl(msp->brg + MSP_BRG_IRQ_STATUS));
++		 "bridge PCM stalled: input stream %u, no STEP interrupt for %u ms (read pointer %#x), %u frames sent, AUDIF err %#010x, AUDBRG status %#010x\n",
++		 msp->pcm_istream, MSP_PCM_STALL_MS, ptr, msp->frames_sent, err, st);
+ 	snd_pcm_stop_xrun(sub);
+ }
+ 
+@@ -1309,6 +1324,16 @@
+ 	if (runtime->period_size > MSP_ABPO_WORD_LEN)
+ 		return -EINVAL;
+ 
++	/*
++	 * The registers only while the island is up and nobody resets it: a
++	 * player that recovers from the island-reset xrun prepares at once,
++	 * and an AUDIF access in the reset's window is S21's CPU hang.
++	 */
++	mutex_lock(&msp->lock);
++	if (msp->state != MSP_STATE_RUNNING) {
++		mutex_unlock(&msp->lock);
++		return -EIO;
++	}
+ 	msp->ring_dma = dma;
+ 	msp->ring_bytes = bytes;
+ 	msp->frame_word = MSP_ABPO_WORD_RUN | MSP_ABPO_WORD_CHANNEL(n) |
+@@ -1338,6 +1363,8 @@
+ 	v = readl(msp->audif + MSP_AUDIF_IRQ_MASK);
+ 	writel(v | MSP_AUDIF_ABPO_IRQ(n), msp->audif + MSP_AUDIF_IRQ_MASK);
+ 
++	msp->prep_gen = msp->island_gen;
++	mutex_unlock(&msp->lock);
+ 	return 0;
+ }
+ 
+@@ -1352,8 +1379,12 @@
+ 	switch (cmd) {
+ 	case SNDRV_PCM_TRIGGER_START:
+ 		spin_lock_irqsave(&msp->pcm_lock, flags);
++		if (!msp->pcm_hw_up || msp->prep_gen != msp->island_gen) {
++			/* the island was reset since prepare(): program the ring again */
++			spin_unlock_irqrestore(&msp->pcm_lock, flags);
++			return -EPIPE;
++		}
+ 		msp->pcm_running = true;
+-		spin_unlock_irqrestore(&msp->pcm_lock, flags);
+ 
+ 		/* alsa_audbrg_istream_start: the fetch request, ring already flushed */
+ 		msp_brg_pulse(msp, MSP_BRG_ISTREAM(n) + MSP_BRG_UMACREQ);
+@@ -1370,8 +1401,9 @@
+ 		div += ((((MSP_ABPO_REF_HZ % 48000) << 9) / 48000) + 1) >> 1;
+ 		writel(div << 8, msp->audif + MSP_AUDIF_ABPO_CLK(n));
+ 		writel(msp->frame_word, msp->audif + MSP_AUDIF_ABPO_DATA(n));
++		msp->stall_steps = READ_ONCE(msp->brg_steps);
++		spin_unlock_irqrestore(&msp->pcm_lock, flags);
+ 
+-		msp->stall_ptr = msp_pcm_hw_ptr(msp);
+ 		mod_timer(&msp->stall_timer,
+ 			  jiffies + msecs_to_jiffies(MSP_PCM_STALL_MS));
+ 		return 0;
+@@ -1413,11 +1445,24 @@
+ 	return bytes_to_frames(substream->runtime, off);
+ }
+ 
++/* No handler still holds the substream once the stream has stopped. */
++static int msp_pcm_sync_stop(struct snd_pcm_substream *substream)
++{
++	struct h713_msp *msp = snd_pcm_substream_chip(substream);
++
++	if (msp->irqs_live) {
++		synchronize_irq(msp->irq_brg);
++		synchronize_irq(msp->irq_audif);
++	}
++	return 0;
++}
++
+ static const struct snd_pcm_ops msp_pcm_ops = {
+ 	.open		= msp_pcm_open,
+ 	.close		= msp_pcm_close,
+ 	.prepare	= msp_pcm_prepare,
+ 	.trigger	= msp_pcm_trigger,
++	.sync_stop	= msp_pcm_sync_stop,
+ 	.pointer	= msp_pcm_pointer,
+ };
+ 
+@@ -1443,6 +1488,8 @@
+ 	spin_lock_irqsave(&msp->pcm_lock, flags);
+ 	sub = msp->pcm_running ? msp->pcm_sub : NULL;
+ 	msp->pcm_running = false;
++	msp->pcm_hw_up = false;		/* prepare/START/timer keep their hands off */
++	msp->island_gen++;
+ 	spin_unlock_irqrestore(&msp->pcm_lock, flags);
+ 	if (sub) {
+ 		dev_warn(msp->dev, "bridge PCM stopped: the island is being reset\n");
+@@ -1466,6 +1513,9 @@
+ 		enable_irq(msp->irq_audif);
+ 		msp->irqs_live = true;
+ 	}
++	spin_lock(&msp->pcm_lock);
++	msp->pcm_hw_up = true;
++	spin_unlock(&msp->pcm_lock);
+ }
+ 
+ static int msp_pcm_probe(struct h713_msp *msp, struct platform_device *pdev)
+@@ -1477,6 +1527,15 @@
+ 	spin_lock_init(&msp->pcm_lock);
+ 	timer_setup(&msp->stall_timer, msp_pcm_stall_timer, 0);
+ 
++	if (istream >= MSP_BRG_NUM_ISTREAMS) {
++		dev_warn(dev, "istream=%u is not one of 0..2, using 2\n", istream);
++		istream = 2;
++	}
++	if (graph > MSP_GRAPH_MIXED_DIRECT) {
++		dev_warn(dev, "graph=%u is not one of 0..2, using 1\n", graph);
++		graph = MSP_GRAPH_MIXED;
++	}
++
+ 	base = devm_platform_ioremap_resource_byname(pdev, "audbrg");
+ 	msp->irq_brg = platform_get_irq_byname_optional(pdev, "audbrg");
+ 	msp->irq_audif = platform_get_irq_byname_optional(pdev, "audif");
+@@ -1485,14 +1544,6 @@
+ 			 "no \"audbrg\" window or interrupts in the device tree: no bridge PCM\n");
+ 		return 0;
+ 	}
+-	if (istream >= MSP_BRG_NUM_ISTREAMS) {
+-		dev_warn(dev, "istream=%u is not one of 0..2, using 0\n", istream);
+-		istream = 0;
+-	}
+-	if (graph > MSP_GRAPH_MIXED_DIRECT) {
+-		dev_warn(dev, "graph=%u is not one of 0..2, using 1\n", graph);
+-		graph = MSP_GRAPH_MIXED;
+-	}
+ 	msp->pcm_istream = istream;
+ 
+ 	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
+@@ -1826,6 +1877,10 @@
+ 	strscpy(card->mixername, "H713 MSP DSP", sizeof(card->mixername));
+ 
+ 	for (i = 0; i < ARRAY_SIZE(msp_controls); i++) {
++		/* the input mute means "the bridge PCM mixes": only where it does */
++		if (!strcmp(msp_controls[i].name, "HDMI Input Mute Switch") &&
++		    (!msp->brg || graph == MSP_GRAPH_HDMI_ONLY))
++			continue;
+ 		ret = snd_ctl_add(card, snd_ctl_new1(&msp_controls[i], msp));
+ 		if (ret)
+ 			return ret;

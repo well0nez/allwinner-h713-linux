@@ -1,0 +1,73 @@
+arm64: dts: h713: the audio bridge window and its two interrupts go to the MSP node
+
+The MSP driver's bridge PCM programs the AUDBRG's input stream channel at
+0x06148000 and listens to the two interrupt lines the stock tree gives its
+audbrg@203042c node: index 0 = SPI 115 = AUDBRG, index 1 = SPI 113 = AUDIF
+(S19 section 0; our copy of the node had them the other way round). The
+window and both lines are added to the MSP node by name, so the driver can
+do without them where a board file leaves them out.
+
+The stock placeholder node stays as the record of what the vendor tree
+says, with the interrupt order corrected, and is disabled: no driver in
+this tree binds it, and one block should be described once.
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1010,23 +1010,25 @@
+ 		};
+ 
+ 		/*
+-		 * Trident Audio Bridge (snd_alsa_trid replacement)
+-		 * Stock: compatible = "vs,trid-audio-bridge", reg = 0x0203042c
+-		 * The driver hard-maps all MMIO windows (0x06146000, 0x06148000,
+-		 * 0x0614a000, etc.) via devm_ioremap with physical addresses.
+-		 * Only the "logic" register and IRQs come from DTS.
+-		 * IRQs: GIC_SPI 113 = audbrg (bridge core), GIC_SPI 115 = audif (ABP DTV)
++		 * Trident Audio Bridge, stock's node (compatible
++		 * "vs,trid-audio-bridge", reg = 0x0203042c). No driver in this
++		 * tree binds it; the bridge's AUDBRG window and both of its
++		 * interrupt lines belong to the MSP audio DSP node below, which
++		 * uses them for the bridge PCM. Kept for the record of what the
++		 * stock tree says, disabled so that one block is described once.
++		 * Note the interrupt order here was the reverse of stock's
++		 * (S19 section 0): GIC_SPI 115 is the AUDBRG, GIC_SPI 113 the AUDIF.
+ 		 */
+ 		audio_bridge: audio-bridge@203042c {
+ 			compatible = "vs,trid-audio-bridge";
+ 			reg = <0x0203042c 0x4>;
+-			interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>,
+-				     <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>;
++			interrupts = <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_AUDIO_CPU>,
+ 				 <&ccu CLK_AUDIO_UMAC>,
+ 				 <&ccu CLK_AUDIO_IHB>;
+ 			clock-names = "audio_cpu", "audio_umac", "audio_ihb";
+-			status = "okay";
++			status = "disabled";
+ 		};
+ 
+ 		i2s2: i2s@2034000 {
+@@ -1737,8 +1739,20 @@
+ 			reg = <0x06144000 0x20>,
+ 			      <0x0614a000 0x10>,
+ 			      <0x06142000 0x80>,
+-			      <0x06146000 0x90>;
+-			reg-names = "mailbox", "audio-top", "ctrl", "audif";
++			      <0x06146000 0x90>,
++			      <0x06148000 0x394>;
++			reg-names = "mailbox", "audio-top", "ctrl", "audif",
++				    "audbrg";
++			/*
++			 * The bridge PCM: the AUDBRG's input-stream interrupt
++			 * (stock's audbrg@203042c index 0 = SPI 115) and the
++			 * AUDIF's frame interrupt (index 1 = SPI 113), S19
++			 * section 0. Without the window and both lines the
++			 * driver registers the control-only card as before.
++			 */
++			interrupts = <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "audbrg", "audif";
+ 			clocks = <&ccu CLK_BUS_DEMOD>,
+ 				 <&ccu CLK_ADC>,
+ 				 <&ccu CLK_DTMB_120M>,
