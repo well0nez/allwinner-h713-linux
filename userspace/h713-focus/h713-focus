@@ -408,6 +408,7 @@ def run(m: Motor, up: bool, count: int, chunk: int) -> int:
             if how == "edge":
                 print(f"\nEdge in direction '{direction}' reached: the driver has "
                       f"reversed and latched the edge.")
+                result = 3          # README and docs: 3 = stopped at an edge
                 break
             if how == "outside":
                 print(f"\nThe raw level has dropped (raw={after.raw}, "
@@ -417,6 +418,7 @@ def run(m: Motor, up: bool, count: int, chunk: int) -> int:
                 rest = _wait_for_rest(m, aborted)
                 if rest is not None:
                     print(f"Settled: {_line(rest)}")
+                    result = 3      # stopped at the edge of the range
                 else:
                     print("The driver has NOT come back into the range -- look "
                           "before anything here drives on.",

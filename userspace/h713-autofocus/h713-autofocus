@@ -14,7 +14,9 @@ below names the section it comes from. Four parts, in the order a run uses:
            (AP1 7, the first of its three routes).
   camera   YUYV 640x480 over MMAP streaming; the even bytes of a buffer are
            the luma plane. The exposure is written before the first frame,
-           which is what wakes this camera out of its black-frame state.
+           which is what wakes this camera out of its black-frame state -
+           and again during the warm-up until the picture is there, because
+           the first run after a boot measured the dark (23.09.2026).
   metric   the vendor's cubed-gradient sum over a window, divided by a divisor
            the first measurement fixes. That divisor is why the thresholds do
            not depend on window or stride: whatever is measured, the first
@@ -94,10 +96,28 @@ WINDOWS = {"full": (8, 471, 8, 631), "nocen": (8, 471, 8, 631),
 
 # Search constants, AP1 tables/focus-loop.txt section 0.
 WARMUP_FRAMES, EXPOSURE_PROBE_LIMIT, NO_PICTURE_LIMIT = 28, 160, 100
+# The wait for the pattern (FB-AFWAIT, 26.09.2026). NO_PICTURE_LIMIT is the
+# vendor's gate and tells black from not-black only: on 23.09. the first run
+# after a boot passed it at picture level 1479 - the camera's black-frame
+# state, sensor noise around Y 5 (h713-cam) - and searched the dark; the next
+# run, seconds later, read 25816 from the lit chessboard with the focus at the
+# lower edge. The wall is not the slow part (`h713-tv ctl off` replies after a
+# blocking commit, two vsyncs and the selector switch; /dev/fb0 is the
+# scanned-out buffer itself), the camera is, and the camera's picture is what
+# the search reads - so warm_up() waits on the level: probed every LEVEL_EVERY
+# frames, at or above PATTERN_FLOOR twice in a row and within a tenth of each
+# other. An eighth of the lit board is 2.2x the dark run, and a lamp at a third
+# of the HY310's still passes (the level goes with the square of the
+# intensity); the synthetic fixtures give 18686 (blur 20) to 162689 (blur 1.5).
+PATTERN_LEVEL = 25816                   # a lit chessboard on this camera
+PATTERN_FLOOR = PATTERN_LEVEL // 8      # 3227
+LEVEL_EVERY, WAIT_LIMIT_S = WARMUP_FRAMES // 2, 4.0     # 14 frames; the bound
 SELECT_TIMEOUT_S = 2.0
 SETTLE_PASSES, SETTLE_PASSES_LONG, SETTLE_JUMP = 8, 16, 300
 STABLE_DELTA, RISE_RUN, FALL_RUN, FLAT_RUN = 99, 4, 4, 10
 DROP_FROM_MAX, DEBOUNCE, CONFIRM_PASSES = 201, 4, 3
+DRIFT_FLOOR = -3    # a delta at or below it counts towards the flat run even
+                    # inside the dead zone (vafo10_HY260 0x0002EA90 line 294)
 FINE_PASS_CAP, PEAK_WINDOW, OVERSHOOT_TRIGGER = 16, 50, 501
 SCALE_CEILING, SCALE_STEP = 14000, 2000
 RUN_MSTEP_CAP, MSTEPS_PER_COMMAND_MAX = 1000, 18  # the command size as in h713-focus;
@@ -688,7 +708,9 @@ class Handover:
     then `h713-tv ctl off` - and gives it back the same way in reverse. A tool
     that is not installed, or one that answers error, is noted and skipped:
     the run still happens, the pattern may then not be seen (Marco, 23.09.:
-    an autofocus that does not put its picture up is worth nothing).
+    an autofocus that does not put its picture up is worth nothing). Nothing
+    sleeps here: `ctl off` replies after its blocking commit and the console
+    unblank (h713-tv, display_hide), and warm_up() waits on the picture.
     """
 
     def __init__(self, tv="h713-tv", warp="h713-warp", log=None):
@@ -720,7 +742,6 @@ class Handover:
             self._run([self.tv, "ctl", "off"])
             self.log("the console has the panel for the pattern")
         self.taken = True
-        time.sleep(0.4)     # the console comes back through the DRM commit
 
     def give_back(self):
         if not self.taken:
@@ -783,6 +804,25 @@ class Search:
     4 ends a run normally; the other two ways out are the pass budget and the
     deadline -- the vendor has no clock in the loop either, its 22 s watchdog
     sits on the Java side.
+
+    State 2 is the vendor's thread_fun_LCD_vafo10_HY260 (0x0002EA90 in
+    libduRYXtp.so, AP1 ida/libduRYXtp-arm64.so.i64) branch for branch, since
+    FB-AFSEARCH: the AP1 table it was first ported from missed three things,
+    and on 26.09.2026 the first run after a boot fell 350 msteps from its
+    maximum without turning round (device/af-run1.log). The debounce counts
+    down in EVERY pass that does not turn (lines 321 and 384 there), not only
+    in the rising ones; a fall-back from state 3 zeroes it (line 463); and the
+    drop-from-max rule is armed once per run (v73: line 118, cleared by every
+    turn, never set again) - after the first turn a run is below its max by
+    definition, and the rule would only flip it back.
+
+    One rule is ours: a turn-around at an edge in state 3, or in the pass that
+    enters it, cuts the confirmation to one pass. There is nothing beyond the
+    edge to climb to, so the two falls that follow are the peak and not a
+    false one. The vendor's search cannot know (motor_ctrl_loop hides the
+    edge from it) and cycles at a peak on the edge - state 3, fall-back, five
+    falls, five rises, the edge again - which on run 1's curve is four edge
+    turns, one short of EDGE_REVERSE_CAP.
     """
 
     def __init__(self, motor, grab, metric, profile, log=None, deadline=None):
@@ -799,11 +839,14 @@ class Search:
         total = prev = best = prev_delta = 0
         settle, settle_cnt = SETTLE_PASSES, 0
         rise = fall = flat = debounce = 0
+        armed = True                    # the drop-from-max rule, once per run
         confirm = fine_cap = best_delta = up_run = pos_run = 0
-        reason = "budget"
+        reason, edge_turns = "budget", self.motor.reversals
         while True:
             if move:
                 self.motor.loop(step)
+            at_edge = self.motor.reversals != edge_turns  # loop() turned round
+            edge_turns = self.motor.reversals
             if state <= 3:              # two frames per pass, averaged
                 one, two = self.metric(self.grab()), self.metric(self.grab())
                 if (one + two) // 2 <= scale_thr:
@@ -837,39 +880,40 @@ class Search:
                     rise = fall = debounce = 0
             elif state == 2:                                    # coarse climb
                 rise_thr, dead, fall_thr = self.thresholds
-                move = 1
-                if delta >= rise_thr or delta >= -dead:
-                    if delta >= rise_thr:
-                        if rise >= RISE_RUN:
-                            state, confirm = 3, CONFIRM_PASSES
-                            step, best = self.middle, total
-                            rise = fall = flat = 0
-                        else:
-                            rise, fall, flat = rise + 1, 0, 0
-                    else:                                       # the dead zone
-                        fall, flat = (0 if delta > dead else fall), 0
-                    if best - total >= DROP_FROM_MAX and debounce <= 1:
-                        self.motor.change_direct()
-                        fall = flat = 0
-                        debounce, step = DEBOUNCE, self.coarse
+                move, turned = 1, False
+                if delta >= rise_thr:                           # a clear rise
+                    if rise >= RISE_RUN:
+                        state, confirm = 3, 1 if at_edge else CONFIRM_PASSES
+                        step, best = self.middle, total
+                        rise = fall = flat = 0
                     else:
-                        debounce = max(debounce - 1, 0)
-                elif delta <= fall_thr:                         # a clear fall
-                    rise = 0
-                    if fall >= FALL_RUN and debounce <= 1:
-                        self.motor.change_direct()
-                        fall, flat = 0, 1
-                        debounce, step = DEBOUNCE, self.middle
+                        rise, fall, flat = rise + 1, 0, 0
+                elif delta < -dead or delta <= DRIFT_FLOOR:     # a fall, or a
+                    rise = 0 if delta < -dead else rise         # drift down
+                    if delta <= fall_thr and fall >= FALL_RUN and debounce <= 1:
+                        self.motor.change_direct()              # a fall run
+                        turned, fall, flat = True, 0, 1
+                    elif flat >= FLAT_RUN and debounce <= 1:
+                        self.motor.change_direct()              # a flat run
+                        turned, fall, flat = True, 0, 0
                     else:
-                        fall += 1
-                        flat, debounce, step = self._drift(flat, debounce, step)
-                        fall = 0 if flat == 0 else fall
-                else:                                           # a mild fall
-                    rise = 0
-                    flat, debounce, step = self._drift(flat, debounce, step)
-                    fall = 0 if flat == 0 else fall
+                        fall += 1 if delta <= fall_thr else 0
+                        flat += 1
+                    step = self.middle if turned else step
+                else:                                           # the dead zone
+                    fall, flat = (0 if delta > dead else fall), 0
+                if turned:
+                    debounce, armed = DEBOUNCE, False
+                elif armed and best - total >= DROP_FROM_MAX and debounce <= 1:
+                    self.motor.change_direct()      # walked away from the max
+                    fall = flat = 0
+                    debounce, step, armed = DEBOUNCE, self.coarse, False
+                else:
+                    debounce = max(debounce - 1, 0)
             elif state == 3:                                    # confirm
                 move, step = 1, self.middle
+                if at_edge:                 # nothing beyond it: one pass does
+                    confirm = min(confirm, 1)
                 if not (delta < 0 and prev_delta < 0):
                     confirm = max(confirm - 1, 0)
                 elif confirm - 1 <= 0:
@@ -877,7 +921,7 @@ class Search:
                     state, step, fine_cap = 4, self.middle, FINE_PASS_CAP
                     best_delta = up_run = pos_run = 0
                 else:
-                    state, confirm = 2, confirm - 1
+                    state, confirm, debounce = 2, confirm - 1, 0
             else:                                               # fine return
                 step, fine_cap = self.fine, max(fine_cap - 1, 0)
                 if delta >= 21 and prev_delta >= 21 and best_delta > delta:
@@ -911,13 +955,6 @@ class Search:
             budget, prev_delta = budget - 1, delta
         return reason, best
 
-    def _drift(self, flat, debounce, step):
-        """The "we have drifted for ten passes" reversal of state 2."""
-        if flat >= FLAT_RUN and debounce <= 1:
-            self.motor.change_direct()
-            return 0, DEBOUNCE, self.middle
-        return flat + 1, debounce, step
-
     @staticmethod
     def _fine_move(total, best, delta, best_delta, fine_cap, up_run, pos_run):
         """State 4's six stop rules; any one of them ends the run."""
@@ -942,10 +979,36 @@ class Search:
 # --- the subcommands ------------------------------------------------------
 
 def warm_up(camera, profile, metric):
-    """28 frames, then the brightness probe and the picture gate (AP1 2.6)."""
-    frame = None
-    for _ in range(WARMUP_FRAMES):
+    """The wait for the pattern, then the brightness probe and the picture
+    gate (AP1 2.6: 28 frames; ours are two probes of a quiet, lit picture).
+
+    Every failed probe re-writes the exposure: a control write is what ends
+    this camera's black-frame state (h713-cam), and the one before the stream
+    did not on the first run after a boot. The wait is bounded by
+    WAIT_LIMIT_S; a picture that never reaches the floor is EXIT_NO_PICTURE,
+    with the motor untouched.
+    """
+    started, frames, levels = time.monotonic(), 0, []
+    while True:
         frame = camera.grab()
+        frames += 1
+        if frames % LEVEL_EVERY:
+            continue
+        levels.append(picture_present(frame))
+        if len(levels) > 1 and min(levels[-2:]) >= PATTERN_FLOOR and \
+                abs(levels[-1] - levels[-2]) * 10 <= levels[-1]:
+            break
+        spent = time.monotonic() - started
+        if spent >= WAIT_LIMIT_S:
+            _stderr("waited %.1f s (%d frames) for the pattern: picture level "
+                    "%s, floor %d -- a lit chessboard reads about %d here"
+                    % (spent, frames, "/".join(map(str, levels[-3:])),
+                       PATTERN_FLOOR, PATTERN_LEVEL))
+            return EXIT_NO_PICTURE
+        camera.expose(profile.exposure[0])
+    _stderr("the pattern is on the wall: picture level %d after %d frames "
+            "(%.2f s, %d probes)" % (levels[-1], frames,
+                                     time.monotonic() - started, len(levels)))
     dark = sum(1 for y in range(FRAME_H)
                if frame[y * FRAME_W + FRAME_W // 2] < 160)
     if dark < EXPOSURE_PROBE_LIMIT:
@@ -961,8 +1024,8 @@ def warm_up(camera, profile, metric):
     total = sharpness_sum(frame, metric.window, metric.stride)
     metric.lev = pick_divisor(total)
     _stderr("picture level %d (floor %d), first metric %d"
-            % (level, NO_PICTURE_LIMIT, total // metric.lev))
-    return 0 if level >= NO_PICTURE_LIMIT else EXIT_NO_PICTURE
+            % (level, PATTERN_FLOOR, total // metric.lev))
+    return 0 if level >= PATTERN_FLOOR else EXIT_NO_PICTURE
 
 
 def build_metric(args, profile, yuyv=False):
@@ -982,23 +1045,46 @@ def return_to_best(search, log):
     stopped - at an edge after the fourth turn-around, or wherever the cap
     fell - which is the blurriest place there is (Marco, 23.09.2026: "extrem
     unscharf"). Go back to the best position the run has seen: guarded moves
-    as in the run, outside its cap. Returns the msteps moved."""
+    as in the run, outside its cap and its turn-arounds. Returns the msteps
+    moved, signed.
+
+    The way back is not a search, so it never turns round: a latched edge
+    ahead ends it where it stands. The driver drops every command towards a
+    latched edge (motor_run_up_dn, patch 0111), so nothing is pushed; and a
+    run whose best lay at an edge has arrived when the flag comes up, however
+    far the counter says it still is - the counter gains one per edge event
+    while the mechanism is walked back out of it (AP1c 2.5, doku 94: about
+    six msteps each), so after a run's turn-arounds the best position's
+    counter value can lie beyond the edge (26.09.2026, af-run1.log).
+    """
     if search is None or not search.passes:
         return 0
     motor = search.motor
-    delta = search.best_step - motor.state().step
+    start = motor.state().step
+    delta = search.best_step - start
     if abs(delta) < search.fine:
         return 0
-    motor.moved = 0                      # the run's cap is spent; this is the way back
-    motor.direction = 0 if delta > 0 else 1
+    motor.moved = motor.reversals = 0   # the run's cap and its turn-arounds
+    up = delta > 0                      # are spent; this is the way back
+    motor.direction = 0 if up else 1
     left = abs(delta)
     while left > 0:
+        if motor.edge_ahead(motor.state(), up):
+            log("the %s edge is latched %d msteps short of the best position "
+                "seen (%s): that is where the run's best was, or the counter "
+                "has drifted -- the way back ends here"
+                % ("upper" if up else "lower",
+                   abs(search.best_step - motor.state().step), search.best_step))
+            break
         n = min(left, MSTEPS_PER_COMMAND_MAX)
         motor.loop(n)
         left -= n
-    log("back at the best position seen: %s (%d msteps)"
-        % (search.best_step, abs(delta)))
-    return delta
+    else:
+        log("back at the best position seen: %s (%d msteps)"
+            % (search.best_step, abs(delta)))
+    # what the motor reports, not what was commanded: a command towards a
+    # latched edge is dropped by the driver (deep review 27.09.2026, F9)
+    return motor.state().step - start
 
 
 def do_run(args, profile):
