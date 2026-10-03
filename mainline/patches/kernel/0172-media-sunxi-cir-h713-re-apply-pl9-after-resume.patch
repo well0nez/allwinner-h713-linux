@@ -1,0 +1,27 @@
+media: sunxi-cir: h713 - re-apply PL9 after a resume as well (02.10.2026, review of FB-REMOTEb)
+
+0003 hooks the platform bus notifier, which fires once when the arisc driver binds at boot. The
+arisc driver starts the firmware again in its resume_noirq (FB-STANDBY), the firmware stores
+0x222222ff to PL_CFG1 again, and nothing rebinds - so after every standby the receiver would be
+dead until the next boot. The IR driver's own resume runs after the noirq phase: queue the same
+delayed work there. Applies after 0003.
+---
+--- a/drivers/media/rc/sunxi-cir.c
++++ b/drivers/media/rc/sunxi-cir.c
+@@ -259,6 +259,16 @@
+ 
+ static int __maybe_unused sunxi_ir_resume(struct device *dev)
+ {
++	struct sunxi_ir *ir = dev_get_drvdata(dev);
++
++	/*
++	 * H713: the ARISC firmware is started again in the arisc driver's
++	 * resume_noirq and disables PL9 as at boot; no driver is rebound,
++	 * so the bus notifier stays silent. Re-apply the pin here, which
++	 * runs after the noirq phase.
++	 */
++	if (ir->is_h713_vendor_init)
++		mod_delayed_work(system_wq, &ir->repin_work, HZ);
+ 	return sunxi_ir_hw_init(dev);
+ }
+ 

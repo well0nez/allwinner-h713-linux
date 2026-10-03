@@ -1,0 +1,67 @@
+media: sunxi-cir: h713 - drop 0021's vendor register values
+
+0021 wrote the vendor driver's values over mainline's init. Re-checked against the stock kernel
+(ir_reg_cfg 0xc0714d34): CIR 0x200b2a is SCS 2 = /256 with NTHR 10, ITHR 0x0b, ATHR 0x20 -
+the vendor's own sample model (24 MHz / 256, 10700 ns per unit, sunxi_ir_recv_irq 0xc0714ab8),
+not mainline's /64; it held until the next protocol change rewrote CIR and came back on every
+resume. RXCTL 4 repeats RPPI, RXSTA 0xef and RXINT 0x1313 are equivalent clear/trigger
+values (the ARISC's own IR init uses 0xff and 0x2f13), and CTL bits 7:6 changed nothing when
+cleared on the device and are absent from the ARISC's init. The register dump stays. FB-REMOTEb.
+---
+--- a/drivers/media/rc/sunxi-cir.c
++++ b/drivers/media/rc/sunxi-cir.c
+@@ -63,7 +63,6 @@
+ #define REG_RXSTA_GET_AC(val) (((val) >> 8) & (ir->fifo_size * 2 - 1))
+ /* Clear all interrupt status value */
+ #define REG_RXSTA_CLEARALL    0xff
+-#define REG_RXSTA_CLEARALL_H713 0xef
+ 
+ /* IR Sample Config */
+ #define SUNXI_IR_CIR_REG      0x34
+@@ -201,42 +200,22 @@
+ 	/* Set noise threshold and idle threshold */
+ 	sunxi_ir_set_timeout(ir->rc, ir->rc->timeout);
+ 
+-	/* H713 vendor-like sample config tuning (IDA-correlated) */
+-	if (ir->is_h713_vendor_init) {
+-		/* NTHR=8, ITHR=0xb2 plus vendor extra bitfields */
+-		writel(0x00200b2a, ir->base + SUNXI_IR_CIR_REG);
+-	}
+-
+ 	/* Invert Input Signal */
+ 	writel(REG_RXCTL_RPPI, ir->base + SUNXI_IR_RXCTL_REG);
+ 
+-	if (ir->is_h713_vendor_init)
+-		writel(0x4, ir->base + SUNXI_IR_RXCTL_REG);
+-
+ 	/* Clear All Rx Interrupt Status */
+-	if (ir->is_h713_vendor_init)
+-		writel(REG_RXSTA_CLEARALL_H713, ir->base + SUNXI_IR_RXSTA_REG);
+-	else
+-		writel(REG_RXSTA_CLEARALL, ir->base + SUNXI_IR_RXSTA_REG);
++	writel(REG_RXSTA_CLEARALL, ir->base + SUNXI_IR_RXSTA_REG);
+ 
+ 	/*
+ 	 * Enable IRQ on overflow, packet end, FIFO available with trigger
+ 	 * level
+ 	 */
+-	if (ir->is_h713_vendor_init)
+-		writel(0x1313, ir->base + SUNXI_IR_RXINT_REG);
+-	else
+-		writel(REG_RXINT_ROI_EN | REG_RXINT_RPEI_EN |
+-		       REG_RXINT_RAI_EN | REG_RXINT_RAL(ir->fifo_size / 2 - 1),
+-		       ir->base + SUNXI_IR_RXINT_REG);
++	writel(REG_RXINT_ROI_EN | REG_RXINT_RPEI_EN |
++	       REG_RXINT_RAI_EN | REG_RXINT_RAL(ir->fifo_size / 2 - 1),
++	       ir->base + SUNXI_IR_RXINT_REG);
+ 
+ 	/* Enable IR Module */
+ 	tmp = readl(ir->base + SUNXI_IR_CTL_REG);
+-	if (ir->is_h713_vendor_init) {
+-		tmp |= 0xc0;
+-		writel(tmp, ir->base + SUNXI_IR_CTL_REG);
+-		tmp = readl(ir->base + SUNXI_IR_CTL_REG);
+-	}
+ 	writel(tmp | REG_CTL_GEN | REG_CTL_RXEN, ir->base + SUNXI_IR_CTL_REG);
+ 
+ 	if (ir->is_h713_vendor_init) {

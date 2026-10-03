@@ -1,0 +1,46 @@
+arm64: dts: h713: the IR receiver at sunxi-cir's default 8 MHz, and a sleep state for PL9
+
+clock-frequency = <24000000> made sunxi-cir compute rx_resolution = 1000000 / (24000000 / 64)
+= 2 us in integer arithmetic for a real 2.667 us sample, so every duration reached rc-core at
+0.75 of its length and NEC never decoded (measurement 02.10.2026: leader 6752/3348 us). The
+clock itself was right: mux 01 is dcxo24M on the sun50iw12 R_CCU (vendor r_ir_parents
+0xc0ea23cc = {osc32k, dcxo24M}, 1-bit mux at bit 24). Without the property the driver asks for
+8 MHz = hosc / 3 and the resolution is an exact 8 us. The sleep state is stock's (s_cir0@1,
+gpio_in); sunxi-cir passes through it to re-apply PL9 after the ARISC start. FB-REMOTEb.
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1867,6 +1867,14 @@
+ 				input-enable;
+ 			};
+ 
++			/* Stock's sleep state for PL9 (s_cir0@1). sunxi-cir
++			 * passes through it to re-apply r_ir_rx_pin after the
++			 * ARISC firmware's start has disabled PL8/PL9. */
++			r_ir_rx_sleep_pin: r-ir-rx-sleep-pin {
++				pins = "PL9";
++				function = "gpio_in";
++			};
++
+ 			s_pwm1_pin: s-pwm1-pin {
+ 				pins = "PL7";
+ 				function = "s_pwm1";
+@@ -1897,10 +1905,16 @@
+ 			clocks = <&r_ccu CLK_BUS_R_IR_RX>,
+ 				 <&r_ccu CLK_R_IR_RX>;
+ 			clock-names = "apb", "ir";
+-			clock-frequency = <24000000>;
++			/*
++			 * No clock-frequency: the driver's default 8 MHz is
++			 * hosc / 3 and gives exactly 8 us per sample. At 24 MHz
++			 * sunxi-cir's integer rx_resolution is 2 us for a real
++			 * 2.667 us - every duration came out 0.75 of NEC.
++			 */
+ 			resets = <&r_ccu RST_BUS_R_IR_RX>;
+-			pinctrl-names = "default";
++			pinctrl-names = "default", "sleep";
+ 			pinctrl-0 = <&r_ir_rx_pin>;
++			pinctrl-1 = <&r_ir_rx_sleep_pin>;
+ 			status = "okay";
+ 		};
+ 
