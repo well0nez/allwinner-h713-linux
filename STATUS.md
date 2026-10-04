@@ -76,7 +76,7 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Mali-G31 GPU (Panfrost) | works, in `v0.95-beta` | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (`umbau/test-20260915/keystone-20260922.md`) |
 | Video decode, IOMMU | unverified here | cstenger's patches, in our series | verified in his tree, not in this image |
 | Bluetooth and the stock remote | works, since `v0.96-beta` | `h713-bluetooth` (hciattach + bluez on UART1), `h713-bt-reset`, `h713-remote-pair`, kernel `0169` | 03.10.: 16 keys and the mouse as input events, 97 of 97 pings beside it, cold start and reconnect; three warm reboots in a row with `hci0` UP at 10.1 - 10.7 s ([docs/subsystems/wifi.md](docs/subsystems/wifi.md#bluetooth)). Nothing acts on the keys yet except Power (shuts down). The IR receiver is parked |
-| HDCP 1.4 | missing, open | key-select 3 of the crypto engine | 03.10.: refused from Linux and from EL3; 04.10.: the eFuse key flags read as not burned on this unit - disputed, two tests decide ([docs/known-issues.md](docs/known-issues.md)) |
+| HDCP 1.4 | missing, and solvable | key-select 3 of the crypto engine | 03./04.10.: refused from Linux and from EL3 on both units, and the eFuse flag for that key reads zero on both. But on 04.10. the HY300PRO-G-EU, put back on its maker's firmware, authenticated HDCP 1.4 with a PC source in 3 s, twice - so the silicon can do it and the flag is not what it goes by ([docs/known-issues.md](docs/known-issues.md)) |
 | HDCP 2.2 | works, device-local; session unproven | key read from *your* device at boot, never shipped | `h713-hdcp-key.service`; 02.10.: `h713-tv ctl hdcp` shows the key handed over and advertised; no 2.2 source has been on the input |
 
 ## Changes since v0.95-beta (in v0.96-beta)
@@ -285,7 +285,7 @@ These are written down because they are *not* done, not because they are expecte
 - the throw ratio with a tape measure, against the 0.8176 the optics data implies, which is what the automatic
   keystone computes with today
 - the auto keystone standing still for ten minutes at rest, and both of them on any board but the HY310
-- an HDCP 2.2 session with a protected 2.2 source, and the two tests that decide HDCP 1.4 (`docs/known-issues.md`)
+- an HDCP 2.2 session with a protected 2.2 source; for HDCP 1.4, what makes the key reach the engine (the maker's firmware does it, ours does not - `docs/known-issues.md`)
 - the interlaced modes VIC 6, 7 and 21 in the driver's mode list (the status line names them; 04.10.); two
   autofocus runs ended sharp at two different positions (51 and 93, 04.10.)
 - the ceiling modes with the projector really upside down, and the calibration cards in the mirrored modes

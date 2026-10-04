@@ -121,7 +121,8 @@ repairable.
   HY310's U-Boot environment reboots the box ten seconds after a kernel panic.
 
 **Left out, and why:** standby (a suspend is reached, the wake-up is not), HDCP 1.4 (refused by the crypto
-engine, and an open question - [docs/known-issues.md](docs/known-issues.md)), the IR receiver (two keys send
+engine under this system, while the maker's firmware authenticates on the same unit - the reason is open and
+is being looked for, [docs/known-issues.md](docs/known-issues.md)), the IR receiver (two keys send
 one code), crust (after standby), reloading the display firmware at run time (black picture after a
 reload), the fan backstop (untested on the device). An HDCP 2.2 session is unproven: no 2.2 source here.
 
