@@ -61,7 +61,10 @@ PROFILE = {
         "tpr12": 0x5544, "tpr13": 0x34032220,
         # J sys_config.dram_para carries the same 24 words. para2 and tpr13 are the unpatched pair
         # every image boot0 has; the flashing tool patches them (B uboot.config: 0x04000000 /
-        # 0xb4036223, cstenger's values). boards/README.md, "Two conventions".
+        # 0xb4036223, cstenger's values). boards/README.md, "Two conventions". tpr0..tpr2 here are
+        # the image's DDR3 template (the DDR3 timing at 792 MHz, as in every image boot0) and unused
+        # with tpr13 bit 1 clear; the board's own LPDDR3 timing at 720 MHz is cstenger's set in B,
+        # which U-Boot uses (B README.md, "The timing words").
         "source": "boot0_sdcard.fex offset 0x38, "
                   "hy300-pro-downloads/gdrive/HY300pro+ 0710/update.img (sha256 342806d8..., J input)",
     },
