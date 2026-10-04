@@ -1,12 +1,14 @@
 # Status
 
-Snapshot of **2026-09-26**. "Works" means *verified on the projector*, with the date and the log named -
+Snapshot of **2026-10-04**. "Works" means *verified on the projector*, with the date and the log named -
 not "compiles". Where a row says **unverified**, nobody has proven it on this hardware, and you should
 treat it as a claim, not a fact.
 
-The image on the test device is `v0.95-beta`, installed over FEL the way a stranger would, from the release
-files: the 188-patch series with U-Boot `4cecddd`, mesa for the GPU, and the four tools of the keystone chain.
-The last release is `v0.95-beta`; the last test image is `hy300-pro-test9` (25.09., for the HY300 Pro's owner). What the numbers mean: [RELEASES.md](RELEASES.md).
+The image on the test device is `v0.96-beta`, installed over FEL the way a stranger would, from the release
+files: the 206-patch series with U-Boot `6fb736c`, mesa for the GPU, Bluetooth and the stock remote.
+<!-- STAGE4: true once doku/142 4a step 3 is done - put its date here, then delete this comment. -->
+The last release is `v0.96-beta`; the last test image for the HY300 Pro of issue #1 is `hy300-pro-test9`
+(25.09.). What the numbers mean: [RELEASES.md](RELEASES.md).
 
 ## Summary
 
@@ -15,10 +17,11 @@ The last release is `v0.95-beta`; the last test image is `hy300-pro-test9` (25.0
   and as a station, focus motor, internal camera (without a bootloader crutch since 15.09.), fan tacho and
   thermals (reporting only), power key, FEL recovery, installer including restore-to-stock. The fan-stall
   poweroff is armed since 12.09. Since `v0.95-beta` (23.09.) also the **Mali GPU** and the **keystone** on it - by
-  hand and following the projector's own tilt - the settings page and the autofocus. Measured from packages on
-  26.09. over the LAN and **not in main yet**: the autofocus waits for its pattern, the keystone's reference is the
-  ideal pose, block 1 of the EDID brings 1080p100/120 (the rows below say so where it applies).
-- **Missing:** Bluetooth, AV1 decode, HDCP 1.4 for protected sources, any desktop.
+  hand and following the projector's own tilt - the settings page and the autofocus. Since `v0.96-beta` also
+  **Bluetooth** with the stock remote, the box's own sounds mixed into HDMI, the projection modes, EDID block 1
+  with 1080p100/120, and the optional hardware of other boards (the rows below say where and when).
+- **Missing:** AV1 decode, HDCP 1.4 for protected sources, the IR receiver, a standby below 4 W, any desktop -
+  and nothing acts on the remote's keys yet except Power.
 - **Not re-tested by us:** hardware video decode and the IOMMU - these come from cstenger's tree. The Mali GPU
   did too; since 22.09. it is measured here and since `v0.95-beta` it is in the image, under the keystone.
 
@@ -32,11 +35,11 @@ by `release/build-all.sh --board`: **no image for a board nobody has tested.** A
 
 | Board | State | Who ran it, and when | What exists for it |
 |---|---|---|---|
-| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | the owner (well0nez), on his HY310, `v0.9-beta`, 22.09.2026; the development builds `v0.8-dev20` to `v0.8-dev22` on 22.09.2026, and the keystone slots of 22. to 23.09.2026 (GPU, warp, accelerometer) on a `v0.9-beta` image with the branch on top | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
-| **HY200 QZ713_V2** | profile-only | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too, plus the installer profile `hy200_qz713_v2` - its stock firmware is the 2025-07-10 "HY300 Pro+" LPDDR3 image (720 MHz, `display.bin` `4628cbaf…`, HDCP wait site `0x4b13d538`) |
+| **HY310** (silkscreen `HY260_QZ713_V3.1`) | **verified** | the owner (well0nez), on his HY310, `v0.9-beta`, 22.09.2026; `v0.95-beta` installed from its release files on 23.09.2026; every part of `v0.96-beta` in the device tests of 02. to 04.10.2026 (`doku/134`) | everything else on this page. The only board a *release* image is built for; `hy300-pro` gets TEST images only |
+| **HY200 QZ713_V2** | profile-only, not testable yet | nobody | cstenger's LPDDR3 defconfig and device tree, marked untested on hardware in his tree too, and neither in our layout yet (`boards/hy200-qz713-v2`), plus the installer profile `hy200_qz713_v2` - its stock firmware is the 2025-07-10 "HY300 Pro+" LPDDR3 image (720 MHz, `display.bin` `4628cbaf...`, HDCP wait site `0x4b13d538`) |
 | **HY300 T08** | profile-only | nobody | installer profile and DRAM fragment, both read out of its stock image (`doku/121` §2). No device tree of ours |
 | **HY350** | profile-only | nobody | as above. It ships the same `display.bin` as the T08 and a different panel - which is why the panel comes from the declared project id, never from the firmware image |
-| **HY300 Pro** | partial | its owner, [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1): probe and dump 13.09., then the TEST images. `hy300-pro-test2` (16.09.) brought U-Boot up and hung in the display bring-up; `hy300-pro-test3` booted the kernel, with Wi-Fi as access point and station and HDCP 2.2 reported working, but no boot logo, no HDMI input and green stripes. `hy300-pro-test7` is the current one (23.09., ten files, built from main); test4 brought the ARISC fix and the first panel A/B. No green run yet | installer profile with gaps - layout from his log, DRAM clock 636 MHz, HDCP wait site unknown |
+| **HY300 Pro** | partial | its owner, [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1): probe and dump 13.09., then the TEST images. `hy300-pro-test2` (16.09.) brought U-Boot up and hung in the display bring-up; `hy300-pro-test3` booted the kernel, with Wi-Fi as access point and station and HDCP 2.2 reported working, but no boot logo, no HDMI input and green stripes; test4 brought the ARISC fix and the first panel A/B. `hy300-pro-test9` (25.09.) is the last: its boots stopped at random because the lamp's PWM words reached the display firmware as six parameters (fixed by kernel `0168`), and its U-Boot ran project 0x30 instead of 0x34. `test10` follows after `v0.96-beta` ([boards/hy300-pro](boards/hy300-pro/README.md)). No green run yet | installer profile with gaps - layout from his log, DRAM clock 636 MHz, HDCP wait site unknown |
 | **HY200 QZ713DF A1** (HY300PRO-G-EU, "HY300 Pro+" 2025 DDR3, cstenger's bench) | profile-only, both variants | `projector05061226`: the maintainer's own HY300PRO-G-EU has run TEST images (doku/136, doku/137), no green run reported yet; `projector09220931`: nobody. cstenger ran his own tree on his own bench board - kernel 6.18.38 boot-good (`mainline/config/versions.env`); that is his run, not ours | `boards/hy200-qz713df-a1` with two variants, installer profile `hy200_qz713df_a1` (the HY300PRO-G-EU's eMMC dump of 02.10.2026, the 2025-09-22 image), device tree `sun50i-h713-hy200-qz713df-a1` (0181), U-Boot base `hy200_qz713df_a1_defconfig` with the variant's DRAM clock; a TEST image per variant is one build away |
 | **L018** | profile-only | nobody | the installer profile `l018` alone, read out of one extractor run over a real device; no board directory, no DRAM data, no firmware image here |
 
@@ -55,29 +58,42 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | eMMC layout v4 | works | v3's six partitions, secure storage untouched by design; since 16.09. the files are copied in through a mount instead of into placeholders | 10.09. / 16.09., [docs/subsystems/emmc-layout.md](docs/subsystems/emmc-layout.md) |
 | Debian 13 rootfs | works | `rootfs/`, 242 MiB, zram, ssh key-only | built by `build-all`, acceptance tests in the build log |
 | Projector image (LVDS/DLP) | works | MIPS firmware + `sun50i-h713-afbd` KMS driver | continuous since 08.09. |
-| HDMI input | works | `sun50i-h713-hdmirx`, node found by name (it was `/dev/video3` on 12.09., not `video1` - the camera enumerated first) | 1080p60/50/24, 720p50, 576p50, 1366x768, 1024x768 and 4K30, colour-correct from the firmware's own record, 22.09. (six modes at 60 Hz since 08.09.); hot plug after boot, a boot with the source plugged in and unplug/replug verified 16.09. after the first-publication source switch was removed (kernel 0136a/0136c); a source outside the firmware's mode table is refused since 22.09. (by name once 0136za is in) (0136r-0136w); 1080p100 and 1080p120 lock with block 1 of the device's EDID published, 26.09. (package FB-EDID over the LAN, not in main) |
+| HDMI input | works | `sun50i-h713-hdmirx`, node found by name (it was `/dev/video3` on 12.09., not `video1` - the camera enumerated first) | 1080p60/50/24, 720p50, 576p50, 1366x768, 1024x768 and 4K30, colour-correct from the firmware's own record, 22.09. (six modes at 60 Hz since 08.09.); hot plug after boot, a boot with the source plugged in and unplug/replug verified 16.09. after the first-publication source switch was removed (kernel 0136a/0136c); a source outside the firmware's mode table is refused since 22.09. (0136r-0136w), and named at once since `0171` (02.10.: `1600x1200p60, 162.0 MHz not in the firmware's table`); 1080p120 locks with block 1 of the device's EDID published (`h713-tv ctl edid block1`, 02.10., a laptop, `doku/134` B1) |
 | Picture path userspace | works | `h713-tv` service, `h713-tv ctl …` | 08.09.; presets, gamma, aspect, controls |
-| Keystone, by hand and automatic | works, beta, in `v0.95-beta` | `h713-warp` (the warp on the GPU) and `h713-keystone` (the accelerometer), with `h713-tv` committing | 23.09.: the tearing measured and removed (a slot is drawn one vsync late), the warp draws NV12 on the video plane so the picture controls reach it, the projection area is `h713-warp ctl zoom`. 22.09.: a corner set by hand moves that corner of the picture on the wall, and the automatic answers a 25-degree nose-up tilt by pulling the top edge in. The caveats are in [docs/known-issues.md](docs/known-issues.md). 26.09.: the sensor's mounting offset measured at about 0 degrees (18.9 on the sensor, 18.9 on a phone laid on the housing), so the ideal pose can be the reference (package FB-KSREF, not in main) |
-| Settings page | works, beta, in `v0.95-beta` | `h713-panel`, port 8080, no authentication | 23.09.: the corners dragged, a preset and the zoom set from the page (Marco), [docs/guides/settings-page.md](docs/guides/settings-page.md) |
-| HDMI audio | works | codec-I2S + MSP DSP driver, one volume control | 08.09. 22:05, lip-sync judged by ear |
+| Keystone, by hand and automatic | works, beta, since `v0.95-beta` | `h713-warp` (the warp on the GPU) and `h713-keystone` (the accelerometer), with `h713-tv` committing | 23.09.: the tearing measured and removed (a slot is drawn one vsync late), the warp draws NV12 on the video plane so the picture controls reach it, the projection area is `h713-warp ctl zoom`. 22.09.: a corner set by hand moves that corner of the picture on the wall, and the automatic answers a 25-degree nose-up tilt by pulling the top edge in. The caveats are in [docs/known-issues.md](docs/known-issues.md). 26.09.: the sensor's mounting offset measured at about 0 degrees (18.9 on the sensor, 18.9 on a phone laid on the housing), so the ideal pose is the reference since `v0.96-beta` (02.10.: `status` says `ideal`, a taken reference refines it). 02.10.: the projection modes rear, ceiling and rear-ceiling and the soft edge judged on the wall (the projector upright on the bench, not on a ceiling); 03.10.: the calibration picture readable at 1080p and 720p (`doku/134` A1, A2) |
+| Settings page | works, beta, since `v0.95-beta` | `h713-panel`, port 8080, no authentication | 23.09.: the corners dragged, a preset and the zoom set from the page (Marco), [docs/guides/settings-page.md](docs/guides/settings-page.md); 02.10.: the level reference and "Auto now" from the page (`doku/134` A1). Controls of absent hardware are hidden since `v0.96-beta` |
+| HDMI audio | works | codec-I2S + MSP DSP driver, one volume control | 08.09. 22:05, lip-sync judged by ear; 03.10.: the box's own sounds through `hw:hy310hdmi,0` mixed into HDMI by the DSP (`0176` - `0178`), HDMI and device sounds within 0.07 dB of each other over 20 rounds, the volume within 0.8 dB of the stock curve (`doku/134` D1 - D3) |
 | ARM ↔ MIPS IPC | works | `cpu_comm` in-kernel API | callback slot leak fixed; [docs/subsystems/cpu-comm.md](docs/subsystems/cpu-comm.md) |
 | ARISC (PMU, HPD, EDID) | works | `sun50i-h713-arisc` | 17.65 s to hot-plug ready |
 | Wi-Fi AIC8800D80 | works | out-of-tree modules + `h713-wifi` | 12.09.: access point (−50 dBm, 5.7 MB/s, DHCP, SSH) and station against a real network (DHCP address, internet through `wlan0`) |
 | Focus motor | works | `hy310_focus_motor` + `h713-focus` | range watcher measured 12.09. (lower edge) and 23.09. (upper edge, the pad's pull-up, homing walks 110 msteps back), `analyse/boot/motor-bereichswaechter-20260912.txt`, `umbau/test-20260915/keystone-20260922.md` |
-| Autofocus | works, beta, in `v0.95-beta`; convergence open | `h713-autofocus` + `h713-afmetric` | 23.09.: the search turns round at an edge and found a peak on the bench; 26.09.: a run waits for its pattern before the motor moves (package FB-AFWAIT, HY310 over the LAN, not in main) - and the first run after the boot still ended at the cap because the coarse search does not turn round on a long fall (`umbau/work/FB-AFWAIT/device/af-run1.log`); the second found its peak in 148 msteps; 27.09.: FB-AFSEARCH's return walks back to the best position on the device, its reversal fix is unproven yet (flat metric, changed set-up) |
+| Autofocus | works, beta, since `v0.95-beta` | `h713-autofocus` + `h713-afmetric` | 23.09.: the search turns round at an edge and found a peak on the bench; 02.10. with the `v0.96-beta` tool (waits for its pattern, reversal fix): two runs `stopped: peak`, then a run against the wall ended sharp at the same motor position as the run before (`doku/134` A4). Open: the metric's span was only +11 % that day (exposure) |
 | Internal camera | works | `uvcvideo` + `h713-cam`; the USB PHYs are powered by the kernel since 15.09. (SIDDQ, patch 0005a), no `usb start` in the boot loader | 12.09.: grab of the lit wall, mean brightness Y = 88.7, 3.2 s (`analyse/beamer-cam/p6-wand-20260912.png`) |
 | Fan, tacho, stall protection | works | `hy310-board-mgr` | 4860 RPM measured 11.09.; **the fan-stall poweroff is armed and was triggered on the device** 12.09.: rail cut, device shut itself down, next boot mounted the filesystem clean (`analyse/boot/p6-notaus-luefter-20260912.txt`). No NTC on this unit, so the tacho is the protection |
-| Power / standby | partial | standby is 4 W; deep sleep is designed, not built | plan `doku/104` |
+| Power / standby | partial | standby is 4 W; deep sleep is designed, built for a test and parked | plan `doku/104`; 03.10.: a suspend reached the DRAM entry and the CPU reset, the wake-up never came (`doku/139`), so it is not in the image |
 | Crypto engine | present, unused | measurement module loads, crypto disabled | `doku/114` |
 | Mali-G31 GPU (Panfrost) | works, in `v0.95-beta` | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (`umbau/test-20260915/keystone-20260922.md`) |
 | Video decode, IOMMU | unverified here | cstenger's patches, in our series | verified in his tree, not in this image |
-| Bluetooth | missing | driver builds, firmware split not done | `rootfs/packages.txt` explains the choice |
-| HDCP 1.4 | missing | path understood, one test costs a power cycle | `doku/112` |
-| HDCP 2.2 | works, device-local | key read from *your* device at boot, never shipped | `h713-hdcp-key.service` |
+| Bluetooth and the stock remote | works, since `v0.96-beta` | `h713-bluetooth` (hciattach + bluez on UART1), `h713-bt-reset`, `h713-remote-pair`, kernel `0169` | 03.10.: 16 keys and the mouse as input events, 97 of 97 pings beside it, cold start and reconnect; three warm reboots in a row with `hci0` UP at 10.1 - 10.7 s ([docs/subsystems/wifi.md](docs/subsystems/wifi.md#bluetooth)). Nothing acts on the keys yet except Power (shuts down). The IR receiver is parked |
+| HDCP 1.4 | missing, open | key-select 3 of the crypto engine | 03.10.: refused from Linux and from EL3; 04.10.: the eFuse key flags read as not burned on this unit - disputed, two tests decide ([docs/known-issues.md](docs/known-issues.md)) |
+| HDCP 2.2 | works, device-local; session unproven | key read from *your* device at boot, never shipped | `h713-hdcp-key.service`; 02.10.: `h713-tv ctl hdcp` shows the key handed over and advertised; no 2.2 source has been on the input |
 
-## Changes since v0.9-beta
+## Changes since v0.95-beta (in v0.96-beta)
 
-In the source, not in a release yet. A night of device slots on the HY310 on 22.09.2026 stands behind this list -
+Device tests on the HY310 from 02. to 04.10.2026, each named in `doku/134`; the list of what came in and what
+stayed out is the `v0.96-beta` section of [RELEASES.md](RELEASES.md). In short: Bluetooth and the stock remote
+(`0169`, `h713-bluetooth`, `h713-remote-pair`, `h713-bt-reset`); the EDID's second half and the firmware's
+mode table as the mode list (`0170` - `0173`); the HDCP state in `h713-tv ctl hdcp` (`0174`, `0175`, `0179`);
+the device sounds mixed into HDMI and the stock volume curve (`0176` - `0178`); the ideal keystone reference,
+the projection modes, the soft edge and the calibration picture; the autofocus's wait and reversal; optional
+hardware per board (`h713-features`, exit 7); the HY200 QZ713DF A1 as one board with two firmware variants
+(`0167`, `0168`, `0181`, U-Boot `2de0cc8` and `6fb736c`); the HY300 Pro's own focus tables (`0182`); the
+drivers' log lines in English (`0180`); `restore-stock` for both known eMMC sizes; reproducible builds;
+`panic=10` in the HY310's environment. The series stands at **206 patches**.
+
+## Changes since v0.9-beta (in v0.95-beta)
+
+In `v0.95-beta` (23.09.2026). A night of device slots on the HY310 on 22.09.2026 stands behind this list -
 from "no GPU has ever run in this image" to a picture that follows the projector's own tilt. Every reading quoted
 here is in `umbau/test-20260915/keystone-20260922.md`.
 
@@ -125,7 +141,8 @@ here is in `umbau/test-20260915/keystone-20260922.md`.
   came out of the device run and is fixed: the audio automaton took "plane on" for "there is a picture", so a
   source event during a warp - a player switching 48 to 44.1 kHz - re-evaluated the audio as *no picture* and
   muted it with a pop. All five call sites take "plane on **or** warped" now.
-- **Not done, and named as such:** the projection-mode mirror RPC (ceiling, rear), the vendor's edge-blend pass,
+- **Not done then, and named as such** (the projection modes and the edge blend came with `v0.96-beta`):
+  the projection-mode mirror RPC (ceiling, rear), the vendor's edge-blend pass,
   and the write-back self-test as a second opinion on the identity warp (the ordinary check is `h713-warp ctl check N`). The
   hour-long soak has no result yet; the long run that exists is the one the audio bug came out of. The throw
   ratio is still the optics' own 0.8176 out of `camprjspe.ini` and not a tape measure. None of this has been
@@ -133,9 +150,9 @@ here is in `umbau/test-20260915/keystone-20260922.md`.
 - With `0024e`, `0136y`, `0162`, `0163`, `0164` and `0165` the series stands at **188 patches**
   ([docs/kernel-patches.md](docs/kernel-patches.md)).
 
-## Changes since v0.8-beta
+## Changes since v0.8-beta (in v0.9-beta)
 
-In the source, not in a release yet. Three device runs on the HY310 on 22.09.2026 stand behind this list -
+In `v0.9-beta` (22.09.2026). Three device runs on the HY310 on 22.09.2026 stand behind this list -
 `v0.8-dev20` (169 patches), `v0.8-dev21` (177) and `v0.8-dev22` (182); what was read out on the device is in
 `umbau/test-20260915/dev20-20260922.md`, `dev21-20260922.md` and `dev22-20260922.md`.
 
@@ -267,8 +284,13 @@ These are written down because they are *not* done, not because they are expecte
 - the throw ratio with a tape measure, against the 0.8176 the optics data implies, which is what the automatic
   keystone computes with today
 - the auto keystone standing still for ten minutes at rest, and both of them on any board but the HY310
-- the FB packages' device days (`doku/132`): HDCP 1.4 in nine steps, HDCP 2.2 with a protected source, the audio
-  mix (two power cycles, a microphone), EDID stage B, the autofocus after its reversal fix, 120 Hz under the warp
+- an HDCP 2.2 session with a protected 2.2 source, and the two tests that decide HDCP 1.4 (`docs/known-issues.md`)
+- under the warp a 120 Hz source draws about 19 frames a second (02.10.: GPU busy, frames dropped) - to be
+  explained or written down as a limit; the autofocus metric's exposure; the interlaced modes (VIC 5, 6, 7, 20,
+  21) in the driver's mode list
+- the ceiling modes with the projector really upside down, and the calibration cards in the mirrored modes
+- the fan backstop of the wave (a stalled fan with a live tacho), parked: the fan connector was out of reach
+- Bluetooth after a cold start on the HY300PRO-G-EU, which stalled at HCI command 0x1003 before `h713-bt-reset` existed
 
 ## Reading the German journal
 

@@ -1,9 +1,10 @@
 # H713 Linux
 
 Mainline Linux **6.18.38** and a fully open boot chain (U-Boot SPL, TF-A BL31, U-Boot, Linux) on projectors
-built around the Allwinner **H713** (sun50iw12p1). It started on the MagCubic HY310 and that is still the one
-board this system has been run on; the repository now knows several H713 boards, holds a profile for each
-firmware it has seen, and builds images only for boards that somebody has actually tested. No vendor source
+built around the Allwinner **H713** (sun50iw12p1). It started on the MagCubic HY310, and that is still the one
+board a release image is built for; the repository now knows several H713 boards, holds a profile for each
+firmware it has seen, gives a board in test TEST images for its owner, and builds release images only for
+boards that somebody has actually tested. No vendor source
 code, no vendor Android: the boards' own firmware was reverse-engineered until the display, the HDMI input,
 the sound and the motor could be driven from Linux.
 
@@ -34,19 +35,19 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 | **Boots standalone** | power → U-Boot → Debian 13 (arm64) from eMMC, 20/20 cold starts, no host, no network; the device's own boot logo 2 s after the power key (v0.6-beta: 7 s), the kernel at 3.5 s (was 9 s) |
 | **The projector image** | LVDS panel driven through the MIPS display firmware; KMS device for anything that draws |
 | **HDMI input** | a V4L2 capture device: signal detection, timings, hot plug, source switch, picture controls, a magnifier (zoom in), and the display firmware's own mode table as the list of what locks - a source whose raster is in no record of it is named and refused instead of left hanging |
-| **HDMI audio** | HDMI sound out of the speaker, lip-sync verified, one volume control |
+| **HDMI audio** | HDMI sound out of the speaker, lip-sync verified, one volume control on the stock curve; the box's own sounds are mixed into it by the DSP (`hw:hy310hdmi,0`, ALSA's default) |
 | **Wi-Fi** | AIC8800D80 as an access point or as a client on your network, configured in `/etc/h713/wifi.env` |
-| **Focus motor** | manual focus with a range watcher that stops before the mechanical stop; [`h713-autofocus`](docs/tools/h713-autofocus.md) is the vendor's own search rebuilt - on the device it runs, moves the motor and sharpens the picture, but convergence against a wall is **not proven yet** |
+| **Focus motor** | manual focus with a range watcher that stops before the mechanical stop; [`h713-autofocus`](docs/tools/h713-autofocus.md) is the vendor's own search rebuilt - on 02.10.2026 it ended sharp against a wall, twice at the same motor position; more walls and evenings are still to come |
 | **Camera** | the built-in camera works as a normal V4L2 device - probe, controls, still images ([`h713-cam`](docs/tools/h713-cam.md)) |
 | **Fan and power key** | fan tacho by interrupt, and the device powers itself off if the fan stalls - this board has no temperature sensor, so the tacho is the protection ([details](docs/subsystems/board-mgr.md)) |
 | **Recovery** | FEL from software (`h713-fel`), eMMC as a USB drive, stock Android restorable byte-for-byte |
-| **Keystone and zoom** | the picture squared up on the Mali GPU, by hand or from the projector's tilt sensor, and shrunk without cutting anything off; the firmware's picture controls still act on the corrected picture ([guide](docs/guides/keystone.md)) |
+| **Keystone and zoom** | the picture squared up on the Mali GPU, by hand or from the projector's tilt sensor, and shrunk without cutting anything off; four projection modes (front, rear, ceiling, rear-ceiling) and the vendor's soft edge; the firmware's picture controls still act on the corrected picture ([guide](docs/guides/keystone.md)) |
 | **Settings page** | `http://<the projector>:8080/` from a phone or a browser: keystone, zoom, focus and autofocus, picture presets and sliders, sound - no login ([guide](docs/guides/settings-page.md)) |
 | **Autofocus** | the vendor's search rebuilt: chessboard on the wall, the built-in camera, the focus motor - one command or one button, turns round at the ends of the travel ([guide](docs/guides/autofocus.md)) |
-| **Remote** | the stock Bluetooth remote: hold Left+Right to pair, all keys and the mouse mode work, it reconnects on a key press after a reboot ([details](docs/subsystems/wifi.md#bluetooth)) |
+| **Remote** | the stock Bluetooth remote: hold Left+Right to pair, all 16 keys and the mouse arrive as Linux input events, it reconnects on a key press after a reboot ([details](docs/subsystems/wifi.md#bluetooth)). Nothing in the image acts on the keys yet except Power, which shuts the projector down |
 
 Not there yet: the **IR receiver** (the same remote over infrared; parked, two keys share one code), **AV1 decode**,
-**HDCP 1.4** for protected sources, the **projection modes** (ceiling, rear), and there is **no desktop** in the
+**HDCP 1.4** for protected sources, a **standby** below 4 W, and there is **no desktop** in the
 shipped image - it runs `h713-tv`, not a compositor. Hardware video decode and the IOMMU come from cstenger's tree
 and are verified there, not re-tested in this image. Details and honest limits:
 [docs/known-issues.md](docs/known-issues.md).
@@ -96,6 +97,8 @@ Everything here is ours and documented; nothing needs a vendor daemon.
 | [`h713-warp`](docs/tools/h713-warp.md) | the keystone and the zoom, drawn on the GPU |
 | [`h713-keystone`](docs/tools/h713-keystone.md) | the automatic keystone from the accelerometer, once after a move |
 | [`h713-panel`](docs/tools/h713-panel.md) | the settings page in the browser, port 8080 ([guide](docs/guides/settings-page.md)) |
+| [`h713-features`](docs/tools/h713-features.md) | which optional hardware - camera, accelerometer, focus motor - this board has |
+| `h713-remote-pair` | pairs the stock Bluetooth remote and keeps it connected ([details](docs/subsystems/wifi.md#bluetooth)) |
 | [everything else that runs](docs/services.md) | the services in the image, the journal switch, and the one security decision you should know about |
 | **On your PC** | |
 | [`h713-install`](docs/tools/h713-install.md) | dump, extract, install, verify - and the way back to stock, in one tool with subcommands |
@@ -129,7 +132,7 @@ run; from then on a release image exists for it). The rule behind it: no image f
 
 | Board id | Sold as | DRAM | Panel (project id) | State |
 |---|---|---|---|---|
-| `hy310` | MagCubic HY310, silkscreen HY260_QZ713_V3.1, Android 11 firmware of 2025-07 | DDR3, 792 MHz, 1 GiB | 1920x1080 dual-port (0x30) | **verified**: this system runs on it; install, boot, recovery and restore to stock were done on hardware for every release ([STATUS.md](STATUS.md), v0.8-beta, 2026-09-16), and the development builds up to `v0.8-dev22` ran on it on 2026-09-22 |
+| `hy310` | MagCubic HY310, silkscreen HY260_QZ713_V3.1, Android 11 firmware of 2025-07 | DDR3, 792 MHz, 1 GiB | 1920x1080 dual-port (0x30) | **verified**: this system runs on it; install, boot, recovery and restore to stock were done on hardware for every release ([STATUS.md](STATUS.md)), and every part of `v0.96-beta` went through the device tests of 2026-10-02 to 10-04 |
 | `hy300-pro` | MagCubic HY300 Pro, 2024 board, Android 10 firmware (not the HY200 QZ713DF A1) | DDR3, 636 MHz, 1 GiB | 1280x720 single-port (0x34), from his panel_config.ini and U-Boot on his unit | **in test**: TEST images for its owner ([issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1)). `hy300-pro-test9` (25.09.) is the last: its boots stop at random places, because the lamp's PWM words reached the display firmware as six parameters instead of one address (fixed by kernel 0168 on the HY300PRO-G-EU), and its U-Boot ran project 0x30 instead of 0x34. `test10` follows after v0.96-beta. No green run yet. Its DRAM block, partition table and display-firmware revision come from his probe run |
 | `hy200-qz713df-a1` | silkscreen HY200 QZ713DF A1, one board in two firmware variants: HY300 Pro with the box label HY300PRO-G-EU, Android 11 of 2025-05 (`projector05061226`, the maintainer's own; not the board of issue #1), and "HY300 Pro+" (2025, DDR3), Android 11 of 2025-09 (`projector09220931`); also cstenger's bench board | DDR3, 792 MHz (2025-05 firmware) or 624 MHz (2025-09) | 0x34; 1280x720 single-port, from both firmwares' panel_config.ini | `projector05061226`: **in test, the maintainer's own** - TEST images booted on it, the picture right since the 8-bit LVDS fix; accelerometer measured, no camera, no focus motor; no green run reported yet. `projector09220931`: **profile, testable** - firmware, DRAM block and panel known from its image, a test image is one build away; nobody has run this image there |
 | `hy200-qz713-v2` | sold as "HY300 Pro+" (2025, LPDDR3); HY200 QZ713_V2, Android 11 firmware of 2025-07 | LPDDR3, 720 MHz, 1 GiB | 1280x720 single-port (0x34) | **profile only**: firmware and panel known from its image; the timing words are cstenger's (LPDDR3 at 720 MHz; the image's are a DDR3 template its boot0 does not use). Not testable yet: its U-Boot base and kernel tree are still cstenger's bring-up ones, not our layout |
@@ -145,9 +148,10 @@ Wi-Fi, focus motor, camera, recovery) is described below for the HY310, the boar
 ## Getting it running
 
 ```bash
-release/build-all.sh --version v0.9-beta --vendor <your extraction>   # image, from a clean clone
-release/build-all.sh --version v0.9-beta --board hy300-pro --test-image  # a test image for a board in test
-installer/h713-install --help                                         # identify, dump, install, restore
+release/build-all.sh --version v0.96-beta --vendor <your extraction>   # image, from a clean clone
+release/build-all.sh --version v0.96-beta --board hy300-pro --test-image  # a test image for a board in test
+release/build-all.sh --version v0.96-beta --board hy200-qz713df-a1 --variant projector05061226 --test-image
+installer/h713-install --help                                          # identify, dump, install, restore
 ```
 
 The image ships **no proprietary files**. Firmware for the display, the ARISC, Wi-Fi, the picture
@@ -162,7 +166,8 @@ mainline/        cstenger's tree as a git subtree + our kernel patch series (pat
 uboot-h713/      our U-Boot commits as patches, generated from the fork (read-only mirror)
 installer/       h713-install, h713-mkimage, h713-extract and helpers
 rootfs/          the Debian 13 recipe: package list, overlay, install script, tests (rootfs/README.md)
-userspace/       h713-tv, h713-pq, h713-focus, h713-autofocus, h713-cam, h713-warp, h713-keystone, h713-panel, h713-gpu-probe
+userspace/       h713-tv, h713-pq, h713-focus, h713-autofocus, h713-cam, h713-warp, h713-keystone, h713-panel,
+                 h713-features, h713-remote-pair, h713-gpu-probe
 release/         build-all.sh - clean clone to flashable image, --board picks the board (release/README.md)
 boards/          one directory per board: board.env, its U-Boot DRAM block, what is known about it
 tools/           host-side helpers from the bring-up: UART capture, register diffs, disassembly aids

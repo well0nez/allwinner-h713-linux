@@ -23,6 +23,9 @@ until you have a dump of what was there before.
 - An image: from a release tag if there is one for your version, otherwise built yourself with
   `release/build-all.sh` ([BUILDING.md](BUILDING.md); the first time also
   [docs/build-container.md](docs/build-container.md)). Building takes about 20 minutes and needs no device.
+  A release image is for the HY310 alone. For another H713 projector, the Boards table in
+  [README.md](README.md#boards) says what exists - a TEST image built for its owner, or the read-only probe -
+  and the installer refuses a release image on a board it does not hold a verified profile for.
 - Your public SSH key. Without it the installed system has **no** SSH access, only the serial console:
   the image deliberately ships no key.
 
@@ -34,14 +37,14 @@ table.
 
 ```bash
 git clone https://github.com/well0nez/allwinner-h713-linux.git
-mkdir ~/hy310-v0.9-beta && cd ~/hy310-v0.9-beta
-#   download every file of the v0.9-beta release into this folder, then:
+mkdir ~/hy310-v0.96-beta && cd ~/hy310-v0.96-beta
+#   download every file of the v0.96-beta release into this folder, then:
 zstd -d *.img.zst                            # optional, see below - the installer does it too
-sha256sum -c h713-hy310-v0.9-beta.sha256     # lists the unpacked .img parts, so unpack first
+sha256sum -c h713-hy310-v0.96-beta.sha256    # lists the unpacked .img parts, so unpack first
 chmod +x sunxi-fel
 ```
 
-The folder then holds the three `.img` parts, `h713-hy310-v0.9-beta.tabelle.json`, `u-boot-installer.bin`
+The folder then holds the three `.img` parts, `h713-hy310-v0.96-beta.tabelle.json`, `u-boot-installer.bin`
 (the U-Boot that exposes the eMMC over USB) and `sunxi-fel` (the FEL tool, built with the H713 trap door -
 the stock `sunxi-fel` from your distribution does **not** work here). `sunxi-fel` needs `libusb-1.0` on your
 PC; on Debian and Ubuntu that is `apt install libusb-1.0-0`.
@@ -54,7 +57,7 @@ If you built the image yourself with `release/build-all.sh`, the same files are 
 ```bash
 # 1. put the device into FEL: hold the reset button, then plug in power
 # 2. run the installer (it loads U-Boot over USB - nothing is written yet)
-sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.9-beta \
+sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.96-beta \
     --ssh-key ~/.ssh/id_ed25519.pub \
     --full --dump ~/hy310-dump
 # 3. it dumps, extracts your device's own files, copies them into the image, writes it, verifies
@@ -67,7 +70,7 @@ the `zstd` binary on an older Python. `--uboot` and `--sunxi-fel` override that 
 elsewhere. Run from inside the release folder, even the folder can be left out:
 
 ```bash
-cd ~/hy310-v0.9-beta && sudo ~/allwinner-h713-linux/installer/h713-install install
+cd ~/hy310-v0.96-beta && sudo ~/allwinner-h713-linux/installer/h713-install install
 ```
 
 finds the table in the directory it is run from (or beside the tool itself) and asks for the two things
@@ -272,14 +275,18 @@ is the way back, and once Android is gone it is the only thing that names the bo
 | Reinstall over this system, no dump needed | (default: the vendor files come off the device itself) |
 | Reinstall a test image over this system | `--test-image --dump <directory of the first install>` |
 | Go back to your own dump | `h713-install restore ~/h713-dump/emmc-full.img` |
-| Go back to stock Android | `h713-install restore-stock UPDATE.IMG` |
+| Go back to stock Android | `h713-install restore-stock UPDATE.IMG` - your board's own firmware image |
 | Rehearse without writing | `--no-write` on any subcommand |
 
 `restore-stock` rebuilds the vendor partition table byte-for-byte, so the device comes back as a normal
-Android projector. The path has been used on hardware; the English command line for it has not, and
-neither has the Windows side ([STATUS.md](STATUS.md)). The German switches of v0.5-beta - `--abbild`,
-`--abzug`, `--nur-abzug`, `--dry-run` and the rest - still work until after `v0.9` and each print one line
-with their new name, so an older recipe does not break.
+Android projector. It takes both eMMC sizes an H713 board is known with (15269888 and 15273600 sectors),
+builds the table for the device in front of it, and writes nothing when a partition of the container would
+end behind the device's last usable sector ([docs/tools/h713-install.md](docs/tools/h713-install.md)); the
+container must be your unit's own firmware, which the installer does not check. The path has been used on
+hardware; the English command line for it has not, and neither has the Windows side ([STATUS.md](STATUS.md)).
+For any other size, or a firmware image you do not have, the way back is your full dump (`restore`). The
+German switches of v0.5-beta - `--abbild`, `--abzug`, `--nur-abzug`, `--dry-run` and the rest - still work
+and each print one line with their new name, so an older recipe does not break.
 
 ## If something goes wrong
 

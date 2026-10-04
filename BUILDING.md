@@ -3,12 +3,12 @@
 One command turns a clean clone into a flashable image:
 
 ```bash
-release/build-all.sh --version v0.9-beta --vendor <output of h713-extract>
+release/build-all.sh --version v0.96-beta --vendor <output of h713-extract>
 ```
 
-Eleven steps: TF-A BL31 · U-Boot (release, installer, and `sunxi-fel`) · kernel with the patch series ·
-AIC8800 modules · a pinned Debian keyring · an arm64 sysroot with `h713-tv`, `h713-afmetric` and `h713-warp` cross-built against it · mesa for the GPU path (panfrost only) ·
-the Debian 13 root filesystem · the ext4 inputs · the image · verification · a build stamp. With
+Eleven steps: TF-A BL31; U-Boot (release, installer, probe, and `sunxi-fel`); kernel with the patch series;
+AIC8800 modules; a pinned Debian keyring; an arm64 sysroot with `h713-tv`, `h713-afmetric` and `h713-warp` cross-built against it; mesa for the GPU path (panfrost only);
+the Debian 13 root filesystem; the ext4 inputs; the image; verification; a build stamp. With
 `--vendor` it ends in `ALL GREEN` - the self-test compared every extracted file against the image -
 or it stops. Without `--vendor` it ends after the structural check, which is a weaker statement.
 
@@ -28,8 +28,9 @@ built. Everything runs in a container; **nothing is built on your host**.
 empty target directories either way - but the self-test cannot copy a real file set in and read it back.
 With it, the self-test copies every extracted file through `h713.mountfs` and compares it byte for byte.
 
-The PC tools have a golden suite of their own: `bash installer/tests/run.sh` (295 tests, 50 of them skipped without
-`--local`, which adds the vendor fixtures and the three vendor images). Every push is preceded by
+The PC tools have a golden suite of their own: `bash installer/tests/run.sh` (372 tests; those that need the
+vendor fixtures and the three vendor images skip without `--local`, which adds them), and
+`python3 tools/check-py39.py` holds the installer against the Python 3.9 that FLASHING.md promises. Every push is preceded by
 `release/sperr-scan.py`, which fails if a vendor blob, a key, a dump or an image reached the tree.
 
 ## Useful switches
@@ -38,7 +39,9 @@ The PC tools have a golden suite of their own: `bash installer/tests/run.sh` (29
 |---|---|
 | `--dry-run` | say what would be built, build nothing |
 | `--skip-bl31`, `--skip-uboot`, `--skip-kernel`, `--skip-rootfs` | reuse what is already there |
-| `--wifi-env FILE` | put your own `/etc/h713/wifi.env` into the image instead of the public default |
+| `--board <id>`, `--variant <name>` | the board, and for a board with several stock firmwares the variant (required there) - see *Boards* |
+| `--test-image` | a TEST image for a board in test - see *Boards* |
+| `--wifi-env FILE` | put your own `/etc/h713/wifi.env` into the image instead of the public default. Never for an image you hand on: the file, password included, is then inside it, and the stamp says `reproducible: no`. A release is built without it; copy your own file onto the device after installing |
 | `--jobs N` | parallelism (default: all cores) |
 
 The skips are for iterating. A release build should run without them: since 2026-09-12 the script wipes
@@ -91,17 +94,19 @@ rather than ship one written for a different board.
 
 ```
 mainline/build/out/     bl31.bin, spl-release.bin, uboot-proper-release.bin, hy310-env-release.bin,
-                        u-boot-installer.bin, sunxi-fel, h713-kernel.fit, modules/
+                        u-boot-installer.bin, u-boot-h713-probe.bin, sunxi-fel, h713-kernel.fit, modules/
 installer/out/          <name>-{a-bootkette,b-system,c-gptkopie}.img, .tabelle.json,
                         .sha256, -README.txt, .BUILD.txt
 ```
 
 The `.BUILD.txt` stamp records the series hash, the defconfig hash, the kernel tree digest, the three
-submodule commits and a sha256 for each component. Quote it when you report a problem.
+submodule commits, the source date and a sha256 for each component. Quote it when you report a problem.
 
-Two builds of the same source are **not** byte-identical: TF-A, U-Boot and the FIT embed a build time,
-and the AIC8800 module embeds kernel header paths. The tree digest, the series hash and the submodule
-commits in the stamp are what actually identify a build.
+The build clock is the commit's date (`SOURCE_DATE_EPOCH`, handed to every step), so two builds of the same
+commit from the same checkout path give the same building blocks; the stamp's `reproducible:` line says
+`yes`, or why not (local changes, a `--skip-*`, `--wifi-env`). The rootfs tar repeats only while the Debian
+mirror is at the same state, and the image files themselves still differ (the ext4 inputs carry their own
+UUIDs and times) - compare stamps, not images ([RELEASES.md](RELEASES.md)).
 
 ## Pinned inputs
 
@@ -129,6 +134,7 @@ them the build compiles the same 119 objects. Only measured boot or TPM support 
 mainline/build/build.sh bl31                  # TF-A
 BOARD=hy310 mainline/build/build.sh uboot     # U-Boot for one board
 BOARD=hy310 mainline/build/build.sh kernel    # kernel + modules + FIT
+BOARD=hy200-qz713df-a1 VARIANT=projector05061226 mainline/build/build.sh uboot   # one firmware variant
 ```
 
 `BOARD` defaults to `ddr3`, the HY200 bench board this port was brought up on - name the board you
