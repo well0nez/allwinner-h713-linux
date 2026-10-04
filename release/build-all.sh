@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 # release/build-all.sh -- from a fresh clone to an installable image, one entry point.
 #
-#   release/build-all.sh --version v0.10 [--board hy310] [--vendor DIR] [--wifi-env FILE]
-#                        [--jobs N] [--skip-bl31] [--skip-uboot] [--skip-kernel]
-#                        [--skip-rootfs] [--test-image] [--dry-run]
+#   release/build-all.sh --version v0.10 [--board hy310] [--variant NAME] [--vendor DIR]
+#                        [--wifi-env FILE] [--jobs N] [--skip-bl31] [--skip-uboot]
+#                        [--skip-kernel] [--skip-rootfs] [--test-image] [--dry-run]
 #
 # --board <id> (default hy310) picks boards/<id>/board.env: the installer
 # profile, the kernel DTB the FIT carries, the U-Boot base defconfig and the
 # image name ($IMAGE_NAME-$VERSION). The rule of doku/121 §5 is enforced here:
 # no image for a board nobody has tested -- a board that is not STATUS=verified
 # (an owner reported a green run) or has no installer profile is refused.
+# --variant <name> is required for a board with VARIANTS (one board, several stock
+# firmwares, boards/README.md): boards/<id>/variants/<name>/variant.env is read after
+# board.env, and its STATUS, IMAGE_NAME and DRAM_CLK are what counts.
 #
 # --test-image is the one named way past that (plan/stufe-5.md): a partial/profile-only
 # board with PROFILE, KERNEL_DTB and a U-Boot base gets $IMAGE_NAME-$VERSION-TEST, marked
-# test_for=$PROFILE in its table, for its own owner to try -- h713-install writes it on
+# test_for=$PROFILE[/<variant>] in its table, for its own owner to try -- h713-install writes it on
 # that board alone and only with --test-image. Not a release, no claim of support.
 #
 # Order (doku/116 P4):
@@ -83,12 +86,13 @@ SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
-VERSION= BOARD=hy310 VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0
+VERSION= BOARD=hy310 VARIANT= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0
 SKIP_BL31=0 SKIP_UBOOT=0 SKIP_KERNEL=0 SKIP_ROOTFS=0
 while (($#)); do
 	case "$1" in
 	--version)   VERSION=${2:?}; shift 2 ;;
 	--board)     BOARD=${2:?}; shift 2 ;;
+	--variant)   VARIANT=${2:?}; shift 2 ;;
 	--vendor)    VENDOR=$(cd "${2:?}" && pwd); shift 2 ;;
 	--wifi-env)  WIFI_ENV=$(readlink -f "${2:?}"); shift 2 ;;
 	--jobs)      JOBS=${2:?}; shift 2 ;;
@@ -98,7 +102,7 @@ while (($#)); do
 	--skip-rootfs) SKIP_ROOTFS=1; shift ;;
 	--test-image)  TEST_IMAGE=1; shift ;;
 	--dry-run)   DRY=1; shift ;;
-	-h|--help)   sed -n '2,33p' "$0"; exit 0 ;;
+	-h|--help)   sed -n '2,36p' "$0"; exit 0 ;;
 	*) echo "unknown: $1" >&2; exit 2 ;;
 	esac
 done
@@ -112,16 +116,36 @@ fi
 # shellcheck source=/dev/null
 source "$BOARD_ENV"
 [[ "${BOARD_ID:-}" == "$BOARD" ]] || { echo "$BOARD_ENV says BOARD_ID='${BOARD_ID:-}', not '$BOARD'" >&2; exit 2; }
+DRAM_CLK=
+if [[ -n "${VARIANTS:-}" ]]; then
+	if [[ " $VARIANTS " != *" ${VARIANT:-?} "* ]]; then
+		echo "boards/$BOARD has one board and several stock firmwares: name one with --variant ($VARIANTS)" >&2
+		exit 2
+	fi
+	VARIANT_ENV="$ROOT/boards/$BOARD/variants/$VARIANT/variant.env"
+	[[ -f "$VARIANT_ENV" ]] || { echo "no $VARIANT_ENV" >&2; exit 2; }
+	want=$VARIANT
+	# shellcheck source=/dev/null
+	source "$VARIANT_ENV"
+	[[ "${VARIANT:-}" == "$want" ]] || { echo "$VARIANT_ENV says VARIANT='${VARIANT:-}', not '$want'" >&2; exit 2; }
+	[[ -n "$DRAM_CLK" ]] || { echo "$VARIANT_ENV names no DRAM_CLK" >&2; exit 2; }
+elif [[ -n "$VARIANT" ]]; then
+	echo "boards/$BOARD has no variants -- drop --variant $VARIANT" >&2
+	exit 2
+fi
+UNIT=$BOARD${VARIANT:+/$VARIANT}                # what the rule, the messages and the stamp name
+TEST_PROFILE=$PROFILE${VARIANT:+/$VARIANT}      # the installer's name for it, test_for in the table
+UB_ENV=${DRAM_CLK:+DRAM_CLK=$DRAM_CLK }         # the variant's clock for build/uboot-build.sh
 if [[ "${STATUS:-}" != verified ]]; then
 	# --test-image is the named exception; everything else about the rule stays as it is.
 	if ! ((TEST_IMAGE)) || [[ "${STATUS:-}" != partial && "${STATUS:-}" != profile-only ]]; then
-		echo "no image for a board nobody has tested (doku/121 §5): boards/$BOARD is STATUS=${STATUS:-unset}." >&2
+		echo "no image for a board nobody has tested (doku/121 section 5): boards/$UNIT is STATUS=${STATUS:-unset}." >&2
 		echo "A board becomes 'verified' when its owner reports a green run of our build; until then it gets" >&2
 		echo "an installer profile and the probe (h713_probe), not an image." >&2
 		exit 2
 	fi
 elif ((TEST_IMAGE)); then
-	echo "boards/$BOARD is STATUS=verified: --test-image is for a board nobody has run (partial, profile-only). This one gets a release image." >&2
+	echo "boards/$UNIT is STATUS=verified: --test-image is for a board nobody has run (partial, profile-only). This one gets a release image." >&2
 	exit 2
 fi
 if [[ -z "${PROFILE:-}" ]]; then
@@ -188,10 +212,10 @@ elapsed() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $(
 
 say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "root $ROOT"
-info "board $BOARD ($STATUS, profile $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles)"
+info "board $UNIT ($STATUS, profile $TEST_PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles${DRAM_CLK:+, DRAM $DRAM_CLK MHz})"
 info "$REPRO_LINE"
-((TEST_IMAGE)) && { say "TEST IMAGE for $BOARD (STATUS=$STATUS) -- not a release"
-	info "Nobody has reported a green run here. The table is marked test_for=$PROFILE, so h713-install"
+((TEST_IMAGE)) && { say "TEST IMAGE for $UNIT (STATUS=$STATUS) -- not a release"
+	info "Nobody has reported a green run here. The table is marked test_for=$TEST_PROFILE, so h713-install"
 	info "writes it on this board alone and only with --test-image; the owner's full dump is the way back."; }
 ((DRY)) && info "DRY RUN -- nothing is built"
 
@@ -210,7 +234,7 @@ for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build
 done
 [[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR does not look like an h713-extract output (no boot/mips/)"
 mkdir -p "$OUT" "$DELIVERY"
-((DRY)) && { info "would build: bl31, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv, rootfs, inputs, image $NAME"; exit 0; }
+((DRY)) && { info "would build: bl31, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv, rootfs, inputs, image $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
 if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- skipped (--skip-bl31, $OUT/bl31.bin is there)"
@@ -231,7 +255,7 @@ if ((SKIP_UBOOT)) && [[ -f "$OUT/spl-release.bin" && -f "$OUT/uboot-proper-relea
 else
 	say "2/11 U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE"
 	rm -rf "$UB_O"   # as with bl31: no old objects, no old .config
-	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
+	in_container "cd $WORK/mainline && ${UB_ENV}build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
 	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "no $B"
 	spl_size_ok "$UB_O/spl/sunxi-spl.bin"
 	# SPL = the first 32 KiB (eGON.BT0), the rest is U-Boot proper (doku/50 §Bauen)
@@ -263,7 +287,7 @@ if ((SKIP_UBOOT)) && [[ -f "$OUT/u-boot-installer.bin" ]]; then
 else
 	say "2b/11 installer U-Boot $UBOOT_BASE + $UBOOT_INSTALLER_ROLE (ums)"
 	rm -rf "$UBI_O"
-	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBI_O") $UBOOT_BASE $UBOOT_INSTALLER_ROLE" > "$OUT/uboot-installer-build.log" 2>&1 || { tail -20 "$OUT/uboot-installer-build.log"; die "installer U-Boot failed (log: $OUT/uboot-installer-build.log)"; }
+	in_container "cd $WORK/mainline && ${UB_ENV}build/uboot-build.sh $(c "$UBI_O") $UBOOT_BASE $UBOOT_INSTALLER_ROLE" > "$OUT/uboot-installer-build.log" 2>&1 || { tail -20 "$OUT/uboot-installer-build.log"; die "installer U-Boot failed (log: $OUT/uboot-installer-build.log)"; }
 	[[ -f "$UBI_O/u-boot-sunxi-with-spl.bin" ]] || die "no $UBI_O/u-boot-sunxi-with-spl.bin"
 	spl_size_ok "$UBI_O/spl/sunxi-spl.bin"
 	cp "$UBI_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-installer.bin"
@@ -388,7 +412,7 @@ if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 ro
 	[[ -z "$rec" || "$rec" == "$BOARD" ]] || die "the rootfs to reuse was built for board $rec, not $BOARD -- build it again (no --skip-rootfs)"
 else
 	say "7/11 rootfs ($DEBIAN_SUITE/arm64, mmdebstrap in the container as root)"
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
@@ -403,7 +427,7 @@ grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
 
 # --- 9. image ---------------------------------------------------------------
 say "9/11 image $NAME"
-TEST_FOR=(); ((TEST_IMAGE)) && TEST_FOR=(--test-for "$PROFILE")
+TEST_FOR=(); ((TEST_IMAGE)) && TEST_FOR=(--test-for "$TEST_PROFILE")
 ( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" "${TEST_FOR[@]+"${TEST_FOR[@]}"}" \
 	--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
 	--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 ) > "$OUT/mkimage.log" 2>&1 \
@@ -426,8 +450,8 @@ say "11/11 stamp"
 STAMP="$DELIVERY/$NAME.BUILD.txt"
 {
 	echo "$NAME  built $(date -u '+%Y-%m-%dT%H:%M:%SZ') in $(elapsed)"
-	((TEST_IMAGE)) && echo "TEST IMAGE: built for boards/$BOARD (STATUS=$STATUS), table test_for=$PROFILE -- not a release, and no claim that this board is supported"
-	echo "board:    $BOARD ($STATUS; profile $PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE/$UBOOT_INSTALLER_ROLE, probe $UBOOT_PROBE_DEFCONFIG)"
+	((TEST_IMAGE)) && echo "TEST IMAGE: built for boards/$UNIT (STATUS=$STATUS), table test_for=$TEST_PROFILE -- not a release, and no claim that this board is supported"
+	echo "board:    $UNIT ($STATUS; profile $TEST_PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE/$UBOOT_INSTALLER_ROLE${DRAM_CLK:+, DRAM $DRAM_CLK MHz}, probe $UBOOT_PROBE_DEFCONFIG)"
 	echo "series:   $(sha256sum "$MAINLINE/patches/kernel/series" | cut -c1-16)  $(grep -cv '^#\|^$' "$MAINLINE/patches/kernel/series") patches"
 	echo "kernel defconfig: $KDEF $(sha256sum "$MAINLINE/patches/kernel/board/$KDEF" | cut -c1-16)"
 	echo "kernel tree: $H  release $KREL"

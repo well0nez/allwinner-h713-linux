@@ -7,7 +7,10 @@
 #   3. every board.env carries the required keys with values that make sense, and
 #      STATUS=verified is backed by a VERIFIED_BY and a KERNEL_DTB (the honesty rule)
 #   4. every uboot.config has a DRAM clock, a DRAM type, a device tree and a board name,
-#      and CONFIG_DRAM_CLK equals the DRAM clock of the board's installer profile
+#      and CONFIG_DRAM_CLK equals the DRAM clock of the board's installer profile; a board with
+#      VARIANTS instead has a variants/<name>/variant.env for each name and no other, and every
+#      variant passes 3 on its own values (board.env, then variant.env) and names a DRAM_CLK
+#      equal to its profile variant's, not below the base's, under an IMAGE_NAME of its own
 #   5. board.env and mainline/config/versions.env have not drifted apart
 #   6. the ddr3/lpddr3 aliases in build/build.sh resolve to board directories
 #   7. every board base release/build-all.sh builds from <UBOOT_BOARD>_defconfig has its
@@ -46,21 +49,26 @@ value_of() {
   ( set +u; . "$1" >/dev/null 2>&1; eval "printf '%s' \"\${$2-}\"" )
 }
 
-# "<clk> <type>" of an installer profile, read from the module itself
+# value of KEY for one variant: board.env, then the variant's variant.env over it
+variant_value() {
+  ( set +u; . "$1" >/dev/null 2>&1; . "$2" >/dev/null 2>&1; eval "printf '%s' \"\${$3-}\"" )
+}
+
+# "<clk> <type>" of an installer profile (of one of its variants), read from the module itself
 profile_dram() {
-  python3 - "$1" <<'PY' 2>/dev/null
+  python3 - "$@" <<'PY' 2>/dev/null
 import importlib.util
 import sys
 
 spec = importlib.util.spec_from_file_location("board_profile", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-dram = module.PROFILE["dram"]
+dram = (module.PROFILE["variants"][sys.argv[2]] if len(sys.argv) > 2 else module.PROFILE)["dram"]
 print("%s %s" % (dram.get("clk"), dram.get("type")))
 PY
 }
 
-# "<board_dt> <uboot_board>" of an installer profile ("-" for None), read from the module
+# "<board_dt> <uboot_board> <variants>" of an installer profile ("-" for None/none), read from the module
 profile_board() {
   python3 - "$1" <<'PY' 2>/dev/null
 import importlib.util
@@ -69,7 +77,8 @@ import sys
 spec = importlib.util.spec_from_file_location("board_profile", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-print("%s %s" % (module.PROFILE.get("board_dt") or "-", module.PROFILE.get("uboot_board") or "-"))
+print("%s %s %s" % (module.PROFILE.get("board_dt") or "-", module.PROFILE.get("uboot_board") or "-",
+                   " ".join(module.PROFILE.get("variants") or ()) or "-"))
 PY
 }
 
@@ -122,6 +131,7 @@ for id in $boards; do
   fi
 
   board_id=$(value_of "$env_file" BOARD_ID)
+  variants=$(value_of "$env_file" VARIANTS)
   status=$(value_of "$env_file" STATUS)
   profile=$(value_of "$env_file" PROFILE)
   image_name=$(value_of "$env_file" IMAGE_NAME)
@@ -185,7 +195,9 @@ for id in $boards; do
     fail "PROFILE=$profile: no $PROFILES/$profile.py"
   else
     read -r p_clk p_type <<<"$(profile_dram "$PROFILES/$profile.py")"
-    if [ -z "$p_clk" ]; then
+    if [ -n "$variants" ]; then
+      ok "DRAM clock $clk MHz is the base; each variant names its own (below)"
+    elif [ -z "$p_clk" ]; then
       fail "PROFILE=$profile: could not read PROFILE['dram'] with python3"
     elif [ "$clk" != "$p_clk" ]; then
       fail "CONFIG_DRAM_CLK=$clk but profile $profile says dram.clk=$p_clk"
@@ -196,7 +208,7 @@ for id in $boards; do
       fail "DRAM type $dram_type in uboot.config but profile $profile says dram.type=$p_type"
     fi
     # the profile's board_dt / uboot_board are board.env's KERNEL_DTB / UBOOT_BOARD, or nothing
-    read -r p_dt p_ub <<<"$(profile_board "$PROFILES/$profile.py")"
+    read -r p_dt p_ub p_var <<<"$(profile_board "$PROFILES/$profile.py")"
     if [ "${p_dt:--}" != "${kernel_dtb:--}" ]; then
       fail "PROFILE=$profile board_dt=$p_dt but board.env KERNEL_DTB='$kernel_dtb' (drift)"
     else
@@ -205,6 +217,51 @@ for id in $boards; do
     if [ "${p_ub:--}" != "-" ] && [ "$p_ub" != "$uboot_board" ]; then
       fail "PROFILE=$profile uboot_board=$p_ub but board.env UBOOT_BOARD='$uboot_board' (drift)"
     fi
+    if [ "$(printf '%s\n' ${p_var:--} | sort)" != "$(printf '%s\n' ${variants:--} | sort)" ]; then
+      fail "PROFILE=$profile has the variants '${p_var:--}', board.env VARIANTS='$variants' (drift)"
+    fi
+  fi
+
+  # a board whose units left the factory with different firmware: each variant on its own values
+  if [ -n "$variants" ]; then
+    for d in $(cd "$dir" && ls -d variants/*/ 2>/dev/null | sed 's#^variants/##; s#/$##'); do
+      case " $variants " in *" $d "*) ;; *) fail "variants/$d is not named in VARIANTS" ;; esac
+    done
+    images=" "
+    for v in $variants; do
+      venv="$dir/variants/$v/variant.env"
+      if [ ! -f "$venv" ] || ! bash -n "$venv" 2>/dev/null; then
+        fail "variant $v: no sourceable variants/$v/variant.env"
+        continue
+      fi
+      v_name=$(variant_value "$env_file" "$venv" VARIANT)
+      v_status=$(variant_value "$env_file" "$venv" STATUS)
+      v_by=$(variant_value "$env_file" "$venv" VERIFIED_BY)
+      v_image=$(variant_value "$env_file" "$venv" IMAGE_NAME)
+      v_clk=$(variant_value "$env_file" "$venv" DRAM_CLK)
+      [ "$v_name" = "$v" ] || fail "variant $v: VARIANT='$v_name' is not the directory name"
+      case " $STATUS_VALUES " in
+        *" $v_status "*) ;;
+        *) fail "variant $v: STATUS='$v_status' is not one of: $STATUS_VALUES" ;;
+      esac
+      if [ "$v_status" = verified ]; then
+        [ -n "$v_by" ] || fail "variant $v: STATUS=verified without VERIFIED_BY"
+      else
+        [ -z "$v_by" ] || fail "variant $v: STATUS=$v_status but VERIFIED_BY names '$v_by'"
+      fi
+      case "$images" in *" $v_image "*) fail "variant $v: IMAGE_NAME '$v_image' is not its own" ;; esac
+      images="$images$v_image "
+      read -r p_clk p_type <<<"$(profile_dram "$PROFILES/$profile.py" "$v")"
+      if ! [[ "$v_clk" =~ ^[0-9]+$ ]]; then
+        fail "variant $v: DRAM_CLK='$v_clk' is not a clock in MHz"
+      elif [ "$v_clk" != "$p_clk" ] || [ "$dram_type" != "$p_type" ]; then
+        fail "variant $v: DRAM_CLK=$v_clk type $dram_type, profile $profile/$v says ${p_clk:-?} type ${p_type:-?}"
+      elif [ -n "$clk" ] && [ "$v_clk" -lt "$clk" ]; then
+        fail "variant $v: DRAM_CLK=$v_clk is below the base's $clk: a build without a variant would run faster"
+      else
+        ok "variant $v: STATUS=$v_status, DRAM $v_clk MHz == profile $profile/$v dram.clk, image $v_image"
+      fi
+    done
   fi
 
   # board.env against versions.env

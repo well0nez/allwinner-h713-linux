@@ -69,6 +69,7 @@ MAKE_EXT4=1
 DRY_RUN=0
 SKIP_PROJECT=0
 BOARD=          # --board: boards/<id>/board.env FEATURES -> /etc/h713/features
+VARIANT=        # --variant: boards/<id>/variants/<name>/variant.env over it
 AUTHORIZED_KEY=
 KEEP_WORK=0
 KEYRING=
@@ -120,6 +121,8 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
   --board ID            the board this rootfs is for: its FEATURES (camera,
                         accelerometer, focus-motor) become /etc/h713/features.
                         Without it no record: the device's nodes decide
+  --variant NAME        a board with several stock firmwares: the variant's
+                        variant.env over board.env (its FEATURES win)
   --skip-project        the Debian base system + overlay/ only
   --keep-work           do not delete the work directory
   --dry-run             build nothing, write nothing, fetch nothing from the
@@ -144,6 +147,7 @@ while (($#)); do
 	--authorized-key)  AUTHORIZED_KEY=${2:?missing value for --authorized-key}; shift 2 ;;
 	--wifi-env)        WIFI_ENV=${2:?missing value for --wifi-env}; shift 2 ;;
 	--board)           BOARD=${2:?missing value for --board}; shift 2 ;;
+	--variant)         VARIANT=${2:?missing value for --variant}; shift 2 ;;
 	--skip-project|--skip-projekt) SKIP_PROJECT=1; shift ;;
 	--keep-work)       KEEP_WORK=1; shift ;;
 	--dry-run)         DRY_RUN=1; shift ;;
@@ -175,6 +179,8 @@ info() { printf '    %s\n' "$*"; }
 warn() { printf '!!  %s\n' "$*" >&2; }
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 [[ -z "$BOARD" || -f "$PROJECT_ROOT/boards/$BOARD/board.env" ]] || die "--board $BOARD: no boards/$BOARD/board.env"
+[[ -z "$VARIANT" || -f "$PROJECT_ROOT/boards/$BOARD/variants/$VARIANT/variant.env" ]] ||
+	die "--variant $VARIANT: no boards/${BOARD:-?}/variants/$VARIANT/variant.env"
 
 # ---------------------------------------------------------------------------
 # 1. Tool check -- it should SAY what is missing, not just fail
@@ -450,7 +456,7 @@ EOF
 	if ((SKIP_PROJECT)); then
 		info "skipped (--skip-project)"
 	elif [[ -x "$PROJECT_SCRIPT" ]]; then
-		MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" H713_BOARD="$BOARD" \
+		MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" H713_BOARD="$BOARD" H713_VARIANT="$VARIANT" \
 		H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" \
 			"$PROJECT_SCRIPT" --dry-run "<tree>" || true
 	else
@@ -665,7 +671,7 @@ if ((SKIP_PROJECT)); then
 else
 	say "5/6 project parts"
 	[[ -x "$PROJECT_SCRIPT" ]] || die "install-projekt.sh is missing: $PROJECT_SCRIPT"
-	MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" H713_BOARD="$BOARD" \
+	MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" H713_BOARD="$BOARD" H713_VARIANT="$VARIANT" \
 	H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" \
 		"$PROJECT_SCRIPT" "$TREE"
 fi
@@ -779,7 +785,7 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "tree_size_kib=$TREE_KIB"
 	echo "packages_beyond_minbase=$(read_packages | paste -sd,)"
 	echo "installed=$(chroot_count=$(grep -c '^Package: ' "$TREE/var/lib/dpkg/status" 2>/dev/null || echo 0); echo "$chroot_count")"
-	echo "board=${BOARD:-none}"
+	echo "board=${BOARD:-none}${VARIANT:+/$VARIANT}"
 	echo "modroot=${MODROOT#"$PROJECT_ROOT"/}"
 	echo "h713_tv=${H713_TV_BIN#"$PROJECT_ROOT"/}"
 	echo "mesa=$( [[ "$MESA_TAR" == none ]] && echo none || echo "${MESA_TAR#"$PROJECT_ROOT"/}" )"

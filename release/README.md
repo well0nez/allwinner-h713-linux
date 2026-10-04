@@ -7,8 +7,9 @@
 | `sysroot-fix.py` | makes a sysroot unpacked with `mmdebstrap --variant=extract` usable for `clang --sysroot`; called from step 6 |
 | `repo-skelett.sh` | out of service since v0.5-beta. The published repository is a clone now, and changes are copied into it, committed and pushed. Kept as the record of how the skeleton came about; do not run it |
 
-`--board <id>` reads `boards/<id>/board.env` and enforces the honesty rule: no release image for a
-board nobody has tested. `--test-image` is the one named way past it - a board in test gets a
+`--board <id>` reads `boards/<id>/board.env` (and, for a board with several stock firmwares,
+`--variant <name>` its `variants/<name>/variant.env`) and enforces the honesty rule: no release image
+for a board or variant nobody has tested. `--test-image` is the one named way past it - a board in test gets a
 `-TEST` image marked for its own profile, for its own owner to try, and `h713-install` writes it on
 that board alone.
 

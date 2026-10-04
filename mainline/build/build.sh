@@ -17,6 +17,9 @@
 #                       HY200 boards -- ddr3=HY200 QZ713DF_A1 bench,
 #                       lpddr3=HY200 QZ713_V2 projector. boards/<id>/board.env
 #                       names the kernel DTB the FIT carries.
+#   VARIANT=<name>      one stock firmware of a board with VARIANTS (boards/<id>/
+#                       variants/<name>/variant.env): its DRAM clock goes into U-Boot.
+#                       Unset on such a board, U-Boot is the base at its lower clock.
 #   JOBS=N              parallelism (default: nproc)
 set -euo pipefail
 
@@ -25,6 +28,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$ROOT/config/versions.env"
 
 BOARD=${BOARD:-ddr3}
+VARIANT=${VARIANT:-}
 JOBS=${JOBS:-$(nproc)}
 # KERNEL_CONFIG=name[,name...] merges patches/kernel/board/<name>.config over the
 # board defconfig. Debug kernels only -- the shipping kernel is the defconfig
@@ -89,6 +93,21 @@ grep -q '^KERNEL_DTB=' "$BOARD_ENV" ||
 source "$BOARD_ENV"
 [ "${BOARD_ID:-}" = "$BOARD" ] ||
   { echo "error: $BOARD_ENV says BOARD_ID='${BOARD_ID:-}', not '$BOARD'" >&2; exit 2; }
+# A variant (boards/README.md, "Variants") overrides what its variant.env sets, DRAM_CLK above all.
+DRAM_CLK=
+if [ -n "$VARIANT" ]; then
+  VARIANT_ENV="$BOARDS_DIR/$BOARD/variants/$VARIANT/variant.env"
+  case " ${VARIANTS:-} " in
+    *" $VARIANT "*) [ -f "$VARIANT_ENV" ] ||
+                      { echo "error: no $VARIANT_ENV" >&2; exit 2; } ;;
+    *) echo "error: board '$BOARD' has no variant '$VARIANT' (VARIANTS='${VARIANTS:-}')" >&2; exit 2 ;;
+  esac
+  want=$VARIANT
+  # shellcheck source=/dev/null
+  source "$VARIANT_ENV"
+  [ "${VARIANT:-}" = "$want" ] ||
+    { echo "error: $VARIANT_ENV says VARIANT='${VARIANT:-}', not '$want'" >&2; exit 2; }
+fi
 # board.env may name its own defconfigs (cstenger's boards do); otherwise the
 # kernel defconfig comes from config/versions.env and the U-Boot one is the
 # board's base defconfig <UBOOT_BOARD>_defconfig (base + role fragment, E3b).
@@ -157,12 +176,20 @@ uboot_make() {
 build_uboot() {
   have
   [ -f "$OUT/bl31.bin" ] || build_bl31
-  local O="$ROOT/build/uboot-$BOARD"
-  log "U-Boot  ($UBOOT_DEFCONFIG, board=$BOARD)"
+  local name="$BOARD${VARIANT:+-$VARIANT}"
+  local O="$ROOT/build/uboot-$name"
+  log "U-Boot  ($UBOOT_DEFCONFIG${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}, board=$BOARD${VARIANT:+ variant $VARIANT})"
   uboot_make "$O" "$UBOOT_DEFCONFIG"
+  if [ -n "$DRAM_CLK" ]; then      # the variant's clock, merged as build/uboot-build.sh does
+    printf 'CONFIG_DRAM_CLK=%s\n' "$DRAM_CLK" > "$O/h713_dram_clk.config"
+    "$UBOOT/scripts/kconfig/merge_config.sh" -m -O "$O" "$O/.config" "$O/h713_dram_clk.config" >/dev/null
+    uboot_make "$O" olddefconfig
+    grep -qx "CONFIG_DRAM_CLK=$DRAM_CLK" "$O/.config" ||
+      { echo "error: CONFIG_DRAM_CLK=$DRAM_CLK did not survive olddefconfig" >&2; return 1; }
+  fi
   uboot_make "$O" -j"$JOBS"
-  install -m 0644 "$O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-sunxi-with-spl-$BOARD.bin"
-  log "image -> $OUT/u-boot-sunxi-with-spl-$BOARD.bin ($(stat -c%s "$OUT/u-boot-sunxi-with-spl-$BOARD.bin") bytes)"
+  install -m 0644 "$O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-sunxi-with-spl-$name.bin"
+  log "image -> $OUT/u-boot-sunxi-with-spl-$name.bin ($(stat -c%s "$OUT/u-boot-sunxi-with-spl-$name.bin") bytes)"
 }
 
 # --- Kernel (mainline tarball + patches/kernel) -----------------------------

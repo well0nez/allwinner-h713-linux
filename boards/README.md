@@ -14,6 +14,7 @@ boards/<id>/
   board.env        machine-readable facts, sourced by build/build.sh and release/build-all.sh
   uboot.config     the board fragment for U-Boot: DRAM settings, device tree, board name
   kernel.config    optional kernel config fragment (empty for every board today)
+  variants/<name>/variant.env   only for a board with VARIANTS: one stock firmware of the board
 ```
 
 The `<id>` is the directory name and is also `BOARD_ID` inside `board.env`; it is what you pass as
@@ -34,6 +35,7 @@ Sourced as shell, so `KEY=value`, no spaces around `=`. Keys:
 | `VERIFIED_BY` | who ran it on which device, with the date - empty unless `STATUS=verified` |
 | `KERNEL_DEFCONFIG` | optional: overrides the kernel defconfig from `mainline/config/versions.env` |
 | `UBOOT_DEFCONFIG` | optional: overrides the `<UBOOT_BOARD>_defconfig` derived from `UBOOT_BOARD` |
+| `VARIANTS` | optional: the stock firmwares of a board whose units left the factory with different ones, space-separated, each a directory `variants/<name>/` (see below) |
 | `FEATURES` | optional: which of the HY310's optional hardware - `camera`, `accelerometer`, `focus-motor` - the board is known to have and its `KERNEL_DTB` drives, space-separated. A name left out is either absent or unknown; an unknown one may keep its node in the `KERNEL_DTB` so that the first boot's probe answers it. Empty: none confirmed; unset: not recorded. `build-rootfs.sh --board` (so `release/build-all.sh --board`) writes it into the image as `/etc/h713/features`. On the device the nodes decide: a unit or tool whose hardware is missing says "not present on this board" (exit 7), the settings page hides its controls, and `h713-features` warns once per boot about a listed name the board does not show. The board's README says which names are absent, which unknown, and where each answer comes from |
 
 `STATUS` follows the vocabulary of the installer profiles
@@ -44,6 +46,27 @@ Sourced as shell, so `KEY=value`, no spaces around `=`. Keys:
 - **profile-only** - we have a complete description (a stock image, or somebody else's defconfig),
   but nobody has run our firmware on the hardware.
 - **partial** - the description itself is incomplete: some values are unknown or borrowed.
+
+### Variants: one board, several stock firmwares
+
+The same PCB can leave the factory with different firmware - another DRAM clock in its boot0, another
+eMMC, another display firmware - and stay the same board: one device tree, one U-Boot base, one
+`PROFILE` (whose `"variants"` carry the firmware facts, `installer/h713/profiles/SCHEMA.md`). Such a
+board lists its variants in `VARIANTS`, named after the stock build (`projector05061226`), and each
+has `variants/<name>/variant.env`, sourced after `board.env`; what it sets wins:
+
+| Key | Meaning |
+|---|---|
+| `VARIANT` | the directory name, repeated |
+| `STATUS`, `VERIFIED_BY` | as above, for this firmware: a green run on one variant verifies that one |
+| `IMAGE_NAME` | its own, so that images of two variants never share a name |
+| `DRAM_CLK` | the clock of this firmware's boot0 in MHz; the U-Boot builds merge it over the base (`build/uboot-build.sh`). It may not be below the base's, so a build without a variant never runs faster than a firmware does |
+| `FEATURES` | optional, what was measured on a unit with this firmware; `build-rootfs.sh --variant` (from `release/build-all.sh --variant`) writes it into `/etc/h713/features` |
+
+`release/build-all.sh --board <id> --variant <name>` (required for such a board) and
+`BOARD=<id> VARIANT=<name> build/build.sh` read both files; the installer identifies a device as
+`<profile>/<variant>`, which is also what a test image's `test_for` names. `boards/hy200-qz713df-a1`
+is the one board with variants today.
 
 ### `uboot.config`
 
@@ -97,7 +120,7 @@ was nothing for that somebody to run. `release/build-all.sh --test-image` closes
 
 1. **`partial` / `profile-only`** - the board has a directory, a `PROFILE`, and (for a test image)
    a `KERNEL_DTB` and a U-Boot base of its own. No release image is built for it.
-2. **Test image** - `release/build-all.sh --board <id> --test-image --version vX.Y` builds
+2. **Test image** - `release/build-all.sh --board <id> [--variant <name>] --test-image --version vX.Y` builds
    `<IMAGE_NAME>-vX.Y-TEST` and has `h713-mkimage` write `test_for: "<profile>"` into its table.
    The name, the banner, the `.BUILD.txt` stamp and the image README all say TEST. `h713-install`
    accepts it only on that board and only with `--test-image`; on any other board it refuses and
@@ -170,4 +193,6 @@ bash boards/check.sh
 It syntax-checks the scripts, verifies that every `board.env` carries the required keys with sane
 values, that `STATUS=verified` is backed by a `VERIFIED_BY` and a `KERNEL_DTB`, and that every
 `CONFIG_DRAM_CLK` matches the DRAM clock of the board's installer profile - the fragment and the
-profile cannot drift apart without the check going red.
+profile cannot drift apart without the check going red. For a board with variants it does the same
+per variant (`DRAM_CLK` against the profile variant's clock, the variants against `VARIANTS` and the
+profile's, one `IMAGE_NAME` each).

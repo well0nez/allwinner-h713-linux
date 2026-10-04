@@ -64,6 +64,7 @@ H713_FEATURES_SRC=${H713_FEATURES_SRC:-$PROJECT_ROOT/userspace/h713-features}
 # accelerometer and the focus motor. Without a board there is no record and
 # the device's nodes alone decide (boards/README.md, FEATURES).
 H713_BOARD=${H713_BOARD:-}
+H713_VARIANT=${H713_VARIANT:-}  # a board with variants: variants/<name>/variant.env over board.env
 FEATURE_NAMES="camera accelerometer focus-motor"
 # The C metric beside h713-autofocus. OPTIONAL on purpose: without it the tool
 # measures in Python, which works and is only slower (Q11 item 2).
@@ -137,8 +138,13 @@ blob_guard() {
 board_features() {
 	local env="$PROJECT_ROOT/boards/$H713_BOARD/board.env" got name
 	got=$( set +u; . "$env" >/dev/null 2>&1 || exit 1; [[ "${BOARD_ID:-}" == "$H713_BOARD" ]] || exit 1
+		if [[ -n "$H713_VARIANT" ]]; then
+			. "${env%/board.env}/variants/$H713_VARIANT/variant.env" >/dev/null 2>&1 || exit 1
+			[[ "${VARIANT:-}" == "$H713_VARIANT" ]] || exit 1
+		fi
 		[[ -z "${FEATURES+set}" ]] || printf 'features = %s' "$FEATURES" ) || \
-		{ warn "H713_BOARD=$H713_BOARD: $env is missing, does not source or names another BOARD_ID"; return 1; }
+		{ warn "H713_BOARD=$H713_BOARD${H713_VARIANT:+ H713_VARIANT=$H713_VARIANT}: board.env or" \
+		       "variant.env missing, not sourceable or naming another board or variant"; return 1; }
 	for name in ${got#features =}; do
 		[[ " $FEATURE_NAMES " == *" $name "* ]] || \
 			{ warn "boards/$H713_BOARD FEATURES: '$name' is not one of $FEATURE_NAMES"; return 1; }

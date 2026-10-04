@@ -62,7 +62,7 @@ class Board(object):
 
 
 HY310 = "board = hy310\nfeatures = camera accelerometer focus-motor\n"
-GEU = "# written by install-projekt.sh\nboard = hy300pro-g-eu\nfeatures = accelerometer\n"
+GEU = "# written by install-projekt.sh\nboard = hy200-qz713df-a1\nfeatures = accelerometer\n"
 
 
 class Features(unittest.TestCase):
@@ -86,7 +86,7 @@ class Features(unittest.TestCase):
     def test_the_geu_says_not_present_and_warns_about_nothing(self):
         board = self.board("accelerometer", record=GEU)
         status = board.run()                                   # status is the default
-        self.assertIn("board hy300pro-g-eu, FEATURES: accelerometer", status.stdout)
+        self.assertIn("board hy200-qz713df-a1, FEATURES: accelerometer", status.stdout)
         self.assertIn("camera          not present on this board\n", status.stdout)
         self.assertIn("focus-motor     not present on this board\n", status.stdout)
         check = board.run("check", "--wait", "0")

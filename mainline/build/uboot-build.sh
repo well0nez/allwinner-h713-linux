@@ -9,6 +9,9 @@
 #               base and resolved with olddefconfig. Omit it for a base-only
 #               build; a third argument that is not a role is a make target,
 #               so the old two-argument calls still work.
+#   DRAM_CLK=<MHz> in the environment: a board variant's clock (boards/<id>/
+#               variants/<v>/variant.env), merged after the role; the build
+#               stops if the resolved .config does not carry it.
 # Needs: swig (in-tree dtc + pylibfdt). -fintegrated-as = clang's assembler.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -25,11 +28,17 @@ F=(ARCH=arm HOSTCC=clang CC='clang -target aarch64-linux-gnu'
   KCFLAGS='-fintegrated-as -Wno-error=deprecated-non-prototype -fno-stack-protector'
   BL31="$BL31")
 make -C "$UBOOT" O="$O" "${F[@]}" "${BASE}_defconfig" >/dev/null 2>&1 || { echo DEFCONFIG_FAIL; exit 1; }
-if [ -n "$ROLE" ]; then
-	"$UBOOT/scripts/kconfig/merge_config.sh" -m -O "$O" \
-		"$O/.config" "$UBOOT/configs/fragments/h713_$ROLE.config" >/dev/null ||
+FRAGS=()
+[ -n "$ROLE" ] && FRAGS+=("$UBOOT/configs/fragments/h713_$ROLE.config")
+if [ -n "${DRAM_CLK:-}" ]; then
+	printf 'CONFIG_DRAM_CLK=%s\n' "$DRAM_CLK" > "$O/h713_dram_clk.config"
+	FRAGS+=("$O/h713_dram_clk.config")
+fi
+if [ ${#FRAGS[@]} -gt 0 ]; then
+	"$UBOOT/scripts/kconfig/merge_config.sh" -m -O "$O" "$O/.config" "${FRAGS[@]}" >/dev/null ||
 		{ echo FRAGMENT_FAIL; exit 1; }
 	make -C "$UBOOT" O="$O" "${F[@]}" olddefconfig >/dev/null 2>&1 ||
 		{ echo OLDDEFCONFIG_FAIL; exit 1; }
 fi
+[ -z "${DRAM_CLK:-}" ] || grep -qx "CONFIG_DRAM_CLK=$DRAM_CLK" "$O/.config" || { echo DRAM_CLK_FAIL; exit 1; }
 make -C "$UBOOT" O="$O" "${F[@]}" -j"$(nproc)" "$@"

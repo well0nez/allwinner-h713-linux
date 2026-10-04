@@ -22,7 +22,7 @@ MAKE=(make -C "$UBOOT" ARCH=arm HOSTCC=cc)
 # Base and role as release/build-all.sh pairs them, from boards/<id>/board.env.
 MATRIX="hy310:release hy310:installer hy310:netboot hy310:netboot_gate
 	hy310:felmmc hy310:host hy300_pro:release hy300_pro:installer
-	hy300pro_g_eu:release hy300pro_g_eu:installer"
+	hy200_qz713df_a1:release hy200_qz713df_a1:installer"
 mkdir -p "$WORK"
 rc=0
 printf '%-34s %-22s %s\n' "base + fragment" "fragment lines" "against the bare base"

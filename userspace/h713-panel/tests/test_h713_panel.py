@@ -102,7 +102,7 @@ KEYSTONE_STATUS_REFUSED_OLD = KEYSTONE_STATUS.replace(
     "says -x -- run `h713-keystone reference` again")
 
 # h713-features status on the HY300PRO-G-EU: the accelerometer and nothing else.
-GEU_FEATURES = """ok features  board hy300pro-g-eu, FEATURES: accelerometer (/etc/h713/features)
+GEU_FEATURES = """ok features  board hy200-qz713df-a1, FEATURES: accelerometer (/etc/h713/features)
 camera          not present on this board
 accelerometer   present  iio:device0 (sc7a20)  (h713-keystone, h713-keystone-auto)
 focus-motor     not present on this board"""

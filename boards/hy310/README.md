@@ -59,8 +59,9 @@ enabled (49 260 bytes). The release BL31 (45 164 bytes) has been on this board s
 ## Device tree
 
 `KERNEL_DTB=sun50i-h713-hy310` and `CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy310"` name a
-DTS that is an include of the HY200 bench DTS plus this board's model and compatible
-(`doku/121` §, stage 4). The patch is `0160` in the series and the DTS is in the fork, so
-`BOARD=hy310 build/build.sh kernel` builds it. A board whose DTB is missing still stops the build -
-by design: the FIT must not be built with a DTB named after a different board, which is what happened
-before stage 4.
+DTS that was an include of the HY200 bench DTS plus this board's model and compatible (`doku/121`,
+stage 4, patch `0160`); since `0181` the kernel DTS holds this board's description itself and compiles
+to the same DTB, and the HY200 name went back to its own board. The U-Boot DTS in the fork is still the
+include. `BOARD=hy310 build/build.sh kernel` builds the kernel's. A board whose DTB is missing still
+stops the build - by design: the FIT must not be built with a DTB named after a different board,
+which is what happened before stage 4.
