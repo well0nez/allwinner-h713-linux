@@ -1,0 +1,324 @@
+arm64: dts: h713: one tree for the HY200 QZ713DF A1, the HY310's tree under its own name
+
+Two names were wrong. sun50i-h713-hy200-qz713df-a1.dts held the HY310's
+hardware description: 0024 wrote it for cstenger's bench board, and 0024c,
+0064, 0082, 0142, 0157, 0158 and 0162 fitted it to the HY310 (cpu_comm,
+console, codec, fan PH17, focus motor, bootargs, accelerometer) while the HY310
+included it under its own name (0160). And the HY200 QZ713DF A1 itself - the
+silkscreen of the bench board, of the 2025 "HY300 Pro+" and of the
+maintainer's HY300PRO-G-EU (read off the board, 02.10.2026) - had its measured
+tree under a box label, sun50i-h713-hy300pro-g-eu.dts (0167).
+
+- sun50i-h713-hy310.dts takes the HY310's description from the hy200 file as
+  it was, with the HY310's model and compatible in place of the bench
+  board's (and the three German comments in English). Its DTB compiles to
+  the same bytes as before (host cpp + dtc, the way kbuild does).
+- sun50i-h713-hy300-pro.dts includes sun50i-h713-hy310.dts instead of the
+  hy200 file, which held the same nodes; its DTB is byte-identical too.
+- sun50i-h713-hy200-qz713df-a1.dts becomes 0167's tree: the HY310 include
+  plus the lamp's PWM words <5 1 40000 1 1 100>, no pwm-backlight, fan
+  tacho PH13, no focus motor, the accelerometer node kept - with model
+  "HY200 QZ713DF_A1 (Allwinner H713)" (the model of the board's U-Boot tree)
+  and compatible "magcubic,hy200-qz713df-a1". Its DTB is 0167's DTB but
+  those two strings.
+- sun50i-h713-hy300pro-g-eu.dts and its Makefile line go.
+
+One tree serves both stock firmwares of the board: their vendor_boot device
+trees (the 2025-05 one from the HY300PRO-G-EU's eMMC dump, the 2025-09 one
+from its update.img) are identical but for motor_ctr, both panel_config.ini
+copies of both declare the same [PWMSetting] and ColorDepth 8, and what does
+differ - the DRAM clock - is U-Boot's (boards/hy200-qz713df-a1, variants).
+The 2025-09 firmware drives a focus motor with the HY310's step tables; the
+tree keeps it off, because the HY300PRO-G-EU has none and the driver homes at
+probe on PH4..PH7. h713-tv's board_of_dt row follows the new compatible.
+
+Old patches are left as they are; this one sits at the end of the series.
+---
+diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -59,7 +59,6 @@ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy200-qz713df-a1.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy200-qz713-v2.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy310.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-pro.dtb
+-dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300pro-g-eu.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-a527-cubie-a5e.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-h728-x96qpro+.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-t527-avaota-a1.dtb
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -1,42 +1,56 @@
+-/dts-v1/;
++// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++/*
++ * HY200 QZ713DF A1: sold as the HY300 Pro with the box label HY300PRO-G-EU
++ * (stock Android 11 of 2025-05-06, the maintainer's own) and as the "HY300
++ * Pro+" of 2025 (stock of 2025-09-22); cstenger's bench board carries the same
++ * silkscreen. Not the HY300 Pro of issue #1 (sun50i-h713-hy300-pro.dts).
++ *
++ * The tree measured on the HY300PRO-G-EU (0167, until 0181 named after its
++ * box label). Both firmwares' stock trees are identical but for motor_ctr, and
++ * both panel_config.ini declare the same [PWMSetting]; the DRAM clock, which
++ * differs, is U-Boot's. The HY310's tree, plus:
++ *
++ *  - the lamp's PWM words: hardware channel 5, polarity 1 (low active),
++ *    40 kHz, vsync lock 1, duty 1..100 (the HY310: channel 2, 25 kHz). The
++ *    display firmware owns that PWM; hdmirx sends the words (0166, 0168). No
++ *    pin group (0166a);
++ *  - no pwm-backlight: the dtsi's PWM2 on PB4 is the HY310's dimmer, and
++ *    nothing of this board says what PB4 is. The fan_power_hog on PB5 stays;
++ *  - fan tacho PH13 (stock fan0 fg-gpio of both firmwares, 5520-5610 rpm on
++ *    the HY300PRO-G-EU; the HY310: PH17). The board manager powers off when
++ *    it counts too little, so the input has to be the right one;
++ *  - no focus motor: the HY300PRO-G-EU has none and its firmware disables
++ *    motor_ctr; the 2025-09 firmware enables it with the HY310's step tables.
++ *    The driver homes at probe on PH4..PH7, so it stays off until a 2025-09
++ *    unit shows a motor.
++ *
++ * The SC7A20 node at 0x18 stays; the HY300PRO-G-EU answers there. Not here:
++ * the elog addresses (cpu_comm's are the HY310's, right for the 2025-05
++ * display.bin, unknown for the 2025-09 one) and the panel (project id 0x34,
++ * driven by the display coprocessor, selected by h713_project).
++ */
+ 
+-#include "sun50i-h713.dtsi"
++#include "sun50i-h713-hy310.dts"
+ 
+ / {
+ 	model = "HY200 QZ713DF_A1 (Allwinner H713)";
+-	compatible = "cstenger,hy200-qz713df-a1", "allwinner,sun50i-h713";
++	compatible = "magcubic,hy200-qz713df-a1", "allwinner,sun50i-h713";
++};
++
++&backlight {
++	status = "disabled";
++};
+ 
+-	chosen {
+-		bootargs = "console=ttyS0,115200 console=tty0 loglevel=4 root=/dev/mmcblk0p26 rootwait rootfstype=ext4 rw net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
++&hdmirx {
++	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
++};
++
++&board_mgr {
++	fan0 {
++		fg-gpio = <&pio 7 13 GPIO_ACTIVE_HIGH>;	/* PH13, stock fan0 fg-gpio */
+ 	};
+ };
+ 
+-&mips_reserved { status = "okay"; };
+-&cpu_comm_reserved { status = "okay"; };
+-&mips_framebuf { status = "okay"; };
+-&framebuf_reserved { status = "okay"; };
+-/* twi1 carries the accelerometer of the auto keystone (plan/keystone S8) and the
+- * DLPC3435 node nothing binds to; it was disabled while nothing needed it. */
+-&twi1 { status = "okay"; };
+-&codec { status = "okay"; };
+-&dummy_cpudai { status = "disabled"; };
+-&codec_machine { status = "disabled"; };
+-&i2s0 { status = "disabled"; };
+-&i2s1 { status = "disabled"; };
+-&i2s2 { status = "disabled"; };
+-&spdif { status = "disabled"; };
+-&spdif1 { status = "disabled"; };
+-&audio_bridge { status = "disabled"; };
+-&ge2d { status = "disabled"; };
+-&tvtop { status = "disabled"; };
+-/*
+- * DECD enabled 2026-08-12 for zero-copy video: it is the only way to
+- * hand the display a decoder buffer, since userspace can neither resolve
+- * a V4L2 buffer to a physical address nor program display registers.
+- * Built as a module so it is loaded deliberately, after U-Boot has set
+- * up the panel. TVTOP stays disabled -- see patch 0033.
+- */
+-&cpu_comm { status = "okay"; };	/* Treiber wird seit 01.09. gebaut */
+-&motor_ctr { status = "okay"; };	/* Bereichswaechter PH14 vermessen 12.09., siehe doku/94 */
+-&adc_keys { status = "disabled"; };
+-&board_mgr { status = "okay"; };	/* Temperatur + Luefterdrehzahl, siehe doku/60 */
++&motor_ctr {
++	status = "disabled";
++};
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -2,7 +2,7 @@
+ /*
+  * MagCubic HY300 Pro projector (2024 board, DDR3 at 636 MHz; issue #1).
+  *
+- * The hardware description lives in sun50i-h713-hy200-qz713df-a1.dts; this
++ * The hardware description lives in sun50i-h713-hy310.dts; this
+  * board carries its own name so that the DTB it boots is not named after
+  * somebody else's board. Focus motor and power key are assumed to sit
+  * where the HY310 has them; its owner tests it. The panel is programmed
+@@ -24,7 +24,7 @@
+  * Same pattern as sun50i-h713-hy310.dts.
+  */
+ 
+-#include "sun50i-h713-hy200-qz713df-a1.dts"
++#include "sun50i-h713-hy310.dts"
+ 
+ / {
+ 	model = "MagCubic HY300 Pro";
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300pro-g-eu.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300pro-g-eu.dts
+deleted file mode 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300pro-g-eu.dts
++++ /dev/null
+@@ -1,89 +0,0 @@
+-// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+-/*
+- * HY300 Pro projector, box label HY300PRO-G-EU (stock Android 11 of
+- * 2025-05-06) - the maintainer's own board. It is not the HY300 Pro of
+- * issue #1 (sun50i-h713-hy300-pro.dts: another firmware family, DDR3 at
+- * 636 MHz, another display.bin).
+- *
+- * An include of the HY310's tree, because this board is HY310-like where it
+- * has been measured (its own eMMC dump, 2026-10-02): the DRAM words the
+- * HY310's U-Boot boots with (tpr0..tpr2 aside, which the DDR3 path does not
+- * read), the HY310's 26-entry partition table, the HY310's display.bin and
+- * LogoRegData.bin byte for byte. So the display firmware keeps its event log
+- * where the HY310's does and cpu_comm's built-in elog addresses apply (no
+- * allwinner,elog here); the ARISC driver reads its SRAM addresses out of the
+- * board's own image (0091a), so nothing about it is board-borne either.
+- * The board's own stock device tree (vendor_boot of its eMMC dump) differs
+- * from the HY310's stock tree in nine places (package GEU1, round 2); the
+- * three that reach a driver of ours are listed below (fan and motor changed,
+- * the accelerometer kept on purpose), the other six reach
+- * nothing in this tree (no driver reads them, or U-Boot already drives the
+- * board's own line). The power key is PL4 on both.
+- *
+- * What differs from the HY310 and is carried here:
+- *
+- *  - The lamp's dimmer. The board's panel_config.ini [PWMSetting] says
+- *    hardware PWM channel 5, polarity 1 (low active), 40 kHz, vsync lock 1,
+- *    duty 1..100 - the HY310's says channel 2 at 25 kHz. The display
+- *    firmware owns that PWM and needs the six words before the level; the
+- *    hdmirx driver sends them from allwinner,backlight-pwm-info (0166), and
+- *    skips the step without the property - which is what left the HY300 Pro
+- *    of issue #1 dark until 0166a. No pin group: which pad channel 5 leaves
+- *    the SoC on is the firmware's business (0166a).
+- *
+- *  - No pwm-backlight device. The dtsi's node drives PWM2 on PB4, the
+- *    HY310's dimmer, which is not this board's declared channel; nothing of
+- *    this board says what PB4 is, so the tree does not mux it, and no
+- *    /sys/class/backlight exists for systemd-backlight to restore at boot.
+- *    The fan_power_hog on PB5 stays, as on both other boards.
+- *
+- *  - The fan tachometer is PH13: this board's stock fan0 says
+- *    fg-gpio = PH13, where the HY310's says PH17. The board manager counts
+- *    it and powers the device off after fg-warn-cnt seconds below
+- *    fg-warn-speed, so the input has to be the right one. PH17 is left
+- *    alone (an input, as nothing claims it); what it is on this board the
+- *    stock tree does not say.
+- *
+- *  - No focus motor. The stock tree has motor_ctr disabled (with another
+- *    step table); the hy200 tree this one includes enables it, and the
+- *    driver homes at probe by driving PH4..PH7. Off here until the board
+- *    shows a motor.
+- *
+- *  - The accelerometer node stays as on the HY310 (SC7A20 at 0x18 on
+- *    twi1), on purpose. The stock tree lists three candidate chips
+- *    (lsm6dsr at 0x6a, stk83xx at 0x18, kxtj3 at 0x0e) and does not say
+- *    which one is fitted; the HY310's stock tree does not list its SC7A20
+- *    either. The first boot answers it: nothing at 0x18 fails the probe
+- *    once ("failed to read Who-Am-I register"), another chip there says
+- *    "WhoAmI mismatch", the SC7A20 becomes an IIO device "sc7a20".
+- *
+- * The panel (declared project id 0x34, 1280x720 single port) is not
+- * described here: the display coprocessor drives it from its own tables,
+- * selected by h713_project, which the installer writes from the board's
+- * panel_config.ini.
+- */
+-
+-#include "sun50i-h713-hy310.dts"
+-
+-/ {
+-	model = "HY300 Pro (HY300PRO-G-EU)";
+-	compatible = "magcubic,hy300pro-g-eu", "allwinner,sun50i-h713";
+-};
+-
+-&backlight {
+-	status = "disabled";
+-};
+-
+-&hdmirx {
+-	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
+-};
+-
+-&board_mgr {
+-	fan0 {
+-		fg-gpio = <&pio 7 13 GPIO_ACTIVE_HIGH>;	/* PH13, stock fan0 fg-gpio */
+-	};
+-};
+-
+-&motor_ctr {
+-	status = "disabled";
+-};
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+@@ -2,19 +2,55 @@
+ /*
+  * MagCubic HY310 projector (board silkscreen HY260_QZ713_V3.1).
+  *
+- * The hardware description lives in sun50i-h713-hy200-qz713df-a1.dts; this
+- * board only carries its own name, so that the DTB the HY310 boots is not
+- * named after somebody else's board. Whatever is HY310-specific in the
+- * included file stays there for now -- splitting it out is a later cleanup,
+- * not part of this change (doku/121 section 3).
+- *
+- * Same pattern as sun50i-h700-anbernic-rg35xx-plus.dts, which includes
+- * sun50i-h700-anbernic-rg35xx-2024.dts and overrides model/compatible.
++ * The HY310's hardware description. Until patch 0181 it lived in
++ * sun50i-h713-hy200-qz713df-a1.dts and this file only included it: 0024
++ * wrote that tree for cstenger's bench board, and 0024c, 0064, 0082, 0142,
++ * 0157, 0158 and 0162 fitted it to the HY310 (cpu_comm, console, codec, fan,
++ * focus motor, bootargs, accelerometer) under the bench board's name. 0181
++ * moves it here as it was and gives the name back to that board; the DTB
++ * compiles to the same bytes. sun50i-h713-hy300-pro.dts and
++ * sun50i-h713-hy200-qz713df-a1.dts include this file.
+  */
+ 
+-#include "sun50i-h713-hy200-qz713df-a1.dts"
++/dts-v1/;
++
++#include "sun50i-h713.dtsi"
+ 
+ / {
+ 	model = "MagCubic HY310 (HY260_QZ713_V3.1)";
+ 	compatible = "magcubic,hy310", "allwinner,sun50i-h713";
++
++	chosen {
++		bootargs = "console=ttyS0,115200 console=tty0 loglevel=4 root=/dev/mmcblk0p26 rootwait rootfstype=ext4 rw net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
++	};
+ };
++
++&mips_reserved { status = "okay"; };
++&cpu_comm_reserved { status = "okay"; };
++&mips_framebuf { status = "okay"; };
++&framebuf_reserved { status = "okay"; };
++/* twi1 carries the accelerometer of the auto keystone (plan/keystone S8) and the
++ * DLPC3435 node nothing binds to; it was disabled while nothing needed it. */
++&twi1 { status = "okay"; };
++&codec { status = "okay"; };
++&dummy_cpudai { status = "disabled"; };
++&codec_machine { status = "disabled"; };
++&i2s0 { status = "disabled"; };
++&i2s1 { status = "disabled"; };
++&i2s2 { status = "disabled"; };
++&spdif { status = "disabled"; };
++&spdif1 { status = "disabled"; };
++&audio_bridge { status = "disabled"; };
++&ge2d { status = "disabled"; };
++&tvtop { status = "disabled"; };
++/*
++ * DECD enabled 2026-08-12 for zero-copy video: it is the only way to
++ * hand the display a decoder buffer, since userspace can neither resolve
++ * a V4L2 buffer to a physical address nor program display registers.
++ * Built as a module so it is loaded deliberately, after U-Boot has set
++ * up the panel. TVTOP stays disabled -- see patch 0033.
++ */
++&cpu_comm { status = "okay"; };	/* the driver is built since 01.09. */
++&motor_ctr { status = "okay"; };	/* range gate PH14 measured 12.09., see doku/94 */
++&adc_keys { status = "disabled"; };
++&board_mgr { status = "okay"; };	/* temperature + fan speed, see doku/60 */

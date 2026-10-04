@@ -155,6 +155,15 @@ roadmap and `docs/status.md`.
   image for the board of issue #1 boots. No release image is built from it
   (stage 5). *(ours)*
 
+- **0181 - one board, one tree (the later cleanup 0160 promised).** The HY310's
+  description moves out of the hy200 dts into `sun50i-h713-hy310.dts` (same DTB
+  bytes), `sun50i-h713-hy300-pro.dts` includes that instead (same bytes), and
+  `sun50i-h713-hy200-qz713df-a1.dts` becomes the tree measured on the
+  HY300PRO-G-EU (0167), whose silkscreen is HY200 QZ713DF A1: lamp PWM words,
+  no pwm-backlight, fan tacho PH13, no focus motor. `sun50i-h713-hy300pro-g-eu.dts`
+  goes. Both stock firmwares of that board share the tree
+  (`boards/hy200-qz713df-a1`). *(ours)*
+
 With these patches in place `build/build.sh kernel` emits the board's DTB plus
 cstenger's two HY200 DTBs, and a bootable FIT (`build/out/h713-kernel.fit`:
 gzip Image + the DTB named by `boards/<id>/board.env` → `KERNEL_DTB`, load/entry
