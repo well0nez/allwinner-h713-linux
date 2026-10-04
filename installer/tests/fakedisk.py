@@ -158,6 +158,28 @@ def _put_backup_gpt(fh, primary, disk_sectors=DISK_SECTORS):
     _put(fh, disk_sectors - 1, bytes(hdr).ljust(SECT, b"\0"))
 
 
+def _fit_primary(primary, disk_sectors):
+    """The stock table as a unit whose eMMC has `disk_sectors` would carry it (the HY300PRO-G-EU's
+    dump has UDISK ending on its last usable sector): same entries, the one that ends on the
+    old last usable LBA runs to the new one, header fields and both CRCs recomputed."""
+    out = bytearray(primary)
+    hdr = bytearray(out[SECT:SECT + 92])
+    hsz = struct.unpack_from("<I", hdr, 12)[0]
+    old_last = struct.unpack_from("<Q", hdr, 48)[0]
+    pe_lba, pe_n, pe_sz = struct.unpack_from("<QII", hdr, 72)
+    for i in range(pe_n):
+        at = pe_lba * SECT + i * pe_sz
+        if struct.unpack_from("<Q", out, at + 40)[0] == old_last:
+            struct.pack_into("<Q", out, at + 40, disk_sectors - 34)
+    struct.pack_into("<Q", hdr, 32, disk_sectors - 1)              # AlternateLBA
+    struct.pack_into("<Q", hdr, 48, disk_sectors - 34)             # LastUsableLBA
+    struct.pack_into("<I", hdr, 88, zlib.crc32(bytes(out[pe_lba * SECT:pe_lba * SECT + pe_n * pe_sz])))
+    struct.pack_into("<I", hdr, 16, 0)
+    struct.pack_into("<I", hdr, 16, zlib.crc32(bytes(hdr[:hsz])) & 0xFFFFFFFF)
+    out[SECT:SECT + 92] = hdr
+    return bytes(out)
+
+
 def _blank(path, disk_sectors=DISK_SECTORS):
     with open(path, "wb") as fh:
         fh.truncate(disk_sectors * SECT)
@@ -165,17 +187,20 @@ def _blank(path, disk_sectors=DISK_SECTORS):
 
 # ------------------------------------------------------------------ builders
 
-def make_stock_disk(path):
+def make_stock_disk(path, disk_sectors=DISK_SECTORS):
     """The HY310 as it left the factory: stock GPT, vendor boot chain, pattern in
     the four device-only regions.  `super` stays zero -- no test needs its 2 GiB,
-    and `geraet_erkennen()` is expected to give up there."""
+    and `geraet_erkennen()` is expected to give up there.  `disk_sectors` other than the
+    HY310's makes the same unit on a larger eMMC (_fit_primary): the regions stay where they are."""
     img = image_files("hy310")
     primary = _read(STOCK_GPT)
+    if disk_sectors != DISK_SECTORS:
+        primary = _fit_primary(primary, disk_sectors)
     parts = dict((n, (l, s)) for n, l, s in gpt_parts(primary))
-    _blank(path)
+    _blank(path, disk_sectors)
     with open(path, "r+b") as fh:
         _put(fh, 0, primary)
-        _put_backup_gpt(fh, primary)
+        _put_backup_gpt(fh, primary, disk_sectors)
         for lba in BOOT0_LBA:
             _put_file(fh, lba, os.path.join(img, "boot0_sdcard.fex"))
         for lba in BOOT_PACKAGE_LBA:
@@ -205,17 +230,20 @@ def make_v3_disk(path):
     return path
 
 
-def make_stock_gpt_disk(path):
+def make_stock_gpt_disk(path, disk_sectors=DISK_SECTORS):
     """A device that still carries the stock partition table and nothing else of the stock
     firmware.  That is enough for every decision which hangs on the layout alone -- device_kind(),
     the mandatory dump, the question where the vendor files come from -- and it needs no vendor
-    bytes, so it also runs in the default mode of run.sh, where make_stock_disk() skips (N2)."""
+    bytes, so it also runs in the default mode of run.sh, where make_stock_disk() skips (N2).
+    `disk_sectors` as for make_stock_disk()."""
     primary = _read(STOCK_GPT)
+    if disk_sectors != DISK_SECTORS:
+        primary = _fit_primary(primary, disk_sectors)
     parts = dict((n, (l, s)) for n, l, s in gpt_parts(primary))
-    _blank(path)
+    _blank(path, disk_sectors)
     with open(path, "r+b") as fh:
         _put(fh, 0, primary)
-        _put_backup_gpt(fh, primary)
+        _put_backup_gpt(fh, primary, disk_sectors)
         _put(fh, LOCK_FIRST, pattern("secure-storage", LOCK_FIRST, LOCK_SECTORS))
         for name in ("misc", "private", "Reserve0_a", "Reserve0_b"):
             _put(fh, parts[name][0], pattern(name, *parts[name]))

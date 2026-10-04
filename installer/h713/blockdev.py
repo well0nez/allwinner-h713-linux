@@ -28,7 +28,8 @@ SECTORS_EXPECTED = 15269888          # 7.28 GiB -- the eMMC of the HY310
 # Every eMMC size seen on an H713 board. Finding and reading a drive accepts all of them;
 # a write takes the size of the board identified on the device (its profile's
 # layout.disk_sectors), and an image only a device of the size its table was cut for
-# (h713-install _sizes_allowed/_install, h713.layout.partitions_for).
+# (h713-install _sizes_allowed/_install, h713.layout.partitions_for). restore-stock builds its
+# table for the device's own size and takes every known one (h713-install _sizes_allowed).
 SECTORS_KNOWN = (SECTORS_EXPECTED,
                  15273600)           # 7.28 GiB + 3712 sectors -- HY200 QZ713DF A1, HY300PRO-G-EU unit
 

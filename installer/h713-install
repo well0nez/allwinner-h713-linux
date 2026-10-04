@@ -42,7 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from h713 import install as install_mod                                     # noqa: E402
-from h713.blockdev import (Disk, LOCK_FIRST, LOCK_LAST, SECTORS_EXPECTED,   # noqa: E402
+from h713.blockdev import (Disk, LOCK_FIRST, LOCK_LAST,                    # noqa: E402
                            SECTORS_KNOWN, device_kind)
 from h713.dump import (board_of, choose_dump, dump_asked, dump_full,       # noqa: E402
                        dump_small, full_dump_state, keep_copy, mandatory_dump,
@@ -494,19 +494,29 @@ def _board_from_dump(args, ident, disk=None):
         ident["facts"] = facts
 
 
+def _size_is_a_units(layout):
+    """Is a profile's layout.disk_sectors a unit's size, or only a vendor image's? A table read off a
+    device gives its last partition an end; sys_partition.fex declares UDISK with size 0 ("to the
+    end"), so a layout taken from an image has 0 there and its disk_sectors says nothing about the
+    chip (projector09220931: "not a chip anybody has read")."""
+    rows = layout.get("partitions") or ()
+    return bool(layout.get("disk_sectors") and rows and rows[-1][2])
+
+
 def _sizes_allowed(args, ident):
     """The eMMC sizes (sectors) this run accepts. Reading (`dump`) takes every size an H713
     board is known with. A write takes the size of the board identified underneath -- its
     profile's layout.disk_sectors -- and, where no profile names one (our layout without a
     test image, or --skip-identify), every known size: the image's own table must then match
-    the device (check_package), and a dump the device (_restore). `restore-stock` rebuilds
-    the vendor table of an update.img, which exists for the HY310's size alone."""
+    the device (check_package), and a dump the device (_restore). `restore-stock` builds its table
+    for the device's own size, so it takes every known size -- held to the profile's only where
+    that size is a unit's (_size_is_a_units); that the container fits is check_stock_gpt's."""
     if args.command == "dump":
         return SECTORS_KNOWN
-    if args.command == "restore-stock":
-        return (SECTORS_EXPECTED,)
-    profile = profile_of((ident or {}).get("profile")) or {}
-    size = (profile.get("layout") or {}).get("disk_sectors")
+    layout = (profile_of((ident or {}).get("profile")) or {}).get("layout") or {}
+    size = layout.get("disk_sectors")
+    if args.command == "restore-stock" and not _size_is_a_units(layout):
+        return SECTORS_KNOWN
     return (size,) if size else SECTORS_KNOWN
 
 
@@ -587,13 +597,21 @@ def _work(args, path):
         if disk.sectors not in allowed:
             console.error("%s has %d sectors, expected %s -- wrong drive?"
                           % (path, disk.sectors, " or ".join(str(n) for n in allowed)))
-            if args.command == "restore-stock" and disk.sectors in SECTORS_KNOWN:
-                console.info("  restore-stock rebuilds a vendor table for the HY310's eMMC size only;")
-                console.info("  the way back on this board is its full dump: h713-install restore <dump>")
-            elif ident and ident.get("profile") and disk.sectors in SECTORS_KNOWN:
+            if ident and ident.get("profile") and disk.sectors in SECTORS_KNOWN:
                 console.info("  The device was identified as %s, whose eMMC has %s sectors."
                              % (ident["profile"], " or ".join(str(n) for n in allowed)))
+                if args.command == "restore-stock":
+                    console.info("  That size was read off a unit. If this unit carries another eMMC "
+                                 "of the same firmware, --skip-identify takes every known size.")
+            if args.command == "restore-stock":
+                console.info("  The way back on an eMMC of another size is its full dump: "
+                             "h713-install restore <dump>")
             return 4
+        profile_size = ((getattr(args, "_profile", None) or {}).get("layout") or {}).get("disk_sectors")
+        if args.command == "restore-stock" and profile_size not in (None, disk.sectors):
+            console.warn("the profile of this board names %d sectors out of a vendor image's table, which "
+                         "does not say what chip it is flashed to; this device has %d, a size boards "
+                         "are known with, and the table is built for it" % (profile_size, disk.sectors))
         if args.command in ("install", "restore"):
             why = _image_size_problem(args, disk)
             if why:

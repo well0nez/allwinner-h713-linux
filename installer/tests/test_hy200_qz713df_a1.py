@@ -361,7 +361,10 @@ class SizeGate(unittest.TestCase):
             return m._sizes_allowed(args, {"profile": None if profile == "none" else profile}
                                     if ident else None)
         self.assertEqual(allowed("dump", "hy310"), SECTORS_KNOWN)
-        self.assertEqual(allowed("restore-stock", GEU_ID), (HY310,))
+        # restore-stock took the HY310's size alone until ST3-RESTORE; now every known size, and the
+        # GEU's profile - UDISK with its real extent, a unit's table - holds a device to its own
+        self.assertEqual(allowed("restore-stock", GEU_ID), (GEU,))
+        self.assertEqual(allowed("restore-stock", PLUS_ID), SECTORS_KNOWN)   # its size is its image's
         self.assertEqual(allowed("install", GEU_ID), (GEU,))
         self.assertEqual(allowed("restore", GEU_ID), (GEU,))
         self.assertEqual(allowed("install", PLUS_ID), (HY310,))      # its image's table says so

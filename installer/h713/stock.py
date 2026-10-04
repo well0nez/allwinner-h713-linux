@@ -148,19 +148,23 @@ def stock_gpt_differences(img, partitions, disk_sectors):
     differently, in the order of sys_partition.fex; the last two fields are None for a name only
     sys_partition.fex has. Empty when the container carries no sunxi_gpt.fex. A partition
     declared with size 0 (UDISK) runs to the last usable sector, exactly as build_gpt() writes
-    it; without that rule the last row of every image would look like a difference.
+    it; without that rule the last row of every image would look like a difference. So is UDISK
+    ending where the container's table ends, on a device of another size than that table's.
     """
     source = img.file(SUNXI_GPT)
     if source is None:
         return []
+    facts = gpt_facts(source.read(0, source.size))
     theirs = {}
-    for entry in gpt_facts(source.read(0, source.size)).get("entries") or []:
+    for entry in facts.get("entries") or []:
         theirs.setdefault(entry["name"], (entry["first"], entry["last"] - entry["first"] + 1))
+    # the disk the container's table was cut for (UDISK, size 0, ends at its last usable sector)
+    their_disk = ((facts.get("header") or {}).get("last_usable") or 0) + 34
     rows = []
     for name, lba, sectors, _source in partitions:
         mine = (lba, sectors or disk_sectors - 33 - lba)
         other = theirs.get(name)
-        if other != mine:
+        if other != mine and (sectors or other != (lba, their_disk - 33 - lba)):
             rows.append((name, mine[0], mine[1]) + (other or (None, None)))
     return rows
 
@@ -171,6 +175,13 @@ def covers_the_lock(partitions, disk_sectors):
     firmware image brings back, so it is asked before anything is written."""
     return [name for name, lba, sectors, _source in partitions
             if lba <= LOCK_LAST and lba + (sectors or disk_sectors - 33 - lba) - 1 >= LOCK_FIRST]
+
+
+def beyond_the_disk(partitions, disk_sectors):
+    """Partitions the device is too small for: a fixed size that ends behind the last usable sector
+    (the backup GPT lies from `disk_sectors - 33`), or a size 0 (UDISK) that starts there."""
+    end = disk_sectors - 33
+    return [name for name, lba, sectors, _source in partitions if lba + (sectors or 1) > end]
 
 
 def moved_unique_regions(rows, device_regions):
@@ -233,9 +244,10 @@ def check_stock_gpt(image_file, disk, log=console, device_regions=None):
 
     `device_regions` is what the device's own table says about the device-unique regions
     ({name: (lba, sectors)}); by default it is read here, by name and without the HY310
-    fallback -- a guessed LBA must not settle a question about what may be overwritten. Two
-    things stop the restore: a partition reaching into the secure storage, and a device-unique
-    region the device carries where the written table does not put it (relabelled_regions).
+    fallback -- a guessed LBA must not settle a question about what may be overwritten. Three
+    things stop the restore: a partition reaching into the secure storage, one that does not fit
+    on the device (beyond_the_disk), and a device-unique region the device carries where the
+    written table does not put it (relabelled_regions).
     """
     q = FileSource(pathlib.Path(image_file))
     try:
@@ -265,6 +277,11 @@ def check_stock_gpt(image_file, disk, log=console, device_regions=None):
         return ("nothing is written: %s of this image would reach into the secure storage at "
                 "LBA %d..%d, which exists only on this device"
                 % (", ".join(covered), LOCK_FIRST, LOCK_LAST))
+    too_big = beyond_the_disk(partitions, disk.sectors)
+    if too_big:
+        return ("nothing is written: %s of this image would end behind the last usable sector of "
+                "this device (%d sectors, the backup partition table lies from LBA %d on)"
+                % (", ".join(too_big), disk.sectors, disk.sectors - 33))
     if device_regions is None:
         device_regions = regions_from_gpt(disk)
     moved = relabelled_regions(partitions, device_regions)

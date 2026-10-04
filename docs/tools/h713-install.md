@@ -160,6 +160,15 @@ brings no file for are left alone rather than zeroed where the board profile lis
 image without a `mips/` directory does not get to write over a bootloader partition that has one: the
 stock U-Boot reads the display firmware from the slot `misc` selects.
 
+`restore-stock` takes every eMMC size an H713 board is known with (15269888 and 15273600 sectors): the
+table is built for the device it finds, and UDISK runs to that device's last usable sector. Where the
+device is identified as a board whose profile carries a size read off a unit, it must have that size;
+a profile whose size only comes out of a vendor image (UDISK declared with size 0) makes a mismatch a
+warning, because the image's table cannot say what chip it is flashed to. `--skip-identify` keeps the
+size list and the next check: nothing is written when a partition of the container does not fit on the
+device. Any other size is refused, and the way back is the full dump (`restore`). The container has to be
+the firmware of the unit itself - the installer does not compare it with the board it identified.
+
 ## What is proven and what is not
 
 The steps above have run on hardware with the English command line since 15.09.2026, and layout v4 - the
