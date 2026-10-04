@@ -101,6 +101,12 @@ KEYSTONE_STATUS_REFUSED_OLD = KEYSTONE_STATUS.replace(
     "/etc/h713/keystone-ref was taken with axis_roll = +x, the configuration "
     "says -x -- run `h713-keystone reference` again")
 
+# h713-features status on the HY300PRO-G-EU: the accelerometer and nothing else.
+GEU_FEATURES = """ok features  board hy300pro-g-eu, FEATURES: accelerometer (/etc/h713/features)
+camera          not present on this board
+accelerometer   present  iio:device0 (sc7a20)  (h713-keystone, h713-keystone-auto)
+focus-motor     not present on this board"""
+
 
 class Fakes(object):
     """A bin directory of shell scripts: one line per call in calls.log."""
@@ -301,6 +307,30 @@ class VerbTest(unittest.TestCase):
         self.assertEqual(list(answer["modes"]), list(panel.MODES))
         self.assertEqual(list(answer["steps"]), list(panel.NUDGE_STEPS))
 
+    def test_controls_say_which_hardware_the_board_has(self):
+        answer = self.call("controls")         # no h713-features: everything stays
+        self.assertEqual(answer["features"], {})
+        self.assertEqual(list(answer["after_move"]), list(panel.AFTER_MOVE))
+        self.fake.tool("h713-features", {"status": GEU_FEATURES})
+        answer = self.call("controls")
+        self.assertEqual(answer["features"], {"camera": False, "accelerometer": True,
+                                              "focus-motor": False})
+        self.assertEqual(list(answer["after_move"]), ["off", "keystone"])
+
+    def test_after_move_refuses_hardware_the_board_does_not_have(self):
+        self.fake.tool("h713-features", {"status": GEU_FEATURES})
+        answer = self.call("after_move", ["keystone+focus"])
+        self.assertFalse(answer["ok"])
+        self.assertIn("needs the camera and the focus-motor - not present on this board",
+                      answer["line"])
+        self.assertFalse(os.path.exists(self.conf))
+        self.assertNotIn("systemctl restart h713-keystone-auto", self.fake.calls())
+        self.assertTrue(self.call("after_move", ["keystone"])["ok"])
+        self.fake.tool("h713-features", {"status": GEU_FEATURES.replace(
+            "present  iio:device0", "not present on this board  iio:device0")})
+        self.assertFalse(self.call("after_move", ["keystone"])["ok"])
+        self.assertTrue(self.call("after_move", ["off"])["ok"])
+
     def test_after_move_writes_the_key_and_restarts_the_unit(self):
         with open(self.conf, "wb") as handle:
             handle.write(b"# /etc/h713/keystone.conf\n"
@@ -410,6 +440,23 @@ class PlainTest(unittest.TestCase):
         self.assertIn("ref set", page)
         self.assertIn("refines the ideal", page)
         self.assertIn(">Level reference</button>", page)
+
+    def test_the_page_hides_the_controls_of_absent_hardware(self):
+        with open(PAGE, "rb") as handle:
+            page = handle.read().decode("utf-8")
+        wanted = {"keystone_now')": "accelerometer", "keystone_ref')": "accelerometer",
+                  "autofocus')": "camera focus-motor", "after\"": "accelerometer"}
+        for verb in ("['down', '20']", "['down', '5']", "['up', '5']", "['up', '20']"):
+            wanted["act('focus', %s)" % verb] = "focus-motor"
+        for anchor, needs in wanted.items():
+            tag = re.search(r"<[^<>]*" + re.escape(anchor) + r"[^<>]*>", page)
+            self.assertIsNotNone(tag, anchor)
+            self.assertIn('data-needs="%s"' % needs, tag.group(0), anchor)
+        for needs in re.findall(r'data-needs="([^"]*)"', page):
+            self.assertTrue(set(needs.split()) <= set(panel.FEATURE_NAMES), needs)
+        for needed in ('id="absent"', "FEAT = c.features || {}; features();",
+                       "[hidden] { display: none !important; }", 'has("accelerometer")'):
+            self.assertIn(needed, page)
 
     def test_the_page_carries_no_external_reference(self):
         with open(PAGE, "rb") as handle:

@@ -74,6 +74,7 @@ footer { position: sticky; bottom: 0; background: var(--sunk); padding: var(--u)
          color: var(--dim); }
 footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
 .help { font-size: 12px; color: var(--dim); margin: 4px 0 0; } .help b { color: var(--ink); font-weight: 500; }
+[hidden] { display: none !important; }   /* .row is flex: hidden has to win */
 @media (min-width: 900px) {
   body { max-width: 1440px; margin: 0 auto; padding: calc(2 * var(--u)); }
   nav { display: none; } .screen { display: block; } section { margin-bottom: 0; }
@@ -96,6 +97,7 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
 <main>
 <section class="screen on" id="projection">
   <h2>Keystone</h2>
+  <p class="help" id="absent" hidden></p>
   <div id="keystone" onkeydown="padKey(event)">
     <svg id="quad" viewBox="0 0 360 216" role="group" aria-label="the four corners">
       <rect class="edge" x="20" y="18" width="320" height="180"></rect>
@@ -116,7 +118,7 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
   <div class="row" style="margin-top:8px">
     <button onclick="mask(true)" id="mask-on">Mask on</button><button
       onclick="mask(false)" id="mask-off">Mask off</button>
-    <button onclick="act('keystone_now')">Auto now</button><button
+    <button onclick="act('keystone_now')" data-needs="accelerometer">Auto now</button><button
       onclick="act('keystone_res')">Reset</button>
   </div>
   <label for="zoom">Zoom (the projection area) <span id="zoom-v" class="num">100 %</span></label>
@@ -126,18 +128,18 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
   <div class="row" id="modes"></div>
   <label>the mount: rear mirrors left-right, ceiling turns the picture over; the corners above
     are named as the audience sees them in every mode</label>
-  <h3>After a move</h3>
-  <div class="row" id="after"></div>
-  <h3>Focus</h3>
+  <h3 data-needs="accelerometer">After a move</h3>
+  <div class="row" id="after" data-needs="accelerometer"></div>
+  <h3 data-needs="focus-motor">Focus</h3>
   <div class="row">
-    <button onclick="act('focus', ['down', '20'])">-20</button><button
-      onclick="act('focus', ['down', '5'])">-5</button>
-    <button onclick="act('focus', ['up', '5'])">+5</button><button
-      onclick="act('focus', ['up', '20'])">+20</button>
-    <button onclick="act('keystone_ref')">Level reference</button><button
-      onclick="act('autofocus')">Autofocus now</button>
+    <button onclick="act('focus', ['down', '20'])" data-needs="focus-motor">-20</button><button
+      onclick="act('focus', ['down', '5'])" data-needs="focus-motor">-5</button>
+    <button onclick="act('focus', ['up', '5'])" data-needs="focus-motor">+5</button><button
+      onclick="act('focus', ['up', '20'])" data-needs="focus-motor">+20</button>
+    <button onclick="act('keystone_ref')" data-needs="accelerometer">Level reference</button><button
+      onclick="act('autofocus')" data-needs="camera focus-motor">Autofocus now</button>
   </div>
-  <p class="help"><b>Level reference</b> is optional: the automatic already corrects against the ideal level
+  <p class="help" data-needs="accelerometer"><b>Level reference</b> is optional: the automatic already corrects against the ideal level
     pose (0, 0, 1 g), shown as <b>ref ideal</b> above. Pressed with the projector on a surface a spirit level
     has passed, it stores the pose the sensor reads there, which refines the ideal by the sensor's own mounting
     offset - the strip then says <b>ref set</b>. <b>ref refused</b>: the stored file no longer matches the axis map
@@ -188,6 +190,7 @@ var ROW = {tl: "tr", tr: "tl", bl: "br", br: "bl"};   /* the x partner */
 var COL = {tl: "bl", bl: "tl", tr: "br", br: "tr"};   /* and the y partner */
 var ST = {}, KS = {}, CORNER = "tl", STEP = 10, BUSY = false;
 var DRAG = null, LAST = 0, FLYING = false, PENDING = null;
+var FEAT = {};   /* h713-features through "controls": false = not present on this board */
 function id(name) { return document.getElementById(name); }
 function say(text, kind) { var f = id("line"); f.textContent = text; f.className = kind || ""; }
 function esc(text) { var d = document.createElement("div"); d.textContent = text; return d.innerHTML; }
@@ -237,6 +240,18 @@ function show(name) {
   });
 }
 function show_v(name, unit) { id(name + "-v").textContent = id(name).value + unit; }
+function has(name) { return FEAT[name] !== false; }   /* unknown: keep the control */
+/* Optional hardware (boards/README.md, FEATURES): hide what this board has
+   none of, and say so in one line instead of leaving dead buttons. */
+function features() {
+  var gone = Object.keys(FEAT).filter(function (n) { return !has(n); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-needs]"), function (e) {
+    e.hidden = !e.getAttribute("data-needs").split(" ").every(has);
+  });
+  id("absent").hidden = !gone.length;
+  id("absent").textContent = "Not present on this board: " +
+    gone.join(", ").replace("focus-motor", "focus motor") + ". What needs it is hidden.";
+}
 
 function point(c) {                       /* per-mille inward -> the viewBox */
   var x = val(c + "_x") / 1000 * W, y = val(c + "_y") / 1000 * H;
@@ -348,7 +363,8 @@ function draw() {
   id("strip").innerHTML = bit("signal", ST.signal || "-") + bit("picture", ST.picture || "-") +
     bit("warp", ST.warp || "-", ST.warp === "on" ? "on" : "") + bit("mask", ST.pattern || "-") +
     bit("mode", ST.mode || "-", ST.mode && ST.mode !== "front" ? "on" : "") +
-    bit("keystone", ST.keystone_by || "-") + bit("ref", ST.reference || "-", ST.reference === "set" ? "on" : "") +
+    bit("keystone", ST.keystone_by || "-") +
+    (has("accelerometer") ? bit("ref", ST.reference || "-", ST.reference === "set" ? "on" : "") : "") +
     bit("temp", temps.length ? temps.join("  ") : "-") +
     bit("gpu", ST.fps === null || ST.fps === undefined ? "-" : ST.fps + " fps");
   if (!DRAG) { KS = ST.keystone || {}; drawQuad(); }
@@ -375,6 +391,7 @@ function build() {     /* the page draws itself from the tool's own lists */
     if (!c.ok) { say(c.line, "bad"); return; }
     ST.steps = c.steps || [10]; ST.after_move_list = c.after_move || [];
     ST.modes_list = c.modes || [];
+    FEAT = c.features || {}; features();
     id("steps").innerHTML = ST.steps.map(function (s) {
       return '<button id="st-' + s + '" onclick="setStep(' + s + ')">' + s + "</button>"; }).join("");
     [["after", c.after_move, "after_move", "am-"], ["presets", c.presets, "preset", ""],

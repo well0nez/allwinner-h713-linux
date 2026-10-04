@@ -45,6 +45,12 @@ PRESETS = ("standard", "cinema", "vivid", "game", "computer", "hdr",
 ASPECTS = ("auto", "proportional", "full", "16:9", "4:3", "zoom")
 PICTURE_CONTROLS = ("brightness", "contrast", "saturation", "hue", "sharpness")
 AFTER_MOVE = ("off", "keystone", "keystone+focus")
+# The optional hardware (boards/README.md, FEATURES) as `h713-features status`
+# names it, and what each after-move choice needs of it.  The page hides the
+# controls of what is not present; nothing here guesses at a node itself.
+FEATURE_NAMES = ("camera", "accelerometer", "focus-motor")
+AFTER_MOVE_NEEDS = {"keystone": ("accelerometer",),
+                    "keystone+focus": ("accelerometer", "camera", "focus-motor")}
 # h713-warp's projection modes: how the picture is mirrored for the mount.
 # The corners keep their wall names in every mode (the warp flips underneath).
 MODES = ("front", "rear", "ceiling", "rear-ceiling")
@@ -228,6 +234,11 @@ def set_conf_key(path, key, value):
     os.replace(path + ".new", path)
 
 
+def lacking(after_move, present):
+    """The hardware an after-move choice needs and this board does not have."""
+    return [n for n in AFTER_MOVE_NEEDS.get(after_move, ()) if present.get(n) is False]
+
+
 def keystone_limits(values):
     """How far each of the eight may still go: the vendor's clamp as h713-warp
     applies it (matrix.c) - x limited by the corner across the row, y by the
@@ -280,15 +291,26 @@ class Panel(object):
         self.ranges = found or self.ranges
         return self.ranges
 
+    def features(self):
+        """{feature: present} out of `h713-features status`; empty when it
+        does not answer (an image without it), and then every control stays
+        on the page as before."""
+        found = labelled(self.run("h713-features", ("status",), T)[2])
+        return dict((n, found[n].split()[0] == "present")
+                    for n in FEATURE_NAMES if found.get(n))
+
     def do_controls(self, args):
-        """What the page needs to draw itself: the sliders and the lists."""
+        """What the page needs to draw itself: the sliders, the lists, and
+        which optional hardware this board has."""
         ranges = self.control_ranges(refresh=True)
         blank = {"min": 0, "max": 100}     # until ctl list has been read
+        present = self.features()
         return {"ok": True, "line": "ok controls", "steps": NUDGE_STEPS,
                 "controls": [dict(blank, name=n, **ranges.get(n, {}))
                              for n in PICTURE_CONTROLS],
                 "presets": PRESETS, "aspects": ASPECTS, "modes": MODES,
-                "after_move": AFTER_MOVE, "corners": CORNERS}
+                "after_move": [v for v in AFTER_MOVE if not lacking(v, present)],
+                "corners": CORNERS, "features": present}
 
     def do_picture_set(self, args):
         """`h713-tv ctl set CONTROL VALUE`, the range out of `ctl list`."""
@@ -306,6 +328,10 @@ class Panel(object):
         if len(args) != 1:
             raise Refused("error one of %s was wanted" % " ".join(AFTER_MOVE))
         value = _choice(*AFTER_MOVE)(args[0])
+        missing = lacking(value, self.features())
+        if missing:
+            return no("error after_move = %s needs the %s - not present on this "
+                      "board" % (value, " and the ".join(missing)))
         try:
             set_conf_key(self.keystone_conf, "after_move", value)
         except OSError as problem:
