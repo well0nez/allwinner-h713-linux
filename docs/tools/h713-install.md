@@ -1,6 +1,6 @@
 # h713-install
 
-`h713-install` turns a stock HY310/L018 into this system, entirely from the user's PC - nothing
+`h713-install` turns a stock H713 projector of a board it knows (the HY310 above all) into this system, entirely from the user's PC - nothing
 proprietary is downloaded, and nothing runs on the device beyond U-Boot. It talks to the eMMC as a plain
 USB block device, so it needs Python 3.9+ and no other package. `install` also mounts the image's own file
 systems to copy those parts in, which needs a Linux kernel and root; `identify`, `dump` and `extract` mount
@@ -143,7 +143,7 @@ none of this applies: the dump is mandatory and it is what the vendor files come
 
 Before the first byte is written the tool prints the beta warning and requires **`YES` typed out** - not a
 `[y/N]` prompt - because a fast keypress is exactly the failure mode a full write should not allow. `JA`
-is accepted alongside `YES` until the German aliases go out after `v0.9`.
+is still accepted alongside `YES`, like the other German aliases.
 
 GPT partition names starting `hy310-` mean the device already runs this system; a stock layout is matched
 against the board profiles by several features at once, not by one fingerprint string. On a reinstall over
@@ -176,7 +176,7 @@ copy through a mount - was installed and cold-started on the HY310 on 16.09.2026
 ([STATUS.md](../../STATUS.md)). What stays unverified is the Windows path: `identify`, `dump` and
 `extract` are written for it and refuse nothing, `install` says in one sentence that it needs Linux, and
 nobody has run any of it there. Every German switch of v0.5-beta
-(`--abbild`, `--abzug`, `--nur-abzug`, `--dry-run` and the rest) is still accepted until after `v0.9` and
-prints one line with its new name.
+(`--abbild`, `--abzug`, `--nur-abzug`, `--dry-run` and the rest) is still accepted and prints one line with
+its new name.
 
 Details: doku/110-plan-installationsweg.md, doku/121-plan-werkzeug-umbau.md.

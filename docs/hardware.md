@@ -69,9 +69,10 @@ and the stock remote pairs over BLE. Details: [docs/subsystems/wifi.md](subsyste
 
 ## Audio
 
-An internal codec drives the speaker for device sounds. HDMI audio is a separate path - a codec-I2S
-link plus an MSP DSP block tied to the HDMI-RX capture clock - and is what plays back the source's
-sound today. Details: [docs/subsystems/audio.md](subsystems/audio.md).
+An internal codec drives the speaker. HDMI audio reaches it through a codec-I2S link from an MSP DSP block
+tied to the HDMI-RX capture clock, and since `v0.96-beta` the box's own sounds join that path inside the
+DSP: a playback PCM, `hw:hy310hdmi,0`, which is ALSA's default, is mixed into HDMI there, so both play at
+once. Details: [docs/subsystems/audio.md](subsystems/audio.md).
 
 ## eMMC and USB
 
@@ -98,7 +99,7 @@ it, the figure is worth having here.
 | Temperature | - | this unit's board-management firmware reports `ntc_num = 0`: **no NTC is fitted**, and overheat protection relies on the fan tachometer alone. An earlier assumption of a fitted thermistor was wrong (`doku/00-STATUS.md`, 2026-09-11) |
 | Focus motor | 4-phase stepper, GPIO-driven; PH14 sense pin | PH14 is a **range sensor** - it reads high while the mechanism is inside its travel window and drops at either end - not a one-directional end-stop |
 | Camera | see USB port 1 above | |
-| Power key | `PL4` (R_PIO), `KEY_POWER`, edge IRQ | short press starts the device from standby; under Linux, `systemd` maps it to `poweroff`. Governs the power-on gate: [docs/uboot/power-gate.md](uboot/power-gate.md) |
+| Power key | `PL4` (R_PIO), `KEY_POWER`, edge IRQ | short press starts the device from standby; under Linux, `systemd` maps it to `poweroff` - so does the Power key of the paired Bluetooth remote. Governs the power-on gate: [docs/uboot/power-gate.md](uboot/power-gate.md) |
 | Status LEDs | `PL0`/`PL1` per the vendor device tree | tied to the power rails, not individually GPIO-driven; the gate additionally drives a red/blue indicator for standby vs. running |
 | UART pads | UART0, **115200 8N1**, 3.3 V | the boot and kernel console, and the way in when there is no SSH key in the image. The pads are on the mainboard and unlabelled; the thread that found them on several units is linked from the README's issue reference - no photograph in this repository yet |
 

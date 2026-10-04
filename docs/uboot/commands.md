@@ -33,7 +33,11 @@ Everything else under `h713_disp` - `test`, `mips-test`/`mips-trace`/`mips-comm-
 `scanrate`, `bl-gpio`, and `panel-test` with around thirty pattern modes (`tcon-checker`, `fb-pitch`,
 `vendor-logo`, …) - is a firmware bring-up diagnostic, not needed for normal use. `help h713_disp` at the
 prompt lists all of them; `elog=<0-5>` on `init` turns on the coprocessor's own log ring, covered in
-`docs/subsystems/mips.md`.
+`docs/subsystems/mips.md`. Two of them, `commdev` and `elog`, read the firmware's `cpu_comm` cells; since
+`v0.96-beta` they take those addresses from the board's identity row instead of the HY310's literals, so
+they read right on a board whose firmware keeps its tables elsewhere (tested on the HY310, 04.10.2026). After
+an interactive `h713_disp init` at the prompt, go on with `run boot_emmc`, never `boot`: a second init
+breaks the handover, and the panel stays dark until the next reboot.
 
 ## h713_mips - manage the display coprocessor directly (diagnostic)
 

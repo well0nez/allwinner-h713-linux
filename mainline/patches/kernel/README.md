@@ -151,9 +151,9 @@ roadmap and `docs/status.md`.
   for upstreaming, not for this series. *(ours)*
 
 - **0161 - the same for the HY300 Pro.** `sun50i-h713-hy300-pro.dts` includes
-  the hy200 dts and overrides `model` and `compatible`; it is the tree a TEST
-  image for the board of issue #1 boots. No release image is built from it
-  (stage 5). *(ours)*
+  the hy200 dts (since 0181 the hy310 dts, same DTB bytes) and overrides `model`
+  and `compatible`; it is the tree a TEST image for the board of issue #1
+  boots. No release image is built from it (stage 5). *(ours)*
 
 - **0181 - one board, one tree (the later cleanup 0160 promised).** The HY310's
   description moves out of the hy200 dts into `sun50i-h713-hy310.dts` (same DTB

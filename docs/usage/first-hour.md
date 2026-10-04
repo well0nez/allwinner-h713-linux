@@ -79,9 +79,10 @@ h713-focus down 20
 
 The motor has no position sensor, only a **range watcher**: the driver notices when the mechanism leaves
 the permitted range and stops. Small steps, look at the wall, repeat - that is the whole method. `h713-autofocus run` does the search by
-itself ([how](../tools/h713-autofocus.md)), taking the panel over for its chessboard and giving it back; it has not
-been proven to converge against a wall yet, so keep the manual
-method at hand.
+itself ([how](../tools/h713-autofocus.md)), taking the panel over for its chessboard and giving it back; it
+ended sharp against a wall on 02.10.2026, but that is one evening, so keep the manual method at hand. A board
+without a focus motor (the HY200 QZ713DF A1) answers both tools with "not present on this board" - `h713-features`
+says what your board has.
 
 ## 5. The camera
 
@@ -99,6 +100,11 @@ A short press of the power key while the system runs asks systemd for a `powerof
 back where it started - dark, about 4 W, waiting for the next press. `poweroff` over SSH does the same.
 `reboot` skips the gate and comes straight back up, which is why a remote reboot never leaves you with a
 device that needs a finger.
+
+The stock remote pairs over Bluetooth: hold Left+Right on it until the projector has it (`h713-remote-pair
+status` says so), and it reconnects by itself after a reboot. Its Power key does what the power key does;
+its other keys reach Linux as input events, but nothing in the image acts on them yet
+([wifi.md](../subsystems/wifi.md#bluetooth)).
 
 ## 7. Keeping it up to date
 

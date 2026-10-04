@@ -23,7 +23,7 @@ conflate:
 2. **The reported clock was ~4x lower than the physical one** (2026-08-19), so
    every rate ever configured was four times what it claimed. Fixed by patch
    0048 and validated on hardware 2026-08-21 - see
-   [The 50 MHz question](#the-50-mhz-question--2026-08-19-the-reported-clock-is-not-the-real-one).
+   [The 50 MHz question](#the-50-mhz-question---2026-08-19-the-reported-clock-is-not-the-real-one).
 
 The original acceptance test now passes in both directions on a RAM-loaded
 kernel:
@@ -78,7 +78,7 @@ That boundary was resolved on 2026-08-19, and not the way it first looked: the
 reported SDIO clock was about 4x lower than the physical one, so "50 MHz" was
 asking the link for ~200 MHz. The accounting was corrected on 2026-08-21 by
 patch 0048, so `max-frequency = <50000000>` is now genuinely 50 MHz and it
-passes. See [The 50 MHz question](#the-50-mhz-question--2026-08-19-the-reported-clock-is-not-the-real-one).
+passes. See [The 50 MHz question](#the-50-mhz-question---2026-08-19-the-reported-clock-is-not-the-real-one).
 
 ## Working configuration
 
@@ -224,7 +224,7 @@ bytes, tree `…-7fe9c8012b42…`).
 2. ~~Repeat the round trips from a true cold boot~~ - **done 2026-08-21**.
 3. ~~Flashing~~ - **done 2026-08-21**. The FAT geometry was reconciled and the
    production FIT written; `bootcmd` now boots it unattended. See
-   [the FAT section](#the-fat-on-mmc-12-was-larger-than-its-partition--fixed-2026-08-21).
+   [the FAT section](#the-fat-on-mmc-12-was-larger-than-its-partition---fixed-2026-08-21).
 4. Optional, and no longer blocking: confirm by measurement that the eMMC's
    retained POSTDIV is doing the work the register values suggest (see
    [What happened to the eMMC](#what-happened-to-the-emmc)). Nothing depends on

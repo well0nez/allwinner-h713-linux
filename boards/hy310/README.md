@@ -17,10 +17,11 @@ this unit; see the two `hy200-*` directories.
 | DRAM | DDR3, 1 GiB, 792 MHz - measured from four independent sources (`doku/10-hardware.md`) |
 | Panel | 1920×1080, dual port, 143.0016 MHz pixel clock, declared project id `0x30` |
 | eMMC | 7.28 GiB, 15 269 888 sectors, no SD slot; boot media is eMMC or FEL |
+| Features | `camera accelerometer focus-motor` (`FEATURES` in `board.env`, `/etc/h713/features` on the device) |
 
 ## What was measured
 
-`STATUS.md` (snapshot 2026-09-16) is the long version; every row there names a date and a log. In
+`STATUS.md` is the long version; every row there names a date and a log. In
 short, on this device:
 
 - standalone boot from eMMC, power-on to a Debian login, 20/20 cold starts
@@ -31,9 +32,10 @@ short, on this device:
 - focus motor, internal camera, fan tacho with the stall poweroff actually triggered on the device,
   11./12.09.
 - FEL recovery and the installer including restore-to-stock, power key gate, standby at 4 W
+- Bluetooth with the stock remote, 03.10.2026 (`docs/subsystems/wifi.md`)
 
 Open on this board, and written down because they are *not* done: environment carry-over across a
-reinstall, a phone joining the access point. Missing entirely: Bluetooth, AV1 decode, HDCP 1.4,
+reinstall, a phone joining the access point. Missing entirely: AV1 decode, HDCP 1.4, the IR receiver,
 any desktop.
 
 **Historical:** images built before 2026-09-12 20:00 shipped a BL31 from 10.09. with assertions

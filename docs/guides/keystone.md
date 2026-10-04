@@ -183,7 +183,8 @@ is back under a second after the signal is.
 **Edge blending.** Done (27.09.2026). The vendor softens the edges of the warped quadrilateral (its
 `draw_edge` pass: a ring of about 6 panel pixels that keeps 20/255 of the picture at the very edge and
 ramps up linearly). `h713-warp` does the same in its two passes: `edge = 4` in `/etc/h713/warp.conf` (the
-vendor's width, the default), `h713-warp ctl edge N`, 0 for the old hard edge. Not yet judged on a wall.
+vendor's width, the default), `h713-warp ctl edge N`, 0 for the old hard edge. Judged on a dark wall on
+02.10.2026: a soft border at `edge = 4`, a hard one at 0, and 59.5 fps either way (`doku/134` A2).
 
 **The throw ratio.** The automatic computes with 0.8176, the ratio implied by the optics constants in the
 device's own `camprjspe.ini`, because nobody has measured this projector with a tape. If the real ratio

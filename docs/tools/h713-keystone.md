@@ -16,10 +16,11 @@ h713-keystone watch                 # after a move, run the automatic once (the 
 
 `h713-keystone-auto.service` runs `watch`; it is enabled from the first boot, watches against the ideal level pose while there is no reference file (a fresh image has none; until 26.09.2026 it waited for the file, and until 23.09.2026 it exited and systemd restarted it every five seconds), and does nothing while `after_move = off` (the settings page's "After a move" buttons write that key and restart the unit). Without an accelerometer the unit is skipped (a condition on `in_accel_x_raw`), and `99-h713-keystone.rules` starts it when one appears after the boot. `-C PATH` names
 another configuration file, `--reference PATH` another reference file, `--device PATH` an IIO node instead of the one
-found by name, `--warp PATH` another warp tool, `-q` drops the warnings.
+found by name, `--warp PATH` another warp tool, `--last-auto PATH` where the automatic notes what it applied
+last, `-q` drops the warnings.
 
 Exit codes: `0` done, `2` a usage, configuration or file error, `3` no readable accelerometer, `4` the pose is more than
-45 degrees off flat and may not become a reference, `5` `h713-warp` refused, `7` no accelerometer on this board at all ("not present on this board", [h713-features](h713-features.md)), `130` SIGTERM or Ctrl-C.
+45 degrees off flat and may not become a reference, `5` `h713-warp` refused, `7` no accelerometer on this board at all ("not present on this board", [h713-features](h713-features.md)), `130` Ctrl-C. SIGTERM, which is how systemd stops the unit, ends with `0` (until 03.10.2026 it was 130, and every stop left the unit "failed").
 
 ## Where the numbers come from
 
@@ -113,16 +114,17 @@ it back when it stops, so switching the automatic off leaves the picture as the 
 tolerantly (`tl_x = 12`, `tl x 12`, `tl-x: 12`), the daemon being written in parallel; one without all eight values
 counts as no answer.
 
-`python3 -m unittest discover -s tests -v` from `userspace/h713-keystone/` runs 143 tests: the 87 that came with the
-models, unchanged, and 56 for this tool - the IIO reader against a fake sysfs directory, the reference file and the
+`python3 -m unittest discover -s tests -v` from `userspace/h713-keystone/` runs 176 tests: the 87 that came with the
+models, unchanged, and 89 for this tool - the IIO reader against a fake sysfs directory, the reference file and the
 ideal, the hysteresis, the poses table above, the configuration parser, the h713-warp verbs against a recorder. `run
 --dry-run` does the whole loop on the real node and only prints.
 
 ## Limits, honestly
 
-- **It has run on the projector once** (HY310, 22.09.2026): the sensor reads, the reference is taken, a 25-degree
-  nose-up tilt pulls the top edge in and a lifted side leaves the picture level. That is one evening, with a PC as
-  the source and no long run behind it.
+- **It has run on the projector on two days** (HY310): on 22.09.2026 the sensor read, the reference was taken, a
+  25-degree nose-up tilt pulled the top edge in and a lifted side left the picture level; on 02.10.2026 the ideal
+  reference, a reference taken from the settings page and "Auto now" passed (`doku/134` A1). Both with a PC as
+  the source and no long run behind them.
 - At rest the eight values still scatter by about half a degree, some 14 per-mille, even with thirty samples
   averaged. The one-degree hysteresis holds that back; it does not remove it.
 - The throw ratio is derived, not measured (AP2c question 1): if it is nearer 1.2, every correction is too strong.

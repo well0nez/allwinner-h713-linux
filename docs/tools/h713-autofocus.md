@@ -26,8 +26,11 @@ Options: `--profile hy310|vafo8|hy300-pro` picks the board table, `--window full
 `--cell PX` changes the chessboard's cell size, `-q` silences the per-pass log. `run` also takes
 `--direction 0|1` (up/down), `--timeout S` (default 22, the vendor's own watchdog; `0` removes it),
 `--start STEP` for a replay, and `--no-pattern` to leave the framebuffer alone, `--no-handover` to take the panel over yourself instead of letting `run` do it.
+`measure` takes `--timeout S` too (default 10 s; it used to wait for the camera without end).
 
 Exit codes: `0` a peak was found, `2` a usage or setup error, `3` the camera streams but the picture is flat,
+or the chessboard did not reach the wall within 4 s (the run waits for two lit, quiet probes before the motor
+moves, and leaves the motor untouched when they do not come),
 `4` the motor may not move (no range watcher, `motor_ctrl_no_limit=1`, an edge already latched), `5` both edges
 latched at once, more than four turn-arounds, a guard that is not about direction, or the 1000-mstep cap, `6` the budget or the deadline ran out without a
 peak, `7` no focus motor or no camera on this board ("not present on this board", [h713-features](h713-features.md)),
@@ -65,12 +68,12 @@ a white margin all round (from the vendor's origin it showed a white band on the
 
 It goes onto the panel through `/dev/fb0`, the console's own surface (`CONFIG_DRM_FBDEV_EMULATION=y` in the
 board defconfig). That is the first of the three routes AP1 section 7 lists, and it was chosen because it needs
-no DRM master and so cannot collide with `h713-tv`, which holds one whenever its plane is on. Hand the panel
-over first:
+no DRM master and so cannot collide with `h713-tv`, which holds one whenever its plane is on. `run` takes the panel
+over from `h713-tv` and `h713-warp` itself and gives it back afterwards; with `--no-handover` you do it:
 
 ```
 h713-tv ctl off             # console instead of the capture plane
-h713-autofocus run
+h713-autofocus run --no-handover
 h713-tv ctl auto            # picture follows the signal again
 ```
 
@@ -165,8 +168,10 @@ refuse to move while it reads 1, and neither of them ever writes it; if a run st
 ## Limits, honestly
 
 - It has run on the projector (22.09.2026): the pattern reaches the wall, the camera delivers, the motor moves
-  on `cmd 1/2` and the metric climbs monotonically over a 60-mstep sweep. What is still **unproven** is
-  convergence - every bench run so far ended at the range watcher's edge, see above. Run it at a wall.
+  on `cmd 1/2` and the metric climbs monotonically over a 60-mstep sweep. On 02.10.2026, with the wait for the
+  pattern and the reversal fix, two runs ended `stopped: peak` and a run against a wall ended sharp at the
+  same motor position as the run before (`doku/134` A4). One evening and one wall; the metric's span was only
+  +11 % that day, and the camera's exposure is the suspect.
 - The vendor's exposure re-check inside the search (`check_gray_level`, every fifth pass) is **not** built:
   AP1's section 8 says that function was summarised, not reconstructed. The gain flag it would set is a profile
   value instead, and it defaults to 1, the sensitive `+-11/+-5` threshold pair.

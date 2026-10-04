@@ -71,8 +71,10 @@ The same chip, the same module family, one more UART. What ships:
 
 Known and open: after a warm reboot the first HCI command sometimes goes unanswered (the helper retries;
 the cause is not found). The IR receiver is not used: the same remote sends the same NEC code for the
-mouse key and the microphone key, so the infrared path is parked. On the HY300PRO-G-EU Bluetooth after a
-cold start is not verified yet.
+mouse key and the microphone key, so the infrared path is parked. On the HY300PRO-G-EU the first attach after
+a cold start stalled at HCI command 0x1003 before `h713-bt-reset` existed; with it, that board has not been
+tried yet. The remote's keys arrive as input events, but nothing in the image acts on them except Power,
+which logind turns into a shutdown.
 
 ## Using it
 

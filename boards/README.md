@@ -92,7 +92,9 @@ Useful when reading a DDR3 fragment: the sun50iw12 DRAM driver computes the DDR3
 from `CONFIG_DRAM_CLK` and ignores `TPR0` - `TPR2`, `MR0` and `MR2` on that path
 (`arch/arm/mach-sunxi/dram_sun50iw12.c`, `iw12_set_timing()`). They are kept in the fragment because
 they are what the board's own boot0 contains, but they do not reach the hardware. On the LPDDR3 path
-they do.
+they do. A device's boot0 carries them as its own computation at its clock, a firmware image's boot0 as a
+template, so a fragment that differs from an image in those three words is expected
+([hy200-qz713-v2](hy200-qz713-v2/README.md)).
 
 ## The honesty rule
 
@@ -121,7 +123,8 @@ was nothing for that somebody to run. `release/build-all.sh --test-image` closes
 1. **`partial` / `profile-only`** - the board has a directory, a `PROFILE`, and (for a test image)
    a `KERNEL_DTB` and a U-Boot base of its own. No release image is built for it.
 2. **Test image** - `release/build-all.sh --board <id> [--variant <name>] --test-image --version vX.Y` builds
-   `<IMAGE_NAME>-vX.Y-TEST` and has `h713-mkimage` write `test_for: "<profile>"` into its table.
+   `<IMAGE_NAME>-vX.Y-TEST` and has `h713-mkimage` write `test_for: "<profile>"` into its table
+   (`"<profile>/<variant>"` for a board with variants).
    The name, the banner, the `.BUILD.txt` stamp and the image README all say TEST. `h713-install`
    accepts it only on that board and only with `--test-image`; on any other board it refuses and
    names the board it was built for. It goes to the board's owner, who takes a full dump first -

@@ -9,6 +9,8 @@ cannot enumerate is a system you cannot trust.
 |---|---|
 | `h713-tv@videoN` | the HDMI input service, one instance per capture device, started by udev when it appears - the number varies with probe order ([h713-tv](tools/h713-tv.md)) |
 | `h713-wifi` | reads `/etc/h713/wifi.env` once at boot and brings the radio up as an access point, a station, or not at all ([h713-wifi](tools/h713-wifi.md)) |
+| `h713-bluetooth` | brings the AIC8800's Bluetooth up once `h713-wifi` has loaded the chip: `hciattach` on UART1 (1.5 MBd, RTS/CTS) with `h713-bt-reset` before and after it, and the start counts only once `hci0` is UP; bluez (`bluetooth.service`) runs on top. Off with `mode=off` in `wifi.env` ([Bluetooth](subsystems/wifi.md#bluetooth)) |
+| `h713-remote-pair` | `h713-remote-pair watch`: keeps the stock BLE remote bonded and connected, and scans for it while none is connected - hold Left+Right on the remote to pair |
 | `h713-hdcp-key` | reads the 912-byte HDCP 2.2 key out of *your* device's secure storage and hands it to the display firmware. Nothing is shipped, nothing is written back |
 | `hy310-zram-swap` | compressed swap in RAM: zstd, half of the 1 GiB, one device. This board has no swap partition and no room for one |
 | `hy310-ssh-host-keys` | generates the SSH host keys on first boot, so two devices from the same image are not twins |
@@ -27,9 +29,10 @@ Beyond the tools in [docs/tools/](tools/):
 
 | Command | For |
 |---|---|
-| `h713-logs volatile\|persistent\|status` | the journal lives in RAM by default, so a projector left running for weeks does not chew through eMMC write cycles. `persistent` bind-mounts `/var/log` onto `/data/log` when you need logs to survive a crash. The old name `hy310-logs` is still there as a symlink and goes after `v0.9` |
+| `h713-logs volatile\|persistent\|status` | the journal lives in RAM by default, so a projector left running for weeks does not chew through eMMC write cycles. `persistent` bind-mounts `/var/log` onto `/data/log` when you need logs to survive a crash. The old name `hy310-logs` is still there as a symlink |
 | `h713-fel` | put the running system into FEL from Linux ([details](tools/h713-fel.md)) |
 | `fw_printenv` / `fw_setenv` | read and change the U-Boot environment from Linux ([environment](uboot/environment.md)) |
+| `h713-bt-reset` | sends HCI_Reset to the Bluetooth controller on the bare UART; `h713-bluetooth` runs it before and after `hciattach`; by hand only while that unit is stopped, because it needs the bare UART |
 
 ## The serial console logs you in as root, without a password
 

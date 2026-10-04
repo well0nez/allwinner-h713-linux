@@ -1,11 +1,12 @@
 # h713-features - which optional hardware this board has
 
 The port grew on the HY310, which has an internal USB camera, an SC7A20 accelerometer and a focus motor.
-Other boards of the family lack one or more of them - the HY300PRO-G-EU has the accelerometer only
+Other boards of the family lack one or more of them - the HY200 QZ713DF A1 with the HY300PRO-G-EU's firmware has the accelerometer only
 ([boards/README.md](../../boards/README.md), `FEATURES`). Two layers say what is there:
 
-- **The record**, `/etc/h713/features`: the board's `FEATURES` out of `boards/<id>/board.env`, written into
-  the image by `build-rootfs.sh --board` (`release/build-all.sh` passes its `--board`). It says what to expect.
+- **The record**, `/etc/h713/features`: the board's `FEATURES` out of `boards/<id>/board.env` - or, for a board
+  with firmware variants, out of the variant's `variant.env` - written into the image by `build-rootfs.sh
+  --board [--variant]` (`release/build-all.sh` passes its own). It says what to expect.
 - **The device nodes**: a `video4linux` node named "HD camera", an `iio:device` with `in_accel_x_raw`, a device
   of the `hy310-focus-motor` driver. They decide.
 

@@ -1,8 +1,8 @@
 # The settings page
 
 The projector serves its own settings page. It is how the picture is squared up, the zoom set, the focus
-moved and the sound turned down without a shell, and until a remote control exists it is the only way to do
-any of that from the sofa. Everything on it is one command this project already has; the page starts that
+moved and the sound turned down without a shell, and it is the only way to do any of that from the sofa: the
+stock remote pairs over Bluetooth, but nothing in the image acts on its keys yet except Power. Everything on it is one command this project already has; the page starts that
 command and shows you the first `ok` or `error` line it answers.
 
 ## Getting to it

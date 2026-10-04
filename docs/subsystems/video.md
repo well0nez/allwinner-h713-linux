@@ -11,8 +11,8 @@ release kernel series finalised 12.09.2026) and have not been repeated since, so
 and the IOMMU as **unverified in this image** - this matches STATUS.md, not just this page.
 
 **The GPU is out of that group since 22.09.2026.** Panfrost was brought up, measured and put to work in this
-image that night, and the section *The GPU, verified in this image* below says with which numbers. It is in the
-source, not in a release.
+image that night, and the section *The GPU, verified in this image* below says with which numbers. It is in
+the image since `v0.95-beta`.
 
 ## The pieces
 

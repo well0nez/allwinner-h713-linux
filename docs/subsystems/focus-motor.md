@@ -102,12 +102,14 @@ after every move and never touches homing. See [`docs/tools/h713-focus.md`](../t
 
 ## Limits, honestly
 
-- The upper travel edge is **unverified** - nobody has driven the mechanism there to look.
-- Whether the 800-mstep travel figure in the device tree matches the real range is **unverified**;
-  only the lower end, at `step = -206` from an arbitrary power-on position, is measured.
+- Both edges of the range watcher are measured - the lower one on 12.09.2026 at `step = -206` from an
+  arbitrary power-on position, the upper one on 23.09.2026 with the pad's pull-up (`0164`) - and homing at
+  boot walks the mechanism back into range (`0165`). Whether the 800-mstep travel figure in the device tree
+  matches the real range is **unverified**: the edges are measured as events, not as one distance.
 - Autofocus through the camera is built as a tool, not as a mode of this driver. Since 22.09.2026 it has
   run on the projector: the search climbs and sharpens the picture, but on a bench pointing at objects about
   30 cm away every run ends at the range watcher's edge with the metric still rising, because the sharp point
-  for that distance lies past the mechanism's travel. A convergence run needs a wall.
+  for that distance lies past the mechanism's travel. Against a wall it converged on 02.10.2026: a run ended
+  sharp at the same motor position as the run before ([h713-autofocus](../tools/h713-autofocus.md)).
 
 Details: `doku/94-fokusmotor-endschalter.md`.
