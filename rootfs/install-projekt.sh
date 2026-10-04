@@ -22,7 +22,9 @@
 #   5c. h713-warp (cross-built) + unit + /etc/h713/warp.conf (warp = on) - the keystone
 #       warp; needs the mesa stage in the tree (build-rootfs.sh --mesa)
 #   5d. h713-keystone + model + unit (enabled; after_move = off in keystone.conf is the switch)
+#       + udev rule (starts the unit when an accelerometer appears)
 #   5e. h713-panel + page + unit (enabled; port 8080, no authentication)
+#   5g. h713-features + unit (enabled), /etc/h713/features from boards/$H713_BOARD/board.env
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -56,6 +58,13 @@ H713_KS_SRC=${H713_KS_SRC:-$PROJECT_ROOT/userspace/h713-keystone}
 H713_PANEL_SRC=${H713_PANEL_SRC:-$PROJECT_ROOT/userspace/h713-panel}
 H713_AF_SRC=${H713_AF_SRC:-$PROJECT_ROOT/userspace/h713-autofocus}
 H713_REMOTE_SRC=${H713_REMOTE_SRC:-$PROJECT_ROOT/userspace/h713-remote-pair}
+H713_FEATURES_SRC=${H713_FEATURES_SRC:-$PROJECT_ROOT/userspace/h713-features}
+# The board this tree is for (build-rootfs.sh --board). Its FEATURES become
+# /etc/h713/features (5g): what the board should have of the camera, the
+# accelerometer and the focus motor. Without a board there is no record and
+# the device's nodes alone decide (boards/README.md, FEATURES).
+H713_BOARD=${H713_BOARD:-}
+FEATURE_NAMES="camera accelerometer focus-motor"
 # The C metric beside h713-autofocus. OPTIONAL on purpose: without it the tool
 # measures in Python, which works and is only slower (Q11 item 2).
 H713_AF_BIN=${H713_AF_BIN:-$H713_AF_SRC/h713-afmetric.aarch64-linux-gnu}
@@ -122,6 +131,21 @@ blob_guard() {
 	say "blob guard: clean (${#FORBIDDEN_NAMES[@]} names, ${#FORBIDDEN_PATHS[@]} paths checked, tvconfig empty)"
 }
 
+# FEATURES of boards/$H713_BOARD/board.env as the line /etc/h713/features
+# carries ("features = NAME..."), or nothing when board.env leaves it unset
+# (not recorded). A name outside FEATURE_NAMES is a typo and stops the build.
+board_features() {
+	local env="$PROJECT_ROOT/boards/$H713_BOARD/board.env" got name
+	got=$( set +u; . "$env" >/dev/null 2>&1 || exit 1; [[ "${BOARD_ID:-}" == "$H713_BOARD" ]] || exit 1
+		[[ -z "${FEATURES+set}" ]] || printf 'features = %s' "$FEATURES" ) || \
+		{ warn "H713_BOARD=$H713_BOARD: $env is missing, does not source or names another BOARD_ID"; return 1; }
+	for name in ${got#features =}; do
+		[[ " $FEATURE_NAMES " == *" $name "* ]] || \
+			{ warn "boards/$H713_BOARD FEATURES: '$name' is not one of $FEATURE_NAMES"; return 1; }
+	done
+	printf '%s' "$got"
+}
+
 # ---------------------------------------------------------------------------
 # Check the sources
 # ---------------------------------------------------------------------------
@@ -180,6 +204,10 @@ check_sources() {
 		{ warn "missing: h713-keystone, model/ or h713-keystone-auto.service in $H713_KS_SRC"; errors=1; }
 	[[ -x "$H713_PANEL_SRC/h713-panel" && -f "$H713_PANEL_SRC/page.html" && -f "$H713_PANEL_SRC/h713-panel.service" ]] || \
 		{ warn "missing: h713-panel, page.html or h713-panel.service in $H713_PANEL_SRC"; errors=1; }
+	[[ -f "$H713_KS_SRC/99-h713-keystone.rules" ]] || { warn "missing: $H713_KS_SRC/99-h713-keystone.rules"; errors=1; }
+	[[ -x "$H713_FEATURES_SRC/h713-features" && -f "$H713_FEATURES_SRC/h713-features.service" ]] || \
+		{ warn "missing: h713-features or h713-features.service in $H713_FEATURES_SRC"; errors=1; }
+	if [[ -n "$H713_BOARD" ]] && ! board_features >/dev/null; then errors=1; fi
 	if [[ -x "$H713_AF_BIN" ]]; then
 		local afkind; afkind=$(file -b "$H713_AF_BIN" 2>/dev/null || echo aarch64)
 		case "$afkind" in
@@ -205,6 +233,9 @@ if ((DRY_RUN)); then
 	printf '    project parts (install-projekt.sh --dry-run)\n'
 	check_sources || warn "sources incomplete -- the real run would stop here"
 	local_rel=$(ls -1 "$MODROOT/lib/modules" 2>/dev/null | head -1 || true)
+	if [[ -z "$H713_BOARD" ]]; then DRY_FEAT="not written (no H713_BOARD: the nodes decide)"
+	elif f=$(board_features 2>/dev/null); then DRY_FEAT="board = $H713_BOARD, ${f:-features not recorded}"
+	else DRY_FEAT="refused: boards/$H713_BOARD/board.env is not usable"; fi
 	cat <<EOF
     1. h713-tv
        ${H713_TV_BIN#"$PROJECT_ROOT"/}
@@ -264,6 +295,9 @@ if ((DRY_RUN)); then
            -> /usr/local/bin/h713-afmetric               0755, if it exists
        (the metric in C, cross-built; without it the tool falls back to
         Python and says so on every run. Q11, 22.09.2026.)
+    5g. h713-features
+       h713-features -> /usr/local/bin/, h713-features.service enabled
+       /etc/h713/features: $DRY_FEAT
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -441,6 +475,7 @@ find "$TREE/usr/local/lib/h713-keystone/model" -name '__pycache__' -type d -prun
 ln -sfn ../lib/h713-keystone/h713-keystone "$TREE/usr/local/bin/h713-keystone"
 install -m 0644 "$H713_KS_SRC/h713-keystone-auto.service" "$TREE/etc/systemd/system/h713-keystone-auto.service"
 ln -sfn ../h713-keystone-auto.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-keystone-auto.service"
+install -D -m 0644 "$H713_KS_SRC/99-h713-keystone.rules" "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
 if [[ ! -f "$TREE/etc/h713/keystone.conf" ]]; then
 	{
 		printf '# h713-keystone: the automatic after a move. after_move = off leaves the picture\n'
@@ -477,6 +512,25 @@ info "/usr/local/lib/h713-panel/{h713-panel,page.html}, h713-panel.service enabl
 say "h713-remote-pair"
 install -m 0755 "$H713_REMOTE_SRC/h713-remote-pair" "$TREE/usr/local/sbin/h713-remote-pair"
 info "/usr/local/sbin/h713-remote-pair"
+
+# --- 5g. h713-features: what the board should have, against what it shows -
+say "h713-features"
+install -m 0755 "$H713_FEATURES_SRC/h713-features" "$TREE/usr/local/bin/h713-features"
+install -m 0644 "$H713_FEATURES_SRC/h713-features.service" "$TREE/etc/systemd/system/h713-features.service"
+ln -sfn ../h713-features.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-features.service"
+if [[ -n "$H713_BOARD" ]]; then
+	FEAT=$(board_features) || die "boards/$H713_BOARD: FEATURES not usable (see above)"
+	printf '%s\n' "# The optional hardware of boards/$H713_BOARD (board.env FEATURES), written" \
+		"# by install-projekt.sh. The device nodes decide what runs; h713-features" \
+		"# compares the two at every boot. No features line: not recorded." \
+		"board = $H713_BOARD" ${FEAT:+"$FEAT"} > "$TREE/etc/h713/features"
+	chmod 0644 "$TREE/etc/h713/features"
+	info "/etc/h713/features: board = $H713_BOARD, ${FEAT:-features not recorded}"
+else
+	rm -f "$TREE/etc/h713/features"
+	info "no H713_BOARD: no /etc/h713/features, the nodes alone decide"
+fi
+info "/usr/local/bin/h713-features, h713-features.service enabled"
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"

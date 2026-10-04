@@ -68,6 +68,7 @@ IMAGE_SIZE=1G
 MAKE_EXT4=1
 DRY_RUN=0
 SKIP_PROJECT=0
+BOARD=          # --board: boards/<id>/board.env FEATURES -> /etc/h713/features
 AUTHORIZED_KEY=
 KEEP_WORK=0
 KEYRING=
@@ -116,6 +117,9 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
                         of the overlay -- access point h713 / magcubic, and
                         everybody knows that one. Checked with
                         'h713-wifi check' before the build.
+  --board ID            the board this rootfs is for: its FEATURES (camera,
+                        accelerometer, focus-motor) become /etc/h713/features.
+                        Without it no record: the device's nodes decide
   --skip-project        the Debian base system + overlay/ only
   --keep-work           do not delete the work directory
   --dry-run             build nothing, write nothing, fetch nothing from the
@@ -139,6 +143,7 @@ while (($#)); do
 	--mesa)           MESA_TAR=${2:?missing value for --mesa}; shift 2 ;;
 	--authorized-key)  AUTHORIZED_KEY=${2:?missing value for --authorized-key}; shift 2 ;;
 	--wifi-env)        WIFI_ENV=${2:?missing value for --wifi-env}; shift 2 ;;
+	--board)           BOARD=${2:?missing value for --board}; shift 2 ;;
 	--skip-project|--skip-projekt) SKIP_PROJECT=1; shift ;;
 	--keep-work)       KEEP_WORK=1; shift ;;
 	--dry-run)         DRY_RUN=1; shift ;;
@@ -169,6 +174,7 @@ say()  { printf '==> %s\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 warn() { printf '!!  %s\n' "$*" >&2; }
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+[[ -z "$BOARD" || -f "$PROJECT_ROOT/boards/$BOARD/board.env" ]] || die "--board $BOARD: no boards/$BOARD/board.env"
 
 # ---------------------------------------------------------------------------
 # 1. Tool check -- it should SAY what is missing, not just fail
@@ -444,7 +450,7 @@ EOF
 	if ((SKIP_PROJECT)); then
 		info "skipped (--skip-project)"
 	elif [[ -x "$PROJECT_SCRIPT" ]]; then
-		MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" \
+		MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" H713_BOARD="$BOARD" \
 		H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" \
 			"$PROJECT_SCRIPT" --dry-run "<tree>" || true
 	else
@@ -659,7 +665,7 @@ if ((SKIP_PROJECT)); then
 else
 	say "5/6 project parts"
 	[[ -x "$PROJECT_SCRIPT" ]] || die "install-projekt.sh is missing: $PROJECT_SCRIPT"
-	MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" \
+	MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" H713_BOARD="$BOARD" \
 	H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" \
 		"$PROJECT_SCRIPT" "$TREE"
 fi
@@ -715,6 +721,18 @@ t "wifi.env usable"           sh "$TREE/usr/local/sbin/h713-wifi" check "$TREE/e
 t "h713-wifi linked"          test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-wifi.service"
 t "aic8800 quiet"             grep -q 'aicwf_dbg_level=0x1' "$TREE/etc/modprobe.d/aic8800.conf"
 t "regulatory.db upstream"    test "$(readlink "$TREE/etc/alternatives/regulatory.db")" = /lib/firmware/regulatory.db-upstream
+# Optional hardware (boards/README.md, FEATURES): the record of what the board
+# should have, the boot check that compares it with the nodes, the keystone's
+# udev start for a sensor that probes late.
+if ((! SKIP_PROJECT)); then
+	t "h713-features linked"      test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-features.service"
+	t "keystone udev start"       test -f "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
+	if [[ -n "$BOARD" ]]; then
+		t "features of $BOARD"    grep -qx "board = $BOARD" "$TREE/etc/h713/features"
+	else
+		t "no features record"    test ! -e "$TREE/etc/h713/features"
+	fi
+fi
 
 TREE_KIB=$(du -sxk "$TREE" | cut -f1)
 info "tree size: $((TREE_KIB / 1024)) MiB ($TREE_KIB KiB, du -sx)"
@@ -761,6 +779,7 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "tree_size_kib=$TREE_KIB"
 	echo "packages_beyond_minbase=$(read_packages | paste -sd,)"
 	echo "installed=$(chroot_count=$(grep -c '^Package: ' "$TREE/var/lib/dpkg/status" 2>/dev/null || echo 0); echo "$chroot_count")"
+	echo "board=${BOARD:-none}"
 	echo "modroot=${MODROOT#"$PROJECT_ROOT"/}"
 	echo "h713_tv=${H713_TV_BIN#"$PROJECT_ROOT"/}"
 	echo "mesa=$( [[ "$MESA_TAR" == none ]] && echo none || echo "${MESA_TAR#"$PROJECT_ROOT"/}" )"

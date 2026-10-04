@@ -382,9 +382,13 @@ info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut
 
 # --- 7. rootfs --------------------------------------------------------------
 if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 rootfs -- skipped (--skip-rootfs)"
+	# the tar carries its board's /etc/h713/features: one for another board would
+	# expect hardware this one has not (or hide what it has)
+	rec=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./etc/h713/features 2>/dev/null | sed -n 's/^board = //p') || rec=
+	[[ -z "$rec" || "$rec" == "$BOARD" ]] || die "the rootfs to reuse was built for board $rec, not $BOARD -- build it again (no --skip-rootfs)"
 else
 	say "7/11 rootfs ($DEBIAN_SUITE/arm64, mmdebstrap in the container as root)"
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
