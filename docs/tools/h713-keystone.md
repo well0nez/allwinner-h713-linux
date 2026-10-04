@@ -100,7 +100,10 @@ when it is read, because its numbers describe a different pose. A refused file i
 stderr, the journal under the unit - and the automatic corrects against the ideal meanwhile: every result line ends in
 `reference refused - ideal (0, 0, 1 g) applies, h713-keystone status says why`, `status` prints `reference  refused
 (why)`, and `reference` taken again replaces the file. Nothing is replaced behind the user's back, and nothing exits:
-`v0.95-beta` exited with 2 over such a file, and systemd restarted the unit every five seconds. A reference taken where
+`v0.95-beta` exited with 2 over such a file, and systemd restarted the unit every five seconds. (The exits that
+remain under the unit - 3, a sensor that is there and does not answer, and 5, `h713-warp` refused - are retried with a
+delay that grows from 5 s to 60 s over five restarts and stays there, so a late sensor is picked up and a dead one costs
+one journal line a minute.) A reference taken where
 the projector happens to stand at first boot would be wrong - it rarely stands where it throws (Marco, 23.09.2026) -
 so nothing asks for one.
 

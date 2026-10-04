@@ -780,7 +780,9 @@ class NotPresent(unittest.TestCase):
         with open(self.RULE, "rb") as fh:
             rule = fh.read().decode("ascii")
         for line in ("ConditionPathExistsGlob=/sys/bus/iio/devices/iio:device*/in_accel_x_raw",
-                     "Restart=on-failure", "SuccessExitStatus=%d" % ks.EXIT_NOT_PRESENT,
+                     "Restart=on-failure", "RestartSec=5", "RestartSteps=5",
+                     "RestartMaxDelaySec=60",           # 3 and 5 back off, never stop (stage 3.3)
+                     "SuccessExitStatus=%d" % ks.EXIT_NOT_PRESENT,
                      "RestartPreventExitStatus=%d" % ks.EXIT_NOT_PRESENT):
             self.assertIn("\n" + line + "\n", unit)
         for word in ('SUBSYSTEM=="iio"', 'ACTION=="add"', 'TEST=="in_accel_x_raw"',

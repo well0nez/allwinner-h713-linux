@@ -9,8 +9,15 @@ ConditionPathExistsGlob=/sys/bus/iio/devices/iio:device*/in_accel_x_raw
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/h713-keystone watch
+# 3 (a sensor that is there and does not answer, or sits under another iio
+# name) and 5 (h713-warp refused) are retried, never given up on: the delay
+# grows from 5 s to 60 s over five restarts and stays there (systemd 254+;
+# the image ships trixie's 257). A transient read error is not silenced for
+# good, and a permanent one costs one journal line a minute, not one every 5 s.
 Restart=on-failure
 RestartSec=5
+RestartSteps=5
+RestartMaxDelaySec=60
 # 7: the accelerometer is not present on this board (gone since the condition)
 SuccessExitStatus=7
 RestartPreventExitStatus=7

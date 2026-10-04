@@ -13,7 +13,7 @@ cannot enumerate is a system you cannot trust.
 | `hy310-zram-swap` | compressed swap in RAM: zstd, half of the 1 GiB, one device. This board has no swap partition and no room for one |
 | `hy310-ssh-host-keys` | generates the SSH host keys on first boot, so two devices from the same image are not twins |
 | `h713-warp` | the keystone warp on the GPU ([h713-warp](tools/h713-warp.md)); in bypass, with the GPU closed, until a corner or the zoom is set |
-| `h713-keystone-auto` | `h713-keystone watch`: the automatic keystone once after a move; does nothing while `after_move = off` in `/etc/h713/keystone.conf`, which is the shipped default. Skipped on a board without an accelerometer; started by udev (`99-h713-keystone.rules`) when one probes late |
+| `h713-keystone-auto` | `h713-keystone watch`: the automatic keystone once after a move; does nothing while `after_move = off` in `/etc/h713/keystone.conf`, which is the shipped default. Skipped on a board without an accelerometer; started by udev (`99-h713-keystone.rules`) when one probes late. Exit 3 (the sensor does not answer) and 5 (`h713-warp` refused) are retried with a delay growing from 5 s to 60 s, never given up |
 | `h713-features` | once per boot: the camera, the accelerometer and the focus motor against `/etc/h713/features`, one journal line each and a warning for one the board should have and does not show ([h713-features](tools/h713-features.md)) |
 | `h713-panel` | the settings page on port 8080, no authentication ([guide](guides/settings-page.md)) |
 
