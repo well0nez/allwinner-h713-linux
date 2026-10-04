@@ -1,0 +1,47 @@
+From 06c08fa0ae2299da68036594ff2de6106c9d72cc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 17 Sep 2026 01:30:21 +0200
+Subject: [PATCH 85/94] sunxi: h713: say the polarities and the programmed DE
+ totals when latching
+
+The owner's next boot log should settle both halves of this A/B without a
+register dump, so the "timing latched" line now also carries the row's sync
+polarities, the raw totals, what the minus-one convention makes of them, and
+the two DE registers read back:
+
+  H713 panel: timing latched: 00000004 02f80550 02d00500 00140028 00000014
+  00010003; sync pol h0 v0; DE totals 1360x760 written as 1359x759
+  (mixer 02f7054f de 02f7054f)
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index a9c9c3ef20b..277890b16cc 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -8335,9 +8335,20 @@ static void h713_disp_latch_panel_timing(void)
+ 	udelay(1);
+ 	writel(ctl & ~BIT(0), 0x0588000c);
+ 
+-	printf("H713 panel: timing latched: %08x %08x %08x %08x %08x %08x\n",
++	/*
++	 * The second half of the line is what the next owner's log needs so the
++	 * two rasters can be compared without a register dump: the polarities
++	 * the row asks for, the raw totals, and what the minus-one convention
++	 * makes of them in the mixer and DE records -- read back, not assumed.
++	 */
++	printf("H713 panel: timing latched: %08x %08x %08x %08x %08x %08x; "
++	       "sync pol h%u v%u; DE totals %ux%u written as %ux%u "
++	       "(mixer %08x de %08x)\n",
+ 	       readl(0x0588001c), readl(0x05880020), readl(0x05880024),
+-	       readl(0x05880028), readl(0x0588002c), readl(0x05880030));
++	       readl(0x05880028), readl(0x0588002c), readl(0x05880030),
++	       c->hsync_pol, c->vsync_pol, c->htotal, c->vtotal,
++	       c->htotal - 1, c->vtotal - 1,
++	       readl(0x0525c000), readl(0x0524c010));
+ }
+ 
+ /*

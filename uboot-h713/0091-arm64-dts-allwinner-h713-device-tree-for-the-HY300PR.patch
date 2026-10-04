@@ -1,0 +1,45 @@
+From c459ea7b31ddd004bf53b8e1cb63866c29debbde Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 20:00:00 +0200
+Subject: [PATCH 91/94] arm64: dts: allwinner: h713: device tree for the
+ HY300PRO-G-EU
+
+The tree configs/hy300pro_g_eu_defconfig names. An include of the HY310's
+tree plus model and compatible, because this board is HY310-like where it
+has been measured, and so that a boot log names the board it runs on. The
+tree carries OF_UPSTREAM, so the file lands under dts/upstream/src/arm64/
+allwinner/ and there is no Makefile line to add (as for 0041 and 0059).
+
+Checked offline: compiled with the host cpp and dtc next to the HY310's, the
+two trees differ in model and compatible and in nothing else.
+---
+ .../allwinner/sun50i-h713-hy300pro-g-eu.dts   | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+ create mode 100644 dts/upstream/src/arm64/allwinner/sun50i-h713-hy300pro-g-eu.dts
+
+diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300pro-g-eu.dts b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300pro-g-eu.dts
+new file mode 100644
+index 00000000000..6c59126771c
+--- /dev/null
++++ b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300pro-g-eu.dts
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * HY300 Pro projector, box label HY300PRO-G-EU (stock Android 11 of
++ * 2025-05-06) -- the maintainer's own board. It is not the HY300 Pro of
++ * issue #1, whose tree is sun50i-h713-hy300-pro.dts.
++ *
++ * An include of the HY310's tree, because this board is HY310-like where it
++ * has been measured: the same DRAM words (they live in
++ * configs/hy300pro_g_eu_defconfig, not here), the same 26-entry partition
++ * table, the same display.bin. The panel (declared project id 0x34, 1280x720)
++ * is not described here; the display coprocessor drives it from its own
++ * tables. The tree exists so that a boot log names the board it runs on.
++ */
++
++#include "sun50i-h713-hy310.dts"
++
++/ {
++	model = "HY300 Pro (HY300PRO-G-EU)";
++	compatible = "magcubic,hy300pro-g-eu", "allwinner,sun50i-h713";
++};

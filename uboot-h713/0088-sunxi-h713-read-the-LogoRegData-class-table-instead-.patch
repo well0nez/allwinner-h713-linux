@@ -1,0 +1,255 @@
+From 396b7aab882404616f0e51c1c04fefc2b88f0f5b Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 02:08:55 +0200
+Subject: [PATCH 88/94] sunxi: h713: read the LogoRegData class table instead
+ of guessing boundaries (Q8)
+
+h713_disp_group() found the class boundaries by counting a boundary
+wherever the block index stopped rising, and it treated the class table
+itself as a block {index 0, length 0x24}. The container does not need
+guessing: behind the descriptor table sits a CLASS TABLE of {class id,
+offset from the start of that table, length} triples, and the vendor
+kernel's own parser reads it - __get_logo_table_info 0xEB18 searches it by
+class id, __get_reg 0xEB98 then walks that class's block chain (AP3m part
+A 1.1, 1.7a).
+
+The heuristic worked by luck. Class 0 opens with an EMPTY index-0 block,
+so the pretend block's 8 + 0x24 step lands on the same byte as the real
+0x24 + 8, and the block indices happen to restart at each class. A file
+whose class 0 began with a non-empty block would shift our mapping and
+not the kernel's.
+
+h713_disp_class() now resolves a class from the table, bounded by the size
+the header declares, and h713_disp_group() walks only that class's chain.
+A zero-length block is stepped over rather than ending the chain, which is
+what makes the prologue's 1-based numbering fall out on its own. Every step
+advances by at least the 8-byte header, so the walk terminates on any
+input.
+
+Proved byte-identical, not argued: umbau/work/Q8/proof/ lifts the old and
+the new parser mechanically out of the two revisions of this file, links
+them against h713_logo_walk() unchanged, and compares the dumped record
+stream for EVERY project of both containers - all 15 of the HY310's
+(sha256 0d00bcdd...) and all 13 of the HY300 Pro's (154e31e9...). All
+identical; the selected ranges are identical too. Cross-checked against
+AP3m's independent Python model of the vendor parser: 134 and 136 records
+for 0x30 and 0x34, the counts AP3m reports. Negative controls: on a
+synthetic container whose class 0 opens with a non-empty block the two
+parsers differ, as they must.
+
+Two things named while here. H713_DISP_HDR_HEAD_LEN was the class table
+length all along, so it is now H713_DISP_HDR_CLASS_LEN. And the HY300
+Pro's header declares 0x36c0/14380, exactly its file length - the 14388
+the size comment quoted is that file's FAT entry, not its container.
+
+The plane gate gets a name at last: every DE block carries one record
+0x0524c01c <- 0x79860601 with bit 0 set, and 0x0524801c is never written,
+so the vendor boot logo runs on OSD plane 1 and plane 0 stays gated off
+(AP3m finding 3, AP3j finding 2). Replaying the DE block already opens
+the plane; we need no separate gate write.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 140 +++++++++++++++++++++++++-------
+ 1 file changed, 109 insertions(+), 31 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 293f9771cb3..3124a181323 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -5194,15 +5194,33 @@ U_BOOT_CMD(h713_i2c, 4, 0, do_h713_i2c,
+  * Stock's order is: prologue, timing, LVDS FIFO reset, mixer write, DE table,
+  * then clocks/INCAP/LVDS, the coprocessor release, and the LVDS finalise.
+  *
+- * Where those tables *are* comes from the file, never from constants. Behind
+- * the descriptor table the container is a chain of blocks:
+- *
+- *   +0x00 u32 index   +0x04 u32 payload length   then the payload
+- *
+- * The index counts up inside a class and restarts at zero when the next class
+- * begins: head block, prologue 1..3, timing 0..10, DE 0..7. That is exactly
+- * the numbering the descriptor words use -- and it is why the prologue
+- * variant is 1-based: index 0 of its class is the file's own head block.
++ * Where those tables *are* comes from the file, never from constants. The
++ * container says it itself, in two tables:
++ *
++ *   0x00              u32 magic "logo", u32 version, u16 descriptor-table
++ *                     bytes, u16 CLASS-table bytes, u32 bytes after both
++ *   0x10              descriptor table, 0x18 bytes per project (above)
++ *   0x10 + tbl        class table, 12 bytes per class:
++ *                       +0x00 u32 class id   0 prologue, 1 timing, 2 DE
++ *                       +0x04 u32 offset, counted from the start of THIS table
++ *                       +0x08 u32 length in bytes
++ *   class payload     a chain of blocks, +0x00 u32 index, +0x04 u32 payload
++ *                     length, then the payload of 16-byte records
++ *
++ * The block index is what the descriptor words select, and it is per class.
++ * Class 0 opens with an EMPTY index-0 block, which is why the prologue
++ * variant is 1-based while timing and DE are 0-based.
++ *
++ * This used to infer the class boundaries instead, by counting a boundary
++ * wherever the block index stopped rising, and to treat the class table
++ * itself as a block {index 0, length 0x24}. On both files we have that lands
++ * on the same bytes -- 8 + 0x24 for the pretend block is the same step as
++ * 0x24 + 8 for the real table plus the empty head block -- so the replayed
++ * record sequence is unchanged for every project of both files. It was luck:
++ * a file whose class 0 began with a non-empty block would shift our mapping
++ * and not the vendor kernel's. The class table is the authoritative source,
++ * and ge2d_dev.ko's own parser reads it (__get_logo_table_info 0xEB18,
++ * __get_reg 0xEB98; AP3m part A 1.1 and 1.7a).
+  *
+  * This used to be three tables of byte offsets measured on the HY310's
+  * 15652-byte file, which has 15 descriptors. The HY300 Pro's firmware
+@@ -5219,9 +5237,10 @@ struct h713_disp_block { u32 start, end; };
+ #define H713_DISP_DESC_OFF	0x10
+ #define H713_DISP_DESC_SIZE	0x18
+ #define H713_DISP_HDR_TABLE_LEN	8	/* u16: descriptor table bytes */
+-#define H713_DISP_HDR_HEAD_LEN	0x0a	/* u16: head block payload bytes */
+-#define H713_DISP_HDR_REST	0x0c	/* u32: block bytes after that */
++#define H713_DISP_HDR_CLASS_LEN	0x0a	/* u16: class table bytes */
++#define H713_DISP_HDR_REST	0x0c	/* u32: block bytes after both tables */
+ #define H713_DISP_BLOCK_HDR	8
++#define H713_DISP_CLASS_ENTRY	12	/* {class id, offset, length} */
+ 
+ struct h713_disp_sel {
+ 	u32 project, prologue, timing, de;
+@@ -5229,9 +5248,12 @@ struct h713_disp_sel {
+ };
+ 
+ /*
+- * The container's length, from the four words of its own header:
++ * The container's length, from the four words of its own header -- descriptor
++ * table, class table, everything behind them:
+  *   0x10 + 0x0168 + 0x24 + 0x3b88 = 15652, the HY310's file
+- *   0x10 + 0x0138 + 0x24 + 0x36c8 = 14388, the HY300 Pro's
++ *   0x10 + 0x0138 + 0x24 + 0x36c0 = 14380, the HY300 Pro's
++ * Both are exactly the file length. The 14388 this note used to state is the
++ * owner's FAT entry, not his container (AP3m 1.1).
+  * Zero if this is not a LogoRegData container or the length is not credible.
+  * Every offset the replay uses is bounded by this, so a file we do not
+  * understand yields no groups at all rather than a walk over open DRAM --
+@@ -5244,7 +5266,7 @@ static ulong h713_disp_size(ulong blob)
+ {
+ 	ulong size = H713_DISP_DESC_OFF +
+ 		     readw(blob + H713_DISP_HDR_TABLE_LEN) +
+-		     readw(blob + H713_DISP_HDR_HEAD_LEN) +
++		     readw(blob + H713_DISP_HDR_CLASS_LEN) +
+ 		     readl(blob + H713_DISP_HDR_REST);
+ 
+ 	if (readl(blob) != H713_DISP_HDR_MAGIC || size > H713_DISP_MAX_SIZE)
+@@ -5254,33 +5276,77 @@ static ulong h713_disp_size(ulong blob)
+ }
+ 
+ /*
+- * Resolve one group: walk the block chain, count a class boundary wherever
+- * the block index stops rising, and hand back the payload of the block whose
+- * index is the wanted variant. `end` is the payload end; the old constants
+- * carried the next block's 8-byte header as well, which the walker never
+- * reads (it needs off + 16 <= end and every payload is a multiple of 16).
++ * One class, straight out of the class table at 0x10 + descriptor-table
++ * bytes: entry i is {class id, offset from the start of this table, length}.
++ * Search by class id rather than by position -- ge2d_dev.ko's
++ * __get_logo_table_info 0xEB18 does, and nothing says the ids arrive sorted.
++ *
++ * Everything is bounded by the size the header declares, so a file we do not
++ * understand yields no class at all rather than a walk over open DRAM.
+  */
+-static int h713_disp_group(ulong blob, uint want_class, uint index,
++static int h713_disp_class(ulong blob, uint want_class,
+ 			   struct h713_disp_block *out)
+ {
+ 	ulong size = h713_disp_size(blob);
+-	ulong off = H713_DISP_DESC_OFF + readw(blob + H713_DISP_HDR_TABLE_LEN);
+-	bool first = true;
+-	uint cls = 0;
+-	u32 prev = 0;
++	ulong base = H713_DISP_DESC_OFF + readw(blob + H713_DISP_HDR_TABLE_LEN);
++	uint n = readw(blob + H713_DISP_HDR_CLASS_LEN) / H713_DISP_CLASS_ENTRY;
++	uint i;
++
++	if (!size || base + (ulong)n * H713_DISP_CLASS_ENTRY > size)
++		return -ENOENT;
++
++	for (i = 0; i < n; i++) {
++		ulong e = blob + base + i * H713_DISP_CLASS_ENTRY;
++		ulong start, len;
++
++		if (readl(e) != want_class)
++			continue;
++
++		start = base + readl(e + 4);
++		len = readl(e + 8);
++		if (start > size || len > size - start)
++			return -EINVAL;
++
++		out->start = start;
++		out->end = start + len;
++		return 0;
++	}
++
++	return -ENOENT;
++}
++
++/*
++ * Resolve one group: take the class's byte range from the class table, walk
++ * its block chain, and hand back the payload of the block whose index is the
++ * wanted variant. `end` is the payload end; the old constants carried the
++ * next block's 8-byte header as well, which the walker never reads (it needs
++ * off + 16 <= end and every payload is a multiple of 16).
++ *
++ * A zero-length block is stepped over, not treated as the end of the chain:
++ * class 0's head block is exactly that, and it is the reason the prologue
++ * variant is 1-based. The chain is bounded by the class length, and every
++ * step advances by at least the 8-byte block header, so the walk terminates
++ * on any input.
++ */
++static int h713_disp_group(ulong blob, uint want_class, uint index,
++			   struct h713_disp_block *out)
++{
++	struct h713_disp_block cls;
++	ulong off;
++	int ret;
++
++	ret = h713_disp_class(blob, want_class, &cls);
++	if (ret)
++		return ret;
+ 
+-	while (off + H713_DISP_BLOCK_HDR <= size) {
++	for (off = cls.start; off + H713_DISP_BLOCK_HDR <= cls.end; ) {
+ 		u32 idx = readl(blob + off);
+ 		u32 len = readl(blob + off + 4);
+ 
+-		if (!len || off + H713_DISP_BLOCK_HDR + len > size)
++		if (len > cls.end - off - H713_DISP_BLOCK_HDR)
+ 			break;
+-		if (!first && idx <= prev)
+-			cls++;
+-		first = false;
+-		prev = idx;
+ 
+-		if (cls == want_class && idx == index) {
++		if (idx == index) {
+ 			out->start = off + H713_DISP_BLOCK_HDR;
+ 			out->end = out->start + len;
+ 			return 0;
+@@ -7078,6 +7144,18 @@ static void h713_disp_sample(void)
+ #define H713_DISP_OSD_SIZE		(H713_DISP_OSD_STRIDE * \
+ 					 H713_DISP_OSD_HEIGHT)
+ #define H713_DISP_OSD_CTRL_REG		0x0524c000UL
++/*
++ * The plane gate, and the boot table sets it: every DE block carries one
++ * record for this address, 0x0524c01c <- 0x79860601 mask ffffffff, bit 0 set
++ * (the HY310's project 0x30 takes DE block 0, record 36 at file offset
++ * 0x238c; the owner's 0x34 takes DE block 6, record 37 at 0x36fc -- the same
++ * word). It is the only 0x0524x01c write in either container, and
++ * 0x0524801c -- plane 0's twin -- is never written at all, so
++ * the vendor boot logo comes up on OSD plane 1 and plane 0 stays gated off
++ * until Android's ge2d_dev swaps them (AP3m finding 3 / 1.5, AP3j finding 2).
++ * That is why our replay needs no separate gate write: replaying the DE block
++ * already opens this plane.
++ */
+ #define H713_DISP_OSD_OPEN_REG		0x0524c01cUL
+ #define H713_DISP_AFBD_CTRL_REG		0x05600140UL
+ #define H713_DISP_AFBD_READY_REG	0x05600144UL

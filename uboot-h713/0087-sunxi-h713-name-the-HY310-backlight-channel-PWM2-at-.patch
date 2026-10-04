@@ -1,0 +1,56 @@
+From 9efefea6fceb335eb52f8b5d2086fa94e10d64d7 Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 02:08:55 +0200
+Subject: [PATCH 87/94] sunxi: h713: name the HY310 backlight channel - PWM2 at
+ 25 kHz (Q8)
+
+The note at the deinit's "two deliberate omissions" called the backlight
+channel unresolved and quoted channel 0 from display_cfg.xml against
+channel 5 from panel_config.ini, concluding that our PWM2-on-PB4 dimmer
+matched neither.
+
+AP3d section 7.2 read PanelControl::getPWMConfig@0x1CE30 and the six
+[PWMSetting] words it hands to Thal_Vp_SetBacklightPwmInfo: for the HY310
+they are channel 2, polarity 1, freq 25000, vs_lock 1, min 1, max 100.
+Channel 2 at 25 kHz is PWM2, the channel we drive. The channel 5 belongs
+to board B's ini - line 425 of this file has said so all along - and
+display_cfg.xml's channel 0 at 1.2 MHz is the firmware default that the
+vendor ARM overwrites with those six words.
+
+Comment only, no code change. What stays open is the polarity (ini 1,
+stock runtime DTB panel_pwm_pol 0, we follow the DTB) and the measured
+fact in docs/dead-ends.md that stepping PWM2's duty moved no light on two
+boards - which is why the deinit still leaves the channel alone.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index ce7a0652e32..293f9771cb3 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -7145,10 +7145,16 @@ static void h713_disp_sample(void)
+  *
+  * Two deliberate omissions:
+  *
+- *   - The backlight is not touched. Which PWM drives it is still unresolved:
+- *     display_cfg.xml says channel 0, panel_config.ini says channel 5, and the
+- *     dimmer we implemented drives PWM2 on PB4, which matches neither. Turning
+- *     off the wrong channel would be theatre.
++ *   - The backlight is not touched. Which channel drives it is settled now:
++ *     the HY310's panel_config.ini asks for PWM channel 2 at 25 kHz, exactly
++ *     the PWM2-on-PB4 dimmer we built. The channel 5 this note used to quote
++ *     is board B's ini, as line 425 already says, and display_cfg.xml's
++ *     channel 0 at 1.2 MHz is the firmware's own default, which the vendor
++ *     ARM overrides with the six [PWMSetting] words (AP3d 7.2). What is still
++ *     open is the polarity -- the ini says 1, the stock runtime DTB's
++ *     panel_pwm_pol says 0, and we follow the DTB -- and the measurement in
++ *     docs/dead-ends.md, where stepping PWM2's duty moved no light on two
++ *     boards. Switching a channel off that never moved light buys nothing.
+  *
+  *   - The display PLLs and mod clocks are left running. Disabling a block's
+  *     clock while something still reaches for it is the documented way to wedge

@@ -1,7 +1,7 @@
 From 253855c12b0da80264ac9fe1d12f94b81b971632 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 21:46:14 +0200
-Subject: [PATCH 81/82] sunxi: h713: name every LogoRegData record before it is
+Subject: [PATCH 81/94] sunxi: h713: name every LogoRegData record before it is
  written
 
 A write into a block whose clock or reset is not up hangs the bus

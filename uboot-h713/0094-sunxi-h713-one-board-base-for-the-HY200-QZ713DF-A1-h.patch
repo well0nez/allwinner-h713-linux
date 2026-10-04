@@ -1,0 +1,237 @@
+From 6fb736cff0c0e60be32a46ecd8580914a10c7c07 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sun, 4 Oct 2026 06:03:59 +0200
+Subject: [PATCH 94/94] sunxi: h713: one board base for the HY200 QZ713DF A1 -
+ hy200_qz713df_a1_defconfig takes the HY310 shape (layout v4), DRAM 624 as the
+ base clock, hy300pro_g_eu goes (ST3-BOARDMERGE)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ configs/hy200_qz713df_a1_defconfig            | 55 +++++++++--
+ configs/hy300pro_g_eu_defconfig               | 98 -------------------
+ .../allwinner/sun50i-h713-hy300pro-g-eu.dts   | 20 ----
+ 3 files changed, 48 insertions(+), 125 deletions(-)
+ delete mode 100644 configs/hy300pro_g_eu_defconfig
+ delete mode 100644 dts/upstream/src/arm64/allwinner/sun50i-h713-hy300pro-g-eu.dts
+
+diff --git a/configs/hy200_qz713df_a1_defconfig b/configs/hy200_qz713df_a1_defconfig
+index 00f06ce9b6d..03a90803cf5 100644
+--- a/configs/hy200_qz713df_a1_defconfig
++++ b/configs/hy200_qz713df_a1_defconfig
+@@ -1,9 +1,44 @@
++# HY200 QZ713DF A1 -- board base. One PCB with two stock firmwares: the
++# maintainer's HY300PRO-G-EU (Android 11 of 2025-05-06) and the "HY300 Pro+" of
++# 2025-09-22; cstenger's bench board carries the same silkscreen. In the main
++# repository it is boards/hy200-qz713df-a1/, the firmwares are its variants.
++#
++# Same shape as hy310_defconfig (layout v4: environment at 7 MiB, U-Boot at
++# sector 0x800), and hy310_defconfig line for line except the device tree, the
++# identification string, tpr0..tpr2 and the DRAM clock. It replaces cstenger's
++# bench defconfig of this name, whose flash layout (environment at 0x93d80000,
++# U-Boot at sector 0x49ac00) no image of ours uses. A role fragment in
++# configs/fragments/ says what a build is for, and build/uboot-build.sh merges
++# the two (docs/uboot/README.md).
++#
++# **No image is shipped for this board.** Every variant is profile-only:
++# nobody has reported a green run of our firmware. The builds this base is
++# meant for are the stage 5 test images (`--test-image --variant <name>`).
++#
++# Where the DRAM values come from:
++#   - clk: the firmware's, not the board's - 792 MHz in the 2025-05 boot0, 624
++#     MHz in the 2025-09 one, the other words equal. build/uboot-build.sh merges
++#     the variant's clock (DRAM_CLK in its variant.env) over this one. The base
++#     runs 624 so that a build that names no variant gets the lower clock.
++#   - type 3, zq, odt_en, para1, mr0..mr3, tpr3..tpr12: the boot0 words of both
++#     firmwares, equal to hy310_defconfig's; para2 and tpr13 the patched pair
++#     read off the running HY300PRO-G-EU (and cstenger's bench).
++#   - tpr0..tpr2 0x004a2195/0x02423190/0x0008b061: both firmwares' boot0 words
++#     (hy310_defconfig carries the bench board's 0x00482151/0x01b1a94c/
++#     0x0006e04d). Neither reaches the hardware: the DDR3 arm of
++#     iw12_set_timing() in arch/arm/mach-sunxi/dram_sun50iw12.c returns before
++#     the only code that unpacks tpr0..tpr2 (the LPDDR3 arm).
++#   - DX_ODT, DX_DRI, CA_DRI are not among the 24 boot0 words; they are the
++#     value every H713 defconfig carries, and dram_sun50iw12.c does not read
++#     them.
++#   - The project id is not here: h713-install writes h713_project from the
++#     board's own panel_config.ini (0x34) into the environment.
+ CONFIG_ARM=y
+ CONFIG_ARCH_SUNXI=y
+ CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy200-qz713df-a1"
+ CONFIG_DRAM_CLK=624
+ CONFIG_SPL=y
+-# HY200 QZ713DF_A1 (bench): DDR3 (type 3) stock BT0, clk=624.
++CONFIG_IDENT_STRING=" HY200 QZ713DF A1"
+ CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+ CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+ CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+@@ -15,9 +50,9 @@ CONFIG_DRAM_SUNXI_MR0=0x00001c70
+ CONFIG_DRAM_SUNXI_MR1=0x00000040
+ CONFIG_DRAM_SUNXI_MR2=0x00000018
+ CONFIG_DRAM_SUNXI_MR3=0x00000000
+-CONFIG_DRAM_SUNXI_TPR0=0x00482151
+-CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
+-CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
++CONFIG_DRAM_SUNXI_TPR0=0x004a2195
++CONFIG_DRAM_SUNXI_TPR1=0x02423190
++CONFIG_DRAM_SUNXI_TPR2=0x0008b061
+ CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+ CONFIG_DRAM_SUNXI_TPR4=0x00000000
+ CONFIG_DRAM_SUNXI_TPR5=0x48484848
+@@ -35,6 +70,7 @@ CONFIG_H713_MIPS_BOOT=y
+ CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+ CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+ CONFIG_MMC0_CD_PIN=""
++CONFIG_MMC_HS200_SUPPORT=y
+ # CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+ CONFIG_SUPPORT_EMMC_BOOT=y
+ CONFIG_USB_EHCI_HCD=y
+@@ -52,11 +88,16 @@ CONFIG_SYSRESET=y
+ CONFIG_SYSRESET_PSCI=y
+ CONFIG_CMD_POWEROFF=y
+ CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi; usb start; h713_disp auto 0x34 logo"
++# No "usb start" in the preboot: the host-side USB scan cost 2 to 5 s on every
++# boot and nothing in the product boot reads a USB device (no keyboard, no USB
++# boot medium; the installer role uses the gadget, not the host). The two
++# reboot-mode magics stay: "reboot fastboot" and "reboot bootloader" from Linux.
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
+ # CONFIG_ENV_IS_IN_FAT is not set
+ CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x93d80000
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x49ac00
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_MMC_DEVICE_INDEX=1
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+diff --git a/configs/hy300pro_g_eu_defconfig b/configs/hy300pro_g_eu_defconfig
+deleted file mode 100644
+index b8fd7c18a91..00000000000
+--- a/configs/hy300pro_g_eu_defconfig
++++ /dev/null
+@@ -1,98 +0,0 @@
+-# HY300PRO-G-EU -- board base. The maintainer's own HY300 Pro (box label
+-# HY300PRO-G-EU, stock Android 11 of 2025-05-06). It is NOT the HY300 Pro of
+-# issue #1 (hy300_pro_defconfig: 636 MHz, another firmware family).
+-#
+-# Same shape as hy310_defconfig, and hy310_defconfig line for line except four
+-# things: the device tree, the identification string, and tpr0..tpr2. This
+-# board is HY310-like where it has been measured: its vendor boot0 at LBA 16
+-# (h713-install dump, 2026-10-02) carries the HY310's DRAM words except tpr13,
+-# and its tpr13 0xb4016103 is the value this defconfig family already boots
+-# with. A role fragment in configs/fragments/ says what a build is for, and
+-# build/uboot-build.sh merges the two (docs/uboot/README.md).
+-#
+-# **No image is shipped for this board.** It is profile-only
+-# (boards/hy300pro-g-eu/README.md): nobody has run our firmware on it. The only
+-# build this base is meant for is the stage 5 test image (`--test-image`).
+-#
+-# Where the DRAM values come from:
+-#   - clk 792, type 3, zq, odt_en, para1, para2, mr0..mr3, tpr3..tpr13: this
+-#     board's own boot0 words, and equal to hy310_defconfig's.
+-#   - tpr0..tpr2 0x004a2195/0x02423190/0x0008b061: this board's own boot0 words
+-#     (hy310_defconfig carries the bench board's 0x00482151/0x01b1a94c/
+-#     0x0006e04d). Neither reaches the hardware: the DDR3 arm of
+-#     iw12_set_timing() in arch/arm/mach-sunxi/dram_sun50iw12.c returns before
+-#     the only code that unpacks tpr0..tpr2 (the LPDDR3 arm).
+-#   - DX_ODT, DX_DRI, CA_DRI are not among the 24 boot0 words; they are the
+-#     value every H713 defconfig carries, and dram_sun50iw12.c does not read
+-#     them.
+-#   - The project id is not here: h713-install writes h713_project from the
+-#     board's own panel_config.ini (0x34) into the environment.
+-CONFIG_ARM=y
+-CONFIG_ARCH_SUNXI=y
+-CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy300pro-g-eu"
+-CONFIG_DRAM_CLK=792
+-CONFIG_SPL=y
+-CONFIG_IDENT_STRING=" HY300PRO-G-EU"
+-CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
+-CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+-CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
+-CONFIG_DRAM_SUNXI_ODT_EN=0x1
+-CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
+-CONFIG_DRAM_SUNXI_PARA1=0x000010f4
+-CONFIG_DRAM_SUNXI_PARA2=0x04000000
+-CONFIG_DRAM_SUNXI_MR0=0x00001c70
+-CONFIG_DRAM_SUNXI_MR1=0x00000040
+-CONFIG_DRAM_SUNXI_MR2=0x00000018
+-CONFIG_DRAM_SUNXI_MR3=0x00000000
+-CONFIG_DRAM_SUNXI_TPR0=0x004a2195
+-CONFIG_DRAM_SUNXI_TPR1=0x02423190
+-CONFIG_DRAM_SUNXI_TPR2=0x0008b061
+-CONFIG_DRAM_SUNXI_TPR3=0xb4787896
+-CONFIG_DRAM_SUNXI_TPR4=0x00000000
+-CONFIG_DRAM_SUNXI_TPR5=0x48484848
+-CONFIG_DRAM_SUNXI_TPR6=0x00000048
+-CONFIG_DRAM_SUNXI_TPR7=0x1620121e
+-CONFIG_DRAM_SUNXI_TPR8=0x00000000
+-CONFIG_DRAM_SUNXI_TPR9=0x00000000
+-CONFIG_DRAM_SUNXI_TPR10=0x00000000
+-CONFIG_DRAM_SUNXI_TPR11=0x44340000
+-CONFIG_DRAM_SUNXI_TPR12=0x00006666
+-CONFIG_DRAM_SUNXI_TPR13=0xb4016103
+-CONFIG_MACH_SUN50I_H713=y
+-CONFIG_H713_POWERON_LIGHT_FAN=y
+-CONFIG_H713_MIPS_BOOT=y
+-CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
+-CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+-CONFIG_MMC0_CD_PIN=""
+-CONFIG_MMC_HS200_SUPPORT=y
+-# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+-CONFIG_SUPPORT_EMMC_BOOT=y
+-CONFIG_USB_EHCI_HCD=y
+-CONFIG_USB_OHCI_HCD=y
+-# CONFIG_WATCHDOG is not set
+-CONFIG_WDT=y
+-CONFIG_USB_MUSB_GADGET=y
+-CONFIG_CMD_USB_MASS_STORAGE=y
+-# CONFIG_USB_ETHER is not set
+-CONFIG_CONSOLE_MUX=y
+-CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+-CONFIG_USB_FUNCTION_ACM=y
+-# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
+-CONFIG_SYSRESET=y
+-CONFIG_SYSRESET_PSCI=y
+-CONFIG_CMD_POWEROFF=y
+-CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
+-# No "usb start" in the preboot: the host-side USB scan cost 2 to 5 s on every
+-# boot and nothing in the product boot reads a USB device (no keyboard, no USB
+-# boot medium; the installer role uses the gadget, not the host). The two
+-# reboot-mode magics stay: "reboot fastboot" and "reboot bootloader" from Linux.
+-CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
+-# CONFIG_ENV_IS_IN_FAT is not set
+-CONFIG_ENV_IS_IN_MMC=y
+-CONFIG_ENV_OFFSET=0x700000
+-CONFIG_ENV_MMC_DEVICE_INDEX=1
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
+-CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+-CONFIG_H713_VENDOR_CHAINLOAD=y
+-CONFIG_CMD_WDT=y
+-CONFIG_CMD_GPIO=y
+diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300pro-g-eu.dts b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300pro-g-eu.dts
+deleted file mode 100644
+index 6c59126771c..00000000000
+--- a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300pro-g-eu.dts
++++ /dev/null
+@@ -1,20 +0,0 @@
+-// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+-/*
+- * HY300 Pro projector, box label HY300PRO-G-EU (stock Android 11 of
+- * 2025-05-06) -- the maintainer's own board. It is not the HY300 Pro of
+- * issue #1, whose tree is sun50i-h713-hy300-pro.dts.
+- *
+- * An include of the HY310's tree, because this board is HY310-like where it
+- * has been measured: the same DRAM words (they live in
+- * configs/hy300pro_g_eu_defconfig, not here), the same 26-entry partition
+- * table, the same display.bin. The panel (declared project id 0x34, 1280x720)
+- * is not described here; the display coprocessor drives it from its own
+- * tables. The tree exists so that a boot log names the board it runs on.
+- */
+-
+-#include "sun50i-h713-hy310.dts"
+-
+-/ {
+-	model = "HY300 Pro (HY300PRO-G-EU)";
+-	compatible = "magcubic,hy300pro-g-eu", "allwinner,sun50i-h713";
+-};

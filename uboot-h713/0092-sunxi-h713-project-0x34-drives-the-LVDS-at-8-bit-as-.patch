@@ -1,0 +1,48 @@
+From 2de0cc84aa5371518caa1b18831b5bc6bbadd5ab Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Sat, 3 Oct 2026 01:43:53 +0200
+Subject: [PATCH 92/94] sunxi: h713: project 0x34 drives the LVDS at 8 bit, as
+ stock does
+
+0x05800000[4:3] is libpq's lvds_set_bitwidth encoding (6/8/10 bit = 0/1/2,
+libpq.so 0x387c, the same binary in the HY300PRO-G-EU's own vendor partition).
+The 0x34 row forced 0 (6 bit) although both 0x34 boards declare ColorDepth=8
+and their stock LogoRegData record carries 1. Seen on the HY300PRO-G-EU
+(03.10.2026): the picture was weak and washed out at 6 bit, right at 8 bit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 13 ++++++-------
+ 1 file changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 30e5dfb8d71..0419b739c80 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -302,11 +302,10 @@ struct h713_panel_cfg {
+ 	 */
+ 	u32 height;
+ 	/*
+-	 * 0x05800000[4:3]. This used to be fed from color_depth, which cannot
+-	 * be what the field wants: 8 & 3 is zero on any board, so the write
+-	 * carried no information. It reads as an encoding selector like the
+-	 * XML's lvds_format. Board B keeps the zero it has been running;
+-	 * 1 is what an HY310's stock bootloader leaves there.
++	 * 0x05800000[4:3]: libpq's lvds_set_bitwidth encodes 6/8/10-bit
++	 * output as 0/1/2. The value is an encoding, not the bit count.
++	 * Both current profiles declare ColorDepth=8 and their original
++	 * LogoRegData records contain selector 1.
+ 	 */
+ 	u32 lvds_bitsel;
+ 	/* 0x0528008c, the layer's pixel X origin. */
+@@ -348,8 +347,8 @@ static const struct h713_panel_cfg h713_panel_cfg_board_b = {
+ 	.hbp = 40, .vbp = 20, .width = 1280, .height = 720,
+ 	/* panel_config.ini: PanelHsyncPol 0, PanelVsyncPol 0. */
+ 	.hsync_pol = 0, .vsync_pol = 0,
+-	/* All three chosen so this board's registers do not move. */
+-	.lvds_bitsel = 0, .layer_x = 0, .ssc_mask = 0, .ssc_reg = 0,
++	/* Stock's 8-bit depth (selector 1); origin and SSC stay unchanged. */
++	.lvds_bitsel = 1, .layer_x = 0, .ssc_mask = 0, .ssc_reg = 0,
+ 	.layer_h_mask = 0,
+ };
+ 

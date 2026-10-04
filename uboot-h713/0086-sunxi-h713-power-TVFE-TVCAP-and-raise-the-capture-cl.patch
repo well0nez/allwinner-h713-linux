@@ -1,0 +1,224 @@
+From fda5ce0c44037c302baf5a90fb9fbdc71b31e5df Mon Sep 17 00:00:00 2001
+From: well0nez <well0nez@users.noreply.github.com>
+Date: Sat, 19 Sep 2026 01:54:09 +0200
+Subject: [PATCH 86/94] sunxi: h713: power TVFE/TVCAP and raise the capture
+ clocks before the MIPS runs
+
+The firmware's first act is its HDMI-RX init, and that PHY (0x06840000)
+sits in the TVCAP power domain together with INCAP. The product path,
+h713_disp init, released the coprocessor without ever touching the power
+domains, and it ran the capture clock/reset preparation only on the probe
+path's release_tvcap flag - the owner's HY300 Pro boot log has no "TVCAP
+clocks/reset prepared" line, and his firmware log shows the HDCP 1.4
+key-load wait giving up on a register that is not even clocked.
+
+Before the release, h713_disp_run now
+  1. opens the PPU's own bus gate and reset in the R_CCU (0x070101ac
+     bits 0/16 - what the stock DTB's "ppu" clock index 15 and "ppu_rst"
+     reset index 6 resolve to in sun50iw12_r_ccu, and what the mainline
+     driver takes through CLK_BUS_R_PPU/RST_BUS_R_PPU),
+  2. switches TVFE (domain 1) and TVCAP (domain 2) on through the PPU the
+     way the stock driver does it (sunxi_pd_power: wait idle, PWR_CTRL =
+     1, wait complete, write the status back, confirm bits [17:16] = 01b),
+     each wait bounded at 10 ms with a message on timeout, silent when a
+     domain already reads ON,
+  3. runs h713_tvcap_prepare() unconditionally,
+and then prints "H713 MIPS: TVFE/TVCAP powered, capture clocks up before
+release". A domain that will not switch on is reported and the run goes
+on - that is the state every boot before this had.
+
+The register model is the kernel's sun50i-h713-ppu.c and the stock DTB
+(power-management@ff000000 reg <0x07001000 0x400>, pd_tvfe@1, pd_tvcap@2),
+cross-checked against the stock driver's tv303_pmu table (wait 0x14,
+delays 0x18/0x1c, PWR 0x20, STATUS 0x24, domain_id << 7).
+
+While cross-checking the five capture clock registers against the vendor
+clock table: 0x02001d80 carries its two bus gates (bus-hdmi-audio,
+bus-cap-300m) in bits 31 and 30, not 0 and 1. The register reads
+0xc0000000 out of the boot loader and bits 0/1 never latched, so the
+write is corrected to the modelled bits; on the measured state it is a
+no-op either way.
+
+The probe path (h713_mips probe with release_tvcap) keeps its save/undo
+dance and its own log line; teardown keeps leaving TVCAP alone, so the
+domains and clocks stay up for Linux, which expects them so.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 125 +++++++++++++++++++++++++++++++-
+ 1 file changed, 122 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 277890b16cc..ce7a0652e32 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -206,6 +206,38 @@
+ #define H713_TVCAP_HDMI_AUDIO_CLK_REG	0x02001d84UL
+ #define H713_TVCAP_BGR_REG		0x02001d88UL
+ 
++/*
++ * The TV power domains: the HDMI-RX PHY (0x06840000) and INCAP sit in TVCAP,
++ * and the firmware initialises its receiver the moment it runs.
++ *
++ * Model: the kernel's sun50i-h713-ppu.c, the stock DTB (power-management@
++ * ff000000 reg <0x07001000 0x400>, children pd_gpu@0 pd_tvfe@1 pd_tvcap@2
++ * pd_ve@3 pd_av1@4) and the stock driver (sunxi_pd_power/tv303_pmu in the
++ * HY310 vmlinux): register = base + offset + (domain_id << 7), PWR_CTRL 0x20
++ * (1 = on, 2 = off), STATUS 0x24 with bit 3 set while the sequencer is busy,
++ * bit 1 once a transition completed and bits [17:16] = 01b when on. The
++ * PPU's own bus gate and reset are R_CCU 0x1ac bits 0/16, which is where the
++ * stock DTB's "ppu" clock (index 15) and "ppu_rst" reset (index 6) land.
++ */
++#define H713_R_PPU_BGR_REG		0x070101acUL
++#define H713_PPU_BASE			0x07001000UL
++#define H713_PPU_DOMAIN_REG(d, off)	(H713_PPU_BASE + (off) + ((d) << 7))
++#define H713_PPU_WAIT_MODE(d)		H713_PPU_DOMAIN_REG(d, 0x14)
++#define H713_PPU_PWR_OFF_DELAY(d)	H713_PPU_DOMAIN_REG(d, 0x18)
++#define H713_PPU_PWR_ON_DELAY(d)	H713_PPU_DOMAIN_REG(d, 0x1c)
++#define H713_PPU_PWR_CTRL(d)		H713_PPU_DOMAIN_REG(d, 0x20)
++#define H713_PPU_STATUS(d)		H713_PPU_DOMAIN_REG(d, 0x24)
++#define H713_PPU_CMD_ON			1
++#define H713_PPU_STATUS_DONE		BIT(1)
++#define H713_PPU_STATUS_BUSY		BIT(3)
++#define H713_PPU_STATUS_STATE_MASK	(BIT(17) | BIT(16))
++#define H713_PPU_STATUS_STATE_ON	BIT(16)
++#define H713_PPU_WAIT_MODE_INIT		0x00000008
++#define H713_PPU_DELAY_INIT		0x00080808
++#define H713_PPU_DOMAIN_TVFE		1
++#define H713_PPU_DOMAIN_TVCAP		2
++#define H713_PPU_TIMEOUT_US		10000
++
+ /*
+  * Board B's panel description, as stock assembles it.
+  *
+@@ -2991,6 +3023,10 @@ static void h713_display_prepare(void)
+  * and wedged the interconnect. Doing it here instead matches the factory
+  * ordering, where the capture clocks and reset are up before the coprocessor
+  * runs at all.
++ *
++ * 0x02001d80's two bus gates are bits 31 (bus-hdmi-audio) and 30
++ * (bus-cap-300m) per the vendor clock table; it reads 0xc0000000 out of the
++ * boot loader, and bits 0/1, set here before, never latched. Callers print.
+  */
+ static void h713_tvcap_prepare(void)
+ {
+@@ -2998,11 +3034,85 @@ static void h713_tvcap_prepare(void)
+ 	setbits_le32((void *)H713_TVCAP_VINCAP_DMA_CLK_REG, BIT(31));
+ 	setbits_le32((void *)H713_TVCAP_HDMI_AUDIO_CLK_REG, BIT(31));
+ 	mdelay(12);
+-	setbits_le32((void *)H713_TVCAP_BUS_CLK_REG, BIT(1) | BIT(0));
++	setbits_le32((void *)H713_TVCAP_BUS_CLK_REG, BIT(31) | BIT(30));
+ 	mdelay(12);
+ 	setbits_le32((void *)H713_TVCAP_BGR_REG, BIT(16) | BIT(0));
+ 	mdelay(12);
+-	printf("H713 MIPS: TVCAP clocks/reset prepared before release\n");
++}
++
++/* Poll a domain's STATUS until (status & mask) == want; say so if it never does. */
++static int h713_ppu_wait(uint domain, const char *name, const char *what,
++			 u32 mask, u32 want)
++{
++	u32 status = readl(H713_PPU_STATUS(domain));
++	int waited;
++
++	for (waited = 0; (status & mask) != want &&
++	     waited < H713_PPU_TIMEOUT_US; waited += 10) {
++		udelay(10);
++		status = readl(H713_PPU_STATUS(domain));
++	}
++	if ((status & mask) == want)
++		return 0;
++	printf("H713 PPU: %s %s after %d ms (status 0x%08x)\n",
++	       name, what, H713_PPU_TIMEOUT_US / 1000, status);
++	return -ETIMEDOUT;
++}
++
++/*
++ * Switch one TV domain on the way the stock and mainline drivers do: wait for
++ * the sequencer to go idle, command ON, wait for the transition to complete,
++ * clear the sticky status bits by writing them back, then confirm the state.
++ * Silent when the domain is already on. Returns 0 once it is on.
++ */
++static int h713_ppu_power_on(uint domain, const char *name)
++{
++	if ((readl(H713_PPU_STATUS(domain)) & H713_PPU_STATUS_STATE_MASK) ==
++	    H713_PPU_STATUS_STATE_ON)
++		return 0;
++
++	writel(H713_PPU_WAIT_MODE_INIT, H713_PPU_WAIT_MODE(domain));
++	writel(H713_PPU_DELAY_INIT, H713_PPU_PWR_ON_DELAY(domain));
++	writel(H713_PPU_DELAY_INIT, H713_PPU_PWR_OFF_DELAY(domain));
++	if (h713_ppu_wait(domain, name, "sequencer still busy",
++			  H713_PPU_STATUS_BUSY, 0))
++		return -ETIMEDOUT;
++	writel(H713_PPU_CMD_ON, H713_PPU_PWR_CTRL(domain));
++	if (h713_ppu_wait(domain, name, "power-on not complete",
++			  H713_PPU_STATUS_DONE, H713_PPU_STATUS_DONE))
++		return -ETIMEDOUT;
++	writel(readl(H713_PPU_STATUS(domain)), H713_PPU_STATUS(domain));
++	if (h713_ppu_wait(domain, name, "not reporting ON",
++			  H713_PPU_STATUS_STATE_MASK, H713_PPU_STATUS_STATE_ON))
++		return -ETIMEDOUT;
++	printf("H713 PPU: %s switched on\n", name);
++	return 0;
++}
++
++/*
++ * The product path's capture bring-up, in the factory order: power domains,
++ * then the capture clocks and reset, then (the caller) the coprocessor.
++ * Without it the firmware runs its HDMI-RX init against an unpowered block
++ * and its HDCP key-load wait on 0x06840093 can never be answered.
++ *
++ * A domain that will not switch on is reported and the run goes on: that is
++ * the state every boot before this step had, and a firmware that then hangs
++ * on the receiver says more than an aborted init would.
++ */
++static void h713_capture_prepare(void)
++{
++	int tvfe, tvcap;
++
++	setbits_le32((void *)H713_R_PPU_BGR_REG, BIT(16) | BIT(0));
++	tvfe = h713_ppu_power_on(H713_PPU_DOMAIN_TVFE, "TVFE");
++	tvcap = h713_ppu_power_on(H713_PPU_DOMAIN_TVCAP, "TVCAP");
++	h713_tvcap_prepare();
++	if (tvfe || tvcap)
++		printf("H713 MIPS: capture clocks up before release, but a TV "
++		       "domain is NOT powered (see above)\n");
++	else
++		printf("H713 MIPS: TVFE/TVCAP powered, capture clocks up before "
++		       "release\n");
+ }
+ 
+ /*
+@@ -4359,6 +4469,7 @@ static int h713_mips_probe_ready(bool trace, bool release_tvcap,
+ 		tvcap_saved_bgr = readl(H713_TVCAP_BGR_REG);
+ 
+ 		h713_tvcap_prepare();
++		printf("H713 MIPS: TVCAP clocks/reset prepared before release\n");
+ 		tvcap_released = true;
+ 	}
+ 
+@@ -6183,6 +6294,11 @@ static int h713_disp_run(ulong blob, u32 project, bool skip_hdcp_wait,
+ 	h713_disp_probe_contested("ARM records applied");
+ 
+ 	if (release_mips) {
++		/*
++		 * Domains, clocks, reset, then the MIPS: the firmware's first
++		 * act is its HDMI-RX init, and that block is in TVCAP.
++		 */
++		h713_capture_prepare();
+ 		ret = h713_mips_release_raw(skip_hdcp_wait, prove_ready, trace,
+ 					    stability, comm_trace);
+ 		if (ret)
+@@ -7302,7 +7418,10 @@ static void h713_disp_teardown(const char *why)
+ 	writel(ctrl & ~BIT(0), H713_DISP_AFBD_CTRL_REG);
+ 	dmb();
+ 
+-	/* 2. Park the coprocessor. Also clears h713_display_prepared. */
++	/*
++	 * 2. Park the coprocessor. Also clears h713_display_prepared. The TV
++	 *    domains and capture clocks stay up, as teardown always left them.
++	 */
+ 	h713_mips_stop();
+ 
+ 	/*

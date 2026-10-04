@@ -1,0 +1,271 @@
+From a830902a94d4fcca53e0de15484a1c967147ee0b Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sat, 3 Oct 2026 22:50:51 +0200
+Subject: [PATCH 93/94] sunxi: h713: commdev/elog debug commands from the
+ identity row; hy310.env panic=10
+
+FB-UBOOTDBG 0001: the `commdev` and `elog` commands take the cpu_comm cells from the board's identity row
+instead of literals, so U-Boot's firmware debugging reads the right addresses on every board (doku/133,
+ROADMAP). FB-SAFETY 0004: the HY310 environment adds panic=10 to the kernel command line - a kernel panic
+reboots after ten seconds instead of hanging with the lamp on (no watchdog daemon runs).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_mips.c | 133 ++++++++++++++++++++++++++++----
+ board/sunxi/hy310.env           |   2 +-
+ 2 files changed, 121 insertions(+), 14 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 0419b739c80..1b3296adfe5 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -486,6 +486,18 @@ struct h713_mips_fw_rev {
+ 	const char *board;
+ 	ulong size;
+ 	ulong hdcp_wait_va;
++	/*
++	 * Where this image keeps what `commdev` and `elog` read (MIPS virtual),
++	 * resolved from the file by tools/mips-fw-addrs.py, one signature per
++	 * object, checked in the RE databases (FB-UBOOTDBG). They were literals
++	 * in the readers -- the HY200's (doku/65, doku/66): the HY310 has
++	 * getMyCPUID at 0x8b122688, not 0x8b1227b4, and the HY300 Pro keeps its
++	 * elog 0xC00 below the HY310's (A12). Zero: not resolved, readers refuse.
++	 */
++	ulong cpuid_va;		/* getMyCPUID: jr $ra; addiu $v0,$zero,1  */
++	ulong comm_dev_ptr;	/* the cell holding pcpu_comm_dev          */
++	ulong elog_ring;	/* mode-1 log ring, 0x19000 bytes           */
++	ulong elog_wr;		/* write offset cell; rd -4, ovf -7, en +4 */
+ 	u8 digest[SHA256_SUM_LEN];
+ };
+ 
+@@ -495,6 +507,8 @@ static const struct h713_mips_fw_rev h713_mips_fw_revs[] = {
+ 		.board = "HY200 QZ713DF_A1",
+ 		.size = 0x132910,
+ 		.hdcp_wait_va = 0x4b13d6f8,
++		.cpuid_va = 0x8b1227b4, .comm_dev_ptr = 0x8b22efe4,
++		.elog_ring = 0x8b272db0, .elog_wr = 0x8b48c2bc,
+ 		.digest = {
+ 			0x43, 0x80, 0xf1, 0xb3, 0xed, 0x7b, 0x62, 0xaa,
+ 			0x50, 0x58, 0x2e, 0x7c, 0xb1, 0x6a, 0x87, 0xbd,
+@@ -513,6 +527,8 @@ static const struct h713_mips_fw_rev h713_mips_fw_revs[] = {
+ 		.board = "HY310 (QZ713 V3.1)",
+ 		.size = 0x132b18,
+ 		.hdcp_wait_va = 0x4b13d0a4,
++		.cpuid_va = 0x8b122688, .comm_dev_ptr = 0x8b22f1f4,
++		.elog_ring = 0x8b272d9c, .elog_wr = 0x8b48c2a8,
+ 		.digest = {
+ 			0x16, 0xc7, 0x4a, 0x28, 0x18, 0x7f, 0x34, 0x2d,
+ 			0xe6, 0x57, 0x82, 0x8f, 0xab, 0x65, 0x14, 0x5b,
+@@ -538,6 +554,8 @@ static const struct h713_mips_fw_rev h713_mips_fw_revs[] = {
+ 		.board = "ADT-3 2024",
+ 		.size = 0x131b20,
+ 		.hdcp_wait_va = 0x4b13d1f0,
++		.cpuid_va = 0x8b122724, .comm_dev_ptr = 0x8b22e1f4,
++		.elog_ring = 0x8b271d9c, .elog_wr = 0x8b48b2a8,
+ 		.digest = {
+ 			0x22, 0xa7, 0xdf, 0x11, 0x3f, 0xce, 0x3f, 0xa1,
+ 			0x82, 0x92, 0x62, 0x68, 0xde, 0x8c, 0x75, 0x51,
+@@ -560,6 +578,8 @@ static const struct h713_mips_fw_rev h713_mips_fw_revs[] = {
+ 		.board = "HY300 Pro",
+ 		.size = 0x131f10,
+ 		.hdcp_wait_va = 0x4b13d1b0,
++		.cpuid_va = 0x8b122794, .comm_dev_ptr = 0x8b22e5ec,
++		.elog_ring = 0x8b27219c, .elog_wr = 0x8b48b6a8,
+ 		.digest = {
+ 			0xcf, 0x96, 0x49, 0xbc, 0xc8, 0x4a, 0x11, 0x1c,
+ 			0xe5, 0x90, 0xfc, 0x7a, 0xcd, 0xe7, 0x23, 0xc2,
+@@ -587,6 +607,8 @@ static const struct h713_mips_fw_rev h713_mips_fw_revs[] = {
+ 		.board = "HY300 Pro+ 2025 (LPDDR3)",
+ 		.size = 0x1328f0,
+ 		.hdcp_wait_va = 0x4b13d538,
++		.cpuid_va = 0x8b1227b4, .comm_dev_ptr = 0x8b22efc4,
++		.elog_ring = 0x8b272db0, .elog_wr = 0x8b48c2bc,
+ 		.digest = {
+ 			0x46, 0x28, 0xcb, 0xaf, 0x8c, 0x93, 0xea, 0x12,
+ 			0xec, 0x59, 0xe8, 0x71, 0xe4, 0x25, 0x0f, 0xac,
+@@ -11109,16 +11131,39 @@ static int h713_comm_picture_mode_test(u32 chan, u32 pid)
+  *
+  * Read-only, no messages, does not consume a launch.
+  */
+-#define H713_COMM_DEV_PTR	0x8b22efe4UL	/* -> pcpu_comm_dev           */
+ #define H713_COMM_CHAN_OFF	0xa8UL		/* dev + 0x18 + 0x90          */
+ #define H713_COMM_CHAN_STRIDE	48
+ #define H713_COMM_CHAN_SLOTS	16
+ 
++/*
++ * The identified image's debug cells, or a refusal. The function addresses in
++ * the comments here are the HY200's, the image the readers were written on;
++ * the cells they read come from the row (struct h713_mips_fw_rev).
++ */
++static const struct h713_mips_fw_rev *h713_disp_fw_cells(void)
++{
++	if (!h713_mips_fw) {
++		printf("H713 comm: firmware identity unknown -- no address row "
++		       "for this image; tools/mips-fw-addrs.py resolves one\n");
++		return NULL;
++	}
++	if (!h713_mips_fw->cpuid_va || !h713_mips_fw->comm_dev_ptr ||
++	    !h713_mips_fw->elog_ring || !h713_mips_fw->elog_wr) {
++		printf("H713 comm: no debug cells resolved for %s\n",
++		       h713_mips_fw->board);
++		return NULL;
++	}
++	return h713_mips_fw;
++}
++
+ static int h713_disp_comm_dev(void)
+ {
++	const struct h713_mips_fw_rev *fw = h713_disp_fw_cells();
+ 	ulong dev, tbl;
+ 	uint i, live = 0;
+ 
++	if (!fw)
++		return -ENODEV;
+ 	if (h713_mips_read_shmem(H713_MIPS_SHMEM_MAGIC1_OFF) !=
+ 	    H713_MIPS_SHMEM_MAGIC) {
+ 		printf("H713 comm: shared memory not published this boot\n");
+@@ -11126,27 +11171,27 @@ static int h713_disp_comm_dev(void)
+ 	}
+ 
+ 	/*
+-	 * Prove the KSEG reader before trusting anything it says. getCurCPUID
+-	 * at 0x8b1227b4 is two instructions we know byte for byte from the
+-	 * authenticated display.bin: `jr $ra` then `addiu $v0, $zero, 1`. If
+-	 * these do not match, every other number below is meaningless.
++	 * Prove the KSEG reader before trusting anything it says. getMyCPUID
++	 * (the row's cpuid_va) is two instructions we know byte for byte from
++	 * the authenticated display.bin: `jr $ra` then `addiu $v0, $zero, 1`.
++	 * If these do not match, every other number below is meaningless.
+ 	 */
+ 	{
+-		u32 a = h713_mips_read_fw(0x8b1227b4UL);
+-		u32 b = h713_mips_read_fw(0x8b1227b8UL);
++		u32 a = h713_mips_read_fw(fw->cpuid_va);
++		u32 b = h713_mips_read_fw(fw->cpuid_va + 4);
+ 		bool ok = a == 0x03e00008 && b == 0x24020001;
+ 
+-		printf("H713 comm: reader self-test @0x8b1227b4 -> %08x %08x "
++		printf("H713 comm: reader self-test @0x%08lx -> %08x %08x "
+ 		       "(expect 03e00008 24020001) %s\n",
+-		       a, b, ok ? "OK" : "*** FAILED ***");
++		       fw->cpuid_va, a, b, ok ? "OK" : "*** FAILED ***");
+ 		if (!ok)
+ 			printf("H713 comm: KSEG reads are not landing where "
+ 			       "expected -- treat the dump below as void\n");
+ 	}
+ 
+-	dev = h713_mips_read_fw(H713_COMM_DEV_PTR);
++	dev = h713_mips_read_fw(fw->comm_dev_ptr);
+ 	printf("H713 comm: pcpu_comm_dev = 0x%08lx (via 0x%08lx)\n",
+-	       dev, H713_COMM_DEV_PTR);
++	       dev, fw->comm_dev_ptr);
+ 
+ 	if (dev < 0x80000000UL || dev >= 0xa0000000UL) {
+ 		printf("H713 comm: dev pointer not a KSEG address -- "
+@@ -11266,6 +11311,62 @@ static int h713_disp_fw_md(ulong va, uint words)
+ 	return 0;
+ }
+ 
++/*
++ * Dump the firmware's own log: the mode-1 ring that `init elog=<n>` turns on.
++ *
++ * The writer (elog_mode1_ring100k_write, 0x8b151c74 on the HY310) keeps two
++ * offsets into a 0x19000-byte ring, write and read, with an overflow byte and
++ * an enable byte beside them (doku/63); only a Linux consumer moves the read
++ * offset, so at the prompt the unread text is ring[rd..wr). Without `all` the
++ * last 4 KiB of it are shown. Read-only; `h713_mips log` stays the blind scan.
++ */
++#define H713_ELOG_RING_SIZE	0x19000UL
++#define H713_ELOG_TAIL		0x1000UL
++
++static int h713_disp_elog(bool all)
++{
++	const struct h713_mips_fw_rev *fw = h713_disp_fw_cells();
++	ulong ring, wr, rd, ovf, en, from, n, end;
++
++	if (!fw)
++		return -ENODEV;
++
++	wr = h713_mips_read_fw(fw->elog_wr);
++	rd = h713_mips_read_fw(fw->elog_wr - 4);
++	ovf = (h713_mips_read_fw(fw->elog_wr - 8) >> 8) & 0xff;
++	en = h713_mips_read_fw(fw->elog_wr + 4) & 0xff;
++	ring = (fw->elog_ring & 0x1fffffffUL) + 0x40000000UL;
++	printf("H713 elog: ring 0x%08lx (ARM 0x%08lx) write=%lu read=%lu "
++	       "overflow=%lu enable=%lu\n",
++	       fw->elog_ring, ring, wr, rd, ovf, en);
++
++	if (wr >= H713_ELOG_RING_SIZE || rd >= H713_ELOG_RING_SIZE) {
++		printf("H713 elog: offsets outside the ring -- firmware not up, "
++		       "or not this image's cells\n");
++		return -ENODEV;
++	}
++
++	n = wr >= rd ? wr - rd : H713_ELOG_RING_SIZE - rd + wr;
++	if (!all && n > H713_ELOG_TAIL)
++		n = H713_ELOG_TAIL;
++	from = (wr + H713_ELOG_RING_SIZE - n) % H713_ELOG_RING_SIZE;
++	end = ring + H713_ELOG_RING_SIZE + CONFIG_SYS_CACHELINE_SIZE - 1;
++	invalidate_dcache_range(ring & ~(CONFIG_SYS_CACHELINE_SIZE - 1),
++				end & ~(CONFIG_SYS_CACHELINE_SIZE - 1));
++	printf("H713 elog: %lu byte(s) from offset %lu%s\n", n, from,
++	       all ? "" : " (the tail; 'elog all' prints everything unread)");
++
++	while (n--) {
++		u8 c = readb(ring + from);
++
++		putc(c == '\n' || c == '\t' || (c >= 0x20 && c < 0x7f) ?
++		     c : '.');
++		from = (from + 1) % H713_ELOG_RING_SIZE;
++	}
++	putc('\n');
++	return 0;
++}
++
+ static int h713_disp_comm_state(void)
+ {
+ 	uint cpu, dir, idx, live = 0;
+@@ -11545,8 +11646,9 @@ static int h713_disp_init_only(u32 project, bool release_mips, bool quiesce,
+ 		 *
+ 		 * display_cfg.xml documents mode as 0 sync / 1 async / 2 buf,
+ 		 * but the value goes straight into the firmware's dispatch byte
+-		 * at 0x8B48BE9B: 1 selects elog_mode1_ring100k_write, the
+-		 * 100 KiB ring at 0x8B272D9C that tools/mipslog.c reads. 0 ends
++		 * at 0x8B48BE9B (HY310; each image's is in its row): 1 selects
++		 * elog_mode1_ring100k_write, the 100 KiB ring at 0x8B272D9C that
++		 * tools/mipslog.c and `h713_disp elog` read. 0 ends
+ 		 * up in elog_default_dispatch and a different 120 KiB ring
+ 		 * whose address we have not located, and 2 is the 2 MiB linear
+ 		 * buffer the knowledge base says may break MIPS init. "sync"
+@@ -12349,6 +12451,10 @@ static int do_h713_disp(struct cmd_tbl *cmdtp, int flag, int argc,
+ 		return h713_disp_comm_dev() ?
+ 		       CMD_RET_FAILURE : CMD_RET_SUCCESS;
+ 
++	if ((argc == 2 || argc == 3) && !strcmp(argv[1], "elog"))
++		return h713_disp_elog(argc == 3 && !strcmp(argv[2], "all")) ?
++		       CMD_RET_FAILURE : CMD_RET_SUCCESS;
++
+ 	if ((argc == 3 || argc == 4) && !strcmp(argv[1], "fwmd")) {
+ 		ulong va = hextoul(argv[2], NULL);
+ 		uint n = argc == 4 ? (uint)hextoul(argv[3], NULL) : 16;
+@@ -12572,6 +12678,7 @@ U_BOOT_CMD(h713_disp, 15, 0, do_h713_disp,
+ 	   "h713_disp regscan [base] [words]    - find which registers move, and what they count\n"
+ 	   "h713_disp clkfind [index]           - list, or test ONE clock candidate (see docs)\n"
+ 	   "h713_disp commdev                   - read the firmware channel table\n"
++	   "h713_disp elog [all]                - dump the firmware's log ring\n"
+ 	   "h713_disp fwmd <mips-va> [words]    - dump firmware memory (cache-safe)\n"
+ 	   "h713_disp commcall <id> [chan=<hex>] [pid=<hex>] [args..]\n"
+ 	   "                                    - send one CPU_COMM CALL (writes!)\n"
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index dd86bb5493c..551112d013f 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -34,7 +34,7 @@ h713_mips_path=mips
+ bootfile=h713-kernel-netboot.fit
+ serverip=192.168.8.123
+ nfsroot=/srv/h713-rootfs
+-bootargs_base=console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0
++bootargs_base=console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10
+ boot_emmc=
+ 	if ext4load mmc 1:5 0x60000000 h713-kernel.fit; then
+ 		setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw";

@@ -3,7 +3,7 @@
 **The patch files here are generated, not maintained** (since 12.09.2026, P3):
 `git format-patch --no-signature 8fe568cdfc46..<head>` in the submodule checkout
 `mainline/external/u-boot` (branch `h713-hy310`, base is cstenger's `h713`),
-last regenerated on 17.09.2026 at the fork head `da74b89`. `SERIES.txt` names base,
+last regenerated on 04.10.2026 at the fork head `6fb736c` (94 patches). `SERIES.txt` names base,
 head and count, and is the only thing that says which fork commit this mirror stands
 on. Whoever wants to change something changes the fork and has the mirror generated
 again. This page explains *why* the changes look the way they do - the original text
