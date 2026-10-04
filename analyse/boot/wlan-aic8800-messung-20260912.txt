@@ -164,7 +164,7 @@ Stufe-0-Test ohne Stromzyklus, beide Module geladen, KEIN Parameter
 (also Standardwert 385 = PM1):
 
   mmc1: 1 Karte(n)                          <== SDIO-Karte erkannt
-  wlan0   c8:26:e2:e1:1a:68                 <== Schnittstelle da
+  wlan0   xx:xx:xx:xx:xx:xx                 <== Schnittstelle da
   phy0                                      <== cfg80211 registriert
   rwnx_reg_notifier Enter                   <== Regulatory-Domain gesetzt
 
