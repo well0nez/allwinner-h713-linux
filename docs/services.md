@@ -13,7 +13,8 @@ cannot enumerate is a system you cannot trust.
 | `hy310-zram-swap` | compressed swap in RAM: zstd, half of the 1 GiB, one device. This board has no swap partition and no room for one |
 | `hy310-ssh-host-keys` | generates the SSH host keys on first boot, so two devices from the same image are not twins |
 | `h713-warp` | the keystone warp on the GPU ([h713-warp](tools/h713-warp.md)); in bypass, with the GPU closed, until a corner or the zoom is set |
-| `h713-keystone-auto` | `h713-keystone watch`: the automatic keystone once after a move; does nothing while `after_move = off` in `/etc/h713/keystone.conf`, which is the shipped default |
+| `h713-keystone-auto` | `h713-keystone watch`: the automatic keystone once after a move; does nothing while `after_move = off` in `/etc/h713/keystone.conf`, which is the shipped default. Skipped on a board without an accelerometer; started by udev (`99-h713-keystone.rules`) when one probes late |
+| `h713-features` | once per boot: the camera, the accelerometer and the focus motor against `/etc/h713/features`, one journal line each and a warning for one the board should have and does not show ([h713-features](tools/h713-features.md)) |
 | `h713-panel` | the settings page on port 8080, no authentication ([guide](guides/settings-page.md)) |
 
 `hostapd` and `wpa_supplicant` are installed but their own units are masked: `h713-wifi` generates their
@@ -51,7 +52,7 @@ key present is the one you passed to the installer.
 |---|---|
 | `/` | the root filesystem, ext4, grown to the partition on first boot |
 | `/data` | a directory in the same filesystem, for things you want out of the way - persistent logs land under `/data/log` |
-| `/etc/h713/` | our configuration: `wifi.env`, `tv.conf`, `warp.conf`, `keystone.conf`, `keystone-ref`, `board`, and the `tvconfig` directory the picture tools use |
+| `/etc/h713/` | our configuration: `wifi.env`, `tv.conf`, `warp.conf`, `keystone.conf`, `keystone-ref`, `board`, `features`, and the `tvconfig` directory the picture tools use |
 | `/run/log/journal` | the journal, in RAM, unless you switched it |
 
 Details: `doku/107-plan-rootfs.md` (the whole rootfs recipe and the reasoning behind each of these).

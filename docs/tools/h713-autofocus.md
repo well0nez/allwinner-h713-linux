@@ -30,7 +30,8 @@ Options: `--profile hy310|vafo8|hy300-pro` picks the board table, `--window full
 Exit codes: `0` a peak was found, `2` a usage or setup error, `3` the camera streams but the picture is flat,
 `4` the motor may not move (no range watcher, `motor_ctrl_no_limit=1`, an edge already latched), `5` both edges
 latched at once, more than four turn-arounds, a guard that is not about direction, or the 1000-mstep cap, `6` the budget or the deadline ran out without a
-peak, `130` Ctrl-C.
+peak, `7` no focus motor or no camera on this board ("not present on this board", [h713-features](h713-features.md)),
+`130` Ctrl-C.
 
 ## Where the numbers come from
 

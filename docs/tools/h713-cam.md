@@ -22,6 +22,8 @@ the candidates instead of guessed.
 happen to load first - a probe order, not a guarantee. `h713-cam` instead walks
 `/sys/class/video4linux/*/name` for a match and picks the entry that reports `VIDEO_CAPTURE`, since the same
 camera also exposes a second, metadata-only node under the identical name. `--dev` overrides the search.
+No node of that name at all is exit `7`, "not present on this board" ([h713-features](h713-features.md)); a
+named node that does not capture is exit `2`.
 
 ## Why `grab` writes back the exposure before it reads a frame
 

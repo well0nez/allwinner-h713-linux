@@ -29,6 +29,10 @@ Across the top, a status strip that is re-read every three seconds: signal, what
 plane or warped), warp on or off, whether the mask is up, whether the keystone standing in the warp is the
 automatic's or a hand's, the thermal zones, and the GPU's frames per second.
 
+Not every board has a camera, an accelerometer and a focus motor (the HY300PRO-G-EU has the accelerometer
+only). What the board lacks has no controls: the page asks `h713-features` once when it loads, hides the
+buttons that would only answer "not present on this board", and says in one line what is missing.
+
 Below it, three groups: **Projection**, **Picture**, **Sound**. On a phone they are three tabs; from 900 px
 of width on they stand side by side and the tab buttons disappear.
 

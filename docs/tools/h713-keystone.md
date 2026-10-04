@@ -14,12 +14,12 @@ h713-keystone status                # configuration, sensor, reference, warp
 h713-keystone watch                 # after a move, run the automatic once (the unit's verb)
 ```
 
-`h713-keystone-auto.service` runs `watch`; it is enabled from the first boot, watches against the ideal level pose while there is no reference file (a fresh image has none; until 26.09.2026 it waited for the file, and until 23.09.2026 it exited and systemd restarted it every five seconds), and does nothing while `after_move = off` (the settings page's "After a move" buttons write that key and restart the unit). `-C PATH` names
+`h713-keystone-auto.service` runs `watch`; it is enabled from the first boot, watches against the ideal level pose while there is no reference file (a fresh image has none; until 26.09.2026 it waited for the file, and until 23.09.2026 it exited and systemd restarted it every five seconds), and does nothing while `after_move = off` (the settings page's "After a move" buttons write that key and restart the unit). Without an accelerometer the unit is skipped (a condition on `in_accel_x_raw`), and `99-h713-keystone.rules` starts it when one appears after the boot. `-C PATH` names
 another configuration file, `--reference PATH` another reference file, `--device PATH` an IIO node instead of the one
 found by name, `--warp PATH` another warp tool, `-q` drops the warnings.
 
 Exit codes: `0` done, `2` a usage, configuration or file error, `3` no readable accelerometer, `4` the pose is more than
-45 degrees off flat and may not become a reference, `5` `h713-warp` refused, `130` SIGTERM or Ctrl-C.
+45 degrees off flat and may not become a reference, `5` `h713-warp` refused, `7` no accelerometer on this board at all ("not present on this board", [h713-features](h713-features.md)), `130` SIGTERM or Ctrl-C.
 
 ## Where the numbers come from
 

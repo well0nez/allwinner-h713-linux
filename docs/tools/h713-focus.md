@@ -15,8 +15,9 @@ h713-focus unlatch         # clear a remembered edge
 The script's messages and help texts are English; two of its switches keep their German names, because the
 command line is what a note in the field is written from: `-n`/`--trocken` checks and prints without writing;
 `--schritt N` sets msteps per write (default 2, capped at 18 by the driver itself); `--sysfs PATH` (or
-`$H713_FOCUS_SYSFS`) gives the motor node instead of searching for it. Exit codes: `0` done, `2` misuse or no
-node, `3` locked or stopped at an edge, `4` deadline hit or command dropped, `130` Ctrl-C.
+`$H713_FOCUS_SYSFS`) gives the motor node instead of searching for it. Exit codes: `0` done, `2` misuse or a wrong
+`--sysfs`, `3` locked or stopped at an edge, `4` deadline hit or command dropped, `7` no focus motor on this board
+("not present on this board", [h713-features](h713-features.md)), `130` Ctrl-C.
 
 ## Why it does not load the driver
 

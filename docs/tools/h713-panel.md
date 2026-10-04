@@ -38,7 +38,9 @@ of 1, 10 or 50 per-mille (`ctl keystone nudge`). Under it: mask on/off, auto key
 projection mode - front, rear, ceiling or rear-ceiling (`h713-warp ctl mode`; the corners keep their wall
 names in every mode, the warp flips underneath), after a
 move - off, keystone or keystone+focus (written into `/etc/h713/keystone.conf`, then `h713-keystone-auto`
-restarted), focus by 5 and 20 msteps, level reference, autofocus now, warp on/off.
+restarted), focus by 5 and 20 msteps, level reference, autofocus now, warp on/off. A control whose hardware the
+board does not have (`h713-features status`: camera, accelerometer, focus motor) is hidden, one line says
+which, and `after_move` refuses a choice that needs it; without an answer from `h713-features` all stay.
 
 **Picture.** The vendor presets, brightness, contrast, saturation, hue and sharpness as sliders over the
 range `h713-tv ctl list` reports, the aspect fit, the firmware's zoom is not on the page any more (23.09.: `out` cropped, the DE only enlarges; the projection area is the warp's zoom under Keystone), and save.
