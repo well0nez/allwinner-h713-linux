@@ -62,9 +62,10 @@ building blocks (sha256, 16 characters):
 ```
 
 Two builds of the same commit are meant to give the same building-block hashes: the build clock is the
-commit's date (`source date:` in the stamp), so no part embeds the wall clock. The checkout's path is
-still embedded by the three userspace cross builds (h713-tv, h713-warp, the focus metric carry `-g`), so the
-building-block hashes repeat only from the same checkout path until those take the prefix map.
+commit's date (`source date:` in the stamp), so no part embeds the wall clock, and the three userspace
+cross builds map their checkout and sysroot paths out of their debug info, so the path does not matter
+either. For `v0.96-beta` two builds of one commit - the working tree and a fresh clone elsewhere - gave the
+same hash for every building block in the stamp, the boot chain and the backup GPT byte for byte.
 The stamp's `reproducible:` line says whether a build was made that way, and if not, why (local changes,
 `--skip-*`, a private `--wifi-env`). The rootfs tar repeats only while the Debian mirror is at the same
 state; `rootfs packages:` names the package set for that comparison. Image checksums still differ between
@@ -101,7 +102,8 @@ repairable.
 
 - **The stock remote over Bluetooth.** Hold Left+Right to pair; its 16 keys and the mouse arrive as Linux
   input events (`0169`), and `h713-bt-reset` brings `hci0` up after a warm reboot too. Nothing in the image
-  acts on the keys yet except Power, which shuts the system down.
+  acts on the keys yet except Power, which shuts the system down. A reinstall loses the pairing and the
+  settings in `/etc/h713` - pair again, set the corners again.
 - **HDMI input.** The display firmware's own mode table is the list of modes (`0170` - `0173`), a raster
   outside it is named at once, and `h713-tv ctl edid block1` offers 1080p100/120.
 - **Sound.** The box's own sounds play through `hw:hy310hdmi,0`, which the DSP mixes into HDMI and which is
@@ -114,7 +116,8 @@ repairable.
 - **Boards.** The HY200 QZ713DF A1 is one board with two firmware variants (`--variant`) and one device tree
   (`0181`); `0168` ends the lamp-word crash; U-Boot drives project 0x34 at 8-bit LVDS.
 - **Installer, build, boot.** `restore-stock` takes both known eMMC sizes and refuses a container that does
-  not fit; a test image installs a second time; builds are reproducible (`SOURCE_DATE_EPOCH`); `panic=10` in the
+  not fit; a reinstall over our layout keeps the board record and `h713_project`; a test image installs a
+  second time; builds are reproducible (`SOURCE_DATE_EPOCH`); `panic=10` in the
   HY310's U-Boot environment reboots the box ten seconds after a kernel panic.
 
 **Left out, and why:** standby (a suspend is reached, the wake-up is not), HDCP 1.4 (refused by the crypto

@@ -219,7 +219,9 @@ of the device's own GPT, not out of a constant. The mandatory small dump falls a
 stock-specific is left to save - `--dump DIR` still takes one, and `--vendor` or a full dump in the dump
 directory still beat the device. What the dump used to supply for the last two steps is read into memory
 instead: the secure storage is still compared byte for byte after writing, and `h713_gate` / `h713_boot`
-are still carried over from the old U-Boot environment. A file the device does not have is treated the
+are still carried over from the old U-Boot environment. The board comes off the device too: the installer
+reads `/etc/h713/board` out of the installed rootfs, writes the same record into the new image and sets
+`h713_project` from it (`the board is known from its own /etc/h713/board`). A file the device does not have is treated the
 way a missing one from a dump is: the boot logo, the Wi-Fi firmware and the picture tables are optional
 and are skipped with one line, anything else stops the run with exit 8, naming the file and asking for
 `--vendor`. `--no-write` is a rehearsal and mounts nothing at all, so it says which files it *would* read
@@ -234,10 +236,12 @@ firmwares; table key `test_for`) is written only on the board it was built for, 
 `--test-image`. The first time, the device still runs Android and the
 identification reads the board off it. The second time it runs our layout, which carries nothing a
 profile could match - no Android, no vendor U-Boot - so on its own the device is `no board we know`, and
-the run stops with exit 1 before anything is written. The proof of the board is the full dump of the
-first install: name its directory with `--dump`, and the installer identifies the clone in it
-(`emmc-full.img`) the way `h713-install identify <clone>` does, and takes that as the board (26.09.2026,
-`_board_from_dump`; the HY300 Pro's owner reinstalling test8 over test7).
+the run stops with exit 1 before anything is written. The proof of the board is the record the first
+install left in the rootfs, `/etc/h713/board` - board, project id and, for a board with firmware variants,
+the variant - which the installer reads back (since 04.10.2026). An install older than that has no variant
+in it; then name the first install's dump directory with `--dump`, and the installer identifies the clone
+in it (`emmc-full.img`) the way `h713-install identify <clone>` does, and takes that as the board
+(26.09.2026, `_board_from_dump`; the HY300 Pro's owner reinstalling test8 over test7).
 
 ```bash
 sudo allwinner-h713-linux/installer/h713-install install ~/hy300-pro-test8 \

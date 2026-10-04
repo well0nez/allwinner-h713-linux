@@ -103,7 +103,7 @@ The `.BUILD.txt` stamp records the series hash, the defconfig hash, the kernel t
 submodule commits, the source date and a sha256 for each component. Quote it when you report a problem.
 
 The build clock is the commit's date (`SOURCE_DATE_EPOCH`, handed to every step), so two builds of the same
-commit from the same checkout path give the same building blocks; the stamp's `reproducible:` line says
+commit give the same building blocks, from any checkout path; the stamp's `reproducible:` line says
 `yes`, or why not (local changes, a `--skip-*`, `--wifi-env`). The rootfs tar repeats only while the Debian
 mirror is at the same state, and the image files themselves still differ (the ext4 inputs carry their own
 UUIDs and times) - compare stamps, not images ([RELEASES.md](RELEASES.md)).
