@@ -124,6 +124,6 @@ PROFILE = {
         "mips_database_sha256": "6d43b85a5880d34df0428f234c0c713ac1ca7ec28e551554137d967f60c380e4",
     },
     "board_dt": "sun50i-h713-hy300-pro",   # boards/hy300-pro/board.env KERNEL_DTB (patch 0161, stage 5):
-                                             # the hy200 dts under this board's name, for its TEST image
+                                             # since 0181 the hy310 dts under this board's name (TEST image)
     "uboot_board": "hy300_pro",              # boards/hy300-pro/board.env UBOOT_BOARD: base hy300_pro_defconfig (F2a)
 }

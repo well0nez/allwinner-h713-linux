@@ -1,81 +1,90 @@
 # HY300 Pro
 
-The first foreign device this project ever met: reported in
+The first foreign device this project met: reported in
 [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1) on 13.09.2026 by its owner
-(GitHub `fightforlife`). He first ran the installer in dump-only mode and `h713-extract` over the dump;
-from 16.09.2026 on he flashed TEST images built for this board, with that dump as the way back. No image
-of his firmware exists here.
+(GitHub `fightforlife`). He ran the installer in dump-only mode and `h713-extract` over his dump, and from
+16.09.2026 on flashed TEST images built for this board, with his full dump as the way back. No image of his
+firmware exists here; everything below comes from what he posted.
 
 | | |
 |---|---|
-| Status | **partial** - the description itself is incomplete |
+| Status | **partial** - in test by its owner, no green run |
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/hy300_pro.py` |
-| Image | **TEST images** for its owner only (stage 5, `--test-image`): `hy300-pro-test7` (23.09.) is current, `test1` and `test2` are deleted. No release image until a green report |
-| Kernel DTB | `sun50i-h713-hy300-pro` (patch 0161, an include of the hy200 dts) |
-| U-Boot base | `hy300_pro_defconfig` (the owner's DRAM block, 636 MHz) |
-| DRAM | DDR3 (type 3), **636 MHz**, 1 GiB - all 24 boot0 words from his probe run of 2026-09-14 (`uboot.config`) |
-| Panel | declared project id `0x34`; resolution unknown |
-| eMMC | 7.28 GiB, 15 269 888 sectors - the same size as the HY310 |
-| Stock | Android 10 (32-bit, ARMv7 kernel 5.4.99), ADT-3 build 6245789 |
+| Image | **TEST images** for its owner only (`--test-image`): `hy300-pro-test9` (25.09.) is the last; `test10` follows after the v0.96-beta release. No release image until a green report |
+| Kernel DTB | `sun50i-h713-hy300-pro` (patch 0161): `sun50i-h713-hy310.dts` included under this board's own name (0181), plus the lamp's PWM words (0166a), no pwm-backlight (0161a), its display firmware's elog addresses (0161b) and its own focus motor tables (0182) |
+| U-Boot base | `hy300_pro_defconfig` (his DRAM block at 636 MHz, U-Boot tree `sun50i-h713-hy300-pro`) |
+| DRAM | DDR3 (type 3), **636 MHz**, 1 GiB - the 24 boot0 words of his probe run of 2026-09-14 (`uboot.config`) |
+| Panel | project id `0x34`, 1280x720 single port, 1360x760, 62 MHz - his `panel_config.ini` (posted 15.09.) and U-Boot on his unit (test8: "firmware left 1280x720 active, 1360x760 total") |
+| Lamp | `[PWMSetting]` channel 5, polarity 1 (low active), 40 kHz, vsync lock 1, duty 1..100 (his ini) |
+| eMMC | 15 269 888 sectors, 25 partitions, a single `Reserve0` |
+| Stock | Android 10 (32-bit, ARMv7 kernel 5.4.99), ADT-3 build 6245789, vendor U-Boot of Dec 2024 |
+| display.bin | 1 253 136 B, `cf9649bc...` - his own revision, U-Boot's row "HY300 Pro", HDCP wait site `0x4b13d1b0` |
 
-## What we actually know, and from where
+## Not the HY200 QZ713DF A1
 
-Everything comes from his serial log and his `h713-extract` run, quoted in
-`analyse/issues/issue-1-hy300pro-20260913.md` and `doku/120-plan-hy300pro.md` §1:
+The maintainer's HY300PRO-G-EU is a HY200 QZ713DF A1 (`boards/hy200-qz713df-a1`); this board is not, on
+the evidence. Where both are measured, the hardware differs: the fan tacho is **PH17** here (his stock
+`fan_ctrl`, and our tacho counted on his unit) and PH13 on the A1 (its stock trees, 5520-5610 rpm on the
+GEU); the DRAM PHY tuning `tpr11/tpr12` is `0x44440000/0x5555` here and `0x44340000/0x6666` on the A1,
+equal in both A1 firmwares - here it is the HY300 T08's and the HY350's. His firmware is the T08's family
+(ADT-3 build 6245789, project 0x34), not the A1's Android 11. The rest does not separate them: panel and
+lamp words are equal, `tpr0..tpr2` are a boot0's own computation at its clock (`hy200-qz713-v2` README),
+the partition table and display.bin are firmware. His motor tables are neither A1 firmware's. The
+measurement that would settle it is the silkscreen; the photos in the issue's "Device data" are not in our
+text copy, and the owner can read it off the board.
 
-- **DRAM**: `DRAM CLK = 636 MHz`, `Type = 3`, `ZQ 0x7b7bfb`, `SIZE = 1024 M`. Four numbers. The other
-  21 words of a DRAM block were never posted.
-- **Our installer U-Boot ran on his hardware.** The SPL trained with *our* values (the HY310 set at
-  792 MHz) and `ums` served his eMMC for 17 minutes under load. That proves "enough for a dump", not
-  "stable in operation" - and his board's own clock is 636, not 792.
-- **The device check refused to write**, which is what it is for: unknown firmware → dump only.
-- **Partitions**: 25 entries, a single `Reserve0` at LBA 5 358 592 (+32 768), `media_data` at
-  4 932 608 (+425 984, 208 MiB). The HY310's constants point at his `UDISK`; that is defect 2 of the
-  issue and the reason the small dump read the wrong region (read-only, so harmless).
-- **Display firmware**: `display.bin` 1 253 136 bytes,
-  `cf9649bcc84a111ce590fc7acde723c25557fd2332abbb9fd10225905aae13a2` - a revision no table of ours
-  declares, so no HDCP wait site and no panel entry for it.
-- **Project id `0x34`** (`ProjectID_0x0034.TSE`), the same id cstenger's HY200 bench board declares -
-  while his stock system renders 1080p and the other `0x34` board we know is 1280×720. The project id
-  selects a panel entry; it is not itself a resolution.
-- **Motor**: `motor-phase-num 4`, `motor-step-num 8`, close to the HY310's.
-
-## What we do not know
-
-- whether 636 MHz or 792 MHz is the right clock for *sustained* operation on this board
-- the panel: only the declared project id 0x34 is his; the 1280x720 timing the loader drives is what every
-  other 0x34 source shows (a bench board measured, three vendor inis) - likely, not measured on his board
-- the boot package contents, the stock `sunxi_version`, the exact build fingerprint
-- nothing about it is unique enough to identify it: its `display.bin` digest is not one of the
-  identification features, and it shares the ADT-3 fingerprint with two other images. The profile's
-  `strong_features` is deliberately empty, so the matcher can never claim this board.
-
-## What it would take to move this board forward
-
-From the issue, in order:
-
-1. installer: a recognition entry for this firmware, and the small dump's offsets read from the GPT
-   instead of HY310 constants - **before** any write path to such a device is unlocked at all;
-2. `h713-extract`: reference hashes from his extraction (vendor file hashes are not secret);
-3. board: a DRAM profile at 636 MHz - or proof under load that 792 holds - `h713_project=0x34`, and a
-   DTS comparison (fan, motor, key; the panel comes through TSE from his own dump);
-4. an image for this board **and a test by its owner - do not flash before that**.
-
-Steps 1-3 can happen here. Step 4 cannot: it needs a person with the device. Until he reports a green
-run, this board stays below `verified` and gets no image (`boards/README.md`, honesty rule).
-
-## Where it stands, 17.09.2026
-
-Steps 1-3 are done and step 4 is under way. Seven TEST images have existed:
+## The test images
 
 | Image | What happened |
 |---|---|
-| `test1`, `test2` | deleted with their tags. `test2` brought U-Boot up on his board and hung in the display bring-up: the HY310's fixed LogoRegData offsets ran past the end of his container, which has 13 descriptors (14 388 B) against the HY310's 15 (15 652 B). U-Boot reads the group boundaries out of the file since then |
-| `test3` | booted the kernel: Wi-Fi as access point and as station, HDCP 2.2 reported working. No boot logo (the panel stays dim white), no HDMI input, green stripes. The missing input was the ARISC not answering `ResetEDIDModule` - its firmware's SRAM addresses are not the HY310's, and the driver used the HY310's |
-| `test4` | kernel patch `0091a` resolves those addresses out of the loaded ARISC image (`tools/arisc-fw-addrs.py` does the same on the host), plus a first A/B for the `0x34` panel on U-Boot branch `hy300-pro-ab` |
-| `test5`, `test6` | 19. and 20.09.: the HDMI input detected (0136 series), then the picture at every resolution but skewed |
-| `test7` | current (23.09., published): the picture geometry fixed (`0133d`, the window words as fractions of 30720x17280), the gamma curve out of his own TSE and the presets out of his `tvpq.db` (PQ1), built from `main` 40c6175 |
+| `test1`, `test2` | deleted. `test2` hung in the display bring-up: the HY310's fixed LogoRegData offsets ran past his 13-descriptor file; U-Boot reads the groups out of the file since |
+| `test3` | kernel up, Wi-Fi, HDCP 2.2; no boot logo, no HDMI input (the ARISC's SRAM addresses are not the HY310's) |
+| `test4` | `0091a` resolves those addresses from the loaded ARISC image; first A/B for the 0x34 panel |
+| `test5`, `test6` | 19./20.09.: HDMI input detected (0136), then the picture at every resolution, skewed |
+| `test7` | 23.09.: geometry (`0133d`), gamma from his own TSE, presets from his `tvpq.db`; 720p/1080p right, the picture dark against stock |
+| `test8` | 23.09.: the lamp's six PWM words plus a PA12 pin group; "unsupported function pwm5 on pin PA12", the receiver never probed, no login |
+| `test9` | 25.09.: the group gone, the words kept. 27.09.: both boots stop at different places, `/dev/video1` never appears |
 
-**Open: his console output for `test7`.** The panel A/B is merged into `h713-hy310` only after a green
-owner report.
+**What test9's failure was.** 0166 sent the six PWM words as six call parameters; the display firmware
+takes one, the address of a 24-byte structure, and read the channel number 5 as an address. On the
+HY300PRO-G-EU the same words killed two boots 0.6-0.9 s after that step and the board booted without
+them; kernel 0168 sends the address and fixed it there (03.10.). test8 never reached the step (its
+receiver did not probe). Not the cause: `of_pwm_get(): can't parse "pwms" property` is the board
+manager's fan0 without a PWM, in every boot of his since test3. A second fault shows in both test9 logs:
+U-Boot ran **project 0x30** ("panel 1920x1080 dual-port", `ProjectID_0x0030.TSE`, the boot logo refused)
+where test8 ran 0x34 - the environment's `h713_project` was the image default, not his board's.
+
+## What test10 must contain
+
+- kernel **0168** (the words by address) and **0182** (his motor tables);
+- U-Boot `2de0cc8` - LVDS 8 bit for project 0x34; his own LogoRegData record says 8 bit (`05800000 =
+  01e0a40c`), which test8's U-Boot rewrote to 6 bit (`01e0a404`);
+- `h713-tv` with the three-channel gamma of his own TSE;
+- `h713_project=0x34` in the environment: the install must print "Environment: stored what the board
+  declares: h713_project=0x34" and U-Boot "project 0x34, panel 1280x720 single-port". Today's installer
+  takes the panel facts from his first install's dump when the device carries our layout; why test9's
+  install left the default 0x30 is not in his logs (his install output was not posted).
+
+Unchanged and his own: display.bin `cf9649bc`, the 25-entry table with one `Reserve0`, 636 MHz. 0168's
+handler was read in the HY310's display.bin revision, not in his; that his boots broke the same way since
+the property arrived is the evidence that his firmware takes the same argument.
+
+## Optional hardware (`FEATURES`)
+
+Unset - nothing of it was seen working under our firmware on his unit:
+
+- **accelerometer**: something answers at 0x18 on twi1 (his stock log: an `stk83xx` input device at
+  `1-0018`); our tree drives an SC7A20 there, so which chip it is decides whether ours drives it;
+- **focus motor**: his stock tree enables `motor_ctr` with tables of its own (0182 carries them); nobody
+  has seen it move under our firmware;
+- **camera**: nothing in his logs or stock tree shows one.
+
+## What we do not know
+
+- whether 636 MHz holds under sustained load with our SPL (his own boot0's clock; boots so far are short);
+- which pad PWM channel 5 leaves the SoC on, and whether the PWM words brighten his picture at all;
+- the limiter's active level of his focus motor (his tree names the pin only);
+- the silkscreen of the board.
+
+The honesty rule (`boards/README.md`) holds: until he reports a green run, this board stays `partial`.
