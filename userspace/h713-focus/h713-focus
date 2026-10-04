@@ -100,6 +100,17 @@ class Error(Exception):
     """Something is wrong -- message out, return value != 0, drive nothing."""
 
 
+class NotPresent(Error):
+    """No focus motor on this board at all (boards/README.md, FEATURES):
+    exit 7, the verdict as the last line."""
+
+
+EXIT_NOT_PRESENT = 7    # as h713-autofocus, h713-keystone and h713-cam
+SYS = os.environ.get("H713_SYS", "/sys")    # replaced by the tests
+NOT_PRESENT = ("focus motor: not present on this board - h713-features says "
+               "whether the board should have one")
+
+
 # --- find the node, do not type it in -------------------------------------
 # Here it is called motor-ctr, on stock motor_ctr, in future perhaps something
 # else. The only reliable thing is the driver name. On 11./12.09. two mistakes
@@ -116,7 +127,7 @@ def find_base(given: str | None) -> tuple[Path, str]:
         return p, "given"
 
     # The reliable way: what is bound to the driver?
-    root = Path("/sys/bus/platform/drivers") / DRIVER
+    root = Path(SYS) / "bus/platform/drivers" / DRIVER
     if root.is_dir():
         for e in sorted(root.iterdir()):
             if e.name in ("bind", "unbind", "uevent", "module"):
@@ -126,9 +137,9 @@ def find_base(given: str | None) -> tuple[Path, str]:
                 return target, f"bound to {DRIVER}"
 
     # Fallback in case the driver is not (any longer) registered.
-    for pattern in ("/sys/bus/platform/devices/*motor*",
-                    "/sys/devices/platform/*/" + ATTR_LIMIT):
-        for raw in sorted(glob.glob(pattern)):
+    for pattern in ("bus/platform/devices/*motor*",
+                    "devices/platform/*/" + ATTR_LIMIT):
+        for raw in sorted(glob.glob(os.path.join(SYS, pattern))):
             p = Path(raw)
             if p.name == ATTR_LIMIT:
                 p = p.parent
@@ -137,9 +148,10 @@ def find_base(given: str | None) -> tuple[Path, str]:
                 return p, "found over the name"
 
     if not root.is_dir():
-        raise Error("No motor node found.\n\n" + LOAD_HINT)
-    raise Error(f"The driver {DRIVER} is registered, but no device is bound to "
-                f"it -- the node in the device tree is probably 'disabled'.")
+        raise NotPresent("No motor node found.\n\n" + LOAD_HINT + "\n\n" + NOT_PRESENT)
+    raise NotPresent(f"The driver {DRIVER} is registered, but no device is bound to "
+                     f"it -- the node in the device tree is probably 'disabled'.\n"
+                     + NOT_PRESENT)
 
 
 class Motor:
@@ -565,6 +577,9 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
+    except NotPresent as e:
+        print(f"h713-focus: {e}", file=sys.stderr)
+        sys.exit(EXIT_NOT_PRESENT)
     except Error as e:
         print(f"h713-focus: {e}", file=sys.stderr)
         sys.exit(2)

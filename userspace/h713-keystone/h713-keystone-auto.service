@@ -1,12 +1,19 @@
 [Unit]
 Description=H713 auto keystone (accelerometer tilt into h713-warp)
 After=h713-warp.service
+# Optional hardware (boards/README.md, FEATURES): without an accelerometer
+# the unit is skipped, not failed and not restarted. A sensor that probes
+# after this start is started by 99-h713-keystone.rules when its node appears.
+ConditionPathExistsGlob=/sys/bus/iio/devices/iio:device*/in_accel_x_raw
 
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/h713-keystone watch
 Restart=on-failure
 RestartSec=5
+# 7: the accelerometer is not present on this board (gone since the condition)
+SuccessExitStatus=7
+RestartPreventExitStatus=7
 
 [Install]
 WantedBy=multi-user.target

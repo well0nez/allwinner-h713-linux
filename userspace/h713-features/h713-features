@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""h713-features -- camera, accelerometer, focus motor: what this board has.
+
+The port grew on the HY310, which has all three; other boards of the family
+lack one or more (boards/README.md, FEATURES).  /etc/h713/features is what the
+image's board should have (board.env FEATURES, written by install-projekt.sh);
+the device nodes are what is there, and they decide.  `status` prints one line
+per feature (h713-panel reads it); `check` is the boot check of
+h713-features.service: it waits up to --wait s for what the record lists, then
+one line per feature and one warning for each listed one the board does not
+show, exit 0 always.  The tools answer for themselves: exit 7, "not present on
+this board".  $H713_SYS replaces /sys (the tests, a copied sysfs tree).
+"""
+
+import argparse
+import glob
+import os
+import sys
+import time
+
+SYS, RECORD = os.environ.get("H713_SYS", "/sys"), "/etc/h713/features"
+NAMES = ("camera", "accelerometer", "focus-motor")
+CAMERA_NAME = "HD camera"            # h713-cam, h713-autofocus: the uvcvideo name
+MOTOR_DRIVER = "hy310-focus-motor"   # h713-focus, h713-autofocus
+USERS = {"camera": "h713-cam, h713-autofocus",
+         "accelerometer": "h713-keystone, h713-keystone-auto",
+         "focus-motor": "h713-focus, h713-autofocus"}
+
+
+def _read(path):
+    try:
+        with open(path, "rb") as fh:
+            return fh.read().decode("utf-8", "replace").strip()
+    except OSError:
+        return None
+
+
+def _glob(pattern):
+    return sorted(glob.glob(os.path.join(SYS, pattern)))
+
+
+def probe():
+    """name -> the node that shows the feature, or None (the tools' rules)."""
+    found = dict((name, None) for name in NAMES)
+    for path in _glob("class/video4linux/video*/name"):
+        if CAMERA_NAME in (_read(path) or ""):
+            found["camera"] = "/dev/" + os.path.basename(os.path.dirname(path))
+            break
+    for path in _glob("bus/iio/devices/iio:device*/in_accel_x_raw"):
+        node = os.path.dirname(path)
+        found["accelerometer"] = "%s (%s)" % (os.path.basename(node),
+                                              _read(os.path.join(node, "name")) or "?")
+        break
+    hits = (_glob("bus/platform/drivers/%s/*/motor_limit" % MOTOR_DRIVER)
+            or _glob("devices/platform/*/motor_limit"))
+    if hits:
+        found["focus-motor"] = os.path.realpath(os.path.dirname(hits[0]))
+    return found
+
+
+def read_record(path):
+    """(board, names); names None = not recorded (no file, no key), an empty
+    set = none confirmed."""
+    board = names = None
+    for line in (_read(path) or "").splitlines():
+        key, sign, value = [p.strip() for p in line.split("#", 1)[0].partition("=")]
+        if sign and key == "board":
+            board = value
+        elif sign and key == "features":
+            names = set(value.split())
+    return board, names
+
+
+def verdict(name, node, board, names):
+    """(the record disagrees, the words after the label)."""
+    if node:
+        extra = "" if names is None or name in names else ", not in FEATURES"
+        return False, "present  %s  (%s%s)" % (node, USERS[name], extra)
+    if names is not None and name in names:
+        return True, ("not present on this board - but boards/%s FEATURES lists "
+                      "it, so %s stay off" % (board or "?", USERS[name]))
+    return False, "not present on this board"
+
+
+def report(args, found, check):
+    board, names = read_record(args.record)
+    if names is None:
+        head = "no record of what this board should have (%s) - the nodes decide"
+        print("ok features  " + head % args.record)
+    else:
+        print("ok features  board %s, FEATURES: %s (%s)"
+              % (board, " ".join(sorted(names)) or "none", args.record))
+    for name in NAMES:
+        disagree, words = verdict(name, found[name], board, names)
+        if not check:
+            print("%-16s%s" % (name, words))
+        elif disagree:
+            print("warning: %s: %s" % (name, words), file=sys.stderr)
+        else:
+            print("ok %s: %s" % (name, words))
+    return 0
+
+
+def do_check(args, sleep=time.sleep, clock=time.monotonic):
+    """Wait while a listed feature is missing (a late USB camera), then say
+    each one once: never an error, never a restart."""
+    names, deadline, found = read_record(args.record)[1], clock() + args.wait, probe()
+    while names and any(n in names and not found[n] for n in NAMES) and clock() < deadline:
+        sleep(1.0)
+        found = probe()
+    return report(args, found, True)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="h713-features", description="camera, accelerometer, focus motor: "
+        "the device nodes decide, /etc/h713/features says what to expect.")
+    parser.add_argument("--record", default=RECORD, metavar="PATH")
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("status", help="one line per feature (the default)")
+    check = sub.add_parser("check", help="the boot check: one warning per listed "
+                                         "feature the board does not show")
+    check.add_argument("--wait", type=float, default=30.0, metavar="S")
+    args = parser.parse_args(argv)
+    # the journal keeps the order of the lines only if stdout is not held back
+    getattr(sys.stdout, "reconfigure", lambda **_: None)(line_buffering=True)
+    return do_check(args) if args.command == "check" else report(args, probe(), False)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

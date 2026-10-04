@@ -473,5 +473,57 @@ class CommandLine(unittest.TestCase):
             self.assertIn(b"640x480 luma frame", out.stderr)
 
 
+class NotPresent(unittest.TestCase):
+    """A board without a camera or a focus motor (boards/README.md,
+    FEATURES): exit 7 and the words as the last line, with nothing written
+    to the motor and nothing put on the wall. $H713_SYS is the board."""
+
+    LIMIT = "1 up=1 dn=1 num=1 raw=1 act=1 edge_up=0 edge_dn=0 step=0\n"
+
+    def _board(self, motor=False, camera=None):
+        box = tempfile.mkdtemp(prefix="h713-af-sys-")
+        self.addCleanup(shutil.rmtree, box, True)
+        files = {"class/video4linux/video1/name": "sun50i-h713-hdmirx\n"}
+        if camera:             # a node number no host has: it never captures here
+            files["class/video4linux/video97/name"] = camera + "\n"
+        if motor:
+            files["devices/platform/motor-ctr/" + af.ATTR_LIMIT] = self.LIMIT
+            files["devices/platform/motor-ctr/" + af.ATTR_CTRL] = "0\n"
+        for relative, text in files.items():
+            path = os.path.join(box, relative)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as fh:
+                fh.write(text.encode("ascii"))
+        return box
+
+    def _run(self, box, *argv):
+        return subprocess.run([sys.executable, TOOL, "--no-helper"] + list(argv),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              universal_newlines=True, timeout=60,
+                              env=dict(os.environ, H713_SYS=box))
+
+    def _verdict(self, out, what):
+        self.assertEqual(out.returncode, af.EXIT_NOT_PRESENT, out.stderr)
+        self.assertTrue(out.stderr.splitlines()[-1].startswith(
+            "h713-autofocus: %s: not present on this board - " % what), out.stderr)
+
+    def test_no_motor_and_no_camera_says_the_motor_first(self):
+        box = self._board()
+        self._verdict(self._run(box, "run", "--no-handover", "--no-pattern"), "focus motor")
+        self._verdict(self._run(box, "measure"), "camera")
+
+    def test_a_motor_without_a_camera_stops_before_anything_moves(self):
+        box = self._board(motor=True)
+        self._verdict(self._run(box, "run", "--no-handover", "--no-pattern"), "camera")
+        with open(os.path.join(box, "devices/platform/motor-ctr", af.ATTR_CTRL), "rb") as fh:
+            self.assertEqual(fh.read(), b"0\n")            # no command was written
+
+    def test_a_camera_that_does_not_capture_is_still_an_error(self):
+        out = self._run(self._board(motor=True, camera="Generic HD camera"),
+                        "run", "--no-handover", "--no-pattern")
+        self.assertEqual(out.returncode, af.EXIT_ERROR, out.stderr)
+        self.assertIn("Is uvcvideo loaded", out.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

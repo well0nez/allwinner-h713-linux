@@ -67,6 +67,14 @@ class Error(Exception):
     pass
 
 
+class NotPresent(Error):
+    """No camera on this board at all (boards/README.md, FEATURES): exit 7."""
+
+
+EXIT_NOT_PRESENT = 7    # as h713-autofocus, h713-focus and h713-keystone
+SYS = os.environ.get("H713_SYS", "/sys")    # replaced by the tests
+
+
 def fourcc(v: int) -> str:
     return "".join(chr((v >> (8 * i)) & 0xff) for i in range(4))
 
@@ -80,14 +88,15 @@ def cstr(b: bytes) -> str:
 def find_camera(given: str | None) -> str:
     if given:
         return given
-    hits = []
-    for path in sorted(glob.glob("/sys/class/video4linux/video*/name")):
+    hits, named = [], False
+    for path in sorted(glob.glob(os.path.join(SYS, "class/video4linux/video*/name"))):
         try:
             name = open(path).read().strip()
         except OSError:
             continue
         if CAMERA_NAME not in name:
             continue
+        named = True
         dev = "/dev/" + path.split("/")[-2]
         # uvcvideo creates two nodes: the picture and the metadata. Only the
         # one with VIDEO_CAPTURE is the right one; the other has the same name.
@@ -105,6 +114,10 @@ def find_camera(given: str | None) -> str:
             pass
         finally:
             os.close(fd)
+    if not named:
+        raise NotPresent(f"camera: not present on this board - no video4linux device "
+                         f"named '{CAMERA_NAME}' (h713-features says whether the "
+                         f"board should have one)")
     if not hits:
         raise Error(
             f"no camera with '{CAMERA_NAME}' in its name under /sys/class/video4linux/.\n"
@@ -414,6 +427,9 @@ def main(argv=None) -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
+    except NotPresent as e:
+        print(f"h713-cam: {e}", file=sys.stderr)
+        sys.exit(EXIT_NOT_PRESENT)
     except Error as e:
         print(f"h713-cam: {e}", file=sys.stderr)
         sys.exit(2)

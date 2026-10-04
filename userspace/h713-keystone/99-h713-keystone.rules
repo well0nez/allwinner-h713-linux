@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Starts h713-keystone-auto.service when an IIO accelerometer appears. The
+# unit is also wanted by multi-user.target, but st_accel probes from udev's
+# coldplug and may come after that start: the condition on the node then
+# skips the unit, and this rule starts it once the node is there - instead
+# of a restart loop against a missing sensor. On a board without one nothing
+# matches and the unit stays skipped (boards/README.md, FEATURES).
+# TAG+="systemd" makes the .device unit that SYSTEMD_WANTS hangs on.
+SUBSYSTEM=="iio", ACTION=="add", TEST=="in_accel_x_raw", \
+    TAG+="systemd", ENV{SYSTEMD_WANTS}+="h713-keystone-auto.service"

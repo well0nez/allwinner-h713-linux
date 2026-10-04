@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-features: once per boot, the board's optional hardware - camera,
+# accelerometer, focus motor - against /etc/h713/features, the record the
+# image was built with (boards/<id>/board.env FEATURES). One journal line per
+# feature, and one "warning:" line for a feature the record lists and the
+# board does not show. It never fails and never restarts: a unit that needs a
+# feature has a condition on its node (h713-keystone-auto), and the tools say
+# "not present on this board" with exit 7. Type=exec: the wait for a late USB
+# camera (up to 30 s, only while a listed feature is missing) does not hold up
+# the boot.
+[Unit]
+Description=H713: the board's optional hardware against /etc/h713/features
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/h713-features check --wait 30
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -95,5 +95,42 @@ class StubRun(unittest.TestCase):
         self.assertIn("Blocked: edge_dn=1", again.stderr)
 
 
+class NotPresent(unittest.TestCase):
+    """No focus motor on this board (boards/README.md, FEATURES): every
+    subcommand ends with exit 7 and the verdict as its last line, the line
+    the settings page shows. A wrong --sysfs stays an error: a typo, not a
+    board. $H713_SYS is the board's /sys."""
+
+    def _run(self, sysroot, *argv):
+        return subprocess.run([sys.executable, TOOL] + list(argv),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, timeout=60,
+                              env=dict(os.environ, H713_SYS=sysroot, H713_FOCUS_SYSFS=""))
+
+    def test_no_driver_and_no_node_is_not_present(self):
+        with tempfile.TemporaryDirectory() as box:
+            for argv in (["status"], ["up", "5"], ["flush"], ["unlatch"]):
+                run = self._run(box, *argv)
+                self.assertEqual(run.returncode, fo.EXIT_NOT_PRESENT, (argv, run.stderr))
+                self.assertEqual(run.stderr.splitlines()[-1], fo.NOT_PRESENT)
+
+    def test_a_driver_with_no_device_bound_is_not_present(self):
+        with tempfile.TemporaryDirectory() as box:
+            driver = os.path.join(box, "bus/platform/drivers", fo.DRIVER)
+            os.makedirs(driver)
+            for name in ("bind", "unbind", "uevent"):
+                open(os.path.join(driver, name), "w").close()
+            run = self._run(box, "status")
+            self.assertEqual(run.returncode, fo.EXIT_NOT_PRESENT, run.stderr)
+            self.assertIn("probably 'disabled'", run.stderr)
+            self.assertEqual(run.stderr.splitlines()[-1], fo.NOT_PRESENT)
+
+    def test_a_wrong_sysfs_is_still_an_error(self):
+        with tempfile.TemporaryDirectory() as box:
+            run = self._run(box, "--sysfs", box, "status")
+            self.assertEqual(run.returncode, 2, run.stderr)
+            self.assertIn("is missing there", run.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

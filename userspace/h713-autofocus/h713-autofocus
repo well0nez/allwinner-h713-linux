@@ -137,10 +137,17 @@ EDGE_REVERSE_CAP = 4       # turn-arounds at an edge per run; ours, not the
 PATTERN_CELL, PATTERN_ORIGIN = 69, (97, 92)       # AP1 2.2, bg_auto_focus.png; the origin is the vendor's, ours is centred
 EXIT_ERROR, EXIT_NO_PICTURE, EXIT_BLOCKED = 2, 3, 4
 EXIT_EDGE, EXIT_NO_PEAK = 5, 6
+EXIT_NOT_PRESENT = 7    # no camera or no focus motor on this board (h713-features)
+SYS = os.environ.get("H713_SYS", "/sys")    # replaced by the tests
 
 
 class Error(Exception):
     """Something is wrong: message out, non-zero exit, drive nothing."""
+
+
+class NotPresent(Error):
+    """The board has no such hardware at all (boards/README.md, FEATURES):
+    said as the last line, exit 7, nothing touched."""
 
 
 class Edge(Exception):
@@ -362,15 +369,16 @@ def find_base(given):
         if not os.path.exists(os.path.join(given, ATTR_LIMIT)):
             raise Error("%s: no %s there" % (given, ATTR_LIMIT))
         return given
-    root = os.path.join("/sys/bus/platform/drivers", DRIVER)
+    root = os.path.join(SYS, "bus/platform/drivers", DRIVER)
     for entry in sorted(os.listdir(root)) if os.path.isdir(root) else []:
         target = os.path.realpath(os.path.join(root, entry))
         if os.path.exists(os.path.join(target, ATTR_LIMIT)):
             return target
-    for found in sorted(glob.glob("/sys/devices/platform/*/" + ATTR_LIMIT)):
+    for found in sorted(glob.glob(os.path.join(SYS, "devices/platform/*", ATTR_LIMIT))):
         return os.path.dirname(found)
-    raise Error("no motor node found -- `h713-focus status` says more about "
-                "that than this tool can.")
+    raise NotPresent("focus motor: not present on this board - no %s node "
+                     "(h713-features says whether the board should have one, "
+                     "`h713-focus status` says more)" % ATTR_LIMIT)
 
 
 class SysfsMotor(Motor):
@@ -560,15 +568,21 @@ def find_camera(given, ids):
     """
     if given:
         return given
-    for path in sorted(glob.glob("/sys/class/video4linux/video*/name")):
+    named = False
+    for path in sorted(glob.glob(os.path.join(SYS, "class/video4linux/video*/name"))):
         node = "/dev/" + path.split("/")[-2]
         try:
             with open(path, "rb") as fh:
                 name = fh.read().decode("utf-8", "replace")
         except OSError:
             continue
+        named = named or CAMERA_NAME in name
         if CAMERA_NAME in name and _is_capture(node):
             return node
+    if not named:
+        raise NotPresent("camera: not present on this board - no video4linux "
+                         "device named '%s' (h713-features says whether the "
+                         "board should have one)" % CAMERA_NAME)
     raise Error("no capture node with '%s' in its name (the ini's pair is "
                 "%04x:%04x). Is uvcvideo loaded, is the camera on the bus?"
                 % (CAMERA_NAME, ids[0], ids[1]))
@@ -1292,6 +1306,9 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
+    except NotPresent as exc:
+        _stderr("h713-autofocus: %s" % exc)
+        sys.exit(EXIT_NOT_PRESENT)
     except Error as exc:
         _stderr("h713-autofocus: %s" % exc)
         sys.exit(EXIT_ERROR)

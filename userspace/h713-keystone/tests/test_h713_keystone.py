@@ -28,6 +28,7 @@ import os
 import re
 import shutil
 import signal
+import subprocess
 import sys
 import tempfile
 import threading
@@ -727,6 +728,66 @@ class Commands(unittest.TestCase):
         self.assertRegex(out, r"reference       file \(\d{4}-\d\d-\d\dT\d\d:\d\d:"
                               r"\d\d\): %s, counts -416 2752 17088\n"
                               % re.escape(self.reference))
+
+
+class NotPresent(unittest.TestCase):
+    """A board without an accelerometer (boards/README.md, FEATURES): exit 7
+    and the words "not present on this board", under the unit and by hand -
+    never the 3 of a sensor that is there and does not answer."""
+
+    UNIT = os.path.join(os.path.dirname(HERE), "h713-keystone-auto.service")
+    RULE = os.path.join(os.path.dirname(HERE), "99-h713-keystone.rules")
+
+    def setUp(self):
+        self.sys = tempfile.mkdtemp(prefix="h713-no-iio-")
+        self.addCleanup(shutil.rmtree, self.sys, True)
+        adc = os.path.join(self.sys, "bus", "iio", "devices", "iio:device0")
+        os.makedirs(adc)                       # an IIO device, but no acceleration
+        with open(os.path.join(adc, "name"), "wb") as fh:
+            fh.write(b"sun50i-adc\n")
+        self.iio = os.path.dirname(adc)
+
+    def test_no_accelerometer_at_all_is_not_present(self):
+        for directory in (self.iio, os.path.join(self.sys, "no-iio-at-all")):
+            with self.assertRaises(ks.Error) as caught:
+                ks.Sensor.find("sc7a20", directory=directory)
+            self.assertEqual(caught.exception.code, ks.EXIT_NOT_PRESENT)
+            self.assertTrue(str(caught.exception).startswith(
+                "accelerometer: not present on this board - "), caught.exception)
+
+    def _tool(self, *argv):
+        return subprocess.run(
+            [sys.executable, TOOL, "-C", os.path.join(self.sys, "none.conf"),
+             "--warp", os.path.join(self.sys, "no-warp")] + list(argv),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
+            env=dict(os.environ, H713_SYS=self.sys), timeout=60)
+
+    def test_by_hand_and_under_the_unit_it_is_exit_7(self):
+        for argv in (["watch"], ["once", "--apply"], ["read"], ["reference"]):
+            run = self._tool(*argv)
+            self.assertEqual(run.returncode, ks.EXIT_NOT_PRESENT, (argv, run.stderr))
+            self.assertTrue(run.stderr.splitlines()[-1].startswith(
+                "h713-keystone: accelerometer: not present on this board"), run.stderr)
+
+    def test_status_says_it_in_the_sensor_row_and_exits_0(self):
+        run = self._tool("status")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("sensor          accelerometer: not present on this board", run.stdout)
+
+    def test_the_unit_is_skipped_and_the_rule_starts_it_once_the_node_is_there(self):
+        with open(self.UNIT, "rb") as fh:
+            unit = fh.read().decode("ascii")
+        with open(self.RULE, "rb") as fh:
+            rule = fh.read().decode("ascii")
+        for line in ("ConditionPathExistsGlob=/sys/bus/iio/devices/iio:device*/in_accel_x_raw",
+                     "Restart=on-failure", "SuccessExitStatus=%d" % ks.EXIT_NOT_PRESENT,
+                     "RestartPreventExitStatus=%d" % ks.EXIT_NOT_PRESENT):
+            self.assertIn("\n" + line + "\n", unit)
+        for word in ('SUBSYSTEM=="iio"', 'ACTION=="add"', 'TEST=="in_accel_x_raw"',
+                     'TAG+="systemd"', 'ENV{SYSTEMD_WANTS}+="h713-keystone-auto.service"'):
+            self.assertIn(word, rule)
+        # the node both of them wait for is the one the tool reads
+        self.assertTrue(ks.Sensor(FakeIio().device).files[0].endswith("in_accel_x_raw"))
 
 
 if __name__ == "__main__":

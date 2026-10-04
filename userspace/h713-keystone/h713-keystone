@@ -67,9 +67,15 @@ CONF_PATH, REF_PATH = "/etc/h713/keystone.conf", "/etc/h713/keystone-ref"
 IDEAL_TEXT = "ideal (0, 0, 1 g) - h713-keystone reference refines it"
 REFUSED_TEXT = "refused - ideal (0, 0, 1 g) applies, h713-keystone status says why"
 LAST_AUTO_PATH = "/var/lib/h713-keystone/last-auto"   # the set the automatic last applied
-IIO_DIR, WARP_TOOL, G_M_S2 = "/sys/bus/iio/devices", "h713-warp", 9.80665
+# $H713_SYS replaces /sys (the tests run the not-present path end to end)
+IIO_DIR = os.environ.get("H713_SYS", "/sys") + "/bus/iio/devices"
+WARP_TOOL, G_M_S2 = "h713-warp", 9.80665
 FALLBACK_COUNTS_PER_G = 1000.0    # measured: in_accel_x_scale 0.009806 m/s2
 EXIT_ERROR, EXIT_NO_SENSOR, EXIT_NOT_LEVEL, EXIT_WARP = 2, 3, 4, 5
+# No accelerometer on this board at all (boards/README.md, FEATURES): the
+# same 7 as h713-autofocus, h713-focus and h713-cam, and no failure for the
+# unit (h713-keystone-auto.service, SuccessExitStatus=7).
+EXIT_NOT_PRESENT = 7
 EXIT_CONFIG = EXIT_ERROR        # a configuration value out of its choices (the docs: 2)
 AXES = {"x": 0, "y": 1, "z": 2}
 ZOOM_WIDTH = {0: 1920, 1: 1728, 2: 1440}          # AP2c 3, the aspect selector
@@ -274,12 +280,19 @@ class Sensor(object):
         iio:deviceN is the probe order and not ours to assume."""
         if given:
             return given
+        others = []
         for entry in sorted(os.listdir(directory)
                             if os.path.isdir(directory) else []):
             path = os.path.join(directory, entry)
             if entry.startswith("iio:device") \
                     and _read(os.path.join(path, "name")) == name:
                 return path
+            if os.path.exists(os.path.join(path, "in_accel_x_raw")):
+                others.append(entry)
+        if not others:
+            raise Error("accelerometer: not present on this board - no IIO device "
+                        "under %s reads an acceleration (h713-features says whether "
+                        "the board should have one)" % directory, EXIT_NOT_PRESENT)
         raise Error("no IIO device called \"%s\" under %s -- is the "
                     "accelerometer in the device tree and st_accel loaded?"
                     % (name, directory), EXIT_NO_SENSOR)
