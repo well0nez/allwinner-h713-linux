@@ -66,7 +66,7 @@ PART_C_SECTORS = 33
 
 # ---------------------------------------------------------------- Other disk sizes
 # The constants above are the HY310's eMMC. A board with another eMMC size (HY300PRO-G-EU:
-# 15273600 sectors, profiles/hy300pro_g_eu.py "layout") gets the same layout with the three
+# 15273600 sectors, hy200_qz713df_a1.py variant projector05061226) gets the same layout with the three
 # numbers that hang off the end of the disk recomputed: the last usable LBA, piece C (the
 # backup GPT, everything behind the last usable LBA) and hy310-rootfs, which runs to the
 # last usable LBA as it does on the HY310 (278528 + 14991327 = 15269855 = LAST_USABLE + 1).

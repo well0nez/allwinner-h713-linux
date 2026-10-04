@@ -17,7 +17,9 @@ if PACKAGE not in sys.path:
 
 from h713.blockdev import Disk                                   # noqa: E402
 from h713.identify import identify, match_profiles, report_device  # noqa: E402
-from h713.profiles import PROFILES                               # noqa: E402
+from h713.profiles import PROFILES, get                          # noqa: E402
+
+PLUS = "hy200_qz713df_a1/projector09220931"     # the 2025-09-22 firmware of the HY200 QZ713DF A1
 
 
 class Recorder(support.Recorder):
@@ -113,15 +115,20 @@ class Images(unittest.TestCase):
             self.assertFalse(ident["matches"]["hy300_t08"][name], name)
 
     def test_hy300_pro_plus_ddr3_is_the_qz713df_a1_profile(self):
-        # The DDR3 image (0922) is the stock firmware of cstenger's bench board (package F1).
+        # The DDR3 image (0922) is one of the two stock firmwares of the HY200 QZ713DF A1, the
+        # board of cstenger's bench and of the HY300PRO-G-EU (package F1, ST3-BOARDMERGE).
         ident = identified("hy300-pro-plus-ddr3")
         self.assertEqual((ident["input"], ident["kind"]), ("image", "stock"))
-        self.assertEqual((ident["profile"], ident["status"]), ("hy200_qz713df_a1", "profile-only"))
-        self.assertEqual(ident["candidates"], ["hy200_qz713df_a1"])
-        # Not one string: every feature the profile calls strong agrees, and there are seven.
-        row = ident["matches"]["hy200_qz713df_a1"]
+        self.assertEqual((ident["profile"], ident["status"]), (PLUS, "profile-only"))
+        self.assertEqual(ident["variant"], "projector09220931")
+        self.assertEqual(ident["candidates"], [PLUS])
+        # Not one string: every feature the variant calls strong agrees, and there are seven ...
+        row = ident["matches"][PLUS]
         self.assertEqual(sorted(k for k, v in row.items() if v),
-                         sorted(PROFILES["hy200_qz713df_a1"]["stock"]["strong_features"]))
+                         sorted(get(PLUS)["stock"]["strong_features"]))
+        # ... and none of the other firmware of the same board does.
+        other = ident["matches"]["hy200_qz713df_a1/projector05061226"]
+        self.assertEqual([k for k, v in other.items() if v], [])
         log = Recorder()
         # profile-only is not a licence to write, however well the image matches.
         self.assertFalse(report_device(ident, log, writing=True))
@@ -144,11 +151,11 @@ class Images(unittest.TestCase):
         # in the display.bin and in every build id, and that is what the profiles compare.
         ddr3, lpddr3 = identified("hy300-pro-plus-ddr3"), identified("hy300-pro-plus-lpddr3")
         self.assertNotIn("hy200_qz713_v2", ddr3["candidates"])
-        self.assertNotIn("hy200_qz713df_a1", lpddr3["candidates"])
+        self.assertNotIn(PLUS, lpddr3["candidates"])
         for name in ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version", "arisc_version",
                      "build_fingerprint", "sunxi_version"):
             self.assertFalse(ddr3["matches"]["hy200_qz713_v2"][name], name)
-            self.assertFalse(lpddr3["matches"]["hy200_qz713df_a1"][name], name)
+            self.assertFalse(lpddr3["matches"][PLUS][name], name)
         self.assertEqual((ddr3["features"]["dram_clk_mhz"], lpddr3["features"]["dram_clk_mhz"]), (624, 720))
         self.assertEqual((ddr3["features"]["dram"]["type"], lpddr3["features"]["dram"]["type"]), (3, 7))
         self.assertNotEqual(ddr3["features"]["display_bin_sha256"], lpddr3["features"]["display_bin_sha256"])

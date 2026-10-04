@@ -26,8 +26,8 @@ from h713.fs import Ext4, LpSuper
 from h713.gpt import Gpt
 from h713.imagewty import Imagewty
 from h713.log import Log, console
-from h713.profiles import (FEATURE_VOCABULARY, PROFILES, UBOOT_FW_REVS, expected_features,
-                           legacy_devices, strong_features_of)
+from h713.profiles import (FEATURE_VOCABULARY, UBOOT_FW_REVS, expected_features, get,
+                           legacy_devices, strong_features_of, units)
 from h713.util import SECTOR, sha256_bytes
 
 # Features a device is recognised by even without an image fingerprint (--part, --fex-dir, --no-hash).
@@ -118,9 +118,10 @@ def match_profiles(features: dict, profiles=None):
     count only where a profile lists them, because the three ADT-3 boards share both (doku/121
     section 2, finding 1). A feature neither side supplies is no evidence and is recorded as None;
     a profile with no comparable feature at all (HY300 Pro) is never a candidate, and two
-    candidates mean ambiguous -- then there is no profile.
+    candidates mean ambiguous -- then there is no profile. A board with variants is compared one
+    stock firmware at a time, under "<board>/<variant>" (profiles.units()).
     """
-    profiles = PROFILES if profiles is None else profiles
+    profiles = units() if profiles is None else profiles
     matches, candidates = {}, []
     for board_id, profile in profiles.items():
         expected = expected_features(profile)
@@ -217,7 +218,7 @@ def _render(ident: dict) -> list:
     def add(level, text):
         lines.append((level, text))
 
-    board = PROFILES.get(ident["profile"] or "", {}).get("name", ident["profile"])
+    board = (get(ident["profile"]) or {}).get("name", ident["profile"])
     where = "%s (%s)" % (ident["input"], ident["kind"])
     if ident["profile"] and ident["status"] == "verified":
         add("ok", "%s recognised -- %s, verified profile" % (board, where))
@@ -298,8 +299,11 @@ def identify(source, *, log=None) -> dict:
     # "facts" is everything that was read, so no later step has to open the device a second
     # time; it is an addition to the dict of api-stufe2.md, not part of its contract. So is
     # "region_sources": name -> fixed | gpt | hy310-constant, the same key MANIFEST.json uses.
-    ident = {"input": kind_of_input, "kind": kind, "profile": profile,
-             "status": PROFILES[profile]["status"] if profile else None, "candidates": candidates,
+    found = get(profile) or {}
+    # "profile" is the unit identify() settled on: a board id, or "<board>/<variant>" for one
+    # firmware of a board with variants; "variant" names that firmware alone (None otherwise).
+    ident = {"input": kind_of_input, "kind": kind, "profile": profile, "variant": found.get("variant"),
+             "status": found.get("status"), "candidates": candidates,
              "features": features, "matches": matches, "layout": layout,
              "regions": _regions_of(layout, kind, region_sources),
              "region_sources": region_sources, "mips": _mips_of(facts), "facts": facts}

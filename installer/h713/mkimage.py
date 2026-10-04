@@ -248,14 +248,18 @@ def disk_sectors_for(test_for):
     """The eMMC size an image is cut for: the HY310's (layout.DISK_SECTORS), or for a TEST
     image the one its board's installer profile states ("layout" -> "disk_sectors").
     The table carries it as "disk_sektoren", and h713-install writes the image only onto
-    a device of exactly that size."""
+    a device of exactly that size. A board with variants is named with its variant
+    ("<board>/<variant>"): eMMC size and DRAM clock are the firmware's, not the board's."""
     if not test_for:
         return DISK_SECTORS
-    from h713.profiles import PROFILES
-    profile = PROFILES.get(test_for)
+    from h713.profiles import get
+    profile = get(test_for)
     if profile is None:
         raise SystemExit("--test-for %s: no installer profile has that id, so h713-install "
                          "could never identify the board this image is for" % test_for)
+    if profile.get("variants"):
+        raise SystemExit("--test-for %s: this board has variants (%s) -- name one as %s/<variant>"
+                         % (test_for, ", ".join(sorted(profile["variants"])), test_for))
     return (profile.get("layout") or {}).get("disk_sectors") or DISK_SECTORS
 
 

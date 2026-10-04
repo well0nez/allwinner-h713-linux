@@ -30,7 +30,7 @@ SECTORS_EXPECTED = 15269888          # 7.28 GiB -- the eMMC of the HY310
 # layout.disk_sectors), and an image only a device of the size its table was cut for
 # (h713-install _sizes_allowed/_install, h713.layout.partitions_for).
 SECTORS_KNOWN = (SECTORS_EXPECTED,
-                 15273600)           # 7.28 GiB + 3712 sectors -- HY300PRO-G-EU (26 partitions)
+                 15273600)           # 7.28 GiB + 3712 sectors -- HY200 QZ713DF A1, HY300PRO-G-EU unit
 
 # The secure-storage block is NEVER written, not even with --force. It belongs
 # to this one device and cannot be restored (doku/109 §2.3).

@@ -1,6 +1,7 @@
-"""HY300PRO-G-EU (package GEU1): an eMMC of 15273600 sectors, a test image for that board alone.
+"""HY200 QZ713DF A1: one board, two stock firmwares (variants); the HY300PRO-G-EU's firmware
+(projector05061226, package GEU1) on an eMMC of 15273600 sectors, a test image for that unit alone.
 
-Four things are pinned here:
+Five things are pinned here:
   1. the layout and its GPT follow the disk size, and for the HY310's size they are the bytes
      of the release fixtures (the golden contract does not move);
   2. a GPT built for 15273600 sectors passes a checker written here from the UEFI layout,
@@ -9,7 +10,9 @@ Four things are pinned here:
   3. h713-mkimage cuts a TEST image for the size its board's profile states, and h713-install
      writes an image or a dump only onto a device of that size;
   4. the board is recognised from its own features, and its test image is refused on every
-     other board.
+     other board;
+  5. the two firmwares of the board are told apart, each test image names its variant, and a
+     test image for one variant is refused on the other (ST3-BOARDMERGE).
 No vendor bytes: the features below are the hashes and version strings of the board's
 identification row (package GEU1, material/identify-row.txt).
 """
@@ -38,10 +41,12 @@ from h713.env import ENV_BYTES                                      # noqa: E402
 from h713.gpt import build_layout_gpt, build_stock_gpt, check_gpt   # noqa: E402
 from h713.identify import match_profiles                            # noqa: E402
 from h713.install import test_image_allowed                         # noqa: E402
-from h713.profiles import PROFILES                                  # noqa: E402
+from h713.profiles import PROFILES, get, units                      # noqa: E402
 
 SECT = 512
 GEU = 15273600                         # HY300PRO-G-EU, the stock GPT of its dump: backup header LBA 15273599
+GEU_ID = "hy200_qz713df_a1/projector05061226"     # its firmware, a variant of the HY200 QZ713DF A1
+PLUS_ID = "hy200_qz713df_a1/projector09220931"    # the board's other firmware (HY300 Pro+, 2025-09-22)
 HY310 = 15269888
 TOOL = os.path.join(support.TOOLS, "h713-install")
 
@@ -138,7 +143,7 @@ class LayoutFollowsTheDiskSize(unittest.TestCase):
         self.assertEqual((layout.last_usable(GEU), layout.part_c_lba(GEU)), (15273566, 15273567))
 
     def test_every_profile_size_is_one_the_layout_can_take(self):
-        for board, profile in PROFILES.items():
+        for board, profile in units().items():
             n = ((profile.get("layout") or {}).get("disk_sectors"))
             if n:
                 self.assertIn(n, SECTORS_KNOWN, board)
@@ -304,8 +309,8 @@ class MkimageCutsForTheProfileSize(unittest.TestCase):
             self.assertEqual(table.get("test_for"), test_for)
 
     def test_the_test_image_for_this_board(self):
-        out, table = _build(self.tmp, "hy300pro_g_eu")
-        self.assertEqual((table["test_for"], table["disk_sektoren"]), ("hy300pro_g_eu", GEU))
+        out, table = _build(self.tmp, GEU_ID)
+        self.assertEqual((table["test_for"], table["disk_sektoren"]), (GEU_ID, GEU))
         self.assertEqual([t["lba"] for t in table["teile"]], [0, 14336, GEU - 33])
         self.assertEqual(table["partitionen"][-1]["sektoren"], 14995039)
         disk = _disk_with(os.path.join(self.tmp, "disk.img"), GEU,
@@ -323,12 +328,16 @@ class MkimageCutsForTheProfileSize(unittest.TestCase):
 
     def test_the_size_comes_from_the_profile(self):
         self.assertEqual(mkimage.disk_sectors_for(None), HY310)
-        self.assertEqual(mkimage.disk_sectors_for("hy300pro_g_eu"), GEU)
-        for board in PROFILES:
-            if board != "hy300pro_g_eu":
+        self.assertEqual(mkimage.disk_sectors_for(GEU_ID), GEU)
+        for board in units():
+            if board != GEU_ID:
                 self.assertEqual(mkimage.disk_sectors_for(board), HY310, board)
-        with self.assertRaises(SystemExit):
-            mkimage.disk_sectors_for("hy300-pro")                 # the board dir id, not the profile
+        for wrong in ("hy300-pro",                                # the board dir id, not the profile
+                      "hy200_qz713df_a1",                         # a board with variants needs one
+                      "hy200_qz713df_a1/projector0506",           # no such variant
+                      "hy310/projector07241019"):                 # a board without variants
+            with self.assertRaises(SystemExit):
+                mkimage.disk_sectors_for(wrong)
 
 
 # ------------------------------------------------------------------ h713-install
@@ -352,9 +361,10 @@ class SizeGate(unittest.TestCase):
             return m._sizes_allowed(args, {"profile": None if profile == "none" else profile}
                                     if ident else None)
         self.assertEqual(allowed("dump", "hy310"), SECTORS_KNOWN)
-        self.assertEqual(allowed("restore-stock", "hy300pro_g_eu"), (HY310,))
-        self.assertEqual(allowed("install", "hy300pro_g_eu"), (GEU,))
-        self.assertEqual(allowed("restore", "hy300pro_g_eu"), (GEU,))
+        self.assertEqual(allowed("restore-stock", GEU_ID), (HY310,))
+        self.assertEqual(allowed("install", GEU_ID), (GEU,))
+        self.assertEqual(allowed("restore", GEU_ID), (GEU,))
+        self.assertEqual(allowed("install", PLUS_ID), (HY310,))      # its image's table says so
         self.assertEqual(allowed("install", "hy310"), (HY310,))
         self.assertEqual(allowed("install", "hy300_pro"), (HY310,))
         self.assertEqual(allowed("install"), SECTORS_KNOWN)              # our layout: no profile
@@ -515,7 +525,21 @@ class TheBoardAndOnlyTheBoard(unittest.TestCase):
 
     def test_the_row_identifies_this_board_alone(self):
         found, candidates, _matches = match_profiles(ROW)
-        self.assertEqual((found, candidates), ("hy300pro_g_eu", ["hy300pro_g_eu"]))
+        self.assertEqual((found, candidates), (GEU_ID, [GEU_ID]))
+
+    def test_the_board_s_other_firmware_is_the_other_variant(self):
+        plus = get(PLUS_ID)["stock"]
+        row = dict(ROW, scp_sha256=plus["package_items"]["scp"][1],
+                   uboot_sha256=plus["package_items"]["u-boot"][1],
+                   dtb_sha256=plus["package_items"]["dtb"][1], uboot_version=plus["uboot_version"],
+                   arisc_version=plus["arisc_version"], build_fingerprint=plus["build_fingerprint"],
+                   sunxi_version=plus["sunxi_version"])
+        found, candidates, matches = match_profiles(row)
+        self.assertEqual((found, candidates), (PLUS_ID, [PLUS_ID]))
+        self.assertFalse(any(matches[GEU_ID].values()))
+        # one mixed feature is enough to make it neither: the firmware is the unit
+        found, candidates, _matches = match_profiles(dict(row, scp_sha256=ROW["scp_sha256"]))
+        self.assertEqual((found, candidates), (None, []))
 
     def test_the_hy310_is_not_taken_for_it(self):
         hy310 = dict(ROW)
@@ -529,12 +553,54 @@ class TheBoardAndOnlyTheBoard(unittest.TestCase):
         self.assertEqual(match_profiles(hy310)[0], "hy310")
 
     def test_its_test_image_on_every_other_board_is_refused(self):
-        for board in list(PROFILES) + [None]:
+        for board in list(units()) + list(PROFILES) + [None]:    # the bare board id included
             log = Recorder()
-            allowed = test_image_allowed({"profile": board, "_lines": []}, "hy300pro_g_eu", True, log)
-            self.assertEqual(allowed, board == "hy300pro_g_eu", board)
-        self.assertFalse(test_image_allowed({"profile": "hy300pro_g_eu", "_lines": []},
-                                            "hy300pro_g_eu", False, Recorder()))
+            allowed = test_image_allowed({"profile": board, "_lines": []}, GEU_ID, True, log)
+            self.assertEqual(allowed, board == GEU_ID, board)
+        self.assertFalse(test_image_allowed({"profile": GEU_ID, "_lines": []},
+                                            GEU_ID, False, Recorder()))
+
+
+class VariantSchema(unittest.TestCase):
+    """profiles/validate.py on the variants structure (SCHEMA.md), with negative controls."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(support.TOOLS, "h713"))
+        try:
+            import profiles.validate as validate         # the tool as it runs: top-level "profiles"
+        finally:
+            sys.path.pop(0)
+        self.validate = validate.validate
+        self.board = PROFILES["hy200_qz713df_a1"]
+
+    def _problems(self, board=None, variant=None, **keys):
+        """validate() on a copy of the board, `keys` set on the board or on one variant."""
+        p = dict(self.board, variants=dict(self.board["variants"]))
+        if variant:
+            p["variants"][variant] = dict(p["variants"][variant], **keys)
+        else:
+            p.update(keys)
+        return self.validate("hy200_qz713df_a1", board or p)
+
+    def test_the_board_and_both_variants_are_clean(self):
+        self.assertEqual(self._problems(), [])
+        self.assertEqual(sorted(self.board["variants"]), ["projector05061226", "projector09220931"])
+        self.assertEqual(get(GEU_ID)["variant"], "projector05061226")
+        self.assertEqual(get(GEU_ID)["board_dt"], get(PLUS_ID)["board_dt"])
+
+    def test_negative_controls(self):
+        self.assertIn("status belongs to each variant, not to the board",
+                      self._problems(status="profile-only"))
+        self.assertIn("variant projector09220931: board_dt belongs to the board",
+                      self._problems(variant="projector09220931", board_dt="x"))
+        p = dict(self.board, variants=dict(self.board["variants"]))
+        p["variants"]["projector05061226"] = dict((k, v) for k, v in
+                                                  p["variants"]["projector05061226"].items() if k != "dram")
+        self.assertIn("variant projector05061226: dram is missing", self._problems(board=p))
+        self.assertTrue(any(line.startswith("variant projector09220931: dram needs a positive clk")
+                            for line in self._problems(variant="projector09220931",
+                                                       dram=dict(get(PLUS_ID)["dram"], clk=0))))
+        self.assertIn("variants: a non-empty dict, variant name -> its keys", self._problems(variants={}))
 
 
 def _stock_disk(path, n, partitions):
@@ -567,9 +633,8 @@ class TheWholeRunOnAFakeBoard(unittest.TestCase):
         return code, out
 
     def test_on_this_board_the_test_image_passes_every_gate(self):
-        code, out = self._run_as("hy300pro_g_eu", GEU, PROFILES["hy300pro_g_eu"]["layout"]["partitions"],
-                                 "hy300pro_g_eu")
-        self.assertIn("TEST IMAGE for 'hy300pro_g_eu': this device is that board", out)
+        code, out = self._run_as(GEU_ID, GEU, get(GEU_ID)["layout"]["partitions"], GEU_ID)
+        self.assertIn("TEST IMAGE for '%s': this device is that board" % GEU_ID, out)
         self.assertNotIn("wrong drive", out)
         self.assertNotIn("cut for an eMMC", out)
         self.assertEqual(code, 0, out)
@@ -581,10 +646,10 @@ class TheWholeRunOnAFakeBoard(unittest.TestCase):
         real run); --skip-identify passes every gate up to the write (review GEU1, question 3)."""
         from h713.identify import report_device
         disk = _stock_disk(os.path.join(self.tmp, "stock-geu.img"), GEU,
-                           PROFILES["hy300pro_g_eu"]["layout"]["partitions"])
+                           get(GEU_ID)["layout"]["partitions"])
         with contextlib.redirect_stdout(io.StringIO()):
             ident = self.m.identify(disk)
-            ident["profile"], ident["status"] = "hy300pro_g_eu", "profile-only"
+            ident["profile"], ident["status"] = GEU_ID, "profile-only"
             self.assertFalse(report_device(ident, Recorder(), writing=True))
             self.assertTrue(report_device(ident, Recorder(), writing=False))
         dump = os.path.join(self.tmp, "emmc-full.img")
@@ -595,11 +660,15 @@ class TheWholeRunOnAFakeBoard(unittest.TestCase):
         self.assertIn("No-write run -- nothing written.", out)
 
     def test_on_the_hy310_it_is_refused(self):
-        code, out = self._run_as("hy310", HY310, PROFILES["hy310"]["layout"]["partitions"],
-                                 "hy300pro_g_eu")
+        code, out = self._run_as("hy310", HY310, PROFILES["hy310"]["layout"]["partitions"], GEU_ID)
         self.assertEqual(code, 1, out)
-        self.assertIn("This is a TEST IMAGE for the board 'hy300pro_g_eu'", out)
+        self.assertIn("This is a TEST IMAGE for the board '%s'" % GEU_ID, out)
         self.assertIn("This device is 'hy310'", out)
+
+    def test_on_the_board_s_other_firmware_it_is_refused(self):
+        code, out = self._run_as(PLUS_ID, GEU, get(GEU_ID)["layout"]["partitions"], GEU_ID)
+        self.assertEqual(code, 1, out)
+        self.assertIn("This device is '%s'" % PLUS_ID, out)
 
 
 if __name__ == "__main__":

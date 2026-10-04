@@ -1,11 +1,13 @@
 """Board profiles: one module per board, one dict PROFILE each.
 
-    from profiles import PROFILES, get
+    from profiles import PROFILES, get, units
     PROFILES["hy310"]["layout"]["entries"]
-    get("hy350")
+    get("hy350"), get("hy200_qz713df_a1/projector05061226")
 
 Shape and rules: installer/h713/profiles/SCHEMA.md. The modules are data only -- every number and hash
 carries the source it came from. A profile with status != "verified" never produces an image.
+A board whose units left the factory with different firmware carries them as "variants"; get() and
+units() hand out one variant as a profile of its own, keyed "<board>/<variant>".
 
 This module also carries the two cross-board tables the readers need: FIRMWARE_REVISIONS (every
 display.bin revision we know of) and legacy_devices() (the extractor's old GERAETE table, rebuilt
@@ -14,7 +16,7 @@ from the profiles so that the moved extractor code keeps behaving byte for byte 
 
 from __future__ import annotations
 
-from . import hy200_qz713_v2, hy200_qz713df_a1, hy300_pro, hy300_t08, hy300pro_g_eu, hy310, hy350, l018
+from . import hy200_qz713_v2, hy200_qz713df_a1, hy300_pro, hy300_t08, hy310, hy350, l018
 
 #: board id -> profile dict. The id is also the module name.
 PROFILES = {
@@ -23,7 +25,6 @@ PROFILES = {
     "hy300_t08": hy300_t08.PROFILE,
     "hy350": hy350.PROFILE,
     "hy300_pro": hy300_pro.PROFILE,
-    "hy300pro_g_eu": hy300pro_g_eu.PROFILE,
     "hy200_qz713df_a1": hy200_qz713df_a1.PROFILE,
     "hy200_qz713_v2": hy200_qz713_v2.PROFILE,
 }
@@ -37,9 +38,35 @@ FEATURE_VOCABULARY = ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version
                       "build_fingerprint", "mips_database_sha256", "sunxi_version", "vendor_size")
 
 
-def get(board_id):
-    """Return the profile of `board_id`, or None if there is none."""
-    return PROFILES.get(board_id)
+def resolve(profile, variant):
+    """One firmware of a board as a profile of its own: the board's keys with the variant's on top,
+    plus "variant" (SCHEMA.md, "variants"). None when the board has no such variant."""
+    found = (profile.get("variants") or {}).get(variant)
+    if found is None:
+        return None
+    resolved = dict((k, v) for k, v in profile.items() if k != "variants")
+    resolved.update(found)
+    resolved["variant"] = variant
+    return resolved
+
+
+def get(key):
+    """The profile of `key`, or None if there is none. `key` is a board id (the module's dict as it
+    stands), or "<board>/<variant>" for one firmware of a board with variants (resolve())."""
+    board_id, _slash, variant = (key or "").partition("/")
+    profile = PROFILES.get(board_id)
+    return profile if not variant or profile is None else resolve(profile, variant)
+
+
+def units():
+    """key -> profile of everything a device can be identified as and an image built for: every
+    board without variants under its id, every variant under "<board>/<variant>", in registry order."""
+    out = {}
+    for board_id, profile in PROFILES.items():
+        for variant in profile.get("variants") or (None,):
+            key = board_id if variant is None else "%s/%s" % (board_id, variant)
+            out[key] = get(key)
+    return out
 
 
 def strong_features_of(profile):

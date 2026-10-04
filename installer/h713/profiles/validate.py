@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Schema check for the board profiles -- installer/h713/profiles/SCHEMA.md is the contract.
 
-    python3 validate.py                 # check all five, print problems, exit 1 if there are any
+    python3 validate.py                 # check every profile, print problems, exit 1 if there are any
     python3 -m unittest validate -v     # the same check as a test
 Reads nothing but the profile modules; the checks against the sources live in tests/test_profiles.py.
 """
@@ -10,10 +10,11 @@ import re
 import sys
 import unittest
 
-from profiles import PROFILES, STATUS_VALUES
+from profiles import PROFILES, STATUS_VALUES, resolve
 
 HASH = re.compile(r"^[0-9a-f]{64}$")
 BOARD_ID = re.compile(r"^[a-z0-9_]+$")
+VARIANT_NAME = re.compile(r"^[a-z0-9]+$")
 NONE = type(None)
 
 TOP = (("id", str), ("name", str), ("description", str), ("status", str), ("verified_by", (str, NONE)),
@@ -34,8 +35,36 @@ FEATURES = sorted("scp_sha256 uboot_sha256 dtb_sha256 uboot_version arisc_versio
                   " mips_database_sha256 sunxi_version vendor_size".split())
 
 
+# SCHEMA.md "variants": what each firmware of a board brings, and what only the board may say.
+VARIANT_KEYS = ("status", "verified_by", "stock", "dram", "layout", "mips", "reference", "expected")
+BOARD_KEYS = ("id", "soc", "board_dt", "uboot_board", "unique_regions", "preserve_on_restore", "variants")
+
+
 def validate(board_id, p):
-    """Return a list of problems with profile `p`; an empty list means it matches the schema."""
+    """Return a list of problems with profile `p`; an empty list means it matches the schema. A
+    board with variants is checked as the board, and then each variant resolved (profiles.resolve)."""
+    variants = p.get("variants")
+    if variants is None:
+        return _validate_one(board_id, p)
+    if not isinstance(variants, dict) or not variants:
+        return ["variants: a non-empty dict, variant name -> its keys"]
+    bad = ["%s belongs to each variant, not to the board" % k for k in VARIANT_KEYS if k in p]
+    for name, keys in sorted(variants.items()):
+        if not (VARIANT_NAME.match(name) and isinstance(keys, dict)):
+            bad.append("variant %r: a name of [a-z0-9] and a dict" % (name,))
+            continue
+        bad += ["variant %s: %s belongs to the board" % (name, k) for k in BOARD_KEYS if k in keys]
+        missing = ["variant %s: %s is missing" % (name, k) for k in VARIANT_KEYS if k not in keys]
+        if missing:
+            bad += missing
+            continue
+        bad += ["variant %s: %s" % (name, line)
+                for line in _validate_one(board_id, resolve(p, name))]
+    return bad
+
+
+def _validate_one(board_id, p):
+    """The checks of one profile without variants (or one resolved variant)."""
     bad = []
 
     def want(cond, text):

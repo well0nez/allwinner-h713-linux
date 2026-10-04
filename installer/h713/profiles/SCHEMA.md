@@ -55,3 +55,31 @@ Rules: every number carries a `source` or a comment naming the file it came from
 in the device's GPT by partition name" (the LBA in the profile is only the expectation used to warn on
 mismatch). Nothing in a profile is a vendor byte. A profile with `status != "verified"` never produces an
 image; `h713-install install` refuses it with the sentence from doku/121 §5.
+
+## Variants: one board, several stock firmwares
+
+A board whose units left the factory with different firmware (`hy200_qz713df_a1`: the 2025-05-06 and
+the 2025-09-22 build on one PCB) is one profile with `"variants"`, named after the stock build:
+
+```python
+PROFILE = {
+    "id": "hy200_qz713df_a1", "name": "HY200 QZ713DF A1", "description": "...", "soc": "H713 (sun50iw12)",
+    "unique_regions": [...], "preserve_on_restore": (...), "panel": {...},   # the same in every firmware
+    "board_dt": "sun50i-h713-hy200-qz713df-a1", "uboot_board": "hy200_qz713df_a1",
+    "variants": {
+        "projector05061226": {"name": "...", "description": "...", "status": "profile-only",
+                              "verified_by": None, "stock": {...}, "dram": {...}, "layout": {...},
+                              "mips": {...}, "reference": {...}, "expected": {...}},
+        "projector09220931": {...},
+    },
+}
+```
+
+Each variant must carry `status verified_by stock dram layout mips reference expected` (what differs
+between firmwares, and the verdict, which is per firmware: a green run on one says nothing about the
+other's DRAM clock or eMMC) and may override `name`, `description` and `panel`; it may not carry the
+board's `id soc board_dt uboot_board unique_regions preserve_on_restore`. Variant names are `[a-z0-9]+`.
+`profiles.get("<board>/<variant>")` gives the board's keys with the variant's on top plus `"variant"`,
+and that resolved dict passes every check above; `profiles.units()` lists them. The key
+`"<board>/<variant>"` is what `identify()` returns as `profile`, what `candidates` and `matches` are
+keyed by, and what an image table's `test_for` carries (`h713-mkimage --test-for`).

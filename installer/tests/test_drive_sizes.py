@@ -1,4 +1,4 @@
-"""A board whose eMMC is not the HY310's size (HY300PRO-G-EU: 15273600 sectors) is found and dumped.
+"""A board whose eMMC is not the HY310's size (the HY300PRO-G-EU: 15273600 sectors) is found and dumped.
 
 No device and no vendor file: the drive search is fed a fake /sys/block, and the profile is compared
 with the sector counts the installer accepts.
@@ -13,13 +13,13 @@ import support                 # imported first: it puts the work dir on sys.pat
 
 sys.path.insert(0, support.TOOLS)
 from h713 import blockdev                                       # noqa: E402
-from h713.profiles import PROFILES                              # noqa: E402
+from h713.profiles import units                                 # noqa: E402
 
 
 class DriveSizes(unittest.TestCase):
 
     def test_every_profile_size_is_known(self):
-        for board_id, profile in PROFILES.items():
+        for board_id, profile in units().items():           # a variant's size is its own
             sectors = (profile.get("layout") or {}).get("disk_sectors")
             if sectors:
                 self.assertIn(sectors, blockdev.SECTORS_KNOWN, board_id)
