@@ -468,3 +468,4 @@
 0177-ASoC-sunxi-h713-msp-deep-review-fixes.patch
 0178-arm64-dts-h713-the-audio-bridge-window-and-interrupts-for-the-msp.patch
 0179-media-h713-hdmirx-link-0x6d-is-the-firmware-s-connect-event-flag.patch
+0180-h713-drivers-log-in-english.patch

@@ -1,0 +1,3607 @@
+h713 drivers: every log line, status text and comment in English (no logic change)
+
+Eight of our own driver sources still carried German log lines, debugfs and sysfs
+output and comments: the ARISC loader, the cpu_comm protocol, API and semaphore
+files, the MSP audio DSP, the HY310 board manager and focus motor, and the CE
+test module. They are published for other owners of these projectors, so they
+log in English now.
+
+Only string literal text and comments change. Every format specifier, argument,
+escape sequence, macro and line break is kept, and so is every identifier,
+including the German ones in h713-ce-test.c, the debugfs files "ergebnis" and
+"starten" and all device-tree property and firmware command names. Symbols in
+comments and strings that are not ASCII (box-drawing lines, em dashes, the
+multiplication sign, arrows, the degree sign) are spelled with ASCII.
+
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -890,7 +890,7 @@
+ 
+ 	if (bad) {
+ 		dev_err(a->dev,
+-			"Firmware-Abbild stimmt nach dem Schreiben nicht (%u Woerter weichen ab) -- ARISC bleibt im Reset\n",
++			"Firmware image does not match after writing (%u words differ) -- ARISC stays in reset\n",
+ 			bad);
+ 		return -EIO;
+ 	}
+@@ -1202,7 +1202,7 @@
+ 	while (readl(a->tx + U1_FIFO_STAT(PORT_HDMI))) {
+ 		if (ktime_ms_delta(ktime_get(), start) > FIFO_EMPTY_TIMEOUT_MS) {
+ 			dev_err(a->dev,
+-				"Msgbox user1 Port 0 wird nicht geleert -- Unterbefehl 0x%04x nicht gesendet\n",
++				"Msgbox user1 port 0 is not being drained -- sub-command 0x%04x not sent\n",
+ 				sub_cmd);
+ 			return -EBUSY;
+ 		}
+@@ -1266,7 +1266,7 @@
+ 		put_unaligned_le32(words[i], raw + 4 * i);
+ 
+ 	for (i = 0; i < nwords; i++)
+-		dev_dbg(a->dev, "Antwort 0x%04x Wort %2u: %08x  %*ph\n",
++		dev_dbg(a->dev, "reply 0x%04x word %2u: %08x  %*ph\n",
+ 			sub_cmd, i, words[i], 4, raw + 4 * i);
+ 
+ 	while (pos + 4 * REPLY_HDR_WORDS <= 4 * nwords) {
+@@ -1278,7 +1278,7 @@
+ 
+ 		if (hdr[0] != BOP_MARKER || hdr[2] != REPLY_TYPE) {
+ 			dev_err(a->dev,
+-				"Antwort auf 0x%04x: Wort %u ist kein Rahmenkopf (%*ph)\n",
++				"Reply to 0x%04x: word %u is not a frame header (%*ph)\n",
+ 				sub_cmd, pos / 4, 4, hdr);
+ 			return -EPROTO;
+ 		}
+@@ -1290,13 +1290,13 @@
+ 		 */
+ 		if (len < FRAME_MIN_LEN || round_up(len, 4) > avail) {
+ 			dev_err(a->dev,
+-				"Antwort auf 0x%04x: Rahmen meldet %u Nutzlastbytes, vorhanden sind %u\n",
++				"Reply to 0x%04x: frame reports %u payload bytes, %u are present\n",
+ 				sub_cmd, len, avail);
+ 			return -EPROTO;
+ 		}
+ 		if (payload[0] != FRAME_HEAD || payload[len - 1] != FRAME_TAIL) {
+ 			dev_err(a->dev,
+-				"Antwort auf 0x%04x: Rahmen beginnt %02x und endet %02x statt %02x/%02x\n",
++				"Reply to 0x%04x: frame starts with %02x and ends with %02x instead of %02x/%02x\n",
+ 				sub_cmd, payload[0], payload[len - 1],
+ 				FRAME_HEAD, FRAME_TAIL);
+ 			return -EPROTO;
+@@ -1305,12 +1305,12 @@
+ 		cks = arisc_frame_checksum(payload, len);
+ 		if (cks != payload[len - 2])
+ 			dev_dbg(a->dev,
+-				"Antwort auf 0x%04x: Pruefsumme %02x, erwartet %02x\n",
++				"Reply to 0x%04x: checksum %02x, expected %02x\n",
+ 				sub_cmd, payload[len - 2], cks);
+ 
+ 		if (n + len > reply_max) {
+ 			dev_err(a->dev,
+-				"Antwort auf 0x%04x: %u Byte Nutzlast passen nicht in %zu Byte Puffer\n",
++				"Reply to 0x%04x: %u bytes of payload do not fit into a %zu byte buffer\n",
+ 				sub_cmd, n + len, reply_max);
+ 			return -EMSGSIZE;
+ 		}
+@@ -1322,12 +1322,12 @@
+ 
+ 	if (!frames || pos != 4 * nwords) {
+ 		dev_err(a->dev,
+-			"Antwort auf 0x%04x: %u Rahmen, danach %u Byte Rest\n",
++			"Reply to 0x%04x: %u frames, then %u bytes left over\n",
+ 			sub_cmd, frames, 4 * nwords - pos);
+ 		return -EPROTO;
+ 	}
+ 
+-	dev_dbg(a->dev, "Antwort auf 0x%04x: %u Rahmen, %u Byte Nutzlast\n",
++	dev_dbg(a->dev, "Reply to 0x%04x: %u frames, %u bytes of payload\n",
+ 		sub_cmd, frames, n);
+ 	return n;
+ }
+@@ -1358,7 +1358,7 @@
+ 			       REPLY_WAIT_MS, REPLY_GAP_MS);
+ 	if (ret < 0) {
+ 		dev_err(a->dev,
+-			"Unterbefehl 0x%04x: keine Antwort auf ARM-RX ch1 (%d)\n",
++			"Sub-command 0x%04x: no reply on ARM-RX ch1 (%d)\n",
+ 			sub_cmd, ret);
+ 		return ret;
+ 	}
+@@ -1370,7 +1370,7 @@
+ 	 */
+ 	if ((unsigned int)ret > ARRAY_SIZE(words)) {
+ 		dev_err(a->dev,
+-			"Antwort auf 0x%04x: %d Woerter, der Puffer fasst %zu\n",
++			"Reply to 0x%04x: %d words, the buffer holds %zu\n",
+ 			sub_cmd, ret, ARRAY_SIZE(words));
+ 		return -EMSGSIZE;
+ 	}
+@@ -1409,7 +1409,7 @@
+ 	if (!ret)
+ 		a->edid_module_ready = true;
+ 	else
+-		dev_err(a->dev, "ResetEDIDModule nicht verarbeitet (%d) -- HDMI-Aux-Block bleibt gesperrt\n",
++		dev_err(a->dev, "ResetEDIDModule not processed (%d) -- HDMI aux block stays locked\n",
+ 			ret);
+ 	arisc_report(a, "reset-edid rc=%d\n", ret);
+ 	mutex_unlock(&a->lock);
+@@ -1541,7 +1541,7 @@
+ 
+ 		if (pin != PORTMAP_POISON || bit != PORTMAP_POISON) {
+ 			dev_err(a->dev,
+-				"HostHDMIMAP: Satz %u laesst sich nicht vorbelegen (gelesen 0x%02x 0x%02x, geschrieben 0x%02x) -- die Pruefung waere blind, es wurde nichts gesendet\n",
++				"HostHDMIMAP: record %u cannot be primed (read 0x%02x 0x%02x, wrote 0x%02x) -- the check would be blind, nothing was sent\n",
+ 				i, pin, bit, PORTMAP_POISON);
+ 			return -EIO;
+ 		}
+@@ -1600,11 +1600,11 @@
+ 	want = BIT(map[i]);
+ 	if (pin == PORTMAP_POISON && bit == PORTMAP_POISON)
+ 		dev_err(a->dev,
+-			"HostHDMIMAP: Satz %u traegt nach %d ms noch die Vorbelegung 0x%02x -- die Firmware hat die Karte nie geschrieben, erwartet war Pin %u (Bit 0x%02x)\n",
++			"HostHDMIMAP: record %u after %d ms still carries the priming 0x%02x -- the firmware never wrote the map, expected pin %u (bit 0x%02x)\n",
+ 			i, HANDLER_TIMEOUT_MS, PORTMAP_POISON, map[i], want);
+ 	else
+ 		dev_err(a->dev,
+-			"HostHDMIMAP: Satz %u traegt Pin %u (Bit 0x%02x) statt Pin %u (Bit 0x%02x) -- die Firmware hat die Karte aus einem ueberschriebenen Puffer geschrieben\n",
++			"HostHDMIMAP: record %u carries pin %u (bit 0x%02x) instead of pin %u (bit 0x%02x) -- the firmware wrote the map from an overwritten buffer\n",
+ 			i, pin, bit, map[i], want);
+ 
+ 	return -ETIMEDOUT;
+@@ -1638,7 +1638,7 @@
+ 			if (ktime_ms_delta(ktime_get(), start) >
+ 			    HPD_SETTLE_TIMEOUT_MS) {
+ 				dev_err(a->dev,
+-					"HostHDMIMAP: Hotplug-Zaehler Port %u steht nach %u ms noch auf %u -- die Karte wird nicht angefasst\n",
++					"HostHDMIMAP: hotplug counter port %u: after %u ms still at %u -- the map is not touched\n",
+ 					i, HPD_SETTLE_TIMEOUT_MS, cur);
+ 				return -EBUSY;
+ 			}
+@@ -1654,7 +1654,7 @@
+ 	waited = ktime_ms_delta(ktime_get(), start);
+ 	if (waited)
+ 		dev_info(a->dev,
+-			 "HostHDMIMAP: %lld ms auf das Landen eines Hotplug-Pulses gewartet\n",
++			 "HostHDMIMAP: waited %lld ms for a hotplug pulse to land\n",
+ 			 waited);
+ 
+ 	return 0;
+@@ -1848,7 +1848,7 @@
+ 		if (ret) {
+ 			writeb(0, sram_at(a, a->off.edid_ready));
+ 			dev_err(a->dev,
+-				"UpdateEDID Fragment %u nicht verarbeitet (%d)\n",
++				"UpdateEDID fragment %u not processed (%d)\n",
+ 				frag, ret);
+ 			goto out;
+ 		}
+@@ -1900,21 +1900,21 @@
+ 	if (ret != EDID_STATUS_LEN ||
+ 	    memcmp(a->edid_status, edid_status_prefix, EDID_STATUS_PREFIX_LEN)) {
+ 		dev_err(a->dev,
+-			"CheckEDIDUpdateStatus antwortet %*ph statt ff f8 01 01 <ready> ...\n",
++			"CheckEDIDUpdateStatus answers %*ph instead of ff f8 01 01 <ready> ...\n",
+ 			min(ret, EDID_STATUS_LEN), a->edid_status);
+ 		ret = -EPROTO;
+ 		goto out;
+ 	}
+ 	if (a->edid_status[EDID_STATUS_READY_BYTE] != EDID_DATA_READY) {
+ 		dev_err(a->dev,
+-			"EDID nicht uebernommen: bEdidDataReady = %u statt %u, SRAM [0x%05x]=%u [0x%05x]=%u -- Fragment 7 hat die Ausgabe nicht ausgeloest\n",
++			"EDID not accepted: bEdidDataReady = %u instead of %u, SRAM [0x%05x]=%u [0x%05x]=%u -- fragment 7 did not trigger the output\n",
+ 			a->edid_status[EDID_STATUS_READY_BYTE], EDID_DATA_READY,
+ 			a->off.edid_ready, readb(sram_at(a, a->off.edid_ready)),
+ 			a->off.edid_gate, readb(sram_at(a, a->off.edid_gate)));
+ 		ret = -EPROTO;
+ 		goto out;
+ 	}
+-	dev_info(a->dev, "EDID uebernommen, Status %*ph, Ausgabe-Gate [0x%05x]=%u\n",
++	dev_info(a->dev, "EDID accepted, status %*ph, output gate [0x%05x]=%u\n",
+ 		 (int)min_t(size_t, a->edid_status_len, EDID_STATUS_LEN),
+ 		 a->edid_status, a->off.edid_gate,
+ 		 readb(sram_at(a, a->off.edid_gate)));
+@@ -1970,14 +1970,14 @@
+ 	nframes = ret / stride;
+ 	if (ret % stride || !nframes) {
+ 		dev_err(a->dev,
+-			"RequestEDID Port %u: %d Byte Nutzlast, kein Vielfaches von %u\n",
++			"RequestEDID port %u: %d bytes of payload, not a multiple of %u\n",
+ 			port, ret, stride);
+ 		ret = -EPROTO;
+ 		goto out;
+ 	}
+ 	if (nframes < REQ_EDID_FRAGMENTS)
+ 		dev_warn(a->dev,
+-			 "RequestEDID Port %u: nur %u von %u Fragmenten angekommen\n",
++			 "RequestEDID port %u: only %u of %u fragments arrived\n",
+ 			 port, nframes, REQ_EDID_FRAGMENTS);
+ 
+ 	/*
+@@ -1992,7 +1992,7 @@
+ 		if (memcmp(f, req_edid_prefix, sizeof(req_edid_prefix)) ||
+ 		    f[REQ_EDID_PREFIX_LEN - 1] != i) {
+ 			dev_err(a->dev,
+-				"RequestEDID Port %u: Rahmen %u beginnt %*ph statt ff f8 02 41 %02x\n",
++				"RequestEDID port %u: frame %u starts with %*ph instead of ff f8 02 41 %02x\n",
+ 				port, i, REQ_EDID_PREFIX_LEN, f, i);
+ 			ret = -EPROTO;
+ 			goto out;
+@@ -2083,7 +2083,7 @@
+ 	if (action != ARISC_HDMI_HPD_DOWN &&
+ 	    !readb(sram_at(a, a->off.edid_gate))) {
+ 		dev_err(a->dev,
+-			"PullHotPlug Port %u: Ausgabe-Gate [0x%05x] ist 0 -- die Firmware zwingt den Pin low, EDID wurde nie ausgegeben\n",
++			"PullHotPlug port %u: output gate [0x%05x] is 0 -- the firmware forces the pin low, EDID was never output\n",
+ 			port, a->off.edid_gate);
+ 		return -EIO;
+ 	}
+@@ -2119,11 +2119,11 @@
+ 
+ 	if (action == ARISC_HDMI_HPD_RESET && peak < HPD_RESET_PEAK_MIN) {
+ 		dev_err(a->dev,
+-			"PullHotPlug RESET Port %u: Zaehler kam nur auf %u statt %u\n",
++			"PullHotPlug RESET port %u: counter only reached %u instead of %u\n",
+ 			port, peak, HPD_RESET_COUNTER);
+ 		return -EIO;
+ 	}
+-	dev_err(a->dev, "PullHotPlug Port %u: Zaehler blieb auf %u stehen\n",
++	dev_err(a->dev, "PullHotPlug port %u: counter stuck at %u\n",
+ 		port, cur);
+ 	return -ETIMEDOUT;
+ }
+@@ -2173,7 +2173,7 @@
+ 	if (!edid) {
+ 		if (!a->edid_valid) {
+ 			dev_err(a->dev,
+-				"kein EDID vorhanden -- " FW_NAME_EDID " fehlt\n");
++				"no EDID available -- " FW_NAME_EDID " is missing\n");
+ 			return -ENOENT;
+ 		}
+ 		edid = a->edid;
+@@ -2218,7 +2218,7 @@
+ 
+ 	a->hpd_sequence_port = port;
+ 	a->hpd_sequence_done = true;
+-	dev_info(a->dev, "EDID/HPD-Sequenz auf Port %u abgeschlossen\n", port);
++	dev_info(a->dev, "EDID/HPD sequence on port %u completed\n", port);
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(arisc_hdmi_edid_init);
+@@ -2476,7 +2476,7 @@
+ 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
+ 	if (!res)
+ 		return dev_err_probe(&pdev->dev, -EINVAL,
+-				     "reg-Eintrag \"%s\" fehlt\n", name);
++				     "reg entry \"%s\" is missing\n", name);
+ 
+ 	/*
+ 	 * devm_ioremap(), not devm_ioremap_resource(): two of these windows
+@@ -2489,7 +2489,7 @@
+ 	base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+ 	if (!base)
+ 		return dev_err_probe(&pdev->dev, -ENOMEM,
+-				     "\"%s\" nicht abbildbar\n", name);
++				     "\"%s\" cannot be mapped\n", name);
+ 	*out = base;
+ 	return 0;
+ }
+@@ -2506,11 +2506,11 @@
+ 	ret = request_firmware(&fw, name, a->dev);
+ 	if (ret)
+ 		return dev_err_probe(a->dev, ret,
+-				     "ARISC-Firmware \"%s\" nicht ladbar\n",
++				     "ARISC firmware \"%s\" cannot be loaded\n",
+ 				     name);
+ 
+ 	if (fw->size < SRAM_IMAGE_SIZE) {
+-		dev_err(a->dev, "\"%s\" ist %zu Byte, mindestens %u noetig\n",
++		dev_err(a->dev, "\"%s\" is %zu bytes, at least %u needed\n",
+ 			name, fw->size, SRAM_IMAGE_SIZE);
+ 		release_firmware(fw);
+ 		return -EINVAL;
+@@ -2549,15 +2549,15 @@
+ 		 * ->running and answers -ENODEV.
+ 		 */
+ 		dev_err(a->dev,
+-			"ARISC-Startup-Notify %s (%d) -- die Firmware steht vor ihrer Hauptschleife und bedient keinen HDMI-Befehl\n",
+-			a->notify_result == -ETIMEDOUT ? "nicht gesehen"
+-						       : "fehlerhaft",
++			"ARISC startup notify %s (%d) -- the firmware sits in front of its main loop and serves no HDMI command\n",
++			a->notify_result == -ETIMEDOUT ? "not seen"
++						       : "malformed",
+ 			a->notify_result);
+ 		return 0;
+ 	}
+ 
+ 	a->running = true;
+-	dev_info(a->dev, "ARISC-Startup-Notify quittiert: %s\n",
++	dev_info(a->dev, "ARISC startup notify acknowledged: %s\n",
+ 		 a->notify_version);
+ 	return 0;
+ }
+@@ -2574,12 +2574,12 @@
+ 	ret = request_firmware(&fw, name, a->dev);
+ 	if (ret) {
+ 		dev_warn(a->dev,
+-			 "EDID \"%s\" nicht geladen (%d) -- die EDID-Sequenz braucht ein EDID vom Aufrufer\n",
++			 "EDID \"%s\" not loaded (%d) -- the EDID sequence needs an EDID from the caller\n",
+ 			 name, ret);
+ 		return;
+ 	}
+ 	if (fw->size != ARISC_HDMI_EDID_SIZE) {
+-		dev_warn(a->dev, "\"%s\" ist %zu Byte statt %u -- ignoriert\n",
++		dev_warn(a->dev, "\"%s\" is %zu bytes instead of %u -- ignored\n",
+ 			 name, fw->size, ARISC_HDMI_EDID_SIZE);
+ 		release_firmware(fw);
+ 		return;
+@@ -2607,7 +2607,7 @@
+ 	a->notify_result = -ENODATA;
+ 	strscpy(a->notify_version, "-", sizeof(a->notify_version));
+ 	strscpy(a->image_version, "-", sizeof(a->image_version));
+-	strscpy(a->last_cmd, "noch kein Befehl\n", sizeof(a->last_cmd));
++	strscpy(a->last_cmd, "no command yet\n", sizeof(a->last_cmd));
+ 	mutex_init(&a->lock);
+ 
+ 	ret = h713_arisc_map(pdev, "sram", &a->sram);
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+@@ -85,7 +85,7 @@
+ 
+ #include "cpu_comm.h"
+ 
+-/* ── Routine name -> component id ───────────────────────────── */
++/* -- Routine name -> component id ----------------------------- */
+ 
+ /*
+  * The vendor's Trid_Util_Name2ID (libUtility.so @0x1DC61) is a CRC-32 with
+@@ -130,7 +130,7 @@
+ }
+ EXPORT_SYMBOL_GPL(cpu_comm_name2id);
+ 
+-/* ── Outgoing calls ─────────────────────────────────────────── */
++/* -- Outgoing calls ------------------------------------------- */
+ 
+ DEFINE_MUTEX(cpu_comm_call_mutex);
+ 
+@@ -199,7 +199,7 @@
+ }
+ EXPORT_SYMBOL_GPL(cpu_comm_call);
+ 
+-/* ── Incoming calls: the routine table ──────────────────────── */
++/* -- Incoming calls: the routine table ------------------------ */
+ 
+ /*
+  * The 96-byte routine descriptor, exactly as IOCTL_INSTALL_RT takes it
+@@ -389,7 +389,7 @@
+ 
+ 	cpu_comm_read_rt_lock(&lock);
+ 	if (!cpu_comm_rt_lock_idle(&lock)) {
+-		pr_warn("cpu_comm: Routinen-Spinlock 2 belegt (owner=%u refcnt=%u thread=0x%08x) -- 0x%08x nicht angemeldet\n",
++		pr_warn("cpu_comm: routine spinlock 2 held (owner=%u refcnt=%u thread=0x%08x) -- 0x%08x not registered\n",
+ 			lock.owner, lock.ref_count, lock.thread_id, comp_id);
+ 		return -EBUSY;
+ 	}
+@@ -413,14 +413,14 @@
+ 	 * which case the insert raced the MIPS. Look.
+ 	 */
+ 	if (cpu_comm_routine_owner(comp_id, &owner, &target_cpu)) {
+-		pr_err("cpu_comm: 0x%08x steht nach AddInRoutine nicht in der Routinentabelle\n",
++		pr_err("cpu_comm: 0x%08x is not in the routine table after AddInRoutine\n",
+ 		       comp_id);
+ 		return -EIO;
+ 	}
+ 
+ 	cpu_comm_read_rt_lock(&lock);
+ 	if (!cpu_comm_rt_lock_idle(&lock))
+-		pr_err("cpu_comm: Routinen-Spinlock 2 nach AddInRoutine nicht frei (owner=%u refcnt=%u thread=0x%08x) -- der MIPS wartet darauf ohne Frist\n",
++		pr_err("cpu_comm: routine spinlock 2 not free after AddInRoutine (owner=%u refcnt=%u thread=0x%08x) -- the MIPS waits on it without a timeout\n",
+ 		       lock.owner, lock.ref_count, lock.thread_id);
+ 
+ 	if (Comm_QueryChannel(cpu_comm_channel_pool(), CPU_COMM_KERNEL_CHANNEL,
+@@ -476,7 +476,7 @@
+ 
+ 	cpu_comm_read_rt_lock(&lock);
+ 	if (!cpu_comm_rt_lock_idle(&lock)) {
+-		pr_warn("cpu_comm: Routinen-Spinlock 2 belegt (owner=%u refcnt=%u thread=0x%08x) -- 0x%08x bleibt in der Tabelle\n",
++		pr_warn("cpu_comm: routine spinlock 2 held (owner=%u refcnt=%u thread=0x%08x) -- 0x%08x stays in the table\n",
+ 			lock.owner, lock.ref_count, lock.thread_id, comp_id);
+ 		return;
+ 	}
+@@ -486,7 +486,7 @@
+ 	RemoveRoutine(&desc);
+ }
+ 
+-/* ── Incoming calls: kernel handlers ────────────────────────── */
++/* -- Incoming calls: kernel handlers -------------------------- */
+ 
+ #define CPU_COMM_MAX_KERNEL_CB	16
+ 
+@@ -763,7 +763,7 @@
+ 		cpu_comm_remove_routine(ids[i]);
+ }
+ 
+-/* ── debugfs: a consumer of both halves ─────────────────────── */
++/* -- debugfs: a consumer of both halves ----------------------- */
+ 
+ #ifdef CONFIG_DEBUG_FS
+ 
+@@ -1030,7 +1030,7 @@
+ 		version = *(u32 *)(ShMemAddrBase + CPU_COMM_RT_VERSION_OFF);
+ 		count = *(u32 *)(ShMemAddrBase + CPU_COMM_RT_COUNT_OFF);
+ 		/*
+-		 * The outgoing FreeCall ring as state. "belegt" sits at a small
++		 * The outgoing FreeCall ring as state. "in use" sits at a small
+ 		 * constant while nothing is lost and grows by one for every
+ 		 * answer that never came; at the ring capacity the pool is empty
+ 		 * and every call fails with -EBUSY (measured, C3).
+@@ -1044,8 +1044,8 @@
+ 		 * callbacks to us (share sequence local=ARM, remote=MIPS). The
+ 		 * CallCmd ring at +32 is where stock parks the references for a
+ 		 * reader; with the kernel releasing directly it must stay empty
+-		 * ("ungelesen 0"), and the FreeCall ring at +120 must keep its
+-		 * slots ("frei" 19 or 20). Before that fix "ungelesen" grew by
++		 * ("unread 0"), and the FreeCall ring at +120 must keep its
++		 * slots ("free" 19 or 20). Before that fix "unread" grew by
+ 		 * one per callback and the MIPS hung at 19 (doku/nachtlog/S10).
+ 		 */
+ 		fifo = (u32 *)(getShareSeqR(1, 0) + 32);
+@@ -1064,10 +1064,10 @@
+ 		       "channel   0x%08x %s\n"
+ 		       "rtable    version %u count %u\n"
+ 		       "spinlock2 owner=%u refcnt=%u thread=0x%08x %s\n"
+-		       "calls_out %u, davon %u ohne Antwort\n"
+-		       "newcall   %u mal beim CALL_ACK noch ungelesen\n"
+-		       "freecall  rd=%u wr=%u cap=%u, belegt %u\n"
+-		       "eingehend CallCmd rd=%u wr=%u cap=%u, ungelesen %u; FreeCall rd=%u wr=%u cap=%u, frei %u\n"
++		       "calls_out %u, of them %u without an answer\n"
++		       "newcall   %u times still unread at CALL_ACK\n"
++		       "freecall  rd=%u wr=%u cap=%u, in use %u\n"
++		       "incoming  CallCmd rd=%u wr=%u cap=%u, unread %u; FreeCall rd=%u wr=%u cap=%u, free %u\n"
+ 		       "handlers  %u\n",
+ 		       atomic_read(&cpu_comm_rx_calls),
+ 		       atomic_read(&cpu_comm_rx_unmatched),
+@@ -1076,7 +1076,7 @@
+ 		       (have_pool && channel) ? "registered" : "missing",
+ 		       version, count,
+ 		       lock.owner, lock.ref_count, lock.thread_id,
+-		       cpu_comm_rt_lock_idle(&lock) ? "frei" : "BELEGT",
++		       cpu_comm_rt_lock_idle(&lock) ? "free" : "HELD",
+ 		       atomic_read(&cpu_comm_calls_out), atomic_read(&cpu_comm_timeouts),
+ 		       atomic_read(&cpu_comm_newcall_pending_at_ack),
+ 		       fc_rd, fc_wr, fc_cap, fc_used,
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * cpu_comm_proto.c — Communication protocol layer
++ * cpu_comm_proto.c - Communication protocol layer
+  *
+  * Message sending (SendCommLow, SendComm2CPUEx), message receiving
+  * (command_action, ack_action), and the 4 message type handlers
+@@ -17,7 +17,7 @@
+ #include <linux/delay.h>
+ #include "cpu_comm.h"
+ 
+-/* ── Interrupt semaphore array ─────────────────────────────── */
++/* -- Interrupt semaphore array ------------------------------- */
+ 
+ /*
+  * comm_intrsem layout (from IDA):
+@@ -26,7 +26,7 @@
+  * Indexed as: comm_intrsem[2 * cpu + direction + 8]
+  */
+ u32 comm_intrsem[16];
+-static struct semaphore intr_sems[4]; /* 2 CPUs × 2 directions */
++static struct semaphore intr_sems[4]; /* 2 CPUs x 2 directions */
+ 
+ static const char *cpu_comm_type_name(int type)
+ {
+@@ -87,7 +87,7 @@
+ 		sema_init(&intr_sems[i], 0);
+ }
+ 
+-/* ── SendCommLow — Low-level message dispatch ──────────────── */
++/* -- SendCommLow - Low-level message dispatch ---------------- */
+ 
+ /*
+  * Writes message metadata into a shared-memory FIFO slot,
+@@ -130,15 +130,15 @@
+ 	*(u32 *)(seq + 4) += 1;	/* increment counter */
+ 	seq[8] = type;
+ 
+-	/* Memory barrier — ensure writes visible before signaling */
++	/* Memory barrier - ensure writes visible before signaling */
+ 	dmb(ish);
+ 
+ 	if (dst == src) {
+-		/* Local message — process directly via work queue */
++		/* Local message - process directly via work queue */
+ 		return queueAction(dir, cur_cpu);
+ 	}
+ 
+-	/* Remote message — set "sent" flag and notify via msgbox */
++	/* Remote message - set "sent" flag and notify via msgbox */
+ 	seq[8] |= MSG_FLAG_SENT;
+ 	dmb(ish);
+ 
+@@ -160,7 +160,7 @@
+ 	}
+ }
+ 
+-/* ── SendComm2CPUEx — Extended message send ────────────────── */
++/* -- SendComm2CPUEx - Extended message send ------------------ */
+ 
+ /*
+  * The main message sending function. Full implementation matching IDA @ 0xd164.
+@@ -196,21 +196,21 @@
+ 	int     ret = 0;
+ 	/*
+ 	 * routine_find_buf: filled by FindRoutine when target_cpu==0.
+-	 * Must be 96 bytes — FindRoutineEx copies full entry (96 bytes)
++	 * Must be 96 bytes - FindRoutineEx copies full entry (96 bytes)
+ 	 * including mmiocpy(buf+12, ..., 64) and *(u64*)(buf+80).
+-	 * BUG-18 fix: was 24 bytes → stack overflow!
++	 * BUG-18 fix: was 24 bytes -> stack overflow!
+ 	 */
+ 	u8      routine_find_buf[96];
+ 	bool    routine_found = false;
+ 
+-	/* ── Step 1: basic validation ── */
++	/* -- Step 1: basic validation -- */
+ 	if (!msg_ptr || target_cpu > 1) {
+ 		pr_err("cpu_comm: SendComm2CPUEx: invalid args msg=%08lx cpu=%u\n",
+ 		       msg_ptr, target_cpu);
+ 		return -EINVAL;
+ 	}
+ 
+-	/* ── Step 2: resolve dst_cpu ── */
++	/* -- Step 2: resolve dst_cpu -- */
+ 
+ 	if (target_cpu == 0) {
+ 		/*
+@@ -228,13 +228,13 @@
+ 		}
+ 
+ 		if (FindRoutine(comp_id, routine_find_buf) != 0)
+-			return -3; /* ESRCH — routine not found */
++			return -3; /* ESRCH - routine not found */
+ 
+ 		routine_found = true;
+ 		dst_cpu = (u32)(u8)routine_find_buf[2];
+ 
+ 		/*
+-		 * HY310-fix: entry[2] is used dual-purpose — as routing dst_cpu (0/1)
++		 * HY310-fix: entry[2] is used dual-purpose - as routing dst_cpu (0/1)
+ 		 * AND as MIPS channel-key high nibble (can be >1, e.g. thread_id=3
+ 		 * for SetMirrorMode channel 0x30). If routine_find_buf[2] > 1 we
+ 		 * treat it as a thread_id for channel-key population, and read the
+@@ -266,14 +266,14 @@
+ 		dst_cpu = (u32)dc;
+ 	}
+ 
+-	/* ── Step 3: CPU-reset and range check ── */
++	/* -- Step 3: CPU-reset and range check -- */
+ 	if (IsCPUReset(dst_cpu))
+ 		return -512;
+ 
+ 	if (dst_cpu > 1)
+ 		return -EINVAL;
+ 
+-	/* ── Step 4: get share sequence and seq socket ── */
++	/* -- Step 4: get share sequence and seq socket -- */
+ 	share_seq_w = (u8 *)getShareSeqW(dst_cpu, target_cpu);
+ 	if (!share_seq_w) {
+ 		pr_err("cpu_comm: SendComm2CPUEx: no share_seq for dst=%u dir=%u\n",
+@@ -293,7 +293,7 @@
+ 	else
+ 		sem_ptr = (u8 *)seq_base + 8;
+ 
+-	/* ── Step 5: acquire sequence semaphore ── */
++	/* -- Step 5: acquire sequence semaphore -- */
+ 	/* DEBUG: use timeout instead of interruptible.  Without MIPS
+ 	 * ACK the sem is never released, so bypass after 100ms. */
+ 	ret = cpu_comm_sem_down_timeout((void *)sem_ptr, msecs_to_jiffies(100));
+@@ -309,7 +309,7 @@
+ 		goto out_up_sem;
+ 	}
+ 
+-	/* ── Step 6: check isCPUAppReady ── */
++	/* -- Step 6: check isCPUAppReady -- */
+ 	if (!isCPUAppReady(dst_cpu)) {
+ 		ret = -1;
+ 		goto out_up_sem;
+@@ -326,31 +326,31 @@
+ 			}
+ 		}
+ 	}
+-	/* ── Step 8: dequeue a free call slot from the pool ──
++	/* -- Step 8: dequeue a free call slot from the pool --
+ 	 *
+ 	 * Stock behaviour: fresh Comm_GetFreeCall per send. MIPS's
+ 	 * Comm_ReleaseFreeCall enqueues the slot back after processing,
+ 	 * working end-to-end since the session-K roundtrip fixes.
+ 	 *
+ 	 * The previous cache hack (keep slot cached for lifetime of module)
+-	 * collided with MIPS's release: GetFreeCall ran once → no dequeue →
+-	 * MIPS release on every cycle → FreeCall FIFO overflow after 1 cycle.
++	 * collided with MIPS's release: GetFreeCall ran once -> no dequeue ->
++	 * MIPS release on every cycle -> FreeCall FIFO overflow after 1 cycle.
+ 	 *
+-	 * ════════════════════════════════════════════════════════════════
+-	 * TODO: SLOT-RELEASE-WAIT — proper kernel-side fix
+-	 * ════════════════════════════════════════════════════════════════
++	 * ================================================================
++	 * TODO: SLOT-RELEASE-WAIT - proper kernel-side fix
++	 * ================================================================
+ 	 * The 100-spin poll below is a workaround. The 21-slot FreeCall pool
+ 	 * at (share_seq_w + 120) is replenished MIPS-side via
+ 	 * Comm_ReleaseFreeCall after BG_Thread processes a call. With
+ 	 * back-to-back ARM sends (no userspace throttle) the pool drains
+-	 * after ~19-21 calls → -EBUSY → IOCTL_CALL maps to -EFAULT.
++	 * after ~19-21 calls -> -EBUSY -> IOCTL_CALL maps to -EFAULT.
+ 	 *
+ 	 * Stock kernel uses a semaphore-based wait pattern (per IDA RE @
+ 	 * 0x3c40 in stock cpu_comm_dev.ko): MIPS Comm_ReleaseFreeCall
+ 	 * does sem_up on s_CommSockt[1248*remote+235] (sock byte offset 940);
+ 	 * stock SendComm2CPUEx-equivalent does sem_down on the same sem
+ 	 * before allocating a slot, so it blocks correctly when pool is
+-	 * empty and wakes immediately when a slot is released — no busy
++	 * empty and wakes immediately when a slot is released - no busy
+ 	 * spin, no false EBUSY.
+ 	 *
+ 	 * We currently rely on the 100-spin poll + userspace throttle in
+@@ -362,10 +362,10 @@
+ 	 *     the slot-release sem (offset +235 in s_CommSockt[remote]),
+ 	 *     long timeout (~5s).
+ 	 *   - Verify Comm_ReleaseFreeCall (cpu_comm_channel.c:574) already
+-	 *     does sem_up on the matching sem on the release path —
++	 *     does sem_up on the matching sem on the release path -
+ 	 *     looks like yes per the comment "sock[235] (sem count)".
+ 	 *   - Remove userspace throttle in hdmird main.cpp once verified.
+-	 * ════════════════════════════════════════════════════════════════
++	 * ================================================================
+ 	 */
+ 	{
+ 		int spins = 0;
+@@ -374,17 +374,17 @@
+ 			if (!call_slot) {
+ 				schedule();
+ 				if (++spins > 100) {
+-					pr_err("DBG2: no free slot >100 spins (FreeCall FIFO drain — see SLOT-RELEASE-WAIT TODO)\n");
++					pr_err("DBG2: no free slot >100 spins (FreeCall FIFO drain - see SLOT-RELEASE-WAIT TODO)\n");
+ 					ret = -EBUSY;
+ 					goto out_up_sem;
+ 				}
+ 			}
+ 		} while (!call_slot);
+ 	}
+-	/* ── Step 9: save slot_index before copy overwrites it ── */
++	/* -- Step 9: save slot_index before copy overwrites it -- */
+ 	slot_idx = *(u16 *)(call_slot + 4);
+ 
+-	/* ── Step 10: copy message into slot ── */
++	/* -- Step 10: copy message into slot -- */
+ 	if (from_user) {
+ 		if (copy_from_user(call_slot, (void __user *)msg_ptr, COMM_MSG_SIZE)) {
+ 			ret = -EFAULT;
+@@ -394,21 +394,21 @@
+ 		memcpy(call_slot, (void *)msg_ptr, COMM_MSG_SIZE);
+ 	}
+ 
+-	/* ── Step 11: barrier + restore slot_idx ── */
++	/* -- Step 11: barrier + restore slot_idx -- */
+ 	dmb(ish);
+ 	*(u16 *)(call_slot + 4) = slot_idx;
+ 
+-	/* ── Step 12: set msg_type (1=local-call, 2=remote-call) ── */
++	/* -- Step 12: set msg_type (1=local-call, 2=remote-call) -- */
+ 	msg_type = target_cpu ? 2 : 1;
+ 	*(u16 *)(call_slot + 10) = msg_type;
+ 
+-	/* ── Step 13: verify slot address matches FIFO table ── */
++	/* -- Step 13: verify slot address matches FIFO table -- */
+ 	if (call_slot != (share_seq_w + 104 * (u32)slot_idx + 360)) {
+ 		pr_err("cpu_comm: SendComm2CPUEx: slot address mismatch!\n");
+ 		return -EINVAL;
+ 	}
+ 
+-	/* ── Step 14: direction from share_seq header byte [2] ── */
++	/* -- Step 14: direction from share_seq header byte [2] -- */
+ 	direction = share_seq_w[2];
+ 
+ 	wait_ptr = NULL;
+@@ -442,7 +442,7 @@
+ 			 * MIPS registers channels with ChanPID = 16*routine.pid | chan,
+ 			 * where routine.pid = u32 at routine_find_buf+4 (e.g. 0x8B8F3160).
+ 			 * Previous code wrote (u8)routine_find_buf[2] = 1 (dst_cpu),
+-			 * causing ChanPID=16 on ARM vs 0xB8F31600 on MIPS → mismatch.
++			 * causing ChanPID=16 on ARM vs 0xB8F31600 on MIPS -> mismatch.
+ 			 */
+ 			*(u32 *)(call_slot + 16) = *(u32 *)(routine_find_buf + 4);
+ 			*(u32 *)(call_slot + 24) = (u32)(u8)routine_find_buf[2];   /* dst cpu (u8 expanded) */
+@@ -489,10 +489,10 @@
+ 		flags      = *(u16 *)(call_slot + 6);
+ 	}
+ 
+-	/* ── Step 15: second barrier ── */
++	/* -- Step 15: second barrier -- */
+ 	dmb(ish);
+ 
+-	/* ── Step 16: copy-back session_id so caller can find the wait object ── */
++	/* -- Step 16: copy-back session_id so caller can find the wait object -- */
+ 	if (from_user) {
+ 		if (copy_to_user((void __user *)msg_ptr, call_slot, COMM_MSG_SIZE)) {
+ 			ret = -EFAULT;
+@@ -508,18 +508,18 @@
+ 	}
+ 
+ 	/*
+-	 * 2026-09-02 (verschoben): dieselben Zeilen, die U-Boots `h713_disp commcall`
+-	 * druckt -- Ring, Slot, Schluessel. Ohne sie laesst sich nicht
+-	 * vergleichen, warum derselbe Doorbell aus U-Boot ankommt und von
+-	 * hier nicht: der Unterschied kann nur im Shared Memory liegen, und
+-	 * das von Hand nachzulesen ist dreimal schiefgegangen.
++	 * 2026-09-02 (moved): the same lines U-Boot's `h713_disp commcall`
++	 * prints -- ring, slot, key. Without them there is no way to
++	 * compare why the same doorbell arrives from U-Boot and not from
++	 * here: the difference can only lie in shared memory, and
++	 * reading that by hand has gone wrong three times.
+ 	 *
+-	 * MUSS hinter Schritt 16 stehen: die Routing-Felder (+0x10 dst_pid,
+-	 * +0x18 dst_cpu) fuellt erst der direction==0-Block. Davor gelesen
+-	 * zeigt die pid immer 0 -- einmal passiert und prompt fehlgedeutet.
++	 * MUST come after step 16: the routing fields (+0x10 dst_pid,
++	 * +0x18 dst_cpu) are only filled in by the direction==0 block. Read
++	 * before that, the pid always shows 0 -- happened once and was misread at once.
+ 	 *
+-	 * Offsets aus U-Boot: FIFO bei share_seq+0x78 (rd/wr/+0x10 cap/
+-	 * +0x14 isz/+0x18 base), Slots ab +0x168, das SENT-Bit bei +0x08.
++	 * Offsets from U-Boot: FIFO at share_seq+0x78 (rd/wr/+0x10 cap/
++	 * +0x14 isz/+0x18 base), slots from +0x168, the SENT bit at +0x08.
+ 	 */
+ 	{
+ 		u32 *dbg = (u32 *)(share_seq_w + 0x78);
+@@ -527,7 +527,7 @@
+ 
+ 		pr_debug("cpu_comm: TX FreeCall rd=%u wr=%u cap=%u isz=%u base=0x%08x\n",
+ 			dbg[0], dbg[1], dbg[4], dbg[5], dbg[6]);
+-		pr_debug("cpu_comm: TX slot idx=%u @%p (erwartet %p)\n",
++		pr_debug("cpu_comm: TX slot idx=%u @%p (expected %p)\n",
+ 			slot_idx, call_slot,
+ 			share_seq_w + 104 * (u32)slot_idx + 360);
+ 		pr_debug("cpu_comm: TX chan=0x%04x dst_cpu=%u pid=0x%08x comp_id=0x%08x "
+@@ -547,18 +547,18 @@
+ 	if (cpu_comm_tx_delay_pre_us)
+ 		udelay(cpu_comm_tx_delay_pre_us);
+ 
+-	/* ── Step 17: mark "sent" in flags2 ── */
++	/* -- Step 17: mark "sent" in flags2 -- */
+ 	*(u16 *)(call_slot + 10) |= MSG_FLAG_SENT;
+ 
+-	/* ── Step 18: dispatch via SendCommLow ── */
++	/* -- Step 18: dispatch via SendCommLow -- */
+ 	SendCommLow(share_seq_w, (u32)slot_idx, msg_type, session_id,
+ 		    cc_ref(sem_ptr + 16));
+ 
+ 	/*
+-	 * U-Boot meldet hier "firmware accepted the message ... state bit 2
+-	 * cleared". Das ist das Erste, was die Firmware mit unserem Speicher
+-	 * tut, lange vor jeder Antwort -- ein Lauf, der bis hierher kommt,
+-	 * aber nie antwortet, hat immerhin bewiesen, dass gelesen wurde.
++	 * U-Boot reports here "firmware accepted the message ... state bit 2
++	 * cleared". That is the first thing the firmware does with our memory,
++	 * long before any answer -- a run that gets this far
++	 * but never answers has at least proved that it was read.
+ 	 */
+ 	{
+ 		int spin;
+@@ -568,17 +568,17 @@
+ 				break;
+ 			udelay(100);
+ 		}
+-		pr_debug("cpu_comm: TX nach Doorbell: SENT-Bit %s (nach %d x 100us), "
++		pr_debug("cpu_comm: TX after doorbell: SENT bit %s (after %d x 100us), "
+ 			"share_seq+0x08=0x%02x\n",
+-			(share_seq_w[8] & MSG_FLAG_SENT) ? "STEHT NOCH -- Firmware hat nicht zugegriffen"
+-							 : "geloescht -- Firmware hat gelesen",
++			(share_seq_w[8] & MSG_FLAG_SENT) ? "STILL SET -- firmware has not accessed it"
++							 : "cleared -- firmware has read it",
+ 			spin, share_seq_w[8]);
+ 	}
+ 
+ 	if (cpu_comm_tx_delay_post_us)
+ 		udelay(cpu_comm_tx_delay_post_us);
+ 
+-	/* ── Step 19: wait for ACK (500 jiffies) ── */
++	/* -- Step 19: wait for ACK (500 jiffies) -- */
+ 	ret = cpu_comm_sem_down_timeout((void *)(sem_ptr + 16),
+ 			   SEND_TIMEOUT_JIFFIES);
+ 	if (ret) {
+@@ -598,40 +598,40 @@
+ 		}
+ 	} else {
+ 		/*
+-		 * Kein fifo_ItemRdNext() auf share_seq_w + 32 mehr.
++			 * No more fifo_ItemRdNext() on share_seq_w + 32.
+ 		 *
+-		 * Diese FIFO ist die NewCall-FIFO des MIPS, nicht unsere. Seine
+-		 * ISR-Seite legt den Eintrag dort ab (Comm_Add2NewCallFifo,
+-		 * display.bin 0x8b11d418: fifo_getItemWr @0x8b11d478, Eintrag
+-		 * @0x8b11d48c, fifo_requestItemWr @0x8b11d488), sein BG-Thread
+-		 * holt ihn wieder heraus (Comm_GetCallbyChannel 0x8b11d81c:
+-		 * fifo_getItemRd @0x8b11dae0, fifo_ItemRdNext @0x8b11ddc0). Ein
+-		 * Ring mit einem Schreiber und einem Leser -- und wir waren der
+-		 * zweite Leser. Kam unser rd++ vor dem des BG-Threads, sah der
+-		 * den Ring leer (0x8b11dae8), gab NULL zurueck (0x8b11dfc4) und
+-		 * legte sich wieder schlafen (BG_Thread 0x8b123c0c). Der Ruf war
+-		 * quittiert, aber nie bearbeitet: kein Comm_ReleaseFreeCall
+-		 * (0x8b123cc0, deshalb der dauerhaft belegte Slot), kein Handler,
+-		 * kein RETURN, kein elog. Kam der BG-Thread zuerst, war unser
+-		 * rd++ ein Leerlauf (rd == wr). Genau das Bild aus
+-		 * doku/nachtlog/C3 und C4 -- und der Zeitpunkt unseres rd++ ist
+-		 * das Aufwachen aus der ACK-Semaphore, also genau die Groesse, die
+-		 * tx_delay_post_us, die Konsolenzeilen und der Settle des
+-		 * Legacy-Daemons verschoben haben.
++			 * This FIFO is the NewCall FIFO of the MIPS, not ours. Its
++			 * ISR side puts the entry there (Comm_Add2NewCallFifo,
++			 * display.bin 0x8b11d418: fifo_getItemWr @0x8b11d478, entry
++			 * @0x8b11d48c, fifo_requestItemWr @0x8b11d488), its BG thread
++			 * takes it out again (Comm_GetCallbyChannel 0x8b11d81c:
++			 * fifo_getItemRd @0x8b11dae0, fifo_ItemRdNext @0x8b11ddc0). A
++			 * ring with one writer and one reader -- and we were the
++			 * second reader. If our rd++ came before the BG thread's, it saw
++			 * the ring empty (0x8b11dae8), returned NULL (0x8b11dfc4) and
++			 * went back to sleep (BG_Thread 0x8b123c0c). The call was
++			 * acknowledged but never processed: no Comm_ReleaseFreeCall
++			 * (0x8b123cc0, hence the permanently occupied slot), no handler,
++			 * no RETURN, no elog. If the BG thread came first, our
++			 * rd++ was a no-op (rd == wr). Exactly the picture from
++			 * doku/nachtlog/C3 and C4 -- and the moment of our rd++ is
++			 * the wake-up from the ACK semaphore, i.e. exactly the quantity that
++			 * tx_delay_post_us, the console lines and the settle time of the
++			 * legacy daemon shifted.
+ 		 *
+-		 * Die alte Begruendung ("MIPS's update via KSEG0 cache never
+-		 * propagates") traegt nicht: in jedem Lauf mit eingeschalteter
+-		 * Konsole kam unser rd++ Millisekunden nach dem des BG-Threads
+-		 * und war ein Leerlauf, und die Rufe liefen trotzdem ohne "FIFO
+-		 * nearly full" durch (C2: 500/500, C3: 40/40). Den Ring raeumt der
+-		 * MIPS selbst, fuer uns sichtbar.
++			 * The old justification ("MIPS's update via KSEG0 cache never
++			 * propagates") does not hold: in every run with the console
++			 * switched on, our rd++ came milliseconds after the BG thread's
++			 * and was a no-op, and the calls went through anyway without "FIFO
++			 * nearly full" (C2: 500/500, C3: 40/40). The MIPS clears the ring
++			 * itself, visible to us.
+ 		 *
+-		 * Was bleibt, ist ein Blick ohne Schreibzugriff: liegt der Eintrag
+-		 * in diesem Moment noch im Ring, haette die alte Zeile ihn
+-		 * gestohlen. Der Zaehler steht in watch und muss bei dichten
+-		 * Rufen ungefaehr die fruehere Verlustrate zeigen, waehrend
+-		 * "ohne Antwort" bei 0 bleibt -- sonst stimmt diese Erklaerung
+-		 * nicht. mainline/patches/vorschlaege/mips-return/BEFUND.md.
++			 * What remains is a look without write access: if the entry is
++			 * still in the ring at this moment, the old line would have
++			 * stolen it. The counter is in watch and with dense calls must
++			 * show roughly the earlier loss rate, while
++			 * "without an answer" stays at 0 -- otherwise this explanation
++			 * is wrong. mainline/patches/vorschlaege/mips-return/BEFUND.md.
+ 		 */
+ 		if (fifo_getCount((u32 *)(share_seq_w + 32)) > 0)
+ 			atomic_inc(&cpu_comm_newcall_pending_at_ack);
+@@ -659,10 +659,10 @@
+ 	return SendComm2CPUEx(msg_ptr, target, from_user);
+ }
+ 
+-/* ── SendAckLow — Send acknowledgement ────────────────────── */
++/* -- SendAckLow - Send acknowledgement ---------------------- */
+ 
+ /*
+- * SendAckLow — Send ACK for received message.
++ * SendAckLow - Send ACK for received message.
+  *
+  * From IDA @ 0xd9b0. DIFFERENT from SendCommLow!
+  * Writes to ACK-specific offsets in the share sequence:
+@@ -675,7 +675,7 @@
+  * the share sequence direction.
+  *
+  * Previously this was incorrectly delegating to SendCommLow which
+- * writes to offsets 16/20/24/4/8 instead — completely wrong!
++ * writes to offsets 16/20/24/4/8 instead - completely wrong!
+  */
+ void SendAckLow(void *data, u32 a2, u8 a3, u32 a4, u32 a5)
+ {
+@@ -712,12 +712,12 @@
+ 	dir = seq[2];
+ 
+ 	if (dst == src) {
+-		/* Local ACK — dispatch directly */
++		/* Local ACK - dispatch directly */
+ 		u32 ack_type = (dir == 0) ? MSG_TYPE_CALL_ACK : MSG_TYPE_RETURN_ACK;
+ 
+ 		queueAction(ack_type, getCurCPUID(0));
+ 	} else {
+-		/* Remote ACK — set sent flag and notify MIPS */
++		/* Remote ACK - set sent flag and notify MIPS */
+ 		seq[105] |= 4;	/* sent flag */
+ 		dmb(ish);
+ 
+@@ -736,7 +736,7 @@
+ 	}
+ }
+ 
+-/* ── Message handlers — called from cpu_comm_msg_cb ────────── */
++/* -- Message handlers - called from cpu_comm_msg_cb ---------- */
+ 
+ /*
+  * These handle incoming messages from MIPS.
+@@ -755,7 +755,7 @@
+  * directly process incoming MIPS messages in IRQ-context. It first
+  * synchronises with MIPS' L1-cache via DMB ISHST + wait-flag-cleared loop,
+  * THEN defers via queueAction. Without this, ARM races MIPS' cache flush
+- * and reads stale shared-mem data → garbage pointers leak into kernel
++ * and reads stale shared-mem data -> garbage pointers leak into kernel
+  * memory, observed as kernel-MM corruption with MIPS-VA (0x8B...) leaking
+  * into adjacent task_structs (2026-05-03 hdmird crash).
+  *
+@@ -806,16 +806,16 @@
+ {
+ 	cpu_comm_trace_ipc("handle_return", MSG_TYPE_RETURN, -1, cpu);
+ 	/*
+-	 * sync_mips_cache is REQUIRED — verified empirically 2026-05-03:
++	 * sync_mips_cache is REQUIRED - verified empirically 2026-05-03:
+ 	 * removing it caused immediate kernel-MM corruption (radix_tree_delete
+ 	 * dereferencing 0x8b15b... MIPS-VA leaked into kernel data structures,
+ 	 * cascade of __dabt_svc page-faults). The "silent drop" when bit-2 is
+-	 * not set is intentional protection — without MIPS' cache flush,
++	 * not set is intentional protection - without MIPS' cache flush,
+ 	 * share_seq fields are stale and contain MIPS-VA pointers that ARM
+ 	 * cannot dereference safely.
+ 	 *
+ 	 * 2026-05-04 Y2: defer comm_Action via queueAction (workqueue) to
+-	 * match stock @ 0xcc94 → queueAction(1, cpu). Direct call ran the
++	 * match stock @ 0xcc94 -> queueAction(1, cpu). Direct call ran the
+ 	 * RETURN-handler in IRQ-context and was correlated with kernel-MM
+ 	 * corruption / systemd PID 1 segfault under load.
+ 	 */
+@@ -825,7 +825,7 @@
+ 
+ void cpu_comm_handle_CPU2_callACK(int a1, int a2, int cpu)
+ {
+-	/* ACK-types: skip cache-sync — ack_action already does the
++	/* ACK-types: skip cache-sync - ack_action already does the
+ 	 * inverted-bit-check from session-K (memory feedback_inverted_bit_checks.md).
+ 	 * Adding cache-sync here would clear the bit before ack_action sees it. */
+ 	cpu_comm_trace_ipc("handle_call_ack", MSG_TYPE_CALL_ACK, -1, cpu);
+@@ -838,7 +838,7 @@
+ 	queueAction(MSG_TYPE_RETURN_ACK, cpu);
+ }
+ 
+-/* ── comm_Action — Dispatch incoming message by type ───────── */
++/* -- comm_Action - Dispatch incoming message by type --------- */
+ 
+ /*
+  * From IDA @ 0xe00c: Stock takes a single struct_ptr argument and reads
+@@ -847,9 +847,9 @@
+  * as separate values. The dispatch logic is identical.
+  *
+  * IDA dispatch:
+- *   type 0,1 → command_action(cpu, type)
+- *   type 2   → ack_action(cpu, 0)
+- *   type 3   → ack_action(cpu, 1)
++ *   type 0,1 -> command_action(cpu, type)
++ *   type 2   -> ack_action(cpu, 0)
++ *   type 3   -> ack_action(cpu, 1)
+  */
+ void comm_Action(int type, int cpu)
+ {
+@@ -874,16 +874,16 @@
+ 	}
+ }
+ 
+-/* ── command_action — Process incoming call from MIPS ──────── */
++/* -- command_action - Process incoming call from MIPS -------- */
+ 
+ /*
+  * From IDA @ 0xdbf8. Handles incoming messages from a remote CPU.
+  *
+- * Parameters (passed via comm_Action → data cast to u32):
++ * Parameters (passed via comm_Action -> data cast to u32):
+  *   a1 (data): CPU index of the remote sender
+  *   a2: direction (0=call, 1=return)
+  *
+- * For direction 0 (call): reads the call entry from the MIPS→ARM shared
++ * For direction 0 (call): reads the call entry from the MIPS->ARM shared
+  * sequence, dispatches it (via Comm_Add2NewCallFifo for low-priority or
+  * Comm_Add2Call2WQ for high-priority), then sends an ACK back.
+  *
+@@ -919,7 +919,7 @@
+ 	/* 2026-05-04 Y2: bit-2 check + clear is already done by
+ 	 * cpu_comm_sync_mips_cache() wrapper in cpu_comm_handle_CPU2_call/
+ 	 * _return. Re-checking here always failed (flag was just consumed)
+-	 * → "no pending msg" → all 28 hdmird calls returned -EFAULT.
++	 * -> "no pending msg" -> all 28 hdmird calls returned -EFAULT.
+ 	 * Removed the redundant block; sync_mips_cache is the single
+ 	 * authoritative gate. */
+ 
+@@ -934,7 +934,7 @@
+ 
+ 	/* Verify destination matches us */
+ 	if (component_id != getCurCPUID(0)) {
+-		/* Destination mismatch — but this may be the component ID,
++		/* Destination mismatch - but this may be the component ID,
+ 		 * not CPU ID. Stock asserts here. Log and continue.
+ 		 */
+ 		pr_debug("cpu_comm: command_action: comp_id %u (seq_idx=%u)\n",
+@@ -951,23 +951,23 @@
+ 		/*
+ 		 * Incoming CALL from MIPS.
+ 		 * Dispatch based on component priority (entry + 0 = component_id word):
+-		 *   ≤4: enqueue via Comm_Add2NewCallFifo (normal priority)
++		 *   <=4: enqueue via Comm_Add2NewCallFifo (normal priority)
+ 		 *   >4: enqueue via Comm_Add2Call2WQ (high priority / workqueue)
+ 		 */
+ 		u16 entry_cmd = *(u16 *)(entry_base);
+ 		{
+ 			/*
+-			 * Offsets wie im ausgehenden Pfad (CPUComm_CallEx): die
+-			 * Nutzlast beginnt bei +0x28 (comp_id), die Argumente folgen
+-			 * lückenlos ab +0x2c. Der frühere Druck las +0x34 als "pid"
+-			 * und sprang dann auf +0x38/+0x3c weiter -- er zeigte also die
+-			 * Parameter 1, 2, 4, 5 und beschriftete Parameter 3 als pid.
++			 * Offsets as in the outgoing path (CPUComm_CallEx): the
++			 * payload starts at +0x28 (comp_id), the arguments follow
++			 * without a gap from +0x2c. The earlier print read +0x34 as "pid"
++			 * and then jumped on to +0x38/+0x3c -- so it showed
++			 * parameters 1, 2, 4, 5 and labelled parameter 3 as pid.
+ 			 *
+-			 * Auf genau diesem Druck lesen wir die MIPS->ARM-Callbacks ab
+-			 * (MipsHalCallback_*). Ein um ein Feld verschobenes Messgerät
+-			 * ist dort schlimmer als gar keins. Die Absender-pid steht
+-			 * nicht in der Nutzlast; die Kanal-pid bei +0x10 ist das Feld,
+-			 * das den Aufruf überhaupt zuordnet (Schlüssel pid<<4 | chan).
++			 * We read the MIPS->ARM callbacks (MipsHalCallback_*) off exactly
++			 * this print. A measuring instrument that is off by one field
++			 * is worse there than none at all. The sender pid is not in
++			 * the payload; the channel pid at +0x10 is the field that
++			 * assigns the call at all (key pid<<4 | chan).
+ 			 */
+ 			u32 comp_id   = *(u32 *)(entry_base + 40);	/* +0x28 */
+ 			u16 dst_cpu   = *(u16 *)(entry_base +  2);	/* +0x02 */
+@@ -1052,7 +1052,7 @@
+ 		/* Find and signal the waiting thread */
+ 		session_id = *(u32 *)(entry_base + 12);
+ 		if (*(u16 *)(entry_base + 6) & MSG_FLAG_RETURN_ACK) {
+-			/* Has return-ack flag — find wait by session ID */
++			/* Has return-ack flag - find wait by session ID */
+ 			unsigned long seq_base = getSeq(remote_cpu);
+ 			u32 *wait_obj = NULL;
+ 
+@@ -1074,7 +1074,7 @@
+ 			*(u16 *)(entry_base + 10) |= 0x40;
+ 			cpu_comm_sem_up((void *)(wait_obj + 2));
+ 		} else {
+-			/* No return-ack — use embedded wait pointer */
++			/* No return-ack - use embedded wait pointer */
+ 			unsigned long wait_ptr = cc_deref((u32)*(u64 *)(entry_base + 32));
+ 
+ 			if (!wait_ptr) {
+@@ -1083,7 +1083,7 @@
+ 			}
+ 
+ 			/* Y2-followup: skip if MIPS-internal handle leaked
+-			 * into wait_ptr — would cause kernel-MM corruption. */
++			 * into wait_ptr - would cause kernel-MM corruption. */
+ 			if (cpu_comm_is_mips_va((unsigned long)wait_ptr)) {
+ 				pr_warn_ratelimited(
+ 					"cpu_comm: command_action: skip MIPS-VA wait_ptr=0x%08x session=0x%x\n",
+@@ -1135,19 +1135,19 @@
+ 		    (local_msg[6] & MSG_FLAG_RETURN_ACK)) {
+ 			*(u16 *)(local_msg + 8) = 0;	/* no return values */
+ 			if (SendComm2CPUEx((unsigned long)local_msg, remote_cpu, 0))
+-				pr_warn_ratelimited("cpu_comm: command_action: RETURN fuer comp=0x%08x fehlgeschlagen\n",
++				pr_warn_ratelimited("cpu_comm: command_action: RETURN for comp=0x%08x failed\n",
+ 						    *(u32 *)(local_msg + 40));
+ 		}
+ 	}
+ }
+ 
+-/* ── ack_action — Process ACK from MIPS ────────────────────── */
++/* -- ack_action - Process ACK from MIPS ---------------------- */
+ 
+ /*
+  * From IDA @ 0xc9bc: ack_action(u32 cpu, u32 direction)
+  *
+  * Gets the share sequence for the given CPU pair using the DIRECTION
+- * parameter (0=call-ack, 1=return-ack). This is critical — using the
++ * parameter (0=call-ack, 1=return-ack). This is critical - using the
+  * wrong direction signals the wrong semaphore.
+  *
+  * Validates status, then calls up() on the semaphore at offset 112
+@@ -1169,7 +1169,7 @@
+ 
+ 	/* 2026-04-21: Logic inverted from original RE.
+ 	 * MIPS's SendAckLow sets bit 2 in status2 BEFORE triggering the msgbox
+-	 * IRQ — the bit means "ACK has been deposited by sender". ARM must:
++	 * IRQ - the bit means "ACK has been deposited by sender". ARM must:
+ 	 *   1. Confirm bit IS set (else: spurious IRQ, nothing to deliver).
+ 	 *   2. Clear the bit (consume the ACK).
+ 	 *   3. Signal the waiter.
+@@ -1191,21 +1191,21 @@
+ 	/* Signal the semaphore at offset 112 in the share sequence.
+ 	 * This wakes up SendCommLow which is waiting for the ACK.
+ 	 *
+-	 * Die Firmware spiegelt hier die 32-Bit-Referenz zurueck, die der
+-	 * CALL mitgegeben hat -- also eine cc_ref, keinen nativen Zeiger.
+-	 * Ohne cc_deref() sucht die Semaphoren-Seitentabelle unter der
+-	 * getaggten Adresse, findet nichts, legt einen frischen Semaphor mit
+-	 * Zaehler 0 an und weckt niemanden: der volle Austausch
+-	 * CALL/CALL_ACK/RETURN/RETURN_ACK laeuft sauber durch und
+-	 * SendComm2CPUEx meldet trotzdem ACK-Timeout. Genau so gemessen am
+-	 * 04.09.2026, Log 'cc_sem: 80001398 ohne cc_sem_init benutzt'.
++	 * The firmware mirrors back here the 32-bit reference that the
++	 * CALL carried -- so a cc_ref, not a native pointer.
++	 * Without cc_deref() the semaphore page table looks under the
++	 * tagged address, finds nothing, creates a fresh semaphore with
++	 * count 0 and wakes nobody: the full exchange
++	 * CALL/CALL_ACK/RETURN/RETURN_ACK runs through cleanly and
++	 * SendComm2CPUEx reports an ACK timeout anyway. Measured exactly so on
++	 * 04.09.2026, log 'cc_sem: 80001398 used without cc_sem_init'.
+ 	 */
+ 	{
+ 		u32 sem_ref = *(u32 *)(share_seq + 112);
+ 		unsigned long sem_ptr = cc_deref(sem_ref);
+ 
+ 		if (!sem_ptr) {
+-			pr_err("cpu_comm: ack_action: ungueltige Semaphor-Referenz 0x%08x (cpu=%u dir=%u)\n",
++			pr_err("cpu_comm: ack_action: invalid semaphore reference 0x%08x (cpu=%u dir=%u)\n",
+ 			       sem_ref, cpu, direction);
+ 			return;
+ 		}
+@@ -1213,12 +1213,12 @@
+ 	}
+ }
+ 
+-/* ── comm_WorkAction — Work queue dispatch via actionFuncs table ── */
++/* -- comm_WorkAction - Work queue dispatch via actionFuncs table -- */
+ 
+ /*
+  * From IDA @ 0x6f4. Called as the work_struct callback for message
+  * processing. Stock pre-allocates 8 work_structs at fixed offsets in
+- * pcpu_comm_dev (one per cpu × type combo). Each work-struct embeds
++ * pcpu_comm_dev (one per cpu x type combo). Each work-struct embeds
+  * its own (cpu, prio) so the handler reads them as instance state.
+  *
+  * 2026-05-04 Y2: real workqueue dispatch (was a stub that ran direct).
+@@ -1262,7 +1262,7 @@
+ 	s_action_work_inited = true;
+ }
+ 
+-/* ── queueAction — Queue a work item for deferred dispatch ──── */
++/* -- queueAction - Queue a work item for deferred dispatch ---- */
+ 
+ /*
+  * From IDA @ 0xcad0. Defers comm_Action to the kernel workqueue, so
+@@ -1275,7 +1275,7 @@
+  *
+  * NOTE on coalescing: schedule_work() is a no-op if the work is already
+  * pending. MIPS sends one event per (cpu, type) at a time and waits for
+- * ARM ACK before the next, so at most one is pending → no coalescing
++ * ARM ACK before the next, so at most one is pending -> no coalescing
+  * loss in practice. Each (cpu, type) gets its own work_struct slot.
+  */
+ int queueAction(u32 direction, u32 cpu)
+@@ -1291,14 +1291,14 @@
+ 	return 0;
+ }
+ 
+-/* ── Message callback from RPMSG layer ─────────────────────── */
++/* -- Message callback from RPMSG layer ----------------------- */
+ 
+ /*
+  * Called by the built-in sunxi_cpu_comm RPMSG client when a
+  * 4-byte message arrives from MIPS via msgbox.
+  *
+  * @type:      message type (0=call, 1=return, 2=callACK, 3=returnACK)
+- * @direction: source direction (remapped: 0→0, 2→1, else→2)
++ * @direction: source direction (remapped: 0->0, 2->1, else->2)
+  */
+ void cpu_comm_msg_cb(int type, int direction)
+ {
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_sem.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_sem.c
+@@ -1,55 +1,55 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * cpu_comm_sem.c — Semaphoren, adressiert wie im Stock-Layout,
+- *                  gespeichert außerhalb davon.
++ * cpu_comm_sem.c - semaphores, addressed as in the stock layout,
++ *                  stored outside of it.
+  *
+- * 2026-09-01, für den arm64-Port.
++ * 2026-09-01, for the arm64 port.
+  *
+- * Warum das nötig ist
+- * ═══════════════════
+- * Der Treiber adressiert seine Semaphoren über Byte-Offsets, die aus dem
+- * Stock-Treiber stammen — sock+8, sock+24, sock+120, sock+936, sock+1036,
+- * sock+1052, sock+1148, list_base+64, wait_obj+8, channel+16. Alle diese
+- * Offsets liegen 16 Byte auseinander, weil `struct semaphore` auf arm32
+- * genau 16 Byte groß ist.
++ * Why this is needed
++ * ===================
++ * The driver addresses its semaphores through byte offsets taken from the
++ * stock driver - sock+8, sock+24, sock+120, sock+936, sock+1036,
++ * sock+1052, sock+1148, list_base+64, wait_obj+8, channel+16. All of these
++ * offsets are 16 bytes apart because `struct semaphore` on arm32 is
++ * exactly 16 bytes in size.
+  *
+- * Auf arm64 sind es 24 (raw_spinlock_t 4 + count 4 + list_head 16). Ein
+- * `sema_init()` an diesen Offsets überschreibt jeweils das nächste Feld:
++ * On arm64 it is 24 (raw_spinlock_t 4 + count 4 + list_head 16). A
++ * `sema_init()` at these offsets overwrites the next field each time:
+  *
+- *   sock[30] + 24 Byte  =  sock[30..35]   und bei sock[34] liegt die
+- *                                         FreeWait-FIFO
+- *   wait_obj + 8        =  entry[3..7]    und entry[5..6] sind die
+- *                                         selbstreferenzielle Liste
++ *   sock[30] + 24 bytes =  sock[30..35]   and sock[34] holds the
++ *                                         FreeWait FIFO
++ *   wait_obj + 8        =  entry[3..7]    and entry[5..6] are the
++ *                                         self-referencing list
+  *
+- * Die Offsets lassen sich nicht einfach spreizen: sie sind über acht
+- * Strukturen verteilt und stecken in Arithmetik, die aus IDA stammt.
++ * The offsets cannot simply be spread out: they are distributed over eight
++ * structures and are buried in arithmetic that comes from IDA.
+  *
+- * Sie müssen aber auch gar nicht stimmen. Geprüft am 01.09.2026:
+- * **alle** über `cpu_comm_sem_*` angefassten Semaphoren liegen in
+- * `s_CommSockt[]` — einem statischen Kernel-Array (cpu_comm_mem.c:38) —
+- * oder in den Wait-Objekten darin. Der MIPS liest keine davon; er bekommt
+- * allenfalls einen Zeiger darauf in einen Call-Slot geschrieben und
+- * dereferenziert ihn nicht (U-Boot veröffentlicht dort bewusst Null).
++ * They do not have to be right anyway. Checked on 01.09.2026:
++ * **all** semaphores touched through `cpu_comm_sem_*` live in
++ * `s_CommSockt[]` - a static kernel array (cpu_comm_mem.c:38) -
++ * or in the wait objects inside it. The MIPS reads none of them; at most it
++ * gets a pointer to one written into a call slot and does not
++ * dereference it (U-Boot deliberately publishes zero there).
+  *
+- * Die eine Stelle, die der MIPS wirklich liest — `sock[248]`, Offset
+- * 0x3E0, aus `display.bin` 0x8B11FEEC — ist ein roher u32 und läuft nicht
+- * über diese Schnittstelle. Sie bleibt unberührt.
++ * The one place the MIPS really reads - `sock[248]`, offset
++ * 0x3E0, from `display.bin` 0x8B11FEEC - is a raw u32 and does not go
++ * through this interface. It stays untouched.
+  *
+- * Also: die Adresse bleibt der Schlüssel, das Objekt zieht um.
++ * So: the address stays the key, the object moves out.
+  *
+- * Semantik
+- * ════════
+- * `cc_sem_init(addr, n)` legt an oder setzt zurück, Zählerstand n.
+- * `cc_sem(addr)` sucht und legt bei Bedarf mit **Zählerstand 0** an.
++ * Semantics
++ * =========
++ * `cc_sem_init(addr, n)` creates or resets, count n.
++ * `cc_sem(addr)` looks up and creates on demand with **count 0**.
+  *
+- * Der Vorgabewert 0 ist kein Zufall: die einzigen Adressen ohne
+- * ausdrückliches Init sind die Wait-Objekte, und die sind im Stock-Layout
+- * genau so gebaut — `entry[3]=0` (lock), `entry[4]=0` (count),
+- * `entry[5..6]` selbstreferenziell. Wer darauf `down()` ruft, wartet auf
+- * ein Signal; das ist die richtige Bedeutung.
++ * The default value 0 is no accident: the only addresses without an
++ * explicit init are the wait objects, and in the stock layout they are built
++ * exactly like that - `entry[3]=0` (lock), `entry[4]=0` (count),
++ * `entry[5..6]` self-referencing. Whoever calls `down()` on one waits for a
++ * signal; that is the right meaning.
+  *
+- * Eine Adresse, die auftaucht, ohne dass sie erwartet wurde, wird einmal
+- * gemeldet. Stumm bleibt hier nichts.
++ * An address that shows up without being expected is reported once. Nothing
++ * stays silent here.
+  */
+ 
+ #include <linux/kernel.h>
+@@ -60,15 +60,15 @@
+ #include "cpu_comm.h"
+ 
+ /*
+- * Bedarf, abgezählt: 2 CPUs × (7 feste Socket-Semaphoren + 2 FIFO-interne)
+- * = 18, dazu 2 × 20 Wait-Objekte = 40, dazu die Kanäle. 256 ist reichlich
+- * und passt in eine Cacheline-freundliche Tabelle.
++ * Demand, counted: 2 CPUs x (7 fixed socket semaphores + 2 FIFO-internal)
++ * = 18, plus 2 x 20 wait objects = 40, plus the channels. 256 is plenty
++ * and fits a cacheline-friendly table.
+  */
+ #define CC_SEM_SLOTS		256
+ #define CC_SEM_EMPTY		0UL
+ 
+ struct cc_sem_slot {
+-	unsigned long		key;	/* die Adresse, die der Treiber benutzt */
++	unsigned long		key;	/* the address the driver uses */
+ 	struct semaphore	sem;
+ };
+ 
+@@ -78,19 +78,19 @@
+ 
+ static inline unsigned int cc_sem_hash(unsigned long key)
+ {
+-	/* Die Schlüssel sind 4- oder 8-byte-ausgerichtete Adressen aus zwei
+-	 * zusammenhängenden Arrays — die unteren Bits sind konstant, die
+-	 * mittleren tragen die Information. Golden-Ratio-Mix statt Modulo. */
++	/* The keys are 4- or 8-byte-aligned addresses from two
++	 * contiguous arrays - the lower bits are constant, the
++	 * middle ones carry the information. Golden-ratio mix instead of modulo. */
+ 	return (unsigned int)((key >> 2) * 2654435761UL) % CC_SEM_SLOTS;
+ }
+ 
+ /*
+- * cc_sem_find — offene Adressierung, linear sondiert.
++ * cc_sem_find - open addressing, linear probing.
+  *
+- * @create: bei 0 wird nichts angelegt (Rückgabe NULL, wenn unbekannt).
+- * @count:  Anfangszählerstand, nur beim Anlegen benutzt.
++ * @create: if 0 nothing is created (returns NULL when unknown).
++ * @count:  initial count, only used on creation.
+  *
+- * Aufrufer hält cc_sem_tbl_lock.
++ * Caller holds cc_sem_tbl_lock.
+  */
+ static struct semaphore *cc_sem_find(unsigned long key, bool create, int count)
+ {
+@@ -111,17 +111,17 @@
+ 		}
+ 	}
+ 
+-	/* Voll. Das ist ein Fehler in der Abschätzung oben, kein Laufzeitfall. */
+-	pr_err("cpu_comm: cc_sem: Tabelle voll (%u Plätze), Adresse %lx verloren\n",
++	/* Full. That is an error in the estimate above, not a runtime case. */
++	pr_err("cpu_comm: cc_sem: table full (%u slots), address %lx lost\n",
+ 	       CC_SEM_SLOTS, key);
+ 	return NULL;
+ }
+ 
+ /*
+- * cc_sem_init — anlegen oder zurücksetzen, mit gegebenem Zählerstand.
++ * cc_sem_init - create or reset, with the given count.
+  *
+- * Ersetzt `sema_init((struct semaphore *)&feld, n)` an den Stellen, an
+- * denen `feld` im Stock-Layout liegt.
++ * Replaces `sema_init((struct semaphore *)&field, n)` where
++ * `field` sits in the stock layout.
+  */
+ void cc_sem_init(void *addr, int count)
+ {
+@@ -135,13 +135,13 @@
+ 	spin_lock_irqsave(&cc_sem_tbl_lock, flags);
+ 	sem = cc_sem_find(key, true, count);
+ 	if (sem)
+-		sema_init(sem, count);	/* auch beim Wiederfinden zurücksetzen */
++		sema_init(sem, count);	/* also reset when found again */
+ 	spin_unlock_irqrestore(&cc_sem_tbl_lock, flags);
+ }
+ EXPORT_SYMBOL_GPL(cc_sem_init);
+ 
+ /*
+- * cc_sem — die Semaphore zu einer Adresse, bei Bedarf angelegt (Zähler 0).
++ * cc_sem - the semaphore for an address, created on demand (count 0).
+  */
+ struct semaphore *cc_sem(void *addr)
+ {
+@@ -159,19 +159,19 @@
+ 	spin_unlock_irqrestore(&cc_sem_tbl_lock, flags);
+ 
+ 	if (fresh && sem)
+-		pr_info_once("cpu_comm: cc_sem: %lx ohne cc_sem_init benutzt, "
+-			     "mit Zähler 0 angelegt (erwartet für Wait-Objekte)\n",
++		pr_info_once("cpu_comm: cc_sem: %lx used without cc_sem_init, "
++			     "created with count 0 (expected for wait objects)\n",
+ 			     key);
+ 	return sem;
+ }
+ EXPORT_SYMBOL_GPL(cc_sem);
+ 
+ /*
+- * cc_sem_reset_all — Tabelle leeren. Beim Modul-Init und -Exit.
++ * cc_sem_reset_all - empty the table. At module init and exit.
+  *
+- * Wichtig beim Neuladen: die Schlüssel sind Adressen in `s_CommSockt[]`,
+- * das seine Adresse behält — alte Einträge sähen gültig aus und brächten
+- * einen Zählerstand aus dem letzten Leben mit.
++ * Important on reload: the keys are addresses in `s_CommSockt[]`,
++ * which keeps its address - old entries would look valid and bring
++ * a count from the last life along.
+  */
+ void cc_sem_reset_all(void)
+ {
+@@ -181,7 +181,7 @@
+ 	memset(cc_sem_tbl, 0, sizeof(cc_sem_tbl));
+ 	cc_sem_used = 0;
+ 	spin_unlock_irqrestore(&cc_sem_tbl_lock, flags);
+-	pr_info("cpu_comm: cc_sem: Tabelle geleert\n");
++	pr_info("cpu_comm: cc_sem: table cleared\n");
+ }
+ EXPORT_SYMBOL_GPL(cc_sem_reset_all);
+ 
+--- a/sound/soc/sunxi/sun50i-h713-msp.c
++++ b/sound/soc/sunxi/sun50i-h713-msp.c
+@@ -535,7 +535,7 @@
+ {
+ 	msp->mbox_timeouts++;
+ 	dev_warn_ratelimited(msp->dev,
+-			     "Mailbox-Timeout beim %s von %#06x (Status %#010x, insgesamt %u)\n",
++			     "Mailbox timeout during %s of %#06x (status %#010x, %u in total)\n",
+ 			     what, addr, readl(msp->mbox + MSP_MB_STATUS),
+ 			     msp->mbox_timeouts);
+ }
+@@ -547,7 +547,7 @@
+ 
+ 	ret = msp_wait_status(msp, MSP_ST_DSP1_WBUSY, false);
+ 	if (ret) {
+-		msp_note_timeout(msp, "Schreiben", addr);
++		msp_note_timeout(msp, "write", addr);
+ 		return ret;
+ 	}
+ 
+@@ -579,7 +579,7 @@
+ 
+ 	ret = msp_wait_status(msp, MSP_ST_DSP1_WBUSY, false);
+ 	if (ret) {
+-		msp_note_timeout(msp, "Lesen (busy)", addr);
++		msp_note_timeout(msp, "read (busy)", addr);
+ 		return ret;
+ 	}
+ 
+@@ -609,7 +609,7 @@
+ 		}
+ 
+ 		if (ktime_after(ktime_get(), deadline)) {
+-			msp_note_timeout(msp, "Lesen", addr);
++			msp_note_timeout(msp, "read", addr);
+ 			return -ETIMEDOUT;
+ 		}
+ 
+@@ -661,7 +661,7 @@
+ 			return 0;
+ 		if (ktime_after(ktime_get(), deadline)) {
+ 			dev_warn(msp->dev,
+-				 "Weckruf nach Block %d: 0x00EE bleibt %#06x nach %u Lesungen\n",
++				 "Wake-up call after block %d: 0x00EE stays %#06x after %u reads\n",
+ 				 block, val, reads);
+ 			return 0;
+ 		}
+@@ -693,12 +693,12 @@
+ 	/* dsp_island2.py: 0xd64 |= 0x10001, then 20 ms. */
+ 	ret = reset_control_deassert(msp->rst);
+ 	if (ret) {
+-		dev_err(msp->dev, "bus-demod-Reset nicht loesbar (%d)\n", ret);
++		dev_err(msp->dev, "bus-demod reset cannot be released (%d)\n", ret);
+ 		return ret;
+ 	}
+ 	ret = clk_prepare_enable(msp->bus);
+ 	if (ret) {
+-		dev_err(msp->dev, "bus-demod-Takt nicht einschaltbar (%d)\n", ret);
++		dev_err(msp->dev, "bus-demod clock cannot be enabled (%d)\n", ret);
+ 		return ret;
+ 	}
+ 	msp->bus_on = true;
+@@ -711,18 +711,18 @@
+ 	 */
+ 	ret = regmap_read(msp->router, 0, &router);
+ 	if (ret) {
+-		dev_err(msp->dev, "TVFE-Router nicht lesbar (%d)\n", ret);
++		dev_err(msp->dev, "TVFE router not readable (%d)\n", ret);
+ 		return ret;
+ 	}
+ 	if (!router) {
+ 		dev_err(msp->dev,
+-			"TVFE-Top liest 0 -- der Demod-Bus ist tot, Insel nicht erreichbar\n");
++			"TVFE top reads 0 -- the demod bus is dead, island not reachable\n");
+ 		return -ENODEV;
+ 	}
+ 
+ 	ret = regmap_write(msp->router, 0, MSP_TVFE_ROUTER_ON);
+ 	if (ret) {
+-		dev_err(msp->dev, "TVFE-Router nicht schreibbar (%d)\n", ret);
++		dev_err(msp->dev, "TVFE router not writable (%d)\n", ret);
+ 		return ret;
+ 	}
+ 	fsleep(MSP_ROUTER_SETTLE_US);
+@@ -741,7 +741,7 @@
+ 	ctl = readl(msp->top + MSP_TOP_CTL);
+ 	if ((ctl & MSP_TOP_CTL_CLK) != MSP_TOP_CTL_CLK) {
+ 		dev_err(msp->dev,
+-			"Audio-Top-Takt haelt nicht (0x0614a000 = %#010x)\n", ctl);
++			"Audio top clock does not hold (0x0614a000 = %#010x)\n", ctl);
+ 		return -ENODEV;
+ 	}
+ 
+@@ -762,12 +762,12 @@
+ 	ret = msp_dsp_read(msp, DSP_CLOCK, &val);
+ 	if (ret) {
+ 		dev_err(msp->dev,
+-			"Mailbox-Selbsttest gescheitert: 0x00EE antwortet nicht (Status %#010x)\n",
++			"Mailbox self-test failed: 0x00EE does not answer (status %#010x)\n",
+ 			readl(msp->mbox + MSP_MB_STATUS));
+ 		return ret;
+ 	}
+ 
+-	dev_dbg(msp->dev, "Mailbox lebt, 0x00EE = %#06x\n", val);
++	dev_dbg(msp->dev, "Mailbox is alive, 0x00EE = %#06x\n", val);
+ 	return 0;
+ }
+ 
+@@ -817,7 +817,7 @@
+ 		ret = msp_dsp_write(msp, addr, val);
+ 		if (ret) {
+ 			dev_err(msp->dev,
+-				"Download bricht bei Paar %zu (%#06x = %#06x, Block %d) ab\n",
++				"Download aborts at pair %zu (%#06x = %#06x, block %d)\n",
+ 				i, addr, val, block);
+ 			msp->downloading = false;
+ 			return ret;
+@@ -844,12 +844,12 @@
+ 
+ 	if (flag != DSP_PATCH_FLAG_OK || version != DSP_VERSION_OK) {
+ 		dev_err(msp->dev,
+-			"Patch nicht angenommen: 0x80FF = %#06x (erwartet %#06x), 0x0001 = %#06x (erwartet %#06x)\n",
++			"Patch not accepted: 0x80FF = %#06x (expected %#06x), 0x0001 = %#06x (expected %#06x)\n",
+ 			flag, DSP_PATCH_FLAG_OK, version, DSP_VERSION_OK);
+ 		return -EIO;
+ 	}
+ 
+-	dev_info(msp->dev, "Patch geladen: %zu Paare, %u Bloecke, 0x80FF = 1, 0x0001 = %#06x\n",
++	dev_info(msp->dev, "Patch loaded: %zu pairs, %u blocks, 0x80FF = 1, 0x0001 = %#06x\n",
+ 		 pairs, msp->blocks, version);
+ 	return 0;
+ }
+@@ -1627,7 +1627,7 @@
+ 
+ 	while (msp->heal_count < MSP_HEAL_MAX) {
+ 		msp->heal_count++;
+-		dev_warn(msp->dev, "Selbstheilung %u/%u: Insel-Reset und Neuaufbau\n",
++		dev_warn(msp->dev, "Self-healing %u/%u: island reset and rebuild\n",
+ 			 msp->heal_count, MSP_HEAL_MAX);
+ 
+ 		if (!msp_bringup(msp)) {
+@@ -1637,7 +1637,7 @@
+ 	}
+ 
+ 	dev_err(msp->dev,
+-		"Selbstheilung nach %u Versuchen aufgegeben -- Zustand bleibt \"error\", \"echo 1 > reset\" versucht es erneut\n",
++		"Self-healing given up after %u attempts -- state stays \"error\", \"echo 1 > reset\" tries again\n",
+ 		MSP_HEAL_MAX);
+ out:
+ 	mutex_unlock(&msp->lock);
+@@ -2079,10 +2079,10 @@
+ 	mutex_lock(&msp->lock);
+ 
+ 	seq_printf(s, "state: %s\n", msp_state_names[msp->state]);
+-	seq_printf(s, "heal_count: %u von %u\n", msp->heal_count, MSP_HEAL_MAX);
++	seq_printf(s, "heal_count: %u of %u\n", msp->heal_count, MSP_HEAL_MAX);
+ 	seq_printf(s, "mbox_timeouts: %u\n", msp->mbox_timeouts);
+ 	seq_printf(s, "mbox_reissues: %u\n", msp->mbox_reissues);
+-	seq_printf(s, "firmware: %s, %zu Byte, %u Bloecke\n",
++	seq_printf(s, "firmware: %s, %zu bytes, %u blocks\n",
+ 		   MSP_FW_NAME, msp->fw_size, msp->blocks);
+ 	seq_printf(s, "controls: switch=%u volume=%ld (%d mdB) mute=%u input_mute=%u\n",
+ 		   msp->input_on, msp->volume,
+@@ -2149,7 +2149,7 @@
+ 
+ 		if (!msp_dsp_read(msp, DSP_SPDIFRX2_STATUS, &nonpcm))
+ 			seq_printf(s,
+-				   "%-18s %#06x = %#06x (gueltig %u, komprimiert %u, Typ %#04x)\n",
++				   "%-18s %#06x = %#06x (valid %u, compressed %u, type %#04x)\n",
+ 				   "nonpcm", DSP_SPDIFRX2_STATUS, nonpcm,
+ 				   !!(nonpcm & DSP_NONPCM_VALID),
+ 				   !!(nonpcm & DSP_NONPCM_COMPRESSED),
+@@ -2181,7 +2181,7 @@
+ 	base = devm_platform_ioremap_resource_byname(pdev, name);
+ 	if (IS_ERR(base))
+ 		return dev_err_probe(&pdev->dev, PTR_ERR(base),
+-				     "reg-Eintrag \"%s\" nicht abbildbar\n",
++				     "reg entry \"%s\" cannot be mapped\n",
+ 				     name);
+ 
+ 	*out = base;
+@@ -2200,13 +2200,13 @@
+ 	ret = request_firmware(&fw, name, msp->dev);
+ 	if (ret)
+ 		return dev_err_probe(msp->dev, ret,
+-				     "MSP-Firmware \"%s\" nicht ladbar\n", name);
++				     "MSP firmware \"%s\" cannot be loaded\n", name);
+ 
+ 	if (!fw->size || fw->size % 4 ||
+ 	    get_unaligned_be16(fw->data) != MSP_FW_MAGIC_ADDR ||
+ 	    get_unaligned_be16(fw->data + 2) != MSP_FW_MAGIC_VAL) {
+ 		dev_err(msp->dev,
+-			"\"%s\" ist kein MSPM-Strom (%zu Byte, Kopf %#06x %#06x)\n",
++			"\"%s\" is not an MSPM stream (%zu bytes, head %#06x %#06x)\n",
+ 			name, fw->size,
+ 			fw->size >= 4 ? get_unaligned_be16(fw->data) : 0,
+ 			fw->size >= 4 ? get_unaligned_be16(fw->data + 2) : 0);
+@@ -2216,7 +2216,7 @@
+ 
+ 	if (fw->size != MSP_FW_EXPECTED_SIZE)
+ 		dev_warn(msp->dev,
+-			 "\"%s\" ist %zu Byte, erwartet werden %u (re/work/audio/patch_msp.bin)\n",
++			 "\"%s\" is %zu bytes, %u expected (re/work/audio/patch_msp.bin)\n",
+ 			 name, fw->size, MSP_FW_EXPECTED_SIZE);
+ 
+ 	/*
+@@ -2246,12 +2246,12 @@
+ 
+ 	ret = devm_clk_bulk_get(dev, MSP_NUM_TVFE_CLOCKS, msp->tvfe);
+ 	if (ret)
+-		return dev_err_probe(dev, ret, "TVFE-Takte fehlen\n");
++		return dev_err_probe(dev, ret, "TVFE clocks missing\n");
+ 
+ 	msp->bus = devm_clk_get(dev, "bus-demod");
+ 	if (IS_ERR(msp->bus))
+ 		return dev_err_probe(dev, PTR_ERR(msp->bus),
+-				     "Takt \"bus-demod\" fehlt\n");
++				     "clock \"bus-demod\" missing\n");
+ 
+ 	/*
+ 	 * Exclusive, although S17 recommended a shared reset for the whole
+@@ -2264,7 +2264,7 @@
+ 	msp->rst = devm_reset_control_get_exclusive(dev, "bus-demod");
+ 	if (IS_ERR(msp->rst))
+ 		return dev_err_probe(dev, PTR_ERR(msp->rst),
+-				     "Reset \"bus-demod\" fehlt\n");
++				     "reset \"bus-demod\" missing\n");
+ 
+ 	for (i = 0; i < ARRAY_SIZE(msp_assigned_rates); i++) {
+ 		struct clk *clk = msp->tvfe[msp_assigned_rates[i].index].clk;
+@@ -2272,14 +2272,14 @@
+ 
+ 		ret = clk_set_rate(clk, rate);
+ 		if (ret)
+-			dev_warn(dev, "%s laesst sich nicht auf %lu Hz setzen (%d)\n",
++			dev_warn(dev, "%s cannot be set to %lu Hz (%d)\n",
+ 				 msp->tvfe[msp_assigned_rates[i].index].id,
+ 				 rate, ret);
+ 	}
+ 
+ 	ret = clk_bulk_prepare_enable(MSP_NUM_TVFE_CLOCKS, msp->tvfe);
+ 	if (ret)
+-		return dev_err_probe(dev, ret, "TVFE-Takte nicht einschaltbar\n");
++		return dev_err_probe(dev, ret, "TVFE clocks cannot be enabled\n");
+ 
+ 	/*
+ 	 * Take a reference on the demod bus gate right away, even though the
+@@ -2290,7 +2290,7 @@
+ 	ret = clk_prepare_enable(msp->bus);
+ 	if (ret) {
+ 		clk_bulk_disable_unprepare(MSP_NUM_TVFE_CLOCKS, msp->tvfe);
+-		return dev_err_probe(dev, ret, "bus-demod nicht einschaltbar\n");
++		return dev_err_probe(dev, ret, "bus-demod cannot be enabled\n");
+ 	}
+ 	msp->bus_on = true;
+ 
+@@ -2354,7 +2354,7 @@
+ 						      "allwinner,tvfe-router");
+ 	if (IS_ERR(msp->router))
+ 		return dev_err_probe(dev, PTR_ERR(msp->router),
+-				     "kein Zugriff auf den TVFE-Router (allwinner,tvfe-router)\n");
++				     "no access to the TVFE router (allwinner,tvfe-router)\n");
+ 
+ 	ret = msp_load_firmware(msp);
+ 	if (ret)
+@@ -2369,7 +2369,7 @@
+ 	ret = pm_runtime_resume_and_get(dev);
+ 	if (ret) {
+ 		pm_runtime_disable(dev);
+-		return dev_err_probe(dev, ret, "pd_tvfe nicht einschaltbar\n");
++		return dev_err_probe(dev, ret, "pd_tvfe cannot be powered on\n");
+ 	}
+ 
+ 	ret = msp_get_clocks(msp);
+@@ -2378,7 +2378,7 @@
+ 
+ 	ret = msp_create_card(msp);
+ 	if (ret) {
+-		dev_err(dev, "ALSA-Karte nicht anlegbar (%d)\n", ret);
++		dev_err(dev, "ALSA card cannot be created (%d)\n", ret);
+ 		goto err_clocks;
+ 	}
+ 
+@@ -2396,7 +2396,7 @@
+ 		 * self-healing worker gets its chance below.
+ 		 */
+ 		dev_err(dev,
+-			"Inbetriebnahme gescheitert (%d) -- Zustand \"error\", Selbstheilung laeuft an\n",
++			"Bring-up failed (%d) -- state \"error\", self-healing starts\n",
+ 			ret);
+ 		schedule_work(&msp->heal);
+ 	}
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -61,53 +61,53 @@
+  */
+ #define HY310_DEFAULT_PULSES_PER_REV	2
+ 
+-/* Die NTC-Rohwerte kommen ueber die IIO-Verbraucher-API; welcher Wandler das
+- * ist, sagt der ntc0-Unterknoten ueber "source". */
++/* The raw NTC values come through the IIO consumer API; which converter that
++ * is, the ntc0 subnode says via "source". */
+ #define HY310_NTC_SOURCE_LRADC		0
+ #define HY310_NTC_SOURCE_GPADC		1
+ 
+ /*
+- * Rohwert -> Millivolt. Beide Umrechnungen stammen aus dem Stock-vmlinux
+- * (ARM32, mit DWARF, Quelldatei pwm_fan.c bzw. sunxi_gpadc.c):
++ * Raw value -> millivolt. Both conversions come from the stock vmlinux
++ * (ARM32, with DWARF, source files pwm_fan.c and sunxi_gpadc.c respectively):
+  *
+- *   source = 1 (GPADC): get_adc_data (c05db32c) ruft
+- *       sunxi_gpadc_read_channel_data (c06b93f8) auf; die liest die 12 Bit
+- *       des Datenregisters (sunxi_gpadc_read_data, c06b9090: "ubfx r0, r0,
+- *       #0, #12") und rechnet
+- *           mul r0, #0x1b7          ; 439 = 1800000/4095, Mikrovolt je LSB
+- *           umull ..., #0x10624dd3  ; Magie fuer die Division durch 1000
++ *   source = 1 (GPADC): get_adc_data (c05db32c) calls
++ *       sunxi_gpadc_read_channel_data (c06b93f8); that reads the 12 bits
++ *       of the data register (sunxi_gpadc_read_data, c06b9090: "ubfx r0, r0,
++ *       #0, #12") and computes
++ *           mul r0, #0x1b7          ; 439 = 1800000/4095, microvolts per LSB
++ *           umull ..., #0x10624dd3  ; magic for the division by 1000
+  *           lsr   r0, r1, #6
+- *       also mv = raw * 439 / 1000.
++ *       i.e. mv = raw * 439 / 1000.
+  *
+- *   source = 0 (LRADC): get_adc_data rechnet "mov r0, #0x15; mul r0, r0, r4",
+- *       also mv = raw * 21. Gegenprobe: der groesste lradc-table-Eintrag ist
+- *       0x41A = 1050 = 50 * 21, und 50 ist ein glatter 6-Bit-Rohwert.
++ *   source = 0 (LRADC): get_adc_data computes "mov r0, #0x15; mul r0, r0, r4",
++ *       i.e. mv = raw * 21. Cross-check: the largest lradc-table entry is
++ *       0x41A = 1050 = 50 * 21, and 50 is a round 6-bit raw value.
+  *
+- * Damit stehen beide Tabellen im DTS in Millivolt -- gpadc_table_init
+- * (c05d8f84) kopiert die DTS-Werte unveraendert in den Suchbaum, es wird
+- * nichts skaliert, und search_table_gpadc (c05db898) vergleicht genau diese
+- * Werte mit dem Ergebnis der obigen Umrechnung.
++ * So both tables in the DTS are in millivolts -- gpadc_table_init
++ * (c05d8f84) copies the DTS values unchanged into the search tree, nothing
++ * is scaled, and search_table_gpadc (c05db898) compares exactly these
++ * values with the result of the conversion above.
+  */
+ #define HY310_GPADC_UV_PER_LSB		439
+ #define HY310_LRADC_MV_PER_LSB		21
+ 
+ /*
+- * search_table_gpadc verwirft alles ueber 0x6cc = 1740 mV (und die 0). Der
+- * Vollausschlag waere 4095 * 439 / 1000 = 1797 mV; oberhalb 1740 mV kann der
+- * Teiler mit einem angeschlossenen NTC nicht mehr landen, das ist der
+- * "Fuehler fehlt / Vorwiderstand offen"-Fall.
++ * search_table_gpadc discards everything above 0x6cc = 1740 mV (and the 0). The
++ * full scale would be 4095 * 439 / 1000 = 1797 mV; above 1740 mV the
++ * divider with a connected NTC can no longer land, that is the
++ * "sensor missing / series resistor open" case.
+  */
+ #define HY310_NTC_MV_MAX		1740
+ 
+ /*
+- * Zahl der Abtastungen je Messung. Ueber die IIO-sysfs-Knoten schwankte
+- * derselbe Kanal am 11.09. zwischen 680 und 1777 (120 Messungen, Mittel
+- * 1747,6, Standardabweichung 115), waehrend das Datenregister direkt gelesen
+- * vollkommen still stand -- es sind einzelne Ausreisser, keine Streuung.
+- * Ein Ausreisser nach unten bedeutet nach der Tabelle *mehr* Temperatur
+- * (680 Rohwert -> 298 mV -> 80 Grad), also genau die Richtung, in der eine
+- * Abschaltschwelle haengt. Der Median von fuenf Abtastungen raeumt bis zu
+- * zwei solche Ausreisser weg.
++ * Number of samples per measurement. Through the IIO sysfs nodes the
++ * same channel fluctuated on 11.09. between 680 and 1777 (120 measurements, mean
++ * 1747.6, standard deviation 115), while the data register read directly
++ * stood completely still -- these are single outliers, not scatter.
++ * An outlier downwards means *more* temperature according to the table
++ * (680 raw -> 298 mV -> 80 degrees), exactly the direction in which a
++ * shutdown threshold hangs. The median of five samples clears up to
++ * two such outliers.
+  */
+ #define HY310_NTC_SAMPLES		5
+ 
+@@ -121,12 +121,12 @@
+ #define NTC_POWEROFF_CYCLES		50
+ 
+ /*
+- * Thermal emergency shutdown. OFF by default. Die Umrechnung selbst ist
+- * inzwischen aus dem Stock-vmlinux belegt (siehe HY310_GPADC_UV_PER_LSB), und
+- * temp1_input wird nur noch gemeldet, wenn die Messung wirklich in der
+- * Tabelle liegt. Was weiter fehlt, ist der Abgleich der Kurve gegen ein
+- * Referenzthermometer am Geraet; bis dahin meldet und warnt der Treiber nur.
+- * thermal_shutdown=1 erst setzen, wenn temp1_input am Geraet nachgemessen ist.
++ * Thermal emergency shutdown. OFF by default. The conversion itself is
++ * by now backed by the stock vmlinux (see HY310_GPADC_UV_PER_LSB), and
++ * temp1_input is only reported when the measurement really lies in the
++ * table. What is still missing is the comparison of the curve against a
++ * reference thermometer on the device; until then the driver only reports and warns.
++ * Set thermal_shutdown=1 only once temp1_input has been measured on the device.
+  */
+ static bool thermal_shutdown;
+ module_param(thermal_shutdown, bool, 0644);
+@@ -176,7 +176,7 @@
+  * @fg_count_lock:   Spinlock protecting fg_count
+  * @rpm:             Last measured RPM
+  * @rpm_warn_speed:  RPM below which a warning cycle is counted
+- * @rpm_warn_cnt:    Threshold of consecutive warn cycles → power off
++ * @rpm_warn_cnt:    Threshold of consecutive warn cycles -> power off
+  * @rpm_warn_cycles: Current consecutive warn cycle count
+  * @boot_rpm_logged: True once the first reading after boot has been logged
+  * @valid:           True if this fan slot is populated
+@@ -209,9 +209,9 @@
+  * @warn_cycles:     Consecutive cycles above temp_warn threshold
+  * @poweroff_cycles: Consecutive cycles above temp_poweroff threshold
+  *
+- * @valid ist der Kern der Sache: solange keine brauchbare Messung vorliegt,
+- * meldet temp1_input -ENODATA statt einer Zahl. Eine fehlende Temperatur ist
+- * besser als eine falsche, an ihr haengt eine Abschaltschwelle.
++ * @valid is the core of the matter: as long as there is no usable measurement,
++ * temp1_input reports -ENODATA instead of a number. A missing temperature is
++ * better than a wrong one, a shutdown threshold hangs on it.
+  */
+ struct hy310_ntc {
+ 	bool			 enabled;
+@@ -244,13 +244,13 @@
+ 	/* NTC temperature sensing via IIO (GPADC or LRADC channel) */
+ 	struct iio_channel	*ntc_iio_chan;
+ 
+-	/* ntc0/source und ntc0/channel aus dem DTS */
++	/* ntc0/source and ntc0/channel from the DTS */
+ 	u32			 ntc_source;
+ 	u32			 ntc_channel;
+ 
+ 	/*
+-	 * NTC lookup table: Paare (temp_degC, millivolt), nach Temperatur
+-	 * aufsteigend und nach Spannung streng absteigend sortiert.
++	 * NTC lookup table: pairs (temp_degC, millivolt), sorted ascending by
++	 * temperature and strictly descending by voltage.
+ 	 */
+ 	u32			 ntc_table[HY310_MAX_TABLE_ENTRIES * 2];
+ 	int			 ntc_table_len;		/* number of pairs */
+@@ -510,10 +510,10 @@
+ }
+ 
+ /**
+- * hy310_ntc_read_raw_median - Median aus HY310_NTC_SAMPLES Abtastungen
++ * hy310_ntc_read_raw_median - median of HY310_NTC_SAMPLES samples
+  * @priv: driver private data
+  *
+- * Gibt den Rohwert des Wandlers zurueck oder einen negativen Fehler.
++ * Returns the raw value of the converter or a negative error.
+  */
+ static int hy310_ntc_read_raw_median(struct hy310_board_mgr *priv)
+ {
+@@ -540,18 +540,18 @@
+ }
+ 
+ /**
+- * hy310_ntc_raw_to_mv - Rohwert des Wandlers in Millivolt umrechnen
++ * hy310_ntc_raw_to_mv - convert the converter's raw value to millivolts
+  * @priv: driver private data
+- * @raw:  Rohwert
++ * @raw:  raw value
+  *
+- * Siehe die Herleitung bei HY310_GPADC_UV_PER_LSB.
++ * See the derivation at HY310_GPADC_UV_PER_LSB.
+  */
+ static int hy310_ntc_raw_to_mv(struct hy310_board_mgr *priv, int raw)
+ {
+ 	/*
+-	 * Der GPADC hat zwoelf Bit, der LRADC sechs. Ein Rohwert darueber kann
+-	 * nicht stimmen -- die 0 laeuft in hy310_ntc_mv_to_temp_mc in den
+-	 * Ungueltig-Zweig, statt hier die Multiplikation ueberlaufen zu lassen.
++	 * The GPADC has twelve bits, the LRADC six. A raw value above that cannot
++	 * be right -- the 0 runs into the invalid branch in hy310_ntc_mv_to_temp_mc
++	 * instead of letting the multiplication overflow here.
+ 	 */
+ 	if (raw < 0 || raw > 4095)
+ 		return 0;
+@@ -563,24 +563,24 @@
+ }
+ 
+ /**
+- * hy310_ntc_mv_to_temp_mc - Millivolt in Milligrad Celsius umrechnen
++ * hy310_ntc_mv_to_temp_mc - convert millivolts to millidegrees Celsius
+  * @priv:    driver private data
+- * @mv:      Spannung am NTC-Teiler in Millivolt
+- * @temp_mc: Ergebnis in Milligrad Celsius
++ * @mv:      voltage at the NTC divider in millivolts
++ * @temp_mc: result in millidegrees Celsius
+  *
+- * Die Tabelle steht in Millivolt. Der Hersteller liefert ganze Grad: in
+- * search_table_gpadc (c05db898) den Eintrag i mit
++ * The table is in millivolts. The vendor delivers whole degrees: it takes, in
++ * search_table_gpadc (c05db898), the entry i with
+  *
+  *	table[i + 1].mv  <  mv  <=  table[i].mv
+  *
+- * mit den Randfaellen "mv >= table[0].mv" -> table[0].temp und
+- * "mv <= table[n-1].mv" -> table[n-1].temp. Wir tun dasselbe, rechnen aber
+- * zwischen zwei Stuetzstellen linear weiter: an jeder Stuetzstelle kommt
+- * derselbe Wert heraus wie beim Hersteller, dazwischen entfaellt das
+- * Springen um ein ganzes Grad, sobald der Rohwert um ein LSB wandert. Ein
+- * Grad sind hier rund 14 mV, also etwa 33 LSB.
++ * with the edge cases "mv >= table[0].mv" -> table[0].temp and
++ * "mv <= table[n-1].mv" -> table[n-1].temp. We do the same, but go on
++ * linearly between two nodes: at every node the same value comes out as
++ * with the vendor, in between the jump by a whole degree disappears as soon as
++ * the raw value moves by one LSB. One
++ * degree is about 14 mV here, so roughly 33 LSB.
+  *
+- * Rueckgabe: 0 und *temp_mc gesetzt, oder ein negativer Fehler.
++ * Return: 0 and *temp_mc set, or a negative error.
+  */
+ static int hy310_ntc_mv_to_temp_mc(struct hy310_board_mgr *priv, int mv,
+ 				   int *temp_mc)
+@@ -622,12 +622,12 @@
+ }
+ 
+ /**
+- * hy310_ntc_mark_invalid - letzte Messung als unbrauchbar verbuchen
++ * hy310_ntc_mark_invalid - book the last measurement as unusable
+  * @priv: driver private data
+  *
+- * temp1_input meldet danach -ENODATA, und die Zaehler fuer Warnung und
+- * Abschaltung fangen wieder bei null an: eine Messung, die wir nicht
+- * einordnen koennen, darf keine Schwelle ausloesen.
++ * temp1_input reports -ENODATA afterwards, and the counters for warning and
++ * shutdown start again at zero: a measurement that we cannot
++ * classify must not trigger a threshold.
+  */
+ static void hy310_ntc_mark_invalid(struct hy310_board_mgr *priv)
+ {
+@@ -639,8 +639,8 @@
+ /**
+  * hy310_ntc_work_fn - periodic NTC temperature poll (every 2.5 seconds)
+  *
+- * Liest den Wandler, rechnet ueber Millivolt in die Tabelle und greift ein,
+- * wenn die Temperatur die Schwellen ueberschreitet.
++ * Reads the converter, converts via millivolts into the table and intervenes
++ * when the temperature crosses the thresholds.
+  */
+ static void hy310_ntc_work_fn(struct work_struct *work)
+ {
+@@ -659,7 +659,7 @@
+ 	if (adc_val < 0) {
+ 		hy310_ntc_mark_invalid(priv);
+ 		dev_warn_ratelimited(priv->dev,
+-				     "NTC: Wandler nicht lesbar (%d), keine Temperatur\n",
++				     "NTC: converter not readable (%d), no temperature\n",
+ 				     adc_val);
+ 		goto reschedule;
+ 	}
+@@ -669,7 +669,7 @@
+ 	if (ret) {
+ 		hy310_ntc_mark_invalid(priv);
+ 		dev_warn_ratelimited(priv->dev,
+-				     "NTC: Rohwert %d = %d mV liegt ausserhalb der Tabelle '%s' (%d), keine Temperatur\n",
++				     "NTC: raw value %d = %d mV is outside the table '%s' (%d), no temperature\n",
+ 				     adc_val, mv, priv->ntc_table_name ?: "?",
+ 				     ret);
+ 		goto reschedule;
+@@ -679,13 +679,13 @@
+ 	priv->ntc.valid = true;
+ 	temp_c = temp_mc / 1000;
+ 
+-	dev_dbg(priv->dev, "NTC: Rohwert %d -> %d mV -> %d.%03d Grad\n",
++	dev_dbg(priv->dev, "NTC: raw %d -> %d mV -> %d.%03d degrees\n",
+ 		adc_val, mv, temp_mc / 1000, temp_mc % 1000);
+ 
+ 	if (temp_c > priv->temp_warn_c) {
+ 		priv->ntc.warn_cycles++;
+ 		dev_warn(priv->dev,
+-			 "NTC: temperature %d°C exceeds warn threshold %d°C (cycle %u/%u)\n",
++			 "NTC: temperature %d C exceeds warn threshold %d C (cycle %u/%u)\n",
+ 			 temp_c, priv->temp_warn_c,
+ 			 priv->ntc.warn_cycles, NTC_WARN_CYCLES);
+ 
+@@ -703,7 +703,7 @@
+ 	if (temp_c > priv->temp_poweroff_c) {
+ 		priv->ntc.poweroff_cycles++;
+ 		dev_err(priv->dev,
+-			"NTC: temperature %d°C exceeds poweroff threshold %d°C (cycle %u/%u)\n",
++			"NTC: temperature %d C exceeds poweroff threshold %d C (cycle %u/%u)\n",
+ 			temp_c, priv->temp_poweroff_c,
+ 			priv->ntc.poweroff_cycles, NTC_POWEROFF_CYCLES);
+ 
+@@ -814,10 +814,10 @@
+ 		break;
+ 	case hwmon_temp:
+ 		/*
+-		 * temp1_input nur anlegen, wenn wirklich gemessen werden kann:
+-		 * NTC freigegeben, ein Wandlerkanal da und eine brauchbare
+-		 * Tabelle geladen. Sonst gibt es gar keine Temperatur statt
+-		 * einer erfundenen.
++			 * Only create temp1_input when it can really be measured:
++			 * NTC enabled, a converter channel present and a usable
++			 * table loaded. Otherwise there is no temperature at all instead of
++			 * an invented one.
+ 		 */
+ 		if (attr == hwmon_temp_input) {
+ 			const struct hy310_board_mgr *priv = data;
+@@ -902,17 +902,17 @@
+  * ------------------------------------------------------------------------- */
+ 
+ /**
+- * hy310_parse_ntc_table - gpadc-table oder lradc-table aus dem DTS lesen
++ * hy310_parse_ntc_table - read gpadc-table or lradc-table from the DTS
+  * @priv:  driver private data
+  * @node:  device node to search
+  *
+- * Welche der beiden Tabellen gilt, sagt ntc0/source -- nicht die Reihenfolge,
+- * in der wir suchen. Der Knoten traegt beide, und die Werte der einen sind in
+- * der anderen sinnlos: die gpadc-table ist auf 439/1000 mV je LSB gerechnet,
+- * die lradc-table auf 21 mV je LSB.
++ * Which of the two tables applies is told by ntc0/source -- not by the order
++ * in which we search. The node carries both, and the values of one are
++ * meaningless in the other: the gpadc-table is computed for 439/1000 mV per LSB,
++ * the lradc-table for 21 mV per LSB.
+  *
+- * Format: flaches u32-Feld aus Paaren <temp_degC millivolt ...>, nach
+- * Temperatur aufsteigend und nach Spannung streng absteigend.
++ * Format: flat u32 array of pairs <temp_degC millivolt ...>, ascending by
++ * temperature and strictly descending by voltage.
+  */
+ static void hy310_parse_ntc_table(struct hy310_board_mgr *priv,
+ 				  struct device_node *node)
+@@ -924,7 +924,7 @@
+ 
+ 	prop = of_get_property(node, name, &len);
+ 	if (!prop) {
+-		dev_warn(priv->dev, "NTC: '%s' fehlt im DTS\n", name);
++		dev_warn(priv->dev, "NTC: '%s' is missing in the DTS\n", name);
+ 		return;
+ 	}
+ 
+@@ -932,7 +932,7 @@
+ 
+ 	if (num_pairs < 2 || num_pairs > HY310_MAX_TABLE_ENTRIES) {
+ 		dev_warn(priv->dev,
+-			 "NTC: Tabelle '%s' unbrauchbar (%d Paare, erlaubt 2..%d)\n",
++			 "NTC: table '%s' unusable (%d pairs, allowed 2..%d)\n",
+ 			 name, num_pairs, HY310_MAX_TABLE_ENTRIES);
+ 		return;
+ 	}
+@@ -941,15 +941,15 @@
+ 		priv->ntc_table[i] = be32_to_cpup(prop + i);
+ 
+ 	/*
+-	 * Die Suche setzt die Sortierung voraus. Eine Tabelle, die nicht so
+-	 * aussieht, wie der Hersteller sie baut, rechnen wir lieber gar nicht
+-	 * aus, als eine Zahl zu liefern, die aus der falschen Zeile stammt.
++	 * The search relies on the sort order. A table that does not look the
++	 * way the vendor builds it is better not evaluated at all than
++	 * delivering a number that comes from the wrong row.
+ 	 */
+ 	for (i = 0; i < num_pairs - 1; i++) {
+ 		if (priv->ntc_table[i * 2] >= priv->ntc_table[(i + 1) * 2] ||
+ 		    priv->ntc_table[i * 2 + 1] <= priv->ntc_table[(i + 1) * 2 + 1]) {
+ 			dev_warn(priv->dev,
+-				 "NTC: Tabelle '%s' ist bei Paar %d nicht sortiert (%u Grad/%u mV vor %u Grad/%u mV)\n",
++				 "NTC: table '%s' is not sorted at pair %d (%u degrees/%u mV before %u degrees/%u mV)\n",
+ 				 name, i,
+ 				 priv->ntc_table[i * 2],
+ 				 priv->ntc_table[i * 2 + 1],
+@@ -962,7 +962,7 @@
+ 	priv->ntc_table_len = num_pairs;
+ 	priv->ntc_table_name = name;
+ 	dev_info(priv->dev,
+-		 "NTC: Tabelle '%s' mit %d Paaren geladen, %u mV (%u Grad) bis %u mV (%u Grad)\n",
++		 "NTC: table '%s' with %d pairs loaded, %u mV (%u degrees) to %u mV (%u degrees)\n",
+ 		 name, num_pairs,
+ 		 priv->ntc_table[1], priv->ntc_table[0],
+ 		 priv->ntc_table[(num_pairs - 1) * 2 + 1],
+@@ -1036,7 +1036,7 @@
+ 		ret = devm_gpio_request_one(dev, fan->power_gpio,
+ 					    GPIOF_OUT_INIT_HIGH, "fan-power");
+ 		if (ret) {
+-			/* Hog might still own it — just ensure it's HIGH */
++			/* Hog might still own it - just ensure it's HIGH */
+ 			dev_info(dev, "%s: fan-power-gpio %d (managed by hog)\n",
+ 				 fan_np->name, fan->power_gpio);
+ 		} else {
+@@ -1201,7 +1201,7 @@
+ 	if (of_property_read_u32(np, "temp_warn", &priv->temp_warn_c))
+ 		priv->temp_warn_c = DEFAULT_TEMP_WARN_C;
+ 
+-	/* ---- ntc subnode: Freigabe, Quelle und Kanal ---- */
++	/* ---- ntc subnode: enable, source and channel ---- */
+ 	priv->ntc_source = HY310_NTC_SOURCE_GPADC;
+ 	ntc_np = of_get_child_by_name(np, "ntc");
+ 	if (ntc_np) {
+@@ -1211,27 +1211,27 @@
+ 		of_property_read_u32(ntc_np, "ntc_num", &ntc_num);
+ 
+ 		/*
+-		 * ntc_num zaehlt die bestueckten Fuehler und ist bindend. Der
+-		 * Hersteller wertet genau darueber aus: ntc_read() laeuft seine
+-		 * Messschleife ueber ntc_num und bricht bei 0 sofort ab, und
+-		 * avdtemp_read()/ledtemp_read() geben dann 99 zurueck -- den
+-		 * Wert fuer "kein Fuehler". Die ntc0/ntc1-Unterknoten werden bei
+-		 * ntc_num = 0 nie erreicht; ihr enable = 1 ist eine Karteileiche.
++			 * ntc_num counts the fitted sensors and is binding. The
++			 * vendor evaluates exactly that: ntc_read() runs its
++			 * measurement loop over ntc_num and aborts at once on 0, and
++			 * avdtemp_read()/ledtemp_read() then return 99 -- the
++			 * value for "no sensor". The ntc0/ntc1 subnodes are never reached with
++			 * ntc_num = 0; their enable = 1 is a stale leftover.
+ 		 *
+-		 * Genau so steht es im Geraetebaum dieses Beamers (ntc_num = 0
+-		 * in hy310_factory.dts und bootpkg-full.dts): er hat KEINEN NTC.
+-		 * Der Ueberhitzungsschutz laeuft hier ueber den Tachometer --
+-		 * fan_io_status_read() ruft bei Stillstand kernel_power_off(),
+-		 * der NTC-Pfad dagegen meldet nur per Uevent.
++			 * That is exactly how it stands in the device tree of this projector (ntc_num = 0
++			 * in hy310_factory.dts and bootpkg-full.dts): it has NO NTC.
++			 * The overheat protection runs here through the tachometer --
++			 * fan_io_status_read() calls kernel_power_off() on a stall,
++			 * while the NTC path only reports via uevent.
+ 		 *
+-		 * Eine fruehere Fassung hat die 0 fuer einen Widerspruch zu
+-		 * ntc0.enable = 1 gehalten und sie bewusst uebergangen
+-		 * ("tolerant parsing"). Das Ergebnis war eine erfundene
+-		 * Temperatur aus einem offenen ADC-Eingang: am Geraet gemessen
+-		 * lief GPADC ch1 bei langer Abtastzeit auf Vollausschlag und
+-		 * folgte ansonsten der CPU-Last -- siehe
+-		 * analyse/boot/ntc-gpadc-messung-20260911.txt. An dieser Zahl
+-		 * haengt eine Abschaltschwelle; sie wird nicht geraten.
++			 * An earlier version took the 0 for a contradiction with
++			 * ntc0.enable = 1 and deliberately passed over it
++			 * ("tolerant parsing"). The result was an invented
++			 * temperature from an open ADC input: measured on the device,
++			 * GPADC ch1 ran to full scale with a long sampling time and
++			 * otherwise followed the CPU load -- see
++			 * analyse/boot/ntc-gpadc-messung-20260911.txt. A shutdown threshold
++			 * hangs on this number; it is not guessed.
+ 		 */
+ 		ntc0_np = of_get_child_by_name(ntc_np, "ntc0");
+ 		if (ntc0_np) {
+@@ -1242,10 +1242,10 @@
+ 
+ 		if (ntc_num > 0) {
+ 			priv->ntc.enabled = true;
+-			dev_info(dev, "NTC: %u Fuehler bestueckt (Quelle %u, Kanal %u)\n",
++			dev_info(dev, "NTC: %u sensors fitted (source %u, channel %u)\n",
+ 				 ntc_num, priv->ntc_source, priv->ntc_channel);
+ 		} else {
+-			dev_info(dev, "NTC: ntc_num = 0, kein Fuehler bestueckt -- keine Temperatur, kein temp1_input\n");
++			dev_info(dev, "NTC: ntc_num = 0, no sensor fitted -- no temperature, no temp1_input\n");
+ 		}
+ 
+ 		of_node_put(ntc_np);
+@@ -1254,12 +1254,12 @@
+ 	if (priv->ntc_source != HY310_NTC_SOURCE_LRADC &&
+ 	    priv->ntc_source != HY310_NTC_SOURCE_GPADC) {
+ 		dev_warn(dev,
+-			 "NTC: source = %u ist weder LRADC (0) noch GPADC (1), NTC aus\n",
++			 "NTC: source = %u is neither LRADC (0) nor GPADC (1), NTC off\n",
+ 			 priv->ntc_source);
+ 		priv->ntc.enabled = false;
+ 	}
+ 
+-	/* ---- NTC via IIO (GPADC- oder LRADC-Kanal) ---- */
++	/* ---- NTC via IIO (GPADC or LRADC channel) ---- */
+ 	priv->ntc_iio_chan = devm_iio_channel_get(dev, "ntc");
+ 	if (IS_ERR(priv->ntc_iio_chan)) {
+ 		ret = PTR_ERR(priv->ntc_iio_chan);
+@@ -1268,7 +1268,7 @@
+ 		dev_warn(dev, "NTC IIO channel not available (%d), NTC disabled\n", ret);
+ 		priv->ntc_iio_chan = NULL;
+ 	} else {
+-		dev_info(dev, "NTC: IIO-Kanal geholt (DTS: source=%u -> %s, channel=%u)\n",
++		dev_info(dev, "NTC: IIO channel obtained (DTS: source=%u -> %s, channel=%u)\n",
+ 			 priv->ntc_source,
+ 			 priv->ntc_source == HY310_NTC_SOURCE_LRADC ?
+ 				"LRADC, 21 mV/LSB" : "GPADC, 439/1000 mV/LSB",
+@@ -1280,15 +1280,15 @@
+ 		hy310_parse_ntc_table(priv, np);
+ 
+ 	/*
+-	 * Ohne Kanal oder ohne brauchbare Tabelle gibt es keine Temperatur.
+-	 * Das steht hier laut im Log, damit niemand spaeter ein fehlendes
+-	 * temp1_input fuer einen Treiberfehler haelt.
++	 * Without a channel or without a usable table there is no temperature.
++	 * That is stated loudly in the log so that nobody later takes a missing
++	 * temp1_input for a driver bug.
+ 	 */
+ 	if (priv->ntc.enabled && (!priv->ntc_iio_chan || priv->ntc_table_len < 2)) {
+ 		dev_warn(dev,
+-			 "NTC: Auswertung abgeschaltet (%s) -- temp1_input wird nicht angelegt\n",
+-			 !priv->ntc_iio_chan ? "kein IIO-Kanal" :
+-					       "keine brauchbare Tabelle");
++			 "NTC: evaluation switched off (%s) -- temp1_input is not created\n",
++			 !priv->ntc_iio_chan ? "no IIO channel" :
++					       "no usable table");
+ 		priv->ntc.enabled = false;
+ 	}
+ 
+@@ -1315,7 +1315,7 @@
+ 		of_node_put(gpios_np);
+ 	}
+ 
+-	/* battery subnode: skipped — battery.enable=0 on HY310, power-hold
++	/* battery subnode: skipped - battery.enable=0 on HY310, power-hold
+ 	 * shares PL3 with usb-power-gpio and is not relevant for this board. */
+ 
+ 	/* ---- fan subnodes: fan0, fan1, ... ---- */
+@@ -1425,7 +1425,7 @@
+ 	cancel_delayed_work_sync(&priv->fan_work);
+ 	cancel_delayed_work_sync(&priv->ntc_work);
+ 
+-	/* Do NOT disable fan power on unload — GPIO hog keeps it running.
++	/* Do NOT disable fan power on unload - GPIO hog keeps it running.
+ 	 * Cutting fan power risks thermal damage to the projector. */
+ 
+ 	/* PWMs are devm-managed, no manual free needed */
+@@ -1492,7 +1492,7 @@
+ 	/*
+ 	 * Fallback match for stock DTS using "pwm-fan" compatible:
+ 	 * Only bind if the HY310-specific "pwm_ids" property is present.
+-	 * This is enforced in probe() — if pwm_ids is absent we return -ENODEV
++	 * This is enforced in probe() - if pwm_ids is absent we return -ENODEV
+ 	 * so the mainline pwm-fan driver can claim the node instead.
+ 	 */
+ 	{ .compatible = "pwm-fan" },
+--- a/drivers/misc/hy310-focus-motor.c
++++ b/drivers/misc/hy310-focus-motor.c
+@@ -24,22 +24,22 @@
+  * The pin is claimed with a bare gpio_request() and then switched to input
+  * with gpiod_direction_input(); stock never gives that line an output
+  * direction (motor_control_fdt_parse @ c05d62c8, c05d65b4..c05d6620).
+- * Einen Bias setzt Stock NICHT. Der Abzug des laufenden Stock-Systems zeigt
+- * zwar "pin 238 (PH14): input bias pull down"
+- * (re/captures/HY310-DEV/stock_pinconf_pio.txt), aber das ist der Zustand,
+- * den die Bootkette hinterlaesst, nicht der, den der Treiber herstellt --
+- * im Herstellercode steht zwischen gpio_request() und dem ersten Lesen kein
+- * einziger gpiod_set_config()-Aufruf, und der Knoten "motor_ctr" hat keine
+- * pinctrl-Gruppe. Dieser Treiber setzt deshalb ebenfalls keinen (Vorgabe
++ * Stock sets NO bias. The dump of the running stock system does show
++ * "pin 238 (PH14): input bias pull down"
++ * (re/captures/HY310-DEV/stock_pinconf_pio.txt), but that is the state
++ * the boot chain leaves behind, not the one the driver establishes --
++ * in the vendor code, between gpio_request() and the first read, there is no
++ * single gpiod_set_config() call, and the node "motor_ctr" has no
++ * pinctrl group. This driver therefore sets none either (default
+  * limiter_bias = -1).
+  *
+- * Wo Stock den Anschlag erkennt  (check_motor_position, inline in
++ * Where stock detects the stop  (check_motor_position, inline in
+  * motor_control_probe, motor-control.c:716..751)
+  * ---------------------------------------------------------------
+- * Beim Probe liest Stock den Waechter einmal. Liest er active_level, meldet
+- * Stock woertlich "limited normal,no need to check postion" und faehrt gar
+- * nicht. Sonst sucht es bis zu 100 msteps aufwaerts und danach bis zu 250
+- * msteps abwaerts, bis der Waechter wieder active_level liest.
++ * At probe stock reads the limiter once. If it reads active_level, stock reports
++ * verbatim "limited normal,no need to check postion" and does not move at
++ * all. Otherwise it searches up to 100 msteps upwards and then up to 250
++ * msteps downwards, until the limiter reads active_level again.
+  *
+  * What the value means  (motor_run_up_control @ c05d6ea0)
+  * -------------------------------------------------------
+@@ -107,13 +107,13 @@
+ #define DIR_DN			1
+ #define DIR_UP			2
+ 
+-/* ── Queue entry for async movement ────────────────────────── */
++/* -- Queue entry for async movement -------------------------- */
+ struct motor_cmd {
+ 	struct list_head list;
+ 	int direction;		/* 0 = UP, 1 = DOWN */
+ };
+ 
+-/* ── Per-device state ──────────────────────────────────────── */
++/* -- Per-device state ---------------------------------------- */
+ struct hy310_motor {
+ 	struct platform_device	*pdev;
+ 	struct device		*dev;
+@@ -165,7 +165,7 @@
+ 
+ static struct hy310_motor *g_motor;
+ 
+-/* ── Timing ────────────────────────────────────────────────── */
++/* -- Timing -------------------------------------------------- */
+ 
+ /*
+  * Stock delay_ms_func() @ c05d6b00. The unit is milliseconds in both
+@@ -183,7 +183,7 @@
+ 		usleep_range(800 * ms, 1000 * ms);
+ }
+ 
+-/* ── GPIO helpers ──────────────────────────────────────────── */
++/* -- GPIO helpers -------------------------------------------- */
+ 
+ static void motor_set_phase(struct hy310_motor *m, int pattern)
+ {
+@@ -243,7 +243,7 @@
+ 	return gpiod_get_raw_value(desc) == m->active_level;
+ }
+ 
+-/* ── Single micro-step execution ───────────────────────────── */
++/* -- Single micro-step execution ----------------------------- */
+ 
+ /*
+  * Execute one "mstep" in UP direction.
+@@ -299,7 +299,7 @@
+ 	motor_set_stop(m);
+ }
+ 
+-/* ── Movement with limit control ───────────────────────────── */
++/* -- Movement with limit control ----------------------------- */
+ 
+ /*
+  * One guarded mstep upwards. Port of motor_run_up_control @ c05d6ea0.
+@@ -402,7 +402,7 @@
+ 	return 1;
+ }
+ 
+-/* ── Queue management ──────────────────────────────────────── */
++/* -- Queue management ---------------------------------------- */
+ 
+ static int motor_enqueue(struct hy310_motor *m, int dir)
+ {
+@@ -543,10 +543,10 @@
+ 	}
+ }
+ 
+-/* ── Sysfs attributes ──────────────────────────────────────── */
++/* -- Sysfs attributes ---------------------------------------- */
+ 
+ /*
+- * motor_ctrl — main control interface, protocol from motor_ctrl_store
++ * motor_ctrl - main control interface, protocol from motor_ctrl_store
+  * @ c05d7d14. Write: (cmd << 8) | (steps & 0x7f) | (full_limit ? 0x80 : 0).
+  * Read: "step_cur step_inc limiter_in_range".
+  */
+@@ -650,7 +650,7 @@
+ }
+ static DEVICE_ATTR_RO(motor_state);
+ 
+-/* motor_ctrl_no_limit — bypass limit checking */
++/* motor_ctrl_no_limit - bypass limit checking */
+ static ssize_t motor_ctrl_no_limit_show(struct device *dev,
+ 					struct device_attribute *attr,
+ 					char *buf)
+@@ -673,7 +673,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_ctrl_no_limit);
+ 
+-/* motor_limit — limiter readout; first field matches stock motor_limit_show */
++/* motor_limit - limiter readout; first field matches stock motor_limit_show */
+ static ssize_t motor_limit_show(struct device *dev,
+ 				struct device_attribute *attr, char *buf)
+ {
+@@ -686,11 +686,11 @@
+ 		return -ENODEV;
+ 
+ 	/*
+-	 * Zusaetzlich zum Stock-Feld wird der ROHPEGEL ausgegeben. Beim NTC
+-	 * hat uns genau das gefehlt: der abgeleitete Wert sah plausibel aus,
+-	 * waehrend der Eingang selbst still stand. Wer den Bereichswaechter
+-	 * ueber den Fahrweg abtastet, braucht den Pegel, nicht nur die
+-	 * Auslegung davon.
++	 * In addition to the stock field the RAW LEVEL is output. With the NTC
++	 * that is exactly what we were missing: the derived value looked plausible,
++	 * while the input itself stood still. Whoever scans the range watcher
++	 * over the travel needs the level, not only the
++	 * interpretation of it.
+ 	 */
+ 	if (m->limiter_num >= 1) {
+ 		desc = gpio_to_desc(m->limiter_pin);
+@@ -725,7 +725,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_limit);
+ 
+-/* motor_step_delay — step delay in ms */
++/* motor_step_delay - step delay in ms */
+ static ssize_t motor_step_delay_show(struct device *dev,
+ 				     struct device_attribute *attr, char *buf)
+ {
+@@ -745,7 +745,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_step_delay);
+ 
+-/* motor_step_num — step count per sequence */
++/* motor_step_num - step count per sequence */
+ static ssize_t motor_step_num_show(struct device *dev,
+ 				   struct device_attribute *attr, char *buf)
+ {
+@@ -766,7 +766,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_step_num);
+ 
+-/* motor_cycle — cycles per movement */
++/* motor_cycle - cycles per movement */
+ static ssize_t motor_cycle_show(struct device *dev,
+ 				struct device_attribute *attr, char *buf)
+ {
+@@ -787,7 +787,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_cycle);
+ 
+-/* motor_back_step — steps to reverse after the limiter drops out */
++/* motor_back_step - steps to reverse after the limiter drops out */
+ static ssize_t motor_back_step_show(struct device *dev,
+ 				    struct device_attribute *attr, char *buf)
+ {
+@@ -808,7 +808,7 @@
+ }
+ static DEVICE_ATTR_RW(motor_back_step);
+ 
+-/* motor_ctrl_time — phase delay in ms */
++/* motor_ctrl_time - phase delay in ms */
+ static ssize_t motor_ctrl_time_show(struct device *dev,
+ 				    struct device_attribute *attr, char *buf)
+ {
+@@ -842,7 +842,7 @@
+ };
+ ATTRIBUTE_GROUPS(motor);
+ 
+-/* ── DTS parsing ───────────────────────────────────────────── */
++/* -- DTS parsing --------------------------------------------- */
+ 
+ /* Stock spells these with underscores; the hyphen forms are this port's. */
+ static int motor_read_u32(struct device_node *np, const char *stock_name,
+@@ -866,19 +866,19 @@
+  * GPIOF_OUT_INIT_LOW, which drives the switch line low with the SoC's output
+  * driver before the direction is corrected.
+  *
+- * Der Pad-Bias wird per Vorgabe NICHT gesetzt. Stock setzt keinen: in
+- * motor_control_fdt_parse @ c05d6610 folgt auf das gpio_request() genau
+- * gpio_to_desc() + gpiod_direction_input(), kein gpiod_set_config(), keine
+- * pinctrl-Gruppe im Herstellerknoten "motor_ctr". Der Pad behaelt also das,
+- * was die Bootkette hinterlassen hat.
++ * The pad bias is NOT set by default. Stock sets none: in
++ * motor_control_fdt_parse @ c05d6610 the gpio_request() is followed by exactly
++ * gpio_to_desc() + gpiod_direction_input(), no gpiod_set_config(), no
++ * pinctrl group in the vendor node "motor_ctr". So the pad keeps what
++ * the boot chain left behind.
+  *
+- * Die frueher hier vorgegebene Regel "Bias = Gegenstueck zu active_level"
+- * (also Pull-down bei active_level = 1) stammt nicht aus dem Herstellercode,
+- * sondern aus der Annahme, der Endschalter treibe im aktiven Fall aktiv
+- * 3,3 V. Diese Annahme ist unbelegt, und sie ist genau die Einstellung, die
+- * einen hochohmigen oder Open-Drain-Geber unsichtbar macht: der interne
+- * Pull-down zieht die Leitung dann an JEDER Position auf LOW, und der
+- * Bereichswaechter meldet dauerhaft "ausserhalb". Siehe README in
++ * The rule "bias = counterpart of active_level" that used to be the default here
++ * (i.e. pull-down for active_level = 1) does not come from the vendor code,
++ * but from the assumption that the end switch actively drives
++ * 3.3 V in the active case. That assumption is unproven, and it is exactly the setting that
++ * makes a high-impedance or open-drain sensor invisible: the internal
++ * pull-down then pulls the line to LOW at EVERY position, and the
++ * range watcher permanently reports "out of range". See README in
+  * mainline/patches/vorschlaege/motor-limiter/.
+  */
+ /*
+@@ -914,42 +914,42 @@
+ 		 "run the homing sequence at probe (default yes, as stock does)");
+ 
+ /*
+- * Pad-Bias des Endschalter-Eingangs.
++ * Pad bias of the limit switch input.
+  *
+- * Vorgabe seit 23.09.2026: Pull-up. Der Geber an PH14 ist ein Kontakt nach
+- * Masse, der ausserhalb des erlaubten Bereichs schliesst und innerhalb offen
+- * ist; der Pegel innerhalb ist also der, den der Pad-Bias vorgibt. Ohne Bias
+- * (unsere Bootkette laesst den Pad so) liest ein schwebender Eingang einen
+- * alten Pegel: am 23.09. kam die HY310 mit "im Bereich" hoch, waehrend der
+- * Fokus 110 msteps oberhalb seines Bereichs stand, keine Kante war gemerkt,
+- * und beide Werkzeuge verweigerten jede Fahrt. Am laufenden Geraet ueber die
+- * PIO-Register gemessen: mit Pull-down liest der Pad an JEDER Position 0
+- * (der Geber kann ihn nicht auf 1 ziehen), mit Pull-up liest er 1 ueber den
+- * ganzen Bereich, faellt an der Kante innerhalb von 5 msteps auf 0 und ist
+- * 10 msteps zurueck wieder 1. Stock setzt keinen Bias (motor_control_fdt_parse
+- * 0xc05d62c8, siehe Kommentar ueber motor_request_limiter()); der Abzug
+- * "pin 238 (PH14): input bias pull down" kann nicht der Betriebszustand des
+- * Herstellertreibers sein, sonst laese er ueberall "ausserhalb". Der Bias
+- * gehoert hierher und nicht in eine Pinctrl-Gruppe: der sunxi-Pinctrl ist
+- * strict, ein per Gruppe belegter Pin laesst sich nicht mehr als GPIO
+- * anfordern (-22 beim Probe, 23.09.).
++ * Default since 23.09.2026: pull-up. The sensor on PH14 is a contact to
++ * ground that closes outside the allowed range and is open inside it;
++ * so the level inside is the one the pad bias dictates. Without bias
++ * (our boot chain leaves the pad that way) a floating input reads an
++ * old level: on 23.09. the HY310 came up with "in range" while the
++ * focus stood 110 msteps above its range, no edge was noted,
++ * and both tools refused any move. Measured on the running device over the
++ * PIO registers: with pull-down the pad reads 0 at EVERY position
++ * (the sensor cannot pull it to 1), with pull-up it reads 1 over the
++ * whole range, falls to 0 at the edge within 5 msteps and is
++ * 1 again 10 msteps back. Stock sets no bias (motor_control_fdt_parse
++ * 0xc05d62c8, see the comment above motor_request_limiter()); the dump
++ * "pin 238 (PH14): input bias pull down" cannot be the operating state of the
++ * vendor driver, otherwise it would read "out of range" everywhere. The bias
++ * belongs here and not in a pinctrl group: the sunxi pinctrl is
++ * strict, a pin claimed through a group can no longer be requested as
++ * GPIO (-22 at probe, 23.09.).
+  *
+- *   -1            Pad so lassen, wie die Bootkette ihn hinterlassen hat  = Stock
+- *    0            Bias ausdruecklich abschalten (hochohmiger Eingang)
+- *    1 (Vorgabe)  Pull-up   -- der Geber ist ein Kontakt nach Masse
+- *    2            Pull-down -- erzwungen (liest hier ueberall 0)
+- *    3            Gegenstueck zu active_level (das alte, unbelegte Verhalten)
++ *   -1            leave the pad as the boot chain left it  = stock
++ *    0            explicitly switch the bias off (high-impedance input)
++ *    1 (default)  pull-up   -- the sensor is a contact to ground
++ *    2            pull-down -- forced (reads 0 everywhere here)
++ *    3            counterpart of active_level (the old, unproven behaviour)
+  *
+- * Warnung zur Mechanik: mit Pull-up liest der Bereichswaechter auch dann
+- * dauerhaft "innerhalb", wenn ueberhaupt kein Geber angeschlossen ist. Auf
+- * einem Board ohne diesen Geber wird eine Fahrt NICHT von der Elektronik
+- * gestoppt; dort limiter_bias=-1 oder 0 und nur mit kleiner, ausdruecklich
+- * begrenzter Schrittzahl fahren.
++ * Warning on the mechanics: with pull-up the range watcher reads
++ * "in range" permanently even if no sensor is connected at all. On
++ * a board without this sensor a move is NOT stopped by the electronics;
++ * there drive with limiter_bias=-1 or 0 and only with a small, explicitly
++ * limited number of steps.
+  */
+ static int limiter_bias = 1;
+ module_param(limiter_bias, int, 0444);
+ MODULE_PARM_DESC(limiter_bias,
+-		 "Bias des Endschalter-Pads: 1 Pull-up (Vorgabe, der Geber schliesst nach Masse), -1 wie Stock (unveraendert), 0 keiner, 2 Pull-down, 3 Gegenstueck zu active_level");
++		 "Bias of the limit switch pad: 1 pull-up (default, the sensor closes to ground), -1 as stock (unchanged), 0 none, 2 pull-down, 3 counterpart of active_level");
+ 
+ static int motor_request_limiter(struct hy310_motor *m, struct device_node *np,
+ 				 const char *prop, int *pin_out)
+@@ -998,7 +998,7 @@
+ 						       : PIN_CONFIG_BIAS_PULL_UP, 1);
+ 		break;
+ 	default:
+-		/* -1 und alles andere: wie Stock, Pad unveraendert lassen. */
++		/* -1 and everything else: as stock, leave the pad unchanged. */
+ 		bias = 0;
+ 		break;
+ 	}
+@@ -1006,24 +1006,24 @@
+ 	if (bias) {
+ 		ret = gpiod_set_config(desc, bias);
+ 		if (ret && ret != -ENOTSUPP && ret != -EOPNOTSUPP)
+-			dev_warn(dev, "%s: Pad-Bias nicht setzbar: %d\n",
++			dev_warn(dev, "%s: pad bias cannot be set: %d\n",
+ 				 prop, ret);
+ 	}
+ 
+ 	*pin_out = gpio;
+ 	dev_info(dev,
+-		 "%s: gpio %d, Eingang, Bias %s, aktiv %s, liest roh %d (%s)\n",
++		 "%s: gpio %d, input, bias %s, active %s, reads raw %d (%s)\n",
+ 		 prop, gpio,
+-		 limiter_bias == 0 ? "aus (erzwungen)" :
+-		 limiter_bias == 1 ? "Pull-up (erzwungen)" :
+-		 limiter_bias == 2 ? "Pull-down (erzwungen)" :
++		 limiter_bias == 0 ? "off (forced)" :
++		 limiter_bias == 1 ? "Pull-up (forced)" :
++		 limiter_bias == 2 ? "Pull-down (forced)" :
+ 		 limiter_bias == 3 ? (m->active_level ? "Pull-down (act-level)"
+ 						      : "Pull-up (act-level)") :
+-		 "unveraendert (wie Stock)",
++		 "unchanged (as stock)",
+ 		 m->active_level ? "high" : "low",
+ 		 gpiod_get_raw_value(desc),
+ 		 gpiod_get_raw_value(desc) == m->active_level
+-			 ? "im Bereich" : "ausserhalb");
++			 ? "in range" : "out of range");
+ 	return 0;
+ }
+ 
+@@ -1163,7 +1163,7 @@
+ 	return 0;
+ }
+ 
+-/* ── Homing at probe ───────────────────────────────────────── */
++/* -- Homing at probe ----------------------------------------- */
+ 
+ /*
+  * Port of the homing block in motor_control_probe @ c05d753c.
+@@ -1180,16 +1180,16 @@
+ 	int i;
+ 
+ 	if (m->limiter_num < 1) {
+-		dev_info(m->dev, "no limiter — skipping homing\n");
++		dev_info(m->dev, "no limiter - skipping homing\n");
+ 		return;
+ 	}
+ 
+ 	if (motor_limiter_status(m, 0)) {
+-		dev_info(m->dev, "limiter in range — nothing to do\n");
++		dev_info(m->dev, "limiter in range - nothing to do\n");
+ 		return;
+ 	}
+ 
+-	dev_info(m->dev, "limiter out of range — walking back\n");
++	dev_info(m->dev, "limiter out of range - walking back\n");
+ 
+ 	for (i = 0; i < HOMING_UP_MAX; i++) {
+ 		motor_run_up_mstep(m);
+@@ -1219,11 +1219,11 @@
+ 	 */
+ 	motor_set_stop(m);
+ 	dev_err(m->dev,
+-		"limiter never read active (%d UP + %d DN msteps) — motor left uncalibrated\n",
++		"limiter never read active (%d UP + %d DN msteps) - motor left uncalibrated\n",
+ 		HOMING_UP_MAX, HOMING_DN_MAX);
+ }
+ 
+-/* ── Async homing work ─────────────────────────────────────── */
++/* -- Async homing work --------------------------------------- */
+ 
+ static void motor_homing_work_handler(struct work_struct *work)
+ {
+@@ -1235,7 +1235,7 @@
+ 	dev_info(m->dev, "homing: complete\n");
+ }
+ 
+-/* ── Platform driver ───────────────────────────────────────── */
++/* -- Platform driver ----------------------------------------- */
+ 
+ static int motor_probe(struct platform_device *pdev)
+ {
+@@ -1282,13 +1282,13 @@
+ 
+ 	g_motor = m;
+ 
+-	/* Async homing — doesn't block probe, runs in work queue */
++	/* Async homing - doesn't block probe, runs in work queue */
+ 	if (homing)
+ 		queue_delayed_work(m->wq, &m->homing_work,
+ 				   msecs_to_jiffies(500));
+ 	else
+ 		dev_warn(&pdev->dev,
+-			 "homing disabled by module parameter — position unknown and uncalibrated\n");
++			 "homing disabled by module parameter - position unknown and uncalibrated\n");
+ 
+ 	dev_info(&pdev->dev, "probed: %d phases, %d limiters, %d steps\n",
+ 		 m->phase_num, m->limiter_num, m->step_total);
+--- a/drivers/crypto/allwinner/h713-ce-test.c
++++ b/drivers/crypto/allwinner/h713-ce-test.c
+@@ -1,86 +1,86 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * h713-ce-test - ein einziger Task an der Crypto Engine des H713,
+- * im Task-Deskriptorformat des Herstellers, als Known-Answer-Test.
++ * h713-ce-test - a single task on the H713's Crypto Engine,
++ * in the vendor's task descriptor format, as a known-answer test.
+  *
+- * WOZU
+- * ----
+- * Der mainline-Treiber sun8i-ce kann diese CE nicht fahren.  Am Geraet
+- * gemessen (cstenger, 23.07.2026, Zweig wip/crypto-ce-tooling): mit
+- * mainline-Deskriptoren meldet die Maschine fuer Standard-AES
+- * "address invalid" und fuer Standard-SHA "algorithm not supported".
+- * Das ist die Signatur eines anderen Deskriptorformats, nicht eines
+- * Takt-, Interrupt- oder Adressierungsfehlers.
++ * WHY
++ * ---
++ * The mainline driver sun8i-ce cannot drive this CE.  Measured on the device
++ * (cstenger, 23.07.2026, branch wip/crypto-ce-tooling): with
++ * mainline descriptors the machine reports for standard AES
++ * "address invalid" and for standard SHA "algorithm not supported".
++ * That is the signature of a different descriptor format, not of a
++ * clock, interrupt or addressing error.
+  *
+- * Das richtige Format ist aus OP-TEE rekonstruiert, nicht aus einem
+- * Datenblatt und nicht aus dem Vendor-Kerneltreiber (den gibt es als
+- * Quelltext nicht): sunxi_aes_with_hardware, OP-TEE 3.7, Ladeadresse
+- * 0x48600000, Funktion bei 0x4860c578.  Die Disassemblate liegen unter
+- * analyse/release/arbeit/r0-fel/s49-dis/, die Auswertung in
++ * The correct format has been reconstructed from OP-TEE, not from a
++ * datasheet and not from the vendor kernel driver (which does not exist as
++ * source): sunxi_aes_with_hardware, OP-TEE 3.7, load address
++ * 0x48600000, function at 0x4860c578.  The disassemblies are under
++ * analyse/release/arbeit/r0-fel/s49-dis/, the evaluation in
+  * doku/nachtlog/S49-hdcp14-schluesselpfad.md.
+  *
+- * Dieses Modul setzt genau einen Task ab: AES-128, verschluesseln,
+- * Key-Select 0 (Schluessel aus dem Arbeitsspeicher), 16 Byte, Quelle und
+- * Ziel in DRAM.  Es vergleicht das Ergebnis mit dem AES-128-Vektor aus
+- * FIPS-197 Anhang C.1.  Es fasst weder Schluesselmaterial des Geraets
+- * noch die Schluesselsenke bei 0x03041400 an; Key-Select 3 (RSSK) kommt
+- * hier nicht vor.  Siehe doku/114-plan-crypto-engine.md Paragraph 7,
+- * Schritt 3.
++ * This module issues exactly one task: AES-128, encrypt,
++ * key select 0 (key from main memory), 16 bytes, source and
++ * destination in DRAM.  It compares the result with the AES-128 vector from
++ * FIPS-197 appendix C.1.  It touches neither key material of the device
++ * nor the key sink at 0x03041400; key select 3 (RSSK) does not occur
++ * here.  See doku/114-plan-crypto-engine.md paragraph 7,
++ * step 3.
+  *
+- * WAS BELEGT IST UND WAS NICHT
+- * ----------------------------
+- * Belegt (aus dem OP-TEE-Disassemblat, Adressen im Kommentar am Feld):
+- *   - der Deskriptor ist 0x100 Byte gross, 64-Byte-ausgerichtet, genullt;
+- *   - die Lage von chan_id, comm_ctl, sym_ctl, key_addr, iv_addr,
++ * WHAT IS PROVEN AND WHAT IS NOT
++ * ------------------------------
++ * Proven (from the OP-TEE disassembly, addresses in the comment at the field):
++ *   - the descriptor is 0x100 bytes large, 64-byte aligned, zeroed;
++ *   - the position of chan_id, comm_ctl, sym_ctl, key_addr, iv_addr,
+  *     data_len, src_addr, dst_addr, src_len, dst_len;
+- *   - dass die Adressfelder nicht ausgerichtet liegen (0x15, 0x24, 0x29)
+- *     und damit 5 Byte Abstand haben - genau das, woran mainline scheitert.
+- *     OP-TEE schreibt in jedes Feld nur 4 Byte, das fuenfte bleibt aus dem
+- *     memset null; wir schreiben Bits 32..39 hinein, die auf diesem Board
+- *     (DRAM 0x40000000..0x80000000) immer null sind.  Im Speicherbild ist
+- *     das dasselbe;
+- *   - die Aufteilung von sym_ctl: OP-TEE baut es in sunxi_aes_do_crypt
+- *     (0x4860c79c..0x4860c7a8) als
+- *         (key_type << 20) | (aes_mode << 8) | schluessellaenge[1:0]
+- *     und nennt es im Debug-Text "alg_cfg";
+- *   - dass key_type 0 "Schluessel aus key_addr" heisst: 0x48626214 ruft
+- *     sunxi_aes_with_hardware mit einem echten 16-Byte-Schluessel,
+- *     Schluessellaenge 0x10 und mode 0x100 auf - key_type ist dort 0;
+- *   - die Registerreihenfolge TDA, ICR, TLR, ISR, ESR und ihre Offsets;
+- *   - dass die Fertigmeldung im ISR zwei Bits je Kanal belegt (Bit 2n =
+- *     fertig, Bit 2n+1 = Fehler; 0x4860c376 vergleicht mit 2);
+- *   - dass der Stock-Bootloader vor dem ersten CE-Zugriff neben bus_ce
+- *     auch bus_ce_sys einschaltet und beide Resets aufhebt
++ *   - that the address fields are not aligned (0x15, 0x24, 0x29)
++ *     and therefore are 5 bytes apart - exactly what mainline fails on.
++ *     OP-TEE writes only 4 bytes into each field, the fifth stays zero from the
++ *     memset; we write bits 32..39 into it, which on this board
++ *     (DRAM 0x40000000..0x80000000) are always zero.  In the memory image that
++ *     is the same;
++ *   - the split of sym_ctl: OP-TEE builds it in sunxi_aes_do_crypt
++ *     (0x4860c79c..0x4860c7a8) as
++ *         (key_type << 20) | (aes_mode << 8) | key_length[1:0]
++ *     and calls it "alg_cfg" in the debug text;
++ *   - that key_type 0 means "key from key_addr": 0x48626214 calls
++ *     sunxi_aes_with_hardware with a real 16-byte key,
++ *     key length 0x10 and mode 0x100 - key_type is 0 there;
++ *   - the register order TDA, ICR, TLR, ISR, ESR and their offsets;
++ *   - that the completion report in the ISR occupies two bits per channel (bit 2n =
++ *     done, bit 2n+1 = error; 0x4860c376 compares with 2);
++ *   - that the stock bootloader, before the first CE access, switches on
++ *     bus_ce_sys as well as bus_ce and releases both resets
+  *     (u-boot.fex 0x4a028898: CCU 0x68c |= 3, 0x4a0288ba: |= 0x30000).
+- * Analogieschluss oder Vermutung (so auch in S49 gekennzeichnet):
+- *   - dass aes_mode 0 ECB heisst und 1 CBC.  OP-TEE benutzt 0 nur mit
+- *     Hardware-Schluessel (RSSK, 0x300000) und 1 nur mit Software-
+- *     Schluessel (0x100); mainline sun8i-ce kodiert ECB = 0, CBC = 1<<8.
+- *     Fuer diesen Test ist das gleichgueltig: ein Block mit IV = 0 ergibt
+- *     in CBC dasselbe wie in ECB.  Deshalb laesst sich der Lauf in beiden
+- *     Modi absetzen, mit demselben Erwartungswert;
+- *   - dass die ESR-Bits so kodiert sind wie in sun8i-ce.h (ESR_H6);
+- *     cstengers Messung passt dazu (mainline-Deskriptoren lieferten Bit 5);
+- *   - dass das Feld bei +0x1a der Zaehler-Zeiger (ctr_addr) ist.  OP-TEE
+- *     beschreibt es nie; die Lage folgt nur aus der Luecke zwischen
+- *     iv_addr und data_len.  Wir lassen es null;
+- *   - dass bus_ce_sys / RST_BUS_CE_SYS die zweite Registerbank versorgen.
+- *     Belegt ist nur, dass der Stock-Bootloader sie einschaltet und dass
+- *     mainline sun8i-ce ohne sie die NS-Bank fahren konnte;
+- *   - dass die zweite Registerbank bei 0x03040800 aus der Non-Secure-Welt
+- *     ueberhaupt lesbar ist.  Genau das soll der zweite Durchlauf klaeren.
++ * Inference by analogy or conjecture (marked the same way in S49):
++ *   - that aes_mode 0 means ECB and 1 CBC.  OP-TEE uses 0 only with the
++ *     hardware key (RSSK, 0x300000) and 1 only with the software
++ *     key (0x100); mainline sun8i-ce encodes ECB = 0, CBC = 1<<8.
++ *     For this test that does not matter: one block with IV = 0 gives
++ *     the same in CBC as in ECB.  So the run can be issued in both
++ *     modes, with the same expected value;
++ *   - that the ESR bits are encoded as in sun8i-ce.h (ESR_H6);
++ *     cstenger's measurement fits (mainline descriptors delivered bit 5);
++ *   - that the field at +0x1a is the counter pointer (ctr_addr).  OP-TEE
++ *     never writes it; the position follows only from the gap between
++ *     iv_addr and data_len.  We leave it zero;
++ *   - that bus_ce_sys / RST_BUS_CE_SYS supply the second register bank.
++ *     Proven is only that the stock bootloader switches it on and that
++ *     mainline sun8i-ce was able to drive the NS bank without it;
++ *   - that the second register bank at 0x03040800 is readable at all from the
++ *     non-secure world.  Exactly that is what the second run is meant to clarify.
+  *
+- * WAS DER TEST ZEIGT
+- * ------------------
+- *   sauberes ESR und passender Chiffretext -> das Format stimmt;
+- *   ESR ungleich 0 -> Format oder Kanal falsch, Fehlerwert im Klartext;
+- *   Zeitueberschreitung -> der Task wurde nie fertig; lesen sich dabei
+- *                          alle Register leer und hat TDA den Wert nicht
+- *                          behalten, ignoriert die Bank Schreibzugriffe
+- *                          (aus der Non-Secure-Welt unsichtbar);
+- *   Busabbruch (Oops) -> die Non-Secure-Welt darf diese Bank nicht.
++ * WHAT THE TEST SHOWS
++ * -------------------
++ *   clean ESR and matching ciphertext -> the format is right;
++ *   ESR not equal to 0 -> format or channel wrong, error value in plain text;
++ *   timeout -> the task never completed; if, in that case,
++ *                          all registers read empty and TDA has not
++ *                          kept the value, the bank ignores writes
++ *                          (invisible from the non-secure world);
++ *   bus abort (oops) -> the non-secure world is not allowed this bank.
+  *
+- * Copyright (C) 2026 h713-Portierung
++ * Copyright (C) 2026 h713 port
+  */
+ 
+ #include <linux/bitops.h>
+@@ -107,53 +107,53 @@
+ #define DRV_NAME "h713-ce-test"
+ 
+ /*
+- * Registeroffsets.  Beide Baenke haben dieselbe Belegung; OP-TEE fasst
+- * ausschliesslich die sichere Bank 0x03040800 an, daher stehen dort die
+- * absoluten Adressen aus dem Disassemblat:
++ * Register offsets.  Both banks have the same layout; OP-TEE touches
++ * exclusively the secure bank 0x03040800, so the absolute
++ * addresses from the disassembly are listed there:
+  *   TDA 0x03040800 (0x4860c334), ICR 0x03040808 (0x4860c2ac),
+  *   ISR 0x0304080c (0x4860c360), TLR 0x03040810 (0x4860c2d0),
+  *   ESR 0x03040818 (0x4860c348).
+- * Dieselben Offsets benutzt mainline sun8i-ce fuer die NS-Bank, das ist
+- * also der einzige Teil, an dem sich beide Welten einig sind.
++ * Mainline sun8i-ce uses the same offsets for the NS bank, so this is
++ * the only part on which both worlds agree.
+  */
+ #define CE_TDA		0x00	/* Task Descriptor Address */
+-#define CE_CTR		0x04	/* (vom Vendor nicht angefasst) */
++#define CE_CTR		0x04	/* (not touched by the vendor) */
+ #define CE_ICR		0x08	/* Interrupt Control */
+ #define CE_ISR		0x0c	/* Interrupt Status */
+ #define CE_TLR		0x10	/* Task Load */
+ #define CE_TSR		0x14	/* Task Status */
+ #define CE_ESR		0x18	/* Error Status */
+ 
+-#define CE_KANAL	0	/* wir benutzen nur Kanal 0, wie der Vendor */
++#define CE_KANAL	0	/* we only use channel 0, like the vendor */
+ 
+-/* comm_ctl, Deskriptor +0x04 (0x4860c5e6 bis 0x4860c5ec) */
+-#define CE_COMM_INT		BIT(31)	/* Fertigmeldung anfordern */
+-#define CE_COMM_DECRYPT		BIT(8)	/* 0 = verschluesseln */
++/* comm_ctl, descriptor +0x04 (0x4860c5e6 to 0x4860c5ec) */
++#define CE_COMM_INT		BIT(31)	/* request completion report */
++#define CE_COMM_DECRYPT		BIT(8)	/* 0 = encrypt */
+ #define CE_COMM_ALG_AES		0
+ 
+ /*
+- * sym_ctl, Deskriptor +0x08.  Aufteilung belegt durch sunxi_aes_do_crypt
++ * sym_ctl, descriptor +0x08.  Layout proven by sunxi_aes_do_crypt
+  * (0x4860c79c: key_type << 20; 0x4860c7a0: | aes_mode << 8;
+- * 0x4860c7a8: | schluessellaenge).  Die Schluessellaenge kodiert OP-TEE
+- * bei 0x4860c752..0x4860c764 als 0/1/2 fuer 16/24/32 Byte.
++ * 0x4860c7a8: | key length).  OP-TEE encodes the key length
++ * at 0x4860c752..0x4860c764 as 0/1/2 for 16/24/32 bytes.
+  */
+ #define CE_SYM_AES_128		0		/* Bits [1:0] */
+ #define CE_SYM_MODE(m)		((m) << 8)	/* Bits [11:8]: aes_mode */
+ #define CE_SYM_KEYSEL(n)	((n) << 20)	/* Bits [23:20]: key_type */
+ 
+ /*
+- * aes_mode.  0 benutzt OP-TEE fuer den RSSK-Pfad (0x300000), 1 fuer den
+- * Software-Schluesselpfad (0x100, 0x48626216).  Dass 0 ECB und 1 CBC
+- * heisst, ist Analogie zu sun8i-ce.h; fuer einen Block mit IV = 0 ist
+- * das Ergebnis in beiden Modi gleich.
++ * aes_mode.  OP-TEE uses 0 for the RSSK path (0x300000), 1 for the
++ * software key path (0x100, 0x48626216).  That 0 means ECB and 1 CBC
++ * is an analogy to sun8i-ce.h; for one block with IV = 0 the
++ * result is the same in both modes.
+  */
+ #define AES_MODE_ECB		0
+ #define AES_MODE_CBC		1
+ 
+ /*
+- * ESR-Bits.  Namen und Lage aus mainline sun8i-ce.h (Variante ESR_H6);
+- * dass diese Kodierung auch fuer den H713 gilt, ist nicht belegt, aber
+- * cstengers Messung passt dazu: mainline-Deskriptoren lieferten Bit 5.
++ * ESR bits.  Names and position from mainline sun8i-ce.h (variant ESR_H6);
++ * that this encoding also applies to the H713 is not proven, but
++ * cstenger's measurement fits: mainline descriptors delivered bit 5.
+  */
+ #define CE_ERR_ALGO_NOTSUP	BIT(0)
+ #define CE_ERR_DATALEN		BIT(1)
+@@ -162,25 +162,25 @@
+ #define CE_ERR_KEYLADDER	BIT(6)
+ 
+ /*
+- * Der Task-Deskriptor im Vendorformat.
++ * The task descriptor in the vendor format.
+  *
+- * Jede Zeile mit einer Fundstelle ist aus dem Disassemblat von
+- * sunxi_aes_with_hardware (0x4860c578) abgelesen.  Der entscheidende
+- * Unterschied zu mainline: die Adressfelder liegen 5 Byte auseinander
+- * und deshalb ab +0x15 unausgerichtet.  OP-TEE schreibt sie mit memcpy
+- * von 4 Byte auf krumme Offsets - ein Wortzugriff ginge dort gar nicht.
+- * mainline legt an dieselben Stellen 32-Bit-Felder (t_iv bei +0x14,
+- * t_ctr +0x18, t_dlen +0x1c, dann SG-Listen) und verschiebt damit alles
+- * ab dem IV; die Maschine liest dann Muell und meldet "address invalid".
++ * Every line with a source reference was read off the disassembly of
++ * sunxi_aes_with_hardware (0x4860c578).  The decisive
++ * difference to mainline: the address fields are 5 bytes apart
++ * and therefore unaligned from +0x15 on.  OP-TEE writes them with memcpy
++ * of 4 bytes to odd offsets - a word access would not work there at all.
++ * mainline puts 32-bit fields at the same places (t_iv at +0x14,
++ * t_ctr +0x18, t_dlen +0x1c, then SG lists) and thereby shifts everything
++ * from the IV on; the machine then reads garbage and reports "address invalid".
+  */
+ struct h713_ce_task {
+ 	__le32	chan_id;	/* +0x00 = 0            (memset, 0x4860c578) */
+ 	__le32	comm_ctl;	/* +0x04                (str,    0x4860c5ec) */
+ 	__le32	sym_ctl;	/* +0x08                (str,    0x4860c5f2) */
+-	__le32	asym_ctl;	/* +0x0c = 0            (nur memset)         */
++	__le32	asym_ctl;	/* +0x0c = 0            (memset only)        */
+ 	u8	key_addr[5];	/* +0x10                (str,    0x4860c5f8) */
+ 	u8	iv_addr[5];	/* +0x15                (memcpy, 0x4860c60a) */
+-	u8	ctr_addr[5];	/* +0x1a  VERMUTUNG, bleibt null             */
++	u8	ctr_addr[5];	/* +0x1a  CONJECTURE, stays null             */
+ 	u8	fuell1;		/* +0x1f                                     */
+ 	__le32	data_len;	/* +0x20                (str,    0x4860c616) */
+ 	u8	src_addr[5];	/* +0x24                (str,    0x4860c618) */
+@@ -188,7 +188,7 @@
+ 	u8	fuell2[2];	/* +0x2e                                     */
+ 	__le32	src_len;	/* +0x30                (str,    0x4860c620) */
+ 	__le32	dst_len;	/* +0x34                (str,    0x4860c626) */
+-	u8	rest[0x100 - 0x38];	/* bis 0x100, genullt                */
++	u8	rest[0x100 - 0x38];	/* up to 0x100, zeroed               */
+ } __packed;
+ 
+ static_assert(sizeof(struct h713_ce_task) == 0x100);
+@@ -200,16 +200,16 @@
+ static_assert(offsetof(struct h713_ce_task, dst_len) == 0x34);
+ 
+ /*
+- * Ein einziger kohaerenter Block fuer alles, was die Maschine per DMA
+- * anfasst.  Der Deskriptor liegt am Anfang und ist damit mindestens
+- * seitenausgerichtet, also auch 64-Byte-ausgerichtet, wie der Vendor es
+- * verlangt (0x4860c58c: bic #0x3f).  Kohaerent heisst: keine Cache-Pflege
+- * noetig.  OP-TEE macht sie (0x486061a8) nur deshalb, weil es mit
+- * gecachtem Speicher arbeitet.
++ * A single coherent block for everything the machine touches by DMA.
++ * The descriptor sits at the start and is therefore at least
++ * page aligned, hence also 64-byte aligned, as the vendor
++ * demands (0x4860c58c: bic #0x3f).  Coherent means: no cache maintenance
++ * needed.  OP-TEE does it (0x486061a8) only because it works with
++ * cached memory.
+  */
+ #define PUF_DESC	0x000
+-#define PUF_KEY		0x100	/* 64 Byte, davon 16 benutzt (0x4860c5b4) */
+-#define PUF_IV		0x140	/* 16 Byte Nullen (0x4860c598) */
++#define PUF_KEY		0x100	/* 64 bytes, of which 16 used (0x4860c5b4) */
++#define PUF_IV		0x140	/* 16 bytes of zeros (0x4860c598) */
+ #define PUF_SRC		0x180
+ #define PUF_DST		0x1c0
+ #define PUF_GROESSE	0x200
+@@ -217,9 +217,9 @@
+ #define KAT_LEN		16
+ 
+ /*
+- * AES-128, FIPS-197 Anhang C.1.  Oeffentlicher Testvektor, nachgerechnet
+- * mit OpenSSL (enc -aes-128-ecb -nopad) und python-cryptography.
+- * Gilt fuer ECB und fuer den ersten CBC-Block mit IV = 0.
++ * AES-128, FIPS-197 appendix C.1.  Public test vector, recomputed
++ * with OpenSSL (enc -aes-128-ecb -nopad) and python-cryptography.
++ * Valid for ECB and for the first CBC block with IV = 0.
+  */
+ static const u8 kat_schluessel[KAT_LEN] = {
+ 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+@@ -242,12 +242,12 @@
+ 
+ static const char * const bank_name[BANK_ANZ] = { "ns", "s" };
+ static const char * const bank_text[BANK_ANZ] = {
+-	"NS-Kanal 0x03040000",
++	"NS channel 0x03040000",
+ 	"CE_S 0x03040800",
+ };
+ static const char * const mode_text[2] = {
+-	"aes_mode 0 (ECB, wie der RSSK-Pfad 0x300000)",
+-	"aes_mode 1 (CBC mit IV 0, wie OP-TEEs Softwareschluesselpfad 0x100)",
++	"aes_mode 0 (ECB, like the RSSK path 0x300000)",
++	"aes_mode 1 (CBC with IV 0, like OP-TEE's software key path 0x100)",
+ };
+ 
+ struct h713_ce_leitung {
+@@ -266,15 +266,15 @@
+ 	struct clk		*takt_ram;
+ 	struct reset_control	*reset;
+ 	struct reset_control	*reset_sys;	/* RST_BUS_CE_SYS, optional */
+-	int			reset_sys_vorher;	/* 1 = war noch gesetzt */
++	int			reset_sys_vorher;	/* 1 = was still set */
+ 
+ 	void			*puf;
+ 	dma_addr_t		puf_phys;
+ 
+-	struct mutex		sperre;		/* schuetzt Puffer und Bericht */
++	struct mutex		sperre;		/* protects buffer and report */
+ 	struct dentry		*dbg;
+ 
+-	/* Bericht des letzten Laufs */
++	/* report of the last run */
+ 	bool			gelaufen;
+ 	int			letzte_bank;
+ 	int			letzter_modus;
+@@ -293,24 +293,24 @@
+ 
+ static int bank_param = BANK_NS;
+ module_param_named(bank, bank_param, int, 0444);
+-MODULE_PARM_DESC(bank, "Registerbank fuer den Lauf beim Laden: 0 = NS (Vorgabe), 1 = CE_S");
++MODULE_PARM_DESC(bank, "Register bank for the run at load time: 0 = NS (default), 1 = CE_S");
+ 
+ static int modus_param = AES_MODE_ECB;
+ module_param_named(aes_mode, modus_param, int, 0444);
+-MODULE_PARM_DESC(aes_mode, "sym_ctl-Bits [11:8] fuer den Lauf beim Laden: 0 = ECB (Vorgabe), 1 = CBC mit IV 0");
++MODULE_PARM_DESC(aes_mode, "sym_ctl bits [11:8] for the run at load time: 0 = ECB (default), 1 = CBC with IV 0");
+ 
+ /*
+- * Vorgabe: nein.  Der Knoten im Geraetebaum traegt unser compatible, also
+- * laedt udev dieses Modul beim Start von allein.  Ein Messlauf, der den
+- * Bus haengen lassen kann, darf nicht bei jedem Start von allein
+- * passieren - er wird ausdruecklich angestossen, ueber debugfs oder
++ * Default: no.  The node in the device tree carries our compatible, so
++ * udev loads this module by itself at boot.  A measurement run that can
++ * hang the bus must not happen by itself at every
++ * boot - it is triggered explicitly, via debugfs or
+  * "modprobe h713-ce-test autostart=1".
+  */
+ static bool autostart;
+ module_param(autostart, bool, 0444);
+-MODULE_PARM_DESC(autostart, "Beim Laden sofort einen Task absetzen (Vorgabe: nein)");
++MODULE_PARM_DESC(autostart, "Issue a task right at load time (default: no)");
+ 
+-/* Eine 40-Bit-Adresse little-endian in ein 5-Byte-Feld schreiben. */
++/* Write a 40-bit address little-endian into a 5-byte field. */
+ static void adr40_setzen(u8 feld[5], dma_addr_t phys)
+ {
+ 	u64 v = phys;
+@@ -327,7 +327,7 @@
+ 	size_t p = 0;
+ 
+ 	if (!esr) {
+-		strscpy(puf, "keiner", n);
++		strscpy(puf, "none", n);
+ 		return;
+ 	}
+ 
+@@ -339,16 +339,16 @@
+ 				       p ? ", " : "", (text));		\
+ 	} while (0)
+ 
+-	MELDE(CE_ERR_ALGO_NOTSUP, "Algorithmus nicht unterstuetzt (Bit 0)");
+-	MELDE(CE_ERR_DATALEN,     "Datenlaenge ungueltig (Bit 1)");
+-	MELDE(CE_ERR_KEYSRAM,     "Key-SRAM-Fehler (Bit 2)");
+-	MELDE(CE_ERR_ADDR_INVALID, "Adresse ungueltig (Bit 5)");
+-	MELDE(CE_ERR_KEYLADDER,   "Key-Ladder-Fehler (Bit 6)");
++	MELDE(CE_ERR_ALGO_NOTSUP, "Algorithm not supported (bit 0)");
++	MELDE(CE_ERR_DATALEN,     "Data length invalid (bit 1)");
++	MELDE(CE_ERR_KEYSRAM,     "Key SRAM error (bit 2)");
++	MELDE(CE_ERR_ADDR_INVALID, "Address invalid (bit 5)");
++	MELDE(CE_ERR_KEYLADDER,   "Key ladder error (bit 6)");
+ #undef MELDE
+ 
+ 	if (esr & ~(CE_ERR_ALGO_NOTSUP | CE_ERR_DATALEN | CE_ERR_KEYSRAM |
+ 		    CE_ERR_ADDR_INVALID | CE_ERR_KEYLADDER))
+-		p += scnprintf(puf + p, n - p, "%sunbekannte Bits",
++		p += scnprintf(puf + p, n - p, "%sunknown bits",
+ 			       p ? ", " : "");
+ }
+ 
+@@ -357,19 +357,19 @@
+ 	struct h713_ce_leitung *l = data;
+ 
+ 	/*
+-	 * Der Behandler fasst absichtlich kein CE-Register an.  Erstens
+-	 * wissen wir nicht, welche Leitung zu welcher Bank gehoert -
+-	 * cstenger hat gemessen, dass die erste Operation ohne die zweite
+-	 * Leitung haengt, was genau das offenlaesst.  Zweitens ist die
+-	 * Frage, ob die sichere Bank aus der Non-Secure-Welt ueberhaupt
+-	 * lesbar ist, der halbe Zweck dieses Moduls; sie im
+-	 * Interruptkontext zu beantworten waere unhoeflich.
++	 * The handler deliberately touches no CE register.  First, we
++	 * do not know which line belongs to which bank -
++	 * cstenger measured that the first operation hangs without the second
++	 * line, which leaves exactly that open.  Second, the
++	 * question whether the secure bank is readable from the non-secure world at all
++	 * is half the purpose of this module; answering it in
++	 * interrupt context would be impolite.
+ 	 *
+-	 * Also nur zaehlen und die Leitung stilllegen.  Der Hauptpfad
+-	 * pollt das ISR ohnehin und quittiert es; danach gibt er die
+-	 * Leitung wieder frei.  Bei einem pegelgesteuerten Interrupt ist
+-	 * das Maskieren am GIC das einzige, was einen Sturm verhindert,
+-	 * solange das ISR noch steht.
++	 * So just count and shut the line down.  The main path
++	 * polls the ISR anyway and acknowledges it; after that it frees the
++	 * line again.  With a level-triggered interrupt
++	 * masking at the GIC is the only thing that prevents a storm
++	 * as long as the ISR is still set.
+ 	 */
+ 	l->gefeuert++;
+ 	if (!l->maskiert) {
+@@ -392,9 +392,9 @@
+ }
+ 
+ /*
+- * Einen Task absetzen.  Aufrufer haelt ce->sperre.
+- * Rueckgabe 0 = die Maschine hat gemeldet (ob mit oder ohne Fehler steht
+- * in ce->esr), -ETIMEDOUT = keine Meldung, -EBUSY = TLR bleibt belegt.
++ * Issue one task.  Caller holds ce->sperre.
++ * Return 0 = the machine has reported (whether with or without error is
++ * in ce->esr), -ETIMEDOUT = no report, -EBUSY = TLR stays busy.
+  */
+ static int h713_ce_task_absetzen(struct h713_ce *ce, int bank, int modus)
+ {
+@@ -411,12 +411,12 @@
+ 	memcpy(ce->puf + PUF_SRC, kat_klartext, KAT_LEN);
+ 
+ 	/*
+-	 * comm_ctl = INT | (decrypt << 8) | Algorithmus.
+-	 * OP-TEE baut genau das: 0x4860c5e6 schiebt das decrypt-Argument um
+-	 * 8 und verodert 0x80000000; der Algorithmuscode AES ist 0 und
+-	 * bleibt deshalb im Disassemblat unsichtbar.  Wir verschluesseln,
+-	 * also kein CE_COMM_DECRYPT - so wie sunxi_aes_encrypt_with_
+-	 * hardware_rssk (0x4862626c, decrypt = 0) im Einbrennpfad.
++	 * comm_ctl = INT | (decrypt << 8) | algorithm.
++	 * OP-TEE builds exactly that: 0x4860c5e6 shifts the decrypt argument by
++	 * 8 and ORs in 0x80000000; the algorithm code for AES is 0 and
++	 * therefore stays invisible in the disassembly.  We encrypt,
++	 * so no CE_COMM_DECRYPT - like sunxi_aes_encrypt_with_
++	 * hardware_rssk (0x4862626c, decrypt = 0) in the burn-in path.
+ 	 */
+ 	t->chan_id  = cpu_to_le32(CE_KANAL);
+ 	t->comm_ctl = cpu_to_le32(CE_COMM_INT | CE_COMM_ALG_AES);
+@@ -424,14 +424,14 @@
+ 				  CE_SYM_AES_128);
+ 	adr40_setzen(t->key_addr, ce->puf_phys + PUF_KEY);
+ 	adr40_setzen(t->iv_addr, ce->puf_phys + PUF_IV);
+-	/* ctr_addr bleibt null, wie bei OP-TEE */
+-	t->data_len = cpu_to_le32(KAT_LEN);	/* Bytes: 0x4860c5d4 rundet auf 4 */
++	/* ctr_addr stays zero, as with OP-TEE */
++	t->data_len = cpu_to_le32(KAT_LEN);	/* Bytes: 0x4860c5d4 rounds up to 4 */
+ 	adr40_setzen(t->src_addr, ce->puf_phys + PUF_SRC);
+ 	adr40_setzen(t->dst_addr, ce->puf_phys + PUF_DST);
+ 	t->src_len = cpu_to_le32(KAT_LEN);
+ 	t->dst_len = cpu_to_le32(KAT_LEN);
+ 
+-	/* Deskriptor steht, bevor die Maschine ihn holen darf. */
++	/* Descriptor is in place before the machine may fetch it. */
+ 	wmb();
+ 
+ 	for (i = 0; i < BANK_ANZ; i++)
+@@ -448,19 +448,19 @@
+ 	t0 = ktime_get();
+ 
+ 	/*
+-	 * Startfolge wie OP-TEE: TDA, ICR, TLR.  0x4860c334 schreibt die
+-	 * Deskriptoradresse als ein Wort - ein Register fuer die oberen 8
+-	 * Adressbits gibt es im Vendorcode nicht.  Auf diesem Board liegt
+-	 * der Arbeitsspeicher ohnehin vollstaendig unter 4 GiB.
++	 * Start sequence like OP-TEE: TDA, ICR, TLR.  0x4860c334 writes the
++	 * descriptor address as one word - there is no register for the upper 8
++	 * address bits in the vendor code.  On this board main memory lies
++	 * completely below 4 GiB anyway.
+ 	 *
+-	 * Das Ruecklesen von TDA ist unsere Zutat, nur als Messwert: eine
+-	 * Bank, die aus der Non-Secure-Welt zwar erreichbar ist, aber
+-	 * Schreibzugriffe verwirft (RAZ/WI), faellt sonst erst als
+-	 * Zeitueberschreitung auf und ist von "Task nie fertig" nicht zu
+-	 * unterscheiden.  Abgebrochen wird deshalb nicht - weder OP-TEE
+-	 * noch sun8i-ce lesen TDA je zurueck, es koennte auch schlicht nur
+-	 * schreibbar sein.  Der NS-Lauf zuerst zeigt, was ein lesbares TDA
+-	 * zurueckgibt; erst damit ist der Wert des CE_S-Laufs deutbar.
++	 * Reading TDA back is our own addition, only as a measured value: a
++	 * bank that is reachable from the non-secure world but
++	 * discards writes (RAZ/WI) otherwise first shows up as a
++	 * timeout and cannot be told apart from "task never completed".
++	 * So we do not abort - neither OP-TEE
++	 * nor sun8i-ce ever read TDA back, it might also simply be
++	 * write-only.  The NS run first shows what a readable TDA
++	 * returns; only with that can the CE_S run's value be interpreted.
+ 	 */
+ 	tda_soll = lower_32_bits(ce->puf_phys + PUF_DESC);
+ 	writel(tda_soll, b + CE_TDA);
+@@ -468,10 +468,10 @@
+ 	writel(readl(b + CE_ICR) | BIT(CE_KANAL), b + CE_ICR);
+ 
+ 	/*
+-	 * TLR: 0x4860c2d0 wartet, bis das Kanalbit frei ist, und setzt es
+-	 * dann.  Der Vendor wartet ohne Zeitschranke; wir nicht.
+-	 * (sun8i-ce schreibt beim H6 zusaetzlich den Algorithmuscode in
+-	 * TLR[14:8]; fuer AES ist der 0, beide Wege schreiben dasselbe.)
++	 * TLR: 0x4860c2d0 waits until the channel bit is free and then
++	 * sets it.  The vendor waits without a time limit; we do not.
++	 * (On the H6 sun8i-ce additionally writes the algorithm code into
++	 * TLR[14:8]; for AES that is 0, both ways write the same.)
+ 	 */
+ 	ret = readl_poll_timeout(b + CE_TLR, wert, !(wert & BIT(CE_KANAL)),
+ 				 10, 10000);
+@@ -484,10 +484,10 @@
+ 	writel(readl(b + CE_TLR) | BIT(CE_KANAL), b + CE_TLR);
+ 
+ 	/*
+-	 * Fertig melden tut die Maschine im ISR, zwei Bits je Kanal:
+-	 * Bit 2*n = fertig, Bit 2*n+1 = Fehler (0x4860c360, 0x4860c3a8).
+-	 * Wir pollen, statt auf den Interrupt zu warten - der Interrupt
+-	 * ist hier Messgroesse, nicht Mechanismus.
++	 * The machine reports completion in the ISR, two bits per channel:
++	 * bit 2*n = done, bit 2*n+1 = error (0x4860c360, 0x4860c3a8).
++	 * We poll instead of waiting for the interrupt - here the interrupt
++	 * is a measured quantity, not a mechanism.
+ 	 */
+ 	ret = readl_poll_timeout(b + CE_ISR, wert,
+ 				 wert & (3u << (2 * CE_KANAL)),
+@@ -496,10 +496,10 @@
+ 	ce->dauer_us = ktime_us_delta(ktime_get(), t0);
+ 	ce->isr = readl(b + CE_ISR);
+ 	/*
+-	 * ESR: OP-TEE maskiert mit (0xff << kanal), 0x4860c354..0x4860c358.
+-	 * Fuer Kanal 0 ist das 0xff; sun8i-ce (ESR_H6) nimmt 0xff << 8*n.
+-	 * Wir merken uns zusaetzlich das rohe Register, damit nichts
+-	 * verlorengeht, was in anderen Bits steht.
++	 * ESR: OP-TEE masks with (0xff << channel), 0x4860c354..0x4860c358.
++	 * For channel 0 that is 0xff; sun8i-ce (ESR_H6) takes 0xff << 8*n.
++	 * We additionally keep the raw register so that nothing
++	 * is lost that sits in other bits.
+ 	 */
+ 	ce->esr_roh = readl(b + CE_ESR);
+ 	ce->esr = ce->esr_roh & (0xffu << CE_KANAL);
+@@ -507,16 +507,16 @@
+ 	ce->tlr_nach = readl(b + CE_TLR);
+ 
+ 	/*
+-	 * Quittieren wie 0x4860c360: die beiden Kanalbits schreiben und
+-	 * das untere Byte des alten ISR mitnehmen, dann ICR ganz loeschen.
+-	 * Danach TLR und TDA zuruecksetzen (0x4860c2fc, 0x4860c334).
++	 * Acknowledge like 0x4860c360: write the two channel bits and
++	 * carry along the lower byte of the old ISR, then clear ICR completely.
++	 * After that reset TLR and TDA (0x4860c2fc, 0x4860c334).
+ 	 */
+ 	writel((3u << (2 * CE_KANAL)) | (ce->isr & 0xff), b + CE_ISR);
+ 	writel(0, b + CE_ICR);
+ 	writel(0, b + CE_TLR);
+ 	writel(0, b + CE_TDA);
+ 
+-	/* Was die Maschine geschrieben hat, ist jetzt sichtbar. */
++	/* What the machine has written is visible now. */
+ 	rmb();
+ 	memcpy(ce->ergebnis, ce->puf + PUF_DST, KAT_LEN);
+ 
+@@ -538,10 +538,10 @@
+ 
+ 	if (bank == BANK_S)
+ 		dev_warn(ce->dev,
+-			 "Lauf auf %s, %s. Ob die Non-Secure-Welt diese Bank lesen darf, ist unbekannt; ein Busabbruch ist moeglich.\n",
++			 "Run on %s, %s. Whether the non-secure world may read this bank is unknown; a bus abort is possible.\n",
+ 			 bank_text[bank], mode_text[modus]);
+ 	else
+-		dev_info(ce->dev, "Lauf auf %s, %s, AES-128, Key-Select 0, 16 Byte, Ziel DRAM.\n",
++		dev_info(ce->dev, "Run on %s, %s, AES-128, key select 0, 16 bytes, destination DRAM.\n",
+ 			 bank_text[bank], mode_text[modus]);
+ 
+ 	ce->letzte_bank = bank;
+@@ -561,14 +561,14 @@
+ 
+ 	if (ret == -EBUSY) {
+ 		dev_err(ce->dev,
+-			"ERGEBNIS: TLR bleibt belegt (0x%08x), der Task wurde nie geladen. Takt, Reset oder falsche Bank.\n",
++			"RESULT: TLR stays busy (0x%08x), the task was never loaded. Clock, reset or wrong bank.\n",
+ 			ce->tlr_nach);
+ 		if (ce->tlr_nach == 0xffffffff)
+ 			dev_err(ce->dev,
+-				"  Lauter Einsen: diese Bank antwortet nicht. Aus der Non-Secure-Welt vermutlich nicht sichtbar.\n");
++				"  All ones: this bank does not answer. Probably not visible from the non-secure world.\n");
+ 	} else if (ret == -ETIMEDOUT) {
+ 		dev_err(ce->dev,
+-			"ERGEBNIS: Zeitueberschreitung, keine Fertigmeldung. ISR 0x%08x, ESR roh 0x%08x (%s), TSR 0x%08x, TDA zurueckgelesen 0x%08x. IRQ %d: %ux, IRQ %d: %ux.\n",
++			"RESULT: timeout, no completion report. ISR 0x%08x, ESR raw 0x%08x (%s), TSR 0x%08x, TDA read back 0x%08x. IRQ %d: %ux, IRQ %d: %ux.\n",
+ 			ce->isr, ce->esr_roh, esrtext, ce->tsr_nach,
+ 			ce->tda_rueck,
+ 			ce->leitung[BANK_NS].irq, ce->irq_gefeuert[BANK_NS],
+@@ -576,27 +576,27 @@
+ 		if (ce->tda_rueck != lower_32_bits(ce->puf_phys) && !ce->isr &&
+ 		    !ce->tsr_nach && !ce->tlr_nach)
+ 			dev_err(ce->dev,
+-				"  Alle Register lesen sich leer und TDA hat den Wert nicht behalten: die Bank ignoriert Schreibzugriffe - falls der NS-Lauf TDA zurueckgelesen hat, heisst das: aus der Non-Secure-Welt unsichtbar.\n");
++				"  All registers read empty and TDA has not kept the value: the bank ignores writes - if the NS run read TDA back, that means: invisible from the non-secure world.\n");
+ 	} else if (ce->esr) {
+ 		dev_err(ce->dev,
+-			"ERGEBNIS: ESR-Fehler 0x%08x (roh 0x%08x): %s. Deskriptorformat oder Kanal falsch. ISR 0x%08x. IRQ %d: %ux, IRQ %d: %ux.\n",
++			"RESULT: ESR error 0x%08x (raw 0x%08x): %s. Descriptor format or channel wrong. ISR 0x%08x. IRQ %d: %ux, IRQ %d: %ux.\n",
+ 			ce->esr, ce->esr_roh, esrtext, ce->isr,
+ 			ce->leitung[BANK_NS].irq, ce->irq_gefeuert[BANK_NS],
+ 			ce->leitung[BANK_S].irq, ce->irq_gefeuert[BANK_S]);
+ 		if (ce->esr & CE_ERR_ADDR_INVALID)
+ 			dev_err(ce->dev,
+-				"  Bit 5 ist genau cstengers Signatur des falschen Formats - dann hilft auch dieser Deskriptor nicht.\n");
++				"  Bit 5 is exactly cstenger's signature of the wrong format - then this descriptor does not help either.\n");
+ 		if (ce->esr == CE_ERR_ALGO_NOTSUP && modus == AES_MODE_ECB)
+ 			dev_err(ce->dev,
+-				"  Nur Bit 0: das Format wurde gelesen, aber der Modus nicht angenommen. Als naechstes 'echo %s cbc > starten' - das ist OP-TEEs eigene Softwareschluessel-Konfiguration.\n",
++				"  Only bit 0: the format was read, but the mode was not accepted. Next try 'echo %s cbc > starten' - that is OP-TEE's own software key configuration.\n",
+ 				bank_name[bank]);
+ 	} else if (!ce->stimmt) {
+ 		dev_err(ce->dev,
+-			"ERGEBNIS: kein ESR-Fehler, aber der Chiffretext stimmt nicht: %*phN erwartet %*phN.\n",
++			"RESULT: no ESR error, but the ciphertext does not match: %*phN expected %*phN.\n",
+ 			KAT_LEN, ce->ergebnis, KAT_LEN, kat_erwartet);
+ 	} else {
+ 		dev_info(ce->dev,
+-			 "ERGEBNIS: bestanden. Vendor-Deskriptorformat auf %s bestaetigt (%s), ESR sauber, KAT stimmt (%llu us). IRQ %d: %ux, IRQ %d: %ux.\n",
++			 "RESULT: passed. Vendor descriptor format confirmed on %s (%s), ESR clean, KAT matches (%llu us). IRQ %d: %ux, IRQ %d: %ux.\n",
+ 			 bank_text[bank], mode_text[modus], ce->dauer_us,
+ 			 ce->leitung[BANK_NS].irq, ce->irq_gefeuert[BANK_NS],
+ 			 ce->leitung[BANK_S].irq, ce->irq_gefeuert[BANK_S]);
+@@ -614,66 +614,66 @@
+ 
+ 	mutex_lock(&ce->sperre);
+ 
+-	seq_puts(s, "h713-ce-test: ein Task im Vendor-Deskriptorformat, AES-128,\n");
+-	seq_puts(s, "Key-Select 0 (Schluessel aus dem Speicher), 16 Byte, Ziel DRAM.\n");
+-	seq_puts(s, "Kein Geraeteschluessel, keine Schluesselsenke.\n\n");
++	seq_puts(s, "h713-ce-test: one task in the vendor descriptor format, AES-128,\n");
++	seq_puts(s, "Key select 0 (key from memory), 16 bytes, destination DRAM.\n");
++	seq_puts(s, "No device key, no key sink.\n\n");
+ 
+ 	for (i = 0; i < BANK_ANZ; i++)
+-		seq_printf(s, "Bank %-3s %-22s abgebildet: %-4s  IRQ %d\n",
++		seq_printf(s, "Bank %-3s %-22s mapped: %-4s  IRQ %d\n",
+ 			   bank_name[i], bank_text[i],
+-			   ce->bank[i] ? "ja" : "nein", ce->leitung[i].irq);
++			   ce->bank[i] ? "yes" : "no", ce->leitung[i].irq);
+ 	seq_printf(s, "bus_ce_sys/RST_BUS_CE_SYS: %s\n",
+-		   !ce->reset_sys ? "nicht im Geraetebaum" :
+-		   ce->reset_sys_vorher > 0 ? "Reset war beim Laden noch gesetzt, jetzt aufgehoben" :
+-		   ce->reset_sys_vorher == 0 ? "Reset war beim Laden schon aufgehoben (Bootloader)" :
+-		   "Status nicht lesbar");
++		   !ce->reset_sys ? "not in the device tree" :
++		   ce->reset_sys_vorher > 0 ? "Reset was still asserted at load time, now released" :
++		   ce->reset_sys_vorher == 0 ? "Reset was already released at load time (bootloader)" :
++		   "Status not readable");
+ 	seq_putc(s, '\n');
+ 
+ 	if (!ce->gelaufen) {
+-		seq_puts(s, "Noch kein Lauf. Starten mit:  echo ns > starten      (NS-Bank, ECB)\n");
+-		seq_puts(s, "                      oder:  echo ns cbc > starten  (NS-Bank, CBC, IV 0)\n");
+-		seq_puts(s, "                      oder:  echo s > starten       (CE_S, erst nach ns)\n");
++		seq_puts(s, "No run yet. Start with:       echo ns > starten      (NS bank, ECB)\n");
++		seq_puts(s, "                        or:  echo ns cbc > starten  (NS bank, CBC, IV 0)\n");
++		seq_puts(s, "                        or:  echo s > starten       (CE_S, only after ns)\n");
+ 		goto raus;
+ 	}
+ 
+ 	esr_klartext(ce->esr, esrtext, sizeof(esrtext));
+ 
+-	seq_printf(s, "letzter Lauf auf   : %s\n", bank_text[ce->letzte_bank]);
+-	seq_printf(s, "Modus              : %s\n", mode_text[ce->letzter_modus]);
+-	seq_printf(s, "Dauer              : %llu us\n", ce->dauer_us);
+-	seq_printf(s, "TDA zurueckgelesen : 0x%08x (geschrieben %pad)\n",
++	seq_printf(s, "last run on        : %s\n", bank_text[ce->letzte_bank]);
++	seq_printf(s, "Mode               : %s\n", mode_text[ce->letzter_modus]);
++	seq_printf(s, "Duration           : %llu us\n", ce->dauer_us);
++	seq_printf(s, "TDA read back      : 0x%08x (written %pad)\n",
+ 		   ce->tda_rueck, &ce->puf_phys);
+ 	seq_printf(s, "ISR                : 0x%08x\n", ce->isr);
+-	seq_printf(s, "ESR                : 0x%08x (roh 0x%08x; %s)\n",
++	seq_printf(s, "ESR                : 0x%08x (raw 0x%08x; %s)\n",
+ 		   ce->esr, ce->esr_roh, esrtext);
+-	seq_printf(s, "TSR danach         : 0x%08x\n", ce->tsr_nach);
+-	seq_printf(s, "TLR danach         : 0x%08x\n", ce->tlr_nach);
++	seq_printf(s, "TSR afterwards     : 0x%08x\n", ce->tsr_nach);
++	seq_printf(s, "TLR afterwards     : 0x%08x\n", ce->tlr_nach);
+ 	for (i = 0; i < BANK_ANZ; i++)
+-		seq_printf(s, "IRQ %-3d (%s)       : %ux ausgeloest\n",
++		seq_printf(s, "IRQ %-3d (%s)       : %ux fired\n",
+ 			   ce->leitung[i].irq, bank_name[i],
+ 			   ce->irq_gefeuert[i]);
+ 
+-	seq_puts(s, "\nBefund             : ");
++	seq_puts(s, "\nFinding            : ");
+ 	if (ce->fehler == -EBUSY)
+-		seq_printf(s, "TLR bleibt belegt (0x%08x) - der Task wurde nie\n"
+-			      "                     geladen. Takt, Reset oder falsche Bank;\n"
+-			      "                     lauter Einsen heisst: die Bank antwortet nicht.\n",
++		seq_printf(s, "TLR stays busy (0x%08x) - the task was never\n"
++			      "                     loaded. Clock, reset or wrong bank;\n"
++			      "                     all ones means: the bank does not answer.\n",
+ 			   ce->tlr_nach);
+ 	else if (ce->fehler == -ETIMEDOUT)
+-		seq_printf(s, "Zeitueberschreitung - keine Fertigmeldung.%s\n",
++		seq_printf(s, "Timeout - no completion report.%s\n",
+ 			   (ce->tda_rueck != lower_32_bits(ce->puf_phys) &&
+ 			    !ce->isr && !ce->tsr_nach && !ce->tlr_nach) ?
+-			   "\n                     Alle Register leer, TDA nicht behalten:\n"
+-			   "                     die Bank ignoriert Schreibzugriffe (vgl. NS-Lauf)." : "");
++			   "\n                     All registers empty, TDA not kept:\n"
++			   "                     the bank ignores writes (cf. NS run)." : "");
+ 	else if (ce->esr)
+-		seq_puts(s, "ESR-Fehler. Deskriptorformat oder Kanal falsch.\n");
++		seq_puts(s, "ESR error. Descriptor format or channel wrong.\n");
+ 	else if (!ce->stimmt)
+-		seq_printf(s, "ESR sauber, aber falscher Chiffretext:\n"
++		seq_printf(s, "ESR clean, but wrong ciphertext:\n"
+ 			      "                     %*phN\n"
+-			      "                     erwartet %*phN\n",
++			      "                     expected %*phN\n",
+ 			   KAT_LEN, ce->ergebnis, KAT_LEN, kat_erwartet);
+ 	else
+-		seq_puts(s, "BESTANDEN - Vendor-Deskriptorformat bestaetigt.\n");
++		seq_puts(s, "PASSED - vendor descriptor format confirmed.\n");
+ 
+ raus:
+ 	mutex_unlock(&ce->sperre);
+@@ -682,8 +682,8 @@
+ DEFINE_SHOW_ATTRIBUTE(h713_ce_bericht);
+ 
+ /*
+- * Eingabe: "<bank> [<modus>]".  bank = ns|0|s|1, modus = ecb|0|cbc|1
+- * (Vorgabe ecb).  Beispiele: "ns", "s", "ns cbc", "1 1".
++ * Input: "<bank> [<mode>]".  bank = ns|0|s|1, mode = ecb|0|cbc|1
++ * (default ecb).  Examples: "ns", "s", "ns cbc", "1 1".
+  */
+ static ssize_t h713_ce_starten_schreiben(struct file *datei,
+ 					 const char __user *puf,
+@@ -727,7 +727,7 @@
+ 	if (ret == -EINVAL)
+ 		return ret;
+ 
+-	/* Ein ESR-Fehler ist ein Messergebnis, kein Schreibfehler. */
++	/* An ESR error is a measurement result, not a write error. */
+ 	return len;
+ }
+ 
+@@ -742,24 +742,24 @@
+ 	int ret;
+ 
+ 	/*
+-	 * Takte und Reset wie in sun8i-ce fuer die H6-Variante: bus, mod
+-	 * (300 MHz), ram; der Reset wird nach den Takten aufgehoben
++	 * Clocks and reset as in sun8i-ce for the H6 variant: bus, mod
++	 * (300 MHz), ram; the reset is released after the clocks
+ 	 * (sun8i_ce_pm_resume).
+ 	 *
+-	 * Dazu bus_ce_sys und RST_BUS_CE_SYS (CCU 0x68c Bit 1 und 17,
+-	 * direkt neben bus_ce Bit 0 und 16).  Der Stock-Bootloader
+-	 * schaltet beide Paare zusammen ein (u-boot.fex 0x4a028898:
+-	 * 0x68c |= 3; 0x4a0288ba: |= 0x30000), bevor OP-TEE je die
+-	 * sichere Bank anfasst; unser eigener SPL tut dasselbe beim
+-	 * DRAM-Init (dram_sun50iw12.c).  Dass CE_S daran haengt, ist
+-	 * Vermutung - aber ein CE_S-Lauf gegen einen abgeschalteten Block
+-	 * saehe genauso aus wie "aus NS unsichtbar", und das wollen wir
+-	 * unterscheiden koennen.  Reihenfolge wie im Stock: erst die
+-	 * Gates, dann die Resets.
++	 * In addition bus_ce_sys and RST_BUS_CE_SYS (CCU 0x68c bits 1 and 17,
++	 * right next to bus_ce bits 0 and 16).  The stock bootloader
++	 * switches both pairs on together (u-boot.fex 0x4a028898:
++	 * 0x68c |= 3; 0x4a0288ba: |= 0x30000), before OP-TEE ever
++	 * touches the secure bank; our own SPL does the same during
++	 * DRAM init (dram_sun50iw12.c).  That CE_S depends on it is
++	 * a conjecture - but a CE_S run against a switched-off block
++	 * would look just like "invisible from NS", and we want to be able
++	 * to tell these apart.  Order as in stock: first the
++	 * gates, then the resets.
+ 	 */
+ 	ret = clk_set_rate(ce->takt_mod, 300000000);
+ 	if (ret)
+-		dev_warn(ce->dev, "mod-Takt laesst sich nicht auf 300 MHz setzen: %d\n",
++		dev_warn(ce->dev, "mod clock cannot be set to 300 MHz: %d\n",
+ 			 ret);
+ 
+ 	ret = clk_prepare_enable(ce->takt_bus);
+@@ -787,14 +787,14 @@
+ 			goto reset_bus;
+ 	}
+ 
+-	dev_info(ce->dev, "Takte an: bus %lu Hz, mod %lu Hz, ram %lu Hz; bus_ce_sys %s, RST_BUS_CE_SYS %s\n",
++	dev_info(ce->dev, "Clocks on: bus %lu Hz, mod %lu Hz, ram %lu Hz; bus_ce_sys %s, RST_BUS_CE_SYS %s\n",
+ 		 clk_get_rate(ce->takt_bus), clk_get_rate(ce->takt_mod),
+ 		 clk_get_rate(ce->takt_ram),
+-		 ce->takt_sys ? "an" : "nicht im Geraetebaum",
+-		 !ce->reset_sys ? "nicht im Geraetebaum" :
+-		 ce->reset_sys_vorher > 0 ? "war noch gesetzt, jetzt aufgehoben" :
+-		 ce->reset_sys_vorher == 0 ? "war schon aufgehoben" :
+-		 "Status nicht lesbar, aufgehoben");
++		 ce->takt_sys ? "on" : "not in the device tree",
++		 !ce->reset_sys ? "not in the device tree" :
++		 ce->reset_sys_vorher > 0 ? "was still asserted, now released" :
++		 ce->reset_sys_vorher == 0 ? "was already released" :
++		 "status not readable, released");
+ 	return 0;
+ 
+ reset_bus:
+@@ -840,22 +840,22 @@
+ 								   bank_name[i]);
+ 		if (IS_ERR(ce->bank[i]))
+ 			return dev_err_probe(dev, PTR_ERR(ce->bank[i]),
+-					     "Registerfenster \"%s\" fehlt\n",
++					     "Register window \"%s\" missing\n",
+ 					     bank_name[i]);
+ 	}
+ 
+ 	ce->takt_bus = devm_clk_get(dev, "bus");
+ 	if (IS_ERR(ce->takt_bus))
+-		return dev_err_probe(dev, PTR_ERR(ce->takt_bus), "Takt bus\n");
++		return dev_err_probe(dev, PTR_ERR(ce->takt_bus), "Clock bus\n");
+ 	ce->takt_mod = devm_clk_get(dev, "mod");
+ 	if (IS_ERR(ce->takt_mod))
+-		return dev_err_probe(dev, PTR_ERR(ce->takt_mod), "Takt mod\n");
++		return dev_err_probe(dev, PTR_ERR(ce->takt_mod), "Clock mod\n");
+ 	ce->takt_ram = devm_clk_get(dev, "ram");
+ 	if (IS_ERR(ce->takt_ram))
+-		return dev_err_probe(dev, PTR_ERR(ce->takt_ram), "Takt ram\n");
++		return dev_err_probe(dev, PTR_ERR(ce->takt_ram), "Clock ram\n");
+ 	ce->takt_sys = devm_clk_get_optional(dev, "sys");
+ 	if (IS_ERR(ce->takt_sys))
+-		return dev_err_probe(dev, PTR_ERR(ce->takt_sys), "Takt sys\n");
++		return dev_err_probe(dev, PTR_ERR(ce->takt_sys), "Clock sys\n");
+ 
+ 	ce->reset = devm_reset_control_get_exclusive(dev, "bus");
+ 	if (IS_ERR(ce->reset))
+@@ -865,16 +865,16 @@
+ 		return dev_err_probe(dev, PTR_ERR(ce->reset_sys), "Reset sys\n");
+ 
+ 	/*
+-	 * Die Adressfelder im Deskriptor sind 40 Bit breit.  Der
+-	 * Arbeitsspeicher dieses Boards liegt zwar vollstaendig zwischen
+-	 * 0x40000000 und 0x80000000, die oberen acht Bits sind also immer
+-	 * null - aber die Maske sagt, was das Format kann.
++	 * The address fields in the descriptor are 40 bits wide.  The
++	 * main memory of this board does lie entirely between
++	 * 0x40000000 and 0x80000000, so the upper eight bits are always
++	 * zero - but the mask says what the format can do.
+ 	 */
+ 	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(40));
+ 	if (ret) {
+ 		ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
+ 		if (ret)
+-			return dev_err_probe(dev, ret, "DMA-Maske\n");
++			return dev_err_probe(dev, ret, "DMA mask\n");
+ 	}
+ 
+ 	ce->puf = dmam_alloc_coherent(dev, PUF_GROESSE, &ce->puf_phys,
+@@ -884,14 +884,14 @@
+ 
+ 	if (ce->puf_phys & 0x3f)
+ 		return dev_err_probe(dev, -EINVAL,
+-				     "Deskriptorpuffer nicht 64-Byte-ausgerichtet (%pad)\n",
++				     "Descriptor buffer not 64-byte aligned (%pad)\n",
+ 				     &ce->puf_phys);
+ 
+ 	/*
+-	 * Beide Interrupts anfordern.  cstenger hat gemessen, dass die
+-	 * erste Operation haengt, wenn nur der erste angefordert ist, und
+-	 * mit beiden durchlaeuft; welche Leitung wozu gehoert, ist damit
+-	 * nicht geklaert.  Genau deshalb zaehlen wir beide mit.
++	 * Request both interrupts.  cstenger measured that the
++	 * first operation hangs if only the first is requested, and
++	 * runs through with both; which line belongs to what is thereby
++	 * not clarified.  Exactly for that reason we count both.
+ 	 */
+ 	for (i = 0; i < BANK_ANZ; i++) {
+ 		ret = platform_get_irq_byname(pdev, bank_name[i]);
+@@ -907,7 +907,7 @@
+ 
+ 	ret = h713_ce_takte_an(ce);
+ 	if (ret)
+-		return dev_err_probe(dev, ret, "Takte/Reset\n");
++		return dev_err_probe(dev, ret, "Clocks/reset\n");
+ 
+ 	ce->dbg = debugfs_create_dir(DRV_NAME, NULL);
+ 	debugfs_create_file("ergebnis", 0444, ce->dbg, ce,
+@@ -915,7 +915,7 @@
+ 	debugfs_create_file("starten", 0200, ce->dbg, ce,
+ 			    &h713_ce_starten_fops);
+ 
+-	dev_info(dev, "bereit. Baenke 0x03040000 (IRQ %d) und 0x03040800 (IRQ %d), Puffer bei %pad\n",
++	dev_info(dev, "ready. Banks 0x03040000 (IRQ %d) and 0x03040800 (IRQ %d), buffer at %pad\n",
+ 		 ce->leitung[BANK_NS].irq, ce->leitung[BANK_S].irq,
+ 		 &ce->puf_phys);
+ 
+@@ -923,7 +923,7 @@
+ 		h713_ce_lauf(ce, bank_param, modus_param);
+ 	} else {
+ 		dev_info(dev,
+-			 "kein Lauf. Starten mit: echo ns > /sys/kernel/debug/%s/starten\n",
++			 "no run. Start with: echo ns > /sys/kernel/debug/%s/starten\n",
+ 			 DRV_NAME);
+ 	}
+ 
+@@ -955,5 +955,5 @@
+ };
+ module_platform_driver(h713_ce_driver);
+ 
+-MODULE_DESCRIPTION("H713 Crypto Engine: ein Task im Vendor-Deskriptorformat (Known-Answer-Test)");
++MODULE_DESCRIPTION("H713 Crypto Engine: one task in the vendor descriptor format (known-answer test)");
+ MODULE_LICENSE("GPL");
