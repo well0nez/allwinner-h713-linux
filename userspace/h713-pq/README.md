@@ -42,7 +42,7 @@ default `0x0030` is the HY310's.
 `--data DIRECTORY` sets the tvconfig directory. Without it the search goes, in order:
 `$H713_TVCONFIG`, `/etc/h713/tvconfig`, then `re/vendor/HY310/extracted/vendor_a/etc/tvconfig` in the work tree.
 
-**The German spellings `--daten` and `--kanal` still work, undocumented, until after `v0.9`.** These options
+**The German spellings `--daten` and `--kanal` still work, undocumented.** These options
 are the interface to `h713-tv`, which starts this program at every boot with exactly that command line (`main.c`,
 `pq_start()`), so both sides were renamed together. The JSON field names below are renamed in a step of their own.
 

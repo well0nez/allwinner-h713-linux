@@ -333,7 +333,7 @@ h713-tv ctl resync              select the source again (S_INPUT 0 = THal_Vp_Set
 h713-tv ctl replug              play an unplug and a replug to the source: HPD 300 ms low (S_EDID with
                                  blocks=0), load the EDID again (S_EDID, 4 blocks), HPD high -- ~1 s, blocks
 h713-tv ctl edid block0|block1  a replug that publishes that half of /lib/firmware/hy310-edid.bin as the
-                                 EDID (S_EDID, 2 blocks, kernel 0136z); `edid =` in tv.conf makes it stand
+                                 EDID (S_EDID, 2 blocks, kernel 0170); `edid =` in tv.conf makes it stand
 h713-tv ctl warp [status]       whether h713-warp has the video plane, with its counters (6e)
 h713-tv ctl hdcp                HDCP: the version negotiated, whether a session stands, the 1.4 and 2.2
                                  keys, the firmware's last HDCP log line - five lines out of the kernel (6f)
@@ -445,7 +445,7 @@ see 6e):
 | **silent** | picture ∧ Present ∧ ¬Compressed ∧ rate ∈ {32000, 44100, 48000} (or `audio on`) | `HDMI Mute Switch`:=1 (stays), `I2S Rate`:=rate, `DAC Source`:=I2S, `HDMI Audio Switch`:=1, timer 100 ms | **debounce** |
 | **debounce** | after 100 ms the condition is true again | `DAC Playback Volume` unchanged, the codec switch on (unless `ctl mute on`), `HDMI Playback Volume`:=0 dB + trim, `HDMI Mute Switch`:=0 | **on** |
 | **debounce** | the condition has become false (the source flapped) | `HDMI Mute Switch`:=1, `HDMI Audio Switch`:=0, `DAC Source`:=APB | **silent** |
-| **on** | the condition is false (no picture, no audio, a bitstream, `audio off`, the end of the program) | mute:=1, switch:=0, source:=APB - at once, without debounce (with 0169: input mute:=1, switch:=0, `I2S Rate`:=48000, source stays I2S) | **silent** |
+| **on** | the condition is false (no picture, no audio, a bitstream, `audio off`, the end of the program) | mute:=1, switch:=0, source:=APB - at once, without debounce (with 0176: input mute:=1, switch:=0, `I2S Rate`:=48000, source stays I2S) | **silent** |
 | **on** | the source's rate ≠ the programmed rate | mute:=1, `I2S Rate`:=the new one, source:=I2S, switch:=1, timer 100 ms | **debounce** |
 
 Every change of the path happens **behind the DSP mute** (silent -> change -> loud), because the DSP's
@@ -472,9 +472,9 @@ the codec (the switch is reset on exit), or the next `aplay` would be silent for
 more.
 
 **The device's own sounds** (plan [doku/102](../../doku/102-plan-audio-mischung.md), package I; kernel
-patch 0169). The DAC takes one source, and a PC keeps its HDMI audio stream open even in silence (PipeWire,
+patch 0176). The DAC takes one source, and a PC keeps its HDMI audio stream open even in silence (PipeWire,
 44.1 kHz of nothing), so `aplay` on the codec's own PCM `hw:0,0` was inaudible whenever HDMI played. With
-0169 the card `hy310hdmi` carries a playback PCM, **`hw:hy310hdmi,0`** (48 kHz, S16_LE, stereo), that the
+0176 the card `hy310hdmi` carries a playback PCM, **`hw:hy310hdmi,0`** (48 kHz, S16_LE, stereo), that the
 DSP mixes into the HDMI audio the way stock mixes Android's system sounds (path 0x89, `MIXER2`), and a
 second mute, `HDMI Input Mute Switch`, that silences the HDMI branch alone. Where that control exists the
 automaton changes in three places: the DAC stays on **I2S** for good (also on exit, so the DSP keeps mixing
@@ -488,7 +488,7 @@ and `/etc/asound.conf` names the two paths `bridge` and `codec`. `hw:0,0` stays 
 path, and is heard only after `amixer -c 0 cset name='DAC Source' APB`. `ctl status` then shows `Input Mute`
 in the `audio cards` line and a line `audio sounds` naming the PCM and, out of `/proc/asound/cardN/pcm0p/sub0`,
 whether it is `closed` or which pid holds it in which state, rate and format (`status brief` skips that read).
-Without the control (a kernel before 0169) everything behaves exactly as described above.
+Without the control (a kernel before 0176) everything behaves exactly as described above.
 
 **Without the drivers** everything runs as before: if one of the two cards or one of their controls is
 missing, the audio part is switched off after 30 attempts with a clear sentence
@@ -689,7 +689,7 @@ edid       = block0 | block1 # which half of /lib/firmware/hy310-edid.bin port 0
 ```
 
 The German key names of the releases up to v0.8-beta - `zustand`, `daten`, `rechner` - are still accepted
-without a warning, so an existing `tv.conf` keeps working; they go out after `v0.9`.
+without a warning, so an existing `tv.conf` keeps working.
 
 On the command line they are called `-p`, `--data` and `--calculator`; on top of that `--input` (default
 `HDMI1`) and `--lut` (default `/run/h713-tv/gamma-laufzeit.bin`). The command line has the last word, the
@@ -731,7 +731,7 @@ warp must never mute the source.
 ## 6f. HDCP: seeing the negotiation without a photo
 
 `h713-tv ctl hdcp` prints five lines out of the kernel's `hdcp` file, a sysfs attribute of the hdmirx
-device reached through the video node, `/sys/class/video4linux/videoN/device/hdcp` (kernel patch 0168;
+device reached through the video node, `/sys/class/video4linux/videoN/device/hdcp` (kernel patch 0174;
 sysfs and not debugfs, because the release kernel has no debugfs); `ctl status` (not `brief`) shows the
 same five after the arisc line. The shape:
 

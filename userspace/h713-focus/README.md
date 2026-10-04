@@ -23,7 +23,8 @@ stops working is worse than a switch in the wrong language. They are renamed
 when the notes are, not before.
 
 Return values: `0` done - `2` misuse or no node - `3` blocked or stopped at an
-edge - `4` deadline over / command dropped - `130` Ctrl-C.
+edge - `4` deadline over / command dropped - `7` no focus motor on this board at
+all ("not present on this board", `h713-features`) - `130` Ctrl-C.
 
 ## First: the module
 
