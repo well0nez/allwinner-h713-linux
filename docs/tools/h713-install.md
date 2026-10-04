@@ -128,6 +128,13 @@ are named in the log. The window is what is mounted, not the node - the installe
 open exclusively while it works, and the kernel will not mount a partition of a drive somebody holds like
 that.
 
+The board comes from the same place. Over our layout there is no stock firmware left to identify, so the
+installer reads `/etc/h713/board` back out of the installed `hy310-rootfs` - the file the install before
+wrote - takes the board only when a profile of that name exists, writes the same file into the new image
+and sets `h713_project` in the environment from its `project_id` (`our layout on the device -- the board is
+known from its own /etc/h713/board`). Without that file the board stays unknown and the run says so; a
+`--no-write` rehearsal only names the step (`WOULD: take the board ...`) and mounts nothing.
+
 `--vendor` and a full dump in the dump directory keep precedence, in that order. The mandatory small dump
 is skipped as well (`our layout on the device -- nothing stock to save; --dump takes one anyway`); what
 the later steps took out of it is read into memory before the write instead, so step 7 still compares the

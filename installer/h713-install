@@ -50,7 +50,7 @@ from h713.dump import (board_of, choose_dump, dump_asked, dump_full,       # noq
 from h713.env import ENV_CARRY_OVER                                         # noqa: E402
 from h713.fel import expose_drive                                           # noqa: E402
 from h713.identify import identify, report_device                           # noqa: E402
-from h713.install import (DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
+from h713.install import (BOARD_FILE, board_from_device, DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
                           WRITES, beta_warning, confirm, image_package, in_dump,
                           release_beside, release_files, run_extractor, table_test_for,
                           test_image_allowed, translate, unpack_parts, write_package)
@@ -503,6 +503,31 @@ def _size_is_a_units(layout):
     return bool(layout.get("disk_sectors") and rows and rows[-1][2])
 
 
+def _board_from_device(args, disk):
+    """Our layout on the device and no profile: identify() reads stock firmware, and there is
+    none left. The install before this one wrote /etc/h713/board into the rootfs; taken from
+    there, the reinstall writes the same board file again and sets h713_project from it -
+    without it, a reinstall dropped the file and left U-Boot on the image's default project
+    (on the HY300 Pro of issue #1, test9 ran project 0x30 that way). A board id no profile
+    knows is not taken."""
+    board, project = board_from_device(disk)
+    if not board:
+        console.info("our layout, and no %s in its rootfs -- the board stays unknown" % BOARD_FILE)
+        return
+    profile = profile_of(board.replace("-", "_"))
+    if profile is None:
+        console.warn("%s of the installed system names '%s', a board this installer has no "
+                     "profile for -- not taken" % (BOARD_FILE, board))
+        return
+    args._profile, args._board = profile, profile.get("id")
+    args._board_project = project
+    if project:
+        args._env_keys = {"h713_project": "0x%02x" % project}
+    console.ok("our layout on the device -- the board is known from its own %s: %s%s"
+               % (BOARD_FILE, profile.get("name", board),
+                  ", project 0x%02x" % project if project else ""))
+
+
 def _sizes_allowed(args, ident):
     """The eMMC sizes (sectors) this run accepts. Reading (`dump`) takes every size an H713
     board is known with. A write takes the size of the board identified underneath -- its
@@ -582,6 +607,13 @@ def _work(args, path):
             args._board = (args._profile or {}).get("id")
             project = _declared_project(ident)
             args._env_keys = {"h713_project": project} if project else {}
+            if args._profile is None and ident.get("kind") == "ours" and \
+                    args.command == "install":
+                if writing:
+                    _board_from_device(args, disk)
+                else:       # a rehearsal mounts nothing (test_install_readback)
+                    console.info("  WOULD: take the board from the installed system's %s, "
+                                 "and h713_project with it" % BOARD_FILE)
             if args.command == "restore-stock" and ident["region_sources"].get("private") == "gpt":
                 # The vendor image never brings 'private'; the restore promises not to touch
                 # it, and the lock makes that promise hard (stage 2 C8). Only a `private` this

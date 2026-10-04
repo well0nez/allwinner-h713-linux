@@ -526,11 +526,14 @@ def vendor_sources(directory, tab, files, log=console):
 BOARD_FILE = "/etc/h713/board"
 
 
-def board_entry(board_id, profile):
+def board_entry(board_id, profile, project=None):
     """The /etc/h713/board entry for the mounted rootfs, or None when the run
     does not know which board this is (--skip-identify, or a profile without a
-    declared project id)."""
-    project = ((profile or {}).get("panel") or {}).get("declared_project_id")
+    declared project id). `project` (an int) is the id the device's own board file
+    named, where the run took the board from there (board_from_device()); it wins
+    over the profile's, which a board with firmware variants may not state."""
+    if project is None:
+        project = ((profile or {}).get("panel") or {}).get("declared_project_id")
     if not board_id or not project:
         return None
     text = ("# written by h713-install; which board this is\n"
@@ -538,6 +541,50 @@ def board_entry(board_id, profile):
             % (board_id.replace("_", "-"), project))
     return mountfs.Entry(BOARD_FILE, text.encode(), None, VENDOR_MODE, 0, 0,
                          DIR_MODE)
+
+
+def parse_board_file(data):
+    """(board id, project id as int) out of an /etc/h713/board that board_entry() wrote; None
+    for what is not there or not in its shape. Read back, never trusted further than that: the
+    board id still has to name a profile (h713-install _board_from_device())."""
+    board = project = None
+    for line in data.decode("utf-8", "replace").splitlines():
+        key, eq, value = line.partition("=")
+        if not eq or line.lstrip().startswith("#"):
+            continue
+        key, value = key.strip(), value.strip()
+        if key == "board" and value and all(c.isalnum() or c in "-_" for c in value):
+            board = value
+        elif key == "project_id":
+            try:
+                number = int(value, 16) if value.lower().startswith("0x") else None
+            except ValueError:
+                number = None
+            if number is not None and 0 < number < 0x100:
+                project = number
+    return board, project
+
+
+ROOTFS_PARTITION = "hy310-rootfs"   # layout v4 (h713.layout.PARTITIONS): where /etc/h713 lives
+
+
+def board_from_device(disk, log=console):
+    """Over our own layout identify() cannot name the board: the stock firmware it reads is
+    gone. The install before this one wrote the board into the rootfs (board_entry()), so it
+    is read back from there, read-only, through the same mount device_sources() uses. Returns
+    (board id, project id) as parse_board_file() does, (None, None) when there is nothing to
+    read. Never raises: a board file that cannot be read leaves the run where it was."""
+    found = gpt_partitions(disk)
+    if ROOTFS_PARTITION not in found:
+        return None, None
+    _number, lba, sectors = found[ROOTFS_PARTITION]
+    try:
+        data = mountfs.copy_out(disk.path, lba * SECT, sectors * SECT, [BOARD_FILE],
+                                Quiet()).get(BOARD_FILE)
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        log.warn("%s of the installed system could not be read (%s)" % (BOARD_FILE, exc))
+        return None, None
+    return parse_board_file(data) if data else (None, None)
 
 
 def board_partition(files):
@@ -1025,7 +1072,8 @@ def write_package(args, disk, path, directory, tab, here=None):
     plan = copy_entries(files, sources)
     # The board file: same step, same mount, but computed and not read off the
     # device -- so it is written even where this firmware ships no PQ files.
-    entry = board_entry(getattr(args, "_board", None), getattr(args, "_profile", None))
+    entry = board_entry(getattr(args, "_board", None), getattr(args, "_profile", None),
+                        getattr(args, "_board_project", None))
     part = board_partition(files)
     if entry and part:
         plan.setdefault(part, []).append(entry)
@@ -1034,7 +1082,9 @@ def write_package(args, disk, path, directory, tab, here=None):
     elif files:
         console.warn("%s is not written -- this run does not know which board "
                      "this is. h713-tv then reads the device tree, and without "
-                     "that it uses the curve it ships." % BOARD_FILE)
+                     "that it uses the curve it ships. Over our own layout the "
+                     "board comes from the installed system's %s; --dump with the "
+                     "first install's dump directory names it too." % (BOARD_FILE, BOARD_FILE))
     if user:
         if not files:
             console.step(5, "Put your own SSH key in")
