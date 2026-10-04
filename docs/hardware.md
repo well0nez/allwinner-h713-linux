@@ -8,7 +8,7 @@ board variants below you are holding - the wrong DRAM parameters train "OK" and 
 
 | Board | Silkscreen | DRAM | Source |
 |---|---|---|---|
-| Bench | `HY200_QZ713DF_A1` | DDR3, 1 GiB | cstenger's bring-up board (`mainline/README.md`) |
+| Bench, HY300PRO-G-EU, "HY300 Pro+" 2025 | `HY200_QZ713DF_A1` | DDR3; 792 or 624 MHz by firmware, 1 GiB on the bench | cstenger's bring-up board (`mainline/README.md`), and the board of two projector firmwares (`boards/hy200-qz713df-a1`) |
 | "Projector", fork naming | `HY200_QZ713_V2` | LPDDR3, 1 GiB - **assumed, never booted** | `mainline/README.md` |
 | This project's unit | `HY260_QZ713_V3.1` | DDR3, 792 MHz, 1 GiB - measured | boot0 UART log, SK hynix `H5TQ` part marking, `sys_config.fex`, boot0 header - four independent sources, `doku/10-hardware.md` |
 

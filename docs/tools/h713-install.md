@@ -71,7 +71,8 @@ is described well enough to build for, is a **test image**: built on purpose wit
 `install` writes such an image only when both hold:
 
 - `--test-image` is on the command line, and
-- the device in front of it identifies as exactly that profile.
+- the device in front of it identifies as exactly that profile (on a board with firmware variants,
+  that profile and variant: `test_for: "hy200_qz713df_a1/projector05061226"`).
 
 Either one missing and the run stops before the eMMC is touched, naming which board the image was
 built for, which board was found, and that a full dump (`dump --full`) is the way back. `--no-write`

@@ -226,8 +226,9 @@ nothing has changed: the dump is mandatory, it is the only way back to Android, 
 
 ## Reinstalling a test image
 
-A test image (`h713-mkimage build --test-for BOARD`, table key `test_for`) is written only on the board
-it was built for, and only with `--test-image`. The first time, the device still runs Android and the
+A test image (`h713-mkimage build --test-for BOARD`, or `BOARD/VARIANT` for a board with several stock
+firmwares; table key `test_for`) is written only on the board it was built for, and only with
+`--test-image`. The first time, the device still runs Android and the
 identification reads the board off it. The second time it runs our layout, which carries nothing a
 profile could match - no Android, no vendor U-Boot - so on its own the device is `no board we know`, and
 the run stops with exit 1 before anything is written. The proof of the board is the full dump of the

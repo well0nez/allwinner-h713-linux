@@ -65,15 +65,16 @@ no image for a board nobody has tested (doku/121 §5): boards/hy300-t08 is STATU
 A verified board that names no installer profile is refused as well, because `h713-install`
 identifies the device before it writes and would have nothing to identify it against. Today that
 leaves exactly one board: `hy310`. The other five are `profile-only` or `partial` - including the
-HY200 bench board, which cstenger has booted in his own tree but on which no build of ours has ever
-run. Four of the five now carry an installer profile read out of a stock image; that describes the
+HY200 QZ713DF A1, cstenger's bench board, which he has booted in his own tree and whose HY300PRO-G-EU
+firmware variant has run test images of ours, without a green run reported yet. Four of the five now carry an installer profile read out of a stock image; that describes the
 board, it does not test it, and `--board` still refuses them. The table is in
 [STATUS.md](STATUS.md), *Boards*.
 
 There is one named way past that refusal, and it does not weaken it: `--test-image`. A board that is
 `partial` or `profile-only` but has a `PROFILE`, a `KERNEL_DTB` and a U-Boot base can be built for on
 purpose, as a **test image** - `<IMAGE_NAME>-<version>-TEST`, marked `test_for: "<profile>"` in its
-table, saying so in its banner, its stamp and its README. `h713-install` writes it only on that very
+table (`--variant <name>` picks the stock firmware of a board with several, and the table then names
+`<profile>/<variant>`), saying so in its banner, its stamp and its README. `h713-install` writes it only on that very
 board and only with its own `--test-image` ([docs/tools/h713-install.md](docs/tools/h713-install.md)).
 It is a build for one person - the board's owner, who holds a full dump as the way back - not a
 release, and it changes nothing we claim: the board's line stays `partial` or `profile-only` until
