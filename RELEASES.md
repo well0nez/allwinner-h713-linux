@@ -130,8 +130,11 @@ reload), the fan backstop (untested on the device). An HDCP 2.2 session is unpro
 reference, the four projection modes and the soft edge on the wall; EDID block 1 with 1080p120 locked; the
 remote's 16 keys, 97 of 97 pings beside it, cold start and reconnect; the device sounds within 0.1 dB of
 HDMI over 20 rounds, the volume within 0.8 dB of the stock curve; the autofocus sharp at a wall twice at the
-same motor position. <!-- STAGE4: add the run of this image itself: installed twice over FEL from these
-files (E2), 20 cold starts, the date - doku/142 4a; then delete this comment. -->
+same motor position. The image itself, installed from these files over FEL on 2026-10-04 (`doku/142`):
+ten cold starts in a row with the boot logo each time, Bluetooth up after two warm reboots, the remote's
+keys and mouse, the device sound mixed into HDMI and the volume curve, 1080p120 under the warp at about 50
+frames a second. The same commit as a TEST image on the maintainer's HY300PRO-G-EU: DRAM at 792 MHz, 8-bit
+LVDS, project 0x34, the remote, Bluetooth after a cold start, three cold starts.
 
 **Files:** the table at the top of this page, with `v0.96-beta` for `vX.Y`. Unpack nothing by hand:
 `h713-install install <the folder>` finds them all ([FLASHING.md](FLASHING.md)).

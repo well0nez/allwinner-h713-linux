@@ -6,7 +6,8 @@ treat it as a claim, not a fact.
 
 The image on the test device is `v0.96-beta`, installed over FEL the way a stranger would, from the release
 files: the 206-patch series with U-Boot `6fb736c`, mesa for the GPU, Bluetooth and the stock remote.
-<!-- STAGE4: true once doku/142 4a step 3 is done - put its date here, then delete this comment. -->
+Installed from the release files on 2026-10-04 and run through the device test of `doku/142`: ten cold starts,
+Bluetooth after two warm reboots, the remote, the mixed device sound, 1080p120 under the warp.
 The last release is `v0.96-beta`; the last test image for the HY300 Pro of issue #1 is `hy300-pro-test9`
 (25.09.). What the numbers mean: [RELEASES.md](RELEASES.md).
 
@@ -285,12 +286,11 @@ These are written down because they are *not* done, not because they are expecte
   keystone computes with today
 - the auto keystone standing still for ten minutes at rest, and both of them on any board but the HY310
 - an HDCP 2.2 session with a protected 2.2 source, and the two tests that decide HDCP 1.4 (`docs/known-issues.md`)
-- under the warp a 120 Hz source draws about 19 frames a second (02.10.: GPU busy, frames dropped) - to be
-  explained or written down as a limit; the autofocus metric's exposure; the interlaced modes (VIC 5, 6, 7, 20,
-  21) in the driver's mode list
+- the interlaced modes VIC 6, 7 and 21 in the driver's mode list (the status line names them; 04.10.); two
+  autofocus runs ended sharp at two different positions (51 and 93, 04.10.)
 - the ceiling modes with the projector really upside down, and the calibration cards in the mirrored modes
 - the fan backstop of the wave (a stalled fan with a live tacho), parked: the fan connector was out of reach
-- Bluetooth after a cold start on the HY300PRO-G-EU, which stalled at HCI command 0x1003 before `h713-bt-reset` existed
+- Bluetooth after a cold start on the HY300PRO-G-EU comes up on the unit's second start, about 17 s later (04.10.)
 
 ## Reading the German journal
 
