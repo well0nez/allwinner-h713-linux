@@ -1727,7 +1727,7 @@ static const char *ctrl_menu_text(int fd, const struct v4l2_query_ext_ctrl *q,
  *    0xFB00 = -5 dB gave -4.9 dB at the microphone, S16 18:00) and the master
  *    mute above. The mute is the automaton's silence. The volume carries the
  *    listener's slider on the stock curve where the DSP mixes both sources
- *    (kernel 0169); otherwise it is a fixed level match between HDMI and the
+ *    (kernel 0176); otherwise it is a fixed level match between HDMI and the
  *    box's own tones (0 dB unless --hdmi-trim says otherwise) and the slider
  *    is the *codec's* "DAC Playback Volume", because that one then sits
  *    behind both sources and a volume that changed with the input would be
@@ -1741,7 +1741,7 @@ static const char *ctrl_menu_text(int fd, const struct v4l2_query_ext_ctrl *q,
  *
  * The box's own sounds (plan doku/102, package I). The DAC takes one source,
  * and a PC keeps its HDMI stream open even in silence, so device sounds on
- * the codec's own PCM were inaudible whenever HDMI played. With kernel 0169
+ * the codec's own PCM were inaudible whenever HDMI played. With kernel 0176
  * the MSP card carries a playback PCM of its own (hw:hy310hdmi,0, 48 kHz,
  * S16_LE, stereo) that the DSP mixes into the HDMI audio, and a second mute,
  * "HDMI Input Mute Switch", that silences the HDMI branch alone. Where that
@@ -1763,7 +1763,7 @@ static const char *ctrl_menu_text(int fd, const struct v4l2_query_ext_ctrl *q,
 #define AUDIO_C_SWITCH		"HDMI Audio Switch"
 #define AUDIO_C_VOLUME		"HDMI Playback Volume"
 #define AUDIO_C_MUTE		"HDMI Mute Switch"
-#define AUDIO_C_INMUTE		"HDMI Input Mute Switch"	/* kernel 0169, optional */
+#define AUDIO_C_INMUTE		"HDMI Input Mute Switch"	/* kernel 0176, optional */
 #define AUDIO_C_SOURCE		"DAC Source"
 #define AUDIO_C_RATE		"I2S Rate"
 #define AUDIO_V_PRESENT		"H713 Audio Present"	/* V4L2, 0136 */
@@ -1789,7 +1789,7 @@ static const char *const audio_codec_mutes[] = {
 #define AUDIO_SEARCH_MS		1000	/* retry while a card is still missing */
 #define AUDIO_SEARCH_MAX	30	/* ... this often, then it stays off */
 #define AUDIO_TRIM_MIN_DB	-100	/* --hdmi-trim: the DSP volume's floor (doku/101 section 2) */
-#define AUDIO_BRIDGE_RATE	"48000"	/* the bridge PCM's fixed rate (kernel 0169) */
+#define AUDIO_BRIDGE_RATE	"48000"	/* the bridge PCM's fixed rate (kernel 0176) */
 #define AUDIO_CURVE_OFF_Q	-512	/* slider 0: the stock curve's off (-128 dB) */
 
 struct alsa_card {
@@ -2279,7 +2279,7 @@ static void audio_put_enum(struct audio *a, struct alsa_card *c,
  * VOLUME1/2 (0x0052/0x0053): two linear pieces, 1..28 in half-dB steps
  * (-41 .. -27.5 dB), 29..100 in quarter-dB steps (-27.25 .. -9.5 dB), 0 the
  * vendor's off (-128 dB). Its stage is the DSP's "HDMI Playback Volume" (the
- * vendor's) where the DSP mixes the box's own sounds into HDMI (kernel 0169,
+ * vendor's) where the DSP mixes the box's own sounds into HDMI (kernel 0176,
  * seen as "HDMI Input Mute Switch"), else the codec's "DAC Playback Volume",
  * because on the older kernel that is where both sources meet (decision
  * 08.09. 22:10); the other stage stays at 0 dB, the DSP also carries the
@@ -3509,7 +3509,7 @@ static void cmd_status_audio(struct reply *r, struct audio *a, bool live)
 		reply_add(r, "audio sounds    the box's own sounds: hw:%s,0 (48 kHz, mixed into HDMI by the DSP), the DAC stays on I2S; PCM %s\n",
 			  a->msp.id, live ? pcm_state_text(dir, pcm, sizeof(pcm)) : "-");
 	else
-		reply_add(r, "audio sounds    the box's own sounds: hw:%s,0 (codec APB) -- audible only while HDMI is silent (no bridge PCM, kernel before 0169); PCM %s\n",
+		reply_add(r, "audio sounds    the box's own sounds: hw:%s,0 (codec APB) -- audible only while HDMI is silent (no bridge PCM, kernel before 0176); PCM %s\n",
 			  a->codec.id, live ? pcm_state_text(dir, pcm, sizeof(pcm)) : "-");
 	if (!a->have_source)
 		reply_add(r, "audio source    no controls \"%s\"/\"%s\"/\"%s\" on the capture node (kernel 0136)\n",
@@ -3872,7 +3872,7 @@ static void aspect_names(const struct display *d, char *buf, size_t n)
  * evaluate() has to run.
  *
  * With half >= 0 the EDID that goes back is that half of the file alone, as
- * one 256-byte EDID (S_EDID with two blocks, kernel 0136z): the firmware then
+ * one 256-byte EDID (S_EDID with two blocks, kernel 0170): the firmware then
  * serves it on port 0 whatever its per-port block mask says. That is how
  * "edid = block1" in tv.conf and "ctl edid block1" put the file's second
  * half - 1080p100/120 on the HY310 - in front of the source (FB-EDID).
@@ -4033,7 +4033,7 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	} else {
 		/*
 		 * The four-block republish carries the half written last in its
-		 * first 256 bytes (the driver keeps it there, 0136z s_edid), so a
+		 * first 256 bytes (the driver keeps it there, 0170 s_edid), so a
 		 * plain replug keeps the served half; only a copy from the file
 		 * is the first half again. Device test 02.10.2026, B1 step 6.
 		 */
@@ -4082,7 +4082,7 @@ static int edid_half_served(struct capture *cap, uint8_t *served)
 /*
  * The served half, and how much of what it offers the firmware's table
  * carries: ENUM_DV_TIMINGS lists the table's records with their CEA VIC
- * (kernel 0136zb; an older kernel lists its presets there and this line then
+ * (kernel 0172; an older kernel lists its presets there and this line then
  * overstates), the CEA extension's video data block lists what the source is
  * offered. A VIC that differs from a listed one in aspect only counts as
  * that one, because the table is tagged with the lower of the two.
@@ -5884,15 +5884,15 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "  aspect [NAME]         how the source is fitted (auto proportional full 16:9 4:3 zoom);\n"
 		  "                        without NAME: show it. A change rebuilds the picture (~0.5 s)\n"
 		  "  zoom [off|in F]       the digital zoom: \"in\" enlarges the centre of the picture by\n"
-		  "                        a factor 1.0..4.0 (default 2), \"out\" shrinks the whole picture\n"
-		  "                        to P percent of the panel, centred (1..100, default 80), \"off\"\n"
-		  "                        is the baseline; without an argument: show it. Rebuilds as\n"
-		  "                        aspect does. The firmware scales, the placement is ours\n"
+		  "                        a factor 1.0..4.0 (default 2), \"off\" is the baseline; without\n"
+		  "                        an argument: show it. Rebuilds as aspect does. The firmware\n"
+		  "                        scales, the placement is ours. \"out\" is gone (23.09.): the\n"
+		  "                        projection area is \"h713-warp ctl zoom PERCENT\"\n"
 		  "  audio [on|off|auto]   audio: forced on, forced silent, or following the picture\n"
 		  "                        (default auto); without an argument: show it\n"
 		  "  volume [0..100]       volume on the stock curve (0 = the floor, 1 = -41 dB, 50 = -22 dB,\n"
 		  "                        100 = -9.5 dB): in the DSP where it mixes the device's own tones\n"
-		  "                        (kernel 0169), else in the codec's DAC; without a number: show it\n"
+		  "                        (kernel 0176), else in the codec's DAC; without a number: show it\n"
 		  "  mute [on|off]         mute: the DSP master mute (HDMI and device sounds) and the codec's switch\n"
 		  "  resync                select the source again (S_INPUT 0 = SetSource HDMI-1)\n"
 		  "  replug                play an unplug and a replug to the source: HPD 300 ms low\n"
