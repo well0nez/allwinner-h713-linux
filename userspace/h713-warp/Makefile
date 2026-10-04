@@ -52,9 +52,14 @@ HDR = warp.h
 
 cross: h713-warp.$(TARGET)
 
+# Reproducible image: no absolute build, sysroot or mesa path in the DWARF info
+# (-g); see userspace/h713-tv/Makefile.
+REPRO_CFLAGS = -ffile-prefix-map=$(abspath .)=. -ffile-prefix-map=$(abspath $(SYSROOT))=/sysroot \
+               -ffile-prefix-map=$(abspath $(MESA_PREFIX))=/mesa
+
 h713-warp.$(TARGET): $(SRC) $(HDR)
 	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) -fuse-ld=lld \
-	    $(CFLAGS) $(LDFLAGS) -I$(MESA_PREFIX)/include \
+	    $(CFLAGS) $(REPRO_CFLAGS) $(LDFLAGS) -I$(MESA_PREFIX)/include \
 	    -I$(SYSROOT)/usr/include/libdrm \
 	    -L$(MESA_PREFIX)/lib -L$(SYSROOT)/usr/lib/$(TARGET) \
 	    -Wl,-rpath,/usr/local/lib -o $@ $(SRC) $(LIBS)

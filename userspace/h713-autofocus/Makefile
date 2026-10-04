@@ -35,9 +35,13 @@ h713-afmetric: afmetric.c
 
 cross: h713-afmetric.$(TARGET)
 
+# Reproducible image: no absolute build or sysroot path in the DWARF info (-g);
+# see userspace/h713-tv/Makefile.
+REPRO_CFLAGS = -ffile-prefix-map=$(abspath .)=. -ffile-prefix-map=$(abspath $(SYSROOT))=/sysroot
+
 h713-afmetric.$(TARGET): afmetric.c
 	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) -fuse-ld=lld \
-	    $(CFLAGS) $(LDFLAGS) -o $@ $<
+	    $(CFLAGS) $(REPRO_CFLAGS) $(LDFLAGS) -o $@ $<
 
 install: h713-afmetric
 	install -D -m 0755 h713-afmetric $(DESTDIR)$(BINDIR)/h713-afmetric

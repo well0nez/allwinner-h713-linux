@@ -48,9 +48,14 @@ h713-tv: main.c
 
 cross: h713-tv.$(TARGET)
 
+# The cross build is part of a reproducible image: the absolute paths of this
+# directory and of the sysroot must not end up in the DWARF info (-g), or two
+# clones of the same commit give two different binaries (E1 of v0.96-beta).
+REPRO_CFLAGS = -ffile-prefix-map=$(abspath .)=. -ffile-prefix-map=$(abspath $(SYSROOT))=/sysroot
+
 h713-tv.$(TARGET): main.c
 	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) -fuse-ld=lld \
-	    $(CFLAGS) $(LDFLAGS) -isystem $(SYSROOT)/usr/include/libdrm \
+	    $(CFLAGS) $(REPRO_CFLAGS) $(LDFLAGS) -isystem $(SYSROOT)/usr/include/libdrm \
 	    -L$(SYSROOT)/usr/lib/$(TARGET) -o $@ $< -ldrm -lasound
 
 install: h713-tv
