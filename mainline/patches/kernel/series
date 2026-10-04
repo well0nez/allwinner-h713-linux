@@ -474,3 +474,7 @@
 #   becomes 0167's tree measured on the HY300PRO-G-EU, whose silkscreen is HY200 QZ713DF A1; the
 #   hy300pro-g-eu tree goes. Both stock firmwares of that board share it (boards/hy200-qz713df-a1).
 0181-arm64-dts-h713-one-tree-for-the-hy200-qz713df-a1.patch
+# 04.10.: the HY300 Pro of issue #1 drives its focus motor with its own stock tree's tables (another
+#   coil order than the HY310's, which the hy310 include brought); the lamp words' comment says 0168
+#   (ST3-FOREIGN)
+0182-arm64-dts-h713-hy300-pro-its-own-focus-motor-tables.patch

@@ -164,6 +164,11 @@ roadmap and `docs/status.md`.
   goes. Both stock firmwares of that board share the tree
   (`boards/hy200-qz713df-a1`). *(ours)*
 
+- **0182 - the HY300 Pro's own focus motor tables.** Its stock tree enables
+  `motor_ctr` on the HY310's pins with other half-step tables (another coil
+  order) and other delays; the node takes them. The lamp's PWM words were
+  there since 0166a and stay. *(ours)*
+
 With these patches in place `build/build.sh kernel` emits the board's DTB plus
 cstenger's two HY200 DTBs, and a bootable FIT (`build/out/h713-kernel.fit`:
 gzip Image + the DTB named by `boards/<id>/board.env` → `KERNEL_DTB`, load/entry
