@@ -510,22 +510,23 @@ def _board_from_device(args, disk):
     without it, a reinstall dropped the file and left U-Boot on the image's default project
     (on the HY300 Pro of issue #1, test9 ran project 0x30 that way). A board id no profile
     knows is not taken."""
-    board, project = board_from_device(disk)
+    board, project, variant = board_from_device(disk)
     if not board:
         console.info("our layout, and no %s in its rootfs -- the board stays unknown" % BOARD_FILE)
-        return
-    profile = profile_of(board.replace("-", "_"))
+        return None
+    key = board.replace("-", "_") + ("/" + variant if variant else "")
+    profile = profile_of(key)
     if profile is None:
         console.warn("%s of the installed system names '%s', a board this installer has no "
-                     "profile for -- not taken" % (BOARD_FILE, board))
-        return
+                     "profile for -- not taken" % (BOARD_FILE, key))
+        return None
     args._profile, args._board = profile, profile.get("id")
     args._board_project = project
     if project:
         args._env_keys = {"h713_project": "0x%02x" % project}
     console.ok("our layout on the device -- the board is known from its own %s: %s%s"
-               % (BOARD_FILE, profile.get("name", board),
-                  ", project 0x%02x" % project if project else ""))
+               % (BOARD_FILE, key, ", project 0x%02x" % project if project else ""))
+    return key
 
 
 def _sizes_allowed(args, ident):
@@ -597,6 +598,13 @@ def _work(args, path):
                 # A test image has its own verdict: report_device() speaks for released
                 # images, where an untested board is always a no.
                 _board_from_dump(args, ident, disk)
+                if not ident.get("profile") and ident.get("kind") == "ours" and writing:
+                    # the same read-back as for a release image: the first install of a test
+                    # image wrote the board (and its firmware variant) into the rootfs
+                    key = _board_from_device(args, disk)
+                    if key:
+                        ident["profile"], ident["variant"] = key, (args._profile or {}).get("variant")
+                        ident["status"] = (args._profile or {}).get("status")
                 code = _test_image_refused(args, ident)
                 if code is not None:
                     return code
@@ -606,6 +614,8 @@ def _work(args, path):
             args._profile = profile_of(ident.get("profile"))
             args._board = (args._profile or {}).get("id")
             project = _declared_project(ident)
+            if not project and getattr(args, "_board_project", None):
+                project = "0x%02x" % args._board_project     # from the device's own board file
             args._env_keys = {"h713_project": project} if project else {}
             if args._profile is None and ident.get("kind") == "ours" and \
                     args.command == "install":

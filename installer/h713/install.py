@@ -536,25 +536,31 @@ def board_entry(board_id, profile, project=None):
         project = ((profile or {}).get("panel") or {}).get("declared_project_id")
     if not board_id or not project:
         return None
+    variant = (profile or {}).get("variant")
     text = ("# written by h713-install; which board this is\n"
             "board = %s\nproject_id = 0x%02x\n"
             % (board_id.replace("_", "-"), project))
+    if variant:     # the firmware of a board with variants; a reinstall reads it back
+        text += "variant = %s\n" % variant
     return mountfs.Entry(BOARD_FILE, text.encode(), None, VENDOR_MODE, 0, 0,
                          DIR_MODE)
 
 
 def parse_board_file(data):
-    """(board id, project id as int) out of an /etc/h713/board that board_entry() wrote; None
-    for what is not there or not in its shape. Read back, never trusted further than that: the
-    board id still has to name a profile (h713-install _board_from_device())."""
-    board = project = None
+    """(board id, project id as int, variant) out of an /etc/h713/board that board_entry() wrote;
+    None for what is not there or not in its shape. Read back, never trusted further than that:
+    the board id (and variant) still has to name a profile (h713-install _board_from_device())."""
+    board = project = variant = None
     for line in data.decode("utf-8", "replace").splitlines():
         key, eq, value = line.partition("=")
         if not eq or line.lstrip().startswith("#"):
             continue
         key, value = key.strip(), value.strip()
-        if key == "board" and value and all(c.isalnum() or c in "-_" for c in value):
-            board = value
+        if key in ("board", "variant") and value and all(c.isalnum() or c in "-_" for c in value):
+            if key == "board":
+                board = value
+            else:
+                variant = value
         elif key == "project_id":
             try:
                 number = int(value, 16) if value.lower().startswith("0x") else None
@@ -562,7 +568,7 @@ def parse_board_file(data):
                 number = None
             if number is not None and 0 < number < 0x100:
                 project = number
-    return board, project
+    return board, project, variant
 
 
 ROOTFS_PARTITION = "hy310-rootfs"   # layout v4 (h713.layout.PARTITIONS): where /etc/h713 lives
@@ -572,19 +578,19 @@ def board_from_device(disk, log=console):
     """Over our own layout identify() cannot name the board: the stock firmware it reads is
     gone. The install before this one wrote the board into the rootfs (board_entry()), so it
     is read back from there, read-only, through the same mount device_sources() uses. Returns
-    (board id, project id) as parse_board_file() does, (None, None) when there is nothing to
-    read. Never raises: a board file that cannot be read leaves the run where it was."""
+    (board id, project id, variant) as parse_board_file() does, all None when there is nothing
+    to read. Never raises: a board file that cannot be read leaves the run where it was."""
     found = gpt_partitions(disk)
     if ROOTFS_PARTITION not in found:
-        return None, None
+        return None, None, None
     _number, lba, sectors = found[ROOTFS_PARTITION]
     try:
         data = mountfs.copy_out(disk.path, lba * SECT, sectors * SECT, [BOARD_FILE],
                                 Quiet()).get(BOARD_FILE)
     except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
         log.warn("%s of the installed system could not be read (%s)" % (BOARD_FILE, exc))
-        return None, None
-    return parse_board_file(data) if data else (None, None)
+        return None, None, None
+    return parse_board_file(data) if data else (None, None, None)
 
 
 def board_partition(files):

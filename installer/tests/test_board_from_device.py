@@ -33,21 +33,25 @@ WRITTEN = inst.board_entry("hy310", {"panel": {"declared_project_id": 0x30}}).da
 
 class ParseBoardFile(unittest.TestCase):
     def test_what_board_entry_writes_reads_back(self):
-        self.assertEqual(inst.parse_board_file(WRITTEN), ("hy310", 0x30))
+        self.assertEqual(inst.parse_board_file(WRITTEN), ("hy310", 0x30, None))
 
     def test_variant_board_and_its_project(self):
-        data = inst.board_entry("hy200_qz713df_a1", None, 0x34).data
+        from h713.profiles import get
+        profile = get("hy200_qz713df_a1/projector05061226")
+        data = inst.board_entry(profile["id"], profile).data
         self.assertIn(b"board = hy200-qz713df-a1\n", data)
-        self.assertEqual(inst.parse_board_file(data), ("hy200-qz713df-a1", 0x34))
+        self.assertIn(b"variant = projector05061226\n", data)
+        self.assertEqual(inst.parse_board_file(data), ("hy200-qz713df-a1", 0x34, "projector05061226"))
 
     def test_what_is_not_in_its_shape_is_dropped(self):
-        for text, want in ((b"", (None, None)),
-                           (b"# board = hy310\n", (None, None)),
-                           (b"board = ../etc\nproject_id = 0x30\n", (None, 0x30)),
-                           (b"board = hy310\nproject_id = 48\n", ("hy310", None)),
-                           (b"board = hy310\nproject_id = 0x1234\n", ("hy310", None)),
-                           (b"board = hy310\nproject_id = 0xzz\n", ("hy310", None)),
-                           (b"\xff\xfe board = hy310", (None, None))):
+        for text, want in ((b"", (None, None, None)),
+                           (b"# board = hy310\n", (None, None, None)),
+                           (b"board = ../etc\nproject_id = 0x30\n", (None, 0x30, None)),
+                           (b"board = hy310\nproject_id = 48\n", ("hy310", None, None)),
+                           (b"board = hy310\nproject_id = 0x1234\n", ("hy310", None, None)),
+                           (b"board = hy310\nproject_id = 0xzz\n", ("hy310", None, None)),
+                           (b"board = x\nvariant = ../v\n", ("x", None, None)),
+                           (b"\xff\xfe board = hy310", (None, None, None))):
             self.assertEqual(inst.parse_board_file(text), want, text)
 
     def test_the_profile_project_is_the_default_and_the_device_one_wins(self):
@@ -69,22 +73,22 @@ class BoardFromDevice(unittest.TestCase):
         with mock.patch.object(inst, "gpt_partitions", return_value=self.PARTS), \
                 mock.patch.object(inst.mountfs, "copy_out",
                                   return_value={inst.BOARD_FILE: WRITTEN}) as copy_out:
-            self.assertEqual(inst.board_from_device(FakeDisk(), Quiet()), ("hy310", 0x30))
+            self.assertEqual(inst.board_from_device(FakeDisk(), Quiet()), ("hy310", 0x30, None))
         source, offset, size, paths = copy_out.call_args[0][:4]
         self.assertEqual((source, offset, size, paths),
                          ("/dev/fake", 278528 * 512, 14991327 * 512, [inst.BOARD_FILE]))
 
     def test_nothing_there_is_none(self):
         with mock.patch.object(inst, "gpt_partitions", return_value={}):
-            self.assertEqual(inst.board_from_device(FakeDisk(), Quiet()), (None, None))
+            self.assertEqual(inst.board_from_device(FakeDisk(), Quiet()), (None, None, None))
         with mock.patch.object(inst, "gpt_partitions", return_value=self.PARTS), \
                 mock.patch.object(inst.mountfs, "copy_out", return_value={}):
-            self.assertEqual(inst.board_from_device(FakeDisk(), Quiet()), (None, None))
+            self.assertEqual(inst.board_from_device(FakeDisk(), Quiet()), (None, None, None))
 
     def test_a_mount_that_fails_is_said_and_does_not_stop_the_run(self):
         with mock.patch.object(inst, "gpt_partitions", return_value=self.PARTS), \
                 mock.patch.object(inst.mountfs, "copy_out", side_effect=RuntimeError("no mount")):
-            self.assertEqual(inst.board_from_device(FakeDisk(), Quiet()), (None, None))
+            self.assertEqual(inst.board_from_device(FakeDisk(), Quiet()), (None, None, None))
 
 
 class TheInstallTakesIt(unittest.TestCase):
@@ -94,7 +98,7 @@ class TheInstallTakesIt(unittest.TestCase):
     def test_board_profile_project_and_env(self):
         cli = _cli()
         args = self._args()
-        with mock.patch.object(cli, "board_from_device", return_value=("hy310", 0x30)), \
+        with mock.patch.object(cli, "board_from_device", return_value=("hy310", 0x30, None)), \
                 support.quiet():
             cli._board_from_device(args, FakeDisk())
         self.assertEqual((args._board, args._board_project), ("hy310", 0x30))
@@ -105,15 +109,29 @@ class TheInstallTakesIt(unittest.TestCase):
     def test_a_board_without_a_profile_is_not_taken(self):
         cli = _cli()
         args = self._args()
-        with mock.patch.object(cli, "board_from_device", return_value=("not-a-board", 0x30)), \
+        with mock.patch.object(cli, "board_from_device", return_value=("not-a-board", 0x30, None)), \
                 support.quiet():
             cli._board_from_device(args, FakeDisk())
         self.assertEqual((args._profile, args._board, args._env_keys), (None, None, {}))
 
+    def test_a_variant_board_resolves_to_its_firmware(self):
+        cli = _cli()
+        args = self._args()
+        with mock.patch.object(cli, "board_from_device",
+                               return_value=("hy200-qz713df-a1", 0x34, "projector05061226")), \
+                support.quiet():
+            key = cli._board_from_device(args, FakeDisk())
+        self.assertEqual(key, "hy200_qz713df_a1/projector05061226")
+        self.assertEqual((args._profile["variant"], args._env_keys), ("projector05061226", {"h713_project": "0x34"}))
+        with mock.patch.object(cli, "board_from_device",
+                               return_value=("hy200-qz713df-a1", 0x34, "no-such-firmware")), \
+                support.quiet():
+            self.assertIsNone(cli._board_from_device(self._args(), FakeDisk()))
+
     def test_no_board_file_leaves_the_run_as_it_was(self):
         cli = _cli()
         args = self._args()
-        with mock.patch.object(cli, "board_from_device", return_value=(None, None)), \
+        with mock.patch.object(cli, "board_from_device", return_value=(None, None, None)), \
                 support.quiet():
             cli._board_from_device(args, FakeDisk())
         self.assertEqual((args._profile, args._board, args._env_keys), (None, None, {}))
