@@ -478,3 +478,7 @@
 #   coil order than the HY310's, which the hy310 include brought); the lamp words' comment says 0168
 #   (ST3-FOREIGN)
 0182-arm64-dts-h713-hy300-pro-its-own-focus-motor-tables.patch
+# 05.10.: with a 720p source the warp's 1920x1080 frame was read with the ring's 1280-byte pitch:
+#   the VidDec record was refused a rewrite outside ring mode. Republished for a memory framebuffer
+#   too, without a window (bench of 05.10.: arbeit/warp-pruefstand, TODO 2.4a)
+0183-drm-h713-afbd-republish-the-viddec-record-for-a-memory-framebuffer.patch

@@ -1,0 +1,195 @@
+drm: h713-afbd: republish the VidDec record for a memory framebuffer too
+
+With a 1280x720 source on the HDMI ring and the keystone warp on, the wall
+shows the warped picture one and a half times side by side, sheared, while
+the frame h713-warp renders is correct (ctl dump, 1920x1080 NV12) and the
+same source without the warp is correct as well. With a 1920x1080 source
+the warp is correct. Found 05.10.2026 on the HY310, Fire TV stick at 720p60.
+
+The reader behind the video plane is the firmware's window chain, and that
+chain lays itself out from the VidDec descriptor and from nothing else
+(0117 found this for the ring: the window layer, not the capture, reads
+the record). h713_afbd_publish_video_info() republishes the record on a
+geometry change in ring mode only; outside ring mode it refused with
+"refusing to rewrite the VidDec descriptor for 1920x1080; the capture does
+not survive a second signal event". So when h713-tv takes the ring down
+and puts the warp's 1920x1080 NV12 framebuffer on the plane, source 0 is
+programmed for the frame -- but the firmware keeps the 720p ring's layout
+and reads 1920-byte lines with an 80-block (1280-byte) pitch, 720 of them,
+and scales that up.
+
+Measured through /dev/mem on the HY310, kernel 6.18.38, in three states
+(bench of 05.10.2026, register snapshots kept outside the tree):
+
+  720p, warp off (B)        720p, warp on (C, C2)       meaning
+  AFBD +0x040 = 0x500       AFBD +0x040 = 0x780         luma stride: ours, follows the fb
+  AFBD +0x048 = 0x02d00500  AFBD +0x048 = 0x04380780    crop: ours, follows the fb
+  AFBD +0x070 = 0x4c3ef000  AFBD +0x070 = 0x77d00000    ring slot -> the warp's dumb buffer
+  AFBD +0x030 = 0x02d00500  AFBD +0x030 = 0x02d00500    firmware's word: 720x1280, unchanged
+  0x05000444 = 0x02d00500   0x05000444 = 0x02d00500     composition geometry: 720x1280
+  0x05000434 = 0x80500050   0x05000434 = 0x80500050     composition pitch: 80 blocks = 1280
+  0x05180034 = 0x050002d0   0x05180034 = 0x050002d0     picture scaler input: 1280x720
+  descriptor words 2..5,22  = 1280 720 1280 720 .. 1280 in both states
+  INCAP +0x924 = 0x00500050 in both (the ring itself is untouched)
+
+dmesg at every claim: "refusing to rewrite the VidDec descriptor for
+1920x1080". With a 1080p source the two records are identical, nothing is
+refused and nothing is wrong, which is why the warp passed every test at
+1080p60 since 22.09. The projector's own camera over "ctl test grid" shows
+two interleaved families of grid lines (the bench's camera shot); the
+GPU's frame (the bench's GPU dump) shows one clean grid.
+
+So the record is republished for a memory framebuffer as it is for the
+ring: with the frame's geometry and stride, and without a window -- a
+memory frame is the plane's own picture, the KMS source rectangle is the
+whole framebuffer (atomic_check) and the firmware is told the same. That
+also closes a second hole measured today: a "zoom in 2" set on the ring
+before the warp claims leaves src-window in the plane state (h713-tv does
+not clear it), the ring record carried it, and the firmware zoomed into
+the centre of the warped frame (scaler window 640x360, regs-Z2). The
+marker/wait for the WCE now runs for every new publication and not only
+for NV16, so the enable waits until the firmware has rebuilt its chain for
+the record it was just handed, and says so if it has not.
+
+Cost: the publication switches the capture off and the capture owner
+re-arms it (0099), as for every ring geometry change today -- now also at
+each warp claim and release on a source that is not the panel's size. The
+ring the warp reads through V4L2 is laid out by INCAP, which the record
+does not reach (0117, and INCAP +0x924 above); the warp's stream sees the
+same ~170 ms gap a ring geometry change costs.
+
+Not built and not run on the device yet: the bench had no kernel build and
+no flashing in scope. What to verify after it is: with a 720p source and
+the warp on, 0x05000444 must read 0x04380780, 0x05000434 0x80780078,
+0x05180034 0x07800438, the descriptor words 2..5 1920 1080 1920 1080 and
+INCAP +0x924 still 0x00500050; the camera over "ctl test grid" one grid.
+
+---
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -577,6 +577,30 @@
+  * with a source switch. That is the same mechanism a first publication already
+  * relies on, now used a second time.
+  *
++ * And the same holds WITHOUT the ring. A framebuffer fetched from memory (the
++ * keystone warp's NV12 frames, h713-warp since 23.09.2026) is read by the very
++ * same window chain, and that chain takes its geometry and its line pitch from
++ * this record and from nothing else. Until 05.10.2026 the record was refused a
++ * rewrite outside ring mode, so with a 1280x720 source on the ring the warp's
++ * 1920x1080 frame was read as 720 lines of 1280 bytes and scaled up from there:
++ * the wall showed the picture one and a half times side by side, sheared.
++ * Measured on the HY310 through /dev/mem with the plane programmed for the
++ * warp's frame (AFBD +0x040 = 0x780, +0x048 = 0x04380780, the buffer at
++ * 0x77d00000): the firmware's own words still said 1280x720 and 80 blocks a
++ * line -- AFBD +0x030 = 0x02d00500, the composition block's 0x05000444 =
++ * 0x02d00500 and 0x05000434 = 0x80500050, the picture scaler's 0x05180034 =
++ * 0x050002d0 -- and the descriptor page itself still read 1280 720 ... 1280,
++ * while dmesg carried the refusal for 1920x1080. With a 1920x1080 source the
++ * two records were identical, nothing was refused and the warp was right,
++ * which is why this took two weeks to show. The record is republished for a
++ * memory framebuffer now, with the frame's own geometry and stride and, since
++ * a memory frame is the plane's own picture and not a ring the firmware fills,
++ * without a window: the KMS source rectangle is the whole framebuffer there
++ * (atomic_check) and the firmware is told the same. A window left standing in
++ * the plane state from a zoom on the ring (h713-tv does not clear it before
++ * the warp's commit) would otherwise zoom the warped picture a second time --
++ * measured, the scaler window went to 640x360 over the warp's frame.
++ *
+  * Returns true if the firmware has something new to look at here, i.e. if the
+  * record or the pointer changed. See h713_afbd_wait_wce().
+  */
+@@ -597,13 +621,15 @@
+ 				   ring ? h->mode.hdisplay : w,
+ 				   ring ? h->mode.vdisplay : hgt,
+ 				   h->mode.hdisplay, h->mode.vdisplay,
+-				   src_win, dst_win, aspect);
++				   ring ? src_win : NULL, ring ? dst_win : NULL,
++				   aspect);
+ 	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
+-	write_record = differs && (!h->video_info_published || ring);
+-	if (differs && h->video_info_published && !ring)
+-		drm_warn(&h->drm,
+-			 "refusing to rewrite the VidDec descriptor for %ux%u; the capture does not survive a second signal event\n",
+-			 w, hgt);
++	write_record = differs;
++	if (differs && h->video_info_published)
++		drm_info(&h->drm,
++			 "republishing the VidDec descriptor for the %s %ux%u, stride %u (was %ux%u, stride %u): the firmware's window chain follows the record\n",
++			 ring ? "ring" : "framebuffer", w, hgt, stride,
++			 h->video_info[2], h->video_info[3], h->video_info[22]);
+ 
+ 	if (write_record) {
+ 		memcpy(h->video_info, rec, sizeof(rec));
+@@ -948,10 +974,10 @@
+ 		/*
+ 		 * The VideoInfo pointers stay. Clearing them takes the frame
+ 		 * descriptor away from the firmware, which then has to be
+-		 * re-published to enable the plane again -- and a second
+-		 * publish is the one thing this hardware does not survive
+-		 * (see h713_afbd_publish_video_info()). The pointer costs
+-		 * nothing while source 0 is off.
++		 * re-published to enable the plane again; a publication
++		 * switches the capture off and costs the capture owner a
++		 * re-arm (see h713_afbd_publish_video_info()), and the
++		 * pointer costs nothing while source 0 is off.
+ 		 */
+ 	}
+ 	writel(0, h->regs + AFBD_VIDEO_AUX_Y);
+@@ -1004,8 +1030,13 @@
+  * lines has ever reached the ring (E3).
+  *
+  * Without the ring the buffer is fetched from memory, and there the old rule
+- * stands: the buffer has to be the panel size, because nothing behind the
+- * reader gets reprogrammed for it.
++ * stands: the buffer has to be the panel size. What is behind the reader IS
++ * reprogrammed for it -- the firmware lays its window chain out from the
++ * descriptor, which h713_afbd_publish_video_info() republishes with the
++ * framebuffer's geometry whenever it differs from the record that stands --
++ * but a frame that is not the panel's size would then be scaled by that
++ * chain, and that scaler is the firmware's and has been measured for the
++ * ring only. The one memory client there is renders the panel's size.
+  */
+ static bool h713_afbd_window_ok(const struct drm_property_blob *b,
+ 				const struct drm_display_mode *m)
+@@ -1205,13 +1236,19 @@
+ 		h713_afbd_wait_ready(h, AFBD_READY, "RGB disable");
+ 
+ 		/*
+-		 * Park the marker before the firmware can see the descriptor,
+-		 * and only for NV16. For NV12 the chroma stride the WCE
+-		 * computes from the record is the one this plane wants anyway,
+-		 * so there is nothing to lose there and nothing to wait for.
++		 * Park the marker before the firmware can see the descriptor.
++		 * For NV16 the wait below protects the doubled chroma stride.
++		 * For NV12 the chroma stride the WCE computes from the record
++		 * is the one this plane wants anyway, but the wait is still
++		 * what tells us the firmware has rebuilt its chain for a NEW
++		 * record -- a memory framebuffer that follows a ring of
++		 * another geometry (the warp over a 720p source) is such a
++		 * record since 05.10.2026, and an enable that programs source
++		 * 0 before the chain follows shows the old layout for as long
++		 * as the firmware takes. The marker is written for real a few
++		 * lines below in every case, so it never reaches the panel.
+ 		 */
+-		if (nv16)
+-			writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
++		writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
+ 		/*
+ 		 * The record keeps the RING's geometry, not the crop: the
+ 		 * firmware rebuilds its capture chain from it
+@@ -1226,10 +1263,12 @@
+ 							 h713_afbd_window(s->src_window),
+ 							 h713_afbd_window(s->dst_window),
+ 							 s->aspect);
+-		if (published && nv16 && h713_afbd_wait_wce(h))
++		if (published && h713_afbd_wait_wce(h))
+ 			drm_err(&h->drm,
+-				"firmware did not reprogram the chroma stride within %u ms of the descriptor; source 0 is programmed anyway, so this enable may come up with a halved chroma stride\n",
+-				H713_WCE_TIMEOUT_US / 1000);
++				"firmware did not reprogram the chroma stride within %u ms of the descriptor; source 0 is programmed anyway, so this enable may come up with %s\n",
++				H713_WCE_TIMEOUT_US / 1000,
++				nv16 ? "a halved chroma stride" :
++				       "the window chain still laid out for the previous record");
+ 	}
+ 
+ 	writel(h713_video_size_m1(w, hgt), h->regs + AFBD_VIDEO_SIZE_M1);
