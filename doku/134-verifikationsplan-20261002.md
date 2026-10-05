@@ -134,6 +134,10 @@ DSP-Audio-Abgleich (eine Lautstaerkesteuerung fuer HDMI und Geraetetoene) ist St
 - ERGEBNIS: Zweig remote-wlan-bt per Fast-Forward nach main (lokal, 64f78a2, nicht gepusht): Fernbedienung per BT
   vollstaendig (16 Tasten, Maus, Koexistenz, Kaltstart, Reconnect), Warp-Kalibrierbild, kernel 0169 hid-h713-remote; IR
   geparkt (revertiert). Offen: KEY_POWER-Politik (logind schaltet heute aus), WLAN-Band der Koexistenzmessung nicht notiert.
+  NACHTRAG 05.10.: KEY_POWER-Politik ist entschieden und in docs/hardware.md notiert - kurzer Druck = poweroff ueber
+  logind (Default HandlePowerKey), ebenso die Power-Taste der BT-Fernbedienung; ein Standby gibt es unter Linux nicht
+  (Stock-Standby war Schein-Standby). WLAN-Band der Koexistenzmessung: das Heimnetz, 2,4 GHz Kanal 4 (2427 MHz,
+  `iw dev wlan0 link` am 05.10. im selben Netz); 5 GHz ist nicht gemessen.
 - Marco 03.10.: Stock-"Standby" unter Android ist nur Lampe und Luefter aus (kein Suspend); Aufwecken per BT geht dort.
   -> fuer C2 relevant: das Stock-Verhalten, das Nutzer kennen, ist ein Schein-Standby, kein PSCI-Suspend.
 
