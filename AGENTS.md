@@ -103,7 +103,8 @@ löschen → `Desired` bestätigen → pushen → `Enabled` prüfen.
 
 ### 4.5 Ein Arbeitspaket ist fertig, wenn sein Klon weg ist
 
-Gearbeitet wird in Paketen (`umbau/work/<PAKET>/`, außerhalb dieses Repos). Ein Paket ist
+Gearbeitet wird in Paketen — ein Ordner je Paket im lokalen Arbeitsbereich, außerhalb dieses
+Repos (`referenz/baeume.md` sagt wo). Ein Paket ist
 fertig, wenn sein Ergebnis in der Hauptlinie ist, sein `REPORT.txt` im Paketordner bleibt und
 sein **Klon gelöscht** ist. Wer den Klon behalten will, schreibt in den Report, warum.
 Am 05.10.2026 lagen dort 74 Klone mit 99 G, deren Erzeugnisse alle längst integriert waren —
