@@ -368,7 +368,11 @@ info "$(basename "$KEYRING") ($(stat -c %s "$KEYRING") bytes) out of $(basename 
 # --- 6. sysroot + h713-tv cross-built ---------------------------------------
 say "6/11 sysroot (arm64, development packages only) and h713-tv cross-built"
 SYSROOT="$MAINLINE/build/sysroot-arm64"
-if [[ ! -f "$SYSROOT/usr/include/libdrm/drm.h" ]]; then
+# A sysroot is reused only if it was made from this very package list and suite: the stamp
+# carries their hash. Checking for one header let a sysroot from before the mesa stage
+# (no libstdc++-14-dev) pass and fail at 6b, 05.10.2026.
+SYSROOT_STAMP="$SYSROOT/.h713-sysroot-$(printf '%s %s' "$SYSROOT_PACKAGES" "$DEBIAN_SUITE" | sha256sum | cut -c1-12)"
+if [[ ! -f "$SYSROOT_STAMP" ]]; then
 	rm -rf "$SYSROOT"
 	in_container_root "mmdebstrap --mode=unshare --variant=extract --arch=arm64 --skip=check/qemu --keyring=$(c "$KEYRING") --include=$SYSROOT_PACKAGES $DEBIAN_SUITE $(c "$SYSROOT") '$DEBIAN_MIRROR'" > "$OUT/sysroot.log" 2>&1 \
 		|| in_container_root "mmdebstrap --variant=extract --arch=arm64 --skip=check/qemu --keyring=$(c "$KEYRING") --include=$SYSROOT_PACKAGES $DEBIAN_SUITE $(c "$SYSROOT") '$DEBIAN_MIRROR'" >> "$OUT/sysroot.log" 2>&1 \
@@ -376,6 +380,7 @@ if [[ ! -f "$SYSROOT/usr/include/libdrm/drm.h" ]]; then
 	# mmdebstrap --variant=extract makes absolute symlinks (/usr/lib/... -> /lib/...);
 	# clang --sysroot resolves those on the host. Make them relative (release/sysroot-fix.py: merged-usr links + relative symlinks).
 	in_container_root "python3 $WORK/release/sysroot-fix.py $(c "$SYSROOT")" | sed 's/^/    /'
+	in_container_root "touch $(c "$SYSROOT_STAMP")"
 fi
 info "sysroot $SYSROOT ($(du -sh "$SYSROOT" 2>/dev/null | cut -f1))"
 in_container "cd $WORK/userspace/h713-tv && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-tv-cross.log" 2>&1 || { tail -20 "$OUT/h713-tv-cross.log"; die "cross-building h713-tv failed (log: $OUT/h713-tv-cross.log)"; }

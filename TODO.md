@@ -6,7 +6,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 1 Release — in dieser Reihenfolge
 
-- [ ] 1.1 Test-Images bauen (`release/build-all.sh`, Rolle release), `check-hdcp-artifacts.sh` grün
+- [x] 1.1 Test-Images gebaut 05.10. 20:36: `installer/out/h713-hy310-v0.96-beta-{a,b,c}.img`, Check 10/11
+      „everything in order" (inkl. `check-hdcp-artifacts.sh`). Drei Bau-Stolpersteine dabei behoben:
+      0183 kompilierte nicht (`c5f2f5e`), Sysroot-Wiederverwendung ohne Paketprüfung, `doku-index`
+      zählte Bauausgaben (`eebb33e`)
 - [ ] 1.2 HY310-Großtest nach `doku/142` (22 Zyklen) + HDCP-Paar wipe→`Desired`, push→`Enabled`
 - [ ] 1.3 **WLAN-Timeouts verifizieren** (`82cb57e`, ungeprüft): Rootfs neu, Funk absichtlich verklemmen
 - [ ] 1.4 HY300 Pro G-EU (`boards/hy200-qz713df-a1`): Boot, Bild, HDCP 1.4 mit geteiltem Satz, 2.2
@@ -38,6 +41,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (`afbd.c:602`); Fix Kernel-Patch 0183. **Hardware-Test offen:** 720p + Warp, dann
       Signalereignisse erzwingen (HDCP-Neuverhandlung, Aussetzer) — übersteht die Capture das?
       Das war der Grund der alten Regel. Kamera als Auge: `kamera-gitter.py`
+      **05.10. 20:30 am Gerät bestanden:** Kernel mit 0183 per Schnell-Deploy (FIT + Module +
+      Daemons, Sicherung `/root/sicherung-vor-0183/`); Register folgen dem Puffer (Komposition
+      0x05000444 = 1920x1080, Skalierer 1920x1080, Descriptor 1920 1080 … 1920), Kamera: ein Gitter;
+      sechs Moduswechsel mit Signalabriss → neun saubere Republishes (Ring ↔ Framebuffer), kein
+      „did not reprogram", 56 fps. Offen: HDMI-Stecker ziehen/stecken, 720p50/1366x768 als Quelle
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
       (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
       Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
