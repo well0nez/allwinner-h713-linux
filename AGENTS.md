@@ -47,7 +47,9 @@ Vier Orte mit vier verschiedenen Aufgaben. Wer am falschen sucht, findet nichts 
 | verstehen, was das System kann und wie es funktioniert | [`docs/`](docs/) — erklärt das Produkt, wird aktuell gehalten |
 | wissen, **woher** eine Aussage kommt | [`doku/`](doku/) — das datierte Journal, Beleg für `docs/`. [`doku/INDEX.md`](doku/INDEX.md) §1 nennt zu jedem Dokument die Einträge, auf denen es ruht |
 | eine Arbeitsfrage beantworten (Gerät, Adresse, Werkzeugpfad, Messregel) | **`referenz/`** — liegt **neben** diesem Repo, nicht darin. Einstieg `referenz/00-INDEX.md` |
-| wissen, was gerade offen ist | [`STATUS.md`](STATUS.md), [`ROADMAP.md`](ROADMAP.md), [`docs/known-issues.md`](docs/known-issues.md) |
+| wissen, was zu tun ist | **[`TODO.md`](TODO.md)** — die einzige Liste. Erledigtes wandert nach unten, nicht weg |
+| wissen, was sich geändert hat | [`RELEASES.md`](RELEASES.md) je Release, `git log` im Detail |
+| wissen, was gerade nicht geht | [`STATUS.md`](STATUS.md), [`ROADMAP.md`](ROADMAP.md), [`docs/known-issues.md`](docs/known-issues.md) — beschreiben, führen keine Arbeit |
 
 `referenz/` ist absichtlich nicht im Repo: es enthält Adressen im Heimnetz, lokale Pfade und
 Hinweise darauf, wo Schlüsselmaterial liegt. Wenn du es nicht findest, arbeitest du an einem

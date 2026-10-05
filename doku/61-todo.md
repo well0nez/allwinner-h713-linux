@@ -1,5 +1,7 @@
 # Alle offenen Punkte auf einer Seite
 
+> **Überholt (05.10.2026):** diese Liste wird nicht mehr gepflegt. Die eine Todo-Liste ist [`TODO.md`](../TODO.md) im Repo-Root.
+
 Angelegt 12.09.2026, weil es das nicht gab. `60-offen.md` ist 850 Zeilen, in denen Erledigtes und Offenes
 durcheinanderliegen; `00-STATUS.md` §5 ist ein Absatz Fließtext. **Hier steht nur, was noch zu tun ist** - eine
 Zeile je Punkt, mit Zeiger auf die Begründung. Was hier fehlt, ist erledigt.
