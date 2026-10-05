@@ -30,7 +30,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 ## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
 
 - [ ] 2.1 **Zoom** (Marco 04.10.: „bringt das Gerät durcheinander") — `ctl zoom out` ist nur Lupe
-- [ ] 2.2 Fernbedienung: 16 Tasten + Maus kommen als Events an, **nichts wertet sie aus** außer Power
 - [ ] 2.3 Bluetooth nach warmem Reboot: erster HCI-Befehl verloren (2 von 5), Ursache offen (FB-BTRESET 9.1/9.2)
 - [x] 2.4 HDCP 2.2 Session-Beweis: Fire-TV-Stick am HY310, 05.10. — `h713-tv ctl hdcp` meldet
       „2.2 (session stands), authenticated: yes", Firmware-Log zeigt SKE_SEND_EKS; über acht
@@ -200,6 +199,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 9.8 **Warp-Check: CPU-Last senken?** h713-warp hat heute 1 h 26 min CPU in ~10 h gebraucht (Prüfstand);
       messen, wo die Zeit hingeht (Readback/`check`, Fence-Warten, Poll-Takt), und ob der GPU-Pfad bei
       Identität ganz schlafen kann (Marco, 05.10.)
+- [ ] 9.9 Fernbedienung auswerten (war 2.2): 16 Tasten + Maus kommen als Events an, nur Power wirkt — braucht
+      einen Desktop/eine Oberfläche, die etwas damit anfängt (Marco 05.10.: spät)
 
 
 ## 10 Erledigt — aus `61` und `144` gestrichen, damit es nicht wieder auftaucht
