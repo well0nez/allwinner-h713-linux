@@ -190,7 +190,43 @@ def main() -> int:
                     if len(zeilen) > UMBAU_MAX:
                         funde.append(("Umbau-Verweis", rel,
                                       "und %d weitere Zeilen" % (len(zeilen) - UMBAU_MAX)))
-    print(f"sperr-scan: {n} Dateien unter {wurzel}, {len(hashes)} Referenz-Hashes")
+    # Regel 8: die Identitaet des Eigentuemers. Die Begriffe (Name, private Adresse,
+    # Arbeitgeber) stehen in einer Datei AUSSERHALB des Repos -- ~/.config/h713/sperrbegriffe
+    # oder $H713_SPERRBEGRIFFE --, weil die Liste selbst verraten wuerde, was sie schuetzt.
+    # Fehlt die Datei, prueft die Regel nichts und sagt das. Jede getrackte Textdatei,
+    # auch doku/: ein Treffer ist ein harter Fund. 05.10.2026: ein Arbeitgebername stand
+    # seit dem ersten Commit in einem Kernel-Patch, der Klarname in drei Journalseiten.
+    begriffe_datei = os.environ.get("H713_SPERRBEGRIFFE", os.path.expanduser("~/.config/h713/sperrbegriffe"))
+    begriffe = []
+    try:
+        with open(begriffe_datei, encoding="utf-8") as fh:
+            begriffe = [z.strip().lower() for z in fh if z.strip() and not z.startswith("#")]
+    except OSError:
+        pass
+    if begriffe:
+        import subprocess
+        try:
+            tracked_set = set(subprocess.run(["git", "-C", wurzel, "ls-files", "-z"], capture_output=True,
+                                             check=True).stdout.decode().split("\0"))
+        except (OSError, subprocess.CalledProcessError):
+            tracked_set = None	# kein Git: jede Textdatei zaehlt
+        for d, dirs, files in os.walk(wurzel):
+            dirs[:] = [x for x in dirs if x not in (".git", "external", "build", "tmp", "__pycache__", "graphify-out")]
+            for f in files:
+                rel = os.path.relpath(os.path.join(d, f), wurzel)
+                if os.path.splitext(f)[1] not in TEXT_ENDUNGEN or (tracked_set is not None and rel not in tracked_set):
+                    continue
+                try:
+                    txt = open(os.path.join(d, f), encoding="utf-8", errors="replace").read().lower()
+                except OSError:
+                    continue
+                for z_nr, zeile in enumerate(txt.split("\n"), 1):
+                    for bg in begriffe:
+                        if bg in zeile:
+                            funde.append(("Identitaet", "%s:%d" % (rel, z_nr), bg[:3] + "\u2026"))
+                            break
+    print(f"sperr-scan: {n} Dateien unter {wurzel}, {len(hashes)} Referenz-Hashes"
+          + (f", {len(begriffe)} Sperrbegriffe" if begriffe else ", KEINE Sperrbegriffe-Datei (Regel 8 prueft nichts)"))
     for art, rel, was in funde:
         print(f"  FUND  {art:<14} {rel}  ({was})")
     for rel, g in sorted(gross, key=lambda x: -x[1]):

@@ -5,7 +5,7 @@
 +/*
 + * Driver for Allwinner sun50i-H713 (sun50iw12) Pulse Width Modulation Controller
 + *
-+ * Copyright (C) 2024 BDG Handel GmbH
++ * Copyright (C) 2024 well0nez
 + *
 + * This driver supports the second-generation PWM IP block found in the
 + * Allwinner H713 SoC. Channels are paired and each pair shares a clock
@@ -460,7 +460,7 @@
 +module_platform_driver(sun8i_pwm_driver);
 +
 +MODULE_ALIAS("platform:sun8i-pwm");
-+MODULE_AUTHOR("BDG Handel GmbH");
++MODULE_AUTHOR("well0nez");
 +MODULE_DESCRIPTION("Allwinner sun50i-H713 PWM driver");
 +MODULE_LICENSE("GPL v2");
 --- a/drivers/pwm/Kconfig	2025-09-11 17:23:23.000000000 +0200

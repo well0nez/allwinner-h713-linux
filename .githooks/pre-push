@@ -8,5 +8,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 	range="$local_sha"; [ "$remote_sha" != "0000000000000000000000000000000000000000" ] && range="$remote_sha..$local_sha"
 	bad=$(git log --format='%h %ae %ce' "$range" 2>/dev/null | awk -v ok="$ok" '{ for (i = 2; i <= 3; i++) if ($i != ok && $i !~ "\\+" ok "$" && $i !~ /^(chris\.h\.stenger@gmail\.com|root@v63907\.datalix\.de|hy310@local|email@domain\.de|noreply@anthropic\.com)$/) print }' | head -5)
 	[ -n "$bad" ] && { echo "pre-push: $local_ref carries commits with an identity that is not the project's:" >&2; echo "$bad" >&2; exit 1; }
+	# and no file in the pushed tree may carry one of the owner's identity terms (list outside the repo)
+	L="${H713_SPERRBEGRIFFE:-$HOME/.config/h713/sperrbegriffe}"
+	if [ -r "$L" ]; then
+		hit=$(grep -v '^#' "$L" | grep -v '^$' | while read -r b; do git grep -i -l -F -e "$b" "$local_sha" -- . ':!mainline/external' 2>/dev/null | head -2; done | head -3)
+		[ -n "$hit" ] && { echo "pre-push: $local_ref carries a file with one of the owner's identity terms (see $L):" >&2; echo "$hit" >&2; exit 1; }
+	fi
 done
 exit 0
