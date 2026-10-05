@@ -67,7 +67,7 @@ The same chip, the same module family, one more UART. What ships:
   next attach inherits the old LE scan and stops at `Opcode 0x2010 failed: -16` (Command Disallowed). The
   helper sends HCI_Reset as a raw H4 frame on the bare UART before `hciattach` and after it exits, as the
   vendor's `libbt-aic` does around every session, and the unit only counts as started once `hci0` is UP.
-  Details and the device log: `umbau/work/FB-BTRESET/REPORT.txt` in the working tree, not in this repo.
+  Details and the device log: working journal `FB-BTRESET/REPORT.txt` in the working tree, not in this repo.
 
 Known and open: after a warm reboot the first HCI command sometimes goes unanswered (the helper retries;
 the cause is not found). The IR receiver is not used: the same remote sends the same NEC code for the

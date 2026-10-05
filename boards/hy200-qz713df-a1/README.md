@@ -29,7 +29,7 @@ regions. Old names: `BOARD=ddr3` (still an alias of `build/build.sh`) and `board
 
 - **projector05061226** - the full eMMC dump of the maintainer's unit of 2026-10-02 (kept private),
   what `h713-install identify` and `h713-extract` read out of it, and its running stock system over
-  ADB (package GEU1, `umbau/work/GEU1/`). Its stock device tree came out of `vendor_boot_a`.
+  ADB (package GEU1, working journal `GEU1`). Its stock device tree came out of `vendor_boot_a`.
 - **projector09220931** - the 2025-09-22 `update.img` in the local firmware archive
   (`firmware/hy200-qz713df-a1/2025-09-22_projector09220931/`, sha256 `ced372b4...`) and its facts
   (`installer/tests/fixtures/images/hy300-pro-plus-ddr3-0922.json`): boot0, boot package, both

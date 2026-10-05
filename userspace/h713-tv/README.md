@@ -684,7 +684,7 @@ edid       = block0 | block1 # which half of /lib/firmware/hy310-edid.bin port 0
                              # driver's default, block 0. block1 is the vendor's HDMI 2.0 set: on the HY310
                              # it adds 1080p100/120 (the firmware locks both), 1080i, and 4K50/60, which the
                              # firmware's table has disabled, drops 1080p25 and caps TMDS at 300 MHz
-                             # (umbau/work/FB-EDID/tables/edid-vs-firmware.csv). Applied once at start as a
+                             # (working journal `FB-EDID/edid-vs-firmware.csv`). Applied once at start as a
                              # replug, about a second of console; `ctl status` says which half is up
 ```
 
@@ -752,7 +752,7 @@ doku/112), and a source that insists on 1.4 gets no picture. The `firmware:` lin
 firmware's log ring that mentions HDCP, read in place through cpu_comm; the firmware logs its 2.2 success
 and its failures at its error level, so they show at the default level, while a 1.4 pass is an INFO line
 and does not. Read the five lines once before a protected source is plugged in (the boot baseline) and
-once after; the report `umbau/work/FB-HDCP22/REPORT.txt` says what a success and a failure look like.
+once after; working journal `FB-HDCP22/REPORT.txt` says what a success and a failure look like.
 
 ## 7. The descriptor, the firmware and what the program sees of it
 

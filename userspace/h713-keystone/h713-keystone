@@ -446,7 +446,7 @@ def warp_apply(tool, permille):
 # before they reach the warp (LocalService.optKeystoneFun 1154-1200), whose
 # flip acts on the output; without it a rear mount doubles the roll and a
 # ceiling mount puts the pitch on the wrong edge (deep review 27.09.2026,
-# umbau/work/_deepreview/geometry B1).  No sign flip: the model negates the
+# working journal `_deepreview/geometry` B1).  No sign flip: the model negates the
 # angles itself when the unit hangs upside down.
 MODE_PERM = {"front": (0, 1, 2, 3), "rear": (1, 0, 3, 2),
              "ceiling": (3, 2, 1, 0), "rear-ceiling": (2, 3, 0, 1)}

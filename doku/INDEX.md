@@ -14,21 +14,22 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `FLASHING.md` | `doku/109`, `doku/110` |
 | `PROVENANCE.md` | `doku/116` |
 | `README.md` | `doku/88` |
-| `ROADMAP.md` | `doku/102`, `doku/104`, `doku/147`, `doku/148`, `doku/70`, `doku/71` |
-| `STATUS.md` | `doku/00`, `doku/104`, `doku/114`, `doku/121`, `doku/124`, `doku/125`, `doku/147`, `doku/148`, `doku/61` |
+| `RELEASES.md` | `doku/134`, `doku/142` |
+| `ROADMAP.md` | `doku/104`, `doku/134`, `doku/70`, `doku/71` |
+| `STATUS.md` | `doku/00`, `doku/104`, `doku/114`, `doku/121`, `doku/124`, `doku/125`, `doku/134`, `doku/136`, `doku/137`, `doku/139`, `doku/142`, `doku/61` |
 | `boards/README.md` | `doku/121` |
-| `boards/hy200-qz713df-a1/README.md` | `doku/121` |
-| `boards/hy300-pro/README.md` | `doku/120` |
+| `boards/hy200-qz713df-a1/README.md` | `doku/136` |
 | `boards/hy300-t08/README.md` | `doku/121` |
 | `boards/hy310/README.md` | `doku/10`, `doku/121` |
 | `docs/architecture.md` | `doku/103`, `doku/82`, `doku/83`, `doku/96` |
 | `docs/dead-ends.md` | `doku/70`, `doku/80`, `doku/90` |
+| `docs/guides/keystone.md` | `doku/134` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/94` |
-| `docs/kernel-patches.md` | `doku/116`, `doku/80` |
-| `docs/known-issues.md` | `doku/102`, `doku/104`, `doku/116`, `doku/60`, `doku/61` |
+| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/80` |
+| `docs/known-issues.md` | `doku/104`, `doku/116`, `doku/134`, `doku/143`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
-| `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102` |
+| `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134` |
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/60` |
 | `docs/subsystems/cpu-comm.md` | `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/96` |
 | `docs/subsystems/crypto-engine.md` | `doku/112`, `doku/114` |
@@ -40,12 +41,14 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
 | `docs/subsystems/video.md` | `doku/62`, `doku/64`, `doku/76`, `doku/78` |
-| `docs/subsystems/wifi.md` | `doku/60` |
+| `docs/subsystems/wifi.md` | `doku/134`, `doku/60` |
+| `docs/tools/h713-autofocus.md` | `doku/134` |
 | `docs/tools/h713-cam.md` | `doku/61`, `doku/94` |
 | `docs/tools/h713-extract.md` | `doku/108`, `doku/121`, `doku/nachtlog/S42-r2-extract` |
 | `docs/tools/h713-fel.md` | `doku/20`, `doku/nachtlog/S48-fel-aus-uboot` |
 | `docs/tools/h713-focus.md` | `doku/94` |
 | `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
+| `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
@@ -71,19 +74,19 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/h713/hdcpitems.py` | `doku/148` |
 | `installer/h713/identify.py` | `doku/109`, `doku/121`, `doku/60` |
 | `installer/h713/imagewty.py` | `doku/105` |
-| `installer/h713/install.py` | `doku/121`, `doku/61` |
+| `installer/h713/install.py` | `doku/116`, `doku/121`, `doku/61` |
 | `installer/h713/layout.py` | `doku/109`, `doku/121`, `doku/40` |
 | `installer/h713/mkimage.py` | `doku/109`, `doku/110`, `doku/116`, `doku/121` |
 | `installer/h713/profiles/SCHEMA.md` | `doku/121` |
 | `installer/h713/profiles/__init__.py` | `doku/121` |
 | `installer/h713/profiles/hy200_qz713_v2.py` | `doku/121` |
-| `installer/h713/profiles/hy200_qz713df_a1.py` | `doku/121` |
+| `installer/h713/profiles/hy200_qz713df_a1.py` | `doku/121`, `doku/136` |
 | `installer/h713/profiles/hy300_pro.py` | `doku/120`, `doku/121` |
 | `installer/h713/profiles/hy300_t08.py` | `doku/121` |
 | `installer/h713/profiles/hy310.py` | `doku/109`, `doku/120`, `doku/40` |
 | `installer/h713/profiles/hy350.py` | `doku/121` |
 | `installer/h713/source.py` | `doku/121` |
-| `installer/h713/stock.py` | `doku/121`, `doku/60` |
+| `installer/h713/stock.py` | `doku/121`, `doku/60`, `doku/61` |
 | `installer/h713/vendorfiles.py` | `doku/121`, `doku/40` |
 | `installer/h713/verify.py` | `doku/121` |
 | `installer/hy310-install.py` | `doku/121` |
@@ -102,11 +105,13 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/tests/test_extract_manifest.py` | `doku/121`, `doku/40` |
 | `installer/tests/test_extract_mips.py` | `doku/121` |
 | `installer/tests/test_identify.py` | `doku/121` |
+| `installer/tests/test_install_beside.py` | `doku/61` |
 | `installer/tests/test_install_readback.py` | `doku/109` |
 | `installer/tests/test_installer_dryrun.py` | `doku/121`, `doku/60` |
 | `installer/tests/test_layout_v4.py` | `doku/109` |
 | `installer/tests/test_o1b_followups.py` | `doku/61` |
-| `installer/tests/test_stock_gpt_crosscheck.py` | `doku/60` |
+| `installer/tests/test_py39_syntax.py` | `doku/61` |
+| `installer/tests/test_stock_gpt_crosscheck.py` | `doku/60`, `doku/61` |
 | `installer/tests/test_stock_guard.py` | `doku/121` |
 | `installer/tests/test_test_image.py` | `doku/109`, `doku/121` |
 | `installer/tmp/rootfs-baum/usr/local/lib/h713-pq/h713_pq/ausgabe.py` | `doku/81` |
@@ -119,8 +124,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `release/repo-skelett.sh` | `doku/116`, `doku/118`, `doku/121` |
 | `release/sperr-scan.py` | `doku/116`, `doku/121` |
 | `rootfs/build-rootfs.sh` | `doku/107`, `doku/109`, `doku/116`, `doku/50` |
-| `rootfs/install-projekt.sh` | `doku/116` |
-| `rootfs/packages.txt` | `doku/107` |
+| `rootfs/install-projekt.sh` | `doku/116`, `doku/60` |
+| `rootfs/packages.txt` | `doku/107`, `doku/108` |
 | `rootfs/tests/h713-wifi-check.sh` | `doku/60` |
 | `userspace/README.md` | `doku/50`, `doku/77` |
 | `userspace/h713-cam/README.md` | `doku/94` |
@@ -130,8 +135,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-pq/h713_pq/model.py` | `doku/76`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/I0-helligkeit-nachgemessen`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
 | `userspace/h713-pq/h713_pq/output.py` | `doku/81` |
 | `userspace/h713-pq/tests/test_h713_pq.py` | `doku/61`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14` |
-| `userspace/h713-tv/README.md` | `doku/101`, `doku/107`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
-| `userspace/h713-tv/main.c` | `doku/101`, `doku/128`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
+| `userspace/h713-tv/README.md` | `doku/101`, `doku/102`, `doku/107`, `doku/112`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
+| `userspace/h713-tv/main.c` | `doku/101`, `doku/102`, `doku/128`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/82`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
 | `userspace/h713-warp/capture.c` | `doku/86` |
 
 ## 2 Alle Eintraege
@@ -149,20 +154,20 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`105-plan-release.md`](105-plan-release.md) | Plan |  | Plan 105 - Release: den HY310-Stand für andere nutzbar machen | 2 |
 | [`106-handoff-20260910.md`](106-handoff-20260910.md) | Handoff | 2026-09-10 | Handoff 10.09.2026 - Stand, Todos, teuer bezahltes Wissen | - |
 | [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 6 |
-| [`108-plan-vendordaten.md`](108-plan-vendordaten.md) | Plan |  | Plan 108 - die Vendor-Artefakte vom Stock-Layout lösen | 4 |
+| [`108-plan-vendordaten.md`](108-plan-vendordaten.md) | Plan |  | Plan 108 - die Vendor-Artefakte vom Stock-Layout lösen | 5 |
 | [`109-plan-layout-v3.md`](109-plan-layout-v3.md) | Plan |  | Plan 109 - Layout v3: die Boot-Kette an den Anfang | 18 |
 | [`110-plan-installationsweg.md`](110-plan-installationsweg.md) | Plan |  | Plan 110 - der Installationsweg für Nutzer | 6 |
 | [`111-handoff-20260910-abend.md`](111-handoff-20260910-abend.md) | Handoff | 2026-09-10 | Handoff 10.09.2026, Abend - Stand nach dem Umbau | - |
-| [`112-plan-hdcp14-crypto-engine.md`](112-plan-hdcp14-crypto-engine.md) | Plan |  | Plan 112 - HDCP 1.4 über die Crypto Engine: Auftrag für einen späteren Agenten | 3 |
+| [`112-plan-hdcp14-crypto-engine.md`](112-plan-hdcp14-crypto-engine.md) | Plan |  | Plan 112 - HDCP 1.4 über die Crypto Engine: Auftrag für einen späteren Agenten | 4 |
 | [`113-plan-pq-laufzeit-und-speichern.md`](113-plan-pq-laufzeit-und-speichern.md) | Plan |  | Plan 113 - Bildwerte zur Laufzeit rechnen und dauerhaft merken | 2 |
 | [`114-plan-crypto-engine.md`](114-plan-crypto-engine.md) | Plan |  | Plan 114 - Crypto Engine (H713): Entscheidung, Befundabgleich mit cstenger, und der eine Grund sie anzufassen | 2 |
 | [`115-handoff-20260912.md`](115-handoff-20260912.md) | Handoff | 2026-09-12 | Handoff 12.09.2026 - Abbild v0.9 läuft auf dem Gerät | - |
-| [`116-plan-release-repo.md`](116-plan-release-repo.md) | Plan |  | Plan 116 - Vom Arbeitsverzeichnis zum Repo, vom Repo zum Release v0.1 | 12 |
+| [`116-plan-release-repo.md`](116-plan-release-repo.md) | Plan |  | Plan 116 - Vom Arbeitsverzeichnis zum Repo, vom Repo zum Release v0.1 | 13 |
 | [`117-plan-p5-doku.md`](117-plan-p5-doku.md) | Plan |  | Plan 117 - P5: die englische Dokumentation des Repos | - |
 | [`118-handoff-20260913.md`](118-handoff-20260913.md) | Handoff | 2026-09-13 | Handoff 13.09.2026 - nach dem Release v0.5-beta | 1 |
 | [`119-plan-fremdgeraete-und-installer-fixes.md`](119-plan-fremdgeraete-und-installer-fixes.md) | Plan |  | Plan 119 - Fremde Geräte (HY300 Pro) und die Installer-Fehler aus Issue #1 | - |
-| [`120-plan-hy300pro.md`](120-plan-hy300pro.md) | Plan |  | Plan 120 - HY300 Pro: von „geht nicht" zu einem Test, den der Melder fahren kann | 5 |
-| [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 52 |
+| [`120-plan-hy300pro.md`](120-plan-hy300pro.md) | Plan |  | Plan 120 - HY300 Pro: von „geht nicht" zu einem Test, den der Melder fahren kann | 4 |
+| [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 51 |
 | [`122-handoff-werkzeug-umbau.md`](122-handoff-werkzeug-umbau.md) | Handoff |  | 122 - Handoff Werkzeug-Umbau (abgeschlossen 15.09.2026 mit Release v0.6-beta) | - |
 | [`123-handoff-20260915.md`](123-handoff-20260915.md) | Handoff | 2026-09-15 | 123 - Handoff 15.09.2026 (Werkzeug-Umbau abgeschlossen, Stufe 5 fremde Boards, Testabbild HY300 Pro) | - |
 | [`124-cstenger-abgleich-20260915.md`](124-cstenger-abgleich-20260915.md) | Abgleich | 2026-09-15 | 124 - Abgleich mit cstengers Zweig `h713-display-video-path` (sein Stand 12.09.2026) | 1 |
@@ -176,28 +181,28 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`131-nacht-20260923.md`](131-nacht-20260923.md) | Analyse | 2026-09-23 | 131 - Nacht 22./23.09.2026: Tearing gemessen und gelöst, Farben unter dem Warp, Autofokus-Kante | - |
 | [`132-plan-fable-pakete-20260926.md`](132-plan-fable-pakete-20260926.md) | Plan | 2026-09-26 | Plan 132 - Fable-Pakete ohne Geraet (26.09.2026) | - |
 | [`133-handoff-20260927.md`](133-handoff-20260927.md) | Handoff | 2026-09-27 | Handoff 27.09.2026, 01:30 - Stand der Fable-Welle, Geraet, main | - |
-| [`134-verifikationsplan-20261002.md`](134-verifikationsplan-20261002.md) | Plan | 2026-10-02 | Plan 134 - Verifikation der Fable-Welle am Geraet (02.10.2026) | - |
+| [`134-verifikationsplan-20261002.md`](134-verifikationsplan-20261002.md) | Plan | 2026-10-02 | Plan 134 - Verifikation der Fable-Welle am Geraet (02.10.2026) | 10 |
 | [`135-handoff-20261002.md`](135-handoff-20261002.md) | Handoff | 2026-10-02 | Handoff 135 - Verifikation der Fable-Welle am Geraet (02./03.10.2026, Stand 00:15) | - |
-| [`136-handoff-hy300pro-g-eu-20261003.md`](136-handoff-hy300pro-g-eu-20261003.md) | Handoff | 2026-10-03 | 136 - Handoff HY300PRO-G-EU (Marcos eigener HY300 Pro), Stand 03.10.2026 ~01:30 | - |
-| [`137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md`](137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md) | Handoff | 2026-10-03 | 137 – Handoff: HY300PRO-G-EU, Bildfehler durch falsche LVDS-Farbtiefe | - |
+| [`136-handoff-hy300pro-g-eu-20261003.md`](136-handoff-hy300pro-g-eu-20261003.md) | Handoff | 2026-10-03 | 136 - Handoff HY300PRO-G-EU (Marcos eigener HY300 Pro), Stand 03.10.2026 ~01:30 | 3 |
+| [`137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md`](137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md) | Handoff | 2026-10-03 | 137 – Handoff: HY300PRO-G-EU, Bildfehler durch falsche LVDS-Farbtiefe | 1 |
 | [`138-handoff-mips-ir-20261003.md`](138-handoff-mips-ir-20261003.md) | Handoff | 2026-10-03 | Handoff: MIPS-Reload und IR am HY300PRO-G-EU | - |
-| [`139-handoff-standby-geparkt-20261003.md`](139-handoff-standby-geparkt-20261003.md) | Handoff | 2026-10-03 | Standby C2 — geparkt, 03.10.2026 | - |
+| [`139-handoff-standby-geparkt-20261003.md`](139-handoff-standby-geparkt-20261003.md) | Handoff | 2026-10-03 | Standby C2 — geparkt, 03.10.2026 | 1 |
 | [`140-handoff-20261003.md`](140-handoff-20261003.md) | Handoff | 2026-10-03 | Handoff 140 - Fernbedienung/WLAN-BT am HY310 integriert, IR geparkt (03.10.2026 abends) | - |
 | [`141-plan-integration-release-20261003.md`](141-plan-integration-release-20261003.md) | Plan | 2026-10-03 | Plan 141 - Fable-Welle nach main, Kleinkram, Boards, dann Release (03.10.2026) | - |
-| [`142-grosstest-protokoll-v096.md`](142-grosstest-protokoll-v096.md) | Protokoll |  | 142 - Grosstest-Protokoll fuer den Release-Kandidaten (doku/141 Stufe 4 + 5), Entwurf 04.10.2026 00:20 | - |
-| [`143-handoff-gesamt-20261004.md`](143-handoff-gesamt-20261004.md) | Handoff | 2026-10-04 | 143 - Gesamt-Handoff, Stand 04.10.2026 04:40 (Fable-Welle -> Release v0.96-beta) | - |
+| [`142-grosstest-protokoll-v096.md`](142-grosstest-protokoll-v096.md) | Protokoll |  | 142 - Grosstest-Protokoll fuer den Release-Kandidaten (doku/141 Stufe 4 + 5), Entwurf 04.10.2026 00:20 | 2 |
+| [`143-handoff-gesamt-20261004.md`](143-handoff-gesamt-20261004.md) | Handoff | 2026-10-04 | 143 - Gesamt-Handoff, Stand 04.10.2026 04:40 (Fable-Welle -> Release v0.96-beta) | 1 |
 | [`144-offene-punkte-20261004.md`](144-offene-punkte-20261004.md) | Analyse | 2026-10-04 | 144 - Alle offenen Punkte, Stand 04.10.2026 12:15 (fable-main 36 Commits, vor Stufe 4) | - |
 | [`145-hdcp14-kette-uboot-bis-userspace.md`](145-hdcp14-kette-uboot-bis-userspace.md) | Analyse |  | 145 - HDCP 1.4: die ganze Kette von U-Boot bis Userspace, und wie wir sie nachbauen | 1 |
 | [`146-handoff-hdcp14-und-plan.md`](146-handoff-hdcp14-und-plan.md) | Handoff |  | 146 - Handoff HDCP 1.4 und Plan, Stand 05.10.2026 00:3x | - |
-| [`147-hdcp14-statusbericht-20261005.md`](147-hdcp14-statusbericht-20261005.md) | Analyse | 2026-10-05 | 147 — HDCP 1.4: Statusbericht nach der Nacht 04./05.10.2026 | 3 |
-| [`148-plan-hdcp14-produktionsreife.md`](148-plan-hdcp14-produktionsreife.md) | Plan |  | 148 — Plan: HDCP-1.4-Bootkette produktionsreif (Stand 05.10.2026, 08:xx) | 5 |
+| [`147-hdcp14-statusbericht-20261005.md`](147-hdcp14-statusbericht-20261005.md) | Analyse | 2026-10-05 | 147 — HDCP 1.4: Statusbericht nach der Nacht 04./05.10.2026 | 1 |
+| [`148-plan-hdcp14-produktionsreife.md`](148-plan-hdcp14-produktionsreife.md) | Plan |  | 148 — Plan: HDCP-1.4-Bootkette produktionsreif (Stand 05.10.2026, 08:xx) | 3 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
-| [`60-offen.md`](60-offen.md) | Analyse |  | Offene Punkte | 15 |
-| [`61-plan-vblank.md`](61-plan-vblank.md) | Plan |  | Der Vblank-Interrupt - gelöst | 6 |
-| [`61-todo.md`](61-todo.md) | Analyse |  | Alle offenen Punkte auf einer Seite | 6 |
+| [`60-offen.md`](60-offen.md) | Analyse |  | Offene Punkte | 16 |
+| [`61-plan-vblank.md`](61-plan-vblank.md) | Plan |  | Der Vblank-Interrupt - gelöst | 10 |
+| [`61-todo.md`](61-todo.md) | Analyse |  | Alle offenen Punkte auf einer Seite | 10 |
 | [`62-video.md`](62-video.md) | Analyse |  | Video: VE-Dekodierung und Wiedergabe auf dem Panel | 1 |
 | [`63-mips-elog.md`](63-mips-elog.md) | Analyse |  | Das Log des Coprozessors mitlesen | 1 |
 | [`64-afbd-quelle0.md`](64-afbd-quelle0.md) | Analyse |  | AFBD: die Kanäle, das Latch-Orakel, und der Beweis bis zum Panel | 1 |
@@ -218,7 +223,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`79-nachtlog-20260907.md`](79-nachtlog-20260907.md) | Analyse | 2026-09-07 | Nachtlog 06./07.09.2026 - Aufträge aus [78-nachtplan-hdmi-switch.md](78-nachtplan-hdmi-switch.md) | - |
 | [`80-vergleich-baeume.md`](80-vergleich-baeume.md) | Analyse |  | Was cstenger portiert hat, und was nicht | 2 |
 | [`81-pq-datenmodell.md`](81-pq-datenmodell.md) | Analyse |  | PQ-Datenmodell - von der Stock-Datei bis zum Register | 10 |
-| [`82-arisc-treiber.md`](82-arisc-treiber.md) | Analyse |  | `sun50i-h713-arisc` - der ARISC-Treiber | 2 |
+| [`82-arisc-treiber.md`](82-arisc-treiber.md) | Analyse |  | `sun50i-h713-arisc` - der ARISC-Treiber | 3 |
 | [`83-cpu-comm-api.md`](83-cpu-comm-api.md) | Analyse |  | Die In-Kernel-API von `cpu_comm` | 3 |
 | [`84-re-capture-ring.md`](84-re-capture-ring.md) | Analyse |  | RE: INCAP-Felder, Ring-Folge und der zweite Descriptor-Anstoß (K1-K3) | 1 |
 | [`85-re-pq-register.md`](85-re-pq-register.md) | Analyse |  | 85 - PQ-Register der MIPS-Firmware (K5) und Vorstudie Compositing (K6) | 6 |
@@ -348,7 +353,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-122 von 207. Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will.
+116 von 207. Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will.
 
 * `01-arbeitsbereich.md`
 * `106-handoff-20260910.md`
@@ -364,16 +369,10 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `131-nacht-20260923.md`
 * `132-plan-fable-pakete-20260926.md`
 * `133-handoff-20260927.md`
-* `134-verifikationsplan-20261002.md`
 * `135-handoff-20261002.md`
-* `136-handoff-hy300pro-g-eu-20261003.md`
-* `137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md`
 * `138-handoff-mips-ir-20261003.md`
-* `139-handoff-standby-geparkt-20261003.md`
 * `140-handoff-20261003.md`
 * `141-plan-integration-release-20261003.md`
-* `142-grosstest-protokoll-v096.md`
-* `143-handoff-gesamt-20261004.md`
 * `144-offene-punkte-20261004.md`
 * `146-handoff-hdcp14-und-plan.md`
 * `69-handoff-20260905.md`

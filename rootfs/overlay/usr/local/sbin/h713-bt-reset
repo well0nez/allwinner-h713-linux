@@ -11,7 +11,7 @@ HCI_Reset, close_with_hci_reset ends with one). Our kernel does neither: hci_uar
 reset at init (HCI_QUIRK_RESET_ON_CLOSE) and its reset at close never reaches the wire when
 hciattach exits, so a new attach inherits the old LE scan on the accept list and the init
 stops at LE Clear Accept List (0x2010, Command Disallowed); after a warm reboot the first
-command can go unanswered (0x1003 -110). Measurements: umbau/work/FB-BTRESET/REPORT.txt.
+command can go unanswered (0x1003 -110). Measurements: working journal `FB-BTRESET/REPORT.txt`.
 
 --wait-up turns an init that still stalls (the cause of the lost first command is open) into
 a failed start, so Restart= goes round stop (reset) and start (reset, attach) again.

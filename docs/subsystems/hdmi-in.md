@@ -22,7 +22,7 @@ ARISC firmware and not a version number; this board serves the HDMI 1.4 block on
 the TMDS ceiling while doing it ([arisc.md](arisc.md)). Since kernel `0170` `S_EDID` also takes two
 blocks - one 256-byte EDID - and makes it the served half, the other half keeping what it held; that
 is how `h713-tv ctl edid block1` puts the 2.0 set with its 1080p100/120 in front of a source without
-touching the mask, and `umbau/work/FB-EDID/tables/edid-vs-firmware.csv` lists what each half offers
+touching the mask, and working journal `FB-EDID/edid-vs-firmware.csv` lists what each half offers
 against what the table locks.
 
 ## Signal, timings, source switch
