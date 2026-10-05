@@ -34,3 +34,10 @@ __pycache__/
 *.pyc
 *.orig
 *.rej
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json
+
+# Graphify-Ausgabe (lokaler Code-Graph, graphify extract --code-only)
+graphify-out/

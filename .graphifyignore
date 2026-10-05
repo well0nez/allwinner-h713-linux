@@ -1,0 +1,9 @@
+# Graphify-Scan (Code-Graph) nur ueber unseren eigenen Code:
+# Submodule (U-Boot, TF-A, sunxi-tools) und die generierten Patch-Spiegel sind
+# fremder bzw. abgeleiteter Code -- 33 000 Dateien, die den Graphen ersticken wuerden.
+mainline/external/
+mainline/patches/
+uboot-h713/
+tfa-h713/
+doku/
+re/
