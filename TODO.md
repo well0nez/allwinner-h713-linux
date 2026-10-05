@@ -10,8 +10,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       „everything in order" (inkl. `check-hdcp-artifacts.sh`). Drei Bau-Stolpersteine dabei behoben:
       0183 kompilierte nicht (`c5f2f5e`), Sysroot-Wiederverwendung ohne Paketprüfung, `doku-index`
       zählte Bauausgaben (`eebb33e`)
-- [ ] 1.2 HY310-Großtest nach `doku/142` (22 Zyklen) + HDCP-Paar wipe→`Desired`, push→`Enabled`
-- [ ] 1.3 **WLAN-Timeouts verifizieren** (`82cb57e`, ungeprüft): Rootfs neu, Funk absichtlich verklemmen
+- [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
+      Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
+      WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
+- [ ] 1.2a **Z4 zweiter Boot** (~80 s nach Strom-an, Ursache unbekannt, Journal war flüchtig): Journal im
+      Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
+- [ ] 1.2b **Reinstall über unser Layout verwirft `/etc/h713`** (wifi.env → AP-Modus, warp.conf, keystone,
+      tvconfig): der Installer soll die Nutzer-Einstellungen wie die 44 Herstellerdateien zurücklesen und
+      übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
+- [ ] 1.3 **WLAN-Timeouts verifizieren** (`82cb57e`): im Abbild drin, 5 Boots je ~9 s bis Finished — der Hängefall
+      (Funk absichtlich verklemmen) ist noch nicht provoziert
 - [ ] 1.4 HY300 Pro G-EU (`boards/hy200-qz713df-a1`): Boot, Bild, HDCP 1.4 mit geteiltem Satz, 2.2
 - [ ] 1.5 STAGE4-Marker füllen und löschen (`git grep -n STAGE4`)
 - [ ] 1.6 Forks pushen: U-Boot `h713-hy310` +6, TF-A `sun50i-h713` +2 — **vor** `main`

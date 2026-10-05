@@ -93,3 +93,23 @@ Nur mit dem Variantenstand aus ST3-BOARDMERGE; TEST-Abbild (`--board <merged> --
 | 4b-3.4 | Lampe (Stufe 3.4): Marco "es ist hell", kein Foto noetig -> 3.4 GESCHLOSSEN. Das schwache Bild war die 6-Bit-LVDS (doku/137), seit 2de0cc8 8 Bit; der PWM5-Block bleibt unprogrammiert, ohne sichtbare Folge. |
 | 4b-3 | 15:1x Fernbedienung am HY300 gekoppelt (Links+Rechts; dieselbe wie am HY310 - dort spaeter neu koppeln), verbunden, event2. Tastenmitschnitt: dieselben 14 Codes wie am HY310 + Maus 535 REL-Ereignisse, Power ausgelassen -> 16/16. Koexistenz 100/100 Pings 1400 B, rtt 1,5-18 ms. BESTANDEN. |
 | 4b-4 | 15:3x 3 Kaltstarte HY300 mit UART (uart-hy300-coldstarts-20261004.log): 3/3 cold start + power key, project 0x34, Logo, Kernel, Login, 0 Panic/Oops. BT im letzten Boot: erster h713-bluetooth-Start scheitert ("no hci device UP after 10028 ms: the kernel's init did not get through", Reset selbst try 1 ok), systemd-Neustart nach 5 s, zweiter Versuch hci0 UP bei 26,7 s - BT laeuft, aber am GEU nur ueber den Neustart (FB-BTRESET 9.3: unvollstaendige Schreibvorgaenge am GEU, RTS/CTS). Fernbedienung nach Kaltstart: der Waechter meldet ~2 min lang "reconnect ... InProgress" / "no answer"; nach einem Tastendruck (Marco) verbunden, Eingabegeraet da. BESTANDEN mit zwei Befunden (siehe 144). |
+
+## Ergebnisse 05.10. abends - 5 Zyklen + HDCP-Paar mit dem Abbild aus main 819a09a (Marco: kein Grosstest, 5 Zyklen)
+
+Abbild: installer/out/h713-hy310-v0.96-beta (Bau 20:36, main 819a09a). Installation 20:47 über unser
+Layout per FEL (h713-fel --yes) + UMS, --device /dev/sda: 44 Dateien zurückgelesen, board hy310, Env
+übernommen (h713_gate=0), 3 min geschrieben, Secure Storage byteidentisch, HDCP-1.4-Satz bekannt.
+Sicherung: arbeit/sicherung-vor-v096-install-20261005-2044/ (pre-v096.tgz = /etc/h713 + Env, dump/).
+
+| Zyklus | Zeit | Boot | failed | Dienste | WLAN | Bild/Warp | HDCP | BT | afbd | Bemerkung |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 20:50 Sonoff aus 6 s/an, kein Tastendruck (gate=0) | ok, 6.18.38 | 0 | tv/warp/keystone/bt active | 8,9 s bis Finished — aber **AP-Modus**: das Abbild bringt die Default-wifi.env, meine wurde nicht übernommen (Reinstall verliert /etc/h713, RELEASES sagt es) → per UART zurückgespielt, STA 192.168.8.131; danach warp.conf/keystone/tvconfig/tv.conf/features per scp zurück | 1080p60 (Stick), warp on, Keystone wie vorher, 59,4 fps | Quelle war das **ThinkPad** (kein 2.2 möglich): `xrandr` HDMI-2 **Content Protection: Enabled** = 1.4-Push wirkt · Senke: 1.4 geladen 0x93=0x45, 2.2 übergeben | hci0 UP | 0 Republish, 0 Fehler (1080p) | Journal err: pam_env locale 13×, ACL video2/3, Regulatory-Banner — kosmetisch, TODO |
+| 2 (wipe) | 20:57 `fw_setenv h713_hdcp14_wipe 1`, Sonoff aus/an | ok, ssh nach 23 s | 0 | — | STA sofort | 1080p60 (ThinkPad) | Quelle **Desired** (Senke genullt, kein Schutz zustande) · Senke 0x93=0x41 | — | — | Messregel Teil A erfüllt |
+| 3 (push) | 20:58 Flag gelöscht, Sonoff aus/an | ok, ssh 23 s | 0 | tv/warp/bt active | STA | 1080p60 (ThinkPad) | Quelle Undesired→Desired angefordert → **Enabled** · Senke 0x93=0x45 | hci0 UP | — | Messregel Teil B erfüllt — **HDCP-Paar bestanden** |
+| 4 | 21:01 Sonoff aus/an (Bestätigung des „an" per mDNS verfehlt, Strom kam trotzdem), ThinkPad vorher auf 720p — fiel beim Hotplug auf 1080p zurück | **zwei Boots**: ssh erst nach 77 s, `/proc/uptime` 85 s um 21:03:51 ⇒ zweiter Boot ~21:02:25, Ursache unbekannt — Journal war flüchtig, kein pstore (`panic=10` würde so aussehen) | 0 | tv/warp/bt active | STA | 1080p→720p live, Warp on, 59 fps, Register 1920x1080, Kamera ein Gitter (live und nach Boot) | — | hci0 UP | 0 Republish beim 1080p-Boot | **Auffälligkeit, offen**; Journal ab jetzt persistent |
+| 5 | 21:05 Sonoff aus/an | ok, ssh 23 s, ein Boot (Journal jetzt persistent) | 0 | tv/warp/keystone/bt/wifi active | 9,2 s bis Finished (STA) | 1080p60 (ThinkPad), Warp on 59,5 fps | Quelle angefordert → **Enabled**, 0x93=0x45 | hci0 UP | — | sauber |
+
+**Summe:** 5 Kaltstarte, 5× gebootet, 0 fehlgeschlagene Dienste, HDCP-Paar erfüllt (Z2 Desired / Z3 Enabled, Z1+Z5 Enabled),
+WLAN-Fix im Abbild (Finished nach ~9 s, kein Hängen), 720p + Warp live und nach Boot richtig (Register + Kamera), BT jedes Mal UP.
+**Offen:** Z4 zweiter Boot ohne Spur (Journal war flüchtig) · Reinstall verwirft /etc/h713 (wifi.env, warp.conf, keystone) ·
+Boot mit anliegendem 720p nur über die Live-Umschaltung geprüft (ThinkPad fällt beim Hotplug auf 1080p zurück) · kosmetische Journal-Fehler.
