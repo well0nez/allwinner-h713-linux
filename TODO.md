@@ -36,7 +36,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       „2.2 (session stands), authenticated: yes", Firmware-Log zeigt SKE_SEND_EKS; über acht
       Moduswechsel (1080p60 ↔ 720p50/60) jedes Mal neu authentifiziert. Beide Schlüssel sitzen
       (1.4 aus U-Boot, LINK 0x93=0x45; 2.2 vom Kernel beim Probe)
-- [ ] 2.4a **720p-Quelle + Warp: Bild doppelt und gestaucht** (Fire TV 720p60, 05.10.). Der
+- [x] 2.4a **720p-Quelle + Warp: Bild doppelt und gestaucht** (Fire TV 720p60, 05.10.). Der
       Warp-Frame selbst ist sauber (`h713-warp ctl dump`), ohne Warp ist 720p sauber — also
       liest der Kompositionsblock der Firmware den 1920er Warp-Puffer weiter mit dem
       Ring-Stride 1280 (Patch 0107: „nothing behind the reader gets reprogrammed"; dort als
@@ -79,8 +79,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.6 Audio: Abschalt-Plopp
 - [ ] 2.7 Geometrie: Ceiling-Beweis kopfüber; Kalibrierkarten in gespiegelten Modi; Konsole durch den Warp
 - [ ] 2.8 Autofokus: eine Wand, ein Abend; Metrik-Spanne nur +11 % (Belichtung)
-- [ ] 2.9 Keystone ohne Langlauf; automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
-- [ ] 2.10 EDID: zwei Modi rasten nicht, 1080p100/120 hinter Schalter; 1600×900 und 120 Hz (aus `61`)
+- [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
+      Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
+- [ ] 2.10 EDID: 1080p100/120 weiter hinter `ctl edid block1` (Entscheidung offen). **Geklärt 05.10.:** 1600×900,
+      1920×1200, 1600×1200, 2560×1600 und 1024×768i rasten nicht, weil die Firmware-Tabelle sie nicht kennt —
+      unsere EDID bietet sie auch nicht an (der i915 generiert sie selbst); kein Fehler unsererseits
 - [x] 2.10a Interlace-VICs 7, 6, 21 (480i/576i) aus unserer EDID, die die Firmware nicht rasten kann: h713-tv
       beschneidet jede veröffentlichte Hälfte um die SVDs ohne Tabelleneintrag (`edid_prune`) und veröffentlicht
       die servierte Hälfte beim Start einmal so, wenn nötig (ein HPD-Puls). Am Gerät 05.10. 21:30: 17 VICs offered,
@@ -89,12 +92,15 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.11 `backlight_level` / `dynamic_backlight` ohne Wirkung — Firmware nimmt den Aufruf, Lampe ändert nichts
 - [ ] 2.12 AP-Latenzspitzen (3 ms ↔ 2 s bei −50 dBm, Durchsatz ok)
 - [ ] 2.13 Settings-Seite Port 8080 **ohne Authentifizierung**
-- [ ] 2.14 Reinstall setzt Einstellungen und Fernbedienungs-Pairing zurück
+- [ ] 2.14 Reinstall setzt Einstellungen und Fernbedienungs-Pairing zurück — heute selbst erlebt (wifi.env → AP-Modus),
+      Lösung in **1.2b** (Installer übernimmt `/etc/h713`); Pairing bleibt zusätzlich offen
 - [ ] 2.15 `afbd`-Modultausch zur Laufzeit bringt kein neues Fenster (Firmware nimmt Republikation nicht)
-- [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`)
+- [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
+      100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
 - [ ] 2.17 Presets `computer`/`game`/`hdr` nie geprüft; Gamma 2,2 Sichtprüfung gegen Stock; Weißabgleich/CTM ohne Stock-Vergleich (aus `61`)
 - [ ] 2.18 `h713-pq brightness` sagt „ohne Wirkung" — widerlegt 07.09., Meldung korrigieren (aus `61`)
-- [ ] 2.19 `h713-tv`: `replug` (S_EDID blocks=0) fehlt; Plane liest Ring direkt statt dma-buf (aus `61`)
+- [x] 2.19 `h713-tv ctl replug` gibt es längst (HPD-Puls, S_EDID); „Plane liest Ring direkt' ist seit 0107/0117
+      das Design (hdmi-ring-Modus), kein Mangel — Punkt aus `61` überholt (05.10.)
 - [ ] 2.20 Preset beim Start wählbar, Regler über Neustart merken; Startmodus `auto|manuell` merken (aus `61`)
 - [ ] 2.21 Kamera mit hellem Bild nie geprüft; WLAN-Station zwei Ecken offen; Telefon am AP (aus `61`/known-issues)
 - [ ] 2.22 eMMC `data error cmd18` am GEU (einmal) — erst bei Wiederauftreten
