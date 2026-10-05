@@ -15,6 +15,7 @@ after_move writer against a configuration file with comments, and the page
 itself - every verb page.html uses has to exist in the tool.
 """
 
+import base64
 import importlib.machinery
 import importlib.util
 import json
@@ -26,6 +27,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -534,3 +536,65 @@ class HttpTest(unittest.TestCase):
 
 if __name__ == "__main__":
     sys.exit(not unittest.main(exit=False).result.wasSuccessful())
+
+
+class AuthTests(unittest.TestCase):
+    """The door (05.10.2026): HTTP Basic Auth against the one password in the
+    password file; any user name; --no-auth (password None) leaves it open."""
+
+    def setUp(self):
+        self.fake = Fakes()
+        self.tmp = tempfile.mkdtemp()
+        page = b"<html>h713 panel</html>"
+        self.server = panel.serve(panel.Panel(tools=self.fake.dir), page, "127.0.0.1", 0,
+                                  password="geheim-123")
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.thread.join(5)
+        self.server.server_close()
+        self.fake.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _get(self, auth=None, path="/"):
+        request = urllib.request.Request("http://127.0.0.1:%d%s" % (self.port, path))
+        if auth is not None:
+            request.add_header("Authorization", "Basic " + base64.b64encode(auth.encode()).decode())
+        try:
+            answer = urllib.request.urlopen(request, timeout=10)
+            return answer.getcode(), dict(answer.headers)
+        except urllib.error.HTTPError as e:
+            return e.code, dict(e.headers)
+
+    def test_without_a_password_the_door_is_shut(self):
+        code, headers = self._get()
+        self.assertEqual(code, 401)
+        self.assertIn("Basic realm=", headers.get("WWW-Authenticate", ""))
+
+    def test_a_wrong_password_is_refused_whatever_the_user(self):
+        for auth in ("x:geheim-124", "root:", ":geheim-123x", "geheim-123"):
+            self.assertEqual(self._get(auth)[0], 401, auth)
+
+    def test_the_right_password_opens_for_any_user_name(self):
+        for user in ("", "marco", "h713"):
+            self.assertEqual(self._get(user + ":geheim-123")[0], 200, user)
+
+    def test_the_api_is_behind_the_same_door(self):
+        request = urllib.request.Request("http://127.0.0.1:%d/api" % self.port,
+                                         data=b'{"verb":"status"}',
+                                         headers={"Content-Type": "application/json"})
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(request, timeout=10)
+        self.assertEqual(cm.exception.code, 401)
+
+    def test_the_password_file_round_trip_and_mode(self):
+        path = os.path.join(self.tmp, "panel.env")
+        self.assertIsNone(panel.read_password(path))
+        pw = panel.make_password(path)
+        self.assertEqual(panel.read_password(path), pw)
+        self.assertGreaterEqual(len(pw), 12)
+        if POSIX:
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)

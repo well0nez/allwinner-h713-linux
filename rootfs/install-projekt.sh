@@ -23,7 +23,7 @@
 #       warp; needs the mesa stage in the tree (build-rootfs.sh --mesa)
 #   5d. h713-keystone + model + unit (enabled; after_move = off in keystone.conf is the switch)
 #       + udev rule (starts the unit when an accelerometer appears)
-#   5e. h713-panel + page + unit (enabled; port 8080, no authentication)
+#   5e. h713-panel + page + unit (enabled; port 8080, password made at the first start)
 #   5g. h713-features + unit (enabled), /etc/h713/features from boards/$H713_BOARD/board.env
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
@@ -503,7 +503,7 @@ fi
 info "/usr/local/lib/h713-keystone/{h713-keystone,model/}, h713-keystone-auto.service enabled"
 
 # --- 5e. h713-panel --------------------------------------------------------
-# The settings page on port 8080 for a phone or a browser, no authentication
+# The settings page on port 8080 for a phone or a browser; it makes its password at the first start
 # (the LAN is the projector's). Enabled.
 say "h713-panel"
 mkdir -p "$TREE/usr/local/lib/h713-panel"

@@ -8,16 +8,19 @@ command and shows you the first `ok` or `error` line it answers.
 ## Getting to it
 
 The service is enabled from the first boot (`rootfs/install-projekt.sh` step 5e), listens on every
-interface and needs no login:
+interface and asks the browser for a password once:
 
 ```
 http://<the projector>:8080/
 ```
 
 The projector joins the Wi-Fi named in `/etc/h713/wifi.env` or takes a wired address; ask the device with
-`ip -4 addr`. **There is no authentication** - whoever reaches port 8080 can set the
-picture, move the focus motor and start the autofocus. The Wi-Fi password is the door, and on a LAN there
-is none. Change the shipped Wi-Fi password before the projector leaves your desk.
+`ip -4 addr`. The browser asks for a user name and a password: the user name does not matter, the
+password is the one the projector made at its first start - read it over SSH with
+`h713-panel --show-password` (or in the journal of the first start). Without it nobody who merely
+reaches port 8080 can move the focus motor or change the picture. Still change the shipped Wi-Fi
+password before the projector leaves your desk; the page's password travels over plain HTTP inside
+that network.
 
 The page is one HTML file served from the device; every button is a `POST /api` with a verb out of a fixed
 table in `h713-panel`. The browser never names a command, its arguments are checked against their ranges,

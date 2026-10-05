@@ -11,19 +11,26 @@ h713-tv) and this file only chooses which one and reads the first `ok`/`error`
 line of the answer back to the page.  The browser never names a command: it
 names a verb out of COMMANDS, its arguments are checked against that table, and
 the argument vector goes to subprocess without a shell, so a hole in the page
-cannot become a hole in the projector.  There is no authentication;
-docs-h713-panel.md says so out loud.
+cannot become a hole in the projector.  Since 05.10.2026 the page asks for a
+password (HTTP Basic Auth, any user name): it is generated at the first start,
+kept in /etc/h713/panel.env (root, 0600) and read with --show-password.  Until
+then whoever reached port 8080 could move the focus motor; on a LAN that was
+everybody.
 
   h713-panel [--port 8080] [--address ADDR] [--tools DIR] [--page PATH]
+             [--password-file PATH] [--no-auth] [--show-password]
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
+import hmac
 import http.server
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import threading
@@ -33,6 +40,8 @@ PAGE_PATH = os.path.join(HERE, "page.html")
 KEYSTONE_CONF, KEYSTONE_UNIT = "/etc/h713/keystone.conf", "h713-keystone-auto"
 THERMAL_DIR, DEFAULT_ADDRESS = "/sys/class/thermal", "0.0.0.0"
 DEFAULT_PORT = 8080
+PASSWORD_FILE = "/etc/h713/panel.env"   # password=... ; root, 0600; made at the first start
+REALM = "HY310 settings"
 TIMEOUT_S, TIMEOUT_LONG_S = 30, 120    # the autofocus walks a motor
 LOCK_WAIT_S = 5.0                      # how long a second button press waits
 MAX_BODY = 4096                        # a request is a verb and four words
@@ -422,13 +431,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _authorized(self):
+        """HTTP Basic Auth against the one password; the user name is free.
+        No password configured (--no-auth) means every request passes."""
+        want = self.server.password
+        if want is None:
+            return True
+        header = self.headers.get("Authorization", "")
+        if header.startswith("Basic "):
+            try:
+                got = base64.b64decode(header[6:].strip(), validate=True).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                got = ""
+            if hmac.compare_digest(got.partition(":")[2].encode(), want.encode()):
+                return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="%s", charset="UTF-8"' % REALM)
+        self.send_header("Content-Type", self.PLAIN)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        self.verb = "(401)"
+        return False
+
     def do_GET(self):
+        if not self._authorized():
+            return
         if self.path.split("?")[0] in ("/", "/index.html"):
             self._send(200, "text/html; charset=utf-8", self.server.page)
         else:
             self._send(404, self.PLAIN, b"not this page\n")
 
     def do_POST(self):
+        if not self._authorized():
+            return
         if self.path.split("?")[0] != "/api":
             self._send(404, self.PLAIN, b"not this page\n")
             return
@@ -456,10 +491,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                           if self.verb else ""))
 
 
-def serve(panel, page, address=DEFAULT_ADDRESS, port=DEFAULT_PORT):
+def serve(panel, page, address=DEFAULT_ADDRESS, port=DEFAULT_PORT, password=None):
     server = http.server.ThreadingHTTPServer((address, port), Handler)
-    server.panel, server.page = panel, page
+    server.panel, server.page, server.password = panel, page, password
     return server
+
+
+def read_password(path):
+    """The `password=` line of the file, or None."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("password="):
+                    return line[9:].strip() or None
+    except OSError:
+        pass
+    return None
+
+
+def make_password(path):
+    """A fresh password into `path` (root, 0600), returned.  secrets.token_urlsafe(9)
+    gives twelve characters, enough for a door on a home network and short
+    enough to type from a photo of the console."""
+    pw = secrets.token_urlsafe(9)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("# h713-panel: the settings page asks for this password (any user name).\n"
+                 "# Shown once in the journal when it was made; `h713-panel --show-password` prints it.\n"
+                 "password=%s\n" % pw)
+    return pw
 
 
 def main(argv=None):
@@ -467,8 +527,14 @@ def main(argv=None):
         prog="h713-panel",
         description="the projector's settings page: one HTML page and a verb "
                     "list, every verb one existing h713 command.",
-        epilog="No authentication - the Wi-Fi password is the door.")
+        epilog="HTTP Basic Auth with the password in /etc/h713/panel.env (made at the "
+               "first start); --no-auth for a test bench.")
     add = parser.add_argument
+    add("--password-file", default=PASSWORD_FILE, metavar="PATH",
+        help="where the password lives (default %s)" % PASSWORD_FILE)
+    add("--no-auth", action="store_true", help="serve without a password (tests, a bench)")
+    add("--show-password", action="store_true",
+        help="print the password and exit (make one if there is none)")
     add("--port", type=int, default=DEFAULT_PORT)
     add("--address", default=DEFAULT_ADDRESS, metavar="ADDR",
         help="the default is every interface")
@@ -476,15 +542,39 @@ def main(argv=None):
     add("--tools", metavar="DIR", help="the h713 tools; default $PATH")
     add("--keystone-conf", default=KEYSTONE_CONF, metavar="PATH")
     args = parser.parse_args(argv)
+    password = None
+    if args.show_password:
+        pw = read_password(args.password_file)
+        if pw is None:
+            try:
+                pw = make_password(args.password_file)
+            except OSError as e:
+                sys.stderr.write("error %s: %s\n" % (args.password_file, e))
+                return 2
+        print(pw)
+        return 0
+    if not args.no_auth:
+        password = read_password(args.password_file)
+        if password is None:
+            try:
+                password = make_password(args.password_file)
+            except OSError as e:
+                sys.stderr.write("error no password and none can be made at %s: %s -- "
+                                 "refusing to serve an open page; --no-auth says so on purpose\n"
+                                 % (args.password_file, e))
+                return 2
+            sys.stderr.write("ok password for the settings page made and kept in %s -- "
+                             "`h713-panel --show-password` prints it\n" % args.password_file)
     page = read_bytes(args.page)
     if page is None:
         sys.stderr.write("error %s is missing -- the page is one file beside "
                          "this one\n" % args.page)
         return 2
     server = serve(Panel(args.tools, args.keystone_conf), page, args.address,
-                   args.port)
-    sys.stderr.write("ok h713-panel on http://%s:%d/ -- no authentication\n"
-                     % (args.address, args.port))
+                   args.port, password)
+    sys.stderr.write("ok h713-panel on http://%s:%d/ -- %s\n"
+                     % (args.address, args.port,
+                        "password from " + args.password_file if password else "NO authentication (--no-auth)"))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

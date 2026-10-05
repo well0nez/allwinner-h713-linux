@@ -12,6 +12,7 @@ the argument vector goes to `subprocess` without a shell.
 
 ```
 h713-panel [--port 8080] [--address ADDR] [--tools DIR] [--page PATH] [--keystone-conf PATH]
+           [--password-file /etc/h713/panel.env] [--no-auth] [--show-password]
 ```
 
 ## How to reach it
@@ -71,8 +72,11 @@ The page has to stay beside the real file (the tool follows its own symlink to f
 
 ## What it does not do
 
-- **No authentication.** Whoever reaches port 8080 can set the picture: the Wi-Fi password is the door, and
-  on a LAN there is no door at all. It belongs on a network you own.
+- **One password (since 05.10.2026).** HTTP Basic Auth, any user name; the password is made at the
+  first start and kept in `/etc/h713/panel.env` (root, 0600). `h713-panel --show-password` prints it,
+  the journal shows it once when it was made. `--no-auth` serves an open page for a bench and says so.
+  Plain HTTP: the password crosses the home network unencrypted, which is the level of the Wi-Fi
+  password itself. A reinstall of the system makes a new one (TODO 1.2b).
 - **No colour calibration.** Gamma curves, the picture-mode tables and the per-board PQ data stay `h713-pq`'s.
 - **No installer, no updates, no file upload, no shell.** The verb table is the whole surface.
 - **It decides nothing itself.** If a tool is missing or refuses, the page says which one and why, in that
