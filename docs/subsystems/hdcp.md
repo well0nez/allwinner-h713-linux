@@ -126,6 +126,25 @@ nothing in between:
    two things at once: the sink is empty, and our push mechanism works at all.
 2. boot again with the default, and confirm the source reports **Enabled**.
 
+### HDCP 2.2, measured with a real 2.2 source
+
+05.10.2026, Fire TV stick on the HY310's HDMI input, mainline 6.18 with the U-Boot key push:
+
+```
+$ h713-tv ctl hdcp
+version:       2.2 (session stands)
+authenticated: yes (2.2 session)      READY 0, REAUTH_REQ 0
+key-1.4:       loaded (LINK 0x93=0x45)
+key-2.2:       handed over at probe (THal_Vp_SetHDCP22Key accepted; 2.2 advertised to the source)
+firmware:      ... MsgHandle_SKE_SEND_EKS ... HDCP Process cost tick:108
+```
+
+`SKE_SEND_EKS` is the source handing over the encrypted session key, which it only does after it
+has verified the receiver certificate against the DCP root - so the line is the source's verdict,
+not ours. Eight mode switches (1080p60 <-> 720p50/60) each re-authenticated within the firmware's
+poll; no fallback to 1.4. Protected content was not needed for this: the handshake is mutual, and
+a failed one does not leave a standing session.
+
 ## Limits
 
 * The boot loader's own watchdog guard around the push is armed only if nobody else is

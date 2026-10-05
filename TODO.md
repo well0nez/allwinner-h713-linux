@@ -21,7 +21,18 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.1 **Zoom** (Marco 04.10.: „bringt das Gerät durcheinander") — `ctl zoom out` ist nur Lupe
 - [ ] 2.2 Fernbedienung: 16 Tasten + Maus kommen als Events an, **nichts wertet sie aus** außer Power
 - [ ] 2.3 Bluetooth nach warmem Reboot: erster HCI-Befehl verloren (2 von 5), Ursache offen (FB-BTRESET 9.1/9.2)
-- [ ] 2.4 HDCP 2.2 Session-Beweis — braucht eine 2.2-Quelle (Stick/Konsole/Blu-ray)
+- [x] 2.4 HDCP 2.2 Session-Beweis: Fire-TV-Stick am HY310, 05.10. — `h713-tv ctl hdcp` meldet
+      „2.2 (session stands), authenticated: yes", Firmware-Log zeigt SKE_SEND_EKS; über acht
+      Moduswechsel (1080p60 ↔ 720p50/60) jedes Mal neu authentifiziert. Beide Schlüssel sitzen
+      (1.4 aus U-Boot, LINK 0x93=0x45; 2.2 vom Kernel beim Probe)
+- [ ] 2.4a **720p-Quelle + Warp: Bild doppelt und gestaucht** (Fire TV 720p60, 05.10.). Der
+      Warp-Frame selbst ist sauber (`h713-warp ctl dump`), ohne Warp ist 720p sauber — also
+      liest der Kompositionsblock der Firmware den 1920er Warp-Puffer weiter mit dem
+      Ring-Stride 1280 (Patch 0107: „nothing behind the reader gets reprogrammed"; dort als
+      „not yet measured on the wall" markiert — jetzt gemessen). Fix-Kandidaten: beim Wechsel
+      Ring→FB den Descriptor mit FB-Geometrie publizieren und WCE abwarten (afbd), oder den
+      Warp in Quellgröße rendern lassen. Vor dem Release entscheiden — trifft jede
+      Nicht-1080p-Quelle mit Keystone
 - [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
 - [ ] 2.6 Audio: Abschalt-Plopp
 - [ ] 2.7 Geometrie: Ceiling-Beweis kopfüber; Kalibrierkarten in gespiegelten Modi; Konsole durch den Warp
