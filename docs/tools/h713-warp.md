@@ -103,7 +103,7 @@ The warp and the video plane are **mutually exclusive** - while the warp is on, 
 and `h713-tv ctl zoom` is refused with a pointer to `h713-warp ctl zoom`. The added latency is one frame
 (16.8 ms): a slot is drawn one vsync after it was handed on, because the firmware publishes a slot anywhere
 between the start and the end of its write (the bottom line still changed up to 11.5 ms after the publish, the
-top is rewritten no earlier than 33 ms after it - umbau/test-20260915/keystone-20260922.md). A held slot older
+top is rewritten no earlier than 33 ms after it - working journal `keystone-20260922`). A held slot older
 than 28 ms is given back undrawn, a dropped frame instead of a torn one; a frame that arrives while the
 previous commit is still in flight is dropped rather than queued. `ctl check` proves the timing on any device.
 
@@ -129,8 +129,8 @@ physical corner the vendor's slot 0 is has been derived from the framebuffer's o
 the wall with one nudge and one photo; if top and bottom ever come out exchanged, it is two lines in
 `matrix.c`.
 
-Details: umbau/plan/keystone/PLAN.md (stage S5), umbau/re-apps/AP2d/design-h713-warp.txt (modules M1-M11),
-umbau/re-apps/AP2f/REPORT.txt (the matrix and its z trap), umbau/re-apps/AP2/REPORT.txt (the vendor's units
+Details: working journal `keystone/PLAN` (stage S5), working journal `AP2d/design-h713-warp` (modules M1-M11),
+working journal `AP2f/REPORT` (the matrix and its z trap), working journal `AP2/REPORT` (the vendor's units
 and clamp), docs/tools/h713-tv.md.
 
 ## Corner names, verified

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * h713-warp -- the keystone warp daemon. Design AP2d design-h713-warp.txt
- * (modules M1-M11), plan stage S5 (umbau/plan/keystone/PLAN.md).
+ * (modules M1-M11), plan stage S5 (working journal `keystone/PLAN`).
  *
  * The one sentence that explains the split: h713-warp is a RENDERER, not a
  * display owner. h713-tv keeps card1, allocates the three XRGB8888 targets,

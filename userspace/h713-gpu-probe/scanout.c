@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * h713-gpu-probe scanout -- keystone stages S3 and S4 (umbau/plan/keystone/PLAN.md):
+ * h713-gpu-probe scanout -- keystone stages S3 and S4 (working journal `keystone/PLAN`):
  * libdrm + GBM + EGL + GLES2, KMS on card1, no X11, no Wayland. The decisions, the
- * device command lines and the line budget are in umbau/work/KS3/REPORT.txt.
+ * device command lines and the line budget are in working journal `KS3/REPORT`.
  *
  *   scanout [-r RENDER] [-c CARD] [-v VIDEO] [-y nv16|planes] scanout N|formats|capture N
  *

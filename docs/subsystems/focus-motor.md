@@ -54,7 +54,7 @@ the two travel-range edges themselves, and only one of them is known.
 
 ## How fast it moves, and that both command pairs move it
 
-Measured on the HY310 on 22.09.2026 (`umbau/test-20260915/dev20-20260922.md`, row "Q6 timing breakdown"):
+Measured on the HY310 on 22.09.2026 (working journal `dev20-20260922`, row "Q6 timing breakdown"):
 **6 msteps take about 100 ms, so 16 ms per mstep**, and the autofocus codes `cmd 1/2` and the manual
 `cmd 8/9` take the same time - the driver's `phase_udelay=1`/`step_mdelay=1` are the stock device-tree
 values, and the two pairs differ in the `autofocus` flag and the busy-wait, not in speed. Two consequences
@@ -90,7 +90,7 @@ The stock autofocus draws a chessboard, films it and hill-climbs: two frames per
 sharpness sum over a window of the luma plane divided by a divisor the first measurement fixes, then five
 states - settle, wait for a quiet picture, coarse climb with 8-mstep moves, a 3-pass peak confirmation with 6,
 a fine return with 2 that stops within 50 of the best value seen. 280 passes, and a 22 s watchdog on the Java
-side. The full pseudo-code with every constant is `umbau/re-apps/AP1/tables/focus-loop.txt` (AP1 sections 2.6
+side. The full pseudo-code with every constant is working journal `AP1/focus-loop` (AP1 sections 2.6
 and 2.7); the twelve board variants differ in the move sizes, not in the rules (AP1b sections 9 and 10).
 [`h713-autofocus`](../tools/h713-autofocus.md) is that procedure, and it writes `cmd 1/2` here, the codes that
 set the driver's `autofocus` flag and its busy-wait timing.

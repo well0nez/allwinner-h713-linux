@@ -38,8 +38,8 @@ peak, `7` no focus motor or no camera on this board ("not present on this board"
 
 ## Where the numbers come from
 
-Everything here is read out of the vendor stack, not invented: `umbau/re-apps/AP1/REPORT.txt` sections 2, 3, 6
-and 7 with the full pseudo-code in its `tables/focus-loop.txt`, and `umbau/re-apps/AP1b/REPORT.txt` sections 4,
+Everything here is read out of the vendor stack, not invented: working journal `AP1/REPORT` sections 2, 3, 6
+and 7 with the full pseudo-code in its `tables/focus-loop.txt`, and working journal `AP1b/REPORT` sections 4,
 9, 10 and 11. The search is `thread_fun_LCD_vafo10_HY260` (0x0002EA90 in `libduRYXtp.so`), which the HY310's
 `camprjspe.ini` selects with `VaFocus = 10`.
 

@@ -121,7 +121,7 @@ def derive_layer_x(hsync: Optional[int], hbp: Optional[int]) -> Tuple[Optional[i
     123 in board B's) rather than a formula; the stock bootloader's __update_panel_setting overwrites
     it from the raster it just programmed, and that is where the 77 comes from (SUBS R3, R3, #0x4D at
     0xFAA8). `md 0x0528008c 1` at the U-Boot prompt gave 0x37 = 55 on the HY310, which is 44 + 88 - 77
-    (dev20 22.09.2026 Q7 F3, umbau/reviews/Q7.md open point c); board B's 20 + 40 - 77 clamps to 0.
+    (dev20 22.09.2026 Q7 F3, working journal `Q7` open point c); board B's 20 + 40 - 77 clamps to 0.
     So this is derived, not read: AP3m's "live 115" was the file's number, not a bootloader's leaving.
     """
     if hsync is None or hbp is None:

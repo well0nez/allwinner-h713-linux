@@ -87,7 +87,7 @@ record is already published on every geometry change, the words are already ther
 call would need three physically addressed shared buffers for something the descriptor carries for free.
 The vendor's own hardware composer takes the descriptor route for its video layer and tears nothing down
 for a window change; the RPC is the fallback if a board ever turns out not to re-run its window manager on
-a republished record. Source (reverse engineering of the stock firmware): `umbau/re-apps/AP3c` sections 3-5,
+a republished record. Source (reverse engineering of the stock firmware): working journal `AP3c` sections 3-5,
 `AP3e` section 2, `AP3` section 2.
 
 **The space the words live in.** They are fractions of the firmware's fixed 30720x17280 space, not 1/16 of
@@ -114,7 +114,7 @@ without any check of ours; there is no scaling and no positioning on this plane.
 lives ([h713-warp](../tools/h713-warp.md)): the GPU reads the capture, draws the warped frame into a target
 buffer and `h713-tv` commits that buffer on the primary plane.
 
-**Measured on the HY310 on 22.09.2026** (`umbau/test-20260915/keystone-20260922.md`, stages S3 and S4), before a
+**Measured on the HY310 on 22.09.2026** (working journal `keystone-20260922`, stages S3 and S4), before a
 line of the daemon existed: two `XRGB8888` dumb buffers of `card1`, handed to the render node through PRIME,
 imported into EGL, drawn by the GPU and committed on the primary plane with the render's own fence as
 `IN_FENCE_FD` - 600 and 900 commits, one page flip each, 0 errors, 59.4 fps, and the gradient with its moving
@@ -155,5 +155,5 @@ lowering table.
 
 Details: `doku/96-anzeigekette.md` (the whole chain, measured), `doku/86` (video plane), `doku/87`
 (gamma/CTM), `doku/40-display.md` (bring-up history), `doku/74` (the null-pointer crash). For the primary
-plane and the GPU on it: `umbau/plan/keystone/PLAN.md` (stages S3 to S5) and the device readings in
-`umbau/test-20260915/keystone-20260922.md`.
+plane and the GPU on it: working journal `keystone/PLAN` (stages S3 to S5) and the device readings in
+working journal `keystone-20260922`.

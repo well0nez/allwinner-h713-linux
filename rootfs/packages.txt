@@ -112,7 +112,7 @@ debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg - witho
 #     and libllvm19 (187 MiB installed). rootfs/mesa/build-mesa.sh cross-builds mesa
 #     25.0.7 with only the Panfrost driver, EGL, GLES2 and GBM (15 MiB, no LLVM),
 #     build-rootfs.sh puts it under /usr/local (--mesa). Reason: the keystone path
-#     (umbau/plan/keystone).
+#     (working journal `keystone`).
 # gstreamer1.0-*, mpv, ffmpeg, v4l-utils
 #     cstenger's video runtime (mainline/tools/rootfs/build.sh, VIDEO_RUNTIME_PACKAGES).
 #     Pulls in GTK3, x265, aom, libllvm - doku/107 section 1: the biggest single item of

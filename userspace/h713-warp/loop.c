@@ -30,8 +30,8 @@
 #define FPS_WINDOW	100	/* the last hundred frames, M11 */
 /*
  * The firmware hands a slot on BEFORE it is written to the end. Measured on
- * the HY310 on 23.09.2026 through /dev/mem (umbau/test-20260915/
- * keystone-20260922.md, "the source race"): the ring pointer moves to a slot
+ * the HY310 on 23.09.2026 through /dev/mem (working journal
+ * `keystone-20260922`, "the source race"): the ring pointer moves to a slot
  * anywhere between the start of its write and the end of it, so the bottom
  * line of a published slot still changed up to 11.5 ms after the publish, the
  * middle up to 8.5 ms. A raster display never notices, it reaches those lines

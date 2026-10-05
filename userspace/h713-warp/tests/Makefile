@@ -9,7 +9,7 @@
 #
 # On a host without the EGL/GLES development files, point CPPFLAGS at the mesa
 # 25.0.7 headers that were unpacked for the build (this is how Claude runs it,
-# from umbau/work/KS4/tests):
+# from working journal `KS4/tests`):
 #
 #   make run HOST_CPPFLAGS="-I../tmp/hostinc -I/usr/include/drm" \
 #            HOST_LDLIBS="-l:libEGL.so.1 -l:libGLESv2.so.2"
@@ -18,7 +18,7 @@
 # on a host with libdrm-dev it is -I/usr/include/libdrm instead.)
 #
 # T2 reads its vectors from the AP2f reference model, which is why python3 is
-# in the loop: matrix_ref.py imports umbau/work/AP2f/model/keystone_matrix.py
+# in the loop: matrix_ref.py imports the reference model from working journal `AP2f`
 # and prints what h713-warp/matrix.c has to reproduce.
 
 CFLAGS        ?= -O2 -g

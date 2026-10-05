@@ -67,7 +67,7 @@ block. The kernel API calls it what it is (`arisc_hdmi_edid_mask()`), and a boar
 arisc node as `allwinner,edid-version-mask`; absent means 0, which is what both boards want.
 
 **The command stores the byte, fragment 7 applies it** (HY310, 22.09.2026 -
-`umbau/test-20260915/dev20-20260922.md`, "Q5 mask semantics"). `edid-version 1` on its own leaves the
+working journal `dev20-20260922`, "Q5 mask semantics"). `edid-version 1` on its own leaves the
 firmware holding 0x01 and port 0 still serving block 0: the PC reads byte 130 = 0x4c, unchanged across
 a hot-plug reset too. The same value followed by a full EDID upload publishes block 1 - byte 130 =
 0x54, and the source starts offering 1080p100/120. Mask 0 plus an upload brings block 0 back. So
@@ -105,7 +105,7 @@ handler ORs the bits or the publish path writes them is unanswered; it does not 
 The disassembly says neither: the handler re-reads its argument after its own log line and the
 driver's next command had already overwritten it, so the 0x0f is this driver's race and patch `0091e`
 waits for the handler's effect instead - the second bench sequence above is the proof, and the
-paragraph that opens this section is corrected after it, not before (Q13, `umbau/reviews/Q13.md`).
+paragraph that opens this section is corrected after it, not before (Q13, working journal `Q13`).
 
 **Block 0 is the right block on both boards, and not by default only.** Block 1 is not a newer or
 better EDID, it is a different CEA extension: it adds 3840x2160p50/p60 and 4096x2160p50/p60 in 4:2:0,
@@ -128,7 +128,7 @@ therefore `HostHDMIMAP`, which the driver already sends.
 ### Corrections
 
 Four readings this page and `doku/82` carried that the firmware's own code contradicts
-(`umbau/re-apps/AP3l/` §2):
+(working journal `AP3l` §2):
 
 - The register the publish routine moves around each block write is the **EDID/DDC output gate**, not
   a hot-plug pulse; the pin is a different register driven by a different routine. The gate moves only

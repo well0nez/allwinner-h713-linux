@@ -98,7 +98,7 @@ produces the vendor's curve instead; it is off by default until a device test sa
 
 That device test has now been run on the HY310 and it says nothing either way: the board's own TSE
 "normal" bank went on the wall against our computed 2.2 curve, **no visible difference** (22.09.2026,
-`umbau/test-20260915/dev20-20260922.md`; the swap recipe is in the tool doc). Expected there - all
+working journal `dev20-20260922`; the swap recipe is in the tool doc). Expected there - all
 three end points are 4092, so only the shape differs - and no evidence for the default. The board that
 would show it is the HY300 Pro, whose end points are not equal; until one is on a wall, tse stays off.
 

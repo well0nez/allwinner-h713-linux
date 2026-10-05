@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * EGL and GLES2 on the render node (design AP2d M6 and M8). Everything here
- * is the working code of umbau/src/userspace/h713-gpu-probe/scanout.c, which
+ * is the working code of h713-gpu-probe's own scanout.c, which
  * ran on the device: the dma-buf import of the XRGB8888 targets and of the
  * capture's R8 + GR88 planes, the BT.709 limited-range shader, the native
  * fence. Two things are different on purpose: no GBM and no libdrm (scanout.c

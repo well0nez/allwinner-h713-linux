@@ -50,7 +50,7 @@ Before that night Panfrost had never rendered anything in an image of ours - the
 board and that was all. It renders now, on the HY310, with our own mesa beside it (25.0.7, the panfrost driver
 only, no LLVM, 15 MiB under `/usr/local`; `rootfs/mesa/`), and the keystone warp is built on top of it
 ([h713-warp](../tools/h713-warp.md)). Every number here is a device reading out of
-`umbau/test-20260915/keystone-20260922.md`.
+working journal `keystone-20260922`.
 
 | | |
 |---|---|
@@ -107,5 +107,5 @@ have reopened that.
   as far as rendering and scanout go; nothing was played through cedrus in those runs.
 
 Details: `doku/62-video.md`, `doku/64-afbd-quelle0.md`, `mainline/patches/kernel/series` §3, `doku/76-plan-ch0-de.md` (IOMMU bypass on the display node).
-For the GPU section: `umbau/plan/keystone/PLAN.md` (stages S0 to S2) and the device readings in
-`umbau/test-20260915/keystone-20260922.md`.
+For the GPU section: working journal `keystone/PLAN` (stages S0 to S2) and the device readings in
+working journal `keystone-20260922`.

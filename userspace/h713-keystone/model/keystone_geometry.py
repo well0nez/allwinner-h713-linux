@@ -5,7 +5,7 @@ A standalone reference for the chain tilt angles -> four corner insets that the
 vendor app com.hysd.vafocus runs before it sends SurfaceFlinger transaction
 1050.  Every formula below names the function it came from; they all live in
 
-    umbau/work/AP2c/ida/v7a_libduRYXtp.so.i64
+    working journal `AP2c` (IDA database of v7a_libduRYXtp.so)
     <- material/x/tpjz_allwinner/lib/armeabi-v7a/libduRYXtp.so
     sha256 cd888c5c189de158cd36227ae2c15a8afbc99106bed5ce111f1c562f2d3d9873
     ELF32 ARM shared object, IDA image base 0, so a file offset is the address.

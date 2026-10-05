@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 #
 # h713-gpu-probe -- the GPU foundation tool for keystone stages S1 and S2
-# (umbau/plan/keystone/PLAN.md): GBM + EGL + GLES2 on the render node.
+# (working journal `keystone/PLAN`): GBM + EGL + GLES2 on the render node.
 #
 #   make cross           cross-build on the workstation with clang against the
 #                        board root (SYSROOT) and the S0 mesa stage

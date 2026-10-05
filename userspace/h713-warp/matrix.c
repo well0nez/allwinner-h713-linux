@@ -2,7 +2,7 @@
 /*
  * The warp matrix (design AP2d M7) -- a line-by-line port of the vendor's
  * ACTIVE warp, getKeyStoneMatrix @ 0x000031E8 in system_a_libkeystone.so, by
- * way of the tested reference umbau/work/AP2f/model/keystone_matrix.py. The
+ * way of the tested reference in working journal `AP2f/keystone_matrix`. The
  * host test tests/test_matrix.c compares the sixteen floats of this file
  * against that reference to 1e-6 (AP2d T2).
  *

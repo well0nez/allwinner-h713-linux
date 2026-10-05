@@ -21,7 +21,10 @@ Was ein harter Fund ist (doku/116 §2 "Veroeffentlichen", §7):
   7. Verweise auf das Umbau-Arbeitsverzeichnis (der Ordnername plus Schraegstrich) in
      einer Textdatei: das Verzeichnis wird nicht veroeffentlicht, ein solcher Pfad
      geht im Klon des Lesers ins Leere. Gemeldet wird Datei:Zeile. Ausgenommen ist
-     doku/: das Journal beschreibt den Umbau beim Namen, und doku/121 geht mit ins Repo.
+     doku/ (das Journal beschreibt den Umbau beim Namen, doku/121 geht mit ins Repo)
+     und die generierten Patchspiegel uboot-h713/ und mainline/patches/, deren Text
+     die Commit-Nachrichten des Forks sind. Nur Regel 7 ist dort aus, alles andere
+     wird weiter geprueft.
 Ausgenommen: .git/, __pycache__/, die Arbeitsbaeume der Submodule aus .gitmodules
 (gepusht wird ihr Commit-Zeiger, nicht ihr Inhalt) und alles, was Zeilen in .sperrscan-ignore treffen
 (Zeile = Pfadpraefix relativ zur Wurzel; heute keine).
@@ -47,7 +50,15 @@ INHALT = (re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----"), re.compile(rb"PuTT
 # ins Repo) und installer/tests/run.sh, dessen --local dort absichtlich auf die
 # Fixtures auf Marcos Rechner zeigt (H713_FIXTURES_LOCAL).
 UMBAU = re.compile(rb"umb" rb"au/")
-UMBAU_FREI = ("doku/", "installer/tests/run.sh")
+UMBAU_FREI = ("doku/", "installer/tests/run.sh",
+              # Die Patchspiegel sind generiert: ihr Text IST die Commit-Nachricht des
+              # Forks, und die nennt beim Namen, wo etwas gemessen wurde. Das ist
+              # Herkunftsangabe, kein Pfad, den ein Leser aufloesen soll - und aendern
+              # liesse sich daran nur per History-Rewrite, der alle Patch-SHAs und den
+              # Serienkopf wegwirft. Ausgenommen ist deshalb NUR Regel 7; Schluessel,
+              # Blobs, Hashes und Abzuege werden in diesen Dateien weiter geprueft
+              # (ein Eintrag in .sperrscan-ignore haette genau das mit abgeschaltet).
+              "uboot-h713/", "mainline/patches/")
 UMBAU_MAX = 5          # hoechstens so viele Zeilen je Datei nennen, dann zaehlen
 SECURE = (b"sunxi-secure-storage", b"hdcpkeyV22", b"wifiBleDatas")
 TEXT_ENDUNGEN = {".md", ".txt", ".py", ".sh", ".c", ".h", ".patch", ".dts", ".dtsi", ".env", ".conf", ".json", ".yaml", ".yml", ".ini", ".xml", ".service", ".rules", ".cfg", ".its", ".mk", ".S", ".s", ".html", ".css", ".js", ".toml", ".gitignore", ".gitmodules", ""}
