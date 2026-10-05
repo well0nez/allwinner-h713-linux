@@ -173,9 +173,23 @@ bool source_start(struct source *s, char *why, size_t n)
 		return false;
 	}
 	s->streaming = true;
-	info("capture         %s, ring %ux%u, line pitch %u/%u, %d dma-buf%s per slot",
-	     s->path, s->width, s->height, s->pitch, s->cpitch, s->planes,
-	     s->planes == 1 ? "" : "s");
+	/*
+	 * Said once per geometry, not once per attempt: without a signal the
+	 * capture starts all the same (G_FMT answers the last format, STREAMON
+	 * needs no frames) and only the claim that follows is refused, so
+	 * warp_engage() comes through here once a second for as long as the
+	 * source stays dark -- 108 identical lines in the journal of 05.10.2026
+	 * for a stick in standby, 3600 an hour overnight. The status line
+	 * carries the ring at any time.
+	 */
+	if (s->width != s->said_w || s->height != s->said_h || s->pitch != s->said_pitch) {
+		info("capture         %s, ring %ux%u, line pitch %u/%u, %d dma-buf%s per slot",
+		     s->path, s->width, s->height, s->pitch, s->cpitch, s->planes,
+		     s->planes == 1 ? "" : "s");
+		s->said_w = s->width;
+		s->said_h = s->height;
+		s->said_pitch = s->pitch;
+	}
 
 	return true;
 }

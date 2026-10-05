@@ -192,6 +192,7 @@ int main(int argc, char **argv)
 	r.hold = true;
 	r.check.slot = -1;
 	r.source.held = -1;
+	r.mark_corner = -1;		/* "test mask" marks no corner until one is named */
 	for (;;) {
 		bool live = r.state == WARP_ON;
 		int timeout = -1;

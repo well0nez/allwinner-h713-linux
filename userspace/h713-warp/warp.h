@@ -120,6 +120,7 @@ struct source {
 	int held;			/* the slot kept back one vsync, -1 none (see loop.c) */
 	unsigned long settled;		/* frames drawn from a slot one vsync old */
 	unsigned long stale;		/* held slots given back undrawn: too old, their next write may have begun */
+	unsigned int said_w, said_h, said_pitch;	/* the ring the journal was last told about */
 };
 
 void source_init(struct source *s, const char *want);

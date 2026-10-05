@@ -1421,6 +1421,18 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy)
 		ok = add(req, d, name[i], val[i]);
 	if (ok)
 		ok = add(req, d, "hdmi-ring", 0);
+	/*
+	 * And no window. The two window properties are plane state and
+	 * survive display_hide(): a "zoom in" set on the ring before the warp
+	 * claimed stays in the state, reaches the descriptor with the warp's
+	 * frame and makes the firmware zoom into the centre of the warped
+	 * picture (measured 05.10.2026: scaler window 640x360 over the
+	 * warp's 1920x1080 frame, regs-Z2). The warp's own zoom is the
+	 * keystone matrix; the firmware's windows belong to the ring, and
+	 * display_show() sends them again when the ring comes back.
+	 */
+	if (ok && d->has_windows)
+		ok = add(req, d, "src-window", 0) && add(req, d, "dst-window", 0);
 	ret = ok ? drmModeAtomicCommit(d->fd, req, flags, NULL) : -EINVAL;
 	drmModeAtomicFree(req);
 	if (!ret) {

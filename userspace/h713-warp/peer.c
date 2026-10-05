@@ -34,7 +34,22 @@
 #include "warp.h"
 
 #define CLAIM_MS	1000	/* h713-tv may be allocating three 8 MB buffers */
-#define FRAME_MS	100	/* one commit; longer means something is wrong */
+/*
+ * One commit takes h713-tv under a millisecond -- when it gets to it. Its
+ * loop is single-threaded, and a control command or a capture event in front
+ * of our line holds the answer: a full "h713-tv ctl status" took 388 ms
+ * (16:33 and 17:17 on 05.10.2026, the HDCP line read out of the firmware's
+ * log ring), a "signal gone" evaluation 317-335 ms, and each time the old
+ * 100 ms deadline here declared the link dead -- the warp released, the wall
+ * fell back to the ring or the console, and the daemon claimed again a
+ * second later: a console flash for a status call. A late answer is a late
+ * frame, not a dead peer: the stale guard in loop.c gives the held slot back
+ * undrawn, the frame is one drop on the wall, and a peer that is really gone
+ * closes the connection, which poll() reports at once whatever the deadline.
+ * So the deadline is a hang detector and nothing else, and is sized above
+ * every stall measured on h713-tv: its own claim budget.
+ */
+#define FRAME_MS	1000
 
 void peer_init(struct peer *p, const char *path)
 {
