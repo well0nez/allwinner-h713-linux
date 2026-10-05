@@ -1,0 +1,332 @@
+From e138fd968fe3f5b64368926c8ecdc48078416d69 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Mon, 13 Jul 2026 03:41:54 -0700
+Subject: [PATCH 1/7] feat(allwinner): add sun50i_h713 (H713/sun50iw12)
+ platform
+
+Port for the Allwinner H713 (TV projector SoC, die id 0x1860), derived
+from the sun50i_h616 platform with the sun50iw12 memory map: CCU at
+0x02001000, keyed watchdog at 0x02051000, UART0 at 0x02500000, RTC
+block at 0x07090000. Built with BL31_IN_DRAM=1 (BL31 at 0x40000000,
+BL33/U-Boot at 0x4a000000, direct AArch64 entry from the eGON SPL).
+
+Boots mainline U-Boot on the HY200/HY310 boards: SPL -> BL31 -> U-Boot
+proper, PSCI CPU_ON deferred (sun50iw12 delegates CPU power to the
+ARISC/SCP via MSGBOX; RVBAR addresses inherited from H616 are
+unverified).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/include/sunxi_def.h     |  1 +
+ plat/allwinner/common/include/sunxi_private.h |  2 +-
+ plat/allwinner/common/sunxi_bl31_setup.c      |  3 +
+ .../allwinner/sun50i_h713/include/sunxi_ccu.h | 14 ++++
+ .../sun50i_h713/include/sunxi_cpucfg.h        | 14 ++++
+ .../sun50i_h713/include/sunxi_mmap.h          | 48 +++++++++++++
+ .../allwinner/sun50i_h713/include/sunxi_spc.h | 16 +++++
+ plat/allwinner/sun50i_h713/platform.mk        | 26 +++++++
+ plat/allwinner/sun50i_h713/sunxi_h713_dtb.c   | 69 +++++++++++++++++++
+ .../allwinner/sun50i_h713/sunxi_idle_states.c | 11 +++
+ plat/allwinner/sun50i_h713/sunxi_power.c      |  7 ++
+ 11 files changed, 210 insertions(+), 1 deletion(-)
+ create mode 100644 plat/allwinner/sun50i_h713/include/sunxi_ccu.h
+ create mode 100644 plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h
+ create mode 100644 plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+ create mode 100644 plat/allwinner/sun50i_h713/include/sunxi_spc.h
+ create mode 100644 plat/allwinner/sun50i_h713/platform.mk
+ create mode 100644 plat/allwinner/sun50i_h713/sunxi_h713_dtb.c
+ create mode 100644 plat/allwinner/sun50i_h713/sunxi_idle_states.c
+ create mode 100644 plat/allwinner/sun50i_h713/sunxi_power.c
+
+diff --git a/plat/allwinner/common/include/sunxi_def.h b/plat/allwinner/common/include/sunxi_def.h
+index d166aebff..40861bc72 100644
+--- a/plat/allwinner/common/include/sunxi_def.h
++++ b/plat/allwinner/common/include/sunxi_def.h
+@@ -19,6 +19,7 @@
+ #define SUNXI_SOC_H5			0x1718
+ #define SUNXI_SOC_H6			0x1728
+ #define SUNXI_SOC_H616			0x1823
++#define SUNXI_SOC_H713			0x1860
+ #define SUNXI_SOC_R329			0x1851
+ 
+ #define SUNXI_VER_BITS_MASK		0xffU
+diff --git a/plat/allwinner/common/include/sunxi_private.h b/plat/allwinner/common/include/sunxi_private.h
+index b9ca3f600..ee415967e 100644
+--- a/plat/allwinner/common/include/sunxi_private.h
++++ b/plat/allwinner/common/include/sunxi_private.h
+@@ -58,7 +58,7 @@ static inline void sunxi_prepare_dtb(void *fdt)
+ }
+ #endif
+ 
+-#ifdef PLAT_sun50i_h616
++#if defined(PLAT_sun50i_h616) || defined(PLAT_sun50i_h713)
+ void sunxi_soc_fdt_fixup(void *dtb);
+ #else
+ static inline void sunxi_soc_fdt_fixup(void *dtb)
+diff --git a/plat/allwinner/common/sunxi_bl31_setup.c b/plat/allwinner/common/sunxi_bl31_setup.c
+index 605ace5f8..4dba1796d 100644
+--- a/plat/allwinner/common/sunxi_bl31_setup.c
++++ b/plat/allwinner/common/sunxi_bl31_setup.c
+@@ -129,6 +129,9 @@ void bl31_platform_setup(void)
+ 	case SUNXI_SOC_H616:
+ 		soc_name = "H616";
+ 		break;
++	case SUNXI_SOC_H713:
++		soc_name = "H713";
++		break;
+ 	case SUNXI_SOC_R329:
+ 		soc_name = "R329";
+ 		break;
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_ccu.h b/plat/allwinner/sun50i_h713/include/sunxi_ccu.h
+new file mode 100644
+index 000000000..d4e6a367b
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/include/sunxi_ccu.h
+@@ -0,0 +1,14 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++#ifndef SUNXI_CCU_H
++#define SUNXI_CCU_H
++
++#define SUNXI_CCU_SEC_SWITCH_REG	(SUNXI_CCU_BASE + 0x0f00)
++
++#define SUNXI_R_PRCM_SEC_SWITCH_REG	(SUNXI_R_PRCM_BASE + 0x0290)
++
++#endif /* SUNXI_CCU_H */
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h b/plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h
+new file mode 100644
+index 000000000..ee8f65bf8
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h
+@@ -0,0 +1,14 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++#include <plat/common/platform.h>
++
++#include <sunxi_cpucfg_ncat.h>
++
++static inline bool sunxi_cpucfg_has_per_cluster_regs(void)
++{
++	return (plat_get_soc_revision() != 2);
++}
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+new file mode 100644
+index 000000000..01c959559
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -0,0 +1,48 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++#ifndef SUNXI_MMAP_H
++#define SUNXI_MMAP_H
++
++/* Memory regions */
++#define SUNXI_ROM_BASE			0x00000000
++#define SUNXI_ROM_SIZE			0x00010000
++#define SUNXI_SRAM_BASE			0x00100000
++#define SUNXI_SRAM_SIZE			0x00024000
++#define SUNXI_SRAM_A1_BASE		0x00100000
++#define SUNXI_SRAM_A1_SIZE		0x00004000
++#define SUNXI_SRAM_A2_BASE		0x00104000
++#define SUNXI_SRAM_A2_SIZE		0x00020000
++#define SUNXI_DEV_BASE			0x01000000
++#define SUNXI_DEV_SIZE			0x09000000
++#define SUNXI_DRAM_BASE			0x40000000
++#define SUNXI_DRAM_VIRT_BASE		SUNXI_DRAM_BASE
++
++/* Memory-mapped devices */
++#define SUNXI_SYSCON_BASE		0x03000000
++#define SUNXI_CCU_BASE			0x02001000
++#define SUNXI_DMA_BASE			0x03002000
++#define SUNXI_SID_BASE			0x03006000
++#define SUNXI_SPC_BASE			0x03008000
++#define SUNXI_WDOG_BASE			0x02051000
++#define SUNXI_PIO_BASE			0x02000000
++#define SUNXI_GICD_BASE			0x03021000
++#define SUNXI_GICC_BASE			0x03022000
++#define SUNXI_UART0_BASE		0x02500000
++#define SUNXI_SPI0_BASE			0x04025000
++#define SUNXI_R_CPUCFG_BASE		0x07000400
++#define SUNXI_R_PRCM_BASE		0x07010000
++#define SUNXI_R_WDOG_BASE		SUNXI_WDOG_BASE
++/* sun50iw12 watchdog writes require the key in bits [31:16] */
++#define SUNXI_WDOG_KEY			0x16aa0000
++#define SUNXI_R_PIO_BASE		0x07022000
++#define SUNXI_R_UART_BASE		0x07080000
++#define SUNXI_R_I2C_BASE		0x07081400
++#define SUNXI_R_RSB_BASE		0x07083000
++#define SUNXI_CPUSUBSYS_BASE		0x08100000
++#define SUNXI_CPUCFG_BASE		0x09010000
++
++#endif /* SUNXI_MMAP_H */
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_spc.h b/plat/allwinner/sun50i_h713/include/sunxi_spc.h
+new file mode 100644
+index 000000000..9206d2f71
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/include/sunxi_spc.h
+@@ -0,0 +1,16 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++#ifndef SUNXI_SPC_H
++#define SUNXI_SPC_H
++
++#define SUNXI_SPC_NUM_PORTS		14
++
++#define SUNXI_SPC_DECPORT_STA_REG(p)	(SUNXI_SPC_BASE + 0x0000 + 0x10 * (p))
++#define SUNXI_SPC_DECPORT_SET_REG(p)	(SUNXI_SPC_BASE + 0x0004 + 0x10 * (p))
++#define SUNXI_SPC_DECPORT_CLR_REG(p)	(SUNXI_SPC_BASE + 0x0008 + 0x10 * (p))
++
++#endif /* SUNXI_SPC_H */
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+new file mode 100644
+index 000000000..668491173
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -0,0 +1,26 @@
++#
++# Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++#
++# SPDX-License-Identifier: BSD-3-Clause
++#
++
++SUNXI_BL31_IN_DRAM	:=	1
++
++# Without a management processor there is no SCPI support.
++SUNXI_PSCI_USE_SCPI	:=	0
++SUNXI_PSCI_USE_NATIVE	:=	1
++
++# The differences between the platforms are covered by the include files.
++include plat/allwinner/common/allwinner-common.mk
++include plat/allwinner/common/allwinner-common-a53.mk
++
++# the above could be overwritten on the command line
++ifeq (${SUNXI_PSCI_USE_SCPI}, 1)
++    $(error "H713 does not support SCPI PSCI ops")
++endif
++
++BL31_SOURCES		+=	common/fdt_wrappers.c			\
++				drivers/allwinner/axp/axp805.c		\
++				drivers/allwinner/sunxi_rsb.c		\
++				drivers/mentor/i2c/mi2cv.c		\
++				${AW_PLAT}/${PLAT}/sunxi_h713_dtb.c
+diff --git a/plat/allwinner/sun50i_h713/sunxi_h713_dtb.c b/plat/allwinner/sun50i_h713/sunxi_h713_dtb.c
+new file mode 100644
+index 000000000..3794ac5a5
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/sunxi_h713_dtb.c
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ *
++ * Amend the device tree to adjust the L2 cache size, which can differ between
++ * revisions in this Allwinner CPU family.
++ */
++
++#include <common/fdt_wrappers.h>
++#include <lib/utils_def.h>
++#include <libfdt.h>
++
++#define CACHE_L1D		0x0
++#define CACHE_L1I		0x1
++#define CACHE_L2U		0x2
++
++#define CCSIDR_SETS_SHIFT	13
++#define CCSIDR_SETS_MASK	GENMASK(14, 0)
++#define CCSIDR_ASSOC_SHIFT	3
++#define CCSIDR_ASSOC_MASK	GENMASK(9, 0)
++#define CCSIDR_LSIZE_SHIFT	0
++#define CCSIDR_LSIZE_MASK	GENMASK(2, 0)
++
++static uint32_t armv8_get_ccsidr(unsigned int sel)
++{
++	uint64_t reg, selector = sel;
++
++	__asm__ volatile ("msr CSSELR_EL1, %0\n" :: "r" (selector));
++	__asm__ volatile ("mrs %0, CCSIDR_EL1\n" : "=r" (reg));
++
++	return (uint32_t)reg;
++}
++
++void sunxi_soc_fdt_fixup(void *dtb)
++{
++	int node = fdt_path_offset(dtb, "/cpus/cpu@0");
++	uint32_t phandle, ccsidr, cell;
++	int sets, line_size, assoc;
++	int ret;
++
++	if (node < 0) {
++		return;
++	}
++
++	ret = fdt_read_uint32(dtb, node, "next-level-cache", &phandle);
++	if (ret != 0) {
++		return;
++	}
++
++	node = fdt_node_offset_by_phandle(dtb, phandle);
++	if (node < 0) {
++		return;
++	}
++
++	ccsidr = armv8_get_ccsidr(CACHE_L2U);
++	sets = ((ccsidr >> CCSIDR_SETS_SHIFT) & CCSIDR_SETS_MASK) + 1;
++	line_size = 16U << ((ccsidr >> CCSIDR_LSIZE_SHIFT) & CCSIDR_LSIZE_MASK);
++	assoc = ((ccsidr >> CCSIDR_ASSOC_SHIFT) & CCSIDR_ASSOC_MASK) + 1;
++
++	cell = cpu_to_fdt32(sets);
++	fdt_setprop(dtb, node, "cache-sets", &cell, sizeof(cell));
++
++	cell = cpu_to_fdt32(line_size);
++	fdt_setprop(dtb, node, "cache-line-size", &cell, sizeof(cell));
++
++	cell = cpu_to_fdt32(sets * assoc * line_size);
++	fdt_setprop(dtb, node, "cache-size", &cell, sizeof(cell));
++}
+diff --git a/plat/allwinner/sun50i_h713/sunxi_idle_states.c b/plat/allwinner/sun50i_h713/sunxi_idle_states.c
+new file mode 100644
+index 000000000..bcb324a2f
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/sunxi_idle_states.c
+@@ -0,0 +1,11 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++#include <sunxi_private.h>
++
++const struct psci_cpu_idle_state sunxi_idle_states[] = {
++	{}
++};
+diff --git a/plat/allwinner/sun50i_h713/sunxi_power.c b/plat/allwinner/sun50i_h713/sunxi_power.c
+new file mode 100644
+index 000000000..e100241b7
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/sunxi_power.c
+@@ -0,0 +1,7 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++#include "../sun50i_h616/sunxi_power.c"

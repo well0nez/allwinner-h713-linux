@@ -1,0 +1,47 @@
+From c909a11220f69c99a34044bd68dc3e3af96e2d94 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Mon, 13 Jul 2026 03:41:54 -0700
+Subject: [PATCH 2/7] fix(allwinner): support key-protected watchdogs in
+ SYSTEM_RESET
+
+The H713/sun50iw12 watchdog uses the sun55i-style key-protected
+register layout: CFG at +0x10, MODE at +0x14, and every write is
+ignored unless bits [31:16] carry the 0x16aa key. The generic reset
+sequence (v1.0 layout at +0x14/+0x18, no key) is therefore a silent
+no-op and PSCI SYSTEM_RESET falls through to panic().
+
+When the platform defines SUNXI_WDOG_KEY (sun50i_h713 does, in its
+sunxi_mmap.h), write the keyed CFG/MODE sequence instead. Verified on
+the HY200 board: U-Boot's 'reset' now warm-reboots the full chain.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_native_pm.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/plat/allwinner/common/sunxi_native_pm.c b/plat/allwinner/common/sunxi_native_pm.c
+index 28abd3c67..ca82284c5 100644
+--- a/plat/allwinner/common/sunxi_native_pm.c
++++ b/plat/allwinner/common/sunxi_native_pm.c
+@@ -54,10 +54,21 @@ static void __dead2 sunxi_system_reset(void)
+ {
+ 	gicv2_cpuif_disable();
+ 
++#ifdef SUNXI_WDOG_KEY
++	/*
++	 * Key-protected watchdog layout (H713/sun50iw12): CFG at +0x10,
++	 * MODE at +0x14, writes ignored without the 0x16aa key.
++	 */
++	/* Reset the whole system when the watchdog times out */
++	mmio_write_32(SUNXI_R_WDOG_BASE + 0x0010, SUNXI_WDOG_KEY | 1);
++	/* Enable the watchdog with the shortest timeout (0.5 seconds) */
++	mmio_write_32(SUNXI_R_WDOG_BASE + 0x0014, SUNXI_WDOG_KEY | 1);
++#else
+ 	/* Reset the whole system when the watchdog times out */
+ 	mmio_write_32(SUNXI_WDOG0_CFG_REG, 1);
+ 	/* Enable the watchdog with the shortest timeout (0.5 seconds) */
+ 	mmio_write_32(SUNXI_WDOG0_MODE_REG, (0 << 4) | 1);
++#endif
+ 	/* Wait for twice the watchdog timeout before panicking */
+ 	mdelay(1000);
+ 

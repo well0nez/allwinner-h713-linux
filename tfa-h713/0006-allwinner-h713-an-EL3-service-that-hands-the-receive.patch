@@ -1,0 +1,1586 @@
+From 72942569e9dd0e13a6c56ff3cddebfb7b9fb78a9 Mon Sep 17 00:00:00 2001
+From: Marco Onorati <m.onorati@web.de>
+Date: Mon, 5 Oct 2026 11:15:08 +0200
+Subject: [PATCH 6/7] allwinner: h713: an EL3 service that hands the receiver
+ its HDCP 1.4 key set
+
+The projector's HDCP 1.4 key set is chip-bound ciphertext in its own secure storage.
+Only the Crypto Engine can open it, with a key that exists nowhere software can
+reach, and it writes the result straight into the receiver's key sink at
+`0x03041400`. This adds the one service that starts that transfer, so the boot
+loader can put the key in place before the display firmware polls for it.
+
+Three measured rules shape it, and none may be "simplified" away:
+
+  - key-select 3 towards readable DRAM is refused with ESR 0x11. That is the
+    design, not a fault: such a task would be key export.
+  - the DMA source must lie inside the Trusted OS window, so the caller stages the
+    bytes there first. This was the one thing missing for two days, because the
+    engine answers the same refusal either way - which is also why an eFuse flag
+    reading zero looked like the cause and was not.
+  - the transfer has to happen after the TV domain is powered. Before that it
+    completes with ESR 0 and latches nothing.
+
+`SUNXI_CE_NS_BASE`, `SUNXI_CE_S_BASE` and `SUNXI_HDCP14_SINK` are the engine's two
+banks and the sink. `sunxi_security.c` gains this board's own vendor SPC sequence
+behind `H713_VENDOR_SECURITY_SETUP`, register for register: the mainline sequence
+assumes no secure OS, this platform has one, and without the vendor's version the
+engine's secure bank is not reachable at all.
+
+The workbench probes - engine tasks with caller-chosen key slots, lengths and
+addresses, descriptor dumps, eFuse reads - are compiled only with
+`H713_HDCP_RESEARCH=1` and are absent from a release build (41076 bytes against
+53372, no probe strings left). A shipped image carries two services: the version
+call and the one above. What stays reachable is bounded on purpose: one source
+address inside the protected window, a fixed length, and the destination is always
+the sink. The worst a caller can do is install a key set that does not
+authenticate - it can never read one back.
+
+`MAX_XLAT_TABLES` goes from 4 to 8 because the service maps one scratch page
+dynamically; 4 was exactly the static need. `platform_def.h` also carries the BL32
+window of the payload experiment that follows in the next commit - one file, two
+topics, and splitting the hunks would have cost more than it explains.
+
+Proven at the picture with a cleared sink as the control, because the sink survives
+a warm reset: wipe -> the source reports Desired -> push -> the source reports
+Enabled. Three such pairs, the last with the image that would ship.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/include/platform_def.h  |   29 +-
+ plat/allwinner/common/include/sunxi_private.h |    2 +
+ plat/allwinner/common/sunxi_bl31_setup.c      |   57 +
+ plat/allwinner/common/sunxi_prepare_dtb.c     |   18 +
+ plat/allwinner/common/sunxi_security.c        |   44 +
+ .../sun50i_h713/include/sunxi_mmap.h          |    4 +
+ plat/allwinner/sun50i_h713/platform.mk        |   51 +
+ .../allwinner/sun50i_h713/sunxi_h713_cedump.c |  171 +++
+ plat/allwinner/sun50i_h713/sunxi_h713_sip.c   | 1046 +++++++++++++++++
+ 9 files changed, 1421 insertions(+), 1 deletion(-)
+ create mode 100644 plat/allwinner/sun50i_h713/sunxi_h713_cedump.c
+ create mode 100644 plat/allwinner/sun50i_h713/sunxi_h713_sip.c
+
+diff --git a/plat/allwinner/common/include/platform_def.h b/plat/allwinner/common/include/platform_def.h
+index c9d075ac8..a9be8dfc5 100644
+--- a/plat/allwinner/common/include/platform_def.h
++++ b/plat/allwinner/common/include/platform_def.h
+@@ -18,7 +18,8 @@
+ #define BL31_BASE			SUNXI_DRAM_BASE
+ #define BL31_LIMIT			(SUNXI_DRAM_BASE + 0x40000)
+ 
+-#define MAX_XLAT_TABLES			4
++/* 4 was exactly the static need; the SiP maps one scratch page dynamically. */
++#define MAX_XLAT_TABLES			8
+ #define PLAT_VIRT_ADDR_SPACE_SIZE	(1ULL << 32)
+ 
+ #define SUNXI_BL33_VIRT_BASE		PRELOADED_BL33_BASE
+@@ -81,4 +82,30 @@
+ #endif
+ #endif
+ 
++
++/*
++ * FB-HDCP14i: our own secure payload at S-EL1. The vendor DTS reserves 1 MiB at
++ * 0x48600000 for a Trusted OS and the SPL already loads a "tee" image there from
++ * the FIT, so our payload takes the same slot - the only context in which the
++ * Crypto Engine's key-select 3 has never been tried.
++ */
++#ifndef BL32_BASE
++#define BL32_BASE			0x48600000
++#endif
++#define BL32_LIMIT			(BL32_BASE + 0x100000)
++#define TSP_SEC_MEM_BASE		BL32_BASE
++#define TSP_SEC_MEM_SIZE		(BL32_LIMIT - BL32_BASE)
++#define TSP_PROGBITS_LIMIT		BL32_LIMIT
++/* The secure physical timer's PPI - architectural, 29 on every GICv2 A53. */
++#define TSP_IRQ_SEC_PHY_TIMER		U(29)
++/*
++ * The one window through which the normal world hands the payload something to
++ * work on. Bounded and mapped on purpose: the payload maps its own memory and
++ * the device registers, nothing else, so a caller buffer anywhere in DRAM would
++ * fault. 2 MiB is one block at this granularity and far more than the 288 bytes
++ * a key set needs.
++ */
++#define H713_TSP_IN_BASE		U(0x4c000000)
++#define H713_TSP_IN_SIZE		U(0x200000)
++
+ #endif /* PLATFORM_DEF_H */
+diff --git a/plat/allwinner/common/include/sunxi_private.h b/plat/allwinner/common/include/sunxi_private.h
+index ee415967e..93ccb8121 100644
+--- a/plat/allwinner/common/include/sunxi_private.h
++++ b/plat/allwinner/common/include/sunxi_private.h
+@@ -66,4 +66,6 @@ static inline void sunxi_soc_fdt_fixup(void *dtb)
+ }
+ #endif
+ 
++void *sunxi_get_dtb(void);
++
+ #endif /* SUNXI_PRIVATE_H */
+diff --git a/plat/allwinner/common/sunxi_bl31_setup.c b/plat/allwinner/common/sunxi_bl31_setup.c
+index 4dba1796d..dba9144b7 100644
+--- a/plat/allwinner/common/sunxi_bl31_setup.c
++++ b/plat/allwinner/common/sunxi_bl31_setup.c
+@@ -33,6 +33,12 @@ static console_t console;
+ 
+ static void *fdt;
+ 
++/* The DTB U-Boot carries, once found; NULL before that or without one. */
++void *sunxi_get_dtb(void)
++{
++	return fdt;
++}
++
+ static const gicv2_driver_data_t sunxi_gic_data = {
+ 	.gicd_base = SUNXI_GICD_BASE,
+ 	.gicc_base = SUNXI_GICC_BASE,
+@@ -83,12 +89,63 @@ void bl31_early_platform_setup2(u_register_t arg0, u_register_t arg1,
+ 	/* Initialize the debug console as soon as possible */
+ 	console_16550_register(SUNXI_UART0_BASE, SUNXI_UART0_CLK_IN_HZ,
+ 			       SUNXI_UART0_BAUDRATE, &console);
++	/* FB-HDCP14h: the diagnosis NOTICEs happen at run time */
++	console_set_scope(&console, CONSOLE_FLAG_BOOT | CONSOLE_FLAG_RUNTIME |
++			  CONSOLE_FLAG_CRASH);
+ 
+ #ifdef BL32_BASE
+ 	/* Populate entry point information for BL32 */
+ 	SET_PARAM_HEAD(&bl32_image_ep_info, PARAM_EP, VERSION_1, 0);
+ 	SET_SECURITY_STATE(bl32_image_ep_info.h.attr, SECURE);
+ 	bl32_image_ep_info.pc = BL32_BASE;
++#ifdef H713_BL32_AARCH32
++	/*
++	 * The vendor's OP-TEE (header version 3.7, "arm" in its own banner) is a
++	 * 32-bit image: enter it in AArch32 SVC, as the vendor monitor does. Our
++	 * own payload (FB-HDCP14i, plat/.../tsp) is AArch64 and its dispatcher
++	 * sets the entry state itself, so this whole block is for the vendor
++	 * image only - built with -DH713_BL32_AARCH32.
++	 */
++	bl32_image_ep_info.spsr = SPSR_MODE32(MODE32_svc, SPSR_T_ARM,
++					      SPSR_E_LITTLE,
++					      DISABLE_ALL_EXCEPTIONS);
++	/*
++	 * opteed takes the payload's execution state from args.arg0, NOT from the
++	 * SPSR (opteed_setup(), default handoff branch: opteed_rw =
++	 * optee_ep_info->args.arg0). Left at zero that is OPTEE_AARCH64, so a
++	 * 32-bit OP-TEE gets started as AArch64 and dies on its first instruction
++	 * without a word - measured on 04.10., the handover showed spsr 0x3c5
++	 * (EL1h, AArch64) although this file had set 0x1d3.
++	 */
++	bl32_image_ep_info.args.arg0 = MODE_RW_32;
++#endif /* H713_BL32_AARCH32 */
++#ifdef H713_WDOG_BRINGUP
++	/*
++	 * Bring-up safety net. A hang inside the secure payload otherwise needs
++	 * someone to pull the plug AND press the power key, because this board does
++	 * not come up from mains on its own. With the watchdog armed the SoC resets
++	 * itself and boot0 brings the stock chain back, so a failed probe costs
++	 * nothing. Key-protected layout of the H713: CFG at +0x10, MODE at +0x14,
++	 * writes ignored without the key. Timeout code 0x9 << 4 = about 11 s, which
++	 * is long enough for a working hand-over to show U-Boot first.
++	 */
++	mmio_write_32(SUNXI_WDOG_BASE + 0x10, SUNXI_WDOG_KEY | 1);
++	mmio_write_32(SUNXI_WDOG_BASE + 0x14, SUNXI_WDOG_KEY | (0x9 << 4) | 1);
++	NOTICE("BL31: watchdog armed (~11 s) for the BL32 bring-up\n");
++#endif
++	/*
++	 * Bring-up aid: is the image actually where the FIT says? Only meaningful
++	 * when a BL32 was really loaded - BL32_BASE is defined in the headers even
++	 * when it was not, and then this printed the contents of an empty address
++	 * every boot and read like a fault ("BL32 at 0x48600000: f0003a40 ...").
++	 */
++#if defined(H713_WITH_BL32)
++	NOTICE("BL31: BL32 at 0x%x: %08x %08x %08x, run addr %08x, spsr %08x\n",
++	       (unsigned int)BL32_BASE,
++	       mmio_read_32(BL32_BASE), mmio_read_32(BL32_BASE + 4),
++	       mmio_read_32(BL32_BASE + 8), mmio_read_32(BL32_BASE + 0x2c),
++	       (unsigned int)bl32_image_ep_info.spsr);
++#endif
+ #endif
+ 
+ 	/* Populate entry point information for BL33 */
+diff --git a/plat/allwinner/common/sunxi_prepare_dtb.c b/plat/allwinner/common/sunxi_prepare_dtb.c
+index 0f689744a..ede4591ba 100644
+--- a/plat/allwinner/common/sunxi_prepare_dtb.c
++++ b/plat/allwinner/common/sunxi_prepare_dtb.c
+@@ -34,6 +34,24 @@ void sunxi_prepare_dtb(void *fdt)
+ 	}
+ #endif
+ 
++#if defined(BL32_BASE) && defined(H713_WITH_BL32)
++	/*
++	 * Reserve the secure payload's memory too. Without this the kernel is
++	 * uncompressed over it (it lands at 0x48000000 and is some 20 MB), and
++	 * then every PSCI CPU_ON erets into overwritten code: the secondary cores
++	 * never come up and the board runs on one (measured 05.10., three cores
++	 * lost). The vendor's own device tree reserves exactly this window, which
++	 * is why stock keeps all four. Guarded by H713_WITH_BL32 and not by
++	 * BL32_BASE alone: that macro is defined in every configuration, so the
++	 * reservation also appeared in builds WITHOUT a payload and then blocked
++	 * the kernel's own window (measured 05.10. 06:1x).
++	 */
++	if (fdt_add_reserved_memory(fdt, "optee@48600000", BL32_BASE,
++				    BL32_LIMIT - BL32_BASE)) {
++		WARN("Failed to reserve the BL32 window in the DT.\n");
++	}
++#endif
++
+ 	sunxi_soc_fdt_fixup(fdt);
+ 
+ 	if (sunxi_psci_is_scpi()) {
+diff --git a/plat/allwinner/common/sunxi_security.c b/plat/allwinner/common/sunxi_security.c
+index 98b91c39f..6a539070f 100644
+--- a/plat/allwinner/common/sunxi_security.c
++++ b/plat/allwinner/common/sunxi_security.c
+@@ -24,6 +24,50 @@ void sunxi_security_setup(void)
+ {
+ 	int i;
+ 
++#ifdef H713_VENDOR_SECURITY_SETUP
++	/*
++	 * FB-HDCP14h: the sequence of this board's own vendor BL31, register for
++	 * register (monitor.bin 0x48001430 and its helper 0x480013f8). It differs
++	 * from the mainline one in five ways, and this platform keeps a secure OS
++	 * while mainline assumes none:
++	 *   - a second port block at 0x07002004.. that mainline does not know
++	 *   - 0x07010290 is read-modify-written with |= 7, not blindly set to 1
++	 *   - 0x07002400/04/08 are explicitly zeroed
++	 *   - the DMA word gets 0xff, not 0xffff
++	 *   - 0x020008e0 = 3, 0x02001750 = 0x10000 then 0x10001, 0x03060008 = 0
++	 */
++	INFO("Vendor SPC/bus security setup (FB-HDCP14h)\n");
++	for (uintptr_t a = 0x02000804; a != 0x020008e4; a += 16)
++		mmio_write_32(a, 0xffffffff);
++	mmio_write_32(0x07002400, 0);
++	mmio_write_32(0x07002404, 0);
++	mmio_write_32(0x07002408, 0);
++	mmio_write_32(0x02001f00, 7);
++	for (uintptr_t a = 0x07002004; a != 0x070020e4; a += 16)
++		mmio_write_32(a, 0xffffffff);
++	mmio_setbits_32(0x07010290, 0x7);
++	mmio_write_32(0x03002020, 0xff);
++	mmio_write_32(0x020008e0, 3);
++	mmio_write_32(0x02001750, 0x10000);
++	mmio_write_32(0x02001750, 0x10001);
++	mmio_write_32(0x03060008, 0);
++	return;
++#endif
++#ifdef H713_SKIP_SECURITY_SETUP
++	/*
++	 * FB-HDCP14h bring-up probe. The vendor BL31 of this board (0x48001430)
++	 * does NOT write this file's R_PRCM word (our 0x07010290 = 0x1; it zeroes
++	 * 0x07002400/04/08 instead), writes 0xff to the DMA word where we write
++	 * 0xffff, and additionally sets 0x020008e0 = 3, 0x02002150 = 0x10000 then
++	 * 0x10001 and 0x03060008 = 0. Its CCU word (0x02001f00 = 7) is the same as
++	 * ours. Since the vendor keeps a secure OS and we hand more to the
++	 * non-secure world, skip the whole setup once and see whether the vendor
++	 * OP-TEE then gets through its own start-up.
++	 */
++	INFO("Skipping SPC/bus security setup (FB-HDCP14h probe)\n");
++	return;
++#endif
++
+ 	INFO("Configuring SPC Controller\n");
+ 	/* SPC setup: set all devices to non-secure */
+ 	for (i = 0; i < SUNXI_SPC_NUM_PORTS; i++)
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 0f365de47..d830f4315 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -26,6 +26,10 @@
+ #define SUNXI_CCU_BASE			0x02001000
+ #define SUNXI_DMA_BASE			0x03002000
+ #define SUNXI_SID_BASE			0x03006000
++/* Crypto Engine: non-secure bank, secure bank, and the HDCP 1.4 key sink. */
++#define SUNXI_CE_NS_BASE		0x03040000
++#define SUNXI_CE_S_BASE			0x03040800
++#define SUNXI_HDCP14_SINK		0x03041400
+ #define SUNXI_SPC_BASE			0x03008000
+ #define SUNXI_WDOG_BASE			0x02051000
+ #define SUNXI_PIO_BASE			0x02000000
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index 668491173..bade27257 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -24,3 +24,54 @@ BL31_SOURCES		+=	common/fdt_wrappers.c			\
+ 				drivers/allwinner/sunxi_rsb.c		\
+ 				drivers/mentor/i2c/mi2cv.c		\
+ 				${AW_PLAT}/${PLAT}/sunxi_h713_dtb.c
++
++# FB-HDCP14h: the vendor's own OP-TEE 3.7 as BL32. Its sunxi file header gives the run
++# address 0x48600000 (offset 0x2c) and the vendor DTS reserves 1 MiB there. The SPL loads
++# it from the FIT, so BL31 only has to enter it.
++# The vendor OP-TEE variant needs the AArch32 hand-over; our own TSP does not.
++# The slot the vendor DTS reserves for a Trusted OS; our own payload uses it too.
++# This must be a -D: platform_def.h carries an older "#ifndef BL32_BASE ->
++# SUNXI_DRAM_BASE" fallback that would otherwise win and send BL31 to 0x40000000
++# (measured 05.10. 05:12 - BL31 jumped into nothing and the watchdog reset the board).
++# Only when there IS a secure payload. Our own HDCP chain runs entirely in BL31 and
++# needs none - and without BL32_BASE there is no reserved window either, which
++# matters: the kernel is uncompressed to 0x48000000 and is some 20 MB, so a
++# reservation at 0x48600000 makes U-Boot refuse the allocation outright
++# ("Unable to allocate memory 0x48000000 for loading OS", measured 05.10. 06:1x).
++# Explicit, never derived: at the time this file is included SPD is still EMPTY,
++# not "none", so "ifneq (${SPD},none)" was always true and the reservation below
++# kept blocking the kernel's own window (measured 05.10. 06:1x - reserved[1]
++# 0x48600000..0x486fffff no-map, and bootm refused 0x48000000).
++ifeq (${H713_WITH_BL32},1)
++BL31_CPPFLAGS		+=	-DBL32_BASE=0x48600000
++BL31_CPPFLAGS		+=	-DH713_WITH_BL32
++endif
++
++# The vendor OP-TEE is a 32-bit image and must be entered in AArch32 SVC; our own
++# payload is AArch64. Explicit on the command line, not derived from SPD - deriving
++# it silently produced an AArch64 hand-over to the 32-bit image (spsr 0x3c5,
++# measured 05.10. 05:34) and the vendor OS died without a word.
++ifeq (${H713_BL32_AARCH32},1)
++BL31_CPPFLAGS		+=	-DH713_BL32_AARCH32
++endif
++BL31_CPPFLAGS		+=	-DH713_VENDOR_SECURITY_SETUP
++BL31_CPPFLAGS		+=	-DH713_WDOG_BRINGUP
++
++# The workbench probes in the SiP (and the CE dump) are off by default: a release
++# image carries only the version call and PUSH_FROM. Turn them on deliberately with
++# H713_HDCP_RESEARCH=1, and never ship that image (sunxi_h713_sip.c, doku/148 §2).
++H713_HDCP_RESEARCH	?=	0
++ifeq (${H713_HDCP_RESEARCH},1)
++BL31_CPPFLAGS		+=	-DH713_HDCP_RESEARCH=1
++# read-only CE dump from EL3 - diagnosis only
++BL31_SOURCES		+=	${AW_PLAT}/${PLAT}/sunxi_h713_cedump.c
++endif
++
++# FB-HDCP14i: our own HDCP 1.4 path from EL3 (the CE task the engine refuses so far).
++# Built INTO the image that also brings up the vendor BL32, so the same run can do
++# "our task - vendor task - our task again" and tell state apart from descriptor.
++# the SiP maps the caller's page on demand
++PLAT_XLAT_TABLES_DYNAMIC	:=	1
++BL31_CPPFLAGS		+=	-DPLAT_XLAT_TABLES_DYNAMIC=1
++
++BL31_SOURCES		+=	${AW_PLAT}/${PLAT}/sunxi_h713_sip.c
+diff --git a/plat/allwinner/sun50i_h713/sunxi_h713_cedump.c b/plat/allwinner/sun50i_h713/sunxi_h713_cedump.c
+new file mode 100644
+index 000000000..f1efb0e2f
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/sunxi_h713_cedump.c
+@@ -0,0 +1,171 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * FB-HDCP14h, diagnosis only: read the Crypto Engine's secure bank and the task
++ * descriptor the last task used, from EL3, and print them.
++ *
++ * Why this exists: the vendor Trusted OS gets the engine to accept key-select 3
++ * (measured: op 5 returns 0 and the key lands in the receiver's sink), while the
++ * same operation issued from our own EL3 is refused with ESR 0x11. The engine's
++ * secure bank reads as zero from the non-secure world, so U-Boot cannot show the
++ * difference. This service reads it after a successful vendor task, so the two
++ * descriptors can be compared field by field.
++ *
++ * It prints CONTROL fields and ADDRESSES only - the first 0x40 bytes of the
++ * descriptor. It never reads or prints the source data those addresses point at,
++ * because that is key material.
++ */
++
++#include <common/debug.h>
++#include <common/runtime_svc.h>
++#include <lib/mmio.h>
++#include <lib/xlat_tables/xlat_tables_v2.h>
++#include <sunxi_mmap.h>
++
++#define H713_SIP_CE_DUMP	U(0x82000020)
++#define CE_S			0x03040800
++#define CE_NS			0x03040000
++/*
++ * The key ladder's control/status block. 0x03041400 is the HDCP key SINK and is
++ * deliberately NOT read here: we need to know whether the ladder unlocks
++ * key-select 3, which is a control question, and never the key material.
++ */
++#define CE_LADDER		0x03041000
++#define CE_LADDER_LEN		0x100
++/*
++ * The secure-DRAM region block. Our sunxi_security.c mirrors the vendor BL31 and
++ * writes 0x02001750 = 0x10000 then 0x10001 there - region descriptor, then arm.
++ * If that region covers OP-TEE's TEE RAM and not BL31's 256 KiB, the hardware
++ * refuses key-select 3 on our buffers while key-select 0 passes. Control fields
++ * and bounds only.
++ */
++#define SEC_REGION		0x02001700
++#define SEC_REGION_LEN		0x80
++/*
++ * Where the vendor Trusted OS builds its task descriptors. Only TDA is cleared
++ * when a task finishes - the descriptor bytes stay in its memory, and from EL3
++ * we may read them. That is the one way to compare our request with the one the
++ * engine actually accepts, without a second core polling TDA in flight.
++ *
++ * Printed are control fields and addresses only. The bytes those addresses point
++ * at are the device's own key material: we need the interface, not the material
++ * (§ 69d/69e UrhG), and nothing dereferences them here.
++ */
++#define TEE_SCAN_BASE		0x48600000
++#define TEE_SCAN_MAP		0x600000
++#define TEE_SCAN_LEN		0x500000
++#define DESC_STRIDE		0x40
++#define SYM_KEYSEL(v)		(((v) >> 20) & 0xf)
++
++static void dump_bank(const char *what, uintptr_t base)
++{
++	unsigned int i;
++
++	for (i = 0; i < 0x30; i += 0x10)
++		NOTICE("CEdump %s+%02x: %08x %08x %08x %08x\n", what, i,
++		       mmio_read_32(base + i), mmio_read_32(base + i + 4),
++		       mmio_read_32(base + i + 8), mmio_read_32(base + i + 12));
++}
++
++/* Read a five-byte little-endian address field out of a descriptor. */
++static uint64_t desc_addr(uintptr_t d, unsigned int off)
++{
++	uint64_t v = 0;
++	unsigned int i;
++
++	for (i = 0; i < 5U; i++)
++		v |= (uint64_t)(*(volatile uint8_t *)(d + off + i)) << (8U * i);
++	return v;
++}
++
++/*
++ * Walk the Trusted OS's memory for anything that looks like a Crypto Engine task
++ * descriptor: the go bit set, a sane length, and either the HDCP key sink as its
++ * destination or key-select 3 - the two things we cannot get the engine to accept.
++ */
++static void h713_ce_find_descriptors(void)
++{
++	unsigned int found = 0U;
++	uintptr_t d;
++
++	if (mmap_add_dynamic_region(TEE_SCAN_BASE, TEE_SCAN_BASE, TEE_SCAN_MAP,
++				    MT_MEMORY | MT_RO | MT_SECURE |
++				    MT_EXECUTE_NEVER) != 0) {
++		NOTICE("CEscan: cannot map the Trusted OS's memory\n");
++		return;
++	}
++	for (d = TEE_SCAN_BASE; d < TEE_SCAN_BASE + TEE_SCAN_LEN;
++	     d += DESC_STRIDE) {
++		uint32_t common = mmio_read_32(d + 0x04);
++		uint32_t sym    = mmio_read_32(d + 0x08);
++		uint32_t len    = mmio_read_32(d + 0x20);
++		uint64_t dst    = desc_addr(d, 0x29);
++
++		if ((common & 0x80000000U) == 0U)
++			continue;
++		if (len == 0U || len > 0x1000U || (len & 0xfU) != 0U)
++			continue;
++		/*
++		 * Every plausible task, not just the sink one: the unwrap uses
++		 * key-select 0 into DRAM and was filtered away before, although
++		 * it is exactly the descriptor we need to copy (05.10. 06:3x,
++		 * our own unwrap differed from the vendor's in 287 of 288 bytes).
++		 */
++		if (len > 0x400U)
++			continue;
++		NOTICE("CEscan @%08lx: chan %08x common %08x sym %08x (keysel %u)\n",
++		       (unsigned long)d, mmio_read_32(d), common, sym,
++		       SYM_KEYSEL(sym));
++		NOTICE("CEscan @%08lx: len %08x src_len %08x dst_len %08x\n",
++		       (unsigned long)d, len, mmio_read_32(d + 0x30),
++		       mmio_read_32(d + 0x34));
++		NOTICE("CEscan @%08lx: key %010lx iv %010lx src %010lx dst %010lx\n",
++		       (unsigned long)d, (unsigned long)desc_addr(d, 0x10), (unsigned long)desc_addr(d, 0x15),
++		       (unsigned long)desc_addr(d, 0x24), (unsigned long)dst);
++		if (++found >= 10U)
++			break;
++	}
++	NOTICE("CEscan: %u candidate descriptor(s) in the Trusted OS's memory\n",
++	       found);
++	mmap_remove_dynamic_region(TEE_SCAN_BASE, TEE_SCAN_MAP);
++}
++
++uintptr_t h713_ce_dump(void)
++{
++	uint32_t tda = mmio_read_32(CE_S);
++	unsigned int i;
++
++	dump_bank("S ", CE_S);
++	dump_bank("NS", CE_NS);
++	NOTICE("CEdump ESR=%08x TSR=%08x (0x11 is what key-select 3 answers us)\n",
++	       mmio_read_32(CE_S + 0x18), mmio_read_32(CE_S + 0x14));
++	for (i = 0; i < CE_LADDER_LEN; i += 0x10)
++		NOTICE("CEdump LAD+%02x: %08x %08x %08x %08x\n", i,
++		       mmio_read_32(CE_LADDER + i),
++		       mmio_read_32(CE_LADDER + i + 4),
++		       mmio_read_32(CE_LADDER + i + 8),
++		       mmio_read_32(CE_LADDER + i + 12));
++	for (i = 0; i < SEC_REGION_LEN; i += 0x10)
++		NOTICE("CEdump SEC+%02x: %08x %08x %08x %08x\n", i,
++		       mmio_read_32(SEC_REGION + i),
++		       mmio_read_32(SEC_REGION + i + 4),
++		       mmio_read_32(SEC_REGION + i + 8),
++		       mmio_read_32(SEC_REGION + i + 12));
++	h713_ce_find_descriptors();
++	NOTICE("CEdump TDA=%08x (the descriptor of the last task)\n", tda);
++	if (tda >= SUNXI_DRAM_BASE && tda < (uintptr_t)(SUNXI_DRAM_BASE + 0x40000000ULL)) {
++		for (i = 0; i < 0x40; i += 0x10)
++			NOTICE("CEdump desc+%02x: %08x %08x %08x %08x\n", i,
++			       mmio_read_32(tda + i), mmio_read_32(tda + i + 4),
++			       mmio_read_32(tda + i + 8), mmio_read_32(tda + i + 12));
++	} else {
++		NOTICE("CEdump: TDA is not in DRAM, descriptor not shown\n");
++	}
++	return tda;
++}
++
++/*
++ * No DECLARE_RT_SVC of its own: TF-A allows one service per owning entity, and
++ * sunxi_h713_sip.c already holds the SiP range. A second registration leaves
++ * this handler unreachable and every FID of ours answered with SMC_UNK
++ * (measured 05.10. 00:30), so the SiP calls h713_ce_dump() directly.
++ */
+diff --git a/plat/allwinner/sun50i_h713/sunxi_h713_sip.c b/plat/allwinner/sun50i_h713/sunxi_h713_sip.c
+new file mode 100644
+index 000000000..20e229465
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/sunxi_h713_sip.c
+@@ -0,0 +1,1046 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++/*
++ * H713 SiP service: the HDCP 1.4 key through the Crypto Engine from EL3.
++ *
++ * Road 6b of doku/112: the 288-byte key item (AES-128 ECB under the RSSK, the
++ * eFuse key behind key-select 3) is decrypted by the engine straight into the
++ * HDMI receiver's key sink 0x03041400, as OP-TEE does it on the stock chain
++ * (sunxi_load_hdcp_key 0x4860caf0 -> sunxi_aes_with_hardware 0x4860c578) -
++ * from EL3 on the secure bank CE_S, for the case that the non-secure bank does
++ * not serve key-select 3 to the Linux driver h713-ce. Same vendor descriptor
++ * (doku/nachtlog/S49), same gate (doku/112 0 rule 4: the KAT before the first
++ * key-select 3 task of a boot, BL31's own RSSK probe before the first sink
++ * transfer). The engine only touches BL31's DRAM; the caller's buffer is read
++ * by the CPU once, through the static BL33 window or a temporary page
++ * mapping, and the caller cleans its cache first. No plaintext reaches DRAM.
++ *
++ * SMC32 fast calls, owner SiP: 0x82000010 HDCP14_LOAD (x1 = phys of the
++ * ciphertext, 64-byte aligned NS DRAM, x2 = 288); 0x82000011 HDCP14_PROBE
++ * (x1 = phys of a 16-byte result buffer, x2 = 16: the RSSK probe, its result
++ * copied to x1 for the caller to classify, never printed); 0x8200ff03
++ * SIP_SVC_VERSION (1, 0). x0 on return: 0; SMC_UNK for an unknown call, a bad
++ * address or length; an H713_SIP_E_* code; or 0x100 | the ESR byte. The two
++ * success lines are NOTICE so that a DEBUG=0 build shows them on the UART.
++ */
++
++#include <string.h>
++
++#include <platform_def.h>
++
++#include <arch_helpers.h>
++#include <common/debug.h>
++#include <common/runtime_svc.h>
++#include <drivers/delay_timer.h>
++#include <lib/mmio.h>
++#include <lib/spinlock.h>
++#include <libfdt.h>
++#include <common/fdt_wrappers.h>
++#include <sunxi_private.h>
++#include <lib/utils.h>
++#include <lib/xlat_tables/xlat_tables_v2.h>
++
++#include <sunxi_mmap.h>
++
++/*
++ * The services below fall into two groups. Only two of them are needed to run a
++ * device: the version call and PUSH_FROM, which puts a staged key set into the
++ * receiver's sink. Everything else exists because we had to find out HOW this
++ * engine behaves - probes that run engine tasks with caller-chosen key slots,
++ * lengths and addresses, dump descriptors, or read eFuse flags.
++ *
++ * Those belong on a workbench, not in a shipped image: they let the normal world
++ * drive the Crypto Engine far more freely than booting a projector requires, and
++ * every one of them is attack surface for no gain. They are compiled only with
++ * H713_HDCP_RESEARCH=1 and are absent from a release build.
++ *
++ * What remains reachable is deliberate and bounded: PUSH_FROM accepts one source
++ * address inside the Trusted OS window, with a fixed length, and the destination
++ * is always the key sink. The worst a caller can do is install a key set that
++ * does not authenticate - it can never read one back, because the engine refuses
++ * the hardware key towards readable memory by design (doku/148 §0).
++ */
++#ifndef H713_HDCP_RESEARCH
++#define H713_HDCP_RESEARCH	0
++#endif
++
++#define H713_SIP_HDCP14_LOAD	U(0x82000010)
++#define H713_SIP_HDCP14_PROBE	U(0x82000011)
++#define H713_SIP_EFUSE_FLAGS	U(0x82000012)
++#define H713_SIP_SVC_VERSION	U(0x8200ff03)
++#define H713_SIP_CE_DUMP	U(0x82000020)
++/*
++ * FB-HDCP14i: does key-select 3 refuse every length, or only the short one our
++ * own probe uses? ce_rssk_probe() runs ONE AES block (16 B) and gates the
++ * 288-byte push on it - but the vendor never issues a short key-select-3 task,
++ * it always issues 288 bytes. If the engine answers 16 bytes with ESR 0x11 and
++ * 288 bytes with 0, then our gate has been refusing the operation, not the
++ * engine. Result to DRAM, not the sink; the plaintext stays inside BL31 and is
++ * never returned or printed - only the error code leaves this function.
++ */
++#define H713_SIP_CE_KS3_LEN	U(0x82000013)
++#define H713_SIP_CE_KS3_AT	U(0x82000014)
++#define H713_SIP_SID_FLAGS	U(0x82000015)
++/*
++ * Does the engine let us write the sink at all, or only with its own key? op 5's
++ * input is already PLAINTEXT, so the key-select field there may not touch the data
++ * path at all. If a key-select-0 task into the sink is accepted, delivering the key
++ * set is ours and only the unwrap stays hardware-bound.
++ */
++#define H713_SIP_SINK_KS0	U(0x82000016)
++/*
++ * The sharpest experiment available: the vendor Trusted OS leaves its finished
++ * task descriptor in memory, with the buffers it points at. We start THAT
++ * descriptor from our own code - same fields, same addresses, same buffers, only
++ * a different issuer. Works -> the engine does not care who asks, and the
++ * difference is a property of our buffers. Fails -> the hardware really does
++ * distinguish, which is a fact worth having.
++ *
++ * Guarded to exactly the shape we are after: destination the HDCP key sink,
++ * length 288, key-select 3. Nothing here reads the buffers; we re-run an
++ * operation the device itself prepared for its own licence.
++ */
++#define H713_SIP_RERUN		U(0x82000017)
++/*
++ * The whole chain in one call, ours end to end: unwrap the device's stored record
++ * with the wrapping key the caller points at (key-select 0, sym_ctl 0x100 - the
++ * engine's own key is NOT involved here), then hand the key set to the receiver's
++ * sink with key-select 3. The plaintext exists only inside this function, is never
++ * returned and is wiped before it leaves.
++ */
++#define H713_SIP_HDCP14_FULL	U(0x82000018)
++/*
++ * Diagnosis only, and only while a vendor Trusted OS is around to serve as an
++ * oracle: unwrap the record with our own parameters and compare the result,
++ * byte for byte, with the plaintext the vendor produced. Reported is the NUMBER
++ * of differing bytes and nothing else - we need to know whether our unwrap is
++ * right, not what it contains. Both buffers are wiped before returning.
++ */
++#define H713_SIP_UNWRAP_CMP	U(0x82000019)
++/*
++ * The same comparison, but over the whole small space of unknowns in one call:
++ * sym_ctl candidates x input length x direction. The call site at 0x48626214
++ * pushes 0x10 / 0x100 / 1 onto the stack and the shared task function reads them
++ * as [r7,#0xb8/0xbc/0xc0] - which slot is which is an assumption, so rather than
++ * spend a device run per guess, try them all against the oracle and print only
++ * the number of differing bytes per combination.
++ */
++#define H713_SIP_UNWRAP_SWEEP	U(0x8200001a)
++/*
++ * Plain byte comparison of 288 bytes at two addresses, reporting only how many
++ * differ. Used to ask the one question left: are the bytes we read out of the
++ * secure storage the same ones the vendor's task hands to the sink? No content
++ * is printed - a count is not the material.
++ */
++#define H713_SIP_CMP_PLAIN	U(0x8200001b)
++/*
++ * The same sink push, but with the descriptor's source pointing where the caller
++ * says - specifically into the Trusted OS's window. Our data is byte-identical to
++ * the vendor's (0 of 288 differ, measured 05.10. 07:1x) and the engine answers 0x0
++ * either way, yet only the vendor's push authenticates. The one structural
++ * difference left is the region the DMA reads from, and this asks that question.
++ */
++#define H713_SIP_PUSH_FROM	U(0x8200001c)
++#define KEYBOX_WRAP_SYM		U(0x100)	/* key-select 0, bit 8 as the vendor sets it */
++#define KEYBOX_WRAP_KEYLEN	U(16)
++#define KEYBOX_RECORD_LEN	U(320)
++
++uintptr_t h713_ce_dump(void);
++#define H713_SIP_E_KAT		U(0x10)	/* BL31's known-answer test failed */
++#define H713_SIP_E_BUSY		U(0x11)	/* the task never loaded (TLR busy) */
++#define H713_SIP_E_TIMEOUT	U(0x12)	/* no completion within 200 ms */
++#define H713_SIP_E_MAP		U(0x13)	/* the caller's page cannot be mapped */
++#define H713_SIP_E_RSSK		U(0x14)	/* BL31's own RSSK probe did not pass */
++#define H713_SIP_E_CLOCK	U(0x15)	/* the CE clocks or resets are off */
++#define H713_SIP_E_OVERRUN	U(0x16)	/* the engine wrote past the length */
++#define H713_SIP_E_ESR		U(0x100)
++
++/* CE_S registers as OP-TEE programs them (0x4860c2ac..0x4860c360), channel 0. */
++#define CE_S_TDA		(SUNXI_CE_S_BASE + 0x00)
++#define CE_S_ICR		(SUNXI_CE_S_BASE + 0x08)
++#define CE_S_ISR		(SUNXI_CE_S_BASE + 0x0c)
++#define CE_S_TLR		(SUNXI_CE_S_BASE + 0x10)
++#define CE_S_ESR		(SUNXI_CE_S_BASE + 0x18)
++#define CE_ISR_PAIR		U(3)		/* done, error */
++/* CCU: CE clock enable bit 31; bus gates 1:0 and resets 17:16; mbus-ce bit 2 */
++#define CCU_CE_CLK_REG		(SUNXI_CCU_BASE + 0x680)
++#define CCU_CE_BGR_REG		(SUNXI_CCU_BASE + 0x68c)
++#define CCU_MBUS_GATE_REG	(SUNXI_CCU_BASE + 0x804)
++
++/*
++ * Read-only eFuse sense as stock BL31 (monitor.bin 0x4800237c): the burned-
++ * flags word (direct shadow 0x03006240, eFuse byte offset 0x40) read through
++ * the SID_PRCTL path with the 0xac02 READ trigger only - never the 0xac01
++ * program trigger, never the eFuse HV at R_PRCM 0x07090204 (the write
++ * primitive 0x480022f8). Returned: only the burned bits 16/17/21
++ * (SSK/RSSK/hdcppkf), the two shadow words and, as control, the word at 0x48
++ * (shadow 0x03006248); no key byte, no other offset.
++ */
++#define SID_PRCTL		(SUNXI_SID_BASE + 0x40)
++#define SID_PRD			(SUNXI_SID_BASE + 0x60)
++#define SID_PRCTL_RD		U(0xac02)	/* key 0xac, read-enable bit 1 */
++#define SID_FLAGS_OFF		U(0x40)		/* the burned-flags word */
++#define SID_CTRL_OFF		U(0x48)		/* control: its shadow 0x03006248 is non-zero */
++#define SID_FLAGS_SHADOW	(SUNXI_SID_BASE + 0x240)
++#define SID_FLAGS_SHADOW2	(SUNXI_SID_BASE + 0x248)
++#define SID_BURNED_BITS		(BIT_32(16) | BIT_32(17) | BIT_32(21))
++
++#define AES_BLOCK		16
++#define HDCP14_LEN		288
++/* One 64-byte aligned block, the layout of the Linux driver h713-ce. */
++#define BUF_DESC		0x000	/* the 0x100-byte task descriptor */
++#define BUF_KEY			0x100
++#define BUF_IV			0x140
++#define BUF_SRC			0x180
++#define BUF_DST			0x2c0
++#define BUF_SIZE		0x400
++
++static uint8_t ce_buf_own[BUF_SIZE] __aligned(64);
++/*
++ * Normally BL31's own block. The last untested difference to the vendor is WHERE the
++ * descriptor and buffers live: OP-TEE builds them on its stack in the TEE RAM area
++ * (0x486xxxxx), ours sit in BL31's 256 KiB (measured CE_S +0x20 = 0x4001225c). FID
++ * 0x82000014 points this at a caller-given page so the very same task can be issued
++ * from the vendor's own memory region; everything else stays identical.
++ */
++static uint8_t *ce_buf = ce_buf_own;
++static spinlock_t ce_lock;
++static bool kat_passed, rssk_passed;
++
++/* FIPS-197 C.1, and AES-128 decryption of zero under the all-zero key. */
++static const uint8_t kat_key[AES_BLOCK] = {
++	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
++	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
++static const uint8_t kat_plain[AES_BLOCK] = {
++	0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
++	0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff };
++static const uint8_t kat_cipher[AES_BLOCK] = {
++	0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30,
++	0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5, 0x5a };
++static const uint8_t zero_key_decrypt_of_zero[AES_BLOCK] = {
++	0x14, 0x0f, 0x0f, 0x10, 0x11, 0xb5, 0x22, 0x3d,
++	0x79, 0x58, 0x77, 0x17, 0xff, 0xd9, 0xec, 0x3a };
++/* The zero block decrypted under the KAT key: an engine that kept the last software key. */
++static const uint8_t kat_key_decrypt_of_zero[AES_BLOCK] = {
++	0x7b, 0x1d, 0x29, 0xa1, 0x6c, 0xf8, 0xcc, 0xab,
++	0x84, 0xf0, 0xb8, 0xa5, 0x98, 0xe4, 0x2f, 0xa6 };
++
++static void put_bytes(unsigned int off, uint64_t v, unsigned int n)
++{
++	unsigned int i;
++
++	for (i = 0; i < n; i++)
++		ce_buf[BUF_DESC + off + i] = (uint8_t)(v >> (8 * i));
++}
++
++/*
++ * One task on CE_S in the order of OP-TEE 0x4860c6a6..0x4860c6d4: TDA, ICR,
++ * TLR; poll ISR; acknowledge; clear. Caller holds ce_lock and has filled key
++ * and source; @dst is BL31's result buffer or the sink. The clocks are on
++ * from the SPL and held by Linux's h713-ce; a gated engine would hang the bus.
++ */
++/*
++ * The engine's key select lives in bits 23:20 of sym_ctl, but the vendor's unwrap
++ * also sets bit 8 (sym_ctl 0x100 with key-select 0, read out of its own code at
++ * 0x48626214). So the field is passed through whole rather than derived from a
++ * key-select number alone.
++ */
++static uint32_t ce_run_full(bool decrypt, uint32_t sym_ctl, unsigned int len,
++			    uintptr_t src, uintptr_t dst)
++{
++	uintptr_t buf = (uintptr_t)ce_buf;
++	uint64_t timeout;
++	uint32_t isr, esr;
++
++	if ((mmio_read_32(CCU_CE_CLK_REG) & BIT_32(31)) == 0 ||
++	    (mmio_read_32(CCU_CE_BGR_REG) & 0x30003) != 0x30003 ||
++	    (mmio_read_32(CCU_MBUS_GATE_REG) & BIT_32(2)) == 0)
++		return H713_SIP_E_CLOCK;
++	memset(ce_buf + BUF_DESC, 0, 0x100);
++	memset(ce_buf + BUF_IV, 0, AES_BLOCK);
++	if (dst != SUNXI_HDCP14_SINK)
++		memset(ce_buf + BUF_DST, 0, BUF_SIZE - BUF_DST);
++	put_bytes(0x04, BIT_32(31) | (decrypt ? BIT_32(8) : 0), 4); /* comm_ctl */
++	put_bytes(0x08, sym_ctl, 4);			/* sym_ctl as given */
++	put_bytes(0x10, buf + BUF_KEY, 5);		/* five-byte addresses */
++	put_bytes(0x15, buf + BUF_IV, 5);
++	put_bytes(0x20, len, 4);			/* data_len */
++	put_bytes(0x24, src, 5);
++	put_bytes(0x29, dst, 5);
++	put_bytes(0x30, len, 4);			/* src_len, dst_len */
++	put_bytes(0x34, len, 4);
++	/* The engine reads DRAM, not our cache: clean and invalidate the block. */
++	flush_dcache_range(buf, BUF_SIZE);
++
++	mmio_write_32(CE_S_TDA, (uint32_t)(buf + BUF_DESC));
++	mmio_setbits_32(CE_S_ICR, BIT_32(0));
++	timeout = timeout_init_us(10000);
++	while ((mmio_read_32(CE_S_TLR) & BIT_32(0)) != 0) {
++		if (timeout_elapsed(timeout)) {
++			mmio_write_32(CE_S_ICR, 0);
++			mmio_write_32(CE_S_TDA, 0);
++			return H713_SIP_E_BUSY;
++		}
++	}
++	mmio_setbits_32(CE_S_TLR, BIT_32(0));
++	timeout = timeout_init_us(200000);
++	do {
++		isr = mmio_read_32(CE_S_ISR);
++	} while ((isr & CE_ISR_PAIR) == 0 && !timeout_elapsed(timeout));
++	esr = mmio_read_32(CE_S_ESR) & 0xff;
++	mmio_write_32(CE_S_ISR, CE_ISR_PAIR | (isr & 0xff));
++	mmio_write_32(CE_S_ICR, 0);
++	mmio_write_32(CE_S_TLR, 0);
++	mmio_write_32(CE_S_TDA, 0);
++	if (dst != SUNXI_HDCP14_SINK)
++		inv_dcache_range(buf + BUF_DST, BUF_SIZE - BUF_DST);
++	if ((isr & CE_ISR_PAIR) == 0)
++		return H713_SIP_E_TIMEOUT;
++	if (dst != SUNXI_HDCP14_SINK) {
++		unsigned int i;
++
++		for (i = BUF_DST + len; i < BUF_SIZE; i++)
++			if (ce_buf[i] != 0)
++				return H713_SIP_E_OVERRUN;
++	}
++	return (esr != 0) ? (H713_SIP_E_ESR | esr) : 0;
++}
++
++static uint32_t ce_run_sym(bool decrypt, uint32_t sym_ctl, unsigned int len,
++			   uintptr_t dst)
++{
++	return ce_run_full(decrypt, sym_ctl, len,
++			   (uintptr_t)ce_buf + BUF_SRC, dst);
++}
++
++static uint32_t ce_run(bool decrypt, unsigned int keysel, unsigned int len,
++		       uintptr_t dst)
++{
++	return ce_run_sym(decrypt, (uint32_t)keysel << 20, len, dst);
++}
++
++/* Three tasks with key-select 0 to DRAM; the vectors are public. */
++static uint32_t ce_kat(void)
++{
++	static const unsigned int repeats[3] = { 1, 1, HDCP14_LEN / AES_BLOCK };
++	unsigned int i, r;
++	uint32_t ret;
++
++	kat_passed = false;
++	memcpy(ce_buf + BUF_KEY, kat_key, AES_BLOCK);
++	for (i = 0; i < 3; i++) {
++		const uint8_t *in = (i != 0) ? kat_cipher : kat_plain;
++		const uint8_t *want = (i != 0) ? kat_plain : kat_cipher;
++
++		for (r = 0; r < repeats[i]; r++)
++			memcpy(ce_buf + BUF_SRC + r * AES_BLOCK, in, AES_BLOCK);
++		ret = ce_run(i != 0, 0, repeats[i] * AES_BLOCK,
++			     (uintptr_t)ce_buf + BUF_DST);
++		for (r = 0; ret == 0 && r < repeats[i]; r++)
++			if (memcmp(ce_buf + BUF_DST + r * AES_BLOCK, want, AES_BLOCK) != 0)
++				ret = H713_SIP_E_KAT;
++		if (ret != 0) {
++			ERROR("H713 SiP: KAT step %u: 0x%x\n", i, ret);
++			return H713_SIP_E_KAT;
++		}
++	}
++	zeromem(ce_buf + BUF_KEY, 64);
++	kat_passed = true;
++	NOTICE("H713 SiP: KAT passed on CE_S (encrypt 16, decrypt 16, decrypt 288, key-select 0)\n");
++	return 0;
++}
++
++/* 16 zero bytes, key-select 3, to DRAM; classified, never printed. */
++static uint32_t __unused ce_rssk_probe(void)
++{
++	static const uint8_t zero[AES_BLOCK];
++	const uint8_t *got = ce_buf + BUF_DST;
++	uint32_t ret;
++
++	rssk_passed = false;
++	zeromem(ce_buf + BUF_KEY, 64);
++	memset(ce_buf + BUF_SRC, 0, AES_BLOCK);
++	ret = ce_run(true, 3, AES_BLOCK, (uintptr_t)ce_buf + BUF_DST);
++	if (ret == 0)
++		rssk_passed = memcmp(got, zero, AES_BLOCK) != 0 &&
++			      memcmp(got, zero_key_decrypt_of_zero, AES_BLOCK) != 0 &&
++			      memcmp(got, kat_key_decrypt_of_zero, AES_BLOCK) != 0;
++	if (!rssk_passed)
++		ERROR("H713 SiP: RSSK probe on CE_S not passed (0x%x)\n", ret);
++	return ret;
++}
++
++/*
++ * The end of the populated DRAM, from the /memory node of the DTB U-Boot
++ * carries: the sunxi DRAM window aliases above the fitted size, so 4 GiB is
++ * no bound. Without a usable node the smallest fitted size, 1 GiB, is the
++ * bound (deep review 27.09.2026).
++ */
++static uintptr_t sunxi_dram_end(void)
++{
++	static uintptr_t end;
++	const void *dtb = sunxi_get_dtb();
++	uint32_t reg[4];
++	int node;
++
++	if (end != 0)
++		return end;
++	end = SUNXI_DRAM_BASE + (1U << 30);
++	if (dtb == NULL)
++		return end;
++	node = fdt_path_offset(dtb, "/memory");
++	if (node < 0)
++		node = fdt_node_offset_by_prop_value(dtb, -1, "device_type",
++						     "memory", 7);
++	if (node >= 0 && fdt_read_uint32_array(dtb, node, "reg", 4, reg) == 0) {
++		uint64_t base = ((uint64_t)reg[0] << 32) | reg[1];
++		uint64_t size = ((uint64_t)reg[2] << 32) | reg[3];
++
++		if (base == SUNXI_DRAM_BASE && size >= (256U << 20) &&
++		    base + size <= (1ULL << 32))
++			end = (uintptr_t)(base + size);
++	}
++	return end;
++}
++
++/*
++ * The caller's buffer: DRAM only, outside BL31, 64-byte aligned. Inside the
++ * BL33 window the static mapping serves, elsewhere one or two pages are
++ * mapped for the copy and unmapped again.
++ */
++/*
++ * One key-select-3 task of @len bytes into BL31's own buffer. Only the engine's
++ * verdict is returned; the bytes the engine produces are zeroed again here, so
++ * nothing derived from the hardware key leaves this function.
++ */
++/*
++ * The same 288-byte key-select-3 task, but with descriptor and buffers in the page
++ * at @pa (one 64-byte-aligned, BUF_SIZE-sized scratch area, caller's choice). Only
++ * the engine's verdict is returned and the scratch area is wiped again.
++ */
++static uint32_t __unused ce_ks3_at(u_register_t pa, u_register_t len, u_register_t keep)
++{
++	uintptr_t page = pa & ~PAGE_SIZE_MASK;
++	size_t mapped = round_up(pa + BUF_SIZE, PAGE_SIZE) - page;
++	uint32_t ret;
++
++	if ((pa & 0x3fUL) != 0UL || pa < SUNXI_DRAM_BASE ||
++	    (pa < BL31_LIMIT && pa + BUF_SIZE > BL31_BASE))
++		return (uint32_t)SMC_UNK;
++	if (len == 0UL || len > (BUF_SIZE - BUF_DST) ||
++	    (len & (AES_BLOCK - 1)) != 0UL)
++		return (uint32_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	/*
++	 * The static mapping already serves the BL33 window; asking for a dynamic
++	 * region inside it collides and answers E_MAP (cost me one run, 01:06).
++	 */
++	if (pa >= PRELOADED_BL33_BASE &&
++	    pa + BUF_SIZE <= PRELOADED_BL33_BASE + SUNXI_DRAM_MAP_SIZE) {
++		mapped = 0;
++	} else if (mmap_add_dynamic_region(page, page, mapped,
++					   MT_MEMORY | MT_RW | MT_SECURE |
++					   MT_EXECUTE_NEVER) != 0) {
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_MAP;
++	}
++	ce_buf = (uint8_t *)pa;
++	if (keep != 0UL) {
++		/*
++		 * Leave BUF_SRC as the caller placed it. Every key-select-3 probe
++		 * so far fed ZEROS, while the vendor's task feeds the real keybox
++		 * block - if the ladder inspects its input, zeros are exactly what
++		 * it would answer "not supported" to. ce_run clears descriptor and
++		 * IV itself, so only key and destination are wiped here.
++		 */
++		zeromem(ce_buf + BUF_KEY, 64);
++		zeromem(ce_buf + BUF_DST, BUF_SIZE - BUF_DST);
++	} else {
++		zeromem(ce_buf, BUF_SIZE);
++	}
++	ret = ce_run(true, 3, (unsigned int)len, pa + BUF_DST);
++	zeromem(ce_buf + BUF_DST, BUF_SIZE - BUF_DST);
++	ce_buf = ce_buf_own;
++	if (mapped != 0)
++		mmap_remove_dynamic_region(page, mapped);
++	spin_unlock(&ce_lock);
++	NOTICE("H713 SiP: key-select 3, %u bytes at 0x%lx, source %s: 0x%x\n",
++	       (unsigned int)len, (unsigned long)pa,
++	       (keep != 0UL) ? "as placed" : "zeroed", ret);
++	return ret;
++}
++
++/*
++ * A 288-byte task into the HDCP key sink with key-select 0 - our own key, not the
++ * engine's. The source is zeroed, so nothing meaningful is delivered; this asks one
++ * question only: does the engine accept a write to the sink from us at all?
++ */
++/* Five-byte little-endian address field out of a descriptor. */
++static uint64_t desc_field_addr(uintptr_t d, unsigned int off)
++{
++	uint64_t v = 0;
++	unsigned int i;
++
++	for (i = 0; i < 5U; i++)
++		v |= (uint64_t)(*(volatile uint8_t *)(d + off + i)) << (8U * i);
++	return v;
++}
++
++/*
++ * @record_pa  the stored 320-byte record, 64-byte aligned, in the BL33 window
++ * @key_pa     the 16-byte wrapping key, same window. The caller reads it out of
++ *             the device's own Trusted OS image; it is never kept here and never
++ *             written into this source.
++ */
++/*
++ * @skip  how many bytes of the unwrapped 320 to step over before the 288 that go
++ *        into the sink. The stored record is 320 bytes, the key set 288 (40 device
++ *        keys of 7 bytes, the KSV, three bytes of padding - doku/112), so 32 bytes
++ *        are header or tag, and which end they sit on is a measurement, not a guess.
++ */
++/*
++ * @record_pa the stored record, @key_pa our wrapping key, @ref_pa the vendor's
++ * plaintext (its own buffer, read only). Returns the number of differing bytes,
++ * or 0x1xx on an engine error.
++ */
++static u_register_t push_from(uintptr_t src_pa)
++{
++	uint32_t ret;
++
++	if ((src_pa & 0x3fUL) != 0UL || src_pa < 0x48600000UL ||
++	    src_pa + HDCP14_LEN > 0x48b00000UL)
++		return (u_register_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	if (mmap_add_dynamic_region(src_pa & ~PAGE_SIZE_MASK,
++				    src_pa & ~PAGE_SIZE_MASK, PAGE_SIZE,
++				    MT_MEMORY | MT_RW | MT_SECURE |
++				    MT_EXECUTE_NEVER) != 0) {
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_MAP;
++	}
++	zeromem(ce_buf + BUF_KEY, 64);
++	flush_dcache_range((uintptr_t)ce_buf, BUF_SIZE);
++	flush_dcache_range(src_pa, HDCP14_LEN);
++	ret = ce_run_full(true, (uint32_t)3U << 20, HDCP14_LEN, src_pa,
++			  SUNXI_HDCP14_SINK);
++	NOTICE("H713 SiP: key set from 0x%lx into the sink: 0x%x\n",
++	       (unsigned long)src_pa, ret);
++	mmap_remove_dynamic_region(src_pa & ~PAGE_SIZE_MASK, PAGE_SIZE);
++	spin_unlock(&ce_lock);
++	return ret;
++}
++
++static u_register_t __unused plain_compare(uintptr_t a_pa, uintptr_t b_pa)
++{
++	unsigned int diff = 0U, i;
++
++	if (b_pa < 0x48600000UL || b_pa >= 0x48b00000UL)
++		return (u_register_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	if (mmap_add_dynamic_region(b_pa & ~PAGE_SIZE_MASK,
++				    b_pa & ~PAGE_SIZE_MASK, PAGE_SIZE,
++				    MT_MEMORY | MT_RO | MT_SECURE |
++				    MT_EXECUTE_NEVER) != 0) {
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_MAP;
++	}
++	inv_dcache_range(a_pa, HDCP14_LEN);
++	for (i = 0U; i < HDCP14_LEN; i++) {
++		if (*(volatile uint8_t *)(a_pa + i) !=
++		    *(volatile uint8_t *)(b_pa + i))
++			diff++;
++	}
++	NOTICE("H713 SiP: the stored bytes differ from the vendor's source in "
++	       "%u of %u\n", diff, HDCP14_LEN);
++	mmap_remove_dynamic_region(b_pa & ~PAGE_SIZE_MASK, PAGE_SIZE);
++	spin_unlock(&ce_lock);
++	return diff;
++}
++
++static unsigned int unwrap_once(uintptr_t record_pa, uintptr_t key_pa,
++				uintptr_t ref_pa, uint32_t sym, bool dec,
++				unsigned int keylen, unsigned int inlen,
++				unsigned int skip, uint32_t *err)
++{
++	unsigned int diff = 0U, i;
++
++	zeromem(ce_buf + BUF_KEY, 64);
++	memcpy(ce_buf + BUF_KEY, (const void *)key_pa, keylen);
++	memcpy(ce_buf + BUF_SRC, (const void *)record_pa, inlen);
++	*err = ce_run_sym(dec, sym, inlen, (uintptr_t)ce_buf + BUF_DST);
++	zeromem(ce_buf + BUF_KEY, 64);
++	zeromem(ce_buf + BUF_SRC, inlen);
++	if (*err != 0U) {
++		zeromem(ce_buf + BUF_DST, KEYBOX_RECORD_LEN);
++		return HDCP14_LEN;
++	}
++	for (i = 0U; i < HDCP14_LEN; i++) {
++		if (ce_buf[BUF_DST + skip + i] !=
++		    *(volatile uint8_t *)(ref_pa + i))
++			diff++;
++	}
++	zeromem(ce_buf + BUF_DST, KEYBOX_RECORD_LEN);
++	return diff;
++}
++
++/* Walks the candidates and reports the best match it found. */
++static u_register_t __unused unwrap_sweep(uintptr_t record_pa, uintptr_t key_pa,
++				 uintptr_t ref_pa)
++{
++	static const uint32_t syms[] = { 0x100U, 0x10U, 0x0U, 0x200U, 0x1000U,
++					 0x300000U, 0x101U };
++	unsigned int best = HDCP14_LEN, a, b, c, d;
++	uint32_t err;
++
++	if ((record_pa & 0x3fUL) != 0UL || (key_pa & 0x3fUL) != 0UL ||
++	    ref_pa < 0x48600000UL || ref_pa >= 0x48700000UL)
++		return (u_register_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	if (mmap_add_dynamic_region(ref_pa & ~PAGE_SIZE_MASK,
++				    ref_pa & ~PAGE_SIZE_MASK, PAGE_SIZE,
++				    MT_MEMORY | MT_RO | MT_SECURE |
++				    MT_EXECUTE_NEVER) != 0) {
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_MAP;
++	}
++	inv_dcache_range(key_pa, 64);
++	inv_dcache_range(record_pa, KEYBOX_RECORD_LEN);
++	for (a = 0U; a < ARRAY_SIZE(syms); a++) {
++		for (b = 0U; b < 2U; b++) {		/* decrypt / encrypt */
++			for (c = 0U; c < 2U; c++) {	/* 16 / 32 byte key */
++				unsigned int keylen = (c == 0U) ? 16U : 32U;
++
++				for (d = 0U; d < 2U; d++) {
++					unsigned int inlen = (d == 0U) ?
++						KEYBOX_RECORD_LEN : HDCP14_LEN;
++					unsigned int skip = (d == 0U) ? 0U : 0U;
++					unsigned int diff;
++
++					diff = unwrap_once(record_pa, key_pa,
++							   ref_pa, syms[a],
++							   b == 0U, keylen,
++							   inlen, skip, &err);
++					if (diff < best)
++						best = diff;
++					if (diff <= 8U || err != 0U) {
++						NOTICE("H713 sweep: sym %06x %s key %u in %u -> %s %u\n",
++						       syms[a],
++						       (b == 0U) ? "dec" : "enc",
++						       keylen, inlen,
++						       (err != 0U) ? "err" : "diff",
++						       (err != 0U) ? err : diff);
++					}
++				}
++			}
++		}
++	}
++	NOTICE("H713 sweep: best match %u of %u bytes\n", best, HDCP14_LEN);
++	mmap_remove_dynamic_region(ref_pa & ~PAGE_SIZE_MASK, PAGE_SIZE);
++	spin_unlock(&ce_lock);
++	return best;
++}
++
++static u_register_t __unused unwrap_compare(uintptr_t record_pa, uintptr_t key_pa,
++				   uintptr_t ref_pa)
++{
++	unsigned int diff = 0U, i;
++	uint32_t ret;
++
++	/*
++	 * The key may sit anywhere, including unaligned inside the Trusted OS's
++	 * own data (the vendor copies 16 bytes from such a pointer), so no
++	 * alignment is required of it - only of the record the engine reads.
++	 */
++	if ((record_pa & 0x3fUL) != 0UL ||
++	    ref_pa < 0x48600000UL || ref_pa >= 0x48700000UL)
++		return (u_register_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	if (mmap_add_dynamic_region(0x48600000UL, 0x48600000UL, 0x100000UL,
++				    MT_MEMORY | MT_RO | MT_SECURE |
++				    MT_EXECUTE_NEVER) != 0) {
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_MAP;
++	}
++	inv_dcache_range(key_pa, KEYBOX_WRAP_KEYLEN);
++	inv_dcache_range(record_pa, KEYBOX_RECORD_LEN);
++	zeromem(ce_buf + BUF_KEY, 64);
++	memcpy(ce_buf + BUF_KEY, (const void *)key_pa, KEYBOX_WRAP_KEYLEN);
++	memcpy(ce_buf + BUF_SRC, (const void *)record_pa, KEYBOX_RECORD_LEN);
++	ret = ce_run_sym(true, KEYBOX_WRAP_SYM, KEYBOX_RECORD_LEN,
++			 (uintptr_t)ce_buf + BUF_DST);
++	zeromem(ce_buf + BUF_KEY, 64);
++	zeromem(ce_buf + BUF_SRC, KEYBOX_RECORD_LEN);
++	if (ret == 0U) {
++		for (i = 0U; i < HDCP14_LEN; i++) {
++			if (ce_buf[BUF_DST + i] !=
++			    *(volatile uint8_t *)(ref_pa + i))
++				diff++;
++		}
++		NOTICE("H713 SiP: our unwrap differs from the vendor's in "
++		       "%u of %u bytes\n", diff, HDCP14_LEN);
++	} else {
++		NOTICE("H713 SiP: unwrap for the comparison failed: 0x%x\n",
++		       ret);
++	}
++	zeromem(ce_buf + BUF_DST, KEYBOX_RECORD_LEN);
++	mmap_remove_dynamic_region(0x48600000UL, 0x100000UL);
++	spin_unlock(&ce_lock);
++	return (ret != 0U) ? ret : diff;
++}
++
++static u_register_t __unused hdcp14_full(uintptr_t record_pa, uintptr_t key_pa,
++				u_register_t skip)
++{
++	uint32_t ret;
++
++	if ((record_pa & 0x3fUL) != 0UL || (key_pa & 0x3fUL) != 0UL ||
++	    record_pa < PRELOADED_BL33_BASE ||
++	    record_pa + KEYBOX_RECORD_LEN >
++		    PRELOADED_BL33_BASE + SUNXI_DRAM_MAP_SIZE ||
++	    key_pa < PRELOADED_BL33_BASE ||
++	    key_pa + KEYBOX_WRAP_KEYLEN >
++		    PRELOADED_BL33_BASE + SUNXI_DRAM_MAP_SIZE)
++		return (u_register_t)SMC_UNK;
++
++	spin_lock(&ce_lock);
++	if (!kat_passed) {
++		ret = ce_kat();
++		if (ret != 0U) {
++			spin_unlock(&ce_lock);
++			return ret;
++		}
++	}
++
++	/* Step one: unwrap with the caller's key. No hardware key involved. */
++	inv_dcache_range(key_pa, KEYBOX_WRAP_KEYLEN);
++	inv_dcache_range(record_pa, KEYBOX_RECORD_LEN);
++	zeromem(ce_buf + BUF_KEY, 64);
++	memcpy(ce_buf + BUF_KEY, (const void *)key_pa, KEYBOX_WRAP_KEYLEN);
++	memcpy(ce_buf + BUF_SRC, (const void *)record_pa, KEYBOX_RECORD_LEN);
++	ret = ce_run_sym(true, KEYBOX_WRAP_SYM, KEYBOX_RECORD_LEN,
++			 (uintptr_t)ce_buf + BUF_DST);
++	zeromem(ce_buf + BUF_KEY, 64);
++	zeromem(ce_buf + BUF_SRC, KEYBOX_RECORD_LEN);
++	if (ret != 0U) {
++		zeromem(ce_buf + BUF_DST, KEYBOX_RECORD_LEN);
++		NOTICE("H713 SiP: unwrap of the stored record: 0x%x\n", ret);
++		spin_unlock(&ce_lock);
++		return ret;
++	}
++
++	/* Step two: the key set itself, into the sink, with the engine's own key. */
++	if (skip > (KEYBOX_RECORD_LEN - HDCP14_LEN)) {
++		zeromem(ce_buf + BUF_DST, KEYBOX_RECORD_LEN);
++		spin_unlock(&ce_lock);
++		return (u_register_t)SMC_UNK;
++	}
++	memmove(ce_buf + BUF_SRC, ce_buf + BUF_DST + skip, HDCP14_LEN);
++	zeromem(ce_buf + BUF_DST, KEYBOX_RECORD_LEN);
++	ret = ce_run(true, 3, HDCP14_LEN, SUNXI_HDCP14_SINK);
++	zeromem(ce_buf + BUF_SRC, HDCP14_LEN);
++	NOTICE("H713 SiP: unwrapped, key set at +%u into the sink: 0x%x\n",
++	       (unsigned int)skip, ret);
++	spin_unlock(&ce_lock);
++	return ret;
++}
++
++static uint32_t __unused ce_rerun_descriptor(u_register_t tda)
++{
++	uintptr_t page = (uintptr_t)tda & ~PAGE_SIZE_MASK;
++	uint32_t isr, esr, common, sym, len;
++	uint64_t deadline;
++	uint32_t ret = 0U;
++
++	if ((tda & 0x3fUL) != 0UL || tda < 0x48600000UL || tda >= 0x48700000UL)
++		return (uint32_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	if (mmap_add_dynamic_region(page, page, PAGE_SIZE,
++				    MT_MEMORY | MT_RO | MT_SECURE |
++				    MT_EXECUTE_NEVER) != 0) {
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_MAP;
++	}
++	common = mmio_read_32(tda + 0x04);
++	sym    = mmio_read_32(tda + 0x08);
++	len    = mmio_read_32(tda + 0x20);
++	if ((common & BIT_32(31)) == 0U || len != HDCP14_LEN ||
++	    ((sym >> 20) & 0xfU) != 3U ||
++	    desc_field_addr(tda, 0x29) != SUNXI_HDCP14_SINK) {
++		mmap_remove_dynamic_region(page, PAGE_SIZE);
++		spin_unlock(&ce_lock);
++		return (uint32_t)SMC_UNK;
++	}
++	if ((mmio_read_32(CCU_CE_CLK_REG) & BIT_32(31)) == 0U) {
++		mmap_remove_dynamic_region(page, PAGE_SIZE);
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_CLOCK;
++	}
++
++	mmio_write_32(CE_S_TDA, (uint32_t)tda);
++	mmio_setbits_32(CE_S_ICR, BIT_32(0));
++	deadline = timeout_init_us(10000);
++	while ((mmio_read_32(CE_S_TLR) & BIT_32(0)) != 0U) {
++		if (timeout_elapsed(deadline)) {
++			mmio_write_32(CE_S_ICR, 0);
++			mmio_write_32(CE_S_TDA, 0);
++			mmap_remove_dynamic_region(page, PAGE_SIZE);
++			spin_unlock(&ce_lock);
++			return H713_SIP_E_BUSY;
++		}
++	}
++	mmio_setbits_32(CE_S_TLR, BIT_32(0));
++	deadline = timeout_init_us(200000);
++	do {
++		isr = mmio_read_32(CE_S_ISR);
++	} while ((isr & CE_ISR_PAIR) == 0U && !timeout_elapsed(deadline));
++	esr = mmio_read_32(CE_S_ESR) & 0xffU;
++	mmio_write_32(CE_S_ISR, CE_ISR_PAIR | (isr & 0xffU));
++	mmio_write_32(CE_S_ICR, 0);
++	mmio_write_32(CE_S_TLR, 0);
++	mmio_write_32(CE_S_TDA, 0);
++	if ((isr & CE_ISR_PAIR) == 0U)
++		ret = H713_SIP_E_TIMEOUT;
++	else if (esr != 0U)
++		ret = H713_SIP_E_ESR | esr;
++	NOTICE("H713 SiP: re-ran the vendor's own descriptor at 0x%lx: 0x%x\n",
++	       (unsigned long)tda, ret);
++	mmap_remove_dynamic_region(page, PAGE_SIZE);
++	spin_unlock(&ce_lock);
++	return ret;
++}
++
++static uint32_t __unused ce_sink_ks0(u_register_t len)
++{
++	uint32_t ret;
++
++	if (len == 0UL || len > HDCP14_LEN || (len & (AES_BLOCK - 1U)) != 0UL)
++		return (uint32_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	zeromem(ce_buf + BUF_KEY, 64);
++	memset(ce_buf + BUF_SRC, 0, len);
++	ret = ce_run(true, 0, (unsigned int)len, SUNXI_HDCP14_SINK);
++	zeromem(ce_buf + BUF_SRC, len);
++	spin_unlock(&ce_lock);
++	NOTICE("H713 SiP: %u bytes into the sink with key-select 0: 0x%x\n",
++	       (unsigned int)len, ret);
++	return ret;
++}
++
++static uint32_t __unused ce_ks3_len_probe(u_register_t len)
++{
++	uint32_t ret;
++
++	if (len == 0UL || len > (BUF_SIZE - BUF_DST) ||
++	    (len & (AES_BLOCK - 1)) != 0UL)
++		return (uint32_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	zeromem(ce_buf + BUF_KEY, 64);
++	memset(ce_buf + BUF_SRC, 0, len);
++	ret = ce_run(true, 3, (unsigned int)len, (uintptr_t)ce_buf + BUF_DST);
++	zeromem(ce_buf + BUF_DST, len);
++	spin_unlock(&ce_lock);
++	NOTICE("H713 SiP: key-select 3 with %u bytes: 0x%x\n",
++	       (unsigned int)len, ret);
++	return ret;
++}
++
++static u_register_t __unused hdcp14_op(uintptr_t pa, size_t len, bool load)
++{
++	uintptr_t page = pa & ~PAGE_SIZE_MASK;
++	size_t mapped = 0;
++	uint32_t ret;
++
++	if (len != (load ? HDCP14_LEN : AES_BLOCK) || (pa & 0x3f) != 0 ||
++	    pa < SUNXI_DRAM_BASE || pa + len > sunxi_dram_end() ||
++	    (pa < BL31_LIMIT && pa + len > BL31_BASE))
++		return (u_register_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	if (pa < PRELOADED_BL33_BASE ||
++	    pa + len > PRELOADED_BL33_BASE + SUNXI_DRAM_MAP_SIZE) {
++		mapped = round_up(pa + len, PAGE_SIZE) - page;
++		if (mmap_add_dynamic_region(page, page, mapped, MT_NON_CACHEABLE |
++					    MT_RW | MT_NS | MT_EXECUTE_NEVER) != 0) {
++			spin_unlock(&ce_lock);
++			return H713_SIP_E_MAP;
++		}
++	}
++	ret = kat_passed ? 0 : ce_kat();
++	/*
++	 * No RSSK probe before a load any more. The probe ran one key-select-3
++	 * block into DRAM and gated the push on it - but the engine refuses the
++	 * hardware key into readable memory BY DESIGN and answers ESR 0x11, which
++	 * is exactly right: that write would hand out the key. Measured 05.10.:
++	 * the vendor's own descriptor, re-run from this very code, returns 0 with
++	 * the sink as its destination, while every length into DRAM returns 0x11.
++	 * So the probe can never pass, and gating on it blocked the one task that
++	 * works. The load path below writes to the sink and needs no permission
++	 * slip from a task that must fail.
++	 */
++	if (ret == 0 && !load)
++		ret = ce_rssk_probe();
++	if (ret == 0 && !load) {
++		memcpy((void *)pa, ce_buf + BUF_DST, AES_BLOCK);
++		if (mapped == 0)	/* the static window is cacheable, the caller's buffer is not */
++			flush_dcache_range(pa, AES_BLOCK);
++	}
++	if (ret == 0 && load) {
++		if (mapped == 0)	/* no stale lines of ours over the caller's fresh bytes */
++			inv_dcache_range(pa, HDCP14_LEN);
++		memcpy(ce_buf + BUF_SRC, (const void *)pa, HDCP14_LEN);
++		ret = ce_run(true, 3, HDCP14_LEN, SUNXI_HDCP14_SINK);
++		zeromem(ce_buf + BUF_SRC, HDCP14_LEN);
++		NOTICE("H713 SiP: HDCP 1.4 transfer into the key sink: 0x%x\n", ret);
++	}
++	zeromem(ce_buf + BUF_DST, HDCP14_LEN);
++	if (mapped != 0)
++		mmap_remove_dynamic_region(page, mapped);
++	spin_unlock(&ce_lock);
++	return ret;
++}
++
++/*
++ * The monitor.bin 0x4800237c sequence: insert the offset, trigger 0xac02, poll
++ * the read-enable bit, read SID_PRD. A bounded wait replaces the stock's open
++ * poll so a stuck SID cannot hang the SMC; false then, @out = 0.
++ */
++static bool sid_prctl_read(unsigned int off, uint32_t *out)
++{
++	uint32_t reg = (mmio_read_32(SID_PRCTL) & 0xfe00fffc) | (off << 16);
++	uint64_t timeout = timeout_init_us(1000);
++
++	*out = 0;
++	mmio_write_32(SID_PRCTL, reg);
++	mmio_write_32(SID_PRCTL, (reg & 0xffff00fc) | SID_PRCTL_RD);
++	while ((mmio_read_32(SID_PRCTL) & BIT_32(1)) != 0) {
++		if (timeout_elapsed(timeout)) {
++			mmio_write_32(SID_PRCTL, reg & 0xfe0000fc);
++			return false;
++		}
++	}
++	mmio_write_32(SID_PRCTL, reg & 0xfe0000fc);
++	*out = mmio_read_32(SID_PRD);
++	return true;
++}
++
++/*
++ * FB-HDCP14d. x0 status (0, or E_TIMEOUT if a PRCTL read never completed),
++ * x1 the burned bits of the sensed flag word, x2/x3 the two direct shadows,
++ * x4 the sensed word at 0x48: the control that the PRCTL path reads fuses at
++ * all (a working path returns the shadow's non-zero value there).
++ */
++/*
++ * Which SID word really carries the burned-flags? monitor.bin's own table says the
++ * vendor's flags area is 0x03006200 + 0x40, which ENDS at 0x0300623f - our
++ * h713_efuse_flags reads 0x03006240/0x48, right next to it but outside. doku/112 §3
++ * asks for one bit ("RSSK burned"), so that is all this prints: for each word, which
++ * of bits 16/17/21 are set and how many bits are set at all. No word is printed, so
++ * nothing that might be key material leaves the monitor - we want the flag, not the
++ * material (§ 69d/69e UrhG).
++ */
++static uintptr_t __unused h713_sid_flag_scan(void)
++{
++	static const struct { uintptr_t base; unsigned int len; } area[] = {
++		{ SUNXI_SID_BASE + 0x200, 0x40 },
++		{ SUNXI_SID_BASE + 0x2e4, 0x80 },
++	};
++	unsigned int a, i, set = 0;
++
++	for (a = 0; a < ARRAY_SIZE(area); a++) {
++		for (i = 0; i < area[a].len; i += 4) {
++			uint32_t v = mmio_read_32(area[a].base + i);
++			/*
++			 * Counted by hand on purpose: __builtin_popcount
++			 * becomes a call to __popcountdi2, and with LTO that
++			 * compiler-rt object does not make it into the link
++			 * ("undefined reference", research build 05.10. 08:0x).
++			 */
++			unsigned int pop = 0, b;
++
++			for (b = 0; b < 32U; b++)
++				pop += (v >> b) & 1U;
++
++			if (v == 0)
++				continue;
++			set++;
++			NOTICE("SIDscan %08lx: bits set %2u%s%s%s\n",
++			       (unsigned long)(area[a].base + i), pop,
++			       ((v & BIT_32(16)) != 0) ? "  bit16" : "",
++			       ((v & BIT_32(17)) != 0) ? "  bit17" : "",
++			       ((v & BIT_32(21)) != 0) ? "  bit21" : "");
++		}
++	}
++	NOTICE("SIDscan: %u non-zero word(s) in 0x%x+0x40 and 0x%x+0x80\n", set,
++	       (unsigned int)(SUNXI_SID_BASE + 0x200),
++	       (unsigned int)(SUNXI_SID_BASE + 0x2e4));
++	return 0;
++}
++
++static uintptr_t __unused h713_efuse_flags(void *handle)
++{
++	uint32_t prctl, ctrl, s240, s248;
++	bool ok;
++
++	spin_lock(&ce_lock);
++	ok = sid_prctl_read(SID_FLAGS_OFF, &prctl);
++	ok = sid_prctl_read(SID_CTRL_OFF, &ctrl) && ok;
++	s240 = mmio_read_32(SID_FLAGS_SHADOW);
++	s248 = mmio_read_32(SID_FLAGS_SHADOW2);
++	spin_unlock(&ce_lock);
++	SMC_RET5(handle, ok ? 0 : H713_SIP_E_TIMEOUT,
++		 prctl & SID_BURNED_BITS, s240, s248, ctrl);
++}
++
++static uintptr_t h713_sip_handler(uint32_t smc_fid, u_register_t x1,
++				  u_register_t x2, u_register_t x3,
++				  u_register_t x4, void *cookie, void *handle,
++				  u_register_t flags)
++{
++	if (!is_caller_non_secure(flags))
++		SMC_RET1(handle, SMC_UNK);
++	/* SMC32 calls: the arguments are 32-bit values, the upper halves are noise. */
++	x1 = (uint32_t)x1;
++	x2 = (uint32_t)x2;
++	switch (smc_fid) {
++	case H713_SIP_SVC_VERSION:
++		SMC_RET2(handle, 1, 0);
++	case H713_SIP_PUSH_FROM:
++		SMC_RET1(handle, push_from(x1));
++#if H713_HDCP_RESEARCH
++	case H713_SIP_HDCP14_LOAD:
++		SMC_RET1(handle, hdcp14_op(x1, x2, true));
++	case H713_SIP_HDCP14_PROBE:
++		SMC_RET1(handle, hdcp14_op(x1, x2, false));
++	case H713_SIP_EFUSE_FLAGS:
++		return h713_efuse_flags(handle);
++	case H713_SIP_CE_DUMP:
++		SMC_RET1(handle, h713_ce_dump());
++	case H713_SIP_CE_KS3_LEN:
++		SMC_RET1(handle, ce_ks3_len_probe(x1));
++	case H713_SIP_CE_KS3_AT:
++		SMC_RET1(handle, ce_ks3_at(x1, x2, x3));
++	case H713_SIP_SID_FLAGS:
++		SMC_RET1(handle, h713_sid_flag_scan());
++	case H713_SIP_SINK_KS0:
++		SMC_RET1(handle, ce_sink_ks0(x1));
++	case H713_SIP_RERUN:
++		SMC_RET1(handle, ce_rerun_descriptor(x1));
++	case H713_SIP_HDCP14_FULL:
++		SMC_RET1(handle, hdcp14_full(x1, x2, x3));
++	case H713_SIP_UNWRAP_CMP:
++		SMC_RET1(handle, unwrap_compare(x1, x2, x3));
++	case H713_SIP_UNWRAP_SWEEP:
++		SMC_RET1(handle, unwrap_sweep(x1, x2, x3));
++	case H713_SIP_CMP_PLAIN:
++		SMC_RET1(handle, plain_compare(x1, x2));
++#endif
++	default:
++		SMC_RET1(handle, SMC_UNK);
++	}
++}
++
++DECLARE_RT_SVC(h713_sip_svc, OEN_SIP_START, OEN_SIP_END, SMC_TYPE_FAST, NULL,
++	       h713_sip_handler);

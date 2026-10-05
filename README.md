@@ -164,6 +164,7 @@ why the installer wants a dump, and why nothing here needs a licence you don't a
 ```
 mainline/        cstenger's tree as a git subtree + our kernel patch series (patches/kernel/series)
 uboot-h713/      our U-Boot commits as patches, generated from the fork (read-only mirror)
+tfa-h713/        our TF-A (BL31) commits the same way - the platform, and the HDCP 1.4 key path
 installer/       h713-install, h713-mkimage, h713-extract and helpers
 rootfs/          the Debian 13 recipe: package list, overlay, install script, tests (rootfs/README.md)
 userspace/       h713-tv, h713-pq, h713-focus, h713-autofocus, h713-cam, h713-warp, h713-keystone, h713-panel,

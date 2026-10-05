@@ -1,0 +1,69 @@
+From a8f85bee8890209bb196b8dd7c5e6f5b81f1c530 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Mon, 13 Jul 2026 23:27:26 -0700
+Subject: [PATCH 3/7] feat(allwinner): h713: implement PSCI CPU_ON
+
+The H713 was copied from the H616 (ncat) register file but took the
+per-cluster cpu_on path, whose bitmask reset/power registers do not
+match this SoC. Reverse-engineering the stock BL31 shows H713 uses the
+non-per-cluster (else) path instead, and with the ncat register file
+every register lines up exactly with the stock sequence:
+
+  RVBAR      ALT_RVBAR   CPUSUBSYS+0x40 + n*8   = 0x08100040 + n*8
+  core reset C0_CPU_CTRL CPUCFG+0x60    + n*4   = 0x09010060 + n*4
+  aa64/enable CPU_CTRL   CPUSUBSYS+0x20 + n*4   = 0x08100020 + n*4
+  pwr-on rst CPU_UNK     R_CPUCFG+0x70  + n*4   = 0x07000470 + n*4
+  power clamp           R_CPUCFG+0x50  + n*4   = 0x07000450 + n*4
+
+Force sunxi_cpucfg_has_per_cluster_regs() to false so the shared
+sunxi_cpu_on() drives that per-core sequence, and keep the ncat mmap
+(CPUCFG 0x09010000, CPUSUBSYS 0x08100000).
+
+Hardware-verified on the HY200 board: PSCI CPU_ON for cores 1, 2 and 3
+each powers the core up, releases it in AArch64 at the requested entry
+point (secondary executes a marker stub and writes its MPIDR), and
+AFFINITY_INFO reports the core ON (previously ON_PENDING forever).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h | 9 ++++++++-
+ plat/allwinner/sun50i_h713/include/sunxi_mmap.h   | 6 ++++++
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h b/plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h
+index ee8f65bf8..f9fb2cf4d 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_cpucfg.h
+@@ -8,7 +8,14 @@
+ 
+ #include <sunxi_cpucfg_ncat.h>
+ 
++/*
++ * The H713 uses the per-core (non-per-cluster) cpu_on path. With the ncat
++ * register file this drives exactly the stock BL31 sequence: per-core
++ * reset at C0_CPU_CTRL (0x09010060 + n*4), AArch64/enable at CPU_CTRL
++ * (0x08100020 + n*4), power-on reset at CPU_UNK (0x07000470 + n*4), power
++ * clamp at 0x07000450 + n*4, and RVBAR at ALT_RVBAR (0x08100040 + n*8).
++ */
+ static inline bool sunxi_cpucfg_has_per_cluster_regs(void)
+ {
+-	return (plat_get_soc_revision() != 2);
++	return false;
+ }
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 01c959559..0f365de47 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -42,6 +42,12 @@
+ #define SUNXI_R_UART_BASE		0x07080000
+ #define SUNXI_R_I2C_BASE		0x07081400
+ #define SUNXI_R_RSB_BASE		0x07083000
++/*
++ * H713 uses the "ncat" register file with the non-per-cluster (else)
++ * cpu_on path: per-core control regs at CPUCFG 0x09010060 + n*4, per-core
++ * AArch64/enable at CPUSUBSYS 0x08100020 + n*4, RVBAR at 0x08100040 + n*8.
++ * This matches the stock BL31 cpu_on sequence exactly.
++ */
+ #define SUNXI_CPUSUBSYS_BASE		0x08100000
+ #define SUNXI_CPUCFG_BASE		0x09010000
+ 
