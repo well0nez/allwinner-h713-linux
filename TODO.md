@@ -75,7 +75,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (dokumentieren), Musterwechsel = Konsolenblitz, Client ohne Newline blockiert 500 ms,
       `evaluate()` gibt bei -ENOLCK sofort frei, Textreste „primary plane"
 - [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
-- [ ] 2.6 Audio: Abschalt-Plopp
+- [ ] 2.6 Audio: Abschalt-Plopp - **05.10. gemessen** (ThinkPad-Mikro): zwei Plopps. (a) Stream-Ende: DAPM
+      schaltet den Verstaerker PL2 ab, Knall unabhaengig vom Signal (DAC/Line-Out-Mute vorher aendert nichts) -
+      **behoben** mit Kernel 0184 (`allwinner,pa-stays-on`: PL2 bleibt an), Test A still. (b) Poweroff-Ende: 42-54x
+      Grundrauschen bei +10,96 s nach `poweroff`, in beiden Laeufen dieselbe Zehntelsekunde = PSCI SYSTEM_OFF
+      (TF-A Boot-Gate oder Regler-Abschaltung des Kernels), harter Netz-Cut mit PL2 an nur 9x. Offen: wer faehrt
+      dort PL2 oder die Codec-Versorgung? Aufnahmen `arbeit/edid-sweep-20261005/plopp/`
 - [ ] 2.7 Geometrie: Ceiling-Beweis kopfüber; Kalibrierkarten in gespiegelten Modi; Konsole durch den Warp
 - [ ] 2.8 Autofokus: eine Wand, ein Abend; Metrik-Spanne nur +11 % (Belichtung)
 - [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
@@ -104,7 +109,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       das Design (hdmi-ring-Modus), kein Mangel — Punkt aus `61` überholt (05.10.)
 - [ ] 2.20 Preset beim Start wählbar, Regler über Neustart merken; Startmodus `auto|manuell` merken (aus `61`)
 - [ ] 2.21 Kamera mit hellem Bild nie geprüft; WLAN-Station zwei Ecken offen; Telefon am AP (aus `61`/known-issues)
-- [ ] 2.22 eMMC `data error cmd18` am GEU (einmal) — erst bei Wiederauftreten
+- [ ] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
+      Plattenzugriff (ls /boot, dmesg ueber Shell, Konsolen-Login), ssh/uptime antworten - Kernel 0184 frisch gebootet,
+      Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten; Journal ist persistent
 - [x] 2.23 KEY_POWER-Politik (poweroff ueber logind, auch die BT-Fernbedienung; kein Standby) steht in
       `docs/hardware.md`; WLAN-Band der Koexistenzmessung in `doku/134` nachgetragen: 2,4 GHz Kanal 4, 5 GHz ungemessen
 - [ ] 2.24 Kleinkram aus `61`: `regulatory.db` load failed -2; `r8152` will `rtl8153b-2.fw` - Marco 05.10.: **nicht

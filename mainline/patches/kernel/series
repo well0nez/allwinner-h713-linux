@@ -482,3 +482,4 @@
 #   the VidDec record was refused a rewrite outside ring mode. Republished for a memory framebuffer
 #   too, without a window (bench of 05.10.: arbeit/warp-pruefstand, TODO 2.4a)
 0183-drm-h713-afbd-republish-the-viddec-record-for-a-memory-framebuffer.patch
+0184-asoc-sun4i-codec-h713-the-speaker-amp-stays-on-once-it-is-on.patch

@@ -1,0 +1,75 @@
+ASoC: sun4i-codec: h713: the speaker amp stays on once it is on
+
+Every shutdown of the HY310 ended with a loud pop from the speaker.
+Measured 05.10.2026 with a microphone beside the projector: the pop comes
+5.4 s after `systemctl poweroff`, when h713-tv has long muted the path and
+closed the stream - it is the DAPM Speaker widget powering down and the
+codec driver dropping the amplifier's enable line (PL2, allwinner,pa-gpios)
+while the output sits at its DC bias.  Muting the DAC or the line out first
+changes nothing (three sequences tried, three pops); the same line falling
+by hand pops the same way.  Cutting the mains with the amp still enabled
+pops only faintly (9x the noise floor against 42x).
+
+So the amp is never switched off from software again: a new optional
+property, allwinner,pa-stays-on, makes the Speaker event raise the line on
+power-up and leave it alone on power-down, and the H713 codec node sets it.
+The power supply takes the amp down - quietly.  Boards without the
+property keep today's behaviour.
+
+---
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -405,6 +405,7 @@
+ 	struct clk	*clk_module;
+ 	struct reset_control *rst;
+ 	struct gpio_desc *gpio_pa;
++	bool pa_stays_on;	/* allwinner,pa-stays-on: never drop the PA from software */
+ 	struct gpio_desc *gpio_hp;
+ 
+ 	/* ADC_FIFOC register is at different offset on different SoCs */
+@@ -1769,6 +1770,19 @@
+ {
+ 	struct sun4i_codec *scodec = snd_soc_card_get_drvdata(w->dapm->card);
+ 
++	/*
++	 * Some amplifiers pop loudly when their enable line falls while the
++	 * output sits at its DC bias, whatever the DAC does beforehand - the
++	 * H713 projectors' speaker amp on PL2 does (measured with a microphone
++	 * 05.10.2026: 42x the noise floor when the Speaker widget powers down,
++	 * 9x when the rails simply go with the amp still enabled; muting the
++	 * DAC or the line out first changes nothing). With allwinner,pa-stays-on
++	 * the line is raised with the first stream and never lowered again:
++	 * the power supply takes it down, quietly.
++	 */
++	if (!SND_SOC_DAPM_EVENT_ON(event) && scodec->pa_stays_on)
++		return 0;
++
+ 	gpiod_set_value_cansleep(scodec->gpio_pa,
+ 				 !!SND_SOC_DAPM_EVENT_ON(event));
+ 
+@@ -3087,6 +3101,9 @@
+ 		return ret;
+ 	}
+ 
++	scodec->pa_stays_on = device_property_read_bool(&pdev->dev,
++							"allwinner,pa-stays-on");
++
+ 	scodec->gpio_hp = devm_gpiod_get_optional(&pdev->dev, "hp-det", GPIOD_IN);
+ 	if (IS_ERR(scodec->gpio_hp)) {
+ 		ret = PTR_ERR(scodec->gpio_hp);
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -889,6 +889,13 @@
+ 			/* PL2 on r_pio, NOT PB2 on the main pio. Active high. */
+ 			allwinner,pa-gpios = <&r_pio 0 2 GPIO_ACTIVE_HIGH>;
+ 			/*
++			 * Once on, the amp stays on: switching PL2 off pops
++			 * loudly (42x the noise floor at every stream end and
++			 * at poweroff), the rails going with the amp enabled
++			 * only faintly (9x). Measured 05.10.2026 on the HY310.
++			 */
++			allwinner,pa-stays-on;
++			/*
+ 			 * Without this the amp never turns on. The card carries
+ 			 * a "Speaker" widget whose event handler toggles the PA
+ 			 * GPIO above, but its built-in routes stop at LINEOUT
