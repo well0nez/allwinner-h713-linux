@@ -33,6 +33,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Ring→FB den Descriptor mit FB-Geometrie publizieren und WCE abwarten (afbd), oder den
       Warp in Quellgröße rendern lassen. Vor dem Release entscheiden — trifft jede
       Nicht-1080p-Quelle mit Keystone
+      → Prüfstand 05.10. (`/opt/Projekte/h713/arbeit/warp-pruefstand/BERICHT.md`): Ursache gemessen,
+      der Kernel verweigert das Neuschreiben des VidDec-Descriptors außerhalb des Ring-Modus
+      (`afbd.c:602`); Fix Kernel-Patch 0183. **Hardware-Test offen:** 720p + Warp, dann
+      Signalereignisse erzwingen (HDCP-Neuverhandlung, Aussetzer) — übersteht die Capture das?
+      Das war der Grund der alten Regel. Kamera als Auge: `kamera-gitter.py`
+- [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
+      (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
+      Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
+- [ ] 2.4c 1366×768: Ring-Pitch 1376 ≠ Breite — mit Warp ungetestet, Sonderfall in 0183 nicht abgedeckt
+- [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12): `h713-tv ctl status` wirft den Warp ab
+      (100-ms-Frist), Firmware-Zoom bleibt im Plane-Zustand, Journal-Spam ohne Signal, `test mask`
+      markiert tl, laxe `atoi`-Prüfung, `check` halbiert fps, Musterwechsel = Konsolenblitz,
+      Client ohne Newline blockiert 500 ms, `evaluate()` gibt bei -ENOLCK sofort frei
 - [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
 - [ ] 2.6 Audio: Abschalt-Plopp
 - [ ] 2.7 Geometrie: Ceiling-Beweis kopfüber; Kalibrierkarten in gespiegelten Modi; Konsole durch den Warp
