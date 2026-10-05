@@ -80,4 +80,7 @@ of the shipping firmware, and the behaviour of the hardware.
 - `legacy` branch and tag `legacy-arm32-2026-08`: the 32-bit BSP era of this project, frozen. Different
   kernel, different approach; kept because the reverse-engineering notes in it are still valid.
 - `doku/`: the German working journal, dated. Nothing in the English documentation claims anything that
-  is not written down there with a date and a measurement.
+  is not written down there with a date and a measurement. It is the evidence, not the manual, and its
+  entries are never rewritten after the fact - [`doku/README.md`](doku/README.md) says why that rule is
+  what makes the promise above worth anything, and [`doku/INDEX.md`](doku/INDEX.md) turns the citations
+  around so you can look up what any statement in `docs/` rests on.

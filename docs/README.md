@@ -8,7 +8,7 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 **Subsystems:** [display](subsystems/display.md) - panel, the descriptor's window words, the zoom model · [MIPS](subsystems/mips.md) ·
 [HDMI input](subsystems/hdmi-in.md) · [audio](subsystems/audio.md) · [video](subsystems/video.md) · [picture quality](subsystems/pq.md) ·
 [cpu_comm](subsystems/cpu-comm.md) · [ARISC](subsystems/arisc.md) - hot plug, EDID and the block mask · [Wi-Fi](subsystems/wifi.md) ·
-[focus motor](subsystems/focus-motor.md) · [board manager](subsystems/board-mgr.md) · [crypto engine](subsystems/crypto-engine.md) ·
+[focus motor](subsystems/focus-motor.md) · [board manager](subsystems/board-mgr.md) · [crypto engine](subsystems/crypto-engine.md) · [HDCP](subsystems/hdcp.md) - 1.4 from the boot loader, 2.2 from a service, both device-local ·
 [eMMC layout](subsystems/emmc-layout.md)
 
 **Guides:** [the settings page](guides/settings-page.md) · [keystone](guides/keystone.md) · [autofocus](guides/autofocus.md)
@@ -21,3 +21,7 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 
 **U-Boot:** [boot chain and defconfig matrix](uboot/README.md) · [the `h713_*` commands, with the register readback at the
 prompt](uboot/commands.md) · [environment](uboot/environment.md) · [power-on gate](uboot/power-gate.md)
+
+---
+
+Alles hier ist auf Vollständigkeit und Aktualität geschrieben. Wer wissen will, **woher** eine Aussage kommt, findet den Beleg im datierten Arbeitsjournal: [`doku/README.md`](../doku/README.md) erklärt es, [`doku/INDEX.md`](../doku/INDEX.md) §1 nennt zu jedem Dokument hier die Einträge, auf denen es ruht.
