@@ -33,11 +33,13 @@ bytes, destination DRAM, checked against the FIPS-197 test vector - deliberately
 key sink. It passed in 65 µs, confirming the descriptor layout at the silicon and, incidentally, confirming
 that cstenger's dead end really was the format, not the hardware.
 
-**Measured since:** `Key-Select 3` (the RSSK) on the secure channel `CE_S` (`0x03040800`) is refused from
-Linux and from EL3 alike (HY310, 03.10.2026, ESR 0x11), with a task byte-identical to the vendor's. A
-read-only eFuse read from EL3 then said the RSSK, SSK and HDCP-PKF flags are not burned on that unit
-(04.10.2026) - an open question, because the maintainer remembers a working HDCP 1.4 test on it. Two tests
-decide it ([known-issues.md](../known-issues.md)); HDCP 1.4 stays on the open list (`ROADMAP.md`, `doku/112`).
+**Measured, and resolved on 05.10.2026.** `Key-Select 3` on the secure channel `CE_S` (`0x03040800`) was
+refused from Linux and from EL3 alike (03.10.2026, ESR 0x11) with a task byte-identical to the vendor's, and a
+read-only eFuse read then said the flags for that key are not burned (04.10.2026). Both observations were true
+and both were misleading. The engine refuses key-select 3 towards readable memory **by design** - that would be
+key export - and accepts it only with the receiver's key sink as destination **and** the DMA source inside the
+protected window. The eFuse flag was never the criterion. HDCP 1.4 works since 05.10.2026
+([HDCP](hdcp.md)).
 
 The measurement module loads automatically by device-tree match and stays in the shipped kernel - a
 deliberate choice (the maintainer, 12.09.2026), not a leftover.

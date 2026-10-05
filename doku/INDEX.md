@@ -26,7 +26,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/guides/keystone.md` | `doku/134` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/80` |
-| `docs/known-issues.md` | `doku/104`, `doku/116`, `doku/134`, `doku/143`, `doku/60`, `doku/61` |
+| `docs/known-issues.md` | `doku/104`, `doku/116`, `doku/134`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134` |
@@ -37,7 +37,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/94` |
 | `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148` |
-| `docs/subsystems/hdmi-in.md` | `doku/112`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
+| `docs/subsystems/hdmi-in.md` | `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
 | `docs/subsystems/video.md` | `doku/62`, `doku/64`, `doku/76`, `doku/78` |
@@ -158,7 +158,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`109-plan-layout-v3.md`](109-plan-layout-v3.md) | Plan |  | Plan 109 - Layout v3: die Boot-Kette an den Anfang | 18 |
 | [`110-plan-installationsweg.md`](110-plan-installationsweg.md) | Plan |  | Plan 110 - der Installationsweg für Nutzer | 6 |
 | [`111-handoff-20260910-abend.md`](111-handoff-20260910-abend.md) | Handoff | 2026-09-10 | Handoff 10.09.2026, Abend - Stand nach dem Umbau | - |
-| [`112-plan-hdcp14-crypto-engine.md`](112-plan-hdcp14-crypto-engine.md) | Plan |  | Plan 112 - HDCP 1.4 über die Crypto Engine: Auftrag für einen späteren Agenten | 4 |
+| [`112-plan-hdcp14-crypto-engine.md`](112-plan-hdcp14-crypto-engine.md) | Plan |  | Plan 112 - HDCP 1.4 über die Crypto Engine: Auftrag für einen späteren Agenten | 3 |
 | [`113-plan-pq-laufzeit-und-speichern.md`](113-plan-pq-laufzeit-und-speichern.md) | Plan |  | Plan 113 - Bildwerte zur Laufzeit rechnen und dauerhaft merken | 2 |
 | [`114-plan-crypto-engine.md`](114-plan-crypto-engine.md) | Plan |  | Plan 114 - Crypto Engine (H713): Entscheidung, Befundabgleich mit cstenger, und der eine Grund sie anzufassen | 2 |
 | [`115-handoff-20260912.md`](115-handoff-20260912.md) | Handoff | 2026-09-12 | Handoff 12.09.2026 - Abbild v0.9 läuft auf dem Gerät | - |
@@ -190,7 +190,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`140-handoff-20261003.md`](140-handoff-20261003.md) | Handoff | 2026-10-03 | Handoff 140 - Fernbedienung/WLAN-BT am HY310 integriert, IR geparkt (03.10.2026 abends) | - |
 | [`141-plan-integration-release-20261003.md`](141-plan-integration-release-20261003.md) | Plan | 2026-10-03 | Plan 141 - Fable-Welle nach main, Kleinkram, Boards, dann Release (03.10.2026) | - |
 | [`142-grosstest-protokoll-v096.md`](142-grosstest-protokoll-v096.md) | Protokoll |  | 142 - Grosstest-Protokoll fuer den Release-Kandidaten (doku/141 Stufe 4 + 5), Entwurf 04.10.2026 00:20 | 2 |
-| [`143-handoff-gesamt-20261004.md`](143-handoff-gesamt-20261004.md) | Handoff | 2026-10-04 | 143 - Gesamt-Handoff, Stand 04.10.2026 04:40 (Fable-Welle -> Release v0.96-beta) | 1 |
+| [`143-handoff-gesamt-20261004.md`](143-handoff-gesamt-20261004.md) | Handoff | 2026-10-04 | 143 - Gesamt-Handoff, Stand 04.10.2026 04:40 (Fable-Welle -> Release v0.96-beta) | - |
 | [`144-offene-punkte-20261004.md`](144-offene-punkte-20261004.md) | Analyse | 2026-10-04 | 144 - Alle offenen Punkte, Stand 04.10.2026 12:15 (fable-main 36 Commits, vor Stufe 4) | - |
 | [`145-hdcp14-kette-uboot-bis-userspace.md`](145-hdcp14-kette-uboot-bis-userspace.md) | Analyse |  | 145 - HDCP 1.4: die ganze Kette von U-Boot bis Userspace, und wie wir sie nachbauen | 1 |
 | [`146-handoff-hdcp14-und-plan.md`](146-handoff-hdcp14-und-plan.md) | Handoff |  | 146 - Handoff HDCP 1.4 und Plan, Stand 05.10.2026 00:3x | - |
@@ -353,7 +353,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-116 von 207. Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will.
+117 von 207. Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will.
 
 * `01-arbeitsbereich.md`
 * `106-handoff-20260910.md`
@@ -373,6 +373,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `138-handoff-mips-ir-20261003.md`
 * `140-handoff-20261003.md`
 * `141-plan-integration-release-20261003.md`
+* `143-handoff-gesamt-20261004.md`
 * `144-offene-punkte-20261004.md`
 * `146-handoff-hdcp14-und-plan.md`
 * `69-handoff-20260905.md`

@@ -209,9 +209,15 @@ abgleichen.“ Der Einbauort bleibt offen, Schritt 4 wird nicht entschieden.
   auf `0x06840093` Bit 0 — das ist Plan 112, nicht dies hier.
 * **Ob die RSSK auf diesem Gerät überhaupt gebrannt ist** (SID `0x03006240` Bit 17). Nur am Gerät lesbar, hier nicht
   angefasst.
-* **Ob die TVTOP-/HDMI-RX-Domäne beim Transfer an sein muss.** Der Test schreibt nach DRAM; die Frage stellt sich erst
-  bei der Senke.
-* **Wer `0x06840093` Bit 0 setzt** und ob HDCP 1.4 danach wirklich funktioniert. Das ist die Abnahme von Plan 112.
+* **Ob die TVTOP-/HDMI-RX-Domäne beim Transfer an sein muss.** ~~Der Test schreibt nach DRAM; die Frage stellt sich
+  erst bei der Senke.~~ **Beantwortet 05.10.2026: ja.** Ein Transfer in die Senke, während die TV-Domäne noch
+  stromlos ist, läuft in der Engine durch (ESR 0) und rastet nichts ein — die Firmware sieht das Bit nie gesetzt.
+  Der Push muss nach dem Einschalten der Domäne und vor der MIPS-Freigabe passieren
+  ([docs/subsystems/hdcp.md](../../../docs/subsystems/hdcp.md)).
+* **Wer `0x06840093` Bit 0 setzt** und ob HDCP 1.4 danach wirklich funktioniert. **Beantwortet 05.10.2026:
+  HDCP 1.4 funktioniert**, am Bild abgenommen (gelöschte Senke als Kontrolle, dreimal `Desired` → Push →
+  `Enabled`). Das Register selbst ist als Abnahmekriterium untauglich: aus U-Boot gelesen liefert es 0x00,
+  während es im laufenden Linux 0x41 zeigt. Die Abnahme ist die geschützte Quelle mit Bild, nicht dieses Bit.
 * **Welche Interruptleitung zu welcher Bank gehört.** Das Modul *zählt* beide mit — das ist Rohmaterial für die Antwort,
   aber der Behandler fasst absichtlich kein CE-Register an, also lässt sich aus einem Lauf nur ablesen, *welche* feuert,
   nicht *warum*.

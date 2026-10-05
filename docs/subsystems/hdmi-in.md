@@ -140,8 +140,8 @@ boot (`h713-hdcp-key.service`) and handed over to the firmware during the probe,
 its "LoadKey ok" is a format check, not a negotiation, and **a protected 2.2 source has not been tested
 yet**; `h713-tv ctl hdcp` shows what a source negotiates (the `hdcp` attribute of the hdmirx device,
 kernel 0174). If the key is missing, that one step is skipped and unencrypted sources are unaffected.
-**HDCP 1.4 is not supported** - a protected 1.4
-source will not decrypt (`doku/112`). Power and clock setup for the capture engine itself (TVFE/TVCAP,
+**HDCP 1.4 is supported since 05.10.2026** - the boot loader puts this device's own key set
+into the receiver before the display firmware starts ([HDCP](hdcp.md)). Power and clock setup for the capture engine itself (TVFE/TVCAP,
 fabric routing) happens once, in U-Boot and the firmware, before Linux starts; this driver assumes it and
 does not manage it, which is also why the mainline `tvtop` driver is not needed here (`doku/71`).
 

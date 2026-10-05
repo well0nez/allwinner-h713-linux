@@ -26,8 +26,8 @@ the same rename behind it.
 
 Why 0.5 and not 0.1: the device boots on its own, shows the HDMI input with sound and picture controls,
 runs Wi-Fi, the focus motor and the camera, and can be installed and rolled back with one tool. Calling
-that 0.1 would undersell it. Calling it 1.0 would be a lie while verified video decode, HDCP 1.4 and deep
-sleep are open ([ROADMAP.md](ROADMAP.md)).
+that 0.1 would undersell it. Calling it 1.0 would be a lie while verified video decode and deep
+sleep are open ([ROADMAP.md](ROADMAP.md)). HDCP 1.4 was on that list until 05.10.2026.
 
 `-beta` comes off when the [open device tests](STATUS.md) are done and a second device has been installed
 by someone who did not write the installer.
