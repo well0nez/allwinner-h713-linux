@@ -107,8 +107,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 8 Lokale Werkzeuge
 
-- [ ] 8.1 MemPalace-Kette abwarten: Transkripte + referenz/ gemined, `init repo-neu` durch,
-      `sweep` läuft; `mine repo-neu` ist eingereiht (init hat es ohne Terminal übersprungen)
+- [x] 8.1 MemPalace vollständig: Transkripte (~67 000 + 86 000 sweep), referenz/ (268),
+      repo-neu ohne Submodule (20 373) — 175 798 Drawers, Endstand 05.10. 17:15.
+      Lehre: `mine`/`sweep` nie laufen lassen, während Claude antwortet — der Stop-Hook
+      sperrt den Palast und einzelne Dateien scheitern (dann erneut sweepen, idempotent)
 - [ ] 8.2 **Bilanz 12.10.** für MemPalace *und* Graphify: findet eine neue Sitzung von selbst,
       was sie braucht? Sonst raus, bevor es Gewohnheit wird
 - [x] 8.3 Graphify installiert, `--code-only` über `repo-neu/` (7 862 Knoten, 0 Token),
