@@ -1,7 +1,7 @@
 From 3880132ef4be8bffb133d141145b4ddde776b951 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 17 Sep 2026 01:30:21 +0200
-Subject: [PATCH 84/94] sunxi: h713: model the panel's sync polarities instead
+Subject: [PATCH 84/95] sunxi: h713: model the panel's sync polarities instead
  of hardcoding bit 31
 
 h713_disp_latch_panel_timing() said it carried "the live bit-31 enables" into

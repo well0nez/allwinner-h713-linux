@@ -1,7 +1,7 @@
 From da74b898537209c2e83d9bc8cb2e41b04f04be83 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 21:54:51 +0200
-Subject: [PATCH 82/94] sunxi: h713: refuse a LogoRegData container we cannot
+Subject: [PATCH 82/95] sunxi: h713: refuse a LogoRegData container we cannot
  measure
 
 h713_disp_size() derives the file's length from its own header, and
