@@ -35,7 +35,7 @@ short, on this device:
 - Bluetooth with the stock remote, 03.10.2026 (`docs/subsystems/wifi.md`)
 
 Open on this board, and written down because they are *not* done: environment carry-over across a
-reinstall, a phone joining the access point. Missing entirely: AV1 decode, HDCP 1.4, the IR receiver,
+reinstall, a phone joining the access point. Missing entirely: AV1 decode, the IR receiver,
 any desktop.
 
 **Historical:** images built before 2026-09-12 20:00 shipped a BL31 from 10.09. with assertions

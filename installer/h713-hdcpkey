@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""h713-hdcpkey -- what HDCP key material does this device have, and where?
+
+Point it at a raw eMMC dump, at a secure-storage region file, or at a whole backup
+directory. It SEARCHES for the items instead of assuming the region's position, which
+is the point: on a board we have not measured, "no key set at LBA 12288" would only
+mean we looked in the wrong place. For anything it does not recognise it prints the
+fingerprint and the exact lines to paste into the tables, so an unknown board becomes
+a recorded one in a single step.
+
+It prints fingerprints (SHA-256, one-way) and structure. Never key bytes - the key set
+is a DRM secret and stays on the device it belongs to (installer/h713/hdcpitems.py).
+
+Usage:
+  h713-hdcpkey <dump.img | secure-storage.bin | directory> [...]
+  h713-hdcpkey --limit=0x4000000 <big-dump.img>     only search the first 64 MiB
+
+Exit: 0 = a known key set found, 1 = nothing found or something unknown/damaged.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from h713 import hdcpitems as hdcpkey  # noqa: E402
+
+
+def one(path, limit):
+    print(hdcpkey.survey_report(path, limit=limit))
+    rows = hdcpkey.survey(path, limit=limit)
+    good = [r for r in rows if r.get("known")]
+    odd = [r for r in rows if r.get("record_me") or r.get("error")]
+    return 0 if good and not odd else 1
+
+
+def main(argv):
+    limit = None
+    paths = []
+    for a in argv[1:]:
+        if a.startswith("--limit="):
+            limit = int(a.split("=", 1)[1], 0)
+        elif a.startswith("--"):
+            print(__doc__)
+            return 2
+        else:
+            paths.append(a)
+    if not paths:
+        print(__doc__)
+        return 2
+
+    worst = 0
+    for path in paths:
+        if os.path.isdir(path):
+            # A backup directory: look at the region file and any dump beside it.
+            found = False
+            for name in ("secure-storage.bin", "dump/secure-storage.bin"):
+                full = os.path.join(path, name)
+                if os.path.isfile(full):
+                    worst = max(worst, one(full, limit))
+                    found = True
+            if not found:
+                print("%s: no secure-storage.bin in it" % path)
+                worst = max(worst, 1)
+        elif os.path.isfile(path):
+            worst = max(worst, one(path, limit))
+        else:
+            print("%s: not there" % path)
+            worst = max(worst, 1)
+        print()
+    return worst
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

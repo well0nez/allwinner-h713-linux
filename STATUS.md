@@ -21,7 +21,7 @@ The last release is `v0.96-beta`; the last test image for the HY300 Pro of issue
   hand and following the projector's own tilt - the settings page and the autofocus. Since `v0.96-beta` also
   **Bluetooth** with the stock remote, the box's own sounds mixed into HDMI, the projection modes, EDID block 1
   with 1080p100/120, and the optional hardware of other boards (the rows below say where and when).
-- **Missing:** AV1 decode, HDCP 1.4 for protected sources, the IR receiver, a standby below 4 W, any desktop -
+- **Missing:** AV1 decode, the IR receiver, a standby below 4 W, any desktop -
   and nothing acts on the remote's keys yet except Power.
 - **Not re-tested by us:** hardware video decode and the IOMMU - these come from cstenger's tree. The Mali GPU
   did too; since 22.09. it is measured here and since `v0.95-beta` it is in the image, under the keystone.
@@ -67,17 +67,17 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | ARM ↔ MIPS IPC | works | `cpu_comm` in-kernel API | callback slot leak fixed; [docs/subsystems/cpu-comm.md](docs/subsystems/cpu-comm.md) |
 | ARISC (PMU, HPD, EDID) | works | `sun50i-h713-arisc` | 17.65 s to hot-plug ready |
 | Wi-Fi AIC8800D80 | works | out-of-tree modules + `h713-wifi` | 12.09.: access point (−50 dBm, 5.7 MB/s, DHCP, SSH) and station against a real network (DHCP address, internet through `wlan0`) |
-| Focus motor | works | `hy310_focus_motor` + `h713-focus` | range watcher measured 12.09. (lower edge) and 23.09. (upper edge, the pad's pull-up, homing walks 110 msteps back), `analyse/boot/motor-bereichswaechter-20260912.txt`, `umbau/test-20260915/keystone-20260922.md` |
+| Focus motor | works | `hy310_focus_motor` + `h713-focus` | range watcher measured 12.09. (lower edge) and 23.09. (upper edge, the pad's pull-up, homing walks 110 msteps back), `analyse/boot/motor-bereichswaechter-20260912.txt`, working journal `keystone-20260922` |
 | Autofocus | works, beta, since `v0.95-beta` | `h713-autofocus` + `h713-afmetric` | 23.09.: the search turns round at an edge and found a peak on the bench; 02.10. with the `v0.96-beta` tool (waits for its pattern, reversal fix): two runs `stopped: peak`, then a run against the wall ended sharp at the same motor position as the run before (`doku/134` A4). Open: the metric's span was only +11 % that day (exposure) |
 | Internal camera | works | `uvcvideo` + `h713-cam`; the USB PHYs are powered by the kernel since 15.09. (SIDDQ, patch 0005a), no `usb start` in the boot loader | 12.09.: grab of the lit wall, mean brightness Y = 88.7, 3.2 s (`analyse/beamer-cam/p6-wand-20260912.png`) |
 | Fan, tacho, stall protection | works | `hy310-board-mgr` | 4860 RPM measured 11.09.; **the fan-stall poweroff is armed and was triggered on the device** 12.09.: rail cut, device shut itself down, next boot mounted the filesystem clean (`analyse/boot/p6-notaus-luefter-20260912.txt`). No NTC on this unit, so the tacho is the protection |
 | Power / standby | partial | standby is 4 W; deep sleep is designed, built for a test and parked | plan `doku/104`; 03.10.: a suspend reached the DRAM entry and the CPU reset, the wake-up never came (`doku/139`), so it is not in the image |
 | Crypto engine | present, unused | measurement module loads, crypto disabled | `doku/114` |
-| Mali-G31 GPU (Panfrost) | works, in `v0.95-beta` | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (`umbau/test-20260915/keystone-20260922.md`) |
+| Mali-G31 GPU (Panfrost) | works, in `v0.95-beta` | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (working journal `keystone-20260922`) |
 | Video decode, IOMMU | unverified here | cstenger's patches, in our series | verified in his tree, not in this image |
 | Bluetooth and the stock remote | works, since `v0.96-beta` | `h713-bluetooth` (hciattach + bluez on UART1), `h713-bt-reset`, `h713-remote-pair`, kernel `0169` | 03.10.: 16 keys and the mouse as input events, 97 of 97 pings beside it, cold start and reconnect; three warm reboots in a row with `hci0` UP at 10.1 - 10.7 s ([docs/subsystems/wifi.md](docs/subsystems/wifi.md#bluetooth)). Nothing acts on the keys yet except Power (shuts down). The IR receiver is parked |
-| HDCP 1.4 | missing, and solvable | key-select 3 of the crypto engine | 03./04.10.: refused from Linux and from EL3 on both units, and the eFuse flag for that key reads zero on both. But on 04.10. the HY300PRO-G-EU, put back on its maker's firmware, authenticated HDCP 1.4 with a PC source in 3 s, twice - so the silicon can do it and the flag is not what it goes by ([docs/known-issues.md](docs/known-issues.md)) |
-| HDCP 2.2 | works, device-local; session unproven | key read from *your* device at boot, never shipped | `h713-hdcp-key.service`; 02.10.: `h713-tv ctl hdcp` shows the key handed over and advertised; no 2.2 source has been on the input |
+| HDCP 1.4 | works, device-local, since 05.10. | the boot loader reads the 288-byte key set out of *your* device's secure storage; our own EL3 service lets the crypto engine put it into the receiver's sink. No vendor code in the image | the open question of 03./04.10. is answered: the engine refuses key-select 3 towards readable memory **by design** (`ESR 0x11`) and accepts it only with the sink as destination **and** the DMA source inside the protected window - which is why it looked refused, and why the eFuse flag was never what it went by. Proven at the picture with a cleared sink as the control: `Desired` -> push -> `Enabled`, three times ([`docs/subsystems/hdcp.md`](docs/subsystems/hdcp.md)) |
+| HDCP 2.2 | works, device-local; session unproven | key read from *your* device at boot, never shipped. Unlike the 1.4 set this one **differs per device** (measured on two boards), so a foreign secure-storage region must never be restored onto a device | `h713-hdcp-key.service`; 02.10.: `h713-tv ctl hdcp` shows the key handed over and advertised; no 2.2 source has been on the input |
 
 ## Changes since v0.95-beta (in v0.96-beta)
 
@@ -96,7 +96,7 @@ drivers' log lines in English (`0180`); `restore-stock` for both known eMMC size
 
 In `v0.95-beta` (23.09.2026). A night of device slots on the HY310 on 22.09.2026 stands behind this list -
 from "no GPU has ever run in this image" to a picture that follows the projector's own tilt. Every reading quoted
-here is in `umbau/test-20260915/keystone-20260922.md`.
+here is in working journal `keystone-20260922`.
 
 - **The keystone exists - by hand and automatically.** [`h713-warp`](docs/tools/h713-warp.md) bends the HDMI
   picture into a quadrilateral on the GPU: the vendor's own projective homography, eight corner insets in
@@ -155,7 +155,7 @@ here is in `umbau/test-20260915/keystone-20260922.md`.
 
 In `v0.9-beta` (22.09.2026). Three device runs on the HY310 on 22.09.2026 stand behind this list -
 `v0.8-dev20` (169 patches), `v0.8-dev21` (177) and `v0.8-dev22` (182); what was read out on the device is in
-`umbau/test-20260915/dev20-20260922.md`, `dev21-20260922.md` and `dev22-20260922.md`.
+working journal `dev20-20260922`, `dev21-20260922` and `dev22-20260922`.
 
 - **The HDMI input locks on the firmware's own mode table.** The driver reads the display firmware's 152 mode
   records (129 enabled) out of `database.TSE` and uses them as the preset list instead of a built-in one. A
@@ -216,7 +216,7 @@ In `v0.9-beta` (22.09.2026). Three device runs on the HY310 on 22.09.2026 stand 
 
 ## Changes since v0.7-beta
 
-Device runs on the HY310 on 16.09.2026 (`v0.8-dev13` to `v0.8-dev15`; German account in `umbau/reviews/P1.md`,
+Device runs on the HY310 on 16.09.2026 (`v0.8-dev13` to `v0.8-dev15`; German account in working journal `P1`,
 `P2.md`, `N1.md`, `N2.md`, `E4.md` and `doku/61`):
 
 - **`v0.7-beta` is superseded**: its layout v3 image is refused by the installer on `main`; take v0.8-beta.
@@ -285,7 +285,7 @@ These are written down because they are *not* done, not because they are expecte
 - the throw ratio with a tape measure, against the 0.8176 the optics data implies, which is what the automatic
   keystone computes with today
 - the auto keystone standing still for ten minutes at rest, and both of them on any board but the HY310
-- an HDCP 2.2 session with a protected 2.2 source; for HDCP 1.4, what makes the key reach the engine (the maker's firmware does it, ours does not - `docs/known-issues.md`)
+- an HDCP 2.2 session with a protected 2.2 source. For HDCP 1.4 the question is closed: the DMA source has to lie inside the protected window ([`docs/subsystems/hdcp.md`](docs/subsystems/hdcp.md))
 - the interlaced modes VIC 6, 7 and 21 in the driver's mode list (the status line names them; 04.10.); two
   autofocus runs ended sharp at two different positions (51 and 93, 04.10.)
 - the ceiling modes with the projector really upside down, and the calibration cards in the mirrored modes

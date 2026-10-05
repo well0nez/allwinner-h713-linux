@@ -436,7 +436,21 @@ grep -E "environment:|OK   $NAME|placeholders for|in all" "$OUT/mkimage.log" | s
 
 # --- 10. check --------------------------------------------------------------
 say "10/11 check"
+# Der Journal-Index ist generiert; ein veralteter Index ist schlimmer als keiner,
+# weil er aussieht wie eine Zusage. Also hier pruefen, nicht hoffen.
+python3 "$ROOT/release/doku-index.py" --pruefen >/dev/null \
+	&& info "journal index up to date" \
+	|| die "doku/INDEX.md is stale -- run release/doku-index.py"
 ( cd "$INSTALLER" && python3 h713-mkimage check "out/$NAME.tabelle.json" ) | tail -2 | sed 's/^/    /'
+# Judge the ARTEFACTS, not the sources: a piece that is not in the effective defconfig
+# compiles away without a word, and the release would simply boot without protected
+# playback. This also refuses an image built with the workbench probes, and any image
+# with key material in it (release/check-hdcp-artifacts.sh, doku/148).
+bash "$ROOT/release/check-hdcp-artifacts.sh" \
+	"$OUT/uboot-proper-release.bin" "$OUT/bl31.bin" > "$OUT/hdcp-gate.log" 2>&1 \
+	&& info "HDCP artefacts: green" \
+	|| { grep -E "FAIL|problem" "$OUT/hdcp-gate.log" | sed 's/^/    /'
+	     die "HDCP artefact check failed (log: $OUT/hdcp-gate.log)"; }
 if [[ -n "$VENDOR" ]]; then
 	( cd "$INSTALLER" && python3 mkimage-selftest.py "out/$NAME.tabelle.json" --vendor "$VENDOR" ) > "$OUT/selftest.log" 2>&1 || true
 	if grep -q "ALL GREEN" "$OUT/selftest.log"; then info "self-test with the vendor files: ALL GREEN"

@@ -1187,6 +1187,20 @@ def write_package(args, disk, path, directory, tab, here=None):
             console.error("THE SECURE STORAGE HAS CHANGED -- please report it, do "
                           "nothing further, keep %s." % ss)
             return 10
+        # Unchanged is not the same as usable. The boot loader reads the HDCP 1.4 key
+        # set straight out of this region, and a device whose item is damaged, blank
+        # or singly stored installs perfectly and then simply has no protected
+        # playback, with nothing on screen to say why. So say it here, once.
+        try:
+            from .hdcpitems import hdcp14_status
+
+            hdcp = hdcp14_status(before)
+            (console.ok if hdcp["ok"] else console.info)(hdcp["text"])
+            if not hdcp["ok"]:
+                console.info("Everything else is installed and the device boots; "
+                             "only HDCP-protected sources stay dark.")
+        except Exception as exc:          # a report must never fail an install
+            console.info("could not judge the HDCP key set (%s)" % exc)
     console.info("")
     console.info("Done. Unplug the power and plug it in again.")
     return 0

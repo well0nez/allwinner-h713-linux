@@ -12,6 +12,7 @@ cannot enumerate is a system you cannot trust.
 | `h713-bluetooth` | brings the AIC8800's Bluetooth up once `h713-wifi` has loaded the chip: `hciattach` on UART1 (1.5 MBd, RTS/CTS) with `h713-bt-reset` before and after it, and the start counts only once `hci0` is UP; bluez (`bluetooth.service`) runs on top. Off with `mode=off` in `wifi.env` ([Bluetooth](subsystems/wifi.md#bluetooth)) |
 | `h713-remote-pair` | `h713-remote-pair watch`: keeps the stock BLE remote bonded and connected, and scans for it while none is connected - hold Left+Right on the remote to pair |
 | `h713-hdcp-key` | reads the 912-byte HDCP 2.2 key out of *your* device's secure storage and hands it to the display firmware. Nothing is shipped, nothing is written back |
+| *(none - HDCP 1.4 happens earlier)* | the 288-byte HDCP 1.4 key set is handed over by the **boot loader**, not by a service: the display firmware polls the sink's "key loaded" bit and gives up before userspace could act. See [`subsystems/hdcp.md`](subsystems/hdcp.md) |
 | `hy310-zram-swap` | compressed swap in RAM: zstd, half of the 1 GiB, one device. This board has no swap partition and no room for one |
 | `hy310-ssh-host-keys` | generates the SSH host keys on first boot, so two devices from the same image are not twins |
 | `h713-warp` | the keystone warp on the GPU ([h713-warp](tools/h713-warp.md)); in bypass, with the GPU closed, until a corner or the zoom is set |

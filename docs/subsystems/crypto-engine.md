@@ -43,3 +43,10 @@ The measurement module loads automatically by device-tree match and stays in the
 deliberate choice (the maintainer, 12.09.2026), not a leftover.
 
 Details: `doku/114-plan-crypto-engine.md`, `doku/112-plan-hdcp14-crypto-engine.md`.
+
+## What this engine is actually used for here
+
+One thing, and it is the interesting one: handing the projector its own HDCP 1.4 key set.
+The engine decrypts the stored key set with a key that exists only inside the SoC and writes
+it straight into the receiver's key sink - it refuses to write it anywhere software could read
+it. See [HDCP](hdcp.md).
