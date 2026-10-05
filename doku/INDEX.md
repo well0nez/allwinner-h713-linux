@@ -114,11 +114,6 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/tests/test_stock_gpt_crosscheck.py` | `doku/60`, `doku/61` |
 | `installer/tests/test_stock_guard.py` | `doku/121` |
 | `installer/tests/test_test_image.py` | `doku/109`, `doku/121` |
-| `installer/tmp/rootfs-baum/usr/local/lib/h713-pq/h713_pq/ausgabe.py` | `doku/81` |
-| `installer/tmp/rootfs-baum/usr/local/lib/h713-pq/h713_pq/modell.py` | `doku/76`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/I0-helligkeit-nachgemessen`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
-| `installer/tmp/rootfs-baum/usr/local/share/doc/h713-cam/README.md` | `doku/94` |
-| `installer/tmp/rootfs-baum/usr/local/share/doc/h713-pq/README.md` | `doku/78`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
-| `installer/tmp/rootfs-baum/usr/local/share/doc/h713-tv/README.md` | `doku/101`, `doku/107`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
 | `release/build-all.sh` | `doku/116`, `doku/120`, `doku/121`, `doku/148`, `doku/50`, `doku/60` |
 | `release/doku-index.py` | `doku/128`, `doku/128a`, `doku/nachtlog/S49-` |
 | `release/repo-skelett.sh` | `doku/116`, `doku/118`, `doku/121` |
@@ -147,13 +142,13 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`01-arbeitsbereich.md`](01-arbeitsbereich.md) | Analyse |  | H713 / HY260 - Arbeitsbereich | - |
 | [`10-hardware.md`](10-hardware.md) | Analyse |  | Hardware | 3 |
 | [`100-plan-hdmi-audio.md`](100-plan-hdmi-audio.md) | Plan |  | Plan: HDMI-Audio - vom Zuspieler über den HDMI-Eingang zum Lautsprecher | 1 |
-| [`101-plan-audio-treiber.md`](101-plan-audio-treiber.md) | Plan |  | 101 - Plan: HDMI-Audio als Treiber (Kernel + Codec + hy310-tv) | 5 |
+| [`101-plan-audio-treiber.md`](101-plan-audio-treiber.md) | Plan |  | 101 - Plan: HDMI-Audio als Treiber (Kernel + Codec + hy310-tv) | 4 |
 | [`102-plan-audio-mischung.md`](102-plan-audio-mischung.md) | Plan |  | Plan 102 - Gerätetöne mit HDMI-Ton mischen (Audio-Bridge + Mischgraph) | 3 |
 | [`103-plan-einschaltgate.md`](103-plan-einschaltgate.md) | Plan |  | Plan 103 - Einschalt-Gate: Netz an = Bereitschaft, Taste = Start | 3 |
 | [`104-plan-standby-stufe2.md`](104-plan-standby-stufe2.md) | Plan |  | Plan 104 - Einschalt-Gate Stufe 2: Stock-Standby über die ARISC | 3 |
 | [`105-plan-release.md`](105-plan-release.md) | Plan |  | Plan 105 - Release: den HY310-Stand für andere nutzbar machen | 2 |
 | [`106-handoff-20260910.md`](106-handoff-20260910.md) | Handoff | 2026-09-10 | Handoff 10.09.2026 - Stand, Todos, teuer bezahltes Wissen | - |
-| [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 6 |
+| [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 5 |
 | [`108-plan-vendordaten.md`](108-plan-vendordaten.md) | Plan |  | Plan 108 - die Vendor-Artefakte vom Stock-Layout lösen | 5 |
 | [`109-plan-layout-v3.md`](109-plan-layout-v3.md) | Plan |  | Plan 109 - Layout v3: die Boot-Kette an den Anfang | 18 |
 | [`110-plan-installationsweg.md`](110-plan-installationsweg.md) | Plan |  | Plan 110 - der Installationsweg für Nutzer | 6 |
@@ -202,7 +197,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
-| [`60-offen.md`](60-offen.md) | Analyse |  | Offene Punkte | 16 |
+| [`60-offen.md`](60-offen.md) | Analyse |  | Offene Punkte | 15 |
 | [`61-plan-vblank.md`](61-plan-vblank.md) | Plan |  | Der Vblank-Interrupt - gelöst | 10 |
 | [`61-todo.md`](61-todo.md) | Analyse |  | Alle offenen Punkte auf einer Seite | 10 |
 | [`62-video.md`](62-video.md) | Analyse |  | Video: VE-Dekodierung und Wiedergabe auf dem Panel | 1 |
@@ -219,25 +214,25 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`73-plan-setsource-absturz.md`](73-plan-setsource-absturz.md) | Plan |  | Plan: `SetSource` tötet den ARM - Sezierung und Angriff (Handoff, 06.09.2026) | - |
 | [`74-setsource-ursache-nullzeiger.md`](74-setsource-ursache-nullzeiger.md) | Analyse |  | 74 - Ursache des SetSource(HDMI)-Absturzes: `sgp_hal_signal_info` ist NULL | 1 |
 | [`75-handoff-20260907.md`](75-handoff-20260907.md) | Handoff | 2026-09-07 | Übergabe, 07.09.2026 - SetSource(HDMI) gelöst; als Nächstes: Geräteerkennung (HPD/EDID) und Bild | 1 |
-| [`76-plan-ch0-de.md`](76-plan-ch0-de.md) | Plan |  | ch0 und das DE-Problem: Befundlage, Ursachenkette, Messplan | 4 |
-| [`77-plan-hdmi-integration.md`](77-plan-hdmi-integration.md) | Plan |  | HDMI-Eingang: Integrationsplan - Kernel, Userspace, Zwischenschritte, PQ | 4 |
-| [`78-nachtplan-hdmi-switch.md`](78-nachtplan-hdmi-switch.md) | Plan |  | Nachtplan: der HDMI-Switch als Teil des Systems - Aufträge für autonome Agenten | 7 |
+| [`76-plan-ch0-de.md`](76-plan-ch0-de.md) | Plan |  | ch0 und das DE-Problem: Befundlage, Ursachenkette, Messplan | 3 |
+| [`77-plan-hdmi-integration.md`](77-plan-hdmi-integration.md) | Plan |  | HDMI-Eingang: Integrationsplan - Kernel, Userspace, Zwischenschritte, PQ | 3 |
+| [`78-nachtplan-hdmi-switch.md`](78-nachtplan-hdmi-switch.md) | Plan |  | Nachtplan: der HDMI-Switch als Teil des Systems - Aufträge für autonome Agenten | 5 |
 | [`79-nachtlog-20260907.md`](79-nachtlog-20260907.md) | Analyse | 2026-09-07 | Nachtlog 06./07.09.2026 - Aufträge aus [78-nachtplan-hdmi-switch.md](78-nachtplan-hdmi-switch.md) | - |
 | [`80-vergleich-baeume.md`](80-vergleich-baeume.md) | Analyse |  | Was cstenger portiert hat, und was nicht | 2 |
-| [`81-pq-datenmodell.md`](81-pq-datenmodell.md) | Analyse |  | PQ-Datenmodell - von der Stock-Datei bis zum Register | 10 |
+| [`81-pq-datenmodell.md`](81-pq-datenmodell.md) | Analyse |  | PQ-Datenmodell - von der Stock-Datei bis zum Register | 7 |
 | [`82-arisc-treiber.md`](82-arisc-treiber.md) | Analyse |  | `sun50i-h713-arisc` - der ARISC-Treiber | 3 |
 | [`83-cpu-comm-api.md`](83-cpu-comm-api.md) | Analyse |  | Die In-Kernel-API von `cpu_comm` | 3 |
 | [`84-re-capture-ring.md`](84-re-capture-ring.md) | Analyse |  | RE: INCAP-Felder, Ring-Folge und der zweite Descriptor-Anstoß (K1-K3) | 1 |
-| [`85-re-pq-register.md`](85-re-pq-register.md) | Analyse |  | 85 - PQ-Register der MIPS-Firmware (K5) und Vorstudie Compositing (K6) | 6 |
-| [`86-video-plane-nv16.md`](86-video-plane-nv16.md) | Plan |  | Die Video-Plane: NV16 aus dem HDMI-Capture-Ring (Patch 0093) | 7 |
+| [`85-re-pq-register.md`](85-re-pq-register.md) | Analyse |  | 85 - PQ-Register der MIPS-Firmware (K5) und Vorstudie Compositing (K6) | 4 |
+| [`86-video-plane-nv16.md`](86-video-plane-nv16.md) | Plan |  | Die Video-Plane: NV16 aus dem HDMI-Capture-Ring (Patch 0093) | 6 |
 | [`87-gamma-ctm-kms.md`](87-gamma-ctm-kms.md) | Analyse |  | Gamma und Weißabgleich als KMS-Eigenschaften am H713-AFBD-CRTC | 3 |
-| [`88-v4l2-hdmirx.md`](88-v4l2-hdmirx.md) | Analyse |  | 88 - `sun50i-h713-hdmirx`: der HDMI-Eingang als V4L2-Gerät | 6 |
+| [`88-v4l2-hdmirx.md`](88-v4l2-hdmirx.md) | Analyse |  | 88 - `sun50i-h713-hdmirx`: der HDMI-Eingang als V4L2-Gerät | 5 |
 | [`89-composition-block.md`](89-composition-block.md) | Analyse |  | Der Composition-Block bei `0x05000000` - gelesen am 07.09.2026 | - |
 | [`90-stock-referenz.md`](90-stock-referenz.md) | Analyse |  | Der Stock-Vergleich | 1 |
 | [`91-plan-drei-punkte.md`](91-plan-drei-punkte.md) | Plan |  | Plan: die drei offenen Punkte des Umschalters | - |
 | [`92-plan-de-scaler.md`](92-plan-de-scaler.md) | Plan |  | Plan - DE-Scaler und Auflösungsunterstützung | - |
 | [`93-todo-scaler-und-720p.md`](93-todo-scaler-und-720p.md) | Analyse |  | TODO - Scaler und 720p | - |
-| [`94-fokusmotor-endschalter.md`](94-fokusmotor-endschalter.md) | Analyse |  | Fokusmotor und der Bereichswächter auf PH14 - Stand 12.09.2026 | 6 |
+| [`94-fokusmotor-endschalter.md`](94-fokusmotor-endschalter.md) | Analyse |  | Fokusmotor und der Bereichswächter auf PH14 - Stand 12.09.2026 | 5 |
 | [`95-netboot.md`](95-netboot.md) | Analyse |  | Netboot: Kernel per TFTP, Wurzelverzeichnis per NFS | - |
 | [`96-anzeigekette.md`](96-anzeigekette.md) | Analyse |  | Die Anzeigekette des H713 - wie sie wirklich funktioniert | 6 |
 | [`97-handoff-20260908.md`](97-handoff-20260908.md) | Handoff | 2026-09-08 | Handoff 08.09.2026 - Grünstich und Kippen gelöst, Scaler läuft, Restpunkte abgearbeitet | - |
@@ -249,7 +244,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`nachtlog/A-abnahme-board.md`](nachtlog/A-abnahme-board.md) | Nachtlog |  | A - Board-Abnahme (Board-Slot 1, Hauptsitzung) | 1 |
 | [`nachtlog/A-patches.md`](nachtlog/A-patches.md) | Nachtlog |  | Paket A - cstengers Display-/Video-Patches übernehmen | - |
 | [`nachtlog/A2-hpd-dauer-edid.md`](nachtlog/A2-hpd-dauer-edid.md) | Nachtlog |  | A2 - Wie lange muss HPD beim EDID-Upload unten liegen? **200 ms.** (Board-Agent, 07.09. 08:33-08:36) | 1 |
-| [`nachtlog/A6-4-aufloesungswechsel.md`](nachtlog/A6-4-aufloesungswechsel.md) | Nachtlog |  | Auflösungswechsel der Quelle - Nachtplan A.6 Punkt 4, erstmals gemessen (07.09., 07:55-08:05) | 2 |
+| [`nachtlog/A6-4-aufloesungswechsel.md`](nachtlog/A6-4-aufloesungswechsel.md) | Nachtlog |  | Auflösungswechsel der Quelle - Nachtplan A.6 Punkt 4, erstmals gemessen (07.09., 07:55-08:05) | 1 |
 | [`nachtlog/B-abnahme-board.md`](nachtlog/B-abnahme-board.md) | Nachtlog |  | B - Board-Abnahme des ARISC-Treibers (Hauptsitzung, 23:32-00:05) | - |
 | [`nachtlog/B-arisc.md`](nachtlog/B-arisc.md) | Nachtlog |  | B - ARISC-Treiber: Firmware-Laden, Handshake, HDMI-API | - |
 | [`nachtlog/B-fix-checkedid.md`](nachtlog/B-fix-checkedid.md) | Nachtlog |  | B - `CheckEDIDUpdateStatus`: Ursache gefunden, Treiber korrigiert (05:58-06:21) | - |
@@ -266,9 +261,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`nachtlog/C5-rpc-ursache-behoben.md`](nachtlog/C5-rpc-ursache-behoben.md) | Nachtlog |  | C5 - Der RPC-Verlust: Ursache gefunden, behoben, abgenommen | - |
 | [`nachtlog/CALLBACK-luecke.md`](nachtlog/CALLBACK-luecke.md) | Nachtlog |  | Die Callback-Lücke - verfolgt, gefunden, behoben (Unteragent, 07.09. vormittags) | - |
 | [`nachtlog/CALLBACK-regression.md`](nachtlog/CALLBACK-regression.md) | Nachtlog |  | Callback-Fix: die Regression an E - erklärt und behoben (Unteragent, 07.09. mittags) | - |
-| [`nachtlog/D-abnahme-board.md`](nachtlog/D-abnahme-board.md) | Nachtlog |  | D - Board-Abnahme der NV16-Video-Plane (Hauptsitzung, 05:58-06:10) | 2 |
+| [`nachtlog/D-abnahme-board.md`](nachtlog/D-abnahme-board.md) | Nachtlog |  | D - Board-Abnahme der NV16-Video-Plane (Hauptsitzung, 05:58-06:10) | 1 |
 | [`nachtlog/D-cstride-befund.md`](nachtlog/D-cstride-befund.md) | Nachtlog |  | D - der C-Stride greift nicht aus jedem Vorzustand (Board-Agent, 07.09. 06:50-07:05) | - |
-| [`nachtlog/D-cstride-fix.md`](nachtlog/D-cstride-fix.md) | Nachtlog |  | D - der C-Stride greift jetzt aus jedem Vorzustand (Offline-Agent, 07.09., 07:10-08:30) | 2 |
+| [`nachtlog/D-cstride-fix.md`](nachtlog/D-cstride-fix.md) | Nachtlog |  | D - der C-Stride greift jetzt aus jedem Vorzustand (Offline-Agent, 07.09., 07:10-08:30) | 1 |
 | [`nachtlog/D-plane.md`](nachtlog/D-plane.md) | Nachtlog |  | Paket D - Video-Plane auf den HDMI-Capture-Ring (NV16) | - |
 | [`nachtlog/DE-vsync-notifier.md`](nachtlog/DE-vsync-notifier.md) | Nachtlog |  | D+E - Vsync-Notifier: eine Eigentümerschaft für `0x05600320/324` | - |
 | [`nachtlog/DOKU-ABGLEICH.md`](nachtlog/DOKU-ABGLEICH.md) | Nachtlog |  | Doku-Abgleich - Querprüfung der sechs nachgezogenen Dokumente | - |
@@ -280,13 +275,13 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`nachtlog/E6-aufloesung-erkennung-und-scaler.md`](nachtlog/E6-aufloesung-erkennung-und-scaler.md) | Nachtlog |  | E6 - Auflösungswechsel: Erkennung steht, DE-Scaler ist der offene Rest | - |
 | [`nachtlog/F-abnahme-und-callback-luecke.md`](nachtlog/F-abnahme-und-callback-luecke.md) | Nachtlog |  | F am Gerät - und die Lücke, die dabei sichtbar wurde (Board-Agent, 09:07-09:13) | - |
 | [`nachtlog/F-hy310-tv.md`](nachtlog/F-hy310-tv.md) | Nachtlog |  | Paket F - `hy310-tv` (offline: Entwurf + Gerüst) | - |
-| [`nachtlog/F-korrektur.md`](nachtlog/F-korrektur.md) | Nachtlog |  | Paket F - `RING_SETTLE_MS` raus, Ringbeobachtung rein (offline, 07.09. ab 08:4x) | 2 |
-| [`nachtlog/F-startklar.md`](nachtlog/F-startklar.md) | Nachtlog |  | Paket F - `hy310-tv` startklar gemacht (offline, 07.09. ab 07:5x) | 2 |
-| [`nachtlog/G-korrektur-saettigung.md`](nachtlog/G-korrektur-saettigung.md) | Nachtlog |  | Paket G - Korrektur der Sättigung: Registerwert → RPC-Argument | 6 |
+| [`nachtlog/F-korrektur.md`](nachtlog/F-korrektur.md) | Nachtlog |  | Paket F - `RING_SETTLE_MS` raus, Ringbeobachtung rein (offline, 07.09. ab 08:4x) | 1 |
+| [`nachtlog/F-startklar.md`](nachtlog/F-startklar.md) | Nachtlog |  | Paket F - `hy310-tv` startklar gemacht (offline, 07.09. ab 07:5x) | 1 |
+| [`nachtlog/G-korrektur-saettigung.md`](nachtlog/G-korrektur-saettigung.md) | Nachtlog |  | Paket G - Korrektur der Sättigung: Registerwert → RPC-Argument | 4 |
 | [`nachtlog/G-pq.md`](nachtlog/G-pq.md) | Nachtlog |  | Paket G - PQ-Werkzeug `hy310-pq` | - |
 | [`nachtlog/H-abnahme-board.md`](nachtlog/H-abnahme-board.md) | Nachtlog |  | H - Board-Abnahme Gamma/CTM (Hauptsitzung, 06:12-06:14) - **abgenommen** | 1 |
 | [`nachtlog/H-gamma.md`](nachtlog/H-gamma.md) | Nachtlog |  | Paket H - Gamma und CTM im KMS | - |
-| [`nachtlog/I0-helligkeit-nachgemessen.md`](nachtlog/I0-helligkeit-nachgemessen.md) | Nachtlog |  | I0 - Helligkeit wirkt doch. Nachgemessen, mit dunklem Material. | 2 |
+| [`nachtlog/I0-helligkeit-nachgemessen.md`](nachtlog/I0-helligkeit-nachgemessen.md) | Nachtlog |  | I0 - Helligkeit wirkt doch. Nachgemessen, mit dunklem Material. | 1 |
 | [`nachtlog/I1-get-routinen.md`](nachtlog/I1-get-routinen.md) | Nachtlog |  | I1 - Die `Get*`-Routinen der Firmware liefern konstant 0 | - |
 | [`nachtlog/I2-chroma-gain-zwei-schreiber.md`](nachtlog/I2-chroma-gain-zwei-schreiber.md) | Nachtlog |  | I2 - Der Chroma-Gain hat zwei Schreiber, und das V4L2-Control lügt dabei | - |
 | [`nachtlog/I3-gain-null-ist-grau.md`](nachtlog/I3-gain-null-ist-grau.md) | Nachtlog |  | I3 - Gain 0x00 ist ein graues Bild. Der Ersatz muss vor dem Löschen stehen. | - |
@@ -295,9 +290,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`nachtlog/INTEGRATION.md`](nachtlog/INTEGRATION.md) | Nachtlog |  | Integrationsplan der fünf neuen Patches | - |
 | [`nachtlog/J-pflichtliste.md`](nachtlog/J-pflichtliste.md) | Nachtlog |  | Paket J - Pflichtliste `legacy/docs/known-issues.md` | - |
 | [`nachtlog/K1-K3-re.md`](nachtlog/K1-K3-re.md) | Nachtlog |  | Teillog: RE-Fragen K1, K2, K3 (statische Analyse, kein Board) | - |
-| [`nachtlog/K4-hotplug.md`](nachtlog/K4-hotplug.md) | Nachtlog |  | K4 - Hot-Plug nach dem Boot (Board-Agent = Hauptsitzung) | 3 |
+| [`nachtlog/K4-hotplug.md`](nachtlog/K4-hotplug.md) | Nachtlog |  | K4 - Hot-Plug nach dem Boot (Board-Agent = Hauptsitzung) | 2 |
 | [`nachtlog/K5-K6-re.md`](nachtlog/K5-K6-re.md) | Nachtlog |  | Teillog K5 / K6 - RE: PQ-Register und Compositing | - |
-| [`nachtlog/K5-board-verifikation.md`](nachtlog/K5-board-verifikation.md) | Nachtlog |  | K5 am Gerät verifiziert (Board-Agent = Hauptsitzung, 22:45-22:50) | 6 |
+| [`nachtlog/K5-board-verifikation.md`](nachtlog/K5-board-verifikation.md) | Nachtlog |  | K5 am Gerät verifiziert (Board-Agent = Hauptsitzung, 22:45-22:50) | 4 |
 | [`nachtlog/L-doku.md`](nachtlog/L-doku.md) | Nachtlog |  | Paket L - Dokumentation (Teillog) | - |
 | [`nachtlog/M4-hpd-dauer.md`](nachtlog/M4-hpd-dauer.md) | Nachtlog |  | M4 - Wie lange muss HPD unten liegen? (Board-Agent = Hauptsitzung, 22:51-22:54) | - |
 | [`nachtlog/M4-nachpruefung.md`](nachtlog/M4-nachpruefung.md) | Nachtlog |  | M4 nachgeprüft - der HPD-Zyklus gibt die Capture *nicht* frei | - |
@@ -305,12 +300,12 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`nachtlog/REGEL1-durchsicht.md`](nachtlog/REGEL1-durchsicht.md) | Nachtlog |  | Regel-1-Durchsicht des Kernelpfads 0091-0097 | - |
 | [`nachtlog/S1-scaler-gefunden.md`](nachtlog/S1-scaler-gefunden.md) | Nachtlog |  | S1 - Der Scaler ist gefunden, und `doku/89` lag zweifach falsch | - |
 | [`nachtlog/S10-re-cpucomm-callback-slots.md`](nachtlog/S10-re-cpucomm-callback-slots.md) | Nachtlog |  | S10 - Warum die MIPS-Firmware nach dem 20. Rückruf in `cmdfifo.type=0` hängt | - |
-| [`nachtlog/S11-gruenstich-ursache-und-callback-slots.md`](nachtlog/S11-gruenstich-ursache-und-callback-slots.md) | Nachtlog |  | S11 - Der Grünstich hat einen Schalter, das Kippen einen Zähler | 2 |
-| [`nachtlog/S12-hy310-tv-review.md`](nachtlog/S12-hy310-tv-review.md) | Nachtlog |  | S12 - Review `hy310-tv`: Programm, Konsolen-Cursor, Steuerschnittstelle, Dienst | 2 |
+| [`nachtlog/S11-gruenstich-ursache-und-callback-slots.md`](nachtlog/S11-gruenstich-ursache-und-callback-slots.md) | Nachtlog |  | S11 - Der Grünstich hat einen Schalter, das Kippen einen Zähler | 1 |
+| [`nachtlog/S12-hy310-tv-review.md`](nachtlog/S12-hy310-tv-review.md) | Nachtlog |  | S12 - Review `hy310-tv`: Programm, Konsolen-Cursor, Steuerschnittstelle, Dienst | 1 |
 | [`nachtlog/S13-restpunkte.md`](nachtlog/S13-restpunkte.md) | Nachtlog |  | S13 - Restpunkte 08.09.2026 (09:30-10:20): Protokoll | - |
-| [`nachtlog/S14-re-picture-mode.md`](nachtlog/S14-re-picture-mode.md) | Nachtlog |  | S14 - RE: `THal_Vp_SetPictureMode`, die `Get*`-Routinen und der Bildmodus-Zustand | 6 |
-| [`nachtlog/S15-re-aspect-regel.md`](nachtlog/S15-re-aspect-regel.md) | Nachtlog |  | S15 - RE: Formatregel und Breitbildmodus der MIPS-Displayfirmware (5:4 wird gestreckt) | 2 |
-| [`nachtlog/S16-hdmi-audio.md`](nachtlog/S16-hdmi-audio.md) | Nachtlog |  | S16 - HDMI-Audio: Materialcheck und erste Messungen (08.09.2026, 11:45-12:30) | 2 |
+| [`nachtlog/S14-re-picture-mode.md`](nachtlog/S14-re-picture-mode.md) | Nachtlog |  | S14 - RE: `THal_Vp_SetPictureMode`, die `Get*`-Routinen und der Bildmodus-Zustand | 3 |
+| [`nachtlog/S15-re-aspect-regel.md`](nachtlog/S15-re-aspect-regel.md) | Nachtlog |  | S15 - RE: Formatregel und Breitbildmodus der MIPS-Displayfirmware (5:4 wird gestreckt) | 1 |
+| [`nachtlog/S16-hdmi-audio.md`](nachtlog/S16-hdmi-audio.md) | Nachtlog |  | S16 - HDMI-Audio: Materialcheck und erste Messungen (08.09.2026, 11:45-12:30) | 1 |
 | [`nachtlog/S17-re-audio-top-einschalten.md`](nachtlog/S17-re-audio-top-einschalten.md) | Nachtlog |  | S17 (F1) - Warum der Audio-Top `0x0614xxxx` null liest, und wie man ihn einschaltet | - |
 | [`nachtlog/S18-re-mips-hdmi-audio.md`](nachtlog/S18-re-mips-hdmi-audio.md) | Nachtlog |  | S18 (F2) - Was die MIPS-Firmware mit HDMI-Audio tut, und was der ARM davon sehen kann | - |
 | [`nachtlog/S19-re-audbrg-capture.md`](nachtlog/S19-re-audbrg-capture.md) | Nachtlog |  | S19 - RE: Capture-Rezept des Audio-Bridge (AUDIF/AUDBRG) **ohne DSP** | - |
@@ -328,7 +323,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`nachtlog/S3-scaler-gefunden-und-bewiesen.md`](nachtlog/S3-scaler-gefunden-und-bewiesen.md) | Nachtlog |  | S3 - Der Scaler: Register gefunden, Formel hergeleitet, bitgenau gegengeprüft | - |
 | [`nachtlog/S30-treiber-c-codec.md`](nachtlog/S30-treiber-c-codec.md) | Nachtlog |  | S30 - Paket C: Codec-I2S-Fenster, `DAC Source`, `I2S Rate` (Patch 0135) | - |
 | [`nachtlog/S31-treiber-d-hdmirx.md`](nachtlog/S31-treiber-d-hdmirx.md) | Nachtlog |  | S31 - Paket D: Audiostatus des HDMI-Empfängers als V4L2-Controls (Patch 0136) | - |
-| [`nachtlog/S32-treiber-e-hy310tv.md`](nachtlog/S32-treiber-e-hy310tv.md) | Nachtlog |  | S32 - Paket E: `hy310-tv`, der Ton folgt dem Bild (Patch `hy310-tv-audio.patch`) | 2 |
+| [`nachtlog/S32-treiber-e-hy310tv.md`](nachtlog/S32-treiber-e-hy310tv.md) | Nachtlog |  | S32 - Paket E: `hy310-tv`, der Ton folgt dem Bild (Patch `hy310-tv-audio.patch`) | 1 |
 | [`nachtlog/S35-re-arisc-standby-led-key.md`](nachtlog/S35-re-arisc-standby-led-key.md) | Nachtlog |  | S35 - ARISC-Standby: LEDs, Power-Key, R_PIO-Register (statisches RE) | - |
 | [`nachtlog/S36-uboot-power-gate.md`](nachtlog/S36-uboot-power-gate.md) | Nachtlog |  | S36 - U-Boot: Einschalt-Gate (Paket G1 aus Plan 103) | - |
 | [`nachtlog/S37-tfa-poweroff-gate.md`](nachtlog/S37-tfa-poweroff-gate.md) | Nachtlog |  | S37 - TF-A: `poweroff` führt ins Einschalt-Gate (Paket G2 aus Plan 103) | - |
