@@ -107,14 +107,20 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 8 Lokale Werkzeuge
 
-- [ ] 8.1 MemPalace-Ketten abwarten (`mine` → `init repo-neu` → `sweep` → `status`)
-- [ ] 8.2 **Bilanz 12.10.**: findet eine neue Sitzung von selbst, was sie braucht? Sonst raus
-- [ ] 8.3 Graphify installieren, `--code-only` über `repo-neu/`, Eintrag in `werkzeuge.md`
-- [ ] 8.4 Graphify-Doku-Extraktion nur bei Bedarf (geht an Anthropic)
-- [ ] 8.5 `settings.json.vor-mempalace-*` nach Probewoche löschen
-- [ ] 8.6 cognee gestrichen — in der Recherche-Datei vermerken
-- [ ] 8.7 HY310 läuft noch; Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.**
-- [ ] 8.8 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
+- [ ] 8.1 MemPalace-Kette abwarten: Transkripte + referenz/ gemined, `init repo-neu` durch,
+      `sweep` läuft; `mine repo-neu` ist eingereiht (init hat es ohne Terminal übersprungen)
+- [ ] 8.2 **Bilanz 12.10.** für MemPalace *und* Graphify: findet eine neue Sitzung von selbst,
+      was sie braucht? Sonst raus, bevor es Gewohnheit wird
+- [x] 8.3 Graphify installiert, `--code-only` über `repo-neu/` (7 862 Knoten, 0 Token),
+      Eintrag in `werkzeuge.md`, `.graphifyignore` + `graphify-out/` in `.gitignore` (05.10.)
+- [ ] 8.4 Graphify-Doku-Extraktion nur bei Bedarf (geht an ein LLM) — Stand: nein, Doku bleibt
+      bei referenz/ + MemPalace
+- [ ] 8.5 Graphify-Gemeinschaften heißen „Community N" (ohne LLM keine Namen). Bei der Bilanz
+      entscheiden, ob `graphify label --backend claude-cli` erlaubt ist (schickt nur Symbolnamen)
+- [ ] 8.6 `settings.json.vor-mempalace-*` und `settings.json.vor-graphify-*` nach Probewoche löschen
+- [ ] 8.7 cognee gestrichen — in der Recherche-Datei vermerken
+- [ ] 8.8 HY310 läuft noch; Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.**
+- [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)
 
