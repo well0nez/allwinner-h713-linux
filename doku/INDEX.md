@@ -196,6 +196,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`146-handoff-hdcp14-und-plan.md`](146-handoff-hdcp14-und-plan.md) | Handoff |  | 146 - Handoff HDCP 1.4 und Plan, Stand 05.10.2026 00:3x | - |
 | [`147-hdcp14-statusbericht-20261005.md`](147-hdcp14-statusbericht-20261005.md) | Analyse | 2026-10-05 | 147 — HDCP 1.4: Statusbericht nach der Nacht 04./05.10.2026 | 1 |
 | [`148-plan-hdcp14-produktionsreife.md`](148-plan-hdcp14-produktionsreife.md) | Plan |  | 148 — Plan: HDCP-1.4-Bootkette produktionsreif (Stand 05.10.2026, 08:xx) | 3 |
+| [`150-handoff-20261005.md`](150-handoff-20261005.md) | Handoff | 2026-10-05 | 150 — Handoff 05.10.2026, ~15:30: HDCP 1.4 produktionsreif, Repo bereinigt, lokal aufgeräumt — und alle Todos | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -353,7 +354,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-117 von 207. Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will.
+118 von 208. Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will.
 
 * `01-arbeitsbereich.md`
 * `106-handoff-20260910.md`
@@ -376,6 +377,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `143-handoff-gesamt-20261004.md`
 * `144-offene-punkte-20261004.md`
 * `146-handoff-hdcp14-und-plan.md`
+* `150-handoff-20261005.md`
 * `69-handoff-20260905.md`
 * `72-hdcp14-setsource.md`
 * `73-plan-setsource-absturz.md`
