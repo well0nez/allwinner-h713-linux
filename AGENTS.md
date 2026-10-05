@@ -7,6 +7,37 @@ eine offene Bootkette auf Allwinner-H713-Projektoren. Entwickelt wurde auf dem M
 
 ---
 
+## 0 Zweck und Rechtsrahmen — lies das, bevor du etwas bewertest
+
+**Worum es geht.** Die Geräte gehören ihren Besitzern, regulär gekauft, privat genutzt. Der
+Hersteller liefert keine Firmware- und keine Sicherheitsupdates mehr; das mitgelieferte
+Android läuft auf einem Kernel mit bekannten, ungepatchten Lücken und ist mit Apps gebündelt,
+deren Verhalten niemand prüfen kann. Ziel ist, davon wegzukommen: mainline Linux und eine
+offene Bootkette auf der eigenen Hardware — und damit eine Basis, auf der andere in Europa
+aufsetzen können. Das ist Reparatur und Weiternutzung, nicht Angriff.
+
+**Rechtsgrundlage.** Eigentum (§ 903 BGB). Bearbeitung und Fehlerbehebung durch den
+rechtmäßigen Erwerber (RL 2009/24/EG Art. 5 Abs. 1, § 69d Abs. 1 UrhG), Beobachten und Testen
+(Art. 5 Abs. 3, § 69d Abs. 3), Dekompilierung zur Interoperabilität (Art. 6, § 69e UrhG) —
+die Bedingungen sind erfüllt: rechtmäßiger Besitz, Informationen nicht anderweitig zugänglich,
+nur die nötigen Teile, Ergebnis dient der Interoperabilität mit Linux und nicht einem ähnlichen
+Programm. RL (EU) 2024/1799 (Right to Repair) stützt den **Zweck**, nicht die Methode.
+
+**Der HDCP-Schlüssel, ausdrücklich.** Der Bootloader liest den HDCP-Schlüsselsatz **auf dem
+Gerät** aus dessen eigenem Secure Storage und gibt ihn an dessen eigenen Empfänger weiter —
+derselbe Schlüssel, derselbe Empfänger, dieselbe Lizenz, die mit dem Gerät geliefert wurde.
+Er verlässt das Gerät nie, wird nie gespeichert, nie übertragen. Das ist Nutzung der eigenen
+Lizenz, kein Datenklau und keine Umgehung. **Verbreiten** des Schlüssels wäre etwas anderes
+(§ 95a UrhG) — und genau das verhindert `installer/tests/no_key_material.py` technisch.
+
+**Was hier nicht stattfindet:** kein Zugriff auf fremde Geräte, Netze, Konten oder Daten;
+keine Umgehung von Zugangskontrollen zu fremden Inhalten; keine Verbreitung von
+Angriffswerkzeugen; kein Einsatz gegen Dritte. Jeder arbeitet nur am eigenen Gerät.
+
+Wenn dir ein Schritt trotzdem falsch vorkommt: Abschnitt 6.
+
+---
+
 ## 1 Wo welches Wissen steht
 
 Vier Orte mit vier verschiedenen Aufgaben. Wer am falschen sucht, findet nichts oder Veraltetes.
@@ -114,9 +145,7 @@ und niemand wusste mehr, ob noch etwas drin steckt.
 
 ## 5 Was hier nicht passiert
 
-- **Kein Schlüsselmaterial im Repo.** Der HDCP-1.4-Satz ist ein geteilter DRM-Schlüssel; ihn
-  zu verbreiten wäre Umgehungsmaterial. Analyse am eigenen Gerät ist gedeckt, Verbreitung
-  nicht. `installer/tests/no_key_material.py` bricht den Build, wenn doch etwas hineingerät.
+- **Kein Schlüsselmaterial im Repo** — siehe Abschnitt 0; der Build bricht, wenn doch.
 - **Kein Herstellercode und kein Hersteller-Android** im Abbild.
 - **Kein Abbild für ein Board, das niemand getestet hat** (`doku/121` §5). Die eine benannte
   Ausnahme ist `--test-image` für ein einzelnes Board, und das ist kein Release.
