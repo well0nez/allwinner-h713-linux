@@ -337,3 +337,34 @@ trägt also etwas, das für den Kernelstart nötig ist, und es ist **nicht** im 
    * `sunxi_h713_sip.c` in BL31 und `PLAT_XLAT_TABLES_DYNAMIC`
    * `-DBL32_BASE` nur wenn ein Secure Payload gebaut wird (`ifneq (${SPD},none)`)
 3. Einen Bau je Rolle einmal bis Linux booten, nicht nur übersetzen.
+
+## Nachtrag 05.10. 13:xx - HDCP-1.4-Umsetzung: was daran hacky ist (Marco: "als Todo aufnehmen")
+
+Die Kette funktioniert und ist dreimal am Bild belegt (`doku/148`). Zufrieden bin ich damit
+trotzdem nicht ueberall; das hier sind die Punkte, mit denen ich hadere, nach Gewicht:
+
+- **[TEE-1, der wesentliche] Der HDCP-Pfad laeuft in EL3.** "Kein Herstellercode" haben wir
+  erreicht, indem unser CE-Task in BL31 sitzt - auf der hoechsten Privilegstufe. Jeder Fehler
+  darin ist ein EL3-Fehler. Die S-EL1-Variante (FB-HDCP14i, TSP-Basis) lief und wurde als
+  "unnoetig" verworfen, weil BL31 genuegt. Technisch richtig, sicherheitstechnisch die bequeme
+  Entscheidung: die Isolationsschicht, die genau fuer solchen Code gedacht ist, fehlt.
+  Wiedereinstieg: `tfa-h713/0007` tragen die Quellen; die drei Stolpersteine (execute-never-
+  Abbildung, Timer an S-EL1 unbrauchbar, SMC_RET3-Konvention) stehen in der Commit-Nachricht.
+- **[TEE-2] `push_from` laesst die normale Welt die Quelladresse waehlen.** EL3 prueft nur
+  Ausrichtung und Fensterbereich und liest dann per DMA von dort in die Senke. Die normale
+  Welt entscheidet also, was als HDCP-Identitaet des Geraets installiert wird. Auslesen kann
+  sie nichts (die Engine verweigert den Hardwareschluessel nach lesbarem Speicher); der Schaden
+  ist auf "Schluessel, der nicht authentisiert" begrenzt. Sauber: EL3 liest den Schluessel
+  SELBST vom eMMC, die normale Welt uebergibt gar nichts.
+- **[TEE-3] Die Strukturpruefung sitzt auf der falschen Seite.** U-Boot prueft Magic, Namen,
+  Laengen, Kopiengleichheit; EL3 vertraut dem Zeiger. Nach innen spiegeln (Defense in Depth).
+- **[TEE-4] Die 32 Byte am Ende des 320-Byte-Datensatzes sind unerklaert.** Wir schieben 288
+  und es funktioniert. Ob der Anhang auf einem anderen Geraet eine Rolle spielt: unbekannt.
+- **[TEE-5] Zwei Kleinigkeiten.** Der Watchdog-Schutz in `h713_hdcp14.c` schreibt direkt in die
+  Watchdog-Register am Treiber vorbei (abgesichert: nur wenn ihn niemand sonst faehrt, aber
+  eine geteilte Ressource). `0x48a00000` samt Fenstergrenzen `0x48600000..0x48b00000` sind
+  feste Konstanten statt abgeleitet.
+
+Nichts davon gefaehrdet das Geraet. Reihenfolge, wenn es angegangen wird: TEE-2 zuerst (kleinster
+Eingriff, groesster Gewinn - EL3 liest selbst), dann TEE-3 (faellt mit TEE-2 fast von allein ab),
+TEE-1 nur, wenn ein zweites Stueck Code nach S-EL1 will und sich die Nutzlast damit lohnt.
