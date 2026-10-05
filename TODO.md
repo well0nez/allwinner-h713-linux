@@ -68,10 +68,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.8 Autofokus: eine Wand, ein Abend; Metrik-Spanne nur +11 % (Belichtung)
 - [ ] 2.9 Keystone ohne Langlauf; automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
 - [ ] 2.10 EDID: zwei Modi rasten nicht, 1080p100/120 hinter Schalter; 1600×900 und 120 Hz (aus `61`)
-- [ ] 2.10a **Interlace-VICs 7, 6, 21 (480i/576i) stehen in unserer EDID, aber nicht in der Modustabelle der
-      Firmware** — `h713-tv ctl status` sagt es seit 04.10., auf dem v0.96-beta-Abbild bestätigt (05.10.). Wir
-      bieten also Modi an, die nicht rasten. Fix: die drei SVDs aus `hy310-edid.bin` Block 0 nehmen (Prüfsumme
-      neu), danach mit dem ThinkPad gegenprüfen, ob 480i/576i aus dem Angebot verschwunden sind (doku/140 Punkt 4)
+- [x] 2.10a Interlace-VICs 7, 6, 21 (480i/576i) aus unserer EDID, die die Firmware nicht rasten kann: h713-tv
+      beschneidet jede veröffentlichte Hälfte um die SVDs ohne Tabelleneintrag (`edid_prune`) und veröffentlicht
+      die servierte Hälfte beim Start einmal so, wenn nötig (ein HPD-Puls). Am Gerät 05.10. 21:30: 17 VICs offered,
+      all in the firmware's table; ThinkPad bietet 720x480i/576i nicht mehr an; Programmneustart = kein zweiter
+      Puls (`c33df12`). Offen: `1024x768i` (Established Timing im Basisblock, kein SVD) — rastet das?
 - [ ] 2.11 `backlight_level` / `dynamic_backlight` ohne Wirkung — Firmware nimmt den Aufruf, Lampe ändert nichts
 - [ ] 2.12 AP-Latenzspitzen (3 ms ↔ 2 s bei −50 dBm, Durchsatz ok)
 - [ ] 2.13 Settings-Seite Port 8080 **ohne Authentifizierung**

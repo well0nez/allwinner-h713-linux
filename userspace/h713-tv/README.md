@@ -334,6 +334,9 @@ h713-tv ctl replug              play an unplug and a replug to the source: HPD 3
                                  blocks=0), load the EDID again (S_EDID, 4 blocks), HPD high -- ~1 s, blocks
 h713-tv ctl edid block0|block1  a replug that publishes that half of /lib/firmware/hy310-edid.bin as the
                                  EDID (S_EDID, 2 blocks, kernel 0170); `edid =` in tv.conf makes it stand
+                                 Published halves lose every short video descriptor the firmware's mode table
+                                 does not carry (480i/576i, VICs 6 7 21 on the HY310): an offered mode that never
+                                 locks is a black wall. The status line then says 'all in the firmware's table' (6g)
 h713-tv ctl warp [status]       whether h713-warp has the video plane, with its counters (6e)
 h713-tv ctl hdcp                HDCP: the version negotiated, whether a session stands, the 1.4 and 2.2
                                  keys, the firmware's last HDCP log line - five lines out of the kernel (6f)
@@ -686,6 +689,8 @@ edid       = block0 | block1 # which half of /lib/firmware/hy310-edid.bin port 0
                              # firmware's table has disabled, drops 1080p25 and caps TMDS at 300 MHz
                              # (working journal `FB-EDID/edid-vs-firmware.csv`). Applied once at start as a
                              # replug, about a second of console; `ctl status` says which half is up
+                             # driver's default. Absent, the served half is still published once at start
+                             # without the VICs the table lacks, if there are any (one HPD pulse)
 ```
 
 The German key names of the releases up to v0.8-beta - `zustand`, `daten`, `rechner` - are still accepted

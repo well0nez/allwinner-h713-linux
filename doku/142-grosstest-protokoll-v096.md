@@ -113,3 +113,5 @@ Sicherung: arbeit/sicherung-vor-v096-install-20261005-2044/ (pre-v096.tgz = /etc
 WLAN-Fix im Abbild (Finished nach ~9 s, kein Hängen), 720p + Warp live und nach Boot richtig (Register + Kamera), BT jedes Mal UP.
 **Offen:** Z4 zweiter Boot ohne Spur (Journal war flüchtig) · Reinstall verwirft /etc/h713 (wifi.env, warp.conf, keystone) ·
 Boot mit anliegendem 720p nur über die Live-Umschaltung geprüft (ThinkPad fällt beim Hotplug auf 1080p zurück) · kosmetische Journal-Fehler.
+
+**Nachtrag 21:30:** EDID-Beschnitt in h713-tv (die drei Interlace-VICs ohne Firmware-Eintrag, `c33df12`) auf dem Gerät eingespielt und gemessen: Statuszeile 17 VICs offered, all in the firmware's table; ThinkPad `xrandr` ohne 720x480i/720x576i; Programmneustart ohne zweiten HPD-Puls. Nicht im gebauten v0.96-beta-Abbild - kommt in den naechsten Bau.
