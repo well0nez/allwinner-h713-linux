@@ -10,6 +10,8 @@ the sound and the motor could be driven from Linux.
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/well0nez)
 
+> **Working on this repository, as a person or as an agent?** Start at [AGENTS.md](AGENTS.md): where which kind of knowledge lives, which tools are mandatory, which gates have to be green, and what to do with a new finding.
+
 **See it running** - HDMI input on the projector, test pattern and audio in sync (2026-09-08):
 https://github.com/user-attachments/assets/75bb0b88-038e-4703-a6f9-def8eb071986
 
@@ -130,15 +132,46 @@ per stock firmware where one board left the factory with several. The ladder a n
 alone, flashed only by its owner with a full dump as the way back) -> **verified** (the owner reports a green
 run; from then on a release image exists for it). The rule behind it: no image for a board nobody has tested.
 
-| Board id | Sold as | DRAM | Panel (project id) | State |
+**Looking for your own projector?** Find it in the *Sold as* column, not in the board id — the
+ids follow the **circuit board**, and one board is sold in several projectors. The HY300PRO-G-EU,
+for instance, lives under `hy200-qz713df-a1`.
+
+| Board id | Sold as | DRAM | Panel | State |
 |---|---|---|---|---|
-| `hy310` | MagCubic HY310, silkscreen HY260_QZ713_V3.1, Android 11 firmware of 2025-07 | DDR3, 792 MHz, 1 GiB | 1920x1080 dual-port (0x30) | **verified**: this system runs on it; install, boot, recovery and restore to stock were done on hardware for every release ([STATUS.md](STATUS.md)), and every part of `v0.96-beta` went through the device tests of 2026-10-02 to 10-04 |
-| `hy300-pro` | MagCubic HY300 Pro, 2024 board, Android 10 firmware (not the HY200 QZ713DF A1) | DDR3, 636 MHz, 1 GiB | 1280x720 single-port (0x34), from his panel_config.ini and U-Boot on his unit | **in test**: TEST images for its owner ([issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1)). `hy300-pro-test9` (25.09.) is the last: its boots stop at random places, because the lamp's PWM words reached the display firmware as six parameters instead of one address (fixed by kernel 0168 on the HY300PRO-G-EU), and its U-Boot ran project 0x30 instead of 0x34. `test10` follows after v0.96-beta. No green run yet. Its DRAM block, partition table and display-firmware revision come from his probe run |
-| `hy200-qz713df-a1` | silkscreen HY200 QZ713DF A1, one board in two firmware variants: HY300 Pro with the box label HY300PRO-G-EU, Android 11 of 2025-05 (`projector05061226`, the maintainer's own; not the board of issue #1), and "HY300 Pro+" (2025, DDR3), Android 11 of 2025-09 (`projector09220931`); also cstenger's bench board | DDR3, 792 MHz (2025-05 firmware) or 624 MHz (2025-09) | 0x34; 1280x720 single-port, from both firmwares' panel_config.ini | `projector05061226`: **in test, the maintainer's own** - TEST images booted on it, the picture right since the 8-bit LVDS fix; accelerometer measured, no camera, no focus motor; no green run reported yet. `projector09220931`: **profile, testable** - firmware, DRAM block and panel known from its image, a test image is one build away; nobody has run this image there |
-| `hy200-qz713-v2` | sold as "HY300 Pro+" (2025, LPDDR3); HY200 QZ713_V2, Android 11 firmware of 2025-07 | LPDDR3, 720 MHz, 1 GiB | 1280x720 single-port (0x34) | **profile only**: firmware and panel known from its image; the timing words are cstenger's (LPDDR3 at 720 MHz; the image's are a DDR3 template its boot0 does not use). Not testable yet: its U-Boot base and kernel tree are still cstenger's bring-up ones, not our layout |
-| `hy300-t08` | HY300 T08, 2024, Android 10 firmware | DDR3, 640 MHz, 1 GiB | 1280x720 single-port (0x34) | **profile only, testable**: everything known comes from the firmware image; a probe run by an owner would complete it |
-| `hy350` | HY350, 2024, Android 10 firmware | DDR3, 792 MHz, 1 GiB | 1920x1080 (0x30), other blanking than the HY310 | **profile only, testable**: same as above; the panel timing differs from the HY310's although the project id is the same |
-| `l018` | L018, Android 11 firmware of 2025-05 | unknown | unknown | **profile only, no board directory** (the installer profile `l018` alone): known from one extractor run over a real device, no DRAM data, no firmware image here |
+| [`hy310`](boards/hy310/) | MagCubic HY310 | DDR3 792 MHz | 1920×1080 dual (0x30) | **verified** |
+| [`hy300-pro`](boards/hy300-pro/) | MagCubic HY300 Pro (2024) | DDR3 636 MHz | 1280×720 (0x34) | in test |
+| [`hy200-qz713df-a1`](boards/hy200-qz713df-a1/) | HY300PRO-G-EU · "HY300 Pro+" (2025) · cstenger's bench board | DDR3 792 / 624 MHz | 1280×720 (0x34) | in test |
+| [`hy200-qz713-v2`](boards/hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280×720 (0x34) | profile only |
+| [`hy300-t08`](boards/hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280×720 (0x34) | profile only |
+| [`hy350`](boards/hy350/) | HY350 (2024) | DDR3 792 MHz | 1920×1080 (0x30) | profile only |
+| `l018` | L018 (2025) | unknown | unknown | profile only, no board directory |
+
+### What the states mean, board by board
+
+- **`hy310` — verified.** Silkscreen `HY260_QZ713_V3.1`, stock Android 11 of 2025-07. This system runs
+  on it: install, boot, recovery and restore to stock were done on hardware for every release, and
+  every part of `v0.96-beta` went through the device tests of 2026-10-02 to 10-04
+  ([STATUS.md](STATUS.md)).
+- **`hy300-pro` — in test**, for its owner ([issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1)).
+  `hy300-pro-test9` (2026-09-25) is the last one: its boots stop at random places, because the lamp's PWM
+  words reached the display firmware as six parameters instead of one address — fixed by kernel patch `0168`
+  on the HY300PRO-G-EU — and its U-Boot ran project 0x30 instead of 0x34. `test10` follows after
+  `v0.96-beta`. **No green run yet.** Its DRAM block, partition table and firmware revision come from its
+  owner's probe run. Not the same device as `hy200-qz713df-a1`.
+- **`hy200-qz713df-a1` — one board, two firmware variants.** The maintainer's own HY300PRO-G-EU
+  (`projector05061226`, Android 11 of 2025-05) is **in test**: TEST images boot on it and the picture has
+  been right since the 8-bit LVDS fix; the accelerometer is measured; it has no camera and no focus motor.
+  No green run reported yet. The "HY300 Pro+" variant (`projector09220931`, 2025-09) is **profile only**
+  and testable: firmware, DRAM block and panel are known from its image, a test image is one build away,
+  but nobody has run one on that device.
+- **`hy200-qz713-v2` — profile only, not yet testable.** Firmware and panel are known from its image, but
+  the timing words are cstenger's (LPDDR3 at 720 MHz; the image's own are a DDR3 template its boot0 does
+  not use), and its U-Boot base and kernel tree are still his bring-up ones, not our layout.
+- **`hy300-t08`, `hy350` — profile only, testable.** Everything known comes from the firmware image; a
+  probe run by an owner would complete it. The HY350's panel timing differs from the HY310's even though
+  the project id is the same.
+- **`l018` — profile only**, and the one entry without a board directory: known from a single extractor
+  run over a real device, no DRAM data and no firmware image here.
 
 The values come from the boards' own firmware (`installer/h713/profiles/`, every number with its source) and
 from probe runs on real devices. Feeding a board the wrong DRAM parameters trains "OK" and then hangs on

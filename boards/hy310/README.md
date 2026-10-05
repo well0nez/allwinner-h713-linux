@@ -50,6 +50,8 @@ enabled (49 260 bytes). The release BL31 (45 164 bytes) has been on this board s
 - **Panel** - `profiles/hy310.py`, `"panel"`: `Reserve0.fex:panel_config.ini`, declared project id
   `0x30`, 1920×1080 dual port, htotal 2128, vtotal 1120, 143 001 600 Hz, hsync 44, vsync 5, hbp 88,
   vbp 20, PWM channel 2 at 25 kHz.
+- **Stock firmware** - Android 11 of 2025-07, the state this board was bought in and the source of
+  every vendor artefact below. Restoring to stock puts exactly this back.
 - **Partition layout, unique regions, firmware digests** - same profile, from
   `installer/tests/fixtures/images/hy310-update.img.json`.
 - **Display firmware** - `display.bin` 1 256 216 bytes,
