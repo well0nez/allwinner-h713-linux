@@ -15,6 +15,14 @@ ExecStart=/usr/local/sbin/h713-wifi up
 ExecStop=/usr/local/sbin/h713-wifi down
 # A faulty wifi.env is an error of this service, no reason for a loop: the
 # message is in the journal, the user fixes the file and restarts. No Restart.
+#
+# Type=oneshot defaults to TimeoutStartSec=infinity, and this unit sits before
+# network.target: a radio that hangs in the kernel then holds the whole network
+# path for ever, so the box has no address and no ssh (measured 05.10., the
+# AIC8800 wedged its SDIO after repeated hard resets and the unit was still
+# "running (3min 58s / no limit)"). The script's own waits are bounded; this
+# bounds the ones below it. A box without Wi-Fi must still finish booting.
+TimeoutStartSec=60
 
 [Install]
 WantedBy=multi-user.target

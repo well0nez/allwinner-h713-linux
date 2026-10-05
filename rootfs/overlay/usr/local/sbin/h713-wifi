@@ -143,11 +143,11 @@ lade_modul() {
 			# The regulatory domain is a load parameter of the self-managed
 			# wiphy; nobody changes it at run time. So reload.
 			log "regulatory domain $ist -> $country: reloading the module"
-			modprobe -r $MODUL || fail "modprobe -r $MODUL"
+			timeout 30 modprobe -r $MODUL || fail "modprobe -r $MODUL"
 		fi
 	fi
 	if ! [ -d /sys/module/$MODUL ]; then
-		modprobe $MODUL default_ccode="$country" || fail "modprobe $MODUL (dmesg | grep -i aic)"
+		timeout 30 modprobe $MODUL default_ccode="$country" || fail "modprobe $MODUL (dmesg | grep -i aic)"
 	fi
 	i=0
 	while [ ! -e /sys/class/net/$IFACE ]; do
