@@ -75,12 +75,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (dokumentieren), Musterwechsel = Konsolenblitz, Client ohne Newline blockiert 500 ms,
       `evaluate()` gibt bei -ENOLCK sofort frei, Textreste „primary plane"
 - [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
-- [ ] 2.6 Audio: Abschalt-Plopp - **05.10. gemessen** (ThinkPad-Mikro): zwei Plopps. (a) Stream-Ende: DAPM
-      schaltet den Verstaerker PL2 ab, Knall unabhaengig vom Signal (DAC/Line-Out-Mute vorher aendert nichts) -
-      **behoben** mit Kernel 0184 (`allwinner,pa-stays-on`: PL2 bleibt an), Test A still. (b) Poweroff-Ende: 42-54x
-      Grundrauschen bei +10,96 s nach `poweroff`, in beiden Laeufen dieselbe Zehntelsekunde = PSCI SYSTEM_OFF
-      (TF-A Boot-Gate oder Regler-Abschaltung des Kernels), harter Netz-Cut mit PL2 an nur 9x. Offen: wer faehrt
-      dort PL2 oder die Codec-Versorgung? Aufnahmen `arbeit/edid-sweep-20261005/plopp/`
+- [ ] 2.6 Audio: Abschalt-Plopp -> **9.11 (spaet)**, Messungen und widerlegte Hypothese dort
 - [ ] 2.7 Geometrie: Ceiling-Beweis kopfüber; Kalibrierkarten in gespiegelten Modi; Konsole durch den Warp
 - [ ] 2.8 Autofokus: eine Wand, ein Abend; Metrik-Spanne nur +11 % (Belichtung)
 - [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
@@ -214,6 +209,15 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       einen Desktop/eine Oberfläche, die etwas damit anfängt (Marco 05.10.: spät)
 - [ ] 9.10 Settings-Seite: PIN auf der Leinwand statt Passwort (wie Chromecast), Sitzungs-Cookie — braucht eine
       Einblendung im Warp/h713-tv (Marco 05.10.: später)
+- [ ] 9.11 **Abschalt-Plopp beim Poweroff** (aus 2.6). Gemessen 05.10. mit dem ThinkPad-Mikro
+      (`arbeit/edid-sweep-20261005/plopp/`): Plopp 1 beim Stream-Ende (DAPM nimmt PL2) -> behoben, Kernel 0184.
+      Plopp 2 am Poweroff-Ende, 42-54x Grundrauschen, immer +10,96 s nach dem Befehl; harter Netz-Cut mit PL2 an
+      nur 9x; PL2 von Hand fallen lassen ploppt, Mute davor (DAC, Line Out, beides, 1,5 s) aendert nichts.
+      **Widerlegt:** TF-A nimmt PB5/PL3 vor dem Gate-Reset weg und wartet 600 ms (Fork-Branch
+      `versuch/plopp-pb5-pl3-vor-reset`, in die eMMC geschrieben und gehoert: unveraendert laut) -> der
+      Verstaerker haengt nicht (nur) an PB5/PL3, oder der Knall kommt nicht von PL2, sondern vom Zusammenbruch
+      der Codec-Versorgung beim Reset. Naechster Schritt braucht Oszilloskop/Schaltplan: welche Schiene
+      versorgt den Verstaerker, was tut der Reset mit ihr. Bis dahin: so lassen
 
 
 ## 10 Erledigt — aus `61` und `144` gestrichen, damit es nicht wieder auftaucht
