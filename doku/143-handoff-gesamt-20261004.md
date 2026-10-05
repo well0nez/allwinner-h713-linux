@@ -10,7 +10,7 @@ doku/142 (Grosstest-Protokoll), doku/61 oben ("Gesamtliste"), doku/134 (alle Tes
 
 ## 0. Wer, was, Regeln (gelten weiter)
 - well0nez, Du-Form, deutsch; in veroeffentlichten Repos nur der GitHub-Name well0nez (vor jedem Push
-  `git grep -i -E "onorati|bdg-solutions|inopuli"` ueber alle Repos, Zweige, Submodul-Commits).
+  `git grep nach den bekannten Identitaetsbegriffen (Liste nur lokal, referenz/)` ueber alle Repos, Zweige, Submodul-Commits).
 - Projekt /opt/Projekte/h713 (kein Git im Wurzelordner). Repo umbau/src (= GitHub well0nez/allwinner-h713-linux,
   Zweig main). U-Boot-Fork als Submodul umbau/src/mainline/external/u-boot.
 - NICHTS pushen, kein `gh release`, kein Merge nach main ohne Marcos ausdrueckliches Wort. Lokale Commits auf

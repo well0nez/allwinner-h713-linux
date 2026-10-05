@@ -68,11 +68,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       zurück (Slots kommen bei 24 Hz im 34/50-ms-Takt; 334 stale, 0 Frames). Schwelle folgt jetzt dem gemessenen
       Slot-Abstand (×1,25, nie unter 28 ms). 05.10. 22:12: 1080p24 → 24,0 fps, p25 → 25,0, p30 → 30,0, p60 → 59,4,
       0 Drops; Kamera: Bild da
-- [ ] 2.4c 1366×768: Ring-Pitch 1376 ≠ Breite — mit Warp ungetestet, Sonderfall in 0183 nicht abgedeckt
-- [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12): `h713-tv ctl status` wirft den Warp ab
-      (100-ms-Frist), Firmware-Zoom bleibt im Plane-Zustand, Journal-Spam ohne Signal, `test mask`
-      markiert tl, laxe `atoi`-Prüfung, `check` halbiert fps, Musterwechsel = Konsolenblitz,
-      Client ohne Newline blockiert 500 ms, `evaluate()` gibt bei -ENOLCK sofort frei
+- [x] 2.4c 1366×768 (Pitch 1376): gemessen 05.10. — rastet, Warp geht in den stillen Bypass; ist derselbe
+      Ausrichtungsfall wie 2.4e/2.4f, kein eigener Punkt mehr
+- [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12) — **erledigt 05.10.:** `ctl status` wirft den Warp ab
+      (Frist 1000 ms), Journal-Spam ohne Signal, `test mask` markiert tl, Firmware-Zoom im Warp-Commit
+      (h713-tv-0001 + 0183). **Offen:** laxe `atoi`-Prüfung bei zoom/edge, `check` halbiert fps
+      (dokumentieren), Musterwechsel = Konsolenblitz, Client ohne Newline blockiert 500 ms,
+      `evaluate()` gibt bei -ENOLCK sofort frei, Textreste „primary plane"
 - [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
 - [ ] 2.6 Audio: Abschalt-Plopp
 - [ ] 2.7 Geometrie: Ceiling-Beweis kopfüber; Kalibrierkarten in gespiegelten Modi; Konsole durch den Warp
