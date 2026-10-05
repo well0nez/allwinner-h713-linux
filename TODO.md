@@ -57,6 +57,15 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
       (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
       Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
+- [x] 2.4e **Warp-Flackern bei Ringen mit Zeilenabstand ≠ 64er-Vielfaches** (480p, 576p, 1366×768, 1280×1024 …):
+      Panfrost lehnt den Slot-Import ab, der Warp versuchte es jede Sekunde neu und nahm dabei jedes Mal den
+      Plane (47 Republishes/min, Wand blinkt, erster Frame grün). Jetzt Import **vor** dem Claim und kein
+      neuer Versuch bis zur nächsten Ring-Geometrie — gemessen 05.10. 22:02: 0 Republishes, Bypass still
+      (Einzeltest `arbeit/edid-sweep-20261005/`). Offen: Keystone für diese Modi (CPU-Kopie in einen
+      64-aligned Puffer, oder Firmware-Ring breiter) → 2.4f
+- [ ] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
+- [ ] 2.4g **Warp bei 24/25-Hz-Quellen = schwarze Wand** (1080p24/25, 4K24/25; ohne Warp Bild da; Kamera Y 1,9):
+      Verdacht Stale-Schutz 28 ms in `loop.c` gegen 40 ms Frameabstand — Slots werden ungezeichnet zurückgegeben
 - [ ] 2.4c 1366×768: Ring-Pitch 1376 ≠ Breite — mit Warp ungetestet, Sonderfall in 0183 nicht abgedeckt
 - [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12): `h713-tv ctl status` wirft den Warp ab
       (100-ms-Frist), Firmware-Zoom bleibt im Plane-Zustand, Journal-Spam ohne Signal, `test mask`

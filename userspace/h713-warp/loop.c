@@ -90,15 +90,43 @@ bool warp_engage(struct runtime *r)
 	/*
 	 * The source first: without a signal there is nothing to warp, and
 	 * claiming the panel to show black would be worse than the ring.
-	 * Every failure below takes the same way back, and each of the three
-	 * releases there is a no-op for a step that was never reached.
+	 * Then the GPU and the capture slots -- BEFORE the panel is claimed:
+	 * panfrost refuses a dma-buf whose line pitch is not a multiple of 64
+	 * (720x480, 720x576, 1366x768, 1280x1024 ... measured 05.10.2026), and
+	 * until that day the claim came first, so every retry took the panel
+	 * off the ring and gave it back a moment later: the wall blinked once
+	 * a second, green on the first frame of each return. A ring the GPU
+	 * refused is not tried again until its geometry changes.
 	 */
-	if ((r->pattern == PATTERN_NONE && !source_start(&r->source, why, sizeof(why))) ||
-	    gl_open(r->render_node, why, sizeof(why)) ||
-	    !peer_claim(&r->peer, why, sizeof(why)) ||
-	    !gl_targets(&r->peer, why, sizeof(why)) ||
+	if (r->pattern == PATTERN_NONE) {
+		if (!source_start(&r->source, why, sizeof(why))) {
+			note(r, why);
+			return false;
+		}
+		if (r->source.width == r->refused_w && r->source.height == r->refused_h &&
+		    r->source.pitch == r->refused_pitch) {
+			source_stop(&r->source);
+			return false;	/* said once already, see below */
+		}
+	}
+	if (gl_open(r->render_node, why, sizeof(why)) ||
 	    (r->pattern == PATTERN_NONE && !gl_source(&r->source, why, sizeof(why)))) {
+		gl_close();
+		if (r->pattern == PATTERN_NONE) {
+			r->refused_w = r->source.width;
+			r->refused_h = r->source.height;
+			r->refused_pitch = r->source.pitch;
+			warn("warp            %s -- h713-tv keeps the ring %ux%u (pitch %u) until the source changes",
+			     why, r->source.width, r->source.height, r->source.pitch);
+		}
+		source_stop(&r->source);
+		note(r, why);
+		return false;
+	}
+	if (!peer_claim(&r->peer, why, sizeof(why)) ||
+	    !gl_targets(&r->peer, why, sizeof(why))) {
 		peer_release(&r->peer);
+		gl_source_drop();
 		gl_close();
 		source_stop(&r->source);
 		note(r, why);

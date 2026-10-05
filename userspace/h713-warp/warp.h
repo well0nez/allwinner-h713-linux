@@ -200,6 +200,7 @@ struct runtime {
 	/* the last hundred frames, M11 */
 	unsigned long frames, dropped, refused;
 	unsigned int fails;		/* consecutive render failures */
+	unsigned int refused_w, refused_h, refused_pitch;	/* a ring geometry the GPU would not import (loop.c) */
 	double fps, frame_ms, frame_ms_max;
 	double t_mark;
 	unsigned long f_mark;
