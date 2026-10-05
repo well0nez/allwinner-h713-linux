@@ -99,15 +99,26 @@ def zitate():
     treffer = {}
     pfade = [os.path.join(WURZEL, x) for x in ZITIERER]
     pfade += [os.path.join(WURZEL, x) for x in WURZELTEXTE]
+    # Nur, was im Repo liegt: Bauausgaben wie installer/tmp/rootfs-baum/ tragen Kopien unserer
+    # Quellen mit anderen Namen und liessen den Index nach jedem Bau "veraltet" aussehen -- und der
+    # Bau prueft den Index (build-all.sh 10/11). Ohne git (Tarball) bleibt der Dateilauf, dann
+    # wenigstens ohne tmp/ und build/.
+    import subprocess
+    try:
+        getrackt = set(subprocess.run(["git", "-C", WURZEL, "ls-files", "-z"], capture_output=True,
+                                      check=True).stdout.decode().split("\0"))
+    except (OSError, subprocess.CalledProcessError):
+        getrackt = set()
     for pfad in pfade:
         dateien = []
         if os.path.isfile(pfad):
             dateien = [pfad]
         else:
             for d, dirs, files in os.walk(pfad):
-                dirs[:] = [x for x in dirs if x not in (".git", "__pycache__", "external")]
+                dirs[:] = [x for x in dirs if x not in (".git", "__pycache__", "external", "tmp", "build")]
                 dateien += [os.path.join(d, f) for f in files
-                            if os.path.splitext(f)[1] in (".md", ".py", ".sh", ".c", ".h", ".txt")]
+                            if os.path.splitext(f)[1] in (".md", ".py", ".sh", ".c", ".h", ".txt")
+                            and (not getrackt or os.path.relpath(os.path.join(d, f), WURZEL) in getrackt)]
         for f in dateien:
             try:
                 s = open(f, encoding="utf-8", errors="replace").read()
