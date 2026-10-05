@@ -64,8 +64,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (Einzeltest `arbeit/edid-sweep-20261005/`). Offen: Keystone für diese Modi (CPU-Kopie in einen
       64-aligned Puffer, oder Firmware-Ring breiter) → 2.4f
 - [ ] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
-- [ ] 2.4g **Warp bei 24/25-Hz-Quellen = schwarze Wand** (1080p24/25, 4K24/25; ohne Warp Bild da; Kamera Y 1,9):
-      Verdacht Stale-Schutz 28 ms in `loop.c` gegen 40 ms Frameabstand — Slots werden ungezeichnet zurückgegeben
+- [x] 2.4g Warp bei 24/25-Hz-Quellen = schwarze Wand: der feste 28-ms-Stale-Schutz warf jeden gehaltenen Slot
+      zurück (Slots kommen bei 24 Hz im 34/50-ms-Takt; 334 stale, 0 Frames). Schwelle folgt jetzt dem gemessenen
+      Slot-Abstand (×1,25, nie unter 28 ms). 05.10. 22:12: 1080p24 → 24,0 fps, p25 → 25,0, p30 → 30,0, p60 → 59,4,
+      0 Drops; Kamera: Bild da
 - [ ] 2.4c 1366×768: Ring-Pitch 1376 ≠ Breite — mit Warp ungetestet, Sonderfall in 0183 nicht abgedeckt
 - [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12): `h713-tv ctl status` wirft den Warp ab
       (100-ms-Frist), Firmware-Zoom bleibt im Plane-Zustand, Journal-Spam ohne Signal, `test mask`

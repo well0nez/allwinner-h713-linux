@@ -247,6 +247,8 @@ bool warp_pump(struct runtime *r)
 	if (r->pattern == PATTERN_NONE) {
 		if (source_geometry_changed(&r->source) && !source_rebuilt(r))
 			return false;
+		double prev_dq = r->source.dq_s;
+
 		fresh = source_dequeue(&r->source, why, sizeof(why));
 		if (fresh < 0) {
 			if (why[0])
@@ -264,14 +266,25 @@ bool warp_pump(struct runtime *r)
 			if (slot < 0)
 				return true;	/* the first slot: kept, drawn next vsync */
 			/*
-			 * A held slot older than 28 ms is given back undrawn: the
-			 * firmware's next write into it begins 33 ms after its
-			 * publish at the earliest, and the loop only gets here
-			 * this late when something stalled it (h713-tv answering
-			 * a status while the panel page polls it, 40-55 ms,
-			 * measured 23.09.). A dropped frame, not a torn one.
+			 * A held slot that is too old is given back undrawn: the
+			 * firmware's next write into it begins one ring cycle after
+			 * its publish, and the loop only gets here this late when
+			 * something stalled it (h713-tv answering a status while the
+			 * panel page polls it, 40-55 ms, measured 23.09.). A dropped
+			 * frame, not a torn one. "Too old" was a fixed 28 ms, tuned
+			 * to a 60 Hz source: a 24 Hz source hands its slots 34 and
+			 * 50 ms apart (traced 05.10.2026), so every held slot was
+			 * stale by the time the next one arrived and the wall stayed
+			 * black (334 stale, 0 frames). The limit follows the
+			 * measured gap between the last two slots -- the next write
+			 * into the held slot is still two gaps away -- and never
+			 * drops below the 28 ms that protect a 60 Hz source.
 			 */
-			if (now_s() - r->source.slot_s[slot] > 0.028) {
+			double gap = r->source.dq_s - prev_dq, limit = 0.028;
+
+			if (prev_dq > 0 && gap > 0.020 && gap < 0.120 && gap * 1.25 > limit)
+				limit = gap * 1.25;
+			if (now_s() - r->source.slot_s[slot] > limit) {
 				source_queue(&r->source, slot);
 				r->source.stale++;
 				return true;
