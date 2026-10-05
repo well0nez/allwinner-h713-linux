@@ -9,7 +9,7 @@ doku/142 (Grosstest-Protokoll), doku/61 oben ("Gesamtliste"), doku/134 (alle Tes
 (Zeitleiste der Nacht 03./04.10.). Memory-Dateien: ~/.claude/projects/-opt-Projekte-h713/memory/ (MEMORY.md).
 
 ## 0. Wer, was, Regeln (gelten weiter)
-- Marco Onorati, Du-Form, deutsch; in veroeffentlichten Repos nur der GitHub-Name well0nez (vor jedem Push
+- well0nez, Du-Form, deutsch; in veroeffentlichten Repos nur der GitHub-Name well0nez (vor jedem Push
   `git grep -i -E "onorati|bdg-solutions|inopuli"` ueber alle Repos, Zweige, Submodul-Commits).
 - Projekt /opt/Projekte/h713 (kein Git im Wurzelordner). Repo umbau/src (= GitHub well0nez/allwinner-h713-linux,
   Zweig main). U-Boot-Fork als Submodul umbau/src/mainline/external/u-boot.

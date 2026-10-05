@@ -1,5 +1,5 @@
-From 7fd3eda44ad6cc997e81ed9a83c12770e7ef9ed8 Mon Sep 17 00:00:00 2001
-From: Marco Onorati <m.onorati@web.de>
+From 824eb0bd08826a61f1ee7e1ec5a6913bf9943741 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Mon, 5 Oct 2026 11:15:22 +0200
 Subject: [PATCH 7/7] allwinner: h713: our own secure payload at S-EL1 - kept
  as evidence, not shipped

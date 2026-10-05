@@ -1,0 +1,12 @@
+#!/bin/sh
+# Nothing leaves this machine with a private address in it: every commit about to be pushed must
+# carry the project's noreply identity as author and committer (mirrors the pre-commit check for
+# history that was rewritten or merged in).
+ok='well0nez@users.noreply.github.com'
+while read -r local_ref local_sha remote_ref remote_sha; do
+	[ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+	range="$local_sha"; [ "$remote_sha" != "0000000000000000000000000000000000000000" ] && range="$remote_sha..$local_sha"
+	bad=$(git log --format='%h %ae %ce' "$range" 2>/dev/null | awk -v ok="$ok" '{ for (i = 2; i <= 3; i++) if ($i != ok && $i !~ "\\+" ok "$" && $i !~ /^(chris\.h\.stenger@gmail\.com|root@v63907\.datalix\.de|hy310@local|email@domain\.de|noreply@anthropic\.com)$/) print }' | head -5)
+	[ -n "$bad" ] && { echo "pre-push: $local_ref carries commits with an identity that is not the project's:" >&2; echo "$bad" >&2; exit 1; }
+done
+exit 0
