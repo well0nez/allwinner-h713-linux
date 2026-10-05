@@ -1,5 +1,9 @@
 # Plan 114 - Crypto Engine (H713): Entscheidung, Befundabgleich mit cstenger, und der eine Grund sie anzufassen
 
+> **Überholt.** Der aktuelle Stand der HDCP-Kette steht in [`docs/subsystems/hdcp.md`](../docs/subsystems/hdcp.md), die Durchführung in `doku/148`. Dieser Eintrag bleibt unverändert stehen, weil er der Beleg dafür ist, wann was gemessen wurde — nicht, weil seine Schlussfolgerungen noch gelten.
+
+> **Redigiert (05.10.2026).** Aus diesem Dokument sind die Kennungen und Adressen entfernt, mit denen man das **Trusted OS des Herstellers** direkt anspricht — SMC-Kennungen, Funktionsadressen und die Lage des Hardwareschlüssels im eFuse. Die Befunde bleiben: *dass* der HDCP-1.4-Satz chipgebundenes Chiffrat ist, dass nur die Crypto Engine den Hardwareschlüssel sieht und dass sie ihn nicht nach lesbarem Speicher schreibt. Das erklärt unseren eigenen Weg; der Rest war ein Rezept für fremde Geräte und gehört nicht veröffentlicht.
+
 **Stand 11.09.2026.** Auftrag von Marco: „den hy310 board mgr nehmen wir jetzt mit und die crypto engine auch …
 cstenger hat irgendwas gemacht - guck mal ob der irgendwie probleme hatte die wir garnicht haben oder ob der was
 besser hat". Dieser Plan beantwortet das und legt fest, was wir tun.
@@ -52,17 +56,17 @@ Sein Blocker ist wörtlich: *descriptor-level RE of the vendor `allwinner,sunxi-
 Er hat die Quelle beim **Vendor-Kernel-Treiber** gesucht, und da gibt es sie tatsächlich nicht.
 
 [`S49`](nachtlog/S49-hdcp14-schluesselpfad.md) hat sie an einer anderen Stelle gefunden: in **OP-TEE**
-(`sunxi_load_hdcp_key`, `0x4860caf0`, disassembliert in `analyse/release/arbeit/r0-fel/s49-dis/`). Dort baut der
+(`sunxi_load_hdcp_key`, `<Adresse im Hersteller-TEE, nicht abgedruckt>`, disassembliert in `analyse/release/arbeit/r0-fel/s49-dis/`). Dort baut der
 Hersteller denselben Deskriptor, nur für den sicheren Kanal. S49 §„Task-Deskriptor" hat ihn feldweise mit
 Adressbelegen:
 
 | Feld | Wert | Beleg |
 |---|---|---|
 | `chan_id` +0x00 | 0 | |
-| `comm_ctl` +0x04 | `0x80000100` = INT(31) ∣ decrypt(8) ∣ ALG_AES(0) | 0x4860c5e6-ec |
-| `sym_ctl` +0x08 | `0x00300000` = Key-Select 3 (RSSK), AES-128, ECB | 0x4860c5ee-f2 |
-| `src`/`dst` | **5-Byte-Adressfelder (40 Bit)**, nicht 4 | 0x4860c61c-622 |
-| CE_S `0x03040800` TDA/ICR/TLR/ISR/ESR | +0x00/+0x08/+0x10/+0x0c/+0x18 | 0x4860c334/2ac/2d0/3a8/348 |
+| `comm_ctl` +0x04 | `0x80000100` = INT(31) ∣ decrypt(8) ∣ ALG_AES(0) | <Adresse im Hersteller-TEE>-ec |
+| `sym_ctl` +0x08 | `0x00300000` = Key-Select 3 (RSSK), AES-128, ECB | `<nicht abgedruckt>` |
+| `src`/`dst` | **5-Byte-Adressfelder (40 Bit)**, nicht 4 | <Adresse im Hersteller-TEE>-622 |
+| CE_S `0x03040800` TDA/ICR/TLR/ISR/ESR | +0x00/+0x08/+0x10/+0x0c/+0x18 | <Adresse im Hersteller-TEE>/2ac/2d0/3a8/348 |
 
 Die **5-Byte-Adressfelder** und der **zwei-Bank-Aufbau** sind genau die Abweichung, die cstengers `address invalid`
 erklärt: mainline schreibt 32-Bit-Adressen an Offsets, an denen die H713-CE 40-Bit-Felder erwartet, also liest sie

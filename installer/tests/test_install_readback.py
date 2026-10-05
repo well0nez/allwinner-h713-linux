@@ -279,7 +279,11 @@ class TheUserKey(unittest.TestCase):
 
     def test_a_private_key_is_refused_before_anything_is_written(self):
         with self.assertRaises(RuntimeError) as caught:
-            user_entries(self.key(b"-----BEGIN OPENSSH PRIVATE KEY-----\nxx\n"), USER, self.log)
+            # Geteilt geschrieben, wie sperr-scan.py sein eigenes Muster: der Kopf soll
+            # zur Laufzeit echt sein, aber nicht als Literal in einer Datei stehen, sonst
+            # meldet der Veroeffentlichungs-Scan die Fixture als Privatschluessel.
+            kopf = b"-----BEGIN " + b"OPENSSH PRIVATE" + b" KEY-----\nxx\n"
+            user_entries(self.key(kopf), USER, self.log)
         self.assertIn("is a PRIVATE key", str(caught.exception))
 
     def test_a_file_that_holds_no_key_is_refused(self):

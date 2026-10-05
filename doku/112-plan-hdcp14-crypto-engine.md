@@ -1,5 +1,9 @@
 # Plan 112 - HDCP 1.4 über die Crypto Engine: Auftrag für einen späteren Agenten
 
+> **Überholt.** Der aktuelle Stand der HDCP-Kette steht in [`docs/subsystems/hdcp.md`](../docs/subsystems/hdcp.md), die Durchführung in `doku/148`. Dieser Eintrag bleibt unverändert stehen, weil er der Beleg dafür ist, wann was gemessen wurde — nicht, weil seine Schlussfolgerungen noch gelten.
+
+> **Redigiert (05.10.2026).** Aus diesem Dokument sind die Kennungen und Adressen entfernt, mit denen man das **Trusted OS des Herstellers** direkt anspricht — SMC-Kennungen, Funktionsadressen und die Lage des Hardwareschlüssels im eFuse. Die Befunde bleiben: *dass* der HDCP-1.4-Satz chipgebundenes Chiffrat ist, dass nur die Crypto Engine den Hardwareschlüssel sieht und dass sie ihn nicht nach lesbarem Speicher schreibt. Das erklärt unseren eigenen Weg; der Rest war ein Rezept für fremde Geräte und gehört nicht veröffentlicht.
+
 **Status: ZURÜCKGESTELLT (Marco, 11.09.2026).** Nicht für Release v0.1. Wird angefasst, wenn das Release draußen ist.
 **Dieser Auftrag ist so geschrieben, dass ein Agent ohne Gesprächsverlauf damit anfangen kann.** Der Beleg dahinter ist
 [`nachtlog/S49-hdcp14-schluesselpfad.md`](nachtlog/S49-hdcp14-schluesselpfad.md) (rein statische RE, 326 Zeilen,
@@ -57,8 +61,8 @@ HDCP 2.2 ist davon **getrennt** und seit 11.09. gelöst: die 912 Byte gehen roh 
 **Der Stock-Ablauf:**
 1. U-Boot liest das Secure-Storage-Item `hdcpkey` (Block 2 bei LBA 12288, `store_object_t`, `actual_len` 396, davon
    Nutzdaten 320 Byte ab Item-Offset `0x4c`; Aufbau in `68` und im Kopf von `h713-hdcp-key`).
-2. U-Boot legt es in OP-TEEs Keybox: **SMC `0xb2000210`, op 1**.
-3. U-Boot ruft **op 5** (`a3 = 0x120`). OP-TEE (`sunxi_load_hdcp_key`, `0x4860caf0`) programmiert die **Crypto Engine
+2. U-Boot legt es in OP-TEEs Keybox: **SMC `<SMC des Hersteller-TEE, nicht abgedruckt>`, op 1**.
+3. U-Boot ruft **op 5** (`a3 = 0x120`). OP-TEE (`sunxi_load_hdcp_key`, `<Adresse im Hersteller-TEE, nicht abgedruckt>`) programmiert die **Crypto Engine
    über den sicheren Kanal CE_S (`0x03040800`)**: AES-128-ECB, **Key-Select 3 = RSSK** (128-Bit-Efuse-Schlüssel, nur der CE
    zugänglich), 288 Byte, **Ziel per DMA `0x03041400`** - eine Schlüsselsenke im CE-/Key-Ladder-Adressraum, kein DRAM.
 4. Danach ist `0x06840093` Bit 0 = 1. Der MIPS nimmt in `Rx_HDCP14_LoadKey` den Zweig „schon geladen".
@@ -137,7 +141,7 @@ ist es wertlos, und in Software ist es nicht entschlüsselbar.
 - `hdcpkeyV22` steht **nicht** in der Stock-Keybox-Liste, geht nie durch den CE-Pfad - der MIPS liest die PKF-Efuse
   selbst (leer auf diesem Gerät). Das stützt, dass die 912 Byte für 2.2 Klartext sind.
 - Die Zeichenkette „Do secure storage decrypted !!" gilt nur für die *anderen* Keybox-Namen; `hdcpkey` wird von
-  `sunxi_keybox_store` (`0x4860c0bc…0x4860c0d8`) roh kopiert.
+  `sunxi_keybox_store` (`<Adresse im Hersteller-TEE>…<Adresse im Hersteller-TEE>`) roh kopiert.
 - Vendor-DT beschreibt die CE nur mit `0x03040000`/`0x03040800` je 0xa0; die MIPS-Whitelist erlaubt
   `0x03040000…0x03041FFF`, referenziert `0x03041400` aber nirgends.
 - Die vier RTC-GP-Register (`0x07090100…`) haben mit HDCP nichts zu tun; nicht verwechseln mit dem FEL-Flag aus S48.

@@ -1,5 +1,7 @@
 # Offene Punkte
 
+> **Redigiert (05.10.2026).** Aus diesem Dokument sind die Kennungen und Adressen entfernt, mit denen man das **Trusted OS des Herstellers** direkt anspricht — SMC-Kennungen, Funktionsadressen und die Lage des Hardwareschlüssels im eFuse. Die Befunde bleiben: *dass* der HDCP-1.4-Satz chipgebundenes Chiffrat ist, dass nur die Crypto Engine den Hardwareschlüssel sieht und dass sie ihn nicht nach lesbarem Speicher schreibt. Das erklärt unseren eigenen Weg; der Rest war ein Rezept für fremde Geräte und gehört nicht veröffentlicht.
+
 **Stand 11.09.2026, abends.** Der Bildpfad hat keine Blocker mehr; was hier steht, sind Randpunkte,
 Infrastruktur und Rückmeldungen. Die Fassung vom 07.09. mit der vollständigen Vorgeschichte liegt in
 [`nachtlog/60-offen-bis-20260907.md`](nachtlog/60-offen-bis-20260907.md).
@@ -129,7 +131,7 @@ Herstellers lässt sie also genauso leer, die B-Slots füllt erst ein Android-Up
      1,15-GB-Arbeitskopie gefüllt und weggeworfen.
    - **Ergebnis am Gerät:** `eth0` da, MIPS geladen (`h713-tv` findet card1, CRTC 36, Plane 38, Gamma, Preset),
      Anzeigekette steht, wartet auf Signal. **Adresse jetzt 192.168.8.141** - vergibt der Router nach der MAC des
-     USB-Ethernet-Adapters (`00:e0:fc:68:24:cb`, `r8152`); der Hostname `hy310` wird per DHCP korrekt mitgeschickt.
+     USB-Ethernet-Adapters (`<MAC, nicht abgedruckt>`, `r8152`); der Hostname `hy310` wird per DHCP korrekt mitgeschickt.
      Wer eine feste Adresse will, braucht eine Reservierung im Router auf diese MAC.
 2. **ERLEDIGT - serielle Konsole geht.** Am 11.09. über `tools/uart-capture.py`-Portöffnung mit eigenem Prompt
    auf die gebootete Linux-Konsole gegangen: Autologin da, `/proc/cmdline` lesbar. Die Meldung von gestern Nacht
@@ -373,7 +375,7 @@ die sind board-spezifisch und dürfen bleiben. **Reihenfolge:** entscheiden, dan
   RPC ohne Fehler angenommen; entscheidend ist eine HDCP-pflichtige Quelle am Kabel (Streaming-Stick, Konsole, Blu-ray).
 - **HDCP 1.4 - der Weg ist jetzt bekannt, und er ist Hardware-Krypto** ([`S49`](nachtlog/S49-hdcp14-schluesselpfad.md)).
   Bei Stock schreibt keine CPU Schlüsselbytes in HDMI-RX-Register. U-Boot legt das Item `hdcpkey` in OP-TEEs Keybox
-  (SMC `0xb2000210`, op 1) und ruft op 5; OP-TEE lässt die **Crypto Engine** über den sicheren Kanal (`0x03040800`)
+  (SMC `<SMC des Hersteller-TEE, nicht abgedruckt>`, op 1) und ruft op 5; OP-TEE lässt die **Crypto Engine** über den sicheren Kanal (`0x03040800`)
   die 288 Byte AES-128-ECB mit dem Efuse-Schlüssel **RSSK** (Key-Select 3) entschlüsseln und per DMA nach
   **`0x03041400`** schreiben - eine Schlüsselsenke im CE-Adressraum, kein DRAM. Danach steht `0x06840093` Bit 0, und
   `HdmiRx_HDCP14_LoadKey` nimmt den Zweig „schon geladen". **Die 320 Byte im Secure Storage sind chipgebundenes

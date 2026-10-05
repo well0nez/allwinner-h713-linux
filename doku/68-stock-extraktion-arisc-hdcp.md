@@ -76,7 +76,7 @@ Magic ist `0x17253948`.
 | `0x606000` | `hdcpkeyV22` (HDCP 2.2) | 988 |
 | `0x608000` | `hdcpkeyV22_hash` | 6 (`"4378ef"`) |
 | `0x60a000` | `wifiBleDatas` | 240 |
-| `0x60c000` | `snum` | 15 (`HYTY32508181083`) |
+| `0x60c000` | `snum` | 15 (die Seriennummer des Geraets, hier nicht abgedruckt) |
 
 ### Der innere Aufbau
 
