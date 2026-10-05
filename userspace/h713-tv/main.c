@@ -3954,6 +3954,95 @@ static bool edid_from_file(const char *path, uint8_t *out, char *why, size_t n)
 	return edid_plausible(out, why, n);
 }
 
+/* the VICs the firmware's table carries, one bit each (kernel 0172) */
+static void edid_table_have(struct capture *cap, uint8_t have[16])
+{
+	struct v4l2_enum_dv_timings et;
+
+	memset(have, 0, 16);
+	memset(&et, 0, sizeof(et));
+	for (; !ioctl(cap->fd, VIDIOC_ENUM_DV_TIMINGS, &et); et.index++)
+		if ((et.timings.bt.flags & V4L2_DV_FL_HAS_CEA861_VIC) && et.timings.bt.cea861_vic < 128)
+			have[et.timings.bt.cea861_vic / 8] |= 1 << (et.timings.bt.cea861_vic % 8);
+}
+
+/* a VIC as the table tags it: the native bit off, the aspect twin under the lower code */
+static unsigned int edid_vic_lookup(unsigned int vic)
+{
+	static const uint8_t twin[][2] = { { 3, 2 }, { 7, 6 }, { 18, 17 }, { 22, 21 } };
+	unsigned int j;
+
+	vic = vic >= 129 && vic <= 192 ? vic - 128 : vic;
+	for (j = 0; j < sizeof(twin) / sizeof(twin[0]); j++)
+		if (vic == twin[j][0])
+			return twin[j][1];
+	return vic;
+}
+
+/*
+ * Take every short video descriptor the firmware's table does not carry out
+ * of one 256-byte EDID. An offered mode that never locks is a black wall for
+ * the source that picks it: the HY310's file offers 480i and 576i (VICs 6, 7,
+ * 21) and the firmware has no record for them (status line since 04.10.2026,
+ * confirmed on the v0.96-beta image 05.10.). The video data block shrinks,
+ * what follows it moves up, the freed bytes are zero in front of the
+ * checksum, and the checksum is recomputed. Returns how many were dropped;
+ * `list` gets them as text.
+ */
+static unsigned int edid_prune(uint8_t *edid, const uint8_t have[16], char *list, size_t n)
+{
+	uint8_t *ext = edid + 128;
+	unsigned int i, k, dropped = 0, sum = 0;
+
+	if (list && n)
+		list[0] = '\0';
+	if (!edid[0x7e] || ext[0] != 0x02 || ext[2] < 4)
+		return 0;
+	for (i = 4; i < ext[2] && i < 127; i += (ext[i] & 0x1f) + 1) {
+		if (ext[i] >> 5 != 2)
+			continue;
+		for (k = 1; k <= (ext[i] & 0x1fu) && i + k < 127;) {
+			unsigned int vic = ext[i + k], look = edid_vic_lookup(vic);
+
+			if (look < 128 && have[look / 8] >> (look % 8) & 1) {
+				k++;
+				continue;
+			}
+			/* the byte goes, everything up to the checksum moves up one */
+			memmove(ext + i + k, ext + i + k + 1, 126 - (i + k));
+			ext[126] = 0;
+			ext[i]--;
+			ext[2]--;
+			dropped++;
+			if (list && n)
+				snprintf(list + strlen(list), n - strlen(list), " %u",
+					 vic >= 129 && vic <= 192 ? vic - 128 : vic);
+		}
+	}
+	if (dropped) {
+		for (i = 0; i < 127; i++)
+			sum += ext[i];
+		ext[127] = (uint8_t)(-(int)sum);
+	}
+
+	return dropped;
+}
+
+/* half `half` of the file as this program publishes it: without the modes the table lacks */
+static bool edid_file_half(struct capture *cap, int half, uint8_t *out, unsigned int *dropped,
+			   char *list, size_t n, char *why, size_t wn)
+{
+	uint8_t file[EDID_BYTES], have[16];
+
+	if (!edid_from_file(EDID_FILE, file, why, wn))
+		return false;
+	memcpy(out, file + half * (EDID_BYTES / 2), EDID_BYTES / 2);
+	edid_table_have(cap, have);
+	*dropped = edid_prune(out, have, list, n);
+
+	return true;
+}
+
 /* the half this program published last, -1 for none: the driver's default */
 static int edid_published = -1;
 static int edid_served = -3;	/* the half port 0 serves, as last known; -3: not read yet */
@@ -3964,13 +4053,14 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	static uint8_t last_good[EDID_BYTES];
 	static bool have_last;
 	struct timespec low = { .tv_sec = 0, .tv_nsec = REPLUG_LOW_MS * 1000000L };
-	uint8_t buf[EDID_BYTES], file[EDID_BYTES];
+	uint8_t buf[EDID_BYTES], pub[EDID_BYTES / 2];
 	struct v4l2_edid e;
-	char why[160], what[64] = "EDID loaded again";
+	char why[160], what[160] = "EDID loaded again", list[64];
 	const char *origin = "";
 	bool copy = false;
+	unsigned int dropped = 0;
 
-	if (half >= 0 && !edid_from_file(EDID_FILE, file, why, sizeof(why))) {
+	if (half >= 0 && !edid_file_half(cap, half, pub, &dropped, list, sizeof(list), why, sizeof(why))) {
 		reply_fail(r, "%s -- nothing to publish, HPD is not touched", why);
 		return false;
 	}
@@ -4025,8 +4115,12 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	e.edid = buf;
 	if (half >= 0) {
 		e.blocks = EDID_BLOCKS / 2;
-		e.edid = file + half * (EDID_BYTES / 2);
-		snprintf(what, sizeof(what), "block %d of %s published", half, EDID_FILE);
+		e.edid = pub;
+		if (dropped)
+			snprintf(what, sizeof(what), "block %d of %s published without %u VIC%s the firmware's table lacks (%s)",
+				 half, EDID_FILE, dropped, dropped == 1 ? "" : "s", list + 1);
+		else
+			snprintf(what, sizeof(what), "block %d of %s published", half, EDID_FILE);
 		origin = "";
 	}
 	if (ioctl(cap->fd, VIDIOC_S_EDID, &e)) {
@@ -4086,6 +4180,19 @@ static int edid_half_served(struct capture *cap, uint8_t *served)
 		return -2;
 	for (i = 0; i < EDID_BYTES; i++)
 		diff[i / (EDID_BYTES / 2)] += served[i % (EDID_BYTES / 2)] != file[i];
+	/* the driver's default is the raw file; what this program publishes is the
+	 * half without the modes the table lacks -- both count as that half */
+	for (i = 0; i < 2; i++) {
+		uint8_t pub[EDID_BYTES / 2];
+		unsigned int k, d = 0, dropped;
+
+		if (!edid_file_half(cap, (int)i, pub, &dropped, NULL, 0, why, sizeof(why)))
+			break;
+		for (k = 0; k < EDID_BYTES / 2; k++)
+			d += served[k] != pub[k];
+		if (d < diff[i])
+			diff[i] = d;
+	}
 	if (diff[0] > 8 && diff[1] > 8)
 		return -2;
 	return diff[1] < diff[0];
@@ -4109,24 +4216,22 @@ static int edid_half_served(struct capture *cap, uint8_t *served)
  */
 static int edid_served_known(struct capture *cap, uint8_t *served)
 {
-	uint8_t file[EDID_BYTES];
 	char why[160];
 
 	if (edid_served == -3)
 		edid_served = edid_half_served(cap, served);
 	else if (edid_served >= 0) {
-		if (!edid_from_file(EDID_FILE, file, why, sizeof(why)))
+		unsigned int dropped;
+
+		if (!edid_file_half(cap, edid_served, served, &dropped, NULL, 0, why, sizeof(why)))
 			return -2;
-		memcpy(served, file + edid_served * (EDID_BYTES / 2), EDID_BYTES / 2);
 	}
 	return edid_served;
 }
 
 static void cmd_status_edid(struct reply *r, struct capture *cap)
 {
-	static const uint8_t twin[][2] = { { 3, 2 }, { 7, 6 }, { 18, 17 }, { 22, 21 } };
-	uint8_t served[EDID_BYTES / 2], have[16] = { 0 };	/* one bit per VIC 0..127 */
-	struct v4l2_enum_dv_timings et;
+	uint8_t served[EDID_BYTES / 2], have[16];	/* one bit per VIC 0..127 */
 	const uint8_t *ext = served + 128;
 	unsigned int i, k, n = 0, miss = 0;
 	char list[128] = "", which[96];
@@ -4139,22 +4244,16 @@ static void cmd_status_edid(struct reply *r, struct capture *cap)
 			reply_add(r, "edid            block %d of %s published from here (G_EDID: %s)\n", edid_published, EDID_FILE, strerror(errno));
 		return;
 	}
-	memset(&et, 0, sizeof(et));
-	for (; !ioctl(cap->fd, VIDIOC_ENUM_DV_TIMINGS, &et); et.index++)
-		if ((et.timings.bt.flags & V4L2_DV_FL_HAS_CEA861_VIC) && et.timings.bt.cea861_vic < 128)
-			have[et.timings.bt.cea861_vic / 8] |= 1 << (et.timings.bt.cea861_vic % 8);
+	edid_table_have(cap, have);
 	/* tag 2 is the video data block: one VIC per byte, 129..192 = 1..64 flagged native */
 	if (served[0x7e] && ext[0] == 0x02 && ext[2] >= 4)
 		for (i = 4; i < ext[2] && i < 127; i += (ext[i] & 0x1f) + 1) {
 			if (ext[i] >> 5 != 2)
 				continue;
 			for (k = 1; k <= (ext[i] & 0x1fu) && i + k < 127; k++, n++) {
-				unsigned int vic = ext[i + k], j, look;
+				unsigned int vic = ext[i + k], look = edid_vic_lookup(vic);
 
 				vic = vic >= 129 && vic <= 192 ? vic - 128 : vic;
-				for (look = vic, j = 0; j < sizeof(twin) / sizeof(twin[0]); j++)
-					if (vic == twin[j][0])
-						look = twin[j][1];
 				if (look < 128 && have[look / 8] >> (look % 8) & 1)
 					continue;
 				miss++;
@@ -4181,8 +4280,33 @@ static void edid_apply_start(const struct conf *cf, struct capture *cap,
 	uint8_t served[EDID_BYTES / 2];
 	struct reply r;
 
-	if (cf->edid < 0)
+	if (cf->edid < 0) {
+		/*
+		 * No half asked for: the driver's default is the raw file, and if
+		 * that offers modes the firmware's table has no record for, the
+		 * same half goes out once more without them (edid_prune). One HPD
+		 * pulse at start; a restart of this program finds the pruned EDID
+		 * served and does nothing.
+		 */
+		uint8_t have[16];
+		char list[64];
+		int half = edid_served_known(cap, served);
+
+		if (half < 0)
+			return;
+		edid_table_have(cap, have);
+		if (!edid_prune(served, have, list, sizeof(list))) {
+			info("edid            block %d of %s is served, all of it in the firmware's table", half, EDID_FILE);
+			return;
+		}
+		info("edid            block %d of %s offers VIC%s the firmware's table lacks -- published again without them",
+		     half, EDID_FILE, list);
+		memset(&r, 0, sizeof(r));
+		cmd_replug(&r, cap, d, rt, half);
+		r.buf[strcspn(r.buf, "\n")] = '\0';
+		(r.failed ? warn : info)("edid            %s", r.buf);
 		return;
+	}
 	/* already served, as after a restart of this program: no second sequence */
 	if (edid_served_known(cap, served) == cf->edid) {
 		info("edid            block %d of %s is served -- as tv.conf says", cf->edid, EDID_FILE);
