@@ -98,7 +98,7 @@ INCAP +0x924 still 0x00500050; the camera over "ctl test grid" one grid.
   * Returns true if the firmware has something new to look at here, i.e. if the
   * record or the pointer changed. See h713_afbd_wait_wce().
   */
-@@ -597,13 +621,15 @@
+@@ -597,13 +621,16 @@
  				   ring ? h->mode.hdisplay : w,
  				   ring ? h->mode.vdisplay : hgt,
  				   h->mode.hdisplay, h->mode.vdisplay,
@@ -116,7 +116,8 @@ INCAP +0x924 still 0x00500050; the camera over "ctl test grid" one grid.
 +		drm_info(&h->drm,
 +			 "republishing the VidDec descriptor for the %s %ux%u, stride %u (was %ux%u, stride %u): the firmware's window chain follows the record\n",
 +			 ring ? "ring" : "framebuffer", w, hgt, stride,
-+			 h->video_info[2], h->video_info[3], h->video_info[22]);
++			 ((const u32 *)h->video_info)[2], ((const u32 *)h->video_info)[3],
++			 ((const u32 *)h->video_info)[22]);
  
  	if (write_record) {
  		memcpy(h->video_info, rec, sizeof(rec));
