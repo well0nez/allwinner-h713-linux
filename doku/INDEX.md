@@ -198,6 +198,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`153-sel1-payload-aus-der-linie-20261006.md`](153-sel1-payload-aus-der-linie-20261006.md) | Analyse | 2026-10-06 | 153 - Der S-EL1-Testpayload verlässt die TF-A-Linie (06.10.2026) | - |
 | [`154-handoff-20261006-vormittag.md`](154-handoff-20261006-vormittag.md) | Handoff | 2026-10-06 | 154 - Handoff 06.10.2026, Vormittag (06:00-10:45) - Aufräumen, Regeln, Verknüpfungen | - |
 | [`155-zoom-aspect-und-schieber-20261006.md`](155-zoom-aspect-und-schieber-20261006.md) | Analyse | 2026-10-06 | 155 - Zoom: der Aspect "zoom" legt den Bildweg lahm, der Schieber kippte das Bild (06.10.2026) | - |
+| [`156-bluetooth-warmstart-abgefangen-20261006.md`](156-bluetooth-warmstart-abgefangen-20261006.md) | Analyse | 2026-10-06 | 156 - Bluetooth nach warmem Reboot: abgefangen, Ursache vertagt (06.10.2026) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -355,7 +356,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-36 von 214 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+37 von 215 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -385,6 +386,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `153-sel1-payload-aus-der-linie-20261006.md`
 * `154-handoff-20261006-vormittag.md`
 * `155-zoom-aspect-und-schieber-20261006.md`
+* `156-bluetooth-warmstart-abgefangen-20261006.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
