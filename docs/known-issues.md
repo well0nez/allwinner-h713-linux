@@ -32,7 +32,6 @@ git, not in the image" means the source has the fix but the image you can curren
 
 | The sound dropped out while the warp was drawing | Fixed 22.09.2026, in `v0.95-beta`: the audio automaton read "the video plane is on" as "there is a picture", and while `h713-warp` draws, that plane is off and the primary one carries the picture. A source event during a warp - a player changing its sample rate - was therefore re-evaluated as *no picture* and muted the path with a pop. All five places ask for "plane on **or** warped" now. Found on the HY310 during the first long warp run. | On an image older than `v0.95-beta`, do not warp a source that changes its sample rate; there is no runtime switch for it. |
 
-| Latency spikes on the access point | A client at -50 dBm, linked at 72 MBit/s, sees ping times jumping between 3 ms and 2 s while throughput is fine (5.7 MB/s measured 2026-09-12 over SSH). It looks like power saving on the radio rather than the link itself; not investigated. | Bulk transfers are unaffected. For interactive work over Wi-Fi, or if it bothers you, use the wired path or `mode=sta` on an existing network. |
 
 ## By design
 

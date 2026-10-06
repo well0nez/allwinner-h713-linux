@@ -93,9 +93,13 @@ build. See [`docs/tools/h713-wifi.md`](../tools/h713-wifi.md) for the file forma
 ## Measured
 
 Access point, 2.4 GHz channel 6, one client at −50 dBm (2026-09-12): link 72.2 MBit/s tx / 52.0 MBit/s rx
-(MCS 7 / MCS 5), **5.7 MB/s** of real throughput over SSH, DHCP and WPA2 without complaint. Ping times in
-the same session swung between 3 ms and 2 s - throughput is unaffected, and the cause is unexamined; power
-saving on the radio is the obvious suspect.
+(MCS 7 / MCS 5), **5.7 MB/s** of real throughput over SSH, DHCP and WPA2 without complaint.
+
+Latency (2026-10-06, the shipped `wifi.env`, a laptop as the client at −47 dBm, 72.2 MBit/s, the radio's
+power saving on as shipped): 100 pings every 0.2 s 1.2-124 ms, 60 pings every second 2.6-14 ms (median
+3.4 ms) - no spike. In station mode on a home network 1-59 ms.
+*Superseded (2026-10-06):* on 2026-09-12 ping times in the AP session swung between 3 ms and 2 s; that
+did not come back with today's image.
 
 Details: `doku/60-offen.md` (§WLAN und Bluetooth, §WLAN vor dem Release), `doku/134` (remote and coexistence tests, 03.10.2026),
 `analyse/boot/wlan-aic8800-messung-20260912.txt`.
