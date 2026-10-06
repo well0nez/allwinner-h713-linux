@@ -160,20 +160,21 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [x] 7.3 Unzitierte Journaleintraege: 25 Ueberholt-/Umgesetzt-Marker (alte Handoffs, erledigte Plaene); `doku-index`
       zaehlt Nachtlog-Belege nicht mehr als unzitiert, kennzeichnet Marker; Analysen 89/72/73 aus `display.md` zitiert.
       Rest: 95 netboot (gueltiges How-to ohne Heimat), 149/150/152 (aktuell) (06.10.)
-- [ ] 7.4 Journal-Master `/opt/Projekte/h713/doku/` vs Repo-Kopie `repo-neu/doku/`: **die Kopie ist in allen 40
-      abweichenden Dateien die neuere** (Redaktion, Marker, Englisch) - der Master ist seit 05.10. stehen geblieben.
-      Links `121`/`86` sind in Ordnung (Pruefung 06.10.). **Entscheidung Marco:** Repo-Kopie wird Master, der alte
-      Ordner wird Archiv (`doku-archiv-bis-20261005`, 0700, enthaelt die unredigierten Originale) oder weg
+- [x] 7.4 Journal: eine Quelle. Repo-Kopie war in allen 40 abweichenden Dateien die neuere (satzweise geprueft:
+      Zeichensatz + Redaktion); drei Abschnitte aus `40-display.md` uebernommen; alter Master jetzt
+      `/opt/Projekte/h713/doku-archiv-bis-20261005/` (0700, Originale). Links `121`/`86` waren in Ordnung (06.10.)
 - [x] 7.5 `hy310-logs` war ein identisches Duplikat von `h713-logs` im Overlay; jetzt Symlink, wie `build-rootfs.sh` ihn prueft (06.10.)
 - [x] 7.6 Verweise auf geloeschte Pfade: nichts Lebendes kaputt - die lokalen Fixture-, Arbeits- und Firmware-Pfade,
       die Skripte nennen, existieren; nur historische Briefe (`analyse/boot/arbeit/`, `mainline/docs/wifi-*`) nennen
       alte Kernelbaeume. Die Tore (sperr-scan Regel 7) finden Verweise auf den alten Arbeitsordner in Leserdoku (06.10.)
-- [ ] 7.7 Sicherungs-Tags nach Bestätigung löschen: `vor-main-umzug/*`, `hdcp14-auf-altem-main`
-- [ ] 7.8 Branches entscheiden: `fable-main`, `von-src/*` (9), `hy300-pro-ab-lokal` (370 hinter), Arbeitsbranch
+- [x] 7.7 Sicherungs-Tags `vor-main-umzug/*` (3) geloescht - alle in main (06.10.)
+- [ ] 7.8 Branches: `fable-main`, 9x `von-src/*`, `sicherung/main-vor-mailfix`, `arbeit/doku-7` geloescht (alle in
+      main; 06.10.), Fork-Sicherungen ebenso. **Offen:** `hy300-pro-ab-lokal` (+145 Commits, die nicht in main sind -
+      der Pro-Stand vor dem Board-Merge; Inhalt per ST3-BOARDMERGE uebernommen, Commits nicht). Marco: weg oder nicht?
 - [x] 7.9 Drei Abzuege gehasht (06.10.): stock emmc-voll `33e1ffc4…`, HY300-Pro emmc-full `af2deb6a…`,
       bootbereich-8mib `e16acad0…` - in `referenz/artefakte.md`
 - [x] 7.10 `doku/149` §5 Stand 06.10. nachgetragen und in die Repo-Kopie uebernommen (lag nur im Master)
-- [ ] 7.11 `SICHERUNG-tfa/-wifi/-tee-experiment` in `FB-HDCP14h/` nach Bestätigung weg
+- [x] 7.11 `SICHERUNG-{tee-experiment,tfa,wifi}` in FB-HDCP14h geloescht (06.10.); Geraetesicherungen bleiben
 - [x] 7.12 `referenz/irrwege.md`: rchar, OOM/ROOM-Regex, `ssh -n`, modroot ohne aic8800, `kill -9` auf MemPalace,
       Hypothese vor Messung, Agent ohne Kompilat (06.10.)
 - [ ] 7.13 `/home/user/AGENTS.md` dupliziert `~/.claude/CLAUDE.md` — eine Quelle

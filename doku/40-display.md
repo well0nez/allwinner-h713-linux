@@ -190,3 +190,100 @@ Page-Flip läuft über **`0x05600178`** plus READY-Bit, Vblank auf SPI 110. Gena
 dieses Register steht in unserem Stock-Diff, und dort ist die Abweichung
 korrekt: es trägt die Framebuffer-Adresse, bei Stock `0x78541000`, bei uns
 `0x6c100000`.
+
+---
+
+*Nachtrag 06.10.2026: die folgenden drei Abschnitte standen nur im alten Journal-Master (Stand 15.09.) und fehlten in dieser Kopie; uebernommen beim Zusammenlegen (TODO 7.4).*
+
+
+## Bootlogo mit laufendem MIPS: `h713_disp init … logo` (15.09.2026, ungetestet)
+
+Marcos Wunsch vom 15.09.: das Logo **und** den korrekten Init. Die Lage vorher:
+
+- `h713_disp auto 0x30 logo` (bootcmd bis 04.09.) zeigt das Logo, **parkt aber den MIPS als letzte Handlung**
+  (`h713_disp_quiesce_mips_owner()` in `h713_disp_auto_logo()`). Der AFBD scannt das Logo endlos weiter, Linux
+  findet eine tote Firmware: kein cpu_comm, kein SetSource, kein HDMI-Umschalten (doku/67 §1).
+- `h713_disp init 0x30` (bootcmd seit 04.09.) startet die Firmware und laesst sie laufen, **veroeffentlicht aber
+  kein Bild**: der OSD-Puffer bei `0x6c100000` behaelt, was das DRAM hielt - deshalb der weisse Schirm bis Linux
+  die Konsole hineinschreibt.
+- cstengers `h713_disp logo-live` (sein U-Boot `76eef86`, 04.09.) ist `auto … logo` ohne den Quiesce, plus DE-Replay,
+  von ihm nie als Bootpfad benutzt ("expect contention").
+
+**Warum die Linux-Konsole mit lebendem MIPS geht:** der KMS-Treiber macht in `h713_afbd_set_source()` nur vier
+Dinge - `AFBD_SRC` (`0x05600178`) auf seinen Puffer, IRQ-Status (`0x168`) loeschen, `AFBD_CTRL` (`0x140`) Bit 0,
+`AFBD_READY` (`0x144`) = 1. Kein DE-Replay, kein Timing-Latch. Genau das ist `h713_disp_commit_osd_frame_quiet()`
+in U-Boot. Der ARM besitzt den AFBD, die Firmware alles dahinter (doku/96 §1).
+
+**Neu (Fork `44817b2`, main `f4c18b0`):** `h713_disp init [id] [noboot|quiesce] [elog=N] [logo [file.bmp]]`.
+Mit `logo`: (1) das Logo wird **vor** dem Record-Replay und der Panel-Einschaltfolge in den OSD-Puffer geschrieben,
+damit das erste Bild, das das Panel je scannt, das Logo ist (Marcos Hinweis: der alte Logo-Boot war fuer einen
+Sekundenbruchteil weiss - dort kam das Logo erst *nach* Firmware-Start und Panel-Power); (2) nach bewiesener
+Bereitschaft wird aus dem noch geladenen BMP ein zweites Mal veroeffentlicht (falls Replay oder Firmwarestart den
+Puffer angefasst haben) und Kanal 1 wie vom KMS-Treiber neu scharf gemacht; (3) kein Quiesce, kein DE-Replay;
+(4) fehlt das Logo, nur eine Warnung, der Boot laeuft wie ohne das Wort. Dazu liest `h713_disp_publish_bmp` das
+BMP jetzt vom Artefakt-Geraet (`h713_mips_dev`, per Partitionsname) statt vom festen `1:2` - auf Layout v3 ist
+`1:2` die rohe U-Boot-Partition. Auf Stock liegt `bootlogo.bmp` in **beiden** Bootloader-Slots im FAT-Wurzelverzeichnis
+(HY310: 6.220.854 Byte, SHA-256 `9684ef71…`, der Eintrag in `h713_vendor_bootlogos[]`), nicht unter `mips/`. Auf
+unserem Layout muss es nach `/boot/bootlogo.bmp` (Wurzel von `hy310-boot`).
+
+**Was noch fehlt:**
+1. **Installer:** `bootlogo.bmp` steht in `vendorfiles.py` unter `MIPS_NOT_OURS` und wird nicht extrahiert. Das
+   Paket: Extraktor kopiert es aus dem FAT-Wurzelverzeichnis nach `boot/bootlogo.bmp`, `h713-mkimage` bekommt einen
+   6.220.854-Byte-Platzhalter in `hy310-boot`, `install` fuellt ihn, Golden-Ausgaben neu einfrieren, README-Texte.
+   Ein halber Tag, kein Gerätetest fuer sich.
+2. **Gerätetest** (ein Stromzyklus, beim naechsten Einspielen): Datei per `scp` nach `/boot/bootlogo.bmp` (die
+   eigene liegt in `umbau/test-20260915/bootlogo-bootloader_a-root.bmp`, aus dem Vollabzug T gezogen), U-Boot
+   mit `44817b2` im Abbild, am Prompt `h713_disp init 0x30 logo`, dann `run boot_emmc` (**nicht** `run bootcmd`,
+   das enthaelt ein zweites `init`). Erwartung: Logo ab dem ersten Bild, kein Weiss, `0x0306101c` liest 1, Konsole
+   loest das Logo ab, `h713-tv` schaltet auf HDMI. Geht das, wird `bootcmd` zu
+   `h713_disp init ${h713_project} logo; run boot_${h713_boot}; run boot_net` (hy310.env, naechster U-Boot-Bau).
+3. Wenn das Logo trotz allem verschwindet, sobald die Firmware laeuft (cstengers Warnung), ist die Antwort ein
+   Foto und der elog, nicht ein weiterer Registerversuch: dann besitzt die Firmware diese Worte, und das Logo muss
+   ueber den VidDec-Deskriptor oder gar nicht kommen.
+
+**Gerätetest 15.09.2026, 16:47 bis 16:56 - bestanden.** Drei Läufe, U-Boot per `sunxi-fel uboot` aus dem RAM gegen
+die Stock-Partitionen (Gerät auf Stock-Android, nichts geschrieben), UART über `umbau/test-20260915/uart-boot.py`,
+Logs `umbau/test-20260915/logo-test-{164714,165240,165526}.log`. Am Prompt `setenv h713_mips_dev` (die Vorgabe zeigt
+auf `hy310-boot`, auf Stock findet der Resolver `1#bootloader_a` selbst), dann `h713_disp init 0x30 logo`.
+- Lauf 1: Logo abgelehnt ("unsupported BMP layout 1920x1080 … need 1280x720"): die Prüfung liest die Panelgröße
+  aus `h713_disp_panel`, das vor `h713_disp_lookup()` noch auf Board B steht; mein Veröffentlichen lag vor der
+  Auswahl. Wand: Rauschen (DRAM-Inhalt nach dem Stock-Lauf im OSD-Puffer). MIPS lief trotzdem, Scanzähler lief.
+- Lauf 2 (Auswahl vor dem Veröffentlichen): "stock logo recognised … published at 0x6c100000", MIPS Status 1,
+  **Marco: "ich hab das magcubic logo gesehen"**. Das zweite Veröffentlichen nach der Bereitschaft wurde abgelehnt
+  (Prüfsumme über die feste 720p-Länge statt über die geladenen 6.220.854 Byte), harmlos, der Puffer behielt das Logo.
+- Lauf 3 (Länge gemerkt, ohne Logo schwarz füllen): beide Veröffentlichungen angenommen, "boot logo up at
+  0x6c100000 with the firmware running; MIPS reset=00070001 status=00000001 scan=016103e3", `0x05600178` =
+  `6c100000`, `0x05600140` = `03001901`, Scanzähler `026000e2 -> 006402e6`, Puffermitte `0x6c4f5100` =
+  `ffe9cb37` (Logo-Farbe). Fork `80eae99b99e`.
+Damit ist bewiesen: **Logo und laufende Firmware schließen sich auf dem HY310 nicht aus** (cstengers Warnung greift
+hier nicht), und das Logo liegt vor dem Einschalten des Panels im Puffer. Offen bleiben der Installer-Teil
+(`bootlogo.bmp` nach `/boot`), die `bootcmd`-Umstellung und der Nachweis, dass Linux danach wie gewohnt auf HDMI
+schaltet (erwartet, weil der Zustand nach `init … logo` derselbe ist wie nach `init`, plus ein gefüllter Puffer).
+
+**Einspielen und Kaltstart 15.09.2026, 18:0x bis 18:2x - bestanden.** Abbild `h713-hy310-v0.7-dev` (Fork 71f6d76, Kernel
+0fa3bf01, 44 Platzhalter) aus FEL mit `h713-install install … --small --dump h713-dump-T3 --vendor
+umbau/build/extract-T-20260915 --ssh-key …` eingespielt (3 min, Stichproben gleich, Secure Storage unveraendert; Log
+`umbau/test-20260915/install-v0.7-dev-18*.log`). Kaltstart per Stecker und Taste, UART passiv mitgeschnitten
+(`umbau/test-20260915/boot-v0.7-dev-181134.log`): Gate, Taste, Artefakte von `1#hy310-boot`, "stock logo recognised …
+published at 0x6c100000" **vor** dem Panel-Einschalten, "MIPS: released", "application readiness proven", zweites
+Veroeffentlichen, "boot logo up at 0x6c100000 with the firmware running; MIPS reset=00070001 status=00000001", Kernel,
+Debian-Login. Marco: "2-5 Sekunden nichts gesehen, dann war das Bild sichtbar fuer ein paar Sekunden, jetzt sehe ich das
+Login" - kein Weiss mehr, die dunklen Sekunden sind SPL, U-Boot, Gate und Firmware-Start. Danach im System: hdmirx
+Init-Sequenz vollstaendig (22 Aufrufe), ARISC EDID/HPD auf Port 0 abgeschlossen, cpu_comm-Rueckrufe registriert, MSP
+laeuft, `h713-tv` aktiv ("kein Signal, Bild Konsole" ohne Quelle). Erster Anlauf des Einspielens mit `--full` verworfen:
+er zieht einen NEUEN Vollabzug und ueberschreibt `emmc-full.img` im Zielordner (der alte Vollabzug T ist damit weg; seine
+Extraktion liegt in `umbau/build/extract-T-20260915`, weitere Vollabzuege in `hy310-sicherung*`). Merksatz: zum
+Einspielen `--small` plus `--vendor <Extraktion>`, `--full` nur, wenn ein neuer Vollabzug gewollt ist.
+
+**Zweiter Kaltstart 15.09., 18:2x, nur lesend mitgeschnitten (`umbau/test-20260915/watch-20260915-182624.log`):**
+identischer Ablauf (gate: cold start, Logo veroeffentlicht, MIPS laeuft, Login). Marcos Zeitmessung: **7 s bis das
+Bild kommt, dann Logo keine 5 s, dann Konsole** - "das Bild muss eigentlich instantly kommen". Die 7 s sind SPL,
+BL31, U-Boot, `starting USB … scanning usb for storage devices` (der USB-Scan vor dem Autoboot), `Hit any key to
+stop autoboot: 2`, dann `init`: 1,2 MB display.bin plus 6,2 MB Logo von der eMMC, Record-Replay, 550 ms
+Panel-Vorlauf, MIPS-Start und Bereitschaft. Die knapp 5 s Logo enden, sobald fbcon die Konsole auf das Panel legt.
+Naechstes Paket dazu in doku/61 ("Bootzeit bis Logo"). Der HDMI-Erststeck-Fehler (Bild 1 s, dann Konsole; nach
+Neustecken dauerhaft) ist im Automatikbetrieb reproduziert - der bekannte Punkt aus docs/known-issues.md. Das
+"Abschalten beim HDMI-Abziehen" hat sich nicht bestaetigt (Marco: die Power-Taste erwischt; die naechste Gate-Zeile
+sagt "cold start", also Netz weg). UART-Lehre: das Oeffnen des Proxys, waehrend U-Boot im Gate wartet, schickt
+Zeichen an die Konsole und stoppt den Autoboot ("=>" ohne Boot) - den Mitschnitt vor dem Einschalten oeffnen, und
+waehrend Marcos Tests nur lesen, nie senden (seine Ansage 15.09.).
