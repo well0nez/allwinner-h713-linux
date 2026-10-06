@@ -30,10 +30,12 @@ count(){ strings -a "$1" | grep -cF "$2"; }
 
 echo "U-Boot: $UBOOT"
 # 1. The HDCP path has to be linked in. These strings only exist in h713_hdcp14.c,
-#    so their absence means CONFIG_H713_MIPS_BOOT did not reach this build.
+#    so their absence means CONFIG_H713_MIPS_BOOT did not reach this build. The last
+#    one is the U-Boot that closes the key-sink service before an OS starts (TODO 6.1).
 for s in "H713 HDCP: 1.4 key set handed to the receiver" \
          "H713 HDCP: no '%s' item in the secure storage" \
-         "H713 HDCP: the two stored copies differ"; do
+         "H713 HDCP: the two stored copies differ" \
+         "H713 HDCP: key sink closed for this boot"; do
   if has "$UBOOT" "$s"; then ok "carries: ${s:11:46}"
   else fail "missing: $s  (is CONFIG_H713_MIPS_BOOT set for this board?)"; fi
 done
@@ -53,17 +55,28 @@ fi
 
 if [ -n "$BL31" ] && [ -r "$BL31" ]; then
   echo "BL31: $BL31"
+  # Checks 3-5 judge this file, so it has to be the BL31 the image carries: U-Boot proper
+  # embeds it in its FIT byte for byte. Without this a loose bl31.bin could stand in for
+  # an older one inside the image - build-all.sh --skip-uboot after a run with another
+  # out/bl31.bin was green with the old BL31 in the image.
+  if python3 -c 'import sys; sys.exit(open(sys.argv[2], "rb").read() not in open(sys.argv[1], "rb").read())' \
+       "$UBOOT" "$BL31"; then ok "$(basename "$BL31") is the BL31 embedded in $(basename "$UBOOT")"
+  else fail "$(basename "$BL31") is not the BL31 embedded in $(basename "$UBOOT") - checks 3-5 would judge the wrong one"; fi
+
   # 3. Our own chain, no vendor Trusted OS dispatcher.
   if [ "$(count "$BL31" opteed)" -eq 0 ]; then ok "no opteed dispatcher (our own chain)"
   else fail "BL31 contains an opteed dispatcher - that is the vendor path"; fi
 
-  # 4. The service that does the work has to be there.
-  if has "$BL31" "key set from"; then ok "the key-sink service is present"
-  else fail "BL31 has no key-sink service - U-Boot will get SMC_UNK"; fi
+  # 4. The service that does the work has to be there - the one without an address
+  #    parameter that the U-Boot above talks to (TODO 6.1). A BL31 that only has the
+  #    older PUSH_FROM would pass "key set from" and leave U-Boot with SMC_UNK.
+  if has "$BL31" "key set from the stage"; then ok "the key-sink service is present"
+  else fail "BL31 has no address-free key-sink service - U-Boot will get SMC_UNK"; fi
 
-  # 5. ... and the workbench probes must not be.
-  for s in SIDscan "re-ran the vendor" CEscan "sweep"; do
-    if has "$BL31" "$s"; then fail "built with H713_HDCP_RESEARCH - do not ship ($s)"
+  # 5. ... and the workbench probes must not be. "key set from 0x" is PUSH_FROM, which
+  #    takes a caller's source address: a workbench call since 07.10.2026 (TODO 6.1).
+  for s in SIDscan "re-ran the vendor" CEscan "sweep" "key set from 0x"; do
+    if has "$BL31" "$s"; then fail "workbench call in BL31 (H713_HDCP_RESEARCH, or PUSH_FROM from before TODO 6.1) - do not ship ($s)"
     else ok "no workbench probe: $s"; fi
   done
 fi
