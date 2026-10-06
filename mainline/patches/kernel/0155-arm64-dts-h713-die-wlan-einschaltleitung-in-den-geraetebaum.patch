@@ -36,9 +36,10 @@ kein vqmmc-supply, beides bewusst und mit Stock uebereinstimmend.
 Geprueft: das Board-DTB uebersetzt (cpp + dtc), der Knoten kommt mit den
 erwarteten vier Zellen an. Am Geraet nicht getestet.
 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -1083,6 +1083,26 @@
+@@ -1136,6 +1136,26 @@ sdio_wifi: wifi@1 {
  				interrupt-parent = <&r_pio>;
  				interrupts = <1 0 IRQ_TYPE_LEVEL_LOW>; /* PM0 = host-wake */
  				interrupt-names = "host-wake";

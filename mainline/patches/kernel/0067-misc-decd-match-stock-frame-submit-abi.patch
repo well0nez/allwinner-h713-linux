@@ -1,5 +1,4 @@
 diff --git a/drivers/misc/sunxi_decd/decd_frame.c b/drivers/misc/sunxi_decd/decd_frame.c
-index 52742e7..948f706 100644
 --- a/drivers/misc/sunxi_decd/decd_frame.c
 +++ b/drivers/misc/sunxi_decd/decd_frame.c
 @@ -493,11 +493,6 @@ int video_buffer_unmap(u32 dma_addr)
@@ -14,7 +13,7 @@ index 52742e7..948f706 100644
  static void clean_video_info_free_list(void)
  {
  	struct dec_video_info_page *page;
-@@ -626,8 +626,8 @@ u32 video_info_buffer_init_dmabuf(struct dec_frame_item *item)
+@@ -627,8 +622,8 @@ u32 video_info_buffer_init_dmabuf(struct dec_frame_item *item)
  	memcpy(page->vaddr, map.vaddr + 4096, 0x104);
  	((u32 *)page->vaddr)[25] = page->paddr + 144;
  	((u32 *)page->vaddr)[26] = page->paddr + 172;
@@ -25,7 +24,7 @@ index 52742e7..948f706 100644
  		pr_warn("video_info magic mismatch: 0x%x\n",
  			((u32 *)page->vaddr)[0]);
  	dma_buf_vunmap(item->info_map->dbuf, &map);
-@@ -718,7 +718,7 @@ size_t dec_dma_buf_size(struct dec_dma_map *map)
+@@ -719,7 +714,7 @@ size_t dec_dma_buf_size(struct dec_dma_map *map)
   * fmt_attr_tbl — IDA global at 0x81a0
   * 8 entries × 10 dwords each. Entry[0]=format_id, Entry[1]=bpp_class.
   * If entry[1]==8 → multiplier=1, else multiplier=2.
@@ -34,7 +33,7 @@ index 52742e7..948f706 100644
   * C-addr = Y-DMA-addr + height * stride.
   */
  static const u32 fmt_attr_tbl[8][10] = {
-@@ -735,7 +735,7 @@ static const u32 fmt_attr_tbl[8][10] = {
+@@ -736,7 +731,7 @@ static const u32 fmt_attr_tbl[8][10] = {
  /*
   * frame_item_create — IDA 0x202c
   *
@@ -43,7 +42,7 @@ index 52742e7..948f706 100644
   *
   * DMA-buf path:
   *   1. validate format (search fmt_attr_tbl)
-@@ -745,15 +745,16 @@ static const u32 fmt_attr_tbl[8][10] = {
+@@ -746,15 +741,16 @@ static const u32 fmt_attr_tbl[8][10] = {
   *   5. video_info_buffer_init_dmabuf(item)
   *   6. compute Y/C addresses from format table:
   *      - multiplier = (entry[1]==8) ? 1 : 2
@@ -64,7 +63,7 @@ index 52742e7..948f706 100644
   */
  struct dec_frame_item *frame_item_create(struct dec_device *dec,
  					 struct dec_frame_submit_desc *desc)
-@@ -763,17 +764,9 @@ struct dec_frame_item *frame_item_create(struct dec_device *dec,
+@@ -764,17 +760,9 @@ struct dec_frame_item *frame_item_create(struct dec_device *dec,
  	u32 stride, multiplier;
  	int i;
  
@@ -85,7 +84,7 @@ index 52742e7..948f706 100644
  
  	/* IDA: format validation — search table, reject if format > 0x14 */
  	if (desc->format > 0x14)
-@@ -802,18 +795,16 @@ struct dec_frame_item *frame_item_create(struct dec_device *dec,
+@@ -803,18 +791,16 @@ struct dec_frame_item *frame_item_create(struct dec_device *dec,
  	y_dma = item->image_map->dma_addr;
  	c_offset = 0;
  
@@ -114,15 +113,15 @@ index 52742e7..948f706 100644
  	}
  
  	item->y_addr = y_dma;
-@@ -833,16 +824,15 @@ setup_fields:
+@@ -823,7 +809,6 @@ struct dec_frame_item *frame_item_create(struct dec_device *dec,
+ 	item->c_aux = 0;
+ 	item->format_shadow = 0;
+ 
 -setup_fields:
  	/* IDA: split-field handling at desc byte 96 */
  	if (desc->split_fields) {
  		u64 field_offset = item->y_addr;
- 		u64 field_c_offset = item->c_addr;
- 
- 		item->alt_y_valid = true;
- 		item->alt_c_valid = true;
+@@ -834,8 +819,8 @@ struct dec_frame_item *frame_item_create(struct dec_device *dec,
  		item->y_addr_alt = field_offset;
  		item->c_addr_alt = field_c_offset;
  
@@ -134,7 +133,6 @@ index 52742e7..948f706 100644
  			item->y_addr = item->y_addr_alt;
  			item->y_addr_alt = field_offset;
 diff --git a/drivers/misc/sunxi_decd/decd_ioctl.c b/drivers/misc/sunxi_decd/decd_ioctl.c
-index 19173cd..a41766e 100644
 --- a/drivers/misc/sunxi_decd/decd_ioctl.c
 +++ b/drivers/misc/sunxi_decd/decd_ioctl.c
 @@ -35,7 +35,7 @@ int dec_stop_video_stream(struct dec_device *dec)
@@ -193,10 +191,9 @@ index 19173cd..a41766e 100644
  			return ret;
  		if (copy_to_user((void __user *)(uintptr_t)hdr.user_ptr2, &fence_fd,
 diff --git a/drivers/misc/sunxi_decd/decd_types.h b/drivers/misc/sunxi_decd/decd_types.h
-index 5c69ef9..8868058 100644
 --- a/drivers/misc/sunxi_decd/decd_types.h
 +++ b/drivers/misc/sunxi_decd/decd_types.h
-@@ -47,26 +47,32 @@ struct dec_linear_map_req {
+@@ -65,26 +65,32 @@ struct dec_linear_map_req {
  };
  
  struct dec_frame_submit_desc {
@@ -243,7 +240,8 @@ index 5c69ef9..8868058 100644
  };
  
  struct dec_interlace_setup_desc {
-@@ -352,7 +358,6 @@ int dec_debug_init(struct dec_device *dec);
+@@ -353,7 +359,6 @@ int dec_debug_dump(int dst, int len, int a3, int a4);
+ int dec_debug_init(struct dec_device *dec);
  int video_info_memory_block_init(struct device *dev);
  void video_info_memory_block_exit(void);
 -u32 video_info_buffer_init(struct dec_frame_submit_desc *desc);

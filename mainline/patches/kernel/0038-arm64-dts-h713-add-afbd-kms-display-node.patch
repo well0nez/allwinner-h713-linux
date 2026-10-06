@@ -34,9 +34,10 @@ needs to hold anything but U-Boot's two scanout slots.
 
 Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
 ---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -103,6 +103,13 @@
+@@ -103,6 +103,13 @@ mips_framebuf: framebuf@4bf41000 {
  		 * the back at 0x6c500000. Double buffering flips the AFBD
  		 * source address (0x05600178) between them, so both are live
  		 * scanout targets and the kernel must not use either.
@@ -50,7 +51,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  		 */
  		framebuf_reserved: uboot-scanout@6c100000 {
  			reg = <0x6c100000 0x800000>;
-@@ -1597,6 +1604,32 @@
+@@ -1660,6 +1667,32 @@ dec: dec@5600000 {
  			 * a divider beneath a live panel. Match what is there.
  			 */
  			clock-frequency = <100000000>;

@@ -46,11 +46,10 @@ doku/78 appendix A.5. That was written before the source switch was measured
 (doku/nachtlog/B2-quellenwechsel.md) and re-measured today; it is wrong, and a
 wrong comment next to the function that needs it is worse than none.
 
-diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
-diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
---- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 11:01:17.229896365 +0200
-+++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 11:10:56.544777188 +0200
-@@ -512,6 +512,36 @@
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -542,6 +542,36 @@ static bool h713_afbd_read_ring(struct h713_afbd *h, u32 *y, u32 *c)
  	return h713_afbd_in_ring(h, *y) && h713_afbd_in_ring(h, *c);
  }
  
@@ -87,7 +86,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  int h713_afbd_register_flip_notifier(struct notifier_block *nb)
  {
  	unsigned long flags;
-@@ -799,6 +829,7 @@
+@@ -829,6 +859,7 @@ static void h713_afbd_video_atomic_update(struct drm_plane *plane,
  	unsigned int w, hgt, c_stride;
  	unsigned long flags;
  	bool ring, nv16;
@@ -95,7 +94,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  	u32 y, c;
  
  	new_state = drm_atomic_get_new_plane_state(state, plane);
-@@ -824,8 +855,9 @@
+@@ -854,8 +885,9 @@ static void h713_afbd_video_atomic_update(struct drm_plane *plane,
  		 */
  		if (nv16)
  			writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
@@ -107,7 +106,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  			drm_err(&h->drm,
  				"firmware did not reprogram the chroma stride within %u ms of the descriptor; source 0 is programmed anyway, so this enable may come up with a halved chroma stride\n",
  				H713_WCE_TIMEOUT_US / 1000);
-@@ -903,6 +935,17 @@
+@@ -933,6 +965,17 @@ static void h713_afbd_video_atomic_update(struct drm_plane *plane,
  	}
  
  	h->video_active = true;
@@ -125,9 +124,9 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  }
  
  static void h713_afbd_video_atomic_disable(struct drm_plane *plane,
-diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
---- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 11:01:17.231792126 +0200
-+++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 11:10:56.546422263 +0200
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 @@ -60,6 +60,7 @@
  #include <linux/spinlock.h>
  #include <linux/unaligned.h>
@@ -136,7 +135,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  #include <linux/soc/sunxi/h713-afbd.h>
  #include <linux/soc/sunxi/h713-arisc.h>
-@@ -145,6 +146,32 @@
+@@ -145,6 +146,32 @@ static const phys_addr_t h713_hdmirx_slot_c[H713_HDMIRX_SLOTS] = {
  
  /* THal_Vp_SetSource: 3 is HDMI-1, the board's only socket (hardware port 0). */
  #define H713_SOURCE_HDMI1	3
@@ -169,7 +168,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  #define H713_HDMI_PORT		0
  
  /*
-@@ -395,6 +422,10 @@
+@@ -395,6 +422,10 @@ struct h713_hdmirx {
  	const struct h713_hdmirx_slot_source *slot_source;
  	struct notifier_block flip_nb;
  
@@ -180,7 +179,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	/* last callback payloads, for debugfs and the source change event */
  	spinlock_t event_lock;
  	u32 signal_args[CPU_COMM_MAX_ARGS];
-@@ -535,11 +566,10 @@
+@@ -535,11 +566,10 @@ static int h713_hdmirx_run_init_seq(struct h713_hdmirx *rx)
  }
  
  /*
@@ -196,7 +195,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
   */
  static int h713_hdmirx_set_source(struct h713_hdmirx *rx)
  {
-@@ -785,6 +815,145 @@
+@@ -785,6 +815,145 @@ static bool h713_hdmirx_signal_present(struct h713_hdmirx *rx)
  	return a.y != b.y;
  }
  
@@ -342,7 +341,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  /* ------------------------------------------------------------------ *
   * Buffers: buffer i is slot i, for the whole life of the queue
   * ------------------------------------------------------------------ */
-@@ -1557,6 +1726,8 @@
+@@ -1557,6 +1726,8 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
  	rx->dev = dev;
  	rx->slot_source = &h713_hdmirx_vsync;
  	rx->flip_nb.notifier_call = h713_hdmirx_flip_notify;
@@ -351,7 +350,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	rx->timings = h713_hdmirx_timings;
  	rx->last_slot = -1;
  	mutex_init(&rx->lock);
-@@ -1682,6 +1853,21 @@
+@@ -1682,6 +1853,21 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
  	if (ret)
  		goto err_v4l2;
  
@@ -373,7 +372,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	rx->debugfs = debugfs_create_dir(H713_HDMIRX_NAME, NULL);
  	debugfs_create_file("status", 0444, rx->debugfs, rx,
  			    &h713_hdmirx_status_fops);
-@@ -1690,8 +1876,32 @@
+@@ -1690,8 +1876,32 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
  	dev_info(dev, "/dev/video%d, Slot-Quelle: %s\n", rx->vdev.num,
  		 rx->slot_source->name);
  
@@ -406,7 +405,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  err_v4l2:
  	v4l2_device_unregister(&rx->v4l2_dev);
  err_callbacks:
-@@ -1704,6 +1914,8 @@
+@@ -1704,6 +1914,8 @@ static void h713_hdmirx_remove(struct platform_device *pdev)
  {
  	struct h713_hdmirx *rx = platform_get_drvdata(pdev);
  
@@ -415,9 +414,9 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	debugfs_remove_recursive(rx->debugfs);
  	vb2_video_unregister_device(&rx->vdev);
  	v4l2_device_unregister(&rx->v4l2_dev);
-diff -ruN a/include/linux/soc/sunxi/h713-afbd.h b/include/linux/soc/sunxi/h713-afbd.h
---- a/include/linux/soc/sunxi/h713-afbd.h	2026-09-07 11:01:17.228381775 +0200
-+++ b/include/linux/soc/sunxi/h713-afbd.h	2026-09-07 11:10:56.543054012 +0200
+diff --git a/include/linux/soc/sunxi/h713-afbd.h b/include/linux/soc/sunxi/h713-afbd.h
+--- a/include/linux/soc/sunxi/h713-afbd.h
++++ b/include/linux/soc/sunxi/h713-afbd.h
 @@ -33,8 +33,9 @@
  
  struct notifier_block;
@@ -429,7 +428,7 @@ diff -ruN a/include/linux/soc/sunxi/h713-afbd.h b/include/linux/soc/sunxi/h713-a
  
  /**
   * struct h713_afbd_flip - the capture ring flip pointers, sampled at one vsync
-@@ -107,6 +108,46 @@
+@@ -107,6 +108,46 @@ int h713_afbd_unregister_flip_notifier(struct notifier_block *nb);
   */
  int h713_afbd_read_flip(struct h713_afbd_flip *flip);
  
@@ -476,11 +475,10 @@ diff -ruN a/include/linux/soc/sunxi/h713-afbd.h b/include/linux/soc/sunxi/h713-a
  #else /* !CONFIG_DRM_SUN50I_H713_AFBD */
  
  static inline int h713_afbd_register_flip_notifier(struct notifier_block *nb)
-@@ -123,6 +164,18 @@
- {
+@@ -124,6 +165,18 @@ static inline int h713_afbd_read_flip(struct h713_afbd_flip *flip)
  	return -ENODEV;
  }
-+
+ 
 +static inline int
 +h713_afbd_register_descriptor_notifier(struct notifier_block *nb)
 +{
@@ -492,6 +490,7 @@ diff -ruN a/include/linux/soc/sunxi/h713-afbd.h b/include/linux/soc/sunxi/h713-a
 +{
 +	return -ENODEV;
 +}
- 
++
  #endif /* CONFIG_DRM_SUN50I_H713_AFBD */
  
+ #endif /* __LINUX_SOC_SUNXI_H713_AFBD_H */

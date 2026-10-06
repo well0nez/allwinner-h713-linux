@@ -50,10 +50,10 @@ the SoC's.
 
 Follow-up to 0096, which stays byte-identical.
 
-diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -1534,16 +1534,17 @@
+@@ -1600,16 +1600,17 @@ ppu: power-controller@7001014 {
  		};
  
  		/*
@@ -80,10 +80,10 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  		 */
  		tvcap_bringup: tvcap@50c0000 {
  			compatible = "allwinner,h713-tvcap";
-diff -ruN a/drivers/soc/sunxi/Kconfig b/drivers/soc/sunxi/Kconfig
+diff --git a/drivers/soc/sunxi/Kconfig b/drivers/soc/sunxi/Kconfig
 --- a/drivers/soc/sunxi/Kconfig
 +++ b/drivers/soc/sunxi/Kconfig
-@@ -39,3 +39,25 @@
+@@ -39,3 +39,25 @@ config SUN50I_H713_ARISC
  	  is not there yet when a built-in driver probes.
  
  	  If unsure, say N.
@@ -109,16 +109,17 @@ diff -ruN a/drivers/soc/sunxi/Kconfig b/drivers/soc/sunxi/Kconfig
 +	  reflash, which is why the default is m.
 +
 +	  The module will be called sun50i-h713-tvcap.
-diff -ruN a/drivers/soc/sunxi/Makefile b/drivers/soc/sunxi/Makefile
+diff --git a/drivers/soc/sunxi/Makefile b/drivers/soc/sunxi/Makefile
 --- a/drivers/soc/sunxi/Makefile
 +++ b/drivers/soc/sunxi/Makefile
-@@ -3,3 +3,4 @@
+@@ -3,3 +3,4 @@ obj-$(CONFIG_SUNXI_MBUS) +=	sunxi_mbus.o
  obj-$(CONFIG_SUNXI_SRAM) +=	sunxi_sram.o
  obj-$(CONFIG_HY310_CPU_COMM) += cpu_comm/
  obj-$(CONFIG_SUN50I_H713_ARISC) += sun50i-h713-arisc.o
 +obj-$(CONFIG_SUN50I_H713_TVCAP) += sun50i-h713-tvcap.o
-diff -ruN a/drivers/soc/sunxi/sun50i-h713-tvcap.c b/drivers/soc/sunxi/sun50i-h713-tvcap.c
---- a/drivers/soc/sunxi/sun50i-h713-tvcap.c
+diff --git a/drivers/soc/sunxi/sun50i-h713-tvcap.c b/drivers/soc/sunxi/sun50i-h713-tvcap.c
+new file mode 100644
+--- /dev/null
 +++ b/drivers/soc/sunxi/sun50i-h713-tvcap.c
 @@ -0,0 +1,192 @@
 +// SPDX-License-Identifier: GPL-2.0

@@ -1,5 +1,6 @@
---- a/drivers/media/rc/sunxi-cir.c	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/media/rc/sunxi-cir.c	2026-04-05 20:31:40.397905920 +0200
+diff --git a/drivers/media/rc/sunxi-cir.c b/drivers/media/rc/sunxi-cir.c
+--- a/drivers/media/rc/sunxi-cir.c
++++ b/drivers/media/rc/sunxi-cir.c
 @@ -63,6 +63,7 @@
  #define REG_RXSTA_GET_AC(val) (((val) >> 8) & (ir->fifo_size * 2 - 1))
  /* Clear all interrupt status value */
@@ -8,7 +9,7 @@
  
  /* IR Sample Config */
  #define SUNXI_IR_CIR_REG      0x34
-@@ -96,6 +97,7 @@
+@@ -96,6 +97,7 @@ struct sunxi_ir {
  	struct clk      *apb_clk;
  	struct reset_control *rst;
  	const char      *map_name;
@@ -16,7 +17,7 @@
  };
  
  static irqreturn_t sunxi_ir_irq(int irqno, void *dev_id)
-@@ -199,24 +201,54 @@
+@@ -199,24 +201,54 @@ static int sunxi_ir_hw_init(struct device *dev)
  	/* Set noise threshold and idle threshold */
  	sunxi_ir_set_timeout(ir->rc, ir->rc->timeout);
  
@@ -75,7 +76,7 @@
  	return 0;
  
  exit_disable_apb_clk:
-@@ -250,6 +282,7 @@
+@@ -250,6 +282,7 @@ static int __maybe_unused sunxi_ir_resume(struct device *dev)
  
  static SIMPLE_DEV_PM_OPS(sunxi_ir_pm_ops, sunxi_ir_suspend, sunxi_ir_resume);
  
@@ -83,7 +84,7 @@
  static int sunxi_ir_probe(struct platform_device *pdev)
  {
  	int ret = 0;
-@@ -271,6 +304,7 @@
+@@ -271,6 +304,7 @@ static int sunxi_ir_probe(struct platform_device *pdev)
  	}
  
  	ir->fifo_size = quirks->fifo_size;
@@ -91,7 +92,7 @@
  
  	/* Clock */
  	ir->apb_clk = devm_clk_get(dev, "apb");
-@@ -358,6 +392,7 @@
+@@ -358,6 +392,7 @@ static int sunxi_ir_probe(struct platform_device *pdev)
  		goto exit_free_dev;
  
  	dev_info(dev, "initialized sunXi IR driver\n");
@@ -99,7 +100,7 @@
  	return 0;
  
  exit_free_dev:
-@@ -407,6 +442,10 @@
+@@ -408,6 +443,10 @@ static const struct of_device_id sunxi_ir_match[] = {
  		.compatible = "allwinner,sun6i-a31-ir",
  		.data = &sun6i_a31_ir_quirks,
  	},

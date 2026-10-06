@@ -221,13 +221,14 @@ read instead.
 
 Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 ---
-diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:02:26.614214570 +0200
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-06 22:02:47.521528457 +0200
-@@ -1441,6 +1441,63 @@
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1496,6 +1496,63 @@ r_ccu: clock-controller@7010000 {
+ 			#reset-cells = <1>;
  		};
  
- 		/*
++		/*
 +		 * ARISC co-processor (OpenRISC "AR100", "cpus") -- OURS, not in
 +		 * cstenger's tree. It owns the R_ peripherals, among them the
 +		 * HDMI hotplug pin and the EDID/DDC block, so the HDMI input
@@ -284,14 +285,13 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
 +			status = "okay";
 +		};
 +
-+		/*
+ 		/*
  		 * H713 PPU — power domain controller.
  		 *
- 		 * Source is now the STOCK DTB (local/stock-boot/sunxi.fex), which
-diff -ruN a/drivers/soc/sunxi/Kconfig b/drivers/soc/sunxi/Kconfig
---- a/drivers/soc/sunxi/Kconfig	2026-09-06 22:02:26.611547783 +0200
-+++ b/drivers/soc/sunxi/Kconfig	2026-09-06 22:05:34.027398447 +0200
-@@ -21,3 +21,21 @@
+diff --git a/drivers/soc/sunxi/Kconfig b/drivers/soc/sunxi/Kconfig
+--- a/drivers/soc/sunxi/Kconfig
++++ b/drivers/soc/sunxi/Kconfig
+@@ -21,3 +21,21 @@ config SUNXI_SRAM
  	  whether to the CPU/DMA, or to the devices.
  
  source "drivers/soc/sunxi/cpu_comm/Kconfig"
@@ -313,17 +313,18 @@ diff -ruN a/drivers/soc/sunxi/Kconfig b/drivers/soc/sunxi/Kconfig
 +	  is not there yet when a built-in driver probes.
 +
 +	  If unsure, say N.
-diff -ruN a/drivers/soc/sunxi/Makefile b/drivers/soc/sunxi/Makefile
---- a/drivers/soc/sunxi/Makefile	2026-09-06 22:02:26.612547794 +0200
-+++ b/drivers/soc/sunxi/Makefile	2026-09-06 22:02:58.644883172 +0200
+diff --git a/drivers/soc/sunxi/Makefile b/drivers/soc/sunxi/Makefile
+--- a/drivers/soc/sunxi/Makefile
++++ b/drivers/soc/sunxi/Makefile
 @@ -2,3 +2,4 @@
  obj-$(CONFIG_SUNXI_MBUS) +=	sunxi_mbus.o
  obj-$(CONFIG_SUNXI_SRAM) +=	sunxi_sram.o
  obj-$(CONFIG_HY310_CPU_COMM) += cpu_comm/
 +obj-$(CONFIG_SUN50I_H713_ARISC) += sun50i-h713-arisc.o
-diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
---- a/drivers/soc/sunxi/sun50i-h713-arisc.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/soc/sunxi/sun50i-h713-arisc.c	2026-09-07 08:53:03.000000000 +0200
+diff --git a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
 @@ -0,0 +1,1952 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -2277,9 +2278,10 @@ diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h71
 +MODULE_LICENSE("GPL");
 +MODULE_FIRMWARE(FW_NAME_ARISC);
 +MODULE_FIRMWARE(FW_NAME_EDID);
-diff -ruN a/include/linux/soc/sunxi/h713-arisc.h b/include/linux/soc/sunxi/h713-arisc.h
---- a/include/linux/soc/sunxi/h713-arisc.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/linux/soc/sunxi/h713-arisc.h	2026-09-06 22:09:50.635015733 +0200
+diff --git a/include/linux/soc/sunxi/h713-arisc.h b/include/linux/soc/sunxi/h713-arisc.h
+new file mode 100644
+--- /dev/null
++++ b/include/linux/soc/sunxi/h713-arisc.h
 @@ -0,0 +1,106 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*

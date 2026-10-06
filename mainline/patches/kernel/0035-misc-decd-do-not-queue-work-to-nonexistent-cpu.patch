@@ -34,9 +34,10 @@ a real out-of-bounds write in the same handler, but that one needs ~100
 interrupts to trigger and this faults on the first, so 0034 was correct
 as a bug fix and wrong as a diagnosis of this crash.
 
---- a/drivers/misc/sunxi_decd/decd_frame.c	2026-08-12 01:58:30.077748964 -0700
-+++ b/drivers/misc/sunxi_decd/decd_frame.c	2026-08-12 01:58:30.087260152 -0700
-@@ -78,7 +78,22 @@
+diff --git a/drivers/misc/sunxi_decd/decd_frame.c b/drivers/misc/sunxi_decd/decd_frame.c
+--- a/drivers/misc/sunxi_decd/decd_frame.c
++++ b/drivers/misc/sunxi_decd/decd_frame.c
+@@ -78,7 +78,22 @@ int dec_debug_record_exception(int a1, int a2)
  	dbg->dbgdat[262 + pos * 7] = a1;
  	dbg->dbgdat[263 + pos * 7] = a2;
  	dbg->dbgdat[264 + pos * 7] = jiffies;
@@ -60,7 +61,7 @@ as a bug fix and wrong as a diagnosis of this crash.
  }
  
  int dec_debug_trace_frame(int addr, int fmt)
-@@ -1009,7 +1024,7 @@
+@@ -1003,7 +1018,7 @@ static void dec_frame_recycle(struct dec_frame_manager *fmgr,
  			vf = NULL;
  		}
  	}
@@ -69,7 +70,7 @@ as a bug fix and wrong as a diagnosis of this crash.
  }
  
  static int dec_frame_queue_hardware_repeat_ctrl(struct dec_frame_queue *q,
-@@ -1570,7 +1585,7 @@
+@@ -1565,7 +1580,7 @@ int dec_frame_manager_enqueue_interlace_frame(struct dec_frame_manager *fmgr,
  	fmgr->interlace_pair[1] = bot_vf;
  	spin_unlock_irqrestore(&fmgr->ready_lock, flags);
  

@@ -1,6 +1,29 @@
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -995,9 +995,6 @@ mmc1: mmc@4021000 {
+ 			cap-sd-highspeed;
+ 			cap-sdio-irq;
+ 			sd-uhs-sdr25;
+-			sd-uhs-sdr50;
+-			sd-uhs-sdr104;
+-			sd-uhs-ddr50;
+ 			no-mmc;
+ 			no-sd;
+ 			keep-power-in-suspend;
+@@ -1009,7 +1006,7 @@ mmc1: mmc@4021000 {
+ 			 * read-threshold programming in the host driver is required;
+ 			 * declaring these UHS modes without it stalls SDIO discovery.
+ 			 */
+-			max-frequency = <50000000>;
++			max-frequency = <25000000>;
+ 			#address-cells = <1>;
+ 			#size-cells = <0>;
+ 			status = "okay";
+diff --git a/drivers/mmc/host/sunxi-mmc.c b/drivers/mmc/host/sunxi-mmc.c
 --- a/drivers/mmc/host/sunxi-mmc.c
 +++ b/drivers/mmc/host/sunxi-mmc.c
-@@ -1332,7 +1332,8 @@
+@@ -1332,7 +1332,8 @@ static void sunxi_mmc_set_v5p3x_delays(struct sunxi_mmc_host *host,
  					struct mmc_ios *ios,
  					unsigned long rate)
  {
@@ -10,7 +33,7 @@
  	u32 rval;
  
  	if (!host->cfg->v5p3x)
-@@ -1355,21 +1356,33 @@
+@@ -1355,21 +1356,33 @@ static void sunxi_mmc_set_v5p3x_delays(struct sunxi_mmc_host *host,
  	 * The previous experiment forced the 50 MHz result at every rate, so it
  	 * never tested the vendor's enumeration-to-UHS transition.
  	 */
@@ -49,7 +72,7 @@
  	}
  
  	rval = readl(host->reg_base + SDXC_REG_DRV_DL);
-@@ -1382,9 +1395,9 @@
+@@ -1382,9 +1395,9 @@ static void sunxi_mmc_set_v5p3x_delays(struct sunxi_mmc_host *host,
  
  	rval = mmc_readl(host, REG_SD_NTSR);
  	rval &= ~(SDXC_V5P3X_CMD_PHASE_MASK | SDXC_V5P3X_DAT_PHASE_MASK);
@@ -61,23 +84,3 @@
  		SDXC_V5P3X_DAT_PHASE_MASK;
  	mmc_writel(host, REG_SD_NTSR, rval);
  
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -944,9 +944,6 @@
- 			cap-sd-highspeed;
- 			cap-sdio-irq;
- 			sd-uhs-sdr25;
--			sd-uhs-sdr50;
--			sd-uhs-sdr104;
--			sd-uhs-ddr50;
- 			no-mmc;
- 			no-sd;
- 			keep-power-in-suspend;
-@@ -961,7 +958,7 @@
- 			 * declaring these UHS modes without it stalls SDIO discovery.
- 			 */
--			max-frequency = <50000000>;
-+			max-frequency = <25000000>;
- 			#address-cells = <1>;
- 			#size-cells = <0>;
- 			status = "okay";

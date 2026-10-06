@@ -29,9 +29,10 @@ fixed the fan simply runs whenever powered, which is the intended minimal
 always-on behavior. Tachometer read-back (PH17) is left as possible future
 work and deliberately not modeled here.
 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -485,10 +485,16 @@
+@@ -543,10 +543,16 @@ mmc1_sleep_pins: mmc1-sleep-pins {
  
  
  

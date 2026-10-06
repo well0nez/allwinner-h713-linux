@@ -143,9 +143,10 @@ pointer pair, and an idle system pays exactly what it paid before.
 
 Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 ---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -80,9 +80,27 @@
+@@ -80,9 +80,27 @@ mips_reserved: mips-firmware@4b100000 {
  			no-map;
  		};
  
@@ -175,7 +176,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  			no-map;
  		};
  
-@@ -1820,6 +1838,18 @@
+@@ -1887,6 +1905,18 @@ display: display@5600000 {
  			clocks = <&ccu CLK_AFBD>,
  				 <&ccu CLK_BUS_DISP>;
  			clock-names = "clk_afbd", "clk_bus_disp";
@@ -194,6 +195,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  			status = "okay";
  		};
  
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 --- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 +++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 @@ -30,18 +30,41 @@
@@ -318,7 +320,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  struct h713_afbd {
  	struct drm_device drm;
  	struct drm_simple_display_pipe pipe;
-@@ -119,60 +173,211 @@
+@@ -119,60 +173,211 @@ struct h713_afbd {
  	unsigned int stride;
  	void *video_info;
  	dma_addr_t video_info_dma;
@@ -358,35 +360,12 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  }
  
 -static void h713_afbd_init_video_info(struct h713_afbd *h)
-+static inline struct h713_plane_state *
-+to_h713_plane_state(struct drm_plane_state *state)
- {
+-{
 -	u32 *v = h->video_info;
 -	u32 info = lower_32_bits(h->video_info_dma);
-+	return container_of(state, struct h713_plane_state, base);
-+}
- 
+-
 -	memset(v, 0, PAGE_SIZE);
-+/*
-+ * AFBD geometry words. Both formulas reproduce the two register sets that are
-+ * known good byte for byte: the 1280x720 pair this driver shipped with
-+ * (0x02cf04ff / 0x002c004f) and the 1920x1080 pair the MIPS firmware programs
-+ * for the HDMI capture on the HY310 (0x043f077f / 0x00420077, register dump
-+ * re/captures/weltneuheit/ours-20260906-source0/03_source0.txt). SIZE_M1
-+ * rounds the height up to a whole block row, BLOCK_M1 counts the whole block
-+ * rows only -- 1080 is not a multiple of 16, and the firmware truncates there.
-+ */
-+static u32 h713_video_size_m1(unsigned int w, unsigned int h)
-+{
-+	return ((ALIGN(h, H713_VIDEO_BLOCK) - 1) << 16) | (w - 1);
-+}
-+
-+static u32 h713_video_block_m1(unsigned int w, unsigned int h)
-+{
-+	return ((h / H713_VIDEO_BLOCK - 1) << 16) |
-+	       (w / H713_VIDEO_BLOCK - 1);
-+}
- 
+-
 -	/* Vendor VideoInfo constructor plus linear 1280x720 SDR setters. */
 -	v[0x00 / 4] = 0x61770000;
 -	v[0x04 / 4] = 2;
@@ -420,6 +399,34 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 -	v[0x84 / 4] = 0;
 -	v[0x88 / 4] = 1080 << 4;
 -	v[0x8c / 4] = 2;
+-
+-	dma_wmb();
++static inline struct h713_plane_state *
++to_h713_plane_state(struct drm_plane_state *state)
++{
++	return container_of(state, struct h713_plane_state, base);
++}
++
++/*
++ * AFBD geometry words. Both formulas reproduce the two register sets that are
++ * known good byte for byte: the 1280x720 pair this driver shipped with
++ * (0x02cf04ff / 0x002c004f) and the 1920x1080 pair the MIPS firmware programs
++ * for the HDMI capture on the HY310 (0x043f077f / 0x00420077, register dump
++ * re/captures/weltneuheit/ours-20260906-source0/03_source0.txt). SIZE_M1
++ * rounds the height up to a whole block row, BLOCK_M1 counts the whole block
++ * rows only -- 1080 is not a multiple of 16, and the firmware truncates there.
++ */
++static u32 h713_video_size_m1(unsigned int w, unsigned int h)
++{
++	return ((ALIGN(h, H713_VIDEO_BLOCK) - 1) << 16) | (w - 1);
++}
++
++static u32 h713_video_block_m1(unsigned int w, unsigned int h)
++{
++	return ((h / H713_VIDEO_BLOCK - 1) << 16) |
++	       (w / H713_VIDEO_BLOCK - 1);
++}
++
 +/*
 + * Build the VidDec frame descriptor, byte for byte as
 + * analyse/hdmi-seq/viddec_descriptor.py writes it -- the record that has
@@ -437,8 +444,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 +				       unsigned int h, unsigned int stride)
 +{
 +	memset(rec, 0, H713_VIDEO_INFO_WORDS * sizeof(*rec));
- 
--	dma_wmb();
++
 +	rec[0] = H713_VIDEO_INFO_MAGIC;
 +	rec[1] = 2;			/* record type: video decoder frame */
 +	rec[2] = w;
@@ -568,10 +574,11 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  }
  
  static void h713_afbd_wait_ready(struct h713_afbd *h, u32 reg,
-@@ -188,6 +393,200 @@
+@@ -187,6 +392,200 @@ static void h713_afbd_wait_ready(struct h713_afbd *h, u32 reg,
+ 			 name, ready);
  }
  
- /*
++/*
 + * The flip notifier (include/linux/soc/sunxi/h713-afbd.h).
 + *
 + * One display, one chain, so chain and user count are static rather than
@@ -765,11 +772,10 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 +				   H713_AFBD_EVENT_FLIP, &flip);
 +}
 +
-+/*
+ /*
   * Point AFBD at a buffer and latch it. Identical in order and content to
   * gles-play's commit path, minus its 50 ms poll for STATUS_DONE: here the
-  * vblank interrupt reports completion, so nothing spins.
-@@ -222,11 +621,20 @@
+@@ -222,11 +621,20 @@ static void h713_afbd_set_source(struct h713_afbd *h, dma_addr_t addr,
  
  static void h713_afbd_video_stop(struct h713_afbd *h)
  {
@@ -790,7 +796,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	/* Stop source 0 before removing any address from its queue. */
  	writel(h->video_ctrl_idle, h->regs + AFBD_VIDEO_CTRL);
  	writel(1, h->regs + AFBD_VIDEO_READY);
-@@ -235,11 +643,30 @@
+@@ -235,11 +643,30 @@ static void h713_afbd_video_stop(struct h713_afbd *h)
  	for (i = 0; i < H713_VIDEO_SLOTS; i++) {
  		writel(0, h->regs + AFBD_VIDEO_Y0 + i * 4);
  		writel(0, h->regs + AFBD_VIDEO_C0 + i * 4);
@@ -822,7 +828,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	writel(0, h->regs + AFBD_VIDEO_DIRTY);
  	writel(h->gain_idle, h->route_regs + 0x508);
  
-@@ -254,6 +681,8 @@
+@@ -254,6 +681,8 @@ static void h713_afbd_video_stop(struct h713_afbd *h)
  static int h713_afbd_video_atomic_check(struct drm_plane *plane,
  					struct drm_atomic_state *state)
  {
@@ -831,7 +837,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	struct drm_plane_state *new_state;
  	struct drm_crtc_state *crtc_state;
  	struct drm_framebuffer *fb;
-@@ -275,21 +704,37 @@
+@@ -275,21 +704,37 @@ static int h713_afbd_video_atomic_check(struct drm_plane *plane,
  	if (ret)
  		return ret;
  
@@ -878,7 +884,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	y = drm_fb_dma_get_gem_addr(fb, new_state, 0);
  	c = drm_fb_dma_get_gem_addr(fb, new_state, 1);
  	if (!y || !c || upper_32_bits(y) || upper_32_bits(c))
-@@ -301,14 +746,22 @@
+@@ -301,14 +746,22 @@ static int h713_afbd_video_atomic_check(struct drm_plane *plane,
  static void h713_afbd_video_atomic_update(struct drm_plane *plane,
  					  struct drm_atomic_state *state)
  {
@@ -906,7 +912,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  
  	/* The hardware mux is exclusive: quiesce RGB before source 0. */
  	if (!h->video_active) {
-@@ -316,36 +769,93 @@
+@@ -316,36 +769,93 @@ static void h713_afbd_video_atomic_update(struct drm_plane *plane,
  		       h->regs + AFBD_CTRL);
  		writel(1, h->regs + AFBD_READY);
  		h713_afbd_wait_ready(h, AFBD_READY, "RGB disable");
@@ -1017,7 +1023,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	h->video_active = true;
  }
  
-@@ -363,15 +873,131 @@
+@@ -363,15 +873,131 @@ static const struct drm_plane_helper_funcs h713_afbd_video_helper_funcs = {
  	.atomic_disable = h713_afbd_video_atomic_disable,
  };
  
@@ -1152,7 +1158,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  static void h713_afbd_pipe_enable(struct drm_simple_display_pipe *pipe,
  				  struct drm_crtc_state *crtc_state,
  				  struct drm_plane_state *plane_state)
-@@ -437,18 +1063,29 @@
+@@ -437,18 +1063,29 @@ static void h713_afbd_pipe_update(struct drm_simple_display_pipe *pipe,
  static int h713_afbd_enable_vblank(struct drm_simple_display_pipe *pipe)
  {
  	struct h713_afbd *h = to_h713(pipe->crtc.dev);
@@ -1186,7 +1192,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  }
  
  static const struct drm_simple_display_pipe_funcs h713_afbd_pipe_funcs = {
-@@ -472,6 +1109,7 @@
+@@ -472,6 +1109,7 @@ static irqreturn_t h713_afbd_irq(int irq, void *data)
  	/* Write-1-to-clear, exactly as the vendor's dec_irq_query() acks it. */
  	writeb(status | AFBD_IRQ_VSYNC, h->regs + AFBD_IRQ_STATUS);
  
@@ -1194,7 +1200,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	drm_crtc_handle_vblank(&h->pipe.crtc);
  	return IRQ_HANDLED;
  }
-@@ -519,8 +1157,13 @@
+@@ -519,8 +1157,13 @@ static const u32 h713_afbd_formats[] = {
  	DRM_FORMAT_ARGB8888,
  };
  
@@ -1208,7 +1214,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  };
  
  /*
-@@ -557,17 +1200,34 @@
+@@ -557,17 +1200,34 @@ static int h713_afbd_read_mode(struct h713_afbd *h)
  	return 0;
  }
  
@@ -1243,7 +1249,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  
  	h->regs = devm_platform_ioremap_resource_byname(pdev, "afbd");
  	if (IS_ERR(h->regs))
-@@ -611,10 +1271,12 @@
+@@ -611,10 +1271,12 @@ static int h713_afbd_probe(struct platform_device *pdev)
  	 * neither rounds a buffer up to the next power of two nor imposes that
  	 * ceiling, and there is room for both this and cedrus.
  	 *
@@ -1259,10 +1265,11 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	if (ret && ret != -ENODEV)
  		return dev_err_probe(dev, ret, "bad scanout memory-region\n");
  	dev_info(dev, "framebuffers from %s\n",
-@@ -625,22 +1287,76 @@
+@@ -624,23 +1286,77 @@ static int h713_afbd_probe(struct platform_device *pdev)
+ 	if (ret)
  		return ret;
  
- 	/*
++	/*
 +	 * The HDMI capture ring. The firmware writes the capture into this
 +	 * region and rotates its flip pointers through the slots; the driver
 +	 * only needs the bounds, to be sure a pointer it reads out of the
@@ -1282,7 +1289,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 +		h->ring_size = resource_size(&res);
 +	}
 +
-+	/*
+ 	/*
  	 * Source 0's VideoInfo record is fetched by the same 32-bit DMA master
  	 * as its Y/C planes. When the display is later attached to an IOMMU,
  	 * video_info_dma and the framebuffer DMA addresses naturally become
@@ -1344,7 +1351,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	h->gain_idle = readl(h->route_regs + 0x508);
  	h->selector_rgb = readl(h->lvds_regs + 0x06c);
  	if (h->video_ctrl_idle != 0x03000010 ||
-@@ -714,10 +1430,16 @@
+@@ -714,10 +1430,16 @@ static int h713_afbd_probe(struct platform_device *pdev)
  	if (ret)
  		return ret;
  	drm_plane_helper_add(&h->video_plane, &h713_afbd_video_helper_funcs);
@@ -1362,7 +1369,7 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  	writeb(readb(h->regs + AFBD_IRQ_ENABLE) & ~AFBD_IRQ_VSYNC,
  	       h->regs + AFBD_IRQ_ENABLE);
  	ret = devm_request_irq(dev, irq, h713_afbd_irq, 0, "h713-afbd", h);
-@@ -731,12 +1453,34 @@
+@@ -731,12 +1453,34 @@ static int h713_afbd_probe(struct platform_device *pdev)
  		return ret;
  
  	drm_client_setup(drm, NULL);
@@ -1397,7 +1404,9 @@ Signed-off-by: well0nez <well0nez@users.noreply.github.com>
  
  	drm_dev_unplug(&h->drm);
  	h713_afbd_video_stop(h);
---- a/include/linux/soc/sunxi/h713-afbd.h
+diff --git a/include/linux/soc/sunxi/h713-afbd.h b/include/linux/soc/sunxi/h713-afbd.h
+new file mode 100644
+--- /dev/null
 +++ b/include/linux/soc/sunxi/h713-afbd.h
 @@ -0,0 +1,129 @@
 +/* SPDX-License-Identifier: GPL-2.0 */

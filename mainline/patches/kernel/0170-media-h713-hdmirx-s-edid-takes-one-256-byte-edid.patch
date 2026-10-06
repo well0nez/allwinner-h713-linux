@@ -34,9 +34,10 @@ Not built here (FB-EDID wrote no kernel in this package); applies to the tree
 0136y leaves with patch -p1 --dry-run.
 
 ---
---- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-26 04:21:27.308799167 +0200
-+++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-26 04:21:27.309675557 +0200
-@@ -4177,12 +4177,28 @@
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -4198,12 +4198,28 @@ static int h713_hdmirx_s_edid(struct file *file, void *priv,
  		return arisc_hdmi_hpd(H713_HDMI_PORT, ARISC_HDMI_HPD_DOWN);
  	}
  

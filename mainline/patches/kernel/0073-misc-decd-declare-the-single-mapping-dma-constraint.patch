@@ -21,6 +21,7 @@ clip -- the unexplained ~1 s deficit over 300 frames was the fragmented mapping.
 Note this makes the *mapping* deterministic; it does not by itself put video on
 the panel. See docs/handoff-2026-08-31.md.
 
+diff --git a/drivers/misc/sunxi_decd/decd_core.c b/drivers/misc/sunxi_decd/decd_core.c
 --- a/drivers/misc/sunxi_decd/decd_core.c
 +++ b/drivers/misc/sunxi_decd/decd_core.c
 @@ -3,6 +3,7 @@
@@ -31,7 +32,7 @@ the panel. See docs/handoff-2026-08-31.md.
  #include <linux/fs.h>
  #include <linux/module.h>
  #include <linux/of.h>
-@@ -122,6 +123,22 @@
+@@ -121,6 +122,22 @@ int dec_init(struct dec_device *dec)
  	if (IS_ERR(dec->rst_bus_disp))
  		return PTR_ERR(dec->rst_bus_disp);
  

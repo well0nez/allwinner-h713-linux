@@ -18,9 +18,10 @@ peak clock and plateaus at 68 C without errors.
 Depends on the R_PWM functional/bus clock and reset exports in the preceding
 patch.
 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -106,6 +106,7 @@
+@@ -112,6 +112,7 @@ cpu0: cpu@0 {
  			enable-method = "psci";
  			clocks = <&ccu CLK_CPUX>;
  			operating-points-v2 = <&cpu_opp_table>;
@@ -28,7 +29,7 @@ patch.
  			#cooling-cells = <2>;
  		};
  		cpu@1 {
-@@ -115,6 +116,7 @@
+@@ -121,6 +122,7 @@ cpu@1 {
  			enable-method = "psci";
  			clocks = <&ccu CLK_CPUX>;
  			operating-points-v2 = <&cpu_opp_table>;
@@ -36,7 +37,7 @@ patch.
  		};
  		cpu@2 {
  			compatible = "arm,cortex-a53";
-@@ -123,6 +125,7 @@
+@@ -129,6 +131,7 @@ cpu@2 {
  			enable-method = "psci";
  			clocks = <&ccu CLK_CPUX>;
  			operating-points-v2 = <&cpu_opp_table>;
@@ -44,7 +45,7 @@ patch.
  		};
  		cpu@3 {
  			compatible = "arm,cortex-a53";
-@@ -131,17 +134,14 @@
+@@ -137,17 +140,14 @@ cpu@3 {
  			enable-method = "psci";
  			clocks = <&ccu CLK_CPUX>;
  			operating-points-v2 = <&cpu_opp_table>;
@@ -66,7 +67,7 @@ patch.
  	 */
  	cpu_opp_table: opp-table-cpu {
  		compatible = "operating-points-v2";
-@@ -149,31 +149,49 @@
+@@ -155,31 +155,49 @@ cpu_opp_table: opp-table-cpu {
  
  		opp-480000000 {
  			opp-hz = /bits/ 64 <480000000>;
@@ -93,25 +94,25 @@ patch.
 +		opp-1008000000 {
 +			opp-hz = /bits/ 64 <1008000000>;
 +			opp-microvolt = <940000>;
- 			clock-latency-ns = <244144>; /* 8 32k periods */
- 		};
- 
--		opp-936000000 {
--			opp-hz = /bits/ 64 <936000000>;
++			clock-latency-ns = <244144>; /* 8 32k periods */
++		};
++
 +		opp-1104000000 {
 +			opp-hz = /bits/ 64 <1104000000>;
 +			opp-microvolt = <960000>;
  			clock-latency-ns = <244144>; /* 8 32k periods */
  		};
  
--		opp-1008000000 {
--			opp-hz = /bits/ 64 <1008000000>;
+-		opp-936000000 {
+-			opp-hz = /bits/ 64 <936000000>;
 +		opp-1200000000 {
 +			opp-hz = /bits/ 64 <1200000000>;
 +			opp-microvolt = <1000000>;
-+			clock-latency-ns = <244144>; /* 8 32k periods */
-+		};
-+
+ 			clock-latency-ns = <244144>; /* 8 32k periods */
+ 		};
+ 
+-		opp-1008000000 {
+-			opp-hz = /bits/ 64 <1008000000>;
 +		opp-1296000000 {
 +			opp-hz = /bits/ 64 <1296000000>;
 +			opp-microvolt = <1060000>;
@@ -124,7 +125,7 @@ patch.
  			clock-latency-ns = <244144>; /* 8 32k periods */
  		};
  	};
-@@ -203,6 +222,20 @@
+@@ -209,6 +227,20 @@ reg_vcc_1v8: regulator-1v8 {
  		regulator-always-on;
  	};
  
@@ -145,7 +146,7 @@ patch.
  	/* Stock gpu-supply is the always-on 0.96 V vdd_sys rail. */
  	reg_vdd_sys: regulator-vdd-sys {
  		compatible = "regulator-fixed";
-@@ -1216,6 +1250,24 @@
+@@ -1391,6 +1423,24 @@ r_ir_rx_pin: r-ir-rx-pin {
  				input-enable;
  			};
  

@@ -25,10 +25,10 @@ own size, where there is no second geometry to confuse them.
 The mapping is read back out of the running firmware, not inferred: publishing
 w = 1280 made m_src_cfg read [0, 0, 20480, 11520], and 20480 is 1280 * 16.
 
-diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
---- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 22:48:35.517800337 +0200
-+++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 22:48:35.524593254 +0200
-@@ -288,7 +288,8 @@
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -289,7 +289,8 @@ static u32 h713_video_block_m1(unsigned int w, unsigned int h)
   * firmware was not measured against is left at zero.
   */
  static void h713_afbd_build_video_info(u32 *rec, unsigned int w,
@@ -38,7 +38,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  {
  	memset(rec, 0, H713_VIDEO_INFO_WORDS * sizeof(*rec));
  
-@@ -311,10 +312,22 @@
+@@ -312,10 +313,22 @@ static void h713_afbd_build_video_info(u32 *rec, unsigned int w,
  	rec[24] = 0;			/* SDR */
  	rec[25] = 0;			/* no HDR metadata buffers */
  	rec[26] = 0;
@@ -65,7 +65,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  }
  
  /*
-@@ -423,7 +436,9 @@
+@@ -424,7 +437,9 @@ static bool h713_afbd_publish_video_info(struct h713_afbd *h, unsigned int w,
  	unsigned int i;
  
  	new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr;

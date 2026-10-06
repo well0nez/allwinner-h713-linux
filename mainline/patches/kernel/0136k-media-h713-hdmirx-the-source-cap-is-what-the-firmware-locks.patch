@@ -35,10 +35,10 @@ row is still refused.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
-diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 --- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
-@@ -2925,32 +2925,37 @@
+@@ -2916,32 +2916,37 @@ static const struct h713_hdmirx_ring_geometry h713_hdmirx_ring_default = {
  /*
   * What QUERY_DV_TIMINGS may answer and S_DV_TIMINGS may accept.
   *

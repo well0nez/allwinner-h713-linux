@@ -5,9 +5,35 @@ lost to an older one; the firmware's ESC [ .. m codes stayed in the text; and a 
 (doku/63: nobody moves the read pointer) freezes the "last word" without a sign. Findings 5,
 6, N5 of umbau/work/_deepreview/hdmi. Applies after 0168 (and, for the hdmirx hunk, 0136z*).
 ---
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -4924,15 +4924,17 @@ static int h713_hdmirx_hdcp_firmware(char *buf, int at)
+ {
+ 	char line[H713_HDCP_LOG_LINE];
+ 	u32 wp = 0;
++	bool full;
+ 	int ret;
+ 
+ 	ret = cpu_comm_elog_last("hdcp", line, sizeof(line), &wp);
++	full = cpu_comm_elog_full();
+ 	if (ret >= 0)
+-		return sysfs_emit_at(buf, at, "firmware:      %s (ring write pointer %u)\n",
+-				     line, wp);
++		return sysfs_emit_at(buf, at, "firmware:      %s (ring write pointer %u%s)\n",
++				     line, wp, full ? ", the log is full, newer lines are dropped" : "");
+ 	if (ret == -ENOENT)
+-		return sysfs_emit_at(buf, at, "firmware:      no HDCP line in the firmware log (ring write pointer %u)\n",
+-				     wp);
++		return sysfs_emit_at(buf, at, "firmware:      no HDCP line in the firmware log (ring write pointer %u%s)\n",
++				     wp, full ? ", the log is full" : "");
+ 	return sysfs_emit_at(buf, at, "firmware:      firmware log not readable (%d)\n",
+ 			     ret);
+ }
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
 --- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
 +++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
-@@ -134,6 +134,8 @@
+@@ -134,6 +134,8 @@ static void cpu_comm_elog_resolve(struct device_node *np)
  #define CPU_COMM_ELOG_CTL_SIZE		0x500
  #define CPU_COMM_ELOG_MODE		0x09b	/* u8: 1 = the 100 KiB ring */
  #define CPU_COMM_ELOG_WRITE		0x4a8	/* u32: offset into the ring */
@@ -16,7 +42,7 @@ lost to an older one; the firmware's ESC [ .. m codes stayed in the text; and a 
  #define CPU_COMM_ELOG_LINE		200
  
  static DEFINE_MUTEX(cpu_comm_elog_lock);
-@@ -154,10 +156,30 @@
+@@ -154,10 +156,30 @@ static bool cpu_comm_elog_has(const char *s, size_t len, const char *needle,
  	return false;
  }
  
@@ -47,7 +73,7 @@ lost to an older one; the firmware's ESC [ .. m codes stayed in the text; and a 
  	size_t nlen, l = 0, i;
  	u32 pos, scanned;
  	int ret;
-@@ -198,15 +220,23 @@
+@@ -198,15 +220,23 @@ int cpu_comm_elog_last(const char *needle, char *buf, size_t len,
  		}
  		if (c && c != '\n') {
  			if (l < sizeof(rev))
@@ -78,7 +104,7 @@ lost to an older one; the firmware's ESC [ .. m codes stayed in the text; and a 
  			break;
  		}
  		l = 0;
-@@ -221,6 +251,31 @@
+@@ -221,6 +251,31 @@ int cpu_comm_elog_last(const char *needle, char *buf, size_t len,
  }
  EXPORT_SYMBOL_GPL(cpu_comm_elog_last);
  
@@ -110,9 +136,10 @@ lost to an older one; the firmware's ESC [ .. m codes stayed in the text; and a 
  static void cpu_comm_elog_unmap(void)
  {
  	mutex_lock(&cpu_comm_elog_lock);
+diff --git a/include/linux/soc/sunxi/h713-cpu-comm.h b/include/linux/soc/sunxi/h713-cpu-comm.h
 --- a/include/linux/soc/sunxi/h713-cpu-comm.h
 +++ b/include/linux/soc/sunxi/h713-cpu-comm.h
-@@ -224,6 +224,7 @@
+@@ -224,6 +224,7 @@ u32 cpu_comm_name2id(const char *base_name, unsigned int target_cpu);
   */
  int cpu_comm_elog_last(const char *needle, char *buf, size_t len,
  		       u32 *write_ptr);
@@ -120,7 +147,7 @@ lost to an older one; the firmware's ESC [ .. m codes stayed in the text; and a 
  
  #else /* !CONFIG_HY310_CPU_COMM */
  
-@@ -252,6 +253,11 @@
+@@ -252,6 +253,11 @@ static inline int cpu_comm_elog_last(const char *needle, char *buf,
  	return -ENODEV;
  }
  
@@ -132,27 +159,3 @@ lost to an older one; the firmware's ESC [ .. m codes stayed in the text; and a 
  static inline u32 cpu_comm_name2id(const char *base_name,
  				   unsigned int target_cpu)
  {
---- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
-+++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
-@@ -4769,15 +4769,17 @@
- {
- 	char line[H713_HDCP_LOG_LINE];
- 	u32 wp = 0;
-+	bool full;
- 	int ret;
- 
- 	ret = cpu_comm_elog_last("hdcp", line, sizeof(line), &wp);
-+	full = cpu_comm_elog_full();
- 	if (ret >= 0)
--		return sysfs_emit_at(buf, at, "firmware:      %s (ring write pointer %u)\n",
--				     line, wp);
-+		return sysfs_emit_at(buf, at, "firmware:      %s (ring write pointer %u%s)\n",
-+				     line, wp, full ? ", the log is full, newer lines are dropped" : "");
- 	if (ret == -ENOENT)
--		return sysfs_emit_at(buf, at, "firmware:      no HDCP line in the firmware log (ring write pointer %u)\n",
--				     wp);
-+		return sysfs_emit_at(buf, at, "firmware:      no HDCP line in the firmware log (ring write pointer %u%s)\n",
-+				     wp, full ? ", the log is full" : "");
- 	return sysfs_emit_at(buf, at, "firmware:      firmware log not readable (%d)\n",
- 			     ret);
- }

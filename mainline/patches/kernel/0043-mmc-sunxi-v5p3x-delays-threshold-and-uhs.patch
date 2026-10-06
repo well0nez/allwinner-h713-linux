@@ -1,3 +1,35 @@
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -994,16 +994,22 @@ mmc1: mmc@4021000 {
+ 			 * mmc_detect_change() after power-cycling PM1. */
+ 			cap-sd-highspeed;
+ 			cap-sdio-irq;
++			sd-uhs-sdr25;
++			sd-uhs-sdr50;
++			sd-uhs-sdr104;
++			sd-uhs-ddr50;
+ 			no-mmc;
+ 			no-sd;
+ 			keep-power-in-suspend;
++			sunxi-dly-52M-ddr4 = <1 0 0 0 2>;
++			sunxi-dly-104M = <1 1 0 0 1>;
++			sunxi-dly-208M = <1 0 0 0 1>;
+ 			/*
+-			 * 25 MHz, not 50: the AIC8800 port hits CMD53 DMA errors on
+-			 * large transfers at 50 MHz with the V1 sunxi-mmc glue. This
+-			 * is the known-good rate from the earlier bring-up; revisit
+-			 * once the V5 aicsdio.c SDIO-stability hunks are evaluated.
++			 * Stock advertises UHS-SDR104 at 50 MHz.  The v5p3x delay and
++			 * read-threshold programming in the host driver is required;
++			 * declaring these UHS modes without it stalls SDIO discovery.
+ 			 */
+-			max-frequency = <25000000>;
++			max-frequency = <50000000>;
+ 			#address-cells = <1>;
+ 			#size-cells = <0>;
+ 			status = "okay";
+diff --git a/drivers/mmc/host/sunxi-mmc.c b/drivers/mmc/host/sunxi-mmc.c
 --- a/drivers/mmc/host/sunxi-mmc.c
 +++ b/drivers/mmc/host/sunxi-mmc.c
 @@ -73,12 +73,24 @@
@@ -25,7 +57,7 @@
  #define mmc_readl(host, reg) \
  	readl((host)->reg_base + SDXC_##reg)
  #define mmc_writel(host, reg, value) \
-@@ -270,6 +282,9 @@
+@@ -270,6 +282,9 @@ struct sunxi_mmc_cfg {
  	/* clock hardware can switch between old and new timing modes */
  	bool ccu_has_timings_switch;
  
@@ -35,7 +67,7 @@
  	/*
  	 * The v5p3x (and later) MMC controller variants must not use
  	 * SDXC_WAIT_PRE_OVER in clock update commands.  Stock Allwinner
-@@ -327,6 +342,9 @@
+@@ -340,6 +355,9 @@ struct sunxi_mmc_host {
  	/* timings */
  	bool		use_new_timings;
  
@@ -45,7 +77,7 @@
  	/* CMD53 DMA error retry */
  	u32		idma_int_sum;    /* accumulated IDST bits for current request */
  	struct mmc_request *dma_retry_mrq; /* request pending DMA retry */
-@@ -435,11 +453,14 @@
+@@ -435,18 +453,23 @@ static int sunxi_mmc_init_host(struct sunxi_mmc_host *host)
  	 *   DRV_DL = 0x00030000  (drive delay line)
  	 *   SAMP   = 0x00002000  (sample delay line)
  	 */
@@ -65,7 +97,17 @@
  
  	/*
  	 * Burst 8 transfers, RX trigger level: 7, TX trigger level: 8
-@@ -906,7 +922,9 @@
+ 	 *
+ 	 * TODO: sun9i has a larger FIFO and supports higher trigger values
+ 	 */
+-	mmc_writel(host, REG_FTRGL, 0x20070008);
++	/* v5p3x has a 256-word FIFO; stock sets its TX threshold to 0xf8. */
++	mmc_writel(host, REG_FTRGL,
++		   host->cfg->v5p3x ? 0x200700f8 : 0x20070008);
+ 	/* Maximum timeout value */
+ 	mmc_writel(host, REG_TMOUT, 0xffffffff);
+ 	/* Unmask SDIO interrupt if needed */
+@@ -906,7 +929,9 @@ static irqreturn_t sunxi_mmc_handle_manual_stop(int irq, void *dev_id)
  		struct mmc_data *data = mrq->data;
  		u32 imask = SDXC_INTERRUPT_ERROR_BIT;
  		u32 cmd_val = SDXC_START | (mrq->cmd->opcode & 0x3f);
@@ -76,7 +118,7 @@
  		bool fifo_err;
  		int retry_idx, retry_limit;
  		int ret;
-@@ -952,6 +970,9 @@
+@@ -952,6 +977,9 @@ static irqreturn_t sunxi_mmc_handle_manual_stop(int irq, void *dev_id)
  		/* Step 2: Bus-clock reset -- save registers, cycle clock */
  		ntsr_saved   = mmc_readl(host, REG_SD_NTSR);
  		drv_dl_saved = readl(host->reg_base + SDXC_REG_DRV_DL);
@@ -86,7 +128,7 @@
  
  		clk_disable_unprepare(host->clk_mmc);
  		if (!IS_ERR(host->reset))
-@@ -974,6 +995,9 @@
+@@ -974,6 +1002,9 @@ static irqreturn_t sunxi_mmc_handle_manual_stop(int irq, void *dev_id)
  		/* Restore timing registers after bus-clock reset */
  		mmc_writel(host, REG_SD_NTSR, ntsr_saved);
  		writel(drv_dl_saved, host->reg_base + SDXC_REG_DRV_DL);
@@ -96,7 +138,17 @@
  
  		/*
  		 * reset_control_reset() above is a FULL controller reset: it
-@@ -1057,8 +1081,14 @@
+@@ -998,7 +1029,8 @@ static irqreturn_t sunxi_mmc_handle_manual_stop(int irq, void *dev_id)
+ 		 */
+ 		mmc_writel(host, REG_DLBA,
+ 			   host->sg_dma >> host->cfg->idma_des_shift);
+-		mmc_writel(host, REG_FTRGL, 0x20070008);
++		mmc_writel(host, REG_FTRGL,
++			   host->cfg->v5p3x ? 0x200700f8 : 0x20070008);
+ 		mmc_writel(host, REG_TMOUT, 0xffffffff);
+ 		mmc_writel(host, REG_IMASK, host->sdio_imask);
+ 		mmc_writel(host, REG_RINTR, 0xffffffff);
+@@ -1155,8 +1187,14 @@ static int sunxi_mmc_oclk_onoff(struct sunxi_mmc_host *host, u32 oclk_en)
  	mmc_writel(host, REG_CLKCR, rval);
  
  	rval = SDXC_START | SDXC_UPCLK_ONLY;
@@ -111,7 +163,7 @@
  	mmc_writel(host, REG_CMDR, rval);
  
  	do {
-@@ -1237,6 +1267,78 @@
+@@ -1237,6 +1275,78 @@ static int sunxi_mmc_clk_set_phase(struct sunxi_mmc_host *host,
  	return 0;
  }
  
@@ -190,7 +242,7 @@
  static int sunxi_mmc_clk_set_rate(struct sunxi_mmc_host *host,
  				  struct mmc_ios *ios)
  {
-@@ -1335,6 +1394,8 @@
+@@ -1335,6 +1445,8 @@ static int sunxi_mmc_clk_set_rate(struct sunxi_mmc_host *host,
  	if (ret)
  		return ret;
  
@@ -199,7 +251,7 @@
  	/*
  	 * HS400: configure data strobe clock and delay registers.
  	 * Derived from IDA analysis of H713 stock vmlinux (v4p5x driver):
-@@ -1466,6 +1527,7 @@
+@@ -1466,6 +1578,7 @@ static void sunxi_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
  
  static int sunxi_mmc_volt_switch(struct mmc_host *mmc, struct mmc_ios *ios)
  {
@@ -207,15 +259,17 @@
  	int ret;
  
  	/* vqmmc regulator is available */
-@@ -1478,6 +1540,21 @@
+@@ -1475,8 +1588,23 @@ static int sunxi_mmc_volt_switch(struct mmc_host *mmc, struct mmc_ios *ios)
+ 	}
+ 
+ 	/* no vqmmc regulator, assume fixed regulator at 3/3.3V */
 -	if (mmc->ios.signal_voltage == MMC_SIGNAL_VOLTAGE_330)
--		return 0;
 +	if (mmc->ios.signal_voltage == MMC_SIGNAL_VOLTAGE_330) {
 +		if (host->cfg->v5p3x)
 +			host->voltage_switching = false;
 +		return 0;
 +	}
- 
++
 +	/*
 +	 * The board's SDIO signal rail is fixed and the stock v5p3x stack has
 +	 * no vqmmc-supply either; it accepts the core's 1.8 V transition and
@@ -225,13 +279,12 @@
 +	    mmc->ios.signal_voltage == MMC_SIGNAL_VOLTAGE_180) {
 +		dev_info(mmc_dev(mmc),
 +			 "v5p3x voltage callback: fixed rail, accept 1.8 V state\n");
-+		return 0;
+ 		return 0;
 +	}
-+
+ 
  	return -EINVAL;
  }
- 
-@@ -1516,6 +1587,36 @@
+@@ -1516,6 +1644,36 @@ static void sunxi_mmc_hw_reset(struct mmc_host *mmc)
  	udelay(300);
  }
  
@@ -268,7 +321,7 @@
  static void sunxi_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
  {
  	struct sunxi_mmc_host *host = mmc_priv(mmc);
-@@ -1543,6 +1650,31 @@
+@@ -1545,6 +1703,31 @@ static void sunxi_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
  		}
  	}
  
@@ -300,7 +353,7 @@
  	if (cmd->opcode == MMC_GO_IDLE_STATE) {
  		cmd_val |= SDXC_SEND_INIT_SEQUENCE;
  		imask |= SDXC_COMMAND_DONE;
-@@ -1598,6 +1728,7 @@
+@@ -1598,6 +1781,7 @@ static void sunxi_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
  	}
  
  	if (data) {
@@ -308,13 +361,12 @@
  		mmc_writel(host, REG_BLKSZ, data->blksz);
  		mmc_writel(host, REG_BCNTR, data->blksz * data->blocks);
  		sunxi_mmc_start_dma(host, data);
-@@ -1613,8 +1744,23 @@
+@@ -1615,8 +1799,23 @@ static void sunxi_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
  static int sunxi_mmc_card_busy(struct mmc_host *mmc)
  {
  	struct sunxi_mmc_host *host = mmc_priv(mmc);
 +	u32 status = mmc_readl(host, REG_STAS);
- 
--	return !!(mmc_readl(host, REG_STAS) & SDXC_CARD_DATA_BUSY);
++
 +	if (host->cfg->v5p3x && host->voltage_switching) {
 +		bool busy = !(status & SDXC_CARD_PRESENT);
 +
@@ -328,12 +380,13 @@
 +			 status, mmc_readl(host, REG_RINTR), busy);
 +		return busy;
 +	}
-+
+ 
+-	return !!(mmc_readl(host, REG_STAS) & SDXC_CARD_DATA_BUSY);
 +	return !!(status & SDXC_CARD_DATA_BUSY);
  }
  
  static void sunxi_mmc_hs400_downgrade(struct mmc_host *mmc)
-@@ -1739,6 +1888,7 @@
+@@ -1739,6 +1938,7 @@ static const struct sunxi_mmc_cfg sun50i_h713_cfg = {
  	.can_calibrate = false,
  	.mask_data0 = true,
  	.needs_new_timings = true,
@@ -341,58 +394,3 @@
  	.no_wait_pre_over = true,
  	.supports_hs400 = true,
  };
-diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -941,16 +941,22 @@
- 			 * mmc_detect_change() after power-cycling PM1. */
- 			cap-sd-highspeed;
- 			cap-sdio-irq;
-+			sd-uhs-sdr25;
-+			sd-uhs-sdr50;
-+			sd-uhs-sdr104;
-+			sd-uhs-ddr50;
- 			no-mmc;
- 			no-sd;
- 			keep-power-in-suspend;
-+			sunxi-dly-52M-ddr4 = <1 0 0 0 2>;
-+			sunxi-dly-104M = <1 1 0 0 1>;
-+			sunxi-dly-208M = <1 0 0 0 1>;
- 			/*
--			 * 25 MHz, not 50: the AIC8800 port hits CMD53 DMA errors on
--			 * large transfers at 50 MHz with the V1 sunxi-mmc glue. This
--			 * is the known-good rate from the earlier bring-up; revisit
--			 * once the V5 aicsdio.c SDIO-stability hunks are evaluated.
-+			 * Stock advertises UHS-SDR104 at 50 MHz.  The v5p3x delay and
-+			 * read-threshold programming in the host driver is required;
-+			 * declaring these UHS modes without it stalls SDIO discovery.
- 			 */
--			max-frequency = <25000000>;
-+			max-frequency = <50000000>;
- 			#address-cells = <1>;
- 			#size-cells = <0>;
- 			status = "okay";
-diff --git a/drivers/mmc/host/sunxi-mmc.c b/drivers/mmc/host/sunxi-mmc.c
---- a/drivers/mmc/host/sunxi-mmc.c
-+++ b/drivers/mmc/host/sunxi-mmc.c
-@@ -458,7 +458,9 @@ static int sunxi_mmc_init_host(struct sunxi_mmc_host *host)
- 	 *
- 	 * TODO: sun9i has a larger FIFO and supports higher trigger values
- 	 */
--	mmc_writel(host, REG_FTRGL, 0x20070008);
-+	/* v5p3x has a 256-word FIFO; stock sets its TX threshold to 0xf8. */
-+	mmc_writel(host, REG_FTRGL,
-+		   host->cfg->v5p3x ? 0x200700f8 : 0x20070008);
- 	/* Maximum timeout value */
- 	mmc_writel(host, REG_TMOUT, 0xffffffff);
- 	/* Unmask SDIO interrupt if needed */
-@@ -1019,7 +1021,8 @@ static irqreturn_t sunxi_mmc_handle_cmd53_retry(int irq, void *dev_id)
- 		 */
- 		mmc_writel(host, REG_DLBA,
- 			   host->sg_dma >> host->cfg->idma_des_shift);
--		mmc_writel(host, REG_FTRGL, 0x20070008);
-+		mmc_writel(host, REG_FTRGL,
-+			   host->cfg->v5p3x ? 0x200700f8 : 0x20070008);
- 		mmc_writel(host, REG_TMOUT, 0xffffffff);
- 		mmc_writel(host, REG_IMASK, host->sdio_imask);
- 		mmc_writel(host, REG_RINTR, 0xffffffff);

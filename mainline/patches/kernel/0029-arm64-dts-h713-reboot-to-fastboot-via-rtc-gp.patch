@@ -30,9 +30,10 @@ which overlapped the RTC register region the rtc driver now claims. Pairs with
 CONFIG_RTC_DRV_SUN6I, CONFIG_RTC_NVMEM, and CONFIG_NVMEM_REBOOT_MODE in the bench
 defconfig, and with a U-Boot preboot that dispatches on the two magics.
 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -30,6 +30,20 @@
+@@ -30,6 +30,20 @@ chosen {
  		stdout-path = "serial0:115200n8";
  	};
  
@@ -53,7 +54,7 @@ defconfig, and with a U-Boot preboot that dispatches on the two magics.
  	aliases {
  		serial0 = &uart0;
  		mmc0 = &mmc2;
-@@ -1169,6 +1182,15 @@
+@@ -1336,6 +1350,15 @@ rtc: rtc@7090000 {
  			interrupts = <GIC_SPI 147 IRQ_TYPE_LEVEL_HIGH>;
  			clock-output-names = "osc32k", "osc32k-out", "iosc";
  			#clock-cells = <1>;

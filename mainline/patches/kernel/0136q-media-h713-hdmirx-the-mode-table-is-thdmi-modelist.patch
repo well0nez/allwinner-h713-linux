@@ -20,10 +20,10 @@ Follow-up to 0136h, which stays byte-identical.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 
-diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -2126,7 +2126,7 @@
+@@ -2192,7 +2192,7 @@ cpu_comm: cpu-comm@3003000 {
  	 *                    at probe and never written: U-Boot loads
  	 *                    database.TSE there, and the timing table the
  	 *                    display firmware locks on (the TFD module
@@ -32,7 +32,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  	 *                    Without it the driver matches a measured timing
  	 *                    against the kernel's preset list instead.
  	 *
-diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 --- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 @@ -276,18 +276,25 @@ static const char * const h713_hdmirx_hdr_scheme[] = {

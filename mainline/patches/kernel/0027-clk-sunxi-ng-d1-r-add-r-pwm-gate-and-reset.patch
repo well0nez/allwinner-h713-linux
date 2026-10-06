@@ -10,42 +10,18 @@ Export both clocks plus the reset. The H713 board drives vdd-cpu from
 R_PWM channel 1 (PL7), so both clocks must be enabled for cpufreq voltage
 scaling.
 
---- a/include/dt-bindings/clock/sun20i-d1-r-ccu.h
-+++ b/include/dt-bindings/clock/sun20i-d1-r-ccu.h
-@@ -15,5 +15,7 @@
- #define CLK_BUS_R_IR_RX		6
- #define CLK_BUS_R_RTC		7
- #define CLK_BUS_R_CPUCFG	8
-+#define CLK_R_PWM		9
-+#define CLK_BUS_R_PWM		10
-
- #endif /* _DT_BINDINGS_CLK_SUN20I_D1_R_CCU_H_ */
---- a/include/dt-bindings/reset/sun20i-d1-r-ccu.h
-+++ b/include/dt-bindings/reset/sun20i-d1-r-ccu.h
-@@ -12,5 +12,6 @@
- #define RST_BUS_R_IR_RX		3
- #define RST_BUS_R_RTC		4
- #define RST_BUS_R_CPUCFG	5
-+#define RST_BUS_R_PWM		6
-
- #endif /* _DT_BINDINGS_RST_SUN20I_D1_R_CCU_H_ */
---- a/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.h
-+++ b/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.h
-@@ -12,6 +12,6 @@
-
- #define CLK_R_APB0		1
-
--#define CLK_NUMBER		(CLK_BUS_R_CPUCFG + 1)
-+#define CLK_NUMBER		(CLK_BUS_R_PWM + 1)
-
- #endif /* _CCU_SUN20I_D1_R_H */
+diff --git a/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.c b/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.c
 --- a/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.c
 +++ b/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.c
-@@ -16,2 +16,3 @@
+@@ -12,6 +12,7 @@
+ #include "ccu_reset.h"
+ 
  #include "ccu_gate.h"
 +#include "ccu_mux.h"
  #include "ccu_mp.h"
-@@ -63,6 +64,19 @@
+ 
+ #include "ccu-sun20i-d1-r.h"
+@@ -63,6 +64,19 @@ static SUNXI_CCU_GATE_HWS(bus_r_rtc_clk,	"bus-r-rtc",	&r_ahb_hw,
  			  0x20c, BIT(0), 0);
  static SUNXI_CCU_GATE_HWS(bus_r_cpucfg_clk,	"bus-r-cpucfg",	&r_apb0_hw,
  			  0x22c, BIT(0), 0);
@@ -62,19 +38,19 @@ scaling.
 +				    0x130, 24, 2, BIT(31), 0);
 +static SUNXI_CCU_GATE_HWS(bus_r_pwm_clk,		"bus-r-pwm",	&r_apb0_hw,
 +			  0x13c, BIT(0), 0);
-
+ 
  static struct ccu_common *sun20i_d1_r_ccu_clks[] = {
  	&r_ahb_clk.common,
-@@ -74,6 +88,8 @@
+@@ -74,6 +88,8 @@ static struct ccu_common *sun20i_d1_r_ccu_clks[] = {
  	&bus_r_ir_rx_clk.common,
  	&bus_r_rtc_clk.common,
  	&bus_r_cpucfg_clk.common,
 +	&bus_r_pwm_clk.common,
 +	&r_pwm_clk.common,
  };
-
+ 
  static struct clk_hw_onecell_data sun20i_d1_r_hw_clks = {
-@@ -88,6 +104,8 @@
+@@ -88,6 +104,8 @@ static struct clk_hw_onecell_data sun20i_d1_r_hw_clks = {
  		[CLK_BUS_R_IR_RX]	= &bus_r_ir_rx_clk.common.hw,
  		[CLK_BUS_R_RTC]		= &bus_r_rtc_clk.common.hw,
  		[CLK_BUS_R_CPUCFG]	= &bus_r_cpucfg_clk.common.hw,
@@ -82,12 +58,44 @@ scaling.
 +		[CLK_R_PWM]		= &r_pwm_clk.common.hw,
  	},
  };
-
-@@ -98,6 +116,7 @@
+ 
+@@ -98,6 +116,7 @@ static const struct ccu_reset_map sun20i_d1_r_ccu_resets[] = {
  	[RST_BUS_R_IR_RX]	= { 0x1cc, BIT(16) },
  	[RST_BUS_R_RTC]		= { 0x20c, BIT(16) },
  	[RST_BUS_R_CPUCFG]	= { 0x22c, BIT(16) },
 +	[RST_BUS_R_PWM]		= { 0x13c, BIT(16) },
  };
-
+ 
  static const struct sunxi_ccu_desc sun20i_d1_r_ccu_desc = {
+diff --git a/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.h b/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.h
+--- a/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.h
++++ b/drivers/clk/sunxi-ng/ccu-sun20i-d1-r.h
+@@ -12,6 +12,6 @@
+ 
+ #define CLK_R_APB0		1
+ 
+-#define CLK_NUMBER		(CLK_BUS_R_CPUCFG + 1)
++#define CLK_NUMBER		(CLK_BUS_R_PWM + 1)
+ 
+ #endif /* _CCU_SUN20I_D1_R_H */
+diff --git a/include/dt-bindings/clock/sun20i-d1-r-ccu.h b/include/dt-bindings/clock/sun20i-d1-r-ccu.h
+--- a/include/dt-bindings/clock/sun20i-d1-r-ccu.h
++++ b/include/dt-bindings/clock/sun20i-d1-r-ccu.h
+@@ -15,5 +15,7 @@
+ #define CLK_BUS_R_IR_RX		6
+ #define CLK_BUS_R_RTC		7
+ #define CLK_BUS_R_CPUCFG	8
++#define CLK_R_PWM		9
++#define CLK_BUS_R_PWM		10
+ 
+ #endif /* _DT_BINDINGS_CLK_SUN20I_D1_R_CCU_H_ */
+diff --git a/include/dt-bindings/reset/sun20i-d1-r-ccu.h b/include/dt-bindings/reset/sun20i-d1-r-ccu.h
+--- a/include/dt-bindings/reset/sun20i-d1-r-ccu.h
++++ b/include/dt-bindings/reset/sun20i-d1-r-ccu.h
+@@ -12,5 +12,6 @@
+ #define RST_BUS_R_IR_RX		3
+ #define RST_BUS_R_RTC		4
+ #define RST_BUS_R_CPUCFG	5
++#define RST_BUS_R_PWM		6
+ 
+ #endif /* _DT_BINDINGS_RST_SUN20I_D1_R_CCU_H_ */

@@ -15,12 +15,14 @@ one helper for both places. h713-tv then reads "signal 1600x1200p60, 162.0
 MHz not in the firmware's table -- console" (FB-EDIDb; not built here).
 
 ---
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 --- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
-@@ -3720,6 +3720,33 @@
+@@ -3740,6 +3740,33 @@ static bool h713_hdmirx_tse_carries(struct h713_hdmirx *rx, unsigned int width,
+ 	return false;
  }
  
- /*
++/*
 + * A raster the table does not carry, named from the firmware's record: for
 + * such a raster the firmware writes its record (raster, signal_id 1, rate)
 + * and the new totals into INCAP, but leaves INCAP's ACTIVE word at the mode
@@ -47,11 +49,10 @@ MHz not in the firmware's table -- console" (FB-EDIDb; not built here).
 +				    "in none of the firmware's mode records");
 +}
 +
-+/*
+ /*
   * What the source is sending, from the three things the ARM can see:
   *
-  *  - The flip pointers: are frames arriving at all, and at what rate. Without
-@@ -3844,22 +3871,9 @@
+@@ -3865,22 +3892,9 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
  		if (htotal && vtotal && have_sig && !own_record &&
  		    rx->tse_count && sig.h_size && sig.v_size &&
  		    !h713_hdmirx_tse_carries(rx, sig.h_size, sig.v_size,
@@ -77,7 +78,7 @@ MHz not in the firmware's table -- console" (FB-EDIDb; not built here).
  		/*
  		 * The whole block reads zero while the TVFE/TVCAP power
  		 * domain is off (doku/78 section 0). No capture runs in that
-@@ -3881,6 +3895,22 @@
+@@ -3902,6 +3916,22 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
  		    !h713_hdmirx_tse_carries(rx, width, height, htotal, vtotal))
  			return h713_hdmirx_unlisted(rx, active, seen,
  					"in none of the firmware's mode records");

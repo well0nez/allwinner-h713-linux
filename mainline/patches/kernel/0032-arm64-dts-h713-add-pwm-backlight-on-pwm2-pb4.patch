@@ -42,9 +42,10 @@ controller registers all eight channels, so the node binds without further
 kernel changes. The ge2d node also references <&pwm 2 ...> for future display
 work, but "trix,ge2d" has no mainline driver, so only pwm-backlight actually
 claims the channel at runtime -- no consumer conflict.
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -1550,6 +1550,36 @@
+@@ -1723,6 +1723,36 @@ codec_machine: sound {
  		status = "okay";
  	};
  

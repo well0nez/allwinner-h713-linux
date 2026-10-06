@@ -13,9 +13,10 @@ H616-family PLL_CPUX points at/below that ceiling.
 
 Depends on the CPU clock notifiers added in the preceding patch.
 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -104,6 +104,8 @@
+@@ -110,6 +110,8 @@ cpu0: cpu@0 {
  			device_type = "cpu";
  			reg = <0>;
  			enable-method = "psci";
@@ -24,7 +25,7 @@ Depends on the CPU clock notifiers added in the preceding patch.
  			#cooling-cells = <2>;
  		};
  		cpu@1 {
-@@ -111,18 +113,68 @@
+@@ -117,18 +119,68 @@ cpu@1 {
  			device_type = "cpu";
  			reg = <1>;
  			enable-method = "psci";
@@ -92,4 +93,4 @@ Depends on the CPU clock notifiers added in the preceding patch.
 +			clock-latency-ns = <244144>; /* 8 32k periods */
  		};
  	};
-
+ 

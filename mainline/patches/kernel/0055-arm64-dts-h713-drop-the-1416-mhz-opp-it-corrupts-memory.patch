@@ -65,9 +65,10 @@ added here.
 
 Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
 ---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -216,11 +216,37 @@
+@@ -224,11 +224,37 @@ opp-1296000000 {
  			clock-latency-ns = <244144>; /* 8 32k periods */
  		};
  

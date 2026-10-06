@@ -132,9 +132,84 @@ otherwise untouched.
 
 Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 ---
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c	2026-09-07 09:41:19.818544878 +0200
+diff --git a/drivers/soc/sunxi/cpu_comm/Kconfig b/drivers/soc/sunxi/cpu_comm/Kconfig
+--- a/drivers/soc/sunxi/cpu_comm/Kconfig
++++ b/drivers/soc/sunxi/cpu_comm/Kconfig
+@@ -1,6 +1,7 @@
+ config HY310_CPU_COMM
+ 	tristate "HY310 CPU_COMM — ARM/MIPS IPC Framework"
+ 	depends on OF
++	select CRC32
+ 	help
+ 	  Inter-processor communication framework for the HY310 projector.
+ 	  Enables ARM ↔ MIPS display co-processor communication via shared
+diff --git a/drivers/soc/sunxi/cpu_comm/Makefile b/drivers/soc/sunxi/cpu_comm/Makefile
+--- a/drivers/soc/sunxi/cpu_comm/Makefile
++++ b/drivers/soc/sunxi/cpu_comm/Makefile
+@@ -1,2 +1,2 @@
+ obj-$(CONFIG_HY310_CPU_COMM) += hy310-cpu-comm.o
+-hy310-cpu-comm-objs := cpu_comm_dev.o cpu_comm_mem.o cpu_comm_hw.o cpu_comm_proto.o cpu_comm_fifo.o cpu_comm_channel.o cpu_comm_rpc.o cpu_comm_user.o cpu_comm_sem.o
++hy310-cpu-comm-objs := cpu_comm_dev.o cpu_comm_mem.o cpu_comm_hw.o cpu_comm_proto.o cpu_comm_fifo.o cpu_comm_channel.o cpu_comm_rpc.o cpu_comm_user.o cpu_comm_sem.o cpu_comm_api.o
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -17,6 +17,7 @@
+ 
+ #include <linux/types.h>
+ #include <linux/list.h>
++#include <linux/mutex.h>
+ #include <linux/semaphore.h>
+ #include <linux/workqueue.h>
+ #include <linux/cdev.h>
+@@ -783,4 +784,44 @@ unsigned int cpu_comm_user_poll(struct file *file,
+                                 struct poll_table_struct *wait);
+ void    cpu_comm_userspace_deliver(const void *msg);
+ 
++/* ══════════════════════════════════════════════════════════════
++ * In-kernel API — cpu_comm_api.c
++ *
++ * The public half lives in <linux/soc/sunxi/h713-cpu-comm.h>. What is
++ * declared here is what the rest of the driver needs to reach it.
++ * ══════════════════════════════════════════════════════════════ */
++
++/* Longest routine name we hash or print, "_<cpu>_<pid>" suffix included. */
++#define CPU_COMM_NAME_MAX	64
++
++/*
++ * Serialises outgoing CALLs. Held by cpu_comm_call() and by IOCTL_CALL,
++ * so a kernel driver and a userspace tool take turns instead of racing
++ * inside SendComm2CPUEx -- whose own per-sequence semaphore times out
++ * after 100 ms and then proceeds regardless (cpu_comm_proto.c, step 5).
++ *
++ * The receive path deliberately does NOT take it: an incoming call must
++ * not have to wait for an outgoing one to finish.
++ */
++extern struct mutex cpu_comm_call_mutex;
++
++/*
++ * The engine behind both CPUComm_CallEx() and cpu_comm_call().
++ *
++ * @timeout_ms: how long to wait for the RETURN, 0 for the 500 ms default.
++ * @strict:     when true, a call that produced no return entry fails with
++ *              -ETIMEDOUT (wait ran out) or -ENODATA (nothing in the
++ *              return FIFO) instead of reporting success with no values.
++ *              The character-device path passes false and keeps the
++ *              behaviour it has always had.
++ */
++int  cpu_comm_call_ex(int comp_id, int *params, u32 *result,
++		      unsigned int timeout_ms, bool strict);
++
++/* Hand an incoming MIPS→ARM CALL to a registered kernel handler. */
++void cpu_comm_kernel_deliver(const void *msg);
++
++void cpu_comm_api_init(void);
++void cpu_comm_api_exit(void);
++
+ #endif /* _CPU_COMM_H_ */
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
 @@ -0,0 +1,871 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -1007,10 +1082,10 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c b/drivers/soc/sunxi/cpu_co
 +}
 +
 +#endif /* CONFIG_DEBUG_FS */
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c	2026-09-07 09:22:25.479506384 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c	2026-09-07 09:22:32.008639480 +0200
-@@ -192,8 +192,18 @@
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -192,8 +192,18 @@ long cpu_comm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
  
  		if (copy_from_user(call_buf, (void __user *)arg, 168))
  			return -EFAULT;
@@ -1029,7 +1104,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_co
  		if (ret)
  			return -EFAULT;
  		if (copy_to_user((void __user *)arg, call_buf, 168))
-@@ -1743,6 +1753,7 @@
+@@ -1753,6 +1763,7 @@ int cpu_comm_init(int mode)
  
  	/* Create proc entries */
  	cpu_comm_proc_init();
@@ -1037,7 +1112,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_co
  
  	/* Y2 2026-05-04: pre-init queueAction work_structs so the lazy-init
  	 * race in IRQ-context can't happen. */
-@@ -1806,6 +1817,7 @@
+@@ -1816,6 +1827,7 @@ void cleanupFDCPUReset(u32 cpu_id)
  
  void cpu_comm_cleanup(void)
  {
@@ -1045,66 +1120,10 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_co
  	cpu_comm_proc_term();
  
  	if (pcpu_comm_dev) {
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-07 09:22:25.479800335 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-07 09:22:32.008772540 +0200
-@@ -17,6 +17,7 @@
- 
- #include <linux/types.h>
- #include <linux/list.h>
-+#include <linux/mutex.h>
- #include <linux/semaphore.h>
- #include <linux/workqueue.h>
- #include <linux/cdev.h>
-@@ -782,4 +783,44 @@
-                                 struct poll_table_struct *wait);
- void    cpu_comm_userspace_deliver(const void *msg);
- 
-+/* ══════════════════════════════════════════════════════════════
-+ * In-kernel API — cpu_comm_api.c
-+ *
-+ * The public half lives in <linux/soc/sunxi/h713-cpu-comm.h>. What is
-+ * declared here is what the rest of the driver needs to reach it.
-+ * ══════════════════════════════════════════════════════════════ */
-+
-+/* Longest routine name we hash or print, "_<cpu>_<pid>" suffix included. */
-+#define CPU_COMM_NAME_MAX	64
-+
-+/*
-+ * Serialises outgoing CALLs. Held by cpu_comm_call() and by IOCTL_CALL,
-+ * so a kernel driver and a userspace tool take turns instead of racing
-+ * inside SendComm2CPUEx -- whose own per-sequence semaphore times out
-+ * after 100 ms and then proceeds regardless (cpu_comm_proto.c, step 5).
-+ *
-+ * The receive path deliberately does NOT take it: an incoming call must
-+ * not have to wait for an outgoing one to finish.
-+ */
-+extern struct mutex cpu_comm_call_mutex;
-+
-+/*
-+ * The engine behind both CPUComm_CallEx() and cpu_comm_call().
-+ *
-+ * @timeout_ms: how long to wait for the RETURN, 0 for the 500 ms default.
-+ * @strict:     when true, a call that produced no return entry fails with
-+ *              -ETIMEDOUT (wait ran out) or -ENODATA (nothing in the
-+ *              return FIFO) instead of reporting success with no values.
-+ *              The character-device path passes false and keeps the
-+ *              behaviour it has always had.
-+ */
-+int  cpu_comm_call_ex(int comp_id, int *params, u32 *result,
-+		      unsigned int timeout_ms, bool strict);
-+
-+/* Hand an incoming MIPS→ARM CALL to a registered kernel handler. */
-+void cpu_comm_kernel_deliver(const void *msg);
-+
-+void cpu_comm_api_init(void);
-+void cpu_comm_api_exit(void);
-+
- #endif /* _CPU_COMM_H_ */
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 09:22:25.515527462 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 09:22:32.008847000 +0200
-@@ -941,6 +941,14 @@
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+@@ -941,6 +941,14 @@ void command_action(u32 remote_cpu, u32 direction)
  		 * FIFO unread. Direct deliver bypasses that path entirely. */
  		cpu_comm_userspace_deliver((const void *)entry_base);
  
@@ -1119,9 +1138,9 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_
  		if (entry_cmd <= 4)
  			Comm_Add2NewCallFifo(
  				(void *)((u8 *)pcpu_comm_dev + 48),
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-07 09:22:25.515646973 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c	2026-09-07 09:22:32.008929191 +0200
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c
 @@ -15,6 +15,7 @@
  #include <linux/list.h>
  #include <linux/string.h>
@@ -1130,7 +1149,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_co
  
  /* Stock uses mmiocpy() for shared-memory copies; mainline equivalent */
  #define mmiocpy(dst, src, len) memcpy_toio((void __iomem *)(dst), (src), (len))
-@@ -505,19 +506,36 @@
+@@ -505,19 +506,36 @@ int CPUComm_Call_Ex(void *msg_buf, void *params, void *result)
  }
  
  /*
@@ -1172,7 +1191,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_co
  {
  	u8 local_msg[COMM_MSG_SIZE];
  	int ret;
-@@ -528,6 +546,11 @@
+@@ -528,6 +546,11 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
  	u32 *wait_obj = NULL;
  	u32 session_ptr;
  	u16 *return_entry = NULL;
@@ -1184,7 +1203,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_co
  
  	if (!params)
  		return -EINVAL;
-@@ -630,8 +653,9 @@
+@@ -630,8 +653,9 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
  	 */
  	if (FindWaitBySessionId((void *)(seq_base + 40),
  				session_ptr, &wait_obj) == 0 && wait_obj) {
@@ -1196,7 +1215,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_co
  	}
  
  	/* Get the return message from the return FIFO.
-@@ -664,6 +688,8 @@
+@@ -664,6 +688,8 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
  
  	/* Copy results from return entry to caller's result buffer */
  	if (return_entry) {
@@ -1205,7 +1224,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_co
  		/* Increment return counter in pcpu_comm_dev */
  		if (pcpu_comm_dev)
  			*(u32 *)((u8 *)pcpu_comm_dev + 1632) += 1;
-@@ -724,6 +750,24 @@
+@@ -724,6 +750,24 @@ int CPUComm_CallEx(int comp_id, int *params, u32 *result)
  			ReleaseWaitComm(dst_cpu, (unsigned long)*(u8 **)tmp_buf);
  	}
  
@@ -1230,7 +1249,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_co
  	return ret;
  }
  
-@@ -1015,57 +1059,30 @@
+@@ -1015,57 +1059,30 @@ void comm_CallWorkAction(struct work_struct *work)
  	 * dispatch below still ACKs MIPS — userspace cannot inhibit it. */
  	cpu_comm_userspace_deliver(local_msg);
  
@@ -1309,27 +1328,10 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_rpc.c b/drivers/soc/sunxi/cpu_co
  	}
  
  out_free:
-diff -ruN a/drivers/soc/sunxi/cpu_comm/Kconfig b/drivers/soc/sunxi/cpu_comm/Kconfig
---- a/drivers/soc/sunxi/cpu_comm/Kconfig	2026-09-07 09:22:25.480776408 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/Kconfig	2026-09-07 09:22:32.008999401 +0200
-@@ -1,6 +1,7 @@
- config HY310_CPU_COMM
- 	tristate "HY310 CPU_COMM — ARM/MIPS IPC Framework"
- 	depends on OF
-+	select CRC32
- 	help
- 	  Inter-processor communication framework for the HY310 projector.
- 	  Enables ARM ↔ MIPS display co-processor communication via shared
-diff -ruN a/drivers/soc/sunxi/cpu_comm/Makefile b/drivers/soc/sunxi/cpu_comm/Makefile
---- a/drivers/soc/sunxi/cpu_comm/Makefile	2026-09-07 09:22:25.480793698 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/Makefile	2026-09-07 09:22:32.009023501 +0200
-@@ -1,2 +1,2 @@
- obj-$(CONFIG_HY310_CPU_COMM) += hy310-cpu-comm.o
--hy310-cpu-comm-objs := cpu_comm_dev.o cpu_comm_mem.o cpu_comm_hw.o cpu_comm_proto.o cpu_comm_fifo.o cpu_comm_channel.o cpu_comm_rpc.o cpu_comm_user.o cpu_comm_sem.o
-+hy310-cpu-comm-objs := cpu_comm_dev.o cpu_comm_mem.o cpu_comm_hw.o cpu_comm_proto.o cpu_comm_fifo.o cpu_comm_channel.o cpu_comm_rpc.o cpu_comm_user.o cpu_comm_sem.o cpu_comm_api.o
-diff -ruN a/include/linux/soc/sunxi/h713-cpu-comm.h b/include/linux/soc/sunxi/h713-cpu-comm.h
---- a/include/linux/soc/sunxi/h713-cpu-comm.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/linux/soc/sunxi/h713-cpu-comm.h	2026-09-07 09:23:57.496360999 +0200
+diff --git a/include/linux/soc/sunxi/h713-cpu-comm.h b/include/linux/soc/sunxi/h713-cpu-comm.h
+new file mode 100644
+--- /dev/null
++++ b/include/linux/soc/sunxi/h713-cpu-comm.h
 @@ -0,0 +1,232 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*

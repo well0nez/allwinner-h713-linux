@@ -14,10 +14,21 @@ asks cpu_comm_msgbox_owns_bank() before requesting a line, and the lines
 of banks 1 and 2 are left to their owners with one info line each. The
 device tree keeps all three lines: that is what the hardware has.
 
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c	2026-09-16 14:55:12.401269671 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c	2026-09-16 14:55:12.411883969 +0200
-@@ -1508,9 +1508,14 @@
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -758,6 +758,7 @@ void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value);
+ /* H713 direct msgbox IRQ handler (replaces mailbox framework) */
+ int  cpu_comm_msgbox_request_irq(int irq, void *callback);
+ const char *cpu_comm_msgbox_bank_name(int index);
++bool cpu_comm_msgbox_owns_bank(int bank);
+ int  cpu_comm_msgbox_start_polling(void *callback);
+ void cpu_comm_msgbox_free_irq(void);
+ void cpu_comm_msgbox_probe_start(void);	/* legacy stub */
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -1498,9 +1498,14 @@ int cpu_comm_init(int mode)
  	 * The msgbox has one GIC line per register bank and the device tree
  	 * lists them in bank order: index 0 = bank 0 = SPI 46 (this core's
  	 * inbox), index 1 = bank 1 = SPI 109 (CPUS/ARISC), index 2 = bank 2
@@ -35,7 +46,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_co
  	 */
  	{
  		struct platform_device *pdev =
-@@ -1524,6 +1529,11 @@
+@@ -1514,6 +1519,11 @@ int cpu_comm_init(int mode)
  					i, cpu_comm_msgbox_bank_name(i), irq);
  				continue;
  			}
@@ -47,7 +58,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_co
  			ret = cpu_comm_msgbox_request_irq(irq,
  					(void *)cpu_comm_msg_cb);
  			if (ret) {
-@@ -1536,7 +1546,7 @@
+@@ -1526,7 +1536,7 @@ int cpu_comm_init(int mode)
  				total++;
  			}
  		}
@@ -56,21 +67,10 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_co
  
  		/*
  		 * Only arm the polling fallback if no IRQ line was usable.
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-16 14:55:12.415986469 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h	2026-09-16 14:55:39.829607710 +0200
-@@ -763,6 +763,7 @@
- /* H713 direct msgbox IRQ handler (replaces mailbox framework) */
- int  cpu_comm_msgbox_request_irq(int irq, void *callback);
- const char *cpu_comm_msgbox_bank_name(int index);
-+bool cpu_comm_msgbox_owns_bank(int bank);
- int  cpu_comm_msgbox_start_polling(void *callback);
- void cpu_comm_msgbox_free_irq(void);
- void cpu_comm_msgbox_probe_start(void);	/* legacy stub */
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-16 14:55:12.414874425 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-16 14:55:39.829366357 +0200
-@@ -210,15 +210,32 @@
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -210,15 +210,32 @@ const char *cpu_comm_msgbox_bank_name(int index)
   */
  struct msgbox_rx_endpoint {
  	const char *what;

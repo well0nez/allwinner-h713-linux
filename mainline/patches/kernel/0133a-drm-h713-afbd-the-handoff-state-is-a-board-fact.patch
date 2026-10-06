@@ -38,7 +38,31 @@ the three comparisons are the same three comparisons, and the only reachable
 difference is the wording of a message that is not printed on a board that
 passes. The dtsi hunk is a comment; the compiled DTB is unchanged.
 
-diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1938,6 +1938,20 @@ display: display@5600000 {
+ 			 */
+ 			memory-region = <&mips_framebuf>, <&viddec_info>;
+ 			memory-region-names = "hdmi-ring", "viddec-info";
++			/*
++			 * Optional: allwinner,handoff-state = <ctrl
++			 * video_ctrl selector>, the three register words the
++			 * boot loader must have left behind before this
++			 * driver takes over - AFBD_CTRL (0x140) with the RGB
++			 * channel live, AFBD_VIDEO_CTRL (0x010) with source 0
++			 * idle, and the LVDS selector (lvds + 0x06c) pointing
++			 * at RGB. Left out here, so the driver uses the words
++			 * measured on the HY310: 0x03001901, 0x03000010,
++			 * 0x29000000. A board whose boot loader or panel port
++			 * count hands over other words puts them in its own
++			 * board file; the driver still refuses to probe on a
++			 * mismatch, and names all six words when it does.
++			 */
+ 			status = "okay";
+ 		};
+ 
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 --- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 +++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 @@ -141,6 +141,24 @@
@@ -66,7 +90,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  /* The AFBD consumes the picture in 16x16 blocks. */
  #define H713_VIDEO_BLOCK	16u
  
-@@ -1774,6 +1792,7 @@
+@@ -1774,6 +1792,7 @@ static int h713_afbd_probe(struct platform_device *pdev)
  	struct h713_afbd *h;
  	struct drm_device *drm;
  	struct resource res;
@@ -74,7 +98,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  	unsigned long flags;
  	int irq, ret;
  
-@@ -1912,11 +1931,22 @@
+@@ -1912,11 +1931,22 @@ static int h713_afbd_probe(struct platform_device *pdev)
  	 */
  	h->video_c_stride_idle = readl(h->regs + AFBD_VIDEO_C_STRIDE);
  	h->selector_rgb = readl(h->lvds_regs + 0x06c);
@@ -101,27 +125,3 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  
  	ret = drmm_mode_config_init(drm);
  	if (ret)
-diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -1872,6 +1872,20 @@
- 			 */
- 			memory-region = <&mips_framebuf>, <&viddec_info>;
- 			memory-region-names = "hdmi-ring", "viddec-info";
-+			/*
-+			 * Optional: allwinner,handoff-state = <ctrl
-+			 * video_ctrl selector>, the three register words the
-+			 * boot loader must have left behind before this
-+			 * driver takes over - AFBD_CTRL (0x140) with the RGB
-+			 * channel live, AFBD_VIDEO_CTRL (0x010) with source 0
-+			 * idle, and the LVDS selector (lvds + 0x06c) pointing
-+			 * at RGB. Left out here, so the driver uses the words
-+			 * measured on the HY310: 0x03001901, 0x03000010,
-+			 * 0x29000000. A board whose boot loader or panel port
-+			 * count hands over other words puts them in its own
-+			 * board file; the driver still refuses to probe on a
-+			 * mismatch, and names all six words when it does.
-+			 */
- 			status = "okay";
- 		};
- 

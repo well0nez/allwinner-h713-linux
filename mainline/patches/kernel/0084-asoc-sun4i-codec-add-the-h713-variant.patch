@@ -32,10 +32,22 @@ The following patch powers the headphone amplifier that drives the speaker.
 
 Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
 ---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -827,7 +827,7 @@ codec: codec@2030000 {
+ 			 *   stock also lists a pll_tvfe clock on the codec,
+ 			 *     which is unexplained -- deliberately not copied
+ 			 */
+-			compatible = "allwinner,sun50i-h616-codec";
++			compatible = "allwinner,sun50i-h713-codec";
+ 			reg = <0x02030000 0x32c>;
+ 			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_BUS_AUDIO_CODEC>,
 diff --git a/sound/soc/sunxi/sun4i-codec.c b/sound/soc/sunxi/sun4i-codec.c
 --- a/sound/soc/sunxi/sun4i-codec.c
 +++ b/sound/soc/sunxi/sun4i-codec.c
-@@ -1961,6 +1961,58 @@
+@@ -1961,6 +1961,58 @@ static const struct snd_soc_component_driver sun50i_h616_codec_codec = {
  	.endianness   = 1,
  };
  
@@ -94,7 +106,7 @@ diff --git a/sound/soc/sunxi/sun4i-codec.c b/sound/soc/sunxi/sun4i-codec.c
  static const struct snd_kcontrol_new sun50i_h616_card_controls[] = {
  	SOC_DAPM_PIN_SWITCH("Speaker"),
  };
-@@ -2229,6 +2281,74 @@
+@@ -2229,6 +2281,74 @@ static const struct sun4i_codec_quirks sun8i_v3s_codec_quirks = {
  	.dma_max_burst	= SUN4I_DMA_MAX_BURST,
  };
  
@@ -169,26 +181,14 @@ diff --git a/sound/soc/sunxi/sun4i-codec.c b/sound/soc/sunxi/sun4i-codec.c
  static const struct sun4i_codec_quirks sun50i_h616_codec_quirks = {
  	.regmap_config	= &sun50i_h616_codec_regmap_config,
  	.codec		= &sun50i_h616_codec_codec,
-@@ -2281,6 +2401,10 @@
+@@ -2280,6 +2400,10 @@ static const struct of_device_id sun4i_codec_of_match[] = {
+ 		.compatible = "allwinner,sun50i-h616-codec",
  		.data = &sun50i_h616_codec_quirks,
  	},
- 	{
++	{
 +		.compatible = "allwinner,sun50i-h713-codec",
 +		.data = &sun50i_h713_codec_quirks,
 +	},
-+	{
+ 	{
  		.compatible = "allwinner,suniv-f1c100s-codec",
  		.data = &suniv_f1c100s_codec_quirks,
- 	},
-diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -765,7 +765,7 @@
- 			 *   stock also lists a pll_tvfe clock on the codec,
- 			 *     which is unexplained -- deliberately not copied
- 			 */
--			compatible = "allwinner,sun50i-h616-codec";
-+			compatible = "allwinner,sun50i-h713-codec";
- 			reg = <0x02030000 0x32c>;
- 			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
- 			clocks = <&ccu CLK_BUS_AUDIO_CODEC>,

@@ -7,10 +7,10 @@ TVFE gate clocks dsp_island2.py switches, bus-demod gate + reset, pd_tvfe,
 the router as a 4-byte syscon, and the firmware name h713/msp-patch.bin.
 Applies on top of 0135b (codec I2S window in the same file).
 ---
-diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:37:49.876474001 +0200
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-08 18:37:49.886049833 +0200
-@@ -1598,6 +1598,86 @@
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1665,6 +1665,86 @@ tvcap_bringup: tvcap@50c0000 {
  		 * section 0, rule 6). It lives in the TVFE/TVCAP power
  		 * domain; while that is off the whole block reads zero.
  		 */

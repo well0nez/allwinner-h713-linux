@@ -23,6 +23,22 @@ board-level ownership patch is needed.
 
 Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
 ---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1764,7 +1764,10 @@ dec: dec@5600000 {
+ 		 */
+ 		display: display@5600000 {
+ 			compatible = "allwinner,sun50i-h713-afbd";
+-			reg = <0x05600000 0x400>;
++			reg = <0x05600000 0x400>,
++			      <0x05140000 0x1000>,
++			      <0x051c0000 0x100>;
++			reg-names = "afbd", "route", "lvds";
+ 			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_AFBD>,
+ 				 <&ccu CLK_BUS_DISP>;
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 --- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 +++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
 @@ -36,12 +36,15 @@
@@ -110,7 +126,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  };
  
  static inline struct h713_afbd *to_h713(struct drm_device *drm)
-@@ -86,6 +131,62 @@
+@@ -86,6 +131,62 @@ static inline struct h713_afbd *to_h713(struct drm_device *drm)
  	return container_of(drm, struct h713_afbd, drm);
  }
  
@@ -173,7 +189,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  /*
   * Point AFBD at a buffer and latch it. Identical in order and content to
   * gles-play's commit path, minus its 50 ms poll for STATUS_DONE: here the
-@@ -103,6 +204,14 @@
+@@ -103,6 +204,14 @@ static void h713_afbd_set_source(struct h713_afbd *h, dma_addr_t addr,
  
  	writel(lower_32_bits(addr), h->regs + AFBD_SRC);
  
@@ -188,7 +204,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  	pending = readl(h->regs + AFBD_STATUS);
  	if (pending)
  		writel(pending, h->regs + AFBD_STATUS);
-@@ -111,6 +220,158 @@
+@@ -111,6 +220,158 @@ static void h713_afbd_set_source(struct h713_afbd *h, dma_addr_t addr,
  	writel(1, h->regs + AFBD_READY);
  }
  
@@ -347,7 +363,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  static void h713_afbd_pipe_enable(struct drm_simple_display_pipe *pipe,
  				  struct drm_crtc_state *crtc_state,
  				  struct drm_plane_state *plane_state)
-@@ -258,6 +519,10 @@
+@@ -258,6 +519,10 @@ static const u32 h713_afbd_formats[] = {
  	DRM_FORMAT_ARGB8888,
  };
  
@@ -358,7 +374,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  /*
   * Read back the geometry U-Boot left in the hardware rather than hardcoding a
   * panel size. Only hdisplay/vdisplay here are real: the porches and pixel clock
-@@ -304,9 +569,15 @@
+@@ -304,9 +569,15 @@ static int h713_afbd_probe(struct platform_device *pdev)
  		return PTR_ERR(h);
  	drm = &h->drm;
  
@@ -375,7 +391,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  
  	irq = platform_get_irq(pdev, 0);
  	if (irq < 0)
-@@ -326,7 +597,7 @@
+@@ -326,7 +597,7 @@ static int h713_afbd_probe(struct platform_device *pdev)
  		return dev_err_probe(dev, PTR_ERR(h->clk_afbd), "no clk_afbd\n");
  
  	/* AFBD's source register is 32-bit, so scanout must live below 4 GiB. */
@@ -384,7 +400,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  	if (ret)
  		return ret;
  
-@@ -353,6 +624,33 @@
+@@ -353,6 +624,33 @@ static int h713_afbd_probe(struct platform_device *pdev)
  	if (ret)
  		return ret;
  
@@ -418,7 +434,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  	ret = drmm_mode_config_init(drm);
  	if (ret)
  		return ret;
-@@ -408,6 +706,17 @@
+@@ -408,6 +706,17 @@ static int h713_afbd_probe(struct platform_device *pdev)
  	if (ret)
  		return ret;
  
@@ -436,7 +452,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  	drm_mode_config_reset(drm);
  
  	/* Vsync is masked until a client asks for vblanks. */
-@@ -432,6 +741,7 @@
+@@ -432,6 +741,7 @@ static void h713_afbd_remove(struct platform_device *pdev)
  	struct h713_afbd *h = platform_get_drvdata(pdev);
  
  	drm_dev_unplug(&h->drm);
@@ -444,7 +460,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  	drm_atomic_helper_shutdown(&h->drm);
  }
  
-@@ -439,6 +749,7 @@
+@@ -439,6 +749,7 @@ static void h713_afbd_shutdown(struct platform_device *pdev)
  {
  	struct h713_afbd *h = platform_get_drvdata(pdev);
  
@@ -452,17 +468,3 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  	drm_atomic_helper_shutdown(&h->drm);
  }
  
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -1693,7 +1693,10 @@
- 		 */
- 		display: display@5600000 {
- 			compatible = "allwinner,sun50i-h713-afbd";
--			reg = <0x05600000 0x400>;
-+			reg = <0x05600000 0x400>,
-+			      <0x05140000 0x1000>,
-+			      <0x051c0000 0x100>;
-+			reg-names = "afbd", "route", "lvds";
- 			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
- 			clocks = <&ccu CLK_AFBD>,
- 				 <&ccu CLK_BUS_DISP>;

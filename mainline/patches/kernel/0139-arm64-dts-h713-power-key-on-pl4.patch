@@ -19,7 +19,7 @@ analyse/boot/arbeit/REGELN.md.
 Needs CONFIG_KEYBOARD_GPIO=y, see the companion defconfig patch
 0139b-board-defconfig-enable-keyboard-gpio.patch.
 ---
-diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 @@ -15,6 +15,7 @@
@@ -30,10 +30,11 @@ diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  #include <dt-bindings/thermal/thermal.h>
  
  / {
-@@ -2333,6 +2334,33 @@
+@@ -2453,6 +2454,33 @@ motor_ctr: motor-ctr {
+ 		motor-step-mdelay = <1>;		/* ms between steps */
  	};
  
- 	/*
++	/*
 +	 * Power button on PL4 -- the pin stock names in `standby_param`
 +	 * (`power_key = "PL4"`, `key_debounce = <50>`). Measured on the
 +	 * device 2026-09-08: idle reads 1, pressed reads 0, so the board
@@ -60,7 +61,6 @@ diff -Nur a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
 +		};
 +	};
 +
-+	/*
+ 	/*
  	 * ADC-based keyboard (6 buttons on LRADC channel 0).
  	 * Uses mainline adc-keys driver with LRADC IIO provider.
- 	 * Voltage thresholds from stock DTS keyboard@2009800 node.

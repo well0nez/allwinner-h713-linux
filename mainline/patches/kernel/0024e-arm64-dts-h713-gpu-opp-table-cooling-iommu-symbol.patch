@@ -29,9 +29,10 @@ zone (which had no trips either).
 
 Plan: umbau/plan/keystone/PLAN.md, stage S2.
 
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-22 18:36:27.310124738 +0200
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-22 18:36:27.323146272 +0200
-@@ -359,6 +359,39 @@
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -201,6 +201,39 @@ gic: interrupt-controller@3020000 {
  	};
  
  	/* Thermal zones for CPU thermal management */
@@ -71,7 +72,7 @@ Plan: umbau/plan/keystone/PLAN.md, stage S2.
  	thermal-zones {
  		cpu-thermal {
  			polling-delay-passive = <250>;
-@@ -396,9 +429,29 @@
+@@ -238,9 +271,29 @@ map1 {
  		};
  
  		gpu-thermal {
@@ -102,7 +103,7 @@ Plan: umbau/plan/keystone/PLAN.md, stage S2.
  		};
  	};
  
-@@ -1201,12 +1254,14 @@
+@@ -947,12 +1000,14 @@ ohci2: usb@4300400 {
  		};
  
  		/*
@@ -123,7 +124,7 @@ Plan: umbau/plan/keystone/PLAN.md, stage S2.
  		 */
  		/*
  		 * DISABLED 2026-08-09 -- this node is inert on H713 and was
-@@ -1411,6 +1466,7 @@
+@@ -1121,6 +1176,7 @@ gpu: gpu@1800000 {
  			clocks = <&ccu CLK_GPU>, <&ccu CLK_BUS_GPU>;
  			clock-names = "core", "bus";
  			resets = <&ccu RST_BUS_GPU>;

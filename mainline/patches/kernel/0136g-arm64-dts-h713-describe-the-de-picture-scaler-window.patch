@@ -21,13 +21,14 @@ Follow-up to 0136b (same node), needs nothing else; 0136f reads it.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
-diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -1743,6 +1743,29 @@
+@@ -1750,6 +1750,29 @@ incap: syscon@6940000 {
+ 			reg = <0x06940000 0x1000>;
  		};
  
- 		/*
++		/*
 +		 * The display engine's picture scaler, the block at
 +		 * 0x05180000. Like INCAP above it belongs to the MIPS firmware
 +		 * and has no ARM driver; the HDMI receiver node reads one word
@@ -50,11 +51,10 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
 +			reg = <0x05180000 0x1000>;
 +		};
 +
-+		/*
+ 		/*
  		 * LINK, the HDMI receiver's port window. Like INCAP above it
  		 * belongs to the MIPS firmware and has no ARM driver: the
- 		 * firmware detects the audio in the stream, programmes the
-@@ -2135,6 +2158,13 @@
+@@ -2157,6 +2180,13 @@ cpu_comm: cpu-comm@3003000 {
  	 *                    read only, byte wide: without it everything
  	 *                    works except the three audio status controls,
  	 *                    which stay at zero.
@@ -68,7 +68,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  	 *
  	 * No interrupt: three independent searches of the firmware image found
  	 * the capture interrupt only inside the MIPS interrupt controller, and
-@@ -2147,6 +2177,7 @@
+@@ -2169,6 +2199,7 @@ hdmirx: hdmi-rx {
  		memory-region-names = "hdmi-ring", "cpu-comm-shmem";
  		allwinner,incap = <&incap>;
  		allwinner,hdmirx-link = <&hdmirx_link>;

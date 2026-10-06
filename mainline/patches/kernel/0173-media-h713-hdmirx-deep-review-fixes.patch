@@ -6,9 +6,10 @@ S_DV_TIMINGS applies (28 of 119 were listed and refused); an unlisted raster wit
 not above the record's active size is a change in flight, not a name. Findings 2, 3, N2 of
 umbau/work/_deepreview/hdmi. Applies after 0136zb.
 ---
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 --- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
-@@ -3221,7 +3221,7 @@
+@@ -3242,7 +3242,7 @@ static const struct v4l2_dv_timings_cap h713_hdmirx_timings_cap = {
  		.max_width	= 4096,
  		.min_height	= 480,
  		.max_height	= 2160,
@@ -17,7 +18,7 @@ umbau/work/_deepreview/hdmi. Applies after 0136zb.
  		.max_pixelclock	= 297000000,
  		.standards	= V4L2_DV_BT_STD_CEA861 | V4L2_DV_BT_STD_DMT,
  		.capabilities	= V4L2_DV_BT_CAP_PROGRESSIVE |
-@@ -3787,6 +3787,9 @@
+@@ -3808,6 +3808,9 @@ static int h713_hdmirx_unlisted_record(struct h713_hdmirx *rx,
  				       unsigned int htotal, unsigned int vtotal,
  				       struct v4l2_dv_timings *t)
  {
@@ -27,7 +28,7 @@ umbau/work/_deepreview/hdmi. Applies after 0136zb.
  	memset(t, 0, sizeof(*t));
  	t->type = V4L2_DV_BT_656_1120;
  	t->bt.width = sig->h_size;
-@@ -4318,12 +4321,17 @@
+@@ -4339,12 +4342,17 @@ static int h713_hdmirx_enum_dv_timings(struct file *file, void *priv,
  	for (i = 0; i < rx->tse_count; i++) {
  		const struct h713_hdmirx_tse_mode *m = &rx->tse_modes[i];
  

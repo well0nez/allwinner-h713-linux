@@ -36,10 +36,22 @@ following patches.
 
 Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
 ---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -16,7 +16,7 @@ chosen {
+ &mips_framebuf { status = "okay"; };
+ &framebuf_reserved { status = "okay"; };
+ &twi1 { status = "disabled"; };
+-&codec { status = "disabled"; };
++&codec { status = "okay"; };
+ &dummy_cpudai { status = "disabled"; };
+ &codec_machine { status = "disabled"; };
+ &i2s0 { status = "disabled"; };
 diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -741,37 +741,44 @@
+@@ -801,37 +801,44 @@ pwm: pwm@2000c00 {
  		 * documented here instead of fake H6/A23 assumptions.
  		 */
  		codec: codec@2030000 {
@@ -115,15 +127,3 @@ diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dt
  		};
  
  		dummy_cpudai: dummy-cpudai@203032c {
-diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
-@@ -16,7 +16,7 @@
- &mips_framebuf { status = "okay"; };
- &framebuf_reserved { status = "okay"; };
- &twi1 { status = "disabled"; };
--&codec { status = "disabled"; };
-+&codec { status = "okay"; };
- &dummy_cpudai { status = "disabled"; };
- &codec_machine { status = "disabled"; };
- &i2s0 { status = "disabled"; };

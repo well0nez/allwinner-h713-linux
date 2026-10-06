@@ -21,9 +21,10 @@ table does not carry (the HY310's second half: 96, 97, 101, 102). Without
 the table nothing changes.
 
 ---
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 --- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
-@@ -338,6 +338,7 @@
+@@ -338,6 +338,7 @@ static const char * const h713_hdmirx_hdr_scheme[] = {
   * @on_active: compare the active size instead of the totals (record +52)
   * @skip_rate: do not compare the frame rate at all (record +49)
   * @interlaced: the record is interlaced (record +50 == 0)
@@ -31,7 +32,7 @@ the table nothing changes.
   */
  struct h713_hdmirx_tse_mode {
  	u16 h_active;
-@@ -348,8 +349,11 @@
+@@ -348,8 +349,11 @@ struct h713_hdmirx_tse_mode {
  	u8 on_active;
  	u8 skip_rate;
  	u8 interlaced;
@@ -43,7 +44,7 @@ the table nothing changes.
  /**
   * struct h713_hdmirx_ring_geometry - what the capture writes into a ring slot
   * @width: pixels per line the plane may show (NV16 luma: bytes = pixels)
-@@ -3352,6 +3356,7 @@
+@@ -3373,6 +3377,7 @@ static void h713_hdmirx_tse_load(struct h713_hdmirx *rx)
  		m->on_active = rec[H713_TSE_ON_ACTIVE];
  		m->skip_rate = rec[H713_TSE_SKIP_RATE];
  		m->interlaced = !rec[H713_TSE_PROGRESSIVE];
@@ -51,7 +52,7 @@ the table nothing changes.
  		if (m->h_active == 1920 && m->v_active == 1080 &&
  		    m->h_total == 2200 && m->v_total == 1125 &&
  		    m->rate_x1000 == 60000 && !m->interlaced)
-@@ -3398,6 +3403,10 @@
+@@ -3419,6 +3424,10 @@ static void h713_hdmirx_tse_fill(const struct h713_hdmirx_tse_mode *m,
  	}
  	bt->interlaced = m->interlaced ? V4L2_DV_INTERLACED
  				      : V4L2_DV_PROGRESSIVE;
@@ -62,7 +63,7 @@ the table nothing changes.
  	bt->pixelclock = div_u64((u64)m->h_total * m->v_total * m->rate_x1000,
  				 1000);
  	bt->hsync = m->h_total > bt->width ? m->h_total - bt->width : 0;
-@@ -3458,6 +3467,52 @@
+@@ -3479,6 +3488,52 @@ static bool h713_hdmirx_tse_match(const struct h713_hdmirx_tse_mode *modes,
  	return false;
  }
  
@@ -115,7 +116,7 @@ the table nothing changes.
  /*
   * Snap a measured timing to a preset when one describes the same signal:
   * same active and total geometry, same scan type, pixel clock within
-@@ -4240,14 +4295,39 @@
+@@ -4261,14 +4316,39 @@ static int h713_hdmirx_s_edid(struct file *file, void *priv,
  	return 0;
  }
  

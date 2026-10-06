@@ -55,10 +55,10 @@ firmware's rule.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
-diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -2121,6 +2121,14 @@
+@@ -2187,6 +2187,14 @@ cpu_comm: cpu-comm@3003000 {
  	 *                    path. Without it that size is arithmetic from the
  	 *                    rowbyte (the width to within 16 pixels); where the
  	 *                    firmware does not scale it is never read.
@@ -73,7 +73,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  	 *
  	 * No interrupt: three independent searches of the firmware image found
  	 * the capture interrupt only inside the MIPS interrupt controller, and
-@@ -2134,6 +2142,7 @@
+@@ -2200,6 +2208,7 @@ hdmirx: hdmi-rx {
  		allwinner,incap = <&incap>;
  		allwinner,hdmirx-link = <&hdmirx_link>;
  		allwinner,scaler = <&de_scaler>;
@@ -81,10 +81,10 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  		status = "okay";
  	};
  
-diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 --- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
-@@ -232,6 +232,78 @@
+@@ -232,6 +232,78 @@ static_assert(sizeof(struct h713_hdmirx_signal_info) == 44);
   */
  #define H713_SCALER_IN_WIN	0x34
  
@@ -163,7 +163,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  /**
   * struct h713_hdmirx_ring_geometry - what the capture writes into a ring slot
   * @width: pixels per line the plane may show (NV16 luma: bytes = pixels)
-@@ -1041,6 +1113,15 @@
+@@ -1041,6 +1113,15 @@ struct h713_hdmirx {
  	 */
  	struct regmap *incap;
  	struct regmap *scaler;		/* DE picture scaler, read only, optional */
@@ -179,7 +179,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	struct mutex sig_lock;
  	void __iomem *sig_map;
  	phys_addr_t sig_map_base;
-@@ -2844,6 +2925,239 @@
+@@ -2844,6 +2925,239 @@ static const struct v4l2_dv_timings_cap h713_hdmirx_timings_cap = {
  	},
  };
  
@@ -419,7 +419,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  /*
   * Snap a measured timing to a preset when one describes the same signal:
   * same active and total geometry, same scan type, pixel clock within
-@@ -2855,8 +3169,13 @@
+@@ -2855,8 +3169,13 @@ static const struct v4l2_dv_timings_cap h713_hdmirx_timings_cap = {
   * step the firmware takes when it maps a detected timing onto its mode table
   * ("port1 detect new timing, signal ID=0x20000 index=14" in its log), not a
   * guess of this driver's.
@@ -434,7 +434,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  				     unsigned int htotal, unsigned int vtotal,
  				     unsigned int fps_x100,
  				     unsigned int tolerance)
-@@ -2864,6 +3183,10 @@
+@@ -2864,6 +3183,10 @@ static bool h713_hdmirx_match_preset(struct v4l2_dv_timings *t,
  	const struct v4l2_bt_timings *bt = &t->bt;
  	unsigned int i;
  
@@ -445,7 +445,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	for (i = 0; v4l2_dv_timings_presets[i].bt.width; i++) {
  		const struct v4l2_bt_timings *p = &v4l2_dv_timings_presets[i].bt;
  		u64 delta = div_u64(p->pixelclock * tolerance, 100);
-@@ -3119,7 +3442,7 @@
+@@ -3119,7 +3442,7 @@ static int h713_hdmirx_detect_timings(struct h713_hdmirx *rx,
  	bt->hsync = htotal - width;
  	bt->vsync = vtotal - height;
  
@@ -454,7 +454,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	    !have_sig)
  		return -ENOLCK;
  
-@@ -4000,6 +4323,13 @@
+@@ -4000,6 +4323,13 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
  		return dev_err_probe(dev, PTR_ERR(rx->scaler),
  				     "kein Zugriff auf den Scaler-Block (allwinner,scaler)\n");
  

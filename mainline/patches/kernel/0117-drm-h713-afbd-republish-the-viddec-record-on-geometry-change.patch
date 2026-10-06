@@ -32,10 +32,10 @@ this uses it a second time. Outside ring mode nothing changes -- the refusal
 and its warning stand, because there the record is the plane's own frame format
 and a silent change would be a lie.
 
-diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
---- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 21:11:40.896565998 +0200
-+++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 21:11:40.902451553 +0200
-@@ -387,17 +387,28 @@
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -388,17 +388,28 @@ static int h713_afbd_wait_wce(struct h713_afbd *h)
   * pointer went from nothing to the record. They are per-boot state, which is
   * also why the disable path leaves them standing.
   *
@@ -75,7 +75,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
   *
   * Returns true if the firmware has something new to look at here, i.e. if the
   * record or the pointer changed. See h713_afbd_wait_wce().
-@@ -414,7 +425,7 @@
+@@ -415,7 +426,7 @@ static bool h713_afbd_publish_video_info(struct h713_afbd *h, unsigned int w,
  	new_ptr = readl(h->regs + AFBD_VIDEO_INFO0) != ptr;
  	h713_afbd_build_video_info(rec, w, hgt, stride);
  	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;

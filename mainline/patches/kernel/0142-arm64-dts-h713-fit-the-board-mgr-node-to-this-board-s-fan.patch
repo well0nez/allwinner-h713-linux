@@ -40,10 +40,30 @@ FIT), so temperature and fan speed become readable under /sys/class/hwmon.
 The stale hy310_board_mgr.no_rpm_shutdown=1 in the qz713-v2 bootargs goes too:
 the module was never built, and 0141 removes that parameter.
 
-diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
---- dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-11 18:24:53.285079403 +0200
-+++ dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-11 18:24:53.299594353 +0200
-@@ -2410,35 +2410,47 @@
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts
+@@ -7,6 +7,6 @@ / {
+ 	compatible = "cstenger,hy200-qz713-v2", "allwinner,sun50i-h713";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M";
++		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
+ 	};
+ };
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -37,4 +37,4 @@ chosen {
+ &cpu_comm { status = "okay"; };	/* Treiber wird seit 01.09. gebaut */
+ &motor_ctr { status = "disabled"; };	/* Endschalter liefert nichts, siehe doku/94 */
+ &adc_keys { status = "disabled"; };
+-&board_mgr { status = "disabled"; };
++&board_mgr { status = "okay"; };	/* Temperatur + Luefterdrehzahl, siehe doku/60 */
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2531,35 +2531,47 @@ button-left {
  	};
  
  	/*
@@ -108,7 +128,7 @@ diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi dtsb/arch/arm64/boo
  		battery {
  			enable = <0>;
  			source = <1>;
-@@ -2474,20 +2486,22 @@
+@@ -2595,20 +2607,22 @@ ntc1 {
  			};
  		};
  
@@ -141,23 +161,3 @@ diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi dtsb/arch/arm64/boo
  	};
  
  	/*
-diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
---- dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts	2026-09-11 18:24:53.286926178 +0200
-+++ dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts	2026-09-11 18:24:53.299766054 +0200
-@@ -37,4 +37,4 @@
- &cpu_comm { status = "okay"; };	/* Treiber wird seit 01.09. gebaut */
- &motor_ctr { status = "disabled"; };	/* Endschalter liefert nichts, siehe doku/94 */
- &adc_keys { status = "disabled"; };
--&board_mgr { status = "disabled"; };
-+&board_mgr { status = "okay"; };	/* Temperatur + Luefterdrehzahl, siehe doku/60 */
-diff -ur dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts
---- dtsa/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts	2026-09-11 18:24:53.288478539 +0200
-+++ dtsb/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713-v2.dts	2026-09-11 18:24:53.299830112 +0200
-@@ -7,6 +7,6 @@
- 	compatible = "cstenger,hy200-qz713-v2", "allwinner,sun50i-h713";
- 
- 	chosen {
--		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused hy310_board_mgr.no_rpm_shutdown=1 cma=128M";
-+		bootargs = "console=ttyS0,115200 console=tty0 earlycon root=/dev/mmcblk0p26 rootwait rootfstype=ext4 net.ifnames=0 panic=5 clk_ignore_unused pd_ignore_unused cma=128M";
- 	};
- };

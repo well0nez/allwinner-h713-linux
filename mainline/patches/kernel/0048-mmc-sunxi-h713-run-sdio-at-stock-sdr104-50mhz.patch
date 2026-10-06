@@ -29,10 +29,9 @@ patch in the series; it is required for reliable transfers in both directions.
  3 files changed, 6 insertions(+), 11 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-index f617719b0f09..e3721487df30 100644
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -942,6 +942,9 @@ mmc1: mmc@4021000 {
+@@ -995,6 +995,9 @@ mmc1: mmc@4021000 {
  			cap-sd-highspeed;
  			cap-sdio-irq;
  			sd-uhs-sdr25;
@@ -42,7 +41,7 @@ index f617719b0f09..e3721487df30 100644
  			no-mmc;
  			no-sd;
  			keep-power-in-suspend;
-@@ -953,7 +956,7 @@ mmc1: mmc@4021000 {
+@@ -1006,7 +1009,7 @@ mmc1: mmc@4021000 {
  			 * read-threshold programming in the host driver is required;
  			 * declaring these UHS modes without it stalls SDIO discovery.
  			 */
@@ -52,7 +51,6 @@ index f617719b0f09..e3721487df30 100644
  			#size-cells = <0>;
  			status = "okay";
 diff --git a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
-index f59596119dd1..86f8e6a3371b 100644
 --- a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
 +++ b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
 @@ -389,8 +389,8 @@ static const char * const mmc_parents[] = { "osc24M", "pll-periph0-2x",
@@ -67,7 +65,6 @@ index f59596119dd1..86f8e6a3371b 100644
  					  0, 4, 8, 2, 24, 2, BIT(31), 2, 0);
  
 diff --git a/drivers/mmc/host/sunxi-mmc.c b/drivers/mmc/host/sunxi-mmc.c
-index 8c10975971d4..2ca9a5ded269 100644
 --- a/drivers/mmc/host/sunxi-mmc.c
 +++ b/drivers/mmc/host/sunxi-mmc.c
 @@ -1439,10 +1439,6 @@ static int sunxi_mmc_clk_set_rate(struct sunxi_mmc_host *host,
@@ -92,5 +89,3 @@ index 8c10975971d4..2ca9a5ded269 100644
  	/*
  	 * Configure the controller to use the new timing mode if needed.
  	 * On controllers that only support the new timing mode, such as
--- 
-2.55.0

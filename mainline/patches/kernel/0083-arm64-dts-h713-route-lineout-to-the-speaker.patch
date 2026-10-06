@@ -28,7 +28,7 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
 diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -776,6 +776,20 @@
+@@ -838,6 +838,20 @@ codec: codec@2030000 {
  			dma-names = "tx";
  			/* PL2 on r_pio, NOT PB2 on the main pio. Active high. */
  			allwinner,pa-gpios = <&r_pio 0 2 GPIO_ACTIVE_HIGH>;

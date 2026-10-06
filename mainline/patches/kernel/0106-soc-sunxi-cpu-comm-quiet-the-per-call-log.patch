@@ -19,10 +19,10 @@ warning, and everything that fires at most a handful of times a boot. The
 counters and the FreeCall ring are in /sys/kernel/debug/cpu_comm/watch, not on
 the console.
 
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c	2026-09-07 17:42:50.564233564 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c	2026-09-07 17:43:18.441812094 +0200
-@@ -787,7 +787,7 @@
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c
+@@ -787,7 +787,7 @@ int GetReturnbySessionId(u32 session_id, u32 cpu, unsigned long *result)
  
  	cur_node = cc_deref(fifo_hdr[14]);	/* head.next */
  
@@ -31,7 +31,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c b/drivers/soc/sunxi/cp
  		session_id, cpu, cur_node, sentinel, fifo_hdr[13]);
  
  	while (cur_node && cur_node != sentinel) {
-@@ -894,13 +894,13 @@
+@@ -894,13 +894,13 @@ void returnPipeLine(void *data)
  	sock = &s_CommSockt[1248 * cpu];
  	sem = &sock[283];			/* MsgFIFO semaphore */
  
@@ -47,10 +47,10 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_channel.c b/drivers/soc/sunxi/cp
  
  	while (item_addr) {
  		/* Read the entry pointer from the FIFO slot */
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-07 17:42:50.563490858 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c	2026-09-07 17:43:18.441279550 +0200
-@@ -277,7 +277,7 @@
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -294,7 +294,7 @@ static int cpu_comm_msgbox_drain(const struct msgbox_rx_endpoint *ep, int cap)
  	while (readl(msgbox_ctrl_base + ep->fifo)) {
  		raw = readl(msgbox_ctrl_base + ep->data);
  
@@ -59,7 +59,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_com
  				    raw, cpu_comm_msgbox_type_name(raw));
  
  		if (raw > MSG_TYPE_RETURN_ACK)
-@@ -1257,7 +1257,7 @@
+@@ -1274,7 +1274,7 @@ void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
  	udelay(10);
  	writel(0, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
  
@@ -68,7 +68,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_com
  			    raw, cpu_comm_msgbox_type_name(raw),
  			    readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO));
  	writel(raw, msgbox_ctrl_base + H713_MSGBOX_TX_DATA);
-@@ -1265,7 +1265,7 @@
+@@ -1282,7 +1282,7 @@ void sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
  	udelay(10);
  	writel(0, msgbox_ctrl_base + H713_MSGBOX_TX_IRQ_EN);
  
@@ -77,10 +77,10 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c b/drivers/soc/sunxi/cpu_com
  			    raw, cpu_comm_msgbox_type_name(raw),
  			    readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO));
  }
-diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
---- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 17:42:50.562973575 +0200
-+++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c	2026-09-07 17:43:18.440617425 +0200
-@@ -71,7 +71,7 @@
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+@@ -71,7 +71,7 @@ static void cpu_comm_trace_ipc(const char *stage, int type, int direction, int c
  	 * "callbacks suppressed" message confirmed the limiter was hiding
  	 * events. Revert to pr_info_ratelimited once RETURN-path bug is
  	 * understood. */
@@ -89,7 +89,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_
  		stage,
  		type, cpu_comm_type_name(type),
  		direction, cpu_comm_dir_name(direction),
-@@ -525,12 +525,12 @@
+@@ -525,12 +525,12 @@ int SendComm2CPUEx(unsigned long msg_ptr, u32 target_cpu, int from_user)
  		u32 *dbg = (u32 *)(share_seq_w + 0x78);
  		u8  *m   = call_slot;
  
@@ -105,7 +105,7 @@ diff -ruN a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c b/drivers/soc/sunxi/cpu_
  			"nparams=%u (key 0x%08x)\n",
  			*(u16 *)(m + 0x00), *(u16 *)(m + 0x02),
  			*(u32 *)(m + 0x10), *(u32 *)(m + 0x28),
-@@ -568,7 +568,7 @@
+@@ -568,7 +568,7 @@ int SendComm2CPUEx(unsigned long msg_ptr, u32 target_cpu, int from_user)
  				break;
  			udelay(100);
  		}

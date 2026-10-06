@@ -1,5 +1,31 @@
---- a/drivers/iio/adc/sun50i-h713-lradc-iio.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/iio/adc/sun50i-h713-lradc-iio.c	2026-04-01 16:21:26.157310637 +0200
+diff --git a/drivers/iio/adc/Kconfig b/drivers/iio/adc/Kconfig
+--- a/drivers/iio/adc/Kconfig
++++ b/drivers/iio/adc/Kconfig
+@@ -1876,3 +1876,12 @@ config XILINX_AMS
+ 	  xilinx-ams.
+ 
+ endmenu
++
++config SUN50I_H713_LRADC
++	bool "Allwinner H713 LRADC IIO driver"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	depends on IIO
++	help
++	  Support for the Low-Resolution ADC (LRADC) in the Allwinner H713 SoC.
++	  Provides IIO voltage channels for ADC-based keyboard and NTC sensing.
++
+diff --git a/drivers/iio/adc/Makefile b/drivers/iio/adc/Makefile
+--- a/drivers/iio/adc/Makefile
++++ b/drivers/iio/adc/Makefile
+@@ -163,3 +163,4 @@ obj-$(CONFIG_VIPERBOARD_ADC) += viperboard_adc.o
+ obj-$(CONFIG_XILINX_AMS) += xilinx-ams.o
+ xilinx-xadc-y := xilinx-xadc-core.o xilinx-xadc-events.o
+ obj-$(CONFIG_XILINX_XADC) += xilinx-xadc.o
++obj-$(CONFIG_SUN50I_H713_LRADC) += sun50i-h713-lradc-iio.o
+diff --git a/drivers/iio/adc/sun50i-h713-lradc-iio.c b/drivers/iio/adc/sun50i-h713-lradc-iio.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/iio/adc/sun50i-h713-lradc-iio.c
 @@ -0,0 +1,192 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
@@ -193,25 +219,3 @@
 +MODULE_AUTHOR("well0nez");
 +MODULE_DESCRIPTION("Allwinner H713 LRADC IIO driver");
 +MODULE_LICENSE("GPL");
---- a/drivers/iio/adc/Kconfig	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/iio/adc/Kconfig	2026-04-01 16:21:26.161310664 +0200
-@@ -1779,3 +1779,12 @@
- 	  xilinx-ams.
- 
- endmenu
-+
-+config SUN50I_H713_LRADC
-+	bool "Allwinner H713 LRADC IIO driver"
-+	depends on ARCH_SUNXI || COMPILE_TEST
-+	depends on IIO
-+	help
-+	  Support for the Low-Resolution ADC (LRADC) in the Allwinner H713 SoC.
-+	  Provides IIO voltage channels for ADC-based keyboard and NTC sensing.
-+
---- a/drivers/iio/adc/Makefile	2025-09-11 17:23:23.000000000 +0200
-+++ b/drivers/iio/adc/Makefile	2026-04-01 16:21:26.165310693 +0200
-@@ -156,3 +156,4 @@
- obj-$(CONFIG_XILINX_AMS) += xilinx-ams.o
- xilinx-xadc-y := xilinx-xadc-core.o xilinx-xadc-events.o
- obj-$(CONFIG_XILINX_XADC) += xilinx-xadc.o
-+obj-$(CONFIG_SUN50I_H713_LRADC) += sun50i-h713-lradc-iio.o

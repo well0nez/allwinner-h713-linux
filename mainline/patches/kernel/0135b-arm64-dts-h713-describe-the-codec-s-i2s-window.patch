@@ -12,9 +12,10 @@ speaker (S16 20:30).
 Name both ranges, because the driver asks for the second one by name
 and has to be able to tell an old device tree apart from a new one.
 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-@@ -782,18 +782,24 @@
+@@ -835,18 +835,24 @@ codec: codec@2030000 {
  			 * its own DAI and card, so those two nodes have no
  			 * mainline equivalent.
  			 *

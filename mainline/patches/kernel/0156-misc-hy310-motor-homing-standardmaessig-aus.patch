@@ -24,10 +24,10 @@ Wer homing braucht, bekommt es mit homing=1 und weiss dann, was er tut.
 
 Kein Codepfad aendert sich, nur der Vorgabewert und der Text daneben.
 
-diff -ruN a/drivers/misc/hy310-focus-motor.c b/drivers/misc/hy310-focus-motor.c
+diff --git a/drivers/misc/hy310-focus-motor.c b/drivers/misc/hy310-focus-motor.c
 --- a/drivers/misc/hy310-focus-motor.c
 +++ b/drivers/misc/hy310-focus-motor.c
-@@ -855,10 +855,21 @@
+@@ -890,10 +890,21 @@ static int motor_read_u32(struct device_node *np, const char *stock_name,
   *
   * With homing=0 the driver probes, configures the pads and exposes sysfs
   * without touching the mechanism. It then has no calibration, and says so.

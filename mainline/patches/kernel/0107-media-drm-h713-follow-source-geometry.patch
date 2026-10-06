@@ -148,11 +148,10 @@ What this patch does not establish, and where it gets decided
 
 Signed-off-by: well0nez <well0nez@users.noreply.github.com>
 ---
-diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
-diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
---- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 18:04:14.986654532 +0200
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi	2026-09-07 18:04:14.986892722 +0200
-@@ -1577,6 +1577,26 @@
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1644,6 +1644,26 @@ tvcap_bringup: tvcap@50c0000 {
  			status = "okay";
  		};
  
@@ -179,7 +178,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  		/* R-domain pinctrl for PL/PM banks (IR, S_PWM, WLAN/BT GPIOs) */
  		r_pio: pinctrl@7022000 {
  			compatible = "allwinner,sun50i-h713-r-pinctrl";
-@@ -1917,7 +1937,8 @@
+@@ -1984,7 +2004,8 @@ cpu_comm: cpu-comm@3003000 {
  	 * from the flip notifier of display@5600000 -- that node owns the
  	 * register pair, claims it, and reads it on every vsync anyway. All
  	 * three are dependencies in Kconfig, not resources here. What is left
@@ -189,7 +188,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  	 *
  	 * Binding:
  	 *   compatible     "allwinner,sun50i-h713-hdmirx"
-@@ -1932,6 +1953,14 @@
+@@ -1999,6 +2020,14 @@ cpu_comm: cpu-comm@3003000 {
  	 *                       rectangles, the Vp_Init staging area -- have to
  	 *                       live where the MIPS can address them, and this
  	 *                       is that place. Named, not hard coded.
@@ -204,7 +203,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  	 *
  	 * No interrupt: three independent searches of the firmware image found
  	 * the capture interrupt only inside the MIPS interrupt controller, and
-@@ -1942,6 +1971,7 @@
+@@ -2009,6 +2038,7 @@ hdmirx: hdmi-rx {
  		compatible = "allwinner,sun50i-h713-hdmirx";
  		memory-region = <&mips_framebuf>, <&cpu_comm_reserved>;
  		memory-region-names = "hdmi-ring", "cpu-comm-shmem";
@@ -212,10 +211,10 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts
  		status = "okay";
  	};
  
-diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
---- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 18:04:14.989218322 +0200
-+++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c	2026-09-07 18:04:14.989715696 +0200
-@@ -387,11 +387,24 @@
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -388,11 +388,24 @@ static int h713_afbd_wait_wce(struct h713_afbd *h)
   * pointer went from nothing to the record. They are per-boot state, which is
   * also why the disable path leaves them standing.
   *
@@ -241,7 +240,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  {
  	u32 rec[H713_VIDEO_INFO_WORDS];
  	u32 ptr = lower_32_bits(h->video_info_dma);
-@@ -402,7 +415,7 @@
+@@ -403,7 +416,7 @@ static bool h713_afbd_publish_video_info(struct h713_afbd *h, unsigned int w,
  	h713_afbd_build_video_info(rec, w, hgt, stride);
  	differs = memcmp(h->video_info, rec, sizeof(rec)) != 0;
  	write_record = differs && !h->video_info_published;
@@ -250,7 +249,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  		drm_warn(&h->drm,
  			 "refusing to rewrite the VidDec descriptor for %ux%u; the capture does not survive a second signal event\n",
  			 w, hgt);
-@@ -747,6 +760,33 @@
+@@ -777,6 +790,33 @@ static void h713_afbd_video_stop(struct h713_afbd *h)
  	h->video_active = false;
  }
  
@@ -284,7 +283,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  static int h713_afbd_video_atomic_check(struct drm_plane *plane,
  					struct drm_atomic_state *state)
  {
-@@ -756,18 +796,25 @@
+@@ -786,18 +826,25 @@ static int h713_afbd_video_atomic_check(struct drm_plane *plane,
  	struct drm_crtc_state *crtc_state;
  	struct drm_framebuffer *fb;
  	dma_addr_t y, c;
@@ -311,7 +310,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  						  DRM_PLANE_NO_SCALING,
  						  false, false);
  	if (ret)
-@@ -779,31 +826,40 @@
+@@ -809,31 +856,40 @@ static int h713_afbd_video_atomic_check(struct drm_plane *plane,
  	    (fb->format->format != DRM_FORMAT_NV12 &&
  	     fb->format->format != DRM_FORMAT_NV16) ||
  	    fb->modifier != DRM_FORMAT_MOD_LINEAR ||
@@ -358,7 +357,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  	y = drm_fb_dma_get_gem_addr(fb, new_state, 0);
  	c = drm_fb_dma_get_gem_addr(fb, new_state, 1);
  	if (!y || !c || upper_32_bits(y) || upper_32_bits(c))
-@@ -849,7 +905,7 @@
+@@ -879,7 +935,7 @@ static void h713_afbd_video_atomic_update(struct drm_plane *plane,
  		if (nv16)
  			writel(0, h->regs + AFBD_VIDEO_C_STRIDE);
  		published = h713_afbd_publish_video_info(h, w, hgt,
@@ -367,7 +366,7 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  		if (published && nv16 && h713_afbd_wait_wce(h))
  			drm_err(&h->drm,
  				"firmware did not reprogram the chroma stride within %u ms of the descriptor; source 0 is programmed anyway, so this enable may come up with a halved chroma stride\n",
-@@ -1754,9 +1810,19 @@
+@@ -1784,9 +1840,19 @@ static int h713_afbd_probe(struct platform_device *pdev)
  	 * would have to scale. 4096 is the same ceiling h713_afbd_read_mode()
  	 * already applies when it sanity-checks the adopted geometry.
  	 */
@@ -389,10 +388,10 @@ diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50
  	drm->mode_config.max_height = 4096;
  	drm->mode_config.funcs = &h713_afbd_mode_config_funcs;
  
-diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig
---- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig	2026-09-07 18:04:14.991971653 +0200
-+++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig	2026-09-07 18:04:14.992458216 +0200
-@@ -8,6 +8,7 @@
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig
+@@ -8,6 +8,7 @@ config VIDEO_SUN50I_H713_HDMIRX
  	depends on HY310_CPU_COMM
  	depends on SUN50I_H713_ARISC
  	depends on DRM_SUN50I_H713_AFBD
@@ -400,9 +399,9 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/Kconfig b/drivers/me
  	select VIDEOBUF2_CORE
  	select VIDEOBUF2_MEMOPS
  	help
-diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
---- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 18:04:14.994210840 +0200
-+++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c	2026-09-07 18:04:14.994695583 +0200
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 @@ -35,7 +35,9 @@
   *  - "Signal present" is a measurement, not a register bit we can read: on
   *    signal loss the flip pointers stop moving and the last picture stays
@@ -534,7 +533,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  /*
   * The capture ring. Three Y slots and three C slots, fixed by the firmware;
-@@ -637,6 +717,18 @@
+@@ -637,6 +717,18 @@ struct h713_hdmirx {
  	u32 id_setsource;
  
  	struct v4l2_dv_timings timings;
@@ -553,7 +552,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	/* picture quality, one entry per h713_hdmirx_pq_ctrls[] entry */
  	struct v4l2_ctrl_handler ctrl_hdl;
-@@ -671,6 +763,7 @@
+@@ -671,6 +763,7 @@ struct h713_hdmirx {
  	u32 signal_args[CPU_COMM_MAX_ARGS];
  	unsigned int signal_nargs;
  	u32 signal_count;
@@ -561,7 +560,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	u32 hotplug_args[CPU_COMM_MAX_ARGS];
  	unsigned int hotplug_nargs;
  	u32 hotplug_count;
-@@ -997,11 +1090,15 @@
+@@ -997,11 +1090,15 @@ static void h713_hdmirx_src_change(struct h713_hdmirx *rx)
   * firmware fires this by itself both when the signal goes away and when it
   * comes back, so the V4L2 source change event can hang straight off it.
   *
@@ -582,7 +581,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
   */
  static void h713_hdmirx_signal_cb(u32 comp_id, const u32 *args,
  				  unsigned int nargs, void *ctx)
-@@ -1013,11 +1110,13 @@
+@@ -1013,11 +1110,13 @@ static void h713_hdmirx_signal_cb(u32 comp_id, const u32 *args,
  	rx->signal_nargs = min_t(unsigned int, nargs, CPU_COMM_MAX_ARGS);
  	if (args)
  		memcpy(rx->signal_args, args, rx->signal_nargs * sizeof(*args));
@@ -598,7 +597,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	h713_hdmirx_src_change(rx);
  }
-@@ -1042,6 +1141,67 @@
+@@ -1042,6 +1141,67 @@ static void h713_hdmirx_hotplug_cb(u32 comp_id, const u32 *args,
  	h713_hdmirx_src_change(rx);
  }
  
@@ -666,7 +665,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  /* ------------------------------------------------------------------ *
   * The ring: which slot has just been finished
   * ------------------------------------------------------------------ */
-@@ -1122,8 +1282,18 @@
+@@ -1122,8 +1282,18 @@ static void h713_hdmirx_slot_event(struct h713_hdmirx *rx,
  	vbuf->vb2_buf.timestamp = ktime_get_ns();
  	vbuf->sequence = rx->sequence++;
  	vbuf->field = V4L2_FIELD_NONE;
@@ -687,13 +686,11 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	rx->stat.delivered++;
  
  	spin_unlock_irqrestore(&rx->slot_lock, flags);
-@@ -1189,19 +1359,66 @@
+@@ -1189,19 +1359,66 @@ static const struct h713_hdmirx_slot_source h713_hdmirx_vsync = {
   * so it asks the display driver for the pair instead of reading it. Same two
   * registers, same owner, no second mapping.
   */
 -static bool h713_hdmirx_signal_present(struct h713_hdmirx *rx)
--{
--	struct h713_afbd_flip a, b;
 +/*
 + * How long the pointers are watched at most, and how many changes end the
 + * watch early. Four changes are three frame periods -- 50 ms at 60 Hz, 125 ms
@@ -712,19 +709,17 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +	unsigned int flips;	/* pointer changes seen */
 +	u64 period_ns;		/* mean distance between them; 0 below two */
 +};
- 
--	if (h713_afbd_read_flip(&a))
--		return false;
++
 +static void h713_hdmirx_watch_ring(struct h713_hdmirx *rx,
 +				   struct h713_hdmirx_ring_sample *s,
 +				   unsigned int want_flips, unsigned int max_ms)
-+{
+ {
+-	struct h713_afbd_flip a, b;
 +	struct h713_afbd_flip f;
 +	ktime_t start, first = 0, last = 0;
 +	bool have = false;
 +	u32 y = 0;
- 
--	usleep_range(20000, 25000);
++
 +	memset(s, 0, sizeof(*s));
 +	start = ktime_get();
 +	do {
@@ -745,25 +740,28 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +		usleep_range(500, 1000);
 +	} while (ktime_ms_delta(ktime_get(), start) < max_ms);
  
--	if (h713_afbd_read_flip(&b))
+-	if (h713_afbd_read_flip(&a))
 -		return false;
 +	if (s->flips >= 2)
 +		s->period_ns = div_u64(ktime_to_ns(ktime_sub(last, first)),
 +				       s->flips - 1);
 +}
-+
+ 
+-	usleep_range(20000, 25000);
 +static bool h713_hdmirx_signal_present(struct h713_hdmirx *rx)
 +{
 +	struct h713_hdmirx_ring_sample s;
  
--	return a.y != b.y;
+-	if (h713_afbd_read_flip(&b))
+-		return false;
 +	h713_hdmirx_watch_ring(rx, &s, 1, H713_RING_PRESENT_MS);
-+
+ 
+-	return a.y != b.y;
 +	return s.flips > 0;
  }
  
  /*
-@@ -1481,6 +1698,9 @@
+@@ -1481,6 +1698,9 @@ static int h713_hdmirx_queue_setup(struct vb2_queue *q, unsigned int *nbuffers,
  				   unsigned int *nplanes, unsigned int sizes[],
  				   struct device *alloc_devs[])
  {
@@ -773,7 +771,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	/*
  	 * Three buffers, never more and never fewer: there are three slots and
  	 * buffer i is slot i. A smaller queue would throw away every frame
-@@ -1491,28 +1711,28 @@
+@@ -1491,28 +1711,28 @@ static int h713_hdmirx_queue_setup(struct vb2_queue *q, unsigned int *nbuffers,
  
  	if (*nplanes) {
  		if (*nplanes != H713_HDMIRX_PLANES ||
@@ -807,7 +805,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  			return -EINVAL;
  
  	return 0;
-@@ -1600,23 +1820,217 @@
+@@ -1600,23 +1820,217 @@ static const struct vb2_ops h713_hdmirx_qops = {
   * ioctls
   * ------------------------------------------------------------------ */
  
@@ -1030,7 +1028,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  static int h713_hdmirx_querycap(struct file *file, void *priv,
  				struct v4l2_capability *cap)
  {
-@@ -1626,23 +2040,22 @@
+@@ -1626,23 +2040,22 @@ static int h713_hdmirx_querycap(struct file *file, void *priv,
  	return 0;
  }
  
@@ -1065,7 +1063,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  }
  
  static int h713_hdmirx_enum_fmt(struct file *file, void *priv,
-@@ -1659,7 +2072,9 @@
+@@ -1659,7 +2072,9 @@ static int h713_hdmirx_enum_fmt(struct file *file, void *priv,
  static int h713_hdmirx_g_fmt(struct file *file, void *priv,
  			     struct v4l2_format *f)
  {
@@ -1076,7 +1074,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	return 0;
  }
-@@ -1677,7 +2092,7 @@
+@@ -1677,7 +2092,7 @@ static int h713_hdmirx_s_fmt(struct file *file, void *priv,
  	if (vb2_is_busy(&rx->queue))
  		return -EBUSY;
  
@@ -1085,7 +1083,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	return 0;
  }
-@@ -1803,12 +2218,11 @@
+@@ -1803,12 +2218,11 @@ static int h713_hdmirx_s_edid(struct file *file, void *priv,
  static int h713_hdmirx_enum_dv_timings(struct file *file, void *priv,
  				       struct v4l2_enum_dv_timings *t)
  {
@@ -1101,7 +1099,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  }
  
  static int h713_hdmirx_dv_timings_cap(struct file *file, void *priv,
-@@ -1842,29 +2256,29 @@
+@@ -1842,29 +2256,29 @@ static int h713_hdmirx_s_dv_timings(struct file *file, void *priv,
  	if (vb2_is_busy(&rx->queue))
  		return -EBUSY;
  
@@ -1143,7 +1141,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	return 0;
  }
-@@ -2059,29 +2473,33 @@
+@@ -2059,29 +2473,33 @@ static const struct v4l2_file_operations h713_hdmirx_fops = {
   * ------------------------------------------------------------------ */
  
  static void h713_hdmirx_show_signal_info(struct seq_file *s,
@@ -1192,7 +1190,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  }
  
  static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
-@@ -2091,13 +2509,13 @@
+@@ -2091,13 +2509,13 @@ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
  	unsigned long flags;
  	unsigned int i;
  	int ret;
@@ -1209,7 +1207,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	seq_printf(s, "slot-quelle:  %s\n", rx->slot_source->name);
  
  	ret = h713_afbd_read_flip(&flip);
-@@ -2110,9 +2528,16 @@
+@@ -2110,9 +2528,16 @@ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
  	seq_printf(s, "signal:       %s\n",
  		   h713_hdmirx_signal_present(rx) ? "vorhanden (Flip-Zeiger wandern)"
  						  : "kein Signal (Flip-Zeiger stehen)");
@@ -1228,7 +1226,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	seq_printf(s, "streaming:    %s\n",
  		   vb2_is_streaming(&rx->queue) ? "ja" : "nein");
  
-@@ -2136,11 +2561,9 @@
+@@ -2136,11 +2561,9 @@ static int h713_hdmirx_status_show(struct seq_file *s, void *unused)
  	for (i = 0; i < rx->hotplug_nargs; i++)
  		seq_printf(s, " %#010x", rx->hotplug_args[i]);
  	seq_puts(s, "\n");
@@ -1241,7 +1239,7 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  
  	for (i = 0; i < H713_HDMIRX_SLOTS; i++)
  		seq_printf(s, "slot %u:       y=%#010llx c=%#010llx\n", i,
-@@ -2252,10 +2675,11 @@
+@@ -2252,10 +2675,11 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
  	rx->flip_nb.notifier_call = h713_hdmirx_flip_notify;
  	rx->desc_nb.notifier_call = h713_hdmirx_desc_notify;
  	INIT_WORK(&rx->rearm_work, h713_hdmirx_rearm_work);
@@ -1254,10 +1252,11 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
  	spin_lock_init(&rx->slot_lock);
  	spin_lock_init(&rx->event_lock);
  
-@@ -2306,6 +2730,18 @@
+@@ -2305,6 +2729,18 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 		return dev_err_probe(dev, -ENOMEM,
  				     "cpu_comm-Shmem-Fenster nicht abbildbar\n");
  
- 	/*
++	/*
 +	 * The capture block, read-only, as a syscon behind a phandle rather
 +	 * than a resource of this node: the block is the firmware's, no ARM
 +	 * driver owns it, and a regmap is the form in which "look, never
@@ -1269,11 +1268,10 @@ diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
 +		return dev_err_probe(dev, PTR_ERR(rx->incap),
 +				     "kein Zugriff auf den INCAP-Block (allwinner,incap)\n");
 +
-+	/*
+ 	/*
  	 * Stage 3: the firmware bring-up sequence.
  	 *
- 	 * Nothing above this line has touched the routine table, and nothing
-@@ -2462,6 +2898,8 @@
+@@ -2462,6 +2898,8 @@ static void h713_hdmirx_remove(struct platform_device *pdev)
  	v4l2_ctrl_handler_free(&rx->ctrl_hdl);
  	v4l2_device_unregister(&rx->v4l2_dev);
  	h713_hdmirx_drop_callbacks(rx);
