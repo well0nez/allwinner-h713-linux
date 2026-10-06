@@ -63,7 +63,8 @@ AFTER_MOVE_NEEDS = {"keystone": ("accelerometer",),
 # h713-warp's projection modes: how the picture is mirrored for the mount.
 # The corners keep their wall names in every mode (the warp flips underneath).
 MODES = ("front", "rear", "ceiling", "rear-ceiling")
-SPECIALS = ("status", "controls", "picture_set", "after_move")  # Panel.do_*
+SPECIALS = ("status", "controls", "picture_set", "after_move",
+            "screen_zoom")  # Panel.do_*
 NUDGE_STEPS = (1, 10, 50)   # what one press of the pad may be worth
 
 
@@ -115,7 +116,7 @@ PERCENT = _number(50, 100, 5)           # the screen zoom
 T, LONG = TIMEOUT_S, TIMEOUT_LONG_S
 
 # verb -> (tool, the fixed words, the checks for the browser's arguments,
-# timeout).  This table is the menu; SPECIALS are the four that are not one
+# timeout).  This table is the menu; SPECIALS are the five that are not one
 # plain command.
 COMMANDS = {
     # Projection
@@ -127,7 +128,6 @@ COMMANDS = {
     "keystone_now": (KEY, ("once", "--apply"), (), T),
     "keystone_ref": (KEY, ("reference",), (), T),
     "keystone_res": (WARP, ("ctl", "keystone", "reset"), (), T),
-    "screen_zoom": (WARP, ("ctl", "zoom"), (PERCENT,), T),
     "mode": (WARP, ("ctl", "mode"), (_choice(*MODES),), T),
     "focus": (FOCUS, (), (_choice("up", "down"), _choice("5", "20")), T),
     "autofocus": (AUTOF, ("run",), (), LONG),
@@ -329,6 +329,23 @@ class Panel(object):
         span = self.control_ranges().get(name) or {}
         value = _number(span.get("min", 0), span.get("max", 100))(args[1])
         ok, line, _ = self.run(TV, ("ctl", "set", name, value), T)
+        return {"ok": ok, "line": line}
+
+    def do_screen_zoom(self, args):
+        """`h713-warp ctl zoom PERCENT`, and below 100 the warp on with it.
+        Only the GPU can make the picture smaller (the firmware's scaler only
+        enlarges), so a zoom with the warp off did nothing; the vendor has no
+        such switch at all (Marco, 06.10.2026).  100 leaves the warp as it is."""
+        if len(args) != 1:
+            raise Refused("error screen_zoom takes 1 argument(s), not %d"
+                          % len(args))
+        value = PERCENT(args[0])
+        ok, line, _ = self.run(WARP, ("ctl", "zoom", value), T)
+        if ok and int(value) < 100:
+            warp = labelled(self.run(WARP, ("ctl", "status"), T)[2])
+            if (warp.get("warp") or "").split()[:1] == ["off"]:
+                on, said, _ = self.run(WARP, ("ctl", "on"), T)
+                ok, line = on, (line + "; the warp is on for it") if on else said
         return {"ok": ok, "line": line}
 
     def do_after_move(self, args):

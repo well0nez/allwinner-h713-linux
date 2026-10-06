@@ -35,7 +35,7 @@ wall with `h713-warp ctl test mask CORNER`); **drag** it and the corner follows 
 `h713-warp` clamps it and sent as `ctl keystone set CORNER AXIS VALUE` - at most ten times a second while
 the drag runs, and once more when it ends. Beside it a pad of four arrows for the picked corner with a step
 of 1, 10 or 50 per-mille (`ctl keystone nudge`). Under it: mask on/off, auto keystone now
-(`h713-keystone once --apply`), reset, screen zoom 50..100 % in steps of 5 (`h713-warp ctl zoom`), the
+(`h713-keystone once --apply`), reset, screen zoom 50..100 % in steps of 5 (`h713-warp ctl zoom`, below 100 with `ctl on` if the warp is off), the
 projection mode - front, rear, ceiling or rear-ceiling (`h713-warp ctl mode`; the corners keep their wall
 names in every mode, the warp flips underneath), after a
 move - off, keystone or keystone+focus (written into `/etc/h713/keystone.conf`, then `h713-keystone-auto`

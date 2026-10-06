@@ -177,7 +177,6 @@ class VerbTest(unittest.TestCase):
                 ("keystone_now", [], "h713-keystone once --apply"),
                 ("keystone_ref", [], "h713-keystone reference"),
                 ("keystone_res", [], "h713-warp ctl keystone reset"),
-                ("screen_zoom", [85], "h713-warp ctl zoom 85"),
                 ("mode", ["ceiling"], "h713-warp ctl mode ceiling"),
                 ("mode", ["rear-ceiling"], "h713-warp ctl mode rear-ceiling"),
                 ("focus", ["up", "20"], "h713-focus up 20"),
@@ -187,6 +186,26 @@ class VerbTest(unittest.TestCase):
             answer = self.call(verb, args)
             self.assertTrue(answer["ok"], answer)
             self.assertEqual(self.fake.calls(), [expected])
+
+    def test_the_zoom_slider_turns_the_warp_on(self):
+        # warp on: the zoom and a look at the status, nothing switched
+        self.assertTrue(self.call("screen_zoom", [85])["ok"])
+        self.assertEqual(self.fake.calls(), ["h713-warp ctl zoom 85",
+                                             "h713-warp ctl status"])
+        # 100 leaves the warp as it is, whatever it is
+        self.fake.forget()
+        self.assertTrue(self.call("screen_zoom", [100])["ok"])
+        self.assertEqual(self.fake.calls(), ["h713-warp ctl zoom 100"])
+        # warp off: below 100 it is switched on, the GPU being the only way down
+        self.fake.tool("h713-warp", {"ctl status": WARP_STATUS.replace(
+            "warp            on", "warp            off -- ctl off")})
+        self.fake.forget()
+        answer = self.call("screen_zoom", [70])
+        self.assertTrue(answer["ok"], answer)
+        self.assertIn("the warp is on for it", answer["line"])
+        self.assertEqual(self.fake.calls(), ["h713-warp ctl zoom 70",
+                                             "h713-warp ctl status",
+                                             "h713-warp ctl on"])
 
     def test_picture_and_sound_verbs(self):
         for verb, args, expected in (

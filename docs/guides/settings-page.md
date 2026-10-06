@@ -84,7 +84,8 @@ zoom at 100 the daemon does not start the GPU at all.
 The slider is 50 to 100 per cent in steps of 5 and sends `h713-warp ctl zoom PERCENT`. It makes the
 projected rectangle smaller on the wall without cutting anything off: the picture shrinks about its own
 centre inside the keystone, in the same matrix, so the GPU shrinks it the way the vendor's "Digital
-scaling" does and it stays square with the keystone. It needs the warp on.
+scaling" does and it stays square with the keystone. Only the GPU can do that, so below 100 the slider
+switches the warp on if it is off; at 100 it leaves the warp as it is.
 
 The display firmware's own zoom used to be on this page as a second slider and is gone since 23.09.2026.
 Measured at the DE's picture scaler: asking it to shrink left the ratio at 1:1 and showed the top left crop
