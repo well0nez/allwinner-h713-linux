@@ -1,7 +1,7 @@
 From dfa9fab443147459960e4a33971817fedd9659de Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 9 Sep 2026 18:02:41 +0200
-Subject: [PATCH 5/7] feat(allwinner): h713: enter the boot gate on SYSTEM_OFF
+Subject: [PATCH 5/6] feat(allwinner): h713: enter the boot gate on SYSTEM_OFF
 
 The board has no PMIC and no power hold, so SYSTEM_OFF cannot cut the
 supply. Instead stamp "GATE" into RTC GP5 (0x07090114), read it back and

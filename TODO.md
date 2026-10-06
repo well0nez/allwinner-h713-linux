@@ -22,10 +22,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (Funk absichtlich verklemmen) ist noch nicht provoziert
 - [ ] 1.4 HY300 Pro G-EU (`boards/hy200-qz713df-a1`): Boot, Bild, HDCP 1.4 mit geteiltem Satz, 2.2
 - [ ] 1.5 STAGE4-Marker füllen und löschen (`git grep -n STAGE4`)
-- [ ] 1.6 Forks pushen: U-Boot `h713-hy310` +6, TF-A `sun50i-h713` +2, sunxi-tools gleich — **vor** `main`
-      (06.10.: Submodul-Remotes per `git submodule sync` wieder auf GitHub gesetzt - TF-A und sunxi-tools zeigten auf
-      einen geloeschten lokalen Pfad; die Identitaets-Hooks gelten jetzt auch in den Forks. Marco 06.10.: `824eb0bd`
-      (S-EL1-Payload, "kept as evidence") geht mit - es steckt ohnehin als `tfa-h713/0007` im Spiegel in main)
+- [ ] 1.6 Forks pushen: U-Boot `h713-hy310` +6, TF-A `sun50i-h713` +1 (`4c1bd8c6`, der HDCP-1.4-Dienst), sunxi-tools gleich
+      — **vor** `main` (06.10.: Submodul-Remotes per `git submodule sync` wieder auf GitHub - TF-A und sunxi-tools
+      zeigten auf einen geloeschten lokalen Pfad; Identitaets-Hooks gelten jetzt auch in den Forks. Der S-EL1-Versuch
+      `824eb0bd` ist aus Fork-Branch, Spiegel und Zeiger raus (Marco: "el1 weg, Hauptsache HDCP funktioniert");
+      BL31 mit und ohne ihn bytegleich gebaut, `doku/153`; er bleibt lokal als Branch `beleg/sel1-payload`)
 - [ ] 1.7 `main` pushen (+72)
 - [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
