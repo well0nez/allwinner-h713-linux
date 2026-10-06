@@ -446,7 +446,7 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 			 r->conf.v[2 * c + 1]);
 	text_add(&t, " (per-mille, positive inward)\n");
 	text_add(&t, "zoom            %d percent%s\n", r->conf.zoom,
-		 r->conf.zoom == 100 ? " (none)" : " (every corner pulled in on top of the keystone)");
+		 r->conf.zoom == 100 ? " (none)" : " (smaller about its centre, inside the keystone)");
 	text_add(&t, "edge            %d%s\n", r->conf.edge,
 		 r->conf.edge ? " px (the vendor's soft border: 20/255 over the outer half, a linear ramp over one width)"
 			      : " (off: a hard edge)");

@@ -104,8 +104,12 @@ zoom. It needs no source plugged in, which is the point. While the mask is up, `
 
 ## The zoom is part of the same matrix
 
-`h713-warp ctl zoom PERCENT` (10 to 100, 100 = none) pulls **every** corner in by `(100 - percent) * 5`
-per-mille on top of the eight values, and the result is clamped the vendor's way and solved as one matrix.
+`h713-warp ctl zoom PERCENT` (10 to 100, 100 = none) makes the picture smaller about its own centre,
+inside the keystone: the panel's square, scaled by the percentage, is carried through the keystone's own
+homography, and the four corners that come out are clamped the vendor's way and solved as one matrix. So
+the zoomed picture keeps the keystone's perspective and stays a rectangle on the wall. Until 06.10.2026
+every corner was pulled in by `(100 - percent) * 5` per-mille instead; on a skewed keystone that turned the
+picture as it got smaller.
 There is no second pass and no second cost: at 60 per cent the picture is smaller on the wall, sharp, and
 nothing is cut off.
 

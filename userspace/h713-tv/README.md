@@ -316,8 +316,9 @@ h713-tv ctl preset NAME         vendor preset: picture mode + nine controls out 
                                  energy_saving and custom). Drops the saved deviations in memory
 h713-tv ctl save [off]          save the nine controls, the preset, aspect and zoom (`/var/lib/h713-tv/werte`),
                                  `off` deletes the file. Only here is anything written, not on every `set`
-h713-tv ctl aspect [NAME]       how the source is fitted into the panel (auto proportional full 16:9 4:3
-                                 zoom); without NAME it is shown. A change rebuilds the picture (~0.5 s console)
+h713-tv ctl aspect [NAME]       how the source is fitted into the panel (auto proportional full 16:9
+                                 4:3); without NAME it is shown. A change rebuilds the picture (~0.5 s console).
+                                 The firmware's `zoom` is refused: it stops the picture for good (06.10.2026)
 h713-tv ctl zoom [off|in F]     the magnifier: `in` enlarges the centre of the picture by a factor
                                  1.0..4.0 (default 2), `off` is the baseline (`out` is gone since 23.09.:
                                  the projection area is `h713-warp ctl zoom`); without an
@@ -674,7 +675,7 @@ still apply. The range is the driver's (`VIDIOC_QUERY_EXT_CTRL`), not a second t
 ```
 warning: /var/lib/h713-tv/werte:12: sharpness = 500 is outside 0..100 -- dropped
 warning: /var/lib/h713-tv/werte:15: dci = 9 is outside 0..3 -- dropped
-warning: /var/lib/h713-tv/werte:17: the plane does not know aspect = "quetschen" (auto proportional full 16:9 4:3 zoom) -- dropped
+warning: /var/lib/h713-tv/werte:17: the plane does not know aspect = "quetschen" (auto proportional full 16:9 4:3) -- dropped
 ```
 
 ### The keys in `tv.conf`

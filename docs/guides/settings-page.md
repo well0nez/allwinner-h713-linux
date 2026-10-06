@@ -82,9 +82,9 @@ zoom at 100 the daemon does not start the GPU at all.
 ### Zoom (the projection area)
 
 The slider is 50 to 100 per cent in steps of 5 and sends `h713-warp ctl zoom PERCENT`. It makes the
-projected rectangle smaller on the wall without cutting anything off: every corner is pulled in by
-`(100 - percent) * 5` per-mille on top of the keystone, inside the same matrix, so the GPU shrinks the
-picture the way the vendor's "Digital scaling" does.
+projected rectangle smaller on the wall without cutting anything off: the picture shrinks about its own
+centre inside the keystone, in the same matrix, so the GPU shrinks it the way the vendor's "Digital
+scaling" does and it stays square with the keystone. It needs the warp on.
 
 The display firmware's own zoom used to be on this page as a second slider and is gone since 23.09.2026.
 Measured at the DE's picture scaler: asking it to shrink left the ratio at 1:1 and showed the top left crop
@@ -138,7 +138,8 @@ here. Choosing a preset moves the sliders with it.
 `brightness` is the black level on this hardware, not a lamp control, so on bright content you will see
 nothing move. The lamp is not adjustable on the HY310.
 
-**Aspect** is how the source is fitted into the panel: `auto proportional full 16:9 4:3 zoom`.
+**Aspect** is how the source is fitted into the panel: `auto proportional full 16:9 4:3`. The display
+firmware also has a `zoom` aspect; it stops the picture for good and is not offered (06.10.2026).
 **Save picture settings** writes the nine values, the preset, the aspect and the zoom to the device, so they
 come back after a reboot. Nothing else on this tab is written until you press it.
 

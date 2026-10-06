@@ -1,0 +1,46 @@
+drm: h713-afbd: do not offer the firmware's zoom aspect
+
+0133 exposed the six display aspect modes of the firmware's window manager
+as the plane's "aspect" enum. Two of them were measured then (auto and
+proportional, doku/nachtlog/S15); "zoom" (kHalDisplayAspectRatio_Zoom, 5)
+never was. It is not usable.
+
+On the HY310, kernel 6.18.38, a 1920x1080p60 source from a ThinkPad and
+the warp off, h713-tv ctl aspect zoom takes the plane down and up as every
+aspect change does. The firmware does not take the plane again: the video
+enable and the video disable handshake both end in "READY did not clear
+(00000001)", h713-tv sees the capture's flip pointers stand still ("no
+signal") and the picture does not come back, while the source keeps
+sending 1920x1080@60 (its xrandr). With "aspect = zoom" saved, the next
+cold start did the same 0.1 s after the signal locked, with no click at
+all. Measured 06.10.2026, journal and dmesg of both boots.
+
+So the enum no longer lists it. The DRM core refuses a value that is not
+in the list, h713-tv answers "aspect does not know" and drops a saved
+"zoom" at its start with a line in the journal. The enum value stays, as
+the firmware's numbering.
+
+---
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -314,6 +314,12 @@
+  * why it is the default here; "auto" stays selectable for the record.
+  * Shell and RPC paths for this setting are stubs in the firmware; the
+  * descriptor word is the only one that lives.
++ *
++ * "zoom" (5) is the firmware's too, but it is not offered: with it in word
++ * 35 the firmware does not take the plane any more. On the HY310 with a
++ * 1920x1080p60 source the enable and the disable handshake both time out
++ * ("READY did not clear") and the capture stops for good; a saved "zoom"
++ * did the same at the next start, with no click at all (06.10.2026).
+  */
+ enum h713_aspect {
+ 	H713_ASPECT_AUTO = 0,
+@@ -332,7 +338,6 @@
+ 	{ H713_ASPECT_FULL, "full" },
+ 	{ H713_ASPECT_16_9, "16:9" },
+ 	{ H713_ASPECT_4_3, "4:3" },
+-	{ H713_ASPECT_ZOOM, "zoom" },
+ };
+ 
+ /*

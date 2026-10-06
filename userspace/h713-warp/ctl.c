@@ -209,8 +209,8 @@ static void cmd_help(struct textbuf *t)
 		 "  check [FRAMES]             the self-check: FRAMES frames (300) drawn twice, 4 ms\n"
 		 "                             apart (12 with hold off), 32 rows compared; the result\n"
 		 "                             on the status line and one journal line per difference\n"
-		 "  zoom [PERCENT]             the screen zoom, 10..100 (100 = none): every corner\n"
-		 "                             pulled in by (100 - PERCENT) * 5 per-mille (S7)\n"
+		 "  zoom [PERCENT]             the screen zoom, 10..100 (100 = none): the picture\n"
+		 "                             smaller about its own centre, inside the keystone (S7)\n"
 		 "  edge [N]                   the soft border of the warped picture in panel pixels:\n"
 		 "                             0 = a hard edge, 4 = the vendor's (the default); saved\n"
 		 "  mode [MODE]                the mount: front, rear (mirrored left-right for a\n"
@@ -324,8 +324,8 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 			warp_solve(r);
 			save(r, t);
 			warp_apply(r);
-			text_add(t, "ok zoom %d -- every corner pulled in by %d per-mille on top of the keystone\n",
-				 z, (100 - z) * 5);
+			text_add(t, "ok zoom %d -- the picture at %d per cent, about its centre inside the keystone\n",
+				 z, z);
 		}
 	} else if (!strcmp(cmd, "edge")) {
 		int e = a1 ? atoi(a1) : -1;

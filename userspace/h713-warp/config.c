@@ -205,7 +205,7 @@ bool conf_write(const struct warp_conf *c, char *why, size_t n)
 		"# service.\n");
 	for (i = 0; i < WARP_KEYS; i++)
 		fprintf(f, "%-5s = %d\n", warp_key_name[i], c->v[i]);
-	fprintf(f, "\n# The screen zoom in percent (100 = none): every corner pulled in by\n# (100 - zoom) * 5 per-mille on top of the eight above.\nzoom  = %d\n", c->zoom);
+	fprintf(f, "\n# The screen zoom in percent (100 = none): the picture smaller about its\n# own centre, carried through the keystone of the eight above.\nzoom  = %d\n", c->zoom);
 	fprintf(f, "\n# The soft border of the warped picture in panel pixels, the vendor's 4:\n# the outer half of it at 20/255 of the picture, then a linear ramp over one\n# width. 0 = a hard edge.\nedge  = %d\n", c->edge);
 	fprintf(f, "\n# The projection mode: front, rear (mirrored left-right for a screen lit\n# from behind), ceiling (turned over) or rear-ceiling. The corner names\n# above stay the wall's in every mode.\nmode  = %s\n", warp_mode_name[c->mode]);
 	fprintf(f, "\n# The state to come up in.\nwarp  = %s\n",

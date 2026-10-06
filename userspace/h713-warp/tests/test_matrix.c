@@ -175,11 +175,89 @@ static void line_reject(char *p)
 	checked++;
 }
 
+/*
+ * The screen zoom (06.10.2026): warp_effective carries the panel's square,
+ * scaled about its centre, through the keystone's homography. So every
+ * zoomed corner must lie where the keystone's own matrix puts (+-s, +-s), to
+ * the per-mille rounding (0.5 per-mille = 0.001 in NDC). Without a keystone
+ * the result is the old one, (100 - zoom) * 5 on every inset. Negative
+ * control: on the HY310's skewed keystone the old form misses that place by
+ * far more than the tolerance -- the turned picture of the photos.
+ */
+static void zoom_table(void)
+{
+	static const int keystones[][WARP_KEYS] = {
+		{ 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ 283, 0, 112, 263, 224, 28, 45, 0 },	/* the HY310's, 06.10.2026 */
+		{ 0, 120, 0, 0, 0, 0, 0, 120 },
+		{ 150, 0, 150, 0, 0, 0, 0, 0 },
+		{ 0, 0, 0, 0, 200, 50, 0, 300 },
+	};
+	static const int zooms[] = { 100, 95, 90, 70, 50, 10 };
+	struct warp_conf c;
+	unsigned int k, z;
+	int i, bad = 0, missed = 0;
+
+	memset(&c, 0, sizeof(c));
+	for (k = 0; k < sizeof(keystones) / sizeof(keystones[0]); k++)
+		for (z = 0; z < sizeof(zooms) / sizeof(zooms[0]); z++) {
+			double m[16], s = zooms[z] / 100.0, worst_old = 0;
+			int out[WARP_KEYS], key[WARP_KEYS];
+
+			memcpy(c.v, keystones[k], sizeof(c.v));
+			c.zoom = zooms[z];
+			warp_effective(&c, out);
+			memcpy(key, keystones[k], sizeof(key));
+			warp_clamp(key);
+			if (!warp_matrix(key, m)) {
+				bad++;
+				continue;
+			}
+			for (i = 0; i < 4; i++) {
+				double base[2], want[2], got[2], old[2];
+				int in = (100 - zooms[z]) * 5;
+
+				warp_corner_ndc(i, base);
+				warp_point(m, base[0] * s, base[1] * s, want);
+				got[0] = base[0] - base[0] * 0.002 * out[2 * i];
+				got[1] = base[1] - base[1] * 0.002 * out[2 * i + 1];
+				old[0] = base[0] - base[0] * 0.002 * (key[2 * i] + in);
+				old[1] = base[1] - base[1] * 0.002 * (key[2 * i + 1] + in);
+				if (fabs(got[0] - want[0]) > 1.01e-3 ||
+				    fabs(got[1] - want[1]) > 1.01e-3) {
+					if (bad++ < 5)
+						printf("FAIL zoom %d keystone %u corner %s: %.4f,%.4f != %.4f,%.4f\n",
+						       zooms[z], k, warp_corner_name[i], got[0], got[1],
+						       want[0], want[1]);
+				}
+				if (fabs(old[0] - want[0]) > worst_old)
+					worst_old = fabs(old[0] - want[0]);
+				if (fabs(old[1] - want[1]) > worst_old)
+					worst_old = fabs(old[1] - want[1]);
+			}
+			if (k == 0)	/* no keystone: the same numbers as before */
+				for (i = 0; i < WARP_KEYS; i++)
+					bad += out[i] != (100 - zooms[z]) * 5;
+			if (k == 1 && zooms[z] == 70 && worst_old > 0.05)
+				missed++;
+		}
+	if (!missed) {
+		printf("FAIL zoom: the old additive form is not told apart on the HY310's keystone\n");
+		bad++;
+	}
+	if (bad) {
+		printf("FAIL zoom table: %d deviations\n", bad);
+		failed++;
+	}
+	checked++;
+}
+
 int main(void)
 {
 	char line[4096];
 
 	mode_table();
+	zoom_table();
 	while (fgets(line, sizeof(line), stdin)) {
 		char *p = line + 1;
 

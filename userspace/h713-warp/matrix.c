@@ -110,12 +110,88 @@ void warp_mirror(int mode, double m[16])
 	}
 }
 
+/* one corner's two insets as its place on the panel in NDC, and back */
+static void inset_ndc(const int v[WARP_KEYS], int corner, double p[2])
+{
+	double base[2];
+
+	warp_corner_ndc(corner, base);
+	p[0] = base[0] - base[0] * 0.002 * v[2 * corner];
+	p[1] = base[1] - base[1] * 0.002 * v[2 * corner + 1];
+}
+
+static int ndc_inset(double p, double base)
+{
+	double in = (1.0 - p / base) * 500.0;
+
+	return in < 0 ? 0 : (int)(in + 0.5);
+}
+
+/*
+ * The screen zoom, the vendor's "Digital scaling" (AP2i rows 6-8): the
+ * picture smaller about its own centre, inside the keystone. The panel's
+ * square, scaled by zoom/100 about its centre, goes through the keystone's
+ * own homography (unit square onto the quad, Heckbert's closed form), so the
+ * zoomed quad keeps the keystone's perspective and is still a rectangle on
+ * the wall, centred where the keystoned picture was.
+ *
+ * Until 06.10.2026 every inset grew by (100 - zoom) * 5 per-mille instead.
+ * On a skewed keystone that kept each edge's rise while the edge got
+ * shorter, and the picture turned: on the HY310 with tl 283,0 tr 112,263
+ * the top edge went from 14 to 26 degrees on the panel at 70 % (photos in
+ * arbeit/zoom-20261006). Without a keystone both forms are the same; a quad
+ * the solve cannot take keeps the old one.
+ */
 void warp_effective(const struct warp_conf *c, int out[WARP_KEYS])
 {
-	int i, in = (100 - c->zoom) * 5;
+	/* the quad's corners in the order of the unit square (0,0) (1,0) (1,1) (0,1) */
+	static const int ORDER[4] = { CORNER_TL, CORNER_TR, CORNER_BR, CORNER_BL };
+	double q[4][2], dx1, dx2, dx3, dy1, dy2, dy3, det, g, h, a, b, d, e;
+	double s = c->zoom / 100.0, lo = 0.5 - s / 2, hi = 0.5 + s / 2;
+	double u[4] = { lo, hi, hi, lo }, w[4] = { lo, lo, hi, hi };
+	int i, z[WARP_KEYS];
 
+	memcpy(out, c->v, sizeof(c->v));
+	warp_clamp(out);
+	if (c->zoom >= 100)
+		return;
+
+	for (i = 0; i < 4; i++)
+		inset_ndc(out, ORDER[i], q[i]);
+	dx1 = q[1][0] - q[2][0];
+	dx2 = q[3][0] - q[2][0];
+	dx3 = q[0][0] - q[1][0] + q[2][0] - q[3][0];
+	dy1 = q[1][1] - q[2][1];
+	dy2 = q[3][1] - q[2][1];
+	dy3 = q[0][1] - q[1][1] + q[2][1] - q[3][1];
+	det = dx1 * dy2 - dx2 * dy1;
+	if (det > -1e-9 && det < 1e-9)
+		goto additive;
+	g = (dx3 * dy2 - dx2 * dy3) / det;
+	h = (dx1 * dy3 - dx3 * dy1) / det;
+	a = q[1][0] - q[0][0] + g * q[1][0];
+	b = q[3][0] - q[0][0] + h * q[3][0];
+	d = q[1][1] - q[0][1] + g * q[1][1];
+	e = q[3][1] - q[0][1] + h * q[3][1];
+
+	for (i = 0; i < 4; i++) {
+		double den = g * u[i] + h * w[i] + 1.0, p[2], base[2];
+
+		if (!(den > 1e-9))	/* the far side of the horizon, or NaN */
+			goto additive;
+		p[0] = (a * u[i] + b * w[i] + q[0][0]) / den;
+		p[1] = (d * u[i] + e * w[i] + q[0][1]) / den;
+		warp_corner_ndc(ORDER[i], base);
+		z[2 * ORDER[i]] = ndc_inset(p[0], base[0]);
+		z[2 * ORDER[i] + 1] = ndc_inset(p[1], base[1]);
+	}
+	memcpy(out, z, sizeof(z));
+	warp_clamp(out);
+	return;
+
+additive:
 	for (i = 0; i < WARP_KEYS; i++)
-		out[i] = c->v[i] + in;
+		out[i] += (100 - c->zoom) * 5;
 	warp_clamp(out);
 }
 

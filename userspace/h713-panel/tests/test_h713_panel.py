@@ -53,7 +53,7 @@ panel = _load("h713_panel", TOOL)
 WARP_STATUS = """ok status
 warp            on
 keystone        tl 120,40 tr 0,0 bl 0,0 br 30,0 (per-mille, positive inward)
-zoom            85 percent (every corner pulled in on top of the keystone)
+zoom            85 percent (smaller about its centre, inside the keystone)
 mode            rear-ceiling (mirrored for the mount; the GPU runs even at the identity)
 pattern         mask (a corner marked)
 source          /dev/video1 1920x1080, line pitch 1920/1920, 1 dma-buf per slot

@@ -81,9 +81,10 @@ struct warp_conf {
 	int mode;			/* enum warp_mode, "mode =" in the file */
 };
 
-/* The eight the matrix sees: the keystone plus the screen zoom (the vendor's
- * "Digital scaling": every corner pulled in by (100 - zoom) * 5 per-mille,
- * AP2i rows 6-8), clamped the vendor's way. */
+/* The eight the matrix sees: the keystone with the screen zoom in it (the
+ * vendor's "Digital scaling", AP2i rows 6-8: the panel's square scaled about
+ * its centre and carried through the keystone's homography), clamped the
+ * vendor's way. */
 void warp_effective(const struct warp_conf *c, int out[WARP_KEYS]);
 
 void conf_read(struct warp_conf *c);

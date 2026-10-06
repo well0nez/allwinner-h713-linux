@@ -483,3 +483,6 @@
 #   too, without a window (bench of 05.10.: arbeit/warp-pruefstand, TODO 2.4a)
 0183-drm-h713-afbd-republish-the-viddec-record-for-a-memory-framebuffer.patch
 0184-asoc-sun4i-codec-h713-the-speaker-amp-stays-on-once-it-is-on.patch
+# 06.10.: the firmware's zoom aspect (5) stops the picture for good, also from a saved value at
+#   the start; the plane does not offer it any more (arbeit/zoom-20261006, TODO 2.1)
+0185-drm-h713-afbd-do-not-offer-the-firmware-s-zoom-aspect.patch

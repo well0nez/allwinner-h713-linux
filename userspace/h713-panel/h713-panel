@@ -51,7 +51,7 @@ CORNERS, AXES = ("tl", "tr", "bl", "br"), ("x", "y")
 # shows: these lists are only what the page offers.
 PRESETS = ("standard", "cinema", "vivid", "game", "computer", "hdr",
            "energy_saving", "custom")
-ASPECTS = ("auto", "proportional", "full", "16:9", "4:3", "zoom")
+ASPECTS = ("auto", "proportional", "full", "16:9", "4:3")   # not "zoom": it stops the picture (kernel 0185)
 PICTURE_CONTROLS = ("brightness", "contrast", "saturation", "hue", "sharpness")
 AFTER_MOVE = ("off", "keystone", "keystone+focus")
 # The optional hardware (boards/README.md, FEATURES) as `h713-features status`

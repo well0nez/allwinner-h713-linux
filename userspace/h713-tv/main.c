@@ -3844,7 +3844,18 @@ static void cmd_rpc(struct reply *r, const char *line)
 		reply_add(r, "ok %s -> %s\n", line, out);
 }
 
-/* the kernel's enum names of "aspect", space-separated, for messages */
+/*
+ * The firmware's "zoom" aspect (5) is refused here even where the kernel
+ * still lists it (before 0185): with it the firmware does not take the plane
+ * again -- enable and disable time out, the capture stops for good, and a
+ * saved one did the same at the next start (06.10.2026, HY310, 1080p60).
+ */
+static bool aspect_refused(const char *name)
+{
+	return name && !strcasecmp(name, "zoom");
+}
+
+/* the kernel's enum names of "aspect" that may be set, space-separated, for messages */
 static void aspect_names(const struct display *d, char *buf, size_t n)
 {
 	const drmModePropertyRes *p = prop_info(&d->plane_props, "aspect");
@@ -3853,8 +3864,9 @@ static void aspect_names(const struct display *d, char *buf, size_t n)
 
 	buf[0] = '\0';
 	for (i = 0; p && i < p->count_enums && l + 1 < n; i++)
-		l += (size_t)snprintf(buf + l, n - l, "%s%s", i ? " " : "",
-				      p->enums[i].name);
+		if (!aspect_refused(p->enums[i].name))
+			l += (size_t)snprintf(buf + l, n - l, "%s%s", l ? " " : "",
+					      p->enums[i].name);
 }
 
 /* ------------------------------------------------------------------ *
@@ -4340,6 +4352,11 @@ static bool cmd_aspect(struct reply *r, struct display *d, const char *text)
 		reply_add(r, "ok aspect %s (%llu) -- possible: %s\n",
 			  prop_enum_name(&d->plane_props, "aspect", d->aspect),
 			  (unsigned long long)d->aspect, names);
+		return false;
+	}
+	if (aspect_refused(text)) {
+		reply_fail(r, "aspect zoom is refused: the firmware stops the picture with it -- possible: %s",
+			   names);
 		return false;
 	}
 	if (!prop_enum_parse(&d->plane_props, "aspect", text, &val)) {
@@ -6017,7 +6034,7 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "  save [off]            save the current state of the nine controls, the preset,\n"
 		  "                        aspect and zoom (%s); \"off\" deletes the file again.\n"
 		  "                        Only here is anything written, not on every \"set\"\n"
-		  "  aspect [NAME]         how the source is fitted (auto proportional full 16:9 4:3 zoom);\n"
+		  "  aspect [NAME]         how the source is fitted (auto proportional full 16:9 4:3);\n"
 		  "                        without NAME: show it. A change rebuilds the picture (~0.5 s)\n"
 		  "  zoom [off|in F]       the digital zoom: \"in\" enlarges the centre of the picture by\n"
 		  "                        a factor 1.0..4.0 (default 2), \"off\" is the baseline; without\n"
@@ -6819,7 +6836,11 @@ int main(int argc, char **argv)
 	if (saved.present && saved.aspect[0] && d.has_aspect) {
 		uint64_t val;
 
-		if (prop_enum_parse(&d.plane_props, "aspect", saved.aspect, &val)) {
+		if (aspect_refused(saved.aspect)) {
+			warn("%s:%u: aspect = \"%s\" stops the picture -- dropped, the plane keeps %s",
+			     saved.path, saved.aspect_line, saved.aspect,
+			     prop_enum_name(&d.plane_props, "aspect", d.aspect));
+		} else if (prop_enum_parse(&d.plane_props, "aspect", saved.aspect, &val)) {
 			d.aspect = val;
 			info("saved           aspect %s", saved.aspect);
 		} else {
