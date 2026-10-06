@@ -28,8 +28,13 @@ from h713 import hdcpitems as hdcpkey  # noqa: E402
 
 
 def one(path, limit):
-    print(hdcpkey.survey_report(path, limit=limit))
-    rows = hdcpkey.survey(path, limit=limit)
+    try:
+        print(hdcpkey.survey_report(path, limit=limit))
+        rows = hdcpkey.survey(path, limit=limit)
+    except OSError as e:
+        # a dump of root's (0600) read as a user, for one: a line, not a traceback
+        print("%s: %s" % (path, e.strerror or e))
+        return 1
     good = [r for r in rows if r.get("known")]
     odd = [r for r in rows if r.get("record_me") or r.get("error")]
     return 0 if good and not odd else 1

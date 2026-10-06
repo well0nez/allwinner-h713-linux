@@ -175,7 +175,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 ## 5 Installer und Werkzeuge
 
 - [ ] 5.1 ST3-RESTORE F1: Schema-Feld `layout.disk_sectors_from = unit|image` statt Heuristik
-- [ ] 5.2 `h713-hdcpkey` braucht eine `docs/tools/`-Seite
+- [x] 5.2 `h713-hdcpkey` braucht eine `docs/tools/`-Seite - 06.10.: `docs/tools/h713-hdcpkey.md` (Beispiel aus einer synthetischen
+      Region der Tests), verlinkt in README und `docs/README.md`; das Werkzeug meldet eine nicht lesbare Datei jetzt mit einer Zeile
+      statt eines Tracebacks
 - [x] 5.3 `hdcpitems.py` `KNOWN_SETS`: neue Geräte eintragen, sobald welche auftauchen - **gestrichen 06.10. (Marco)**: ein
       Ablauf, keine Aufgabe; der Installer druckt den Fingerabdruck zum Einfügen
 - [x] 5.4 **`analyse/hdcp-keys/` nach `re/hdcp-keys/`** (entschieden 12.09., nie gemacht; jetzt 0700, aber falscher Ort) (aus `61`)

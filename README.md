@@ -106,6 +106,7 @@ Everything here is ours and documented; nothing needs a vendor daemon.
 | [`h713-install`](docs/tools/h713-install.md) | dump, extract, install, verify - and the way back to stock, in one tool with subcommands |
 | [`h713-extract`](docs/tools/h713-extract.md) | pull the device-specific firmware out of *your* dump - now the panel and optics ini files too; `--profile <board>` writes a panel row out of them, every value naming the line it came from |
 | [`h713-mkimage`](docs/tools/h713-mkimage.md) | build the three-part image with the gap over secure storage |
+| [`h713-hdcpkey`](docs/tools/h713-hdcpkey.md) | which HDCP key material a dump holds and where - searched by structure, fingerprints only, never key bytes |
 | [`h713_probe`](docs/tools/h713-probe.md) | **a different H713 projector?** FEL-boot this and it says what your board is - DRAM, partitions, display firmware, panel. Writes nothing |
 | [`release/build-all.sh`](BUILDING.md) | clean clone → flashable image, eleven steps, one command |
 
