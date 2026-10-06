@@ -22,7 +22,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (Funk absichtlich verklemmen) ist noch nicht provoziert
 - [ ] 1.4 HY300 Pro G-EU (`boards/hy200-qz713df-a1`): Boot, Bild, HDCP 1.4 mit geteiltem Satz, 2.2
 - [ ] 1.5 STAGE4-Marker füllen und löschen (`git grep -n STAGE4`)
-- [ ] 1.6 Forks pushen: U-Boot `h713-hy310` +6, TF-A `sun50i-h713` +2 — **vor** `main`
+- [ ] 1.6 Forks pushen: U-Boot `h713-hy310` +6, TF-A `sun50i-h713` +2, sunxi-tools gleich — **vor** `main`
+      (06.10.: Submodul-Remotes per `git submodule sync` wieder auf GitHub gesetzt - TF-A und sunxi-tools zeigten auf
+      einen geloeschten lokalen Pfad; die Identitaets-Hooks gelten jetzt auch in den Forks. Offen: ob `824eb0bd`
+      (S-EL1-Payload, "kept as evidence") mit veroeffentlicht wird - Marco)
 - [ ] 1.7 `main` pushen (+72)
 - [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto

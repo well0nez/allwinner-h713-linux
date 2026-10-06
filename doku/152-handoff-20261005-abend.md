@@ -146,6 +146,8 @@ ssh/`uptime` antworteten; nach Stromzyklus normal, keine mmc-Fehler, Lesen saube
 4. Dann Release-Pfad: Bau mit allen Fixes (0183, 0184, Warp, EDID, Panel), 1.2a (Z4-Boot beobachten, fünf
    Kaltstarte), 1.2b (Installer übernimmt `/etc/h713`), Z6/Z7 HDCP-Paar sauber, 1.3 WLAN-Hängefall,
    1.4 HY300 Pro G-EU, 1.5 STAGE4, **1.6 Forks pushen vor main** (TF-A braucht erst ein GitHub-Remote),
+   *Nachtrag 06.10.: das GitHub-Repo fuer TF-A gab es laengst (seit 14.09.); nur das lokale Submodul zeigte auf einen
+   geloeschten Pfad - behoben mit `git submodule sync`, siehe TODO 1.6.*
    1.7 main, 1.8 RELEASES.md.
 5. Spät: 9.8 Warp-CPU, 9.9 Fernbedienung, 9.10 PIN, 9.11 Plopp 2, 2.4b/2.4f Warp-Aspekt und SD-Keystone.
 6. 12.10.: Bilanz MemPalace + Graphify (8.2).

@@ -9,10 +9,22 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 	bad=$(git log --format='%h %ae %ce' "$range" 2>/dev/null | awk -v ok="$ok" '{ for (i = 2; i <= 3; i++) if ($i != ok && $i !~ "\\+" ok "$" && $i !~ /^(chris\.h\.stenger@gmail\.com|root@v63907\.datalix\.de|hy310@local|email@domain\.de|noreply@anthropic\.com)$/) print }' | head -5)
 	[ -n "$bad" ] && { echo "pre-push: $local_ref carries commits with an identity that is not the project's:" >&2; echo "$bad" >&2; exit 1; }
 	# and no file in the pushed tree may carry one of the owner's identity terms (list outside the repo)
+	# Scope: what this push ADDS. For a known remote ref only the lines added between remote and local
+	# are checked (the rest is already public, and in a fork of U-Boot or TF-A the upstream tree carries
+	# strangers' addresses that merely share a domain -- 06.10.2026, two upstream files, false alarm).
+	# A new ref has no remote side, so its whole tree is checked.
 	L="${H713_SPERRBEGRIFFE:-$HOME/.config/h713/sperrbegriffe}"
 	if [ -r "$L" ]; then
-		hit=$(grep -v '^#' "$L" | grep -v '^$' | while read -r b; do git grep -i -l -F -e "$b" "$local_sha" -- . ':!mainline/external' 2>/dev/null | head -2; done | head -3)
-		[ -n "$hit" ] && { echo "pre-push: $local_ref carries a file with one of the owner's identity terms (see $L):" >&2; echo "$hit" >&2; exit 1; }
+		if [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
+			hit=$(grep -v '^#' "$L" | grep -v '^$' | while read -r b; do
+				git diff --name-only "$remote_sha" "$local_sha" -- . ':!mainline/external' 2>/dev/null | while read -r f; do
+					git diff -U0 "$remote_sha" "$local_sha" -- "$f" 2>/dev/null | grep '^+' | grep -q -i -F -e "$b" && echo "$f"
+				done | head -2
+			done | head -3)
+		else
+			hit=$(grep -v '^#' "$L" | grep -v '^$' | while read -r b; do git grep -i -l -F -e "$b" "$local_sha" -- . ':!mainline/external' 2>/dev/null | head -2; done | head -3)
+		fi
+		[ -n "$hit" ] && { echo "pre-push: $local_ref adds a file with one of the owner's identity terms (see $L):" >&2; echo "$hit" >&2; exit 1; }
 	fi
 done
 exit 0
