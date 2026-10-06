@@ -27,7 +27,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       zeigten auf einen geloeschten lokalen Pfad; Identitaets-Hooks gelten jetzt auch in den Forks. Der S-EL1-Versuch
       `824eb0bd` ist aus Fork-Branch, Spiegel und Zeiger raus (Marco: "el1 weg, Hauptsache HDCP funktioniert");
       BL31 mit und ohne ihn bytegleich gebaut, `doku/153`; er bleibt lokal als Branch `beleg/sel1-payload`)
-- [ ] 1.7 `main` pushen (+72)
+      Beim selben Push den alten GitHub-Branch `origin/hy300-pro-ab` loeschen (Marco 06.10.: ja; Inhalt ist in `main`, 7.8)
+- [ ] 1.7 `main` pushen (06.10. +113; aktuell `git rev-list --count origin/main..main`)
 - [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
 
