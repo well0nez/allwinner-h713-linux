@@ -1,4 +1,5 @@
 # Auftrag: Fokus + Motor-Homing auf unseren Kernel portieren - mit Ursachenklärung am Endschalter
+> **Umgesetzt bzw. ueberholt.** Was davon gilt, steht in `docs/` und `TODO.md`; der Plan bleibt als Beleg, wie entschieden wurde.
 
 Diese Datei ist der vollständige Auftrag. Du bekommst keinen weiteren Kontext. Lies sie ganz,
 bevor du etwas anfasst.

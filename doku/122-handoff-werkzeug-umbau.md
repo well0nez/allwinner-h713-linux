@@ -1,4 +1,5 @@
 # 122 - Handoff Werkzeug-Umbau (abgeschlossen 15.09.2026 mit Release v0.6-beta)
+> **Ueberholt.** Stand und Todos leben in `TODO.md`, der letzte Handoff ist `152`; dieser Text bleibt als Beleg fuer den Tag, an dem er geschrieben wurde.
 
 Wer hier einsteigt, liest: dieses Blatt, dann `umbau/STATUS.md` (lebender Stand, alle Pakete mit Review-Zeiger),
 dann `umbau/plan/geraetetest.md`. Der Plan dahinter ist [`121`](121-plan-werkzeug-umbau.md).

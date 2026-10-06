@@ -1,4 +1,5 @@
 # Plan 132 - Fable-Pakete ohne Geraet (26.09.2026)
+> **Umgesetzt bzw. ueberholt.** Was davon gilt, steht in `docs/` und `TODO.md`; der Plan bleibt als Beleg, wie entschieden wurde.
 
 Marco, 26.09.: "mach direkt hdcp 1.4 und 2.2, edid, geraetetoene mischen, ge2d, und die keystone-sachen: plaene, die
 agenten duerfen in eigene ordner ihre patches und arbeiten machen, nichts an live, nichts ins git bzw. wenn git nur in

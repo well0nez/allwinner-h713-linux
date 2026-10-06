@@ -1,4 +1,5 @@
 # Plan - DE-Scaler und Auflösungsunterstützung
+> **Umgesetzt bzw. ueberholt.** Was davon gilt, steht in `docs/` und `TODO.md`; der Plan bleibt als Beleg, wie entschieden wurde.
 
 > **Erledigt (Stand 08.09.2026):** dieser Plan ist abgearbeitet und am Gerät abgenommen; was davon abweicht und was übrig blieb, steht in [`00-STATUS.md`](00-STATUS.md) §4 und [`60-offen.md`](60-offen.md). Das Dokument bleibt als Planungsstand und Begründung.
 

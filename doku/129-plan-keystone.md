@@ -1,4 +1,5 @@
 # 129 - Plan Keystone-Kette (GPU-Pfad, manuell + automatisch) - Stand 22.09.2026 abends
+> **Umgesetzt bzw. ueberholt.** Was davon gilt, steht in `docs/` und `TODO.md`; der Plan bleibt als Beleg, wie entschieden wurde.
 
 Anlass: Marco (22.09.): Autofokus geparkt; Keystone manuell und automatisch plus alle Geometriefunktionen des
 Herstellers vollstaendig reversen, den GPU-Pfad "auf 100 %" bringen (IOMMU/DMA/Takt sauber) und alles samt Tests planen.

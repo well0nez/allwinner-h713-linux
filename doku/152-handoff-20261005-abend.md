@@ -97,7 +97,7 @@ HTTP Basic Auth, Passwort beim ersten Start (`/etc/h713/panel.env`, 0600), `--sh
 
 ### 2.9 Identität (Marcos Frage "welche Mail steht in den Pushes?")
 - 23 ungepushte Commits (18 main, 1 U-Boot, 2 TF-A, alle von heute) und drei Spiegel-Patches trugen
-  `m.onorati@web.de`; ein Arbeitgebername stand seit `b77ed10` (01.04.) in Patch 0007. Klarname in doku/128,
+  die private Adresse (Klartext nur in `arbeit/mail-pruefung/`); ein Arbeitgebername stand seit `b77ed10` (01.04.) in Patch 0007. Klarname in doku/128,
   140, 143 und in `~/.claude/CLAUDE.md`/`~/AGENTS.md`.
 - Umgeschrieben (filter-branch, Inhalt identisch, Sicherungs-Branches `sicherung/*`), Spiegel neu, Zeiger neu
   (`03ae204`), Patch 0007 vorwärts auf `well0nez` (`5e4475a`), Klarname raus, Identitätsbegriffe aus den

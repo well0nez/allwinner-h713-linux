@@ -33,7 +33,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/60` |
 | `docs/subsystems/cpu-comm.md` | `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/96` |
 | `docs/subsystems/crypto-engine.md` | `doku/112`, `doku/114` |
-| `docs/subsystems/display.md` | `doku/40`, `doku/74`, `doku/86`, `doku/87`, `doku/96` |
+| `docs/subsystems/display.md` | `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/94` |
 | `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148` |
@@ -191,6 +191,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`146-handoff-hdcp14-und-plan.md`](146-handoff-hdcp14-und-plan.md) | Handoff |  | 146 - Handoff HDCP 1.4 und Plan, Stand 05.10.2026 00:3x | - |
 | [`147-hdcp14-statusbericht-20261005.md`](147-hdcp14-statusbericht-20261005.md) | Analyse | 2026-10-05 | 147 — HDCP 1.4: Statusbericht nach der Nacht 04./05.10.2026 | 1 |
 | [`148-plan-hdcp14-produktionsreife.md`](148-plan-hdcp14-produktionsreife.md) | Plan |  | 148 — Plan: HDCP-1.4-Bootkette produktionsreif (Stand 05.10.2026, 08:xx) | 3 |
+| [`149-plan-aufraeumen-und-referenz.md`](149-plan-aufraeumen-und-referenz.md) | Plan |  | 149 — Plan: Aufräumen, und eine Referenz, auf der eine Wissensdatenbank stehen kann | - |
 | [`150-handoff-20261005.md`](150-handoff-20261005.md) | Handoff | 2026-10-05 | 150 — Handoff 05.10.2026, ~15:30: HDCP 1.4 produktionsreif, Repo bereinigt, lokal aufgeräumt — und alle Todos | - |
 | [`151-alle-todos-20261005.md`](151-alle-todos-20261005.md) | Analyse | 2026-10-05 | 151 — Alle Projekt-Todos, Stand 05.10.2026 (löst die Listen in `61` und `144` ab) | - |
 | [`152-handoff-20261005-abend.md`](152-handoff-20261005-abend.md) | Handoff | 2026-10-05 | 152 - Handoff 05.10.2026, Abend (15:00-23:50) - Stand, alles Getane, nächste Schritte | - |
@@ -211,8 +212,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`69-handoff-20260905.md`](69-handoff-20260905.md) | Handoff | 2026-09-05 | Übergabe, 05.09.2026 - HDMI-Eingang: wo es steht und was als Nächstes kommt | - |
 | [`70-sackgassen.md`](70-sackgassen.md) | Analyse |  | Sackgassen | 3 |
 | [`71-tvtop-noetig.md`](71-tvtop-noetig.md) | Analyse |  | Braucht der ARM `tvtop`? - Nein, der MIPS setzt die HDMI-RX-Seite selbst auf | 2 |
-| [`72-hdcp14-setsource.md`](72-hdcp14-setsource.md) | Analyse |  | Phase 3.5 und 4 am 05.09.2026: `ReloadHdcp14Key` ohne Wirkung, `SetSource(3)` hängt den SoC | - |
-| [`73-plan-setsource-absturz.md`](73-plan-setsource-absturz.md) | Plan |  | Plan: `SetSource` tötet den ARM - Sezierung und Angriff (Handoff, 06.09.2026) | - |
+| [`72-hdcp14-setsource.md`](72-hdcp14-setsource.md) | Analyse |  | Phase 3.5 und 4 am 05.09.2026: `ReloadHdcp14Key` ohne Wirkung, `SetSource(3)` hängt den SoC | 1 |
+| [`73-plan-setsource-absturz.md`](73-plan-setsource-absturz.md) | Plan |  | Plan: `SetSource` tötet den ARM - Sezierung und Angriff (Handoff, 06.09.2026) | 1 |
 | [`74-setsource-ursache-nullzeiger.md`](74-setsource-ursache-nullzeiger.md) | Analyse |  | 74 - Ursache des SetSource(HDMI)-Absturzes: `sgp_hal_signal_info` ist NULL | 1 |
 | [`75-handoff-20260907.md`](75-handoff-20260907.md) | Handoff | 2026-09-07 | Übergabe, 07.09.2026 - SetSource(HDMI) gelöst; als Nächstes: Geräteerkennung (HPD/EDID) und Bild | 1 |
 | [`76-plan-ch0-de.md`](76-plan-ch0-de.md) | Plan |  | ch0 und das DE-Problem: Befundlage, Ursachenkette, Messplan | 3 |
@@ -228,7 +229,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`86-video-plane-nv16.md`](86-video-plane-nv16.md) | Plan |  | Die Video-Plane: NV16 aus dem HDMI-Capture-Ring (Patch 0093) | 6 |
 | [`87-gamma-ctm-kms.md`](87-gamma-ctm-kms.md) | Analyse |  | Gamma und Weißabgleich als KMS-Eigenschaften am H713-AFBD-CRTC | 3 |
 | [`88-v4l2-hdmirx.md`](88-v4l2-hdmirx.md) | Analyse |  | 88 - `sun50i-h713-hdmirx`: der HDMI-Eingang als V4L2-Gerät | 5 |
-| [`89-composition-block.md`](89-composition-block.md) | Analyse |  | Der Composition-Block bei `0x05000000` - gelesen am 07.09.2026 | - |
+| [`89-composition-block.md`](89-composition-block.md) | Analyse |  | Der Composition-Block bei `0x05000000` - gelesen am 07.09.2026 | 1 |
 | [`90-stock-referenz.md`](90-stock-referenz.md) | Analyse |  | Der Stock-Vergleich | 1 |
 | [`91-plan-drei-punkte.md`](91-plan-drei-punkte.md) | Plan |  | Plan: die drei offenen Punkte des Umschalters | - |
 | [`92-plan-de-scaler.md`](92-plan-de-scaler.md) | Plan |  | Plan - DE-Scaler und Auflösungsunterstützung | - |
@@ -351,126 +352,39 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-120 von 210. Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will.
+33 von 211 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
-* `01-arbeitsbereich.md`
-* `106-handoff-20260910.md`
-* `111-handoff-20260910-abend.md`
-* `115-handoff-20260912.md`
-* `117-plan-p5-doku.md`
-* `119-plan-fremdgeraete-und-installer-fixes.md`
-* `122-handoff-werkzeug-umbau.md`
-* `123-handoff-20260915.md`
-* `127-handoff-20260917.md`
-* `129-plan-keystone.md`
-* `130-handoff-20260923.md`
-* `131-nacht-20260923.md`
-* `132-plan-fable-pakete-20260926.md`
-* `133-handoff-20260927.md`
-* `135-handoff-20261002.md`
-* `138-handoff-mips-ir-20261003.md`
-* `140-handoff-20261003.md`
-* `141-plan-integration-release-20261003.md`
-* `143-handoff-gesamt-20261004.md`
-* `144-offene-punkte-20261004.md`
-* `146-handoff-hdcp14-und-plan.md`
+* `01-arbeitsbereich.md` (ueberholt)
+* `106-handoff-20260910.md` (ueberholt)
+* `111-handoff-20260910-abend.md` (ueberholt)
+* `115-handoff-20260912.md` (ueberholt)
+* `117-plan-p5-doku.md` (ueberholt)
+* `119-plan-fremdgeraete-und-installer-fixes.md` (ueberholt)
+* `122-handoff-werkzeug-umbau.md` (ueberholt)
+* `123-handoff-20260915.md` (ueberholt)
+* `127-handoff-20260917.md` (ueberholt)
+* `129-plan-keystone.md` (ueberholt)
+* `130-handoff-20260923.md` (ueberholt)
+* `131-nacht-20260923.md` (ueberholt)
+* `132-plan-fable-pakete-20260926.md` (ueberholt)
+* `133-handoff-20260927.md` (ueberholt)
+* `135-handoff-20261002.md` (ueberholt)
+* `138-handoff-mips-ir-20261003.md` (ueberholt)
+* `140-handoff-20261003.md` (ueberholt)
+* `141-plan-integration-release-20261003.md` (ueberholt)
+* `143-handoff-gesamt-20261004.md` (ueberholt)
+* `144-offene-punkte-20261004.md` (ueberholt)
+* `146-handoff-hdcp14-und-plan.md` (ueberholt)
+* `149-plan-aufraeumen-und-referenz.md`
 * `150-handoff-20261005.md`
-* `151-alle-todos-20261005.md`
+* `151-alle-todos-20261005.md` (ueberholt)
 * `152-handoff-20261005-abend.md`
-* `69-handoff-20260905.md`
-* `72-hdcp14-setsource.md`
-* `73-plan-setsource-absturz.md`
-* `79-nachtlog-20260907.md`
-* `89-composition-block.md`
-* `91-plan-drei-punkte.md`
-* `92-plan-de-scaler.md`
-* `93-todo-scaler-und-720p.md`
+* `69-handoff-20260905.md` (ueberholt)
+* `79-nachtlog-20260907.md` (ueberholt)
+* `91-plan-drei-punkte.md` (ueberholt)
+* `92-plan-de-scaler.md` (ueberholt)
+* `93-todo-scaler-und-720p.md` (ueberholt)
 * `95-netboot.md`
-* `97-handoff-20260908.md`
-* `auftraege/AGENT-fokus-motor-homing.md`
-* `nachtlog/00-koordination.md`
-* `nachtlog/60-offen-bis-20260907.md`
-* `nachtlog/A-patches.md`
-* `nachtlog/B-abnahme-board.md`
-* `nachtlog/B-arisc.md`
-* `nachtlog/B-fix-checkedid.md`
-* `nachtlog/B-hpd-luecke.md`
-* `nachtlog/B-puls-messung.md`
-* `nachtlog/B-waechter-falsifizierbar.md`
-* `nachtlog/B3-hpd-rennen.md`
-* `nachtlog/BUG-4k-rueckkehr-20260908.md`
-* `nachtlog/C-cpu-comm.md`
-* `nachtlog/C2-rpc-verlust-messung.md`
-* `nachtlog/C3-rpc-verlust-reproduziert.md`
-* `nachtlog/C4-rpc-verlust-flanke.md`
-* `nachtlog/C5-rpc-ursache-behoben.md`
-* `nachtlog/CALLBACK-luecke.md`
-* `nachtlog/CALLBACK-regression.md`
-* `nachtlog/D-cstride-befund.md`
-* `nachtlog/D-plane.md`
-* `nachtlog/DE-vsync-notifier.md`
-* `nachtlog/DOKU-ABGLEICH.md`
-* `nachtlog/E-v4l2.md`
-* `nachtlog/E2-freigabe.md`
-* `nachtlog/E3-geometrie-im-register.md`
-* `nachtlog/E4-geometrie-vollstaendig.md`
-* `nachtlog/E5-signalchange-feuert-bei-geometrie.md`
-* `nachtlog/E6-aufloesung-erkennung-und-scaler.md`
-* `nachtlog/F-abnahme-und-callback-luecke.md`
-* `nachtlog/F-hy310-tv.md`
-* `nachtlog/G-pq.md`
-* `nachtlog/H-gamma.md`
-* `nachtlog/I1-get-routinen.md`
-* `nachtlog/I2-chroma-gain-zwei-schreiber.md`
-* `nachtlog/I3-gain-null-ist-grau.md`
-* `nachtlog/I4-chroma-gain-abnahme.md`
-* `nachtlog/INTEGRATION-hauptsitzung.md`
-* `nachtlog/INTEGRATION.md`
-* `nachtlog/J-pflichtliste.md`
-* `nachtlog/K1-K3-re.md`
-* `nachtlog/K5-K6-re.md`
-* `nachtlog/L-doku.md`
-* `nachtlog/M4-hpd-dauer.md`
-* `nachtlog/M4-nachpruefung.md`
-* `nachtlog/REGEL1-0093-0095.md`
-* `nachtlog/REGEL1-durchsicht.md`
-* `nachtlog/S1-scaler-gefunden.md`
-* `nachtlog/S10-re-cpucomm-callback-slots.md`
-* `nachtlog/S13-restpunkte.md`
-* `nachtlog/S17-re-audio-top-einschalten.md`
-* `nachtlog/S18-re-mips-hdmi-audio.md`
-* `nachtlog/S19-re-audbrg-capture.md`
-* `nachtlog/S2-scaler-anwenden-versuche.md`
-* `nachtlog/S20-re-msp-dsp-pfad.md`
-* `nachtlog/S21-re-audif-zugang.md`
-* `nachtlog/S22-re-rx-audio-ereignis.md`
-* `nachtlog/S23-re-stock-audiograph.md`
-* `nachtlog/S24-re-msp-dsp-boot.md`
-* `nachtlog/S25-re-i2sout-codec.md`
-* `nachtlog/S26-re-delayline.md`
-* `nachtlog/S27-re-dsp2-periph0.md`
-* `nachtlog/S28-treiber-a-ccu.md`
-* `nachtlog/S29-treiber-b-msp.md`
-* `nachtlog/S3-scaler-gefunden-und-bewiesen.md`
-* `nachtlog/S30-treiber-c-codec.md`
-* `nachtlog/S31-treiber-d-hdmirx.md`
-* `nachtlog/S35-re-arisc-standby-led-key.md`
-* `nachtlog/S36-uboot-power-gate.md`
-* `nachtlog/S37-tfa-poweroff-gate.md`
-* `nachtlog/S38-kernel-power-key.md`
-* `nachtlog/S39-re-stock-standby-ablauf.md`
-* `nachtlog/S4-stock-elog-beweist-die-formel.md`
-* `nachtlog/S40-re-standby-vorarbeit.md`
-* `nachtlog/S43-rootfs-bau.md`
-* `nachtlog/S44-fel-boot.md`
-* `nachtlog/S45-ext4-leser.md`
-* `nachtlog/S46-kritische-pruefung.md`
-* `nachtlog/S49-hdcp14-schluesselpfad.md`
-* `nachtlog/S5-updatewce-ist-init-zeit.md`
-* `nachtlog/S6-scaler-blocker-gefallen.md`
-* `nachtlog/S7-scaler-entschluesselt.md`
-* `nachtlog/S8-skalierung-laeuft-und-der-gruenstich.md`
-* `nachtlog/S9-re-tfd-vincap-icsc.md`
-* `nachtlog/STAND-JETZT.md`
-* `nachtlog/STATUS-bis-20260908.md`
+* `97-handoff-20260908.md` (ueberholt)
+* `auftraege/AGENT-fokus-motor-homing.md` (ueberholt)
 

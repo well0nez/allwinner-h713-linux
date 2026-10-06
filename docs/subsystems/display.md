@@ -75,7 +75,9 @@ destination but the plane left over the whole panel: the baseline again. INCAP's
 **What the plane cannot do.** With the full ring as its source and a smaller rectangle as its destination
 the wall was smeared, and stayed smeared after the DE window had been written back to 1920x1080 by hand:
 this composition block does not downscale an NV16 ring. A zoom out is therefore a 1:1 crop placed on the
-panel, never a plane downscale, and the driver refuses a request that would need one.
+panel, never a plane downscale, and the driver refuses a request that would need one. The block itself,
+read register by register on 07.09.2026, is in doku/89; what `SetSource` did to the ARM before the
+capture chain was understood is doku/72 and doku/73.
 
 **The V4L2 format does not move with a window.** The ring geometry (`0136f`) comes from the rowbyte and
 INCAP active, and neither moves: the ring is still 1920x1080 with a 1920-byte pitch, which is what it really

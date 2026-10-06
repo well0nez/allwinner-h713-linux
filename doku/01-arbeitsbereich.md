@@ -1,4 +1,5 @@
 # H713 / HY260 - Arbeitsbereich
+> **Umgesetzt bzw. ueberholt.** Was davon gilt, steht in `docs/` und `TODO.md`; der Plan bleibt als Beleg, wie entschieden wurde.
 
 > **Hinweis (12.09.2026):** Diese Seite beschreibt das **Arbeitsverzeichnis**
 > `/opt/Projekte/h713` - also auch das, was nie ins Repo geht (`re/`, `tftp/`,

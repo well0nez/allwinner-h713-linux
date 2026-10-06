@@ -1,4 +1,5 @@
 # Plan 117 - P5: die englische Dokumentation des Repos
+> **Umgesetzt bzw. ueberholt.** Was davon gilt, steht in `docs/` und `TODO.md`; der Plan bleibt als Beleg, wie entschieden wurde.
 
 Erteilt von Marco am 12.09.2026, 20:20: „p5 klingt gut … du kennst mein Ziel, meine Prämisse und meine
 Ängste, also leg ichs in deine Hand." Dieser Plan hält fest, **was** entsteht, **wie kurz** es sein darf und

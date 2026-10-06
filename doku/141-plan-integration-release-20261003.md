@@ -1,4 +1,5 @@
 # Plan 141 - Fable-Welle nach main, Kleinkram, Boards, dann Release (03.10.2026)
+> **Umgesetzt bzw. ueberholt.** Was davon gilt, steht in `docs/` und `TODO.md`; der Plan bleibt als Beleg, wie entschieden wurde.
 
 Grundlage: Marcos Entscheidungen 03.10. abends (doku/61 "Gesamtliste 03.10.2026"), Stand doku/134 (Tests), doku/140
 (Handoff), Tiefenpruefung umbau/reviews/deep-review-20260927.md (Integrationsreihenfolge). main lokal = 64f78a2

@@ -1,4 +1,5 @@
 # Handoff: MIPS-Reload und IR am HY300PRO-G-EU
+> **Ueberholt.** Stand und Todos leben in `TODO.md`, der letzte Handoff ist `152`; dieser Text bleibt als Beleg fuer den Tag, an dem er geschrieben wurde.
 
 Stand 03.10.2026. Sitzungsauftrag: MIPS bis zum getesteten Ergebnis;
 nach schwarzem Bild auf Nutzerwort geparkt, naechster Punkt B5/IR.

@@ -1,4 +1,5 @@
 # Handoff 10.09.2026, Abend - Stand nach dem Umbau
+> **Ueberholt.** Stand und Todos leben in `TODO.md`, der letzte Handoff ist `152`; dieser Text bleibt als Beleg fuer den Tag, an dem er geschrieben wurde.
 
 Vorgänger: [`106`](106-handoff-20260910.md) (Vormittag desselben Tages). Einstieg immer über
 [`00-STATUS.md`](00-STATUS.md), Offenes in [`60-offen.md`](60-offen.md).

@@ -179,12 +179,24 @@ def bauen():
     # 3. Nicht zitiert
     zeilen.append("## 3 Eintraege, die niemand zitiert")
     zeilen.append("")
-    zeilen.append("%d von %d. Das ist kein Vorwurf - ein Journal darf Material tragen, das "
-                  "nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn "
-                  "man etwas als ueberholt markieren will." % (len(ohne), len(dateien)))
+    # Nachtlog-Seiten sind Belege (Sitzungsmitschnitte), keine Leserdokumentation: dass sie
+    # niemand zitiert, ist normal und keine Aufgabe. Hier stehen nur Plaene, Handoffs und
+    # Analysen ohne Zitat - die Liste, die man abarbeitet (06.10.2026, TODO 7.3).
+    ohne_doku = [(rel, d) for rel, d in ohne if not rel.startswith("nachtlog/")]
+    zeilen.append("%d von %d (ohne die %d Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). "
+                  "Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku "
+                  "geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt "
+                  "markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, "
+                  "ist mit (ueberholt) gekennzeichnet."
+                  % (len(ohne_doku), len(dateien), len(ohne) - len(ohne_doku)))
     zeilen.append("")
-    for rel, _ in ohne:
-        zeilen.append("* `%s`" % rel)
+    for rel, _ in ohne_doku:
+        try:
+            kopf = open(os.path.join(WURZEL, JOURNAL, rel), encoding="utf-8").read(600)
+        except OSError:
+            kopf = ""
+        mark = " (ueberholt)" if ("berholt" in kopf or "Umgesetzt" in kopf) else ""
+        zeilen.append("* `%s`%s" % (rel, mark))
     zeilen.append("")
     return "\n".join(zeilen) + "\n"
 

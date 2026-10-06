@@ -1,4 +1,5 @@
 # Plan 119 - Fremde Geräte (HY300 Pro) und die Installer-Fehler aus Issue #1
+> **Umgesetzt bzw. ueberholt.** Was davon gilt, steht in `docs/` und `TODO.md`; der Plan bleibt als Beleg, wie entschieden wurde.
 
 Ausgelöst durch den ersten fremden Nutzer (Issue #1, HY300 Pro). Zwei getrennte Dinge, hier zusammen, weil das
 eine das andere aufgedeckt hat: **(A)** wie man ein Gerät unterstützt, das wir nicht haben, und **(B)** vier
