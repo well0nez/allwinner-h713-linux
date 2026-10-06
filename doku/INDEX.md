@@ -201,6 +201,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`157-geometrie-modi-und-ecken-20261006.md`](157-geometrie-modi-und-ecken-20261006.md) | Analyse | 2026-10-06 | 157 - Geometrie: die Projektionsmodi, die Kalibrierkarten und das Trapez beim Moduswechsel (06.10.2026) | - |
 | [`158-ap-latenz-nicht-nachvollziehbar-20261006.md`](158-ap-latenz-nicht-nachvollziehbar-20261006.md) | Analyse | 2026-10-06 | 158 - AP-Latenzspitzen: mit dem heutigen Abbild nicht nachvollziehbar (06.10.2026) | - |
 | [`159-presets-und-merken-20261006.md`](159-presets-und-merken-20261006.md) | Analyse | 2026-10-06 | 159 - Presets computer/game/hdr und das Merken über den Neustart (06.10.2026) | - |
+| [`160-hdcp-haertung-aufgeraeumt-20261007.md`](160-hdcp-haertung-aufgeraeumt-20261007.md) | Analyse | 2026-10-07 | 160 - §6 HDCP-Härtung aufgeräumt, S-EL1-Reste gelöscht, der Warteschalter vorbereitet (07.10.2026) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -358,7 +359,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-40 von 218 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+41 von 219 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -392,6 +393,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `157-geometrie-modi-und-ecken-20261006.md`
 * `158-ap-latenz-nicht-nachvollziehbar-20261006.md` (ueberholt)
 * `159-presets-und-merken-20261006.md`
+* `160-hdcp-haertung-aufgeraeumt-20261007.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
