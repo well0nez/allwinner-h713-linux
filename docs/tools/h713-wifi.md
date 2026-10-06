@@ -50,7 +50,7 @@ live - the self-managed wiphy only takes the domain at load time.
 ## Limits
 
 Access point mode with `country=DE` and station mode against a real network are both verified on
-hardware, 12.09.2026. Still open: whether a phone accepts the access point's DNS behaviour (STATUS.md).
+hardware, 12.09.2026.
 The AIC8800D80 firmware is not shipped: the image carries only its target directory, and `h713-install`
 copies the files out of your own dump (or off a device already running this layout) into it. A board
 without the chip is told so and the group is left out, and a device missing that firmware fails with a

@@ -278,9 +278,6 @@ device, not each judged on the wall, so they are not in the line above.
 
 These are written down because they are *not* done, not because they are expected to fail:
 
-- phone joins the access point, `ssh root@h713` over Wi-Fi
-- `mode=sta` with a second DHCP client on `eth0` - two default routes, metric undecided (station mode itself
-  is verified, 12.09., see *Wi-Fi AIC8800D80* above)
 - environment carry-over (`h713_gate`, `h713_boot`) across a reinstall - needs a changed value before the next install
 - 20 gate cycles with the power key (dropped 16.09.; the gate has run on every device test since 09.09.)
 - the keystone warp over an hour with a live source, with `h713-warp ctl check` running - the longest clean
