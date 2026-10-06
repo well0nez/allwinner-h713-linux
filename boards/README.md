@@ -6,6 +6,24 @@ devices lives here, in one directory per board; everything else in the tree is s
 A board directory is **description, not permission**. Having a directory here means we have written
 down what we know about that board. It does not mean anyone has ever booted it.
 
+## Which directory is my projector?
+
+**Looking for your own projector?** Find it in the *Sold as* column, not in the board id - the
+ids follow the **circuit board**, and one board is sold in several projectors. The HY300PRO-G-EU,
+for instance, lives under `hy200-qz713df-a1`.
+
+| Board id | Sold as | DRAM | Panel | State |
+|---|---|---|---|---|
+| [`hy310`](hy310/) | MagCubic HY310 | DDR3 792 MHz | 1920×1080 dual (0x30) | **verified** |
+| [`hy300-pro`](hy300-pro/) | MagCubic HY300 Pro (2024) | DDR3 636 MHz | 1280×720 (0x34) | in test |
+| [`hy200-qz713df-a1`](hy200-qz713df-a1/) | HY300PRO-G-EU · "HY300 Pro+" (2025) · cstenger's bench board | DDR3 792 / 624 MHz | 1280×720 (0x34) | in test |
+| [`hy200-qz713-v2`](hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280×720 (0x34) | profile only |
+| [`hy300-t08`](hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280×720 (0x34) | profile only |
+| [`hy350`](hy350/) | HY350 (2024) | DDR3 792 MHz | 1920×1080 (0x30) | profile only |
+| `l018` | L018 (2025) | unknown | unknown | profile only, no board directory |
+
+The same table stands in the top-level [README](../README.md#boards); a change goes into both.
+
 ## What a board directory contains
 
 ```
