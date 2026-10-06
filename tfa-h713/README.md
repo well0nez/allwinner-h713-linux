@@ -41,12 +41,12 @@ addresses, descriptor dumps, eFuse reads — compile only with `H713_HDCP_RESEAR
 absent from a release build. `release/check-hdcp-artifacts.sh` refuses an image that carries
 them.
 
-**`0007` our own secure payload at S-EL1, kept as evidence and not shipped.** It works, and
-it is unnecessary because BL31 can do the transfer itself. It stays because it cost findings
-worth keeping — an execute-never blanket mapping, a generic timer that is unusable at S-EL1
-here, and a dispatcher whose return convention differs from our own service's. The honest
-trade-off of shipping the EL3 route instead is that our HDCP code runs at the highest
-privilege level, so a bug in it is an EL3 bug.
+**No secure payload at S-EL1.** Until 06.10.2026 a seventh patch carried our own S-EL1 payload as a
+test. It never reached an artefact - BL31 builds byte for byte the same with and without it - and it
+left the line; the project does not pursue S-EL1 (07.10.2026). What it taught - an execute-never
+blanket mapping, a generic timer that is unusable at S-EL1 here, a dispatcher whose return
+convention differs from our own service's - is kept in the journal. The honest trade-off of the
+EL3 route is that our HDCP code runs at the highest privilege level, so a bug in it is an EL3 bug.
 
 ## Building
 

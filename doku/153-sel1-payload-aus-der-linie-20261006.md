@@ -1,5 +1,8 @@
 # 153 - Der S-EL1-Testpayload verlässt die TF-A-Linie (06.10.2026)
 
+> **Ergänzt durch `160` (07.10.):** der Beleg-Branch `beleg/sel1-payload` ist gelöscht (Marco: kein S-EL1). Im Fork-Kopf
+> `4c1bd8c6` (Patch 0006) steht aber noch BL32-Gerüst - siehe `160` §3.
+
 **Kurz:** Patch 7 des TF-A-Forks (`824eb0bd`, "our own secure payload at S-EL1 - kept as evidence, not
 shipped") war nie Teil eines Artefakts und ist seit heute auch nicht mehr Teil der Linie. HDCP 1.4 läuft
 unverändert über den EL3-Dienst (Patch 6, `4c1bd8c6`). Anlass: Marco, 06.10.: "EL1 ist nicht in Nutzung

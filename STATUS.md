@@ -222,7 +222,8 @@ Device runs on the HY310 on 16.09.2026 (`v0.8-dev13` to `v0.8-dev15`; German acc
 - **`v0.7-beta` is superseded**: its layout v3 image is refused by the installer on `main`; take v0.8-beta.
 - **The patch mirrors** both match their forks again, verified by tree hash rather than by eye:
   `uboot-h713/` at fork head `4c293e6` (95 patches, `0095` is the HDCP 1.4 key path) and the new
-  `tfa-h713/` at `7fd3eda4` (7 patches). `tfa-h713/` did not exist before 05.10.2026, which is how the
+  `tfa-h713/` at `7fd3eda4` (7 patches; since 06.10.2026 the heads are `4913742a` and `4c1bd8c6`, the TF-A
+  mirror has 6 - the S-EL1 test payload left the line). `tfa-h713/` did not exist before 05.10.2026, which is how the
   EL3 service for HDCP 1.4 came to live in no repository at all for a day. The build uses the
   submodules, not the mirrors.
 - **Layout v4 - no placeholders.** The image carries only target directories; `h713-install` mounts its working copy's

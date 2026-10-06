@@ -28,3 +28,29 @@ Härtungspaket nach dem Release.
   entschärfter Schleife, mit scharfer hängt die Box auch mit Schlüssel in der Senke. Marcos „muss am Ende weg" vom 14.09.
   ist damit widerlegt.
 - 6.8: gelöscht (siehe 1).
+
+## 3 Nachtrag 01:xx - die Gegenprüfung und was sie gefunden hat
+
+Fünf Prüfer (nur lesend) über Git-Stand, beide Patches, die Aufzeichnungen und die Vollständigkeit. Git-Stand und der
+U-Boot-Patch sind in Ordnung. Gefunden und korrigiert:
+
+- **S-EL1 ist nicht ganz aus TF-A.** Gelöscht war nur der Testpayload; der Fork-Kopf `4c1bd8c6` (Patch 0006) trägt weiter
+  BL32-Gerüst: TSP-Definitionen in `platform_def.h`, die Übergabe an ein Hersteller-OP-TEE (`H713_BL32_AARCH32`), die
+  Reservierung `optee@48600000` (`H713_WITH_BL32`), Schalter in `platform.mk`. `H713_WDOG_BRINGUP` ist immer gesetzt und
+  schaltet bei jedem Boot den Watchdog „for the BL32 bring-up" scharf (Zeichenkette im BL31). Neu als TODO 6.9; vor dem
+  Entfernen klären, ob das unser Netz gegen Hänger ist.
+- `tfa-h713/README.md` beschrieb noch `0007` als aufbewahrten Beleg - korrigiert. `STATUS.md` nannte die Köpfe vor dem
+  Rewrite - mit Vermerk ergänzt. `doku/153` hat eine Kopfzeile auf diesen Eintrag.
+- Ich hatte 6.1/6.2/6.5 als „bleibt als Paket" eingetragen, ohne dass Marco gewählt hatte - jetzt als offen markiert.
+- TODO 1.1a nannte den Baustand `819a09a`; der ist seit dem Identitäts-Rewrite unerreichbar, baumgleich ist `be4f8e1`. 0183
+  war schon im v0.96-Bau; pwm-sun8i (`5e4475a`) fehlte in der Liste.
+- `referenz/geraete.md`: die Warteschleife hängt nicht nur „ohne Schlüssel", sondern gemessen auch mit.
+
+Offen an Marco:
+- Der Klon `umbau/work/FB-HDCP14h/tfa` trägt zwei Commits mit der alten Identität (Klarname, keine noreply-Adresse), zeigt
+  auf GitHub und hat keine Identitäts-Hooks - ein Push von dort würde sie veröffentlichen. Er sollte gelöscht werden; der
+  Sicherheitscheck lässt das nur einem Menschen (der Ordner war mein Arbeitsverzeichnis).
+- In `umbau/work/FB-HDCP14h/` liegen noch die Diff-Dateien und Binaries des TEE/BL32-Versuchs (`patches/0001-tf-a-bl32-and-bringup.diff`,
+  `0002-u-boot-tee-in-fit-and-h713_tee.diff`, `bl31-tspd.bin`, `bl31-opteed.bin`, `optee-mark-*.bin`, `uboot-O-hy310tsp/`, …).
+- Gilt „keine Belege als Branches" nur für diesen Fall oder als Regel? `arbeitsregeln.md` §2.1 und `baeume.md` sagen noch
+  „ein widerlegter Versuch bleibt als Branch stehen".
