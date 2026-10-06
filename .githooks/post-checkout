@@ -1,0 +1,7 @@
+#!/bin/sh
+# core.hooksPath points here, which silences anything a tool installed into .git/hooks
+# (graphify's post-commit/post-checkout, 05.10.2026, found dead on 06.10.). Hand over to it
+# when it is there; a clone without such tools has nothing to run and exits quietly.
+h="$(git rev-parse --git-dir)/hooks/post-checkout"
+[ -x "$h" ] && exec "$h" "$@"
+exit 0
