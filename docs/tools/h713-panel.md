@@ -37,7 +37,7 @@ the drag runs, and once more when it ends. Beside it a pad of four arrows for th
 of 1, 10 or 50 per-mille (`ctl keystone nudge`). Under it: mask on/off, auto keystone now
 (`h713-keystone once --apply`), reset, screen zoom 50..100 % in steps of 5 (`h713-warp ctl zoom`, below 100 with `ctl on` if the warp is off), the
 projection mode - front, rear, ceiling or rear-ceiling (`h713-warp ctl mode`; the corners keep their wall
-names in every mode, the warp flips underneath), after a
+names in every mode, the warp flips underneath and re-sorts the values so the correction stays with the housing), after a
 move - off, keystone or keystone+focus (written into `/etc/h713/keystone.conf`, then `h713-keystone-auto`
 restarted), focus by 5 and 20 msteps, level reference, autofocus now, warp on/off. A control whose hardware the
 board does not have (`h713-features status`: camera, accelerometer, focus motor) is hidden, one line says

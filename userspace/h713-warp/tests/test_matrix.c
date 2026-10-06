@@ -252,12 +252,94 @@ static void zoom_table(void)
 	checked++;
 }
 
+/*
+ * A mode change re-sorts the corners (06.10.2026, the vendor's
+ * setKeystoneNormalXY): the quad on the panel stays where it was and the
+ * picture turns inside it. So for every pair of modes, F_to * K(remounted)
+ * must put source corner c where F_from * K(old) put the corner the two
+ * modes' flips make of c; there and back gives the old values; the clamp
+ * holds. Negative control: without the re-sort the same check fails - the
+ * keystone that turned with the picture.
+ */
+static int remount_misses(const int v[WARP_KEYS], int from, int to, bool sort)
+{
+	static const double fx[4] = { 1, -1, -1, 1 }, fy[4] = { 1, 1, -1, -1 };
+	double mo[16], mn[16];
+	int w[WARP_KEYS], c, miss = 0;
+
+	memcpy(w, v, sizeof(w));
+	if (sort)
+		warp_remount(from, to, w);
+	if (!warp_matrix(v, mo) || !warp_matrix(w, mn))
+		return 100;
+	warp_mirror(from, mo);
+	warp_mirror(to, mn);
+	for (c = 0; c < 4; c++) {
+		double base[2], got[2], want[2];
+
+		warp_corner_ndc(c, base);
+		warp_point(mn, base[0], base[1], got);
+		warp_point(mo, base[0] * fx[from] * fx[to], base[1] * fy[from] * fy[to], want);
+		if (fabs(got[0] - want[0]) > TOL_P || fabs(got[1] - want[1]) > TOL_P)
+			miss++;
+	}
+
+	return miss;
+}
+
+static void remount_table(void)
+{
+	static const int keystones[][WARP_KEYS] = {
+		{ 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ 283, 0, 112, 263, 224, 28, 45, 0 },	/* the HY310's, 06.10.2026 */
+		{ 0, 120, 0, 0, 0, 0, 0, 120 },
+		{ 150, 0, 150, 0, 0, 0, 0, 0 },
+		{ 0, 0, 0, 0, 200, 50, 0, 300 },
+	};
+	unsigned int k;
+	int from, to, i, bad = 0, unsorted = 0;
+
+	for (k = 0; k < sizeof(keystones) / sizeof(keystones[0]); k++)
+		for (from = 0; from < 4; from++)
+			for (to = 0; to < 4; to++) {
+				int v[WARP_KEYS], back[WARP_KEYS], clamped[WARP_KEYS];
+
+				memcpy(v, keystones[k], sizeof(v));
+				if (remount_misses(v, from, to, true)) {
+					if (bad++ < 5)
+						printf("FAIL remount %s -> %s keystone %u: the quad moved\n",
+						       warp_mode_name[from], warp_mode_name[to], k);
+				}
+				memcpy(back, v, sizeof(back));
+				warp_remount(from, to, back);
+				memcpy(clamped, back, sizeof(clamped));
+				warp_clamp(clamped);
+				for (i = 0; i < WARP_KEYS; i++)
+					bad += clamped[i] != back[i];	/* the clamp holds */
+				warp_remount(to, from, back);
+				for (i = 0; i < WARP_KEYS; i++)
+					bad += back[i] != v[i];		/* there and back */
+				if (k == 1 && from != to && remount_misses(v, from, to, false))
+					unsorted++;
+			}
+	if (unsorted != 12) {
+		printf("FAIL remount: without the re-sort %d of 12 mode changes moved the HY310's quad\n", unsorted);
+		bad++;
+	}
+	if (bad) {
+		printf("FAIL remount table: %d deviations\n", bad);
+		failed++;
+	}
+	checked++;
+}
+
 int main(void)
 {
 	char line[4096];
 
 	mode_table();
 	zoom_table();
+	remount_table();
 	while (fgets(line, sizeof(line), stdin)) {
 		char *p = line + 1;
 

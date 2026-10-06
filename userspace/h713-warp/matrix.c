@@ -99,6 +99,40 @@ int warp_mode_by_name(const char *name)
 	return -1;
 }
 
+/*
+ * A mode change re-sorts the eight values so the correction stays with the
+ * housing, as the vendor does on a device with a camera (ProjectActivity
+ * updateProjectMode -> KeystoneUtils.setKeystoneNormalXY(old, new): the stored
+ * corners un-permuted by the old mode and permuted by the new one, the same
+ * four tables as LocalService). With G the flips in which the two modes differ,
+ * the new corner c takes the old values of corner G(c); then F_new * K_new puts
+ * every source corner where F_old * K_old put G of it - the same quad on the
+ * panel, the picture turned in it. Without this the keystone turned with the
+ * picture and, on a bench, landed on the opposite corners (Marco, 06.10.2026).
+ * Each swap moves a row or a column whole, so the clamp still holds.
+ */
+void warp_remount(int from, int to, int v[WARP_KEYS])
+{
+	int old[WARP_KEYS], c;
+	bool lr = MODE_FLIP_X[from] != MODE_FLIP_X[to];
+	bool tb = MODE_FLIP_Y[from] != MODE_FLIP_Y[to];
+
+	memcpy(old, v, sizeof(old));
+	for (c = 0; c < 4; c++) {
+		int left = c == CORNER_TL || c == CORNER_BL;
+		int top = c == CORNER_TL || c == CORNER_TR;
+		int g;
+
+		if (lr)
+			left = !left;
+		if (tb)
+			top = !top;
+		g = top ? (left ? CORNER_TL : CORNER_TR) : (left ? CORNER_BL : CORNER_BR);
+		v[2 * c] = old[2 * g];
+		v[2 * c + 1] = old[2 * g + 1];
+	}
+}
+
 /* F * m, F = diag(+-1, +-1, 1, 1): the panel's x and y mirrored after the keystone */
 void warp_mirror(int mode, double m[16])
 {

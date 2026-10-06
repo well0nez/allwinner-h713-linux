@@ -346,8 +346,10 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 		text_add(t, "error mode takes front, rear, ceiling or rear-ceiling, not \"%s\"\n", a1);
 	} else if (!strcmp(cmd, "mode")) {
 		int m = a1 ? warp_mode_by_name(a1) : r->conf.mode;
+		bool moved = m != r->conf.mode;
 
-		if (m != r->conf.mode) {
+		if (moved) {
+			warp_remount(r->conf.mode, m, r->conf.v);
 			r->conf.mode = m;
 			warp_solve(r);
 			save(r, t);
@@ -355,6 +357,10 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 		}
 		text_add(t, "ok mode %s%s\n", warp_mode_name[m],
 			 m == MODE_FRONT ? "" : " -- mirrored for the mount, the GPU runs even with all eight corners 0");
+		if (moved)
+			text_add(t, "   the corners follow the housing: tl %d,%d tr %d,%d bl %d,%d br %d,%d\n",
+				 r->conf.v[0], r->conf.v[1], r->conf.v[2], r->conf.v[3],
+				 r->conf.v[4], r->conf.v[5], r->conf.v[6], r->conf.v[7]);
 		if (r->state != WARP_ON && r->why[0])
 			text_add(t, "   note: %s\n", r->why);
 	} else if (!strcmp(cmd, "test")) {

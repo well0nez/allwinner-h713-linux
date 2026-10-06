@@ -68,6 +68,7 @@ bool warp_identity(const int v[WARP_KEYS]);		/* all eight zero */
 bool warp_matrix(const int v[WARP_KEYS], double m[16]);	/* false: refused */
 int warp_mode_by_name(const char *name);			/* 0..3, -1 unknown */
 void warp_mirror(int mode, double m[16]);		/* m = flip(mode) * m */
+void warp_remount(int from, int to, int v[WARP_KEYS]);	/* the eight re-sorted for a new mode */
 void warp_point(const double m[16], double x, double y, double out[2]);
 void warp_corner_ndc(int corner, double out[2]);
 
