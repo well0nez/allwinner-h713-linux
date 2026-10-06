@@ -60,7 +60,7 @@ from h713.stock import check_stock_gpt, restore_stock                       # no
 from h713.util import duration, mib                                         # noqa: E402
 from h713.verify import verify_image, write_image                           # noqa: E402
 
-VERSION = "0.1 (draft, doku/110)"
+VERSION = "0.2"   # the package's, h713/__init__.py
 
 EPILOG = """exit codes:
   0 ok                  4 wrong size         8 no vendor source

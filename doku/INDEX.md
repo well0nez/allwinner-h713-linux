@@ -72,7 +72,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/h713/fs/sparse.py` | `doku/121` |
 | `installer/h713/gpt.py` | `doku/109`, `doku/121` |
 | `installer/h713/hdcpitems.py` | `doku/148` |
-| `installer/h713/identify.py` | `doku/109`, `doku/121`, `doku/60` |
+| `installer/h713/identify.py` | `doku/121`, `doku/60` |
 | `installer/h713/imagewty.py` | `doku/105` |
 | `installer/h713/install.py` | `doku/116`, `doku/121`, `doku/61` |
 | `installer/h713/layout.py` | `doku/109`, `doku/121`, `doku/40` |
@@ -98,7 +98,6 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/tests/TEXTS-extract.md` | `doku/121`, `doku/68` |
 | `installer/tests/TEXTS.md` | `doku/110`, `doku/121` |
 | `installer/tests/support.py` | `doku/121` |
-| `installer/tests/test_beta_warning.py` | `doku/109` |
 | `installer/tests/test_board_config_files.py` | `doku/116` |
 | `installer/tests/test_bootlogo.py` | `doku/40` |
 | `installer/tests/test_dump_plan.py` | `doku/40` |
@@ -150,7 +149,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`106-handoff-20260910.md`](106-handoff-20260910.md) | Handoff | 2026-09-10 | Handoff 10.09.2026 - Stand, Todos, teuer bezahltes Wissen | - |
 | [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 5 |
 | [`108-plan-vendordaten.md`](108-plan-vendordaten.md) | Plan |  | Plan 108 - die Vendor-Artefakte vom Stock-Layout lösen | 5 |
-| [`109-plan-layout-v3.md`](109-plan-layout-v3.md) | Plan |  | Plan 109 - Layout v3: die Boot-Kette an den Anfang | 18 |
+| [`109-plan-layout-v3.md`](109-plan-layout-v3.md) | Plan |  | Plan 109 - Layout v3: die Boot-Kette an den Anfang | 16 |
 | [`110-plan-installationsweg.md`](110-plan-installationsweg.md) | Plan |  | Plan 110 - der Installationsweg für Nutzer | 6 |
 | [`111-handoff-20260910-abend.md`](111-handoff-20260910-abend.md) | Handoff | 2026-09-10 | Handoff 10.09.2026, Abend - Stand nach dem Umbau | - |
 | [`112-plan-hdcp14-crypto-engine.md`](112-plan-hdcp14-crypto-engine.md) | Plan |  | Plan 112 - HDCP 1.4 über die Crypto Engine: Auftrag für einen späteren Agenten | 3 |

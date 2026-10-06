@@ -231,7 +231,7 @@ def _render(ident: dict) -> list:
     elif ident["kind"] == "ours":
         # Our own layout: no Android, no vendor U-Boot, nothing a profile could match on --
         # and nothing to post. The way back to the vendor firmware is what matters here.
-        add("ok", "our layout (v3, doku/109) on this %s -- this project's image is installed"
+        add("ok", "our layout (v4, docs/subsystems/emmc-layout.md) on this %s -- this project's image is installed"
             % ident["input"])
     else:
         add("warn", "No profile matches this %s." % where)

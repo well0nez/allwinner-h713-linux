@@ -81,7 +81,7 @@ class ThroughTheTool(unittest.TestCase):
         out = self._run(disk)
         for line in BETA_WARNING:
             self.assertNotIn(line, out)
-        self.assertIn("our layout (v3, doku/109) on this device", out)
+        self.assertIn("our layout (v4, docs/subsystems/emmc-layout.md) on this device", out)
         self.assertIn("WOULD: write", out)
 
 

@@ -34,7 +34,7 @@ from .util import duration, mib
 
 # Version of the h713-install tool (I:42), not the version of the package
 # (h713.VERSION): it goes into MANIFEST.json as "tool" and into README.txt.
-VERSION = "0.1 (draft, doku/110)"
+VERSION = "0.2"   # the package's, h713/__init__.py
 
 # Secure storage: no partition entry points at it, its position is fixed at LBA 12288 on
 # every H713 board seen so far, so it stays a RAW CONSTANT here -- there is no table to ask
