@@ -1,5 +1,7 @@
 # 162 - Crust als Paket für den Gerätetest vorbereitet, offline, nicht gemessen (07.10.2026)
 
+> **Am Gerät gemessen ab 07.10. 05:12: `doku/163`** (Phase 1 und 2 bestanden, erstes Aufwachen aus dem Standby, zwei Fehler behoben).
+
 **Kurz:** In der Nacht 06./07.10. hat ein Agent den FB-CRUST-Port (`umbau/work/FB-CRUST`, 27.09., nie am Gerät) bis zur
 Testreife gebracht: crust für Normalbetrieb und Standby, DRAM-Selbstauffrischung und Tiefschlaf aus dem Hersteller-Blob
 portiert, Kernel-, TF-A- und U-Boot-Patches, vier per FEL ladbare Testabbilder, Testskripte. Am Gerät ist **nichts**
