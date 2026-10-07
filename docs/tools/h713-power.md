@@ -36,6 +36,6 @@ a short press does when the kernel refuses the standby after all.
 
 **Not measured yet.** The window after a key wake (`ignore_s`) is provisional; the device stage K
 measures it with the owner at the key. Whether the remote's power key should suspend too, and whether a
-refused standby should power off or only log, are the owner's decisions (release design 7.2 e and h); the
+refused standby should power off or only log, are the owner's decisions; the
 defaults are on and power-off. `$H713_POWER_ROOT` replaces `/` and `$H713_SYSTEMCTL` the `systemctl` it
 calls (the tests, `userspace/h713-power/tests/`).

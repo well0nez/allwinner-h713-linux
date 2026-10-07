@@ -12,7 +12,7 @@ hash as the fork head (`12f593ac4c2a`, 07.10.2026).
 
 **Not published yet.** The fork has no public repository so far, and there is no submodule
 `mainline/external/crust`; `release/build-all.sh` takes the checkout from `CRUST_SRC=<dir>` until there
-is one, and its stamp says so. The contract-v5 work of the release design (watchdog net, standby phases,
+is one, and its stamp says so. The contract-v5 work (watchdog net, standby phases,
 counters) is a second set of commits on the same branch and comes into this mirror when it is merged;
 `SERIES.txt` will then name the new head.
 

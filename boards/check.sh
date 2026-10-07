@@ -377,7 +377,7 @@ done
   ok "fan stall parameter: named in no scanned file and no added line of $n patch(es); no fg-warn-* = <0>"
 
 printf '\n== 9. crust in board.env and in the device tree ==\n'
-# Both or neither (release design B3): a tree that names <board>-crust.bin without a crust build asks
+# Both or neither: a tree that names <board>-crust.bin without a crust build asks
 # for a file no rootfs carries, and a crust build under a tree that names the vendor blob is replaced
 # by that blob at probe. build-all checks the board it builds in step 10 on the artefacts either way.
 for id in $boards; do
