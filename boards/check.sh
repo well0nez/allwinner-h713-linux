@@ -20,6 +20,8 @@
 #      rootfs overlay and scripts, userspace/, installer/, release/, mainline/build/*.sh; no
 #      added line of a patch names it outside the driver's own source, and none sets
 #      fg-warn-speed or fg-warn-cnt to 0
+#   9. crust: a board whose device tree names <board>-crust.bin has a CRUST_DEFCONFIG, and the other
+#      way round; read from the DTBs build/build.sh left in mainline/build/out (a note without them)
 #
 # Reads the installer profiles with python3 (stdlib only). Override their location with
 # H713_PROFILES=<dir> if the checkout is not the repository. H713_EXTRA_PATCHES="<files>"
@@ -46,7 +48,7 @@ fail() { printf '  FAIL  %s\n' "$*"; fails=$((fails + 1)); }
 
 # value of KEY in a board.env, empty if unset; the file is sourced in a subshell
 value_of() {
-  ( set +u; . "$1" >/dev/null 2>&1; eval "printf '%s' \"\${$2-}\"" )
+  ( set +u; unset "$2"; . "$1" >/dev/null 2>&1; eval "printf '%s' \"\${$2-}\"" )
 }
 
 # value of KEY for one variant: board.env, then the variant's variant.env over it
@@ -373,6 +375,39 @@ for p in $patches; do
 done
 [ "$fails" -eq "$before" ] && \
   ok "fan stall parameter: named in no scanned file and no added line of $n patch(es); no fg-warn-* = <0>"
+
+printf '\n== 9. crust in board.env and in the device tree ==\n'
+# Both or neither (release design B3): a tree that names <board>-crust.bin without a crust build asks
+# for a file no rootfs carries, and a crust build under a tree that names the vendor blob is replaced
+# by that blob at probe. build-all checks the board it builds in step 10 on the artefacts either way.
+for id in $boards; do
+  env_file="$BOARDS/$id/board.env"
+  crust=$(value_of "$env_file" CRUST_DEFCONFIG)
+  dtb=$(value_of "$env_file" KERNEL_DTB)
+  if [ -n "$crust" ]; then
+    case "$crust" in h713_*_defconfig) ;; *) fail "$id: CRUST_DEFCONFIG='$crust' is not an h713_*_defconfig" ;; esac
+    [ -n "$dtb" ] || fail "$id: CRUST_DEFCONFIG without a KERNEL_DTB"
+    if [ -d "$ROOT/mainline/external/crust/configs" ]; then
+      [ -f "$ROOT/mainline/external/crust/configs/$crust" ] || fail "$id: no crust configs/$crust"
+    else
+      note "$id: no crust checkout at mainline/external/crust - configs/$crust unchecked"
+    fi
+  fi
+  [ -n "$dtb" ] || continue
+  f="$ROOT/mainline/build/out/$dtb.dtb"
+  if [ ! -f "$f" ]; then
+    note "$id: no built $dtb.dtb - its firmware-name against CRUST_DEFCONFIG unchecked"
+    continue
+  fi
+  fw=$(python3 "$ROOT/release/check-crust.py" --dt-firmware "$f" 2>/dev/null)
+  case "$fw" in
+    "$id-crust.bin") if [ -n "$crust" ]; then ok "$id: crust in board.env ($crust) and in the device tree"
+                     else fail "$id: the device tree names $fw, board.env no CRUST_DEFCONFIG"; fi ;;
+    *-crust.bin)     fail "$id: the device tree names another board's crust, $fw" ;;
+    *)               if [ -z "$crust" ]; then ok "$id: no crust (device tree: ${fw:--})"
+                     else fail "$id: CRUST_DEFCONFIG=$crust, but the device tree names ${fw:-no arisc firmware}"; fi ;;
+  esac
+done
 
 printf '\n== summary ==\n'
 printf '  boards: %s\n' "$(printf '%s\n' "$boards" | tr '\n' ' ')"
