@@ -191,6 +191,16 @@ class Gate(unittest.TestCase):
             rc, out = self.run_gate()
             self.assertEqual(rc, 0, (files, out))
 
+    def test_a_bl31_with_some_of_the_standby_texts(self):
+        self.put("bl31.bin", STANDBY_TEXTS.replace(b"back from system suspend", b"back from the standby") + T1_TEXT)
+        self.assert_refused("6 of the 7 texts of TF-A's standby code")
+        self.put("bl31.bin", T1_TEXT)
+        self.assert_refused("BL31 lacks SYSTEM_SUSPEND, the build has --standby")
+
+    def test_a_test_bench_bl31(self):
+        self.put("bl31.bin", STANDBY_TEXTS + T1_TEXT + b"\nPSCI: test bench BL31: system suspend takes unmeasured\n")
+        self.assert_refused("BL31 is a test bench build")
+
     def test_a_board_without_crust(self):
         self.put("uboot-proper-release.bin", fit(b""))
         self.dtb("h713-arisc.bin")

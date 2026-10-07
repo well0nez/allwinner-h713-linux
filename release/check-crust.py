@@ -31,7 +31,13 @@ GATED = (29,)                     # the sleep net: only once versions.env CRUST_
 DRAM = dict([("CLK", "DRAM_CLK")] + [(k, "DRAM_SUNXI_" + k) for k in
             ("ZQ", "ODT_EN", "PARA1", "PARA2", "MR0", "MR1", "MR2", "MR3", "TPR5", "TPR6", "TPR9", "TPR13")])
 T1_MARK = b"SoC watchdog fed and armed"                  # TF-A: the reset that feeds the running watchdog first
-SUSPEND_MARK = b"PSCI: system suspend, cpu op req sent"  # TF-A sunxi_standby.c, SUNXI_SYSTEM_SUSPEND=1 only
+TEST_BL31_MARK = b"PSCI: test bench BL31"                # TF-A built with SUNXI_STANDBY_UNMEASURED=1: never released
+# TF-A's sunxi_standby.c is built only with SUNXI_SYSTEM_SUSPEND=1; these are its texts (NOTICE and ERROR, in every
+# release BL31). All of them: the BL31 offers SYSTEM_SUSPEND; none: it does not; some: that file changed and this
+# list has to follow - refused, so that a reworded text never makes a suspend BL31 look like one without.
+SUSPEND_MARKS = (b"PSCI: system suspend refused (", b"not usable by the ARISC", b"PSCI: msgbox port 3 keeps the request",
+                 b"PSCI: system suspend, cpu op req sent", b"PSCI: msgbox port 3 stays full",
+                 b"PSCI: system counter restored", b"PSCI: back from system suspend")
 # systemd's system.conf: the first main file of these directories, then every drop-in by name, a name in an earlier
 # directory hiding the same name in a later one; the last setting wins (systemd-system.conf(5)). /run is a tmpfs
 # at boot, a file there in the tar is never read. RebootWatchdogSec's built-in 10min needs no file and never arms:
@@ -256,13 +262,19 @@ def main(argv=None):
     # 3. BL31 and rootfs against each other: standby, watchdog
     bl31 = open(o.bl31, "rb").read() if o.bl31 else None
     if bl31 is not None:
-        has = SUSPEND_MARK in bl31
-        if has != o.standby:
+        n = sum(m in bl31 for m in SUSPEND_MARKS)
+        has = n == len(SUSPEND_MARKS)
+        if 0 < n < len(SUSPEND_MARKS):
+            fail("BL31 carries %d of the %d texts of TF-A's standby code: sunxi_standby.c changed, check-crust.py's "
+                 "SUSPEND_MARKS have to follow" % (n, len(SUSPEND_MARKS)))
+        elif has != o.standby:
             fail("BL31 %s SYSTEM_SUSPEND, the build %s --standby" % ("offers" if has else "lacks", "has" if o.standby else "has no"))
         elif has and crust is None:
             fail("BL31 offers SYSTEM_SUSPEND without a crust in the release FIT")
         else:
             ok("BL31 %s SYSTEM_SUSPEND" % ("offers" if has else "without"))
+        if TEST_BL31_MARK in bl31:
+            fail("BL31 is a test bench build (SUNXI_STANDBY_UNMEASURED=1): it lets unmeasured deep-sleep steps through")
     if parts is not None:
         sleep = parts.get("etc/systemd/sleep.conf.d/10-h713.conf", b"")
         if o.standby:
@@ -280,7 +292,7 @@ def main(argv=None):
             ok("rootfs arms the watchdog, BL31 has the feeding reset")
     if word is not None:
         print("build word 0x%08x (%s)" % (word, " ".join(BITS[b][5:].lower() for b in sorted(BITS) if word >> b & 1) or "-"))
-    print("note  the contract checkers H3/H4 are not in this repository yet")
+    print("note  not in this repository yet: the contract checkers H3/H4 and the objdump check of BL31's feeding reset")
     print("crust gate: %s" % ("green" if fails == 0 else "%d failure(s) - do not release" % fails))
     return 1 if fails else 0
 
