@@ -42,6 +42,9 @@ class Root:
                  % (self.log, self.p("sys/power/suspend_stats/success")))
         os.chmod(self.p("systemctl"), 0o755)
 
+    def __del__(self):
+        self.tmp.cleanup()                               # now, without the ResourceWarning of a late cleanup
+
     def p(self, rel):
         return os.path.join(self.dir, rel)
 

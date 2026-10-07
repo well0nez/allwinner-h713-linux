@@ -42,4 +42,4 @@ logged as warnings.
 measures it with the owner at the key. Whether the remote's power key should suspend too, and whether a
 refused standby should power off or only log, are the owner's decisions; the
 defaults are on and power-off. `$H713_POWER_ROOT` replaces `/` and `$H713_SYSTEMCTL` the `systemctl` it
-calls (the tests, `userspace/h713-power/tests/`).
+calls (the tests, `userspace/h713-power/tests/`, part of `release/tor.sh --tests`).
