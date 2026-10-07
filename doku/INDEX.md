@@ -209,6 +209,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`165-erster-standby-zyklus-20261007.md`](165-erster-standby-zyklus-20261007.md) | Analyse | 2026-10-07 | 165 - Der erste vollständige Standby-Zyklus auf dem HY310 (07.10.2026, 12:08) | - |
 | [`166-standby-dram-selbstauffrischung-20261007.md`](166-standby-dram-selbstauffrischung-20261007.md) | Analyse | 2026-10-07 | 166 - Standby mit DRAM-Selbstauffrischung auf dem HY310 (07.10.2026, 12:47) | - |
 | [`167-falscher-key-power-behoben-20261007.md`](167-falscher-key-power-behoben-20261007.md) | Analyse | 2026-10-07 | 167 - Der falsche KEY_POWER nach dem Aufwachen ist behoben (07.10.2026, 13:46) | - |
+| [`168-stufe-c-vorbereitet-20261007.md`](168-stufe-c-vorbereitet-20261007.md) | Analyse | 2026-10-07 | 168 - Tiefschlaf (Stufe C) vorbereitet, nicht gelaufen (07.10.2026, 14:45) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -366,7 +367,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-48 von 226 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+49 von 227 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -408,6 +409,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `165-erster-standby-zyklus-20261007.md`
 * `166-standby-dram-selbstauffrischung-20261007.md`
 * `167-falscher-key-power-behoben-20261007.md`
+* `168-stufe-c-vorbereitet-20261007.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

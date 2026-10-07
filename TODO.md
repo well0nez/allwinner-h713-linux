@@ -203,6 +203,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Debounce-Abtastungen; C2 und C3 (Self-Refresh) ohne Tasten-Ereignis und ohne Interrupt. Offen: Wecken per Taste gibt
         weiter `KEY_POWER` (Regel in Linux/logind, Messung mit Marco an der Taste), 3.3, Stufe C (zuerst LOSC/32-kHz-Quarz
         prüfen), Leistungsmessung
+      - **07.10. 14:45 Stufe C vorbereitet, nicht gelaufen** (`doku/168`): crust 0033 (LOSC wie vorgefunden), 0034
+        (VDD_SYS- und LDO-Schritt abschaltbar), Bau D1a ohne beide, `standby-wd5.sh`. **Nächste Läufe nur mit Marco an der
+        Box:** V1 (SR, 20-s-Timer unter dem 16-s-Watchdog: trägt das Netz im Schlaf?), dann D1a. Bis V1 gemessen ist,
+        Standby-Läufe ohne Marco nur in schon gelaufenen Varianten
 - [ ] 3.3 FB-MIPSRELOAD/b — rein, wenn der Bildfehler nach Reload verstanden ist (`doku/138`) - löst 2.15 mit (Firmware nimmt nach einem afbd-Reload keine neue Publikation an)
 - [ ] 3.4 IR FB-REMOTEb + fd02-Keymap — rein, wenn rx_resolution-Trunkierung / ARISC-Schreibpfad geklärt
 - [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
