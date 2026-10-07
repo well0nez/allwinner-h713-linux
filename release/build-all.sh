@@ -253,6 +253,8 @@ info "$REPRO_LINE"
 ((TEST_IMAGE)) && { say "TEST IMAGE for $UNIT (STATUS=$STATUS) -- not a release"
 	info "Nobody has reported a green run here. The table is marked test_for=$TEST_PROFILE, so h713-install"
 	info "writes it on this board alone and only with --test-image; the owner's full dump is the way back."; }
+((WANT_STANDBY)) && { say "STANDBY offered (--standby) -- not a release before TODO 3.3"
+	info "No picture after a wake until the display MIPS is reloaded (TODO 3.3): an image for the device stages."; }
 ((DRY)) && info "DRY RUN -- nothing is built"
 
 # --- 0. prerequisites -------------------------------------------------------
@@ -571,7 +573,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	else
 		echo "crust: none - the ARISC runs the vendor firmware from the owner's dump"
 	fi
-	echo "standby: $STANDBY, $( ((WANT_STANDBY)) && echo "offered (--standby): BL31 with SYSTEM_SUSPEND, suspend allowed, h713-power" || echo "not offered: BL31 without SYSTEM_SUSPEND, AllowSuspend=no")"
+	echo "standby: $STANDBY, $( ((WANT_STANDBY)) && echo "offered (--standby): BL31 with SYSTEM_SUSPEND, suspend allowed, h713-power; not a release before TODO 3.3" || echo "not offered: BL31 without SYSTEM_SUSPEND, AllowSuspend=no")"
 	GIT_ROOT=$(git -C "$MAINLINE" rev-parse --show-toplevel 2>/dev/null || true)
 	# No directory name in the stamp: that is local and tells a reader nothing.
 	if [[ "$GIT_ROOT" == "$MAINLINE" ]]; then W=mainline; else W=repo; fi
