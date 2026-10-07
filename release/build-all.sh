@@ -23,7 +23,8 @@
 # (step 1b, from mainline/external/crust or CRUST_SRC=<checkout>, the series crust-h713/ mirrors).
 # It goes into the release U-Boot's FIT as "scp", which BL31 starts, and into the rootfs as
 # /lib/firmware/<board>-crust.bin, the name the board's device tree gives the arisc driver; step
-# 10 checks that both are this build. The installer and the probe U-Boot never carry it.
+# 10 checks that both are this build (release/check-crust.py). The installer and the probe U-Boot
+# never carry it.
 # --standby (off until TODO 3.3) offers the standby: BL31 with PSCI SYSTEM_SUSPEND, the rootfs
 # with suspend allowed and h713-power on the power key. Only for STANDBY=sr, which follows from
 # CRUST_DEFCONFIG on a verified board.
@@ -112,7 +113,7 @@ while (($#)); do
 	--test-image)  TEST_IMAGE=1; shift ;;
 	--standby)     WANT_STANDBY=1; shift ;;
 	--dry-run)   DRY=1; shift ;;
-	-h|--help)   sed -n '2,45p' "$0"; exit 0 ;;
+	-h|--help)   sed -n '2,46p' "$0"; exit 0 ;;
 	*) echo "unknown: $1" >&2; exit 2 ;;
 	esac
 done
@@ -509,6 +510,18 @@ bash "$ROOT/release/check-hdcp-artifacts.sh" \
 	&& info "HDCP artefacts: green" \
 	|| { grep -E "FAIL|problem" "$OUT/hdcp-gate.log" | sed 's/^/    /'
 	     die "HDCP artefact check failed (log: $OUT/hdcp-gate.log)"; }
+# crust and the standby (release/check-crust.py): this build's crust in the release FIT, the rootfs and
+# the device tree and nowhere else, no variant the release refuses, U-Boot's DRAM values, and BL31 and
+# rootfs agreeing on --standby and on the watchdog. A board without crust: no crust anywhere.
+python3 "$ROOT/release/check-crust.py" --board "$BOARD" \
+	${CRUST_DEFCONFIG:+--crust "$OUT/scp.bin" --crust-config "$OUT/crust.config" --crust-version "$CRUST_VERSION"} \
+	--release-fit "$OUT/uboot-proper-release.bin" --empty-fit "$OUT/u-boot-installer.bin" \
+	--empty-fit "$OUT/u-boot-h713-probe.bin" --uboot-config "$UB_O/.config" --dtb "$OUT/$KERNEL_DTB.dtb" \
+	--rootfs "$ROOTFS/out/hy310-rootfs.tar" --bl31 "$OUT/bl31.bin" $( ((WANT_STANDBY)) && echo --standby ) \
+	> "$OUT/crust-gate.log" 2>&1 \
+	&& info "crust gate: green ($(sed -n 's/^crust: //p' "$OUT/crust-gate.log"))" \
+	|| { grep -E "FAIL|Error" "$OUT/crust-gate.log" | sed 's/^/    /'
+	     die "crust gate failed (log: $OUT/crust-gate.log)"; }
 if [[ -n "$VENDOR" ]]; then
 	( cd "$INSTALLER" && python3 mkimage-selftest.py "out/$NAME.tabelle.json" --vendor "$VENDOR" ) > "$OUT/selftest.log" 2>&1 || true
 	if grep -q "ALL GREEN" "$OUT/selftest.log"; then info "self-test with the vendor files: ALL GREEN"
@@ -531,7 +544,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 		echo "$r: $(git -C "$MAINLINE/external/$r" rev-parse --short HEAD 2>/dev/null)$(git -C "$MAINLINE/external/$r" diff --quiet HEAD 2>/dev/null || echo ' +uncommitted')"
 	done
 	if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
-		echo "crust: ${CRUST_HEAD:0:12}${CRUST_SRC_GIVEN:+ (CRUST_SRC)} $CRUST_DEFCONFIG $CRUST_VERSION, or1k $(cut -d' ' -f1,3 "$OR1K/.h713-or1k-toolchain" 2>/dev/null)"
+		echo "crust: ${CRUST_HEAD:0:12}${CRUST_SRC_GIVEN:+ (CRUST_SRC)} $CRUST_DEFCONFIG $CRUST_VERSION, $(sed -n 's/^build word //p' "$OUT/crust-gate.log"), or1k $(cut -d' ' -f1,3 "$OR1K/.h713-or1k-toolchain" 2>/dev/null)"
 	else
 		echo "crust: none - the ARISC runs the vendor firmware from the owner's dump"
 	fi

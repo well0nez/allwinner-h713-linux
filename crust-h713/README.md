@@ -34,4 +34,8 @@ they did to the vendor's `scp.bin`:
 - **`0010`, `0013`, `0033`, `0034`** deep sleep and the HY300 Pro images: built, deep sleep compared
   with the vendor firmware's traces; no deep sleep has run on a device, and none is a release variant.
 
-The compiler is built from pinned GNU sources by `mainline/tools/or1k-toolchain/build-or1k-toolchain.sh`.
+Which variant a release carries is `CRUST_DEFCONFIG` in `boards/<id>/board.env`, and
+`release/check-crust.py` refuses a build whose `.config` carries one the release must not have (deep
+sleep, its steps, a test build; the sleep net until `CRUST_RELEASE_ALLOW` in `mainline/config/versions.env`
+names it). The compiler is built from pinned GNU sources by
+`mainline/tools/or1k-toolchain/build-or1k-toolchain.sh`.
