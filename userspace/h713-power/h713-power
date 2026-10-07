@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""h713-power - the power key's policy on an image that offers standby.
+
+logind's default turns KEY_POWER into a power-off. On an image built with standby (release/build-all.sh
+--standby) the unit runs this tool under systemd-inhibit with logind's handle-power-key and
+handle-suspend-key locks, so the key is decided here: a short press suspends when the kernel offers deep
+sleep (/sys/power/mem_sleep shows [deep]), crust says ready=1 (the arisc driver's state file) and
+/etc/h713/power.conf allows it, otherwise it powers off - into the power-on gate, as before. A press of
+long_s seconds (3) powers off whatever short says. A KEY_POWER whose timestamp lies within ignore_s (2 s)
+after a resume the key itself woke is that same press and is ignored. If this service dies, logind's own
+power-off is back (docs/subsystems/standby.md).
+Commands: run [--once], status. Exit: 0, 2 usage.
+"""
+
+import argparse
+import errno
+import fcntl
+import glob
+import os
+import select
+import shlex
+import struct
+import subprocess
+import sys
+import time
+
+ROOT = os.environ.get("H713_POWER_ROOT", "/")
+SYSTEMCTL = shlex.split(os.environ.get("H713_SYSTEMCTL", "systemctl"))
+EVENT = struct.Struct("qqHHi")               # struct input_event on a 64-bit kernel
+EV_KEY, KEY_POWER = 1, 116
+EVIOCSCLOCKID = 0x400445a0                   # _IOW('E', 0xa0, int)
+CLOCK_BOOTTIME = 7
+BUS_BLUETOOTH = 0x05
+DEFAULTS = {"short": "standby", "long_s": "3", "ignore_s": "2", "remote": "on", "refused": "poweroff"}
+CHOICES = {"short": ("standby", "poweroff"), "remote": ("on", "off"), "refused": ("poweroff", "log")}
+
+
+def path(*parts):
+    return os.path.join(ROOT, *parts)
+
+
+def log(msg):
+    print("h713-power: " + msg, flush=True)
+
+
+def read(p, default=""):
+    try:
+        with open(p) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def config():
+    """power.conf over the defaults; a bad line is named and its default kept."""
+    conf, bad = dict(DEFAULTS), []
+    for n, line in enumerate(read(path("etc/h713/power.conf")).splitlines(), 1):
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        key, _, value = (x.strip() for x in line.partition("="))
+        ok = key in DEFAULTS and (value in CHOICES[key] if key in CHOICES else value.replace(".", "", 1).isdigit())
+        if ok:
+            conf[key] = value
+        else:
+            bad.append("power.conf:%d: %r ignored" % (n, line))
+    return conf, bad
+
+
+def arisc_state():
+    """The arisc driver's state file as a dict ({} when the driver is not bound)."""
+    for p in sorted(glob.glob(path("sys/bus/platform/drivers/sun50i-h713-arisc/*/state"))):
+        return dict(line.split("=", 1) for line in read(p).splitlines() if "=" in line)
+    return {}
+
+
+def standby_refusal(conf):
+    """None when a short press may suspend, else the reason it may not."""
+    if conf["short"] != "standby":
+        return "power.conf says short = %s" % conf["short"]
+    mem_sleep = read(path("sys/power/mem_sleep"))
+    if "[deep]" not in mem_sleep:
+        return "mem_sleep is '%s', not [deep]" % mem_sleep
+    state = arisc_state()
+    if state.get("ready") != "1":
+        return "crust is not ready (%s)" % ("ready=%s" % state["ready"] if "ready" in state else "no arisc state")
+    return None
+
+
+def has_power_key(caps):
+    """capabilities/key: hex words of the kernel's long, highest first."""
+    bits = 0
+    for word in caps.split():
+        bits = (bits << 64) | int(word, 16)
+    return bool(bits >> KEY_POWER & 1)
+
+
+def power_key_devices(conf):
+    found = []
+    for d in sorted(glob.glob(path("sys/class/input/event*"))):
+        if not has_power_key(read(os.path.join(d, "device/capabilities/key"), "0")):
+            continue
+        if conf["remote"] == "off" and int(read(os.path.join(d, "device/id/bustype"), "0"), 16) == BUS_BLUETOOTH:
+            continue
+        found.append(path("dev/input", os.path.basename(d)))
+    return found
+
+
+class Key:
+    """One device's KEY_POWER: 'short' on a release before long_ns, 'long' once at long_ns."""
+
+    def __init__(self):
+        self.down = None
+        self.fired = False
+
+    def event(self, ts, value, long_ns, ignore_ns, state):
+        if value == 1:
+            since = ts - int(state.get("resume_ns", "0") or 0)
+            if state.get("wake") == "key" and 0 <= since <= ignore_ns:
+                log("KEY_POWER %.2f s after a wake by the key: the same press, ignored" % (since / 1e9))
+                self.down = None
+                return None
+            self.down, self.fired = ts, False
+        elif value == 0 and self.down is not None:
+            short = ts - self.down < long_ns and not self.fired
+            self.down = None
+            return "short" if short else None
+        return None                              # value 2: autorepeat
+
+    def tick(self, now, long_ns):
+        if self.down is not None and not self.fired and now - self.down >= long_ns:
+            self.fired = True
+            return "long"
+        return None
+
+
+def suspend_counts():
+    return tuple(int(read(path("sys/power/suspend_stats", n), "0") or 0) for n in ("success", "fail"))
+
+
+def suspend():
+    """systemctl suspend, then wait for the kernel's verdict in suspend_stats."""
+    before = suspend_counts()
+    if subprocess.call(SYSTEMCTL + ["suspend"]) != 0:
+        return False
+    end = time.monotonic() + 30
+    while time.monotonic() < end:
+        now = suspend_counts()
+        if now[0] > before[0] or now[1] > before[1]:
+            return now[0] > before[0]
+        time.sleep(0.2)
+    return False
+
+
+def act(what, conf):
+    if what == "short":
+        why = standby_refusal(conf)
+        if why is None:
+            log("short press: standby")
+            if suspend():
+                return
+            if conf["refused"] == "log":
+                log("the standby was refused, the projector stays on")
+                return
+            log("the standby was refused: power-off")
+        else:
+            log("short press: power-off, because %s" % why)
+    else:
+        log("long press: power-off")
+    subprocess.call(SYSTEMCTL + ["poweroff"])
+
+
+def open_device(p):
+    """(fd, True) when the events carry CLOCK_BOOTTIME stamps; False: the read time stands in."""
+    fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        fcntl.ioctl(fd, EVIOCSCLOCKID, struct.pack("i", CLOCK_BOOTTIME))
+        return fd, True
+    except OSError as e:
+        log("%s: no CLOCK_BOOTTIME stamps (%s), the read time stands in" % (p, e.strerror))
+        return fd, False
+
+
+def run(once):
+    devices, buf, rescan = {}, {}, 0.0
+    for line in config()[1]:
+        log(line)
+    while True:
+        conf, _ = config()
+        if time.monotonic() >= rescan:
+            want = power_key_devices(conf)
+            for p in set(devices) - set(want):
+                os.close(devices.pop(p)[0])
+            for p in want:
+                if p not in devices:
+                    try:
+                        devices[p] = open_device(p) + (Key(),)
+                        log("listening on %s" % p)
+                    except OSError as e:
+                        log("%s: %s" % (p, e.strerror))
+            rescan = time.monotonic() + 5
+        long_ns, ignore_ns = int(float(conf["long_s"]) * 1e9), int(float(conf["ignore_s"]) * 1e9)
+        ready = select.select([d[0] for d in devices.values()], [], [], 0.25)[0]
+        actions = []
+        for p, (fd, stamped, key) in list(devices.items()):
+            now = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
+            if fd in ready:
+                try:
+                    chunk = os.read(fd, EVENT.size * 64)
+                except OSError as e:
+                    if e.errno == errno.EAGAIN:
+                        continue
+                    chunk = b""
+                if not chunk:                    # the device went away (a remote disconnected)
+                    os.close(fd)
+                    del devices[p]
+                    rescan = time.monotonic() + 1
+                    continue
+                data = buf.pop(p, b"") + chunk
+                n = len(data) - len(data) % EVENT.size
+                buf[p] = data[n:]
+                for sec, usec, typ, code, value in EVENT.iter_unpack(data[:n]):
+                    if typ == EV_KEY and code == KEY_POWER:
+                        ts = sec * 10**9 + usec * 1000 if stamped else now
+                        actions.append(key.event(ts, value, long_ns, ignore_ns, arisc_state()))
+            actions.append(key.tick(now, long_ns))
+        for what in filter(None, actions):
+            act(what, conf)
+            if once:
+                return 0
+
+
+def status():
+    conf, bad = config()
+    for line in bad:
+        print(line)
+    print("config: " + ", ".join("%s = %s" % kv for kv in conf.items()))
+    print("mem_sleep: %s" % (read(path("sys/power/mem_sleep")) or "-"))
+    state = arisc_state()
+    print("crust: ready=%s wake=%s" % (state.get("ready", "-"), state.get("wake", "-")))
+    why = standby_refusal(conf)
+    print("a short press now: %s" % ("standby" if why is None else "power-off (%s)" % why))
+    print("power key devices: %s" % (" ".join(power_key_devices(conf)) or "none"))
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="h713-power", description=__doc__.split("\n\n")[1])
+    sub = p.add_subparsers(dest="command", required=True)
+    sub.add_parser("run", help="decide every KEY_POWER (the unit runs this)").add_argument(
+        "--once", action="store_true", help="exit after the first action")
+    sub.add_parser("status", help="what a short press would do now, and why")
+    a = p.parse_args(argv)
+    return run(a.once) if a.command == "run" else status()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

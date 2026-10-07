@@ -1,0 +1,14 @@
+[Unit]
+Description=H713 power key: standby on a short press, power-off on a long one (docs/subsystems/standby.md)
+After=systemd-logind.service
+
+[Service]
+Type=simple
+# The locks belong to systemd-inhibit and end with it: if h713-power dies, logind's own
+# HandlePowerKey=poweroff (into the power-on gate) is back, and the key never goes dead.
+ExecStart=/usr/bin/systemd-inhibit --what=handle-power-key:handle-suspend-key --mode=block --who=h713-power --why="the power key is decided by h713-power" /usr/local/sbin/h713-power run
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

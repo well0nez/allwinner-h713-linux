@@ -1,0 +1,160 @@
+"""Tests for h713-power against a made-up /sys, /dev and systemctl (no device, no logind)."""
+import importlib.machinery
+import importlib.util
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+
+TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "h713-power")
+S = 10**9
+
+
+def load():
+    loader = importlib.machinery.SourceFileLoader("h713_power", TOOL)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("h713_power", loader))
+    loader.exec_module(mod)
+    return mod
+
+
+class Root:
+    """A temporary root: power.conf, mem_sleep, suspend_stats, the arisc state, one event device."""
+
+    def __init__(self, mem_sleep="s2idle [deep]", ready="1", conf=""):
+        self.tmp = tempfile.TemporaryDirectory()        # removed with this object
+        self.dir = self.tmp.name
+        self.put("etc/h713/power.conf", conf)
+        self.put("sys/power/mem_sleep", mem_sleep)
+        self.put("sys/power/suspend_stats/success", "0")
+        self.put("sys/power/suspend_stats/fail", "0")
+        self.put("sys/bus/platform/drivers/sun50i-h713-arisc/100000.arisc/state",
+                 "version=5\nwake=none\nresume_ns=0\nready=%s\n" % ready)
+        self.put("sys/class/input/event0/device/capabilities/key", "10000000000000 0")
+        self.put("sys/class/input/event0/device/id/bustype", "0019")
+        self.fifo = self.p("dev/input/event0")
+        os.makedirs(os.path.dirname(self.fifo))
+        os.mkfifo(self.fifo)
+        self.log = self.p("systemctl.log")
+        self.put("systemctl", '#!/bin/sh\necho "$@" >> %s\n[ "$1" = suspend ] && echo 1 > %s\nexit 0\n'
+                 % (self.log, self.p("sys/power/suspend_stats/success")))
+        os.chmod(self.p("systemctl"), 0o755)
+
+    def p(self, rel):
+        return os.path.join(self.dir, rel)
+
+    def put(self, rel, text):
+        os.makedirs(os.path.dirname(self.p(rel)), exist_ok=True)
+        with open(self.p(rel), "w") as f:
+            f.write(text)
+
+    def press(self, *events):
+        """Run 'h713-power run --once' while (value, delay_s) events reach the fifo; -> systemctl calls."""
+        def feed():
+            with open(self.fifo, "wb") as f:
+                for value, delay in events:
+                    time.sleep(delay)
+                    f.write(struct_event(value))
+                    f.flush()
+                time.sleep(1.5)
+        threading.Thread(target=feed, daemon=True).start()
+        env = dict(os.environ, H713_POWER_ROOT=self.dir, H713_SYSTEMCTL=self.p("systemctl"))
+        out = subprocess.run([sys.executable, TOOL, "run", "--once"], env=env, capture_output=True,
+                             text=True, timeout=20)
+        calls = []
+        if os.path.exists(self.log):
+            with open(self.log) as f:
+                calls = f.read().split()
+        return calls, out.stdout
+
+
+def struct_event(value):
+    ns = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
+    return EVENT.pack(ns // S, ns % S // 1000, 1, 116, value)
+
+
+EVENT = load().EVENT
+
+
+class KeyRules(unittest.TestCase):
+    def setUp(self):
+        self.m = load()
+        self.k = self.m.Key()
+
+    def ev(self, ts, value, state=None):
+        return self.k.event(ts, value, 3 * S, 2 * S, state or {})
+
+    def test_a_short_press_acts_on_the_release(self):
+        self.assertIsNone(self.ev(10 * S, 1))
+        self.assertIsNone(self.ev(10 * S, 2))                  # autorepeat
+        self.assertEqual(self.ev(10 * S + S // 3, 0), "short")
+
+    def test_a_long_press_fires_once_while_held_and_not_again_on_release(self):
+        self.ev(10 * S, 1)
+        self.assertIsNone(self.k.tick(12 * S, 3 * S))
+        self.assertEqual(self.k.tick(13 * S, 3 * S), "long")
+        self.assertIsNone(self.k.tick(14 * S, 3 * S))
+        self.assertIsNone(self.ev(15 * S, 0))
+
+    def test_the_press_that_woke_the_box_is_ignored_with_its_release(self):
+        key_wake = {"wake": "key", "resume_ns": str(100 * S)}
+        self.assertIsNone(self.ev(100 * S + S // 2, 1, key_wake))
+        self.assertIsNone(self.ev(101 * S, 0, key_wake))
+        self.ev(103 * S, 1, key_wake)                        # after the window: a new press
+        self.assertEqual(self.ev(103 * S + S // 5, 0, key_wake), "short")
+
+    def test_after_a_timer_wake_the_first_press_counts(self):
+        timer_wake = {"wake": "timer", "resume_ns": str(100 * S)}
+        self.ev(100 * S + S // 2, 1, timer_wake)
+        self.assertEqual(self.ev(100 * S + S, 0, timer_wake), "short")
+
+
+class Readiness(unittest.TestCase):
+    def setUp(self):
+        self.m = load()
+
+    def refusal(self, **kw):
+        r = Root(**kw)
+        self.m.ROOT = r.dir
+        return self.m.standby_refusal(self.m.config()[0])
+
+    def test_deep_and_ready_allow_the_standby(self):
+        self.assertIsNone(self.refusal())
+
+    def test_s2idle_crust_not_ready_or_short_poweroff_refuse_it(self):
+        self.assertIn("not [deep]", self.refusal(mem_sleep="[s2idle] deep"))
+        self.assertIn("ready=0", self.refusal(ready="0"))
+        self.assertIn("short = poweroff", self.refusal(conf="short = poweroff\n"))
+
+    def test_a_bad_config_line_is_named_and_its_default_kept(self):
+        r = Root(conf="short = sleep\nlong_s = 5\n")
+        self.m.ROOT = r.dir
+        conf, bad = self.m.config()
+        self.assertEqual((conf["short"], conf["long_s"]), ("standby", "5"))
+        self.assertEqual(len(bad), 1)
+
+    def test_the_power_key_bit_in_a_capability_bitmap(self):
+        self.assertTrue(self.m.has_power_key("10000000000000 0"))
+        self.assertFalse(self.m.has_power_key("0 ffffffffffffffff"))
+
+
+class Run(unittest.TestCase):
+    def test_a_short_press_suspends(self):
+        calls, out = Root().press((1, 0.3), (0, 0.2))
+        self.assertEqual(calls, ["suspend"], out)
+
+    def test_a_short_press_without_deep_sleep_powers_off(self):
+        calls, out = Root(mem_sleep="[s2idle] deep").press((1, 0.3), (0, 0.2))
+        self.assertEqual(calls, ["poweroff"], out)
+        self.assertIn("not [deep]", out)
+
+    def test_a_held_key_powers_off_without_a_release(self):
+        calls, out = Root(conf="long_s = 0.5\n").press((1, 0.3))
+        self.assertEqual(calls, ["poweroff"], out)
+        self.assertIn("long press", out)
+
+
+if __name__ == "__main__":
+    unittest.main()

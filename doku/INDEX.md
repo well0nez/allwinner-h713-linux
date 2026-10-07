@@ -50,6 +50,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
+| `docs/tools/h713-power.md` | `doku/165`, `doku/167` |
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
 | `docs/tools/h713-tv.md` | `doku/101`, `doku/78`, `doku/86`, `doku/88`, `doku/99` |
@@ -206,9 +207,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`162-crust-paket-offline-20261007.md`](162-crust-paket-offline-20261007.md) | Analyse | 2026-10-07 | 162 - Crust als Paket für den Gerätetest vorbereitet, offline, nicht gemessen (07.10.2026) | - |
 | [`163-crust-am-geraet-20261007.md`](163-crust-am-geraet-20261007.md) | Analyse | 2026-10-07 | 163 - Crust am HY310: Normalbetrieb und TF-A-Start bestanden, erstes Aufwachen aus dem Standby (07.10.2026) | - |
 | [`164-standby-haenger-eingegrenzt-20261007.md`](164-standby-haenger-eingegrenzt-20261007.md) | Analyse | 2026-10-07 | 164 - Standby mit crust: der Stillstand nach dem Aufwachen liegt bei Display-MIPS/afbd (07.10.2026, Vormittag) | - |
-| [`165-erster-standby-zyklus-20261007.md`](165-erster-standby-zyklus-20261007.md) | Analyse | 2026-10-07 | 165 - Der erste vollständige Standby-Zyklus auf dem HY310 (07.10.2026, 12:08) | - |
+| [`165-erster-standby-zyklus-20261007.md`](165-erster-standby-zyklus-20261007.md) | Analyse | 2026-10-07 | 165 - Der erste vollständige Standby-Zyklus auf dem HY310 (07.10.2026, 12:08) | 1 |
 | [`166-standby-dram-selbstauffrischung-20261007.md`](166-standby-dram-selbstauffrischung-20261007.md) | Analyse | 2026-10-07 | 166 - Standby mit DRAM-Selbstauffrischung auf dem HY310 (07.10.2026, 12:47) | - |
-| [`167-falscher-key-power-behoben-20261007.md`](167-falscher-key-power-behoben-20261007.md) | Analyse | 2026-10-07 | 167 - Der falsche KEY_POWER nach dem Aufwachen ist behoben (07.10.2026, 13:46) | - |
+| [`167-falscher-key-power-behoben-20261007.md`](167-falscher-key-power-behoben-20261007.md) | Analyse | 2026-10-07 | 167 - Der falsche KEY_POWER nach dem Aufwachen ist behoben (07.10.2026, 13:46) | 1 |
 | [`168-stufe-c-vorbereitet-20261007.md`](168-stufe-c-vorbereitet-20261007.md) | Analyse | 2026-10-07 | 168 - Tiefschlaf (Stufe C) vorbereitet, nicht gelaufen (07.10.2026, 14:45) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
@@ -367,7 +368,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-49 von 227 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+47 von 227 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -406,9 +407,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `162-crust-paket-offline-20261007.md`
 * `163-crust-am-geraet-20261007.md`
 * `164-standby-haenger-eingegrenzt-20261007.md`
-* `165-erster-standby-zyklus-20261007.md`
 * `166-standby-dram-selbstauffrischung-20261007.md`
-* `167-falscher-key-power-behoben-20261007.md`
 * `168-stufe-c-vorbereitet-20261007.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
