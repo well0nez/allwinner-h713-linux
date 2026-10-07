@@ -19,6 +19,13 @@ CRUST = b"\x00crust" * 2000
 DRAM = {"CLK": "792", "ZQ": "0x007b7bfb", "ODT_EN": "0x1", "PARA1": "0x000010f4", "PARA2": "0x04000000",
         "MR0": "0x1c70", "MR1": "0x40", "MR2": "0x18", "MR3": "0x0", "TPR5": "0x48484848", "TPR6": "0x48",
         "TPR9": "0x0", "TPR13": "0xb4016103"}
+# What TF-A's sunxi_standby.c prints (built only with SUNXI_SYSTEM_SUSPEND=1), and the T1 reset's text.
+STANDBY_TEXTS = b"".join(b"\n" + t + b"\n" for t in (
+    b"PSCI: system suspend refused (0x%x): magic 0x%x version %u", b"PSCI: warm entry 0x%lx not usable by the ARISC",
+    b"PSCI: msgbox port 3 keeps the request, no ARISC firmware is reading it", b"PSCI: system suspend, cpu op req sent, entry",
+    b"PSCI: msgbox port 3 stays full, the ARISC main loop is not draining it",
+    b"PSCI: system counter restored, %lu ms asleep added", b"PSCI: back from system suspend"))
+T1_TEXT = b"\nPSCI: SoC watchdog fed and armed, no reset after 1 s\n"
 
 
 def fdt(tree, tail=b""):
@@ -67,7 +74,7 @@ class Gate(unittest.TestCase):
                                          for k, v in DRAM.items()) + "CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y\n")
         self.dtb("hy310-crust.bin")
         self.rootfs(crust=CRUST, standby=True)
-        self.put("bl31.bin", b"..PSCI: system suspend, cpu op req sent..PSCI: SoC watchdog fed and armed..")
+        self.put("bl31.bin", STANDBY_TEXTS + T1_TEXT)
         self.put("versions.env", 'CRUST_RELEASE_ALLOW=""\n')
 
     def put(self, name, data):
@@ -82,13 +89,14 @@ class Gate(unittest.TestCase):
         arisc = {"compatible": b"allwinner,sun50i-h713-arisc\0", "firmware-name": firmware.encode() + b"\0hy310-edid.bin\0"}
         self.put("board.dtb", fdt({"soc": {"arisc@100000": arisc}}))
 
-    def rootfs(self, crust=None, standby=False, watchdog=False):
+    def rootfs(self, crust=None, standby=False, watchdog=False, extra=None):
         files = {"./etc/systemd/sleep.conf.d/10-h713.conf":
                  b"[Sleep]\nAllowSuspend=yes\nSuspendState=mem\nMemorySleepMode=deep\n" if standby else b"[Sleep]\nAllowSuspend=no\n"}
         if crust is not None:
             files["./usr/lib/firmware/hy310-crust.bin"] = crust
         if watchdog:
             files["./etc/systemd/system.conf.d/h713-watchdog.conf"] = b"[Manager]\nRuntimeWatchdogSec=16s\n"
+        files.update(extra or {})
         with tarfile.open(os.path.join(self.tmp.name, "rootfs.tar"), "w") as t:
             for name, data in files.items():
                 info = tarfile.TarInfo(name)
@@ -162,14 +170,32 @@ class Gate(unittest.TestCase):
     def test_a_watchdog_rootfs_needs_the_feeding_reset(self):
         self.rootfs(crust=CRUST, standby=True, watchdog=True)
         self.assertEqual(self.run_gate()[0], 0)
-        self.put("bl31.bin", b"..PSCI: system suspend, cpu op req sent..")
+        self.put("bl31.bin", STANDBY_TEXTS)
         self.assert_refused("every reboot would hang")
+
+    def test_the_watchdog_settings_as_systemd_reads_them(self):
+        self.put("bl31.bin", STANDBY_TEXTS)                                    # no feeding reset
+        conf = "./%s/systemd/system.conf.d/%s"
+        for files in ({conf % ("usr/lib", "50-wd.conf"): b"[Manager]\nRuntimeWatchdogSec=16s\n"},
+                      {conf % ("usr/local/lib", "50-wd.conf"): b"[Manager]\nRebootWatchdogSec=default\n"},
+                      {"./usr/lib/systemd/system.conf": b"[Manager]\nRuntimeWatchdogSec=1min\n"},
+                      {conf % ("etc", "10-off.conf"): b"RuntimeWatchdogSec=0\n", conf % ("lib", "50-wd.conf"): b"RuntimeWatchdogSec=16s\n"}):
+            self.rootfs(crust=CRUST, standby=True, extra=files)
+            self.assert_refused("every reboot would hang")
+        for files in ({conf % ("etc", "wd.conf"): b"[Manager]\nRuntimeWatchdogSec=0s\nRebootWatchdogSec=off\n"},
+                      {"./etc/systemd/system.conf": b"[Manager]\n#RuntimeWatchdogSec=off\n#RebootWatchdogSec=10min\n"},
+                      {conf % ("usr/lib", "50-wd.conf"): b"RuntimeWatchdogSec=16s\n", conf % ("etc", "50-wd.conf"): b""},
+                      {conf % ("usr/lib", "50-wd.conf"): b"RuntimeWatchdogSec=16s\n", conf % ("etc", "90-off.conf"): b"RuntimeWatchdogSec=\n"},
+                      {"./run/systemd/system.conf.d/wd.conf": b"RuntimeWatchdogSec=16s\n"}):
+            self.rootfs(crust=CRUST, standby=True, extra=files)
+            rc, out = self.run_gate()
+            self.assertEqual(rc, 0, (files, out))
 
     def test_a_board_without_crust(self):
         self.put("uboot-proper-release.bin", fit(b""))
         self.dtb("h713-arisc.bin")
         self.rootfs()
-        self.put("bl31.bin", b"..")
+        self.put("bl31.bin", T1_TEXT)
         self.assertEqual(self.run_gate(crust=False, standby=False)[0], 0)
         self.rootfs(crust=CRUST)
         self.assert_refused("rootfs carries", crust=False, standby=False)

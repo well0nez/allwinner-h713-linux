@@ -32,6 +32,12 @@ DRAM = dict([("CLK", "DRAM_CLK")] + [(k, "DRAM_SUNXI_" + k) for k in
             ("ZQ", "ODT_EN", "PARA1", "PARA2", "MR0", "MR1", "MR2", "MR3", "TPR5", "TPR6", "TPR9", "TPR13")])
 T1_MARK = b"SoC watchdog fed and armed"                  # TF-A: the reset that feeds the running watchdog first
 SUSPEND_MARK = b"PSCI: system suspend, cpu op req sent"  # TF-A sunxi_standby.c, SUNXI_SYSTEM_SUSPEND=1 only
+# systemd's system.conf: the first main file of these directories, then every drop-in by name, a name in an earlier
+# directory hiding the same name in a later one; the last setting wins (systemd-system.conf(5)). /run is a tmpfs
+# at boot, a file there in the tar is never read. RebootWatchdogSec's built-in 10min needs no file and never arms:
+# sunxi_wdt stops at 16 s, and systemd-shutdown logs "Failed to set watchdog hardware timeout to 10min: Invalid
+# argument" (seen on the HY310, 07.10.2026). If W1/W2 change that maximum, this has to count the default.
+WD_DIRS = ("etc", "usr/local/lib", "lib")
 fails = 0
 
 
@@ -120,8 +126,8 @@ def kconfig(path):
 
 def rootfs(path):
     """The parts of the rootfs tar this gate reads, by path without ./ and with usr/lib -> lib."""
-    want = re.compile(r"(usr/)?lib/firmware/[^/]+-crust\.bin|etc/systemd/(system\.conf|system\.conf\.d/[^/]+\.conf|"
-                      r"sleep\.conf\.d/10-h713\.conf|system/multi-user\.target\.wants/h713-power\.service)$")
+    want = re.compile(r"(usr/)?lib/firmware/[^/]+-crust\.bin|(etc|(usr/)?lib|usr/local/lib)/systemd/system\.conf(\.d/[^/]+\.conf)?|"
+                      r"etc/systemd/(sleep\.conf\.d/10-h713\.conf|system/multi-user\.target\.wants/h713-power\.service)")
     out = {}
     with tarfile.open(path) as t:
         for m in t:
@@ -130,6 +136,22 @@ def rootfs(path):
                 f = t.extractfile(m) if m.isfile() else None
                 out[re.sub(r"^usr/lib/", "lib/", name)] = f.read() if f else b""
     return out
+
+
+def watchdog(parts):
+    """The settings systemd ends up with that arm the watchdog: ["RuntimeWatchdogSec=16s (file)", ...]."""
+    main = next((d + "/systemd/system.conf" for d in WD_DIRS if d + "/systemd/system.conf" in parts), None)
+    drops = {}
+    for d in reversed(WD_DIRS):
+        drops.update({os.path.basename(k): k for k in parts if k.startswith(d + "/systemd/system.conf.d/")})
+    val = {}
+    for f in [main] * bool(main) + [drops[n] for n in sorted(drops)]:
+        for line in parts[f].decode(errors="replace").splitlines():
+            k, eq, v = (x.strip() for x in line.partition("="))
+            if eq and k in ("RuntimeWatchdogSec", "RebootWatchdogSec"):
+                val[k] = ("%s=%s (%s)" % (k, v, f), v.lower())
+    # off, 0, 0s, 0min and an empty value (back to the default) do not arm it; "default" and any time do
+    return [s for s, v in val.values() if not re.fullmatch(r"off|(0+(\.0*)?\s*[a-z]*\s*)*", v)]
 
 
 def sha(b):
@@ -251,8 +273,7 @@ def main(argv=None):
         mode = "--standby" if o.standby else "no standby"
         check(good, "rootfs sleep.conf.d and h713-power fit " + mode,
               "rootfs sleep.conf.d/h713-power do not fit %s - a rootfs of another build?" % mode)
-        wd = [k for k, v in parts.items() if k.startswith("etc/systemd/system.conf") and
-              re.search(rb"^\s*(Runtime|Reboot)WatchdogSec\s*=\s*(?!0\b|off\b)\S", v, re.M)]
+        wd = watchdog(parts)
         if wd and (bl31 is None or T1_MARK not in bl31):
             fail("rootfs arms the watchdog (%s), BL31 has no reset that feeds it first: every reboot would hang" % ", ".join(wd))
         elif wd:
