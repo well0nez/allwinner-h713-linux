@@ -12,6 +12,9 @@
 #   DRAM_CLK=<MHz> in the environment: a board variant's clock (boards/<id>/
 #               variants/<v>/variant.env), merged after the role; the build
 #               stops if the resolved .config does not carry it.
+#   SCP=<file>  in the environment: crust, the FIT's "scp" loadable, which BL31
+#               starts on the ARISC. release/build-all.sh sets it for the
+#               release role only; the installer and the probe stay without.
 # Needs: swig (in-tree dtc + pylibfdt). -fintegrated-as = clang's assembler.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -21,12 +24,14 @@ BL31="$ROOT/build/out/bl31.bin"
 ROLE=""
 [ $# -gt 0 ] && [ -f "$UBOOT/configs/fragments/h713_$1.config" ] && { ROLE="$1"; shift; }
 [ -f "$BL31" ] || { echo "missing $BL31 - run: build/build.sh bl31" >&2; exit 1; }
+[ -z "${SCP:-}" ] || [ -f "$SCP" ] || { echo "missing SCP=$SCP" >&2; exit 1; }
 F=(ARCH=arm HOSTCC=clang CC='clang -target aarch64-linux-gnu'
   LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump
   READELF=llvm-readelf STRIP=llvm-strip
   KAFLAGS=-fintegrated-as
   KCFLAGS='-fintegrated-as -Wno-error=deprecated-non-prototype -fno-stack-protector'
   BL31="$BL31")
+[ -z "${SCP:-}" ] || F+=(SCP="$SCP")
 make -C "$UBOOT" O="$O" "${F[@]}" "${BASE}_defconfig" >/dev/null 2>&1 || { echo DEFCONFIG_FAIL; exit 1; }
 FRAGS=()
 [ -n "$ROLE" ] && FRAGS+=("$UBOOT/configs/fragments/h713_$ROLE.config")

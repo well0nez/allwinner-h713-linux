@@ -3,7 +3,7 @@
 #
 #   release/build-all.sh --version v0.10 [--board hy310] [--variant NAME] [--vendor DIR]
 #                        [--wifi-env FILE] [--jobs N] [--skip-bl31] [--skip-uboot]
-#                        [--skip-kernel] [--skip-rootfs] [--test-image] [--dry-run]
+#                        [--skip-kernel] [--skip-rootfs] [--test-image] [--standby] [--dry-run]
 #
 # --board <id> (default hy310) picks boards/<id>/board.env: the installer
 # profile, the kernel DTB the FIT carries, the U-Boot base defconfig and the
@@ -19,8 +19,17 @@
 # test_for=$PROFILE[/<variant>] in its table, for its own owner to try -- h713-install writes it on
 # that board alone and only with --test-image. Not a release, no claim of support.
 #
+# crust, the ARISC firmware: a board that names CRUST_DEFCONFIG in board.env gets one crust build
+# (step 1b, from mainline/external/crust or CRUST_SRC=<checkout>, the series crust-h713/ mirrors).
+# It goes into the release U-Boot's FIT as "scp", which BL31 starts, and into the rootfs as
+# /lib/firmware/<board>-crust.bin, the name the board's device tree gives the arisc driver; step
+# 10 checks that both are this build. The installer and the probe U-Boot never carry it.
+# --standby (off until TODO 3.3) offers the standby: BL31 with PSCI SYSTEM_SUSPEND, the rootfs
+# with suspend allowed and h713-power on the power key. Only for STANDBY=sr, which follows from
+# CRUST_DEFCONFIG on a verified board.
+#
 # Order (doku/116 P4):
-#   1 bl31  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
+#   1 bl31  1b crust  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
 #   2b2 probe U-Boot (h713_probe)  2c sunxi-fel (trap door)  3 kernel (+ modules)
 #   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv cross-built  7 rootfs
 #   8 ext4 inputs  9 image  10 check (with --vendor: the full self-test)  11 stamp
@@ -60,11 +69,11 @@ CONTAINER=h713-build
 # mounts, do not assume -- the release repository can sit below the mounted work
 # directory (e.g. /opt/Projekte/h713/repo-neu -> /work/repo-neu), doku/116 P3.
 container_path() {
-	local src dst
+	local p=${1:-$ROOT} src dst
 	while IFS=' ' read -r src dst; do
 		[[ -n "$src" ]] || continue
-		if [[ "$ROOT" == "$src" || "$ROOT" == "$src"/* ]]; then
-			printf '%s%s' "$dst" "${ROOT#"$src"}"; return 0
+		if [[ "$p" == "$src" || "$p" == "$src"/* ]]; then
+			printf '%s%s' "$dst" "${p#"$src"}"; return 0
 		fi
 	done < <(podman inspect -f '{{range .Mounts}}{{.Source}} {{.Destination}}{{"\n"}}{{end}}' "$CONTAINER" 2>/dev/null)
 	return 1
@@ -86,7 +95,7 @@ SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
-VERSION= BOARD=hy310 VARIANT= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0
+VERSION= BOARD=hy310 VARIANT= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0 WANT_STANDBY=0
 SKIP_BL31=0 SKIP_UBOOT=0 SKIP_KERNEL=0 SKIP_ROOTFS=0
 while (($#)); do
 	case "$1" in
@@ -101,8 +110,9 @@ while (($#)); do
 	--skip-kernel) SKIP_KERNEL=1; shift ;;
 	--skip-rootfs) SKIP_ROOTFS=1; shift ;;
 	--test-image)  TEST_IMAGE=1; shift ;;
+	--standby)     WANT_STANDBY=1; shift ;;
 	--dry-run)   DRY=1; shift ;;
-	-h|--help)   sed -n '2,36p' "$0"; exit 0 ;;
+	-h|--help)   sed -n '2,45p' "$0"; exit 0 ;;
 	*) echo "unknown: $1" >&2; exit 2 ;;
 	esac
 done
@@ -113,6 +123,7 @@ if [[ ! -f "$BOARD_ENV" ]]; then
 	echo "known boards: $(cd "$ROOT/boards" 2>/dev/null && ls -d -- */ | tr -d / | tr '\n' ' ')" >&2
 	exit 2
 fi
+unset CRUST_DEFCONFIG    # a board key only: never from the caller's environment
 # shellcheck source=/dev/null
 source "$BOARD_ENV"
 [[ "${BOARD_ID:-}" == "$BOARD" ]] || { echo "$BOARD_ENV says BOARD_ID='${BOARD_ID:-}', not '$BOARD'" >&2; exit 2; }
@@ -159,6 +170,21 @@ fi
 [[ -n "${KERNEL_DTB:-}" ]] || { echo "boards/$BOARD names no KERNEL_DTB -- no device tree of ours has booted there" >&2; exit 2; }
 [[ -n "${UBOOT_BOARD:-}" ]] || { echo "boards/$BOARD names no UBOOT_BOARD -- no U-Boot base defconfig of ours for it" >&2; exit 2; }
 [[ -n "${IMAGE_NAME:-}" ]] || { echo "boards/$BOARD names no IMAGE_NAME" >&2; exit 2; }
+# crust and the standby (header). The source must be the head crust-h713/SERIES.txt names, unless
+# CRUST_SRC points somewhere else on purpose - then the stamp says so.
+STANDBY=none; [[ -n "${CRUST_DEFCONFIG:-}" && "${STATUS:-}" == verified ]] && STANDBY=sr
+if ((WANT_STANDBY)) && [[ "$STANDBY" != sr ]]; then
+	echo "--standby: boards/$UNIT has STANDBY=$STANDBY -- only a verified board with a CRUST_DEFCONFIG can offer it" >&2; exit 2
+fi
+CRUST_SRC_GIVEN=${CRUST_SRC:+1}; CRUST_SRC=${CRUST_SRC:-$MAINLINE/external/crust}
+if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
+	[[ -f "$CRUST_SRC/Makefile" ]] || { echo "no crust source at $CRUST_SRC -- git submodule update --init, or CRUST_SRC=<checkout>" >&2; exit 2; }
+	CRUST_HEAD=$(git -C "$CRUST_SRC" rev-parse HEAD 2>/dev/null) || { echo "$CRUST_SRC is no git checkout: crust's version text needs one" >&2; exit 2; }
+	CRUST_MIRROR=$(awk '$1 == "head" { print $2 }' "$ROOT/crust-h713/SERIES.txt" 2>/dev/null)
+	if [[ "$CRUST_HEAD" != "$CRUST_MIRROR" && -z "$CRUST_SRC_GIVEN" ]]; then
+		echo "crust at $CRUST_HEAD, but crust-h713/SERIES.txt names ${CRUST_MIRROR:-nothing} -- update the submodule or the mirror" >&2; exit 2
+	fi
+fi
 # The kernel defconfig: board.env may name one; otherwise config/versions.env pins it (build.sh does the same).
 KDEF=${KERNEL_DEFCONFIG:-$(sed -n 's/^KERNEL_DEFCONFIG=\([^ #]*\).*/\1/p' "$MAINLINE/config/versions.env")}
 [[ -n "$KDEF" ]] || { echo "no KERNEL_DEFCONFIG in boards/$BOARD/board.env or config/versions.env" >&2; exit 2; }
@@ -189,6 +215,7 @@ else
 fi
 export SOURCE_DATE_EPOCH
 ((SKIP_BL31 || SKIP_UBOOT || SKIP_KERNEL || SKIP_ROOTFS)) && REPRO_WHY+=("--skip-* reused earlier building blocks")
+[[ -n "${CRUST_DEFCONFIG:-}" && "$CRUST_HEAD" != "$CRUST_MIRROR" ]] && REPRO_WHY+=("crust ${CRUST_HEAD:0:12} from CRUST_SRC is not the head crust-h713/SERIES.txt names")
 [[ -n "$WIFI_ENV" ]] && REPRO_WHY+=("--wifi-env is a private input")
 REPRO_LINE="reproducible: yes (SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH, commit $REPRO_COMMIT)"
 ((${#REPRO_WHY[@]})) && { w=$(printf '%s; ' "${REPRO_WHY[@]}"); REPRO_LINE="reproducible: no, because ${w%; }"; }
@@ -213,6 +240,7 @@ elapsed() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $(
 say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "root $ROOT"
 info "board $UNIT ($STATUS, profile $TEST_PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles${DRAM_CLK:+, DRAM $DRAM_CLK MHz})"
+info "crust ${CRUST_DEFCONFIG:-none}, standby $STANDBY$( ((WANT_STANDBY)) && echo ', offered (--standby)' )"
 info "$REPRO_LINE"
 ((TEST_IMAGE)) && { say "TEST IMAGE for $UNIT (STATUS=$STATUS) -- not a release"
 	info "Nobody has reported a green run here. The table is marked test_for=$TEST_PROFILE, so h713-install"
@@ -234,7 +262,7 @@ for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build
 done
 [[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR does not look like an h713-extract output (no boot/mips/)"
 mkdir -p "$OUT" "$DELIVERY"
-((DRY)) && { info "would build: bl31, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv, rootfs, inputs, image $NAME"; exit 0; }
+((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}${CRUST_DEFCONFIG:+ + scp}) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv, rootfs, inputs, image $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
 if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- skipped (--skip-bl31, $OUT/bl31.bin is there)"
@@ -244,9 +272,30 @@ else
 	# 10.09. built with assertions enabled (49260 instead of 45164 bytes). make
 	# saw everything as up to date and never replaced it -- it sits in v0.8 to v0.10.
 	rm -rf "$MAINLINE/external/arm-trusted-firmware/build"
-	in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh bl31" | tail -3 | sed 's/^/    /'
+	in_container "cd $WORK/mainline && BOARD=$BOARD H713_STANDBY=$WANT_STANDBY build/build.sh bl31" | tail -3 | sed 's/^/    /'
 fi
 [[ -f "$OUT/bl31.bin" ]] || die "no bl31.bin"
+
+# --- 1b. crust --------------------------------------------------------------
+# One build feeds the FIT and the rootfs. A few seconds, so always from scratch; the or1k
+# compiler is built once (mainline/tools/or1k-toolchain/, ~6 min) and then kept.
+CR_O="$MAINLINE/build/crust"; OR1K="$MAINLINE/build/toolchain/or1k"
+rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config"   # no crust of an earlier board in this one's image
+if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
+	say "1b/11 crust $CRUST_DEFCONFIG (${CRUST_HEAD:0:12})"
+	if [[ ! -x "$OR1K/bin/or1k-elf-gcc" ]]; then
+		info "building the or1k toolchain first (log: $OUT/or1k-toolchain.log)"
+		in_container "OR1K_PREFIX=$(c "$OR1K") $WORK/mainline/tools/or1k-toolchain/build-or1k-toolchain.sh" > "$OUT/or1k-toolchain.log" 2>&1 \
+			|| { tail -20 "$OUT/or1k-toolchain.log"; die "the or1k toolchain failed (log: $OUT/or1k-toolchain.log)"; }
+	fi
+	CS=$(container_path "$CRUST_SRC") || die "$CRUST_SRC is in no mount of the container $CONTAINER"
+	in_container "export PATH=$(c "$OR1K")/bin:\$PATH; cd $CS && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") $CRUST_DEFCONFIG && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") scp" > "$OUT/crust-build.log" 2>&1 \
+		|| { tail -20 "$OUT/crust-build.log"; die "crust failed (log: $OUT/crust-build.log)"; }
+	install -m 0644 "$CR_O/scp/scp.bin" "$OUT/scp.bin"
+	install -m 0644 "$CRUST_SRC/.config" "$OUT/crust.config"
+	CRUST_VERSION=$(sed -n 's/^#define VERSION_STRING "\(.*\)"$/\1/p' "$CR_O/include/version.h")
+	info "crust $CRUST_VERSION, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
+fi
 
 # --- 2. U-Boot: build, split, environment -----------------------------------
 UB_O="$MAINLINE/build/uboot-release"
@@ -255,7 +304,9 @@ if ((SKIP_UBOOT)) && [[ -f "$OUT/spl-release.bin" && -f "$OUT/uboot-proper-relea
 else
 	say "2/11 U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE"
 	rm -rf "$UB_O"   # as with bl31: no old objects, no old .config
-	in_container "cd $WORK/mainline && ${UB_ENV}build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
+	# SCP= for this role alone: crust in the release FIT, never in the installer's or the probe's
+	SCP_ENV=; [[ -f "$OUT/scp.bin" ]] && SCP_ENV="SCP=$(c "$OUT")/scp.bin "
+	in_container "cd $WORK/mainline && ${UB_ENV}${SCP_ENV}build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
 	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "no $B"
 	spl_size_ok "$UB_O/spl/sunxi-spl.bin"
 	# SPL = the first 32 KiB (eGON.BT0), the rest is U-Boot proper (doku/50 §Bauen)
@@ -417,7 +468,9 @@ if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 ro
 	[[ -z "$rec" || "$rec" == "$BOARD" ]] || die "the rootfs to reuse was built for board $rec, not $BOARD -- build it again (no --skip-rootfs)"
 else
 	say "7/11 rootfs ($DEBIAN_SUITE/arm64, mmdebstrap in the container as root)"
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")}" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	CRUST_ARGS=; [[ -f "$OUT/scp.bin" ]] && CRUST_ARGS="--crust $(c "$OUT")/scp.bin"
+	((WANT_STANDBY)) && CRUST_ARGS="$CRUST_ARGS --standby"
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
@@ -477,6 +530,12 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	for r in u-boot arm-trusted-firmware sunxi-tools; do
 		echo "$r: $(git -C "$MAINLINE/external/$r" rev-parse --short HEAD 2>/dev/null)$(git -C "$MAINLINE/external/$r" diff --quiet HEAD 2>/dev/null || echo ' +uncommitted')"
 	done
+	if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
+		echo "crust: ${CRUST_HEAD:0:12}${CRUST_SRC_GIVEN:+ (CRUST_SRC)} $CRUST_DEFCONFIG $CRUST_VERSION, or1k $(cut -d' ' -f1,3 "$OR1K/.h713-or1k-toolchain" 2>/dev/null)"
+	else
+		echo "crust: none - the ARISC runs the vendor firmware from the owner's dump"
+	fi
+	echo "standby: $STANDBY, $( ((WANT_STANDBY)) && echo "offered (--standby): BL31 with SYSTEM_SUSPEND, suspend allowed, h713-power" || echo "not offered: BL31 without SYSTEM_SUSPEND, AllowSuspend=no")"
 	GIT_ROOT=$(git -C "$MAINLINE" rev-parse --show-toplevel 2>/dev/null || true)
 	# No directory name in the stamp: that is local and tells a reader nothing.
 	if [[ "$GIT_ROOT" == "$MAINLINE" ]]; then W=mainline; else W=repo; fi
@@ -489,6 +548,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	for f in spl-release.bin uboot-proper-release.bin hy310-env-release.bin u-boot-installer.bin h713-kernel.fit modules/aic8800_bsp.ko modules/aic8800_fdrv.ko; do
 		printf '  %-28s %s\n' "$f" "$(sha256sum "$OUT/$f" | cut -c1-16)"
 	done
+	[[ -f "$OUT/scp.bin" ]] && printf '  %-28s %s\n' "scp.bin (crust)" "$(sha256sum "$OUT/scp.bin" | cut -c1-16)"
 	printf '  %-28s %s\n' "h713-tv.aarch64-linux-gnu" "$(sha256sum "$TV" | cut -c1-16)"
 	printf '  %-28s %s\n' "mesa-panfrost-25.0.7.tar" "$(sha256sum "$MESA" | cut -c1-16)"
 	printf '  %-28s %s\n' "hy310-rootfs.tar" "$(sha256sum "$ROOTFS/out/hy310-rootfs.tar" | cut -c1-16)"

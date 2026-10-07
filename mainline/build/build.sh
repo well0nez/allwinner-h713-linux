@@ -21,6 +21,9 @@
 #                       variants/<name>/variant.env): its DRAM clock goes into U-Boot.
 #                       Unset on such a board, U-Boot is the base at its lower clock.
 #   JOBS=N              parallelism (default: nproc)
+#   H713_STANDBY=1      BL31 with PSCI SYSTEM_SUSPEND, the standby through crust
+#                       (release/build-all.sh --standby); only for a verified board
+#                       whose board.env names CRUST_DEFCONFIG
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -89,6 +92,7 @@ if [ ! -f "$BOARD_ENV" ]; then
 fi
 grep -q '^KERNEL_DTB=' "$BOARD_ENV" ||
   { echo "error: $BOARD_ENV sets no KERNEL_DTB (empty is allowed, missing is not)" >&2; exit 2; }
+unset CRUST_DEFCONFIG    # a board key only: never from the caller's environment
 # shellcheck source=/dev/null
 source "$BOARD_ENV"
 [ "${BOARD_ID:-}" = "$BOARD" ] ||
@@ -150,14 +154,26 @@ verify_kernel_tarball() {
 }
 
 # --- TF-A BL31 --------------------------------------------------------------
+# PSCI SYSTEM_SUSPEND (the standby through crust) only when asked for with H713_STANDBY=1
+# (release/build-all.sh --standby), and only for a board that names a crust build and is
+# verified (board.env CRUST_DEFCONFIG, STATUS=verified). TF-A does not track a changed flag,
+# so the build directory goes when the flag differs from the last build's.
 build_bl31() {
   have
-  log "TF-A BL31  (PLAT=$ATF_PLAT, BL31_IN_DRAM=1)"
+  local suspend=0 flag="$ATF/build/.h713-system-suspend"
+  if [ "${H713_STANDBY:-0}" = 1 ]; then
+    [ -n "${CRUST_DEFCONFIG:-}" ] && [ "${STATUS:-}" = verified ] ||
+      { echo "error: H713_STANDBY=1, but board '$BOARD' names no CRUST_DEFCONFIG or is not verified" >&2; return 1; }
+    suspend=1
+  fi
+  [ "$(cat "$flag" 2>/dev/null)" = "$suspend" ] || rm -rf "$ATF/build/$ATF_PLAT"
+  log "TF-A BL31  (PLAT=$ATF_PLAT, BL31_IN_DRAM=1, SUNXI_SYSTEM_SUSPEND=$suspend)"
   make -C "$ATF" -j"$JOBS" \
-    PLAT="$ATF_PLAT" DEBUG=0 BL31_IN_DRAM=1 \
+    PLAT="$ATF_PLAT" DEBUG=0 BL31_IN_DRAM=1 SUNXI_SYSTEM_SUSPEND="$suspend" \
     CC=clang LD=ld.lld AR=llvm-ar OC=llvm-objcopy OD=llvm-objdump \
     NM=llvm-nm READELF=llvm-readelf \
     CFLAGS='-Wno-error=deprecated-non-prototype -fno-stack-protector' bl31
+  echo "$suspend" > "$flag"
   install -m 0644 "$ATF/build/$ATF_PLAT/release/bl31.bin" "$OUT/bl31.bin"
   log "bl31.bin -> $OUT/bl31.bin ($(stat -c%s "$OUT/bl31.bin") bytes)"
 }
