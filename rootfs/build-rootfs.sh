@@ -194,7 +194,7 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 	die "--variant $VARIANT: no boards/${BOARD:-?}/variants/$VARIANT/variant.env"
 if [[ -n "$CRUST_BIN" ]]; then
 	[[ -f "$CRUST_BIN" ]] || die "--crust $CRUST_BIN: no such file"
-	( set +u; . "$PROJECT_ROOT/boards/${BOARD:-?}/board.env" 2>/dev/null && [[ -n "${CRUST_DEFCONFIG:-}" ]] ) ||
+	( set +u; unset CRUST_DEFCONFIG; . "$PROJECT_ROOT/boards/${BOARD:-?}/board.env" 2>/dev/null && [[ -n "${CRUST_DEFCONFIG:-}" ]] ) ||
 		die "--crust needs a --board whose board.env names CRUST_DEFCONFIG (the file is named after the board)"
 fi
 ((STANDBY == 0)) || { [[ -n "$CRUST_BIN" ]] && ((SKIP_PROJECT == 0)); } ||
