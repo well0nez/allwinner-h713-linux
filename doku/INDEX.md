@@ -26,9 +26,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/guides/keystone.md` | `doku/134` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/80` |
-| `docs/known-issues.md` | `doku/104`, `doku/116`, `doku/134`, `doku/60`, `doku/61` |
+| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107` |
-| `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
+| `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134` |
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/60` |
 | `docs/subsystems/cpu-comm.md` | `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/96` |
@@ -40,6 +40,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/hdmi-in.md` | `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
+| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168` |
 | `docs/subsystems/video.md` | `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/60` |
 | `docs/tools/h713-autofocus.md` | `doku/134` |
@@ -145,7 +146,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`101-plan-audio-treiber.md`](101-plan-audio-treiber.md) | Plan |  | 101 - Plan: HDMI-Audio als Treiber (Kernel + Codec + hy310-tv) | 4 |
 | [`102-plan-audio-mischung.md`](102-plan-audio-mischung.md) | Plan |  | Plan 102 - Gerätetöne mit HDMI-Ton mischen (Audio-Bridge + Mischgraph) | 3 |
 | [`103-plan-einschaltgate.md`](103-plan-einschaltgate.md) | Plan |  | Plan 103 - Einschalt-Gate: Netz an = Bereitschaft, Taste = Start | 3 |
-| [`104-plan-standby-stufe2.md`](104-plan-standby-stufe2.md) | Plan |  | Plan 104 - Einschalt-Gate Stufe 2: Stock-Standby über die ARISC | 3 |
+| [`104-plan-standby-stufe2.md`](104-plan-standby-stufe2.md) | Plan |  | Plan 104 - Einschalt-Gate Stufe 2: Stock-Standby über die ARISC | 2 |
 | [`105-plan-release.md`](105-plan-release.md) | Plan |  | Plan 105 - Release: den HY310-Stand für andere nutzbar machen | 2 |
 | [`106-handoff-20260910.md`](106-handoff-20260910.md) | Handoff | 2026-09-10 | Handoff 10.09.2026 - Stand, Todos, teuer bezahltes Wissen | - |
 | [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 5 |
@@ -204,13 +205,13 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`159-presets-und-merken-20261006.md`](159-presets-und-merken-20261006.md) | Analyse | 2026-10-06 | 159 - Presets computer/game/hdr und das Merken über den Neustart (06.10.2026) | - |
 | [`160-hdcp-haertung-aufgeraeumt-20261007.md`](160-hdcp-haertung-aufgeraeumt-20261007.md) | Analyse | 2026-10-07 | 160 - §6 HDCP-Härtung aufgeräumt, S-EL1-Reste gelöscht, der Warteschalter vorbereitet (07.10.2026) | - |
 | [`161-hdcp-haertung-paket-20261007.md`](161-hdcp-haertung-paket-20261007.md) | Analyse | 2026-10-07 | 161 - HDCP-Härtung als Paket vorbereitet (TODO 6.1, 6.2, 6.5, 6.9), offline, nicht gemessen (07.10.2026) | - |
-| [`162-crust-paket-offline-20261007.md`](162-crust-paket-offline-20261007.md) | Analyse | 2026-10-07 | 162 - Crust als Paket für den Gerätetest vorbereitet, offline, nicht gemessen (07.10.2026) | - |
-| [`163-crust-am-geraet-20261007.md`](163-crust-am-geraet-20261007.md) | Analyse | 2026-10-07 | 163 - Crust am HY310: Normalbetrieb und TF-A-Start bestanden, erstes Aufwachen aus dem Standby (07.10.2026) | - |
+| [`162-crust-paket-offline-20261007.md`](162-crust-paket-offline-20261007.md) | Analyse | 2026-10-07 | 162 - Crust als Paket für den Gerätetest vorbereitet, offline, nicht gemessen (07.10.2026) | 1 |
+| [`163-crust-am-geraet-20261007.md`](163-crust-am-geraet-20261007.md) | Analyse | 2026-10-07 | 163 - Crust am HY310: Normalbetrieb und TF-A-Start bestanden, erstes Aufwachen aus dem Standby (07.10.2026) | 2 |
 | [`164-standby-haenger-eingegrenzt-20261007.md`](164-standby-haenger-eingegrenzt-20261007.md) | Analyse | 2026-10-07 | 164 - Standby mit crust: der Stillstand nach dem Aufwachen liegt bei Display-MIPS/afbd (07.10.2026, Vormittag) | - |
-| [`165-erster-standby-zyklus-20261007.md`](165-erster-standby-zyklus-20261007.md) | Analyse | 2026-10-07 | 165 - Der erste vollständige Standby-Zyklus auf dem HY310 (07.10.2026, 12:08) | 1 |
-| [`166-standby-dram-selbstauffrischung-20261007.md`](166-standby-dram-selbstauffrischung-20261007.md) | Analyse | 2026-10-07 | 166 - Standby mit DRAM-Selbstauffrischung auf dem HY310 (07.10.2026, 12:47) | - |
-| [`167-falscher-key-power-behoben-20261007.md`](167-falscher-key-power-behoben-20261007.md) | Analyse | 2026-10-07 | 167 - Der falsche KEY_POWER nach dem Aufwachen ist behoben (07.10.2026, 13:46) | 1 |
-| [`168-stufe-c-vorbereitet-20261007.md`](168-stufe-c-vorbereitet-20261007.md) | Analyse | 2026-10-07 | 168 - Tiefschlaf (Stufe C) vorbereitet, nicht gelaufen (07.10.2026, 14:45) | - |
+| [`165-erster-standby-zyklus-20261007.md`](165-erster-standby-zyklus-20261007.md) | Analyse | 2026-10-07 | 165 - Der erste vollständige Standby-Zyklus auf dem HY310 (07.10.2026, 12:08) | 2 |
+| [`166-standby-dram-selbstauffrischung-20261007.md`](166-standby-dram-selbstauffrischung-20261007.md) | Analyse | 2026-10-07 | 166 - Standby mit DRAM-Selbstauffrischung auf dem HY310 (07.10.2026, 12:47) | 1 |
+| [`167-falscher-key-power-behoben-20261007.md`](167-falscher-key-power-behoben-20261007.md) | Analyse | 2026-10-07 | 167 - Der falsche KEY_POWER nach dem Aufwachen ist behoben (07.10.2026, 13:46) | 3 |
+| [`168-stufe-c-vorbereitet-20261007.md`](168-stufe-c-vorbereitet-20261007.md) | Analyse | 2026-10-07 | 168 - Tiefschlaf (Stufe C) vorbereitet, nicht gelaufen (07.10.2026, 14:45) | 1 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -368,7 +369,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-47 von 227 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+43 von 227 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -404,11 +405,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `159-presets-und-merken-20261006.md`
 * `160-hdcp-haertung-aufgeraeumt-20261007.md`
 * `161-hdcp-haertung-paket-20261007.md`
-* `162-crust-paket-offline-20261007.md`
-* `163-crust-am-geraet-20261007.md`
 * `164-standby-haenger-eingegrenzt-20261007.md`
-* `166-standby-dram-selbstauffrischung-20261007.md`
-* `168-stufe-c-vorbereitet-20261007.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

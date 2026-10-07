@@ -9,7 +9,7 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 [HDMI input](subsystems/hdmi-in.md) · [audio](subsystems/audio.md) · [video](subsystems/video.md) · [picture quality](subsystems/pq.md) ·
 [cpu_comm](subsystems/cpu-comm.md) · [ARISC](subsystems/arisc.md) - hot plug, EDID and the block mask · [Wi-Fi](subsystems/wifi.md) ·
 [focus motor](subsystems/focus-motor.md) · [board manager](subsystems/board-mgr.md) · [crypto engine](subsystems/crypto-engine.md) · [HDCP](subsystems/hdcp.md) - 1.4 from the boot loader, 2.2 from a service, both device-local ·
-[eMMC layout](subsystems/emmc-layout.md)
+[eMMC layout](subsystems/emmc-layout.md) · [standby](subsystems/standby.md) - off, standby and the power key
 
 **Guides:** [the settings page](guides/settings-page.md) · [keystone](guides/keystone.md) · [autofocus](guides/autofocus.md)
 

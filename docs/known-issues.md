@@ -58,8 +58,8 @@ git, not in the image" means the source has the fix but the image you can curren
 | Missing | Detail |
 |---|---|
 | No sounds of its own | Since `v0.96-beta` the DSP mixes the box's own sounds into HDMI (`hw:hy310hdmi,0`, ALSA's default; [audio](subsystems/audio.md)), measured within 0.07 dB of the HDMI level. Nothing in the image plays one yet - no click on the settings page, no confirmation tone. |
-| Standby is one stage only | Standby draws 4 W with the front LED red; a deeper sleep (under 1 W, instant-on, using the ARISC co-processor and IR/CEC wake) is designed (`doku/104`). A test build reached suspend on 03.10.2026 and never woke up, so it is parked and not in the image. |
-| The remote's keys do nothing yet | The stock remote pairs over Bluetooth and its 16 keys and the mouse arrive as Linux input events (`docs/subsystems/wifi.md`), but nothing in the image maps them to the picture, the volume or the keystone. Power is the exception: logind shuts the system down on it. The IR receiver is parked - the mouse key and the microphone key send the same infrared code. |
+| No standby in the release image | "Off" is the power gate: 4 W, LED red. Suspend to RAM through crust, our ARISC firmware, ran on the HY310 in test images on 07.10.2026 and woke on a timer, DRAM in self-refresh ([standby](subsystems/standby.md)); but after a wake the display MIPS stays parked and there is no picture until it is reloaded (TODO 3.3), so release images are built without `--standby`. Wake by CEC is not supported; the RTC alarm as a wake source is undecided; the power draw in standby is not measured. |
+| The remote's keys do nothing yet | The stock remote pairs over Bluetooth and its 16 keys and the mouse arrive as Linux input events (`docs/subsystems/wifi.md`), but nothing in the image maps them to the picture, the volume or the keystone. Power is the exception: logind shuts the system down on it (on an image with standby, [h713-power](tools/h713-power.md) decides). The IR receiver is parked - the mouse key and the microphone key send the same infrared code. |
 
 ## The image on your device may not match a fresh build
 
