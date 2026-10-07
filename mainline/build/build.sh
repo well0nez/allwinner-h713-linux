@@ -192,6 +192,12 @@ uboot_make() {
 build_uboot() {
   have
   [ -f "$OUT/bl31.bin" ] || build_bl31
+  # Same guard as build/uboot-build.sh: this U-Boot needs the address-free HDCP 1.4 service.
+  if grep -qs H713_SIP_HDCP14_STAGE "$UBOOT/arch/arm/mach-sunxi/h713_hdcp14.c" &&
+     ! grep -qaF "key set from the stage" "$OUT/bl31.bin"; then
+    echo "$OUT/bl31.bin has no address-free HDCP 1.4 service, which this U-Boot needs - run: build/build.sh bl31" >&2
+    return 1
+  fi
   local name="$BOARD${VARIANT:+-$VARIANT}"
   local O="$ROOT/build/uboot-$name"
   log "U-Boot  ($UBOOT_DEFCONFIG${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}, board=$BOARD${VARIANT:+ variant $VARIANT})"

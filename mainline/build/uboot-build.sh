@@ -25,6 +25,14 @@ ROLE=""
 [ $# -gt 0 ] && [ -f "$UBOOT/configs/fragments/h713_$1.config" ] && { ROLE="$1"; shift; }
 [ -f "$BL31" ] || { echo "missing $BL31 - run: build/build.sh bl31" >&2; exit 1; }
 [ -z "${SCP:-}" ] || [ -f "$SCP" ] || { echo "missing SCP=$SCP" >&2; exit 1; }
+# A U-Boot that talks to the address-free HDCP 1.4 service (TODO 6.1) needs a BL31 that
+# has it. With an older bl31.bin the image boots, HDCP 1.4 gets SMC_UNK, and that looks
+# like a fault on the device rather than a stale building block.
+if grep -qs H713_SIP_HDCP14_STAGE "$UBOOT/arch/arm/mach-sunxi/h713_hdcp14.c" &&
+   ! grep -qaF "key set from the stage" "$BL31"; then
+	echo "$BL31 has no address-free HDCP 1.4 service, which this U-Boot needs - run: build/build.sh bl31" >&2
+	exit 1
+fi
 F=(ARCH=arm HOSTCC=clang CC='clang -target aarch64-linux-gnu'
   LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump
   READELF=llvm-readelf STRIP=llvm-strip
