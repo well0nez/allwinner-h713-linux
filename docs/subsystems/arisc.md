@@ -181,10 +181,10 @@ frames as with the vendor's firmware, then started by BL31, then the first stand
 
   | Range | Class | Written by |
   |---|---|---|
-  | `+0x000` - `+0x1ff` | R: magic, version, status with heartbeat, wake word, the HDMI state | crust, cleared at its every start |
+  | `+0x000` - `+0x1ff` | R: magic, version, status with heartbeat, wake word, the HDMI state | crust, cleared at its every start - after a restart the kernel acknowledged, except the HDMI state at `+0x010` - `+0x0ff` |
   | `+0x200` - `+0x23f` | D: diagnosis - starts, last step, last exception, sleep length, the build word at `+0x23c` | crust; kept across its restarts |
   | `+0x240` - `+0x25f` | S: what one start saw | crust |
-  | `+0x260` - `+0x2bf` | K: compatibility, standby phase, cycle, budgets, error bits, counters | crust only; kept across its restarts |
+  | `+0x260` - `+0x2bf` | K: compatibility, standby phase, cycle, budgets, error bits, counters, the wake word until the kernel has asked for it | crust only; kept across its restarts |
   | `+0x2c0` - `+0x2cf` | A: the kernel's standby request and confirm, BL31's last event | one ARM writer per word |
   | `+0x2d0` - `+0x38f` | P: BL31's or the kernel's copy of the record of crust's last run | the ARM only |
 

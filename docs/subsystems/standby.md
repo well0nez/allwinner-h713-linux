@@ -22,7 +22,9 @@ loading the vendor's. A standby is then:
 
 1. `systemctl suspend`: systemd freezes userspace; `/etc/systemd/sleep.conf.d/10-h713.conf` allows only
    `mem` with `MemorySleepMode=deep`, never s2idle (which would power the display domains down under the
-   running display MIPS).
+   running display MIPS). By hand, `echo freeze > /sys/power/state` still asks for s2idle: the display
+   driver refuses it while the MIPS runs, and an s2idle sleep has no watchdog at all - the kernel stops the
+   SoC watchdog for every suspend, and crust takes no part in this one.
 2. The arisc driver checks that crust is alive and of contract version 5, arms the wake sources and asks
    crust to take the standby; Linux suspends its devices.
 3. PSCI `SYSTEM_SUSPEND` in BL31 sends crust the "cpu op" request. crust turns the ARM cluster off, puts
