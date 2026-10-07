@@ -290,12 +290,25 @@ if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 			|| { tail -20 "$OUT/or1k-toolchain.log"; die "the or1k toolchain failed (log: $OUT/or1k-toolchain.log)"; }
 	fi
 	CS=$(container_path "$CRUST_SRC") || die "$CRUST_SRC is in no mount of the container $CONTAINER"
-	in_container "export PATH=$(c "$OR1K")/bin:\$PATH; cd $CS && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") $CRUST_DEFCONFIG && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") scp" > "$OUT/crust-build.log" 2>&1 \
+	# crust's version text (scripts/version.sh) asks git inside the container. A worktree's .git file and a
+	# shared clone's alternates name host paths the container does not have: the text would be v0.6.10000
+	# with the hash "unknown", and step 10 refuses that. So git gets its directories by their container paths.
+	CG=$(container_path "$(git -C "$CRUST_SRC" rev-parse --absolute-git-dir)") || die "the git directory of $CRUST_SRC is in no mount of the container"
+	CR_GIT="GIT_DIR=$CG GIT_WORK_TREE=$CS"; alt="$(git -C "$CRUST_SRC" rev-parse --path-format=absolute --git-common-dir)/objects/info/alternates"
+	if [[ -s "$alt" ]]; then
+		ca=; while IFS= read -r a; do [[ -n "$a" && "$a" != \#* ]] || continue
+			a=$(container_path "$a") || die "an alternate object store of $CRUST_SRC is in no mount of the container"; ca+=${ca:+:}$a; done < "$alt"
+		CR_GIT+=" GIT_ALTERNATE_OBJECT_DIRECTORIES=$ca"
+	fi
+	in_container "export PATH=$(c "$OR1K")/bin:\$PATH $CR_GIT; cd $CS && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") $CRUST_DEFCONFIG && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") scp" > "$OUT/crust-build.log" 2>&1 \
 		|| { tail -20 "$OUT/crust-build.log"; die "crust failed (log: $OUT/crust-build.log)"; }
 	install -m 0644 "$CR_O/scp/scp.bin" "$OUT/scp.bin"
 	install -m 0644 "$CRUST_SRC/.config" "$OUT/crust.config"
 	CRUST_VERSION=$(sed -n 's/^#define VERSION_STRING "\(.*\)"$/\1/p' "$CR_O/include/version.h")
-	info "crust $CRUST_VERSION, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
+	CRUST_HASH=$(sed -n 's/^#define VERSION_HASH "\(.*\)"$/\1/p' "$CR_O/include/version.h")   # contract v5 on
+	[[ -z "$CRUST_HASH" || "$CRUST_HASH" == "g${CRUST_HEAD:0:12}"* ]] \
+		|| die "crust's notify text names the commit '$CRUST_HASH', the checkout is at ${CRUST_HEAD:0:12}: git did not see it in the container"
+	info "crust $CRUST_VERSION${CRUST_HASH:+-$CRUST_HASH}, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
 fi
 
 # --- 2. U-Boot: build, split, environment -----------------------------------
