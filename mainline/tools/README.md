@@ -27,3 +27,9 @@ cpufreq and never writes a regulator or thermal trip point directly. See
 installs matching kernel modules, validates the ext4 image, and emits an
 Android-sparse fastboot image. `customize.sh` performs target customization
 without executing target binaries. Full recipe in [../docs/rootfs.md](../docs/rootfs.md).
+
+`or1k-toolchain/build-or1k-toolchain.sh` - the bare-metal OpenRISC compiler
+(binutils 2.42, gcc 13.3.0, C and libgcc only) that crust, the ARISC firmware,
+is built with. From GNU source tarballs pinned by SHA-256, inside the build
+container, about 6 minutes; `release/build-all.sh` runs it once when the
+compiler is missing. See [../../docs/build-container.md](../../docs/build-container.md).

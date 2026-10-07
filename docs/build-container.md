@@ -54,6 +54,23 @@ podman exec -u root h713-build bash -c '
 
 Repeat this whenever you recreate the container. A fresh container has LLVM 18 again.
 
+## The OpenRISC compiler for crust
+
+crust, the firmware of the SoC's small OR1K core ([ARISC](subsystems/arisc.md)), needs an `or1k-elf` GCC,
+and Ubuntu does not package one. `release/build-all.sh` builds it the first time a board names a crust
+(`CRUST_DEFCONFIG` in its `board.env`): `mainline/tools/or1k-toolchain/build-or1k-toolchain.sh` runs in
+this container, fetches binutils 2.42 and gcc 13.3.0 from ftp.gnu.org, refuses them unless their SHA-256
+match the pinned values, lets gcc's own `contrib/download_prerequisites` fetch GMP, MPFR, MPC and ISL
+(checked against the SHA-512 list inside the pinned gcc tarball) and installs C and libgcc only into
+`mainline/build/toolchain/or1k/`. About 6 minutes on 8 cores, once; after that the compiler is kept.
+Nothing beyond the package list above is needed (bison brings `m4` for GMP). Without network, put the six
+tarballs into `mainline/build/cache/or1k/` beforehand: a tarball already there is not fetched, only
+checked. By hand:
+
+```bash
+podman exec h713-build /work/mainline/tools/or1k-toolchain/build-or1k-toolchain.sh
+```
+
 ## Check it
 
 ```bash
