@@ -27,6 +27,9 @@ BITS = {24: "H713_DRAM_SELF_REFRESH", 25: "H713_DEEP_SLEEP", 26: "H713_IR_WAKE_N
         28: "H713_DEEP_PLL_LDO", 29: "H713_SLEEP_NET", 30: "H713_TEST", 31: "H713_DEEP_AVCC_GATING"}
 REFUSED = (25, 27, 28, 30, 31)    # never in a release: deep sleep, its unmeasured steps, a test build
 GATED = (29,)                     # the sleep net: only once versions.env CRUST_RELEASE_ALLOW names it (stage S0)
+# not in the build word, gated the same way: the DRAM checksum reads low DRAM from the ARISC before and after
+# self-refresh - in the test image until the device stages show it can and raises no false alarm
+GATED_OPTIONS = ("DEBUG_VERIFY_DRAM",)
 # crust's DRAM values against U-Boot's, which trained the DRAM: crust's H713_DRAM_<x> = U-Boot's CONFIG_<y>
 DRAM = dict([("CLK", "DRAM_CLK")] + [(k, "DRAM_SUNXI_" + k) for k in
             ("ZQ", "ODT_EN", "PARA1", "PARA2", "MR0", "MR1", "MR2", "MR3", "TPR5", "TPR6", "TPR9", "TPR13")])
@@ -232,7 +235,10 @@ def main(argv=None):
         for b in REFUSED + GATED:
             if cfg.get(BITS[b]) == "y" and not (b in GATED and BITS[b] in allow):
                 fail("crust .config has CONFIG_%s=y (build word bit %d) - not for a release" % (BITS[b], b))
-        for x in set(allow) - {BITS[b] for b in GATED}:
+        for x in GATED_OPTIONS:
+            if cfg.get(x) == "y" and x not in allow:
+                fail("crust .config has CONFIG_%s=y (the DRAM checksum of the test image) - not for a release" % x)
+        for x in set(allow) - {BITS[b] for b in GATED} - set(GATED_OPTIONS):
             fail("versions.env CRUST_RELEASE_ALLOW names %s, which no release may carry" % x)
         if any(k.startswith("H713_TEST_") and v == "y" for k, v in cfg.items()):
             fail("crust .config has an H713_TEST_* option")

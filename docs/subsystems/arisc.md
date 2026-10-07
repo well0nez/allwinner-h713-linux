@@ -192,8 +192,9 @@ frames as with the vendor's firmware, then started by BL31, then the first stand
   compatibility word is not above the one it knows; else it refuses aloud instead of reading wrong.
 - **What it is built as.** The build word says the variant: bit 24 DRAM self-refresh, 26 the IR wake
   codes, and 25, 27, 28, 31 for deep sleep and its steps, 29 the sleep net, 30 a test build. A release
-  carries self-refresh (`h713_hy310_sr_defconfig`); the build gate refuses 25, 27, 28, 30 and 31, and
-  29 until its watchdog is measured. The driver's `state` file shows version, build word, standby phase,
+  carries self-refresh (`h713_hy310_sr_defconfig`); the build gate refuses 25, 27, 28, 30 and 31, 29
+  until its watchdog is measured, and the DRAM checksum of the test image (`h713_hy310_sr_test_defconfig`)
+  until the device stages show it raises no false alarm. The driver's `state` file shows version, build word, standby phase,
   last wake and the error bits, read without disturbing the firmware.
 
 ## What it does not do

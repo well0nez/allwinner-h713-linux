@@ -147,10 +147,13 @@ class Gate(unittest.TestCase):
         self.assert_refused("device tree names 'h713-arisc.bin'")
 
     def test_refused_options_and_the_sleep_net_before_its_release(self):
-        for option in ("H713_DEEP_SLEEP", "H713_DEEP_VDD_SYS", "H713_DEEP_PLL_LDO", "H713_TEST", "H713_SLEEP_NET"):
+        for option in ("H713_DEEP_SLEEP", "H713_DEEP_VDD_SYS", "H713_DEEP_PLL_LDO", "H713_TEST", "H713_SLEEP_NET",
+                       "DEBUG_VERIFY_DRAM"):
             self.crust_config("CONFIG_%s=y\n" % option)
             self.assert_refused("CONFIG_%s=y" % option)
-        self.put("versions.env", 'CRUST_RELEASE_ALLOW="H713_SLEEP_NET"\n')
+        self.put("versions.env", 'CRUST_RELEASE_ALLOW="H713_SLEEP_NET DEBUG_VERIFY_DRAM"\n')
+        self.assertEqual(self.run_gate()[0], 0)
+        self.crust_config("CONFIG_H713_SLEEP_NET=y\n")
         self.assertEqual(self.run_gate()[0], 0)
         self.put("versions.env", 'CRUST_RELEASE_ALLOW="H713_DEEP_VDD_SYS"\n')
         self.assert_refused("which no release may carry")
