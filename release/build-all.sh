@@ -284,8 +284,11 @@ CR_O="$MAINLINE/build/crust"; OR1K="$MAINLINE/build/toolchain/or1k"
 rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config"   # no crust of an earlier board in this one's image
 if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 	say "1b/11 crust $CRUST_DEFCONFIG (${CRUST_HEAD:0:12})"
-	if [[ ! -x "$OR1K/bin/or1k-elf-gcc" ]]; then
-		info "building the or1k toolchain first (log: $OUT/or1k-toolchain.log)"
+	# Reused only with the stamp the toolchain script writes last, for its pinned sources: an unfinished
+	# build or a compiler copied in from elsewhere is built again.
+	OR1K_STAMP=$(sh "$MAINLINE/tools/or1k-toolchain/build-or1k-toolchain.sh" --stamp)
+	if [[ ! -x "$OR1K/bin/or1k-elf-gcc" || "$(cat "$OR1K/.h713-or1k-toolchain" 2>/dev/null)" != "$OR1K_STAMP" ]]; then
+		info "building the or1k toolchain first, no finished one of the pinned sources is there (log: $OUT/or1k-toolchain.log)"
 		in_container "OR1K_PREFIX=$(c "$OR1K") $WORK/mainline/tools/or1k-toolchain/build-or1k-toolchain.sh" > "$OUT/or1k-toolchain.log" 2>&1 \
 			|| { tail -20 "$OUT/or1k-toolchain.log"; die "the or1k toolchain failed (log: $OUT/or1k-toolchain.log)"; }
 	fi

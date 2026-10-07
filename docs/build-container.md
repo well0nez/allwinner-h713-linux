@@ -62,7 +62,9 @@ and Ubuntu does not package one. `release/build-all.sh` builds it the first time
 this container, fetches binutils 2.42 and gcc 13.3.0 from ftp.gnu.org, refuses them unless their SHA-256
 match the pinned values, lets gcc's own `contrib/download_prerequisites` fetch GMP, MPFR, MPC and ISL
 (checked against the SHA-512 list inside the pinned gcc tarball) and installs C and libgcc only into
-`mainline/build/toolchain/or1k/`. About 6 minutes on 8 cores, once; after that the compiler is kept.
+`mainline/build/toolchain/or1k/`. About 6 minutes on 8 cores, once; after that the compiler is kept -
+as long as its stamp `.h713-or1k-toolchain`, which the script writes last, names the pinned sources. An
+unfinished build or a compiler copied in from elsewhere has no such stamp and is built again.
 Nothing beyond the package list above is needed (bison brings `m4` for GMP). Without network, put the six
 tarballs into `mainline/build/cache/or1k/` beforehand: a tarball already there is not fetched, only
 checked. By hand:

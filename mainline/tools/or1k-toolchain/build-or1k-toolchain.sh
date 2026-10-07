@@ -9,6 +9,9 @@
 #   OR1K_CACHE   where the tarballs are kept (default: mainline/build/cache/or1k)
 #   OR1K_BUILD   the build directory, deleted at the end (default: mainline/build/or1k-toolchain-build)
 #
+#   --stamp      only print the stamp a finished build writes last into the prefix (build-all.sh
+#                compares it before it reuses a compiler)
+#
 # A tarball already in OR1K_CACHE is not fetched again but checked all the same. gcc's own
 # contrib/download_prerequisites fetches GMP, MPFR, MPC and ISL into the cache and checks them
 # against contrib/prerequisites.sha512, which comes with the pinned gcc tarball; they are built
@@ -25,6 +28,8 @@ BINUTILS_SHA256=f6e4d41fd5fc778b06b7891457b3620da5ecea1006c6a4a41ae998109f85a800
 GCC=gcc-13.3.0
 GCC_SHA256=0845e9621c9543a13f484e94584a49ffc0129970e9914624235fc1d061a0c083
 JOBS=${JOBS:-$(nproc)}
+stamp() { printf '%s %s %s %s\n' $BINUTILS $BINUTILS_SHA256 $GCC $GCC_SHA256; }
+[ "${1:-}" = --stamp ] && { stamp; exit 0; }
 
 fetch() {	# fetch NAME URL SHA256 -- into the cache unless it is there, then check it either way
 	if [ ! -f "$CACHE/$1" ]; then
@@ -58,6 +63,6 @@ mkdir -p "$BLD/gcc" && cd "$BLD/gcc"
 make -s -j"$JOBS" all-gcc all-target-libgcc MAKEINFO=true >/dev/null
 make -s install-gcc install-target-libgcc MAKEINFO=true >/dev/null
 cd / && rm -rf "$BLD"
-# what build-all.sh stamps into the image's BUILD.txt
-printf '%s %s %s %s\n' $BINUTILS $BINUTILS_SHA256 $GCC $GCC_SHA256 > "$PREFIX/.h713-or1k-toolchain"
+# written last: build-all.sh reuses a compiler only with it, and stamps it into the image's BUILD.txt
+stamp > "$PREFIX/.h713-or1k-toolchain"
 "$PREFIX/bin/$TARGET-gcc" --version | head -1
