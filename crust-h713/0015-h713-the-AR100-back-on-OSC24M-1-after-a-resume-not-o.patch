@@ -1,0 +1,92 @@
+From 3f1bd3e507eb2675b9634d8e7e378fa295f1ec25 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:37:20 +0200
+Subject: [PATCH 15/34] h713: the AR100 back on OSC24M/1 after a resume, not on
+ the clock it found
+
+r_ccu_init() moves the AR100 to OSC24M/1 because every delay and timeout
+counts the tick timer at CPUCLK_MHz (24). r_ccu_resume() then wrote back
+the CPUS_CLK value found at the first start - 0x03000002, PLL_PERIPH0/3,
+whenever crust was loaded over the running vendor firmware. From the first
+resume on, every wait would have run 2.8x to 8.3x short: the 50 ms gap
+before the cluster reset, the wake timer, the HPD low phase, the key
+debounce, the power-switch ladder of the next resume. The value is kept
+for the diagnostic word only; both resume paths now write OSC24M/1.
+
+Review finding A4/B4 (07.10.2026), confirmed in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clock/sun50i-h713-r-ccu.c | 33 ++++++++++++++++++++-----------
+ 1 file changed, 22 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index d1770d6..1a7eb15 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -150,9 +150,10 @@ const struct ccu r_ccu = {
+ };
+ 
+ /*
+- * CPUS clock register as the boot loader left it. Persists across firmware
+- * restarts (.data), so a restart after an exception can still hand the
+- * original value back at resume; the linker checks the size of .data.
++ * CPUS clock register as the boot loader (or the vendor firmware before us)
++ * left it: 0x03000002, PLL_PERIPH0 / 3, when crust is loaded over the blob.
++ * Kept only for the diagnostic word; persists across firmware restarts
++ * (.data), and the linker checks the size of .data.
+  */
+ static uint32_t cpus_clk_at_boot = 0xffffffff;
+ 
+@@ -162,6 +163,21 @@ r_ccu_cpus_clk_at_boot(void)
+ 	return cpus_clk_at_boot;
+ }
+ 
++/*
++ * The one clock this firmware runs on: OSC24M / 1. Every delay and timeout
++ * counts the tick timer at CPUCLK_MHz (24), so the AR100 must be back on it
++ * after a resume, whatever it ran on before crust started - handing the
++ * boot value back would run every later wait 2.8x to 8.3x short.
++ */
++static void
++cpus_clk_osc24m(void)
++{
++	mmio_write_32(CPUS_CLK_REG,
++	              CPUS_CLK_REG_CLK_SRC(0) |
++	              CPUS_CLK_REG_PRE_DIV(0) |
++	              CPUS_CLK_REG_DIV_P(0));
++}
++
+ #if CONFIG(H713_DEEP_SLEEP)
+ /*
+  * Deep sleep, ported from the vendor ARISC firmware (blob addresses):
+@@ -309,8 +325,7 @@ r_ccu_resume(void)
+ 	udelay(100);
+ 	root_clocks_restore();                                  /* 0xde8c */
+ 	udelay(100);
+-	if (cpus_clk_at_boot != 0xffffffff)
+-		mmio_write_32(CPUS_CLK_REG, cpus_clk_at_boot);
++	cpus_clk_osc24m();      /* the blob's PLL setting is not ours */
+ }
+ 
+ #else /* !CONFIG(H713_DEEP_SLEEP) */
+@@ -328,8 +343,7 @@ r_ccu_suspend(uint8_t depth)
+ void
+ r_ccu_resume(void)
+ {
+-	if (cpus_clk_at_boot != 0xffffffff)
+-		mmio_write_32(CPUS_CLK_REG, cpus_clk_at_boot);
++	cpus_clk_osc24m();      /* unchanged in a light standby; made sure */
+ }
+ 
+ #endif
+@@ -345,8 +359,5 @@ r_ccu_init(void)
+ 	 */
+ 	if (cpus_clk_at_boot == 0xffffffff)
+ 		cpus_clk_at_boot = mmio_read_32(CPUS_CLK_REG);
+-	mmio_write_32(CPUS_CLK_REG,
+-	              CPUS_CLK_REG_CLK_SRC(0) |
+-	              CPUS_CLK_REG_PRE_DIV(0) |
+-	              CPUS_CLK_REG_DIV_P(0));
++	cpus_clk_osc24m();
+ }

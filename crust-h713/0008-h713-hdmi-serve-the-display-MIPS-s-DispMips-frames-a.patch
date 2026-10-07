@@ -1,0 +1,177 @@
+From 2f957c875f6e618cb3488bbb0cd7396c9737ec97 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:41:03 +0200
+Subject: [PATCH 08/34] h713: hdmi: serve the display MIPS's DispMips frames
+ and count them
+
+The vendor firmware runs its receive pump for a second channel: the
+display MIPS writes into sub-block 1 of the ARISC's message box user
+(0x03003500; the pump's address formula at 0x7e4c), and handler 0x1180c ->
+0x1242c acts on payload[0] 0x16 (PullHotPlug, action payload[2], port
+payload[1], 0x12330) and 0x17 (ResetEDIDModule) without an answer. Poll
+the four ports of that sub-block with the same framing, do the same two
+things (the hotplug one only once the aux block has its clock), and count
+every frame in the contract page's diagnostic words (+0x20 count, +0x24
+first four bytes) so a bench can see whether the MIPS talks at all. ARM
+frames with a type other than 0 are counted at +0x28. The diagnostic area
+grows to +0x200..+0x23f.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 81 +++++++++++++++++++++++++
+ platform/h713/include/platform/memory.h |  8 ++-
+ 2 files changed, 86 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index f844739..a5a7dda 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -63,6 +63,9 @@
+ #define DIAG_INITS      (H713_DIAG_BASE + 0x14)
+ #define DIAG_INTC_80    (H713_DIAG_BASE + 0x18)
+ #define DIAG_INTC_88    (H713_DIAG_BASE + 0x1c)
++#define DIAG_MIPS_N     (H713_DIAG_BASE + 0x20)    /* frames from the MIPS */
++#define DIAG_MIPS_LAST  (H713_DIAG_BASE + 0x24)    /* their first 4 bytes */
++#define DIAG_ARM_TYPE   (H713_DIAG_BASE + 0x28)    /* ARM frames with type != 0 */
+ #define ST_RUNNING      BIT(0)
+ #define ST_HANDSHAKE    BIT(1)
+ #define ST_EDID_MODULE  BIT(2)
+@@ -77,6 +80,18 @@
+ #define EDID_BLOCK      256
+ 
+ /* ---- message box channels (drivers/msgbox/sun50i-h713-msgbox.c) --------- */
++/*
++ * The display MIPS reaches the ARISC through sub-block 1 of the ARISC's own
++ * user (user1, 0x03003500): the pump's receive address is ((port +
++ * 0x00c00d1c) + (ch - 1) * 64) << 2 (blob 0x7e4c), so channel 2 is that
++ * sub-block. Its frames go to the "DispMips" handler 0x1180c -> 0x1242c:
++ * payload[0] 0x16 is PullHotPlug(action payload[2], port payload[1]) (0x12330),
++ * 0x17 is ResetEDIDModule (0x120f0); nothing is answered. Which of the four
++ * ports the MIPS writes is not read out of its firmware, so all four are
++ * polled; only the ARISC reads its own user, nothing else is consumed.
++ */
++#define MIPS_FIFO_STAT(p) (DEV_MSGBOX + 0x400 + 0x100 + 0x60 + 4 * (p))
++#define MIPS_MSG_DATA(p)  (DEV_MSGBOX + 0x400 + 0x100 + 0x70 + 4 * (p))
+ #define RX_PORT(p)      (2 * (p))      /* ARM -> ARISC, user1 port p */
+ #define TX_CHAN(c)      (2 * (c) + 1)  /* ARISC -> ARM, user0 channel c */
+ #define PORT_HDMI       RX_PORT(0)
+@@ -126,6 +141,9 @@ static uint32_t hpd_deadline, key_deadline;
+ static uint8_t  key_low;
+ static uint32_t pl_cfg_saved;
+ static const struct device *cir;
++static struct {
++	uint8_t state, len, idx, buf[8];
++} mips[4];
+ 
+ #define PL(pin, m, p) { .dev = &r_pio.dev, .id = SUNXI_GPIO_PIN(0, pin), \
+ 	.drive = DRIVE_10mA, .mode = m, .pull = p }
+@@ -396,6 +414,7 @@ classify(void)
+ 	uint8_t lo = sh_rd8(SH_RPM_BUF + 0), hi = sh_rd8(SH_RPM_BUF + 1);
+ 
+ 	if (pump_type != 0) {
++		mmio_write_32(DIAG_ARM_TYPE, mmio_read_32(DIAG_ARM_TYPE) + 1);
+ 		warn("H713: unknown ARM message type %u", pump_type); return;
+ 	}
+ 	if (lo == 0x11)
+@@ -438,6 +457,67 @@ pump_word(uint32_t w)
+ 	}
+ }
+ 
++/* ---- the display MIPS (blob 0x1180c "DispMips", 0x1242c) ------------------ */
++static void
++mips_frame(const uint8_t *p, uint8_t len)
++{
++	mmio_write_32(DIAG_MIPS_N, mmio_read_32(DIAG_MIPS_N) + 1);
++	mmio_write_32(DIAG_MIPS_LAST, p[0] | p[1] << 8 | p[2] << 16 |
++	              (uint32_t)p[3] << 24);
++	/* The aux block has no clock before the first ResetEDIDModule. */
++	if (len >= 3 && p[0] == 0x16 && p[1] < PORTS &&
++	    (mmio_read_32(SH_STATUS) & ST_EDID_MODULE)) {	/* 0x12330 */
++		uint8_t port = p[1], action = p[2];
++
++		if (action == 1)
++			sh_wr8(SH_HPD_COUNTER + port, sh_rd8(SH_HPD_COUNTER + port) + 1);
++		else if (action == 2 || action == 3)
++			hpd_pin(port, false),
++			sh_wr8(SH_HPD_COUNTER + port, action == 3 ? HPD_RESET_TICKS : 0);
++	} else if (len >= 1 && p[0] == 0x17) {			/* 0x120f0 */
++		reset_module();
++	}
++}
++
++/* The pump 0x7fd8 once more, for the MIPS: payload in the words, LSB first. */
++static void
++mips_poll(void)
++{
++	for (uint8_t q = 0; q < ARRAY_SIZE(mips); ++q) {
++		while (mmio_read_32(MIPS_FIFO_STAT(q))) {
++			uint32_t w = mmio_read_32(MIPS_MSG_DATA(q));
++
++			switch (mips[q].state) {
++			case 0:
++				if ((w & 0xff) != BOP_MARKER)
++					break;
++				mips[q].len = w >> 24;
++				mips[q].idx = 0;
++				for (uint8_t i = 0; i < sizeof(mips[q].buf); ++i)
++					mips[q].buf[i] = 0;
++				mips[q].state = mips[q].len > BOP_MAX_LEN ? 0 : 1;
++				break;
++			case 1:
++				mips[q].state = mips[q].len ? 2 : 0;
++				if (!mips[q].len)
++					mips_frame(mips[q].buf, 0);
++				break;
++			default:
++				for (uint8_t b = 0; b < 4 && mips[q].idx < mips[q].len;
++				     ++b, ++mips[q].idx) {
++					if (mips[q].idx < sizeof(mips[q].buf))
++						mips[q].buf[mips[q].idx] = w >> (8 * b);
++				}
++				if (mips[q].idx >= mips[q].len) {
++					mips[q].state = 0;
++					mips_frame(mips[q].buf, mips[q].len);
++				}
++				break;
++			}
++		}
++	}
++}
++
+ /* ---- the standby dispatcher on port 3 (blob 0xbca0) ----------------------- */
+ static void
+ sb_reply(uint8_t type, uint8_t result, uint32_t *data, uint8_t count)
+@@ -561,6 +641,7 @@ h713_poll(void)
+ 	while (txq_head == txq_tail &&
+ 	       msgbox_receive(&msgbox.dev, PORT_HDMI, &w) == SUCCESS)
+ 		pump_word(w);
++	mips_poll();
+ 
+ 	/* The tick (blob 0x10db4) and the wake-up (0x10f3c) of the HPD pin. */
+ 	bool tick = timeout_expired(hpd_deadline);
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 5530a4d..49c64f8 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -42,16 +42,18 @@
+ #define H713_SHARED_LIMIT SCPI_MEM_BASE
+ 
+ /*
+- * Diagnostic words inside the contract page (+0x200..+0x21f), kept across
++ * Diagnostic words inside the contract page (+0x200..+0x23f), kept across
+  * firmware restarts; the kernel driver zeroes them before it releases the
+  * core and reports them. +0x00 R_CPUCFG little-endian window enable word as
+  * found at start (0 = no window was open), +0x04/+0x08 window 0 start/end,
+  * +0x0c CPUS_CLK_REG as found at start, +0x10 the tick timer (TTCR) of the
+  * last main loop pass, +0x14 number of h713_init() runs, +0x18/+0x1c
+- * R_INTC +0x80/+0x88 as found at start.
++ * R_INTC +0x80/+0x88 as found at start, +0x20 frames received from the
++ * display MIPS, +0x24 the first four bytes of the last one, +0x28 frames
++ * from the ARM with a type other than 0, +0x2c..+0x3c reserved.
+  */
+ #define H713_DIAG_BASE    (H713_SHARED_BASE + 0x200)
+-#define H713_DIAG_LIMIT   (H713_SHARED_BASE + 0x220)
++#define H713_DIAG_LIMIT   (H713_SHARED_BASE + 0x240)
+ 
+ #define STACK_SIZE     0x00000400
+ 

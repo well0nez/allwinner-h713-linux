@@ -1,0 +1,190 @@
+From 31a9ad875b38823f887329ed14dc7addc7e936b6 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 02:16:48 +0200
+Subject: [PATCH 11/34] h713: css: the cluster down and up as the vendor
+ firmware does it
+
+FB-CRUST approximated both directions with TF-A's secondary-core cpu_on
+ladder and left out what the blob does around them. Now, blob addresses:
+down 0x4b28 - 0x4968(0) (C0_CPU_CTRL 3..0 &= ~7, CPUCFG +0 = 0),
+C0_PWRON_RESET = 0, nPORESET of CPU_UNK 3..0 cleared, CPU_SYS_RESET = 0,
+1 ms, core 0 clamp on (0x5598(1, 1)), core 0 power switch off and read
+back (0x43f0(0, 0, 0)); up 0x4cc4 - the power switch ladder with the
+blob's waits (0x43f0(0, 0, 1)), clamp off, CPU_SYS_RESET and
+C0_PWRON_RESET released, C0_CPU_CTRL(0) bit 0 = 0, 0x4968(0), CPUCFG
++0x10/C0_CPU_CTRL bit 4 = 0 (0x48cc), CPUCFG +0x14 bit 0 = 0 (0x485c),
+0x4968(1) (CPUCFG +0 = 0x13000100, C0_CPU_CTRL |= 0x106), ALT_RVBAR and
+AArch64 - and the release 0x4be4 (nPORESET, C0_CPU_CTRL(0) bit 0 = 1).
+
+Checked offline: skripte/dram_trace.py blob-css/crust-css, the same 78
+accesses and waits as 0x4b28, 0x4cc4 and 0x4be4. Not run on a device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/css/sun50i-h713-css.c | 119 ++++++++++++++++++++++++----------
+ 1 file changed, 84 insertions(+), 35 deletions(-)
+
+diff --git a/drivers/css/sun50i-h713-css.c b/drivers/css/sun50i-h713-css.c
+index 2f6f7c9..6129eda 100644
+--- a/drivers/css/sun50i-h713-css.c
++++ b/drivers/css/sun50i-h713-css.c
+@@ -6,20 +6,34 @@
+ #include <delay.h>
+ #include <mmio.h>
+ #include <scpi_protocol.h>
++#include <stdbool.h>
++#include <util.h>
+ #include <stdint.h>
+ #include <platform/cpucfg.h>
+ 
+ #include "css.h"
+ 
+ /*
+- * Cluster down: what the blob's 0x4b28 does after "cpu op req" (FB-STANDBY
+- * excerpt D): C0_PWRON_RESET = 0, bit 0 of CPU_UNK 0..3 cleared (power-on
+- * reset of every core), CPU_SYS_RESET = 0, then the clamps.
+- * Core up: the blob's 0x4cc4 (ALT_RVBAR 0x4c40, CPU_SYS_RESET = 1 and
+- * C0_PWRON_RESET = nH_RST at 0x4d14/0x4d1c, then the core-0 ladder
+- * 0x4768/0x4968/0x48cc/0x485c) done with TF-A's proven sunxi_cpu_on()
+- * sequence for the ncat register file.
++ * The cluster down and up exactly as the vendor ARISC firmware does it
++ * (blob addresses; FB-CRUST had approximated both with TF-A's cpu_on ladder):
++ *   down 0x4b28: 0x4968(0) (C0_CPU_CTRL 3..0 &= ~7, CPUCFG +0 = 0),
++ *        C0_PWRON_RESET = 0, nPORESET of CPU_UNK 3..0 cleared,
++ *        CPU_SYS_RESET = 0, 1 ms, 0x5598(1, 1) (core 0 clamp on),
++ *        0x43f0(0, 0, 0) (core 0 power switch 0xff, 30 us, until it reads 0xff)
++ *   up   0x4cc4: 0x43f0(0, 0, 1) (the switch ladder fe f8 e0 c0 80 40 00),
++ *        0x5598(1, 0) (clamp off), CPU_SYS_RESET = 1, C0_PWRON_RESET =
++ *        nH_RST, 0x4768(0, 0) (C0_CPU_CTRL(0) bit 0 = 0), 0x4968(0),
++ *        0x48cc(0) (CPUCFG +0x10 and C0_CPU_CTRL 3..0 bit 4 = 0), 0x485c(0)
++ *        (CPUCFG +0x14 bit 0 = 0), 0x4968(1) (CPUCFG +0 = 0x13000100,
++ *        C0_CPU_CTRL 0..3 |= 0x106), ALT_RVBAR (0x4c2c), AArch64 (0x4c6c)
++ *   release 0x4be4: CPU_UNK(0) |= nPORESET, 0x4768(0, 3) (C0_CPU_CTRL(0)
++ *        bit 0 = 1)
++ * The blob works on core 0 only: Linux suspends from CPU0 with 1..3 off.
+  */
++#define CPUCFG_CLS0             (DEV_CPUCFG + 0x0000)
++#define CPUCFG_10               (DEV_CPUCFG + 0x0010)
++#define CPUCFG_14               (DEV_CPUCFG + 0x0014)
++
+ static uint32_t warm_entry_lo, warm_entry_hi;
+ 
+ void
+@@ -29,54 +43,89 @@ css_set_warm_entry(uint32_t lo, uint32_t hi)
+ 	warm_entry_hi = hi;
+ }
+ 
+-void
++/* 0x4968: the cluster control word down (mode 0) or up (mode 1). */
++static void
++cluster_ctrl(bool up)
++{
++	if (!up) {
++		for (int n = MAX_CORES_PER_CLUSTER - 1; n >= 0; --n)
++			mmio_clr_32(C0_CPU_CTRL_REG(n), 0x7);
++		mmio_write_32(CPUCFG_CLS0, 0);
++	} else {
++		mmio_write_32(CPUCFG_CLS0, 0x13000100);
++		for (uint32_t n = 0; n < MAX_CORES_PER_CLUSTER; ++n)
++			mmio_set_32(C0_CPU_CTRL_REG(n), 0x106);
++	}
++}
++
++void __attribute__((noipa))
+ css_suspend_css(uint32_t new_state)
+ {
+ 	if (new_state < SCPI_CSS_OFF)
+ 		return;
+ 
+-	mmio_write_32(C0_PWRON_RESET_REG, 0);
+-	for (uint32_t i = 0; i < MAX_CORES_PER_CLUSTER; ++i)
+-		mmio_clr_32(CPU_UNK_REG(i), CPU_UNK_REG_nPORESET);
+-	mmio_write_32(CPU_SYS_RESET_REG, 0);
+-	for (uint32_t i = 0; i < MAX_CORES_PER_CLUSTER; ++i)
+-		mmio_write_32(C0_CPUn_PWR_SWITCH_REG(i), 0xff);
++	cluster_ctrl(false);                                    /* 0x4b38 */
++	mmio_write_32(C0_PWRON_RESET_REG, 0);                   /* 0x4b50 */
++	for (int n = MAX_CORES_PER_CLUSTER - 1; n >= 0; --n)   /* 0x4b5c.. */
++		mmio_clr_32(CPU_UNK_REG(n), CPU_UNK_REG_nPORESET);
++	mmio_write_32(CPU_SYS_RESET_REG, 0);                    /* 0x4ba0 */
++	udelay(1000);                                           /* 0x4ba4 */
++	mmio_set_32(CPU_UNK_REG(0), CPU_UNK_REG_CLAMP);         /* 0x5598(1, 1) */
++	if (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0xff) {  /* 0x43f0(0, 0, 0) */
++		mmio_write_32(C0_CPUn_PWR_SWITCH_REG(0), 0xff);
++		udelay(30);
++		while (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0xff) {
++			/* 0x4528 */
++		}
++	}
+ }
+ 
+-void
++void __attribute__((noipa))
+ css_resume_css(uint32_t old_state)
+ {
++	static const uint8_t ladder[] = { 0xfe, 0xf8, 0xe0, 0xc0, 0x80, 0x40 };
++	static const uint8_t wait_us[] = { 20, 10, 10, 10, 10, 10 };
++
+ 	if (old_state < SCPI_CSS_OFF)
+ 		return;
+ 
+-	/* The blob's wake side 0x4d14/0x4d1c: 0x070004a0 = 1, 0x07000440 = 0x10000. */
+-	mmio_write_32(CPU_SYS_RESET_REG, CPU_SYS_RESET);
+-	mmio_write_32(C0_PWRON_RESET_REG, C0_PWRON_RESET_REG_nH_RST);
++	/* 0x43f0(0, 0, 1): the core 0 power switch, unless it is on */
++	if (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0) {
++		for (uint32_t i = 0; i < ARRAY_SIZE(ladder); ++i) {
++			mmio_write_32(C0_CPUn_PWR_SWITCH_REG(0), ladder[i]);
++			udelay(wait_us[i]);
++		}
++		mmio_write_32(C0_CPUn_PWR_SWITCH_REG(0), 0);
++		udelay(10);                                     /* 0x44ac */
++		while (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0)
++			udelay(20);
++		while (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0) {
++			/* 0x44c4 */
++		}
++	}
++	mmio_clr_32(CPU_UNK_REG(0), CPU_UNK_REG_CLAMP);         /* 0x5598(1, 0) */
++	mmio_write_32(CPU_SYS_RESET_REG, CPU_SYS_RESET);        /* 0x4d14 */
++	mmio_write_32(C0_PWRON_RESET_REG, C0_PWRON_RESET_REG_nH_RST); /* 0x4d1c */
++	mmio_clr_32(C0_CPU_CTRL_REG(0), C0_CPU_CTRL_REG_CORE_RESET); /* 0x4768(0, 0) */
++	cluster_ctrl(false);                                    /* 0x4968(0) */
++	mmio_clr_32(CPUCFG_10, BIT(4));                         /* 0x48cc(0) */
++	for (int n = MAX_CORES_PER_CLUSTER - 1; n >= 0; --n)
++		mmio_clr_32(C0_CPU_CTRL_REG(n), BIT(4));
++	mmio_clr_32(CPUCFG_14, BIT(0));                         /* 0x485c(0) */
++	cluster_ctrl(true);                                     /* 0x4968(1) */
+ }
+ 
+-void
++void __attribute__((noipa))
+ css_resume_core(uint32_t cluster UNUSED, uint32_t core, uint32_t old_state)
+ {
+ 	if (old_state < SCPI_CSS_OFF)
+ 		return;
+ 
+-	mmio_write_32(ALT_RVBAR_LO_REG(core), warm_entry_lo);
++	mmio_write_32(ALT_RVBAR_LO_REG(core), warm_entry_lo);   /* 0x4c2c */
+ 	mmio_write_32(ALT_RVBAR_HI_REG(core), warm_entry_hi);
+-
+-	/* TF-A sunxi_cpu_on(), non-per-cluster path. */
+-	mmio_clr_32(C0_CPU_CTRL_REG(core), C0_CPU_CTRL_REG_CORE_RESET);
+-	mmio_clr_32(CPU_UNK_REG(core), CPU_UNK_REG_nPORESET);
+-	mmio_set_32(CPU_CTRL_REG(core), CPU_CTRL_REG_AA64nAA32);
+-	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0xfe);
+-	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0xf8);
+-	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0xe0);
+-	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0x80);
+-	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0x00);
+-	udelay(1);
+-	mmio_clr_32(CPU_UNK_REG(core), CPU_UNK_REG_CLAMP);
+-	mmio_set_32(CPU_UNK_REG(core), CPU_UNK_REG_nPORESET);
+-	mmio_set_32(C0_CPU_CTRL_REG(core), C0_CPU_CTRL_REG_CORE_RESET);
+-	mmio_set_32(C0_CPU_CTRL_REG(core), C0_CPU_CTRL_REG_DBG_PWRUP);
++	mmio_set_32(CPU_CTRL_REG(core), CPU_CTRL_REG_AA64nAA32); /* 0x4c6c */
++	mmio_set_32(CPU_UNK_REG(core), CPU_UNK_REG_nPORESET);   /* 0x4bfc */
++	mmio_set_32(C0_CPU_CTRL_REG(core), C0_CPU_CTRL_REG_CORE_RESET); /* 0x4768(0, 3) */
+ }
+ 
+ void

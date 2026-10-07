@@ -1,0 +1,62 @@
+From 66305ce865dd6bf64732e9bd5118c0d83fc83693 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:42:35 +0200
+Subject: [PATCH 24/34] h713: hdmi: the 0x11 answer carries a wake word once
+ per resume
+
+After a real standby SH_WAKE keeps its wake word. If Linux abandons the
+next suspend after the arisc noirq phase but before TF-A's cpu op req
+(a wakeup pending, a later noirq failure), its resume_noirq still sends
+0x11, and crust answered with the old word: dmesg counted a standby that
+never happened. The answer is the wake word only after a resume since the
+last 0x11, 0 otherwise; 0x11 also clears a wake timer armed for a standby
+that did not come. SH_WAKE itself stays the last wake word for the status
+file.
+
+Review finding B31 (07.10.2026), crust side; the kernel logs 0 as "no
+standby" (0187d).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 9145e9d..f5cf39c 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -170,6 +170,7 @@ static uint8_t  sb_n, sb_count;
+ static uint32_t sb_hdr, sb_data[8];
+ static uint32_t hpd_deadline, key_deadline, ms_deadline;
+ static bool     wake_armed;	/* .bss: false again after a firmware restart */
++static bool     woke;		/* a resume since the last 0x11 */
+ static uint8_t  key_low;
+ static uint32_t pl_cfg_saved;
+ /*
+@@ -633,8 +634,16 @@ sb_frame(void)
+ 		                    SCPI_CSS_OFF, SCPI_CSS_OFF);
+ 		break;
+ 	case TYPE_RESTORE: {	/* answered with the wake word */
+-		uint32_t wake = mmio_read_32(SH_WAKE);
+-
++		/*
++		 * Only once per resume: after a suspend Linux abandoned before
++		 * TF-A's cpu op req (an abort after the noirq phase), the word
++		 * of the previous standby must not come back as this one's;
++		 * the answer is 0 then, and a timer armed for it is cleared.
++		 */
++		uint32_t wake = woke ? mmio_read_32(SH_WAKE) : 0;
++
++		woke = false;
++		mmio_write_32(H713_DIAG_WAKE_TIMER, 0);
+ 		sb_reply(type, 0, &wake, 1);
+ 		break;
+ 	}
+@@ -841,6 +850,7 @@ h713_resume_done(void)
+ 	mmio_write_32(R_PIO_PL_DRV1, pl_drv1_saved);
+ 	mmio_write_32(R_PIO_PL_CFG0, pl_cfg0_saved);
+ 	sh_status(0, ST_ASLEEP);
++	woke = true;
+ 	/* The HPD tick did not run asleep: a deadline from before the standby
+ 	 * would not expire for up to 89 s after a long one. */
+ 	hpd_deadline = timeout_set(HPD_TICK_US);

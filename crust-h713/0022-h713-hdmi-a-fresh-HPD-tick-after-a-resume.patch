@@ -1,0 +1,32 @@
+From bbbda8be9dd0ece42846db3af3a7a54205831a7f Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:42:10 +0200
+Subject: [PATCH 22/34] h713: hdmi: a fresh HPD tick after a resume
+
+hpd_deadline is armed before the standby and the tick does not run while
+asleep. timeout_expired() is false while the deadline and the tick timer
+differ in their top bit, so after a standby longer than about 89 s the HPD
+counters could stop for up to another 89 s - an HPD reset asked for right
+after the resume would keep the pin low that long instead of 840 ms.
+
+Review finding B29 (07.10.2026), confirmed in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 560ffb7..0040363 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -837,6 +837,9 @@ h713_resume_done(void)
+ 	mmio_write_32(R_PIO_PL_DRV1, pl_drv1_saved);
+ 	mmio_write_32(R_PIO_PL_CFG0, pl_cfg0_saved);
+ 	sh_status(0, ST_ASLEEP);
++	/* The HPD tick did not run asleep: a deadline from before the standby
++	 * would not expire for up to 89 s after a long one. */
++	hpd_deadline = timeout_set(HPD_TICK_US);
+ 	/* one standby per arming, as the vendor's 0x26 */
+ 	mmio_write_32(H713_DIAG_WAKE_TIMER, 0);
+ 	info("H713: resumed, wake word %x", mmio_read_32(SH_WAKE));

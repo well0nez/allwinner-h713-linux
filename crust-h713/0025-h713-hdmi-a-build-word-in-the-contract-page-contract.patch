@@ -1,0 +1,65 @@
+From 5529c8b07beb686ce0a3e36cb0046608b7b3eba7 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:42:57 +0200
+Subject: [PATCH 25/34] h713: hdmi: a build word in the contract page, contract
+ version 3
+
+Light, self-refresh and deep images carry the same contract version and
+the same notify text, so the kernel could not tell which crust it kept: a
+rebuilt h713-crust.bin was silently not loaded over a running crust, and a
+standby test on the wrong FEL image would have been recorded as the one
+asked for. h713_init() now writes a build word (+0x23c): the image size
+(the end of .data, so the size of scp.bin) in bits 19..0, and bits 24/25/26
+for DRAM self-refresh, deep sleep and the IR code list. The kernel keeps a
+running crust only when the size matches the file it was asked for, and
+shows the word. Version 3 marks the new words of the page (step and
+exception records, sleep length, wake timer, build).
+
+Review finding B18 (07.10.2026), crust side (kernel: 0186b).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index f5cf39c..b99d00f 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -56,7 +56,9 @@
+ #define RPM_BUF_LEN     67                         /* the kernel's PAYLOAD_MAX */
+ 
+ #define H713_MAGIC      0x33313748                 /* 'H','7','1','3' */
+-#define H713_VERSION    0x00000002                 /* 2: diagnostic words */
++/* 2: diagnostic words; 3: step/exception records, sleep length, wake timer
++ * and the build word (platform/memory.h) */
++#define H713_VERSION    0x00000003
+ 
+ /* Diagnostic words (platform/memory.h), kept across firmware restarts. */
+ #define DIAG_LEWIN_EN   (H713_DIAG_BASE + 0x00)    /* written by start.S */
+@@ -204,6 +206,8 @@ static const uint32_t ir_wake_codes[] = {	/* hy310-stock.dts 2569-2611, in its o
+ };
+ #endif
+ 
++extern char __bss_start[];	/* the end of the image (scp.ld.S) */
++
+ #define sh_rd8(a)    mmio_read_8(a)
+ #define sh_wr8(a, v) mmio_write_8(a, v)
+ #define sh_status(set, clr) \
+@@ -712,6 +716,16 @@ h713_init(void)
+ 	mmio_write_32(DIAG_INTC_88, mmio_read_32(DEV_R_INTC + 0x88));
+ 	mmio_write_32(SH_MAGIC, H713_MAGIC);
+ 	mmio_write_32(SH_VERSION, H713_VERSION);
++	/*
++	 * Which crust this is: the kernel keeps a running image only when it
++	 * is the one in the file it was asked to load (same size), and shows
++	 * the variant - light, self-refresh and deep share version and notify.
++	 */
++	mmio_write_32(H713_DIAG_BUILD,
++	              (uint32_t)((uintptr_t)__bss_start - FIRMWARE_BASE) |
++	              (uint32_t)CONFIG(H713_DRAM_SELF_REFRESH) << 24 |
++	              (uint32_t)CONFIG(H713_DEEP_SLEEP) << 25 |
++	              (uint32_t)CONFIG(H713_IR_WAKE_NECX) << 26);
+ 	portmap_init();
+ 	device_get(&msgbox.dev);
+ 	send_notify();

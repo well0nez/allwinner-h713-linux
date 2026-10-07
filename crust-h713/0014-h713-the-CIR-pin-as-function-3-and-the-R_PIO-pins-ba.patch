@@ -1,0 +1,134 @@
+From d32e899093aa2b5d62ae89b9f66010ba227766d5 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 02:32:08 +0200
+Subject: [PATCH 14/34] h713: the CIR pin as function 3, and the R_PIO pins
+ back as Linux left them
+
+crust's sunxi-cir muxed the receive pin as function 2, which is s_cir on
+the H6; on the H713 PL9 takes s_cir as function 3 (kernel
+pinctrl-sun50i-h713-r.c; measured 02.10.2026: the receiver counts only
+with 3), so the IR wake could never have seen a frame. The pin function is
+Kconfig now (R_CIR_RX_PIN_MODE, 3 on the H713, 2 elsewhere as before).
+
+Taking the power key PL4 as an input and the LEDs PL0/PL1 as outputs for
+the sleep, and the CIR pin, changed the function, drive and pull of PL0..
+PL15, and gpio_put() gives none of it back: after a wake the kernel's
+gpio-keys interrupt on PL4 (EINT function) would have been dead. The
+module now keeps PL_CFG0, the drive and pull words and the LED data bits
+before anything is taken - h713_suspend_prepare() runs before cec_get()/
+cir_get() for that - and puts them back after the last release. Model
+(crust_emu): PL4 EINT, PL9 s_cir, drive/pull and the LED bits are as
+before after a key wake; asleep PL4 is an input and the red LED is on.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ common/system.c                 |  5 +++--
+ drivers/cir/Kconfig             |  9 +++++++++
+ drivers/cir/sunxi-cir.c         |  2 +-
+ drivers/hdmi/sun50i-h713-hdmi.c | 20 ++++++++++++++++++++
+ 4 files changed, 33 insertions(+), 3 deletions(-)
+
+diff --git a/common/system.c b/common/system.c
+index 2b8b5df..823236a 100644
+--- a/common/system.c
++++ b/common/system.c
+@@ -178,10 +178,11 @@ system_state_machine(uint32_t exception)
+ 			/* Release runtime-only devices. */
+ 			device_put(mailbox), mailbox = NULL;
+ 
+-			/* Acquire wakeup sources. */
++			/* Acquire wakeup sources. The H713 module first keeps
++			 * the R_PIO state the CIR pin setup would change. */
++			h713_suspend_prepare();
+ 			cec = cec_get();
+ 			cir = cir_get();
+-			h713_suspend_prepare();
+ 
+ 			/* Configure the SoC for minimal power consumption. */
+ 			record_step(STEP_SUSPEND_DRAM);
+diff --git a/drivers/cir/Kconfig b/drivers/cir/Kconfig
+index ac148f4..ebc876c 100644
+--- a/drivers/cir/Kconfig
++++ b/drivers/cir/Kconfig
+@@ -61,6 +61,15 @@ config CIR_USE_OSC24M
+ 		32768 Hz oscillator. Note that this increases power
+ 		consumption.
+ 
++config R_CIR_RX_PIN_MODE
++	int
++	default  3 if PLATFORM_H713
++	default  2
++	help
++		Pin function of the R_CIR receive pin. The H713's PL9 takes
++		s_cir as function 3 (kernel pinctrl-sun50i-h713-r.c, and the
++		measurement of 02.10.2026: the receiver counts only with 3).
++
+ config R_CIR_RX_PIN
+ 	int
+ 	default  9 if PLATFORM_H6 || PLATFORM_H713
+diff --git a/drivers/cir/sunxi-cir.c b/drivers/cir/sunxi-cir.c
+index f52686b..a104a2c 100644
+--- a/drivers/cir/sunxi-cir.c
++++ b/drivers/cir/sunxi-cir.c
+@@ -116,7 +116,7 @@ const struct sunxi_cir r_cir_rx = {
+ 		.dev   = &r_pio.dev,
+ 		.id    = SUNXI_GPIO_PIN(0, CONFIG_R_CIR_RX_PIN),
+ 		.drive = DRIVE_10mA,
+-		.mode  = 2,
++		.mode  = CONFIG_R_CIR_RX_PIN_MODE,
+ 		.pull  = PULL_NONE,
+ 	},
+ 	.regs = DEV_R_CIR_RX,
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 1299cac..a015bba 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -109,7 +109,11 @@
+ #define AUX_GATE_REG    (DEV_HDMI_AUX + 0xb04) /* EDID/DDC output, bit per port */
+ #define AUX_UNK_B08     (DEV_HDMI_AUX + 0xb08)
+ #define AUX_DDC_RAM(p)  (DEV_HDMI_AUX + 0xc00 + 0x100 * (p))
++#define R_PIO_PL_CFG0   (DEV_R_PIO + 0x000)    /* PL0..PL7 function */
+ #define R_PIO_PL_CFG1   (DEV_R_PIO + 0x004)    /* PL8..PL15 function */
++#define R_PIO_PL_DATA   (DEV_R_PIO + 0x010)
++#define R_PIO_PL_DRV0   (DEV_R_PIO + 0x014)    /* PL0..PL15 drive */
++#define R_PIO_PL_PULL0  (DEV_R_PIO + 0x01c)    /* PL0..PL15 pull */
+ 
+ #define BOP_MARKER      0xa5
+ #define BOP_MAX_LEN     128
+@@ -151,6 +155,13 @@ static uint32_t hpd_deadline, key_deadline, ms_deadline;
+ static uint32_t wake_timer_ms, wake_elapsed_ms;
+ static uint8_t  key_low;
+ static uint32_t pl_cfg_saved;
++/*
++ * PL0..PL7 as Linux left them: the power key PL4 is a gpio-keys interrupt
++ * there (EINT function), the LEDs PL0/PL1 plain outputs. Taking PL4 as an
++ * input and the LEDs for the sleep changes their function, drive and pull,
++ * and gpio_put() gives none of that back.
++ */
++static uint32_t pl_cfg0_saved, pl_drv0_saved, pl_pull0_saved, pl_data_saved;
+ static const struct device *cir;
+ static struct {
+ 	uint8_t state, len, idx, buf[8];
+@@ -679,6 +690,10 @@ void
+ h713_suspend_prepare(void)
+ {
+ 	pl_cfg_saved = mmio_read_32(R_PIO_PL_CFG1);	/* PL9's function */
++	pl_cfg0_saved  = mmio_read_32(R_PIO_PL_CFG0);
++	pl_drv0_saved  = mmio_read_32(R_PIO_PL_DRV0);
++	pl_pull0_saved = mmio_read_32(R_PIO_PL_PULL0);
++	pl_data_saved  = mmio_read_32(R_PIO_PL_DATA);
+ 	cir = cir_get();
+ 	if (gpio_get(&key_pin))
+ 		warn("H713: power key pin unavailable");
+@@ -743,6 +758,11 @@ h713_resume_done(void)
+ 	gpio_put(&key_pin);
+ 	device_put(cir), cir = NULL;
+ 	mmio_write_32(R_PIO_PL_CFG1, pl_cfg_saved);	/* the kernel's IR pin */
++	/* the kernel's power key interrupt and its LED state, as before */
++	mmio_clrset_32(R_PIO_PL_DATA, 0x3, pl_data_saved & 0x3);
++	mmio_write_32(R_PIO_PL_PULL0, pl_pull0_saved);
++	mmio_write_32(R_PIO_PL_DRV0, pl_drv0_saved);
++	mmio_write_32(R_PIO_PL_CFG0, pl_cfg0_saved);
+ 	sh_status(0, ST_ASLEEP);
+ 	wake_timer_ms = 0;	/* one standby at a time, as the vendor's 0x26 */
+ 	info("H713: resumed, wake word %x", mmio_read_32(SH_WAKE));

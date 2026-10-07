@@ -1,0 +1,80 @@
+From 61822178285dc24c2c7d1d6ce12054db3cb60f11 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 04:40:08 +0200
+Subject: [PATCH 26/34] h713: hdmi: no second notify after a restart Linux
+ already acknowledged
+
+A restart through an exception while awake ran h713_init() again and
+queued the 15-word notify; nobody listened. 8 words filled the channel 3
+FIFO, 7 waited in the queue, and the kernel's next standby request -
+which empties the FIFO first and then reads its answer - got the queued
+notify words ahead of the answer: "not acknowledged", standby refused,
+with the wrong cause named. Clearing the queue when the request arrived
+came too late, because the poll refilled the FIFO before it read port 3.
+
+h713_init() now sees whether this is a restart after Linux took the
+notify (start counter, magic and HANDSHAKE bit, which both loaders zero
+before a fresh start) and then sends none and keeps the handshake bit.
+The poll also reads port 3 before it refills channel 3.
+
+Model (crust_emu.py --scenario restart): after a reset-vector restart no
+word waits on channel 3, the handshake stands, 0x26 is answered cleanly;
+the image before this change leaves the notify words there.
+
+Second review finding B6 (07.10.2026), confirmed in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index b99d00f..a173c77 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -706,6 +706,17 @@ send_notify(void)
+ void
+ h713_init(void)
+ {
++	/*
++	 * A restart through an exception while awake, after Linux took the
++	 * notify (both loaders zero the start counter, the magic and the
++	 * status first): nobody listens for a second notify, and its words
++	 * would come before the answer to the next standby request. The
++	 * handshake stands; no notify.
++	 */
++	bool acked = mmio_read_32(DIAG_INITS) != 0 &&
++	             mmio_read_32(SH_MAGIC) == H713_MAGIC &&
++	             (mmio_read_32(SH_STATUS) & ST_HANDSHAKE);
++
+ 	for (uintptr_t a = H713_SHARED_BASE; a < H713_SHARED_LIMIT; a += 4) {
+ 		if (a < H713_DIAG_BASE || a >= H713_DIAG_LIMIT)
+ 			mmio_write_32(a, 0);
+@@ -728,7 +739,10 @@ h713_init(void)
+ 	              (uint32_t)CONFIG(H713_IR_WAKE_NECX) << 26);
+ 	portmap_init();
+ 	device_get(&msgbox.dev);
+-	send_notify();
++	if (acked)
++		sh_status(ST_HANDSHAKE, 0);
++	else
++		send_notify();
+ 	sh_status(ST_RUNNING, 0);
+ 	hpd_deadline = timeout_set(HPD_TICK_US);
+ }
+@@ -739,11 +753,13 @@ h713_poll(void)
+ 	uint32_t w;
+ 
+ 	q_drain(Q_REPLY);
+-	q_drain(Q_NOTIFY);
+ 	/* Standby frames always: their answers are three words at most, and
+-	 * TF-A's cpu op req must never wait behind an unread reply. */
++	 * TF-A's cpu op req must never wait behind an unread reply. Read
++	 * before channel 3 is refilled, so a request that clears the queue
++	 * (sb_frame) does so before stale words reach the emptied FIFO. */
+ 	while (msgbox_receive(&msgbox.dev, PORT_STANDBY, &w) == SUCCESS)
+ 		sb_word(w);
++	q_drain(Q_NOTIFY);
+ 	/* The pump one request at a time: the next after the last reply left. */
+ 	while (q_empty(Q_REPLY) &&
+ 	       msgbox_receive(&msgbox.dev, PORT_HDMI, &w) == SUCCESS)

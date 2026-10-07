@@ -1,0 +1,33 @@
+From 4687208a8c7984e56c347ef18d216a836bcf4e19 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:37:01 +0200
+Subject: [PATCH 07/34] h713: hdmi: the startup notify carries the version text
+ again
+
+The copy loop's condition was inverted: for every character before the NUL
+it stored 0, so the notify's thirteen data words were all zero and the
+driver logged an empty version. Found by running the image in the offline
+model (crust-20261007 skripte/crust_emu.py): the notify decoded to "".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 7de0fb9..f844739 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -514,8 +514,10 @@ send_notify(void)
+ 	static const char version[] = "crust-h713 contract v1 " VERSION_STRING;
+ 	uint8_t s[52];
+ 
+-	for (uint8_t i = 0, end = 0; i < sizeof(s); ++i)
+-		s[i] = (end || !(end = !version[i])) ? 0 : version[i];
++	for (uint8_t i = 0, end = 0; i < sizeof(s); ++i) {
++		end = end || !version[i];	/* never read past the NUL */
++		s[i] = end ? 0 : version[i];
++	}
+ 	txq_chan = CHAN_NOTIFY;
+ 	txq_put((uint32_t)TYPE_NOTIFY << 16 | 2 << 8);
+ 	txq_put(13);

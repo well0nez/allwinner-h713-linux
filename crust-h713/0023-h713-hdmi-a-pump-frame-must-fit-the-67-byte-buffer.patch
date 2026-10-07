@@ -1,0 +1,44 @@
+From c84ac44f424394a2169a216365d3dd005c119662 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:42:16 +0200
+Subject: [PATCH 23/34] h713: hdmi: a pump frame must fit the 67-byte buffer
+
+The pump accepted lengths up to 128 and wrote the payload from contract
+page +0x185 on; the buffer is 67 bytes (the kernel's PAYLOAD_MAX), so a
+desynchronised word taken for a header with length >= 124 reached the
+diagnostic words at +0x200 (the little-endian window record). The kernel
+itself writes the payload into the buffer and sends length 0. Frames
+longer than the buffer are dropped now. The MIPS frames keep their bound:
+their copy is limited to their own 8-byte buffer.
+
+Review finding B30 (07.10.2026), confirmed in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 0040363..9145e9d 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -53,6 +53,7 @@
+ #define SH_SCRATCH      (SH_GDATA + 228)           /* 65 bytes */
+ #define SH_RPM_STATE    (H713_SHARED_BASE + 0x180)
+ #define SH_RPM_BUF      (SH_RPM_STATE + 5)         /* 67 bytes */
++#define RPM_BUF_LEN     67                         /* the kernel's PAYLOAD_MAX */
+ 
+ #define H713_MAGIC      0x33313748                 /* 'H','7','1','3' */
+ #define H713_VERSION    0x00000002                 /* 2: diagnostic words */
+@@ -499,7 +500,10 @@ pump_word(uint32_t w)
+ 		pump_type = w >> 16;
+ 		pump_len  = w >> 24;
+ 		pump_idx  = 0;
+-		pump_state = pump_len > BOP_MAX_LEN ? 0 : 1;
++		/* The kernel writes the payload into the buffer itself and
++		 * sends length 0; a longer frame must still end inside it,
++		 * not in the words behind it (the diagnostic words at +0x200). */
++		pump_state = pump_len > RPM_BUF_LEN ? 0 : 1;
+ 		break;
+ 	case 1:
+ 		if (pump_len == 0) {

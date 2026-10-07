@@ -1,0 +1,100 @@
+From 82d0409d371346f18aa623f4db0ddf1f3d5de81b Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 04:43:59 +0200
+Subject: [PATCH 28/34] h713: hdmi: contract version 4 - the size of the image
+ part that never changes
+
+The build word (image size and variant) told light, self-refresh and deep
+apart, but not two builds of the same size: a fix that only changes an
+immediate (the 50 ms CPU_OP gap, aux +0x020) keeps the size, and the
+kernel kept a running old build while the log named the new file.
+
+crust now publishes, at contract page +0x1fc, the size of .text and
+.rodata from the image start (__data_start, new in scp.ld.S) - the part it
+never writes. The kernel (0186c) keeps a running crust only if, besides
+the size, these words in SRAM equal the file's; anything else is loaded
+over. Version 4 marks the word.
+
+Model (crust_emu.py --scenario reprobe): the running image counts as the
+file, a same-size image with one byte changed does not.
+
+Second review findings B8/B9 (07.10.2026), confirmed in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/or1k/scp.ld.S                      |  1 +
+ drivers/hdmi/sun50i-h713-hdmi.c         | 17 ++++++++++++-----
+ platform/h713/include/platform/memory.h |  1 +
+ 3 files changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/arch/or1k/scp.ld.S b/arch/or1k/scp.ld.S
+index c8638a7..d6e86fe 100644
+--- a/arch/or1k/scp.ld.S
++++ b/arch/or1k/scp.ld.S
+@@ -46,6 +46,7 @@ SECTIONS
+   } >SRAM_A2
+ 
+   .data . : ALIGN(4) {
++    __data_start = .;
+     *(SORT_BY_ALIGNMENT(SORT_BY_NAME(.data*)))
+     . = ALIGN(4);
+   } >SRAM_A2
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index cd686ee..101eb03 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -53,12 +53,14 @@
+ #define SH_SCRATCH      (SH_GDATA + 228)           /* 65 bytes */
+ #define SH_RPM_STATE    (H713_SHARED_BASE + 0x180)
+ #define SH_RPM_BUF      (SH_RPM_STATE + 5)         /* 67 bytes */
++#define SH_RO_SIZE      (H713_SHARED_BASE + 0x1fc) /* .text + .rodata bytes, v4 */
+ #define RPM_BUF_LEN     67                         /* the kernel's PAYLOAD_MAX */
+ 
+ #define H713_MAGIC      0x33313748                 /* 'H','7','1','3' */
+ /* 2: diagnostic words; 3: step/exception records, sleep length, wake timer
+- * and the build word (platform/memory.h) */
+-#define H713_VERSION    0x00000003
++ * and the build word (platform/memory.h); 4: the size of the part of the
++ * image that never changes (+0x1fc), which the kernel compares with the file */
++#define H713_VERSION    0x00000004
+ 
+ /* Diagnostic words (platform/memory.h), kept across firmware restarts. */
+ #define DIAG_LEWIN_EN   (H713_DIAG_BASE + 0x00)    /* written by start.S */
+@@ -206,7 +208,8 @@ static const uint32_t ir_wake_codes[] = {	/* hy310-stock.dts 2569-2611, in its o
+ };
+ #endif
+ 
+-extern char __bss_start[];	/* the end of the image (scp.ld.S) */
++extern char __data_start[];	/* the end of .text and .rodata (scp.ld.S) */
++extern char __bss_start[];	/* the end of the image */
+ 
+ #define sh_rd8(a)    mmio_read_8(a)
+ #define sh_wr8(a, v) mmio_write_8(a, v)
+@@ -742,9 +745,13 @@ h713_init(void)
+ 	mmio_write_32(SH_VERSION, H713_VERSION);
+ 	/*
+ 	 * Which crust this is: the kernel keeps a running image only when it
+-	 * is the one in the file it was asked to load (same size), and shows
+-	 * the variant - light, self-refresh and deep share version and notify.
++	 * is the one in the file it was asked to load - same size, and the
++	 * words up to SH_RO_SIZE (code and constants, nothing crust writes)
++	 * equal to the file's - and shows the variant: light, self-refresh
++	 * and deep share version and notify.
+ 	 */
++	mmio_write_32(SH_RO_SIZE,
++	              (uint32_t)((uintptr_t)__data_start - FIRMWARE_BASE));
+ 	mmio_write_32(H713_DIAG_BUILD,
+ 	              (uint32_t)((uintptr_t)__bss_start - FIRMWARE_BASE) |
+ 	              (uint32_t)CONFIG(H713_DRAM_SELF_REFRESH) << 24 |
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 3597cd2..3cfe8b3 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -37,6 +37,7 @@
+  * Contract page (this port, tables/arisc-contract.csv): the variables the
+  * Linux driver sun50i-h713-arisc reads and writes, at fixed addresses
+  * instead of the vendor build's BSS. ARM address = these + 0x100000.
++ * +0x1fc (version 4): the bytes of .text and .rodata from the image start.
+  */
+ #define H713_SHARED_BASE  0x00023800
+ #define H713_SHARED_LIMIT SCPI_MEM_BASE

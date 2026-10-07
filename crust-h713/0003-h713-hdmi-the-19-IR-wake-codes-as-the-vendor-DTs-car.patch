@@ -1,0 +1,35 @@
+From 14fdf29c2e865f78fa1b40f6c7c5f132ea9af00f Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 02:43:16 +0200
+Subject: [PATCH 03/34] h713: hdmi: the 19 IR wake codes as the vendor DTs
+ carry them (deep review 27.09.2026)
+
+FB-CRUST package (umbau/work/FB-CRUST, 27.09.2026); author line normalised by
+crust-20261007 (the clone carried "FB-CRUST <fb-crust@localhost>" or a noreply
+address without the account number).
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 59bf977..febad82 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -122,12 +122,12 @@ static const struct gpio_handle led_blue = PL(1, MODE_OUTPUT, PULL_NONE); /* dt
+ #if CONFIG(H713_IR_WAKE_NECX)
+ /* cir_param of the HY310 and HY300 Pro vendor DTs, in crust's NECX order. */
+ #define IR(addr, cmd) ((((addr) & 0xff) << 16) | ((addr) & 0xff00) | (cmd))
+-static const uint32_t ir_wake_codes[] = {
++static const uint32_t ir_wake_codes[] = {	/* hy310-stock.dts 2569-2611, in its order */
+ 	IR(0xff00, 0x14), IR(0xff00, 0x45), IR(0x2992, 0xf2), IR(0x9f00, 0x57),
+-	IR(0x4cb3, 0xdc), IR(0xff11, 0x18), IR(0xdd22, 0xdc), IR(0xff00, 0x1c),
+-	IR(0xfb04, 0x08), IR(0xef00, 0x0c), IR(0xfe01, 0x1a), IR(0xdf20, 0x4e),
+-	IR(0xfd02, 0x0d), IR(0xbf40, 0x0b), IR(0x7f80, 0x02), IR(0xfc03, 0x06),
+-	IR(0xff00, 0x12), IR(0xef10, 0x28), IR(0xa00e, 0xc9),
++	IR(0x4cb3, 0xdc), IR(0xff11, 0x18), IR(0xdd22, 0xdc), IR(0xbc00, 0x0d),
++	IR(0x4040, 0x4d), IR(0xfb04, 0x08), IR(0xfc03, 0x00), IR(0xbf00, 0x00),
++	IR(0xfb04, 0xea), IR(0xbf00, 0x42), IR(0xff00, 0xeb), IR(0x00ff, 0x14),
++	IR(0xfd02, 0x1d), IR(0xfe01, 0x00), IR(0x0707, 0x02),
+ };
+ #endif
+ 
