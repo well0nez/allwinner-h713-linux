@@ -1,0 +1,117 @@
+From 2b9a42f76cffe179b09ebd10fc943915e63e93ec Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 18:36:43 +0200
+Subject: [PATCH 41/75] h713: test builds for the net stages: starve, a silent
+ port 3, no 0030
+
+Three switches under H713_TEST (build word bit 30, which the kernel
+reports and the release gates refuse), each for one device stage of the
+release design that provokes a failure on purpose:
+
+- H713_TEST_STARVE_NET (N2): no feed from 2 s into the sleep on, so
+  the R_WDOG has to fire in the middle of a self-refresh sleep.
+- H713_TEST_PORT3_SILENT (N4): port 3 is not read while a request is
+  taken, so TF-A's cpu op req stays in the FIFO and its suspend error
+  path has to reset the SoC (or else the presleep budget does).
+- H713_TEST_NO_RVBAR_KEEP (N1b): the cluster up leaves ALT_RVBAR of the
+  cores to TF-A (0030 off), to show that TF-A's own fix brings CPU1..3
+  back; the record of what the cluster up left stays.
+
+None of them is in a defconfig.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/css/sun50i-h713-css.c    |  7 +++++--
+ drivers/hdmi/sun50i-h713-hdmi.c  |  5 ++++-
+ drivers/hdmi/sun50i-h713-sleep.c |  3 +++
+ platform/h713/Kconfig            | 22 ++++++++++++++++++++++
+ 4 files changed, 34 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/css/sun50i-h713-css.c b/drivers/css/sun50i-h713-css.c
+index 4a16ecc..0a1e0e0 100644
+--- a/drivers/css/sun50i-h713-css.c
++++ b/drivers/css/sun50i-h713-css.c
+@@ -80,7 +80,9 @@ css_suspend_css(uint32_t new_state)
+ 	if (new_state < SCPI_CSS_OFF)
+ 		return;
+ 
+-	for (uint32_t n = 0; n < MAX_CORES_PER_CLUSTER; ++n) {
++	/* the test build for stage N1b leaves them to TF-A alone */
++	for (uint32_t n = 0; n < MAX_CORES_PER_CLUSTER &&
++	     !CONFIG(H713_TEST_NO_RVBAR_KEEP); ++n) {
+ 		rvbar_lo[n] = mmio_read_32(ALT_RVBAR_LO_REG(n));
+ 		rvbar_hi[n] = mmio_read_32(ALT_RVBAR_HI_REG(n));
+ 	}
+@@ -136,7 +138,8 @@ css_resume_css(uint32_t old_state)
+ 	for (uint32_t n = 1; n < MAX_CORES_PER_CLUSTER; ++n)
+ 		mmio_write_32(RVBAR_SEEN_BASE + 4 * (n - 1),
+ 		              mmio_read_32(ALT_RVBAR_LO_REG(n)));
+-	for (uint32_t n = 0; n < MAX_CORES_PER_CLUSTER; ++n) {
++	for (uint32_t n = 0; n < MAX_CORES_PER_CLUSTER &&
++	     !CONFIG(H713_TEST_NO_RVBAR_KEEP); ++n) {
+ 		mmio_write_32(ALT_RVBAR_LO_REG(n), rvbar_lo[n]);
+ 		mmio_write_32(ALT_RVBAR_HI_REG(n), rvbar_hi[n]);
+ 	}
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index cdc91f5..2162fd6 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -881,7 +881,10 @@ h713_poll(void)
+ 	 * TF-A's cpu op req must never wait behind an unread reply. Read
+ 	 * before channel 3 is refilled, so a request that clears the queue
+ 	 * (sb_frame) does so before stale words reach the emptied FIFO. */
+-	while (msgbox_receive(&msgbox.dev, PORT_STANDBY, &w) == SUCCESS)
++	while (!(CONFIG(H713_TEST_PORT3_SILENT) &&
++	         (mmio_read_32(H713_K_SB_STATE) & H713_SB_PHASE) ==
++	         H713_PH_PRESLEEP) &&
++	       msgbox_receive(&msgbox.dev, PORT_STANDBY, &w) == SUCCESS)
+ 		sb_word(w);
+ 	q_drain(Q_NOTIFY);
+ 	/* The pump one request at a time: the next after the last reply left. */
+diff --git a/drivers/hdmi/sun50i-h713-sleep.c b/drivers/hdmi/sun50i-h713-sleep.c
+index 11d6600..6a3c0c9 100644
+--- a/drivers/hdmi/sun50i-h713-sleep.c
++++ b/drivers/hdmi/sun50i-h713-sleep.c
+@@ -108,6 +108,9 @@ tick(void)
+ static void
+ feed(void)
+ {
++	if (CONFIG(H713_TEST_STARVE_NET) && phase() == H713_PH_SLEEP &&
++	    mmio_read_32(H713_K_NET_MS) >= 2000)
++		return;
+ 	h713_rwdog_feed();
+ 	feed_next = cycle_counter_read() + FEED_MS * MS;
+ }
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index de1f481..0973817 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -131,6 +131,28 @@ config H713_TEST
+ 		purpose. The kernel reports the bit as a test build; the
+ 		release gates refuse it.
+ 
++if H713_TEST
++
++config H713_TEST_STARVE_NET
++	bool "Stop feeding the sleep net 2 s into the sleep (stage N2)"
++	depends on H713_SLEEP_NET
++
++config H713_TEST_PORT3_SILENT
++	bool "Stop reading port 3 once a request is taken (stage N4)"
++	help
++		TF-A's cpu op req then stays in the FIFO, and its suspend
++		error path has to reset the SoC; else the presleep budget
++		does.
++
++config H713_TEST_NO_RVBAR_KEEP
++	bool "Leave the cores' start addresses to TF-A (stage N1b)"
++	help
++		The cluster up does not write back ALT_RVBAR of the four
++		cores (0030); TF-A's cpu_on has to. The record of what the
++		cluster up left (H713_SEEN_RVBAR) stays.
++
++endif
++
+ if H713_DRAM_SELF_REFRESH
+ 
+ config H713_DRAM_CLK

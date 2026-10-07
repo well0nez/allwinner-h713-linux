@@ -1,0 +1,72 @@
+From 5bfb059c79df265d232c3fddcf96956b61246bb3 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 23:05:42 +0200
+Subject: [PATCH 70/75] configs: h713: the DRAM checksum in a test image only,
+ not in the release
+
+The checksum reads 48 DRAM words from the AR100 before and after every
+self-refresh (0x40000004..0x46000000, BL31 lies at 0x40000000). That
+access never ran on the device, and the measured SR runs did not have
+it: a bus error there would turn every standby into a clean reset
+(cause 5), a hang an image without the net would never wake from
+(review of the release work, M1).
+
+h713_hy310_sr and h713_hy300pro_sr leave CONFIG_DEBUG_VERIFY_DRAM out
+again. The new h713_hy310_sr_test_defconfig is the image of the net
+stages from N1 on - self-refresh, the sleep net and the checksum - so
+the reads are measured there before a release image carries them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy300pro_sr_defconfig   |  2 +-
+ configs/h713_hy310_sr_defconfig      |  2 +-
+ configs/h713_hy310_sr_test_defconfig | 14 ++++++++++++++
+ 3 files changed, 16 insertions(+), 2 deletions(-)
+ create mode 100644 configs/h713_hy310_sr_test_defconfig
+
+diff --git a/configs/h713_hy300pro_sr_defconfig b/configs/h713_hy300pro_sr_defconfig
+index 531e3d7..15fe646 100644
+--- a/configs/h713_hy300pro_sr_defconfig
++++ b/configs/h713_hy300pro_sr_defconfig
+@@ -6,7 +6,7 @@ CONFIG_CIR_USE_OSC24M=y
+ CONFIG_I2C_PINS_NONE=y
+ # CONFIG_SERIAL is not set
+ CONFIG_DEBUG_RECORD_STEPS=y
+-CONFIG_DEBUG_VERIFY_DRAM=y
++# CONFIG_DEBUG_VERIFY_DRAM is not set
+ CONFIG_H713_DRAM_SELF_REFRESH=y
+ CONFIG_H713_DRAM_CLK=636
+ CONFIG_H713_BOARD_ID=2
+diff --git a/configs/h713_hy310_sr_defconfig b/configs/h713_hy310_sr_defconfig
+index 23e5090..6cff7ae 100644
+--- a/configs/h713_hy310_sr_defconfig
++++ b/configs/h713_hy310_sr_defconfig
+@@ -6,7 +6,7 @@ CONFIG_CIR_USE_OSC24M=y
+ CONFIG_I2C_PINS_NONE=y
+ # CONFIG_SERIAL is not set
+ CONFIG_DEBUG_RECORD_STEPS=y
+-CONFIG_DEBUG_VERIFY_DRAM=y
++# CONFIG_DEBUG_VERIFY_DRAM is not set
+ CONFIG_H713_DRAM_SELF_REFRESH=y
+ CONFIG_H713_BOARD_ID=1
+ CONFIG_H713_LED_RED_PIN=0
+diff --git a/configs/h713_hy310_sr_test_defconfig b/configs/h713_hy310_sr_test_defconfig
+new file mode 100644
+index 0000000..a8a698c
+--- /dev/null
++++ b/configs/h713_hy310_sr_test_defconfig
+@@ -0,0 +1,14 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_DEBUG_VERIFY_DRAM=y
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_SLEEP_NET=y
++CONFIG_H713_BOARD_ID=1
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1

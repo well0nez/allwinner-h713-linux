@@ -1,0 +1,29 @@
+From 37cb8b8af262877367496ef27e8659643942aad9 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:19:12 +0200
+Subject: [PATCH 55/75] h713: hdmi: requests that get no answer are counted
+
+A RequestEDID for a port above 2 and an unknown 0x15 sub-command got no
+reply and left no trace; the kernel waited its 2 s and failed with a
+timeout that pointed nowhere (PRUEFUNG5 F16 a). They now count in
+CNT0[23:16], with the unknown ARM types and sub-commands.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index c090125..9719505 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -599,6 +599,9 @@ group_15(uint8_t hi)
+ 		}
+ 		if (sh_rd8(SH_EDID_READY) && sh_rd8(SH_EDID_GATE))
+ 			aux_gate(0x7, true);
++	} else {
++		/* no answer: the ARM gives up after its 2 s (PRUEFUNG5 F16) */
++		h713_cnt(H713_CNT_ARM_UNKNOWN);
+ 	}
+ }
+ 

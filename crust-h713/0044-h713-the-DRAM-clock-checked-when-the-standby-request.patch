@@ -1,0 +1,119 @@
+From 4e0801e745d3245e5ffbeaa232b514f81c69dfae Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 18:54:00 +0200
+Subject: [PATCH 44/75] h713: the DRAM clock checked when the standby request
+ is taken
+
+The self-refresh exit programs PLL_DDR0 from para.clk, the DRAM clock
+crust was built with (CONFIG_H713_DRAM_CLK). An image for another board
+or a U-Boot with another DRAM clock would bring the DRAM back at a clock
+it was not trained for, and nothing at load time showed it (PRUEFUNG5
+F6, CS-17).
+
+h713_dram_clk_ok() compares N of the running PLL_DDR0 with para.clk *
+2 / 24, the formula of pll_ddr_init() and of U-Boot's
+iw12_pll_ddr_init(). It runs when 0x25/0x26 takes the kernel's net
+request: the word goes to DRAM_PLL (K block), and on a mismatch the
+request is not taken (error bit 11), so the kernel refuses the standby
+before anything sleeps. There is no fallback to a light standby. Light
+images have no self-refresh exit and skip the check (DRAM_PLL 0).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/dram/sun50i-h713-dram.c         | 22 ++++++++++++++++++++++
+ drivers/hdmi/sun50i-h713-sleep.c        | 11 ++++++++++-
+ include/drivers/dram/sun50i-h713-dram.h |  7 +++++++
+ 3 files changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/dram/sun50i-h713-dram.c b/drivers/dram/sun50i-h713-dram.c
+index 7116837..66f82e8 100644
+--- a/drivers/dram/sun50i-h713-dram.c
++++ b/drivers/dram/sun50i-h713-dram.c
+@@ -456,6 +456,20 @@ h713_dram_error(void)
+ 	return phy_error;
+ }
+ 
++/*
++ * The exit side programs PLL_DDR0 from para.clk (pll_ddr_init, as boot0
++ * and U-Boot do), so a para.clk other than the boot loader's would bring
++ * the DRAM back at another clock than it was trained for (PRUEFUNG5 F6,
++ * CS-17). Checked when the kernel's request is taken, before the sleep.
++ */
++bool
++h713_dram_clk_ok(uint32_t *pll)
++{
++	*pll = mmio_read_32(PLL_DDR0);
++
++	return ((*pll >> 8) & 0xff) + 1 == para.clk * 2 / 24;
++}
++
+ #else /* !CONFIG(H713_DRAM_SELF_REFRESH): light standby, the DRAM stays on */
+ 
+ void
+@@ -474,6 +488,14 @@ h713_dram_error(void)
+ 	return 0;
+ }
+ 
++bool
++h713_dram_clk_ok(uint32_t *pll)
++{
++	*pll = 0;
++
++	return true;
++}
++
+ #endif
+ 
+ void
+diff --git a/drivers/hdmi/sun50i-h713-sleep.c b/drivers/hdmi/sun50i-h713-sleep.c
+index ad51372..84740fb 100644
+--- a/drivers/hdmi/sun50i-h713-sleep.c
++++ b/drivers/hdmi/sun50i-h713-sleep.c
+@@ -27,6 +27,7 @@
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <util.h>
++#include <dram/sun50i-h713-dram.h>
+ #include <hdmi/sun50i-h713-hdmi.h>
+ #include <platform/devices.h>
+ #include <platform/memory.h>
+@@ -139,7 +140,7 @@ h713_sleep_request(void)
+ {
+ 	uint32_t req = mmio_read_32(H713_A_NET_REQ);
+ 	uint32_t bud = mmio_read_32(H713_A_NET_BUDGET);
+-	uint32_t cycle = mmio_read_32(H713_K_CYCLE) + 1, st = state();
++	uint32_t cycle = mmio_read_32(H713_K_CYCLE) + 1, st = state(), pll;
+ 	uint8_t  fmt = req >> 16, ph = st & H713_SB_PHASE, why = 0;
+ 
+ 	if (!req)
+@@ -156,6 +157,14 @@ h713_sleep_request(void)
+ 		h713_err(H713_ERR_NET_REQ, why, req);
+ 		return;
+ 	}
++	/* The DRAM clock the self-refresh exit will set: on a mismatch the
++	 * request is not taken, and the kernel refuses the standby. */
++	why = !h713_dram_clk_ok(&pll);
++	mmio_write_32(H713_K_DRAM_PLL, pll);
++	if (why) {
++		h713_err(H713_ERR_DRAM_PLL, 0, pll);
++		return;
++	}
+ 	mmio_write_32(H713_K_CYCLE, cycle);
+ 	mmio_write_32(H713_K_NET_ACC,
+ 	              budget(bud & 0xffff) | budget(bud >> 16) << 16);
+diff --git a/include/drivers/dram/sun50i-h713-dram.h b/include/drivers/dram/sun50i-h713-dram.h
+index 831b369..7400a1e 100644
+--- a/include/drivers/dram/sun50i-h713-dram.h
++++ b/include/drivers/dram/sun50i-h713-dram.h
+@@ -15,4 +15,11 @@
+  */
+ uint32_t h713_dram_error(void);
+ 
++/**
++ * Does PLL_DDR0 run at the rate the self-refresh exit programs (N from
++ * para.clk)? Stores the register in @pll. Always true, with @pll 0,
++ * without self-refresh.
++ */
++bool h713_dram_clk_ok(uint32_t *pll);
++
+ #endif /* DRIVERS_DRAM_SUN50I_H713_DRAM_H */

@@ -1,0 +1,63 @@
+From d40192cfcc27f0bec2b689fa3a26f5b9901460d3 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:13:18 +0200
+Subject: [PATCH 51/75] h713: hdmi: an acknowledged restart keeps the HDMI
+ bytes of the page
+
+A firmware restart while awake zeroed the whole page outside the diag
+words, the HPD counters, ready, gate and mask bytes and the port map
+included, and cleared the EDID-module bit - while the aux clock, the
+pin, the gate and the DDC RAM kept their state. Afterwards hpd_pin() saw
+gate 0 and held the pin low, a pulse under way never ended, and a
+HostHDMIMAP was lost (PRUEFUNG5 F2).
+
+When the restart is acknowledged (Linux took the notify), +0x010..+0x0ff
+stays (contract v5, class R), portmap_init() is skipped, and the status
+bit comes from the hardware (aux_clocked()). edid[] is gone with .bss,
+so publish() waits for the next upload; until then the DDC RAM keeps
+what it served. The kernel's side - noticing the restart and replaying
+the EDID - is A5 of the release design.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 18 +++++++++++++++---
+ 1 file changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 2a39614..617dfdd 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -873,10 +873,19 @@ h713_init(void)
+ 	 * Contract v5 (platform/memory.h): R and S at every start; K and X
+ 	 * only at the first one after a load (a v4 kernel zeroes the diag
+ 	 * words, not K), so the record survives an exception restart. D, A
+-	 * and P are the loaders'.
++	 * and P are the loaders'. An acknowledged restart also keeps R's
++	 * HDMI bytes (+0x010..+0x0ff: HPD counters, ready, gate, mask, port
++	 * map): the aux block, the pin and the DDC RAM keep their state
++	 * across it, so a pulse under way ends and the pin can rise again
++	 * (PRUEFUNG5 F2). edid[] is gone with .bss; publish() waits for the
++	 * next upload.
+ 	 */
+ 	for (uintptr_t a = H713_SHARED_BASE; a < H713_SEEN_LIMIT; a += 4) {
+-		if (a < H713_DIAG_BASE || a >= H713_DIAG_LIMIT)
++		bool kept = (a >= H713_DIAG_BASE && a < H713_DIAG_LIMIT) ||
++		            (acked && a >= H713_R_KEPT_BASE &&
++		             a < H713_R_KEPT_LIMIT);
++
++		if (!kept)
+ 			mmio_write_32(a, 0);
+ 	}
+ 	for (uintptr_t a = H713_K_BASE; first && a < H713_SHARED_LIMIT; a += 4) {
+@@ -912,7 +921,10 @@ h713_init(void)
+ 	mmio_write_32(H713_K_BUILD2, (BUILD2_DRAM_MHZ & 0xfff) |
+ 	              (CONFIG_H713_BOARD_ID & 0xf) << 12 |
+ 	              (BUILD2_NET_CODE & 0xff) << 16);
+-	portmap_init();
++	if (!acked)
++		portmap_init();
++	if (aux_clocked())	/* hardware state, also after a restart */
++		sh_status(ST_EDID_MODULE, 0);
+ 	/*
+ 	 * Load-bearing: system.c puts its own msgbox reference at every
+ 	 * suspend, and a last put would assert the msgbox reset (ccu.c); this

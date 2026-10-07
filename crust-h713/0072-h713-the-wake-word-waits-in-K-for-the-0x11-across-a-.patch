@@ -1,0 +1,95 @@
+From 9dde554c5ba40c25cdbe89e42312e564c7fc8aaf Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 23:09:17 +0200
+Subject: [PATCH 72/75] h713: the wake word waits in K for the 0x11, across a
+ restart
+
+The 0x11 answer came from a .bss flag and the R word WAKE (+0x00c);
+an exception restart in RESUMING - which the restart rule lets go on
+with the net armed - cleared both, the kernel got 0 for a standby that
+slept, logged "did not sleep" and sent no wake event (cross check of
+the contract, V2; seen in the model on the SR and the net image).
+
+The word of a resume now goes to K +0x2b0 (WAKE_KEPT, the first word
+of K's free space) and 0x11 answers and clears it there, still once per
+resume. A restart copies it back into WAKE, so the page reads the same
+until the 0x11. A request crust takes clears it too: a word no 0x11
+took (a lost 0x11) is not the next cycle's, which the flag let through
+to the 0x11 of an aborted suspend.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 10 ++++++----
+ drivers/hdmi/sun50i-h713-sleep.c        |  2 ++
+ platform/h713/include/platform/memory.h |  1 +
+ 3 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 5bc3d3f..204c772 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -202,7 +202,6 @@ static uint8_t  sb_n, sb_count;
+ static uint32_t sb_hdr, sb_data[8];
+ static uint32_t hpd_deadline, key_deadline, ms_deadline, sb_deadline;
+ static bool     wake_armed;	/* .bss: false again after a firmware restart */
+-static bool     woke;		/* a resume since the last 0x11 */
+ /*
+  * The power key asleep: ENTRY until it reads high once (a key held when
+  * the standby began is not a press), ARMED until KEY_DEBOUNCE low samples,
+@@ -822,10 +821,12 @@ sb_frame(void)
+ 		 * TF-A's cpu op req (an abort after the noirq phase), the word
+ 		 * of the previous standby must not come back as this one's;
+ 		 * the answer is 0 then, and a timer armed for it is cleared.
++		 * The word waits in K (h713_resume_done()), where a restart
++		 * in RESUMING does not clear it.
+ 		 */
+-		uint32_t wake = woke ? mmio_read_32(SH_WAKE) : 0;
++		uint32_t wake = mmio_read_32(H713_K_WAKE_KEPT);
+ 
+-		woke = false;
++		mmio_write_32(H713_K_WAKE_KEPT, 0);
+ 		mmio_write_32(H713_DIAG_WAKE_TIMER, 0);
+ 		h713_sleep_event(H713_EV_RESTORE);
+ 		sb_reply(type, 0, &wake, 1);
+@@ -969,6 +970,7 @@ h713_init(void)
+ 		if (a < H713_K_LIMIT || a >= H713_X_BASE)
+ 			mmio_write_32(a, 0);
+ 	}
++	mmio_write_32(SH_WAKE, mmio_read_32(H713_K_WAKE_KEPT));	/* 0x11 to come */
+ 	h713_sleep_init(first);
+ 	mmio_write_32(DIAG_CPUS_CLK, r_ccu_cpus_clk_at_boot());
+ 	mmio_write_32(DIAG_INITS, mmio_read_32(DIAG_INITS) + 1);
+@@ -1233,7 +1235,7 @@ h713_resume_done(void)
+ 	mmio_write_32(EINT_SEEN_AFTER, mmio_read_32(R_PIO_EINT_STATUS));
+ 	mmio_write_32(R_PIO_EINT_STATUS, key_bit);
+ 	sh_status(0, ST_ASLEEP);
+-	woke = true;
++	mmio_write_32(H713_K_WAKE_KEPT, mmio_read_32(SH_WAKE));	/* for 0x11 */
+ 	/* The HPD tick did not run asleep: a deadline from before the standby
+ 	 * would not expire for up to 89 s after a long one. */
+ 	hpd_deadline = timeout_set(HPD_TICK_US);
+diff --git a/drivers/hdmi/sun50i-h713-sleep.c b/drivers/hdmi/sun50i-h713-sleep.c
+index 16bda85..5e9a4e6 100644
+--- a/drivers/hdmi/sun50i-h713-sleep.c
++++ b/drivers/hdmi/sun50i-h713-sleep.c
+@@ -175,6 +175,8 @@ h713_sleep_request(void)
+ 		return;
+ 	}
+ 	mmio_write_32(H713_K_CYCLE, cycle);
++	/* a wake word no 0x11 took is not this cycle's */
++	mmio_write_32(H713_K_WAKE_KEPT, 0);
+ 	mmio_write_32(H713_K_NET_ACC,
+ 	              budget(bud & 0xffff) | budget(bud >> 16) << 16);
+ 	st = (st & H713_SB_CAUSE) | H713_SB_TAKEN | (cycle & 0xff) << 8;
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 390ed94..a7f9ac3 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -125,6 +125,7 @@
+ #define H713_K_DRAM_PLL      H713_PAGE(0x2a4) /* PLL_DDR0 when a request came in */
+ #define H713_K_SUBSTEP       H713_PAGE(0x2a8) /* deep stage only */
+ #define H713_K_DEEP_LOCK     H713_PAGE(0x2ac) /* deep stage only */
++#define H713_K_WAKE_KEPT     H713_PAGE(0x2b0) /* the last resume's wake word, until 0x11 */
+ #define H713_K_LIMIT         H713_PAGE(0x2c0)
+ 
+ /* A: written by the ARM, read by crust. */

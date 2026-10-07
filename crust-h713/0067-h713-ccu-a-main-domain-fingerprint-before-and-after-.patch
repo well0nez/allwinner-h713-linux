@@ -1,0 +1,127 @@
+From 1ef93eec0b879953078114b667a02261d88b2a22 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 21:01:41 +0200
+Subject: [PATCH 67/75] h713: ccu: a main-domain fingerprint before and after
+ the deep path
+
+Design A keeps the main domain powered and out of reset across a deep
+sleep, and crust puts back what it changed. Whether that holds - MBUS,
+the display bus, gates, pins and the PPU domains as Linux left them - is
+a question for the D1a' run, and today nothing records it (PRUEFUNG5
+deep-domains, fingerprint item).
+
+ccu_suspend() and the end of ccu_resume() now read thirteen words into
+X (+0x394 before, +0x3c8 after): CCU 0x71c, 0x90c, 0x540, 0xdd8, PH CFG0
+(UART0 pins, 0x30 a bank as the kernel's new register layout), the SoC
+watchdog's MODE, R_PRCM 0x250 and 0x260, and the status of the GPU,
+TVFE, TVCAP, VE and AV1 domains (kernel sun50i-h713-ppu.c) - those only
+while the PPU's bus gate and reset in R_PRCM 0x1ac are open, else
+0xffffffff. X +0x390 holds the cycle of each set, so a stale "after"
+shows. Reads only, all in always-on blocks; SUBSTEP 1/0 and 1/1 mark
+them. Deep sleep only.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clock/sun50i-h713-ccu.c         | 40 +++++++++++++++++++++++++
+ platform/h713/include/platform/memory.h |  5 ++++
+ 2 files changed, 45 insertions(+)
+
+diff --git a/drivers/clock/sun50i-h713-ccu.c b/drivers/clock/sun50i-h713-ccu.c
+index f252197..acfac94 100644
+--- a/drivers/clock/sun50i-h713-ccu.c
++++ b/drivers/clock/sun50i-h713-ccu.c
+@@ -6,6 +6,7 @@
+ #include <bitmap.h>
+ #include <clock.h>
+ #include <device.h>
++#include <stdbool.h>
+ #include <stdint.h>
+ #include <clock/ccu.h>
+ #include <delay.h>
+@@ -13,6 +14,7 @@
+ #include <util.h>
+ #include <platform/devices.h>
+ #include <platform/memory.h>
++#include <platform/prcm.h>
+ 
+ #include "ccu.h"
+ 
+@@ -92,10 +94,47 @@ mbus_step(uint8_t i)
+ 	mmio_write_32(H713_K_SUBSTEP, H713_SUB(H713_SUB_MBUS, i));
+ }
+ 
++/*
++ * The main-domain fingerprint (platform/memory.h, X): read before the deep
++ * path and after it, so the kernel can name a word it changed (PRUEFUNG5
++ * design A). CCU msgbox and UART gates, MBUS, the display bus, the UART0
++ * pins (PH CFG0, 0x30 a bank), the SoC watchdog's MODE, R_PRCM 0x250 and
++ * 0x260, and the status of the five PPU domains (kernel sun50i-h713-ppu.c),
++ * those only while the PPU's bus gate and reset (R_PRCM 0x1ac) are open,
++ * else 0xffffffff. Reads only.
++ */
++#define PPU_STATUS(d)   (0x07001024 + 0x80 * (d))
++#define R_PPU_BUS       (DEV_R_PRCM + 0x1ac)
++#define FP_PPU          8       /* the first PPU word */
++static const uintptr_t fp_reg[H713_X_FP_WORDS] = {
++	DEV_CCU + 0x71c, DEV_CCU + 0x90c, DEV_CCU + 0x540, DEV_CCU + 0xdd8,
++	DEV_PIO + 0x150, DEV_WDOG + 0x14, VDD_SYS_PWROFF_GATING_REG,
++	VDD_SYS_RESET_REG, PPU_STATUS(0), PPU_STATUS(1), PPU_STATUS(2),
++	PPU_STATUS(3), PPU_STATUS(4),
++};
++
++static void
++fingerprint(uint8_t after)
++{
++	uintptr_t to = after ? H713_X_FP_AFTER : H713_X_FP_BEFORE;
++	uint32_t  cycle = mmio_read_32(H713_K_CYCLE) & 0xff;
++	bool      ppu = (mmio_read_32(R_PPU_BUS) & 0x10001) == 0x10001;
++
++	mmio_write_32(H713_K_SUBSTEP, H713_SUB(H713_SUB_FP, after));
++	for (uint8_t i = 0; i < ARRAY_SIZE(fp_reg); ++i) {
++		bool skip = !ppu && i >= FP_PPU;
++
++		mmio_write_32(to + 4 * i,
++		              skip ? 0xffffffff : mmio_read_32(fp_reg[i]));
++	}
++	mmio_clrset_32(H713_X_FP_CYCLE, 0xff << 8 * after, cycle << 8 * after);
++}
++
+ /* 0xe164: the blob keeps MBUS (0x540) and PLL_PERIPH0 before the DRAM goes. */
+ void __attribute__((noinline))
+ ccu_suspend(void)
+ {
++	fingerprint(0);
+ 	mbus_saved = mmio_read_32(DEV_CCU + 0x540);
+ }
+ 
+@@ -150,6 +189,7 @@ ccu_resume(void)
+ 	mbus_step(14);
+ 	mmio_set_32(DEV_CCU + 0x540, BIT(30));
+ 	udelay(10000);
++	fingerprint(1);
+ }
+ #else
+ /* Light standby: the bus clocks of the main domain are not touched. */
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index ba6a7dd..968e5a1 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -136,6 +136,10 @@
+ /* P: the previous run's record, ARM only; X: reserved. */
+ #define H713_P_BASE          H713_PAGE(0x2d0)
+ #define H713_X_BASE          H713_PAGE(0x390)
++#define H713_X_FP_CYCLE      H713_PAGE(0x390) /* deep: 7..0 cycle of the set before, 15..8 after */
++#define H713_X_FP_BEFORE     H713_PAGE(0x394) /* deep: main-domain fingerprint, 13 words */
++#define H713_X_FP_AFTER      H713_PAGE(0x3c8)
++#define H713_X_FP_WORDS      13
+ #define H713_X_LOCK_TICKS    H713_PAGE(0x3fc) /* deep: longest PLL lock wait, 31..24 PLL, 23..0 ticks */
+ 
+ /*
+@@ -186,6 +190,7 @@
+  * names the register (PRUEFUNG5 DEEP-07). A good cycle leaves the last one.
+  */
+ #define H713_SUB(step, i)    ((step) << 8 | (i))
++#define H713_SUB_FP          1  /* main-domain fingerprint, 0 before, 1 after (ccu.c) */
+ #define H713_SUB_ROOT_OSC    2  /* root clock i to OSC24M (r-ccu.c root_clk[]) */
+ #define H713_SUB_PLL_OFF     3  /* PLL i off (r-ccu.c pll_reg[]) */
+ #define H713_SUB_LDO_OFF     4

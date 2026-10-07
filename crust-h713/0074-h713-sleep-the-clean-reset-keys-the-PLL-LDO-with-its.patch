@@ -1,0 +1,34 @@
+From ee64260bb9e0169c599d656dc2813b1df24b0dc2 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 23:10:34 +0200
+Subject: [PATCH 74/75] h713: sleep: the clean reset keys the PLL LDO with its
+ field cleared
+
+h713_fail() turned the LDO back on with "read | 0xa7 << 24 | LDO_EN",
+so a key left in bits 31..24 mixed with 0xa7 (0x5a turned into 0xff);
+r-ccu.c's pll_ldo() clears the field first since the deep stage
+(review of the release work, H3). The same here. Only images with
+H713_DEEP_PLL_LDO (blobparity) have this step.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-sleep.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-sleep.c b/drivers/hdmi/sun50i-h713-sleep.c
+index dcd0e32..49d7a14 100644
+--- a/drivers/hdmi/sun50i-h713-sleep.c
++++ b/drivers/hdmi/sun50i-h713-sleep.c
+@@ -369,8 +369,10 @@ h713_fail(uint8_t cause, uint8_t detail, uint32_t data)
+ 		mmio_clr_32(VDD_SYS_PWROFF_GATING_REG,
+ 		            AVCC_GATING | UNK_GATING_BIT_08);
+ 	if (CONFIG(H713_DEEP_PLL_LDO)) {
+-		uint32_t v = mmio_read_32(PLL_CTRL_REG1) | PLL_CTRL_REG1_KEY |
+-		             PLL_CTRL_REG1_LDO_EN;
++		/* the key field cleared first, as r-ccu.c's pll_ldo() */
++		uint32_t v = (mmio_read_32(PLL_CTRL_REG1) &
++		              ~PLL_CTRL_REG1_KEY_FIELD) |
++		             PLL_CTRL_REG1_KEY | PLL_CTRL_REG1_LDO_EN;
+ 
+ 		mmio_write_32(PLL_CTRL_REG1, v);
+ 		mmio_write_32(PLL_CTRL_REG1, v);

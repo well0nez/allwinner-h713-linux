@@ -1,0 +1,47 @@
+From d79820f5f31a8d63d1f5b19374733a240f96b02d Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:37:41 +0200
+Subject: [PATCH 57/75] drivers: sunxi-cir: a fresh decoder and an empty FIFO
+ at each probe
+
+The decoder state lives in the device's static state and the probe
+cleared neither it nor the receiver FIFO. On the H713 the probe runs at
+every suspend (cir_get() in h713_suspend_prepare): a frame cut off by
+the last wake, or samples Linux left in the FIFO, made the first IR
+press of the next standby decode against stale state, and it was lost
+(PRUEFUNG5 CS-16).
+
+The probe now zeroes the decoder context field by field (a compound
+literal would need memset) and reads the FIFO empty, at most 64
+samples, before it enables the module.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/cir/sunxi-cir.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/cir/sunxi-cir.c b/drivers/cir/sunxi-cir.c
+index a104a2c..bc98d9a 100644
+--- a/drivers/cir/sunxi-cir.c
++++ b/drivers/cir/sunxi-cir.c
+@@ -81,6 +81,20 @@ sunxi_cir_probe(const struct device *dev)
+ 	mmio_write_32(self->regs + CIR_RXCFG,
+ 	              CONFIG(CIR_USE_OSC24M) ? 0x00001404 : 0x010f0310);
+ 
++	/*
++	 * Start each suspend with a fresh decoder and an empty FIFO: what is
++	 * left from the last one, or from Linux using the receiver, is not
++	 * the start of a frame. The FIFO holds 64 samples at most.
++	 */
++	state->dec_ctx.buffer  = 0;
++	state->dec_ctx.counter = 0;
++	state->dec_ctx.bits    = 0;
++	state->dec_ctx.state   = 0;
++	state->dec_ctx.pulse   = 0;
++	state->dec_ctx.width   = 0;
++	for (int n = 0; n < 64 && mmio_read_32(self->regs + CIR_RXSTA) >> 8; ++n)
++		mmio_read_32(self->regs + CIR_RXFIFO);
++
+ 	/* Enable CIR module. */
+ 	mmio_write_32(self->regs + CIR_RXCTL, 0x33);
+ 

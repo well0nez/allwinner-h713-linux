@@ -1,0 +1,130 @@
+From 9cd5ff46d59928118dda72440ef06e9dc0583944 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:07:22 +0200
+Subject: [PATCH 50/75] h713: hdmi: every aux access asks the hardware whether
+ it is clocked
+
+The aux block 0x07091000 has no clock before the first ResetEDIDModule
+(R_PRCM 0x120 bit 16, 0x124 bit 31), and from the ARM an access then
+hangs the SoC. crust guarded only the display MIPS's 0x16 path, with the
+status bit, which a firmware restart clears while the clock stays on;
+publish, the HPD pin and RequestEDID relied on the kernel sending
+ResetEDIDModule first (PRUEFUNG5 F9).
+
+aux_clocked() reads the two R_PRCM bits, and aux_ok() asks it on every
+way in: publish(), hpd_pin(), RequestEDID and the MIPS 0x16. Without the
+clock the access is refused, error bit 5 records which way (1 publish, 2
+HPD pin, 3 RequestEDID, 4 MIPS) with R_PRCM 0x120, and CNT1[15:8]
+counts it. After a restart the MIPS's 0x16 is served again.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 41 +++++++++++++++++++++----
+ platform/h713/include/platform/memory.h |  4 +--
+ 2 files changed, 37 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 87a81f5..2a39614 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -350,6 +350,31 @@ reply_frame(uint8_t *payload, uint8_t len)
+ }
+ 
+ /* ---- the HDMI aux block --------------------------------------------------- */
++/*
++ * Is the aux block clocked and out of reset? ResetEDIDModule's first two
++ * stores (R_PRCM 0x120 bit 16, 0x124 bit 31) do that, and from the ARM an
++ * access before them hangs the SoC. Hardware state, unlike the status
++ * bit, which a firmware restart clears (PRUEFUNG5 F9).
++ */
++static bool
++aux_clocked(void)
++{
++	return (mmio_read_32(R_HDMI_AUX_GATE_REG) & BIT(16)) &&
++	       (mmio_read_32(R_HDMI_AUX_CLK_REG) & BIT(31));
++}
++
++/* Every way into the aux block asks first: refused, recorded and counted
++ * without the clock (@who: 1 publish, 2 HPD pin, 3 RequestEDID, 4 MIPS). */
++static bool
++aux_ok(uint8_t who)
++{
++	if (aux_clocked())
++		return true;
++	h713_err(H713_ERR_AUX_CLOCK, who, mmio_read_32(R_HDMI_AUX_GATE_REG));
++	h713_cnt(H713_CNT_MIPS_DROP);
++	return false;
++}
++
+ static void
+ aux_gate(uint8_t mask, bool open)
+ {
+@@ -362,8 +387,11 @@ static void
+ hpd_pin(uint8_t port, bool high)
+ {
+ 	uint32_t bit = BIT(sh_rd8(SH_PORTMAP + 8 * port + REC_PIN) & 7);
+-	uint32_t v   = mmio_read_32(AUX_HPD_REG);
++	uint32_t v;
+ 
++	if (!aux_ok(2))
++		return;
++	v = mmio_read_32(AUX_HPD_REG);
+ 	if (!sh_rd8(SH_EDID_GATE))
+ 		high = false; /* blob 0x121e4: EDID-HPD LOW while gated */
+ 	mmio_write_32(AUX_HPD_REG, high ? (v & ~bit) : (v | bit));
+@@ -381,7 +409,7 @@ publish(void)
+ {
+ 	uint8_t mask = sh_rd8(SH_EDID_MASK);
+ 
+-	if (!sh_rd8(SH_EDID_READY) || !edid_valid)
++	if (!sh_rd8(SH_EDID_READY) || !edid_valid || !aux_ok(1))
+ 		return;
+ 	aux_gate(0x7, false);
+ 	for (uint8_t port = 0; port < PORTS; ++port) {
+@@ -549,7 +577,7 @@ group_15(uint8_t hi)
+ 		frame[1] = 0xf8, frame[2] = 0x01, frame[3] = 0x01;
+ 		frame[4] = sh_rd8(SH_EDID_READY), frame[5] = 0;
+ 		reply_frame(frame, 8);
+-	} else if (hi == 3 && port < PORTS) {	/* RequestEDID: 4 x 64 bytes */
++	} else if (hi == 3 && port < PORTS && aux_ok(3)) { /* RequestEDID */
+ 		/*
+ 		 * Blob 0x1269c..0x12728: the gate closes before the DDC RAM is
+ 		 * read and opens again after the four frames (0x11cac(7, 0) and
+@@ -635,11 +663,12 @@ mips_frame(const uint8_t *p, uint8_t len)
+ 	mmio_write_32(DIAG_MIPS_N, mmio_read_32(DIAG_MIPS_N) + 1);
+ 	mmio_write_32(DIAG_MIPS_LAST, p[0] | p[1] << 8 | p[2] << 16 |
+ 	              (uint32_t)p[3] << 24);
+-	/* The aux block has no clock before the first ResetEDIDModule. */
+-	if (len >= 3 && p[0] == 0x16 && p[1] < PORTS &&
+-	    (mmio_read_32(SH_STATUS) & ST_EDID_MODULE)) {	/* 0x12330 */
++	if (len >= 3 && p[0] == 0x16 && p[1] < PORTS) {	/* 0x12330 */
+ 		uint8_t port = p[1], action = p[2];
+ 
++		/* no aux clock before the first ResetEDIDModule */
++		if (!aux_ok(4))
++			return;
+ 		if (action == 1)
+ 			sh_wr8(SH_HPD_COUNTER + port, sh_rd8(SH_HPD_COUNTER + port) + 1);
+ 		else if (action == 2 || action == 3)
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 16215a5..d941e9e 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -185,7 +185,7 @@
+ #define H713_ERR_TXQ_FULL    2
+ #define H713_ERR_SB_DROP     3
+ #define H713_ERR_CPU_OP      4
+-#define H713_ERR_AUX_CLOCK   5
++#define H713_ERR_AUX_CLOCK   5  /* detail 1 publish, 2 HPD pin, 3 RequestEDID, 4 MIPS */
+ #define H713_ERR_DRAM_PHY    6
+ #define H713_ERR_POLL        7
+ #define H713_ERR_RESTART     8
+@@ -204,7 +204,7 @@
+ #define H713_CNT_ARM_UNKNOWN (H713_K_CNT0 + 2) /* ARM type, sub-command, no answer */
+ #define H713_CNT_TXQ_FULL    (H713_K_CNT0 + 3) /* tx queue full, answer lost */
+ #define H713_CNT_STALE_REPLY (H713_K_CNT1 + 0) /* reply nobody read */
+-#define H713_CNT_MIPS_DROP   (H713_K_CNT1 + 1) /* DispMips words or frames dropped */
++#define H713_CNT_MIPS_DROP   (H713_K_CNT1 + 1) /* DispMips words/frames dropped, aux unclocked */
+ #define H713_CNT_MIPS_17     (H713_K_CNT1 + 2) /* DispMips ResetEDIDModule */
+ #define H713_CNT_MIPS_16     (H713_K_CNT1 + 3) /* DispMips PullHotPlug */
+ #define H713_CNT_TAKEN       (H713_K_CNT2 + 0) /* requests taken */

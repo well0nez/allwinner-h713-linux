@@ -7,14 +7,25 @@ base is upstream crust's `master` after v0.6). `SERIES.txt` names base, head and
 thing that says which fork commit this mirror stands on. Whoever wants to change something changes the
 fork and has the mirror generated again.
 
-Verified the way a mirror should be: applying all 34 patches onto the base produces a tree with the same
-hash as the fork head (`12f593ac4c2a`, 07.10.2026).
+Verified the way a mirror should be: applying all 75 patches onto the base produces a tree with the same
+hash as the fork head (`e76287912083`, 08.10.2026).
 
 **Not published yet.** The fork has no public repository so far, and there is no submodule
 `mainline/external/crust`; `release/build-all.sh` takes the checkout from `CRUST_SRC=<dir>` until there
-is one, and its stamp says so. The contract-v5 work (watchdog net, standby phases,
-counters) is a second set of commits on the same branch and comes into this mirror when it is merged;
-`SERIES.txt` will then name the new head.
+is one. A checkout made from this mirror:
+
+```sh
+git clone https://github.com/crust-firmware/crust crust   # a full clone: the version text needs its tags
+git -C crust checkout -b h713 499a362645e6
+git -C crust am ../crust-h713/0*.patch                     # tree = e76287912083, as above
+CRUST_SRC=$PWD/crust release/build-all.sh --version <v> --board hy310
+```
+
+`git am` gives the commits new hashes, so crust's version text names another commit than the fork head and
+the stamp says "reproducible: no"; the tree is the same. The checkout has to lie inside the directory the
+build container mounts. A worktree or a `git clone --shared` works too: build-all hands the container
+the git directory itself (`GIT_DIR`, `GIT_WORK_TREE`), so crust's version text names the commit and not
+`v0.6.10000` with an `unknown` hash.
 
 ## What it is
 
@@ -33,6 +44,14 @@ they did to the vendor's `scp.bin`:
   the build word among them; `0029` - `0032` ran on the HY310 on 07.10.2026 (`doku/163` - `doku/167`).
 - **`0010`, `0013`, `0033`, `0034`** deep sleep and the HY300 Pro images: built, deep sleep compared
   with the vendor firmware's traces; no deep sleep has run on a device, and none is a release variant.
+- **`0035` - `0075`** contract version 5, what a release needs: the page as one table in
+  `platform/memory.h` with compatibility word, build word, error bits and counters (`0035` - `0037`,
+  `0075`); the sleep net on the R_WDOG, the standby phases with the kernel's request and confirm, and one
+  clean reset for every fatal error (`0038` - `0041`, `0072` - `0074`); bounded polls and the DRAM checks
+  (`0042` - `0046`, `0070`: the DRAM checksum only in a test image); the HDMI and wake-path fixes of the
+  review (`0047` - `0059`, `0071`); the first deep-sleep stage, no release variant (`0060` - `0068`); a
+  build fix for the other platforms (`0069`). Built and run in emulation and against the traces; none of
+  `0035` - `0075` has run on a device yet - contract version 4 (`0032`) is what ran.
 
 Which variant a release carries is `CRUST_DEFCONFIG` in `boards/<id>/board.env`, and
 `release/check-crust.py` refuses a build whose `.config` carries one the release must not have (deep

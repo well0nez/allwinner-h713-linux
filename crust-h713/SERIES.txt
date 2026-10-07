@@ -1,5 +1,5 @@
 # Generated -- do not edit.
-# git format-patch -q --no-signature -o crust-h713 499a362645e6..1957ee674762 in the crust fork (07.10.2026)
+# git format-patch -q --no-signature -o crust-h713 499a362645e6..a5723aa6870b in the crust fork (08.10.2026)
 base   499a362645e6ce6ac1fd8ea8d0f25d4df6690688  (crust-firmware/crust, branch master)
-head   1957ee67476285d46790566675b1466999f4ad3a  (well0nez/crust, branch h713 - not published yet)
-count  34
+head   a5723aa6870bc749c166b7de1d9621d710b5a1cd  (well0nez/crust, branch h713 - not published yet)
+count  75

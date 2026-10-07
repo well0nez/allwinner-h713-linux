@@ -1,7 +1,7 @@
 From 0ad76f8cd5fcce782ae4d8309532e94a62a7e807 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:36:00 +0200
-Subject: [PATCH 06/34] h713: no GP2 record for a start through the reset
+Subject: [PATCH 06/75] h713: no GP2 record for a start through the reset
  vector
 
 record_exception() writes RTC GP2, which on the H713 is the vendor

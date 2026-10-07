@@ -1,0 +1,121 @@
+From 33255461a590e56cbee9941fbd8187173a5930b1 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 20:58:49 +0200
+Subject: [PATCH 65/75] h713: r-ccu: the PLL LDO goes off only with every PLL
+ off, key masked
+
+The LDO step (H713_DEEP_PLL_LDO, off by default since 6d6d18c and
+only behind H713_HOSC_IS_DCXO) ORed the unlock key into what
+PLL_CTRL_REG1 read, so a key left in bits 31..24 would mix with 0xa7,
+and it cut the PLLs' supply whatever the PLLs read.
+
+Both writes now clear the key field first, as upstream's
+write_pll_ctrl_reg1() does; CRYSTAL_EN and the LDO output bits stay as
+read. On the way down the LDO goes off only if all twelve PLLs read
+disabled; else it stays on and DEEP_LOCK bit 31 says so (PRUEFUNG5
+deep-clocks D3). The blob's two keyed writes stay (DEEP-12 is left for a
+measured LDO step). Images without the switch are unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clock/sun50i-h713-r-ccu.c       | 50 ++++++++++++++++++-------
+ platform/h713/include/platform/memory.h |  8 ++--
+ 2 files changed, 42 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index 60344f5..54f7f73 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -356,6 +356,38 @@ plls_restore(void)                                      /* 0xcc2c(1) */
+ 	return no_lock;
+ }
+ 
++#if CONFIG(H713_DEEP_PLL_LDO)
++/*
++ * 0xddbc (off) and 0xddec (on), the blob's two keyed writes. The key field
++ * is cleared before the key goes in, as upstream's write_pll_ctrl_reg1()
++ * does, so a key left in it cannot mix with ours; CRYSTAL_EN and the LDO
++ * output stay as they are (PRUEFUNG5 deep-clocks D3).
++ */
++static void
++pll_ldo(bool on)
++{
++	uint32_t v = mmio_read_32(PLL_CTRL_REG1) &
++	             ~(PLL_CTRL_REG1_KEY_FIELD | PLL_CTRL_REG1_LDO_EN);
++
++	v |= PLL_CTRL_REG1_KEY | (on ? PLL_CTRL_REG1_LDO_EN : 0);
++	mmio_write_32(PLL_CTRL_REG1, v);
++	mmio_write_32(PLL_CTRL_REG1, v);
++	udelay(100);
++}
++
++/* The LDO feeds the PLLs: it goes off only when every one reads off. */
++static bool
++plls_all_off(void)
++{
++	for (uint8_t i = 0; i < ARRAY_SIZE(pll_reg); ++i) {
++		if (mmio_read_32(DEV_CCU + pll_reg[i]) & PLL_EN)
++			return false;
++	}
++
++	return true;
++}
++#endif
++
+ void __attribute__((noinline))
+ r_ccu_suspend(uint8_t depth UNUSED)
+ {
+@@ -367,12 +399,10 @@ r_ccu_suspend(uint8_t depth UNUSED)
+ 	udelay(100);
+ #if CONFIG(H713_DEEP_PLL_LDO)
+ 	substep(H713_SUB_LDO_OFF, 0);
+-	uint32_t v = (mmio_read_32(PLL_CTRL_REG1) & ~PLL_CTRL_REG1_LDO_EN) |
+-	             PLL_CTRL_REG1_KEY;                         /* 0xddbc */
+-
+-	mmio_write_32(PLL_CTRL_REG1, v);
+-	mmio_write_32(PLL_CTRL_REG1, v);
+-	udelay(100);
++	if (plls_all_off())
++		pll_ldo(false);                                 /* 0xddbc */
++	else
++		mmio_set_32(H713_K_DEEP_LOCK, BIT(H713_LOCK_LDO_KEPT));
+ #endif
+ #if CONFIG(H713_DEEP_VDD_SYS)
+ 	/*
+@@ -401,14 +431,8 @@ r_ccu_resume(void)
+ 	mmio_set_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
+ #endif
+ #if CONFIG(H713_DEEP_PLL_LDO)
+-	/* 0xddec */
+ 	substep(H713_SUB_LDO_ON, 0);
+-	uint32_t v = mmio_read_32(PLL_CTRL_REG1) | PLL_CTRL_REG1_KEY |
+-	             PLL_CTRL_REG1_LDO_EN;
+-
+-	mmio_write_32(PLL_CTRL_REG1, v);
+-	mmio_write_32(PLL_CTRL_REG1, v);
+-	udelay(100);
++	pll_ldo(true);                                          /* 0xddec */
+ #endif
+ 	mmio_write_32(LOSC_SEEN, mmio_read_32(RTC_LOSC_CTRL));
+ 	if (saved) {
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index b12677b..e5001d2 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -199,11 +199,13 @@
+ /*
+  * DEEP_LOCK, deep stage only, zeroed at each suspend: 11..0 the PLLs that ran
+  * before the sleep and did not lock in time, 23..16 the root clocks left on
+- * OSC24M for it. A lock failure ends in the clean reset, cause 9 (detail the
+- * first such PLL, data its register). X_LOCK_TICKS: the longest lock wait of
+- * the last resume in tick timer cycles (24 MHz), and its PLL.
++ * OSC24M for it, 31 the PLL LDO left on because a PLL still read enabled
++ * (H713_DEEP_PLL_LDO). A lock failure ends in the clean reset, cause 9
++ * (detail the first such PLL, data its register). X_LOCK_TICKS: the longest
++ * lock wait of the last resume in tick timer cycles (24 MHz), and its PLL.
+  */
+ #define H713_LOCK_ROOTS      16
++#define H713_LOCK_LDO_KEPT   31
+ 
+ /* ERR bits; fatal ones (4, 6..10) come with a clean reset. */
+ #define H713_ERR_KEY_PIN     0

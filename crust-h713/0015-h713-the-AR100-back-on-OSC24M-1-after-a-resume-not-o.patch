@@ -1,7 +1,7 @@
 From 3f1bd3e507eb2675b9634d8e7e378fa295f1ec25 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:37:20 +0200
-Subject: [PATCH 15/34] h713: the AR100 back on OSC24M/1 after a resume, not on
+Subject: [PATCH 15/75] h713: the AR100 back on OSC24M/1 after a resume, not on
  the clock it found
 
 r_ccu_init() moves the AR100 to OSC24M/1 because every delay and timeout

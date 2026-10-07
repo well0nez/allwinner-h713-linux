@@ -1,0 +1,54 @@
+From 0e56bf72acca0c1b5e47ec4fc4639a792cca71e8 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 18:54:00 +0200
+Subject: [PATCH 45/75] h713: hdmi: a cpu op req crust cannot carry out ends in
+ the clean reset
+
+TF-A sends the cpu op req without asking for an answer and parks the
+core in WFI. A request that was too short or had no entry got a reply
+nobody reads; one from a core other than 0 left the cluster up and the
+system awake, since css_set_power_state() only suspends once core 0 is
+off; and its return value was dropped. Each left the box hung with no
+wake source armed (PRUEFUNG5 F8, CS-11).
+
+Such a request - fewer than two words, entry 0, MPIDR affinity 0 not 0,
+or an error from css_set_power_state() - now takes the clean reset with
+cause 6, error bit 4, the word count and the MPIDR.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 17 +++++++++++------
+ 1 file changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 2162fd6..5b25b9e 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -712,16 +712,21 @@ sb_frame(void)
+ 		info("H713: startup notify acknowledged");
+ 		break;
+ 	case TYPE_CPU_OP:	/* {mpidr, entrypoint, cpu, cluster, system} */
+-		if (sb_count < 2 || sb_data[1] == 0) {
+-			sb_reply(type, RESULT_UNKNOWN, NULL, 0);
+-			break;
+-		}
++		/*
++		 * TF-A asks for no answer (attr 0) and parks the core in WFI:
++		 * a request crust cannot carry out - too short, no entry, not
++		 * core 0 (the cluster would stay up and never suspend), or one
++		 * the CSS refuses - ends in the clean reset, not in a hang.
++		 */
++		if (sb_count < 2 || sb_data[1] == 0 || (sb_data[0] & 0xff))
++			h713_fail(H713_CAUSE_CPU_OP, sb_count, sb_data[0]);
+ 		info("H713: cpu op req, warm entry %p", (void *)sb_data[1]);
+ 		h713_sleep_event(H713_EV_CPU_OP);
+ 		css_set_warm_entry(sb_data[1], 0);
+ 		udelay(CPU_OP_DELAY_US);
+-		css_set_power_state(0, sb_data[0] & 0xf, SCPI_CSS_OFF,
+-		                    SCPI_CSS_OFF, SCPI_CSS_OFF);
++		if (css_set_power_state(0, 0, SCPI_CSS_OFF, SCPI_CSS_OFF,
++		                        SCPI_CSS_OFF) != SCPI_OK)
++			h713_fail(H713_CAUSE_CPU_OP, sb_count, sb_data[0]);
+ 		break;
+ 	case TYPE_RESTORE: {	/* answered with the wake word */
+ 		/*

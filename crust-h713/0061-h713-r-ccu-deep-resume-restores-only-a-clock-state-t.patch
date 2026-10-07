@@ -1,0 +1,106 @@
+From afbf3d7cf34dca56339ae47884ca35f461fa44e5 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 20:40:42 +0200
+Subject: [PATCH 61/75] h713: r-ccu: deep resume restores only a clock state
+ this run saved
+
+The root clocks and the PLLs of the deep path are saved in .bss. The
+blob's per-root flags (0xcec0/0xce6c) kept the roots from being put back
+from zeros after a firmware restart, but not the PLLs: plls_restore()
+wrote every PLL from pll_saved = 0, enable and N cleared, before the
+reset that followed (PRUEFUNG4 evidence F8, PRUEFUNG5 deep-clocks).
+
+One flag, in .bss, now says whether root_saved and pll_saved hold this
+sleep's state: set once both are saved, cleared by the restore.
+r_ccu_resume() puts PLLs and roots back only with it; after a restart
+nothing is restored, and the state machine goes on to the reset. The
+per-root flags go. Deep sleep only; the accesses of a normal cycle are
+the same.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clock/sun50i-h713-r-ccu.c | 37 ++++++++++++++++++-------------
+ 1 file changed, 22 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index 6e4ce05..d8a2c44 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -207,7 +207,6 @@ static const uintptr_t root_clk[8] = {
+ 	DEV_R_PRCM + 0x010,
+ };
+ static uint32_t root_saved[8];
+-static bool     root_valid[8];
+ 
+ /* 0xcc2c's table 0x170b4: the PLLs. */
+ static const uint16_t pll_reg[12] = {
+@@ -216,16 +215,23 @@ static const uint16_t pll_reg[12] = {
+ };
+ static uint32_t pll_saved[12];
+ 
++/*
++ * root_saved and pll_saved hold this sleep's state: set once both are
++ * saved, cleared by the restore. In .bss, so a firmware restart clears it:
++ * the blob's per-root flags (0xcec0/0xce6c) left the PLLs out, and a
++ * restart in the sleep put them back from zeros, N 0 and EN 0 (PRUEFUNG4
++ * evidence F8). Without it nothing is restored, and the state machine goes
++ * on to the reset.
++ */
++static bool saved;
++
+ static void
+ root_clocks_to_osc24m(void)                             /* 0xcdd8(0) */
+ {
+ 	for (uint8_t i = 0; i < ARRAY_SIZE(root_clk); ++i) {
+ 		uint32_t v = mmio_read_32(root_clk[i]);
+ 
+-		if (!root_valid[i]) {                           /* 0xcec0 */
+-			root_saved[i] = v & 0x07000303;
+-			root_valid[i] = true;
+-		}
++		root_saved[i] = v & 0x07000303;                 /* 0xcec0 */
+ 		v &= 0xf8ffffff;                                /* source 0 */
+ 		mmio_write_32(root_clk[i], v);                  /* 0xcefc */
+ 		mmio_write_32(root_clk[i], v & 0xfffffc00);     /* 0xcf0c */
+@@ -239,13 +245,10 @@ root_clocks_restore(void)                               /* 0xcdd8(4) */
+ 	for (uint8_t i = 0; i < ARRAY_SIZE(root_clk); ++i) {
+ 		uint32_t v = mmio_read_32(root_clk[i]);
+ 
+-		if (root_valid[i]) {                            /* 0xce6c */
+-			v |= root_saved[i] & 0x00000303;
+-			mmio_write_32(root_clk[i], v);
+-			v = (v & 0xf8ffffff) | (root_saved[i] & 0x07000000);
+-			mmio_write_32(root_clk[i], v);
+-			root_valid[i] = false;
+-		}
++		v |= root_saved[i] & 0x00000303;                /* 0xce6c */
++		mmio_write_32(root_clk[i], v);
++		v = (v & 0xf8ffffff) | (root_saved[i] & 0x07000000);
++		mmio_write_32(root_clk[i], v);
+ 		udelay(10000);
+ 	}
+ }
+@@ -259,6 +262,7 @@ plls_off(void)                                          /* 0xcc2c(0) */
+ 		pll_saved[i] = v & 0xa000ff03;   /* enable, lock-en, N, M */
+ 		mmio_write_32(DEV_CCU + pll_reg[i], v & 0x7fffffff);
+ 	}
++	saved = true;
+ }
+ 
+ static void
+@@ -322,9 +326,12 @@ r_ccu_resume(void)
+ 	udelay(100);
+ #endif
+ 	mmio_write_32(LOSC_SEEN, mmio_read_32(RTC_LOSC_CTRL));
+-	plls_restore();                                         /* 0xde7c */
+-	udelay(100);
+-	root_clocks_restore();                                  /* 0xde8c */
++	if (saved) {
++		plls_restore();                                 /* 0xde7c */
++		udelay(100);
++		root_clocks_restore();                          /* 0xde8c */
++		saved = false;
++	}
+ 	udelay(100);
+ 	cpus_clk_osc24m();      /* the blob's PLL setting is not ours */
+ }

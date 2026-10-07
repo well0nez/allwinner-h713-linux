@@ -1,7 +1,7 @@
 From dab8cd312762367aabafe75f632ae1c2bfdfdedd Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:38:07 +0200
-Subject: [PATCH 17/34] h713: hdmi: ResetEDIDModule writes 3 to aux +0x020, as
+Subject: [PATCH 17/75] h713: hdmi: ResetEDIDModule writes 3 to aux +0x020, as
  the blob does
 
 0x1105c is "store (arg ? 3 : 0) to 0x07091020": l.sfnei r3, 0; l.bf with

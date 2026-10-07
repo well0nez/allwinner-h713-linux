@@ -1,0 +1,317 @@
+From ab879723ee55da2b4a195119244da01986e07696 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:52:42 +0200
+Subject: [PATCH 35/75] h713: contract v5: the contract page in one table in
+ platform/memory.h
+
+The layout of the contract page was spread over memory.h, hdmi.c
+(EINT_SEEN), css.c (RVBAR_SEEN) and r-ccu.c (LOSC_SEEN), and nothing
+said who writes a word, who zeroes it and what survives a restart
+(PRUEFUNG5 F15). platform/memory.h now carries the whole page as
+version 5 lays it out: the classes R, D, S, K, A, P and X with writer,
+zeroing and lifetime, the K block (crust's record across its restarts:
+compat, build2, standby state, net words, error bits, counters, cycle,
+wake time), the A block the ARM writes (net request, budget, confirm,
+TF-A word), the phases, causes, error bits and counter bytes. The
+three drivers use its names for the S words; nothing moves.
+
+Two comments are corrected: crust's block lies inside the vendor
+blob's code, data and stack, so a switch is always a reset and a full
+reload (N-09), and the MIPS writes user1 sub-block 1, which the HDMI
+module reads directly (F15).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clock/sun50i-h713-r-ccu.c       |   5 +-
+ drivers/css/sun50i-h713-css.c           |   6 +-
+ drivers/hdmi/sun50i-h713-hdmi.c         |  13 +-
+ drivers/msgbox/sun50i-h713-msgbox.c     |   4 +-
+ platform/h713/include/platform/memory.h | 167 +++++++++++++++++++++---
+ 5 files changed, 165 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index 78c05fb..708be46 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -194,9 +194,8 @@ cpus_clk_osc24m(void)
+ #define KEY_16AA        0x16aa0000
+ #define LOSC_EXT_EN     BIT(4)  /* the 32k crystal's oscillator on */
+ #define LOSC_EXT_SEL    BIT(0)  /* LOSC from the crystal, not the RC */
+-/* LOSC_CTRL after the resume, for the device test (0033; behind the
+- * power key words of sun50i-h713-hdmi.c, +0x24c..+0x25b). */
+-#define LOSC_SEEN       (H713_SHARED_BASE + 0x25c)
++/* LOSC_CTRL after the resume, for the device test (0033). */
++#define LOSC_SEEN       H713_SEEN_LOSC
+ 
+ /*
+  * What Linux had before the sleep. The blob turns the 32k crystal on and
+diff --git a/drivers/css/sun50i-h713-css.c b/drivers/css/sun50i-h713-css.c
+index 8bfba51..4a16ecc 100644
+--- a/drivers/css/sun50i-h713-css.c
++++ b/drivers/css/sun50i-h713-css.c
+@@ -46,10 +46,10 @@ static uint32_t warm_entry_lo, warm_entry_hi;
+  * blob restores only core 0, since the vendor BL31 does the rest. So the
+  * four start addresses are saved before the cluster goes down and written
+  * back after it is up again. What the cluster up left in them is kept for
+- * the record at H713_SHARED_BASE + 0x240 (cores 1..3, low words), so the
+- * next run shows whether the reset cleared them.
++ * the record at H713_SEEN_RVBAR (cores 1..3, low words), so the next run
++ * shows whether the reset cleared them.
+  */
+-#define RVBAR_SEEN_BASE         (H713_SHARED_BASE + 0x240)
++#define RVBAR_SEEN_BASE         H713_SEEN_RVBAR
+ static uint32_t rvbar_lo[MAX_CORES_PER_CLUSTER], rvbar_hi[MAX_CORES_PER_CLUSTER];
+ 
+ void
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index ae34a2a..abb82a8 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -66,7 +66,7 @@
+ #define DIAG_LEWIN_EN   (H713_DIAG_BASE + 0x00)    /* written by start.S */
+ #define DIAG_CPUS_CLK   (H713_DIAG_BASE + 0x0c)
+ #define DIAG_TTCR       (H713_DIAG_BASE + 0x10)
+-#define DIAG_INITS      (H713_DIAG_BASE + 0x14)
++#define DIAG_INITS      H713_DIAG_INITS
+ #define DIAG_INTC_80    (H713_DIAG_BASE + 0x18)
+ #define DIAG_INTC_88    (H713_DIAG_BASE + 0x1c)
+ #define DIAG_MIPS_N     (H713_DIAG_BASE + 0x20)    /* frames from the MIPS */
+@@ -125,15 +125,14 @@
+ #define R_PIO_EINT_STATUS (DEV_R_PIO + 0x214) /* PL bank (IRQ bank 0), W1C */
+ #define R_PIO_EINT_DEB  (DEV_R_PIO + 0x218)    /* PL bank debounce clock */
+ /*
+- * Behind the cores' start addresses (sun50i-h713-css.c, +0x240..+0x24b):
+- * the PL bank's EINT status at four points of h713_resume_done() (0032;
++ * The PL bank's EINT status at four points of h713_resume_done() (0032;
+  * read through /dev/mem): before the switch back, right after it, after
+  * the settle time, and one settle time after the clear.
+  */
+-#define EINT_SEEN_BEFORE  (H713_SHARED_BASE + 0x24c)
+-#define EINT_SEEN_SWITCH  (H713_SHARED_BASE + 0x250)
+-#define EINT_SEEN_SETTLED (H713_SHARED_BASE + 0x254)
+-#define EINT_SEEN_AFTER   (H713_SHARED_BASE + 0x258)
++#define EINT_SEEN_BEFORE  (H713_SEEN_EINT + 0x0)
++#define EINT_SEEN_SWITCH  (H713_SEEN_EINT + 0x4)
++#define EINT_SEEN_SETTLED (H713_SEEN_EINT + 0x8)
++#define EINT_SEEN_AFTER   (H713_SEEN_EINT + 0xc)
+ 
+ #define BOP_MARKER      0xa5
+ #define BOP_MAX_LEN     128
+diff --git a/drivers/msgbox/sun50i-h713-msgbox.c b/drivers/msgbox/sun50i-h713-msgbox.c
+index 5652221..fd94f37 100644
+--- a/drivers/msgbox/sun50i-h713-msgbox.c
++++ b/drivers/msgbox/sun50i-h713-msgbox.c
+@@ -24,7 +24,9 @@
+  *
+  * user0 sub-block 0 : ARISC -> ARM (the driver's "msgbox-rx", ch 0..3)
+  * user1 sub-block 0 : ARM -> ARISC (the driver's "msgbox-tx", port 0..3)
+- * user0/1 sub-block 1, user2: the MIPS's pairs (cpu_comm), not ours.
++ * user1 sub-block 1 : display MIPS -> ARISC ("DispMips"); the H713 HDMI
++ *                     module reads it directly, not through this driver
++ * user0 sub-block 1, user2: the MIPS's pairs with the ARM (cpu_comm).
+  *
+  * Crust channel numbering: even n = receive from ARM port n/2, odd n = send
+  * to ARM channel n/2. There is no "last tx done" flag on this box: the FIFO
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index ff070d2..060fc0b 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -8,9 +8,10 @@
+ 
+ /*
+  * The vendor blob occupies AR100 0x0000..0x23000 (vectors in the image,
+- * body from 0x4000). Crust takes the 64 KiB block above it instead, so the
+- * two images never overlap and a switch between them is a load, not a
+- * relayout. The linker forbids a 64 KiB boundary inside the firmware.
++ * body from 0x4000); crust's 64 KiB block lies inside it - the blob's code,
++ * data and stack (bss 0x15f38..0x175b0, stack top 0x179b0) - so the two
++ * images overlap, and a switch between them is always a core reset and a
++ * full reload. The linker forbids a 64 KiB boundary inside the firmware.
+  */
+ #define FIRMWARE_BASE  0x00010000
+ #define FIRMWARE_LIMIT 0x00020000
+@@ -34,18 +35,44 @@
+ #define SRAM_A2_OFFSET 0x00100000
+ 
+ /*
+- * Contract page (this port, tables/arisc-contract.csv): the variables the
+- * Linux driver sun50i-h713-arisc reads and writes, at fixed addresses
+- * instead of the vendor build's BSS. ARM address = these + 0x100000.
+- * +0x1fc (version 4): the bytes of .text and .rodata from the image start.
++ * The contract page, version 5: the one table of it (the kernel's
++ * h713-crust-contract.h and TF-A mirror it). AR100 0x23800..0x23bff, ARM =
++ * these + 0x100000. Words only: the ARM and the AR100 have no atomic
++ * read-modify-write between them, so every word has one writer.
++ *
++ * class  range          writer           zeroed by                 kept across
++ *   R    +0x000..+0x1ff crust            crust at every start      -
++ *                                        (an acknowledged restart
++ *                                        keeps +0x010..+0x0ff)
++ *   D    +0x200..+0x23f crust, start.S   the loaders               restarts
++ *   S    +0x240..+0x25f crust            crust at every start      -
++ *   K    +0x260..+0x2bf crust only       crust at its first start  restarts
++ *                                        (diag starts == 0), the
++ *                                        loaders after copying to P
++ *   A    +0x2c0..+0x2cf the ARM, one     the loaders               restarts
++ *                       writer per word
++ *   P    +0x2d0..+0x38f the ARM only     its writer                crust never
++ *                       (TF-A, kernel)                             touches P
++ *   X    +0x390..+0x3ff reserved, rules  as K                      restarts
++ *                       of K
++ * The loaders (TF-A at boot, the kernel before a reload) copy D, K and A to
++ * P and then zero everything but P.
+  */
+ #define H713_SHARED_BASE  0x00023800
+ #define H713_SHARED_LIMIT SCPI_MEM_BASE
++#define H713_PAGE(off)    (H713_SHARED_BASE + (off))
+ 
+ /*
+- * Diagnostic words inside the contract page (+0x200..+0x23f), kept across
+- * firmware restarts; the kernel driver zeroes them before it releases the
+- * core and reports them. +0x00 R_CPUCFG little-endian window enable word as
++ * R: +0x000 magic 0x33313748, +0x004 version, +0x008 status (bits 0..3,
++ * heartbeat 31..16), +0x00c wake word, +0x010..+0x1c7 the vendor's HDMI
++ * variables at its distances (sun50i-h713-hdmi.c), +0x1fc the bytes of
++ * .text and .rodata (version 4).
++ */
++#define H713_R_KEPT_BASE     H713_PAGE(0x010)  /* acknowledged restart */
++#define H713_R_KEPT_LIMIT    H713_PAGE(0x100)
++
++/*
++ * D: diagnostic words, +0x00 R_CPUCFG little-endian window enable word as
+  * found at start (0 = no window was open), +0x04/+0x08 window 0 start/end,
+  * +0x0c CPUS_CLK_REG as found at start, +0x10 the tick timer (TTCR) of the
+  * last main loop pass, +0x14 number of h713_init() runs, +0x18/+0x1c
+@@ -56,18 +83,126 @@
+  * | pc), +0x34 milliseconds counted asleep in the last standby (TF-A puts
+  * the system counter forward by them when the counter was reset), +0x38
+  * the armed wake timer in milliseconds (0x26 type 3; 0 = none) - here, not
+- * in .bss, so a firmware restart while asleep still ends the standby, with
+- * a reset - and +0x3c the build: image size in bits 19..0, bit 24 DRAM
+- * self-refresh, bit 25 deep sleep, bit 26 IR wake codes, bit 27 the deep VDD_SYS step,
+- * bit 28 the deep PLL LDO step (0034; D1a has bit 25 without 27 and 28).
++ * in .bss, so a firmware restart while asleep still ends the standby - and
++ * +0x3c the build word: image size in bits 19..0, bit 24 DRAM self-refresh,
++ * 25 deep sleep, 26 IR wake codes, 27 the deep VDD_SYS step, 28 the deep
++ * PLL LDO step, 29 the sleep net, 30 a test build, 31 AVCC gating.
+  */
+-#define H713_DIAG_BASE       (H713_SHARED_BASE + 0x200)
++#define H713_DIAG_BASE       H713_PAGE(0x200)
++#define H713_DIAG_INITS      (H713_DIAG_BASE + 0x14)
+ #define H713_DIAG_STEP       (H713_DIAG_BASE + 0x2c)
+ #define H713_DIAG_EXCEPTION  (H713_DIAG_BASE + 0x30)
+ #define H713_DIAG_SLEPT_MS   (H713_DIAG_BASE + 0x34)
+ #define H713_DIAG_WAKE_TIMER (H713_DIAG_BASE + 0x38)
+ #define H713_DIAG_BUILD      (H713_DIAG_BASE + 0x3c)
+-#define H713_DIAG_LIMIT      (H713_SHARED_BASE + 0x240)
++#define H713_DIAG_LIMIT      H713_PAGE(0x240)
++
++/* S: what one start saw, for the device tests. */
++#define H713_SEEN_RVBAR      H713_PAGE(0x240) /* ALT_RVBAR lo of cores 1..3 after the cluster up */
++#define H713_SEEN_EINT       H713_PAGE(0x24c) /* PL EINT status: before, switch, settled, after */
++#define H713_SEEN_LOSC       H713_PAGE(0x25c) /* LOSC_CTRL after a deep resume */
++#define H713_SEEN_LIMIT      H713_PAGE(0x260)
++
++/* K: crust's own record, kept across its restarts. */
++#define H713_K_BASE          H713_PAGE(0x260)
++#define H713_K_COMPAT        H713_PAGE(0x260) /* 7..0 oldest reader version, 15..8 newest NET_REQ format */
++#define H713_K_BUILD2        H713_PAGE(0x264) /* 11..0 DRAM MHz, 15..12 board, 23..16 R_WDOG interval */
++#define H713_K_SB_STATE      H713_PAGE(0x268) /* standby phase, see below */
++#define H713_K_NET_ACC       H713_PAGE(0x26c) /* budgets taken, s: 15..0 presleep, 31..16 resuming */
++#define H713_K_NET_RB        H713_PAGE(0x270) /* R_WDOG read back at arming: 15..0 MODE, 31..16 CFG */
++#define H713_K_NET_MS        H713_PAGE(0x274) /* ms in the current (or the last ended) net phase */
++#define H713_K_NET_FOUND     H713_PAGE(0x278) /* R_WDOG at the first start: 15..0 MODE, 31..16 STA */
++#define H713_K_ERR           H713_PAGE(0x27c) /* sticky error bits, below */
++#define H713_K_ERR_DETAIL    H713_PAGE(0x280) /* 31..24 last error bit, 23..16 detail, 15..0 step */
++#define H713_K_ERR_DATA      H713_PAGE(0x284) /* the register value of the last error */
++#define H713_K_CNT0          H713_PAGE(0x288) /* 8-bit counters, wrapping, below */
++#define H713_K_CNT1          H713_PAGE(0x28c)
++#define H713_K_CNT2          H713_PAGE(0x290)
++#define H713_K_CYCLE         H713_PAGE(0x294) /* standby attempts */
++#define H713_K_WAKE_MS       H713_PAGE(0x298) /* ms from the cpu op req to CPU0's release */
++#define H713_K_MIPS_PORT     H713_PAGE(0x29c) /* 7..0 port of the last DispMips frame */
++#define H713_K_FAIL_PATH     H713_PAGE(0x2a0) /* 7..0 reset path tried (1 R_WDOG, 2 SoC WDOG), 15..8 try */
++#define H713_K_DRAM_PLL      H713_PAGE(0x2a4) /* PLL_DDR0 when a request came in */
++#define H713_K_SUBSTEP       H713_PAGE(0x2a8) /* deep stage only */
++#define H713_K_DEEP_LOCK     H713_PAGE(0x2ac) /* deep stage only */
++#define H713_K_LIMIT         H713_PAGE(0x2c0)
++
++/* A: written by the ARM, read by crust. */
++#define H713_A_NET_REQ       H713_PAGE(0x2c0) /* kernel: 31..24 0xa5, 23..16 format, 15..8 cycle */
++#define H713_A_NET_BUDGET    H713_PAGE(0x2c4) /* kernel: s, 15..0 presleep, 31..16 resuming */
++#define H713_A_NET_CONFIRM   H713_PAGE(0x2c8) /* kernel: 31..16 0xc0f1, 7..0 cycle */
++#define H713_A_TFA_WORD      H713_PAGE(0x2cc) /* TF-A: 31..24 event, 23..16 number, 15..0 detail */
++
++/* P: the previous run's record, ARM only; X: reserved. */
++#define H713_P_BASE          H713_PAGE(0x2d0)
++#define H713_X_BASE          H713_PAGE(0x390)
++
++/*
++ * SB_STATE: 3..0 phase; 4 R_WDOG armed (read back); 5 request taken;
++ * 7..6 restarts in the phase; 15..8 cycle (CYCLE & 0xff); 23..16 cause of
++ * the last clean reset.
++ */
++#define H713_PH_OFF          0  /* no request since the first start */
++#define H713_PH_PRESLEEP     1  /* request taken (0x25/0x26) */
++#define H713_PH_CPU_OP       2  /* cpu op req (0x22) taken */
++#define H713_PH_SLEEP        3  /* the system state machine suspends */
++#define H713_PH_RESUMING     4  /* CPU0 released, or 0x11 without a sleep */
++#define H713_PH_RELEASED     5  /* confirmed, the net off */
++#define H713_PH_RESET        6  /* in h713_fail() */
++#define H713_SB_PHASE        0x0000000f
++#define H713_SB_ARMED        0x00000010
++#define H713_SB_TAKEN        0x00000020
++#define H713_SB_RESTARTS     0x000000c0
++#define H713_SB_CYCLE        0x0000ff00
++#define H713_SB_CAUSE        0x00ff0000
++
++#define H713_NET_REQ_MARK    0xa5
++#define H713_NET_FORMAT      1
++#define H713_NET_CONFIRM_MARK 0xc0f1
++#define H713_NET_BUDGET_MAX  120  /* s */
++
++/* Causes of a clean reset (SB_STATE 23..16), with their ERR bit. */
++#define H713_CAUSE_PRESLEEP  1  /* ERR 9, detail 0, data NET_MS */
++#define H713_CAUSE_RESUMING  2  /* ERR 9, detail 1, data NET_MS */
++#define H713_CAUSE_DRAM      3  /* ERR 6, data PGSR0 */
++#define H713_CAUSE_POLL      4  /* ERR 7, detail poll id 1..9, data register */
++#define H713_CAUSE_RESTART   5  /* ERR 8, detail phase, data exception word */
++#define H713_CAUSE_CPU_OP    6  /* ERR 4, detail count, data mpidr */
++#define H713_CAUSE_LOOP      7  /* ERR 8, detail phase, data exception word */
++#define H713_CAUSE_PLL_LOCK  9  /* ERR 10, deep stage only */
++
++/* ERR bits; fatal ones (4, 6..10) come with a clean reset. */
++#define H713_ERR_KEY_PIN     0
++#define H713_ERR_CIR         1
++#define H713_ERR_TXQ_FULL    2
++#define H713_ERR_SB_DROP     3
++#define H713_ERR_CPU_OP      4
++#define H713_ERR_AUX_CLOCK   5
++#define H713_ERR_DRAM_PHY    6
++#define H713_ERR_POLL        7
++#define H713_ERR_RESTART     8
++#define H713_ERR_BUDGET      9
++#define H713_ERR_PLL_LOCK    10
++#define H713_ERR_DRAM_PLL    11
++#define H713_ERR_NET_REQ     12
++#define H713_ERR_KEY_HELD    13
++#define H713_ERR_DRAM_SUM    14
++#define H713_ERR_RWDOG_FOUND 15
++#define H713_ERR_RWDOG_RESET 16
++
++/* Counter bytes for h713_cnt(), at the byte the ARM reads them from. */
++#define H713_CNT_SB_DROP     (H713_K_CNT0 + 0) /* port 3 words dropped */
++#define H713_CNT_PUMP_LONG   (H713_K_CNT0 + 1) /* pump frame > 67 bytes */
++#define H713_CNT_ARM_UNKNOWN (H713_K_CNT0 + 2) /* ARM type, sub-command, no answer */
++#define H713_CNT_TXQ_FULL    (H713_K_CNT0 + 3) /* tx queue full, answer lost */
++#define H713_CNT_STALE_REPLY (H713_K_CNT1 + 0) /* reply nobody read */
++#define H713_CNT_MIPS_DROP   (H713_K_CNT1 + 1) /* DispMips words or frames dropped */
++#define H713_CNT_MIPS_17     (H713_K_CNT1 + 2) /* DispMips ResetEDIDModule */
++#define H713_CNT_MIPS_16     (H713_K_CNT1 + 3) /* DispMips PullHotPlug */
++#define H713_CNT_TAKEN       (H713_K_CNT2 + 0) /* requests taken */
++#define H713_CNT_WOKEN       (H713_K_CNT2 + 1) /* wakes done */
++#define H713_CNT_RESTARTS    (H713_K_CNT2 + 2) /* restarts after the first start */
++#define H713_CNT_RESETS      (H713_K_CNT2 + 3) /* clean resets tried */
+ 
+ #define STACK_SIZE     0x00000400
+ 

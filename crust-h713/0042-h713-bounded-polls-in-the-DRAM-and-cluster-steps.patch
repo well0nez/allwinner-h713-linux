@@ -1,0 +1,243 @@
+From 0e0a68b0e2246b748c357a18caba80e93e1b4174 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 18:42:21 +0200
+Subject: [PATCH 42/75] h713: bounded polls in the DRAM and cluster steps
+
+Every hardware poll of a standby step waited without end: the DRAM
+operating mode, PGSR0 idone, the PLL_DDR0 lock and STATR bit 0 in the
+self-refresh driver, the core 0 power switch on the cluster down and up
+(PRUEFUNG5 CS-02, DEEP-03). A hang there kept the system half asleep,
+and without the sleep net nothing ended it.
+
+Each poll now has a limit of 1 s on the tick timer - three orders of
+magnitude above what these steps take on a working SoC, and well inside
+the net's 16 s. Past it, h713_poll_limit() takes the clean reset with
+cause 4, the poll's id (H713_POLL_*, platform/memory.h) and the value
+read last. The tick timer is an SPR, so the register accesses stay the
+blob's: dram_trace.py gives the same R/W lists for dram_suspend and
+dram_resume, the deep clock steps and the cluster down and up.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/css/sun50i-h713-css.c           | 20 +++++++++-----
+ drivers/dram/sun50i-h713-dram.c         | 35 ++++++++++++++++---------
+ drivers/hdmi/sun50i-h713-sleep.c        | 13 +++++++++
+ include/drivers/hdmi/sun50i-h713-hdmi.h |  5 ++++
+ platform/h713/include/platform/memory.h |  8 ++++++
+ 5 files changed, 63 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/css/sun50i-h713-css.c b/drivers/css/sun50i-h713-css.c
+index 0a1e0e0..87f7d5f 100644
+--- a/drivers/css/sun50i-h713-css.c
++++ b/drivers/css/sun50i-h713-css.c
+@@ -3,12 +3,14 @@
+  * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
+  */
+ 
++#include <counter.h>
+ #include <delay.h>
+ #include <mmio.h>
+ #include <scpi_protocol.h>
+ #include <stdbool.h>
+ #include <util.h>
+ #include <stdint.h>
++#include <hdmi/sun50i-h713-hdmi.h>
+ #include <platform/cpucfg.h>
+ #include <platform/memory.h>
+ 
+@@ -94,11 +96,13 @@ css_suspend_css(uint32_t new_state)
+ 	udelay(1000);                                           /* 0x4ba4 */
+ 	mmio_set_32(CPU_UNK_REG(0), CPU_UNK_REG_CLAMP);         /* 0x5598(1, 1) */
+ 	if (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0xff) {  /* 0x43f0(0, 0, 0) */
++		uint32_t start, v;
++
+ 		mmio_write_32(C0_CPUn_PWR_SWITCH_REG(0), 0xff);
+ 		udelay(30);
+-		while (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0xff) {
+-			/* 0x4528 */
+-		}
++		start = cycle_counter_read();
++		while ((v = mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0))) != 0xff)
++			h713_poll_limit(start, H713_POLL_CPU_OFF, v); /* 0x4528 */
+ 	}
+ }
+ 
+@@ -113,17 +117,21 @@ css_resume_css(uint32_t old_state)
+ 
+ 	/* 0x43f0(0, 0, 1): the core 0 power switch, unless it is on */
+ 	if (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0) {
++		uint32_t start, v;
++
+ 		for (uint32_t i = 0; i < ARRAY_SIZE(ladder); ++i) {
+ 			mmio_write_32(C0_CPUn_PWR_SWITCH_REG(0), ladder[i]);
+ 			udelay(wait_us[i]);
+ 		}
+ 		mmio_write_32(C0_CPUn_PWR_SWITCH_REG(0), 0);
+ 		udelay(10);                                     /* 0x44ac */
+-		while (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0)
++		start = cycle_counter_read();
++		while ((v = mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0))) != 0) {
++			h713_poll_limit(start, H713_POLL_CPU_ON, v);
+ 			udelay(20);
+-		while (mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0)) != 0) {
+-			/* 0x44c4 */
+ 		}
++		while ((v = mmio_read_32(C0_CPUn_PWR_SWITCH_REG(0))) != 0)
++			h713_poll_limit(start, H713_POLL_CPU_ON, v); /* 0x44c4 */
+ 	}
+ 	mmio_clr_32(CPU_UNK_REG(0), CPU_UNK_REG_CLAMP);         /* 0x5598(1, 0) */
+ 	mmio_write_32(CPU_SYS_RESET_REG, CPU_SYS_RESET);        /* 0x4d14 */
+diff --git a/drivers/dram/sun50i-h713-dram.c b/drivers/dram/sun50i-h713-dram.c
+index ecff640..4eb5be0 100644
+--- a/drivers/dram/sun50i-h713-dram.c
++++ b/drivers/dram/sun50i-h713-dram.c
+@@ -34,12 +34,15 @@
+  * same register model and compares the access lists.
+  */
+ 
++#include <counter.h>
+ #include <debug.h>
+ #include <dram.h>
+ #include <mmio.h>
+ #include <stdint.h>
+ #include <util.h>
++#include <hdmi/sun50i-h713-hdmi.h>
+ #include <platform/devices.h>
++#include <platform/memory.h>
+ #include <platform/prcm.h>
+ 
+ #if CONFIG(H713_DRAM_SELF_REFRESH)
+@@ -119,20 +122,32 @@ static const uint16_t tmg_reg[10] = {
+ 	0x058, 0x05c, 0x060, 0x064, 0x068, 0x06c, 0x078, 0x080, 0x050, 0x054,
+ };
+ 
++/*
++ * Until (@reg & @mask) == @want, one read per pass as the blob polls; the
++ * limit counts on the tick timer, an SPR, so the register accesses stay
++ * the blob's. Past it, the clean reset with poll @id and the last value.
++ */
++static void
++poll_reg(uint8_t id, uintptr_t reg, uint32_t mask, uint32_t want)
++{
++	uint32_t start = cycle_counter_read(), v;
++
++	while (((v = mmio_read_32(reg)) & mask) != want)
++		h713_poll_limit(start, id, v);
++}
++
+ static void
+ poll_op_mode(uint32_t mode)
+ {
+-	while ((mmio_read_32(STATR) & STATR_OP_MODE) != mode) {
+-		/* 0x14480, 0x13e84, 0x13ec4 */
+-	}
++	/* 0x14480, 0x13e84, 0x13ec4 */
++	poll_reg(H713_POLL_DRAM_MODE, STATR, STATR_OP_MODE, mode);
+ }
+ 
+ static void
+ poll_pgsr0_idone(void)
+ {
+-	while (!(mmio_read_32(PGSR0) & BIT(0))) {
+-		/* 0x13e10, 0x13e3c, 0x13f24 */
+-	}
++	/* 0x13e10, 0x13e3c, 0x13f24 */
++	poll_reg(H713_POLL_DRAM_IDONE, PGSR0, BIT(0), BIT(0));
+ }
+ 
+ /* 0x13398: nanoseconds to clock cycles, rounded up. */
+@@ -154,9 +169,7 @@ pll_ddr_init(void)
+ 	              0xc0000000 | (n - 1) << 8);               /* 0x1361c */
+ 	mmio_clr_32(PLL_DDR0, BIT(29));                           /* 0x13630 */
+ 	mmio_set_32(PLL_DDR0, BIT(29));                           /* 0x13640 */
+-	while (!(mmio_read_32(PLL_DDR0) & BIT(28))) {
+-		/* 0x13644: lock */
+-	}
++	poll_reg(H713_POLL_DRAM_PLL, PLL_DDR0, BIT(28), BIT(28)); /* 0x13644: lock */
+ 	/* 0x1365c: tpr13 bit 23 selects the sigma-delta path 0x1350c; the
+ 	 * boards this port knows leave it clear. */
+ 	mmio_set_32(PLL_DDR0, BIT(27));                           /* 0x13698 */
+@@ -340,9 +353,7 @@ mctl_resume(void)
+ 		poll_pgsr0_idone();
+ 	}
+ 	pir = !((mmio_read_32(PGSR0) >> 20) & 0xff);              /* 0x13f44: no error */
+-	while (!(mmio_read_32(STATR) & BIT(0))) {
+-		/* 0x13f60 */
+-	}
++	poll_reg(H713_POLL_DRAM_STATR, STATR, BIT(0), BIT(0));    /* 0x13f60 */
+ 	mmio_set_32(CTL(0x08c), BIT(31));                         /* 0x13f8c */
+ 	mmio_clr_32(CTL(0x08c), BIT(31));                         /* 0x13fa4 */
+ 	mmio_set_32(COM(0x014), BIT(31));                         /* 0x13fb8 */
+diff --git a/drivers/hdmi/sun50i-h713-sleep.c b/drivers/hdmi/sun50i-h713-sleep.c
+index 6a3c0c9..ad51372 100644
+--- a/drivers/hdmi/sun50i-h713-sleep.c
++++ b/drivers/hdmi/sun50i-h713-sleep.c
+@@ -36,6 +36,12 @@
+ #define MS              CPUCLK_kHz      /* tick timer cycles per ms */
+ #define FEED_MS         1000
+ #define FAIL_WAIT_MS    2000            /* for a reset before the next path */
++/*
++ * The limit of a hardware poll in a standby step: what these polls wait
++ * for (self-refresh, a PHY calibration, a PLL lock, a power switch) takes
++ * microseconds on a working SoC, and the net's 16 s must not come first.
++ */
++#define POLL_LIMIT_MS   1000
+ 
+ static uint32_t ms_next, feed_next;
+ static bool     ms_armed;               /* .bss: false after a restart */
+@@ -277,6 +283,13 @@ h713_restart_check(uint32_t exception)
+ 	mmio_write_32(H713_K_SB_STATE, (st & ~H713_SB_RESTARTS) | n << 6);
+ }
+ 
++void
++h713_poll_limit(uint32_t start, uint8_t id, uint32_t value)
++{
++	if (cycle_counter_read() - start >= POLL_LIMIT_MS * MS)
++		h713_fail(H713_CAUSE_POLL, id, value);
++}
++
+ static void
+ wait_ms(uint32_t ms)
+ {
+diff --git a/include/drivers/hdmi/sun50i-h713-hdmi.h b/include/drivers/hdmi/sun50i-h713-hdmi.h
+index fc658fb..a6cba3b 100644
+--- a/include/drivers/hdmi/sun50i-h713-hdmi.h
++++ b/include/drivers/hdmi/sun50i-h713-hdmi.h
+@@ -54,6 +54,9 @@ void h713_sleep_event(uint8_t ev);
+ void h713_sleep_step(void);
+ /** Awake and asleep loops: time, feed, confirm, budgets. */
+ void h713_net_poll(void);
++/** A hardware poll since @start not done yet: past its limit the clean
++ * reset with cause 4, poll @id (H713_POLL_*) and the @value it read. */
++void h713_poll_limit(uint32_t start, uint8_t id, uint32_t value);
+ 
+ #else
+ 
+@@ -80,6 +83,8 @@ static inline void h713_sleep_request(void) {}
+ static inline void h713_sleep_event(uint8_t ev UNUSED) {}
+ static inline void h713_sleep_step(void) {}
+ static inline void h713_net_poll(void) {}
++static inline void h713_poll_limit(uint32_t start UNUSED, uint8_t id UNUSED,
++                                   uint32_t value UNUSED) {}
+ 
+ #endif
+ 
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 060fc0b..16215a5 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -171,6 +171,14 @@
+ #define H713_CAUSE_LOOP      7  /* ERR 8, detail phase, data exception word */
+ #define H713_CAUSE_PLL_LOCK  9  /* ERR 10, deep stage only */
+ 
++/* The bounded polls of cause 4 (ERR_DETAIL 23..16), data the value read. */
++#define H713_POLL_DRAM_MODE  1  /* STATR operating mode (dram.c) */
++#define H713_POLL_DRAM_IDONE 2  /* PGSR0 idone after a PIR trigger */
++#define H713_POLL_DRAM_PLL   3  /* PLL_DDR0 lock */
++#define H713_POLL_DRAM_STATR 4  /* STATR bit 0 at the end of the exit */
++#define H713_POLL_CPU_OFF    5  /* core 0 power switch off (css.c) */
++#define H713_POLL_CPU_ON     6  /* core 0 power switch on */
++
+ /* ERR bits; fatal ones (4, 6..10) come with a clean reset. */
+ #define H713_ERR_KEY_PIN     0
+ #define H713_ERR_CIR         1

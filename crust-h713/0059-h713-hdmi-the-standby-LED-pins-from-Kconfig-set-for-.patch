@@ -1,0 +1,180 @@
+From 8f660098badaab166d4bf123fd1b4c46e41b2ab1 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:40:00 +0200
+Subject: [PATCH 59/75] h713: hdmi: the standby LED pins from Kconfig, set for
+ the HY310 only
+
+crust drove PL0 (red) and PL1 (blue) in every standby and wrote their
+data bits back after it, on every board: the only evidence for those
+pins is the HY310's stock U-Boot prj node, and the HY300 Pro images
+built them too (PRUEFUNG5 N-08; the project's rule: nothing driven on a
+board without a register proof).
+
+H713_LED_RED_PIN and H713_LED_BLUE_PIN (default -1, none) name them; the
+HY310 defconfigs set 0 and 1, and the HY310 image drives the same pins
+in the same way as before. The HY300 Pro images now leave PL0/PL1 and
+the PL data register alone, until its stock DT is read.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy310_deep_blobparity_defconfig |  2 ++
+ configs/h713_hy310_deep_d1a_defconfig        |  2 ++
+ configs/h713_hy310_deep_defconfig            |  2 ++
+ configs/h713_hy310_defconfig                 |  2 ++
+ configs/h713_hy310_serial_defconfig          |  2 ++
+ configs/h713_hy310_sr_defconfig              |  2 ++
+ drivers/hdmi/sun50i-h713-hdmi.c              | 34 ++++++++++++++------
+ platform/h713/Kconfig                        | 16 +++++++++
+ 8 files changed, 53 insertions(+), 9 deletions(-)
+
+diff --git a/configs/h713_hy310_deep_blobparity_defconfig b/configs/h713_hy310_deep_blobparity_defconfig
+index b663d85..2732bcc 100644
+--- a/configs/h713_hy310_deep_blobparity_defconfig
++++ b/configs/h713_hy310_deep_blobparity_defconfig
+@@ -12,3 +12,5 @@ CONFIG_H713_HOSC_IS_DCXO=y
+ CONFIG_H713_DEEP_PLL_LDO=y
+ CONFIG_H713_DEEP_VDD_SYS=y
+ CONFIG_H713_BOARD_ID=1
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
+diff --git a/configs/h713_hy310_deep_d1a_defconfig b/configs/h713_hy310_deep_d1a_defconfig
+index 552352d..4099cb5 100644
+--- a/configs/h713_hy310_deep_d1a_defconfig
++++ b/configs/h713_hy310_deep_d1a_defconfig
+@@ -12,3 +12,5 @@ CONFIG_H713_DEEP_SLEEP=y
+ # CONFIG_H713_DEEP_PLL_LDO is not set
+ # CONFIG_H713_DEEP_VDD_SYS is not set
+ CONFIG_H713_BOARD_ID=1
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
+diff --git a/configs/h713_hy310_deep_defconfig b/configs/h713_hy310_deep_defconfig
+index 552352d..4099cb5 100644
+--- a/configs/h713_hy310_deep_defconfig
++++ b/configs/h713_hy310_deep_defconfig
+@@ -12,3 +12,5 @@ CONFIG_H713_DEEP_SLEEP=y
+ # CONFIG_H713_DEEP_PLL_LDO is not set
+ # CONFIG_H713_DEEP_VDD_SYS is not set
+ CONFIG_H713_BOARD_ID=1
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
+diff --git a/configs/h713_hy310_defconfig b/configs/h713_hy310_defconfig
+index 167f5a9..d9cfaf2 100644
+--- a/configs/h713_hy310_defconfig
++++ b/configs/h713_hy310_defconfig
+@@ -7,3 +7,5 @@ CONFIG_I2C_PINS_NONE=y
+ # CONFIG_SERIAL is not set
+ CONFIG_DEBUG_RECORD_STEPS=y
+ CONFIG_H713_BOARD_ID=1
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
+diff --git a/configs/h713_hy310_serial_defconfig b/configs/h713_hy310_serial_defconfig
+index 6dd827f..670bce7 100644
+--- a/configs/h713_hy310_serial_defconfig
++++ b/configs/h713_hy310_serial_defconfig
+@@ -9,3 +9,5 @@ CONFIG_SERIAL_BAUD=115200
+ CONFIG_DEBUG_LOG=y
+ CONFIG_DEBUG_RECORD_STEPS=y
+ CONFIG_H713_BOARD_ID=1
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
+diff --git a/configs/h713_hy310_sr_defconfig b/configs/h713_hy310_sr_defconfig
+index 8aefe30..23e5090 100644
+--- a/configs/h713_hy310_sr_defconfig
++++ b/configs/h713_hy310_sr_defconfig
+@@ -9,3 +9,5 @@ CONFIG_DEBUG_RECORD_STEPS=y
+ CONFIG_DEBUG_VERIFY_DRAM=y
+ CONFIG_H713_DRAM_SELF_REFRESH=y
+ CONFIG_H713_BOARD_ID=1
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 989fc69..35b85bb 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -228,8 +228,19 @@ static struct {
+ #define PL(pin, m, p) { .dev = &r_pio.dev, .id = SUNXI_GPIO_PIN(0, pin), \
+ 	.drive = DRIVE_10mA, .mode = m, .pull = p }
+ static const struct gpio_handle key_pin  = PL(CONFIG_H713_POWER_KEY_PIN, MODE_INPUT, PULL_UP);
+-static const struct gpio_handle led_red  = PL(0, MODE_OUTPUT, PULL_NONE); /* dt led0 */
+-static const struct gpio_handle led_blue = PL(1, MODE_OUTPUT, PULL_NONE); /* dt led1 */
++/*
++ * The standby LEDs (Kconfig, -1 = none): red on and blue off asleep, the
++ * other way round after the wake. Only the HY310's are known (its stock
++ * U-Boot prj node: PL0 red, PL1 blue), where the LED follows PB5 anyway;
++ * a board without that evidence gets no pin driven (PRUEFUNG5 N-08).
++ */
++#define LED_RED         CONFIG_H713_LED_RED_PIN
++#define LED_BLUE        CONFIG_H713_LED_BLUE_PIN
++#define LED_PIN(pin)    ((pin) >= 0 ? (pin) : 0)
++#define LED_BIT(pin)    ((pin) >= 0 ? BIT(LED_PIN(pin)) : 0)
++#define LED_MASK        (LED_BIT(LED_RED) | LED_BIT(LED_BLUE))
++static const struct gpio_handle led_red  = PL(LED_PIN(LED_RED), MODE_OUTPUT, PULL_NONE);
++static const struct gpio_handle led_blue = PL(LED_PIN(LED_BLUE), MODE_OUTPUT, PULL_NONE);
+ 
+ #if CONFIG(H713_IR_WAKE_NECX)
+ /* cir_param of the HY310 and HY300 Pro vendor DTs, in crust's NECX order. */
+@@ -1053,9 +1064,9 @@ h713_suspend_prepare(void)
+ 	if (gpio_get(&key_pin))
+ 		h713_err(H713_ERR_KEY_PIN, CONFIG_H713_POWER_KEY_PIN, 0),
+ 		warn("H713: power key pin unavailable");
+-	if (!gpio_get(&led_red))
++	if (LED_RED >= 0 && !gpio_get(&led_red))
+ 		gpio_set_value(&led_red, true);
+-	if (!gpio_get(&led_blue))
++	if (LED_BLUE >= 0 && !gpio_get(&led_blue))
+ 		gpio_set_value(&led_blue, false);
+ 	key_state = KEY_ENTRY;
+ 	key_count = 0;
+@@ -1175,15 +1186,20 @@ h713_resume_done(void)
+ {
+ 	const uint32_t key_bit = BIT(CONFIG_H713_POWER_KEY_PIN);
+ 
+-	gpio_set_value(&led_blue, true);
+-	gpio_set_value(&led_red, false);
+-	gpio_put(&led_blue);
+-	gpio_put(&led_red);
++	if (LED_BLUE >= 0) {
++		gpio_set_value(&led_blue, true);
++		gpio_put(&led_blue);
++	}
++	if (LED_RED >= 0) {
++		gpio_set_value(&led_red, false);
++		gpio_put(&led_red);
++	}
+ 	gpio_put(&key_pin);
+ 	device_put(cir), cir = NULL;
+ 	mmio_write_32(R_PIO_PL_CFG1, pl_cfg_saved);	/* the kernel's IR pin */
+ 	/* the kernel's power key interrupt and its LED state, as before */
+-	mmio_clrset_32(R_PIO_PL_DATA, 0x3, pl_data_saved & 0x3);
++	if (LED_MASK)
++		mmio_clrset_32(R_PIO_PL_DATA, LED_MASK, pl_data_saved & LED_MASK);
+ 	mmio_write_32(R_PIO_PL_PULL0, pl_pull0_saved);
+ 	mmio_write_32(R_PIO_PL_DRV0, pl_drv0_saved);
+ 	mmio_write_32(R_PIO_PL_DRV1, pl_drv1_saved);
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index 0973817..6d8a5b6 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -30,6 +30,22 @@ config H713_POWER_KEY_PIN
+ 	help
+ 		standby_param power_key = "PL4" on every board seen.
+ 
++config H713_LED_RED_PIN
++	int "Port L pin of the red standby LED, -1 = none"
++	default -1
++	range -1 31
++	help
++		High while asleep, low after the wake. The HY310's stock
++		U-Boot prj node has it on PL0; no other board has been read
++		(PRUEFUNG5 N-08), and crust drives no pin it does not know.
++
++config H713_LED_BLUE_PIN
++	int "Port L pin of the blue LED, -1 = none"
++	default -1
++	range -1 31
++	help
++		Low while asleep, high after the wake. HY310: PL1.
++
+ config H713_RAILS_PIN
+ 	int "Port L pin the vendor standby_param names for all rails, -1 = never drive it"
+ 	default -1

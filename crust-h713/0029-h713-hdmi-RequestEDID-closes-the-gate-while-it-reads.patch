@@ -1,7 +1,7 @@
 From 48f880fe69fc2858d0348af3831d6421510f7571 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 05:23:07 +0200
-Subject: [PATCH 29/34] h713: hdmi: RequestEDID closes the gate while it reads
+Subject: [PATCH 29/75] h713: hdmi: RequestEDID closes the gate while it reads
  the DDC RAM
 
 The blob closes the EDID gate (0x11cac(7, 0)) before it reads the DDC
