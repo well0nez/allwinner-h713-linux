@@ -173,7 +173,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Watchdog schon läuft - vorher MODE aus und CTRL anpingen
       - 07.10. abends (Release-Entwurf `arbeit/crust-release-20261007/`, W1/W2 im Kernel, T1 in TF-A): `RuntimeWatchdogSec=16s`
         und `RebootWatchdogSec=16s` kommen erst nach bestandener Stufe W2 und Marcos Entscheidung ins Abbild;
-        `release/check-crust.py` verweigert schon jetzt ein rootfs mit Watchdog ohne BL31 mit dem fütternden Reset
+        `release/check-crust.py` verweigert schon jetzt ein rootfs mit Watchdog ohne BL31 mit dem fütternden Reset, ebenso
+        einen DT, der den Watchdog mit dem H713-Layout (`sun55i-a523-wdt`) bindet: dann schaltet jeder Neustart ihn wirklich scharf.
+        Offen: `dt_binding_check`/`dtbs_check` der neuen Bindung, sobald dtschema im Bau-Container ist
 - [ ] 2.26 **Physische Adresse im HDMI-VSDB:** crust schreibt für Port 0/1/2 1.0.0.0 / 2.0.0.0 / 3.0.0.0, der Blob 0.0.0.0 /
       2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
       Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen

@@ -32,6 +32,7 @@ DRAM = dict([("CLK", "DRAM_CLK")] + [(k, "DRAM_SUNXI_" + k) for k in
             ("ZQ", "ODT_EN", "PARA1", "PARA2", "MR0", "MR1", "MR2", "MR3", "TPR5", "TPR6", "TPR9", "TPR13")])
 T1_MARK = b"SoC watchdog fed and armed"                  # TF-A: the reset that feeds the running watchdog first
 TEST_BL31_MARK = b"PSCI: test bench BL31"                # TF-A built with SUNXI_STANDBY_UNMEASURED=1: never released
+WDT_LAYOUT = b"allwinner,sun55i-a523-wdt"                # the SoC watchdog bound with its real layout: it really runs
 # TF-A's sunxi_standby.c is built only with SUNXI_SYSTEM_SUSPEND=1; these are its texts (NOTICE and ERROR, in every
 # release BL31). All of them: the BL31 offers SYSTEM_SUSPEND; none: it does not; some: that file changed and this
 # list has to follow - refused, so that a reworded text never makes a suspend BL31 look like one without.
@@ -275,6 +276,10 @@ def main(argv=None):
             ok("BL31 %s SYSTEM_SUSPEND" % ("offers" if has else "without"))
         if TEST_BL31_MARK in bl31:
             fail("BL31 is a test bench build (SUNXI_STANDBY_UNMEASURED=1): it lets unmeasured deep-sleep steps through")
+        if o.dtb and T1_MARK not in bl31 and any(WDT_LAYOUT in p.get("compatible", b"").split(b"\0")
+                                                for _, p in fdt_nodes(open(o.dtb, "rb").read())[0]):
+            fail("the device tree binds the SoC watchdog with its real layout, BL31 has no reset that feeds it first: "
+                 "a reboot after anything armed it would hang")
     if parts is not None:
         sleep = parts.get("etc/systemd/sleep.conf.d/10-h713.conf", b"")
         if o.standby:

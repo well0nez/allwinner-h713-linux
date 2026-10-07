@@ -85,9 +85,9 @@ class Gate(unittest.TestCase):
         self.put("crust.config", "CONFIG_H713_DRAM_SELF_REFRESH=y\nCONFIG_H713_IR_WAKE_NECX=y\nCONFIG_H713_DRAM_TYPE=3\n" +
                  "".join("CONFIG_H713_DRAM_%s=%s\n" % kv for kv in DRAM.items()) + "".join(extra))
 
-    def dtb(self, firmware):
+    def dtb(self, firmware, wdt=b"allwinner,sun50i-h6-wdt\0allwinner,sun6i-a31-wdt\0"):
         arisc = {"compatible": b"allwinner,sun50i-h713-arisc\0", "firmware-name": firmware.encode() + b"\0hy310-edid.bin\0"}
-        self.put("board.dtb", fdt({"soc": {"arisc@100000": arisc}}))
+        self.put("board.dtb", fdt({"soc": {"watchdog@2051000": {"compatible": wdt}, "arisc@100000": arisc}}))
 
     def rootfs(self, crust=None, standby=False, watchdog=False, extra=None):
         files = {"./etc/systemd/sleep.conf.d/10-h713.conf":
@@ -200,6 +200,12 @@ class Gate(unittest.TestCase):
     def test_a_test_bench_bl31(self):
         self.put("bl31.bin", STANDBY_TEXTS + T1_TEXT + b"\nPSCI: test bench BL31: system suspend takes unmeasured\n")
         self.assert_refused("BL31 is a test bench build")
+
+    def test_a_watchdog_bound_with_its_layout_needs_the_feeding_reset(self):
+        self.dtb("hy310-crust.bin", wdt=b"allwinner,sun50i-h713-wdt\0allwinner,sun55i-a523-wdt\0")
+        self.assertEqual(self.run_gate()[0], 0)
+        self.put("bl31.bin", STANDBY_TEXTS)
+        self.assert_refused("binds the SoC watchdog with its real layout")
 
     def test_a_board_without_crust(self):
         self.put("uboot-proper-release.bin", fit(b""))
