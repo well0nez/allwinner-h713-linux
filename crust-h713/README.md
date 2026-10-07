@@ -27,6 +27,13 @@ build container mounts. A worktree or a `git clone --shared` works too: build-al
 the git directory itself (`GIT_DIR`, `GIT_WORK_TREE`), so crust's version text names the commit and not
 `v0.6.10000` with an `unknown` hash.
 
+**Merged only as one piece.** `CRUST_DEFCONFIG` in `boards/hy310/board.env` goes into `main` only together
+with three other things: the crust source (this fork as a submodule, or the mirror as above), the HY310
+device tree that names `hy310-crust.bin` for the arisc node, and the U-Boot patch that stages `scp.bin` for
+BL31 (`SUNXI_SCP_BASE`). Without the source `build-all` stops before step 1; without the other two, step 10
+refuses the image. `release/tor.sh` and `boards/check.sh` do not see that order, so it is stated here,
+in `board.env` and in `TODO.md` 3.2.
+
 ## What it is
 
 [crust](https://github.com/crust-firmware/crust) is free firmware for the small OR1K core ("ARISC",

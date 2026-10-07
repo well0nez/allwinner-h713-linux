@@ -179,7 +179,14 @@ if ((WANT_STANDBY)) && [[ "$STANDBY" != sr ]]; then
 fi
 CRUST_SRC_GIVEN=${CRUST_SRC:+1}; CRUST_SRC=${CRUST_SRC:-$MAINLINE/external/crust}
 if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
-	[[ -f "$CRUST_SRC/Makefile" ]] || { echo "no crust source at $CRUST_SRC -- git submodule update --init, or CRUST_SRC=<checkout>" >&2; exit 2; }
+	if [[ ! -f "$CRUST_SRC/Makefile" ]]; then
+		if git config -f "$ROOT/.gitmodules" --get-regexp '\.path$' 2>/dev/null | grep -q ' mainline/external/crust$'; then
+			echo "no crust source at $CRUST_SRC -- git submodule update --init mainline/external/crust, or CRUST_SRC=<checkout>" >&2
+		else
+			echo "boards/$BOARD names CRUST_DEFCONFIG, and there is no crust submodule yet: CRUST_SRC=<checkout of the head crust-h713/SERIES.txt names> (crust-h713/README.md says how to make one)" >&2
+		fi
+		exit 2
+	fi
 	CRUST_HEAD=$(git -C "$CRUST_SRC" rev-parse HEAD 2>/dev/null) || { echo "$CRUST_SRC is no git checkout: crust's version text needs one" >&2; exit 2; }
 	CRUST_MIRROR=$(awk '$1 == "head" { print $2 }' "$ROOT/crust-h713/SERIES.txt" 2>/dev/null)
 	if [[ "$CRUST_HEAD" != "$CRUST_MIRROR" && -z "$CRUST_SRC_GIVEN" ]]; then

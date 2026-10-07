@@ -223,7 +223,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Standby): S0a (R_WDOG, R_PRCM nur lesen), W1 (TF-A-Reset mit Füttern), W2 (Kernel-Watchdog), A0 (Wachbetrieb gegen
         den Blob, 24 h, HDCP-Paar), M1 (Leistung im Gate mit crust). **R2** (Standby im Abbild): S0b-S0d, V1', N0-N4,
         K (Taste, IR), L (Licht und Lüfter 1 h), M2 (Leistung im SR), R-a bis R-d (Produktbild), Hörtest, dazu 3.3.
-        Jeder Lauf nur mit Marcos Ja
+        Jeder Lauf nur mit Marcos Ja. **Merge-Bedingung:** `CRUST_DEFCONFIG` im HY310-`board.env` kommt nur zusammen mit
+        der crust-Quelle (Submodul `mainline/external/crust`, bis dahin `CRUST_SRC`), dem HY310-DT mit `hy310-crust.bin`
+        und dem U-Boot-Patch für `scp.bin` (`SUNXI_SCP_BASE`) nach `main`: ohne Quelle hält `build-all --board hy310` an,
+        ohne die anderen beiden verweigert Schritt 10. `release/tor.sh` und `boards/check.sh` sehen das nicht
 - [ ] 3.3 FB-MIPSRELOAD/b — rein, wenn der Bildfehler nach Reload verstanden ist (`doku/138`) - löst 2.15 mit (Firmware nimmt nach einem afbd-Reload keine neue Publikation an)
       - **Platzhalter (Marco 07.10.):** ohne MIPS-Neuladen hat der Projektor nach jedem Standby kein Bild (Release-Durchsicht
         KD-1/INT-04, `arbeit/crust-20261007/PRUEFUNG5-20261007.md`) - Standby ist ohne 3.3 nicht auslieferbar. Weg: Neuladen
