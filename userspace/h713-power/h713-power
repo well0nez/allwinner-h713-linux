@@ -39,8 +39,9 @@ def path(*parts):
     return os.path.join(ROOT, *parts)
 
 
-def log(msg):
-    print("h713-power: " + msg, flush=True)
+def log(msg, level=""):
+    """One line for the journal; level "<4>" makes it a warning there (systemd reads the prefix on stdout)."""
+    print(level + "h713-power: " + msg, flush=True)
 
 
 def read(p, default=""):
@@ -138,18 +139,28 @@ def suspend_counts():
     return tuple(int(read(path("sys/power/suspend_stats", n), "0") or 0) for n in ("success", "fail"))
 
 
-def suspend():
-    """systemctl suspend, then wait for the kernel's verdict in suspend_stats."""
+def suspend(clock=None, sleep=None):
+    """systemctl suspend, then wait for the kernel's verdict in suspend_stats.
+
+    systemd freezes this process for the standby. Freezing, the devices' suspend and their resume are awake
+    time and may take longer than the 30 s: a wait that comes back from the freezer starts its 30 s again,
+    and the counters are always read before the time is judged - a standby that happened never ends in a
+    power-off. False only when 30 s pass with neither counter moving. clock and sleep: for the tests."""
+    clock, sleep = clock or time.monotonic, sleep or time.sleep
     before = suspend_counts()
     if subprocess.call(SYSTEMCTL + ["suspend"]) != 0:
         return False
-    end = time.monotonic() + 30
-    while time.monotonic() < end:
+    end = clock() + 30
+    while True:
         now = suspend_counts()
         if now[0] > before[0] or now[1] > before[1]:
             return now[0] > before[0]
-        time.sleep(0.2)
-    return False
+        t = clock()
+        if t >= end:
+            return False
+        sleep(0.2)
+        if clock() - t > 2:                      # frozen meanwhile: the standby came, its verdict follows
+            end = clock() + 30
 
 
 def act(what, conf):
@@ -160,18 +171,22 @@ def act(what, conf):
             if suspend():
                 return
             if conf["refused"] == "log":
-                log("the standby was refused, the projector stays on")
+                log("the standby was refused, the projector stays on", "<4>")
                 return
-            log("the standby was refused: power-off")
+            log("the standby was refused: power-off", "<4>")
         else:
-            log("short press: power-off, because %s" % why)
+            log("short press: power-off, because %s" % why, "<4>")
     else:
         log("long press: power-off")
     subprocess.call(SYSTEMCTL + ["poweroff"])
 
 
 def open_device(p):
-    """(fd, True) when the events carry CLOCK_BOOTTIME stamps; False: the read time stands in."""
+    """(fd, True) when the events carry CLOCK_BOOTTIME stamps; False: the read time stands in.
+
+    The kernel's evdev takes CLOCK_BOOTTIME, so the fallback is for an odd device only. With it the press
+    that woke the box can miss the ignore window: its events are read after the thaw, not stamped when the
+    key went down."""
     fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK)
     try:
         fcntl.ioctl(fd, EVIOCSCLOCKID, struct.pack("i", CLOCK_BOOTTIME))

@@ -32,7 +32,11 @@ crashed service.
 It listens on every input device that can send `KEY_POWER` - the key on the case (`gpio-keys`) and the
 paired Bluetooth remote - and picks up a remote that connects later. `remote = off` in
 `/etc/h713/power.conf` leaves the remote's key without any effect. `refused = poweroff | log` says what
-a short press does when the kernel refuses the standby after all.
+a short press does when the kernel refuses the standby after all. Refused means `fail` in
+`/sys/power/suspend_stats` moved, or neither counter did within 30 s. The 30 s start again when the tool
+comes back from the freezer, and the counters are read before the time is judged: a slow freeze or resume
+never turns a standby that happened into a power-off. A refusal and a power-off for a short press are
+logged as warnings.
 
 **Not measured yet.** The window after a key wake (`ignore_s`) is provisional; the device stage K
 measures it with the owner at the key. Whether the remote's power key should suspend too, and whether a

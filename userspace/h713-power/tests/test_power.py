@@ -140,6 +140,38 @@ class Readiness(unittest.TestCase):
         self.assertFalse(self.m.has_power_key("0 ffffffffffffffff"))
 
 
+class Verdict(unittest.TestCase):
+    """suspend() on a clock that jumps where systemd freezes the tool for the standby (awake time, not sleep)."""
+
+    def verdict(self, awake_s=None, success="1", fail="0", late=0):
+        m, r = load(), Root()
+        m.ROOT, m.SYSTEMCTL = r.dir, ["true"]
+        clock, sleeps = [1000.0], [0]
+
+        def sleep(s):
+            clock[0] += s
+            sleeps[0] += 1
+            if awake_s is not None and sleeps[0] == 1:
+                clock[0] += awake_s                     # freeze, the devices' suspend and resume
+            if awake_s is not None and sleeps[0] == 1 + late:
+                r.put("sys/power/suspend_stats/success", success)
+                r.put("sys/power/suspend_stats/fail", fail)
+        return m.suspend(lambda: clock[0], sleep), clock[0] - 1000
+
+    def test_a_standby_that_took_longer_than_30_s_awake_is_a_standby(self):
+        self.assertTrue(self.verdict(awake_s=35)[0])
+        self.assertTrue(self.verdict(awake_s=35, late=3)[0])   # the counter moves only after the thaw
+
+    def test_a_short_standby_and_a_refused_one(self):
+        self.assertTrue(self.verdict(awake_s=5)[0])
+        self.assertFalse(self.verdict(awake_s=35, success="0", fail="1")[0])
+
+    def test_no_verdict_in_30_s_is_a_refusal(self):
+        ok, waited = self.verdict()
+        self.assertFalse(ok)
+        self.assertTrue(30 <= waited < 31, waited)
+
+
 class Run(unittest.TestCase):
     def test_a_short_press_suspends(self):
         calls, out = Root().press((1, 0.3), (0, 0.2))
