@@ -25,6 +25,8 @@
 #       + udev rule (starts the unit when an accelerometer appears)
 #   5e. h713-panel + page + unit (enabled; port 8080, password made at the first start)
 #   5g. h713-features + unit (enabled), /etc/h713/features from boards/$H713_BOARD/board.env
+#   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin; with
+#       H713_STANDBY=1 the standby sleep.conf.d and h713-power + unit (enabled) + power.conf
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -59,6 +61,12 @@ H713_PANEL_SRC=${H713_PANEL_SRC:-$PROJECT_ROOT/userspace/h713-panel}
 H713_AF_SRC=${H713_AF_SRC:-$PROJECT_ROOT/userspace/h713-autofocus}
 H713_REMOTE_SRC=${H713_REMOTE_SRC:-$PROJECT_ROOT/userspace/h713-remote-pair}
 H713_FEATURES_SRC=${H713_FEATURES_SRC:-$PROJECT_ROOT/userspace/h713-features}
+H713_POWER_SRC=${H713_POWER_SRC:-$PROJECT_ROOT/userspace/h713-power}
+# crust, built by release/build-all.sh from crust-h713/ - a build product of ours, not a vendor file,
+# so it is not in FORBIDDEN_NAMES. The name is the board's: the rootfs can be built without a board,
+# and a board's device tree names its own image (hy310-crust.bin). Standby only together with it.
+H713_CRUST_BIN=${H713_CRUST_BIN:-}
+H713_STANDBY=${H713_STANDBY:-0}
 # The board this tree is for (build-rootfs.sh --board). Its FEATURES become
 # /etc/h713/features (5g): what the board should have of the camera, the
 # accelerometer and the focus motor. Without a board there is no record and
@@ -214,6 +222,15 @@ check_sources() {
 	[[ -x "$H713_FEATURES_SRC/h713-features" && -f "$H713_FEATURES_SRC/h713-features.service" ]] || \
 		{ warn "missing: h713-features or h713-features.service in $H713_FEATURES_SRC"; errors=1; }
 	if [[ -n "$H713_BOARD" ]] && ! board_features >/dev/null; then errors=1; fi
+	if [[ -n "$H713_CRUST_BIN" ]]; then
+		[[ -f "$H713_CRUST_BIN" && -n "$H713_BOARD" ]] || \
+			{ warn "H713_CRUST_BIN=$H713_CRUST_BIN: missing, or no H713_BOARD to name it after"; errors=1; }
+	fi
+	if ((H713_STANDBY)); then
+		[[ -n "$H713_CRUST_BIN" ]] || { warn "H713_STANDBY=1 without H713_CRUST_BIN: no standby without crust"; errors=1; }
+		[[ -x "$H713_POWER_SRC/h713-power" && -f "$H713_POWER_SRC/h713-power.service" && -f "$H713_POWER_SRC/power.conf" ]] || \
+			{ warn "missing: h713-power, h713-power.service or power.conf in $H713_POWER_SRC"; errors=1; }
+	fi
 	if [[ -x "$H713_AF_BIN" ]]; then
 		local afkind; afkind=$(file -b "$H713_AF_BIN" 2>/dev/null || echo aarch64)
 		case "$afkind" in
@@ -304,6 +321,9 @@ if ((DRY_RUN)); then
     5g. h713-features
        h713-features -> /usr/local/bin/, h713-features.service enabled
        /etc/h713/features: $DRY_FEAT
+    5h. crust and the standby
+       ${H713_CRUST_BIN:-no crust image} -> /lib/firmware/${H713_BOARD:-<board>}-crust.bin
+       standby: $( ((H713_STANDBY)) && echo "offered - sleep.conf.d mem/deep, h713-power enabled" || echo "not offered - AllowSuspend=no (overlay)")
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -538,6 +558,29 @@ else
 fi
 info "/usr/local/bin/h713-features, h713-features.service enabled"
 
+# --- 5h. crust and the standby ---------------------------------------------
+# The overlay's sleep.conf.d/10-h713.conf forbids every suspend. Only an image built with
+# --standby gets the version that allows suspend to RAM, deep only (s2idle would power the
+# display domains down under the running MIPS), and h713-power on the power key.
+if [[ -n "$H713_CRUST_BIN" ]]; then
+	say "crust"
+	install -D -m 0644 "$H713_CRUST_BIN" "$TREE/lib/firmware/$H713_BOARD-crust.bin"
+	info "/lib/firmware/$H713_BOARD-crust.bin ($(stat -c %s "$H713_CRUST_BIN") B, sha256 $(sha256sum "$H713_CRUST_BIN" | cut -c1-16))"
+fi
+if ((H713_STANDBY)); then
+	say "standby"
+	printf '%s\n' "# Written by install-projekt.sh for an image built with --standby (docs/subsystems/standby.md):" \
+		"# suspend to RAM through crust and nothing else. With MemorySleepMode=deep systemd refuses a" \
+		"# suspend the kernel offers no [deep] for, instead of falling back to s2idle." \
+		"[Sleep]" "AllowSuspend=yes" "SuspendState=mem" "MemorySleepMode=deep" "AllowHibernation=no" \
+		"AllowSuspendThenHibernate=no" "AllowHybridSleep=no" > "$TREE/etc/systemd/sleep.conf.d/10-h713.conf"
+	install -m 0755 "$H713_POWER_SRC/h713-power" "$TREE/usr/local/sbin/h713-power"
+	install -m 0644 "$H713_POWER_SRC/h713-power.service" "$TREE/etc/systemd/system/h713-power.service"
+	ln -sfn ../h713-power.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
+	[[ -f "$TREE/etc/h713/power.conf" ]] || install -m 0644 "$H713_POWER_SRC/power.conf" "$TREE/etc/h713/power.conf"
+	info "sleep.conf.d: mem, deep only; /usr/local/sbin/h713-power, h713-power.service enabled, /etc/h713/power.conf"
+fi
+
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"
 
@@ -545,12 +588,12 @@ blob_guard "$TREE"
 # needed is put in by the installer (108 §2).
 if [[ -d "$TREE/lib/firmware" ]]; then
 	# regulatory.db* is wireless-regdb (ISC licence, free) -- no blob, no suspicion.
-	FW_N=$(find "$TREE/lib/firmware" -type f -not -name 'regulatory.db*' | wc -l)
+	FW_N=$(find "$TREE/lib/firmware" -type f -not -name 'regulatory.db*' -not -name "${H713_BOARD:-?}-crust.bin" | wc -l)
 	if ((FW_N > 0)); then
 		warn "/lib/firmware carries $FW_N files -- check whether that is intended:"
-		find "$TREE/lib/firmware" -type f -not -name 'regulatory.db*' -printf '       /lib/firmware/%P\n' >&2
+		find "$TREE/lib/firmware" -type f -not -name 'regulatory.db*' -not -name "${H713_BOARD:-?}-crust.bin" -printf '       /lib/firmware/%P\n' >&2
 	else
-		say "/lib/firmware is empty (the firmware comes from the installer)"
+		say "/lib/firmware is empty${H713_CRUST_BIN:+ but for our own $H713_BOARD-crust.bin} (the vendor's firmware comes from the installer)"
 	fi
 else
 	say "/lib/firmware does not exist (the firmware comes from the installer)"
