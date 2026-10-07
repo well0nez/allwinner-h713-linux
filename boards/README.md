@@ -54,6 +54,7 @@ Sourced as shell, so `KEY=value`, no spaces around `=`. Keys:
 | `KERNEL_DEFCONFIG` | optional: overrides the kernel defconfig from `mainline/config/versions.env` |
 | `UBOOT_DEFCONFIG` | optional: overrides the `<UBOOT_BOARD>_defconfig` derived from `UBOOT_BOARD` |
 | `VARIANTS` | optional: the stock firmwares of a board whose units left the factory with different ones, space-separated, each a directory `variants/<name>/` (see below) |
+| `CRUST_DEFCONFIG` | optional: the board runs crust, our ARISC firmware ([crust-h713/](../crust-h713/README.md)), built with this crust defconfig. `release/build-all.sh` builds it once for the release FIT and for the rootfs as `/lib/firmware/<id>-crust.bin`, the name the board's device tree must give the arisc node (`boards/check.sh` 9). On a `verified` board it also makes `--standby` possible (`STANDBY=sr`). Unset: the vendor ARISC firmware from the owner's dump |
 | `FEATURES` | optional: which of the HY310's optional hardware - `camera`, `accelerometer`, `focus-motor` - the board is known to have and its `KERNEL_DTB` drives, space-separated. A name left out is either absent or unknown; an unknown one may keep its node in the `KERNEL_DTB` so that the first boot's probe answers it. Empty: none confirmed; unset: not recorded. `build-rootfs.sh --board` (so `release/build-all.sh --board`) writes it into the image as `/etc/h713/features`. On the device the nodes decide: a unit or tool whose hardware is missing says "not present on this board" (exit 7), the settings page hides its controls, and `h713-features` warns once per boot about a listed name the board does not show. The board's README says which names are absent, which unknown, and where each answer comes from |
 
 `STATUS` follows the vocabulary of the installer profiles
@@ -216,4 +217,5 @@ values, that `STATUS=verified` is backed by a `VERIFIED_BY` and a `KERNEL_DTB`, 
 `CONFIG_DRAM_CLK` matches the DRAM clock of the board's installer profile - the fragment and the
 profile cannot drift apart without the check going red. For a board with variants it does the same
 per variant (`DRAM_CLK` against the profile variant's clock, the variants against `VARIANTS` and the
-profile's, one `IMAGE_NAME` each).
+profile's, one `IMAGE_NAME` each). A board's `CRUST_DEFCONFIG` and the firmware its built device tree
+names for the arisc node have to agree: both crust or neither.
