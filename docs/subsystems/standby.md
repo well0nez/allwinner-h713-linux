@@ -57,11 +57,12 @@ A standby that does not come back looks like this: **dark, red LED, no network, 
 The LED follows PB5, so it is red whether the board sleeps, hangs or sits in the gate; it says nothing
 about which.
 
-What happens then depends on the watchdogs. Under Linux `systemd` can feed the SoC watchdog
-(`RuntimeWatchdogSec`, not set in the image yet; TODO 2.25). For a standby the kernel feeds it itself
-until its devices are suspended and then stops it; from there crust's net on the second watchdog would
-watch the sleep (`H713_SLEEP_NET`), which a release does not carry until that watchdog's register layout
-is measured - until then nothing watches the sleep itself. A watchdog reset finds the gate's RTC word on
+What happens then depends on the watchdogs. Under Linux `systemd` feeds the SoC watchdog
+(`RuntimeWatchdogSec=16s` and `RebootWatchdogSec=16s` in `/etc/systemd/system.conf.d/10-h713-watchdog.conf`;
+measured in stage W2, doku/170; until 08.10.2026 the image set neither). For a standby the kernel feeds it
+itself until its devices are suspended and then stops it; from there crust's net on the second watchdog would
+watch the sleep (`H713_SLEEP_NET`). That watchdog's register layout is measured (stage S0, doku/170), the
+net in a sleep is not yet, so a release does not carry it - until then nothing watches the sleep itself. A watchdog reset finds the gate's RTC word on
 "running" and boots straight through, lamp on, unless the owner decides it should go to the dark gate.
 None of this has been measured in a standby yet.
 

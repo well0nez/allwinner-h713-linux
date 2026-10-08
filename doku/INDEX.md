@@ -40,7 +40,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/hdmi-in.md` | `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
-| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168` |
+| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170` |
 | `docs/subsystems/video.md` | `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/60` |
 | `docs/tools/h713-autofocus.md` | `doku/134` |
