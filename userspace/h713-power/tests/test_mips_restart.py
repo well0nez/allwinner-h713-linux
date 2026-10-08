@@ -38,13 +38,21 @@ esac
 exit 0
 """
 LOGGER = '#!/bin/sh\necho "logger $*" >> "$H713_ROOT/events"\n'
+KEYTOOL = r"""#!/bin/sh
+# stand-in for h713-hdcp-key --bind DEV: binds DEV unless key-rc says 1, exits with key-rc (0 default)
+R=$H713_ROOT
+echo "hdcp-key $*" >> "$R/events"
+rc=0; [ ! -e "$R/key-rc" ] || rc=$(cat "$R/key-rc")
+[ "$rc" = 1 ] || echo "$2" > "$R/sys/bus/platform/drivers/sun50i-h713-hdmirx/bind"
+exit "$rc"
+"""
 
 
 class Box:
     """A temporary root with the fake kernel running; run() starts h713-mips-restart against it."""
 
     def __init__(self, state="parked", outcome="running", node_delay=0.1, node="video2", warp=True,
-                 bound=True, driver=True):
+                 bound=True, driver=True, keytool=None):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = self.tmp.name
         self.state, self.outcome, self.node_delay, self.node = state, outcome, node_delay, node
@@ -58,6 +66,10 @@ class Box:
         self.put("bin/logger", LOGGER)
         for b in ("systemctl", "logger"):
             os.chmod(self.p("bin/" + b), 0o755)
+        if keytool:                     # "new" knows --bind, "old" is the tool before it did
+            self.put("usr/local/sbin/h713-hdcp-key", KEYTOOL if keytool == "new" else
+                     "#!/bin/sh\necho \"hdcp-key $*\" >> \"$H713_ROOT/events\"\n")
+            os.chmod(self.p("usr/local/sbin/h713-hdcp-key"), 0o755)
         self.put(RXD + "/bind", "")
         self.put(RXD + "/unbind", "")
         if bound:
@@ -457,6 +469,44 @@ class Refusals(Base):
         self.assertFalse([e for e in ev if e.startswith("kernel")], ev)
         self.assertIn("systemctl start h713-tv@video2.service", ev)
         self.assertIn("systemctl start h713-warp.service", ev)
+
+
+class HdcpKey(Base):
+    """The bind goes through h713-hdcp-key --bind, so the probe gets the HDCP 2.2 key again."""
+
+    def test_the_key_tool_binds_the_receiver(self):
+        b = self.box(keytool="new")
+        rc, _, _ = b.run()
+        ev = b.events()
+        self.assertEqual(rc, 0, ev)
+        self.clean(ev)
+        self.ordered(ev, "kernel restart /boot/mips/display.bin from parked", "hdcp-key --bind hdmi-rx",
+                     "kernel bind hdmi-rx", "kernel node video2", "systemctl start h713-warp.service")
+
+    def test_bound_without_the_key_is_a_warning_and_still_the_picture(self):
+        b = self.box(keytool="new")
+        b.put("key-rc", "3")
+        rc, _, _ = b.run()
+        ev = b.events()
+        self.assertEqual(rc, 0, ev)
+        self.assertTrue(any("hdmi-rx bound without the HDCP 2.2 key" in e and "user.warning" in e for e in ev))
+
+    def test_a_failed_bind_through_the_key_tool_is_3(self):
+        b = self.box(keytool="new")
+        b.put("key-rc", "1")
+        rc, _, _ = b.run()
+        ev = b.events()
+        self.assertEqual(rc, 3, ev)
+        self.assertTrue(any("binding hdmi-rx failed (h713-hdcp-key --bind: exit 1)" in e for e in ev), ev)
+        self.assertIn("systemctl start h713-warp.service", ev)
+
+    def test_a_key_tool_without_bind_is_not_called(self):
+        b = self.box(keytool="old")
+        rc, _, _ = b.run()
+        ev = b.events()
+        self.assertEqual(rc, 0, ev)
+        self.assertFalse([e for e in ev if e.startswith("hdcp-key")], ev)
+        self.assertIn("kernel bind hdmi-rx", ev)
 
 
 class Size(unittest.TestCase):
