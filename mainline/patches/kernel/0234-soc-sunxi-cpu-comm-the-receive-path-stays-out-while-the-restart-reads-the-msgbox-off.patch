@@ -1,0 +1,89 @@
+soc: sunxi: cpu_comm: the receive path stays out while the restart reads the msgbox off
+
+The flush before a restart (0229) read the MIPS -> ARM FIFO without
+keeping its own receive path out. The hard IRQ handler and the polling
+fallback drain the same FIFO: a handler that counted a word the flush
+then took read the data register of an empty FIFO and handed that word
+to the callback while firmware_reset() rebuilt the shared region.
+Masking the endpoint would not keep it out, the handler unmasks it
+itself whichever line woke it.
+
+The flush now disables the msgbox lines cpu_comm requested, which also
+waits for a handler that runs, and cancels the poll worker, reads both
+FIFOs off and the counts after it, and only then enables the lines and
+queues the worker again. The line in dmesg is printed after that. The
+MIPS is held in reset all along and sends nothing; an interrupt that
+was pending fires after the enable and finds the FIFO empty.
+
+Found in review A (F4) of the standby hook. Compiled out of tree against
+the R1 kernel with W=1, no new warning; the offline test models the
+receive path and counts a FIFO read while it could drain as a violation
+(the reviewed flush: 12). Not measured.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -524,6 +524,35 @@ void cpu_comm_msgbox_free_irq(void)
+ 	msgbox_rx_callback = NULL;
+ }
+ 
++/*
++ * The receive path stays out while the flush reads the MIPS -> ARM FIFO: a
++ * handler that already counted a word the flush then takes would read the
++ * data register of an empty FIFO and hand that to the callback while the
++ * region is rebuilt. Masking the endpoint is not enough, the handler unmasks
++ * it itself on any of the lines; so the lines are disabled (which waits for
++ * a handler that runs) and the poll worker is cancelled, both only around
++ * the reads. The MIPS is held in reset meanwhile and sends nothing.
++ */
++static void cpu_comm_msgbox_rx_hold(bool hold)
++{
++	int i;
++
++	for (i = 0; i < MSGBOX_MAX_IRQS; i++) {
++		if (!msgbox_irqs[i].registered)
++			continue;
++		if (hold)
++			disable_irq(msgbox_irqs[i].num);
++		else
++			enable_irq(msgbox_irqs[i].num);
++	}
++	if (!msgbox_poll_active)
++		return;
++	if (hold)
++		cancel_delayed_work_sync(&msgbox_poll_work);
++	else
++		schedule_delayed_work(&msgbox_poll_work, msecs_to_jiffies(1));
++}
++
+ /*
+  * Before a restart, with the coprocessor held in reset: whatever is still in
+  * the two FIFOs between this core and the MIPS belongs to the firmware that
+@@ -543,10 +572,11 @@ void cpu_comm_msgbox_free_irq(void)
+  */
+ void cpu_comm_msgbox_flush_mips(void)
+ {
+-	u32 tx, rx, n_tx = 0, n_rx = 0;
++	u32 tx, rx, n_tx = 0, n_rx = 0, tx_left, rx_left;
+ 
+ 	if (!msgbox_ctrl_base)
+ 		return;
++	cpu_comm_msgbox_rx_hold(true);
+ 	tx = readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO);
+ 	rx = readl(msgbox_ctrl_base + H713_MSGBOX_RX_FIFO);
+ 	while (n_tx < H713_MSGBOX_TX_FIFO_DEPTH &&
+@@ -559,9 +589,11 @@ void cpu_comm_msgbox_flush_mips(void)
+ 		readl(msgbox_ctrl_base + H713_MSGBOX_RX_DATA);
+ 		n_rx++;
+ 	}
++	tx_left = n_tx ? readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO) : tx;
++	rx_left = n_rx ? readl(msgbox_ctrl_base + H713_MSGBOX_RX_FIFO) : rx;
++	cpu_comm_msgbox_rx_hold(false);
+ 	pr_info("cpu_comm: msgbox before the restart: ARM->MIPS %u word(s), %u read off, %u left; MIPS->ARM %u, %u read off, %u left\n",
+-		tx, n_tx, n_tx ? readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO) : tx,
+-		rx, n_rx, n_rx ? readl(msgbox_ctrl_base + H713_MSGBOX_RX_FIFO) : rx);
++		tx, n_tx, tx_left, rx, n_rx, rx_left);
+ }
+ 
+ /* Legacy stubs — no longer needed but keep exports for now */

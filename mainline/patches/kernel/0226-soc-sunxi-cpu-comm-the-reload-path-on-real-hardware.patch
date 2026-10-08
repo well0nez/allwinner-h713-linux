@@ -1,0 +1,83 @@
+soc: sunxi: cpu_comm: the reload path on real hardware
+
+Originally: "soc: sunxi: cpu_comm/h713-mips: the reload path on real hardware - only requested hardware locks, word stores into the shared region, the firmware where the image keeps it (02.10.2026, device test B3)"
+
+Two faults on the first device runs of the reload: cpu_comm_firmware_reset() released all 14 hardware
+spinlocks although only some are requested (NULL -> Oops in __hwspin_unlock), and comm_InitSpinLock()
+- the master init path, never run on the ARM before - wrote the 12 spinlock entries with plain pointer
+stores that the compiler merges into 16-byte stores, an alignment fault on the ioremap()ed shared region
+(work/FB-MIPSRELOAD/device/oops-*.log, oops2-*.log). Now: only requested locks, writel per word, and the
+default firmware path /boot/mips/display.bin where our image carries it. Applies after 0167/0167a and STANDBY 0172.
+
+Rebased onto the R1 series (0224), applies cleanly. The third part, the
+default path /boot/mips/display.bin in sun50i-h713-mips.c, is not here: that
+driver is new in this series (0231) and carries the path from the start.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -628,6 +628,7 @@ void comm_SpinLocksetType(int lock_id, int type);
+ int  spinlockhwReg(int lock_id);
+ int  tryspinlockhwReg(int lock_id);
+ void spinUnlockhwReg(int lock_id);
++bool cpu_comm_hwlock_requested(int lock_id);
+ int  getShareRegbyID(int reg_id);
+ int  getInterruptRegChannel(u32 cpu, u32 channel);
+ void ResetCommInterrupt(int dummy);
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -1321,7 +1321,8 @@ int cpu_comm_firmware_reset(void)
+ 	blocking_notifier_call_chain(&cpu_comm_fw_chain,
+ 				     CPU_COMM_FIRMWARE_HALTED, NULL);
+ 	for (i = 0; i < 14; i++)	/* whatever the dead core held is stale */
+-		spinUnlockhwReg(i);
++		if (cpu_comm_hwlock_requested(i))	/* only the locks this side holds a handle for */
++			spinUnlockhwReg(i);
+ 	/* The vendor's InitCommMem zeroes magic1 .. magic2 before it rebuilds. */
+ 	memset_io((void __iomem *)(ShMemAddrBase + SHMEM_OFF_MAGIC1), 0,
+ 		  SHMEM_OFF_MAGIC2 + 4 - SHMEM_OFF_MAGIC1);
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -763,6 +763,12 @@ void spinUnlockhwReg(int lock_id)
+ 	__hwspin_unlock(hwlocks[lock_id], HWLOCK_RAW, NULL);
+ }
+ 
++/* Does this side hold a handle for hardware lock @lock_id? (deep review 02.10.2026: not all 14 are requested) */
++bool cpu_comm_hwlock_requested(int lock_id)
++{
++	return lock_id >= 0 && lock_id < HW_SPINLOCK_COUNT && hwlocks[lock_id] != NULL;
++}
++
+ /* ── Software Spinlocks (in shared memory) ─────────────────── */
+ 
+ /*
+@@ -844,14 +850,20 @@ int comm_InitSpinLock(int dummy)
+ 	 * makes the init atomic; dmb(ish) ensures visibility to MIPS before we
+ 	 * release HW lock 0 (which signals MIPS to proceed). */
+ 	for (i = 0; i < 12; i++) {
+-		u32 *entry = (u32 *)(base + SPINLOCK_ENTRY_SIZE * i);
+-
+-		entry[0] = SPINLOCK_FREE;	/* type */
+-		entry[1] = SPINLOCK_FREE;	/* status */
+-		entry[2] = 0;			/* mutex_flag */
+-		entry[3] = SPINLOCK_FREE;	/* owner_cpu = free */
+-		writel(0, entry + 4);	/* ref_count */
+-		writel(SPINLOCK_HWID_NONE, entry + 8); /* thread_id */
++		void __iomem *entry = (void __iomem *)(base + SPINLOCK_ENTRY_SIZE * i);
++
++		/*
++		 * One 32-bit store per word: the region is ioremap()ed Device
++		 * memory, and plain pointer stores get merged by the compiler into
++		 * 16-byte stores, which fault there (alignment fault at +12 on the
++		 * reload path, 02.10.2026, work/FB-MIPSRELOAD/device/oops2-*.log).
++		 */
++		writel_relaxed(SPINLOCK_FREE, entry + 0);	/* type */
++		writel_relaxed(SPINLOCK_FREE, entry + 4);	/* status */
++		writel_relaxed(0, entry + 8);			/* mutex_flag */
++		writel_relaxed(SPINLOCK_FREE, entry + 12);	/* owner_cpu = free */
++		writel(0, entry + 16);				/* ref_count (as before: entry + 4 words) */
++		writel(SPINLOCK_HWID_NONE, entry + 32);		/* thread_id (as before: entry + 8 words) */
+ 	}
+ 	dmb(ish);
+ 

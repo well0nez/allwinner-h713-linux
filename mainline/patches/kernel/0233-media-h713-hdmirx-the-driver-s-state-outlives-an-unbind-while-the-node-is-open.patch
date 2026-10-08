@@ -1,0 +1,185 @@
+media: h713-hdmirx: the driver's state outlives an unbind while the node is open
+
+A restart of the display firmware (0231) rebuilds cpu_comm's region, so
+the receiver is unbound before it and bound after it. h713-mips-restart
+does that after every standby. Unbind and bind are now routine, and
+three things in the receiver were not made for that:
+
+ - rx was devm memory, and the video node, its queue and its locks are
+   embedded in it; vdev.release was empty. A handle still open at the
+   unbind (h713-tv stops on the node's BindsTo only after it is gone,
+   h713-warp has no BindsTo) closes later through v4l2_release() ->
+   h713_hdmirx_release() -> vb2_fop_release() and cb_lock, and through
+   the control handler when it had subscribed to control events, all in
+   memory the unbind had already freed.
+ - remove() cancelled the re-arm retry before the re-arm work that
+   queues it, and dropped the firmware callbacks last. A SignalChange
+   between the two could queue the retry again after it was cancelled,
+   to run after rx was freed.
+ - an open() that raced with the unbind could register the callbacks
+   again after remove() had dropped them.
+
+Now rx is allocated with kzalloc and held by its v4l2_device. The probe's
+reference is a devm action: before v4l2_device_register() it frees rx,
+after it, it puts the reference. video_register_device() takes a
+reference of its own, and the last one frees rx together with the control
+handler. remove() drops the callbacks first and marks them gone, so a
+racing open() fails with -ENODEV, and it cancels the re-arm before its
+retry. Nothing that the release path of a stale handle reads goes away
+before that handle does.
+
+Compiled out of tree against the R1 kernel with W=1, no warning. Not
+measured: the unbinds on the HY310 on 08.10.2026 ran with h713-tv and
+h713-warp stopped first, so no handle was open.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -1289,6 +1289,8 @@ struct h713_hdmirx {
+ 	struct mutex lock;		/* serialises ioctl and queue */
+ 	struct mutex cb_lock;		/* serialises cb_users below */
+ 	unsigned int cb_users;		/* open file handles, see _open() */
++	bool cb_gone;			/* unbound: no callbacks any more */
++	bool v4l2_ref;			/* the v4l2_device holds this, see _put_rx() */
+ 	struct dentry *debugfs;
+ 
+ 	void __iomem *shm;		/* cpu_comm shared memory window */
+@@ -1979,10 +1981,10 @@ static void h713_hdmirx_src_change(struct h713_hdmirx *rx)
+ 	 * video_register_device() is what initialises vdev->fh_list and
+ 	 * vdev->fh_lock, so queueing an event before it walks a list whose
+ 	 * head is still NULL. The callbacks are registered from open() and
+-	 * therefore cannot fire before that call, which leaves this guard
+-	 * for the other end: h713_hdmirx_remove() takes the video node down
+-	 * before it drops the callbacks, so a call the firmware had already
+-	 * put on the wire can still arrive here afterwards.
++	 * therefore cannot fire before that call. h713_hdmirx_remove() drops
++	 * them before it takes the video node down, and dropping one waits
++	 * for a delivery in progress; the guard stays for anything else that
++	 * calls this on the way out.
+ 	 */
+ 	if (!video_is_registered(&rx->vdev))
+ 		return;
+@@ -4642,6 +4644,11 @@ static int h713_hdmirx_open(struct file *file)
+ 		return ret;
+ 
+ 	mutex_lock(&rx->cb_lock);
++	if (rx->cb_gone) {	/* an open that raced with the unbind */
++		mutex_unlock(&rx->cb_lock);
++		v4l2_fh_release(file);
++		return -ENODEV;
++	}
+ 	if (!rx->cb_users) {
+ 		ret = h713_hdmirx_register_callbacks(rx);
+ 		if (ret) {
+@@ -4674,10 +4681,11 @@ static int h713_hdmirx_release(struct file *file)
+ 	return ret;
+ }
+ 
+-/* Whatever is still open when the driver goes away. */
++/* Whatever is still open when the driver goes away; nothing registers after it. */
+ static void h713_hdmirx_drop_callbacks(struct h713_hdmirx *rx)
+ {
+ 	mutex_lock(&rx->cb_lock);
++	rx->cb_gone = true;
+ 	if (rx->cb_users) {
+ 		rx->cb_users = 0;
+ 		h713_hdmirx_unregister_callbacks(rx);
+@@ -5222,6 +5230,36 @@ static void h713_hdmirx_late_hpd_pulse(struct h713_hdmirx *rx)
+ 			 H713_HDMI_PORT, ret);
+ }
+ 
++/*
++ * The driver's state outlives an unbind while the node is still open: the
++ * video node is embedded in it, and at the last close v4l2_release() runs
++ * h713_hdmirx_release() (vb2_fop_release, cb_lock) and then drops the node,
++ * and a handle that subscribed to control events unsubscribes through the
++ * control handler. So rx is no devm memory. The v4l2_device holds it:
++ * video_register_device() takes a reference of its own, the unbind drops
++ * the driver's (h713_hdmirx_put_rx()), and the last one frees rx with its
++ * control handler. Unbind and bind are routine since the display firmware
++ * can be restarted from Linux: the receiver goes and comes back around it.
++ */
++static void h713_hdmirx_v4l2_release(struct v4l2_device *v4l2_dev)
++{
++	struct h713_hdmirx *rx = container_of(v4l2_dev, struct h713_hdmirx, v4l2_dev);
++
++	v4l2_ctrl_handler_free(&rx->ctrl_hdl);
++	kfree(rx);
++}
++
++/* The probe's reference: at the unbind, or when the probe fails. */
++static void h713_hdmirx_put_rx(void *data)
++{
++	struct h713_hdmirx *rx = data;
++
++	if (rx->v4l2_ref)
++		v4l2_device_put(&rx->v4l2_dev);
++	else
++		kfree(rx);
++}
++
+ static int h713_hdmirx_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -5230,9 +5268,12 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 	struct vb2_queue *q;
+ 	int ret;
+ 
+-	rx = devm_kzalloc(dev, sizeof(*rx), GFP_KERNEL);
++	rx = kzalloc(sizeof(*rx), GFP_KERNEL);
+ 	if (!rx)
+ 		return -ENOMEM;
++	ret = devm_add_action_or_reset(dev, h713_hdmirx_put_rx, rx);
++	if (ret)
++		return ret;
+ 
+ 	rx->dev = dev;
+ 	rx->slot_source = &h713_hdmirx_vsync;
+@@ -5422,9 +5463,11 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return ret;
+ 
++	rx->v4l2_dev.release = h713_hdmirx_v4l2_release;
+ 	ret = v4l2_device_register(dev, &rx->v4l2_dev);
+ 	if (ret)
+ 		return ret;
++	rx->v4l2_ref = true;
+ 
+ 	ret = h713_hdmirx_init_ctrls(rx);
+ 	if (ret)
+@@ -5531,23 +5574,28 @@ static void h713_hdmirx_remove(struct platform_device *pdev)
+ {
+ 	struct h713_hdmirx *rx = platform_get_drvdata(pdev);
+ 
++	/*
++	 * The firmware callbacks first, and for good: they queue the retry
++	 * below and send events, and an open() racing with the unbind must
++	 * not bring them back.
++	 */
++	h713_hdmirx_drop_callbacks(rx);
+ 	rx->slot_source->stop(rx);
+ 	h713_afbd_unregister_descriptor_notifier(&rx->desc_nb);
+ 	/*
+-	 * Before the control handler goes, not after: the poll writes the
+-	 * controls, and it re-arms itself, so it has to be stopped rather
+-	 * than merely waited for.
++	 * Stopped, not merely waited for: the poll writes the controls and
++	 * re-arms itself. The re-arm before its retry, which it may queue.
+ 	 */
+ 	cancel_delayed_work_sync(&rx->audio_work);
+-	cancel_delayed_work_sync(&rx->rearm_retry_work);
+ 	cancel_work_sync(&rx->rearm_work);
++	cancel_delayed_work_sync(&rx->rearm_retry_work);
+ 	debugfs_remove_recursive(rx->debugfs);
+ 	vb2_video_unregister_device(&rx->vdev);
+-	v4l2_ctrl_handler_free(&rx->ctrl_hdl);
+ 	v4l2_device_unregister(&rx->v4l2_dev);
+-	h713_hdmirx_drop_callbacks(rx);
+ 	if (rx->sig_map)
+ 		iounmap(rx->sig_map);
++	rx->sig_map = NULL;
++	/* rx and its control handler go with the last reference */
+ }
+ 
+ static const struct of_device_id h713_hdmirx_of_match[] = {

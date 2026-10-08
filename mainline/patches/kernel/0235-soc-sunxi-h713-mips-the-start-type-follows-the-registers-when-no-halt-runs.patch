@@ -1,0 +1,35 @@
+soc: sunxi: h713-mips: the start type follows the registers when no halt runs
+
+A restart from a parked or held core runs no halt and no park; the
+start type was then taken from the state the driver remembered, not
+from the registers that decided the path. A core held at 0x00030001
+from outside the driver, with the driver still at "running", got the
+U-Boot ladder instead of the vendor start of its own table row; a core
+parked from outside, with the driver at "halted" after a failed load,
+got a vendor start that refused 0x00000000 with -ENXIO.
+
+Without a halt or a park the remembered state is now set to what the
+registers say before the load, so the start is the one of the table:
+parked -> U-Boot start, held -> vendor start. After a halt or a park
+nothing changes, there the state comes from its read-back as before.
+"state" shows the register state after a failed load as well.
+
+The form "start(m, from != halted)" would have sent V3 (from running,
+after its halt) to the ladder; the offline test catches that.
+
+Found in review A (F6) of the standby hook. Compiled out of tree
+against the R1 kernel with W=1, no warning. Not measured.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-mips.c
++++ b/drivers/soc/sunxi/sun50i-h713-mips.c
+@@ -270,6 +270,8 @@ static int h713_mips_restart(struct h713_mips *m, const char *path)
+ 				    readl(m->ccu + H713_MIPS_CLK), readl(m->ccu + H713_MIPS_RST));
+ 		if (ret)
+ 			goto out;
++	} else {
++		m->state = from;	/* parked or held: the start follows the registers */
+ 	}
+ 	ret = h713_mips_load(m, img, n);
+ 	if (!ret)

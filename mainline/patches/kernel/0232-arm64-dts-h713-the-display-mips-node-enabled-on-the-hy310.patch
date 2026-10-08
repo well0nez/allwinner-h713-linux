@@ -1,0 +1,89 @@
+arm64: dts: h713: the display MIPS node, enabled on the HY310
+
+sun50i-h713-mips (0231) binds to mips@3061000: the MIPS control block
+(mipsloader@3061000 in the stock tree) and, as its second reg, the
+core's clock and resets in the CCU, 0x02001600 and 0x0200160c, which the
+driver owns raw and does not request (the CCU driver holds its block).
+The window is the reservation U-Boot loads display.bin into,
+mips-firmware@4b100000.
+
+The node is disabled in the dtsi and enabled in the HY310's tree, where
+the restart brought the picture back (08.10.2026). The HY300 Pro and the
+HY200 QZ713DF A1 include the HY310's tree and switch it off again. On the
+HY300 Pro no restart is on record. On the HY300PRO-G-EU, which uses the
+HY200 QZ713DF A1 tree, every earlier reload whose result was looked at
+ended black.
+
+The four H713 DTBs, built with the kernel's own cpp and dtc command line,
+differ from those of the R1 kernel only by this node and by the phandle
+numbers after mips-firmware@4b100000, which now has one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -46,6 +46,11 @@
+ 	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
+ };
+ 
++/* The display MIPS restart is measured on the HY310 only. */
++&mips {
++	status = "disabled";
++};
++
+ /* PB5 stays the dtsi's hog here, not the board manager's (see above). */
+ &fan_power_hog {
+ 	status = "okay";
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -40,6 +40,11 @@
+ 	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
+ };
+ 
++/* The display MIPS restart is measured on the HY310 only. */
++&mips {
++	status = "disabled";
++};
++
+ /* PB5 stays the dtsi's hog here, not the board manager's (see above). */
+ &fan_power_hog {
+ 	status = "okay";
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+@@ -51,6 +51,8 @@
+  * up the panel. TVTOP stays disabled -- see patch 0033.
+  */
+ &cpu_comm { status = "okay"; };	/* the driver is built since 01.09. */
++/* the restart of the display MIPS brought the picture back here (08.10.2026) */
++&mips { status = "okay"; };
+ &motor_ctr { status = "okay"; };	/* range gate PH14 measured 12.09., see doku/94 */
+ &adc_keys { status = "disabled"; };
+ &board_mgr { status = "okay"; };	/* temperature + fan speed, see doku/60 */
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2234,6 +2234,25 @@
+ 			hwlocks = <&hwspinlock 0>;
+ 			status = "okay";
+ 		};
++
++		/*
++		 * The MIPS display core: its control block (mipsloader@3061000
++		 * in the stock tree) and, as the second reg, its clock and
++		 * resets in the CCU, 0x02001600 and 0x0200160c (bits 0, 16, 17,
++		 * 18). The driver owns those two words raw, as U-Boot does, and
++		 * does not request them: the CCU driver holds its block, and no
++		 * consumer of CLK_MIPS, CLK_BUS_MIPS or the MIPS resets exists.
++		 * It restarts the core from the window U-Boot loads it into and
++		 * parks it for cpu_comm's standby. Enabled per board, once the
++		 * restart was seen to bring the picture back there.
++		 */
++		mips: mips@3061000 {
++			compatible = "allwinner,sun50i-h713-mips";
++			reg = <0x03061000 0x100>, <0x02001600 0x10>;
++			reg-names = "mips", "ccu";
++			memory-region = <&mips_reserved>;
++			status = "disabled";
++		};
+ 	};
+ 
+ 	/*

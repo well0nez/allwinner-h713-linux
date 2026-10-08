@@ -527,3 +527,21 @@
 0222-arm64-dts-h713-hy310-pb5-to-the-board-manager-not-a-hog.patch
 0223-watchdog-sunxi-wdt-reload-before-stopping.patch
 0224-watchdog-sunxi-wdt-read-mode-and-cfg-back-in-the-standby-lines.patch
+# 08.10.: the display MIPS restarts from Linux, from a running core and out of the standby park (TODO 3.3).
+#   0225-0227 are 0167/0167c/0167d of the reload work, rebased; then the park's accounting and the msgbox,
+#   one owner for the MIPS clock and resets, the restart driver and its node (HY310 only), and the receiver's
+#   lifetime across the unbind that now comes with every restart. The sequences are those of the test bench
+#   that brought the picture back on the HY310 (V3, V8, V10; arbeit/mips-reload-20261008)
+0225-soc-sunxi-cpu-comm-the-arm-side-of-a-co-processor-restart.patch
+0226-soc-sunxi-cpu-comm-the-reload-path-on-real-hardware.patch
+0227-soc-sunxi-cpu-comm-the-master-init-without-device-memory-faults.patch
+0228-soc-sunxi-cpu-comm-a-restart-after-the-standby-park-opens-the-call-path-again.patch
+0229-soc-sunxi-cpu-comm-the-msgbox-fifos-of-the-old-core-are-read-off-before-a-restart.patch
+0230-soc-sunxi-cpu-comm-one-owner-for-the-mips-clock-and-resets.patch
+0231-soc-sunxi-h713-mips-restart-the-display-mips-from-linux-from-a-running-core-or-out-of-the-standby-park.patch
+0232-arm64-dts-h713-the-display-mips-node-enabled-on-the-hy310.patch
+0233-media-h713-hdmirx-the-driver-s-state-outlives-an-unbind-while-the-node-is-open.patch
+#   0234/0235 after the review: the msgbox flush keeps the receive path out, and a start without a halt follows the
+#   registers (review A F4, F6 of the standby hook)
+0234-soc-sunxi-cpu-comm-the-receive-path-stays-out-while-the-restart-reads-the-msgbox-off.patch
+0235-soc-sunxi-h713-mips-the-start-type-follows-the-registers-when-no-halt-runs.patch

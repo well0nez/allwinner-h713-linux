@@ -1,0 +1,232 @@
+soc: sunxi: cpu_comm: one owner for the MIPS clock and resets
+
+The standby park (0208) writes the MIPS clock 0x02001600 and resets
+0x0200160c raw, and the restart driver that follows in this series
+(sun50i-h713-mips) writes the same two registers. Two writers who do not
+know of each other end up with different ideas of what state the core is
+in. The reload plan's L2 asks for one owner: both raw, as U-Boot and the
+test bench that passed on the HY310 do it.
+
+The owner is the restart driver. It registers itself with
+cpu_comm_set_mips_owner(), and from then on cpu_comm asks it two things:
+
+ - whether there is a core to park. cpu_comm_mips_running() read bit 0 of
+   the MIPS status 0x0306101c with no check. After a park the bus gate is
+   off, and what that read does then (0, or a bus hang) is not known; the
+   owner reads the block only with the gate on and the bus reset
+   released. Bit 0 also reads 1 for a core held in its soft reset (V3 on
+   the HY310), so the answer stays "a core is there", as before.
+ - to park it. cpu_comm_mips_park() goes through the owner. The writes,
+   the 12 ms between them, the read-back and the rollback on failure are
+   those of the R1 park.
+
+Without an owner, when the module is not loaded, cpu_comm parks raw as
+before. A second owner gets -EBUSY. Taking the owner back waits for a
+call into it. The park's error line now says the return code and whether
+the calls are open again.
+
+Compiled out of tree against the R1 kernel with W=1, no new warning. Not
+measured.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -622,6 +622,7 @@ unsigned long cc_deref(u32 ref);
+ /* cpu_comm_hw.c — hardware abstraction */
+ int  cpu_comm_hw_init(void);
+ bool cpu_comm_mips_running(void);
++int  cpu_comm_mips_park(u32 *clk, u32 *rst);
+ void cpu_comm_hw_cleanup(void);
+ int  cpu_comm_send_to_arisc(u8 type, u8 length, const u8 *pdata);
+ int  comm_ReadRegWord(u32 reg_addr);
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -2306,11 +2306,10 @@ static void cpu_comm_drv_remove(struct platform_device *pdev)
+ 
+ /*
+  * Standby (plan 104 H7, first half): parked in U-Boot's h713_mips_stop()
+- * order; the reload after the resume is FB-MIPSRELOAD's.
++ * order by cpu_comm_mips_park(), through the clock and reset owner
++ * sun50i-h713-mips when it is bound; the restart after the wake is that
++ * driver's too.
+  */
+-#define H713_CCU_MIPS_CLK	0x02001600	/* 0x80000002 running, 0 off */
+-#define H713_CCU_MIPS_RESET	0x0200160c	/* 0x00070001 released, 0 held */
+-#define H713_MIPS_PARK_MS	12
+ 
+ /*
+  * s2idle is refused while the MIPS runs: genpd powers TVFE and TVCAP off in
+@@ -2328,9 +2327,8 @@ static int cpu_comm_prepare(struct device *dev)
+ 
+ static int cpu_comm_suspend_late(struct device *dev)
+ {
+-	void __iomem *ccu;
+ 	u32 rst, clk;
+-	int assumed;
++	int assumed, ret;
+ 	bool took;
+ 
+ 	/*
+@@ -2344,9 +2342,6 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	cpu_comm_s2r_count++;
+ 	if (!cpu_comm_mips_running())
+ 		return 0;
+-	ccu = ioremap(H713_CCU_MIPS_CLK, 0x10);
+-	if (!ccu)
+-		return -ENOMEM;
+ 
+ 	/*
+ 	 * Close the call path first and wait out a call in flight:
+@@ -2366,14 +2361,8 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	}
+ 	mutex_unlock(&cpu_comm_call_mutex);
+ 
+-	writel(0, ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK));
+-	msleep(H713_MIPS_PARK_MS);
+-	writel(0, ccu);
+-	msleep(H713_MIPS_PARK_MS);
+-	rst = readl(ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK));
+-	clk = readl(ccu);
+-	iounmap(ccu);
+-	if (rst || clk) {
++	ret = cpu_comm_mips_park(&clk, &rst);
++	if (ret) {
+ 		/*
+ 		 * The suspend fails, and no resume_early follows for this
+ 		 * device: reopen what the park closed, or the awake system
+@@ -2387,9 +2376,11 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 			cpu_comm_resume(0);
+ 		}
+ 		mutex_unlock(&cpu_comm_call_mutex);
+-		pr_err("cpu_comm: suspend-to-RAM #%u refused: park did not take (reset %08x, clock %08x), calls and ioctls open again, coprocessor state unknown\n",
+-		       cpu_comm_s2r_count, rst, clk);
+-		return -EIO;
++		pr_err("cpu_comm: suspend-to-RAM #%u refused: park did not take (%d, reset %08x, clock %08x), %s, coprocessor state unknown\n",
++		       cpu_comm_s2r_count, ret, rst, clk,
++		       took ? "calls and ioctls open again" :
++		       "calls stay closed for the restart that stopped it");
++		return ret;
+ 	}
+ 	pr_info("cpu_comm: suspend-to-RAM #%u: coprocessor parked, kernel RPCs fail with -ENODEV and ioctl RPCs with -EFAULT until it is restarted\n",
+ 		cpu_comm_s2r_count);
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -19,6 +19,7 @@
+ #include <linux/delay.h>
+ #include <linux/workqueue.h>
+ #include <linux/interrupt.h>
++#include <linux/soc/sunxi/h713-cpu-comm.h>
+ #include "cpu_comm.h"
+ 
+ /* ── Globals ───────────────────────────────────────────────── */
+@@ -1394,13 +1395,79 @@ int sunxi_cpu_comm_send_intr_to_mips(u32 msg_type, u32 type, u32 value)
+  * that used `h713_disp init 0x34` leaves it running and this reads 1.
+  * Note that the MIPS *flag* in shared memory is NOT a substitute -- U-Boot
+  * sets that to 0x5 either way.
++ *
++ * With the clock and reset owner bound (sun50i-h713-mips) the owner
++ * answers: after the standby park the bus gate is off, and what a read of
++ * the MIPS block does then is not known. Bit 0 also reads 1 for a core
++ * held in its soft reset (V3 on the HY310, 08.10.2026), so "running" here
++ * means "a core is there to park".
+  */
++static DEFINE_MUTEX(cpu_comm_mips_owner_lock);
++static const struct cpu_comm_mips_owner *cpu_comm_mips_owner;
++
++int cpu_comm_set_mips_owner(const struct cpu_comm_mips_owner *owner)
++{
++	int ret = 0;
++
++	mutex_lock(&cpu_comm_mips_owner_lock);
++	if (owner && cpu_comm_mips_owner)
++		ret = -EBUSY;
++	else
++		cpu_comm_mips_owner = owner;
++	mutex_unlock(&cpu_comm_mips_owner_lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_set_mips_owner);
++
+ bool cpu_comm_mips_running(void)
+ {
+-	if (!mips_ctrl_base)
+-		return false;
++	bool up;
++
++	mutex_lock(&cpu_comm_mips_owner_lock);
++	if (cpu_comm_mips_owner)
++		up = cpu_comm_mips_owner->alive(cpu_comm_mips_owner->ctx);
++	else
++		up = mips_ctrl_base &&
++		     (readl(mips_ctrl_base + MIPS_REG_STATUS) & BIT(0));
++	mutex_unlock(&cpu_comm_mips_owner_lock);
++	return up;
++}
++
++/*
++ * The standby park (plan 104 H7, first half), in U-Boot's h713_mips_stop()
++ * order: reset 0, 12 ms, clock 0, 12 ms, both read back. The owner does it
++ * when one is bound; otherwise the registers are written raw here, as the
++ * R1 park did, because nobody else holds them then.
++ */
++#define H713_CCU_MIPS_CLK	0x02001600	/* 0x80000002 running, 0 off */
++#define H713_CCU_MIPS_RESET	0x0200160c	/* 0x00070001 released, 0 held */
++#define H713_MIPS_PARK_MS	12
++
++int cpu_comm_mips_park(u32 *clk, u32 *rst)
++{
++	void __iomem *ccu;
++	int ret;
+ 
+-	return readl(mips_ctrl_base + MIPS_REG_STATUS) & BIT(0);
++	mutex_lock(&cpu_comm_mips_owner_lock);
++	if (cpu_comm_mips_owner) {
++		ret = cpu_comm_mips_owner->park(cpu_comm_mips_owner->ctx, clk, rst);
++		mutex_unlock(&cpu_comm_mips_owner_lock);
++		return ret;
++	}
++	mutex_unlock(&cpu_comm_mips_owner_lock);
++
++	*clk = *rst = ~0u;
++	ccu = ioremap(H713_CCU_MIPS_CLK, 0x10);
++	if (!ccu)
++		return -ENOMEM;
++	writel(0, ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK));
++	msleep(H713_MIPS_PARK_MS);
++	writel(0, ccu);
++	msleep(H713_MIPS_PARK_MS);
++	*rst = readl(ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK));
++	*clk = readl(ccu);
++	iounmap(ccu);
++	return *rst || *clk ? -EIO : 0;
+ }
+ 
+ /*
+--- a/include/linux/soc/sunxi/h713-cpu-comm.h
++++ b/include/linux/soc/sunxi/h713-cpu-comm.h
+@@ -249,6 +249,24 @@ int cpu_comm_firmware_start(unsigned int timeout_ms);
+ int cpu_comm_register_firmware_notifier(struct notifier_block *nb);
+ int cpu_comm_unregister_firmware_notifier(struct notifier_block *nb);
+ 
++/*
++ * The one owner of the MIPS clock (0x02001600) and resets (0x0200160c),
++ * sun50i-h713-mips. While it is registered, cpu_comm asks it whether there
++ * is a core (@alive: never reads the MIPS block with the bus gate off or
++ * the bus reset held) and has it park the core for standby (@park: the
++ * R1 sequence, reset 0, 12 ms, clock 0, 12 ms; 0 once both read back 0,
++ * else -EIO, with the two read-backs in @clk and @rst). Without an owner
++ * cpu_comm parks raw, as before. Registering a second owner gives -EBUSY;
++ * NULL takes the owner back, and returns only when no call into it runs.
++ */
++struct cpu_comm_mips_owner {
++	bool (*alive)(void *ctx);
++	int (*park)(void *ctx, u32 *clk, u32 *rst);
++	void *ctx;
++};
++
++int cpu_comm_set_mips_owner(const struct cpu_comm_mips_owner *owner);
++
+ #else /* !CONFIG_HY310_CPU_COMM */
+ 
+ static inline int cpu_comm_call(u32 comp_id, const u32 *args,

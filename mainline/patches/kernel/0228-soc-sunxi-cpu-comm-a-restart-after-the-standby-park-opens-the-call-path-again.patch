@@ -1,0 +1,255 @@
+soc: sunxi: cpu_comm: a restart after the standby park opens the call path again
+
+0167 gave the restart three entry points, but a restart of a core that
+the standby park (0213) had parked would have left cpu_comm shut. The
+park counts one suspend and sets cpu_comm_parked_since, firmware_stop()
+counted a second one, firmware_start() took one back: the count stayed
+at 1, so every ioctl kept failing with -EFAULT and every kernel call
+with -EBUSY, and cpu_comm_parked_since stayed set, so kernel calls would
+have failed with -ENODEV behind that. The start also waited for READY
+and APP_READY. APP_READY never shows on the ARM, and
+mips_app_ready_assumed, which stands in for it since the boot, is
+cleared by the park, so the wait would have run out its 10 s with a
+firmware that had been ready after a third of a second (KD-1, L3 in the
+reload plan).
+
+Now one flag, cpu_comm_fw_down, says that the coprocessor is out of
+service. The park or firmware_stop(), whichever comes first, sets it
+under the call mutex and takes one count with it; a second stop, or a
+stop after the park, takes none. firmware_start() clears the park and
+the flag, gives that one count back, and then waits for READY alone.
+Once READY is seen, app-ready is assumed again, as the boot does it.
+firmware_reset() drops the assumption, because it was about the old
+core. cpu_comm_call() checks the flag again inside the mutex, so a
+caller that slipped past the -EBUSY test before the stop cannot reach a
+core that is being halted. If the park fails, it gives the count back
+only if it took one.
+
+The wake no longer warns that the reload is missing. It says in one info
+line that the restart belongs to userspace (h713-power runs
+h713-mips-restart after a wake), and /proc/cpu_comm/status says "restart
+pending" and whether the core is stopped.
+
+For a restart of a running core this is the order of 0167 that ran on the
+HY310 (V3, V8 of 08.10.2026): the count goes back before the wait, and
+the wait ended on READY there as well, with the assumption from the boot
+still set. The restart out of a real park is not measured.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -538,10 +538,19 @@ extern int cpu_comm_suspend_flag;
+ /*
+  * Number of the suspend to RAM that parked the MIPS (cpu_comm_dev.c counts
+  * them per boot), 0 while it is not parked. Set under cpu_comm_call_mutex;
+- * RPCs fail with -ENODEV until a reload clears it.
++ * RPCs fail with -ENODEV until cpu_comm_firmware_start() clears it.
+  */
+ extern unsigned int cpu_comm_parked_since;
+ 
++/*
++ * The coprocessor is out of service: cpu_comm_firmware_stop() or the
++ * standby park, whichever came first, set it and took one count of
++ * cpu_comm_suspend_flag with it; cpu_comm_firmware_start() clears it and
++ * gives that count back. Under cpu_comm_call_mutex. Kernel calls fail with
++ * -EBUSY meanwhile, ioctls with -EFAULT through the count.
++ */
++extern bool cpu_comm_fw_down;
++
+ /*
+  * True when cpu_comm_init() found the shared region already live and chose
+  * to adopt it instead of reinitialising it. Everything that writes shared
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+@@ -186,6 +186,13 @@ int cpu_comm_call(u32 comp_id, const u32 *args, unsigned int nargs,
+ 	/* Parked for standby: nobody answers, and a call would cost a slot. */
+ 	if (cpu_comm_parked_since)
+ 		err = -ENODEV;
++	/*
++	 * Stopped for a restart. Checked again here: a caller that passed the
++	 * test above before cpu_comm_firmware_stop() and waited for the mutex
++	 * would otherwise call a core that is being halted.
++	 */
++	else if (cpu_comm_fw_down)
++		err = -EBUSY;
+ 	else
+ 		err = cpu_comm_call_ex((int)comp_id, params, result,
+ 				       timeout_ms, true);
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -299,6 +299,7 @@ static struct class *cpucommclass;
+ static struct proc_dir_entry *proc_dir;
+ int cpu_comm_suspend_flag;
+ unsigned int cpu_comm_parked_since;
++bool cpu_comm_fw_down;
+ /* Suspends to RAM of this boot that reached suspend_late; not crust's cycle. */
+ static unsigned int cpu_comm_s2r_count;
+ 
+@@ -1304,9 +1305,16 @@ int cpu_comm_firmware_stop(void)
+ {
+ 	if (!ShMemAddrBase)
+ 		return -ENODEV;
+-	cpu_comm_suspend(0);
+-	/* A call in flight finishes or times out; new ones are refused. */
++	/*
++	 * A call in flight finishes or times out; new ones are refused. One
++	 * count for the whole stop: the park took it already when it parked
++	 * the core, and a restart after a failed one finds it still taken.
++	 */
+ 	mutex_lock(&cpu_comm_call_mutex);
++	if (!cpu_comm_fw_down) {
++		cpu_comm_fw_down = true;
++		cpu_comm_suspend(0);
++	}
+ 	mutex_unlock(&cpu_comm_call_mutex);
+ 	return 0;
+ }
+@@ -1327,6 +1335,8 @@ int cpu_comm_firmware_reset(void)
+ 	memset_io((void __iomem *)(ShMemAddrBase + SHMEM_OFF_MAGIC1), 0,
+ 		  SHMEM_OFF_MAGIC2 + 4 - SHMEM_OFF_MAGIC1);
+ 	cpu_comm_shmem_adopted = false;
++	/* The boot's assumption was about the old core; start() sets it again. */
++	WRITE_ONCE(mips_app_ready_assumed, 0);
+ 	ret = InitCommMem(2);
+ 	if (ret)
+ 		return ret;
+@@ -1343,8 +1353,26 @@ int cpu_comm_firmware_start(unsigned int timeout_ms)
+ 
+ 	if (!ShMemAddrBase)
+ 		return -ENODEV;
+-	cpu_comm_resume(0);
+-	while (!(isCPUReady(CPU_ID_MIPS) && isCPUAppReady(CPU_ID_MIPS))) {
++	/*
++	 * The core is released: the park is over, and the count the stop or
++	 * the park took goes back. Before the wait, as 0167 had it and as the
++	 * restarts on the HY310 ran (08.10.2026).
++	 */
++	mutex_lock(&cpu_comm_call_mutex);
++	WRITE_ONCE(cpu_comm_parked_since, 0);
++	if (cpu_comm_fw_down) {
++		cpu_comm_fw_down = false;
++		cpu_comm_resume(0);
++	}
++	mutex_unlock(&cpu_comm_call_mutex);
++	/*
++	 * READY, which the new firmware sets at the end of its InitCommMem.
++	 * Its APP_READY never shows on the ARM (see cpu_comm_init()), so READY
++	 * stands for both, as at boot. 0167 waited for both with the boot's
++	 * assumption still set, which made it this same wait; after a park
++	 * the assumption is gone and that loop would run out its budget.
++	 */
++	while (!isCPUReady(CPU_ID_MIPS)) {
+ 		if (waited >= timeout_ms) {
+ 			pr_err("cpu_comm: the coprocessor is not ready after %u ms (MIPS flag 0x%x)\n",
+ 			       waited, readl((void __iomem *)(ShMemAddrBase +
+@@ -1355,8 +1383,10 @@ int cpu_comm_firmware_start(unsigned int timeout_ms)
+ 		msleep(10);
+ 		waited += 10;
+ 	}
+-	if (!ret)
++	if (!ret) {
++		WRITE_ONCE(mips_app_ready_assumed, 1);
+ 		pr_info("cpu_comm: the coprocessor is ready after %u ms\n", waited);
++	}
+ 	blocking_notifier_call_chain(&cpu_comm_fw_chain,
+ 				     CPU_COMM_FIRMWARE_STARTED, &ret);
+ 	return ret;
+@@ -1377,10 +1407,11 @@ static int cpu_comm_proc_show(struct seq_file *m, void *v)
+ 	seq_printf(m, "MIPS App Ready: %d\n", isCPUAppReady(CPU_ID_MIPS));
+ 	seq_printf(m, "Suspend: %d\n", cpu_comm_suspend_flag);
+ 	if (cpu_comm_parked_since)
+-		seq_printf(m, "MIPS Parked: since suspend-to-RAM #%u, reload missing\n",
++		seq_printf(m, "MIPS Parked: since suspend-to-RAM #%u, restart pending\n",
+ 			   cpu_comm_parked_since);
+ 	else
+ 		seq_puts(m, "MIPS Parked: no\n");
++	seq_printf(m, "MIPS Stopped: %s\n", cpu_comm_fw_down ? "yes" : "no");
+ 	return 0;
+ }
+ 
+@@ -2298,6 +2329,7 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	void __iomem *ccu;
+ 	u32 rst, clk;
+ 	int assumed;
++	bool took;
+ 
+ 	/*
+ 	 * Only for standby to RAM, where the DRAM goes into self-refresh. On
+@@ -2324,9 +2356,14 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	WRITE_ONCE(cpu_comm_parked_since, cpu_comm_s2r_count);
+ 	assumed = mips_app_ready_assumed;
+ 	mips_app_ready_assumed = 0;
++	/* A core held for a restart that failed: its stop took the count. */
++	took = !cpu_comm_fw_down;
++	if (took) {
++		cpu_comm_fw_down = true;
++		cpu_comm_suspend(0);
++	}
+ 	mutex_unlock(&cpu_comm_call_mutex);
+ 
+-	cpu_comm_suspend(0);
+ 	writel(0, ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK));
+ 	msleep(H713_MIPS_PARK_MS);
+ 	writel(0, ccu);
+@@ -2343,24 +2380,33 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 		mutex_lock(&cpu_comm_call_mutex);
+ 		WRITE_ONCE(cpu_comm_parked_since, 0);
+ 		mips_app_ready_assumed = assumed;
++		if (took) {
++			cpu_comm_fw_down = false;
++			cpu_comm_resume(0);
++		}
+ 		mutex_unlock(&cpu_comm_call_mutex);
+-		cpu_comm_resume(0);
+ 		pr_err("cpu_comm: suspend-to-RAM #%u refused: park did not take (reset %08x, clock %08x), calls and ioctls open again, coprocessor state unknown\n",
+ 		       cpu_comm_s2r_count, rst, clk);
+ 		return -EIO;
+ 	}
+-	pr_info("cpu_comm: suspend-to-RAM #%u: coprocessor parked, kernel RPCs fail with -ENODEV and ioctl RPCs with -EFAULT until it is reloaded\n",
++	pr_info("cpu_comm: suspend-to-RAM #%u: coprocessor parked, kernel RPCs fail with -ENODEV and ioctl RPCs with -EFAULT until it is restarted\n",
+ 		cpu_comm_s2r_count);
+ 	return 0;
+ }
+ 
+-/* Until the reload exists (TODO 3.3) every wake says why there is no picture. */
++/*
++ * The restart is not done here: it reads display.bin from /boot, which is
++ * frozen until the wake is through, and the receiver has to be unbound
++ * around it. h713-power runs h713-mips-restart after a wake that reports
++ * the park ("parked" in the state file of sun50i-h713-mips); every wake
++ * says it is pending.
++ */
+ static int cpu_comm_resume_early(struct device *dev)
+ {
+ 	unsigned int since = READ_ONCE(cpu_comm_parked_since);
+ 
+ 	if (since)
+-		pr_warn("cpu_comm: display coprocessor parked since suspend-to-RAM #%u, reload missing (TODO 3.3)\n",
++		pr_info("cpu_comm: display coprocessor parked since suspend-to-RAM #%u, the restart is userspace's (h713-mips-restart)\n",
+ 			since);
+ 	return 0;
+ }
+--- a/include/linux/soc/sunxi/h713-cpu-comm.h
++++ b/include/linux/soc/sunxi/h713-cpu-comm.h
+@@ -234,12 +234,14 @@ bool cpu_comm_elog_full(void);
+ 
+ /*
+  * A co-processor restart (sun50i-h713-mips only): stop() refuses further
+- * calls and lets one in flight finish; reset(), with the core held in reset,
+- * tells the chain CPU_COMM_FIRMWARE_HALTED and rebuilds the shared region -
+- * every callback descriptor goes with it, register again after the start;
+- * start() accepts calls again, waits up to @timeout_ms for the new
+- * firmware's ready and app-ready flags (-ETIMEDOUT), and tells the chain
+- * CPU_COMM_FIRMWARE_STARTED with a pointer to that result.
++ * calls and lets one in flight finish; a core parked for standby counts as
++ * stopped, and a second stop() before the start changes nothing. reset(),
++ * with the core held in reset, tells the chain CPU_COMM_FIRMWARE_HALTED and
++ * rebuilds the shared region - every callback descriptor goes with it,
++ * register again after the start; start() ends the park, accepts calls
++ * again, waits up to @timeout_ms for the new firmware's ready flag
++ * (-ETIMEDOUT; app-ready is assumed from it, as at boot), and tells the
++ * chain CPU_COMM_FIRMWARE_STARTED with a pointer to that result.
+  */
+ int cpu_comm_firmware_stop(void);
+ int cpu_comm_firmware_reset(void);
