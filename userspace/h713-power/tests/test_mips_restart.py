@@ -4,7 +4,9 @@ The fake kernel: the state file of sun50i-h713-mips is a FIFO answered at read t
 write to restart sees its result, as the real attribute does. bind, unbind and restart are plain files a thread
 picks up every 2 ms, in the kernel's order unbind, restart, bind; before it answers a state read and before the
 systemctl stand-in goes on, it has handled every write made so far, so the events file has the order the real,
-synchronous kernel would give. Binding creates the receiver's video node after node_delay seconds. systemctl
+synchronous kernel would give. unbind and bind can be FIFOs instead (hang=...): the write then waits until the
+test lets the kernel take it, and the kernel has handled it before the next state read, as the real write returns
+only after the unbind or the probe. Binding creates the receiver's video node after node_delay seconds. systemctl
 and logger are shell stand-ins that log their calls into the same events file. The fake kernel notes what the real one would punish as VIOLATION:
 an unbind while h713-tv or h713-warp runs or a process holds the node, a restart while the receiver is bound, a
 bind while the MIPS is not running.
@@ -52,7 +54,7 @@ class Box:
     """A temporary root with the fake kernel running; run() starts h713-mips-restart against it."""
 
     def __init__(self, state="parked", outcome="running", node_delay=0.1, node="video2", warp=True,
-                 bound=True, driver=True, keytool=None):
+                 bound=True, driver=True, keytool=None, hang=()):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = self.tmp.name
         self.state, self.outcome, self.node_delay, self.node = state, outcome, node_delay, node
@@ -70,8 +72,12 @@ class Box:
             self.put("usr/local/sbin/h713-hdcp-key", KEYTOOL if keytool == "new" else
                      "#!/bin/sh\necho \"hdcp-key $*\" >> \"$H713_ROOT/events\"\n")
             os.chmod(self.p("usr/local/sbin/h713-hdcp-key"), 0o755)
-        self.put(RXD + "/bind", "")
-        self.put(RXD + "/unbind", "")
+        for a in ("bind", "unbind"):
+            if a in hang:
+                os.mkfifo(self.p(RXD + "/" + a))     # the write waits for release_rx()
+            else:
+                self.put(RXD + "/" + a, "")
+        self.hang = hang
         if bound:
             os.makedirs(self.p(RXD + "/hdmi-rx"))
             self.make_node()
@@ -97,6 +103,11 @@ class Box:
         self.stop = True
         for t in self.timers:
             t.cancel()
+        for a in self.hang:                     # wakes serve_rx() waiting for a writer
+            try:
+                os.close(os.open(self.p(RXD + "/" + a), os.O_WRONLY | os.O_NONBLOCK))
+            except OSError:
+                pass
         if os.path.exists(self.p(MIPS + "/state")):
             fd = os.open(self.p(MIPS + "/state"), os.O_RDONLY | os.O_NONBLOCK)   # wakes serve_state
             for t in self.threads:
@@ -137,28 +148,58 @@ class Box:
     def pending(self):
         """Handle the writes not yet seen, in the kernel's order: unbind, restart, bind."""
         if self.take(RXD + "/unbind") == "hdmi-rx":
-            busy = [u for u in os.listdir(self.p("active")) if u.startswith(("h713-tv@", "h713-warp"))]
-            held = [d for d in os.listdir(self.p("proc")) if os.listdir(self.p("proc/" + d + "/fd"))]
-            if busy or held:
-                self.note("VIOLATION unbind while %s" % " ".join(busy + held))
-            if os.path.isdir(self.p(RXD + "/hdmi-rx")):
-                os.rmdir(self.p(RXD + "/hdmi-rx"))
-            for f in ("name", ""):
-                if os.path.exists(self.p("sys/class/video4linux/%s/%s" % (self.node, f))):
-                    (os.remove if f else os.rmdir)(self.p("sys/class/video4linux/%s/%s" % (self.node, f)))
-            self.note("kernel unbind hdmi-rx")
+            self.unbind()
         fw = self.take(MIPS + "/restart")
         if fw:
             self.restarted(fw)
         if self.take(RXD + "/bind") == "hdmi-rx":
-            if self.state != "running":
-                self.note("VIOLATION bind while the MIPS is %s" % self.state)
-            os.makedirs(self.p(RXD + "/hdmi-rx"), exist_ok=True)
-            self.note("kernel bind hdmi-rx")
-            if self.node_delay is not None:
-                t = threading.Timer(self.node_delay, self.node_appears)
-                self.timers.append(t)
-                t.start()
+            self.bind()
+
+    def unbind(self):
+        busy = [u for u in os.listdir(self.p("active")) if u.startswith(("h713-tv@", "h713-warp"))]
+        held = [d for d in os.listdir(self.p("proc")) if os.listdir(self.p("proc/" + d + "/fd"))]
+        if busy or held:
+            self.note("VIOLATION unbind while %s" % " ".join(busy + held))
+        if os.path.isdir(self.p(RXD + "/hdmi-rx")):
+            os.rmdir(self.p(RXD + "/hdmi-rx"))
+        for f in ("name", ""):
+            if os.path.exists(self.p("sys/class/video4linux/%s/%s" % (self.node, f))):
+                (os.remove if f else os.rmdir)(self.p("sys/class/video4linux/%s/%s" % (self.node, f)))
+        self.note("kernel unbind hdmi-rx")
+
+    def bind(self):
+        if self.state != "running":
+            self.note("VIOLATION bind while the MIPS is %s" % self.state)
+        os.makedirs(self.p(RXD + "/hdmi-rx"), exist_ok=True)
+        self.note("kernel bind hdmi-rx")
+        if self.node_delay is not None:
+            t = threading.Timer(self.node_delay, self.node_appears)
+            self.timers.append(t)
+            t.start()
+
+    def bound(self):
+        return os.path.isdir(self.p(RXD + "/hdmi-rx"))
+
+    def release_rx(self, what):
+        """From now on the kernel takes the writes to the FIFO unbind or bind: the one that waits, and every
+        later one at once."""
+        t = threading.Thread(target=self.serve_rx, args=(what,), daemon=True)
+        self.threads.append(t)
+        t.start()
+
+    def serve_rx(self, what):
+        while not self.stop:
+            fd = os.open(self.p(RXD + "/" + what), os.O_RDONLY)      # waits for a writer
+            with self.lock:                     # held before the writer is done: the next state read waits
+                data = b""
+                while True:
+                    chunk = os.read(fd, 4096)
+                    if not chunk:
+                        break
+                    data += chunk
+                os.close(fd)
+                if not self.stop and data.decode().strip() == "hdmi-rx":
+                    (self.unbind if what == "unbind" else self.bind)()
 
     def restarted(self, fw):
         if os.path.isdir(self.p(RXD + "/hdmi-rx")):
@@ -279,6 +320,7 @@ class Success(Base):
         self.ordered(ev, "systemctl is-active --quiet h713-warp.service",
                      "systemctl stop h713-warp.service h713-tv@*.service", "kernel unbind hdmi-rx",
                      "kernel restart /boot/mips/display.bin from parked", "kernel bind hdmi-rx", "kernel node video2",
+                     "systemctl reset-failed h713-warp.service h713-tv@*.service",
                      "systemctl start h713-tv@video2.service", "systemctl start h713-warp.service")
         self.assertTrue(any("picture path back after" in e and "MIPS running 0x02001600=0x80000002" in e
                             and "/dev/video2" in e and "user.notice" in e for e in ev), ev)
@@ -418,6 +460,43 @@ class Abort(Base):
         self.clean(ev)
         self.ordered(ev, "kernel restart /boot/mips/display.bin from parked", "kernel bind hdmi-rx",
                      "systemctl start h713-warp.service")
+
+    def test_a_signal_during_the_unbind_write_binds_the_receiver_again(self):
+        """Review A, F2: the trap runs after the unbind returned; the exit must see from sysfs that the receiver
+        is unbound, the MIPS still runs, and bind it again."""
+        b = self.box(state="running", hang=("unbind",), node_delay=0)
+        proc = b.start()
+        b.wait_for("systemctl stop h713-warp.service h713-tv@*.service")
+        time.sleep(0.3)                                                 # the unbind write now waits
+        proc.send_signal(signal.SIGTERM)
+        time.sleep(0.2)
+        b.release_rx("unbind")                                         # it returns, then the trap
+        proc.communicate(timeout=10)
+        ev = b.events()
+        self.assertEqual(proc.returncode, 4, ev)
+        self.clean(ev)
+        self.assertFalse([e for e in ev if e.startswith("kernel restart")], ev)     # MIPS untouched
+        self.ordered(ev, "kernel unbind hdmi-rx", "kernel bind hdmi-rx", "systemctl start h713-warp.service")
+        self.assertEqual(ev.count("kernel bind hdmi-rx"), 1, ev)
+        self.assertTrue(b.bound(), ev)
+
+    def test_a_signal_during_the_bind_write_binds_once(self):
+        """Review A, F3: the trap runs after the bind returned; the exit must not bind a second time."""
+        b = self.box(state="parked", hang=("bind",), node_delay=0)
+        proc = b.start()
+        b.wait_for("kernel restart /boot/mips/display.bin from parked")
+        time.sleep(0.3)                                                 # the bind write now waits
+        proc.send_signal(signal.SIGTERM)
+        time.sleep(0.2)
+        b.release_rx("bind")
+        proc.communicate(timeout=10)
+        ev = b.events()
+        self.assertEqual(proc.returncode, 4, ev)
+        self.clean(ev)
+        self.assertEqual(ev.count("kernel bind hdmi-rx"), 1, ev)
+        self.assertFalse([e for e in ev if "bind of hdmi-rx failed" in e], ev)
+        self.assertIn("systemctl start h713-warp.service", ev)
+        self.assertTrue(b.bound(), ev)
 
     def test_a_signal_while_the_services_stop_leaves_the_mips_untouched(self):
         b = self.box()

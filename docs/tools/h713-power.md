@@ -57,12 +57,16 @@ the vendor), binds the receiver, waits up to 60 s for its video node, and starts
 running MIPS, through `h713-hdcp-key --bind`: a plain bind runs the receiver's init sequence without the
 device's HDCP 2.2 key (h713-hdcp-key.service deleted it after the boot, the step `THal_Vp_SetHDCP22Key`
 is skipped), so the tool puts the key back into the tmpfs for exactly that bind. Whether a source then
-gets HDCP 2.2 after a restart is not measured. Whatever ends the run, the services come back as far as the MIPS allows. Exit 0 picture
+gets HDCP 2.2 after a restart is not measured. Whatever ends the run, the services come back as far as the MIPS allows:
+whether the receiver is bound is read from sysfs at the end, so a signal during the unbind or the bind leaves neither an
+unbound receiver on a running MIPS nor a second bind, and the start limits of `h713-warp` and `h713-tv@` (3 starts in
+60 s) are reset before the services start, so standbys in quick succession do not run into them. Exit 0 picture
 path back, 1 the driver did not bring the MIPS up, 2 refused (MIPS untouched), 3 the MIPS runs but the
 receiver, its node or a service did not come back, 4 ended by a signal. Each outcome is a journal line
 (`journalctl -t h713-mips-restart`; run by hand also on stderr). The sequence brought
 the picture back at the HY310 on 08.10.2026 from a running MIPS and from the park registers set by hand;
-after a real standby it is not measured yet.
+after a real standby it is not measured yet: on 08.10.2026 the resume itself still stopped with the display
+driver bound, before h713-power could start the tool.
 
 **Not measured yet.** The window after a key wake (`ignore_s`) is provisional; the device stage K
 measures it with the owner at the key. Whether the remote's power key should suspend too, and whether a

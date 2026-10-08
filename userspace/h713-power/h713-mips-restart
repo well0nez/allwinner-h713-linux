@@ -15,7 +15,8 @@
 # firmware), through h713-hdcp-key --bind where it can: a plain bind loses the HDCP 2.2 key, which
 # h713-hdcp-key.service deleted after the boot. Whatever ends the run, h713-warp starts again if it
 # ran before, and h713-tv on the receiver's node if there is one; the sysfs writes themselves ignore
-# signals, so a Ctrl-C or a stop of h713-power never cuts a restart or a probe in half.
+# signals, so a Ctrl-C or a stop of h713-power never cuts a restart or a probe in half, and whether
+# the receiver is bound is read from sysfs each time, never from a variable a signal can outrun.
 # Exit (each with a journal line): 0 picture path back; 1 the driver did not bring the MIPS up;
 # 2 refused, MIPS untouched; 3 the MIPS runs, but receiver, node or a service did not; 4 a signal.
 # Tests only: H713_ROOT goes before /sys, /proc, /run, FIRMWARE and KEY; H713_WAIT replaces 60 s.
@@ -26,7 +27,7 @@ WAIT=${H713_WAIT:-60}
 RX=hdmi-rx
 RXD=$R/sys/bus/platform/drivers/sun50i-h713-hdmirx
 KEY=/usr/local/sbin/h713-hdcp-key
-warp=0 bound=0 n=
+warp=0 n=
 
 say() {	# LEVEL TEXT - a journal line (-t h713-mips-restart); run by hand also on stderr
 	[ -n "${JOURNAL_STREAM:-}" ] || echo "h713-mips-restart: $2" >&2
@@ -54,11 +55,12 @@ fin() {	# on every exit: the receiver back on a running MIPS, the services back
 	rc=$?
 	trap '' INT TERM HUP
 	s=$(state)
-	if [ "$bound" = 0 ]; then
+	if [ ! -e "$RXD/$RX" ]; then
 		if [ "${s%% *}" != running ]; then say warning "$RX stays unbound: the MIPS is ${s:-not known}"
-		elif bind; then bound=1; else say warning "bind of $RX failed ($out)"; [ "$rc" != 0 ] || rc=3; fi
+		elif ! bind; then say warning "bind of $RX failed ($out)"; [ "$rc" != 0 ] || rc=3; fi
 	fi
 	n=$(node)
+	systemctl reset-failed h713-warp.service 'h713-tv@*.service' 2>/dev/null	# StartLimitBurst=3 in 60 s
 	[ -z "$n" ] || systemctl start "h713-tv@$n.service" || { say warning "h713-tv@$n did not start"; [ "$rc" != 0 ] || rc=3; }
 	[ "$warp" = 0 ] || systemctl start h713-warp.service || { say warning "h713-warp did not start"; [ "$rc" != 0 ] || rc=3; }
 	[ "$rc" != 0 ] || say notice "picture path back after $(( $(ms) - t0 )) ms: MIPS $s, /dev/$n"
@@ -72,7 +74,6 @@ for ST in "$R"/sys/bus/platform/drivers/sun50i-h713-mips/*/state; do break; done
 exec 9> "$R/run/h713-mips-restart.lock"
 flock -n 9 || { say err "refused: another h713-mips-restart runs"; exit 2; }
 t0=$(ms)
-[ ! -e "$RXD/$RX" ] || bound=1
 if systemctl is-active --quiet h713-warp.service; then warp=1; fi
 trap fin EXIT
 trap 'say warning "ended by a signal"; exit 4' INT TERM HUP
@@ -83,15 +84,11 @@ if [ -n "$n" ]; then
 	p=$(holders "$n")
 	[ -z "$p" ] || { say err "refused: PID ${p% } holds /dev/$n open, an unbind would free memory in use"; exit 2; }
 fi
-if [ "$bound" = 1 ]; then
-	put "$RX" "$RXD/unbind" || { say err "refused: unbind of $RX failed ($out)"; exit 2; }
-	bound=0
-fi
+[ ! -e "$RXD/$RX" ] || put "$RX" "$RXD/unbind" || { say err "refused: unbind of $RX failed ($out)"; exit 2; }
 put "$FW" "${ST%/state}/restart" || { say err "the driver refused the restart ($out); MIPS $(state)"; exit 1; }
 s=$(state)
 [ "${s%% *}" = running ] || { say err "the MIPS did not come up: ${s:-no state}"; exit 1; }
 bind || { say err "the MIPS runs, but binding $RX failed ($out)"; exit 3; }
-bound=1
 end=$(( $(ms) + WAIT * 1000 ))
 until n=$(node); [ -n "$n" ]; do
 	[ "$(ms)" -lt "$end" ] || { say err "the MIPS runs, but $RX shows no video node within $WAIT s"; exit 3; }
