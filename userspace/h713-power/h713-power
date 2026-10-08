@@ -9,6 +9,9 @@ sleep (/sys/power/mem_sleep shows [deep]), crust says ready=1 (the arisc driver'
 long_s seconds (3) powers off whatever short says. A KEY_POWER whose timestamp lies within ignore_s (2 s)
 after a resume the key itself woke is that same press and is ignored. If this service dies, logind's own
 power-off is back (docs/subsystems/standby.md).
+A standby parks the display MIPS and nothing in the kernel starts it again: when the projector stays on
+after a standby (or a refused one) and sun50i-h713-mips says parked, h713-mips-restart brings the picture
+back. While it runs a short press does nothing, a long one still powers off.
 Commands: run [--once], status. Exit: 0, 2 usage.
 """
 
@@ -26,6 +29,7 @@ import time
 
 ROOT = os.environ.get("H713_POWER_ROOT", "/")
 SYSTEMCTL = shlex.split(os.environ.get("H713_SYSTEMCTL", "systemctl"))
+MIPS_RESTART = shlex.split(os.environ.get("H713_MIPS_RESTART", "/usr/local/sbin/h713-mips-restart"))
 EVENT = struct.Struct("qqHHi")               # struct input_event on a 64-bit kernel
 EV_KEY, KEY_POWER = 1, 116
 EVIOCSCLOCKID = 0x400445a0                   # _IOW('E', 0xa0, int)
@@ -163,15 +167,64 @@ def suspend(clock=None, sleep=None):
             end = clock() + 30
 
 
+def mips_state():
+    """First word of the display MIPS driver's state file ('' when sun50i-h713-mips is not bound)."""
+    for p in sorted(glob.glob(path("sys/bus/platform/drivers/sun50i-h713-mips/*/state"))):
+        return (read(p).split() or ["?"])[0]
+    return ""
+
+
+restart = None                                   # the running h713-mips-restart, None when there is none
+
+
+def picture_back():
+    """After a standby: start h713-mips-restart when the MIPS is parked (cpu_comm parks it in suspend_late).
+
+    It runs beside the key loop and takes seconds (the receiver's probe alone, then up to 60 s for its node):
+    the key stays alive meanwhile. A refused standby is asked too, the park may have come before the refusal."""
+    global restart
+    state = mips_state()
+    if state != "parked":
+        log("the display MIPS is %s: no restart" % (state or "not known (no sun50i-h713-mips driver)"),
+            "" if state == "running" else "<4>")
+        return
+    log("the display MIPS is parked: h713-mips-restart")
+    try:
+        restart = subprocess.Popen(MIPS_RESTART)
+    except OSError as e:
+        log("h713-mips-restart cannot start (%s): no picture until it runs" % e.strerror, "<4>")
+
+
+def restarting():
+    """True while h713-mips-restart runs; its end is logged once."""
+    global restart
+    if restart is None:
+        return False
+    rc = restart.poll()
+    if rc is None:
+        return True
+    restart = None
+    if rc:
+        log("h713-mips-restart ended with %d: the picture may not be back (journal: h713-mips-restart)" % rc, "<4>")
+    else:
+        log("h713-mips-restart: the picture path is back")
+    return False
+
+
 def act(what, conf):
+    if what == "short" and restarting():
+        log("short press ignored: the picture is still coming back (h713-mips-restart); a long press powers off")
+        return
     if what == "short":
         why = standby_refusal(conf)
         if why is None:
             log("short press: standby")
             if suspend():
+                picture_back()
                 return
             if conf["refused"] == "log":
                 log("the standby was refused, the projector stays on", "<4>")
+                picture_back()
                 return
             log("the standby was refused: power-off", "<4>")
         else:
@@ -239,9 +292,13 @@ def run(once):
                         ts = sec * 10**9 + usec * 1000 if stamped else now
                         actions.append(key.event(ts, value, long_ns, ignore_ns, arisc_state()))
             actions.append(key.tick(now, long_ns))
+        restarting()                             # reaps h713-mips-restart and logs its end
         for what in filter(None, actions):
             act(what, conf)
             if once:
+                if restart is not None:          # --once (the tests): with the restart it started
+                    restart.wait()
+                    restarting()
                 return 0
 
 
@@ -253,6 +310,7 @@ def status():
     print("mem_sleep: %s" % (read(path("sys/power/mem_sleep")) or "-"))
     state = arisc_state()
     print("crust: ready=%s wake=%s" % (state.get("ready", "-"), state.get("wake", "-")))
+    print("display MIPS: %s" % (mips_state() or "- (no sun50i-h713-mips driver)"))
     why = standby_refusal(conf)
     print("a short press now: %s" % ("standby" if why is None else "power-off (%s)" % why))
     print("power key devices: %s" % (" ".join(power_key_devices(conf)) or "none"))

@@ -21,9 +21,10 @@ def load():
 
 
 class Root:
-    """A temporary root: power.conf, mem_sleep, suspend_stats, the arisc state, one event device."""
+    """A temporary root: power.conf, mem_sleep, suspend_stats, the arisc state, one event device; with mips the
+    state of sun50i-h713-mips, and an h713-mips-restart stand-in that logs into the systemctl log."""
 
-    def __init__(self, mem_sleep="s2idle [deep]", ready="1", conf=""):
+    def __init__(self, mem_sleep="s2idle [deep]", ready="1", conf="", mips=None, suspend_ok=True, restart_rc=0):
         self.tmp = tempfile.TemporaryDirectory()        # removed with this object
         self.dir = self.tmp.name
         self.put("etc/h713/power.conf", conf)
@@ -39,8 +40,14 @@ class Root:
         os.mkfifo(self.fifo)
         self.log = self.p("systemctl.log")
         self.put("systemctl", '#!/bin/sh\necho "$@" >> %s\n[ "$1" = suspend ] && echo 1 > %s\nexit 0\n'
-                 % (self.log, self.p("sys/power/suspend_stats/success")))
+                 % (self.log, self.p("sys/power/suspend_stats/" + ("success" if suspend_ok else "fail"))))
         os.chmod(self.p("systemctl"), 0o755)
+        if mips:
+            self.put("sys/bus/platform/drivers/sun50i-h713-mips/3061000.mips/state",
+                     "%s\n0x02001600=0x00000000 0x0200160c=0x00000000\n" % mips)
+        self.put("mips-restart", '#!/bin/sh\necho mips-restart >> %s\nexit %d\n' % (self.log, restart_rc))
+        os.chmod(self.p("mips-restart"), 0o755)
+        self.restart_tool = self.p("mips-restart")
 
     def __del__(self):
         self.tmp.cleanup()                               # now, without the ResourceWarning of a late cleanup
@@ -63,7 +70,8 @@ class Root:
                     f.flush()
                 time.sleep(1.5)
         threading.Thread(target=feed, daemon=True).start()
-        env = dict(os.environ, H713_POWER_ROOT=self.dir, H713_SYSTEMCTL=self.p("systemctl"))
+        env = dict(os.environ, H713_POWER_ROOT=self.dir, H713_SYSTEMCTL=self.p("systemctl"),
+                   H713_MIPS_RESTART=self.restart_tool)
         out = subprocess.run([sys.executable, TOOL, "run", "--once"], env=env, capture_output=True,
                              text=True, timeout=20)
         calls = []
@@ -189,6 +197,64 @@ class Run(unittest.TestCase):
         calls, out = Root(conf="long_s = 0.5\n").press((1, 0.3))
         self.assertEqual(calls, ["poweroff"], out)
         self.assertIn("long press", out)
+
+
+class AfterTheStandby(unittest.TestCase):
+    """A standby parks the display MIPS; h713-mips-restart brings the picture back, only from the park."""
+
+    SHORT = ((1, 0.3), (0, 0.2))
+
+    def test_a_parked_mips_is_restarted_after_the_standby(self):
+        calls, out = Root(mips="parked").press(*self.SHORT)
+        self.assertEqual(calls, ["suspend", "mips-restart"], out)
+        self.assertIn("the display MIPS is parked: h713-mips-restart", out)
+        self.assertIn("h713-mips-restart: the picture path is back", out)
+
+    def test_a_running_mips_or_no_driver_is_left_alone(self):
+        calls, out = Root(mips="running").press(*self.SHORT)
+        self.assertEqual(calls, ["suspend"], out)
+        self.assertIn("h713-power: the display MIPS is running: no restart", out)
+        calls, out = Root().press(*self.SHORT)
+        self.assertEqual(calls, ["suspend"], out)
+        self.assertIn("<4>h713-power: the display MIPS is not known (no sun50i-h713-mips driver)", out)
+
+    def test_a_failed_restart_is_a_warning_not_a_power_off(self):
+        calls, out = Root(mips="parked", restart_rc=3).press(*self.SHORT)
+        self.assertEqual(calls, ["suspend", "mips-restart"], out)
+        self.assertIn("<4>h713-power: h713-mips-restart ended with 3", out)
+
+    def test_a_missing_restart_tool_is_a_warning(self):
+        r = Root(mips="parked")
+        r.restart_tool = r.p("no-such-tool")
+        calls, out = r.press(*self.SHORT)
+        self.assertEqual(calls, ["suspend"], out)
+        self.assertIn("<4>h713-power: h713-mips-restart cannot start", out)
+
+    def test_a_refused_standby_restarts_a_parked_mips_only_when_the_projector_stays_on(self):
+        calls, out = Root(mips="parked", suspend_ok=False, conf="refused = log\n").press(*self.SHORT)
+        self.assertEqual(calls, ["suspend", "mips-restart"], out)
+        calls, out = Root(mips="parked", suspend_ok=False).press(*self.SHORT)
+        self.assertEqual(calls, ["suspend", "poweroff"], out)
+
+    def test_while_the_picture_comes_back_a_short_press_does_nothing_a_long_one_powers_off(self):
+        m, r = load(), Root(mips="parked")
+        m.ROOT, m.SYSTEMCTL = r.dir, [r.p("systemctl")]
+
+        class Running:
+            def poll(self):
+                return None
+        m.restart = Running()
+        m.act("short", m.config()[0])
+        self.assertFalse(os.path.exists(r.log))
+        m.act("long", m.config()[0])
+        with open(r.log) as f:
+            self.assertEqual(f.read().split(), ["poweroff"])
+
+    def test_status_names_the_mips_state(self):
+        r = Root(mips="parked")
+        env = dict(os.environ, H713_POWER_ROOT=r.dir)
+        out = subprocess.run([sys.executable, TOOL, "status"], env=env, capture_output=True, text=True).stdout
+        self.assertIn("display MIPS: parked", out)
 
 
 if __name__ == "__main__":

@@ -38,8 +38,33 @@ comes back from the freezer, and the counters are read before the time is judged
 never turns a standby that happened into a power-off. A refusal and a power-off for a short press are
 logged as warnings.
 
+**The picture after a standby.** The standby parks the display MIPS (cpu_comm, `suspend_late`), and
+nothing in the kernel starts it again: after the resume the wall would stay on the console. When the
+projector stays on after a standby - or after a refused one with `refused = log`, the park may have come
+before the refusal - and the driver `sun50i-h713-mips` says `parked`, h713-power starts
+`h713-mips-restart`. It runs beside the key loop; until it ends a short press does nothing (it is logged),
+a press held for `long_s` still powers off. A MIPS that is `running` is left alone; with no driver bound
+the tool says so as a warning.
+
+```
+h713-mips-restart [FIRMWARE]   # FIRMWARE: /boot/mips/display.bin
+```
+
+It stops `h713-warp` and `h713-tv@*`, unbinds the HDMI receiver, writes FIRMWARE to the driver's
+`restart` file (from the park: load and start like U-Boot; from a running MIPS: halt, load and start like
+the vendor), binds the receiver, waits up to 60 s for its video node, and starts `h713-tv@` on it and
+`h713-warp` again. The receiver is unbound only when no process holds its node, and bound again only on a
+running MIPS. Whatever ends the run, the services come back as far as the MIPS allows. Exit 0 picture
+path back, 1 the driver did not bring the MIPS up, 2 refused (MIPS untouched), 3 the MIPS runs but the
+receiver, its node or a service did not come back, 4 ended by a signal. Each outcome is a journal line
+(`journalctl -t h713-mips-restart`; run by hand also on stderr). The sequence brought
+the picture back at the HY310 on 08.10.2026 from a running MIPS and from the park registers set by hand;
+after a real standby it is not measured yet.
+
 **Not measured yet.** The window after a key wake (`ignore_s`) is provisional; the device stage K
 measures it with the owner at the key. Whether the remote's power key should suspend too, and whether a
 refused standby should power off or only log, are the owner's decisions; the
-defaults are on and power-off. `$H713_POWER_ROOT` replaces `/` and `$H713_SYSTEMCTL` the `systemctl` it
-calls (the tests, `userspace/h713-power/tests/`, part of `release/tor.sh --tests`).
+defaults are on and power-off. Ignoring a short press while the picture comes back is provisional too.
+`$H713_POWER_ROOT` replaces `/`, `$H713_SYSTEMCTL` the `systemctl` and `$H713_MIPS_RESTART` the
+`h713-mips-restart` it calls; `$H713_ROOT` and `$H713_WAIT` do the same for h713-mips-restart (the tests,
+`userspace/h713-power/tests/`, part of `release/tor.sh --tests`).
