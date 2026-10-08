@@ -26,7 +26,8 @@
 #   5e. h713-panel + page + unit (enabled; port 8080, password made at the first start)
 #   5g. h713-features + unit (enabled), /etc/h713/features from boards/$H713_BOARD/board.env
 #   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin; with
-#       H713_STANDBY=1 the standby sleep.conf.d and h713-power + unit (enabled) + power.conf
+#       H713_STANDBY=1 the standby sleep.conf.d and h713-power + unit (enabled) + power.conf,
+#       and h713-mips-restart, which h713-power runs after a standby to start the parked MIPS
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -230,6 +231,8 @@ check_sources() {
 		[[ -n "$H713_CRUST_BIN" ]] || { warn "H713_STANDBY=1 without H713_CRUST_BIN: no standby without crust"; errors=1; }
 		[[ -x "$H713_POWER_SRC/h713-power" && -f "$H713_POWER_SRC/h713-power.service" && -f "$H713_POWER_SRC/power.conf" ]] || \
 			{ warn "missing: h713-power, h713-power.service or power.conf in $H713_POWER_SRC"; errors=1; }
+		[[ -x "$H713_POWER_SRC/h713-mips-restart" ]] || \
+			{ warn "missing: $H713_POWER_SRC/h713-mips-restart (without it the picture stays off after a standby)"; errors=1; }
 	fi
 	if [[ -x "$H713_AF_BIN" ]]; then
 		local afkind; afkind=$(file -b "$H713_AF_BIN" 2>/dev/null || echo aarch64)
@@ -323,7 +326,8 @@ if ((DRY_RUN)); then
        /etc/h713/features: $DRY_FEAT
     5h. crust and the standby
        ${H713_CRUST_BIN:-no crust image} -> /lib/firmware/${H713_BOARD:-<board>}-crust.bin
-       standby: $( ((H713_STANDBY)) && echo "offered - sleep.conf.d mem/deep, h713-power enabled" || echo "not offered - AllowSuspend=no (overlay)")
+       standby: $( ((H713_STANDBY)) && echo "offered - sleep.conf.d mem/deep, h713-power enabled,
+                /usr/local/sbin/h713-mips-restart (the picture after a standby)" || echo "not offered - AllowSuspend=no (overlay)")
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -575,10 +579,14 @@ if ((H713_STANDBY)); then
 		"[Sleep]" "AllowSuspend=yes" "SuspendState=mem" "MemorySleepMode=deep" "AllowHibernation=no" \
 		"AllowSuspendThenHibernate=no" "AllowHybridSleep=no" > "$TREE/etc/systemd/sleep.conf.d/10-h713.conf"
 	install -m 0755 "$H713_POWER_SRC/h713-power" "$TREE/usr/local/sbin/h713-power"
+	# The standby parks the display MIPS and the kernel does not start it again: h713-power runs
+	# this after the standby when sun50i-h713-mips says parked (docs/tools/h713-power.md).
+	install -m 0755 "$H713_POWER_SRC/h713-mips-restart" "$TREE/usr/local/sbin/h713-mips-restart"
 	install -m 0644 "$H713_POWER_SRC/h713-power.service" "$TREE/etc/systemd/system/h713-power.service"
 	ln -sfn ../h713-power.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
 	[[ -f "$TREE/etc/h713/power.conf" ]] || install -m 0644 "$H713_POWER_SRC/power.conf" "$TREE/etc/h713/power.conf"
 	info "sleep.conf.d: mem, deep only; /usr/local/sbin/h713-power, h713-power.service enabled, /etc/h713/power.conf"
+	info "/usr/local/sbin/h713-mips-restart (h713-power starts the parked MIPS with it after a standby)"
 fi
 
 # --- 6. blob guard ---------------------------------------------------------
