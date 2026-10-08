@@ -1,0 +1,241 @@
+watchdog: sunxi_wdt: stop for system sleep, feed while userspace is frozen
+
+With the right register layout the watchdog finally acts, and a standby
+then meets it twice (crust-20261007 review, TFA-6, INT-06):
+
+- it keeps counting through the sleep (HY310, run A4: reset 16.4 s after
+  arming, across a 5 s light standby), and 16 s is its maximum;
+- the one who feeds it, systemd's RuntimeWatchdogSec, is frozen from
+  before the device suspend until after the device resume, and freezing
+  alone may take 20 s (kernel/power/process.c).
+
+The core does not help: its PM notifier is registered only with
+WDOG_NO_PING_ON_SUSPEND and would only ping once.
+
+So the driver takes the watchdog over for exactly that stretch:
+
+- PM_SUSPEND_PREPARE: if it runs, feed it now and then every 4 s (at
+  most half the timeout), for at most standby_keepalive_s (30 s, held to
+  1..120 s, the cap crust puts on its own budgets);
+- suspend_noirq: if it runs, stop the feeding, feed once, stop it and say
+  "stopped for standby";
+- resume_noirq: if it was stopped there, program it afresh (timeout,
+  CFG, MODE - after a deep standby the block may have lost all three),
+  feed it, feed again for at most standby_keepalive_s, "re-armed";
+- PM_POST_SUSPEND (userspace is thawed by then): stop the feeding.
+
+A kernel that hangs in device suspend or resume is therefore reset
+standby_keepalive_s plus the timeout later; the noirq lines carry the
+timestamps that show where the stop and the re-arm fell. This also covers
+s2idle, which never reaches TF-A. noirq is the place, not
+PM_SUSPEND_PREPARE: stopping there would drop the net over the whole
+device suspend and resume, where the hangs of runs A1-A4 were. An arisc
+driver that hands the sleep to crust has to order its own noirq step
+against this one with a device link to the node named in
+allwinner,watchdog; the arisc driver in the tree today does not.
+
+Whether re-arming after a long sleep is safe rests on the reload in
+sunxi_wdt_start and the feed right after it; whether a stopped block's
+count keeps running, and whether the block fires at once when it is
+enabled past its interval, is not measured.
+
+W2 of the crust release design. Compiled out of tree with W=1; not
+measured on the device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/watchdog/sunxi_wdt.c
++++ b/drivers/watchdog/sunxi_wdt.c
+@@ -14,13 +14,16 @@
+ #include <linux/err.h>
+ #include <linux/init.h>
+ #include <linux/io.h>
++#include <linux/jiffies.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
++#include <linux/suspend.h>
+ #include <linux/types.h>
+ #include <linux/watchdog.h>
++#include <linux/workqueue.h>
+ 
+ #define WDT_MAX_TIMEOUT         16
+ #define WDT_MIN_TIMEOUT         1
+@@ -30,11 +33,15 @@
+ 
+ #define WDT_MODE_EN             (1 << 0)
+ 
++#define WDT_KEEPALIVE_MS	4000U
++#define WDT_KEEPALIVE_MAX_S	120U
++
+ #define DRV_NAME		"sunxi-wdt"
+ #define DRV_VERSION		"1.0"
+ 
+ static bool nowayout = WATCHDOG_NOWAYOUT;
+ static unsigned int timeout;
++static unsigned int standby_keepalive_s = 30;
+ 
+ /*
+  * This structure stores the register offsets for different variants
+@@ -54,6 +61,11 @@ struct sunxi_wdt_dev {
+ 	struct watchdog_device wdt_dev;
+ 	void __iomem *wdt_base;
+ 	const struct sunxi_wdt_reg *wdt_regs;
++	struct notifier_block pm_nb;
++	struct delayed_work keepalive;
++	unsigned long keepalive_end;
++	unsigned int keepalive_s;
++	bool stopped_for_sleep;
+ };
+ 
+ /*
+@@ -255,6 +267,105 @@ static const struct of_device_id sunxi_wdt_dt_ids[] = {
+ };
+ MODULE_DEVICE_TABLE(of, sunxi_wdt_dt_ids);
+ 
++/*
++ * System sleep. A running watchdog counts through a standby, and userspace,
++ * which feeds it, is frozen around the device suspend and resume. So the
++ * driver feeds it from PM_SUSPEND_PREPARE to suspend_noirq and from
++ * resume_noirq to PM_POST_SUSPEND, for at most standby_keepalive_s each: a
++ * kernel that hangs there is still reset, that long plus the timeout later.
++ * For the sleep itself it is stopped, and programmed afresh on the way back.
++ */
++static void sunxi_wdt_keepalive(struct work_struct *work)
++{
++	struct sunxi_wdt_dev *sunxi_wdt = container_of(to_delayed_work(work),
++					struct sunxi_wdt_dev, keepalive);
++	struct watchdog_device *wdd = &sunxi_wdt->wdt_dev;
++
++	if (time_after(jiffies, sunxi_wdt->keepalive_end)) {
++		dev_warn(wdd->parent, "standby keepalive: %u s spent, feeding stops\n",
++			 sunxi_wdt->keepalive_s);
++		return;
++	}
++
++	sunxi_wdt_ping(wdd);
++	queue_delayed_work(system_dfl_wq, &sunxi_wdt->keepalive,
++			   msecs_to_jiffies(min(WDT_KEEPALIVE_MS, wdd->timeout * 500U)));
++}
++
++/*
++ * Feeds at once, then every 4 s (at most half the timeout). The deadline
++ * is what guards this stretch, so the parameter is held to 1..120 s, the
++ * cap crust puts on its own standby budgets.
++ */
++static void sunxi_wdt_keepalive_start(struct sunxi_wdt_dev *sunxi_wdt)
++{
++	sunxi_wdt->keepalive_s = clamp(standby_keepalive_s, 1U,
++				       WDT_KEEPALIVE_MAX_S);
++	sunxi_wdt->keepalive_end = jiffies +
++				   secs_to_jiffies(sunxi_wdt->keepalive_s);
++	sunxi_wdt_keepalive(&sunxi_wdt->keepalive.work);
++}
++
++static bool sunxi_wdt_running(struct watchdog_device *wdd)
++{
++	return watchdog_active(wdd) || watchdog_hw_running(wdd);
++}
++
++static int sunxi_wdt_pm_notify(struct notifier_block *nb, unsigned long action,
++			       void *data)
++{
++	struct sunxi_wdt_dev *sunxi_wdt = container_of(nb, struct sunxi_wdt_dev,
++						       pm_nb);
++
++	if (action == PM_SUSPEND_PREPARE && sunxi_wdt_running(&sunxi_wdt->wdt_dev))
++		sunxi_wdt_keepalive_start(sunxi_wdt);
++	else if (action == PM_POST_SUSPEND)
++		cancel_delayed_work_sync(&sunxi_wdt->keepalive);
++
++	return NOTIFY_DONE;
++}
++
++static void sunxi_wdt_pm_cleanup(void *data)
++{
++	struct sunxi_wdt_dev *sunxi_wdt = data;
++
++	unregister_pm_notifier(&sunxi_wdt->pm_nb);
++	cancel_delayed_work_sync(&sunxi_wdt->keepalive);
++}
++
++static int sunxi_wdt_suspend_noirq(struct device *dev)
++{
++	struct sunxi_wdt_dev *sunxi_wdt = dev_get_drvdata(dev);
++
++	cancel_delayed_work_sync(&sunxi_wdt->keepalive);
++	sunxi_wdt->stopped_for_sleep = sunxi_wdt_running(&sunxi_wdt->wdt_dev);
++	if (sunxi_wdt->stopped_for_sleep) {
++		sunxi_wdt_ping(&sunxi_wdt->wdt_dev);
++		sunxi_wdt_stop(&sunxi_wdt->wdt_dev);
++		dev_info(dev, "stopped for standby\n");
++	}
++
++	return 0;
++}
++
++static int sunxi_wdt_resume_noirq(struct device *dev)
++{
++	struct sunxi_wdt_dev *sunxi_wdt = dev_get_drvdata(dev);
++
++	if (sunxi_wdt->stopped_for_sleep) {
++		sunxi_wdt->stopped_for_sleep = false;
++		sunxi_wdt_start(&sunxi_wdt->wdt_dev);
++		sunxi_wdt_keepalive_start(sunxi_wdt);
++		dev_info(dev, "re-armed (timeout=%u sec)\n",
++			 sunxi_wdt->wdt_dev.timeout);
++	}
++
++	return 0;
++}
++
++static DEFINE_NOIRQ_DEV_PM_OPS(sunxi_wdt_pm_ops, sunxi_wdt_suspend_noirq,
++			       sunxi_wdt_resume_noirq);
++
+ static int sunxi_wdt_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -285,6 +396,8 @@ static int sunxi_wdt_probe(struct platform_device *pdev)
+ 	watchdog_set_restart_priority(&sunxi_wdt->wdt_dev, 128);
+ 
+ 	watchdog_set_drvdata(&sunxi_wdt->wdt_dev, sunxi_wdt);
++	platform_set_drvdata(pdev, sunxi_wdt);
++	INIT_DELAYED_WORK(&sunxi_wdt->keepalive, sunxi_wdt_keepalive);
+ 
+ 	sunxi_wdt_stop(&sunxi_wdt->wdt_dev);
+ 
+@@ -293,6 +406,13 @@ static int sunxi_wdt_probe(struct platform_device *pdev)
+ 	if (unlikely(err))
+ 		return err;
+ 
++	sunxi_wdt->pm_nb.notifier_call = sunxi_wdt_pm_notify;
++	err = register_pm_notifier(&sunxi_wdt->pm_nb);
++	if (!err)
++		err = devm_add_action_or_reset(dev, sunxi_wdt_pm_cleanup, sunxi_wdt);
++	if (err)
++		return err;
++
+ 	dev_info(dev, "Watchdog enabled (timeout=%d sec, nowayout=%d)",
+ 		 sunxi_wdt->wdt_dev.timeout, nowayout);
+ 
+@@ -304,6 +424,7 @@ static struct platform_driver sunxi_wdt_driver = {
+ 	.driver		= {
+ 		.name		= DRV_NAME,
+ 		.of_match_table	= sunxi_wdt_dt_ids,
++		.pm		= pm_sleep_ptr(&sunxi_wdt_pm_ops),
+ 	},
+ };
+ 
+@@ -312,6 +433,10 @@ module_platform_driver(sunxi_wdt_driver);
+ module_param(timeout, uint, 0);
+ MODULE_PARM_DESC(timeout, "Watchdog heartbeat in seconds");
+ 
++module_param(standby_keepalive_s, uint, 0644);
++MODULE_PARM_DESC(standby_keepalive_s,
++		 "Seconds of feeding per system-sleep window, 1..120 (default=30)");
++
+ module_param(nowayout, bool, 0);
+ MODULE_PARM_DESC(nowayout, "Watchdog cannot be stopped once started "
+ 		"(default=" __MODULE_STRING(WATCHDOG_NOWAYOUT) ")");

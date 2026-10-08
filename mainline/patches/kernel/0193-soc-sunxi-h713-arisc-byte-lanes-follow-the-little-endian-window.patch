@@ -1,0 +1,368 @@
+soc: sunxi: h713-arisc: byte lanes follow the little-endian window
+
+The vendor firmware opens a little-endian window over [RTC GP3, +1 MiB)
+at its start. With GP3 pointing into DRAM - at the parameter tree of the
+vendor's own standby - the window is spent there, the SRAM keeps
+big-endian lanes and every ARM byte access to firmware data must go to
+off ^ 3. This driver does not write GP3, so it cannot know the lanes
+beforehand: it learns them from the startup notify, which carries the
+image's describe string in one byte order or the other. A notify that
+matches neither is logged and taken as little-endian, as before.
+
+crust closes the window at its start and keeps its own byte order, so its
+lane is 0 without the comparison (which would only warn).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -427,6 +427,7 @@ struct h713_arisc {
+ 
+ 	struct h713_arisc_offsets off;		/* resolved from the image */
+ 	char			image_version[64];	/* its git describe */
++	u8			lane;		/* 0 or 3, see arisc_notify_version() */
+ 
+ 	u8			edid[ARISC_HDMI_EDID_SIZE];
+ 	bool			edid_valid;
+@@ -453,9 +454,25 @@ static void __iomem *sram_at(struct h713_arisc *a, unsigned long off)
+ 	return a->sram + off;
+ }
+ 
++/*
++ * Byte access to data the firmware owns. The core is big endian and the
++ * SRAM word stays the same integer on both sides, so the byte the firmware
++ * calls @off is ARM byte @off ^ 3 -- unless its little-endian window (0x45b0)
++ * covers the SRAM, then it is @off. Words are never affected.
++ */
++static u8 sram_rb(struct h713_arisc *a, unsigned long off)
++{
++	return readb(a->sram + (off ^ a->lane));
++}
++
++static void sram_wb(struct h713_arisc *a, u8 val, unsigned long off)
++{
++	writeb(val, a->sram + (off ^ a->lane));
++}
++
+ static u8 hpd_counter(struct h713_arisc *a, unsigned int port)
+ {
+-	return readb(sram_at(a, a->off.hpd_counter) + port);
++	return sram_rb(a, a->off.hpd_counter + port);
+ }
+ 
+ static void arisc_report(struct h713_arisc *a, const char *fmt, ...)
+@@ -1121,32 +1138,61 @@ static int arisc_read_frame(struct h713_arisc *a, unsigned int ch, u32 *words,
+ }
+ 
+ /*
+- * Decode the version string out of the notify. The firmware sends the words
+- * from an address that is off by one byte, so in bus order the text appears
+- * shifted by one and reversed within every group of four.
++ * Decode the version string out of the notify, and learn from it how the
++ * firmware sees its SRAM. The firmware copies the string (0x14d4b) byte by
++ * byte into a buffer and sends that buffer word by word (0x76a8), so what
++ * arrives depends on the lanes of its byte accesses:
++ *
++ *   little-endian window over the SRAM (RTC GP3 stale or 0, as before the
++ *   tree): the bytes are the ARM's view of the ROM string, which is stored
++ *   word-reversed -- off by one byte and reversed within every group of
++ *   four, "rojector-...", @lane 0;
++ *   big-endian lanes (GP3 = a tree in DRAM, the window is spent on it): the
++ *   string as written, reversed within every group of four, @lane 3.
++ *
++ * The image's own describe string (arisc_image_version()) tells which one
++ * this boot is. Nothing else is trusted: a tree that did not load leaves GP3
++ * as it was, and whatever it held decides the lanes.
+  */
++static void arisc_notify_decode(const u8 *raw, unsigned int nb, unsigned int skew,
++				char *p, size_t len)
++{
++	unsigned int m;
++
++	for (m = 0; m + skew < nb && m + 1 < len; m++) {
++		unsigned int idx = skew + 4 * (m / 4) + (3 - m % 4);
++		char c = idx < nb ? raw[idx] : 0;
++
++		if (c < 0x20 || c >= 0x7f)
++			break;
++		*p++ = c;
++	}
++	*p = '\0';
++}
++
+ static void arisc_notify_version(struct h713_arisc *a, const u32 *words,
+ 				 unsigned int n)
+ {
+ 	u8 raw[4 * NOTIFY_MAX_WORDS];
+-	unsigned int i, nb = 0, m;
+-	char *p = a->notify_version;
++	char be[sizeof(a->notify_version)];
++	unsigned int i, nb = 0;
+ 
+ 	for (i = 2; i < n; i++) {
+ 		put_unaligned_le32(words[i], raw + nb);
+ 		nb += 4;
+ 	}
+ 
+-	for (m = 0; m + 1 < nb &&
+-	     p < a->notify_version + sizeof(a->notify_version) - 1; m++) {
+-		unsigned int idx = 1 + 4 * (m / 4) + (3 - m % 4);
+-		char c = idx < nb ? raw[idx] : 0;
+-
+-		if (c < 0x20 || c >= 0x7f)
+-			break;
+-		*p++ = c;
++	arisc_notify_decode(raw, nb, 0, be, sizeof(be));
++	arisc_notify_decode(raw, nb, 1, a->notify_version,
++			    sizeof(a->notify_version));
++	if (strlen(be) >= 16 && !strncmp(be, a->image_version, strlen(be))) {
++		a->lane = 3;
++		strscpy(a->notify_version, be, sizeof(a->notify_version));
++	} else if (strncmp(a->notify_version, a->image_version + 1,
++			   strlen(a->notify_version)) || strlen(a->notify_version) < 16) {
++		dev_warn(a->dev, "startup notify \"%s\" is not the image's \"%s\" in either byte order -- assuming little-endian lanes\n",
++			 a->notify_version, a->image_version);
+ 	}
+-	*p = '\0';
+ }
+ 
+ /*
+@@ -1264,7 +1310,7 @@ static int arisc_wait_handler(struct h713_arisc *a, const u8 *payload)
+ 
+ 	do {
+ 		for (i = 0; i < SCRATCH_LEN; i++)
+-			if (readb(sram_at(a, a->off.scratch) + i) != expected[i])
++			if (sram_rb(a, a->off.scratch + i) != expected[i])
+ 				break;
+ 		if (i == SCRATCH_LEN)
+ 			return 0;
+@@ -1272,7 +1318,7 @@ static int arisc_wait_handler(struct h713_arisc *a, const u8 *payload)
+ 	} while (ktime_ms_delta(ktime_get(), start) < HANDLER_TIMEOUT_MS);
+ 
+ 	dev_dbg(a->dev, "scratch mismatch at byte %u: got 0x%02x, want 0x%02x\n",
+-		i, readb(sram_at(a, a->off.scratch) + i), expected[i]);
++		i, sram_rb(a, a->off.scratch + i), expected[i]);
+ 
+ 	return -ETIMEDOUT;
+ }
+@@ -1290,7 +1336,7 @@ static bool arisc_wait_effect(struct h713_arisc *a, u32 off, u8 want)
+ 	ktime_t start = ktime_get();
+ 
+ 	do {
+-		if (readb(sram_at(a, off)) == want)
++		if (sram_rb(a, off) == want)
+ 			return true;
+ 		usleep_range(500, 1000);
+ 	} while (ktime_ms_delta(ktime_get(), start) < HANDLER_TIMEOUT_MS);
+@@ -1311,7 +1357,7 @@ static void arisc_arm_handler_probe(struct h713_arisc *a, const u8 *payload)
+ 	arisc_expected_scratch(payload, expected);
+ 
+ 	for (i = 0; i < SCRATCH_LEN; i++)
+-		writeb((u8)~expected[i], sram_at(a, a->off.scratch) + i);
++		sram_wb(a, (u8)~expected[i], a->off.scratch + i);
+ }
+ 
+ /*
+@@ -1362,7 +1408,7 @@ static int arisc_send(struct h713_arisc *a, u16 sub_cmd, u8 arg1, u8 arg2,
+ 
+ 	arisc_arm_handler_probe(a, payload);
+ 	for (i = 0; i < PAYLOAD_MAX; i++)
+-		writeb(payload[i], sram_at(a, a->off.rpm_buf) + i);
++		sram_wb(a, payload[i], a->off.rpm_buf + i);
+ 
+ 	writel(BOP_MARKER | ((u32)a->seq << 8), a->tx + U1_MSG_DATA(PORT_HDMI));
+ 	writel(0, a->tx + U1_MSG_DATA(PORT_HDMI));
+@@ -1668,13 +1714,12 @@ static int arisc_arm_portmap_probe(struct h713_arisc *a, u8 *saved)
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
+-		void __iomem *rec = sram_at(a, a->off.portmap) +
+-				    i * PORTMAP_STRIDE;
++		unsigned long rec = a->off.portmap + i * PORTMAP_STRIDE;
+ 
+-		saved[2 * i] = readb(rec + PORTMAP_PIN);
+-		saved[2 * i + 1] = readb(rec + PORTMAP_PIN_BIT);
+-		writeb(PORTMAP_POISON, rec + PORTMAP_PIN);
+-		writeb(PORTMAP_POISON, rec + PORTMAP_PIN_BIT);
++		saved[2 * i] = sram_rb(a, rec + PORTMAP_PIN);
++		saved[2 * i + 1] = sram_rb(a, rec + PORTMAP_PIN_BIT);
++		sram_wb(a, PORTMAP_POISON, rec + PORTMAP_PIN);
++		sram_wb(a, PORTMAP_POISON, rec + PORTMAP_PIN_BIT);
+ 	}
+ 
+ 	/*
+@@ -1685,10 +1730,9 @@ static int arisc_arm_portmap_probe(struct h713_arisc *a, u8 *saved)
+ 	 * complete by now, so the caller can undo whatever did land.
+ 	 */
+ 	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
+-		void __iomem *rec = sram_at(a, a->off.portmap) +
+-				    i * PORTMAP_STRIDE;
+-		u8 pin = readb(rec + PORTMAP_PIN);
+-		u8 bit = readb(rec + PORTMAP_PIN_BIT);
++		unsigned long rec = a->off.portmap + i * PORTMAP_STRIDE;
++		u8 pin = sram_rb(a, rec + PORTMAP_PIN);
++		u8 bit = sram_rb(a, rec + PORTMAP_PIN_BIT);
+ 
+ 		if (pin != PORTMAP_POISON || bit != PORTMAP_POISON) {
+ 			dev_err(a->dev,
+@@ -1713,11 +1757,10 @@ static void arisc_restore_portmap(struct h713_arisc *a, const u8 *saved)
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < ARISC_HDMI_PORTS; i++) {
+-		void __iomem *rec = sram_at(a, a->off.portmap) +
+-				    i * PORTMAP_STRIDE;
++		unsigned long rec = a->off.portmap + i * PORTMAP_STRIDE;
+ 
+-		writeb(saved[2 * i], rec + PORTMAP_PIN);
+-		writeb(saved[2 * i + 1], rec + PORTMAP_PIN_BIT);
++		sram_wb(a, saved[2 * i], rec + PORTMAP_PIN);
++		sram_wb(a, saved[2 * i + 1], rec + PORTMAP_PIN_BIT);
+ 	}
+ }
+ 
+@@ -1729,11 +1772,10 @@ static int arisc_wait_portmap(struct h713_arisc *a, const u8 *map)
+ 
+ 	do {
+ 		for (i = 0; i < ARISC_HDMI_PORTS; i++) {
+-			void __iomem *rec = sram_at(a, a->off.portmap) +
+-					    i * PORTMAP_STRIDE;
++			unsigned long rec = a->off.portmap + i * PORTMAP_STRIDE;
+ 
+-			pin = readb(rec + PORTMAP_PIN);
+-			bit = readb(rec + PORTMAP_PIN_BIT);
++			pin = sram_rb(a, rec + PORTMAP_PIN);
++			bit = sram_rb(a, rec + PORTMAP_PIN_BIT);
+ 			if (pin != map[i] || bit != BIT(map[i]))
+ 				break;
+ 		}
+@@ -1885,7 +1927,7 @@ static int arisc_edid_mask_locked(struct h713_arisc *a, u8 mask)
+ 	else if (!arisc_wait_effect(a, a->off.edid_version, mask))
+ 		dev_warn(a->dev,
+ 			 "SetEDIDVersion: firmware holds 0x%02x, asked for 0x%02x\n",
+-			 readb(sram_at(a, a->off.edid_version)), mask);
++			 sram_rb(a, a->off.edid_version), mask);
+ 	return ret;
+ }
+ 
+@@ -1902,8 +1944,8 @@ int arisc_hdmi_edid_mask(u8 mask)
+ 
+ 	mutex_lock(&a->lock);
+ 	pulse = a->hpd_sequence_done &&
+-		readb(sram_at(a, a->off.edid_gate)) &&
+-		readb(sram_at(a, a->off.edid_version)) != mask;
++		sram_rb(a, a->off.edid_gate) &&
++		sram_rb(a, a->off.edid_version) != mask;
+ 	ret = arisc_edid_mask_locked(a, mask);
+ 	if (!ret)
+ 		a->edid_mask = mask;
+@@ -1960,8 +2002,8 @@ static bool arisc_wait_fragment(struct h713_arisc *a, unsigned int frag)
+ 	dev_warn(a->dev,
+ 		 "UpdateEDID fragment %u: bEdidDataReady [0x%05x] reads %u, not %u -- the 64-byte copy did not finish\n",
+ 		 frag, a->off.edid_ready,
+-		 readb(sram_at(a, a->off.edid_ready)), want);
+-	writeb(0, sram_at(a, a->off.edid_ready));
++		 sram_rb(a, a->off.edid_ready), want);
++	sram_wb(a, 0, a->off.edid_ready);
+ 	return false;
+ }
+ 
+@@ -1993,11 +2035,11 @@ int arisc_hdmi_set_edid(const void *edid, size_t len)
+ 	for (frag = 0; frag < EDID_FRAGMENTS; frag++) {
+ 		const u8 *p = bytes + frag * EDID_FRAGMENT_LEN;
+ 
+-		writeb(EDID_READY_PROBE, sram_at(a, a->off.edid_ready));
++		sram_wb(a, EDID_READY_PROBE, a->off.edid_ready);
+ 		ret = arisc_send(a, SUB_UPDATE_EDID, frag, p[0], p + 1,
+ 				 EDID_FRAGMENT_LEN - 1);
+ 		if (ret) {
+-			writeb(0, sram_at(a, a->off.edid_ready));
++			sram_wb(a, 0, a->off.edid_ready);
+ 			dev_err(a->dev,
+ 				"UpdateEDID fragment %u not processed (%d)\n",
+ 				frag, ret);
+@@ -2027,7 +2069,7 @@ int arisc_hdmi_set_edid(const void *edid, size_t len)
+ 	 * one at a bench means "edid-version N" and then "edid" on cmd. The
+ 	 * guarded default 0 needs no second step (dev20, 22.09.2026).
+ 	 */
+-	if (readb(sram_at(a, a->off.edid_version)) != a->edid_mask) {
++	if (sram_rb(a, a->off.edid_version) != a->edid_mask) {
+ 		ret = arisc_edid_mask_locked(a, a->edid_mask);
+ 		if (ret)
+ 			goto out;
+@@ -2060,15 +2102,15 @@ int arisc_hdmi_set_edid(const void *edid, size_t len)
+ 		dev_err(a->dev,
+ 			"EDID not accepted: bEdidDataReady = %u instead of %u, SRAM [0x%05x]=%u [0x%05x]=%u -- fragment 7 did not trigger the output\n",
+ 			a->edid_status[EDID_STATUS_READY_BYTE], EDID_DATA_READY,
+-			a->off.edid_ready, readb(sram_at(a, a->off.edid_ready)),
+-			a->off.edid_gate, readb(sram_at(a, a->off.edid_gate)));
++			a->off.edid_ready, sram_rb(a, a->off.edid_ready),
++			a->off.edid_gate, sram_rb(a, a->off.edid_gate));
+ 		ret = -EPROTO;
+ 		goto out;
+ 	}
+ 	dev_info(a->dev, "EDID accepted, status %*ph, output gate [0x%05x]=%u\n",
+ 		 (int)min_t(size_t, a->edid_status_len, EDID_STATUS_LEN),
+ 		 a->edid_status, a->off.edid_gate,
+-		 readb(sram_at(a, a->off.edid_gate)));
++		 sram_rb(a, a->off.edid_gate));
+ 	ret = 0;
+ out:
+ 	arisc_report(a, "set-edid rc=%d\n", ret);
+@@ -2232,7 +2274,7 @@ static int arisc_hpd_locked(struct h713_arisc *a, unsigned int port,
+ 	int ret;
+ 
+ 	if (action != ARISC_HDMI_HPD_DOWN &&
+-	    !readb(sram_at(a, a->off.edid_gate))) {
++	    !sram_rb(a, a->off.edid_gate)) {
+ 		dev_err(a->dev,
+ 			"PullHotPlug port %u: output gate [0x%05x] is 0 -- the firmware forces the pin low, EDID was never output\n",
+ 			port, a->off.edid_gate);
+@@ -2432,6 +2474,7 @@ static int h713_arisc_status_show(struct seq_file *s, void *unused)
+ 		   a->notify_result == -ETIMEDOUT ? "not seen" : "malformed");
+ 	seq_printf(s, "firmware_version: %s\n", a->notify_version);
+ 	seq_printf(s, "image_version: %s\n", a->image_version);
++	seq_printf(s, "sram_lanes: %s\n", a->lane ? "big endian" : "little endian");
+ 	/*
+ 	 * The addresses this image was resolved to. Every board runs its own
+ 	 * ARISC build and they do not agree on where the data sits, so a log
+@@ -2465,11 +2508,11 @@ static int h713_arisc_status_show(struct seq_file *s, void *unused)
+ 	 * touched, so this file stays safe to read at any time.
+ 	 */
+ 	seq_printf(s, "edid_ready: %u\nedid_gate: %u\n",
+-		   readb(sram_at(a, a->off.edid_ready)),
+-		   readb(sram_at(a, a->off.edid_gate)));
++		   sram_rb(a, a->off.edid_ready),
++		   sram_rb(a, a->off.edid_gate));
+ 	/* The block mask the firmware holds, and the one the board asked for. */
+ 	seq_printf(s, "edid_version_mask: 0x%02x want 0x%02x\n",
+-		   readb(sram_at(a, a->off.edid_version)), a->edid_mask);
++		   sram_rb(a, a->off.edid_version), a->edid_mask);
+ 	/*
+ 	 * The port map as the firmware holds it, not as the driver asked for
+ 	 * it: byte 2 of each record is the pin the hotplug driver at 0x121e4
+@@ -2484,11 +2527,9 @@ static int h713_arisc_status_show(struct seq_file *s, void *unused)
+ 	 * payload the firmware read instead.
+ 	 */
+ 	seq_printf(s, "portmap: %u,%u,%u\n",
+-		   readb(sram_at(a, a->off.portmap) + PORTMAP_PIN),
+-		   readb(sram_at(a, a->off.portmap) + PORTMAP_STRIDE +
+-			 PORTMAP_PIN),
+-		   readb(sram_at(a, a->off.portmap) + 2 * PORTMAP_STRIDE +
+-			 PORTMAP_PIN));
++		   sram_rb(a, a->off.portmap + PORTMAP_PIN),
++		   sram_rb(a, a->off.portmap + PORTMAP_STRIDE + PORTMAP_PIN),
++		   sram_rb(a, a->off.portmap + 2 * PORTMAP_STRIDE + PORTMAP_PIN));
+ 	seq_printf(s, "hpd_counter: %u %u %u\n", hpd_counter(a, 0),
+ 		   hpd_counter(a, 1), hpd_counter(a, 2));
+ 	seq_printf(s, "rpm_state: %u\n", readl(sram_at(a, a->off.rpm_state)));
+@@ -2791,8 +2832,8 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 	}
+ 
+ 	a->running = true;
+-	dev_info(a->dev, "ARISC startup notify acknowledged: %s\n",
+-		 a->notify_version);
++	dev_info(a->dev, "ARISC startup notify acknowledged: %s (SRAM byte lanes %s)\n",
++		 a->notify_version, a->lane ? "big endian" : "little endian");
+ 	return 0;
+ }
+ 

@@ -1,0 +1,217 @@
+soc: sunxi: h713-arisc: crust - which image stays, said in the log
+
+The rules for a crust TF-A started, after review findings K10, K12 and
+K13 (07.10.2026):
+
+- A crust is alive when its heartbeat moves within 100 ms. The probe
+  sampled 5 ms, half of what TF-A waits; a main loop pass that took
+  longer made the driver reset a working crust under the display MIPS.
+
+- A missing file no longer costs HDMI when TF-A's crust runs and its page
+  is one this driver reads: the crust is kept, with a warning that names
+  the file and the build. Nothing can load that crust again.
+
+- A vendor file that replaces a running crust says so, with the build it
+  replaces. That is what happens when the FIT carries crust and the
+  board's firmware-name still names the vendor image.
+
+- A kept crust whose handshake is done - an earlier probe took the
+  notify, and crust sends no second one - skips the 3 s wait for it.
+
+The crust file the module names is hy310-crust.bin, the HY310's
+firmware-name[0]; the board file decides which image is loaded.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -345,7 +345,7 @@ static const u8 default_portmap[ARISC_HDMI_PORTS] = { 0, 1, 2 };
+ 
+ #define FW_NAME_ARISC		"h713-arisc.bin"
+ #define FW_NAME_EDID		"hy310-edid.bin"
+-#define FW_NAME_CRUST		"h713-crust.bin"	/* firmware-name index 0 selects it */
++#define FW_NAME_CRUST		"hy310-crust.bin"	/* the HY310's firmware-name[0] */
+ 
+ /*
+  * The crust port (free SCP firmware): recognised by its first word
+@@ -821,6 +821,39 @@ static bool arisc_image_is_crust(const u8 *data, size_t size)
+ 	return size >= 4 && get_unaligned_le32(data) == CRUST_MAGIC;
+ }
+ 
++/*
++ * crust's addresses are its contract page's, the same for every build. The
++ * page lies beyond the 0x23000 bytes the vendor image needs; the DT declares
++ * the window up to its end, and this driver maps nothing the DT does not
++ * describe.
++ */
++static int arisc_crust_offsets(struct h713_arisc *a)
++{
++	struct h713_arisc_offsets o = { .para = SRAM_PARA, .crust = true };
++
++	if (a->sram_size < CRUST_PAGE_END) {
++		dev_err(a->dev, "\"sram\" window is 0x%llx bytes, crust's contract page needs 0x%x\n",
++			(unsigned long long)a->sram_size, CRUST_PAGE_END);
++		return -EINVAL;
++	}
++	o.load_base = CRUST_LOAD_BASE;
++	o.gdata = H713_PAGE + H713_GDATA;
++	o.rpm_state = H713_PAGE + H713_PUMP;
++	o.rpm_buf = o.rpm_state + PUMP_BUF;
++	o.hpd_counter = o.gdata + GDATA_HPD_COUNTER;
++	o.edid_ready = o.gdata + GDATA_EDID_READY;
++	o.edid_gate = o.gdata + GDATA_EDID_GATE;
++	o.edid_version = o.gdata + GDATA_EDID_VERSION;
++	o.portmap = o.gdata + GDATA_PORTMAP;
++	o.scratch = o.gdata + GDATA_SCRATCH;
++	o.bss_start = H713_PAGE;
++	o.bss_end = o.stack_top = CRUST_PAGE_END;
++	strscpy(a->image_version, "crust-h713 (contract page)",
++		sizeof(a->image_version));
++	a->off = o;
++	return 0;
++}
++
+ /*
+  * Runs on fw->data before anything is written to SRAM. On success a->off is
+  * the address set of this image; on failure nothing has been touched and the
+@@ -838,31 +871,8 @@ static int arisc_resolve_offsets(struct h713_arisc *a, const u8 *data,
+ 			return dev_err_probe(a->dev, -EFBIG,
+ 				"\"%s\" is %zu bytes, a crust image may take %u\n",
+ 				name, size, CRUST_LOAD_LIMIT - CRUST_LOAD_BASE);
+-		/*
+-		 * The contract page lies beyond the 0x23000 bytes the vendor
+-		 * image needs. The DT declares the window up to its end; this
+-		 * driver maps nothing the DT does not describe.
+-		 */
+-		if (a->sram_size < CRUST_PAGE_END)
+-			return dev_err_probe(a->dev, -EINVAL,
+-				"\"sram\" window is 0x%llx bytes, crust's contract page needs 0x%x\n",
+-				(unsigned long long)a->sram_size, CRUST_PAGE_END);
+-		o.crust = true;
+-		o.load_base = CRUST_LOAD_BASE;
+-		o.gdata = H713_PAGE + H713_GDATA;
+-		o.rpm_state = H713_PAGE + H713_PUMP;
+-		o.rpm_buf = o.rpm_state + PUMP_BUF;
+-		o.hpd_counter = o.gdata + GDATA_HPD_COUNTER;
+-		o.edid_ready = o.gdata + GDATA_EDID_READY;
+-		o.edid_gate = o.gdata + GDATA_EDID_GATE;
+-		o.edid_version = o.gdata + GDATA_EDID_VERSION;
+-		o.portmap = o.gdata + GDATA_PORTMAP;
+-		o.scratch = o.gdata + GDATA_SCRATCH;
+-		o.bss_start = H713_PAGE;
+-		o.bss_end = o.stack_top = CRUST_PAGE_END;
+-		strscpy(a->image_version, "crust-h713 (contract page)",
+-			sizeof(a->image_version));
+-		a->off = o;
++		if (arisc_crust_offsets(a))
++			return -EINVAL;
+ 		dev_info(a->dev, "\"%s\" (%zu bytes): crust image, contract page 0x%05x\n",
+ 			 name, size, H713_PAGE);
+ 		return 0;
+@@ -2857,17 +2867,45 @@ static bool arisc_crust_is_file(struct h713_arisc *a, const u8 *data, size_t siz
+ 	return true;
+ }
+ 
+-/* A live crust: the page's magic, its running bit and a moving heartbeat. */
++/*
++ * A live crust: the page's magic, its running bit and a heartbeat that moves
++ * within CRUST_ALIVE_MS. TF-A samples 10 ms; a main loop pass that takes
++ * longer must not make this driver reset a working crust.
++ */
++#define CRUST_ALIVE_MS		100
++
+ static bool arisc_crust_running(struct h713_arisc *a)
+ {
+-	u32 s0, s1;
++	ktime_t start = ktime_get();
++	u32 s0;
+ 
+ 	if (crust_rd(a, H713_MAGIC) != H713_MAGIC_VALUE)
+ 		return false;
+ 	s0 = crust_rd(a, H713_STATUS);
+-	usleep_range(5000, 6000);
+-	s1 = crust_rd(a, H713_STATUS);
+-	return (s0 & H713_ST_RUNNING) && s1 != s0;
++	if (!(s0 & H713_ST_RUNNING))
++		return false;
++	do {
++		usleep_range(1000, 2000);
++		if ((crust_rd(a, H713_STATUS) ^ s0) & H713_ST_HEARTBEAT)
++			return true;
++	} while (ktime_ms_delta(ktime_get(), start) < CRUST_ALIVE_MS);
++	return false;
++}
++
++/*
++ * No file, but a crust TF-A started whose page this driver reads: keep it
++ * rather than lose HDMI with the file. Without the image nothing can load
++ * it again.
++ */
++static bool arisc_keep_without_file(struct h713_arisc *a, const char *name,
++				    int err)
++{
++	if (a->sram_size < CRUST_PAGE_END || !arisc_crust_running(a) ||
++	    !crust_accept(a, CRUST_HDMI_MIN) || arisc_crust_offsets(a))
++		return false;
++	dev_warn(a->dev, "ARISC firmware \"%s\" cannot be loaded (%d) -- keeping the running crust (build 0x%08x)\n",
++		 name, err, crust_rd(a, H713_DIAG_BUILD));
++	return true;
+ }
+ 
+ /*
+@@ -2926,10 +2964,14 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 		name = FW_NAME_ARISC;
+ 		ret = request_firmware(&fw, name, a->dev);
+ 	}
+-	if (ret)
+-		return dev_err_probe(a->dev, ret,
+-				     "ARISC firmware \"%s\" cannot be loaded\n",
+-				     name);
++	if (ret) {
++		kept = arisc_keep_without_file(a, name, ret);
++		if (!kept)
++			return dev_err_probe(a->dev, ret,
++					     "ARISC firmware \"%s\" cannot be loaded\n",
++					     name);
++		goto handshake;
++	}
+ 
+ 	/*
+ 	 * Before the image is written, and before the core is touched at all:
+@@ -2975,6 +3017,11 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 			release_firmware(fw);
+ 		}
+ 	}
++	if (!kept && !a->off.crust && a->sram_size >= CRUST_PAGE_END &&
++	    arisc_crust_running(a))
++		dev_warn(a->dev, "\"%s\" replaces a running crust (contract v%u, build 0x%08x)\n",
++			 name, crust_rd(a, H713_VERSION),
++			 crust_rd(a, H713_DIAG_BUILD));
+ 	if (!kept) {
+ 		arisc_enable_cpus_clocks(a);
+ 		arisc_set_reset(a, true);
+@@ -2989,15 +3036,19 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 		arisc_set_reset(a, false);
+ 	}
+ 
+-	a->notify_result = arisc_startup_handshake(a);
+-	if (a->notify_result && kept &&
+-	    (crust_rd(a, H713_STATUS) & H713_ST_HANDSHAKE)) {
+-		/* An earlier probe took the notify; the page says so. Only for
+-		 * a kept crust: a freshly loaded one has its own to send. */
++handshake:
++	if (kept && (crust_rd(a, H713_STATUS) & H713_ST_HANDSHAKE)) {
++		/*
++		 * An earlier probe took the notify and crust sends no second
++		 * one; the page says so, without the 3 s wait. Only for a kept
++		 * crust: a freshly loaded one has its own to send.
++		 */
+ 		a->notify_result = 0;
+ 		snprintf(a->notify_version, sizeof(a->notify_version),
+ 			 "crust-h713 contract v%u (page)",
+ 			 crust_rd(a, H713_VERSION));
++	} else {
++		a->notify_result = arisc_startup_handshake(a);
+ 	}
+ 	if (a->notify_result) {
+ 		/*

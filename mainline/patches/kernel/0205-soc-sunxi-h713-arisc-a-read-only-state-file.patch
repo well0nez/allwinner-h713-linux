@@ -1,0 +1,97 @@
+soc: sunxi: h713-arisc: a read-only state file
+
+The release kernel has debugfs compiled out, and the status there takes
+the lock and shows the message box FIFOs; after a field failure nothing
+said which crust ran, where its last standby stopped or whether a
+standby would be offered at all.
+
+/sys/.../state is one key=value per line: the file the firmware came
+from, the contract version, both build words, crust's starts, last
+exception and last standby step, the standby cycle and phase, the last
+wake source, the milliseconds asleep and from the wake request to CPU0,
+the sleep net (none, off, armed), the error bits and those not yet
+reported, the boot-time clock at the last resume_noirq, and ready=1 when
+crust runs with contract 5 and none of the standby checks of prepare
+refuses. It is read without the lock and without an exchange with the
+firmware, so reading it changes nothing and never waits.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -422,6 +422,7 @@ struct h713_arisc {
+ 	char			notify_version[64];
+ 
+ 	struct h713_arisc_offsets off;		/* resolved from the image */
++	const char		*fw_name;	/* the file it came from */
+ 	char			image_version[64];	/* its git describe */
+ 	u8			lane;		/* 0 or 3, see arisc_notify_version() */
+ 
+@@ -3426,8 +3427,10 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 			return dev_err_probe(a->dev, ret,
+ 					     "ARISC firmware \"%s\" cannot be loaded\n",
+ 					     name);
++		a->fw_name = "-";
+ 		goto handshake;
+ 	}
++	a->fw_name = name;
+ 
+ 	/*
+ 	 * Before the image is written, and before the core is touched at all:
+@@ -4090,8 +4093,56 @@ static ssize_t wake_reason_show(struct device *dev,
+ }
+ static DEVICE_ATTR_RO(wake_reason);
+ 
++/*
++ * The state of the firmware and of its standby, one key=value per line, read
++ * from the driver and the contract page without a lock and without an
++ * exchange with the firmware, so it is safe at any time. ready=1: crust runs,
++ * contract 5, and none of the standby checks of prepare refuses.
++ */
++static ssize_t state_show(struct device *dev, struct device_attribute *attr,
++			  char *buf)
++{
++	struct h713_arisc *a = dev_get_drvdata(dev);
++	u32 version = 0, build = 0, build2 = 0, sb = 0, err = 0;
++	bool crust = a->off.crust, v5;
++	int n = 0;
++
++	if (crust) {
++		version = crust_rd(a, H713_VERSION);
++		build = crust_rd(a, H713_DIAG_BUILD);
++	}
++	v5 = crust && version >= 5;
++	if (v5) {
++		build2 = crust_rd(a, H713_BUILD2);
++		sb = crust_rd(a, H713_SB_STATE);
++		err = crust_rd(a, H713_ERR);
++	}
++	n += sysfs_emit_at(buf, n, "firmware=%s\n", a->fw_name ?: "-");
++	n += sysfs_emit_at(buf, n, "version=%u\nbuild=0x%08x\nbuild2=0x%08x\n",
++			   version, build, build2);
++	n += sysfs_emit_at(buf, n, "starts=%u\nexception=0x%08x\nstep=0x%x\n",
++			   crust ? crust_rd(a, H713_DIAG_INITS) : 0,
++			   crust ? crust_rd(a, H713_DIAG_EXCEPTION) : 0,
++			   crust ? crust_rd(a, H713_DIAG_STEP) : 0);
++	n += sysfs_emit_at(buf, n, "cycle=%u\nphase=%s\nwake=%s\n",
++			   v5 ? crust_rd(a, H713_CYCLE) : 0,
++			   v5 ? crust_phase(sb) : "-", arisc_wake_name(a));
++	n += sysfs_emit_at(buf, n, "slept_ms=%u\nwake_ms=%u\nnet=%s\n",
++			   crust ? crust_rd(a, H713_DIAG_SLEPT_MS) : 0,
++			   v5 ? crust_rd(a, H713_WAKE_MS) : 0,
++			   !(build & H713_BUILD_SLEEP_NET) ? "none" :
++			   sb & H713_SB_NET_ARMED ? "armed" : "off");
++	n += sysfs_emit_at(buf, n, "err=0x%08x\nerr_new=0x%08x\n", err,
++			   err & ~a->err_seen);
++	n += sysfs_emit_at(buf, n, "resume_ns=%llu\nready=%d\n", a->resume_ns,
++			   !arisc_standby_refusal(a));
++	return n;
++}
++static DEVICE_ATTR_RO(state);
++
+ static struct attribute *h713_arisc_attrs[] = {
+ 	&dev_attr_wake_reason.attr,
++	&dev_attr_state.attr,
+ 	NULL
+ };
+ ATTRIBUTE_GROUPS(h713_arisc);

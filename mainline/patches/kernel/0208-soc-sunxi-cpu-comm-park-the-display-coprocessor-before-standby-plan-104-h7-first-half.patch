@@ -1,0 +1,57 @@
+soc: sunxi: cpu_comm: park the display coprocessor before standby (plan 104 H7, first half)
+
+The MIPS does not survive the DRAM's self-refresh (S40 section 4); the stock parks it in
+mipsloader_suspend and reloads it in mipsloader_resume. The first half, in U-Boot's h713_mips_stop()
+order; the reload is FB-MIPSRELOAD's, so a resume leaves it parked and RPCs refused (S40 section 5).
+
+FB-STANDBY 0170, rebased by crust-20261007 onto tree 50e281fd (applies with offsets/fuzz;
+compiled out of tree, W=0, no warning). PROVISIONAL NUMBER (was 0170).
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -2175,6 +2175,37 @@ static void cpu_comm_drv_remove(struct platform_device *pdev)
+ 	cpu_comm_elog_unmap();
+ }
+ 
++/*
++ * Standby (plan 104 H7, first half): parked in U-Boot's h713_mips_stop()
++ * order; the reload after the resume is FB-MIPSRELOAD's.
++ */
++#define H713_CCU_MIPS_CLK	0x02001600	/* 0x80000002 running, 0 off */
++#define H713_CCU_MIPS_RESET	0x0200160c	/* 0x00070001 released, 0 held */
++#define H713_MIPS_PARK_MS	12
++
++static int cpu_comm_suspend_late(struct device *dev)
++{
++	void __iomem *ccu;
++
++	if (!cpu_comm_mips_running())
++		return 0;
++	ccu = ioremap(H713_CCU_MIPS_CLK, 0x10);
++	if (!ccu)
++		return -ENOMEM;
++	cpu_comm_suspend(0);
++	writel(0, ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK));
++	msleep(H713_MIPS_PARK_MS);
++	writel(0, ccu);
++	msleep(H713_MIPS_PARK_MS);
++	iounmap(ccu);
++	pr_info("cpu_comm: standby: coprocessor parked, RPCs refused until it is reloaded\n");
++	return 0;
++}
++
++static const struct dev_pm_ops cpu_comm_pm_ops = {
++	LATE_SYSTEM_SLEEP_PM_OPS(cpu_comm_suspend_late, NULL)
++};
++
+ static const struct of_device_id cpu_comm_of_match[] = {
+ 	{ .compatible = "trix,cpu_comm" },
+ 	{ .compatible = "allwinner,hy310-cpu-comm" },
+@@ -2189,6 +2220,7 @@ static struct platform_driver cpu_comm_driver = {
+ 	.driver	= {
+ 		.name		= "hy310-cpu-comm",
+ 		.of_match_table	= cpu_comm_of_match,
++		.pm		= pm_sleep_ptr(&cpu_comm_pm_ops),
+ 	},
+ };
+ module_platform_driver(cpu_comm_driver);

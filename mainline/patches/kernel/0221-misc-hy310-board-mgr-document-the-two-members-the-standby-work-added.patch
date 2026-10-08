@@ -1,0 +1,26 @@
+misc: hy310-board-mgr: document the two members the standby work added
+
+power_owned and fan_judge_after came with the standby patches without a
+kernel-doc line, which W=1 reports; the members that were there before
+are unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -171,6 +171,7 @@ MODULE_PARM_DESC(fan_stall_shutdown,
+  * @duty_array:      Per-mode duty percentages from duty-array-policy1
+  * @num_modes:       Number of entries in duty_array
+  * @power_gpio:      GPIO for fan power enable
++ * @power_owned:     True if this driver requested @power_gpio itself (no hog)
+  * @fg_desc:         GPIO descriptor for the tachometer input
+  * @fg_irq:          IRQ number for tachometer (< 0 = no tachometer)
+  * @fg_ppr:          Tachometer pulses per revolution
+@@ -226,6 +227,7 @@ struct hy310_ntc {
+ 
+ /**
+  * struct hy310_board_mgr - main driver private data
++ * @fan_judge_after: jiffies before which a resumed fan rail gets no stall verdict
+  */
+ struct hy310_board_mgr {
+ 	struct device		*dev;

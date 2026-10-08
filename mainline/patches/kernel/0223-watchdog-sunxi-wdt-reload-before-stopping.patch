@@ -1,0 +1,56 @@
+watchdog: sunxi_wdt: reload before stopping
+
+The core stops a running watchdog in its reboot notifier, before the
+restart and poweroff handlers run, and sunxi_wdt_stop wrote MODE = key
+and nothing else. The count stood wherever the last ping had left it:
+with the rootfs's RebootWatchdogSec=16s up to 8 s. On the HY310 the next
+writer is TF-A's PSCI reset, or its poweroff into the boot gate, which
+programs CFG and MODE for 0.5 s; a BL31 without T1 does that without a
+reload, and such a MODE write into a count already past the new interval
+reset nothing - the box stayed in BL31 until the power was cut
+(crust-20261007 run B1, doku/164; mechanism inferred). A MODE write is no
+reload either: MODE off and on again did not restart the count (doku/164,
+hotplug run 1).
+
+Reload on CTRL first, then stop. Whether a stopped block holds its count
+or keeps counting is not measured, so this narrows the window and does
+not replace T1: "bind the watchdog with the A523 register layout" still
+goes into an image only with a BL31 that has T1. The sleep path fed
+before its stop on its own so far; that feed now comes from here.
+
+For the other layouts the reload is their ordinary ping; probe's stop
+now also reloads a block that is already stopped, which only resets its
+count.
+
+Compiled out of tree with W=1; not measured on the device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/watchdog/sunxi_wdt.c
++++ b/drivers/watchdog/sunxi_wdt.c
+@@ -170,6 +170,15 @@ static int sunxi_wdt_stop(struct watchdog_device *wdt_dev)
+ 	void __iomem *wdt_base = sunxi_wdt->wdt_base;
+ 	const struct sunxi_wdt_reg *regs = sunxi_wdt->wdt_regs;
+ 
++	/*
++	 * Reload before the MODE write. On the H713 a MODE write does not
++	 * restart the count, and one that sets an interval shorter than the
++	 * count has reached appears to reset nothing (doku/164, run B1).
++	 * Whoever arms the block next - TF-A's reset after the reboot
++	 * notifier, resume_noirq after a sleep - should not find the count
++	 * where the last ping left it.
++	 */
++	writel(WDT_CTRL_RELOAD, wdt_base + regs->wdt_ctrl);
+ 	writel(regs->wdt_key_val, wdt_base + regs->wdt_mode);
+ 
+ 	return 0;
+@@ -340,8 +349,7 @@ static int sunxi_wdt_suspend_noirq(struct device *dev)
+ 	cancel_delayed_work_sync(&sunxi_wdt->keepalive);
+ 	sunxi_wdt->stopped_for_sleep = sunxi_wdt_running(&sunxi_wdt->wdt_dev);
+ 	if (sunxi_wdt->stopped_for_sleep) {
+-		sunxi_wdt_ping(&sunxi_wdt->wdt_dev);
+-		sunxi_wdt_stop(&sunxi_wdt->wdt_dev);
++		sunxi_wdt_stop(&sunxi_wdt->wdt_dev);	/* feeds, then stops */
+ 		dev_info(dev, "stopped for standby\n");
+ 	}
+ 

@@ -1,0 +1,100 @@
+soc: sunxi: h713-arisc: standby - tell userspace what woke the box
+
+The wake word crust answers 0x11 with stayed in one log line. A policy
+for the power key - which must not take the key press that woke the box
+for a new one - and anything that wants to turn the picture back on
+after an IR or key wake had nothing to go by.
+
+- /sys/.../wake_reason, read-only: key, ir, timer, rtc or none, for the
+  last standby (none also when it did not sleep).
+- A change uevent on every real wake: WAKE= as above, CYCLE= crust's
+  standby cycle, RESUME_NS= CLOCK_BOOTTIME at resume_noirq, the clock an
+  input event can be compared with.
+- The device is wakeup-capable, and a wake crust reports counts as its
+  wakeup event in the wakeup statistics.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -3660,10 +3660,29 @@ static int h713_arisc_resume_noirq(struct device *dev)
+ 	mutex_lock(&a->lock);
+ 	a->resume_ns = ktime_get_boottime_ns();
+ 	arisc_sb_restore_notify(a);
++	/* For the wakeup accounting: the system woke because crust woke it. */
++	if (strcmp(arisc_wake_name(a), "none"))
++		pm_wakeup_dev_event(dev, 0, false);
+ 	mutex_unlock(&a->lock);
+ 	return 0;
+ }
+ 
++/*
++ * Userspace's view of a real wake: a change event with the source, the cycle
++ * and the boot-time clock at resume_noirq. A power-key policy uses the last
++ * to tell the key press that woke the box from a new one.
++ */
++static void arisc_wake_uevent(struct h713_arisc *a)
++{
++	char wake[24], cycle[24], resume[32];
++	char *envp[] = { wake, cycle, resume, NULL };
++
++	snprintf(wake, sizeof(wake), "WAKE=%s", arisc_wake_name(a));
++	snprintf(cycle, sizeof(cycle), "CYCLE=%u", a->net_cycle);
++	snprintf(resume, sizeof(resume), "RESUME_NS=%llu", a->resume_ns);
++	kobject_uevent_env(&a->dev->kobj, KOBJ_CHANGE, envp);
++}
++
+ /*
+  * After every standby crust took a request for, whatever way it ended: the
+  * confirmation, which ends crust's resuming budget and its net, a short wait
+@@ -3721,6 +3740,8 @@ static void arisc_standby_done(struct h713_arisc *a)
+ 				 a->net_cycle, sb, crust_rd(a, H713_ERR));
+ 	}
+ 	arisc_watch(a);
++	if (a->slept)
++		arisc_wake_uevent(a);
+ out:
+ 	mutex_unlock(&a->lock);
+ }
+@@ -3850,6 +3871,10 @@ static int h713_arisc_probe(struct platform_device *pdev)
+ 	platform_set_drvdata(pdev, a);
+ 	h713_arisc_load_edid(a);
+ 
++	ret = devm_device_init_wakeup(&pdev->dev);
++	if (ret)
++		return ret;
++
+ 	ret = h713_arisc_start(a);
+ 	if (ret)
+ 		return ret;
+@@ -3899,6 +3924,22 @@ static void h713_arisc_remove(struct platform_device *pdev)
+ 	 */
+ }
+ 
++/* ---- sysfs: stable, read-only ------------------------------------------- */
++
++/* How the last standby ended: key, ir, timer, rtc, or none. */
++static ssize_t wake_reason_show(struct device *dev,
++				struct device_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%s\n", arisc_wake_name(dev_get_drvdata(dev)));
++}
++static DEVICE_ATTR_RO(wake_reason);
++
++static struct attribute *h713_arisc_attrs[] = {
++	&dev_attr_wake_reason.attr,
++	NULL
++};
++ATTRIBUTE_GROUPS(h713_arisc);
++
+ static const struct of_device_id h713_arisc_of_match[] = {
+ 	{ .compatible = "allwinner,sun50i-h713-arisc" },
+ 	{ }
+@@ -3911,6 +3952,7 @@ static struct platform_driver h713_arisc_driver = {
+ 	.driver	= {
+ 		.name		= "sun50i-h713-arisc",
+ 		.of_match_table	= h713_arisc_of_match,
++		.dev_groups	= h713_arisc_groups,
+ 		.pm		= pm_sleep_ptr(&h713_arisc_pm_ops),
+ 		.suppress_bind_attrs = true,
+ 	},

@@ -1,0 +1,184 @@
+soc: sunxi: h713-arisc: standby - wake on the RTC alarm
+
+While it sleeps crust looks at the power key, IR and its own timer, not
+at the RTC. rtcwake, /sys/class/rtc/rtc0/wakealarm and WakeSystem=
+timers armed an alarm the standby did not honour: they reported success
+and the box slept until a key.
+
+prepare reads the next enabled alarm of rtc0 and refuses with -EBUSY
+when it is due in less than 2 s; suspend_noirq counts it down on the
+boot-time clock and hands what is left to crust's timer with the same
+round trip that carries the request (0x26 instead of 0x25), or refuses
+when it is due by then. The RTC counts seconds, so the wake comes up to
+a second after the alarm, never before it; a wake by that timer is
+reported as "rtc". The timer takes 30 bits of milliseconds: an alarm
+more than ~12.4 days out wakes the box early, by a timer the cycle's
+line and the wake source call a timer, not the RTC. How exactly crust
+counts long sleeps is not measured.
+
+Not covered: the alarm timers (CLOCK_REALTIME_ALARM and friends,
+systemd's WakeSystem=). The alarmtimer device puts its own RTC timer in
+only in its suspend callback, after prepare, and rtc_read_alarm() reports
+the rtc0 alarm alone; with those, the box still sleeps until a key or
+IR. Without RTC_CLASS the alarm is not read at all.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -82,6 +82,7 @@
+ #include <linux/of.h>
+ #include <linux/of_platform.h>
+ #include <linux/platform_device.h>
++#include <linux/rtc.h>
+ #include <linux/seq_file.h>
+ #include <linux/slab.h>
+ #include <linux/stdarg.h>
+@@ -448,6 +449,9 @@ struct h713_arisc {
+ 	u32			net_cycle;	/* ... for this cycle */
+ 	u8			woken;		/* CNT2[15:8] before it */
+ 	u64			resume_ns;	/* CLOCK_BOOTTIME at resume_noirq */
++	s64			alarm_ms;	/* RTC alarm, ms after alarm_from */
++	ktime_t			alarm_from;
++	bool			timer_rtc;	/* crust's timer armed for it */
+ };
+ 
+ /*
+@@ -1551,7 +1555,7 @@ static const char *arisc_wake_name(struct h713_arisc *a)
+ 	case 0x9b:
+ 		return "ir";
+ 	case 0xc0000000:
+-		return "timer";
++		return a->timer_rtc ? "rtc" : "timer";
+ 	default:
+ 		return "none";
+ 	}
+@@ -3470,6 +3474,57 @@ static const char *arisc_standby_refusal(struct h713_arisc *a)
+ 	return NULL;
+ }
+ 
++/*
++ * crust does not look at the RTC while it sleeps; its own timer stands in for
++ * the alarm of rtc0 (rtcwake, wakealarm). Read in prepare, where a sleeping
++ * read is fine, and counted down to noirq on the boot-time clock. The RTC
++ * counts seconds, so the wake comes up to one second after the alarm, never
++ * before it - within the 30 bits of milliseconds crust's timer takes (~12.4
++ * days); an alarm further out wakes the box early, by a timer reported as
++ * one. crust's milliseconds over long sleeps are not measured. Not
++ * seen: the alarm timers (CLOCK_*_ALARM, systemd's WakeSystem=), whose RTC
++ * timer the alarmtimer device sets only in its suspend callback, after
++ * prepare, and rtc_read_alarm() does not return.
++ */
++#define ALARM_MIN_MS		2000
++#define SB_TIMER_MAX_MS		0x3fffffff
++
++static int arisc_read_alarm(struct h713_arisc *a)
++{
++	struct rtc_device *rtc;
++	struct rtc_wkalrm alrm;
++	struct rtc_time now;
++	int ret = 0;
++
++	a->alarm_ms = 0;
++	if (!IS_ENABLED(CONFIG_RTC_CLASS))
++		return 0;
++	rtc = rtc_class_open("rtc0");
++	if (!rtc)
++		return 0;
++	if (!rtc_read_alarm(rtc, &alrm) && alrm.enabled &&
++	    !rtc_read_time(rtc, &now)) {
++		a->alarm_ms = rtc_tm_sub(&alrm.time, &now) * MSEC_PER_SEC;
++		a->alarm_from = ktime_get_boottime();
++		if (a->alarm_ms < ALARM_MIN_MS) {
++			dev_err(a->dev, "standby refused: the RTC alarm is due in %lld ms\n",
++				a->alarm_ms);
++			ret = -EBUSY;
++		}
++	}
++	rtc_class_close(rtc);
++	return ret;
++}
++
++/* What is left of the alarm in noirq; 0 = none, < 0 due. */
++static s64 arisc_alarm_left(struct h713_arisc *a)
++{
++	if (!a->alarm_ms)
++		return 0;
++	return a->alarm_ms - ktime_ms_delta(ktime_get_boottime(),
++					    a->alarm_from) ?: -1;
++}
++
+ /*
+  * prepare: refuse before any other driver has quiesced anything (the late
+  * and noirq callbacks come after the damage: cpu_comm parks the display MIPS
+@@ -3491,7 +3546,7 @@ static int h713_arisc_prepare(struct device *dev)
+ 	why = arisc_standby_refusal(a);
+ 	if (!why && !arisc_watch(a))
+ 		why = "crust does not serve";
+-	ret = why ? -EOPNOTSUPP : arisc_sb_wake_timer(a, 0);
++	ret = why ? -EOPNOTSUPP : arisc_read_alarm(a) ?: arisc_sb_wake_timer(a, 0);
+ 	mutex_unlock(&a->lock);
+ 	if (why)
+ 		dev_err(dev, "standby refused: %s\n", why);
+@@ -3523,7 +3578,10 @@ static void arisc_net_confirm(struct h713_arisc *a)
+ static int h713_arisc_suspend_noirq(struct device *dev)
+ {
+ 	struct h713_arisc *a = dev_get_drvdata(dev);
++	const char *timer = "RTC alarm";
++	char alarm[48] = "no RTC alarm";
+ 	u32 cycle, sb, want;
++	s64 ms;
+ 	int ret;
+ 
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+@@ -3532,8 +3590,19 @@ static int h713_arisc_suspend_noirq(struct device *dev)
+ 		dev_err(dev, "standby refused: the firmware stopped after prepare\n");
+ 		return -EOPNOTSUPP;
+ 	}
++	ms = arisc_alarm_left(a);
++	if (ms < 0) {
++		dev_err(dev, "standby refused: the RTC alarm is due\n");
++		return -EBUSY;
++	}
+ 
+ 	mutex_lock(&a->lock);
++	a->timer_rtc = ms > 0;
++	if (ms > SB_TIMER_MAX_MS) {
++		ms = SB_TIMER_MAX_MS;
++		a->timer_rtc = false;
++		timer = "timer short of the RTC alarm";
++	}
+ 	cycle = crust_rd(a, H713_CYCLE) + 1;
+ 	/*
+ 	 * The contract's order for every request: NET_CONFIRM := 0, then
+@@ -3551,7 +3620,7 @@ static int h713_arisc_suspend_noirq(struct device *dev)
+ 	a->net_cycle = cycle;
+ 	a->net_pending = true;
+ 	a->woken = (u8)(crust_rd(a, H713_CNT2) >> 8);
+-	ret = arisc_sb_wake_timer(a, 0);
++	ret = arisc_sb_wake_timer(a, ms);
+ 	crust_wr(a, 0, H713_NET_REQ);
+ 
+ 	sb = crust_rd(a, H713_SB_STATE);
+@@ -3567,12 +3636,16 @@ static int h713_arisc_suspend_noirq(struct device *dev)
+ 			crust_rd(a, H713_NET_RB), ret);
+ 		arisc_net_confirm(a);
+ 		ret = -EIO;
+-	} else if (sb & H713_SB_NET_ARMED) {
+-		dev_info(dev, "standby %u: net armed, R_WDOG mode 0x%04x cfg 0x%04x\n",
+-			 cycle, crust_rd(a, H713_NET_RB) & 0xffff,
+-			 crust_rd(a, H713_NET_RB) >> 16);
+ 	} else {
+-		dev_info(dev, "standby %u: net none\n", cycle);
++		u32 rb = crust_rd(a, H713_NET_RB);
++
++		if (ms)
++			snprintf(alarm, sizeof(alarm), "%s in %lld ms", timer, ms);
++		if (sb & H713_SB_NET_ARMED)
++			dev_info(dev, "standby %u: net armed (R_WDOG mode 0x%04x cfg 0x%04x), %s\n",
++				 cycle, rb & 0xffff, rb >> 16, alarm);
++		else
++			dev_info(dev, "standby %u: net none, %s\n", cycle, alarm);
+ 	}
+ 	mutex_unlock(&a->lock);
+ 	return ret;

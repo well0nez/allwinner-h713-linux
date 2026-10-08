@@ -1,0 +1,85 @@
+soc: sunxi: cpu_comm, drm: h713-afbd: park and idle only for standby to RAM
+
+0189's late suspend parks the display MIPS and 0190's suspend idles the
+fetch engine on every system sleep, and neither asked which one. The
+installed BL31 offers no SYSTEM_SUSPEND, so "mem" means s2idle there - the
+only sleep state of today's line - and any echo mem, systemctl suspend or
+suspend key parked the MIPS for good (0189 has no resume; FB-MIPSRELOAD is
+not in the line): no picture and no HDMI until a reboot. Both now act only
+when the target is PM_SUSPEND_MEM, where the DRAM goes into self-refresh,
+as 0187a does for the arisc callbacks; afbd's resume undoes only what its
+suspend did. A suspend to RAM abandoned after the late phase still leaves
+the MIPS parked until the reload exists.
+
+crust-20261007 review finding B19 (07.10.2026), checked in the code.
+PROVISIONAL NUMBER.
+---
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -64,6 +64,7 @@
+ #include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
+ #include <linux/spinlock.h>
++#include <linux/suspend.h>
+ 
+ #include <linux/soc/sunxi/h713-afbd.h>
+ 
+@@ -290,6 +291,7 @@ struct h713_afbd {
+ 	bool vblank_on;
+ 	bool vsync_irq_on;	/* what the last update wrote to that bit */
+ 	u32 rgb_ctrl_active;
++	bool standby_idle;	/* the suspend below idled the engine */
+ 	u32 video_ctrl_idle;
+ 	u32 video_c_stride_idle;
+ 	u32 selector_rgb;
+@@ -2373,9 +2375,15 @@ static int h713_afbd_suspend(struct device *dev)
+ 	struct h713_afbd *h = dev_get_drvdata(dev);
+ 	int ret;
+ 
++	/* Standby to RAM only: on s2idle the DRAM keeps running, and the
++	 * display path stays as it is. */
++	h->standby_idle = false;
++	if (pm_suspend_target_state != PM_SUSPEND_MEM)
++		return 0;
+ 	ret = drm_mode_config_helper_suspend(&h->drm);
+ 	if (ret)
+ 		return ret;
++	h->standby_idle = true;
+ 	h713_afbd_video_stop(h);
+ 	writel((h->rgb_ctrl_active | BIT(31)) & ~BIT(0), h->regs + AFBD_CTRL);
+ 	writel(1, h->regs + AFBD_READY);
+@@ -2387,6 +2395,9 @@ static int h713_afbd_resume(struct device *dev)
+ {
+ 	struct h713_afbd *h = dev_get_drvdata(dev);
+ 
++	if (!h->standby_idle)
++		return 0;
++	h->standby_idle = false;
+ 	/* Idle word back; pipe_enable() re-arms RGB through set_source(). */
+ 	writel(h->rgb_ctrl_active & ~BIT(0), h->regs + AFBD_CTRL);
+ 	return drm_mode_config_helper_resume(&h->drm);
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -59,6 +59,7 @@
+ #include <linux/reset.h>
+ #include <linux/mutex.h>
+ #include <linux/string.h>
++#include <linux/suspend.h>
+ #include <linux/soc/sunxi/h713-cpu-comm.h>
+ #include "cpu_comm.h"
+ 
+@@ -2187,6 +2188,14 @@ static int cpu_comm_suspend_late(struct device *dev)
+ {
+ 	void __iomem *ccu;
+ 
++	/*
++	 * Only for standby to RAM, where the DRAM goes into self-refresh. On
++	 * s2idle - the only sleep state the installed BL31 offers, and what
++	 * "mem" means there - the DRAM keeps running, and a parked MIPS would
++	 * stay parked after the wake: no picture until a reboot.
++	 */
++	if (pm_suspend_target_state != PM_SUSPEND_MEM)
++		return 0;
+ 	if (!cpu_comm_mips_running())
+ 		return 0;
+ 	ccu = ioremap(H713_CCU_MIPS_CLK, 0x10);

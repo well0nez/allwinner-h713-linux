@@ -1,0 +1,66 @@
+arm64: dts: h713: bind the watchdog with the A523 register layout
+
+TODO 2.25. The node said sun50i-h6-wdt/sun6i-a31-wdt, so sunxi_wdt used
+CTRL +0x10, CFG +0x14, MODE +0x18 and wrote no key. On the H713 those
+writes do nothing (doku/72: the pinger killed, no reset, MODE read 0x1f),
+and RebootWatchdogSec armed nothing. The block has the A523's register
+file - CTRL +0x0c (reload 0x14af), CFG +0x10, MODE +0x14, key 0x16aa -
+which BL31 and U-Boot already use (U-Boot binds it with the same two
+strings); a hand-set MODE 0x16aa00b1 resets the HY310 after 16.4 s, with
+the USB cable plugged in, and a 0x14af reload on CTRL holds it off
+(doku/164). sunxi_wdt knows that layout as allwinner,sun55i-a523-wdt, so
+no driver change is needed for it.
+
+The A523 binding wants both clocks by name: hosc is osc24M as before,
+losc the RTC's osc32k (index 0). The driver takes neither; the interrupt
+stays 53 and unrequested.
+
+Only with a BL31 that has T1. The rootfs sets RebootWatchdogSec=16s
+(mainline/tools/rootfs/customize.sh), so with this tree every reboot and
+every poweroff arms the watchdog for real: systemd-shutdown starts it at
+16 s, the kernel's reboot notifier stops it, and then PSCI's reset - or
+the poweroff into the boot gate - programs CFG and MODE for 0.5 s. A
+BL31 without T1 does that without a reload first. On the HY310 such a
+MODE write into a running watchdog reset nothing, and the box stayed in
+BL31 until the power was cut (crust-20261007 run B1, TFA-1; mechanism
+inferred). Whether a stopped block starts again from zero is not
+measured, so the stop in between does not make this safe. This holds for
+test and FEL images with this rootfs as much as for the release; with
+RuntimeWatchdogSec it also holds for a running watchdog.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1512,18 +1512,26 @@
+ 
+ 		/* === Watchdog === */
+ 		watchdog: watchdog@2051000 {
+-			compatible = "allwinner,sun50i-h6-wdt",
+-				     "allwinner,sun6i-a31-wdt";
++			/*
++			 * The A523's register file: CTRL +0x0c (reload
++			 * 0x14af), CFG +0x10, MODE +0x14, key 0x16aa - the
++			 * strings U-Boot binds it with. The H6/A31 layout
++			 * (CTRL +0x10, no key) hit nothing here (doku/72);
++			 * MODE 0x16aa00b1 resets after 16.4 s (doku/164).
++			 */
++			compatible = "allwinner,sun50i-h713-wdt",
++				     "allwinner,sun55i-a523-wdt";
+ 			reg = <0x02051000 0x20>;
+ 			/*
+ 			 * 53, not 46: 46 is the msgbox's bank 0 line (stock
+ 			 * watchdog@2051000: interrupts = <0 0x35 4>). No
+-			 * behaviour change -- sun6i-a31-wdt never requests
+-			 * the interrupt -- but it stops the device tree from
++			 * behaviour change -- sunxi_wdt never requests the
++			 * interrupt -- but it stops the device tree from
+ 			 * naming one line twice.
+ 			 */
+ 			interrupts = <GIC_SPI 53 IRQ_TYPE_LEVEL_HIGH>;
+-			clocks = <&osc24M>;
++			clocks = <&osc24M>, <&rtc CLK_OSC32K>;
++			clock-names = "hosc", "losc";
+ 		};
+ 
+ 		/* === R-domain: RTC, R_CCU, R_PIO, IR === */

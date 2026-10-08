@@ -1,0 +1,78 @@
+soc: sunxi: h713-arisc: crust - keep a running image only if its code is the file's
+
+The keep path kept a running crust when its build word's size matched
+the file. A rebuild that only changes an immediate keeps the size, so an
+old crust started by TF-A from a staged image stayed while the log named
+the new file. crust's contract version 4 publishes the size of .text and
+.rodata (+0x1fc), the part it never writes; the keep path now also
+compares those words in SRAM with the file, as the loader would write
+them (a few thousand reads), and loads the file over anything else.
+
+Second review of 07.10.2026, findings B8/B9, checked in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -375,6 +375,11 @@ static const u8 default_portmap[ARISC_HDMI_PORTS] = { 0, 1, 2 };
+  */
+ #define CRUST_BUILD		(CRUST_DIAG + 0x3c)
+ #define CRUST_BUILD_SIZE	GENMASK(19, 0)
++/*
++ * Version 4: the bytes of .text and .rodata from the image start - the part
++ * crust never writes, so the running image can be compared with a file.
++ */
++#define CRUST_RO_SIZE		(CRUST_SHARED + 0x1fc)
+ 
+ /*
+  * Where the loaded firmware keeps the objects this driver reads and writes.
+@@ -2653,6 +2658,29 @@ static int h713_arisc_map(struct platform_device *pdev, const char *name,
+ 	return 0;
+ }
+ 
++/*
++ * The running crust is the one in @data: contract version 4, the image size
++ * of its build word, and every word of its code and constants (up to the
++ * size at +0x1fc, nothing crust writes) equal to the file's, as the loader
++ * would have written them. Size alone does not do: a fix that changes an
++ * immediate keeps it.
++ */
++static bool arisc_crust_is_file(struct h713_arisc *a, const u8 *data, size_t size)
++{
++	u32 ro = readl(sram_at(a, CRUST_RO_SIZE));
++	unsigned int off;
++
++	if (readl(sram_at(a, CRUST_SHARED_VERSION)) < 4 ||
++	    (readl(sram_at(a, CRUST_BUILD)) & CRUST_BUILD_SIZE) != size ||
++	    !ro || ro > size || ro % 4)
++		return false;
++	for (off = 0; off < ro; off += 4)
++		if (readl_relaxed(sram_at(a, CRUST_LOAD_BASE + off)) !=
++		    arisc_image_le32(data, size, off))
++			return false;
++	return true;
++}
++
+ /* A live crust: the page's magic, its running bit and a moving heartbeat. */
+ static bool arisc_crust_running(struct h713_arisc *a)
+ {
+@@ -2705,14 +2733,14 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 	if (kept) {
+ 		/*
+ 		 * TF-A (or an earlier probe) started it: keep it and its state -
+-		 * if it is the crust in the file. Light, self-refresh and deep
+-		 * share version and notify; the build word (version 3) carries
+-		 * the image size and the variant. Another one is loaded over.
++		 * if it is the crust in the file (arisc_crust_is_file: size and
++		 * code compared). Light, self-refresh and deep share version and
++		 * notify; the build word names the variant. Another one is
++		 * loaded over.
+ 		 */
+ 		u32 build = readl(sram_at(a, CRUST_BUILD));
+ 
+-		if (readl(sram_at(a, CRUST_SHARED_VERSION)) < 3 ||
+-		    (build & CRUST_BUILD_SIZE) != fw->size) {
++		if (!arisc_crust_is_file(a, fw->data, fw->size)) {
+ 			dev_warn(a->dev, "running crust (build 0x%08x) is not \"%s\" (%zu bytes) -- loading the file\n",
+ 				 build, name, fw->size);
+ 			kept = false;

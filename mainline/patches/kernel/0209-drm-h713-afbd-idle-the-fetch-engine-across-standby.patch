@@ -1,0 +1,65 @@
+drm: h713-afbd: idle the fetch engine across standby
+
+A running scanout keeps the DRAM out of self-refresh and underruns when the ARISC gates the PLLs:
+standard DRM teardown plus both channels off, since pipe_disable() leaves the panel alone on purpose.
+The vendor's TCON/LVDS/panel ladder and register replay (FB-GE2D 3.6) are not built here.
+
+FB-STANDBY 0171, rebased by crust-20261007 onto tree 50e281fd (applies with offsets/fuzz;
+compiled out of tree, W=0, no warning). PROVISIONAL NUMBER (was 0171).
+---
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -80,6 +80,7 @@
+ #include <drm/drm_gem_dma_helper.h>
+ #include <drm/drm_gem_framebuffer_helper.h>
+ #include <drm/drm_managed.h>
++#include <drm/drm_modeset_helper.h>
+ #include <drm/drm_plane.h>
+ #include <drm/drm_plane_helper.h>
+ #include <drm/drm_probe_helper.h>
+@@ -2363,6 +2364,37 @@ static void h713_afbd_shutdown(struct platform_device *pdev)
+ 	drm_atomic_helper_shutdown(&h->drm);
+ }
+ 
++/*
++ * Standby (plan 104): idle before the DRAM's self-refresh; pipe_disable()
++ * leaves the panel alone on purpose, so both channels go off here.
++ */
++static int h713_afbd_suspend(struct device *dev)
++{
++	struct h713_afbd *h = dev_get_drvdata(dev);
++	int ret;
++
++	ret = drm_mode_config_helper_suspend(&h->drm);
++	if (ret)
++		return ret;
++	h713_afbd_video_stop(h);
++	writel((h->rgb_ctrl_active | BIT(31)) & ~BIT(0), h->regs + AFBD_CTRL);
++	writel(1, h->regs + AFBD_READY);
++	h713_afbd_wait_ready(h, AFBD_READY, "standby: RGB disable");
++	return 0;
++}
++
++static int h713_afbd_resume(struct device *dev)
++{
++	struct h713_afbd *h = dev_get_drvdata(dev);
++
++	/* Idle word back; pipe_enable() re-arms RGB through set_source(). */
++	writel(h->rgb_ctrl_active & ~BIT(0), h->regs + AFBD_CTRL);
++	return drm_mode_config_helper_resume(&h->drm);
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(h713_afbd_pm_ops, h713_afbd_suspend,
++				h713_afbd_resume);
++
+ static const struct of_device_id h713_afbd_of_match[] = {
+ 	{ .compatible = "allwinner,sun50i-h713-afbd" },
+ 	{ }
+@@ -2376,6 +2408,7 @@ static struct platform_driver h713_afbd_platform_driver = {
+ 	.driver	= {
+ 		.name		= "sun50i-h713-afbd",
+ 		.of_match_table	= h713_afbd_of_match,
++		.pm		= pm_sleep_ptr(&h713_afbd_pm_ops),
+ 	},
+ };
+ module_platform_driver(h713_afbd_platform_driver);

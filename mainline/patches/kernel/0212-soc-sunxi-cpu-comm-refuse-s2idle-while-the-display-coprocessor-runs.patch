@@ -1,0 +1,51 @@
+soc: sunxi: cpu_comm: refuse s2idle while the display coprocessor runs
+
+On s2idle genpd powers the TVFE and TVCAP domains off in the noirq phase.
+It counts suspended devices only and ignores runtime-PM references, and
+tvcap's virtual devices are the domains' only holders besides the MSP. The
+MIPS keeps running through that and polls its HDMI-RX PHY in TVCAP. 0191
+leaves the MIPS alone on s2idle on the assumption that the display path
+stays as it is; read in the code, that assumption is wrong (KD-2). With
+today's BL31, "mem" is s2idle, and systemd's default SuspendState lists
+"freeze" after "mem" (from its configuration, not run here).
+
+A new .prepare refuses PM_SUSPEND_TO_IDLE with -EOPNOTSUPP while the MIPS
+status register says it runs, before any device has been suspended. A MIPS
+that standby to RAM has parked does not block s2idle. Standby to RAM itself
+is unchanged.
+
+Not measured: what a running MIPS does when TVCAP goes off under it (stage
+V1' of the crust release design runs "echo freeze" with cpu_comm loaded).
+Compiled out of tree with W=1, no new warning.
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -2184,6 +2184,20 @@ static void cpu_comm_drv_remove(struct platform_device *pdev)
+ #define H713_CCU_MIPS_RESET	0x0200160c	/* 0x00070001 released, 0 held */
+ #define H713_MIPS_PARK_MS	12
+ 
++/*
++ * s2idle is refused while the MIPS runs: genpd powers TVFE and TVCAP off in
++ * the noirq phase whatever the runtime references say, and the MIPS polls
++ * its HDMI-RX PHY in TVCAP (KD-2). Standby to RAM parks it first, below.
++ */
++static int cpu_comm_prepare(struct device *dev)
++{
++	if (pm_suspend_target_state != PM_SUSPEND_TO_IDLE ||
++	    !cpu_comm_mips_running())
++		return 0;
++	dev_err(dev, "s2idle would power TVFE/TVCAP off under the running display coprocessor, refused\n");
++	return -EOPNOTSUPP;
++}
++
+ static int cpu_comm_suspend_late(struct device *dev)
+ {
+ 	void __iomem *ccu;
+@@ -2212,6 +2226,7 @@ static int cpu_comm_suspend_late(struct device *dev)
+ }
+ 
+ static const struct dev_pm_ops cpu_comm_pm_ops = {
++	.prepare = pm_sleep_ptr(cpu_comm_prepare),
+ 	LATE_SYSTEM_SLEEP_PM_OPS(cpu_comm_suspend_late, NULL)
+ };
+ 

@@ -1,0 +1,27 @@
+dt-bindings: watchdog: sun4i-a10-wdt: add the H713
+
+The H713's watchdog at 0x02051000 has the A523's register file: CTRL at
++0x0c (reload 0x14af), CFG at +0x10, MODE at +0x14, every CFG/MODE write
+keyed with 0x16aa in the upper half. U-Boot binds it with the same two
+strings (dts/upstream sun50i-h713-hy200-qz713df-a1.dts), and a hand-set
+MODE 0x16aa00b1 resets the HY310 after 16.4 s (07.10.2026, doku/164).
+The H713 string names the SoC, the A523 one carries the layout; the
+existing condition on allwinner,sun55i-a523-wdt then asks for both clocks
+and their names (hosc, losc).
+
+TODO 2.25, W1 of the crust release design.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/Documentation/devicetree/bindings/watchdog/allwinner,sun4i-a10-wdt.yaml
++++ b/Documentation/devicetree/bindings/watchdog/allwinner,sun4i-a10-wdt.yaml
+@@ -33,6 +33,9 @@ properties:
+           - const: allwinner,sun20i-d1-wdt-reset
+           - const: allwinner,sun20i-d1-wdt
+       - const: allwinner,sun55i-a523-wdt
++      - items:
++          - const: allwinner,sun50i-h713-wdt
++          - const: allwinner,sun55i-a523-wdt
+ 
+   reg:
+     maxItems: 1

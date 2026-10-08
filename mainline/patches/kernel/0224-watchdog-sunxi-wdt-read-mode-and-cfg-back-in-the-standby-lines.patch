@@ -1,0 +1,52 @@
+watchdog: sunxi_wdt: read MODE and CFG back in the standby lines
+
+"stopped for standby" and "re-armed" said what the driver meant to do,
+not what the block holds. Both now carry MODE and CFG as read back right
+after the writes, so a standby run shows in its kernel log alone whether
+EN went to 0 before the sleep and whether interval, EN and the reset
+function are back after it - without /dev/mem on the device (stages W2
+and V1' of the crust release design; review WP-6 H1). The beginning of
+both lines stays as it was, for the scripts that look for it.
+
+Compiled out of tree with W=1; not measured on the device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/watchdog/sunxi_wdt.c
++++ b/drivers/watchdog/sunxi_wdt.c
+@@ -345,12 +345,15 @@ static void sunxi_wdt_pm_cleanup(void *data)
+ static int sunxi_wdt_suspend_noirq(struct device *dev)
+ {
+ 	struct sunxi_wdt_dev *sunxi_wdt = dev_get_drvdata(dev);
++	const struct sunxi_wdt_reg *regs = sunxi_wdt->wdt_regs;
+ 
+ 	cancel_delayed_work_sync(&sunxi_wdt->keepalive);
+ 	sunxi_wdt->stopped_for_sleep = sunxi_wdt_running(&sunxi_wdt->wdt_dev);
+ 	if (sunxi_wdt->stopped_for_sleep) {
+ 		sunxi_wdt_stop(&sunxi_wdt->wdt_dev);	/* feeds, then stops */
+-		dev_info(dev, "stopped for standby\n");
++		dev_info(dev, "stopped for standby (mode %#x, cfg %#x)\n",
++			 readl(sunxi_wdt->wdt_base + regs->wdt_mode),
++			 readl(sunxi_wdt->wdt_base + regs->wdt_cfg));
+ 	}
+ 
+ 	return 0;
+@@ -359,13 +362,16 @@ static int sunxi_wdt_suspend_noirq(struct device *dev)
+ static int sunxi_wdt_resume_noirq(struct device *dev)
+ {
+ 	struct sunxi_wdt_dev *sunxi_wdt = dev_get_drvdata(dev);
++	const struct sunxi_wdt_reg *regs = sunxi_wdt->wdt_regs;
+ 
+ 	if (sunxi_wdt->stopped_for_sleep) {
+ 		sunxi_wdt->stopped_for_sleep = false;
+ 		sunxi_wdt_start(&sunxi_wdt->wdt_dev);
+ 		sunxi_wdt_keepalive_start(sunxi_wdt);
+-		dev_info(dev, "re-armed (timeout=%u sec)\n",
+-			 sunxi_wdt->wdt_dev.timeout);
++		dev_info(dev, "re-armed (timeout=%u sec, mode %#x, cfg %#x)\n",
++			 sunxi_wdt->wdt_dev.timeout,
++			 readl(sunxi_wdt->wdt_base + regs->wdt_mode),
++			 readl(sunxi_wdt->wdt_base + regs->wdt_cfg));
+ 	}
+ 
+ 	return 0;

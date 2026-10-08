@@ -1,0 +1,61 @@
+misc: hy310-board-mgr: own the fan rail when the board file hands it over, switch it in the late phase
+
+gpio_request_one() around every switch fails against a hog and against the driver's own request
+alike, so suspend never moved PB5. A rail from the board file is set directly, late: down after the
+display and capture drivers have quiesced, up before they resume.
+
+FB-STANDBY 0169, rebased by crust-20261007 onto tree 50e281fd (applies with offsets/fuzz;
+compiled out of tree, W=0, no warning). PROVISIONAL NUMBER (was 0169).
+---
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -189,6 +189,7 @@ struct hy310_fan {
+ 	u32			 duty_array[HY310_MAX_MODES];
+ 	u32			 num_modes;
+ 	int			 power_gpio;
++	bool			 power_owned;	/* requested by us, not by a hog */
+ 	struct gpio_desc	*fg_desc;	/* tachometer input */
+ 	int			 fg_irq;
+ 	u32			 fg_ppr;	/* tach pulses per revolution */
+@@ -386,6 +387,11 @@ static void hy310_fan_power_en(struct hy310_board_mgr *priv, int enable)
+ 		 * We only override it on suspend (off) / resume (on).
+ 		 * gpio_request_one + gpio_free to avoid permanent ownership.
+ 		 */
++		/* A rail handed to us by the board file is switched directly. */
++		if (fan->power_owned) {
++			gpio_set_value(fan->power_gpio, enable);
++			continue;
++		}
+ 		if (gpio_request_one(fan->power_gpio,
+ 				     enable ? GPIOF_OUT_INIT_HIGH : GPIOF_OUT_INIT_LOW,
+ 				     "fan-power-override") == 0)
+@@ -1041,6 +1047,7 @@ static int hy310_parse_fan_node(struct hy310_board_mgr *priv,
+ 				 fan_np->name, fan->power_gpio);
+ 		} else {
+ 			gpio_direction_output(fan->power_gpio, 1);
++			fan->power_owned = true;
+ 			dev_info(dev, "%s: fan-power-gpio %d set HIGH\n",
+ 				 fan_np->name, fan->power_gpio);
+ 		}
+@@ -1479,9 +1486,9 @@ static int __maybe_unused hy310_board_mgr_resume(struct device *dev)
+ 	return 0;
+ }
+ 
+-static SIMPLE_DEV_PM_OPS(hy310_board_mgr_pm_ops,
+-			  hy310_board_mgr_suspend,
+-			  hy310_board_mgr_resume);
++static const struct dev_pm_ops hy310_board_mgr_pm_ops = {
++	LATE_SYSTEM_SLEEP_PM_OPS(hy310_board_mgr_suspend, hy310_board_mgr_resume)
++};
+ 
+ /* -------------------------------------------------------------------------
+  * Platform driver registration
+@@ -1538,7 +1545,7 @@ static struct platform_driver hy310_board_mgr_driver = {
+ 	.driver   = {
+ 		.name           = "hy310-board-mgr",
+ 		.of_match_table = hy310_board_mgr_of_match,
+-		.pm             = &hy310_board_mgr_pm_ops,
++		.pm             = pm_sleep_ptr(&hy310_board_mgr_pm_ops),
+ 	},
+ };
+ 

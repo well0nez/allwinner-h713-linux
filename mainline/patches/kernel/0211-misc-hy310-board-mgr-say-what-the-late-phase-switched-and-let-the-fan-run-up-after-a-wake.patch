@@ -1,0 +1,130 @@
+misc: hy310-board-mgr: say what the late phase switched, and let the fan run up after a wake
+
+With fan-power-gpio in the board file (W1 of the crust release design),
+0188's own path switches PB5 in suspend_late and resume_early: on the HY310
+that is the LED boost and the fan together, so light and fan go off as one
+and the status LED turns red by itself (U-Boot board.c, measured there).
+Without it a hog keeps the line and nothing is switched, yet both callbacks
+logged "fan power off" and "fan power restored" on every cycle (KD-7).
+
+hy310_fan_power_en() now counts the rails it really switched, and the two
+lines say what happened. On resume the stall counter starts from zero, and
+for 5 s the tachometer is read but not judged: the rail was off, and a fan
+that is still running up must not end in orderly_poweroff() through
+fan_stall_shutdown (KD-7, N-05).
+
+Not measured: light, tachometer, temperature and current in standby (stage
+L of the design). Compiled out of tree with W=1, no new warning.
+---
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -113,6 +113,8 @@
+ 
+ /* Fan tachometer work interval: 1 second in jiffies */
+ #define FAN_TACHO_INTERVAL_MS		1000
++/* After a wake the rail was off: no stall verdict before the fan has run up */
++#define FAN_SPINUP_MS			5000
+ /* NTC temperature work interval: 2500 ms */
+ #define NTC_POLL_INTERVAL_MS		2500
+ 
+@@ -264,6 +266,8 @@ struct hy310_board_mgr {
+ 
+ 	/* Set once a poweroff has been requested, so it is requested only once */
+ 	bool			 poweroff_started;
++	/* jiffies: the fan rail came back at resume, no stall verdict before */
++	unsigned long		 fan_judge_after;
+ 
+ 	/* Delayed work for fan RPM and NTC polling */
+ 	struct delayed_work	 fan_work;
+@@ -371,10 +375,13 @@ static void hy310_set_all_fans_full(struct hy310_board_mgr *priv)
+  * hy310_fan_power_en - enable or disable all fan power GPIOs
+  * @priv:   driver private data
+  * @enable: 1 = power on, 0 = power off
++ *
++ * Returns the number of rails actually switched; 0 where a hog keeps the
++ * line, which is every board file that does not hand fan-power-gpio over.
+  */
+-static void hy310_fan_power_en(struct hy310_board_mgr *priv, int enable)
++static int hy310_fan_power_en(struct hy310_board_mgr *priv, int enable)
+ {
+-	int i;
++	int i, switched = 0;
+ 
+ 	for (i = 0; i < priv->num_fans; i++) {
+ 		struct hy310_fan *fan = &priv->fans[i];
+@@ -390,13 +397,18 @@ static void hy310_fan_power_en(struct hy310_board_mgr *priv, int enable)
+ 		/* A rail handed to us by the board file is switched directly. */
+ 		if (fan->power_owned) {
+ 			gpio_set_value(fan->power_gpio, enable);
++			switched++;
+ 			continue;
+ 		}
+ 		if (gpio_request_one(fan->power_gpio,
+ 				     enable ? GPIOF_OUT_INIT_HIGH : GPIOF_OUT_INIT_LOW,
+-				     "fan-power-override") == 0)
++				     "fan-power-override") == 0) {
+ 			gpio_free(fan->power_gpio);
++			switched++;
++		}
+ 	}
++
++	return switched;
+ }
+ 
+ /* -------------------------------------------------------------------------
+@@ -470,6 +482,10 @@ static void hy310_fan_work_fn(struct work_struct *work)
+ 			dev_info(priv->dev, "fan%d: %u RPM at boot\n", i, rpm);
+ 		}
+ 
++		/* Back from standby: the rail was off, the fan still runs up. */
++		if (time_before(jiffies, priv->fan_judge_after))
++			continue;
++
+ 		/*
+ 		 * A stall is the one condition this board can detect and must
+ 		 * act on: the fan is an unregulated on/off load on the shared
+@@ -1450,18 +1466,28 @@ static int __maybe_unused hy310_board_mgr_suspend(struct device *dev)
+ 
+ 	cancel_delayed_work_sync(&priv->fan_work);
+ 	cancel_delayed_work_sync(&priv->ntc_work);
+-	hy310_fan_power_en(priv, 0);
+ 
+-	dev_info(dev, "suspended: fan power off\n");
++	/*
++	 * Late, after the backlight and the display drivers. On the HY310 the
++	 * rail is PB5, the LED boost and the fan together: light and fan go
++	 * off as one, and the status LED turns red by itself.
++	 */
++	if (hy310_fan_power_en(priv, 0))
++		dev_info(dev, "suspended: fan power rail off\n");
++	else
++		dev_info(dev, "suspended: fan power rail not ours, left as it is\n");
+ 	return 0;
+ }
+ 
+ static int __maybe_unused hy310_board_mgr_resume(struct device *dev)
+ {
+ 	struct hy310_board_mgr *priv = dev_get_drvdata(dev);
+-	int i;
++	int switched, i;
+ 
+-	hy310_fan_power_en(priv, 1);
++	switched = hy310_fan_power_en(priv, 1);
++	priv->fan_judge_after = jiffies + msecs_to_jiffies(FAN_SPINUP_MS);
++	for (i = 0; i < priv->num_fans; i++)
++		priv->fans[i].rpm_warn_cycles = 0;
+ 
+ 	/* Restore PWM duties */
+ 	mutex_lock(&priv->lock);
+@@ -1482,7 +1508,10 @@ static int __maybe_unused hy310_board_mgr_resume(struct device *dev)
+ 		schedule_delayed_work(&priv->ntc_work,
+ 				      msecs_to_jiffies(NTC_POLL_INTERVAL_MS));
+ 
+-	dev_info(dev, "resumed: fan power restored\n");
++	if (switched)
++		dev_info(dev, "resumed: fan power rail on\n");
++	else
++		dev_info(dev, "resumed\n");
+ 	return 0;
+ }
+ 

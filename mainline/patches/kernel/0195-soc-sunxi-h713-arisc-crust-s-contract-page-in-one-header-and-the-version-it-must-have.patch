@@ -1,0 +1,672 @@
+soc: sunxi: h713-arisc: crust's contract page in one header, and the version it must have
+
+The words this driver shares with crust were constants in the driver,
+and only the keep path looked at the version, as "at least 4" with no
+upper bound. A freshly loaded crust was driven at the fixed offsets
+whatever its page said; the log named no variant on that path, and on
+the keep path only bits 24-26 of the build word.
+
+linux/soc/sunxi/h713-crust-contract.h is contract version 5: the page
+layout with its lifetime classes and one writer per word, the build word
+and the second build word, the standby state with the causes of crust's
+clean reset, its request, budget and confirmation words with the order
+Linux writes them in (the last confirmation cleared first), TF-A's word,
+the record a loader leaves before it restarts crust (P) with its
+checksum, an encoder and a decoder for each of these words, and the
+acceptance rule all three sides use:
+
+  magic == "H713" && version >= MIN && compat_eff <= MAX,
+  compat_eff = version >= 5 ? COMPAT[7:0] : version
+
+with COMPAT the oldest reader a page still suits. The header needs
+nothing from the kernel, so a host test builds the same file.
+
+The driver reads the HDMI service from contract 4 to 5 and checks the
+rule on the keep path (a crust it cannot read is loaded over) and after
+the handshake of a crust it loaded (crust writes magic and version
+before the notify; a page it cannot read leaves the firmware unused, no
+HDMI command goes to offsets that may mean something else). Both paths
+then log one line with the version, the build word decoded (bits 24-31)
+and the second build word (DRAM clock, board, R_WDOG interval); a test
+build is a warning. A kept crust whose notify an earlier probe took is
+named by the version on its page instead of a placeholder.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -88,6 +88,7 @@
+ #include <linux/unaligned.h>
+ 
+ #include <linux/soc/sunxi/h713-arisc.h>
++#include <linux/soc/sunxi/h713-crust-contract.h>
+ 
+ /* ---- msgbox bank user0: ARISC -> ARM ------------------------------------ */
+ /*
+@@ -345,53 +346,29 @@ static const u8 default_portmap[ARISC_HDMI_PORTS] = { 0, 1, 2 };
+ #define FW_NAME_CRUST		"h713-crust.bin"	/* firmware-name index 0 selects it */
+ 
+ /*
+- * The crust port (free SCP firmware, FB-CRUST and crust-20261007): recognised
+- * by its first word (l.mfspr r2,r0,0x12, TF-A's SCP_FIRMWARE_MAGIC), loaded at
+- * AR100 0x10000 with the fourteen exception vectors written by the loader
+- * (crust docs/abi.md, TF-A sunxi_scpi_pm.c). It speaks the vendor firmware's
+- * message box contract; the variables this driver reads and writes sit in a
+- * contract page at a fixed address with the vendor build's distances, so
+- * everything below the offsets is the same code for both images.
++ * The crust port (free SCP firmware): recognised by its first word
++ * (l.mfspr r2,r0,0x12, TF-A's SCP_FIRMWARE_MAGIC), loaded at AR100 0x10000
++ * with the fourteen exception vectors written by the loader (crust
++ * docs/abi.md, TF-A sunxi_scpi_pm.c). It speaks the vendor firmware's
++ * message box contract; the variables this driver reads and writes sit in
++ * the contract page (linux/soc/sunxi/h713-crust-contract.h) with the vendor
++ * build's distances, so everything below the offsets is the same code for
++ * both images.
+  */
+ #define CRUST_MAGIC		0xb4400012
+ #define CRUST_LOAD_BASE		0x10000
+ #define CRUST_LOAD_LIMIT	0x20000
+ #define CRUST_VECTORS		14	/* OR1K exceptions 1..14, 0x100 apart */
+-#define CRUST_SHARED		0x23800	/* the contract page */
+-#define CRUST_SHARED_END	0x23c00
+-#define CRUST_SHARED_MAGIC	0x33313748	/* "H713" */
+-#define CRUST_SHARED_VERSION	(CRUST_SHARED + 0x4)
+-#define CRUST_SHARED_STATUS	(CRUST_SHARED + 0x8)	/* heartbeat in 31:16 */
+-#define CRUST_SHARED_WAKE	(CRUST_SHARED + 0xc)	/* last wake word */
+-#define CRUST_ST_RUNNING	BIT(0)
+-#define CRUST_ST_HANDSHAKE	BIT(1)
+-#define CRUST_GDATA		(CRUST_SHARED + 0x20)
+-#define CRUST_PUMP		(CRUST_SHARED + 0x180)
+-/*
+- * Sixteen diagnostic words the firmware keeps across its own restarts (its
+- * platform/memory.h): the little-endian window it found and closed (enable
+- * word, window 0 start and end), CPUS_CLK_REG as found, its tick timer of
+- * the last main loop pass, the number of starts, R_INTC +0x80/+0x88 as
+- * found, the frames the display MIPS sent and the first bytes of the last,
+- * ARM frames with a foreign type. Zeroed here before the core is released,
+- * so a nonzero word is the firmware's.
+- */
+-#define CRUST_DIAG		(CRUST_SHARED + 0x200)
+-#define CRUST_DIAG_WORDS	16
+-#define CRUST_DIAG_SHOWN	16
+-/*
+- * Contract version 3 adds, in the same block: the last standby step and the
+- * last exception (no longer in RTC GP3/GP2), the milliseconds asleep in the
+- * last standby, the armed wake timer, and the build word - image size in
+- * bits 19..0, DRAM self-refresh bit 24, deep sleep bit 25, IR codes bit 26.
+- */
+-#define CRUST_BUILD		(CRUST_DIAG + 0x3c)
+-#define CRUST_BUILD_SIZE	GENMASK(19, 0)
++#define CRUST_PAGE_END		(H713_PAGE + H713_PAGE_SIZE)
++
+ /*
+- * Version 4: the bytes of .text and .rodata from the image start - the part
+- * crust never writes, so the running image can be compared with a file.
++ * The contract versions this driver reads: the HDMI service from 4 on (the
++ * size of the code at +0x1fc, which the keep path compares), standby only
++ * from 5 (the request, its budgets and its confirmation).
+  */
+-#define CRUST_RO_SIZE		(CRUST_SHARED + 0x1fc)
++#define CRUST_HDMI_MIN		4
++#define CRUST_STANDBY_MIN	5
++#define CRUST_KNOWN		5
+ 
+ /*
+  * Where the loaded firmware keeps the objects this driver reads and writes.
+@@ -468,6 +445,25 @@ static void __iomem *sram_at(struct h713_arisc *a, unsigned long off)
+ 	return a->sram + off;
+ }
+ 
++/* A word of crust's contract page, @off from the page start. */
++static u32 crust_rd(struct h713_arisc *a, unsigned int off)
++{
++	return readl(a->sram + H713_PAGE + off);
++}
++
++static void crust_wr(struct h713_arisc *a, u32 val, unsigned int off)
++{
++	writel(val, a->sram + H713_PAGE + off);
++}
++
++/* The page's acceptance rule for a reader of versions @min..CRUST_KNOWN. */
++static bool crust_accept(struct h713_arisc *a, u32 min)
++{
++	return h713_contract_accept(crust_rd(a, H713_MAGIC),
++				    crust_rd(a, H713_VERSION),
++				    crust_rd(a, H713_COMPAT), min, CRUST_KNOWN);
++}
++
+ /*
+  * Byte access to data the firmware owns. The core is big endian and the
+  * SRAM word stays the same integer on both sides, so the byte the firmware
+@@ -841,24 +837,24 @@ static int arisc_resolve_offsets(struct h713_arisc *a, const u8 *data,
+ 		 * AR100 0x24000 (TF-A sunxi_mmap.h: 128 KiB from 0x4000), so a
+ 		 * short window is widened rather than refused.
+ 		 */
+-		if (a->sram_size < CRUST_SHARED_END) {
++		if (a->sram_size < CRUST_PAGE_END) {
+ 			void __iomem *wide = devm_ioremap(a->dev, a->sram_phys,
+-							  CRUST_SHARED_END);
++							  CRUST_PAGE_END);
+ 
+ 			if (!wide)
+ 				return dev_err_probe(a->dev, -ENOMEM,
+ 					"\"sram\" window cannot be widened to 0x%x for crust's page\n",
+-					CRUST_SHARED_END);
++					CRUST_PAGE_END);
+ 			dev_info(a->dev,
+ 				 "\"sram\" window 0x%llx bytes, widened to 0x%x for crust's contract page\n",
+-				 (unsigned long long)a->sram_size, CRUST_SHARED_END);
++				 (unsigned long long)a->sram_size, CRUST_PAGE_END);
+ 			a->sram = wide;
+-			a->sram_size = CRUST_SHARED_END;
++			a->sram_size = CRUST_PAGE_END;
+ 		}
+ 		o.crust = true;
+ 		o.load_base = CRUST_LOAD_BASE;
+-		o.gdata = CRUST_GDATA;
+-		o.rpm_state = CRUST_PUMP;
++		o.gdata = H713_PAGE + H713_GDATA;
++		o.rpm_state = H713_PAGE + H713_PUMP;
+ 		o.rpm_buf = o.rpm_state + PUMP_BUF;
+ 		o.hpd_counter = o.gdata + GDATA_HPD_COUNTER;
+ 		o.edid_ready = o.gdata + GDATA_EDID_READY;
+@@ -866,13 +862,13 @@ static int arisc_resolve_offsets(struct h713_arisc *a, const u8 *data,
+ 		o.edid_version = o.gdata + GDATA_EDID_VERSION;
+ 		o.portmap = o.gdata + GDATA_PORTMAP;
+ 		o.scratch = o.gdata + GDATA_SCRATCH;
+-		o.bss_start = CRUST_SHARED;
+-		o.bss_end = o.stack_top = CRUST_SHARED_END;
++		o.bss_start = H713_PAGE;
++		o.bss_end = o.stack_top = CRUST_PAGE_END;
+ 		strscpy(a->image_version, "crust-h713 (contract page)",
+ 			sizeof(a->image_version));
+ 		a->off = o;
+ 		dev_info(a->dev, "\"%s\" (%zu bytes): crust image, contract page 0x%05x\n",
+-			 name, size, CRUST_SHARED);
++			 name, size, H713_PAGE);
+ 		return 0;
+ 	}
+ 
+@@ -1077,10 +1073,10 @@ static void arisc_write_para(struct h713_arisc *a)
+ 		 * and no magic or status left from an earlier crust: until this
+ 		 * one writes them, the page must not look like a running one.
+ 		 */
+-		for (i = 0; i < CRUST_DIAG_WORDS; i++)
+-			writel_relaxed(0, sram_at(a, CRUST_DIAG) + 4 * i);
+-		writel_relaxed(0, sram_at(a, CRUST_SHARED));
+-		writel_relaxed(0, sram_at(a, CRUST_SHARED_STATUS));
++		for (i = 0; i < H713_DIAG_WORDS; i++)
++			crust_wr(a, 0, H713_DIAG + 4 * i);
++		crust_wr(a, 0, H713_MAGIC);
++		crust_wr(a, 0, H713_STATUS);
+ 		return;
+ 	}
+ 	for (i = 0; i < SRAM_PARA_WORDS; i++)
+@@ -2689,12 +2685,11 @@ static int h713_arisc_status_show(struct seq_file *s, void *unused)
+ 
+ 		/* The heartbeat in the upper half moves while crust runs. */
+ 		seq_printf(s, "crust: version=%u status=0x%08x wake=0x%x\n",
+-			   readl(sram_at(a, CRUST_SHARED_VERSION)),
+-			   readl(sram_at(a, CRUST_SHARED_STATUS)),
+-			   readl(sram_at(a, CRUST_SHARED_WAKE)));
++			   crust_rd(a, H713_VERSION), crust_rd(a, H713_STATUS),
++			   crust_rd(a, H713_WAKE));
+ 		seq_puts(s, "crust_diag: lewin_en lewin0_start lewin0_end cpus_clk ttcr starts intc80 intc88 mips_n mips_last arm_type step exception slept_ms wake_timer build\ncrust_diag:");
+-		for (i = 0; i < CRUST_DIAG_SHOWN; i++)
+-			seq_printf(s, " %08x", readl(sram_at(a, CRUST_DIAG) + 4 * i));
++		for (i = 0; i < H713_DIAG_WORDS; i++)
++			seq_printf(s, " %08x", crust_rd(a, H713_DIAG + 4 * i));
+ 		seq_puts(s, "\n");
+ 	}
+ 	seq_printf(s, "last_command: %s", a->last_cmd);
+@@ -2845,19 +2840,18 @@ static int h713_arisc_map(struct platform_device *pdev, const char *name,
+ }
+ 
+ /*
+- * The running crust is the one in @data: contract version 4, the image size
+- * of its build word, and every word of its code and constants (up to the
+- * size at +0x1fc, nothing crust writes) equal to the file's, as the loader
+- * would have written them. Size alone does not do: a fix that changes an
+- * immediate keeps it.
++ * The running crust is the one in @data: the image size of its build word,
++ * and every word of its code and constants (up to the size at +0x1fc, which
++ * the caller's acceptance check guarantees, and nothing crust writes) equal
++ * to the file's, as the loader would have written them. Size alone does not
++ * do: a fix that changes an immediate keeps it.
+  */
+ static bool arisc_crust_is_file(struct h713_arisc *a, const u8 *data, size_t size)
+ {
+-	u32 ro = readl(sram_at(a, CRUST_RO_SIZE));
++	u32 ro = crust_rd(a, H713_RO_SIZE);
+ 	unsigned int off;
+ 
+-	if (readl(sram_at(a, CRUST_SHARED_VERSION)) < 4 ||
+-	    (readl(sram_at(a, CRUST_BUILD)) & CRUST_BUILD_SIZE) != size ||
++	if ((crust_rd(a, H713_DIAG_BUILD) & H713_BUILD_SIZE) != size ||
+ 	    !ro || ro > size || ro % 4)
+ 		return false;
+ 	for (off = 0; off < ro; off += 4)
+@@ -2872,12 +2866,39 @@ static bool arisc_crust_running(struct h713_arisc *a)
+ {
+ 	u32 s0, s1;
+ 
+-	if (readl(sram_at(a, CRUST_SHARED)) != CRUST_SHARED_MAGIC)
++	if (crust_rd(a, H713_MAGIC) != H713_MAGIC_VALUE)
+ 		return false;
+-	s0 = readl(sram_at(a, CRUST_SHARED_STATUS));
++	s0 = crust_rd(a, H713_STATUS);
+ 	usleep_range(5000, 6000);
+-	s1 = readl(sram_at(a, CRUST_SHARED_STATUS));
+-	return (s0 & CRUST_ST_RUNNING) && s1 != s0;
++	s1 = crust_rd(a, H713_STATUS);
++	return (s0 & H713_ST_RUNNING) && s1 != s0;
++}
++
++/*
++ * Which crust runs: one line from the build words on every path that ends
++ * with crust running, so a log names the variant - light, self-refresh and
++ * deep share version and notify.
++ */
++static void arisc_crust_describe(struct h713_arisc *a)
++{
++	static const char * const bits[] = {
++		"self-refresh", "deep", "ir", "vdd-sys", "pll-ldo", "sleep-net",
++		"test", "avcc",
++	};
++	u32 version = crust_rd(a, H713_VERSION), build = crust_rd(a, H713_DIAG_BUILD);
++	u32 build2 = version >= 5 ? crust_rd(a, H713_BUILD2) : 0;
++	char flags[64] = "";
++	unsigned int i, n = 0;
++
++	for (i = 0; i < ARRAY_SIZE(bits); i++)
++		if (build & BIT(24 + i))
++			n += scnprintf(flags + n, sizeof(flags) - n, " %s", bits[i]);
++	dev_info(a->dev, "crust contract v%u, build 0x%08x (%u bytes%s), build2 0x%08x (DRAM %u MHz, board %u, R_WDOG code %u)\n",
++		 version, build, build & H713_BUILD_SIZE, flags, build2,
++		 H713_BUILD2_DRAM_MHZ(build2), H713_BUILD2_BOARD(build2),
++		 H713_BUILD2_RWDOG(build2));
++	if (build & H713_BUILD_TEST)
++		dev_warn(a->dev, "crust is a test build (forced faults and deadlines) -- not for use\n");
+ }
+ 
+ static int h713_arisc_start(struct h713_arisc *a)
+@@ -2919,23 +2940,24 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 	if (kept) {
+ 		/*
+ 		 * TF-A (or an earlier probe) started it: keep it and its state -
+-		 * if it is the crust in the file (arisc_crust_is_file: size and
+-		 * code compared). Light, self-refresh and deep share version and
+-		 * notify; the build word names the variant. Another one is
+-		 * loaded over.
++		 * if its contract page is one this driver reads and it is the
++		 * crust in the file (arisc_crust_is_file: size and code
++		 * compared). Another one is loaded over.
+ 		 */
+-		u32 build = readl(sram_at(a, CRUST_BUILD));
++		u32 build = crust_rd(a, H713_DIAG_BUILD);
+ 
+-		if (!arisc_crust_is_file(a, fw->data, fw->size)) {
++		if (!crust_accept(a, CRUST_HDMI_MIN)) {
++			dev_warn(a->dev, "running crust speaks contract v%u (compat 0x%x), this driver reads v%u..v%u -- loading \"%s\"\n",
++				 crust_rd(a, H713_VERSION), crust_rd(a, H713_COMPAT),
++				 CRUST_HDMI_MIN, CRUST_KNOWN, name);
++			kept = false;
++		} else if (!arisc_crust_is_file(a, fw->data, fw->size)) {
+ 			dev_warn(a->dev, "running crust (build 0x%08x) is not \"%s\" (%zu bytes) -- loading the file\n",
+ 				 build, name, fw->size);
+ 			kept = false;
+ 		} else {
+-			dev_info(a->dev, "crust is running (status 0x%08x, build 0x%08x:%s%s%s), image kept\n",
+-				 readl(sram_at(a, CRUST_SHARED_STATUS)), build,
+-				 build & BIT(24) ? " self-refresh" : "",
+-				 build & BIT(25) ? " deep" : "",
+-				 build & BIT(26) ? " ir" : "");
++			dev_info(a->dev, "crust is running (status 0x%08x), image kept\n",
++				 crust_rd(a, H713_STATUS));
+ 			release_firmware(fw);
+ 		}
+ 	}
+@@ -2955,12 +2977,13 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 
+ 	a->notify_result = arisc_startup_handshake(a);
+ 	if (a->notify_result && kept &&
+-	    (readl(sram_at(a, CRUST_SHARED_STATUS)) & CRUST_ST_HANDSHAKE)) {
++	    (crust_rd(a, H713_STATUS) & H713_ST_HANDSHAKE)) {
+ 		/* An earlier probe took the notify; the page says so. Only for
+ 		 * a kept crust: a freshly loaded one has its own to send. */
+ 		a->notify_result = 0;
+-		strscpy(a->notify_version, a->image_version,
+-			sizeof(a->notify_version));
++		snprintf(a->notify_version, sizeof(a->notify_version),
++			 "crust-h713 contract v%u (page)",
++			 crust_rd(a, H713_VERSION));
+ 	}
+ 	if (a->notify_result) {
+ 		/*
+@@ -2976,9 +2999,23 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 		return 0;
+ 	}
+ 
++	/*
++	 * crust writes magic and version before it sends the notify, so the
++	 * page is complete by now. A crust whose page this driver does not
++	 * read gets no command: its offsets may mean something else.
++	 */
++	if (a->off.crust && !crust_accept(a, CRUST_HDMI_MIN)) {
++		dev_err(a->dev, "crust's page reads magic 0x%08x, contract v%u, compat 0x%x -- this driver reads v%u..v%u, no HDMI\n",
++			crust_rd(a, H713_MAGIC), crust_rd(a, H713_VERSION),
++			crust_rd(a, H713_COMPAT), CRUST_HDMI_MIN, CRUST_KNOWN);
++		return 0;
++	}
++
+ 	a->running = true;
+ 	dev_info(a->dev, "ARISC startup notify acknowledged: %s (SRAM byte lanes %s)\n",
+ 		 a->notify_version, a->lane ? "big endian" : "little endian");
++	if (a->off.crust)
++		arisc_crust_describe(a);
+ 	return 0;
+ }
+ 
+new file mode 100644
+--- /dev/null
++++ b/include/linux/soc/sunxi/h713-crust-contract.h
+@@ -0,0 +1,298 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause) */
++/*
++ * The contract page between crust, the firmware of the AR100 in the
++ * Allwinner H713, and the ARM side (TF-A and sun50i-h713-arisc), version 5.
++ *
++ * One page of 1 KiB at AR100 0x23800 (ARM 0x123800, the top of SRAM A2
++ * below crust's SCPI page). Offsets here are from the page start. Every
++ * word has exactly one writer: the bus has no atomic read-modify-write
++ * between the ARM and the AR100. The classes say who writes and who clears:
++ *
++ *   R  0x000..0x1ff  crust; cleared at its every start, except 0x010..0x0ff
++ *                    across a restart Linux had acknowledged
++ *   D  0x200..0x23f  crust; cleared by a loader after its copy to P
++ *   S  0x240..0x25f  crust; cleared at its every start
++ *   K  0x260..0x2bf  crust only; cleared by crust at its first start
++ *                    (starts word 0) and by a loader after its copy to P
++ *   A  0x2c0..0x2cf  the ARM, one writer per word; crust only reads
++ *   P  0x2d0..0x38f  the ARM only: TF-A at boot, Linux before a reload
++ *   X  0x390..0x3ff  reserved, rules of K
++ *
++ * Nothing here depends on the kernel: a host test builds this header with a
++ * shim that provides u8, u16, u32 and bool.
++ */
++#ifndef __LINUX_SOC_SUNXI_H713_CRUST_CONTRACT_H
++#define __LINUX_SOC_SUNXI_H713_CRUST_CONTRACT_H
++
++#ifdef __KERNEL__
++#include <linux/types.h>
++#endif
++
++#define H713_PAGE		0x23800		/* AR100 address */
++#define H713_PAGE_SIZE		0x400
++
++/* R */
++#define H713_MAGIC		0x000
++#define H713_MAGIC_VALUE	0x33313748	/* "H713" */
++#define H713_VERSION		0x004
++#define H713_STATUS		0x008
++#define H713_ST_RUNNING		0x00000001
++#define H713_ST_HANDSHAKE	0x00000002
++#define H713_ST_HEARTBEAT	0xffff0000	/* moves once per main loop pass */
++#define H713_WAKE		0x00c		/* the last 0x11 answer */
++#define H713_GDATA		0x020
++#define H713_PUMP		0x180
++#define H713_RO_SIZE		0x1fc		/* bytes of .text and .rodata */
++
++/*
++ * D: the little-endian window crust found and closed (enable word, window 0
++ * start and end), CPUS_CLK_REG as found, the tick timer of its last main
++ * loop pass, its starts, R_INTC +0x80/+0x88 as found, the display MIPS's
++ * frames and the first bytes of the last one, ARM frames of a foreign type,
++ * then the words below.
++ */
++#define H713_DIAG		0x200
++#define H713_DIAG_WORDS		16
++#define H713_DIAG_INITS		0x214		/* crust's starts */
++#define H713_DIAG_STEP		0x22c		/* last standby step */
++#define H713_DIAG_EXCEPTION	0x230		/* number << 24 | pc */
++#define H713_DIAG_SLEPT_MS	0x234
++#define H713_DIAG_WAKE_TIMER	0x238		/* the armed wake timer, ms */
++#define H713_DIAG_BUILD		0x23c
++#define H713_BUILD_SIZE		0x000fffff	/* image bytes */
++#define H713_BUILD_SR		(1U << 24)	/* DRAM self-refresh */
++#define H713_BUILD_DEEP		(1U << 25)
++#define H713_BUILD_IR		(1U << 26)	/* IR wake codes */
++#define H713_BUILD_VDD_SYS	(1U << 27)	/* never standby: Linux restores nothing */
++#define H713_BUILD_PLL_LDO	(1U << 28)	/* not measured */
++#define H713_BUILD_SLEEP_NET	(1U << 29)	/* R_WDOG net while asleep */
++#define H713_BUILD_TEST		(1U << 30)	/* forced faults, for tests only */
++#define H713_BUILD_AVCC		(1U << 31)	/* not measured */
++
++/* K */
++#define H713_K			0x260
++#define H713_K_WORDS		24
++#define H713_COMPAT		0x260	/* 7..0 lowest reader version, 15..8 NET_REQ format */
++#define H713_COMPAT_READER(c)	((c) & 0xff)
++#define H713_COMPAT_NET_FORMAT(c) (((c) >> 8) & 0xff)
++#define H713_BUILD2		0x264
++#define H713_BUILD2_DRAM_MHZ(b)	((b) & 0xfff)		/* 0 without self-refresh */
++#define H713_BUILD2_BOARD(b)	(((b) >> 12) & 0xf)	/* 1 HY310, 2 HY300 Pro */
++#define H713_BUILD2_RWDOG(b)	(((b) >> 16) & 0xff)	/* 0: no net built */
++#define H713_SB_STATE		0x268
++#define H713_NET_ACC		0x26c	/* budgets taken: 15..0 presleep s, 31..16 resuming s */
++#define H713_NET_RB		0x270	/* R_WDOG read back when armed: 15..0 MODE, 31..16 CFG */
++#define H713_NET_MS		0x274	/* ms in a net phase (presleep..resuming), kept after */
++#define H713_NET_FOUND		0x278	/* R_WDOG at the first start: 15..0 MODE, 31..16 STA */
++#define H713_ERR		0x27c	/* sticky error bits */
++#define H713_ERR_DETAIL		0x280	/* 31..24 last bit, 23..16 sub-id, 15..0 step */
++#define H713_ERR_DATA		0x284
++#define H713_CNT0		0x288	/* byte counters, all errors */
++#define H713_CNT1		0x28c	/* 15..0 errors, 23..16 MIPS 0x17, 31..24 MIPS 0x16 */
++#define H713_CNT2		0x290	/* accepted, woken, restarts, clean resets */
++#define H713_CYCLE		0x294	/* standby attempts */
++#define H713_WAKE_MS		0x298	/* 0x22 received -> CPU0 released */
++#define H713_MIPS_PORT		0x29c	/* 7..0 port of the last display MIPS frame */
++#define H713_FAIL_PATH		0x2a0	/* 7..0 1 R_WDOG, 2 SoC watchdog; 15..8 attempt */
++#define H713_DRAM_PLL		0x2a4	/* PLL_DDR0 when a request was taken */
++#define H713_SUBSTEP		0x2a8	/* deep stage only */
++#define H713_DEEP_LOCK		0x2ac	/* deep stage only */
++
++/*
++ * A: TF-A writes its word, Linux the other three, in this order for every
++ * request: NET_CONFIRM := 0, NET_BUDGET, NET_REQ - and NET_REQ := 0 again
++ * once crust answered, whatever the answer. The first is part of the
++ * contract, not tidiness: a confirmation left from a request crust did not
++ * take names the very cycle the next request asks for, and crust would
++ * release that one as soon as it took it.
++ */
++#define H713_NET_REQ		0x2c0
++#define H713_NET_BUDGET		0x2c4
++#define H713_NET_CONFIRM	0x2c8
++#define H713_TFA_WORD		0x2cc
++
++/* P */
++#define H713_P_HDR		0x2d0
++#define H713_P_SUM		0x2d4
++#define H713_P_STATUS		0x2d8	/* first word under the sum */
++#define H713_P_WAKE		0x2dc
++#define H713_P_RWDOG		0x2e0
++#define H713_P_GP5		0x2e4
++#define H713_P_TFA_WORD		0x2e8
++#define H713_P_NET_CONFIRM	0x2ec
++#define H713_P_DIAG		0x2f0
++#define H713_P_K		0x330
++#define H713_P_END		0x390
++#define H713_P_SUM_WORDS	((H713_P_END - H713_P_STATUS) / 4)
++#define H713_P_MARK		0x5052
++#define H713_P_FROM_BL31	1
++#define H713_P_FROM_LINUX	2
++#define H713_P_REPORTED		0x00000001
++
++/* X */
++#define H713_X			0x390
++
++/* SB_STATE */
++enum h713_phase {
++	H713_PHASE_OFF, H713_PHASE_PRESLEEP, H713_PHASE_CPU_OP,
++	H713_PHASE_SLEEP, H713_PHASE_RESUMING, H713_PHASE_RELEASED,
++	H713_PHASE_RESET,
++};
++
++#define H713_SB_NET_ARMED	(1U << 4)
++#define H713_SB_ACCEPTED	(1U << 5)
++
++/* SB_STATE 23..16: why crust's last clean reset came (its ERR bit) */
++enum h713_cause {
++	H713_CAUSE_PRESLEEP = 1,	/* presleep budget over (9) */
++	H713_CAUSE_RESUMING,		/* resuming budget over (9) */
++	H713_CAUSE_DRAM_PHY,		/* DRAM PHY error after self-refresh (6) */
++	H713_CAUSE_POLL,		/* a poll's deadline (7) */
++	H713_CAUSE_RESTART,		/* restart in cpu-op, sleep or reset (8) */
++	H713_CAUSE_CPU_OP,		/* an invalid cpu op (4) */
++	H713_CAUSE_LOOP,		/* third restart in presleep or resuming (8) */
++	H713_CAUSE_PLL_LOCK = 9,	/* PLL lock deadline, deep stage only (10) */
++};
++
++static inline u32 h713_sb_state(unsigned int phase, bool armed, bool accepted,
++				unsigned int restarts, u8 cycle, u8 cause)
++{
++	return (u32)cause << 16 | (u32)cycle << 8 | (restarts & 3) << 6 |
++	       (u32)accepted << 5 | (u32)armed << 4 | (phase & 0xf);
++}
++
++static inline unsigned int h713_sb_phase(u32 s)
++{
++	return s & 0xf;
++}
++
++static inline unsigned int h713_sb_restarts(u32 s)
++{
++	return (s >> 6) & 3;
++}
++
++static inline u8 h713_sb_cycle(u32 s)
++{
++	return (u8)(s >> 8);
++}
++
++static inline u8 h713_sb_cause(u32 s)
++{
++	return (u8)(s >> 16);
++}
++
++/* NET_REQ, NET_BUDGET, NET_CONFIRM */
++#define H713_NET_REQ_MARK	0xa5
++#define H713_NET_REQ_FORMAT	1
++#define H713_NET_CONFIRM_MARK	0xc0f1
++
++static inline u32 h713_net_req(u8 cycle)
++{
++	return (u32)H713_NET_REQ_MARK << 24 | (u32)H713_NET_REQ_FORMAT << 16 |
++	       (u32)cycle << 8;
++}
++
++static inline u8 h713_net_req_format(u32 req)
++{
++	return (u8)(req >> 16);
++}
++
++static inline u8 h713_net_req_cycle(u32 req)
++{
++	return (u8)(req >> 8);
++}
++
++static inline u32 h713_net_budget(u16 presleep_s, u16 resuming_s)
++{
++	return (u32)resuming_s << 16 | presleep_s;
++}
++
++static inline u32 h713_net_confirm(u8 cycle)
++{
++	return (u32)H713_NET_CONFIRM_MARK << 16 | cycle;
++}
++
++/* crust's rule: the mark and the cycle of the phase it is in. */
++static inline bool h713_net_confirm_ok(u32 w, u8 cycle)
++{
++	return w >> 16 == H713_NET_CONFIRM_MARK && (u8)w == cycle;
++}
++
++/* TFA_WORD: 31..24 event, 23..16 running number, 15..0 detail */
++#define H713_TFA_DENIED		1	/* detail: the failed checks below */
++#define H713_TFA_START_LATE	2
++#define H713_TFA_RWDOG_FOUND	3
++#define H713_TFA_NOT_ACCEPTED	4
++/*
++ * DENIED detail, one bit per failed check from bit 0 on: magic, version,
++ * VDD_SYS build, unmeasured build (28 or 31), phase, net, running,
++ * heartbeat, affinity 0.
++ */
++#define H713_DENY_CHECKS	9
++
++static inline u32 h713_tfa_word(u8 event, u8 seq, u16 detail)
++{
++	return (u32)event << 24 | (u32)seq << 16 | detail;
++}
++
++static inline u8 h713_tfa_event(u32 w)
++{
++	return (u8)(w >> 24);
++}
++
++static inline u8 h713_tfa_seq(u32 w)
++{
++	return (u8)(w >> 16);
++}
++
++static inline u16 h713_tfa_detail(u32 w)
++{
++	return (u16)w;
++}
++
++/* P_HDR: 31..16 mark, 15..8 source, bit 0 reported by Linux */
++static inline u32 h713_p_hdr(u8 source)
++{
++	return (u32)H713_P_MARK << 16 | (u32)source << 8;
++}
++
++static inline u8 h713_p_source(u32 hdr)
++{
++	return hdr >> 16 == H713_P_MARK ? (hdr >> 8) & 0xff : 0;
++}
++
++/* P_SUM: the complement of the 32-bit sum of the words P_STATUS..P_END. */
++static inline u32 h713_p_sum(const u32 *w)
++{
++	u32 sum = 0;
++	unsigned int i;
++
++	for (i = 0; i < H713_P_SUM_WORDS; i++)
++		sum += w[i];
++	return ~sum;
++}
++
++/* A record to read: the mark, TF-A or Linux as its source, the checksum. */
++static inline bool h713_p_valid(u32 hdr, u32 sum, const u32 *w)
++{
++	u8 source = h713_p_source(hdr);
++
++	return (source == H713_P_FROM_BL31 || source == H713_P_FROM_LINUX) &&
++	       h713_p_sum(w) == sum;
++}
++
++/*
++ * The acceptance rule of a reader that knows versions MIN..MAX. From
++ * version 5 on, COMPAT names the oldest reader the page still suits, so a
++ * newer crust that only added words stays readable and one that changed a
++ * meaning is refused loudly instead of misread.
++ */
++static inline bool h713_contract_accept(u32 magic, u32 version, u32 compat,
++					u32 min, u32 max)
++{
++	u32 compat_eff = version >= 5 ? (compat & 0xff) : version;
++
++	return magic == H713_MAGIC_VALUE && version >= min && compat_eff <= max;
++}
++
++#endif /* __LINUX_SOC_SUNXI_H713_CRUST_CONTRACT_H */

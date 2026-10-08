@@ -1,0 +1,254 @@
+soc: sunxi: h713-arisc: crust - reload it when it stopped, if asked to
+
+The supervision ends the HDMI service of a crust that stopped or
+restarted; until a reboot the input stays dead. The module parameter
+recover decides what follows: "log" (the default) leaves it at the error
+line, "reload" loads crust again and gives the input back.
+
+The probe keeps a copy of the crust image on both of its paths, loaded
+or kept; request_firmware() at runtime would hang on a hanging root file
+system. Without the copy a warning says that no reload is possible. The
+copy belongs to the start, so devm frees it only after the supervision's
+work and the PM notifier are gone.
+
+The reload runs in the supervision's work, never in noirq and never
+between PM_SUSPEND_PREPARE and PM_POST_SUSPEND (a crust the standby
+checks found stopped is reloaded after the cycle), three times a boot at
+most. It writes the record of the failed run to P and reports it, holds
+the core, loads the image, releases it, does the handshake and the page
+check as at probe, logs the build words of what runs now, and then runs
+the EDID sequence on the port the consumer had run it on -
+ResetEDIDModule, the port map, both blocks with the block mask the
+consumer set, the hotplug pulse - and sends a change uevent
+ARISC=recovered. The source sees the hotplug pin drop as the core is
+reset, so the sequence always follows.
+
+"log" stays the default until a run in normal use has shown that the
+supervision raises no false alarms; then the default can change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -442,6 +442,10 @@ struct h713_arisc {
+ 	u32			err_seen;	/* error bits already reported */
+ 	u32			cnt_seen[2];	/* CNT0, CNT1[15:0] reported */
+ 	u32			tfa_seen;	/* TF-A's word last reported */
++	const u8		*image;		/* crust's image, for a reload */
++	size_t			image_size;
++	unsigned int		reloads;
++	bool			suspending;	/* no reload until the cycle ends */
+ 
+ 	/* the standby request of contract 5 */
+ 	struct notifier_block	pm_nb;
+@@ -461,6 +465,36 @@ struct h713_arisc {
+  */
+ static struct h713_arisc *h713_arisc;
+ 
++/*
++ * A crust the supervision found stopped or restarted: "log" leaves it at the
++ * error line, "reload" loads it again from the probe's copy of the image and
++ * redoes the HDMI sequence. The source sees a hotplug pulse either way.
++ */
++static bool recover_reload;
++
++static int recover_set(const char *val, const struct kernel_param *kp)
++{
++	if (sysfs_streq(val, "log"))
++		recover_reload = false;
++	else if (sysfs_streq(val, "reload"))
++		recover_reload = true;
++	else
++		return -EINVAL;
++	return 0;
++}
++
++static int recover_get(char *buf, const struct kernel_param *kp)
++{
++	return sysfs_emit(buf, "%s\n", recover_reload ? "reload" : "log");
++}
++
++static const struct kernel_param_ops recover_ops = {
++	.set = recover_set,
++	.get = recover_get,
++};
++module_param_cb(recover, &recover_ops, NULL, 0644);
++MODULE_PARM_DESC(recover, "crust found stopped or restarted: log (default) or reload");
++
+ /* ---- small helpers ------------------------------------------------------ */
+ 
+ static void __iomem *sram_at(struct h713_arisc *a, unsigned long off)
+@@ -1279,6 +1313,24 @@ static void arisc_drain_rx(struct h713_arisc *a)
+ 		arisc_drain_channel(a, ch);
+ }
+ 
++/* Hold the core, write the image and what goes with it, release the core. */
++static int arisc_boot_image(struct h713_arisc *a, const u8 *data, size_t size)
++{
++	int ret;
++
++	arisc_enable_cpus_clocks(a);
++	arisc_set_reset(a, true);
++	arisc_drain_rx(a);
++
++	ret = arisc_load_image(a, data, size);
++	if (ret)
++		return ret;
++
++	arisc_write_para(a);
++	arisc_set_reset(a, false);
++	return 0;
++}
++
+ /* ---- receiving ---------------------------------------------------------- */
+ 
+ /*
+@@ -3215,28 +3267,81 @@ static bool arisc_watch(struct h713_arisc *a)
+ 	return true;
+ }
+ 
++/* What the handshake left is the reference; errors before it count too. */
++static void arisc_watch_start(struct h713_arisc *a)
++{
++	a->seen_inits = crust_rd(a, H713_DIAG_INITS);
++	a->seen_exc = crust_rd(a, H713_DIAG_EXCEPTION);
++	a->err_seen = 0;
++	a->cnt_seen[0] = a->cnt_seen[1] = 0;
++}
++
++/*
++ * Load crust again from the probe's copy: the record of the run that failed
++ * goes to P first (arisc_write_para()), then the image, the handshake and the
++ * page check as at probe, then the HDMI sequence on the port the consumer had
++ * run it on. Never in noirq, never inside a suspend, three times a boot.
++ */
++#define ARISC_RELOADS		3
++
++static bool arisc_may_reload(struct h713_arisc *a)
++{
++	return recover_reload && a->off.crust && a->image &&
++	       a->reloads < ARISC_RELOADS && !READ_ONCE(a->suspending);
++}
++
++static void arisc_reload(struct h713_arisc *a)
++{
++	char *envp[] = { "ARISC=recovered", NULL };
++	bool hdmi = a->hpd_sequence_done;
++	int ret;
++
++	mutex_lock(&a->lock);
++	a->reloads++;
++	a->edid_module_ready = false;
++	a->hpd_sequence_done = false;
++	ret = arisc_boot_image(a, a->image, a->image_size) ?:
++	      arisc_startup_handshake(a);
++	if (!ret && !crust_accept(a, CRUST_HDMI_MIN))
++		ret = -EPROTO;
++	if (!ret) {
++		WRITE_ONCE(a->running, true);
++		arisc_watch_start(a);
++	}
++	mutex_unlock(&a->lock);
++	if (ret) {
++		dev_err(a->dev, "crust reload %u of %u failed (%d)\n",
++			a->reloads, ARISC_RELOADS, ret);
++		return;
++	}
++	dev_warn(a->dev, "crust reloaded (%u of %u): %s\n", a->reloads,
++		 ARISC_RELOADS, a->notify_version);
++	arisc_crust_describe(a);
++	if (hdmi) {
++		ret = arisc_hdmi_edid_init(a->hpd_sequence_port, NULL, 0);
++		if (ret)
++			dev_err(a->dev, "EDID sequence after the reload failed (%d)\n",
++				ret);
++	}
++	kobject_uevent_env(&a->dev->kobj, KOBJ_CHANGE, envp);
++}
++
+ static void arisc_watch_work(struct work_struct *work)
+ {
+ 	struct h713_arisc *a = container_of(to_delayed_work(work),
+ 					    struct h713_arisc, watch);
++	bool alive;
+ 
+ 	mutex_lock(&a->lock);
+-	arisc_watch(a);
++	alive = arisc_watch(a);
+ 	mutex_unlock(&a->lock);
++	if (!alive && arisc_may_reload(a))
++		arisc_reload(a);
+ 	if (READ_ONCE(a->running))
+ 		queue_delayed_work(system_freezable_wq, &a->watch,
+ 				   msecs_to_jiffies(ARISC_WATCH_MS));
+ }
+ 
+-/* What the handshake left is the reference; errors before it count too. */
+-static void arisc_watch_start(struct h713_arisc *a)
+-{
+-	a->seen_inits = crust_rd(a, H713_DIAG_INITS);
+-	a->seen_exc = crust_rd(a, H713_DIAG_EXCEPTION);
+-	a->err_seen = 0;
+-	a->cnt_seen[0] = a->cnt_seen[1] = 0;
+-}
+-
+ static int h713_arisc_start(struct h713_arisc *a)
+ {
+ 	const struct firmware *fw;
+@@ -3305,6 +3410,17 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 		release_firmware(fw);
+ 		return -EINVAL;
+ 	}
++	/*
++	 * Kept for a reload: at runtime request_firmware() would hang on a
++	 * hanging root file system, and a crust that stopped is no reason to
++	 * wait for one.
++	 */
++	if (a->off.crust) {
++		a->image = devm_kmemdup(a->dev, fw->data, fw->size, GFP_KERNEL);
++		a->image_size = a->image ? fw->size : 0;
++		if (!a->image)
++			dev_warn(a->dev, "no copy of the crust image -- it cannot be reloaded\n");
++	}
+ 
+ 	kept = a->off.crust && arisc_crust_running(a);
+ 	if (kept) {
+@@ -3337,17 +3453,10 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 			 name, crust_rd(a, H713_VERSION),
+ 			 crust_rd(a, H713_DIAG_BUILD));
+ 	if (!kept) {
+-		arisc_enable_cpus_clocks(a);
+-		arisc_set_reset(a, true);
+-		arisc_drain_rx(a);
+-
+-		ret = arisc_load_image(a, fw->data, fw->size);
++		ret = arisc_boot_image(a, fw->data, fw->size);
+ 		release_firmware(fw);
+ 		if (ret)
+ 			return ret;
+-
+-		arisc_write_para(a);
+-		arisc_set_reset(a, false);
+ 	}
+ 
+ handshake:
+@@ -3751,8 +3860,18 @@ static int h713_arisc_pm_notify(struct notifier_block *nb,
+ {
+ 	struct h713_arisc *a = container_of(nb, struct h713_arisc, pm_nb);
+ 
+-	if (event == PM_POST_SUSPEND)
++	switch (event) {
++	case PM_SUSPEND_PREPARE:
++		WRITE_ONCE(a->suspending, true);
++		break;
++	case PM_POST_SUSPEND:
+ 		arisc_standby_done(a);
++		WRITE_ONCE(a->suspending, false);
++		/* A crust the cycle found stopped: the reload waited for this. */
++		if (!READ_ONCE(a->running) && arisc_may_reload(a))
++			mod_delayed_work(system_freezable_wq, &a->watch, 0);
++		break;
++	}
+ 	return NOTIFY_DONE;
+ }
+ 

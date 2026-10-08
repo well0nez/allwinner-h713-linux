@@ -1,0 +1,88 @@
+soc: sunxi: h713-arisc: run the EDID sequence once more when the display MIPS cut into it
+
+crust serves the display MIPS's frames in the same pass as this driver's
+commands, and this driver's lock only orders ARM callers. A hotplug
+frame (0x16) or a module reset (0x17) between two steps of the EDID
+sequence changes what the next one finds - a reset clears the store and
+the gate between two fragments, a hotplug "down" during the pulse
+satisfies its counter with the pin left low - and the receiver's probe
+fails on the first, or succeeds on the second with the source left
+without a hotplug edge.
+
+crust counts both frames (contract 5, CNT1[31:16]). When the sequence
+failed and the count moved while it ran, it runs once more, with a
+warning. A sequence that succeeded is not repeated, frames or not, only
+named in an info line with the two counts: a second run would give the
+source a second hotplug pulse, and should the MIPS answer the sequence's
+own pulse with a frame, every probe and every reload would run twice.
+At probe, an edge a frame may have cost comes back with the receiver's
+own pulse at the end of its bring-up. How often the MIPS sends either in
+normal use is not measured; the info line is where to count it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -2735,14 +2735,12 @@ EXPORT_SYMBOL_GPL(arisc_hdmi_hpd);
+  * probe time and splitting it across the callers would invite reordering --
+  * the order is not a convention, it is what the firmware accepts.
+  */
+-int arisc_hdmi_edid_init(unsigned int port, const void *edid, size_t len)
++static int arisc_edid_sequence(struct h713_arisc *a, unsigned int port,
++			       const void *edid, size_t len)
+ {
+-	struct h713_arisc *a = arisc_get(false);
+ 	u8 readback[ARISC_HDMI_EDID_BLOCK];
+ 	int ret;
+ 
+-	if (IS_ERR(a))
+-		return PTR_ERR(a);
+ 	if (port >= ARISC_HDMI_PORTS)
+ 		return -EINVAL;
+ 
+@@ -2797,6 +2795,45 @@ int arisc_hdmi_edid_init(unsigned int port, const void *edid, size_t len)
+ 	dev_info(a->dev, "EDID/HPD sequence on port %u completed\n", port);
+ 	return 0;
+ }
++
++/*
++ * The display MIPS talks to crust as well, and a hotplug frame (0x16) or a
++ * module reset (0x17) of its between two steps of the sequence changes what
++ * the next step finds: a cleared EDID store, a pin pulled low. crust counts
++ * both (contract 5, CNT1[31:16]); a sequence that failed while they cut in
++ * is run once more, with a warning, rather than failing the receiver's
++ * probe on it. One that succeeded is not repeated: the source would see a
++ * second hotplug pulse, and the MIPS may well answer the sequence's own.
++ */
++static u16 arisc_mips_frames(struct h713_arisc *a)
++{
++	if (!a->off.crust || crust_rd(a, H713_VERSION) < 5)
++		return 0;
++	return crust_rd(a, H713_CNT1) >> 16;
++}
++
++int arisc_hdmi_edid_init(unsigned int port, const void *edid, size_t len)
++{
++	struct h713_arisc *a = arisc_get(false);
++	u16 mips, now;
++	int ret;
++
++	if (IS_ERR(a))
++		return PTR_ERR(a);
++
++	mips = arisc_mips_frames(a);
++	ret = arisc_edid_sequence(a, port, edid, len);
++	now = arisc_mips_frames(a);
++	if (ret && now != mips) {
++		dev_warn(a->dev, "the EDID sequence failed (%d) while the display MIPS sent hotplug or reset frames (0x%04x -> 0x%04x) -- running it once more\n",
++			 ret, mips, now);
++		ret = arisc_edid_sequence(a, port, edid, len);
++	} else if (now != mips) {
++		dev_info(a->dev, "the display MIPS sent hotplug or reset frames during the EDID sequence (0x%04x -> 0x%04x), not repeated\n",
++			 mips, now);
++	}
++	return ret;
++}
+ EXPORT_SYMBOL_GPL(arisc_hdmi_edid_init);
+ 
+ /*

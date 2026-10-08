@@ -1,0 +1,52 @@
+misc: hy310-board-mgr: say why unload leaves the fan rail on, now without a hog
+
+remove() said "GPIO hog keeps it running", and hy310_fan_power_en() that
+fan power "is normally managed by DTS gpio-hog". On the HY310 the board
+file now hands PB5 over without a hog, and suspend switches it low on
+purpose. Read as they stood, both comments invite a later change that
+puts the hog back or never switches the rail.
+
+The comments now say what holds: a hogged line stays as it is, a rail
+handed over keeps its level when devm releases the request (the sunxi
+pinctrl free leaves the pin configuration alone), only suspend and
+resume switch it, and unload does not cut it because on other boards the
+fan may still have a light to cool.
+
+Comments only; the module builds to the same code. Compiled out of tree
+with W=1, no new warning.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -390,11 +390,10 @@ static int hy310_fan_power_en(struct hy310_board_mgr *priv, int enable)
+ 			continue;
+ 
+ 		/*
+-		 * Fan power GPIO is normally managed by DTS gpio-hog.
+-		 * We only override it on suspend (off) / resume (on).
+-		 * gpio_request_one + gpio_free to avoid permanent ownership.
++		 * A rail handed to us by the board file is switched directly.
++		 * Otherwise a short request, freed again at once; it fails
++		 * while a gpio-hog holds the line, which then stays as it is.
+ 		 */
+-		/* A rail handed to us by the board file is switched directly. */
+ 		if (fan->power_owned) {
+ 			gpio_set_value(fan->power_gpio, enable);
+ 			switched++;
+@@ -1448,8 +1447,13 @@ static void hy310_board_mgr_remove(struct platform_device *pdev)
+ 	cancel_delayed_work_sync(&priv->fan_work);
+ 	cancel_delayed_work_sync(&priv->ntc_work);
+ 
+-	/* Do NOT disable fan power on unload - GPIO hog keeps it running.
+-	 * Cutting fan power risks thermal damage to the projector. */
++	/*
++	 * Fan power is left as it is on unload. A hog keeps its line; a rail
++	 * the board file hands over (the HY310's PB5, which also feeds the LED
++	 * boost) keeps its level when devm releases the request. Only suspend
++	 * switches it off, and resume on again. Cutting it here could stop a
++	 * fan that still has a light to cool.
++	 */
+ 
+ 	/* PWMs are devm-managed, no manual free needed */
+ 

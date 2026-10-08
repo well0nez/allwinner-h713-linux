@@ -1,0 +1,217 @@
+soc: sunxi: h713-arisc: the message box clock, a link to the watchdog, the window the DT declares
+
+Three things this driver relied on without saying so.
+
+The message box's bus clock belonged to cpu_comm alone; every exchange
+with the ARISC worked because cpu_comm, U-Boot or clk_ignore_unused kept
+it on. It is now taken here too, optional, so a DT without it still
+binds. The reset is not: cpu_comm requests it exclusive and only ever
+releases it, nothing in Linux asserts it, and a second requester would
+only make one of the two drivers fail to probe.
+
+The SoC watchdog has to stop in its suspend_noirq and start again in its
+resume_noirq, and crust's sleep net is armed in this driver's
+suspend_noirq. Which of the two runs first followed the dpm list, which
+a deferred probe reorders. "allwinner,watchdog" names the watchdog, and
+a stateless device link makes this driver its consumer: its noirq runs
+after ours on the way down and before ours on the way up. Without the
+property there is no link, and a crust built with the net gets no
+standby (refused where the standby checks are).
+
+The SRAM window was widened at runtime to reach crust's contract page
+when the DT declared only the vendor image's 0x23000 bytes. The DT
+declares the page now, and this driver maps nothing the DT does not
+describe. So the DT change of the arisc node (the window up to 0x123c00)
+has to come before this one, and DT and module go out together. Should a
+DT with the short window meet this driver anyway - say one that already
+names crust in firmware-name, or a crust started by TF-A with no file to
+keep it by - crust can be neither loaded nor kept, and the driver loads
+the vendor image instead, with an error that names the window: HDMI
+comes up, standby does not, rather than the whole probe failing.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -67,6 +67,7 @@
+ #define pr_fmt(fmt) "h713-arisc: " fmt
+ 
+ #include <linux/bitops.h>
++#include <linux/clk.h>
+ #include <linux/debugfs.h>
+ #include <linux/delay.h>
+ #include <linux/errno.h>
+@@ -78,6 +79,7 @@
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/of.h>
++#include <linux/of_platform.h>
+ #include <linux/platform_device.h>
+ #include <linux/seq_file.h>
+ #include <linux/slab.h>
+@@ -397,12 +399,12 @@ struct h713_arisc_offsets {
+ struct h713_arisc {
+ 	struct device		*dev;
+ 	void __iomem		*sram;
+-	phys_addr_t		sram_phys;	/* the "sram" window ... */
+-	resource_size_t		sram_size;	/* ... crust's page must fit */
++	resource_size_t		sram_size;	/* the "sram" window: crust's page must fit */
+ 	void __iomem		*rx;		/* msgbox bank user0 */
+ 	void __iomem		*tx;		/* msgbox bank user1 */
+ 	void __iomem		*reset;		/* R_CPUCFG */
+ 	void __iomem		*cpus_clk;	/* R_PRCM CPUS timer gates */
++	bool			wdt_link;	/* its noirq after ours, resume before */
+ 	u32			wake_reason;	/* last 0x11 answer */
+ 	unsigned int		standby_cycles;
+ 
+@@ -814,6 +816,11 @@ static bool arisc_offsets_equal(const struct h713_arisc_offsets *x,
+ 	       x->stack_top == y->stack_top;
+ }
+ 
++static bool arisc_image_is_crust(const u8 *data, size_t size)
++{
++	return size >= 4 && get_unaligned_le32(data) == CRUST_MAGIC;
++}
++
+ /*
+  * Runs on fw->data before anything is written to SRAM. On success a->off is
+  * the address set of this image; on failure nothing has been touched and the
+@@ -826,31 +833,20 @@ static int arisc_resolve_offsets(struct h713_arisc *a, const u8 *data,
+ 	unsigned int hits;
+ 	u32 cross, rom;
+ 
+-	if (size >= 4 && get_unaligned_le32(data) == CRUST_MAGIC) {
++	if (arisc_image_is_crust(data, size)) {
+ 		if (size > CRUST_LOAD_LIMIT - CRUST_LOAD_BASE)
+ 			return dev_err_probe(a->dev, -EFBIG,
+ 				"\"%s\" is %zu bytes, a crust image may take %u\n",
+ 				name, size, CRUST_LOAD_LIMIT - CRUST_LOAD_BASE);
+ 		/*
+ 		 * The contract page lies beyond the 0x23000 bytes the vendor
+-		 * image needs and the DT used to describe. SRAM A2 runs to
+-		 * AR100 0x24000 (TF-A sunxi_mmap.h: 128 KiB from 0x4000), so a
+-		 * short window is widened rather than refused.
++		 * image needs. The DT declares the window up to its end; this
++		 * driver maps nothing the DT does not describe.
+ 		 */
+-		if (a->sram_size < CRUST_PAGE_END) {
+-			void __iomem *wide = devm_ioremap(a->dev, a->sram_phys,
+-							  CRUST_PAGE_END);
+-
+-			if (!wide)
+-				return dev_err_probe(a->dev, -ENOMEM,
+-					"\"sram\" window cannot be widened to 0x%x for crust's page\n",
+-					CRUST_PAGE_END);
+-			dev_info(a->dev,
+-				 "\"sram\" window 0x%llx bytes, widened to 0x%x for crust's contract page\n",
+-				 (unsigned long long)a->sram_size, CRUST_PAGE_END);
+-			a->sram = wide;
+-			a->sram_size = CRUST_PAGE_END;
+-		}
++		if (a->sram_size < CRUST_PAGE_END)
++			return dev_err_probe(a->dev, -EINVAL,
++				"\"sram\" window is 0x%llx bytes, crust's contract page needs 0x%x\n",
++				(unsigned long long)a->sram_size, CRUST_PAGE_END);
+ 		o.crust = true;
+ 		o.load_base = CRUST_LOAD_BASE;
+ 		o.gdata = H713_PAGE + H713_GDATA;
+@@ -2912,6 +2908,24 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 				      &name);
+ 
+ 	ret = request_firmware(&fw, name, a->dev);
++	/*
++	 * A DT whose "sram" window stops short of crust's contract page is
++	 * older than this driver: through it crust can be neither loaded nor
++	 * kept, and nothing the DT does not describe is mapped. The vendor
++	 * image runs inside that window, so it comes up instead - HDMI stays,
++	 * standby does not - and the error says why.
++	 */
++	if (a->sram_size < CRUST_PAGE_END && strcmp(name, FW_NAME_ARISC) &&
++	    (ret || arisc_image_is_crust(fw->data, fw->size))) {
++		dev_err(a->dev, "\"%s\" %s, but the \"sram\" window is 0x%llx bytes and crust's contract page needs 0x%x -- a DT older than this driver: loading \"%s\", HDMI without standby\n",
++			name, ret ? "cannot be loaded" : "is a crust image",
++			(unsigned long long)a->sram_size, CRUST_PAGE_END,
++			FW_NAME_ARISC);
++		if (!ret)
++			release_firmware(fw);
++		name = FW_NAME_ARISC;
++		ret = request_firmware(&fw, name, a->dev);
++	}
+ 	if (ret)
+ 		return dev_err_probe(a->dev, ret,
+ 				     "ARISC firmware \"%s\" cannot be loaded\n",
+@@ -3046,10 +3060,48 @@ static void h713_arisc_load_edid(struct h713_arisc *a)
+ 	release_firmware(fw);
+ }
+ 
++/*
++ * The SoC watchdog stops in its suspend_noirq and starts again in its
++ * resume_noirq; crust's sleep net is armed in ours. A device link puts ours
++ * first on the way down and theirs first on the way up, so there is no
++ * window without a watchdog that depends on the order of the dpm list. A
++ * missing "allwinner,watchdog" is no error, but then a crust built with the
++ * net gets no standby.
++ */
++static void h713_arisc_unlink(void *link)
++{
++	device_link_del(link);
++}
++
++static void h713_arisc_link_watchdog(struct h713_arisc *a)
++{
++	struct device_node *np;
++	struct platform_device *wdt;
++	struct device_link *link;
++
++	np = of_parse_phandle(a->dev->of_node, "allwinner,watchdog", 0);
++	if (!np)
++		return;
++	wdt = of_find_device_by_node(np);
++	of_node_put(np);
++	if (!wdt) {
++		dev_warn(a->dev, "\"allwinner,watchdog\" names no device -- no link\n");
++		return;
++	}
++	link = device_link_add(a->dev, &wdt->dev, DL_FLAG_STATELESS);
++	if (!link)
++		dev_warn(a->dev, "no device link to %s\n", dev_name(&wdt->dev));
++	else
++		a->wdt_link = !devm_add_action_or_reset(a->dev, h713_arisc_unlink,
++							 link);
++	put_device(&wdt->dev);
++}
++
+ static int h713_arisc_probe(struct platform_device *pdev)
+ {
+ 	struct h713_arisc *a;
+ 	struct resource *res;
++	struct clk *clk;
+ 	u32 mask = 0;
+ 	int ret;
+ 
+@@ -3072,7 +3124,6 @@ static int h713_arisc_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return ret;
+ 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "sram");
+-	a->sram_phys = res->start;
+ 	a->sram_size = resource_size(res);
+ 	ret = h713_arisc_map(pdev, "msgbox-rx", &a->rx);
+ 	if (ret)
+@@ -3087,6 +3138,17 @@ static int h713_arisc_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * The message box's bus clock, so it does not hang on cpu_comm or
++	 * clk_ignore_unused. Not its reset: cpu_comm holds that one exclusive
++	 * and only ever releases it, and nothing in Linux asserts it.
++	 */
++	clk = devm_clk_get_optional_enabled(&pdev->dev, NULL);
++	if (IS_ERR(clk))
++		return dev_err_probe(&pdev->dev, PTR_ERR(clk),
++				     "msgbox clock\n");
++	h713_arisc_link_watchdog(a);
++
+ 	/*
+ 	 * Board policy, not a debugging knob: one byte covers all three ports.
+ 	 * Absent is 0 -- every port on block 0, as since the first sequence.

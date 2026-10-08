@@ -1,0 +1,82 @@
+drm: h713-afbd: give up the standby when the scanout does not stop
+
+0190's suspend switched the RGB channel off and went on to self-refresh
+whether or not the engine's READY cleared; h713_afbd_wait_ready() only
+warned. Its own reason for idling is that a running scanout keeps the DRAM
+out of self-refresh, and crust waits for that without a bound (KD-10).
+
+h713_afbd_wait_ready() now returns the poll result. When the RGB disable
+times out in suspend, the driver undoes what it did through its resume
+(idle word back, drm_mode_config_helper_resume) and returns -EBUSY, so the
+PM core aborts the standby instead. Resume logs "standby: scanout restored"
+with the CTRL word read back, or the error, so a dark picture after a wake
+can be told apart from a scanout fault (KD-12).
+
+Not measured; the timeout path has never been seen on the device.
+Compiled out of tree with W=1, no new warning.
+---
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -653,8 +653,8 @@ static bool h713_afbd_publish_video_info(struct h713_afbd *h, unsigned int w,
+ 	return write_record || new_ptr;
+ }
+ 
+-static void h713_afbd_wait_ready(struct h713_afbd *h, u32 reg,
+-				 const char *name)
++static int h713_afbd_wait_ready(struct h713_afbd *h, u32 reg,
++				const char *name)
+ {
+ 	u32 ready;
+ 	int ret;
+@@ -663,6 +663,7 @@ static void h713_afbd_wait_ready(struct h713_afbd *h, u32 reg,
+ 	if (ret)
+ 		drm_warn(&h->drm, "%s READY did not clear (%08x)\n",
+ 			 name, ready);
++	return ret;
+ }
+ 
+ /*
+@@ -2366,6 +2367,8 @@ static void h713_afbd_shutdown(struct platform_device *pdev)
+ 	drm_atomic_helper_shutdown(&h->drm);
+ }
+ 
++static int h713_afbd_resume(struct device *dev);
++
+ /*
+  * Standby (plan 104): idle before the DRAM's self-refresh; pipe_disable()
+  * leaves the panel alone on purpose, so both channels go off here.
+@@ -2387,20 +2390,32 @@ static int h713_afbd_suspend(struct device *dev)
+ 	h713_afbd_video_stop(h);
+ 	writel((h->rgb_ctrl_active | BIT(31)) & ~BIT(0), h->regs + AFBD_CTRL);
+ 	writel(1, h->regs + AFBD_READY);
+-	h713_afbd_wait_ready(h, AFBD_READY, "standby: RGB disable");
++	if (h713_afbd_wait_ready(h, AFBD_READY, "standby: RGB disable")) {
++		/* A scanout that did not stop keeps the DRAM out of self-refresh. */
++		h713_afbd_resume(dev);
++		return -EBUSY;
++	}
+ 	return 0;
+ }
+ 
+ static int h713_afbd_resume(struct device *dev)
+ {
+ 	struct h713_afbd *h = dev_get_drvdata(dev);
++	int ret;
+ 
+ 	if (!h->standby_idle)
+ 		return 0;
+ 	h->standby_idle = false;
+ 	/* Idle word back; pipe_enable() re-arms RGB through set_source(). */
+ 	writel(h->rgb_ctrl_active & ~BIT(0), h->regs + AFBD_CTRL);
+-	return drm_mode_config_helper_resume(&h->drm);
++	ret = drm_mode_config_helper_resume(&h->drm);
++	if (ret)
++		drm_err(&h->drm, "standby: scanout not restored (%d), CTRL %08x\n",
++			ret, readl(h->regs + AFBD_CTRL));
++	else
++		drm_info(&h->drm, "standby: scanout restored, CTRL %08x\n",
++			 readl(h->regs + AFBD_CTRL));
++	return ret;
+ }
+ 
+ static DEFINE_SIMPLE_DEV_PM_OPS(h713_afbd_pm_ops, h713_afbd_suspend,
