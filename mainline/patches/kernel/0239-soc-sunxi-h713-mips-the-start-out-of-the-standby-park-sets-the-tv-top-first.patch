@@ -1,0 +1,166 @@
+soc: sunxi: h713-mips: the start out of the standby park sets the TV top first
+
+A standby to RAM powers the TVFE and TVCAP domains off and on, and the
+TV top's clock and reset words at 0x06e00000 come back as 0x10, 0, 0
+instead of U-Boot's 0x00111111, 0x01111117, 0x404 (HY310, 09.10.2026).
+U-Boot writes them before it starts the MIPS core (h713_disp_clocks()),
+the restart out of the park did not: the core started, and within 200 ms
+the whole SoC stopped - no heartbeat, no RCU report, the watchdog reset
+it 14 s later. Three of three restarts after a real standby; a park
+without a standby (V8, 08.10.) and a restart of a running core never saw
+it. The receiver's LINK reads that hung after a standby on 08.10. are the
+same blocks.
+
+The U-Boot start now does U-Boot's step (+4, +8, +0, all three 0, the
+three again, 12 ms apart) when the words are not U-Boot's, and logs
+"TV top in place" when they are. The window is the third reg of the
+node, not requested, like the CCU words; without it the U-Boot start is
+refused instead of stalling the bus.
+
+Measured on the HY310 (R2 test image r2test1, crust ecf2ddc, TF-A
+175c6948f): the step by hand before the restart, 1 of 1 good; this
+driver, six standbys with a restart each in one boot, 6 of 6 good
+(ready after 300 ms, picture back, camera check live). arbeit/r2-20261009/BERICHT.md.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2244,12 +2244,16 @@
+ 		 * consumer of CLK_MIPS, CLK_BUS_MIPS or the MIPS resets exists.
+ 		 * It restarts the core from the window U-Boot loads it into and
+ 		 * parks it for cpu_comm's standby. Enabled per board, once the
+-		 * restart was seen to bring the picture back there.
++		 * restart was seen to bring the picture back there. The third
++		 * reg is the TV top's clock and reset word (0x06e00000, the
++		 * third block of the disabled tvtop node): a standby powers the
++		 * TV domains off and on, and a start out of the park repeats
++		 * U-Boot's step on it first; not requested either.
+ 		 */
+ 		mips: mips@3061000 {
+ 			compatible = "allwinner,sun50i-h713-mips";
+-			reg = <0x03061000 0x100>, <0x02001600 0x10>;
+-			reg-names = "mips", "ccu";
++			reg = <0x03061000 0x100>, <0x02001600 0x10>, <0x06e00000 0x10>;
++			reg-names = "mips", "ccu", "tvtop";
+ 			memory-region = <&mips_reserved>;
+ 			status = "disabled";
+ 		};
+--- a/drivers/soc/sunxi/sun50i-h713-mips.c
++++ b/drivers/soc/sunxi/sun50i-h713-mips.c
+@@ -11,7 +11,8 @@
+  *              vendor's mipsloader ioctl (boot address, 20 us, released);
+  *  parked   -> load, start as U-Boot's h713_mips_release_reset() (clock
+  *              0x80000002, resets 0, 0x10000, 0x30000, 0x30001 at 12 ms,
+- *              boot address, released);
++ *              boot address, released), after U-Boot's TV top step where
++ *              a standby lost it (below);
+  *  halted   -> load, vendor start;
+  *  failed   -> the standby park first, then as parked.
+  *
+@@ -22,6 +23,17 @@
+  * released. Every register write is logged after its step, with the value
+  * before and the read-back, never in the middle of a timed sequence.
+  *
++ * The TV top (third reg, 0x06e00000) is the clock and reset word of the
++ * TV blocks behind the receiver: LINK, INCAP and the rest of 0x06xxxxxx.
++ * U-Boot writes it before it starts the core (h713_disp_clocks(): +4
++ * 0x01111117, +8 0x404, +0 0x00111111, all three 0, the three again, 12 ms
++ * apart). A standby to RAM powers the TVFE and TVCAP domains off and on,
++ * and the words read 0x10, 0, 0 after it (HY310, 09.10.2026): a core
++ * started then stalls the bus at its first access to those blocks, the
++ * whole SoC with it, within 200 ms (three of three). So the U-Boot start
++ * repeats U-Boot's step when the words are not U-Boot's; with them in
++ * place (a park without a standby) it leaves them alone.
++ *
+  * sysfs: "state" reads running|halted|parked|failed and a register line;
+  * writing a display.bin path ("-": /boot/mips/display.bin) to "restart"
+  * restarts the core. The receiver (sun50i-h713-hdmirx) has to be unbound
+@@ -57,6 +69,12 @@
+ #define H713_MIPS_CFG_OFF	0x00d01000	/* cfg file, then TSE: kept */
+ #define H713_MIPS_READY_MS	10000		/* U-Boot's budget */
+ #define H713_MIPS_DEFAULT_FW	"/boot/mips/display.bin"
++#define H713_TVTOP_CLK		0x0		/* 0x06e00000 */
++#define H713_TVTOP_CLK_ON	0x00111111u
++#define H713_TVTOP_GATE		0x4		/* 0x06e00004 */
++#define H713_TVTOP_GATE_ON	0x01111117u
++#define H713_TVTOP_RST		0x8		/* 0x06e00008; the firmware adds bit 8 */
++#define H713_TVTOP_RST_ON	0x00000404u
+ /* "sltiu v1,v1,0x33" of Rx_HDCP14_LoadKey, with 0x06840093 built within 1 KiB */
+ #define H713_HDCP_WAIT		0x2c630033
+ #define H713_HDCP_NONE		0x2c630000
+@@ -91,7 +109,7 @@ static const char * const h713_mips_state_name[] = { "running", "halted", "parke
+ 
+ struct h713_mips {
+ 	struct device *dev;
+-	void __iomem *regs, *ccu;
++	void __iomem *regs, *ccu, *tvtop;
+ 	void *win;
+ 	phys_addr_t win_base;
+ 	struct mutex lock;		/* every register access after the probe */
+@@ -200,6 +218,39 @@ static int h713_mips_load(struct h713_mips *m, const void *img, size_t n)
+ 	return 0;
+ }
+ 
++/* U-Boot's TV top step, where the words are not U-Boot's (after a standby) */
++static int h713_mips_tvtop(struct h713_mips *m)
++{
++	static const u32 seq[][3] = {	/* +4, +8, +0, in U-Boot's order */
++		{ H713_TVTOP_GATE_ON, H713_TVTOP_RST_ON, H713_TVTOP_CLK_ON }, { 0, 0, 0 },
++		{ H713_TVTOP_GATE_ON, H713_TVTOP_RST_ON, H713_TVTOP_CLK_ON },
++	};
++	u32 clk, gate, rst;
++	int i;
++
++	if (!m->tvtop)
++		return h713_mips_say(m, -ENXIO, "U-Boot start: no TV top window (reg 2), core held");
++	clk = readl(m->tvtop + H713_TVTOP_CLK);
++	gate = readl(m->tvtop + H713_TVTOP_GATE);
++	rst = readl(m->tvtop + H713_TVTOP_RST);
++	if (clk == H713_TVTOP_CLK_ON && gate == H713_TVTOP_GATE_ON &&
++	    (rst & H713_TVTOP_RST_ON) == H713_TVTOP_RST_ON)
++		return h713_mips_say(m, 0, "TV top in place: 0x%08x 0x%08x 0x%08x", clk, gate, rst);
++	for (i = 0; i < ARRAY_SIZE(seq); i++) {
++		writel(seq[i][0], m->tvtop + H713_TVTOP_GATE);
++		writel(seq[i][1], m->tvtop + H713_TVTOP_RST);
++		writel(seq[i][2], m->tvtop + H713_TVTOP_CLK);
++		wmb();	/* the words reach the block before the wait starts */
++		fsleep(12000);
++	}
++	return h713_mips_say(m, readl(m->tvtop + H713_TVTOP_CLK) == H713_TVTOP_CLK_ON &&
++			     readl(m->tvtop + H713_TVTOP_GATE) == H713_TVTOP_GATE_ON &&
++			     readl(m->tvtop + H713_TVTOP_RST) == H713_TVTOP_RST_ON ? 0 : -EIO,
++			     "TV top 0x%08x 0x%08x 0x%08x, U-Boot's step: reads 0x%08x 0x%08x 0x%08x",
++			     clk, gate, rst, readl(m->tvtop + H713_TVTOP_CLK),
++			     readl(m->tvtop + H713_TVTOP_GATE), readl(m->tvtop + H713_TVTOP_RST));
++}
++
+ static int h713_mips_start(struct h713_mips *m, bool uboot)
+ {
+ 	const char *how = uboot ? "U-Boot" : "vendor";
+@@ -209,8 +260,12 @@ static int h713_mips_start(struct h713_mips *m, bool uboot)
+ 	if (!uboot && readl(m->ccu + H713_MIPS_RST) != H713_MIPS_HELD)
+ 		return h713_mips_say(m, -ENXIO, "%s start: 0x0200160c 0x%08x, only from 0x00030001",
+ 				     how, readl(m->ccu + H713_MIPS_RST));
+-	if (uboot)
++	if (uboot) {
++		ret = h713_mips_tvtop(m);
++		if (ret)
++			return ret;
+ 		h713_mips_steps(m, h713_mips_ladder);
++	}
+ 	/* the share registers and the boot address are in the MIPS block */
+ 	if (!h713_mips_readable(m))
+ 		return h713_mips_say(m, -ENXIO, "%s start: gate off or bus reset held", how);
+@@ -380,6 +435,11 @@ static int h713_mips_probe(struct platform_device *pdev)
+ 	m->ccu = res && resource_size(res) >= 0x10 ? devm_ioremap(dev, res->start, 0x10) : NULL;
+ 	if (!m->ccu)
+ 		return dev_err_probe(dev, -ENODEV, "no MIPS clock and reset registers (reg 1)\n");
++	/* not requested either: the (disabled) tvtop node describes the block */
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
++	m->tvtop = res && resource_size(res) >= 0xc ? devm_ioremap(dev, res->start, 0xc) : NULL;
++	if (!m->tvtop)
++		dev_warn(dev, "no TV top window (reg 2): no start out of the standby park\n");
+ 	ret = of_reserved_mem_region_to_resource(dev->of_node, 0, &win);
+ 	if (ret || win.start != H713_MIPS_WIN_BASE || resource_size(&win) < H713_MIPS_CFG_OFF)
+ 		return dev_err_probe(dev, -ENODEV, "no memory-region at 0x%x of 0x%x bytes\n",

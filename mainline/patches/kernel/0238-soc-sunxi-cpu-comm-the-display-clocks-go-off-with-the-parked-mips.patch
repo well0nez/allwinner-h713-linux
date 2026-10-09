@@ -20,7 +20,7 @@ clk_bus_disp and clk_afbd (afbd's) holds.
 Measured on the HY310 (FEL test images, 5 s sleeps): gated in the noirq
 phase 9 of 9 good; this form, in suspend_late, 7 of 7 good, two boots
 with two sleeps each without a MIPS restart good; on the
-r1test2 stack (crust ecf2ddc, TF-A 175c6948f): see the report. Before: 7 of 7 bad in the
+r1test2 stack (crust ecf2ddc, TF-A 175c6948f) 6 of 6 good. Before: 7 of 7 bad in the
 same setup. arbeit/standby-display-20261009/BERICHT.md.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

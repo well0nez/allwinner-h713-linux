@@ -551,3 +551,6 @@
 0236-soc-sunxi-cpu-comm-tell-a-driver-whether-the-firmware-still-runs.patch
 0237-media-h713-hdmirx-no-link-read-after-the-standby-parked-the-mips.patch
 0238-soc-sunxi-cpu-comm-the-display-clocks-go-off-with-the-parked-mips.patch
+#   0239 the picture after a standby (09.10.2026, arbeit/r2-20261009): the restart out of the park sets the TV top
+#   first, as U-Boot does before its start; the standby powers the TV domains off and on (the SoC stalled, three of three)
+0239-soc-sunxi-h713-mips-the-start-out-of-the-standby-park-sets-the-tv-top-first.patch
