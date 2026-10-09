@@ -25,6 +25,20 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **09.10. abends (Marco, 2.29):** mit `--standby` bauen, `power.conf` Vorgabe `short = poweroff` (Standby experimentell,
         per Schalter), Doku und Release-Text sagen "experimentell"; 2.30 ist gemessen und mit Kernel `0245` in `main`; die U-Boot-Zeile
         (`0097`) und der TF-A-Kommentar (`0030`) sind seit `doku/180` in den Forks
+- [ ] 1.1b **ARISC/crust: Taktik fürs Ausliefern, vor 1.1a besprechen** (Marco 10.10. nachts: "ich wollte crust eig zum
+      default machen"). Heute wählt der Gerätebaum je Board die Firmware (`firmware-name`): HY310 crust, jedes andere Board
+      die des Herstellers aus dem eigenen Abzug (`h713-arisc.bin`, `docs/subsystems/arisc.md`). Stand der zwei Modelle:
+      HY310 mit crust abgenommen (R1/R2, `doku/177`); HY300PRO-G-EU: crust läuft seit 09.10. (`doku/182`), Standby, HDCP
+      und Ton dort mit crust sind die offene Testmatrix aus 1.4 - **noch nicht gemessen**. Zu klären:
+      - crust als Vorgabe für welche Boards: die zwei mit eigener crust-Konfig (HY310, G-EU `projector05061226`); die andere
+        G-EU-Variante `projector09220931` (624 MHz) braucht eine eigene Konfig; Boards ohne gemessene Konfig (`hy300-pro`,
+        `hy300-t08`, `hy350`, `hy200-qz713-v2`) bekommen ohnehin kein Abbild, nur Testabbilder - dort crust mit
+        geliehener Konfig oder die Hersteller-Firmware?
+      - der Weg mit der Hersteller-Firmware (Treiber, `h713-extract`): als Rückfall behalten oder abbauen
+      - crust-Vorgabe ist nicht Standby-Vorgabe: Standby bleibt experimentell per Schalter (2.29)
+      - Voraussetzungen: crust-Fork veröffentlicht (1.6, mit der G-EU-Konfig `c5b536f`), crust als Submodul statt `CRUST_SRC`
+        (5.15), Spiegel `crust-h713/` neu
+      - im selben Gespräch: 2.32 (echtes Aus über crust statt U-Boot-Schleife, 2,4 W gegen 0,3 W Stock)
 - [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
       Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
       WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
