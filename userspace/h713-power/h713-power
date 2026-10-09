@@ -212,26 +212,48 @@ def restarting():
 
 
 def act(what, conf):
+    """True when it went through a standby (or a refused one): the caller drops what the keys sent meanwhile."""
     if what == "short" and restarting():
         log("short press ignored: the picture is still coming back (h713-mips-restart); a long press powers off")
-        return
+        return False
     if what == "short":
         why = standby_refusal(conf)
         if why is None:
             log("short press: standby")
             if suspend():
                 picture_back()
-                return
+                return True
             if conf["refused"] == "log":
                 log("the standby was refused, the projector stays on", "<4>")
                 picture_back()
-                return
+                return True
             log("the standby was refused: power-off", "<4>")
         else:
             log("short press: power-off, because %s" % why, "<4>")
     else:
         log("long press: power-off")
     subprocess.call(SYSTEMCTL + ["poweroff"])
+    return False
+
+
+def drop_queued(devices, buf):
+    """After a standby: what the keys sent while this process waited in suspend() - a second press while the box
+    fell asleep, a press held across the sleep, the press that woke it - is read off and forgotten. Judged after
+    the wake it would start a second standby or, held, a power-off (review U1, 09.10.2026)."""
+    dropped = 0
+    for p, (fd, stamped, key) in devices.items():
+        while True:
+            try:
+                chunk = os.read(fd, EVENT.size * 64)
+            except OSError:
+                break
+            if not chunk:
+                break
+            dropped += len(chunk) // EVENT.size
+        buf.pop(p, None)
+        key.down, key.fired = None, False
+    if dropped:
+        log("%d key event(s) from the time of the standby dropped" % dropped)
 
 
 def open_device(p):
@@ -294,12 +316,15 @@ def run(once):
             actions.append(key.tick(now, long_ns))
         restarting()                             # reaps h713-mips-restart and logs its end
         for what in filter(None, actions):
-            act(what, conf)
+            slept = act(what, conf)
             if once:
                 if restart is not None:          # --once (the tests): with the restart it started
                     restart.wait()
                     restarting()
                 return 0
+            if slept:
+                drop_queued(devices, buf)        # and the rest of this round's actions with it
+                break
 
 
 def status():

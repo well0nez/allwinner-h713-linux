@@ -199,6 +199,30 @@ class Run(unittest.TestCase):
         self.assertIn("long press", out)
 
 
+class KeysOfTheStandby(unittest.TestCase):
+    """Review U1 (09.10.2026): what the keys sent while suspend() waited is dropped, not judged after the wake."""
+
+    def test_queued_events_and_a_held_key_are_forgotten(self):
+        m = load()
+        r, w = os.pipe()
+        os.set_blocking(r, False)
+        key = m.Key()
+        key.event(10 * S, 1, 3 * S, 2 * S, {})                  # held when the box fell asleep
+        for value in (1, 0):                                   # a second press while it fell asleep
+            os.write(w, m.EVENT.pack(11, 0, m.EV_KEY, m.KEY_POWER, value))
+        buf = {"p": b"\0\0"}
+        try:
+            m.drop_queued({"p": (r, True, key)}, buf)
+            self.assertIsNone(key.down)
+            self.assertNotIn("p", buf)
+            with self.assertRaises(BlockingIOError):
+                os.read(r, 64)
+            self.assertIsNone(key.event(20 * S, 0, 3 * S, 2 * S, {}))   # its release after the wake: nothing
+        finally:
+            os.close(r)
+            os.close(w)
+
+
 class AfterTheStandby(unittest.TestCase):
     """A standby parks the display MIPS; h713-mips-restart brings the picture back, only from the park."""
 

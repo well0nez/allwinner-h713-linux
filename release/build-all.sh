@@ -254,7 +254,7 @@ info "$REPRO_LINE"
 	info "Nobody has reported a green run here. The table is marked test_for=$TEST_PROFILE, so h713-install"
 	info "writes it on this board alone and only with --test-image; the owner's full dump is the way back."; }
 ((WANT_STANDBY)) && { say "STANDBY offered (--standby) -- not a release before TODO 3.3"
-	info "No picture after a wake until the display MIPS is reloaded (TODO 3.3): an image for the device stages."; }
+	info "The picture comes back after a wake (h713-mips-restart); open before a release: the hang going to sleep (C1), no HDMI audio after a standby, key and IR wake not measured (TODO 3.3). An image for the device stages."; }
 ((DRY)) && info "DRY RUN -- nothing is built"
 
 # --- 0. prerequisites -------------------------------------------------------
