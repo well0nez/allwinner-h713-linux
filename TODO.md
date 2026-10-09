@@ -226,9 +226,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Gate dunkel), reboot bei "STBY" bootet. U-Boot-Zeile (`0097`) und TF-A-Kommentar (`0030`) seit `doku/180` in den Forks;
         crust-Hänger im Schlaf fängt
         weiter nur R_WDOG (CR-1)
-- [ ] 2.31 **Leistung messen: Gate (mit crust), Standby, Betrieb** (aus 2.29): Gate 4 W ist vom 09.09., vor crust; Standby
-      nie gemessen. Entscheidet mit, ob Standby im Release danach die Vorgabe wird. Braucht ein Messgerät (Sonoff mit
-      Leistungsanzeige? Marco fragen)
+- [x] 2.31 **Leistung messen: Gate (mit crust), Standby, Betrieb** (aus 2.29) - **erledigt 09.10. 21:00** (`doku/181`, Marco mit
+      Wattmeter, USB gezogen, ohne Sonoff): Standby **2,4 W**, Gate **2,9 W**, Betrieb ohne Signal ~24 W, Sonoff ~0,5 W. Standby ist
+      sparsamer als Aus. Offen: Betrieb mit Bild neu messen (09.09.: 47 W), Netzteil fiept im Standby leise
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 

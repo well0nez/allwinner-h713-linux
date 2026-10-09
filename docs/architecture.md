@@ -84,7 +84,7 @@ A suspend to RAM ([standby.md](subsystems/standby.md)) hands the box over betwee
 - **crust** does the sleep: ARM cluster off, DRAM in self-refresh, wait for a wake source (power key, IR code, its timer); on a wake it brings the DRAM back and releases CPU0 into BL31. Each phase has a budget; in the hang C1 it reset the board after 15 s (`doku/172`).
 - **The display MIPS** does nothing from the park on; the wall keeps its last picture. After the wake `h713-mips-restart` has a driver set the TV-top words the sleep reset and start `display.bin` as U-Boot does, binds the receiver with the HDCP 2.2 key, starts `h713-tv` and `h713-warp`, and rebuilds the audio DSP, which lost its power.
 
-Measured on the HY310: the picture back 3.9 - 5.3 s after the wake (`doku/172`, `doku/177`), wake by power key and by IR (`doku/174`); the power draw in standby is not measured.
+Measured on the HY310: the picture back 3.9 - 5.3 s after the wake (`doku/172`, `doku/177`), wake by power key and by IR (`doku/174`); the standby draws 2.4 W, less than off with 2.9 W (`doku/181`).
 
 ## What this means for software
 

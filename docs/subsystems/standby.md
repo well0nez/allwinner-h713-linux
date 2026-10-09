@@ -8,8 +8,8 @@ does **not** offer it yet (TODO 3.3: the hang going to sleep, C1, is open).
 
 | State | What runs | Power | How you get there | How you leave |
 |---|---|---|---|---|
-| **off (the gate)** | the SoC in U-Boot's [power-on gate](../uboot/power-gate.md); fan, lamp, panel unpowered (PB5, PL3 low); LED red | about 4 W, measured 09.09.2026 before crust; with crust running in the gate not measured | `poweroff`, the power key on an image without standby, a cold start | the power key |
-| **standby** | crust on the ARISC, everything else asleep: the ARM cluster off, the DRAM in self-refresh | not measured | a short press of the power key on an image with standby (`h713-power`), `systemctl suspend` | the power key, the remote's IR code, a wake timer |
+| **off (the gate)** | the SoC in U-Boot's [power-on gate](../uboot/power-gate.md); fan, lamp, panel unpowered (PB5, PL3 low); LED red | 2.9 W (09.10.2026, `doku/181`; 4 W on 09.09.2026, before crust) | `poweroff`, the power key on an image without standby, a cold start | the power key |
+| **standby** | crust on the ARISC, everything else asleep: the ARM cluster off, the DRAM in self-refresh | **2.4 W**, less than off (09.10.2026, `doku/181`) | a short press of the power key on an image with standby (`h713-power`), `systemctl suspend` | the power key, the remote's IR code, a wake timer |
 | `h713-tv` idle | everything; the HDMI input has no signal | full | no source | a source |
 
 The last row is not a power state at all; `h713-tv` calls it STANDBY in its own log. "Standby" on this
@@ -70,7 +70,7 @@ after the wake (`doku/172`), and 30 of 30 in a fast loop on r2test3 (`doku/173`)
 
 Measured with Marco at the box (09.10.2026, r2test3): wake by the power key and by the remote's IR power key,
 sleeps of 3.5 and 8.4 minutes, the long press (a power-off; with `h713_gate=0` in the environment the board
-boots straight back). Not measured: HDCP 2.2 from the source after the restart, the power draw in standby.
+boots straight back). Not measured: HDCP 2.2 from the source after the restart. The power draw was measured on the same evening: 2.4 W in standby, 2.9 W off (`doku/181`).
 
 ## What wakes it
 

@@ -49,7 +49,7 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 | **Remote** | the stock Bluetooth remote: hold Left+Right to pair, all 16 keys and the mouse arrive as Linux input events, it reconnects on a key press after a reboot ([details](docs/subsystems/wifi.md#bluetooth)). Nothing in the image acts on the keys yet except Power, which shuts the projector down |
 
 Not there yet: the **IR receiver** (the same remote over infrared; parked, two keys share one code), **AV1 decode**,
-a **standby** below 4 W, and there is **no desktop** in the
+and there is **no desktop** in the
 shipped image - it runs `h713-tv`, not a compositor. Hardware video decode and the IOMMU come from cstenger's tree
 and are verified there, not re-tested in this image. Details and honest limits:
 [docs/known-issues.md](docs/known-issues.md).

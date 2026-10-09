@@ -21,7 +21,7 @@ The last release is `v0.96-beta`; the last test image for the HY300 Pro of issue
   hand and following the projector's own tilt - the settings page and the autofocus. Since `v0.96-beta` also
   **Bluetooth** with the stock remote, the box's own sounds mixed into HDMI, the projection modes, EDID block 1
   with 1080p100/120, and the optional hardware of other boards (the rows below say where and when).
-- **Missing:** AV1 decode, the IR receiver, a standby below 4 W, any desktop -
+- **Missing:** AV1 decode, the IR receiver, any desktop -
   and nothing acts on the remote's keys yet except Power.
 - **Not re-tested by us:** hardware video decode and the IOMMU - these come from cstenger's tree. The Mali GPU
   did too; since 22.09. it is measured here and since `v0.95-beta` it is in the image, under the keystone.
@@ -55,7 +55,7 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Subsystem | State | Where it lives | Evidence |
 |---|---|---|---|
 | Boot chain | works | SPL → BL31 → U-Boot → FIT, all from source; the SPL reads the FIT with DMA, the eMMC runs at HS200 with DMA in U-Boot | 20/20 cold starts (`analyse/boot/r5-20-kaltstarts-20260910.txt`); 16.09.: power key to the boot logo 2.0 s, to the kernel 3.5 s (1 s of it is the autoboot countdown), release BL31 on the device since 15.09. |
-| Power key gate | works | U-Boot `CONFIG_H713_POWER_GATE`, env `h713_gate` | 09.09.; standby 4 W, red LED, key starts |
+| Power key gate | works | U-Boot `CONFIG_H713_POWER_GATE`, env `h713_gate` | 09.09.; red LED, key starts; 2.9 W off (09.10., `doku/181`) |
 | eMMC layout v4 | works | v3's six partitions, secure storage untouched by design; since 16.09. the files are copied in through a mount instead of into placeholders | 10.09. / 16.09., [docs/subsystems/emmc-layout.md](docs/subsystems/emmc-layout.md) |
 | Debian 13 rootfs | works | `rootfs/`, 242 MiB, zram, ssh key-only | built by `build-all`, acceptance tests in the build log |
 | Projector image (LVDS/DLP) | works | MIPS firmware + `sun50i-h713-afbd` KMS driver | continuous since 08.09. |
@@ -71,7 +71,7 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Autofocus | works, beta, since `v0.95-beta` | `h713-autofocus` + `h713-afmetric` | 23.09.: the search turns round at an edge and found a peak on the bench; 02.10. with the `v0.96-beta` tool (waits for its pattern, reversal fix): two runs `stopped: peak`, then a run against the wall ended sharp at the same motor position as the run before (`doku/134` A4). Open: the metric's span was only +11 % that day (exposure) |
 | Internal camera | works | `uvcvideo` + `h713-cam`; the USB PHYs are powered by the kernel since 15.09. (SIDDQ, patch 0005a), no `usb start` in the boot loader | 12.09.: grab of the lit wall, mean brightness Y = 88.7, 3.2 s (`analyse/beamer-cam/p6-wand-20260912.png`) |
 | Fan, tacho, stall protection | works | `hy310-board-mgr` | 4860 RPM measured 11.09.; **the fan-stall poweroff is armed and was triggered on the device** 12.09.: rail cut, device shut itself down, next boot mounted the filesystem clean (`analyse/boot/p6-notaus-luefter-20260912.txt`). No NTC on this unit, so the tacho is the protection |
-| Power / standby | partial | standby is 4 W; deep sleep is designed, built for a test and parked | plan `doku/104`; 03.10.: a suspend reached the DRAM entry and the CPU reset, the wake-up never came (`doku/139`), so it is not in the image |
+| Power / standby | partial | suspend to RAM through crust on the HY310: 2.4 W, picture and sound come back; in the release image as an experimental switch (TODO 2.29) | plan `doku/104`; 03.10.: a suspend reached the DRAM entry and the CPU reset, the wake-up never came (`doku/139`), so it is not in the image |
 | Crypto engine | present, unused | measurement module loads, crypto disabled | `doku/114` |
 | Mali-G31 GPU (Panfrost) | works, in `v0.95-beta` | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (working journal `keystone-20260922`) |
 | Video decode, IOMMU | unverified here | cstenger's patches, in our series | verified in his tree, not in this image |

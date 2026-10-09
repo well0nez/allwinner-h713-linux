@@ -1,6 +1,6 @@
 # The power-on gate
 
-Plug the projector in and it waits: dark, about 4 W at the wall, red LED lit, until the power key is
+Plug the projector in and it waits: dark, 2.9 W at the wall (09.10.2026, `doku/181`), red LED lit, until the power key is
 pressed. That is how the device behaves with the stock firmware, and reproducing it is what this gate is
 for (measured 09.09.2026, `doku/103-plan-einschaltgate.md` §3 M5). Without it, our boot chain would start
 Linux the moment the socket is switched on - convenient on a bench, wrong for something that stands in a
@@ -57,8 +57,8 @@ was cut (mechanism inferred, `doku/164`).
 ## With crust and the standby
 
 The gate's code does not change for crust. BL31 starts crust from the FIT before U-Boot proper runs
-([README](README.md)), so on the HY310 the ARISC firmware is already up while the gate waits; what that does to
-the 4 W is not measured. A standby ([standby.md](../subsystems/standby.md)) never passes through here: crust
+([README](README.md)), so on the HY310 the ARISC firmware is already up while the gate waits; the gate draws 2.9 W with it, the
+standby 2.4 W (`doku/181`). A standby ([standby.md](../subsystems/standby.md)) never passes through here: crust
 releases CPU0 straight into BL31, which resumes Linux. Nothing in crust writes GP5, and the RTC general-purpose
 words, GP5 among them, were unchanged after every standby cycle read back (`doku/165` - `doku/167`). Since
 kernel `0245` Linux marks the standby in GP5 itself (below); a standby that finishes neither enters the gate nor
