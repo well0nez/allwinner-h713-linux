@@ -23,6 +23,7 @@ import unittest
 TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "h713-mips-restart")
 MIPS = "sys/bus/platform/drivers/sun50i-h713-mips/3061000.mips"
 RXD = "sys/bus/platform/drivers/sun50i-h713-hdmirx"
+MSP = "sys/bus/platform/drivers/sun50i-h713-msp/6144000.audio-dsp"
 REGS = {"parked": "0x02001600=0x00000000 0x0200160c=0x00000000",
         "running": "0x02001600=0x80000002 0x0200160c=0x00070001",
         "failed": "0x02001600=0x80000002 0x0200160c=0x00030001"}
@@ -54,7 +55,7 @@ class Box:
     """A temporary root with the fake kernel running; run() starts h713-mips-restart against it."""
 
     def __init__(self, state="parked", outcome="running", node_delay=0.1, node="video2", warp=True,
-                 bound=True, driver=True, keytool=None, hang=()):
+                 bound=True, driver=True, keytool=None, hang=(), msp=None):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = self.tmp.name
         self.state, self.outcome, self.node_delay, self.node = state, outcome, node_delay, node
@@ -95,6 +96,14 @@ class Box:
             else:
                 self.put(MIPS + "/restart", "")
             self.threads.append(threading.Thread(target=self.serve_state, daemon=True))
+        # msp: None no audio driver; "running"; "error" rebuilt by the first reset; "flaky" by the second; "dead" never
+        self.msp, self.msp_resets = msp, 0
+        if msp:
+            os.makedirs(self.p(MSP))
+            self.put(MSP + "/reset", "")
+            os.mkfifo(self.p(MSP + "/state"))
+            self.msp_state = "running" if msp == "running" else "error"
+            self.threads.append(threading.Thread(target=self.serve_msp, daemon=True))
         self.threads.append(threading.Thread(target=self.kernel, daemon=True))
         for t in self.threads:
             t.start()
@@ -108,6 +117,8 @@ class Box:
                 os.close(os.open(self.p(RXD + "/" + a), os.O_WRONLY | os.O_NONBLOCK))
             except OSError:
                 pass
+        if os.path.exists(self.p(MSP + "/state")):
+            os.close(os.open(self.p(MSP + "/state"), os.O_RDONLY | os.O_NONBLOCK))    # wakes serve_msp
         if os.path.exists(self.p(MIPS + "/state")):
             fd = os.open(self.p(MIPS + "/state"), os.O_RDONLY | os.O_NONBLOCK)   # wakes serve_state
             for t in self.threads:
@@ -154,6 +165,13 @@ class Box:
             self.restarted(fw)
         if self.take(RXD + "/bind") == "hdmi-rx":
             self.bind()
+        if self.msp and self.take(MSP + "/reset") == "1":
+            self.msp_resets += 1
+            if self.state != "running":
+                self.note("VIOLATION msp reset while the MIPS is %s" % self.state)
+            ok = {"error": True, "flaky": self.msp_resets >= 2, "dead": False, "running": True}[self.msp]
+            self.msp_state = "running" if ok else "error"
+            self.note("kernel msp reset -> %s" % self.msp_state)
 
     def unbind(self):
         busy = [u for u in os.listdir(self.p("active")) if u.startswith(("h713-tv@", "h713-warp"))]
@@ -239,6 +257,22 @@ class Box:
                     pass
             os.close(fd)
             time.sleep(0.03)            # the reader reaches its EOF before a writer is back on the FIFO
+
+    def serve_msp(self):
+        """msp's state file: a read is answered after the writes before it (a reset is synchronous in msp)."""
+        while not self.stop:
+            fd = os.open(self.p(MSP + "/state"), os.O_WRONLY)           # waits for a reader
+            if not self.stop:
+                time.sleep(0.02)
+                with self.lock:
+                    self.pending()
+                    text = "%s\n" % self.msp_state
+                try:
+                    os.write(fd, text.encode())
+                except BrokenPipeError:
+                    pass
+            os.close(fd)
+            time.sleep(0.03)
 
     def release(self, fw_state="running"):
         """End a hanging restart write: the kernel reads it and the MIPS ends up in fw_state. A writer that
@@ -366,6 +400,48 @@ class Success(Base):
         rc, _, _ = b.run()
         self.assertEqual(rc, 3)
         self.assertTrue(any("h713-warp did not start" in e and "user.warning" in e for e in b.events()))
+
+
+class AudioDsp(Base):
+    """09.10.2026: the standby powers the audio DSP off; after the picture the restart rebuilds it."""
+
+    def test_a_dsp_in_error_is_rebuilt_after_the_picture(self):
+        b = self.box(state="parked", msp="error")
+        rc, out, err = b.run()
+        ev = b.events()
+        self.assertEqual(rc, 0, ev)
+        self.clean(ev)
+        self.ordered(ev, "kernel bind hdmi-rx", "systemctl start h713-warp.service", "kernel msp reset -> running")
+        self.assertEqual(b.msp_resets, 1)
+        self.assertTrue(any("audio DSP rebuilt (attempt 1)" in e for e in ev), ev)
+        at = [i for i, e in enumerate(ev) if "picture path back after" in e or "kernel msp reset" in e]
+        self.assertIn("picture path back after", ev[at[0]], ev)          # the picture first, then the sound
+
+    def test_a_second_attempt_and_three_that_fail_keep_the_picture(self):
+        b = self.box(state="parked", msp="flaky")
+        rc, out, err = b.run()
+        self.assertEqual((rc, b.msp_resets), (0, 2), b.events())
+        self.assertTrue(any("audio DSP rebuilt (attempt 2)" in e for e in b.events()))
+        b = self.box(state="parked", msp="dead")
+        rc, out, err = b.run()
+        ev = b.events()
+        self.assertEqual((rc, b.msp_resets), (0, 3), ev)
+        self.assertTrue(any("did not come back in 3 attempts" in e and "user.warning" in e for e in ev), ev)
+
+    def test_a_running_dsp_or_no_audio_driver_is_left_alone(self):
+        b = self.box(state="parked", msp="running")
+        rc, out, err = b.run()
+        self.assertEqual((rc, b.msp_resets), (0, 0), b.events())
+        self.assertFalse([e for e in b.events() if "audio DSP" in e])
+        b = self.box(state="parked")
+        rc, out, err = b.run()
+        self.assertEqual(rc, 0, b.events())
+        self.assertFalse([e for e in b.events() if "audio DSP" in e])
+
+    def test_no_rebuild_when_the_picture_did_not_come_back(self):
+        b = self.box(state="parked", outcome="error", msp="error")
+        rc, out, err = b.run()
+        self.assertEqual((rc, b.msp_resets), (1, 0), b.events())
 
 
 class DriverError(Base):

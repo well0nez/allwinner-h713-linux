@@ -2,21 +2,17 @@
 # SPDX-License-Identifier: GPL-2.0
 #
 # h713-mips-restart [FIRMWARE] - start the display MIPS again and bring the HDMI picture back.
-# A standby parks the MIPS (cpu_comm suspend_late) and nothing in the kernel starts it again: h713-power
-# runs this after a standby when sun50i-h713-mips says "parked" (docs/tools/h713-power.md). By hand it
-# also reloads a running MIPS. The sequence brought the picture back at the HY310 on 08.10.2026, from a
-# running MIPS and repeatedly from the park registers a standby leaves (set by hand, not yet after a
-# real standby): stop h713-warp and h713-tv@*, unbind the HDMI receiver, write FIRMWARE (default
-# /boot/mips/display.bin) to the driver's restart file (running: halt, load, start like the vendor;
-# parked: load, start like U-Boot), bind the receiver, wait up to 60 s for its video node, start
-# h713-tv@ on it and h713-warp again.
-# The receiver is unbound only when no process holds its node (an unbind under an open node frees
-# memory the close still uses) and bound again only on a running MIPS (its probe talks to the
-# firmware), through h713-hdcp-key --bind where it can: a plain bind loses the HDCP 2.2 key, which
-# h713-hdcp-key.service deleted after the boot. Whatever ends the run, h713-warp starts again if it
-# ran before, and h713-tv on the receiver's node if there is one; the sysfs writes themselves ignore
-# signals, so a Ctrl-C or a stop of h713-power never cuts a restart or a probe in half, and whether
-# the receiver is bound is read from sysfs each time, never from a variable a signal can outrun.
+# A standby parks the MIPS (cpu_comm suspend_late); h713-power runs this after a standby when sun50i-h713-mips
+# says "parked" (docs/tools/h713-power.md), by hand it also reloads a running MIPS. Measured at the HY310 from a
+# running MIPS and the park (08.10.2026) and after real standbys (09.10.2026): stop h713-warp and h713-tv@*,
+# unbind the HDMI receiver, write FIRMWARE (default /boot/mips/display.bin) to the driver's restart file
+# (running: halt, load, start like the vendor; parked: load, start like U-Boot), bind the receiver, wait up to
+# 60 s for its video node, start h713-tv@ on it and h713-warp again, then rebuild the audio DSP, which the
+# standby powered off (msp "error"; up to three attempts, five of five within two, 09.10.2026).
+# The receiver is unbound only when no process holds its node (an unbind under an open node frees memory the
+# close still uses) and bound again only on a running MIPS, through h713-hdcp-key --bind where it can (a plain
+# bind loses the HDCP 2.2 key). Whatever ends the run, warp and tv come back as far as the MIPS allows; the
+# sysfs writes ignore signals, and whether the receiver is bound is read from sysfs each time.
 # Exit (each with a journal line): 0 picture path back; 1 the driver did not bring the MIPS up;
 # 2 refused, MIPS untouched; 3 the MIPS runs, but receiver, node or a service did not; 4 a signal.
 # Tests only: H713_ROOT goes before /sys, /proc, /run, FIRMWARE and KEY; H713_WAIT replaces 60 s.
@@ -51,6 +47,12 @@ holders() {	# the PIDs that hold /dev/$1 open
 		[ "$(readlink "$f" 2>/dev/null)" = "/dev/$1" ] && { f=${f#"$R"/proc/}; echo "${f%%/*}"; }
 	done | sort -u | tr '\n' ' '
 }
+dsp() {	# the audio DSP after a standby: msp "error" -> rebuild, up to three times; a warning, never the exit code
+	for m in "$R"/sys/bus/platform/drivers/sun50i-h713-msp/*/state; do [ "$(head -n1 "$m" 2>/dev/null)" = error ] || return 0; done
+	[ -e "$m" ] || return 0
+	for i in 1 2 3; do put 1 "${m%/state}/reset" && [ "$(head -n1 "$m")" = running ] && { say notice "audio DSP rebuilt (attempt $i)"; return 0; }; done
+	say warning "the audio DSP did not come back in 3 attempts: no HDMI audio until a reboot"
+}
 fin() {	# on every exit: the receiver back on a running MIPS, the services back
 	rc=$?
 	trap '' INT TERM HUP
@@ -63,7 +65,7 @@ fin() {	# on every exit: the receiver back on a running MIPS, the services back
 	systemctl reset-failed h713-warp.service 'h713-tv@*.service' 2>/dev/null	# StartLimitBurst=3 in 60 s
 	[ -z "$n" ] || systemctl start "h713-tv@$n.service" || { say warning "h713-tv@$n did not start"; [ "$rc" != 0 ] || rc=3; }
 	[ "$warp" = 0 ] || systemctl start h713-warp.service || { say warning "h713-warp did not start"; [ "$rc" != 0 ] || rc=3; }
-	[ "$rc" != 0 ] || say notice "picture path back after $(( $(ms) - t0 )) ms: MIPS $s, /dev/$n"
+	[ "$rc" != 0 ] || { say notice "picture path back after $(( $(ms) - t0 )) ms: MIPS $s, /dev/$n"; dsp; }
 	exit "$rc"
 }
 

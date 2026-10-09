@@ -53,7 +53,9 @@ h713-mips-restart [FIRMWARE]   # FIRMWARE: /boot/mips/display.bin
 It stops `h713-warp` and `h713-tv@*`, unbinds the HDMI receiver, writes FIRMWARE to the driver's
 `restart` file (from the park: load and start like U-Boot; from a running MIPS: halt, load and start like
 the vendor), binds the receiver, waits up to 60 s for its video node, and starts `h713-tv@` on it and
-`h713-warp` again. The receiver is unbound only when no process holds its node, and bound again only on a
+`h713-warp` again; once the picture path is back it rebuilds the audio DSP, which the standby powered off (msp
+`error` -> its `reset` file, up to three attempts; a DSP that stays down is a warning, not an exit code). The
+receiver is unbound only when no process holds its node, and bound again only on a
 running MIPS, through `h713-hdcp-key --bind`: a plain bind runs the receiver's init sequence without the
 device's HDCP 2.2 key (h713-hdcp-key.service deleted it after the boot, the step `THal_Vp_SetHDCP22Key`
 is skipped), so the tool puts the key back into the tmpfs for exactly that bind. Whether a source then

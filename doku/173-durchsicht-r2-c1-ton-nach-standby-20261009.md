@@ -1,5 +1,7 @@
 # 173 - Durchsicht des Standby-Codes, C1 im TVCAP-Abschalten eingegrenzt, Ton nach dem Standby abgesichert; r2test3 (09.10.2026, 14:30)
 
+> **Überholt in §3 (Ton nach dem Standby) durch `doku/174`:** der Audio-DSP lässt sich nach dem Standby neu aufbauen; `h713-mips-restart` tut das jetzt.
+
 **Kurz:** Der R2-Stand (crust ecf2ddc, TF-A 175c6948f, Kernel 0225-0239, h713-power) ist vollständig durchgesehen
 (Workflow mit sieben Prüfern und Gegenprüfungen, 46 Funde, keiner kritisch im Code der Bild-Rückkehr). Der seltene Hänger
 beim Einschlafen (C1) steht laut Brotkrumen in der PPU-Abschaltung von TVCAP, unter der noch schreibenden

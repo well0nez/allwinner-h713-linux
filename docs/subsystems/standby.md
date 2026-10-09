@@ -61,11 +61,15 @@ after the wake (`doku/172`), and 30 of 30 in a fast loop on r2test3 (`doku/173`)
 - **The capture stops before the sleep.** hdmirx clears the two output enables of INCAP in its suspend, while the
   MIPS still runs, and waits two frames; from the park on INCAP no longer answers the CPU. Without it genpd
   powered TVCAP off under the running write DMA, and that is where the hang going to sleep (C1, below) stood.
-- **No HDMI audio after a standby.** The audio DSP sits in TVFE and loses its power in the sleep; msp then
-  reports `error` ("the DSP lost its power in the sleep ... no HDMI audio until a reboot") and leaves the dead
-  block alone. A rebuild after the standby does not come up yet (`doku/173`).
+- **The audio comes back after the picture.** The audio DSP sits in TVFE and loses its power in the sleep;
+  msp then reports `error` and leaves the dead block alone (its message still says "until a reboot", which is
+  no longer true). Once the picture path is back, `h713-mips-restart` rebuilds the DSP through msp's `reset`
+  file, up to three times: measured six of six within two attempts, and the HDMI audio was audible again after
+  a standby without a reboot (`doku/174`).
 
-Not measured: HDCP 2.2 from the source after the restart, sleeps longer than 20 s.
+Measured with Marco at the box (09.10.2026, r2test3): wake by the power key and by the remote's IR power key,
+sleeps of 3.5 and 8.4 minutes, the long press (a power-off; with `h713_gate=0` in the environment the board
+boots straight back). Not measured: HDCP 2.2 from the source after the restart, the power draw in standby.
 
 ## What wakes it
 
@@ -139,5 +143,5 @@ and built but has never run, and the release refuses it. A design limit stays ev
 24 MHz on the oscillator, so the oscillator never stops; whether that matters is a question for the first
 power measurement.
 
-Details: `doku/162` - `doku/168`, `doku/171` - `doku/173`, [arisc.md](arisc.md), [h713-power](../tools/h713-power.md),
+Details: `doku/162` - `doku/168`, `doku/171` - `doku/174`, [arisc.md](arisc.md), [h713-power](../tools/h713-power.md),
 [the power-on gate](../uboot/power-gate.md).
