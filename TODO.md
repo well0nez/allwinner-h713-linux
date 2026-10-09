@@ -229,6 +229,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [x] 2.31 **Leistung messen: Gate (mit crust), Standby, Betrieb** (aus 2.29) - **erledigt 09.10. 21:00** (`doku/181`, Marco mit
       Wattmeter, USB gezogen, ohne Sonoff): Standby **2,4 W**, Gate **2,9 W**, Betrieb ohne Signal ~24 W, Sonoff ~0,5 W. Standby ist
       sparsamer als Aus. Offen: Betrieb mit Bild neu messen (09.09.: 47 W), Netzteil fiept im Standby leise
+- [ ] 2.32 **"Aus" braucht mit unserem System 8-10x so viel wie Stock** (Marco 09.10. abends). Gemessen: HY300PRO-G-EU mit
+      Stock-Android eingesteckt und aus **0,3 W**, mit unserem Abbild (geucrust1) **2,4 W**; HY310 im Gate 2,9 W (`doku/181`), Stock
+      vermutlich auch ~0,3 W (nicht gemessen). Bei uns wartet U-Boot im Gate auf einem ARM-Kern in einer Schleife auf die Taste;
+      Stock schaltet offenbar wirklich ab und lässt nur die ARISC-Firmware wachen. Weg: "Aus" über crust - ARM-Kerne aus, DRAM
+      aus, nur crust und RTC wach, die Taste weckt (wie der Standby, nur ohne Self-Refresh) - statt der U-Boot-Schleife. Vor dem
+      Release wenigstens bewerten und den Stock-Wert am HY310 messen; gehört zur ARISC/crust-Besprechung mit Marco
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
