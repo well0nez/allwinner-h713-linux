@@ -1,7 +1,7 @@
 From 3d2992566d6c359a52036123bbb65927fff7431d Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 00:24:15 +0200
-Subject: [PATCH 26/27] allwinner: h713: the kernel reads a late start's event,
+Subject: [PATCH 26/30] allwinner: h713: the kernel reads a late start's event,
  the record says why it may
 
 This takes back "a crust that never wrote MAGIC leaves its late start in

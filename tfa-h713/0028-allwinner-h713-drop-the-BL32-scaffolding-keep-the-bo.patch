@@ -1,0 +1,308 @@
+From 4f7e073c7fb2b5c7bcb78e3189ef1def7104114b Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:19:09 +0200
+Subject: [PATCH 28/30] allwinner: h713: drop the BL32 scaffolding, keep the
+ boot watchdog
+
+There is no secure payload on this platform: SPD stays "none", BL31 enters
+U-Boot directly, and the HDCP 1.4 key-sink service runs in BL31 itself. What
+was left of the payload experiments goes:
+
+  - platform_def.h: the TSP window and its definitions (BL32_BASE fallback
+    0x48600000, BL32_LIMIT, TSP_SEC_MEM_*, TSP_PROGBITS_LIMIT,
+    TSP_IRQ_SEC_PHY_TIMER, H713_TSP_IN_*). The upstream fallback above it
+    ("#ifndef SPD_none ... BL32_BASE = SUNXI_DRAM_BASE") stays as it is.
+  - sunxi_bl31_setup.c: the AArch32 hand-over to the vendor OP-TEE
+    (H713_BL32_AARCH32) and the "BL32 at ..." dump (H713_WITH_BL32). The
+    BL32 entry point block is upstream's again, and with SPD=none BL32_BASE
+    is no longer defined, so BL31 stops filling in an entry point at
+    0x48600000 that nothing ever used.
+  - sunxi_prepare_dtb.c: the optee@48600000 reservation (H713_WITH_BL32).
+  - sunxi_security.c: the H713_SKIP_SECURITY_SETUP probe, dead behind the
+    vendor sequence's return anyway.
+  - platform.mk: the H713_WITH_BL32 and H713_BL32_AARCH32 switches and the
+    comments that described an image which also brings up a vendor BL32.
+
+platform.mk now refuses an SPD other than "none" (or empty) outright. With
+the TSP block gone, SPD=opteed would let the upstream fallback set BL32_BASE
+to SUNXI_DRAM_BASE - BL31's own address - and the dispatcher would enter it
+on every boot. SPD=opteed stops at platform.mk, SPD=tspd already at tsp.mk;
+SPD=none and the default build as before.
+
+What stays, under an honest name: the watchdog BL31 arms on every boot was
+filed under "for the BL32 bring-up", but it is the net against a hang in BL31
+and early U-Boot on a board that does not come back from mains by itself
+(05.10.2026 it reset a BL31 that had jumped into nothing). It moves out of the
+BL32 block as H713_BOOT_WATCHDOG; register writes and timeout are unchanged
+(0x02051010 = 0x16aa0001, 0x02051014 = 0x16aa0091, interval code 9 = 12 s,
+doku/72), and so is its NOTICE. H713_VENDOR_SECURITY_SETUP stays unchanged: per the
+commit that added it, the engine's secure bank is unreachable without it, so
+it serves the key-sink service and not a payload.
+
+Built on 07.10.2026 with the release flags (DEBUG=0, BL31_IN_DRAM=1, clang):
+49276 bytes before and after, no warnings; function by function only
+bl31_early_platform_setup2 changed (the store of the BL32 entry point).
+Rebased on 09.10.2026 onto 175c6948f: the standby commits had changed
+sunxi_bl31_setup.c and platform.mk; their SUNXI_SYSTEM_SUSPEND sources and
+the 12 s of the watchdog stay.
+
+Measured on the HY310 over FEL (09.10.2026, doku/180), this series' BL31
+with SYSTEM_SUSPEND, Linux from the eMMC: "BL31: watchdog armed (12 s)",
+no "BL32 at", four CPUs, no reset.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/include/platform_def.h | 26 --------
+ plat/allwinner/common/sunxi_bl31_setup.c     | 65 +++++---------------
+ plat/allwinner/common/sunxi_prepare_dtb.c    | 18 ------
+ plat/allwinner/common/sunxi_security.c       | 14 -----
+ plat/allwinner/sun50i_h713/platform.mk       | 50 +++++----------
+ 5 files changed, 33 insertions(+), 140 deletions(-)
+
+diff --git a/plat/allwinner/common/include/platform_def.h b/plat/allwinner/common/include/platform_def.h
+index a9be8dfc5..f0c581441 100644
+--- a/plat/allwinner/common/include/platform_def.h
++++ b/plat/allwinner/common/include/platform_def.h
+@@ -82,30 +82,4 @@
+ #endif
+ #endif
+ 
+-
+-/*
+- * FB-HDCP14i: our own secure payload at S-EL1. The vendor DTS reserves 1 MiB at
+- * 0x48600000 for a Trusted OS and the SPL already loads a "tee" image there from
+- * the FIT, so our payload takes the same slot - the only context in which the
+- * Crypto Engine's key-select 3 has never been tried.
+- */
+-#ifndef BL32_BASE
+-#define BL32_BASE			0x48600000
+-#endif
+-#define BL32_LIMIT			(BL32_BASE + 0x100000)
+-#define TSP_SEC_MEM_BASE		BL32_BASE
+-#define TSP_SEC_MEM_SIZE		(BL32_LIMIT - BL32_BASE)
+-#define TSP_PROGBITS_LIMIT		BL32_LIMIT
+-/* The secure physical timer's PPI - architectural, 29 on every GICv2 A53. */
+-#define TSP_IRQ_SEC_PHY_TIMER		U(29)
+-/*
+- * The one window through which the normal world hands the payload something to
+- * work on. Bounded and mapped on purpose: the payload maps its own memory and
+- * the device registers, nothing else, so a caller buffer anywhere in DRAM would
+- * fault. 2 MiB is one block at this granularity and far more than the 288 bytes
+- * a key set needs.
+- */
+-#define H713_TSP_IN_BASE		U(0x4c000000)
+-#define H713_TSP_IN_SIZE		U(0x200000)
+-
+ #endif /* PLATFORM_DEF_H */
+diff --git a/plat/allwinner/common/sunxi_bl31_setup.c b/plat/allwinner/common/sunxi_bl31_setup.c
+index e2ad46e57..2fc7a9885 100644
+--- a/plat/allwinner/common/sunxi_bl31_setup.c
++++ b/plat/allwinner/common/sunxi_bl31_setup.c
+@@ -93,60 +93,29 @@ void bl31_early_platform_setup2(u_register_t arg0, u_register_t arg1,
+ 	console_set_scope(&console, CONSOLE_FLAG_BOOT | CONSOLE_FLAG_RUNTIME |
+ 			  CONSOLE_FLAG_CRASH);
+ 
+-#ifdef BL32_BASE
+-	/* Populate entry point information for BL32 */
+-	SET_PARAM_HEAD(&bl32_image_ep_info, PARAM_EP, VERSION_1, 0);
+-	SET_SECURITY_STATE(bl32_image_ep_info.h.attr, SECURE);
+-	bl32_image_ep_info.pc = BL32_BASE;
+-#ifdef H713_BL32_AARCH32
+-	/*
+-	 * The vendor's OP-TEE (header version 3.7, "arm" in its own banner) is a
+-	 * 32-bit image: enter it in AArch32 SVC, as the vendor monitor does. Our
+-	 * own payload (FB-HDCP14i, plat/.../tsp) is AArch64 and its dispatcher
+-	 * sets the entry state itself, so this whole block is for the vendor
+-	 * image only - built with -DH713_BL32_AARCH32.
+-	 */
+-	bl32_image_ep_info.spsr = SPSR_MODE32(MODE32_svc, SPSR_T_ARM,
+-					      SPSR_E_LITTLE,
+-					      DISABLE_ALL_EXCEPTIONS);
+-	/*
+-	 * opteed takes the payload's execution state from args.arg0, NOT from the
+-	 * SPSR (opteed_setup(), default handoff branch: opteed_rw =
+-	 * optee_ep_info->args.arg0). Left at zero that is OPTEE_AARCH64, so a
+-	 * 32-bit OP-TEE gets started as AArch64 and dies on its first instruction
+-	 * without a word - measured on 04.10., the handover showed spsr 0x3c5
+-	 * (EL1h, AArch64) although this file had set 0x1d3.
+-	 */
+-	bl32_image_ep_info.args.arg0 = MODE_RW_32;
+-#endif /* H713_BL32_AARCH32 */
+-#ifdef H713_WDOG_BRINGUP
++#ifdef H713_BOOT_WATCHDOG
+ 	/*
+-	 * The net against a hang during boot, armed on every boot (the switch is
+-	 * named for the BL32 bring-up it began with). This board does not come
+-	 * back from mains on its own, so a hang in BL31 or early U-Boot would
+-	 * otherwise need someone to pull the plug AND press the power key; with
+-	 * the watchdog armed the SoC resets itself instead. U-Boot's sunxi
+-	 * watchdog driver stops it when it probes the device. Key-protected
+-	 * layout of the H713: CFG at +0x10, MODE at +0x14, writes ignored
+-	 * without the key. Interval code 9 is 12 s (doku/72).
++	 * The net against a hang during boot, armed on every boot of an H713.
++	 * This board does not come back from mains on its own, so a hang in
++	 * BL31 or early U-Boot would otherwise need someone to pull the plug
++	 * AND press the power key; with the watchdog armed the SoC resets
++	 * itself instead (05.10.2026: it reset a BL31 that had jumped into
++	 * nothing). U-Boot's sunxi watchdog driver stops it again when it
++	 * probes the device (drivers/watchdog/sunxi_wdt.c), so the net spans
++	 * BL31 and U-Boot up to its watchdog init. Key-protected layout of the
++	 * H713: CFG at +0x10, MODE at +0x14, writes ignored without the key.
++	 * Interval code 9 is 12 s (doku/72).
+ 	 */
+ 	mmio_write_32(SUNXI_WDOG_BASE + 0x10, SUNXI_WDOG_KEY | 1);
+ 	mmio_write_32(SUNXI_WDOG_BASE + 0x14, SUNXI_WDOG_KEY | (0x9 << 4) | 1);
+ 	NOTICE("BL31: watchdog armed (12 s) as the net against a hang in boot\n");
+ #endif
+-	/*
+-	 * Bring-up aid: is the image actually where the FIT says? Only meaningful
+-	 * when a BL32 was really loaded - BL32_BASE is defined in the headers even
+-	 * when it was not, and then this printed the contents of an empty address
+-	 * every boot and read like a fault ("BL32 at 0x48600000: f0003a40 ...").
+-	 */
+-#if defined(H713_WITH_BL32)
+-	NOTICE("BL31: BL32 at 0x%x: %08x %08x %08x, run addr %08x, spsr %08x\n",
+-	       (unsigned int)BL32_BASE,
+-	       mmio_read_32(BL32_BASE), mmio_read_32(BL32_BASE + 4),
+-	       mmio_read_32(BL32_BASE + 8), mmio_read_32(BL32_BASE + 0x2c),
+-	       (unsigned int)bl32_image_ep_info.spsr);
+-#endif
++
++#ifdef BL32_BASE
++	/* Populate entry point information for BL32 */
++	SET_PARAM_HEAD(&bl32_image_ep_info, PARAM_EP, VERSION_1, 0);
++	SET_SECURITY_STATE(bl32_image_ep_info.h.attr, SECURE);
++	bl32_image_ep_info.pc = BL32_BASE;
+ #endif
+ 
+ 	/* Populate entry point information for BL33 */
+diff --git a/plat/allwinner/common/sunxi_prepare_dtb.c b/plat/allwinner/common/sunxi_prepare_dtb.c
+index ede4591ba..0f689744a 100644
+--- a/plat/allwinner/common/sunxi_prepare_dtb.c
++++ b/plat/allwinner/common/sunxi_prepare_dtb.c
+@@ -34,24 +34,6 @@ void sunxi_prepare_dtb(void *fdt)
+ 	}
+ #endif
+ 
+-#if defined(BL32_BASE) && defined(H713_WITH_BL32)
+-	/*
+-	 * Reserve the secure payload's memory too. Without this the kernel is
+-	 * uncompressed over it (it lands at 0x48000000 and is some 20 MB), and
+-	 * then every PSCI CPU_ON erets into overwritten code: the secondary cores
+-	 * never come up and the board runs on one (measured 05.10., three cores
+-	 * lost). The vendor's own device tree reserves exactly this window, which
+-	 * is why stock keeps all four. Guarded by H713_WITH_BL32 and not by
+-	 * BL32_BASE alone: that macro is defined in every configuration, so the
+-	 * reservation also appeared in builds WITHOUT a payload and then blocked
+-	 * the kernel's own window (measured 05.10. 06:1x).
+-	 */
+-	if (fdt_add_reserved_memory(fdt, "optee@48600000", BL32_BASE,
+-				    BL32_LIMIT - BL32_BASE)) {
+-		WARN("Failed to reserve the BL32 window in the DT.\n");
+-	}
+-#endif
+-
+ 	sunxi_soc_fdt_fixup(fdt);
+ 
+ 	if (sunxi_psci_is_scpi()) {
+diff --git a/plat/allwinner/common/sunxi_security.c b/plat/allwinner/common/sunxi_security.c
+index 6a539070f..8bd3f06f5 100644
+--- a/plat/allwinner/common/sunxi_security.c
++++ b/plat/allwinner/common/sunxi_security.c
+@@ -53,20 +53,6 @@ void sunxi_security_setup(void)
+ 	mmio_write_32(0x03060008, 0);
+ 	return;
+ #endif
+-#ifdef H713_SKIP_SECURITY_SETUP
+-	/*
+-	 * FB-HDCP14h bring-up probe. The vendor BL31 of this board (0x48001430)
+-	 * does NOT write this file's R_PRCM word (our 0x07010290 = 0x1; it zeroes
+-	 * 0x07002400/04/08 instead), writes 0xff to the DMA word where we write
+-	 * 0xffff, and additionally sets 0x020008e0 = 3, 0x02002150 = 0x10000 then
+-	 * 0x10001 and 0x03060008 = 0. Its CCU word (0x02001f00 = 7) is the same as
+-	 * ours. Since the vendor keeps a secure OS and we hand more to the
+-	 * non-secure world, skip the whole setup once and see whether the vendor
+-	 * OP-TEE then gets through its own start-up.
+-	 */
+-	INFO("Skipping SPC/bus security setup (FB-HDCP14h probe)\n");
+-	return;
+-#endif
+ 
+ 	INFO("Configuring SPC Controller\n");
+ 	/* SPC setup: set all devices to non-secure */
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index 66e0027d8..b733c3483 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -41,6 +41,14 @@ ifeq (${SUNXI_PSCI_USE_SCPI}, 1)
+     $(error "H713 does not support SCPI PSCI ops")
+ endif
+ 
++# No secure payload on this platform: BL31 alone serves HDCP 1.4 and enters U-Boot
++# directly. With an SPD the upstream fallback in platform_def.h would set BL32_BASE
++# to SUNXI_DRAM_BASE - BL31's own address - and the dispatcher would enter it on
++# every boot. Empty and "none" both mean no payload.
++ifneq ($(filter-out none,${SPD}),)
++    $(error "H713 has no secure payload: build with SPD=none, not SPD=${SPD}")
++endif
++
+ BL31_SOURCES		+=	common/fdt_wrappers.c			\
+ 				drivers/allwinner/axp/axp805.c		\
+ 				drivers/allwinner/sunxi_rsb.c		\
+@@ -51,37 +59,12 @@ ifeq (${SUNXI_SYSTEM_SUSPEND},1)
+ BL31_SOURCES		+=	${AW_PLAT}/${PLAT}/sunxi_standby.c
+ endif
+ 
+-# FB-HDCP14h: the vendor's own OP-TEE 3.7 as BL32. Its sunxi file header gives the run
+-# address 0x48600000 (offset 0x2c) and the vendor DTS reserves 1 MiB there. The SPL loads
+-# it from the FIT, so BL31 only has to enter it.
+-# The vendor OP-TEE variant needs the AArch32 hand-over; our own TSP does not.
+-# The slot the vendor DTS reserves for a Trusted OS; our own payload uses it too.
+-# This must be a -D: platform_def.h carries an older "#ifndef BL32_BASE ->
+-# SUNXI_DRAM_BASE" fallback that would otherwise win and send BL31 to 0x40000000
+-# (measured 05.10. 05:12 - BL31 jumped into nothing and the watchdog reset the board).
+-# Only when there IS a secure payload. Our own HDCP chain runs entirely in BL31 and
+-# needs none - and without BL32_BASE there is no reserved window either, which
+-# matters: the kernel is uncompressed to 0x48000000 and is some 20 MB, so a
+-# reservation at 0x48600000 makes U-Boot refuse the allocation outright
+-# ("Unable to allocate memory 0x48000000 for loading OS", measured 05.10. 06:1x).
+-# Explicit, never derived: at the time this file is included SPD is still EMPTY,
+-# not "none", so "ifneq (${SPD},none)" was always true and the reservation below
+-# kept blocking the kernel's own window (measured 05.10. 06:1x - reserved[1]
+-# 0x48600000..0x486fffff no-map, and bootm refused 0x48000000).
+-ifeq (${H713_WITH_BL32},1)
+-BL31_CPPFLAGS		+=	-DBL32_BASE=0x48600000
+-BL31_CPPFLAGS		+=	-DH713_WITH_BL32
+-endif
+-
+-# The vendor OP-TEE is a 32-bit image and must be entered in AArch32 SVC; our own
+-# payload is AArch64. Explicit on the command line, not derived from SPD - deriving
+-# it silently produced an AArch64 hand-over to the 32-bit image (spsr 0x3c5,
+-# measured 05.10. 05:34) and the vendor OS died without a word.
+-ifeq (${H713_BL32_AARCH32},1)
+-BL31_CPPFLAGS		+=	-DH713_BL32_AARCH32
+-endif
++# The vendor SPC/bus security sequence (sunxi_security.c), register for register
++# as this board's own BL31 does it.
+ BL31_CPPFLAGS		+=	-DH713_VENDOR_SECURITY_SETUP
+-BL31_CPPFLAGS		+=	-DH713_WDOG_BRINGUP
++# The watchdog BL31 arms on every boot as the net against a hang in BL31 and
++# early U-Boot (sunxi_bl31_setup.c).
++BL31_CPPFLAGS		+=	-DH713_BOOT_WATCHDOG
+ 
+ # The workbench probes in the SiP (and the CE dump) are off by default: a release
+ # image carries only the version call and PUSH_FROM. Turn them on deliberately with
+@@ -93,10 +76,9 @@ BL31_CPPFLAGS		+=	-DH713_HDCP_RESEARCH=1
+ BL31_SOURCES		+=	${AW_PLAT}/${PLAT}/sunxi_h713_cedump.c
+ endif
+ 
+-# FB-HDCP14i: our own HDCP 1.4 path from EL3 (the CE task the engine refuses so far).
+-# Built INTO the image that also brings up the vendor BL32, so the same run can do
+-# "our task - vendor task - our task again" and tell state apart from descriptor.
+-# the SiP maps the caller's page on demand
++# The HDCP 1.4 key-sink service in EL3 (sunxi_h713_sip.c). There is no secure
++# payload: SPD stays "none" and BL31 enters U-Boot directly. The service maps the
++# page it works on only for the duration of a call.
+ PLAT_XLAT_TABLES_DYNAMIC	:=	1
+ BL31_CPPFLAGS		+=	-DPLAT_XLAT_TABLES_DYNAMIC=1
+ 

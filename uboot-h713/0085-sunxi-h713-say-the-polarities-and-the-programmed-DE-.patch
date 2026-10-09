@@ -1,7 +1,7 @@
 From 06c08fa0ae2299da68036594ff2de6106c9d72cc Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 17 Sep 2026 01:30:21 +0200
-Subject: [PATCH 85/96] sunxi: h713: say the polarities and the programmed DE
+Subject: [PATCH 085/100] sunxi: h713: say the polarities and the programmed DE
  totals when latching
 
 The owner's next boot log should settle both halves of this A/B without a

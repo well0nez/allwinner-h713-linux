@@ -1,7 +1,7 @@
 From 769f7699b104a40994eab816adb4b933fe2ffc4d Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 00:16:15 +0200
-Subject: [PATCH 21/27] allwinner: h713: one rule for an R_WDOG found armed,
+Subject: [PATCH 21/30] allwinner: h713: one rule for an R_WDOG found armed,
  MODE bit 0
 
 BL31 decides "found armed" on MODE bit 0, both for its NOTICE and for

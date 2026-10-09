@@ -1,8 +1,8 @@
 From 253855c12b0da80264ac9fe1d12f94b81b971632 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 21:46:14 +0200
-Subject: [PATCH 81/96] sunxi: h713: name every LogoRegData record before it is
- written
+Subject: [PATCH 081/100] sunxi: h713: name every LogoRegData record before it
+ is written
 
 A write into a block whose clock or reset is not up hangs the bus
 silently, and the replay is 90-odd records long, so a stalled boot log

@@ -36,7 +36,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/94` |
-| `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175` |
+| `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180` |
 | `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/133`, `doku/138`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/179`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
@@ -224,6 +224,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`177-r2-abgenommen-und-in-main-20261009.md`](177-r2-abgenommen-und-in-main-20261009.md) | Analyse | 2026-10-09 | 177 - R2 abgenommen und in `main`: Abnahmereihe V4 auf r2test4, Ton nach dem Standby, Aufräumen (09.10.2026, 16:45) | 5 |
 | [`178-hdcp-paket-entscheidungen-20261009.md`](178-hdcp-paket-entscheidungen-20261009.md) | Analyse | 2026-10-09 | 178 - HDCP-Härtungspaket: Entscheidungen für den Release-Neubau, Korrektur zu 6.5 (09.10.2026, abends) | - |
 | [`179-missglueckter-standby-endet-dunkel-im-gate-20261009.md`](179-missglueckter-standby-endet-dunkel-im-gate-20261009.md) | Analyse | 2026-10-09 | 179 - Ein missglückter Standby endet dunkel im Gate (TODO 2.30) (09.10.2026, 18:40) | 4 |
+| [`180-hdcp-haertung-eingebaut-und-gemessen-20261009.md`](180-hdcp-haertung-eingebaut-und-gemessen-20261009.md) | Analyse | 2026-10-09 | 180 - HDCP-Härtung eingebaut und per FEL gemessen: Übergabe ohne Adresse, einmal pro Boot, Watchdog über den Treiber (09.10.2026, 20:30) | 1 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -381,7 +382,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-41 von 238 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+41 von 239 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

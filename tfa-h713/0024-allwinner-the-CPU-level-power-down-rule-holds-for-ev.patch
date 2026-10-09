@@ -1,7 +1,7 @@
 From 223fbb90c2c24d2e210ed7a84ee6fc0cf030e558 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 00:17:19 +0200
-Subject: [PATCH 24/27] allwinner: the CPU-level power-down rule holds for
+Subject: [PATCH 24/30] allwinner: the CPU-level power-down rule holds for
  every native-ops platform
 
 The commit that limited power-down states to the CPU level ("power-down

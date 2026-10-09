@@ -33,6 +33,18 @@ So the path is: stage the stored bytes inside that window, then run one engine t
 key-select 3 and the key sink at `0x03041400` as its destination. The key set goes from the
 engine straight into the receiver. Nothing in software ever sees it.
 
+**Who decides where, and how often** (since 09.10.2026, TF-A `0029`, U-Boot `0099`, `doku/180`).
+The caller names no address any more: BL31 says where the stage lies (`0x48a00000`, inside the
+window; the window has one name and origin in `sunxi_mmap.h`), U-Boot copies the record there, and
+BL31 checks the structure of both stored copies itself before it runs the task. The sink serves
+**once per boot**: after the first push - or after U-Boot says it skips the push - BL31 closes it,
+and a second request in the same boot is refused (`the key sink is closed for this boot`). A
+standby does not need a second write; the sink keeps the key through it (`doku/175`). Measured on
+the HY310 over FEL: zeros, then the key set from the stage in two boots in a row, `Desired` then
+`Enabled` after 2 s; a second push at the prompt refused; `h713_hdcp14=0` closes the sink without a
+write. *Superseded (09.10.2026):* U-Boot passed the staged address to BL31 ("key set from
+0x48a00000 into the sink"), and nothing stopped a second write in the same boot.
+
 This cost a long night to work out, because the second rule is invisible: the engine answers
 the same refusal whether the key slot or the source region is the problem. For a while our own
 code also gated the push on a probe that could never pass - the probe tried key-select 3 into
@@ -138,6 +150,9 @@ nothing in between:
    two things at once: the sink is empty, and our push mechanism works at all.
 2. boot again with the default, and confirm the source reports **Enabled**.
 
+Since the sink serves once per boot the two steps cannot share a boot; the pair is always two
+boots in a row.
+
 On 08.10.2026 the 1.4 pair was repeated on the R1 test image, where crust is the ARISC firmware: two warm starts, `h713_hdcp14_wipe=1` and then the default, the source went `Desired` and then `Enabled`, the sink's key-loaded register 0x93 read 0x41 and then 0x45 (`doku/170`, A0).
 
 ### HDCP 2.2, measured with a real 2.2 source
@@ -162,9 +177,10 @@ a failed one does not leave a standing session.
 ## Limits
 
 * A source that asks for HDCP 1.4 at once, in the mode switch (a ThinkPad with i915), stayed on `Desired` for 40 s in two runs on the R1 test image; a request 2, 4 or 6 s after the lock stood at `Enabled` within 5 s. `doku/170` reads it as the receiver not being ready in the first moment and i915 not asking again; crust is not involved (the hot-plug pin stays up). Not measured with the vendor's ARISC firmware or with the Fire TV stick.
-* The boot loader's own watchdog guard around the push is armed only if nobody else is
-  driving the watchdog. U-Boot's driver stays off on this board; if that changes, the guard
-  steps aside rather than fight over the register.
+* The boot loader's own watchdog guard around the push - 6 s, started and stopped through
+  U-Boot's watchdog driver since U-Boot `0100` (`WDT:   Started watchdog@2051000 without
+  servicing  (6s timeout)` with every push) - is armed only if nobody else is driving the
+  watchdog; if someone is, the guard steps aside rather than fight over the register.
 * A device whose key set is missing, blank, singly stored or damaged boots normally and says
   so on the console. Only HDCP-protected sources stay dark. `h713-install` reports the same
   verdict at install time, so it is known before anything is missed.

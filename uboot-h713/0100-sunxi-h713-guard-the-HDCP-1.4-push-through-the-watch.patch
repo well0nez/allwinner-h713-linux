@@ -1,0 +1,141 @@
+From 7b1ea388da0d0300fb9515426e5887a1767f38e4 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:28:40 +0200
+Subject: [PATCH 100/100] sunxi: h713: guard the HDCP 1.4 push through the
+ watchdog driver
+
+The watchdog net around the push wrote the watchdog registers itself, at
+fixed addresses with its own copy of the key and timeout encoding - a shared
+resource driven past U-Boot's driver. It now starts and stops the watchdog
+through the WDT uclass (drivers/watchdog/sunxi_wdt.c, bound to the device
+tree's watchdog@2051000 with the sun55i layout), with the same effect:
+system reset after 6 s, disabled again after the call. The driver's record
+of whether the watchdog runs stays true, and no address, key or interval
+code is left in this file.
+
+One thing the uclass cannot answer is whether someone else is driving the
+watchdog - a bench session arms it by hand - and in that case the guard
+still keeps its hands off. That takes one read of the MODE enable bit, at
+the address the device tree gives the device and the MODE offset of the
+sun55i layout. Without a watchdog device the push goes ahead and says it has
+no net. wdt_start() prints one line per push:
+"WDT:   Started watchdog@2051000 without servicing  (6s timeout)" - with
+two spaces before the parenthesis, because without CONFIG_WATCHDOG its
+servicing interval is an empty string.
+
+Built for hy310 + release: exit 0, no warning in h713_hdcp14.c. The object
+no longer contains 0x02051010/0x02051014, the 0x16aa key or 0x48a00000; it
+calls uclass_first_device_err(), wdt_start() and wdt_stop() instead.
+
+Measured on the HY310 over FEL (09.10.2026, doku/180), U-Boot and BL31 of this series,
+Linux from the eMMC: the WDT line with every push, no reset after it,
+and none at a push with the guard stopped again (four pushes in four boots).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_hdcp14.c | 61 +++++++++++++++++--------------
+ 1 file changed, 34 insertions(+), 27 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_hdcp14.c b/arch/arm/mach-sunxi/h713_hdcp14.c
+index 2b34c68cb91..5084ed2c432 100644
+--- a/arch/arm/mach-sunxi/h713_hdcp14.c
++++ b/arch/arm/mach-sunxi/h713_hdcp14.c
+@@ -56,12 +56,15 @@
+ #include <command.h>
+ #include <blk.h>
+ #include <bootm.h>
++#include <dm.h>
+ #include <env.h>
+ #include <cpu_func.h>
+ #include <linux/arm-smccc.h>
+ #include <part.h>
+ #include <vsprintf.h>
++#include <wdt.h>
+ #include <asm/io.h>
++#include <linux/bitops.h>
+ #include <linux/delay.h>
+ #include <asm/global_data.h>
+ #include <asm/unaligned.h>
+@@ -108,38 +111,41 @@ DECLARE_GLOBAL_DATA_PTR;
+  * The watchdog as a safety net around the push. The engine task takes
+  * microseconds; if it ever wedges the bus, a reset is far better than a board
+  * parked at the logo with no way back (a real power cut is not available while
+- * USB feeds the board). Armed only if nobody else is driving it - U-Boot's own
+- * driver stays off on this board ("WDT: Not starting watchdog@2051000"), and
+- * double-driving it would be worse than no net at all.
++ * USB feeds the board).
+  *
+- * Feeding needs a real off/on pair: rewriting the active MODE register does NOT
+- * restart the counter (cost us four needless resets to work out).
++ * It goes through U-Boot's watchdog driver (drivers/watchdog/sunxi_wdt.c, bound
++ * to the device tree's watchdog@2051000): register layout, key and timeout
++ * encoding live there, and the driver's own record of whether it runs stays
++ * true. Armed only if nobody else is driving it - U-Boot's own use stays off on
++ * this board ("WDT: Not starting watchdog@2051000"), but a bench session arms
++ * it by hand, and taking that over would be worse than no net at all. The
++ * uclass cannot tell whether the watchdog runs, so one read of the enable bit
++ * decides: at the address the device tree gives the device, at the MODE offset
++ * of the sun55i layout that sunxi_wdt.c uses for this compatible.
+  */
+-#define WDT_CFG			0x02051010UL
+-#define WDT_MODE		0x02051014UL
+-#define WDT_KEY			0x16aa0000UL
+-#define WDT_CFG_SYSTEM		(WDT_KEY | 0x1UL)
+-#define WDT_MODE_EN		0x1UL
+-#define WDT_INTERVAL_6S		(0x6UL << 4)
++#define WDT_MODE_OFF		0x14		/* sun55i layout, as sunxi_wdt.c */
++#define WDT_MODE_EN		BIT(0)
++#define WDT_GUARD_MS		6000
+ 
+-static bool wdt_armed_by_us;
+-
+-static void wdt_guard_on(void)
++static struct udevice *wdt_guard_on(void)
+ {
+-	wdt_armed_by_us = false;
+-	if ((readl((void *)WDT_MODE) & WDT_MODE_EN) != 0UL)
+-		return;			/* somebody else owns it - hands off */
+-	writel(WDT_CFG_SYSTEM, (void *)WDT_CFG);
+-	writel(WDT_KEY | WDT_INTERVAL_6S | WDT_MODE_EN, (void *)WDT_MODE);
+-	wdt_armed_by_us = true;
++	struct udevice *dev;
++	void *base;
++
++	if (uclass_first_device_err(UCLASS_WDT, &dev)) {
++		printf("H713 HDCP: no watchdog device, pushing without the net\n");
++		return NULL;
++	}
++	base = dev_read_addr_ptr(dev);
++	if (!base || (readl(base + WDT_MODE_OFF) & WDT_MODE_EN))
++		return NULL;		/* somebody else owns it - hands off */
++	return wdt_start(dev, WDT_GUARD_MS, 0) ? NULL : dev;
+ }
+ 
+-static void wdt_guard_off(void)
++static void wdt_guard_off(struct udevice *dev)
+ {
+-	if (!wdt_armed_by_us)
+-		return;
+-	writel(WDT_KEY | WDT_INTERVAL_6S, (void *)WDT_MODE);
+-	wdt_armed_by_us = false;
++	if (dev)
++		wdt_stop(dev);
+ }
+ 
+ /* Bounded compare of a NUL-terminated name field against a literal. */
+@@ -317,12 +323,13 @@ static ulong hdcp14_stage(void)
+ static int hdcp14_once(ulong what, ulong stage, unsigned long *verdict)
+ {
+ 	struct arm_smccc_res res = { 0 };
++	struct udevice *wdt;
+ 
+ 	if (stage)
+ 		flush_dcache_range(stage, stage + SS_STAGE_BYTES);
+-	wdt_guard_on();
++	wdt = wdt_guard_on();
+ 	arm_smccc_smc(H713_SIP_HDCP14_ONCE, what, 0, 0, 0, 0, 0, 0, &res);
+-	wdt_guard_off();
++	wdt_guard_off(wdt);
+ 
+ 	/* Our SiP answers with SMC_RET1: the verdict is in a0, not a1. */
+ 	*verdict = res.a0;

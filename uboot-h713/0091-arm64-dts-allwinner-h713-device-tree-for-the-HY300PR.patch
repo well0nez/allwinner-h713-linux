@@ -1,7 +1,7 @@
 From c459ea7b31ddd004bf53b8e1cb63866c29debbde Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 2 Oct 2026 20:00:00 +0200
-Subject: [PATCH 91/96] arm64: dts: allwinner: h713: device tree for the
+Subject: [PATCH 091/100] arm64: dts: allwinner: h713: device tree for the
  HY300PRO-G-EU
 
 The tree configs/hy300pro_g_eu_defconfig names. An include of the HY310's

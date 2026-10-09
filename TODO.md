@@ -20,13 +20,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       HDCP und `docs/subsystems/hdcp.md` (eine Schreibung pro Boot, keine Adresse)
       - **09.10.:** `main` trägt seit c4a3924 crust als HY310-Firmware und den Standby (R1, R2). Der Neubau braucht
         `CRUST_SRC` (crust-Klon auf ecf2ddc, bis 5.15) und die Entscheidung 2.29 (mit oder ohne `--standby`)
-      - **09.10. abends (Marco, `doku/178`):** das HDCP-Paket kommt ganz mit, 6.5 eingeschlossen; TF-A `0001`/`0002` vorher auf
-        `175c6948f` neu aufsetzen (Konflikte in `sunxi_bl31_setup.c`, `platform.mk`), U-Boot `0001`-`0003` passen auf `87b2a44`,
-        Repo `0002` an das neue `uboot-build.sh` anpassen
+      - **09.10. abends (Marco, `doku/178`):** das HDCP-Paket kommt ganz mit, 6.5 eingeschlossen - **erledigt 20:xx** (`doku/180`):
+        in Forks, Spiegeln und `main`, per FEL gemessen; 1.1a baut es einfach mit
       - **09.10. abends (Marco, 2.29):** mit `--standby` bauen, `power.conf` Vorgabe `short = poweroff` (Standby experimentell,
-        per Schalter), Doku und Release-Text sagen "experimentell"; 2.30 ist gemessen und mit Kernel `0245` in `main` - mit 1.1a
-        noch die U-Boot-Zeile dazu (`arbeit/standby-gate-20261009/patches/uboot/0001`) und der TF-A-Kommentar in
-        `sunxi_native_pm.c` ("the boot loader finds RUN1" stimmt bei einem verweigerten Standby nicht mehr)
+        per Schalter), Doku und Release-Text sagen "experimentell"; 2.30 ist gemessen und mit Kernel `0245` in `main`; die U-Boot-Zeile
+        (`0097`) und der TF-A-Kommentar (`0030`) sind seit `doku/180` in den Forks
 - [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
       Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
       WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
@@ -42,9 +40,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       später). Dazu Bluetooth dort: erster Attach nach Kaltstart hängt an `0x1003`, 245-Byte-Schreibvorgänge kommen
       unvollständig an (FB-BTRESET 9.3, RTS/CTS?); `h713-bt-reset` auf dem Board noch nie probiert
 - [x] 1.5 STAGE4-Marker füllen und löschen - **erledigt** (b110ec1, `doku/143`); 09.10. geprüft: `git grep STAGE4` findet keinen Marker mehr
-- [ ] 1.6 Forks pushen (Stand 09.10. abends, `main` c4a3924; um 19:00 unverändert - die U-Boot-Zeile zu 2.30 liegt nur lokal als
-      `versuch/standby-gate-uboot` und kommt erst mit 1.1a): U-Boot `h713-hy310` +7 (Kopf `87b2a44`, lokal Zweig
-      `versuch/r2-standby-uboot`), TF-A `sun50i-h713` +22 (Kopf `175c6948f`, lokal `versuch/crust-release-tfa`), sunxi-tools gleich;
+- [ ] 1.6 Forks pushen (Stand 09.10. 20:xx, nach der HDCP-Härtung `doku/180`): U-Boot `h713-hy310` +11 (Kopf `7b1ea388da0d`, lokal
+      Zweig `versuch/hdcp-haertung-uboot`: 0096 crust-Ablage, 0097 Gate-Zeile, 0098-0100 HDCP), TF-A `sun50i-h713` +25 (Kopf
+      `5a7806892`, lokal `versuch/hdcp-haertung-tfa`: 0007-0027 Standby, 0028-0030 HDCP und Kommentar), sunxi-tools gleich;
       **neu: crust** - der Fork liegt noch nicht auf GitHub (Repo anlegen, Zweig mit 80 Patches auf `499a362`, Kopf `ecf2ddc`,
       lokal `arbeit/crust-mips-drop-20261008/crust` Zweig `versuch/mips-drop`); die Spiegel `uboot-h713/`, `tfa-h713/`,
       `crust-h713/` stehen schon auf diesen Köpfen. Früherer Stand:
@@ -225,7 +223,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **Erledigt 09.10. abends** (`0245`, `doku/179`, Paket `arbeit/standby-gate-20261009/`): `sun50i-h713-mips` hält GP5 als
         vierte reg, "STBY" ab PM_SUSPEND_PREPARE bis der Kern wieder läuft, Reboot-Notifier schreibt "RUN1". Gemessen 4/4 mit
         `h713_gate=1`: Kontrolle, Hänger syscore suspend (crust 15 s -> Gate dunkel), Hänger syscore resume (crust 60 s ->
-        Gate dunkel), reboot bei "STBY" bootet. Rest in 1.1a (U-Boot-Zeile, TF-A-Kommentar); crust-Hänger im Schlaf fängt
+        Gate dunkel), reboot bei "STBY" bootet. U-Boot-Zeile (`0097`) und TF-A-Kommentar (`0030`) seit `doku/180` in den Forks;
+        crust-Hänger im Schlaf fängt
         weiter nur R_WDOG (CR-1)
 - [ ] 2.31 **Leistung messen: Gate (mit crust), Standby, Betrieb** (aus 2.29): Gate 4 W ist vom 09.09., vor crust; Standby
       nie gemessen. Entscheidet mit, ob Standby im Release danach die Vorgabe wird. Braucht ein Messgerät (Sonoff mit
@@ -387,26 +386,31 @@ Schreibung pro Boot bleibt richtig.
 **09.10. abends entschieden (Marco, `doku/178`):** das ganze Paket mit 1.1a, 6.5 eingeschlossen (6.5 ändert nur den Weg - Treiber statt fester
 Register -, nicht das Verhalten; die Einschätzung "eher überholt" in `doku/175` §4 war falsch). TF-A 0001/0002 vorher auf `175c6948f` neu aufsetzen.
 
-- [ ] 6.1 **TEE-2** EL3 liest den Schlüssel selbst; `push_from` ohne Aufrufer-Adresse ← zuerst. Mit 6.2 und 6.5 ein Paket:
+**Erledigt 09.10. abends (`doku/180`, Paket `arbeit/hdcp-haertung-20261009/`):** 6.1, 6.2, 6.5, 6.6, 6.9 in den Forks (TF-A
+`5a7806892`, U-Boot `7b1ea388da0d`), Spiegel und `main`; per FEL am HY310 gemessen: T0 (12 s Watchdog, kein BL32, 4 CPUs),
+T1/T2 das Paar aus der Ablage (Desired, dann Enabled nach 2 s), T3 zweite Übergabe im selben Boot abgewiesen, T4 Verschluss
+ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 (fremder Watchdog) nicht gelaufen.
+
+- [x] 6.1 **TEE-2** EL3 liest den Schlüssel selbst; `push_from` ohne Aufrufer-Adresse ← zuerst. Mit 6.2 und 6.5 ein Paket:
       reine Härtung, nichts ist kaputt (heute schlimmstenfalls ein falscher Schlüssel durch Root, auslesen geht nicht).
       Marco 07.10.: als Agentenpaket machen. **07.10. vorbereitet, nicht gemessen** (`doku/161`): 6.1, 6.2, 6.5 und 6.9 als
       ein Paket in `arbeit/hdcp-haertung-20261007/` (TF-A 2, U-Boot 3 - davon `0001` = 6.6 -, Repo 2 Patches), gebaut,
       gegengeprüft. Gewählt: BL31 nennt die Ablage (`HDCP14_STAGE`), eine Senken-Schreibung pro Boot (`HDCP14_ONCE`),
       danach zu; EL3 liest den Schlüssel nicht selbst (eigener MMC-Treiber in EL3 unverhältnismäßig). Einbau und Messung mit **1.1a**
-- [ ] 6.2 **TEE-3** Strukturprüfung nach EL3 spiegeln - im Paket 6.1 (07.10.)
+- [x] 6.2 **TEE-3** Strukturprüfung nach EL3 spiegeln - im Paket 6.1 (07.10.)
 - [x] 6.3 TEE-1 S-EL1 nur, wenn eine zweite Nutzlast es lohnt (damals: `tfa-h713/0007`, gibt es seit 06.10. nicht mehr) - **gestrichen 07.10. (Marco: S-EL1
       nicht gewollt, weder in TF-A noch in U-Boot)**; der Testcode ist gelöscht, die Befunde stehen in `doku/153`, `irrwege.md`
 - [x] 6.4 TEE-4 die 32 Byte Anhang des 320-Byte-Datensatzes erklären - **gestrichen 07.10. (Marco)**: Neugier, mit 288 Byte geht es
-- [ ] 6.5 TEE-5 Watchdog über Treiber; `0x48a00000` und Fenster ableiten statt Konstante - im Paket 6.1 (07.10.): WDT-uclass,
+- [x] 6.5 TEE-5 Watchdog über Treiber; `0x48a00000` und Fenster ableiten statt Konstante - im Paket 6.1 (07.10.): WDT-uclass,
       Fenster als `SUNXI_TEE_WINDOW_*` in BL31 mit Herkunft (aus dem DT nicht ableitbar)
       - **09.10. (Marco): mitnehmen**, mit 1.1a (`doku/178`)
-- [ ] 6.6 `h713_hdcp14_wait`-Env ganz entfernen? (entschärft, existiert noch) - **07.10. vorbereitet**: U-Boot-Patch + Gegenstück für
+- [x] 6.6 `h713_hdcp14_wait`-Env ganz entfernen? (entschärft, existiert noch) - **07.10. vorbereitet**: U-Boot-Patch + Gegenstück für
       `check-hdcp-artifacts.sh` in `arbeit/hdcp-wait-env-20261007/patches/`, hy310/release gebaut (gleiche Warnungen wie vorher,
       Schalter weg aus dem Binary), passt auf die Linien; Einbau und Messung mit **1.1a** (Marco 07.10.: ja)
 - [x] 6.7 Warteschleifen-Patch (`0035`, Suche der Wait-Site) prüfen: noch nötig, seit die Senke rechtzeitig gefüllt ist? (Marco 14.09.: „muss am Ende weg")
       - **beantwortet, bleibt**: am 05.10. gemessen hängt die Box mit scharfer Warteschleife auch mit Schlüssel in der Senke
 - [x] 6.8 BL32-Experiment (5 unversionierte Dateien in `FB-HDCP14h/uboot`): Branch oder löschen - **gelöscht 07.10. (Marco)**
-- [ ] 6.9 **BL32-/S-EL1-Gerüst aus dem TF-A-Fork** (Patch 0006, Kopf `4c1bd8c6`; Marco: kein S-EL1 in TF-A): TSP-Definitionen
+- [x] 6.9 **BL32-/S-EL1-Gerüst aus dem TF-A-Fork** (Patch 0006, Kopf `4c1bd8c6`; Marco: kein S-EL1 in TF-A): TSP-Definitionen
       (`platform_def.h`), Hersteller-OP-TEE-Übergabe (`H713_BL32_AARCH32`), `optee@48600000`-Reservierung (`H713_WITH_BL32`),
       Schalter in `platform.mk`. **Zuerst klären:** `H713_WDOG_BRINGUP` ist immer gesetzt und schaltet bei jedem Boot den
       Watchdog „for the BL32 bring-up" scharf - **ja, das ist das Netz gegen Hänger beim Booten** (07.10. gelesen: ~11 s ab BL31,

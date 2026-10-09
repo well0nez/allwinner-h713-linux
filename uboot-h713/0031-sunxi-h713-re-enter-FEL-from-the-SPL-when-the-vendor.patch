@@ -1,8 +1,8 @@
 From 70f2c44adc33833badd554d49e68b5c5ff1f1aef Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 11 Sep 2026 11:21:16 +0200
-Subject: [PATCH 31/96] sunxi: h713: re-enter FEL from the SPL when the vendor
- efex flag is set
+Subject: [PATCH 031/100] sunxi: h713: re-enter FEL from the SPL when the
+ vendor efex flag is set
 
 The vendor boot0 checks RTC general purpose register 2 for 0x5aa5a55a,
 clears it and jumps to the BROM's FEL entry at 0x20; the vendor U-Boot

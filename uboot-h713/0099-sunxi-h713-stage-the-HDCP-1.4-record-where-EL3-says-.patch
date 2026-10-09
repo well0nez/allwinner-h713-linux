@@ -1,0 +1,366 @@
+From 34cc74822baf8b739cb1bdb843ba3db4b01605a6 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:26:58 +0200
+Subject: [PATCH 099/100] sunxi: h713: stage the HDCP 1.4 record where EL3
+ says, one write per boot
+
+The EL3 key-sink service no longer takes a source address (TF-A fork,
+"allwinner: h713: the key-sink service takes no address and serves once").
+This side follows:
+
+  - HDCP14_STAGE asks EL3 where the record goes. U-Boot keeps no address of
+    its own any more (TEE_STAGE 0x48a00000 and the unused SLOT_SCRATCH are
+    gone); it checks the answer against the RAM it knows before writing.
+  - read_key_set() leaves both stored copies there - the two secure-storage
+    slots, unchanged - instead of 288 bytes of one of them, so that EL3 can
+    repeat the structure checks itself. U-Boot's own checks stay as they are,
+    the release-gate strings included; on any failure the stage is wiped.
+  - HDCP14_ONCE makes the one sink write of this boot: the staged key set,
+    or zeros for h713_hdcp14_wipe=1. EL3 closes the service after it, so a
+    second h713_hdcp14 in the same boot says "the key sink is closed for
+    this boot" instead of pushing again.
+  - When nothing is written, U-Boot closes the service itself with
+    HDCP14_ONCE(nothing) and says so in one line: at every exit of
+    h713_hdcp14_install() that makes no write (h713_hdcp14=0, no usable
+    stage, no usable key set), so every boot that runs "h713_disp init" is
+    closed whatever starts the OS afterwards (bootm, bootefi, bootstd). For
+    roles that never run it, arch_preboot_os() does the same before an OS
+    started with bootm. After a write the service is closed already and the
+    call stays silent; a BL31 without the service answers SMC_UNK, silent as
+    well. Boots without "h713_disp init" that start their OS other than
+    through bootm (bootefi, go, bootelf) stay open.
+
+How far that reaches, plainly: the lock holds against an OS that cannot
+write BL31's memory. On this board BL31 sits in DRAM that nothing protects
+from the normal world, so for root it is a hurdle, not a boundary; the
+comment at the top of the file says so.
+
+The note on the HDCP measurement rule now says what one write per boot means
+for it: the pair is two consecutive boots - h713_hdcp14_wipe=1, then the
+default boot - as doku/148 measured it; the two steps cannot share a boot.
+
+The watchdog guard around the call is unchanged here.
+
+Built for hy310 + release with a BL31 of the matching TF-A commit: exit 0,
+the same 142 warning lines as before, none in h713_hdcp14.c.
+
+Measured on the HY310 over FEL (09.10.2026, doku/180), U-Boot and BL31 of this series,
+Linux from the eMMC: h713_hdcp14_wipe=1 -> "zeros into the sink",
+the ThinkPad's request stays Desired; the next boot, default -> "key set from the stage
+into the sink", Enabled after 2 s. At the prompt a second h713_hdcp14 in one boot:
+"the key sink is closed for this boot"; h713_hdcp14=0: "key sink closed for this
+boot, nothing written".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/h713_hdcp14.c | 169 +++++++++++++++++++++++-------
+ 1 file changed, 130 insertions(+), 39 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/h713_hdcp14.c b/arch/arm/mach-sunxi/h713_hdcp14.c
+index 03a8bfafc02..2b34c68cb91 100644
+--- a/arch/arm/mach-sunxi/h713_hdcp14.c
++++ b/arch/arm/mach-sunxi/h713_hdcp14.c
+@@ -4,9 +4,20 @@
+  *
+  * The board stores its HDCP 1.4 key set in its own secure storage. Nothing in
+  * software can read the key set itself, and nothing here tries: this file reads
+- * the stored record, hands its address to our own EL3 service and lets the
+- * Crypto Engine do the rest. The key set goes from the engine straight into the
+- * receiver's key sink and never appears in memory this code can read.
++ * the stored record, leaves it where our own EL3 service asks for it, and lets
++ * the Crypto Engine do the rest. The key set goes from the engine straight into
++ * the receiver's key sink and never appears in memory this code can read.
++ *
++ * The service takes no address and serves one sink write per boot: EL3 says
++ * where the record goes, checks it again itself, and closes the service after
++ * the first write (sunxi_h713_sip.c in the TF-A fork). When this file writes
++ * nothing it closes the service itself - at every exit of
++ * h713_hdcp14_install() that makes no write, and in arch_preboot_os() for boots
++ * that never get there and start an OS with bootm. That holds against an OS
++ * that cannot write BL31's memory. On this board BL31 sits in DRAM that nothing
++ * protects from the normal world, so for root the lock is a hurdle, not a
++ * boundary. Boots without "h713_disp init" that start their OS other than
++ * through bootm (bootefi, go, bootelf) are not closed at all.
+  *
+  * Why it belongs in the boot loader: the display firmware polls the sink's
+  * "key loaded" bit in Rx_HDCP14_LoadKey and gives up early, so the key has to be
+@@ -21,8 +32,8 @@
+  *     with ESR 0x11, and accepts it towards the sink at 0x03041400. That is a
+  *     design rule, not a bug: the first would be key export.
+  *   - It also refuses it when the DMA source lies outside the Trusted OS window.
+- *     Hence the staging copy to TEE_STAGE - this is the one step that made the
+- *     difference, after hours of looking for the fault elsewhere.
++ *     Hence the stage in that window, which EL3 names - this is the one step
++ *     that made the difference, after hours of looking for the fault elsewhere.
+  *   - The stored bytes need no unwrapping on this device: the vendor's key box
+  *     only decrypts when the item's "encrypted" flag is set, and here op 1 built
+  *     no decrypt task at all. The stored 288 bytes are byte-identical to the
+@@ -32,8 +43,10 @@
+  *     devices with two different serial numbers carry one and the same key set.
+  *     It is still a DRM secret and must never be written into the source tree.
+  *   - The sink survives a warm reset. An "Enabled" measured after an earlier push
+- *     says nothing about the current one, so a measurement only counts as
+- *     wipe -> "Desired" -> push -> "Enabled" within ONE boot (h713_hdcp14_wipe).
++ *     says nothing about the current one, so a measurement only counts as a
++ *     pair of consecutive boots: wipe (h713_hdcp14_wipe=1) -> "Desired", then
++ *     the default boot -> "Enabled". Each boot has one sink write, so the two
++ *     steps cannot share one.
+  *
+  * Nothing in here may ever stop the boot. Every failure prints one line and
+  * returns: a device without a usable key set must still come up, just without
+@@ -42,6 +55,7 @@
+ 
+ #include <command.h>
+ #include <blk.h>
++#include <bootm.h>
+ #include <env.h>
+ #include <cpu_func.h>
+ #include <linux/arm-smccc.h>
+@@ -49,18 +63,23 @@
+ #include <vsprintf.h>
+ #include <asm/io.h>
+ #include <linux/delay.h>
++#include <asm/global_data.h>
+ #include <asm/unaligned.h>
+ 
+-/* Our own EL3 service: put a key set from the Trusted OS window into the sink. */
+-#define H713_SIP_PUSH_FROM	0x8200001cUL
++DECLARE_GLOBAL_DATA_PTR;
+ 
+ /*
+- * The landing place inside the Trusted OS window. The engine reads its DMA
+- * source from there; see the note on measured facts above.
++ * Our own EL3 service. STAGE answers where the record goes (a1) and how much
++ * room there is (a2); ONCE is the one sink write of this boot - the staged key
++ * set, zeros, or nothing - and closes the service whatever it was. Neither
++ * takes an address.
+  */
+-#define TEE_STAGE		0x48a00000UL
+-/* Scratch for the slot while we parse it - outside the window, plain DRAM. */
+-#define SLOT_SCRATCH		0x4c000000UL
++#define H713_SIP_HDCP14_STAGE	0x8200001dUL
++#define H713_SIP_HDCP14_ONCE	0x8200001eUL
++#define HDCP14_KEY_SET		0UL
++#define HDCP14_ZEROS		1UL
++#define HDCP14_NOTHING		2UL
++#define H713_SIP_E_CLOSED	0x17UL		/* already written or closed */
+ 
+ /*
+  * The secure storage. Region and slot size are the device's layout; everything
+@@ -71,6 +90,7 @@
+ #define SS_SLOT_BYTES		4096UL
+ #define SS_SLOT_BLOCKS		(SS_SLOT_BYTES / 512UL)
+ #define SS_SCAN_SLOTS		32UL		/* items live in the first few */
++#define SS_STAGE_BYTES		(2 * SS_SLOT_BYTES)	/* original and copy */
+ #define SS_MAGIC		0x17253948UL
+ #define SS_NAME_OFF		0x08UL
+ #define SS_NAME_MAX		0x40UL
+@@ -190,16 +210,16 @@ static int slot_hdcp14_payload(const u8 *slot, const u8 **payload)
+ }
+ 
+ /*
+- * Find the key set in the secure storage and copy HDCP14_KEY_LEN bytes of it to
+- * `dst`. The device keeps every item twice; both copies must agree, otherwise
+- * the record is damaged and we would be pushing rubbish into the sink.
++ * Find the key item in the secure storage and leave both stored copies - the
++ * two slots, unchanged - at `stage`, where EL3 checks them again and takes the
++ * key set from. The device keeps every item twice; both copies must agree,
++ * otherwise the record is damaged and we would be pushing rubbish into the sink.
+  */
+-static int read_key_set(void *dst)
++static int read_key_set(u8 *stage)
+ {
+ 	static u8 slot[SS_SLOT_BYTES] __aligned(64);
+-	static u8 first[HDCP14_KEY_LEN] __aligned(64);
++	const u8 *first = NULL;
+ 	struct blk_desc *desc;
+-	bool have_first = false;
+ 	ulong i;
+ 	int ret = -ENOENT;
+ 
+@@ -233,9 +253,9 @@ static int read_key_set(void *dst)
+ 			ret = -EILSEQ;
+ 			continue;
+ 		}
+-		if (!have_first) {
+-			memcpy(first, payload, HDCP14_KEY_LEN);
+-			have_first = true;
++		if (!first) {
++			memcpy(stage, slot, SS_SLOT_BYTES);
++			first = stage + (payload - slot);
+ 			ret = -EAGAIN;	/* found one, still want the copy */
+ 			continue;
+ 		}
+@@ -245,7 +265,7 @@ static int read_key_set(void *dst)
+ 			ret = -EBADMSG;
+ 			break;
+ 		}
+-		memcpy(dst, first, HDCP14_KEY_LEN);
++		memcpy(stage + SS_SLOT_BYTES, slot, SS_SLOT_BYTES);
+ 		ret = 0;
+ 		break;
+ 	}
+@@ -259,38 +279,93 @@ static int read_key_set(void *dst)
+ 		       SS_ITEM_NAME);
+ 
+ 	memset(slot, 0, sizeof(slot));
+-	memset(first, 0, sizeof(first));
++	if (ret)
++		memset(stage, 0, SS_STAGE_BYTES);
+ 	return ret;
+ }
+ 
+-/* Hand whatever lies staged at TEE_STAGE to the sink, under the watchdog. */
+-static int push_staged(unsigned long *verdict)
++/*
++ * Where EL3 wants the record: its answer, checked against the RAM U-Boot
++ * knows, or 0 with the reason printed.
++ */
++static ulong hdcp14_stage(void)
++{
++	struct arm_smccc_res res = { 0 };
++
++	arm_smccc_smc(H713_SIP_HDCP14_STAGE, 0, 0, 0, 0, 0, 0, 0, &res);
++	if (res.a0 == (unsigned long)-1) {
++		printf("H713 HDCP: this BL31 has no key-sink service\n");
++		return 0;
++	}
++	if (res.a0 == H713_SIP_E_CLOSED) {
++		printf("H713 HDCP: the key sink is closed for this boot\n");
++		return 0;
++	}
++	if (res.a0 || res.a2 < SS_STAGE_BYTES || (res.a1 & 63) ||
++	    res.a1 < gd->ram_base || res.a1 + SS_STAGE_BYTES > gd->ram_top) {
++		printf("H713 HDCP: EL3 names no usable stage (0x%lx at 0x%lx)\n",
++		       res.a0, res.a1);
++		return 0;
++	}
++	return res.a1;
++}
++
++/*
++ * The one sink write of this boot, under the watchdog: the staged key set,
++ * zeros, or nothing. A stage, if given, is wiped afterwards.
++ */
++static int hdcp14_once(ulong what, ulong stage, unsigned long *verdict)
+ {
+ 	struct arm_smccc_res res = { 0 };
+ 
+-	flush_dcache_range(TEE_STAGE, TEE_STAGE + HDCP14_KEY_LEN);
++	if (stage)
++		flush_dcache_range(stage, stage + SS_STAGE_BYTES);
+ 	wdt_guard_on();
+-	arm_smccc_smc(H713_SIP_PUSH_FROM, TEE_STAGE, 0, 0, 0, 0, 0, 0, &res);
++	arm_smccc_smc(H713_SIP_HDCP14_ONCE, what, 0, 0, 0, 0, 0, 0, &res);
+ 	wdt_guard_off();
+ 
+ 	/* Our SiP answers with SMC_RET1: the verdict is in a0, not a1. */
+ 	*verdict = res.a0;
+-	memset((void *)TEE_STAGE, 0, HDCP14_KEY_LEN);
+-	flush_dcache_range(TEE_STAGE, TEE_STAGE + HDCP14_KEY_LEN);
++	if (stage) {
++		memset((void *)stage, 0, SS_STAGE_BYTES);
++		flush_dcache_range(stage, stage + SS_STAGE_BYTES);
++	}
+ 	if (res.a0 == (unsigned long)-1) {
+ 		printf("H713 HDCP: this BL31 has no key-sink service\n");
+ 		return -ENOSYS;
+ 	}
++	if (res.a0 == H713_SIP_E_CLOSED) {
++		printf("H713 HDCP: the key sink is closed for this boot\n");
++		return -EALREADY;
++	}
+ 	return res.a0 ? -EIO : 0;
+ }
+ 
++/*
++ * Close the service for this boot without writing anything. It says so only
++ * when it really closed it: after a write it is closed already (E_CLOSED), and
++ * a BL31 without the service answers SMC_UNK.
++ */
++static void hdcp14_close(void)
++{
++	struct arm_smccc_res res = { 0 };
++
++	arm_smccc_smc(H713_SIP_HDCP14_ONCE, HDCP14_NOTHING, 0, 0, 0, 0, 0, 0,
++		      &res);
++	if (res.a0 == 0)
++		printf("H713 HDCP: key sink closed for this boot, nothing "
++		       "written\n");
++}
++
+ int h713_hdcp14_install(void)
+ {
+ 	unsigned long verdict = 0;
++	ulong stage;
+ 	int ret;
+ 
+ 	if (env_get_yesno("h713_hdcp14") == 0) {
+ 		printf("H713 HDCP: skipped on request (h713_hdcp14=0)\n");
++		hdcp14_close();
+ 		return 0;
+ 	}
+ 
+@@ -298,33 +373,48 @@ int h713_hdcp14_install(void)
+ 	 * Clearing the sink is the only way to get a defined starting point for
+ 	 * a measurement, because the sink survives a warm reset. It is also the
+ 	 * proof that our push mechanism works at all: a source must fall back
+-	 * to "Desired" afterwards.
++	 * to "Desired" afterwards. It is this boot's one sink write.
+ 	 */
+ 	if (env_get_yesno("h713_hdcp14_wipe") == 1) {
+-		memset((void *)TEE_STAGE, 0, HDCP14_KEY_LEN);
+-		ret = push_staged(&verdict);
++		ret = hdcp14_once(HDCP14_ZEROS, 0, &verdict);
+ 		printf("H713 HDCP: sink overwritten with zeros (0x%lx)\n",
+ 		       verdict);
+ 		return ret;
+ 	}
+ 
+-	ret = read_key_set((void *)TEE_STAGE);
++	stage = hdcp14_stage();
++	if (!stage) {
++		hdcp14_close();
++		return -ENOSYS;
++	}
++	ret = read_key_set((u8 *)stage);
+ 	if (ret) {
+ 		printf("H713 HDCP: no key set installed, booting without "
+ 		       "protected playback\n");
++		hdcp14_close();
+ 		return ret;
+ 	}
+ 
+-	ret = push_staged(&verdict);
+-	if (ret) {
++	ret = hdcp14_once(HDCP14_KEY_SET, stage, &verdict);
++	if (ret == -EIO)
+ 		printf("H713 HDCP: the sink refused the key set (0x%lx)\n",
+ 		       verdict);
++	if (ret)
+ 		return ret;
+-	}
+ 	printf("H713 HDCP: 1.4 key set handed to the receiver\n");
+ 	return 0;
+ }
+ 
++/*
++ * The backstop for boots that never ran h713_hdcp14_install() - a role without
++ * "h713_disp init" - and start an OS with bootm: close the service before it.
++ * Every other boot has closed it already, and this stays silent.
++ */
++void arch_preboot_os(void)
++{
++	hdcp14_close();
++}
++
+ static int do_h713_hdcp14(struct cmd_tbl *cmdtp, int flag, int argc,
+ 			  char *const argv[])
+ {
+@@ -335,4 +425,5 @@ U_BOOT_CMD(h713_hdcp14, 1, 0, do_h713_hdcp14,
+ 	   "hand this device's HDCP 1.4 key set to its receiver",
+ 	   " - read the stored key set and put it into the receiver's sink\n"
+ 	   "   h713_hdcp14=0      skip it entirely\n"
+-	   "   h713_hdcp14_wipe=1 push 288 zero bytes instead (clears the sink)\n");
++	   "   h713_hdcp14_wipe=1 push 288 zero bytes instead (clears the sink)\n"
++	   "   one sink write per boot; the boot path normally makes it\n");

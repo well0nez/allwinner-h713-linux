@@ -1,7 +1,7 @@
 From 728b1cb9b0bb83efe9c4d6a8f8863078570d1751 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 00:14:33 +0200
-Subject: [PATCH 19/27] allwinner: h713: wait 20 ms for crust to start, with
+Subject: [PATCH 19/30] allwinner: h713: wait 20 ms for crust to start, with
  room for its init to grow
 
 The 12 ms BL31 waits for MAGIC and RUNNING were five times the model time

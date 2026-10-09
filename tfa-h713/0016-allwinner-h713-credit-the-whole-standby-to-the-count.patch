@@ -1,7 +1,7 @@
 From f69ab8ce9f4c09324ebf862aca1fce5731b3ab7a Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:52:41 +0200
-Subject: [PATCH 16/27] allwinner: h713: credit the whole standby to the
+Subject: [PATCH 16/30] allwinner: h713: credit the whole standby to the
  counter, the RTC as a check
 
 The counter was put forward by crust's SLEPT_MS: crust starts counting

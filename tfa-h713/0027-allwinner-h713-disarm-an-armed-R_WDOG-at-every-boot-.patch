@@ -1,7 +1,7 @@
 From 175c6948fedcfc581a9d4a75b59a0681d2b19f4c Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 09:36:45 +0200
-Subject: [PATCH 27/27] allwinner: h713: disarm an armed R_WDOG at every boot
+Subject: [PATCH 27/30] allwinner: h713: disarm an armed R_WDOG at every boot
  by default
 
 Measured on the HY310 on 08.10.2026 (stage S0): the R_WDOG at 0x07020400

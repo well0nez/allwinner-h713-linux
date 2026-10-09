@@ -1,8 +1,8 @@
 From 943dca6fc06617e015cdf35483e3f6a400e7c111 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 31 Aug 2026 20:11:41 +0200
-Subject: [PATCH 08/96] sunxi: h713: keep each firmware revision's facts in one
- table
+Subject: [PATCH 008/100] sunxi: h713: keep each firmware revision's facts in
+ one table
 
 Three constants described the display firmware: an expected size, a pinned
 SHA-256 and the address of the HDCP wait site to patch. They belong to the

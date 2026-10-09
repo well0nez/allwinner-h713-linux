@@ -1,8 +1,8 @@
 From fd3d58a091ae9427852847c166a2becdb13c28ce Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 20:20:27 +0200
-Subject: [PATCH 49/96] sunxi: h713: say what the MIPS clock divider yields --
- 400 MHz, as intended
+Subject: [PATCH 049/100] sunxi: h713: say what the MIPS clock divider yields
+ -- 400 MHz, as intended
 
 We write 0x80000002 to 0x02001600 and never stated a rate, while the
 vendor kernel calls clk_set_rate(mips_clk, 400000000) on its first

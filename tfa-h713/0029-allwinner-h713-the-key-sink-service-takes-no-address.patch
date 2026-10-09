@@ -1,0 +1,439 @@
+From e2298a919fc3ab7d05ea24cd75df311a5c3cd86c Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:26:40 +0200
+Subject: [PATCH 29/30] allwinner: h713: the key-sink service takes no address
+ and serves once
+
+Until now the normal world chose what EL3 loaded as this device's HDCP 1.4
+identity: PUSH_FROM took a source address, checked only its alignment and
+that it lay in the Trusted OS window, and ran the engine task from there -
+at any time, as often as asked, also from a running OS.
+
+The release service now has no address parameter and one sink write per
+boot:
+
+  - HDCP14_STAGE (0x8200001d) answers where the boot loader leaves the
+    stored item: a stage at 0x48a00000, the address the push was measured
+    with, fixed in BL31 and asserted at build time to lie in the window.
+    It holds two secure-storage slots, the item's original and its copy,
+    unchanged as they sit on the eMMC.
+  - HDCP14_ONCE (0x8200001e) is the one sink write of this boot: x1 = 0 the
+    staged key set, 1 zeros (the wipe the HDCP measurement rule needs), 2
+    nothing. Whatever it is and however it ends, the service is closed
+    afterwards; later calls, and STAGE, get E_CLOSED (0x17). U-Boot closes
+    it with "nothing" when it writes nothing - in its HDCP step, and again
+    before it starts an OS with bootm.
+  - Before anything reaches the engine, EL3 makes the structure checks that
+    so far only U-Boot made (TODO 6.2): magic, the item name in both headers,
+    NUL-terminated; an outer length that fits the slot; an inner length equal
+    to the outer one minus the inner header and at least 288; a key set that
+    is not all 0x00 or 0xff; and both copies agreeing on the 288 bytes. A
+    failure names the check on the console and answers E_FORMAT (0x18).
+  - The validated 288 bytes are moved to the start of the stage, so the
+    engine task is the measured one byte for byte (source 0x48a00000, sink
+    0x03041400, key-select 3, decrypt, 288). The whole stage is wiped after.
+
+How far the lock reaches, plainly: it holds against an OS that cannot write
+BL31's memory. On this board BL31 sits in DRAM that nothing protects from the
+normal world (no TZASC is set up, and a no-map reservation does not stop
+/dev/mem), so whoever can write hdcp14_closed can open the service again -
+a hurdle, not a boundary. The comment at the top of the file says so.
+
+The window gets its names, SUNXI_TEE_WINDOW_BASE/LIMIT in sunxi_mmap.h,
+with where the two addresses come from; the workbench calls use them too.
+PUSH_FROM stays for the workbench only (H713_HDCP_RESEARCH=1). The version
+call answers (2, 0). The release-gate string "key set from" stays in the
+NOTICE line.
+
+Release build: no warnings, bl31.bin 49276 bytes as before (.text stays
+within its page). Changed functions: h713_sip_handler (hdcp14_once inlined)
+and the new stage_key_set; the linker adds one Cortex-A53 843419 veneer.
+The structure checks were run on the host against U-Boot's own parser over
+18 synthetic records (no key material): both accept and refuse the same
+ones.
+
+Rebased on 09.10.2026 onto 175c6948f (the standby commits) without a
+conflict. Measured on the HY310 over FEL (09.10.2026, doku/180), U-Boot and BL31 of this series,
+Linux from the eMMC: zeros, then the key set, from the stage
+in two boots in a row (Desired, then Enabled); a second push in one boot refused.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/include/platform_def.h  |   2 +-
+ .../sun50i_h713/include/sunxi_mmap.h          |  11 +
+ plat/allwinner/sun50i_h713/platform.mk        |   7 +-
+ plat/allwinner/sun50i_h713/sunxi_h713_sip.c   | 243 +++++++++++++++---
+ 4 files changed, 218 insertions(+), 45 deletions(-)
+
+diff --git a/plat/allwinner/common/include/platform_def.h b/plat/allwinner/common/include/platform_def.h
+index f0c581441..b0509af71 100644
+--- a/plat/allwinner/common/include/platform_def.h
++++ b/plat/allwinner/common/include/platform_def.h
+@@ -18,7 +18,7 @@
+ #define BL31_BASE			SUNXI_DRAM_BASE
+ #define BL31_LIMIT			(SUNXI_DRAM_BASE + 0x40000)
+ 
+-/* 4 was exactly the static need; the SiP maps one scratch page dynamically. */
++/* 4 was exactly the static need; the H713 SiP maps its stage dynamically. */
+ #define MAX_XLAT_TABLES			8
+ #define PLAT_VIRT_ADDR_SPACE_SIZE	(1ULL << 32)
+ 
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 74cba69a0..1e74cde44 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -20,6 +20,17 @@
+ #define SUNXI_DEV_SIZE			0x09000000
+ #define SUNXI_DRAM_BASE			0x40000000
+ #define SUNXI_DRAM_VIRT_BASE		SUNXI_DRAM_BASE
++/*
++ * The Trusted OS window of the vendor's memory map: its OP-TEE 3.7 runs at
++ * 0x48600000 (the vendor DTS reserves optee@48600000), and 0x48b00000 is the
++ * address its op 2 answered with (doku/146 §3). The Crypto Engine takes a
++ * key-select-3 task into the HDCP 1.4 key sink only with its DMA source in
++ * here - measured at 0x48a00000, doku/147 ch. 7 - and not from BL31's own
++ * memory. Nothing runs from it on this platform; it is plain DRAM that the
++ * kernel is later uncompressed over.
++ */
++#define SUNXI_TEE_WINDOW_BASE		0x48600000
++#define SUNXI_TEE_WINDOW_LIMIT		0x48b00000
+ 
+ /* Memory-mapped devices */
+ #define SUNXI_SYSCON_BASE		0x03000000
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index b733c3483..0f60af0dd 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -67,7 +67,8 @@ BL31_CPPFLAGS		+=	-DH713_VENDOR_SECURITY_SETUP
+ BL31_CPPFLAGS		+=	-DH713_BOOT_WATCHDOG
+ 
+ # The workbench probes in the SiP (and the CE dump) are off by default: a release
+-# image carries only the version call and PUSH_FROM. Turn them on deliberately with
++# image carries only the version call and the two HDCP14 calls that take no
++# address (STAGE, ONCE). Turn them on deliberately with
+ # H713_HDCP_RESEARCH=1, and never ship that image (sunxi_h713_sip.c, doku/148 §2).
+ H713_HDCP_RESEARCH	?=	0
+ ifeq (${H713_HDCP_RESEARCH},1)
+@@ -77,8 +78,8 @@ BL31_SOURCES		+=	${AW_PLAT}/${PLAT}/sunxi_h713_cedump.c
+ endif
+ 
+ # The HDCP 1.4 key-sink service in EL3 (sunxi_h713_sip.c). There is no secure
+-# payload: SPD stays "none" and BL31 enters U-Boot directly. The service maps the
+-# page it works on only for the duration of a call.
++# payload: SPD stays "none" and BL31 enters U-Boot directly. The service maps its
++# stage only for the duration of a call.
+ PLAT_XLAT_TABLES_DYNAMIC	:=	1
+ BL31_CPPFLAGS		+=	-DPLAT_XLAT_TABLES_DYNAMIC=1
+ 
+diff --git a/plat/allwinner/sun50i_h713/sunxi_h713_sip.c b/plat/allwinner/sun50i_h713/sunxi_h713_sip.c
+index 20e229465..5f8a55a7b 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_h713_sip.c
++++ b/plat/allwinner/sun50i_h713/sunxi_h713_sip.c
+@@ -5,27 +5,38 @@
+  */
+ 
+ /*
+- * H713 SiP service: the HDCP 1.4 key through the Crypto Engine from EL3.
++ * H713 SiP service: this device's HDCP 1.4 key set into its receiver, from EL3.
+  *
+- * Road 6b of doku/112: the 288-byte key item (AES-128 ECB under the RSSK, the
+- * eFuse key behind key-select 3) is decrypted by the engine straight into the
+- * HDMI receiver's key sink 0x03041400, as OP-TEE does it on the stock chain
+- * (sunxi_load_hdcp_key 0x4860caf0 -> sunxi_aes_with_hardware 0x4860c578) -
+- * from EL3 on the secure bank CE_S, for the case that the non-secure bank does
+- * not serve key-select 3 to the Linux driver h713-ce. Same vendor descriptor
+- * (doku/nachtlog/S49), same gate (doku/112 0 rule 4: the KAT before the first
+- * key-select 3 task of a boot, BL31's own RSSK probe before the first sink
+- * transfer). The engine only touches BL31's DRAM; the caller's buffer is read
+- * by the CPU once, through the static BL33 window or a temporary page
+- * mapping, and the caller cleans its cache first. No plaintext reaches DRAM.
++ * The device keeps its 288-byte key set in its own secure storage on the eMMC.
++ * The Crypto Engine decrypts it with key-select 3, a key only the engine holds,
++ * and writes the result straight into the HDMI receiver's key sink 0x03041400;
++ * the plaintext never reaches memory that software can read, and the engine
++ * refuses key-select 3 towards readable memory by design (doku/148 §0). The task
++ * runs on the engine's secure bank with its DMA source in the Trusted OS window
++ * (sunxi_mmap.h) - the combination measured to work (doku/147 ch. 7).
+  *
+- * SMC32 fast calls, owner SiP: 0x82000010 HDCP14_LOAD (x1 = phys of the
+- * ciphertext, 64-byte aligned NS DRAM, x2 = 288); 0x82000011 HDCP14_PROBE
+- * (x1 = phys of a 16-byte result buffer, x2 = 16: the RSSK probe, its result
+- * copied to x1 for the caller to classify, never printed); 0x8200ff03
+- * SIP_SVC_VERSION (1, 0). x0 on return: 0; SMC_UNK for an unknown call, a bad
+- * address or length; an H713_SIP_E_* code; or 0x100 | the ESR byte. The two
+- * success lines are NOTICE so that a DEBUG=0 build shows them on the UART.
++ * What a release build offers the normal world, SMC32 fast calls, owner SiP:
++ *   0x8200ff03 SIP_SVC_VERSION  (2, 0)
++ *   0x8200001d HDCP14_STAGE     x1 = where the boot loader leaves the stored item,
++ *                               x2 = the room there; E_CLOSED once the service
++ *                               is closed
++ *   0x8200001e HDCP14_ONCE      x1 = what goes into the sink: 0 the staged key
++ *                               set, 1 zeros (clears the sink, for measuring),
++ *                               2 nothing. The first call of a boot is the only
++ *                               one, whatever its outcome.
++ * No call takes an address. U-Boot copies the item's two stored copies - two
++ * secure-storage slots, unchanged - to the stage; EL3 checks their structure
++ * itself, as U-Boot does, and runs one engine task from the stage into the sink.
++ * U-Boot closes the service when it writes nothing: in its HDCP step, and
++ * again before it starts an OS with bootm. That holds against an OS that cannot
++ * write BL31's memory. On this board it can: BL31 sits in DRAM that nothing
++ * protects from the normal world (no TZASC is set up, and a no-map reservation
++ * does not stop /dev/mem), so whoever can write hdcp14_closed can open the
++ * service again. Here the lock is a hurdle, not a boundary.
++ *
++ * x0 on return: 0; SMC_UNK for an unknown call or argument; an H713_SIP_E_*
++ * code; or 0x100 | the engine's ESR byte. The results are NOTICE lines, so a
++ * DEBUG=0 build shows them on the UART.
+  */
+ 
+ #include <string.h>
+@@ -36,6 +47,7 @@
+ #include <common/debug.h>
+ #include <common/runtime_svc.h>
+ #include <drivers/delay_timer.h>
++#include <lib/cassert.h>
+ #include <lib/mmio.h>
+ #include <lib/spinlock.h>
+ #include <libfdt.h>
+@@ -47,27 +59,25 @@
+ #include <sunxi_mmap.h>
+ 
+ /*
+- * The services below fall into two groups. Only two of them are needed to run a
+- * device: the version call and PUSH_FROM, which puts a staged key set into the
+- * receiver's sink. Everything else exists because we had to find out HOW this
+- * engine behaves - probes that run engine tasks with caller-chosen key slots,
+- * lengths and addresses, dump descriptors, or read eFuse flags.
+- *
+- * Those belong on a workbench, not in a shipped image: they let the normal world
+- * drive the Crypto Engine far more freely than booting a projector requires, and
+- * every one of them is attack surface for no gain. They are compiled only with
+- * H713_HDCP_RESEARCH=1 and are absent from a release build.
+- *
+- * What remains reachable is deliberate and bounded: PUSH_FROM accepts one source
+- * address inside the Trusted OS window, with a fixed length, and the destination
+- * is always the key sink. The worst a caller can do is install a key set that
+- * does not authenticate - it can never read one back, because the engine refuses
+- * the hardware key towards readable memory by design (doku/148 §0).
++ * Everything else in this file is workbench: probes that run engine tasks with
++ * caller-chosen key slots, lengths and addresses, dump descriptors, read eFuse
++ * flags, or push from a caller-chosen address in the window (PUSH_FROM, the
++ * release call until 07.10.2026). They exist because we had to find out HOW this
++ * engine behaves, and they let the normal world drive it far more freely than
++ * booting a projector requires. They are compiled only with H713_HDCP_RESEARCH=1
++ * and are absent from a release build.
+  */
+ #ifndef H713_HDCP_RESEARCH
+ #define H713_HDCP_RESEARCH	0
+ #endif
+ 
++/* The release service, see the top of this file. */
++#define H713_SIP_HDCP14_STAGE	U(0x8200001d)
++#define H713_SIP_HDCP14_ONCE	U(0x8200001e)
++#define HDCP14_ONCE_KEY_SET	U(0)
++#define HDCP14_ONCE_ZEROS	U(1)
++#define HDCP14_ONCE_NOTHING	U(2)
++
+ #define H713_SIP_HDCP14_LOAD	U(0x82000010)
+ #define H713_SIP_HDCP14_PROBE	U(0x82000011)
+ #define H713_SIP_EFUSE_FLAGS	U(0x82000012)
+@@ -157,6 +167,8 @@ uintptr_t h713_ce_dump(void);
+ #define H713_SIP_E_RSSK		U(0x14)	/* BL31's own RSSK probe did not pass */
+ #define H713_SIP_E_CLOCK	U(0x15)	/* the CE clocks or resets are off */
+ #define H713_SIP_E_OVERRUN	U(0x16)	/* the engine wrote past the length */
++#define H713_SIP_E_CLOSED	U(0x17)	/* HDCP14_ONCE was used or closed this boot */
++#define H713_SIP_E_FORMAT	U(0x18)	/* the staged item failed a structure check */
+ #define H713_SIP_E_ESR		U(0x100)
+ 
+ /* CE_S registers as OP-TEE programs them (0x4860c2ac..0x4860c360), channel 0. */
+@@ -507,12 +519,12 @@ static uint64_t desc_field_addr(uintptr_t d, unsigned int off)
+  * plaintext (its own buffer, read only). Returns the number of differing bytes,
+  * or 0x1xx on an engine error.
+  */
+-static u_register_t push_from(uintptr_t src_pa)
++static u_register_t __unused push_from(uintptr_t src_pa)
+ {
+ 	uint32_t ret;
+ 
+-	if ((src_pa & 0x3fUL) != 0UL || src_pa < 0x48600000UL ||
+-	    src_pa + HDCP14_LEN > 0x48b00000UL)
++	if ((src_pa & 0x3fUL) != 0UL || src_pa < SUNXI_TEE_WINDOW_BASE ||
++	    src_pa + HDCP14_LEN > SUNXI_TEE_WINDOW_LIMIT)
+ 		return (u_register_t)SMC_UNK;
+ 	spin_lock(&ce_lock);
+ 	if (mmap_add_dynamic_region(src_pa & ~PAGE_SIZE_MASK,
+@@ -534,11 +546,154 @@ static u_register_t push_from(uintptr_t src_pa)
+ 	return ret;
+ }
+ 
++/*
++ * The stage: the one place where the boot loader leaves the stored item for us -
++ * two secure-storage slots, the original and its copy, unchanged as they sit on
++ * the eMMC (layout measured in doku/148 §1; U-Boot's h713_hdcp14.c and
++ * installer/h713/hdcpitems.py read the same). 0x48a00000 is the address the push
++ * was measured with, and the 288 bytes for the engine are moved to its start,
++ * so the engine task is the measured one, byte for byte.
++ */
++#define HDCP14_STAGE		UL(0x48a00000)
++#define SS_SLOT_BYTES		U(4096)
++#define HDCP14_STAGE_SIZE	(2U * SS_SLOT_BYTES)
++#define SS_MAGIC		U(0x17253948)
++#define SS_NAME_OFF		U(0x08)
++#define SS_OUTER_LEN_OFF	U(0x60)
++#define SS_OUTER_DATA_OFF	U(0x64)
++#define SS_INNER_LEN_OFF	U(0x40)		/* relative to the outer payload */
++#define SS_INNER_DATA_OFF	U(0x4c)		/* relative to the outer payload */
++#define SS_ITEM_NAME		"hdcpkey"
++
++CASSERT((HDCP14_STAGE >= SUNXI_TEE_WINDOW_BASE) &&
++	(HDCP14_STAGE + HDCP14_STAGE_SIZE <= SUNXI_TEE_WINDOW_LIMIT) &&
++	((HDCP14_STAGE & PAGE_SIZE_MASK) == 0U), assert_hdcp14_stage_in_window);
++
++static bool hdcp14_closed;
++
++static uint32_t le32(const uint8_t *p)
++{
++	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
++	       ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
++}
++
++static bool all_same(const uint8_t *p, unsigned int len, uint8_t v)
++{
++	unsigned int i;
++
++	for (i = 0U; i < len; i++)
++		if (p[i] != v)
++			return false;
++	return true;
++}
++
++/*
++ * One staged slot, checked the way U-Boot checks it before staging
++ * (slot_hdcp14_payload() and read_key_set() in h713_hdcp14.c): the magic, the
++ * name in both headers, NUL-terminated; an outer length that fits the slot; an
++ * inner length that is the outer one minus the inner header and holds a key
++ * set; and a key set that is not all 0x00 or all 0xff. Returns the key set, or
++ * NULL with the failed check named.
++ */
++static const uint8_t *stage_key_set(const uint8_t *slot, unsigned int n)
++{
++	static const char name[] = SS_ITEM_NAME;
++	const uint8_t *data = slot + SS_OUTER_DATA_OFF;
++	const uint8_t *key = data + SS_INNER_DATA_OFF;
++	uint32_t outer = le32(slot + SS_OUTER_LEN_OFF);
++	uint32_t inner = le32(data + SS_INNER_LEN_OFF);
++	const char *bad = NULL;
++
++	if (le32(slot) != SS_MAGIC ||
++	    memcmp(slot + SS_NAME_OFF, name, sizeof(name)) != 0)
++		bad = "magic or name";
++	else if (outer == 0U || outer > SS_SLOT_BYTES - SS_OUTER_DATA_OFF)
++		bad = "outer length";
++	else if (memcmp(data, name, sizeof(name)) != 0)
++		bad = "inner name";
++	else if (outer < SS_INNER_DATA_OFF ||
++		 inner != outer - SS_INNER_DATA_OFF || inner < HDCP14_LEN)
++		bad = "inner length";
++	else if (all_same(key, HDCP14_LEN, 0x00U) ||
++		 all_same(key, HDCP14_LEN, 0xffU))
++		bad = "no key set";
++	if (bad != NULL) {
++		ERROR("H713 SiP: staged copy %u: %s\n", n, bad);
++		return NULL;
++	}
++	return key;
++}
++
++/*
++ * The one sink write of this boot. Whatever it is and however it ends, the
++ * service is closed afterwards: a second call - from U-Boot's prompt or from an
++ * OS - gets E_CLOSED, and HDCP14_STAGE no longer answers. The stage is wiped
++ * either way.
++ */
++static u_register_t hdcp14_once(u_register_t what)
++{
++	uint8_t *stage = (uint8_t *)HDCP14_STAGE;
++	const uint8_t *a, *b;
++	uint32_t ret = 0U;
++
++	if (what > HDCP14_ONCE_NOTHING)
++		return (u_register_t)SMC_UNK;
++	spin_lock(&ce_lock);
++	if (hdcp14_closed) {
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_CLOSED;
++	}
++	hdcp14_closed = true;
++	if (what == HDCP14_ONCE_NOTHING) {
++		spin_unlock(&ce_lock);
++		return 0;
++	}
++	if (mmap_add_dynamic_region(HDCP14_STAGE, HDCP14_STAGE, HDCP14_STAGE_SIZE,
++				    MT_MEMORY | MT_RW | MT_SECURE |
++				    MT_EXECUTE_NEVER) != 0) {
++		spin_unlock(&ce_lock);
++		return H713_SIP_E_MAP;
++	}
++	if (what == HDCP14_ONCE_KEY_SET) {
++		/* U-Boot cleaned its cache over the stage before the call. */
++		inv_dcache_range(HDCP14_STAGE, HDCP14_STAGE_SIZE);
++		a = stage_key_set(stage, 0U);
++		b = stage_key_set(stage + SS_SLOT_BYTES, 1U);
++		if (a == NULL || b == NULL) {
++			ret = H713_SIP_E_FORMAT;
++		} else if (memcmp(a, b, HDCP14_LEN) != 0) {
++			ERROR("H713 SiP: the two staged copies differ\n");
++			ret = H713_SIP_E_FORMAT;
++		} else {
++			memmove(stage, a, HDCP14_LEN);
++		}
++	} else {
++		zeromem(stage, HDCP14_LEN);
++	}
++	if (ret == 0U) {
++		zeromem(ce_buf + BUF_KEY, 64);
++		flush_dcache_range((uintptr_t)ce_buf, BUF_SIZE);
++		flush_dcache_range(HDCP14_STAGE, HDCP14_LEN);
++		ret = ce_run_full(true, (uint32_t)3U << 20, HDCP14_LEN,
++				  HDCP14_STAGE, SUNXI_HDCP14_SINK);
++	}
++	zeromem(stage, HDCP14_STAGE_SIZE);
++	flush_dcache_range(HDCP14_STAGE, HDCP14_STAGE_SIZE);
++	mmap_remove_dynamic_region(HDCP14_STAGE, HDCP14_STAGE_SIZE);
++	spin_unlock(&ce_lock);
++	if (what == HDCP14_ONCE_KEY_SET)
++		NOTICE("H713 SiP: key set from the stage into the sink: 0x%x\n",
++		       ret);
++	else
++		NOTICE("H713 SiP: zeros into the sink: 0x%x\n", ret);
++	return ret;
++}
++
+ static u_register_t __unused plain_compare(uintptr_t a_pa, uintptr_t b_pa)
+ {
+ 	unsigned int diff = 0U, i;
+ 
+-	if (b_pa < 0x48600000UL || b_pa >= 0x48b00000UL)
++	if (b_pa < SUNXI_TEE_WINDOW_BASE || b_pa >= SUNXI_TEE_WINDOW_LIMIT)
+ 		return (u_register_t)SMC_UNK;
+ 	spin_lock(&ce_lock);
+ 	if (mmap_add_dynamic_region(b_pa & ~PAGE_SIZE_MASK,
+@@ -1006,10 +1161,16 @@ static uintptr_t h713_sip_handler(uint32_t smc_fid, u_register_t x1,
+ 	x2 = (uint32_t)x2;
+ 	switch (smc_fid) {
+ 	case H713_SIP_SVC_VERSION:
+-		SMC_RET2(handle, 1, 0);
++		SMC_RET2(handle, 2, 0);
++	case H713_SIP_HDCP14_STAGE:
++		if (hdcp14_closed)
++			SMC_RET1(handle, H713_SIP_E_CLOSED);
++		SMC_RET3(handle, 0, HDCP14_STAGE, HDCP14_STAGE_SIZE);
++	case H713_SIP_HDCP14_ONCE:
++		SMC_RET1(handle, hdcp14_once(x1));
++#if H713_HDCP_RESEARCH
+ 	case H713_SIP_PUSH_FROM:
+ 		SMC_RET1(handle, push_from(x1));
+-#if H713_HDCP_RESEARCH
+ 	case H713_SIP_HDCP14_LOAD:
+ 		SMC_RET1(handle, hdcp14_op(x1, x2, true));
+ 	case H713_SIP_HDCP14_PROBE:

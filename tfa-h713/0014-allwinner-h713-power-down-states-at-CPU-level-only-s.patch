@@ -1,7 +1,7 @@
 From bc354d359fd42fbcc53aee9b6e5f93b4dd25ae60 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:48:59 +0200
-Subject: [PATCH 14/27] allwinner: h713: power-down states at CPU level only,
+Subject: [PATCH 14/30] allwinner: h713: power-down states at CPU level only,
  standby from core 0 only
 
 validate_power_state accepted a power-down up to the system level, and

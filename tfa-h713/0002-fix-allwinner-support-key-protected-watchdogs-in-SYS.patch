@@ -1,7 +1,7 @@
 From c909a11220f69c99a34044bd68dc3e3af96e2d94 Mon Sep 17 00:00:00 2001
 From: Christopher Stenger <chris.h.stenger@gmail.com>
 Date: Mon, 13 Jul 2026 03:41:54 -0700
-Subject: [PATCH 02/27] fix(allwinner): support key-protected watchdogs in
+Subject: [PATCH 02/30] fix(allwinner): support key-protected watchdogs in
  SYSTEM_RESET
 
 The H713/sun50iw12 watchdog uses the sun55i-style key-protected

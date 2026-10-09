@@ -1,7 +1,7 @@
 From e1be80b6b1aa7a0ab1c1ca9950f84f58af5228a6 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:55:27 +0200
-Subject: [PATCH 18/27] allwinner: h713: say what the standby path does now,
+Subject: [PATCH 18/30] allwinner: h713: say what the standby path does now,
  and where the switch comes from
 
 The head of sunxi_standby.c still described the vendor's scp.bin, loaded

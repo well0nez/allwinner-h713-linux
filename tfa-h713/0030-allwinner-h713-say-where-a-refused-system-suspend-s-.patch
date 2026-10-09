@@ -1,0 +1,33 @@
+From 5a7806892303705f13a10b06f63528d6a78c1ae9 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 18:57:00 +0200
+Subject: [PATCH 30/30] allwinner: h713: say where a refused system suspend's
+ reset ends
+
+Since kernel 0245 Linux writes "STBY" into RTC GP5 at the start of a
+standby and takes it back once the display core runs again, so a reset in
+between ends in U-Boot's power gate instead of a boot with the lamp on.
+The reset BL31 makes when crust does not accept the suspend is one of
+them; the comment still said the boot loader finds RUN1. Comment only.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_native_pm.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/plat/allwinner/common/sunxi_native_pm.c b/plat/allwinner/common/sunxi_native_pm.c
+index 4957bc98d..8406112b8 100644
+--- a/plat/allwinner/common/sunxi_native_pm.c
++++ b/plat/allwinner/common/sunxi_native_pm.c
+@@ -96,7 +96,10 @@ static void sunxi_pwr_domain_suspend(const psci_power_state_t *target_state)
+ 	 * The whole system: the management processor takes it from here and
+ 	 * releases this CPU at sunxi_sec_entrypoint when a wake source fires.
+ 	 * If it cannot be told, sleeping would be a hang with nothing to wake
+-	 * us; reset instead, and the boot loader finds RUN1 in GP5.
++	 * us; reset instead. Linux marked the standby in GP5 ("STBY",
++	 * sun50i-h713-mips), so the boot loader waits in its power gate, dark,
++	 * as after a power-off; a kernel without that mark leaves "RUN1" and
++	 * the board boots again.
+ 	 */
+ 	if (is_local_state_off(target_state->pwr_domain_state[PLAT_MAX_PWR_LVL]) &&
+ 	    sunxi_system_suspend_enter() != 0) {
