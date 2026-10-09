@@ -1,5 +1,7 @@
 # 175 - HDCP 1.4 übersteht den Standby; was vom HDCP-Härtungspaket bleibt (09.10.2026, 17:40)
 
+> **Korrigiert durch `178` (09.10.):** §4 schätzt 6.5 falsch ein - der 6-s-Wächter läuft schon heute nur um die Übergabe, 6.5 ändert nur den Weg (Treiber statt fester Register). Marco: 6.5 kommt mit 1.1a.
+
 **Kurz:** Marco fragte, ob die am 07.10. vorbereitete HDCP-Härtung (`doku/161`, TODO 6.1/6.2/6.5/6.6/6.9) inzwischen
 erledigt oder überholt sei. Im Code: nichts davon ist eingebaut. Gegen die heutigen Köpfe geprüft und am Gerät die
 entscheidende Frage gemessen: der HDCP-1.4-Schlüssel bleibt über Standby und MIPS-Neustart in der Senke, eine Schreibung

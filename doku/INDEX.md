@@ -222,6 +222,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`175-hdcp14-nach-standby-und-haertungspaket-20261009.md`](175-hdcp14-nach-standby-und-haertungspaket-20261009.md) | Analyse | 2026-10-09 | 175 - HDCP 1.4 übersteht den Standby; was vom HDCP-Härtungspaket bleibt (09.10.2026, 17:40) | 2 |
 | [`176-nachtrag-mips-neustart-und-resume-haenger-20261008.md`](176-nachtrag-mips-neustart-und-resume-haenger-20261008.md) | Analyse | 2026-10-08 | 176 - Nachtrag 08.10. abends: MIPS-Neustart am HY310 (V2, V3, V8) und die Suche nach dem Resume-Hänger (L-B, L-A, L-C) (08.10.2026, 16:00-21:40; geschrieben 09.10.2026) | 4 |
 | [`177-r2-abgenommen-und-in-main-20261009.md`](177-r2-abgenommen-und-in-main-20261009.md) | Analyse | 2026-10-09 | 177 - R2 abgenommen und in `main`: Abnahmereihe V4 auf r2test4, Ton nach dem Standby, Aufräumen (09.10.2026, 16:45) | 5 |
+| [`178-hdcp-paket-entscheidungen-20261009.md`](178-hdcp-paket-entscheidungen-20261009.md) | Analyse | 2026-10-09 | 178 - HDCP-Härtungspaket: Entscheidungen für den Release-Neubau, Korrektur zu 6.5 (09.10.2026, abends) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -379,7 +380,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-40 von 236 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+41 von 237 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -413,6 +414,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `160-hdcp-haertung-aufgeraeumt-20261007.md`
 * `161-hdcp-haertung-paket-20261007.md`
 * `169-crust-release-offline-fertig-20261008.md`
+* `178-hdcp-paket-entscheidungen-20261009.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

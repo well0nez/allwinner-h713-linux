@@ -20,6 +20,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       HDCP und `docs/subsystems/hdcp.md` (eine Schreibung pro Boot, keine Adresse)
       - **09.10.:** `main` trägt seit c4a3924 crust als HY310-Firmware und den Standby (R1, R2). Der Neubau braucht
         `CRUST_SRC` (crust-Klon auf ecf2ddc, bis 5.15) und die Entscheidung 2.29 (mit oder ohne `--standby`)
+      - **09.10. abends (Marco, `doku/178`):** das HDCP-Paket kommt ganz mit, 6.5 eingeschlossen; TF-A `0001`/`0002` vorher auf
+        `175c6948f` neu aufsetzen (Konflikte in `sunxi_bl31_setup.c`, `platform.mk`), U-Boot `0001`-`0003` passen auf `87b2a44`,
+        Repo `0002` an das neue `uboot-build.sh` anpassen
 - [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
       Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
       WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
@@ -354,7 +357,9 @@ keinen `HDCP14_STAGE`/`HDCP14_ONCE`, U-Boot `87b2a44` noch `h713_hdcp14_wait`. D
 `4c1bd8c6`; vor dem Einbau auf `175c6948f` (21 Standby-Commits darüber) nachziehen, bauen, per FEL messen (Plan im Paket §8).
 **09.10. abends geprüft (`doku/175`):** TF-A 0001/0002 kollidieren mit den 21 Standby-Commits (`sunxi_bl31_setup.c`,
 `platform.mk`), U-Boot 0001-0003 passen, Repo 0002 nicht. HDCP 1.4 übersteht Standby und MIPS-Neustart (gemessen) - eine
-Schreibung pro Boot bleibt richtig. 6.5 (U-Boot startet den Watchdog mit 6 s) gegen die R1-Regeln neu bewerten, eher überholt.
+Schreibung pro Boot bleibt richtig.
+**09.10. abends entschieden (Marco, `doku/178`):** das ganze Paket mit 1.1a, 6.5 eingeschlossen (6.5 ändert nur den Weg - Treiber statt fester
+Register -, nicht das Verhalten; die Einschätzung "eher überholt" in `doku/175` §4 war falsch). TF-A 0001/0002 vorher auf `175c6948f` neu aufsetzen.
 
 - [ ] 6.1 **TEE-2** EL3 liest den Schlüssel selbst; `push_from` ohne Aufrufer-Adresse ← zuerst. Mit 6.2 und 6.5 ein Paket:
       reine Härtung, nichts ist kaputt (heute schlimmstenfalls ein falscher Schlüssel durch Root, auslesen geht nicht).
@@ -368,6 +373,7 @@ Schreibung pro Boot bleibt richtig. 6.5 (U-Boot startet den Watchdog mit 6 s) ge
 - [x] 6.4 TEE-4 die 32 Byte Anhang des 320-Byte-Datensatzes erklären - **gestrichen 07.10. (Marco)**: Neugier, mit 288 Byte geht es
 - [ ] 6.5 TEE-5 Watchdog über Treiber; `0x48a00000` und Fenster ableiten statt Konstante - im Paket 6.1 (07.10.): WDT-uclass,
       Fenster als `SUNXI_TEE_WINDOW_*` in BL31 mit Herkunft (aus dem DT nicht ableitbar)
+      - **09.10. (Marco): mitnehmen**, mit 1.1a (`doku/178`)
 - [ ] 6.6 `h713_hdcp14_wait`-Env ganz entfernen? (entschärft, existiert noch) - **07.10. vorbereitet**: U-Boot-Patch + Gegenstück für
       `check-hdcp-artifacts.sh` in `arbeit/hdcp-wait-env-20261007/patches/`, hy310/release gebaut (gleiche Warnungen wie vorher,
       Schalter weg aus dem Binary), passt auf die Linien; Einbau und Messung mit **1.1a** (Marco 07.10.: ja)
