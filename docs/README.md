@@ -17,7 +17,7 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 [h713-cam](tools/h713-cam.md) · [h713-wifi](tools/h713-wifi.md) · [h713-pq](tools/h713-pq.md) · [h713-fel](tools/h713-fel.md) ·
 [h713-warp](tools/h713-warp.md) - the keystone on the GPU · [h713-keystone](tools/h713-keystone.md) · [h713-panel](tools/h713-panel.md) - the automatic one.
 [h713-features](tools/h713-features.md) says which optional hardware - camera, accelerometer, focus motor - the board has.
-[h713-power](tools/h713-power.md) decides the power key on an image that offers standby.
+[h713-power](tools/h713-power.md) decides the power key on an image that offers standby, and [h713-mips-restart](tools/h713-mips-restart.md) brings the picture and the sound back after it.
 **On your PC:** [h713-install](tools/h713-install.md) · [h713-extract](tools/h713-extract.md) · [h713-mkimage](tools/h713-mkimage.md) · [h713-hdcpkey](tools/h713-hdcpkey.md) · [h713-probe](tools/h713-probe.md)
 
 **U-Boot:** [boot chain and defconfig matrix](uboot/README.md) · [the `h713_*` commands, with the register readback at the

@@ -32,10 +32,12 @@ Two more processors run on the same die and are already alive by the time Linux 
 | Core | Firmware | Owns |
 |---|---|---|
 | MIPS32 LE co-processor | `display.bin`, ~1.25 MB | display engine, HDMI-RX state machine, picture-quality pipeline |
-| OR1K BE "ARISC" | `h713-arisc.bin`, ~172 KB | PMU power sequencing, HDMI hot-plug pin, EDID/DDC RAM |
+| OR1K BE "ARISC" | HY310: **crust**, our own build ([crust-h713/](../crust-h713/README.md)); other boards: the vendor's `h713-arisc.bin`, ~172 KB | PMU power sequencing, HDMI hot-plug pin, EDID/DDC RAM; with crust also the standby |
 
-Neither firmware ships in this repo or on the built image; both come out of **your own** device dump
-via `h713-extract` at install time. How the three processors talk to each other, and why you cannot
+The MIPS firmware, and the vendor's ARISC firmware on the boards that run it, ship neither in this repo nor on the
+built image; both come out of **your own** device dump via `h713-extract` at install time. On the HY310 crust is
+built with the image and BL31 starts it at every boot ([arisc.md](subsystems/arisc.md),
+[U-Boot chain](uboot/README.md)). How the three processors talk to each other, and why you cannot
 just poke a MIPS or ARISC register from Linux, is in [architecture.md](architecture.md).
 
 ## Display path
@@ -51,7 +53,8 @@ and a plane. Full chain, bring-up order and KMS device: [docs/subsystems/display
 ## HDMI input
 
 A Synopsys DW-HDMI-RX block, HDMI 1.4, exposed as a V4L2 capture device. It is the device's **only** HDMI port -
-this projector has no HDMI output. Verified modes and signal handling: [docs/subsystems/hdmi-in.md](subsystems/hdmi-in.md)
+this projector has no HDMI output. Its PHY and the capture block INCAP sit in the TVCAP power domain (below).
+Verified modes and signal handling: [docs/subsystems/hdmi-in.md](subsystems/hdmi-in.md)
 and `STATUS.md`.
 
 ## GPU
@@ -72,7 +75,7 @@ and the stock remote pairs over BLE. Details: [docs/subsystems/wifi.md](subsyste
 An internal codec drives the speaker. HDMI audio reaches it through a codec-I2S link from an MSP DSP block
 tied to the HDMI-RX capture clock, and since `v0.96-beta` the box's own sounds join that path inside the
 DSP: a playback PCM, `hw:hy310hdmi,0`, which is ALSA's default, is mixed into HDMI there, so both play at
-once. Details: [docs/subsystems/audio.md](subsystems/audio.md).
+once. The DSP's island is in the TVFE power domain (below). Details: [docs/subsystems/audio.md](subsystems/audio.md).
 
 ## eMMC and USB
 
@@ -83,6 +86,51 @@ eMMC is 7.3 GB, HS400. Three USB controllers exist on the board:
 | 0 | external USB-A socket, OTG | FEL and USB-gadget modes run over this port |
 | 1 | internal camera, Realtek `0bda:5803` "Generic HD camera" | UVC, YUYV 640×480, works since 2026-09-11 |
 | 2 | nothing | registers, unpopulated |
+
+## Power domains and what a standby resets
+
+The PPU (PMU block, `0x07001000`; layout in kernel patch `0020`) switches five domains, numbered as in the vendor
+device tree: GPU 0, TVFE 1, TVCAP 2, VE 3, AV1 4. TVCAP holds the HDMI receiver's PHY and INCAP, the capture
+block that writes frames into the DRAM; TVFE holds the audio DSP's island; the journal has no measurement on VE
+and AV1. U-Boot switches TVFE and TVCAP on before it releases the display MIPS and a built-in driver holds both,
+but in a system sleep genpd switches them off and on again whatever the drivers hold. Read on the HY310 before
+and after a standby (09.10.2026, `doku/172`, `doku/173`):
+
+| Register | Before | After |
+|---|---|---|
+| TV top clock and reset words, `0x06e00000`, `+4`, `+8` | `0x00111111`, `0x01111117`, `0x00000504` | `0x10`, `0`, `0` |
+| Audio top word, `0x0614a000` | `0x700` (after the boot) | `0` (after the MIPS restart) |
+| CCU, PPU, R_CCU, SYS_CFG, RTC general-purpose words | - | the same (MIPS and GPU registers apart) |
+| DRAM-COM `+0x004`, field [21:16] | `0x20` | `0x10`; crust does not restore it, and writing it back by hand did not stop the MIPS-restart stall (first bullet) |
+
+- **TV top.** U-Boot writes these words before it starts the MIPS. Started out of the standby park without them,
+  the whole SoC stalled within 200 ms, 3 of 3; the driver `sun50i-h713-mips` now repeats U-Boot's step when they
+  are missing: six standbys, six pictures back.
+- **Audio island.** It loses its power with TVFE, and its mailbox stays silent until msp's `reset` file rebuilds
+  it. `h713-mips-restart` does that once the picture is back; HDMI audio was audible again without a reboot
+  (`doku/173`, `doku/174`).
+- **INCAP.** The MIPS's park does not stop it, and from the park on its registers no longer answer the CPU (one
+  read halted the box). Switching TVCAP off under that DMA is where the rare hang going to sleep (C1) stood; with
+  the capture stopped first there was no C1 in 50 sleeps against 5 in 111, a hint and not a proof.
+
+GPU, VE and AV1 in the sleep: not measured. The display clocks, the picture and the wake sources:
+[standby.md](subsystems/standby.md).
+
+## Watchdogs
+
+The SoC watchdog (`0x02051000`) and the R_WDOG (`0x07020400`, RTC domain, the net of a standby) share the A523's
+register file: CTRL at `+0x0c` (write `0x14af` to reload), CFG at `+0x10`, MODE at `+0x14` (enable in bit 0,
+interval in bits 7:4: codes 1-11 are 1-6, 8, 10, 12, 14, 16 s, code 0 is 0.5 s), and **every CFG or MODE write
+needs the key `0x16aa` in bits 31:16**; `0x16aa00b1` into MODE reset the HY310 16.4 s later (`doku/164`). The
+H6 layout the device tree first gave it hits nothing (`doku/72`); the kernel now binds the A523 string.
+
+- A MODE write into a running watchdog does not restart its count, a CTRL reload does; TF-A and the kernel
+  therefore feed before they arm or stop it, and `reboot` and `poweroff` reset 0.58-0.60 s after their last
+  console line (`doku/164`, `doku/170`).
+- The R_WDOG **stays armed across its own reset**, so a net that fired would reset the box every 16 s; BL31 feeds
+  and stops an armed one at every boot (`doku/170`). No journal entry provokes a reset in the middle of a sleep, so
+  the sleep net is not measured ([standby.md](subsystems/standby.md)).
+- The RTC runs from its internal RC oscillator; whether a 32 kHz crystal is fitted is unknown (`doku/168`).
 
 ## Power draw
 
@@ -97,13 +145,14 @@ is worth having here.
 
 | Component | Pin / bus | What it does |
 |---|---|---|
-| Fan | PWM on PH18, tachometer on PH17 (GPIO interrupt) | speed fixed today; 4860 RPM measured. `PB5` gates the fan **and** the panel backlight together - never drive it low while the lamp runs; for a standby the board manager drops it with both off (not measured) |
+| Fan | on/off through `PB5`, tachometer on PH17 (GPIO interrupt) | a plain 3-wire load, no speed control ([board-mgr](subsystems/board-mgr.md), patch `0030`); the vendor boot loader's tree puts pwm1 on PH18, which no kernel tree uses (`doku/70`); 4860 RPM measured. `PB5` gates the fan **and** the panel backlight together - never drive it low while the lamp runs; for a standby the board manager drops it with both off (not measured) |
 | Temperature | - | this unit's board-management firmware reports `ntc_num = 0`: **no NTC is fitted**, and overheat protection relies on the fan tachometer alone. An earlier assumption of a fitted thermistor was wrong (`doku/00-STATUS.md`, 2026-09-11) |
 | Focus motor | 4-phase stepper, GPIO-driven; PH14 sense pin | PH14 is a **range sensor** - it reads high while the mechanism is inside its travel window and drops at either end - not a one-directional end-stop |
 | Camera | see USB port 1 above | |
-| Power key | `PL4` (R_PIO), `KEY_POWER`, edge IRQ | a press starts the device from the gate and wakes it from standby. Under Linux, `systemd` maps it to `poweroff` - so does the Power key of the paired Bluetooth remote; on an image with standby [h713-power](tools/h713-power.md) decides instead: short press standby, held 3 s power-off. Governs the power-on gate: [docs/uboot/power-gate.md](uboot/power-gate.md) |
+| Power key | `PL4` (R_PIO), `KEY_POWER`, edge IRQ | a press starts the device from the gate and wakes it from standby (key and IR power key measured 09.10.2026, `doku/174`). Under Linux, `systemd` maps it to `poweroff` - so does the Power key of the paired Bluetooth remote; on an image with standby [h713-power](tools/h713-power.md) decides instead: short press standby, held 3 s power-off. Governs the power-on gate: [docs/uboot/power-gate.md](uboot/power-gate.md) |
 | Status LED | follows `PB5` | red while PB5 is low (the gate, standby), blue while it is high - measured, so the LED cannot tell those two apart. `PL0`/`PL1`, which the vendor device tree calls the LEDs, have no visible effect on the HY310; the vendor firmware and crust still drive them in standby |
 | UART pads | UART0, **115200 8N1**, 3.3 V | the boot and kernel console, and the way in when there is no SSH key in the image. The pads are on the mainboard and unlabelled; the thread that found them on several units is linked from the README's issue reference - no photograph in this repository yet |
 
 Details: `doku/10-hardware.md`, `doku/00-STATUS.md`, `mainline/README.md`, `doku/103-plan-einschaltgate.md`
-(power key), `doku/94-fokusmotor-endschalter.md` (focus-motor sensor).
+(power key), `doku/94-fokusmotor-endschalter.md` (focus-motor sensor), `doku/164`, `doku/170` - `doku/174`
+(watchdogs, power domains, standby).

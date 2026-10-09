@@ -1,8 +1,9 @@
 # Board manager: fan and temperature
 
-`hy310-board-mgr` reports the fan speed through Linux `hwmon`. The fan itself is a plain 3-wire
-on/off load - red +V, black GND, yellow tachometer - established on the bench (patch `0030`): there is
-no PWM on this board, so `fan1_input` is all there is, no speed control.
+`hy310-board-mgr` reports the fan speed through Linux `hwmon`; on the HY310 it also owns the fan's power
+rail, PB5, across a standby (below). The fan itself is a plain 3-wire on/off load - red +V, black GND,
+yellow tachometer - established on the bench (patch `0030`): there is no PWM on this board, so `fan1_input`
+is all there is, no speed control.
 
 ## Tachometer
 
@@ -41,6 +42,27 @@ switched off and on deliberately and answered correctly both times.
 deliberately cutting the fan rail on a bench, or the measurement ends in a poweroff eight seconds later.
 `thermal_shutdown` stays off: there is no sensor to trigger it.
 
+## The fan rail in a standby
+
+PB5 is one line with three jobs on the HY310: the fan's +V rail, the enable of the LED boost (the lamp), and the
+status LED, which follows it (red when low, measured in the power-on gate, [hardware.md](../hardware.md)). It
+used to be a `gpio-hog`, held high for good, so a sleep would have left fan and very probably lamp powered; the
+board manager's own switch was dead code, because its fan node named no `fan-power-gpio`, and its "fan power
+off" line claimed a switch that never happened (found in review).
+
+Since patches 0207, 0211 and 0222 the HY310 hands PB5 to the board manager: the hog is disabled, `fan0` names
+PB5 as `fan-power-gpio`, and the driver requests it high at probe (until then PB5 keeps U-Boot's level) and
+switches it directly - low in `suspend_late`, after the display and capture drivers have quiesced, high again in
+`resume_early`, before they resume - so lamp and fan go off and on as one. The journal says which case a board is
+in: `suspended: fan power rail off`, or `... not ours, left as it is` where a hog holds the line. The tachometer
+poll stops for the sleep; after a wake the stall counter starts from zero and for 5 s the tachometer is read
+but not judged, so a fan still running up cannot end in `orderly_poweroff()` through `fan_stall_shutdown`.
+Unloading the module leaves the rail alone.
+
+The HY300 Pro and the HY200 QZ713DF A1 get the hog back and `fan-power-gpio` deleted: PB5 must never go low on
+the HY300 Pro, and neither board has a measurement of it switched. Switching the rail was suspected of the DMA
+fault after a wake on the HY310 and ruled out on 08.10.2026; the cause was the display pipeline (`doku/171` section 2).
+
 ## A generic bug found here first
 
 Enabling this driver's PH17 interrupt was the first thing on this board to request a GPIO interrupt on
@@ -58,5 +80,8 @@ and cleared nothing, leaving the interrupt permanently pending. Fixed genericall
   tachometer - nobody has cross-checked it with an independent instrument.
 - Nothing acts on temperature, because nothing measures it on this unit. A device that overheats with a
   *turning* fan gets no protection at all - the stall poweroff cannot see that case.
+- The lamp, the tachometer and the supply current in a standby are not measured (stage L of the R2 test plan,
+  open), nor how long the fan takes to run up after a wake; the 5 s hold-off is a design value.
 
-Details: `doku/60-offen.md` (§board-mgr, §Aufhänger, §NTC), `doku/00-STATUS.md`.
+Details: `doku/60-offen.md` (§board-mgr, §Aufhänger, §NTC), `doku/00-STATUS.md`; for the standby `doku/171`,
+[standby.md](standby.md).

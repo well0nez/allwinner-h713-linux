@@ -64,8 +64,9 @@ after the wake (`doku/172`), and 30 of 30 in a fast loop on r2test3 (`doku/173`)
 - **The audio comes back after the picture.** The audio DSP sits in TVFE and loses its power in the sleep;
   msp then reports `error` and leaves the dead block alone (its message still says "until a reboot", which is
   no longer true). Once the picture path is back, `h713-mips-restart` rebuilds the DSP through msp's `reset`
-  file, up to three times: measured six of six within two attempts, and the HDMI audio was audible again after
-  a standby without a reboot (`doku/174`).
+  file, up to three times: twelve rebuilds measured, eleven at the first attempt and one at the second, none
+  failed (with the tool alone eight of eight at the first), and the HDMI audio was audible again after a standby
+  without a reboot (`doku/174` §2, `doku/177` §3).
 
 Measured with Marco at the box (09.10.2026, r2test3): wake by the power key and by the remote's IR power key,
 sleeps of 3.5 and 8.4 minutes, the long press (a power-off; with `h713_gate=0` in the environment the board
@@ -75,8 +76,8 @@ boots straight back). Not measured: HDCP 2.2 from the source after the restart, 
 
 | Source | Status |
 |---|---|
-| power key (PL4) | built in crust; not measured as a wake source |
-| IR remote | crust compares against the 19 codes of the vendor device trees and the board's own (`CONFIG_CIR_WAKE_CODE`); whether the shipped remote sends one of them over IR while its Bluetooth link is down is not measured |
+| power key (PL4) | measured: "wake key (0x95)", and the waking press does not count as a new press (`doku/174` §1) |
+| IR remote | crust compares against the 19 codes of the vendor device trees and the board's own (`CONFIG_CIR_WAKE_CODE`); measured with the shipped remote's power key: "wake ir (0x9b)" (`doku/174` §1) |
 | wake timer | measured (`rtcwake`-style, 5 s; `doku/165` - `doku/167`) |
 | RTC alarm | the kernel side computes it; whether a release should wake on it is the owner's decision |
 | CEC | not supported |

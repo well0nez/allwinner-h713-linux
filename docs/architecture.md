@@ -10,9 +10,9 @@ touched.
 
 | Processor | Runs | Owns |
 |---|---|---|
-| ARM Cortex-A53 ×4 | Linux | AFBD scanout block (`0x05600000`), everything in `cpu_comm`'s shared memory it writes itself |
-| MIPS32 LE | `display.bin` | HDMI capture (INCAP), the window/scaler chain, the panel output block - the whole display pipeline behind the AFBD |
-| OR1K "ARISC" | crust, our own (HY310), or the vendor's `h713-arisc.bin` | the R_-peripherals: PMU sequencing, the HDMI hot-plug pin, EDID/DDC RAM, the standby |
+| ARM Cortex-A53 ×4 | Linux; BL31 (EL3) on the same cores | AFBD scanout block (`0x05600000`), everything in `cpu_comm`'s shared memory it writes itself; BL31: PSCI, starts crust |
+| MIPS32 LE | `display.bin`, started by U-Boot; Linux can park and restart it (`sun50i-h713-mips`) | HDMI capture (INCAP), the window/scaler chain, the panel output block - the whole display pipeline behind the AFBD |
+| OR1K "ARISC" | crust, our own (HY310), or the vendor's `h713-arisc.bin` | the R_-peripherals: PMU sequencing, the HDMI hot-plug pin, EDID/DDC RAM. crust serves them as the HDMI front end in normal operation (`doku/163`) and also takes the standby |
 
 Reading a MIPS or ARISC register from the ARM core is possible; writing one is not the same as changing
 what it controls. The MIPS firmware recomputes its own window geometry from a small descriptor Linux
@@ -20,6 +20,7 @@ publishes - writing the scaler registers directly measurably does nothing, and c
 firmware wedged until the next boot. The one documented exception where a raw read is actively
 dangerous is the ARISC's port-status block at `0x0709xxxx`: reading it before the ARISC's EDID module
 has finished initializing hangs the SoC outright, no fault, no console (`doku/82-arisc-treiber.md`).
+The same holds for the display firmware's blocks once it is gone: with the MIPS parked and the TV domains off, a read of the receiver's LINK window or of INCAP does not return zero, it stops the bus (after a LINK read the watchdog reset the box 16 s later, `doku/176` §2; INCAP, `doku/173`).
 Both firmwares are treated as black boxes you talk to over RPC, never as memory you edit.
 
 ## How they talk
@@ -39,6 +40,7 @@ turned out to be unnecessary once the actual wait loop was found, and is gone fr
 The kernel exposes this as `include/linux/soc/sunxi/h713-arisc.h` (`arisc_hdmi_reset_edid()`,
 `_set_edid()`, `_hpd()`, …), which the HDMI-input driver builds on for `VIDIOC_S_EDID`/hot-plug.
 Detail: `doku/82-arisc-treiber.md`.
+With crust the driver also watches the contract page in SRAM (heartbeat and error counters, every 10 s) and hands the standby over on the same message box: a round trip before the sleep, a "restore finished" frame after it ([arisc.md](subsystems/arisc.md)).
 
 **RTC general-purpose registers as a flag, not a channel.** A third, much smaller mechanism: the RTC's
 `GP0` - `GP7` words at `0x07090114` survive a warm reset (not a full power cycle) and cost nothing to read
@@ -72,6 +74,17 @@ Neither vendor firmware file, nor the HDMI EDID blob, nor the panel/picture tabl
 repository or on the built image; crust is built from source with the image. All of them are pulled from **your own** device's dump by `h713-extract` during
 install and placed under `/lib/firmware`; a driver whose firmware is missing fails loudly
 (`-ENOENT`/`-ENODEV`) rather than booting with something that isn't yours to redistribute.
+
+## The standby: who does what
+
+A suspend to RAM ([standby.md](subsystems/standby.md)) hands the box over between four places where code runs.
+
+- **Linux** prepares: `h713-power` turns the key into `systemctl suspend`, and the drivers quiesce - hdmirx stops the capture and its LINK poll, `cpu_comm` parks the MIPS and gates the five display clocks, afbd idles the scanout, the board manager switches PB5 (LED boost, fan rail) off, msp marks the audio DSP lost, the arisc driver makes a round trip to crust.
+- **BL31** takes PSCI `SYSTEM_SUSPEND` and sends crust the "cpu op" request; after the wake it moves the system counter forward by the time crust counted asleep.
+- **crust** does the sleep: ARM cluster off, DRAM in self-refresh, wait for a wake source (power key, IR code, its timer); on a wake it brings the DRAM back and releases CPU0 into BL31. Each phase has a budget; in the hang C1 it reset the board after 15 s (`doku/172`).
+- **The display MIPS** does nothing from the park on; the wall keeps its last picture. After the wake `h713-mips-restart` has a driver set the TV-top words the sleep reset and start `display.bin` as U-Boot does, binds the receiver with the HDCP 2.2 key, starts `h713-tv` and `h713-warp`, and rebuilds the audio DSP, which lost its power.
+
+Measured on the HY310: the picture back 3.9 - 5.3 s after the wake (`doku/172`, `doku/177`), wake by power key and by IR (`doku/174`); the power draw in standby is not measured.
 
 ## What this means for software
 

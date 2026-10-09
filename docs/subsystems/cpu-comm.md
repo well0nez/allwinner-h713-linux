@@ -2,7 +2,8 @@
 
 Linux and the MIPS display coprocessor share no memory model, no calling convention and no clock
 domain of their own - `cpu_comm` is the RPC layer that bridges that gap. Nothing in normal use
-calls it directly, but every HDMI source switch does, underneath `h713-tv`.
+calls it directly, but every HDMI source switch does, underneath `h713-tv`. The same driver parks
+the coprocessor for a standby and keeps the books for starting it again (end of this page).
 
 ## Transport
 
@@ -41,8 +42,9 @@ are software.
 
 `include/linux/soc/sunxi/h713-cpu-comm.h` exports four functions: `cpu_comm_call()` (blocking, up
 to 10 32-bit words in and out, real error codes), `cpu_comm_register_callback()` /
-`cpu_comm_unregister_callback()`, and `cpu_comm_name2id()`. A routine is addressed by a 32-bit id,
-and the id is derivable from the name alone - it is `crc32_le()` with seed `0x00123456` over
+`cpu_comm_unregister_callback()`, and `cpu_comm_name2id()`; a restart interface comes on top of
+them (below). A routine is addressed by a 32-bit id, and the id is derivable from the name alone -
+it is `crc32_le()` with seed `0x00123456` over
 `sprintf("%s_%1x_%3.3x", name, cpu, pid & 0xfff)`, LSB first, with no pre- and no post-inversion.
 That is the vendor's own `Comm_Name2ID`, which ships a private copy of the `crc32_le` table rather
 than calling the kernel's; the values are identical. In Python, where `zlib.crc32()` has both
@@ -83,7 +85,75 @@ because that would be the same path it needs to answer on. A debugfs pair,
 `/sys/kernel/debug/cpu_comm/call` and `/watch`, lets a caller exercise a named routine or watch
 callback traffic without any userspace program - **in a debug build only**: the release image has
 debugfs compiled out, so nothing on a shipped device can poke the coprocessor this way. Build with
-`board/debug.config` to get it back (`doku/83`).
+`board/debug.config` to get it back (`doku/83`). Callback descriptors do not survive a restart of the
+MIPS: the shared region is rebuilt, so a client registers again afterwards - for the HDMI receiver
+that means unbinding it around the restart.
+
+## Parking the MIPS for the standby
+
+The MIPS cannot go through a DRAM self-refresh - left running, the box stops shortly after the wake
+(`doku/165` §2) - and the vendor parks it before every standby (`doku/171` §2). So `cpu_comm` parks
+it in `suspend_late`, **for suspend to RAM only, never s2idle** (`0208`, `0210`). The owner of the
+MIPS clock and reset words (`0x02001600`, `0x0200160c`) is the driver `sun50i-h713-mips`
+([mips.md](mips.md)): `cpu_comm` asks it whether a core is there and has it park, in U-Boot's
+`h713_mips_stop()` order - reset word 0, 12 ms, clock word 0, 12 ms, both read back (`0230`). Without
+that driver (module absent, node disabled as on the HY300 Pro) `cpu_comm` writes the same words
+itself and nothing can restart the core. Before the writes it takes the call mutex, which waits out
+a call in flight, and closes the call path. Three words keep the books (`0213`, `0216`, `0228`):
+
+- `cpu_comm_suspend_flag`, the ioctl path's suspend count: an ioctl answers `-EFAULT` while it is above 0.
+- `cpu_comm_fw_down`, "out of service": set by the park or a restart's stop, whichever comes first,
+  taking exactly one count with it; the restart's start clears it and gives the count back.
+- `cpu_comm_parked_since`, the number of the suspend to RAM that parked the core (0: not parked),
+  counted per boot at `suspend_late`; it is not crust's cycle number.
+
+`/proc/cpu_comm/status` shows them. If a written word does not read back 0, the suspend fails with
+`-EIO` and the driver reopens the call path itself, since `resume_early` never runs then (`0217`;
+not run on the device). After the park, kernel calls fail at once instead of costing a call slot and
+a 2 s timeout each (`0213`): `-EBUSY` from the first check of `cpu_comm_call()`, `-ENODEV` for a
+caller already waiting on the mutex (read from the code, not measured). `cpu_comm_firmware_up()` is
+false from the park to a restart's start, from those words alone; the HDMI receiver asks it before
+its LINK poll, because after the park a read of that block never answers and stops the bus (`0236`,
+`doku/176` §2). The wake starts nothing: the restart reads `display.bin` from `/boot`, frozen until
+the wake is through, and needs the receiver unbound, so it is userspace's
+([h713-mips-restart](../tools/h713-mips-restart.md)). s2idle is refused in `.prepare` while the MIPS
+runs, because genpd cuts TVFE and TVCAP under it (`0212`; read from the code, not measured).
+
+```
+suspend        hdmirx stops the capture (0240); afbd idles the scanout (0210)
+suspend_late   cpu_comm parks the MIPS, then gates the display clocks (0238)
+noirq          genpd powers TVFE and TVCAP off; PSCI SYSTEM_SUSPEND
+resume_early   cpu_comm writes the display clock words back; later, userspace restarts the MIPS
+```
+
+### The display clocks
+
+Parking stops the core, not the pipeline it set up. Left running through the self-refresh, that
+pipeline cost every DMA master its way to the DRAM after about every second wake - the CPU was fine,
+the USB camera got `-110`, Wi-Fi "cmd timed-out", the resume hung: 12 of 22 woken runs on
+08.10.2026, 7 of 7 the next night without a remedy (`doku/171` §2). The vendor puts the display bus
+in reset and stops the display clocks before every standby. So `cpu_comm` saves five CCU words at
+`0x02001db0` - deint, panel, svp-dtl, afbd (bit 31 each) and bus-disp (bit 0) - clears the gates
+right after the park, before genpd cuts TVCAP and TVFE, and writes the words back unchanged in
+`resume_early` (`0238`). **No reset:** it would lose what the parked MIPS set up, and afbd's resume
+then hangs the bus (`doku/171` §3). **Since `0241` whenever no core runs** at a suspend to RAM, not
+only after an earlier park: a restart that fails past its park would otherwise leave the old
+pipeline running through the next sleep (`doku/173` §1; checked offline only). Measured: 9 of 9
+wakes good with the gating in the noirq phase, then 7 of 7 and 6 of 6 in `suspend_late` on two
+stacks, and no camera or Wi-Fi error in 10 wakes of the R2 test image (`doku/171` §3); the place in
+the bus where the fetch is lost is not measured (`doku/171` §4).
+
+## Restarting the MIPS
+
+The restart itself is `sun50i-h713-mips`; `cpu_comm` gives it three calls and a notifier chain,
+shaped after what the vendor's `cpu_comm` does around each restart (read off `cpu_comm_dev.ko`,
+`0225`). `cpu_comm_firmware_stop()` refuses new calls and lets one in flight finish; a parked core
+counts as stopped. `cpu_comm_firmware_reset()`, with the core held, tells the chain
+`CPU_COMM_FIRMWARE_HALTED`, releases the hardware locks the old core may hold, reads both
+message-box FIFOs off undelivered (`0229`, `0234`) and rebuilds the region.
+`cpu_comm_firmware_start()` ends the park, waits for the new firmware's READY flag alone
+(`-ETIMEDOUT`), assumes "app ready" as the boot does, and tells the chain
+`CPU_COMM_FIRMWARE_STARTED` (`0228`). Ready about 300 ms after the start (`doku/172` §4).
 
 ## What went wrong once, and stays fixed
 
@@ -98,4 +168,5 @@ be the third output parameter, capable of landing inside the secure BL31 region 
 fixed before it shipped (`doku/67`, "Argument-ABI").
 
 Details: `doku/83-cpu-comm-api.md`, `doku/65-cpu-comm-abgleich.md`,
-`doku/66-cpu-comm-arm64-bringup.md`, `doku/67-cpu-comm-linux.md`.
+`doku/66-cpu-comm-arm64-bringup.md`, `doku/67-cpu-comm-linux.md`; the standby side in `doku/165`,
+`doku/171` - `doku/174` and [standby.md](standby.md).

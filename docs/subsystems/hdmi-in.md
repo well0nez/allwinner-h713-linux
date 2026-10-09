@@ -4,7 +4,8 @@ The HDMI port is a capture-only V4L2 device (`sun50i-h713-hdmirx`) driven by the
 display firmware, not by a receiver the ARM cores talk to directly. It hands a source's picture to
 whatever reads it - normally `h713-tv`, which puts it on the projector's plane (that path, and the
 picture geometry it ends up with, is [display.md](display.md)'s subject). This page covers what the
-device tells userspace, what you can adjust, and the one quirk worth knowing before you script against it.
+device tells userspace, what you can adjust, what it does across a standby, and the one quirk worth
+knowing before you script against it.
 
 ## Bring-up
 
@@ -12,7 +13,8 @@ Opening the device is fast; the first probe after a cold start is not. It runs 2
 calls into the firmware - noise reduction, picture mode, HDCP key, port map, and so on - over the
 `cpu_comm` link, then brings up EDID and hot-plug through the ARISC co-processor. Measured on the
 09:02 boot: the whole sequence, including EDID, finished **17.65 s** after power-on (`doku/88`,
-07.09.2026). The EDID the device advertises is fixed: HDMI 1.4 + HDMI 2.0 blocks concatenated into one
+07.09.2026). Every bind of the driver runs this probe again, which a standby restart does (below).
+The EDID the device advertises is fixed: HDMI 1.4 + HDMI 2.0 blocks concatenated into one
 512-byte image, of which a source is served one 256-byte block. The firmware rewrites exactly two
 bytes of it - the HDMI vendor block's physical-address byte and the extension checksum that follows
 from it - so a read-back is not byte-identical to what was written, and `VIDIOC_S/G_EDID` treat the
@@ -110,6 +112,13 @@ Nothing else in the AVI belongs here. Of the ten fields the firmware parses it r
 picture aspect, the active-format bits, the content type and the bar info are stored and never looked at,
 and pixel repetition acts on the capture *before* INCAP, so reporting it would count it twice.
 
+## Audio status
+
+Three read-only controls report what the source sends: audio present, sample rate, compressed stream, with a
+control event on every change. The driver polls them from the receiver's LINK window, ten byte reads every
+100 ms, with or without a picture, because `h713-tv` sets the codec's rate from them. Without a LINK window
+in the device tree (`allwinner,hdmirx-link`) there is no poll (kernel `0136`, `0237`).
+
 ## The capture ring, and how it reaches the plane
 
 The firmware writes each captured frame as NV16 into one of three fixed slot pairs inside its own
@@ -122,6 +131,52 @@ time. Buffer *i* **is** slot *i* - `VIDIOC_REQBUFS` always hands back exactly th
 custom `vb2_mem_ops` and mapped write-combined, and there is no copy anywhere in the path. `VIDIOC_EXPBUF`
 does not exist yet; nothing needs the ring as a dma-buf today.
 
+## Standby, and the restart of the display firmware
+
+A standby to RAM ([standby.md](standby.md)) parks the display MIPS and powers TVFE and TVCAP off and on. Since
+09.10.2026 the receiver stops its audio poll and the capture in the suspend, while the MIPS still runs, reads no
+LINK from the park on, and is replaced by a new instance when `h713-mips-restart` (run by
+[h713-power](../tools/h713-power.md)) has started the firmware again.
+
+**No LINK read after the park.** On 08.10.2026 the first LINK read after the wake never finished and stopped
+the bus, once with the poll running and once with it paused and restarted 3 s after the wake (there the SoC
+watchdog reset the box 16 s later; runs L-B and L-A 2, `doku/176` §2). The resume now asks cpu_comm whether the firmware runs
+(`cpu_comm_firmware_up()`, kernel `0236`, a software flag, no register read). After a sleep aborted before the
+park the poll comes back; after a park this instance never reads LINK again - its audio controls say "no
+audio", the status and `hdcp` files "not read" - and a probe on a parked or stopped MIPS does not start the
+poll. The blocks LINK sits in lose their clock and reset words in the sleep (the TV top, [display.md](display.md));
+that fits, but is not measured as the cause. No hang followed the restarts measured: six in one boot, 30 in a
+fast loop (`doku/172`, `doku/173`).
+
+**The capture stops before the sleep (hang C1).** INCAP keeps writing frames into DRAM until stopped, and the
+park does not stop it, so genpd powers TVCAP off under a running write DMA; five of five hangs on the way into
+the sleep that left breadcrumbs stopped there (`doku/173`). The suspend therefore clears bit 31 of both INCAP
+output enables and waits 40 ms, two frames (kernel `0240`); it has to be the suspend, since from the park on
+INCAP does not answer the CPU. A pending source-switch repeat, which also reads INCAP, is cancelled first, and
+a sleep aborted before the park gets the capture back. Result: 30 of 30 sleeps without C1 (20 of 20 earlier
+with a test module), against 5 in 111 without - a hint, not a proof. The display-clock fault
+([display.md](display.md)) is another one; stopping the capture did not cure it (`doku/171`).
+
+**The restart.** `h713-mips-restart` stops `h713-warp` and `h713-tv@*`, refuses (exit 2, MIPS untouched) if a
+process still holds the node, unbinds the receiver, restarts the firmware, binds only on a running MIPS and
+starts both services on the new node. The bind is
+`h713-hdcp-key --bind hdmi-rx`: the boot-time service removed its copy of the HDCP 2.2 key again, so a plain
+bind would skip the key step. `--bind` reads the key from this device's own secure storage, leaves it in the tmpfs for this one
+bind (the probe's `request_firmware()` takes it) and deletes it; exit 3 is bound without a key because none was
+found - a warning, the picture without 2.2 rather than none. The restart pushes no 1.4 key set (kernel
+`0231`), and it does not have to: the sink kept the 1.4 key through seven standbys, and a 1.4 source stood at
+`Enabled` within 2 s after them (`doku/175` section 3). HDCP 2.2 from a source after a restart is **not
+measured** (`doku/172` section 5, `doku/174` section 3).
+
+**With the node open.** The video node, queue and locks are embedded in the driver's state, which the unbind
+used to free, so a handle open at the unbind closed in freed memory. The state is now reference counted (kernel
+`0233`): the unbind drops the firmware callbacks first and for good (an `open()` racing with it gets `-ENODEV`),
+and the last `close()` frees it. Compiled with `W=1`, **not measured with an open handle**: the unbinds of
+08.10.2026 ran with `h713-tv` and `h713-warp` stopped, and the script refuses to unbind while anyone holds the node.
+
+The picture path is back 3.9-5.3 s after the wake (`doku/172`, `doku/174`); at the wall it takes about 11 s with a
+laptop source ([display.md](display.md)).
+
 ## Verified
 
 The modes in [STATUS.md](../../STATUS.md) - 1080p at 60, 50 and 24 Hz, 720p50, 576p50, 1366×768, 1024×768
@@ -132,18 +187,26 @@ mode: BT.709 for HD, BT.601 (`SMPTE170M`) for 576p and 480p, and the range is wh
 the firmware itself does not lock onto is its own answer since the mode table is read (`-ERANGE`, above),
 not the same one as no signal at all.
 
+Across standbys (09.10.2026, R2 test images, a laptop as the source, its mode not recorded): six in one boot
+and 30 in a fast loop, each with the picture back (`doku/172`, `doku/173`); wake by power key and by IR key,
+sleeps of 3.5 and 8.4 minutes (`doku/174`).
+
 ## Limits
 
 **HDMI here is an input, never an output** - the projector has no HDMI-out; the imager is the only
 display. Unencrypted sources work. For HDCP 2.2 the key is read from *your* device's own extraction at
 boot (`h713-hdcp-key.service`) and handed over to the firmware during the probe, which accepts it - but
-its "LoadKey ok" is a format check, not a negotiation, and **a protected 2.2 source has not been tested
-yet**; `h713-tv ctl hdcp` shows what a source negotiates (the `hdcp` attribute of the hdmirx device,
-kernel 0174). If the key is missing, that one step is skipped and unencrypted sources are unaffected.
+its "LoadKey ok" is a format check, not a negotiation. A real 2.2 source, a Fire TV stick, authenticated on
+05.10.2026 (the session stands; [hdcp.md](hdcp.md)), which overtakes this page's earlier "not tested yet";
+`h713-tv ctl hdcp` shows what a source negotiates (the `hdcp` attribute of the hdmirx device, kernel 0174). If
+the key is missing, that one step is skipped and unencrypted sources are unaffected.
 **HDCP 1.4 is supported since 05.10.2026** - the boot loader puts this device's own key set
-into the receiver before the display firmware starts ([HDCP](hdcp.md)). Power and clock setup for the capture engine itself (TVFE/TVCAP,
-fabric routing) happens once, in U-Boot and the firmware, before Linux starts; this driver assumes it and
-does not manage it, which is also why the mainline `tvtop` driver is not needed here (`doku/71`).
+into the receiver before the display firmware starts ([HDCP](hdcp.md)). Power and clock setup for the capture
+engine itself (TVFE/TVCAP, fabric routing) happens at a cold start, in U-Boot and the firmware, before Linux
+starts; this driver assumes it and does not manage it, which is also why the mainline `tvtop` driver is not
+needed here (`doku/71`). A standby is the exception: genpd switches the two domains off and on, and
+`sun50i-h713-mips` repeats U-Boot's TV top step before it restarts the firmware ([display.md](display.md)); the
+receiver itself still touches none of it.
 
 Details: doku/88-v4l2-hdmirx.md, doku/84-re-capture-ring.md, doku/86-video-plane-nv16.md,
-doku/96-anzeigekette.md, doku/71-tvtop-noetig.md
+doku/96-anzeigekette.md, doku/71-tvtop-noetig.md; the standby behaviour: doku/171 to doku/174

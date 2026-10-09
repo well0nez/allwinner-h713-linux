@@ -68,11 +68,12 @@ receiver, its node or a service did not come back, 4 ended by a signal. Each out
 (`journalctl -t h713-mips-restart`; run by hand also on stderr). The sequence brought
 the picture back at the HY310 on 08.10.2026 from a running MIPS and from the park registers set by hand,
 and on 09.10.2026 after real standbys in the R2 test image: six in one boot, picture back 3.9-5.2 s after
-each wake (`doku/172`; the driver repeats U-Boot's TV top step the standby lost). The press of the real key
-on that path is not measured yet (the runs called h713-power's own `suspend()` and `picture_back()`).
+each wake (`doku/172`; the driver repeats U-Boot's TV top step the standby lost). The first runs called
+h713-power's own `suspend()` and `picture_back()`; the real power key on the whole path, the wake by the key and
+by the remote's IR key and the long press were measured with the owner at the box on 09.10.2026 (`doku/174` §1).
 
-**Not measured yet.** The window after a key wake (`ignore_s`) is provisional; the device stage K
-measures it with the owner at the key. Whether the remote's power key should suspend too, and whether a
+**Not measured yet.** The window after a key wake (`ignore_s`) is provisional: at the box the waking press
+did not start a second standby (`doku/174` §1), but the window itself was not varied. Whether the remote's power key should suspend too, and whether a
 refused standby should power off or only log, are the owner's decisions; the
 defaults are on and power-off. Ignoring a short press while the picture comes back is provisional too.
 `$H713_POWER_ROOT` replaces `/`, `$H713_SYSTEMCTL` the `systemctl` and `$H713_MIPS_RESTART` the

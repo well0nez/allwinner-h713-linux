@@ -11,6 +11,9 @@ looks strange about this SoC.
 | ARM (Linux) | AFBD at `0x05600000` | feeds the video plane from the capture ring, writes the VidDec descriptor, and scans the primary plane out of DRAM - the console, or a frame the GPU rendered |
 | MIPS (`display.bin`) | capture (INCAP `0x06940000`), window chain, scaler, panel output | everything between the source and the imager |
 
+The MIPS is not fixed for good: since 09.10.2026 Linux parks it for a standby and starts it again afterwards
+([below](#standby-what-the-display-does-around-a-sleep)).
+
 The ARM *can* read and even write the MIPS-owned registers. It does not help: without the firmware's own
 recalculation the write is either ignored or harmful. Measured - a 960×540 processing window at 1080p
 changes nothing on screen, and hand-resetting the scaler after a firmware rebuild does not bring back a
@@ -144,6 +147,55 @@ external image, and as two planes, `R8` plus `GR88`. Both sampled a known grey a
 daemon takes the two-plane form with its own BT.709 limited-range shader, so nothing depends on Mesa's internal
 lowering table.
 
+## Standby: what the display does around a sleep
+
+A standby to RAM ([standby.md](standby.md)) reaches the display chain at the scanout, at the clocks and at the
+firmware itself. Measured on the HY310 in R2 test images (09.10.2026) except where noted; a release image does
+not offer the standby yet.
+
+**The scanout stops first.** `afbd`'s suspend acts only for a standby to RAM; on s2idle the DRAM keeps running
+and the path stays as it is (kernel `0210`). It runs the DRM suspend helper, stops the video channel, switches
+the RGB channel off and waits for its READY bit: a running fetch keeps the DRAM out of self-refresh, and crust
+waits for that without a bound (kernel `0209`, `0214`). If READY does not clear, the driver undoes it all and
+returns `-EBUSY`, which aborts the standby; that branch has never been seen on the device. The resume puts the
+idle word back, lets the helper re-arm RGB and logs "standby: scanout restored" with the CTRL word, or the
+error, so a dark picture after a wake can be told from a scanout fault.
+
+**The display clocks go off with the park.** The park stops the MIPS core, not the pipeline it set up
+(deinterlacer, video processing, scanout). Left running through the DRAM's self-refresh, that pipeline cost the
+DMA masters their way to the DRAM after about every second wake - camera -110, Wi-Fi "cmd timed-out", a hung
+resume; a DMA copy never completed and EHCI never loaded its schedule - while the CPU read the DRAM fine (fault
+B; 12 of 22 woken runs on 08.10., 7 of 7 without the fix on the night of 09.10.; `doku/171`). cpu_comm now gates
+five clocks (deint, panel, svp-dtl, afbd, bus-disp) in `suspend_late` right after the park and writes the saved
+words back in `resume_early`, before any resume touches the block (kernel `0238`, and `0241` whenever no MIPS
+runs at the sleep, not measured). Gated, not reset as the vendor does before each standby (`ge2d_suspend`): a
+reset loses what the parked MIPS set up, and afbd's resume then hangs the bus (`doku/171`). With the clocks
+gated: 9 of 9 good in the noirq phase, 7 of 7 in `suspend_late`, 6 of 6 on the r1test2 stack, and no camera or
+Wi-Fi failure in ten wakes on the R2 image (`doku/171`, `doku/172`). Why the DRAM does not answer is not
+measured; the explanation offered is that crust holds the DRAM controller in reset during the sleep and a
+request into that window never returns. The green picture after a bad wake fits: the scanout got nothing either.
+
+**The picture stays until the restart.** After the wake the wall shows the last picture until
+`h713-mips-restart` has run; nothing in the kernel starts the firmware (`doku/171` section 4).
+
+**The restart needs the TV top first.** The clock and reset words of the TV blocks (`0x06e00000`, three words)
+are set by U-Boot before it starts the MIPS core. A standby switches TVFE and TVCAP off and on, and the words
+come back as `0x10, 0, 0` instead of U-Boot's `0x00111111, 0x01111117, 0x404`. A core started then stalled the
+whole SoC within 200 ms (3 of 3; the watchdog reset the box 14 s later), where a park without a standby and the
+restart of a running core never did. `sun50i-h713-mips` now repeats U-Boot's step when the words are not
+U-Boot's (kernel `0239`; six standbys in one boot, the firmware ready 300 ms after each start, the picture back
+6 of 6; `doku/172`) and refuses the start when the device tree gives it no window for them. The rest is U-Boot's
+start: `display.bin` loaded again, cpu_comm's shared region rebuilt, the core released (kernel `0225`, `0231`).
+`h713-mips-restart` then binds the HDMI receiver again ([hdmi-in.md](hdmi-in.md)) and starts `h713-tv` and
+`h713-warp` again.
+
+**Time to the wall.** The restart takes about 4.5 s (3.9 to 5.3 s over the runs); then `h713-tv` pulses the
+hot-plug pin at its start, 300 ms low, and the laptop used as the source needs a good 4 s to send again: about
+11 s from the wake to the picture on the wall (`doku/174` section 1; the rest of the 11 s is not broken down).
+The receiver's probe has two hot-plug edges of its own, 200 ms low each (kernel `0136e`, measured at boot); that
+they repeat at a rebind is read from the code, not timed. Skipping the pulse when the EDID is unchanged would
+save the source's resync; open in `TODO.md`.
+
 ## Limits, honestly
 
 - The **video** plane reads the capture ring **directly** rather than importing a dma-buf - functionally
@@ -156,6 +208,7 @@ lowering table.
 - There is **no HDMI output** on this device. The imager is the only display.
 
 Details: `doku/96-anzeigekette.md` (the whole chain, measured), `doku/86` (video plane), `doku/87`
-(gamma/CTM), `doku/40-display.md` (bring-up history), `doku/74` (the null-pointer crash). For the primary
+(gamma/CTM), `doku/40-display.md` (bring-up history), `doku/74` (the null-pointer crash), `doku/171` to
+`doku/174` (the standby). For the primary
 plane and the GPU on it: working journal `keystone/PLAN` (stages S3 to S5) and the device readings in
 working journal `keystone-20260922`.

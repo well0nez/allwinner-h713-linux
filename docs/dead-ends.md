@@ -1,7 +1,7 @@
 # Dead ends
 
 Explanations that were tried and ruled out on real hardware, so nobody spends another session on them.
-Most of these come from one investigation: why the picture was dark. That question is **solved** - the
+Most of these come from one investigation: why the picture was dark (the last section is the standby). That question is **solved** - the
 cause was a bad panel clock, not any of the things below - found by comparing registers against a running
 stock system rather than by reasoning about the driver (`doku/90-stock-referenz.md`). Each entry here was a
 plausible cause that the measurement ruled out.
@@ -43,6 +43,17 @@ the bus it should be on (PH2/PH3) gets an ACK from the accelerometer at `0x18` a
 bus itself works; the chip does not respond on it. cstenger measured the same silence. This is not fully
 closed: only PH2/PH3 was scanned, and which I²C controller the DLPC3435 node actually hangs off in the
 kernel devicetree was not checked - if it is a different bus, the test does not rule anything out.
+
+## Standby and the picture after it
+
+Measured on the HY310 on 07. - 09.10.2026 ([standby](subsystems/standby.md)), and not the cause:
+
+- **CPU hot plug** for the stall after the first wakes: CPU_OFF/CPU_ON through TF-A ran clean; the cause lay in the display path (MIPS, afbd) running through the sleep (`doku/164`, `doku/165`).
+- **Feeding the SoC watchdog by switching MODE off and on**: the count does not restart; a write of 0x14af to CTRL does (`doku/164`, `doku/170`).
+- **Clearing crust's EINT status right after it switches PL4 back**, against the phantom power key after a wake: the flag arrives after later samples of the debounce clock, so crust waits first (`doku/167`).
+- **Fault B** (about every second wake the DMA masters get no DRAM): not the HDMI source, `THal_Vp_Deinit`, stopping `h713-tv` and the warp, the PB5 rail, the DRAM contents, the CPU count, nor the state of U-Boot, BL31, crust and kernel. A stopped INCAP capture does not cure it (it cures C1, below). A display-bus reset over the sleep hangs afbd's resume, because it loses what the parked MIPS set up; gating the five display clocks works (`doku/171`).
+- **DRAM controller COM+0x004** for the hang when the MIPS restarts after a standby (bits 21:16 read 0x10 after the sleep, 0x20 before): putting 0x20 back hung the same; the TV-top words the sleep resets were it (`doku/172`).
+- **A TV-top power-off step** does not prevent the hang going to sleep (C1), and stopping the capture in the noirq window is impossible - even a read of INCAP stopped the box. It stops before the freeze: no C1 in 50 sleeps against 5 in 111, a hint, not a proof (`doku/173`).
 
 ## A measurement tool that does not apply here
 

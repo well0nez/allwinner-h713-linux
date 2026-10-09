@@ -10,7 +10,7 @@ The two differ in who does the handing and when:
 | | key set | where it is read | who hands it over | when |
 |---|---|---|---|---|
 | **HDCP 1.4** | 288 bytes (of a 320-byte record) | secure storage, eMMC | the boot loader, through our own EL3 service | before the display firmware is released |
-| **HDCP 2.2** | 912 bytes | secure storage, eMMC | `h713-hdcp-key.service` in userspace | after boot |
+| **HDCP 2.2** | 912 bytes | secure storage, eMMC | `h713-hdcp-key.service` in userspace | after boot, and again by `h713-hdcp-key --bind` whenever the display firmware is restarted (below) |
 
 HDCP 1.4 has to happen in the boot loader because the display firmware polls the sink's
 "key loaded" bit in `Rx_HDCP14_LoadKey` and gives up early. By the time userspace could act,
@@ -84,8 +84,8 @@ Measured on two devices with two different serial numbers:
 
 | | HY310 | HY300 Pro |
 |---|---|---|
-| HDCP 1.4 (288 B) | `d743dcf4…` | `d743dcf4…` — **the same** |
-| HDCP 2.2 (912 B) | `59598951…` | `fa0a8bd8…` — **different** |
+| HDCP 1.4 (288 B) | `d743dcf4…` | `d743dcf4…` - **the same** |
+| HDCP 2.2 (912 B) | `59598951…` | `fa0a8bd8…` - **different** |
 
 The 1.4 key set is shared across the product line; the 2.2 key set is device-bound. Two
 consequences follow, and both are implemented:
@@ -98,6 +98,13 @@ consequences follow, and both are implemented:
   build if key material ever appears in a tracked file. What may be stored, and is, are
   SHA-256 fingerprints: one-way, and enough to say "this is the key set we know".
 
+## After a restart of the display firmware
+
+A standby parks the display MIPS and Linux starts it again (`h713-mips-restart`, [standby](standby.md)); the HDMI receiver is unbound and bound around it. The two key sets fare differently.
+
+* **HDCP 2.2.** The receiver's probe is what asks for the key (`request_firmware()`), and `h713-hdcp-key.service` deleted it after the boot, so a plain bind would run the init sequence without it. `h713-mips-restart` therefore binds through `h713-hdcp-key --bind hdmi-rx`: the tool finds the key in secure storage as it does at boot, writes it to a file only root can read in a tmpfs directory (`/run/hy310/firmware`), points the firmware search path there, binds the receiver, and deletes the file and clears the path afterwards. Exit 0 is bound with the key; 3 is bound without it because none was found (a picture rather than none, logged as a warning); 1 is not bound. Nothing is stored or sent. **Not measured:** HDCP 2.2 from a source after such a restart (`doku/172`, `doku/173`).
+* **HDCP 1.4.** The boot loader writes the key once per boot, before the display firmware is released, and nothing in the restart path writes it again: the restart driver loads `display.bin` with the "key loaded" wait defused, as U-Boot does at boot (kernel `0231`), and `h713-mips-restart` knows only the 2.2 key. It does not need to: the sink keeps the 1.4 key through the standby. Measured on the HY310 on 09.10.2026 with a ThinkPad (i915, HDCP 1.4 only): after six standbys with a restart each in one boot, and again after a seventh, `h713-tv ctl hdcp` said `key-1.4: loaded` and `Undesired` -> `Desired` stood at `Enabled` within 2 s, with no write since the boot (`doku/175` §3). One sink write per boot is therefore enough on an image with standby too. Where the sink lies is not measured, only that it holds.
+
 ## Tools
 
 ```bash
@@ -105,6 +112,11 @@ consequences follow, and both are implemented:
 # so it also answers for a board nobody has measured yet - and prints the lines to paste
 # for anything it does not recognise.
 installer/h713-hdcpkey <dump.img | secure-storage.bin | backup-directory>
+
+# On the device: check the 2.2 key, writing nothing; or bind the receiver while the key lies in a tmpfs
+# (what h713-mips-restart calls)
+h713-hdcp-key --check
+h713-hdcp-key --bind hdmi-rx
 ```
 
 In U-Boot:
@@ -125,6 +137,8 @@ nothing in between:
 1. `h713_hdcp14_wipe=1`, boot, and confirm the source falls back to **Desired**. This proves
    two things at once: the sink is empty, and our push mechanism works at all.
 2. boot again with the default, and confirm the source reports **Enabled**.
+
+On 08.10.2026 the 1.4 pair was repeated on the R1 test image, where crust is the ARISC firmware: two warm starts, `h713_hdcp14_wipe=1` and then the default, the source went `Desired` and then `Enabled`, the sink's key-loaded register 0x93 read 0x41 and then 0x45 (`doku/170`, A0).
 
 ### HDCP 2.2, measured with a real 2.2 source
 
@@ -147,6 +161,7 @@ a failed one does not leave a standing session.
 
 ## Limits
 
+* A source that asks for HDCP 1.4 at once, in the mode switch (a ThinkPad with i915), stayed on `Desired` for 40 s in two runs on the R1 test image; a request 2, 4 or 6 s after the lock stood at `Enabled` within 5 s. `doku/170` reads it as the receiver not being ready in the first moment and i915 not asking again; crust is not involved (the hot-plug pin stays up). Not measured with the vendor's ARISC firmware or with the Fire TV stick.
 * The boot loader's own watchdog guard around the push is armed only if nobody else is
   driving the watchdog. U-Boot's driver stays off on this board; if that changes, the guard
   steps aside rather than fight over the register.

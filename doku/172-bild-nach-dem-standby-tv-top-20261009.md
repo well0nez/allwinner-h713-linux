@@ -1,5 +1,7 @@
 # 172 - Bild nach dem Standby: der MIPS-Neustart aus dem Park hängte die SoC, weil der Schlaf die TV-Top-Wörter löscht; Behebung gemessen (09.10.2026, 09:47)
 
+> **Ergänzt durch `176` (09.10.):** der Verweis in §2 auf "`doku/170`, L-A" stimmt nicht, dort stehen die Läufe nicht; L-A und L-B stehen in `176` §2.
+
 **Kurz:** Auf dem R2-Testabbild (v0.0-r2test1: crust ecf2ddc, TF-A 175c6948f, Kernel 0225-0238, h713-power mit
 `h713-mips-restart`) laufen Schlaf und Aufwachen sauber, aber der Neustart der Anzeige-MIPS danach legte die ganze SoC
 still, binnen 200 ms nach dem Start des Kerns, 3 von 3. Ursache gemessen: genpd schaltet TVFE und TVCAP im Schlaf ab und

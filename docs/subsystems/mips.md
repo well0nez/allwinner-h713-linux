@@ -4,7 +4,8 @@ A dedicated MIPS32 core runs the vendor firmware `display.bin` and owns everythi
 the video input - capture, the window chain, the scaler, panel output (the chain itself is in
 [display.md](display.md)). Without it running correctly the imager shows nothing: the ARM can read
 and even write the registers it owns, but only the firmware's own recalculation makes a write do
-anything.
+anything. U-Boot starts the core at boot; since 09.10.2026 Linux can park it for a standby and start
+it again ([Restarting it from Linux](#restarting-it-from-linux)).
 
 ## Artifacts it needs
 
@@ -68,7 +69,8 @@ build the shared-memory structures `cpu_comm` needs (spinlocks, call table, sema
 the coprocessor through four reset stages. A boot that got this far reports
 `CPU_COMM magic=deadbeef/deadbeef ARM=00000005 MIPS=00000005` and `application readiness proven`
 (`doku/40`, device log). **`init` only runs once per power cycle** - a warm restart reaches the
-prompt again but leaves the display blocks gated and the coprocessor dead.
+prompt again but leaves the display blocks gated and the coprocessor dead. That is U-Boot's command;
+once Linux runs, the core is started again by the driver described next.
 
 ## What the vendor's own stack does at runtime
 
@@ -85,13 +87,73 @@ and `/vendor/bin/loadmips`).
   ioctl, `0x648`, the driver refuses itself with "use mmap instead".
 - **Resume leaves the core paused.** `mipsloader_resume()` runs the reset ladder and restores the two
   share-memory registers from the driver's own copy, and stops there: clocks on, soft reset asserted,
-  boot address not rewritten. Userspace has to issue the start ioctl afterwards. Nothing re-uploads
-  the image - Linux never writes into the reserved window, which is why a power-down and up needs no
-  reload at all.
+  boot address not rewritten. Userspace has to issue the start ioctl afterwards. The kernel does not
+  re-upload the image either, but the vendor restarts the display firmware, reloaded, on every
+  screen-on, standby included (`doku/133`, 27.09.2026). *Superseded:* the earlier reading here that
+  a power-down and up needs no reload at all, because Linux never writes into the reserved window.
+  Our restart always loads `display.bin` again; whether the reset ladder alone would do is not
+  measured.
 
-None of this runs on our build: our kernel drives the panel through its own KMS driver, and U-Boot is
-the only thing that ever starts the core. It matters for two roadmap items - reloading the firmware
-at runtime and deep sleep - and for anyone who boots a vendor kernel with our U-Boot.
+None of this runs on our build: our kernel drives the panel through its own KMS driver, and the
+vendor's halt and start are repeated, write for write, by `sun50i-h713-mips` (below). It still
+matters for anyone who boots a vendor kernel with our U-Boot.
+
+## Restarting it from Linux
+
+Until 08.10.2026 only U-Boot could start the core, so a standby would have cost a reboot. The driver
+`sun50i-h713-mips` (patches `0231`, `0232`) loads `display.bin` into the window U-Boot used and starts
+the core again, from a running core or out of the standby park. It is the one owner of the core's
+clock `0x02001600` and reset word `0x0200160c`, written raw as U-Boot does (no clock-framework
+consumer exists), and [cpu_comm](cpu-comm.md) parks the core for a standby through it. The node
+`mips@3061000` has the MIPS block, the clock and reset words and the TV top (`0x06e00000`) as its
+three regs, and the reserved window `mips-firmware@4b100000`. It is disabled in the dtsi and enabled
+on the HY310, where the restart was measured; the HY300 Pro and HY200 QZ713DF A1 trees switch it off
+again (`0232`). On the HY300PRO-G-EU every earlier reload whose result was looked at ended black
+(03.10.2026, before this driver; `doku/138`).
+
+**Interface.** In `/sys/bus/platform/drivers/sun50i-h713-mips/<device>/`:
+
+- `state` (read): `running`, `halted` (core held), `parked` (reset word 0) or `failed` on the
+  first line, derived from the registers; the second line has the two CCU words, and the MIPS block's
+  status and boot address only when its gate is on and the bus reset released (`not-read` otherwise).
+- `restart` (write): the path of a `display.bin`, `-` or nothing for `/boot/mips/display.bin`. It
+  returns 0 or the error; a failure leaves `halted` or `failed` with a warning, and the next write
+  starts over from there. The driver does not touch the HDMI receiver, which has to be unbound around
+  the write: [h713-mips-restart](../tools/h713-mips-restart.md) does that, and `h713-power` runs it
+  after every standby.
+
+| Started from | before the load | the start |
+| --- | --- | --- |
+| `running` | the vendor's `mips_reset()`: bus, soft and cold resets go, the bus reset returns, the gate is off around the cold reset, 20 us steps, soft reset held (ends `0x00030001`) | vendor: boot address, 20 us, `0x00070001` |
+| `parked` | nothing | U-Boot's: TV top step (below), clock `0x80000002`, resets `0`, `0x10000`, `0x30000`, `0x30001` at 12 ms each, boot address, `0x00070001` |
+| `halted` | nothing | vendor start |
+| `failed` | park first (reset 0, 12 ms, clock 0, 12 ms) | as `parked` |
+
+Without a halt or park the start type follows the registers, not what the driver remembers (`0235`).
+The load is the vendor's: the file is read whole (64 KiB to 5 MiB, a multiple of 4), the HDCP 1.4 key
+wait defused as U-Boot does at boot (exactly one loop bound, or the file is refused), the soft reset
+checked held, the code block up to `0xd01000` zeroed, the image copied and compared back; what U-Boot
+put behind it stays. `cpu_comm` rebuilds its shared region with the core held, and after the release
+the driver waits up to 10 s, U-Boot's budget, for the firmware's READY: about 300 ms in practice.
+
+**The TV top.** A standby powers the TVFE and TVCAP domains off and on, and the TV top's three words
+at `0x06e00000` come back as `0x10, 0, 0` instead of U-Boot's `0x00111111`, `0x01111117`, `0x404`.
+U-Boot writes them before it starts the core (`h713_disp_clocks()`). A core started without them
+stalled the whole SoC within 200 ms - no heartbeat, no RCU report, the watchdog reset the box 14 s
+later - in 3 of 3 restarts after a real standby; a park without a sleep and a running core never
+showed it (`doku/172` §1, §2, §4; `0239`). The start out of the park therefore repeats U-Boot's step
+when the words are not U-Boot's - +4, +8, +0, all three 0, the three again, 12 ms apart - and logs
+"TV top in place" when they are (`0239`). Without the third reg the start is refused and the core
+stays `parked` (`0242`), a refusal being better than a stalled bus. The HDMI receiver's LINK window
+lies in the same TV blocks, which fits the hang of every LINK read after a standby seen on
+08.10.2026 (`doku/176` §2, `doku/172` §2).
+
+Measured on the HY310: a test bench with the same sequences brought the picture back on 08.10.2026
+from a running core and from the park register state set by hand (V3, V8; `doku/176` §1 - the commit text
+of `0231` also names three runs in a row, V10, which no capture backs); the TV top step by hand, then the restart: ready after 290 ms, picture back after
+3955 ms; the driver, six standbys with a restart each in one boot, 6 of 6 with the picture back
+(`doku/172` §2, §4), and 30 of 30 in a fast loop (`doku/173` §4). Not measured: HDCP 2.2 from a
+source after a restart (`doku/172` §5, `doku/174` §3).
 
 ## The onboard log (elog)
 
@@ -124,4 +186,5 @@ and `regw` change what is on screen right now - use them only with eyes on the p
 back: a source switch, or, if that alone does not clear it, a full power cycle followed by one.
 
 Details: `doku/63-mips-elog.md`, `doku/98-mips-shell.md`, `doku/96-anzeigekette.md`,
-`doku/108-plan-vendordaten.md`, `doku/40-display.md`.
+`doku/108-plan-vendordaten.md`, `doku/40-display.md`; the restart in `doku/172` - `doku/174`,
+the park in [cpu-comm.md](cpu-comm.md) and [standby.md](standby.md).
