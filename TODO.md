@@ -42,7 +42,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       später). Dazu Bluetooth dort: erster Attach nach Kaltstart hängt an `0x1003`, 245-Byte-Schreibvorgänge kommen
       unvollständig an (FB-BTRESET 9.3, RTS/CTS?); `h713-bt-reset` auf dem Board noch nie probiert
 - [x] 1.5 STAGE4-Marker füllen und löschen - **erledigt** (b110ec1, `doku/143`); 09.10. geprüft: `git grep STAGE4` findet keinen Marker mehr
-- [ ] 1.6 Forks pushen (Stand 09.10. abends, `main` c4a3924): U-Boot `h713-hy310` +7 (Kopf `87b2a44`, lokal Zweig
+- [ ] 1.6 Forks pushen (Stand 09.10. abends, `main` c4a3924; um 19:00 unverändert - die U-Boot-Zeile zu 2.30 liegt nur lokal als
+      `versuch/standby-gate-uboot` und kommt erst mit 1.1a): U-Boot `h713-hy310` +7 (Kopf `87b2a44`, lokal Zweig
       `versuch/r2-standby-uboot`), TF-A `sun50i-h713` +22 (Kopf `175c6948f`, lokal `versuch/crust-release-tfa`), sunxi-tools gleich;
       **neu: crust** - der Fork liegt noch nicht auf GitHub (Repo anlegen, Zweig mit 80 Patches auf `499a362`, Kopf `ecf2ddc`,
       lokal `arbeit/crust-mips-drop-20261008/crust` Zweig `versuch/mips-drop`); die Spiegel `uboot-h713/`, `tfa-h713/`,
@@ -53,7 +54,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       BL31 mit und ohne ihn bytegleich gebaut, `doku/153`; der Beleg-Branch ist seit 07.10. gelöscht - Marco: S-EL1 nicht
       gewollt, `doku/160`)
       Beim selben Push den alten GitHub-Branch `origin/hy300-pro-ab` loeschen (Marco 06.10.: ja; Inhalt ist in `main`, 7.8)
-- [ ] 1.7 `main` pushen (06.10. +113, 09.10. abends +191; aktuell `git rev-list --count origin/main..main`)
+- [ ] 1.7 `main` pushen (06.10. +113, 09.10. 19:00 +199; aktuell `git rev-list --count origin/main..main`)
 - [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
 
@@ -203,7 +204,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
       Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
 
-- [ ] 2.29 **Standby oder Ausschalten - wann, wie, was im Release** (Marco 09.10., eigenes Thema, besprechen): Standby
+- [x] 2.29 **Standby oder Ausschalten - wann, wie, was im Release** (Marco 09.10., eigenes Thema, besprechen): Standby
       funktioniert jetzt (Bild und Ton zurück, Taste, IR, Minuten-Schläfe, `doku/174`). Offen zu entscheiden: bietet das
       Release-Abbild `--standby` an; Vorgabe für den kurzen Druck (`short = standby|poweroff`) und für einen verweigerten
       Standby (`refused`); die Fernbedienung; ein Gate an oder aus (`h713_gate`); automatischer Standby ohne Signal; was
@@ -213,6 +214,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         getestet". Kurz = Standby, 3 s halten = Aus (bleibt so). Fernbedienung wie die Taste (`remote = on`, unverändert).
         Marcos Box: Standby im Alltag; wenn Nächte im Standby halten und die Leistung gemessen ist, wird Standby im Release
         danach die Vorgabe. Missglückter Standby -> dunkel ins Gate: 2.30. Automatischer Standby ohne Signal: viel später, 9.14
+      - Umsetzung in 1.1a (Vorgabe `short = poweroff`, "experimentell"); die Leistungsmessung ist jetzt 2.31
 
 - [x] 2.30 **Ein missglückter Standby endet dunkel im Gate** (Marco 09.10.: "lieber dunkel" statt Neustart mit Lampe an).
       Heute läuft jeder Reset aus einem Standby (crust-Budget 15 s bei C1, Linux-Zeitschalter 16 s) als Warmstart am Gate
@@ -225,6 +227,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `h713_gate=1`: Kontrolle, Hänger syscore suspend (crust 15 s -> Gate dunkel), Hänger syscore resume (crust 60 s ->
         Gate dunkel), reboot bei "STBY" bootet. Rest in 1.1a (U-Boot-Zeile, TF-A-Kommentar); crust-Hänger im Schlaf fängt
         weiter nur R_WDOG (CR-1)
+- [ ] 2.31 **Leistung messen: Gate (mit crust), Standby, Betrieb** (aus 2.29): Gate 4 W ist vom 09.09., vor crust; Standby
+      nie gemessen. Entscheidet mit, ob Standby im Release danach die Vorgabe wird. Braucht ein Messgerät (Sonoff mit
+      Leistungsanzeige? Marco fragen)
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -353,7 +358,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       bricht an root-eigenen Dateien (`installer/tmp/`) ab; am 08.10. lief das Tor deshalb auf einer sauberen Kopie des
       Commit-Stands. Entweder den Scan auf verfolgte Dateien plus Submodule begrenzen oder das Muster dokumentieren.
       **09.10.:** Ursache gefunden - in einem Git-Worktree ist `.git` eine Datei, `sperr-scan.py` prüft `os.path.isdir` und
-      erkennt das Git nicht (Durchsicht B1); Behebung `os.path.exists`, eine Zeile. Bis dahin: Tore auf `git checkout-index`-Abzug
+      erkennt das Git nicht (Durchsicht B1); Behebung `os.path.exists`, eine Zeile. 09.10. abends bei 2.30 wieder getroffen. Bis dahin: Tore auf `git checkout-index`-Abzug
 - [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
       Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
       Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
@@ -466,9 +471,11 @@ Register -, nicht das Verhalten; die Einschätzung "eher überholt" in `doku/175
       entscheiden, ob `graphify label --backend claude-cli` erlaubt ist (schickt nur Symbolnamen)
 - [ ] 8.6 `settings.json.vor-mempalace-*` und `settings.json.vor-graphify-*` nach Probewoche löschen
 - [ ] 8.7 cognee gestrichen — in der Recherche-Datei vermerken
-- [ ] 8.8 HY310 läuft noch; Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.**
+- [ ] 8.8 HY310 läuft noch; Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.** Seit 09.10. abends `h713_gate=1`:
+      nach Netz-Ein wartet die Box auf die Taste, ein Fern-Hartreset kommt nur bis ins Gate (`referenz/geraete.md`)
 - [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
-- [ ] 8.10 Worktrees aufräumen, sobald Marco die Testabbilder nicht mehr braucht: `arbeit/crust-release-20261007/wp8-bau/repo`,
+- [x] 8.10 Worktrees aufräumen, sobald Marco die Testabbilder nicht mehr braucht - **erledigt 09.10. 16:56** (Marco), Referenzabbild
+      `arbeit/r2-20261009/abbild-r2test4/` bleibt; auch der Worktree von 2.30 ist weg: `arbeit/crust-release-20261007/wp8-bau/repo`,
       `arbeit/r2-20261009/repo` (r2test1-3), `arbeit/r2-20261009/main-int` (r2test4, läuft auf der Box); Zweige bleiben
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)
