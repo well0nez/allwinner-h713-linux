@@ -218,6 +218,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`172-bild-nach-dem-standby-tv-top-20261009.md`](172-bild-nach-dem-standby-tv-top-20261009.md) | Analyse | 2026-10-09 | 172 - Bild nach dem Standby: der MIPS-Neustart aus dem Park hängte die SoC, weil der Schlaf die TV-Top-Wörter löscht; Behebung gemessen (09.10.2026, 09:47) | 2 |
 | [`173-durchsicht-r2-c1-ton-nach-standby-20261009.md`](173-durchsicht-r2-c1-ton-nach-standby-20261009.md) | Analyse | 2026-10-09 | 173 - Durchsicht des Standby-Codes, C1 im TVCAP-Abschalten eingegrenzt, Ton nach dem Standby abgesichert; r2test3 (09.10.2026, 14:30) | 1 |
 | [`174-mit-marco-am-geraet-ton-nach-standby-20261009.md`](174-mit-marco-am-geraet-ton-nach-standby-20261009.md) | Analyse | 2026-10-09 | 174 - Gerätetests mit Marco: Taste, Fernbedienung, lange Schläfe; der Ton kommt nach dem Standby zurück (09.10.2026, 15:30) | 1 |
+| [`175-hdcp14-nach-standby-und-haertungspaket-20261009.md`](175-hdcp14-nach-standby-und-haertungspaket-20261009.md) | Analyse | 2026-10-09 | 175 - HDCP 1.4 übersteht den Standby; was vom HDCP-Härtungspaket bleibt (09.10.2026, 17:40) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -375,7 +376,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-44 von 233 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+45 von 234 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -413,6 +414,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `161-hdcp-haertung-paket-20261007.md`
 * `164-standby-haenger-eingegrenzt-20261007.md`
 * `169-crust-release-offline-fertig-20261008.md`
+* `175-hdcp14-nach-standby-und-haertungspaket-20261009.md` (ueberholt)
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
