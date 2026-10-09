@@ -1,0 +1,49 @@
+arm64: dts: h713: hy200-qz713df-a1: crust as the ARISC firmware, the display MIPS restart on
+
+The HY300PRO-G-EU (this board, stock firmware projector05061226) gets the
+HY310's ARISC path: crust, built for this board (crust
+h713_hy200_qz713df_a1_sr_defconfig, board id 3), loaded as
+hy200-qz713df-a1-crust.bin, the name release/build-all.sh installs it
+under. Its stock tree agrees with the HY310's on what crust drives and
+reads (power key PL4, the IR receiver, the LEDs PL0/PL1), and the DRAM
+words crust uses are the same at this variant's 792 MHz.
+
+The display MIPS node is no longer switched off here: on 03.10.2026 a
+reload on this board through the old test bench ended black (doku/138),
+before the restart driver (0231) and its TV top step (0239) existed; the
+test of the driver on this board is what this tree is for. The other
+variant of the board (projector09220931, 624 MHz) has no crust build yet
+and would find no firmware under this name.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../allwinner/sun50i-h713-hy200-qz713df-a1.dts    | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+index 62c4d41..f79d8ba 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -41,14 +41,15 @@
+ 	status = "disabled";
+ };
+ 
+-/* The vendor ARISC image, as before: crust has run on the HY310 only. */
++/*
++ * crust, our ARISC firmware, as on the HY310: the board's stock tree agrees
++ * with the HY310's on the power key, the IR receiver and the LEDs, and the
++ * DRAM words crust uses are the HY310's (crust h713_hy200_qz713df_a1_sr).
++ * Built for the variant projector05061226 only (792 MHz); the image of the
++ * other variant has no crust yet and would find no firmware here.
++ */
+ &arisc {
+-	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
+-};
+-
+-/* The display MIPS restart is measured on the HY310 only. */
+-&mips {
+-	status = "disabled";
++	firmware-name = "hy200-qz713df-a1-crust.bin", "hy310-edid.bin";
+ };
+ 
+ /* PB5 stays the dtsi's hog here, not the board manager's (see above). */
