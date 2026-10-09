@@ -545,3 +545,9 @@
 #   registers (review A F4, F6 of the standby hook)
 0234-soc-sunxi-cpu-comm-the-receive-path-stays-out-while-the-restart-reads-the-msgbox-off.patch
 0235-soc-sunxi-h713-mips-the-start-type-follows-the-registers-when-no-halt-runs.patch
+#   0236-0238 the standby itself (09.10.2026, arbeit/mips-reload-20261008 and arbeit/standby-display-20261009): a
+#   driver asks cpu_comm whether the firmware still runs; hdmirx reads no LINK after the park (bus hang A); the
+#   display clocks go off with the parked MIPS (DMA masters lost the DRAM after the wake, B)
+0236-soc-sunxi-cpu-comm-tell-a-driver-whether-the-firmware-still-runs.patch
+0237-media-h713-hdmirx-no-link-read-after-the-standby-parked-the-mips.patch
+0238-soc-sunxi-cpu-comm-the-display-clocks-go-off-with-the-parked-mips.patch

@@ -1,0 +1,241 @@
+media: h713-hdmirx: no LINK read after the standby parked the MIPS
+
+The audio poll reads the receiver's LINK window every 100 ms on
+system_wq, and nothing stopped it for a standby to RAM. cpu_comm parks
+the MIPS in its suspend_late and genpd powers TVFE and TVCAP off in the
+noirq phase; what the firmware had set up in the receiver does not come
+back with the power, and the parked MIPS sets nothing up again. A LINK
+read in that state does not answer zero, it stops the bus. On the HY310
+(08.10.2026, breadcrumbs in the RTC general purpose words, kept over the
+watchdog reset):
+
+  L-B   poll running:  read 4 begun after resume_noirq, never finished
+  L-A 2 poll paused, back 3 s after the wake: the resume completed
+        (rc=0, 0.56 s), read 1 of the poll begun, never finished,
+        SoC watchdog reset 16 s later
+
+The poll now stops in the suspend callback. The resume asks cpu_comm
+whether the firmware still runs: after a sleep aborted before the park
+the poll comes back; after the park this instance never reads LINK
+again, empties the three audio controls and says so once. The status
+and hdcp files report "not read" instead of reading. h713-mips-restart
+unbinds the receiver around the restart, and the new instance's probe
+starts the poll. A probe while the MIPS is parked or stopped does not
+start it either. The comment that called the reads safe while the block
+sleeps is marked as overtaken.
+
+Compiled out of tree against the R1 kernel with W=1, no warning.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -69,6 +69,7 @@
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/platform_device.h>
++#include <linux/pm.h>
+ #include <linux/regmap.h>
+ #include <linux/scatterlist.h>
+ #include <linux/seq_file.h>
+@@ -419,6 +420,9 @@ struct h713_hdmirx_ring_geometry {
+  *    syscon behind allwinner,hdmirx-link therefore carries reg-io-width = 1,
+  *    which makes regmap-mmio use readb() for every access.
+  */
++/* what the status files say once LINK is lost (h713_hdmirx_resume()) */
++#define H713_LINK_LOST	"the display MIPS is parked or stopped; h713-mips-restart binds the receiver anew"
++
+ #define H713_LINK_ACTL		0x040
+ #define H713_LINK_ACTL_OUT	GENMASK(2, 0)	/* 7 = audio output on */
+ #define H713_LINK_ACTL_OUT_ON	7
+@@ -1364,6 +1368,13 @@ struct h713_hdmirx {
+ 	struct regmap *link;
+ 	struct delayed_work audio_work;
+ 	struct h713_hdmirx_audio audio_last;
++	/*
++	 * Set for good when this instance finds the display MIPS not running
++	 * the firmware that set the receiver up: at the wake from a standby
++	 * that parked it, or at a probe while it is parked or stopped. From
++	 * then on nothing reads LINK; see h713_hdmirx_resume().
++	 */
++	bool link_lost;
+ 
+ 	/* the key step of the init sequence, for the hdcp file */
+ 	enum h713_hdcp22_key_state hdcp22_key;
+@@ -1847,6 +1858,8 @@ static int h713_hdmirx_read_audio(struct h713_hdmirx *rx,
+ 
+ 	if (!rx->link)
+ 		return -ENODEV;
++	if (READ_ONCE(rx->link_lost))
++		return -ESHUTDOWN;
+ 
+ 	ret = regmap_read(rx->link, H713_LINK_ACTL, &actl);
+ 	if (!ret)
+@@ -1909,9 +1922,10 @@ static int h713_hdmirx_read_audio(struct h713_hdmirx *rx,
+  * times a second to be told that nothing happened. The same comparison
+  * carries the log line, which is what a board without v4l2-ctl has.
+  *
+- * The three controls and rx->audio_last are written from here only, from the
+- * one work item, so the two cannot drift apart: what audio_last holds is what
+- * the controls were last set to.
++ * The three controls and rx->audio_last are written from here, from the one
++ * work item, and from h713_hdmirx_audio_clear() while that item is stopped,
++ * so the two cannot drift apart: what audio_last holds is what the controls
++ * were last set to.
+  */
+ static void h713_hdmirx_audio_publish(struct h713_hdmirx *rx,
+ 				      const struct h713_hdmirx_audio *a)
+@@ -1940,6 +1954,19 @@ static void h713_hdmirx_audio_publish(struct h713_hdmirx *rx,
+ 	v4l2_ctrl_s_ctrl(rx->audio_ctrl[H713_AUDIO_COMPRESSED], a->compressed);
+ }
+ 
++/*
++ * No reading at all, for an instance whose LINK is lost: the controls say
++ * "no audio" instead of keeping the last stream's rate. Called with the
++ * poll stopped, so the rule above (written from one place at a time) holds.
++ */
++static void h713_hdmirx_audio_clear(struct h713_hdmirx *rx)
++{
++	rx->audio_last = (struct h713_hdmirx_audio){ };
++	v4l2_ctrl_s_ctrl(rx->audio_ctrl[H713_AUDIO_PRESENT], 0);
++	v4l2_ctrl_s_ctrl(rx->audio_ctrl[H713_AUDIO_RATE], 0);
++	v4l2_ctrl_s_ctrl(rx->audio_ctrl[H713_AUDIO_COMPRESSED], 0);
++}
++
+ /*
+  * The poll. A hundred milliseconds, which is the plan's number and is fast
+  * enough for what waits on it: hy310-tv has to change the codec's rate
+@@ -1949,9 +1976,14 @@ static void h713_hdmirx_audio_publish(struct h713_hdmirx *rx,
+  * others, because the driver has none that runs all the time -- the re-arm
+  * retry is armed by a failure and the vsync notifier only ticks while the
+  * capture streams, and the audio status has to be right when nothing is
+- * streaming as well. Ten byte reads every tenth of a second, and the reads
+- * are safe while the block is asleep: a powered down TVFE answers zero,
+- * which decodes to "no audio".
++ * streaming as well. Ten byte reads every tenth of a second.
++ *
++ * Overtaken 08.10.2026: "the reads are safe while the block is asleep: a
++ * powered down TVFE answers zero" holds while the MIPS runs, not after a
++ * standby to RAM. With the MIPS parked the first read after the wake never
++ * finished and the watchdog reset the box (runs L-B and L-A 2). The poll
++ * stops in h713_hdmirx_suspend() and does not come back on this instance
++ * after a park; see h713_hdmirx_resume().
+  */
+ static void h713_hdmirx_audio_work(struct work_struct *work)
+ {
+@@ -4813,6 +4845,10 @@ static void h713_hdmirx_show_audio(struct seq_file *s, struct h713_hdmirx *rx)
+ 		seq_puts(s, "audio:        no LINK window (allwinner,hdmirx-link is missing)\n");
+ 		return;
+ 	}
++	if (ret == -ESHUTDOWN) {
++		seq_puts(s, "audio:        not read, " H713_LINK_LOST "\n");
++		return;
++	}
+ 	if (ret) {
+ 		seq_printf(s, "audio:        not readable (%d)\n", ret);
+ 		return;
+@@ -4869,6 +4905,8 @@ static int h713_hdmirx_read_hdcp(struct h713_hdmirx *rx,
+ 	memset(h, 0, sizeof(*h));
+ 	if (!rx->link)
+ 		return -ENODEV;
++	if (READ_ONCE(rx->link_lost))
++		return -ESHUTDOWN;
+ 	for (i = 0; i < ARRAY_SIZE(regs); i++) {
+ 		ret = regmap_read(rx->link, regs[i].reg, regs[i].val);
+ 		if (ret)
+@@ -4914,6 +4952,10 @@ static void h713_hdmirx_show_hdcp_brief(struct seq_file *s,
+ 	int ret;
+ 
+ 	ret = h713_hdmirx_read_hdcp(rx, &h);
++	if (ret == -ESHUTDOWN) {
++		seq_puts(s, "hdcp:         not read, " H713_LINK_LOST "\n");
++		return;
++	}
+ 	if (ret) {
+ 		seq_printf(s, "hdcp:         not readable (%d)\n", ret);
+ 		return;
+@@ -4973,7 +5015,8 @@ static ssize_t hdcp_show(struct device *dev, struct device_attribute *attr,
+ 	ret = h713_hdmirx_read_hdcp(rx, &h);
+ 	if (ret) {
+ 		at += sysfs_emit_at(buf, at, "version:       not readable (%d%s)\n", ret,
+-				    ret == -ENODEV ? ": no LINK window, allwinner,hdmirx-link is missing" : "");
++				    ret == -ENODEV ? ": no LINK window, allwinner,hdmirx-link is missing" :
++				    ret == -ESHUTDOWN ? ": " H713_LINK_LOST : "");
+ 		at += sysfs_emit_at(buf, at, "authenticated: not readable\n");
+ 		at += sysfs_emit_at(buf, at, "key-1.4:       not readable\n");
+ 		cap = "not readable";
+@@ -5524,8 +5567,13 @@ static int h713_hdmirx_probe(struct platform_device *pdev)
+ 	 * event to whoever subscribed. Without a LINK window it is not armed
+ 	 * at all: it would read nothing forever.
+ 	 */
+-	if (rx->link)
++	if (rx->link && cpu_comm_firmware_up()) {
+ 		queue_delayed_work(system_wq, &rx->audio_work, 0);
++	} else if (rx->link) {
++		/* a bind without the restart: LINK would stop the bus */
++		WRITE_ONCE(rx->link_lost, true);
++		dev_warn(dev, "LINK is not read: %s\n", H713_LINK_LOST);
++	}
+ 
+ 	platform_set_drvdata(pdev, rx);
+ 	dev_info(dev, "/dev/video%d, slot source: %s\n", rx->vdev.num,
+@@ -5598,6 +5646,51 @@ static void h713_hdmirx_remove(struct platform_device *pdev)
+ 	/* rx and its control handler go with the last reference */
+ }
+ 
++/*
++ * Standby to RAM. cpu_comm parks the MIPS in its suspend_late and genpd
++ * powers TVFE and TVCAP off in the noirq phase; what the firmware had set
++ * up in the receiver does not come back with the power, and the parked
++ * MIPS sets nothing up again. A LINK read in that state stops the bus: on
++ * the HY310 the poll's first read after the wake never finished, before
++ * and after the rest of the resume (08.10.2026, runs L-B and L-A 2,
++ * breadcrumbs 0xA1000004 and 0xA1000001).
++ *
++ * So the poll stops here, before every sleep, and the wake asks cpu_comm
++ * whether the firmware still runs. A sleep that was aborted before the
++ * park gets its poll back; after a park this instance never reads LINK
++ * again. h713-mips-restart unbinds it, restarts the MIPS and binds a new
++ * one, whose probe starts the poll. The rest of the driver goes through
++ * cpu_comm, which refuses calls while the MIPS is parked.
++ */
++static int h713_hdmirx_suspend(struct device *dev)
++{
++	struct h713_hdmirx *rx = dev_get_drvdata(dev);
++
++	if (rx->link)
++		cancel_delayed_work_sync(&rx->audio_work);
++	return 0;
++}
++
++static int h713_hdmirx_resume(struct device *dev)
++{
++	struct h713_hdmirx *rx = dev_get_drvdata(dev);
++
++	if (!rx->link || READ_ONCE(rx->link_lost))
++		return 0;
++	if (cpu_comm_firmware_up()) {
++		queue_delayed_work(system_wq, &rx->audio_work, 0);
++		return 0;
++	}
++	WRITE_ONCE(rx->link_lost, true);
++	h713_hdmirx_audio_clear(rx);
++	dev_info(dev, "standby: LINK is not read any more, the audio controls are empty: %s\n",
++		 H713_LINK_LOST);
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(h713_hdmirx_pm_ops, h713_hdmirx_suspend,
++				h713_hdmirx_resume);
++
+ static const struct of_device_id h713_hdmirx_of_match[] = {
+ 	{ .compatible = "allwinner,sun50i-h713-hdmirx" },
+ 	{ }
+@@ -5610,6 +5703,7 @@ static struct platform_driver h713_hdmirx_driver = {
+ 	.driver	= {
+ 		.name		= H713_HDMIRX_NAME,
+ 		.of_match_table	= h713_hdmirx_of_match,
++		.pm		= pm_sleep_ptr(&h713_hdmirx_pm_ops),
+ 		/* the hdcp file; the core adds it once the probe is through */
+ 		.dev_groups	= h713_hdmirx_groups,
+ 		/*
