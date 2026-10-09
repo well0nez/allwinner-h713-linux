@@ -55,9 +55,17 @@ through the driver `sun50i-h713-mips`), and two things go with the park.
 After the resume the wall shows the last picture until [h713-power](../tools/h713-power.md) starts
 `h713-mips-restart`: the driver repeats U-Boot's TV top step where the standby lost it, loads `display.bin`
 and starts the MIPS as U-Boot does; the HDMI receiver is bound again and `h713-tv` and `h713-warp` start.
-Measured on 09.10.2026 in the R2 test image: six standbys in one boot, each with the picture back 3.9-5.2 s
-after the wake (`doku/172`). Not measured: HDCP 2.2 from the source after the restart, HDMI audio after a
-standby (the audio DSP sits in TVFE and is not rebuilt), sleeps longer than 20 s.
+Measured on 09.10.2026 in the R2 test images: six standbys in one boot, each with the picture back 3.9-5.2 s
+after the wake (`doku/172`), and 30 of 30 in a fast loop on r2test3 (`doku/173`).
+
+- **The capture stops before the sleep.** hdmirx clears the two output enables of INCAP in its suspend, while the
+  MIPS still runs, and waits two frames; from the park on INCAP no longer answers the CPU. Without it genpd
+  powered TVCAP off under the running write DMA, and that is where the hang going to sleep (C1, below) stood.
+- **No HDMI audio after a standby.** The audio DSP sits in TVFE and loses its power in the sleep; msp then
+  reports `error` ("the DSP lost its power in the sleep ... no HDMI audio until a reboot") and leaves the dead
+  block alone. A rebuild after the standby does not come up yet (`doku/173`).
+
+Not measured: HDCP 2.2 from the source after the restart, sleeps longer than 20 s.
 
 ## What wakes it
 
@@ -75,9 +83,11 @@ After a wake by the power key Linux sees a `KEY_POWER` - the press that woke it.
 
 ## When something goes wrong
 
-**Going to sleep can hang (C1).** In the R2 test image 3 of 13 standbys stopped right after the arisc
-driver's line `standby N: net none` and before the watchdog's; crust waits 15 s for the sleep, then resets the
-board, and it boots again (`doku/172`). The cause is open; the window holds genpd switching TVCAP and TVFE off.
+**Going to sleep can hang (C1).** A standby can stop right after the arisc driver's line `standby N: net none`
+and before the watchdog's; crust waits 15 s for the sleep, then resets the board, and it boots again. Breadcrumbs
+put it into the PPU power-off of TVCAP under the running HDMI capture (five of five). With the capture stopped
+first (r2test3) it did not happen in 50 sleeps, against 5 in 111 before - a strong hint, not a proof
+(`doku/173`).
 
 A standby that does not come back looks like this: **dark, red LED, no network, the key does nothing.**
 The LED follows PB5, so it is red whether the board sleeps, hangs or sits in the gate; it says nothing
@@ -129,5 +139,5 @@ and built but has never run, and the release refuses it. A design limit stays ev
 24 MHz on the oscillator, so the oscillator never stops; whether that matters is a question for the first
 power measurement.
 
-Details: `doku/162` - `doku/168`, `doku/171`, `doku/172`, [arisc.md](arisc.md), [h713-power](../tools/h713-power.md),
+Details: `doku/162` - `doku/168`, `doku/171` - `doku/173`, [arisc.md](arisc.md), [h713-power](../tools/h713-power.md),
 [the power-on gate](../uboot/power-gate.md).

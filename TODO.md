@@ -239,6 +239,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         einem Boot, 6 von 6 Bild zurück. Zweig `versuch/r2-standby` (nicht `main`). **Offen vor einem Release:** C1 (Hänger
         beim Einschlafen, R2 3 von 13, crust setzt nach 15 s zurück), der echte Tastendruck mit Marco, HDMI-Ton und HDCP 2.2
         nach dem Neustart, `power.conf refused` zurück auf `poweroff`, Durchsicht UEBERGABE §7 vor `main`
+      - **09.10. nachmittags Durchsicht und r2test3** (`doku/173`, `arbeit/review-r2-20261009/BERICHT.md`): 46 Funde, behoben
+        0240-0244 (C1: Aufnahme vor dem Schlaf anhalten; msp nach dem Standby "error"; CC-2, KM-1, Q6), h713-power U1,
+        crust-Spiegel ecf2ddc. r2test3: 30/30, C1 0 in 50 seit dem Aufnahme-Stopp (vorher 5 in 111). **Offen:** HDMI-Ton nach
+        dem Standby (DSP kommt nach dem Stromzyklus nicht hoch), CR-1 (Netz gegen crust-Hänger, Stufe S0), Gerätestufen mit
+        Marco (Taste, IR, lange Schläfe, Leistung, Hörtest), `power.conf` auf der Box zurück auf `refused = poweroff`
       - **09.10.** `release/sperr-scan.py` erkennt in einem Git-Worktree das Git nicht (`.git` ist dort eine Datei,
         `os.path.isdir` falsch) und durchsucht die ignorierten, root-eigenen Bauordner -> PermissionError, Tor rot. Umgehung:
         Tore auf `git checkout-index -a --prefix=...`. Behebung: `os.path.exists` (eine Zeile) - gehört nach `main`
