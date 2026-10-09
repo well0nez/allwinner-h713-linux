@@ -1,0 +1,194 @@
+From 29e09fc3d85b6b55d47a76472b8025df7816937f Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:45:42 +0200
+Subject: [PATCH 11/27] allwinner: h713: feed the watchdog before and after
+ arming it for a reset
+
+SYSTEM_RESET, the power off into the boot gate and the "system suspend not
+accepted" path all reset through the SoC watchdog, and all three wrote only
+CFG and MODE. On a watchdog that is already running that write is
+swallowed: rewriting MODE does not restart the counter (doku/164), the
+threshold moves below a count that is already past it, and the box hung in
+BL31 with the 16 s net it had been running switched off (crust-20261007 B1,
+review finding TFA-1: "system reset failed, board stays powered", then
+nothing until the power was cut).
+
+One helper now does the sequence the Linux and U-Boot drivers use: feed
+(CTRL +0x0c = 0x14af), CFG = key | 1, MODE = key | 1, feed again. It waits
+twice the 0.5 s interval and, instead of panic() or parking the cores,
+prints MODE and CFG as read back and tries again. The H713 gate path calls
+the same helper, so a failed reset there no longer leaves a parked board.
+The block is named for what it is: SUNXI_R_WDOG_BASE is the common code's
+name, on the H713 it is the SoC watchdog 0x02051000, not the R_WDOG.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/include/sunxi_private.h |  2 +
+ plat/allwinner/common/sunxi_native_pm.c       | 48 +++++++++++++++----
+ .../sun50i_h713/include/sunxi_mmap.h          |  5 ++
+ plat/allwinner/sun50i_h713/sunxi_power.c      | 28 ++---------
+ 4 files changed, 50 insertions(+), 33 deletions(-)
+
+diff --git a/plat/allwinner/common/include/sunxi_private.h b/plat/allwinner/common/include/sunxi_private.h
+index e1c88334b..6c2c0b2d2 100644
+--- a/plat/allwinner/common/include/sunxi_private.h
++++ b/plat/allwinner/common/include/sunxi_private.h
+@@ -21,6 +21,8 @@ void sunxi_cpu_on(u_register_t mpidr);
+ void sunxi_cpu_power_off_others(void);
+ void sunxi_cpu_power_off_self(void);
+ void sunxi_power_down(void);
++/* Reset through the key-protected SoC watchdog; never returns. */
++void __dead2 sunxi_wdog_reset(void);
+ 
+ /* The warm boot entry point every CPU's RVBAR was programmed with. */
+ extern uintptr_t sunxi_sec_entrypoint;
+diff --git a/plat/allwinner/common/sunxi_native_pm.c b/plat/allwinner/common/sunxi_native_pm.c
+index 3adee26d9..66c529af8 100644
+--- a/plat/allwinner/common/sunxi_native_pm.c
++++ b/plat/allwinner/common/sunxi_native_pm.c
+@@ -143,30 +143,60 @@ static void sunxi_system_off(void)
+ 	sunxi_cpu_power_off_self();
+ }
+ 
++#ifdef SUNXI_WDOG_KEY
++/*
++ * Key-protected watchdog layout (H713/sun50iw12): CTRL at +0x0c, CFG at
++ * +0x10, MODE at +0x14, CFG and MODE ignored without the 0x16aa key. This is
++ * the SoC watchdog (SUNXI_WDOG_BASE), not the R_WDOG in the RTC domain.
++ *
++ * Rewriting MODE does not restart the counter: on a watchdog that is already
++ * running past the new interval the write is swallowed, and with it the net
++ * that was running (doku/164, TFA-1 in crust-20261007). Feed it before and
++ * after, then wait twice the interval; should nothing happen, say what the
++ * registers read and try again rather than park the cores for good.
++ */
++#define SUNXI_WDOG_CTRL_REG		(SUNXI_WDOG_BASE + 0x000c)
++#define SUNXI_WDOG_CFG_REG		(SUNXI_WDOG_BASE + 0x0010)
++#define SUNXI_WDOG_MODE_REG		(SUNXI_WDOG_BASE + 0x0014)
++#define SUNXI_WDOG_FEED			0x14af	/* key 0xa57 << 1 | restart */
++
++void __dead2 sunxi_wdog_reset(void)
++{
++	unsigned int try;
++
++	for (try = 1U; ; try++) {
++		mmio_write_32(SUNXI_WDOG_CTRL_REG, SUNXI_WDOG_FEED);
++		/* Reset the whole system when the watchdog times out */
++		mmio_write_32(SUNXI_WDOG_CFG_REG, SUNXI_WDOG_KEY | 1);
++		/* Enable the watchdog with the shortest timeout (0.5 seconds) */
++		mmio_write_32(SUNXI_WDOG_MODE_REG, SUNXI_WDOG_KEY | (0 << 4) | 1);
++		mmio_write_32(SUNXI_WDOG_CTRL_REG, SUNXI_WDOG_FEED);
++
++		mdelay(1000);
++		ERROR("PSCI: SoC watchdog fed and armed, no reset after 1 s (try %u): MODE 0x%x CFG 0x%x\n",
++		      try, mmio_read_32(SUNXI_WDOG_MODE_REG),
++		      mmio_read_32(SUNXI_WDOG_CFG_REG));
++	}
++}
++#endif
++
+ static void __dead2 sunxi_system_reset(void)
+ {
+ 	gicv2_cpuif_disable();
+ 
+ #ifdef SUNXI_WDOG_KEY
+-	/*
+-	 * Key-protected watchdog layout (H713/sun50iw12): CFG at +0x10,
+-	 * MODE at +0x14, writes ignored without the 0x16aa key.
+-	 */
+-	/* Reset the whole system when the watchdog times out */
+-	mmio_write_32(SUNXI_R_WDOG_BASE + 0x0010, SUNXI_WDOG_KEY | 1);
+-	/* Enable the watchdog with the shortest timeout (0.5 seconds) */
+-	mmio_write_32(SUNXI_R_WDOG_BASE + 0x0014, SUNXI_WDOG_KEY | 1);
++	sunxi_wdog_reset();
+ #else
+ 	/* Reset the whole system when the watchdog times out */
+ 	mmio_write_32(SUNXI_WDOG0_CFG_REG, 1);
+ 	/* Enable the watchdog with the shortest timeout (0.5 seconds) */
+ 	mmio_write_32(SUNXI_WDOG0_MODE_REG, (0 << 4) | 1);
+-#endif
+ 	/* Wait for twice the watchdog timeout before panicking */
+ 	mdelay(1000);
+ 
+ 	ERROR("PSCI: System reset failed\n");
+ 	panic();
++#endif
+ }
+ 
+ static const plat_psci_ops_t sunxi_native_psci_ops = {
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 15811dd73..05c25a043 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -31,6 +31,7 @@
+ #define SUNXI_CE_S_BASE			0x03040800
+ #define SUNXI_HDCP14_SINK		0x03041400
+ #define SUNXI_SPC_BASE			0x03008000
++/* SoC watchdog (VDD_SYS); the R_WDOG 0x07020400 is another block */
+ #define SUNXI_WDOG_BASE			0x02051000
+ #define SUNXI_PIO_BASE			0x02000000
+ #define SUNXI_GICD_BASE			0x03021000
+@@ -39,6 +40,10 @@
+ #define SUNXI_SPI0_BASE			0x04025000
+ #define SUNXI_R_CPUCFG_BASE		0x07000400
+ #define SUNXI_R_PRCM_BASE		0x07010000
++/*
++ * The common code's name for the reset watchdog. On the H713 that is the SoC
++ * watchdog 0x02051000, not the R_WDOG (0x07020400).
++ */
+ #define SUNXI_R_WDOG_BASE		SUNXI_WDOG_BASE
+ /* sun50iw12 watchdog writes require the key in bits [31:16] */
+ #define SUNXI_WDOG_KEY			0x16aa0000
+diff --git a/plat/allwinner/sun50i_h713/sunxi_power.c b/plat/allwinner/sun50i_h713/sunxi_power.c
+index 88634ea23..c28a2fbab 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_power.c
++++ b/plat/allwinner/sun50i_h713/sunxi_power.c
+@@ -19,8 +19,6 @@
+  * on this board is always taken.
+  */
+ 
+-#include <drivers/delay_timer.h>
+-
+ #define sunxi_power_down	sunxi_pmic_power_down
+ #include "../sun50i_h616/sunxi_power.c"
+ #undef sunxi_power_down
+@@ -36,16 +34,6 @@
+ #define H713_GATE_FLAG_REG		H713_RTC_GP_REG(5)
+ #define H713_GATE_FLAG_VALUE		0x47415445	/* "GATE" */
+ 
+-/*
+- * Same watchdog sequence as sunxi_system_reset() in
+- * plat/allwinner/common/sunxi_native_pm.c, which is static there and cannot
+- * be called. sun50iw12 layout: CFG at +0x10, MODE at +0x14, both ignored
+- * without the key in bits [31:16]; MODE bits [7:4] are the interval, 0 being
+- * the shortest one (0.5 s).
+- */
+-#define H713_WDOG_CFG_REG		(SUNXI_R_WDOG_BASE + 0x0010)
+-#define H713_WDOG_MODE_REG		(SUNXI_R_WDOG_BASE + 0x0014)
+-
+ /* The prototype in sunxi_private.h was renamed along with the include above. */
+ void sunxi_power_down(void);
+ 
+@@ -77,18 +65,10 @@ void sunxi_power_down(void)
+ 	 */
+ 	NOTICE("PSCI: power off, resetting into the boot gate\n");
+ 
+-	/* Reset the whole system when the watchdog times out. */
+-	mmio_write_32(H713_WDOG_CFG_REG, SUNXI_WDOG_KEY | 1);
+-	/* Enable the watchdog with the shortest timeout (0.5 seconds). */
+-	mmio_write_32(H713_WDOG_MODE_REG, SUNXI_WDOG_KEY | 1);
+-
+-	/* Wait for twice the watchdog timeout before giving up. */
+-	mdelay(1000);
+-
+ 	/*
+-	 * Leave the flag in place: the power-off wish is still pending, and
+-	 * the only way out of the parked state is a power cycle, which clears
+-	 * GP5 anyway (a cleared GP5 also means "gate").
++	 * The same fed sequence as SYSTEM_RESET (sunxi_native_pm.c). It does
++	 * not return: should the reset not come, it says so and tries again,
++	 * with the flag left in place - the power-off wish is still pending.
+ 	 */
+-	ERROR("PSCI: system reset failed, board stays powered\n");
++	sunxi_wdog_reset();
+ }

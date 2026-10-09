@@ -1,0 +1,264 @@
+From 95ca48dbeb0aeb5669700a44a74c162180606ca8 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:48:31 +0200
+Subject: [PATCH 13/27] allwinner: h713: SYSTEM_SUSPEND only with contract 5
+ and crust's acceptance
+
+sunxi_system_suspend_possible() looked for crust's magic, the running bit
+and a moving heartbeat and nothing else. It read fixed offsets without
+checking the contract version (review finding TFA-11), took any variant
+of the build including the deep VDD_SYS step that cannot resume on
+mainline (K5, TFA-7), and a refusal said "no live crust" without a value
+(TFA-14).
+
+It now applies the reader rule of contract 5 with the range [5, 5]
+(magic, VERSION >= 5, COMPAT[7:0] <= 5), refuses build bit 27 always and
+bits 28 and 31 unless the BL31 was built with SUNXI_STANDBY_UNMEASURED=1
+(test bench only), and wants crust in phase PRESLEEP with Linux's request
+accepted (SB_STATE bit 5) and, when crust was built with its net (bit 29),
+the net armed (bit 4). Running bit and heartbeat as before, the heartbeat
+only when everything else passed.
+
+A refusal writes TFA_WORD (+0x2cc, TF-A its only writer): event 1 with the
+reasons as bits (0 magic, 1 version, 2 bit 27, 3 bit 28/31, 4 phase,
+5 net, 6 running, 7 heartbeat), and one NOTICE carries all values read.
+A request that cannot be delivered writes event 4 (1 entry, 2 FIFO full,
+3 FIFO kept) before the board resets, so the next boot can tell why.
+The 23..16 number counts every write, for the kernel to see a new one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/include/sunxi_private.h |  3 +
+ plat/allwinner/common/sunxi_pm.c              | 12 +++
+ .../sun50i_h713/include/sunxi_mmap.h          | 25 ++++++
+ plat/allwinner/sun50i_h713/platform.mk        |  6 ++
+ plat/allwinner/sun50i_h713/sunxi_standby.c    | 89 ++++++++++++++-----
+ 5 files changed, 114 insertions(+), 21 deletions(-)
+
+diff --git a/plat/allwinner/common/include/sunxi_private.h b/plat/allwinner/common/include/sunxi_private.h
+index 6c2c0b2d2..a3ee8fe46 100644
+--- a/plat/allwinner/common/include/sunxi_private.h
++++ b/plat/allwinner/common/include/sunxi_private.h
+@@ -27,6 +27,9 @@ void __dead2 sunxi_wdog_reset(void);
+ /* The warm boot entry point every CPU's RVBAR was programmed with. */
+ extern uintptr_t sunxi_sec_entrypoint;
+ 
++/* An event for the kernel in the SCP firmware's contract page (H713). */
++void sunxi_scp_event(unsigned int event, unsigned int detail);
++
+ #if SUNXI_SYSTEM_SUSPEND
+ bool sunxi_system_suspend_possible(void);
+ int sunxi_system_suspend_enter(void);
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index 5adf5e276..8902af8ac 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -40,6 +40,18 @@ bool sunxi_psci_is_scpi(void)
+ #define SCP_FIRMWARE_MAGIC		0xb4400012
+ #define SUNXI_R_PRCM_CPUS_GATE(n)	(SUNXI_R_PRCM_BASE + 0x110 + 4 * (n))
+ 
++/*
++ * TF-A is TFA_WORD's only writer. The number in 23..16 changes with every
++ * event, so the kernel tells a new one from the last it reported.
++ */
++void sunxi_scp_event(unsigned int event, unsigned int detail)
++{
++	uint32_t num = (mmio_read_32(SCP_SH(SCP_SH_TFA_WORD)) >> 16) + 1U;
++
++	mmio_write_32(SCP_SH(SCP_SH_TFA_WORD), (event << 24) |
++		      ((num & 0xffU) << 16) | (detail & 0xffffU));
++}
++
+ /*
+  * Start an SCP firmware the boot loader staged in DRAM, without SCPI: it
+  * speaks the vendor ARISC contract to Linux instead (crust, FB-CRUST). No
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 05c25a043..68ff663fd 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -75,4 +75,29 @@
+ #define SUNXI_SCP_SHARED		0x00123800
+ #define SUNXI_SCP_SHARED_SIZE		0x00000400
+ 
++/*
++ * The words of that page TF-A uses, contract version 5 (crust's
++ * platform/h713/include/platform/memory.h is the source). One writer per
++ * word: R (+0x000) and D (+0x200) crust, K (+0x260) only crust, A (+0x2c0)
++ * only the ARM - TFA_WORD only TF-A.
++ */
++#define SCP_SH(off)			(SUNXI_SCP_SHARED + (off))
++#define SCP_SH_MAGIC			0x000	/* SCP_MAGIC */
++#define SCP_SH_VERSION			0x004
++#define SCP_SH_STATUS			0x008	/* 0 running, 31..16 heartbeat */
++#define SCP_SH_SLEPT_MS			0x234	/* v3, v4: ms asleep */
++#define SCP_SH_BUILD			0x23c	/* variant bits 24..31 */
++#define SCP_SH_COMPAT			0x260	/* 7..0 oldest reader it suits */
++#define SCP_SH_SB_STATE			0x268	/* standby phase, 3..0 */
++#define SCP_SH_TFA_WORD			0x2cc	/* event, number, detail */
++
++#define SCP_MAGIC			0x33313748	/* "H713" */
++#define SCP_VERSION			5	/* the one version TF-A reads */
++
++/* TFA_WORD: 31..24 event, 23..16 counts every write, 15..0 detail. */
++#define SCP_EV_DENIED			1	/* SYSTEM_SUSPEND refused */
++#define SCP_EV_START			2	/* crust not running in time */
++#define SCP_EV_R_WDOG			3	/* R_WDOG found armed at boot */
++#define SCP_EV_RESET			4	/* suspend not accepted, reset */
++
+ #endif /* SUNXI_MMAP_H */
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index 7f8e8b634..ace7e31af 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -17,6 +17,12 @@ SUNXI_PSCI_USE_NATIVE	:=	1
+ # it is offered per request only while crust runs (sunxi_standby.c).
+ SUNXI_SYSTEM_SUSPEND	?=	0
+ 
++# Test bench only: also take a crust whose build word carries a deep-sleep
++# step nobody has measured (PLL LDO, AVCC gating). VDD_SYS stays refused.
++SUNXI_STANDBY_UNMEASURED	?=	0
++$(eval $(call assert_boolean,SUNXI_STANDBY_UNMEASURED))
++$(eval $(call add_define,SUNXI_STANDBY_UNMEASURED))
++
+ # The differences between the platforms are covered by the include files.
+ include plat/allwinner/common/allwinner-common.mk
+ include plat/allwinner/common/allwinner-common-a53.mk
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+index b8122824b..c46d876a9 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_standby.c
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -75,36 +75,80 @@
+ 
+ static uint32_t cnt_lo, cnt_hi, cnt_fid;
+ 
+-/* crust's contract page (crust platform/h713/include/platform/memory.h). */
+-#define SCP_SHARED_MAGIC	0x33313748		/* "H713" */
+-#define SCP_SHARED_STATUS	(SUNXI_SCP_SHARED + 0x008)
++/* crust's contract page, version 5 (the offsets are in sunxi_mmap.h). */
+ #define SCP_ST_RUNNING		BIT(0)
+-#define SCP_SLEPT_MS		(SUNXI_SCP_SHARED + 0x234)
+ #define SCP_LIVE_TRIES		100			/* x 100 us */
++#define SCP_BUILD_VDD_SYS	BIT(27)	/* deep: VDD_SYS reset - never */
++#define SCP_BUILD_PLL_LDO	BIT(28)	/* deep: PLL LDO off - unmeasured */
++#define SCP_BUILD_SLEEP_NET	BIT(29)	/* the R_WDOG net is built in */
++#define SCP_BUILD_AVCC		BIT(31)	/* deep: AVCC gating - unmeasured */
++#define SCP_SB_PHASE(s)		((s) & 0xfU)
++#define SCP_SB_PRESLEEP		1U	/* Linux's request taken (0x25/0x26) */
++#define SCP_SB_NET_ARMED	BIT(4)	/* R_WDOG armed, as read back */
++#define SCP_SB_ACCEPTED		BIT(5)
++
++/* Why a request was refused: the detail of TFA_WORD event 1. */
++#define DENY_MAGIC		BIT(0)
++#define DENY_VERSION		BIT(1)
++#define DENY_VDD_SYS		BIT(2)
++#define DENY_UNMEASURED		BIT(3)
++#define DENY_PHASE		BIT(4)
++#define DENY_NET		BIT(5)
++#define DENY_RUNNING		BIT(6)
++#define DENY_HEARTBEAT		BIT(7)
++
++static uint32_t scp_read(unsigned int off)
++{
++	return mmio_read_32(SCP_SH(off));
++}
+ 
+ /*
+- * The standby only with crust: its page carries the magic, the running bit
+- * and a heartbeat its main loop moves on every pass (microseconds apart).
+- * The vendor firmware has no such page - its standby never woke (doku/139)
+- * - and a crust that stopped looping would not take the request either.
++ * The standby only with crust, the version this side reads, a variant that
++ * was measured, and only once crust took Linux's request for this cycle
++ * (and armed its net, when it has one). The vendor firmware has no such page
++ * - its standby never woke (doku/139) - and a crust that stopped looping,
++ * whose heartbeat stands, would not take the request either.
+  */
+ bool sunxi_system_suspend_possible(void)
+ {
+-	uint32_t s0;
+-	unsigned int i;
++	uint32_t version = scp_read(SCP_SH_VERSION);
++	uint32_t compat = version >= SCP_VERSION ?
++		(scp_read(SCP_SH_COMPAT) & 0xffU) : version;
++	uint32_t build = scp_read(SCP_SH_BUILD);
++	uint32_t sb = scp_read(SCP_SH_SB_STATE);
++	uint32_t s0 = scp_read(SCP_SH_STATUS), s1 = s0;
++	unsigned int deny = 0U, i;
+ 
+-	if (mmio_read_32(SUNXI_SCP_SHARED) != SCP_SHARED_MAGIC)
+-		goto no;
+-	s0 = mmio_read_32(SCP_SHARED_STATUS);
++	if (scp_read(SCP_SH_MAGIC) != SCP_MAGIC)
++		deny |= DENY_MAGIC;
++	if (version < SCP_VERSION || compat > SCP_VERSION)
++		deny |= DENY_VERSION;
++	if ((build & SCP_BUILD_VDD_SYS) != 0U)
++		deny |= DENY_VDD_SYS;
++	if (SUNXI_STANDBY_UNMEASURED == 0 &&
++	    (build & (SCP_BUILD_PLL_LDO | SCP_BUILD_AVCC)) != 0U)
++		deny |= DENY_UNMEASURED;
++	if (SCP_SB_PHASE(sb) != SCP_SB_PRESLEEP || (sb & SCP_SB_ACCEPTED) == 0U)
++		deny |= DENY_PHASE;
++	if ((build & SCP_BUILD_SLEEP_NET) != 0U && (sb & SCP_SB_NET_ARMED) == 0U)
++		deny |= DENY_NET;
+ 	if ((s0 & SCP_ST_RUNNING) == 0U)
+-		goto no;
+-	for (i = 0; i < SCP_LIVE_TRIES; i++) {
+-		udelay(100);
+-		if (mmio_read_32(SCP_SHARED_STATUS) != s0)
++		deny |= DENY_RUNNING;
++	if (deny == 0U) {
++		/* The main loop moves it on every pass, microseconds apart. */
++		for (i = 0U; i < SCP_LIVE_TRIES && s1 == s0; i++) {
++			udelay(100);
++			s1 = scp_read(SCP_SH_STATUS);
++		}
++		if (s1 == s0)
++			deny |= DENY_HEARTBEAT;
++		else
+ 			return true;
+ 	}
+-no:
+-	NOTICE("PSCI: system suspend refused, no live crust on the ARISC\n");
++
++	sunxi_scp_event(SCP_EV_DENIED, deny);
++	NOTICE("PSCI: system suspend refused (0x%x): magic 0x%x version %u compat %u build 0x%x state 0x%x status 0x%x/0x%x\n",
++	       deny, scp_read(SCP_SH_MAGIC), version, compat, build, sb, s0, s1);
+ 	return false;
+ }
+ 
+@@ -146,6 +190,7 @@ int sunxi_system_suspend_enter(void)
+ 	if (sunxi_sec_entrypoint == 0 || (sunxi_sec_entrypoint >> 32) != 0) {
+ 		ERROR("PSCI: warm entry 0x%lx not usable by the ARISC\n",
+ 		      sunxi_sec_entrypoint);
++		sunxi_scp_event(SCP_EV_RESET, 1);
+ 		return -1;
+ 	}
+ 
+@@ -179,6 +224,7 @@ int sunxi_system_suspend_enter(void)
+ 	}
+ 	if (i == FIFO_WAIT_ITERS) {
+ 		ERROR("PSCI: msgbox port 3 keeps the request, no ARISC firmware is reading it\n");
++		sunxi_scp_event(SCP_EV_RESET, 3);
+ 		return -1;
+ 	}
+ 	NOTICE("PSCI: system suspend, cpu op req sent, entry 0x%lx\n",
+@@ -187,6 +233,7 @@ int sunxi_system_suspend_enter(void)
+ 
+ full:
+ 	ERROR("PSCI: msgbox port 3 stays full, the ARISC main loop is not draining it\n");
++	sunxi_scp_event(SCP_EV_RESET, 2);
+ 	return -1;
+ }
+ 
+@@ -217,8 +264,8 @@ void sunxi_system_suspend_finish(void)
+ 	 * Not counted by crust: its suspend and resume work (deep: ~0.2 s).
+ 	 */
+ 	if ((mmio_read_32(CNT_CTRL_CR) & 1U) == 0U || cnt_read() < cnt) {
+-		if (mmio_read_32(SUNXI_SCP_SHARED) == SCP_SHARED_MAGIC)
+-			ms = mmio_read_32(SCP_SLEPT_MS);
++		if (scp_read(SCP_SH_MAGIC) == SCP_MAGIC)
++			ms = scp_read(SCP_SH_SLEPT_MS);
+ 		cnt += (uint64_t)ms * (plat_get_syscnt_freq2() / 1000U);
+ 		mmio_write_32(CNT_CTRL_CR, 0);
+ 		mmio_write_32(CNT_CTRL_FID0, cnt_fid);

@@ -1,0 +1,144 @@
+From 8c781f60c9a6a6c656fd05196c1a0ee399a5d27f Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:53:35 +0200
+Subject: [PATCH 17/27] allwinner: h713: disarm an R_WDOG a reset left armed
+ (H713_R_WDOG_CHECK)
+
+crust is to arm the R_WDOG (0x07020400, RTC domain) as the net of a
+standby. Whether that block stays armed across its own reset, a SoC
+watchdog reset or a PSCI reset is not measured; if it does, it fires in
+U-Boot or Linux where nobody feeds it, a boot loop.
+
+With H713_R_WDOG_CHECK=1 BL31 reads its MODE and IRQ status at every
+boot and, when MODE bit 0 is set, feeds it (CTRL 0x14af) and writes MODE
+= key | 0, with a NOTICE. The value found goes into the P record
+(P_RWDOG, STA << 16 | MODE) and, when it was armed, TFA_WORD event 3.
+The block has its own name, H713_R_WDOG_BASE: the common code's
+SUNXI_R_WDOG_BASE is the SoC watchdog 0x02051000.
+
+Off by default: only CFG and MODE of this block are known, the feed
+register is assumed from the SoC watchdog's layout, and stage S0 of the
+crust standby measures it first.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c              | 40 ++++++++++++++++++-
+ .../sun50i_h713/include/sunxi_mmap.h          |  5 +++
+ plat/allwinner/sun50i_h713/platform.mk        |  6 +++
+ 3 files changed, 49 insertions(+), 2 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index 4237681dc..c1e4496eb 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -71,13 +71,45 @@ void sunxi_scp_event(unsigned int event, unsigned int detail)
+ 		  (detail & 0xffffU));
+ }
+ 
++#if H713_R_WDOG_CHECK
++/*
++ * crust arms the R_WDOG as the net of a standby (H713_SLEEP_NET). Should a
++ * reset leave it armed, nobody would feed it in U-Boot or Linux. Assumed to
++ * have the SoC watchdog's layout (IRQ status +0x04, CTRL +0x0c, MODE +0x14);
++ * only CFG and MODE are known from the blob, hence the switch.
++ */
++#define H713_R_WDOG_STA			(H713_R_WDOG_BASE + 0x0004)
++#define H713_R_WDOG_CTRL		(H713_R_WDOG_BASE + 0x000c)
++#define H713_R_WDOG_MODE		(H713_R_WDOG_BASE + 0x0014)
++
++/* Returns STA << 16 | MODE as found; MODE bit 0 set means it was armed. */
++static uint32_t sunxi_r_wdog_check(void)
++{
++	uint32_t mode = mmio_read_32(H713_R_WDOG_MODE);
++	uint32_t sta = mmio_read_32(H713_R_WDOG_STA);
++
++	if ((mode & 1U) != 0U) {
++		mmio_write_32(H713_R_WDOG_CTRL, 0x14af);
++		mmio_write_32(H713_R_WDOG_MODE, SUNXI_WDOG_KEY);
++		NOTICE("PSCI: R_WDOG found armed (MODE 0x%x STA 0x%x), fed and stopped: MODE 0x%x\n",
++		       mode, sta, mmio_read_32(H713_R_WDOG_MODE));
++	}
++	return (sta & 0xffffU) << 16 | (mode & 0xffffU);
++}
++#else
++static inline uint32_t sunxi_r_wdog_check(void)
++{
++	return 0U;
++}
++#endif
++
+ /*
+  * The record of the run before this boot (P), written on every boot before
+  * the page is zeroed: what crust (D, K), the kernel and TF-A (A) left there,
+  * when the page holds contract 5 or later, else an empty record. The kernel
+  * reports it at probe when the checksum holds (CS-04, TFA-14).
+  */
+-static void sunxi_scp_record(void)
++static void sunxi_scp_record(uint32_t rwdog)
+ {
+ 	uint32_t hdr = SCP_P_EMPTY, sum = 0U;
+ 	unsigned int i;
+@@ -89,6 +121,7 @@ static void sunxi_scp_record(void)
+ 		hdr = SCP_P_BL31;
+ 		scp_write(SCP_SH_P_STATUS, scp_read(SCP_SH_STATUS));
+ 		scp_write(SCP_SH_P_WAKE, scp_read(SCP_SH_WAKE));
++		scp_write(SCP_SH_P_RWDOG, rwdog);
+ 		scp_write(SCP_SH_P_GP5, mmio_read_32(SUNXI_RTC_GP5));
+ 		scp_write(SCP_SH_P_TFA_WORD, scp_read(SCP_SH_TFA_WORD));
+ 		scp_write(SCP_SH_P_NET_CONFIRM, scp_read(SCP_SH_NET_CONFIRM));
+@@ -121,6 +154,7 @@ static void sunxi_scp_record(void)
+  */
+ static void sunxi_scp_start(void)
+ {
++	uint32_t rwdog = sunxi_r_wdog_check();
+ 	unsigned int i, us;
+ 	int ret;
+ 
+@@ -157,11 +191,13 @@ static void sunxi_scp_start(void)
+ 		mmio_write_32(vector, (SUNXI_SCP_BASE - vector) >> 2);
+ 	}
+ 	/* The contract page: the record of the last run, the rest zero. */
+-	sunxi_scp_record();
++	sunxi_scp_record(rwdog);
+ 	for (i = 0; i < SUNXI_SCP_SHARED_SIZE; i += 4) {
+ 		if (i < SCP_SH_P_HDR || i >= SCP_SH_P_END)
+ 			scp_write(i, 0);
+ 	}
++	if ((rwdog & 1U) != 0U)
++		sunxi_scp_event(SCP_EV_R_WDOG, rwdog & 0xffffU);
+ 	mmio_setbits_32(SUNXI_R_CPUCFG_BASE, BIT(0));
+ 
+ 	/*
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 3626c37e3..fc593fe8e 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -47,6 +47,11 @@
+ #define SUNXI_R_WDOG_BASE		SUNXI_WDOG_BASE
+ /* sun50iw12 watchdog writes require the key in bits [31:16] */
+ #define SUNXI_WDOG_KEY			0x16aa0000
++/*
++ * The R_WDOG, in the RTC domain: crust's net for a standby. Deliberately not
++ * SUNXI_R_WDOG_BASE, which the common code resets with (0x02051000).
++ */
++#define H713_R_WDOG_BASE		0x07020400
+ #define SUNXI_R_PIO_BASE		0x07022000
+ #define SUNXI_RTC_BASE			0x07090000
+ #define SUNXI_R_UART_BASE		0x07080000
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index ace7e31af..055401afe 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -23,6 +23,12 @@ SUNXI_STANDBY_UNMEASURED	?=	0
+ $(eval $(call assert_boolean,SUNXI_STANDBY_UNMEASURED))
+ $(eval $(call add_define,SUNXI_STANDBY_UNMEASURED))
+ 
++# Disarm an R_WDOG (0x07020400) a reset left armed, at every boot. Off until
++# its feed register is measured (stage S0 of the crust standby).
++H713_R_WDOG_CHECK	?=	0
++$(eval $(call assert_boolean,H713_R_WDOG_CHECK))
++$(eval $(call add_define,H713_R_WDOG_CHECK))
++
+ # The differences between the platforms are covered by the include files.
+ include plat/allwinner/common/allwinner-common.mk
+ include plat/allwinner/common/allwinner-common-a53.mk

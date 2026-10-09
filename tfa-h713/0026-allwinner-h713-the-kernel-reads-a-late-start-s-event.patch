@@ -1,0 +1,91 @@
+From 3d2992566d6c359a52036123bbb65927fff7431d Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 00:24:15 +0200
+Subject: [PATCH 26/27] allwinner: h713: the kernel reads a late start's event,
+ the record says why it may
+
+This takes back "a crust that never wrote MAGIC leaves its late start in
+the record" (8d16d2330). The kernel side of the same contract item (V4)
+now reads TFA_WORD at probe whenever P is TF-A's record of this boot -
+an empty record with its sum included - and not only with MAGIC on the
+page. With both, a crust that never came up was reported twice, once
+from P under "previous run", and P's TFA_WORD lost its one meaning, the
+word the run before left. Reading it in the kernel also covers an earlier
+event already standing in P, which the copy into P had to leave out.
+
+What the kernel's reading rests on is BL31's: on every start of crust it
+writes P, empty or full, with its sum and without the "reported" bit,
+before it zeroes the rest of the page, before it releases the AR100 and
+before any TF-A event of this boot. The comment at sunxi_scp_record says
+so now.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c              | 26 +++----------------
+ .../sun50i_h713/include/sunxi_mmap.h          |  2 +-
+ 2 files changed, 5 insertions(+), 23 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index 9b2f20507..569e10faa 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -111,7 +111,10 @@ static inline uint32_t sunxi_r_wdog_check(void)
+  * The record of the run before this boot (P), written on every boot before
+  * the page is zeroed: what crust (D, K), the kernel and TF-A (A) left there,
+  * when the page holds contract 5 or later, else an empty record. The kernel
+- * reports it at probe when the checksum holds.
++ * reports it at probe when the checksum holds. Either one, with its sum,
++ * stands before the AR100 runs and before any TF-A event of this boot: the
++ * kernel takes it as proof that TFA_WORD is this boot's, also for a crust
++ * that never writes MAGIC (event 2).
+  */
+ static void sunxi_scp_record(uint32_t rwdog)
+ {
+@@ -146,26 +149,6 @@ static void sunxi_scp_record(uint32_t rwdog)
+ 	scp_write(SCP_SH_P_HDR, hdr);
+ }
+ 
+-/*
+- * The kernel reads TFA_WORD only from a page with MAGIC; without it, it
+- * reports P at probe and loads crust over a page it zeroes. So the event of
+- * a crust that never wrote MAGIC goes into P as well: into P's TFA_WORD when
+- * the run before left none there, the sum moved by the same amount, the
+- * record marked BL31's.
+- */
+-static void sunxi_scp_record_late(void)
+-{
+-	uint32_t hdr = scp_read(SCP_SH_P_HDR), word = scp_read(SCP_SH_TFA_WORD);
+-
+-	if (scp_read(SCP_SH_MAGIC) == SCP_MAGIC ||
+-	    (hdr != SCP_P_EMPTY && hdr != SCP_P_BL31) ||
+-	    scp_read(SCP_SH_P_TFA_WORD) != 0U)
+-		return;
+-	scp_write(SCP_SH_P_TFA_WORD, word);
+-	scp_write(SCP_SH_P_SUM, scp_read(SCP_SH_P_SUM) - word);
+-	scp_write(SCP_SH_P_HDR, SCP_P_BL31);
+-}
+-
+ /*
+  * Start an SCP firmware the boot loader staged in DRAM, without SCPI: it
+  * speaks the vendor ARISC contract to Linux instead (crust, FB-CRUST). No
+@@ -241,7 +224,6 @@ static void sunxi_scp_start(void)
+ 		sunxi_scp_event(SCP_EV_START,
+ 				(scp_read(SCP_SH_MAGIC) == SCP_MAGIC ? 1U : 0U) |
+ 				(scp_read(SCP_SH_STATUS) & SCP_ST_RUNNING) << 1);
+-		sunxi_scp_record_late();
+ 		NOTICE("PSCI: SCP firmware (crust) released at 0x%x, not running after %u us: magic 0x%x status 0x%x\n",
+ 		       SUNXI_SCP_BASE, SCP_START_US, scp_read(SCP_SH_MAGIC),
+ 		       scp_read(SCP_SH_STATUS));
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 69e1544eb..74cba69a0 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -121,7 +121,7 @@
+ /* An R_WDOG "found armed": MODE bit 0, in P_RWDOG too - the kernel's rule. */
+ #define SCP_RWDOG_ARMED			BIT(0)
+ #define SCP_SH_P_GP5			0x2e4	/* RTC GP5 at BL31 start */
+-#define SCP_SH_P_TFA_WORD		0x2e8	/* or this boot's late start */
++#define SCP_SH_P_TFA_WORD		0x2e8
+ #define SCP_SH_P_NET_CONFIRM		0x2ec
+ #define SCP_SH_P_DIAG			0x2f0	/* copy of D */
+ #define SCP_SH_P_K			0x330	/* copy of K */

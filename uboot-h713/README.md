@@ -3,10 +3,10 @@
 **The patch files here are generated, not maintained** (since 12.09.2026, P3):
 `git format-patch --no-signature 8fe568cdfc46..<head>` in the submodule checkout
 `mainline/external/u-boot` (branch `h713-hy310`, base is cstenger's `h713`),
-last regenerated on 05.10.2026 at the fork head `4913742` (95 patches). Verified the
-way a mirror should be: the 94 patches that were already here differ only in their
-`[PATCH n/95]` counter - byte-identical otherwise - and applying all 95 from the base
-produces a tree with the same hash as the fork head. `0095` is the HDCP 1.4 key path. `SERIES.txt` names base,
+last regenerated on 09.10.2026 at the head `87b2a44` (96 patches). Verified the
+way a mirror should be: the 95 patches that were already here differ only in their
+`[PATCH n/96]` counter - byte-identical otherwise - and applying all 96 from the base
+produces a tree with the same hash as the head (`e9c779a5f35a`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31. `SERIES.txt` names base,
 head and count, and is the only thing that says which fork commit this mirror stands
 on. Whoever wants to change something changes the fork and has the mirror generated
 again. This page explains *why* the changes look the way they do - the original text

@@ -1,0 +1,88 @@
+From eed0e6cd8a47e2890cc0760d47a3ffbb39237812 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:46:12 +0200
+Subject: [PATCH 12/27] allwinner: h713: write the core's entry point on every
+ CPU_ON
+
+TF-A programmed ALT_RVBAR for all cores once, in plat_setup_psci_ops, and
+the per-core cpu_on path never wrote it again. A system suspend resets the
+CPU subsystem that holds those registers (crust writes CPU_SYS_RESET = 0
+on cluster down), so after the wake CPU_ON reported success while the core
+started from 0: run A1 of crust-20261007 ("CPU1..3: failed to come
+online", ALT_RVBAR of cores 1-3 read 0 after the cluster came up). It
+works today only because crust 0030 saves and restores the four words
+(review finding TFA-3).
+
+The non-per-cluster branch of sunxi_cpu_on now writes the core's entry
+point before it releases the core reset, and sunxi_system_suspend_finish
+writes all four again, so CPU_ON no longer depends on the SCP firmware's
+restore code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_cpu_ops.c      | 12 ++++++++++++
+ plat/allwinner/sun50i_h713/sunxi_standby.c | 14 ++++++++++++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/plat/allwinner/common/sunxi_cpu_ops.c b/plat/allwinner/common/sunxi_cpu_ops.c
+index 30841e2ea..9b5ec7cd7 100644
+--- a/plat/allwinner/common/sunxi_cpu_ops.c
++++ b/plat/allwinner/common/sunxi_cpu_ops.c
+@@ -24,6 +24,10 @@
+ #define SUNXI_CPU_UNK_REG(n)		0
+ #define SUNXI_CPU_CTRL_REG(n)		0
+ #endif
++#ifndef SUNXI_ALT_RVBAR_LO_REG
++#define SUNXI_ALT_RVBAR_LO_REG(n)	0
++#define SUNXI_ALT_RVBAR_HI_REG(n)	0
++#endif
+ 
+ static void sunxi_cpu_disable_power(unsigned int cluster, unsigned int core)
+ {
+@@ -126,6 +130,14 @@ void sunxi_cpu_on(u_register_t mpidr)
+ 		mmio_clrbits_32(SUNXI_CPU_UNK_REG(core), BIT(1));
+ 		/* ??? Deassert CPU power-on reset ??? */
+ 		mmio_setbits_32(SUNXI_CPU_UNK_REG(core), BIT(0));
++		/*
++		 * The entry point, every time: the boot-time write does not
++		 * survive a reset of the CPU subsystem (system suspend).
++		 */
++		mmio_write_32(SUNXI_ALT_RVBAR_LO_REG(core),
++			      sunxi_sec_entrypoint & 0xffffffff);
++		mmio_write_32(SUNXI_ALT_RVBAR_HI_REG(core),
++			      sunxi_sec_entrypoint >> 32);
+ 		/* Deassert CPU core reset */
+ 		mmio_setbits_32(SUNXI_C0_CPU_CTRL_REG(core), BIT(0));
+ 		/* power up(?) debug core */
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+index cf3dd43ee..b8122824b 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_standby.c
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -40,6 +40,7 @@
+ #include <lib/mmio.h>
+ #include <plat/common/platform.h>
+ 
++#include <sunxi_cpucfg.h>
+ #include <sunxi_mmap.h>
+ #include <sunxi_private.h>
+ 
+@@ -193,6 +194,19 @@ void sunxi_system_suspend_finish(void)
+ {
+ 	uint64_t cnt = ((uint64_t)cnt_hi << 32) | cnt_lo;
+ 	uint32_t ms = 0U;
++	unsigned int i;
++
++	/*
++	 * The firmware reset the CPU subsystem, which holds the entry points
++	 * of all cores (CPU_SYS_RESET). crust puts them back since 0030; this
++	 * side does not depend on it (CPU_ON writes its core's again).
++	 */
++	for (i = 0U; i < PLATFORM_CORE_COUNT; i++) {
++		mmio_write_32(SUNXI_ALT_RVBAR_LO_REG(i),
++			      sunxi_sec_entrypoint & 0xffffffff);
++		mmio_write_32(SUNXI_ALT_RVBAR_HI_REG(i),
++			      sunxi_sec_entrypoint >> 32);
++	}
+ 
+ 	/*
+ 	 * The system counter, as the stock BL31 restores it after 0x11 - but

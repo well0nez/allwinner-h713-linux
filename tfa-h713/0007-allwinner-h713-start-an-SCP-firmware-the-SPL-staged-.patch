@@ -1,0 +1,128 @@
+From 72998570456b5a244674f0b0dba8f6fb2a256d23 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:53:11 +0200
+Subject: [PATCH 07/27] allwinner: h713: start an SCP firmware the SPL staged
+ in DRAM, without SCPI
+
+Step 2 of the crust load model (FB-CRUST, crust-20261007): U-Boot's FIT
+carries scp.bin as a loadable at SUNXI_SCP_STAGING in DRAM (the vendor's
+boot package uses the same address; the SPL cannot load it into SRAM A2,
+it runs there itself), and BL31 copies it to AR100 0x10000, writes the
+fourteen l.j vectors, zeroes crust's contract page and releases the AR100,
+as sunxi_scpi_pm.c does for crust on the H6 - but without SCPI, because on
+the H713 the firmware speaks the vendor ARISC contract to Linux.
+
+BL31 runs from DRAM on this SoC and maps only itself, SRAM, the devices and
+the BL33 window, so the staging area is mapped dynamically for the copy and
+unmapped again (FB-CRUST's first version read it unmapped). SRAM is device
+memory in BL31's table: no cache maintenance is needed before the AR100
+fetches. Without an image at the staging address nothing happens and Linux
+loads the firmware itself as before. One NOTICE line names the start.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c              | 59 +++++++++++++++++++
+ .../sun50i_h713/include/sunxi_mmap.h          | 15 +++++
+ 2 files changed, 74 insertions(+)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index ebc406b91..a9567b6b9 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -30,6 +30,63 @@ bool sunxi_psci_is_scpi(void)
+ #define SUNXI_ALT_RVBAR_HI_REG(n)	0
+ #endif
+ 
++#if !SUNXI_PSCI_USE_SCPI && defined(SUNXI_SCP_STAGING)
++#include <lib/xlat_tables/xlat_tables_v2.h>
++
++/* The l.mfspr crust's start.S begins with, as the ARM reads it. */
++#define SCP_FIRMWARE_MAGIC		0xb4400012
++#define SUNXI_R_PRCM_CPUS_GATE(n)	(SUNXI_R_PRCM_BASE + 0x110 + 4 * (n))
++
++/*
++ * Start an SCP firmware the boot loader staged in DRAM, without SCPI: it
++ * speaks the vendor ARISC contract to Linux instead (crust, FB-CRUST). No
++ * image there, nothing happens, and Linux loads what it has as before.
++ *
++ * BL31 runs from DRAM here and maps only itself, SRAM, the devices and the
++ * BL33 window (sunxi_common.c), so the staging area is mapped for the copy
++ * and unmapped again. SRAM is device memory in that table: the writes need
++ * no cache maintenance before the AR100 fetches them.
++ */
++static void sunxi_scp_start(void)
++{
++	unsigned int i;
++	int ret;
++
++	ret = mmap_add_dynamic_region(SUNXI_SCP_STAGING, SUNXI_SCP_STAGING,
++				      SUNXI_SCP_SIZE, MT_MEMORY | MT_RO | MT_NS);
++	if (ret != 0) {
++		WARN("PSCI: SCP staging area not mapped (%d)\n", ret);
++		return;
++	}
++	if (mmio_read_32(SUNXI_SCP_STAGING) != SCP_FIRMWARE_MAGIC) {
++		mmap_remove_dynamic_region(SUNXI_SCP_STAGING, SUNXI_SCP_SIZE);
++		return;
++	}
++	for (i = 0; i < 3; i++)		/* boot0's "cpus timer clock enable" */
++		mmio_setbits_32(SUNXI_R_PRCM_CPUS_GATE(i), BIT(0));
++	mmio_clrbits_32(SUNXI_R_CPUCFG_BASE, BIT(0));
++	for (i = 0; i < SUNXI_SCP_SIZE; i += 4)
++		mmio_write_32(SUNXI_SCP_BASE + i,
++			      mmio_read_32(SUNXI_SCP_STAGING + i));
++	mmap_remove_dynamic_region(SUNXI_SCP_STAGING, SUNXI_SCP_SIZE);
++	for (i = 1; i <= 14; i++) {	/* l.j from every exception vector */
++		uint32_t vector = SUNXI_SRAM_BASE + 0x100 * i;
++
++		mmio_write_32(vector, (SUNXI_SCP_BASE - vector) >> 2);
++	}
++	/* The contract page: magic and diagnostic words start from zero. */
++	for (i = 0; i < SUNXI_SCP_SHARED_SIZE; i += 4)
++		mmio_write_32(SUNXI_SCP_SHARED + i, 0);
++	mmio_setbits_32(SUNXI_R_CPUCFG_BASE, BIT(0));
++	NOTICE("PSCI: SCP firmware (crust) started from 0x%x\n",
++	       SUNXI_SCP_BASE);
++}
++#else
++static inline void sunxi_scp_start(void)
++{
++}
++#endif
++
+ int sunxi_validate_ns_entrypoint(uintptr_t ns_entrypoint)
+ {
+ 	/* The non-secure entry point must be in DRAM */
+@@ -60,6 +117,8 @@ int plat_setup_psci_ops(uintptr_t sec_entrypoint,
+ 		}
+ 	}
+ 
++	sunxi_scp_start();
++
+ 	if (sunxi_set_scpi_psci_ops(psci_ops) == 0) {
+ 		INFO("PSCI: Suspend is available via SCPI\n");
+ 		psci_is_scpi = true;
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index d830f4315..15811dd73 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -55,4 +55,19 @@
+ #define SUNXI_CPUSUBSYS_BASE		0x08100000
+ #define SUNXI_CPUCFG_BASE		0x09010000
+ 
++/*
++ * crust (FB-CRUST, crust-20261007): the SPL stages scp.bin in DRAM where the
++ * vendor's boot package puts it (it cannot load it into SRAM A2, it runs
++ * there itself: 0x00104000 + 0x14000); BL31, running from DRAM, copies it to
++ * AR100 0x10000 once the SPL is gone and starts the AR100. The exception
++ * vectors live in the first 16 KiB of the AR100 space, SUNXI_SRAM_BASE for
++ * the ARM.
++ */
++#define SUNXI_SCP_STAGING		0x48100000
++#define SUNXI_SCP_BASE			0x00110000
++#define SUNXI_SCP_SIZE			0x00010000
++/* crust's contract page with the Linux driver (AR100 0x23800, 1 KiB). */
++#define SUNXI_SCP_SHARED		0x00123800
++#define SUNXI_SCP_SHARED_SIZE		0x00000400
++
+ #endif /* SUNXI_MMAP_H */

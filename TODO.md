@@ -245,8 +245,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Marco (Taste, IR, lange Schläfe, Leistung, Hörtest), `power.conf` auf der Box zurück auf `refused = poweroff`
       - **09.10. abends mit Marco** (`doku/174`): Taste, IR-Fernbedienung, 3,5 und 8,4 min Schlaf, langer Druck - alles gut;
         Ton nach dem Standby zurück (h713-mips-restart baut den Audio-DSP neu auf, bis 3 Versuche). Offen: msp-Meldung sagt
-        noch "until a reboot" (Text in 0243 anpassen), Leistung im Standby, Wartezeit bis zum Bild ~11 s (h713-tv macht nach
-        dem Neustart einen HPD-Replug, der Laptop braucht ~4 s; bei gleicher EDID sparen)
+        noch "until a reboot" (Text in 0243 anpassen), Leistung im Standby, Wartezeit bis zum Bild ~11 s (-> 9.0, nach dem Release)
       - **09.10.** `release/sperr-scan.py` erkennt in einem Git-Worktree das Git nicht (`.git` ist dort eine Datei,
         `os.path.isdir` falsch) und durchsucht die ignorierten, root-eigenen Bauordner -> PermissionError, Tor rot. Umgehung:
         Tore auf `git checkout-index -a --prefix=...`. Behebung: `os.path.exists` (eine Zeile) - gehört nach `main`
@@ -383,6 +382,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)
 
+- [ ] 9.0 **Nach dem Release (Marco 09.10.): schneller ans Bild nach dem Standby.** Vom Wecken bis zum Bild ~11 s, davon
+      ~4-5 s, weil h713-tv nach dem MIPS-Neustart den HPD 300 ms auf low zieht und die Quelle (Laptop) neu synchronisiert
+      (`doku/174` §1). Bei unveränderter EDID den Replug sparen; vorher messen, ob die Quelle ohne ihn wieder sendet
 - [ ] 9.1 **AV1**: erst klären, ob RE-Stand oder lauffähig; H713 ist der erste Allwinner mit AV1
 - [ ] 9.2 Cedrus/GPU Testmatrix Decoder × Auflösung × Ausgabe; der KASAN-Fall steht
 - [ ] 9.3 Hardware-Video-Decode und IOMMU in **diesem** Image nachmessen (aus cstengers Baum übernommen)

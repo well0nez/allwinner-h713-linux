@@ -1,7 +1,7 @@
 From 47ee829f745f7c87273192b26c92dbd8f78b4ab1 Mon Sep 17 00:00:00 2001
 From: Christopher Stenger <chris.h.stenger@gmail.com>
 Date: Tue, 14 Jul 2026 00:37:40 -0700
-Subject: [PATCH 4/6] feat(allwinner): implement PSCI CPU_SUSPEND for the
+Subject: [PATCH 04/27] feat(allwinner): implement PSCI CPU_SUSPEND for the
  native power ops
 
 The native (non-SCPI) sunxi PSCI ops implemented CPU_ON/OFF and system

@@ -1,0 +1,154 @@
+From e1be80b6b1aa7a0ab1c1ca9950f84f58af5228a6 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:55:27 +0200
+Subject: [PATCH 18/27] allwinner: h713: say what the standby path does now,
+ and where the switch comes from
+
+The head of sunxi_standby.c still described the vendor's scp.bin, loaded
+by Linux, carrying the power-down; it is crust, started by BL31, after
+Linux's arisc driver has put it into PRESLEEP. The 50 ms between the
+request and the cluster reset are now named, with why a reset inside
+them loses nothing (bakery locks, review verdict on TFA-5), and the
+security re-apply notes that the VDD_SYS variant, which would lose that
+domain, is refused (TFA-15, TFA-7).
+
+platform.mk said only test images build SYSTEM_SUSPEND; the release build
+passes it per board, with --standby (DESIGN-RELEASE B2), so the comment
+says that. A DEBUG build no longer prints "Suspend is unavailable" when
+it offers SYSTEM_SUSPEND, and the dynamic-map budget the staging area
+shares with the SiP is noted next to sunxi_scp_start (TFA-15).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c           |  9 +++-
+ plat/allwinner/sun50i_h713/platform.mk     | 11 +++--
+ plat/allwinner/sun50i_h713/sunxi_standby.c | 54 ++++++++++++----------
+ 3 files changed, 43 insertions(+), 31 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index c1e4496eb..823e13598 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -150,7 +150,10 @@ static void sunxi_scp_record(uint32_t rwdog)
+  * BL31 runs from DRAM here and maps only itself, SRAM, the devices and the
+  * BL33 window (sunxi_common.c), so the staging area is mapped for the copy
+  * and unmapped again. SRAM is device memory in that table: the writes need
+- * no cache maintenance before the AR100 fetches them.
++ * no cache maintenance before the AR100 fetches them. MAX_MMAP_REGIONS
++ * (platform_def.h) leaves room for one dynamic region; the SiP's maps
++ * (sunxi_h713_sip.c) use the same slot, which works because they only
++ * exist during an SMC, never while this runs.
+  */
+ static void sunxi_scp_start(void)
+ {
+@@ -267,7 +270,11 @@ int plat_setup_psci_ops(uintptr_t sec_entrypoint,
+ 		INFO("PSCI: Suspend is available via SCPI\n");
+ 		psci_is_scpi = true;
+ 	} else {
++#if SUNXI_SYSTEM_SUSPEND
++		INFO("PSCI: System suspend is offered while the ARISC firmware allows it\n");
++#else
+ 		INFO("PSCI: Suspend is unavailable\n");
++#endif
+ 		sunxi_set_native_psci_ops(psci_ops);
+ 	}
+ 
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index 055401afe..cfa3b2e41 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -10,11 +10,12 @@ SUNXI_BL31_IN_DRAM	:=	1
+ SUNXI_PSCI_USE_SCPI	:=	0
+ SUNXI_PSCI_USE_NATIVE	:=	1
+ 
+-# PSCI SYSTEM_SUSPEND through the ARISC ("cpu op req" on msgbox port 3) is
+-# opt-in: only test images build it (make ... SUNXI_SYSTEM_SUSPEND=1). A
+-# release BL31 would make "mem" mean deep standby for every suspend key,
+-# and the vendor firmware's standby never woke (doku/139). Even when built,
+-# it is offered per request only while crust runs (sunxi_standby.c).
++# PSCI SYSTEM_SUSPEND through crust on the ARISC ("cpu op req" on msgbox
++# port 3) is opt-in per board: release/build-all.sh passes
++# SUNXI_SYSTEM_SUSPEND=1 only with --standby, for a board whose board.env
++# names a crust (STANDBY=sr); test images pass it by hand. Without it "mem"
++# is not offered at all. Even when built, it is offered per request only
++# when crust's contract page allows it (sunxi_standby.c).
+ SUNXI_SYSTEM_SUSPEND	?=	0
+ 
+ # Test bench only: also take a crust whose build word carries a deep-sleep
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+index 19e544bb5..303ff3cc5 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_standby.c
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -5,33 +5,35 @@
+  */
+ 
+ /*
+- * Standby stage 2 on the H713: PSCI SYSTEM_SUSPEND through the ARISC.
++ * PSCI SYSTEM_SUSPEND on the H713, through crust on the ARISC.
+  *
+- * The management processor runs the vendor's scp.bin (loaded by Linux, see
+- * sun50i-h713-arisc), and its "cpu op req" handler (0xe518) carries the
+- * whole power-down: it parses standby_param, arms the power key, the IR
+- * receiver and CEC (0xdef0 -> 0xda6c, 0x8f14, 0x103e4), snapshots the
+- * clocks, runs the DRAM standby driver (0x142dc), resets the ARM cluster
+- * (0x4b28), gates the PLLs (0xdd20) and dozes until a wake source fires.
+- * On wake it brings the DRAM back, writes the entry point it was given into
+- * ALT_RVBAR (0x4c2c) and releases CPU0 (0x4be4); Linux then answers with
+- * 0x11 and gets the wake word. All this side has to do is send that one
+- * request and go to WFI.
++ * crust (BL31 starts it from the image the SPL staged, sunxi_pm.c) carries
++ * the whole power-down. Linux's arisc driver asks it first, in its noirq
++ * phase (0x25/0x26 on port 3, with the net request in the contract page),
++ * and crust moves to phase PRESLEEP. Once sunxi_system_suspend_possible()
++ * has found that, one "cpu op req" goes out. crust waits 50 ms
++ * (CPU_OP_DELAY_US in its hdmi.c), resets the ARM cluster, puts the DRAM
++ * into self-refresh and dozes until the power key, IR or its timer fires.
++ * On the wake it brings the DRAM back, writes the entry point it was given
++ * into ALT_RVBAR and releases CPU0; Linux then sends 0x11 and gets the
++ * wake word.
+  *
+  * Wire format (doku/nachtlog/S39 section 1, S40 section 3, checked against
+- * the vendor monitor's sender at 0x60a0 and frame builder at 0x66b4): msgbox
+- * bank user1 port 3, one 32-bit word per FIFO write -- the header
+- * state=2 | attr<<8 | type=0x22<<16, then the count (5), then
+- * {mpidr, entrypoint, cpu_state, cluster_state, system_state}. attr 0 means
+- * "no answer" (dispatcher 0xbe40), which is what a request whose sender is
+- * about to be reset needs; the stock passes 3 for the three states. The
+- * FIFO is eight words deep and the stock sender waits on FIFO_STAT != 8
+- * before every word.
++ * the vendor monitor's sender at 0x60a0 and frame builder at 0x66b4, which
++ * crust's port 3 dispatcher follows): msgbox bank user1 port 3, one 32-bit
++ * word per FIFO write -- the header state=2 | attr<<8 | type=0x22<<16, then
++ * the count (5), then {mpidr, entrypoint, cpu_state, cluster_state,
++ * system_state}. attr 0 means "no answer", which is what a request whose
++ * sender is about to be reset needs; the stock passes 3 for the three
++ * states. The FIFO is eight words deep and the stock sender waits on
++ * FIFO_STAT != 8 before every word.
+  *
+  * The caller has already saved the CPU context and cleaned the caches
+- * (psci_pwrdown_cpu_start), so the cluster reset the firmware applies a few
+- * milliseconds after this request can land at any point after the last
+- * FIFO write without losing anything.
++ * (psci_pwrdown_cpu_start), so the cluster reset 50 ms after this request
++ * can land at any point after the last FIFO write without losing anything:
++ * the PSCI locks are bakery locks, and the warm boot on the same core takes
++ * its own slot again. What runs in those 50 ms is one NOTICE (about 6 ms at
++ * 115200 baud) and the CPU's power-off.
+  */
+ 
+ #include <arch_helpers.h>
+@@ -326,9 +328,11 @@ void sunxi_system_suspend_finish(void)
+ 	}
+ 	/*
+ 	 * The secure peripheral controller and the CCU's security switch live
+-	 * in the domain that stayed powered, but 0xdd20/0xddec write key
+-	 * protected registers around it; re-applying the setup is idempotent
+-	 * and cheap, and the console line is the first proof of a resume.
++	 * in the domain that stayed powered (a crust with the VDD_SYS step,
++	 * which would lose it, is refused), but the standby path (the
++	 * vendor's 0xdd20/0xddec, which crust follows) writes key protected
++	 * registers around it; re-applying the setup is idempotent and cheap,
++	 * and the console line is the first proof of a resume.
+ 	 */
+ 	sunxi_security_setup();
+ 	NOTICE("PSCI: back from system suspend\n");

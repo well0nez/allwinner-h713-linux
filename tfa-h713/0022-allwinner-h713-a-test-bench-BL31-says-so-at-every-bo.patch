@@ -1,0 +1,36 @@
+From 6798f1aafef41de0b365637c8a2dd5e6f312e67f Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 00:16:46 +0200
+Subject: [PATCH 22/27] allwinner: h713: a test bench BL31 says so at every
+ boot
+
+SUNXI_STANDBY_UNMEASURED=1 makes SYSTEM_SUSPEND take a crust whose build
+word carries a deep-sleep step nobody has measured (PLL LDO, AVCC). Such
+a BL31 differed from the standby one only in one mask in the
+disassembly: not a string, not a boot line, so an image taken by mistake
+would have shown up neither in a UART log nor in a gate over the build.
+
+It now prints "PSCI: test bench BL31: system suspend takes unmeasured
+deep-sleep steps too" as a NOTICE on every boot, and the string is in
+that image and in no other, for a build gate to refuse.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index 2fb3ff71f..f5996fb34 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -297,6 +297,10 @@ int plat_setup_psci_ops(uintptr_t sec_entrypoint,
+ 	} else {
+ #if SUNXI_SYSTEM_SUSPEND
+ 		INFO("PSCI: System suspend is offered while the ARISC firmware allows it\n");
++#if defined(SUNXI_STANDBY_UNMEASURED) && SUNXI_STANDBY_UNMEASURED
++		/* Every boot of a test bench image says so, not only its code. */
++		NOTICE("PSCI: test bench BL31: system suspend takes unmeasured deep-sleep steps too\n");
++#endif
+ #else
+ 		INFO("PSCI: Suspend is unavailable\n");
+ #endif

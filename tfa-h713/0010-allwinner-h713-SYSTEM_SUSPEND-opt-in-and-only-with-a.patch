@@ -1,0 +1,281 @@
+From c2068664fc29a01a0e59a52d029b18d2d323938b Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:49:58 +0200
+Subject: [PATCH 10/27] allwinner: h713: SYSTEM_SUSPEND opt-in and only with a
+ live crust; the counter keeps the sleep; boot lines a release prints
+
+Review findings B1, B2, B21 and B34 of crust-20261007 (07.10.2026), each
+checked against the code.
+
+SYSTEM_SUSPEND was built into every H713 BL31 and offered whatever ran on
+the ARISC: with the vendor firmware, whose standby never woke (doku/139),
+any suspend key or "systemctl suspend" would have sent the box into it.
+SUNXI_SYSTEM_SUSPEND is opt-in now (test images build with =1, and only
+then is sunxi_standby.c compiled), and even then each request is checked:
+crust's contract page must carry its magic, the running bit and a moving
+heartbeat, or only the CPU level is named and psci_system_suspend()
+answers PSCI_E_DENIED - Linux leaves the suspend with an error.
+
+The system counter was written back to its value from before the request,
+which hid the whole sleep from Linux (the arch timer is a nonstop-in-
+suspend clocksource, the DT has no arm,no-tick-in-suspend). It is restored
+only when the cluster reset stopped or cleared it, and then put forward by
+the milliseconds crust counted asleep (contract page +0x234); a NOTICE says
+how many.
+
+The staging-area warning was a WARN, compiled out of a release BL31, as
+was the silence for "no image": both are ERROR/NOTICE lines now. The
+staging area is mapped writable, and the magic word is cleared (and
+flushed) after the copy, so a later boot without an scp image cannot start
+a stale copy DRAM kept over a warm reset.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/include/sunxi_private.h |  3 +
+ plat/allwinner/common/sunxi_native_pm.c       | 11 ++-
+ plat/allwinner/common/sunxi_pm.c              | 15 +++-
+ plat/allwinner/sun50i_h713/platform.mk        | 16 ++--
+ plat/allwinner/sun50i_h713/sunxi_standby.c    | 81 +++++++++++++++++--
+ 5 files changed, 109 insertions(+), 17 deletions(-)
+
+diff --git a/plat/allwinner/common/include/sunxi_private.h b/plat/allwinner/common/include/sunxi_private.h
+index 3e19101b1..e1c88334b 100644
+--- a/plat/allwinner/common/include/sunxi_private.h
++++ b/plat/allwinner/common/include/sunxi_private.h
+@@ -7,6 +7,8 @@
+ #ifndef SUNXI_PRIVATE_H
+ #define SUNXI_PRIVATE_H
+ 
++#include <stdbool.h>
++
+ #include <common/fdt_fixup.h>
+ 
+ #include <lib/psci/psci.h>
+@@ -24,6 +26,7 @@ void sunxi_power_down(void);
+ extern uintptr_t sunxi_sec_entrypoint;
+ 
+ #if SUNXI_SYSTEM_SUSPEND
++bool sunxi_system_suspend_possible(void);
+ int sunxi_system_suspend_enter(void);
+ void sunxi_system_suspend_finish(void);
+ #else
+diff --git a/plat/allwinner/common/sunxi_native_pm.c b/plat/allwinner/common/sunxi_native_pm.c
+index 632a05961..3adee26d9 100644
+--- a/plat/allwinner/common/sunxi_native_pm.c
++++ b/plat/allwinner/common/sunxi_native_pm.c
+@@ -114,13 +114,20 @@ static void sunxi_pwr_domain_suspend_finish(const psci_power_state_t *target_sta
+ }
+ 
+ #if SUNXI_SYSTEM_SUSPEND
+-/* Offered as PSCI SYSTEM_SUSPEND: every level down, nothing retained. */
++/*
++ * Offered as PSCI SYSTEM_SUSPEND: every level down, nothing retained - when
++ * the firmware on the ARISC can take it. Otherwise only the CPU level is
++ * named, psci_system_suspend() answers PSCI_E_DENIED, and Linux leaves the
++ * suspend with an error instead of sleeping with nobody to wake it.
++ */
+ static void sunxi_get_sys_suspend_power_state(psci_power_state_t *req_state)
+ {
++	bool possible = sunxi_system_suspend_possible();
+ 	unsigned int i;
+ 
+ 	for (i = 0; i <= PLAT_MAX_PWR_LVL; i++)
+-		req_state->pwr_domain_state[i] = PLAT_MAX_OFF_STATE;
++		req_state->pwr_domain_state[i] = possible || i == MPIDR_AFFLVL0 ?
++			PLAT_MAX_OFF_STATE : PSCI_LOCAL_STATE_RUN;
+ }
+ #endif
+ 
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index 35d810ffe..5adf5e276 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -33,6 +33,7 @@ bool sunxi_psci_is_scpi(void)
+ #endif
+ 
+ #if !SUNXI_PSCI_USE_SCPI && defined(SUNXI_SCP_STAGING)
++#include <arch_helpers.h>
+ #include <lib/xlat_tables/xlat_tables_v2.h>
+ 
+ /* The l.mfspr crust's start.S begins with, as the ARM reads it. */
+@@ -54,14 +55,17 @@ static void sunxi_scp_start(void)
+ 	unsigned int i;
+ 	int ret;
+ 
++	/* ERROR and NOTICE, not WARN: a release build prints up to NOTICE. */
+ 	ret = mmap_add_dynamic_region(SUNXI_SCP_STAGING, SUNXI_SCP_STAGING,
+-				      SUNXI_SCP_SIZE, MT_MEMORY | MT_RO | MT_NS);
++				      SUNXI_SCP_SIZE, MT_MEMORY | MT_RW | MT_NS);
+ 	if (ret != 0) {
+-		WARN("PSCI: SCP staging area not mapped (%d)\n", ret);
++		ERROR("PSCI: SCP staging area not mapped (%d), no SCP firmware started\n",
++		      ret);
+ 		return;
+ 	}
+ 	if (mmio_read_32(SUNXI_SCP_STAGING) != SCP_FIRMWARE_MAGIC) {
+ 		mmap_remove_dynamic_region(SUNXI_SCP_STAGING, SUNXI_SCP_SIZE);
++		NOTICE("PSCI: no SCP firmware staged, the ARISC is Linux's to load\n");
+ 		return;
+ 	}
+ 	for (i = 0; i < 3; i++)		/* boot0's "cpus timer clock enable" */
+@@ -70,6 +74,13 @@ static void sunxi_scp_start(void)
+ 	for (i = 0; i < SUNXI_SCP_SIZE; i += 4)
+ 		mmio_write_32(SUNXI_SCP_BASE + i,
+ 			      mmio_read_32(SUNXI_SCP_STAGING + i));
++	/*
++	 * Taken: the magic goes, so a later boot without an scp image (the
++	 * SPL skips the empty loadable and writes nothing here) does not
++	 * start a stale copy DRAM kept over a warm reset.
++	 */
++	mmio_write_32(SUNXI_SCP_STAGING, 0);
++	flush_dcache_range(SUNXI_SCP_STAGING, 64);
+ 	mmap_remove_dynamic_region(SUNXI_SCP_STAGING, SUNXI_SCP_SIZE);
+ 	for (i = 1; i <= 14; i++) {	/* l.j from every exception vector */
+ 		uint32_t vector = SUNXI_SRAM_BASE + 0x100 * i;
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index 70552c846..7f8e8b634 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -10,9 +10,12 @@ SUNXI_BL31_IN_DRAM	:=	1
+ SUNXI_PSCI_USE_SCPI	:=	0
+ SUNXI_PSCI_USE_NATIVE	:=	1
+ 
+-# The vendor ARISC firmware (loaded by Linux) carries the standby: one
+-# "cpu op req" on msgbox port 3 and it takes the SoC down and back up.
+-SUNXI_SYSTEM_SUSPEND	:=	1
++# PSCI SYSTEM_SUSPEND through the ARISC ("cpu op req" on msgbox port 3) is
++# opt-in: only test images build it (make ... SUNXI_SYSTEM_SUSPEND=1). A
++# release BL31 would make "mem" mean deep standby for every suspend key,
++# and the vendor firmware's standby never woke (doku/139). Even when built,
++# it is offered per request only while crust runs (sunxi_standby.c).
++SUNXI_SYSTEM_SUSPEND	?=	0
+ 
+ # The differences between the platforms are covered by the include files.
+ include plat/allwinner/common/allwinner-common.mk
+@@ -27,8 +30,11 @@ BL31_SOURCES		+=	common/fdt_wrappers.c			\
+ 				drivers/allwinner/axp/axp805.c		\
+ 				drivers/allwinner/sunxi_rsb.c		\
+ 				drivers/mentor/i2c/mi2cv.c		\
+-				${AW_PLAT}/${PLAT}/sunxi_h713_dtb.c	\
+-				${AW_PLAT}/${PLAT}/sunxi_standby.c
++				${AW_PLAT}/${PLAT}/sunxi_h713_dtb.c
++
++ifeq (${SUNXI_SYSTEM_SUSPEND},1)
++BL31_SOURCES		+=	${AW_PLAT}/${PLAT}/sunxi_standby.c
++endif
+ 
+ # FB-HDCP14h: the vendor's own OP-TEE 3.7 as BL32. Its sunxi file header gives the run
+ # address 0x48600000 (offset 0x2c) and the vendor DTS reserves 1 MiB there. The SPL loads
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+index 7888c8cde..cf3dd43ee 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_standby.c
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -38,6 +38,7 @@
+ #include <common/debug.h>
+ #include <drivers/delay_timer.h>
+ #include <lib/mmio.h>
++#include <plat/common/platform.h>
+ 
+ #include <sunxi_mmap.h>
+ #include <sunxi_private.h>
+@@ -73,6 +74,50 @@
+ 
+ static uint32_t cnt_lo, cnt_hi, cnt_fid;
+ 
++/* crust's contract page (crust platform/h713/include/platform/memory.h). */
++#define SCP_SHARED_MAGIC	0x33313748		/* "H713" */
++#define SCP_SHARED_STATUS	(SUNXI_SCP_SHARED + 0x008)
++#define SCP_ST_RUNNING		BIT(0)
++#define SCP_SLEPT_MS		(SUNXI_SCP_SHARED + 0x234)
++#define SCP_LIVE_TRIES		100			/* x 100 us */
++
++/*
++ * The standby only with crust: its page carries the magic, the running bit
++ * and a heartbeat its main loop moves on every pass (microseconds apart).
++ * The vendor firmware has no such page - its standby never woke (doku/139)
++ * - and a crust that stopped looping would not take the request either.
++ */
++bool sunxi_system_suspend_possible(void)
++{
++	uint32_t s0;
++	unsigned int i;
++
++	if (mmio_read_32(SUNXI_SCP_SHARED) != SCP_SHARED_MAGIC)
++		goto no;
++	s0 = mmio_read_32(SCP_SHARED_STATUS);
++	if ((s0 & SCP_ST_RUNNING) == 0U)
++		goto no;
++	for (i = 0; i < SCP_LIVE_TRIES; i++) {
++		udelay(100);
++		if (mmio_read_32(SCP_SHARED_STATUS) != s0)
++			return true;
++	}
++no:
++	NOTICE("PSCI: system suspend refused, no live crust on the ARISC\n");
++	return false;
++}
++
++static uint64_t cnt_read(void)
++{
++	uint32_t hi, lo;
++
++	do {
++		hi = mmio_read_32(CNT_READ_CV_HI);
++		lo = mmio_read_32(CNT_READ_CV_LO);
++	} while (mmio_read_32(CNT_READ_CV_HI) != hi);
++	return ((uint64_t)hi << 32) | lo;
++}
++
+ static int standby_push(uint32_t word)
+ {
+ 	unsigned int i;
+@@ -103,8 +148,12 @@ int sunxi_system_suspend_enter(void)
+ 		return -1;
+ 	}
+ 
+-	cnt_lo = mmio_read_32(CNT_READ_CV_LO);
+-	cnt_hi = mmio_read_32(CNT_READ_CV_HI);
++	{
++		uint64_t now = cnt_read();
++
++		cnt_lo = (uint32_t)now;
++		cnt_hi = (uint32_t)(now >> 32);
++	}
+ 	cnt_fid = mmio_read_32(CNT_CTRL_FID0);
+ 
+ 	if (standby_push(STANDBY_HDR(STANDBY_STATE, STANDBY_ATTR_NO_REPLY,
+@@ -142,12 +191,28 @@ full:
+ 
+ void sunxi_system_suspend_finish(void)
+ {
+-	/* the system counter, as the stock BL31 restores it after 0x11 */
+-	mmio_write_32(CNT_CTRL_CR, 0);
+-	mmio_write_32(CNT_CTRL_FID0, cnt_fid);
+-	mmio_write_32(CNT_CTRL_CV_LO, cnt_lo);
+-	mmio_write_32(CNT_CTRL_CV_HI, cnt_hi);
+-	mmio_write_32(CNT_CTRL_CR, 1);
++	uint64_t cnt = ((uint64_t)cnt_hi << 32) | cnt_lo;
++	uint32_t ms = 0U;
++
++	/*
++	 * The system counter, as the stock BL31 restores it after 0x11 - but
++	 * only when the cluster reset stopped or cleared it, and then put
++	 * forward by the milliseconds crust counted asleep: writing back the
++	 * value from before the request would hide the whole sleep from
++	 * Linux, whose arch timer is a "nonstop in suspend" clocksource.
++	 * Not counted by crust: its suspend and resume work (deep: ~0.2 s).
++	 */
++	if ((mmio_read_32(CNT_CTRL_CR) & 1U) == 0U || cnt_read() < cnt) {
++		if (mmio_read_32(SUNXI_SCP_SHARED) == SCP_SHARED_MAGIC)
++			ms = mmio_read_32(SCP_SLEPT_MS);
++		cnt += (uint64_t)ms * (plat_get_syscnt_freq2() / 1000U);
++		mmio_write_32(CNT_CTRL_CR, 0);
++		mmio_write_32(CNT_CTRL_FID0, cnt_fid);
++		mmio_write_32(CNT_CTRL_CV_LO, (uint32_t)cnt);
++		mmio_write_32(CNT_CTRL_CV_HI, (uint32_t)(cnt >> 32));
++		mmio_write_32(CNT_CTRL_CR, 1);
++		NOTICE("PSCI: system counter restored, %u ms asleep added\n", ms);
++	}
+ 	/*
+ 	 * The secure peripheral controller and the CCU's security switch live
+ 	 * in the domain that stayed powered, but 0xdd20/0xddec write key
