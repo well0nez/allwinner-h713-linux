@@ -23,6 +23,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **09.10. abends (Marco, `doku/178`):** das HDCP-Paket kommt ganz mit, 6.5 eingeschlossen; TF-A `0001`/`0002` vorher auf
         `175c6948f` neu aufsetzen (Konflikte in `sunxi_bl31_setup.c`, `platform.mk`), U-Boot `0001`-`0003` passen auf `87b2a44`,
         Repo `0002` an das neue `uboot-build.sh` anpassen
+      - **09.10. abends (Marco, 2.29):** mit `--standby` bauen, `power.conf` Vorgabe `short = poweroff` (Standby experimentell,
+        per Schalter), Doku und Release-Text sagen "experimentell"; 2.30 (dunkel ins Gate) mit hinein, wenn bis dahin gemessen
 - [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
       Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
       WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
@@ -204,6 +206,18 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Release-Abbild `--standby` an; Vorgabe für den kurzen Druck (`short = standby|poweroff`) und für einen verweigerten
       Standby (`refused`); die Fernbedienung; ein Gate an oder aus (`h713_gate`); automatischer Standby ohne Signal; was
       Nutzer in `docs/` lesen. Dazu fehlt die Leistung im Standby gegen das Gate (4 W) - messen (M1/M2)
+      - **Entschieden 09.10. abends (Marco):** 1.1a bietet Standby an (`--standby`), aber **experimentell und aus**: Vorgabe
+        `short = poweroff`, einschalten mit `short = standby` in `/etc/h713/power.conf`; `docs/` sagt "experimentell, auf dem HY310
+        getestet". Kurz = Standby, 3 s halten = Aus (bleibt so). Fernbedienung wie die Taste (`remote = on`, unverändert).
+        Marcos Box: Standby im Alltag; wenn Nächte im Standby halten und die Leistung gemessen ist, wird Standby im Release
+        danach die Vorgabe. Missglückter Standby -> dunkel ins Gate: 2.30. Automatischer Standby ohne Signal: viel später, 9.14
+
+- [ ] 2.30 **Ein missglückter Standby endet dunkel im Gate** (Marco 09.10.: "lieber dunkel" statt Neustart mit Lampe an).
+      Heute läuft jeder Reset aus einem Standby (crust-Budget 15 s bei C1, Linux-Zeitschalter 16 s) als Warmstart am Gate
+      vorbei. Vorschlag: vor dem Einschlafen (vor dem noirq-Fenster, wo C1 hängt) `GATE` ins RTC-Wort GP5, nach dem vollständigen
+      Aufwachen wieder `RUN1`; jeder Reset dazwischen landet im Gate wie ein `poweroff`. Lücke: hängt crust selbst, fängt
+      es nur R_WDOG (CR-1, Stufe S0). Mit `h713_gate=0` (Marcos Box) bootet sie trotzdem durch. Messen mit einem
+      provozierten Hänger (Testmodul), Marco an der Taste
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -486,7 +500,7 @@ Register -, nicht das Verhalten; die Einschätzung "eher überholt" in `doku/175
       **Früher wieder aufmachen,** sobald trotz Helfer `not UP` oder `no answer` im Journal von h713-bluetooth steht
 - [ ] 9.13 Webpanel-Konzept (aus 5.10): Ecke/Kante, Seitenverhältnis, Undo/Redo, Vorschau = Warp (`61` Z. 555ff) - Marco 06.10.:
       erst einmal geschoben
-
+- [ ] 9.14 Automatischer Standby, wenn lange kein Signal kommt (aus 2.29; Marco 09.10.: Userspace, erst viel später)
 
 ## 10 Erledigt — aus `61` und `144` gestrichen, damit es nicht wieder auftaucht
 
