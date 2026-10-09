@@ -1,0 +1,137 @@
+soc: sunxi: h713-mips: cycle the panel's supply after a restart (HY300PRO-G-EU)
+
+On the HY300PRO-G-EU (HY200 QZ713DF A1, a 1280x720 LCD panel with its own
+timing controller) every restart of the display firmware left the wall
+black with the lamp on: the firmware came up ready, the HDMI picture was
+detected, and every register of the display chain read as after a good
+boot - the panel had lost the LVDS clock while the firmware restarted and
+did not lock again. The HY310's DLP bridge locks again by itself.
+
+Measured 09./10.10.2026 on that board: the panel's reset pulse alone (PH16
+low 2 ms) did not bring the picture back; its supply off for 300 ms and on
+again (PF6, the stock panel_power_en U-Boot drives at boot) did, with and
+without the reset, three of three by hand. So the driver takes two
+optional properties, panel-power-gpios and panel-reset-gpios, requested as
+U-Boot left them, and after every start that ends ready cycles the supply
+as U-Boot powers the panel: off 300 ms, on, 20 ms, reset 2 ms. The board's
+tree names PF6 and PH16; a board without them is not touched. With it,
+three restarts through h713-mips-restart in a row brought the picture
+back each time, 3.2 s after the start.
+
+PF6 needs to be in the pin controller's table for the request (separate
+patch); without it the probe defers for good.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../sun50i-h713-hy200-qz713df-a1.dts          | 10 +++++
+ drivers/soc/sunxi/sun50i-h713-mips.c          | 40 ++++++++++++++++++-
+ 2 files changed, 49 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+index a638a33..348666d 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -52,6 +52,16 @@
+ 	firmware-name = "hy200-qz713df-a1-crust.bin", "hy310-edid.bin";
+ };
+ 
++/*
++ * The panel's supply and reset as U-Boot drives them at boot (PF6, PH16):
++ * this LCD panel stays black after a restart of the display firmware until
++ * its supply is cycled (09.10.2026, three of three).
++ */
++&mips {
++	panel-power-gpios = <&pio 5 6 GPIO_ACTIVE_HIGH>;	/* PF6 */
++	panel-reset-gpios = <&pio 7 16 GPIO_ACTIVE_LOW>;	/* PH16 */
++};
++
+ /* PB5 stays the dtsi's hog here, not the board manager's (see above). */
+ &fan_power_hog {
+ 	status = "okay";
+diff --git a/drivers/soc/sunxi/sun50i-h713-mips.c b/drivers/soc/sunxi/sun50i-h713-mips.c
+index fb6b24b..723283d 100644
+--- a/drivers/soc/sunxi/sun50i-h713-mips.c
++++ b/drivers/soc/sunxi/sun50i-h713-mips.c
+@@ -45,6 +45,15 @@
+  * power-off. The word decides, not a flag: only "RUN1" becomes "STBY", only
+  * "STBY" goes back, and a reboot asked for writes "RUN1" first.
+  *
++ * The panel (optional panel-power-gpios / panel-reset-gpios): an LCD panel
++ * with its own timing controller, as on the HY300PRO-G-EU, loses the LVDS
++ * clock while the firmware restarts and stays black, lamp on, until its
++ * supply is cycled (09.10.2026: three of three with PF6 off 300 ms and on,
++ * none with the reset pulse alone). After every start that ends ready the
++ * driver cycles it as U-Boot powers it at boot: supply off 300 ms, on, 20 ms,
++ * reset low 2 ms. A board without the properties - the HY310's DLP bridge
++ * locks again by itself - is not touched.
++ *
+  * sysfs: "state" reads running|halted|parked|failed and a register line;
+  * writing a display.bin path ("-": /boot/mips/display.bin) to "restart"
+  * restarts the core. The receiver (sun50i-h713-hdmirx) has to be unbound
+@@ -53,6 +62,7 @@
+  */
+ 
+ #include <linux/delay.h>
++#include <linux/gpio/consumer.h>
+ #include <linux/io.h>
+ #include <linux/kernel_read_file.h>
+ #include <linux/module.h>
+@@ -125,6 +135,7 @@ static const char * const h713_mips_state_name[] = { "running", "halted", "parke
+ struct h713_mips {
+ 	struct device *dev;
+ 	void __iomem *regs, *ccu, *tvtop, *gate;
++	struct gpio_desc *panel_power, *panel_reset;
+ 	void *win;
+ 	phys_addr_t win_base;
+ 	struct mutex lock;		/* every register access after the probe */
+@@ -288,6 +299,24 @@ static void h713_mips_gate(struct h713_mips *m, bool standby)
+ 		dev_info(m->dev, "standby over: a reset boots again (0x%08x)\n", readl(m->gate));
+ }
+ 
++/* After a restart: the panel's supply off and on, then its reset, as U-Boot's stock panel power does. */
++static void h713_mips_panel_cycle(struct h713_mips *m)
++{
++	if (!m->panel_power)
++		return;
++	gpiod_direction_output(m->panel_power, 0);
++	msleep(300);
++	gpiod_set_value_cansleep(m->panel_power, 1);
++	msleep(20);
++	if (m->panel_reset) {
++		gpiod_direction_output(m->panel_reset, 1);	/* asserted: the line low */
++		usleep_range(2000, 2500);
++		gpiod_set_value_cansleep(m->panel_reset, 0);
++		usleep_range(5000, 5500);
++	}
++	dev_info(m->dev, "panel supply cycled (300 ms off)%s\n", m->panel_reset ? ", reset pulsed" : "");
++}
++
+ static int h713_mips_start(struct h713_mips *m, bool uboot)
+ {
+ 	const char *how = uboot ? "U-Boot" : "vendor";
+@@ -320,8 +349,10 @@ static int h713_mips_start(struct h713_mips *m, bool uboot)
+ 		m->state = H713_MIPS_RUNNING;
+ 	h713_mips_say(m, ret, "%s start: status 0x%08x, %sready", how,
+ 		      readl(m->regs + H713_MIPS_STATUS), ret ? "NOT " : "");
+-	if (!ret)
++	if (!ret) {
+ 		h713_mips_gate(m, false);
++		h713_mips_panel_cycle(m);
++	}
+ 	return ret;
+ }
+ 
+@@ -512,6 +543,13 @@ static int h713_mips_probe(struct platform_device *pdev)
+ 	m->gate = res && resource_size(res) >= 4 ? devm_ioremap(dev, res->start, 4) : NULL;
+ 	if (!m->gate)
+ 		dev_warn(dev, "no gate word (reg 3): a standby that does not finish boots the board again\n");
++	/* As left by U-Boot (on, out of reset); driven only after a restart. */
++	m->panel_power = devm_gpiod_get_optional(dev, "panel-power", GPIOD_ASIS);
++	if (IS_ERR(m->panel_power))
++		return dev_err_probe(dev, PTR_ERR(m->panel_power), "panel-power-gpios\n");
++	m->panel_reset = devm_gpiod_get_optional(dev, "panel-reset", GPIOD_ASIS);
++	if (IS_ERR(m->panel_reset))
++		return dev_err_probe(dev, PTR_ERR(m->panel_reset), "panel-reset-gpios\n");
+ 	ret = of_reserved_mem_region_to_resource(dev->of_node, 0, &win);
+ 	if (ret || win.start != H713_MIPS_WIN_BASE || resource_size(&win) < H713_MIPS_CFG_OFF)
+ 		return dev_err_probe(dev, -ENODEV, "no memory-region at 0x%x of 0x%x bytes\n",

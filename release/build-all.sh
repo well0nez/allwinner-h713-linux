@@ -173,9 +173,10 @@ fi
 [[ -n "${IMAGE_NAME:-}" ]] || { echo "boards/$BOARD names no IMAGE_NAME" >&2; exit 2; }
 # crust and the standby (header). The source must be the head crust-h713/SERIES.txt names, unless
 # CRUST_SRC points somewhere else on purpose - then the stamp says so.
-STANDBY=none; [[ -n "${CRUST_DEFCONFIG:-}" && "${STATUS:-}" == verified ]] && STANDBY=sr
+# A test image for one unverified board may carry it too: that is how the board gets verified (TODO 1.4).
+STANDBY=none; [[ -n "${CRUST_DEFCONFIG:-}" && ( "${STATUS:-}" == verified || $TEST_IMAGE == 1 ) ]] && STANDBY=sr
 if ((WANT_STANDBY)) && [[ "$STANDBY" != sr ]]; then
-	echo "--standby: boards/$UNIT has STANDBY=$STANDBY -- only a verified board with a CRUST_DEFCONFIG can offer it" >&2; exit 2
+	echo "--standby: boards/$UNIT has STANDBY=$STANDBY -- only a verified board with a CRUST_DEFCONFIG, or a --test-image of a board with one, can offer it" >&2; exit 2
 fi
 CRUST_SRC_GIVEN=${CRUST_SRC:+1}; CRUST_SRC=${CRUST_SRC:-$MAINLINE/external/crust}
 if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
@@ -282,7 +283,7 @@ else
 	# 10.09. built with assertions enabled (49260 instead of 45164 bytes). make
 	# saw everything as up to date and never replaced it -- it sits in v0.8 to v0.10.
 	rm -rf "$MAINLINE/external/arm-trusted-firmware/build"
-	in_container "cd $WORK/mainline && BOARD=$BOARD H713_STANDBY=$WANT_STANDBY build/build.sh bl31" | tail -3 | sed 's/^/    /'
+	in_container "cd $WORK/mainline && BOARD=$BOARD H713_STANDBY=$WANT_STANDBY H713_TEST_IMAGE=$TEST_IMAGE build/build.sh bl31" | tail -3 | sed 's/^/    /'
 fi
 [[ -f "$OUT/bl31.bin" ]] || die "no bl31.bin"
 

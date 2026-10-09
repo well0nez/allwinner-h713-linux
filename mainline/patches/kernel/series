@@ -565,3 +565,5 @@
 0244-pmdomain-sunxi-h713-ppu-say-which-domain-did-not-switch.patch
 0245-soc-sunxi-h713-mips-a-standby-that-does-not-finish-ends-in-the-power-gate.patch
 0246-arm64-dts-h713-hy200-qz713df-a1-crust-as-the-arisc-firmware-the-display-mips-restart-on.patch
+0247-pinctrl-sunxi-h713-pf6-as-a-gpio.patch
+0248-soc-sunxi-h713-mips-cycle-the-panel-s-supply-after-a-restart.patch
