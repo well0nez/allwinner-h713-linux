@@ -18,6 +18,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Dazu das HDCP-Härtungspaket (6.1/6.2/6.5/6.9, `arbeit/hdcp-haertung-20261007/`, enthält 6.6 schon als `uboot/0001`):
       erst per FEL messen (Plan dort §8, BL31 vorher frisch bauen), TF-A und U-Boot nur zusammen; danach `referenz/messregeln.md`
       HDCP und `docs/subsystems/hdcp.md` (eine Schreibung pro Boot, keine Adresse)
+      - **09.10.:** `main` trägt seit c4a3924 crust als HY310-Firmware und den Standby (R1, R2). Der Neubau braucht
+        `CRUST_SRC` (crust-Klon auf ecf2ddc, bis 5.15) und die Entscheidung 2.29 (mit oder ohne `--standby`)
 - [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
       Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
       WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
@@ -33,14 +35,18 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       später). Dazu Bluetooth dort: erster Attach nach Kaltstart hängt an `0x1003`, 245-Byte-Schreibvorgänge kommen
       unvollständig an (FB-BTRESET 9.3, RTS/CTS?); `h713-bt-reset` auf dem Board noch nie probiert
 - [ ] 1.5 STAGE4-Marker füllen und löschen (`git grep -n STAGE4`)
-- [ ] 1.6 Forks pushen: U-Boot `h713-hy310` +6, TF-A `sun50i-h713` +1 (`4c1bd8c6`, der HDCP-1.4-Dienst), sunxi-tools gleich
+- [ ] 1.6 Forks pushen (Stand 09.10. abends, `main` c4a3924): U-Boot `h713-hy310` +7 (Kopf `87b2a44`, lokal Zweig
+      `versuch/r2-standby-uboot`), TF-A `sun50i-h713` +22 (Kopf `175c6948f`, lokal `versuch/crust-release-tfa`), sunxi-tools gleich;
+      **neu: crust** - der Fork liegt noch nicht auf GitHub (Repo anlegen, Zweig mit 80 Patches auf `499a362`, Kopf `ecf2ddc`,
+      lokal `arbeit/crust-mips-drop-20261008/crust` Zweig `versuch/mips-drop`); die Spiegel `uboot-h713/`, `tfa-h713/`,
+      `crust-h713/` stehen schon auf diesen Köpfen. Früherer Stand:
       — **vor** `main` (06.10.: Submodul-Remotes per `git submodule sync` wieder auf GitHub - TF-A und sunxi-tools
       zeigten auf einen geloeschten lokalen Pfad; Identitaets-Hooks gelten jetzt auch in den Forks. Der S-EL1-Versuch
       `824eb0bd` ist aus Fork-Branch, Spiegel und Zeiger raus (Marco: "el1 weg, Hauptsache HDCP funktioniert");
       BL31 mit und ohne ihn bytegleich gebaut, `doku/153`; der Beleg-Branch ist seit 07.10. gelöscht - Marco: S-EL1 nicht
       gewollt, `doku/160`)
       Beim selben Push den alten GitHub-Branch `origin/hy300-pro-ab` loeschen (Marco 06.10.: ja; Inhalt ist in `main`, 7.8)
-- [ ] 1.7 `main` pushen (06.10. +113; aktuell `git rev-list --count origin/main..main`)
+- [ ] 1.7 `main` pushen (06.10. +113, 09.10. abends +191; aktuell `git rev-list --count origin/main..main`)
 - [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
 
@@ -159,7 +165,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `HandlePowerKey=ignore`; ohne `--standby` bleibt poweroff. `docs/tools/h713-power.md`; das Fenster misst Stufe K
 - [ ] 2.24 Kleinkram aus `61`: `regulatory.db` load failed -2; `r8152` will `rtl8153b-2.fw` - Marco 05.10.: **nicht
       jetzt**, Pakete `wireless-regdb`/`firmware-realtek` erst, wenn jemand sie braucht
-- [ ] 2.25 **Linux bindet den Watchdog mit dem falschen Registerlayout** (Gegenprüfung der HDCP-Härtung 07.10., aus dem Code;
+- [x] 2.25 **Linux bindet den Watchdog mit dem falschen Registerlayout** - **erledigt 09.10.:** mit dem R2-Merge in `main` (c4a3924) (Gegenprüfung der HDCP-Härtung 07.10., aus dem Code;
       gemessen schon 07.09., `doku/72` Z. 1633 ff.: der Treiber schreibt ohne Schlüssel und trifft nichts, der DT-Fix steht dort
       als „noch nicht umgesetzt"). Kernel-DT `watchdog@2051000` sagt `sun50i-h6-wdt`/`sun6i-a31-wdt` (CTRL 0x10/CFG 0x14/MODE 0x18,
       kein Schlüssel); die Hardware hat CTRL 0x0C/CFG 0x10/MODE 0x14 mit Schlüssel 0x16aa - wie U-Boots DT (`sun55i-a523-wdt`).
@@ -190,6 +196,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
       Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
 
+- [ ] 2.29 **Standby oder Ausschalten - wann, wie, was im Release** (Marco 09.10., eigenes Thema, besprechen): Standby
+      funktioniert jetzt (Bild und Ton zurück, Taste, IR, Minuten-Schläfe, `doku/174`). Offen zu entscheiden: bietet das
+      Release-Abbild `--standby` an; Vorgabe für den kurzen Druck (`short = standby|poweroff`) und für einen verweigerten
+      Standby (`refused`); die Fernbedienung; ein Gate an oder aus (`h713_gate`); automatischer Standby ohne Signal; was
+      Nutzer in `docs/` lesen. Dazu fehlt die Leistung im Standby gegen das Gate (4 W) - messen (M1/M2)
+
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
 - [x] 3.1 **Standby Stufe 2** (<1 W, ARISC, IR/CEC): PSCI-Suspend erreicht DRAM, **kein Wecken** (`doku/139`). FB-STANDBY + 0167c rein, wenn Wecken bewiesen
@@ -197,7 +209,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Wecken); echter Tiefschlaf, wenn überhaupt, über Crust (3.2)
       - 07.10., statisch, nicht gemessen (`doku/162` §2): der Blob liest beim DRAM-Ausgang seine DRAM-Werte aus `arisc_para`, und
         unser Treiber füllt den Block mit Nullen - ein möglicher Mitgrund für „Aufwachen nie". Bleibt gestrichen
-- [ ] 3.2 FB-CRUST — nach Standby. **Weg (Marco 07.10.):** nach dem Release; zuerst Crust nur im Normalbetrieb (HDMI, EDID, HPD,
+- [x] 3.2 FB-CRUST — **erledigt 09.10.:** crust als Firmware (R1) und Standby (R2) in `main` c4a3924 (`doku/169`-`doku/174`);
+      Reste: 2.29, 5.14, 5.15, Stufe S0 für das crust-Netz (Durchsicht CR-1), C1 im Gebrauch beobachten. Verlauf: **Weg (Marco 07.10.):** nach dem Release; zuerst Crust nur im Normalbetrieb (HDMI, EDID, HPD,
       MIPS-Kanal wie die Hersteller-ARISC; Rückweg = Dateiname, kein Flash, Testplan `FB-CRUST/REPORT.txt` §2), erst dann Schlaf.
       Tiefschlaf braucht zusätzlich die DRAM-Selbstauffrischung (in Crust nur entworfen) und das MIPS-Neuladen (3.3)
       - **07.10. als Paket vorbereitet, nicht gemessen** (`doku/162`, `arbeit/crust-20261007/`): crust für Normalbetrieb und
@@ -246,7 +259,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         HDCP-Paar, Ton), W2. Zwei Funde behoben und auf `r1test2` nachgemessen: MIPS-Fehlalarm (crust `ecf2ddc`, Blob-Regel) und
         R_WDOG bleibt über seinen Reset scharf (TF-A `175c6948f`, T7 Vorgabe). Offen: Langlauf, M1, Abend 2, dann 3.3; der
         Typfilter des Blobs für DispMips (0x11828) erst, wenn der Typ auch für 0x17 gemessen ist (0x16: Typ 2)
-- [ ] 3.3 FB-MIPSRELOAD/b — rein, wenn der Bildfehler nach Reload verstanden ist (`doku/138`) - löst 2.15 mit (Firmware nimmt nach einem afbd-Reload keine neue Publikation an)
+- [x] 3.3 FB-MIPSRELOAD/b — **erledigt 09.10.:** Bild und Ton kommen nach dem Standby zurück (0239, `h713-mips-restart`, `doku/172`,
+      `doku/174`), in `main` c4a3924. Rest: msp-Meldung sagt noch "until a reboot" (Text in 0243). Verlauf: rein, wenn der Bildfehler nach Reload verstanden ist (`doku/138`) - löst 2.15 mit (Firmware nimmt nach einem afbd-Reload keine neue Publikation an)
       - **Platzhalter (Marco 07.10.):** ohne MIPS-Neuladen hat der Projektor nach jedem Standby kein Bild (Release-Durchsicht
         KD-1/INT-04, `arbeit/crust-20261007/PRUEFUNG5-20261007.md`) - Standby ist ohne 3.3 nicht auslieferbar. Weg: Neuladen
         (nicht die Übergangslösung „nach dem Aufwachen neu starten"). **Reihenfolge:** erst crust fertig, dann 3.3
@@ -313,7 +327,15 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
 - [ ] 5.13 `release/tor.sh` in einem gebauten Worktree: `sperr-scan` meldet die Bauerzeugnisse (`mainline/build/`, `*.img`) und
       bricht an root-eigenen Dateien (`installer/tmp/`) ab; am 08.10. lief das Tor deshalb auf einer sauberen Kopie des
-      Commit-Stands. Entweder den Scan auf verfolgte Dateien plus Submodule begrenzen oder das Muster dokumentieren
+      Commit-Stands. Entweder den Scan auf verfolgte Dateien plus Submodule begrenzen oder das Muster dokumentieren.
+      **09.10.:** Ursache gefunden - in einem Git-Worktree ist `.git` eine Datei, `sperr-scan.py` prüft `os.path.isdir` und
+      erkennt das Git nicht (Durchsicht B1); Behebung `os.path.exists`, eine Zeile. Bis dahin: Tore auf `git checkout-index`-Abzug
+- [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
+      Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
+      Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
+      Prüfung), CR-4 (MIPS_DROP zählt Aux-Abweisungen), B2/B4 (Standby-Abbild nur per Text erkennbar, spätere sleep-Drop-ins), KM-3/4
+- [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
+      braucht den veröffentlichten Fork (1.6)
 
 ## 6 HDCP-Härtung — nach dem Release (`doku/144` TEE-1…5)
 
@@ -402,6 +424,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 8.7 cognee gestrichen — in der Recherche-Datei vermerken
 - [ ] 8.8 HY310 läuft noch; Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.**
 - [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
+- [ ] 8.10 Worktrees aufräumen, sobald Marco die Testabbilder nicht mehr braucht: `arbeit/crust-release-20261007/wp8-bau/repo`,
+      `arbeit/r2-20261009/repo` (r2test1-3), `arbeit/r2-20261009/main-int` (r2test4, läuft auf der Box); Zweige bleiben
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)
 
