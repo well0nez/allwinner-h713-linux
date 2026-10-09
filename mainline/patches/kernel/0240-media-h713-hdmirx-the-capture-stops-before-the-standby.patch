@@ -1,0 +1,87 @@
+media: h713-hdmirx: the capture stops before the standby
+
+INCAP writes the source's frames into DRAM until somebody stops it, and
+the park of the MIPS does not. genpd then powers TVCAP off under a
+running write DMA, and that is where standby hang C1 stands: on the
+HY310 five of five hangs that left breadcrumbs stopped between TVCAP
+PRE_OFF and TVCAP OFF, with the PPU reporting the domain on and idle
+(09.10.2026). The suspend now stops the capture as the firmware's
+memory_agent_onoff does (bit 31 of both output enables) and waits two
+frames, while the MIPS still runs; from the park on INCAP no longer
+answers the CPU (a read in the noirq phase stopped the box). The repeat
+of a source switch reads INCAP as well and runs on system_wq, which does
+not freeze: it is cancelled first. A sleep aborted before the park gets
+its capture back on resume.
+
+Measured on the HY310 (r2test2, fast standby loop): the same stop from a
+test module at PM_SUSPEND_PREPARE, 20 of 20 sleeps without C1, against
+2 of 11 and 1 of 12 in the control arms of the same loop and 2 of 88
+without the module. This patch itself: not yet measured.
+arbeit/r2-20261009/c1/, arbeit/review-r2-20261009/BERICHT.md (Q1-Q3).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -1414,6 +1414,7 @@ struct h713_hdmirx {
+ 	bool rearm_pending;		/* the source switch found no signal: repeat at the next one */
+ 	bool rearm_busy;		/* the release after a publication is running: no signal verdict yet */
+ 	bool late_hpd_done;		/* the second hotplug edge of this probe has been asked for */
++	bool capture_stopped;		/* suspend stopped the capture; an aborted sleep restarts it */
+ 
+ 	/* last callback payloads, for debugfs and the source change event */
+ 	spinlock_t event_lock;
+@@ -5662,12 +5663,38 @@ static void h713_hdmirx_remove(struct platform_device *pdev)
+  * one, whose probe starts the poll. The rest of the driver goes through
+  * cpu_comm, which refuses calls while the MIPS is parked.
+  */
++/*
++ * The capture, too, stops before the sleep. INCAP writes the source's frames
++ * into DRAM until somebody stops it, and the park does not: genpd then powers
++ * TVCAP off under a running write DMA. That is where standby hang C1 stands
++ * (breadcrumbs: between TVCAP PRE_OFF and OFF, five of five, 09.10.2026);
++ * stopped here as the firmware's memory_agent_onoff does, two frames before,
++ * 20 of 20 sleeps went through. Here and not later: from the park on INCAP
++ * no longer answers the CPU (a read in the noirq phase stopped the box).
++ * The repeat of a source switch reads INCAP too and runs on system_wq,
++ * which does not freeze: it is stopped first.
++ */
++#define H713_CAPTURE_DRAIN_MS	40
++
+ static int h713_hdmirx_suspend(struct device *dev)
+ {
+ 	struct h713_hdmirx *rx = dev_get_drvdata(dev);
++	unsigned int val;
+ 
+ 	if (rx->link)
+ 		cancel_delayed_work_sync(&rx->audio_work);
++	cancel_work_sync(&rx->rearm_work);
++	cancel_delayed_work_sync(&rx->rearm_retry_work);
++
++	rx->capture_stopped = false;
++	if (!cpu_comm_firmware_up() || regmap_read(rx->incap, H713_INCAP_ENABLE_Y, &val) ||
++	    !(val & H713_INCAP_ENABLE_BIT))
++		return 0;
++	if (regmap_update_bits(rx->incap, H713_INCAP_ENABLE_Y, H713_INCAP_ENABLE_BIT, 0) ||
++	    regmap_update_bits(rx->incap, H713_INCAP_ENABLE_C, H713_INCAP_ENABLE_BIT, 0))
++		dev_warn(dev, "standby: the capture did not stop\n");
++	rx->capture_stopped = true;
++	msleep(H713_CAPTURE_DRAIN_MS);
+ 	return 0;
+ }
+ 
+@@ -5675,6 +5702,14 @@ static int h713_hdmirx_resume(struct device *dev)
+ {
+ 	struct h713_hdmirx *rx = dev_get_drvdata(dev);
+ 
++	/* a sleep aborted before the park: the firmware runs, the capture comes back */
++	if (rx->capture_stopped && cpu_comm_firmware_up()) {
++		h713_hdmirx_capture_enable(rx);
++		if (rx->rearm_pending)
++			queue_delayed_work(system_wq, &rx->rearm_retry_work, 0);
++	}
++	rx->capture_stopped = false;
++
+ 	if (!rx->link || READ_ONCE(rx->link_lost))
+ 		return 0;
+ 	if (cpu_comm_firmware_up()) {

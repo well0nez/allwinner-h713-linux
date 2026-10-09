@@ -1,0 +1,83 @@
+ASoC: sunxi: h713-msp: the island is lost in every standby
+
+genpd powers pd_tvfe off in the noirq phase whatever the runtime
+reference says, and the audio DSP island goes with it: on the HY310 the
+audio top word 0x0614a000 read 0x700 after the boot and 0 after a
+standby and the MIPS restart (09.10.2026). Without rebuild_after_sleep
+the driver left its state at "running" and its bridge PCM untouched, so
+the first sound through the bridge (the ALSA default) after a standby
+would write AUDIF with the audio top clock down - the CPU hang of S21 -
+and the stall timer of a stream that ran into the sleep reads AUDIF two
+seconds after the wake (review finding Q5).
+
+The suspend now always stops the heal worker (system_wq does not freeze)
+and marks the island lost, which stops the bridge PCM, its interrupts
+and its timer; without the rebuild the wake sets the state to "error",
+so open, prepare and the status reads keep their hands off the dead
+block, and says so. A rebuild after the standby does not come up yet
+(measured: "echo 1 > reset" sets the audio top again, the DSP's mailbox
+then times out), hence "until a reboot".
+
+Built against the r2test2 kernel, W=1 without warnings; not yet measured
+on the device. arbeit/review-r2-20261009/BERICHT.md.
+---
+--- a/sound/soc/sunxi/sun50i-h713-msp.c
++++ b/sound/soc/sunxi/sun50i-h713-msp.c
+@@ -474,6 +474,7 @@
+ 	enum msp_state state;
+ 	unsigned int heal_count;
+ 	bool rebuild_on_resume;		/* set by suspend, taken by resume */
++	bool lost_in_sleep;		/* lock: set by suspend, taken by resume */
+ 	bool heal_after_sleep;		/* lock: next heal follows a wake */
+ 	unsigned int mbox_timeouts;
+ 	unsigned int mbox_reissues;
+@@ -2464,11 +2465,13 @@
+ /*
+  * System sleep. The island hangs on pd_tvfe, and genpd powers that off in
+  * the noirq phase whatever the runtime reference above says: the DSP loses
+- * its patch and its graph. HDMI audio does not pass the ARM, so nothing
+- * would notice; the rebuild is started here as self-healing from the patch
+- * kept in RAM, and runs outside the resume path. Only with
+- * rebuild_after_sleep; without it the sleep leaves the island and the
+- * driver alone, and the wake says so.
++ * its patch and its graph, and the audio top word 0x0614a000 reads 0 after
++ * the wake (HY310, 09.10.2026), so an AUDIF access then hangs the CPU (S21).
++ * The island is therefore always taken as lost: the heal worker (system_wq
++ * does not freeze) is stopped before genpd cuts the power, the bridge PCM
++ * and its interrupts are stopped, and the wake either rebuilds it
++ * (rebuild_after_sleep) or leaves the state at "error", so that open,
++ * prepare and the status reads keep their hands off the dead block.
+  */
+ static int msp_suspend(struct device *dev)
+ {
+@@ -2476,13 +2479,12 @@
+ 	bool pending;
+ 
+ 	msp->rebuild_on_resume = false;
+-	if (!READ_ONCE(rebuild_after_sleep))
+-		return 0;
+-
+ 	pending = cancel_work_sync(&msp->heal);
+ 	mutex_lock(&msp->lock);
+ 	msp_pcm_island_lost(msp, true);
+-	msp->rebuild_on_resume = pending || msp->state == MSP_STATE_RUNNING;
++	msp->lost_in_sleep = pending || msp->state != MSP_STATE_ERROR;
++	if (READ_ONCE(rebuild_after_sleep))
++		msp->rebuild_on_resume = pending || msp->state == MSP_STATE_RUNNING;
+ 	mutex_unlock(&msp->lock);
+ 	return 0;
+ }
+@@ -2499,9 +2501,11 @@
+ 		msp->heal_after_sleep = true;
+ 		schedule_work(&msp->heal);
+ 		dev_info(dev, "standby: the DSP is rebuilt after the wake\n");
+-	} else if (msp->state == MSP_STATE_RUNNING) {
+-		dev_info(dev, "standby: the DSP is not rebuilt (rebuild_after_sleep=0), its state after the wake is not checked\n");
++	} else if (msp->lost_in_sleep) {
++		msp->state = MSP_STATE_ERROR;
++		dev_info(dev, "standby: the DSP lost its power in the sleep and is not rebuilt (rebuild_after_sleep=0): state error, no HDMI audio until a reboot\n");
+ 	}
++	msp->lost_in_sleep = false;
+ 	mutex_unlock(&msp->lock);
+ 	return 0;
+ }

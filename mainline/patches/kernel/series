@@ -554,3 +554,12 @@
 #   0239 the picture after a standby (09.10.2026, arbeit/r2-20261009): the restart out of the park sets the TV top
 #   first, as U-Boot does before its start; the standby powers the TV domains off and on (the SoC stalled, three of three)
 0239-soc-sunxi-h713-mips-the-start-out-of-the-standby-park-sets-the-tv-top-first.patch
+#   0240-0244 after the review of the R2 standby code (09.10.2026, arbeit/review-r2-20261009): the capture stops before
+#   the standby (hang C1 in the TVCAP power-off), the display clocks go off whenever no MIPS runs, the start messages say
+#   "parked", the audio DSP is taken as lost in every standby (no AUDIF access after the wake), the PPU names a domain
+#   that did not switch
+0240-media-h713-hdmirx-the-capture-stops-before-the-standby.patch
+0241-soc-sunxi-cpu-comm-the-display-clocks-go-off-whenever-no-mips-runs-at-the-standby.patch
+0242-soc-sunxi-h713-mips-say-parked-where-the-start-without-a-tv-top-window-leaves-the-core.patch
+0243-asoc-sunxi-h713-msp-the-island-is-lost-in-every-standby.patch
+0244-pmdomain-sunxi-h713-ppu-say-which-domain-did-not-switch.patch
