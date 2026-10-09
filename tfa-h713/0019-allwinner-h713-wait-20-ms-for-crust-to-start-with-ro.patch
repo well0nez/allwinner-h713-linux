@@ -1,0 +1,49 @@
+From 728b1cb9b0bb83efe9c4d6a8f8863078570d1751 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 00:14:33 +0200
+Subject: [PATCH 19/27] allwinner: h713: wait 20 ms for crust to start, with
+ room for its init to grow
+
+The 12 ms BL31 waits for MAGIC and RUNNING were five times the model time
+of an older v4 image and had no room left: with the crust images of
+07.10.2026 an instruction-level AR100 model (8 cycles per instruction at
+24 MHz, the slowest clock the SPL may leave it on) counts 7154
+instructions to RUNNING for the SR release image and 7238 for the deep
+ones, 2.39 and 2.41 ms; five times the deep figure is 12.1 ms, past the
+old deadline. The comment also gave the cycles of one image under the
+name of another.
+
+20 ms is five times the largest figure with room for some 4700 more
+instructions in crust's init, below the 50 ms cap. It costs nothing on a
+good boot: the wait ends as soon as crust is up. Only a crust that does
+not come up delays the boot, by 20 ms instead of 12.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index 823e13598..b907a7d48 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -43,11 +43,15 @@ bool sunxi_psci_is_scpi(void)
+ #define SUNXI_RTC_GP5			(SUNXI_RTC_BASE + 0x0114)
+ 
+ /*
+- * How long crust may take from the reset release to MAGIC and RUNNING: five
+- * times the 57432 AR100 cycles crust_emu.py counts for 1957ee6 (SR, 8 cycles
+- * per instruction) at 24 MHz, 2.4 ms. The design caps it at 50 ms.
++ * How long crust may take from the reset release to MAGIC and RUNNING. An
++ * instruction-level model of the AR100 (8 cycles per instruction at 24 MHz,
++ * the slowest clock the SPL may leave it on) counts at most 7238
++ * instructions, 2.41 ms, for the crust images of 07.10.2026 (the deep ones;
++ * 2.39 ms for the SR release image). Five times that is 12.1 ms; 20 ms
++ * leaves room for some 4700 more instructions before RUNNING. A crust that
++ * is up ends the wait at once; the cap is 50 ms.
+  */
+-#define SCP_START_US			12000U
++#define SCP_START_US			20000U
+ 
+ static uint32_t scp_read(unsigned int off)
+ {

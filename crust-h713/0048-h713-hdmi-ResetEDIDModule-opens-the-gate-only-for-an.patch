@@ -1,0 +1,68 @@
+From c02db5d794050535923b2fe412169cbe7e03afc9 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:04:23 +0200
+Subject: [PATCH 48/80] h713: hdmi: ResetEDIDModule opens the gate only for an
+ uploaded EDID
+
+reset_module() sets the ready byte and publishes, as the blob does - but
+right after a start edid[] is still zero, and the gate opened on an
+all-zero EDID: a source read it on the HY310 ("EDID block 0 is all
+zeroes", 07.10.2026; PRUEFUNG5 F12), and after a firmware restart a
+display MIPS 0x17 would do the same.
+
+A .bss flag says whether edid[] holds an upload: UpdateEDID fragment 0
+clears it, fragment 7 sets it. publish() - from ResetEDIDModule,
+HostHDMIMAP and fragment 7 - writes the DDC RAM and opens the gate only
+with it set; until then the gate stays closed and the pin low. The
+kernel's upload (ResetEDIDModule, HostHDMIMAP, fragments 0..7) publishes
+at fragment 7 as before, and a later 0x17 republishes the stored EDID.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index ccd86b1..b85c475 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -177,6 +177,7 @@
+ #define KEY_DEBOUNCE    3
+ 
+ static uint8_t  edid[2 * EDID_BLOCK];
++static bool     edid_valid;	/* .bss: no upload since this start */
+ /*
+  * Two transmit queues, one per ARM-RX channel, so a word the ARM does not
+  * read on one channel never holds up the other: framed replies on channel 1
+@@ -368,14 +369,19 @@ hpd_pin(uint8_t port, bool high)
+ 	mmio_write_32(AUX_HPD_REG, high ? (v & ~bit) : (v | bit));
+ }
+ 
+-/* Publish (blob 0x11d88): block by port mask, the port's physical-address
+- * byte into the HDMI vendor block, checksum, gate closed while writing. */
++/*
++ * Publish (blob 0x11d88): block by port mask, the port's physical-address
++ * byte into the HDMI vendor block, checksum, gate closed while writing.
++ * Only a store that holds an upload: the blob also publishes the empty one
++ * from ResetEDIDModule, and a source read an all-zero EDID (HY310,
++ * 07.10.2026; PRUEFUNG5 F12) - the gate stays closed until fragment 7.
++ */
+ static void
+ publish(void)
+ {
+ 	uint8_t mask = sh_rd8(SH_EDID_MASK);
+ 
+-	if (!sh_rd8(SH_EDID_READY))
++	if (!sh_rd8(SH_EDID_READY) || !edid_valid)
+ 		return;
+ 	aux_gate(0x7, false);
+ 	for (uint8_t port = 0; port < PORTS; ++port) {
+@@ -503,6 +509,8 @@ group_11(uint8_t hi)
+ 		dst[0] = a2;
+ 		for (uint8_t i = 1; i < 64; ++i)
+ 			dst[i] = sh_rd8(SH_RPM_BUF + 3 + i);
++		if (frag == 0 || frag == 7)	/* an upload starts, ends */
++			edid_valid = frag == 7;
+ 		sh_wr8(SH_EDID_READY, frag == 7);
+ 		if (frag == 7)
+ 			publish();

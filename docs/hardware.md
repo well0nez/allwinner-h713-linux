@@ -86,21 +86,23 @@ eMMC is 7.3 GB, HS400. Three USB controllers exist on the board:
 
 ## Power draw
 
-Measured: **about 4 W** in standby, meaning the SoC runs and everything else is dark - that is what the
-power gate leaves behind (09.09.2026). The draw with a picture on the wall has **not been measured**; the
-lamp and the imager dominate it, and the vendor's own rating is the only number available. If you measure
-it, the figure is worth having here.
+Measured: **about 4 W** when off, meaning the SoC runs and everything else is dark - that is what the
+power gate leaves behind (09.09.2026, before crust ran in the gate; with crust **not measured**). The
+draw in standby, suspended to RAM through crust ([standby](subsystems/standby.md)), has **not been
+measured** either, and neither has the draw with a picture on the wall; the lamp and the imager dominate
+that, and the vendor's own rating is the only number available. If you measure any of them, the figure
+is worth having here.
 
 ## Fan, focus motor, power key, LEDs, UART
 
 | Component | Pin / bus | What it does |
 |---|---|---|
-| Fan | PWM on PH18, tachometer on PH17 (GPIO interrupt) | speed fixed today; 4860 RPM measured. `PB5` gates the fan **and** the panel backlight together - never drive it low |
+| Fan | PWM on PH18, tachometer on PH17 (GPIO interrupt) | speed fixed today; 4860 RPM measured. `PB5` gates the fan **and** the panel backlight together - never drive it low while the lamp runs; for a standby the board manager drops it with both off (not measured) |
 | Temperature | - | this unit's board-management firmware reports `ntc_num = 0`: **no NTC is fitted**, and overheat protection relies on the fan tachometer alone. An earlier assumption of a fitted thermistor was wrong (`doku/00-STATUS.md`, 2026-09-11) |
 | Focus motor | 4-phase stepper, GPIO-driven; PH14 sense pin | PH14 is a **range sensor** - it reads high while the mechanism is inside its travel window and drops at either end - not a one-directional end-stop |
 | Camera | see USB port 1 above | |
-| Power key | `PL4` (R_PIO), `KEY_POWER`, edge IRQ | short press starts the device from standby; under Linux, `systemd` maps it to `poweroff` - so does the Power key of the paired Bluetooth remote. Governs the power-on gate: [docs/uboot/power-gate.md](uboot/power-gate.md) |
-| Status LEDs | `PL0`/`PL1` per the vendor device tree | tied to the power rails, not individually GPIO-driven; the gate additionally drives a red/blue indicator for standby vs. running |
+| Power key | `PL4` (R_PIO), `KEY_POWER`, edge IRQ | a press starts the device from the gate and wakes it from standby. Under Linux, `systemd` maps it to `poweroff` - so does the Power key of the paired Bluetooth remote; on an image with standby [h713-power](tools/h713-power.md) decides instead: short press standby, held 3 s power-off. Governs the power-on gate: [docs/uboot/power-gate.md](uboot/power-gate.md) |
+| Status LED | follows `PB5` | red while PB5 is low (the gate, standby), blue while it is high - measured, so the LED cannot tell those two apart. `PL0`/`PL1`, which the vendor device tree calls the LEDs, have no visible effect on the HY310; the vendor firmware and crust still drive them in standby |
 | UART pads | UART0, **115200 8N1**, 3.3 V | the boot and kernel console, and the way in when there is no SSH key in the image. The pads are on the mainboard and unlabelled; the thread that found them on several units is linked from the README's issue reference - no photograph in this repository yet |
 
 Details: `doku/10-hardware.md`, `doku/00-STATUS.md`, `mainline/README.md`, `doku/103-plan-einschaltgate.md`

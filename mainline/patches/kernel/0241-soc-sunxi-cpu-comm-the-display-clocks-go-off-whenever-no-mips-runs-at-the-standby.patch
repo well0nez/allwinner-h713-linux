@@ -1,0 +1,35 @@
+soc: sunxi: cpu_comm: the display clocks go off whenever no MIPS runs at the standby
+
+suspend_late gated the display clocks of a core that was not running
+only when an earlier standby had parked it. A restart that fails after
+its park sequence leaves the core parked without that mark, and the next
+standby then let the pipeline of the old firmware run through the
+self-refresh - fault B (review finding CC-2). Gating a pipeline that
+never ran saves and writes back the same words, so the clocks now go off
+whenever no core runs.
+
+Checked offline with the review's harness (case T3: gated=1, all other
+cases unchanged); not measured on the device, it needs two faults in a
+row. arbeit/review-r2-20261009/FUNDE.md CC-2.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -2428,9 +2428,13 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 		return 0;
+ 	cpu_comm_s2r_count++;
+ 	if (!cpu_comm_mips_running()) {
+-		/* parked since an earlier sleep: its pipeline still runs */
+-		if (READ_ONCE(cpu_comm_parked_since))
+-			cpu_comm_disp_gate(dev);
++		/*
++		 * Parked since an earlier sleep, or held after a restart that
++		 * failed past its park: the pipeline the old firmware set up
++		 * still runs either way. Gating a pipeline that never ran
++		 * saves and writes back the same words.
++		 */
++		cpu_comm_disp_gate(dev);
+ 		return 0;
+ 	}
+ 

@@ -22,7 +22,7 @@ Was ein harter Fund ist (doku/116 §2 "Veroeffentlichen", §7):
      einer Textdatei: das Verzeichnis wird nicht veroeffentlicht, ein solcher Pfad
      geht im Klon des Lesers ins Leere. Gemeldet wird Datei:Zeile. Ausgenommen ist
      doku/ (das Journal beschreibt den Umbau beim Namen, doku/121 geht mit ins Repo)
-     und die generierten Patchspiegel uboot-h713/ und mainline/patches/, deren Text
+     und die generierten Patchspiegel uboot-h713/, tfa-h713/, crust-h713/ und mainline/patches/, deren Text
      die Commit-Nachrichten des Forks sind. Nur Regel 7 ist dort aus, alles andere
      wird weiter geprueft.
 Ausgenommen: .git/, __pycache__/, die Arbeitsbaeume der Submodule aus .gitmodules
@@ -58,7 +58,7 @@ UMBAU_FREI = ("doku/", "installer/tests/run.sh",
               # Serienkopf wegwirft. Ausgenommen ist deshalb NUR Regel 7; Schluessel,
               # Blobs, Hashes und Abzuege werden in diesen Dateien weiter geprueft
               # (ein Eintrag in .sperrscan-ignore haette genau das mit abgeschaltet).
-              "uboot-h713/", "tfa-h713/", "mainline/patches/")
+              "uboot-h713/", "tfa-h713/", "crust-h713/", "mainline/patches/")
 UMBAU_MAX = 5          # hoechstens so viele Zeilen je Datei nennen, dann zaehlen
 SECURE = (b"sunxi-secure-storage", b"hdcpkeyV22", b"wifiBleDatas")
 TEXT_ENDUNGEN = {".md", ".txt", ".py", ".sh", ".c", ".h", ".patch", ".dts", ".dtsi", ".env", ".conf", ".json", ".yaml", ".yml", ".ini", ".xml", ".service", ".rules", ".cfg", ".its", ".mk", ".S", ".s", ".html", ".css", ".js", ".toml", ".gitignore", ".gitmodules", ""}

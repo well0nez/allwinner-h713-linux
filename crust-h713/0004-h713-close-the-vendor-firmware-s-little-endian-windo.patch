@@ -1,0 +1,112 @@
+From dc5792e77b9096f2fafe5384db3b421b2c4f769c Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:29:32 +0200
+Subject: [PATCH 04/80] h713: close the vendor firmware's little-endian windows
+ at start
+
+The vendor ARISC firmware opens an R_CPUCFG "little-endian window" at every
+start (blob 0x45b0: enable bit n at +0x0c, start/end at +0x10/+0x14 + 8n)
+over [RTC GP3, GP3 + 1 MiB). With GP3 = 0 or its 0xb00f progress marker that
+window covers all of SRAM A2, and nothing resets it when the kernel driver
+holds the core in reset to load this image instead. Inside the window the
+byte lanes of every data access flip: this firmware would read its own
+.data/.rodata bytes and every byte the ARM writes from the wrong lane, and
+the classifier would take the sub-command's high byte for its low byte.
+
+Close all four windows in start.S, before the first byte access, the way
+the blob's own remove routine 0x4668 does it, and leave the enable word and
+window 0 as found in the contract page's new diagnostic words
+(H713_DIAG_BASE, +0x200 of the page).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/or1k/start.S                       | 45 +++++++++++++++++++++++++
+ platform/h713/include/platform/memory.h | 12 +++++++
+ 2 files changed, 57 insertions(+)
+
+diff --git a/arch/or1k/start.S b/arch/or1k/start.S
+index 3279fdf..1be0dc0 100644
+--- a/arch/or1k/start.S
++++ b/arch/or1k/start.S
+@@ -5,6 +5,10 @@
+ 
+ #include <macros.S>
+ #include <asm/spr.h>
++#if CONFIG(PLATFORM_H713)
++#include <platform/devices.h>
++#include <platform/memory.h>
++#endif
+ 
+ func start
+ 	# Save the exception vector address
+@@ -32,6 +36,47 @@ func start
+ 	l.nop
+ 	l.nop
+ 
++#if CONFIG(PLATFORM_H713)
++	# The vendor ARISC firmware opens a "little-endian window" in R_CPUCFG
++	# at every start (blob 0x45b0: enable bit n in +0x0c, start/end at
++	# +0x10/+0x14 + 8n) over [RTC GP3, GP3 + 1 MiB). With GP3 = 0 or the
++	# 0xb00f marker that window covers all of SRAM A2, and the registers
++	# survive the core reset the kernel driver uses to swap images. Inside
++	# it the byte lanes of every data access flip, so this firmware would
++	# read its own .data/.rodata bytes and every byte the ARM writes from
++	# the wrong lane. Close all four windows the way the blob's own remove
++	# routine does (0x4668: enable bit cleared, start and end zeroed)
++	# before the first byte access, and leave what was found in the
++	# contract page's diagnostic words for the kernel driver to report.
++	# Word accesses only: they are lane-independent.
++	l.movhi	r3, hi(DEV_R_CPUCFG)
++	l.ori	r3, r3, lo(DEV_R_CPUCFG)
++	l.lwz	r4, 0x0c(r3)		# window enable bits 3..0
++	l.andi	r5, r4, 0xf
++	l.sfeqi	r5, 0
++	l.bf	2f
++	l.nop
++	l.movhi	r6, hi(H713_DIAG_BASE)
++	l.ori	r6, r6, lo(H713_DIAG_BASE)
++	l.sw	0(r6), r4		# diag +0: enable word as found
++	l.lwz	r5, 0x10(r3)
++	l.sw	4(r6), r5		# diag +4: window 0 start
++	l.lwz	r5, 0x14(r3)
++	l.sw	8(r6), r5		# diag +8: window 0 end
++	l.addi	r5, r0, -16
++	l.and	r4, r4, r5
++	l.sw	0x0c(r3), r4		# all four windows off
++	l.sw	0x10(r3), r0
++	l.sw	0x14(r3), r0
++	l.sw	0x18(r3), r0
++	l.sw	0x1c(r3), r0
++	l.sw	0x20(r3), r0
++	l.sw	0x24(r3), r0
++	l.sw	0x28(r3), r0
++	l.sw	0x2c(r3), r0
++2:
++#endif
++
+ 	# Clear .bss
+ 	l.movhi	r10, hi(start)		# High word is common to all symbols
+ 	l.ori	r3, r10, lo(__bss_start)
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index cf5a2e5..5530a4d 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -41,6 +41,18 @@
+ #define H713_SHARED_BASE  0x00023800
+ #define H713_SHARED_LIMIT SCPI_MEM_BASE
+ 
++/*
++ * Diagnostic words inside the contract page (+0x200..+0x21f), kept across
++ * firmware restarts; the kernel driver zeroes them before it releases the
++ * core and reports them. +0x00 R_CPUCFG little-endian window enable word as
++ * found at start (0 = no window was open), +0x04/+0x08 window 0 start/end,
++ * +0x0c CPUS_CLK_REG as found at start, +0x10 the tick timer (TTCR) of the
++ * last main loop pass, +0x14 number of h713_init() runs, +0x18/+0x1c
++ * R_INTC +0x80/+0x88 as found at start.
++ */
++#define H713_DIAG_BASE    (H713_SHARED_BASE + 0x200)
++#define H713_DIAG_LIMIT   (H713_SHARED_BASE + 0x220)
++
+ #define STACK_SIZE     0x00000400
+ 
+ #endif /* PLATFORM_MEMORY_H */

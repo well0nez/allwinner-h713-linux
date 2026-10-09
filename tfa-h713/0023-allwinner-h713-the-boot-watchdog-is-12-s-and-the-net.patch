@@ -1,0 +1,54 @@
+From bbf7f3b590b373de3bfa25740980a7b33b9b3a60 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 00:17:04 +0200
+Subject: [PATCH 23/27] allwinner: h713: the boot watchdog is 12 s and the net
+ until U-Boot takes it
+
+BL31 arms the SoC watchdog on every boot and printed "watchdog armed
+(~11 s) for the BL32 bring-up" in every image, also in a release without
+a BL32. It is the net against a hang in BL31 and early U-Boot on a board
+that does not come back from mains by itself, U-Boot's watchdog driver
+stops it at probe, and interval code 9 is 12 s, not 11 (doku/72: codes
+1..11 are 1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16 s). The comment and the
+NOTICE say so now (review finding TFA-15). Register writes unchanged.
+
+The hardening package of doku/161 rewrites the same block for the release
+line (switch H713_BOOT_WATCHDOG, out of the BL32 block, same NOTICE apart
+from the number); on the rebase onto that line its block stays, with 12 s.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_bl31_setup.c | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_bl31_setup.c b/plat/allwinner/common/sunxi_bl31_setup.c
+index dba9144b7..e2ad46e57 100644
+--- a/plat/allwinner/common/sunxi_bl31_setup.c
++++ b/plat/allwinner/common/sunxi_bl31_setup.c
+@@ -121,17 +121,18 @@ void bl31_early_platform_setup2(u_register_t arg0, u_register_t arg1,
+ #endif /* H713_BL32_AARCH32 */
+ #ifdef H713_WDOG_BRINGUP
+ 	/*
+-	 * Bring-up safety net. A hang inside the secure payload otherwise needs
+-	 * someone to pull the plug AND press the power key, because this board does
+-	 * not come up from mains on its own. With the watchdog armed the SoC resets
+-	 * itself and boot0 brings the stock chain back, so a failed probe costs
+-	 * nothing. Key-protected layout of the H713: CFG at +0x10, MODE at +0x14,
+-	 * writes ignored without the key. Timeout code 0x9 << 4 = about 11 s, which
+-	 * is long enough for a working hand-over to show U-Boot first.
++	 * The net against a hang during boot, armed on every boot (the switch is
++	 * named for the BL32 bring-up it began with). This board does not come
++	 * back from mains on its own, so a hang in BL31 or early U-Boot would
++	 * otherwise need someone to pull the plug AND press the power key; with
++	 * the watchdog armed the SoC resets itself instead. U-Boot's sunxi
++	 * watchdog driver stops it when it probes the device. Key-protected
++	 * layout of the H713: CFG at +0x10, MODE at +0x14, writes ignored
++	 * without the key. Interval code 9 is 12 s (doku/72).
+ 	 */
+ 	mmio_write_32(SUNXI_WDOG_BASE + 0x10, SUNXI_WDOG_KEY | 1);
+ 	mmio_write_32(SUNXI_WDOG_BASE + 0x14, SUNXI_WDOG_KEY | (0x9 << 4) | 1);
+-	NOTICE("BL31: watchdog armed (~11 s) for the BL32 bring-up\n");
++	NOTICE("BL31: watchdog armed (12 s) as the net against a hang in boot\n");
+ #endif
+ 	/*
+ 	 * Bring-up aid: is the image actually where the FIT says? Only meaningful

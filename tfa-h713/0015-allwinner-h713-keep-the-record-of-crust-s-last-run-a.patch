@@ -1,0 +1,243 @@
+From 540af35c8729f024cb6280a48167aa11b36ef1ea Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:51:04 +0200
+Subject: [PATCH 15/27] allwinner: h713: keep the record of crust's last run,
+ and check that it starts
+
+At every crust start BL31 zeroed the whole contract page, diagnostic
+words included, so a box that had reset in or after a standby left
+nothing for the next boot to report (review findings CS-04, TFA-14). And
+the start was not verified: the NOTICE said "started" whatever the AR100
+did after the reset release (TFA-13).
+
+Before the page is zeroed, BL31 now writes the P block of contract 5
+(+0x2d0..+0x38f, only the ARM writes it): when the page holds magic and a
+version of 5 or more, STATUS, WAKE, RTC GP5, TFA_WORD, NET_CONFIRM and
+copies of D (+0x200) and K (+0x260), header 0x5052 source 1 (BL31), and a
+NOTICE with the starts, standby state, step, exception, error words, net
+time, reset path and TFA_WORD of that run; otherwise an empty header. The
+checksum (+0x2d4, the complement of the 32-bit sum over +0x2d8..+0x38f)
+is set either way, the kernel reports the record at probe. Then
+everything but P is zeroed.
+
+After the reset release BL31 waits for MAGIC and RUNNING: at most 12 ms,
+five times the 2.4 ms crust_emu.py takes from start.S to
+sh_status(ST_RUNNING) at 24 MHz (crust 1957ee6, 8 cycles per
+instruction). The line names version and build word; on a timeout it says
+what it saw and writes TFA_WORD event 2. The AR100 keeps running either
+way, the kernel driver decides at probe.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c              | 99 +++++++++++++++++--
+ .../sun50i_h713/include/sunxi_mmap.h          | 31 ++++++
+ plat/allwinner/sun50i_h713/sunxi_standby.c    |  1 -
+ 3 files changed, 121 insertions(+), 10 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index 8902af8ac..4237681dc 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -34,11 +34,30 @@ bool sunxi_psci_is_scpi(void)
+ 
+ #if !SUNXI_PSCI_USE_SCPI && defined(SUNXI_SCP_STAGING)
+ #include <arch_helpers.h>
++#include <drivers/delay_timer.h>
+ #include <lib/xlat_tables/xlat_tables_v2.h>
+ 
+ /* The l.mfspr crust's start.S begins with, as the ARM reads it. */
+ #define SCP_FIRMWARE_MAGIC		0xb4400012
+ #define SUNXI_R_PRCM_CPUS_GATE(n)	(SUNXI_R_PRCM_BASE + 0x110 + 4 * (n))
++#define SUNXI_RTC_GP5			(SUNXI_RTC_BASE + 0x0114)
++
++/*
++ * How long crust may take from the reset release to MAGIC and RUNNING: five
++ * times the 57432 AR100 cycles crust_emu.py counts for 1957ee6 (SR, 8 cycles
++ * per instruction) at 24 MHz, 2.4 ms. The design caps it at 50 ms.
++ */
++#define SCP_START_US			12000U
++
++static uint32_t scp_read(unsigned int off)
++{
++	return mmio_read_32(SCP_SH(off));
++}
++
++static void scp_write(unsigned int off, uint32_t val)
++{
++	mmio_write_32(SCP_SH(off), val);
++}
+ 
+ /*
+  * TF-A is TFA_WORD's only writer. The number in 23..16 changes with every
+@@ -46,10 +65,48 @@ bool sunxi_psci_is_scpi(void)
+  */
+ void sunxi_scp_event(unsigned int event, unsigned int detail)
+ {
+-	uint32_t num = (mmio_read_32(SCP_SH(SCP_SH_TFA_WORD)) >> 16) + 1U;
++	uint32_t num = (scp_read(SCP_SH_TFA_WORD) >> 16) + 1U;
+ 
+-	mmio_write_32(SCP_SH(SCP_SH_TFA_WORD), (event << 24) |
+-		      ((num & 0xffU) << 16) | (detail & 0xffffU));
++	scp_write(SCP_SH_TFA_WORD, (event << 24) | ((num & 0xffU) << 16) |
++		  (detail & 0xffffU));
++}
++
++/*
++ * The record of the run before this boot (P), written on every boot before
++ * the page is zeroed: what crust (D, K), the kernel and TF-A (A) left there,
++ * when the page holds contract 5 or later, else an empty record. The kernel
++ * reports it at probe when the checksum holds (CS-04, TFA-14).
++ */
++static void sunxi_scp_record(void)
++{
++	uint32_t hdr = SCP_P_EMPTY, sum = 0U;
++	unsigned int i;
++
++	for (i = SCP_SH_P_STATUS; i < SCP_SH_P_END; i += 4)
++		scp_write(i, 0);
++	if (scp_read(SCP_SH_MAGIC) == SCP_MAGIC &&
++	    scp_read(SCP_SH_VERSION) >= SCP_VERSION) {
++		hdr = SCP_P_BL31;
++		scp_write(SCP_SH_P_STATUS, scp_read(SCP_SH_STATUS));
++		scp_write(SCP_SH_P_WAKE, scp_read(SCP_SH_WAKE));
++		scp_write(SCP_SH_P_GP5, mmio_read_32(SUNXI_RTC_GP5));
++		scp_write(SCP_SH_P_TFA_WORD, scp_read(SCP_SH_TFA_WORD));
++		scp_write(SCP_SH_P_NET_CONFIRM, scp_read(SCP_SH_NET_CONFIRM));
++		for (i = 0; i < SCP_SH_P_K - SCP_SH_P_DIAG; i += 4)
++			scp_write(SCP_SH_P_DIAG + i, scp_read(SCP_SH_DIAG + i));
++		for (i = 0; i < SCP_SH_P_END - SCP_SH_P_K; i += 4)
++			scp_write(SCP_SH_P_K + i, scp_read(SCP_SH_K + i));
++		NOTICE("PSCI: crust before this boot: starts %u state 0x%x step 0x%x exception 0x%x err 0x%x/0x%x net %u ms path 0x%x tfa 0x%x\n",
++		       scp_read(SCP_SH_INITS), scp_read(SCP_SH_SB_STATE),
++		       scp_read(SCP_SH_STEP), scp_read(SCP_SH_EXCEPTION),
++		       scp_read(SCP_SH_ERR), scp_read(SCP_SH_ERR_DETAIL),
++		       scp_read(SCP_SH_NET_MS), scp_read(SCP_SH_FAIL_PATH),
++		       scp_read(SCP_SH_TFA_WORD));
++	}
++	for (i = SCP_SH_P_STATUS; i < SCP_SH_P_END; i += 4)
++		sum += scp_read(i);
++	scp_write(SCP_SH_P_SUM, ~sum);
++	scp_write(SCP_SH_P_HDR, hdr);
+ }
+ 
+ /*
+@@ -64,7 +121,7 @@ void sunxi_scp_event(unsigned int event, unsigned int detail)
+  */
+ static void sunxi_scp_start(void)
+ {
+-	unsigned int i;
++	unsigned int i, us;
+ 	int ret;
+ 
+ 	/* ERROR and NOTICE, not WARN: a release build prints up to NOTICE. */
+@@ -99,12 +156,36 @@ static void sunxi_scp_start(void)
+ 
+ 		mmio_write_32(vector, (SUNXI_SCP_BASE - vector) >> 2);
+ 	}
+-	/* The contract page: magic and diagnostic words start from zero. */
+-	for (i = 0; i < SUNXI_SCP_SHARED_SIZE; i += 4)
+-		mmio_write_32(SUNXI_SCP_SHARED + i, 0);
++	/* The contract page: the record of the last run, the rest zero. */
++	sunxi_scp_record();
++	for (i = 0; i < SUNXI_SCP_SHARED_SIZE; i += 4) {
++		if (i < SCP_SH_P_HDR || i >= SCP_SH_P_END)
++			scp_write(i, 0);
++	}
+ 	mmio_setbits_32(SUNXI_R_CPUCFG_BASE, BIT(0));
+-	NOTICE("PSCI: SCP firmware (crust) started from 0x%x\n",
+-	       SUNXI_SCP_BASE);
++
++	/*
++	 * A firmware that does not come up stays released: the kernel driver
++	 * decides at probe (it can load its own). The line says what it saw.
++	 */
++	for (us = 100U; us <= SCP_START_US; us += 100U) {
++		udelay(100);
++		if (scp_read(SCP_SH_MAGIC) == SCP_MAGIC &&
++		    (scp_read(SCP_SH_STATUS) & SCP_ST_RUNNING) != 0U)
++			break;
++	}
++	if (us > SCP_START_US) {
++		sunxi_scp_event(SCP_EV_START,
++				(scp_read(SCP_SH_MAGIC) == SCP_MAGIC ? 1U : 0U) |
++				(scp_read(SCP_SH_STATUS) & SCP_ST_RUNNING) << 1);
++		NOTICE("PSCI: SCP firmware (crust) released at 0x%x, not running after %u us: magic 0x%x status 0x%x\n",
++		       SUNXI_SCP_BASE, SCP_START_US, scp_read(SCP_SH_MAGIC),
++		       scp_read(SCP_SH_STATUS));
++		return;
++	}
++	NOTICE("PSCI: SCP firmware (crust) started from 0x%x, running within %u us: version %u build 0x%x\n",
++	       SUNXI_SCP_BASE, us, scp_read(SCP_SH_VERSION),
++	       scp_read(SCP_SH_BUILD));
+ }
+ #else
+ static inline void sunxi_scp_start(void)
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 68ff663fd..ec6bc6346 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -48,6 +48,7 @@
+ /* sun50iw12 watchdog writes require the key in bits [31:16] */
+ #define SUNXI_WDOG_KEY			0x16aa0000
+ #define SUNXI_R_PIO_BASE		0x07022000
++#define SUNXI_RTC_BASE			0x07090000
+ #define SUNXI_R_UART_BASE		0x07080000
+ #define SUNXI_R_I2C_BASE		0x07081400
+ #define SUNXI_R_RSB_BASE		0x07083000
+@@ -85,14 +86,44 @@
+ #define SCP_SH_MAGIC			0x000	/* SCP_MAGIC */
+ #define SCP_SH_VERSION			0x004
+ #define SCP_SH_STATUS			0x008	/* 0 running, 31..16 heartbeat */
++#define SCP_SH_WAKE			0x00c
++#define SCP_SH_DIAG			0x200	/* D, 16 words */
++#define SCP_SH_INITS			0x214	/* crust starts */
++#define SCP_SH_STEP			0x22c
++#define SCP_SH_EXCEPTION		0x230
+ #define SCP_SH_SLEPT_MS			0x234	/* v3, v4: ms asleep */
+ #define SCP_SH_BUILD			0x23c	/* variant bits 24..31 */
++#define SCP_SH_K			0x260	/* K, 24 words */
+ #define SCP_SH_COMPAT			0x260	/* 7..0 oldest reader it suits */
+ #define SCP_SH_SB_STATE			0x268	/* standby phase, 3..0 */
++#define SCP_SH_NET_MS			0x274
++#define SCP_SH_ERR			0x27c
++#define SCP_SH_ERR_DETAIL		0x280
++#define SCP_SH_FAIL_PATH		0x2a0
++#define SCP_SH_NET_CONFIRM		0x2c8
+ #define SCP_SH_TFA_WORD			0x2cc	/* event, number, detail */
+ 
++/*
++ * P (+0x2d0..+0x38f, only the ARM): the record of the run before this boot,
++ * which BL31 writes before it zeroes the rest of the page for a new start.
++ */
++#define SCP_SH_P_HDR			0x2d0	/* 0x5052, source, bit 0 reported */
++#define SCP_SH_P_SUM			0x2d4	/* ~sum of the words below */
++#define SCP_SH_P_STATUS			0x2d8
++#define SCP_SH_P_WAKE			0x2dc
++#define SCP_SH_P_RWDOG			0x2e0	/* R_WDOG MODE/STA at BL31 start */
++#define SCP_SH_P_GP5			0x2e4	/* RTC GP5 at BL31 start */
++#define SCP_SH_P_TFA_WORD		0x2e8
++#define SCP_SH_P_NET_CONFIRM		0x2ec
++#define SCP_SH_P_DIAG			0x2f0	/* copy of D */
++#define SCP_SH_P_K			0x330	/* copy of K */
++#define SCP_SH_P_END			0x390
++#define SCP_P_EMPTY			0x50520000
++#define SCP_P_BL31			0x50520100
++
+ #define SCP_MAGIC			0x33313748	/* "H713" */
+ #define SCP_VERSION			5	/* the one version TF-A reads */
++#define SCP_ST_RUNNING			BIT(0)
+ 
+ /* TFA_WORD: 31..24 event, 23..16 counts every write, 15..0 detail. */
+ #define SCP_EV_DENIED			1	/* SYSTEM_SUSPEND refused */
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+index 790124195..2b81c5682 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_standby.c
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -76,7 +76,6 @@
+ static uint32_t cnt_lo, cnt_hi, cnt_fid;
+ 
+ /* crust's contract page, version 5 (the offsets are in sunxi_mmap.h). */
+-#define SCP_ST_RUNNING		BIT(0)
+ #define SCP_LIVE_TRIES		100			/* x 100 us */
+ #define SCP_BUILD_VDD_SYS	BIT(27)	/* deep: VDD_SYS reset - never */
+ #define SCP_BUILD_PLL_LDO	BIT(28)	/* deep: PLL LDO off - unmeasured */

@@ -1,0 +1,29 @@
+soc: sunxi: h713-mips: say "parked" where the start without a TV top window leaves the core
+
+Without reg 2 the U-Boot start is refused before its ladder runs, so the
+core stays parked (clock 0, resets 0), not held; and the refusal covers
+the way out of "failed" as well. The two lines now say so (review
+finding KM-1). Built; no change in behaviour.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-mips.c
++++ b/drivers/soc/sunxi/sun50i-h713-mips.c
+@@ -229,7 +229,7 @@ static int h713_mips_tvtop(struct h713_mips *m)
+ 	int i;
+ 
+ 	if (!m->tvtop)
+-		return h713_mips_say(m, -ENXIO, "U-Boot start: no TV top window (reg 2), core held");
++		return h713_mips_say(m, -ENXIO, "U-Boot start: no TV top window (reg 2), core parked");
+ 	clk = readl(m->tvtop + H713_TVTOP_CLK);
+ 	gate = readl(m->tvtop + H713_TVTOP_GATE);
+ 	rst = readl(m->tvtop + H713_TVTOP_RST);
+@@ -439,7 +439,7 @@ static int h713_mips_probe(struct platform_device *pdev)
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+ 	m->tvtop = res && resource_size(res) >= 0xc ? devm_ioremap(dev, res->start, 0xc) : NULL;
+ 	if (!m->tvtop)
+-		dev_warn(dev, "no TV top window (reg 2): no start out of the standby park\n");
++		dev_warn(dev, "no TV top window (reg 2): no start out of the standby park or a failed restart\n");
+ 	ret = of_reserved_mem_region_to_resource(dev->of_node, 0, &win);
+ 	if (ret || win.start != H713_MIPS_WIN_BASE || resource_size(&win) < H713_MIPS_CFG_OFF)
+ 		return dev_err_probe(dev, -ENODEV, "no memory-region at 0x%x of 0x%x bytes\n",

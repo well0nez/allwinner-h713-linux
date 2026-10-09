@@ -1,0 +1,55 @@
+pmdomain: sunxi: h713-ppu: say which domain did not switch
+
+h713_ppu_set_power() returned -ETIMEDOUT without a line. genpd keeps a
+domain whose power-off failed on, and takes one whose power-on failed
+for on, so the next access to the block was the first sign - a bus hang
+with nothing pointing at the PPU (review finding Q6). Each of the three
+waits now names the domain, the direction, the step and the status
+word. Built against the r2test2 kernel, W=1 without warnings; no change
+when the PPU answers.
+---
+--- a/drivers/pmdomain/sunxi/sun50i-h713-ppu.c
++++ b/drivers/pmdomain/sunxi/sun50i-h713-ppu.c
+@@ -132,7 +132,7 @@
+ 				 !(val & H713_PPU_IDLE_MASK),
+ 				 10, H713_PPU_TIMEOUT_US);
+ 	if (ret)
+-		return ret;
++		goto timeout_idle;
+ 
+ 	writel(on ? H713_PPU_CMD_ON : H713_PPU_CMD_OFF, pwr_reg);
+ 
+@@ -141,7 +141,7 @@
+ 				 (val & H713_PPU_DONE_MASK),
+ 				 10, H713_PPU_TIMEOUT_US);
+ 	if (ret)
+-		return ret;
++		goto timeout_done;
+ 
+ 	/* Clear status bits */
+ 	val = readl(status_reg);
+@@ -151,6 +151,24 @@
+ 	ret = readl_poll_timeout(status_reg, val,
+ 				 (bool)((val & H713_PPU_STATE_MASK) == H713_PPU_STATE_ON) == on,
+ 				 10, H713_PPU_TIMEOUT_US);
++	if (!ret)
++		return 0;
++	pr_err("h713-ppu: %s: power %s: state not reached, status %08x\n",
++	       pd->genpd.name, on ? "on" : "off", val);
++	return ret;
++
++	/*
++	 * genpd keeps a domain whose power-off failed on, and takes one whose
++	 * power-on failed for on: without a line the next access to the block
++	 * is the first sign, a bus hang with nothing pointing here.
++	 */
++timeout_idle:
++	pr_err("h713-ppu: %s: power %s: domain not idle, status %08x, nothing switched\n",
++	       pd->genpd.name, on ? "on" : "off", val);
++	return ret;
++timeout_done:
++	pr_err("h713-ppu: %s: power %s: transition not done, status %08x\n",
++	       pd->genpd.name, on ? "on" : "off", val);
+ 	return ret;
+ }
+ 

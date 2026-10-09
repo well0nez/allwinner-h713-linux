@@ -1,7 +1,7 @@
 From fda5ce0c44037c302baf5a90fb9fbdc71b31e5df Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Sat, 19 Sep 2026 01:54:09 +0200
-Subject: [PATCH 86/95] sunxi: h713: power TVFE/TVCAP and raise the capture
+Subject: [PATCH 86/96] sunxi: h713: power TVFE/TVCAP and raise the capture
  clocks before the MIPS runs
 
 The firmware's first act is its HDMI-RX init, and that PHY (0x06840000)

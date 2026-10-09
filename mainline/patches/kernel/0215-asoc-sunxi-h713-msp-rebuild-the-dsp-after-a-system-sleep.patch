@@ -1,0 +1,85 @@
+ASoC: sunxi: h713-msp: rebuild the DSP after a system sleep
+
+The MSP island hangs on pd_tvfe. genpd powers that domain off in the noirq
+phase of every system sleep, s2idle as well as standby to RAM, and it does
+not look at the runtime-PM reference the driver holds from probe. So the
+DSP most likely loses its patch and its graph, and the driver had no
+system-sleep callbacks. HDMI audio does not stream through the ARM, so
+no mailbox timeout ever started the self-healing afterwards (KD-8, with
+its verdict's correction: the rebuild exists, only the trigger is missing).
+
+suspend cancels a pending heal, stops a running bridge PCM and the two
+interrupt handlers through msp_pcm_island_lost(), and remembers whether
+the DSP was running or a heal was pending. resume sets such a DSP to
+"error", clears heal_count and schedules the heal: msp_bringup() rebuilds
+from the patch kept in RAM, without a new firmware load, and the ~0.4 s
+stay out of the resume path. The rebuild does not need the display MIPS;
+HDMI audio after a wake also needs the receiver back (TODO 3.3).
+
+Not measured: the DSP state after a wake, and whether the PPU completes
+the power-off at all. Stage R of the crust release design checks the box
+speaker; HDMI audio only after 3.3. Compiled out of tree with W=1, no new
+warning.
+---
+--- a/sound/soc/sunxi/sun50i-h713-msp.c
++++ b/sound/soc/sunxi/sun50i-h713-msp.c
+@@ -464,6 +464,7 @@ struct h713_msp {
+ 
+ 	enum msp_state state;
+ 	unsigned int heal_count;
++	bool rebuild_on_resume;		/* lock: running or healing at suspend */
+ 	unsigned int mbox_timeouts;
+ 	unsigned int mbox_reissues;
+ 	unsigned int blocks;
+@@ -2434,6 +2435,43 @@ static void msp_remove(struct platform_device *pdev)
+ 	pm_runtime_disable(&pdev->dev);
+ }
+ 
++/*
++ * System sleep. The island hangs on pd_tvfe, and genpd powers that off in
++ * the noirq phase whatever the runtime reference above says: the DSP loses
++ * its patch and its graph. HDMI audio does not pass the ARM, so nothing
++ * would notice; the rebuild is started here as self-healing from the patch
++ * kept in RAM, and runs outside the resume path.
++ */
++static int msp_suspend(struct device *dev)
++{
++	struct h713_msp *msp = dev_get_drvdata(dev);
++	bool pending = cancel_work_sync(&msp->heal);
++
++	mutex_lock(&msp->lock);
++	msp_pcm_island_lost(msp);
++	msp->rebuild_on_resume = pending || msp->state == MSP_STATE_RUNNING;
++	mutex_unlock(&msp->lock);
++	return 0;
++}
++
++static int msp_resume(struct device *dev)
++{
++	struct h713_msp *msp = dev_get_drvdata(dev);
++
++	mutex_lock(&msp->lock);
++	if (msp->rebuild_on_resume) {
++		msp->rebuild_on_resume = false;
++		msp->state = MSP_STATE_ERROR;
++		msp->heal_count = 0;
++		schedule_work(&msp->heal);
++		dev_info(dev, "standby: the DSP is rebuilt after the wake\n");
++	}
++	mutex_unlock(&msp->lock);
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(msp_pm_ops, msp_suspend, msp_resume);
++
+ static const struct of_device_id msp_of_match[] = {
+ 	{ .compatible = "allwinner,sun50i-h713-msp" },
+ 	{ }
+@@ -2447,6 +2485,7 @@ static struct platform_driver msp_driver = {
+ 		.name		= "sun50i-h713-msp",
+ 		.of_match_table	= msp_of_match,
+ 		.dev_groups	= msp_groups,
++		.pm		= pm_sleep_ptr(&msp_pm_ops),
+ 	},
+ };
+ module_platform_driver(msp_driver);

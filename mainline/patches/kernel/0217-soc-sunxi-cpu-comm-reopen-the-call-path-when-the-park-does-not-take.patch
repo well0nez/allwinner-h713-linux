@@ -1,0 +1,63 @@
+soc: sunxi: cpu_comm: reopen the call path when the park does not take
+
+The park closes the call path before it writes the reset and the clock:
+cpu_comm_parked_since set, mips_app_ready_assumed cleared, the ioctl
+suspend count raised. When either register does not read back 0 the late
+suspend fails with -EIO. The PM core then resumes only the devices whose
+late suspend succeeded, so resume_early never ran for cpu_comm, and the
+awake system kept refusing every kernel call with -ENODEV and every RPC
+ioctl with -EFAULT until a reboot, while the MIPS, whose reset write is the
+one that may not have taken, could still be running. The error line did
+not say that.
+
+On that path the driver now clears the flag and restores the assumption
+under the call mutex, drops the ioctl suspend count again, and says in
+the error line that the standby is refused and calls are open again.
+Whether the coprocessor still runs is left open there; the two values
+read back show which write did not take. The next suspend to RAM parks
+again if the MIPS status still reads "running".
+
+Not measured; the read-back itself has not run on the device yet.
+Compiled out of tree with W=1, no new warning.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -2210,6 +2210,7 @@ static int cpu_comm_suspend_late(struct device *dev)
+ {
+ 	void __iomem *ccu;
+ 	u32 rst, clk;
++	int assumed;
+ 
+ 	/*
+ 	 * Only for standby to RAM, where the DRAM goes into self-refresh. On
+@@ -2234,6 +2235,7 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	 */
+ 	mutex_lock(&cpu_comm_call_mutex);
+ 	WRITE_ONCE(cpu_comm_parked_since, cpu_comm_s2r_count);
++	assumed = mips_app_ready_assumed;
+ 	mips_app_ready_assumed = 0;
+ 	mutex_unlock(&cpu_comm_call_mutex);
+ 
+@@ -2246,8 +2248,18 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	clk = readl(ccu);
+ 	iounmap(ccu);
+ 	if (rst || clk) {
+-		pr_err("cpu_comm: standby: park did not take (reset %08x, clock %08x)\n",
+-		       rst, clk);
++		/*
++		 * The suspend fails, and no resume_early follows for this
++		 * device: reopen what the park closed, or the awake system
++		 * keeps refusing every call until a reboot.
++		 */
++		mutex_lock(&cpu_comm_call_mutex);
++		WRITE_ONCE(cpu_comm_parked_since, 0);
++		mips_app_ready_assumed = assumed;
++		mutex_unlock(&cpu_comm_call_mutex);
++		cpu_comm_resume(0);
++		pr_err("cpu_comm: suspend-to-RAM #%u refused: park did not take (reset %08x, clock %08x), calls and ioctls open again, coprocessor state unknown\n",
++		       cpu_comm_s2r_count, rst, clk);
+ 		return -EIO;
+ 	}
+ 	pr_info("cpu_comm: suspend-to-RAM #%u: coprocessor parked, kernel RPCs fail with -ENODEV and ioctl RPCs with -EFAULT until it is reloaded\n",

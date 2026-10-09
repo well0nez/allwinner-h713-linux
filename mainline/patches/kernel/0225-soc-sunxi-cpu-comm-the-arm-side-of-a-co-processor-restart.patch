@@ -1,0 +1,197 @@
+soc: sunxi: cpu_comm: the ARM side of a co-processor restart
+
+The vendor restarts the display firmware on every screen-on, and its cpu_comm does the same
+three things around it each time: cpu_comm_suspend @0x5E4 clears both magics, runs
+InitCommMem(2) - everything rebuilt, the call entries kept - and marks both CPUs not ready;
+cpu_comm_resume @0x88C rewrites the two share registers, releases hardware spinlocks 0..13
+and marks the ARM ready and app-ready; while suspended every other ioctl is refused
+(cpu_comm_ioctl @0xDD0; cpu_comm_dev.ko.i64, umbau/work/FB-MIPSRELOAD). The restarted
+firmware then takes the slave path of its own InitCommMem @0x8B11ABBC: magics valid, ARM
+ready and not in reset, its own flag clear - which is why the MIPS flag has to be cleared
+before the start, or the core skips its own init and hangs on its first call.
+
+Three entry points for the reload driver (0167a): stop() refuses calls and lets one in
+flight finish, reset() rebuilds the region with the core held in reset, start() waits for
+the new firmware's flags. A notifier chain tells the drivers that told the old core
+something (0167b). cpu_comm_call() itself now refuses -EBUSY while suspended, which it never
+was before. Unverified on the device.
+
+Rebased onto the R1 series (0224): one context reject, the declarations in
+h713-cpu-comm.h behind the cpu_comm_elog_* block, set by hand. Measured on
+the HY310 on 08.10.2026 together with the next two patches, out of tree on
+the R1 kernel: halt, reload and start from a running core (V3) and from
+the register state the R1 standby park leaves (V8: the same two writes,
+without a standby), "the coprocessor is ready after 330 ms", the receiver
+bound again and the picture back, three times in a row (V10).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+@@ -169,6 +169,9 @@ int cpu_comm_call(u32 comp_id, const u32 *args, unsigned int nargs,
+ 		return -EINVAL;
+ 	if (!ShMemAddrBase || !pcpu_comm_dev)
+ 		return -ENODEV;
++	/* The core is being replaced (cpu_comm_firmware_stop). */
++	if (cpu_comm_suspend_flag > 0)
++		return -EBUSY;
+ 
+ 	memset(params, 0, sizeof(params));
+ 	memset(result, 0, sizeof(result));
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -44,7 +44,9 @@
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/of.h>
++#include <linux/notifier.h>
+ #include <linux/of_reserved_mem.h>
++#include <linux/soc/sunxi/h713-cpu-comm.h>
+ #include <linux/slab.h>
+ #include <linux/vmalloc.h>
+ #include <linux/mm.h>
+@@ -1276,6 +1278,90 @@ int cpu_comm_resume(int flags)
+ 	return 0;
+ }
+ 
++/*
++ * The ARM side of a MIPS restart (sun50i-h713-mips), as the vendor's
++ * cpu_comm_suspend @0x5E4 and cpu_comm_resume @0x88C do it (cpu_comm_dev.ko,
++ * umbau/work/FB-MIPSRELOAD): magics cleared, InitCommMem(2) - all rebuilt,
++ * the call entries kept - MIPS not ready; then share registers, hardware
++ * spinlocks released, ARM ready. Split so the core is held in reset while
++ * the region is rebuilt; the new firmware's InitCommMem takes its slave path.
++ */
++static BLOCKING_NOTIFIER_HEAD(cpu_comm_fw_chain);
++
++int cpu_comm_register_firmware_notifier(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_register(&cpu_comm_fw_chain, nb);
++}
++EXPORT_SYMBOL_GPL(cpu_comm_register_firmware_notifier);
++
++int cpu_comm_unregister_firmware_notifier(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_unregister(&cpu_comm_fw_chain, nb);
++}
++EXPORT_SYMBOL_GPL(cpu_comm_unregister_firmware_notifier);
++
++int cpu_comm_firmware_stop(void)
++{
++	if (!ShMemAddrBase)
++		return -ENODEV;
++	cpu_comm_suspend(0);
++	/* A call in flight finishes or times out; new ones are refused. */
++	mutex_lock(&cpu_comm_call_mutex);
++	mutex_unlock(&cpu_comm_call_mutex);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_firmware_stop);
++
++int cpu_comm_firmware_reset(void)
++{
++	int i, ret;
++
++	if (!ShMemAddrBase)
++		return -ENODEV;
++	blocking_notifier_call_chain(&cpu_comm_fw_chain,
++				     CPU_COMM_FIRMWARE_HALTED, NULL);
++	for (i = 0; i < 14; i++)	/* whatever the dead core held is stale */
++		spinUnlockhwReg(i);
++	/* The vendor's InitCommMem zeroes magic1 .. magic2 before it rebuilds. */
++	memset_io((void __iomem *)(ShMemAddrBase + SHMEM_OFF_MAGIC1), 0,
++		  SHMEM_OFF_MAGIC2 + 4 - SHMEM_OFF_MAGIC1);
++	cpu_comm_shmem_adopted = false;
++	ret = InitCommMem(2);
++	if (ret)
++		return ret;
++	comm_WriteShareReg(SHARE_REG_ADDR, ShMemAddr);
++	comm_WriteShareReg(SHARE_REG_SIZE, ShMemSize);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_firmware_reset);
++
++int cpu_comm_firmware_start(unsigned int timeout_ms)
++{
++	unsigned int waited = 0;
++	int ret = 0;
++
++	if (!ShMemAddrBase)
++		return -ENODEV;
++	cpu_comm_resume(0);
++	while (!(isCPUReady(CPU_ID_MIPS) && isCPUAppReady(CPU_ID_MIPS))) {
++		if (waited >= timeout_ms) {
++			pr_err("cpu_comm: the coprocessor is not ready after %u ms (MIPS flag 0x%x)\n",
++			       waited, readl((void __iomem *)(ShMemAddrBase +
++						      CPU_FLAG_OFFSET(CPU_ID_MIPS))));
++			ret = -ETIMEDOUT;
++			break;
++		}
++		msleep(10);
++		waited += 10;
++	}
++	if (!ret)
++		pr_info("cpu_comm: the coprocessor is ready after %u ms\n", waited);
++	blocking_notifier_call_chain(&cpu_comm_fw_chain,
++				     CPU_COMM_FIRMWARE_STARTED, &ret);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(cpu_comm_firmware_start);
++
+ /* ── Proc filesystem ───────────────────────────────────────── */
+ 
+ static int cpu_comm_proc_show(struct seq_file *m, void *v)
+--- a/include/linux/soc/sunxi/h713-cpu-comm.h
++++ b/include/linux/soc/sunxi/h713-cpu-comm.h
+@@ -98,6 +98,12 @@
+ #include <linux/errno.h>
+ #include <linux/types.h>
+ 
++struct notifier_block;
++
++/* Events of the firmware notifier chain, see cpu_comm_firmware_reset(). */
++#define CPU_COMM_FIRMWARE_HALTED	1
++#define CPU_COMM_FIRMWARE_STARTED	2
++
+ /* Maximum number of argument or result words in one call. */
+ #define CPU_COMM_MAX_ARGS		10
+ 
+@@ -226,6 +232,21 @@ int cpu_comm_elog_last(const char *needle, char *buf, size_t len,
+ 		       u32 *write_ptr);
+ bool cpu_comm_elog_full(void);
+ 
++/*
++ * A co-processor restart (sun50i-h713-mips only): stop() refuses further
++ * calls and lets one in flight finish; reset(), with the core held in reset,
++ * tells the chain CPU_COMM_FIRMWARE_HALTED and rebuilds the shared region -
++ * every callback descriptor goes with it, register again after the start;
++ * start() accepts calls again, waits up to @timeout_ms for the new
++ * firmware's ready and app-ready flags (-ETIMEDOUT), and tells the chain
++ * CPU_COMM_FIRMWARE_STARTED with a pointer to that result.
++ */
++int cpu_comm_firmware_stop(void);
++int cpu_comm_firmware_reset(void);
++int cpu_comm_firmware_start(unsigned int timeout_ms);
++int cpu_comm_register_firmware_notifier(struct notifier_block *nb);
++int cpu_comm_unregister_firmware_notifier(struct notifier_block *nb);
++
+ #else /* !CONFIG_HY310_CPU_COMM */
+ 
+ static inline int cpu_comm_call(u32 comp_id, const u32 *args,
+@@ -264,6 +285,16 @@ static inline u32 cpu_comm_name2id(const char *base_name,
+ 	return 0;
+ }
+ 
++static inline int cpu_comm_register_firmware_notifier(struct notifier_block *nb)
++{
++	return -ENODEV;
++}
++
++static inline int cpu_comm_unregister_firmware_notifier(struct notifier_block *nb)
++{
++	return -ENODEV;
++}
++
+ #endif /* CONFIG_HY310_CPU_COMM */
+ 
+ #endif /* __LINUX_SOC_SUNXI_H713_CPU_COMM_H */

@@ -1,0 +1,113 @@
+From 3b24f7eae7a056b5cb042b317199dc51fb0c0af5 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 02:23:34 +0200
+Subject: [PATCH 12/80] h713: hdmi: the vendor's wake timer (0x26 type 3) and a
+ safe gap before the cluster reset
+
+set wakeup src req 0x26 with a word of type 3 (bits 31..30) arms a wake
+timer in milliseconds, as the vendor firmware's 0xc994/0xc7e0 do (doku/139
+measured the echo 0x00260202, 1, 0xc0001388 for 5000 ms); 0x25 clears it.
+Asleep, the module counts milliseconds and wakes with 0xc0000000, the
+vendor's timer wake word, so a standby test can bring itself back without
+a hand on the key. One standby per arming, as on stock.
+
+The cpu op req now waits 50 ms instead of 2 ms before the cluster reset:
+the vendor spends that time on its standby work before 0x4b28, and the
+requesting core still prints its NOTICE line (about 6 ms at 115200 baud)
+and releases TF-A's PSCI locks before WFI - a reset in between would leave
+a lock taken for the warm boot.
+
+Model: skripte/crust_emu.py --scenario timer (300 ms, no key): asleep at
+150 ms, awake with 0xc0000000 at 550 ms, 0x11 answered with it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 34 +++++++++++++++++++++++++++++----
+ 1 file changed, 30 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index a5a7dda..1299cac 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -127,6 +127,16 @@
+ #define HPD_TICK_US     10000
+ #define WAKE_KEY        0x95  /* GIC SPI 149, PL EINT */
+ #define WAKE_IR         0x9b  /* GIC SPI 155, s_cir */
++#define WAKE_TIMER      0xc0000000 /* the vendor's timer callback 0xc7e0 */
++#define WAKE_SRC_TIMER  3U    /* 0x26 word: type in 31..30, 3 = timer, ms */
++/*
++ * From the cpu op req to the cluster reset. The vendor firmware spends this
++ * on its standby work (parameter parse, the 0x4f70 calibration, wake sources,
++ * DRAM) before 0x4b28; here it is a plain wait, so the requesting core has
++ * printed its NOTICE line, released TF-A's locks and reached WFI - a reset
++ * in the middle of that would leave a lock taken for the warm boot.
++ */
++#define CPU_OP_DELAY_US 50000
+ #define KEY_POLL_US     20000
+ #define KEY_DEBOUNCE    3
+ 
+@@ -137,7 +147,8 @@ static uint8_t  txq_head, txq_tail, txq_chan, seq;
+ static uint8_t  pump_state, pump_len, pump_idx, pump_type;
+ static uint8_t  sb_n, sb_count;
+ static uint32_t sb_hdr, sb_data[8];
+-static uint32_t hpd_deadline, key_deadline;
++static uint32_t hpd_deadline, key_deadline, ms_deadline;
++static uint32_t wake_timer_ms, wake_elapsed_ms;
+ static uint8_t  key_low;
+ static uint32_t pl_cfg_saved;
+ static const struct device *cir;
+@@ -551,7 +562,7 @@ sb_frame(void)
+ 		}
+ 		info("H713: cpu op req, warm entry %p", (void *)sb_data[1]);
+ 		css_set_warm_entry(sb_data[1], 0);
+-		udelay(2000);
++		udelay(CPU_OP_DELAY_US);
+ 		css_set_power_state(0, sb_data[0] & 0xf, SCPI_CSS_OFF,
+ 		                    SCPI_CSS_OFF, SCPI_CSS_OFF);
+ 		break;
+@@ -561,8 +572,12 @@ sb_frame(void)
+ 		sb_reply(type, 0, &wake, 1);
+ 		break;
+ 	}
+-	case TYPE_WAKE_SET:
+-	case TYPE_WAKE_CLR:	/* key, IR and CEC are armed without them */
++	case TYPE_WAKE_SET:	/* key and IR are armed without it; type 3 = timer */
++		if (sb_count >= 1 && sb_data[0] >> 30 == WAKE_SRC_TIMER)
++			wake_timer_ms = sb_data[0] & 0x3fffffff;
++		sb_reply(type, 0, NULL, 0); break;
++	case TYPE_WAKE_CLR:
++		wake_timer_ms = 0;
+ 		sb_reply(type, 0, NULL, 0); break;
+ 	default:
+ 		sb_reply(type, RESULT_UNKNOWN, NULL, 0); break;
+@@ -673,6 +688,8 @@ h713_suspend_prepare(void)
+ 		gpio_set_value(&led_blue, false);
+ 	key_low = 0;
+ 	key_deadline = timeout_set(KEY_POLL_US);
++	wake_elapsed_ms = 0;
++	ms_deadline = timeout_set(1000);
+ 	mmio_write_32(SH_WAKE, 0);
+ 	sh_status(ST_ASLEEP, 0);
+ }
+@@ -682,6 +699,14 @@ h713_wake_poll(void)
+ {
+ 	bool level;
+ 
++	if (wake_timer_ms && timeout_expired(ms_deadline)) {
++		ms_deadline = timeout_set(1000);
++		if (++wake_elapsed_ms >= wake_timer_ms) {
++			mmio_write_32(SH_WAKE, WAKE_TIMER);
++			return WAKE_TIMER;
++		}
++	}
++
+ 	if (timeout_expired(key_deadline)) {
+ 		key_deadline = timeout_set(KEY_POLL_US);
+ 		if (gpio_get_value(&key_pin, &level) == SUCCESS && !level)
+@@ -719,5 +744,6 @@ h713_resume_done(void)
+ 	device_put(cir), cir = NULL;
+ 	mmio_write_32(R_PIO_PL_CFG1, pl_cfg_saved);	/* the kernel's IR pin */
+ 	sh_status(0, ST_ASLEEP);
++	wake_timer_ms = 0;	/* one standby at a time, as the vendor's 0x26 */
+ 	info("H713: resumed, wake word %x", mmio_read_32(SH_WAKE));
+ }

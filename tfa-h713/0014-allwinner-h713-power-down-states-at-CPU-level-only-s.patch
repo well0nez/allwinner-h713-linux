@@ -1,0 +1,80 @@
+From bc354d359fd42fbcc53aee9b6e5f93b4dd25ae60 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:48:59 +0200
+Subject: [PATCH 14/27] allwinner: h713: power-down states at CPU level only,
+ standby from core 0 only
+
+validate_power_state accepted a power-down up to the system level, and
+pwr_domain_suspend acts on any system-level OFF: a CPU_SUSPEND at that
+level would have bypassed the checks of SYSTEM_SUSPEND and sent the
+"cpu op req" (or, with SUNXI_SYSTEM_SUSPEND=0, reset the board) - latent,
+no caller today (review finding TFA-9). Nothing natively powers down the
+cluster or the system, so a power-down state above AFFLVL0 is now
+PSCI_E_INVALID_PARAMS, and SYSTEM_SUSPEND is the only way to a
+system-level OFF.
+
+SYSTEM_SUSPEND was taken from any core, but crust brings back core 0
+only; with CPU0 offlined Linux suspends on the first online CPU, which
+would never come back (TFA-10). sunxi_system_suspend_possible() refuses
+it with reason bit 8 in TFA_WORD.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_native_pm.c    | 13 +++++++++----
+ plat/allwinner/sun50i_h713/sunxi_standby.c |  4 ++++
+ 2 files changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_native_pm.c b/plat/allwinner/common/sunxi_native_pm.c
+index 66c529af8..5bf772d1d 100644
+--- a/plat/allwinner/common/sunxi_native_pm.c
++++ b/plat/allwinner/common/sunxi_native_pm.c
+@@ -45,7 +45,6 @@ static int sunxi_validate_power_state(unsigned int power_state,
+ {
+ 	unsigned int power_level = psci_get_pstate_pwrlvl(power_state);
+ 	unsigned int type = psci_get_pstate_type(power_state);
+-	unsigned int i;
+ 
+ 	if (power_level > PLAT_MAX_PWR_LVL) {
+ 		return PSCI_E_INVALID_PARAMS;
+@@ -59,10 +58,16 @@ static int sunxi_validate_power_state(unsigned int power_state,
+ 		req_state->pwr_domain_state[MPIDR_AFFLVL0] =
+ 			PLAT_MAX_RET_STATE;
+ 	} else {
+-		/* Power down this level and everything below it. */
+-		for (i = MPIDR_AFFLVL0; i <= power_level; i++) {
+-			req_state->pwr_domain_state[i] = PLAT_MAX_OFF_STATE;
++		/*
++		 * Only the CPU powers down here. Nothing natively takes the
++		 * cluster or the system down, and a system-level OFF is the
++		 * SYSTEM_SUSPEND hand-over to the management processor: it
++		 * must not be reachable around that call's checks.
++		 */
++		if (power_level != MPIDR_AFFLVL0) {
++			return PSCI_E_INVALID_PARAMS;
+ 		}
++		req_state->pwr_domain_state[MPIDR_AFFLVL0] = PLAT_MAX_OFF_STATE;
+ 	}
+ 
+ 	return PSCI_E_SUCCESS;
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+index c46d876a9..790124195 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_standby.c
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -96,6 +96,7 @@ static uint32_t cnt_lo, cnt_hi, cnt_fid;
+ #define DENY_NET		BIT(5)
+ #define DENY_RUNNING		BIT(6)
+ #define DENY_HEARTBEAT		BIT(7)
++#define DENY_CORE		BIT(8)
+ 
+ static uint32_t scp_read(unsigned int off)
+ {
+@@ -134,6 +135,9 @@ bool sunxi_system_suspend_possible(void)
+ 		deny |= DENY_NET;
+ 	if ((s0 & SCP_ST_RUNNING) == 0U)
+ 		deny |= DENY_RUNNING;
++	/* crust takes the cluster down and up for core 0 only. */
++	if (MPIDR_AFFLVL0_VAL(read_mpidr()) != 0U)
++		deny |= DENY_CORE;
+ 	if (deny == 0U) {
+ 		/* The main loop moves it on every pass, microseconds apart. */
+ 		for (i = 0U; i < SCP_LIVE_TRIES && s1 == s0; i++) {

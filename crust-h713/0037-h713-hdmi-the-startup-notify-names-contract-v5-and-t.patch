@@ -1,0 +1,84 @@
+From 15d2dd545c8ecf823dd6bf375481cc0e579349ba Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:56:00 +0200
+Subject: [PATCH 37/80] h713: hdmi: the startup notify names contract v5 and
+ the commit
+
+The notify said "crust-h713 contract v1" next to a page of version 4,
+and VERSION_STRING alone ("v0.6.<count>") names neither the commit nor
+a dirty tree (PRUEFUNG5 F5). scripts/version.sh now also writes
+VERSION_HASH: "g" and twelve hex digits of HEAD, "-dirty" when
+describe says so, "unknown" without git. The notify reads
+"crust-h713 v5 v0.6.<count>-g<hash>[-dirty]"; a static assertion keeps
+the text inside the 48 characters the 13 notify words carry and ties
+its "v5" to H713_VERSION.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 10 ++++++++--
+ scripts/version.sh              |  7 +++++++
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 72fefeb..7a34b46 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -762,13 +762,19 @@ sb_word(uint32_t w)
+ }
+ 
+ /* Startup notify (blob 0xc4b0): 13 words of version text in the odd byte
+- * order that the driver's arisc_notify_version() undoes. */
++ * order that the driver's arisc_notify_version() undoes; byte 48 is never
++ * sent, so the text has 48 characters at most. The contract version in it
++ * is H713_VERSION's; the commit and a dirty tree come from version.sh. */
+ static void
+ send_notify(void)
+ {
+-	static const char version[] = "crust-h713 contract v1 " VERSION_STRING;
++	static const char version[] = "crust-h713 v5 " VERSION_STRING "-"
++	                              VERSION_HASH;
+ 	uint8_t s[52];
+ 
++	static_assert(sizeof(version) <= 48 + 1, "notify text too long");
++	static_assert(H713_VERSION == 5, "notify text names version 5");
++
+ 	for (uint8_t i = 0, end = 0; i < sizeof(s); ++i) {
+ 		end = end || !version[i];	/* never read past the NUL */
+ 		s[i] = end ? 0 : version[i];
+diff --git a/scripts/version.sh b/scripts/version.sh
+index 42177b5..4909c97 100755
+--- a/scripts/version.sh
++++ b/scripts/version.sh
+@@ -7,11 +7,16 @@
+ major=0
+ minor=6
+ patch=10000
++hash=unknown
+ 
+ srcdir=$1
+ output=$2
+ 
+ if test "$srcdir" = "$(git -C "$srcdir" rev-parse --show-toplevel 2>/dev/null)"; then
++  if h=$(git -C "$srcdir" rev-parse --short=12 HEAD 2>/dev/null); then
++    hash=g$h
++  fi
++
+   set -- $(git -C "$srcdir" describe --dirty --long --match 'v[0-9]*' | tr '.-' '  ')
+ 
+   if test "$#" -ge 4; then
+@@ -22,6 +27,7 @@ if test "$srcdir" = "$(git -C "$srcdir" rev-parse --show-toplevel 2>/dev/null)";
+ 
+   if test "$#" -ge 5 && test "$5" = "dirty"; then
+     patch=$((patch+10000))
++    hash=$hash-dirty
+   fi
+ fi
+ 
+@@ -32,6 +38,7 @@ cat > "$output.tmp" << EOF
+ #define VERSION_MINOR $minor
+ #define VERSION_PATCH $patch
+ #define VERSION_STRING "v${major}.${minor}.${patch}"
++#define VERSION_HASH "${hash}"
+ EOF
+ 
+ if ! test -f "$output" ||

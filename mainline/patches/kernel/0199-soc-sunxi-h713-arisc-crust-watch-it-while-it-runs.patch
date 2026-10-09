@@ -1,0 +1,277 @@
+soc: sunxi: h713-arisc: crust - watch it while it runs
+
+crust has no watchdog while the system is awake, and this driver set
+->running once at the handshake and never looked again. A crust that
+hung made every HDMI command wait out its timeout, up to 2 s each, and
+every later standby was refused only in noirq; a crust that restarted
+through an exception lost its EDID state and nobody said why.
+
+A delayed work looks at the contract page every 10 s, and prepare and a
+command that timed out look at once:
+
+- a heartbeat that stands for 100 ms, a starts word or an exception word
+  other than at the handshake: one error line with status, starts,
+  exception, step and error bits, and ->running false - the HDMI calls
+  answer -ENODEV at once, standby is refused in prepare. A restart keeps
+  magic, running bit and heartbeat; only the starts word shows it.
+- new error bits (contract 5) and new error counts: a rate-limited
+  warning naming the counter and its increase. The display MIPS's frame
+  counts are normal traffic, not errors. What crust recorded before the
+  handshake is reported once, at the first look.
+
+Nothing is reloaded here; the work only reads SRAM, under the lock the
+commands take, on the freezable workqueue so it stands still across a
+standby. It is set up after the start of the firmware, so on removal devm
+stops it before it undoes anything the start set up.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -70,6 +70,7 @@
+ #include <linux/clk.h>
+ #include <linux/debugfs.h>
+ #include <linux/delay.h>
++#include <linux/devm-helpers.h>
+ #include <linux/errno.h>
+ #include <linux/firmware.h>
+ #include <linux/io.h>
+@@ -88,6 +89,7 @@
+ #include <linux/suspend.h>
+ #include <linux/uaccess.h>
+ #include <linux/unaligned.h>
++#include <linux/workqueue.h>
+ 
+ #include <linux/soc/sunxi/h713-arisc.h>
+ #include <linux/soc/sunxi/h713-crust-contract.h>
+@@ -431,6 +433,13 @@ struct h713_arisc {
+ 
+ 	struct dentry		*debugfs;
+ 	char			last_cmd[160];
++
++	/* supervision of a running crust, arisc_watch() */
++	struct delayed_work	watch;
++	u32			seen_inits;	/* starts and exception at the */
++	u32			seen_exc;	/* handshake */
++	u32			err_seen;	/* error bits already reported */
++	u32			cnt_seen[2];	/* CNT0, CNT1[15:0] reported */
+ };
+ 
+ /*
+@@ -516,6 +525,15 @@ static u8 hpd_counter(struct h713_arisc *a, unsigned int port)
+ 	return sram_rb(a, a->off.hpd_counter + port);
+ }
+ 
++/* Every 10 s, in prepare and right after a command timed out. */
++#define ARISC_WATCH_MS		10000
++
++static void arisc_watch_soon(struct h713_arisc *a)
++{
++	if (a->off.crust)
++		mod_delayed_work(system_freezable_wq, &a->watch, 0);
++}
++
+ static void arisc_report(struct h713_arisc *a, const char *fmt, ...)
+ {
+ 	va_list args;
+@@ -1647,6 +1665,7 @@ static int arisc_send(struct h713_arisc *a, u16 sub_cmd, u8 arg1, u8 arg2,
+ 	u8 payload[PAYLOAD_MAX] = { };
+ 	ktime_t start;
+ 	size_t i;
++	int ret;
+ 
+ 	if ((sub_cmd & 0xff) < SUB_CMD_LO_MIN || (sub_cmd & 0xff) > SUB_CMD_LO_MAX)
+ 		return -EINVAL;
+@@ -1670,6 +1689,7 @@ static int arisc_send(struct h713_arisc *a, u16 sub_cmd, u8 arg1, u8 arg2,
+ 			dev_err(a->dev,
+ 				"Msgbox user1 port 0 is not being drained -- sub-command 0x%04x not sent\n",
+ 				sub_cmd);
++			arisc_watch_soon(a);
+ 			return -EBUSY;
+ 		}
+ 		usleep_range(1000, 2000);
+@@ -1691,7 +1711,10 @@ static int arisc_send(struct h713_arisc *a, u16 sub_cmd, u8 arg1, u8 arg2,
+ 	if ((sub_cmd & 0xff) != 0x11)
+ 		return 0;
+ 
+-	return arisc_wait_handler(a, payload);
++	ret = arisc_wait_handler(a, payload);
++	if (ret)
++		arisc_watch_soon(a);
++	return ret;
+ }
+ 
+ /*
+@@ -1826,6 +1849,7 @@ static int arisc_send_and_reply(struct h713_arisc *a, u16 sub_cmd, u8 arg1,
+ 		dev_err(a->dev,
+ 			"Sub-command 0x%04x: no reply on ARM-RX ch1 (%d)\n",
+ 			sub_cmd, ret);
++		arisc_watch_soon(a);
+ 		return ret;
+ 	}
+ 
+@@ -1850,7 +1874,7 @@ static struct h713_arisc *arisc_get(bool need_edid_module)
+ {
+ 	struct h713_arisc *a = h713_arisc;
+ 
+-	if (!a || !a->running)
++	if (!a || !READ_ONCE(a->running))
+ 		return ERR_PTR(-ENODEV);
+ 	/*
+ 	 * The aux block at 0x0709xxxx has no clock until the firmware has
+@@ -3057,6 +3081,90 @@ static void arisc_crust_describe(struct h713_arisc *a)
+ 		dev_warn(a->dev, "crust is a test build (forced faults and deadlines) -- not for use\n");
+ }
+ 
++/*
++ * The supervision of a running crust. A heartbeat that stands for 100 ms,
++ * or starts or exception words other than at the handshake, end the
++ * service: one error line with what the page says, and ->running false, so
++ * a caller gets -ENODEV at once instead of a timeout per command (a restart
++ * keeps magic, running bit and heartbeat; only the starts word shows it).
++ * New error bits and error counts are warnings; the display MIPS's counts
++ * in CNT1[31:16] are normal traffic. Under a->lock.
++ */
++static bool arisc_watch(struct h713_arisc *a)
++{
++	static const char * const counts[] = {
++		"port-3 frames dropped", "pump frames too long",
++		"unknown or unanswered requests", "send queue full",
++		"stale replies dropped", "MIPS frames dropped",
++	};
++	u32 inits, exc, err, cnt[2];
++	char msg[192] = "";
++	unsigned int i, n = 0;
++
++	if (!a->running || !a->off.crust)
++		return a->running;
++	inits = crust_rd(a, H713_DIAG_INITS);
++	exc = crust_rd(a, H713_DIAG_EXCEPTION);
++	if (!arisc_crust_running(a) || inits != a->seen_inits ||
++	    exc != a->seen_exc) {
++		dev_err(a->dev, "crust %s: status 0x%08x, starts %u (%u at the handshake), exception 0x%08x, step 0x%x, err 0x%x -- HDMI service off\n",
++			inits != a->seen_inits ? "restarted" :
++			exc != a->seen_exc ? "took an exception" : "stopped",
++			crust_rd(a, H713_STATUS), inits, a->seen_inits, exc,
++			crust_rd(a, H713_DIAG_STEP), crust_rd(a, H713_ERR));
++		WRITE_ONCE(a->running, false);
++		return false;
++	}
++	if (crust_rd(a, H713_VERSION) < 5)
++		return true;
++
++	err = crust_rd(a, H713_ERR);
++	if (err & ~a->err_seen) {
++		dev_warn_ratelimited(a->dev, "crust: new error bits 0x%x (all 0x%x, detail 0x%08x, data 0x%08x)\n",
++				     err & ~a->err_seen, err,
++				     crust_rd(a, H713_ERR_DETAIL),
++				     crust_rd(a, H713_ERR_DATA));
++		a->err_seen |= err;
++	}
++	cnt[0] = crust_rd(a, H713_CNT0);
++	cnt[1] = crust_rd(a, H713_CNT1) & 0xffff;
++	for (i = 0; i < ARRAY_SIZE(counts); i++) {
++		u8 now = cnt[i / 4] >> (8 * (i % 4));
++		u8 was = a->cnt_seen[i / 4] >> (8 * (i % 4));
++
++		if (now != was)
++			n += scnprintf(msg + n, sizeof(msg) - n, ", %s +%u",
++				       counts[i], (u8)(now - was));
++	}
++	if (n)
++		dev_warn_ratelimited(a->dev, "crust: error counts%s\n", msg);
++	a->cnt_seen[0] = cnt[0];
++	a->cnt_seen[1] = cnt[1];
++	return true;
++}
++
++static void arisc_watch_work(struct work_struct *work)
++{
++	struct h713_arisc *a = container_of(to_delayed_work(work),
++					    struct h713_arisc, watch);
++
++	mutex_lock(&a->lock);
++	arisc_watch(a);
++	mutex_unlock(&a->lock);
++	if (READ_ONCE(a->running))
++		queue_delayed_work(system_freezable_wq, &a->watch,
++				   msecs_to_jiffies(ARISC_WATCH_MS));
++}
++
++/* What the handshake left is the reference; errors before it count too. */
++static void arisc_watch_start(struct h713_arisc *a)
++{
++	a->seen_inits = crust_rd(a, H713_DIAG_INITS);
++	a->seen_exc = crust_rd(a, H713_DIAG_EXCEPTION);
++	a->err_seen = 0;
++	a->cnt_seen[0] = a->cnt_seen[1] = 0;
++}
++
+ static int h713_arisc_start(struct h713_arisc *a)
+ {
+ 	const struct firmware *fw;
+@@ -3204,8 +3312,10 @@ handshake:
+ 	a->running = true;
+ 	dev_info(a->dev, "ARISC startup notify acknowledged: %s (SRAM byte lanes %s)\n",
+ 		 a->notify_version, a->lane ? "big endian" : "little endian");
+-	if (a->off.crust)
++	if (a->off.crust) {
+ 		arisc_crust_describe(a);
++		arisc_watch_start(a);
++	}
+ 	return 0;
+ }
+ 
+@@ -3344,6 +3454,19 @@ static int h713_arisc_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * The supervision comes after the start, so devm stops it before it
++	 * undoes anything the start set up. A command that times out kicks it,
++	 * and commands begin with h713_arisc set below.
++	 */
++	ret = devm_delayed_work_autocancel(&pdev->dev, &a->watch,
++					   arisc_watch_work);
++	if (ret)
++		return ret;
++	if (a->running && a->off.crust)
++		queue_delayed_work(system_freezable_wq, &a->watch,
++				   msecs_to_jiffies(ARISC_WATCH_MS));
++
+ 	a->debugfs = debugfs_create_dir("h713-arisc", NULL);
+ 	debugfs_create_file("status", 0400, a->debugfs, a,
+ 			    &h713_arisc_status_fops);
+@@ -3376,6 +3499,7 @@ static void h713_arisc_remove(struct platform_device *pdev)
+ static int h713_arisc_prepare(struct device *dev)
+ {
+ 	struct h713_arisc *a = dev_get_drvdata(dev);
++	bool alive;
+ 
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+ 		return 0;
+@@ -3395,6 +3519,13 @@ static int h713_arisc_prepare(struct device *dev)
+ 		dev_err(dev, "standby refused: the vendor firmware would wake the DRAM with an empty dram_para\n");
+ 		return -EOPNOTSUPP;
+ 	}
++	mutex_lock(&a->lock);
++	alive = arisc_watch(a);
++	mutex_unlock(&a->lock);
++	if (!alive) {
++		dev_err(dev, "standby refused: crust does not serve\n");
++		return -EIO;
++	}
+ 	return 0;
+ }
+ 
+--- a/include/linux/soc/sunxi/h713-arisc.h
++++ b/include/linux/soc/sunxi/h713-arisc.h
+@@ -13,6 +13,8 @@
+  * implement VIDIOC_S_EDID/G_EDID and its hotplug handling on top of. They
+  * may sleep, they take a driver-internal mutex, and they return a real
+  * error when the co-processor does not answer -- never a silent success.
++ * Once the driver has found the firmware stopped or restarted, they fail
++ * with -ENODEV at once instead of waiting for a timeout.
+  *
+  * Ordering rule that this interface enforces: the aux register block at
+  * 0x0709xxxx does not exist for the ARM until the ARISC has processed

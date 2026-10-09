@@ -1,0 +1,152 @@
+From f69ab8ce9f4c09324ebf862aca1fce5731b3ab7a Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:52:41 +0200
+Subject: [PATCH 16/27] allwinner: h713: credit the whole standby to the
+ counter, the RTC as a check
+
+The counter was put forward by crust's SLEPT_MS: crust starts counting
+only after its 50 ms cpu op wait and stops before its resume work, so
+about 60 ms were lost per cycle (5.062 s of host time against 5000 ms
+credited, crust-20261007 phase4f), a 32-bit millisecond count wraps after
+49.7 days, and a page without magic credited 0 (review findings TFA-11,
+TFA-12, CS-15).
+
+Contract 5 counts WAKE_MS (+0x298), from the receipt of the cpu op req to
+the release of CPU0; BL31 credits that, SLEPT_MS only for contract 3
+and 4, nothing for an unknown page. It also reads the RTC before the
+request and after the wake, as rtc-sun6i does (linear day, h:m:s). The
+RTC runs on the RC oscillator here (LOSC_CTRL 0x8000) while crust counts
+on the crystal, so it does not replace crust's count by being larger -
+only when that count is 0 or the RTC difference exceeds twice the count
+plus 10 s, which is what a wrapped or lost count looks like. The NOTICE
+keeps its words and adds both values.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../sun50i_h713/include/sunxi_mmap.h          |  1 +
+ plat/allwinner/sun50i_h713/sunxi_standby.c    | 65 ++++++++++++++++---
+ 2 files changed, 57 insertions(+), 9 deletions(-)
+
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index ec6bc6346..3626c37e3 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -99,6 +99,7 @@
+ #define SCP_SH_NET_MS			0x274
+ #define SCP_SH_ERR			0x27c
+ #define SCP_SH_ERR_DETAIL		0x280
++#define SCP_SH_WAKE_MS			0x298	/* v5: ms from 0x22 to the wake */
+ #define SCP_SH_FAIL_PATH		0x2a0
+ #define SCP_SH_NET_CONFIRM		0x2c8
+ #define SCP_SH_TFA_WORD			0x2cc	/* event, number, detail */
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+index 2b81c5682..19e544bb5 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_standby.c
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -75,6 +75,12 @@
+ 
+ static uint32_t cnt_lo, cnt_hi, cnt_fid;
+ 
++/* The RTC as rtc-sun6i reads it (RTC_LINEAR_DAY): day number, h:m:s. */
++#define RTC_YMD			(SUNXI_RTC_BASE + 0x0010)
++#define RTC_HMS			(SUNXI_RTC_BASE + 0x0014)
++
++static uint64_t rtc_before;
++
+ /* crust's contract page, version 5 (the offsets are in sunxi_mmap.h). */
+ #define SCP_LIVE_TRIES		100			/* x 100 us */
+ #define SCP_BUILD_VDD_SYS	BIT(27)	/* deep: VDD_SYS reset - never */
+@@ -166,6 +172,39 @@ static uint64_t cnt_read(void)
+ 	return ((uint64_t)hi << 32) | lo;
+ }
+ 
++static uint64_t rtc_read(void)
++{
++	uint32_t date = 0U, time = 0U;
++	unsigned int i;
++
++	/* Read again in case it changed; it does once a second. */
++	for (i = 0U; i < 3U; i++) {
++		date = mmio_read_32(RTC_YMD);
++		time = mmio_read_32(RTC_HMS);
++		if (date == mmio_read_32(RTC_YMD) &&
++		    time == mmio_read_32(RTC_HMS))
++			break;
++	}
++	return (uint64_t)(date & 0xffffU) * 86400U +
++	       ((time >> 16) & 0x1fU) * 3600U + ((time >> 8) & 0x3fU) * 60U +
++	       (time & 0x3fU);
++}
++
++/*
++ * The time to put the counter forward by. crust counts on HOSC, a crystal;
++ * the RTC runs on the RC oscillator here (LOSC_CTRL 0x8000) and only checks
++ * it: it stands in when crust's count is missing (0), or when it is far
++ * below the RTC's - more than twice plus 10 s, a wrapped or lost count.
++ */
++static uint64_t standby_credit_ms(uint32_t crust_ms, uint64_t rtc_s)
++{
++	uint64_t rtc_ms = rtc_s * 1000U;
++
++	if (crust_ms == 0U || rtc_ms > 2U * (uint64_t)crust_ms + 10000U)
++		return rtc_ms;
++	return crust_ms;
++}
++
+ static int standby_push(uint32_t word)
+ {
+ 	unsigned int i;
+@@ -204,6 +243,7 @@ int sunxi_system_suspend_enter(void)
+ 		cnt_hi = (uint32_t)(now >> 32);
+ 	}
+ 	cnt_fid = mmio_read_32(CNT_CTRL_FID0);
++	rtc_before = rtc_read();
+ 
+ 	if (standby_push(STANDBY_HDR(STANDBY_STATE, STANDBY_ATTR_NO_REPLY,
+ 				     STANDBY_TYPE_CPU_OP)) != 0 ||
+@@ -243,7 +283,8 @@ full:
+ void sunxi_system_suspend_finish(void)
+ {
+ 	uint64_t cnt = ((uint64_t)cnt_hi << 32) | cnt_lo;
+-	uint32_t ms = 0U;
++	uint64_t rtc_after = rtc_read(), ms;
++	uint32_t version = scp_read(SCP_SH_VERSION), crust_ms = 0U;
+ 	unsigned int i;
+ 
+ 	/*
+@@ -261,21 +302,27 @@ void sunxi_system_suspend_finish(void)
+ 	/*
+ 	 * The system counter, as the stock BL31 restores it after 0x11 - but
+ 	 * only when the cluster reset stopped or cleared it, and then put
+-	 * forward by the milliseconds crust counted asleep: writing back the
+-	 * value from before the request would hide the whole sleep from
+-	 * Linux, whose arch timer is a "nonstop in suspend" clocksource.
+-	 * Not counted by crust: its suspend and resume work (deep: ~0.2 s).
++	 * forward by the time crust counted: writing back the value from
++	 * before the request would hide the whole sleep from Linux, whose
++	 * arch timer is a "nonstop in suspend" clocksource. Contract 5 counts
++	 * from the cpu op req to the release of CPU0 (WAKE_MS); 3 and 4 only
++	 * the sleep itself (SLEPT_MS), without crust's suspend and resume.
+ 	 */
+ 	if ((mmio_read_32(CNT_CTRL_CR) & 1U) == 0U || cnt_read() < cnt) {
+-		if (scp_read(SCP_SH_MAGIC) == SCP_MAGIC)
+-			ms = scp_read(SCP_SH_SLEPT_MS);
+-		cnt += (uint64_t)ms * (plat_get_syscnt_freq2() / 1000U);
++		if (scp_read(SCP_SH_MAGIC) == SCP_MAGIC && version >= 5U)
++			crust_ms = scp_read(SCP_SH_WAKE_MS);
++		else if (scp_read(SCP_SH_MAGIC) == SCP_MAGIC && version >= 3U)
++			crust_ms = scp_read(SCP_SH_SLEPT_MS);
++		ms = standby_credit_ms(crust_ms, rtc_after >= rtc_before ?
++				       rtc_after - rtc_before : 0U);
++		cnt += ms * (plat_get_syscnt_freq2() / 1000U);
+ 		mmio_write_32(CNT_CTRL_CR, 0);
+ 		mmio_write_32(CNT_CTRL_FID0, cnt_fid);
+ 		mmio_write_32(CNT_CTRL_CV_LO, (uint32_t)cnt);
+ 		mmio_write_32(CNT_CTRL_CV_HI, (uint32_t)(cnt >> 32));
+ 		mmio_write_32(CNT_CTRL_CR, 1);
+-		NOTICE("PSCI: system counter restored, %u ms asleep added\n", ms);
++		NOTICE("PSCI: system counter restored, %lu ms asleep added (crust v%u %u ms, rtc %lu -> %lu s)\n",
++		       ms, version, crust_ms, rtc_before, rtc_after);
+ 	}
+ 	/*
+ 	 * The secure peripheral controller and the CCU's security switch live

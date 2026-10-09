@@ -1,7 +1,7 @@
 From 5259490aa49a86d6c71c0e7e2d1c61ee7dc27af8 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 21:46:02 +0200
-Subject: [PATCH 80/95] sunxi: h713: drop the trailing "usb start" from the
+Subject: [PATCH 80/96] sunxi: h713: drop the trailing "usb start" from the
  hy300_pro preboot
 
 The HY310's preboot lost it on 15.09.: the host-side USB scan cost 2 to

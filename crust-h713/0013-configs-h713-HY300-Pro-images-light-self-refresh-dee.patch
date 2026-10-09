@@ -1,0 +1,72 @@
+From fd0ec940639efc3a02a741c0c4d31a586328c329 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 02:28:18 +0200
+Subject: [PATCH 13/80] configs: h713: HY300 Pro images (light, self-refresh,
+ deep)
+
+The HY300 Pro's vendor DT carries the same standby_param (power key PL4,
+rails PL6, LEDs PL0/PL1) and the same 19 cir_param pairs as the HY310
+(FB-CRUST tables/boards.csv), so its light image is the HY310's. Its DRAM
+runs at 636 MHz (U-Boot hy300_pro_defconfig: the owner's boot0 clock, his
+UART log agrees); the other dram_para fields this port reads (type, zq,
+odt_en, para2, mr0..3, tpr5/6/9/13) are the HY310's there too. Built, not
+run. The HY200 QZ713DF A1 boards get no defconfig: their vendor DT's
+standby_param and cir_param are unread (FB-CRUST F7).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy300pro_deep_defconfig | 11 +++++++++++
+ configs/h713_hy300pro_defconfig      |  8 ++++++++
+ configs/h713_hy300pro_sr_defconfig   | 10 ++++++++++
+ 3 files changed, 29 insertions(+)
+ create mode 100644 configs/h713_hy300pro_deep_defconfig
+ create mode 100644 configs/h713_hy300pro_defconfig
+ create mode 100644 configs/h713_hy300pro_sr_defconfig
+
+diff --git a/configs/h713_hy300pro_deep_defconfig b/configs/h713_hy300pro_deep_defconfig
+new file mode 100644
+index 0000000..7fc75b0
+--- /dev/null
++++ b/configs/h713_hy300pro_deep_defconfig
+@@ -0,0 +1,11 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_DRAM_CLK=636
++CONFIG_H713_DEEP_SLEEP=y
+diff --git a/configs/h713_hy300pro_defconfig b/configs/h713_hy300pro_defconfig
+new file mode 100644
+index 0000000..c9a7425
+--- /dev/null
++++ b/configs/h713_hy300pro_defconfig
+@@ -0,0 +1,8 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
+diff --git a/configs/h713_hy300pro_sr_defconfig b/configs/h713_hy300pro_sr_defconfig
+new file mode 100644
+index 0000000..127cbf9
+--- /dev/null
++++ b/configs/h713_hy300pro_sr_defconfig
+@@ -0,0 +1,10 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_DRAM_CLK=636

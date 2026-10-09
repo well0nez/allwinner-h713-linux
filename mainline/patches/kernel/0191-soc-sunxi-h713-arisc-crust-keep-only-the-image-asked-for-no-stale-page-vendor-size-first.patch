@@ -1,0 +1,144 @@
+soc: sunxi: h713-arisc: crust - keep only the image asked for, no stale page, vendor size first
+
+Three review findings on the crust loader (review of 07.10.2026), each
+checked against the code.
+
+The size check of a vendor image ran after arisc_resolve_offsets(), whose
+signature scans read the file up to 0x23000: a short file that is not a
+crust image (a wrong firmware-name, the EDID file) was read out of bounds
+in probe. The check now sits right after the crust branch, before any
+scan.
+
+A crust loaded by this driver got fresh diagnostic words, but the magic
+and the status word of an earlier crust stayed: if the new image stalled
+before its own init, the HANDSHAKE fallback took the old bit for a
+running firmware. The load path now clears magic and status before the
+release, and the fallback applies to a kept crust only.
+
+The keep path did not ask which crust runs: light, self-refresh and deep
+share version and notify, so a rebuilt file was silently not loaded and a
+test on the wrong FEL image would have been recorded as the one asked
+for. crust's contract version 3 publishes a build word (image size,
+self-refresh, deep, IR); a running crust is kept only when its size is the
+file's, otherwise the file is loaded over it. The status file shows the
+new words (step, exception, sleep length, wake timer, build).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -366,7 +366,15 @@ static const u8 default_portmap[ARISC_HDMI_PORTS] = { 0, 1, 2 };
+  */
+ #define CRUST_DIAG		(CRUST_SHARED + 0x200)
+ #define CRUST_DIAG_WORDS	16
+-#define CRUST_DIAG_SHOWN	11
++#define CRUST_DIAG_SHOWN	16
++/*
++ * Contract version 3 adds, in the same block: the last standby step and the
++ * last exception (no longer in RTC GP3/GP2), the milliseconds asleep in the
++ * last standby, the armed wake timer, and the build word - image size in
++ * bits 19..0, DRAM self-refresh bit 24, deep sleep bit 25, IR codes bit 26.
++ */
++#define CRUST_BUILD		(CRUST_DIAG + 0x3c)
++#define CRUST_BUILD_SIZE	GENMASK(19, 0)
+ 
+ /*
+  * Where the loaded firmware keeps the objects this driver reads and writes.
+@@ -832,6 +840,12 @@ static int arisc_resolve_offsets(struct h713_arisc *a, const u8 *data,
+ 		return 0;
+ 	}
+ 
++	/* Everything below reads the image up to SRAM_IMAGE_SIZE. */
++	if (size < SRAM_IMAGE_SIZE)
++		return dev_err_probe(a->dev, -EINVAL,
++			"\"%s\" is %zu bytes, neither a crust image nor the %u bytes of a vendor one\n",
++			name, size, SRAM_IMAGE_SIZE);
++
+ 	arisc_image_version(data, a->image_version, sizeof(a->image_version));
+ 
+ 	hits = arisc_sig_scan(data, SIG_GDATA, 0, &o.gdata);
+@@ -1022,9 +1036,15 @@ static void arisc_write_para(struct h713_arisc *a)
+ 	unsigned int i;
+ 
+ 	if (a->off.crust) {
+-		/* No struct arisc_para in crust's contract; fresh diag words. */
++		/*
++		 * No struct arisc_para in crust's contract; fresh diag words,
++		 * and no magic or status left from an earlier crust: until this
++		 * one writes them, the page must not look like a running one.
++		 */
+ 		for (i = 0; i < CRUST_DIAG_WORDS; i++)
+ 			writel_relaxed(0, sram_at(a, CRUST_DIAG) + 4 * i);
++		writel_relaxed(0, sram_at(a, CRUST_SHARED));
++		writel_relaxed(0, sram_at(a, CRUST_SHARED_STATUS));
+ 		return;
+ 	}
+ 	for (i = 0; i < SRAM_PARA_WORDS; i++)
+@@ -2481,7 +2501,7 @@ static int h713_arisc_status_show(struct seq_file *s, void *unused)
+ 			   readl(sram_at(a, CRUST_SHARED_VERSION)),
+ 			   readl(sram_at(a, CRUST_SHARED_STATUS)),
+ 			   readl(sram_at(a, CRUST_SHARED_WAKE)));
+-		seq_puts(s, "crust_diag: lewin_en lewin0_start lewin0_end cpus_clk ttcr starts intc80 intc88 mips_n mips_last arm_type\ncrust_diag:");
++		seq_puts(s, "crust_diag: lewin_en lewin0_start lewin0_end cpus_clk ttcr starts intc80 intc88 mips_n mips_last arm_type step exception slept_ms wake_timer build\ncrust_diag:");
+ 		for (i = 0; i < CRUST_DIAG_SHOWN; i++)
+ 			seq_printf(s, " %08x", readl(sram_at(a, CRUST_DIAG) + 4 * i));
+ 		seq_puts(s, "\n");
+@@ -2650,6 +2670,7 @@ static int h713_arisc_start(struct h713_arisc *a)
+ {
+ 	const struct firmware *fw;
+ 	const char *name = FW_NAME_ARISC;
++	bool kept;
+ 	int ret;
+ 
+ 	of_property_read_string_index(a->dev->of_node, "firmware-name", 0,
+@@ -2680,12 +2701,31 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 		return -EINVAL;
+ 	}
+ 
+-	if (a->off.crust && arisc_crust_running(a)) {
+-		/* TF-A (or an earlier probe) started it: keep it and its state. */
+-		dev_info(a->dev, "crust is running (status 0x%08x), image kept\n",
+-			 readl(sram_at(a, CRUST_SHARED_STATUS)));
+-		release_firmware(fw);
+-	} else {
++	kept = a->off.crust && arisc_crust_running(a);
++	if (kept) {
++		/*
++		 * TF-A (or an earlier probe) started it: keep it and its state -
++		 * if it is the crust in the file. Light, self-refresh and deep
++		 * share version and notify; the build word (version 3) carries
++		 * the image size and the variant. Another one is loaded over.
++		 */
++		u32 build = readl(sram_at(a, CRUST_BUILD));
++
++		if (readl(sram_at(a, CRUST_SHARED_VERSION)) < 3 ||
++		    (build & CRUST_BUILD_SIZE) != fw->size) {
++			dev_warn(a->dev, "running crust (build 0x%08x) is not \"%s\" (%zu bytes) -- loading the file\n",
++				 build, name, fw->size);
++			kept = false;
++		} else {
++			dev_info(a->dev, "crust is running (status 0x%08x, build 0x%08x:%s%s%s), image kept\n",
++				 readl(sram_at(a, CRUST_SHARED_STATUS)), build,
++				 build & BIT(24) ? " self-refresh" : "",
++				 build & BIT(25) ? " deep" : "",
++				 build & BIT(26) ? " ir" : "");
++			release_firmware(fw);
++		}
++	}
++	if (!kept) {
+ 		arisc_enable_cpus_clocks(a);
+ 		arisc_set_reset(a, true);
+ 		arisc_drain_rx(a);
+@@ -2700,9 +2740,10 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 	}
+ 
+ 	a->notify_result = arisc_startup_handshake(a);
+-	if (a->notify_result && a->off.crust &&
++	if (a->notify_result && kept &&
+ 	    (readl(sram_at(a, CRUST_SHARED_STATUS)) & CRUST_ST_HANDSHAKE)) {
+-		/* An earlier probe took the notify; the page says so. */
++		/* An earlier probe took the notify; the page says so. Only for
++		 * a kept crust: a freshly loaded one has its own to send. */
+ 		a->notify_result = 0;
+ 		strscpy(a->notify_version, a->image_version,
+ 			sizeof(a->notify_version));

@@ -1,0 +1,49 @@
+From e1215453188db0ce7ddd8ca57280b16e7ae0d7d4 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 21:31:19 +0200
+Subject: [PATCH 68/80] h713: memory.h: the deep stage's words in the contract
+ table
+
+SUBSTEP, DEEP_LOCK and X_LOCK_TICKS name PLLs and root clocks by their
+index in r-ccu.c's tables, and the fingerprint's thirteen words were
+listed only in ccu.c. memory.h is the one table the kernel's
+h713-crust-contract.h and TF-A mirror (release design C3), so the
+indices, the word order of the fingerprint and the 0xffffffff for an
+unread PPU word go there too, and X is no longer called reserved.
+Comments only.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ platform/h713/include/platform/memory.h | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 968e5a1..14c4fc3 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -133,7 +133,14 @@
+ #define H713_A_NET_CONFIRM   H713_PAGE(0x2c8) /* kernel: 31..16 0xc0f1, 7..0 cycle */
+ #define H713_A_TFA_WORD      H713_PAGE(0x2cc) /* TF-A: 31..24 event, 23..16 number, 15..0 detail */
+ 
+-/* P: the previous run's record, ARM only; X: reserved. */
++/*
++ * P: the previous run's record, ARM only. X: crust's, the deep stage only
++ * (rules of K). The main-domain fingerprint (ccu.c), read before the deep
++ * path and after it, 13 words in this order: CCU 0x71c, 0x90c, 0x540,
++ * 0xdd8; PIO 0x150 (PH CFG0); WDOG 0x14 (MODE); R_PRCM 0x250, 0x260; PPU
++ * status (0x07001024 + 0x80 d) of d = 0 GPU, 1 TVFE, 2 TVCAP, 3 VE, 4 AV1,
++ * 0xffffffff when the PPU's bus gate or reset (R_PRCM 0x1ac) was closed.
++ */
+ #define H713_P_BASE          H713_PAGE(0x2d0)
+ #define H713_X_BASE          H713_PAGE(0x390)
+ #define H713_X_FP_CYCLE      H713_PAGE(0x390) /* deep: 7..0 cycle of the set before, 15..8 after */
+@@ -188,6 +195,9 @@
+  * SUBSTEP, deep stage only: written before each clock and bus step of the
+  * deep path, 15..8 the step, 7..0 its index, so a hang or a reset in it
+  * names the register (PRUEFUNG5 DEEP-07). A good cycle leaves the last one.
++ * PLL i (SUBSTEP, DEEP_LOCK, X_LOCK_TICKS): CCU 0x000, 0x010, 0x020, 0x028,
++ * 0x030, 0x040, 0x048, 0x050, 0x058, 0x060, 0x068, 0x078. Root clock i: CCU
++ * 0x500, 0x510, 0x520, 0x524, R_PRCM 0x124, 0x000, 0x00c, 0x010.
+  */
+ #define H713_SUB(step, i)    ((step) << 8 | (i))
+ #define H713_SUB_FP          1  /* main-domain fingerprint, 0 before, 1 after (ccu.c) */

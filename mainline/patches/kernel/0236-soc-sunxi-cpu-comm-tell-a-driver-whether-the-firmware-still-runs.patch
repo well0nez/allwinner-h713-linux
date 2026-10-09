@@ -1,0 +1,71 @@
+soc: sunxi: cpu_comm: tell a driver whether the firmware still runs
+
+After a standby to RAM the display MIPS stays parked until userspace
+restarts it, and a read of a block the firmware had set up does not
+answer then, it stops the bus: on the HY310 the HDMI receiver's first
+LINK read after the wake never finished, and the SoC watchdog reset the
+box 16 s later (08.10.2026, runs L-B and L-A 2, breadcrumbs in the RTC
+general purpose words).
+
+cpu_comm_firmware_up() returns false from the park on and from a
+restart's stop until its start, from the two words cpu_comm already
+keeps for its own call path. No register is read. The receiver asks it
+before it starts or restarts its LINK poll.
+
+Compiled out of tree against the R1 kernel with W=1. Measured with the
+receiver change that uses it, see there.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -1395,6 +1395,18 @@ int cpu_comm_firmware_start(unsigned int timeout_ms)
+ }
+ EXPORT_SYMBOL_GPL(cpu_comm_firmware_start);
+ 
++/*
++ * Read without the call mutex: both words change under it, and a caller
++ * that needs the answer to hold keeps its own work out of the sleep and
++ * the restart (the receiver stops its poll in its suspend, and the
++ * restart unbinds it).
++ */
++bool cpu_comm_firmware_up(void)
++{
++	return !READ_ONCE(cpu_comm_parked_since) && !READ_ONCE(cpu_comm_fw_down);
++}
++EXPORT_SYMBOL_GPL(cpu_comm_firmware_up);
++
+ /* ── Proc filesystem ───────────────────────────────────────── */
+ 
+ static int cpu_comm_proc_show(struct seq_file *m, void *v)
+--- a/include/linux/soc/sunxi/h713-cpu-comm.h
++++ b/include/linux/soc/sunxi/h713-cpu-comm.h
+@@ -249,6 +249,16 @@ int cpu_comm_firmware_start(unsigned int timeout_ms);
+ int cpu_comm_register_firmware_notifier(struct notifier_block *nb);
+ int cpu_comm_unregister_firmware_notifier(struct notifier_block *nb);
+ 
++/*
++ * Whether the firmware that set up the receiver and the picture path still
++ * runs: false from the standby park on and from a restart's stop() until
++ * its start(), true otherwise. The software state, no register is read. A
++ * caller that touches a block the firmware set up (the HDMI receiver's
++ * LINK window) asks this before it reads; after the park the first such
++ * read stops the bus.
++ */
++bool cpu_comm_firmware_up(void);
++
+ /*
+  * The one owner of the MIPS clock (0x02001600) and resets (0x0200160c),
+  * sun50i-h713-mips. While it is registered, cpu_comm asks it whether there
+@@ -315,6 +325,11 @@ static inline int cpu_comm_unregister_firmware_notifier(struct notifier_block *n
+ 	return -ENODEV;
+ }
+ 
++static inline bool cpu_comm_firmware_up(void)
++{
++	return false;
++}
++
+ #endif /* CONFIG_HY310_CPU_COMM */
+ 
+ #endif /* __LINUX_SOC_SUNXI_H713_CPU_COMM_H */

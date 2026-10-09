@@ -1,7 +1,7 @@
 From 82918f44b9bfc8a57fb1d3a3bc4f600262a15fd3 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 17 Sep 2026 01:30:07 +0200
-Subject: [PATCH 83/95] sunxi: h713: one convention for both panel rows,
+Subject: [PATCH 83/96] sunxi: h713: one convention for both panel rows,
  minus-one where it belongs
 
 struct h713_panel_cfg documented htotal/vtotal as going into 0x0525c000 and

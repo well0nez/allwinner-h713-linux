@@ -1,0 +1,88 @@
+From 463bdef70ea531555dc26212a99401f66715e68e Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 04:43:02 +0200
+Subject: [PATCH 27/80] h713: hdmi: deadlines that hold when the tick timer
+ crosses bit 31
+
+timeout_expired() treats a deadline as reached only when it and the tick
+timer agree in bit 31. h713_suspend_prepare() takes the key and millisecond
+deadlines, and the deep image then spends about 85 ms in the clock waits
+of r_ccu_suspend before the first wake poll: if the timer crossed bit 31
+in that window, both deadlines read "not yet" for up to 179 s - no
+millisecond counted, the wake timer late by minutes, the power key dead.
+
+The HDMI driver's own deadlines (wake milliseconds, key poll, HPD tick,
+stale-reply drop) now use the signed difference to the tick timer, which
+holds for anything under 2^31 cycles (89 s) away on either side.
+
+Model (crust_emu.py --scenario timer --ttcr-cross-ms 960, deep image):
+the image before this change does not wake within the timer plus 3 s,
+this one wakes after 300 counted milliseconds.
+
+Second review finding B7 (07.10.2026), confirmed in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 21 +++++++++++++++++----
+ 1 file changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index a173c77..cd686ee 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -213,6 +213,19 @@ extern char __bss_start[];	/* the end of the image (scp.ld.S) */
+ #define sh_status(set, clr) \
+ 	mmio_write_32(SH_STATUS, (mmio_read_32(SH_STATUS) & ~(clr)) | (set))
+ 
++/*
++ * Has the tick timer reached @deadline? The signed difference holds for
++ * anything less than 2^31 cycles (89 s) away on either side. timeout_expired()
++ * waits for the top bits to agree, so a deadline that was passed while the
++ * timer crossed bit 31 - a long suspend pass, the deep sleep's clock waits -
++ * would read "not yet" for up to 179 s, the power key included.
++ */
++static bool
++passed(uint32_t deadline)
++{
++	return (int32_t)(cycle_counter_read() - deadline) >= 0;
++}
++
+ /* ---- transmit queues: never block on an 8-deep FIFO ---------------------- */
+ static bool
+ q_empty(uint8_t q)
+@@ -254,7 +267,7 @@ q_drain(uint8_t q)
+ 	 * second belongs to a request it gave up on (an aborted RequestEDID),
+ 	 * and the pump reads no new request while it waits.
+ 	 */
+-	if (q == Q_REPLY && !q_empty(q) && timeout_expired(q_stall[q])) {
++	if (q == Q_REPLY && !q_empty(q) && passed(q_stall[q])) {
+ 		warn("H713: stale reply dropped");
+ 		q_head[q] = q_tail[q];
+ 	}
+@@ -767,7 +780,7 @@ h713_poll(void)
+ 	mips_poll();
+ 
+ 	/* The tick (blob 0x10db4) and the wake-up (0x10f3c) of the HPD pin. */
+-	bool tick = timeout_expired(hpd_deadline);
++	bool tick = passed(hpd_deadline);
+ 
+ 	if (tick)
+ 		hpd_deadline = timeout_set(HPD_TICK_US);
+@@ -827,7 +840,7 @@ h713_wake_poll(void)
+ 	}
+ 	/* Milliseconds asleep, stepped from the deadline so nothing drifts;
+ 	 * a long pass is caught up. */
+-	while (timeout_expired(ms_deadline)) {
++	while (passed(ms_deadline)) {
+ 		ms_deadline += CPUCLK_kHz;
+ 		mmio_write_32(H713_DIAG_SLEPT_MS,
+ 		              mmio_read_32(H713_DIAG_SLEPT_MS) + 1);
+@@ -837,7 +850,7 @@ h713_wake_poll(void)
+ 		return WAKE_TIMER;
+ 	}
+ 
+-	if (timeout_expired(key_deadline)) {
++	if (passed(key_deadline)) {
+ 		key_deadline = timeout_set(KEY_POLL_US);
+ 		if (gpio_get_value(&key_pin, &level) == SUCCESS && !level)
+ 			key_low++;

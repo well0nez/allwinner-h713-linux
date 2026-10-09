@@ -14,6 +14,10 @@ Layout (doku/68): slots of 4 KiB, every item twice (original + copy).
 
   h713-hdcp-key            set the key and load the driver
   h713-hdcp-key --check    only search and check, write nothing
+  h713-hdcp-key --bind DEV the driver is loaded and DEV unbound (h713-mips-restart
+                           after a new start of the MIPS): bind DEV while the key
+                           lies there. Exit 0 bound with the key, 3 bound without
+                           it (none found), 1 not bound, 2 no DEV
 """
 import os
 import struct
@@ -32,6 +36,7 @@ MODUL = "sun50i-h713-hdmirx"
 FW_NAME = "hy310-hdcp22.bin"
 FW_DIR = "/run/hy310/firmware"
 FW_PATH_PARAM = "/sys/module/firmware_class/parameters/path"
+BIND = "/sys/bus/platform/drivers/" + MODUL + "/bind"
 PARTLABEL = "/dev/disk/by-partlabel/hy310-keys"
 ROH = "/dev/mmcblk0"
 ROH_SUCHE = 16 << 20                    # stock device: the block lies in the first 16 MiB
@@ -114,11 +119,31 @@ def modul_geladen():
         return any(z.split()[0] == MODUL.replace("-", "_") for z in fh)
 
 
+def binden(geraet):
+    """Bind the receiver: its probe runs the init sequence, request_firmware() takes the key."""
+    try:
+        with open(BIND, "w") as fh:
+            fh.write(geraet)
+    except OSError as e:
+        sag("ERROR: binding %s: %s" % (geraet, e.strerror))
+        return False
+    return True
+
+
 def main():
     nur_pruefen = "--check" in sys.argv
+    geraet = None
+    if "--bind" in sys.argv:
+        i = sys.argv.index("--bind")
+        if i + 1 >= len(sys.argv):
+            sag("usage: h713-hdcp-key --bind DEVICE")
+            return 2
+        geraet = sys.argv[i + 1]
     nutz, grund = finden()
     if nutz is None:
         sag("ERROR: " + grund)
+        if geraet:                      # the picture without the 2.2 key rather than none
+            return 3 if binden(geraet) else 1
         return 1
     if nur_pruefen:
         sag("check passed - nothing written")
@@ -135,6 +160,11 @@ def main():
     try:
         with open(FW_PATH_PARAM, "w") as fh:
             fh.write(FW_DIR)
+        if geraet:
+            if not binden(geraet):
+                return 1
+            sag("%s bound, key handed over" % geraet)
+            return 0
         if modul_geladen():
             # Only when reloading by hand: at boot h713-tv is not running
             # yet, and the driver is loaded here for the first time.

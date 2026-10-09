@@ -1,0 +1,42 @@
+From f8870986e4b0c910e8ab94f787bca6f9f480f2c0 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:18:37 +0200
+Subject: [PATCH 54/80] h713: hdmi: the transfer state starts fresh after a
+ resume
+
+The DispMips frame state of the four ports, the ARM pump's state and the
+stall deadlines of the two transmit queues lived on across a standby. A
+frame the display MIPS left half-sent before it was parked made the next
+frame's header count as payload, so the first PullHotPlug after a MIPS
+reload could be lost; and a stall deadline from before a sleep longer
+than 89 s could hold port 0 for up to 89 s more (PRUEFUNG5 F11, F16 d).
+
+h713_resume_done() now resets them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index b39a9c6..c090125 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -1174,6 +1174,17 @@ h713_resume_done(void)
+ 	/* The HPD tick did not run asleep: a deadline from before the standby
+ 	 * would not expire for up to 89 s after a long one. */
+ 	hpd_deadline = timeout_set(HPD_TICK_US);
++	/*
++	 * The transfers start fresh: a frame the MIPS left half-sent before
++	 * it was parked would take the next one's header as payload, and a
++	 * reply's stall deadline from before a long sleep would hold port 0
++	 * (PRUEFUNG5 F11, F16 d).
++	 */
++	for (uint8_t q = 0; q < ARRAY_SIZE(mips); ++q)
++		mips[q].state = 0;
++	pump_state = 0;
++	for (uint8_t q = 0; q < Q_COUNT; ++q)
++		q_stall[q] = timeout_set(TXQ_STALL_US);
+ 	/* one standby per arming, as the vendor's 0x26 */
+ 	mmio_write_32(H713_DIAG_WAKE_TIMER, 0);
+ 	info("H713: resumed, wake word %x", mmio_read_32(SH_WAKE));

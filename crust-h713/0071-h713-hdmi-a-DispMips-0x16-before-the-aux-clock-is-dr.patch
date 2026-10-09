@@ -1,0 +1,66 @@
+From d8b22f4aa0c47926b1d46cdafefb702f8e60e6c7 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 23:07:19 +0200
+Subject: [PATCH 71/80] h713: hdmi: a DispMips 0x16 before the aux clock is
+ dropped, not an error
+
+A PullHotPlug from the display MIPS before the first ResetEDIDModule
+set the sticky error bit 5 and counted as a dropped MIPS frame. The
+blob drops exactly this frame without a word (0x12330), and so did the
+base: whether the MIPS sends one that early after a cold boot is not
+measured, and if it does, every boot would start with ERR 5 and a
+changed error counter, and stage A0's "ERR 0" would fail with nothing
+wrong (review of the release work, M2).
+
+The frame is now only counted with every 0x16 (CNT1[31:24]) and
+dropped; error bit 5 and CNT1[15:8] stay for the ways only a wrong ARM
+command reaches: publish, the HPD pin and RequestEDID.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 11 ++++++++---
+ platform/h713/include/platform/memory.h |  2 +-
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 0f7bed5..5bc3d3f 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -385,7 +385,8 @@ aux_clocked(void)
+ }
+ 
+ /* Every way into the aux block asks first: refused, recorded and counted
+- * without the clock (@who: 1 publish, 2 HPD pin, 3 RequestEDID, 4 MIPS). */
++ * without the clock (@who: 1 publish, 2 HPD pin, 3 RequestEDID). A MIPS
++ * 0x16 is only dropped (mips_frame). */
+ static bool
+ aux_ok(uint8_t who)
+ {
+@@ -692,8 +693,12 @@ mips_frame(uint8_t q, const uint8_t *p, uint8_t len)
+ 		uint8_t port = p[1], action = p[2];
+ 
+ 		h713_cnt(H713_CNT_MIPS_16);
+-		/* no aux clock before the first ResetEDIDModule */
+-		if (!aux_ok(4))
++		/*
++		 * No aux clock before the first ResetEDIDModule: dropped as
++		 * the blob drops it, counted above with every 0x16 and not as
++		 * an error - the MIPS may well send it that early at boot.
++		 */
++		if (!aux_clocked())
+ 			return;
+ 		if (action == 1)
+ 			sh_wr8(SH_HPD_COUNTER + port, sh_rd8(SH_HPD_COUNTER + port) + 1);
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 14c4fc3..390ed94 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -228,7 +228,7 @@
+ #define H713_ERR_TXQ_FULL    2
+ #define H713_ERR_SB_DROP     3
+ #define H713_ERR_CPU_OP      4
+-#define H713_ERR_AUX_CLOCK   5  /* detail 1 publish, 2 HPD pin, 3 RequestEDID, 4 MIPS */
++#define H713_ERR_AUX_CLOCK   5  /* detail 1 publish, 2 HPD pin, 3 RequestEDID */
+ #define H713_ERR_DRAM_PHY    6
+ #define H713_ERR_POLL        7
+ #define H713_ERR_RESTART     8

@@ -1,0 +1,2151 @@
+From 9d6dfeec7bcad95777854a816b422f304b2075f9 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 01:32:38 +0200
+Subject: [PATCH 01/80] platform/h713: Allwinner H713 with the vendor ARISC
+ contract (FB-CRUST)
+
+FB-CRUST package (umbau/work/FB-CRUST, 27.09.2026); author line normalised by
+crust-20261007 (the clone carried "FB-CRUST <fb-crust@localhost>" or a noreply
+address without the account number).
+---
+ common/system.c                           |  11 +-
+ configs/h713_hy310_defconfig              |   8 +
+ configs/h713_hy310_serial_defconfig       |  10 +
+ drivers/Makefile                          |   1 +
+ drivers/cir/Kconfig                       |   2 +-
+ drivers/clock/Makefile                    |   2 +
+ drivers/clock/sun50i-h713-ccu.c           | 105 ++++
+ drivers/clock/sun50i-h713-r-ccu.c         | 192 +++++++
+ drivers/counter/Makefile                  |   1 +
+ drivers/css/Makefile                      |   1 +
+ drivers/css/sun50i-h713-css.c             |  84 +++
+ drivers/dram/Makefile                     |   1 +
+ drivers/dram/sun50i-h713-dram.c           |  29 ++
+ drivers/hdmi/Makefile                     |   6 +
+ drivers/hdmi/sun50i-h713-hdmi.c           | 600 ++++++++++++++++++++++
+ drivers/irq/sun6i-a31-r-intc.c            |   2 +-
+ drivers/msgbox/Makefile                   |   4 +
+ drivers/msgbox/sun50i-h713-msgbox.c       | 120 +++++
+ drivers/serial/Makefile                   |   1 +
+ drivers/serial/sun50i-h713-uart.c         |  47 ++
+ drivers/watchdog/Kconfig                  |   9 +
+ drivers/watchdog/Makefile                 |   1 +
+ drivers/watchdog/sun50i-h713-wdt.c        |  64 +++
+ drivers/watchdog/watchdog.c               |   2 +-
+ include/drivers/clock/ccu.h               |   3 +
+ include/drivers/clock/sun50i-h713-ccu.h   |  21 +
+ include/drivers/clock/sun50i-h713-r-ccu.h |  31 ++
+ include/drivers/hdmi/sun50i-h713-hdmi.h   |  37 ++
+ platform/Kconfig                          |  12 +
+ platform/h713/Kconfig                     |  43 ++
+ platform/h713/include/platform/cpucfg.h   |  62 +++
+ platform/h713/include/platform/css.h      |  12 +
+ platform/h713/include/platform/devices.h  |  45 ++
+ platform/h713/include/platform/irq.h      |  28 +
+ platform/h713/include/platform/memory.h   |  46 ++
+ platform/h713/include/platform/prcm.h     |  72 +++
+ platform/h713/include/platform/time.h     |  22 +
+ 37 files changed, 1731 insertions(+), 6 deletions(-)
+ create mode 100644 configs/h713_hy310_defconfig
+ create mode 100644 configs/h713_hy310_serial_defconfig
+ create mode 100644 drivers/clock/sun50i-h713-ccu.c
+ create mode 100644 drivers/clock/sun50i-h713-r-ccu.c
+ create mode 100644 drivers/css/sun50i-h713-css.c
+ create mode 100644 drivers/dram/sun50i-h713-dram.c
+ create mode 100644 drivers/hdmi/Makefile
+ create mode 100644 drivers/hdmi/sun50i-h713-hdmi.c
+ create mode 100644 drivers/msgbox/sun50i-h713-msgbox.c
+ create mode 100644 drivers/serial/sun50i-h713-uart.c
+ create mode 100644 drivers/watchdog/sun50i-h713-wdt.c
+ create mode 100644 include/drivers/clock/sun50i-h713-ccu.h
+ create mode 100644 include/drivers/clock/sun50i-h713-r-ccu.h
+ create mode 100644 include/drivers/hdmi/sun50i-h713-hdmi.h
+ create mode 100644 platform/h713/Kconfig
+ create mode 100644 platform/h713/include/platform/cpucfg.h
+ create mode 100644 platform/h713/include/platform/css.h
+ create mode 100644 platform/h713/include/platform/devices.h
+ create mode 100644 platform/h713/include/platform/irq.h
+ create mode 100644 platform/h713/include/platform/memory.h
+ create mode 100644 platform/h713/include/platform/prcm.h
+ create mode 100644 platform/h713/include/platform/time.h
+
+diff --git a/common/system.c b/common/system.c
+index c1a633b..2b8b5df 100644
+--- a/common/system.c
++++ b/common/system.c
+@@ -26,6 +26,7 @@
+ #include <watchdog.h>
+ #include <clock/ccu.h>
+ #include <gpio/sunxi-gpio.h>
++#include <hdmi/sun50i-h713-hdmi.h>
+ #include <msgbox/sunxi-msgbox.h>
+ 
+ #define NEXT_STATE (system_state + 2)
+@@ -116,6 +117,7 @@ system_state_machine(uint32_t exception)
+ 
+ 		/* Acquire runtime-only devices. */
+ 		mailbox = device_get_or_null(&msgbox.dev);
++		h713_init();
+ 	}
+ 
+ 	/*
+@@ -143,7 +145,7 @@ system_state_machine(uint32_t exception)
+ 	 * nothing is listening, and skip sending the SCP_READY message to
+ 	 * avoid filling up the mailbox.
+ 	 */
+-	if (mailbox && initial_state == SS_BOOT) {
++	if (mailbox && initial_state == SS_BOOT && !CONFIG(H713_HDMI)) {
+ 		scpi_create_message(mailbox, SCPI_CLIENT_EL3,
+ 		                    SCPI_CMD_SCP_READY);
+ 	}
+@@ -159,8 +161,9 @@ system_state_machine(uint32_t exception)
+ 				watchdog_restart(watchdog);
+ 
+ 			/* Poll runtime services. */
+-			if (mailbox)
++			if (mailbox && !CONFIG(H713_HDMI))
+ 				scpi_poll(mailbox);
++			h713_poll();
+ 
+ 			break;
+ 		case SS_SHUTDOWN:
+@@ -178,6 +181,7 @@ system_state_machine(uint32_t exception)
+ 			/* Acquire wakeup sources. */
+ 			cec = cec_get();
+ 			cir = cir_get();
++			h713_suspend_prepare();
+ 
+ 			/* Configure the SoC for minimal power consumption. */
+ 			record_step(STEP_SUSPEND_DRAM);
+@@ -240,7 +244,7 @@ system_state_machine(uint32_t exception)
+ 			/* Poll wakeup sources. Reset or resume on wakeup. */
+ 			if ((cec && cec_poll(cec)) ||
+ 			    (cir && cir_poll(cir)) ||
+-			    irq_poll())
++			    (CONFIG(H713_HDMI) ? h713_wake_poll() : irq_poll()))
+ 				system_state = NEXT_STATE;
+ 
+ 			break;
+@@ -295,6 +299,7 @@ system_state_machine(uint32_t exception)
+ 			/* Resume execution on the CSS. */
+ 			record_step(STEP_RESUME_CSS);
+ 			css_resume();
++			h713_resume_done();
+ 
+ 			record_step(STEP_RESUME_COMPLETE);
+ 			debug("Resume complete!");
+diff --git a/configs/h713_hy310_defconfig b/configs/h713_hy310_defconfig
+new file mode 100644
+index 0000000..c9a7425
+--- /dev/null
++++ b/configs/h713_hy310_defconfig
+@@ -0,0 +1,8 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
+diff --git a/configs/h713_hy310_serial_defconfig b/configs/h713_hy310_serial_defconfig
+new file mode 100644
+index 0000000..b098b5e
+--- /dev/null
++++ b/configs/h713_hy310_serial_defconfig
+@@ -0,0 +1,10 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++CONFIG_SERIAL=y
++CONFIG_SERIAL_DEV_R_UART=y
++CONFIG_SERIAL_BAUD=115200
++CONFIG_DEBUG_LOG=y
++CONFIG_DEBUG_RECORD_STEPS=y
+diff --git a/drivers/Makefile b/drivers/Makefile
+index e9b45c9..19ddffe 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -10,6 +10,7 @@ obj-y += counter/
+ obj-y += css/
+ obj-y += dram/
+ obj-y += gpio/
++obj-$(CONFIG_H713_HDMI) += hdmi/
+ obj-y += irq/
+ obj-y += mfd/
+ obj-y += msgbox/
+diff --git a/drivers/cir/Kconfig b/drivers/cir/Kconfig
+index e34cad4..ac148f4 100644
+--- a/drivers/cir/Kconfig
++++ b/drivers/cir/Kconfig
+@@ -63,7 +63,7 @@ config CIR_USE_OSC24M
+ 
+ config R_CIR_RX_PIN
+ 	int
+-	default  9 if PLATFORM_H6
++	default  9 if PLATFORM_H6 || PLATFORM_H713
+ 	default 11 if PLATFORM_A64 || PLATFORM_H3
+ 	default 12 if PLATFORM_A83T
+ 	help
+diff --git a/drivers/clock/Makefile b/drivers/clock/Makefile
+index 57938e2..b0c365d 100644
+--- a/drivers/clock/Makefile
++++ b/drivers/clock/Makefile
+@@ -19,3 +19,5 @@ obj-$(CONFIG_PLATFORM_H3)   += sun8i-h3-ccu.o
+ obj-$(CONFIG_PLATFORM_H3)   += sun8i-r-ccu.o
+ obj-$(CONFIG_PLATFORM_H6)   += sun50i-h6-ccu.o
+ obj-$(CONFIG_PLATFORM_H6)   += sun50i-h6-r-ccu.o
++obj-$(CONFIG_PLATFORM_H713) += sun50i-h713-ccu.o
++obj-$(CONFIG_PLATFORM_H713) += sun50i-h713-r-ccu.o
+diff --git a/drivers/clock/sun50i-h713-ccu.c b/drivers/clock/sun50i-h713-ccu.c
+new file mode 100644
+index 0000000..3e6de9c
+--- /dev/null
++++ b/drivers/clock/sun50i-h713-ccu.c
+@@ -0,0 +1,105 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#include <bitmap.h>
++#include <clock.h>
++#include <device.h>
++#include <stdint.h>
++#include <clock/ccu.h>
++#include <platform/devices.h>
++
++#include "ccu.h"
++
++/*
++ * Main CCU, the few clocks this firmware touches. Offsets from the kernel's
++ * ccu-sun50i-h713.c (pll-ddr 0x010, mbus 0x540, bus-msgbox 0x71c, dram
++ * 0x800, bus-dram 0x80c); the blob snapshots 0x2001020 (PLL_PERIPH0) and
++ * 0x2001540 (DRAM clock) on the way into standby.
++ */
++static DEFINE_FIXED_RATE(ccu_get_pll_periph0_rate, 600000000U)
++static DEFINE_FIXED_PARENT(ccu_get_pll_ddr0, ccu, CLK_PLL_DDR0)
++static DEFINE_FIXED_PARENT(ccu_get_apb2_parent, r_ccu, CLK_OSC24M)
++
++static const struct ccu_clock ccu_clocks[SUN50I_H713_CCU_CLOCKS] = {
++	[CLK_PLL_DDR0] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = ccu_get_parent_rate,
++		.reg        = 0x0010,
++		.lock       = 28,
++		.gate       = BITMAP_INDEX(0x0010, 31),
++	},
++	[CLK_PLL_PERIPH0] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = ccu_get_pll_periph0_rate,
++	},
++	[CLK_APB2] = {
++		.get_parent = ccu_get_apb2_parent,
++		.get_rate   = ccu_get_parent_rate,
++	},
++	[CLK_MBUS] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = ccu_get_parent_rate,
++		.gate       = BITMAP_INDEX(0x0540, 31),
++		.reset      = BITMAP_INDEX(0x0540, 30),
++	},
++	[CLK_BUS_MSGBOX] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = ccu_get_parent_rate,
++		.gate       = BITMAP_INDEX(0x071c, 0),
++		.reset      = BITMAP_INDEX(0x071c, 16),
++	},
++	[CLK_DRAM] = {
++		.get_parent = ccu_get_pll_ddr0,
++		.get_rate   = ccu_get_parent_rate,
++		.reg        = 0x0800,
++		.update     = 27,
++		.reset      = BITMAP_INDEX(0x0800, 30),
++	},
++	[CLK_BUS_DRAM] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = ccu_get_parent_rate,
++		.gate       = BITMAP_INDEX(0x080c, 0),
++	},
++	[CLK_BUS_PIO] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = ccu_get_parent_rate,
++	},
++};
++
++const struct ccu ccu = {
++	.dev = {
++		.name  = "ccu",
++		.drv   = &ccu_driver.drv,
++		.state = CLOCK_DEVICE_STATE_INIT(SUN50I_H713_CCU_CLOCKS),
++	},
++	.clocks = ccu_clocks,
++	.regs   = DEV_CCU,
++};
++
++/* Light standby: the bus clocks of the main domain are not touched yet. */
++void
++ccu_suspend(void)
++{
++}
++
++void
++ccu_suspend_cluster(uint32_t cluster UNUSED)
++{
++}
++
++void
++ccu_resume(void)
++{
++}
++
++void
++ccu_resume_cluster(uint32_t cluster UNUSED)
++{
++}
++
++void
++ccu_init(void)
++{
++}
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+new file mode 100644
+index 0000000..b1e89c3
+--- /dev/null
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -0,0 +1,192 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#include <bitfield.h>
++#include <bitmap.h>
++#include <clock.h>
++#include <debug.h>
++#include <device.h>
++#include <mmio.h>
++#include <stddef.h>
++#include <stdint.h>
++#include <clock/ccu.h>
++#include <platform/devices.h>
++#include <platform/prcm.h>
++
++#include "ccu.h"
++
++/*
++ * R_PRCM of the H713 in the D1 layout (kernel ccu-sun20i-d1-r.c is the model
++ * the device tree binds; the blob's gate helper 0x5320 names 0x11c, 0x1cc,
++ * 0x20c, 0x260 and its EDID reset 0x120f0 names 0x120/0x124).
++ */
++static DEFINE_FIXED_RATE(r_ccu_get_osc24m_rate, 24000000U)
++static DEFINE_FIXED_RATE(r_ccu_get_osc32k_rate, 32768U)
++
++static const struct clock_handle r_ccu_bus_parents[] = {
++	{ .dev = &r_ccu.dev, .id = CLK_OSC24M },
++	{ .dev = &r_ccu.dev, .id = CLK_OSC32K },
++	{ .dev = &r_ccu.dev, .id = CLK_IOSC },
++	{ .dev = &ccu.dev, .id = CLK_PLL_PERIPH0 },
++};
++
++static const struct clock_handle *
++r_ccu_get_bus_parent(const struct ccu *self, const struct ccu_clock *clk)
++{
++	uint32_t val = mmio_read_32(self->regs + clk->reg);
++
++	return &r_ccu_bus_parents[bitfield_get(val, 24, 2)];
++}
++
++static uint32_t
++r_ccu_get_mp_rate(const struct ccu *self,
++                  const struct ccu_clock *clk, uint32_t rate)
++{
++	return ccu_helper_get_rate_mp(self, clk, rate, 0, 5, 8, 2);
++}
++
++static DEFINE_FIXED_PARENT(r_ccu_get_ar100, r_ccu, CLK_AR100)
++static DEFINE_FIXED_PARENT(r_ccu_get_r_ahb, r_ccu, CLK_R_AHB)
++
++static uint32_t
++r_ccu_get_r_apb1_rate(const struct ccu *self,
++                      const struct ccu_clock *clk, uint32_t rate)
++{
++	return ccu_helper_get_rate_m(self, clk, rate, 0, 2);
++}
++
++static DEFINE_FIXED_PARENT(r_ccu_get_r_apb1, r_ccu, CLK_R_APB1)
++
++static const struct clock_handle r_ccu_module_parents[] = {
++	{ .dev = &r_ccu.dev, .id = CLK_OSC32K },
++	{ .dev = &r_ccu.dev, .id = CLK_OSC24M },
++};
++
++static const struct clock_handle *
++r_ccu_get_module_parent(const struct ccu *self, const struct ccu_clock *clk)
++{
++	uint32_t val = mmio_read_32(self->regs + clk->reg);
++
++	return &r_ccu_module_parents[bitfield_get(val, 24, 1)];
++}
++
++#define R_APB1_GATE(_reg) \
++	.get_parent = r_ccu_get_r_apb1, .get_rate = ccu_get_parent_rate, \
++	.gate = BITMAP_INDEX(_reg, 0), .reset = BITMAP_INDEX(_reg, 16)
++
++static const struct ccu_clock r_ccu_clocks[SUN50I_H713_R_CCU_CLOCKS] = {
++	[CLK_IOSC] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = r_ccu_common_get_iosc_rate,
++	},
++	[CLK_OSC24M] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = r_ccu_get_osc24m_rate,
++	},
++	[CLK_OSC32K] = {
++		.get_parent = ccu_get_null_parent,
++		.get_rate   = r_ccu_get_osc32k_rate,
++	},
++	[CLK_AR100] = {
++		.get_parent = r_ccu_get_bus_parent,
++		.get_rate   = r_ccu_get_mp_rate,
++		.reg        = 0x0000,
++	},
++	[CLK_R_AHB] = {
++		.get_parent = r_ccu_get_ar100,
++		.get_rate   = ccu_get_parent_rate,
++	},
++	[CLK_R_APB1] = {
++		.get_parent = r_ccu_get_r_ahb,
++		.get_rate   = r_ccu_get_r_apb1_rate,
++		.reg        = 0x000c,
++	},
++	[CLK_R_APB2] = {
++		.get_parent = r_ccu_get_bus_parent,
++		.get_rate   = r_ccu_get_mp_rate,
++		.reg        = 0x0010,
++	},
++	[CLK_BUS_R_PIO] = {
++		.get_parent = r_ccu_get_r_apb1,
++		.get_rate   = ccu_get_parent_rate,
++	},
++	[CLK_BUS_R_TIMER]    = { R_APB1_GATE(0x011c) },
++	[CLK_BUS_R_TWD]      = { R_APB1_GATE(0x012c) },
++	[CLK_BUS_R_PWM]      = { R_APB1_GATE(0x013c) },
++	[CLK_BUS_R_UART]     = { R_APB1_GATE(0x018c) },
++	[CLK_BUS_R_I2C]      = { R_APB1_GATE(0x019c) },
++	[CLK_BUS_R_RSB] = {
++		.get_parent = r_ccu_get_r_apb1,
++		.get_rate   = ccu_get_parent_rate,
++	},
++	[CLK_BUS_R_CIR]      = { R_APB1_GATE(0x01cc) },
++	[CLK_R_CIR] = {
++		.get_parent = r_ccu_get_module_parent,
++		.get_rate   = r_ccu_get_mp_rate,
++		.reg        = 0x01c0,
++		.gate       = BITMAP_INDEX(0x01c0, 31),
++	},
++	[CLK_BUS_R_HDMI_AUX] = { R_APB1_GATE(0x0120) },
++	[CLK_R_HDMI_AUX] = {
++		.get_parent = r_ccu_get_module_parent,
++		.get_rate   = ccu_get_parent_rate,
++		.reg        = 0x0124,
++		.gate       = BITMAP_INDEX(0x0124, 31),
++	},
++};
++
++const struct ccu r_ccu = {
++	.dev = {
++		.name  = "r_ccu",
++		.drv   = &ccu_driver.drv,
++		.state = CLOCK_DEVICE_STATE_INIT(SUN50I_H713_R_CCU_CLOCKS),
++	},
++	.clocks = r_ccu_clocks,
++	.regs   = DEV_R_PRCM,
++};
++
++/*
++ * CPUS clock register as the boot loader left it. Persists across firmware
++ * restarts (.data), so a restart after an exception can still hand the
++ * original value back at resume; the linker checks the size of .data.
++ */
++static uint32_t cpus_clk_at_boot = 0xffffffff;
++
++void
++r_ccu_suspend(uint8_t depth)
++{
++	/*
++	 * Light standby only: PLLs, HOSC and the R domain stay as they are.
++	 * The blob's deeper steps (0xdd20: PLL_CTRL_REG1 key writes; 0xdea8:
++	 * VDD_SYS_PWROFF_GATING |= 4, |= 0x100, VDD_SYS_RESET &= ~1) are
++	 * written down in tables/arisc-contract.csv and wait for the DRAM
++	 * self-refresh port (drivers/dram/sun50i-h713-dram.c).
++	 */
++	(void)depth;
++}
++
++void
++r_ccu_resume(void)
++{
++	if (cpus_clk_at_boot != 0xffffffff)
++		mmio_write_32(CPUS_CLK_REG, cpus_clk_at_boot);
++}
++
++void
++r_ccu_init(void)
++{
++	/*
++	 * CPUS on OSC24M/1: a fixed, precise clock for the tick timer, so no
++	 * IOSC calibration against the system counter is needed (and none of
++	 * the blob's 0x4f70 loop). boot0 left the three "cpus timer" gates
++	 * 0x110/0x114/0x118 on; the kernel driver sets them again.
++	 */
++	if (cpus_clk_at_boot == 0xffffffff)
++		cpus_clk_at_boot = mmio_read_32(CPUS_CLK_REG);
++	mmio_write_32(CPUS_CLK_REG,
++	              CPUS_CLK_REG_CLK_SRC(0) |
++	              CPUS_CLK_REG_PRE_DIV(0) |
++	              CPUS_CLK_REG_DIV_P(0));
++}
+diff --git a/drivers/counter/Makefile b/drivers/counter/Makefile
+index bf1831b..6f5396f 100644
+--- a/drivers/counter/Makefile
++++ b/drivers/counter/Makefile
+@@ -8,3 +8,4 @@ obj-$(CONFIG_PLATFORM_A64)  += sun6i-a31-cnt64.o
+ obj-$(CONFIG_PLATFORM_A83T) += sun9i-a80-timestamp.o
+ obj-$(CONFIG_PLATFORM_H3)   += sun6i-a31-cnt64.o
+ obj-$(CONFIG_PLATFORM_H6)   += sun9i-a80-timestamp.o
++obj-$(CONFIG_PLATFORM_H713) += sun9i-a80-timestamp.o
+diff --git a/drivers/css/Makefile b/drivers/css/Makefile
+index 84d8813..a7850a2 100644
+--- a/drivers/css/Makefile
++++ b/drivers/css/Makefile
+@@ -12,3 +12,4 @@ obj-$(CONFIG_PLATFORM_A23) += sun6i-a31-css.o
+ obj-$(CONFIG_PLATFORM_A64) += sun50i-a64-css.o
+ obj-$(CONFIG_PLATFORM_H3)  += sun6i-a31-css.o
+ obj-$(CONFIG_PLATFORM_H6)  += sun50i-h6-css.o
++obj-$(CONFIG_PLATFORM_H713) += sun50i-h713-css.o
+diff --git a/drivers/css/sun50i-h713-css.c b/drivers/css/sun50i-h713-css.c
+new file mode 100644
+index 0000000..761d759
+--- /dev/null
++++ b/drivers/css/sun50i-h713-css.c
+@@ -0,0 +1,84 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#include <delay.h>
++#include <mmio.h>
++#include <scpi_protocol.h>
++#include <stdint.h>
++#include <platform/cpucfg.h>
++
++#include "css.h"
++
++/*
++ * Cluster down: what the blob's 0x4b28 does after "cpu op req" (FB-STANDBY
++ * excerpt D): C0_PWRON_RESET = 0, bit 0 of CPU_UNK 0..3 cleared (power-on
++ * reset of every core), CPU_SYS_RESET = 0, then the clamps.
++ * Core up: TF-A's proven sunxi_cpu_on() for the ncat register file, with the
++ * warm entry the ARM handed us in ALT_RVBAR (blob 0x4c40/0x4be4).
++ */
++static uint32_t warm_entry_lo, warm_entry_hi;
++
++void
++css_set_warm_entry(uint32_t lo, uint32_t hi)
++{
++	warm_entry_lo = lo;
++	warm_entry_hi = hi;
++}
++
++void
++css_suspend_css(uint32_t new_state)
++{
++	if (new_state < SCPI_CSS_OFF)
++		return;
++
++	mmio_write_32(C0_PWRON_RESET_REG, 0);
++	for (uint32_t i = 0; i < MAX_CORES_PER_CLUSTER; ++i)
++		mmio_clr_32(CPU_UNK_REG(i), CPU_UNK_REG_nPORESET);
++	mmio_write_32(CPU_SYS_RESET_REG, 0);
++	for (uint32_t i = 0; i < MAX_CORES_PER_CLUSTER; ++i)
++		mmio_write_32(C0_CPUn_PWR_SWITCH_REG(i), 0xff);
++}
++
++void
++css_resume_css(uint32_t old_state)
++{
++	if (old_state < SCPI_CSS_OFF)
++		return;
++
++	/* Mirror of the way down; the blob's 0xddec/0xe3f4 order is a guess. */
++	mmio_write_32(CPU_SYS_RESET_REG, CPU_SYS_RESET);
++	mmio_write_32(C0_PWRON_RESET_REG, C0_PWRON_RESET_REG_nH_RST);
++}
++
++void
++css_resume_core(uint32_t cluster UNUSED, uint32_t core, uint32_t old_state)
++{
++	if (old_state < SCPI_CSS_OFF)
++		return;
++
++	mmio_write_32(ALT_RVBAR_LO_REG(core), warm_entry_lo);
++	mmio_write_32(ALT_RVBAR_HI_REG(core), warm_entry_hi);
++
++	/* TF-A sunxi_cpu_on(), non-per-cluster path. */
++	mmio_clr_32(C0_CPU_CTRL_REG(core), C0_CPU_CTRL_REG_CORE_RESET);
++	mmio_clr_32(CPU_UNK_REG(core), CPU_UNK_REG_nPORESET);
++	mmio_set_32(CPU_CTRL_REG(core), CPU_CTRL_REG_AA64nAA32);
++	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0xfe);
++	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0xf8);
++	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0xe0);
++	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0x80);
++	mmio_write_32(C0_CPUn_PWR_SWITCH_REG(core), 0x00);
++	udelay(1);
++	mmio_clr_32(CPU_UNK_REG(core), CPU_UNK_REG_CLAMP);
++	mmio_set_32(CPU_UNK_REG(core), CPU_UNK_REG_nPORESET);
++	mmio_set_32(C0_CPU_CTRL_REG(core), C0_CPU_CTRL_REG_CORE_RESET);
++	mmio_set_32(C0_CPU_CTRL_REG(core), C0_CPU_CTRL_REG_DBG_PWRUP);
++}
++
++void
++css_init(void)
++{
++	/* The cores are already running with U-Boot's/TF-A's RVBAR. */
++}
+diff --git a/drivers/dram/Makefile b/drivers/dram/Makefile
+index c2e9225..5064e02 100644
+--- a/drivers/dram/Makefile
++++ b/drivers/dram/Makefile
+@@ -8,3 +8,4 @@ obj-y += dram.o
+ obj-$(CONFIG_PLATFORM_A64) += sun8i-h3-dram.o
+ obj-$(CONFIG_PLATFORM_H3)  += sun8i-h3-dram.o
+ obj-$(CONFIG_PLATFORM_H6)  += sun50i-h6-dram.o
++obj-$(CONFIG_PLATFORM_H713) += sun50i-h713-dram.o
+diff --git a/drivers/dram/sun50i-h713-dram.c b/drivers/dram/sun50i-h713-dram.c
+new file mode 100644
+index 0000000..d6d151b
+--- /dev/null
++++ b/drivers/dram/sun50i-h713-dram.c
+@@ -0,0 +1,29 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#include <debug.h>
++
++/*
++ * The H713 DRAM controller is not the H6's: the blob's standby driver
++ * (enter 0x142dc -> 0x14004, exit 0x145b0) works on DRAMCOM 0x04002000,
++ * DRAMCTL 0x04810000, PHY 0x04820000 and a 128-byte copy at 0x04800100.
++ * Until that routine is ported (FOLLOW-UP TASKS), the DRAM stays clocked
++ * and never enters self-refresh: "light standby".
++ */
++void
++dram_suspend(void)
++{
++	debug("DRAM: no self-refresh on this SoC yet");
++}
++
++void
++dram_resume(void)
++{
++}
++
++void
++dram_init(void)
++{
++}
+diff --git a/drivers/hdmi/Makefile b/drivers/hdmi/Makefile
+new file mode 100644
+index 0000000..445c719
+--- /dev/null
++++ b/drivers/hdmi/Makefile
+@@ -0,0 +1,6 @@
++#
++# Copyright © 2026 The Crust Firmware Authors.
++# SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++#
++
++obj-$(CONFIG_H713_HDMI) += sun50i-h713-hdmi.o
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+new file mode 100644
+index 0000000..59bf977
+--- /dev/null
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -0,0 +1,600 @@
++/*
++ * Copyright © 2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++/*
++ * The vendor ARISC firmware's contract on the H713 as sun50i-h713-arisc
++ * (kernel 0091*) and TF-A (FB-STANDBY tfa-0001) speak it; every row with
++ * its evidence is in tables/arisc-contract.csv. ARM -> ARISC: user1 ports
++ * 0 (BOP pump) and 3 (standby dispatcher); ARISC -> ARM: user0 channels 1
++ * (framed replies) and 3 (notify, answers). Shared variables sit in the
++ * contract page with the vendor build's relative distances. Bytes the ARM
++ * writes with writeb() are read through mmio_read_8() (address ^ 3: the
++ * AR100 data bus swaps every word) and written the same way.
++ */
++
++#include <cir.h>
++#include <css.h>
++#include <debug.h>
++#include <delay.h>
++#include <device.h>
++#include <error.h>
++#include <mmio.h>
++#include <msgbox.h>
++#include <scpi_protocol.h>
++#include <stdbool.h>
++#include <stdint.h>
++#include <system.h>
++#include <timeout.h>
++#include <util.h>
++#include <version.h>
++#include <cir/sunxi-cir.h>
++#include <gpio/sunxi-gpio.h>
++#include <hdmi/sun50i-h713-hdmi.h>
++#include <msgbox/sunxi-msgbox.h>
++#include <platform/devices.h>
++#include <platform/memory.h>
++#include <platform/prcm.h>
++
++/* ---- the contract page (AR100 view; ARM = + SRAM_A2_OFFSET) ------------- */
++#define SH_MAGIC        (H713_SHARED_BASE + 0x000) /* "H713" as ARM reads it */
++#define SH_VERSION      (H713_SHARED_BASE + 0x004)
++#define SH_STATUS       (H713_SHARED_BASE + 0x008)
++#define SH_WAKE         (H713_SHARED_BASE + 0x00c)
++#define SH_HPD_COUNTER  (H713_SHARED_BASE + 0x010) /* 3 bytes, g_Data - 16 */
++#define SH_GDATA        (H713_SHARED_BASE + 0x020)
++#define SH_EDID_READY   (SH_GDATA + 2)
++#define SH_EDID_GATE    (SH_GDATA + 3)
++#define SH_EDID_MASK    (SH_GDATA + 4)
++#define SH_PORTMAP      (SH_GDATA + 12)            /* 3 records of 8 bytes */
++#define SH_SCRATCH      (SH_GDATA + 228)           /* 65 bytes */
++#define SH_RPM_STATE    (H713_SHARED_BASE + 0x180)
++#define SH_RPM_BUF      (SH_RPM_STATE + 5)         /* 67 bytes */
++
++#define H713_MAGIC      0x33313748                 /* 'H','7','1','3' */
++#define H713_VERSION    0x00000001
++#define ST_RUNNING      BIT(0)
++#define ST_HANDSHAKE    BIT(1)
++#define ST_EDID_MODULE  BIT(2)
++#define ST_ASLEEP       BIT(3)
++
++#define PORTS           3
++#define REC_PHYS        1
++#define REC_PIN         2
++#define REC_PIN_BIT     3
++#define REC_REVERSE     4
++#define SCRATCH_LEN     65
++#define EDID_BLOCK      256
++
++/* ---- message box channels (drivers/msgbox/sun50i-h713-msgbox.c) --------- */
++#define RX_PORT(p)      (2 * (p))      /* ARM -> ARISC, user1 port p */
++#define TX_CHAN(c)      (2 * (c) + 1)  /* ARISC -> ARM, user0 channel c */
++#define PORT_HDMI       RX_PORT(0)
++#define PORT_STANDBY    RX_PORT(3)
++#define CHAN_REPLY      TX_CHAN(1)
++#define CHAN_NOTIFY     TX_CHAN(3)
++
++/* ---- the HDMI aux block (RTC domain) ------------------------------------ */
++#define AUX_HPD_REG     (DEV_HDMI_AUX + 0x014) /* active-low, one bit per pin */
++#define AUX_UNK_B00     (DEV_HDMI_AUX + 0xb00)
++#define AUX_GATE_REG    (DEV_HDMI_AUX + 0xb04) /* EDID/DDC output, bit per port */
++#define AUX_UNK_B08     (DEV_HDMI_AUX + 0xb08)
++#define AUX_DDC_RAM(p)  (DEV_HDMI_AUX + 0xc00 + 0x100 * (p))
++#define R_PIO_PL_CFG1   (DEV_R_PIO + 0x004)    /* PL8..PL15 function */
++
++#define BOP_MARKER      0xa5
++#define BOP_MAX_LEN     128
++#define REPLY_TYPE      1
++#define FRAME_HEAD      0xff
++#define FRAME_TAIL      0xfe
++#define SB_STATE        2
++#define TYPE_NOTIFY     0x90 /* startup notify / its acknowledgement */
++#define TYPE_RESTORE    0x11 /* cpu0 restore finished -> wake word */
++#define TYPE_CPU_OP     0x22 /* cpu op req: {mpidr, entry, 3, 3, 3} */
++#define TYPE_WAKE_CLR   0x25
++#define TYPE_WAKE_SET   0x26
++#define RESULT_UNKNOWN  0xfd
++#define HPD_RESET_TICKS 84    /* ~840 ms low, then the rising edge */
++#define HPD_TICK_US     10000
++#define WAKE_KEY        0x95  /* GIC SPI 149, PL EINT */
++#define WAKE_IR         0x9b  /* GIC SPI 155, s_cir */
++#define KEY_POLL_US     20000
++#define KEY_DEBOUNCE    3
++
++static uint8_t  edid[2 * EDID_BLOCK];
++static uint32_t txq[128];
++static uint8_t  txq_head, txq_tail, txq_chan, seq;
++static uint8_t  pump_state, pump_len, pump_idx, pump_type;
++static uint8_t  sb_n, sb_count;
++static uint32_t sb_hdr, sb_data[8];
++static uint32_t hpd_deadline, key_deadline;
++static uint8_t  key_low;
++static uint32_t pl_cfg_saved;
++static const struct device *cir;
++
++#define PL(pin, m, p) { .dev = &r_pio.dev, .id = SUNXI_GPIO_PIN(0, pin), \
++	.drive = DRIVE_10mA, .mode = m, .pull = p }
++static const struct gpio_handle key_pin  = PL(CONFIG_H713_POWER_KEY_PIN, MODE_INPUT, PULL_UP);
++static const struct gpio_handle led_red  = PL(0, MODE_OUTPUT, PULL_NONE); /* dt led0 */
++static const struct gpio_handle led_blue = PL(1, MODE_OUTPUT, PULL_NONE); /* dt led1 */
++
++#if CONFIG(H713_IR_WAKE_NECX)
++/* cir_param of the HY310 and HY300 Pro vendor DTs, in crust's NECX order. */
++#define IR(addr, cmd) ((((addr) & 0xff) << 16) | ((addr) & 0xff00) | (cmd))
++static const uint32_t ir_wake_codes[] = {
++	IR(0xff00, 0x14), IR(0xff00, 0x45), IR(0x2992, 0xf2), IR(0x9f00, 0x57),
++	IR(0x4cb3, 0xdc), IR(0xff11, 0x18), IR(0xdd22, 0xdc), IR(0xff00, 0x1c),
++	IR(0xfb04, 0x08), IR(0xef00, 0x0c), IR(0xfe01, 0x1a), IR(0xdf20, 0x4e),
++	IR(0xfd02, 0x0d), IR(0xbf40, 0x0b), IR(0x7f80, 0x02), IR(0xfc03, 0x06),
++	IR(0xff00, 0x12), IR(0xef10, 0x28), IR(0xa00e, 0xc9),
++};
++#endif
++
++#define sh_rd8(a)    mmio_read_8(a)
++#define sh_wr8(a, v) mmio_write_8(a, v)
++#define sh_status(set, clr) \
++	mmio_write_32(SH_STATUS, (mmio_read_32(SH_STATUS) & ~(clr)) | (set))
++
++/* ---- transmit queue: never block on an 8-deep FIFO ----------------------- */
++static void
++txq_put(uint32_t w)
++{
++	uint8_t next = (txq_tail + 1) % ARRAY_SIZE(txq);
++
++	if (next == txq_head) {
++		warn("H713: tx queue full"); return;
++	}
++	txq[txq_tail] = w;
++	txq_tail = next;
++}
++
++static void
++txq_drain(void)
++{
++	while (txq_head != txq_tail) {
++		if (msgbox_send(&msgbox.dev, txq_chan, txq[txq_head]))
++			return;
++		txq_head = (txq_head + 1) % ARRAY_SIZE(txq);
++	}
++}
++
++/* Framed sender (blob 0x118e4/0x81c8): header, zero word, payload LSB first. */
++static void
++reply_frame(uint8_t *payload, uint8_t len)
++{
++	uint32_t sum = 0;
++
++	payload[0] = FRAME_HEAD;
++	for (uint8_t i = 1; i + 6 <= len; ++i)
++		sum += payload[i];
++	payload[len - 2] = (uint8_t)-sum;
++	payload[len - 1] = FRAME_TAIL;
++
++	txq_chan = CHAN_REPLY;
++	txq_put(BOP_MARKER | seq << 8 | REPLY_TYPE << 16 | (uint32_t)len << 24);
++	txq_put(0);
++	seq = seq % 255 + 1;
++	for (uint8_t i = 0; i < len; i += 4) {
++		uint32_t w = 0;
++
++		for (uint8_t b = 0; b < 4 && i + b < len; ++b)
++			w |= (uint32_t)payload[i + b] << (8 * b);
++		txq_put(w);
++	}
++}
++
++/* ---- the HDMI aux block --------------------------------------------------- */
++static void
++aux_gate(uint8_t mask, bool open)
++{
++	uint32_t v = mmio_read_32(AUX_GATE_REG);
++
++	mmio_write_32(AUX_GATE_REG, open ? (v | mask) : (v & ~(uint32_t)mask));
++}
++
++static void
++hpd_pin(uint8_t port, bool high)
++{
++	uint32_t bit = BIT(sh_rd8(SH_PORTMAP + 8 * port + REC_PIN) & 7);
++	uint32_t v   = mmio_read_32(AUX_HPD_REG);
++
++	if (!sh_rd8(SH_EDID_GATE))
++		high = false; /* blob 0x121e4: EDID-HPD LOW while gated */
++	mmio_write_32(AUX_HPD_REG, high ? (v & ~bit) : (v | bit));
++}
++
++/* Publish (blob 0x11d88): block by port mask, the port's physical-address
++ * byte into the HDMI vendor block, checksum, gate closed while writing. */
++static void
++publish(void)
++{
++	uint8_t mask = sh_rd8(SH_EDID_MASK);
++
++	if (!sh_rd8(SH_EDID_READY))
++		return;
++	aux_gate(0x7, false);
++	for (uint8_t port = 0; port < PORTS; ++port) {
++		const uint8_t *src = &edid[((mask >> port) & 1) * EDID_BLOCK];
++		uint8_t blk[EDID_BLOCK], phys, sum = 0;
++
++		for (int i = 0; i < EDID_BLOCK; ++i)
++			blk[i] = src[i];
++		phys = sh_rd8(SH_PORTMAP + 8 * port + REC_PHYS);
++		/* CEA-861 data block collection: tag 3 with IEEE 00 0c 03. */
++		for (int i = 128 + 4; i < 128 + blk[128 + 2] && i < 255;) {
++			uint8_t tag = blk[i] >> 5, len = blk[i] & 0x1f;
++
++			if (tag == 3 && len >= 5 && blk[i + 1] == 0x03 &&
++			    blk[i + 2] == 0x0c && blk[i + 3] == 0x00)
++				blk[i + 4] = phys;
++			i += 1 + len;
++		}
++		for (int i = 128; i < 255; ++i)
++			sum += blk[i];
++		blk[255] = (uint8_t)-sum;
++		for (int i = 0; i < EDID_BLOCK; i += 4)
++			mmio_write_32(AUX_DDC_RAM(port) + i,
++			              blk[i] | blk[i + 1] << 8 |
++			              blk[i + 2] << 16 | (uint32_t)blk[i + 3] << 24);
++	}
++	aux_gate(0x7, true);
++	sh_wr8(SH_EDID_GATE, 1);
++}
++
++/* ResetEDIDModule (blob 0x120f0): clocks, pins, the block, the state bytes. */
++static void
++reset_module(void)
++{
++	mmio_write_32(R_HDMI_AUX_GATE_REG, 0);
++	udelay(5000);
++	mmio_write_32(R_HDMI_AUX_GATE_REG, 0x10001);
++	mmio_write_32(R_HDMI_AUX_CLK_REG, BIT(31));
++	mmio_set_32(R_PIO_PL_CFG1, 0x22222200);	/* PL10..PL15 function 2 */
++	mmio_write_32(AUX_UNK_B08, 0xc0c0c0c0);
++	mmio_write_32(AUX_GATE_REG, (mmio_read_32(AUX_GATE_REG) & 0x00ffffff) | 1);
++	sh_wr8(SH_EDID_READY, 0);
++	sh_wr8(SH_EDID_GATE, 0);
++	sh_wr8(SH_EDID_MASK, 0);
++	aux_gate(0x7, false);
++	mmio_write_32(AUX_UNK_B00, 0x00a0a0a0);
++	sh_wr8(SH_EDID_READY, 1);
++	publish();
++	sh_status(ST_EDID_MODULE, 0);
++}
++
++static void
++portmap_init(void) /* the ROM identity table, blob 0x15edc */
++{
++	for (uint8_t p = 0; p < PORTS; ++p) {
++		uintptr_t rec = SH_PORTMAP + 8 * p;
++
++		sh_wr8(rec + 0, BIT(p));
++		sh_wr8(rec + REC_PHYS, 0x10 * (p + 1));
++		sh_wr8(rec + REC_PIN, p);
++		sh_wr8(rec + REC_PIN_BIT, BIT(p));
++		sh_wr8(rec + REC_REVERSE, p);
++	}
++}
++
++/* ---- the sub-commands (classify 0x114e8, group handler 0x11550) ---------- */
++static void
++group_11(uint8_t hi)
++{
++	uint8_t a1 = sh_rd8(SH_RPM_BUF + 2), a2 = sh_rd8(SH_RPM_BUF + 3);
++
++	for (uint8_t i = 0; i < SCRATCH_LEN; ++i)
++		sh_wr8(SH_SCRATCH + i, 0);
++
++	switch (hi) {
++	case 0: {	/* HostHDMIMAP: the pins, then a republish */
++		uint8_t map[PORTS] = { a1, a2, sh_rd8(SH_RPM_BUF + 4) };
++
++		for (uint8_t p = 0; p < PORTS; ++p) {
++			uintptr_t rec = SH_PORTMAP + 8 * p;
++
++			sh_wr8(rec + REC_PIN, map[p] & 7);
++			sh_wr8(rec + REC_PIN_BIT, BIT(map[p] & 7));
++			sh_wr8(rec + REC_REVERSE, map[p]);
++		}
++		publish();
++		break;
++	}
++	case 1: {	/* UpdateEDID: fragment a1, byte 0 in a2, 63 more */
++		uint8_t frag = a1 & 7, *dst = &edid[64 * frag];
++
++		for (uint8_t i = 0; i < SCRATCH_LEN; ++i)
++			sh_wr8(SH_SCRATCH + i, sh_rd8(SH_RPM_BUF + 2 + i));
++		dst[0] = a2;
++		for (uint8_t i = 1; i < 64; ++i)
++			dst[i] = sh_rd8(SH_RPM_BUF + 3 + i);
++		sh_wr8(SH_EDID_READY, frag == 7);
++		if (frag == 7)
++			publish();
++		break;
++	}
++	case 2:		/* PullHotPlug: port a1, value 1 up / 2 down / 3 reset */
++		sh_wr8(SH_SCRATCH + 0, a1);
++		sh_wr8(SH_SCRATCH + 1, a2);
++		if (a1 >= PORTS)
++			warn("H713: wrong HDMI port %u", a1);
++		else if (a2 == 1)
++			sh_wr8(SH_HPD_COUNTER + a1, sh_rd8(SH_HPD_COUNTER + a1) + 1);
++		else if (a2 == 2 || a2 == 3)
++			hpd_pin(a1, false), sh_wr8(SH_HPD_COUNTER + a1, a2 == 3 ? HPD_RESET_TICKS : 0);
++		else
++			warn("H713: unknown hotplug type %u", a2);
++		break;
++	case 3:		/* SetEDIDVersion: the per-port block mask */
++		sh_wr8(SH_SCRATCH + 0, a1);
++		sh_wr8(SH_EDID_MASK, a1 & 0xf);
++		break;
++	case 0x20:	/* ResetEDIDModule */
++		reset_module();
++		break;
++	default:	/* SET5VFlag (4), SetEDIDAudioMode (5): accepted, no effect */
++		break;
++	}
++}
++
++static void
++group_15(uint8_t hi)
++{
++	uint8_t port = sh_rd8(SH_RPM_BUF + 2), frame[72];
++
++	if (hi == 2) {		/* CheckEDIDUpdateStatus: ff f8 01 01 <ready> 00 cks fe */
++		frame[1] = 0xf8, frame[2] = 0x01, frame[3] = 0x01;
++		frame[4] = sh_rd8(SH_EDID_READY), frame[5] = 0;
++		reply_frame(frame, 8);
++	} else if (hi == 3 && port < PORTS) {	/* RequestEDID: 4 x 64 bytes */
++		for (uint8_t idx = 0; idx < 4; ++idx) {
++			frame[1] = 0xf8, frame[2] = 0x02, frame[3] = 0x41, frame[4] = idx;
++			for (uint8_t i = 0; i < 64; ++i)
++				frame[5 + i] = mmio_read_32(AUX_DDC_RAM(port) + 64 * idx + (i & ~3)) >> (8 * (i & 3));
++			frame[69] = 0;
++			reply_frame(frame, 72);
++		}
++	}
++}
++
++static void
++classify(void)
++{
++	uint8_t lo = sh_rd8(SH_RPM_BUF + 0), hi = sh_rd8(SH_RPM_BUF + 1);
++
++	if (pump_type != 0) {
++		warn("H713: unknown ARM message type %u", pump_type); return;
++	}
++	if (lo == 0x11)
++		group_11(hi);
++	else if (lo == 0x15)
++		group_15(hi);
++	else if (lo < 0x10 || lo > 0x15)
++		warn("H713: unknown sub-command %02x%02x", hi, lo);
++}
++
++/* BOP pump (blob 0x7fd8): header word, pad word, then <len> payload bytes. */
++static void
++pump_word(uint32_t w)
++{
++	switch (pump_state) {
++	case 0:
++		if ((w & 0xff) != BOP_MARKER)
++			return;
++		pump_type = w >> 16;
++		pump_len  = w >> 24;
++		pump_idx  = 0;
++		pump_state = pump_len > BOP_MAX_LEN ? 0 : 1;
++		break;
++	case 1:
++		if (pump_len == 0) {
++			pump_state = 0;
++			classify();
++		} else {
++			pump_state = 2;
++		}
++		break;
++	default:
++		for (uint8_t b = 0; b < 4 && pump_idx < pump_len; ++b, ++pump_idx)
++			sh_wr8(SH_RPM_BUF + pump_idx, w >> (8 * b));
++		if (pump_idx >= pump_len) {
++			pump_state = 0;
++			classify();
++		}
++		break;
++	}
++}
++
++/* ---- the standby dispatcher on port 3 (blob 0xbca0) ----------------------- */
++static void
++sb_reply(uint8_t type, uint8_t result, uint32_t *data, uint8_t count)
++{
++	uint8_t attr = sb_hdr >> 8;
++
++	if (!(attr & 3))
++		return;
++	txq_chan = CHAN_NOTIFY;
++	txq_put(SB_STATE | (uint32_t)attr << 8 | (uint32_t)type << 16 |
++	        (uint32_t)result << 24);
++	txq_put(count);
++	for (uint8_t i = 0; i < count; ++i)
++		txq_put(data[i]);
++}
++
++static void
++sb_frame(void)
++{
++	uint8_t type = sb_hdr >> 16;
++
++	switch (type) {
++	case TYPE_NOTIFY:	/* the ARM's acknowledgement of our notify */
++		sh_status(ST_HANDSHAKE, 0);
++		info("H713: startup notify acknowledged");
++		break;
++	case TYPE_CPU_OP:	/* {mpidr, entrypoint, cpu, cluster, system} */
++		if (sb_count < 2 || sb_data[1] == 0) {
++			sb_reply(type, RESULT_UNKNOWN, NULL, 0);
++			break;
++		}
++		info("H713: cpu op req, warm entry %p", (void *)sb_data[1]);
++		css_set_warm_entry(sb_data[1], 0);
++		udelay(2000);
++		css_set_power_state(0, sb_data[0] & 0xf, SCPI_CSS_OFF,
++		                    SCPI_CSS_OFF, SCPI_CSS_OFF);
++		break;
++	case TYPE_RESTORE: {	/* answered with the wake word */
++		uint32_t wake = mmio_read_32(SH_WAKE);
++
++		sb_reply(type, 0, &wake, 1);
++		break;
++	}
++	case TYPE_WAKE_SET:
++	case TYPE_WAKE_CLR:	/* key, IR and CEC are armed without them */
++		sb_reply(type, 0, NULL, 0); break;
++	default:
++		sb_reply(type, RESULT_UNKNOWN, NULL, 0); break;
++	}
++}
++
++static void
++sb_word(uint32_t w)
++{
++	if (sb_n == 0) {
++		sb_hdr = w;
++	} else if (sb_n == 1) {
++		sb_count = w & 0xff;
++	} else if (sb_n < 2 + ARRAY_SIZE(sb_data)) {
++		sb_data[sb_n - 2] = w;
++	}
++	++sb_n;
++	if (sb_n >= 2 && sb_n == 2 + sb_count) {
++		sb_n = 0;
++		sb_frame();
++	}
++}
++
++/* Startup notify (blob 0xc4b0): 13 words of version text in the odd byte
++ * order that the driver's arisc_notify_version() undoes. */
++static void
++send_notify(void)
++{
++	static const char version[] = "crust-h713 contract v1 " VERSION_STRING;
++	uint8_t s[52];
++
++	for (uint8_t i = 0, end = 0; i < sizeof(s); ++i)
++		s[i] = (end || !(end = !version[i])) ? 0 : version[i];
++	txq_chan = CHAN_NOTIFY;
++	txq_put((uint32_t)TYPE_NOTIFY << 16 | 2 << 8);
++	txq_put(13);
++	for (uint8_t k = 0; k < 13; ++k) {
++		uint32_t w = (k ? s[4 * k - 4] : 0) | (uint32_t)s[4 * k + 3] << 8 |
++		             (uint32_t)s[4 * k + 2] << 16 | (uint32_t)s[4 * k + 1] << 24;
++
++		txq_put(w);
++	}
++}
++
++void
++h713_init(void)
++{
++	for (uintptr_t a = H713_SHARED_BASE; a < H713_SHARED_LIMIT; a += 4)
++		mmio_write_32(a, 0);
++	mmio_write_32(SH_MAGIC, H713_MAGIC);
++	mmio_write_32(SH_VERSION, H713_VERSION);
++	portmap_init();
++	device_get(&msgbox.dev);
++	send_notify();
++	sh_status(ST_RUNNING, 0);
++	hpd_deadline = timeout_set(HPD_TICK_US);
++}
++
++void
++h713_poll(void)
++{
++	uint32_t w;
++
++	txq_drain();
++	while (txq_head == txq_tail &&
++	       msgbox_receive(&msgbox.dev, PORT_STANDBY, &w) == SUCCESS)
++		sb_word(w);
++	while (txq_head == txq_tail &&
++	       msgbox_receive(&msgbox.dev, PORT_HDMI, &w) == SUCCESS)
++		pump_word(w);
++
++	/* The tick (blob 0x10db4) and the wake-up (0x10f3c) of the HPD pin. */
++	bool tick = timeout_expired(hpd_deadline);
++
++	if (tick)
++		hpd_deadline = timeout_set(HPD_TICK_US);
++	for (uint8_t p = 0; p < PORTS; ++p) {
++		uint8_t c = sh_rd8(SH_HPD_COUNTER + p);
++
++		if (c == 1)
++			sh_wr8(SH_HPD_COUNTER + p, 0), hpd_pin(p, true);
++		else if (c > 1 && tick)
++			sh_wr8(SH_HPD_COUNTER + p, c - 1);
++	}
++	mmio_write_32(SH_STATUS, mmio_read_32(SH_STATUS) + 0x10000); /* heartbeat */
++}
++
++void
++h713_suspend_prepare(void)
++{
++	pl_cfg_saved = mmio_read_32(R_PIO_PL_CFG1);	/* PL9's function */
++	cir = cir_get();
++	if (gpio_get(&key_pin))
++		warn("H713: power key pin unavailable");
++	if (!gpio_get(&led_red))
++		gpio_set_value(&led_red, true);
++	if (!gpio_get(&led_blue))
++		gpio_set_value(&led_blue, false);
++	key_low = 0;
++	key_deadline = timeout_set(KEY_POLL_US);
++	mmio_write_32(SH_WAKE, 0);
++	sh_status(ST_ASLEEP, 0);
++}
++
++uint32_t
++h713_wake_poll(void)
++{
++	bool level;
++
++	if (timeout_expired(key_deadline)) {
++		key_deadline = timeout_set(KEY_POLL_US);
++		if (gpio_get_value(&key_pin, &level) == SUCCESS && !level)
++			key_low++;
++		else
++			key_low = 0;
++		if (key_low >= KEY_DEBOUNCE) {
++			mmio_write_32(SH_WAKE, WAKE_KEY);
++			return WAKE_KEY;
++		}
++	}
++#if CONFIG(H713_IR_WAKE_NECX)
++	if (cir) {
++		uint32_t code = sunxi_cir_poll(cir);
++
++		for (uint8_t i = 0; code && i < ARRAY_SIZE(ir_wake_codes); ++i) {
++			if (code == ir_wake_codes[i]) {
++				mmio_write_32(SH_WAKE, WAKE_IR);
++				return WAKE_IR;
++			}
++		}
++	}
++#endif
++	return 0;
++}
++
++void
++h713_resume_done(void)
++{
++	gpio_set_value(&led_blue, true);
++	gpio_set_value(&led_red, false);
++	gpio_put(&led_blue);
++	gpio_put(&led_red);
++	gpio_put(&key_pin);
++	device_put(cir), cir = NULL;
++	mmio_write_32(R_PIO_PL_CFG1, pl_cfg_saved);	/* the kernel's IR pin */
++	sh_status(0, ST_ASLEEP);
++	info("H713: resumed, wake word %x", mmio_read_32(SH_WAKE));
++}
+diff --git a/drivers/irq/sun6i-a31-r-intc.c b/drivers/irq/sun6i-a31-r-intc.c
+index 29ca1ca..d72d478 100644
+--- a/drivers/irq/sun6i-a31-r-intc.c
++++ b/drivers/irq/sun6i-a31-r-intc.c
+@@ -21,7 +21,7 @@
+ #define INTC_IRQ_RESP_REG(n) (0x0060 + 4 * (n))
+ #define INTC_MUX_EN_REG(n)   (0x00c0 + 4 * (n))
+ 
+-#define NUM_IRQ_REGS         (CONFIG(PLATFORM_H6) ? 2 : 1)
++#define NUM_IRQ_REGS         (CONFIG(PLATFORM_H713) ? 3 : CONFIG(PLATFORM_H6) ? 2 : 1)
+ #define NUM_MUX_REGS         4
+ 
+ /* Gating AVCC will prevent receiving any of these interrupts. */
+diff --git a/drivers/msgbox/Makefile b/drivers/msgbox/Makefile
+index 99bce12..fdb92f9 100644
+--- a/drivers/msgbox/Makefile
++++ b/drivers/msgbox/Makefile
+@@ -4,4 +4,8 @@
+ #
+ 
+ obj-y += msgbox.o
++ifeq ($(CONFIG_PLATFORM_H713),y)
++obj-y += sun50i-h713-msgbox.o
++else
+ obj-y += sunxi-msgbox.o
++endif
+diff --git a/drivers/msgbox/sun50i-h713-msgbox.c b/drivers/msgbox/sun50i-h713-msgbox.c
+new file mode 100644
+index 0000000..5652221
+--- /dev/null
++++ b/drivers/msgbox/sun50i-h713-msgbox.c
+@@ -0,0 +1,120 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#include <debug.h>
++#include <error.h>
++#include <mmio.h>
++#include <stdbool.h>
++#include <stddef.h>
++#include <util.h>
++#include <clock/ccu.h>
++#include <msgbox/sunxi-msgbox.h>
++#include <platform/devices.h>
++
++#include "msgbox.h"
++
++/*
++ * The H713 message box is three "users" of 0x400 bytes (stock DT
++ * msgbox-amp: 0x03003000, 0x03003400, 0x03003800), each with sub-blocks of
++ * 0x100 holding four ports: FIFO_STAT at +0x60 + 4p (0 = empty, 8 = full),
++ * MSG_DATA at +0x70 + 4p, an IRQ status W1C at +0x24 (blob 0x7b10 writes
++ * 0x40 to 0x03003424 = port 3's RX bit), a TX IRQ enable at +0x30.
++ *
++ * user0 sub-block 0 : ARISC -> ARM (the driver's "msgbox-rx", ch 0..3)
++ * user1 sub-block 0 : ARM -> ARISC (the driver's "msgbox-tx", port 0..3)
++ * user0/1 sub-block 1, user2: the MIPS's pairs (cpu_comm), not ours.
++ *
++ * Crust channel numbering: even n = receive from ARM port n/2, odd n = send
++ * to ARM channel n/2. There is no "last tx done" flag on this box: the FIFO
++ * count is the only state, so a send is done when it has been popped.
++ */
++#define USER0               0x0000
++#define USER1               0x0400
++#define FIFO_STAT_REG(u, p) ((u) + 0x0060 + 0x4 * (p))
++#define MSG_DATA_REG(u, p)  ((u) + 0x0070 + 0x4 * (p))
++#define IRQ_STAT_REG(u)     ((u) + 0x0024)
++#define FIFO_DEPTH          8
++
++static bool
++h713_msgbox_last_tx_done(const struct device *dev, uint8_t chan)
++{
++	const struct simple_device *self = to_simple_device(dev);
++
++	assert(chan & 1);
++
++	return mmio_read_32(self->regs + FIFO_STAT_REG(USER0, chan / 2)) == 0;
++}
++
++static void
++h713_msgbox_ack_rx(const struct device *dev, uint8_t chan)
++{
++	const struct simple_device *self = to_simple_device(dev);
++
++	mmio_write_32(self->regs + IRQ_STAT_REG(USER1), BIT(2 * (chan / 2)));
++}
++
++static int
++h713_msgbox_receive(const struct device *dev, uint8_t chan, uint32_t *msg)
++{
++	const struct simple_device *self = to_simple_device(dev);
++
++	assert(!(chan & 1));
++
++	if (!mmio_read_32(self->regs + FIFO_STAT_REG(USER1, chan / 2)))
++		return ENOENT;
++	*msg = mmio_read_32(self->regs + MSG_DATA_REG(USER1, chan / 2));
++
++	return SUCCESS;
++}
++
++static int
++h713_msgbox_send(const struct device *dev, uint8_t chan, uint32_t msg)
++{
++	const struct simple_device *self = to_simple_device(dev);
++
++	assert(chan & 1);
++
++	if (mmio_read_32(self->regs + FIFO_STAT_REG(USER0, chan / 2)) >=
++	    FIFO_DEPTH)
++		return EBUSY;
++	mmio_write_32(self->regs + MSG_DATA_REG(USER0, chan / 2), msg);
++
++	return SUCCESS;
++}
++
++static int
++h713_msgbox_probe(const struct device *dev)
++{
++	/*
++	 * The clock (CCU 0x71c) is on: cpu_comm and the ARISC driver need
++	 * it before this firmware runs. Nothing is drained here: the ARM
++	 * driver empties its RX channels itself, and words the ARM already
++	 * queued for us must not be lost.
++	 */
++	return simple_device_probe(dev);
++}
++
++static const struct msgbox_driver h713_msgbox_driver = {
++	.drv = {
++		.probe   = h713_msgbox_probe,
++		.release = simple_device_release,
++	},
++	.ops = {
++		.ack_rx       = h713_msgbox_ack_rx,
++		.last_tx_done = h713_msgbox_last_tx_done,
++		.receive      = h713_msgbox_receive,
++		.send         = h713_msgbox_send,
++	},
++};
++
++const struct simple_device msgbox = {
++	.dev = {
++		.name  = "msgbox",
++		.drv   = &h713_msgbox_driver.drv,
++		.state = DEVICE_STATE_INIT,
++	},
++	.clock = { .dev = &ccu.dev, .id = CLK_BUS_MSGBOX },
++	.regs  = DEV_MSGBOX,
++};
+diff --git a/drivers/serial/Makefile b/drivers/serial/Makefile
+index 4c6d6d9..fa6749c 100644
+--- a/drivers/serial/Makefile
++++ b/drivers/serial/Makefile
+@@ -9,5 +9,6 @@ obj-$(CONFIG_PLATFORM_A23)  += sun8i-a23-uart.o
+ obj-$(CONFIG_PLATFORM_A83T) += sun8i-a83t-uart.o
+ obj-$(CONFIG_PLATFORM_H3)   += sun8i-h3-uart.o
+ obj-$(CONFIG_PLATFORM_H6)   += sun50i-h6-uart.o
++obj-$(CONFIG_PLATFORM_H713) += sun50i-h713-uart.o
+ obj-$(CONFIG_SOC_A64)       += sun50i-a64-uart.o
+ obj-$(CONFIG_SOC_H5)        += sun8i-h3-uart.o
+diff --git a/drivers/serial/sun50i-h713-uart.c b/drivers/serial/sun50i-h713-uart.c
+new file mode 100644
+index 0000000..f9c3365
+--- /dev/null
++++ b/drivers/serial/sun50i-h713-uart.c
+@@ -0,0 +1,47 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#include <clock/ccu.h>
++#include <gpio/sunxi-gpio.h>
++#include <platform/devices.h>
++
++#include "uart.h"
++
++/*
++ * R_UART on PL10/PL11, function 3: the vendor DT's arisc_config/s_uart_config
++ * (disabled there, so the pins are free). Never PL2/PL3 as on the H6: PL2 is
++ * the audio amplifier enable and PL3 the USB VBUS switch on this board.
++ */
++#if CONFIG(SERIAL_DEV_R_UART)
++
++const struct simple_device uart = {
++	.dev = {
++		.name  = "r_uart",
++		.drv   = &uart_driver,
++		.state = DEVICE_STATE_INIT,
++	},
++	.clock = { .dev = &r_ccu.dev, .id = CLK_BUS_R_UART },
++	.pins  = SIMPLE_DEVICE_PINS_INIT {
++		{
++			.dev   = &r_pio.dev,
++			.id    = SUNXI_GPIO_PIN(0, 10), /* PL10 */
++			.drive = DRIVE_10mA,
++			.mode  = 3,
++			.pull  = PULL_NONE,
++		},
++		{
++			.dev   = &r_pio.dev,
++			.id    = SUNXI_GPIO_PIN(0, 11), /* PL11 */
++			.drive = DRIVE_10mA,
++			.mode  = 3,
++			.pull  = PULL_UP,
++		},
++	},
++	.regs = DEV_R_UART,
++};
++
++#else
++#error "The H713 port supports the R_UART only (PL10/PL11)"
++#endif
+diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
+index a16fd2b..2966834 100644
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -6,6 +6,7 @@
+ choice
+ 	bool "Watchdog timer"
+ 	default WATCHDOG_SUN9I_A80_TWD if PLATFORM_H6
++	default WATCHDOG_SUN50I_H713_WDT if PLATFORM_H713
+ 	default WATCHDOG_SUN6I_A31_WDT
+ 	help
+ 		The firmware is monitored by a watchdog timer. If an
+@@ -14,6 +15,14 @@ choice
+ 
+ 		The watchdog also services user-requested system resets.
+ 
++config WATCHDOG_SUN50I_H713_WDT
++	bool "R_WDOG of the H713 (reset only, never armed)"
++	depends on PLATFORM_H713
++	help
++		sun50iw12 layout with the key 0x16aa. The feed sequence is
++		unknown and the vendor firmware never arms it, so this
++		driver only provides the system reset.
++
+ config WATCHDOG_SUN6I_A31_WDT
+ 	bool "Watchdog (R_WDOG)"
+ 	help
+diff --git a/drivers/watchdog/Makefile b/drivers/watchdog/Makefile
+index 643835c..ef39b7a 100644
+--- a/drivers/watchdog/Makefile
++++ b/drivers/watchdog/Makefile
+@@ -4,6 +4,7 @@
+ #
+ 
+ obj-y += watchdog.o
++obj-$(CONFIG_WATCHDOG_SUN50I_H713_WDT) += sun50i-h713-wdt.o
+ 
+ obj-$(CONFIG_WATCHDOG_SUN6I_A31_WDT) += sun6i-a31-wdt.o
+ obj-$(CONFIG_WATCHDOG_SUN9I_A80_TWD) += sun9i-a80-twd.o
+diff --git a/drivers/watchdog/sun50i-h713-wdt.c b/drivers/watchdog/sun50i-h713-wdt.c
+new file mode 100644
+index 0000000..381ebc5
+--- /dev/null
++++ b/drivers/watchdog/sun50i-h713-wdt.c
+@@ -0,0 +1,64 @@
++/*
++ * Copyright © 2022-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#include <delay.h>
++#include <error.h>
++#include <intrusive.h>
++#include <mmio.h>
++#include <util.h>
++#include <watchdog/sun6i-a31-wdt.h>
++#include <platform/devices.h>
++
++#include "watchdog.h"
++
++/*
++ * sun50iw12 R_WDOG (blob 0xcd8c, TF-A sunxi_power.c): CFG at +0x10 and
++ * MODE at +0x14 take the key 0x16aa in bits 31..16; the blob writes
++ * +0x00 = 0, CFG = key | 1 (system reset), MODE = key | 1 (enable, shortest
++ * interval). No feed sequence exists in the blob and the vendor firmware
++ * never arms a watchdog, so neither does this driver: probe and restart do
++ * nothing, reset_system is the proven sequence.
++ */
++#define WDOG_IRQ_EN_REG  0x00
++#define WDOG_CFG_REG     0x10
++#define WDOG_MODE_REG    0x14
++#define WDOG_KEY         (0x16aa << 16)
++
++static void
++h713_wdt_reset_system(const struct device *dev)
++{
++	const struct sun6i_a31_wdt *self = container_of(dev, const struct sun6i_a31_wdt, dev);
++
++	mmio_write_32(self->regs + WDOG_IRQ_EN_REG, 0);
++	mmio_write_32(self->regs + WDOG_CFG_REG, WDOG_KEY | 1);
++	mmio_write_32(self->regs + WDOG_MODE_REG, WDOG_KEY | 1);
++
++	udelay(1000000);
++}
++
++static void
++h713_wdt_restart(const struct device *dev UNUSED)
++{
++}
++
++static const struct watchdog_driver h713_wdt_driver = {
++	.drv = {
++		.probe   = dummy_probe,
++		.release = dummy_release,
++	},
++	.ops = {
++		.reset_system = h713_wdt_reset_system,
++		.restart      = h713_wdt_restart,
++	},
++};
++
++const struct sun6i_a31_wdt r_wdog = {
++	.dev = {
++		.name  = "r_wdog",
++		.drv   = &h713_wdt_driver.drv,
++		.state = DEVICE_STATE_INIT,
++	},
++	.regs = DEV_R_WDOG,
++};
+diff --git a/drivers/watchdog/watchdog.c b/drivers/watchdog/watchdog.c
+index 068ef25..e484333 100644
+--- a/drivers/watchdog/watchdog.c
++++ b/drivers/watchdog/watchdog.c
+@@ -29,7 +29,7 @@ watchdog_get(void)
+ {
+ 	const struct device *watchdog = NULL;
+ 
+-	if (CONFIG(WATCHDOG_SUN6I_A31_WDT))
++	if (CONFIG(WATCHDOG_SUN6I_A31_WDT) || CONFIG(WATCHDOG_SUN50I_H713_WDT))
+ 		watchdog = device_get_or_null(&r_wdog.dev);
+ 	if (CONFIG(WATCHDOG_SUN9I_A80_TWD))
+ 		watchdog = device_get_or_null(&r_twd.dev);
+diff --git a/include/drivers/clock/ccu.h b/include/drivers/clock/ccu.h
+index 63a3097..4b815f4 100644
+--- a/include/drivers/clock/ccu.h
++++ b/include/drivers/clock/ccu.h
+@@ -23,6 +23,9 @@
+ #elif CONFIG(PLATFORM_H6)
+ #include <clock/sun50i-h6-ccu.h>
+ #include <clock/sun50i-h6-r-ccu.h>
++#elif CONFIG(PLATFORM_H713)
++#include <clock/sun50i-h713-ccu.h>
++#include <clock/sun50i-h713-r-ccu.h>
+ #endif
+ 
+ struct ccu {
+diff --git a/include/drivers/clock/sun50i-h713-ccu.h b/include/drivers/clock/sun50i-h713-ccu.h
+new file mode 100644
+index 0000000..1df66cb
+--- /dev/null
++++ b/include/drivers/clock/sun50i-h713-ccu.h
+@@ -0,0 +1,21 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef DRIVERS_CLOCK_SUN50I_H713_CCU_H
++#define DRIVERS_CLOCK_SUN50I_H713_CCU_H
++
++enum {
++	CLK_PLL_DDR0,
++	CLK_PLL_PERIPH0,
++	CLK_APB2,
++	CLK_MBUS,
++	CLK_BUS_MSGBOX,
++	CLK_DRAM,
++	CLK_BUS_DRAM,
++	CLK_BUS_PIO,
++	SUN50I_H713_CCU_CLOCKS
++};
++
++#endif /* DRIVERS_CLOCK_SUN50I_H713_CCU_H */
+diff --git a/include/drivers/clock/sun50i-h713-r-ccu.h b/include/drivers/clock/sun50i-h713-r-ccu.h
+new file mode 100644
+index 0000000..7875352
+--- /dev/null
++++ b/include/drivers/clock/sun50i-h713-r-ccu.h
+@@ -0,0 +1,31 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef DRIVERS_CLOCK_SUN50I_H713_R_CCU_H
++#define DRIVERS_CLOCK_SUN50I_H713_R_CCU_H
++
++enum {
++	CLK_IOSC,
++	CLK_OSC24M,
++	CLK_OSC32K,
++	CLK_AR100,
++	CLK_R_AHB,
++	CLK_R_APB1,        /* D1 name: r_apb0, R_PRCM 0x00c */
++	CLK_R_APB2,        /* R_PRCM 0x010, read by the blob only */
++	CLK_BUS_R_PIO,
++	CLK_BUS_R_TIMER,
++	CLK_BUS_R_TWD,
++	CLK_BUS_R_PWM,
++	CLK_BUS_R_UART,
++	CLK_BUS_R_I2C,
++	CLK_BUS_R_RSB,     /* unverified on this SoC: no gate wired */
++	CLK_BUS_R_CIR,
++	CLK_R_CIR,
++	CLK_BUS_R_HDMI_AUX,
++	CLK_R_HDMI_AUX,
++	SUN50I_H713_R_CCU_CLOCKS
++};
++
++#endif /* DRIVERS_CLOCK_SUN50I_H713_R_CCU_H */
+diff --git a/include/drivers/hdmi/sun50i-h713-hdmi.h b/include/drivers/hdmi/sun50i-h713-hdmi.h
+new file mode 100644
+index 0000000..97ebf2e
+--- /dev/null
++++ b/include/drivers/hdmi/sun50i-h713-hdmi.h
+@@ -0,0 +1,37 @@
++/*
++ * Copyright © 2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef DRIVERS_HDMI_SUN50I_H713_HDMI_H
++#define DRIVERS_HDMI_SUN50I_H713_HDMI_H
++
++#include <stdint.h>
++
++#if CONFIG(H713_HDMI)
++
++/** Boot: contract page, message box, startup notify. */
++void h713_init(void);
++/** Awake: HDMI pump (port 0), standby dispatcher (port 3), replies, HPD. */
++void h713_poll(void);
++/** Suspend: arm the wake sources this firmware polls itself. */
++void h713_suspend_prepare(void);
++/** Asleep: nonzero (the wake word) when the system should resume. */
++uint32_t h713_wake_poll(void);
++/** Resume: release the wake sources, LEDs. */
++void h713_resume_done(void);
++
++#else
++
++static inline void h713_init(void) {}
++static inline void h713_poll(void) {}
++static inline void h713_suspend_prepare(void) {}
++static inline uint32_t h713_wake_poll(void) { return 0; }
++static inline void h713_resume_done(void) {}
++
++#endif
++
++/* drivers/css/sun50i-h713-css.c: the warm entry from "cpu op req". */
++void css_set_warm_entry(uint32_t lo, uint32_t hi);
++
++#endif /* DRIVERS_HDMI_SUN50I_H713_HDMI_H */
+diff --git a/platform/Kconfig b/platform/Kconfig
+index 70fab3f..f3d573e 100644
+--- a/platform/Kconfig
++++ b/platform/Kconfig
+@@ -10,6 +10,7 @@ config PLATFORM
+ 	default "a83t" if PLATFORM_A83T
+ 	default "h3"   if PLATFORM_H3
+ 	default "h6"   if PLATFORM_H6
++	default "h713" if PLATFORM_H713
+ 
+ choice
+ 	prompt "Platform selection"
+@@ -54,10 +55,21 @@ config PLATFORM_H6
+ 	select HAVE_R_RSB
+ 	select HAVE_R_TWD
+ 
++config PLATFORM_H713
++	bool "H713 (TV303 projectors)"
++	depends on ARCH_OR1K
++	select HAVE_DCXO
++	select HAVE_R_CIR
++	help
++		Allwinner H713 (sun50iw12): the R domain of the D1
++		generation, an HDMI receiver front end owned by the ARISC.
++		Deep sleep is not ported yet (no DRAM self-refresh).
++
+ endchoice
+ 
+ source "a23/Kconfig"
+ source "a64/Kconfig"
++source "h713/Kconfig"
+ 
+ config HAVE_DCXO
+ 	bool
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+new file mode 100644
+index 0000000..b34754b
+--- /dev/null
++++ b/platform/h713/Kconfig
+@@ -0,0 +1,43 @@
++#
++# Copyright © 2026 The Crust Firmware Authors.
++# SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++#
++
++if PLATFORM_H713
++
++config H713_HDMI
++	bool "HDMI front end contract of the vendor ARISC firmware"
++	default y
++	help
++		Speak the message-box protocol of Allwinner's TV303 ARISC
++		firmware on msgbox port 0 (EDID store, hot-plug pin, DDC
++		RAM) and port 3 (startup handshake, cpu op req, restore
++		finished), so that the Linux driver sun50i-h713-arisc
++		keeps working unchanged.
++
++config H713_IR_WAKE_NECX
++	bool "Wake from standby on the projector remote (extended NEC)"
++	depends on CIR
++	default y
++	help
++		Compare received NEC codes against the vendor's cir_param
++		list of the HY310/HY300 Pro (19 address/command pairs).
++
++config H713_POWER_KEY_PIN
++	int "Port L pin of the power key (level, active low)"
++	default 4
++	range 0 31
++	help
++		standby_param power_key = "PL4" on every board seen.
++
++config H713_RAILS_PIN
++	int "Port L pin the vendor standby_param names for all rails, -1 = never drive it"
++	default -1
++	range -1 31
++	help
++		standby_param on the HY310 and HY300 Pro puts vdd-cpu,
++		vdd-sys, vcc-pll and vcc-dram all on PL6. What hangs on it
++		is unmeasured (FB-STANDBY 7.5), so the default never
++		touches the pin.
++
++endif
+diff --git a/platform/h713/include/platform/cpucfg.h b/platform/h713/include/platform/cpucfg.h
+new file mode 100644
+index 0000000..dd0a14d
+--- /dev/null
++++ b/platform/h713/include/platform/cpucfg.h
+@@ -0,0 +1,62 @@
++/*
++ * Copyright © 2020-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef PLATFORM_CPUCFG_H
++#define PLATFORM_CPUCFG_H
++
++#include <util.h>
++#include <platform/devices.h>
++
++/*
++ * The H713 uses the "ncat" register file with per-core control registers
++ * (TF-A sunxi_cpucfg_ncat.h, the non-per-cluster path; stock BL31 cpu_on).
++ * Names follow TF-A; where TF-A says "???" so do we.
++ */
++#define CLS_CTRL_REG0                     (DEV_CPUCFG + 0x0010)
++#define CLS_CTRL_REG1                     (DEV_CPUCFG + 0x0014) /* blob 0x9010014 */
++#define CACHE_CFG_REG                     (DEV_CPUCFG + 0x0024)
++
++#define C0_CPU_CTRL_REG(n)                (DEV_CPUCFG + 0x0060 + 0x04 * (n))
++#define C0_CPU_CTRL_REG_CORE_RESET        BIT(0)  /* 0 = held */
++#define C0_CPU_CTRL_REG_DBG_PWRUP         BIT(8)
++
++/* Read by the blob at 0x9010080; TF-A does not use it. Guess: WFI status. */
++#define C0_CPU_STATUS_REG                 (DEV_CPUCFG + 0x0080)
++
++#define CPU_CTRL_REG(n)                   (DEV_CPUSUBSYS + 0x0020 + 0x04 * (n))
++#define CPU_CTRL_REG_AA64nAA32            BIT(0)
++
++/* The warm entry the ARM hands us in "cpu op req" goes here (blob 0x4c40). */
++#define ALT_RVBAR_LO_REG(n)               (DEV_CPUSUBSYS + 0x0040 + 0x08 * (n))
++#define ALT_RVBAR_HI_REG(n)               (DEV_CPUSUBSYS + 0x0044 + 0x08 * (n))
++
++#define CPUS_RESET_REG                    (DEV_R_CPUCFG + 0x0000)
++#define CPUS_RESET                        BIT(0)
++
++/* blob 0x4b28 writes 0 here at cluster reset (H6 name: C0_PWRON_RESET). */
++#define C0_PWRON_RESET_REG                (DEV_R_CPUCFG + 0x0040)
++#define C0_PWRON_RESET_REG_nH_RST         BIT(16)
++#define C0_PWRON_RESET_REG_nCPUPORESET(n) BIT(0 + (n))
++
++#define C0_PWROFF_GATING_REG              (DEV_R_CPUCFG + 0x0044)
++
++/* Power switch, one byte-wide ladder per core: 0xfe 0xf8 0xe0 0x80 0x00 (TF-A). */
++#define C0_CPUn_PWR_SWITCH_REG(n)         (DEV_R_CPUCFG + 0x0050 + 0x04 * (n))
++
++/* TF-A "CPU_UNK": bit 0 power-on reset (0 = held), bit 1 output clamp. */
++#define CPU_UNK_REG(n)                    (DEV_R_CPUCFG + 0x0070 + 0x04 * (n))
++#define CPU_UNK_REG_nPORESET              BIT(0)
++#define CPU_UNK_REG_CLAMP                 BIT(1)
++
++/* blob 0x4b28 writes 0 here after the four cores (H6 name: CPU_SYS_RESET). */
++#define CPU_SYS_RESET_REG                 (DEV_R_CPUCFG + 0x00a0)
++#define CPU_SYS_RESET                     BIT(0)
++
++#define CPUIDLE_EN_REG                    (DEV_R_CPUCFG + 0x0100)
++#define CLOSE_FLAG_REG                    (DEV_R_CPUCFG + 0x0104)
++#define PWR_SW_DELAY_REG                  (DEV_R_CPUCFG + 0x0140)
++#define CONFIG_DELAY_REG                  (DEV_R_CPUCFG + 0x0144)
++
++#endif /* PLATFORM_CPUCFG_H */
+diff --git a/platform/h713/include/platform/css.h b/platform/h713/include/platform/css.h
+new file mode 100644
+index 0000000..a2fccd8
+--- /dev/null
++++ b/platform/h713/include/platform/css.h
+@@ -0,0 +1,12 @@
++/*
++ * Copyright © 2020-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef PLATFORM_CSS_H
++#define PLATFORM_CSS_H
++
++#define MAX_CLUSTERS          1
++#define MAX_CORES_PER_CLUSTER 4
++
++#endif /* PLATFORM_CSS_H */
+diff --git a/platform/h713/include/platform/devices.h b/platform/h713/include/platform/devices.h
+new file mode 100644
+index 0000000..f66b1c3
+--- /dev/null
++++ b/platform/h713/include/platform/devices.h
+@@ -0,0 +1,45 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef PLATFORM_DEVICES_H
++#define PLATFORM_DEVICES_H
++
++/*
++ * Allwinner H713 (sun50iw12). Every base below is either materialised by
++ * the vendor ARISC firmware (scp.bin, l.movhi/l.ori pairs; "blob") or
++ * defined by our TF-A sunxi_mmap.h / kernel device tree ("tfa", "dt").
++ */
++#define DEV_PIO              0x02000000 /* tfa; the blob touches none of it */
++#define DEV_CCU              0x02001000 /* blob 0x2001020/0x2001540/0x200171c */
++#define DEV_WDOG             0x02051000 /* tfa: main watchdog, key 0x16aa */
++#define DEV_UART0            0x02500000 /* tfa */
++#define DEV_SYSCON           0x03000000 /* blob 0x3000007 (byte) */
++#define DEV_MSGBOX           0x03003000 /* blob 0x300307c/0x300347c; dt msgbox */
++#define DEV_SPINLOCK         0x03004000 /* dt hwspinlock@3004000 */
++#define DEV_SID              0x03006000 /* blob 0x30060a0/0x3006200 */
++#define DEV_DRAMCOM          0x04002000 /* blob 0x4002000 (DRAM standby driver) */
++#define DEV_DRAMPHY_LO       0x04800000 /* blob 0x4800100.. (8 x 16 B copy, R4) */
++#define DEV_DRAMCTL          0x04810000 /* blob 0x4810008/14/50c */
++#define DEV_DRAMPHY          0x04820000 /* blob 0x4820002.. (25 registers) */
++#define DEV_TVTOP            0x05700000 /* blob 0x5700080 */
++#define DEV_RTC              0x07090000 /* blob GP words 0x7090100.. */
++#define DEV_R_CPUCFG         0x07000400 /* blob 0x7000440/450/470..47c/4a0; tfa */
++#define DEV_R_PRCM           0x07010000 /* blob 0x7010010..0x7010260; tfa */
++#define DEV_R_TIMER          0x07020000 /* guess from the R_WDOG offset */
++#define DEV_R_WDOG           0x07020400 /* blob 0x7020400/0x7020414 */
++#define DEV_R_PWM            0x07020c00 /* dt r_pwm@7020c00 */
++#define DEV_R_INTC           0x07021000 /* blob 0x7021000, base pointer 0x16f30 */
++#define DEV_R_PIO            0x07022000 /* blob 0x7022004/0x70221f4; dt */
++#define DEV_R_CIR_RX         0x07040000 /* blob 0x7040020/0x7040030; dt r_ir */
++#define DEV_R_UART           0x07080000 /* blob 0x7080080.. */
++#define DEV_R_I2C            0x07081400 /* tfa; not touched by the blob */
++#define DEV_R_RSB            0x07083000 /* tfa; not touched by the blob */
++#define DEV_HDMI_AUX         0x07091000 /* blob 0x7091014 HPD, 0x7091b04 gate, 0x7091c00 DDC */
++#define DEV_CPUSUBSYS        0x08100000 /* blob 0x8100044 ALT_RVBAR_HI; tfa */
++#define DEV_TIMESTAMP_STATUS 0x08110000 /* tfa/H6 layout; blob touches 0x0812000c/20 */
++#define DEV_TIMESTAMP_CTRL   0x08120000 /* blob 0x812000c/0x8120020 */
++#define DEV_CPUCFG           0x09010000 /* blob 0x9010014/60/6c/80; tfa */
++
++#endif /* PLATFORM_DEVICES_H */
+diff --git a/platform/h713/include/platform/irq.h b/platform/h713/include/platform/irq.h
+new file mode 100644
+index 0000000..02f8ee6
+--- /dev/null
++++ b/platform/h713/include/platform/irq.h
+@@ -0,0 +1,28 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef PLATFORM_IRQ_H
++#define PLATFORM_IRQ_H
++
++/*
++ * R_INTC line numbers of the ARISC, from the vendor firmware's wake-source
++ * table 0x15a40 ({ARISC irq, GIC SPI + 0x20}, FB-STANDBY excerpt F) and its
++ * ISR registrations (0x6058 callers). 96 lines in three registers.
++ */
++#define IRQ_NMI      0x00 /* SPI 140 */
++#define IRQ_R_TIMER0 0x01 /* guess, H6 numbering */
++#define IRQ_R_TIMER1 0x02
++#define IRQ_R_ALARM0 0x09 /* SPI 147, the RTC alarm */
++#define IRQ_R_PIO_PL 0x0e /* SPI 149: the power key on PL4 */
++#define IRQ_UNK_0F   0x0f /* SPI 148 */
++#define IRQ_R_PIO_PM 0x10 /* SPI 151: bt_powerkey */
++#define IRQ_UNK_11   0x11 /* SPI 150 */
++#define IRQ_USB      0x12 /* SPI 30..36, one line for all controllers */
++#define IRQ_R_CIR_RX 0x20 /* SPI 155 */
++#define IRQ_HDMI_CEC 0x28 /* registered at 0xff44 with handler 0x111b4 */
++
++#define IRQ_MSGBOX   0x13 /* guess, H6 numbering; the blob polls instead */
++
++#endif /* PLATFORM_IRQ_H */
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+new file mode 100644
+index 0000000..cf5a2e5
+--- /dev/null
++++ b/platform/h713/include/platform/memory.h
+@@ -0,0 +1,46 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef PLATFORM_MEMORY_H
++#define PLATFORM_MEMORY_H
++
++/*
++ * The vendor blob occupies AR100 0x0000..0x23000 (vectors in the image,
++ * body from 0x4000). Crust takes the 64 KiB block above it instead, so the
++ * two images never overlap and a switch between them is a load, not a
++ * relayout. The linker forbids a 64 KiB boundary inside the firmware.
++ */
++#define FIRMWARE_BASE  0x00010000
++#define FIRMWARE_LIMIT 0x00020000
++#define FIRMWARE_SIZE  (FIRMWARE_LIMIT - FIRMWARE_BASE)
++
++/* Top 1 KiB: SCPI shared memory (crust ABI, two clients). */
++#define SCPI_MEM_BASE  (SRAM_A2_LIMIT - 0x400)
++#define SCPI_MEM_LIMIT SRAM_A2_LIMIT
++#define SCPI_MEM_SIZE  (SCPI_MEM_LIMIT - SCPI_MEM_BASE)
++
++/*
++ * SRAM A2 is 128 KiB at ARM 0x00104000 (TF-A sunxi_mmap.h, doku/68). The
++ * first 16 KiB of the AR100 address space (0x0000..0x3fff) are the vector
++ * area and a reserved block, as on the H6.
++ */
++#define SRAM_A2_BASE   0x00004000
++#define SRAM_A2_LIMIT  0x00024000
++#define SRAM_A2_SIZE   (SRAM_A2_LIMIT - SRAM_A2_BASE)
++
++/* Difference between SRAM_A2_BASE in the AR100 and ARM address spaces. */
++#define SRAM_A2_OFFSET 0x00100000
++
++/*
++ * Contract page (this port, tables/arisc-contract.csv): the variables the
++ * Linux driver sun50i-h713-arisc reads and writes, at fixed addresses
++ * instead of the vendor build's BSS. ARM address = these + 0x100000.
++ */
++#define H713_SHARED_BASE  0x00023800
++#define H713_SHARED_LIMIT SCPI_MEM_BASE
++
++#define STACK_SIZE     0x00000400
++
++#endif /* PLATFORM_MEMORY_H */
+diff --git a/platform/h713/include/platform/prcm.h b/platform/h713/include/platform/prcm.h
+new file mode 100644
+index 0000000..c143acc
+--- /dev/null
++++ b/platform/h713/include/platform/prcm.h
+@@ -0,0 +1,72 @@
++/*
++ * Copyright © 2020-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef PLATFORM_PRCM_H
++#define PLATFORM_PRCM_H
++
++#include <util.h>
++#include <platform/devices.h>
++
++/*
++ * R_PRCM in the D1 layout (kernel sun20i-d1-r-ccu model for this SoC;
++ * gates confirmed by the blob's clock helper 0x5320: 0x11c, 0x1cc, 0x20c,
++ * 0x260, and by 0xdd20/0xdea8: 0x244, 0x250, 0x260).
++ */
++#define CPUS_CLK_REG                     (DEV_R_PRCM + 0x0000)
++#define CPUS_CLK_REG_CLK_SRC(x)          ((x) << 24)  /* 0 hosc 1 losc 2 iosc 3 pll */
++#define CPUS_CLK_REG_CLK_SRC_MASK        (0x3 << 24)
++#define CPUS_CLK_REG_DIV_P(x)            ((x) << 8)
++#define CPUS_CLK_REG_DIV_P_MASK          (0x3 << 8)
++#define CPUS_CLK_REG_PRE_DIV(x)          ((x) << 0)
++#define CPUS_CLK_REG_PRE_DIV_MASK        (0x1f << 0)
++
++#define R_APB0_CLK_REG                   (DEV_R_PRCM + 0x000c)
++#define R_APB0_CLK_REG_DIV_M(x)          ((x) << 0)
++#define R_APB0_CLK_REG_DIV_M_MASK        (0x3 << 0)
++
++/* Read by the blob at 0x59e4 (bits 31..24); TF-A/kernel do not name it. */
++#define R_APB2_CLK_REG                   (DEV_R_PRCM + 0x0010)
++
++/* boot0 "prcm cpus timer clock enable": bit 0 of these three (driver 0091). */
++#define R_CPUS_TIMER_GATE_REG(n)         (DEV_R_PRCM + 0x0110 + 4 * (n))
++
++#define R_TIMER_GATE_REG                 (DEV_R_PRCM + 0x011c)
++#define R_HDMI_AUX_GATE_REG              (DEV_R_PRCM + 0x0120) /* blob 0x120f0: 0, 5 ms, 0x10001 */
++#define R_HDMI_AUX_CLK_REG               (DEV_R_PRCM + 0x0124) /* blob 0x120f0: bit 31 */
++#define R_TWDOG_GATE_REG                 (DEV_R_PRCM + 0x012c)
++#define R_PWM_CLK_REG                    (DEV_R_PRCM + 0x0130)
++#define R_PWM_GATE_REG                   (DEV_R_PRCM + 0x013c)
++#define R_UART_GATE_REG                  (DEV_R_PRCM + 0x018c)
++#define R_I2C_GATE_REG                   (DEV_R_PRCM + 0x019c)
++#define R_PPU_GATE_REG                   (DEV_R_PRCM + 0x01ac)
++#define R_CIR_RX_CLK_REG                 (DEV_R_PRCM + 0x01c0) /* blob 0x8f14 */
++#define R_CIR_RX_GATE_REG                (DEV_R_PRCM + 0x01cc)
++#define R_RTC_GATE_REG                   (DEV_R_PRCM + 0x020c)
++#define R_CPUCFG_GATE_REG                (DEV_R_PRCM + 0x022c)
++
++/* blob 0xdd20: key 0xa7 << 24 written twice (H6 PLL_CTRL_REG1 shape). */
++#define PLL_CTRL_REG1                    (DEV_R_PRCM + 0x0244)
++#define PLL_CTRL_REG1_KEY                (0xa7 << 24)
++#define PLL_CTRL_REG1_KEY_FIELD          (0xff << 24)
++#define PLL_CTRL_REG1_PLL_LDO_OUT(x)     ((x) << 16)
++#define PLL_CTRL_REG1_PLL_LDO_OUT_MASK   (0x7 << 16)
++#define PLL_CTRL_REG1_PLL_IN_PWR_SEL     BIT(15)
++#define PLL_CTRL_REG1_CLKTEST_EN         BIT(3)
++#define PLL_CTRL_REG1_CRYSTAL_EN         BIT(2)
++#define PLL_CTRL_REG1_LDO_EN             BIT(0)
++
++/* blob 0xdea8: |= 4 and |= 0x100 on the way down (H6 names). */
++#define VDD_SYS_PWROFF_GATING_REG        (DEV_R_PRCM + 0x0250)
++#define VDD_CPUS_GATING                  BIT(3)
++#define AVCC_GATING                      BIT(2)
++#define UNK_GATING_BIT_08                BIT(8)
++
++#define GPU_PWROFF_GATING_REG            (DEV_R_PRCM + 0x0254) /* blob touches it */
++
++/* blob 0xdea8: &= ~1 on the way down. */
++#define VDD_SYS_RESET_REG                (DEV_R_PRCM + 0x0260)
++#define VDD_SYS_RESET                    BIT(0)
++
++#endif /* PLATFORM_PRCM_H */
+diff --git a/platform/h713/include/platform/time.h b/platform/h713/include/platform/time.h
+new file mode 100644
+index 0000000..5d32328
+--- /dev/null
++++ b/platform/h713/include/platform/time.h
+@@ -0,0 +1,22 @@
++/*
++ * Copyright © 2017-2026 The Crust Firmware Authors.
++ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
++ */
++
++#ifndef PLATFORM_TIME_H
++#define PLATFORM_TIME_H
++
++/*
++ * r_ccu_init() puts CPUS on OSC24M/1 (R_PRCM 0x000, mux 24..25 = 0, the
++ * D1-style layout the kernel's sun20i-d1-r-ccu model gives this SoC), so
++ * the tick timer runs at exactly 24 MHz and needs no IOSC calibration.
++ */
++#define CPUCLK_MHz 24
++#define CPUCLK_kHz (CPUCLK_MHz * 1000)
++#define CPUCLK_Hz  (CPUCLK_MHz * 1000000)
++
++#define REFCLK_MHZ 24
++#define REFCLK_KHZ (REFCLK_MHZ * 1000)
++#define REFCLK_HZ  (REFCLK_MHZ * 1000000)
++
++#endif /* PLATFORM_TIME_H */

@@ -1,0 +1,219 @@
+From 614cf350909be30791402e479a60e1bab330f308 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 20:54:50 +0200
+Subject: [PATCH 63/80] h713: deep sleep: a sub-step word before each clock and
+ bus step
+
+The deep path has about forty register steps under three step codes:
+STEP_SUSPEND_PRCM covers the root clocks and the PLLs, STEP_RESUME_PRCM
+their way back, STEP_RESUME_CCU the MBUS/NSI rebuild. A hang or a reset
+there said only "somewhere in PRCM/CCU" (PRUEFUNG5 DEEP-07, DEEP-06).
+
+SUBSTEP (+0x2a8, contract v5 K block) now takes the step and its index
+before each root clock, each PLL, the LDO and VDD_SYS steps and each of
+the fourteen MBUS/NSI writes, so a post-mortem read of the page names
+the register. The codes are in platform/memory.h. Page writes only; the
+register accesses are the same. Deep sleep only.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clock/sun50i-h713-ccu.c         | 22 ++++++++++++++++++++
+ drivers/clock/sun50i-h713-r-ccu.c       | 27 +++++++++++++++++++++----
+ platform/h713/include/platform/memory.h | 16 +++++++++++++++
+ 3 files changed, 61 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/clock/sun50i-h713-ccu.c b/drivers/clock/sun50i-h713-ccu.c
+index 363942a..f252197 100644
+--- a/drivers/clock/sun50i-h713-ccu.c
++++ b/drivers/clock/sun50i-h713-ccu.c
+@@ -12,6 +12,7 @@
+ #include <mmio.h>
+ #include <util.h>
+ #include <platform/devices.h>
++#include <platform/memory.h>
+ 
+ #include "ccu.h"
+ 
+@@ -84,6 +85,13 @@ const struct ccu ccu = {
+ #if CONFIG(H713_DEEP_SLEEP)
+ static uint32_t mbus_saved;
+ 
++/* Before each write of the rebuild: SUBSTEP (platform/memory.h, DEEP-07). */
++static void
++mbus_step(uint8_t i)
++{
++	mmio_write_32(H713_K_SUBSTEP, H713_SUB(H713_SUB_MBUS, i));
++}
++
+ /* 0xe164: the blob keeps MBUS (0x540) and PLL_PERIPH0 before the DRAM goes. */
+ void __attribute__((noinline))
+ ccu_suspend(void)
+@@ -99,33 +107,47 @@ ccu_suspend(void)
+ void __attribute__((noinline))
+ ccu_resume(void)
+ {
++	mbus_step(1);
+ 	mmio_write_32(DEV_CCU + 0x540, BIT(31));                /* 0xe40c */
+ 	udelay(1);
++	mbus_step(2);
+ 	mmio_clr_32(DEV_CCU + 0x540, BIT(30));                  /* 0xe430 */
+ 	udelay(1);
++	mbus_step(3);
+ 	mmio_set_32(DEV_CCU + 0xdd8, BIT(0));                   /* 0xe444 */
+ 	udelay(1);
++	mbus_step(4);
+ 	mmio_set_32(DEV_CCU + 0xdd8, BIT(16));                  /* 0xe45c */
+ 	udelay(1);
++	mbus_step(5);
+ 	mmio_set_32(DEV_TVTOP + 0x40, BIT(4));                  /* 0xe478 */
+ 	udelay(1);
++	mbus_step(6);
+ 	mmio_set_32(DEV_TVTOP + 0x44, BIT(4));                  /* 0xe494 */
+ 	udelay(1);
++	mbus_step(7);
+ 	mmio_set_32(DEV_TVTOP + 0x80, BIT(4));                  /* 0xe4a8 */
+ 	udelay(1);
++	mbus_step(8);
+ 	mmio_set_32(DEV_CCU + 0x540, BIT(1));                   /* 0xe4bc */
+ 	udelay(1);
++	mbus_step(9);
+ 	mmio_set_32(DEV_CCU + 0x540, 0x03000000);               /* 0xe4d4 */
+ 	udelay(1);
++	mbus_step(10);
+ 	mmio_set_32(DEV_CCU + 0x540, BIT(30));                  /* 0xe4ec */
+ 	udelay(1);
+ 	/* 37005, 0xe6e0 */
++	mbus_step(11);
+ 	mmio_write_32(DEV_CCU + 0x540, mbus_saved & 0x7);
+ 	udelay(200);
++	mbus_step(12);
+ 	mmio_write_32(DEV_CCU + 0x540, mbus_saved & 0x03000007);
+ 	udelay(20);
++	mbus_step(13);
+ 	mmio_set_32(DEV_CCU + 0x540, BIT(31));
+ 	udelay(20);
++	mbus_step(14);
+ 	mmio_set_32(DEV_CCU + 0x540, BIT(30));
+ 	udelay(10000);
+ }
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index 6c4b383..822ce00 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -232,12 +232,21 @@ static uint32_t pll_saved[12];
+  */
+ static bool saved;
+ 
++/* Before each step of the deep path: what and which (platform/memory.h). */
++static void
++substep(uint8_t step, uint8_t i)
++{
++	mmio_write_32(H713_K_SUBSTEP, H713_SUB(step, i));
++}
++
+ static void
+ root_clocks_to_osc24m(void)                             /* 0xcdd8(0) */
+ {
+ 	for (uint8_t i = 0; i < ARRAY_SIZE(root_clk); ++i) {
+-		uint32_t v = mmio_read_32(root_clk[i]);
++		uint32_t v;
+ 
++		substep(H713_SUB_ROOT_OSC, i);
++		v = mmio_read_32(root_clk[i]);
+ 		root_saved[i] = v & (ROOT_SRC | ROOT_DIV);      /* 0xcec0 */
+ 		v &= ~ROOT_SRC;                                 /* source 0 */
+ 		mmio_write_32(root_clk[i], v);                  /* 0xcefc */
+@@ -256,8 +265,10 @@ static void
+ root_clocks_restore(void)                               /* 0xcdd8(4) */
+ {
+ 	for (uint8_t i = 0; i < ARRAY_SIZE(root_clk); ++i) {
+-		uint32_t v = mmio_read_32(root_clk[i]);
++		uint32_t v;
+ 
++		substep(H713_SUB_ROOT_BACK, i);
++		v = mmio_read_32(root_clk[i]);
+ 		v = (v & ~ROOT_DIV) | (root_saved[i] & ROOT_DIV);
+ 		mmio_write_32(root_clk[i], v);
+ 		v = (v & ~ROOT_SRC) | (root_saved[i] & ROOT_SRC);
+@@ -270,8 +281,10 @@ static void
+ plls_off(void)                                          /* 0xcc2c(0) */
+ {
+ 	for (uint8_t i = 0; i < ARRAY_SIZE(pll_reg); ++i) {
+-		uint32_t v = mmio_read_32(DEV_CCU + pll_reg[i]);
++		uint32_t v;
+ 
++		substep(H713_SUB_PLL_OFF, i);
++		v = mmio_read_32(DEV_CCU + pll_reg[i]);
+ 		pll_saved[i] = v & 0xa000ff03;   /* enable, lock-en, N, M */
+ 		mmio_write_32(DEV_CCU + pll_reg[i], v & 0x7fffffff);
+ 	}
+@@ -282,8 +295,10 @@ static void
+ plls_restore(void)                                      /* 0xcc2c(1) */
+ {
+ 	for (uint8_t i = 0; i < ARRAY_SIZE(pll_reg); ++i) {
+-		uint32_t v = mmio_read_32(DEV_CCU + pll_reg[i]);
++		uint32_t v;
+ 
++		substep(H713_SUB_PLL_ON, i);
++		v = mmio_read_32(DEV_CCU + pll_reg[i]);
+ 		mmio_write_32(DEV_CCU + pll_reg[i],
+ 		              (v & 0x5fff00fc) | pll_saved[i]);
+ 	}
+@@ -298,6 +313,7 @@ r_ccu_suspend(uint8_t depth UNUSED)
+ 	plls_off();                                             /* 0xdd40 */
+ 	udelay(100);
+ #if CONFIG(H713_DEEP_PLL_LDO)
++	substep(H713_SUB_LDO_OFF, 0);
+ 	uint32_t v = (mmio_read_32(PLL_CTRL_REG1) & ~PLL_CTRL_REG1_LDO_EN) |
+ 	             PLL_CTRL_REG1_KEY;                         /* 0xddbc */
+ 
+@@ -314,6 +330,7 @@ r_ccu_suspend(uint8_t depth UNUSED)
+ 	 * comment here said the blob skips it for power_down. Not checked
+ 	 * against the disassembly (PRUEFUNG5 DEEP-02).
+ 	 */
++	substep(H713_SUB_DOMAIN_OFF, 0);
+ 	mmio_clr_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
+ 	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, AVCC_GATING);
+ 	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, UNK_GATING_BIT_08);
+@@ -325,12 +342,14 @@ r_ccu_resume(void)
+ {
+ #if CONFIG(H713_DEEP_VDD_SYS)
+ 	/* 0xe3a8 */
++	substep(H713_SUB_DOMAIN_ON, 0);
+ 	mmio_clr_32(VDD_SYS_PWROFF_GATING_REG, UNK_GATING_BIT_08);
+ 	mmio_clr_32(VDD_SYS_PWROFF_GATING_REG, AVCC_GATING);
+ 	mmio_set_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
+ #endif
+ #if CONFIG(H713_DEEP_PLL_LDO)
+ 	/* 0xddec */
++	substep(H713_SUB_LDO_ON, 0);
+ 	uint32_t v = mmio_read_32(PLL_CTRL_REG1) | PLL_CTRL_REG1_KEY |
+ 	             PLL_CTRL_REG1_LDO_EN;
+ 
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 2e36e34..6af7c50 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -179,6 +179,22 @@
+ #define H713_POLL_CPU_OFF    5  /* core 0 power switch off (css.c) */
+ #define H713_POLL_CPU_ON     6  /* core 0 power switch on */
+ 
++/*
++ * SUBSTEP, deep stage only: written before each clock and bus step of the
++ * deep path, 15..8 the step, 7..0 its index, so a hang or a reset in it
++ * names the register (PRUEFUNG5 DEEP-07). A good cycle leaves the last one.
++ */
++#define H713_SUB(step, i)    ((step) << 8 | (i))
++#define H713_SUB_ROOT_OSC    2  /* root clock i to OSC24M (r-ccu.c root_clk[]) */
++#define H713_SUB_PLL_OFF     3  /* PLL i off (r-ccu.c pll_reg[]) */
++#define H713_SUB_LDO_OFF     4
++#define H713_SUB_DOMAIN_OFF  5  /* 0 VDD_SYS reset and gating */
++#define H713_SUB_DOMAIN_ON   6  /* 0 VDD_SYS ungated and out of reset */
++#define H713_SUB_LDO_ON      7
++#define H713_SUB_PLL_ON      8  /* PLL i back */
++#define H713_SUB_ROOT_BACK   9  /* root clock i back to its source */
++#define H713_SUB_MBUS        10 /* MBUS/NSI rebuild write i (ccu.c) */
++
+ /* ERR bits; fatal ones (4, 6..10) come with a clean reset. */
+ #define H713_ERR_KEY_PIN     0
+ #define H713_ERR_CIR         1

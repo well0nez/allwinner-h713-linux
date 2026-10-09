@@ -1,0 +1,204 @@
+From 5266ec625a8bf4d664628ef1c23807de87769161 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:29:32 +0200
+Subject: [PATCH 05/80] h713: hdmi: ResetEDIDModule store for store, a channel
+ per queued word, diag words
+
+ResetEDIDModule now writes what the blob's 0x120f0 writes, read again from
+the disassembly: R_PRCM 0x120 = 0x00010000 (not 0x10001), PL_CFG1 =
+(v & 0xff) | 0x22222200 (PL10..15 function 2 set exactly, PL8/PL9 kept --
+PL9 is the kernel's IR pin; the old OR could not move a field away from
+0xf), aux b04 &= 0x00ffffff without the stray "| 1", and the tail the port
+had left out: aux +0x030 = 0, +0x034 = +0x038 = 0x18 (0x10fac), +0x020 = 1
+(0x1105c). The irq 0x28 enable (0x11084) stays out: this firmware polls.
+
+The transmit queue kept one channel for all queued words, so a reply frame
+queued behind an unsent notify would have sent the notify's tail on
+channel 1. Every word now carries its channel.
+
+Contract version 2: diagnostic words at +0x200 (kept across restarts):
+CPUS_CLK_REG as found, the tick timer of the last main loop pass (lets the
+ARM measure the AR100 clock), the number of h713_init() runs (exception
+restarts), R_INTC +0x80/+0x88 as found.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clock/sun50i-h713-r-ccu.c       |  7 ++++
+ drivers/hdmi/sun50i-h713-hdmi.c         | 56 +++++++++++++++++++++----
+ include/drivers/hdmi/sun50i-h713-hdmi.h |  3 ++
+ 3 files changed, 58 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index b1e89c3..b949158 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -12,6 +12,7 @@
+ #include <stddef.h>
+ #include <stdint.h>
+ #include <clock/ccu.h>
++#include <hdmi/sun50i-h713-hdmi.h>
+ #include <platform/devices.h>
+ #include <platform/prcm.h>
+ 
+@@ -154,6 +155,12 @@ const struct ccu r_ccu = {
+  */
+ static uint32_t cpus_clk_at_boot = 0xffffffff;
+ 
++uint32_t
++r_ccu_cpus_clk_at_boot(void)
++{
++	return cpus_clk_at_boot;
++}
++
+ void
+ r_ccu_suspend(uint8_t depth)
+ {
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index febad82..7de0fb9 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -15,6 +15,7 @@
+  */
+ 
+ #include <cir.h>
++#include <counter.h>
+ #include <css.h>
+ #include <debug.h>
+ #include <delay.h>
+@@ -53,7 +54,15 @@
+ #define SH_RPM_BUF      (SH_RPM_STATE + 5)         /* 67 bytes */
+ 
+ #define H713_MAGIC      0x33313748                 /* 'H','7','1','3' */
+-#define H713_VERSION    0x00000001
++#define H713_VERSION    0x00000002                 /* 2: diagnostic words */
++
++/* Diagnostic words (platform/memory.h), kept across firmware restarts. */
++#define DIAG_LEWIN_EN   (H713_DIAG_BASE + 0x00)    /* written by start.S */
++#define DIAG_CPUS_CLK   (H713_DIAG_BASE + 0x0c)
++#define DIAG_TTCR       (H713_DIAG_BASE + 0x10)
++#define DIAG_INITS      (H713_DIAG_BASE + 0x14)
++#define DIAG_INTC_80    (H713_DIAG_BASE + 0x18)
++#define DIAG_INTC_88    (H713_DIAG_BASE + 0x1c)
+ #define ST_RUNNING      BIT(0)
+ #define ST_HANDSHAKE    BIT(1)
+ #define ST_EDID_MODULE  BIT(2)
+@@ -77,6 +86,10 @@
+ 
+ /* ---- the HDMI aux block (RTC domain) ------------------------------------ */
+ #define AUX_HPD_REG     (DEV_HDMI_AUX + 0x014) /* active-low, one bit per pin */
++#define AUX_UNK_020     (DEV_HDMI_AUX + 0x020) /* blob 0x1105c(1): = 1 */
++#define AUX_UNK_030     (DEV_HDMI_AUX + 0x030) /* blob 0x10fac(0x18): = 0 */
++#define AUX_UNK_034     (DEV_HDMI_AUX + 0x034) /* blob 0x10fac(0x18): = 0x18 */
++#define AUX_UNK_038     (DEV_HDMI_AUX + 0x038) /* blob 0x10fac(0x18): = 0x18 */
+ #define AUX_UNK_B00     (DEV_HDMI_AUX + 0xb00)
+ #define AUX_GATE_REG    (DEV_HDMI_AUX + 0xb04) /* EDID/DDC output, bit per port */
+ #define AUX_UNK_B08     (DEV_HDMI_AUX + 0xb08)
+@@ -104,6 +117,7 @@
+ 
+ static uint8_t  edid[2 * EDID_BLOCK];
+ static uint32_t txq[128];
++static uint8_t  txq_ch[128];	/* the channel of each queued word */
+ static uint8_t  txq_head, txq_tail, txq_chan, seq;
+ static uint8_t  pump_state, pump_len, pump_idx, pump_type;
+ static uint8_t  sb_n, sb_count;
+@@ -146,6 +160,7 @@ txq_put(uint32_t w)
+ 		warn("H713: tx queue full"); return;
+ 	}
+ 	txq[txq_tail] = w;
++	txq_ch[txq_tail] = txq_chan;
+ 	txq_tail = next;
+ }
+ 
+@@ -153,7 +168,7 @@ static void
+ txq_drain(void)
+ {
+ 	while (txq_head != txq_tail) {
+-		if (msgbox_send(&msgbox.dev, txq_chan, txq[txq_head]))
++		if (msgbox_send(&msgbox.dev, txq_ch[txq_head], txq[txq_head]))
+ 			return;
+ 		txq_head = (txq_head + 1) % ARRAY_SIZE(txq);
+ 	}
+@@ -242,17 +257,31 @@ publish(void)
+ 	sh_wr8(SH_EDID_GATE, 1);
+ }
+ 
+-/* ResetEDIDModule (blob 0x120f0): clocks, pins, the block, the state bytes. */
++/*
++ * ResetEDIDModule (blob 0x120f0..0x121dc), store for store:
++ *   0x12108 R_PRCM 0x120 = 0; 0x12114 delay 5; 0x12124 0x120 = 0x00010000
++ *   (reset released, bit 0 stays clear); 0x12130 0x124 = 0x80000000;
++ *   0x12140..0x12150 PL_CFG1 = (v & 0xff) | 0x22222200 (PL8/PL9 kept, PL10..15
++ *   function 2 -- PL9 is the kernel's IR pin); 0x12164 b08 = 0xc0c0c0c0;
++ *   0x12170..0x1217c b04 &= 0x00ffffff; g_Data +2/+3/+4 = 0; 0x12198 the gate
++ *   helper 0x11cac(7, 1), which closes while +2 is 0 (0x11d54); 0x121a8 b00 =
++ *   0x00a0a0a0; +2 = 1 and publish(7); then 0x10fac(0x18): +0x030 = 0, +0x034
++ *   = +0x038 = 0x18; 0x1105c(1): +0x020 = 1; 0x11084(1) enables ARISC irq 0x28
++ *   (0x5fd0) -- not done here: this firmware polls and has no handler for it.
++ * The meaning of b00/b08/0x020..0x038 is unread; they are written because
++ * the blob writes them on every reset, and nothing else is.
++ */
+ static void
+ reset_module(void)
+ {
+ 	mmio_write_32(R_HDMI_AUX_GATE_REG, 0);
+ 	udelay(5000);
+-	mmio_write_32(R_HDMI_AUX_GATE_REG, 0x10001);
++	mmio_write_32(R_HDMI_AUX_GATE_REG, 0x00010000);
+ 	mmio_write_32(R_HDMI_AUX_CLK_REG, BIT(31));
+-	mmio_set_32(R_PIO_PL_CFG1, 0x22222200);	/* PL10..PL15 function 2 */
++	mmio_write_32(R_PIO_PL_CFG1,
++	              (mmio_read_32(R_PIO_PL_CFG1) & 0xff) | 0x22222200);
+ 	mmio_write_32(AUX_UNK_B08, 0xc0c0c0c0);
+-	mmio_write_32(AUX_GATE_REG, (mmio_read_32(AUX_GATE_REG) & 0x00ffffff) | 1);
++	mmio_write_32(AUX_GATE_REG, mmio_read_32(AUX_GATE_REG) & 0x00ffffff);
+ 	sh_wr8(SH_EDID_READY, 0);
+ 	sh_wr8(SH_EDID_GATE, 0);
+ 	sh_wr8(SH_EDID_MASK, 0);
+@@ -260,6 +289,10 @@ reset_module(void)
+ 	mmio_write_32(AUX_UNK_B00, 0x00a0a0a0);
+ 	sh_wr8(SH_EDID_READY, 1);
+ 	publish();
++	mmio_write_32(AUX_UNK_030, 0);
++	mmio_write_32(AUX_UNK_034, 0x18);
++	mmio_write_32(AUX_UNK_038, 0x18);
++	mmio_write_32(AUX_UNK_020, 1);
+ 	sh_status(ST_EDID_MODULE, 0);
+ }
+ 
+@@ -497,8 +530,14 @@ send_notify(void)
+ void
+ h713_init(void)
+ {
+-	for (uintptr_t a = H713_SHARED_BASE; a < H713_SHARED_LIMIT; a += 4)
+-		mmio_write_32(a, 0);
++	for (uintptr_t a = H713_SHARED_BASE; a < H713_SHARED_LIMIT; a += 4) {
++		if (a < H713_DIAG_BASE || a >= H713_DIAG_LIMIT)
++			mmio_write_32(a, 0);
++	}
++	mmio_write_32(DIAG_CPUS_CLK, r_ccu_cpus_clk_at_boot());
++	mmio_write_32(DIAG_INITS, mmio_read_32(DIAG_INITS) + 1);
++	mmio_write_32(DIAG_INTC_80, mmio_read_32(DEV_R_INTC + 0x80));
++	mmio_write_32(DIAG_INTC_88, mmio_read_32(DEV_R_INTC + 0x88));
+ 	mmio_write_32(SH_MAGIC, H713_MAGIC);
+ 	mmio_write_32(SH_VERSION, H713_VERSION);
+ 	portmap_init();
+@@ -535,6 +574,7 @@ h713_poll(void)
+ 			sh_wr8(SH_HPD_COUNTER + p, c - 1);
+ 	}
+ 	mmio_write_32(SH_STATUS, mmio_read_32(SH_STATUS) + 0x10000); /* heartbeat */
++	mmio_write_32(DIAG_TTCR, cycle_counter_read()); /* clock check from the ARM */
+ }
+ 
+ void
+diff --git a/include/drivers/hdmi/sun50i-h713-hdmi.h b/include/drivers/hdmi/sun50i-h713-hdmi.h
+index 97ebf2e..8c2d4ef 100644
+--- a/include/drivers/hdmi/sun50i-h713-hdmi.h
++++ b/include/drivers/hdmi/sun50i-h713-hdmi.h
+@@ -34,4 +34,7 @@ static inline void h713_resume_done(void) {}
+ /* drivers/css/sun50i-h713-css.c: the warm entry from "cpu op req". */
+ void css_set_warm_entry(uint32_t lo, uint32_t hi);
+ 
++/* drivers/clock/sun50i-h713-r-ccu.c: CPUS_CLK_REG as r_ccu_init() found it. */
++uint32_t r_ccu_cpus_clk_at_boot(void);
++
+ #endif /* DRIVERS_HDMI_SUN50I_H713_HDMI_H */

@@ -1,0 +1,46 @@
+From 87b2a44fd004609e0806789cc78f6781c761fd21 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:53:12 +0200
+Subject: [PATCH 96/96] sunxi: h713: stage scp.bin in DRAM for BL31 (crust load
+ model, step 2)
+
+binman already describes an optional "scp" loadable at CONFIG_SUNXI_SCP_BASE
+(arch/arm/dts/sunxi-u-boot.dtsi). On the H713 the SPL runs at 0x00104000
+with 0x14000 bytes, so the SRAM address the H6 uses would overwrite the
+running SPL; the image is staged at the vendor's DRAM address instead and
+BL31 (tfa-0002) moves it into SRAM A2 and starts it.
+
+Without an scp.bin next to the build the FIT still lists "scp" among the
+loadables (the line in sunxi-u-boot.dtsi has no condition) with empty
+data; the SPL skips it on every boot with "Skip load 'scp': image size is
+0!", writes nothing to 0x48100000, and BL31 finds no magic there. A copy
+an earlier session left in DRAM does not count: BL31 clears the magic
+after each start (tfa 0004).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/Kconfig | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index 4559d025f80..7d60171fe8e 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -393,10 +393,17 @@ config SUNXI_SCP_BASE
+ 	hex
+ 	default 0x00050000 if MACH_SUN50I || MACH_SUN50I_H5
+ 	default 0x00114000 if MACH_SUN50I_H6
++	default 0x48100000 if MACH_SUN50I_H713
+ 	default 0x0
+ 	help
+ 	  Address where SCP firmware is loaded, or zero if it is not used.
+ 
++	  On the H713 the SPL itself occupies SRAM A2 (0x104000 + 0x14000), so
++	  scp.bin is staged in DRAM where the vendor boot package puts it and
++	  BL31 copies it into SRAM and starts the AR100 (FB-CRUST tfa-0002).
++	  Without scp.bin the FIT keeps an empty "scp" loadable, which the SPL
++	  skips ("Skip load 'scp': image size is 0!"), and BL31 finds no image.
++
+ config SUNXI_A64_TIMER_ERRATUM
+ 	bool
+ 

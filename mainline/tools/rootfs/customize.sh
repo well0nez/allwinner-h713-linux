@@ -334,10 +334,15 @@ EOF
 
 # Bound a hung shutdown in hardware. sunxi-wdt caps at 16s; systemd opens
 # /dev/watchdog only for the shutdown transition, so this does NOT arm a runtime
-# watchdog and cannot reset a healthy but busy system. Verified on hardware:
+# watchdog and cannot reset a healthy but busy system. systemd logs
 #   systemd-shutdown[1]: Using hardware watchdog 'sunxi-wdt' ... timeout of 16s.
-# Set RuntimeWatchdogSec here too if you also want protection against a wedged
-# running system -- but note 16s is the hardware maximum, which is tight.
+# but with the line's device tree (sun50i-h6-wdt, the H6 register layout) the
+# driver hits nothing and the SoC watchdog is not armed (measured, doku/72; TODO
+# 2.25). Once the tree binds it with the H713's layout (sun55i-a523-wdt), every
+# reboot and power-off arms it for real, and only a BL31 that feeds the running
+# watchdog before its reset gets through (release/check-crust.py refuses a release
+# image without one). Set RuntimeWatchdogSec here too if you also want protection
+# against a wedged running system -- but note 16s is the hardware maximum, which is tight.
 install -d -m 0755 "$R/etc/systemd/system.conf.d"
 cat > "$R/etc/systemd/system.conf.d/h713-watchdog.conf" <<'EOF'
 [Manager]

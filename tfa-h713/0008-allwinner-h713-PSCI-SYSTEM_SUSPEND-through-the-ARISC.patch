@@ -1,0 +1,323 @@
+From 827994aab2b4136b0b2f7de973e9d6b07919c145 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 02:25:26 +0200
+Subject: [PATCH 08/27] allwinner: h713: PSCI SYSTEM_SUSPEND through the ARISC
+ (plan 104 H1)
+
+FB-STANDBY tfa-0001 (27.09.2026), rebased by crust-20261007 onto 4c1bd8c6 after
+tfa-0002 (one hunk of platform.mk by hand: the sources list carries a comment
+block behind it on this branch).
+
+The native PSCI ops offered no SYSTEM_SUSPEND, so Linux could not even ask.
+Now the H713 platform provides sunxi_system_suspend_enter(): one "cpu op req"
+(type 0x22, attr 0, five words {mpidr, warm entry, 3, 3, 3}) on msgbox user1
+port 3, the frame the vendor monitor builds at 0x66b4 and sends at 0x60a0. The
+firmware takes the SoC down from there and releases CPU0 at the warm entry it
+was given. The common code gains get_sys_suspend_power_state, the system-level
+branch in suspend and suspend_finish (GIC distributor re-init, platform hook)
+and keeps the warm entry point in sunxi_sec_entrypoint. A request that cannot
+be delivered resets the board instead of sleeping with nothing to wake it.
+All of it sits behind SUNXI_SYSTEM_SUSPEND, which only the H713 platform sets.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/allwinner-common.mk     |   6 +
+ plat/allwinner/common/include/sunxi_private.h |  16 +++
+ plat/allwinner/common/sunxi_native_pm.c       |  40 +++++-
+ plat/allwinner/common/sunxi_pm.c              |   4 +
+ plat/allwinner/sun50i_h713/platform.mk        |   7 +-
+ plat/allwinner/sun50i_h713/sunxi_standby.c    | 118 ++++++++++++++++++
+ 6 files changed, 187 insertions(+), 4 deletions(-)
+ create mode 100644 plat/allwinner/sun50i_h713/sunxi_standby.c
+
+diff --git a/plat/allwinner/common/allwinner-common.mk b/plat/allwinner/common/allwinner-common.mk
+index c96a2ca53..01c7ec787 100644
+--- a/plat/allwinner/common/allwinner-common.mk
++++ b/plat/allwinner/common/allwinner-common.mk
+@@ -58,6 +58,12 @@ BL31_SOURCES		+=	drivers/allwinner/sunxi_msgbox.c	\
+ 				${AW_PLAT}/common/sunxi_scpi_pm.c
+ endif
+ 
++# System suspend handed to the management processor by a platform hook
++# (sunxi_system_suspend_enter/finish); only the H713 provides one so far.
++SUNXI_SYSTEM_SUSPEND	?=	0
++$(eval $(call assert_boolean,SUNXI_SYSTEM_SUSPEND))
++$(eval $(call add_define,SUNXI_SYSTEM_SUSPEND))
++
+ SUNXI_SETUP_REGULATORS	?=	1
+ $(eval $(call assert_boolean,SUNXI_SETUP_REGULATORS))
+ $(eval $(call add_define,SUNXI_SETUP_REGULATORS))
+diff --git a/plat/allwinner/common/include/sunxi_private.h b/plat/allwinner/common/include/sunxi_private.h
+index 93ccb8121..3e19101b1 100644
+--- a/plat/allwinner/common/include/sunxi_private.h
++++ b/plat/allwinner/common/include/sunxi_private.h
+@@ -20,6 +20,22 @@ void sunxi_cpu_power_off_others(void);
+ void sunxi_cpu_power_off_self(void);
+ void sunxi_power_down(void);
+ 
++/* The warm boot entry point every CPU's RVBAR was programmed with. */
++extern uintptr_t sunxi_sec_entrypoint;
++
++#if SUNXI_SYSTEM_SUSPEND
++int sunxi_system_suspend_enter(void);
++void sunxi_system_suspend_finish(void);
++#else
++static inline int sunxi_system_suspend_enter(void)
++{
++	return -1;
++}
++static inline void sunxi_system_suspend_finish(void)
++{
++}
++#endif
++
+ #if SUNXI_PSCI_USE_NATIVE
+ void sunxi_set_native_psci_ops(const plat_psci_ops_t **psci_ops);
+ #else
+diff --git a/plat/allwinner/common/sunxi_native_pm.c b/plat/allwinner/common/sunxi_native_pm.c
+index f78eebf77..632a05961 100644
+--- a/plat/allwinner/common/sunxi_native_pm.c
++++ b/plat/allwinner/common/sunxi_native_pm.c
+@@ -18,6 +18,8 @@
+ #define SUNXI_WDOG0_CFG_REG		(SUNXI_R_WDOG_BASE + 0x0014)
+ #define SUNXI_WDOG0_MODE_REG		(SUNXI_R_WDOG_BASE + 0x0018)
+ 
++static void __dead2 sunxi_system_reset(void);
++
+ static int sunxi_pwr_domain_on(u_register_t mpidr)
+ {
+ 	sunxi_cpu_on(mpidr);
+@@ -79,20 +81,49 @@ static void sunxi_cpu_standby(plat_local_state_t cpu_state)
+ static void sunxi_pwr_domain_suspend(const psci_power_state_t *target_state)
+ {
+ 	/* A CPU-level powerdown suspend is the same as turning the CPU off. */
+-	if (is_local_state_off(target_state->pwr_domain_state[MPIDR_AFFLVL0])) {
+-		gicv2_cpuif_disable();
+-		sunxi_cpu_power_off_self();
++	if (!is_local_state_off(target_state->pwr_domain_state[MPIDR_AFFLVL0]))
++		return;
++
++	gicv2_cpuif_disable();
++
++	/*
++	 * The whole system: the management processor takes it from here and
++	 * releases this CPU at sunxi_sec_entrypoint when a wake source fires.
++	 * If it cannot be told, sleeping would be a hang with nothing to wake
++	 * us; reset instead, and the boot loader finds RUN1 in GP5.
++	 */
++	if (is_local_state_off(target_state->pwr_domain_state[PLAT_MAX_PWR_LVL]) &&
++	    sunxi_system_suspend_enter() != 0) {
++		ERROR("PSCI: system suspend not accepted, resetting\n");
++		sunxi_system_reset();
+ 	}
++
++	sunxi_cpu_power_off_self();
+ }
+ 
+ static void sunxi_pwr_domain_suspend_finish(const psci_power_state_t *target_state)
+ {
++	if (is_local_state_off(target_state->pwr_domain_state[PLAT_MAX_PWR_LVL])) {
++		gicv2_distif_init();
++		sunxi_system_suspend_finish();
++	}
+ 	if (is_local_state_off(target_state->pwr_domain_state[MPIDR_AFFLVL0])) {
+ 		gicv2_pcpu_distif_init();
+ 		gicv2_cpuif_enable();
+ 	}
+ }
+ 
++#if SUNXI_SYSTEM_SUSPEND
++/* Offered as PSCI SYSTEM_SUSPEND: every level down, nothing retained. */
++static void sunxi_get_sys_suspend_power_state(psci_power_state_t *req_state)
++{
++	unsigned int i;
++
++	for (i = 0; i <= PLAT_MAX_PWR_LVL; i++)
++		req_state->pwr_domain_state[i] = PLAT_MAX_OFF_STATE;
++}
++#endif
++
+ static void sunxi_system_off(void)
+ {
+ 	gicv2_cpuif_disable();
+@@ -142,6 +173,9 @@ static const plat_psci_ops_t sunxi_native_psci_ops = {
+ 	.system_off			= sunxi_system_off,
+ 	.system_reset			= sunxi_system_reset,
+ 	.validate_ns_entrypoint		= sunxi_validate_ns_entrypoint,
++#if SUNXI_SYSTEM_SUSPEND
++	.get_sys_suspend_power_state	= sunxi_get_sys_suspend_power_state,
++#endif
+ };
+ 
+ void sunxi_set_native_psci_ops(const plat_psci_ops_t **psci_ops)
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index a9567b6b9..35d810ffe 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -18,6 +18,8 @@
+ 
+ static bool psci_is_scpi;
+ 
++uintptr_t sunxi_sec_entrypoint;
++
+ #if SUNXI_PSCI_USE_SCPI
+ bool sunxi_psci_is_scpi(void)
+ {
+@@ -102,6 +104,8 @@ int plat_setup_psci_ops(uintptr_t sec_entrypoint,
+ {
+ 	assert(psci_ops);
+ 
++	sunxi_sec_entrypoint = sec_entrypoint;
++
+ 	/* Program all CPU entry points. */
+ 	for (unsigned int cpu = 0; cpu < PLATFORM_CORE_COUNT; ++cpu) {
+ 		if (sunxi_cpucfg_has_per_cluster_regs()) {
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index bade27257..70552c846 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -10,6 +10,10 @@ SUNXI_BL31_IN_DRAM	:=	1
+ SUNXI_PSCI_USE_SCPI	:=	0
+ SUNXI_PSCI_USE_NATIVE	:=	1
+ 
++# The vendor ARISC firmware (loaded by Linux) carries the standby: one
++# "cpu op req" on msgbox port 3 and it takes the SoC down and back up.
++SUNXI_SYSTEM_SUSPEND	:=	1
++
+ # The differences between the platforms are covered by the include files.
+ include plat/allwinner/common/allwinner-common.mk
+ include plat/allwinner/common/allwinner-common-a53.mk
+@@ -23,7 +27,8 @@ BL31_SOURCES		+=	common/fdt_wrappers.c			\
+ 				drivers/allwinner/axp/axp805.c		\
+ 				drivers/allwinner/sunxi_rsb.c		\
+ 				drivers/mentor/i2c/mi2cv.c		\
+-				${AW_PLAT}/${PLAT}/sunxi_h713_dtb.c
++				${AW_PLAT}/${PLAT}/sunxi_h713_dtb.c	\
++				${AW_PLAT}/${PLAT}/sunxi_standby.c
+ 
+ # FB-HDCP14h: the vendor's own OP-TEE 3.7 as BL32. Its sunxi file header gives the run
+ # address 0x48600000 (offset 0x2c) and the vendor DTS reserves 1 MiB there. The SPL loads
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+new file mode 100644
+index 000000000..a5331c8d8
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -0,0 +1,118 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++/*
++ * Standby stage 2 on the H713: PSCI SYSTEM_SUSPEND through the ARISC.
++ *
++ * The management processor runs the vendor's scp.bin (loaded by Linux, see
++ * sun50i-h713-arisc), and its "cpu op req" handler (0xe518) carries the
++ * whole power-down: it parses standby_param, arms the power key, the IR
++ * receiver and CEC (0xdef0 -> 0xda6c, 0x8f14, 0x103e4), snapshots the
++ * clocks, runs the DRAM standby driver (0x142dc), resets the ARM cluster
++ * (0x4b28), gates the PLLs (0xdd20) and dozes until a wake source fires.
++ * On wake it brings the DRAM back, writes the entry point it was given into
++ * ALT_RVBAR (0x4c2c) and releases CPU0 (0x4be4); Linux then answers with
++ * 0x11 and gets the wake word. All this side has to do is send that one
++ * request and go to WFI.
++ *
++ * Wire format (doku/nachtlog/S39 section 1, S40 section 3, checked against
++ * the vendor monitor's sender at 0x60a0 and frame builder at 0x66b4): msgbox
++ * bank user1 port 3, one 32-bit word per FIFO write -- the header
++ * state=2 | attr<<8 | type=0x22<<16, then the count (5), then
++ * {mpidr, entrypoint, cpu_state, cluster_state, system_state}. attr 0 means
++ * "no answer" (dispatcher 0xbe40), which is what a request whose sender is
++ * about to be reset needs; the stock passes 3 for the three states. The
++ * FIFO is eight words deep and the stock sender waits on FIFO_STAT != 8
++ * before every word.
++ *
++ * The caller has already saved the CPU context and cleaned the caches
++ * (psci_pwrdown_cpu_start), so the cluster reset the firmware applies a few
++ * milliseconds after this request can land at any point after the last
++ * FIFO write without losing anything.
++ */
++
++#include <arch_helpers.h>
++#include <common/debug.h>
++#include <drivers/delay_timer.h>
++#include <lib/mmio.h>
++
++#include <sunxi_mmap.h>
++#include <sunxi_private.h>
++
++#define MSGBOX_USER1_BASE	0x03003400	/* ARM -> ARISC, first sub-block */
++#define MSGBOX_FIFO_STAT(p)	(MSGBOX_USER1_BASE + 0x60 + 4 * (p))
++#define MSGBOX_MSG_DATA(p)	(MSGBOX_USER1_BASE + 0x70 + 4 * (p))
++#define PORT_STANDBY		3		/* 0x0300346c / 0x0300347c */
++#define FIFO_FULL		8
++#define FIFO_WAIT_US		10
++#define FIFO_WAIT_ITERS		1000		/* 10 ms; the main loop drains in us */
++
++#define STANDBY_HDR(state, attr, type)	((state) | ((attr) << 8) | ((type) << 16))
++#define STANDBY_STATE		2
++#define STANDBY_ATTR_NO_REPLY	0
++#define STANDBY_TYPE_CPU_OP	0x22
++#define STANDBY_ARGS		5
++#define STANDBY_PSTATE_OFF	3
++
++static int standby_push(uint32_t word)
++{
++	unsigned int i;
++
++	for (i = 0; i < FIFO_WAIT_ITERS; i++) {
++		if (mmio_read_32(MSGBOX_FIFO_STAT(PORT_STANDBY)) != FIFO_FULL) {
++			mmio_write_32(MSGBOX_MSG_DATA(PORT_STANDBY), word);
++			return 0;
++		}
++		udelay(FIFO_WAIT_US);
++	}
++	return -1;
++}
++
++int sunxi_system_suspend_enter(void)
++{
++	uint32_t args[STANDBY_ARGS] = {
++		(uint32_t)read_mpidr(),
++		(uint32_t)sunxi_sec_entrypoint,
++		STANDBY_PSTATE_OFF, STANDBY_PSTATE_OFF, STANDBY_PSTATE_OFF,
++	};
++	unsigned int i;
++
++	/* The firmware writes it into a 32-bit register (ALT_RVBAR_LO). */
++	if (sunxi_sec_entrypoint == 0 || (sunxi_sec_entrypoint >> 32) != 0) {
++		ERROR("PSCI: warm entry 0x%lx not usable by the ARISC\n",
++		      sunxi_sec_entrypoint);
++		return -1;
++	}
++
++	if (standby_push(STANDBY_HDR(STANDBY_STATE, STANDBY_ATTR_NO_REPLY,
++				     STANDBY_TYPE_CPU_OP)) != 0 ||
++	    standby_push(STANDBY_ARGS) != 0)
++		goto full;
++	for (i = 0; i < STANDBY_ARGS; i++) {
++		if (standby_push(args[i]) != 0)
++			goto full;
++	}
++
++	NOTICE("PSCI: system suspend, cpu op req sent, entry 0x%lx\n",
++	       sunxi_sec_entrypoint);
++	return 0;
++
++full:
++	ERROR("PSCI: msgbox port 3 stays full, the ARISC main loop is not draining it\n");
++	return -1;
++}
++
++void sunxi_system_suspend_finish(void)
++{
++	/*
++	 * The secure peripheral controller and the CCU's security switch live
++	 * in the domain that stayed powered, but 0xdd20/0xddec write key
++	 * protected registers around it; re-applying the setup is idempotent
++	 * and cheap, and the console line is the first proof of a resume.
++	 */
++	sunxi_security_setup();
++	NOTICE("PSCI: back from system suspend\n");
++}

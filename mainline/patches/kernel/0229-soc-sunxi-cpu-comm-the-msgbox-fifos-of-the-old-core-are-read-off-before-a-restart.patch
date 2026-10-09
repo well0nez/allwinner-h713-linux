@@ -1,0 +1,97 @@
+soc: sunxi: cpu_comm: the msgbox FIFOs of the old core are read off before a restart
+
+A word in the msgbox is a bare message type; its payload is in the
+shared region that firmware_reset() rebuilds. Whatever the old core left
+in the two FIFOs between the ARM and the MIPS outlives that rebuild.
+After the standby park the MIPS sat in reset with the FIFO toward it as
+it was, and a halted firmware drains nothing either. A stale CALL_ACK on
+the MIPS -> ARM side would wake the first caller after the restart before
+its real answer. A doorbell on the ARM -> MIPS side would reach the new
+firmware before its own init (KD-1 step 2, L6 in the reload plan).
+
+firmware_reset() now reads both FIFOs off, with the core held in reset
+and before the region is rebuilt, at most a full FIFO (8 words) each,
+and delivers none of the words. One info line gives both counts before,
+the words read and what is left. Nothing is read when a count is 0.
+
+The MIPS -> ARM side is read the way the receive path always reads it.
+The ARM -> MIPS side is read at the doorbell address, where the MIPS
+reads it. That a read from the ARM pops that FIFO is not measured, and
+the restarts of 08.10.2026 did not log either count, so how often there
+is anything to read is not known. The line says it.
+
+Compiled out of tree against the R1 kernel with W=1, no new warning. Not
+measured.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -786,6 +786,7 @@ const char *cpu_comm_msgbox_bank_name(int index);
+ bool cpu_comm_msgbox_owns_bank(int bank);
+ int  cpu_comm_msgbox_start_polling(void *callback);
+ void cpu_comm_msgbox_free_irq(void);
++void cpu_comm_msgbox_flush_mips(void);	/* before a restart, core held */
+ void cpu_comm_msgbox_probe_start(void);	/* legacy stub */
+ void cpu_comm_msgbox_probe_stop(void);	/* legacy stub */
+ 
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -1337,6 +1337,8 @@ int cpu_comm_firmware_reset(void)
+ 	cpu_comm_shmem_adopted = false;
+ 	/* The boot's assumption was about the old core; start() sets it again. */
+ 	WRITE_ONCE(mips_app_ready_assumed, 0);
++	/* What the old core left in the msgbox, before the region is new. */
++	cpu_comm_msgbox_flush_mips();
+ 	ret = InitCommMem(2);
+ 	if (ret)
+ 		return ret;
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -523,6 +523,46 @@ void cpu_comm_msgbox_free_irq(void)
+ 	msgbox_rx_callback = NULL;
+ }
+ 
++/*
++ * Before a restart, with the coprocessor held in reset: whatever is still in
++ * the two FIFOs between this core and the MIPS belongs to the firmware that
++ * is gone. A word is a bare message type (see cpu_comm_msgbox_drain()) whose
++ * payload lives in the shared region about to be rebuilt: a stale CALL_ACK
++ * from the MIPS would wake the first caller after the restart before the
++ * real answer, and a doorbell the parked core never took would reach the
++ * new firmware before its own init. Both are read off without being
++ * delivered, at most a full FIFO each.
++ *
++ * The MIPS -> ARM side is read the way this driver always reads it. The
++ * ARM -> MIPS side is read at the address the MIPS reads it from (the
++ * doorbell register); that a read from the ARM pops it as well is not
++ * measured, which is why the line below says what is left. Nothing is read
++ * when a count is 0. How often either count is not 0 is not measured: the
++ * restarts of 08.10.2026 did not log them.
++ */
++void cpu_comm_msgbox_flush_mips(void)
++{
++	u32 tx, rx, n_tx = 0, n_rx = 0;
++
++	if (!msgbox_ctrl_base)
++		return;
++	tx = readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO);
++	rx = readl(msgbox_ctrl_base + H713_MSGBOX_RX_FIFO);
++	while (n_tx < H713_MSGBOX_TX_FIFO_DEPTH &&
++	       readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO)) {
++		readl(msgbox_ctrl_base + H713_MSGBOX_TX_DATA);
++		n_tx++;
++	}
++	while (n_rx < H713_MSGBOX_TX_FIFO_DEPTH &&
++	       readl(msgbox_ctrl_base + H713_MSGBOX_RX_FIFO)) {
++		readl(msgbox_ctrl_base + H713_MSGBOX_RX_DATA);
++		n_rx++;
++	}
++	pr_info("cpu_comm: msgbox before the restart: ARM->MIPS %u word(s), %u read off, %u left; MIPS->ARM %u, %u read off, %u left\n",
++		tx, n_tx, n_tx ? readl(msgbox_ctrl_base + H713_MSGBOX_TX_FIFO) : tx,
++		rx, n_rx, n_rx ? readl(msgbox_ctrl_base + H713_MSGBOX_RX_FIFO) : rx);
++}
++
+ /* Legacy stubs — no longer needed but keep exports for now */
+ void cpu_comm_msgbox_probe_start(void) { }
+ void cpu_comm_msgbox_probe_stop(void) { }

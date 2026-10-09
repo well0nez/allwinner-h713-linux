@@ -1,0 +1,155 @@
+From 1957ee67476285d46790566675b1466999f4ad3a Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 14:29:43 +0200
+Subject: [PATCH 34/80] h713: deep sleep: switches for the PLL LDO and the
+ VDD_SYS step
+
+The readiness review for a first deep run on the HY310 (PRUEFUNG4,
+07.10.2026) found two steps of the ported deep path that a first run
+should leave out. The VDD_SYS reset and gating (blob 0xdea8/0xe3a8)
+resets the main domain - CCU gates, pin functions, UART0, the msgbox
+and the SoC watchdog the test runs rely on - and mainline Linux
+restores none of it. The PLL LDO off (0xddbc/0xddec): the HY310 has
+R_PRCM 0x244 bit 2 (CRYSTAL_EN) set, so the 24 MHz clock may come
+through the PLL domain's pads, which upstream crust turns off first.
+
+CONFIG_H713_DEEP_VDD_SYS and CONFIG_H713_DEEP_PLL_LDO (both default y,
+so the deep image is unchanged) put the two steps under a switch; the
+build word reports them in bits 27 and 28. h713_hy310_deep_d1a_defconfig
+is deep sleep with both off: root clocks to OSC24M, PLLs off, LOSC as
+found.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy310_deep_d1a_defconfig   | 12 ++++++++++++
+ drivers/clock/sun50i-h713-r-ccu.c       |  8 ++++++++
+ drivers/hdmi/sun50i-h713-hdmi.c         |  4 +++-
+ platform/h713/Kconfig                   | 21 +++++++++++++++++++++
+ platform/h713/include/platform/memory.h |  3 ++-
+ 5 files changed, 46 insertions(+), 2 deletions(-)
+ create mode 100644 configs/h713_hy310_deep_d1a_defconfig
+
+diff --git a/configs/h713_hy310_deep_d1a_defconfig b/configs/h713_hy310_deep_d1a_defconfig
+new file mode 100644
+index 0000000..b45ef92
+--- /dev/null
++++ b/configs/h713_hy310_deep_d1a_defconfig
+@@ -0,0 +1,12 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_DEEP_SLEEP=y
++# CONFIG_H713_DEEP_PLL_LDO is not set
++# CONFIG_H713_DEEP_VDD_SYS is not set
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index 9de9b62..78c05fb 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -301,15 +301,19 @@ r_ccu_suspend(uint8_t depth UNUSED)
+ 	udelay(1);
+ 	mmio_clr_32(RTC_LOSC_OUT, BIT(0));                      /* 0xdd9c */
+ 	udelay(100);
++#if CONFIG(H713_DEEP_PLL_LDO)
+ 	v = (mmio_read_32(PLL_CTRL_REG1) & ~PLL_CTRL_REG1_LDO_EN) |
+ 	    PLL_CTRL_REG1_KEY;                                  /* 0xddbc */
+ 	mmio_write_32(PLL_CTRL_REG1, v);
+ 	mmio_write_32(PLL_CTRL_REG1, v);
+ 	udelay(100);
++#endif
++#if CONFIG(H713_DEEP_VDD_SYS)
+ 	/* 0xdea8 (the blob skips it for power_down or a USB wake source) */
+ 	mmio_clr_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
+ 	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, AVCC_GATING);
+ 	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, UNK_GATING_BIT_08);
++#endif
+ }
+ 
+ void __attribute__((noinline))
+@@ -317,16 +321,20 @@ r_ccu_resume(void)
+ {
+ 	uint32_t v;
+ 
++#if CONFIG(H713_DEEP_VDD_SYS)
+ 	/* 0xe3a8 */
+ 	mmio_clr_32(VDD_SYS_PWROFF_GATING_REG, UNK_GATING_BIT_08);
+ 	mmio_clr_32(VDD_SYS_PWROFF_GATING_REG, AVCC_GATING);
+ 	mmio_set_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
++#endif
++#if CONFIG(H713_DEEP_PLL_LDO)
+ 	/* 0xddec */
+ 	v = mmio_read_32(PLL_CTRL_REG1) | PLL_CTRL_REG1_KEY |
+ 	    PLL_CTRL_REG1_LDO_EN;
+ 	mmio_write_32(PLL_CTRL_REG1, v);
+ 	mmio_write_32(PLL_CTRL_REG1, v);
+ 	udelay(100);
++#endif
+ 	/* 0xde24/0xde44/0xde68 turn the crystal on, select it and gate the
+ 	 * 32k output on; here the state from before the sleep comes back
+ 	 * instead (see losc_saved): first the oscillator, then the source.
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 3ef19a9..ae34a2a 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -778,7 +778,9 @@ h713_init(void)
+ 	              (uint32_t)((uintptr_t)__bss_start - FIRMWARE_BASE) |
+ 	              (uint32_t)CONFIG(H713_DRAM_SELF_REFRESH) << 24 |
+ 	              (uint32_t)CONFIG(H713_DEEP_SLEEP) << 25 |
+-	              (uint32_t)CONFIG(H713_IR_WAKE_NECX) << 26);
++	              (uint32_t)CONFIG(H713_IR_WAKE_NECX) << 26 |
++	              (uint32_t)CONFIG(H713_DEEP_VDD_SYS) << 27 |
++	              (uint32_t)CONFIG(H713_DEEP_PLL_LDO) << 28);
+ 	portmap_init();
+ 	device_get(&msgbox.dev);
+ 	if (acked)
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index bcae846..ec245b6 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -60,6 +60,27 @@ config H713_DEEP_SLEEP
+ 		the PLL LDO off, VDD_SYS reset and gating. Ported, offline
+ 		model only.
+ 
++config H713_DEEP_PLL_LDO
++	bool "Deep sleep: the PLL LDO off"
++	depends on H713_DEEP_SLEEP
++	default y
++	help
++		Blob 0xddbc down, 0xddec up. The HY310 has R_PRCM 0x244
++		bit 2 (CRYSTAL_EN) set (read 07.10.2026): the 24 MHz clock
++		may come through the PLL domain's pads, and upstream crust
++		turns that path off before the LDO (PRUEFUNG4). Off for the
++		first device run D1a.
++
++config H713_DEEP_VDD_SYS
++	bool "Deep sleep: VDD_SYS reset and AVCC/bit 8 gating"
++	depends on H713_DEEP_SLEEP
++	default y
++	help
++		Blob 0xdea8 down, 0xe3a8 up. It resets the main domain - CCU
++		gates, pin functions, UART0, the msgbox and the SoC watchdog
++		that the test runs use as their net - and mainline Linux
++		restores none of it (PRUEFUNG4 PD-1, PD-3). Off for D1a.
++
+ if H713_DRAM_SELF_REFRESH
+ 
+ config H713_DRAM_CLK
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 3cfe8b3..ff070d2 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -58,7 +58,8 @@
+  * the armed wake timer in milliseconds (0x26 type 3; 0 = none) - here, not
+  * in .bss, so a firmware restart while asleep still ends the standby, with
+  * a reset - and +0x3c the build: image size in bits 19..0, bit 24 DRAM
+- * self-refresh, bit 25 deep sleep, bit 26 IR wake codes.
++ * self-refresh, bit 25 deep sleep, bit 26 IR wake codes, bit 27 the deep VDD_SYS step,
++ * bit 28 the deep PLL LDO step (0034; D1a has bit 25 without 27 and 28).
+  */
+ #define H713_DIAG_BASE       (H713_SHARED_BASE + 0x200)
+ #define H713_DIAG_STEP       (H713_DIAG_BASE + 0x2c)

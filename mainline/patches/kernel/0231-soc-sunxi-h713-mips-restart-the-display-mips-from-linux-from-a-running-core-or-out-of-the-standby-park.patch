@@ -1,0 +1,514 @@
+soc: sunxi: h713-mips: restart the display MIPS from Linux, from a running core or out of the standby park
+
+U-Boot loads display.bin once and starts the MIPS display core. Until
+now, once the core was gone the picture was gone: a firmware that went
+wrong cost a power cycle, and since the standby park (0208) a standby to
+RAM cost a reboot. On the HY310 the restart was measured on 08.10.2026
+with a test bench driver (V3, V8, three times in a row in V10). The core
+was halted, display.bin was loaded again into the window U-Boot uses,
+the core was started, cpu_comm reported it ready after 330 ms, the
+receiver was bound again and the projected picture came back each time.
+This driver repeats the sequences of that test bench, write for write:
+
+ - from a running core (V3): the vendor's mips_reset() as 0167 did it.
+   The bus, soft and cold resets go, the bus reset comes back, the gate
+   is off around the cold reset, 20 us steps, the soft reset stays held
+   (0x0200160c ends at 0x00030001). Then the load, then the vendor's
+   start: boot address 0x4b100000, 20 us, 0x00070001.
+ - out of the park (V8): the load, then U-Boot's h713_mips_release_reset():
+   clock 0x80000002, resets 0, 0x10000, 0x30000, 0x30001 at 12 ms each,
+   boot address, 0x00070001.
+ - from a core held after a failed load: the load and the vendor start.
+ - after a failed start: the park first, then as out of the park. That
+   is V8 exactly as it ran, with its own halt.
+
+The load is the vendor's load_data(): the code block up to the cfg file
+(0xd01000) is zeroed, the image copied and compared, with the HDCP 1.4
+key wait defused in it as U-Boot does at boot (one loop bound, refused
+when there is none or there are two). Before every start
+cpu_comm_firmware_reset() rebuilds cpu_comm's region with the core held.
+After it cpu_comm_firmware_start() waits up to 10 s for READY. The file
+is read and checked before anything is written; the soft reset must be
+held before the window is written; the share registers and the boot
+address are written only with the gate on and the bus reset released.
+
+The driver is the one owner of the MIPS clock 0x02001600 and resets
+0x0200160c (0230). It writes them raw, as U-Boot and the R1 park do; no
+consumer of the clock framework's MIPS clocks and resets exists. cpu_comm
+parks the core for standby through it, with the same writes as before.
+Every register write is logged after its step with the value before and
+the read-back, never between two writes of a timed sequence.
+
+sysfs: "state" gives running, halted, parked or failed on its first line
+and the four registers on the second; the MIPS block is not read with
+the gate off. Writing a path to "restart" ("-" or nothing:
+/boot/mips/display.bin) restarts the core and returns 0 or the error. A
+failure leaves "halted" (core held, cpu_comm stopped) or "failed", says
+why in a warning, and the next write starts over from there. The HDMI
+receiver has to be unbound around it; h713-mips-restart does that.
+
+Against the test bench three things differ on purpose. A failed region
+rebuild keeps the core held, where the bench released it as 0167a did.
+A halt or park that does not end in its register value stops the
+restart. The state is read back from the registers instead of being
+kept as phases across separate writes. The offline test, a register
+model with the bench's sequences spelled literally (71 checks, 32 of 32
+mutants caught), runs the driver source on the host.
+
+Compiled out of tree against the R1 kernel with W=1, no warning. The
+driver itself has not run on the device; what ran was the test bench
+with the same sequences.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/Kconfig
++++ b/drivers/soc/sunxi/Kconfig
+@@ -61,3 +61,17 @@ config SUN50I_H713_TVCAP
+ 	  reflash, which is why the default is m.
+ 
+ 	  The module will be called sun50i-h713-tvcap.
++
++config SUN50I_H713_MIPS
++	tristate "Allwinner H713 display MIPS restart"
++	depends on ARCH_SUNXI || COMPILE_TEST
++	depends on OF && HY310_CPU_COMM
++	help
++	  Restarts the MIPS display core of the Allwinner H713 from Linux:
++	  loads display.bin again into the window U-Boot loaded it into and
++	  starts the core, from a running core or out of the standby park.
++	  It owns the core's clock and resets, and cpu_comm parks the core
++	  for a standby to RAM through it. One sysfs write; h713-mips-restart
++	  unbinds the HDMI receiver around it.
++
++	  The module will be called sun50i-h713-mips.
+--- a/drivers/soc/sunxi/Makefile
++++ b/drivers/soc/sunxi/Makefile
+@@ -4,3 +4,4 @@ obj-$(CONFIG_SUNXI_SRAM) +=	sunxi_sram.o
+ obj-$(CONFIG_HY310_CPU_COMM) += cpu_comm/
+ obj-$(CONFIG_SUN50I_H713_ARISC) += sun50i-h713-arisc.o
+ obj-$(CONFIG_SUN50I_H713_TVCAP) += sun50i-h713-tvcap.o
++obj-$(CONFIG_SUN50I_H713_MIPS) += sun50i-h713-mips.o
+--- /dev/null
++++ b/drivers/soc/sunxi/sun50i-h713-mips.c
+@@ -0,0 +1,421 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Allwinner H713: restart the MIPS display core from Linux, from a running
++ * core or out of the standby park. U-Boot loads display.bin once and starts
++ * the core; this driver loads the same file again into the window U-Boot
++ * used and starts it with the sequences that brought the picture back on
++ * the HY310 (08.10.2026, test bench h713-mips-test, V3/V8/V10):
++ *
++ *  running  -> halt as the vendor's mips_reset() (gate off around the cold
++ *              reset, 20 us steps, soft reset held), load, start as the
++ *              vendor's mipsloader ioctl (boot address, 20 us, released);
++ *  parked   -> load, start as U-Boot's h713_mips_release_reset() (clock
++ *              0x80000002, resets 0, 0x10000, 0x30000, 0x30001 at 12 ms,
++ *              boot address, released);
++ *  halted   -> load, vendor start;
++ *  failed   -> the standby park first, then as parked.
++ *
++ * It is the one owner of the MIPS clock 0x02001600 and resets 0x0200160c,
++ * written raw as U-Boot does (no consumer of the clock framework's MIPS
++ * clocks and resets exists): cpu_comm parks the core for standby through
++ * it. The MIPS block is read only with the gate on and the bus reset
++ * released. Every register write is logged after its step, with the value
++ * before and the read-back, never in the middle of a timed sequence.
++ *
++ * sysfs: "state" reads running|halted|parked|failed and a register line;
++ * writing a display.bin path ("-": /boot/mips/display.bin) to "restart"
++ * restarts the core. The receiver (sun50i-h713-hdmirx) has to be unbound
++ * around it: the restart rebuilds cpu_comm's region and everything the
++ * receiver told the old firmware is gone (h713-mips-restart does that).
++ */
++
++#include <linux/delay.h>
++#include <linux/io.h>
++#include <linux/kernel_read_file.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/platform_device.h>
++#include <linux/unaligned.h>
++#include <linux/vmalloc.h>
++#include <linux/soc/sunxi/h713-cpu-comm.h>
++
++#define H713_MIPS_CLK		0x0		/* 0x02001600, the core clock */
++#define H713_MIPS_RST		0xc		/* 0x0200160c: a set bit is released */
++#define H713_MIPS_GATE		0x00000001u	/* bus clock gate */
++#define H713_MIPS_BUS		0x00010000u
++#define H713_MIPS_COLD		0x00020000u
++#define H713_MIPS_SOFT		0x00040000u
++#define H713_MIPS_HELD		(H713_MIPS_GATE | H713_MIPS_BUS | H713_MIPS_COLD)
++#define H713_MIPS_RUN		(H713_MIPS_HELD | H713_MIPS_SOFT)	/* 0x00070001 */
++#define H713_MIPS_400MHZ	0x80000002u	/* gate on, M = 2 */
++#define H713_MIPS_STATUS	0x1c		/* bit 0: out of reset (1 in the soft reset too) */
++#define H713_MIPS_BOOTADDR	0x30
++#define H713_MIPS_WIN_BASE	0x4b100000	/* U-Boot's boot address */
++#define H713_MIPS_FW_MAX	0x00500000	/* U-Boot's image window */
++#define H713_MIPS_CFG_OFF	0x00d01000	/* cfg file, then TSE: kept */
++#define H713_MIPS_READY_MS	10000		/* U-Boot's budget */
++#define H713_MIPS_DEFAULT_FW	"/boot/mips/display.bin"
++/* "sltiu v1,v1,0x33" of Rx_HDCP14_LoadKey, with 0x06840093 built within 1 KiB */
++#define H713_HDCP_WAIT		0x2c630033
++#define H713_HDCP_NONE		0x2c630000
++#define H713_HDCP_CTX		0x400
++
++struct h713_mips_step { u8 reg; u32 keep, set; u16 us; };	/* reg = (reg & keep) | set */
++struct h713_mips_wlog { u32 reg, before, val, rb; };
++
++/* the vendor's mips_reset() from a running core; ends at 0x00030001 */
++static const struct h713_mips_step h713_mips_halt[] = {
++	{ H713_MIPS_RST, ~H713_MIPS_BUS, 0, 0 }, { H713_MIPS_RST, ~H713_MIPS_SOFT, 0, 0 },
++	{ H713_MIPS_RST, ~H713_MIPS_COLD, 0, 20 }, { H713_MIPS_RST, ~0u, H713_MIPS_BUS, 0 },
++	{ H713_MIPS_RST, ~H713_MIPS_GATE, 0, 20 }, { H713_MIPS_RST, ~0u, H713_MIPS_COLD, 20 },
++	{ H713_MIPS_RST, ~0u, H713_MIPS_GATE, 0 }, { 0xff }
++};
++
++/* the R1 standby park, U-Boot's h713_mips_stop() order */
++static const struct h713_mips_step h713_mips_park_seq[] = {
++	{ H713_MIPS_RST, 0, 0, 12000 }, { H713_MIPS_CLK, 0, 0, 12000 }, { 0xff }
++};
++
++/* U-Boot's h713_mips_release_reset() up to the boot address */
++static const struct h713_mips_step h713_mips_ladder[] = {
++	{ H713_MIPS_CLK, 0, H713_MIPS_400MHZ, 0 }, { H713_MIPS_RST, 0, 0, 12000 },
++	{ H713_MIPS_RST, 0, H713_MIPS_BUS, 12000 },
++	{ H713_MIPS_RST, 0, H713_MIPS_BUS | H713_MIPS_COLD, 12000 },
++	{ H713_MIPS_RST, 0, H713_MIPS_HELD, 12000 }, { 0xff }
++};
++
++enum h713_mips_state { H713_MIPS_RUNNING, H713_MIPS_HALTED, H713_MIPS_PARKED, H713_MIPS_FAILED };
++static const char * const h713_mips_state_name[] = { "running", "halted", "parked", "failed" };
++
++struct h713_mips {
++	struct device *dev;
++	void __iomem *regs, *ccu;
++	void *win;
++	phys_addr_t win_base;
++	struct mutex lock;		/* every register access after the probe */
++	enum h713_mips_state state;
++	struct cpu_comm_mips_owner owner;
++	struct h713_mips_wlog wlog[8];	/* writes not yet logged */
++	int nlog;
++};
++
++/* The writes of the step first, then its result; returns @err. */
++static __printf(3, 4) int h713_mips_say(struct h713_mips *m, int err, const char *fmt, ...)
++{
++	struct va_format vaf;
++	va_list ap;
++	int n;
++
++	for (n = 0; n < m->nlog; n++)
++		dev_info(m->dev, "0x%08x: 0x%08x -> 0x%08x, reads 0x%08x\n", m->wlog[n].reg,
++			 m->wlog[n].before, m->wlog[n].val, m->wlog[n].rb);
++	m->nlog = 0;
++	va_start(ap, fmt);
++	vaf.fmt = fmt;
++	vaf.va = &ap;
++	if (err)
++		dev_warn(m->dev, "%pV (%d), now %s\n", &vaf, err, h713_mips_state_name[m->state]);
++	else
++		dev_info(m->dev, "%pV\n", &vaf);
++	va_end(ap);
++	return err;
++}
++
++/* Logged by the next h713_mips_say(): a printk here would stretch the 20 us steps. */
++static void h713_mips_write(struct h713_mips *m, void __iomem *r, u32 reg, u32 val)
++{
++	u32 before = readl(r);
++
++	writel(val, r);
++	m->wlog[min(m->nlog, 7)] = (struct h713_mips_wlog){ reg, before, val, readl(r) };
++	m->nlog = min(m->nlog + 1, 8);	/* at most 7 writes between two lines */
++}
++
++static void h713_mips_steps(struct h713_mips *m, const struct h713_mips_step *s)
++{
++	for (; s->reg != 0xff; s++) {
++		h713_mips_write(m, m->ccu + s->reg, 0x02001600 + s->reg,
++				(readl(m->ccu + s->reg) & s->keep) | s->set);
++		wmb();	/* the write reaches the CCU before the wait starts */
++		fsleep(s->us);
++	}
++}
++
++static bool h713_mips_readable(struct h713_mips *m)
++{
++	u32 rst = readl(m->ccu + H713_MIPS_RST);
++
++	return (rst & (H713_MIPS_GATE | H713_MIPS_BUS)) == (H713_MIPS_GATE | H713_MIPS_BUS);
++}
++
++/* What the registers say; the status bit alone does not tell halted from running. */
++static enum h713_mips_state h713_mips_classify(struct h713_mips *m)
++{
++	u32 rst = readl(m->ccu + H713_MIPS_RST);
++
++	if ((rst & H713_MIPS_RUN) == H713_MIPS_RUN)
++		return (readl(m->regs + H713_MIPS_STATUS) & BIT(0)) ? H713_MIPS_RUNNING
++								   : H713_MIPS_FAILED;
++	if (rst == H713_MIPS_HELD)
++		return H713_MIPS_HALTED;
++	return rst ? H713_MIPS_FAILED : H713_MIPS_PARKED;
++}
++
++/* The one loop bound of the HDCP 1.4 key wait, defused as U-Boot does; 0: none or two. */
++static size_t h713_mips_defuse_hdcp_wait(u8 *img, size_t len)
++{
++	size_t p, q, found = 0;
++
++	for (p = 0; p + 4 <= len; p += 4) {
++		size_t to = min(p + H713_HDCP_CTX, len);
++		bool hi = false, lo = false;
++
++		if (get_unaligned_le32(img + p) != H713_HDCP_WAIT)
++			continue;
++		for (q = p > H713_HDCP_CTX ? p - H713_HDCP_CTX : 0; q + 2 <= to; q += 2) {
++			hi |= get_unaligned_le16(img + q) == 0x0684;
++			lo |= get_unaligned_le16(img + q) == 0x0093;
++		}
++		if (hi && lo && found)
++			return 0;
++		found = hi && lo ? p : found;
++	}
++	if (found)
++		put_unaligned_le32(H713_HDCP_NONE, img + found);
++	return found;
++}
++
++/* The vendor's load_data(): the code block zeroed, then copied, then compared. */
++static int h713_mips_load(struct h713_mips *m, const void *img, size_t n)
++{
++	if (readl(m->ccu + H713_MIPS_RST) & H713_MIPS_SOFT)
++		return h713_mips_say(m, -ENXIO, "load: the core is not held, window not written");
++	memset(m->win, 0, H713_MIPS_CFG_OFF);
++	memcpy(m->win, img, n);
++	wmb();	/* the image is in DRAM before the core can be released */
++	if (memcmp(m->win, img, n))
++		return h713_mips_say(m, -EIO, "load: window read-back differs, core held");
++	return 0;
++}
++
++static int h713_mips_start(struct h713_mips *m, bool uboot)
++{
++	const char *how = uboot ? "U-Boot" : "vendor";
++	int ret;
++
++	m->state = H713_MIPS_FAILED;	/* until the firmware says ready */
++	if (!uboot && readl(m->ccu + H713_MIPS_RST) != H713_MIPS_HELD)
++		return h713_mips_say(m, -ENXIO, "%s start: 0x0200160c 0x%08x, only from 0x00030001",
++				     how, readl(m->ccu + H713_MIPS_RST));
++	if (uboot)
++		h713_mips_steps(m, h713_mips_ladder);
++	/* the share registers and the boot address are in the MIPS block */
++	if (!h713_mips_readable(m))
++		return h713_mips_say(m, -ENXIO, "%s start: gate off or bus reset held", how);
++	ret = cpu_comm_firmware_reset();
++	if (ret)
++		return h713_mips_say(m, ret, "%s start: no new cpu_comm region, core held", how);
++	h713_mips_write(m, m->regs + H713_MIPS_BOOTADDR, 0x03061030, lower_32_bits(m->win_base));
++	wmb();	/* the boot address is set before the soft reset goes */
++	if (!uboot)
++		usleep_range(20, 25);
++	h713_mips_write(m, m->ccu + H713_MIPS_RST, 0x0200160c, H713_MIPS_RUN);
++	h713_mips_say(m, 0, "%s start: core released", how);
++	ret = cpu_comm_firmware_start(H713_MIPS_READY_MS);
++	if (!ret)
++		m->state = H713_MIPS_RUNNING;
++	return h713_mips_say(m, ret, "%s start: status 0x%08x, %sready", how,
++			     readl(m->regs + H713_MIPS_STATUS), ret ? "NOT " : "");
++}
++
++static int h713_mips_restart(struct h713_mips *m, const char *path)
++{
++	enum h713_mips_state from = m->state, regs = h713_mips_classify(m);
++	size_t size = 0, hdcp = 0;
++	void *img = NULL;
++	ssize_t n;
++	int ret;
++
++	n = kernel_read_file_from_path(path, 0, &img, H713_MIPS_FW_MAX, &size, READING_FIRMWARE);
++	if (n < 0)
++		return h713_mips_say(m, n, "restart: %s not read", path);
++	if (n >= SZ_64K && !(n & 3))
++		hdcp = h713_mips_defuse_hdcp_wait(img, n);
++	if (!hdcp) {
++		vfree(img);
++		return h713_mips_say(m, -EINVAL, "restart: %s, %zd bytes: %s", path, n,
++				     n < SZ_64K || (n & 3) ? "not the size of a display.bin"
++							   : "not exactly one HDCP wait site");
++	}
++	if (from != H713_MIPS_FAILED)
++		from = regs;	/* the registers are the owner's; they decide */
++	h713_mips_say(m, 0, "restart from %s: %s, %zd bytes, HDCP wait at 0x%zx",
++		      h713_mips_state_name[from], path, n, hdcp);
++	ret = cpu_comm_firmware_stop();
++	if (ret) {
++		h713_mips_say(m, ret, "restart: cpu_comm cannot stop, nothing written");
++		goto out;
++	}
++	if (from == H713_MIPS_RUNNING || from == H713_MIPS_FAILED) {
++		bool park = from == H713_MIPS_FAILED;	/* V8 with its halt, else V3 */
++		enum h713_mips_state want = park ? H713_MIPS_PARKED : H713_MIPS_HALTED;
++
++		h713_mips_steps(m, park ? h713_mips_park_seq : h713_mips_halt);
++		m->state = h713_mips_classify(m) == want ? want : H713_MIPS_FAILED;
++		ret = h713_mips_say(m, m->state == want ? 0 : -EIO,
++				    "%s: 0x02001600 0x%08x, 0x0200160c 0x%08x",
++				    park ? "park" : "vendor halt",
++				    readl(m->ccu + H713_MIPS_CLK), readl(m->ccu + H713_MIPS_RST));
++		if (ret)
++			goto out;
++	}
++	ret = h713_mips_load(m, img, n);
++	if (!ret)
++		ret = h713_mips_start(m, m->state != H713_MIPS_HALTED);
++out:
++	vfree(img);
++	return ret;
++}
++
++static ssize_t restart_store(struct device *dev, struct device_attribute *attr,
++			     const char *buf, size_t count)
++{
++	struct h713_mips *m = dev_get_drvdata(dev);
++	char path[128], *p;
++	int ret;
++
++	if (strscpy(path, buf, sizeof(path)) < 0)
++		return -ENAMETOOLONG;
++	p = strim(path);
++	mutex_lock(&m->lock);
++	ret = h713_mips_restart(m, *p && strcmp(p, "-") ? p : H713_MIPS_DEFAULT_FW);
++	mutex_unlock(&m->lock);
++	return ret ? ret : count;
++}
++static DEVICE_ATTR_WO(restart);
++
++static ssize_t state_show(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	struct h713_mips *m = dev_get_drvdata(dev);
++	int len;
++
++	mutex_lock(&m->lock);
++	len = sysfs_emit(buf, "%s\n0x02001600=0x%08x 0x0200160c=0x%08x",
++			 h713_mips_state_name[m->state],
++			 readl(m->ccu + H713_MIPS_CLK), readl(m->ccu + H713_MIPS_RST));
++	if (h713_mips_readable(m))
++		len += sysfs_emit_at(buf, len, " 0x0306101c=0x%08x 0x03061030=0x%08x\n",
++				     readl(m->regs + H713_MIPS_STATUS),
++				     readl(m->regs + H713_MIPS_BOOTADDR));
++	else
++		len += sysfs_emit_at(buf, len, " 0x0306101c=not-read\n");
++	mutex_unlock(&m->lock);
++	return len;
++}
++static DEVICE_ATTR_RO(state);
++
++static struct attribute *h713_mips_attrs[] = { &dev_attr_restart.attr, &dev_attr_state.attr, NULL };
++ATTRIBUTE_GROUPS(h713_mips);
++
++/* cpu_comm asks: is there a core to park? Never reads the block with the gate off. */
++static bool h713_mips_alive(void *ctx)
++{
++	struct h713_mips *m = ctx;
++	bool alive;
++
++	mutex_lock(&m->lock);
++	alive = h713_mips_readable(m) && (readl(m->regs + H713_MIPS_STATUS) & BIT(0));
++	mutex_unlock(&m->lock);
++	return alive;
++}
++
++/* cpu_comm's standby park (suspend_late), after it closed the call path */
++static int h713_mips_park(void *ctx, u32 *clk, u32 *rst)
++{
++	struct h713_mips *m = ctx;
++	int ret;
++
++	mutex_lock(&m->lock);
++	h713_mips_steps(m, h713_mips_park_seq);
++	*clk = readl(m->ccu + H713_MIPS_CLK);
++	*rst = readl(m->ccu + H713_MIPS_RST);
++	ret = (*clk || *rst) ? -EIO : 0;
++	m->state = ret ? H713_MIPS_FAILED : H713_MIPS_PARKED;
++	h713_mips_say(m, ret, "park for standby: 0x02001600 0x%08x, 0x0200160c 0x%08x", *clk, *rst);
++	mutex_unlock(&m->lock);
++	return ret;
++}
++
++static void h713_mips_unown(void *ctx)
++{
++	struct h713_mips *m = ctx;
++
++	cpu_comm_set_mips_owner(NULL);
++	if (m->state != H713_MIPS_RUNNING)
++		dev_warn(m->dev, "unbound with the core %s: cpu_comm stays closed until a restart\n",
++			 h713_mips_state_name[m->state]);
++}
++
++static int h713_mips_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct resource *res, win;
++	struct h713_mips *m;
++	int ret;
++
++	m = devm_kzalloc(dev, sizeof(*m), GFP_KERNEL);
++	if (!m)
++		return -ENOMEM;
++	m->dev = dev;
++	mutex_init(&m->lock);
++	m->regs = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(m->regs))
++		return PTR_ERR(m->regs);
++	/* not requested: the CCU driver holds the region */
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
++	m->ccu = res && resource_size(res) >= 0x10 ? devm_ioremap(dev, res->start, 0x10) : NULL;
++	if (!m->ccu)
++		return dev_err_probe(dev, -ENODEV, "no MIPS clock and reset registers (reg 1)\n");
++	ret = of_reserved_mem_region_to_resource(dev->of_node, 0, &win);
++	if (ret || win.start != H713_MIPS_WIN_BASE || resource_size(&win) < H713_MIPS_CFG_OFF)
++		return dev_err_probe(dev, -ENODEV, "no memory-region at 0x%x of 0x%x bytes\n",
++				     H713_MIPS_WIN_BASE, H713_MIPS_CFG_OFF);
++	m->win_base = win.start;
++	m->win = devm_memremap(dev, win.start, H713_MIPS_CFG_OFF, MEMREMAP_WC);
++	if (IS_ERR(m->win))
++		return PTR_ERR(m->win);
++	m->state = h713_mips_classify(m);
++	m->owner = (struct cpu_comm_mips_owner){ h713_mips_alive, h713_mips_park, m };
++	platform_set_drvdata(pdev, m);
++	ret = cpu_comm_set_mips_owner(&m->owner);
++	if (ret)
++		return dev_err_probe(dev, ret, "cpu_comm has another owner of the MIPS clock\n");
++	ret = devm_add_action_or_reset(dev, h713_mips_unown, m);
++	if (ret)
++		return ret;
++	return h713_mips_say(m, 0, "window 0x%llx+0x%x, 0x02001600 0x%08x, 0x0200160c 0x%08x, %s",
++			     (u64)m->win_base, H713_MIPS_CFG_OFF, readl(m->ccu + H713_MIPS_CLK),
++			     readl(m->ccu + H713_MIPS_RST), h713_mips_state_name[m->state]);
++}
++
++static const struct of_device_id h713_mips_of_match[] = {
++	{ .compatible = "allwinner,sun50i-h713-mips" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, h713_mips_of_match);
++
++static struct platform_driver h713_mips_driver = {
++	.probe	= h713_mips_probe,
++	.driver	= {
++		.name		= "sun50i-h713-mips",
++		.of_match_table	= h713_mips_of_match,
++		.dev_groups	= h713_mips_groups,
++	},
++};
++module_platform_driver(h713_mips_driver);
++
++MODULE_DESCRIPTION("Allwinner H713 display MIPS restart");
++MODULE_AUTHOR("well0nez <8986239+well0nez@users.noreply.github.com>");
++MODULE_LICENSE("GPL");

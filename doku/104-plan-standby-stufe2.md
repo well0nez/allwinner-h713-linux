@@ -1,4 +1,8 @@
 # Plan 104 - Einschalt-Gate Stufe 2: Stock-Standby über die ARISC
+> **Teilweise ueberholt (07.10.2026).** Der Standby läuft über crust statt über die Hersteller-ARISC (`doku/162` - `doku/168`,
+> [`docs/subsystems/standby.md`](../docs/subsystems/standby.md)). **H5** gilt nicht mehr: `HandlePowerKey=suspend` würde eine
+> per Taste geweckte Box sofort wieder schlafen legen; die Taste entscheidet `h713-power` unter einer logind-Sperre
+> ([`docs/tools/h713-power.md`](../docs/tools/h713-power.md)). Der Plan bleibt als Beleg stehen.
 
 **Status: geparkt (Marco 10.09. 01:30, niedrige Priorität), Vorarbeit S39/S40 abgeschlossen.** Nutzen ehrlich: < 1 W statt 4 W (≈ 25 kWh/Jahr), Wecken per
 Fernbedienung/CEC, Sofort-an in 2-3 s. Für das Release ([`105`](105-plan-release.md)) nicht nötig; Fernbedienungs-Wecken geht billiger über

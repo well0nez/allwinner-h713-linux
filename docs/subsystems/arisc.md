@@ -9,7 +9,9 @@ on 2026-09-06 before the rule was understood; the hardware survived every one of
 
 ## Firmware and driver
 
-The firmware (`h713-arisc.bin`, the vendor's `scp.bin`) never ships either - like the MIPS
+Two firmwares can run here, and the board's device tree names which (`firmware-name`). On the HY310 it
+is **crust**, our own, built with the image ("crust and the contract page" below). On every other board
+it is the vendor's (`h713-arisc.bin`, the vendor's `scp.bin`), which never ships - like the MIPS
 artifacts in [mips.md](mips.md), it comes from the user's own device dump via `h713-extract`. The
 driver, `sun50i-h713-arisc`, loads it into SRAM, releases the core's reset, and then must complete
 a startup handshake before the firmware services anything at all - a notification on one channel,
@@ -158,13 +160,49 @@ The handshake has to finish before anything touches the `R_` block, and the driv
 structurally rather than by convention: it maps none of `0x0709xxxx` itself, and every other entry
 point returns `-EAGAIN` until a successful reset has set an internal "module ready" flag.
 
+## crust and the contract page
+
+[crust](https://github.com/crust-firmware/crust) is free firmware for this core; `crust-h713/` carries
+our port. It speaks the vendor's message contract - the startup handshake, the HDMI subcommands, the
+display MIPS's frames - so the kernel API above works the same with it, and it adds the standby
+([standby.md](standby.md)). It ran on the HY310 on 07.10.2026: HDMI, EDID, hot plug and the MIPS's
+frames as with the vendor's firmware, then started by BL31, then the first standby cycles (`doku/163` -
+`doku/167`). Three things are different:
+
+- **Who starts it.** BL31 starts crust at every boot from the FIT's `scp` image, before U-Boot proper.
+  The driver finds it running and keeps it when the file its device tree names (`hy310-crust.bin`, our
+  build, in `/lib/firmware` of the image) is the same image; a different or a vendor file is loaded over
+  it, with a warning. FIT and file come from one build, and `release/check-crust.py` refuses an image
+  where they differ.
+- **The contract page.** 1 KiB in SRAM A2 (ARM `0x00123800`), in which crust, BL31 and Linux each own
+  their words. Version 4 is what ran on the device; version 5 adds what a release needs and has not run
+  yet. Its one table is crust's `platform/h713/include/platform/memory.h`; the kernel's and BL31's
+  offsets are checked against it.
+
+  | Range | Class | Written by |
+  |---|---|---|
+  | `+0x000` - `+0x1ff` | R: magic, version, status with heartbeat, wake word, the HDMI state | crust, cleared at its every start - after a restart the kernel acknowledged, except the HDMI state at `+0x010` - `+0x0ff` |
+  | `+0x200` - `+0x23f` | D: diagnosis - starts, last step, last exception, sleep length, the build word at `+0x23c` | crust; kept across its restarts |
+  | `+0x240` - `+0x25f` | S: what one start saw | crust |
+  | `+0x260` - `+0x2bf` | K: compatibility, standby phase, cycle, budgets, error bits, counters, the wake word until the kernel has asked for it | crust only; kept across its restarts |
+  | `+0x2c0` - `+0x2cf` | A: the kernel's standby request and confirm, BL31's last event | one ARM writer per word |
+  | `+0x2d0` - `+0x38f` | P: BL31's or the kernel's copy of the record of crust's last run | the ARM only |
+
+  A reader takes the page when the magic is right, the version is at least the one it needs and crust's
+  compatibility word is not above the one it knows; else it refuses aloud instead of reading wrong.
+- **What it is built as.** The build word says the variant: bit 24 DRAM self-refresh, 26 the IR wake
+  codes, and 25, 27, 28, 31 for deep sleep and its steps, 29 the sleep net, 30 a test build. A release
+  carries self-refresh (`h713_hy310_sr_defconfig`); the build gate refuses 25, 27, 28, 30 and 31, 29
+  until its watchdog is measured, and the DRAM checksum of the test image (`h713_hy310_sr_test_defconfig`)
+  until the device stages show it raises no false alarm. The driver's `state` file shows version, build word, standby phase,
+  last wake and the error bits, read without disturbing the firmware.
+
 ## What it does not do
 
 Everything here is polled, not interrupt-driven - the firmware's main loop checks its inbound
-channels itself, so the driver sends no doorbell. Boot0 gates the core's clocks on the way up, but
-nothing here drives real power management: our TF-A does not speak the vendor's SCPI protocol to
-it (`doku/68`), and an ARISC-backed deep-sleep stage is a parked, low-priority plan, not built
-(`doku/00-STATUS.md`, plan `104`). HDCP key handling is a separate path through secure storage and
+channels itself, so the driver sends no doorbell. Boot0 gates the core's clocks on the way up. Under
+the vendor's firmware nothing here drives power management: our TF-A does not speak the vendor's SCPI
+protocol to it (`doku/68`); the standby runs only with crust ([standby.md](standby.md)). HDCP key handling is a separate path through secure storage and
 the MIPS, unrelated to this core. And `remove()` deliberately leaves the reset alone - pulling it
 would drop the hot-plug pin under a live HDMI input - so recovering from a bad module load means
 reloading the firmware, not just unbinding it.

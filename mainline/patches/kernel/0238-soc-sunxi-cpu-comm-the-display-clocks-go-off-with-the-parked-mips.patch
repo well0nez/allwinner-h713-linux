@@ -1,0 +1,141 @@
+soc: sunxi: cpu_comm: the display clocks go off with the parked MIPS
+
+The park stops the MIPS core, not the display pipeline it set up
+(deinterlacer, video processing, scanout), and nothing else stops it
+before the sleep. On the HY310, after about half of the wakes the DMA
+masters - the DMA controller, EHCI, the SDIO host - got nothing from the
+DRAM while the CPU still did: camera -110, WLAN "cmd timed-out", a 4 KiB
+DMA copy never completing (09.10.2026). It never happened with the
+pipeline not started, nor with the display bus held in reset over the
+sleep, which the vendor's ge2d_suspend does before every standby.
+
+A reset loses what the parked MIPS set up and afbd's resume then hangs
+the bus, so the clocks are only gated: deint, panel, svp-dtl, afbd and
+bus-disp, right after the park in suspend_late (and on a sleep whose
+MIPS is still parked from an earlier one), before genpd powers TVCAP and
+TVFE off in the noirq phase; the saved words come back in resume_early,
+before any resume touches the block. The clock framework's view of
+clk_bus_disp and clk_afbd (afbd's) holds.
+
+Measured on the HY310 (FEL test images, 5 s sleeps): gated in the noirq
+phase 9 of 9 good; this form, in suspend_late, 7 of 7 good, two boots
+with two sleeps each without a MIPS restart good; on the
+r1test2 stack (crust ecf2ddc, TF-A 175c6948f) 6 of 6 good. Before: 7 of 7 bad in the
+same setup. arbeit/standby-display-20261009/BERICHT.md.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -2323,6 +2323,81 @@ static void cpu_comm_drv_remove(struct platform_device *pdev)
+  * driver's too.
+  */
+ 
++/*
++ * The display clocks across the self-refresh. The park stops the MIPS core,
++ * not the display pipeline it set up (deinterlacer, video processing,
++ * scanout), and nothing else stops it before the sleep. On the HY310, after
++ * about half of the wakes the DMA masters - the DMA controller, EHCI, the
++ * SDIO host - got nothing from the DRAM while the CPU still did: camera -110,
++ * WLAN "cmd timed-out", a 4 KiB DMA copy never completing (09.10.2026). It
++ * never happened with the pipeline not started, nor with the display bus
++ * held in reset over the sleep, which the vendor's ge2d_suspend does before
++ * every standby. The likely reason, not measured: crust holds the DRAM
++ * controller in reset for the sleep, and a fetch issued into that window
++ * never returns. A reset loses what the parked MIPS set up, and afbd's resume
++ * then hangs the bus; so the clocks are only gated here, the engines stop
++ * where they are and go on after the wake.
++ *
++ * Only while the MIPS is parked, and right after the park in suspend_late:
++ * after every display access of afbd's and hdmirx's suspend, before genpd
++ * powers TVCAP and TVFE off under the pipeline in the noirq phase (the
++ * vendor has the display off long before), and undone in resume_early,
++ * before any resume touches the block again. The words come back as they were, so the clock framework's
++ * view of clk_bus_disp and clk_afbd (afbd's) holds.
++ */
++#define H713_CCU_DISP		0x02001db0	/* deint, the first of the five words */
++static const struct { u16 off; u32 gate; } cpu_comm_disp_gates[] = {
++	{ 0x000, BIT(31) },	/* 0xdb0 deint */
++	{ 0x004, BIT(31) },	/* 0xdb4 panel */
++	{ 0x008, BIT(31) },	/* 0xdb8 svp-dtl */
++	{ 0x010, BIT(31) },	/* 0xdc0 afbd */
++	{ 0x028, BIT(0) },	/* 0xdd8 bus-disp, last */
++};
++static u32 cpu_comm_disp_saved[ARRAY_SIZE(cpu_comm_disp_gates)];
++static bool cpu_comm_disp_gated;
++
++static void cpu_comm_disp_gate(struct device *dev)
++{
++	void __iomem *ccu;
++	unsigned int i;
++
++	ccu = ioremap(H713_CCU_DISP, 0x30);
++	if (!ccu) {
++		dev_warn(dev, "standby: display clocks not gated (no mapping), the pipeline runs through the self-refresh\n");
++		return;
++	}
++	for (i = 0; i < ARRAY_SIZE(cpu_comm_disp_gates); i++) {
++		cpu_comm_disp_saved[i] = readl(ccu + cpu_comm_disp_gates[i].off);
++		writel(cpu_comm_disp_saved[i] & ~cpu_comm_disp_gates[i].gate,
++		       ccu + cpu_comm_disp_gates[i].off);
++	}
++	iounmap(ccu);
++	cpu_comm_disp_gated = true;
++	dev_info(dev, "standby: display clocks gated with the coprocessor parked (deint %08x panel %08x svp %08x afbd %08x bus %08x)\n",
++		 cpu_comm_disp_saved[0], cpu_comm_disp_saved[1], cpu_comm_disp_saved[2],
++		 cpu_comm_disp_saved[3], cpu_comm_disp_saved[4]);
++}
++
++static void cpu_comm_disp_ungate(struct device *dev)
++{
++	void __iomem *ccu;
++	unsigned int i;
++
++	if (!cpu_comm_disp_gated)
++		return;
++	ccu = ioremap(H713_CCU_DISP, 0x30);
++	if (!ccu) {
++		dev_err(dev, "standby: display clocks NOT restored (no mapping), every display access will hang\n");
++		return;
++	}
++	/* the bus clock first, then the module clocks */
++	for (i = ARRAY_SIZE(cpu_comm_disp_gates); i--; )
++		writel(cpu_comm_disp_saved[i], ccu + cpu_comm_disp_gates[i].off);
++	iounmap(ccu);
++	cpu_comm_disp_gated = false;
++	dev_info(dev, "standby: display clocks restored\n");
++}
++
+ /*
+  * s2idle is refused while the MIPS runs: genpd powers TVFE and TVCAP off in
+  * the noirq phase whatever the runtime references say, and the MIPS polls
+@@ -2352,8 +2427,12 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+ 		return 0;
+ 	cpu_comm_s2r_count++;
+-	if (!cpu_comm_mips_running())
++	if (!cpu_comm_mips_running()) {
++		/* parked since an earlier sleep: its pipeline still runs */
++		if (READ_ONCE(cpu_comm_parked_since))
++			cpu_comm_disp_gate(dev);
+ 		return 0;
++	}
+ 
+ 	/*
+ 	 * Close the call path first and wait out a call in flight:
+@@ -2396,6 +2475,7 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	}
+ 	pr_info("cpu_comm: suspend-to-RAM #%u: coprocessor parked, kernel RPCs fail with -ENODEV and ioctl RPCs with -EFAULT until it is restarted\n",
+ 		cpu_comm_s2r_count);
++	cpu_comm_disp_gate(dev);
+ 	return 0;
+ }
+ 
+@@ -2410,6 +2490,7 @@ static int cpu_comm_resume_early(struct device *dev)
+ {
+ 	unsigned int since = READ_ONCE(cpu_comm_parked_since);
+ 
++	cpu_comm_disp_ungate(dev);
+ 	if (since)
+ 		pr_info("cpu_comm: display coprocessor parked since suspend-to-RAM #%u, the restart is userspace's (h713-mips-restart)\n",
+ 			since);

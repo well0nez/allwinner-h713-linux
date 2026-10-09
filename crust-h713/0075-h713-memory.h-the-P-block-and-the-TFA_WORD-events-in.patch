@@ -1,0 +1,89 @@
+From a5723aa6870bc749c166b7de1d9621d710b5a1cd Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 23:11:23 +0200
+Subject: [PATCH 75/80] h713: memory.h: the P block and the TFA_WORD events in
+ the table
+
+memory.h is the one table of the contract page that the kernel's
+h713-crust-contract.h and TF-A mirror, but of P it named only the base,
+and the TFA_WORD events were not there at all; the mirrors had them
+(review of the release work, H5). Both now stand here as the design's
+3.2 has them: P_HDR (mark, source, reported), P_SUM over +0x2d8..+0x38f,
+the copies, P_RWDOG and P_GP5 from TF-A; the four events with their
+detail bits. The class note said the loaders copy all of A; they copy
+TFA_WORD and NET_CONFIRM (cross check of the contract, V8). crust still
+never touches P; the names are for the mirrors.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ platform/h713/include/platform/memory.h | 46 ++++++++++++++++++++-----
+ 1 file changed, 38 insertions(+), 8 deletions(-)
+
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 4a43dc9..b61677d 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -55,8 +55,9 @@
+  *                       (TF-A, kernel)                             touches P
+  *   X    +0x390..+0x3ff reserved, rules  as K                      restarts
+  *                       of K
+- * The loaders (TF-A at boot, the kernel before a reload) copy D, K and A to
+- * P and then zero everything but P.
++ * The loaders (TF-A at boot, the kernel before a reload) copy STATUS, WAKE,
++ * D, K and A's TFA_WORD and NET_CONFIRM to P and then zero everything but
++ * P (layout below).
+  */
+ #define H713_SHARED_BASE  0x00023800
+ #define H713_SHARED_LIMIT SCPI_MEM_BASE
+@@ -133,16 +134,45 @@
+ #define H713_A_NET_BUDGET    H713_PAGE(0x2c4) /* kernel: s, 15..0 presleep, 31..16 resuming */
+ #define H713_A_NET_CONFIRM   H713_PAGE(0x2c8) /* kernel: 31..16 0xc0f1, 7..0 cycle */
+ #define H713_A_TFA_WORD      H713_PAGE(0x2cc) /* TF-A: 31..24 event, 23..16 number, 15..0 detail */
++/*
++ * TFA_WORD events: 1 SYSTEM_SUSPEND denied (detail: the bits of the checks
++ * that failed - 0 magic, 1 version, 2 build bit 27, 3 bits 28/31, 4 phase,
++ * 5 net, 6 running, 7 heartbeat, 8 not core 0), 2 crust not running by
++ * TF-A's start deadline (0 magic, 1 running), 3 R_WDOG found armed at
++ * boot, 4 the cpu op req could not be handed over (detail 1 no usable
++ * entry, 2 port 3 full, 3 not read), reset. crust never reads it.
++ */
+ 
+ /*
+- * P: the previous run's record, ARM only. X: crust's, the deep stage only
+- * (rules of K). The main-domain fingerprint (ccu.c), read before the deep
+- * path and after it, 13 words in this order: CCU 0x71c, 0x90c, 0x540,
+- * 0xdd8; PIO 0x150 (PH CFG0); WDOG 0x14 (MODE); R_PRCM 0x250, 0x260; PPU
+- * status (0x07001024 + 0x80 d) of d = 0 GPU, 1 TVFE, 2 TVCAP, 3 VE, 4 AV1,
+- * 0xffffffff when the PPU's bus gate or reset (R_PRCM 0x1ac) was closed.
++ * P: the previous run's record, ARM only, written before the writer zeroes
++ * the rest of the page: TF-A at boot (source 1, or an empty record with
++ * its sum), the kernel before it reloads crust (source 2). crust never
++ * touches it.
+  */
+ #define H713_P_BASE          H713_PAGE(0x2d0)
++#define H713_P_HDR           H713_PAGE(0x2d0) /* 31..16 0x5052, 15..8 source, 0 reported (kernel) */
++#define H713_P_SUM           H713_PAGE(0x2d4) /* ~(32-bit sum of +0x2d8..+0x38f) */
++#define H713_P_STATUS        H713_PAGE(0x2d8) /* copy of STATUS */
++#define H713_P_WAKE          H713_PAGE(0x2dc) /* copy of WAKE */
++#define H713_P_RWDOG         H713_PAGE(0x2e0) /* TF-A: R_WDOG STA << 16 | MODE at boot (0 unchecked) */
++#define H713_P_GP5           H713_PAGE(0x2e4) /* TF-A: RTC GP5 at boot */
++#define H713_P_TFA_WORD      H713_PAGE(0x2e8) /* copy of TFA_WORD */
++#define H713_P_NET_CONFIRM   H713_PAGE(0x2ec) /* copy of NET_CONFIRM */
++#define H713_P_DIAG          H713_PAGE(0x2f0) /* copy of D, 16 words */
++#define H713_P_K             H713_PAGE(0x330) /* copy of K, 24 words */
++#define H713_P_LIMIT         H713_PAGE(0x390)
++#define H713_P_MARK          0x5052
++#define H713_P_FROM_BL31     1
++#define H713_P_FROM_LINUX    2
++
++/*
++ * X: crust's, the deep stage only (rules of K). The main-domain fingerprint
++ * (ccu.c), read before the deep path and after it, 13 words in this order:
++ * CCU 0x71c, 0x90c, 0x540, 0xdd8; PIO 0x150 (PH CFG0); WDOG 0x14 (MODE);
++ * R_PRCM 0x250, 0x260; PPU status (0x07001024 + 0x80 d) of d = 0 GPU, 1
++ * TVFE, 2 TVCAP, 3 VE, 4 AV1, 0xffffffff when the PPU's bus gate or reset
++ * (R_PRCM 0x1ac) was closed.
++ */
+ #define H713_X_BASE          H713_PAGE(0x390)
+ #define H713_X_FP_CYCLE      H713_PAGE(0x390) /* deep: 7..0 cycle of the set before, 15..8 after */
+ #define H713_X_FP_BEFORE     H713_PAGE(0x394) /* deep: main-domain fingerprint, 13 words */

@@ -1,0 +1,83 @@
+From ed8c28eb1e08ec6516b230247409d0def01cae1c Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:38:13 +0200
+Subject: [PATCH 58/80] h713: WAKE_MS from the cpu op req to CPU0's release, no
+ regulator wait
+
+slept_ms counts only the polling loop asleep. The 50 ms between the cpu
+op req and the cluster down, the suspend steps and the resume steps were
+never credited to the system counter, about 60 ms a cycle (C1: 5.06 s
+host time against 5000 ms credited); 5 ms of it was the regulator wait
+in PRE_RESUME, for supplies the H713 does not have (PRUEFUNG5 CS-15).
+
+The sleep code now counts WAKE_MS (K block +0x298) while the standby is
+in CPU_OP or SLEEP - from the cpu op req to CPU0's release - on the same
+tick as NET_MS; TF-A from contract v5 credits it instead of slept_ms,
+which stays as it was for v3/v4. PRE_RESUME skips the 5 ms on the H713:
+no PMIC, every supply NULL.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ common/system.c                  |  6 ++++--
+ drivers/hdmi/sun50i-h713-sleep.c | 14 ++++++++++++--
+ 2 files changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/common/system.c b/common/system.c
+index 62a5334..632149a 100644
+--- a/common/system.c
++++ b/common/system.c
+@@ -276,8 +276,10 @@ system_state_machine(uint32_t exception)
+ 			}
+ 			device_put(pmic);
+ 
+-			/* Give regulator outputs time to rise. */
+-			udelay(5000);
++			/* Give regulator outputs time to rise (the H713 has
++			 * none: no PMIC, every supply NULL). */
++			if (!CONFIG(PLATFORM_H713))
++				udelay(5000);
+ 
+ 			/* Restore SoC-internal power domains. */
+ 			record_step(STEP_RESUME_PRCM);
+diff --git a/drivers/hdmi/sun50i-h713-sleep.c b/drivers/hdmi/sun50i-h713-sleep.c
+index 84740fb..1511578 100644
+--- a/drivers/hdmi/sun50i-h713-sleep.c
++++ b/drivers/hdmi/sun50i-h713-sleep.c
+@@ -93,11 +93,17 @@ set_phase(uint32_t st, uint8_t ph)
+ 		mmio_write_32(H713_K_NET_MS, 0);
+ }
+ 
+-/* NET_MS from the tick timer, stepped from the deadline so nothing drifts. */
++/*
++ * NET_MS from the tick timer, stepped from the deadline so nothing drifts;
++ * WAKE_MS from the cpu op req to CPU0's release (CPU_OP and SLEEP), which
++ * TF-A puts the system counter forward by (PRUEFUNG5 CS-15).
++ */
+ static void
+ tick(void)
+ {
+-	bool count = net_phase(phase());
++	uint8_t ph = phase();
++	bool count = net_phase(ph);
++	bool wake = ph == H713_PH_CPU_OP || ph == H713_PH_SLEEP;
+ 
+ 	if (!ms_armed) {
+ 		ms_next   = cycle_counter_read() + MS;
+@@ -109,6 +115,9 @@ tick(void)
+ 		if (count)
+ 			mmio_write_32(H713_K_NET_MS,
+ 			              mmio_read_32(H713_K_NET_MS) + 1);
++		if (wake)
++			mmio_write_32(H713_K_WAKE_MS,
++			              mmio_read_32(H713_K_WAKE_MS) + 1);
+ 	}
+ }
+ 
+@@ -189,6 +198,7 @@ h713_sleep_event(uint8_t ev)
+ 
+ 	switch (ev) {
+ 	case H713_EV_CPU_OP:
++		mmio_write_32(H713_K_WAKE_MS, 0);
+ 		if (ph != H713_PH_PRESLEEP) {
+ 			/* no request taken: a v4 TF-A; counted, no budget */
+ 			cycle = mmio_read_32(H713_K_CYCLE) + 1;

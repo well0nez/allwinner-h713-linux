@@ -1,0 +1,41 @@
+From 223fbb90c2c24d2e210ed7a84ee6fc0cf030e558 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 00:17:19 +0200
+Subject: [PATCH 24/27] allwinner: the CPU-level power-down rule holds for
+ every native-ops platform
+
+The commit that limited power-down states to the CPU level ("power-down
+states at CPU level only, standby from core 0 only") changed common code
+under an H713 subject and did not say how far it reaches.
+sunxi_validate_power_state serves every Allwinner platform that runs the
+native PSCI ops, which have CPU_SUSPEND since "implement PSCI CPU_SUSPEND
+for the native power ops". On all of them a cluster-level power-down
+state is refused now, where it used to power down the CPU alone, and so
+is a system-level one, where it used to reset the board
+(sunxi_system_suspend_enter() is -1 without SUNXI_SYSTEM_SUSPEND).
+
+TF-A adds idle states to the device tree only with the SCPI ops, which
+validate power states on their own; such a state could come only from a
+board's own device tree. Of the other platforms only sun50i_h6 was built
+here, none was run. A submission upstream would put the rule behind the
+H713 or say this in its own message. The comment says it is common code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_native_pm.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/plat/allwinner/common/sunxi_native_pm.c b/plat/allwinner/common/sunxi_native_pm.c
+index 5bf772d1d..5887a2aa7 100644
+--- a/plat/allwinner/common/sunxi_native_pm.c
++++ b/plat/allwinner/common/sunxi_native_pm.c
+@@ -62,7 +62,8 @@ static int sunxi_validate_power_state(unsigned int power_state,
+ 		 * Only the CPU powers down here. Nothing natively takes the
+ 		 * cluster or the system down, and a system-level OFF is the
+ 		 * SYSTEM_SUSPEND hand-over to the management processor: it
+-		 * must not be reachable around that call's checks.
++		 * must not be reachable around that call's checks. Common
++		 * code: every platform on the native ops refuses these.
+ 		 */
+ 		if (power_level != MPIDR_AFFLVL0) {
+ 			return PSCI_E_INVALID_PARAMS;

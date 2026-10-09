@@ -1,0 +1,375 @@
+soc: sunxi: h713-arisc: load a crust image, or keep the one TF-A started
+
+The vendor blob stays the default: a file that does not begin with crust's
+magic word takes the old path unchanged (signature resolver, 0x23000 bytes
+at AR100 0, arisc_para). A crust image (first word 0xb4400012, TF-A's
+SCP_FIRMWARE_MAGIC) goes to AR100 0x10000 with the fourteen exception
+vectors written by the loader, gets no arisc_para, and its variables come
+from the contract page at 0x23800 with the distances the resolver already
+knows, so the HDMI path below the offsets is the same code for both images.
+
+The page lies beyond the 0x23000 bytes the DT's "sram" window describes;
+SRAM A2 runs to AR100 0x24000 (TF-A sunxi_mmap.h), so for a crust image a
+short window is widened to 0x23c00 rather than refused. If TF-A started
+crust before Linux, the page carries a moving heartbeat and the driver
+keeps the image; a re-probe after the notify was consumed still counts as
+running when the page says the handshake is done. The last partial word
+of the image is written and read back the way it is in the file, never
+past it. Sixteen diagnostic words of the page are zeroed before the core
+is released and shown in the status file (the little-endian window crust
+found and closed, CPUS_CLK_REG as found, its tick timer, its starts,
+R_INTC +0x80/+0x88, frames from the display MIPS).
+
+Contract version 2. The way back is the file name: "h713-arisc.bin"
+loads the vendor blob.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -330,6 +330,43 @@ static const u8 default_portmap[ARISC_HDMI_PORTS] = { 0, 1, 2 };
+ 
+ #define FW_NAME_ARISC		"h713-arisc.bin"
+ #define FW_NAME_EDID		"hy310-edid.bin"
++#define FW_NAME_CRUST		"h713-crust.bin"	/* firmware-name index 0 selects it */
++
++/*
++ * The crust port (free SCP firmware, FB-CRUST and crust-20261007): recognised
++ * by its first word (l.mfspr r2,r0,0x12, TF-A's SCP_FIRMWARE_MAGIC), loaded at
++ * AR100 0x10000 with the fourteen exception vectors written by the loader
++ * (crust docs/abi.md, TF-A sunxi_scpi_pm.c). It speaks the vendor firmware's
++ * message box contract; the variables this driver reads and writes sit in a
++ * contract page at a fixed address with the vendor build's distances, so
++ * everything below the offsets is the same code for both images.
++ */
++#define CRUST_MAGIC		0xb4400012
++#define CRUST_LOAD_BASE		0x10000
++#define CRUST_LOAD_LIMIT	0x20000
++#define CRUST_VECTORS		14	/* OR1K exceptions 1..14, 0x100 apart */
++#define CRUST_SHARED		0x23800	/* the contract page */
++#define CRUST_SHARED_END	0x23c00
++#define CRUST_SHARED_MAGIC	0x33313748	/* "H713" */
++#define CRUST_SHARED_VERSION	(CRUST_SHARED + 0x4)
++#define CRUST_SHARED_STATUS	(CRUST_SHARED + 0x8)	/* heartbeat in 31:16 */
++#define CRUST_SHARED_WAKE	(CRUST_SHARED + 0xc)	/* last wake word */
++#define CRUST_ST_RUNNING	BIT(0)
++#define CRUST_ST_HANDSHAKE	BIT(1)
++#define CRUST_GDATA		(CRUST_SHARED + 0x20)
++#define CRUST_PUMP		(CRUST_SHARED + 0x180)
++/*
++ * Sixteen diagnostic words the firmware keeps across its own restarts (its
++ * platform/memory.h): the little-endian window it found and closed (enable
++ * word, window 0 start and end), CPUS_CLK_REG as found, its tick timer of
++ * the last main loop pass, the number of starts, R_INTC +0x80/+0x88 as
++ * found, the frames the display MIPS sent and the first bytes of the last,
++ * ARM frames with a foreign type. Zeroed here before the core is released,
++ * so a nonzero word is the firmware's.
++ */
++#define CRUST_DIAG		(CRUST_SHARED + 0x200)
++#define CRUST_DIAG_WORDS	16
++#define CRUST_DIAG_SHOWN	11
+ 
+ /*
+  * Where the loaded firmware keeps the objects this driver reads and writes.
+@@ -351,11 +388,15 @@ struct h713_arisc_offsets {
+ 	u32	bss_start;	/* what the firmware's clear loop zeroes ... */
+ 	u32	bss_end;
+ 	u32	stack_top;	/* ... and the sp it starts with, above it */
++	bool	crust;		/* the contract page instead of a resolved build */
++	u32	load_base;	/* where the image goes: 0, or CRUST_LOAD_BASE */
+ };
+ 
+ struct h713_arisc {
+ 	struct device		*dev;
+ 	void __iomem		*sram;
++	phys_addr_t		sram_phys;	/* the "sram" window ... */
++	resource_size_t		sram_size;	/* ... crust's page must fit */
+ 	void __iomem		*rx;		/* msgbox bank user0 */
+ 	void __iomem		*tx;		/* msgbox bank user1 */
+ 	void __iomem		*reset;		/* R_CPUCFG */
+@@ -739,12 +780,58 @@ static bool arisc_offsets_equal(const struct h713_arisc_offsets *x,
+  * message says which step refused.
+  */
+ static int arisc_resolve_offsets(struct h713_arisc *a, const u8 *data,
+-				 const char *name)
++				 size_t size, const char *name)
+ {
+ 	struct h713_arisc_offsets o = { .para = SRAM_PARA };
+ 	unsigned int hits;
+ 	u32 cross, rom;
+ 
++	if (size >= 4 && get_unaligned_le32(data) == CRUST_MAGIC) {
++		if (size > CRUST_LOAD_LIMIT - CRUST_LOAD_BASE)
++			return dev_err_probe(a->dev, -EFBIG,
++				"\"%s\" is %zu bytes, a crust image may take %u\n",
++				name, size, CRUST_LOAD_LIMIT - CRUST_LOAD_BASE);
++		/*
++		 * The contract page lies beyond the 0x23000 bytes the vendor
++		 * image needs and the DT used to describe. SRAM A2 runs to
++		 * AR100 0x24000 (TF-A sunxi_mmap.h: 128 KiB from 0x4000), so a
++		 * short window is widened rather than refused.
++		 */
++		if (a->sram_size < CRUST_SHARED_END) {
++			void __iomem *wide = devm_ioremap(a->dev, a->sram_phys,
++							  CRUST_SHARED_END);
++
++			if (!wide)
++				return dev_err_probe(a->dev, -ENOMEM,
++					"\"sram\" window cannot be widened to 0x%x for crust's page\n",
++					CRUST_SHARED_END);
++			dev_info(a->dev,
++				 "\"sram\" window 0x%llx bytes, widened to 0x%x for crust's contract page\n",
++				 (unsigned long long)a->sram_size, CRUST_SHARED_END);
++			a->sram = wide;
++			a->sram_size = CRUST_SHARED_END;
++		}
++		o.crust = true;
++		o.load_base = CRUST_LOAD_BASE;
++		o.gdata = CRUST_GDATA;
++		o.rpm_state = CRUST_PUMP;
++		o.rpm_buf = o.rpm_state + PUMP_BUF;
++		o.hpd_counter = o.gdata + GDATA_HPD_COUNTER;
++		o.edid_ready = o.gdata + GDATA_EDID_READY;
++		o.edid_gate = o.gdata + GDATA_EDID_GATE;
++		o.edid_version = o.gdata + GDATA_EDID_VERSION;
++		o.portmap = o.gdata + GDATA_PORTMAP;
++		o.scratch = o.gdata + GDATA_SCRATCH;
++		o.bss_start = CRUST_SHARED;
++		o.bss_end = o.stack_top = CRUST_SHARED_END;
++		strscpy(a->image_version, "crust-h713 (contract page)",
++			sizeof(a->image_version));
++		a->off = o;
++		dev_info(a->dev, "\"%s\" (%zu bytes): crust image, contract page 0x%05x\n",
++			 name, size, CRUST_SHARED);
++		return 0;
++	}
++
+ 	arisc_image_version(data, a->image_version, sizeof(a->image_version));
+ 
+ 	hits = arisc_sig_scan(data, SIG_GDATA, 0, &o.gdata);
+@@ -861,13 +948,41 @@ static void arisc_set_reset(struct h713_arisc *a, bool held)
+  * and the bytes in SRAM are the bytes of the file. Swapping again would
+  * destroy the firmware silently.
+  */
+-static int arisc_load_image(struct h713_arisc *a, const u8 *data)
++/* Word @off of an image of @size bytes, the last partial word zero padded. */
++static u32 arisc_image_le32(const u8 *data, size_t size, unsigned int off)
+ {
+-	unsigned int off, bad = 0;
++	unsigned int i;
++	u32 w = 0;
+ 
+-	for (off = 0; off < SRAM_IMAGE_SIZE; off += 4)
+-		writel_relaxed(get_unaligned_le32(data + off),
+-			       sram_at(a, off));
++	if (off + 4 <= size)
++		return get_unaligned_le32(data + off);
++	for (i = 0; off + i < size; i++)
++		w |= (u32)data[off + i] << (8 * i);
++	return w;
++}
++
++/* The l.j a crust vector carries: from 0x100 * @vec to CRUST_LOAD_BASE. */
++static u32 arisc_crust_vector(unsigned int vec)
++{
++	return (CRUST_LOAD_BASE - 0x100 * vec) >> 2;
++}
++
++static int arisc_load_image(struct h713_arisc *a, const u8 *data, size_t size)
++{
++	unsigned int off, bad = 0, base = a->off.load_base, end, i;
++
++	/*
++	 * Vendor: 0x23000 bytes at 0, its vectors inside. crust: its own size
++	 * at CRUST_LOAD_BASE, and the fourteen vectors written here (TF-A
++	 * does the same for crust on the H6).
++	 */
++	end = a->off.crust ? round_up(size, 4) : SRAM_IMAGE_SIZE;
++	for (off = 0; off < end; off += 4)
++		writel_relaxed(arisc_image_le32(data, size, off),
++			       sram_at(a, base + off));
++	if (a->off.crust)
++		for (i = 1; i <= CRUST_VECTORS; i++)
++			writel_relaxed(arisc_crust_vector(i), sram_at(a, 0x100 * i));
+ 
+ 	/*
+ 	 * Read back. In the exception vector area only one word per 0x100
+@@ -875,18 +990,23 @@ static int arisc_load_image(struct h713_arisc *a, const u8 *data)
+ 	 * carries a jump on every boundary -- so only those are checked; from
+ 	 * SRAM A2 on, every word must match.
+ 	 */
+-	for (off = 0; off < SRAM_VECTORS_END; off += 0x100) {
+-		u32 want = get_unaligned_le32(data + off);
++	if (a->off.crust) {
++		for (i = 1; i <= CRUST_VECTORS; i++)
++			if (readl_relaxed(sram_at(a, 0x100 * i)) !=
++			    arisc_crust_vector(i))
++				bad++;
++	} else {
++		for (off = 0; off < SRAM_VECTORS_END; off += 0x100) {
++			u32 want = get_unaligned_le32(data + off);
+ 
+-		if (readl_relaxed(sram_at(a, off)) != want)
+-			bad++;
++			if (readl_relaxed(sram_at(a, off)) != want)
++				bad++;
++		}
+ 	}
+-	for (off = SRAM_BODY_START; off < SRAM_IMAGE_SIZE; off += 4) {
+-		u32 want = get_unaligned_le32(data + off);
+-
+-		if (readl_relaxed(sram_at(a, off)) != want)
++	for (off = a->off.crust ? 0 : SRAM_BODY_START; off < end; off += 4)
++		if (readl_relaxed(sram_at(a, base + off)) !=
++		    arisc_image_le32(data, size, off))
+ 			bad++;
+-	}
+ 
+ 	if (bad) {
+ 		dev_err(a->dev,
+@@ -901,6 +1021,12 @@ static void arisc_write_para(struct h713_arisc *a)
+ {
+ 	unsigned int i;
+ 
++	if (a->off.crust) {
++		/* No struct arisc_para in crust's contract; fresh diag words. */
++		for (i = 0; i < CRUST_DIAG_WORDS; i++)
++			writel_relaxed(0, sram_at(a, CRUST_DIAG) + 4 * i);
++		return;
++	}
+ 	for (i = 0; i < SRAM_PARA_WORDS; i++)
+ 		writel_relaxed(0, sram_at(a, a->off.para) + 4 * i);
+ 	writel_relaxed(PARA_POOL_PHYS, sram_at(a, a->off.para) + 3 * 4);
+@@ -2347,6 +2473,19 @@ static int h713_arisc_status_show(struct seq_file *s, void *unused)
+ 	seq_printf(s, "fifo_rx: ch0=%u ch1=%u ch2=%u ch3=%u\n",
+ 		   readl(a->rx + U0_FIFO_STAT(0)), readl(a->rx + U0_FIFO_STAT(1)),
+ 		   readl(a->rx + U0_FIFO_STAT(2)), readl(a->rx + U0_FIFO_STAT(3)));
++	if (a->off.crust) {
++		unsigned int i;
++
++		/* The heartbeat in the upper half moves while crust runs. */
++		seq_printf(s, "crust: version=%u status=0x%08x wake=0x%x\n",
++			   readl(sram_at(a, CRUST_SHARED_VERSION)),
++			   readl(sram_at(a, CRUST_SHARED_STATUS)),
++			   readl(sram_at(a, CRUST_SHARED_WAKE)));
++		seq_puts(s, "crust_diag: lewin_en lewin0_start lewin0_end cpus_clk ttcr starts intc80 intc88 mips_n mips_last arm_type\ncrust_diag:");
++		for (i = 0; i < CRUST_DIAG_SHOWN; i++)
++			seq_printf(s, " %08x", readl(sram_at(a, CRUST_DIAG) + 4 * i));
++		seq_puts(s, "\n");
++	}
+ 	seq_printf(s, "last_command: %s", a->last_cmd);
+ 	mutex_unlock(&a->lock);
+ 	return 0;
+@@ -2494,6 +2633,19 @@ static int h713_arisc_map(struct platform_device *pdev, const char *name,
+ 	return 0;
+ }
+ 
++/* A live crust: the page's magic, its running bit and a moving heartbeat. */
++static bool arisc_crust_running(struct h713_arisc *a)
++{
++	u32 s0, s1;
++
++	if (readl(sram_at(a, CRUST_SHARED)) != CRUST_SHARED_MAGIC)
++		return false;
++	s0 = readl(sram_at(a, CRUST_SHARED_STATUS));
++	usleep_range(5000, 6000);
++	s1 = readl(sram_at(a, CRUST_SHARED_STATUS));
++	return (s0 & CRUST_ST_RUNNING) && s1 != s0;
++}
++
+ static int h713_arisc_start(struct h713_arisc *a)
+ {
+ 	const struct firmware *fw;
+@@ -2509,13 +2661,6 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 				     "ARISC firmware \"%s\" cannot be loaded\n",
+ 				     name);
+ 
+-	if (fw->size < SRAM_IMAGE_SIZE) {
+-		dev_err(a->dev, "\"%s\" is %zu bytes, at least %u needed\n",
+-			name, fw->size, SRAM_IMAGE_SIZE);
+-		release_firmware(fw);
+-		return -EINVAL;
+-	}
+-
+ 	/*
+ 	 * Before the image is written, and before the core is touched at all:
+ 	 * find out where this build keeps the objects the HDMI path reads and
+@@ -2523,25 +2668,45 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 	 * loaded -- an ARISC running with the wrong address set scribbles into
+ 	 * its own stack and reports nothing but a timeout.
+ 	 */
+-	ret = arisc_resolve_offsets(a, fw->data, name);
++	ret = arisc_resolve_offsets(a, fw->data, fw->size, name);
+ 	if (ret) {
+ 		release_firmware(fw);
+ 		return ret;
+ 	}
++	if (!a->off.crust && fw->size < SRAM_IMAGE_SIZE) {
++		dev_err(a->dev, "\"%s\" is %zu bytes, at least %u needed\n",
++			name, fw->size, SRAM_IMAGE_SIZE);
++		release_firmware(fw);
++		return -EINVAL;
++	}
+ 
+-	arisc_enable_cpus_clocks(a);
+-	arisc_set_reset(a, true);
+-	arisc_drain_rx(a);
++	if (a->off.crust && arisc_crust_running(a)) {
++		/* TF-A (or an earlier probe) started it: keep it and its state. */
++		dev_info(a->dev, "crust is running (status 0x%08x), image kept\n",
++			 readl(sram_at(a, CRUST_SHARED_STATUS)));
++		release_firmware(fw);
++	} else {
++		arisc_enable_cpus_clocks(a);
++		arisc_set_reset(a, true);
++		arisc_drain_rx(a);
+ 
+-	ret = arisc_load_image(a, fw->data);
+-	release_firmware(fw);
+-	if (ret)
+-		return ret;
++		ret = arisc_load_image(a, fw->data, fw->size);
++		release_firmware(fw);
++		if (ret)
++			return ret;
+ 
+-	arisc_write_para(a);
+-	arisc_set_reset(a, false);
++		arisc_write_para(a);
++		arisc_set_reset(a, false);
++	}
+ 
+ 	a->notify_result = arisc_startup_handshake(a);
++	if (a->notify_result && a->off.crust &&
++	    (readl(sram_at(a, CRUST_SHARED_STATUS)) & CRUST_ST_HANDSHAKE)) {
++		/* An earlier probe took the notify; the page says so. */
++		a->notify_result = 0;
++		strscpy(a->notify_version, a->image_version,
++			sizeof(a->notify_version));
++	}
+ 	if (a->notify_result) {
+ 		/*
+ 		 * Not fatal for the bind -- debugfs is the only way to find
+@@ -2592,6 +2757,7 @@ static void h713_arisc_load_edid(struct h713_arisc *a)
+ static int h713_arisc_probe(struct platform_device *pdev)
+ {
+ 	struct h713_arisc *a;
++	struct resource *res;
+ 	u32 mask = 0;
+ 	int ret;
+ 
+@@ -2613,6 +2779,9 @@ static int h713_arisc_probe(struct platform_device *pdev)
+ 	ret = h713_arisc_map(pdev, "sram", &a->sram);
+ 	if (ret)
+ 		return ret;
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "sram");
++	a->sram_phys = res->start;
++	a->sram_size = resource_size(res);
+ 	ret = h713_arisc_map(pdev, "msgbox-rx", &a->rx);
+ 	if (ret)
+ 		return ret;
+@@ -2690,3 +2859,4 @@ MODULE_AUTHOR("HY310 Mainline Port");
+ MODULE_LICENSE("GPL");
+ MODULE_FIRMWARE(FW_NAME_ARISC);
+ MODULE_FIRMWARE(FW_NAME_EDID);
++MODULE_FIRMWARE(FW_NAME_CRUST);

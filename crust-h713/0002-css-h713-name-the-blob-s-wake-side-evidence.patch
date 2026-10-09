@@ -1,0 +1,38 @@
+From 436d3db6cd977e34bc22cc5f92ee0ec50fb1867b Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 01:43:21 +0200
+Subject: [PATCH 02/80] css: h713: name the blob's wake-side evidence
+
+FB-CRUST package (umbau/work/FB-CRUST, 27.09.2026); author line normalised by
+crust-20261007 (the clone carried "FB-CRUST <fb-crust@localhost>" or a noreply
+address without the account number).
+---
+ drivers/css/sun50i-h713-css.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/css/sun50i-h713-css.c b/drivers/css/sun50i-h713-css.c
+index 761d759..2f6f7c9 100644
+--- a/drivers/css/sun50i-h713-css.c
++++ b/drivers/css/sun50i-h713-css.c
+@@ -15,8 +15,10 @@
+  * Cluster down: what the blob's 0x4b28 does after "cpu op req" (FB-STANDBY
+  * excerpt D): C0_PWRON_RESET = 0, bit 0 of CPU_UNK 0..3 cleared (power-on
+  * reset of every core), CPU_SYS_RESET = 0, then the clamps.
+- * Core up: TF-A's proven sunxi_cpu_on() for the ncat register file, with the
+- * warm entry the ARM handed us in ALT_RVBAR (blob 0x4c40/0x4be4).
++ * Core up: the blob's 0x4cc4 (ALT_RVBAR 0x4c40, CPU_SYS_RESET = 1 and
++ * C0_PWRON_RESET = nH_RST at 0x4d14/0x4d1c, then the core-0 ladder
++ * 0x4768/0x4968/0x48cc/0x485c) done with TF-A's proven sunxi_cpu_on()
++ * sequence for the ncat register file.
+  */
+ static uint32_t warm_entry_lo, warm_entry_hi;
+ 
+@@ -47,7 +49,7 @@ css_resume_css(uint32_t old_state)
+ 	if (old_state < SCPI_CSS_OFF)
+ 		return;
+ 
+-	/* Mirror of the way down; the blob's 0xddec/0xe3f4 order is a guess. */
++	/* The blob's wake side 0x4d14/0x4d1c: 0x070004a0 = 1, 0x07000440 = 0x10000. */
+ 	mmio_write_32(CPU_SYS_RESET_REG, CPU_SYS_RESET);
+ 	mmio_write_32(C0_PWRON_RESET_REG, C0_PWRON_RESET_REG_nH_RST);
+ }

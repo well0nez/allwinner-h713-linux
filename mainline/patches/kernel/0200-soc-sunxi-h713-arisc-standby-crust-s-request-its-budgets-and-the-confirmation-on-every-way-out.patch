@@ -1,0 +1,651 @@
+soc: sunxi: h713-arisc: standby - crust's request, its budgets and the confirmation on every way out
+
+Contract 5 gives every phase of a standby one guard. crust takes a
+request into PRESLEEP, counts its budget there, sleeps, counts the
+resuming budget from the wake, and releases on a confirmation for the
+same cycle; a budget that runs out ends in its clean reset, and with
+the sleep net built its R_WDOG covers a hang. This is the Linux side.
+
+prepare, before anything is quiesced (cpu_comm parks the display MIPS in
+its suspend_late, and a standby refused after that leaves no picture):
+the firmware runs, is crust of contract 5, is not built with the
+VDD_SYS step (Linux restores nothing of the main domain after it) nor
+with an unmeasured deep step (PLL LDO, AVCC), has the watchdog link if
+it is built with the net, no request is left on the page and crust has
+released the last standby (phase off or released, the only phases it
+takes a request in); the supervision finds it alive; and one round trip
+on port 3 (0x25), which arms nothing while no request is on the page.
+Until the 0x11 of this cycle answers, the wake source is none.
+
+suspend_noirq, under the lock now as resume_noirq, in the contract's
+order: the last confirmation cleared - a rule of the contract, not
+tidiness: one written for a request crust did not take names the cycle
+this request asks for again, crust would release it at once, and every
+refusal would refuse the next standby too - then the budgets (15 s
+before TF-A's request, 60 s from the wake to the confirmation; not
+measured), then the request for cycle CYCLE + 1, then the round trip
+that hands it over. The request word is cleared on every way out. crust
+must answer with phase PRESLEEP, the request taken, the cycle, and with
+the net built the net armed; anything else is one error line with the
+state, the error bits and the net's read-back, a confirmation for the
+cycle, and -EIO. One line per cycle says whether the net is armed and
+what the R_WDOG read back.
+
+resume_noirq notes the boot-time clock and sends 0x11 as before. At
+PM_POST_SUSPEND, whichever way the suspend ended (a wake, an abort before
+TF-A's request, a refusal), a pending request is confirmed, crust gets
+100 ms to release, and one line names the cycle, the wake source, the
+milliseconds asleep and to the wake, the last step and how long the
+release took. crust counts its wakes, so a sleep whose 0x11 brought no
+wake word is a wake from an unknown source rather than "did not sleep".
+crust released with its net still reading armed - the disarm did not
+read back, and it keeps feeding the R_WDOG - is a warning of its own.
+Error bits, error counts and TF-A's word - decoded, a denied
+SYSTEM_SUSPEND with the checks that failed - are warnings.
+
+TF-A's word is read at probe where it is this boot's: crust of contract
+5 on the page, or TF-A's record of this boot, which it writes, filled or
+empty, whenever it starts crust - so a crust that never came up is
+reported too. A loader clears the word, and TF-A numbers its events from
+1 again; the last reported word is forgotten with it, so an event equal
+to the last one before the load is not taken for that one.
+
+The PM notifier is registered after the supervision's work, so devm
+removes it before the work and before what the start set up. The driver
+cannot be unbound through sysfs any more: an unbind during an HDMI call
+or a suspend left a consumer with freed memory.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -408,7 +408,7 @@ struct h713_arisc {
+ 	void __iomem		*cpus_clk;	/* R_PRCM CPUS timer gates */
+ 	bool			wdt_link;	/* its noirq after ours, resume before */
+ 	u32			wake_reason;	/* last 0x11 answer */
+-	unsigned int		standby_cycles;
++	bool			slept;		/* ... and it was not 0 */
+ 
+ 	struct mutex		lock;		/* one exchange at a time */
+ 	u8			seq;		/* rolling sequence number */
+@@ -440,6 +440,14 @@ struct h713_arisc {
+ 	u32			seen_exc;	/* handshake */
+ 	u32			err_seen;	/* error bits already reported */
+ 	u32			cnt_seen[2];	/* CNT0, CNT1[15:0] reported */
++	u32			tfa_seen;	/* TF-A's word last reported */
++
++	/* the standby request of contract 5 */
++	struct notifier_block	pm_nb;
++	bool			net_pending;	/* sent, not yet confirmed */
++	u32			net_cycle;	/* ... for this cycle */
++	u8			woken;		/* CNT2[15:8] before it */
++	u64			resume_ns;	/* CLOCK_BOOTTIME at resume_noirq */
+ };
+ 
+ /*
+@@ -1159,24 +1167,33 @@ static void arisc_p_record(struct h713_arisc *a)
+  * Once per record: a run that ended out of order (not off or released, a
+  * reset cause, error bits, an exception, a TF-A event, an R_WDOG found
+  * armed) is a warning, anything else a debug line. Bit 0 of the header
+- * marks it reported.
++ * marks it reported. True for TF-A's record of this boot, an empty one
++ * included: TF-A writes one whenever it starts crust, so its word on the
++ * page is this boot's, even where crust never wrote its magic.
+  */
+-static void arisc_p_report(struct h713_arisc *a)
++static bool arisc_p_report(struct h713_arisc *a)
+ {
+-	u32 w[H713_P_SUM_WORDS], hdr, sb, err, exc, tfa, rwdog;
++	u32 w[H713_P_SUM_WORDS], hdr, sum, sb, err, exc, tfa, rwdog;
+ 	unsigned int i;
++	bool boot;
+ 
+ 	if (a->sram_size < CRUST_PAGE_END)
+-		return;
++		return false;
+ 	hdr = crust_rd(a, H713_P_HDR);
+-	if (!h713_p_source(hdr) || hdr & H713_P_REPORTED)
+-		return;
++	if (hdr >> 16 != H713_P_MARK || hdr & H713_P_REPORTED)
++		return false;
+ 	for (i = 0; i < H713_P_SUM_WORDS; i++)
+ 		w[i] = crust_rd(a, H713_P_STATUS + 4 * i);
+-	if (!h713_p_valid(hdr, crust_rd(a, H713_P_SUM), w)) {
++	sum = crust_rd(a, H713_P_SUM);
++	boot = h713_p_source(hdr) != H713_P_FROM_LINUX;
++	if (!h713_p_source(hdr) && h713_p_sum(w) == sum) {
++		crust_wr(a, hdr | H713_P_REPORTED, H713_P_HDR);
++		return true;	/* empty: no page of contract 5 before */
++	}
++	if (!h713_p_valid(hdr, sum, w)) {
+ 		dev_dbg(a->dev, "record of the previous run: header 0x%08x or checksum wrong, ignored\n",
+ 			hdr);
+-		return;
++		return false;
+ 	}
+ 	crust_wr(a, hdr | H713_P_REPORTED, H713_P_HDR);
+ 
+@@ -1190,18 +1207,19 @@ static void arisc_p_report(struct h713_arisc *a)
+ 	    !h713_sb_cause(sb) && !err && !exc && !h713_tfa_event(tfa) &&
+ 	    !(rwdog & P_RWDOG_ARMED)) {
+ 		dev_dbg(a->dev, "previous run (record of %s): phase %s, cycle %u, nothing out of order\n",
+-			h713_p_source(hdr) == H713_P_FROM_BL31 ? "TF-A" : "Linux",
+-			crust_phase(sb), p_word(w, P_OF_K(H713_CYCLE)));
+-		return;
++			boot ? "TF-A" : "Linux", crust_phase(sb),
++			p_word(w, P_OF_K(H713_CYCLE)));
++		return boot;
+ 	}
+ 	dev_warn(a->dev, "previous run (record of %s): crust in phase %s, step 0x%x, cause %u (%s), err 0x%x (detail 0x%08x, data 0x%08x), %u ms in the phase, reset path 0x%x, exception 0x%08x, cycle %u; TF-A word 0x%08x, R_WDOG 0x%08x, GP5 0x%08x\n",
+-		 h713_p_source(hdr) == H713_P_FROM_BL31 ? "TF-A" : "Linux",
++		 boot ? "TF-A" : "Linux",
+ 		 crust_phase(sb), p_word(w, P_OF_D(H713_DIAG_STEP)),
+ 		 h713_sb_cause(sb), crust_cause(sb), err, p_word(w, P_OF_K(H713_ERR_DETAIL)),
+ 		 p_word(w, P_OF_K(H713_ERR_DATA)), p_word(w, P_OF_K(H713_NET_MS)),
+ 		 p_word(w, P_OF_K(H713_FAIL_PATH)), exc,
+ 		 p_word(w, P_OF_K(H713_CYCLE)), tfa, rwdog,
+ 		 p_word(w, H713_P_GP5));
++	return boot;
+ }
+ 
+ static void arisc_write_para(struct h713_arisc *a)
+@@ -1223,6 +1241,8 @@ static void arisc_write_para(struct h713_arisc *a)
+ 		for (i = 0; i < H713_PAGE_SIZE; i += 4)
+ 			if (i < H713_P_HDR || i >= H713_P_END)
+ 				crust_wr(a, 0, i);
++		/* TF-A's word went with it, and TF-A numbers from 1 again. */
++		a->tfa_seen = 0;
+ 		return;
+ 	}
+ 	for (i = 0; i < SRAM_PARA_WORDS; i++)
+@@ -1488,10 +1508,7 @@ static int arisc_sb_wake_timer(struct h713_arisc *a, unsigned int ms)
+ 			type, ret, ret > 0 ? words[0] : 0);
+ 		return ret < 0 ? ret : -EPROTO;
+ 	}
+-	if (ms)
+-		dev_info(a->dev, "standby: wake timer %u ms armed\n", ms);
+-	else
+-		dev_info(a->dev, "standby: firmware answers, no wake timer (key, IR)\n");
++	dev_dbg(a->dev, "standby: 0x%02x acknowledged\n", type);
+ 	return 0;
+ }
+ 
+@@ -1504,25 +1521,42 @@ static int arisc_sb_restore_notify(struct h713_arisc *a)
+ 	u32 wake = SB_WAKE_NONE;
+ 	int ret;
+ 
++	a->slept = false;
+ 	ret = arisc_sb_request(a, SB_TYPE_RESTORE, SB_ATTR_REPLY, &wake);
+ 	if (ret < 0)
+ 		return ret;
+ 	/*
+-	 * crust answers 0 when it did not sleep since the last 0x11: the
+-	 * suspend was abandoned after the noirq phase, before TF-A's request.
++	 * crust answers 0 when it did not sleep since the last 0x11 - the
++	 * suspend was abandoned after the noirq phase, before TF-A's request -
++	 * or when a restart while resuming lost the word. Its count of wakes
++	 * tells the two apart (arisc_standby_done()).
+ 	 */
+-	if (ret && !wake && a->off.crust) {
+-		dev_info(a->dev, "standby: the firmware did not sleep (abandoned before TF-A's request)\n");
++	if (ret && !wake) {
++		dev_info(a->dev, "standby: 0x11 answered without a wake word\n");
+ 		return 0;
+ 	}
+ 	a->wake_reason = ret ? wake : SB_WAKE_NONE;
+-	a->standby_cycles++;
+-	/* 149 power key, 155 IR, 10 CEC, 147 RTC, 0xc0000000 timer (report 2.4) */
+-	dev_info(a->dev, "standby %u: wake word 0x%x\n", a->standby_cycles,
+-		 a->wake_reason);
++	a->slept = true;
+ 	return 0;
+ }
+ 
++/* 0x95 power key, 0x9b IR, 0xc0000000 timer (report 2.4); 10 CEC, 147 RTC are the vendor's. */
++static const char *arisc_wake_name(struct h713_arisc *a)
++{
++	if (!a->slept)
++		return "none";
++	switch (a->wake_reason) {
++	case 0x95:
++		return "key";
++	case 0x9b:
++		return "ir";
++	case 0xc0000000:
++		return "timer";
++	default:
++		return "none";
++	}
++}
++
+ /* ---- sending ------------------------------------------------------------ */
+ 
+ /*
+@@ -3081,6 +3115,39 @@ static void arisc_crust_describe(struct h713_arisc *a)
+ 		dev_warn(a->dev, "crust is a test build (forced faults and deadlines) -- not for use\n");
+ }
+ 
++/*
++ * A new event TF-A left in its word (contract 5), decoded: a refused
++ * SYSTEM_SUSPEND with the checks that failed, a late crust at boot, an
++ * R_WDOG found armed, a suspend crust did not take.
++ */
++static void arisc_tfa_report(struct h713_arisc *a)
++{
++	static const char * const events[] = {
++		"?", "SYSTEM_SUSPEND denied", "crust late at boot",
++		"R_WDOG found armed", "suspend not taken, reset",
++	};
++	static const char * const checks[H713_DENY_CHECKS] = {
++		"magic", "version", "vdd-sys", "unmeasured", "phase", "net",
++		"running", "heartbeat", "aff0",
++	};
++	u32 w = crust_rd(a, H713_TFA_WORD);
++	char failed[96] = "";
++	unsigned int i, n = 0;
++
++	if (!w || w == a->tfa_seen)
++		return;
++	a->tfa_seen = w;
++	if (h713_tfa_event(w) == H713_TFA_DENIED)
++		for (i = 0; i < H713_DENY_CHECKS; i++)
++			if (h713_tfa_detail(w) & BIT(i))
++				n += scnprintf(failed + n, sizeof(failed) - n,
++					       " %s", checks[i]);
++	dev_warn(a->dev, "TF-A: %s (word 0x%08x)%s%s\n",
++		 events[h713_tfa_event(w) < ARRAY_SIZE(events) ?
++			h713_tfa_event(w) : 0], w,
++		 n ? ", failed:" : "", failed);
++}
++
+ /*
+  * The supervision of a running crust. A heartbeat that stands for 100 ms,
+  * or starts or exception words other than at the handshake, end the
+@@ -3140,6 +3207,7 @@ static bool arisc_watch(struct h713_arisc *a)
+ 		dev_warn_ratelimited(a->dev, "crust: error counts%s\n", msg);
+ 	a->cnt_seen[0] = cnt[0];
+ 	a->cnt_seen[1] = cnt[1];
++	arisc_tfa_report(a);
+ 	return true;
+ }
+ 
+@@ -3175,8 +3243,17 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 	of_property_read_string_index(a->dev->of_node, "firmware-name", 0,
+ 				      &name);
+ 
+-	/* Before anything decides about the image: how the last run ended. */
+-	arisc_p_report(a);
++	/*
++	 * Before anything decides about the image: how the last run ended,
++	 * and what TF-A saw when it started crust at this boot - its word is
++	 * this boot's where TF-A recorded this boot (also a crust that never
++	 * came up), or where crust of contract 5 writes the page.
++	 */
++	if (arisc_p_report(a) ||
++	    (a->sram_size >= CRUST_PAGE_END &&
++	     crust_rd(a, H713_MAGIC) == H713_MAGIC_VALUE &&
++	     crust_rd(a, H713_VERSION) >= 5))
++		arisc_tfa_report(a);
+ 
+ 	ret = request_firmware(&fw, name, a->dev);
+ 	/*
+@@ -3346,6 +3423,256 @@ static void h713_arisc_load_edid(struct h713_arisc *a)
+ 	release_firmware(fw);
+ }
+ 
++/*
++ * Why standby to RAM cannot go to the firmware now, or NULL: the checks that
++ * need no exchange.
++ *
++ * The vendor firmware leaves the DRAM's self-refresh with the dram_para it
++ * finds at arisc_para (0x145b0 -> 0x14004 -> 0x13884: clock, type, zq, odt,
++ * para1/2, mr, tpr), and this driver puts zeros and the message pool there:
++ * clock 0 goes into PLL_DDR and the lock poll at 0x13644 never ends. Until
++ * the block carries the board's real dram_para, standby to RAM is crust's
++ * only - a crust of contract 5, which takes a request, budgets and a
++ * confirmation. Of the deep variants none is offered: Linux restores nothing
++ * of the main domain after the VDD_SYS step, and the PLL LDO and AVCC steps
++ * are not measured. A crust built with the sleep net needs the link that
++ * orders the SoC watchdog's noirq behind ours. And crust takes a request
++ * only once it has released the last one (phase off or released).
++ */
++static const char *arisc_standby_refusal(struct h713_arisc *a)
++{
++	unsigned int phase;
++	u32 build;
++
++	if (!a->running)
++		return "the firmware is not running";
++	if (!a->off.crust)
++		return "the vendor firmware would wake the DRAM with an empty dram_para";
++	if (!crust_accept(a, CRUST_STANDBY_MIN))
++		return "crust's contract is older than 5";
++	build = crust_rd(a, H713_DIAG_BUILD);
++	if (build & H713_BUILD_VDD_SYS)
++		return "crust is built with the VDD_SYS step";
++	if (build & (H713_BUILD_PLL_LDO | H713_BUILD_AVCC))
++		return "crust is built with an unmeasured deep step";
++	if (build & H713_BUILD_SLEEP_NET && !a->wdt_link)
++		return "crust's sleep net needs the link to the watchdog";
++	if (crust_rd(a, H713_NET_REQ))
++		return "a standby request is still on the page";
++	/*
++	 * crust takes a request only in these two phases and reads the
++	 * confirmation only in the two it releases from, so noirq may clear
++	 * the confirmation before the request (the order in suspend_noirq).
++	 */
++	phase = h713_sb_phase(crust_rd(a, H713_SB_STATE));
++	if (phase != H713_PHASE_OFF && phase != H713_PHASE_RELEASED)
++		return "crust has not released its last standby";
++	return NULL;
++}
++
++/*
++ * prepare: refuse before any other driver has quiesced anything (the late
++ * and noirq callbacks come after the damage: cpu_comm parks the display MIPS
++ * in its suspend_late). The checks, the supervision, and one round trip on
++ * port 3 - the clear frame 0x25, which arms nothing while no request is on
++ * the page. Only the real standby is ours; s2idle ("mem" on a BL31 without
++ * SYSTEM_SUSPEND) passes through untouched.
++ */
++static int h713_arisc_prepare(struct device *dev)
++{
++	struct h713_arisc *a = dev_get_drvdata(dev);
++	const char *why;
++	int ret;
++
++	if (pm_suspend_target_state != PM_SUSPEND_MEM)
++		return 0;
++	mutex_lock(&a->lock);
++	a->slept = false;	/* until this cycle's 0x11 says otherwise */
++	why = arisc_standby_refusal(a);
++	if (!why && !arisc_watch(a))
++		why = "crust does not serve";
++	ret = why ? -EOPNOTSUPP : arisc_sb_wake_timer(a, 0);
++	mutex_unlock(&a->lock);
++	if (why)
++		dev_err(dev, "standby refused: %s\n", why);
++	return ret;
++}
++
++/*
++ * The budgets crust gets for the phases on both sides of the sleep: until
++ * TF-A's request, and from the wake until the confirmation. Not measured;
++ * crust caps both at 120 s.
++ */
++#define NET_PRESLEEP_S		15
++#define NET_RESUMING_S		60
++#define NET_RELEASE_MS		100
++
++static void arisc_net_confirm(struct h713_arisc *a)
++{
++	crust_wr(a, h713_net_confirm(a->net_cycle), H713_NET_CONFIRM);
++}
++
++/*
++ * noirq: the last stop before TF-A's "cpu op req". The request goes on the
++ * page - budgets first, then the request with the cycle crust will count -
++ * and the round trip on port 3 hands it over; crust takes it into PRESLEEP
++ * (and arms its sleep net, where it is built) before it answers. The request
++ * word is cleared on every way out. Anything but the state asked for refuses
++ * the standby, and a confirmation for the cycle releases what crust took.
++ */
++static int h713_arisc_suspend_noirq(struct device *dev)
++{
++	struct h713_arisc *a = dev_get_drvdata(dev);
++	u32 cycle, sb, want;
++	int ret;
++
++	if (pm_suspend_target_state != PM_SUSPEND_MEM)
++		return 0;
++	if (!a->running || !a->off.crust) {
++		dev_err(dev, "standby refused: the firmware stopped after prepare\n");
++		return -EOPNOTSUPP;
++	}
++
++	mutex_lock(&a->lock);
++	cycle = crust_rd(a, H713_CYCLE) + 1;
++	/*
++	 * The contract's order for every request: NET_CONFIRM := 0, then
++	 * NET_BUDGET, then NET_REQ. Clearing the confirmation is a rule, not
++	 * tidiness: one left from a request crust did not take names the very
++	 * cycle this request asks for (CYCLE did not move), crust would
++	 * release it as soon as it took it, and every refusal would refuse
++	 * the next standby too. prepare made sure crust is off or released,
++	 * where it does not read the word.
++	 */
++	crust_wr(a, 0, H713_NET_CONFIRM);
++	crust_wr(a, h713_net_budget(NET_PRESLEEP_S, NET_RESUMING_S),
++		 H713_NET_BUDGET);
++	crust_wr(a, h713_net_req(cycle), H713_NET_REQ);
++	a->net_cycle = cycle;
++	a->net_pending = true;
++	a->woken = (u8)(crust_rd(a, H713_CNT2) >> 8);
++	ret = arisc_sb_wake_timer(a, 0);
++	crust_wr(a, 0, H713_NET_REQ);
++
++	sb = crust_rd(a, H713_SB_STATE);
++	want = H713_SB_ACCEPTED;
++	if (crust_rd(a, H713_DIAG_BUILD) & H713_BUILD_SLEEP_NET)
++		want |= H713_SB_NET_ARMED;
++	if (!ret && (h713_sb_phase(sb) != H713_PHASE_PRESLEEP ||
++		     (sb & want) != want || h713_sb_cycle(sb) != (u8)cycle))
++		ret = -EIO;
++	if (ret) {
++		dev_err(dev, "standby %u refused: crust state 0x%08x (phase %s), err 0x%x, net read back 0x%08x (%d)\n",
++			cycle, sb, crust_phase(sb), crust_rd(a, H713_ERR),
++			crust_rd(a, H713_NET_RB), ret);
++		arisc_net_confirm(a);
++		ret = -EIO;
++	} else if (sb & H713_SB_NET_ARMED) {
++		dev_info(dev, "standby %u: net armed, R_WDOG mode 0x%04x cfg 0x%04x\n",
++			 cycle, crust_rd(a, H713_NET_RB) & 0xffff,
++			 crust_rd(a, H713_NET_RB) >> 16);
++	} else {
++		dev_info(dev, "standby %u: net none\n", cycle);
++	}
++	mutex_unlock(&a->lock);
++	return ret;
++}
++
++static int h713_arisc_resume_noirq(struct device *dev)
++{
++	struct h713_arisc *a = dev_get_drvdata(dev);
++
++	if (pm_suspend_target_state != PM_SUSPEND_MEM)
++		return 0;
++	mutex_lock(&a->lock);
++	a->resume_ns = ktime_get_boottime_ns();
++	arisc_sb_restore_notify(a);
++	mutex_unlock(&a->lock);
++	return 0;
++}
++
++/*
++ * After every standby crust took a request for, whatever way it ended: the
++ * confirmation, which ends crust's resuming budget and its net, a short wait
++ * for crust to release, and one line for the cycle. Anything new crust or
++ * TF-A recorded is a warning (arisc_watch()).
++ */
++static void arisc_standby_done(struct h713_arisc *a)
++{
++	unsigned int phase;
++	ktime_t start;
++	bool woke;
++	s64 ms;
++	u32 sb;
++
++	mutex_lock(&a->lock);
++	if (!a->net_pending)
++		goto out;
++	arisc_net_confirm(a);
++	start = ktime_get();
++	for (;;) {
++		sb = crust_rd(a, H713_SB_STATE);
++		phase = h713_sb_phase(sb);
++		ms = ktime_ms_delta(ktime_get(), start);
++		if (phase < H713_PHASE_PRESLEEP || phase > H713_PHASE_RESUMING ||
++		    ms >= NET_RELEASE_MS)
++			break;
++		usleep_range(1000, 2000);
++	}
++	a->net_pending = false;
++	/*
++	 * crust counts every wake (CNT2[15:8]): a sleep whose 0x11 found no
++	 * answer, or got 0 from a crust that restarted while resuming, is a
++	 * wake with an unknown source, not "did not sleep".
++	 */
++	woke = (u8)(crust_rd(a, H713_CNT2) >> 8) != a->woken;
++	/* A request crust never took has no cycle of its own: noirq said why. */
++	if (h713_sb_cycle(sb) == (u8)a->net_cycle) {
++		if (phase != H713_PHASE_RELEASED)
++			dev_warn(a->dev, "standby %u: crust not released after %lld ms (state 0x%08x, phase %s)\n",
++				 a->net_cycle, ms, sb, crust_phase(sb));
++		else if (a->slept || woke)
++			dev_info(a->dev, "standby %u: wake %s (0x%x), slept %u ms, wake %u ms, step 0x%x, net released after %lld ms\n",
++				 a->net_cycle,
++				 a->slept ? arisc_wake_name(a) : "unknown",
++				 a->slept ? a->wake_reason : 0,
++				 crust_rd(a, H713_DIAG_SLEPT_MS),
++				 crust_rd(a, H713_WAKE_MS),
++				 crust_rd(a, H713_DIAG_STEP), ms);
++		else
++			dev_info(a->dev, "standby %u: did not sleep, net released after %lld ms\n",
++				 a->net_cycle, ms);
++		/* released with bit 4 still set: the disarm did not read back */
++		if (phase == H713_PHASE_RELEASED && sb & H713_SB_NET_ARMED)
++			dev_warn(a->dev, "standby %u: crust could not disarm its net, the R_WDOG still reads armed (state 0x%08x, err 0x%x) -- crust keeps feeding it\n",
++				 a->net_cycle, sb, crust_rd(a, H713_ERR));
++	}
++	arisc_watch(a);
++out:
++	mutex_unlock(&a->lock);
++}
++
++static int h713_arisc_pm_notify(struct notifier_block *nb,
++				unsigned long event, void *unused)
++{
++	struct h713_arisc *a = container_of(nb, struct h713_arisc, pm_nb);
++
++	if (event == PM_POST_SUSPEND)
++		arisc_standby_done(a);
++	return NOTIFY_DONE;
++}
++
++static void h713_arisc_pm_unregister(void *nb)
++{
++	unregister_pm_notifier(nb);
++}
++
++static const struct dev_pm_ops h713_arisc_pm_ops = {
++	.prepare = h713_arisc_prepare,
++	NOIRQ_SYSTEM_SLEEP_PM_OPS(h713_arisc_suspend_noirq,
++				  h713_arisc_resume_noirq)
++};
++
+ /*
+  * The SoC watchdog stops in its suspend_noirq and starts again in its
+  * resume_noirq; crust's sleep net is armed in ours. A device link puts ours
+@@ -3463,6 +3790,14 @@ static int h713_arisc_probe(struct platform_device *pdev)
+ 					   arisc_watch_work);
+ 	if (ret)
+ 		return ret;
++	/* After the work: devm removes it first. */
++	a->pm_nb.notifier_call = h713_arisc_pm_notify;
++	ret = register_pm_notifier(&a->pm_nb);
++	if (!ret)
++		ret = devm_add_action_or_reset(&pdev->dev, h713_arisc_pm_unregister,
++					       &a->pm_nb);
++	if (ret)
++		return ret;
+ 	if (a->running && a->off.crust)
+ 		queue_delayed_work(system_freezable_wq, &a->watch,
+ 				   msecs_to_jiffies(ARISC_WATCH_MS));
+@@ -3491,79 +3826,6 @@ static void h713_arisc_remove(struct platform_device *pdev)
+ 	 */
+ }
+ 
+-/*
+- * prepare: refuse before any other driver has quiesced anything (the late
+- * and noirq callbacks come after the damage). Only the real standby is ours;
+- * s2idle ("mem" on a BL31 without SYSTEM_SUSPEND) passes through untouched.
+- */
+-static int h713_arisc_prepare(struct device *dev)
+-{
+-	struct h713_arisc *a = dev_get_drvdata(dev);
+-	bool alive;
+-
+-	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+-		return 0;
+-	if (!a->running) {
+-		dev_err(dev, "standby refused: the firmware is not running\n");
+-		return -EOPNOTSUPP;
+-	}
+-	/*
+-	 * The vendor firmware leaves the DRAM's self-refresh with the
+-	 * dram_para it finds at arisc_para (0x145b0 -> 0x14004 -> 0x13884:
+-	 * clock, type, zq, odt, para1/2, mr, tpr), and this driver puts zeros
+-	 * and the message pool there: clock 0 goes into PLL_DDR and the lock
+-	 * poll at 0x13644 never ends. Until the block carries the board's real
+-	 * dram_para, standby to RAM is crust's only.
+-	 */
+-	if (!a->off.crust) {
+-		dev_err(dev, "standby refused: the vendor firmware would wake the DRAM with an empty dram_para\n");
+-		return -EOPNOTSUPP;
+-	}
+-	mutex_lock(&a->lock);
+-	alive = arisc_watch(a);
+-	mutex_unlock(&a->lock);
+-	if (!alive) {
+-		dev_err(dev, "standby refused: crust does not serve\n");
+-		return -EIO;
+-	}
+-	return 0;
+-}
+-
+-/*
+- * noirq: the last stop before TF-A's "cpu op req". One round trip on port 3
+- * right before it: the clear frame 0x25, so a crust that stopped serving the
+- * port refuses the standby here instead of taking the cluster down with
+- * nobody to wake it.
+- */
+-static int h713_arisc_suspend_noirq(struct device *dev)
+-{
+-	struct h713_arisc *a = dev_get_drvdata(dev);
+-
+-	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+-		return 0;
+-	if (!a->running || !a->off.crust)
+-		return -EOPNOTSUPP;
+-	return arisc_sb_wake_timer(a, 0);
+-}
+-
+-static int h713_arisc_resume_noirq(struct device *dev)
+-{
+-	struct h713_arisc *a = dev_get_drvdata(dev);
+-
+-	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+-		return 0;
+-	mutex_lock(&a->lock);
+-	arisc_sb_restore_notify(a);
+-	mutex_unlock(&a->lock);
+-	return 0;
+-}
+-
+-static const struct dev_pm_ops h713_arisc_pm_ops = {
+-	.prepare = h713_arisc_prepare,
+-	NOIRQ_SYSTEM_SLEEP_PM_OPS(h713_arisc_suspend_noirq,
+-				  h713_arisc_resume_noirq)
+-};
+-
+ static const struct of_device_id h713_arisc_of_match[] = {
+ 	{ .compatible = "allwinner,sun50i-h713-arisc" },
+ 	{ }
+@@ -3577,6 +3839,7 @@ static struct platform_driver h713_arisc_driver = {
+ 		.name		= "sun50i-h713-arisc",
+ 		.of_match_table	= h713_arisc_of_match,
+ 		.pm		= pm_sleep_ptr(&h713_arisc_pm_ops),
++		.suppress_bind_attrs = true,
+ 	},
+ };
+ module_platform_driver(h713_arisc_driver);

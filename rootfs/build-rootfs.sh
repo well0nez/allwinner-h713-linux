@@ -70,6 +70,8 @@ DRY_RUN=0
 SKIP_PROJECT=0
 BOARD=          # --board: boards/<id>/board.env FEATURES -> /etc/h713/features
 VARIANT=        # --variant: boards/<id>/variants/<name>/variant.env over it
+CRUST_BIN=      # --crust: this build's crust image -> /lib/firmware/<board>-crust.bin
+STANDBY=0       # --standby: suspend allowed, h713-power on the power key
 AUTHORIZED_KEY=
 KEEP_WORK=0
 KEYRING=
@@ -123,6 +125,14 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
                         Without it no record: the device's nodes decide
   --variant NAME        a board with several stock firmwares: the variant's
                         variant.env over board.env (its FEATURES win)
+  --crust FILE          the crust image of this build (release/build-all.sh 1b)
+                        as /lib/firmware/<board>-crust.bin, the name the
+                        board's device tree gives the ARISC driver. Needs a
+                        --board whose board.env names CRUST_DEFCONFIG
+  --standby             offer the standby: suspend to RAM through crust only
+                        (sleep.conf.d), h713-power on the power key and
+                        h713-mips-restart for the picture after it. Needs
+                        --crust; without it the image never suspends
   --skip-project        the Debian base system + overlay/ only
   --keep-work           do not delete the work directory
   --dry-run             build nothing, write nothing, fetch nothing from the
@@ -148,6 +158,8 @@ while (($#)); do
 	--wifi-env)        WIFI_ENV=${2:?missing value for --wifi-env}; shift 2 ;;
 	--board)           BOARD=${2:?missing value for --board}; shift 2 ;;
 	--variant)         VARIANT=${2:?missing value for --variant}; shift 2 ;;
+	--crust)           CRUST_BIN=${2:?missing value for --crust}; shift 2 ;;
+	--standby)         STANDBY=1; shift ;;
 	--skip-project|--skip-projekt) SKIP_PROJECT=1; shift ;;
 	--keep-work)       KEEP_WORK=1; shift ;;
 	--dry-run)         DRY_RUN=1; shift ;;
@@ -181,6 +193,13 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 [[ -z "$BOARD" || -f "$PROJECT_ROOT/boards/$BOARD/board.env" ]] || die "--board $BOARD: no boards/$BOARD/board.env"
 [[ -z "$VARIANT" || -f "$PROJECT_ROOT/boards/$BOARD/variants/$VARIANT/variant.env" ]] ||
 	die "--variant $VARIANT: no boards/${BOARD:-?}/variants/$VARIANT/variant.env"
+if [[ -n "$CRUST_BIN" ]]; then
+	[[ -f "$CRUST_BIN" ]] || die "--crust $CRUST_BIN: no such file"
+	( set +u; unset CRUST_DEFCONFIG; . "$PROJECT_ROOT/boards/${BOARD:-?}/board.env" 2>/dev/null && [[ -n "${CRUST_DEFCONFIG:-}" ]] ) ||
+		die "--crust needs a --board whose board.env names CRUST_DEFCONFIG (the file is named after the board)"
+fi
+((STANDBY == 0)) || { [[ -n "$CRUST_BIN" ]] && ((SKIP_PROJECT == 0)); } ||
+	die "--standby needs --crust and the project parts (h713-power)"
 
 # ---------------------------------------------------------------------------
 # 1. Tool check -- it should SAY what is missing, not just fail
@@ -457,7 +476,7 @@ EOF
 		info "skipped (--skip-project)"
 	elif [[ -x "$PROJECT_SCRIPT" ]]; then
 		MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" H713_BOARD="$BOARD" H713_VARIANT="$VARIANT" \
-		H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" \
+		H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" H713_CRUST_BIN="$CRUST_BIN" H713_STANDBY="$STANDBY" \
 			"$PROJECT_SCRIPT" --dry-run "<tree>" || true
 	else
 		warn "install-projekt.sh is missing or not executable: $PROJECT_SCRIPT"
@@ -672,7 +691,7 @@ else
 	say "5/6 project parts"
 	[[ -x "$PROJECT_SCRIPT" ]] || die "install-projekt.sh is missing: $PROJECT_SCRIPT"
 	MODROOT="$MODROOT" H713_TV_SRC="$H713_TV_SRC" H713_BOARD="$BOARD" H713_VARIANT="$VARIANT" \
-	H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" \
+	H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" H713_CRUST_BIN="$CRUST_BIN" H713_STANDBY="$STANDBY" \
 		"$PROJECT_SCRIPT" "$TREE"
 fi
 
@@ -727,6 +746,24 @@ t "wifi.env usable"           sh "$TREE/usr/local/sbin/h713-wifi" check "$TREE/e
 t "h713-wifi linked"          test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-wifi.service"
 t "aic8800 quiet"             grep -q 'aicwf_dbg_level=0x1' "$TREE/etc/modprobe.d/aic8800.conf"
 t "regulatory.db upstream"    test "$(readlink "$TREE/etc/alternatives/regulatory.db")" = /lib/firmware/regulatory.db-upstream
+# Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which
+# would fall back to s2idle; with it suspend to RAM through crust and h713-power on the key.
+SLEEP_CONF="$TREE/etc/systemd/sleep.conf.d/10-h713.conf"
+if ((STANDBY)); then
+	t "standby: mem, deep only"   grep -qx 'MemorySleepMode=deep' "$SLEEP_CONF"
+	t "standby: suspend allowed"  grep -qx 'AllowSuspend=yes' "$SLEEP_CONF"
+	t "h713-power linked"         test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
+	t "h713-mips-restart"         test -x "$TREE/usr/local/sbin/h713-mips-restart"
+else
+	t "no suspend"                grep -qx 'AllowSuspend=no' "$SLEEP_CONF"
+	t "no h713-power"             test ! -e "$TREE/etc/systemd/system/h713-power.service"
+	t "no h713-mips-restart"      test ! -e "$TREE/usr/local/sbin/h713-mips-restart"
+fi
+if [[ -n "$CRUST_BIN" ]]; then
+	t "crust as $BOARD-crust.bin" cmp -s "$CRUST_BIN" "$TREE/lib/firmware/$BOARD-crust.bin"
+else
+	t "no crust image"            test -z "$(find "$TREE/usr/lib/firmware" "$TREE/lib/firmware" -maxdepth 1 -name '*-crust.bin' -print -quit 2>/dev/null)"
+fi
 # Optional hardware (boards/README.md, FEATURES): the record of what the board
 # should have, the boot check that compares it with the nodes, the keystone's
 # udev start for a sensor that probes late.
@@ -789,6 +826,8 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "modroot=${MODROOT#"$PROJECT_ROOT"/}"
 	echo "h713_tv=${H713_TV_BIN#"$PROJECT_ROOT"/}"
 	echo "mesa=$( [[ "$MESA_TAR" == none ]] && echo none || echo "${MESA_TAR#"$PROJECT_ROOT"/}" )"
+	echo "crust=$( [[ -n "$CRUST_BIN" ]] && echo "$BOARD-crust.bin $(sha256sum "$CRUST_BIN" | cut -c1-16)" || echo none )"
+	echo "standby=$( ((STANDBY)) && echo offered || echo no )"
 	echo "ssh_key_built_in=$( [[ -n "$AUTHORIZED_KEY" ]] && echo yes || echo no )"
 	echo "image_size=$( ((MAKE_EXT4)) && echo "$IMAGE_SIZE" || echo none )"
 } > "$MANIFEST"

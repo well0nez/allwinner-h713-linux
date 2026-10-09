@@ -1,0 +1,35 @@
+From e50d1eec87f610fc8686b35b16994f7b2d5305ff Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 23:05:25 +0200
+Subject: [PATCH 69/80] common: debug: steps: the H713 sleep net hook only in
+ H713 builds
+
+record_step() called h713_sleep_step() under a C if (CONFIG(...)),
+but its header is included only under #if CONFIG(PLATFORM_H713): every
+other board built with CONFIG_DEBUG_RECORD_STEPS=y stopped with an
+implicit declaration (pine64_plus, orangepi_3; review of the release
+work, G1). The call now sits under the same #if as the include.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ common/debug/steps.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/common/debug/steps.c b/common/debug/steps.c
+index ca1ed1a..3e4e355 100644
+--- a/common/debug/steps.c
++++ b/common/debug/steps.c
+@@ -37,9 +37,10 @@ void
+ record_step(uint32_t step)
+ {
+ 	mmio_write_32(LAST_STEP_REG, step);
+-	/* H713: a step boundary feeds the sleep net (sun50i-h713-sleep.c) */
+-	if (CONFIG(PLATFORM_H713))
+-		h713_sleep_step();
++#if CONFIG(PLATFORM_H713)
++	/* a step boundary feeds the sleep net (sun50i-h713-sleep.c) */
++	h713_sleep_step();
++#endif
+ }
+ 
+ void

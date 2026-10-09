@@ -1,0 +1,43 @@
+From 0ad76f8cd5fcce782ae4d8309532e94a62a7e807 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 01:36:00 +0200
+Subject: [PATCH 06/80] h713: no GP2 record for a start through the reset
+ vector
+
+record_exception() writes RTC GP2, which on the H713 is the vendor
+firmware's rails flag (blob 0xe20c/0xd6cc read it in standby). A start
+through the reset vector -- every load by the kernel driver or TF-A -- is no
+fault, so on this platform it leaves GP2 untouched; real exceptions are
+still recorded.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/or1k/exception.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/arch/or1k/exception.c b/arch/or1k/exception.c
+index bf96428..50097d1 100644
+--- a/arch/or1k/exception.c
++++ b/arch/or1k/exception.c
+@@ -5,6 +5,7 @@
+ 
+ #include <debug.h>
+ #include <exception.h>
++#include <asm/exception.h>
+ #include <spr.h>
+ #include <steps.h>
+ 
+@@ -15,6 +16,13 @@ report_exception(uint32_t exception)
+ 
+ 	if (!exception)
+ 		return;
++	/*
++	 * H713: a start through the reset vector is not a fault, and RTC GP2,
++	 * where record_exception() writes, is the vendor firmware's rails flag
++	 * (read at 0xe20c/0xd6cc). Leave it alone unless something went wrong.
++	 */
++	if (CONFIG(PLATFORM_H713) && exception == RESET_EXCEPTION)
++		return;
+ 
+ 	pc = mfspr(SPR_SYS_EPCR_ADDR(0));
+ 	record_exception(exception, pc);

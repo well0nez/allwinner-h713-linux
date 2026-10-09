@@ -1,0 +1,335 @@
+soc: sunxi: cpu_comm: the master init without device-memory faults
+
+Originally: "soc: sunxi: cpu_comm: the master init of the reload path without a Device-memory fault and with a lock table that works - one store per word, vendor lock layout, the cold boot's lists and record pool (02.10.2026, device test B3, third oops)"
+
+The third device run of "h713-tv firmware restart" stopped at InitCommMem+0x654: the compiler had merged the
+two adjacent CPU flag words at 0x4cdc/0x4ce0 (4 mod 8) into one 8-byte store, an alignment fault on the
+ioremap()ed (Device) shared region. The first two oopses were the same class (comm_InitSpinLock) and a NULL
+hwlock. Each fix moved the fault one step further because the master init never ran on the ARM before.
+
+Found by running the built module's InitCommMem(2) path under unicorn with an alignment check on the region
+(work/FB-MIPSRELOADb/tools/devmem_emul.py; it reproduces oops2 and oops3 on the built hy310-cpu-comm.ko):
+ - the two flag words: one writel_relaxed each, in InitCommMem;
+ - Trid_SMM_Init: the heap header words at 0xb4/0xb8/0xbc (4 mod 8) and the descriptor slot, same rule;
+ - comm_InitSpinLock wrote the wrong layout: four 32-bit words at +0/+4/+8/+12 and two more at +16/+32 into
+   12-byte entries, so every lock ended up held (ref_count 2, thread_id 0) and every comm_SpinLock() timed out
+   after 10001 retries, as in the oops3 log; the vendor writes the bytes 2,2,0,2, ref_count 0, thread_id 255
+   (cpu_comm_dev.ko @0x92e4): one word 0x02000202 plus two words;
+ - the list heads and records: the vendor and the cold boot (U-Boot h713_mips_init_lists/record_pool,
+   transcribed from display.bin 0x8b11af1c/0x8b11af70) build five lists and a 256-record free pool at 0x4d0c..0x75b0
+   (the two node layouts differ; U-Boot's, which the firmware boots on, is used);
+   the loop here wrote 20 virtual-pointer pairs over the pool descriptor and built no records.
+All of these stores now go through writel_relaxed()/writew_relaxed() (one instruction of the stated width,
+never merged); the magics are published with writel() after the init. Applies after 0167/0167a/0167b/0167c and STANDBY 0172.
+
+Rebased onto the R1 series (0224), applies cleanly. On the HY310 the master
+path of InitCommMem() ran for the first time with this patch (the cold
+boot adopts U-Boot's region): V3 and V8 on 08.10.2026, no fault, the
+firmware ready after 330 ms on the rebuilt region.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -223,7 +223,10 @@ static inline bool cpu_comm_is_mips_va(unsigned long ptr)
+ #define SHMEM_OFF_MAX_CPU	19672	/* 0x4CD8 */
+ #define SHMEM_OFF_VA_OFFSET	19688	/* 0x4CE8 */
+ #define SHMEM_OFF_LIST_BASE	19724	/* 0x4D0C — first linked list */
++#define SHMEM_OFF_REC_LIST	0x4D80	/* free-record list: u16 peak, u16 count, anchor +8, tail +16 */
+ #define SHMEM_OFF_REC_ENTRIES	19888	/* 0x4DB0 — addRec() entries */
++#define SHMEM_OFF_REC_END	0x75B0	/* 256 records of SHMEM_REC_SIZE end here, magic2 follows at 0x75B8 */
++#define SHMEM_REC_SIZE		0x28
+ #define SHMEM_OFF_MAGIC2	30136	/* 0x75B8 */
+ 
+ /* Per-CPU ready/app-ready flag words, and the app-ready bit within them */
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -802,6 +802,7 @@ bool cpu_comm_hwlock_requested(int lock_id)
+  */
+ #define SPINLOCK_FREE		2	/* owner_cpu value for "free" */
+ #define SPINLOCK_HWID_NONE	255	/* unassigned hw lock id */
++#define SPINLOCK_INIT_WORD	(SPINLOCK_FREE | SPINLOCK_FREE << 8 | 0 << 16 | SPINLOCK_FREE << 24)	/* 0x02000202 */
+ #define SPINLOCK_MAX_ID		11	/* max SW lock id */
+ #define SPINLOCK_HW_OFFSET	2	/* SW lock N → hwlocks[N+2] */
+ #define SPINLOCK_ENTRY_SIZE	12	/* bytes per entry in SharedMem */
+@@ -853,17 +854,26 @@ int comm_InitSpinLock(int dummy)
+ 		void __iomem *entry = (void __iomem *)(base + SPINLOCK_ENTRY_SIZE * i);
+ 
+ 		/*
+-		 * One 32-bit store per word: the region is ioremap()ed Device
+-		 * memory, and plain pointer stores get merged by the compiler into
+-		 * 16-byte stores, which fault there (alignment fault at +12 on the
+-		 * reload path, 02.10.2026, work/FB-MIPSRELOAD/device/oops2-*.log).
++		 * The vendor's loop (comm_InitSpinLock @0x92e4, cpu_comm_dev.ko)
++		 * stores the bytes type=2, status=2, mutex=0, owner=2, then ref_count
++		 * = 0 and thread_id = 255 into 12-byte entries; the four bytes are
++		 * one little-endian word, 0x02000202.
++		 *
++		 * The code here wrote four 32-bit words at +0/+4/+8/+12 and the
++		 * last two at +16/+32, i.e. the 12-byte entries overlapped and every
++		 * lock ended up type=2, status=0, owner=0 (ARM), ref_count=2,
++		 * thread_id=0: held by a thread that does not exist. Every
++		 * comm_SpinLock() then timed out after 10001 retries, as on the
++		 * device (oops3 log: "spinLock(1, mode=2): TIMEOUT ... owner=2
++		 * thread_id=0x0 refcnt=2") and comm_ReqestSpinLock() found no free
++		 * entry ("failed to get spinlock for component pool").
++		 *
++		 * One 32-bit store per word, never a wider one: the region is
++		 * ioremap()ed Device memory (see InitCommMem).
+ 		 */
+-		writel_relaxed(SPINLOCK_FREE, entry + 0);	/* type */
+-		writel_relaxed(SPINLOCK_FREE, entry + 4);	/* status */
+-		writel_relaxed(0, entry + 8);			/* mutex_flag */
+-		writel_relaxed(SPINLOCK_FREE, entry + 12);	/* owner_cpu = free */
+-		writel(0, entry + 16);				/* ref_count (as before: entry + 4 words) */
+-		writel(SPINLOCK_HWID_NONE, entry + 32);		/* thread_id (as before: entry + 8 words) */
++		writel_relaxed(SPINLOCK_INIT_WORD, entry);	/* type, status, mutex, owner */
++		writel_relaxed(0, entry + 4);			/* ref_count */
++		writel_relaxed(SPINLOCK_HWID_NONE, entry + 8);	/* thread_id */
+ 	}
+ 	dmb(ish);
+ 
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_mem.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_mem.c
+@@ -1837,7 +1837,7 @@ int Trid_SMM_Init(unsigned long base, u32 size)
+ 	heap = (u32 *)base;
+ 	page_count = (size + 4095) >> 12;
+ 
+-	/* Initialize heap header */
++	/* Initialize heap header (Device memory: memset_io and writel_relaxed only) */
+ 	memset_io(heap, 0, 4096);
+ 
+ 	/*
+@@ -1853,10 +1853,10 @@ int Trid_SMM_Init(unsigned long base, u32 size)
+ 		unsigned long pt_vir = (unsigned long)(heap + 1024);  /* page table virtual */
+ 		u32 pt_phy = (u32)(pt_vir - ShMemAddrBase + ShMemAddr); /* to physical */
+ 
+-		heap[0] = pt_phy;	/* free_list_head = page_table physical */
+-		heap[1] = pt_phy;	/* free_list_cur */
++		writel_relaxed(pt_phy, (void __iomem *)heap);		/* free_list_head = page_table physical */
++		writel_relaxed(pt_phy, (void __iomem *)(heap + 1));	/* free_list_cur */
+ 	}
+-	heap[2] = page_count;
++	writel_relaxed(page_count, (void __iomem *)(heap + 2));
+ 
+ 	/*
+ 	 * From IDA @ 0xb220:
+@@ -1875,9 +1875,10 @@ int Trid_SMM_Init(unsigned long base, u32 size)
+ 		u32 data_start = pt_size_aligned + 4096; /* header(4096) + page_table */
+ 		u32 heap_phy = (u32)((unsigned long)heap - ShMemAddrBase + ShMemAddr);
+ 
+-		heap[0xB4 / 4] = data_start;	/* data_start_offset (NOT brk, NOT capacity) */
+-		heap[0xB8 / 4] = size;		/* raw capacity */
+-		heap[0xBC / 4] = heap_phy;	/* physical base of heap header */
++		/* 0xb4 is 4 mod 8: three single stores, never a merged 8-byte one */
++		writel_relaxed(data_start, (void __iomem *)(heap + 0xB4 / 4));	/* data_start_offset (NOT brk, NOT capacity) */
++		writel_relaxed(size, (void __iomem *)(heap + 0xB8 / 4));	/* raw capacity */
++		writel_relaxed(heap_phy, (void __iomem *)(heap + 0xBC / 4));	/* physical base of heap header */
+ 	}
+ 
+ 	/* Mark the region in shared memory header.
+@@ -1913,8 +1914,8 @@ int Trid_SMM_Init(unsigned long base, u32 size)
+ 		 * call; we set it to `size` to match the apparent intent and
+ 		 * to be safe against MIPS code paths we haven't traced.
+ 		 */
+-		*(u32 *)(((u8 *)shmem) + 0x4D00 + 8 * slot) = heap_phy;
+-		*(u32 *)(((u8 *)shmem) + 0x4D04 + 8 * slot) = size;
++		writel_relaxed(heap_phy, (void __iomem *)((u8 *)shmem + 0x4D00 + 8 * slot));
++		writel_relaxed(size, (void __iomem *)((u8 *)shmem + 0x4D04 + 8 * slot));
+ 	}
+ 
+ 	comm_SpinUnLock(1, 0);
+@@ -2297,6 +2298,59 @@ void Trid_SMMCleanUpInCPUReset(void)
+ 	pr_info("cpu_comm: Trid_SMMCleanUpInCPUReset called (no-op)\n");
+ }
+ 
++/*
++ * The five list heads and the 256-record free pool, written the way U-Boot's
++ * h713_mips_init_lists()/h713_mips_init_record_pool() write them for the cold
++ * boot (transcribed from the firmware's own master init, display.bin 0x8b11af1c
++ * and the loop at 0x8b11af70; the display firmware boots on that image).
++ * Pointers are ARM-physical, nodes are {pointer, 0} pairs. The MIPS' addRec()
++ * (display.bin 0x8b12339c) chains records off the list rooted at 0x4d80 (u16
++ * peak, u16 count, anchor at +8, tail at +16). The loop that was here wrote 20
++ * pairs at 8-byte stride from 0x4d0c with virtual pointers, wrote over the
++ * list descriptor's counters at 0x4d80 and built no records, so a rebuilt
++ * region had an empty record pool where the cold boot has 256 records.
++ */
++static void comm_InitListsAndRecords(unsigned long base)
++{
++	static const u32 lists[] = { 0x4d10, 0x4d28, 0x4d58, 0x4d70, 0x4d88 };
++	const u32 list = SHMEM_OFF_REC_LIST;
++	u32 prev = 0, off;
++	u16 count = 0;
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(lists); i++) {
++		void __iomem *l = (void __iomem *)(base + lists[i]);
++
++		writel_relaxed(ShMemAddr + lists[i], l);
++		writel_relaxed(0, l + 4);
++		writel_relaxed(ShMemAddr + lists[i], l + 8);
++		writel_relaxed(0, l + 12);
++	}
++
++	for (off = SHMEM_OFF_REC_ENTRIES; off < SHMEM_OFF_REC_END; off += SHMEM_REC_SIZE) {
++		void __iomem *r = (void __iomem *)(base + off);
++		u32 rp = ShMemAddr + off;
++
++		writel_relaxed(rp, r);
++		writel_relaxed(0, r + 0x04);
++		writel_relaxed(rp, r + 0x08);
++		writel_relaxed(0, r + 0x0c);
++
++		writel_relaxed(prev, r + 0x20);			/* back link */
++		writel_relaxed(ShMemAddr + list + 8, r + 0x18);	/* anchor */
++		writel_relaxed(0, r + 0x1c);
++		writel_relaxed(0, r + 0x24);
++		if (prev)
++			writel_relaxed(0, (void __iomem *)(base + (prev - ShMemAddr)) + 4);
++
++		prev = rp + 0x18;
++		writel_relaxed(prev, (void __iomem *)(base + list + 0x10));	/* tail */
++		writel_relaxed(0, (void __iomem *)(base + list + 0x14));
++		count++;
++	}
++	writew_relaxed(count, (void __iomem *)(base + list + 2));
++}
++
+ /* ── InitCommMem — Main shared memory initialization ───────── */
+ 
+ int InitCommMem(int mode)
+@@ -2354,8 +2408,16 @@ int InitCommMem(int mode)
+ 			goto wait_notices;
+ 		}
+ 
++		/*
++		 * Everything this master path stores into the shared region goes
++		 * through writel_relaxed()/memset_io(): the region is ioremap()ed
++		 * Device memory, where an access must be aligned to its own size and
++		 * plain pointer stores get merged by the compiler into wider ones
++		 * (the reload faulted twice that way, work/FB-MIPSRELOAD/device/oops*,
++		 * the second time on the two CPU flag words at 0x4cdc/0x4ce0).
++		 */
+ 		/* Acquire HW lock 0 for init exclusion */
+-		shmem[SHMEM_OFF_MAGIC1 / 4] = CPU_COMM_MAGIC;
++		writel_relaxed(CPU_COMM_MAGIC, (void __iomem *)(base + SHMEM_OFF_MAGIC1));
+ 		tryspinlockhwReg(0);
+ 
+ 		/* Initialize software spinlock layer in SharedMem */
+@@ -2368,15 +2430,15 @@ int InitCommMem(int mode)
+ 
+ 			/* Set all session IDs to -1 */
+ 			for (i = 0; i < CALL_ENTRIES_TOTAL; i += CALL_ENTRY_SIZE)
+-				*(u32 *)(base + SHMEM_OFF_CALL_ENTRIES + i + 100) =
+-					SESSION_ID_INVALID;
++				writel_relaxed(SESSION_ID_INVALID,
++					       (void __iomem *)(base + SHMEM_OFF_CALL_ENTRIES + i + 100));
+ 		}
+ 
+ 		/* Clear magic temporarily during setup */
+ 		memset_io((void *)(base + SHMEM_OFF_MAGIC1), 0, 4);
+ 
+ 		/* Set max CPU count */
+-		shmem[SHMEM_OFF_MAX_CPU / 4] = 3;
++		writel_relaxed(3, (void __iomem *)(base + SHMEM_OFF_MAX_CPU));
+ 
+ 		/* Initialize ALL sockets */
+ 		InitCommSeqMem(CPU_ID_ARM);
+@@ -2387,41 +2449,39 @@ int InitCommMem(int mode)
+ 		InitCommShareSeqMem(CPU_ID_MIPS, 1);
+ 
+ 		/* Clear SMM heap marker */
+-		*(u64 *)(base + SHMEM_OFF_SMM_HEAP) = 0;
++		writel_relaxed(0, (void __iomem *)(base + SHMEM_OFF_SMM_HEAP));
++		writel_relaxed(0, (void __iomem *)(base + SHMEM_OFF_SMM_HEAP + 4));
+ 
+ 		/* Initialize pools */
+ 		InitComponentPool((void *)(base + SHMEM_OFF_COMP_POOL));
+ 		InitMessagerPool((void *)(base + SHMEM_OFF_MSG_POOL));
+ 
+ 		/* Set VA offset for address translation */
+-		shmem[SHMEM_OFF_VA_OFFSET / 4] = ShMemAddrVir - ShMemAddr;
+-		shmem[(SHMEM_OFF_VA_OFFSET + 4) / 4] = 0;
+-
+-		/* Initialize linked lists (self-referencing) */
+-		for (i = SHMEM_OFF_LIST_BASE; i < SHMEM_OFF_LIST_BASE + 160;
+-		     i += 8) {
+-			shmem[i / 4] = base + i;
+-			shmem[i / 4 + 1] = base + i;
+-		}
++		writel_relaxed(ShMemAddrVir - ShMemAddr,
++			       (void __iomem *)(base + SHMEM_OFF_VA_OFFSET));
++		writel_relaxed(0, (void __iomem *)(base + SHMEM_OFF_VA_OFFSET + 4));
++
++		/* Five empty lists and the 256-record free pool, as U-Boot builds them */
++		comm_InitListsAndRecords(base);
+ 
+ 		/* Init routing table before setting magics */
+ 		{
+ 			int ri;
+-			u32 *ver = (u32 *)(ShMemAddrBase + 30144);
+-			u32 *cnt = (u32 *)(ShMemAddrBase + 30148);
+-			u8  *tbl = (u8 *)(ShMemAddrBase + 30152);
+-			*ver = 0;
+-			*cnt = 0;
++			void __iomem *ver = (void __iomem *)(base + SHMEM_OFF_CALL_ENTRIES);
++			void __iomem *tbl = ver + 8;
++
++			writel_relaxed(0, ver);		/* version */
++			writel_relaxed(0, ver + 4);	/* count */
+ 			for (ri = 0; ri < 1224; ri++) {
+-				*(u32 *)(tbl + 96 * ri + 8) = 0;
+-				*(int *)(tbl + 96 * ri + 92) = -1;
++				writel_relaxed(0, tbl + 96 * ri + 8);
++				writel_relaxed(-1, tbl + 96 * ri + 92);
+ 			}
+ 			pr_info("cpu_comm: routine table initialized (1224 slots)\n");
+ 		}
+ 
+-		/* Set magic markers — shared memory is now valid */
+-		shmem[SHMEM_OFF_MAGIC1 / 4] = CPU_COMM_MAGIC;
+-		shmem[SHMEM_OFF_MAGIC2 / 4] = CPU_COMM_MAGIC;
++		/* Set magic markers - shared memory is now valid (writel orders the init before them) */
++		writel(CPU_COMM_MAGIC, (void __iomem *)(base + SHMEM_OFF_MAGIC1));
++		writel(CPU_COMM_MAGIC, (void __iomem *)(base + SHMEM_OFF_MAGIC2));
+ 
+ 		/* Initialize SMM heap in remaining space */
+ 		Trid_SMM_Init(base + SHMEM_OFF_SMM_HEAP,
+@@ -2461,16 +2521,21 @@ int InitCommMem(int mode)
+ 		 * Setting APP_READY here ensures MIPS caches 0x5 on first read.
+ 		 */
+ 		{
+-			u32 *arm_flag = (u32 *)(ShMemAddrBase +
++			void __iomem *arm_flag = (void __iomem *)(base +
+ 						CPU_FLAG_OFFSET(CPU_ID_ARM));
+-			u32 *mips_flag = (u32 *)(ShMemAddrBase +
++			void __iomem *mips_flag = (void __iomem *)(base +
+ 						CPU_FLAG_OFFSET(CPU_ID_MIPS));
+ 			/* Write CLEAN values — both ARM_flag AND MIPS_flag slots may
+ 			 * contain uninit 0xffffffff garbage (NOTICE_REQ bit 3 set),
+ 			 * which makes MIPS-FW loop forever in Wait CPUNoticeReqed.
+ 			 * Initialize BOTH slots to a sane state so MIPS sees no
+ 			 * spurious NOTICE_REQ on its own flag. */
+-			*arm_flag = CPU_FLAG_READY | CPU_FLAG_APP_READY;  /* 0x5 */
++			/*
++			 * Two adjacent words at 0x4cdc/0x4ce0, 4 mod 8: one store each.
++			 * The compiler had merged them into a single 8-byte store at
++			 * 0x4cdc, the alignment fault at InitCommMem+0x654 (oops3).
++			 */
++			writel_relaxed(CPU_FLAG_READY | CPU_FLAG_APP_READY, arm_flag);  /* 0x5 */
+ 			/*
+ 			 * HY310 2026-04-22 (revised): MIPS_flag MUST be 0x0, NOT 0x5.
+ 			 *
+@@ -2487,9 +2552,9 @@ int InitCommMem(int mode)
+ 			 * "self not ready", runs its InitCommSeqMem properly, then
+ 			 * sets the flag itself.
+ 			 */
+-			*mips_flag = 0;
++			writel_relaxed(0, mips_flag);
+ 			pr_info("cpu_comm: flags init CLEAN: ARM=0x%x MIPS=0x%x (MIPS must self-set after init)\n",
+-				*arm_flag, *mips_flag);
++				readl_relaxed(arm_flag), readl_relaxed(mips_flag));
+ 		}
+ 
+ 		spinUnlockhwReg(0);

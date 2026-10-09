@@ -1,0 +1,163 @@
+soc: sunxi: cpu_comm: a parked coprocessor refuses calls, and every wake says so
+
+0189's park only raised cpu_comm_suspend_flag, which the ioctl path alone
+reads. cpu_comm_call() still went to the doorbell of a MIPS held in reset:
+100 ms on the semaphore, a 2 s ACK timeout at HZ=250, and a free-call slot
+that only the MIPS returns, until the pool was empty and every call failed
+with -EBUSY (about 21 calls by the verdict's count, not counted here).
+The park did not wait for a call in flight, isCPUAppReady() kept answering
+1 through mips_app_ready_assumed, and the log line "RPCs refused" was true
+for userspace only (KD-4, with its verdict's corrections).
+
+Now the park first takes cpu_comm_call_mutex, notes the standby number in
+cpu_comm_parked_since and clears mips_app_ready_assumed. From then on
+cpu_comm_call() and SendComm2CPUEx() return -ENODEV before they touch a
+semaphore or a slot. Then come the reset and the clock writes as before,
+and both registers are read back; if either is not 0, the suspend fails
+with -EIO rather than sleeping with a MIPS in an unknown state.
+setCPUReset() is deliberately not called after the reset: it takes shmem
+spinlock 3, and the lock loop has no bound if the dead MIPS held it.
+
+Until the reload exists (TODO 3.3), resume_early prints one warning per
+wake, "display coprocessor parked since standby N, reload missing", and
+/proc/cpu_comm/status has a "MIPS Parked" line (KD-12). N counts the
+suspends to RAM of this boot that reached the late phase. The reload has
+to clear the flag again.
+
+Not measured. Compiled out of tree with W=1, no new warning.
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -532,6 +532,13 @@ extern u32 comm_intrsem[];
+ /* Suspend flag */
+ extern int cpu_comm_suspend_flag;
+ 
++/*
++ * Standby to RAM that parked the MIPS (cpu_comm_dev.c), 0 while it is not
++ * parked. Set under cpu_comm_call_mutex; RPCs fail with -ENODEV until a
++ * reload clears it.
++ */
++extern unsigned int cpu_comm_parked_since;
++
+ /*
+  * True when cpu_comm_init() found the shared region already live and chose
+  * to adopt it instead of reinitialising it. Everything that writes shared
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+@@ -180,7 +180,12 @@ int cpu_comm_call(u32 comp_id, const u32 *args, unsigned int nargs,
+ 		params[i + 1] = (int)args[i];
+ 
+ 	mutex_lock(&cpu_comm_call_mutex);
+-	err = cpu_comm_call_ex((int)comp_id, params, result, timeout_ms, true);
++	/* Parked for standby: nobody answers, and a call would cost a slot. */
++	if (cpu_comm_parked_since)
++		err = -ENODEV;
++	else
++		err = cpu_comm_call_ex((int)comp_id, params, result,
++				       timeout_ms, true);
+ 	mutex_unlock(&cpu_comm_call_mutex);
+ 
+ 	if (err)
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -296,6 +296,8 @@ static int cpu_comm_fd_major;
+ static struct class *cpucommclass;
+ static struct proc_dir_entry *proc_dir;
+ int cpu_comm_suspend_flag;
++unsigned int cpu_comm_parked_since;
++static unsigned int cpu_comm_standby_count;	/* standby to RAM since boot */
+ 
+ static struct device *cpu_comm_mbox_dev;
+ 
+@@ -1286,6 +1288,11 @@ static int cpu_comm_proc_show(struct seq_file *m, void *v)
+ 	seq_printf(m, "ARM App Ready: %d\n", isCPUAppReady(CPU_ID_ARM));
+ 	seq_printf(m, "MIPS App Ready: %d\n", isCPUAppReady(CPU_ID_MIPS));
+ 	seq_printf(m, "Suspend: %d\n", cpu_comm_suspend_flag);
++	if (cpu_comm_parked_since)
++		seq_printf(m, "MIPS Parked: since standby %u, reload missing\n",
++			   cpu_comm_parked_since);
++	else
++		seq_puts(m, "MIPS Parked: no\n");
+ 	return 0;
+ }
+ 
+@@ -2201,6 +2208,7 @@ static int cpu_comm_prepare(struct device *dev)
+ static int cpu_comm_suspend_late(struct device *dev)
+ {
+ 	void __iomem *ccu;
++	u32 rst, clk;
+ 
+ 	/*
+ 	 * Only for standby to RAM, where the DRAM goes into self-refresh. On
+@@ -2210,24 +2218,56 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	 */
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+ 		return 0;
++	cpu_comm_standby_count++;
+ 	if (!cpu_comm_mips_running())
+ 		return 0;
+ 	ccu = ioremap(H713_CCU_MIPS_CLK, 0x10);
+ 	if (!ccu)
+ 		return -ENOMEM;
++
++	/*
++	 * Close the call path first and wait out a call in flight (KD-4):
++	 * from here on cpu_comm_call() and SendComm2CPUEx() give -ENODEV,
++	 * and isCPUAppReady() no longer assumes. No setCPUReset() after the
++	 * reset: it takes shmem spinlock 3, which the MIPS may hold.
++	 */
++	mutex_lock(&cpu_comm_call_mutex);
++	WRITE_ONCE(cpu_comm_parked_since, cpu_comm_standby_count);
++	mips_app_ready_assumed = 0;
++	mutex_unlock(&cpu_comm_call_mutex);
++
+ 	cpu_comm_suspend(0);
+ 	writel(0, ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK));
+ 	msleep(H713_MIPS_PARK_MS);
+ 	writel(0, ccu);
+ 	msleep(H713_MIPS_PARK_MS);
++	rst = readl(ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK));
++	clk = readl(ccu);
+ 	iounmap(ccu);
+-	pr_info("cpu_comm: standby: coprocessor parked, RPCs refused until it is reloaded\n");
++	if (rst || clk) {
++		pr_err("cpu_comm: standby: park did not take (reset %08x, clock %08x)\n",
++		       rst, clk);
++		return -EIO;
++	}
++	pr_info("cpu_comm: standby %u: coprocessor parked, kernel and ioctl RPCs fail with -ENODEV until it is reloaded\n",
++		cpu_comm_standby_count);
++	return 0;
++}
++
++/* Until the reload exists (TODO 3.3) every wake says why there is no picture. */
++static int cpu_comm_resume_early(struct device *dev)
++{
++	unsigned int since = READ_ONCE(cpu_comm_parked_since);
++
++	if (since)
++		pr_warn("cpu_comm: display coprocessor parked since standby %u, reload missing (TODO 3.3)\n",
++			since);
+ 	return 0;
+ }
+ 
+ static const struct dev_pm_ops cpu_comm_pm_ops = {
+ 	.prepare = pm_sleep_ptr(cpu_comm_prepare),
+-	LATE_SYSTEM_SLEEP_PM_OPS(cpu_comm_suspend_late, NULL)
++	LATE_SYSTEM_SLEEP_PM_OPS(cpu_comm_suspend_late, cpu_comm_resume_early)
+ };
+ 
+ static const struct of_device_id cpu_comm_of_match[] = {
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_proto.c
+@@ -210,6 +210,10 @@ int SendComm2CPUEx(unsigned long msg_ptr, u32 target_cpu, int from_user)
+ 		return -EINVAL;
+ 	}
+ 
++	/* The MIPS is parked for standby (cpu_comm_dev.c): nothing to send to. */
++	if (READ_ONCE(cpu_comm_parked_since))
++		return -ENODEV;
++
+ 	/* -- Step 2: resolve dst_cpu -- */
+ 
+ 	if (target_cpu == 0) {

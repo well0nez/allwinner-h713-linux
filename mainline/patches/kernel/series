@@ -486,3 +486,80 @@
 # 06.10.: the firmware's zoom aspect (5) stops the picture for good, also from a saved value at
 #   the start; the plane does not offer it any more (arbeit/zoom-20261006, TODO 2.1)
 0185-drm-h713-afbd-do-not-offer-the-firmware-s-zoom-aspect.patch
+# 08.10.: crust as the HY310 ARISC firmware and the standby chain at release quality - watchdog layout
+#   and PM (TODO 2.25), the arisc/crust driver, the display/board side (arbeit/crust-release-20261007)
+0186-dt-bindings-watchdog-sun4i-a10-wdt-add-the-h713.patch
+0187-arm64-dts-h713-bind-the-watchdog-with-the-a523-register-layout.patch
+0188-watchdog-sunxi-wdt-stop-for-system-sleep-feed-while-userspace-is-frozen.patch
+0189-arm64-dts-h713-arisc-the-contract-page-the-msgbox-clock-the-watchdog.patch
+0190-soc-sunxi-h713-arisc-load-a-crust-image-or-keep-the-one-tf-a-started.patch
+0191-soc-sunxi-h713-arisc-crust-keep-only-the-image-asked-for-no-stale-page-vendor-size-first.patch
+0192-soc-sunxi-h713-arisc-crust-keep-a-running-image-only-if-its-code-is-the-file-s.patch
+0193-soc-sunxi-h713-arisc-byte-lanes-follow-the-little-endian-window.patch
+0194-soc-sunxi-h713-arisc-standby-with-crust-the-round-trip-the-wake-word.patch
+0195-soc-sunxi-h713-arisc-crust-s-contract-page-in-one-header-and-the-version-it-must-have.patch
+0196-soc-sunxi-h713-arisc-the-message-box-clock-a-link-to-the-watchdog-the-window-the-dt-declares.patch
+0197-soc-sunxi-h713-arisc-crust-which-image-stays-said-in-the-log.patch
+0198-soc-sunxi-h713-arisc-crust-the-record-of-the-previous-run.patch
+0199-soc-sunxi-h713-arisc-crust-watch-it-while-it-runs.patch
+0200-soc-sunxi-h713-arisc-standby-crust-s-request-its-budgets-and-the-confirmation-on-every-way-out.patch
+0201-soc-sunxi-h713-arisc-standby-wake-on-the-rtc-alarm.patch
+0202-soc-sunxi-h713-arisc-standby-tell-userspace-what-woke-the-box.patch
+0203-soc-sunxi-h713-arisc-crust-reload-it-when-it-stopped-if-asked-to.patch
+0204-soc-sunxi-h713-arisc-run-the-edid-sequence-once-more-when-the-display-mips-cut-into-it.patch
+0205-soc-sunxi-h713-arisc-a-read-only-state-file.patch
+0206-arm64-dts-h713-hy310-crust-as-the-arisc-firmware.patch
+0207-misc-hy310-board-mgr-own-the-fan-rail-when-the-board-file-hands-it-over-switch-it-in-the-late-phase.patch
+0208-soc-sunxi-cpu-comm-park-the-display-coprocessor-before-standby-plan-104-h7-first-half.patch
+0209-drm-h713-afbd-idle-the-fetch-engine-across-standby.patch
+0210-soc-sunxi-cpu-comm-drm-h713-afbd-park-and-idle-only-for-standby-to-ram.patch
+0211-misc-hy310-board-mgr-say-what-the-late-phase-switched-and-let-the-fan-run-up-after-a-wake.patch
+0212-soc-sunxi-cpu-comm-refuse-s2idle-while-the-display-coprocessor-runs.patch
+0213-soc-sunxi-cpu-comm-a-parked-coprocessor-refuses-calls-and-every-wake-says-so.patch
+0214-drm-h713-afbd-give-up-the-standby-when-the-scanout-does-not-stop.patch
+0215-asoc-sunxi-h713-msp-rebuild-the-dsp-after-a-system-sleep.patch
+0216-soc-sunxi-cpu-comm-count-suspends-to-ram-under-a-name-of-their-own.patch
+0217-soc-sunxi-cpu-comm-reopen-the-call-path-when-the-park-does-not-take.patch
+0218-asoc-sunxi-h713-msp-rebuild-after-a-sleep-only-with-rebuild-after-sleep.patch
+0219-asoc-sunxi-h713-msp-a-rebuild-after-a-wake-is-no-warning.patch
+0220-misc-hy310-board-mgr-say-why-unload-leaves-the-fan-rail-on-now-without-a-hog.patch
+0221-misc-hy310-board-mgr-document-the-two-members-the-standby-work-added.patch
+0222-arm64-dts-h713-hy310-pb5-to-the-board-manager-not-a-hog.patch
+0223-watchdog-sunxi-wdt-reload-before-stopping.patch
+0224-watchdog-sunxi-wdt-read-mode-and-cfg-back-in-the-standby-lines.patch
+# 08.10.: the display MIPS restarts from Linux, from a running core and out of the standby park (TODO 3.3).
+#   0225-0227 are 0167/0167c/0167d of the reload work, rebased; then the park's accounting and the msgbox,
+#   one owner for the MIPS clock and resets, the restart driver and its node (HY310 only), and the receiver's
+#   lifetime across the unbind that now comes with every restart. The sequences are those of the test bench
+#   that brought the picture back on the HY310 (V3, V8, V10; arbeit/mips-reload-20261008)
+0225-soc-sunxi-cpu-comm-the-arm-side-of-a-co-processor-restart.patch
+0226-soc-sunxi-cpu-comm-the-reload-path-on-real-hardware.patch
+0227-soc-sunxi-cpu-comm-the-master-init-without-device-memory-faults.patch
+0228-soc-sunxi-cpu-comm-a-restart-after-the-standby-park-opens-the-call-path-again.patch
+0229-soc-sunxi-cpu-comm-the-msgbox-fifos-of-the-old-core-are-read-off-before-a-restart.patch
+0230-soc-sunxi-cpu-comm-one-owner-for-the-mips-clock-and-resets.patch
+0231-soc-sunxi-h713-mips-restart-the-display-mips-from-linux-from-a-running-core-or-out-of-the-standby-park.patch
+0232-arm64-dts-h713-the-display-mips-node-enabled-on-the-hy310.patch
+0233-media-h713-hdmirx-the-driver-s-state-outlives-an-unbind-while-the-node-is-open.patch
+#   0234/0235 after the review: the msgbox flush keeps the receive path out, and a start without a halt follows the
+#   registers (review A F4, F6 of the standby hook)
+0234-soc-sunxi-cpu-comm-the-receive-path-stays-out-while-the-restart-reads-the-msgbox-off.patch
+0235-soc-sunxi-h713-mips-the-start-type-follows-the-registers-when-no-halt-runs.patch
+#   0236-0238 the standby itself (09.10.2026, arbeit/mips-reload-20261008 and arbeit/standby-display-20261009): a
+#   driver asks cpu_comm whether the firmware still runs; hdmirx reads no LINK after the park (bus hang A); the
+#   display clocks go off with the parked MIPS (DMA masters lost the DRAM after the wake, B)
+0236-soc-sunxi-cpu-comm-tell-a-driver-whether-the-firmware-still-runs.patch
+0237-media-h713-hdmirx-no-link-read-after-the-standby-parked-the-mips.patch
+0238-soc-sunxi-cpu-comm-the-display-clocks-go-off-with-the-parked-mips.patch
+#   0239 the picture after a standby (09.10.2026, arbeit/r2-20261009): the restart out of the park sets the TV top
+#   first, as U-Boot does before its start; the standby powers the TV domains off and on (the SoC stalled, three of three)
+0239-soc-sunxi-h713-mips-the-start-out-of-the-standby-park-sets-the-tv-top-first.patch
+#   0240-0244 after the review of the R2 standby code (09.10.2026, arbeit/review-r2-20261009): the capture stops before
+#   the standby (hang C1 in the TVCAP power-off), the display clocks go off whenever no MIPS runs, the start messages say
+#   "parked", the audio DSP is taken as lost in every standby (no AUDIF access after the wake), the PPU names a domain
+#   that did not switch
+0240-media-h713-hdmirx-the-capture-stops-before-the-standby.patch
+0241-soc-sunxi-cpu-comm-the-display-clocks-go-off-whenever-no-mips-runs-at-the-standby.patch
+0242-soc-sunxi-h713-mips-say-parked-where-the-start-without-a-tv-top-window-leaves-the-core.patch
+0243-asoc-sunxi-h713-msp-the-island-is-lost-in-every-standby.patch
+0244-pmdomain-sunxi-h713-ppu-say-which-domain-did-not-switch.patch

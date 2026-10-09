@@ -1,0 +1,63 @@
+From 769f7699b104a40994eab816adb4b933fe2ffc4d Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 00:16:15 +0200
+Subject: [PATCH 21/27] allwinner: h713: one rule for an R_WDOG found armed,
+ MODE bit 0
+
+BL31 decides "found armed" on MODE bit 0, both for its NOTICE and for
+TFA_WORD event 3, and P_RWDOG carries STA << 16 | MODE as found, which
+need not be 0 for a stopped block. The kernel read any non-zero P_RWDOG
+as out of order; the contract check (V6) settles on MODE bit 0 for every
+reader. The rule now has one name next to P_RWDOG, SCP_RWDOG_ARMED, and
+both places in BL31 use it. No change in behaviour.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c                | 6 +++---
+ plat/allwinner/sun50i_h713/include/sunxi_mmap.h | 4 +++-
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index c39fb8658..2fb3ff71f 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -86,13 +86,13 @@ void sunxi_scp_event(unsigned int event, unsigned int detail)
+ #define H713_R_WDOG_CTRL		(H713_R_WDOG_BASE + 0x000c)
+ #define H713_R_WDOG_MODE		(H713_R_WDOG_BASE + 0x0014)
+ 
+-/* Returns STA << 16 | MODE as found; MODE bit 0 set means it was armed. */
++/* Returns STA << 16 | MODE as found; SCP_RWDOG_ARMED means it was armed. */
+ static uint32_t sunxi_r_wdog_check(void)
+ {
+ 	uint32_t mode = mmio_read_32(H713_R_WDOG_MODE);
+ 	uint32_t sta = mmio_read_32(H713_R_WDOG_STA);
+ 
+-	if ((mode & 1U) != 0U) {
++	if ((mode & SCP_RWDOG_ARMED) != 0U) {
+ 		mmio_write_32(H713_R_WDOG_CTRL, 0x14af);
+ 		mmio_write_32(H713_R_WDOG_MODE, SUNXI_WDOG_KEY);
+ 		NOTICE("PSCI: R_WDOG found armed (MODE 0x%x STA 0x%x), fed and stopped: MODE 0x%x\n",
+@@ -223,7 +223,7 @@ static void sunxi_scp_start(void)
+ 		if (i < SCP_SH_P_HDR || i >= SCP_SH_P_END)
+ 			scp_write(i, 0);
+ 	}
+-	if ((rwdog & 1U) != 0U)
++	if ((rwdog & SCP_RWDOG_ARMED) != 0U)
+ 		sunxi_scp_event(SCP_EV_R_WDOG, rwdog & 0xffffU);
+ 	mmio_setbits_32(SUNXI_R_CPUCFG_BASE, BIT(0));
+ 
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 91a3644d4..8487ce743 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -117,7 +117,9 @@
+ #define SCP_SH_P_SUM			0x2d4	/* ~sum of the words below */
+ #define SCP_SH_P_STATUS			0x2d8
+ #define SCP_SH_P_WAKE			0x2dc
+-#define SCP_SH_P_RWDOG			0x2e0	/* R_WDOG MODE/STA at BL31 start */
++#define SCP_SH_P_RWDOG			0x2e0	/* R_WDOG STA << 16 | MODE at start */
++/* An R_WDOG "found armed": MODE bit 0, in P_RWDOG too - the kernel's rule. */
++#define SCP_RWDOG_ARMED			BIT(0)
+ #define SCP_SH_P_GP5			0x2e4	/* RTC GP5 at BL31 start */
+ #define SCP_SH_P_TFA_WORD		0x2e8	/* or this boot's late start */
+ #define SCP_SH_P_NET_CONFIRM		0x2ec

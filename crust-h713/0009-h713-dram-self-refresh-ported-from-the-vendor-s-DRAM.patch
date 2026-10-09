@@ -1,0 +1,594 @@
+From d4cd19847bc4e7340c9b7b870cf8f8bd777f2a09 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 02:06:29 +0200
+Subject: [PATCH 09/80] h713: dram: self-refresh, ported from the vendor's DRAM
+ standby driver V1.15
+
+The vendor ARISC firmware's enter side (blob 0x142dc) and exit side
+(0x145b0 -> 0x14004 -> 0x13884 and its helpers), register by register:
+the save area 0x16d9c field by field, PWRCTL 0x101 and STATR == 3, CKEN
+off, DX/AC pads to CMOS and off, pad hold (R_PRCM 0x250), DRAM clocks and
+PLL_DDR0 off; on the way back the ZQ path by tpr13/tpr9, PLL_DDR0 and the
+DRAM clock rebuilt, IOVCR from tpr5/tpr6, the COM +0x500 group by type and
+SID chip id, MR0..3, the saved timing and PHY delay registers, refresh
+timing from 7800/350 ns, PIR 0x62 (no DRAM init, no training), the
+PWRCTL toggle out of self-refresh, PGSR0's error bits, then the tail
+(auto self-refresh by tpr13 bit 30, PGCR0, ZQCR, 0xb8, 0x108, 0x7c).
+
+The DRAM parameters are Kconfig (HY310 defaults from U-Boot's
+hy310_defconfig: DDR3, 792 MHz, tpr13 0xb4016103) and the whole port sits
+behind H713_DRAM_SELF_REFRESH (default n): h713_hy310_sr_defconfig is the
+image that uses it. Checked offline only: skripte/dram_trace.py
+(crust-20261007) runs the blob's routines and these in one register model
+- identical access lists (address, value, order) for the HY310 parameters
+with five SID chip ids and for two parameter sets that take the LPDDR3,
+gate mode 1/2, ZQ calibration and half-width branches; the only difference
+is the blob's read of 0x0300016c for a log line. Not run on a device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy310_sr_defconfig |   9 +
+ drivers/dram/sun50i-h713-dram.c | 441 +++++++++++++++++++++++++++++++-
+ platform/h713/Kconfig           |  70 +++++
+ 3 files changed, 511 insertions(+), 9 deletions(-)
+ create mode 100644 configs/h713_hy310_sr_defconfig
+
+diff --git a/configs/h713_hy310_sr_defconfig b/configs/h713_hy310_sr_defconfig
+new file mode 100644
+index 0000000..a29c63d
+--- /dev/null
++++ b/configs/h713_hy310_sr_defconfig
+@@ -0,0 +1,9 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_DRAM_SELF_REFRESH=y
+diff --git a/drivers/dram/sun50i-h713-dram.c b/drivers/dram/sun50i-h713-dram.c
+index d6d151b..ecff640 100644
+--- a/drivers/dram/sun50i-h713-dram.c
++++ b/drivers/dram/sun50i-h713-dram.c
+@@ -1,21 +1,442 @@
+ /*
+- * Copyright © 2017-2026 The Crust Firmware Authors.
++ * Copyright © 2026 The Crust Firmware Authors.
+  * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
+  */
+ 
+-#include <debug.h>
+-
+ /*
+- * The H713 DRAM controller is not the H6's: the blob's standby driver
+- * (enter 0x142dc -> 0x14004, exit 0x145b0) works on DRAMCOM 0x04002000,
+- * DRAMCTL 0x04810000, PHY 0x04820000 and a 128-byte copy at 0x04800100.
+- * Until that routine is ported (FOLLOW-UP TASKS), the DRAM stays clocked
+- * and never enters self-refresh: "light standby".
++ * DRAM self-refresh for the H713 (sun50iw12), ported instruction by
++ * instruction from the vendor ARISC firmware's "DRAM STANDBY DRIVE V1.15"
++ * (scp.bin of the HY310, sha256 d41731fa..., disassembly
++ * analyse/arisc-frame/full-disasm.txt; the addresses below are blob
++ * offsets). The vendor calls the enter side at 0x142dc from its standby
++ * routine 0xdef0 and the exit side 0x145b0 -> 0x14004 on the way back.
++ *
++ * The controller is the A64/H3 generation's (mctl_ctl at 0x04820000: PIR,
++ * PWRCTL, CLKEN, PGSR0, STATR, ..., DXnGCR0 at 0x344 + 0x80n; mctl_com at
++ * 0x04810000), the same IP crust's sun8i-h3-dram.c drives. Unlike that
++ * driver, the vendor's exit side does not just undo the enter side: it
++ * rebuilds the DRAM clock and PLL, restores the saved timing and PHY delay
++ * registers, recomputes the refresh timing and the PHY setup from the DRAM
++ * parameters, recalibrates the PHY without a DRAM init (PIR 0x62) and
++ * leaves self-refresh by toggling PWRCTL - the same steps as the vendor
++ * boot0's "resume" arm of its PHY training (U-Boot dram_sun50iw12.c
++ * iw12_phy_train(), cpu_gate set), without boot0's delays.
++ *
++ * The parameters are the ones the boot loader trained the DRAM with
++ * (U-Boot hy310_defconfig, struct dram_para order), so the exit side
++ * computes what the vendor's would compute on this board. Two values
++ * differ from the boot state on purpose, as on stock: the refresh timing
++ * (RFSHTMG 0x90/0x94) is computed from 7800/350 ns where boot0 uses a
++ * frozen table.
++ *
++ * Every register line carries the blob address it comes from. Offline
++ * check: skripte/dram_trace.py runs the blob's routine and this one in the
++ * same register model and compares the access lists.
+  */
++
++#include <debug.h>
++#include <dram.h>
++#include <mmio.h>
++#include <stdint.h>
++#include <util.h>
++#include <platform/devices.h>
++#include <platform/prcm.h>
++
++#if CONFIG(H713_DRAM_SELF_REFRESH)
++
++#if CONFIG_H713_DRAM_TPR13 & (1 << 23)
++#error "tpr13 bit 23 (PLL_DDR sigma-delta, blob 0x1350c) is not ported"
++#endif
++
++#define COM(x)          (DEV_DRAMCTL + (x))   /* mctl_com 0x04810000 */
++#define CTL(x)          (DEV_DRAMPHY + (x))   /* mctl_ctl 0x04820000 */
++#define CCU(x)          (DEV_CCU + (x))
++#define SYSCFG(x)       (DEV_SYSCON + (x))
++#define SID_CHIP_ID     (DEV_SID + 0x200)
++
++#define PIR             CTL(0x000)
++#define PWRCTL          CTL(0x004)
++#define CLKEN           CTL(0x00c)
++#define PGSR0           CTL(0x010)
++#define STATR           CTL(0x018)
++#define STATR_OP_MODE   0x7
++#define STATR_NORMAL    0x1
++#define STATR_SELFREF   0x3
++#define PGCR0           CTL(0x100)
++#define PGCR2           CTL(0x108)
++#define PGCR3           CTL(0x10c)
++#define ZQCR            CTL(0x140)
++#define ACIOCR0         CTL(0x208)
++#define DXnGCR0(n)      CTL(0x344 + 0x80 * (n))
++
++#define PLL_DDR0        CCU(0x010)
++#define DRAM_CLK        CCU(0x800)
++#define DRAM_BGR        CCU(0x80c)
++
++/* struct dram_para, as boot0, U-Boot and the blob (para + offset) use it. */
++struct h713_dram_para {
++	uint32_t clk;           /* +0x00 */
++	uint32_t type;          /* +0x04: 3 DDR3, 6 LPDDR2, 7 LPDDR3 */
++	uint32_t zq;            /* +0x08 */
++	uint32_t odt_en;        /* +0x0c */
++	uint32_t para1;         /* +0x10 */
++	uint32_t para2;         /* +0x14: size in MB in 31:16 */
++	uint32_t mr[4];         /* +0x18 */
++	uint32_t tpr[14];       /* +0x28: tpr0 .. tpr13 (+0x5c) */
++};
++
++static const struct h713_dram_para para = {
++	.clk    = CONFIG_H713_DRAM_CLK,
++	.type   = CONFIG_H713_DRAM_TYPE,
++	.zq     = CONFIG_H713_DRAM_ZQ,
++	.odt_en = CONFIG_H713_DRAM_ODT_EN,
++	.para1  = CONFIG_H713_DRAM_PARA1,
++	.para2  = CONFIG_H713_DRAM_PARA2,
++	.mr     = { CONFIG_H713_DRAM_MR0, CONFIG_H713_DRAM_MR1,
++	            CONFIG_H713_DRAM_MR2, CONFIG_H713_DRAM_MR3 },
++	.tpr    = {
++		[5]  = CONFIG_H713_DRAM_TPR5,
++		[6]  = CONFIG_H713_DRAM_TPR6,
++		[9]  = CONFIG_H713_DRAM_TPR9,
++		[13] = CONFIG_H713_DRAM_TPR13,
++	},
++};
++
++#define TPR13           (para.tpr[13])
++
++/* The blob's save area 0x16d9c, field by field (enter 0x142dc). */
++static struct {
++	uint32_t com00, com08;          /* +0x00/+0x04 */
++	uint32_t tmg[10];               /* +0x08..+0x2c */
++	uint32_t r9c, ra0;              /* +0x30/+0x34 */
++	uint32_t dx[4][11];             /* +0x3c: 0x310 + 0x80 n, 11 words */
++	uint32_t r210[31];              /* +0xf0: 0x210..0x288 */
++	uint32_t dxgtr[4];              /* +0x17c: 0x33c + 0x80 n */
++} save;
++
++/* The timing registers the enter side saves and 0x13af8.. puts back. */
++static const uint16_t tmg_reg[10] = {
++	0x058, 0x05c, 0x060, 0x064, 0x068, 0x06c, 0x078, 0x080, 0x050, 0x054,
++};
++
++static void
++poll_op_mode(uint32_t mode)
++{
++	while ((mmio_read_32(STATR) & STATR_OP_MODE) != mode) {
++		/* 0x14480, 0x13e84, 0x13ec4 */
++	}
++}
++
++static void
++poll_pgsr0_idone(void)
++{
++	while (!(mmio_read_32(PGSR0) & BIT(0))) {
++		/* 0x13e10, 0x13e3c, 0x13f24 */
++	}
++}
++
++/* 0x13398: nanoseconds to clock cycles, rounded up. */
++static uint32_t
++ns_to_t(uint32_t ns, uint32_t mhz)
++{
++	uint32_t t = ns * mhz;
++
++	return t / 1000 + (t % 1000 != 0);
++}
++
++/* 0x135c4: PLL_DDR0 for para.clk; returns the PLL rate in MHz. */
++static uint32_t
++pll_ddr_init(void)
++{
++	uint32_t n = para.clk * 2 / 24;
++
++	mmio_write_32(PLL_DDR0, (mmio_read_32(PLL_DDR0) & 0xfff800fc) |
++	              0xc0000000 | (n - 1) << 8);               /* 0x1361c */
++	mmio_clr_32(PLL_DDR0, BIT(29));                           /* 0x13630 */
++	mmio_set_32(PLL_DDR0, BIT(29));                           /* 0x13640 */
++	while (!(mmio_read_32(PLL_DDR0) & BIT(28))) {
++		/* 0x13644: lock */
++	}
++	/* 0x1365c: tpr13 bit 23 selects the sigma-delta path 0x1350c; the
++	 * boards this port knows leave it clear. */
++	mmio_set_32(PLL_DDR0, BIT(27));                           /* 0x13698 */
++	mmio_clrset_32(DRAM_CLK, 0x03000303, BIT(31));            /* 0x136b0 */
++
++	return n * 24;
++}
++
++/* 0x13808: the IOVCR pair from tpr5/tpr6 unless tpr13 says otherwise. */
++static void
++set_iovcr(void)
++{
++	if (TPR13 & BIT(17))
++		return;
++	mmio_write_32(CTL(0x110), (mmio_read_32(CTL(0x110)) & 0x80808080) |
++	              para.tpr[5]);                             /* 0x1384c */
++	if (TPR13 & BIT(16))
++		return;
++	mmio_clrset_32(CTL(0x114), 0x7f, para.tpr[6] & 0x7f);    /* 0x13874 */
++}
++
++/* 0x136d4: the COM +0x500 group by DRAM type and SID chip id. */
++static void
++set_com_group(void)
++{
++	uint32_t id = mmio_read_32(SID_CHIP_ID) & 0xffff;         /* 0x136e4 */
++
++	if (para.type == 3) {
++		if (id == 0x11 || id == 0x1f) {                   /* 0x13720 */
++			mmio_write_32(COM(0x500), 0x2560b660);
++			mmio_write_32(COM(0x504), 0x00c508a4);
++			mmio_write_32(COM(0x508), 0x00000228);
++			mmio_write_32(COM(0x50c), 0x0c001d23);
++			mmio_write_32(COM(0x500), 0x2560b661);
++		} else if (id != 0x21 && id != 0x2f) {            /* 0x1377c */
++			mmio_write_32(COM(0x500), 0x071a0000);
++			mmio_write_32(COM(0x504), 0x14c4920e);
++			mmio_write_32(COM(0x508), 0x00592e66);
++			mmio_write_32(COM(0x50c), 0x01543ced);
++			mmio_write_32(COM(0x500), 0x071a0001);
++		}
++	} else if (para.type == 7) {                              /* 0x137c4 */
++		mmio_write_32(COM(0x500), 0x0023a400);
++		mmio_write_32(COM(0x504), 0x008510c3);
++		mmio_write_32(COM(0x508), 0);
++		mmio_write_32(COM(0x50c), 0);
++		mmio_write_32(COM(0x500), 0x0023a401);
++	}
++}
++
++/* 0x133f8: the PHY delay registers back from the save area. */
++static void
++restore_phy(void)
++{
++	mmio_clr_32(PGCR0, BIT(26));                              /* 0x1341c */
++	for (uint32_t n = 0; n < 4; ++n) {                        /* 0x13430 */
++		for (uint32_t i = 0; i < 11; ++i)
++			mmio_write_32(CTL(0x310 + 0x80 * n + 4 * i),
++			              save.dx[n][i]);
++	}
++	for (uint32_t i = 0; i < 31; ++i)                         /* 0x134a0 */
++		mmio_write_32(CTL(0x210 + 4 * i), save.r210[i]);
++	for (uint32_t n = 0; n < 4; ++n)                          /* 0x134c8.. */
++		mmio_write_32(CTL(0x33c + 0x80 * n), save.dxgtr[n]);
++	mmio_set_32(PGCR0, BIT(26));                              /* 0x134fc */
++}
++
++/* 0x13884: the controller back up around the self-refreshing DRAM. */
++static uint32_t
++mctl_resume(void)
++{
++	uint32_t clk, ctrl, trefi, trfc, odt, mode, pir, v;
++
++	mmio_clr_32(DRAM_BGR, BIT(0));                            /* 0x138b0 */
++	mmio_clr_32(DRAM_BGR, BIT(16));                           /* 0x138cc */
++	mmio_clr_32(DRAM_CLK, BIT(30));                           /* 0x138e4 */
++	mmio_clr_32(DRAM_CLK, BIT(31));                           /* 0x138f8 */
++	mmio_set_32(DRAM_CLK, BIT(27));                           /* 0x13908 */
++	clk = pll_ddr_init() / 2;            /* 0x1390c; stored to para[0] */
++	v = mmio_read_32(DRAM_CLK) & ~0x3;   /* one read, two writes: 0x13914 */
++	mmio_write_32(DRAM_CLK, v);                               /* 0x1392c */
++	mmio_write_32(DRAM_CLK, v | BIT(27));                     /* 0x13938 */
++	mmio_set_32(DRAM_BGR, BIT(16));                           /* 0x1394c */
++	mmio_set_32(DRAM_CLK, BIT(30));                           /* 0x1395c */
++	mmio_set_32(DRAM_BGR, BIT(0));                            /* 0x13968 */
++	mmio_set_32(DRAM_CLK, BIT(31));                           /* 0x13974 */
++	mmio_write_32(CLKEN, 0x8000);                             /* 0x13984 */
++	mmio_set_32(COM(0x020), 0x8000);                          /* 0x13994 */
++	mmio_set_32(COM(0x020), 0x100);                           /* 0x139a0 */
++	set_iovcr();                                              /* 0x139a4 */
++	mmio_write_32(COM(0x000), save.com00);                    /* 0x139bc */
++	mmio_write_32(COM(0x008), save.com08);                    /* 0x139c8 */
++	mmio_write_32(CTL(0x120),
++	              (mmio_read_32(COM(0x000)) & 1) ? 0x303 : 0x201); /* 0x139ec */
++	if (para.para2 & 1) {                                     /* 0x139f0 */
++		mmio_write_32(CTL(0x444), 0);
++		mmio_write_32(CTL(0x4c4), 0);
++	}
++	set_com_group();                                          /* 0x13a10 */
++
++	ctrl = clk / 2;                                           /* 0x13a28 */
++	if (para.type == 3) {
++		trefi = ns_to_t(7800, ctrl);
++		trfc  = ns_to_t(350, ctrl);
++	} else if (para.type == 2) {
++		trefi = ns_to_t(7800, ctrl);
++		trfc  = ns_to_t(328, ctrl);
++	} else {
++		trefi = ns_to_t(3900, ctrl);
++		trfc  = ns_to_t(210, ctrl);
++	}
++	trefi = trefi / 32 + (trefi % 32 != 0);                   /* 0x13a80 */
++	for (uint32_t i = 0; i < 4; ++i)                          /* 0x13aa0.. */
++		mmio_write_32(CTL(0x030 + 4 * i), para.mr[i] & 0xffff);
++	mmio_write_32(CTL(0x02c), (para.odt_en >> 4) & 0x3);      /* 0x13ae0 */
++	odt = (~para.odt_en & 1) << 5;                            /* 0x13ad4 */
++	for (uint32_t i = 0; i < ARRAY_SIZE(tmg_reg); ++i)        /* 0x13af8.. */
++		mmio_write_32(CTL(tmg_reg[i]), save.tmg[i]);
++	mmio_write_32(CTL(0x090), trefi << 16 | trfc);            /* 0x13b80 */
++	mmio_write_32(CTL(0x094), (trefi << 15) & 0x0fff0000);    /* 0x13b8c */
++	mmio_clrset_32(PGCR2, 0xf00, 0x300);                      /* 0x13bb0 */
++	mode = (TPR13 >> 2) & 0x3;                                /* 0x13b9c */
++	for (uint32_t n = 0; n < 4; ++n) {                        /* 0x13bb8 */
++		uint32_t g = (mmio_read_32(DXnGCR0(n)) & ~0x30) | odt;
++
++		if (clk <= 672)
++			g &= 0xffff0ff1;
++		else
++			g = (g & 0xffff09f1) | 0x400;
++		mmio_write_32(DXnGCR0(n), g);
++	}
++	mmio_set_32(ACIOCR0, BIT(1));                             /* 0x13c14 */
++	restore_phy();                                            /* 0x13c18 */
++
++	if (mode == 1) {                                          /* 0x13c3c */
++		mmio_clr_32(PGCR2, 0xc0);
++		mmio_clr_32(CTL(0x0bc), 0x107);
++	} else if (mode == 2) {                                   /* 0x13c64 */
++		mmio_clrset_32(PGCR2, 0xc0, 0x80);
++		mmio_clrset_32(CTL(0x0bc), 0x107, 0x100 |
++		               (((mmio_read_32(CTL(0x060)) >> 16) & 0x1f) - 2));
++		mmio_write_32(CTL(0x11c), (mmio_read_32(CTL(0x11c)) |
++		              BIT(27)) & ~BIT(31));
++	} else {                                                  /* 0x13cd0 */
++		mmio_clr_32(PGCR2, BIT(6));
++		mmio_set_32(PGCR2, 0xc0);
++	}
++	if (para.type == 6 || para.type == 7) {                   /* 0x13cf0 */
++		if (mode == 1)
++			mmio_write_32(CTL(0x11c), (mmio_read_32(CTL(0x11c)) |
++			              BIT(31)) & 0xf7ffff3f);
++		else
++			mmio_clrset_32(CTL(0x11c), 0x77000000, 0x22000000);
++	}
++	mmio_clrset_32(CTL(0x0c0), 0x0fffffff,                    /* 0x13da0 */
++	               (para.para2 & BIT(12)) ? 0x03003087 : 0x01003087);
++	mmio_clr_32(VDD_SYS_PWROFF_GATING_REG, BIT(1));           /* 0x13dc4 */
++	mmio_clrset_32(ZQCR, 0x03ffffff,                          /* 0x13df0 */
++	               (para.zq & 0x00ffffff) | BIT(25));
++	if (mode == 1) {                                          /* 0x13dfc */
++		mmio_write_32(PIR, 0x52);
++		mmio_write_32(PIR, 0x53);
++		poll_pgsr0_idone();
++		pir = 0x20;
++	} else {
++		pir = 0x62;  /* ZCAL | DCAL | PHYRST: no DRAM init, no training */
++	}
++	mmio_write_32(PIR, pir);                                  /* 0x13e2c */
++	mmio_write_32(PIR, pir | 1);                              /* 0x13e38 */
++	poll_pgsr0_idone();
++	mmio_clrset_32(PGCR3, 0x06000000, 0x04000000);            /* 0x13e6c */
++	mmio_set_32(PWRCTL, BIT(0));                              /* 0x13e80 */
++	poll_op_mode(STATR_SELFREF);
++	mmio_clr_32(VDD_SYS_PWROFF_GATING_REG, BIT(0));           /* 0x13eac: pad hold off */
++	mmio_clr_32(PWRCTL, BIT(0));                              /* 0x13ec0 */
++	poll_op_mode(STATR_NORMAL);
++	if (mode == 1) {                                          /* 0x13ee4 */
++		mmio_clr_32(PGCR2, 0xc0);
++		mmio_clrset_32(PGCR3, 0x06000000, 0x02000000);
++		mmio_write_32(PIR, 0x401);
++		poll_pgsr0_idone();
++	}
++	pir = !((mmio_read_32(PGSR0) >> 20) & 0xff);              /* 0x13f44: no error */
++	while (!(mmio_read_32(STATR) & BIT(0))) {
++		/* 0x13f60 */
++	}
++	mmio_set_32(CTL(0x08c), BIT(31));                         /* 0x13f8c */
++	mmio_clr_32(CTL(0x08c), BIT(31));                         /* 0x13fa4 */
++	mmio_set_32(COM(0x014), BIT(31));                         /* 0x13fb8 */
++	mmio_clr_32(PGCR3, 0x06000000);                           /* 0x13fc8 */
++	if (mode == 1)                                            /* 0x13fe4 */
++		mmio_clrset_32(CTL(0x11c), 0xc0, 0x40);
++
++	return pir;
++}
++
++/* 0x142dc. noinline: one place in the image, for skripte/dram_trace.py */
++void __attribute__((noinline))
++dram_suspend(void)
++{
++	save.com00 = mmio_read_32(COM(0x000));                    /* 0x142e4 */
++	save.com08 = mmio_read_32(COM(0x008));
++	for (uint32_t i = 0; i < ARRAY_SIZE(tmg_reg); ++i)        /* 0x1430c.. */
++		save.tmg[i] = mmio_read_32(CTL(tmg_reg[i]));
++	save.r9c = mmio_read_32(CTL(0x09c));                      /* 0x1438c */
++	save.ra0 = mmio_read_32(CTL(0x0a0));                      /* 0x1439c */
++	for (uint32_t n = 0; n < 4; ++n) {                        /* 0x143b0 */
++		for (uint32_t i = 0; i < 11; ++i)
++			save.dx[n][i] =
++				mmio_read_32(CTL(0x310 + 0x80 * n + 4 * i));
++	}
++	for (uint32_t i = 0; i < 31; ++i)                         /* 0x143fc */
++		save.r210[i] = mmio_read_32(CTL(0x210 + 4 * i));
++	for (uint32_t n = 0; n < 4; ++n)                          /* 0x14438.. */
++		save.dxgtr[n] = mmio_read_32(CTL(0x33c + 0x80 * n));
++
++	mmio_set_32(PWRCTL, 0x101);        /* 0x14478: port off, self-refresh */
++	poll_op_mode(STATR_SELFREF);
++	mmio_clr_32(PGCR3, 0x00ff0000);    /* 0x144ac: CKEN/CKNEN off */
++	for (uint32_t n = 0; n < 4; ++n)   /* 0x144d0: DX pads to CMOS, off */
++		mmio_clrset_32(DXnGCR0(n), 0x00c0f00f, 0x0040500a);
++	mmio_clrset_32(ACIOCR0, 0x3db, 0x313);                    /* 0x14508 */
++	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, 0x3); /* 0x1451c: pad hold */
++	mmio_write_32(CLKEN, 0);                                  /* 0x14520 */
++	mmio_clr_32(DRAM_BGR, BIT(0));                            /* 0x1453c */
++	mmio_clr_32(DRAM_BGR, BIT(16));                           /* 0x14550 */
++	mmio_clr_32(PLL_DDR0, BIT(31));                           /* 0x1456c */
++	mmio_clr_32(DRAM_CLK, BIT(30));                           /* 0x14580 */
++	mmio_clr_32(DRAM_CLK, BIT(31));                           /* 0x14594 */
++	mmio_set_32(DRAM_CLK, BIT(27));                           /* 0x145a0 */
++}
++
++/* 0x145b0 -> 0x14004 (mode 0) */
++void __attribute__((noinline))
++dram_resume(void)
++{
++	debug("DRAM: standby exit (vendor V1.15 port)");
++	if (TPR13 & BIT(16)) {                                    /* 0x14124 */
++		mmio_set_32(SYSCFG(0x160), BIT(8));
++		mmio_write_32(SYSCFG(0x168), 0);
++	} else if (para.tpr[9] & BIT(16)) {                       /* 0x140c8 */
++		mmio_set_32(SYSCFG(0x160), BIT(8));
++		mmio_write_32(SYSCFG(0x168), para.tpr[9] & 0xff);
++	} else {                                                  /* 0x14060 */
++		mmio_write_32(DEV_R_PRCM + 0x254, 0);
++		mmio_clr_32(SYSCFG(0x160), 0x3);
++		mmio_clr_32(SYSCFG(0x160), 0x104);
++		mmio_set_32(SYSCFG(0x160), BIT(1));
++		mmio_set_32(SYSCFG(0x160), BIT(0));
++	}
++	if (!mctl_resume()) {                                     /* 0x14148 */
++		error("DRAM: PHY reports an error after standby");
++		return;
++	}
++	mmio_write_32(CTL(0x09c), save.r9c);                      /* 0x14168 */
++	mmio_write_32(CTL(0x0a0), save.ra0);                      /* 0x14178 */
++	if (TPR13 & BIT(30))                                      /* 0x14194 */
++		mmio_set_32(PWRCTL, BIT(0));   /* "Enable Auto SR" */
++	else
++		mmio_clr_32(PWRCTL, BIT(0));                      /* 0x141c4 */
++	if ((TPR13 & BIT(9)) || para.type == 6)                   /* 0x141f0 */
++		mmio_clrset_32(PGCR0, 0xf000, 0x5000);
++	else
++		mmio_clr_32(PGCR0, 0xf000);                       /* 0x14220 */
++	mmio_set_32(ZQCR, BIT(31));                               /* 0x14238 */
++	if (TPR13 & BIT(8))
++		mmio_set_32(CTL(0x0b8), 0x300);                   /* 0x14254 */
++	if (TPR13 & BIT(26))
++		mmio_clr_32(CTL(0x108), BIT(13));                 /* 0x1427c */
++	else
++		mmio_set_32(CTL(0x108), BIT(13));                 /* 0x14288 */
++	if (para.type == 7)                                       /* 0x142c0 */
++		mmio_clrset_32(CTL(0x07c), 0x000f0000, 0x00010000);
++}
++
++#else /* !CONFIG(H713_DRAM_SELF_REFRESH): light standby, the DRAM stays on */
++
+ void
+ dram_suspend(void)
+ {
+-	debug("DRAM: no self-refresh on this SoC yet");
+ }
+ 
+ void
+@@ -23,6 +444,8 @@ dram_resume(void)
+ {
+ }
+ 
++#endif
++
+ void
+ dram_init(void)
+ {
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index b34754b..1096397 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -40,4 +40,74 @@ config H713_RAILS_PIN
+ 		is unmeasured (FB-STANDBY 7.5), so the default never
+ 		touches the pin.
+ 
++config H713_DRAM_SELF_REFRESH
++	bool "Put the DRAM into self-refresh in standby (vendor V1.15 port)"
++	help
++		The vendor ARISC firmware's DRAM standby driver (blob
++		0x142dc enter, 0x145b0 exit), ported register by register
++		and checked against the blob in an offline model only. Off,
++		standby leaves the DRAM clocked ("light standby"). The DRAM
++		parameters below must be the ones the boot loader trained
++		the DRAM with.
++
++if H713_DRAM_SELF_REFRESH
++
++config H713_DRAM_CLK
++	int "DRAM clock in MHz (U-Boot CONFIG_DRAM_CLK)"
++	default 792
++
++config H713_DRAM_TYPE
++	int "DRAM type (3 DDR3, 6 LPDDR2, 7 LPDDR3)"
++	default 3
++
++config H713_DRAM_ZQ
++	hex "dram_para.zq"
++	default 0x007b7bfb
++
++config H713_DRAM_ODT_EN
++	hex "dram_para.odt_en"
++	default 0x1
++
++config H713_DRAM_PARA1
++	hex "dram_para.para1"
++	default 0x000010f4
++
++config H713_DRAM_PARA2
++	hex "dram_para.para2"
++	default 0x04000000
++
++config H713_DRAM_MR0
++	hex "dram_para.mr0"
++	default 0x1c70
++
++config H713_DRAM_MR1
++	hex "dram_para.mr1"
++	default 0x40
++
++config H713_DRAM_MR2
++	hex "dram_para.mr2"
++	default 0x18
++
++config H713_DRAM_MR3
++	hex "dram_para.mr3"
++	default 0x0
++
++config H713_DRAM_TPR5
++	hex "dram_para.tpr5"
++	default 0x48484848
++
++config H713_DRAM_TPR6
++	hex "dram_para.tpr6"
++	default 0x48
++
++config H713_DRAM_TPR9
++	hex "dram_para.tpr9"
++	default 0x0
++
++config H713_DRAM_TPR13
++	hex "dram_para.tpr13"
++	default 0xb4016103
++
++endif
++
+ endif

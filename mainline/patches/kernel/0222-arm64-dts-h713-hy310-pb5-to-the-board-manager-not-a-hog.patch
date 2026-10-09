@@ -1,0 +1,129 @@
+arm64: dts: h713: hy310 - PB5 to the board manager, not a hog
+
+PB5 enables the LED boost and the fan rail together. As a gpio-hog it
+stayed high in every standby: the fan ran (PB5 high gives ~4800 rpm, low
+0 rpm, measured 11.09.2026) and, very probably, the lamp stayed lit; the
+board manager's switch for it was dead code, because its fan0 node named
+no fan-power-gpio, and its "fan power off" line claimed a switch that
+never happened (crust-20261007 review KD-7, N-05; W1 and D1 of the crust
+release design).
+
+On the HY310 the hog is disabled - gpiolib only hogs available children
+- and fan0 names PB5 as fan-power-gpio, where the board manager reads it
+(of_get_named_gpio on the fan node). The board manager requests it high
+at probe; until then PB5 keeps the high level U-Boot set. Switching it
+in suspend_late and back in resume_early is the driver's part (D1).
+
+The HY300 Pro and the HY200 QZ713DF A1 include the HY310's file and get
+the hog back, with fan0's fan-power-gpio deleted: on the HY300 Pro PB5
+must never go low (analysis A14), and neither board has a measurement of
+it switched.
+
+The two dtsi comments that said PB5 must never be driven low (the hog's
+and the backlight's) now say who holds it on which board, so that nobody
+"repairs" the standby switch back into a hog.
+
+Wall darkness, tacho and supply current in a standby are stage L of the
+design, not measured. With a board manager that already switches an
+owned rail (0188) but does not yet hold off the stall check after resume
+(D1), this tree is not for the line.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -46,6 +46,11 @@
+ 	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
+ };
+ 
++/* PB5 stays the dtsi's hog here, not the board manager's (see above). */
++&fan_power_hog {
++	status = "okay";
++};
++
+ &hdmirx {
+ 	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
+ };
+@@ -53,6 +58,7 @@
+ &board_mgr {
+ 	fan0 {
+ 		fg-gpio = <&pio 7 13 GPIO_ACTIVE_HIGH>;	/* PH13, stock fan0 fg-gpio */
++		/delete-property/ fan-power-gpio;
+ 	};
+ };
+ 
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -40,6 +40,17 @@
+ 	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
+ };
+ 
++/* PB5 stays the dtsi's hog here, not the board manager's (see above). */
++&fan_power_hog {
++	status = "okay";
++};
++
++&board_mgr {
++	fan0 {
++		/delete-property/ fan-power-gpio;
++	};
++};
++
+ /*
+  * This board's display firmware keeps its event log 0xC00 below the HY310's:
+  * the mode-1 ring at 0x4b27219c and the control block at 0x4b48b200, whose
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+@@ -62,3 +62,18 @@
+  * again.
+  */
+ &arisc { firmware-name = "hy310-crust.bin", "hy310-edid.bin"; };
++
++/*
++ * PB5 enables the LED boost and the fan rail together (see the hog in the
++ * dtsi). Here the board manager owns it instead of the hog, so that a
++ * standby can switch light and fan off and back on; until it probes, PB5
++ * keeps the high level U-Boot set. The boards that include this file keep
++ * the hog.
++ */
++&fan_power_hog { status = "disabled"; };
++
++&board_mgr {
++	fan0 {
++		fan-power-gpio = <&pio 1 5 GPIO_ACTIVE_HIGH>;	/* PB5 */
++	};
++};
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -641,8 +641,12 @@
+ 
+ 
+ 			/*
+-			 * PB5 = panel-backlight enable AND cooling-fan power; must stay
+-			 * HIGH so the fan's +V rail is driven. sunxi gpio specifiers are
++			 * PB5 = panel-backlight enable AND cooling-fan power; the hog
++			 * holds it HIGH so the fan's +V rail is driven. The HY310
++			 * disables the hog and hands PB5 to the board manager (fan0
++			 * fan-power-gpio), which takes lamp and fan off in a system
++			 * sleep and back on at resume; the boards that include its
++			 * file turn the hog on again. sunxi gpio specifiers are
+ 			 * 3-cell <bank pin flags> (bank B = 1, pin 5); the earlier
+ 			 * <37 ...> was a linear number on a #gpio-cells=3 controller, so
+ 			 * gpiolib could not parse the hog and left the rail off.
+@@ -2326,10 +2330,12 @@
+ 	 * pwm-backlight so brightness is controllable from
+ 	 * /sys/class/backlight/backlight/brightness for evaluation.
+ 	 *
+-	 * PB5 (panel_bl_en) is shared with cooling-fan power and is held high by
+-	 * fan_power_hog; it must never be driven low (that cuts the fan). It is
+-	 * therefore deliberately NOT wired here as enable-gpios -- this node
+-	 * varies PWM duty only, and the panel stays powered by the hog.
++	 * PB5 (panel_bl_en) is shared with cooling-fan power. It is held high
++	 * by fan_power_hog, or on the HY310 by the board manager, which drives
++	 * it low only in a system sleep, lamp and fan together. Nothing else
++	 * may drive it low (that cuts the fan while running), so it is
++	 * deliberately NOT wired here as enable-gpios -- this node varies PWM
++	 * duty only.
+ 	 *
+ 	 * Polarity is the stock vendor-DTB value (normal, flag 0). If a duty
+ 	 * sweep reads inverted, change the third pwms cell to

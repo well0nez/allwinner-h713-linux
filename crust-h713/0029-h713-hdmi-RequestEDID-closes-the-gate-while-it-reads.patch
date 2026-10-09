@@ -1,0 +1,44 @@
+From 48f880fe69fc2858d0348af3831d6421510f7571 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 05:23:07 +0200
+Subject: [PATCH 29/80] h713: hdmi: RequestEDID closes the gate while it reads
+ the DDC RAM
+
+The blob closes the EDID gate (0x11cac(7, 0)) before it reads the DDC
+RAM for RequestEDID and opens it again after the four frames, only with
+the EDID ready (0x1269c..0x12728). With the gate open the RAM belongs to
+the DDC side and reads as zero - measured on the HY310 on 07.10.2026:
+RequestEDID returned 256 zero bytes from all three ports, and so did an
+ARM read of 0x07091c00..0x07091eff with the gate at 7.
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 101eb03..d5bdf9a 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -483,6 +483,14 @@ group_15(uint8_t hi)
+ 		frame[4] = sh_rd8(SH_EDID_READY), frame[5] = 0;
+ 		reply_frame(frame, 8);
+ 	} else if (hi == 3 && port < PORTS) {	/* RequestEDID: 4 x 64 bytes */
++		/*
++		 * Blob 0x1269c..0x12728: the gate closes before the DDC RAM is
++		 * read and opens again after the four frames (0x11cac(7, 0) and
++		 * (7, 1), the latter only with the EDID ready). With the gate
++		 * open the RAM belongs to the DDC side and reads as zero, from
++		 * the AR100 and from the ARM alike (HY310, 07.10.2026).
++		 */
++		aux_gate(0x7, false);
+ 		for (uint8_t idx = 0; idx < 4; ++idx) {
+ 			frame[1] = 0xf8, frame[2] = 0x02, frame[3] = 0x41, frame[4] = idx;
+ 			for (uint8_t i = 0; i < 64; ++i)
+@@ -490,6 +498,8 @@ group_15(uint8_t hi)
+ 			frame[69] = 0;
+ 			reply_frame(frame, 72);
+ 		}
++		if (sh_rd8(SH_EDID_READY))
++			aux_gate(0x7, true);
+ 	}
+ }
+ 

@@ -1,0 +1,36 @@
+From f6da14ace940e5a11b18c13434a6d883d93b6ca7 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:40:05 +0200
+Subject: [PATCH 19/80] h713: one reader for the IR decoder while asleep
+
+Asleep, every pass stepped the same decoder twice: system.c's cir_poll(),
+which knows only CONFIG_CIR_WAKE_CODE (0x00ff14) and writes no wake word,
+and h713_wake_poll(), which matches the 19 cir_param codes and writes 0x9b.
+A frame completed in the first call was lost for the second: codes of other
+remotes woke about every other time, and the projector's own key often
+woke with wake word 0. With the H713 code list the generic reader is not
+taken; h713_wake_poll() is the only one (0x00ff14 is the list's first entry).
+
+Review finding B26 (07.10.2026), confirmed in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ common/system.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/common/system.c b/common/system.c
+index 823236a..69b782c 100644
+--- a/common/system.c
++++ b/common/system.c
+@@ -182,7 +182,10 @@ system_state_machine(uint32_t exception)
+ 			 * the R_PIO state the CIR pin setup would change. */
+ 			h713_suspend_prepare();
+ 			cec = cec_get();
+-			cir = cir_get();
++			/* With the H713's code list, h713_wake_poll() reads the
++			 * decoder itself; a second reader here would take every
++			 * other frame away from it. */
++			cir = CONFIG(H713_IR_WAKE_NECX) ? NULL : cir_get();
+ 
+ 			/* Configure the SoC for minimal power consumption. */
+ 			record_step(STEP_SUSPEND_DRAM);

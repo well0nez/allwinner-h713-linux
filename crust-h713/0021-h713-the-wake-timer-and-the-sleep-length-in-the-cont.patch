@@ -1,0 +1,150 @@
+From ba4361631ed18efc0720e271f02ad240465c263f Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:41:56 +0200
+Subject: [PATCH 21/80] h713: the wake timer and the sleep length in the
+ contract page
+
+The armed wake timer and its count lived in .bss, which start.S clears on
+every firmware restart. An exception while asleep sent crust to SS_OFF
+with no timer: only the power key could end the standby, and the test
+plan's hands-off way back was gone. The timer (0x26 type 3, cleared by
+0x25 and after each resume) is now a word of the contract page (+0x238),
+so after a restart SS_OFF still sees it and ends the standby - with a
+system reset, the safe way after a fault. Fresh deadlines are taken after
+a restart; a stale one in the other half of the tick timer would not have
+expired for up to 89 s, the power key included.
+
+Asleep, crust now counts every millisecond (+0x234, stepped from the
+deadline, no drift), timer or not: TF-A uses it to put the system counter
+forward when the cluster reset stopped it (tfa/0003), so Linux's clock
+does not lose the sleep. Not counted: the suspend and resume work itself
+(deep: about 0.2 s of clock waits).
+
+Review finding B28 (07.10.2026), and the crust side of B2.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 42 ++++++++++++++++++-------
+ platform/h713/include/platform/memory.h | 18 ++++++++---
+ 2 files changed, 44 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index c3efbdb..560ffb7 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -37,6 +37,7 @@
+ #include <platform/devices.h>
+ #include <platform/memory.h>
+ #include <platform/prcm.h>
++#include <platform/time.h>
+ 
+ /* ---- the contract page (AR100 view; ARM = + SRAM_A2_OFFSET) ------------- */
+ #define SH_MAGIC        (H713_SHARED_BASE + 0x000) /* "H713" as ARM reads it */
+@@ -167,7 +168,7 @@ static uint8_t  pump_state, pump_len, pump_idx, pump_type;
+ static uint8_t  sb_n, sb_count;
+ static uint32_t sb_hdr, sb_data[8];
+ static uint32_t hpd_deadline, key_deadline, ms_deadline;
+-static uint32_t wake_timer_ms, wake_elapsed_ms;
++static bool     wake_armed;	/* .bss: false again after a firmware restart */
+ static uint8_t  key_low;
+ static uint32_t pl_cfg_saved;
+ /*
+@@ -635,10 +636,11 @@ sb_frame(void)
+ 	}
+ 	case TYPE_WAKE_SET:	/* key and IR are armed without it; type 3 = timer */
+ 		if (sb_count >= 1 && sb_data[0] >> 30 == WAKE_SRC_TIMER)
+-			wake_timer_ms = sb_data[0] & 0x3fffffff;
++			mmio_write_32(H713_DIAG_WAKE_TIMER,
++			              sb_data[0] & 0x3fffffff);
+ 		sb_reply(type, 0, NULL, 0); break;
+ 	case TYPE_WAKE_CLR:
+-		wake_timer_ms = 0;
++		mmio_write_32(H713_DIAG_WAKE_TIMER, 0);
+ 		sb_reply(type, 0, NULL, 0); break;
+ 	default:
+ 		sb_reply(type, RESULT_UNKNOWN, NULL, 0); break;
+@@ -756,8 +758,9 @@ h713_suspend_prepare(void)
+ 		gpio_set_value(&led_blue, false);
+ 	key_low = 0;
+ 	key_deadline = timeout_set(KEY_POLL_US);
+-	wake_elapsed_ms = 0;
+ 	ms_deadline = timeout_set(1000);
++	wake_armed = true;
++	mmio_write_32(H713_DIAG_SLEPT_MS, 0);
+ 	mmio_write_32(SH_WAKE, 0);
+ 	sh_status(ST_ASLEEP, 0);
+ }
+@@ -767,12 +770,28 @@ h713_wake_poll(void)
+ {
+ 	bool level;
+ 
+-	if (wake_timer_ms && timeout_expired(ms_deadline)) {
+-		ms_deadline = timeout_set(1000);
+-		if (++wake_elapsed_ms >= wake_timer_ms) {
+-			mmio_write_32(SH_WAKE, WAKE_TIMER);
+-			return WAKE_TIMER;
+-		}
++	uint32_t timer = mmio_read_32(H713_DIAG_WAKE_TIMER);
++
++	/*
++	 * After a firmware restart while asleep (system.c goes to SS_OFF) the
++	 * deadlines are gone with .bss; without fresh ones a deadline in the
++	 * other half of the tick timer would not expire for up to 89 s.
++	 */
++	if (!wake_armed) {
++		key_deadline = timeout_set(KEY_POLL_US);
++		ms_deadline  = timeout_set(1000);
++		wake_armed   = true;
++	}
++	/* Milliseconds asleep, stepped from the deadline so nothing drifts;
++	 * a long pass is caught up. */
++	while (timeout_expired(ms_deadline)) {
++		ms_deadline += CPUCLK_kHz;
++		mmio_write_32(H713_DIAG_SLEPT_MS,
++		              mmio_read_32(H713_DIAG_SLEPT_MS) + 1);
++	}
++	if (timer && mmio_read_32(H713_DIAG_SLEPT_MS) >= timer) {
++		mmio_write_32(SH_WAKE, WAKE_TIMER);
++		return WAKE_TIMER;
+ 	}
+ 
+ 	if (timeout_expired(key_deadline)) {
+@@ -818,6 +837,7 @@ h713_resume_done(void)
+ 	mmio_write_32(R_PIO_PL_DRV1, pl_drv1_saved);
+ 	mmio_write_32(R_PIO_PL_CFG0, pl_cfg0_saved);
+ 	sh_status(0, ST_ASLEEP);
+-	wake_timer_ms = 0;	/* one standby at a time, as the vendor's 0x26 */
++	/* one standby per arming, as the vendor's 0x26 */
++	mmio_write_32(H713_DIAG_WAKE_TIMER, 0);
+ 	info("H713: resumed, wake word %x", mmio_read_32(SH_WAKE));
+ }
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 303a17e..3597cd2 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -52,12 +52,20 @@
+  * display MIPS, +0x24 the first four bytes of the last one, +0x28 frames
+  * from the ARM with a type other than 0, +0x2c the last standby step
+  * (common/debug/steps.c, 0 = none), +0x30 the last exception (number << 24
+- * | pc), +0x34..+0x3c see below.
++ * | pc), +0x34 milliseconds counted asleep in the last standby (TF-A puts
++ * the system counter forward by them when the counter was reset), +0x38
++ * the armed wake timer in milliseconds (0x26 type 3; 0 = none) - here, not
++ * in .bss, so a firmware restart while asleep still ends the standby, with
++ * a reset - and +0x3c the build: image size in bits 19..0, bit 24 DRAM
++ * self-refresh, bit 25 deep sleep, bit 26 IR wake codes.
+  */
+-#define H713_DIAG_BASE      (H713_SHARED_BASE + 0x200)
+-#define H713_DIAG_STEP      (H713_DIAG_BASE + 0x2c)
+-#define H713_DIAG_EXCEPTION (H713_DIAG_BASE + 0x30)
+-#define H713_DIAG_LIMIT     (H713_SHARED_BASE + 0x240)
++#define H713_DIAG_BASE       (H713_SHARED_BASE + 0x200)
++#define H713_DIAG_STEP       (H713_DIAG_BASE + 0x2c)
++#define H713_DIAG_EXCEPTION  (H713_DIAG_BASE + 0x30)
++#define H713_DIAG_SLEPT_MS   (H713_DIAG_BASE + 0x34)
++#define H713_DIAG_WAKE_TIMER (H713_DIAG_BASE + 0x38)
++#define H713_DIAG_BUILD      (H713_DIAG_BASE + 0x3c)
++#define H713_DIAG_LIMIT      (H713_SHARED_BASE + 0x240)
+ 
+ #define STACK_SIZE     0x00000400
+ 

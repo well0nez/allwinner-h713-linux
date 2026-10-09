@@ -1,0 +1,353 @@
+From de6768ce8f5562fabbbf19cfaa209e861c784650 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 02:11:09 +0200
+Subject: [PATCH 10/80] h713: deep sleep: root clocks, PLLs, LOSC, PLL LDO and
+ VDD_SYS like the vendor
+
+The rest of the vendor ARISC firmware's standby, behind H713_DEEP_SLEEP
+(depends on H713_DRAM_SELF_REFRESH, default n; h713_hy310_deep_defconfig):
+down 0xdd20 - the eight bus and root clocks of 0xcdd8's table to source 0,
+divider 1, 10 ms each (0x6b68 is a millisecond wait: its timer runs 24000
+ticks per unit), every PLL of 0xcc2c's table off, the RTC's LOSC to the
+internal oscillator and the 32k crystal off, LOSC output off, the PLL LDO
+off - and 0xdea8 (VDD_SYS reset, AVCC gating, bit 8); up 0xe3a8, 0xddec
+(including its 0x00a7-keyed LOSC write, kept as the blob has it), then in
+ccu_resume 0xe3f4 (MBUS, bus gate 0xdd8, NSI 0x05700040/44/80) and the
+MBUS rebuild of step 37005 from the value kept at suspend (0xe164), before
+the DRAM leaves self-refresh.
+
+Checked offline: skripte/dram_trace.py blob-deep/crust-deep runs 0xdd20,
+0xdea8, 0xe3a8, 0xddec, 0xe3f4 and 0xe6e0..0xe73c against ccu_suspend,
+r_ccu_suspend, r_ccu_resume, ccu_resume in one register model: the same
+156 accesses and delays, apart from ccu_suspend's MBUS read that the blob
+does outside 0xdd20. The first run found root clock offsets 0x1500..0x1524
+taken relative to DEV_CCU (0x02002500..); fixed before this commit. Not
+run on a device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy310_deep_defconfig |  10 ++
+ drivers/clock/sun50i-h713-ccu.c   |  57 ++++++++++-
+ drivers/clock/sun50i-h713-r-ccu.c | 163 +++++++++++++++++++++++++++++-
+ platform/h713/Kconfig             |  10 ++
+ 4 files changed, 234 insertions(+), 6 deletions(-)
+ create mode 100644 configs/h713_hy310_deep_defconfig
+
+diff --git a/configs/h713_hy310_deep_defconfig b/configs/h713_hy310_deep_defconfig
+new file mode 100644
+index 0000000..9562367
+--- /dev/null
++++ b/configs/h713_hy310_deep_defconfig
+@@ -0,0 +1,10 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_DEEP_SLEEP=y
+diff --git a/drivers/clock/sun50i-h713-ccu.c b/drivers/clock/sun50i-h713-ccu.c
+index 3e6de9c..363942a 100644
+--- a/drivers/clock/sun50i-h713-ccu.c
++++ b/drivers/clock/sun50i-h713-ccu.c
+@@ -8,6 +8,9 @@
+ #include <device.h>
+ #include <stdint.h>
+ #include <clock/ccu.h>
++#include <delay.h>
++#include <mmio.h>
++#include <util.h>
+ #include <platform/devices.h>
+ 
+ #include "ccu.h"
+@@ -78,21 +81,73 @@ const struct ccu ccu = {
+ 	.regs   = DEV_CCU,
+ };
+ 
+-/* Light standby: the bus clocks of the main domain are not touched yet. */
++#if CONFIG(H713_DEEP_SLEEP)
++static uint32_t mbus_saved;
++
++/* 0xe164: the blob keeps MBUS (0x540) and PLL_PERIPH0 before the DRAM goes. */
++void __attribute__((noinline))
++ccu_suspend(void)
++{
++	mbus_saved = mmio_read_32(DEV_CCU + 0x540);
++}
++
++/*
++ * 0xe3f4 (MBUS and the NSI bus back after the PLLs) and the start of the
++ * blob's "power-up dram" step 37005 (MBUS from the saved value), both
++ * before the DRAM leaves self-refresh.
++ */
++void __attribute__((noinline))
++ccu_resume(void)
++{
++	mmio_write_32(DEV_CCU + 0x540, BIT(31));                /* 0xe40c */
++	udelay(1);
++	mmio_clr_32(DEV_CCU + 0x540, BIT(30));                  /* 0xe430 */
++	udelay(1);
++	mmio_set_32(DEV_CCU + 0xdd8, BIT(0));                   /* 0xe444 */
++	udelay(1);
++	mmio_set_32(DEV_CCU + 0xdd8, BIT(16));                  /* 0xe45c */
++	udelay(1);
++	mmio_set_32(DEV_TVTOP + 0x40, BIT(4));                  /* 0xe478 */
++	udelay(1);
++	mmio_set_32(DEV_TVTOP + 0x44, BIT(4));                  /* 0xe494 */
++	udelay(1);
++	mmio_set_32(DEV_TVTOP + 0x80, BIT(4));                  /* 0xe4a8 */
++	udelay(1);
++	mmio_set_32(DEV_CCU + 0x540, BIT(1));                   /* 0xe4bc */
++	udelay(1);
++	mmio_set_32(DEV_CCU + 0x540, 0x03000000);               /* 0xe4d4 */
++	udelay(1);
++	mmio_set_32(DEV_CCU + 0x540, BIT(30));                  /* 0xe4ec */
++	udelay(1);
++	/* 37005, 0xe6e0 */
++	mmio_write_32(DEV_CCU + 0x540, mbus_saved & 0x7);
++	udelay(200);
++	mmio_write_32(DEV_CCU + 0x540, mbus_saved & 0x03000007);
++	udelay(20);
++	mmio_set_32(DEV_CCU + 0x540, BIT(31));
++	udelay(20);
++	mmio_set_32(DEV_CCU + 0x540, BIT(30));
++	udelay(10000);
++}
++#else
++/* Light standby: the bus clocks of the main domain are not touched. */
+ void
+ ccu_suspend(void)
+ {
+ }
++#endif
+ 
+ void
+ ccu_suspend_cluster(uint32_t cluster UNUSED)
+ {
+ }
+ 
++#if !CONFIG(H713_DEEP_SLEEP)
+ void
+ ccu_resume(void)
+ {
+ }
++#endif
+ 
+ void
+ ccu_resume_cluster(uint32_t cluster UNUSED)
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index b949158..d1770d6 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -7,6 +7,7 @@
+ #include <bitmap.h>
+ #include <clock.h>
+ #include <debug.h>
++#include <delay.h>
+ #include <device.h>
+ #include <mmio.h>
+ #include <stddef.h>
+@@ -161,15 +162,165 @@ r_ccu_cpus_clk_at_boot(void)
+ 	return cpus_clk_at_boot;
+ }
+ 
++#if CONFIG(H713_DEEP_SLEEP)
++/*
++ * Deep sleep, ported from the vendor ARISC firmware (blob addresses):
++ * 0xdd20 on the way down, after the DRAM is in self-refresh and the cluster
++ * is reset - bus and root clocks to OSC24M (0xcdd8 mode 0), every PLL off
++ * (0xcc2c mode 0), the RTC's LOSC to the internal oscillator and the 32k
++ * crystal off, the PLL LDO off - and 0xdea8 (VDD_SYS reset, AVCC and bit 8
++ * gating); 0xe3a8 and 0xddec on the way back. 0x6d04(n) is the blob's
++ * microsecond busy wait, 0x6b68(n) its millisecond timer wait.
++ */
++#define RTC_LOSC_CTRL   (DEV_RTC + 0x000)
++#define RTC_LOSC_OUT    (DEV_RTC + 0x060)
++#define KEY_16AA        0x16aa0000
++
++/* 0xcdd8's table 0x17124: the clocks it moves to source 0, divider 1. */
++static const uintptr_t root_clk[8] = {
++	DEV_CCU + 0x500, DEV_CCU + 0x510, DEV_CCU + 0x520, DEV_CCU + 0x524,
++	DEV_R_PRCM + 0x124, DEV_R_PRCM + 0x000, DEV_R_PRCM + 0x00c,
++	DEV_R_PRCM + 0x010,
++};
++static uint32_t root_saved[8];
++static bool     root_valid[8];
++
++/* 0xcc2c's table 0x170b4: the PLLs. */
++static const uint16_t pll_reg[12] = {
++	0x000, 0x010, 0x020, 0x028, 0x030, 0x040, 0x048, 0x050, 0x058, 0x060,
++	0x068, 0x078,
++};
++static uint32_t pll_saved[12];
++
++static void
++root_clocks_to_osc24m(void)                             /* 0xcdd8(0) */
++{
++	for (uint8_t i = 0; i < ARRAY_SIZE(root_clk); ++i) {
++		uint32_t v = mmio_read_32(root_clk[i]);
++
++		if (!root_valid[i]) {                           /* 0xcec0 */
++			root_saved[i] = v & 0x07000303;
++			root_valid[i] = true;
++		}
++		v &= 0xf8ffffff;                                /* source 0 */
++		mmio_write_32(root_clk[i], v);                  /* 0xcefc */
++		mmio_write_32(root_clk[i], v & 0xfffffc00);     /* 0xcf0c */
++		udelay(10000);                                  /* 0xcf14 */
++	}
++}
++
++static void
++root_clocks_restore(void)                               /* 0xcdd8(4) */
++{
++	for (uint8_t i = 0; i < ARRAY_SIZE(root_clk); ++i) {
++		uint32_t v = mmio_read_32(root_clk[i]);
++
++		if (root_valid[i]) {                            /* 0xce6c */
++			v |= root_saved[i] & 0x00000303;
++			mmio_write_32(root_clk[i], v);
++			v = (v & 0xf8ffffff) | (root_saved[i] & 0x07000000);
++			mmio_write_32(root_clk[i], v);
++			root_valid[i] = false;
++		}
++		udelay(10000);
++	}
++}
++
++static void
++plls_off(void)                                          /* 0xcc2c(0) */
++{
++	for (uint8_t i = 0; i < ARRAY_SIZE(pll_reg); ++i) {
++		uint32_t v = mmio_read_32(DEV_CCU + pll_reg[i]);
++
++		pll_saved[i] = v & 0xa000ff03;   /* enable, lock-en, N, M */
++		mmio_write_32(DEV_CCU + pll_reg[i], v & 0x7fffffff);
++	}
++}
++
++static void
++plls_restore(void)                                      /* 0xcc2c(1) */
++{
++	for (uint8_t i = 0; i < ARRAY_SIZE(pll_reg); ++i) {
++		uint32_t v = mmio_read_32(DEV_CCU + pll_reg[i]);
++
++		mmio_write_32(DEV_CCU + pll_reg[i],
++		              (v & 0x5fff00fc) | pll_saved[i]);
++	}
++}
++
++void __attribute__((noinline))
++r_ccu_suspend(uint8_t depth UNUSED)
++{
++	uint32_t v;
++
++	root_clocks_to_osc24m();                                /* 0xdd30 */
++	udelay(100);
++	plls_off();                                             /* 0xdd40 */
++	udelay(100);
++	v = (mmio_read_32(RTC_LOSC_CTRL) & ~BIT(0)) | KEY_16AA; /* 0xdd50 */
++	mmio_write_32(RTC_LOSC_CTRL, v);
++	mmio_write_32(RTC_LOSC_CTRL, v);
++	udelay(1);
++	v = (mmio_read_32(RTC_LOSC_CTRL) & ~BIT(4)) | KEY_16AA; /* 0xdd74 */
++	mmio_write_32(RTC_LOSC_CTRL, v);
++	mmio_write_32(RTC_LOSC_CTRL, v);
++	udelay(1);
++	mmio_clr_32(RTC_LOSC_OUT, BIT(0));                      /* 0xdd9c */
++	udelay(100);
++	v = (mmio_read_32(PLL_CTRL_REG1) & ~PLL_CTRL_REG1_LDO_EN) |
++	    PLL_CTRL_REG1_KEY;                                  /* 0xddbc */
++	mmio_write_32(PLL_CTRL_REG1, v);
++	mmio_write_32(PLL_CTRL_REG1, v);
++	udelay(100);
++	/* 0xdea8 (the blob skips it for power_down or a USB wake source) */
++	mmio_clr_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
++	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, AVCC_GATING);
++	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, UNK_GATING_BIT_08);
++}
++
++void __attribute__((noinline))
++r_ccu_resume(void)
++{
++	uint32_t v;
++
++	/* 0xe3a8 */
++	mmio_clr_32(VDD_SYS_PWROFF_GATING_REG, UNK_GATING_BIT_08);
++	mmio_clr_32(VDD_SYS_PWROFF_GATING_REG, AVCC_GATING);
++	mmio_set_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
++	/* 0xddec */
++	v = mmio_read_32(PLL_CTRL_REG1) | PLL_CTRL_REG1_KEY |
++	    PLL_CTRL_REG1_LDO_EN;
++	mmio_write_32(PLL_CTRL_REG1, v);
++	mmio_write_32(PLL_CTRL_REG1, v);
++	udelay(100);
++	/* 0xde24: the blob ORs 0x00a70010 -- key 0x00a7, not 0x16aa -- into
++	 * LOSC_CTRL; kept as it is, it is what wakes stock up. */
++	v = mmio_read_32(RTC_LOSC_CTRL) | 0x00a70010;
++	mmio_write_32(RTC_LOSC_CTRL, v);
++	mmio_write_32(RTC_LOSC_CTRL, v);
++	udelay(1);
++	v = mmio_read_32(RTC_LOSC_CTRL) | KEY_16AA | BIT(0);    /* 0xde44 */
++	mmio_write_32(RTC_LOSC_CTRL, v);
++	mmio_write_32(RTC_LOSC_CTRL, v);
++	udelay(1);
++	mmio_set_32(RTC_LOSC_OUT, BIT(0));                      /* 0xde68 */
++	udelay(100);
++	plls_restore();                                         /* 0xde7c */
++	udelay(100);
++	root_clocks_restore();                                  /* 0xde8c */
++	udelay(100);
++	if (cpus_clk_at_boot != 0xffffffff)
++		mmio_write_32(CPUS_CLK_REG, cpus_clk_at_boot);
++}
++
++#else /* !CONFIG(H713_DEEP_SLEEP) */
++
+ void
+ r_ccu_suspend(uint8_t depth)
+ {
+ 	/*
+-	 * Light standby only: PLLs, HOSC and the R domain stay as they are.
+-	 * The blob's deeper steps (0xdd20: PLL_CTRL_REG1 key writes; 0xdea8:
+-	 * VDD_SYS_PWROFF_GATING |= 4, |= 0x100, VDD_SYS_RESET &= ~1) are
+-	 * written down in tables/arisc-contract.csv and wait for the DRAM
+-	 * self-refresh port (drivers/dram/sun50i-h713-dram.c).
++	 * Light standby: PLLs, HOSC and the R domain stay as they are
++	 * (H713_DEEP_SLEEP ports the blob's 0xdd20/0xdea8).
+ 	 */
+ 	(void)depth;
+ }
+@@ -181,6 +332,8 @@ r_ccu_resume(void)
+ 		mmio_write_32(CPUS_CLK_REG, cpus_clk_at_boot);
+ }
+ 
++#endif
++
+ void
+ r_ccu_init(void)
+ {
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index 1096397..bcae846 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -50,6 +50,16 @@ config H713_DRAM_SELF_REFRESH
+ 		parameters below must be the ones the boot loader trained
+ 		the DRAM with.
+ 
++config H713_DEEP_SLEEP
++	bool "Deep sleep: root clocks to OSC24M, PLLs and the PLL LDO off"
++	depends on H713_DRAM_SELF_REFRESH
++	help
++		The rest of the vendor's standby (blob 0xdd20/0xdea8 down,
++		0xe3a8/0xddec/0xe3f4 and the MBUS rebuild up): bus and root
++		clocks to OSC24M, every PLL off, the RTC's 32k crystal off,
++		the PLL LDO off, VDD_SYS reset and gating. Ported, offline
++		model only.
++
+ if H713_DRAM_SELF_REFRESH
+ 
+ config H713_DRAM_CLK

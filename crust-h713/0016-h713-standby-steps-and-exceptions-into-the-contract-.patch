@@ -1,0 +1,92 @@
+From 7dbb5c69b18c97c18587e9485bdebf3a52679a8f Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 03:37:50 +0200
+Subject: [PATCH 16/80] h713: standby steps and exceptions into the contract
+ page, not RTC GP2/GP3
+
+All H713 images record their standby steps (CONFIG_DEBUG_RECORD_STEPS),
+and common/debug/steps.c wrote them to RTC GP3, exceptions to GP2. On the
+H713 GP3 is the vendor firmware's parameter tree pointer and the base of
+the little-endian window it opens at start, GP2 its rails flag: after any
+standby GP3 held 0x619 (or the step that hung), and a reboot into the
+vendor firmware started with it. The records now go to two diagnostic
+words of the contract page (+0x22c step, +0x230 exception), which the
+kernel driver shows; GP2 and GP3 stay as Linux left them, as the design
+said and the 0187c comment claimed.
+
+Review findings B8/B12 (07.10.2026), confirmed in the code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/or1k/exception.c                   |  6 +-----
+ common/debug/steps.c                    | 14 ++++++++++++++
+ platform/h713/include/platform/memory.h | 10 +++++++---
+ 3 files changed, 22 insertions(+), 8 deletions(-)
+
+diff --git a/arch/or1k/exception.c b/arch/or1k/exception.c
+index 50097d1..43fa5f1 100644
+--- a/arch/or1k/exception.c
++++ b/arch/or1k/exception.c
+@@ -16,11 +16,7 @@ report_exception(uint32_t exception)
+ 
+ 	if (!exception)
+ 		return;
+-	/*
+-	 * H713: a start through the reset vector is not a fault, and RTC GP2,
+-	 * where record_exception() writes, is the vendor firmware's rails flag
+-	 * (read at 0xe20c/0xd6cc). Leave it alone unless something went wrong.
+-	 */
++	/* H713: a start through the reset vector is not a fault. */
+ 	if (CONFIG(PLATFORM_H713) && exception == RESET_EXCEPTION)
+ 		return;
+ 
+diff --git a/common/debug/steps.c b/common/debug/steps.c
+index 7dda28a..9df06e3 100644
+--- a/common/debug/steps.c
++++ b/common/debug/steps.c
+@@ -8,9 +8,23 @@
+ #include <steps.h>
+ #include <platform/devices.h>
+ 
++#if CONFIG(PLATFORM_H713)
++/*
++ * Not the RTC: on the H713, GP2 is the vendor firmware's rails flag and GP3
++ * its parameter tree pointer and the base of the little-endian window it
++ * opens at start, and the way back to that firmware must find both as Linux
++ * left them. The records go to two words of the contract page instead,
++ * which the kernel driver shows (platform/memory.h); they survive a firmware
++ * restart and a warm reset, not a power cycle.
++ */
++#include <platform/memory.h>
++#define LAST_EXCEPTION_REG H713_DIAG_EXCEPTION
++#define LAST_STEP_REG      H713_DIAG_STEP
++#else
+ #define RTC_GP_DATA_REG(n) (DEV_RTC + 0x0100 + 0x4 * (n))
+ #define LAST_EXCEPTION_REG RTC_GP_DATA_REG(2)
+ #define LAST_STEP_REG      RTC_GP_DATA_REG(3)
++#endif
+ 
+ void
+ record_exception(uint32_t exception, uint32_t pc)
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 49c64f8..303a17e 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -50,10 +50,14 @@
+  * last main loop pass, +0x14 number of h713_init() runs, +0x18/+0x1c
+  * R_INTC +0x80/+0x88 as found at start, +0x20 frames received from the
+  * display MIPS, +0x24 the first four bytes of the last one, +0x28 frames
+- * from the ARM with a type other than 0, +0x2c..+0x3c reserved.
++ * from the ARM with a type other than 0, +0x2c the last standby step
++ * (common/debug/steps.c, 0 = none), +0x30 the last exception (number << 24
++ * | pc), +0x34..+0x3c see below.
+  */
+-#define H713_DIAG_BASE    (H713_SHARED_BASE + 0x200)
+-#define H713_DIAG_LIMIT   (H713_SHARED_BASE + 0x240)
++#define H713_DIAG_BASE      (H713_SHARED_BASE + 0x200)
++#define H713_DIAG_STEP      (H713_DIAG_BASE + 0x2c)
++#define H713_DIAG_EXCEPTION (H713_DIAG_BASE + 0x30)
++#define H713_DIAG_LIMIT     (H713_SHARED_BASE + 0x240)
+ 
+ #define STACK_SIZE     0x00000400
+ 

@@ -1,0 +1,42 @@
+From 11dce655f90a0ed6bc8a0d17efdf37f3720813ca Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:05:30 +0200
+Subject: [PATCH 49/80] h713: hdmi: RequestEDID reopens the gate only on a
+ published EDID
+
+RequestEDID closes the gate to read the DDC RAM and, as the blob does,
+opens it again whenever the ready byte is set. After a ResetEDIDModule
+without an upload that byte is set while publish() kept the gate closed
+on the empty store (previous commit), so a G_EDID would have opened it
+on whatever the RAM held. It now opens again only when the gate byte -
+set by publish(), cleared by ResetEDIDModule - says an EDID is out.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index b85c475..87a81f5 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -555,7 +555,9 @@ group_15(uint8_t hi)
+ 		 * read and opens again after the four frames (0x11cac(7, 0) and
+ 		 * (7, 1), the latter only with the EDID ready). With the gate
+ 		 * open the RAM belongs to the DDC side and reads as zero, from
+-		 * the AR100 and from the ARM alike (HY310, 07.10.2026).
++		 * the AR100 and from the ARM alike (HY310, 07.10.2026). It
++		 * opens again only on an EDID publish() put out (the gate
++		 * byte), not on the empty store after a ResetEDIDModule.
+ 		 */
+ 		aux_gate(0x7, false);
+ 		for (uint8_t idx = 0; idx < 4; ++idx) {
+@@ -565,7 +567,7 @@ group_15(uint8_t hi)
+ 			frame[69] = 0;
+ 			reply_frame(frame, 72);
+ 		}
+-		if (sh_rd8(SH_EDID_READY))
++		if (sh_rd8(SH_EDID_READY) && sh_rd8(SH_EDID_GATE))
+ 			aux_gate(0x7, true);
+ 	}
+ }

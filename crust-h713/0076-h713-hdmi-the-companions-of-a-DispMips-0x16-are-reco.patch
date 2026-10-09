@@ -1,0 +1,133 @@
+From f94bd4d97061bcec73ca7853b3492fdcd5aae05a Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 09:37:29 +0200
+Subject: [PATCH 76/80] h713: hdmi: the companions of a DispMips 0x16 are
+ recorded, not dropped
+
+The R1 image reported "MIPS frames dropped +3" on every HDMI hotplug.
+Its page after a boot with three hotplugs (08.10.2026): CNT1 0x03000900
+(MIPS_16 3, MIPS_DROP 9), DIAG_MIPS_N 3, DIAG_MIPS_LAST 0x00010016,
+MIPS_PORT 1, no error bit. The three frames were read whole and right
+(0x16, port 0, action 1, as the blob reads them at 0x12440/0x12448), and
+neither aux_ok() (error bit 5) nor an unknown frame (DIAG_MIPS_N) made
+the nine counts: they are words without the marker outside a frame,
+three with every 0x16. The blob reads such words and drops them without
+a trace (0x80c4/0x80c8), in the path where everything else it does not
+serve gets an ERR line; crust counted every one since 1bc90b2.
+
+Up to MIPS_STRAYS (3, the measured number) such words between two valid
+0x16, and before the first, are now taken as the 0x16's companions:
+recorded, not counted. A fourth, words with no 0x16 to go with, and all
+other drops count in MIPS_DROP as before. Where the three words sit
+(behind the frame, ahead of it, on another port, or repeated reads) is
+not measured, so the rule does not depend on it, and three K words that
+were free show it on the device: MIPS_HEAD (+0x2b4, the last header word
+as it came: seq, type, len), MIPS_STRAY (+0x2b8, the last such word) and
+MIPS_STRAY_INFO (+0x2bc: its port, such words since the last 0x16, taken,
+counted). No new version: a reader that does not know them reads zero
+there, as before; TF-A and the kernel copy K whole into P.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 35 ++++++++++++++++++++++++-
+ platform/h713/include/platform/memory.h | 16 +++++++++++
+ 2 files changed, 50 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 204c772..f3af9f9 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -112,6 +112,17 @@
+ #define MIPS_FIFO_STAT(p) (DEV_MSGBOX + 0x400 + 0x100 + 0x60 + 4 * (p))
+ #define MIPS_MSG_DATA(p)  (DEV_MSGBOX + 0x400 + 0x100 + 0x70 + 4 * (p))
+ #define MIPS_PASS_WORDS 16 /* per port and main loop pass */
++/*
++ * Words without the marker outside a frame: the blob reads them and drops
++ * them without a trace (0x80c4/0x80c8). The HY310's MIPS sends three with
++ * every 0x16 (08.10.2026, R1 image: three 0x16, CNT1 0x03000900, no error
++ * bit, DIAG_MIPS_N 3); where they sit is not measured. Up to MIPS_STRAYS
++ * of them between two valid 0x16, and before the first, are taken as its
++ * companions and only recorded (MIPS_STRAY_INFO); any further one counts.
++ */
++#define MIPS_STRAYS     3
++#define STRAY_TAKEN     (H713_K_MIPS_STRAY_INFO + 2)
++#define STRAY_COUNTED   (H713_K_MIPS_STRAY_INFO + 3)
+ #define RX_PORT(p)      (2 * (p))      /* ARM -> ARISC, user1 port p */
+ #define TX_CHAN(c)      (2 * (c) + 1)  /* ARISC -> ARM, user0 channel c */
+ #define PORT_HDMI       RX_PORT(0)
+@@ -692,6 +703,8 @@ mips_frame(uint8_t q, const uint8_t *p, uint8_t len)
+ 		uint8_t port = p[1], action = p[2];
+ 
+ 		h713_cnt(H713_CNT_MIPS_16);
++		mmio_write_32(H713_K_MIPS_STRAY_INFO,	/* its companions anew */
++		              mmio_read_32(H713_K_MIPS_STRAY_INFO) & ~0xff00U);
+ 		/*
+ 		 * No aux clock before the first ResetEDIDModule: dropped as
+ 		 * the blob drops it, counted above with every 0x16 and not as
+@@ -712,6 +725,25 @@ mips_frame(uint8_t q, const uint8_t *p, uint8_t len)
+ 	}
+ }
+ 
++/* A word without the marker outside a frame on MIPS port @q (MIPS_STRAYS). */
++static void
++mips_stray(uint8_t q, uint32_t w)
++{
++	uint32_t info = mmio_read_32(H713_K_MIPS_STRAY_INFO);
++	uint32_t n = (info >> 8 & 0xff) + 1;
++
++	if (n > 0xff)
++		n = 0xff;
++	mmio_write_32(H713_K_MIPS_STRAY, w);
++	mmio_write_32(H713_K_MIPS_STRAY_INFO, (info & 0xffff0000U) | n << 8 | q);
++	if (n > MIPS_STRAYS) {
++		h713_cnt(STRAY_COUNTED);
++		h713_cnt(H713_CNT_MIPS_DROP);
++	} else {
++		h713_cnt(STRAY_TAKEN);
++	}
++}
++
+ /*
+  * The pump 0x7fd8 once more, for the MIPS: payload in the words, LSB first.
+  * At most MIPS_PASS_WORDS per port and pass: a FIFO that does not pop on
+@@ -728,9 +760,10 @@ mips_poll(void)
+ 			switch (mips[q].state) {
+ 			case 0:
+ 				if ((w & 0xff) != BOP_MARKER) {
+-					h713_cnt(H713_CNT_MIPS_DROP);
++					mips_stray(q, w);
+ 					break;
+ 				}
++				mmio_write_32(H713_K_MIPS_HEAD, w);
+ 				mips[q].len = w >> 24;
+ 				mips[q].idx = 0;
+ 				for (uint8_t i = 0; i < sizeof(mips[q].buf); ++i)
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index b61677d..b880a9a 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -127,8 +127,24 @@
+ #define H713_K_SUBSTEP       H713_PAGE(0x2a8) /* deep stage only */
+ #define H713_K_DEEP_LOCK     H713_PAGE(0x2ac) /* deep stage only */
+ #define H713_K_WAKE_KEPT     H713_PAGE(0x2b0) /* the last resume's wake word, until 0x11 */
++#define H713_K_MIPS_HEAD     H713_PAGE(0x2b4) /* header word of the last DispMips frame, below */
++#define H713_K_MIPS_STRAY    H713_PAGE(0x2b8) /* the last DispMips word without the marker */
++#define H713_K_MIPS_STRAY_INFO H713_PAGE(0x2bc) /* where it came from, below */
+ #define H713_K_LIMIT         H713_PAGE(0x2c0)
+ 
++/*
++ * DispMips record, three words of K that were free (no new version: a
++ * reader that does not know them reads zero there, as before).
++ * MIPS_HEAD: every header word crust takes off the MIPS sub-block, as it
++ * came: 7..0 the marker 0xa5, 15..8 seq, 23..16 type (the blob serves 2
++ * only), 31..24 len in bytes. MIPS_STRAY: the last word outside a frame
++ * without the marker (the blob reads such words and drops them without a
++ * trace, 0x80c4). MIPS_STRAY_INFO: 7..0 the port of that word; 15..8 such
++ * words since the last valid 0x16 (saturating at 255); 23..16 such words
++ * taken as the measured companions of a 0x16, 31..24 such words counted
++ * in MIPS_DROP (both wrapping).
++ */
++
+ /* A: written by the ARM, read by crust. */
+ #define H713_A_NET_REQ       H713_PAGE(0x2c0) /* kernel: 31..24 0xa5, 23..16 format, 15..8 cycle */
+ #define H713_A_NET_BUDGET    H713_PAGE(0x2c4) /* kernel: s, 15..0 presleep, 31..16 resuming */

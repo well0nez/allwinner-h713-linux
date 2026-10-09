@@ -12,7 +12,7 @@ touched.
 |---|---|---|
 | ARM Cortex-A53 ×4 | Linux | AFBD scanout block (`0x05600000`), everything in `cpu_comm`'s shared memory it writes itself |
 | MIPS32 LE | `display.bin` | HDMI capture (INCAP), the window/scaler chain, the panel output block - the whole display pipeline behind the AFBD |
-| OR1K "ARISC" | `h713-arisc.bin` | the R_-peripherals: PMU sequencing, the HDMI hot-plug pin, EDID/DDC RAM |
+| OR1K "ARISC" | crust, our own (HY310), or the vendor's `h713-arisc.bin` | the R_-peripherals: PMU sequencing, the HDMI hot-plug pin, EDID/DDC RAM, the standby |
 
 Reading a MIPS or ARISC register from the ARM core is possible; writing one is not the same as changing
 what it controls. The MIPS firmware recomputes its own window geometry from a small descriptor Linux
@@ -43,8 +43,9 @@ Detail: `doku/82-arisc-treiber.md`.
 **RTC general-purpose registers as a flag, not a channel.** A third, much smaller mechanism: the RTC's
 `GP0` - `GP7` words at `0x07090114` survive a warm reset (not a full power cycle) and cost nothing to read
 or write. U-Boot's power-on gate uses `GP5` to mark "just did a warm reboot from Linux" so it can skip
-waiting for the power key; the ARISC firmware separately leaves a `0xb00f` liveness mark in `GP3` once
-its main loop is running. Neither is an RPC - they are notes left for whichever side looks next.
+waiting for the power key; the vendor's ARISC firmware separately leaves a `0xb00f` liveness mark in
+`GP3` once its main loop is running (crust keeps its state in its contract page instead,
+[arisc.md](subsystems/arisc.md)). Neither is an RPC - they are notes left for whichever side looks next.
 
 ## Boot order
 
@@ -62,11 +63,13 @@ BROM -> SPL (DRAM init) -> BL31 (EL3) -> U-Boot proper -> Linux
 This is the opposite of stock Android, where the vendor BL31 loads the ARISC firmware before anything
 else runs. Mainline TF-A does not do that, so the job moved into a Linux driver instead - one more
 reason the ARISC is unreachable, by design, until that driver has bound and its firmware request has
-resolved. `cpu_comm` needs no such handoff: the MIPS core is already running display.bin by the time
+resolved. With crust (the HY310) our BL31 starts the ARISC again, from the FIT's `scp` image before
+U-Boot proper, and the driver keeps that running image when it is the one its device tree names
+([arisc.md](subsystems/arisc.md)). `cpu_comm` needs no such handoff: the MIPS core is already running display.bin by the time
 Linux starts, so its first RPC call can succeed immediately.
 
-Neither firmware file, nor the HDMI EDID blob, nor the panel/picture tables ship in this repository or
-on the built image. All of them are pulled from **your own** device's dump by `h713-extract` during
+Neither vendor firmware file, nor the HDMI EDID blob, nor the panel/picture tables ship in this
+repository or on the built image; crust is built from source with the image. All of them are pulled from **your own** device's dump by `h713-extract` during
 install and placed under `/lib/firmware`; a driver whose firmware is missing fails loudly
 (`-ENOENT`/`-ENODEV`) rather than booting with something that isn't yours to redistribute.
 

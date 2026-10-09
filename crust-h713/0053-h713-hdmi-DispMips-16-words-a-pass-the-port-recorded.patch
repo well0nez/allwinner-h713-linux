@@ -1,0 +1,97 @@
+From e16b56772e3fef31b0600bd82b0f28e550dd555e Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:16:44 +0200
+Subject: [PATCH 53/80] h713: hdmi: DispMips - 16 words a pass, the port
+ recorded, 0x16/0x17 counted
+
+mips_poll() read each port while its FIFO had words, with no bound: a
+port that does not pop on read would hold the main loop. Which of the
+four ports the display MIPS writes was never recorded, and how often it
+sends PullHotPlug (0x16) and ResetEDIDModule (0x17) in normal use is
+unknown (PRUEFUNG5 F11, N-03).
+
+At most 16 words per port and pass now; every frame writes its port to
+MIPS_PORT (K block +0x29c); CNT1[31:24] counts 0x16 frames and
+CNT1[23:16] 0x17 frames. Keeping the block mask across a 0x17 (N-03)
+waits until the device shows 0x17 in normal use.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 19 ++++++++++++++-----
+ 1 file changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 4d3f3b1..b39a9c6 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -111,6 +111,7 @@
+  */
+ #define MIPS_FIFO_STAT(p) (DEV_MSGBOX + 0x400 + 0x100 + 0x60 + 4 * (p))
+ #define MIPS_MSG_DATA(p)  (DEV_MSGBOX + 0x400 + 0x100 + 0x70 + 4 * (p))
++#define MIPS_PASS_WORDS 16 /* per port and main loop pass */
+ #define RX_PORT(p)      (2 * (p))      /* ARM -> ARISC, user1 port p */
+ #define TX_CHAN(c)      (2 * (c) + 1)  /* ARISC -> ARM, user0 channel c */
+ #define PORT_HDMI       RX_PORT(0)
+@@ -659,14 +660,16 @@ pump_word(uint32_t w)
+ 
+ /* ---- the display MIPS (blob 0x1180c "DispMips", 0x1242c) ------------------ */
+ static void
+-mips_frame(const uint8_t *p, uint8_t len)
++mips_frame(uint8_t q, const uint8_t *p, uint8_t len)
+ {
+ 	mmio_write_32(DIAG_MIPS_N, mmio_read_32(DIAG_MIPS_N) + 1);
+ 	mmio_write_32(DIAG_MIPS_LAST, p[0] | p[1] << 8 | p[2] << 16 |
+ 	              (uint32_t)p[3] << 24);
++	mmio_write_32(H713_K_MIPS_PORT, q);
+ 	if (len >= 3 && p[0] == 0x16 && p[1] < PORTS) {	/* 0x12330 */
+ 		uint8_t port = p[1], action = p[2];
+ 
++		h713_cnt(H713_CNT_MIPS_16);
+ 		/* no aux clock before the first ResetEDIDModule */
+ 		if (!aux_ok(4))
+ 			return;
+@@ -676,18 +679,24 @@ mips_frame(const uint8_t *p, uint8_t len)
+ 			hpd_pin(port, false),
+ 			sh_wr8(SH_HPD_COUNTER + port, action == 3 ? HPD_RESET_TICKS : 0);
+ 	} else if (len >= 1 && p[0] == 0x17) {			/* 0x120f0 */
++		h713_cnt(H713_CNT_MIPS_17);
+ 		reset_module();
+ 	} else {
+ 		h713_cnt(H713_CNT_MIPS_DROP);
+ 	}
+ }
+ 
+-/* The pump 0x7fd8 once more, for the MIPS: payload in the words, LSB first. */
++/*
++ * The pump 0x7fd8 once more, for the MIPS: payload in the words, LSB first.
++ * At most MIPS_PASS_WORDS per port and pass: a FIFO that does not pop on
++ * read would otherwise hold the main loop (PRUEFUNG5 F11).
++ */
+ static void
+ mips_poll(void)
+ {
+ 	for (uint8_t q = 0; q < ARRAY_SIZE(mips); ++q) {
+-		while (mmio_read_32(MIPS_FIFO_STAT(q))) {
++		for (uint8_t n = 0; n < MIPS_PASS_WORDS &&
++		     mmio_read_32(MIPS_FIFO_STAT(q)); ++n) {
+ 			uint32_t w = mmio_read_32(MIPS_MSG_DATA(q));
+ 
+ 			switch (mips[q].state) {
+@@ -707,7 +716,7 @@ mips_poll(void)
+ 			case 1:
+ 				mips[q].state = mips[q].len ? 2 : 0;
+ 				if (!mips[q].len)
+-					mips_frame(mips[q].buf, 0);
++					mips_frame(q, mips[q].buf, 0);
+ 				break;
+ 			default:
+ 				for (uint8_t b = 0; b < 4 && mips[q].idx < mips[q].len;
+@@ -717,7 +726,7 @@ mips_poll(void)
+ 				}
+ 				if (mips[q].idx >= mips[q].len) {
+ 					mips[q].state = 0;
+-					mips_frame(mips[q].buf, mips[q].len);
++					mips_frame(q, mips[q].buf, mips[q].len);
+ 				}
+ 				break;
+ 			}

@@ -1,0 +1,46 @@
+From 2b5f2669cedc88e8a0907e7fdc0f3485b01b2cab Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 11:06:43 +0200
+Subject: [PATCH 31/80] h713: hdmi: clear the power key's latched edge after
+ the wake
+
+After a timer wake on the HY310 (07.10.2026, run B1) the box powered
+itself off 0.2 s later. crust takes PL4 as a plain input for the sleep
+and puts its EINT function back on the wake; that mux switch can latch
+an edge, and gpio-keys reports any interrupt of a wakeup key arriving
+while it is suspended as a key press, which logind turns into a power
+off. The EINT status bit of PL4 (R_PIO 0x214, write 1 to clear) is now
+cleared right after the function is restored, before Linux gets its
+interrupts back.
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index d5bdf9a..3603e5b 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -122,6 +122,7 @@
+ #define R_PIO_PL_DRV0   (DEV_R_PIO + 0x014)    /* PL0..PL7 drive */
+ #define R_PIO_PL_DRV1   (DEV_R_PIO + 0x018)    /* PL8..PL15 drive */
+ #define R_PIO_PL_PULL0  (DEV_R_PIO + 0x024)    /* PL0..PL15 pull */
++#define R_PIO_EINT_STATUS (DEV_R_PIO + 0x214) /* PL bank (IRQ bank 0), W1C */
+ 
+ #define BOP_MARKER      0xa5
+ #define BOP_MAX_LEN     128
+@@ -909,6 +910,15 @@ h713_resume_done(void)
+ 	mmio_write_32(R_PIO_PL_DRV0, pl_drv0_saved);
+ 	mmio_write_32(R_PIO_PL_DRV1, pl_drv1_saved);
+ 	mmio_write_32(R_PIO_PL_CFG0, pl_cfg0_saved);
++	/*
++	 * Back on its EINT function, the power key may latch the edge of the
++	 * mux switch. gpio-keys turns any interrupt of a wakeup key that comes
++	 * in while it is suspended into a key press ("simulate wakeup key
++	 * press"), and logind powers the box off: on the HY310 (07.10.2026,
++	 * run B1) the box shut down 0.2 s after a timer wake. The latched bit
++	 * is cleared before Linux gets its interrupts back.
++	 */
++	mmio_write_32(R_PIO_EINT_STATUS, BIT(CONFIG_H713_POWER_KEY_PIN));
+ 	sh_status(0, ST_ASLEEP);
+ 	woke = true;
+ 	/* The HPD tick did not run asleep: a deadline from before the standby

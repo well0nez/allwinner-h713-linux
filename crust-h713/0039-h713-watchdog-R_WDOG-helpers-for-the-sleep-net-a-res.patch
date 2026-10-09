@@ -1,0 +1,247 @@
+From c20288f20ea4950dd65c4d7dc641bf3f22c3c142 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:58:51 +0200
+Subject: [PATCH 39/80] h713: watchdog: R_WDOG helpers for the sleep net, a
+ reset that feeds first
+
+The R_WDOG driver stays reset-only while awake - probe and restart do
+nothing, so the AWAKE loop never feeds and get/put arm nothing - but it
+now has the pieces the sleep net needs (PRUEFUNG5 CS-02, the deep-net
+design): h713_rwdog_arm(code) feeds, sets CFG to reset, MODE to the
+interval, feeds again and reads MODE and CFG back; h713_rwdog_feed();
+h713_rwdog_disarm() feeds, turns MODE off and reads it back;
+h713_rwdog_state() reads MODE and STA as found. h713_wdog_reset(base)
+is TF-A's corrected reset sequence (feed, CFG, MODE, feed) for either
+watchdog: a MODE write into a running counter without a feed first did
+not reset the SoC watchdog (07.10.2026, run B1).
+
+H713_SLEEP_NET (default n, needs the step records) and
+H713_SLEEP_NET_INTERVAL (default 0xb, 16 s on the SoC watchdog; the
+R_WDOG's is unmeasured) select it; the build word says so in bit 29,
+BUILD2 carries the interval code. With the net, reset_system uses the
+feeding sequence; without, the blob's sequence stays.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         |  9 ++-
+ drivers/watchdog/Kconfig                | 10 +--
+ drivers/watchdog/sun50i-h713-wdt.c      | 83 ++++++++++++++++++++++---
+ include/drivers/hdmi/sun50i-h713-hdmi.h |  8 +++
+ platform/h713/Kconfig                   | 21 +++++++
+ 5 files changed, 117 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 761feda..e9fd14b 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -69,6 +69,11 @@
+ #else
+ #define BUILD2_DRAM_MHZ 0
+ #endif
++#if CONFIG(H713_SLEEP_NET)
++#define BUILD2_NET_CODE CONFIG_H713_SLEEP_NET_INTERVAL
++#else
++#define BUILD2_NET_CODE 0
++#endif
+ 
+ /* Diagnostic words (platform/memory.h), kept across firmware restarts. */
+ #define DIAG_LEWIN_EN   (H713_DIAG_BASE + 0x00)    /* written by start.S */
+@@ -840,10 +845,12 @@ h713_init(void)
+ 	              (uint32_t)CONFIG(H713_IR_WAKE_NECX) << 26 |
+ 	              (uint32_t)CONFIG(H713_DEEP_VDD_SYS) << 27 |
+ 	              (uint32_t)CONFIG(H713_DEEP_PLL_LDO) << 28 |
++	              (uint32_t)CONFIG(H713_SLEEP_NET) << 29 |
+ 	              (uint32_t)CONFIG(H713_TEST) << 30);
+ 	mmio_write_32(H713_K_COMPAT, H713_COMPAT);
+ 	mmio_write_32(H713_K_BUILD2, (BUILD2_DRAM_MHZ & 0xfff) |
+-	              (CONFIG_H713_BOARD_ID & 0xf) << 12);
++	              (CONFIG_H713_BOARD_ID & 0xf) << 12 |
++	              (BUILD2_NET_CODE & 0xff) << 16);
+ 	portmap_init();
+ 	/*
+ 	 * Load-bearing: system.c puts its own msgbox reference at every
+diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
+index 2966834..17b8ab6 100644
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -16,12 +16,14 @@ choice
+ 		The watchdog also services user-requested system resets.
+ 
+ config WATCHDOG_SUN50I_H713_WDT
+-	bool "R_WDOG of the H713 (reset only, never armed)"
++	bool "R_WDOG of the H713 (reset; armed only for the sleep net)"
+ 	depends on PLATFORM_H713
+ 	help
+-		sun50iw12 layout with the key 0x16aa. The feed sequence is
+-		unknown and the vendor firmware never arms it, so this
+-		driver only provides the system reset.
++		sun55i-a523 layout with the keys 0x16aa (CFG, MODE) and
++		0xa57 (feed on CTRL +0x0c), measured on the SoC watchdog
++		0x02051000; on the R_WDOG only CFG and MODE are known from
++		the vendor firmware, which never arms it. The driver never
++		arms it while awake; H713_SLEEP_NET arms it for a standby.
+ 
+ config WATCHDOG_SUN6I_A31_WDT
+ 	bool "Watchdog (R_WDOG)"
+diff --git a/drivers/watchdog/sun50i-h713-wdt.c b/drivers/watchdog/sun50i-h713-wdt.c
+index 381ebc5..f728289 100644
+--- a/drivers/watchdog/sun50i-h713-wdt.c
++++ b/drivers/watchdog/sun50i-h713-wdt.c
+@@ -8,32 +8,97 @@
+ #include <intrusive.h>
+ #include <mmio.h>
+ #include <util.h>
++#include <hdmi/sun50i-h713-hdmi.h>
+ #include <watchdog/sun6i-a31-wdt.h>
+ #include <platform/devices.h>
+ 
+ #include "watchdog.h"
+ 
+ /*
+- * sun50iw12 R_WDOG (blob 0xcd8c, TF-A sunxi_power.c): CFG at +0x10 and
+- * MODE at +0x14 take the key 0x16aa in bits 31..16; the blob writes
+- * +0x00 = 0, CFG = key | 1 (system reset), MODE = key | 1 (enable, shortest
+- * interval). No feed sequence exists in the blob and the vendor firmware
+- * never arms a watchdog, so neither does this driver: probe and restart do
+- * nothing, reset_system is the proven sequence.
++ * sun50iw12 R_WDOG (blob 0xcd8c, TF-A sunxi_power.c) and the SoC watchdog
++ * 0x02051000 (DEV_WDOG) in the sun55i-a523 layout Linux uses for them
++ * (sunxi_wdt.c): CTRL +0x0c takes the feed 0x14af (key 0xa57 << 1, bit 0
++ * reload), CFG +0x10 and MODE +0x14 take the key 0x16aa in bits 31..16.
++ * Measured on the SoC watchdog (07.10.2026): the feed, MODE 0x16aa00b1
++ * resets after 16.4 s, and a MODE write into the running counter without a
++ * feed first does not reset. The R_WDOG's CFG and MODE are the blob's
++ * (it writes +0x00 = 0, CFG = key | 1, MODE = key | 1 to reset and never
++ * arms it); its feed, clock, interval and reset scope are unmeasured.
++ *
++ * Probe and restart do nothing, so the AWAKE loop never feeds and the
++ * generic get/put arm nothing. Only the sleep net (H713_SLEEP_NET,
++ * sun50i-h713-sleep.c) arms, feeds and disarms the R_WDOG, through the
++ * h713_rwdog_*() helpers below; h713_wdog_reset() is the clean reset.
+  */
+ #define WDOG_IRQ_EN_REG  0x00
++#define WDOG_IRQ_STA_REG 0x04 /* a523 layout; not read on the H713 yet */
++#define WDOG_CTRL_REG    0x0c
+ #define WDOG_CFG_REG     0x10
+ #define WDOG_MODE_REG    0x14
+ #define WDOG_KEY         (0x16aa << 16)
++#define WDOG_FEED        0x14af
++
++/* TF-A's reset sequence (T1): feed, reset on fire, shortest interval, feed. */
++void
++h713_wdog_reset(uintptr_t base)
++{
++	mmio_write_32(base + WDOG_CTRL_REG, WDOG_FEED);
++	mmio_write_32(base + WDOG_CFG_REG, WDOG_KEY | 1);
++	mmio_write_32(base + WDOG_MODE_REG, WDOG_KEY | 1);
++	mmio_write_32(base + WDOG_CTRL_REG, WDOG_FEED);
++}
++
++/* Arm with interval @code; returns CFG << 16 | MODE as read back. */
++uint32_t
++h713_rwdog_arm(uint8_t code)
++{
++	mmio_write_32(DEV_R_WDOG + WDOG_CTRL_REG, WDOG_FEED);
++	mmio_write_32(DEV_R_WDOG + WDOG_CFG_REG, WDOG_KEY | 1);
++	mmio_write_32(DEV_R_WDOG + WDOG_MODE_REG,
++	              WDOG_KEY | (code & 0xf) << 4 | 1);
++	mmio_write_32(DEV_R_WDOG + WDOG_CTRL_REG, WDOG_FEED);
++
++	return (mmio_read_32(DEV_R_WDOG + WDOG_CFG_REG) & 0xffff) << 16 |
++	       (mmio_read_32(DEV_R_WDOG + WDOG_MODE_REG) & 0xffff);
++}
++
++void
++h713_rwdog_feed(void)
++{
++	mmio_write_32(DEV_R_WDOG + WDOG_CTRL_REG, WDOG_FEED);
++}
++
++/* Feed, then off; returns MODE as read back. */
++uint32_t
++h713_rwdog_disarm(void)
++{
++	h713_rwdog_feed();
++	mmio_write_32(DEV_R_WDOG + WDOG_MODE_REG, WDOG_KEY);
++
++	return mmio_read_32(DEV_R_WDOG + WDOG_MODE_REG);
++}
++
++/* As found: STA << 16 | MODE. */
++uint32_t
++h713_rwdog_state(void)
++{
++	return (mmio_read_32(DEV_R_WDOG + WDOG_IRQ_STA_REG) & 0xffff) << 16 |
++	       (mmio_read_32(DEV_R_WDOG + WDOG_MODE_REG) & 0xffff);
++}
+ 
+ static void
+ h713_wdt_reset_system(const struct device *dev)
+ {
+ 	const struct sun6i_a31_wdt *self = container_of(dev, const struct sun6i_a31_wdt, dev);
+ 
+-	mmio_write_32(self->regs + WDOG_IRQ_EN_REG, 0);
+-	mmio_write_32(self->regs + WDOG_CFG_REG, WDOG_KEY | 1);
+-	mmio_write_32(self->regs + WDOG_MODE_REG, WDOG_KEY | 1);
++	if (CONFIG(H713_SLEEP_NET)) {
++		/* the net may be running: a MODE write alone is swallowed */
++		h713_wdog_reset(self->regs);
++	} else {
++		mmio_write_32(self->regs + WDOG_IRQ_EN_REG, 0);
++		mmio_write_32(self->regs + WDOG_CFG_REG, WDOG_KEY | 1);
++		mmio_write_32(self->regs + WDOG_MODE_REG, WDOG_KEY | 1);
++	}
+ 
+ 	udelay(1000000);
+ }
+diff --git a/include/drivers/hdmi/sun50i-h713-hdmi.h b/include/drivers/hdmi/sun50i-h713-hdmi.h
+index fef0b0c..d69ccb0 100644
+--- a/include/drivers/hdmi/sun50i-h713-hdmi.h
++++ b/include/drivers/hdmi/sun50i-h713-hdmi.h
+@@ -38,6 +38,14 @@ static inline void h713_cnt(uintptr_t at UNUSED) {}
+ 
+ #endif
+ 
++/* drivers/watchdog/sun50i-h713-wdt.c: the watchdogs' reset sequence (both
++ * blocks) and the R_WDOG for the sleep net. */
++void h713_wdog_reset(uintptr_t base);
++uint32_t h713_rwdog_arm(uint8_t code);
++void h713_rwdog_feed(void);
++uint32_t h713_rwdog_disarm(void);
++uint32_t h713_rwdog_state(void);
++
+ /* drivers/css/sun50i-h713-css.c: the warm entry from "cpu op req". */
+ void css_set_warm_entry(uint32_t lo, uint32_t hi);
+ 
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index c336eff..de1f481 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -103,6 +103,27 @@ config H713_DEEP_VDD_SYS
+ 		27; TF-A and the kernel always refuse such an image. Only for
+ 		the trace comparison with the blob.
+ 
++config H713_SLEEP_NET
++	bool "Sleep net: the R_WDOG armed from the standby request to Linux's confirm"
++	depends on DEBUG_RECORD_STEPS && WATCHDOG_SUN50I_H713_WDT
++	help
++		crust arms the R_WDOG when it takes the kernel's net request
++		(0x25/0x26 with NET_REQ), feeds it at standby step boundaries
++		and at most once a second in its loops, never inside a step,
++		and disarms it on the kernel's confirm after the resume. A
++		hang anywhere in between resets the SoC. The R_WDOG's feed,
++		clock, interval and reset scope are unmeasured: not for a
++		release before stage S0. Build word bit 29.
++
++config H713_SLEEP_NET_INTERVAL
++	hex "R_WDOG interval code (MODE bits 7..4)"
++	depends on H713_SLEEP_NET
++	default 0xb
++	range 0x1 0xb
++	help
++		0xb is 16 s on the SoC watchdog (measured); what it gives on
++		the R_WDOG is to be measured in stage S0b. BUILD2 23..16.
++
+ config H713_TEST
+ 	bool "Test build (build word bit 30, never for a release)"
+ 	help

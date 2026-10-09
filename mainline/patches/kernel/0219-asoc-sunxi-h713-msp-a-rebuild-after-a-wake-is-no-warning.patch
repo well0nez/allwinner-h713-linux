@@ -1,0 +1,145 @@
+ASoC: sunxi: h713-msp: a rebuild after a wake is no warning
+
+With rebuild_after_sleep, every wake with a running DSP went through
+msp_heal_work() and logged "Self-healing 1/3: island reset and rebuild"
+as a warning, and a bridge PCM running at suspend added "bridge PCM
+stopped: the island is being reset". Both are the normal course of a
+sleep. A warning on every healthy cycle teaches the reader of the log to
+skip warnings, and the standby stages read them as findings.
+
+The resume now marks the heal it schedules as the rebuild after a wake.
+That attempt logs nothing of its own: the resume has already said
+"standby: the DSP is rebuilt after the wake", and msp_bringup() says "MSP
+running" on success. Only a failure warns, "standby: the rebuild after
+the wake failed", and the remaining attempts warn as self-healing did
+before. msp_pcm_island_lost() takes a flag for the system sleep and then
+reports the stopped stream at info level. The "reset" attribute clears
+the mark, so a later mailbox timeout heals with its warning again.
+
+Not measured. Compiled out of tree with W=1, no new warning.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/sound/soc/sunxi/sun50i-h713-msp.c
++++ b/sound/soc/sunxi/sun50i-h713-msp.c
+@@ -474,6 +474,7 @@ struct h713_msp {
+ 	enum msp_state state;
+ 	unsigned int heal_count;
+ 	bool rebuild_on_resume;		/* set by suspend, taken by resume */
++	bool heal_after_sleep;		/* lock: next heal follows a wake */
+ 	unsigned int mbox_timeouts;
+ 	unsigned int mbox_reissues;
+ 	unsigned int blocks;
+@@ -1479,9 +1480,10 @@ static const struct snd_pcm_ops msp_pcm_ops = {
+ /*
+  * Called with the lock held before the island goes down: a stream that is
+  * running has lost its ring and its transmitter, and the interrupt handlers
+- * must not touch a block that is about to hang the CPU.
++ * must not touch a block that is about to hang the CPU. @sleep: for a
++ * system sleep, where stopping the stream is no fault.
+  */
+-static void msp_pcm_island_lost(struct h713_msp *msp)
++static void msp_pcm_island_lost(struct h713_msp *msp, bool sleep)
+ {
+ 	struct snd_pcm_substream *sub;
+ 	unsigned long flags;
+@@ -1502,7 +1504,10 @@ static void msp_pcm_island_lost(struct h713_msp *msp)
+ 	msp->island_gen++;
+ 	spin_unlock_irqrestore(&msp->pcm_lock, flags);
+ 	if (sub) {
+-		dev_warn(msp->dev, "bridge PCM stopped: the island is being reset\n");
++		if (sleep)
++			dev_info(msp->dev, "bridge PCM stopped for the system sleep\n");
++		else
++			dev_warn(msp->dev, "bridge PCM stopped: the island is being reset\n");
+ 		snd_pcm_stop_xrun(sub);
+ 	}
+ }
+@@ -1588,7 +1593,7 @@ static int msp_bringup(struct h713_msp *msp)
+ 
+ 	msp->state = MSP_STATE_BOOTING;
+ 
+-	msp_pcm_island_lost(msp);
++	msp_pcm_island_lost(msp, false);
+ 	msp_island_down(msp);
+ 	ret = msp_island_up(msp);
+ 	if (ret)
+@@ -1625,10 +1630,12 @@ fail:
+  * Self-healing. Every mailbox timeout outside the bring-up lands here; the
+  * bring-up itself already loops in this worker. Three attempts, then the
+  * state stays "error" until somebody writes the sysfs attribute "reset".
++ * The rebuild after a wake (msp_resume) comes here as well.
+  */
+ static void msp_heal_work(struct work_struct *work)
+ {
+ 	struct h713_msp *msp = container_of(work, struct h713_msp, heal);
++	int ret;
+ 
+ 	mutex_lock(&msp->lock);
+ 
+@@ -1637,19 +1644,28 @@ static void msp_heal_work(struct work_struct *work)
+ 
+ 	while (msp->heal_count < MSP_HEAL_MAX) {
+ 		msp->heal_count++;
+-		dev_warn(msp->dev, "Self-healing %u/%u: island reset and rebuild\n",
+-			 msp->heal_count, MSP_HEAL_MAX);
++		/* The rebuild after a wake is routine; only its failure is not. */
++		if (!msp->heal_after_sleep)
++			dev_warn(msp->dev, "Self-healing %u/%u: island reset and rebuild\n",
++				 msp->heal_count, MSP_HEAL_MAX);
+ 
+-		if (!msp_bringup(msp)) {
++		ret = msp_bringup(msp);
++		if (!ret) {
+ 			msp->heal_count = 0;
+ 			goto out;
+ 		}
++		if (msp->heal_after_sleep) {
++			dev_warn(msp->dev, "standby: the rebuild after the wake failed (%d), self-healing goes on\n",
++				 ret);
++			msp->heal_after_sleep = false;
++		}
+ 	}
+ 
+ 	dev_err(msp->dev,
+ 		"Self-healing given up after %u attempts -- state stays \"error\", \"echo 1 > reset\" tries again\n",
+ 		MSP_HEAL_MAX);
+ out:
++	msp->heal_after_sleep = false;
+ 	mutex_unlock(&msp->lock);
+ }
+ 
+@@ -2047,6 +2063,7 @@ static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
+ 
+ 	mutex_lock(&msp->lock);
+ 	msp->heal_count = 0;
++	msp->heal_after_sleep = false;
+ 	ret = msp_bringup(msp);
+ 	mutex_unlock(&msp->lock);
+ 
+@@ -2434,7 +2451,7 @@ static void msp_remove(struct platform_device *pdev)
+ 	 * has been measured, instead of finding a half-configured DSP.
+ 	 */
+ 	mutex_lock(&msp->lock);
+-	msp_pcm_island_lost(msp);
++	msp_pcm_island_lost(msp, false);
+ 	msp_island_down(msp);
+ 	msp->state = MSP_STATE_OFF;
+ 	mutex_unlock(&msp->lock);
+@@ -2464,7 +2481,7 @@ static int msp_suspend(struct device *dev)
+ 
+ 	pending = cancel_work_sync(&msp->heal);
+ 	mutex_lock(&msp->lock);
+-	msp_pcm_island_lost(msp);
++	msp_pcm_island_lost(msp, true);
+ 	msp->rebuild_on_resume = pending || msp->state == MSP_STATE_RUNNING;
+ 	mutex_unlock(&msp->lock);
+ 	return 0;
+@@ -2479,6 +2496,7 @@ static int msp_resume(struct device *dev)
+ 		msp->rebuild_on_resume = false;
+ 		msp->state = MSP_STATE_ERROR;
+ 		msp->heal_count = 0;
++		msp->heal_after_sleep = true;
+ 		schedule_work(&msp->heal);
+ 		dev_info(dev, "standby: the DSP is rebuilt after the wake\n");
+ 	} else if (msp->state == MSP_STATE_RUNNING) {

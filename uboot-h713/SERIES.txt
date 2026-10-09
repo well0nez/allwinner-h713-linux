@@ -1,5 +1,5 @@
 # Generated -- do not edit.
-# git format-patch -q --no-signature -o uboot-h713 8fe568cdfc46..4913742a9a17 in mainline/external/u-boot (05.10.2026)
+# git format-patch -q --no-signature -o uboot-h713 8fe568cdfc46..87b2a44fd004 in mainline/external/u-boot (09.10.2026)
 base   8fe568cdfc46f727ffe1f61f4796e73db6454e23  (cstenger/u-boot, branch h713)
-head   4913742a9a170a59fa28d17df95cef6c9c00de5f  (well0nez/u-boot, branch h713-hy310)
-count  95
+head   87b2a44fd004609e0806789cc78f6781c761fd21  (well0nez/u-boot, branch h713-hy310 plus 0096 - not published yet)
+count  96

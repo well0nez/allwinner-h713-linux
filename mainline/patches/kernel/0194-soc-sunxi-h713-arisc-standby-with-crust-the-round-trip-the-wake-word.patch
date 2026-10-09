@@ -1,0 +1,322 @@
+soc: sunxi: h713-arisc: standby with crust - the round trip, the wake word
+
+TF-A sends one "cpu op req" on port 3 of the message box and the firmware
+does the rest; Linux has two jobs around it. Before the standby it makes
+one acknowledged round trip on port 3 in suspend_noirq - the clear frame
+0x25, "no wake timer" - so a crust that stopped serving the port refuses
+the standby there instead of taking the cluster down with nobody to wake
+it. After the resume it sends the 0x11 "restore finished" frame, which the
+firmware waits for before it serves anything else, and keeps its answer,
+the wake word (0x95 power key, 0x9b IR, 0xc0000000 timer). crust answers
+0 when it did not sleep since the last 0x11; that is logged as an
+abandoned suspend, not counted as a standby.
+
+prepare refuses standby to RAM before any other driver has quiesced
+anything, for a firmware that is not running and for the vendor
+firmware. The vendor firmware leaves the DRAM's self-refresh with the
+dram_para it finds at arisc_para (0xe744 passes 0x4008 to 0x145b0 ->
+0x14004 -> 0x13884, which reads clock, type, zq, odt, para1/2, mr0..3 and
+tpr from it), and this driver writes zeros there and the message pool at
++0x0c/+0x10: clock 0 goes into PLL_DDR and the lock poll at 0x13644 has
+no bound. Standby to RAM is crust's only. s2idle passes through untouched.
+
+The vendor standby path of the stage-2 work - the parameter tree in RTC
+GP3, the rails flag in GP2, the "rtc-gp" reg and its DMA buffer - is not
+part of this: the vendor firmware is refused anyway, and GP2 is the word
+h713-fel uses as its FEL flag.
+
+Measured on the HY310 with a crust kept from TF-A, one cycle in each of
+four boots (07.10.2026): light standby once, self-refresh standby three
+times, each with a 5000 ms timer armed by a bench parameter of that time
+and wake word 0xc0000000. The 0x25 path and a wake by key or IR were not
+measured.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -83,6 +83,7 @@
+ #include <linux/slab.h>
+ #include <linux/stdarg.h>
+ #include <linux/string.h>
++#include <linux/suspend.h>
+ #include <linux/uaccess.h>
+ #include <linux/unaligned.h>
+ 
+@@ -109,7 +110,18 @@
+ #define U1_MSG_DATA(port)	(0x70 + 4 * (port))
+ 
+ #define PORT_HDMI		0	/* receive pump: the HDMI sub-commands */
+-#define PORT_STANDBY		3	/* standby dispatcher: startup reply only */
++#define PORT_STANDBY		3	/* standby dispatcher 0xbca0 */
++
++/*
++ * Port 3 frames: header state | attr << 8 | type << 16 | result << 24, then
++ * a count word; answered on ARM-RX channel 3 when attr & 3 (REPORT.txt 2).
++ */
++#define SB_HDR(attr, type)	(2 | (attr) << 8 | (type) << 16)
++#define SB_ATTR_REPLY		2
++#define SB_TYPE_RESTORE		0x11	/* cpu0 restore finished -> wake word */
++#define SB_FIFO_FULL		8	/* the stock sender waits on != 8 */
++#define SB_MAX_WORDS		8
++#define SB_WAKE_NONE		0xffff	/* the ISR found no table row */
+ 
+ /* ---- SRAM A2 window (ARM address = ARISC address + 0x100000) ------------ */
+ #define SRAM_IMAGE_SIZE		0x23000	/* what goes into SRAM, vendor BL31 */
+@@ -414,6 +426,8 @@ struct h713_arisc {
+ 	void __iomem		*tx;		/* msgbox bank user1 */
+ 	void __iomem		*reset;		/* R_CPUCFG */
+ 	void __iomem		*cpus_clk;	/* R_PRCM CPUS timer gates */
++	u32			wake_reason;	/* last 0x11 answer */
++	unsigned int		standby_cycles;
+ 
+ 	struct mutex		lock;		/* one exchange at a time */
+ 	u8			seq;		/* rolling sequence number */
+@@ -1143,16 +1157,17 @@ static int arisc_read_frame(struct h713_arisc *a, unsigned int ch, u32 *words,
+  * byte into a buffer and sends that buffer word by word (0x76a8), so what
+  * arrives depends on the lanes of its byte accesses:
+  *
+- *   little-endian window over the SRAM (RTC GP3 stale or 0, as before the
+- *   tree): the bytes are the ARM's view of the ROM string, which is stored
++ *   little-endian window over the SRAM (RTC GP3 0 or near the SRAM): the
++ *   bytes are the ARM's view of the ROM string, which is stored
+  *   word-reversed -- off by one byte and reversed within every group of
+  *   four, "rojector-...", @lane 0;
+- *   big-endian lanes (GP3 = a tree in DRAM, the window is spent on it): the
+- *   string as written, reversed within every group of four, @lane 3.
++ *   big-endian lanes (GP3 points into DRAM, at the parameter tree of the
++ *   vendor's standby, and the window is spent on it): the string as
++ *   written, reversed within every group of four, @lane 3.
+  *
+  * The image's own describe string (arisc_image_version()) tells which one
+- * this boot is. Nothing else is trusted: a tree that did not load leaves GP3
+- * as it was, and whatever it held decides the lanes.
++ * this boot is. Nothing else is trusted: this driver does not write GP3, and
++ * whatever the boot chain left there decides the lanes.
+  */
+ static void arisc_notify_decode(const u8 *raw, unsigned int nb, unsigned int skew,
+ 				char *p, size_t len)
+@@ -1182,6 +1197,18 @@ static void arisc_notify_version(struct h713_arisc *a, const u32 *words,
+ 		nb += 4;
+ 	}
+ 
++	/*
++	 * crust closes the vendor's little-endian window first thing and keeps
++	 * its own byte order (ARM byte j is its byte j): lane 0, and its notify
++	 * uses the vendor's skewed packing.
++	 */
++	if (a->off.crust) {
++		a->lane = 0;
++		arisc_notify_decode(raw, nb, 1, a->notify_version,
++				    sizeof(a->notify_version));
++		return;
++	}
++
+ 	arisc_notify_decode(raw, nb, 0, be, sizeof(be));
+ 	arisc_notify_decode(raw, nb, 1, a->notify_version,
+ 			    sizeof(a->notify_version));
+@@ -1236,6 +1263,124 @@ static int arisc_startup_handshake(struct h713_arisc *a)
+ 	return 0;
+ }
+ 
++/* ---- the standby dispatcher --------------------------------------------- */
++
++static int arisc_sb_push(struct h713_arisc *a, u32 word)
++{
++	ktime_t start = ktime_get();
++
++	while (readl(a->tx + U1_FIFO_STAT(PORT_STANDBY)) == SB_FIFO_FULL) {
++		if (ktime_ms_delta(ktime_get(), start) > FIFO_EMPTY_TIMEOUT_MS)
++			return -EBUSY;
++		usleep_range(100, 200);
++	}
++	writel(word, a->tx + U1_MSG_DATA(PORT_STANDBY));
++	return 0;
++}
++
++/*
++ * One request without data words; the answer from channel 3 is the header
++ * with the result, a count, then data. Returns that count or an error.
++ */
++static int arisc_sb_request(struct h713_arisc *a, u8 type, u8 attr, u32 *reply)
++{
++	u32 words[SB_MAX_WORDS];
++	unsigned int i, n, count;
++	int ret;
++
++	if (attr)
++		arisc_drain_channel(a, CH_NOTIFY);
++	ret = arisc_sb_push(a, SB_HDR(attr, type)) ?: arisc_sb_push(a, 0);
++	if (ret) {
++		dev_err(a->dev, "standby: port 3 stays full, type 0x%02x not sent\n", type);
++		return ret;
++	}
++	if (!attr)
++		return 0;
++
++	ret = arisc_read_frame(a, CH_NOTIFY, words, SB_MAX_WORDS, 200, 20);
++	if (ret < 0) {
++		dev_err(a->dev, "standby: no answer to type 0x%02x (%d)\n", type, ret);
++		return ret;
++	}
++	n = ret;
++	count = n >= 2 ? words[1] & 0xff : SB_MAX_WORDS;
++	if (n < 2 || n > SB_MAX_WORDS || ((words[0] >> 16) & 0xff) != type ||
++	    words[0] >> 24 || 2 + count > n) {
++		dev_err(a->dev, "standby: answer to 0x%02x is %u words, first %08x (result %d)\n",
++			type, n, n ? words[0] : 0, n ? (s8)(words[0] >> 24) : 0);
++		return -EPROTO;
++	}
++	for (i = 0; i < count && i < 1; i++)
++		*reply = words[2 + i];
++	return count;
++}
++
++/*
++ * set wakeup src req (0x26): one word {type 31..30, value 29..0}; type 3 is
++ * the vendor's wake timer in milliseconds (REPORT 2.3, doku/139: the echo
++ * 0x00260202, 1, 0xc0001388 for 5000 ms). crust answers with result 0.
++ */
++#define SB_TYPE_WAKE_SET	0x26
++#define SB_TYPE_WAKE_CLR	0x25
++#define SB_WAKE_TIMER		(3U << 30)
++
++static int arisc_sb_wake_timer(struct h713_arisc *a, unsigned int ms)
++{
++	u8 type = ms ? SB_TYPE_WAKE_SET : SB_TYPE_WAKE_CLR;
++	u32 words[SB_MAX_WORDS];
++	int ret;
++
++	arisc_drain_channel(a, CH_NOTIFY);
++	ret = arisc_sb_push(a, SB_HDR(SB_ATTR_REPLY, type)) ?:
++	      arisc_sb_push(a, ms ? 1 : 0);
++	if (!ret && ms)
++		ret = arisc_sb_push(a, SB_WAKE_TIMER | (ms & 0x3fffffff));
++	if (ret) {
++		dev_err(a->dev, "standby: port 3 stays full, 0x%02x not sent\n", type);
++		return ret;
++	}
++	ret = arisc_read_frame(a, CH_NOTIFY, words, SB_MAX_WORDS, 200, 20);
++	if (ret < 2 || ((words[0] >> 16) & 0xff) != type || words[0] >> 24) {
++		dev_err(a->dev, "standby: 0x%02x not acknowledged (%d, %08x) -- the firmware does not serve port 3, no standby\n",
++			type, ret, ret > 0 ? words[0] : 0);
++		return ret < 0 ? ret : -EPROTO;
++	}
++	if (ms)
++		dev_info(a->dev, "standby: wake timer %u ms armed\n", ms);
++	else
++		dev_info(a->dev, "standby: firmware answers, no wake timer (key, IR)\n");
++	return 0;
++}
++
++/*
++ * After the resume the firmware sits in "wait ac327 resume" (0xe518) and
++ * drops every other frame until this one; its answer is the wake word.
++ */
++static int arisc_sb_restore_notify(struct h713_arisc *a)
++{
++	u32 wake = SB_WAKE_NONE;
++	int ret;
++
++	ret = arisc_sb_request(a, SB_TYPE_RESTORE, SB_ATTR_REPLY, &wake);
++	if (ret < 0)
++		return ret;
++	/*
++	 * crust answers 0 when it did not sleep since the last 0x11: the
++	 * suspend was abandoned after the noirq phase, before TF-A's request.
++	 */
++	if (ret && !wake && a->off.crust) {
++		dev_info(a->dev, "standby: the firmware did not sleep (abandoned before TF-A's request)\n");
++		return 0;
++	}
++	a->wake_reason = ret ? wake : SB_WAKE_NONE;
++	a->standby_cycles++;
++	/* 149 power key, 155 IR, 10 CEC, 147 RTC, 0xc0000000 timer (report 2.4) */
++	dev_info(a->dev, "standby %u: wake word 0x%x\n", a->standby_cycles,
++		 a->wake_reason);
++	return 0;
++}
++
+ /* ---- sending ------------------------------------------------------------ */
+ 
+ /*
+@@ -2948,6 +3093,71 @@ static void h713_arisc_remove(struct platform_device *pdev)
+ 	 */
+ }
+ 
++/*
++ * prepare: refuse before any other driver has quiesced anything (the late
++ * and noirq callbacks come after the damage). Only the real standby is ours;
++ * s2idle ("mem" on a BL31 without SYSTEM_SUSPEND) passes through untouched.
++ */
++static int h713_arisc_prepare(struct device *dev)
++{
++	struct h713_arisc *a = dev_get_drvdata(dev);
++
++	if (pm_suspend_target_state != PM_SUSPEND_MEM)
++		return 0;
++	if (!a->running) {
++		dev_err(dev, "standby refused: the firmware is not running\n");
++		return -EOPNOTSUPP;
++	}
++	/*
++	 * The vendor firmware leaves the DRAM's self-refresh with the
++	 * dram_para it finds at arisc_para (0x145b0 -> 0x14004 -> 0x13884:
++	 * clock, type, zq, odt, para1/2, mr, tpr), and this driver puts zeros
++	 * and the message pool there: clock 0 goes into PLL_DDR and the lock
++	 * poll at 0x13644 never ends. Until the block carries the board's real
++	 * dram_para, standby to RAM is crust's only.
++	 */
++	if (!a->off.crust) {
++		dev_err(dev, "standby refused: the vendor firmware would wake the DRAM with an empty dram_para\n");
++		return -EOPNOTSUPP;
++	}
++	return 0;
++}
++
++/*
++ * noirq: the last stop before TF-A's "cpu op req". One round trip on port 3
++ * right before it: the clear frame 0x25, so a crust that stopped serving the
++ * port refuses the standby here instead of taking the cluster down with
++ * nobody to wake it.
++ */
++static int h713_arisc_suspend_noirq(struct device *dev)
++{
++	struct h713_arisc *a = dev_get_drvdata(dev);
++
++	if (pm_suspend_target_state != PM_SUSPEND_MEM)
++		return 0;
++	if (!a->running || !a->off.crust)
++		return -EOPNOTSUPP;
++	return arisc_sb_wake_timer(a, 0);
++}
++
++static int h713_arisc_resume_noirq(struct device *dev)
++{
++	struct h713_arisc *a = dev_get_drvdata(dev);
++
++	if (pm_suspend_target_state != PM_SUSPEND_MEM)
++		return 0;
++	mutex_lock(&a->lock);
++	arisc_sb_restore_notify(a);
++	mutex_unlock(&a->lock);
++	return 0;
++}
++
++static const struct dev_pm_ops h713_arisc_pm_ops = {
++	.prepare = h713_arisc_prepare,
++	NOIRQ_SYSTEM_SLEEP_PM_OPS(h713_arisc_suspend_noirq,
++				  h713_arisc_resume_noirq)
++};
++
+ static const struct of_device_id h713_arisc_of_match[] = {
+ 	{ .compatible = "allwinner,sun50i-h713-arisc" },
+ 	{ }
+@@ -2960,6 +3170,7 @@ static struct platform_driver h713_arisc_driver = {
+ 	.driver	= {
+ 		.name		= "sun50i-h713-arisc",
+ 		.of_match_table	= h713_arisc_of_match,
++		.pm		= pm_sleep_ptr(&h713_arisc_pm_ops),
+ 	},
+ };
+ module_platform_driver(h713_arisc_driver);

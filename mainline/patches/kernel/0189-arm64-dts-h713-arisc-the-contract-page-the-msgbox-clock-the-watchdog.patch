@@ -1,0 +1,97 @@
+arm64: dts: h713: arisc - the contract page, the msgbox clock, the watchdog
+
+Three things a crust-capable arisc driver needs from the tree
+(crust-20261007 review K17, F10/K6, KD-11; A8 and W1 of the crust release
+design):
+
+- "sram" ends at 0x123c00 instead of 0x123000. crust's contract page
+  lies at 0x123800..0x123bff, behind the 140 KiB of a vendor image, and
+  the driver widened its mapping at run time to reach it. The SCPI area
+  above stays outside. The vendor path copies its fixed 140 KiB as
+  before.
+- clocks/clock-names: the msgbox bus clock. A driver that reads and
+  writes the msgbox in resume_noirq must not rely on cpu_comm (or
+  clk_ignore_unused) keeping it on. Only the clock: cpu_comm requests the
+  msgbox reset exclusively and only deasserts it, so a second requester
+  would buy a -EBUSY and no protection. clock-names "msgbox" lets a
+  driver ask by name or by index.
+- allwinner,watchdog: the SoC watchdog. A driver that hands a standby to
+  crust must make itself a consumer of it with a device link, so that in
+  a standby its noirq step (the request that hands the sleep to crust)
+  comes before the watchdog's suspend_noirq stops the watchdog, and on
+  resume after its resume_noirq has re-armed it - an order that otherwise
+  rests on the dpm list, which a deferred probe reorders.
+
+The binding text states this as what the properties promise and ask, not
+as what a driver does. The arisc driver in the tree today reads neither
+clocks nor allwinner,watchdog and maps "sram" without asking for the
+region, so for it this changes nothing; taking the clock and adding the
+link is the crust-capable driver's part (A8). The vendor image is not
+affected.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1594,11 +1594,13 @@
+ 		 * Binding:
+ 		 *   compatible    "allwinner,sun50i-h713-arisc"
+ 		 *   reg/reg-names five windows, in this order:
+-		 *     "sram"       SRAM A2 as the ARM sees it. The firmware image
+-		 *                  goes to the start of it (140 KiB); the running
+-		 *                  firmware keeps its message buffer, its HDMI
+-		 *                  port state and its hotplug counters in the
+-		 *                  same window.
++		 *     "sram"       SRAM A2 as the ARM sees it, up to the end of
++		 *                  crust's contract page (0x123800..0x123bff)
++		 *                  and short of the SCPI area above it. A vendor
++		 *                  image goes to the start of it (140 KiB), crust
++		 *                  to +0x10000; the running firmware keeps its
++		 *                  message buffer, its HDMI port state and its
++		 *                  hotplug counters in the same window.
+ 		 *     "msgbox-rx"  msgbox bank user0, first sub-block: the
+ 		 *                  channels the ARISC answers on (startup notify
+ 		 *                  on ch3, EDID and status on ch1).
+@@ -1610,9 +1612,23 @@
+ 		 *     "cpus-clk"   the three R_PRCM gates boot0 turns on before
+ 		 *                  the image is copied ("prcm cpus timer clock
+ 		 *                  enable").
++		 *   clocks        optional, clock-names "msgbox": the msgbox bus
++		 *                 clock. A driver that uses the msgbox holds it;
++		 *                 cpu_comm holds it as well. Not its reset:
++		 *                 cpu_comm takes that one exclusively and only
++		 *                 ever deasserts it.
++		 *   allwinner,watchdog
++		 *                 optional phandle of the SoC watchdog. A driver
++		 *                 that hands a standby to the firmware must link
++		 *                 itself to it as consumer, so that its noirq
++		 *                 step runs before the watchdog's suspend_noirq
++		 *                 stops the watchdog and after its resume_noirq
++		 *                 has re-armed it. A driver without standby
++		 *                 support may ignore it.
+ 		 *   firmware-name index 0 the ARISC image, index 1 the default
+ 		 *                 EDID (both blocks, 512 bytes) the driver hands
+-		 *                 to the firmware.
++		 *                 to the firmware. This file names the vendor
++		 *                 image; a board that boots crust names its own.
+ 		 *   allwinner,edid-version-mask
+ 		 *                 optional u32, 0..15, default 0. One bit per
+ 		 *                 HDMI input port: bit N set serves port N the
+@@ -1638,13 +1654,16 @@
+ 		 */
+ 		arisc: arisc@100000 {
+ 			compatible = "allwinner,sun50i-h713-arisc";
+-			reg = <0x00100000 0x23000>,
++			reg = <0x00100000 0x23c00>,
+ 			      <0x03003000 0x100>,
+ 			      <0x03003400 0x100>,
+ 			      <0x07000400 0x4>,
+ 			      <0x07010110 0xc>;
+ 			reg-names = "sram", "msgbox-rx", "msgbox-tx",
+ 				    "reset", "cpus-clk";
++			clocks = <&ccu CLK_BUS_MSGBOX>;
++			clock-names = "msgbox";
++			allwinner,watchdog = <&watchdog>;
+ 			firmware-name = "h713-arisc.bin", "hy310-edid.bin";
+ 			allwinner,edid-version-mask = <0>;
+ 			status = "okay";

@@ -39,6 +39,16 @@ without touching the environment - a way in with no serial console and no saved 
 later judged it redundant for a user, since pressing the key at any point already starts the boot anyway,
 and left the code in rather than removing it (`doku/103-plan-einschaltgate.md` §5.1).
 
+## With crust and the standby
+
+The gate's code does not change for crust. BL31 starts crust from the FIT before U-Boot proper runs, so
+on the HY310 the ARISC firmware is already up while the gate waits; what that does to the 4 W is not
+measured. A standby ([standby.md](../subsystems/standby.md)) never passes through here: crust releases
+CPU0 straight into BL31, which resumes Linux, and GP5 keeps the `RUN1` this boot wrote. Nothing in crust
+writes GP5. So a watchdog reset out of a failed standby comes back through the gate as a warm restart
+and boots straight through, lamp on; whether it should instead go dark into the gate is the owner's
+decision, and until it is taken nothing here is changed (not measured either way).
+
 ## Turning it off
 
 ```

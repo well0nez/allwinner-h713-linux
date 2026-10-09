@@ -1,0 +1,200 @@
+soc: sunxi: h713-arisc: crust - the record of the previous run
+
+When a standby ends in a reset - crust's clean reset or its sleep net -
+the next boot's loader clears the page, and with it every trace of where
+the run stopped. Contract 5 has a record for that, P at +0x2d0: the
+loader copies the status and wake words, TF-A's word, the confirmation,
+the diagnostic words and the K block into it, under a checksum, before
+it clears the rest of the page. TF-A writes one when it starts crust at
+boot; this driver now writes one before it loads crust over a running
+one, and clears the whole page but P (crust clears K and X itself at
+its first start, which the cleared starts word tells it).
+
+The first thing the probe does, before it decides about the image, is
+to report a record that has its mark, TF-A or Linux as its source, its
+checksum and is not reported yet, and to mark it reported. A run that
+ended out of order - a phase other than off or released, a reset cause,
+error bits, an exception, a TF-A event, an R_WDOG found armed (MODE bit
+0, as TF-A reads it) - is one warning with phase, step, the cause by
+number and name, error bits, the milliseconds in the phase and the reset
+path; anything else is a debug line.
+
+A record this driver writes is reported right away. What it copies is
+the run before the load, at probe often the last boot's: a boot chain
+whose TF-A does not start crust leaves that page as it was, and a report
+by the next probe would put it one boot late.
+
+The checksum is the complement of the 32-bit sum, so a page of zeroes
+does not pass.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -466,6 +466,35 @@ static bool crust_accept(struct h713_arisc *a, u32 min)
+ 				    crust_rd(a, H713_COMPAT), min, CRUST_KNOWN);
+ }
+ 
++static const char *crust_phase(u32 sb_state)
++{
++	static const char * const names[] = {
++		"off", "presleep", "cpu-op", "sleep", "resuming", "released",
++		"reset",
++	};
++	unsigned int phase = h713_sb_phase(sb_state);
++
++	return phase < ARRAY_SIZE(names) ? names[phase] : "?";
++}
++
++static const char *crust_cause(u32 sb_state)
++{
++	static const char * const names[] = {
++		[0] = "none",
++		[H713_CAUSE_PRESLEEP] = "presleep budget over",
++		[H713_CAUSE_RESUMING] = "resuming budget over",
++		[H713_CAUSE_DRAM_PHY] = "DRAM PHY error",
++		[H713_CAUSE_POLL] = "poll deadline",
++		[H713_CAUSE_RESTART] = "restart while the cluster was down",
++		[H713_CAUSE_CPU_OP] = "invalid cpu op",
++		[H713_CAUSE_LOOP] = "third restart in a phase",
++		[H713_CAUSE_PLL_LOCK] = "PLL lock deadline",
++	};
++	unsigned int cause = h713_sb_cause(sb_state);
++
++	return cause < ARRAY_SIZE(names) && names[cause] ? names[cause] : "?";
++}
++
+ /*
+  * Byte access to data the firmware owns. The core is big endian and the
+  * SRAM word stays the same integer on both sides, so the byte the firmware
+@@ -1069,20 +1098,113 @@ static int arisc_load_image(struct h713_arisc *a, const u8 *data, size_t size)
+ 	return 0;
+ }
+ 
++/*
++ * The record a loader leaves before it restarts crust (P, contract 5): the
++ * status and wake words, TF-A's word, the confirmation, the diagnostic words
++ * and the K block of the crust that ran, under a checksum. TF-A writes one
++ * at boot, which the probe reports; this driver writes one before it loads
++ * crust and reports it at once.
++ */
++#define P_IDX(off)		(((off) - H713_P_STATUS) / 4)
++#define P_OF_D(off)		(H713_P_DIAG + (off) - H713_DIAG)
++#define P_OF_K(off)		(H713_P_K + (off) - H713_K)
++#define P_RWDOG_ARMED		BIT(0)	/* MODE bit 0, as TF-A reads it */
++
++static u32 p_word(const u32 *w, unsigned int off)
++{
++	return w[P_IDX(off)];
++}
++
++static void arisc_p_record(struct h713_arisc *a)
++{
++	u32 w[H713_P_SUM_WORDS] = { };
++	unsigned int i;
++
++	if (crust_rd(a, H713_MAGIC) != H713_MAGIC_VALUE ||
++	    crust_rd(a, H713_VERSION) < 5)
++		return;
++	w[P_IDX(H713_P_STATUS)] = crust_rd(a, H713_STATUS);
++	w[P_IDX(H713_P_WAKE)] = crust_rd(a, H713_WAKE);
++	w[P_IDX(H713_P_TFA_WORD)] = crust_rd(a, H713_TFA_WORD);
++	w[P_IDX(H713_P_NET_CONFIRM)] = crust_rd(a, H713_NET_CONFIRM);
++	for (i = 0; i < H713_DIAG_WORDS; i++)
++		w[P_IDX(H713_P_DIAG) + i] = crust_rd(a, H713_DIAG + 4 * i);
++	for (i = 0; i < H713_K_WORDS; i++)
++		w[P_IDX(H713_P_K) + i] = crust_rd(a, H713_K + 4 * i);
++	for (i = 0; i < H713_P_SUM_WORDS; i++)
++		crust_wr(a, w[i], H713_P_STATUS + 4 * i);
++	crust_wr(a, h713_p_sum(w), H713_P_SUM);
++	crust_wr(a, h713_p_hdr(H713_P_FROM_LINUX), H713_P_HDR);
++}
++
++/*
++ * Once per record: a run that ended out of order (not off or released, a
++ * reset cause, error bits, an exception, a TF-A event, an R_WDOG found
++ * armed) is a warning, anything else a debug line. Bit 0 of the header
++ * marks it reported.
++ */
++static void arisc_p_report(struct h713_arisc *a)
++{
++	u32 w[H713_P_SUM_WORDS], hdr, sb, err, exc, tfa, rwdog;
++	unsigned int i;
++
++	if (a->sram_size < CRUST_PAGE_END)
++		return;
++	hdr = crust_rd(a, H713_P_HDR);
++	if (!h713_p_source(hdr) || hdr & H713_P_REPORTED)
++		return;
++	for (i = 0; i < H713_P_SUM_WORDS; i++)
++		w[i] = crust_rd(a, H713_P_STATUS + 4 * i);
++	if (!h713_p_valid(hdr, crust_rd(a, H713_P_SUM), w)) {
++		dev_dbg(a->dev, "record of the previous run: header 0x%08x or checksum wrong, ignored\n",
++			hdr);
++		return;
++	}
++	crust_wr(a, hdr | H713_P_REPORTED, H713_P_HDR);
++
++	sb = p_word(w, P_OF_K(H713_SB_STATE));
++	err = p_word(w, P_OF_K(H713_ERR));
++	exc = p_word(w, P_OF_D(H713_DIAG_EXCEPTION));
++	tfa = p_word(w, H713_P_TFA_WORD);
++	rwdog = p_word(w, H713_P_RWDOG);
++	if ((h713_sb_phase(sb) == H713_PHASE_OFF ||
++	     h713_sb_phase(sb) == H713_PHASE_RELEASED) &&
++	    !h713_sb_cause(sb) && !err && !exc && !h713_tfa_event(tfa) &&
++	    !(rwdog & P_RWDOG_ARMED)) {
++		dev_dbg(a->dev, "previous run (record of %s): phase %s, cycle %u, nothing out of order\n",
++			h713_p_source(hdr) == H713_P_FROM_BL31 ? "TF-A" : "Linux",
++			crust_phase(sb), p_word(w, P_OF_K(H713_CYCLE)));
++		return;
++	}
++	dev_warn(a->dev, "previous run (record of %s): crust in phase %s, step 0x%x, cause %u (%s), err 0x%x (detail 0x%08x, data 0x%08x), %u ms in the phase, reset path 0x%x, exception 0x%08x, cycle %u; TF-A word 0x%08x, R_WDOG 0x%08x, GP5 0x%08x\n",
++		 h713_p_source(hdr) == H713_P_FROM_BL31 ? "TF-A" : "Linux",
++		 crust_phase(sb), p_word(w, P_OF_D(H713_DIAG_STEP)),
++		 h713_sb_cause(sb), crust_cause(sb), err, p_word(w, P_OF_K(H713_ERR_DETAIL)),
++		 p_word(w, P_OF_K(H713_ERR_DATA)), p_word(w, P_OF_K(H713_NET_MS)),
++		 p_word(w, P_OF_K(H713_FAIL_PATH)), exc,
++		 p_word(w, P_OF_K(H713_CYCLE)), tfa, rwdog,
++		 p_word(w, H713_P_GP5));
++}
++
+ static void arisc_write_para(struct h713_arisc *a)
+ {
+ 	unsigned int i;
+ 
+ 	if (a->off.crust) {
+ 		/*
+-		 * No struct arisc_para in crust's contract; fresh diag words,
+-		 * and no magic or status left from an earlier crust: until this
+-		 * one writes them, the page must not look like a running one.
++		 * No struct arisc_para in crust's contract. The page goes to P
++		 * first, then everything but P is cleared: until the new crust
++		 * writes them, magic and status must not look like a running
++		 * one, and with its starts word at 0 it clears K and X itself.
++		 * The record is reported at once, not by the next probe: it
++		 * holds the run before this load - at probe often the last
++		 * boot's, which no TF-A recorded because none started crust.
+ 		 */
+-		for (i = 0; i < H713_DIAG_WORDS; i++)
+-			crust_wr(a, 0, H713_DIAG + 4 * i);
+-		crust_wr(a, 0, H713_MAGIC);
+-		crust_wr(a, 0, H713_STATUS);
++		arisc_p_record(a);
++		arisc_p_report(a);
++		for (i = 0; i < H713_PAGE_SIZE; i += 4)
++			if (i < H713_P_HDR || i >= H713_P_END)
++				crust_wr(a, 0, i);
+ 		return;
+ 	}
+ 	for (i = 0; i < SRAM_PARA_WORDS; i++)
+@@ -2945,6 +3067,9 @@ static int h713_arisc_start(struct h713_arisc *a)
+ 	of_property_read_string_index(a->dev->of_node, "firmware-name", 0,
+ 				      &name);
+ 
++	/* Before anything decides about the image: how the last run ended. */
++	arisc_p_report(a);
++
+ 	ret = request_firmware(&fw, name, a->dev);
+ 	/*
+ 	 * A DT whose "sram" window stops short of crust's contract page is

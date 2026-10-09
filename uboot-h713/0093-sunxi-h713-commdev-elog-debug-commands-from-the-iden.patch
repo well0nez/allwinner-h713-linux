@@ -1,7 +1,7 @@
 From a830902a94d4fcca53e0de15484a1c967147ee0b Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 3 Oct 2026 22:50:51 +0200
-Subject: [PATCH 93/95] sunxi: h713: commdev/elog debug commands from the
+Subject: [PATCH 93/96] sunxi: h713: commdev/elog debug commands from the
  identity row; hy310.env panic=10
 
 FB-UBOOTDBG 0001: the `commdev` and `elog` commands take the cpu_comm cells from the board's identity row

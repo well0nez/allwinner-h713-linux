@@ -1,0 +1,102 @@
+From 9803ce556c25f16721b0d22f5dcf9a39e154c27e Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 02:26:00 +0200
+Subject: [PATCH 09/27] tf-a: h713: deep-review fixes for the standby (counter,
+ FIFO, mpidr)
+
+FB-STANDBY tfa-0003 (deep review 27.09.2026), the sunxi_standby.c part,
+rebased by crust-20261007: the Arm system counter is saved before the cpu op
+req and restored with CNTCR after the wake, as the stock BL31 does (the
+ARISC resets the CPU subsystem); a request nobody reads is detected by the
+FIFO that keeps it; the mpidr word is the vendor's x19 & 0xff. Left out of
+tfa-0003: the static map of the SCP staging block (tfa-0002 maps it
+dynamically for the copy) with its MAX_STATIC_MMAP_REGIONS bump, and the
+console scope (this branch already keeps the console at run time).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/sun50i_h713/sunxi_standby.c | 43 +++++++++++++++++++++-
+ 1 file changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/plat/allwinner/sun50i_h713/sunxi_standby.c b/plat/allwinner/sun50i_h713/sunxi_standby.c
+index a5331c8d8..7888c8cde 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_standby.c
++++ b/plat/allwinner/sun50i_h713/sunxi_standby.c
+@@ -57,6 +57,22 @@
+ #define STANDBY_ARGS		5
+ #define STANDBY_PSTATE_OFF	3
+ 
++/*
++ * The Arm system counter lives in the CPU subsystem the firmware resets
++ * (0x4b28: CPU_SYS_RESET). The stock BL31 saves CNTCV and CNTFID0 before the
++ * request and restores them with CNTCR after the 0x11 exchange (monitor.asm
++ * 0x1084-0x10b8, 0xf7c-0xfc4); without that the counter stands still after
++ * the wake and the first udelay never ends. Deep review 27.09.2026.
++ */
++#define CNT_READ_CV_LO		0x08110000
++#define CNT_READ_CV_HI		0x08110004
++#define CNT_CTRL_CR		0x08120000
++#define CNT_CTRL_CV_LO		0x08120008
++#define CNT_CTRL_CV_HI		0x0812000c
++#define CNT_CTRL_FID0		0x08120020
++
++static uint32_t cnt_lo, cnt_hi, cnt_fid;
++
+ static int standby_push(uint32_t word)
+ {
+ 	unsigned int i;
+@@ -74,7 +90,7 @@ static int standby_push(uint32_t word)
+ int sunxi_system_suspend_enter(void)
+ {
+ 	uint32_t args[STANDBY_ARGS] = {
+-		(uint32_t)read_mpidr(),
++		(uint32_t)read_mpidr() & 0xff,	/* the vendor's x19 & 0xff */
+ 		(uint32_t)sunxi_sec_entrypoint,
+ 		STANDBY_PSTATE_OFF, STANDBY_PSTATE_OFF, STANDBY_PSTATE_OFF,
+ 	};
+@@ -87,6 +103,10 @@ int sunxi_system_suspend_enter(void)
+ 		return -1;
+ 	}
+ 
++	cnt_lo = mmio_read_32(CNT_READ_CV_LO);
++	cnt_hi = mmio_read_32(CNT_READ_CV_HI);
++	cnt_fid = mmio_read_32(CNT_CTRL_FID0);
++
+ 	if (standby_push(STANDBY_HDR(STANDBY_STATE, STANDBY_ATTR_NO_REPLY,
+ 				     STANDBY_TYPE_CPU_OP)) != 0 ||
+ 	    standby_push(STANDBY_ARGS) != 0)
+@@ -96,6 +116,21 @@ int sunxi_system_suspend_enter(void)
+ 			goto full;
+ 	}
+ 
++	/*
++	 * The main loop takes the frame whole (0x7970-0x79e8) within
++	 * microseconds; a FIFO that keeps its words has no reader behind it - a
++	 * dead or absent ARISC - and sleeping would be a hang with nothing to
++	 * wake us.
++	 */
++	for (i = 0; i < FIFO_WAIT_ITERS; i++) {
++		if (mmio_read_32(MSGBOX_FIFO_STAT(PORT_STANDBY)) == 0)
++			break;
++		udelay(FIFO_WAIT_US);
++	}
++	if (i == FIFO_WAIT_ITERS) {
++		ERROR("PSCI: msgbox port 3 keeps the request, no ARISC firmware is reading it\n");
++		return -1;
++	}
+ 	NOTICE("PSCI: system suspend, cpu op req sent, entry 0x%lx\n",
+ 	       sunxi_sec_entrypoint);
+ 	return 0;
+@@ -107,6 +142,12 @@ full:
+ 
+ void sunxi_system_suspend_finish(void)
+ {
++	/* the system counter, as the stock BL31 restores it after 0x11 */
++	mmio_write_32(CNT_CTRL_CR, 0);
++	mmio_write_32(CNT_CTRL_FID0, cnt_fid);
++	mmio_write_32(CNT_CTRL_CV_LO, cnt_lo);
++	mmio_write_32(CNT_CTRL_CV_HI, cnt_hi);
++	mmio_write_32(CNT_CTRL_CR, 1);
+ 	/*
+ 	 * The secure peripheral controller and the CCU's security switch live
+ 	 * in the domain that stayed powered, but 0xdd20/0xddec write key

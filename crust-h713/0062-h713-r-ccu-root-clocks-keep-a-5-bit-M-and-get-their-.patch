@@ -1,0 +1,77 @@
+From 96f200e152a9ef0b03b40a671224a39feb722686 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 20:41:04 +0200
+Subject: [PATCH 62/80] h713: r-ccu: root clocks keep a 5-bit M and get their
+ fields replaced
+
+The deep path saved the root clocks with the blob's mask 0x07000303,
+M bits 1..0, P 9..8 and the source. R_PRCM 0x000, 0x00c and 0x010 have a
+5-bit M in the kernel's D1 model, so bits 4..2 were lost across a deep
+sleep (PRUEFUNG4 clocks F8). The restore ORed the saved divider into
+what the register read, which is right only if the way down cleared it;
+a domain reset or a restart does not (PRUEFUNG5 DEEP-04).
+
+The mask is now 0x0700031f, and the restore replaces each field: the
+divider first, then the source, the blob's order. In a normal cycle the
+way down cleared bits 9..0, so the values written differ from the blob's
+only where Linux set M bits 4..2. Deep sleep only.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clock/sun50i-h713-r-ccu.c | 23 ++++++++++++++++++-----
+ 1 file changed, 18 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index d8a2c44..6c4b383 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -200,7 +200,14 @@ cpus_clk_osc24m(void)
+ #define RTC_LOSC_CTRL   (DEV_RTC + 0x000)
+ #define LOSC_SEEN       H713_SEEN_LOSC
+ 
+-/* 0xcdd8's table 0x17124: the clocks it moves to source 0, divider 1. */
++/*
++ * 0xcdd8's table 0x17124: the clocks it moves to source 0, divider 1. The
++ * blob saves M 1..0, P 9..8 and the source; R_PRCM 0x000/0x00c/0x010 have
++ * a 5-bit M (the kernel's D1 model), so bits 4..2 are saved too (PRUEFUNG4
++ * clocks F8).
++ */
++#define ROOT_DIV        0x0000031f
++#define ROOT_SRC        0x07000000
+ static const uintptr_t root_clk[8] = {
+ 	DEV_CCU + 0x500, DEV_CCU + 0x510, DEV_CCU + 0x520, DEV_CCU + 0x524,
+ 	DEV_R_PRCM + 0x124, DEV_R_PRCM + 0x000, DEV_R_PRCM + 0x00c,
+@@ -231,23 +238,29 @@ root_clocks_to_osc24m(void)                             /* 0xcdd8(0) */
+ 	for (uint8_t i = 0; i < ARRAY_SIZE(root_clk); ++i) {
+ 		uint32_t v = mmio_read_32(root_clk[i]);
+ 
+-		root_saved[i] = v & 0x07000303;                 /* 0xcec0 */
+-		v &= 0xf8ffffff;                                /* source 0 */
++		root_saved[i] = v & (ROOT_SRC | ROOT_DIV);      /* 0xcec0 */
++		v &= ~ROOT_SRC;                                 /* source 0 */
+ 		mmio_write_32(root_clk[i], v);                  /* 0xcefc */
+ 		mmio_write_32(root_clk[i], v & 0xfffffc00);     /* 0xcf0c */
+ 		udelay(10000);                                  /* 0xcf14 */
+ 	}
+ }
+ 
++/*
++ * The blob's order, divider first, then the source (0xce6c); each field is
++ * replaced, not ORed into what the register reads, so a divider the way
++ * down did not clear (a domain reset, a restart) cannot merge with the
++ * saved one (PRUEFUNG5 DEEP-04).
++ */
+ static void
+ root_clocks_restore(void)                               /* 0xcdd8(4) */
+ {
+ 	for (uint8_t i = 0; i < ARRAY_SIZE(root_clk); ++i) {
+ 		uint32_t v = mmio_read_32(root_clk[i]);
+ 
+-		v |= root_saved[i] & 0x00000303;                /* 0xce6c */
++		v = (v & ~ROOT_DIV) | (root_saved[i] & ROOT_DIV);
+ 		mmio_write_32(root_clk[i], v);
+-		v = (v & 0xf8ffffff) | (root_saved[i] & 0x07000000);
++		v = (v & ~ROOT_SRC) | (root_saved[i] & ROOT_SRC);
+ 		mmio_write_32(root_clk[i], v);
+ 		udelay(10000);
+ 	}

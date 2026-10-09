@@ -1,0 +1,111 @@
+soc: sunxi: cpu_comm: count suspends to RAM under a name of their own
+
+The park line and the wake warning said "standby N", with N counted by
+cpu_comm: suspends to RAM of this boot that reached suspend_late. The
+arisc driver prints "standby N:" as well, with crust's cycle number. The
+two drift apart after a suspend that aborts between the late and the noirq
+phase, after a module reload and on cycles without a running MIPS, and a
+report with "parked since standby 3" next to "standby 5: wake ..." reads
+as if they meant the same thing. cpu_comm now says "suspend-to-RAM #N" in
+both lines and in /proc/cpu_comm/status, and the counter is renamed.
+
+The park line also claimed -ENODEV for ioctls. cpu_comm_ioctl() checks
+cpu_comm_suspend_flag first and answers -EFAULT; only the kernel path
+through cpu_comm_call() and SendComm2CPUEx() gives -ENODEV. The line now
+says so. Two comments lose references to review ids that a reader of the
+tree cannot look up.
+
+Log text and comments only. Compiled out of tree with W=1, no new warning.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -533,9 +533,9 @@ extern u32 comm_intrsem[];
+ extern int cpu_comm_suspend_flag;
+ 
+ /*
+- * Standby to RAM that parked the MIPS (cpu_comm_dev.c), 0 while it is not
+- * parked. Set under cpu_comm_call_mutex; RPCs fail with -ENODEV until a
+- * reload clears it.
++ * Number of the suspend to RAM that parked the MIPS (cpu_comm_dev.c counts
++ * them per boot), 0 while it is not parked. Set under cpu_comm_call_mutex;
++ * RPCs fail with -ENODEV until a reload clears it.
+  */
+ extern unsigned int cpu_comm_parked_since;
+ 
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -297,7 +297,8 @@ static struct class *cpucommclass;
+ static struct proc_dir_entry *proc_dir;
+ int cpu_comm_suspend_flag;
+ unsigned int cpu_comm_parked_since;
+-static unsigned int cpu_comm_standby_count;	/* standby to RAM since boot */
++/* Suspends to RAM of this boot that reached suspend_late; not crust's cycle. */
++static unsigned int cpu_comm_s2r_count;
+ 
+ static struct device *cpu_comm_mbox_dev;
+ 
+@@ -1289,7 +1290,7 @@ static int cpu_comm_proc_show(struct seq_file *m, void *v)
+ 	seq_printf(m, "MIPS App Ready: %d\n", isCPUAppReady(CPU_ID_MIPS));
+ 	seq_printf(m, "Suspend: %d\n", cpu_comm_suspend_flag);
+ 	if (cpu_comm_parked_since)
+-		seq_printf(m, "MIPS Parked: since standby %u, reload missing\n",
++		seq_printf(m, "MIPS Parked: since suspend-to-RAM #%u, reload missing\n",
+ 			   cpu_comm_parked_since);
+ 	else
+ 		seq_puts(m, "MIPS Parked: no\n");
+@@ -2194,7 +2195,7 @@ static void cpu_comm_drv_remove(struct platform_device *pdev)
+ /*
+  * s2idle is refused while the MIPS runs: genpd powers TVFE and TVCAP off in
+  * the noirq phase whatever the runtime references say, and the MIPS polls
+- * its HDMI-RX PHY in TVCAP (KD-2). Standby to RAM parks it first, below.
++ * its HDMI-RX PHY in TVCAP. Standby to RAM parks it first, below.
+  */
+ static int cpu_comm_prepare(struct device *dev)
+ {
+@@ -2218,7 +2219,7 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 	 */
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+ 		return 0;
+-	cpu_comm_standby_count++;
++	cpu_comm_s2r_count++;
+ 	if (!cpu_comm_mips_running())
+ 		return 0;
+ 	ccu = ioremap(H713_CCU_MIPS_CLK, 0x10);
+@@ -2226,13 +2227,13 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 		return -ENOMEM;
+ 
+ 	/*
+-	 * Close the call path first and wait out a call in flight (KD-4):
++	 * Close the call path first and wait out a call in flight:
+ 	 * from here on cpu_comm_call() and SendComm2CPUEx() give -ENODEV,
+ 	 * and isCPUAppReady() no longer assumes. No setCPUReset() after the
+ 	 * reset: it takes shmem spinlock 3, which the MIPS may hold.
+ 	 */
+ 	mutex_lock(&cpu_comm_call_mutex);
+-	WRITE_ONCE(cpu_comm_parked_since, cpu_comm_standby_count);
++	WRITE_ONCE(cpu_comm_parked_since, cpu_comm_s2r_count);
+ 	mips_app_ready_assumed = 0;
+ 	mutex_unlock(&cpu_comm_call_mutex);
+ 
+@@ -2249,8 +2250,8 @@ static int cpu_comm_suspend_late(struct device *dev)
+ 		       rst, clk);
+ 		return -EIO;
+ 	}
+-	pr_info("cpu_comm: standby %u: coprocessor parked, kernel and ioctl RPCs fail with -ENODEV until it is reloaded\n",
+-		cpu_comm_standby_count);
++	pr_info("cpu_comm: suspend-to-RAM #%u: coprocessor parked, kernel RPCs fail with -ENODEV and ioctl RPCs with -EFAULT until it is reloaded\n",
++		cpu_comm_s2r_count);
+ 	return 0;
+ }
+ 
+@@ -2260,7 +2261,7 @@ static int cpu_comm_resume_early(struct device *dev)
+ 	unsigned int since = READ_ONCE(cpu_comm_parked_since);
+ 
+ 	if (since)
+-		pr_warn("cpu_comm: display coprocessor parked since standby %u, reload missing (TODO 3.3)\n",
++		pr_warn("cpu_comm: display coprocessor parked since suspend-to-RAM #%u, reload missing (TODO 3.3)\n",
+ 			since);
+ 	return 0;
+ }

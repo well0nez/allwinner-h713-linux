@@ -1,0 +1,83 @@
+From eb28bb58edf8a93d4738bd5dca305df77b0c8078 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 23:09:55 +0200
+Subject: [PATCH 73/80] h713: sleep: a disarm that does not take is recorded,
+ error bit 17
+
+When the R_WDOG's MODE still read armed after the disarm, release()
+kept SB_STATE bit 4 and the awake loop went on feeding it, but nothing
+recorded that the net never went off; the kernel checks only the phase
+in RELEASED and logged "net released" (review of the release work, G3;
+cross check of the contract, V5, crust side). The first start ignored
+the read back of its disarm altogether.
+
+Both now go through disarm(): a MODE that still reads bit 0 sets error
+bit 17 (detail 0 release, 1 first start, data the MODE read back). The
+net stays fed after a standby as before - a reset of a healthy box
+would be worse than a fed watchdog.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-sleep.c        | 23 +++++++++++++++++++----
+ platform/h713/include/platform/memory.h |  1 +
+ 2 files changed, 20 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-sleep.c b/drivers/hdmi/sun50i-h713-sleep.c
+index 5e9a4e6..dcd0e32 100644
+--- a/drivers/hdmi/sun50i-h713-sleep.c
++++ b/drivers/hdmi/sun50i-h713-sleep.c
+@@ -131,15 +131,30 @@ feed(void)
+ 	feed_next = cycle_counter_read() + FEED_MS * MS;
+ }
+ 
+-/* The net off (feed, MODE off, read back), the phase RELEASED. */
++/*
++ * The net off (feed, MODE off, read back); one that still reads armed is
++ * recorded (error bit 17, @where 0 release, 1 first start). After a
++ * standby it keeps SB_STATE bit 4 and stays fed: a reset of a box that is
++ * awake and well would be worse.
++ */
++static bool
++disarm(uint8_t where)
++{
++	uint32_t mode = h713_rwdog_disarm();
++
++	if (mode & 1)
++		h713_err(H713_ERR_RWDOG_DISARM, where, mode);
++	return mode & 1;
++}
++
++/* The net off, the phase RELEASED. */
+ static void
+ release(void)
+ {
+ 	uint32_t st = state() & ~(H713_SB_ARMED | H713_SB_TAKEN);
+ 
+ 	if (CONFIG(H713_SLEEP_NET) &&
+-	    (state() & (H713_SB_ARMED | H713_SB_TAKEN)) &&
+-	    (h713_rwdog_disarm() & 1))
++	    (state() & (H713_SB_ARMED | H713_SB_TAKEN)) && disarm(0))
+ 		st |= H713_SB_ARMED;
+ 	set_phase(st, H713_PH_RELEASED);
+ }
+@@ -273,7 +288,7 @@ h713_sleep_init(bool first)
+ 	mmio_write_32(H713_K_NET_FOUND, found);
+ 	if (found & 1) {
+ 		h713_err(H713_ERR_RWDOG_FOUND, 0, found);
+-		h713_rwdog_disarm();
++		disarm(1);
+ 	}
+ }
+ 
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index a7f9ac3..4a43dc9 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -241,6 +241,7 @@
+ #define H713_ERR_DRAM_SUM    14
+ #define H713_ERR_RWDOG_FOUND 15
+ #define H713_ERR_RWDOG_RESET 16
++#define H713_ERR_RWDOG_DISARM 17 /* MODE still armed after a disarm: detail 0 release, 1 first start */
+ 
+ /* Counter bytes for h713_cnt(), at the byte the ARM reads them from. */
+ #define H713_CNT_SB_DROP     (H713_K_CNT0 + 0) /* port 3 words, partial frames dropped */

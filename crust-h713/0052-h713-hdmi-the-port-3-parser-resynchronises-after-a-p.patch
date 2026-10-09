@@ -1,0 +1,115 @@
+From db083fd107599d9e2cbcd0ee08e89e7d63929c5f Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 19:15:43 +0200
+Subject: [PATCH 52/80] h713: hdmi: the port 3 parser resynchronises after a
+ partial frame
+
+sb_word() took any word after a frame as the next header and had no
+time limit for a frame. One partial frame - arisc_sb_wake_timer() stops
+after a failed push, a firmware restart with words in the FIFO - shifted
+every later frame, standby requests failed until the stream realigned by
+chance, and in the worst alignment a frame of the wrong type ran
+(PRUEFUNG5 F7, K15).
+
+A header now needs state 0 or 2 and one of the types 0x11, 0x22, 0x25,
+0x26, 0x90; its count must be at most 8; and a frame not complete
+within 100 ms is dropped at the next word. A dropped word or frame sets
+error bit 3 (detail: its position, data: the word) and counts in
+CNT0[7:0], and the next word is looked at as a header.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 45 +++++++++++++++++++++++--
+ platform/h713/include/platform/memory.h |  2 +-
+ 2 files changed, 44 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 617dfdd..4d3f3b1 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -175,6 +175,7 @@
+ #define CPU_OP_DELAY_US 50000
+ #define KEY_POLL_US     20000
+ #define KEY_DEBOUNCE    3
++#define SB_FRAME_US     100000 /* a port 3 frame not complete by then is dropped */
+ 
+ static uint8_t  edid[2 * EDID_BLOCK];
+ static bool     edid_valid;	/* .bss: no upload since this start */
+@@ -197,7 +198,7 @@ static uint8_t  seq;
+ static uint8_t  pump_state, pump_len, pump_idx, pump_type;
+ static uint8_t  sb_n, sb_count;
+ static uint32_t sb_hdr, sb_data[8];
+-static uint32_t hpd_deadline, key_deadline, ms_deadline;
++static uint32_t hpd_deadline, key_deadline, ms_deadline, sb_deadline;
+ static bool     wake_armed;	/* .bss: false again after a firmware restart */
+ static bool     woke;		/* a resume since the last 0x11 */
+ static uint8_t  key_low;
+@@ -809,14 +810,54 @@ sb_frame(void)
+ 	}
+ }
+ 
++/*
++ * Resynchronisation (PRUEFUNG5 F7, K15): a frame the ARM left half-sent -
++ * a push that failed after the header, a firmware restart with words in
++ * the FIFO - shifted every later frame, and standby requests failed until
++ * the stream realigned by chance. A header now needs state 0 or 2 and a
++ * type this dispatcher knows, a count of at most 8 words, and the frame
++ * must be complete within SB_FRAME_US; anything else is dropped (error
++ * bit 3 with the position and the word, CNT0[7:0]) and the next word is
++ * looked at as a header.
++ */
++static bool
++sb_head(uint32_t w)
++{
++	uint8_t state = w & 0xff, type = w >> 16;
++
++	return (state == 0 || state == SB_STATE) &&
++	       (type == TYPE_RESTORE || type == TYPE_CPU_OP ||
++	        type == TYPE_WAKE_CLR || type == TYPE_WAKE_SET ||
++	        type == TYPE_NOTIFY);
++}
++
++static void
++sb_drop(uint32_t w)
++{
++	h713_err(H713_ERR_SB_DROP, sb_n, w);
++	h713_cnt(H713_CNT_SB_DROP);
++	sb_n = 0;
++}
++
+ static void
+ sb_word(uint32_t w)
+ {
++	if (sb_n && passed(sb_deadline))
++		sb_drop(sb_hdr);
+ 	if (sb_n == 0) {
++		if (!sb_head(w)) {
++			sb_drop(w);
++			return;
++		}
+ 		sb_hdr = w;
++		sb_deadline = timeout_set(SB_FRAME_US);
+ 	} else if (sb_n == 1) {
+ 		sb_count = w & 0xff;
+-	} else if (sb_n < 2 + ARRAY_SIZE(sb_data)) {
++		if (sb_count > ARRAY_SIZE(sb_data)) {
++			sb_drop(w);
++			return;
++		}
++	} else {
+ 		sb_data[sb_n - 2] = w;
+ 	}
+ 	++sb_n;
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index d941e9e..2e36e34 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -199,7 +199,7 @@
+ #define H713_ERR_RWDOG_RESET 16
+ 
+ /* Counter bytes for h713_cnt(), at the byte the ARM reads them from. */
+-#define H713_CNT_SB_DROP     (H713_K_CNT0 + 0) /* port 3 words dropped */
++#define H713_CNT_SB_DROP     (H713_K_CNT0 + 0) /* port 3 words, partial frames dropped */
+ #define H713_CNT_PUMP_LONG   (H713_K_CNT0 + 1) /* pump frame > 67 bytes */
+ #define H713_CNT_ARM_UNKNOWN (H713_K_CNT0 + 2) /* ARM type, sub-command, no answer */
+ #define H713_CNT_TXQ_FULL    (H713_K_CNT0 + 3) /* tx queue full, answer lost */

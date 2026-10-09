@@ -1,0 +1,294 @@
+From 6d6d18cfd5ba4e3b59cbbe90ede8c96d1bd1f8b1 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 17:57:25 +0200
+Subject: [PATCH 38/80] h713: deep sleep switches off by default, deep = D1a,
+ board id and test bit
+
+The two deep steps 0034 put under a switch still defaulted to on, so
+every "deep" defconfig built the variant the reviews say must not run
+(PRUEFUNG5 DEEP-01, design A of the release design: never reset
+VDD_SYS in a suspend). H713_DEEP_VDD_SYS and H713_DEEP_PLL_LDO are now
+off by default; the LDO step also needs the new H713_HOSC_IS_DCXO,
+which says the 24 MHz clock does not come through the PLL domain - no
+board is confirmed and no product defconfig sets it (DEEP-08).
+
+h713_hy310_deep_defconfig is now the same as the D1a one, with the
+"is not set" lines spelled out, and so is the HY300 Pro deep
+defconfig. h713_hy310_deep_blobparity_defconfig keeps both steps on,
+only for the trace comparison with the blob that refuted DEEP-01; its
+trace equals the 0033 deep trace, the deep trace equals the 0034 D1a
+trace.
+
+The help texts say what deep sleep does (DEEP-06): root clocks and
+PLLs off, LOSC as found, the MBUS rebuild; LDO and VDD_SYS only with
+their switches. RAILS_PIN has no user and says so; the PLATFORM_H713
+help no longer claims there is no self-refresh (CS-17). r-ccu.c names
+the RE note behind the VDD_SYS condition instead of a guess (DEEP-02).
+
+New: H713_BOARD_ID (1 HY310, 2 HY300 Pro) in BUILD2 15..12, and
+H713_TEST, a test build in build word bit 30.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy300pro_deep_defconfig         |  4 ++
+ configs/h713_hy300pro_defconfig              |  1 +
+ configs/h713_hy300pro_sr_defconfig           |  1 +
+ configs/h713_hy310_deep_blobparity_defconfig | 14 +++++
+ configs/h713_hy310_deep_d1a_defconfig        |  2 +
+ configs/h713_hy310_deep_defconfig            |  4 ++
+ configs/h713_hy310_defconfig                 |  1 +
+ configs/h713_hy310_serial_defconfig          |  1 +
+ configs/h713_hy310_sr_defconfig              |  1 +
+ drivers/clock/sun50i-h713-r-ccu.c            |  9 ++-
+ drivers/hdmi/sun50i-h713-hdmi.c              |  6 +-
+ platform/Kconfig                             |  3 +-
+ platform/h713/Kconfig                        | 59 +++++++++++++++-----
+ 13 files changed, 87 insertions(+), 19 deletions(-)
+ create mode 100644 configs/h713_hy310_deep_blobparity_defconfig
+
+diff --git a/configs/h713_hy300pro_deep_defconfig b/configs/h713_hy300pro_deep_defconfig
+index 7fc75b0..a606f42 100644
+--- a/configs/h713_hy300pro_deep_defconfig
++++ b/configs/h713_hy300pro_deep_defconfig
+@@ -9,3 +9,7 @@ CONFIG_DEBUG_RECORD_STEPS=y
+ CONFIG_H713_DRAM_SELF_REFRESH=y
+ CONFIG_H713_DRAM_CLK=636
+ CONFIG_H713_DEEP_SLEEP=y
++# CONFIG_H713_HOSC_IS_DCXO is not set
++# CONFIG_H713_DEEP_PLL_LDO is not set
++# CONFIG_H713_DEEP_VDD_SYS is not set
++CONFIG_H713_BOARD_ID=2
+diff --git a/configs/h713_hy300pro_defconfig b/configs/h713_hy300pro_defconfig
+index c9a7425..13881f2 100644
+--- a/configs/h713_hy300pro_defconfig
++++ b/configs/h713_hy300pro_defconfig
+@@ -6,3 +6,4 @@ CONFIG_CIR_USE_OSC24M=y
+ CONFIG_I2C_PINS_NONE=y
+ # CONFIG_SERIAL is not set
+ CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_BOARD_ID=2
+diff --git a/configs/h713_hy300pro_sr_defconfig b/configs/h713_hy300pro_sr_defconfig
+index 127cbf9..981d52e 100644
+--- a/configs/h713_hy300pro_sr_defconfig
++++ b/configs/h713_hy300pro_sr_defconfig
+@@ -8,3 +8,4 @@ CONFIG_I2C_PINS_NONE=y
+ CONFIG_DEBUG_RECORD_STEPS=y
+ CONFIG_H713_DRAM_SELF_REFRESH=y
+ CONFIG_H713_DRAM_CLK=636
++CONFIG_H713_BOARD_ID=2
+diff --git a/configs/h713_hy310_deep_blobparity_defconfig b/configs/h713_hy310_deep_blobparity_defconfig
+new file mode 100644
+index 0000000..b663d85
+--- /dev/null
++++ b/configs/h713_hy310_deep_blobparity_defconfig
+@@ -0,0 +1,14 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_DEEP_SLEEP=y
++CONFIG_H713_HOSC_IS_DCXO=y
++CONFIG_H713_DEEP_PLL_LDO=y
++CONFIG_H713_DEEP_VDD_SYS=y
++CONFIG_H713_BOARD_ID=1
+diff --git a/configs/h713_hy310_deep_d1a_defconfig b/configs/h713_hy310_deep_d1a_defconfig
+index b45ef92..552352d 100644
+--- a/configs/h713_hy310_deep_d1a_defconfig
++++ b/configs/h713_hy310_deep_d1a_defconfig
+@@ -8,5 +8,7 @@ CONFIG_I2C_PINS_NONE=y
+ CONFIG_DEBUG_RECORD_STEPS=y
+ CONFIG_H713_DRAM_SELF_REFRESH=y
+ CONFIG_H713_DEEP_SLEEP=y
++# CONFIG_H713_HOSC_IS_DCXO is not set
+ # CONFIG_H713_DEEP_PLL_LDO is not set
+ # CONFIG_H713_DEEP_VDD_SYS is not set
++CONFIG_H713_BOARD_ID=1
+diff --git a/configs/h713_hy310_deep_defconfig b/configs/h713_hy310_deep_defconfig
+index 9562367..552352d 100644
+--- a/configs/h713_hy310_deep_defconfig
++++ b/configs/h713_hy310_deep_defconfig
+@@ -8,3 +8,7 @@ CONFIG_I2C_PINS_NONE=y
+ CONFIG_DEBUG_RECORD_STEPS=y
+ CONFIG_H713_DRAM_SELF_REFRESH=y
+ CONFIG_H713_DEEP_SLEEP=y
++# CONFIG_H713_HOSC_IS_DCXO is not set
++# CONFIG_H713_DEEP_PLL_LDO is not set
++# CONFIG_H713_DEEP_VDD_SYS is not set
++CONFIG_H713_BOARD_ID=1
+diff --git a/configs/h713_hy310_defconfig b/configs/h713_hy310_defconfig
+index c9a7425..167f5a9 100644
+--- a/configs/h713_hy310_defconfig
++++ b/configs/h713_hy310_defconfig
+@@ -6,3 +6,4 @@ CONFIG_CIR_USE_OSC24M=y
+ CONFIG_I2C_PINS_NONE=y
+ # CONFIG_SERIAL is not set
+ CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_BOARD_ID=1
+diff --git a/configs/h713_hy310_serial_defconfig b/configs/h713_hy310_serial_defconfig
+index b098b5e..6dd827f 100644
+--- a/configs/h713_hy310_serial_defconfig
++++ b/configs/h713_hy310_serial_defconfig
+@@ -8,3 +8,4 @@ CONFIG_SERIAL_DEV_R_UART=y
+ CONFIG_SERIAL_BAUD=115200
+ CONFIG_DEBUG_LOG=y
+ CONFIG_DEBUG_RECORD_STEPS=y
++CONFIG_H713_BOARD_ID=1
+diff --git a/configs/h713_hy310_sr_defconfig b/configs/h713_hy310_sr_defconfig
+index a29c63d..fe9fdd7 100644
+--- a/configs/h713_hy310_sr_defconfig
++++ b/configs/h713_hy310_sr_defconfig
+@@ -7,3 +7,4 @@ CONFIG_I2C_PINS_NONE=y
+ # CONFIG_SERIAL is not set
+ CONFIG_DEBUG_RECORD_STEPS=y
+ CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_BOARD_ID=1
+diff --git a/drivers/clock/sun50i-h713-r-ccu.c b/drivers/clock/sun50i-h713-r-ccu.c
+index 708be46..957be5b 100644
+--- a/drivers/clock/sun50i-h713-r-ccu.c
++++ b/drivers/clock/sun50i-h713-r-ccu.c
+@@ -308,7 +308,14 @@ r_ccu_suspend(uint8_t depth UNUSED)
+ 	udelay(100);
+ #endif
+ #if CONFIG(H713_DEEP_VDD_SYS)
+-	/* 0xdea8 (the blob skips it for power_down or a USB wake source) */
++	/*
++	 * 0xdea8. When the blob runs this pair is not settled: the RE note
++	 * doku/nachtlog/S39:92 gives the condition of 0xe3a8 as "power_down
++	 * != 0 or wake mask bit 13 clear", so with the stock defaults
++	 * (power_down 0, mask 0x2000) neither step would run - an earlier
++	 * comment here said the blob skips it for power_down. Not checked
++	 * against the disassembly (PRUEFUNG5 DEEP-02).
++	 */
+ 	mmio_clr_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
+ 	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, AVCC_GATING);
+ 	mmio_set_32(VDD_SYS_PWROFF_GATING_REG, UNK_GATING_BIT_08);
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 7a34b46..761feda 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -839,9 +839,11 @@ h713_init(void)
+ 	              (uint32_t)CONFIG(H713_DEEP_SLEEP) << 25 |
+ 	              (uint32_t)CONFIG(H713_IR_WAKE_NECX) << 26 |
+ 	              (uint32_t)CONFIG(H713_DEEP_VDD_SYS) << 27 |
+-	              (uint32_t)CONFIG(H713_DEEP_PLL_LDO) << 28);
++	              (uint32_t)CONFIG(H713_DEEP_PLL_LDO) << 28 |
++	              (uint32_t)CONFIG(H713_TEST) << 30);
+ 	mmio_write_32(H713_K_COMPAT, H713_COMPAT);
+-	mmio_write_32(H713_K_BUILD2, BUILD2_DRAM_MHZ & 0xfff);
++	mmio_write_32(H713_K_BUILD2, (BUILD2_DRAM_MHZ & 0xfff) |
++	              (CONFIG_H713_BOARD_ID & 0xf) << 12);
+ 	portmap_init();
+ 	/*
+ 	 * Load-bearing: system.c puts its own msgbox reference at every
+diff --git a/platform/Kconfig b/platform/Kconfig
+index f3d573e..bcef693 100644
+--- a/platform/Kconfig
++++ b/platform/Kconfig
+@@ -63,7 +63,8 @@ config PLATFORM_H713
+ 	help
+ 		Allwinner H713 (sun50iw12): the R domain of the D1
+ 		generation, an HDMI receiver front end owned by the ARISC.
+-		Deep sleep is not ported yet (no DRAM self-refresh).
++		Standby with DRAM self-refresh (H713_DRAM_SELF_REFRESH);
++		deep sleep is ported but has not run on a device.
+ 
+ endchoice
+ 
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index ec245b6..c336eff 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -37,8 +37,16 @@ config H713_RAILS_PIN
+ 	help
+ 		standby_param on the HY310 and HY300 Pro puts vdd-cpu,
+ 		vdd-sys, vcc-pll and vcc-dram all on PL6. What hangs on it
+-		is unmeasured (FB-STANDBY 7.5), so the default never
+-		touches the pin.
++		is unmeasured (FB-STANDBY 7.5). No code reads this option:
++		it records the board fact, and crust never touches the pin.
++
++config H713_BOARD_ID
++	int "Board in the build word (BUILD2 15..12): 1 HY310, 2 HY300 Pro"
++	default 0
++	range 0 15
++	help
++		Lets the kernel and the build gates tell an image built for
++		one board from one built for another (0 = not said).
+ 
+ config H713_DRAM_SELF_REFRESH
+ 	bool "Put the DRAM into self-refresh in standby (vendor V1.15 port)"
+@@ -51,35 +59,56 @@ config H713_DRAM_SELF_REFRESH
+ 		the DRAM with.
+ 
+ config H713_DEEP_SLEEP
+-	bool "Deep sleep: root clocks to OSC24M, PLLs and the PLL LDO off"
++	bool "Deep sleep: root clocks to OSC24M and the PLLs off (not for a release)"
+ 	depends on H713_DRAM_SELF_REFRESH
+ 	help
+-		The rest of the vendor's standby (blob 0xdd20/0xdea8 down,
+-		0xe3a8/0xddec/0xe3f4 and the MBUS rebuild up): bus and root
+-		clocks to OSC24M, every PLL off, the RTC's 32k crystal off,
+-		the PLL LDO off, VDD_SYS reset and gating. Ported, offline
+-		model only.
++		Part of the vendor's standby (blob 0xdd20 down, 0xe3f4, the
++		MBUS rebuild and 0xde7c..0xde8c up): bus and root clocks to
++		OSC24M, every PLL off, the RTC's LOSC as the suspend found it
++		(LOSC_CTRL saved and put back), and on the way back MBUS
++		reset and rebuilt with the NSI and display-bus gates
++		(sun50i-h713-ccu.c). The PLL LDO and the VDD_SYS steps of
++		the blob come only with their own switches below. Ported,
++		offline model only; no device run.
++
++config H713_HOSC_IS_DCXO
++	bool "HOSC is a DCXO that the PLL LDO step does not stop (unmeasured)"
++	depends on H713_DEEP_SLEEP
++	help
++		The PLL LDO step is safe only if the 24 MHz clock does not
++		come through the PLL domain. The HY310 has CRYSTAL_EN (R_PRCM
++		0x244 bit 2) set, and RTC 0x160 (the H6's DCXO control) has
++		never been read for this question (PRUEFUNG5 DEEP-08). No
++		board is confirmed; no product defconfig sets this.
+ 
+ config H713_DEEP_PLL_LDO
+ 	bool "Deep sleep: the PLL LDO off"
+-	depends on H713_DEEP_SLEEP
+-	default y
++	depends on H713_DEEP_SLEEP && H713_HOSC_IS_DCXO
+ 	help
+ 		Blob 0xddbc down, 0xddec up. The HY310 has R_PRCM 0x244
+ 		bit 2 (CRYSTAL_EN) set (read 07.10.2026): the 24 MHz clock
+ 		may come through the PLL domain's pads, and upstream crust
+-		turns that path off before the LDO (PRUEFUNG4). Off for the
+-		first device run D1a.
++		turns that path off before the LDO (PRUEFUNG4). Build word
++		bit 28; TF-A and the kernel refuse such an image unless told
++		otherwise.
+ 
+ config H713_DEEP_VDD_SYS
+ 	bool "Deep sleep: VDD_SYS reset and AVCC/bit 8 gating"
+ 	depends on H713_DEEP_SLEEP
+-	default y
+ 	help
+ 		Blob 0xdea8 down, 0xe3a8 up. It resets the main domain - CCU
+ 		gates, pin functions, UART0, the msgbox and the SoC watchdog
+-		that the test runs use as their net - and mainline Linux
+-		restores none of it (PRUEFUNG4 PD-1, PD-3). Off for D1a.
++		- and mainline Linux restores none of it (PRUEFUNG4 PD-1,
++		PD-3; PRUEFUNG5 design A: never in a suspend). Build word bit
++		27; TF-A and the kernel always refuse such an image. Only for
++		the trace comparison with the blob.
++
++config H713_TEST
++	bool "Test build (build word bit 30, never for a release)"
++	help
++		Switches for the device stages that provoke a failure on
++		purpose. The kernel reports the bit as a test build; the
++		release gates refuse it.
+ 
+ if H713_DRAM_SELF_REFRESH
+ 

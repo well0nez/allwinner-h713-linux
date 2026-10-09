@@ -1,0 +1,57 @@
+From 175c6948fedcfc581a9d4a75b59a0681d2b19f4c Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 09:36:45 +0200
+Subject: [PATCH 27/27] allwinner: h713: disarm an armed R_WDOG at every boot
+ by default
+
+Measured on the HY310 on 08.10.2026 (stage S0): the R_WDOG at 0x07020400
+has the SoC watchdog's layout (feeding CTRL +0x0c with 0x14af holds a reset
+off, IRQ status +0x04, MODE +0x14), and it stays armed across its own
+reset. A net that fired would therefore reset the box every 16 s until
+something disarms it. H713_R_WDOG_CHECK (T7) was off only because the
+layout had not been measured; it is now on by default.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c       | 8 ++++----
+ plat/allwinner/sun50i_h713/platform.mk | 8 +++++---
+ 2 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index 569e10faa..bedec9562 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -77,10 +77,10 @@ void sunxi_scp_event(unsigned int event, unsigned int detail)
+ 
+ #if H713_R_WDOG_CHECK
+ /*
+- * crust arms the R_WDOG as the net of a standby (H713_SLEEP_NET). Should a
+- * reset leave it armed, nobody would feed it in U-Boot or Linux. Assumed to
+- * have the SoC watchdog's layout (IRQ status +0x04, CTRL +0x0c, MODE +0x14);
+- * only CFG and MODE are known from the blob, hence the switch.
++ * crust arms the R_WDOG as the net of a standby (H713_SLEEP_NET). A reset
++ * leaves it armed (measured, doku/170: MODE and IRQ status survive its own
++ * reset), and nobody would feed it in U-Boot or Linux. The SoC watchdog's
++ * layout holds for it (IRQ status +0x04, CTRL +0x0c, MODE +0x14; measured).
+  */
+ #define H713_R_WDOG_STA			(H713_R_WDOG_BASE + 0x0004)
+ #define H713_R_WDOG_CTRL		(H713_R_WDOG_BASE + 0x000c)
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index 07b6fc9de..66e0027d8 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -24,9 +24,11 @@ SUNXI_STANDBY_UNMEASURED	?=	0
+ $(eval $(call assert_boolean,SUNXI_STANDBY_UNMEASURED))
+ $(eval $(call add_define,SUNXI_STANDBY_UNMEASURED))
+ 
+-# Disarm an R_WDOG (0x07020400) a reset left armed, at every boot. Off until
+-# its feed register is measured on the device.
+-H713_R_WDOG_CHECK	?=	0
++# Disarm an R_WDOG (0x07020400) a reset left armed, at every boot. Measured
++# on the HY310 (doku/170, stage S0): the feed CTRL +0x0c = 0x14af holds it off,
++# IRQ status +0x04 and MODE +0x14 as on the SoC watchdog, and it stays armed
++# across its own reset - without this a fired net would reset every 16 s.
++H713_R_WDOG_CHECK	?=	1
+ $(eval $(call assert_boolean,H713_R_WDOG_CHECK))
+ $(eval $(call add_define,H713_R_WDOG_CHECK))
+ 

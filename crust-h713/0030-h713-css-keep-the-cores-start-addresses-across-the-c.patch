@@ -1,0 +1,77 @@
+From c7ff040afca95a001787d4678624b73e766b32d2 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 09:02:19 +0200
+Subject: [PATCH 30/80] h713: css: keep the cores' start addresses across the
+ cluster down
+
+The first standby on the HY310 (07.10.2026) came back on CPU0, then
+CPU1..3 failed to come online and the system stopped. The cluster down
+resets the CPU subsystem (CPU_SYS_RESET = 0); TF-A programs ALT_RVBAR
+for all cores once at boot and its cpu_on does not do it again, and the
+blob restores core 0 only. The four start addresses are now saved
+before the cluster goes down and written back after it is up; what the
+cluster up left in cores 1..3 is kept at H713_SHARED_BASE + 0x240 so
+the next run shows whether the reset really cleared them.
+---
+ drivers/css/sun50i-h713-css.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/drivers/css/sun50i-h713-css.c b/drivers/css/sun50i-h713-css.c
+index 6129eda..8bfba51 100644
+--- a/drivers/css/sun50i-h713-css.c
++++ b/drivers/css/sun50i-h713-css.c
+@@ -10,6 +10,7 @@
+ #include <util.h>
+ #include <stdint.h>
+ #include <platform/cpucfg.h>
++#include <platform/memory.h>
+ 
+ #include "css.h"
+ 
+@@ -36,6 +37,21 @@
+ 
+ static uint32_t warm_entry_lo, warm_entry_hi;
+ 
++/*
++ * The cluster down resets the CPU subsystem (CPU_SYS_RESET = 0), and with it,
++ * as far as the HY310 shows (07.10.2026), the cores' start addresses: after
++ * the first standby CPU1..3 did not come back ("failed to come online") and
++ * the system stopped. TF-A programs ALT_RVBAR for all cores once at boot
++ * (sunxi_pm.c plat_setup_psci_ops) and its cpu_on does not do it again; the
++ * blob restores only core 0, since the vendor BL31 does the rest. So the
++ * four start addresses are saved before the cluster goes down and written
++ * back after it is up again. What the cluster up left in them is kept for
++ * the record at H713_SHARED_BASE + 0x240 (cores 1..3, low words), so the
++ * next run shows whether the reset cleared them.
++ */
++#define RVBAR_SEEN_BASE         (H713_SHARED_BASE + 0x240)
++static uint32_t rvbar_lo[MAX_CORES_PER_CLUSTER], rvbar_hi[MAX_CORES_PER_CLUSTER];
++
+ void
+ css_set_warm_entry(uint32_t lo, uint32_t hi)
+ {
+@@ -64,6 +80,10 @@ css_suspend_css(uint32_t new_state)
+ 	if (new_state < SCPI_CSS_OFF)
+ 		return;
+ 
++	for (uint32_t n = 0; n < MAX_CORES_PER_CLUSTER; ++n) {
++		rvbar_lo[n] = mmio_read_32(ALT_RVBAR_LO_REG(n));
++		rvbar_hi[n] = mmio_read_32(ALT_RVBAR_HI_REG(n));
++	}
+ 	cluster_ctrl(false);                                    /* 0x4b38 */
+ 	mmio_write_32(C0_PWRON_RESET_REG, 0);                   /* 0x4b50 */
+ 	for (int n = MAX_CORES_PER_CLUSTER - 1; n >= 0; --n)   /* 0x4b5c.. */
+@@ -113,6 +133,13 @@ css_resume_css(uint32_t old_state)
+ 		mmio_clr_32(C0_CPU_CTRL_REG(n), BIT(4));
+ 	mmio_clr_32(CPUCFG_14, BIT(0));                         /* 0x485c(0) */
+ 	cluster_ctrl(true);                                     /* 0x4968(1) */
++	for (uint32_t n = 1; n < MAX_CORES_PER_CLUSTER; ++n)
++		mmio_write_32(RVBAR_SEEN_BASE + 4 * (n - 1),
++		              mmio_read_32(ALT_RVBAR_LO_REG(n)));
++	for (uint32_t n = 0; n < MAX_CORES_PER_CLUSTER; ++n) {
++		mmio_write_32(ALT_RVBAR_LO_REG(n), rvbar_lo[n]);
++		mmio_write_32(ALT_RVBAR_HI_REG(n), rvbar_hi[n]);
++	}
+ }
+ 
+ void __attribute__((noipa))

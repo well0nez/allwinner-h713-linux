@@ -1,0 +1,66 @@
+arm64: dts: h713: hy310 - crust as the ARISC firmware
+
+The HY310 boots crust: TF-A starts it from the FIT, and the arisc driver
+loads or keeps the same build from /lib/firmware. The DT named the vendor
+image, so the driver held a running crust in reset and loaded the vendor
+image over it (crust-20261007 review INT-02, K10, F13; W1 of the crust
+release design). firmware-name index 0 becomes hy310-crust.bin - named
+after the board, because the rootfs may be built without one and ships
+the file only for a board whose FIT carries crust; index 1, the EDID,
+stays.
+
+The dtsi keeps the vendor name for the HY200 QZ713 V2, which includes it
+directly. The HY300 Pro and the HY200 QZ713DF A1 include the HY310's file
+and name the vendor image again: whether they get crust is the owner's
+decision (question 7.2 g of the design), and nothing of theirs is
+measured with it.
+
+Not for the line before the rootfs ships /lib/firmware/hy310-crust.bin
+from the same build as the FIT's scp (B2/B4) and the arisc driver keeps
+a running crust: without the file, request_firmware fails, the arisc
+probe with it, and hdmirx defers for good.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -41,6 +41,11 @@
+ 	status = "disabled";
+ };
+ 
++/* The vendor ARISC image, as before: crust has run on the HY310 only. */
++&arisc {
++	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
++};
++
+ &hdmirx {
+ 	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
+ };
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-pro.dts
+@@ -35,6 +35,11 @@
+ 	status = "disabled";
+ };
+ 
++/* The vendor ARISC image, as before: crust has run on the HY310 only. */
++&arisc {
++	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
++};
++
+ /*
+  * This board's display firmware keeps its event log 0xC00 below the HY310's:
+  * the mode-1 ring at 0x4b27219c and the control block at 0x4b48b200, whose
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+@@ -54,3 +54,11 @@
+ &motor_ctr { status = "okay"; };	/* range gate PH14 measured 12.09., see doku/94 */
+ &adc_keys { status = "disabled"; };
+ &board_mgr { status = "okay"; };	/* temperature + fan speed, see doku/60 */
++
++/*
++ * crust is this board's ARISC firmware: TF-A starts it from the FIT, and the
++ * driver finds the same build as hy310-crust.bin in /lib/firmware. The dtsi
++ * names the vendor image, and the two boards that include this file name it
++ * again.
++ */
++&arisc { firmware-name = "hy310-crust.bin", "hy310-edid.bin"; };
