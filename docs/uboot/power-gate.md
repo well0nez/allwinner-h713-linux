@@ -25,6 +25,7 @@ only state that survives a reset without surviving a loss of mains power:
 | `0`, or any word not listed here | mains just came on (cold start) | gate: wait for the power key |
 | `"RUN1"` | a warm restart - `reboot`, a crash, a watchdog reset | boot straight through |
 | `"GATE"` | TF-A wrote this on `poweroff` (PSCI `SYSTEM_OFF`) | gate: wait for the power key |
+| `"STBY"` | Linux wrote this at the start of a standby, and the display core did not run again before the reset: the standby did not finish | gate: wait for the power key |
 
 U-Boot writes `RUN1` back on every path, before anything else is powered - so a crash or a watchdog
 reset, from inside the gate or from Linux, always finds its way back to a normal boot instead of a dead
@@ -59,17 +60,29 @@ The gate's code does not change for crust. BL31 starts crust from the FIT before
 ([README](README.md)), so on the HY310 the ARISC firmware is already up while the gate waits; what that does to
 the 4 W is not measured. A standby ([standby.md](../subsystems/standby.md)) never passes through here: crust
 releases CPU0 straight into BL31, which resumes Linux. Nothing in crust writes GP5, and the RTC general-purpose
-words, GP5 among them, were unchanged after every standby cycle read back (`doku/165` - `doku/167`): a standby
-neither enters the gate nor leaves it. The two share the power key, PL4 - U-Boot polls it in the gate, crust
+words, GP5 among them, were unchanged after every standby cycle read back (`doku/165` - `doku/167`). Since
+kernel `0245` Linux marks the standby in GP5 itself (below); a standby that finishes neither enters the gate nor
+leaves it. The two share the power key, PL4 - U-Boot polls it in the gate, crust
 takes it as a wake source in a standby - and on an image with standby ([h713-power](../tools/h713-power.md))
 a short press suspends while only a long press, or `poweroff`, ends in the gate (the long press measured on
 09.10.2026, `doku/174`).
 
-A watchdog reset out of a failed standby comes back through the gate as a warm restart and boots straight
-through, lamp on (from the code). The hang going to sleep does end that way - crust resets the board after 15 s
-and it boots again (`doku/172`) - but the box of those runs has `h713_gate=0` in its saved environment
-(`doku/170`, `doku/174`), so what the gate itself would do was not exercised. Whether the box should instead go
-dark into the gate is the owner's decision, and until it is taken nothing here is changed.
+**A standby that does not finish ends in the gate, dark** (the owner's decision of 09.10.2026, kernel `0245`,
+`doku/179`). The driver of the display core, `sun50i-h713-mips`, turns `RUN1` into `STBY` at the start of a
+standby (PM_SUSPEND_PREPARE, before the window where the rare hang going to sleep stood) and back into `RUN1`
+once the core runs again after the wake - or at the end of a sleep that parked nothing. A reset in between -
+crust's budget going to sleep (15 s) or waking up (60 s), the watchdog, a core that stalls the bus at its start -
+finds `STBY`, and U-Boot waits for the power key exactly as after a power-off. A `reboot` from Linux writes
+`RUN1` first, so a reboot that was asked for still boots. Measured on the HY310 with `h713_gate=1`: a hang in
+syscore suspend, crust's reset after 15000 ms, `gate: cold start (GP5 53544259)`, dark until the key; the same
+for a hang in syscore resume after 60000 ms; a normal standby back to `RUN1`; a reboot with `STBY` in place
+booting through. The U-Boot on the board then still called the word a cold start; its own line ("a standby did
+not finish") comes with the next U-Boot. Not caught: crust itself hanging asleep, which only R_WDOG could reset.
+With `h713_gate=0` a failed standby boots straight through, as everything else.
+
+*Superseded (09.10.2026, `doku/179`):* "A watchdog reset out of a failed standby comes back through the gate as a
+warm restart and boots straight through, lamp on (from the code). [...] Whether the box should instead go dark
+into the gate is the owner's decision, and until it is taken nothing here is changed."
 
 ## Turning it off
 

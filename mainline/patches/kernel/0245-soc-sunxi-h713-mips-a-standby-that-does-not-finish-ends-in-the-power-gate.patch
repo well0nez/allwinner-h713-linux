@@ -1,0 +1,223 @@
+soc: sunxi: h713-mips: a standby that does not finish ends in the power gate
+
+U-Boot writes "RUN1" into RTC GP5 at every boot and boots straight
+through a reset that finds it; BL31 writes "GATE" there for a power-off,
+and any word but "RUN1" sends U-Boot into its power gate, dark, waiting
+for the key. A standby that does not finish ends in a reset - crust's
+15 s budget when the board hangs going to sleep (C1), crust's budget or
+the watchdog when Linux does not come back, the watchdog when the core
+stalls the bus at its start - and with "RUN1" in place that reset boots
+the board with the lamp on, in the middle of the night. The owner wants
+it dark instead.
+
+The driver now holds GP5 as a fourth reg (0x07090114, not requested,
+the RTC driver holds the block). A PM notifier turns "RUN1" into "STBY"
+at PM_SUSPEND_PREPARE, before the noirq window where C1 hangs. The mark
+goes back to "RUN1" when the core runs again after its start out of the
+park, or at PM_POST_SUSPEND when this sleep parked nothing, and before a
+reboot that was asked for (reboot notifier, no lock), so that one still
+boots. The word decides, not a flag: only "RUN1" becomes "STBY" and only
+"STBY" goes back. U-Boot reads "STBY" as an unknown word: gate.
+
+Not caught: crust itself hanging asleep, which only R_WDOG would reset.
+
+Measured on the HY310 (r2test4 with this module and DTB, h713_gate=1,
+09.10.2026): a standby through h713-power marks STBY and is back to RUN1
+after the core's ready, picture back after 5.3 s; a test module hanging
+syscore suspend: crust reset after 15000 ms, U-Boot "gate: cold start
+(GP5 53544259)", dark until the power key; hanging syscore resume: crust
+reset after 60000 ms, the same; a reboot with STBY in place (core left
+parked) boots through, "warm start (GP5 52554e31)". W=1 without
+warnings.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../arm64/boot/dts/allwinner/sun50i-h713.dtsi | 11 ++-
+ drivers/soc/sunxi/sun50i-h713-mips.c          | 88 ++++++++++++++++++-
+ 2 files changed, 93 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+index 06a2af5..3a61f19 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2248,12 +2248,17 @@
+ 		 * reg is the TV top's clock and reset word (0x06e00000, the
+ 		 * third block of the disabled tvtop node): a standby powers the
+ 		 * TV domains off and on, and a start out of the park repeats
+-		 * U-Boot's step on it first; not requested either.
++		 * U-Boot's step on it first; not requested either. The fourth
++		 * is the power gate's word, RTC GP5 (0x07090114): from a
++		 * standby's start until the core runs again it reads "STBY",
++		 * so a reset in between ends in U-Boot's gate; not requested,
++		 * the RTC driver holds its block.
+ 		 */
+ 		mips: mips@3061000 {
+ 			compatible = "allwinner,sun50i-h713-mips";
+-			reg = <0x03061000 0x100>, <0x02001600 0x10>, <0x06e00000 0x10>;
+-			reg-names = "mips", "ccu", "tvtop";
++			reg = <0x03061000 0x100>, <0x02001600 0x10>, <0x06e00000 0x10>,
++			      <0x07090114 0x4>;
++			reg-names = "mips", "ccu", "tvtop", "gate";
+ 			memory-region = <&mips_reserved>;
+ 			status = "disabled";
+ 		};
+diff --git a/drivers/soc/sunxi/sun50i-h713-mips.c b/drivers/soc/sunxi/sun50i-h713-mips.c
+index a36d09b..fb6b24b 100644
+--- a/drivers/soc/sunxi/sun50i-h713-mips.c
++++ b/drivers/soc/sunxi/sun50i-h713-mips.c
+@@ -34,6 +34,17 @@
+  * repeats U-Boot's step when the words are not U-Boot's; with them in
+  * place (a park without a standby) it leaves them alone.
+  *
++ * The power gate's word (fourth reg, RTC GP5 0x07090114): U-Boot writes
++ * "RUN1" at every boot and boots straight through a reset that finds it;
++ * BL31 writes "GATE" for a power-off, and any word but "RUN1" sends U-Boot
++ * into the gate - dark, waiting for the power key. A standby that does not
++ * finish ends in a reset (crust's budget going to sleep or waking up, the
++ * watchdog, a core that stalls the bus at its start), and with "RUN1" that
++ * reset boots the board, lamp on. So from PM_SUSPEND_PREPARE until the core
++ * runs again the word reads "STBY": a reset in between ends dark, like a
++ * power-off. The word decides, not a flag: only "RUN1" becomes "STBY", only
++ * "STBY" goes back, and a reboot asked for writes "RUN1" first.
++ *
+  * sysfs: "state" reads running|halted|parked|failed and a register line;
+  * writing a display.bin path ("-": /boot/mips/display.bin) to "restart"
+  * restarts the core. The receiver (sun50i-h713-hdmirx) has to be unbound
+@@ -49,6 +60,8 @@
+ #include <linux/of.h>
+ #include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
++#include <linux/reboot.h>
++#include <linux/suspend.h>
+ #include <linux/unaligned.h>
+ #include <linux/vmalloc.h>
+ #include <linux/soc/sunxi/h713-cpu-comm.h>
+@@ -75,6 +88,8 @@
+ #define H713_TVTOP_GATE_ON	0x01111117u
+ #define H713_TVTOP_RST		0x8		/* 0x06e00008; the firmware adds bit 8 */
+ #define H713_TVTOP_RST_ON	0x00000404u
++#define H713_GATE_RUN1		0x52554e31u	/* "RUN1": U-Boot boots through a reset */
++#define H713_GATE_STBY		0x53544259u	/* "STBY": a standby not finished, U-Boot gates */
+ /* "sltiu v1,v1,0x33" of Rx_HDCP14_LoadKey, with 0x06840093 built within 1 KiB */
+ #define H713_HDCP_WAIT		0x2c630033
+ #define H713_HDCP_NONE		0x2c630000
+@@ -109,12 +124,13 @@ static const char * const h713_mips_state_name[] = { "running", "halted", "parke
+ 
+ struct h713_mips {
+ 	struct device *dev;
+-	void __iomem *regs, *ccu, *tvtop;
++	void __iomem *regs, *ccu, *tvtop, *gate;
+ 	void *win;
+ 	phys_addr_t win_base;
+ 	struct mutex lock;		/* every register access after the probe */
+ 	enum h713_mips_state state;
+ 	struct cpu_comm_mips_owner owner;
++	struct notifier_block pm_nb, reboot_nb;
+ 	struct h713_mips_wlog wlog[8];	/* writes not yet logged */
+ 	int nlog;
+ };
+@@ -251,6 +267,27 @@ static int h713_mips_tvtop(struct h713_mips *m)
+ 			     readl(m->tvtop + H713_TVTOP_GATE), readl(m->tvtop + H713_TVTOP_RST));
+ }
+ 
++/* "RUN1" -> "STBY" for a standby, "STBY" -> "RUN1" when it is over; any other word is left. */
++static void h713_mips_gate(struct h713_mips *m, bool standby)
++{
++	u32 from = standby ? H713_GATE_RUN1 : H713_GATE_STBY, now;
++
++	if (!m->gate)
++		return;
++	now = readl(m->gate);
++	if (now != from) {
++		if (standby)
++			dev_info(m->dev, "standby: gate word 0x%08x, not RUN1: left alone\n", now);
++		return;
++	}
++	writel(standby ? H713_GATE_STBY : H713_GATE_RUN1, m->gate);
++	if (standby)
++		dev_info(m->dev, "standby: a reset until the core runs again ends in the power gate (0x%08x)\n",
++			 readl(m->gate));
++	else
++		dev_info(m->dev, "standby over: a reset boots again (0x%08x)\n", readl(m->gate));
++}
++
+ static int h713_mips_start(struct h713_mips *m, bool uboot)
+ {
+ 	const char *how = uboot ? "U-Boot" : "vendor";
+@@ -281,8 +318,11 @@ static int h713_mips_start(struct h713_mips *m, bool uboot)
+ 	ret = cpu_comm_firmware_start(H713_MIPS_READY_MS);
+ 	if (!ret)
+ 		m->state = H713_MIPS_RUNNING;
+-	return h713_mips_say(m, ret, "%s start: status 0x%08x, %sready", how,
+-			     readl(m->regs + H713_MIPS_STATUS), ret ? "NOT " : "");
++	h713_mips_say(m, ret, "%s start: status 0x%08x, %sready", how,
++		      readl(m->regs + H713_MIPS_STATUS), ret ? "NOT " : "");
++	if (!ret)
++		h713_mips_gate(m, false);
++	return ret;
+ }
+ 
+ static int h713_mips_restart(struct h713_mips *m, const char *path)
+@@ -415,6 +455,33 @@ static void h713_mips_unown(void *ctx)
+ 			 h713_mips_state_name[m->state]);
+ }
+ 
++/* Mark the standby; after it, only a parked core keeps the mark until its start. */
++static int h713_mips_pm(struct notifier_block *nb, unsigned long ev, void *unused)
++{
++	struct h713_mips *m = container_of(nb, struct h713_mips, pm_nb);
++
++	mutex_lock(&m->lock);
++	if (ev == PM_SUSPEND_PREPARE)
++		h713_mips_gate(m, true);
++	else if (ev == PM_POST_SUSPEND && m->state != H713_MIPS_PARKED)
++		h713_mips_gate(m, false);
++	mutex_unlock(&m->lock);
++	return NOTIFY_DONE;
++}
++
++/* A reboot asked for boots. No lock: a start that hangs must not hold the reboot. */
++static int h713_mips_reboot(struct notifier_block *nb, unsigned long action, void *unused)
++{
++	if (action == SYS_RESTART)
++		h713_mips_gate(container_of(nb, struct h713_mips, reboot_nb), false);
++	return NOTIFY_DONE;
++}
++
++static void h713_mips_unpm(void *ctx)
++{
++	unregister_pm_notifier(ctx);
++}
++
+ static int h713_mips_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -440,6 +507,11 @@ static int h713_mips_probe(struct platform_device *pdev)
+ 	m->tvtop = res && resource_size(res) >= 0xc ? devm_ioremap(dev, res->start, 0xc) : NULL;
+ 	if (!m->tvtop)
+ 		dev_warn(dev, "no TV top window (reg 2): no start out of the standby park or a failed restart\n");
++	/* not requested: the RTC driver holds the block */
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
++	m->gate = res && resource_size(res) >= 4 ? devm_ioremap(dev, res->start, 4) : NULL;
++	if (!m->gate)
++		dev_warn(dev, "no gate word (reg 3): a standby that does not finish boots the board again\n");
+ 	ret = of_reserved_mem_region_to_resource(dev->of_node, 0, &win);
+ 	if (ret || win.start != H713_MIPS_WIN_BASE || resource_size(&win) < H713_MIPS_CFG_OFF)
+ 		return dev_err_probe(dev, -ENODEV, "no memory-region at 0x%x of 0x%x bytes\n",
+@@ -455,6 +527,16 @@ static int h713_mips_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return dev_err_probe(dev, ret, "cpu_comm has another owner of the MIPS clock\n");
+ 	ret = devm_add_action_or_reset(dev, h713_mips_unown, m);
++	if (ret)
++		return ret;
++	m->pm_nb.notifier_call = h713_mips_pm;
++	ret = register_pm_notifier(&m->pm_nb);
++	if (!ret)
++		ret = devm_add_action_or_reset(dev, h713_mips_unpm, &m->pm_nb);
++	if (ret)
++		return ret;
++	m->reboot_nb.notifier_call = h713_mips_reboot;
++	ret = devm_register_reboot_notifier(dev, &m->reboot_nb);
+ 	if (ret)
+ 		return ret;
+ 	return h713_mips_say(m, 0, "window 0x%llx+0x%x, 0x02001600 0x%08x, 0x0200160c 0x%08x, %s",

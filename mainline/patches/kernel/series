@@ -563,3 +563,4 @@
 0242-soc-sunxi-h713-mips-say-parked-where-the-start-without-a-tv-top-window-leaves-the-core.patch
 0243-asoc-sunxi-h713-msp-the-island-is-lost-in-every-standby.patch
 0244-pmdomain-sunxi-h713-ppu-say-which-domain-did-not-switch.patch
+0245-soc-sunxi-h713-mips-a-standby-that-does-not-finish-ends-in-the-power-gate.patch

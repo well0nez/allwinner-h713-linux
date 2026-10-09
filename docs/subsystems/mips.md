@@ -105,8 +105,8 @@ Until 08.10.2026 only U-Boot could start the core, so a standby would have cost 
 the core again, from a running core or out of the standby park. It is the one owner of the core's
 clock `0x02001600` and reset word `0x0200160c`, written raw as U-Boot does (no clock-framework
 consumer exists), and [cpu_comm](cpu-comm.md) parks the core for a standby through it. The node
-`mips@3061000` has the MIPS block, the clock and reset words and the TV top (`0x06e00000`) as its
-three regs, and the reserved window `mips-firmware@4b100000`. It is disabled in the dtsi and enabled
+`mips@3061000` has the MIPS block, the clock and reset words, the TV top (`0x06e00000`) and, since `0245`, the
+power gate's word (RTC GP5, `0x07090114`, below) as its four regs, and the reserved window `mips-firmware@4b100000`. It is disabled in the dtsi and enabled
 on the HY310, where the restart was measured; the HY300 Pro and HY200 QZ713DF A1 trees switch it off
 again (`0232`). On the HY300PRO-G-EU every earlier reload whose result was looked at ended black
 (03.10.2026, before this driver; `doku/138`).
@@ -147,6 +147,13 @@ when the words are not U-Boot's - +4, +8, +0, all three 0, the three again, 12 m
 stays `parked` (`0242`), a refusal being better than a stalled bus. The HDMI receiver's LINK window
 lies in the same TV blocks, which fits the hang of every LINK read after a standby seen on
 08.10.2026 (`doku/176` §2, `doku/172` §2).
+
+**The gate word.** From the start of a standby until the core runs again, the driver keeps the power gate's
+word at "STBY" instead of U-Boot's "RUN1" (`0245`): a PM notifier turns "RUN1" into "STBY" at
+PM_SUSPEND_PREPARE, a start that ends ready turns it back, and so does the end of a sleep that parked nothing
+and a `reboot` from Linux. A reset in between - a hang going to sleep or waking up, or a core that stalls the bus
+at its start - lands in U-Boot's gate, dark, instead of booting with the lamp on ([power-gate.md](../uboot/power-gate.md),
+`doku/179`). Without the fourth reg the driver says so at probe and leaves the word alone.
 
 Measured on the HY310: a test bench with the same sequences brought the picture back on 08.10.2026
 from a running core and from the park register state set by hand (V3, V8; `doku/176` §1 - the commit text

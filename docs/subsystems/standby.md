@@ -103,9 +103,16 @@ What happens then depends on the watchdogs. Under Linux `systemd` feeds the SoC 
 measured in stage W2, doku/170; until 08.10.2026 the image set neither). For a standby the kernel feeds it
 itself until its devices are suspended and then stops it; from there crust's net on the second watchdog would
 watch the sleep (`H713_SLEEP_NET`). That watchdog's register layout is measured (stage S0, doku/170), the
-net in a sleep is not yet, so a release does not carry it - until then nothing watches the sleep itself. A watchdog reset finds the gate's RTC word on
-"running" and boots straight through, lamp on, unless the owner decides it should go to the dark gate.
-None of this has been measured in a standby yet.
+net in a sleep is not yet, so a release does not carry it - until then nothing watches the sleep itself. A reset out of a standby
+that did not finish - crust's budget going to sleep (15 s) or waking up (60 s), the watchdog - finds the gate's
+RTC word on "STBY", which `sun50i-h713-mips` writes at the start of a standby and takes back once the display
+core runs again (kernel `0245`). U-Boot then waits in the gate, dark, as after a power-off, and the power key
+starts the board; a `reboot` asked for from Linux still boots. Measured on 09.10.2026 with hangs provoked by a
+test module, going to sleep and waking up ([power-gate.md](../uboot/power-gate.md), `doku/179`); with
+`h713_gate=0` the board boots straight through instead. Not caught: crust itself hanging asleep.
+*Superseded (09.10.2026):* "A watchdog reset finds the gate's RTC word on "running" and boots straight
+through, lamp on, unless the owner decides it should go to the dark gate. None of this has been measured in a
+standby yet."
 
 By hand, as always: pull the USB cable if one is plugged in (the board keeps running from it), switch off
 at the socket for 15 s, switch on, press the key.

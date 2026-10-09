@@ -24,7 +24,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `175c6948f` neu aufsetzen (Konflikte in `sunxi_bl31_setup.c`, `platform.mk`), U-Boot `0001`-`0003` passen auf `87b2a44`,
         Repo `0002` an das neue `uboot-build.sh` anpassen
       - **09.10. abends (Marco, 2.29):** mit `--standby` bauen, `power.conf` Vorgabe `short = poweroff` (Standby experimentell,
-        per Schalter), Doku und Release-Text sagen "experimentell"; 2.30 (dunkel ins Gate) mit hinein, wenn bis dahin gemessen
+        per Schalter), Doku und Release-Text sagen "experimentell"; 2.30 ist gemessen und mit Kernel `0245` in `main` - mit 1.1a
+        noch die U-Boot-Zeile dazu (`arbeit/standby-gate-20261009/patches/uboot/0001`) und der TF-A-Kommentar in
+        `sunxi_native_pm.c` ("the boot loader finds RUN1" stimmt bei einem verweigerten Standby nicht mehr)
 - [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
       Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
       WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
@@ -212,12 +214,17 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Marcos Box: Standby im Alltag; wenn Nächte im Standby halten und die Leistung gemessen ist, wird Standby im Release
         danach die Vorgabe. Missglückter Standby -> dunkel ins Gate: 2.30. Automatischer Standby ohne Signal: viel später, 9.14
 
-- [ ] 2.30 **Ein missglückter Standby endet dunkel im Gate** (Marco 09.10.: "lieber dunkel" statt Neustart mit Lampe an).
+- [x] 2.30 **Ein missglückter Standby endet dunkel im Gate** (Marco 09.10.: "lieber dunkel" statt Neustart mit Lampe an).
       Heute läuft jeder Reset aus einem Standby (crust-Budget 15 s bei C1, Linux-Zeitschalter 16 s) als Warmstart am Gate
       vorbei. Vorschlag: vor dem Einschlafen (vor dem noirq-Fenster, wo C1 hängt) `GATE` ins RTC-Wort GP5, nach dem vollständigen
       Aufwachen wieder `RUN1`; jeder Reset dazwischen landet im Gate wie ein `poweroff`. Lücke: hängt crust selbst, fängt
       es nur R_WDOG (CR-1, Stufe S0). Mit `h713_gate=0` (Marcos Box) bootet sie trotzdem durch. Messen mit einem
       provozierten Hänger (Testmodul), Marco an der Taste
+      - **Erledigt 09.10. abends** (`0245`, `doku/179`, Paket `arbeit/standby-gate-20261009/`): `sun50i-h713-mips` hält GP5 als
+        vierte reg, "STBY" ab PM_SUSPEND_PREPARE bis der Kern wieder läuft, Reboot-Notifier schreibt "RUN1". Gemessen 4/4 mit
+        `h713_gate=1`: Kontrolle, Hänger syscore suspend (crust 15 s -> Gate dunkel), Hänger syscore resume (crust 60 s ->
+        Gate dunkel), reboot bei "STBY" bootet. Rest in 1.1a (U-Boot-Zeile, TF-A-Kommentar); crust-Hänger im Schlaf fängt
+        weiter nur R_WDOG (CR-1)
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
