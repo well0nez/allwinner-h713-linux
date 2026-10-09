@@ -40,7 +40,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/hdmi-in.md` | `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
-| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170` |
+| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172` |
 | `docs/subsystems/video.md` | `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/60` |
 | `docs/tools/h713-autofocus.md` | `doku/134` |
@@ -51,7 +51,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
-| `docs/tools/h713-power.md` | `doku/165`, `doku/167` |
+| `docs/tools/h713-power.md` | `doku/165`, `doku/167`, `doku/172` |
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
 | `docs/tools/h713-tv.md` | `doku/101`, `doku/78`, `doku/86`, `doku/88`, `doku/99` |
@@ -212,6 +212,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`166-standby-dram-selbstauffrischung-20261007.md`](166-standby-dram-selbstauffrischung-20261007.md) | Analyse | 2026-10-07 | 166 - Standby mit DRAM-Selbstauffrischung auf dem HY310 (07.10.2026, 12:47) | 1 |
 | [`167-falscher-key-power-behoben-20261007.md`](167-falscher-key-power-behoben-20261007.md) | Analyse | 2026-10-07 | 167 - Der falsche KEY_POWER nach dem Aufwachen ist behoben (07.10.2026, 13:46) | 3 |
 | [`168-stufe-c-vorbereitet-20261007.md`](168-stufe-c-vorbereitet-20261007.md) | Analyse | 2026-10-07 | 168 - Tiefschlaf (Stufe C) vorbereitet, nicht gelaufen (07.10.2026, 14:45) | 1 |
+| [`171-standby-fehler-b-display-takte-20261009.md`](171-standby-fehler-b-display-takte-20261009.md) | Analyse | 2026-10-09 | 171 - Standby-Fehler B: DMA-Master verlieren den DRAM, weil die Display-Pipeline durch den Self-Refresh läuft; Behebung gemessen (09.10.2026, 04:30) | 1 |
+| [`172-bild-nach-dem-standby-tv-top-20261009.md`](172-bild-nach-dem-standby-tv-top-20261009.md) | Analyse | 2026-10-09 | 172 - Bild nach dem Standby: der MIPS-Neustart aus dem Park hängte die SoC, weil der Schlaf die TV-Top-Wörter löscht; Behebung gemessen (09.10.2026, 09:47) | 2 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -369,7 +371,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-43 von 227 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+43 von 229 (ohne die 85 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

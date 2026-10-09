@@ -2,8 +2,9 @@
 
 The HY310 knows two ways to be "off", and a third state that only looks like one. This page says which
 is which, what the standby through crust does, what wakes it, what a failed wake looks like and how to
-get out of it. Status: the standby has run on the HY310 in test images (`doku/165` - `doku/167`); a
-release image does **not** offer it until the picture comes back after a wake (TODO 3.3).
+get out of it. Status: the standby has run on the HY310 in test images (`doku/165` - `doku/167`), and since
+09.10.2026 the picture comes back after a wake in the R2 test image (`doku/171`, `doku/172`); a release image
+does **not** offer it yet (TODO 3.3: the hang going to sleep, C1, is open).
 
 | State | What runs | Power | How you get there | How you leave |
 |---|---|---|---|---|
@@ -37,6 +38,27 @@ cycle with DRAM self-refresh and a 5 s wake timer in three runs, each in its own
 online and Linux running on for the minute and a half each run watched (`doku/166`, `doku/167`). Not measured: the release image, a wake by the
 key or by IR, a sleep longer than 5 s, the power draw, many cycles in one boot.
 
+## The picture after a wake
+
+The display MIPS does not survive a standby as it is: before the sleep cpu_comm parks it (`suspend_late`,
+through the driver `sun50i-h713-mips`), and two things go with the park.
+
+- **The display clocks.** The pipeline the MIPS set up (deinterlacer, panel, video processing, scanout) keeps
+  running without it. Left running through the DRAM self-refresh it cost the DMA masters their way to the DRAM
+  after about every second wake (camera -110, Wi-Fi "cmd timed-out", a hung resume; `doku/171`). cpu_comm gates
+  its five clocks right after the park and puts the saved words back in `resume_early`; no reset, which would
+  lose what the parked MIPS set up.
+- **The TV top.** genpd powers the TVFE and TVCAP domains off for the sleep and on again, and the TV top's clock
+  and reset words at `0x06e00000` come back at their defaults. U-Boot sets them before it starts the MIPS; a
+  MIPS started without them stalls the whole SoC within 200 ms (`doku/172`).
+
+After the resume the wall shows the last picture until [h713-power](../tools/h713-power.md) starts
+`h713-mips-restart`: the driver repeats U-Boot's TV top step where the standby lost it, loads `display.bin`
+and starts the MIPS as U-Boot does; the HDMI receiver is bound again and `h713-tv` and `h713-warp` start.
+Measured on 09.10.2026 in the R2 test image: six standbys in one boot, each with the picture back 3.9-5.2 s
+after the wake (`doku/172`). Not measured: HDCP 2.2 from the source after the restart, HDMI audio after a
+standby (the audio DSP sits in TVFE and is not rebuilt), sleeps longer than 20 s.
+
 ## What wakes it
 
 | Source | Status |
@@ -52,6 +74,10 @@ After a wake by the power key Linux sees a `KEY_POWER` - the press that woke it.
 [h713-power](../tools/h713-power.md) ignores it; without h713-power logind would power off.
 
 ## When something goes wrong
+
+**Going to sleep can hang (C1).** In the R2 test image 3 of 13 standbys stopped right after the arisc
+driver's line `standby N: net none` and before the watchdog's; crust waits 15 s for the sleep, then resets the
+board, and it boots again (`doku/172`). The cause is open; the window holds genpd switching TVCAP and TVFE off.
 
 A standby that does not come back looks like this: **dark, red LED, no network, the key does nothing.**
 The LED follows PB5, so it is red whether the board sleeps, hangs or sits in the gate; it says nothing
@@ -103,5 +129,5 @@ and built but has never run, and the release refuses it. A design limit stays ev
 24 MHz on the oscillator, so the oscillator never stops; whether that matters is a question for the first
 power measurement.
 
-Details: `doku/162` - `doku/168`, [arisc.md](arisc.md), [h713-power](../tools/h713-power.md),
+Details: `doku/162` - `doku/168`, `doku/171`, `doku/172`, [arisc.md](arisc.md), [h713-power](../tools/h713-power.md),
 [the power-on gate](../uboot/power-gate.md).

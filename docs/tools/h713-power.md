@@ -64,9 +64,10 @@ unbound receiver on a running MIPS nor a second bind, and the start limits of `h
 path back, 1 the driver did not bring the MIPS up, 2 refused (MIPS untouched), 3 the MIPS runs but the
 receiver, its node or a service did not come back, 4 ended by a signal. Each outcome is a journal line
 (`journalctl -t h713-mips-restart`; run by hand also on stderr). The sequence brought
-the picture back at the HY310 on 08.10.2026 from a running MIPS and from the park registers set by hand;
-after a real standby it is not measured yet: on 08.10.2026 the resume itself still stopped with the display
-driver bound, before h713-power could start the tool.
+the picture back at the HY310 on 08.10.2026 from a running MIPS and from the park registers set by hand,
+and on 09.10.2026 after real standbys in the R2 test image: six in one boot, picture back 3.9-5.2 s after
+each wake (`doku/172`; the driver repeats U-Boot's TV top step the standby lost). The press of the real key
+on that path is not measured yet (the runs called h713-power's own `suspend()` and `picture_back()`).
 
 **Not measured yet.** The window after a key wake (`ignore_s`) is provisional; the device stage K
 measures it with the owner at the key. Whether the remote's power key should suspend too, and whether a
