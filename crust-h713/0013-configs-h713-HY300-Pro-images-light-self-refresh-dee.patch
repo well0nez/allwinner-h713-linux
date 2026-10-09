@@ -1,7 +1,7 @@
 From fd0ec940639efc3a02a741c0c4d31a586328c329 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 02:28:18 +0200
-Subject: [PATCH 13/75] configs: h713: HY300 Pro images (light, self-refresh,
+Subject: [PATCH 13/80] configs: h713: HY300 Pro images (light, self-refresh,
  deep)
 
 The HY300 Pro's vendor DT carries the same standby_param (power key PL4,

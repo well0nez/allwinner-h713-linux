@@ -46,7 +46,7 @@ the same hash as the fork head. The build uses the submodules, not the mirrors.
 **crust**, the firmware for the SoC's small OR1K core, is the fourth source tree: upstream
 [crust](https://github.com/crust-firmware/crust) at `499a362` (after v0.6), with our H713 port on a branch
 `h713` of a fork that is not published yet, so there is no submodule; `release/build-all.sh` takes the
-checkout as `CRUST_SRC`. `crust-h713/` mirrors the branch the same way (75 patches, the tree hash of the
+checkout as `CRUST_SRC`. `crust-h713/` mirrors the branch the same way (80 patches, the tree hash of the
 fork head checked). The port keeps crust's licence, BSD-3-Clause or GPL-2.0-only, and every file it adds
 says so in its SPDX line. It was written from the vendor ARISC firmware's behaviour and disassembly -
 its message contract, its DRAM self-refresh sequence register by register - not from vendor source. The

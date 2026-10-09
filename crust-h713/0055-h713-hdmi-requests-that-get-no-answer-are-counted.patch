@@ -1,7 +1,7 @@
 From 37cb8b8af262877367496ef27e8659643942aad9 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:19:12 +0200
-Subject: [PATCH 55/75] h713: hdmi: requests that get no answer are counted
+Subject: [PATCH 55/80] h713: hdmi: requests that get no answer are counted
 
 A RequestEDID for a port above 2 and an unknown 0x15 sub-command got no
 reply and left no trace; the kernel waited its 2 s and failed with a

@@ -1,7 +1,7 @@
 From 4687208a8c7984e56c347ef18d216a836bcf4e19 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:37:01 +0200
-Subject: [PATCH 07/75] h713: hdmi: the startup notify carries the version text
+Subject: [PATCH 07/80] h713: hdmi: the startup notify carries the version text
  again
 
 The copy loop's condition was inverted: for every character before the NUL

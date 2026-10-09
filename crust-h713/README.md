@@ -7,8 +7,8 @@ base is upstream crust's `master` after v0.6). `SERIES.txt` names base, head and
 thing that says which fork commit this mirror stands on. Whoever wants to change something changes the
 fork and has the mirror generated again.
 
-Verified the way a mirror should be: applying all 75 patches onto the base produces a tree with the same
-hash as the fork head (`e76287912083`, 08.10.2026).
+Verified the way a mirror should be: applying all 80 patches onto the base produces a tree with the same
+hash as the fork head (`2df473047ec5`, 09.10.2026; head `ecf2ddc`, branch `versuch/mips-drop`).
 
 **Not published yet.** The fork has no public repository so far, and there is no submodule
 `mainline/external/crust`; `release/build-all.sh` takes the checkout from `CRUST_SRC=<dir>` until there

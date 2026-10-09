@@ -1,7 +1,7 @@
 From 9a5b8dc3c80070dc0f15502afedda9d990a21a34 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 20:39:53 +0200
-Subject: [PATCH 60/75] h713: r-ccu: deep sleep leaves the RTC's LOSC alone
+Subject: [PATCH 60/80] h713: r-ccu: deep sleep leaves the RTC's LOSC alone
 
 0033 ported the blob's LOSC steps (LOSC to the internal RC and the 32k
 crystal off on the way down, crystal on and selected on the way up) and

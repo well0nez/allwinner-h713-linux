@@ -1,7 +1,7 @@
 From 1957ee67476285d46790566675b1466999f4ad3a Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 14:29:43 +0200
-Subject: [PATCH 34/75] h713: deep sleep: switches for the PLL LDO and the
+Subject: [PATCH 34/80] h713: deep sleep: switches for the PLL LDO and the
  VDD_SYS step
 
 The readiness review for a first deep run on the HY310 (PRUEFUNG4,

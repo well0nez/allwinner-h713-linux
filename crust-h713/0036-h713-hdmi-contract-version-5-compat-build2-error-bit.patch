@@ -1,7 +1,7 @@
 From 1bc90b211a7dbf05ea0a4e07256b21b4c3bf3b87 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:55:11 +0200
-Subject: [PATCH 36/75] h713: hdmi: contract version 5 - compat, build2, error
+Subject: [PATCH 36/80] h713: hdmi: contract version 5 - compat, build2, error
  bits and counters
 
 Version 5 adds the K block to the contract page (platform/memory.h).

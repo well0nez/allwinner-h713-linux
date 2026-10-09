@@ -1,7 +1,7 @@
 From 540e21e099d3b6324bc92e4be93c6f0ff8a49709 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 20:58:00 +0200
-Subject: [PATCH 64/75] h713: r-ccu: deep resume waits for each PLL's lock,
+Subject: [PATCH 64/80] h713: r-ccu: deep resume waits for each PLL's lock,
  with a deadline
 
 plls_restore() put the twelve PLLs back in table order and the root

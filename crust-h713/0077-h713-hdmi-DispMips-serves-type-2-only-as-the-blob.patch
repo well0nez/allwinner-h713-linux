@@ -1,0 +1,102 @@
+From 0cdf0099c837fb290c65ab2577a37d05d0ee2a8c Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 09:39:11 +0200
+Subject: [PATCH 77/80] h713: hdmi: DispMips serves type 2 only, as the blob
+
+The blob hands MIPS frames to DispMips 0x1180c, which serves header type
+2 and nothing else: any other type gets "ERR:Unknown DispMips Message
+type" and no action (0x11828, l.sfnei r3,2). crust took any type, as
+the ARM pump's classify() does not (type 0 only, 0x114e8). A frame with
+another type now counts in MIPS_DROP and does nothing; MIPS_HEAD shows
+the type that came. On the device the type is not measured; the blob
+would not serve the MIPS's 0x16 with any other.
+
+The comment on the 0x16 before the aux clock said the blob drops it so;
+0x12330 does not look at the clock, the guard is crust's own.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 24 ++++++++++++++++--------
+ 1 file changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index f3af9f9..8be7c4e 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -121,6 +121,7 @@
+  * companions and only recorded (MIPS_STRAY_INFO); any further one counts.
+  */
+ #define MIPS_STRAYS     3
++#define MIPS_TYPE       2  /* the one type DispMips serves (blob 0x11828) */
+ #define STRAY_TAKEN     (H713_K_MIPS_STRAY_INFO + 2)
+ #define STRAY_COUNTED   (H713_K_MIPS_STRAY_INFO + 3)
+ #define RX_PORT(p)      (2 * (p))      /* ARM -> ARISC, user1 port p */
+@@ -232,7 +233,7 @@ static uint32_t pl_cfg0_saved, pl_drv0_saved, pl_drv1_saved, pl_pull0_saved;
+ static uint32_t pl_data_saved;
+ static const struct device *cir;
+ static struct {
+-	uint8_t state, len, idx, buf[8];
++	uint8_t state, type, len, idx, buf[8];
+ } mips[4];
+ 
+ #define PL(pin, m, p) { .dev = &r_pio.dev, .id = SUNXI_GPIO_PIN(0, pin), \
+@@ -693,22 +694,27 @@ pump_word(uint32_t w)
+ 
+ /* ---- the display MIPS (blob 0x1180c "DispMips", 0x1242c) ------------------ */
+ static void
+-mips_frame(uint8_t q, const uint8_t *p, uint8_t len)
++mips_frame(uint8_t q, uint8_t type, const uint8_t *p, uint8_t len)
+ {
+ 	mmio_write_32(DIAG_MIPS_N, mmio_read_32(DIAG_MIPS_N) + 1);
+ 	mmio_write_32(DIAG_MIPS_LAST, p[0] | p[1] << 8 | p[2] << 16 |
+ 	              (uint32_t)p[3] << 24);
+ 	mmio_write_32(H713_K_MIPS_PORT, q);
+-	if (len >= 3 && p[0] == 0x16 && p[1] < PORTS) {	/* 0x12330 */
++	if (type != MIPS_TYPE) {				/* 0x11828 */
++		h713_cnt(H713_CNT_MIPS_DROP);
++	} else if (len >= 3 && p[0] == 0x16 && p[1] < PORTS) {	/* 0x12330 */
+ 		uint8_t port = p[1], action = p[2];
+ 
+ 		h713_cnt(H713_CNT_MIPS_16);
+ 		mmio_write_32(H713_K_MIPS_STRAY_INFO,	/* its companions anew */
+ 		              mmio_read_32(H713_K_MIPS_STRAY_INFO) & ~0xff00U);
+ 		/*
+-		 * No aux clock before the first ResetEDIDModule: dropped as
+-		 * the blob drops it, counted above with every 0x16 and not as
+-		 * an error - the MIPS may well send it that early at boot.
++		 * No aux clock before the first ResetEDIDModule: dropped,
++		 * counted above with every 0x16 and not as an error - the
++		 * MIPS may well send it that early at boot. crust's own guard,
++		 * not the blob's: 0x12330 does not look at the clock; here the
++		 * pin access it leads to would be refused by aux_ok() and
++		 * counted as an error.
+ 		 */
+ 		if (!aux_clocked())
+ 			return;
+@@ -764,6 +770,7 @@ mips_poll(void)
+ 					break;
+ 				}
+ 				mmio_write_32(H713_K_MIPS_HEAD, w);
++				mips[q].type = w >> 16;
+ 				mips[q].len = w >> 24;
+ 				mips[q].idx = 0;
+ 				for (uint8_t i = 0; i < sizeof(mips[q].buf); ++i)
+@@ -775,7 +782,7 @@ mips_poll(void)
+ 			case 1:
+ 				mips[q].state = mips[q].len ? 2 : 0;
+ 				if (!mips[q].len)
+-					mips_frame(q, mips[q].buf, 0);
++					mips_frame(q, mips[q].type, mips[q].buf, 0);
+ 				break;
+ 			default:
+ 				for (uint8_t b = 0; b < 4 && mips[q].idx < mips[q].len;
+@@ -785,7 +792,8 @@ mips_poll(void)
+ 				}
+ 				if (mips[q].idx >= mips[q].len) {
+ 					mips[q].state = 0;
+-					mips_frame(q, mips[q].buf, mips[q].len);
++					mips_frame(q, mips[q].type, mips[q].buf,
++					           mips[q].len);
+ 				}
+ 				break;
+ 			}

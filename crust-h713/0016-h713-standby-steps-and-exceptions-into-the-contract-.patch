@@ -1,7 +1,7 @@
 From 7dbb5c69b18c97c18587e9485bdebf3a52679a8f Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:37:50 +0200
-Subject: [PATCH 16/75] h713: standby steps and exceptions into the contract
+Subject: [PATCH 16/80] h713: standby steps and exceptions into the contract
  page, not RTC GP2/GP3
 
 All H713 images record their standby steps (CONFIG_DEBUG_RECORD_STEPS),

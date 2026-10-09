@@ -1,0 +1,94 @@
+From 302ee31fcf10582a6d4008c68873ce5f4f8fd412 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 10:09:57 +0200
+Subject: [PATCH 78/80] h713: hdmi: the companions of a 0x16 count against a
+ budget
+
+f94bd4d took up to three words without the marker between two valid
+0x16. That holds while the words share the frame's port: there the FIFO
+keeps the MIPS's order. On another port the poll reads them before or
+after their 0x16, as it finds them, and two events can put six words in
+one gap and none in the next: the emulator (crust-mips-drop, variant d,
+port 0 against port 1) counted 0, 3, 0 with alternating order.
+
+Now a budget: three at a start, three more with each valid 0x16, never
+more than six; a word within it is taken and recorded, every other one
+counts in MIPS_DROP. Three per 0x16 over time, as measured, wherever
+they sit; a burst beyond that still counts. The budget is in .bss (0 at
+a restart means three, the start value); MIPS_STRAY_INFO keeps its
+layout, 15..8 is now only the record of where the words come.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 18 ++++++++++++------
+ platform/h713/include/platform/memory.h |  5 +++--
+ 2 files changed, 15 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 8be7c4e..505df8f 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -116,9 +116,11 @@
+  * Words without the marker outside a frame: the blob reads them and drops
+  * them without a trace (0x80c4/0x80c8). The HY310's MIPS sends three with
+  * every 0x16 (08.10.2026, R1 image: three 0x16, CNT1 0x03000900, no error
+- * bit, DIAG_MIPS_N 3); where they sit is not measured. Up to MIPS_STRAYS
+- * of them between two valid 0x16, and before the first, are taken as its
+- * companions and only recorded (MIPS_STRAY_INFO); any further one counts.
++ * bit, DIAG_MIPS_N 3); where they sit is not measured, and on another port
++ * they are read before or after their 0x16 as the poll finds them. So they
++ * are taken as its companions against a budget, mips_spare: MIPS_STRAYS at
++ * a start, MIPS_STRAYS more with each valid 0x16, never more than twice
++ * that; taken ones are only recorded (MIPS_STRAY_INFO), the rest counts.
+  */
+ #define MIPS_STRAYS     3
+ #define MIPS_TYPE       2  /* the one type DispMips serves (blob 0x11828) */
+@@ -235,6 +237,7 @@ static const struct device *cir;
+ static struct {
+ 	uint8_t state, type, len, idx, buf[8];
+ } mips[4];
++static int8_t   mips_spare;	/* the budget - MIPS_STRAYS, 0 at a start */
+ 
+ #define PL(pin, m, p) { .dev = &r_pio.dev, .id = SUNXI_GPIO_PIN(0, pin), \
+ 	.drive = DRIVE_10mA, .mode = m, .pull = p }
+@@ -708,6 +711,8 @@ mips_frame(uint8_t q, uint8_t type, const uint8_t *p, uint8_t len)
+ 		h713_cnt(H713_CNT_MIPS_16);
+ 		mmio_write_32(H713_K_MIPS_STRAY_INFO,	/* its companions anew */
+ 		              mmio_read_32(H713_K_MIPS_STRAY_INFO) & ~0xff00U);
++		mips_spare = mips_spare > 0 ? MIPS_STRAYS :
++		             mips_spare + MIPS_STRAYS;
+ 		/*
+ 		 * No aux clock before the first ResetEDIDModule: dropped,
+ 		 * counted above with every 0x16 and not as an error - the
+@@ -742,11 +747,12 @@ mips_stray(uint8_t q, uint32_t w)
+ 		n = 0xff;
+ 	mmio_write_32(H713_K_MIPS_STRAY, w);
+ 	mmio_write_32(H713_K_MIPS_STRAY_INFO, (info & 0xffff0000U) | n << 8 | q);
+-	if (n > MIPS_STRAYS) {
++	if (mips_spare > -MIPS_STRAYS) {
++		--mips_spare;
++		h713_cnt(STRAY_TAKEN);
++	} else {
+ 		h713_cnt(STRAY_COUNTED);
+ 		h713_cnt(H713_CNT_MIPS_DROP);
+-	} else {
+-		h713_cnt(STRAY_TAKEN);
+ 	}
+ }
+ 
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index b880a9a..248f0d3 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -141,8 +141,9 @@
+  * without the marker (the blob reads such words and drops them without a
+  * trace, 0x80c4). MIPS_STRAY_INFO: 7..0 the port of that word; 15..8 such
+  * words since the last valid 0x16 (saturating at 255); 23..16 such words
+- * taken as the measured companions of a 0x16, 31..24 such words counted
+- * in MIPS_DROP (both wrapping).
++ * taken as the measured companions of a 0x16 (three per 0x16, the budget
++ * in sun50i-h713-hdmi.c), 31..24 such words counted in MIPS_DROP (both
++ * wrapping).
+  */
+ 
+ /* A: written by the ARM, read by crust. */

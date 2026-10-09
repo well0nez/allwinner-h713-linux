@@ -1,7 +1,7 @@
 From 82d0409d371346f18aa623f4db0ddf1f3d5de81b Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 04:43:59 +0200
-Subject: [PATCH 28/75] h713: hdmi: contract version 4 - the size of the image
+Subject: [PATCH 28/80] h713: hdmi: contract version 4 - the size of the image
  part that never changes
 
 The build word (image size and variant) told light, self-refresh and deep
