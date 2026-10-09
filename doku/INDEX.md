@@ -226,6 +226,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`179-missglueckter-standby-endet-dunkel-im-gate-20261009.md`](179-missglueckter-standby-endet-dunkel-im-gate-20261009.md) | Analyse | 2026-10-09 | 179 - Ein missglückter Standby endet dunkel im Gate (TODO 2.30) (09.10.2026, 18:40) | 5 |
 | [`180-hdcp-haertung-eingebaut-und-gemessen-20261009.md`](180-hdcp-haertung-eingebaut-und-gemessen-20261009.md) | Analyse | 2026-10-09 | 180 - HDCP-Härtung eingebaut und per FEL gemessen: Übergabe ohne Adresse, einmal pro Boot, Watchdog über den Treiber (09.10.2026, 20:30) | 1 |
 | [`181-leistung-standby-gate-betrieb-20261009.md`](181-leistung-standby-gate-betrieb-20261009.md) | Analyse | 2026-10-09 | 181 - Leistung am HY310: Standby 2,4 W, Aus (Gate) 2,9 W, Betrieb ~24 W (TODO 2.31) (09.10.2026, 21:00) | 6 |
+| [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -383,7 +384,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-41 von 240 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+42 von 241 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -418,6 +419,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `161-hdcp-haertung-paket-20261007.md`
 * `169-crust-release-offline-fertig-20261008.md`
 * `178-hdcp-paket-entscheidungen-20261009.md`
+* `182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

@@ -39,6 +39,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 1.4 HY300 Pro G-EU (`boards/hy200-qz713df-a1`): Boot, Bild, HDCP 1.4 mit geteiltem Satz, 2.2 (Marco 06.10.:
       später). Dazu Bluetooth dort: erster Attach nach Kaltstart hängt an `0x1003`, 245-Byte-Schreibvorgänge kommen
       unvollständig an (FB-BTRESET 9.3, RTS/CTS?); `h713-bt-reset` auf dem Board noch nie probiert
+      - **09./10.10. nachts (`doku/182`):** Testabbild `geucrust1` mit crust installiert, crust läuft, HDMI/EDID/HDCP-1.4-Schlüssel
+        gut; MIPS-Reload war schwarz -> Ursache LCD-Panel braucht Stromzyklus (PF6), Behebung im MIPS-Treiber + PF6 in der
+        Pin-Tabelle, 3/3 per Schnell-Deploy. Offen: Patches in die Serie, `geucrust2` mit `--standby` (build-all erlaubt es
+        nur bestätigten Boards; PB5 bleibt im Standby an), HDCP-Paar, HDCP 2.2, Ton, Standby am HY300
 - [x] 1.5 STAGE4-Marker füllen und löschen - **erledigt** (b110ec1, `doku/143`); 09.10. geprüft: `git grep STAGE4` findet keinen Marker mehr
 - [ ] 1.6 Forks pushen (Stand 09.10. 20:xx, nach der HDCP-Härtung `doku/180`): U-Boot `h713-hy310` +11 (Kopf `7b1ea388da0d`, lokal
       Zweig `versuch/hdcp-haertung-uboot`: 0096 crust-Ablage, 0097 Gate-Zeile, 0098-0100 HDCP), TF-A `sun50i-h713` +25 (Kopf
