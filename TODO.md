@@ -373,6 +373,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       R_WDOG als Netz im Schlaf in `standby.md`. Aus dem Code gelesen, nicht gesehen: bricht ein Standby nach
       `msp_suspend`, aber vor dem Park ab, bleibt msp auf "error" und `h713-mips-restart` läuft nicht (nur bei "parked")
       - Ton bis zum Neustart weg; gehört zu 5.14.
+- [ ] 5.17 **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
+      G-EU-Testbau 09.10. stieg in Schritt 7 (Rootfs) aus, nach ~25 min Kernel/Mesa/Sysroot; danach lief alles von vorn, und
+      eine Kommentaränderung im Gerätebaum-Patch kostete den Kernel noch einmal. Heute gibt es `--skip-bl31/-uboot/-kernel/
+      -rootfs`, die nur "wenn vorhanden" prüfen, nicht ob es zum Stand passt. Vorschlag: jeder Schritt schreibt einen
+      Eingabe-Stempel (wie der Kernelbaum schon über den Eingabe-Hash und die Sysroot über den Paketstempel), `--resume`
+      nimmt fertige Schritte mit passendem Stempel und baut ab dem ersten abweichenden; Release-Bauten bleiben ohne
+      `--resume` von vorn (Regel "Release-Bauten immer von vorn"). Dazu: ein reiner Kommentar im Patch sollte den
+      Kernel nicht neu bauen müssen (Hash über den Inhalt ohne Kommentar ist heikel - erst abwägen)
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
