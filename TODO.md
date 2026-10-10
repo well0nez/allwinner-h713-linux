@@ -194,6 +194,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       nimmt crust nicht an, wartet das Gate wie bisher. Verhalten unverändert (dunkel, Taste, 3-s-Bypass), nur der Verbrauch sinkt.
       Etwa zehn Zeilen in U-Boot (`board/sunxi/board.c` `h713_gate_wait`), per FEL messen. **Ändert das Gate - nur mit Marcos
       ausdrücklichem Ja** (Gedächtnis "Gate nicht anfassen")
+      - **10.10. später abends, Gespräch mit Marco (`doku/189` §4.4):** a/b ja ("mach das erstmal"), c) IR darf wecken - ja, vorher
+        prüfen, ob sie es heute schon tut; d) ein missglückter Standby (`STBY`) bleibt in der alten Schleife (sonst überschreibt das Aus
+        crusts Fehlerprotokoll); e) erst bauen, dann Bescheid, gemessen wird später. **Gebaut, nicht gemessen:** U-Boot
+        `versuch/kaltstart-gate` `61ea018` (Paket `arbeit/kaltstart-gate-20261010/`, Testplan im BERICHT), FEL-Abbilder für G-EU und HY310
 - [ ] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
       über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
       Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
