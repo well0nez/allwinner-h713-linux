@@ -1,4 +1,5 @@
 # Die Video-Plane: NV16 aus dem HDMI-Capture-Ring (Patch 0093)
+> **Berichtigt 10.10.2026 ([`192`](192-einblendung-ueber-kanal-2-und-plan-20261010.md)):** die "Korrektur 07.09." in §1 ("Stock hat AFBD-Kanal 1 aktiv und bedient") trägt nicht; ein Overlay gibt es - über Kanal 2 ohne Bit 28 im Selektor, gemessen am 10.10.
 
 **Stand 07.09.2026, vormittags - am Gerät abgenommen (Abschnitt 0).** Grundlage: [76-plan-ch0-de.md](76-plan-ch0-de.md) §§10-13 (Registersatz,
 Farbe, Fallen), [78-nachtplan-hdmi-switch.md](78-nachtplan-hdmi-switch.md) Abschnitt 3 „D",

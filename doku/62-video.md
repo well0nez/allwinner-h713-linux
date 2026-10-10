@@ -1,4 +1,5 @@
 # Video: VE-Dekodierung und Wiedergabe auf dem Panel
+> **Berichtigt 10.10.2026 ([`192`](192-einblendung-ueber-kanal-2-und-plan-20261010.md)):** die drei `ge2d_plane_vblender_writes[]` (`0x1A000005`, `0x00350000`, `0x08100035`) gehören nach `0x051C0014/24/28`, nicht `0x05200040/50/54`.
 
 Stand 01.09.2026. Ziel war, seine Aussage *„video decode is DONE, 59.71 fps
 zero-copy"* auf unserem Board nachzubauen. Das läuft - bei **1920×1080**, wo

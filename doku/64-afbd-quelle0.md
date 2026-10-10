@@ -1,4 +1,5 @@
 # AFBD: die Kanäle, das Latch-Orakel, und der Beweis bis zum Panel
+> **Berichtigt 10.10.2026 ([`192`](192-einblendung-ueber-kanal-2-und-plan-20261010.md)):** "Stock bedient ch1" (§2, §6) war falsch gedeutet - `0x104 = 0` heißt unter Stock "nie geschrieben"; OSD-A ist unter Stock zu, Stocks Oberfläche liegt auf Kanal 2. Ein "Tor" für ch1 gibt es nicht.
 
 Stand 01.09.2026, nachts. Alles am Gerät gemessen (`192.168.8.142`), mit
 laufendem MIPS. Die Registerdeutungen sind aus `ge2d_dev.ko` disassembliert,

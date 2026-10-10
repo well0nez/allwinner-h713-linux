@@ -1,4 +1,5 @@
 # RE: INCAP-Felder, Ring-Folge und der zweite Descriptor-Anstoß (K1-K3)
+> **Berichtigt 10.10.2026 ([`192`](192-einblendung-ueber-kanal-2-und-plan-20261010.md)):** `OSD_AFBD_REG_OFFSET` in `ge2d_dev.ko` ist `{0x05600100, 0x05600140}`, nicht `0x05600300`/`0x05600340` (§3.4).
 
 **Stand 07.09.2026, Nacht.** Auftrag: Nachtplan [78](78-nachtplan-hdmi-switch.md) Abschnitt 3 „K", Fragen
 **K1, K2, K3**. Reine statische Analyse - **kein Board angefasst**. Werkzeug: IDA 9.1/idalib gegen eine

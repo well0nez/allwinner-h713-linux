@@ -133,6 +133,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       der primären Ebene, ohne Trapez und ohne Spiegelung - im ceiling-Modus steht sie auf dem Kopf. Wege: fbcon
       `rotate_all = 2` für ceiling (nur Drehung, kein Spiegeln), Firmware-Spiegel per RPC (FB-MIRROR 2.3/F3) oder der
       Warp liest `fb0` als Textur und zeichnet die Konsole mit (wie Stock, eigenes Paket)
+      - **10.10. später abends (`doku/192`):** überholt durch den Gesamtplan - Einblendungen über Kanal 2 (2.43), die Konsole
+        wird ein Terminal im Desktop (2.45), fbcon bleibt unverzerrte Notfallkonsole
       - **10.10. abends:** Weg entschieden - der Warp liest `fb0` als Textur und zeichnet die Konsole durch Trapez und Modus,
         zusammen mit dem OSD (2.38, 9.9). Paket `arbeit/warp-konsole-20261010/` für eine eigene Sitzung (`doku/189` §5)
 - [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
@@ -193,17 +195,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
       über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
       Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
-- [ ] 2.41 **OSD-A (AFBD-Kanal 1) öffnen wie Stock** (10.10. abends, aus Marcos Frage "wie lässt Stock Overlay auf HDMI"):
-      Stock legt Androids Oberfläche auf die Hardware-Ebene OSD-A über das unverzerrte HDMI-Bild (Stock-Abzug `doku/64` §6:
-      Kanal 1 aktiv, Kanal 2 aus; Entwurf AP3n). Bei uns nimmt Kanal 1 keine Bilder an, auch mit Stock-Registerwerten; am
-      23.09. am U-Boot-Prompt dreimal versucht, das Tor liegt außerhalb der drei bekannten Blöcke (`doku/131`). Offen: wer es
-      bei Stock öffnet (vermutlich ein Firmware-Auftrag an den Display-MIPS aus dem HAL/HWC, oder ein Takt-/Reset-Bit).
-      Gewinn: OSD ohne GPU, das Video bliebe im Ring, der Warp könnte bei Identität wieder schlafen. Eigenes RE-Paket,
-      getrennt vom Warp-Baum; bis dahin mischt die GPU (2.38, 2.7a). Nicht dringend
-      - **10.10. später abends (Marco: "das wäre der Hammer"):** Paket `arbeit/osd-a-20261010/` für eine eigene Sitzung (Fable),
-        Worktree `versuch/osd-a` ab `8b663b8`, `AUFTRAG.md`/`REGELN.md`, Material (Stock-Binaries, Mitschnitte, AP3n/AP3j/OSD1) und
-        IDA-Arbeitskopien bereitgelegt, idalib + Hex-Rays geprüft. Der HY310 gehört bis auf Weiteres diesem Paket; Haltepunkt vor
-        dem ersten Schreiben am Gerät ist die Kandidatenliste fürs Tor
 - [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
       höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
       - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf
@@ -215,6 +206,28 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
       im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
       über unser System oder über das Netzteil bei kleiner Last
+- [ ] 2.43 **Ein Einblende-Zeichner auf Kanal 2** (Gesamtplan `doku/192` §5, Marco 10.10.: "überlebenswichtig"): alle
+      Einblendungen (Lautstärke, Stumm, Fokus, Ausschalten 2.38) gestapelt in **einem** ARGB-Bild auf Kanal 2 über dem Video
+      (Kernel 0251, Primär-Ebene `zpos` 2). Zeichnen aus Deepseeks `osd.c` (Paket `warp-konsole`) übernehmen, **die Optik neu**
+      (Marco: Ausführung ungenügend). Bei Trapez mit derselben Homographie wie der Warp vorverzerrt (gemessen K5), neu gerechnet
+      nur bei Änderung von Inhalt oder Ecken. Committen muss der DRM-Master: heute `h713-tv` (`ctl osd ...`, Zeichner als
+      Bibliothek) oder per DRM-Lease. Löst den Weg "OSD im Warp" (2.7a, Paket `warp-konsole`) ab - das Paket umlenken
+- [ ] 2.44 **Eine Matrix-Quelle für die Trapez-Geometrie** (`doku/192` §5.4a): Ecken, Zoom, Projektionsmodus an einer Stelle mit
+      Änderungsnachricht; Warp, Einblende-Zeichner (2.43) und später der Desktop-Compositor rechnen mit derselben Funktion
+- [ ] 2.45 **Regel: wer auf Kanal 2 zeichnet, zeichnet verzerrt - Vorplanung Desktop** (`doku/192` §5.3-5.4): ein späterer
+      Compositor setzt die Trapez-Matrix als letzten Durchgang und zeichnet die Einblendung davor; Kanal 2 gehört dann dem Desktop
+      (Alpha je Bildpunkt über der Video-Ebene); Zeichnen und Ausgabeort trennen; DRM-Master heute `h713-tv`, später der
+      Compositor - nichts dauerhaft an `h713-tv` binden; fbcon bleibt unverzerrte Notfallkonsole, die Alltags-Konsole wird ein
+      Terminal im Desktop (ersetzt 2.7a, sobald der Desktop kommt)
+- [ ] 2.46 **Tasten: `h713-keys` (IR + Bluetooth) erweitern** um Home, Menü, Maus, Record, Steuerkreuz (`doku/192` §5.5); dazu die
+      IR-Belegung 2.35 (beide Boxen hören denselben Code)
+- [ ] 2.47 **Warp sparsamer** - eigenes Paket, erst messen (`doku/192` §5.6): `sugov:0` kostet 14,6 % eines Kerns, so viel wie der
+      Warp (14 %). Ansätze: fester Takt oder `rate_limit_us`; `-O3 -mcpu=cortex-a53`, LTO, NEON; der Warp committet selbst statt
+      über den `h713-tv`-Socket; EGLImage je Slot einmal; GPU-Fences statt Abfragen; gleiche Bilder überspringen; Luma/Chroma in
+      einem Durchgang; GPU-Takt
+- [ ] 2.48 **0251 nachmessen** (`doku/192` §3): Bildrate der Aufnahme mit 0251 während einer Einblendung bei laufendem Warp,
+      Farben genau, `premultiplied`/`coverage` (keine Blend-Mode-Eigenschaft), `zpos`-Wechsel bei laufendem Seitenwechsel,
+      Signalverlust/-rückkehr, Standby mit Einblendung, der G-EU
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -325,6 +338,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       7. **Später (eigenes Paket, nur mit Besitzerbericht und Registerbeweis):** crust ohne Standby für fremde Boards - nur Aus
          und der HDMI-Vertrag, die Pins (PL6, PB5, PL3, Taste) aus `standby_param` des eigenen Stock-Gerätebaums; dann hätten
          auch sie 0,3 W im Aus, ohne dass wir ihr DRAM kennen
+- [ ] 5.21 **`build/build.sh kernel` ohne U-Boot-Submodul:** `find_mkimage` baut `mkimage` aus dem U-Boot-Submodul und packt
+      ohne es keinen FIT; Rückfall auf das `mkimage` des Systems (der Container hat `/usr/bin/mkimage` 2025.10). Gefunden im
+      Paket `osd-a` (`doku/192` §6)
+- [ ] 5.22 **Kernel-Patchordner aufräumen:** die zurückgenommene `0011-misc-add-sunxi-nsi.patch` liegt noch in `patches/kernel/`
+      statt in `zurueckgenommen/`; `mainline/patches/README.md` nennt veraltet "0001 ... 0161, 149"
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
@@ -633,6 +651,19 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
         Messung am HY310 und vor dem echten Netzstecker-Test ("nimm es einfach mit in main für hy300 und hy310 - testen tun wir dann
         beide"). Gemessen: FEL-Lauf k1 am G-EU (Kaltstart nachgestellt, 0,3-0,6 W, IR weckt). Offen, mit 1.1a: echter Netzstecker an
         beiden Boxen, HY310 überhaupt; die R_WDOG-Warnung nach jedem Wecken ist 2.40
+- [x] 2.41 **OSD-A (AFBD-Kanal 1) öffnen wie Stock** (10.10. abends, aus Marcos Frage "wie lässt Stock Overlay auf HDMI"):
+      Stock legt Androids Oberfläche auf die Hardware-Ebene OSD-A über das unverzerrte HDMI-Bild (Stock-Abzug `doku/64` §6:
+      Kanal 1 aktiv, Kanal 2 aus; Entwurf AP3n). Bei uns nimmt Kanal 1 keine Bilder an, auch mit Stock-Registerwerten; am
+      23.09. am U-Boot-Prompt dreimal versucht, das Tor liegt außerhalb der drei bekannten Blöcke (`doku/131`). Offen: wer es
+      bei Stock öffnet (vermutlich ein Firmware-Auftrag an den Display-MIPS aus dem HAL/HWC, oder ein Takt-/Reset-Bit).
+      Gewinn: OSD ohne GPU, das Video bliebe im Ring, der Warp könnte bei Identität wieder schlafen. Eigenes RE-Paket,
+      getrennt vom Warp-Baum; bis dahin mischt die GPU (2.38, 2.7a). Nicht dringend
+      - **10.10. später abends (Marco: "das wäre der Hammer"):** Paket `arbeit/osd-a-20261010/` für eine eigene Sitzung (Fable),
+        Worktree `versuch/osd-a` ab `8b663b8`, `AUFTRAG.md`/`REGELN.md`, Material (Stock-Binaries, Mitschnitte, AP3n/AP3j/OSD1) und
+        IDA-Arbeitskopien bereitgelegt, idalib + Hex-Rays geprüft. Der HY310 gehört bis auf Weiteres diesem Paket; Haltepunkt vor
+        dem ersten Schreiben am Gerät ist die Kandidatenliste fürs Tor
+      - **Erledigt 10.10.2026 abends, anders als gedacht** (`doku/192`, Paket `arbeit/osd-a-20261010/`): Stock benutzt OSD-A nicht,
+        ein Tor gibt es nicht; die Einblendung geht über **Kanal 2** (OSD-B) über dem Video - Kernel 0251, weiter in 2.43-2.48
 - [x] 2.33 **HY300PRO-G-EU: Lüfter (und Lampe?) im Standby an** - **erledigt 10.10. nachts** (`doku/185`): Stock-Baum nennt PB5 als
       `panel_bl_en` und `fan-power-gpio` wie der HY310; Kernel `0249` gibt PB5 dem Board-Manager statt des Hogs, im Standby "fan power
       rail off", Lüfter aus, Lampe dunkel, nach dem Wecken alles zurück. crust musste nicht angefasst werden. Bisher (Marco 10.10. nachts: "das soll definitiv nicht so sein";

@@ -1,4 +1,5 @@
 # 85 - PQ-Register der MIPS-Firmware (K5) und Vorstudie Compositing (K6)
+> **Berichtigt 10.10.2026 ([`192`](192-einblendung-ueber-kanal-2-und-plan-20261010.md)):** Teil B - Stock hat OSD-Ebene 0 (ch1) **nicht** aktiv; seine Oberfläche liegt auf Kanal 2 und wird am Selektor gemischt (`0x21000000`/`0x29000000`, Bit 28 = nur Video), nicht "vor dem PROC".
 
 **Stand 07.09.2026, Nacht.** Reine statische Analyse (idalib, Firmware-Abbild, vorhandene Aufzeichnungen);
 **kein Board angefasst**. Grundlage: `doku/78-nachtplan-hdmi-switch.md` Abschnitt 3 „K", Fragen 5 und 6.
