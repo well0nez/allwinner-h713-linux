@@ -71,8 +71,10 @@ for f in lib/libEGL.so.1 lib/libGLESv2.so.2 lib/libgbm.so.1 lib/gbm/dri_gbm.so; 
 	[[ -e "$STAGE/usr/local/$f" ]] || die "missing in the stage: $f"
 done
 grep -q "panfrost" "$STAGE"/usr/local/lib/libgallium-*.so || die "libgallium without panfrost?"
-if find "$STAGE" -name '*.so*' -type f -exec readelf -d {} + | grep -q "libLLVM"; then die "a library links libLLVM"; fi
-find "$STAGE" -name '*.so*' -type f -exec readelf -h {} + | grep -q "AArch64" || die "not aarch64?"
+# (no grep -q behind a pipe: with pipefail readelf dies of SIGPIPE, find fails and the test with it -
+# 10.10.: "not aarch64?" on a good stage, and a libLLVM match would have passed unseen)
+[[ $(find "$STAGE" -name '*.so*' -type f -exec readelf -d {} + | grep -c "libLLVM") -eq 0 ]] || die "a library links libLLVM"
+[[ $(find "$STAGE" -name '*.so*' -type f -exec readelf -h {} + | grep -c "AArch64") -gt 0 ]] || die "not aarch64?"
 find "$STAGE" -name '*.so*' -type f -exec readelf -d {} + | grep "NEEDED" | sed 's/.*\[\(.*\)\]/\1/' | sort -u | tr '\n' ' ' | sed 's/^/    NEEDED: /'; echo
 
 # 6. tarball + sizes. Sorted, owner 0:0 (build-rootfs.sh chowns to 0:0 on the way in anyway) and, with

@@ -156,14 +156,15 @@ verify_kernel_tarball() {
 # --- TF-A BL31 --------------------------------------------------------------
 # PSCI SYSTEM_SUSPEND (the standby through crust) only when asked for with H713_STANDBY=1
 # (release/build-all.sh --standby), and only for a board that names a crust build and is
-# verified (board.env CRUST_DEFCONFIG, STATUS=verified). TF-A does not track a changed flag,
+# verified (board.env CRUST_DEFCONFIG, STATUS=verified) - or for a test image of such a board
+# (H713_TEST_IMAGE=1 from build-all.sh --test-image). TF-A does not track a changed flag,
 # so the build directory goes when the flag differs from the last build's.
 build_bl31() {
   have
   local suspend=0 flag="$ATF/build/.h713-system-suspend"
   if [ "${H713_STANDBY:-0}" = 1 ]; then
-    [ -n "${CRUST_DEFCONFIG:-}" ] && [ "${STATUS:-}" = verified ] ||
-      { echo "error: H713_STANDBY=1, but board '$BOARD' names no CRUST_DEFCONFIG or is not verified" >&2; return 1; }
+    [ -n "${CRUST_DEFCONFIG:-}" ] && { [ "${STATUS:-}" = verified ] || [ "${H713_TEST_IMAGE:-0}" = 1 ]; } ||
+      { echo "error: H713_STANDBY=1, but board '$BOARD' names no CRUST_DEFCONFIG or is neither verified nor a test image" >&2; return 1; }
     suspend=1
   fi
   [ "$(cat "$flag" 2>/dev/null)" = "$suspend" ] || rm -rf "$ATF/build/$ATF_PLAT"

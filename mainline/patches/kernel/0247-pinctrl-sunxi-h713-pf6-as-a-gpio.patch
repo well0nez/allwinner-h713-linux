@@ -1,0 +1,31 @@
+pinctrl: sunxi: h713: PF6 as a GPIO
+
+The H713 pin table knew bank F only up to PF5. PF6 exists: it is the
+HY300PRO-G-EU's panel supply (stock panel_power_en), which U-Boot drives
+at boot in h713_disp_stock_panel_power and the display MIPS driver now
+cycles after a restart. Without the pin in the table a gpiod request for
+it fails its pin-range lookup with -EPROBE_DEFER for good, and the
+consumer never probes (seen 10.10.2026: the whole MIPS driver unbound).
+
+Only the GPIO functions: nothing else is known about this pin. Built into
+the kernel of the HY300PRO-G-EU test image, the panel cycle requested PF6
+and brought the picture back after three restarts in a row.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/pinctrl/sunxi/pinctrl-sun50i-h713.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun50i-h713.c
+@@ -490,6 +490,13 @@
+ 		  SUNXI_FUNCTION(0x3, "mmc0"),
+ 		  SUNXI_FUNCTION(0x4, "jtag"),
+ 		  SUNXI_FUNCTION_IRQ_BANK(0xe, 4, 5)),
++	/*
++	 * PF6: a GPIO the HY300PRO-G-EU uses as its panel supply (stock
++	 * panel_power_en, U-Boot's h713_disp_stock_panel_power); only its GPIO functions.
++	 */
++	SUNXI_PIN(SUNXI_PINCTRL_PIN(F, 6),
++		  SUNXI_FUNCTION(0x0, "gpio_in"),
++		  SUNXI_FUNCTION(0x1, "gpio_out")),
+ 	SUNXI_PIN(SUNXI_PINCTRL_PIN(G, 0),
+ 		  SUNXI_FUNCTION(0x0, "gpio_in"),
+ 		  SUNXI_FUNCTION(0x1, "gpio_out"),
