@@ -25,7 +25,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/190`, `doku/70`, `doku/72`, `doku/94` |
-| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/80` |
+| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/80` |
 | `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107`, `doku/170` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/184`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
@@ -33,7 +33,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/171`, `doku/60` |
 | `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/96` |
 | `docs/subsystems/crypto-engine.md` | `doku/112`, `doku/114` |
-| `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
+| `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/192`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/94` |
 | `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180`, `doku/184`, `doku/187` |
@@ -226,17 +226,17 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`179-missglueckter-standby-endet-dunkel-im-gate-20261009.md`](179-missglueckter-standby-endet-dunkel-im-gate-20261009.md) | Analyse | 2026-10-09 | 179 - Ein missglückter Standby endet dunkel im Gate (TODO 2.30) (09.10.2026, 18:40) | 5 |
 | [`180-hdcp-haertung-eingebaut-und-gemessen-20261009.md`](180-hdcp-haertung-eingebaut-und-gemessen-20261009.md) | Analyse | 2026-10-09 | 180 - HDCP-Härtung eingebaut und per FEL gemessen: Übergabe ohne Adresse, einmal pro Boot, Watchdog über den Treiber (09.10.2026, 20:30) | 1 |
 | [`181-leistung-standby-gate-betrieb-20261009.md`](181-leistung-standby-gate-betrieb-20261009.md) | Analyse | 2026-10-09 | 181 - Leistung am HY310: Standby 2,4 W, Aus (Gate) 2,9 W, Betrieb ~24 W (TODO 2.31) (09.10.2026, 21:00) | 6 |
-| [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | 2 |
+| [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | 3 |
 | [`183-handoff-20261010-nachts.md`](183-handoff-20261010-nachts.md) | Handoff | 2026-10-10 | 183 - Handoff 10.10.2026 nachts: Stand und Plan (HY300-Tests mit geucrust2 stehen an) | - |
-| [`184-hy300pro-g-eu-geucrust2-testreihe-20261010.md`](184-hy300pro-g-eu-geucrust2-testreihe-20261010.md) | Analyse | 2026-10-10 | 184 - HY300PRO-G-EU mit geucrust2: alles, was am HY310 bestätigt ist, bis auf die Standby-Leistung (10.10.2026, 01:00-02:30) | 6 |
-| [`185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md`](185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md) | Analyse | 2026-10-10 | 185 - HY300PRO-G-EU: Lüfter und Lampe im Standby aus - PB5 gehört dem Board-Manager (10.10.2026, 02:30-02:50) | 2 |
+| [`184-hy300pro-g-eu-geucrust2-testreihe-20261010.md`](184-hy300pro-g-eu-geucrust2-testreihe-20261010.md) | Analyse | 2026-10-10 | 184 - HY300PRO-G-EU mit geucrust2: alles, was am HY310 bestätigt ist, bis auf die Standby-Leistung (10.10.2026, 01:00-02:30) | 7 |
+| [`185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md`](185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md) | Analyse | 2026-10-10 | 185 - HY300PRO-G-EU: Lüfter und Lampe im Standby aus - PB5 gehört dem Board-Manager (10.10.2026, 02:30-02:50) | 3 |
 | [`186-handoff-20261010-frueh.md`](186-handoff-20261010-frueh.md) | Handoff | 2026-10-10 | 186 - Handoff 10.10.2026 früh: der HY300PRO-G-EU auf dem Stand des HY310, alles in `main`, nächste Schritte | - |
 | [`187-offline-re-a-b-c-ausgewertet-20261010.md`](187-offline-re-a-b-c-ausgewertet-20261010.md) | Analyse | 2026-10-10 | 187 - Offline-RE A, B, C ausgewertet: Stock-"Aus" über PL6, TVCAP bleibt im Standby an, die SKE-Zeile ist die cost-tick-Zeile (10.10.2026) | 2 |
-| [`188-aus-ueber-crust-0-3-watt-20261010.md`](188-aus-ueber-crust-0-3-watt-20261010.md) | Analyse | 2026-10-10 | 188 - "Aus" über crust: die Schienen aus (PL6), 0,3 W wie Stock, Timer, Fernbedienung und Taste wecken (10.10.2026) | 4 |
+| [`188-aus-ueber-crust-0-3-watt-20261010.md`](188-aus-ueber-crust-0-3-watt-20261010.md) | Analyse | 2026-10-10 | 188 - "Aus" über crust: die Schienen aus (PL6), 0,3 W wie Stock, Timer, Fernbedienung und Taste wecken (10.10.2026) | 5 |
 | [`189-handoff-20261010-abends.md`](189-handoff-20261010-abends.md) | Handoff | 2026-10-10 | 189 - Handoff 10.10.2026 abends: das Aus über crust ist in `main`; als Nächstes das Aus am HY310 messen und mit Marco das Kaltstart-Gate besprechen; OSD und Konsole im Warp laufen als eigenes Paket | - |
 | [`190-aus-ueber-crust-am-hy310-20261010.md`](190-aus-ueber-crust-am-hy310-20261010.md) | Analyse | 2026-10-10 | 190 - "Aus" über crust am HY310 gemessen: Selbstwecken, Power-Taste und IR-Fernbedienung (10.10.2026) | 4 |
 | [`191-kaltstart-gate-ueber-crust-20261010.md`](191-kaltstart-gate-ueber-crust-20261010.md) | Analyse | 2026-10-10 | 191 - Kaltstart-Gate über crust: nach dem Einstecken wartet crust statt U-Boot, 0,3-0,6 W, die Fernbedienung weckt (10.10.2026) | 2 |
-| [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | - |
+| [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 2 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -394,7 +394,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-45 von 251 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+44 von 251 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -432,7 +432,6 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `183-handoff-20261010-nachts.md`
 * `186-handoff-20261010-frueh.md`
 * `189-handoff-20261010-abends.md`
-* `192-einblendung-ueber-kanal-2-und-plan-20261010.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

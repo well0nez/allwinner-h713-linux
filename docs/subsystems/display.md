@@ -138,8 +138,20 @@ source unplugged and replugged, the RGB channel's address and stride never moved
 toggled between console (`0x03001901` / `0x29000000`) and video plane on (`0x83001900` / `0x39000000`), which is
 our own driver's channel switch and nothing else. The display firmware is not a co-writer here, so the warp does
 not have to re-arm anything behind its back - and when the video plane goes off, the selector returns to RGB by
-itself (`afbd.c:864-867`). The two planes are mutually exclusive by this route, which is why `h713-tv ctl zoom`
+itself (`afbd.c:864-867`). By default the two planes are mutually exclusive by this route, which is why `h713-tv ctl zoom`
 is refused while the warp is on.
+
+**The RGB channel over the video (kernel `0251`, 10.10.2026, `doku/192`).** The selector is not an exclusive mux: bit 28
+alone shows the video (source 0), and without it the RGB channel lies over the video - with bit 27 at the global alpha in
+`0x051c0070`, without bit 27 at the alpha of every pixel. Stock lays Android's interface over the HDMI picture exactly so,
+on this channel (its HWC always commits to `osd_id 1`; OSD-A, AFBD channel 1, stays closed under stock). With `0251` the
+primary plane has a `zpos` property 0..2 and the video plane a fixed 1: at `zpos` 2 the RGB channel stays live over a
+running video plane, ARGB8888 with per-pixel alpha (selector `0x21000000`, byte order `0xc6` in `0x0524c01c`, which the
+boot loader leaves at `0x06`, alpha from the blue byte), XRGB8888 opaque; at `zpos` 0, the default, the driver switches as
+before. The plane block needs the optional DT window `osd` (`0x0524c000`); without it an ARGB primary over the video is
+refused. Measured on the HY310: 59.3 frames a second with the overlay over the warped picture, no frame dropped; an overlay
+drawn with the warp's homography lies on the keystoned picture. The kernel console (fbcon) cannot be distorted and stays
+the plain emergency console; overlays and, later, a desktop draw pre-distorted on this channel (TODO 2.43-2.45).
 
 **What imports.** 52 dma-buf formats are offered, and the ring's `NV16` layout imports both ways: as a single
 external image, and as two planes, `R8` plus `GR88`. Both sampled a known grey and a saturated red back within

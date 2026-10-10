@@ -570,3 +570,5 @@
 0249-arm64-dts-h713-hy200-qz713df-a1-pb5-to-the-board-manager-so-a-standby-switches-lamp-and-fan-off.patch
 #   0250 the power off through crust (10.10.2026, doku/188): the driver names phase 7, the build bit and TF-A's gate event
 0250-soc-sunxi-h713-arisc-name-crust-s-power-off-phase-build-bit-and-tf-a-s-gate-event.patch
+#   0251 the RGB channel over the video plane (10.10.2026, arbeit/osd-a-20261010): primary zpos, ARGB per-pixel alpha, "osd" window
+0251-drm-h713-afbd-the-rgb-channel-over-the-video-plane.patch

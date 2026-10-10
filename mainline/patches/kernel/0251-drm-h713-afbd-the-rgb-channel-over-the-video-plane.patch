@@ -1,0 +1,286 @@
+drm: h713: afbd: the RGB channel over the video plane
+
+The primary plane (AFBD channel 2, OSD-B) can lie over the video plane
+instead of being swapped against it, as stock lays Android's interface over
+the HDMI picture: the stock HWC commits every frame to ge2d osd_id 1, which is
+this channel, and ge2d's tgd_put_plane_info() sets the downstream selector to
+(old & 0xd6ffffff) | 0x21000000 for it - bit 28, the video, stays.
+
+The selector is not the exclusive mux the driver assumed since 0078: bit 28
+alone shows source 0; without it the RGB channel lies over source 0, at the
+global alpha in LVDS + 0x070 with bit 27 (0xff: opaque, the console as it has
+always looked) and at each pixel's alpha without it. The byte order is the
+plane block word 0x0524c01c [15:8], two bits per output component naming the
+source byte; the boot loader's LogoRegData leaves 0x06 there (XRGB colours,
+alpha from the blue byte), ARGB8888 needs 0xc6 (ge2d writes 0xe4 for Android's
+RGBA8888).
+
+The primary plane gets a zpos property (0..2, default 0) and the video plane
+an immutable zpos 1. At zpos 2 the RGB channel stays live while source 0 is
+on: ARGB8888 with per-pixel alpha (selector 0x21000000, byte order 0xc6),
+XRGB8888 opaque on top. At the default nothing changes - the video plane's
+enable still quiesces RGB first, and a client that never sets zpos sees the
+driver it had. The plane block window is a new, optional "osd" reg entry; a
+tree without it probes as before and refuses an ARGB primary above the video.
+
+Measured 10.10.2026 on the HY310 through /dev/mem with the warp running over
+a 1080p60 HDMI source (arbeit/osd-a-20261010, runs K1-K7): channel 2 on with
+selector 0x21000000 over the video plane, 30 s at 59.3 frames a second with
+no frame dropped and no extra CPU, per-pixel alpha 0x00/0x80/0xff right,
+colours right with 0xc6. Not yet measured: this patch on the device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi |   9 +-
+ drivers/gpu/drm/tiny/sun50i-h713-afbd.c        | 143 ++++++++++++++++++++++++-
+ 2 files changed, 149 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2151,8 +2151,13 @@
+ 			reg = <0x05600000 0x400>,
+ 			      <0x05140000 0x1000>,
+ 			      <0x051c0000 0x200>,
+-			      <0x05208000 0x2000>;
+-			reg-names = "afbd", "route", "lvds", "gamma";
++			      <0x05208000 0x2000>,
++			      <0x0524c000 0x100>;
++			/*
++			 * "osd" is the RGB channel's plane block, for the byte
++			 * order of an alpha overlay on the video; optional.
++			 */
++			reg-names = "afbd", "route", "lvds", "gamma", "osd";
+ 			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_AFBD>,
+ 				 <&ccu CLK_BUS_DISP>;
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -71,6 +71,7 @@
+ #include <drm/clients/drm_client_setup.h>
+ #include <drm/drm_atomic.h>
+ #include <drm/drm_atomic_helper.h>
++#include <drm/drm_blend.h>
+ #include <drm/drm_color_mgmt.h>
+ #include <drm/drm_drv.h>
+ #include <drm/drm_fb_dma_helper.h>
+@@ -144,6 +145,29 @@
+ #define H713_VIDEO_SELECTOR	0x39000000
+ 
+ /*
++ * The RGB channel over the video, as stock lays Android's interface over the
++ * HDMI picture (ge2d_dev.ko, tgd_put_plane_info: the HWC always commits to
++ * osd_id 1, which is this channel). The downstream selector is not an
++ * exclusive mux: bit 28 alone shows source 0, and without it the RGB channel
++ * lies over source 0 -- with bit 27 at the global alpha in LVDS + 0x070
++ * (0xff, so opaque: what the console has always been), without bit 27 at the
++ * alpha of every pixel. The plane block word 0x0524c01c carries the byte
++ * order in bits [15:8], two bits per output component (R, G, B, A) naming the
++ * byte of the pixel word it is taken from; the boot loader's LogoRegData
++ * leaves 0x06 there -- XRGB colours, alpha from the blue byte -- and ARGB8888
++ * needs 0xc6. Measured 10.10.2026 on the HY310 with the warp running over an
++ * HDMI source: 30 s at 59.3 frames a second with no frame dropped, colours
++ * and per-pixel alpha right with 0xc6 (arbeit/osd-a-20261010, K1-K7).
++ */
++#define H713_OVERLAY_SELECTOR	0x21000000
++#define H713_OSD_PLANE_FMT	0x01c	/* 0x0524c01c */
++#define H713_OSD_SWIZZLE	GENMASK(15, 8)
++#define H713_OSD_SWIZZLE_ARGB	0xc6
++/* The video plane's zpos; a primary plane above it is the overlay. */
++#define H713_VIDEO_ZPOS		1
++#define H713_PRIMARY_ZPOS_MAX	2
++
++/*
+  * The handoff this driver takes over from: AFBD_CTRL with the RGB channel
+  * live and its commit armed, AFBD_VIDEO_CTRL with source 0 idle (the active
+  * word is H713_VIDEO_CTRL_ACTIVE), and the downstream selector pointing at
+@@ -297,6 +321,14 @@
+ 	u32 selector_rgb;
+ 	bool video_active;
+ 	/*
++	 * The plane block of the RGB channel, for its byte order. Optional: a
++	 * device tree without the "osd" window still probes, and an ARGB
++	 * primary plane above the video is then refused.
++	 */
++	void __iomem *osd_regs;
++	u32 osd_swizzle_idle;
++	bool osd_on;		/* the RGB channel is live over source 0 */
++	/*
+ 	 * Colour management. A NULL gamma_regs means the device tree did not
+ 	 * offer the gamma windows; the CRTC then has no colour properties.
+ 	 */
+@@ -946,7 +978,7 @@
+ 	 * but do not re-enable the hidden RGB fetch path. The video-plane
+ 	 * disable callback commits this address before routing the panel back.
+ 	 */
+-	if (h->video_active)
++	if (h->video_active && !h->osd_on)
+ 		return;
+ 
+ 	pending = readl(h->regs + AFBD_STATUS);
+@@ -957,6 +989,61 @@
+ 	writel(1, h->regs + AFBD_READY);
+ }
+ 
++static void h713_afbd_osd_swizzle(struct h713_afbd *h, u32 swizzle)
++{
++	u32 v;
++
++	if (!h->osd_regs)
++		return;
++	v = readl(h->osd_regs + H713_OSD_PLANE_FMT);
++	if (FIELD_GET(H713_OSD_SWIZZLE, v) == swizzle)
++		return;
++	writel((v & ~H713_OSD_SWIZZLE) | FIELD_PREP(H713_OSD_SWIZZLE, swizzle),
++	       h->osd_regs + H713_OSD_PLANE_FMT);
++}
++
++/*
++ * Lay the RGB channel over source 0, or take it away again, after either
++ * plane changed. Both planes' states are the new ones by the time any plane
++ * callback runs, so whichever runs last sees the outcome of the whole commit.
++ * The video plane's enable still quiesces RGB first and brings it back here,
++ * so the enable sequence measured since 0093 is unchanged; with the primary
++ * plane at its default zpos nothing here writes at all.
++ */
++static void h713_afbd_route(struct h713_afbd *h)
++{
++	const struct drm_plane_state *p = h->pipe.plane.state;
++	bool above, alpha;
++
++	if (!h->video_active)
++		return;
++
++	above = p && p->fb && p->visible && p->zpos > H713_VIDEO_ZPOS;
++	if (!above) {
++		if (!h->osd_on)
++			return;
++		writel((h->rgb_ctrl_active | BIT(31)) & ~BIT(0),
++		       h->regs + AFBD_CTRL);
++		writel(1, h->regs + AFBD_READY);
++		h713_afbd_wait_ready(h, AFBD_READY, "overlay off");
++		writel(H713_VIDEO_SELECTOR, h->lvds_regs + 0x06c);
++		h713_afbd_osd_swizzle(h, h->osd_swizzle_idle);
++		h->osd_on = false;
++		return;
++	}
++
++	alpha = p->fb->format->has_alpha;
++	h713_afbd_osd_swizzle(h, alpha ? H713_OSD_SWIZZLE_ARGB :
++					 h->osd_swizzle_idle);
++	if (!h->osd_on) {
++		writel(h->rgb_ctrl_active, h->regs + AFBD_CTRL);
++		writel(1, h->regs + AFBD_READY);
++		h->osd_on = true;
++	}
++	writel(alpha ? H713_OVERLAY_SELECTOR : h->selector_rgb,
++	       h->lvds_regs + 0x06c);
++}
++
+ static void h713_afbd_video_stop(struct h713_afbd *h)
+ {
+ 	unsigned long flags;
+@@ -1012,6 +1099,8 @@
+ 	writel(1, h->regs + AFBD_READY);
+ 	h713_afbd_wait_ready(h, AFBD_READY, "RGB enable");
+ 	writel(h->selector_rgb, h->lvds_regs + 0x06c);
++	h713_afbd_osd_swizzle(h, h->osd_swizzle_idle);
++	h->osd_on = false;
+ 	h->video_active = false;
+ }
+ 
+@@ -1363,6 +1452,7 @@
+ 	}
+ 
+ 	h->video_active = true;
++	h713_afbd_route(h);
+ 
+ 	/*
+ 	 * Last, and only if the firmware really got something new: the
+@@ -1772,6 +1862,8 @@
+ static int h713_afbd_atomic_check(struct drm_device *drm,
+ 				  struct drm_atomic_state *state)
+ {
++	struct h713_afbd *h = to_h713(drm);
++	struct drm_plane_state *primary;
+ 	struct drm_crtc_state *crtc_state;
+ 	struct drm_crtc *crtc;
+ 	u32 gain[H713_GAMMA_CHANNELS];
+@@ -1781,6 +1873,14 @@
+ 	if (ret)
+ 		return ret;
+ 
++	primary = drm_atomic_get_new_plane_state(state, &h->pipe.plane);
++	if (primary && primary->fb && primary->fb->format->has_alpha &&
++	    primary->zpos > H713_VIDEO_ZPOS && !h->osd_regs) {
++		drm_dbg_kms(drm,
++			    "an alpha primary above the video needs the \"osd\" window for its byte order\n");
++		return -EINVAL;
++	}
++
+ 	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
+ 		if (!crtc_state->color_mgmt_changed)
+ 			continue;
+@@ -1856,6 +1956,7 @@
+ 		h713_afbd_set_source(h,
+ 				     drm_fb_dma_get_gem_addr(state->fb, state, 0),
+ 				     state->fb->pitches[0]);
++	h713_afbd_route(h);
+ 
+ 	spin_lock_irqsave(&crtc->dev->event_lock, flags);
+ 	event = crtc->state->event;
+@@ -2062,6 +2163,34 @@
+ 	return 0;
+ }
+ 
++/*
++ * The plane block of the RGB channel (0x0524c000), mapped only for its byte
++ * order word. Read here once, with both display clocks held: the boot loader's
++ * value is what the overlay puts back when it goes away.
++ */
++static int h713_afbd_map_osd(struct h713_afbd *h, struct platform_device *pdev)
++{
++	struct resource *osd;
++
++	osd = platform_get_resource_byname(pdev, IORESOURCE_MEM, "osd");
++	if (!osd || resource_size(osd) < H713_OSD_PLANE_FMT + sizeof(u32)) {
++		drm_info(&h->drm,
++			 "no osd window in the device tree -- no alpha overlay on the video\n");
++		return 0;
++	}
++
++	h->osd_regs = devm_ioremap_resource(&pdev->dev, osd);
++	if (IS_ERR(h->osd_regs)) {
++		int ret = PTR_ERR(h->osd_regs);
++
++		h->osd_regs = NULL;
++		return ret;
++	}
++	h->osd_swizzle_idle = FIELD_GET(H713_OSD_SWIZZLE,
++					readl(h->osd_regs + H713_OSD_PLANE_FMT));
++	return 0;
++}
++
+ static int h713_afbd_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -2304,6 +2433,18 @@
+ 	if (ret)
+ 		return ret;
+ 
++	ret = h713_afbd_map_osd(h, pdev);
++	if (ret)
++		return ret;
++	ret = drm_plane_create_zpos_property(&h->pipe.plane, 0, 0,
++					     H713_PRIMARY_ZPOS_MAX);
++	if (ret)
++		return ret;
++	ret = drm_plane_create_zpos_immutable_property(&h->video_plane,
++							H713_VIDEO_ZPOS);
++	if (ret)
++		return ret;
++
+ 	ret = h713_afbd_map_gamma(h, pdev);
+ 	if (ret)
+ 		return ret;
