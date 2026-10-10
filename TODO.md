@@ -177,6 +177,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 5.1 ST3-RESTORE F1: Schema-Feld `layout.disk_sectors_from = unit|image` statt Heuristik
 - [ ] 5.11 `h713-install` löscht seine Arbeitskopie (`image-filled.img`, im Abzugsordner oder `--work-copy`) nie; sie enthält die
       geräteeigenen Dateien. Nach bestandenem Rückvergleich löschen, außer `--keep-work-copy` (08.10., `doku/170`)
+      - 10.10.: sie entsteht außerdem **für alle lesbar** (`0644`, root, weil `h713-install` unter sudo läuft) - Arbeitskopie und
+        Abzug mit `0600` anlegen, ihre Ordner `0700`. Die eigenen Sicherungsskripte schrieben das Archiv mit den privaten
+        Host-Schlüsseln und `wifi.env` ebenso mit `0664` (behoben: `chmod 600`, `umask 077` im Installationsskript)
 - [ ] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
 - [ ] 5.13 `release/tor.sh` in einem gebauten Worktree: `sperr-scan` meldet die Bauerzeugnisse (`mainline/build/`, `*.img`) und
       bricht an root-eigenen Dateien (`installer/tmp/`) ab; am 08.10. lief das Tor deshalb auf einer sauberen Kopie des
