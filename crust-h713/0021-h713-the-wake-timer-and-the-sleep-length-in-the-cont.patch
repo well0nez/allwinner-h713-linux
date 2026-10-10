@@ -1,7 +1,7 @@
 From ba4361631ed18efc0720e271f02ad240465c263f Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:41:56 +0200
-Subject: [PATCH 21/80] h713: the wake timer and the sleep length in the
+Subject: [PATCH 21/81] h713: the wake timer and the sleep length in the
  contract page
 
 The armed wake timer and its count lived in .bss, which start.S clears on

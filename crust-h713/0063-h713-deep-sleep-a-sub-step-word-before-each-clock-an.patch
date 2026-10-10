@@ -1,7 +1,7 @@
 From 614cf350909be30791402e479a60e1bab330f308 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 20:54:50 +0200
-Subject: [PATCH 63/80] h713: deep sleep: a sub-step word before each clock and
+Subject: [PATCH 63/81] h713: deep sleep: a sub-step word before each clock and
  bus step
 
 The deep path has about forty register steps under three step codes:

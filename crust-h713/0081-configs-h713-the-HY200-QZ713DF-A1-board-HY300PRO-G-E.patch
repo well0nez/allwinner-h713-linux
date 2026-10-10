@@ -1,0 +1,61 @@
+From c5b536f54873c0b6d2567877bd80bfd3d30ad0bb Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 20:14:47 +0200
+Subject: [PATCH 81/81] configs: h713: the HY200 QZ713DF A1 board
+ (HY300PRO-G-EU), self-refresh build
+
+The HY300PRO-G-EU is the HY200 QZ713DF A1 board with the stock firmware
+projector05061226. Its stock device tree (read from its own eMMC dump)
+agrees with the HY310's on everything crust drives or reads: the power key
+PL4, the IR receiver and its NEC power code, the LEDs on PL0/PL1; it
+differs in the panel power pin, the USB VBUS pin, the fan tacho and the
+focus motor, none of which crust touches. The DRAM words crust's
+self-refresh port uses (type, ZQ, ODT, PARA1/2, MR0-3, TPR5/6/9/13) are
+the same in U-Boot's hy310 and hy200_qz713df_a1 configs, and this
+variant's clock is 792 MHz like the HY310's; only U-Boot's timing words
+TPR0-2 differ, which crust does not use.
+
+So the HY310's self-refresh config with its own board id 3. The other
+stock firmware of this board (projector09220931) runs its DRAM at 624 MHz;
+crust uses the clock only in a standby, so that variant needs its own
+config before it is offered one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy200_qz713df_a1_sr_defconfig | 13 +++++++++++++
+ platform/h713/Kconfig                      |  2 +-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+ create mode 100644 configs/h713_hy200_qz713df_a1_sr_defconfig
+
+diff --git a/configs/h713_hy200_qz713df_a1_sr_defconfig b/configs/h713_hy200_qz713df_a1_sr_defconfig
+new file mode 100644
+index 0000000..a4daf01
+--- /dev/null
++++ b/configs/h713_hy200_qz713df_a1_sr_defconfig
+@@ -0,0 +1,13 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++# CONFIG_DEBUG_VERIFY_DRAM is not set
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_BOARD_ID=3
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index bf1d65b..d7b3851 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -57,7 +57,7 @@ config H713_RAILS_PIN
+ 		it records the board fact, and crust never touches the pin.
+ 
+ config H713_BOARD_ID
+-	int "Board in the build word (BUILD2 15..12): 1 HY310, 2 HY300 Pro"
++	int "Board in the build word (BUILD2 15..12): 1 HY310, 2 HY300 Pro, 3 HY200 QZ713DF A1"
+ 	default 0
+ 	range 0 15
+ 	help

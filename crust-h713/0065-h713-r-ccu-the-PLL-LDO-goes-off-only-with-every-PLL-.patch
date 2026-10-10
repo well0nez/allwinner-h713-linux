@@ -1,7 +1,7 @@
 From 33255461a590e56cbee9941fbd8187173a5930b1 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 20:58:49 +0200
-Subject: [PATCH 65/80] h713: r-ccu: the PLL LDO goes off only with every PLL
+Subject: [PATCH 65/81] h713: r-ccu: the PLL LDO goes off only with every PLL
  off, key masked
 
 The LDO step (H713_DEEP_PLL_LDO, off by default since 6d6d18c and

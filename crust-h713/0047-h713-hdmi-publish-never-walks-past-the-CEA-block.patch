@@ -1,7 +1,7 @@
 From 491143e2d95a6d04f2232b043fd104167a2ec389 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:02:59 +0200
-Subject: [PATCH 47/80] h713: hdmi: publish never walks past the CEA block
+Subject: [PATCH 47/81] h713: hdmi: publish never walks past the CEA block
 
 publish() followed the CEA-861 data blocks while i < 128 + DTD offset
 and i < 255, but never checked a block's length against that end, nor

@@ -1,7 +1,7 @@
 From ecf2ddcd8babbbf3b80c316f2fd96e7e8fdaf65e Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 11:23:20 +0200
-Subject: [PATCH 80/80] h713: hdmi: a word without the marker is recorded,
+Subject: [PATCH 80/81] h713: hdmi: a word without the marker is recorded,
  never dropped
 
 302ee31 took the words without the marker outside a frame against a

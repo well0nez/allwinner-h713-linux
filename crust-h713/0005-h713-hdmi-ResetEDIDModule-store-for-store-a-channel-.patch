@@ -1,7 +1,7 @@
 From 5266ec625a8bf4d664628ef1c23807de87769161 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:29:32 +0200
-Subject: [PATCH 05/80] h713: hdmi: ResetEDIDModule store for store, a channel
+Subject: [PATCH 05/81] h713: hdmi: ResetEDIDModule store for store, a channel
  per queued word, diag words
 
 ResetEDIDModule now writes what the blob's 0x120f0 writes, read again from

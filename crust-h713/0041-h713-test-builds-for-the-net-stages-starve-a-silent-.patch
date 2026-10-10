@@ -1,7 +1,7 @@
 From 2b9a42f76cffe179b09ebd10fc943915e63e93ec Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 18:36:43 +0200
-Subject: [PATCH 41/80] h713: test builds for the net stages: starve, a silent
+Subject: [PATCH 41/81] h713: test builds for the net stages: starve, a silent
  port 3, no 0030
 
 Three switches under H713_TEST (build word bit 30, which the kernel

@@ -1,7 +1,7 @@
 From f8870986e4b0c910e8ab94f787bca6f9f480f2c0 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:18:37 +0200
-Subject: [PATCH 54/80] h713: hdmi: the transfer state starts fresh after a
+Subject: [PATCH 54/81] h713: hdmi: the transfer state starts fresh after a
  resume
 
 The DispMips frame state of the four ports, the ARM pump's state and the

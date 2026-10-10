@@ -1,7 +1,7 @@
 From 2a94ca99411148c862b73ddd0b29c9e672061b8c Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 13:50:38 +0200
-Subject: [PATCH 33/80] h713: r-ccu: deep resume puts LOSC back as the suspend
+Subject: [PATCH 33/81] h713: r-ccu: deep resume puts LOSC back as the suspend
  found it
 
 The deep resume, ported from the vendor blob, turns the RTC's 32k

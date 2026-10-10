@@ -1,7 +1,7 @@
 From 5bfb059c79df265d232c3fddcf96956b61246bb3 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 23:05:42 +0200
-Subject: [PATCH 70/80] configs: h713: the DRAM checksum in a test image only,
+Subject: [PATCH 70/81] configs: h713: the DRAM checksum in a test image only,
  not in the release
 
 The checksum reads 48 DRAM words from the AR100 before and after every

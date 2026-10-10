@@ -1,7 +1,7 @@
 From c20288f20ea4950dd65c4d7dc641bf3f22c3c142 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:58:51 +0200
-Subject: [PATCH 39/80] h713: watchdog: R_WDOG helpers for the sleep net, a
+Subject: [PATCH 39/81] h713: watchdog: R_WDOG helpers for the sleep net, a
  reset that feeds first
 
 The R_WDOG driver stays reset-only while awake - probe and restart do

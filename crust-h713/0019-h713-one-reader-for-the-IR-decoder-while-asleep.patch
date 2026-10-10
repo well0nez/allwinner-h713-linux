@@ -1,7 +1,7 @@
 From f6da14ace940e5a11b18c13434a6d883d93b6ca7 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:40:05 +0200
-Subject: [PATCH 19/80] h713: one reader for the IR decoder while asleep
+Subject: [PATCH 19/81] h713: one reader for the IR decoder while asleep
 
 Asleep, every pass stepped the same decoder twice: system.c's cir_poll(),
 which knows only CONFIG_CIR_WAKE_CODE (0x00ff14) and writes no wake word,

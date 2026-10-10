@@ -1,7 +1,7 @@
 From ed8c28eb1e08ec6516b230247409d0def01cae1c Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:38:13 +0200
-Subject: [PATCH 58/80] h713: WAKE_MS from the cpu op req to CPU0's release, no
+Subject: [PATCH 58/81] h713: WAKE_MS from the cpu op req to CPU0's release, no
  regulator wait
 
 slept_ms counts only the polling loop asleep. The 50 ms between the cpu

@@ -1,7 +1,7 @@
 From 6d6d18cfd5ba4e3b59cbbe90ede8c96d1bd1f8b1 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:57:25 +0200
-Subject: [PATCH 38/80] h713: deep sleep switches off by default, deep = D1a,
+Subject: [PATCH 38/81] h713: deep sleep switches off by default, deep = D1a,
  board id and test bit
 
 The two deep steps 0034 put under a switch still defaulted to on, so

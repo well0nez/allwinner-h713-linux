@@ -1,7 +1,7 @@
 From 11dce655f90a0ed6bc8a0d17efdf37f3720813ca Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:05:30 +0200
-Subject: [PATCH 49/80] h713: hdmi: RequestEDID reopens the gate only on a
+Subject: [PATCH 49/81] h713: hdmi: RequestEDID reopens the gate only on a
  published EDID
 
 RequestEDID closes the gate to read the DDC RAM and, as the blob does,

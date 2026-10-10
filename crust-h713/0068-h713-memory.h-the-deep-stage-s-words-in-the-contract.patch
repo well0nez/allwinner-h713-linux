@@ -1,7 +1,7 @@
 From e1215453188db0ce7ddd8ca57280b16e7ae0d7d4 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 21:31:19 +0200
-Subject: [PATCH 68/80] h713: memory.h: the deep stage's words in the contract
+Subject: [PATCH 68/81] h713: memory.h: the deep stage's words in the contract
  table
 
 SUBSTEP, DEEP_LOCK and X_LOCK_TICKS name PLLs and root clocks by their
