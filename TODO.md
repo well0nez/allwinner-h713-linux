@@ -204,6 +204,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       bei Stock öffnet (vermutlich ein Firmware-Auftrag an den Display-MIPS aus dem HAL/HWC, oder ein Takt-/Reset-Bit).
       Gewinn: OSD ohne GPU, das Video bliebe im Ring, der Warp könnte bei Identität wieder schlafen. Eigenes RE-Paket,
       getrennt vom Warp-Baum; bis dahin mischt die GPU (2.38, 2.7a). Nicht dringend
+      - **10.10. später abends (Marco: "das wäre der Hammer"):** Paket `arbeit/osd-a-20261010/` für eine eigene Sitzung (Fable),
+        Worktree `versuch/osd-a` ab `8b663b8`, `AUFTRAG.md`/`REGELN.md`, Material (Stock-Binaries, Mitschnitte, AP3n/AP3j/OSD1) und
+        IDA-Arbeitskopien bereitgelegt, idalib + Hex-Rays geprüft. Der HY310 gehört bis auf Weiteres diesem Paket; Haltepunkt vor
+        dem ersten Schreiben am Gerät ist die Kandidatenliste fürs Tor
 - [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
       höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
       - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf
