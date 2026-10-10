@@ -237,6 +237,25 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 10.10. nachts: auch ein `make Image.gz` von Hand im fertigen Kernelbaum eines build-all-Laufs (eine geänderte Datei,
         pinctrl PF6) übersetzte alles neu (>1100 Objekte) - die Schalter/Umgebung des Baus sind von außen nicht nachstellbar;
         `build.sh kernel` sollte einen "nur bauen, nicht neu konfigurieren"-Weg für einen vorhandenen Baum haben
+      - **ENTSCHIEDEN 10.10. abends (Marco: "der installer ist schon kompliziert genug ... noch mehr parameter adden?"):
+        keine neuen Parameter, Weiterbauen geschieht von selbst.** Nächstes Paket nach den `geuaus1`-Kurztests, vor 5.20.
+        1. Jeder Schritt schreibt nach Erfolg einen Stempel `mainline/build/stempel/<schritt>`: Hash seiner Eingaben (Bäume der
+           Submodule bzw. des crust-Checkouts, Patchserie, Defconfigs/Fragmente, Board/Variante, Schalter wie `--standby`,
+           `--test-image`, `--version`, die Prüfsummen der Ergebnisse seiner Vorstufen) und die Prüfsummen seiner Ergebnisse.
+        2. Jeder Lauf prüft die Stempel und übernimmt einen fertigen Schritt nur, wenn Eingabe-Hash und Ergebnis-Prüfsummen
+           stimmen; ab dem ersten abweichenden wird gebaut - spätere Schritte fallen über die geänderten Vorstufen-Ergebnisse
+           von selbst mit. Ein Abbruch: denselben Befehl noch einmal, er macht dort weiter.
+        3. `--skip-bl31/-uboot/-kernel/-rootfs` **entfallen** (sie prüfen nur "vorhanden", nicht "passend") - vier Parameter
+           weniger. Der Stempel des Abbilds nennt ehrlich, welche Schritte übernommen wurden; "reproducible: yes" nur, wenn
+           jeder übernommene Schritt aus demselben Commit stammt.
+        4. Release-Bauten bleiben von vorn ohne Schalter: aus einem frischen Klon, der keine Stempel hat (Regel "Release-Bauten
+           immer von vorn", `RELEASES`-Ablauf 1.1a).
+        5. Kernel: ein geänderter Patch baut den vorhandenen Baum inkrementell nach, statt ihn neu auszupacken, wenn nur
+           Dateien der Serie sich geändert haben (abwägen: sicher nur, wenn die Serie bis zum geänderten Patch gleich ist;
+           sonst wie heute neu). Der Weg "nur nachbauen, nicht neu konfigurieren" für `build.sh kernel`.
+        6. Messen: ein Lauf abbrechen (z. B. in Schritt 7), neu starten -> nur ab 7 gebaut, Abbild bytegleich zu einem Lauf
+           von vorn; eine Kommentaränderung in einem DTS-Patch -> nur Kernel(-DTB) und Folgeschritte; ein unverändertes
+           Zweitlauf -> nichts gebaut, Abbild bytegleich. Den Installer auf dem Gerät (`h713-install`) fasst das nicht an.
 - [ ] 5.18 **Hostname je Board** (Marco 10.10. nachts: der HY300PRO-G-EU meldet sich im Netz als `hy310`). Heute fest im
       Rootfs: `rootfs/overlay/etc/hostname` = `hy310`, `rootfs/overlay/etc/hosts` `127.0.1.1 hy310`, dazu der Rückfall
       `hy310` in `h713-wifi` (DNS-Name im Zugangspunkt-Modus). Jedes Board heißt also `hy310`, zwei Boxen im selben Netz
