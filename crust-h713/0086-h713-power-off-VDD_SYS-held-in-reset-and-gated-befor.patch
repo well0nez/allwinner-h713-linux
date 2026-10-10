@@ -1,0 +1,51 @@
+From 0b53508d6e20e2bfcb4f19530eeffa2d8c41bca8 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 16:31:07 +0200
+Subject: [PATCH 86/87] h713: power off - VDD_SYS held in reset and gated
+ before the rails fall, as the blob's 0xdea8
+
+Run geu3 counted the rails' fall at 52 ms into the phase and stopped at
+57 ms; the SoC came up in U-Boot's gate (GP5 GATE, 2.1 W at the socket with
+the FEL cable in). The vendor firmware clears VDD_SYS_RESET and sets the
+AVCC and bit 8 gating first (0xdea8), then drops PL6. Same order here, and
+on the wake undone after the rails are up again, as h713_fail() leaves the
+R_PRCM for its reset (pad hold off too). Built, not yet measured.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index d7ed169..2fff9d5 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -1389,9 +1389,27 @@ h713_power_off_rails(bool on)
+ 		mmio_write_32(H713_K_ERR_DATA, mmio_read_32(H713_K_NET_MS));
+ 	}
+ #endif
++	if (!on) {
++		/*
++		 * The blob's 0xdea8 before its PL6 low: VDD_SYS held in reset,
++		 * AVCC and bit 8 gated off the R domain. Without it the SoC
++		 * reset itself about 5 ms after the rails fell (run geu3: the
++		 * phase counted 52 ms to the fall and 57 ms in all, GP5 still
++		 * GATE, 2.1 W in U-Boot's gate afterwards).
++		 */
++		mmio_clr_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
++		mmio_set_32(VDD_SYS_PWROFF_GATING_REG, AVCC_GATING);
++		mmio_set_32(VDD_SYS_PWROFF_GATING_REG, UNK_GATING_BIT_08);
++	}
+ 	gpio_set_value(&off_rails, on);
+-	if (on)
++	if (on) {
+ 		udelay(RAILS_UP_US);
++		/* back as h713_fail() leaves it for the reset: VDD_SYS out of
++		 * reset and ungated, the DRAM pad hold off */
++		mmio_set_32(VDD_SYS_RESET_REG, VDD_SYS_RESET);
++		mmio_clr_32(VDD_SYS_PWROFF_GATING_REG,
++		            AVCC_GATING | UNK_GATING_BIT_08 | 0x3);
++	}
+ #else
+ 	(void)on;
+ #endif

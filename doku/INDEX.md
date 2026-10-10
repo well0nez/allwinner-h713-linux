@@ -24,7 +24,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/architecture.md` | `doku/103`, `doku/163`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/177`, `doku/181`, `doku/82`, `doku/83`, `doku/96` |
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134` |
-| `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/70`, `doku/72`, `doku/94` |
+| `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/80` |
 | `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107`, `doku/170` |
@@ -40,7 +40,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/133`, `doku/138`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/179`, `doku/182`, `doku/184`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
-| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184`, `doku/185` |
+| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184`, `doku/185`, `doku/188` |
 | `docs/subsystems/video.md` | `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/60` |
 | `docs/tools/h713-autofocus.md` | `doku/134` |
@@ -52,7 +52,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mips-restart.md` | `doku/172`, `doku/173`, `doku/174`, `doku/177` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
-| `docs/tools/h713-power.md` | `doku/165`, `doku/167`, `doku/172`, `doku/174` |
+| `docs/tools/h713-power.md` | `doku/165`, `doku/167`, `doku/172`, `doku/174`, `doku/188` |
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
 | `docs/tools/h713-tv.md` | `doku/101`, `doku/172`, `doku/174`, `doku/177`, `doku/78`, `doku/86`, `doku/88`, `doku/99` |
@@ -60,7 +60,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/uboot/README.md` | `doku/10`, `doku/109`, `doku/163`, `doku/170`, `doku/30` |
 | `docs/uboot/commands.md` | `doku/108`, `doku/67`, `doku/70`, `doku/98` |
 | `docs/uboot/environment.md` | `doku/105`, `doku/109`, `doku/30`, `doku/nachtlog/S41-r1-installer`, `doku/nachtlog/S48-fel-aus-uboot` |
-| `docs/uboot/power-gate.md` | `doku/103`, `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/174`, `doku/179`, `doku/181` |
+| `docs/uboot/power-gate.md` | `doku/103`, `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/174`, `doku/179`, `doku/181`, `doku/188` |
 | `installer/h713/RENAMES.md` | `doku/121` |
 | `installer/h713/__init__.py` | `doku/121` |
 | `installer/h713/blockdev.py` | `doku/109` |
@@ -232,6 +232,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md`](185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md) | Analyse | 2026-10-10 | 185 - HY300PRO-G-EU: Lüfter und Lampe im Standby aus - PB5 gehört dem Board-Manager (10.10.2026, 02:30-02:50) | 2 |
 | [`186-handoff-20261010-frueh.md`](186-handoff-20261010-frueh.md) | Handoff | 2026-10-10 | 186 - Handoff 10.10.2026 früh: der HY300PRO-G-EU auf dem Stand des HY310, alles in `main`, nächste Schritte | - |
 | [`187-offline-re-a-b-c-ausgewertet-20261010.md`](187-offline-re-a-b-c-ausgewertet-20261010.md) | Analyse | 2026-10-10 | 187 - Offline-RE A, B, C ausgewertet: Stock-"Aus" über PL6, TVCAP bleibt im Standby an, die SKE-Zeile ist die cost-tick-Zeile (10.10.2026) | 2 |
+| [`188-aus-ueber-crust-0-3-watt-20261010.md`](188-aus-ueber-crust-0-3-watt-20261010.md) | Analyse | 2026-10-10 | 188 - "Aus" über crust: die Schienen aus (PL6), 0,3 W wie Stock, Timer, Fernbedienung und Taste wecken (10.10.2026) | 4 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -389,7 +390,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-43 von 246 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+43 von 247 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

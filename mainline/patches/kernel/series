@@ -568,3 +568,5 @@
 0247-pinctrl-sunxi-h713-pf6-as-a-gpio.patch
 0248-soc-sunxi-h713-mips-cycle-the-panel-s-supply-after-a-restart.patch
 0249-arm64-dts-h713-hy200-qz713df-a1-pb5-to-the-board-manager-so-a-standby-switches-lamp-and-fan-off.patch
+#   0250 the power off through crust (10.10.2026, doku/188): the driver names phase 7, the build bit and TF-A's gate event
+0250-soc-sunxi-h713-arisc-name-crust-s-power-off-phase-build-bit-and-tf-a-s-gate-event.patch

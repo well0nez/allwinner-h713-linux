@@ -1,7 +1,7 @@
 From a8f85bee8890209bb196b8dd7c5e6f5b81f1c530 Mon Sep 17 00:00:00 2001
 From: Christopher Stenger <chris.h.stenger@gmail.com>
 Date: Mon, 13 Jul 2026 23:27:26 -0700
-Subject: [PATCH 03/30] feat(allwinner): h713: implement PSCI CPU_ON
+Subject: [PATCH 03/31] feat(allwinner): h713: implement PSCI CPU_ON
 
 The H713 was copied from the H616 (ncat) register file but took the
 per-cluster cpu_on path, whose bitmask reset/power registers do not

@@ -1,7 +1,7 @@
 From 0e0a68b0e2246b748c357a18caba80e93e1b4174 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 18:42:21 +0200
-Subject: [PATCH 42/81] h713: bounded polls in the DRAM and cluster steps
+Subject: [PATCH 42/87] h713: bounded polls in the DRAM and cluster steps
 
 Every hardware poll of a standby step waited without end: the DRAM
 operating mode, PGSR0 idone, the PLL_DDR0 lock and STATR bit 0 in the

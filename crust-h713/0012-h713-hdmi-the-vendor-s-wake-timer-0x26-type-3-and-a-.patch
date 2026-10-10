@@ -1,7 +1,7 @@
 From 3b24f7eae7a056b5cb042b317199dc51fb0c0af5 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 02:23:34 +0200
-Subject: [PATCH 12/81] h713: hdmi: the vendor's wake timer (0x26 type 3) and a
+Subject: [PATCH 12/87] h713: hdmi: the vendor's wake timer (0x26 type 3) and a
  safe gap before the cluster reset
 
 set wakeup src req 0x26 with a word of type 3 (bits 31..30) arms a wake

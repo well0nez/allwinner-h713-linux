@@ -1,7 +1,7 @@
 From afbf3d7cf34dca56339ae47884ca35f461fa44e5 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 20:40:42 +0200
-Subject: [PATCH 61/81] h713: r-ccu: deep resume restores only a clock state
+Subject: [PATCH 61/87] h713: r-ccu: deep resume restores only a clock state
  this run saved
 
 The root clocks and the PLLs of the deep path are saved in .bss. The

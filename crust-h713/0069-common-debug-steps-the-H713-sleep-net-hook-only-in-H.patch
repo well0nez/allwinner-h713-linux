@@ -1,7 +1,7 @@
 From e50d1eec87f610fc8686b35b16994f7b2d5305ff Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 23:05:25 +0200
-Subject: [PATCH 69/81] common: debug: steps: the H713 sleep net hook only in
+Subject: [PATCH 69/87] common: debug: steps: the H713 sleep net hook only in
  H713 builds
 
 record_step() called h713_sleep_step() under a C if (CONFIG(...)),

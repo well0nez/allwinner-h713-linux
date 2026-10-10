@@ -1,7 +1,7 @@
 From 2f957c875f6e618cb3488bbb0cd7396c9737ec97 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:41:03 +0200
-Subject: [PATCH 08/81] h713: hdmi: serve the display MIPS's DispMips frames
+Subject: [PATCH 08/87] h713: hdmi: serve the display MIPS's DispMips frames
  and count them
 
 The vendor firmware runs its receive pump for a second channel: the

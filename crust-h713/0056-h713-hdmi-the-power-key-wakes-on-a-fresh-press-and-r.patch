@@ -1,7 +1,7 @@
 From c48ea0e48c518bcb3b7fc2727061ab22bd3f89fe Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:34:18 +0200
-Subject: [PATCH 56/81] h713: hdmi: the power key wakes on a fresh press and
+Subject: [PATCH 56/87] h713: hdmi: the power key wakes on a fresh press and
  resumes after the release
 
 crust resumed on the third low sample of PL4, 40-60 ms into the press,

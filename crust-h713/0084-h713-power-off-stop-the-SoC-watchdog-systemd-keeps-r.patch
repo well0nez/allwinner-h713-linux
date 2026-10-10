@@ -1,0 +1,100 @@
+From 2ac83e816b294037eb295e6fa3e02884d59cd452 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 16:14:59 +0200
+Subject: [PATCH 84/87] h713: power off - stop the SoC watchdog systemd keeps
+ running
+
+systemd arms the SoC watchdog at runtime and keeps it through a power off
+(RuntimeWatchdogSec and RebootWatchdogSec 16 s, the image's
+10-h713-watchdog.conf; MODE 0xb1 read on the HY300PRO-G-EU). The first run
+(geu1b) went through the whole shut down (step SUSPEND_COMPLETE, phase
+POWEROFF) and then came up from a reset crust had not made: GP5 still GATE,
+the R_WDOG not armed - the gate, waiting for the key. crust now stops the
+SoC watchdog when it takes the request (h713_wdog_stop(): feed, MODE off,
+three tries), error 18 detail 0x80 if it stays armed. Built, not yet measured.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c         | 13 +++++++++++++
+ drivers/watchdog/sun50i-h713-wdt.c      | 17 +++++++++++++++++
+ include/drivers/hdmi/sun50i-h713-hdmi.h |  1 +
+ platform/h713/include/platform/memory.h |  2 +-
+ 4 files changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index c705397..86534a4 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -866,6 +866,19 @@ power_off_request(void)
+ 	}
+ 	h713_sleep_event(H713_EV_POWER_OFF);
+ 	info("H713: power off req");
++	/*
++	 * systemd keeps the SoC watchdog running through a power off
++	 * (RebootWatchdogSec, 16 s in the image's 10-h713-watchdog.conf): left
++	 * alone it reset the HY300PRO-G-EU into the gate some seconds after
++	 * crust took over (run geu1b, GP5 still GATE). Stopped here, with
++	 * error detail 0x80 should it stay armed.
++	 */
++	{
++		uint32_t mode = h713_wdog_stop(DEV_WDOG);
++
++		if (mode & 1)
++			h713_err(H713_ERR_POWER_OFF, 0x80, mode);
++	}
+ 	if (gpio_get(&off_pb5) == SUCCESS)
+ 		gpio_set_value(&off_pb5, false);
+ 	if (gpio_get(&off_pl3) == SUCCESS)
+diff --git a/drivers/watchdog/sun50i-h713-wdt.c b/drivers/watchdog/sun50i-h713-wdt.c
+index f728289..31d41e1 100644
+--- a/drivers/watchdog/sun50i-h713-wdt.c
++++ b/drivers/watchdog/sun50i-h713-wdt.c
+@@ -78,6 +78,23 @@ h713_rwdog_disarm(void)
+ 	return mmio_read_32(DEV_R_WDOG + WDOG_MODE_REG);
+ }
+ 
++/* Either watchdog: feed, then off, three tries; returns MODE as read back. */
++uint32_t
++h713_wdog_stop(uintptr_t base)
++{
++	uint32_t mode = 0;
++
++	for (uint8_t i = 0; i < 3; ++i) {
++		mmio_write_32(base + WDOG_CTRL_REG, WDOG_FEED);
++		mmio_write_32(base + WDOG_MODE_REG, WDOG_KEY);
++		mode = mmio_read_32(base + WDOG_MODE_REG);
++		if (!(mode & 1))
++			break;
++		udelay(1000);
++	}
++	return mode;
++}
++
+ /* As found: STA << 16 | MODE. */
+ uint32_t
+ h713_rwdog_state(void)
+diff --git a/include/drivers/hdmi/sun50i-h713-hdmi.h b/include/drivers/hdmi/sun50i-h713-hdmi.h
+index 88f5069..ba1d3f1 100644
+--- a/include/drivers/hdmi/sun50i-h713-hdmi.h
++++ b/include/drivers/hdmi/sun50i-h713-hdmi.h
+@@ -101,6 +101,7 @@ void h713_wdog_reset(uintptr_t base);
+ uint32_t h713_rwdog_arm(uint8_t code);
+ void h713_rwdog_feed(void);
+ uint32_t h713_rwdog_disarm(void);
++uint32_t h713_wdog_stop(uintptr_t base);
+ uint32_t h713_rwdog_state(void);
+ 
+ /* drivers/css/sun50i-h713-css.c: the warm entry from "cpu op req". */
+diff --git a/platform/h713/include/platform/memory.h b/platform/h713/include/platform/memory.h
+index 5cada0a..75f53ee 100644
+--- a/platform/h713/include/platform/memory.h
++++ b/platform/h713/include/platform/memory.h
+@@ -291,7 +291,7 @@
+ #define H713_ERR_RWDOG_FOUND 15
+ #define H713_ERR_RWDOG_RESET 16
+ #define H713_ERR_RWDOG_DISARM 17 /* MODE still armed after a disarm: detail 0 release, 1 first start */
+-#define H713_ERR_POWER_OFF   18 /* 0x19 refused inside a standby: detail the phase */
++#define H713_ERR_POWER_OFF   18 /* 0x19 refused inside a standby: detail the phase; 0x80 SoC watchdog still armed, data MODE */
+ 
+ /* Counter bytes for h713_cnt(), at the byte the ARM reads them from. */
+ #define H713_CNT_SB_DROP     (H713_K_CNT0 + 0) /* port 3 words, partial frames dropped */

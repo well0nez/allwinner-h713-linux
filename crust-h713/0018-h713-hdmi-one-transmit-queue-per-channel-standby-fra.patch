@@ -1,7 +1,7 @@
 From 0e92f07cc25793c0523b55d54966c37662c1f5cf Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:39:48 +0200
-Subject: [PATCH 18/81] h713: hdmi: one transmit queue per channel; standby
+Subject: [PATCH 18/87] h713: hdmi: one transmit queue per channel; standby
  frames always read
 
 All outgoing words shared one queue, sent in order, and both receive loops

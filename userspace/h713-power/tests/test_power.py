@@ -22,17 +22,20 @@ def load():
 
 class Root:
     """A temporary root: power.conf, mem_sleep, suspend_stats, the arisc state, one event device; with mips the
-    state of sun50i-h713-mips, and an h713-mips-restart stand-in that logs into the systemctl log."""
+    state of sun50i-h713-mips, and an h713-mips-restart stand-in that logs into the systemctl log. power.conf
+    says short = standby unless conf names short itself: these are the standby's tests, and the shipped
+    default is poweroff (Defaults below)."""
 
-    def __init__(self, mem_sleep="s2idle [deep]", ready="1", conf="", mips=None, suspend_ok=True, restart_rc=0):
+    def __init__(self, mem_sleep="s2idle [deep]", ready="1", conf="", mips=None, suspend_ok=True, restart_rc=0,
+                 build2="0x00003318"):
         self.tmp = tempfile.TemporaryDirectory()        # removed with this object
         self.dir = self.tmp.name
-        self.put("etc/h713/power.conf", conf)
+        self.put("etc/h713/power.conf", conf if conf is None or "short" in conf else "short = standby\n" + conf)
         self.put("sys/power/mem_sleep", mem_sleep)
         self.put("sys/power/suspend_stats/success", "0")
         self.put("sys/power/suspend_stats/fail", "0")
         self.put("sys/bus/platform/drivers/sun50i-h713-arisc/100000.arisc/state",
-                 "version=5\nwake=none\nresume_ns=0\nready=%s\n" % ready)
+                 "version=5\nbuild2=%s\nwake=none\nresume_ns=0\nready=%s\n" % (build2, ready))
         self.put("sys/class/input/event0/device/capabilities/key", "10000000000000 0")
         self.put("sys/class/input/event0/device/id/bustype", "0019")
         self.fifo = self.p("dev/input/event0")
@@ -143,7 +146,7 @@ class Readiness(unittest.TestCase):
         r = Root(conf="short = sleep\nlong_s = 5\n")
         self.m.ROOT = r.dir
         conf, bad = self.m.config()
-        self.assertEqual((conf["short"], conf["long_s"]), ("standby", "5"))
+        self.assertEqual((conf["short"], conf["long_s"]), ("poweroff", "5"))
         self.assertEqual(len(bad), 1)
 
     def test_the_power_key_bit_in_a_capability_bitmap(self):
@@ -279,6 +282,52 @@ class AfterTheStandby(unittest.TestCase):
         env = dict(os.environ, H713_POWER_ROOT=r.dir)
         out = subprocess.run([sys.executable, TOOL, "status"], env=env, capture_output=True, text=True).stdout
         self.assertIn("display MIPS: parked", out)
+
+
+
+class Defaults(unittest.TestCase):
+    """The shipped policy: a short press powers off; the standby is chosen with 'h713-power set short standby'."""
+
+    def tool(self, r, *args):
+        env = dict(os.environ, H713_POWER_ROOT=r.dir)
+        return subprocess.run([sys.executable, TOOL] + list(args), env=env, capture_output=True, text=True)
+
+    def test_without_a_short_line_a_short_press_powers_off(self):
+        m, r = load(), Root()
+        r.put("etc/h713/power.conf", "long_s = 3\n")       # no short line at all
+        m.ROOT = r.dir
+        self.assertEqual(m.config()[0]["short"], "poweroff")
+        self.assertIn("short = poweroff", m.standby_refusal(m.config()[0]))
+
+    def test_the_shipped_power_conf_says_poweroff(self):
+        with open(os.path.join(os.path.dirname(TOOL), "power.conf")) as f:
+            lines = [l.split("#", 1)[0].strip() for l in f]
+        self.assertIn("short = poweroff", lines)
+
+    def test_set_replaces_the_line_keeps_the_comments_and_drops_a_later_duplicate(self):
+        r = Root(conf="# the key\nshort = poweroff\nlong_s = 3\nshort = poweroff  # again\n")
+        p = self.tool(r, "set", "short", "standby")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        with open(r.p("etc/h713/power.conf")) as f:
+            self.assertEqual(f.read(), "# the key\nshort = standby\nlong_s = 3\n")
+        m = load()
+        m.ROOT = r.dir
+        self.assertIsNone(m.standby_refusal(m.config()[0]))
+
+    def test_set_appends_a_missing_key_and_refuses_a_bad_value_or_key(self):
+        r = Root(conf="short = poweroff\n")
+        self.assertEqual(self.tool(r, "set", "refused", "log").returncode, 0)
+        with open(r.p("etc/h713/power.conf")) as f:
+            self.assertEqual(f.read(), "short = poweroff\nrefused = log\n")
+        self.assertEqual(self.tool(r, "set", "short", "sleep").returncode, 2)
+        self.assertEqual(self.tool(r, "set", "colour", "red").returncode, 2)
+        self.assertEqual(self.tool(r, "set", "long_s", "x").returncode, 2)
+        with open(r.p("etc/h713/power.conf")) as f:
+            self.assertEqual(f.read(), "short = poweroff\nrefused = log\n")
+
+    def test_status_names_who_powers_off(self):
+        self.assertIn("a power-off: crust (rails off", self.tool(Root(build2="0x01003318"), "status").stdout)
+        self.assertIn("a power-off: the power-on gate", self.tool(Root(), "status").stdout)
 
 
 if __name__ == "__main__":

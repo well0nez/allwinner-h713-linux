@@ -1,7 +1,7 @@
 From 074f00938c0c223adf4768e945c8150cee78cbfc Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 18:54:00 +0200
-Subject: [PATCH 46/81] h713: the DRAM checksum in the self-refresh images, as
+Subject: [PATCH 46/87] h713: the DRAM checksum in the self-refresh images, as
  error bit 14
 
 crust's DEBUG_VERIFY_DRAM sums 48 words of the first 96 MiB of DRAM

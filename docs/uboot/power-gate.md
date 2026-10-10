@@ -54,6 +54,20 @@ image (`doku/170`). The feed is there because on 07.10.2026 a watchdog that was 
 older, unfed sequence: BL31 printed `system reset failed, board stays powered` and the box stood until the power
 was cut (mechanism inferred, `doku/164`).
 
+### Through crust instead (the HY300PRO-G-EU, since 10.10.2026)
+
+A crust that says it can take the power-off (BUILD2 bit 24, `H713_POWER_OFF`) gets it from BL31 instead of the
+reset: BL31 still writes `"GATE"` first, then sends crust the vendor's "fake poweroff" request (type 0x19 on msgbox
+port 3) and parks the cores once crust confirms with its phase POWEROFF; without the confirmation it resets into
+the gate as above and leaves TF-A event 5 for the kernel. crust holds the cluster in reset, puts the DRAM into
+self-refresh, holds VDD_SYS in reset and gates it off the R domain (the vendor's `0xdea8` - without it the SoC reset
+itself a few milliseconds later and came up here) and drops the one enable of the board's rails, PL6. The box then
+draws **0.3 W**, as stock Android off, against 2.4 W in this gate on the same unit. The power key or the remote's IR
+code wakes: PL6 back, VDD_SYS out of reset, `"GATE"` turned into `"RUN1"`, an R_WDOG reset - so the gate boots straight
+through. A reset while off still finds `"GATE"` and waits here. Measured over FEL on the HY300PRO-G-EU: timer, remote
+and power key, a fresh boot each time (`doku/188`). The HY310's crust does not take it until it is measured there;
+its power-off still ends in this gate. The gate itself is unchanged: a cold start waits here as before.
+
 ## With crust and the standby
 
 The gate's code does not change for crust. BL31 starts crust from the FIT before U-Boot proper runs

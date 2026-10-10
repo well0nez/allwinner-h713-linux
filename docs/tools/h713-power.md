@@ -1,5 +1,18 @@
 # h713-power - the power key on an image that offers standby
 
+A short press powers off by default (`short = poweroff`, the owner's choice of 09.10.2026). Where crust can take the
+power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`) that is a real off at 0.3 W, and the key or
+the remote wakes into a fresh boot of about 30 s; elsewhere it is the power-on gate. The standby is the other choice -
+2.4 W, the picture back about 5 s after the wake - and needs no editor:
+
+```
+h713-power set short standby     # a short press suspends from now on
+h713-power set short poweroff    # back to the default
+```
+
+`set` takes every key of `/etc/h713/power.conf` (`short`, `long_s`, `ignore_s`, `remote`, `refused`), checks the value,
+keeps the comments and is read at the next press; it needs root. A long press always powers off.
+
 Without standby the power key powers the projector off: logind's default `HandlePowerKey=poweroff`, and
 TF-A turns the power-off into the [power-on gate](../uboot/power-gate.md). An image built with
 `release/build-all.sh --standby` adds this service and lets it decide instead
@@ -19,7 +32,8 @@ h713-power reads the event's `CLOCK_BOOTTIME` stamp and compares it with `wake` 
 arisc driver's `state` file.
 
 ```
-h713-power status        # what a short press would do now, and why; the devices it listens on
+h713-power status        # what a short press would do now, and why; who powers off (crust or the gate); the devices
+h713-power set KEY VALUE # one key of power.conf, e.g. set short standby
 h713-power run           # what the unit runs
 ```
 

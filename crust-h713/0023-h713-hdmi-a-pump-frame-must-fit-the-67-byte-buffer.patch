@@ -1,7 +1,7 @@
 From c84ac44f424394a2169a216365d3dd005c119662 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:42:16 +0200
-Subject: [PATCH 23/81] h713: hdmi: a pump frame must fit the 67-byte buffer
+Subject: [PATCH 23/87] h713: hdmi: a pump frame must fit the 67-byte buffer
 
 The pump accepted lengths up to 128 and wrote the payload from contract
 page +0x185 on; the buffer is 67 bytes (the kernel's PAYLOAD_MAX), so a

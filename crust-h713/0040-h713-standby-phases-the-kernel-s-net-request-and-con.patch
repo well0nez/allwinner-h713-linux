@@ -1,7 +1,7 @@
 From aeb5d7ca9a5f03a691c1d502e8e4ec3cc347bca2 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 18:09:32 +0200
-Subject: [PATCH 40/81] h713: standby phases, the kernel's net request and
+Subject: [PATCH 40/87] h713: standby phases, the kernel's net request and
  confirm, a clean reset
 
 Until now a standby had no guard between the kernel's last word and

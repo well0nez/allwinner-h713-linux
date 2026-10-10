@@ -8,12 +8,14 @@
 this mirror stands on. Whoever wants to change something changes the fork and has the
 mirror generated again.
 
-Verified the way a mirror should be: applying all 30 patches onto the base produces a tree
-with the same hash as the fork head (`b60113cc5ddd`, 09.10.2026; head `5a7806892`; 0007-0027 are
+Verified the way a mirror should be: applying all 31 patches onto the base produces a tree
+with the same hash as the fork head (`f51aea029bf1`, 10.10.2026; head `1dd037344`; 0007-0027 are
 the standby path through the ARISC that R2 was measured with, 0028-0029 the HDCP hardening - no
 BL32 scaffolding, the key-sink service without an address and once per boot, measured over FEL,
-`doku/180` - and 0030 a comment on where a refused suspend's reset ends), so these files and the
-fork say the same thing.
+`doku/180` - 0030 a comment on where a refused suspend's reset ends, and 0031 the power off
+through crust with the gate as the fallback, measured over FEL on the HY300PRO-G-EU, `doku/188`),
+so these files and the fork say the same thing. Before: 30 patches, tree `b60113cc5ddd`, head
+`5a7806892` (09.10.2026).
 
 **Why this directory exists at all.** It was missing until 05.10.2026, and that absence was
 actively misleading: U-Boot had its mirror, the kernel had `mainline/patches/kernel/`, so
