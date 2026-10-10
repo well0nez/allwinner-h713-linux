@@ -63,7 +63,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `5a7806892`, lokal `versuch/hdcp-haertung-tfa`: 0007-0027 Standby, 0028-0030 HDCP und Kommentar), sunxi-tools gleich;
       **neu: crust** - der Fork liegt noch nicht auf GitHub (Repo anlegen, Zweig mit 81 Patches auf `499a362`, Kopf `c5b536f` seit 10.10. (G-EU-Konfig), davor `ecf2ddc`,
       lokal `arbeit/crust-mips-drop-20261008/crust` Zweig `versuch/mips-drop`); die Spiegel `uboot-h713/`, `tfa-h713/`,
-      `crust-h713/` stehen schon auf diesen Köpfen. Früherer Stand:
+      `crust-h713/` stehen schon auf diesen Köpfen.
+      - **10.10. mittags:** lokal aufgeräumt - `h713-hy310` und `sun50i-h713` auf die Köpfe vorgespult (fast-forward), ihre
+        `versuch/*` gelöscht; im crust-Klon der Zweig `h713` auf `c5b536f`. Gepusht wird also der Fork-Zweig selbst. Der crust-Klon
+        hat kein brauchbares `origin` (zeigt auf einen gelöschten lokalen Pfad): beim Anlegen des GitHub-Repos neu setzen.
+        Noch ausgecheckt in alten Paket-Worktrees und darum stehen geblieben: TF-A `versuch/crust-release-tfa` (enthalten), crust
+        `master`, `release-v5` (enthalten) und `versuch/dram-exit-delays` (ein eigener Commit `3206083`, Versuch vom 08.10.)
+      Früherer Stand:
       — **vor** `main` (06.10.: Submodul-Remotes per `git submodule sync` wieder auf GitHub - TF-A und sunxi-tools
       zeigten auf einen geloeschten lokalen Pfad; Identitaets-Hooks gelten jetzt auch in den Forks. Der S-EL1-Versuch
       `824eb0bd` ist aus Fork-Branch, Spiegel und Zeiger raus (Marco: "el1 weg, Hauptsache HDCP funktioniert");
@@ -78,6 +84,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `master`, `legacy`, `hy300-pro-ab` - **alle drei können weg** (geprüft 10.10.: `master`/`legacy` = Stand 31.08., Vorfahren
         von `main`; `hy300-pro-ab` hat zwei Commits mehr, die nur den U-Boot-Zeiger verschieben, und dessen Ziel `fda5ce0` steckt
         im Fork-Kopf `7b1ea388da0`; der Rest wurde am 06.10. gemessen, 7.8). Löschen = Push, mit Marcos Ja im selben Zug
+      - **10.10. mittags:** alter G-EU-Worktree gelöscht (vorher geprüft: Commit in `main`, Arbeitsbaum sauber, Submodul-Köpfe im
+        Haupt-Klon, Kernelbaum nur um `0249` anders); die sechs lokalen Zweige `integration/r2-main`, `versuch/{crust-release,
+        geu-crust,hdcp-haertung,r2-standby,standby-gate}` gelöscht. In `repo-neu` gibt es nur noch `main`
 - [ ] 1.7a **Vor jedem Push: Identitäts- und Leck-Prüfung** (Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
       Spiegel-Patches trugen die private Adresse, ein Kernel-Patch einen Firmennamen, bemerkt kurz vor dem Push). Über **alles, was
       rausgeht**, nicht nur den neuen Teil: `main` und jeder Fork-Kopf (U-Boot, TF-A, crust) samt Submodul-Commits; je Commit Autor,
