@@ -7,10 +7,11 @@ base is upstream crust's `master` after v0.6). `SERIES.txt` names base, head and
 thing that says which fork commit this mirror stands on. Whoever wants to change something changes the
 fork and has the mirror generated again.
 
-Verified the way a mirror should be: applying all 87 patches onto the base produces a tree with the same
-hash as the fork head (`34a484a4ecb0`, 10.10.2026; head `d8a8d56`, branch `h713`; 0082-0087 the power off
-through crust, `doku/188`). Before: 81 patches, tree `bba95d32ccea`, head `c5b536f` (10.10.); up to `ecf2ddc`,
-80 patches, tree `2df473047ec5` on 09.10.
+Verified the way a mirror should be: applying all 88 patches onto the base produces a tree with the same
+hash as the fork head (`4ac41f6b88ee`, 10.10.2026; head `54e4a08`, branch `h713`; 0088 the HY310's release
+build powers off through crust too, `doku/190`). Before: 87 patches, tree `34a484a4ecb0`, head `d8a8d56`
+(10.10.; 0082-0087 the power off through crust, `doku/188`); 81 patches, tree `bba95d32ccea`, head `c5b536f`
+(10.10.); up to `ecf2ddc`, 80 patches, tree `2df473047ec5` on 09.10.
 
 **Not published yet.** The fork has no public repository so far, and there is no submodule
 `mainline/external/crust`; `release/build-all.sh` takes the checkout from `CRUST_SRC=<dir>` until there
@@ -19,7 +20,7 @@ is one. A checkout made from this mirror:
 ```sh
 git clone https://github.com/crust-firmware/crust crust   # a full clone: the version text needs its tags
 git -C crust checkout -b h713 499a362645e6
-git -C crust am ../crust-h713/0*.patch                     # tree = 34a484a4ecb0, as above
+git -C crust am ../crust-h713/0*.patch                     # tree = 4ac41f6b88ee, as above
 CRUST_SRC=$PWD/crust release/build-all.sh --version <v> --board hy310
 ```
 

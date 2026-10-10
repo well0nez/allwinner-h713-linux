@@ -1,7 +1,7 @@
 From d40192cfcc27f0bec2b689fa3a26f5b9901460d3 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:13:18 +0200
-Subject: [PATCH 51/87] h713: hdmi: an acknowledged restart keeps the HDMI
+Subject: [PATCH 51/88] h713: hdmi: an acknowledged restart keeps the HDMI
  bytes of the page
 
 A firmware restart while awake zeroed the whole page outside the diag

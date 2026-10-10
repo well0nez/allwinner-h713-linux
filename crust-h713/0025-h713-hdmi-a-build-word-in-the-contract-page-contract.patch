@@ -1,7 +1,7 @@
 From 5529c8b07beb686ce0a3e36cb0046608b7b3eba7 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:42:57 +0200
-Subject: [PATCH 25/87] h713: hdmi: a build word in the contract page, contract
+Subject: [PATCH 25/88] h713: hdmi: a build word in the contract page, contract
  version 3
 
 Light, self-refresh and deep images carry the same contract version and

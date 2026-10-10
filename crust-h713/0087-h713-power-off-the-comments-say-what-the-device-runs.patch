@@ -1,7 +1,7 @@
 From d8a8d56f8c468a07a49639910cb0840395c7a11b Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 17:36:12 +0200
-Subject: [PATCH 87/87] h713: power off - the comments say what the device runs
+Subject: [PATCH 87/88] h713: power off - the comments say what the device runs
  showed; the HY310 waits for its own measurement
 
 The SoC watchdog was suspected of the first runs' resets and was not their

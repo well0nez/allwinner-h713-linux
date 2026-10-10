@@ -1,7 +1,7 @@
 From f94bd4d97061bcec73ca7853b3492fdcd5aae05a Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 09:37:29 +0200
-Subject: [PATCH 76/87] h713: hdmi: the companions of a DispMips 0x16 are
+Subject: [PATCH 76/88] h713: hdmi: the companions of a DispMips 0x16 are
  recorded, not dropped
 
 The R1 image reported "MIPS frames dropped +3" on every HDMI hotplug.

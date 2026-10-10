@@ -1,7 +1,7 @@
 From d4cd19847bc4e7340c9b7b870cf8f8bd777f2a09 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 02:06:29 +0200
-Subject: [PATCH 09/87] h713: dram: self-refresh, ported from the vendor's DRAM
+Subject: [PATCH 09/88] h713: dram: self-refresh, ported from the vendor's DRAM
  standby driver V1.15
 
 The vendor ARISC firmware's enter side (blob 0x142dc) and exit side

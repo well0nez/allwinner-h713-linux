@@ -1,7 +1,7 @@
 From 463bdef70ea531555dc26212a99401f66715e68e Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 04:43:02 +0200
-Subject: [PATCH 27/87] h713: hdmi: deadlines that hold when the tick timer
+Subject: [PATCH 27/88] h713: hdmi: deadlines that hold when the tick timer
  crosses bit 31
 
 timeout_expired() treats a deadline as reached only when it and the tick

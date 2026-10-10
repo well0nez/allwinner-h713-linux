@@ -1,7 +1,7 @@
 From 763dde99bf1d089d54cafd1264b1ea7d7ed2eeaf Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 16:24:57 +0200
-Subject: [PATCH 85/87] h713: power off - count crust's milliseconds in the
+Subject: [PATCH 85/88] h713: power off - count crust's milliseconds in the
  phase, the test build marks the rails' fall
 
 NET_MS counts in POWEROFF too and starts from 0 with it, so the next boot's

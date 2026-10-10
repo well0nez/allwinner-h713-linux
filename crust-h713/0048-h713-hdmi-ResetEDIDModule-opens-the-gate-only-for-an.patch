@@ -1,7 +1,7 @@
 From c02db5d794050535923b2fe412169cbe7e03afc9 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:04:23 +0200
-Subject: [PATCH 48/87] h713: hdmi: ResetEDIDModule opens the gate only for an
+Subject: [PATCH 48/88] h713: hdmi: ResetEDIDModule opens the gate only for an
  uploaded EDID
 
 reset_module() sets the ready byte and publishes, as the blob does - but

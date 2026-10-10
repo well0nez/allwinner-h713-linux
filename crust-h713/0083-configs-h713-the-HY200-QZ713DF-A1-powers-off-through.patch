@@ -1,7 +1,7 @@
 From baef01109f0a5ac17346bcf3f9e7109d128af5d0 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 15:53:48 +0200
-Subject: [PATCH 83/87] configs: h713: the HY200 QZ713DF A1 powers off through
+Subject: [PATCH 83/88] configs: h713: the HY200 QZ713DF A1 powers off through
  crust too, and its 60 s test build
 
 PL6, PB5 and PL3 as on the HY310: its stock tree's standby_param names PL6

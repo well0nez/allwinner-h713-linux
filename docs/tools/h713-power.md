@@ -1,7 +1,7 @@
 # h713-power - the power key on an image that offers standby
 
 A short press powers off by default (`short = poweroff`, the owner's choice of 09.10.2026). Where crust can take the
-power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`) that is a real off at 0.3 W, and the key or
+power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`, the HY310 since `doku/190`) that is a real off at 0.3 W, and the key or
 the remote wakes into a fresh boot of about 30 s; elsewhere it is the power-on gate. The standby is the other choice -
 2.4 W, the picture back about 5 s after the wake - and needs no editor:
 

@@ -1,7 +1,7 @@
 From 9dde554c5ba40c25cdbe89e42312e564c7fc8aaf Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 23:09:17 +0200
-Subject: [PATCH 72/87] h713: the wake word waits in K for the 0x11, across a
+Subject: [PATCH 72/88] h713: the wake word waits in K for the 0x11, across a
  restart
 
 The 0x11 answer came from a .bss flag and the R word WAKE (+0x00c);

@@ -1,7 +1,7 @@
 From 14fdf29c2e865f78fa1b40f6c7c5f132ea9af00f Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sun, 27 Sep 2026 02:43:16 +0200
-Subject: [PATCH 03/87] h713: hdmi: the 19 IR wake codes as the vendor DTs
+Subject: [PATCH 03/88] h713: hdmi: the 19 IR wake codes as the vendor DTs
  carry them (deep review 27.09.2026)
 
 FB-CRUST package (umbau/work/FB-CRUST, 27.09.2026); author line normalised by

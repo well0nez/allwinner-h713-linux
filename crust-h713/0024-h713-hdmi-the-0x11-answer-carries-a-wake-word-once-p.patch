@@ -1,7 +1,7 @@
 From 66305ce865dd6bf64732e9bd5118c0d83fc83693 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:42:35 +0200
-Subject: [PATCH 24/87] h713: hdmi: the 0x11 answer carries a wake word once
+Subject: [PATCH 24/88] h713: hdmi: the 0x11 answer carries a wake word once
  per resume
 
 After a real standby SH_WAKE keeps its wake word. If Linux abandons the

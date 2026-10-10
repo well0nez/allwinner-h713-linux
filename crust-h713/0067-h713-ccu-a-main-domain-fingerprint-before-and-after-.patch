@@ -1,7 +1,7 @@
 From 1ef93eec0b879953078114b667a02261d88b2a22 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 21:01:41 +0200
-Subject: [PATCH 67/87] h713: ccu: a main-domain fingerprint before and after
+Subject: [PATCH 67/88] h713: ccu: a main-domain fingerprint before and after
  the deep path
 
 Design A keeps the main domain powered and out of reset across a deep

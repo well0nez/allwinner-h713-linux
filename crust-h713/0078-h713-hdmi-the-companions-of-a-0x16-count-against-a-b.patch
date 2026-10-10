@@ -1,7 +1,7 @@
 From 302ee31fcf10582a6d4008c68873ce5f4f8fd412 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 10:09:57 +0200
-Subject: [PATCH 78/87] h713: hdmi: the companions of a 0x16 count against a
+Subject: [PATCH 78/88] h713: hdmi: the companions of a 0x16 count against a
  budget
 
 f94bd4d took up to three words without the marker between two valid

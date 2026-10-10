@@ -1,7 +1,7 @@
 From 37209f8eef2dfe294b686c7a44a47e5d3311707c Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 13:01:14 +0200
-Subject: [PATCH 32/87] h713: clear the power key's mux edges after the
+Subject: [PATCH 32/88] h713: clear the power key's mux edges after the
  debounce
 
 0031 cleared the power key's latched EINT edge right after PL4 was put

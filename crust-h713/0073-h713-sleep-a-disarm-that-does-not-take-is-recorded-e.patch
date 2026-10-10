@@ -1,7 +1,7 @@
 From eb28bb58edf8a93d4738bd5dca305df77b0c8078 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 23:09:55 +0200
-Subject: [PATCH 73/87] h713: sleep: a disarm that does not take is recorded,
+Subject: [PATCH 73/88] h713: sleep: a disarm that does not take is recorded,
  error bit 17
 
 When the R_WDOG's MODE still read armed after the disarm, release()

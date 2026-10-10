@@ -1,7 +1,7 @@
 From 15d2dd545c8ecf823dd6bf375481cc0e579349ba Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:56:00 +0200
-Subject: [PATCH 37/87] h713: hdmi: the startup notify names contract v5 and
+Subject: [PATCH 37/88] h713: hdmi: the startup notify names contract v5 and
  the commit
 
 The notify said "crust-h713 contract v1" next to a page of version 4,

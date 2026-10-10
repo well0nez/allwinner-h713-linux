@@ -1,7 +1,7 @@
 From 96f200e152a9ef0b03b40a671224a39feb722686 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 20:41:04 +0200
-Subject: [PATCH 62/87] h713: r-ccu: root clocks keep a 5-bit M and get their
+Subject: [PATCH 62/88] h713: r-ccu: root clocks keep a 5-bit M and get their
  fields replaced
 
 The deep path saved the root clocks with the blob's mask 0x07000303,

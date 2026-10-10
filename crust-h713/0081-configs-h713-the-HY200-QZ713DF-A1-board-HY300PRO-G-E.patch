@@ -1,7 +1,7 @@
 From c5b536f54873c0b6d2567877bd80bfd3d30ad0bb Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Fri, 9 Oct 2026 20:14:47 +0200
-Subject: [PATCH 81/87] configs: h713: the HY200 QZ713DF A1 board
+Subject: [PATCH 81/88] configs: h713: the HY200 QZ713DF A1 board
  (HY300PRO-G-EU), self-refresh build
 
 The HY300PRO-G-EU is the HY200 QZ713DF A1 board with the stock firmware

@@ -1,7 +1,7 @@
 From d79820f5f31a8d63d1f5b19374733a240f96b02d Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:37:41 +0200
-Subject: [PATCH 57/87] drivers: sunxi-cir: a fresh decoder and an empty FIFO
+Subject: [PATCH 57/88] drivers: sunxi-cir: a fresh decoder and an empty FIFO
  at each probe
 
 The decoder state lives in the device's static state and the probe

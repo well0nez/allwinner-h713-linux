@@ -42,8 +42,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         ohne gemessene crust-Konfiguration (G-EU `projector09220931`, `hy300-pro`, `hy300-t08`, `hy350`, `hy200-qz713-v2`)
         laufen weiter mit der Hersteller-Firmware; keine geliehene Konfiguration (PB5-Vorfall 19.09.). Standby ist nicht die
         Vorgabe: `short = poweroff`, Standby per `h713-power set short standby` (2.29, 2.32). Umsetzung: **5.20**.
-        Vor dem Release außerdem: crust-Fork auf GitHub (1.6, Kopf `d8a8d56`), crust als Submodul (5.15), Aus am HY310
-        messen (2.32), Spiegel `crust-h713/` auf dem Kopf (seit `versuch/aus-pl6` 87 Patches)
+        Vor dem Release außerdem: crust-Fork auf GitHub (1.6, Kopf `54e4a08`), crust als Submodul (5.15), Spiegel
+        `crust-h713/` auf dem Kopf (88 Patches); das Aus am HY310 ist seit `doku/190` gemessen (2.32)
 - [ ] 1.2a **Z4 zweiter Boot** (~80 s nach Strom-an, Ursache unbekannt, Journal war flüchtig - **06.10.: ist es im
       Abbild weiter**, `10-h713.conf` `Storage=volatile` schlägt `/var/log/journal`, `doku/155` §3): Journal im
       Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
@@ -87,6 +87,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Beim selben Push den alten GitHub-Branch `origin/hy300-pro-ab` loeschen (Marco 06.10.: ja; Inhalt ist in `main`, 7.8)
       - **10.10. abends:** TF-A `sun50i-h713` Kopf `1dd0373449df` (0031 Aus über crust), crust `h713` Kopf `d8a8d56f8c46`
         (0082-0087); U-Boot unverändert `7b1ea388da0d`. Spiegel `tfa-h713/` und `crust-h713/` stehen auf diesen Köpfen
+      - **10.10. später abends:** crust `h713` Kopf `54e4a08ab9f3` (0088 Aus am HY310, `doku/190`), Spiegel `crust-h713/` 88 Patches,
+        Baum `4ac41f6b88ee` am Fork-Kopf geprüft
 - [ ] 1.7 `main` pushen (06.10. +113, 09.10. 19:00 +199; aktuell `git rev-list --count origin/main..main`)
       - **10.10. (Marco): veröffentlicht wird nur `main`.** Die lokalen Zweige `versuch/*` und `integration/*` (alle in `main`
         enthalten, ohne Upstream) bleiben lokal und kommen weg, sobald der alte G-EU-Worktree weg ist (`versuch/geu-crust` ist dort
@@ -154,24 +156,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
 
 
-- [ ] 2.32 **"Aus" braucht mit unserem System 8-10x so viel wie Stock** (Marco 09.10. abends). Gemessen: HY300PRO-G-EU mit
-      Stock-Android eingesteckt und aus **0,3 W**, mit unserem Abbild (geucrust1) **2,4 W**; HY310 im Gate 2,9 W (`doku/181`), Stock
-      vermutlich auch ~0,3 W (nicht gemessen). Bei uns wartet U-Boot im Gate auf einem ARM-Kern in einer Schleife auf die Taste;
-      Stock schaltet offenbar wirklich ab und lässt nur die ARISC-Firmware wachen. Weg: "Aus" über crust - ARM-Kerne aus, DRAM
-      aus, nur crust und RTC wach, die Taste weckt (wie der Standby, nur ohne Self-Refresh) - statt der U-Boot-Schleife. Vor dem
-      Release wenigstens bewerten und den Stock-Wert am HY310 messen; gehört zur ARISC/crust-Besprechung mit Marco
-      - **10.10. Cloud-RE A (`doku/187`, aus Listings, nicht gemessen):** Stock-"Aus" = BL31 `SYSTEM_OFF` setzt RTC-GP2 = 2 und lässt
-        die ARISC den SoC per Watchdog zurücksetzen; nach dem Reset schickt BL31 "fake poweroff", die ARISC macht Wecker scharf
-        (PL4, IR, CEC), legt ARM-Seite, DRAM und PLLs still und zieht **PL6 low** - die eine Freigabe von vdd-cpu/vdd-sys/vcc-pll/
-        vcc-dram, an G-EU **und** HY310. Wecken: PL6 high, GP2 = 0xf, Watchdog-Reset, Kaltstart. Unser crust schaltet PL6 nirgends.
-        Nächster Schritt nach der Besprechung: Bankmessung am HY310 (crust zieht PL6 im dunklen Wartezustand, Wattmeter, Ziel 0,3 W)
-      - **10.10. abends (`doku/188`, Marcos Freigabe): am HY300PRO-G-EU gebaut und gemessen** - crust `h713` `d8a8d56` (0x19,
-        PL6 low nach Stock-`0xdea8`), TF-A `sun50i-h713` `1dd03734` (crust zuerst, Gate als Rückfall), Kernel `0250`: **0,3 W** ohne
-        USB-Kabel, Timer, Fernbedienung und Taste wecken in einen frischen Start. Vorgabe `short = poweroff`, umschalten mit
-        `h713-power set short standby`. Offen: **HY310 messen** (`h713_hy310_sr_off_test_defconfig`), dann `H713_POWER_OFF` in
-        dessen Release-Konfiguration; G-EU-Abbild mit Kurztests vor `main` - **10.10. abends erledigt** (`geuaus1`, `doku/188` §4,
-        alles bestanden, 0,3-0,7 W im Aus)
-      - **Nächster Schritt: HY310 messen** (Marco 10.10.: die nächste Sitzung), Ablauf `doku/189` §3
 - [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
       Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
       bevor der erste Frame steht); nicht dringend
@@ -222,6 +206,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **10.10. zu C1 (B):** der Stock-Kernel schaltet die **TVCAP-Domäne im Standby nie ab** (`tv303_pm_domains`: Eintrag
         `pd_tvcap` ganz Null, im ELF nachgelesen); MIPS-Park schon in `suspend`, ohne Wartezeiten. Versuch, wenn Standby wieder
         dran ist: TVCAP im Systemschlaf an lassen, dann prüfen, ob der INCAP-Stopp vor dem Suspend noch nötig ist
+- [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
+      im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
+      über unser System oder über das Netzteil bei kleiner Last
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -601,6 +588,30 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
 - [x] 2.31 **Leistung messen: Gate (mit crust), Standby, Betrieb** (aus 2.29) - **erledigt 09.10. 21:00** (`doku/181`, Marco mit
       Wattmeter, USB gezogen, ohne Sonoff): Standby **2,4 W**, Gate **2,9 W**, Betrieb ohne Signal ~24 W, Sonoff ~0,5 W. Standby ist
       sparsamer als Aus. Offen: Betrieb mit Bild neu messen (09.09.: 47 W), Netzteil fiept im Standby leise
+- [x] 2.32 **"Aus" braucht mit unserem System 8-10x so viel wie Stock** (Marco 09.10. abends). Gemessen: HY300PRO-G-EU mit
+      Stock-Android eingesteckt und aus **0,3 W**, mit unserem Abbild (geucrust1) **2,4 W**; HY310 im Gate 2,9 W (`doku/181`), Stock
+      vermutlich auch ~0,3 W (nicht gemessen). Bei uns wartet U-Boot im Gate auf einem ARM-Kern in einer Schleife auf die Taste;
+      Stock schaltet offenbar wirklich ab und lässt nur die ARISC-Firmware wachen. Weg: "Aus" über crust - ARM-Kerne aus, DRAM
+      aus, nur crust und RTC wach, die Taste weckt (wie der Standby, nur ohne Self-Refresh) - statt der U-Boot-Schleife. Vor dem
+      Release wenigstens bewerten und den Stock-Wert am HY310 messen; gehört zur ARISC/crust-Besprechung mit Marco
+      - **10.10. Cloud-RE A (`doku/187`, aus Listings, nicht gemessen):** Stock-"Aus" = BL31 `SYSTEM_OFF` setzt RTC-GP2 = 2 und lässt
+        die ARISC den SoC per Watchdog zurücksetzen; nach dem Reset schickt BL31 "fake poweroff", die ARISC macht Wecker scharf
+        (PL4, IR, CEC), legt ARM-Seite, DRAM und PLLs still und zieht **PL6 low** - die eine Freigabe von vdd-cpu/vdd-sys/vcc-pll/
+        vcc-dram, an G-EU **und** HY310. Wecken: PL6 high, GP2 = 0xf, Watchdog-Reset, Kaltstart. Unser crust schaltet PL6 nirgends.
+        Nächster Schritt nach der Besprechung: Bankmessung am HY310 (crust zieht PL6 im dunklen Wartezustand, Wattmeter, Ziel 0,3 W)
+      - **10.10. abends (`doku/188`, Marcos Freigabe): am HY300PRO-G-EU gebaut und gemessen** - crust `h713` `d8a8d56` (0x19,
+        PL6 low nach Stock-`0xdea8`), TF-A `sun50i-h713` `1dd03734` (crust zuerst, Gate als Rückfall), Kernel `0250`: **0,3 W** ohne
+        USB-Kabel, Timer, Fernbedienung und Taste wecken in einen frischen Start. Vorgabe `short = poweroff`, umschalten mit
+        `h713-power set short standby`. Offen: **HY310 messen** (`h713_hy310_sr_off_test_defconfig`), dann `H713_POWER_OFF` in
+        dessen Release-Konfiguration; G-EU-Abbild mit Kurztests vor `main` - **10.10. abends erledigt** (`geuaus1`, `doku/188` §4,
+        alles bestanden, 0,3-0,7 W im Aus)
+      - **Nächster Schritt: HY310 messen** (Marco 10.10.: die nächste Sitzung), Ablauf `doku/189` §3
+      - **Erledigt 10.10. später abends am HY310** (`doku/190`, Marcos Freigabe "weiter im Plan"): per FEL, eMMC unberührt, drei
+        Läufe - Testbau weckt sich nach 60062 ms selbst, Power-Taste nach 111 s, IR-Fernbedienung nach 5 s; jedes Mal Phase 7,
+        Schritt `0x613`, R_WDOG-Reset, Warmstart mit GP5 `RUN1`. crust `h713` `54e4a08` (0088: `H713_POWER_OFF` in
+        `h713_hy310_sr_defconfig`), Spiegel 88 Patches. **Watt am HY310 nicht gemessen** (Marco: baugleich mit dem G-EU). Der HY310
+        selbst läuft weiter `r2test4` aus der eMMC - dort endet ein `poweroff` noch im Gate, bis ein neues Abbild drauf ist (1.1a).
+        Rest: Netzteil fiept auch im Aus (2.42), Kaltstart-Gate (2.39)
 - [x] 2.33 **HY300PRO-G-EU: Lüfter (und Lampe?) im Standby an** - **erledigt 10.10. nachts** (`doku/185`): Stock-Baum nennt PB5 als
       `panel_bl_en` und `fan-power-gpio` wie der HY310; Kernel `0249` gibt PB5 dem Board-Manager statt des Hogs, im Standby "fan power
       rail off", Lüfter aus, Lampe dunkel, nach dem Wecken alles zurück. crust musste nicht angefasst werden. Bisher (Marco 10.10. nachts: "das soll definitiv nicht so sein";

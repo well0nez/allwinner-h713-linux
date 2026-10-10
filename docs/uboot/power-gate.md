@@ -64,9 +64,9 @@ self-refresh, holds VDD_SYS in reset and gates it off the R domain (the vendor's
 itself a few milliseconds later and came up here) and drops the one enable of the board's rails, PL6. The box then
 draws **0.3 W**, as stock Android off, against 2.4 W in this gate on the same unit. The power key or the remote's IR
 code wakes: PL6 back, VDD_SYS out of reset, `"GATE"` turned into `"RUN1"`, an R_WDOG reset - so the gate boots straight
-through. A reset while off still finds `"GATE"` and waits here. Measured over FEL on the HY300PRO-G-EU: timer, remote
-and power key, a fresh boot each time (`doku/188`). The HY310's crust does not take it until it is measured there;
-its power-off still ends in this gate. The gate itself is unchanged: a cold start waits here as before.
+through. A reset while off still finds `"GATE"` and waits here. Measured over FEL on the HY300PRO-G-EU (`doku/188`)
+and on the HY310 (`doku/190`): timer, remote and power key, a fresh boot each time. The gate itself is unchanged: a
+cold start waits here as before.
 
 ## With crust and the standby
 

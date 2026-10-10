@@ -141,10 +141,11 @@ source (`doku/181`):
 |---|---|
 | standby - suspended to RAM through crust ([standby](subsystems/standby.md)): the ARM cores off, the DRAM in self-refresh | **2.4 W** |
 | off - the power gate: U-Boot waits for the key on one ARM core, the rest dark | **2.9 W** |
-| off through crust - the rails off (PL6), only crust and the RTC awake; measured on the HY300PRO-G-EU, not yet on the HY310 (`doku/188`) | **0.3 W** |
+| off through crust - the rails off (PL6), only crust and the RTC awake; measured on the HY300PRO-G-EU (`doku/188`); on the HY310 the power off and the wake are measured, the draw is not (`doku/190`) | **0.3 W** |
 | on, no signal: the console on the wall, lamp and fan on | about 24 W |
 
-So the standby draws less than "off". The power supply whines faintly in standby. On 09.09.2026, before
+So the standby draws less than "off". The power supply whines faintly in standby, and in the off through crust
+as well (HY310, 10.10.2026, `doku/190`); whether it does with stock Android off is not compared yet. On 09.09.2026, before
 crust, the same kind of meter read 4 W in the gate and **47 W with a 1080p picture** (`doku/103`); how
 much of the 4 W was a smart plug or the USB cable in the path is not recorded, and the draw with a
 picture was not measured again. *Superseded (09.10.2026):* "Measured: about 4 W when off [...] The draw

@@ -1,7 +1,7 @@
 From ab879723ee55da2b4a195119244da01986e07696 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:52:42 +0200
-Subject: [PATCH 35/87] h713: contract v5: the contract page in one table in
+Subject: [PATCH 35/88] h713: contract v5: the contract page in one table in
  platform/memory.h
 
 The layout of the contract page was spread over memory.h, hdmi.c

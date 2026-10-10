@@ -1,7 +1,7 @@
 From 63c69153bb91ac10e0d1fba35aed9044344aa091 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 11:18:32 +0200
-Subject: [PATCH 82/87] h713: power off through crust - the board rails off,
+Subject: [PATCH 82/88] h713: power off through crust - the board rails off,
  the key wakes with a reset
 
 The vendor's fake poweroff (blob 0xeaa8, doku/187) on TF-A's request 0x19

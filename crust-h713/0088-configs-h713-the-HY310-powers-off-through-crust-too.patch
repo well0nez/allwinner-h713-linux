@@ -1,0 +1,26 @@
+From 54e4a08ab9f3521e2de4b187e66e820311d7fde2 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 19:44:19 +0200
+Subject: [PATCH 88/88] configs: h713: the HY310 powers off through crust too
+
+Measured on a HY310 over FEL on 10.10.2026 (doku/190): the power off ends
+in phase 7, step 0x613, the rails low. The 60 s test build woke by itself
+after 60062 ms, the power key woke after 111 s and the IR remote after
+5 s, each through the R_WDOG reset into a warm start (GP5 RUN1). Its
+release build gets CONFIG_H713_POWER_OFF like the HY200 QZ713DF A1
+(baef011).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy310_sr_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/h713_hy310_sr_defconfig b/configs/h713_hy310_sr_defconfig
+index 6cff7ae..4e6880a 100644
+--- a/configs/h713_hy310_sr_defconfig
++++ b/configs/h713_hy310_sr_defconfig
+@@ -11,3 +11,4 @@ CONFIG_H713_DRAM_SELF_REFRESH=y
+ CONFIG_H713_BOARD_ID=1
+ CONFIG_H713_LED_RED_PIN=0
+ CONFIG_H713_LED_BLUE_PIN=1
++CONFIG_H713_POWER_OFF=y

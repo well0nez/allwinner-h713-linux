@@ -1,7 +1,7 @@
 From 0b53508d6e20e2bfcb4f19530eeffa2d8c41bca8 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 16:31:07 +0200
-Subject: [PATCH 86/87] h713: power off - VDD_SYS held in reset and gated
+Subject: [PATCH 86/88] h713: power off - VDD_SYS held in reset and gated
  before the rails fall, as the blob's 0xdea8
 
 Run geu3 counted the rails' fall at 52 ms into the phase and stopped at

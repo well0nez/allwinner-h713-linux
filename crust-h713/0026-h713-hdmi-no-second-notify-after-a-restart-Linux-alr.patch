@@ -1,7 +1,7 @@
 From 61822178285dc24c2c7d1d6ce12054db3cb60f11 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 04:40:08 +0200
-Subject: [PATCH 26/87] h713: hdmi: no second notify after a restart Linux
+Subject: [PATCH 26/88] h713: hdmi: no second notify after a restart Linux
  already acknowledged
 
 A restart through an exception while awake ran h713_init() again and

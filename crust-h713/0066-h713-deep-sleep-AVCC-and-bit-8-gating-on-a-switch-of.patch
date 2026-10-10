@@ -1,7 +1,7 @@
 From cc14d0fb7ff1e7891040b82dab915e666cdaf179 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 21:00:09 +0200
-Subject: [PATCH 66/87] h713: deep sleep: AVCC and bit 8 gating on a switch of
+Subject: [PATCH 66/88] h713: deep sleep: AVCC and bit 8 gating on a switch of
  their own
 
 H713_DEEP_VDD_SYS carried both halves of the blob's 0xdea8/0xe3a8: the

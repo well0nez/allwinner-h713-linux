@@ -1,7 +1,7 @@
 From 2e5af23f7422c5a85266069a453d8a8321577095 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 11:21:19 +0200
-Subject: [PATCH 79/87] Revert "h713: hdmi: DispMips serves type 2 only, as the
+Subject: [PATCH 79/88] Revert "h713: hdmi: DispMips serves type 2 only, as the
  blob"
 
 This reverts commit 0cdf0099c837fb290c65ab2577a37d05d0ee2a8c.

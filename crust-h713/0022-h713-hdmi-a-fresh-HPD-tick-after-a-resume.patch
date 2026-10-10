@@ -1,7 +1,7 @@
 From bbbda8be9dd0ece42846db3af3a7a54205831a7f Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:42:10 +0200
-Subject: [PATCH 22/87] h713: hdmi: a fresh HPD tick after a resume
+Subject: [PATCH 22/88] h713: hdmi: a fresh HPD tick after a resume
 
 hpd_deadline is armed before the standby and the tick does not run while
 asleep. timeout_expired() is false while the deadline and the tick timer

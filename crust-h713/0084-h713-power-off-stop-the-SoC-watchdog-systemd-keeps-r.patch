@@ -1,7 +1,7 @@
 From 2ac83e816b294037eb295e6fa3e02884d59cd452 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 16:14:59 +0200
-Subject: [PATCH 84/87] h713: power off - stop the SoC watchdog systemd keeps
+Subject: [PATCH 84/88] h713: power off - stop the SoC watchdog systemd keeps
  running
 
 systemd arms the SoC watchdog at runtime and keeps it through a power off
