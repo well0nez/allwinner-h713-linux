@@ -269,7 +269,10 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
         anhält; dazu der Audio-DSP (msp) beim Aufwachen (2.37)
       - **C klein: Log-Stufe der Display-Firmware (2.36):** in `display.bin` (MIPS) die Stelle, die `MsgHandle_SKE_SEND_EKS`
         loggt, und welche elog-Stufe sie braucht; `display_cfg.xml`-Auswertung
-      Repo anlegen und Hochladen = Veröffentlichen an einen Dienst -> nur mit Marcos Ja je Repo
+      - **Form (Marco 10.10.: "A B C sind perfekt"):** ein privates Repo, `main` mit Auftrag, Rechtsrahmen und gemeinsamen
+        Werkzeugen, je Thema ein Zweig (`a-aus`, `b-einschlafen`, `c-loglevel`) nur mit dessen Material; der Cloud-Agent arbeitet
+        auf seinem Zweig und liefert per PR (BERICHT.md, Notizen, ggf. Patch-Entwürfe). Lokal vorbereiten, dann anlegen
+      Repo anlegen und Hochladen = Veröffentlichen an einen Dienst -> nur mit Marcos Ja
 - [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)
