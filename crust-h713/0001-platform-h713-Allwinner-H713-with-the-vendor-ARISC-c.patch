@@ -1,7 +1,7 @@
 From 9d6dfeec7bcad95777854a816b422f304b2075f9 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sun, 27 Sep 2026 01:32:38 +0200
-Subject: [PATCH 01/81] platform/h713: Allwinner H713 with the vendor ARISC
+Subject: [PATCH 01/87] platform/h713: Allwinner H713 with the vendor ARISC
  contract (FB-CRUST)
 
 FB-CRUST package (umbau/work/FB-CRUST, 27.09.2026); author line normalised by

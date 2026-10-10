@@ -1,0 +1,263 @@
+From 1dd0373449df6239b7c13a8d7b40f0eb2d656532 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 11:18:32 +0200
+Subject: [PATCH 31/31] allwinner: h713: power off through crust, the gate as
+ the fallback
+
+SYSTEM_OFF still writes "GATE" into RTC GP5 first, then asks crust
+(sunxi_scp_off.c): type 0x19 on msgbox port 3, the vendor's fake poweroff,
+only of a running crust that says it can (contract v5, BUILD2 bit 24) and
+is not inside a standby. crust confirms with its phase POWEROFF within
+20 ms; the cores are then parked for its cluster reset, and crust cuts the
+board's rails and resets into a warm start on the key (doku/187). Without
+the confirmation the reset into U-Boot's gate as before, with TFA_WORD
+event 5 saying why. Built, not yet measured on a device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ plat/allwinner/common/include/sunxi_private.h |   2 +
+ .../sun50i_h713/include/sunxi_mmap.h          |   2 +
+ plat/allwinner/sun50i_h713/platform.mk        |   3 +-
+ plat/allwinner/sun50i_h713/sunxi_power.c      |  12 ++
+ plat/allwinner/sun50i_h713/sunxi_scp_off.c    | 156 ++++++++++++++++++
+ 5 files changed, 174 insertions(+), 1 deletion(-)
+ create mode 100644 plat/allwinner/sun50i_h713/sunxi_scp_off.c
+
+diff --git a/plat/allwinner/common/include/sunxi_private.h b/plat/allwinner/common/include/sunxi_private.h
+index a3ee8fe46..d8251e80f 100644
+--- a/plat/allwinner/common/include/sunxi_private.h
++++ b/plat/allwinner/common/include/sunxi_private.h
+@@ -29,6 +29,8 @@ extern uintptr_t sunxi_sec_entrypoint;
+ 
+ /* An event for the kernel in the SCP firmware's contract page (H713). */
+ void sunxi_scp_event(unsigned int event, unsigned int detail);
++/* SYSTEM_OFF through crust (H713): true once crust took it. */
++bool sunxi_scp_power_off(void);
+ 
+ #if SUNXI_SYSTEM_SUSPEND
+ bool sunxi_system_suspend_possible(void);
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 1e74cde44..2e3771f96 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -111,6 +111,7 @@
+ #define SCP_SH_BUILD			0x23c	/* variant bits 24..31 */
+ #define SCP_SH_K			0x260	/* K, 24 words */
+ #define SCP_SH_COMPAT			0x260	/* 7..0 oldest reader it suits */
++#define SCP_SH_BUILD2			0x264	/* 24: power off (0x19) */
+ #define SCP_SH_SB_STATE			0x268	/* standby phase, 3..0 */
+ #define SCP_SH_NET_MS			0x274
+ #define SCP_SH_ERR			0x27c
+@@ -149,5 +150,6 @@
+ #define SCP_EV_START			2	/* crust not running in time */
+ #define SCP_EV_R_WDOG			3	/* R_WDOG found armed at boot */
+ #define SCP_EV_RESET			4	/* suspend not accepted, reset */
++#define SCP_EV_OFF_GATE			5	/* power off not taken, the gate */
+ 
+ #endif /* SUNXI_MMAP_H */
+diff --git a/plat/allwinner/sun50i_h713/platform.mk b/plat/allwinner/sun50i_h713/platform.mk
+index 0f60af0dd..f432170e5 100644
+--- a/plat/allwinner/sun50i_h713/platform.mk
++++ b/plat/allwinner/sun50i_h713/platform.mk
+@@ -53,7 +53,8 @@ BL31_SOURCES		+=	common/fdt_wrappers.c			\
+ 				drivers/allwinner/axp/axp805.c		\
+ 				drivers/allwinner/sunxi_rsb.c		\
+ 				drivers/mentor/i2c/mi2cv.c		\
+-				${AW_PLAT}/${PLAT}/sunxi_h713_dtb.c
++				${AW_PLAT}/${PLAT}/sunxi_h713_dtb.c	\
++				${AW_PLAT}/${PLAT}/sunxi_scp_off.c
+ 
+ ifeq (${SUNXI_SYSTEM_SUSPEND},1)
+ BL31_SOURCES		+=	${AW_PLAT}/${PLAT}/sunxi_standby.c
+diff --git a/plat/allwinner/sun50i_h713/sunxi_power.c b/plat/allwinner/sun50i_h713/sunxi_power.c
+index c28a2fbab..54172d340 100644
+--- a/plat/allwinner/sun50i_h713/sunxi_power.c
++++ b/plat/allwinner/sun50i_h713/sunxi_power.c
+@@ -12,6 +12,13 @@
+  * general-purpose register GP5 and reset the SoC. U-Boot's power gate reads
+  * GP5 and waits for the power key rather than booting.
+  *
++ * With crust, the gate's loop on a core is not needed: crust can hold the
++ * board off with its rails cut, as the vendor firmware does (0.3 W against
++ * 2.4-2.9 W, doku/187), and reset into a warm start on the key. "GATE" is
++ * still written first, so that any reset before the key ends in the gate;
++ * only when crust confirms (sunxi_scp_off.c) does this return without the
++ * reset, and the caller parks the cores for crust's cluster reset.
++ *
+  * The rest of the H616 PMIC code is still needed (sunxi_pmic_setup() and the
+  * axp_read()/axp_write() the AXP driver links against), so the file is still
+  * included; only its sunxi_power_down() is renamed out of the way. Our
+@@ -59,6 +66,11 @@ void sunxi_power_down(void)
+ 		return;
+ 	}
+ 
++	if (sunxi_scp_power_off()) {
++		NOTICE("PSCI: power off, crust takes the rails\n");
++		return;
++	}
++
+ 	/*
+ 	 * NOTICE, not INFO: the release build (DEBUG=0) stops at NOTICE, and
+ 	 * this is the one line the acceptance test looks for.
+diff --git a/plat/allwinner/sun50i_h713/sunxi_scp_off.c b/plat/allwinner/sun50i_h713/sunxi_scp_off.c
+new file mode 100644
+index 000000000..07eba1f97
+--- /dev/null
++++ b/plat/allwinner/sun50i_h713/sunxi_scp_off.c
+@@ -0,0 +1,156 @@
++/*
++ * Copyright (c) 2026, Arm Limited and Contributors. All rights reserved.
++ *
++ * SPDX-License-Identifier: BSD-3-Clause
++ */
++
++/*
++ * PSCI SYSTEM_OFF through crust on the H713: the vendor's "fake poweroff"
++ * (its ARISC firmware's type 0x19 on msgbox port 3), without the vendor's
++ * detour of a reset before it. crust (H713_POWER_OFF) takes the cluster
++ * down, leaves the lamp/fan and USB VBUS lines low as U-Boot's power gate
++ * does, puts the DRAM into self-refresh and cuts the board's rails - one
++ * enable pin, PL6 on the HY310 and the HY200 QZ713DF A1 - then waits for the
++ * power key or the remote. The wake raises the rails and resets the SoC with
++ * RTC GP5 "RUN1", which the gate boots through. The vendor board draws
++ * 0.3 W that way, ours 2.4-2.9 W in the gate loop (doku/181, doku/187).
++ *
++ * The caller has written "GATE" into GP5 first: should anything reset the
++ * SoC before the wake, U-Boot waits for the key as before. Asked only of a
++ * crust that says it can (contract v5, BUILD2 bit 24), that runs, and that
++ * is not inside a standby; crust confirms by moving its phase to POWEROFF.
++ * Without the confirmation the caller resets into the gate, as SYSTEM_OFF
++ * did before.
++ *
++ * Wire format as the cpu op req (sunxi_standby.c): msgbox bank user1
++ * port 3, one word per FIFO write - the header state 2 | attr 0 << 8 |
++ * type 0x19 << 16, the count, then the flags (0: no CEC, which the vendor
++ * passes in bit 1). attr 0 asks for no answer. crust waits 50 ms before the
++ * cluster reset, time for the NOTICE line and the cores' power-off.
++ */
++
++#include <stdbool.h>
++
++#include <common/debug.h>
++#include <drivers/delay_timer.h>
++#include <lib/mmio.h>
++#include <lib/utils_def.h>
++
++#include <sunxi_mmap.h>
++#include <sunxi_private.h>
++
++#define MSGBOX_USER1_BASE	0x03003400	/* ARM -> ARISC, as sunxi_standby.c */
++#define MSGBOX_FIFO_STAT(p)	(MSGBOX_USER1_BASE + 0x60 + 4 * (p))
++#define MSGBOX_MSG_DATA(p)	(MSGBOX_USER1_BASE + 0x70 + 4 * (p))
++#define PORT_STANDBY		3
++#define FIFO_FULL		8
++#define FIFO_WAIT_US		10
++#define FIFO_WAIT_ITERS		1000		/* 10 ms */
++
++#define OFF_HDR			(2U | (0U << 8) | (0x19U << 16))
++#define OFF_ARGS		1U
++#define OFF_FLAGS		0U
++
++#define SCP_BUILD2_POWER_OFF	BIT_32(24)
++#define SCP_SB_PHASE(s)		((s) & 0xfU)
++#define SCP_PH_OFF		0U	/* no standby since crust started */
++#define SCP_PH_RELEASED		5U	/* the last standby is over */
++#define SCP_PH_POWEROFF		7U	/* crust took the power off */
++#define SCP_LIVE_TRIES		100U	/* x 100 us, as sunxi_standby.c */
++#define SCP_TAKE_TRIES		200U	/* x 100 us: 20 ms */
++
++/* Why it was not asked or not taken: the detail of TFA_WORD event 5. */
++#define OFF_MAGIC		BIT_32(0)
++#define OFF_VERSION		BIT_32(1)
++#define OFF_UNABLE		BIT_32(2)
++#define OFF_PHASE		BIT_32(3)
++#define OFF_RUNNING		BIT_32(4)
++#define OFF_HEARTBEAT		BIT_32(5)
++#define OFF_FIFO_FULL		BIT_32(6)
++#define OFF_FIFO_KEPT		BIT_32(7)
++#define OFF_NOT_TAKEN		BIT_32(8)
++
++static uint32_t scp_read(unsigned int off)
++{
++	return mmio_read_32(SCP_SH(off));
++}
++
++static int off_push(uint32_t word)
++{
++	unsigned int i;
++
++	for (i = 0U; i < FIFO_WAIT_ITERS; i++) {
++		if (mmio_read_32(MSGBOX_FIFO_STAT(PORT_STANDBY)) != FIFO_FULL) {
++			mmio_write_32(MSGBOX_MSG_DATA(PORT_STANDBY), word);
++			return 0;
++		}
++		udelay(FIFO_WAIT_US);
++	}
++	return -1;
++}
++
++static uint32_t off_denied(void)
++{
++	uint32_t version = scp_read(SCP_SH_VERSION);
++	uint32_t compat = version >= SCP_VERSION ?
++		(scp_read(SCP_SH_COMPAT) & 0xffU) : version;
++	uint32_t ph = SCP_SB_PHASE(scp_read(SCP_SH_SB_STATE));
++	uint32_t s0 = scp_read(SCP_SH_STATUS), s1 = s0;
++	uint32_t deny = 0U;
++	unsigned int i;
++
++	if (scp_read(SCP_SH_MAGIC) != SCP_MAGIC)
++		return OFF_MAGIC;	/* no crust: the rest is not its page */
++	if (version < SCP_VERSION || compat > SCP_VERSION)
++		deny |= OFF_VERSION;
++	if ((scp_read(SCP_SH_BUILD2) & SCP_BUILD2_POWER_OFF) == 0U)
++		deny |= OFF_UNABLE;
++	if (ph != SCP_PH_OFF && ph != SCP_PH_RELEASED)
++		deny |= OFF_PHASE;
++	if ((s0 & SCP_ST_RUNNING) == 0U)
++		deny |= OFF_RUNNING;
++	if (deny != 0U)
++		return deny;
++	/* The main loop moves it on every pass, microseconds apart. */
++	for (i = 0U; i < SCP_LIVE_TRIES && s1 == s0; i++) {
++		udelay(100);
++		s1 = scp_read(SCP_SH_STATUS);
++	}
++	return s1 == s0 ? OFF_HEARTBEAT : 0U;
++}
++
++bool sunxi_scp_power_off(void)
++{
++	uint32_t deny = off_denied();
++	unsigned int i;
++
++	if (deny != 0U)
++		goto gate;
++	if (off_push(OFF_HDR) != 0 || off_push(OFF_ARGS) != 0 ||
++	    off_push(OFF_FLAGS) != 0) {
++		deny = OFF_FIFO_FULL;
++		goto gate;
++	}
++	for (i = 0U; i < FIFO_WAIT_ITERS; i++) {
++		if (mmio_read_32(MSGBOX_FIFO_STAT(PORT_STANDBY)) == 0U)
++			break;
++		udelay(FIFO_WAIT_US);
++	}
++	if (i == FIFO_WAIT_ITERS) {
++		deny = OFF_FIFO_KEPT;
++		goto gate;
++	}
++	for (i = 0U; i < SCP_TAKE_TRIES; i++) {
++		if (SCP_SB_PHASE(scp_read(SCP_SH_SB_STATE)) == SCP_PH_POWEROFF)
++			return true;
++		udelay(100);
++	}
++	deny = OFF_NOT_TAKEN;
++gate:
++	/* No crust at all is the vendor firmware's board: not an event. */
++	if (deny != OFF_MAGIC) {
++		sunxi_scp_event(SCP_EV_OFF_GATE, deny);
++		NOTICE("PSCI: power off not through crust (0x%x)\n", deny);
++	}
++	return false;
++}

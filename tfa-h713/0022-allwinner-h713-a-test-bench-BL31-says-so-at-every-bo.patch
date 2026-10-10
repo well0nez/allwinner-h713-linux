@@ -1,7 +1,7 @@
 From 6798f1aafef41de0b365637c8a2dd5e6f312e67f Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 00:16:46 +0200
-Subject: [PATCH 22/30] allwinner: h713: a test bench BL31 says so at every
+Subject: [PATCH 22/31] allwinner: h713: a test bench BL31 says so at every
  boot
 
 SUNXI_STANDBY_UNMEASURED=1 makes SYSTEM_SUSPEND take a crust whose build

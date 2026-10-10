@@ -1,0 +1,75 @@
+From 763dde99bf1d089d54cafd1264b1ea7d7ed2eeaf Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 16:24:57 +0200
+Subject: [PATCH 85/87] h713: power off - count crust's milliseconds in the
+ phase, the test build marks the rails' fall
+
+NET_MS counts in POWEROFF too and starts from 0 with it, so the next boot's
+record (the kernel prints "ms in the phase") says how long crust lived
+after the request; the test build writes the count at the rails' fall into
+the error words (detail 0xfff00000, no error bit). Runs geu1b and geu2 ended
+in the gate with GP5 GATE and step SUSPEND_COMPLETE, without saying whether
+a reset came or crust stopped.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/hdmi/sun50i-h713-hdmi.c  |  8 ++++++++
+ drivers/hdmi/sun50i-h713-sleep.c | 14 +++++++++++---
+ 2 files changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/hdmi/sun50i-h713-hdmi.c b/drivers/hdmi/sun50i-h713-hdmi.c
+index 86534a4..d7ed169 100644
+--- a/drivers/hdmi/sun50i-h713-hdmi.c
++++ b/drivers/hdmi/sun50i-h713-hdmi.c
+@@ -1381,6 +1381,14 @@ h713_power_off_rails(bool on)
+ #if CONFIG(H713_POWER_OFF)
+ 	if (gpio_get(&off_rails) != SUCCESS)
+ 		return;
++#if CONFIG(H713_TEST)
++	/* the device test: when the rails went, in the record's error words
++	 * (no error bit set) - NET_MS is how long crust lived after it */
++	if (!on) {
++		mmio_write_32(H713_K_ERR_DETAIL, 0xfff00000U); /* no such bit */
++		mmio_write_32(H713_K_ERR_DATA, mmio_read_32(H713_K_NET_MS));
++	}
++#endif
+ 	gpio_set_value(&off_rails, on);
+ 	if (on)
+ 		udelay(RAILS_UP_US);
+diff --git a/drivers/hdmi/sun50i-h713-sleep.c b/drivers/hdmi/sun50i-h713-sleep.c
+index e3b1218..52be416 100644
+--- a/drivers/hdmi/sun50i-h713-sleep.c
++++ b/drivers/hdmi/sun50i-h713-sleep.c
+@@ -85,13 +85,21 @@ armed(void)
+ 	return CONFIG(H713_SLEEP_NET) && (state() & H713_SB_ARMED);
+ }
+ 
+-/* Into @ph; a net phase counts its milliseconds from 0, an end keeps them. */
++/* The phases NET_MS counts: the net's, and a power off (how long crust
++ * lived in it, for the record of the next boot). */
++static bool
++counted_phase(uint8_t ph)
++{
++	return net_phase(ph) || ph == H713_PH_POWEROFF;
++}
++
++/* Into @ph; a counted phase counts its milliseconds from 0, an end keeps them. */
+ static void
+ set_phase(uint32_t st, uint8_t ph)
+ {
+ 	mmio_write_32(H713_K_SB_STATE,
+ 	              (st & ~(H713_SB_PHASE | H713_SB_RESTARTS)) | ph);
+-	if (net_phase(ph))
++	if (counted_phase(ph))
+ 		mmio_write_32(H713_K_NET_MS, 0);
+ }
+ 
+@@ -104,7 +112,7 @@ static void
+ tick(void)
+ {
+ 	uint8_t ph = phase();
+-	bool count = net_phase(ph);
++	bool count = counted_phase(ph);
+ 	bool wake = ph == H713_PH_CPU_OP || ph == H713_PH_SLEEP;
+ 
+ 	if (!ms_armed) {

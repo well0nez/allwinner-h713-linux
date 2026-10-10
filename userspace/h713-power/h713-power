@@ -12,7 +12,11 @@ power-off is back (docs/subsystems/standby.md).
 A standby parks the display MIPS and nothing in the kernel starts it again: when the projector stays on
 after a standby (or a refused one) and sun50i-h713-mips says parked, h713-mips-restart brings the picture
 back. While it runs a short press does nothing, a long one still powers off.
-Commands: run [--once], status. Exit: 0, 2 usage.
+The power-off itself is crust's on a board whose crust says it can (the arisc driver's build2 bit 24): the
+rails off, about 0.3 W, the key or the remote wakes into a fresh boot (doku/188); else the power-on gate.
+`h713-power set short standby|poweroff` (and the other keys of power.conf) changes the policy for the next
+press, no restart needed.
+Commands: run [--once], status, set KEY VALUE. Exit: 0, 1 power.conf not written, 2 usage.
 """
 
 import argparse
@@ -35,7 +39,8 @@ EV_KEY, KEY_POWER = 1, 116
 EVIOCSCLOCKID = 0x400445a0                   # _IOW('E', 0xa0, int)
 CLOCK_BOOTTIME = 7
 BUS_BLUETOOTH = 0x05
-DEFAULTS = {"short": "standby", "long_s": "3", "ignore_s": "2", "remote": "on", "refused": "poweroff"}
+DEFAULTS = {"short": "poweroff", "long_s": "3", "ignore_s": "2", "remote": "on", "refused": "poweroff"}
+BUILD2_POWER_OFF = 1 << 24                   # crust takes SYSTEM_OFF: rails off (doku/188)
 CHOICES = {"short": ("standby", "poweroff"), "remote": ("on", "off"), "refused": ("poweroff", "log")}
 
 
@@ -56,6 +61,10 @@ def read(p, default=""):
         return default
 
 
+def valid(key, value):
+    return key in DEFAULTS and (value in CHOICES[key] if key in CHOICES else value.replace(".", "", 1).isdigit())
+
+
 def config():
     """power.conf over the defaults; a bad line is named and its default kept."""
     conf, bad = dict(DEFAULTS), []
@@ -64,8 +73,7 @@ def config():
         if not line:
             continue
         key, _, value = (x.strip() for x in line.partition("="))
-        ok = key in DEFAULTS and (value in CHOICES[key] if key in CHOICES else value.replace(".", "", 1).isdigit())
-        if ok:
+        if valid(key, value):
             conf[key] = value
         else:
             bad.append("power.conf:%d: %r ignored" % (n, line))
@@ -327,6 +335,52 @@ def run(once):
                 break
 
 
+def set_value(key, value):
+    """power.conf with KEY = VALUE: the key's first line replaced, a later one dropped (it would win), comments
+    kept; appended when the key is missing. Written to a new file and renamed over the old one."""
+    if not valid(key, value):
+        if key in DEFAULTS:
+            hint = "|".join(CHOICES[key]) if key in CHOICES else "seconds"
+            print("h713-power: %s = %s: not valid, %s takes %s" % (key, value, key, hint), file=sys.stderr)
+        else:
+            print("h713-power: no key %r, power.conf has %s" % (key, ", ".join(DEFAULTS)), file=sys.stderr)
+        return 2
+    p = path("etc/h713/power.conf")
+    out, done = [], False
+    for line in read(p).splitlines():
+        k = line.split("#", 1)[0].partition("=")[0].strip()
+        if k != key:
+            out.append(line)
+        elif not done:
+            out.append("%s = %s" % (key, value))
+            done = True
+    if not done:
+        out.append("%s = %s" % (key, value))
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p + ".new", "w") as f:
+            f.write("\n".join(out) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(p + ".new", p)
+    except OSError as e:
+        print("h713-power: %s not written: %s" % (p, e.strerror), file=sys.stderr)
+        return 1
+    print("%s = %s (from the next press on, no restart needed)" % (key, value))
+    return 0
+
+
+def power_off_path(state):
+    """What a power-off does on this board: crust's, when its build says it can, else U-Boot's gate."""
+    try:
+        able = int(state.get("build2", "0"), 16) & BUILD2_POWER_OFF
+    except ValueError:
+        able = 0
+    if able:
+        return "crust (rails off, about 0.3 W; the key or the remote wakes into a fresh boot)"
+    return "the power-on gate (U-Boot waits for the key)"
+
+
 def status():
     conf, bad = config()
     for line in bad:
@@ -338,6 +392,7 @@ def status():
     print("display MIPS: %s" % (mips_state() or "- (no sun50i-h713-mips driver)"))
     why = standby_refusal(conf)
     print("a short press now: %s" % ("standby" if why is None else "power-off (%s)" % why))
+    print("a power-off: %s" % power_off_path(state))
     print("power key devices: %s" % (" ".join(power_key_devices(conf)) or "none"))
     return 0
 
@@ -348,8 +403,13 @@ def main(argv=None):
     sub.add_parser("run", help="decide every KEY_POWER (the unit runs this)").add_argument(
         "--once", action="store_true", help="exit after the first action")
     sub.add_parser("status", help="what a short press would do now, and why")
+    s = sub.add_parser("set", help="change one key of power.conf, e.g. 'set short standby'")
+    s.add_argument("key", help=", ".join(DEFAULTS))
+    s.add_argument("value")
     a = p.parse_args(argv)
-    return run(a.once) if a.command == "run" else status()
+    if a.command == "run":
+        return run(a.once)
+    return set_value(a.key, a.value) if a.command == "set" else status()
 
 
 if __name__ == "__main__":

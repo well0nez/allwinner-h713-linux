@@ -1,7 +1,7 @@
 From e16b56772e3fef31b0600bd82b0f28e550dd555e Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:16:44 +0200
-Subject: [PATCH 53/81] h713: hdmi: DispMips - 16 words a pass, the port
+Subject: [PATCH 53/87] h713: hdmi: DispMips - 16 words a pass, the port
  recorded, 0x16/0x17 counted
 
 mips_poll() read each port while its FIFO had words, with no bound: a

@@ -1,7 +1,7 @@
 From 8d16d2330c15db4af6a3f8839ba0b6b257250774 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 00:15:47 +0200
-Subject: [PATCH 20/30] allwinner: h713: a crust that never wrote MAGIC leaves
+Subject: [PATCH 20/31] allwinner: h713: a crust that never wrote MAGIC leaves
  its late start in the record
 
 When crust is not running by the start deadline, BL31 writes TFA_WORD

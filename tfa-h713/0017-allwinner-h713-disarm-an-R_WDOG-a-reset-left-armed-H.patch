@@ -1,7 +1,7 @@
 From 8c781f60c9a6a6c656fd05196c1a0ee399a5d27f Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:53:35 +0200
-Subject: [PATCH 17/30] allwinner: h713: disarm an R_WDOG a reset left armed
+Subject: [PATCH 17/31] allwinner: h713: disarm an R_WDOG a reset left armed
  (H713_R_WDOG_CHECK)
 
 crust is to arm the R_WDOG (0x07020400, RTC domain) as the net of a

@@ -152,6 +152,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         (PL4, IR, CEC), legt ARM-Seite, DRAM und PLLs still und zieht **PL6 low** - die eine Freigabe von vdd-cpu/vdd-sys/vcc-pll/
         vcc-dram, an G-EU **und** HY310. Wecken: PL6 high, GP2 = 0xf, Watchdog-Reset, Kaltstart. Unser crust schaltet PL6 nirgends.
         Nächster Schritt nach der Besprechung: Bankmessung am HY310 (crust zieht PL6 im dunklen Wartezustand, Wattmeter, Ziel 0,3 W)
+      - **10.10. abends (`doku/188`, Marcos Freigabe): am HY300PRO-G-EU gebaut und gemessen** - crust `h713` `d8a8d56` (0x19,
+        PL6 low nach Stock-`0xdea8`), TF-A `sun50i-h713` `1dd03734` (crust zuerst, Gate als Rückfall), Kernel `0250`: **0,3 W** ohne
+        USB-Kabel, Timer, Fernbedienung und Taste wecken in einen frischen Start. Vorgabe `short = poweroff`, umschalten mit
+        `h713-power set short standby`. Offen: **HY310 messen** (`h713_hy310_sr_off_test_defconfig`), dann `H713_POWER_OFF` in
+        dessen Release-Konfiguration; G-EU-Abbild mit Kurztests vor `main`
 - [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
       Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
       bevor der erste Frame steht); nicht dringend
@@ -170,6 +175,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `HDCP Process cost tick` (Stufe 1, einzige Stelle) **ist** der SKE_Send_Eks-Beweis - am G-EU also erbracht. Die HY310-Zeile
         vom 05.10. war zusammengesetzt. Messregel, `docs/subsystems/hdcp.md` und h713-tv-README korrigiert. Rest: Gegenprobe am Gerät
         (`0x4B48BE84` liest `0xA7`), dann schließen
+- [ ] 2.38 **Ausschalten mit OSD** (Marco 10.10. abends): ein Druck auf Power (Gerät oder Fernbedienung) blendet auf afbd ein
+      "Ausschalten in 15 s" mit "Standby" daneben; ein zweiter Druck schaltet sofort aus, links/rechts + OK wählt, Zurück bricht
+      ab, nach 15 s gilt `power.conf` `short`; ein langer Druck (3 s) schaltet ohne OSD aus. Rückfall: stirbt der Dienst, schaltet
+      logind aus. Braucht das afbd-OSD (Marcos Plan) und die IR-Belegung 2.35 (dann auch mit der IR-Fernbedienung, Pfeiltasten
+      9.9). h713-power bekommt dafür eine Zwischenstufe "Aus angefordert" mit Schnittstelle zum Wählen und Abbrechen
 - [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
       höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
       - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf

@@ -1,7 +1,7 @@
 From 9803ce556c25f16721b0d22f5dcf9a39e154c27e Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 02:26:00 +0200
-Subject: [PATCH 09/30] tf-a: h713: deep-review fixes for the standby (counter,
+Subject: [PATCH 09/31] tf-a: h713: deep-review fixes for the standby (counter,
  FIFO, mpidr)
 
 FB-STANDBY tfa-0003 (deep review 27.09.2026), the sunxi_standby.c part,

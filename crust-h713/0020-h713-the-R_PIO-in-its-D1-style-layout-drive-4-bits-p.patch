@@ -1,7 +1,7 @@
 From 33b44f62d1a212522cc9e05530030817364e1db7 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 03:40:38 +0200
-Subject: [PATCH 20/81] h713: the R_PIO in its D1-style layout: drive 4 bits
+Subject: [PATCH 20/87] h713: the R_PIO in its D1-style layout: drive 4 bits
  per pin, pull at +0x24
 
 The kernel's H713 R_PIO driver uses SUNXI_PINCTRL_NEW_REG_LAYOUT: 0x30 bytes

@@ -1,7 +1,7 @@
 From 540af35c8729f024cb6280a48167aa11b36ef1ea Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:51:04 +0200
-Subject: [PATCH 15/30] allwinner: h713: keep the record of crust's last run,
+Subject: [PATCH 15/31] allwinner: h713: keep the record of crust's last run,
  and check that it starts
 
 At every crust start BL31 zeroed the whole contract page, diagnostic

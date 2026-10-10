@@ -1,7 +1,7 @@
 From 29e09fc3d85b6b55d47a76472b8025df7816937f Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:45:42 +0200
-Subject: [PATCH 11/30] allwinner: h713: feed the watchdog before and after
+Subject: [PATCH 11/31] allwinner: h713: feed the watchdog before and after
  arming it for a reset
 
 SYSTEM_RESET, the power off into the boot gate and the "system suspend not

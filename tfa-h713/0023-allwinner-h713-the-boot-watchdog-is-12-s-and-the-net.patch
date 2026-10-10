@@ -1,7 +1,7 @@
 From bbf7f3b590b373de3bfa25740980a7b33b9b3a60 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 00:17:04 +0200
-Subject: [PATCH 23/30] allwinner: h713: the boot watchdog is 12 s and the net
+Subject: [PATCH 23/31] allwinner: h713: the boot watchdog is 12 s and the net
  until U-Boot takes it
 
 BL31 arms the SoC watchdog on every boot and printed "watchdog armed

@@ -17,7 +17,8 @@ board manager said `fan power rail not ours, left as it is`, and the fan kept tu
 
 | State | What runs | Power | How you get there | How you leave |
 |---|---|---|---|---|
-| **off (the gate)** | the SoC in U-Boot's [power-on gate](../uboot/power-gate.md); fan, lamp, panel unpowered (PB5, PL3 low); LED red | 2.9 W (09.10.2026, `doku/181`; 4 W on 09.09.2026, before crust) | `poweroff`, the power key on an image without standby, a cold start | the power key |
+| **off through crust** (HY300PRO-G-EU) | crust on the ARISC, the board's rails off (PL6): ARM cluster, DRAM, PLLs unpowered; fan, lamp, USB low | **0.3 W**, as stock Android off (10.10.2026, `doku/188`) | `poweroff` or a short press with `short = poweroff` (the default), on a board whose crust takes it | the power key, the remote's IR code - a fresh boot |
+| **off (the gate)** | the SoC in U-Boot's [power-on gate](../uboot/power-gate.md); fan, lamp, panel unpowered (PB5, PL3 low); LED red | 2.9 W (09.10.2026, `doku/181`; 4 W on 09.09.2026, before crust) | `poweroff` on a board whose crust cannot take it (the HY310 until it is measured there), a cold start | the power key |
 | **standby** | crust on the ARISC, everything else asleep: the ARM cluster off, the DRAM in self-refresh | **2.4 W**, less than off (09.10.2026, `doku/181`) | a short press of the power key on an image with standby (`h713-power`), `systemctl suspend` | the power key, the remote's IR code, a wake timer |
 | `h713-tv` idle | everything; the HDMI input has no signal | full | no source | a source |
 

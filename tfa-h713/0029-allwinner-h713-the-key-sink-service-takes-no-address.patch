@@ -1,7 +1,7 @@
 From e2298a919fc3ab7d05ea24cd75df311a5c3cd86c Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:26:40 +0200
-Subject: [PATCH 29/30] allwinner: h713: the key-sink service takes no address
+Subject: [PATCH 29/31] allwinner: h713: the key-sink service takes no address
  and serves once
 
 Until now the normal world chose what EL3 loaded as this device's HDCP 1.4

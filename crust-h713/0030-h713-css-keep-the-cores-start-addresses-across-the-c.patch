@@ -1,7 +1,7 @@
 From c7ff040afca95a001787d4678624b73e766b32d2 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 09:02:19 +0200
-Subject: [PATCH 30/81] h713: css: keep the cores' start addresses across the
+Subject: [PATCH 30/87] h713: css: keep the cores' start addresses across the
  cluster down
 
 The first standby on the HY310 (07.10.2026) came back on CPU0, then

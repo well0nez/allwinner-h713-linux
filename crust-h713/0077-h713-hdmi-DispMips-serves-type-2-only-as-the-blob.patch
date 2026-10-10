@@ -1,7 +1,7 @@
 From 0cdf0099c837fb290c65ab2577a37d05d0ee2a8c Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 09:39:11 +0200
-Subject: [PATCH 77/81] h713: hdmi: DispMips serves type 2 only, as the blob
+Subject: [PATCH 77/87] h713: hdmi: DispMips serves type 2 only, as the blob
 
 The blob hands MIPS frames to DispMips 0x1180c, which serves header type
 2 and nothing else: any other type gets "ERR:Unknown DispMips Message

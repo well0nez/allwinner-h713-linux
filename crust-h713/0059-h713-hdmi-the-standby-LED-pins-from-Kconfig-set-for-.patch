@@ -1,7 +1,7 @@
 From 8f660098badaab166d4bf123fd1b4c46e41b2ab1 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 19:40:00 +0200
-Subject: [PATCH 59/81] h713: hdmi: the standby LED pins from Kconfig, set for
+Subject: [PATCH 59/87] h713: hdmi: the standby LED pins from Kconfig, set for
  the HY310 only
 
 crust drove PL0 (red) and PL1 (blue) in every standby and wrote their

@@ -141,6 +141,7 @@ source (`doku/181`):
 |---|---|
 | standby - suspended to RAM through crust ([standby](subsystems/standby.md)): the ARM cores off, the DRAM in self-refresh | **2.4 W** |
 | off - the power gate: U-Boot waits for the key on one ARM core, the rest dark | **2.9 W** |
+| off through crust - the rails off (PL6), only crust and the RTC awake; measured on the HY300PRO-G-EU, not yet on the HY310 (`doku/188`) | **0.3 W** |
 | on, no signal: the console on the wall, lamp and fan on | about 24 W |
 
 So the standby draws less than "off". The power supply whines faintly in standby. On 09.09.2026, before

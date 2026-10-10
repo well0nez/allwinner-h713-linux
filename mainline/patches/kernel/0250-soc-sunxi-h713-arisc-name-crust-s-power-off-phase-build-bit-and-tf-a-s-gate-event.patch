@@ -1,0 +1,73 @@
+soc: sunxi: h713-arisc: name crust's power off - phase, build bit and TF-A's gate event
+
+crust takes PSCI SYSTEM_OFF since doku/188 (the vendor's "fake poweroff"):
+its phase 7 POWEROFF, BUILD2 bit 24 that says it can, and TF-A's event 5
+when a power off went into U-Boot's gate instead. The driver printed the
+phase of the record after a power off as "?"; it now says "poweroff", the
+crust line says ", power off" for a build that takes it, and the TF-A event
+has its name.
+
+Measured 10.10.2026 on the HY300PRO-G-EU with crust d8a8d56: the record of
+the run before the boot reads phase 7, step 0x613, GP5 RUN1 (doku/188).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/soc/sunxi/sun50i-h713-arisc.c         | 8 +++++---
+ include/linux/soc/sunxi/h713-crust-contract.h | 2 ++
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+index 73d65d9..e11df3f 100644
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -526,7 +526,7 @@ static const char *crust_phase(u32 sb_state)
+ {
+ 	static const char * const names[] = {
+ 		"off", "presleep", "cpu-op", "sleep", "resuming", "released",
+-		"reset",
++		"reset", "poweroff",
+ 	};
+ 	unsigned int phase = h713_sb_phase(sb_state);
+ 
+@@ -3201,10 +3201,11 @@ static void arisc_crust_describe(struct h713_arisc *a)
+ 	for (i = 0; i < ARRAY_SIZE(bits); i++)
+ 		if (build & BIT(24 + i))
+ 			n += scnprintf(flags + n, sizeof(flags) - n, " %s", bits[i]);
+-	dev_info(a->dev, "crust contract v%u, build 0x%08x (%u bytes%s), build2 0x%08x (DRAM %u MHz, board %u, R_WDOG code %u)\n",
++	dev_info(a->dev, "crust contract v%u, build 0x%08x (%u bytes%s), build2 0x%08x (DRAM %u MHz, board %u, R_WDOG code %u%s)\n",
+ 		 version, build, build & H713_BUILD_SIZE, flags, build2,
+ 		 H713_BUILD2_DRAM_MHZ(build2), H713_BUILD2_BOARD(build2),
+-		 H713_BUILD2_RWDOG(build2));
++		 H713_BUILD2_RWDOG(build2),
++		 build2 & H713_BUILD2_POWER_OFF ? ", power off" : "");
+ 	if (build & H713_BUILD_TEST)
+ 		dev_warn(a->dev, "crust is a test build (forced faults and deadlines) -- not for use\n");
+ }
+@@ -3219,6 +3220,7 @@ static void arisc_tfa_report(struct h713_arisc *a)
+ 	static const char * const events[] = {
+ 		"?", "SYSTEM_SUSPEND denied", "crust late at boot",
+ 		"R_WDOG found armed", "suspend not taken, reset",
++		"power off not through crust, the gate",
+ 	};
+ 	static const char * const checks[H713_DENY_CHECKS] = {
+ 		"magic", "version", "vdd-sys", "unmeasured", "phase", "net",
+diff --git a/include/linux/soc/sunxi/h713-crust-contract.h b/include/linux/soc/sunxi/h713-crust-contract.h
+index ec8193a..b1ddb64 100644
+--- a/include/linux/soc/sunxi/h713-crust-contract.h
++++ b/include/linux/soc/sunxi/h713-crust-contract.h
+@@ -79,6 +79,7 @@
+ #define H713_BUILD2_DRAM_MHZ(b)	((b) & 0xfff)		/* 0 without self-refresh */
+ #define H713_BUILD2_BOARD(b)	(((b) >> 12) & 0xf)	/* 1 HY310, 2 HY300 Pro */
+ #define H713_BUILD2_RWDOG(b)	(((b) >> 16) & 0xff)	/* 0: no net built */
++#define H713_BUILD2_POWER_OFF	(1U << 24)	/* crust takes SYSTEM_OFF (0x19): rails off, a key wakes */
+ #define H713_SB_STATE		0x268
+ #define H713_NET_ACC		0x26c	/* budgets taken: 15..0 presleep s, 31..16 resuming s */
+ #define H713_NET_RB		0x270	/* R_WDOG read back when armed: 15..0 MODE, 31..16 CFG */
+@@ -223,6 +224,7 @@ static inline bool h713_net_confirm_ok(u32 w, u8 cycle)
+ #define H713_TFA_START_LATE	2
+ #define H713_TFA_RWDOG_FOUND	3
+ #define H713_TFA_NOT_ACCEPTED	4
++#define H713_TFA_OFF_GATE	5	/* power off not through crust: the gate */
+ /*
+  * DENIED detail, one bit per failed check from bit 0 on: magic, version,
+  * VDD_SYS build, unmeasured build (28 or 31), phase, net, running,
