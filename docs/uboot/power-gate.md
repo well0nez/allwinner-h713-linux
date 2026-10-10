@@ -1,7 +1,8 @@
 # The power-on gate
 
-Plug the projector in and it waits: dark, 2.9 W at the wall (09.10.2026, `doku/181`), red LED lit, until the power key is
-pressed. That is how the device behaves with the stock firmware, and reproducing it is what this gate is
+Plug the projector in and it waits: dark, red LED lit, until the power key or the remote's power key is pressed. With a
+crust that can power off, it waits in crust's off state, 0.3-0.6 W at the wall (FEL, HY300PRO-G-EU, `doku/191`); otherwise
+U-Boot waits itself, 2.4-2.9 W (09.10.2026, `doku/181`) - below. That is how the device behaves with the stock firmware, and reproducing it is what this gate is
 for (measured 09.09.2026, `doku/103-plan-einschaltgate.md` §3 M5). Without it, our boot chain would start
 Linux the moment the socket is switched on - convenient on a bench, wrong for something that stands in a
 living room.
@@ -22,7 +23,8 @@ only state that survives a reset without surviving a loss of mains power:
 
 | GP5 reads | Meaning | U-Boot does |
 |---|---|---|
-| `0`, or any word not listed here | mains just came on (cold start) | gate: wait for the power key |
+| `0` | mains just came on (cold start) | a crust that can power off holds the board off ([below](#a-cold-start-through-crust-since-10102026)); otherwise the gate waits for the power key |
+| any word not listed here | unknown | gate: wait for the power key |
 | `"RUN1"` | a warm restart - `reboot`, a crash, a watchdog reset | boot straight through |
 | `"GATE"` | TF-A wrote this on `poweroff` (PSCI `SYSTEM_OFF`) | gate: wait for the power key |
 | `"STBY"` | Linux wrote this at the start of a standby, and the display core did not run again before the reset: the standby did not finish | gate: wait for the power key |
@@ -65,12 +67,32 @@ itself a few milliseconds later and came up here) and drops the one enable of th
 draws **0.3 W**, as stock Android off, against 2.4 W in this gate on the same unit. The power key or the remote's IR
 code wakes: PL6 back, VDD_SYS out of reset, `"GATE"` turned into `"RUN1"`, an R_WDOG reset - so the gate boots straight
 through. A reset while off still finds `"GATE"` and waits here. Measured over FEL on the HY300PRO-G-EU (`doku/188`)
-and on the HY310 (`doku/190`): timer, remote and power key, a fresh boot each time. The gate itself is unchanged: a
-cold start waits here as before.
+and on the HY310 (`doku/190`): timer, remote and power key, a fresh boot each time.
+
+### A cold start through crust (since 10.10.2026)
+
+A cold start does not wait in the loop either, when crust can take it (U-Boot fork patch `0101`, `doku/191`). With GP5 at
+`0`, after the three-second check of the key, U-Boot reads crust's contract page in SRAM A2 (`0x00123800`): the magic
+`"H713"`, contract version 5 or later and BUILD2 bit 24. If all three are there, it prints `gate: crust holds the board off,
+the power key or the remote wakes it` and asks for PSCI `SYSTEM_OFF` - the same call as Linux's `poweroff`, so BL31 writes
+`"GATE"`, checks that crust runs and is outside a standby, and hands it the power off as above. The key or the remote wakes
+into a warm start and the gate boots through. Without such a crust - the vendor's ARISC firmware, an older crust - it
+prints `gate: no crust on the ARISC` or `... cannot hold the board off` and waits in the loop, without a reset.
+
+There is at most one `SYSTEM_OFF` per mains-on: should BL31 not get crust to take it, it resets with `"GATE"`, and that
+waits in the loop. `"GATE"` and `"STBY"` always wait in the loop - after a standby that did not finish, a power off through
+crust would overwrite crust's record of the failure that the next boot reports (the owner's decision, 10.10.2026).
+`h713_gate=0` and the key held at mains-on work as before and come first; the key held at mains-on is also the way out
+should crust's off state ever not wake. Measured over FEL with the cold start set up by hand (GP5 cleared from Linux) on
+the HY300PRO-G-EU: dark, 0.3-0.6 W with the USB cable plugged in, the remote woke it, crust's record of the run showed
+phase poweroff for 97 s (`doku/191`). Not measured yet: a real mains-on (needs the new U-Boot on the eMMC), the HY310.
+
+*Superseded (10.10.2026):* "The gate itself is unchanged: a cold start waits here as before."
+
 
 ## With crust and the standby
 
-The gate's code does not change for crust. BL31 starts crust from the FIT before U-Boot proper runs
+Apart from the cold start above, the gate's code does not change for crust. BL31 starts crust from the FIT before U-Boot proper runs
 ([README](README.md)), so on the HY310 the ARISC firmware is already up while the gate waits; the gate draws 2.9 W with it, the
 standby 2.4 W (`doku/181`). A standby ([standby.md](../subsystems/standby.md)) never passes through here: crust
 releases CPU0 straight into BL31, which resumes Linux. Nothing in crust writes GP5, and the RTC general-purpose

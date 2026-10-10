@@ -1,7 +1,7 @@
 From bed99d1afe1322822737b4f2edaeb46241c21a1d Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Fri, 2 Oct 2026 20:00:00 +0200
-Subject: [PATCH 090/100] sunxi: h713: hy300pro_g_eu_defconfig, the
+Subject: [PATCH 090/101] sunxi: h713: hy300pro_g_eu_defconfig, the
  HY300PRO-G-EU's own board base
 
 The maintainer's own HY300 Pro (box label HY300PRO-G-EU, stock Android 11 of

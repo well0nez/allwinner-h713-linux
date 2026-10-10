@@ -140,7 +140,7 @@ source (`doku/181`):
 | State | Draw |
 |---|---|
 | standby - suspended to RAM through crust ([standby](subsystems/standby.md)): the ARM cores off, the DRAM in self-refresh | **2.4 W** |
-| off - the power gate: U-Boot waits for the key on one ARM core, the rest dark | **2.9 W** |
+| off - the power gate: U-Boot waits for the key on one ARM core, the rest dark; since 10.10.2026 only where crust cannot hold the board off ([power-gate](uboot/power-gate.md)) | **2.9 W** |
 | off through crust - the rails off (PL6), only crust and the RTC awake; measured on the HY300PRO-G-EU (`doku/188`); on the HY310 the power off and the wake are measured, the draw is not (`doku/190`) | **0.3 W** |
 | on, no signal: the console on the wall, lamp and fan on | about 24 W |
 

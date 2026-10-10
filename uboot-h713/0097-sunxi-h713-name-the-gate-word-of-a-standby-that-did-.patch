@@ -1,7 +1,7 @@
 From 74ae0367abff095d73867359775f7f148ee8822b Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Fri, 9 Oct 2026 18:22:53 +0200
-Subject: [PATCH 097/100] sunxi: h713: name the gate word of a standby that did
+Subject: [PATCH 097/101] sunxi: h713: name the gate word of a standby that did
  not finish
 
 Linux (sun50i-h713-mips) now writes "STBY" into GP5 from the start of a

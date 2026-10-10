@@ -1,7 +1,7 @@
 From 9738139947d2269da1b1191d989f565982a4fa5d Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Wed, 16 Sep 2026 21:46:01 +0200
-Subject: [PATCH 079/100] sunxi: h713: take the LogoRegData group boundaries
+Subject: [PATCH 079/101] sunxi: h713: take the LogoRegData group boundaries
  from the file
 
 h713_disp_prologue[], h713_disp_timing[] and h713_disp_de[] were fixed

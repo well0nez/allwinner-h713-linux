@@ -190,17 +190,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       9.9). h713-power bekommt dafür eine Zwischenstufe "Aus angefordert" mit Schnittstelle zum Wählen und Abbrechen
       - 10.10. abends: der OSD-Weg (Texturen im Warp, `osd = on`) entsteht im Paket `arbeit/warp-konsole-20261010/` - Version 1
         nur Lautstärke, Stumm, Fokus; die Bauweise muss dieses Element später ohne Umbau aufnehmen (`doku/189` §5)
-- [ ] 2.39 **Kaltstart-Gate über crust** (Marco 10.10. abends: nach dem Einstecken 2,4 W): Nach Netz-Ein wartet U-Boots Gate weiter
-      mit einem ARM-Kern auf die Taste; nur `poweroff` aus Linux geht seit `doku/188` in crusts Aus (0,3 W). Stock geht auch beim
-      Kaltstart in den ARISC-Wartezustand (BL31 GP2 = 0 -> `start_type` -> fake poweroff, `doku/187` §1). Vorschlag: das Gate ruft
-      PSCI `SYSTEM_OFF`, statt selbst zu warten - TF-A fragt crust wie beim `poweroff`, crust zieht PL6, die Taste weckt mit `RUN1`;
-      nimmt crust nicht an, wartet das Gate wie bisher. Verhalten unverändert (dunkel, Taste, 3-s-Bypass), nur der Verbrauch sinkt.
-      Etwa zehn Zeilen in U-Boot (`board/sunxi/board.c` `h713_gate_wait`), per FEL messen. **Ändert das Gate - nur mit Marcos
-      ausdrücklichem Ja** (Gedächtnis "Gate nicht anfassen")
-      - **10.10. später abends, Gespräch mit Marco (`doku/189` §4.4):** a/b ja ("mach das erstmal"), c) IR darf wecken - ja, vorher
-        prüfen, ob sie es heute schon tut; d) ein missglückter Standby (`STBY`) bleibt in der alten Schleife (sonst überschreibt das Aus
-        crusts Fehlerprotokoll); e) erst bauen, dann Bescheid, gemessen wird später. **Gebaut, nicht gemessen:** U-Boot
-        `versuch/kaltstart-gate` `61ea018` (Paket `arbeit/kaltstart-gate-20261010/`, Testplan im BERICHT), FEL-Abbilder für G-EU und HY310
 - [ ] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
       über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
       Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
@@ -629,6 +618,21 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
         `h713_hy310_sr_defconfig`), Spiegel 88 Patches. **Watt am HY310 nicht gemessen** (Marco: baugleich mit dem G-EU). Der HY310
         selbst läuft weiter `r2test4` aus der eMMC - dort endet ein `poweroff` noch im Gate, bis ein neues Abbild drauf ist (1.1a).
         Rest: Netzteil fiept auch im Aus (2.42), Kaltstart-Gate (2.39)
+- [x] 2.39 **Kaltstart-Gate über crust** (Marco 10.10. abends: nach dem Einstecken 2,4 W): Nach Netz-Ein wartet U-Boots Gate weiter
+      mit einem ARM-Kern auf die Taste; nur `poweroff` aus Linux geht seit `doku/188` in crusts Aus (0,3 W). Stock geht auch beim
+      Kaltstart in den ARISC-Wartezustand (BL31 GP2 = 0 -> `start_type` -> fake poweroff, `doku/187` §1). Vorschlag: das Gate ruft
+      PSCI `SYSTEM_OFF`, statt selbst zu warten - TF-A fragt crust wie beim `poweroff`, crust zieht PL6, die Taste weckt mit `RUN1`;
+      nimmt crust nicht an, wartet das Gate wie bisher. Verhalten unverändert (dunkel, Taste, 3-s-Bypass), nur der Verbrauch sinkt.
+      Etwa zehn Zeilen in U-Boot (`board/sunxi/board.c` `h713_gate_wait`), per FEL messen. **Ändert das Gate - nur mit Marcos
+      ausdrücklichem Ja** (Gedächtnis "Gate nicht anfassen")
+      - **10.10. später abends, Gespräch mit Marco (`doku/189` §4.4):** a/b ja ("mach das erstmal"), c) IR darf wecken - ja, vorher
+        prüfen, ob sie es heute schon tut; d) ein missglückter Standby (`STBY`) bleibt in der alten Schleife (sonst überschreibt das Aus
+        crusts Fehlerprotokoll); e) erst bauen, dann Bescheid, gemessen wird später. **Gebaut, nicht gemessen:** U-Boot
+        `versuch/kaltstart-gate` `61ea018` (Paket `arbeit/kaltstart-gate-20261010/`, Testplan im BERICHT), FEL-Abbilder für G-EU und HY310
+      - **Erledigt 10.10.2026 abends** (`doku/191`): U-Boot `0101` (`h713-hy310` `61ea018`), in `main` auf Marcos Entscheidung **vor** der
+        Messung am HY310 und vor dem echten Netzstecker-Test ("nimm es einfach mit in main für hy300 und hy310 - testen tun wir dann
+        beide"). Gemessen: FEL-Lauf k1 am G-EU (Kaltstart nachgestellt, 0,3-0,6 W, IR weckt). Offen, mit 1.1a: echter Netzstecker an
+        beiden Boxen, HY310 überhaupt; die R_WDOG-Warnung nach jedem Wecken ist 2.40
 - [x] 2.33 **HY300PRO-G-EU: Lüfter (und Lampe?) im Standby an** - **erledigt 10.10. nachts** (`doku/185`): Stock-Baum nennt PB5 als
       `panel_bl_en` und `fan-power-gpio` wie der HY310; Kernel `0249` gibt PB5 dem Board-Manager statt des Hogs, im Standby "fan power
       rail off", Lüfter aus, Lampe dunkel, nach dem Wecken alles zurück. crust musste nicht angefasst werden. Bisher (Marco 10.10. nachts: "das soll definitiv nicht so sein";

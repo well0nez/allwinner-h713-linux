@@ -1,7 +1,7 @@
 From 396b7aab882404616f0e51c1c04fefc2b88f0f5b Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 02:08:55 +0200
-Subject: [PATCH 088/100] sunxi: h713: read the LogoRegData class table instead
+Subject: [PATCH 088/101] sunxi: h713: read the LogoRegData class table instead
  of guessing boundaries (Q8)
 
 h713_disp_group() found the class boundaries by counting a boundary

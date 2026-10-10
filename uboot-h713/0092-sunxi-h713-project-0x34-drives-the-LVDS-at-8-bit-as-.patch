@@ -1,7 +1,7 @@
 From 2de0cc84aa5371518caa1b18831b5bc6bbadd5ab Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Sat, 3 Oct 2026 01:43:53 +0200
-Subject: [PATCH 092/100] sunxi: h713: project 0x34 drives the LVDS at 8 bit,
+Subject: [PATCH 092/101] sunxi: h713: project 0x34 drives the LVDS at 8 bit,
  as stock does
 
 0x05800000[4:3] is libpq's lvds_set_bitwidth encoding (6/8/10 bit = 0/1/2,

@@ -3,12 +3,12 @@
 **The patch files here are generated, not maintained** (since 12.09.2026, P3):
 `git format-patch --no-signature 8fe568cdfc46..<head>` in the submodule checkout
 `mainline/external/u-boot` (branch `h713-hy310`, base is cstenger's `h713`),
-last regenerated on 09.10.2026 at the head `7b1ea388da0d` (100 patches). Verified the
-way a mirror should be: applying all 100 from the base produces a tree with the same
-hash as the head (`9ed108eda593`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
+last regenerated on 10.10.2026 at the head `61ea018712c8` (101 patches). Verified the
+way a mirror should be: applying all 101 from the base produces a tree with the same
+hash as the head (`595b6941482e`; before: 100 patches, head `7b1ea388da0d`, tree `9ed108eda593`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
 `0097` names the gate word of a standby that did not finish (`doku/179`), `0098` - `0100` are the HDCP
 hardening (no `h713_hdcp14_wait`, the record staged where EL3 says and one write per boot, the guard
-through the watchdog driver; measured over FEL, `doku/180`). `SERIES.txt` names base,
+through the watchdog driver; measured over FEL, `doku/180`). `0101` hands a cold start's wait to crust, when crust can power off (`doku/191`). `SERIES.txt` names base,
 head and count, and is the only thing that says which fork commit this mirror stands
 on. Whoever wants to change something changes the fork and has the mirror generated
 again. This page explains *why* the changes look the way they do - the original text

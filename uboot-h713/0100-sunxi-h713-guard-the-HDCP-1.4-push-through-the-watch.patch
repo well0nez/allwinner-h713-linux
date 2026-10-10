@@ -1,7 +1,7 @@
 From 7b1ea388da0d0300fb9515426e5887a1767f38e4 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:28:40 +0200
-Subject: [PATCH 100/100] sunxi: h713: guard the HDCP 1.4 push through the
+Subject: [PATCH 100/101] sunxi: h713: guard the HDCP 1.4 push through the
  watchdog driver
 
 The watchdog net around the push wrote the watchdog registers itself, at
