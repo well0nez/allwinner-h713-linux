@@ -156,7 +156,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         PL6 low nach Stock-`0xdea8`), TF-A `sun50i-h713` `1dd03734` (crust zuerst, Gate als Rückfall), Kernel `0250`: **0,3 W** ohne
         USB-Kabel, Timer, Fernbedienung und Taste wecken in einen frischen Start. Vorgabe `short = poweroff`, umschalten mit
         `h713-power set short standby`. Offen: **HY310 messen** (`h713_hy310_sr_off_test_defconfig`), dann `H713_POWER_OFF` in
-        dessen Release-Konfiguration; G-EU-Abbild mit Kurztests vor `main`
+        dessen Release-Konfiguration; G-EU-Abbild mit Kurztests vor `main` - **10.10. abends erledigt** (`geuaus1`, `doku/188` §4,
+        alles bestanden, 0,3-0,7 W im Aus)
 - [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
       Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
       bevor der erste Frame steht); nicht dringend
@@ -180,6 +181,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       ab, nach 15 s gilt `power.conf` `short`; ein langer Druck (3 s) schaltet ohne OSD aus. Rückfall: stirbt der Dienst, schaltet
       logind aus. Braucht das afbd-OSD (Marcos Plan) und die IR-Belegung 2.35 (dann auch mit der IR-Fernbedienung, Pfeiltasten
       9.9). h713-power bekommt dafür eine Zwischenstufe "Aus angefordert" mit Schnittstelle zum Wählen und Abbrechen
+- [ ] 2.39 **Kaltstart-Gate über crust** (Marco 10.10. abends: nach dem Einstecken 2,4 W): Nach Netz-Ein wartet U-Boots Gate weiter
+      mit einem ARM-Kern auf die Taste; nur `poweroff` aus Linux geht seit `doku/188` in crusts Aus (0,3 W). Stock geht auch beim
+      Kaltstart in den ARISC-Wartezustand (BL31 GP2 = 0 -> `start_type` -> fake poweroff, `doku/187` §1). Vorschlag: das Gate ruft
+      PSCI `SYSTEM_OFF`, statt selbst zu warten - TF-A fragt crust wie beim `poweroff`, crust zieht PL6, die Taste weckt mit `RUN1`;
+      nimmt crust nicht an, wartet das Gate wie bisher. Verhalten unverändert (dunkel, Taste, 3-s-Bypass), nur der Verbrauch sinkt.
+      Etwa zehn Zeilen in U-Boot (`board/sunxi/board.c` `h713_gate_wait`), per FEL messen. **Ändert das Gate - nur mit Marcos
+      ausdrücklichem Ja** (Gedächtnis "Gate nicht anfassen")
+- [ ] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
+      über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
+      Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
 - [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
       höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
       - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf

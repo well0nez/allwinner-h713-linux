@@ -47,7 +47,27 @@ Nicht gemessen: Watt am HY310, Wecken per CEC (crust hat es nicht), die Zeit bis
 - Ein FEL-Gerät, dessen USB-Kabel umgesteckt wurde, meldete sich am PC nur noch mit `device descriptor read error -110`
   und hing im FEL; nach einem Neustart des PCs war es wieder da. Kein Befund an der Box.
 
-## 4 Was folgt
+## 4 Das Abbild `geuaus1` (10.10.2026 abends)
+
+Komplett gebaut aus `versuch/aus-pl6` `09fa4a7` (`v0.0-geuaus1-TEST`, 21 min 49 s, reproducible: yes, 274 Patches, TF-A
+`1dd037344`, crust `d8a8d56`, Tore grün) und mit `h713-install` über unser Layout installiert (Secure Storage bytegleich,
+HDCP-1.4-Satz da; `/etc/h713`, Bluetooth-Kopplung und Host-Schlüssel aus der Sicherung zurück). Kurztests mit Marco:
+
+| Test | Ergebnis |
+|---|---|
+| crust | läuft aus dem FIT, die Datei passt (kein Nachladen), die Kernelzeile endet auf ", power off" |
+| WLAN, Bluetooth | verbunden; die Fernbedienung verbindet sich erst nach einem Tastendruck (BLE), dann hört `h713-power` auf sie |
+| HDMI, HDCP 1.4 | 1080p60 vom ThinkPad; nach neuer Anfrage `Enabled` binnen 3 s, `0x93=0x45` |
+| Ton | 1 kHz, Amplitude 3000, 60 %, 6 s vom ThinkPad: `present=1`, 48 kHz, msp running, Pegel 75/75; Marco: gehört |
+| Standby | Power der Bluetooth-Fernbedienung -> `short press: standby`; Wecken per IR (`0x9b`), 23,8 s geschlafen, Bild nach 6,4 s, DSP im 1. Versuch |
+| Umschalten | `h713-power set short poweroff` -> `status`: "a power-off: crust (rails off ...)" |
+| Aus | Gerätetaste kurz -> `short press: power-off`; Wattmeter 0,3-0,7 W (schwankt am unteren Rand); Wecken per Fernbedienung; Record "crust in phase poweroff", 11,5 s, GP5 RUN1 |
+
+Gesehen nebenbei: nach dem Einstecken (Kaltstart ins Gate) zieht die Box weiter **2,4 W** - das Gate wartet dort noch mit
+einem ARM-Kern; Stock geht auch hier in den ARISC-Wartezustand (TODO 2.39). Und nach jedem Aus über crust meldet der Kernel
+"TF-A: R_WDOG found armed" als Warnung, obwohl das der vorgesehene Rückweg ist (TODO 2.40).
+
+## 5 Was folgt
 
 - HY310: einmal mit `h713_hy310_sr_off_test_defconfig` messen (gleiche Pins laut Stock-Baum), dann `H713_POWER_OFF` in
   `h713_hy310_sr_defconfig`.
