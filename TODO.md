@@ -16,6 +16,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       HDCP und `docs/subsystems/hdcp.md` (eine Schreibung pro Boot, keine Adresse)
       - **09.10.:** `main` trägt seit c4a3924 crust als HY310-Firmware und den Standby (R1, R2). Der Neubau braucht
         `CRUST_SRC` (crust-Klon auf ecf2ddc, bis 5.15) und die Entscheidung 2.29 (mit oder ohne `--standby`)
+      - **10.10. später abends:** `CRUST_SRC` ist jetzt der crust-Klon `arbeit/crust-20261007/crust` auf `h713` `54e4a08` (= Kopf in
+        `crust-h713/SERIES.txt`, sonst meldet build-all "not reproducible"); der Klon auf `ecf2ddc` (`arbeit/r2-20261009/crust`) ist weg
       - **09.10. abends (Marco, `doku/178`):** das HDCP-Paket kommt ganz mit, 6.5 eingeschlossen - **erledigt 20:xx** (`doku/180`):
         in Forks, Spiegeln und `main`, per FEL gemessen; 1.1a baut es einfach mit
       - **09.10. abends (Marco, 2.29):** mit `--standby` bauen, `power.conf` Vorgabe `short = poweroff` (Standby experimentell,
@@ -88,7 +90,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **10.10. abends:** TF-A `sun50i-h713` Kopf `1dd0373449df` (0031 Aus über crust), crust `h713` Kopf `d8a8d56f8c46`
         (0082-0087); U-Boot unverändert `7b1ea388da0d`. Spiegel `tfa-h713/` und `crust-h713/` stehen auf diesen Köpfen
       - **10.10. später abends:** crust `h713` Kopf `54e4a08ab9f3` (0088 Aus am HY310, `doku/190`), Spiegel `crust-h713/` 88 Patches,
-        Baum `4ac41f6b88ee` am Fork-Kopf geprüft
+        Baum `4ac41f6b88ee` am Fork-Kopf geprüft. Aufgeräumt: alle Paket-Worktrees und -Klone weg (Inhalt in `main` bzw. den Fork-Köpfen geprüft,
+        Klone mit eigenen Commits als Bundle im Paketordner, `referenz/pakete.md`); Zweige `versuch/mips-drop`, `release-v5` (crust),
+        `versuch/crust-release-tfa` (TF-A), `versuch/aus-pl6` (Repo) gelöscht, alle enthalten. Es bleibt nur crust
+        `versuch/dram-exit-delays` (`3206083`, Versuch vom 08.10., nicht gebraucht - Fehler B waren die Anzeige-Takte, `doku/171`).
+        Der crust-Klon `arbeit/crust-20261007/crust` steht auf `h713`
 - [ ] 1.7 `main` pushen (06.10. +113, 09.10. 19:00 +199; aktuell `git rev-list --count origin/main..main`)
       - **10.10. (Marco): veröffentlicht wird nur `main`.** Die lokalen Zweige `versuch/*` und `integration/*` (alle in `main`
         enthalten, ohne Upstream) bleiben lokal und kommen weg, sobald der alte G-EU-Worktree weg ist (`versuch/geu-crust` ist dort
