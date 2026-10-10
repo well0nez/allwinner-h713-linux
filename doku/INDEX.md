@@ -233,6 +233,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`186-handoff-20261010-frueh.md`](186-handoff-20261010-frueh.md) | Handoff | 2026-10-10 | 186 - Handoff 10.10.2026 früh: der HY300PRO-G-EU auf dem Stand des HY310, alles in `main`, nächste Schritte | - |
 | [`187-offline-re-a-b-c-ausgewertet-20261010.md`](187-offline-re-a-b-c-ausgewertet-20261010.md) | Analyse | 2026-10-10 | 187 - Offline-RE A, B, C ausgewertet: Stock-"Aus" über PL6, TVCAP bleibt im Standby an, die SKE-Zeile ist die cost-tick-Zeile (10.10.2026) | 2 |
 | [`188-aus-ueber-crust-0-3-watt-20261010.md`](188-aus-ueber-crust-0-3-watt-20261010.md) | Analyse | 2026-10-10 | 188 - "Aus" über crust: die Schienen aus (PL6), 0,3 W wie Stock, Timer, Fernbedienung und Taste wecken (10.10.2026) | 4 |
+| [`189-handoff-20261010-abends.md`](189-handoff-20261010-abends.md) | Handoff | 2026-10-10 | 189 - Handoff 10.10.2026 abends: das Aus über crust ist in `main`; als Nächstes das Aus am HY310 messen und mit Marco das Kaltstart-Gate besprechen; OSD und Konsole im Warp laufen als eigenes Paket | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -390,7 +391,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-43 von 247 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+44 von 248 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -427,6 +428,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `178-hdcp-paket-entscheidungen-20261009.md`
 * `183-handoff-20261010-nachts.md`
 * `186-handoff-20261010-frueh.md`
+* `189-handoff-20261010-abends.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
