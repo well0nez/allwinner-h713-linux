@@ -79,7 +79,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         enthalten, ohne Upstream) bleiben lokal und kommen weg, sobald der alte G-EU-Worktree weg ist (`versuch/geu-crust` ist dort
         ausgecheckt). In den Forks nur die Zweige, auf die `main`s Submodul-Zeiger zeigen (U-Boot `h713-hy310`, TF-A `sun50i-h713`,
         crust als `h713` aus dem lokalen `versuch/mips-drop`); deren `versuch/*` bleiben lokal. Auf GitHub liegen außer `main` noch
-        `master`, `legacy`, `hy300-pro-ab` (Löschen von `hy300-pro-ab` ist freigegeben, 1.6) - `master`/`legacy` beim Push mit Marco klären
+        `master`, `legacy`, `hy300-pro-ab` - **alle drei können weg** (geprüft 10.10.: `master`/`legacy` = Stand 31.08., Vorfahren
+        von `main`; `hy300-pro-ab` hat zwei Commits mehr, die nur den U-Boot-Zeiger verschieben, und dessen Ziel `fda5ce0` steckt
+        im Fork-Kopf `7b1ea388da0`; der Rest wurde am 06.10. gemessen, 7.8). Löschen = Push, mit Marcos Ja im selben Zug
+- [ ] 1.7a **Vor jedem Push: Identitäts- und Leck-Prüfung** (Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
+      Spiegel-Patches trugen die private Adresse, ein Kernel-Patch einen Firmennamen, bemerkt kurz vor dem Push). Über **alles, was
+      rausgeht**, nicht nur den neuen Teil: `main` und jeder Fork-Kopf (U-Boot, TF-A, crust) samt Submodul-Commits; je Commit Autor,
+      Committer, `Co-Authored-By`/`Signed-off-by`, Nachricht; je Datei der Inhalt, auch `From:`-Zeilen der Spiegel-Patches
+      (`uboot-h713/`, `tfa-h713/`, `crust-h713/`) und `mainline/patches/`. Gegen: private Adresse, Arbeitgeber-/Firmenname, Klarname
+      (die Liste außerhalb des Repos, `sperr-scan.py` Regel 8), dazu Seriennummern/MACs. Nach dem Push gegen einen **frischen Klon**
+      wiederholen (Gedächtnis "Identität in veröffentlichten Repos"). Erst dann gilt der Push als fertig
 - [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
 
@@ -537,6 +546,11 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 7.15 Wissensdatenbank: `doku/` + `analyse/` je Teilsystem destillieren — **läuft** (referenz/, MemPalace, Graphify)
 - [ ] 7.16 Testskripte veröffentlichen — Auswahl, was ohne unseren Tisch läuft (aus `61`)
 - [ ] 7.17 Fotos: Standbilder der projizierten Bilder (ROADMAP „Pictures")
+- [ ] 7.19 **Doku-Runde: die Neuerungen auf beiden Geräten** (Marco 10.10.): seit R2 kamen dazu - HY310: dunkles Gate nach
+      missglücktem Standby (0245), HDCP-Härtung, Leistung; HY300PRO-G-EU: crust, Standby, Panel-Zyklus, PB5 (0246-0249,
+      `doku/182`/`184`/`185`). Nachziehen: README (Board-Liste: G-EU-Status), `docs/README.md`, `STATUS.md`, `ROADMAP.md`,
+      `docs/known-issues.md` durchsehen, `boards/README.md`, `RELEASES.md`-Entwurf für 1.8; die Subsystem-Seiten sind schon
+      nachgezogen (`e78eacd`, `4767f6f`). Vor 1.1a
 - [ ] 7.18 Release-Text: „nothing acts on the remote's keys yet except Power" so lassen? [M]
 
 ## 8 Lokale Werkzeuge
@@ -557,6 +571,20 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 8.7 cognee gestrichen — in der Recherche-Datei vermerken
 - [ ] 8.8 HY310 läuft noch; Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.** Seit 09.10. abends `h713_gate=1`:
       nach Netz-Ein wartet die Box auf die Taste, ein Fern-Hartreset kommt nur bis ins Gate (`referenz/geraete.md`)
+- [ ] 8.10 **Cloud-Guthaben für Offline-RE nutzen** (Marco 10.10.: ~100 $ Claude-Cloud, Sonnet; 2-3 Aufgaben). Ein privates
+      GitHub-Repo je Thema mit allem, was der Agent ohne unseren Tisch braucht: die Herstellerbinärdateien **ohne** Schlüssel,
+      Abzüge, Seriennummern/MACs, dazu von uns vorbereitete Disassemblies (OR1K über unser `or1k-elf-objdump`, AArch64 über
+      `llvm-objdump`, MIPS über capstone) und Ghidra-Exporte (Pseudo-C, Strings, Querverweise) - dann braucht der Agent kein
+      Ghidra, nur Python/capstone. Auftrag nach `~/.claude/AGENT-KONTEXT-VORLAGE.md` (Zweck, Rechtsrahmen Art. 6 RL 2009/24,
+      Ausgabe: ein BERICHT.md im Repo), Repos danach löschen. Heikles (TEE, HDCP) bleibt draußen. Themen:
+      - **A "Aus" wie Stock (2.32):** was tun Herstellerkernel, Stock-BL31 (SYSTEM_OFF) und die Hersteller-ARISC-Firmware
+        (`scp.bin`, OR1K) beim Ausschalten, dass das Gerät 0,3 W zieht - welche Schienen/Pins (Stock `standby_param`: vdd-cpu,
+        vdd-sys, vcc-pll, vcc-dram alle an PL6), PLLs, DRAM, wie die Taste weckt. Grundlage für "Aus über crust"
+      - **B Einschlafen ohne Hänger (C1):** wie der Herstellerkernel (tvcap/tvfe/INCAP-Module) die Aufnahme-DMA vor dem Suspend
+        anhält; dazu der Audio-DSP (msp) beim Aufwachen (2.37)
+      - **C klein: Log-Stufe der Display-Firmware (2.36):** in `display.bin` (MIPS) die Stelle, die `MsgHandle_SKE_SEND_EKS`
+        loggt, und welche elog-Stufe sie braucht; `display_cfg.xml`-Auswertung
+      Repo anlegen und Hochladen = Veröffentlichen an einen Dienst -> nur mit Marcos Ja je Repo
 - [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
 - [x] 8.10 Worktrees aufräumen, sobald Marco die Testabbilder nicht mehr braucht - **erledigt 09.10. 16:56** (Marco), Referenzabbild
       `arbeit/r2-20261009/abbild-r2test4/` bleibt; auch der Worktree von 2.30 ist weg: `arbeit/crust-release-20261007/wp8-bau/repo`,
