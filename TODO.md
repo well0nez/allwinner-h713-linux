@@ -6,10 +6,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 1 Release — in dieser Reihenfolge
 
-- [x] 1.1 Test-Images gebaut 05.10. 20:36: `installer/out/h713-hy310-v0.96-beta-{a,b,c}.img`, Check 10/11
-      „everything in order" (inkl. `check-hdcp-artifacts.sh`). Drei Bau-Stolpersteine dabei behoben:
-      0183 kompilierte nicht (`c5f2f5e`), Sysroot-Wiederverwendung ohne Paketprüfung, `doku-index`
-      zählte Bauausgaben (`eebb33e`)
 - [ ] 1.1a **Release-Neubau** mit allem seit dem v0.96-Bau vom 05.10. (Baustand `be4f8e1`; der alte Hash `819a09a` ist seit dem
       Identitäts-Rewrite unerreichbar): Kernel 0184/0185 und pwm-sun8i (`5e4475a`), Warp (Zoom, Moduswechsel,
       Stale-Schwelle, Import), EDID-Beschnitt, Panel (Auth, Zoom-Schieber), h713-tv (Aspect zoom), Installer-Texte, die neu
@@ -39,9 +35,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - Voraussetzungen: crust-Fork veröffentlicht (1.6, mit der G-EU-Konfig `c5b536f`), crust als Submodul statt `CRUST_SRC`
         (5.15), Spiegel `crust-h713/` neu
       - im selben Gespräch: 2.32 (echtes Aus über crust statt U-Boot-Schleife, 2,4 W gegen 0,3 W Stock)
-- [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
-      Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
-      WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
 - [ ] 1.2a **Z4 zweiter Boot** (~80 s nach Strom-an, Ursache unbekannt, Journal war flüchtig - **06.10.: ist es im
       Abbild weiter**, `10-h713.conf` `Storage=volatile` schlägt `/var/log/journal`, `doku/155` §3): Journal im
       Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
@@ -61,7 +54,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Taste und Fernbedienung (BLE schläft ein, IR weckt), HDCP-1.4-Paar und nach Standby, HDCP 2.2 mit zwei Neuverhandlungen,
         Ton nach Standby gehört. In `main` (`63fd053`, crust-Spiegel `01bdbfb`). Offen: Watt im Standby (Marco: heute nicht),
         `h713-bt-reset`, 2.33-2.37; ob die Variante `verified` heißt, entscheidet Marco
-- [x] 1.5 STAGE4-Marker füllen und löschen - **erledigt** (b110ec1, `doku/143`); 09.10. geprüft: `git grep STAGE4` findet keinen Marker mehr
 - [ ] 1.6 Forks pushen (Stand 09.10. 20:xx, nach der HDCP-Härtung `doku/180`): U-Boot `h713-hy310` +11 (Kopf `7b1ea388da0d`, lokal
       Zweig `versuch/hdcp-haertung-uboot`: 0096 crust-Ablage, 0097 Gate-Zeile, 0098-0100 HDCP), TF-A `sun50i-h713` +25 (Kopf
       `5a7806892`, lokal `versuch/hdcp-haertung-tfa`: 0007-0027 Standby, 0028-0030 HDCP und Kommentar), sunxi-tools gleich;
@@ -94,6 +86,259 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
 
+- [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
+      (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
+      Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
+- [ ] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
+- [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12) — **erledigt 05.10.:** `ctl status` wirft den Warp ab
+      (Frist 1000 ms), Journal-Spam ohne Signal, `test mask` markiert tl, Firmware-Zoom im Warp-Commit
+      (h713-tv-0001 + 0183). **Offen:** laxe `atoi`-Prüfung bei zoom/edge, `check` halbiert fps
+      (dokumentieren), Musterwechsel = Konsolenblitz, Client ohne Newline blockiert 500 ms,
+      `evaluate()` gibt bei -ENOLCK sofort frei, Textreste „primary plane"
+- [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
+- [ ] 2.6 Audio: Abschalt-Plopp -> **9.11 (spaet)**, Messungen und widerlegte Hypothese dort
+- [ ] 2.7a **Konsole durch den Warp** (aus 2.7, Marco 06.10.: bleibt offen): ohne Signal zeigt h713-tv die Konsole auf
+      der primären Ebene, ohne Trapez und ohne Spiegelung - im ceiling-Modus steht sie auf dem Kopf. Wege: fbcon
+      `rotate_all = 2` für ceiling (nur Drehung, kein Spiegeln), Firmware-Spiegel per RPC (FB-MIRROR 2.3/F3) oder der
+      Warp liest `fb0` als Textur und zeichnet die Konsole mit (wie Stock, eigenes Paket)
+- [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
+      Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
+- [ ] 2.10 EDID: 1080p100/120 weiter hinter `ctl edid block1` (Entscheidung offen). **Geklärt 05.10.:** 1600×900,
+      1920×1200, 1600×1200, 2560×1600 und 1024×768i rasten nicht, weil die Firmware-Tabelle sie nicht kennt —
+      unsere EDID bietet sie auch nicht an (der i915 generiert sie selbst); kein Fehler unsererseits
+- [ ] 2.14 Reinstall setzt Einstellungen und Fernbedienungs-Pairing zurück — heute selbst erlebt (wifi.env → AP-Modus),
+      Lösung in **1.2b** (Installer übernimmt `/etc/h713`); Pairing bleibt zusätzlich offen
+- [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
+      100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
+- [ ] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
+      Plattenzugriff (ls /boot, dmesg ueber Shell, Konsolen-Login), ssh/uptime antworten - Kernel 0184 frisch gebootet,
+      Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten; Journal ist persistent
+- [ ] 2.24 Kleinkram aus `61`: `regulatory.db` load failed -2; `r8152` will `rtl8153b-2.fw` - Marco 05.10.: **nicht
+      jetzt**, Pakete `wireless-regdb`/`firmware-realtek` erst, wenn jemand sie braucht
+- [ ] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
+      bleibt er auf `Desired`; 2 s später angefordert steht `Enabled` nach 5 s. Mit der Hersteller-ARISC-Firmware und dem
+      Fire-TV-Stick vergleichen (Auflösungswechsel), erst dann entscheiden, ob der Empfänger früher bereit sein muss
+      - 10.10. (G-EU, crust, `doku/184`): auch nach Neustart und Standby der Box fragt i915 nicht von selbst neu an (`Desired`),
+        mit neuer Anfrage sofort `Enabled`; der Fire-TV-Stick (2.2) verhandelte nach jedem Neustecken von selbst neu
+- [ ] 2.27 **`h713-tv ctl off` hält nicht** (08.10., r1test2): Status zeigt `console` etwa 1 s, dann wieder `warped`, ohne
+      `ctl auto` und bei stehendem Signal (Belege `arbeit/crust-release-20261007/geraet-20261008/kamera/`). Laut Hilfe gilt
+      `off` "until auto". Ursache klären (Signal-Ereignis der Quelle? `start=last`?), dann beheben (Marco 08.10.)
+- [ ] 2.28 **Physische Adresse im HDMI-VSDB** (war 2.26 auf `versuch/crust-release`, Commit 9d95b89): crust schreibt für Port 0/1/2 1.0.0.0 / 2.0.0.0 / 3.0.0.0, der Blob 0.0.0.0 /
+      2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
+      Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
+
+
+- [ ] 2.32 **"Aus" braucht mit unserem System 8-10x so viel wie Stock** (Marco 09.10. abends). Gemessen: HY300PRO-G-EU mit
+      Stock-Android eingesteckt und aus **0,3 W**, mit unserem Abbild (geucrust1) **2,4 W**; HY310 im Gate 2,9 W (`doku/181`), Stock
+      vermutlich auch ~0,3 W (nicht gemessen). Bei uns wartet U-Boot im Gate auf einem ARM-Kern in einer Schleife auf die Taste;
+      Stock schaltet offenbar wirklich ab und lässt nur die ARISC-Firmware wachen. Weg: "Aus" über crust - ARM-Kerne aus, DRAM
+      aus, nur crust und RTC wach, die Taste weckt (wie der Standby, nur ohne Self-Refresh) - statt der U-Boot-Schleife. Vor dem
+      Release wenigstens bewerten und den Stock-Wert am HY310 messen; gehört zur ARISC/crust-Besprechung mit Marco
+- [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
+      Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
+      bevor der erste Frame steht); nicht dringend
+- [ ] 2.35 **IR-Fernbedienung kann keinen Standby auslösen**: der IR-Empfänger hat unter Linux keine Tastenbelegung
+      (`rc-empty`, nur `lirc`), `h713-power` sieht kein `KEY_POWER` von dort. Gekoppelt per Bluetooth geht es (G-EU, `doku/184`),
+      Wecken per IR geht über crust. Vorschlag: eine Keymap (NEC, Power-Code der Stock-Fernbedienung, crust kennt die 19 Codes)
+      mit `KEY_POWER` im Abbild - dann geht die Fernbedienung auch ohne Kopplung (hilft, wo Bluetooth wackelt, 1.4)
+      - 10.10.: am HY310 genauso (keine IR-Belegung; dort geht Power über die gekoppelte BLE-Verbindung). Gleiche Fernbedienung an
+        beiden Boxen (Marco); am G-EU war sie nur noch nicht mit unserem System gekoppelt. Verbesserung für beide, nicht dringend
+- [ ] 2.36 **HDCP-2.2-Beweis am G-EU ohne `SKE_SEND_EKS`-Zeile**: gleiche `display.bin` wie der HY310 (`16c74a28...`), aber im
+      Firmware-Log (Abbild-Stufe, `h713_disp init` ohne `elog=`) nur "HDCP Process cost tick". Klären, ob die HY310-Zeile vom
+      05.10. aus einer höheren Log-Stufe kam; `referenz/messregeln.md` HDCP 2.2 danach nachziehen. Bis dahin: Bit LINK 0x422 +
+      neue Sitzung je Neustecken
+- [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
+      höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
+
+## 3 Geparkt — mit Wiedereinstiegsbedingung
+
+- [ ] 3.4 IR FB-REMOTEb + fd02-Keymap — rein, wenn rx_resolution-Trunkierung / ARISC-Schreibpfad geklärt
+- [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
+
+## 4 Boards und Fremdgeräte
+
+- [ ] 4.1 `hy300-pro` (Issue #1): test10 aus `main` nach dem Release (0168, 0182, 2de0cc8, Gamma, project 0x34)
+
+## 5 Installer und Werkzeuge
+
+- [ ] 5.1 ST3-RESTORE F1: Schema-Feld `layout.disk_sectors_from = unit|image` statt Heuristik
+- [ ] 5.11 `h713-install` löscht seine Arbeitskopie (`image-filled.img`, im Abzugsordner oder `--work-copy`) nie; sie enthält die
+      geräteeigenen Dateien. Nach bestandenem Rückvergleich löschen, außer `--keep-work-copy` (08.10., `doku/170`)
+- [ ] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
+- [ ] 5.13 `release/tor.sh` in einem gebauten Worktree: `sperr-scan` meldet die Bauerzeugnisse (`mainline/build/`, `*.img`) und
+      bricht an root-eigenen Dateien (`installer/tmp/`) ab; am 08.10. lief das Tor deshalb auf einer sauberen Kopie des
+      Commit-Stands. Entweder den Scan auf verfolgte Dateien plus Submodule begrenzen oder das Muster dokumentieren.
+      **09.10.:** Ursache gefunden - in einem Git-Worktree ist `.git` eine Datei, `sperr-scan.py` prüft `os.path.isdir` und
+      erkennt das Git nicht (Durchsicht B1); Behebung `os.path.exists`, eine Zeile. 09.10. abends bei 2.30 wieder getroffen. Bis dahin: Tore auf `git checkout-index`-Abzug
+- [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
+      Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
+      Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
+      Prüfung), CR-4 (MIPS_DROP zählt Aux-Abweisungen), B2/B4 (Standby-Abbild nur per Text erkennbar, spätere sleep-Drop-ins), KM-3/4
+- [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
+      braucht den veröffentlichten Fork (1.6)
+- [ ] 5.16 **Reste der Doku-Runde 09.10.** (`2f7875f`, Entwürfe und Notizen in `arbeit/doku-r2-20261009/*/NOTIZEN.md`):
+      Commit-Texte beim nächsten Serienumbau - `0231` nennt V10 "three times in a row" (nicht belegt, `doku/176` §1), `0240`
+      sagt "not yet measured" (gemessen, `doku/173`), `0243` sagt "until a reboot" (siehe 3.3); Lüfterdrehzahl 4860
+      (`hardware.md`, `board-mgr.md`) / 4770 (`known-issues.md`) / ~4800 (`0222`) vereinheitlichen; Größe des
+      Hersteller-ARISC-Abbilds 140 KiB (`arisc.md`) gegen ~172 KB (`hardware.md`); `known-issues.md` "fix pending" beim
+      720p-Warp-Fall gegen `0183` prüfen; `docs/uboot/README.md` "0096 is not published yet" nach dem Push (1.6) streichen;
+      R_WDOG als Netz im Schlaf in `standby.md`. Aus dem Code gelesen, nicht gesehen: bricht ein Standby nach
+      `msp_suspend`, aber vor dem Park ab, bleibt msp auf "error" und `h713-mips-restart` läuft nicht (nur bei "parked")
+      - Ton bis zum Neustart weg; gehört zu 5.14.
+- [ ] 5.17 **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
+      G-EU-Testbau 09.10. stieg in Schritt 7 (Rootfs) aus, nach ~25 min Kernel/Mesa/Sysroot; danach lief alles von vorn, und
+      eine Kommentaränderung im Gerätebaum-Patch kostete den Kernel noch einmal. Heute gibt es `--skip-bl31/-uboot/-kernel/
+      -rootfs`, die nur "wenn vorhanden" prüfen, nicht ob es zum Stand passt. Vorschlag: jeder Schritt schreibt einen
+      Eingabe-Stempel (wie der Kernelbaum schon über den Eingabe-Hash und die Sysroot über den Paketstempel), `--resume`
+      nimmt fertige Schritte mit passendem Stempel und baut ab dem ersten abweichenden; Release-Bauten bleiben ohne
+      `--resume` von vorn (Regel "Release-Bauten immer von vorn"). Dazu: ein reiner Kommentar im Patch sollte den
+      Kernel nicht neu bauen müssen (Hash über den Inhalt ohne Kommentar ist heikel - erst abwägen)
+      - 10.10. nachts: auch ein `make Image.gz` von Hand im fertigen Kernelbaum eines build-all-Laufs (eine geänderte Datei,
+        pinctrl PF6) übersetzte alles neu (>1100 Objekte) - die Schalter/Umgebung des Baus sind von außen nicht nachstellbar;
+        `build.sh kernel` sollte einen "nur bauen, nicht neu konfigurieren"-Weg für einen vorhandenen Baum haben
+- [ ] 5.18 **Hostname je Board** (Marco 10.10. nachts: der HY300PRO-G-EU meldet sich im Netz als `hy310`). Heute fest im
+      Rootfs: `rootfs/overlay/etc/hostname` = `hy310`, `rootfs/overlay/etc/hosts` `127.0.1.1 hy310`, dazu der Rückfall
+      `hy310` in `h713-wifi` (DNS-Name im Zugangspunkt-Modus). Jedes Board heißt also `hy310`, zwei Boxen im selben Netz
+      kollidieren. Vorschlag: das Abbild wird ohnehin je Board gebaut - ein Feld `HOSTNAME` in `board.env` (sonst der Name
+      des Board-Ordners), `build-rootfs.sh` schreibt `/etc/hostname` und `/etc/hosts` daraus, `h713-wifi` nimmt
+      `/etc/hostname` ohne festen Rückfall, `boards/check.sh` prüft das Feld (gültiger Hostname). Der Installer setzt nichts
+      selbst, nimmt aber bei einer Neuinstallation einen vom Nutzer geänderten Namen mit (gehört zu 1.2b: `/etc/h713` und
+      Host-Schlüssel sichern). Namen je Board mit Marco festlegen (Packungsname, z. B. `hy300pro`, statt
+      `hy200-qz713df-a1`). Getrennt davon, nicht in diesem Zug: die Partitionsnamen `hy310-boot`/`hy310-rootfs` gelten
+      für alle Boards (Layout v4, `root=PARTLABEL=…`) - umbenennen wäre eine Layout-Änderung
+- [ ] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
+      `repo-neu` liegen die vom 05.10. (vor crust), daher am 10.10. zwei falsche FAILs (hy310, hy200-qz713df-a1 "device tree
+      names h713-arisc.bin"); im frisch gebauten Worktree grün. Den DTB nur mit passendem Kernelbaum-Stempel werten, sonst "note"
+
+## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
+
+**Erledigt 09.10. abends (`doku/180`):** das ganze Paket ist in Forks, Spiegeln und `main` und per FEL gemessen; 1.1a baut es
+mit. Die Einzelpunkte stehen jetzt in 10, der Verlauf bleibt hier.
+
+**Stand 09.10. (geprüft im Code):** 6.3, 6.4, 6.7, 6.8 erledigt bzw. gestrichen. 6.1, 6.2, 6.5, 6.9 und 6.6 sind **vorbereitet,
+nicht eingebaut, nicht gemessen**: TF-A `175c6948f` trägt noch das BL32-Gerüst (`H713_WITH_BL32`, `H713_BL32_AARCH32`) und
+keinen `HDCP14_STAGE`/`HDCP14_ONCE`, U-Boot `87b2a44` noch `h713_hdcp14_wait`. Die TF-A-Patches des Pakets stehen auf
+`4c1bd8c6`; vor dem Einbau auf `175c6948f` (21 Standby-Commits darüber) nachziehen, bauen, per FEL messen (Plan im Paket §8).
+**09.10. abends geprüft (`doku/175`):** TF-A 0001/0002 kollidieren mit den 21 Standby-Commits (`sunxi_bl31_setup.c`,
+`platform.mk`), U-Boot 0001-0003 passen, Repo 0002 nicht. HDCP 1.4 übersteht Standby und MIPS-Neustart (gemessen) - eine
+Schreibung pro Boot bleibt richtig.
+**09.10. abends entschieden (Marco, `doku/178`):** das ganze Paket mit 1.1a, 6.5 eingeschlossen (6.5 ändert nur den Weg - Treiber statt fester
+Register -, nicht das Verhalten; die Einschätzung "eher überholt" in `doku/175` §4 war falsch). TF-A 0001/0002 vorher auf `175c6948f` neu aufsetzen.
+
+**Erledigt 09.10. abends (`doku/180`, Paket `arbeit/hdcp-haertung-20261009/`):** 6.1, 6.2, 6.5, 6.6, 6.9 in den Forks (TF-A
+`5a7806892`, U-Boot `7b1ea388da0d`), Spiegel und `main`; per FEL am HY310 gemessen: T0 (12 s Watchdog, kein BL32, 4 CPUs),
+T1/T2 das Paar aus der Ablage (Desired, dann Enabled nach 2 s), T3 zweite Übergabe im selben Boot abgewiesen, T4 Verschluss
+ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 (fremder Watchdog) nicht gelaufen.
+
+
+## 7 Dokumentation und Repo
+
+- [ ] 7.14 Deutsch in Code → Englisch: Kommentare in Modulen/Patches ab `0146` (aus `61`; Nutzer-Sichtbares ist durch)
+- [ ] 7.15 Wissensdatenbank: `doku/` + `analyse/` je Teilsystem destillieren — **läuft** (referenz/, MemPalace, Graphify)
+- [ ] 7.16 Testskripte veröffentlichen — Auswahl, was ohne unseren Tisch läuft (aus `61`)
+- [ ] 7.17 Fotos: Standbilder der projizierten Bilder (ROADMAP „Pictures")
+- [ ] 7.19 **Doku-Runde: die Neuerungen auf beiden Geräten** (Marco 10.10.): seit R2 kamen dazu - HY310: dunkles Gate nach
+      missglücktem Standby (0245), HDCP-Härtung, Leistung; HY300PRO-G-EU: crust, Standby, Panel-Zyklus, PB5 (0246-0249,
+      `doku/182`/`184`/`185`). Nachziehen: README (Board-Liste: G-EU-Status), `docs/README.md`, `STATUS.md`, `ROADMAP.md`,
+      `docs/known-issues.md` durchsehen, `boards/README.md`, `RELEASES.md`-Entwurf für 1.8; die Subsystem-Seiten sind schon
+      nachgezogen (`e78eacd`, `4767f6f`). Vor 1.1a
+- [ ] 7.18 Release-Text: „nothing acts on the remote's keys yet except Power" so lassen? [M]
+
+## 8 Lokale Werkzeuge
+
+- [ ] 8.2 **Bilanz 12.10.** für MemPalace *und* Graphify: findet eine neue Sitzung von selbst,
+      was sie braucht? Sonst raus, bevor es Gewohnheit wird
+- [ ] 8.4 Graphify-Doku-Extraktion nur bei Bedarf (geht an ein LLM) — Stand: nein, Doku bleibt
+      bei referenz/ + MemPalace
+- [ ] 8.5 Graphify-Gemeinschaften heißen „Community N" (ohne LLM keine Namen). Bei der Bilanz
+      entscheiden, ob `graphify label --backend claude-cli` erlaubt ist (schickt nur Symbolnamen)
+- [ ] 8.6 `settings.json.vor-mempalace-*` und `settings.json.vor-graphify-*` nach Probewoche löschen
+- [ ] 8.7 cognee gestrichen — in der Recherche-Datei vermerken
+- [ ] 8.8 HY310: seit 10.10. 00:30 per `poweroff` aus, steht im Gate (Marco), Sonoff an. Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.** Seit 09.10. abends `h713_gate=1`:
+      nach Netz-Ein wartet die Box auf die Taste, ein Fern-Hartreset kommt nur bis ins Gate (`referenz/geraete.md`)
+- [ ] 8.10 **Cloud-Guthaben für Offline-RE nutzen** (Marco 10.10.: ~100 $ Claude-Cloud, Sonnet; 2-3 Aufgaben). Ein privates
+      GitHub-Repo je Thema mit allem, was der Agent ohne unseren Tisch braucht: die Herstellerbinärdateien **ohne** Schlüssel,
+      Abzüge, Seriennummern/MACs, dazu von uns vorbereitete Disassemblies (OR1K über unser `or1k-elf-objdump`, AArch64 über
+      `llvm-objdump`, MIPS über capstone) und Ghidra-Exporte (Pseudo-C, Strings, Querverweise) - dann braucht der Agent kein
+      Ghidra, nur Python/capstone. Auftrag nach `~/.claude/AGENT-KONTEXT-VORLAGE.md` (Zweck, Rechtsrahmen Art. 6 RL 2009/24,
+      Ausgabe: ein BERICHT.md im Repo), Repos danach löschen. Heikles (TEE, HDCP) bleibt draußen. Themen:
+      - **A "Aus" wie Stock (2.32):** was tun Herstellerkernel, Stock-BL31 (SYSTEM_OFF) und die Hersteller-ARISC-Firmware
+        (`scp.bin`, OR1K) beim Ausschalten, dass das Gerät 0,3 W zieht - welche Schienen/Pins (Stock `standby_param`: vdd-cpu,
+        vdd-sys, vcc-pll, vcc-dram alle an PL6), PLLs, DRAM, wie die Taste weckt. Grundlage für "Aus über crust"
+      - **B Einschlafen ohne Hänger (C1):** wie der Herstellerkernel (tvcap/tvfe/INCAP-Module) die Aufnahme-DMA vor dem Suspend
+        anhält; dazu der Audio-DSP (msp) beim Aufwachen (2.37)
+      - **C klein: Log-Stufe der Display-Firmware (2.36):** in `display.bin` (MIPS) die Stelle, die `MsgHandle_SKE_SEND_EKS`
+        loggt, und welche elog-Stufe sie braucht; `display_cfg.xml`-Auswertung
+      Repo anlegen und Hochladen = Veröffentlichen an einen Dienst -> nur mit Marcos Ja je Repo
+- [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
+
+## 9 Spät / groß (aus `61` §8 und ROADMAP)
+
+- [ ] 9.0 **Nach dem Release (Marco 09.10.): schneller ans Bild nach dem Standby.** Vom Wecken bis zum Bild ~11 s, davon
+      ~4-5 s, weil h713-tv nach dem MIPS-Neustart den HPD 300 ms auf low zieht und die Quelle (Laptop) neu synchronisiert
+      (`doku/174` §1). Bei unveränderter EDID den Replug sparen; vorher messen, ob die Quelle ohne ihn wieder sendet
+- [ ] 9.1 **AV1**: erst klären, ob RE-Stand oder lauffähig; H713 ist der erste Allwinner mit AV1
+- [ ] 9.2 Cedrus/GPU Testmatrix Decoder × Auflösung × Ausgabe; der KASAN-Fall steht
+- [ ] 9.3 Hardware-Video-Decode und IOMMU in **diesem** Image nachmessen (aus cstengers Baum übernommen)
+- [ ] 9.4 Verwaltungsoberfläche (WLAN, Presets, Startmodus, Updates ohne SSH) — Zuschnitt offen
+- [ ] 9.5 Windows: Installer nie dort gelaufen; `sunxi-fel.exe` nach Rückmeldungen
+- [ ] 9.6 Zweites Augenpaar auf die Sicherheitspfade (Gate, Recovery, Installer-Verweigerungen)
+- [ ] 9.7 Recovery-Weg **von einer zweiten Person** gegangen; 20 Gate-Zyklen; HDMI-Modustabelle vollständig (aus `61` A.2)
+- [ ] 9.8 **Warp-Check: CPU-Last senken?** h713-warp hat heute 1 h 26 min CPU in ~10 h gebraucht (Prüfstand);
+      messen, wo die Zeit hingeht (Readback/`check`, Fence-Warten, Poll-Takt), und ob der GPU-Pfad bei
+      Identität ganz schlafen kann (Marco, 05.10.)
+- [ ] 9.9 Fernbedienung auswerten (war 2.2): 16 Tasten + Maus kommen als Events an, nur Power wirkt — braucht
+      einen Desktop/eine Oberfläche, die etwas damit anfängt (Marco 05.10.: spät)
+- [ ] 9.10 Settings-Seite: PIN auf der Leinwand statt Passwort (wie Chromecast), Sitzungs-Cookie — braucht eine
+      Einblendung im Warp/h713-tv (Marco 05.10.: später)
+- [ ] 9.11 **Abschalt-Plopp beim Poweroff** (aus 2.6). Gemessen 05.10. mit dem ThinkPad-Mikro
+      (`arbeit/edid-sweep-20261005/plopp/`): Plopp 1 beim Stream-Ende (DAPM nimmt PL2) -> behoben, Kernel 0184.
+      Plopp 2 am Poweroff-Ende, 42-54x Grundrauschen, immer +10,96 s nach dem Befehl; harter Netz-Cut mit PL2 an
+      nur 9x; PL2 von Hand fallen lassen ploppt, Mute davor (DAC, Line Out, beides, 1,5 s) aendert nichts.
+      **Widerlegt:** TF-A nimmt PB5/PL3 vor dem Gate-Reset weg und wartet 600 ms (Fork-Branch
+      `versuch/plopp-pb5-pl3-vor-reset` - am 07.10. gelöscht, Marco - in die eMMC geschrieben und gehoert: unveraendert laut) -> der
+      Verstaerker haengt nicht (nur) an PB5/PL3, oder der Knall kommt nicht von PL2, sondern vom Zusammenbruch
+      der Codec-Versorgung beim Reset. Naechster Schritt braucht Oszilloskop/Schaltplan: welche Schiene
+      versorgt den Verstaerker, was tut der Reset mit ihr. Bis dahin: so lassen
+- [ ] 9.12 **Bluetooth-Ursache A nach dem Release messen** (aus 2.3, Marco 06.10.): warum der erste HCI-Befehl nach
+      einem warmen Reboot ohne den Reset vorab manchmal unbeantwortet bleibt (FB-BTRESET 9.1). Verdacht: `hciattach any`
+      öffnet die UART erst mit 115200 und schaltet dann auf 1500000; seit dem Fix öffnet `h713-bt-reset` sie als Erster.
+      Messung: 10 warme Reboots mit der alten Unit (Drop-in, btmon ab Boot), dann 10 mit `hciattach -s 1500000`.
+      Dazu 9.2: der Kernel verliert seinen Close-Reset beim tty-Detach (`hci_ldisc.c`, upstream-würdig).
+      **Früher wieder aufmachen,** sobald trotz Helfer `not UP` oder `no answer` im Journal von h713-bluetooth steht
+- [ ] 9.13 Webpanel-Konzept (aus 5.10): Ecke/Kante, Seitenverhältnis, Undo/Redo, Vorschau = Warp (`61` Z. 555ff) - Marco 06.10.:
+      erst einmal geschoben
+- [ ] 9.14 Automatischer Standby, wenn lange kein Signal kommt (aus 2.29; Marco 09.10.: Userspace, erst viel später)
+
+## 10 Erledigt — aus `61` und `144` gestrichen, damit es nicht wieder auftaucht
+
+HDCP 1.4 über die Crypto Engine (05.10.) · Beta-Warnung in README/Release/Installer · Alle
+Werkzeuge ins Englische (Nutzer-Sichtbares) · Fremdgeräte-Profile HY300 Pro · Installer liest
+`.zst` und findet Binaries neben der Tabelle · Kleiner Abzug aus der GPT statt Konstanten ·
+Mitgelieferte GPT gegen errechnete prüfen (Test `stock_gpt_crosscheck`) · Gerätetöne mit HDMI
+mischen (v0.96) · Bluetooth mit Stock-Fernbedienung (v0.96) · Bitgleiche Bauten
+(`SOURCE_DATE_EPOCH`, v0.96) · Autofokus nur mit Testbild (v0.95) · `ge2d` — **nicht nötig**
+(ROADMAP 26.09.) · `tvtop/tvfe/nsi` — **nicht nötig** (ROADMAP) · Platzhalter-Sonderfall —
+Layout v4 hat keine Platzhalter · bl31 vom 10.09. in der Bootkette · U-Boot-Firmware-Debugging
+per Board (`commdev`/`elog`) · Agenten-Scratch löschen (05.10., 74 Klone) · Wickelschlüssel im
+Installer ablegen (`144` 06:0x) — **entfällt**, op 1 entschlüsselt nicht · Konfiguration der
+HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
+
+### Aus den Abschnitten 1-9 hierher verschoben (10.10.2026; Nummern bleiben, Verweise gelten weiter)
+
+**1 Release — in dieser Reihenfolge**
+
+- [x] 1.1 Test-Images gebaut 05.10. 20:36: `installer/out/h713-hy310-v0.96-beta-{a,b,c}.img`, Check 10/11
+      „everything in order" (inkl. `check-hdcp-artifacts.sh`). Drei Bau-Stolpersteine dabei behoben:
+      0183 kompilierte nicht (`c5f2f5e`), Sysroot-Wiederverwendung ohne Paketprüfung, `doku-index`
+      zählte Bauausgaben (`eebb33e`)
+- [x] 1.2 HY310: 5 Kaltstarte + HDCP-Paar mit dem v0.96-beta-Abbild (Marco: statt 22 Zyklen), 05.10. 20:50–21:07,
+      Ergebnisse in `doku/142` (Abschnitt 05.10. abends): 5/5 gebootet, 0 failed, wipe→Desired, push→Enabled,
+      WLAN ~9 s, 720p+Warp richtig, BT UP. Auffälligkeit Z4: ein zweiter Boot ohne Spur → 1.2a
+- [x] 1.5 STAGE4-Marker füllen und löschen - **erledigt** (b110ec1, `doku/143`); 09.10. geprüft: `git grep STAGE4` findet keinen Marker mehr
+
+**2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)**
+
 - [x] 2.1 **Zoom** (Marco 04.10.: „bringt das Gerät durcheinander") - 06.10. behoben, `doku/155`: der Aspect „zoom"
       (Firmware-Modus 5) legte den Bildweg lahm, auch gespeichert beim nächsten Start -> Kernel 0185, h713-tv lehnt ab,
       Panel ohne; der Zoom-Schieber kippte schiefe Trapeze -> rechnet jetzt durch die Trapez-Homographie und schaltet
@@ -123,45 +368,25 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       0x05000444 = 1920x1080, Skalierer 1920x1080, Descriptor 1920 1080 … 1920), Kamera: ein Gitter;
       sechs Moduswechsel mit Signalabriss → neun saubere Republishes (Ring ↔ Framebuffer), kein
       „did not reprogram", 56 fps. Offen: HDMI-Stecker ziehen/stecken, 720p50/1366x768 als Quelle
-- [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
-      (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
-      Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
 - [x] 2.4e **Warp-Flackern bei Ringen mit Zeilenabstand ≠ 64er-Vielfaches** (480p, 576p, 1366×768, 1280×1024 …):
       Panfrost lehnt den Slot-Import ab, der Warp versuchte es jede Sekunde neu und nahm dabei jedes Mal den
       Plane (47 Republishes/min, Wand blinkt, erster Frame grün). Jetzt Import **vor** dem Claim und kein
       neuer Versuch bis zur nächsten Ring-Geometrie — gemessen 05.10. 22:02: 0 Republishes, Bypass still
       (Einzeltest `arbeit/edid-sweep-20261005/`). Offen: Keystone für diese Modi (CPU-Kopie in einen
       64-aligned Puffer, oder Firmware-Ring breiter) → 2.4f
-- [ ] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
 - [x] 2.4g Warp bei 24/25-Hz-Quellen = schwarze Wand: der feste 28-ms-Stale-Schutz warf jeden gehaltenen Slot
       zurück (Slots kommen bei 24 Hz im 34/50-ms-Takt; 334 stale, 0 Frames). Schwelle folgt jetzt dem gemessenen
       Slot-Abstand (×1,25, nie unter 28 ms). 05.10. 22:12: 1080p24 → 24,0 fps, p25 → 25,0, p30 → 30,0, p60 → 59,4,
       0 Drops; Kamera: Bild da
 - [x] 2.4c 1366×768 (Pitch 1376): gemessen 05.10. — rastet, Warp geht in den stillen Bypass; ist derselbe
       Ausrichtungsfall wie 2.4e/2.4f, kein eigener Punkt mehr
-- [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12) — **erledigt 05.10.:** `ctl status` wirft den Warp ab
-      (Frist 1000 ms), Journal-Spam ohne Signal, `test mask` markiert tl, Firmware-Zoom im Warp-Commit
-      (h713-tv-0001 + 0183). **Offen:** laxe `atoi`-Prüfung bei zoom/edge, `check` halbiert fps
-      (dokumentieren), Musterwechsel = Konsolenblitz, Client ohne Newline blockiert 500 ms,
-      `evaluate()` gibt bei -ENOLCK sofort frei, Textreste „primary plane"
-- [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
-- [ ] 2.6 Audio: Abschalt-Plopp -> **9.11 (spaet)**, Messungen und widerlegte Hypothese dort
 - [x] 2.7 Geometrie: Ceiling-Beweis kopfüber; Kalibrierkarten in gespiegelten Modi - 06.10., `doku/157`: Karten und
       Bild in allen vier Modi richtig (Fotos gedreht statt Beamer, Marco); beim Moduswechsel blieb das Trapez nicht am
       Gehäuse -> `ctl mode` sortiert die Ecken jetzt um wie Stocks `setKeystoneNormalXY`, Rahmen in allen Modi
       deckungsgleich. Nicht gemessen: die Automatik mit wirklich kopfüber liegendem Sensor
-- [ ] 2.7a **Konsole durch den Warp** (aus 2.7, Marco 06.10.: bleibt offen): ohne Signal zeigt h713-tv die Konsole auf
-      der primären Ebene, ohne Trapez und ohne Spiegelung - im ceiling-Modus steht sie auf dem Kopf. Wege: fbcon
-      `rotate_all = 2` für ceiling (nur Drehung, kein Spiegeln), Firmware-Spiegel per RPC (FB-MIRROR 2.3/F3) oder der
-      Warp liest `fb0` als Textur und zeichnet die Konsole mit (wie Stock, eigenes Paket)
 - [x] 2.8 Autofokus: eine Wand, ein Abend; Metrik-Spanne nur +11 % (Belichtung) - **gestrichen 06.10. (Marco)**. Der Autofokus
       ist abgenommen (`doku/134` A4, Läufe enden scharf); weitere Wände und die Schärfekurve werden nicht gemessen.
       Ungeprüfte Deutung der +11 %: Läufe starten nahe am Fokus, das Optimum ist ein flaches Plateau
-- [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
-      Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
-- [ ] 2.10 EDID: 1080p100/120 weiter hinter `ctl edid block1` (Entscheidung offen). **Geklärt 05.10.:** 1600×900,
-      1920×1200, 1600×1200, 2560×1600 und 1024×768i rasten nicht, weil die Firmware-Tabelle sie nicht kennt —
-      unsere EDID bietet sie auch nicht an (der i915 generiert sie selbst); kein Fehler unsererseits
 - [x] 2.10a Interlace-VICs 7, 6, 21 (480i/576i) aus unserer EDID, die die Firmware nicht rasten kann: h713-tv
       beschneidet jede veröffentlichte Hälfte um die SVDs ohne Tabelleneintrag (`edid_prune`) und veröffentlicht
       die servierte Hälfte beim Start einmal so, wenn nötig (ein HPD-Puls). Am Gerät 05.10. 21:30: 17 VICs offered,
@@ -176,13 +401,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       1,2-124 ms, 60 Pings à 1 s 2,6-14 ms (Median 3,4), keine Spitze. Station-Modus 1-59 ms
 - [x] 2.13 Settings-Seite Port 8080: seit 05.10. HTTP Basic Auth, Passwort beim ersten Start erzeugt (`/etc/h713/panel.env`,
       0600), `h713-panel --show-password`; am Gerät geprüft (401/401/200), 33 Tests grün. PIN auf der Leinwand → 9.x
-- [ ] 2.14 Reinstall setzt Einstellungen und Fernbedienungs-Pairing zurück — heute selbst erlebt (wifi.env → AP-Modus),
-      Lösung in **1.2b** (Installer übernimmt `/etc/h713`); Pairing bleibt zusätzlich offen
 - [x] 2.15 `afbd`-Modultausch zur Laufzeit bringt kein neues Fenster (Firmware nimmt Republikation nicht) - **geschlossen
       06.10. (Marco): kein Nutzerfehler**, Regel: afbd-Änderungen per Neustart testen (`known-issues.md` behält die Zeile,
       gemessen 22.09. am HY300 Pro, `doku/128`). Eine echte Lösung käme mit 3.3
-- [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
-      100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
 - [x] 2.17 Presets `computer`/`game`/`hdr` nie geprüft; Gamma 2,2 Sichtprüfung gegen Stock; Weißabgleich/CTM ohne Stock-Vergleich (aus `61`)
       - 06.10., `doku/159`: die drei Presets setzen am Gerät exakt die Herstellerdaten der Box, Bild intakt; Gamma ist die
       eigene Kurve der Box. Stock-Vergleich (Gamma, Weißabgleich/CTM) gestrichen (Marco: wird nicht getestet)
@@ -197,16 +418,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **Kamera erledigt** - über zwanzig Wandfotos der projizierten Leinwand mit der Box-Kamera (Belichtung 5000 / Gain 255,
       Luma im Mittel 60-110, Spitzen 255, Text und Rahmen erkennbar; `doku/155`, `157`, `159`). **WLAN-Ecken und Telefon am AP
       gestrichen** (Marco: nie relevant) - Android und das DNS des AP, zwei Standardrouten mit LAN-Adapter
-- [ ] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
-      Plattenzugriff (ls /boot, dmesg ueber Shell, Konsolen-Login), ssh/uptime antworten - Kernel 0184 frisch gebootet,
-      Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten; Journal ist persistent
 - [x] 2.23 KEY_POWER-Politik (poweroff ueber logind, auch die BT-Fernbedienung; kein Standby) steht in
       `docs/hardware.md`; WLAN-Band der Koexistenzmessung in `doku/134` nachgetragen: 2,4 GHz Kanal 4, 5 GHz ungemessen
       - 07.10. abends, nicht gemessen: ein Abbild mit `--standby` bekommt `h713-power` (kurz Standby, ab 3 s Ausschalten,
         ein KEY_POWER bis 2 s nach einem Wecken per Taste wird ignoriert) unter einer logind-Sperre statt
         `HandlePowerKey=ignore`; ohne `--standby` bleibt poweroff. `docs/tools/h713-power.md`; das Fenster misst Stufe K
-- [ ] 2.24 Kleinkram aus `61`: `regulatory.db` load failed -2; `r8152` will `rtl8153b-2.fw` - Marco 05.10.: **nicht
-      jetzt**, Pakete `wireless-regdb`/`firmware-realtek` erst, wenn jemand sie braucht
 - [x] 2.25 **Linux bindet den Watchdog mit dem falschen Registerlayout** - **erledigt 09.10.:** mit dem R2-Merge in `main` (c4a3924) (Gegenprüfung der HDCP-Härtung 07.10., aus dem Code;
       gemessen schon 07.09., `doku/72` Z. 1633 ff.: der Treiber schreibt ohne Schlüssel und trifft nichts, der DT-Fix steht dort
       als „noch nicht umgesetzt"). Kernel-DT `watchdog@2051000` sagt `sun50i-h6-wdt`/`sun6i-a31-wdt` (CTRL 0x10/CFG 0x14/MODE 0x18,
@@ -228,18 +444,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         einen DT, der den Watchdog mit dem H713-Layout (`sun55i-a523-wdt`) bindet: dann schaltet jeder Neustart ihn wirklich scharf.
         Offen: `dt_binding_check`/`dtbs_check` der neuen Bindung, sobald dtschema im Bau-Container ist
       - **09.10.:** die Watchdog-Bindung (0186-0188, 0223/0224) ist mit dem R2-Merge in `main` (`doku/170`, `doku/171`-`doku/174`)
-- [ ] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
-      bleibt er auf `Desired`; 2 s später angefordert steht `Enabled` nach 5 s. Mit der Hersteller-ARISC-Firmware und dem
-      Fire-TV-Stick vergleichen (Auflösungswechsel), erst dann entscheiden, ob der Empfänger früher bereit sein muss
-      - 10.10. (G-EU, crust, `doku/184`): auch nach Neustart und Standby der Box fragt i915 nicht von selbst neu an (`Desired`),
-        mit neuer Anfrage sofort `Enabled`; der Fire-TV-Stick (2.2) verhandelte nach jedem Neustecken von selbst neu
-- [ ] 2.27 **`h713-tv ctl off` hält nicht** (08.10., r1test2): Status zeigt `console` etwa 1 s, dann wieder `warped`, ohne
-      `ctl auto` und bei stehendem Signal (Belege `arbeit/crust-release-20261007/geraet-20261008/kamera/`). Laut Hilfe gilt
-      `off` "until auto". Ursache klären (Signal-Ereignis der Quelle? `start=last`?), dann beheben (Marco 08.10.)
-- [ ] 2.28 **Physische Adresse im HDMI-VSDB** (war 2.26 auf `versuch/crust-release`, Commit 9d95b89): crust schreibt für Port 0/1/2 1.0.0.0 / 2.0.0.0 / 3.0.0.0, der Blob 0.0.0.0 /
-      2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
-      Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
-
 - [x] 2.29 **Standby oder Ausschalten - wann, wie, was im Release** (Marco 09.10., eigenes Thema, besprechen): Standby
       funktioniert jetzt (Bild und Ton zurück, Taste, IR, Minuten-Schläfe, `doku/174`). Offen zu entscheiden: bietet das
       Release-Abbild `--standby` an; Vorgabe für den kurzen Druck (`short = standby|poweroff`) und für einen verweigerten
@@ -251,7 +455,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Marcos Box: Standby im Alltag; wenn Nächte im Standby halten und die Leistung gemessen ist, wird Standby im Release
         danach die Vorgabe. Missglückter Standby -> dunkel ins Gate: 2.30. Automatischer Standby ohne Signal: viel später, 9.14
       - Umsetzung in 1.1a (Vorgabe `short = poweroff`, "experimentell"); die Leistungsmessung ist jetzt 2.31
-
 - [x] 2.30 **Ein missglückter Standby endet dunkel im Gate** (Marco 09.10.: "lieber dunkel" statt Neustart mit Lampe an).
       Heute läuft jeder Reset aus einem Standby (crust-Budget 15 s bei C1, Linux-Zeitschalter 16 s) als Warmstart am Gate
       vorbei. Vorschlag: vor dem Einschlafen (vor dem noirq-Fenster, wo C1 hängt) `GATE` ins RTC-Wort GP5, nach dem vollständigen
@@ -267,12 +470,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [x] 2.31 **Leistung messen: Gate (mit crust), Standby, Betrieb** (aus 2.29) - **erledigt 09.10. 21:00** (`doku/181`, Marco mit
       Wattmeter, USB gezogen, ohne Sonoff): Standby **2,4 W**, Gate **2,9 W**, Betrieb ohne Signal ~24 W, Sonoff ~0,5 W. Standby ist
       sparsamer als Aus. Offen: Betrieb mit Bild neu messen (09.09.: 47 W), Netzteil fiept im Standby leise
-- [ ] 2.32 **"Aus" braucht mit unserem System 8-10x so viel wie Stock** (Marco 09.10. abends). Gemessen: HY300PRO-G-EU mit
-      Stock-Android eingesteckt und aus **0,3 W**, mit unserem Abbild (geucrust1) **2,4 W**; HY310 im Gate 2,9 W (`doku/181`), Stock
-      vermutlich auch ~0,3 W (nicht gemessen). Bei uns wartet U-Boot im Gate auf einem ARM-Kern in einer Schleife auf die Taste;
-      Stock schaltet offenbar wirklich ab und lässt nur die ARISC-Firmware wachen. Weg: "Aus" über crust - ARM-Kerne aus, DRAM
-      aus, nur crust und RTC wach, die Taste weckt (wie der Standby, nur ohne Self-Refresh) - statt der U-Boot-Schleife. Vor dem
-      Release wenigstens bewerten und den Stock-Wert am HY310 messen; gehört zur ARISC/crust-Besprechung mit Marco
 - [x] 2.33 **HY300PRO-G-EU: Lüfter (und Lampe?) im Standby an** - **erledigt 10.10. nachts** (`doku/185`): Stock-Baum nennt PB5 als
       `panel_bl_en` und `fan-power-gpio` wie der HY310; Kernel `0249` gibt PB5 dem Board-Manager statt des Hogs, im Standby "fan power
       rail off", Lüfter aus, Lampe dunkel, nach dem Wecken alles zurück. crust musste nicht angefasst werden. Bisher (Marco 10.10. nachts: "das soll definitiv nicht so sein";
@@ -281,23 +478,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       not ours, left as it is"). Am HY310 trägt PB5 Lüfter und LED-Boost zusammen; am HY300 Pro des Melders schaltete PB5 Licht
       und Lüfter (19.09., Regel "Fremde Boards nur mit Registerbeweis"). Erst den Stock-Gerätebaum des eigenen Abzugs lesen
       (welche Pins für Lüfter/Lampe, was Stock im Standby tut), dann entscheiden: Kernel (Schiene an den Board-Manager) oder crust
-- [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
-      Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
-      bevor der erste Frame steht); nicht dringend
-- [ ] 2.35 **IR-Fernbedienung kann keinen Standby auslösen**: der IR-Empfänger hat unter Linux keine Tastenbelegung
-      (`rc-empty`, nur `lirc`), `h713-power` sieht kein `KEY_POWER` von dort. Gekoppelt per Bluetooth geht es (G-EU, `doku/184`),
-      Wecken per IR geht über crust. Vorschlag: eine Keymap (NEC, Power-Code der Stock-Fernbedienung, crust kennt die 19 Codes)
-      mit `KEY_POWER` im Abbild - dann geht die Fernbedienung auch ohne Kopplung (hilft, wo Bluetooth wackelt, 1.4)
-      - 10.10.: am HY310 genauso (keine IR-Belegung; dort geht Power über die gekoppelte BLE-Verbindung). Gleiche Fernbedienung an
-        beiden Boxen (Marco); am G-EU war sie nur noch nicht mit unserem System gekoppelt. Verbesserung für beide, nicht dringend
-- [ ] 2.36 **HDCP-2.2-Beweis am G-EU ohne `SKE_SEND_EKS`-Zeile**: gleiche `display.bin` wie der HY310 (`16c74a28...`), aber im
-      Firmware-Log (Abbild-Stufe, `h713_disp init` ohne `elog=`) nur "HDCP Process cost tick". Klären, ob die HY310-Zeile vom
-      05.10. aus einer höheren Log-Stufe kam; `referenz/messregeln.md` HDCP 2.2 danach nachziehen. Bis dahin: Bit LINK 0x422 +
-      neue Sitzung je Neustecken
-- [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
-      höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
 
-## 3 Geparkt — mit Wiedereinstiegsbedingung
+**3 Geparkt — mit Wiedereinstiegsbedingung**
 
 - [x] 3.1 **Standby Stufe 2** (<1 W, ARISC, IR/CEC): PSCI-Suspend erreicht DRAM, **kein Wecken** (`doku/139`). FB-STANDBY + 0167c rein, wenn Wecken bewiesen
       - **gestrichen 07.10. (Marco)**: mit der Hersteller-ARISC-Firmware ist das eine Blackbox (eine Nacht, ~15 Proben, kein
@@ -375,12 +557,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **09.10.** `release/sperr-scan.py` erkennt in einem Git-Worktree das Git nicht (`.git` ist dort eine Datei,
         `os.path.isdir` falsch) und durchsucht die ignorierten, root-eigenen Bauordner -> PermissionError, Tor rot. Umgehung:
         Tore auf `git checkout-index -a --prefix=...`. Behebung: `os.path.exists` (eine Zeile) - gehört nach `main`
-- [ ] 3.4 IR FB-REMOTEb + fd02-Keymap — rein, wenn rx_resolution-Trunkierung / ARISC-Schreibpfad geklärt
-- [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
 
-## 4 Boards und Fremdgeräte
+**4 Boards und Fremdgeräte**
 
-- [ ] 4.1 `hy300-pro` (Issue #1): test10 aus `main` nach dem Release (0168, 0182, 2de0cc8, Gamma, project 0x34)
 - [x] 4.2 `hy200-qz713-v2`: Layout-v4-Defconfig + eigener Baum **vor** jedem TEST-Image; Q5 tREFI - **gestrichen 06.10.
       (Marco)**: nur auf Anfrage eines Besitzers per Issue; die Beschreibung in `boards/` bleibt
 - [x] 4.3 `hy200-qz713df-a1`: 09-22-Einheit unbekannt (eMMC, DRAM, Sensor, Kamera, Motor) → per-Variante-Overlay - **gestrichen
@@ -394,9 +573,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [x] 4.6 An cstenger zurückmelden: Composition-Befund (`89`), D1-CCU Port 1, SIDDQ, Doorbell im MIPS-Sendepfad (aus `61`) -
       **gestrichen 06.10. (Marco)**: er nutzt GitHub nur zum Verfolgen
 
-## 5 Installer und Werkzeuge
+**5 Installer und Werkzeuge**
 
-- [ ] 5.1 ST3-RESTORE F1: Schema-Feld `layout.disk_sectors_from = unit|image` statt Heuristik
 - [x] 5.2 `h713-hdcpkey` braucht eine `docs/tools/`-Seite - 06.10.: `docs/tools/h713-hdcpkey.md` (Beispiel aus einer synthetischen
       Region der Tests), verlinkt in README und `docs/README.md`; das Werkzeug meldet eine nicht lesbare Datei jetzt mit einer Zeile
       statt eines Tracebacks
@@ -417,70 +595,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `docs/subsystems/emmc-layout.md`; Versionszeile von `h713-install`/`dump.py` „0.1 (draft, doku/110)" -> 0.2 (Paket)
 - [x] 5.10 Webpanel-Konzept (Ecke/Kante, Seitenverhältnis, Undo/Redo, Vorschau = Warp) (`61` Z. 555ff) - verschoben nach **9.13**
       (Marco 06.10.)
-- [ ] 5.11 `h713-install` löscht seine Arbeitskopie (`image-filled.img`, im Abzugsordner oder `--work-copy`) nie; sie enthält die
-      geräteeigenen Dateien. Nach bestandenem Rückvergleich löschen, außer `--keep-work-copy` (08.10., `doku/170`)
-- [ ] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
-- [ ] 5.13 `release/tor.sh` in einem gebauten Worktree: `sperr-scan` meldet die Bauerzeugnisse (`mainline/build/`, `*.img`) und
-      bricht an root-eigenen Dateien (`installer/tmp/`) ab; am 08.10. lief das Tor deshalb auf einer sauberen Kopie des
-      Commit-Stands. Entweder den Scan auf verfolgte Dateien plus Submodule begrenzen oder das Muster dokumentieren.
-      **09.10.:** Ursache gefunden - in einem Git-Worktree ist `.git` eine Datei, `sperr-scan.py` prüft `os.path.isdir` und
-      erkennt das Git nicht (Durchsicht B1); Behebung `os.path.exists`, eine Zeile. 09.10. abends bei 2.30 wieder getroffen. Bis dahin: Tore auf `git checkout-index`-Abzug
-- [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
-      Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
-      Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
-      Prüfung), CR-4 (MIPS_DROP zählt Aux-Abweisungen), B2/B4 (Standby-Abbild nur per Text erkennbar, spätere sleep-Drop-ins), KM-3/4
-- [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
-      braucht den veröffentlichten Fork (1.6)
-- [ ] 5.16 **Reste der Doku-Runde 09.10.** (`2f7875f`, Entwürfe und Notizen in `arbeit/doku-r2-20261009/*/NOTIZEN.md`):
-      Commit-Texte beim nächsten Serienumbau - `0231` nennt V10 "three times in a row" (nicht belegt, `doku/176` §1), `0240`
-      sagt "not yet measured" (gemessen, `doku/173`), `0243` sagt "until a reboot" (siehe 3.3); Lüfterdrehzahl 4860
-      (`hardware.md`, `board-mgr.md`) / 4770 (`known-issues.md`) / ~4800 (`0222`) vereinheitlichen; Größe des
-      Hersteller-ARISC-Abbilds 140 KiB (`arisc.md`) gegen ~172 KB (`hardware.md`); `known-issues.md` "fix pending" beim
-      720p-Warp-Fall gegen `0183` prüfen; `docs/uboot/README.md` "0096 is not published yet" nach dem Push (1.6) streichen;
-      R_WDOG als Netz im Schlaf in `standby.md`. Aus dem Code gelesen, nicht gesehen: bricht ein Standby nach
-      `msp_suspend`, aber vor dem Park ab, bleibt msp auf "error" und `h713-mips-restart` läuft nicht (nur bei "parked")
-      - Ton bis zum Neustart weg; gehört zu 5.14.
-- [ ] 5.17 **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
-      G-EU-Testbau 09.10. stieg in Schritt 7 (Rootfs) aus, nach ~25 min Kernel/Mesa/Sysroot; danach lief alles von vorn, und
-      eine Kommentaränderung im Gerätebaum-Patch kostete den Kernel noch einmal. Heute gibt es `--skip-bl31/-uboot/-kernel/
-      -rootfs`, die nur "wenn vorhanden" prüfen, nicht ob es zum Stand passt. Vorschlag: jeder Schritt schreibt einen
-      Eingabe-Stempel (wie der Kernelbaum schon über den Eingabe-Hash und die Sysroot über den Paketstempel), `--resume`
-      nimmt fertige Schritte mit passendem Stempel und baut ab dem ersten abweichenden; Release-Bauten bleiben ohne
-      `--resume` von vorn (Regel "Release-Bauten immer von vorn"). Dazu: ein reiner Kommentar im Patch sollte den
-      Kernel nicht neu bauen müssen (Hash über den Inhalt ohne Kommentar ist heikel - erst abwägen)
-      - 10.10. nachts: auch ein `make Image.gz` von Hand im fertigen Kernelbaum eines build-all-Laufs (eine geänderte Datei,
-        pinctrl PF6) übersetzte alles neu (>1100 Objekte) - die Schalter/Umgebung des Baus sind von außen nicht nachstellbar;
-        `build.sh kernel` sollte einen "nur bauen, nicht neu konfigurieren"-Weg für einen vorhandenen Baum haben
-- [ ] 5.18 **Hostname je Board** (Marco 10.10. nachts: der HY300PRO-G-EU meldet sich im Netz als `hy310`). Heute fest im
-      Rootfs: `rootfs/overlay/etc/hostname` = `hy310`, `rootfs/overlay/etc/hosts` `127.0.1.1 hy310`, dazu der Rückfall
-      `hy310` in `h713-wifi` (DNS-Name im Zugangspunkt-Modus). Jedes Board heißt also `hy310`, zwei Boxen im selben Netz
-      kollidieren. Vorschlag: das Abbild wird ohnehin je Board gebaut - ein Feld `HOSTNAME` in `board.env` (sonst der Name
-      des Board-Ordners), `build-rootfs.sh` schreibt `/etc/hostname` und `/etc/hosts` daraus, `h713-wifi` nimmt
-      `/etc/hostname` ohne festen Rückfall, `boards/check.sh` prüft das Feld (gültiger Hostname). Der Installer setzt nichts
-      selbst, nimmt aber bei einer Neuinstallation einen vom Nutzer geänderten Namen mit (gehört zu 1.2b: `/etc/h713` und
-      Host-Schlüssel sichern). Namen je Board mit Marco festlegen (Packungsname, z. B. `hy300pro`, statt
-      `hy200-qz713df-a1`). Getrennt davon, nicht in diesem Zug: die Partitionsnamen `hy310-boot`/`hy310-rootfs` gelten
-      für alle Boards (Layout v4, `root=PARTLABEL=…`) - umbenennen wäre eine Layout-Änderung
-- [ ] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
-      `repo-neu` liegen die vom 05.10. (vor crust), daher am 10.10. zwei falsche FAILs (hy310, hy200-qz713df-a1 "device tree
-      names h713-arisc.bin"); im frisch gebauten Worktree grün. Den DTB nur mit passendem Kernelbaum-Stempel werten, sonst "note"
 
-## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
-
-**Stand 09.10. (geprüft im Code):** 6.3, 6.4, 6.7, 6.8 erledigt bzw. gestrichen. 6.1, 6.2, 6.5, 6.9 und 6.6 sind **vorbereitet,
-nicht eingebaut, nicht gemessen**: TF-A `175c6948f` trägt noch das BL32-Gerüst (`H713_WITH_BL32`, `H713_BL32_AARCH32`) und
-keinen `HDCP14_STAGE`/`HDCP14_ONCE`, U-Boot `87b2a44` noch `h713_hdcp14_wait`. Die TF-A-Patches des Pakets stehen auf
-`4c1bd8c6`; vor dem Einbau auf `175c6948f` (21 Standby-Commits darüber) nachziehen, bauen, per FEL messen (Plan im Paket §8).
-**09.10. abends geprüft (`doku/175`):** TF-A 0001/0002 kollidieren mit den 21 Standby-Commits (`sunxi_bl31_setup.c`,
-`platform.mk`), U-Boot 0001-0003 passen, Repo 0002 nicht. HDCP 1.4 übersteht Standby und MIPS-Neustart (gemessen) - eine
-Schreibung pro Boot bleibt richtig.
-**09.10. abends entschieden (Marco, `doku/178`):** das ganze Paket mit 1.1a, 6.5 eingeschlossen (6.5 ändert nur den Weg - Treiber statt fester
-Register -, nicht das Verhalten; die Einschätzung "eher überholt" in `doku/175` §4 war falsch). TF-A 0001/0002 vorher auf `175c6948f` neu aufsetzen.
-
-**Erledigt 09.10. abends (`doku/180`, Paket `arbeit/hdcp-haertung-20261009/`):** 6.1, 6.2, 6.5, 6.6, 6.9 in den Forks (TF-A
-`5a7806892`, U-Boot `7b1ea388da0d`), Spiegel und `main`; per FEL am HY310 gemessen: T0 (12 s Watchdog, kein BL32, 4 CPUs),
-T1/T2 das Paar aus der Ablage (Desired, dann Enabled nach 2 s), T3 zweite Übergabe im selben Boot abgewiesen, T4 Verschluss
-ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 (fremder Watchdog) nicht gelaufen.
+**6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)**
 
 - [x] 6.1 **TEE-2** EL3 liest den Schlüssel selbst; `push_from` ohne Aufrufer-Adresse ← zuerst. Mit 6.2 und 6.5 ein Paket:
       reine Härtung, nichts ist kaputt (heute schlimmstenfalls ein falscher Schlüssel durch Root, auslesen geht nicht).
@@ -514,7 +630,7 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
         6.9 allein ändert nur `bl31_early_platform_setup2`, die Watchdog-Schreibzugriffe identisch. Gelernt: das Netz reicht
         nur bis U-Boots Watchdog-Init (`sunxi_wdt_probe()` stoppt ihn)
 
-## 7 Dokumentation und Repo
+**7 Dokumentation und Repo**
 
 - [x] 7.1 `AGENTS.md` besprochen (06.10.): die vollstaendigen Arbeitsregeln (Kopie, Lieferung mit Kompilat, tor.sh,
       Identitaet, Geraet, Subagenten, Projektordner-Karte) liegen **lokal** in `referenz/arbeitsregeln.md` und werden
@@ -544,102 +660,15 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [x] 7.12 `referenz/irrwege.md`: rchar, OOM/ROOM-Regex, `ssh -n`, modroot ohne aic8800, `kill -9` auf MemPalace,
       Hypothese vor Messung, Agent ohne Kompilat (06.10.)
 - [x] 7.13 `/home/user/AGENTS.md` ist seit 06.10. ein Symlink auf `~/.claude/CLAUDE.md` — eine Quelle
-- [ ] 7.14 Deutsch in Code → Englisch: Kommentare in Modulen/Patches ab `0146` (aus `61`; Nutzer-Sichtbares ist durch)
-- [ ] 7.15 Wissensdatenbank: `doku/` + `analyse/` je Teilsystem destillieren — **läuft** (referenz/, MemPalace, Graphify)
-- [ ] 7.16 Testskripte veröffentlichen — Auswahl, was ohne unseren Tisch läuft (aus `61`)
-- [ ] 7.17 Fotos: Standbilder der projizierten Bilder (ROADMAP „Pictures")
-- [ ] 7.19 **Doku-Runde: die Neuerungen auf beiden Geräten** (Marco 10.10.): seit R2 kamen dazu - HY310: dunkles Gate nach
-      missglücktem Standby (0245), HDCP-Härtung, Leistung; HY300PRO-G-EU: crust, Standby, Panel-Zyklus, PB5 (0246-0249,
-      `doku/182`/`184`/`185`). Nachziehen: README (Board-Liste: G-EU-Status), `docs/README.md`, `STATUS.md`, `ROADMAP.md`,
-      `docs/known-issues.md` durchsehen, `boards/README.md`, `RELEASES.md`-Entwurf für 1.8; die Subsystem-Seiten sind schon
-      nachgezogen (`e78eacd`, `4767f6f`). Vor 1.1a
-- [ ] 7.18 Release-Text: „nothing acts on the remote's keys yet except Power" so lassen? [M]
 
-## 8 Lokale Werkzeuge
+**8 Lokale Werkzeuge**
 
 - [x] 8.1 MemPalace vollständig: Transkripte (~67 000 + 86 000 sweep), referenz/ (268),
       repo-neu ohne Submodule (20 373) — 175 798 Drawers, Endstand 05.10. 17:15.
       Lehre: `mine`/`sweep` nie laufen lassen, während Claude antwortet — der Stop-Hook
       sperrt den Palast und einzelne Dateien scheitern (dann erneut sweepen, idempotent)
-- [ ] 8.2 **Bilanz 12.10.** für MemPalace *und* Graphify: findet eine neue Sitzung von selbst,
-      was sie braucht? Sonst raus, bevor es Gewohnheit wird
 - [x] 8.3 Graphify installiert, `--code-only` über `repo-neu/` (7 862 Knoten, 0 Token),
       Eintrag in `werkzeuge.md`, `.graphifyignore` + `graphify-out/` in `.gitignore` (05.10.)
-- [ ] 8.4 Graphify-Doku-Extraktion nur bei Bedarf (geht an ein LLM) — Stand: nein, Doku bleibt
-      bei referenz/ + MemPalace
-- [ ] 8.5 Graphify-Gemeinschaften heißen „Community N" (ohne LLM keine Namen). Bei der Bilanz
-      entscheiden, ob `graphify label --backend claude-cli` erlaubt ist (schickt nur Symbolnamen)
-- [ ] 8.6 `settings.json.vor-mempalace-*` und `settings.json.vor-graphify-*` nach Probewoche löschen
-- [ ] 8.7 cognee gestrichen — in der Recherche-Datei vermerken
-- [ ] 8.8 HY310: seit 10.10. 00:30 per `poweroff` aus, steht im Gate (Marco), Sonoff an. Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.** Seit 09.10. abends `h713_gate=1`:
-      nach Netz-Ein wartet die Box auf die Taste, ein Fern-Hartreset kommt nur bis ins Gate (`referenz/geraete.md`)
-- [ ] 8.10 **Cloud-Guthaben für Offline-RE nutzen** (Marco 10.10.: ~100 $ Claude-Cloud, Sonnet; 2-3 Aufgaben). Ein privates
-      GitHub-Repo je Thema mit allem, was der Agent ohne unseren Tisch braucht: die Herstellerbinärdateien **ohne** Schlüssel,
-      Abzüge, Seriennummern/MACs, dazu von uns vorbereitete Disassemblies (OR1K über unser `or1k-elf-objdump`, AArch64 über
-      `llvm-objdump`, MIPS über capstone) und Ghidra-Exporte (Pseudo-C, Strings, Querverweise) - dann braucht der Agent kein
-      Ghidra, nur Python/capstone. Auftrag nach `~/.claude/AGENT-KONTEXT-VORLAGE.md` (Zweck, Rechtsrahmen Art. 6 RL 2009/24,
-      Ausgabe: ein BERICHT.md im Repo), Repos danach löschen. Heikles (TEE, HDCP) bleibt draußen. Themen:
-      - **A "Aus" wie Stock (2.32):** was tun Herstellerkernel, Stock-BL31 (SYSTEM_OFF) und die Hersteller-ARISC-Firmware
-        (`scp.bin`, OR1K) beim Ausschalten, dass das Gerät 0,3 W zieht - welche Schienen/Pins (Stock `standby_param`: vdd-cpu,
-        vdd-sys, vcc-pll, vcc-dram alle an PL6), PLLs, DRAM, wie die Taste weckt. Grundlage für "Aus über crust"
-      - **B Einschlafen ohne Hänger (C1):** wie der Herstellerkernel (tvcap/tvfe/INCAP-Module) die Aufnahme-DMA vor dem Suspend
-        anhält; dazu der Audio-DSP (msp) beim Aufwachen (2.37)
-      - **C klein: Log-Stufe der Display-Firmware (2.36):** in `display.bin` (MIPS) die Stelle, die `MsgHandle_SKE_SEND_EKS`
-        loggt, und welche elog-Stufe sie braucht; `display_cfg.xml`-Auswertung
-      Repo anlegen und Hochladen = Veröffentlichen an einen Dienst -> nur mit Marcos Ja je Repo
-- [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
 - [x] 8.10 Worktrees aufräumen, sobald Marco die Testabbilder nicht mehr braucht - **erledigt 09.10. 16:56** (Marco), Referenzabbild
       `arbeit/r2-20261009/abbild-r2test4/` bleibt; auch der Worktree von 2.30 ist weg: `arbeit/crust-release-20261007/wp8-bau/repo`,
       `arbeit/r2-20261009/repo` (r2test1-3), `arbeit/r2-20261009/main-int` (r2test4, läuft auf der Box); Zweige bleiben
-
-## 9 Spät / groß (aus `61` §8 und ROADMAP)
-
-- [ ] 9.0 **Nach dem Release (Marco 09.10.): schneller ans Bild nach dem Standby.** Vom Wecken bis zum Bild ~11 s, davon
-      ~4-5 s, weil h713-tv nach dem MIPS-Neustart den HPD 300 ms auf low zieht und die Quelle (Laptop) neu synchronisiert
-      (`doku/174` §1). Bei unveränderter EDID den Replug sparen; vorher messen, ob die Quelle ohne ihn wieder sendet
-- [ ] 9.1 **AV1**: erst klären, ob RE-Stand oder lauffähig; H713 ist der erste Allwinner mit AV1
-- [ ] 9.2 Cedrus/GPU Testmatrix Decoder × Auflösung × Ausgabe; der KASAN-Fall steht
-- [ ] 9.3 Hardware-Video-Decode und IOMMU in **diesem** Image nachmessen (aus cstengers Baum übernommen)
-- [ ] 9.4 Verwaltungsoberfläche (WLAN, Presets, Startmodus, Updates ohne SSH) — Zuschnitt offen
-- [ ] 9.5 Windows: Installer nie dort gelaufen; `sunxi-fel.exe` nach Rückmeldungen
-- [ ] 9.6 Zweites Augenpaar auf die Sicherheitspfade (Gate, Recovery, Installer-Verweigerungen)
-- [ ] 9.7 Recovery-Weg **von einer zweiten Person** gegangen; 20 Gate-Zyklen; HDMI-Modustabelle vollständig (aus `61` A.2)
-- [ ] 9.8 **Warp-Check: CPU-Last senken?** h713-warp hat heute 1 h 26 min CPU in ~10 h gebraucht (Prüfstand);
-      messen, wo die Zeit hingeht (Readback/`check`, Fence-Warten, Poll-Takt), und ob der GPU-Pfad bei
-      Identität ganz schlafen kann (Marco, 05.10.)
-- [ ] 9.9 Fernbedienung auswerten (war 2.2): 16 Tasten + Maus kommen als Events an, nur Power wirkt — braucht
-      einen Desktop/eine Oberfläche, die etwas damit anfängt (Marco 05.10.: spät)
-- [ ] 9.10 Settings-Seite: PIN auf der Leinwand statt Passwort (wie Chromecast), Sitzungs-Cookie — braucht eine
-      Einblendung im Warp/h713-tv (Marco 05.10.: später)
-- [ ] 9.11 **Abschalt-Plopp beim Poweroff** (aus 2.6). Gemessen 05.10. mit dem ThinkPad-Mikro
-      (`arbeit/edid-sweep-20261005/plopp/`): Plopp 1 beim Stream-Ende (DAPM nimmt PL2) -> behoben, Kernel 0184.
-      Plopp 2 am Poweroff-Ende, 42-54x Grundrauschen, immer +10,96 s nach dem Befehl; harter Netz-Cut mit PL2 an
-      nur 9x; PL2 von Hand fallen lassen ploppt, Mute davor (DAC, Line Out, beides, 1,5 s) aendert nichts.
-      **Widerlegt:** TF-A nimmt PB5/PL3 vor dem Gate-Reset weg und wartet 600 ms (Fork-Branch
-      `versuch/plopp-pb5-pl3-vor-reset` - am 07.10. gelöscht, Marco - in die eMMC geschrieben und gehoert: unveraendert laut) -> der
-      Verstaerker haengt nicht (nur) an PB5/PL3, oder der Knall kommt nicht von PL2, sondern vom Zusammenbruch
-      der Codec-Versorgung beim Reset. Naechster Schritt braucht Oszilloskop/Schaltplan: welche Schiene
-      versorgt den Verstaerker, was tut der Reset mit ihr. Bis dahin: so lassen
-- [ ] 9.12 **Bluetooth-Ursache A nach dem Release messen** (aus 2.3, Marco 06.10.): warum der erste HCI-Befehl nach
-      einem warmen Reboot ohne den Reset vorab manchmal unbeantwortet bleibt (FB-BTRESET 9.1). Verdacht: `hciattach any`
-      öffnet die UART erst mit 115200 und schaltet dann auf 1500000; seit dem Fix öffnet `h713-bt-reset` sie als Erster.
-      Messung: 10 warme Reboots mit der alten Unit (Drop-in, btmon ab Boot), dann 10 mit `hciattach -s 1500000`.
-      Dazu 9.2: der Kernel verliert seinen Close-Reset beim tty-Detach (`hci_ldisc.c`, upstream-würdig).
-      **Früher wieder aufmachen,** sobald trotz Helfer `not UP` oder `no answer` im Journal von h713-bluetooth steht
-- [ ] 9.13 Webpanel-Konzept (aus 5.10): Ecke/Kante, Seitenverhältnis, Undo/Redo, Vorschau = Warp (`61` Z. 555ff) - Marco 06.10.:
-      erst einmal geschoben
-- [ ] 9.14 Automatischer Standby, wenn lange kein Signal kommt (aus 2.29; Marco 09.10.: Userspace, erst viel später)
-
-## 10 Erledigt — aus `61` und `144` gestrichen, damit es nicht wieder auftaucht
-
-HDCP 1.4 über die Crypto Engine (05.10.) · Beta-Warnung in README/Release/Installer · Alle
-Werkzeuge ins Englische (Nutzer-Sichtbares) · Fremdgeräte-Profile HY300 Pro · Installer liest
-`.zst` und findet Binaries neben der Tabelle · Kleiner Abzug aus der GPT statt Konstanten ·
-Mitgelieferte GPT gegen errechnete prüfen (Test `stock_gpt_crosscheck`) · Gerätetöne mit HDMI
-mischen (v0.96) · Bluetooth mit Stock-Fernbedienung (v0.96) · Bitgleiche Bauten
-(`SOURCE_DATE_EPOCH`, v0.96) · Autofokus nur mit Testbild (v0.95) · `ge2d` — **nicht nötig**
-(ROADMAP 26.09.) · `tvtop/tvfe/nsi` — **nicht nötig** (ROADMAP) · Platzhalter-Sonderfall —
-Layout v4 hat keine Platzhalter · bl31 vom 10.09. in der Bootkette · U-Boot-Firmware-Debugging
-per Board (`commdev`/`elog`) · Agenten-Scratch löschen (05.10., 74 Klone) · Wickelschlüssel im
-Installer ablegen (`144` 06:0x) — **entfällt**, op 1 entschlüsselt nicht · Konfiguration der
-HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
