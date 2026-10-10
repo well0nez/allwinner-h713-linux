@@ -18,7 +18,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `ROADMAP.md` | `doku/104`, `doku/134`, `doku/70`, `doku/71` |
 | `STATUS.md` | `doku/00`, `doku/104`, `doku/114`, `doku/121`, `doku/124`, `doku/125`, `doku/134`, `doku/136`, `doku/137`, `doku/139`, `doku/142`, `doku/181`, `doku/61` |
 | `boards/README.md` | `doku/121` |
-| `boards/hy200-qz713df-a1/README.md` | `doku/136` |
+| `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184` |
 | `boards/hy300-t08/README.md` | `doku/121` |
 | `boards/hy310/README.md` | `doku/10`, `doku/121` |
 | `docs/architecture.md` | `doku/103`, `doku/163`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/177`, `doku/181`, `doku/82`, `doku/83`, `doku/96` |
@@ -26,9 +26,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/guides/keystone.md` | `doku/134` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/80` |
-| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/60`, `doku/61` |
+| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107`, `doku/170` |
-| `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
+| `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/184`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/nachtlog/S21-re-audif-zugang` |
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/171`, `doku/60` |
 | `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/96` |
@@ -36,11 +36,11 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/94` |
-| `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180` |
+| `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180`, `doku/184` |
 | `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
-| `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/133`, `doku/138`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/179`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
+| `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/133`, `doku/138`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/179`, `doku/182`, `doku/184`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
-| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181` |
+| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184` |
 | `docs/subsystems/video.md` | `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/60` |
 | `docs/tools/h713-autofocus.md` | `doku/134` |
@@ -226,8 +226,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`179-missglueckter-standby-endet-dunkel-im-gate-20261009.md`](179-missglueckter-standby-endet-dunkel-im-gate-20261009.md) | Analyse | 2026-10-09 | 179 - Ein missglückter Standby endet dunkel im Gate (TODO 2.30) (09.10.2026, 18:40) | 5 |
 | [`180-hdcp-haertung-eingebaut-und-gemessen-20261009.md`](180-hdcp-haertung-eingebaut-und-gemessen-20261009.md) | Analyse | 2026-10-09 | 180 - HDCP-Härtung eingebaut und per FEL gemessen: Übergabe ohne Adresse, einmal pro Boot, Watchdog über den Treiber (09.10.2026, 20:30) | 1 |
 | [`181-leistung-standby-gate-betrieb-20261009.md`](181-leistung-standby-gate-betrieb-20261009.md) | Analyse | 2026-10-09 | 181 - Leistung am HY310: Standby 2,4 W, Aus (Gate) 2,9 W, Betrieb ~24 W (TODO 2.31) (09.10.2026, 21:00) | 6 |
-| [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | - |
+| [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | 2 |
 | [`183-handoff-20261010-nachts.md`](183-handoff-20261010-nachts.md) | Handoff | 2026-10-10 | 183 - Handoff 10.10.2026 nachts: Stand und Plan (HY300-Tests mit geucrust2 stehen an) | - |
+| [`184-hy300pro-g-eu-geucrust2-testreihe-20261010.md`](184-hy300pro-g-eu-geucrust2-testreihe-20261010.md) | Analyse | 2026-10-10 | 184 - HY300PRO-G-EU mit geucrust2: alles, was am HY310 bestätigt ist, bis auf die Standby-Leistung (10.10.2026, 01:00-02:30) | 6 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -385,7 +386,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-43 von 242 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+42 von 243 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -420,7 +421,6 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `161-hdcp-haertung-paket-20261007.md`
 * `169-crust-release-offline-fertig-20261008.md`
 * `178-hdcp-paket-entscheidungen-20261009.md`
-* `182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`
 * `183-handoff-20261010-nachts.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)

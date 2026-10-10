@@ -107,9 +107,22 @@ clock `0x02001600` and reset word `0x0200160c`, written raw as U-Boot does (no c
 consumer exists), and [cpu_comm](cpu-comm.md) parks the core for a standby through it. The node
 `mips@3061000` has the MIPS block, the clock and reset words, the TV top (`0x06e00000`) and, since `0245`, the
 power gate's word (RTC GP5, `0x07090114`, below) as its four regs, and the reserved window `mips-firmware@4b100000`. It is disabled in the dtsi and enabled
-on the HY310, where the restart was measured; the HY300 Pro and HY200 QZ713DF A1 trees switch it off
-again (`0232`). On the HY300PRO-G-EU every earlier reload whose result was looked at ended black
-(03.10.2026, before this driver; `doku/138`).
+on the HY310 and, since `0246`, on the HY200 QZ713DF A1 (HY300PRO-G-EU), where the restart was measured;
+the HY300 Pro tree switches it off again (`0232`).
+
+**A board with an LCD panel needs the panel's supply cycled after a restart.** On the HY300PRO-G-EU every
+reload ended black - firmware ready, picture path up, lamp on, wall dark (03.10.2026, `doku/138`; again on
+09.10.2026 with this driver, seven of seven). The board's LCD panel has its own timing controller; when the
+firmware starts again, the panel loses its LVDS lock and takes it again only after a power cycle. A reset
+pulse alone does not bring it back; the HY310's DLP bridge locks again on its own (`doku/182`). So the
+driver takes two optional GPIOs from the node, `panel-power-gpios` and `panel-reset-gpios`, requested as
+U-Boot left them, and after every start that reports ready it switches the panel off for 300 ms and on
+again, waits 20 ms and pulses the reset for 2 ms - what U-Boot does at boot (`0248`; dmesg `panel supply
+cycled (300 ms off), reset pulsed`). Only boards whose tree names the pins get it: the HY200 QZ713DF A1
+names PF6 (supply, active high) and PH16 (reset, active low). PF6 was missing from the H713 pin table
+(bank F knew PF0-PF5 only, `0247`); without it the probe waits with -517 and the driver does not bind at
+all. Measured on 10.10.2026: three reloads, three after a standby, picture back 3.4 s after each reload
+(`doku/184`).
 
 **Interface.** In `/sys/bus/platform/drivers/sun50i-h713-mips/<device>/`:
 

@@ -174,6 +174,19 @@ not ours. Eight mode switches (1080p60 <-> 720p50/60) each re-authenticated with
 poll; no fallback to 1.4. Protected content was not needed for this: the handshake is mutual, and
 a failed one does not leave a standing session.
 
+### On the HY300PRO-G-EU (10.10.2026)
+
+Test image `geucrust2` with crust, the maintainer's unit (`doku/184`). HDCP 1.4 with the ThinkPad: the pair
+(`h713_hdcp14_wipe=1`, then the default) went `Desired` and then `Enabled`, the key-loaded register 0x93
+read 0x41 and then 0x45, and after a standby the source reached `Enabled` again. Each time only after the
+source asked anew (`Undesired`, `Desired`): i915 does not ask again by itself after the box restarted
+or woke - the limit below, from the source's side. HDCP 2.2 with the Fire TV stick: "2.2 (session stands)",
+authenticated, LINK 0x422 = 0x01, and after each of two re-plugs a new session with a new firmware
+process line. The firmware log at the level the image runs (`h713_disp init` without `elog=`) shows
+only that line's tail (`HDCP Process cost tick:643`), **no `SKE_SEND_EKS`** - although the board runs the
+HY310's `display.bin` (`16c74a28...`). Whether the HY310's line of 05.10. came from a higher log level is
+not checked (TODO 2.36); for this board the proof is the authenticated bit plus a new session per re-plug.
+
 ## Limits
 
 * A source that asks for HDCP 1.4 at once, in the mode switch (a ThinkPad with i915), stayed on `Desired` for 40 s in two runs on the R1 test image; a request 2, 4 or 6 s after the lock stood at `Enabled` within 5 s. `doku/170` reads it as the receiver not being ready in the first moment and i915 not asking again; crust is not involved (the hot-plug pin stays up). Not measured with the vendor's ARISC firmware or with the Fire TV stick.

@@ -3,8 +3,15 @@
 The HY310 knows two ways to be "off", and a third state that only looks like one. This page says which
 is which, what the standby through crust does, what wakes it, what a failed wake looks like and how to
 get out of it. Status: the standby has run on the HY310 in test images (`doku/165` - `doku/167`), and since
-09.10.2026 the picture comes back after a wake in the R2 test image (`doku/171`, `doku/172`); a release image
-does **not** offer it yet (TODO 3.3: the hang going to sleep, C1, is open).
+09.10.2026 the picture comes back after a wake in the R2 test image (`doku/171`, `doku/172`); on 10.10.2026 the
+same ran on the HY300PRO-G-EU (board HY200 QZ713DF A1, test image `geucrust2`, `doku/184`: woken by the RTC, the
+power key and the remote's IR key, picture and sound back after each). A release image does **not** offer it
+yet (TODO 3.3: the hang going to sleep, C1, is open).
+
+**On the HY300PRO-G-EU the fan keeps running in standby** - a fault, not a design choice (TODO 2.33). The
+board manager switches the fan rail off at suspend only when the board's device tree hands it the rail; the
+G-EU tree does not, so it says `fan: suspended: fan power rail not ours, left as it is` and the fan keeps turning
+(on the HY310 the rail, PB5, carries the fan and the LED boost together, `0211`). The picture goes dark.
 
 | State | What runs | Power | How you get there | How you leave |
 |---|---|---|---|---|
@@ -81,7 +88,8 @@ boots straight back). Not measured: HDCP 2.2 from the source after the restart. 
 | wake timer | measured (`rtcwake`-style, 5 s; `doku/165` - `doku/167`) |
 | RTC alarm | the kernel side computes it; whether a release should wake on it is the owner's decision |
 | CEC | not supported |
-| Bluetooth remote | not a wake source: Bluetooth is down in standby |
+| Bluetooth remote | not a wake source: Bluetooth is down in standby. Its power key **starts** a standby once it is paired (`h713-power` listens on it; HY300PRO-G-EU, 10.10.2026); asleep it falls back to IR, which wakes the box |
+| IR remote, going to sleep | not possible yet: Linux has no keymap on the IR receiver (`rc-empty`), so its power key never reaches `h713-power` (TODO 2.35) |
 
 After a wake by the power key Linux sees a `KEY_POWER` - the press that woke it. On an image with standby
 [h713-power](../tools/h713-power.md) ignores it; without h713-power logind would power off.
@@ -140,7 +148,8 @@ vendor block differs from the vendor firmware's on port 0 (1.0.0.0 against 0.0.0
 ## Building it
 
 `release/build-all.sh --standby` offers the standby, and only for a verified board whose `board.env`
-names a `CRUST_DEFCONFIG`: BL31 with `SYSTEM_SUSPEND`, the sleep file above, h713-power on the key.
+names a `CRUST_DEFCONFIG` - or, since 10.10.2026, for a `--test-image` of such a board (the HY300PRO-G-EU's
+`geucrust2`): BL31 with `SYSTEM_SUSPEND`, the sleep file above, h713-power on the key.
 Without `--standby` BL31 has no `SYSTEM_SUSPEND`, the sleep file says `AllowSuspend=no`, and the key
 powers off as it always did; crust still runs the HDMI front end. `release/check-crust.py` (step 10)
 refuses an image whose parts disagree about it ([build-container.md](../build-container.md) for the

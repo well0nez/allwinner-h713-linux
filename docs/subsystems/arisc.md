@@ -9,9 +9,9 @@ on 2026-09-06 before the rule was understood; the hardware survived every one of
 
 ## Firmware and driver
 
-Two firmwares can run here, and the board's device tree names which (`firmware-name`). On the HY310 it
-is **crust**, our own, built with the image ("crust and the contract page" below). On every other board
-it is the vendor's (`h713-arisc.bin`, the vendor's `scp.bin`), which never ships - like the MIPS
+Two firmwares can run here, and the board's device tree names which (`firmware-name`). On the HY310 and the
+HY200 QZ713DF A1 (HY300PRO-G-EU, since kernel `0246`, measured 10.10.2026 in `doku/184`) it is **crust**, our own,
+built with the image ("crust and the contract page" below). On every other board it is the vendor's (`h713-arisc.bin`, the vendor's `scp.bin`), which never ships - like the MIPS
 artifacts in [mips.md](mips.md), it comes from the user's own device dump via `h713-extract`. The
 driver, `sun50i-h713-arisc`, loads it into SRAM, releases the core's reset, and then must complete
 a startup handshake before the firmware services anything at all - a notification on one channel,
