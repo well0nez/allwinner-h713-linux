@@ -75,6 +75,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       gewollt, `doku/160`)
       Beim selben Push den alten GitHub-Branch `origin/hy300-pro-ab` loeschen (Marco 06.10.: ja; Inhalt ist in `main`, 7.8)
 - [ ] 1.7 `main` pushen (06.10. +113, 09.10. 19:00 +199; aktuell `git rev-list --count origin/main..main`)
+      - **10.10. (Marco): veröffentlicht wird nur `main`.** Die lokalen Zweige `versuch/*` und `integration/*` (alle in `main`
+        enthalten, ohne Upstream) bleiben lokal und kommen weg, sobald der alte G-EU-Worktree weg ist (`versuch/geu-crust` ist dort
+        ausgecheckt). In den Forks nur die Zweige, auf die `main`s Submodul-Zeiger zeigen (U-Boot `h713-hy310`, TF-A `sun50i-h713`,
+        crust als `h713` aus dem lokalen `versuch/mips-drop`); deren `versuch/*` bleiben lokal. Auf GitHub liegen außer `main` noch
+        `master`, `legacy`, `hy300-pro-ab` (Löschen von `hy300-pro-ab` ist freigegeben, 1.6) - `master`/`legacy` beim Push mit Marco klären
 - [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
 
