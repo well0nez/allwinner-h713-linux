@@ -35,6 +35,15 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - Voraussetzungen: crust-Fork veröffentlicht (1.6, mit der G-EU-Konfig `c5b536f`), crust als Submodul statt `CRUST_SRC`
         (5.15), Spiegel `crust-h713/` neu
       - im selben Gespräch: 2.32 (echtes Aus über crust statt U-Boot-Schleife, 2,4 W gegen 0,3 W Stock)
+      - **ENTSCHIEDEN 10.10. abends (Marco: "das klingt perfekt"):** **crust ist die Vorgabe auf jedem Board mit gemessener
+        crust-Konfiguration** (HY310, HY300PRO-G-EU `projector05061226`), weil nur damit Standby und das echte Aus (0,3 W,
+        `doku/188`) gehen. **Die Hersteller-Firmware bleibt als Rückfall** - immer aus dem eigenen Abzug mitinstalliert
+        (`h713-extract` -> `/lib/firmware/h713-arisc.bin`, wie heute) und **einen Befehl entfernt**, nicht abgebaut. Boards
+        ohne gemessene crust-Konfiguration (G-EU `projector09220931`, `hy300-pro`, `hy300-t08`, `hy350`, `hy200-qz713-v2`)
+        laufen weiter mit der Hersteller-Firmware; keine geliehene Konfiguration (PB5-Vorfall 19.09.). Standby ist nicht die
+        Vorgabe: `short = poweroff`, Standby per `h713-power set short standby` (2.29, 2.32). Umsetzung: **5.20**.
+        Vor dem Release außerdem: crust-Fork auf GitHub (1.6, Kopf `d8a8d56`), crust als Submodul (5.15), Aus am HY310
+        messen (2.32), Spiegel `crust-h713/` auf dem Kopf (seit `versuch/aus-pl6` 87 Patches)
 - [ ] 1.2a **Z4 zweiter Boot** (~80 s nach Strom-an, Ursache unbekannt, Journal war flüchtig - **06.10.: ist es im
       Abbild weiter**, `10-h713.conf` `Storage=volatile` schlägt `/var/log/journal`, `doku/155` §3): Journal im
       Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
@@ -241,6 +250,34 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
       `repo-neu` liegen die vom 05.10. (vor crust), daher am 10.10. zwei falsche FAILs (hy310, hy200-qz713df-a1 "device tree
       names h713-arisc.bin"); im frisch gebauten Worktree grün. Den DTB nur mit passendem Kernelbaum-Stempel werten, sonst "note"
+- [ ] 5.20 **ARISC-Wahl: Anzeige im Installer und Umschalter `h713-arisc`** (Entscheidung 1.1b, Marco 10.10. abends). Eigenes
+      Paket `arbeit/arisc-wahl-<datum>/`, **nach** dem G-EU-Abbild `geuaus1` und seinen Kurztests. Ziel: crust bleibt die
+      Vorgabe, die Hersteller-Firmware ist ohne Neuinstallation erreichbar, und jeder sieht, welche läuft.
+      1. **Kernel (neuer Patch, `sun50i-h713-arisc`):** Moduloption `firmware=<name>` überstimmt `firmware-name[0]` des
+         Gerätebaums. Erlaubt nur `h713-arisc.bin` (Hersteller) oder den crust-Namen des eigenen Baums; alles andere wird mit
+         Warnung ignoriert. Die Nachlade-Regel `0192` bleibt: läuft (von BL31 gestartet) crust und die Option sagt
+         Hersteller, lädt der Treiber die Hersteller-Datei und ersetzt crust - das ist am 10.10. nebenbei belegt worden (der
+         Treiber ersetzte ein FEL-crust durch die Datei, `doku/188` §2). Die Startzeile sagt, welche Firmware warum läuft
+         ("firmware: vendor (module option)").
+      2. **Werkzeug `h713-arisc` (Userspace, wie `h713-power set`):** `h713-arisc status` (welche läuft, Version/Build,
+         was das heißt: Standby ja/nein, Aus über crust oder Gate), `h713-arisc set vendor|crust` schreibt/löscht
+         `/etc/modprobe.d/h713-arisc.conf` (`options sun50i_h713_arisc firmware=h713-arisc.bin`), sagt "wirkt nach dem
+         nächsten Neustart"; braucht root; Tests nach dem Muster `userspace/h713-power/tests`. Weigert sich auf einem Board,
+         dessen Abbild keine Hersteller-Datei hat (Abzug ohne `scp`).
+      3. **Nichts an U-Boot und Gate:** BL31 startet weiter crust aus dem FIT; mit der Hersteller-Firmware findet TF-A keinen
+         crust-Vertrag und fällt von selbst zurück (Standby verweigert, Aus = Gate, TF-A-Ereignis 5) - das ist bereits so
+         gebaut (`sunxi_scp_off.c`, `sunxi_standby.c`).
+      4. **Installer (`h713-install`, Abschluss):** eine Zeile "ARISC: crust (Board-Konfiguration ..., Standby und Aus 0,3 W)"
+         oder "ARISC: Hersteller-Firmware aus deinem Abzug (TV-303 ... ), kein Standby, Aus = Gate", dazu der Hinweis auf
+         `h713-arisc set vendor`. Quelle: der Gerätebaum des Abbilds (`firmware-name`) und die extrahierte `arisc_version`.
+         Eine Install-Option `--arisc vendor` legt die modprobe-Datei gleich mit an (für Boards, auf denen crust stört).
+      5. **Messen am G-EU** (Kopie, FEL oder installiertes Testabbild): `set vendor` + Neustart -> Hersteller-Firmware läuft,
+         EDID/HPD und Bild ok, Standby sauber verweigert, `poweroff` -> Gate (~2,4 W); `set crust` + Neustart -> crust, Aus 0,3 W.
+      6. **Doku:** `docs/subsystems/arisc.md` (die Wahl, der Umschalter, was ohne crust fehlt), `docs/tools/h713-arisc.md`,
+         README/Board-Liste (welches Board welche Firmware als Vorgabe hat), `RELEASES.md`.
+      7. **Später (eigenes Paket, nur mit Besitzerbericht und Registerbeweis):** crust ohne Standby für fremde Boards - nur Aus
+         und der HDMI-Vertrag, die Pins (PL6, PB5, PL3, Taste) aus `standby_param` des eigenen Stock-Gerätebaums; dann hätten
+         auch sie 0,3 W im Aus, ohne dass wir ihr DRAM kennen
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
