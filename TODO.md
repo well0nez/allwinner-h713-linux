@@ -147,6 +147,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Stock schaltet offenbar wirklich ab und lässt nur die ARISC-Firmware wachen. Weg: "Aus" über crust - ARM-Kerne aus, DRAM
       aus, nur crust und RTC wach, die Taste weckt (wie der Standby, nur ohne Self-Refresh) - statt der U-Boot-Schleife. Vor dem
       Release wenigstens bewerten und den Stock-Wert am HY310 messen; gehört zur ARISC/crust-Besprechung mit Marco
+      - **10.10. Cloud-RE A (`doku/187`, aus Listings, nicht gemessen):** Stock-"Aus" = BL31 `SYSTEM_OFF` setzt RTC-GP2 = 2 und lässt
+        die ARISC den SoC per Watchdog zurücksetzen; nach dem Reset schickt BL31 "fake poweroff", die ARISC macht Wecker scharf
+        (PL4, IR, CEC), legt ARM-Seite, DRAM und PLLs still und zieht **PL6 low** - die eine Freigabe von vdd-cpu/vdd-sys/vcc-pll/
+        vcc-dram, an G-EU **und** HY310. Wecken: PL6 high, GP2 = 0xf, Watchdog-Reset, Kaltstart. Unser crust schaltet PL6 nirgends.
+        Nächster Schritt nach der Besprechung: Bankmessung am HY310 (crust zieht PL6 im dunklen Wartezustand, Wattmeter, Ziel 0,3 W)
 - [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
       Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
       bevor der erste Frame steht); nicht dringend
@@ -160,8 +165,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Firmware-Log (Abbild-Stufe, `h713_disp init` ohne `elog=`) nur "HDCP Process cost tick". Klären, ob die HY310-Zeile vom
       05.10. aus einer höheren Log-Stufe kam; `referenz/messregeln.md` HDCP 2.2 danach nachziehen. Bis dahin: Bit LINK 0x422 +
       neue Sitzung je Neustecken
+      - **10.10. Cloud-RE C (`doku/187`): geklärt aus dem Listing.** `MsgHandle_SKE_SEND_EKS` ist nur der Funktionsname des
+        Log-Aufrufs; die Format-Maske (`0xA7`, fest beim Start) druckt Funktionsnamen auf keiner Stufe. Die Zeile
+        `HDCP Process cost tick` (Stufe 1, einzige Stelle) **ist** der SKE_Send_Eks-Beweis - am G-EU also erbracht. Die HY310-Zeile
+        vom 05.10. war zusammengesetzt. Messregel, `docs/subsystems/hdcp.md` und h713-tv-README korrigiert. Rest: Gegenprobe am Gerät
+        (`0x4B48BE84` liest `0xA7`), dann schließen
 - [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
       höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
+      - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf
+        (`snd_alsa_trid` ohne PM-Haken); seine TVFE-Einschaltfolge (`tvtop_tvfe_enable`) hat drei Pausen von 10-15 ms, Takte mit
+        festen Raten und am Ende `0x06700000 := 0x003003ff` (TVFE-Top) - bei uns nicht drin. Kandidat für die Fehlversuche, nicht belegt
+      - **10.10. zu C1 (B):** der Stock-Kernel schaltet die **TVCAP-Domäne im Standby nie ab** (`tv303_pm_domains`: Eintrag
+        `pd_tvcap` ganz Null, im ELF nachgelesen); MIPS-Park schon in `suspend`, ohne Wartezeiten. Versuch, wenn Standby wieder
+        dran ist: TVCAP im Systemschlaf an lassen, dann prüfen, ob der INCAP-Stopp vor dem Suspend noch nötig ist
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -289,6 +305,9 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
         Werkzeugen, je Thema ein Zweig (`a-aus`, `b-einschlafen`, `c-loglevel`) nur mit dessen Material; der Cloud-Agent arbeitet
         auf seinem Zweig und liefert per PR (BERICHT.md, Notizen, ggf. Patch-Entwürfe). Lokal vorbereiten, dann anlegen
       Repo anlegen und Hochladen = Veröffentlichen an einen Dienst -> nur mit Marcos Ja
+      - **10.10.: alle drei geliefert und ausgewertet** (`doku/187`; A und B direkt auf ihren Zweig, C als PR #1). Kernaussagen
+        gegen das Material nachgeprüft. Lokaler Klon mit allen Zweigen: `arbeit/cloud-re-20261010/repo`. Offen: Marco löscht das
+        Repo `well0nez/h713-offline-re` auf GitHub
 - [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)

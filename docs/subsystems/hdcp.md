@@ -168,11 +168,21 @@ key-2.2:       handed over at probe (THal_Vp_SetHDCP22Key accepted; 2.2 advertis
 firmware:      ... MsgHandle_SKE_SEND_EKS ... HDCP Process cost tick:108
 ```
 
-`SKE_SEND_EKS` is the source handing over the encrypted session key, which it only does after it
-has verified the receiver certificate against the DCP root - so the line is the source's verdict,
-not ours. Eight mode switches (1080p60 <-> 720p50/60) each re-authenticated within the firmware's
+The firmware line is written by the function that handles `SKE_Send_Eks`: the source handing over
+the encrypted session key, which it only does after it has verified the receiver certificate
+against the DCP root - so the line is the source's verdict, not ours. Eight mode switches (1080p60 <-> 720p50/60) each re-authenticated within the firmware's
 poll; no fallback to 1.4. Protected content was not needed for this: the handshake is mutual, and
 a failed one does not leave a standing session.
+
+**Corrected 10.10.2026 (`doku/187`):** the firmware never prints the name `MsgHandle_SKE_SEND_EKS`.
+It is the function-name argument of the log call, and the firmware's format mask leaves function
+names out at every log level (`0xA7`, set once at start). What the ring holds is
+`E/HdcpRx ... port<N> HDCP_base:0x<..> HDCP Process cost tick:<N>` (seen on the HY300PRO-G-EU: `port1 HDCP_base:0x6840000 HDCP Process cost tick:643`) - the only
+place in `display.bin` that logs this text, at level 1, so it is in the ring at the level the
+image runs. Search for `HDCP Process cost tick`, not for `SKE_SEND_EKS`. Read from the listing; the
+level and the mask are not yet read back on a device (`0x4B48BE84` should read `0xA7`). *Superseded:* the quote above shows
+the function name in the log line; it was put together from the listing and the log, there is no
+capture that shows it.
 
 ### On the HY300PRO-G-EU (10.10.2026)
 
@@ -182,10 +192,10 @@ read 0x41 and then 0x45, and after a standby the source reached `Enabled` again.
 source asked anew (`Undesired`, `Desired`): i915 does not ask again by itself after the box restarted
 or woke - the limit below, from the source's side. HDCP 2.2 with the Fire TV stick: "2.2 (session stands)",
 authenticated, LINK 0x422 = 0x01, and after each of two re-plugs a new session with a new firmware
-process line. The firmware log at the level the image runs (`h713_disp init` without `elog=`) shows
-only that line's tail (`HDCP Process cost tick:643`), **no `SKE_SEND_EKS`** - although the board runs the
-HY310's `display.bin` (`16c74a28...`). Whether the HY310's line of 05.10. came from a higher log level is
-not checked (TODO 2.36); for this board the proof is the authenticated bit plus a new session per re-plug.
+process line. The firmware log shows `HDCP Process cost tick:643` - which is the `SKE_Send_Eks` line
+(see the correction above, `doku/187`), so the proof here is the same as on the HY310: the firmware line,
+the authenticated bit and a new session per re-plug. *Superseded (10.10.2026):* "only that line's tail,
+**no `SKE_SEND_EKS`** - whether the HY310's line came from a higher log level is not checked (TODO 2.36)".
 
 ## Limits
 

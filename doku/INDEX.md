@@ -36,7 +36,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/94` |
-| `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180`, `doku/184` |
+| `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180`, `doku/184`, `doku/187` |
 | `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/133`, `doku/138`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/179`, `doku/182`, `doku/184`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
@@ -132,7 +132,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-pq/h713_pq/model.py` | `doku/76`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/I0-helligkeit-nachgemessen`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
 | `userspace/h713-pq/h713_pq/output.py` | `doku/81` |
 | `userspace/h713-pq/tests/test_h713_pq.py` | `doku/61`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14` |
-| `userspace/h713-tv/README.md` | `doku/101`, `doku/102`, `doku/107`, `doku/112`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
+| `userspace/h713-tv/README.md` | `doku/101`, `doku/102`, `doku/107`, `doku/112`, `doku/187`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
 | `userspace/h713-tv/main.c` | `doku/101`, `doku/102`, `doku/128`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/82`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
 | `userspace/h713-warp/capture.c` | `doku/86` |
 
@@ -231,6 +231,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`184-hy300pro-g-eu-geucrust2-testreihe-20261010.md`](184-hy300pro-g-eu-geucrust2-testreihe-20261010.md) | Analyse | 2026-10-10 | 184 - HY300PRO-G-EU mit geucrust2: alles, was am HY310 bestätigt ist, bis auf die Standby-Leistung (10.10.2026, 01:00-02:30) | 6 |
 | [`185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md`](185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md) | Analyse | 2026-10-10 | 185 - HY300PRO-G-EU: Lüfter und Lampe im Standby aus - PB5 gehört dem Board-Manager (10.10.2026, 02:30-02:50) | 2 |
 | [`186-handoff-20261010-frueh.md`](186-handoff-20261010-frueh.md) | Handoff | 2026-10-10 | 186 - Handoff 10.10.2026 früh: der HY300PRO-G-EU auf dem Stand des HY310, alles in `main`, nächste Schritte | - |
+| [`187-offline-re-a-b-c-ausgewertet-20261010.md`](187-offline-re-a-b-c-ausgewertet-20261010.md) | Analyse | 2026-10-10 | 187 - Offline-RE A, B, C ausgewertet: Stock-"Aus" über PL6, TVCAP bleibt im Standby an, die SKE-Zeile ist die cost-tick-Zeile (10.10.2026) | 2 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -388,7 +389,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-43 von 245 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+43 von 246 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

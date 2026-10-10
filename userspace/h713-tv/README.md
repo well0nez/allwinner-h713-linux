@@ -746,7 +746,7 @@ hdcp            version:       2.2 (session stands) -- LINK 0x422=.. 0x3c0=.. 0x
 hdcp            authenticated: yes (2.2 session, LINK 0x422[0]) -- rxstatus ...; link 0x6d=.. (the firmware's connect-event flag, no HDCP meaning)
 hdcp            key-1.4:       not loaded -- nothing loads it before the firmware starts, ... (LINK 0x93=0x00)
 hdcp            key-2.2:       handed over at probe (THal_Vp_SetHDCP22Key accepted; 2.2 advertised to the source, ...)
-hdcp            firmware:      E/HdcpRx ... MsgHandle_SKE_SEND_EKS ... HDCP Process cost tick:N (ring write pointer N)
+hdcp            firmware:      E/HdcpRx ... port1 HDCP_base:0x6840000 HDCP Process cost tick:N (ring write pointer N)
 ```
 
 What the lines rest on. HDCP 2.2 is a state machine inside the display firmware; the receiver hardware
@@ -756,7 +756,8 @@ is `authenticated`. HDCP 1.4 is a hardware block whose pass arrives as an interr
 once, so a 1.4 pass leaves nothing to read; today no 1.4 key is loaded anyway (`key-1.4: not loaded`,
 doku/112), and a source that insists on 1.4 gets no picture. The `firmware:` line is the newest line of the
 firmware's log ring that mentions HDCP, read in place through cpu_comm; the firmware logs its 2.2 success
-and its failures at its error level, so they show at the default level, while a 1.4 pass is an INFO line
+(the `HDCP Process cost tick` line, written when the source's SKE_Send_Eks message is handled - the firmware
+never prints the function name, doku/187) and its failures at its error level, so they show at the default level, while a 1.4 pass is an INFO line
 and does not. Read the five lines once before a protected source is plugged in (the boot baseline) and
 once after; working journal `FB-HDCP22/REPORT.txt` says what a success and a failure look like.
 
