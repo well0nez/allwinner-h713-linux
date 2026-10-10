@@ -257,7 +257,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Stock schaltet offenbar wirklich ab und lässt nur die ARISC-Firmware wachen. Weg: "Aus" über crust - ARM-Kerne aus, DRAM
       aus, nur crust und RTC wach, die Taste weckt (wie der Standby, nur ohne Self-Refresh) - statt der U-Boot-Schleife. Vor dem
       Release wenigstens bewerten und den Stock-Wert am HY310 messen; gehört zur ARISC/crust-Besprechung mit Marco
-- [ ] 2.33 **HY300PRO-G-EU: Lüfter (und Lampe?) im Standby an** (Marco 10.10. nachts: "das soll definitiv nicht so sein";
+- [x] 2.33 **HY300PRO-G-EU: Lüfter (und Lampe?) im Standby an** - **erledigt 10.10. nachts** (`doku/185`): Stock-Baum nennt PB5 als
+      `panel_bl_en` und `fan-power-gpio` wie der HY310; Kernel `0249` gibt PB5 dem Board-Manager statt des Hogs, im Standby "fan power
+      rail off", Lüfter aus, Lampe dunkel, nach dem Wecken alles zurück. crust musste nicht angefasst werden. Bisher (Marco 10.10. nachts: "das soll definitiv nicht so sein";
       danach "die fan/lampe geschichte in crust"). Gemessen `doku/184`: im Standby dunkel, Lüfter dreht. `hy310-board-mgr` schaltet
       die Lüfterschiene beim Suspend nur ab, wenn der Gerätebaum sie ihm gibt (`0211`); der G-EU-Baum tut es nicht ("fan power rail
       not ours, left as it is"). Am HY310 trägt PB5 Lüfter und LED-Boost zusammen; am HY300 Pro des Melders schaltete PB5 Licht

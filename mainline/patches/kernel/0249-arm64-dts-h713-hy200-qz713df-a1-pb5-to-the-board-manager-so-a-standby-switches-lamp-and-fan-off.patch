@@ -1,0 +1,76 @@
+arm64: dts: h713: hy200-qz713df-a1: PB5 to the board manager, so a standby switches lamp and fan off
+
+The HY300PRO-G-EU kept its fan turning in standby: the tree kept PB5 as the
+dtsi's gpio-hog and took fan-power-gpio away from the board manager, which
+then says "fan power rail not ours, left as it is" at suspend. The board's
+stock tree names PB5 as panel_bl_en and as fan0's fan-power-gpio, as the
+HY310's does, so the board manager owns it here as on the HY310: off late in
+suspend, on again at resume.
+
+Measured 10.10.2026 on the HY300PRO-G-EU: at suspend "fan power rail
+off", the fan stops, the lamp is dark; after the RTC wake "fan power rail
+on", lamp, fan and picture back (5.3 s, doku/185).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../allwinner/sun50i-h713-hy200-qz713df-a1.dts    | 15 +++++++++++----
+ .../boot/dts/allwinner/sun50i-h713-hy310.dts      |  5 +++--
+ 2 files changed, 14 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+index 348666d..fcdf630 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy200-qz713df-a1.dts
+@@ -15,7 +15,8 @@
+  *    display firmware owns that PWM; hdmirx sends the words (0166, 0168). No
+  *    pin group (0166a);
+  *  - no pwm-backlight: the dtsi's PWM2 on PB4 is the HY310's dimmer, and
+- *    nothing of this board says what PB4 is. The fan_power_hog on PB5 stays;
++ *    nothing of this board says what PB4 is;
++ *  - PB5 is the board manager's, as on the HY310 (below);
+  *  - fan tacho PH13 (stock fan0 fg-gpio of both firmwares, 5520-5610 rpm on
+  *    the HY300PRO-G-EU; the HY310: PH17). The board manager powers off when
+  *    it counts too little, so the input has to be the right one;
+@@ -62,9 +63,16 @@
+ 	panel-reset-gpios = <&pio 7 16 GPIO_ACTIVE_LOW>;	/* PH16 */
+ };
+ 
+-/* PB5 stays the dtsi's hog here, not the board manager's (see above). */
++/*
++ * PB5 enables the lamp and the fan rail together: the stock tree of the
++ * HY300PRO-G-EU names it as panel_bl_en and as fan0's fan-power-gpio, as the
++ * HY310's does. So the board manager owns it as on the HY310 and a standby
++ * switches lamp and fan off and back on; with the hog the fan kept turning in
++ * standby (10.10.2026). Until the board manager probes, PB5 keeps the high
++ * level U-Boot set.
++ */
+ &fan_power_hog {
+-	status = "okay";
++	status = "disabled";
+ };
+ 
+ &hdmirx {
+@@ -74,7 +82,6 @@
+ &board_mgr {
+ 	fan0 {
+ 		fg-gpio = <&pio 7 13 GPIO_ACTIVE_HIGH>;	/* PH13, stock fan0 fg-gpio */
+-		/delete-property/ fan-power-gpio;
+ 	};
+ };
+ 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+index 37d8de9..06886f4 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+@@ -69,8 +69,9 @@
+  * PB5 enables the LED boost and the fan rail together (see the hog in the
+  * dtsi). Here the board manager owns it instead of the hog, so that a
+  * standby can switch light and fan off and back on; until it probes, PB5
+- * keeps the high level U-Boot set. The boards that include this file keep
+- * the hog.
++ * keeps the high level U-Boot set. Of the boards that include this file, the
++ * HY200 QZ713DF A1 hands PB5 over too (its stock tree names it the same way);
++ * the HY300 Pro keeps the hog.
+  */
+ &fan_power_hog { status = "disabled"; };
+ 

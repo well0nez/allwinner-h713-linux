@@ -15,7 +15,7 @@ firmware is a **variant** under `variants/<stock build>/`.
 | DRAM clock | 792 MHz (its own boot0) | 624 MHz (its boot0; cstenger's bench clock) |
 | eMMC | 15 273 600 sectors (its own GPT) | 15 269 888 sectors (the image's GPT; no unit read) |
 | display.bin | 1 256 216 B `16c74a28...` = the HY310's revision | 1 255 696 B `4380f1b3...` = the `HY200 QZ713DF_A1` row of `h713_mips_fw_revs[]` |
-| Measured | SC7A20 accelerometer at 0x18; no camera; fan tacho PH13 at 5520-5610 rpm (doku/136); crust (board id 3), display MIPS restart with the panel's supply cycled (PF6, PH16), standby woken by RTC, key and IR, HDCP 1.4 pair, HDCP 2.2, sound after a standby (doku/182, doku/184); off draws 2.4 W against 0.3 W with stock (TODO 2.32); the fan keeps running in standby (TODO 2.33) | nothing |
+| Measured | SC7A20 accelerometer at 0x18; no camera; fan tacho PH13 at 5520-5610 rpm (doku/136); crust (board id 3), display MIPS restart with the panel's supply cycled (PF6, PH16), standby woken by RTC, key and IR, HDCP 1.4 pair, HDCP 2.2, sound after a standby (doku/182, doku/184); off draws 2.4 W against 0.3 W with stock (TODO 2.32); lamp and fan off in standby since kernel 0249 (PB5 to the board manager, doku/185) | nothing |
 | Installer profile | `hy200_qz713df_a1/projector05061226` | `hy200_qz713df_a1/projector09220931` |
 
 Board level, the same for both: kernel DTB `sun50i-h713-hy200-qz713df-a1` (patch 0181), U-Boot base

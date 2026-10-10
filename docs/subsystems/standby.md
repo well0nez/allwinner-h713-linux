@@ -8,10 +8,12 @@ same ran on the HY300PRO-G-EU (board HY200 QZ713DF A1, test image `geucrust2`, `
 power key and the remote's IR key, picture and sound back after each). A release image does **not** offer it
 yet (TODO 3.3: the hang going to sleep, C1, is open).
 
-**On the HY300PRO-G-EU the fan keeps running in standby** - a fault, not a design choice (TODO 2.33). The
-board manager switches the fan rail off at suspend only when the board's device tree hands it the rail; the
-G-EU tree does not, so it says `fan: suspended: fan power rail not ours, left as it is` and the fan keeps turning
-(on the HY310 the rail, PB5, carries the fan and the LED boost together, `0211`). The picture goes dark.
+**Lamp and fan go off in standby on both boards.** The board manager switches the fan rail off late in suspend
+and on again at resume, but only when the board's device tree hands it the rail (`0211`). PB5 carries the lamp's
+enable and the fan together, on the HY310 and on the HY300PRO-G-EU alike (the G-EU's stock tree names it as
+`panel_bl_en` and as the fan's `fan-power-gpio`). Until kernel `0249` the G-EU tree kept PB5 as a gpio-hog, the
+board manager said `fan power rail not ours, left as it is`, and the fan kept turning in standby; since
+`0249` it says `fan power rail off` and `on` (10.10.2026, `doku/185`).
 
 | State | What runs | Power | How you get there | How you leave |
 |---|---|---|---|---|
