@@ -26,8 +26,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 1.2a **Z4 zweiter Boot** (~80 s nach Strom-an, Ursache unbekannt, Journal war flüchtig - **06.10.: ist es im
       Abbild weiter**, `10-h713.conf` `Storage=volatile` schlägt `/var/log/journal`, `doku/155` §3): Journal im
       Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
-      - 11.10. nachts: der G-EU startete um 04:57 ohne Zutun neu (UART-ESP gleichzeitig - eher Strom); das Journal davor war
-        weg, die Ursache nicht mehr feststellbar (`doku/196` §3) - ein weiterer Grund für das persistente Journal
+      - 11.10. nachts: der G-EU startete um 04:57 neu, das Journal davor war weg - es war Marco (vor dem Schlafen); ohne ihn
+        wäre die Ursache nicht feststellbar gewesen (`doku/196` §3), ein weiterer Grund für das persistente Journal
 - [ ] 1.2b **Reinstall über unser Layout verwirft `/etc/h713`** (wifi.env → AP-Modus, warp.conf, keystone,
       tvconfig): der Installer soll die Nutzer-Einstellungen wie die 44 Herstellerdateien zurücklesen und
       übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
@@ -218,8 +218,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Lautstärke rast beim Halten. Angleichen: `EVIOCSREP` auf dem BLE-Gerät oder in h713-keys drosseln. Dazu: **OK kommt per
         Bluetooth als `KEY_SELECT`** (HID "Menu Pick", 353), per IR als `KEY_OK` - h713-keys soll beide als OK lesen
       - 11.10. nachts gebaut (`doku/196` §1): `EVIOCSREP` 500/125 ms für die Bluetooth-Fernbedienung (wie IR), `KEY_SELECT` =
-        `KEY_OK`; Rechner-Tests 22/22. Zweig `versuch/nacht-b` (`3f620ad`), am G-EU aufgespielt - **Marco hält Lauter per
-        Bluetooth**, dann nach `main`
+        `KEY_OK`; Rechner-Tests 22/22. **11.10. früh gemessen** (Marco hielt Lauter/Leiser per Bluetooth: erste Wiederholung
+        nach ~510 ms, dann alle 132 ms wie per IR, Marco: "bt funktioniert") - in `main` (`fc04088`). Offen in 2.52 nur noch:
+        Eingangstaste, Fokusrichtung an der Wand
 - [ ] 2.53 **Einblendungen: Feinschliff, optional** (11.10.): Ausblenden in Stufen statt schlagartig; das Stumm-Zeichen in stark
       gestauchten Bildecken schärfer (Mehrfachabtastung beim Vorverzerren); die Einblendungen am G-EU (720p) am Gerät ansehen
       (**11.10. erledigt**, `doku/195`: Lage und Größe passen, Marco)

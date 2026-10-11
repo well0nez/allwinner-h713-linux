@@ -61,7 +61,7 @@ nachts gebaut: braucht Augen an der Wand.
 
 - Der G-EU **startete um 04:57 (Host) neu, ohne mein Zutun**; der UART-ESP lief danach erst 45 min, startete also etwa
   gleichzeitig - spricht für Strom. Kein "R_WDOG found armed" (kein Aus über crust). Das Journal davor ist weg (flüchtig,
-  TODO 1.2a). Frage an Marco.
+  TODO 1.2a). Frage an Marco. - *Nachtrag 11.10. früh:* Marco war es, vor dem Schlafen.
 - Der ThinkPad schaltet seinen Bildschirm nach einer Weile ab (Cinnamon); für Messungen über Nacht `xset dpms force on`.
 
 ## 4 Stand am G-EU
