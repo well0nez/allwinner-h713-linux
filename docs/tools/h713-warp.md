@@ -138,6 +138,31 @@ Details: working journal `keystone/PLAN` (stage S5), working journal `AP2d/desig
 working journal `AP2f/REPORT` (the matrix and its z trap), working journal `AP2/REPORT` (the vendor's units
 and clamp), docs/tools/h713-tv.md.
 
+## What a frame costs (measured 11.10.2026, HY300PRO-G-EU, 720p)
+
+CPU time of the warp's thread per frame at a fixed 1296 MHz, from a measuring build (`arbeit/warp-sparsam-20261011/`):
+dequeue 12 µs, **drawing 490 µs**, the fence 180 µs (the `glFlush` that submits the GPU jobs, and the sync file), the
+round trip to `h713-tv` 64 µs, queueing the slot back 25 µs - about 0.77 ms. The drawing is two passes (luma at full
+size, chroma at half size), and each pass costs Mesa/Panfrost about 125 µs to set up a GPU batch whatever the first
+call is: without the `glClear` the draw call takes that time instead. Compiler flags make no difference (`-O3
+-mcpu=cortex-a53 -flto` against `-O2`, A/B/A/B at a fixed clock: the same CPU per frame) - the time is in Mesa and the
+kernel, not in this code. The next real step would be one pass per frame: the three NV12 targets are contiguous (the
+chroma follows the luma at `pitch × height`), so the whole buffer is one R8 image of width × 1.5 height - not done yet,
+it needs eyes on the wall (TODO 2.47).
+
+The warp draws every slot the capture hands on: it wakes 0.1 ms after the slot's timestamp and is done 1.5 ms later.
+How many slots there are is decided before it, in the firmware's capture: read straight from the flip pointer pair
+(AFBD +0x320 through `/dev/mem`), the pair moved 30-35 times a second with the warp on, with it off and with either
+afbd module, while the source showed a still, locked screen (11.10.2026; the night before, with a desktop, the warp got
+52-59 a second). Whether the capture leaves out only repeated frames there is still to be measured with a moving
+picture.
+
+Where the CPU went besides the warp, and what changed: the kernel let schedutil change the clock every 462 µs, and
+under the warp's 60 Hz load the `sugov:0` thread that carries out each change (a PWM regulator ramp, then the PLL)
+cost as much as the warp itself; `/etc/tmpfiles.d/h713-cpufreq.conf` sets 20 ms (docs/hardware.md). And `h713-tv`
+wrote one journal line per late warp frame; it now counts them (docs/tools/h713-tv.md). Together: all four cores
+5.9 % busy with the warp on before, 2.9-3.1 % after.
+
 ## Corner names, verified
 
 `tl`, `tr`, `bl`, `br` are the corners of the projected picture as the audience sees it. Verified on the

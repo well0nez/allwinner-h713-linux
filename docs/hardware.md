@@ -27,6 +27,13 @@ Allwinner **H713** (`sun50iw12p1`), SoC-ID `0x1860` (`jep106:091e:1860`), 4× Co
 pinctrl, closer to H6 in the clock tree, with quirks of its own on both - do not reuse either sibling's
 register layout blind.
 
+The four cores share one clock, 480-1296 MHz through `cpufreq-dt`, and one supply, `vdd-cpu`: a PWM regulator,
+0.81-1.16 V, ramping at 2.5 mV/µs (HY300PRO-G-EU device tree). A clock change is a regulator ramp and a PLL relock,
+which the kernel declares as 308 µs, and schedutil's thread `sugov:0` carries each one out. The kernel's own
+`rate_limit_us` (1.5 × that, 462 µs) let the clock follow the warp's 60 Hz load up and down all the time, and that
+thread cost as much CPU as the warp: `/etc/tmpfiles.d/h713-cpufreq.conf` sets 20 ms at boot, which halves the load
+with the warp on (measured 11.10.2026, table in that file).
+
 Two more processors run on the same die and are already alive by the time Linux boots:
 
 | Core | Firmware | Owns |
