@@ -136,6 +136,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-tv/README.md` | `doku/101`, `doku/102`, `doku/107`, `doku/112`, `doku/187`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
 | `userspace/h713-tv/main.c` | `doku/101`, `doku/102`, `doku/128`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/82`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
 | `userspace/h713-warp/capture.c` | `doku/86` |
+| `userspace/libh713osd/README.md` | `doku/192` |
 
 ## 2 Alle Eintraege
 
@@ -237,7 +238,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`189-handoff-20261010-abends.md`](189-handoff-20261010-abends.md) | Handoff | 2026-10-10 | 189 - Handoff 10.10.2026 abends: das Aus über crust ist in `main`; als Nächstes das Aus am HY310 messen und mit Marco das Kaltstart-Gate besprechen; OSD und Konsole im Warp laufen als eigenes Paket | - |
 | [`190-aus-ueber-crust-am-hy310-20261010.md`](190-aus-ueber-crust-am-hy310-20261010.md) | Analyse | 2026-10-10 | 190 - "Aus" über crust am HY310 gemessen: Selbstwecken, Power-Taste und IR-Fernbedienung (10.10.2026) | 4 |
 | [`191-kaltstart-gate-ueber-crust-20261010.md`](191-kaltstart-gate-ueber-crust-20261010.md) | Analyse | 2026-10-10 | 191 - Kaltstart-Gate über crust: nach dem Einstecken wartet crust statt U-Boot, 0,3-0,6 W, die Fernbedienung weckt (10.10.2026) | 2 |
-| [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 3 |
+| [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 4 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
