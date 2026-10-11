@@ -234,6 +234,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       H4-Datenstrom auf der UART (1,5 MBd, Flusssteuerung) kommt zerstückelt an. Dazu passt 1.4 (G-EU: 245-Byte-Schreibvorgänge
       unvollständig, RTS/CTS?). Ursache offen; zuerst prüfen, ob es mit Last (Warp, WLAN) zusammenfällt. Dabei aufgefallen: am HY310
       ist zurzeit **keine Fernbedienung gekoppelt** (`h713-remote-pair status`: no remote bonded)
+- [ ] 2.50 **Lüfter-Notaus (Paket FB-SAFETY 0001/0002)**, geparkt seit 02.10. und beim Umzug nach `TODO.md` am 05.10. verloren
+      gegangen, wiedergefunden im Patch-Abgleich 11.10.: `hy310-board-mgr` schaltet nach einem Lüfterstillstand als Rückfall hart aus,
+      und der Stillstand-Poweroff greift erst, wenn der Tacho einmal Drehung gemeldet hat. Am Gerät nie gemessen (Test B7, `doku/134`:
+      Lüfterstecker unzugänglich). Neu auf die Serie setzen und einen Weg finden, den Stillstand ohne Stecker vorzutäuschen
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -241,7 +245,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **11.10.:** wird Teil von 2.46 (Tasten, Paket `arbeit/einblendungen-20261011/`): die vier Empfangs-Patches des IR-Pakets vom 03.10.
         (`doku/138`; 8 MHz, PL9 nach ARISC-Start und Resume) neu auf die Serie, die fd02-Belegung
         (15 Tasten, sieben am G-EU geprüft) als Kernel-Keymap mit Power - ohne sie kommt unter Linux kein IR-Code an (11.10. am HY310
-        mit `nec` an: kein einziger Scancode)
+        mit `nec` an: kein einziger Scancode). Damals offen geblieben: Maus- und Mikrofon-Taste senden per IR denselben Code
+        (`0x66`, `doku/141`) - per IR nicht zu unterscheiden, per Bluetooth schon
 - [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
 
 ## 4 Boards und Fremdgeräte
