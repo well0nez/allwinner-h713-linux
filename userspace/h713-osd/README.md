@@ -28,6 +28,13 @@ h713-osd ctl status                  state, channel, matrix, style, and where th
    mode (rear, ceiling: mirrored) are in that one matrix, so the overlay sits in the picture like the picture.
 4. **Show**: "osd show N" to h713-tv; over the warp it goes with the warp's next frame.
 
+What lies under a shown overlay can change without an event: the signal comes back over the ring and the warp
+takes over a second later, or the warp is switched off and on. So while something is to be seen over a keystone
+(a non-identity matrix), h713-osd asks "osd picture" again every 250 ms and draws anew when the answer no longer
+fits the way it was drawn - one journal line, "the picture under the overlay is warped now -- drawn again".
+Without a keystone nothing is asked. Found on the HY300PRO-G-EU on 11.10.2026: the badge, set while the signal
+was away, stayed straight over the warped picture once the warp was back.
+
 The mute badge follows h713-tv's own mute: h713-osd asks it ("mute") at its start and before every claim, so the
 badge survives a restart of either daemon - an update, a standby (measured 11.10.2026: h713-tv muted, h713-osd
 restarted, the badge there without a key). Between claims the events from h713-keys keep it (h713-keys mutes
@@ -60,10 +67,11 @@ happens a few times per key press; not worth it at these times - a later desktop
 ## Building and testing
 
 In the container `h713-build`: `make cross SYSROOT=...` for the board (clang, as h713-tv is built), `make host`
-and `make test` for the host tests (`tests/test_osd.py`, 9 tests, ~8 s): a fake h713-tv on a Unix socket that
+and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s): a fake h713-tv on a Unix socket that
 hands memfds over instead of dma-bufs; the tests read where the overlay landed in the buffer - bottom centre,
 pre-distorted inward over a keystone, mirrored in rear mode, following a new warp.conf, the badge staying and
-coming back after h713-tv restarts. The environment variables `H713_OSD_SOCKET`, `H713_OSD_TV`,
+coming back after h713-tv restarts, the badge drawn again when the picture under it turns warped or straight, and
+no questions to h713-tv without a keystone. The environment variables `H713_OSD_SOCKET`, `H713_OSD_TV`,
 `H713_OSD_WARP_CONF` and `H713_OSD_CONF` point the daemon at them.
 
 ## Limits

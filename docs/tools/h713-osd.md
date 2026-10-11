@@ -34,10 +34,13 @@ The look was chosen on mock-ups on 11.10.2026: the pill at the bottom; a square 
 `h713-tv` stays the only program that owns the display. It hands two ARGB8888 buffers the size of the panel to
 h713-osd (`osd claim`), lays the one h713-osd names over the picture (`osd show N`, the primary plane at zpos 2,
 kernel 0251) and puts the console back before it lets the display go - a signal lost, `h713-tv ctl off` - so the
-console never comes back under an overlay. Over the warp the change goes with the warp's next frame. Details:
-`userspace/h713-osd/README.md`, `userspace/h713-tv/README.md` 6h.
+console never comes back under an overlay. Over the warp the change goes with the warp's next frame. When the
+picture under a shown overlay turns warped or straight by itself (the signal back, the warp switched), h713-osd
+notices within a quarter second and draws it again. Details: `userspace/h713-osd/README.md`,
+`userspace/h713-tv/README.md` 6h.
 
-A refresh takes 7-15 ms on the HY310 over a strong keystone (measured 11.10.2026).
+A refresh takes 7-15 ms on the HY310 (1080p) over a strong keystone and 5-13 ms on the HY300PRO-G-EU (720p) over
+a milder one (both measured 11.10.2026).
 
 ## Not yet
 

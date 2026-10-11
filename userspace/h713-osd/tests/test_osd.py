@@ -194,6 +194,34 @@ class OsdTest(unittest.TestCase):
         x0, y0, x1, y1 = self.tv.bbox()
         self.assertLess(x1, W * 0.15, (x0, x1))                           # top right on the wall = top left on the panel
 
+    def test_badge_follows_the_picture_under_it(self):
+        """11.10., G-EU: the signal came back over the ring, the warp took over a second later - the badge drawn
+        for the ring stayed straight over the warped picture. Now it is drawn again when the picture changes."""
+        self.write("warp.conf", "tr_x = 200\ntr_y = 300\nwarp = on\n")
+        self.tv.picture = "none"                                         # no signal: the badge waits
+        self.start()
+        self.mute("on")
+        self.tv.picture = "ring"                                         # the signal back, not warped yet
+        time.sleep(0.8)
+        straight = self.tv.bbox()
+        self.tv.picture = "warped"                                       # the warp takes over
+        time.sleep(0.5)
+        warped = self.tv.bbox()
+        self.assertLess(warped[2], straight[2] - 30)                     # moved in with the corner, without a key
+        self.assertGreater(warped[1], straight[1] + 30)
+        self.tv.picture = "ring"                                         # the warp switched off
+        time.sleep(0.5)
+        self.assertEqual(self.tv.bbox(), straight)
+
+    def test_no_questions_without_a_keystone(self):
+        self.tv.picture = "warped"
+        self.start()
+        self.mute("on")
+        time.sleep(0.9)                                                  # after the overlay's own end (0.6 s)
+        asked = self.tv.lines.count("osd picture")
+        time.sleep(1.0)
+        self.assertEqual(self.tv.lines.count("osd picture"), asked)     # identity: nothing to follow, nothing asked
+
     def test_claims_again_after_h713_tv_restarts(self):
         self.start()
         self.mute("on")

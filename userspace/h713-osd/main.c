@@ -623,7 +623,8 @@ static bool handle(const char *line, char *reply, size_t n)
 		snprintf(reply, n, "ok status\noverlay         %s\nmuted           %s\nchannel         %s\nmatrix          %s\nstyle           place %s, look %s, scale %.2f, %.1f s\nlast refresh    draw %.1f ms, ask %.1f ms, clear %.1f ms, %s %.1f ms (%d pixels), show %.1f ms\n",
 			 want.until > now_s() ? "shown" : "none", want.muted ? "yes (badge)" : "no",
 			 tv.fd >= 0 ? (tv.shown ? "claimed, shown" : "claimed") : "not claimed (h713-tv not running, or no event yet)",
-			 m_identity ? "identity (straight)" : m_valid ? "from warp.conf (pre-distorted over the warp)" : "refused",
+			 m_identity ? "identity (straight)" :
+			 m_valid ? "from warp.conf (pre-distorted while the picture under it is warped)" : "refused",
 			 style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 			 style.look == OSD_PILL ? "pill" : "bare", style.scale, seconds,
 			 last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
@@ -711,8 +712,37 @@ static int client(int argc, char **argv)
 
 /* --- the loop ----------------------------------------------------------------------------------------------- */
 
+/* What lies under a shown overlay can change without an event of ours: the signal comes back over the ring and
+ * the warp takes over a second later, or the warp is switched off and on. A badge drawn for the one stays put
+ * over the other (11.10., G-EU: straight over the warped picture). So while something is to be seen over a
+ * keystone, h713-tv is asked every WATCH_S, and a change of what it says draws the picture again. */
+#define WATCH_S 0.25
+static double watch_at;			/* the next question; 0: none due */
+
+static bool watching(void)
+{
+	return tv.fd >= 0 && tv.shown && (want.muted || want.until > now_s()) && m_valid && !m_identity;
+}
+
+/* true when the picture under the overlay no longer matches the way it was drawn */
+static bool picture_changed(void)
+{
+	char answer[64];
+	bool skew;
+
+	watch_at = 0;
+	if (!tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none"))
+		return false;		/* gone (claimed again at the next event), or no picture: nothing is seen */
+	skew = !strcmp(answer, "ok warped");
+	if (skew == last.skew)
+		return false;
+	info("the picture under the overlay is %s now -- drawn again", skew ? "warped" : "straight");
+	return true;
+}
+
 /* the next thing to do: an overlay's end, or - while something is to be seen and h713-tv is not claimed (it
- * restarted, after a standby too) - the next claim, so the mute badge comes back without a key */
+ * restarted, after a standby too) - the next claim, so the mute badge comes back without a key; or the next
+ * question what lies under it */
 static void arm(int tfd)
 {
 	struct itimerspec its = { 0 };
@@ -723,6 +753,14 @@ static void arm(int tfd)
 
 		if (!next || r < next)
 			next = r;
+	}
+	if (watching()) {
+		if (!watch_at)
+			watch_at = now_s() + WATCH_S;
+		if (!next || watch_at < next)
+			next = watch_at;
+	} else {
+		watch_at = 0;
 	}
 
 	if (next > 0) {
@@ -801,6 +839,8 @@ static int run(void)
 				}
 				if (tv.fd < 0 && (want.muted || want.until))
 					again = true;	/* the claim again */
+				if (!again && watch_at && watch_at <= now_s() && watching())
+					again = picture_changed();
 			}
 		}
 		if (p[2].revents) {
