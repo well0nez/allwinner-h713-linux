@@ -26,7 +26,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/guides/keystone.md` | `doku/134` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/190`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/80` |
-| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/60`, `doku/61` |
+| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/197`, `doku/198`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107`, `doku/170` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/184`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/nachtlog/S21-re-audif-zugang` |
@@ -37,7 +37,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/94` |
 | `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180`, `doku/184`, `doku/187` |
-| `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
+| `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/197`, `doku/198`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/133`, `doku/138`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/179`, `doku/182`, `doku/184`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
 | `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184`, `doku/185`, `doku/188`, `doku/190` |
@@ -135,8 +135,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-pq/h713_pq/model.py` | `doku/76`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/I0-helligkeit-nachgemessen`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
 | `userspace/h713-pq/h713_pq/output.py` | `doku/81` |
 | `userspace/h713-pq/tests/test_h713_pq.py` | `doku/61`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14` |
-| `userspace/h713-tv/README.md` | `doku/101`, `doku/102`, `doku/107`, `doku/112`, `doku/187`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
-| `userspace/h713-tv/main.c` | `doku/101`, `doku/102`, `doku/128`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/82`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
+| `userspace/h713-tv/README.md` | `doku/101`, `doku/102`, `doku/107`, `doku/112`, `doku/187`, `doku/197`, `doku/198`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
+| `userspace/h713-tv/main.c` | `doku/101`, `doku/102`, `doku/128`, `doku/197`, `doku/198`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/82`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
 | `userspace/h713-warp/capture.c` | `doku/86` |
 | `userspace/libh713osd/README.md` | `doku/192` |
 
@@ -245,7 +245,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`194-handoff-20261011-frueh.md`](194-handoff-20261011-frueh.md) | Handoff | 2026-10-11 | 194 - Handoff 11.10.2026 früh: Fernbedienung und Einblendungen sind in `main` (nicht gepusht); als Nächstes dieselben Prüfstufen am HY300PRO-G-EU | - |
 | [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 4 |
 | [`196-nachtarbeit-kleinkram-und-warp-20261011.md`](196-nachtarbeit-kleinkram-und-warp-20261011.md) | Analyse | 2026-10-11 | 196 - Nachtarbeit 11.10.2026: Kleinkram (B) und der Warp mit dem CPU-Regler (A) | - |
-| [`197-fehlende-bilder-beim-verkleinern-20261011.md`](197-fehlende-bilder-beim-verkleinern-20261011.md) | Analyse | 2026-10-11 | 197 - Fehlende Bilder bei 1080p60 am 720p-Panel: was es nicht ist (11.10.2026, vormittags/mittags) | 1 |
+| [`197-fehlende-bilder-beim-verkleinern-20261011.md`](197-fehlende-bilder-beim-verkleinern-20261011.md) | Analyse | 2026-10-11 | 197 - Fehlende Bilder bei 1080p60 am 720p-Panel: was es nicht ist (11.10.2026, vormittags/mittags) | 5 |
+| [`198-ringpuffer-und-edid-panel-zuerst-20261011.md`](198-ringpuffer-und-edid-panel-zuerst-20261011.md) | Analyse | 2026-10-11 | 198 - Der Dreier-Ring der Aufnahme, und warum die EDID jetzt das Panel zuerst nennt (11.10.2026, mittags) | 4 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -403,7 +404,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-46 von 256 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+46 von 257 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

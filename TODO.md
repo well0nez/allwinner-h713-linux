@@ -203,14 +203,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Aufnahme am G-EU **59,8 Bilder/s**, jeder Abstand eine Bildzeit, still wie bewegt; zurück auf 1920×1080 @ 60 - 30-53/s.
         Die Firmware verliert Bilder beim **Herunterskalieren 1080p → 720p** in der Aufnahme, nicht der Warp, nicht der
         Treiber, nicht der Takt, nicht der Bildinhalt (der HY310 mit 1080p-Panel skaliert nicht: 59,5 fps). Weiter in 2.56
-- [ ] 2.56 **720p-Boards: 720p als bevorzugten Modus anbieten? [Marco]** (11.10., `doku/196`): der HY300PRO-G-EU dient die EDID des
-      HY310 (`hy310-edid.bin`, 1080p bevorzugt); eine 1080p-Quelle wird in der Aufnahme auf das 720p-Panel skaliert und verliert
-      dabei 10-50 % der Bilder, eine 720p-Quelle kommt mit 60 an. Mit 720p als bevorzugtem Modus in der EDID der 720p-Boards
-      schicken Quellen von selbst 720p (weniger Speicherlast, keine Verluste); 1080p bliebe wählbar. Vorher: was dient Stock auf
-      dem G-EU (`re/`, Abzug), und ob die Skalier-Verluste mit einer Einstellung der Firmware zu beheben sind
-      - **11.10. vormittags: zurückgestellt bis 2.57.** Die Aufnahme verliert nichts: sie schreibt alle 60 Bilder, die Anzeige
-        gibt jedes vierte zu spät frei (`arbeit/aufnahme-takt-20261011/BERICHT.md`). *Überholt:* "die Firmware verliert Bilder
-        beim Herunterskalieren in der Aufnahme" (oben, früh)
 - [ ] 2.57 **VidDec-Deskriptor meldet 30 Bilder/s - echte Quellrate eintragen und messen** (11.10. vormittags,
       `arbeit/aufnahme-takt-20261011/`): am G-EU mit 1080p-Quelle zeigt das Panel starr 3 von 4 Bildern (60 Hz → ~45, 50 Hz → ~37),
       unabhängig von Phase und Takt; die Aufnahme liefert alle (INCAP +0x104 = Bildnummer/Zeile). Kein Kopplungsproblem: Stock läuft
@@ -228,10 +220,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         bei uns und Stock aus), Bus/NSI/DRAM (identisch mit der Stock-HY350), Bildverbesserer (~2/s). Langzeit-Mitschnitt läuft
         (`h713-ratelog` am G-EU). Nächster Schritt: Firmware-RE am Skalierpfad bei 60 Hz; die G-EU-Firmware-Shell einrichten
         (`crtc dump_cfg`, elog), Adressen fehlen
-- [ ] 2.58 **Low Latency gesondert ansehen [Marco]** (11.10.): `THal_Vp_SetLowLatencyMode` (`c201c220`) ist als V4L2-Control da
-      (Kernel 0101a, startet Off; die Hersteller-Software schickt es nie, ihre Get/Set sind Stubs). Was der Modus in der Firmware
-      ändert (FRC-Puffer, Latenz, Fensterneubau; Bildmodi Spiel/Computer lösen `SetLowLatency` aus, `userspace/h713-tv/README.md`),
-      ob er die Verzögerung HDMI → Wand senkt und was er kostet - erst nach 2.57, damit die beiden Wirkungen getrennt bleiben
+      - **11.10. mittags (`doku/198`): Mechanismus geklärt, Ring nicht vergrößerbar.** Dreier-Ring der Aufnahme, beim
+        Verkleinern schreibt der Schreiber Bildpaare in denselben Platz (Modell `sim-ring.py` = Messung; 4 Plätze wären verlustfrei).
+        Widerlegt: Tabelleneinträge/Zähler live, 6 Puffer über den TSE-Speicherplan (Firmware programmiert sie, Hardware nutzt 3,
+        NR liest die Alias-Einträge → verzerrtes Bild), `0x069408d0`, Low Latency, unsere Ebenen-Programmierung (echter Warp gleich).
+        **Produktlösung in `main`:** `h713-tv` nennt in der EDID das Panel-Timing zuerst (2.56). Hier bleibt nur noch Forschung:
+        warum die Rate über Stunden fällt, und Stock auf einem 720p-Panel mit 1080p60
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
@@ -479,6 +473,11 @@ Installer ablegen (`144` 06:0x) — **entfällt**, op 1 entschlüsselt nicht · 
 HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
 
 ### Aus den Abschnitten 1-9 hierher verschoben (10.10.2026; Nummern bleiben, Verweise gelten weiter)
+- [x] 2.56 **720p als bevorzugter Modus auf 720p-Boards** - erledigt 11.10. mittags (Marco: freie Hand; `doku/198`): `h713-tv`
+      setzt das CTA-Timing des Panels als erstes EDID-Timing, wenn das erste Timing der Datei größer ist (`edid_prefer = panel`,
+      Vorgabe; `file` = Dateireihenfolge). Gemessen G-EU: Quelle folgt der EDID → 720p60 → 59,7 von 60 Bildern (vorher 35-57)
+- [x] 2.58 **Low Latency gesondert ansehen** - 11.10. mittags gemessen: an/aus ohne Wirkung auf die Sprünge (54,1 → 54,3/55,2 → 54,8/s);
+      bleibt als V4L2-Control vorhanden (`doku/198`)
 
 **1 Release — in dieser Reihenfolge**
 
