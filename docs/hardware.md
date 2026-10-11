@@ -32,7 +32,7 @@ Two more processors run on the same die and are already alive by the time Linux 
 | Core | Firmware | Owns |
 |---|---|---|
 | MIPS32 LE co-processor | `display.bin`, ~1.25 MB | display engine, HDMI-RX state machine, picture-quality pipeline |
-| OR1K BE "ARISC" | HY310: **crust**, our own build ([crust-h713/](../crust-h713/README.md)); other boards: the vendor's `h713-arisc.bin`, ~172 KB | PMU power sequencing, HDMI hot-plug pin, EDID/DDC RAM; with crust also the standby |
+| OR1K BE "ARISC" | HY310: **crust**, our own build ([crust-h713/](../crust-h713/README.md)); other boards: the vendor's `h713-arisc.bin`, 172 KiB (176 132 bytes on the HY300PRO-G-EU) | PMU power sequencing, HDMI hot-plug pin, EDID/DDC RAM; with crust also the standby |
 
 The MIPS firmware, and the vendor's ARISC firmware on the boards that run it, ship neither in this repo nor on the
 built image; both come out of **your own** device dump via `h713-extract` at install time. On the HY310 crust is
