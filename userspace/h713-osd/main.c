@@ -597,9 +597,10 @@ static void refresh(void)
 /* one command; the answer into reply; true when the picture has to be drawn again */
 static bool handle(const char *line, char *reply, size_t n)
 {
-	char a[16] = "", b[16] = "", c[16] = "";
-	int v = 0, k = sscanf(line, "%15s %15s %15s", a, b, c);
+	char a[16] = "", b[16] = "", c[16] = "", d[16] = "", e[16] = "", answer[32];
+	int v = 0, k = sscanf(line, "%15s %15s %15s %15s %15s", a, b, c, d, e);
 	struct osd_item it = { OSD_VOLUME, 0, 0, 1.0f };
+	double stay = seconds;
 
 	if (k >= 2 && !strcmp(a, "volume") && sscanf(b, "%d", &v) == 1) {
 		it.value = v;
@@ -615,6 +616,36 @@ static bool handle(const char *line, char *reply, size_t n)
 	} else if (k == 2 && !strcmp(a, "input") && (!strcmp(b, "console") || !strcmp(b, "hdmi"))) {
 		it.kind = OSD_INPUT;
 		it.value = !strcmp(b, "console");
+	} else if (k >= 3 && !strcmp(a, "power") && sscanf(b, "%d", &v) == 1 &&
+		   (!strcmp(c, "standby") || !strcmp(c, "off"))) {
+		/*
+		 * The power key's countdown (TODO 2.38), sent by h713-power about ten times a second: "power TENTHS
+		 * standby|off [only] [ALPHA%]". Each line keeps it a second, so a dead h713-power leaves nothing
+		 * behind. "ok unseen" when nothing can be seen (no signal: the console; no h713-tv): then h713-power
+		 * does not wait for a choice nobody sees.
+		 */
+		const char *opt[2] = { d, e };
+
+		it.kind = OSD_POWER;
+		it.value = v;
+		it.flags = !strcmp(c, "standby") ? OSD_PWR_STANDBY : 0;
+		for (int i = 0; i < 2 && i < k - 3; i++) {
+			int pct;
+
+			if (!strcmp(opt[i], "only"))
+				it.flags |= OSD_PWR_OFF_ONLY;
+			else if (sscanf(opt[i], "%d%%", &pct) == 1)
+				it.alpha = pct < 0 ? 0 : pct > 100 ? 1 : pct / 100.0f;
+		}
+		stay = 1.0;
+		if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none")) {
+			want.until = 0;
+			snprintf(reply, n, "ok unseen\n");
+			return true;
+		}
+	} else if (k == 1 && !strcmp(a, "pair")) {
+		it.kind = OSD_PAIR;	/* "hold Left + Right" after the remote was forgotten (TODO 2.54) */
+		stay = 10;
 	} else if (k == 1 && !strcmp(a, "hide")) {
 		want.until = 0;
 		snprintf(reply, n, "ok hidden%s\n", want.muted ? " (the mute badge stays)" : "");
@@ -630,11 +661,11 @@ static bool handle(const char *line, char *reply, size_t n)
 			 last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
 		return false;
 	} else {
-		snprintf(reply, n, "error unknown: volume N | mute on|off N | focus up|down [edge] | input console|hdmi | hide | status\n");
+		snprintf(reply, n, "error unknown: volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | hide | status\n");
 		return false;
 	}
 	want.popup = it;
-	want.until = now_s() + seconds;
+	want.until = now_s() + stay;
 	snprintf(reply, n, "ok\n");
 	return true;
 }
@@ -887,6 +918,6 @@ int main(int argc, char **argv)
 		return run();
 	if (argc >= 3 && !strcmp(argv[1], "ctl"))
 		return client(argc - 2, argv + 2);
-	fprintf(stderr, "usage: h713-osd run | h713-osd ctl volume N | mute on|off N | focus up|down [edge] | input console|hdmi | hide | status\n");
+	fprintf(stderr, "usage: h713-osd run | h713-osd ctl volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | hide | status\n");
 	return 2;
 }

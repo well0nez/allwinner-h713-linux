@@ -23,9 +23,15 @@ enum osd_kind {
 	OSD_FOCUS,		/* value +1 up, -1 down; flags OSD_EDGE: stopped at the end of the travel (red) */
 	OSD_INPUT,		/* value 0 HDMI, 1 console */
 	OSD_MUTE_BADGE,		/* the small sign that stays while muted; value unused */
+	OSD_POWER,		/* the power key's countdown, in the middle: value = time left in tenths of a second
+				 * (0..150, the ring is full at 15 s); flags OSD_PWR_STANDBY: standby is the choice (else
+				 * off), OSD_PWR_OFF_ONLY: no standby here, the ring alone */
+	OSD_PAIR,		/* pairing the remote: hold Left + Right; value = time left in tenths (0..100), 0 = no ring */
 };
 
 #define OSD_EDGE	1
+#define OSD_PWR_STANDBY		2
+#define OSD_PWR_OFF_ONLY	4
 
 /* where the strip goes */
 enum osd_place {

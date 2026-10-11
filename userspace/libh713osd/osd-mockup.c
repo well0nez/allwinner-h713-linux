@@ -29,6 +29,20 @@ static const struct {
 	{ "lautstaerke-100", { { OSD_VOLUME, 100, 0, 1 } }, 1 },
 };
 
+/* TODO 2.38 / 2.54: the power key's countdown and the pairing hint - pill, bottom, only */
+static const struct {
+	const char *name;
+	struct osd_item it;
+} NEW[] = {
+	{ "aus-15-aus",     { OSD_POWER, 150, 0, 1 } },
+	{ "aus-09-aus",     { OSD_POWER, 90, 0, 1 } },
+	{ "aus-09-standby", { OSD_POWER, 90, OSD_PWR_STANDBY, 1 } },
+	{ "aus-03-aus",     { OSD_POWER, 21, 0, 1 } },
+	{ "aus-09-nuraus",  { OSD_POWER, 90, OSD_PWR_OFF_ONLY, 1 } },
+	{ "koppeln-07",     { OSD_PAIR, 70, 0, 1 } },
+	{ "koppeln-ohne",   { OSD_PAIR, 0, 0, 1 } },
+};
+
 static int write_pam(const char *path, const struct osd_canvas *c)
 {
 	FILE *f = fopen(path, "wb");
@@ -75,5 +89,16 @@ int main(int argc, char **argv)
 					return 1;
 				}
 			}
+	for (size_t k = 0; k < sizeof(NEW) / sizeof(NEW[0]); k++) {
+		struct osd_style st = { OSD_BOTTOM, OSD_PILL, 1.0f };
+
+		osd_clear(&c);
+		osd_draw(&c, &st, &NEW[k].it, NULL);
+		snprintf(path, sizeof(path), "%s/neu-%s.pam", argv[1], NEW[k].name);
+		if (write_pam(path, &c)) {
+			perror(path);
+			return 1;
+		}
+	}
 	return 0;
 }

@@ -63,18 +63,19 @@ class Root:
         with open(self.p(rel), "w") as f:
             f.write(text)
 
-    def press(self, *events):
-        """Run 'h713-power run --once' while (value, delay_s) events reach the fifo; -> systemctl calls."""
+    def press(self, *events, osd=None):
+        """Run 'h713-power run --once' while (value, delay_s[, code]) events reach the fifo; -> systemctl calls.
+        osd: the path of a stand-in h713-osd socket; none by default, so no countdown is seen."""
         def feed():
             with open(self.fifo, "wb") as f:
-                for value, delay in events:
-                    time.sleep(delay)
-                    f.write(struct_event(value))
+                for ev in events:
+                    time.sleep(ev[1])
+                    f.write(struct_event(ev[0], *ev[2:]))
                     f.flush()
                 time.sleep(1.5)
         threading.Thread(target=feed, daemon=True).start()
         env = dict(os.environ, H713_POWER_ROOT=self.dir, H713_SYSTEMCTL=self.p("systemctl"),
-                   H713_MIPS_RESTART=self.restart_tool)
+                   H713_MIPS_RESTART=self.restart_tool, H713_POWER_OSD=osd or self.p("no-osd"))
         out = subprocess.run([sys.executable, TOOL, "run", "--once"], env=env, capture_output=True,
                              text=True, timeout=20)
         calls = []
@@ -84,9 +85,9 @@ class Root:
         return calls, out.stdout
 
 
-def struct_event(value):
+def struct_event(value, code=116):
     ns = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
-    return EVENT.pack(ns // S, ns % S // 1000, 1, 116, value)
+    return EVENT.pack(ns // S, ns % S // 1000, 1, code, value)
 
 
 EVENT = load().EVENT
@@ -140,13 +141,13 @@ class Readiness(unittest.TestCase):
     def test_s2idle_crust_not_ready_or_short_poweroff_refuse_it(self):
         self.assertIn("not [deep]", self.refusal(mem_sleep="[s2idle] deep"))
         self.assertIn("ready=0", self.refusal(ready="0"))
-        self.assertIn("short = poweroff", self.refusal(conf="short = poweroff\n"))
+        self.assertIn("default = poweroff", self.refusal(conf="short = poweroff\n"))   # the old name still read
 
     def test_a_bad_config_line_is_named_and_its_default_kept(self):
         r = Root(conf="short = sleep\nlong_s = 5\n")
         self.m.ROOT = r.dir
         conf, bad = self.m.config()
-        self.assertEqual((conf["short"], conf["long_s"]), ("poweroff", "5"))
+        self.assertEqual((conf["default"], conf["long_s"]), ("poweroff", "5"))
         self.assertEqual(len(bad), 1)
 
     def test_the_power_key_bit_in_a_capability_bitmap(self):
@@ -289,27 +290,27 @@ class Defaults(unittest.TestCase):
     """The shipped policy: a short press powers off; the standby is chosen with 'h713-power set short standby'."""
 
     def tool(self, r, *args):
-        env = dict(os.environ, H713_POWER_ROOT=r.dir)
+        env = dict(os.environ, H713_POWER_ROOT=r.dir, H713_POWER_OSD=r.p("no-osd"))
         return subprocess.run([sys.executable, TOOL] + list(args), env=env, capture_output=True, text=True)
 
     def test_without_a_short_line_a_short_press_powers_off(self):
         m, r = load(), Root()
         r.put("etc/h713/power.conf", "long_s = 3\n")       # no short line at all
         m.ROOT = r.dir
-        self.assertEqual(m.config()[0]["short"], "poweroff")
-        self.assertIn("short = poweroff", m.standby_refusal(m.config()[0]))
+        self.assertEqual(m.config()[0]["default"], "poweroff")
+        self.assertIn("default = poweroff", m.standby_refusal(m.config()[0]))
 
     def test_the_shipped_power_conf_says_poweroff(self):
         with open(os.path.join(os.path.dirname(TOOL), "power.conf")) as f:
             lines = [l.split("#", 1)[0].strip() for l in f]
-        self.assertIn("short = poweroff", lines)
+        self.assertIn("default = poweroff", lines)
 
     def test_set_replaces_the_line_keeps_the_comments_and_drops_a_later_duplicate(self):
         r = Root(conf="# the key\nshort = poweroff\nlong_s = 3\nshort = poweroff  # again\n")
         p = self.tool(r, "set", "short", "standby")
         self.assertEqual(p.returncode, 0, p.stderr)
         with open(r.p("etc/h713/power.conf")) as f:
-            self.assertEqual(f.read(), "# the key\nshort = standby\nlong_s = 3\n")
+            self.assertEqual(f.read(), "# the key\ndefault = standby\nlong_s = 3\n")   # the old name replaced
         m = load()
         m.ROOT = r.dir
         self.assertIsNone(m.standby_refusal(m.config()[0]))
@@ -328,6 +329,89 @@ class Defaults(unittest.TestCase):
     def test_status_names_who_powers_off(self):
         self.assertIn("a power-off: crust (rails off", self.tool(Root(build2="0x01003318"), "status").stdout)
         self.assertIn("a power-off: the power-on gate", self.tool(Root(), "status").stdout)
+
+
+class FakeOsd:
+    """A stand-in h713-osd: answers every line with `answer` and keeps what it was told."""
+
+    def __init__(self, path, answer="ok"):
+        import socket
+        self.lines, self.answer = [], answer
+        self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.srv.bind(path)
+        self.srv.listen(8)
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self):
+        while True:
+            try:
+                c, _ = self.srv.accept()
+            except OSError:
+                return
+            with c:
+                self.lines.append(c.recv(256).decode().strip())
+                c.sendall((self.answer + "\n").encode())
+
+
+class Countdown(unittest.TestCase):
+    """TODO 2.38: a short press shows 15 s; Left/Right choose, OK or a second press acts, Back cancels."""
+
+    def countdown(self, root, conf):
+        m = load()
+        m.ROOT = root.dir
+        said, t = [], [100.0]
+        cd = m.Countdown(m.config()[0] if conf is None else conf, clock=lambda: t[0], say=said.append)
+        return m, cd, said, t
+
+    def test_it_starts_on_the_default_and_left_right_choose(self):
+        r = Root(conf="default = poweroff\n")
+        m, cd, said, t = self.countdown(r, None)
+        self.assertEqual(cd.choice, "poweroff")
+        self.assertIn("power 150 off", cd.line())
+        self.assertIsNone(cd.key(m.KEY_LEFT))
+        self.assertEqual(cd.choice, "standby")
+        self.assertTrue(said[-1].startswith("power 150 standby"))
+        cd.key(m.KEY_RIGHT)
+        self.assertEqual(cd.choice, "poweroff")
+        self.assertEqual(cd.key(m.KEY_OK), "act")
+        self.assertEqual(cd.key(m.KEY_SELECT), "act")
+        self.assertEqual(cd.key(m.KEY_BACK), "cancel")
+        t[0] += 6.05
+        self.assertIn("power 90 ", cd.line())          # 8.95 s left: the digits say 9
+
+    def test_without_standby_the_ring_alone_and_left_does_nothing(self):
+        r = Root(conf="default = standby\n")
+        r.put("etc/systemd/sleep.conf.d/10-h713.conf", "[Sleep]\nAllowSuspend=no\n")
+        m, cd, said, t = self.countdown(r, None)
+        self.assertTrue(cd.only)
+        self.assertEqual(cd.choice, "poweroff")
+        cd.key(m.KEY_LEFT)
+        self.assertEqual(cd.choice, "poweroff")
+        self.assertIn(" only ", cd.line())
+
+    def test_a_second_press_acts_on_the_choice(self):
+        r = Root(conf="default = poweroff\n")
+        osd = FakeOsd(r.p("osd"))
+        calls, out = r.press((1, 0.3), (0, 0.15), (1, 0.6, 105), (0, 0.05, 105), (1, 0.4), (0, 0.15), osd=r.p("osd"))
+        self.assertEqual(calls, ["suspend"], out)      # Left chose the standby, the second press took it
+        self.assertIn("countdown of 15 s, poweroff chosen", out)
+        self.assertTrue(any(l.startswith("power ") and " standby " in l for l in osd.lines), osd.lines)
+        self.assertEqual(osd.lines[-1], "hide")
+
+    def test_back_cancels_and_nothing_happens(self):
+        r = Root(conf="default = poweroff\n")
+        osd = FakeOsd(r.p("osd"))
+        calls, out = r.press((1, 0.3), (0, 0.15), (1, 0.5, 158), (0, 0.05, 158), (1, 0.5), (0, 0.15),
+                             (1, 0.5), (0, 0.15), osd=r.p("osd"))
+        self.assertIn("countdown cancelled", out)
+        self.assertEqual(calls, ["poweroff"], out)     # the next press counted down again, the third took it
+
+    def test_without_a_picture_the_default_at_once(self):
+        r = Root(conf="default = poweroff\n")
+        FakeOsd(r.p("osd"), answer="ok unseen")
+        calls, out = r.press((1, 0.3), (0, 0.15), osd=r.p("osd"))
+        self.assertEqual(calls, ["poweroff"], out)
+        self.assertNotIn("countdown of", out)
 
 
 if __name__ == "__main__":

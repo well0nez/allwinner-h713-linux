@@ -71,7 +71,7 @@ SKIP_PROJECT=0
 BOARD=          # --board: boards/<id>/board.env FEATURES -> /etc/h713/features
 VARIANT=        # --variant: boards/<id>/variants/<name>/variant.env over it
 CRUST_BIN=      # --crust: this build's crust image -> /lib/firmware/<board>-crust.bin
-STANDBY=0       # --standby: suspend allowed, h713-power on the power key
+STANDBY=0       # --standby: suspend allowed (h713-power then offers the standby)
 AUTHORIZED_KEY=
 KEEP_WORK=0
 KEYRING=
@@ -130,8 +130,8 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
                         board's device tree gives the ARISC driver. Needs a
                         --board whose board.env names CRUST_DEFCONFIG
   --standby             offer the standby: suspend to RAM through crust only
-                        (sleep.conf.d), h713-power on the power key and
-                        h713-mips-restart for the picture after it. Needs
+                        (sleep.conf.d); h713-power (on every image) then
+                        offers it in its countdown. Needs
                         --crust; without it the image never suspends
   --skip-project        the Debian base system + overlay/ only
   --keep-work           do not delete the work directory
@@ -752,13 +752,12 @@ SLEEP_CONF="$TREE/etc/systemd/sleep.conf.d/10-h713.conf"
 if ((STANDBY)); then
 	t "standby: mem, deep only"   grep -qx 'MemorySleepMode=deep' "$SLEEP_CONF"
 	t "standby: suspend allowed"  grep -qx 'AllowSuspend=yes' "$SLEEP_CONF"
-	t "h713-power linked"         test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
-	t "h713-mips-restart"         test -x "$TREE/usr/local/sbin/h713-mips-restart"
 else
 	t "no suspend"                grep -qx 'AllowSuspend=no' "$SLEEP_CONF"
-	t "no h713-power"             test ! -e "$TREE/etc/systemd/system/h713-power.service"
-	t "no h713-mips-restart"      test ! -e "$TREE/usr/local/sbin/h713-mips-restart"
 fi
+# h713-power on every image: the power key's countdown (TODO 2.38); standby in it only where allowed above
+t "h713-power linked"         test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
+t "h713-mips-restart"         test -x "$TREE/usr/local/sbin/h713-mips-restart"
 if [[ -n "$CRUST_BIN" ]]; then
 	t "crust as $BOARD-crust.bin" cmp -s "$CRUST_BIN" "$TREE/lib/firmware/$BOARD-crust.bin"
 else

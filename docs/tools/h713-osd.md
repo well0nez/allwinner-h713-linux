@@ -16,6 +16,14 @@ h713-osd ctl input console
 h713-osd ctl status              # what is shown, the channel to h713-tv, the matrix, the last refresh's times
 ```
 
+## Two commands of other services
+
+- `power TENTHS standby|off [only] [ALPHA%]` - the power key's countdown (h713-power, about ten times a second): large in
+  the middle whatever `place` says, a ring with the seconds left (full at 150 tenths), standby left, off right; `only`:
+  no standby on this board, the ring alone. Each line keeps it one second. The answer is `ok unseen` when nothing can be
+  seen (no signal, the console; no h713-tv) - h713-power then acts at once.
+- `pair` - "hold Left + Right" for 10 s after the remote was forgotten (h713-panel, TODO 2.54).
+
 ## /etc/h713/osd.conf
 
 Read again when it changes, no restart:

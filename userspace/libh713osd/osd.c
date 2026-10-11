@@ -260,6 +260,65 @@ static void console_icon(struct scene *s, double cx, double cy, double k, int di
 	seg(s, cx - 0.5 * k, cy + 4 * k, cx + 6 * k, cy + 4 * k, dim);
 }
 
+/* power: a ring open at the top and the stroke through the gap (IEC 60417-5009) */
+static void power_icon(struct scene *s, double cx, double cy, double k, int tone)
+{
+	arc(s, cx, cy, 11 * k, -55, 235, tone);
+	seg(s, cx, cy - 15 * k, cx, cy - 2 * k, tone);
+}
+
+/* standby: a crescent moon - the disc of radius r minus a second disc shifted up and right; the outline is the
+ * part of each circle that lies outside (resp. inside) the other one */
+static void moon_icon(struct scene *s, double cx, double cy, double k, int tone)
+{
+	double R = 12 * k, rb = 10 * k, bx = 7 * k, by = -5 * k;
+	double d = sqrt(bx * bx + by * by), a = (R * R - rb * rb + d * d) / (2 * d);
+	double phi = atan2(by, bx) * 180 / M_PI, al = acos(a / R) * 180 / M_PI;
+	double be = acos((d - a) / rb) * 180 / M_PI, psi = phi + 180;
+
+	arc(s, cx, cy, R, phi + al, phi + 360 - al, tone);
+	arc(s, cx + bx, cy + by, rb, psi - be, psi + be, tone);
+}
+
+/* a countdown ring: the whole circle dim, the time left bright, clockwise from the top */
+static void ring(struct scene *s, double cx, double cy, double r, double left)
+{
+	left = clampd(left, 0, 1);
+	if (left < 1)
+		arc(s, cx, cy, r, 0, 360, T_DIM);
+	if (left > 0.004)
+		arc(s, cx, cy, r, -90, -90 + 360 * left, T_BRIGHT);
+}
+
+/* a number centred at cx */
+static void number_c(struct scene *s, int v, double cx, double y, double h)
+{
+	double k = h / 10;
+	int n = v >= 100 ? 3 : v >= 10 ? 2 : 1;
+
+	number(s, v, cx + ((n - 1) * 7.6 * k + 6 * k) / 2, y, h);
+}
+
+/* the Bluetooth rune */
+static void bt_icon(struct scene *s, double cx, double cy, double k, int tone)
+{
+	double t = 13 * k, w = 6.5 * k;
+
+	seg(s, cx, cy - t, cx, cy + t, tone);
+	seg(s, cx - w, cy - w, cx + w, cy + w, tone);
+	seg(s, cx + w, cy + w, cx, cy + t, tone);
+	seg(s, cx - w, cy + w, cx + w, cy - w, tone);
+	seg(s, cx + w, cy - w, cx, cy - t, tone);
+}
+
+/* a key of the remote: a small circle with a chevron pointing dir (-1 left, +1 right) */
+static void key_icon(struct scene *s, double cx, double cy, double k, int dir, int tone)
+{
+	arc(s, cx, cy, 10 * k, 0, 360, tone);
+	seg(s, cx - dir * 2 * k, cy - 4.5 * k, cx + dir * 2.5 * k, cy, tone);
+	seg(s, cx + dir * 2.5 * k, cy, cx - dir * 2 * k, cy + 4.5 * k, tone);
+}
+
 static void bar(struct scene *s, double x0, double x1, double cy, int v)
 {
 	seg(s, x0, cy, x1, cy, 1);
@@ -286,6 +345,31 @@ static void place_box(struct scene *s, const struct osd_canvas *c, const struct 
 	}
 }
 
+/* the power key's countdown (TODO 2.38): large, in the middle, whatever osd.conf places the other overlays - a
+ * ring with the seconds left, standby on its left, off on its right, as the keys Left and Right choose; the
+ * choice bright and underlined, the other dim (Marco 11.10.2026: of three mockups this one) */
+static void power_layout(struct scene *s, const struct osd_canvas *c, const struct osd_style *st,
+			 const struct osd_item *it, double u)
+{
+	struct osd_style mid = *st;
+	int sb = it->flags & OSD_PWR_STANDBY, only = it->flags & OSD_PWR_OFF_ONLY;
+	double left = clampd(it->value, 0, 150) / 150.0, k = 2.1 * u, ox = 172 * u, bw = 42 * u, cx, cy;
+
+	if (only)
+		sb = 0;
+	mid.place = OSD_CENTER;
+	s->lw = 2.0 * u;
+	place_box(s, c, &mid, u, only ? 220 * u : 520 * u, 210 * u);
+	cx = s->px + s->pw / 2, cy = s->py + s->ph / 2;
+	ring(s, cx, cy, 70 * u, left);
+	number_c(s, (it->value + 9) / 10, cx, cy - 22 * u, 44 * u);
+	if (only)
+		return;
+	moon_icon(s, cx - ox, cy, k, sb ? T_BRIGHT : T_DIM);
+	power_icon(s, cx + ox, cy, k, sb ? T_DIM : T_BRIGHT);
+	seg(s, (sb ? cx - ox : cx + ox) - bw / 2, cy + 44 * u, (sb ? cx - ox : cx + ox) + bw / 2, cy + 44 * u, T_BRIGHT);
+}
+
 /* every item is one strip of lines; in the pill look a dark translucent panel with fully rounded ends lies
  * behind it, in the bare look a soft shadow around each line. No square card: the owner rejected it on
  * 11.10.2026 ("rounded backgrounds that are completely rectangular do not work"), the pill he kept. */
@@ -309,7 +393,12 @@ static void layout(struct scene *s, const struct osd_canvas *c, const struct osd
 		speaker(s, s->px + d / 2 - 4 * u, s->py + d / 2, 1.25 * u, 0, 1);
 		return;
 	}
-	w = it->kind == OSD_VOLUME || it->kind == OSD_MUTE ? 540 * u : it->kind == OSD_FOCUS ? 196 * u : 220 * u;
+	if (it->kind == OSD_POWER) {
+		power_layout(s, c, st, it, u);
+		return;
+	}
+	w = it->kind == OSD_VOLUME || it->kind == OSD_MUTE ? 540 * u : it->kind == OSD_FOCUS ? 196 * u :
+	    it->kind == OSD_PAIR ? 324 * u : 220 * u;
 	place_box(s, c, st, u, w, 76 * u);
 	cy = s->py + 38 * u;		/* the icons: about 50 px high at 1080 lines */
 
@@ -334,6 +423,18 @@ static void layout(struct scene *s, const struct osd_canvas *c, const struct osd
 		hdmi_icon(s, s->px + 60 * u, cy, k, it->value != 0);
 		console_icon(s, s->px + s->pw - 60 * u, cy, k, it->value == 0);
 		break;
+	case OSD_PAIR: {	/* the rune, then "hold Left + Right"; around the rune the time left */
+		double bx = s->px + 58 * u, kk = 1.9 * u;
+
+		bt_icon(s, bx, cy, k, T_BRIGHT);
+		if (it->value > 0)
+			ring(s, bx, cy, 28 * u, it->value / 100.0);
+		key_icon(s, s->px + 158 * u, cy, kk, -1, T_BRIGHT);
+		seg(s, s->px + 210 * u, cy - 9 * u, s->px + 210 * u, cy + 9 * u, T_BRIGHT);
+		seg(s, s->px + 201 * u, cy, s->px + 219 * u, cy, T_BRIGHT);
+		key_icon(s, s->px + 262 * u, cy, kk, 1, T_BRIGHT);
+		break;
+	}
 	default:
 		break;
 	}

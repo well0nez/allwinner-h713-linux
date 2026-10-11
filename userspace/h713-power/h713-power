@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""h713-power - the power key's policy on an image that offers standby.
+"""h713-power - the power key's policy.
 
-logind's default turns KEY_POWER into a power-off. On an image built with standby (release/build-all.sh
---standby) the unit runs this tool under systemd-inhibit with logind's handle-power-key and
-handle-suspend-key locks, so the key is decided here: a short press suspends when the kernel offers deep
-sleep (/sys/power/mem_sleep shows [deep]), crust says ready=1 (the arisc driver's state file) and
-/etc/h713/power.conf allows it, otherwise it powers off - into the power-on gate, as before. A press of
+logind's default turns KEY_POWER into a power-off. The unit runs this tool under systemd-inhibit with logind's
+handle-power-key and handle-suspend-key locks, so the key is decided here. A short press shows a countdown of
+15 s in the middle of the picture (h713-osd, TODO 2.38): standby on the left, off on the right; Left and Right
+choose, OK or a second press acts at once, Back cancels, and when the time is up the choice is carried out.
+It starts on `default` of /etc/h713/power.conf (poweroff). Standby is offered only where it can happen: the
+image allows suspend (built with --standby), the kernel offers deep sleep (/sys/power/mem_sleep shows [deep])
+and crust says ready=1 (the arisc driver's state file); elsewhere the countdown shows the ring alone and ends
+in a power-off. Without a picture (no signal, no h713-osd) nobody sees a countdown: the default is carried out
+at once, as before. A press of
 long_s seconds (3) powers off whatever short says. A KEY_POWER whose timestamp lies within ignore_s (2 s)
 after a resume the key itself woke is that same press and is ignored. If this service dies, logind's own
 power-off is back (docs/subsystems/standby.md).
@@ -14,8 +18,8 @@ after a standby (or a refused one) and sun50i-h713-mips says parked, h713-mips-r
 back. While it runs a short press does nothing, a long one still powers off.
 The power-off itself is crust's on a board whose crust says it can (the arisc driver's build2 bit 24): the
 rails off, about 0.3 W, the key or the remote wakes into a fresh boot (doku/188); else the power-on gate.
-`h713-power set short standby|poweroff` (and the other keys of power.conf) changes the policy for the next
-press, no restart needed.
+`h713-power set default standby|poweroff` (and the other keys of power.conf) changes the policy for the next
+press, no restart needed; `short`, the key's name before the countdown, still works and means `default`.
 Commands: run [--once], status, set KEY VALUE. Exit: 0, 1 power.conf not written, 2 usage.
 """
 
@@ -36,12 +40,16 @@ SYSTEMCTL = shlex.split(os.environ.get("H713_SYSTEMCTL", "systemctl"))
 MIPS_RESTART = shlex.split(os.environ.get("H713_MIPS_RESTART", "/usr/local/sbin/h713-mips-restart"))
 EVENT = struct.Struct("qqHHi")               # struct input_event on a 64-bit kernel
 EV_KEY, KEY_POWER = 1, 116
+KEY_LEFT, KEY_RIGHT, KEY_BACK, KEY_OK, KEY_SELECT, KEY_ENTER = 105, 106, 158, 352, 353, 28
+OSD = os.environ.get("H713_POWER_OSD", "/run/h713-osd/ctl")
+COUNTDOWN_S = 15                             # libh713osd's ring is full at 15 s
 EVIOCSCLOCKID = 0x400445a0                   # _IOW('E', 0xa0, int)
 CLOCK_BOOTTIME = 7
 BUS_BLUETOOTH = 0x05
-DEFAULTS = {"short": "poweroff", "long_s": "3", "ignore_s": "2", "remote": "on", "refused": "poweroff"}
+DEFAULTS = {"default": "poweroff", "long_s": "3", "ignore_s": "2", "remote": "on", "refused": "poweroff"}
+ALIASES = {"short": "default"}               # the name before the countdown (power.conf of 09.10.)
 BUILD2_POWER_OFF = 1 << 24                   # crust takes SYSTEM_OFF: rails off (doku/188)
-CHOICES = {"short": ("standby", "poweroff"), "remote": ("on", "off"), "refused": ("poweroff", "log")}
+CHOICES = {"default": ("standby", "poweroff"), "remote": ("on", "off"), "refused": ("poweroff", "log")}
 
 
 def path(*parts):
@@ -62,6 +70,7 @@ def read(p, default=""):
 
 
 def valid(key, value):
+    key = ALIASES.get(key, key)
     return key in DEFAULTS and (value in CHOICES[key] if key in CHOICES else value.replace(".", "", 1).isdigit())
 
 
@@ -74,7 +83,7 @@ def config():
             continue
         key, _, value = (x.strip() for x in line.partition("="))
         if valid(key, value):
-            conf[key] = value
+            conf[ALIASES.get(key, key)] = value
         else:
             bad.append("power.conf:%d: %r ignored" % (n, line))
     return conf, bad
@@ -87,10 +96,16 @@ def arisc_state():
     return {}
 
 
-def standby_refusal(conf):
-    """None when a short press may suspend, else the reason it may not."""
-    if conf["short"] != "standby":
-        return "power.conf says short = %s" % conf["short"]
+def image_allows_suspend():
+    """An image built without --standby forbids every suspend in sleep.conf.d (install-projekt.sh 5h)."""
+    conf = read(path("etc/systemd/sleep.conf.d/10-h713.conf"))
+    return "AllowSuspend=no" not in conf.replace(" ", "")
+
+
+def standby_unavailable():
+    """None when a standby can happen now, else the reason it cannot."""
+    if not image_allows_suspend():
+        return "this image allows no suspend (built without --standby)"
     mem_sleep = read(path("sys/power/mem_sleep"))
     if "[deep]" not in mem_sleep:
         return "mem_sleep is '%s', not [deep]" % mem_sleep
@@ -98,6 +113,13 @@ def standby_refusal(conf):
     if state.get("ready") != "1":
         return "crust is not ready (%s)" % ("ready=%s" % state["ready"] if "ready" in state else "no arisc state")
     return None
+
+
+def standby_refusal(conf):
+    """None when the default (no countdown seen, or its time up untouched) is a standby that can happen."""
+    if conf["default"] != "standby":
+        return "power.conf says default = %s" % conf["default"]
+    return standby_unavailable()
 
 
 def has_power_key(caps):
@@ -219,13 +241,15 @@ def restarting():
     return False
 
 
-def act(what, conf):
-    """True when it went through a standby (or a refused one): the caller drops what the keys sent meanwhile."""
+def act(what, conf, choice=None):
+    """what: "short" (the default, or `choice` from the countdown) or "long" (power-off). True when it went
+    through a standby (or a refused one): the caller drops what the keys sent meanwhile."""
     if what == "short" and restarting():
         log("short press ignored: the picture is still coming back (h713-mips-restart); a long press powers off")
         return False
     if what == "short":
-        why = standby_refusal(conf)
+        why = standby_refusal(conf) if choice is None else (
+            standby_unavailable() if choice == "standby" else "the countdown ended on off")
         if why is None:
             log("short press: standby")
             if suspend():
@@ -242,6 +266,79 @@ def act(what, conf):
         log("long press: power-off")
     subprocess.call(SYSTEMCTL + ["poweroff"])
     return False
+
+
+def osd(line):
+    """One line to h713-osd; its answer, or "" when it is not there."""
+    import socket
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+            c.settimeout(0.5)
+            c.connect(OSD)
+            c.sendall((line + "\n").encode())
+            return c.recv(256).decode(errors="replace").strip()
+    except OSError:
+        return ""
+
+
+class Countdown:
+    """The 15 s after a short press (TODO 2.38): what is chosen, how long is left, what h713-osd is told.
+
+    frame() sends the picture about ten times a second; each line keeps it a second in h713-osd, so if this
+    process dies the countdown vanishes and logind's own power-off is back. The first frames fade in."""
+
+    FADE_S = 0.3
+
+    def __init__(self, conf, clock=time.monotonic, say=None):
+        self.clock, self.say = clock, say or osd
+        self.only = standby_unavailable() is not None
+        self.choice = "standby" if conf["default"] == "standby" and not self.only else "poweroff"
+        self.t0 = self.clock()
+        self.end = self.t0 + COUNTDOWN_S
+        self.sent = 0.0
+
+    def left(self):
+        return max(0.0, self.end - self.clock())
+
+    def line(self, alpha=None):
+        if alpha is None:
+            alpha = min(1.0, (self.clock() - self.t0) / self.FADE_S + 0.25)
+        return "power %d %s%s %d%%" % (int(self.left() * 10 + 0.999), "standby" if self.choice == "standby" else "off",
+                                       " only" if self.only else "", round(alpha * 100))
+
+    def start(self):
+        """True when h713-osd shows it; false: nobody would see a countdown."""
+        answer = self.say(self.line())
+        self.sent = self.clock()
+        return answer == "ok"
+
+    def frame(self):
+        if self.clock() - self.sent >= 0.1:
+            self.say(self.line())
+            self.sent = self.clock()
+
+    def key(self, code):
+        """A key press during the countdown: "act", "cancel" or None (a choice moved, or nothing)."""
+        if code == KEY_LEFT and not self.only:
+            self.choice = "standby"
+        elif code == KEY_RIGHT:
+            self.choice = "poweroff"
+        elif code in (KEY_OK, KEY_SELECT, KEY_ENTER):
+            return "act"
+        elif code == KEY_BACK:
+            return "cancel"
+        else:
+            return None
+        self.say(self.line())
+        self.sent = self.clock()
+        return None
+
+    def close(self, fade):
+        if fade:
+            for a in (0.6, 0.3):
+                self.say(self.line(a))
+                time.sleep(0.06)
+        self.say("hide")
 
 
 def drop_queued(devices, buf):
@@ -280,7 +377,7 @@ def open_device(p):
 
 
 def run(once):
-    devices, buf, rescan = {}, {}, 0.0
+    devices, buf, rescan, cd = {}, {}, 0.0, None
     for line in config()[1]:
         log(line)
     while True:
@@ -298,7 +395,7 @@ def run(once):
                         log("%s: %s" % (p, e.strerror))
             rescan = time.monotonic() + 5
         long_ns, ignore_ns = int(float(conf["long_s"]) * 1e9), int(float(conf["ignore_s"]) * 1e9)
-        ready = select.select([d[0] for d in devices.values()], [], [], 0.25)[0]
+        ready = select.select([d[0] for d in devices.values()], [], [], 0.1 if cd else 0.25)[0]
         actions = []
         for p, (fd, stamped, key) in list(devices.items()):
             now = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
@@ -321,10 +418,44 @@ def run(once):
                     if typ == EV_KEY and code == KEY_POWER:
                         ts = sec * 10**9 + usec * 1000 if stamped else now
                         actions.append(key.event(ts, value, long_ns, ignore_ns, arisc_state()))
+                    elif typ == EV_KEY and value == 1 and cd is not None:
+                        actions.append({"act": "now", "cancel": "cancel"}.get(cd.key(code)))
             actions.append(key.tick(now, long_ns))
         restarting()                             # reaps h713-mips-restart and logs its end
+        if cd is not None:
+            if "long" in actions:
+                cd.close(False)
+                cd = None
+            elif "cancel" in actions:
+                log("countdown cancelled (Back): the projector stays on")
+                cd.close(True)
+                cd, actions = None, []
+            elif "now" in actions or "short" in actions or cd.left() <= 0:
+                choice = cd.choice
+                log("countdown: %s (%s)" % (choice, "time up" if cd.left() <= 0 else "chosen"))
+                cd.close(False)
+                cd = None
+                actions = [("short", choice)]
+            else:
+                cd.frame()
+                actions = []
+        elif "short" in actions and not restarting():
+            cd = Countdown(conf)
+            if cd.start():
+                log("short press: countdown of %d s, %s chosen%s" % (COUNTDOWN_S, cd.choice,
+                    ", no standby on this image or board" if cd.only else ""))
+                actions = [a for a in actions if a == "long"]
+                if not actions:
+                    continue
+                cd.close(False)
+            cd = None
         for what in filter(None, actions):
-            slept = act(what, conf)
+            choice = None
+            if isinstance(what, tuple):
+                what, choice = what
+            if what not in ("short", "long"):
+                continue
+            slept = act(what, conf, choice)
             if once:
                 if restart is not None:          # --once (the tests): with the restart it started
                     restart.wait()
@@ -337,7 +468,9 @@ def run(once):
 
 def set_value(key, value):
     """power.conf with KEY = VALUE: the key's first line replaced, a later one dropped (it would win), comments
-    kept; appended when the key is missing. Written to a new file and renamed over the old one."""
+    kept; appended when the key is missing. Written to a new file and renamed over the old one. An old `short`
+    line is the same key as `default` and is replaced by it."""
+    key = ALIASES.get(key, key)
     if not valid(key, value):
         if key in DEFAULTS:
             hint = "|".join(CHOICES[key]) if key in CHOICES else "seconds"
@@ -349,7 +482,7 @@ def set_value(key, value):
     out, done = [], False
     for line in read(p).splitlines():
         k = line.split("#", 1)[0].partition("=")[0].strip()
-        if k != key:
+        if ALIASES.get(k, k) != key:
             out.append(line)
         elif not done:
             out.append("%s = %s" % (key, value))
@@ -390,8 +523,10 @@ def status():
     state = arisc_state()
     print("crust: ready=%s wake=%s" % (state.get("ready", "-"), state.get("wake", "-")))
     print("display MIPS: %s" % (mips_state() or "- (no sun50i-h713-mips driver)"))
-    why = standby_refusal(conf)
-    print("a short press now: %s" % ("standby" if why is None else "power-off (%s)" % why))
+    why = standby_unavailable()
+    print("standby: %s" % ("offered in the countdown" if why is None else "not offered (%s)" % why))
+    print("a short press now: a %d s countdown on %s (at once without a picture)" % (
+        COUNTDOWN_S, conf["default"] if why is None else "poweroff"))
     print("a power-off: %s" % power_off_path(state))
     print("power key devices: %s" % (" ".join(power_key_devices(conf)) or "none"))
     return 0
@@ -403,7 +538,7 @@ def main(argv=None):
     sub.add_parser("run", help="decide every KEY_POWER (the unit runs this)").add_argument(
         "--once", action="store_true", help="exit after the first action")
     sub.add_parser("status", help="what a short press would do now, and why")
-    s = sub.add_parser("set", help="change one key of power.conf, e.g. 'set short standby'")
+    s = sub.add_parser("set", help="change one key of power.conf, e.g. 'set default standby'")
     s.add_argument("key", help=", ".join(DEFAULTS))
     s.add_argument("value")
     a = p.parse_args(argv)

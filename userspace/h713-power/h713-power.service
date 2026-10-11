@@ -1,5 +1,5 @@
 [Unit]
-Description=H713 power key: standby on a short press, power-off on a long one (docs/subsystems/standby.md)
+Description=H713 power key: a 15 s countdown to standby or power-off, power-off on a long press (docs/tools/h713-power.md)
 After=systemd-logind.service
 
 [Service]

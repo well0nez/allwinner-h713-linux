@@ -1,26 +1,34 @@
-# h713-power - the power key on an image that offers standby
+# h713-power - the power key
 
-A short press powers off by default (`short = poweroff`, the owner's choice of 09.10.2026). Where crust can take the
-power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`, the HY310 since `doku/190`) that is a real off at 0.3 W, and the key or
-the remote wakes into a fresh boot of about 30 s; elsewhere it is the power-on gate. The standby is the other choice -
-2.4 W, the picture back about 5 s after the wake - and needs no editor:
+A short press shows a countdown of 15 s in the middle of the picture (TODO 2.38, since 11.10.2026): a ring with the
+seconds, standby on its left, off on its right, the choice bright and underlined. Left and Right on the remote choose,
+OK or a second press of the power key carries the choice out at once, Back cancels and the projector stays on; when the
+time is up the choice is carried out. It starts on `default` of `/etc/h713/power.conf` - `poweroff`, the owner's choice.
+Standby is offered only where it can happen (an image built with `--standby`, `[deep]` in `/sys/power/mem_sleep`,
+crust `ready=1`); elsewhere the ring stands alone and ends in a power-off. Without a picture - no signal, no h713-osd -
+nobody would see a countdown, and the default happens at once. The overlay is drawn by [h713-osd](h713-osd.md); each of
+its frames keeps it one second, so a dead h713-power leaves nothing on the wall.
+
+Where crust can take the power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`, the HY310 since
+`doku/190`) that is a real off at 0.3 W, and the key or the remote wakes into a fresh boot of about 30 s; elsewhere it
+is the power-on gate. The standby: 2.4 W, the picture back about 5 s after the wake.
 
 ```
-h713-power set short standby     # a short press suspends from now on
-h713-power set short poweroff    # back to the default
+h713-power set default standby   # the countdown starts on standby
+h713-power set default poweroff  # back to the default
 ```
 
-`set` takes every key of `/etc/h713/power.conf` (`short`, `long_s`, `ignore_s`, `remote`, `refused`), checks the value,
-keeps the comments and is read at the next press; it needs root. A long press always powers off.
+`set` takes every key of `/etc/h713/power.conf` (`default`, `long_s`, `ignore_s`, `remote`, `refused`; `short`, the
+name before the countdown, still means `default`), checks the value, keeps the comments and is read at the next press;
+it needs root. A long press always powers off, without the countdown.
 
-Without standby the power key powers the projector off: logind's default `HandlePowerKey=poweroff`, and
-TF-A turns the power-off into the [power-on gate](../uboot/power-gate.md). An image built with
-`release/build-all.sh --standby` adds this service and lets it decide instead
-([standby.md](../subsystems/standby.md)):
+The service runs on every image under `systemd-inhibit`, so logind's `HandlePowerKey=poweroff` is locked out while it
+lives; if it dies, logind's power-off is back ([standby.md](../subsystems/standby.md)).
 
 | Press | Does |
 |---|---|
-| short (released before `long_s`, 3 s) | standby, if `/sys/power/mem_sleep` offers `[deep]`, crust reports `ready=1` and `power.conf` says `short = standby`; otherwise power-off, as before |
+| short (released before `long_s`, 3 s) | the countdown (above); without a picture at once: standby if `default = standby` and it can happen, else power-off |
+| during the countdown: Left, Right, OK, Back, power again | standby, off, carry out now, cancel, carry out now |
 | held for `long_s` | power-off, without waiting for the release |
 | within `ignore_s` (2 s) after a resume the key itself woke | nothing: it is the press that woke the box |
 
