@@ -226,6 +226,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         NR liest die Alias-Einträge → verzerrtes Bild), `0x069408d0`, Low Latency, unsere Ebenen-Programmierung (echter Warp gleich).
         **Produktlösung in `main`:** `h713-tv` nennt in der EDID das Panel-Timing zuerst (2.56). Hier bleibt nur noch Forschung:
         warum die Rate über Stunden fällt, und Stock auf einem 720p-Panel mit 1080p60
+      - **11.10. nachmittags (`doku/199`): Panel-Kopplung läuft.** Mit `work_mode 0`, `vtotal 755..765`, `pclk 74250000` in
+        `display_cfg.xml` (am G-EU installiert, Original gesichert) rastet die Firmware-Frequenznachführung ein (Panel = Eingangs-
+        periode); die Phase ist je Einrasten zufällig und bestimmt den Rest: 1,3 (Zeile ~815) bis 9,5 Sprünge/s. Nächster Schritt:
+        **Phasen-Stellglied auf der ARM-Seite** (VTotal ein Bild lang ±, nur 755..765, nach dem afbd-Vsync; erster Versuch mit 739
+        hielt das Panel an). Dann die Verlustkurve über die Phase; Ziel 0 Sprünge bei fester Phase. Entscheidung Marco: Kopplungs-
+        Werte in den Installer für 720p-Boards?
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
