@@ -1331,6 +1331,7 @@ static bool display_hide(struct display *d)
  * ------------------------------------------------------------------ */
 
 #define WARP_BUFS	3
+#define TIMING_SAY_S	10	/* late warp frames and slow commits: one summary line at most this often */
 
 struct warp {
 	int peer;			/* the daemon's connection, -1: none */
@@ -4911,23 +4912,45 @@ static bool warp_serve(struct display *d)
 	}
 	if (sscanf(buf, "warp frame %d", &n) == 1 && n >= 0 && n < WARP_BUFS)
 		{
-			static struct timespec prev;
+			/*
+			 * A frame that arrived late, or a commit that took long: the
+			 * loop was held (23.09.: a status with its two firmware-backed
+			 * sysfs reads, 50 ms; "status brief" reads nothing back). Counted,
+			 * and said at most every TIMING_SAY_S with the worst of each: a
+			 * line per frame was 27 lines a second when the source sends 30
+			 * distinct frames (a still picture, 11.10.2026, HY300PRO-G-EU):
+			 * 1.5 % of a core in journald, ~100 000 lines an hour in RAM.
+			 */
+			static struct timespec prev, said;
+			static unsigned long late, slow;
+			static double late_worst, slow_worst;
 			struct timespec c0, c1;
-			double gap;
+			double gap, took;
 
 			clock_gettime(CLOCK_MONOTONIC, &c0);
 			gap = prev.tv_sec ? (c0.tv_sec - prev.tv_sec) * 1e3 + (c0.tv_nsec - prev.tv_nsec) / 1e6 : 0;
 			answer = warp_commit(d, n, fence, &busy) ? "ok\n" :
 				 busy ? "ok busy\n" : "error the commit was refused\n";
 			clock_gettime(CLOCK_MONOTONIC, &c1);
-			/* a frame that arrived late, or a commit that took long: the
-			 * loop was held (23.09.: a status with its two firmware-backed
-			 * sysfs reads, 50 ms; "status brief" reads nothing back) */
-			if (gap > 25.0 || (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6 > 10.0)
-				info("timing          frame %d received at %ld.%06ld, %.1f ms after the previous one, commit %.1f ms (%s)",
-				     n, (long)c0.tv_sec, c0.tv_nsec / 1000, gap,
-				     (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6,
-				     busy ? "busy" : "accepted");
+			took = (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6;
+			if (gap > 25.0) {
+				late++;
+				if (gap > late_worst)
+					late_worst = gap;
+			}
+			if (took > 10.0) {
+				slow++;
+				if (took > slow_worst)
+					slow_worst = took;
+			}
+			if ((late || slow) && c1.tv_sec - said.tv_sec >= TIMING_SAY_S) {
+				if (said.tv_sec)
+					info("timing          in %ld s: %lu warp frames more than 25 ms after the previous one (worst %.1f ms), %lu commits over 10 ms (worst %.1f ms)",
+					     (long)(c1.tv_sec - said.tv_sec), late, late_worst, slow, slow_worst);
+				said = c1;
+				late = slow = 0;
+				late_worst = slow_worst = 0;
+			}
 			prev = c1;
 		}
 	if (fence >= 0)
