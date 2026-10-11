@@ -69,7 +69,10 @@ den zwei Durchgängen bis 2 LSB. A/B/A/B bei festem Takt: 14 % weniger Warp-CPU,
 Bilder:** ThinkPad-Ausgang per `xrandr` kurz auf 1280×720 @ 60 - Zeiger 59,8 Wechsel/s, jeder Abstand eine Bildzeit, still und
 mit kreisendem Zeiger; zurück auf 1920×1080 @ 60 - 53/s (die Nacht über 30-41). Die Firmware verliert Bilder beim Herunter-
 skalieren 1080p → 720p in der Aufnahme; der HY310 (1080p-Panel) skaliert nicht. Entscheidung offen: 720p als bevorzugter
-Modus in der EDID der 720p-Boards (TODO 2.56).
+Modus in der EDID der 720p-Boards (TODO 2.56). (5) **Nachteile des 20-ms-Reglers** (Marco: "eine Verschlechterung wollen
+wir in keinem Fall"): A/B/A/B je 150 s Warp mit Trapez, dann 20 s Messung und die Einblendungszeiten - alle Kerne 6,1/6,8 % →
+3,0/3,3 %, CPU 53,4/53,4 → 53,8/54,2 °C, GPU gleich (55-56 °C), 0 verlorene Warp-Bilder in beiden, Einblendungen 7-9 ms →
+7-11 ms (Rauschen; einmal 1-3 ms länger, weil der Takt später hochgeht - bei 2,5 s Anzeige unsichtbar). Strom nicht gemessen.
 
 ## 3 Nebenbefunde
 
