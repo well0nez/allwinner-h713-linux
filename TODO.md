@@ -158,6 +158,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
       über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
       Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
+      - 11.10. abends: Kernel-Patch `0257` gebaut und am G-EU installiert (`versuch/kernel-abend`); noch nicht gemessen - braucht ein
+        Aus über crust und den Start danach
 - [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
       höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
       - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf
@@ -181,8 +183,23 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.60 **CONFIG_UCLAMP_TASK statt chrt** (11.10. abends, `doku/201`): der Kernel-Weg gegen den RT-Takt-Boost ist
       `CONFIG_UCLAMP_TASK` + `kernel.sched_util_clamp_min_rt_default` (dann bleiben die Panfrost-IRQ-Threads FIFO und schedutil
       ignoriert sie trotzdem). Kernelconfig im Patchspiegel, Bau, Messung wie `h713-cpufreq` (m30/m31), dann das chrt im Skript weg
+      - 11.10. abends: Kernel mit `CONFIG_UCLAMP_TASK` gebaut, `h713-cpufreq` schreibt `sched_util_clamp_min_rt_default = 0`
+        ("was 1024"), am G-EU aktiv. Die Messreihe wie m30/m31 steht aus; nicht in `main` bis 2.63 geklärt ist
 - [ ] 2.62 **HY310 mit 0255 und dem Warp aus `doku/201` nachmessen** (11.10., Handoff `doku/201` §7; HY310 offline, Marco: nach
       hinten): `anzeige.py`, `ctl trace 30 gpu`, `messe-warp.py`; dazu die Panel-Hz des HY310 (nie gemessen) und 2.49 dort
+- [ ] 2.63 **HY300PRO-G-EU: nach einem Warmstart stirbt der MIPS beim Anmelden der Routinen - wieder** (11.10. ~23:50, Kernel
+      `versuch/kernel-abend`): Linux übernimmt beim Warmstart den laufenden MIPS ("adopting the live shared region"), meldet seine
+      Routinen an, der MIPS kopiert dafür seine Routinentabelle unter Sperre 2 neu und stirbt dabei (wie `doku/72`). Sperre 2 bleibt
+      `refcnt=1 thread=0xff` stehen, `SpinUnLock(2): no thread_id, skipping`, jedes Öffnen von video0 endet in "the callbacks cannot
+      be registered (-16)", h713-tv stirbt dreimal, systemd gibt auf: Lampe an, Wand dunkel, Panel und Quelle in Ordnung (Konsole
+      sichtbar). `h713-mips-restart` von Hand holt das Bild in 3,4 s zurück, ein Kaltstart auch. Offen: warum der MIPS beim Resync
+      stirbt; ob es seit UCLAMP (2.60, langsamerer Takt beim Boot) häufiger ist - Kontrollversuch Warmstarts alter/neuer Kernel;
+      danach entweder die Ursache oder als Rückfall h713-mips-restart, wenn h713-tv am blockierten Empfänger scheitert
+- [ ] 2.64 **HY300PRO-G-EU: Standby kam nicht zurück** (11.10. 21:24, Auswahl Standby in der Ausschalt-Einblendung): 15,5 s
+      geschlafen, "back from system suspend", sofort danach Reset ins dunkle Gate ("a standby did not finish", crust Phase
+      resuming, ohne Ursache). Linux schreibt beim Aufwachen nichts auf die UART, das Journal war flüchtig - keine Spur. Der folgende
+      Warmstart blieb dunkel, ohne Sperr-Meldungen (anders als 2.63). Seit 23:3x ist das Journal am G-EU dauerhaft (`h713-logs
+      persistent`, zurück: `h713-logs volatile`); nächster Versuch mit `echo N > /sys/module/printk/parameters/console_suspend`
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
@@ -193,6 +210,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10. G-EU (`doku/195`): kein HCI-Fehler im dmesg eines Boots mit Kopplung, Tasten, Maus und Mikro-Ton
       - 11.10. abends (Marco): im Betrieb Timeouts, nach dem Boot kommt Bluetooth nicht immer hoch. Verdacht (nicht gemessen):
         8250_dw ohne `UART_CAP_AFE` - RTS/CTS nur in Software. Erst lesen: MCR +0x10 Bit 5, CPR +0xF4, `/proc/tty/driver/serial`
+      - **11.10. abends gemessen:** UART1 `MCR.AFCE = 0`, `CPR = 0` - die Flusssteuerung lief in Software. Kernel-Patch `0256`
+        (Kompatibel `allwinner,sun50i-h713-uart`, CPR-Wert mit 64-Byte-FIFO und AFCE, `DW_UART_QUIRK_CPR_VALUE`): danach `MCR = 0x2b`,
+        `AFCE = 1`. Erster BT-Start nach einem Warmstart beim ersten Versuch (vorher zweimal nach 8 s ohne Antwort, Neustart der
+        Unit). Offen: mehr Starts zählen, Last-Test; der Patch liegt auf `versuch/kernel-abend` (`arbeit/kernel-abend-20261011/`)
 - [ ] 2.51 **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
       (60-Byte-HID-Berichte, ~63/s, ~3,8 kB/s), Format unbekannt - kein IMA-ADPCM, kein fester Kopf, komprimiert. Codec aus der
       Sprach-App/dem Audio-HAL der Stock-Firmware bestimmen, dann `CONFIG_HIDRAW` und ein Dekoder in Userspace. Nicht dringend
@@ -201,6 +222,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10. abends: der HY310 liefert ebenfalls ~125 Pakete/s (die ~63/s zählten die Pause mit); 60 Byte je 8 ms passen genau
         auf SBC mono 8 Subbänder/16 Blöcke/Bitpool 26 bei 16 kHz. Marco: Mikro und Maus jetzt interpretieren und vorbereiten, die
         Maus bedient später Desktop/Apps; Codec in den Stock-Bibliotheken suchen (lesend) erlaubt
+      - **11.10. abends: Maus erledigt** - im Mausmodus `REL_X`/`REL_Y` (~90/s) und OK als echter Linksklick (`BTN_LEFT`, im
+        Mausbericht Byte 0 Bit 0, btmon Handle 0x38), außerhalb OK = `KEY_SELECT`; die Maus-Taste selbst sendet nichts. Für einen
+        Desktop ist nichts zu tun. **Mikro offen:** kein ATV-Voice-ADPCM (kein Zähler, Codes gleichverteilt), Byte 0 hat nur 37
+        Werte und wandert langsam (Kopf-/Parameterbyte). Nächster Schritt: die Sprachkomponente aus dem Stock-`super` lösen
+        (Marco: lesend erlaubt) und den Codec dort nachlesen
 - [ ] 2.52 **Tasten, Reste aus 2.46** (11.10.): welche Taste die Eingangsumschaltung HDMI/Konsole bekommt (Marco; `keys.conf`
       `input_keys`, leer); welche Richtung "Fokus hoch" an der Wand fährt (beide Lesarten gesehen); ob die BLE-Fernbedienung beim
       Halten wiederholt (dann fährt der Fokus durch wie per IR)
