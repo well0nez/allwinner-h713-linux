@@ -3,13 +3,13 @@
 A small C library that draws the projector's overlays - volume, mute, focus, input - into an ARGB8888 buffer.
 It knows nothing about DRM, sockets or time: the caller says what to show, the library draws it, and returns the
 rectangle it touched. Planned users: the overlay daemon `h713-osd` (TODO 2.43-2.46, `doku/192`), later a desktop
-compositor (the rule of 2.45: drawing and the place it goes are separate). State: **draft for choosing the look**
+compositor (the rule of 2.45: drawing and the place it goes are separate). State: **draft for choosing the place**
 (P0b of `arbeit/einblendungen-20261011/PLAN.md`); nothing on a device yet.
 
 ```
-osd.h          the interface: osd_canvas, osd_style (place, look, scale), osd_item (kind, value, flags, alpha)
+osd.h          the interface: osd_canvas, osd_style (place, scale), osd_item (kind, value, flags, alpha)
 osd.c          the drawing
-osd-mockup.c   a host tool: every place, look and case as one PAM picture, to lay over photos
+osd-mockup.c   a host tool: every place and case as one PAM picture, to lay over photos
 ```
 
 ## How it draws
@@ -27,22 +27,23 @@ canvas holds (straight alpha), so a later item stacks over an earlier one.
 |---|---|
 | `OSD_VOLUME` | speaker with up to three waves (bright up to the level), a thin bar, the number |
 | `OSD_MUTE` | the speaker crossed out; bar and number stay, dim - the volume is kept, not heard |
-| `OSD_MUTE_BADGE` | a small sign in a faint disc that stays while muted (top right; top left when the overlay itself sits top right) |
+| `OSD_MUTE_BADGE` | the crossed-out speaker alone, small, while muted (top right; top left when the overlays sit top right) |
 | `OSD_FOCUS` | a viewfinder and both directions stacked: the pressed one bright, the other dim; with `OSD_EDGE` the pressed one is **red** with a red bar across its tip (the owner's choice, 11.10.2026: a symbol alone would not tell a user that the end is reached) |
 | `OSD_INPUT` | the HDMI plug and the console prompt side by side, the active one bright |
 
-Places: `OSD_BOTTOM` (centred above the lower edge, where the stock firmware shows its volume), `OSD_TOP_RIGHT`,
-`OSD_CENTER` (a square card). Looks: `OSD_PILL` (a dark translucent panel behind the lines) and `OSD_BARE` (no
-panel; a soft shadow around every line keeps it legible on a bright picture).
+Every item is one strip of white lines with a soft dark shadow around each line - **no panel behind it**: the
+owner tried a translucent rounded panel and a centred card on 11.10.2026 and rejected both ("rounded backgrounds
+that are rectangles do not work"); the shadow keeps the lines legible on a bright picture. Places: `OSD_BOTTOM`
+(centred above the lower edge, where the stock firmware shows its volume), `OSD_TOP_RIGHT`, `OSD_CENTER`.
 
 ## Building
 
 In the container `h713-build`: `make host` builds `osd-mockup`; `make mockup DIR=...` renders every case as PAM
-(1.7 s for 60 pictures at 1080p). `make cross` builds `libh713osd.aarch64-linux-gnu.a` for the board, with clang
+(about 1 s for 30 pictures at 1080p). `make cross` builds `libh713osd.aarch64-linux-gnu.a` for the board, with clang
 against the board root, as `h713-warp` is built (not tried yet).
 
 ## Not decided, not measured
 
-Which place and look (the owner chooses on the mock-ups); whether the display's channel 2 wants premultiplied
+Which place (the owner chooses on the mock-ups); whether the display's channel 2 wants premultiplied
 alpha (measured in 2.48 - the library writes straight alpha); text (a font comes with the power-off message,
 TODO 2.38). The time to draw one item on the board is not measured.

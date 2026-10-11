@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * libh713osd - see osd.h. One item is laid out as a short list of primitives (strokes, arcs, rounded
- * rectangles, filled polygons), each in one tone - bright white, dim white or red (a warning: the end of the
+ * libh713osd - see osd.h. One item is laid out as a short list of primitives (round-capped strokes, arcs,
+ * outlines of rounded rectangles), each in one tone - bright white, dim white or red (a warning: the end of the
  * focus travel); then every pixel of its rectangle gets the coverage of the nearest edge of each tone and is
  * mixed over what the canvas already holds.
  *
- * The distance functions follow the usual 2-D signed distance formulas; the round-capped segment, the
- * triangle as three half planes and the rounded rectangle came over from the warp-konsole draft
- * (versuch/warp-konsole, osd.c), the digits are drawn anew with arcs, because straight strokes looked crude.
+ * The distance functions follow the usual 2-D signed distance formulas; the round-capped segment and the
+ * rounded rectangle came over from the warp-konsole draft (versuch/warp-konsole, osd.c); the digits are drawn
+ * anew with arcs, because straight strokes looked crude.
  */
 #include <math.h>
 #include <string.h>
@@ -20,20 +20,18 @@
 
 enum { T_BRIGHT, T_DIM, T_RED };	/* the tones of a line */
 
-enum { P_SEG, P_ARC, P_RRECT, P_RRECT_LINE, P_POLY };
+enum { P_SEG, P_ARC, P_RRECT_LINE };
 
 struct prim {
 	int type, tone;
-	double a[8];		/* the shape's numbers, see prim_dist */
-	int n;			/* P_POLY: corners in a[] as x0,y0,x1,y1,... (at most 4) */
+	double a[5];		/* the shape's numbers, see prim_dist */
 };
 
 struct scene {
 	struct prim p[MAXP];
 	int n;
 	double lw;		/* half the line width of icons and digits, px */
-	int panel;		/* 0 none, 1 rounded rectangle, 2 circle */
-	double px, py, pw, ph, pr;	/* the panel: left, top, width, height, corner radius */
+	double px, py, pw, ph;	/* the item's box: left, top, width, height */
 };
 
 static double clampd(double v, double lo, double hi)
@@ -71,22 +69,6 @@ static double rrect_sd(double x, double y, double cx, double cy, double hw, doub
 	return hypot(fmax(qx, 0), fmax(qy, 0)) + fmin(fmax(qx, qy), 0) - r;
 }
 
-/* a convex polygon, corners clockwise on screen: the largest distance to its edges' half planes */
-static double poly_sd(double x, double y, const double *c, int n)
-{
-	double d = -1e9;
-	int i;
-
-	for (i = 0; i < n; i++) {
-		double ax = c[2 * i], ay = c[2 * i + 1];
-		double bx = c[2 * ((i + 1) % n)], by = c[2 * ((i + 1) % n) + 1];
-		double e = ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / hypot(bx - ax, by - ay);
-
-		d = fmax(d, -e);
-	}
-	return d;
-}
-
 /* signed distance of one primitive, negative inside */
 static double prim_dist(const struct prim *p, double x, double y, double lw)
 {
@@ -97,12 +79,8 @@ static double prim_dist(const struct prim *p, double x, double y, double lw)
 		return seg_dist(x, y, a[0], a[1], a[2], a[3]) - lw;
 	case P_ARC:
 		return arc_dist(x, y, a[0], a[1], a[2], a[3], a[4]) - lw;
-	case P_RRECT:
-		return rrect_sd(x, y, a[0], a[1], a[2], a[3], a[4]);
 	case P_RRECT_LINE:
 		return fabs(rrect_sd(x, y, a[0], a[1], a[2], a[3], a[4])) - lw;
-	case P_POLY:
-		return poly_sd(x, y, a, p->n);
 	}
 	return 1e9;
 }
@@ -177,15 +155,6 @@ static double number(struct scene *s, int v, double rx, double y, double h)
 		v /= 10;
 	} while (v);
 	return x + step;
-}
-
-/* the same, centred on cx */
-static void number_centred(struct scene *s, int v, double cx, double y, double h)
-{
-	int n = v >= 100 ? 3 : v >= 10 ? 2 : 1;
-	double k = h / 10, w = (n - 1) * 7.6 * k + 6 * k;
-
-	number(s, v, cx + w / 2, y, h);
 }
 
 /* --- the icons, centred at (cx, cy), k = one unit (the icon box is about 36 units) -------------------- */
@@ -263,8 +232,8 @@ static void bar(struct scene *s, double x0, double x1, double cy, int v)
 
 /* --- layout -------------------------------------------------------------------------------------------- */
 
-static void place_panel(struct scene *s, const struct osd_canvas *c, const struct osd_style *st,
-			double u, double w, double h)
+static void place_box(struct scene *s, const struct osd_canvas *c, const struct osd_style *st,
+		      double u, double w, double h)
 {
 	s->pw = w, s->ph = h;
 	switch (st->place) {
@@ -280,74 +249,50 @@ static void place_panel(struct scene *s, const struct osd_canvas *c, const struc
 	}
 }
 
+/* every item is one strip of lines - no panel behind it, no card (the owner, 11.10.2026: rounded backgrounds
+ * look like boxes over the picture); the badge is the crossed-out speaker alone */
 static void layout(struct scene *s, const struct osd_canvas *c, const struct osd_style *st,
 		   const struct osd_item *it)
 {
-	double u = c->h / 1080.0 * (st->scale > 0 ? st->scale : 1), k = u, cy;
-	int card = st->place == OSD_CENTER, v = (int)clampd(it->value, 0, 100);
+	double u = c->h / 1080.0 * (st->scale > 0 ? st->scale : 1), k = 1.38 * u, cy, w;
+	int v = (int)clampd(it->value, 0, 100);
 
 	memset(s, 0, sizeof(*s));
 	s->lw = 1.6 * u;
-	s->panel = st->look == OSD_PILL;
 
 	if (it->kind == OSD_MUTE_BADGE) {
 		double d = 64 * u;
 
-		s->panel = 2;	/* the badge has its own disc in both looks, faint, so it never vanishes in a bright picture */
-		s->pw = s->ph = d, s->pr = d / 2;
+		s->pw = s->ph = d;
 		s->px = st->place == OSD_TOP_RIGHT ? 48 * u : c->w - 48 * u - d;
 		s->py = 48 * u;
 		speaker(s, s->px + d / 2 - 4 * u, s->py + d / 2, 1.25 * u, 0, 1);
 		return;
 	}
-	if (card) {			/* the centre: a square card, the icon large, the value below */
-		double d = it->kind == OSD_FOCUS ? 190 * u : 260 * u;
-
-		place_panel(s, c, st, u, d, d);
-		s->pr = 36 * u;
-		k = it->kind == OSD_FOCUS ? 2.9 * u : 2.1 * u;
-		cy = s->py + (it->kind == OSD_FOCUS ? 65 * u : 100 * u);
-	} else {
-		double w = it->kind == OSD_VOLUME || it->kind == OSD_MUTE ? 540 * u : it->kind == OSD_FOCUS ? 150 * u : 220 * u;
-
-		place_panel(s, c, st, u, w, 76 * u);
-		s->pr = 38 * u;
-		cy = s->py + 38 * u;
-		k = 1.38 * u;		/* the icons in a strip: about 50 px high at 1080 lines */
-	}
+	w = it->kind == OSD_VOLUME || it->kind == OSD_MUTE ? 540 * u : it->kind == OSD_FOCUS ? 150 * u : 220 * u;
+	place_box(s, c, st, u, w, 76 * u);
+	cy = s->py + 38 * u;		/* the icons: about 50 px high at 1080 lines */
 
 	switch (it->kind) {
 	case OSD_VOLUME:
 	case OSD_MUTE: {
 		int mute = it->kind == OSD_MUTE, first;
 
-		if (card) {
-			speaker(s, s->px + s->pw / 2 - 2 * k, cy - 8 * u, k, v, mute);
-			first = s->n;
-			number_centred(s, v, s->px + s->pw / 2, s->py + 150 * u, 34 * u);
-			bar(s, s->px + 50 * u, s->px + 210 * u, s->py + 222 * u, v);
-		} else {
-			speaker(s, s->px + 60 * u, cy, k, v, mute);
-			first = s->n;
-			number(s, v, s->px + s->pw - 32 * u, cy - 15 * u, 30 * u);
-			bar(s, s->px + 118 * u, s->px + s->pw - 116 * u, cy, v);
-		}
+		speaker(s, s->px + 60 * u, cy, k, v, mute);
+		first = s->n;
+		number(s, v, s->px + s->pw - 32 * u, cy - 15 * u, 30 * u);
+		bar(s, s->px + 118 * u, s->px + s->pw - 116 * u, cy, v);
 		if (mute)	/* the volume is kept, not heard: its digits and bar stay, dim */
 			for (int i = first; i < s->n; i++)
 				s->p[i].tone = T_DIM;
 		break;
 	}
 	case OSD_FOCUS:
-		focus_icon(s, s->px + s->pw / 2, cy + (card ? 30 * u : 0), k, it->value >= 0 ? 1 : -1, it->flags & OSD_EDGE);
+		focus_icon(s, s->px + s->pw / 2, cy, k, it->value >= 0 ? 1 : -1, it->flags & OSD_EDGE);
 		break;
 	case OSD_INPUT:
-		if (card) {
-			hdmi_icon(s, s->px + s->pw / 2, cy - 10 * u, 1.6 * u, it->value != 0);
-			console_icon(s, s->px + s->pw / 2, cy + 80 * u, 1.6 * u, it->value == 0);
-		} else {
-			hdmi_icon(s, s->px + 60 * u, cy, k, it->value != 0);
-			console_icon(s, s->px + s->pw - 60 * u, cy, k, it->value == 0);
-		}
+		hdmi_icon(s, s->px + 60 * u, cy, k, it->value != 0);
+		console_icon(s, s->px + s->pw - 60 * u, cy, k, it->value == 0);
 		break;
 	default:
 		break;
@@ -387,7 +332,6 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 	static struct scene s;
 	double u = c->h / 1080.0 * (st->scale > 0 ? st->scale : 1), shadow = 14 * u;
 	double fade = clampd(it->alpha, 0, 1);
-	int bare = st->look == OSD_BARE && it->kind != OSD_MUTE_BADGE;
 	int x0, y0, x1, y1;
 
 	layout(&s, c, st, it);
@@ -409,15 +353,9 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 				t[s.p[i].tone] = fmin(t[s.p[i].tone], d);
 			}
 			all = fmin(t[T_BRIGHT], fmin(t[T_DIM], t[T_RED]));
-			if (s.panel == 1)
-				over(px, 10, 12, 16, 0.46 * fade *
-				     cover(rrect_sd(fx, fy, s.px + s.pw / 2, s.py + s.ph / 2, s.pw / 2, s.ph / 2, s.pr), AA));
-			else if (s.panel == 2)
-				over(px, 10, 12, 16, 0.38 * fade *
-				     cover(hypot(fx - s.px - s.pw / 2, fy - s.py - s.ph / 2) - s.pw / 2, AA));
-			if (bare)	/* a soft shadow around every line keeps it legible on a bright picture */
-				over(px, 0, 0, 0, 0.62 * fade * cover(all - 3 * u, shadow) *
-				     (t[T_DIM] < fmin(t[T_BRIGHT], t[T_RED]) ? 0.7 : 1));
+			/* a soft shadow around every line keeps it legible on a bright picture */
+			over(px, 0, 0, 0, 0.62 * fade * cover(all - 3 * u, shadow) *
+			     (t[T_DIM] < fmin(t[T_BRIGHT], t[T_RED]) ? 0.7 : 1));
 			over(px, 250, 250, 250, 0.94 * fade * fmax(cover(t[T_BRIGHT], AA), DIM * cover(t[T_DIM], AA)));
 			over(px, 255, 72, 64, 0.96 * fade * cover(t[T_RED], AA));
 		}

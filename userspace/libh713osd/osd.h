@@ -3,7 +3,7 @@
  * libh713osd - the overlays of the H713 projectors as ARGB pictures, and nothing else: no DRM, no sockets,
  * no clock. A caller (h713-osd, a test, later a desktop) says what is to be shown; the library draws it into
  * a buffer. Everything is a signed distance field evaluated per pixel, so it is crisp at any panel size and
- * needs no font or image file. README.md in this directory describes the shapes and the looks.
+ * needs no font or image file. README.md in this directory describes the shapes and the places.
  */
 #ifndef H713_OSD_H
 #define H713_OSD_H
@@ -27,20 +27,15 @@ enum osd_kind {
 
 #define OSD_EDGE	1
 
+/* where the strip goes; every item is white lines with a soft shadow, no panel behind them */
 enum osd_place {
 	OSD_BOTTOM,		/* centred above the lower edge - where the stock firmware puts its volume */
 	OSD_TOP_RIGHT,
-	OSD_CENTER,		/* a square card in the middle */
-};
-
-enum osd_look {
-	OSD_PILL,		/* a dark, translucent rounded panel behind white lines */
-	OSD_BARE,		/* no panel: white lines with a soft shadow, the picture stays visible around them */
+	OSD_CENTER,
 };
 
 struct osd_style {
 	enum osd_place place;
-	enum osd_look look;
 	float scale;		/* 1.0 = the size meant for the panel height; the user's choice on top */
 };
 
