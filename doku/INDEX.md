@@ -252,6 +252,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`200-ringplatz-aus-dem-schreibindex-20261011.md`](200-ringplatz-aus-dem-schreibindex-20261011.md) | Analyse | 2026-10-11 | 200 - Der Ringplatz kommt aus dem Schreibindex der Aufnahme, nicht aus dem Firmware-Zeiger (11.10.2026, nachmittags) | 5 |
 | [`201-warp-zeichnen-gpu-regler-20261011.md`](201-warp-zeichnen-gpu-regler-20261011.md) | Analyse | 2026-10-11 | 201 - Der Warp: GPU-Zeit gedrittelt, CPU-Takt ruhig, kein Bild Latenz mehr (11.10.2026, abends) | 2 |
+| [`202-ausschalten-kernel-abend-warmstart-20261012.md`](202-ausschalten-kernel-abend-warmstart-20261012.md) | Analyse | 2026-10-12 | 202 - Ausschalt-Einblendung, Abendkernel (UCLAMP, BT-Flusssteuerung), Maus, und zwei dunkle Starts (11./12.10.2026, nachts) | - |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -408,7 +409,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-46 von 260 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+47 von 261 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -448,6 +449,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `189-handoff-20261010-abends.md`
 * `194-handoff-20261011-frueh.md`
 * `196-nachtarbeit-kleinkram-und-warp-20261011.md` (ueberholt)
+* `202-ausschalten-kernel-abend-warmstart-20261012.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
