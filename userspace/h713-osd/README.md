@@ -28,6 +28,11 @@ h713-osd ctl status                  state, channel, matrix, style, and where th
    mode (rear, ceiling: mirrored) are in that one matrix, so the overlay sits in the picture like the picture.
 4. **Show**: "osd show N" to h713-tv; over the warp it goes with the warp's next frame.
 
+The mute badge follows h713-tv's own mute: h713-osd asks it ("mute") at its start and before every claim, so the
+badge survives a restart of either daemon - an update, a standby (measured 11.10.2026: h713-tv muted, h713-osd
+restarted, the badge there without a key). Between claims the events from h713-keys keep it (h713-keys mutes
+h713-tv first, then tells h713-osd).
+
 The matrix comes from `/etc/h713/warp.conf`, solved exactly as h713-warp solves it (`warp_effective`,
 `warp_matrix`, `warp_mirror`); every `h713-warp ctl` change rewrites that file, and an inotify watch on its
 directory reloads it. `osd.conf` (place, look, scale, seconds) is watched the same way.
@@ -55,7 +60,7 @@ happens a few times per key press; not worth it at these times - a later desktop
 ## Building and testing
 
 In the container `h713-build`: `make cross SYSROOT=...` for the board (clang, as h713-tv is built), `make host`
-and `make test` for the host tests (`tests/test_osd.py`, 8 tests, ~7 s): a fake h713-tv on a Unix socket that
+and `make test` for the host tests (`tests/test_osd.py`, 9 tests, ~8 s): a fake h713-tv on a Unix socket that
 hands memfds over instead of dma-bufs; the tests read where the overlay landed in the buffer - bottom centre,
 pre-distorted inward over a keystone, mirrored in rear mode, following a new warp.conf, the badge staying and
 coming back after h713-tv restarts. The environment variables `H713_OSD_SOCKET`, `H713_OSD_TV`,

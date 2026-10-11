@@ -221,6 +221,29 @@ static bool tv_say(const char *line, char *answer, size_t n)
 	return !strncmp(answer, "ok", 2);
 }
 
+/* h713-tv's own word on the mute: 1 on, 0 off, -1 unknown. Asked at the start and before every claim, on a
+ * connection of its own, so the badge survives a restart of either daemon (an update, a standby). */
+static int tv_mute(void)
+{
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	struct timeval tmo = { 1, 0 };
+	char buf[128];
+	ssize_t got;
+	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0), r = -1;
+
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", tv_socket);
+	if (fd < 0)
+		return -1;
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tmo, sizeof(tmo));
+	if (!connect(fd, (struct sockaddr *)&addr, sizeof(addr)) && send(fd, "mute\n", 5, MSG_NOSIGNAL) == 5 &&
+	    (got = recv(fd, buf, sizeof(buf) - 1, 0)) > 0) {
+		buf[got] = '\0';
+		r = !strncmp(buf, "ok mute on", 10) ? 1 : !strncmp(buf, "ok mute off", 11) ? 0 : -1;
+	}
+	close(fd);
+	return r;
+}
+
 static bool tv_claim(void)
 {
 	char cbuf[CMSG_SPACE(sizeof(int) * 2)] = { 0 }, line[128];
@@ -233,11 +256,16 @@ static bool tv_claim(void)
 	unsigned int w, h, pitch;
 	ssize_t got;
 
+	int mute;
+
 	if (tv.fd >= 0)
 		return true;
 	if (now_s() < tv.retry)
 		return false;
 	tv.retry = now_s() + 1.0;
+	mute = tv_mute();
+	if (mute >= 0)
+		want.muted = mute;
 	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", tv_socket);
 	tv.fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (tv.fd < 0 || connect(tv.fd, (struct sockaddr *)&addr, sizeof(addr))) {
@@ -716,6 +744,8 @@ static int run(void)
 
 	conf_load();
 	geom_load();
+	if (tv_mute() == 1)	/* muted before this start: the badge, without waiting for a key */
+		want.muted = true;
 	lfd = listen_on(osd_socket);
 	if (lfd < 0)
 		return 1;
@@ -733,6 +763,8 @@ static int run(void)
 	sigaddset(&mask, SIGINT);
 	sigprocmask(SIG_BLOCK, &mask, NULL);
 	sfd = signalfd(-1, &mask, SFD_CLOEXEC);
+	if (want.muted)
+		refresh();
 	info("ready: %s; place %s, look %s; keystone %s", osd_socket,
 	     style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 	     style.look == OSD_PILL ? "pill" : "bare", m_identity ? "none" : m_valid ? "from warp.conf" : "refused");

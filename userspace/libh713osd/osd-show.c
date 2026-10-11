@@ -3,11 +3,17 @@
  * osd-show - one overlay on the panel through h713-tv's overlay channel, a test tool for the board:
  *
  *   osd-show [-s SOCKET] [-t SECONDS] [--demo] KIND VALUE [edge]
+ *   osd-show [-s SOCKET] [-t SECONDS] --alpha
  *
  * KIND volume|mute|focus|input|badge ("mute" draws the mute overlay and the badge that stays); "--demo" runs the volume from 0 to 100 and back, alternating the two
  * buffers, and prints how long drawing, copying and showing took. It claims the overlay ("osd claim", two
  * dma-bufs with the answer), draws with libh713osd into memory, copies the touched rectangle into a buffer,
  * says "osd show N", waits, says "osd hide" and "osd release". h713-osd will do the same as a daemon.
+ *
+ * "--alpha" asks how the display mixes: two white squares at 25 % in the middle, the left one in straight alpha
+ * (ARGB 0x40FAFAFA), the right one premultiplied (0x403E3E3E). A display that mixes straight alpha shows the left as
+ * a light veil and the right barely (a touch darker); one that expects premultiplied alpha shows the left almost
+ * solid white and the right as the light veil (TODO 2.48).
  */
 #include <errno.h>
 #include <stdio.h>
@@ -85,14 +91,16 @@ int main(int argc, char **argv)
 			seconds = atoi(argv[++a]);
 		else if (!strcmp(argv[a], "--demo"))
 			demo = 1;
+		else if (!strcmp(argv[a], "--alpha"))
+			demo = 2;
 		else
 			break;
 	}
-	if (!demo && argc - a < 2) {
+	if (demo != 2 && !demo && argc - a < 2) {
 		fprintf(stderr, "usage: osd-show [-s SOCKET] [-t SECONDS] [--demo] volume|mute|focus|input|badge VALUE [edge]\n");
 		return 2;
 	}
-	if (!demo) {
+	if (!demo && argc - a >= 2) {
 		const char *k = argv[a];
 
 		it.kind = !strcmp(k, "mute") ? OSD_MUTE : !strcmp(k, "focus") ? OSD_FOCUS :
@@ -132,6 +140,20 @@ int main(int argc, char **argv)
 	if (!c.px)
 		return 1;
 
+	if (demo == 2) {	/* the alpha test: straight left, premultiplied right, 300 x 300 each */
+		sync_buf(fds[0], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
+		for (unsigned int y = h / 2 - 150; y < h / 2 + 150; y++)
+			for (unsigned int x = w / 2 - 340; x < w / 2 + 340; x++)
+				if (x < w / 2 - 40 || x >= w / 2 + 40)
+					map[0][(size_t)y * (pitch / 4) + x] = x < w / 2 ? 0x40FAFAFAu : 0x403E3E3Eu;
+		sync_buf(fds[0], DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE);
+		printf("alpha test: %s\n", talk(fd, "osd show 0\n", answer, sizeof(answer)) ? answer : "shown");
+		sleep((unsigned int)seconds);
+		talk(fd, "osd hide\n", answer, sizeof(answer));
+		talk(fd, "osd release\n", answer, sizeof(answer));
+		printf("hidden and released\n");
+		return 0;
+	}
 	for (int step = 0, n = 0; step < (demo ? 41 : 1); step++, n ^= 1) {
 		double t0, t1, t2, t3;
 		int clear[4];

@@ -24,7 +24,7 @@ class FakeTv(threading.Thread):
 
     def __init__(self, path, picture="ring"):
         super().__init__(daemon=True)
-        self.path, self.picture = path, picture
+        self.path, self.picture, self.mute = path, picture, "off"
         self.lines, self.shown, self.conn = [], None, None
         self.bufs = []
         for i in range(2):
@@ -42,27 +42,33 @@ class FakeTv(threading.Thread):
             except OSError:
                 return
             self.conn = c
-            while True:
-                try:
-                    data = c.recv(256)
-                except OSError:
-                    break
-                if not data:
-                    break
-                for line in data.decode().splitlines():
-                    self.lines.append(line)
-                    if line == "osd claim":
-                        socket.send_fds(c, [b"ok %d %d %d argb8888\n" % (W, H, PITCH)], self.bufs)
-                    elif line == "osd picture":
-                        c.sendall(("ok %s\n" % self.picture).encode())
-                    elif line.startswith("osd show "):
-                        self.shown = int(line.split()[2])
-                        c.sendall(b"ok\n")
-                    elif line == "osd hide":
-                        self.shown = None
-                        c.sendall(b"ok\n")
-                    else:
-                        c.sendall(b"ok\n")
+            try:
+                self.serve(c)
+            except OSError:
+                pass                            # stopped under a connection
+            c.close()
+
+    def serve(self, c):
+        while True:
+            data = c.recv(256)
+            if not data:
+                return
+            for line in data.decode().splitlines():
+                self.lines.append(line)
+                if line == "osd claim":
+                    socket.send_fds(c, [b"ok %d %d %d argb8888\n" % (W, H, PITCH)], self.bufs)
+                elif line == "osd picture":
+                    c.sendall(("ok %s\n" % self.picture).encode())
+                elif line.startswith("osd show "):
+                    self.shown = int(line.split()[2])
+                    c.sendall(b"ok\n")
+                elif line == "mute":
+                    c.sendall(("ok mute %s (DSP)\n" % self.mute).encode())
+                elif line == "osd hide":
+                    self.shown = None
+                    c.sendall(b"ok\n")
+                else:
+                    c.sendall(b"ok\n")
 
     def stop(self):
         if self.conn:
@@ -117,6 +123,11 @@ class OsdTest(unittest.TestCase):
             time.sleep(0.02)
         self.fail("h713-osd did not come up")
 
+    def mute(self, state, volume="40"):
+        """as h713-keys does it: h713-tv first, then the overlay"""
+        self.tv.mute = state
+        return self.ctl("mute", state, volume)
+
     def ctl(self, *words):
         r = subprocess.run([BIN, "ctl"] + list(words), env=self.env, capture_output=True, text=True, timeout=5)
         self.assertTrue(r.stdout.startswith("ok"), r.stdout + r.stderr)
@@ -141,11 +152,11 @@ class OsdTest(unittest.TestCase):
 
     def test_mute_badge_stays_and_goes(self):
         self.start()
-        self.ctl("mute", "on", "40")
+        self.mute("on")
         time.sleep(0.8)                                                  # the overlay is gone, the badge is not
         x0, y0, x1, y1 = self.tv.bbox()
         self.assertTrue(x0 > W * 0.85 and y1 < H * 0.2, (x0, y0, x1, y1))
-        self.ctl("mute", "off", "40")
+        self.mute("off")
         x0, y0, x1, y1 = self.tv.bbox()
         self.assertTrue(y0 > H * 0.7, (x0, y0, x1, y1))                  # the volume, no badge any more
 
@@ -164,7 +175,7 @@ class OsdTest(unittest.TestCase):
     def test_keystone_follows_warp_conf(self):
         self.tv.picture = "warped"
         self.start()
-        self.ctl("mute", "on", "40")
+        self.mute("on")
         time.sleep(0.8)
         before = self.tv.bbox()
         self.write("warp.conf.new", "tr_x = 200\ntr_y = 300\nwarp = on\n")
@@ -178,21 +189,29 @@ class OsdTest(unittest.TestCase):
         self.write("warp.conf", "mode = rear\nwarp = on\n")
         self.tv.picture = "warped"
         self.start()
-        self.ctl("mute", "on", "40")
+        self.mute("on")
         time.sleep(0.8)
         x0, y0, x1, y1 = self.tv.bbox()
         self.assertLess(x1, W * 0.15, (x0, x1))                           # top right on the wall = top left on the panel
 
     def test_claims_again_after_h713_tv_restarts(self):
         self.start()
-        self.ctl("mute", "on", "40")
+        self.mute("on")
         self.tv.stop()
         time.sleep(0.2)
         self.tv = FakeTv(self.env["H713_OSD_TV"])
+        self.tv.mute = "on"                                              # h713-tv comes back muted (saved)
         self.tv.start()
         time.sleep(1.6)                                                  # the retry, once a second
         self.assertIn("osd claim", self.tv.lines)
         self.assertIsNotNone(self.tv.bbox())                             # the badge is back without a key
+
+    def test_badge_from_h713_tv_at_the_start(self):
+        self.tv.mute = "on"                                              # muted before h713-osd starts
+        self.start()
+        time.sleep(0.5)
+        x0, y0, x1, y1 = self.tv.bbox()
+        self.assertTrue(x0 > W * 0.85 and y1 < H * 0.2, (x0, y0, x1, y1))
 
     def test_status_and_errors(self):
         self.start()
