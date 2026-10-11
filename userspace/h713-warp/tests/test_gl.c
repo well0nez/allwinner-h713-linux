@@ -417,6 +417,32 @@ static int t1c(void)
 	return bad != 0;
 }
 
+/* the soft border as the daemon draws it: the ring, blended over the picture
+ * (gl.c edge_draw), with the identity matrix of draw() */
+static void band(const int e[2], int w, int h)
+{
+	static GLuint prog_e;
+	float v[40], mf[16];
+
+	if (!prog_e)
+		prog_e = program(gl_edge_shader);
+	identity(mf, MODE_FRONT);
+	gl_edge_ring(e, v);
+	glUseProgram(prog_e);
+	glUniformMatrix4fv(glGetUniformLocation(prog_e, "u_k"), 1, GL_FALSE, mf);
+	glUniform2f(glGetUniformLocation(prog_e, "u_edge"), (float)e[0], (float)e[1]);
+	glUniform2f(glGetUniformLocation(prog_e, "u_fill"), 16.0f / 255.0f, 0.0f);
+	glViewport(0, 0, w, h);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, v);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, v + 2);
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 10);
+	glDisable(GL_BLEND);
+}
+
 static int t1d(void)
 {
 	const int w = 256, h = 256, px = 4, luma = 200;
@@ -435,8 +461,8 @@ static int t1d(void)
 	glUseProgram(prog);
 	glUniform1i(glGetUniformLocation(prog, "u_y"), 0);
 	gl_edge_mask((unsigned int)w, (unsigned int)h, px, e);
-	glUniform2f(glGetUniformLocation(prog, "u_edge"), (float)e[0], (float)e[1]);
 	draw(prog, w, h, MODE_FRONT);
+	band(e, w, h);
 	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out);
 	for (y = 0; y < h; y++)
 		for (x = 0; x < w; x++) {
@@ -455,8 +481,7 @@ static int t1d(void)
 	fifth = out[((size_t)(h / 2) * w + 6) * 4];
 	printf("%s T1d edge ramp within %d LSB: %ld of %d pixels outside, worst %d (edge pixel %d, seventh %d)\n",
 	       bad ? "FAIL" : "ok", TOL_LSB, bad, w * h, worst, first, fifth);
-	glUniform2f(glGetUniformLocation(prog, "u_edge"), 0.0f, 0.0f);
-	draw(prog, w, h, MODE_FRONT);
+	draw(prog, w, h, MODE_FRONT);	/* no band: the edge off */
 	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out);
 	for (y = 0; y < h; y++)
 		for (x = 0; x < w; x++)

@@ -100,6 +100,16 @@ void gl_source_drop(void);
 bool gl_draw(int target, int slot, const float m[16], int pattern, int mark_corner,
 	     const char *const labels[5], const float lm[16], char *why, size_t n);
 int gl_fence(void);			/* an out-fence fd, or -1 */
+/*
+ * What a frame costs, for "ctl trace": CPU microseconds of this thread in the
+ * two passes (clock CLOCK_THREAD_CPUTIME_ID, so the clock governor does not
+ * blur it -- but it does scale it). Taken only while gl_timing(true) is on.
+ */
+struct gl_cost {
+	unsigned int cpu_luma_us, cpu_chroma_us;
+};
+void gl_timing(bool on);
+const struct gl_cost *gl_last_cost(void);
 void gl_edge(int px);			/* the soft border's width for the next draws, 0 = off */
 /* the mask's texel count across the quad for a panel of w x h, the vendor's rounding */
 void gl_edge_mask(unsigned int w, unsigned int h, int px, int out[2]);
@@ -116,6 +126,8 @@ extern const char *const gl_vertex_shader;
 extern const char *const gl_fragment_shader;	/* NV16 -> RGB, BT.709 (kept for the tests) */
 extern const char *const gl_luma_shader;	/* Y in, Y out */
 extern const char *const gl_chroma_shader;	/* CbCr in, CbCr out */
+extern const char *const gl_edge_shader;	/* the soft border's ring, blended */
+void gl_edge_ring(const int e[2], float v[40]);	/* its ten vertices (x, y, u, v) */
 extern const char *const gl_pattern_shader;
 
 /* ---------------- what the daemon is doing (loop.c) -------------------- */
@@ -144,6 +156,7 @@ struct runtime {
 		double age0;		/* the slot's age at the first draw */
 		unsigned long frames, differing, rows_max, late;
 		int trace;		/* dequeues still to log with their timestamps */
+		bool trace_gpu;		/* "trace N gpu": wait the out-fence out and log the GPU's time */
 		double last_pump;	/* when the last pump ended: the loop's gaps */
 		int row_lo, row_hi;	/* the rows that differed, over all frames */
 	} check;

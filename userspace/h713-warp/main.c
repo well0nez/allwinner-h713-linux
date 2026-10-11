@@ -189,7 +189,12 @@ int main(int argc, char **argv)
 	fds[0].events = POLLIN;
 	fds[1].fd = sfd;
 	fds[1].events = POLLIN;
-	r.hold = true;
+	/* Off since kernel 0255 (doku/200): the slot handed on at a vsync is the
+	 * one the capture finished at the last frame boundary, whole for two more
+	 * frame periods; drawn one vsync late it would be read up to 36 ms after
+	 * that boundary, when the capture is back writing it. On stays as the
+	 * self-check's control for a kernel from before 0255. */
+	r.hold = false;
 	r.check.slot = -1;
 	r.source.held = -1;
 	r.mark_corner = -1;		/* "test mask" marks no corner until one is named */

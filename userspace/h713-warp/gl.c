@@ -14,11 +14,13 @@
  * still a 1366-wide image and nothing is divided by anything (KS3 measured
  * that; design M5 feared otherwise).
  */
+#define _GNU_SOURCE		/* clock_gettime, CLOCK_THREAD_CPUTIME_ID */
 #define EGL_NO_X11
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -53,31 +55,41 @@ const char *const gl_vertex_shader =
  * exactly as on the ring, because it is the same channel. The chroma pass
  * draws at half size and the linear sampler averages the 4:2:2 source's two
  * chroma lines into the 4:2:0 output's one. */
+/* The picture passes are a bare fetch: Y into the luma plane, CbCr into the
+ * chroma plane, nothing else in the fragment. Anything after the fetch costs
+ * this GPU dearly -- the Mali-G31 (one core) hides no texture latency behind
+ * arithmetic: with the soft border's dozen operations folded into these
+ * shaders a frame took the GPU 6.1 ms at 696 MHz, a bare fetch 1.65 ms, one
+ * constant mix after the fetch 2.2 ms (measured 11.10.2026 through the
+ * out-fence, arbeit/warp-zeichnen-20261011 m16-m18). So the border is its own
+ * small draw again, below. */
+const char *const gl_luma_shader =
+	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
+	"void main() { gl_FragColor = vec4(texture2D(u_y, v_uv).r, 0.0, 0.0, 1.0); }\n";
+const char *const gl_chroma_shader =
+	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
+	"void main() { gl_FragColor = vec4(texture2D(u_c, v_uv).rg, 0.0, 1.0); }\n";
+
 /* The vendor's soft border (FB-EDGEBLEND; draw_edge @ 0x3C64 in the stock
  * libkeystone.so): a GL_ALPHA mask of w/4 by h/4 texels, each count rounded
  * up to 16, its outermost texel ring at 255 - 20 and 0 inside, sampled
  * GL_LINEAR over the warped quad and blended as black with SRC_ALPHA /
  * ONE_MINUS_SRC_ALPHA. Seen from the quad's edge inward: half a texel at
  * 20/255 of the picture, then a one-texel linear ramp up to the full picture.
- * Here it is folded into the two passes instead of a third blended quad:
- * u_edge is the mask's texel count across the quad (0 = off), r the ring as
- * the linear filter sees it in each axis, and the bilinear sample of an OR of
- * two rings is 1 - (1 - r.x)(1 - r.y). The blend runs towards the plane's
- * clear colour, video black, so the band meets the border without a step;
- * the vendor's residual 20/255 stays. */
-#define EDGE_GLSL \
-	"uniform vec2 u_edge;\n" \
-	"float edge_keep() { if (u_edge.x <= 0.0) return 1.0;\n" \
-	"  vec2 r = clamp(1.5 - min(v_uv, 1.0 - v_uv) * u_edge, 0.0, 1.0);\n" \
-	"  return 1.0 - 0.9215686 * (1.0 - (1.0 - r.x) * (1.0 - r.y)); }\n"
-const char *const gl_luma_shader =
-	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
-	EDGE_GLSL
-	"void main() { gl_FragColor = vec4(mix(0.0627451, texture2D(u_y, v_uv).r, edge_keep()), 0.0, 0.0, 1.0); }\n";
-const char *const gl_chroma_shader =
-	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y, u_c;\n"
-	EDGE_GLSL
-	"void main() { gl_FragColor = vec4(mix(vec2(0.5019608), texture2D(u_c, v_uv).rg, edge_keep()), 0.0, 1.0); }\n";
+ * Drawn here as the vendor draws it, blended over the picture, but only where
+ * it changes anything: a ring of ten vertices along the quad's edge, 1.5 mask
+ * texels wide (gl_edge_ring), one triangle strip per plane, no overlap. u_edge
+ * is the mask's texel count across the quad, r the ring as the linear filter
+ * sees it in each axis, and the bilinear sample of an OR of two rings is
+ * 1 - (1 - r.x)(1 - r.y); keep is what stays of the picture. The blend runs
+ * towards u_fill, the plane's video black (Y 16, CbCr 128), so the band meets
+ * the border without a step; the vendor's residual 20/255 stays. Inside the
+ * ring keep is exactly 1, which is why the ring may stop there. */
+const char *const gl_edge_shader =
+	"precision highp float; varying vec2 v_uv; uniform vec2 u_edge, u_fill;\n"
+	"void main() { vec2 r = clamp(1.5 - min(v_uv, 1.0 - v_uv) * u_edge, 0.0, 1.0);\n"
+	"  float keep = 1.0 - 0.9215686 * (1.0 - (1.0 - r.x) * (1.0 - r.y));\n"
+	"  gl_FragColor = vec4(u_fill, 0.0, 1.0 - keep); }\n";
 
 static int edge_px;	/* the soft border's width in panel pixels, 0 = off ("edge" in warp.conf) */
 
@@ -93,6 +105,32 @@ void gl_edge_mask(unsigned int w, unsigned int h, int px, int out[2])
 {
 	out[0] = px > 0 ? (int)((w / (unsigned int)px + 15u) & ~15u) : 0;
 	out[1] = px > 0 ? (int)((h / (unsigned int)px + 15u) & ~15u) : 0;
+}
+
+/* The ring's ten vertices (x, y, u, v each) as a triangle strip: outer and
+ * inner corner alternating, around the quad and back to the start, 1.5 mask
+ * texels wide -- the width over which the vendor's mask is not yet 0. In the
+ * quad's own coordinates, so the vertex shader maps it like the picture. */
+void gl_edge_ring(const int e[2], float v[40])
+{
+	static const float outer[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+	float bx = e[0] > 0 ? 1.5f / (float)e[0] : 0.0f;
+	float by = e[1] > 0 ? 1.5f / (float)e[1] : 0.0f;
+	int i;
+
+	for (i = 0; i < 5; i++) {
+		const float *o = outer[i % 4];
+		float iu = o[0] > 0.5f ? 1.0f - bx : bx, iv = o[1] > 0.5f ? 1.0f - by : by;
+
+		v[i * 8 + 0] = 2.0f * o[0] - 1.0f;
+		v[i * 8 + 1] = 2.0f * o[1] - 1.0f;
+		v[i * 8 + 2] = o[0];
+		v[i * 8 + 3] = o[1];
+		v[i * 8 + 4] = 2.0f * iu - 1.0f;
+		v[i * 8 + 5] = 2.0f * iv - 1.0f;
+		v[i * 8 + 6] = iu;
+		v[i * 8 + 7] = iv;
+	}
 }
 
 const char *const gl_fragment_shader =
@@ -152,11 +190,36 @@ static PFNEGLDESTROYSYNCKHRPROC p_sync_del;
 static PFNEGLDUPNATIVEFENCEFDANDROIDPROC p_sync_fd;
 static PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC p_img_rb;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC p_img_tex;
+/* the frame-cost trace (gl_timing, gl_last_cost), see the end of this file */
+static bool timing_on;
+static struct gl_cost cost;
 
 static EGLDisplay dpy = EGL_NO_DISPLAY;
 static EGLContext ctx = EGL_NO_CONTEXT;
 static char renderer[128] = "not opened";
-static GLuint prog_warp, prog_pattern, prog_luma, prog_chroma;
+static GLuint prog_warp, prog_pattern, prog_luma, prog_chroma, prog_edge_y, prog_edge_c;
+
+/*
+ * What a pass sets on its program, and what it set last time. Mesa's
+ * glGetUniformLocation is a string lookup and every glUniform* dirties the
+ * program's constant buffer for the next draw, so the matrix and the edge
+ * width go to the GPU only when they changed -- which is never, frame to
+ * frame, until somebody turns the keystone. The sampler units are fixed at
+ * link time. Measured 11.10.2026 (arbeit/warp-zeichnen-20261011): the two
+ * video passes cost this thread 750-900 us a frame at 1296 MHz before.
+ */
+struct pass_state {
+	GLuint prog;
+	GLint u_k, u_edge;
+	float k[16];
+	float edge[2];
+	bool k_set, edge_set;
+};
+static struct pass_state pass_luma, pass_chroma, pass_edge_y, pass_edge_c;
+static GLuint quad_vbo;		/* the unit quad, uploaded once */
+static bool quad_bound;		/* the vertex pointers point at it (text_draw moves them) */
+static GLuint ring_vbo;		/* the border's ring, uploaded when the mask count changes */
+static int ring_e[2];
 static unsigned int panel_w, panel_h;
 
 /* Text over the mask: a 5x7 font for the digits, the lowercase letters and
@@ -263,11 +326,13 @@ static void text_draw(const char *s, float x, float y, float h, float luma, cons
 		float q[16] = { x, y + gh, u0, 1,   x + cw, y + gh, u1, 1,
 				x, y, u0, 0,   x + cw, y, u1, 0 };
 
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, q);
 		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, q + 2);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	}
 	glDisable(GL_BLEND);
+	quad_bound = false;
 }
 
 /* Labels stay upright in panel space, as before. Cards separate them from the
@@ -428,6 +493,8 @@ static GLuint program(const char *fs, char *why, size_t n)
 	return prog;
 }
 
+static void pass_init(struct pass_state *p, GLuint prog);
+
 int gl_open(const char *node, char *why, size_t n)
 {
 	static const EGLint cattr[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
@@ -484,9 +551,75 @@ int gl_open(const char *node, char *why, size_t n)
 		font_build();
 	if (!prog_warp || !prog_luma || !prog_chroma || !prog_pattern || !prog_text)
 		return 1;
+	prog_edge_y = program(gl_edge_shader, why, n);
+	prog_edge_c = prog_edge_y ? program(gl_edge_shader, why, n) : 0;
+	if (!prog_edge_c)
+		return 1;
+	pass_init(&pass_luma, prog_luma);
+	pass_init(&pass_chroma, prog_chroma);
+	pass_init(&pass_edge_y, prog_edge_y);
+	glUniform2f(glGetUniformLocation(prog_edge_y, "u_fill"), 16.0f / 255.0f, 0.0f);
+	pass_init(&pass_edge_c, prog_edge_c);
+	glUniform2f(glGetUniformLocation(prog_edge_c, "u_fill"), 128.0f / 255.0f, 128.0f / 255.0f);
+	glGenBuffers(1, &ring_vbo);
+	ring_e[0] = ring_e[1] = -1;
+	{
+		static const GLfloat quad[] = {
+			-1, -1, 0, 0,   1, -1, 1, 0,   -1, 1, 0, 1,   1, 1, 1, 1,
+		};
+
+		glGenBuffers(1, &quad_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glEnableVertexAttribArray(1);
+		quad_bound = false;
+	}
 	why[0] = '\0';
 
 	return 0;
+}
+
+/* the locations once, the sampler units for good, the rest "not set yet" */
+static void pass_init(struct pass_state *p, GLuint prog)
+{
+	memset(p, 0, sizeof(*p));
+	p->prog = prog;
+	p->u_k = glGetUniformLocation(prog, "u_k");
+	p->u_edge = glGetUniformLocation(prog, "u_edge");
+	glUseProgram(prog);
+	glUniform1i(glGetUniformLocation(prog, "u_y"), 0);
+	glUniform1i(glGetUniformLocation(prog, "u_c"), 1);
+}
+
+/* the program with its matrix and edge, sent only when they moved */
+static void pass_use(struct pass_state *p, const float m[16], const float e[2])
+{
+	glUseProgram(p->prog);
+	if (!p->k_set || memcmp(p->k, m, sizeof(p->k))) {
+		glUniformMatrix4fv(p->u_k, 1, GL_FALSE, m);
+		memcpy(p->k, m, sizeof(p->k));
+		p->k_set = true;
+	}
+	if (!p->edge_set || p->edge[0] != e[0] || p->edge[1] != e[1]) {
+		glUniform2f(p->u_edge, e[0], e[1]);
+		p->edge[0] = e[0];
+		p->edge[1] = e[1];
+		p->edge_set = true;
+	}
+}
+
+/* the unit quad as the vertex source, unless it is there already */
+static void quad_use(void)
+{
+	if (quad_bound)
+		return;
+	glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, (const void *)0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, (const void *)8);
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	quad_bound = true;
 }
 
 const char *gl_renderer(void)
@@ -608,34 +741,66 @@ void gl_source_drop(void)
 /* One pass into one plane: the quad through the matrix with the given program
  * at the plane's size; what the quad does not cover is the clear colour (video
  * black: Y 16, CbCr 128). Labels are drawn on the luma pass only. */
+/* the ring as the vertex source, rebuilt when the mask count moved */
+static void ring_use(const int e[2])
+{
+	glBindBuffer(GL_ARRAY_BUFFER, ring_vbo);
+	if (ring_e[0] != e[0] || ring_e[1] != e[1]) {
+		float v[40];
+
+		gl_edge_ring(e, v);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
+		ring_e[0] = e[0];
+		ring_e[1] = e[1];
+	}
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, (const void *)0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, (const void *)8);
+	quad_bound = false;
+}
+
+/* the soft border over one plane: the ring, blended towards the plane's black */
+static void edge_draw(struct pass_state *p, const int e[2], const float m[16])
+{
+	float ef[2] = { (float)e[0], (float)e[1] };
+
+	pass_use(p, m, ef);
+	ring_use(e);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 10);
+	glDisable(GL_BLEND);
+}
+
 static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GLuint prog,
 		      int source_slot, const float m[16], int pattern, int mark_corner,
 		      const char *const labels[5], const float lm[16], char *why, size_t n)
 {
-	static const GLfloat quad[] = {
-		-1, -1, 0, 0,   1, -1, 1, 0,   -1, 1, 0, 1,   1, 1, 1, 1,
-	};
 	GLenum err;
+	int e[2] = { 0, 0 };
 
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glViewport(0, 0, (GLsizei)fw, (GLsizei)fh);
 	/* the warp shrinks the picture, so what is outside the quad is defined */
 	glClearColor(clear0, clear1, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
-	glUseProgram(prog);
-	glUniformMatrix4fv(glGetUniformLocation(prog, "u_k"), 1, GL_FALSE, m);
 	if (pattern == PATTERN_NONE) {
-		int e[2];
+		float ef[2];
 
 		gl_edge_mask(panel_w, panel_h, edge_px, e);
-		glUniform2f(glGetUniformLocation(prog, "u_edge"), (float)e[0], (float)e[1]);
-		glUniform1i(glGetUniformLocation(prog, "u_y"), 0);
-		glUniform1i(glGetUniformLocation(prog, "u_c"), 1);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, slot[source_slot].tex[0]);
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, slot[source_slot].tex[1]);
+		ef[0] = (float)e[0];
+		ef[1] = (float)e[1];
+		pass_use(prog == prog_luma ? &pass_luma : &pass_chroma, m, ef);
+		/* the slot's two planes on units 0 and 1: bound once a frame,
+		 * by the luma pass; the chroma pass finds them there */
+		if (prog == prog_luma) {
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, slot[source_slot].tex[0]);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, slot[source_slot].tex[1]);
+		}
 	} else {
+		glUseProgram(prog);
+		glUniformMatrix4fv(glGetUniformLocation(prog, "u_k"), 1, GL_FALSE, m);
 		glUniform1f(glGetUniformLocation(prog, "u_grid"),
 			    pattern == PATTERN_GRID ? 1.0f : 0.0f);
 		glUniform1f(glGetUniformLocation(prog, "u_mask"),
@@ -646,14 +811,18 @@ static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GL
 		glUniform1i(glGetUniformLocation(prog, "u_corner"),
 			    pattern == PATTERN_MASK ? mark_corner : -1);
 	}
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, quad);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, quad + 2);
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
+	quad_use();
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	if (pattern == PATTERN_NONE && e[0] > 0)
+		edge_draw(prog == prog_luma ? &pass_edge_y : &pass_edge_c, e, m);
 	if (pattern == PATTERN_MASK && labels) {
 		mask_labels(labels, mark_corner, lm);
 	}
+	/* one error check a frame is enough: the chroma pass's, or the
+	 * pattern's single pass -- an error in the luma pass is still pending
+	 * then, glGetError() keeps it until it is read */
+	if (prog == prog_luma)
+		return true;
 	err = glGetError();
 	if (err) {
 		snprintf(why, n, "draw: gl 0x%x", err);
@@ -663,6 +832,32 @@ static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GL
 	return true;
 }
 
+/* The cost of a frame (warp.h): this thread's CPU time around each pass.
+ * GL_EXT_disjoint_timer_query is NOT used for the GPU's time: Panfrost (Mesa
+ * 25.0) answers it from the CPU clock at the batch boundaries ("luma 0.01 ms,
+ * chroma 1.5 ms" for two passes of the same shape, measured 11.10.2026), so
+ * the GPU's time is taken from the out-fence instead, in loop.c. */
+static bool timing_on;
+static struct gl_cost cost;
+
+void gl_timing(bool on)
+{
+	timing_on = on;
+}
+
+const struct gl_cost *gl_last_cost(void)
+{
+	return &cost;
+}
+
+static unsigned int thread_us(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
+	return (unsigned int)(t.tv_sec * 1000000 + t.tv_nsec / 1000);
+}
+
 /* A frame: the luma pass at full size, the chroma pass at half size. A pattern
  * is grey: its shader draws into the luma plane as it always did (0..1 becomes
  * Y 0..255, the mask's white is the panel's white) and the chroma plane stays
@@ -670,11 +865,16 @@ static bool draw_into(GLuint fbo, int fw, int fh, float clear0, float clear1, GL
 bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
 	     int mark_corner, const char *const labels[5], const float lm[16], char *why, size_t n)
 {
-	if (!draw_into(target[target_index].fbo[0], (int)panel_w, (int)panel_h,
+	unsigned int c0 = timing_on ? thread_us() : 0, c1;
+	bool ok;
+
+	ok = draw_into(target[target_index].fbo[0], (int)panel_w, (int)panel_h,
 		       16.0f / 255.0f, 0.0f,
 		       pattern == PATTERN_NONE ? prog_luma : prog_pattern,
-		       source_slot, m, pattern, mark_corner, labels, lm, why, n))
+		       source_slot, m, pattern, mark_corner, labels, lm, why, n);
+	if (!ok)
 		return false;
+	c1 = timing_on ? thread_us() : 0;
 	if (pattern != PATTERN_NONE) {
 		glBindFramebuffer(GL_FRAMEBUFFER, target[target_index].fbo[1]);
 		glViewport(0, 0, (GLsizei)panel_w / 2, (GLsizei)panel_h / 2);
@@ -682,9 +882,14 @@ bool gl_draw(int target_index, int source_slot, const float m[16], int pattern,
 		glClear(GL_COLOR_BUFFER_BIT);
 		return true;
 	}
-	return draw_into(target[target_index].fbo[1], (int)panel_w / 2, (int)panel_h / 2,
-			 128.0f / 255.0f, 128.0f / 255.0f, prog_chroma,
-			 source_slot, m, PATTERN_NONE, -1, NULL, NULL, why, n);
+	ok = draw_into(target[target_index].fbo[1], (int)panel_w / 2, (int)panel_h / 2,
+		       128.0f / 255.0f, 128.0f / 255.0f, prog_chroma,
+		       source_slot, m, PATTERN_NONE, -1, NULL, NULL, why, n);
+	if (timing_on) {
+		cost.cpu_luma_us = c1 - c0;
+		cost.cpu_chroma_us = thread_us() - c1;
+	}
+	return ok;
 }
 
 /*
@@ -875,6 +1080,10 @@ void gl_close(void)
 		}
 		memset(&target[i], 0, sizeof(target[i]));
 	}
+	if (ring_vbo)
+		glDeleteBuffers(1, &ring_vbo);
+	if (quad_vbo)
+		glDeleteBuffers(1, &quad_vbo);
 	if (dpy != EGL_NO_DISPLAY) {
 		eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 		eglTerminate(dpy);
@@ -883,5 +1092,13 @@ void gl_close(void)
 	ctx = EGL_NO_CONTEXT;
 	prog_warp = prog_pattern = prog_text = prog_luma = prog_chroma = 0;
 	font_tex = 0;
+	quad_vbo = 0;
+	quad_bound = false;
+	memset(&pass_luma, 0, sizeof(pass_luma));
+	memset(&pass_chroma, 0, sizeof(pass_chroma));
+	memset(&pass_edge_y, 0, sizeof(pass_edge_y));
+	memset(&pass_edge_c, 0, sizeof(pass_edge_c));
+	prog_edge_y = prog_edge_c = 0;
+	ring_vbo = 0;
 	snprintf(renderer, sizeof(renderer), "not opened");
 }

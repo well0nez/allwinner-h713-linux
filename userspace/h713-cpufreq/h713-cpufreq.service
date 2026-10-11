@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-cpufreq: once per boot, the CPU clock's two settings under the warp's
+# load - schedutil's rate limit and the GPU's interrupt threads out of the
+# real-time class (why, with the measurements: the script). Type=oneshot with
+# RemainAfterExit, so "systemctl status" shows what it did; it waits for
+# cpufreq and panfrost itself (up to 30 s each) and never fails.
+[Unit]
+Description=H713: the CPU clock under the warp's load (schedutil rate limit, GPU interrupt threads)
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/h713-cpufreq
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

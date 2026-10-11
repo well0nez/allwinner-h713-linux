@@ -38,12 +38,13 @@ so the exit code is decided without parsing further.
 | `keystone nudge CORNER AXIS DELTA` | relative, -1000..1000 - the command a remote control sends |
 | `keystone reset` | all eight corners to 0, which is the identity |
 | `zoom [PERCENT]` | the screen zoom, 10..100 (100 = none): the picture smaller about its own centre, inside the keystone - the vendor's "Digital scaling"; saved as `zoom =` in the file |
-| `edge [N]` | the soft border of the warped picture in panel pixels, 0..64: 0 = a hard edge, 4 = the vendor's (the default). The outer half of that width keeps 20/255 of the picture, then a linear ramp over one width reaches the picture - the stock's `draw_edge` (libkeystone), folded into the two passes as a per-fragment factor, no third pass and no extra texture; takes effect with the next frame and is saved as `edge =` |
+| `edge [N]` | the soft border of the warped picture in panel pixels, 0..64: 0 = a hard edge, 4 = the vendor's (the default). The outer half of that width keeps 20/255 of the picture, then a linear ramp over one width reaches the picture - the stock's `draw_edge` (libkeystone), drawn as the stock draws it: a ring of ten vertices along the quad's edge, 1.5 mask texels wide, blended over each plane after the picture (no extra texture; since 11.10.2026 evening - folded into the picture shaders it cost the GPU 4 ms of its 6 a frame, see below); takes effect with the next frame and is saved as `edge =` |
 | `mode [front\|rear\|ceiling\|rear-ceiling]` | the projection mode, the vendor's "Installation mode": `rear` mirrors the picture left-right for a screen lit from behind, `ceiling` turns it over, `rear-ceiling` flips it top-bottom only. Saved as `mode =` in the file. The flip is one sign change in the matrix after the keystone, so the corner names stay the wall's in every mode and the mask's labels land where they belong. A change of mode re-sorts the eight values the vendor's way (`setKeystoneNormalXY`): the correction stays with the housing, the quad on the panel stays where it was and the picture turns inside it - `ctl mode` prints the new values (06.10.2026); any mode but `front` keeps the GPU running even with all eight corners 0, and it mirrors nothing while the warp is off (the plain ring path is the firmware's) |
 | `test grid\|border\|mask [CORNER]\|off` | draw a pattern instead of the capture, to aim a corner with no source plugged in; `mask` is the calibration picture of the manual keystone with the named corner marked and every corner's value and maximum printed |
 | `dump PATH` | the last drawn frame's luma plane as a binary PGM - eyes for a test without a wall |
-| `hold on\|off` | draw a slot one vsync late (on, the default): the firmware hands a slot on before it is written to the end, measured 23.09.2026; off is the old timing, kept as the self-check's control |
-| `check [FRAMES]` | the self-check, no eyes needed: every third slot drawn a second time 4 ms later into a scratch buffer and compared in 32 rows; "N frames, 0 with differing rows" on the status line is the pass, one journal line per differing frame. While it runs the loop skips about every second held slot as stale (dropped, not torn) and the rate falls to about 30 fps; it ends by itself |
+| `hold on\|off` | draw a slot one vsync late. **Off** is the default since 11.10.2026 (kernel 0255): the slot handed on at a vsync is the one the capture finished at the last frame boundary, whole for two more frame periods, so it is drawn at once - one frame of latency less, and `on` would now read it up to 36 ms after that boundary, when the capture is back writing it. `on` was the answer of 23.09.2026 to the firmware's pointers, which handed a slot on before it was written to the end; it stays as the control for a kernel from before 0255 |
+| `check [FRAMES]` | the self-check, no eyes needed: every third slot drawn a second time 4 ms later into a scratch buffer and compared in 32 rows; "N frames, 0 with differing rows" on the status line is the pass, one journal line per differing frame. While it runs the readback stalls the loop and frames are dropped (`busy`); it ends by itself. 11.10.2026, `hold off`, a moving 1080p60 source: 300 frames, 0 differing rows |
+| `trace [N] [gpu]` | log the next N frames with what they cost: this thread's CPU microseconds per step (dequeue, the two passes, the fence, h713-tv's answer) and, with `gpu`, the GPU's time from the submit to the out-fence - the only honest GPU clock here, Panfrost answers `GL_EXT_disjoint_timer_query` from the CPU clock |
 | `trace [N]` | log the next N dequeues with their timestamps, gaps between pumps and slow phases (draw, the peer's answer) |
 
 `CORNER` is `tl tr bl br` **as the picture stands on the wall**, `AXIS` is `x` or `y`. Every change is clamped
@@ -100,12 +101,13 @@ Every one of these leaves a picture on the wall; that is the rule.
 ## Limits
 
 The warp and the video plane are **mutually exclusive** - while the warp is on, the picture comes from the GPU
-and `h713-tv ctl zoom` is refused with a pointer to `h713-warp ctl zoom`. The added latency is one frame
-(16.8 ms): a slot is drawn one vsync after it was handed on, because the firmware publishes a slot anywhere
-between the start and the end of its write (the bottom line still changed up to 11.5 ms after the publish, the
-top is rewritten no earlier than 33 ms after it - working journal `keystone-20260922`). A held slot older
-than 28 ms is given back undrawn, a dropped frame instead of a torn one; a frame that arrives while the
-previous commit is still in flight is dropped rather than queued. `ctl check` proves the timing on any device.
+and `h713-tv ctl zoom` is refused with a pointer to `h713-warp ctl zoom`. The warp adds no frame of latency
+since 11.10.2026 (kernel 0255, `hold off`): the slot handed on at a vsync is finished and is drawn at once;
+the picture then reaches the panel at the next vsync, like the plane's. A frame that arrives while the
+previous commit is still in flight is dropped rather than queued. `ctl check` proves the timing on any
+device. *Superseded 11.10.2026:* "the added latency is one frame (16.8 ms): a slot is drawn one vsync after
+it was handed on, because the firmware publishes a slot anywhere between the start and the end of its write
+... a held slot older than 28 ms is given back undrawn" - that was the firmware's pointer; `hold on` keeps it.
 
 **Since 23.09.2026 the warp writes NV12 onto the video plane**, not RGB onto the primary: Y is resampled into
 the luma plane at full size and CbCr into the chroma plane at half size, both through the same matrix and
@@ -119,10 +121,13 @@ shows with every other chroma line dropped, so NV12 loses nothing. Without a sig
 warp and shows the console; the warp asks again once a second and is back within a second of the signal. The warp costs about 0.6 GB/s of memory
 bandwidth (read 4.15 MB of NV16, write 3.1 MB of NV12, scanout reads 3.1 MB instead of 4.15 MB per frame)
 and 9.3 MB of CMA for the three targets. The vendor's edge blend is in (`edge`, since 27.09.2026): the same
-darkening ring the stock draws as a blended alpha quad over its warped frame, computed here from the quad
-coordinate in the luma and chroma shaders - luma towards Y 16, chroma towards 128 by the same factor, so
-the band meets the border without a step and leaves no colour fringe; a few arithmetic instructions per
-fragment on top of the texture fetch, no extra pass, no extra bytes. The band follows the quad (the vendor's
+darkening ring the stock draws as a blended alpha quad over its warped frame - luma towards Y 16, chroma
+towards 128 by the same factor, so the band meets the border without a step and leaves no colour fringe.
+Since 11.10.2026 (evening) it is drawn as the stock draws it, blended, but only where it changes anything:
+a ring of ten vertices along the quad's edge, 1.5 mask texels wide, one triangle strip per plane after the
+picture. Folded into the picture shaders (27.09.-11.10.) the few arithmetic instructions after the texture
+fetch cost the Mali-G31 4 ms of its 6 ms a frame - this GPU hides no texture latency behind arithmetic
+(`doku/201`). The band follows the quad (the vendor's
 mask is stretched over it too), so a foreshortened edge gets a proportionally narrower band - within a pixel
 of the stock's at a 200 per-mille correction, which interpolates its mask affinely per triangle. Which
 physical corner the vendor's slot 0 is has been derived from the framebuffer's orientation and is confirmed on
@@ -140,13 +145,23 @@ and clamp), docs/tools/h713-tv.md.
 
 ## What a frame costs (measured 11.10.2026, HY300PRO-G-EU, 720p)
 
-CPU time of the warp's thread per frame at a fixed 1296 MHz, from a measuring build (`arbeit/warp-sparsam-20261011/`):
-dequeue 12 µs, **drawing 490 µs**, the fence 180 µs (the `glFlush` that submits the GPU jobs, and the sync file), the
-round trip to `h713-tv` 64 µs, queueing the slot back 25 µs - about 0.77 ms. The drawing is two passes (luma at full
-size, chroma at half size), and each pass costs Mesa/Panfrost about 125 µs to set up a GPU batch whatever the first
-call is: without the `glClear` the draw call takes that time instead. Compiler flags make no difference (`-O3
--mcpu=cortex-a53 -flto` against `-O2`, A/B/A/B at a fixed clock: the same CPU per frame) - the time is in Mesa and the
-kernel, not in this code. One pass per frame was tried and measured (branch `versuch/warp-einpass`): the NV12 buffer
+`h713-warp ctl trace 30 gpu` says it for any device. CPU time of the warp's thread per frame at a fixed 1296 MHz:
+dequeue 20 µs, **drawing 470-600 µs** (luma pass 220-290, chroma pass 230-270, the border's two ring draws about 60
+of that), the fence 180-200 µs (the `glFlush` that submits the GPU jobs, and the sync file), the round trip to
+`h713-tv` 60 µs - about 0.8 ms; at 480 MHz 2.7 times that. The drawing is two passes (luma at full size, chroma at
+half size), and each pass costs Mesa/Panfrost about 125 µs to set up a GPU batch whatever the first call is: without
+the `glClear` the draw call takes that time instead. Caching the uniform locations and the matrix, a VBO for the
+quad and one texture bind a frame took about 30 µs off (11.10. evening) - the time is in Mesa and the kernel, not
+in this code; compiler flags make no difference (`-O3 -mcpu=cortex-a53 -flto` against `-O2`, A/B/A/B at a fixed
+clock: the same CPU per frame). **The GPU's time per frame**, submit to out-fence: 6.05 ms at 696 MHz until
+11.10.2026 evening, **1.78 ms** since (1.68 with the border off); it scales with the clock (4.3 ms at 288 MHz), so the
+GPU governor now parks at 288-432 MHz with the warp on, where it sat at 600-696 before. What cost the 4.3 ms was
+not the border's arithmetic as such but *any* arithmetic after the texture fetch in the picture shaders: a bare
+fetch 1.65 ms, one constant `mix` after it 2.2 ms, the border's dozen operations 6.0 ms - the one-core Mali-G31
+hides no texture latency behind ALU work. So the picture passes are a bare fetch and the border is its own small
+blended draw. A compute dispatch instead of the two passes was tried on the device (`bau/gles31-probe.c`): it works
+(GLES 3.1, imageStore into the imported buffer), costs Mesa 357 µs of CPU against 130 for a fragment pass and the
+GPU 2.1 ms against 1.6 for a copy - no. One pass per frame was tried and measured (branch `versuch/warp-einpass`): the NV12 buffer
 as one R8 image of width × 1.5 height, the chroma rows a fragment per byte with the pair centre through the inverse
 map (host test T1e: equal to the two passes within 2 LSB). It saved 14 % of the warp's CPU, but the chroma then had
 twice the fragments, the GPU ran at its top clock 66-87 % of the time instead of 21-25 %, and about one frame a second

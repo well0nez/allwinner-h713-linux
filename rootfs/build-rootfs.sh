@@ -769,6 +769,7 @@ fi
 # udev start for a sensor that probes late.
 if ((! SKIP_PROJECT)); then
 	t "h713-features linked"      test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-features.service"
+	t "h713-cpufreq linked"       test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-cpufreq.service"
 	t "keystone udev start"       test -f "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
 	if [[ -n "$BOARD" ]]; then
 		t "features of $BOARD"    grep -qx "board = $BOARD" "$TREE/etc/h713/features"

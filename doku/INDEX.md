@@ -23,7 +23,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `boards/hy310/README.md` | `doku/10`, `doku/121` |
 | `docs/architecture.md` | `doku/103`, `doku/163`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/177`, `doku/181`, `doku/192`, `doku/193`, `doku/82`, `doku/83`, `doku/96` |
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
-| `docs/guides/keystone.md` | `doku/134` |
+| `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/190`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/80` |
 | `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/197`, `doku/198`, `doku/199`, `doku/200`, `doku/60`, `doku/61` |
@@ -57,7 +57,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
 | `docs/tools/h713-tv.md` | `doku/101`, `doku/172`, `doku/174`, `doku/177`, `doku/78`, `doku/86`, `doku/88`, `doku/99` |
-| `docs/tools/h713-warp.md` | `doku/197`, `doku/200` |
+| `docs/tools/h713-warp.md` | `doku/197`, `doku/200`, `doku/201` |
 | `docs/tools/h713-wifi.md` | `doku/60` |
 | `docs/uboot/README.md` | `doku/10`, `doku/109`, `doku/163`, `doku/170`, `doku/30` |
 | `docs/uboot/commands.md` | `doku/108`, `doku/67`, `doku/70`, `doku/98` |
@@ -136,8 +136,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-pq/h713_pq/output.py` | `doku/81` |
 | `userspace/h713-pq/tests/test_h713_pq.py` | `doku/61`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14` |
 | `userspace/h713-tv/README.md` | `doku/101`, `doku/102`, `doku/107`, `doku/112`, `doku/187`, `doku/197`, `doku/198`, `doku/60`, `doku/78`, `doku/86`, `doku/88`, `doku/nachtlog/A6-4-aufloesungswechsel`, `doku/nachtlog/D-abnahme-board`, `doku/nachtlog/D-cstride-fix`, `doku/nachtlog/F-korrektur`, `doku/nachtlog/F-startklar`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S11-gruenstich-ursache-und-callback-slots`, `doku/nachtlog/S12`, `doku/nachtlog/S12-hy310-tv-review`, `doku/nachtlog/S14-re-picture-mode`, `doku/nachtlog/S15-re-aspect-regel`, `doku/nachtlog/S16`, `doku/nachtlog/S16-hdmi-audio`, `doku/nachtlog/S32`, `doku/nachtlog/S32-treiber-e-hy310tv` |
-| `userspace/h713-tv/main.c` | `doku/101`, `doku/102`, `doku/128`, `doku/197`, `doku/198`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/82`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
+| `userspace/h713-tv/main.c` | `doku/101`, `doku/102`, `doku/128`, `doku/197`, `doku/198`, `doku/200`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/82`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
 | `userspace/h713-warp/capture.c` | `doku/86` |
+| `userspace/h713-warp/main.c` | `doku/200` |
 | `userspace/libh713osd/README.md` | `doku/192` |
 
 ## 2 Alle Eintraege
@@ -249,7 +250,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`198-ringpuffer-und-edid-panel-zuerst-20261011.md`](198-ringpuffer-und-edid-panel-zuerst-20261011.md) | Analyse | 2026-10-11 | 198 - Der Dreier-Ring der Aufnahme, und warum die EDID jetzt das Panel zuerst nennt (11.10.2026, mittags) | 4 |
 | [`199-panel-kopplung-swpll-20261011.md`](199-panel-kopplung-swpll-20261011.md) | Analyse | 2026-10-11 | 199 - Die Panel-Kopplung der Firmware läuft: Frequenz ja, Phase zufällig (11.10.2026, nachmittags) | 1 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
-| [`200-ringplatz-aus-dem-schreibindex-20261011.md`](200-ringplatz-aus-dem-schreibindex-20261011.md) | Analyse | 2026-10-11 | 200 - Der Ringplatz kommt aus dem Schreibindex der Aufnahme, nicht aus dem Firmware-Zeiger (11.10.2026, nachmittags) | 3 |
+| [`200-ringplatz-aus-dem-schreibindex-20261011.md`](200-ringplatz-aus-dem-schreibindex-20261011.md) | Analyse | 2026-10-11 | 200 - Der Ringplatz kommt aus dem Schreibindex der Aufnahme, nicht aus dem Firmware-Zeiger (11.10.2026, nachmittags) | 5 |
+| [`201-warp-zeichnen-gpu-regler-20261011.md`](201-warp-zeichnen-gpu-regler-20261011.md) | Analyse | 2026-10-11 | 201 - Der Warp: GPU-Zeit gedrittelt, CPU-Takt ruhig, kein Bild Latenz mehr (11.10.2026, abends) | 2 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -406,7 +408,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-46 von 259 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+46 von 260 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

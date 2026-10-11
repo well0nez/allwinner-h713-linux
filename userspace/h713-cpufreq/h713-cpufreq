@@ -1,0 +1,62 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-cpufreq - the CPU clock under the warp's 60 Hz load (doku/196, doku/201, TODO 2.47).
+#
+# Two settings, once per boot:
+#
+# 1. schedutil may change the clock every 20 ms (rate_limit_us). The kernel derives 462 us from the
+#    declared transition latency, and the clock then followed every burst of work up and down; each
+#    change is a PWM regulator ramp and a PLL relock, carried out by the thread sugov:0. Set here and
+#    not by tmpfiles any more: tmpfiles ran before the governor had its sysfs directory and the 462 us
+#    stayed (HY300PRO-G-EU, 11.10.2026 evening, three boots in a row).
+#
+# 2. The GPU's interrupt threads leave the real-time class. Threaded interrupt handlers run as
+#    SCHED_FIFO 50, and schedutil asks for the MAXIMUM clock whenever a real-time task is runnable
+#    (this kernel has no uclamp to say otherwise): the panfrost job interrupt fires four times a
+#    frame, so with the warp on the clock swung 480 <-> 1296 MHz forty times a second, whatever the
+#    rate limit. Measured 11.10.2026 on the HY300PRO-G-EU, warp on, 1080p60 source, 20 s each
+#    (arbeit/warp-zeichnen-20261011, m30/m31):
+#
+#      irq threads   rate_limit   time at 1296 MHz   changes/s   sugov:0   all four cores   fps
+#      FIFO 50       462 us       13 %               14          18.0 %    10.7 %           59.8
+#      FIFO 50       20 ms        43 %               40           2.5 %     4.2 %           59.7
+#      SCHED_OTHER   20 ms         2 %                1.6         0.1 %     4.6 %           59.7
+#      SCHED_OTHER   462 us        0 %                0.3         0.1 %     4.4 %           59.7
+#
+#    With the threads at SCHED_OTHER the clock stays at 480 MHz and the cores spend the same share
+#    of their time busy as before - at the lowest clock instead of half the time at the highest. A
+#    job completion still runs at once: the cores are idle, and the GPU's work per frame is 1.8 ms
+#    at 696 MHz, 4.3 ms at 288 (the out-fence measured it), against a 16.7 ms frame; 0 frames were
+#    dropped in either run. The kernel's own way would be CONFIG_UCLAMP_TASK and
+#    sched_util_clamp_min_rt_default (TODO 2.60); until then this is the place.
+#
+# Waits up to 30 s for each of the two to appear (cpufreq-dt and panfrost probe after the root file
+# system), says what it did, never fails the boot.
+set -u
+
+R=/sys/devices/system/cpu/cpufreq/schedutil/rate_limit_us
+n=0
+while [ ! -w "$R" ] && [ $n -lt 30 ]; do sleep 1; n=$((n + 1)); done
+if [ -w "$R" ]; then
+	echo 20000 > "$R" && echo "schedutil rate_limit_us 20000 (was the kernel's 462)"
+else
+	echo "warning: $R not there after 30 s - the kernel's 462 us stay"
+fi
+
+gpu_threads() {
+	grep -l -E '^irq/[0-9]+-panfrost' /proc/[0-9]*/comm 2>/dev/null | cut -d/ -f3
+}
+n=0
+while [ -z "$(gpu_threads)" ] && [ $n -lt 30 ]; do sleep 1; n=$((n + 1)); done
+found=0
+for p in $(gpu_threads); do
+	found=1
+	if chrt -o -p 0 "$p"; then
+		echo "$(cat /proc/$p/comm) (pid $p): SCHED_OTHER - no real-time boost of the CPU clock"
+	else
+		echo "warning: chrt on pid $p ($(cat /proc/$p/comm)) failed"
+	fi
+done
+[ $found -eq 1 ] || echo "warning: no panfrost interrupt thread after 30 s - the clock will follow the GPU's interrupts"
+exit 0

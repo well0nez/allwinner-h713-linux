@@ -142,7 +142,13 @@ happens: the daemon does not open the render node, and the picture path is the o
 
 ## The latency, and why
 
-The warp adds **one frame, 16.8 ms**, on purpose. The display firmware hands a ring slot on before it has
+Since 11.10.2026 (kernel patch 0255) the warp adds **no frame** of its own: the display driver hands the
+slot on that the capture finished at the last frame boundary (its own write index, not the firmware's
+pointers), the slot is whole for two more frame periods, and the warp draws it at once (`hold off`, the
+default). What follows is the story of the frame it used to add, and why `hold on` is still there as the
+self-check's control for a kernel from before 0255.
+
+The warp added **one frame, 16.8 ms**, on purpose. The display firmware handed a ring slot on before it had
 finished writing it: measured through `/dev/mem` on 22./23.09.2026, the bottom line of a published slot
 still changed up to 11.5 ms after the publish and the middle up to 8.5 ms. A raster display never notices,
 because it reaches those lines later than the writer does; the GPU reads the whole slot in a millisecond
@@ -151,7 +157,7 @@ wait of 4 ms covered the median and not the tail. So the warp keeps a slot back 
 previous vsync: by then the write is over, and the next write into that slot begins no earlier than 33 ms
 after its publish (5 % at 34.4 ms, median 39.6). A held slot older than 28 ms is given back undrawn - a
 dropped frame, never a torn one - which is what happens when something stalls the loop.
-`h713-warp ctl hold off` is the old timing; it is the self-check's control, not a setting.
+`h713-warp ctl hold on` is that old timing; since 0255 it is the self-check's control, not a setting - with 0255 it would read the slot up to 36 ms after its boundary, when the capture is back writing it.
 
 ## The self-check
 
@@ -186,9 +192,11 @@ is back under a second after the signal is.
 
 **Edge blending.** Done (27.09.2026). The vendor softens the edges of the warped quadrilateral (its
 `draw_edge` pass: a ring of about 6 panel pixels that keeps 20/255 of the picture at the very edge and
-ramps up linearly). `h713-warp` does the same in its two passes: `edge = 4` in `/etc/h713/warp.conf` (the
-vendor's width, the default), `h713-warp ctl edge N`, 0 for the old hard edge. Judged on a dark wall on
-02.10.2026: a soft border at `edge = 4`, a hard one at 0, and 59.5 fps either way (`doku/134` A2).
+ramps up linearly). `h713-warp` does the same: `edge = 4` in `/etc/h713/warp.conf` (the vendor's width, the
+default), `h713-warp ctl edge N`, 0 for the old hard edge. Judged on a dark wall on 02.10.2026: a soft border
+at `edge = 4`, a hard one at 0, and 59.5 fps either way (`doku/134` A2). Since 11.10.2026 it is drawn as the
+vendor draws it, a blended ring over the picture, instead of inside the picture shaders - that halved and
+more the GPU's time per frame (6.1 to 1.8 ms, `doku/201`); the pixels are the same within 1 LSB (host test T1d).
 
 **The throw ratio.** The automatic computes with 0.8176, the ratio implied by the optics constants in the
 device's own `camprjspe.ini`, because nobody has measured this projector with a tape. If the real ratio

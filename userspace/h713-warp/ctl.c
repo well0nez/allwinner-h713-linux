@@ -298,7 +298,9 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 			text_add(t, "error dump: %s\n", why);
 	} else if (!strcmp(cmd, "trace")) {
 		r->check.trace = a1 ? atoi(a1) : 300;
-		text_add(t, "ok trace %d dequeues to the journal\n", r->check.trace);
+		r->check.trace_gpu = a2 && !strcmp(a2, "gpu");
+		text_add(t, "ok trace %d dequeues to the journal%s\n", r->check.trace,
+			 r->check.trace_gpu ? " (with the GPU's time from the fence)" : "");
 	} else if (!strcmp(cmd, "check")) {
 		int f = a1 ? atoi(a1) : 300;
 

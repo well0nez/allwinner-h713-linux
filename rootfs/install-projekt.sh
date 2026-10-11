@@ -30,6 +30,8 @@
 #       and h713-mips-restart, which h713-power runs after a standby to start the parked MIPS
 #   5i. h713-keys + unit (enabled) + keys.conf - the stock remote's keys (volume, mute, focus) -
 #       and h713-osd (cross-built) + unit (enabled) + osd.conf - the overlays over the picture
+#   5j. h713-cpufreq + unit (enabled) - schedutil's rate limit and the GPU's interrupt threads
+#       out of the real-time class, once per boot (replaces the tmpfiles line of 11.10.)
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -68,6 +70,7 @@ H713_POWER_SRC=${H713_POWER_SRC:-$PROJECT_ROOT/userspace/h713-power}
 H713_KEYS_SRC=${H713_KEYS_SRC:-$PROJECT_ROOT/userspace/h713-keys}
 H713_OSD_SRC=${H713_OSD_SRC:-$PROJECT_ROOT/userspace/h713-osd}
 H713_OSD_BIN=${H713_OSD_BIN:-$H713_OSD_SRC/h713-osd.aarch64-linux-gnu}
+H713_CPUFREQ_SRC=${H713_CPUFREQ_SRC:-$PROJECT_ROOT/userspace/h713-cpufreq}
 # crust, built by release/build-all.sh from crust-h713/ - a build product of ours, not a vendor file,
 # so it is not in FORBIDDEN_NAMES. The name is the board's: the rootfs can be built without a board,
 # and a board's device tree names its own image (hy310-crust.bin). Standby only together with it.
@@ -245,6 +248,8 @@ check_sources() {
 	[[ -f "$H713_KS_SRC/99-h713-keystone.rules" ]] || { warn "missing: $H713_KS_SRC/99-h713-keystone.rules"; errors=1; }
 	[[ -x "$H713_FEATURES_SRC/h713-features" && -f "$H713_FEATURES_SRC/h713-features.service" ]] || \
 		{ warn "missing: h713-features or h713-features.service in $H713_FEATURES_SRC"; errors=1; }
+	[[ -x "$H713_CPUFREQ_SRC/h713-cpufreq" && -f "$H713_CPUFREQ_SRC/h713-cpufreq.service" ]] || \
+		{ warn "missing: h713-cpufreq or h713-cpufreq.service in $H713_CPUFREQ_SRC"; errors=1; }
 	if [[ -n "$H713_BOARD" ]] && ! board_features >/dev/null; then errors=1; fi
 	if [[ -n "$H713_CRUST_BIN" ]]; then
 		[[ -f "$H713_CRUST_BIN" && -n "$H713_BOARD" ]] || \
@@ -356,6 +361,9 @@ if ((DRY_RUN)); then
        ${H713_OSD_BIN#"$PROJECT_ROOT"/}
            -> /usr/local/sbin/h713-osd, h713-osd.service enabled, /etc/h713/osd.conf (if none)
        README.md of both -> /usr/local/share/doc/h713-keys/, /usr/local/share/doc/h713-osd/
+    5j. h713-cpufreq
+       h713-cpufreq -> /usr/local/sbin/, h713-cpufreq.service enabled (rate limit 20 ms, GPU
+       interrupt threads SCHED_OTHER - the table in the script)
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -632,6 +640,13 @@ ln -sfn ../h713-osd.service "$TREE/etc/systemd/system/multi-user.target.wants/h7
 [[ -f "$TREE/etc/h713/osd.conf" ]] || install -m 0644 "$H713_OSD_SRC/osd.conf" "$TREE/etc/h713/osd.conf"
 install -D -m 0644 "$H713_OSD_SRC/README.md" "$TREE/usr/local/share/doc/h713-osd/README.md"
 info "/usr/local/sbin/h713-keys and h713-osd, both units enabled, /etc/h713/keys.conf and osd.conf"
+
+# --- 5j. h713-cpufreq: the CPU clock under the warp's load ---------------------
+say "h713-cpufreq"
+install -m 0755 "$H713_CPUFREQ_SRC/h713-cpufreq" "$TREE/usr/local/sbin/h713-cpufreq"
+install -m 0644 "$H713_CPUFREQ_SRC/h713-cpufreq.service" "$TREE/etc/systemd/system/h713-cpufreq.service"
+ln -sfn ../h713-cpufreq.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-cpufreq.service"
+info "/usr/local/sbin/h713-cpufreq, h713-cpufreq.service enabled"
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"

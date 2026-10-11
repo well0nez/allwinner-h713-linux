@@ -20,8 +20,10 @@
  * the one exception is "ctl test", which has no capture and is driven by the
  * poll timeout in main.c.
  */
+#include <poll.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "warp.h"
@@ -233,6 +235,16 @@ static void account(struct runtime *r, double t0)
 	}
 }
 
+/* this thread's CPU time, for the trace: what a frame costs the CPU, apart
+ * from what the clock governor makes of it */
+static unsigned int thread_us(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
+	return (unsigned int)(t.tv_sec * 1000000 + t.tv_nsec / 1000);
+}
+
 /* One frame. False when the daemon fell back to bypass, which is the main
  * loop's signal to stop polling the capture.
  */
@@ -241,9 +253,12 @@ bool warp_pump(struct runtime *r)
 	char why[WARP_WHY];
 	int slot = 0, fresh, target, fence, rc;
 	double t0, t1, t2;
+	bool tracing = r->check.trace > 0;
+	unsigned int c0 = tracing ? thread_us() : 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0;
 
 	if (r->state != WARP_ON)
 		return false;
+	gl_timing(tracing);
 	if (r->pattern == PATTERN_NONE) {
 		if (source_geometry_changed(&r->source) && !source_rebuilt(r))
 			return false;
@@ -255,7 +270,8 @@ bool warp_pump(struct runtime *r)
 				warn("capture         %s", why);
 			return true;		/* nothing ready: nothing to do */
 		}
-		if (r->check.trace > 0) {
+		if (tracing) {
+			c1 = thread_us();
 			r->check.trace--;
 			info("trace           slot %d ts %.6f now %.6f", fresh,
 			     r->source.slot_s[fresh], now_s());
@@ -333,10 +349,35 @@ bool warp_pump(struct runtime *r)
 		return true;
 	}
 	r->fails = 0;
+	if (tracing)
+		c2 = thread_us();
 	fence = gl_fence();
 	t1 = now_s();
+	if (tracing)
+		c3 = thread_us();
 	rc = peer_frame(&r->peer, target, fence, why, sizeof(why));
 	t2 = now_s();
+	if (tracing) {
+		const struct gl_cost *g = gl_last_cost();
+		double gpu_ms = -1;
+
+		c4 = thread_us();
+		/*
+		 * The GPU's time: from the submit (gl_fence's glFlush) to the
+		 * out-fence signalling, waited out here only on "trace N gpu" --
+		 * the frame is handed over already, and the next slot is a
+		 * vsync away, so the wait costs the loop nothing it would use.
+		 */
+		if (r->check.trace_gpu && fence >= 0) {
+			struct pollfd pf = { .fd = fence, .events = POLLIN };
+
+			if (poll(&pf, 1, 15) > 0)
+				gpu_ms = (now_s() - t1) * 1e3;
+		}
+		info("trace           cost us: dequeue %u, draw %u (luma %u, chroma %u), fence %u, h713-tv %u | gpu busy %.2f ms (submit to fence%s)",
+		     c1 - c0, c2 - c1, g->cpu_luma_us, g->cpu_chroma_us, c3 - c2, c4 - c3,
+		     gpu_ms, gpu_ms < 0 ? ": not waited, \"trace N gpu\"" : "");
+	}
 	if (r->check.trace > 0 && (t1 - t0 > 0.010 || t2 - t1 > 0.010))
 		info("trace           slow frame %d: draw+fence %.1f ms, sent at %.6f, h713-tv's answer %.1f ms later",
 		     target, (t1 - t0) * 1e3, t1, (t2 - t1) * 1e3);
@@ -359,11 +400,12 @@ bool warp_pump(struct runtime *r)
 			 * every third frame, so the loop keeps its pace */
 			r->check.slot = slot;
 			r->check.target = target;
-			/* hold on: the slot is written to the end by the first draw,
-			 * the second comes 4 ms later, well before its next write
-			 * (two frames after its publish); hold off: the first draw
-			 * was at the publish, the second waits the measured tail out */
-			r->check.due = t0 + (r->hold ? 0.004 : 0.012);
+			/* the second draw 4 ms after the first: with kernel 0255 the
+			 * slot is whole at the first draw (hold on or off), and its
+			 * next write begins 33 ms after it was finished -- 12 ms, the
+			 * old hold-off timing, ran into that write on the top rows
+			 * (11.10.2026, rows 0..34) */
+			r->check.due = t0 + 0.004;
 			r->check.age0 = t0 - r->source.slot_s[slot];
 		} else {
 			source_queue(&r->source, slot);
@@ -401,7 +443,7 @@ void warp_check_tick(struct runtime *r)
 			r->check.differing++;
 			info("check           frame %lu: %lu of 32 rows differ, rows %d..%d, slot %d, first draw %.1f ms after its vsync, second %.1f ms later",
 			     r->check.frames, rows, lo, hi, r->check.slot, r->check.age0 * 1e3,
-			     (now_s() - r->check.due + (r->hold ? 0.004 : 0.012)) * 1e3);
+			     (now_s() - r->check.due + 0.004) * 1e3);
 			if (r->check.row_lo < 0 || lo < r->check.row_lo)
 				r->check.row_lo = lo;
 			if (hi > r->check.row_hi)

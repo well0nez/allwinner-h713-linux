@@ -693,7 +693,7 @@ edid       = block0 | block1 # which half of /lib/firmware/hy310-edid.bin port 0
                              # replug, about a second of console; `ctl status` says which half is up
                              # driver's default. Absent, the served half is still published once at start
                              # without the VICs the table lacks, if there are any (one HPD pulse)
-edid_prefer = panel | file   # panel (default): a panel smaller than the file's first detailed timing gets
+edid_prefer = file | panel   # file (default): the file's order. panel: a panel smaller than the file's first detailed timing gets
                              # the CTA timing of its own size as the first timing, so a source that follows
                              # the EDID sends the panel's resolution; the file's first timing moves to the
                              # second slot, the VIC list is untouched (1080p stays selectable). Reason: a

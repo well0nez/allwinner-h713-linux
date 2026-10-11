@@ -180,7 +180,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Terminal im Desktop (ersetzt 2.7a, sobald der Desktop kommt)
       - 11.10.: vorbereitet - Zeichnen (`libh713osd`) und Ausgabe (`h713-osd` + Kanal in `h713-tv`) sind getrennt, die Matrix eine
         Bibliothek (`libh713geom`); `docs/architecture.md` "The display stack". Der Desktop selbst steht aus
-- [ ] 2.47 **Warp sparsamer** - eigenes Paket, erst messen (`doku/192` §5.6): `sugov:0` kostet 14,6 % eines Kerns, so viel wie der
+- [x] 2.47 **Warp sparsamer** - eigenes Paket, erst messen (`doku/192` §5.6): `sugov:0` kostet 14,6 % eines Kerns, so viel wie der
       Warp (14 %). Ansätze: fester Takt oder `rate_limit_us`; `-O3 -mcpu=cortex-a53`, LTO, NEON; der Warp committet selbst statt
       über den `h713-tv`-Socket; EGLImage je Slot einmal; GPU-Fences statt Abfragen; gleiche Bilder überspringen; Luma/Chroma in
       einem Durchgang; GPU-Takt
@@ -203,6 +203,20 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Aufnahme am G-EU **59,8 Bilder/s**, jeder Abstand eine Bildzeit, still wie bewegt; zurück auf 1920×1080 @ 60 - 30-53/s.
         Die Firmware verliert Bilder beim **Herunterskalieren 1080p → 720p** in der Aufnahme, nicht der Warp, nicht der
         Treiber, nicht der Takt, nicht der Bildinhalt (der HY310 mit 1080p-Panel skaliert nicht: 59,5 fps). Weiter in 2.56
+      - **11.10. abends erledigt** (`doku/201`, Paket `arbeit/warp-zeichnen-20261011/`, Marco: "wirklich alles in Betracht ziehen"):
+        **GPU-Zeit je Bild 6,05 → 1,78 ms** (Soft-Edge als eigener Ring-Durchgang; die G31 versteckt keine Texturlatenz hinter
+        Rechnung), GPU-Regler parkt bei 288-432 statt 600-696; **CPU-Regler:** die Panfrost-IRQ-Threads (SCHED_FIFO) trieben
+        schedutil 40×/s auf 1296 MHz - `h713-cpufreq.service` setzt sie auf SCHED_OTHER und das 20-ms-Limit (tmpfiles griff beim
+        Boot nicht): Takt 98 % bei 480 MHz, sugov 0,1 %; **Latenz:** `hold off` Vorgabe (mit 0255 ist der Slot fertig; `hold on`
+        wäre jetzt riskant); `ctl trace N gpu` zeigt CPU je Schritt und GPU-Zeit aus der Fence. Warp-CPU je Bild bleibt ~0,8 ms
+        bei 1296 MHz (Mesa/Panfrost je Batch, Compute-Dispatch gemessen und verworfen). Offen → 2.60, 2.61
+
+- [ ] 2.60 **CONFIG_UCLAMP_TASK statt chrt** (11.10. abends, `doku/201`): der Kernel-Weg gegen den RT-Takt-Boost ist
+      `CONFIG_UCLAMP_TASK` + `kernel.sched_util_clamp_min_rt_default` (dann bleiben die Panfrost-IRQ-Threads FIFO und schedutil
+      ignoriert sie trotzdem). Kernelconfig im Patchspiegel, Bau, Messung wie `h713-cpufreq` (m30/m31), dann das chrt im Skript weg
+- [ ] 2.61 **Warp-CPU je Bild: ein Batch statt zwei** (11.10. abends): 2 × ~125 µs Batch-Aufbau + 4 GPU-Jobs je Bild; Luma und
+      Chroma in einem R8-FBO (Höhe 1,5) als zwei Draws (nicht T1e's einer), Chroma-Fragment je Byte mit dFdx-Snap auf die Paarmitte;
+      ~−150 µs CPU, +25 % GPU (1,8 → ~2,3 ms). Nur mit Augen an der Wand und T1-Tests; vorher 2.60
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

@@ -3278,11 +3278,15 @@ enum policy { POLICY_AUTO, POLICY_OFF };
  *       calculator = PATH|none  h713-pq; none = do not compute anything
  *       edid = block0 | block1  which half of the EDID file port 0 serves
  *                               (FB-EDID); absent: the driver's default, block 0
- *       edid_prefer = panel | file  panel (the default): a panel smaller than the
- *                               file's first detailed timing gets its own CTA
- *                               timing put first, so a source that follows the
- *                               EDID sends the panel's resolution (doku/197/198);
- *                               file: the file's order as it is
+ *       edid_prefer = file | panel  file (the default since kernel 0255, doku/200):
+ *                               the file's order as it is, 1080p first on every
+ *                               board; panel: a panel smaller than the file's
+ *                               first detailed timing gets its own CTA timing put
+ *                               first, so a source that follows the EDID sends the
+ *                               panel's resolution (doku/198) - the answer of
+ *                               11.10. midday, before the capture slot came from
+ *                               the capture's own index and 1080p60 on a 720p
+ *                               panel was shown frame for frame
  *
  * The keys are the file format, and since v0.8-beta they speak English like
  * the values. Their German spellings ("zustand", "daten", "rechner") and the
@@ -3388,7 +3392,7 @@ static void conf_read(struct conf *c)
 	snprintf(c->state_path, sizeof(c->state_path), "%s", STATE_FILE);
 	c->preset[0] = '\0';
 	c->edid = -1;
-	c->edid_panel = true;
+	c->edid_panel = false;
 	snprintf(c->data, sizeof(c->data), "%s", PQ_DATA);
 	snprintf(c->calculator, sizeof(c->calculator), "%s", PQ_BIN);
 	snprintf(c->input, sizeof(c->input), "%s", PQ_INPUT);
@@ -4366,12 +4370,18 @@ static unsigned int edid_prune(uint8_t *edid, const uint8_t have[16], char *list
  * where the capture ring's three slots lose every fourth to fifth frame
  * (measured 11.10.2026 on the HY300PRO-G-EU: 43..57 of 60 shown, doku/197;
  * the mechanism, doku/198). A 720p60 source on the same panel is shown
- * frame for frame (59.7 of 60). So, unless tv.conf says edid_prefer = file,
- * a panel smaller than the file's first timing gets the CTA timing of its
- * own size as the first detailed timing; the file's first timing moves down
- * to the second slot (the second timing of the file goes, it stays listed as
- * a VIC), and the image size, borders and sync flags are the file's. The
+ * frame for frame (59.7 of 60). So, with tv.conf edid_prefer = panel, a
+ * panel smaller than the file's first timing gets the CTA timing of its own
+ * size as the first detailed timing; the file's first timing moves down to
+ * the second slot (the second timing of the file goes, it stays listed as a
+ * VIC), and the image size, borders and sync flags are the file's. The
  * extension block with its VIC list is not touched: 1080p stays selectable.
+ *
+ * Off by default since the evening of 11.10.2026: kernel patch 0255 takes the
+ * capture slot from the capture's own write index and a 1080p60 source on a
+ * 720p panel is shown frame for frame (doku/200), so the source may keep
+ * sending its native 1080p and the firmware's scaler does the rest. The rule
+ * stays for a device that wants it (edid_prefer = panel).
  *
  * Only the two panel sizes this project has met are in the table. A panel
  * without a CTA timing of its own size keeps the file's order.
@@ -4389,7 +4399,7 @@ static const struct {
 static unsigned int edid_dtd_w(const uint8_t *t) { return t[2] | (unsigned int)(t[4] >> 4) << 8; }
 static unsigned int edid_dtd_h(const uint8_t *t) { return t[5] | (unsigned int)(t[7] >> 4) << 8; }
 
-static bool edid_prefer_panel = true;		/* tv.conf edid_prefer */
+static bool edid_prefer_panel = false;		/* tv.conf edid_prefer */
 static unsigned int edid_panel_w, edid_panel_h;	/* the panel, once the display knows it */
 static char edid_panel_note[96];		/* what edid_panel_first did to the half published last */
 

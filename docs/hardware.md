@@ -29,11 +29,17 @@ register layout blind.
 
 The four cores share one clock, 480-1296 MHz through `cpufreq-dt`, and one supply, `vdd-cpu`: a PWM regulator,
 0.81-1.16 V, ramping at 2.5 mV/µs (HY300PRO-G-EU device tree). A clock change is a regulator ramp and a PLL relock,
-which the kernel declares as 308 µs, and schedutil's thread `sugov:0` carries each one out. The kernel's own
-`rate_limit_us` (1.5 × that, 462 µs) let the clock follow the warp's 60 Hz load up and down all the time, and that
-thread cost as much CPU as the warp: `/etc/tmpfiles.d/h713-cpufreq.conf` sets 20 ms at boot, which halves the load
-with the warp on (measured 11.10.2026, table in that file). A governor switched at runtime and back brings schedutil up
-with the kernel's 462 µs again; `systemd-tmpfiles --create /etc/tmpfiles.d/h713-cpufreq.conf` sets the 20 ms anew.
+which the kernel declares as 308 µs, and schedutil's thread `sugov:0` carries each one out. Two things made that
+thread cost as much CPU as the warp (11.10.2026): the kernel's own `rate_limit_us` (1.5 × that, 462 µs) let the
+clock follow every burst, and - the larger part - schedutil asks for the **maximum** clock whenever a real-time
+task is runnable, and the GPU's interrupt handlers are real-time threads (SCHED_FIFO 50) that run four times a
+frame with the warp on: the clock swung 480 <-> 1296 MHz forty times a second whatever the rate limit.
+`h713-cpufreq.service` sets both once per boot - 20 ms, and the three `irq/*-panfrost` threads to SCHED_OTHER -
+after which the clock stays at 480 MHz under the warp (0.3-1.6 changes a second, `sugov:0` 0.1 %, 59.7 fps, no
+frame dropped; the table with all four combinations is in `userspace/h713-cpufreq/h713-cpufreq`). The kernel's
+own way would be `CONFIG_UCLAMP_TASK` with `sched_util_clamp_min_rt_default` (TODO 2.60). *Superseded 11.10.2026
+(evening):* "`/etc/tmpfiles.d/h713-cpufreq.conf` sets 20 ms at boot" - it ran before the governor had its sysfs
+directory, so three boots in a row came up with 462 µs again.
 
 Two more processors run on the same die and are already alive by the time Linux boots:
 
