@@ -208,6 +208,21 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       dabei 10-50 % der Bilder, eine 720p-Quelle kommt mit 60 an. Mit 720p als bevorzugtem Modus in der EDID der 720p-Boards
       schicken Quellen von selbst 720p (weniger Speicherlast, keine Verluste); 1080p bliebe wählbar. Vorher: was dient Stock auf
       dem G-EU (`re/`, Abzug), und ob die Skalier-Verluste mit einer Einstellung der Firmware zu beheben sind
+      - **11.10. vormittags: zurückgestellt bis 2.57.** Die Aufnahme verliert nichts: sie schreibt alle 60 Bilder, die Anzeige
+        gibt jedes vierte zu spät frei (`arbeit/aufnahme-takt-20261011/BERICHT.md`). *Überholt:* "die Firmware verliert Bilder
+        beim Herunterskalieren in der Aufnahme" (oben, früh)
+- [ ] 2.57 **VidDec-Deskriptor meldet 30 Bilder/s - echte Quellrate eintragen und messen** (11.10. vormittags,
+      `arbeit/aufnahme-takt-20261011/`): am G-EU mit 1080p-Quelle zeigt das Panel starr 3 von 4 Bildern (60 Hz → ~45, 50 Hz → ~37),
+      unabhängig von Phase und Takt; die Aufnahme liefert alle (INCAP +0x104 = Bildnummer/Zeile). Kein Kopplungsproblem: Stock läuft
+      auch frei (`PanelTimingWorkMode = 2`), und eine 50-Hz-Quelle an einem schnelleren Panel verliert genauso. Verdacht: afbd
+      schreibt fest `rec[13] = rec[14] = 30000` (`frame_rate_before/after_frame_rate_change`, 1/1000) - der Wert eines 30-fps-Videos
+      aus dem Stock-Mitschnitt, kein "Rezept für 60 Hz"; die Firmware plant ihre Bildratenwandlung danach (`Signal_Framerate 30`,
+      `crtc set_signal_frame_rate`). Versuch in einer Kopie: Wort 13/14 aus den DV-Timings (60000/50000/…), afbd-Modul, Sicherung,
+      Neustart, `phase6.py` mit 1080p60 und 1080p50, Gegenprobe 720p. Offen: warum 720p heute schon jedes Bild zeigt
+- [ ] 2.58 **Low Latency gesondert ansehen [Marco]** (11.10.): `THal_Vp_SetLowLatencyMode` (`c201c220`) ist als V4L2-Control da
+      (Kernel 0101a, startet Off; die Hersteller-Software schickt es nie, ihre Get/Set sind Stubs). Was der Modus in der Firmware
+      ändert (FRC-Puffer, Latenz, Fensterneubau; Bildmodi Spiel/Computer lösen `SetLowLatency` aus, `userspace/h713-tv/README.md`),
+      ob er die Verzögerung HDMI → Wand senkt und was er kostet - erst nach 2.57, damit die beiden Wirkungen getrennt bleiben
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
