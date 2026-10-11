@@ -32,6 +32,7 @@ struct scene {
 	int n;
 	double lw;		/* half the line width of icons and digits, px */
 	double px, py, pw, ph;	/* the item's box: left, top, width, height */
+	int panel;		/* behind the lines: 0 nothing (the bare look), 1 the pill, 2 the badge's disc */
 };
 
 static double clampd(double v, double lo, double hi)
@@ -249,8 +250,9 @@ static void place_box(struct scene *s, const struct osd_canvas *c, const struct 
 	}
 }
 
-/* every item is one strip of lines - no panel behind it, no card (the owner, 11.10.2026: rounded backgrounds
- * look like boxes over the picture); the badge is the crossed-out speaker alone */
+/* every item is one strip of lines; in the pill look a dark translucent panel with fully rounded ends lies
+ * behind it, in the bare look a soft shadow around each line. No square card: the owner rejected it on
+ * 11.10.2026 ("rounded backgrounds that are completely rectangular do not work"), the pill he kept. */
 static void layout(struct scene *s, const struct osd_canvas *c, const struct osd_style *st,
 		   const struct osd_item *it)
 {
@@ -259,10 +261,12 @@ static void layout(struct scene *s, const struct osd_canvas *c, const struct osd
 
 	memset(s, 0, sizeof(*s));
 	s->lw = 1.6 * u;
+	s->panel = st->look == OSD_PILL;
 
 	if (it->kind == OSD_MUTE_BADGE) {
 		double d = 64 * u;
 
+		s->panel = st->look == OSD_PILL ? 2 : 0;
 		s->pw = s->ph = d;
 		s->px = st->place == OSD_TOP_RIGHT ? 48 * u : c->w - 48 * u - d;
 		s->py = 48 * u;
@@ -353,9 +357,15 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 				t[s.p[i].tone] = fmin(t[s.p[i].tone], d);
 			}
 			all = fmin(t[T_BRIGHT], fmin(t[T_DIM], t[T_RED]));
-			/* a soft shadow around every line keeps it legible on a bright picture */
-			over(px, 0, 0, 0, 0.62 * fade * cover(all - 3 * u, shadow) *
-			     (t[T_DIM] < fmin(t[T_BRIGHT], t[T_RED]) ? 0.7 : 1));
+			if (s.panel == 1)	/* the pill: its ends are half circles (radius = half the height) */
+				over(px, 10, 12, 16, 0.46 * fade * cover(rrect_sd(fx, fy, s.px + s.pw / 2, s.py + s.ph / 2,
+									   s.pw / 2, s.ph / 2, s.ph / 2), AA));
+			else if (s.panel == 2)
+				over(px, 10, 12, 16, 0.38 * fade *
+				     cover(hypot(fx - s.px - s.pw / 2, fy - s.py - s.ph / 2) - s.pw / 2, AA));
+			else	/* the bare look: a soft shadow around every line keeps it legible on a bright picture */
+				over(px, 0, 0, 0, 0.62 * fade * cover(all - 3 * u, shadow) *
+				     (t[T_DIM] < fmin(t[T_BRIGHT], t[T_RED]) ? 0.7 : 1));
 			over(px, 250, 250, 250, 0.94 * fade * fmax(cover(t[T_BRIGHT], AA), DIM * cover(t[T_DIM], AA)));
 			over(px, 255, 72, 64, 0.96 * fade * cover(t[T_RED], AA));
 		}
