@@ -195,6 +195,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       sichtbar). `h713-mips-restart` von Hand holt das Bild in 3,4 s zurück, ein Kaltstart auch. Offen: warum der MIPS beim Resync
       stirbt; ob es seit UCLAMP (2.60, langsamerer Takt beim Boot) häufiger ist - Kontrollversuch Warmstarts alter/neuer Kernel;
       danach entweder die Ursache oder als Rückfall h713-mips-restart, wenn h713-tv am blockierten Empfänger scheitert
+      - **12.10. nachts (Marco): die Ursache als eigener Offline-Auftrag**, getrennt zu übergeben: Auftrag mit Fragen, Quellen
+        (IDA-Datenbanken `display.bin`, `mcu_comm_dev.ko`, `doku/72`, `re/notes/`), Journalauszügen und Lieferform liegt lokal in
+        `arbeit/mips-sperre-20261012/AUFTRAG.md`. Frage: wie nimmt der MIPS Sperre 2 (`spinLock(2,quick)`), und warum schließen sich
+        sein Weg und unser Nachbau (`cpu_comm_hw.c`) beim Warmstart nicht aus. Bis dahin das Sicherheitsnetz (h713-tv-rescue)
 - [ ] 2.64 **HY300PRO-G-EU: Standby kam nicht zurück** (11.10. 21:24, Auswahl Standby in der Ausschalt-Einblendung): 15,5 s
       geschlafen, "back from system suspend", sofort danach Reset ins dunkle Gate ("a standby did not finish", crust Phase
       resuming, ohne Ursache). Linux schreibt beim Aufwachen nichts auf die UART, das Journal war flüchtig - keine Spur. Der folgende
