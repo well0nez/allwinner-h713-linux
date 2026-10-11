@@ -1,5 +1,7 @@
 # 196 - Nachtarbeit 11.10.2026: Kleinkram (B) und der Warp mit dem CPU-Regler (A)
 
+*Überholt (11.10. mittags, `doku/197`): "die Firmware verliert Bilder beim Herunterskalieren in der Aufnahme" (§2 Nachtrag (4)) - die Aufnahme liefert alle Bilder; die Übergabe ans Panel lässt bei 60 Hz mit Verkleinern einen Teil aus.*
+
 **Kurz:** Marco schlief, Auftrag: erst Dinge, die ich allein entscheiden kann (B), dann beim Warp "alles rausholen" und
 klären, warum der CPU-Regler so hoch zieht (A). Ergebnis A: **die CPU-Last mit laufendem Warp halbiert** (alle vier Kerne
 5,9 % → 2,9-3,1 %) durch zwei gemessene Änderungen - schedutil darf den Takt nur noch alle 20 ms ändern statt alle

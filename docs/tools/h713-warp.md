@@ -157,9 +157,13 @@ The warp draws every slot the capture hands on: it wakes 0.1 ms after the slot's
 How many slots there are is decided before it, in the firmware's capture: read straight from the flip pointer pair
 (AFBD +0x320 through `/dev/mem`), the pair moved 30-35 times a second with the warp on, with it off and with either
 afbd module (11.10.2026, HY300PRO-G-EU, 720p panel, 1080p60 source). With the source switched to 720p60 it moved 59.8
-times, every gap one frame, still or moving: the firmware loses frames when the capture scales 1080p down to the 720p
-panel, not the warp and not the content (TODO 2.56). The HY310's 1080p panel needs no scaling and gets 59.5. *Superseded
-11.10.2026:* "Whether the capture leaves out only repeated frames there is still to be measured with a moving picture".
+times, every gap one frame, still or moving. The capture itself writes every frame (`INCAP 0x06940104` counts source frames
+and lines): what fails is the hand-over to the panel, which repeats one frame and skips the next, and only at 60 Hz with
+downscaling - 1080p30 and 4K30 scaled to 720 show every frame, 1080p60 shows 1-4 skips a second right after a mode change
+and up to 17 after hours. Not the MIPS clock, the panel coupling, the VidDec frame rate, TNR or the bus settings; the cause
+is open (`doku/197`, TODO 2.57). The HY310's 1080p panel needs no scaling and gets 59.5. *Superseded 11.10.2026 (midday):*
+"the firmware loses frames when the capture scales 1080p down to the 720p panel"; *(early):* "Whether the capture leaves out
+only repeated frames there is still to be measured with a moving picture".
 
 Where the CPU went besides the warp, and what changed: the kernel let schedutil change the clock every 462 µs, and
 under the warp's 60 Hz load the `sugov:0` thread that carries out each change (a PWM regulator ramp, then the PLL)

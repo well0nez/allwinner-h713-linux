@@ -223,6 +223,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         (hdmirx hält den Satz dann für den echten → "not locked", Bild bleibt), aber 46,9 Wechsel/s gegen 47,0/47,9 mit dem Original
         nach ebenso frischem Neustart. Auch TNR aus ändert nichts. Die Rate sinkt über Stunden Laufzeit (frisch ~47, nach 4 h ~43,
         nachts 30-41). Weiter offen: was im Skalierpfad jedes 4.-5. Bild zurückhält (Firmware-FRC, Stock-Vergleich, 1080p-Ring + GPU)
+      - **11.10. mittags (`doku/197`):** nur 60 Hz + Verkleinern verliert (1080p30/4K30 → 720: kein Sprung; 720p60: keiner);
+        frisch nach Moduswechsel 1-4 Sprünge/s, nach Stunden bis 17. Widerlegt: MIPS-Takt (400 MHz wie Stock), Kopplung (Regler
+        bei uns und Stock aus), Bus/NSI/DRAM (identisch mit der Stock-HY350), Bildverbesserer (~2/s). Langzeit-Mitschnitt läuft
+        (`h713-ratelog` am G-EU). Nächster Schritt: Firmware-RE am Skalierpfad bei 60 Hz; die G-EU-Firmware-Shell einrichten
+        (`crtc dump_cfg`, elog), Adressen fehlen
 - [ ] 2.58 **Low Latency gesondert ansehen [Marco]** (11.10.): `THal_Vp_SetLowLatencyMode` (`c201c220`) ist als V4L2-Control da
       (Kernel 0101a, startet Off; die Hersteller-Software schickt es nie, ihre Get/Set sind Stubs). Was der Modus in der Firmware
       ändert (FRC-Puffer, Latenz, Fensterneubau; Bildmodi Spiel/Computer lösen `SetLowLatency` aus, `userspace/h713-tv/README.md`),
