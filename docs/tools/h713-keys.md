@@ -19,8 +19,8 @@ h713-keys run            # what the unit runs
 | `KEY_F4` / `KEY_F5` (the BLE remote's focus keys, kernel 0169; IR 0x0251/0x0250) | `h713-focus up/down` with `focus_steps`; one run at a time, presses during a run wait for the next (at most two presses' worth, so a held key keeps the motor going and it stops one run after the release), a press the other way replaces what was waiting. At the end of the travel (`h713-focus` exit 3) the overlay shows the end stop and nothing more is queued that way |
 | `input_keys` (none by default) | `h713-tv ctl off` (console) when the picture is on automatic, `h713-tv ctl auto` otherwise. The remote has no record key; which key gets this is open |
 | `KEY_POWER` | left alone: logind powers off, or [h713-power](h713-power.md) decides on an image with standby |
-| Home, Menu, Back, arrows, OK | logged once as "recognised, no action yet" |
-| `KEY_F6` (IR `0x0266`: the mouse **and** the microphone key) | logged once. Over IR both keys send this one code, the vendor's `PRJ_BRC_PAIR`: they ask for the Bluetooth pairing, and a second later the remote offers itself (measured 11.10.2026); their own functions run over Bluetooth only |
+| Home, Menu, Back, arrows, OK | logged once as "recognised, no action yet"; OK arrives over Bluetooth as `KEY_SELECT` (HID "Menu Pick") and is read as `KEY_OK` |
+| `KEY_F6` (IR `0x0266`: the mouse **and** the microphone key) | logged once. Over IR both keys send this one code, the vendor's `PRJ_BRC_PAIR`: they ask for the Bluetooth pairing, and a second later the remote offers itself (measured 11.10.2026); their own functions run over Bluetooth only. Nothing acts on it: `h713-remote-pair` pairs only while no remote is bonded - a remote paired with another box since needs `h713-remote-pair forget`, then Left+Right (TODO 2.54) |
 
 Volume and mute work without an HDMI signal: `h713-tv` keeps them as long as its two sound cards are there.
 
@@ -30,6 +30,11 @@ A keyboard on the USB port has F4, F5 and volume keys too, and someone typing in
 move the focus motor. The daemon opens only the BLE remote (ids `1d5a:c081`) and the IR receiver (input
 name `sunxi-ir`), and finds a remote that connects later at its next look, every 5 s. It does not grab the
 devices: the power key on the same nodes stays with logind or `h713-power`.
+
+A held key repeats the same way over both: the IR receiver repeats after 500 ms every 125 ms (rc-core), and the
+daemon gives the Bluetooth remote those values when it opens it (`EVIOCSREP`; the journal line "listening on ...,
+repeat 500/125 ms as over IR"). Left at the input core's 250/33 ms, a held volume key ran from 100 to 15 in 1.6 s
+(measured on the HY300PRO-G-EU, `doku/195`).
 
 ## The overlay
 

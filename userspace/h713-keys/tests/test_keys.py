@@ -16,7 +16,8 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROG = os.path.join(HERE, "..", "h713-keys")
 EVENT = struct.Struct("qqHHi")
-KEY = {"up": 115, "down": 114, "mute": 113, "f4": 62, "f5": 63, "record": 167, "power": 116, "home": 172, "search": 217}
+KEY = {"up": 115, "down": 114, "mute": 113, "f4": 62, "f5": 63, "record": 167, "power": 116, "home": 172, "search": 217,
+       "select": 353}
 
 
 class FakeServer(threading.Thread):
@@ -211,6 +212,35 @@ class KeysTest(unittest.TestCase):
         self.press("search")
         self.run_once()
         self.assertEqual(out.count("KEY_SEARCH (code 217): no meaning here"), 1)
+
+    def test_select_is_ok(self):
+        """over Bluetooth OK is HID Menu Pick = KEY_SELECT (11.10., G-EU) - the same key as KEY_OK over IR"""
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        self.press("select")
+        self.run_once()
+        self.assertIn("KEY_OK: recognised, no action yet", out)
+        self.assertFalse([m for m in out if "no meaning here" in m], out)
+
+    def test_bluetooth_remote_repeats_like_ir(self):
+        calls, out = [], []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        real = self.mod.fcntl.ioctl
+        self.mod.fcntl.ioctl = lambda fd, req, arg=0: calls.append((req, arg))
+        try:
+            self.press("home")
+            self.run_once()
+        finally:
+            self.mod.fcntl.ioctl = real
+        self.assertEqual(calls, [(0x40084503, struct.pack("II", 500, 125))])    # only the Bluetooth remote
+        self.assertTrue([m for m in out if m.endswith("event1, repeat 500/125 ms as over IR")], out)
+
+    def test_repeat_refused_is_said(self):
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        self.press("home")
+        self.run_once()                     # a plain file here: the ioctl fails, the key still counts
+        self.assertTrue([m for m in out if "event1, repeat left at the kernel's" in m], out)
 
     def test_edge_drops_what_waits_that_way(self):
         with open(self.focus_rc, "w") as f:

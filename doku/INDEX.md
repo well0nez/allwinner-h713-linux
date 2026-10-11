@@ -49,7 +49,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-fel.md` | `doku/20`, `doku/nachtlog/S48-fel-aus-uboot` |
 | `docs/tools/h713-focus.md` | `doku/94` |
 | `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
-| `docs/tools/h713-keys.md` | `doku/138`, `doku/94` |
+| `docs/tools/h713-keys.md` | `doku/138`, `doku/195`, `doku/94` |
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mips-restart.md` | `doku/172`, `doku/173`, `doku/174`, `doku/177` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
@@ -129,6 +129,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-cam/README.md` | `doku/94` |
 | `userspace/h713-focus/_entwurf-agent/README-agent.md` | `doku/113`, `doku/60` |
 | `userspace/h713-focus/_entwurf-agent/h713_focus/geraet.py` | `doku/60` |
+| `userspace/h713-keys/README.md` | `doku/195` |
 | `userspace/h713-pq/README.md` | `doku/78`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
 | `userspace/h713-pq/h713_pq/model.py` | `doku/76`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/I0-helligkeit-nachgemessen`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
 | `userspace/h713-pq/h713_pq/output.py` | `doku/81` |
@@ -241,7 +242,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 4 |
 | [`193-einblendungen-tasten-und-h713-osd-20261011.md`](193-einblendungen-tasten-und-h713-osd-20261011.md) | Analyse | 2026-10-11 | 193 - Einblendungen über dem Bild: die Tasten per IR und Bluetooth, h713-osd vorverzerrt über dem Warp (11.10.2026) | 4 |
 | [`194-handoff-20261011-frueh.md`](194-handoff-20261011-frueh.md) | Handoff | 2026-10-11 | 194 - Handoff 11.10.2026 früh: Fernbedienung und Einblendungen sind in `main` (nicht gepusht); als Nächstes dieselben Prüfstufen am HY300PRO-G-EU | - |
-| [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 2 |
+| [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 4 |
 | [`196-nachtarbeit-kleinkram-und-warp-20261011.md`](196-nachtarbeit-kleinkram-und-warp-20261011.md) | Analyse | 2026-10-11 | 196 - Nachtarbeit 11.10.2026: Kleinkram (B) und der Warp mit dem CPU-Regler (A) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |

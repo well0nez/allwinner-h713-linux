@@ -11,7 +11,7 @@ over IR (the `sunxi-ir` receiver with the keymap `rc-h713-fd02`, kernel 0254):
 | focus up / down (`KEY_F4` / `KEY_F5`) | `h713-focus up/down N`, `focus_steps` per press (default 20, about 0.3 s of travel); one run at a time, presses during a run wait for the next (at most two), a held key keeps it going; at the end of the travel the overlay says so (`focus up edge`) and nothing more is queued that way |
 | `input_keys` (none by default) | switches `h713-tv` between the HDMI picture (`auto`) and the console (`off`) - the way back after someone forced the console; which key does it is still open, the remote has no record key |
 | power | nothing here: logind, or `h713-power` on an image with standby, powers off |
-| Home, Menu, Back, arrows, OK | recognised and logged once, no action yet (kept for a later desktop) |
+| Home, Menu, Back, arrows, OK | recognised and logged once, no action yet (kept for a later desktop); OK over Bluetooth is `KEY_SELECT`, read as `KEY_OK` |
 | mouse, microphone over IR (`KEY_F6`) | both send the same code `0x0266` - over IR they only ask for the Bluetooth pairing; logged once. Their own functions work over Bluetooth only |
 
 After each action it sends one line to the overlay daemon `h713-osd` (`/run/h713-osd/ctl`), if that runs:
@@ -54,8 +54,10 @@ fake `h713-tv` and `h713-osd` sockets and a fake `h713-focus`. The environment v
 ## State
 
 Measured on the HY310 on 11.10.2026 over IR (kernel 0252-0254): all 14 keys arrive and act - volume, mute,
-focus, OK, Home, Menu, Back, the arrows; mouse and microphone both `0x0266`. Not measured yet: the Bluetooth
-side with this daemon, which way `KEY_F4` turns the focus on the wall, and which key should switch the input.
+focus, OK, Home, Menu, Back, the arrows; mouse and microphone both `0x0266`. On the HY300PRO-G-EU (11.10.,
+`doku/195`): 13/13 over IR, all keys over Bluetooth, where a held key repeated every ~40 ms - the daemon now sets the
+Bluetooth remote to the IR receiver's 500/125 ms (`EVIOCSREP`; host tests, not yet felt on the device). Not measured
+yet: which way `KEY_F4` turns the focus on the wall, and which key should switch the input.
 
 Installation: `make install DESTDIR=<rootfs>` (script to `/usr/local/sbin`, unit, `keys.conf`, this README).
 More: [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md).
