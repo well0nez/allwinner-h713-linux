@@ -12,6 +12,7 @@
 | [`h713-panel/`](../docs/tools/h713-panel.md) | **The settings page**, port 8080, no authentication; every button is a command of the tools above | in the image since `v0.95-beta` |
 | [`h713-features/`](../docs/tools/h713-features.md) | **Which optional hardware this board has** - camera, accelerometer, focus motor - against `/etc/h713/features`; a one-shot unit at boot | in the image since `v0.96-beta` |
 | `h713-remote-pair/` | **The stock Bluetooth remote.** One Python script over `bluetoothctl`: `pair`, `reconnect`, `status`, `forget`, and `watch`, which the unit runs ([details](../docs/subsystems/wifi.md#bluetooth)) | in the image since `v0.96-beta` |
+| [`h713-keys/`](h713-keys/README.md) | **The stock remote's keys.** One Python script, a daemon: volume and mute through `h713-tv`, the focus through `h713-focus`, an input key (still to choose) switches between HDMI and the console; Bluetooth and IR (kernel 0252-0254), never a keyboard. One line per action to the overlay daemon `h713-osd`, when it runs IR measured on the HY310 (11.10.2026, all 14 keys); Bluetooth side not yet; not in the image |
 | `h713-gpu-probe/` | **A GPU check.** C: `info` and a `render` run with a CRC per frame, the measurement behind the Mali's row in STATUS.md | a bench tool, not in the image |
 
 Building and installing: `doku/50-befehle.md`, the operation section. The old stock rebuilds `hy310-hdmird`

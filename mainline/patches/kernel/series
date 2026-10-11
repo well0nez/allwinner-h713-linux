@@ -572,3 +572,9 @@
 0250-soc-sunxi-h713-arisc-name-crust-s-power-off-phase-build-bit-and-tf-a-s-gate-event.patch
 #   0251 the RGB channel over the video plane (10.10.2026, arbeit/osd-a-20261010): primary zpos, ARGB per-pixel alpha, "osd" window
 0251-drm-h713-afbd-the-rgb-channel-over-the-video-plane.patch
+#   0252-0254 the IR receiver and the stock remote (11.10.2026, TODO 2.35/2.46): sunxi-cir at its default 8 MHz, 0021's vendor
+#   register values gone, and the keymap of the stock remote (NEC 0xfd02) - from the IR package of 03.10. (doku/138), without its
+#   PL9 re-apply, which answered the vendor's ARISC firmware and is not needed with crust
+0252-arm64-dts-h713-the-ir-receiver-at-sunxi-cir-s-default-8-mhz.patch
+0253-media-sunxi-cir-h713-drop-0021-s-vendor-register-values.patch
+0254-media-rc-keymaps-the-h713-projectors-stock-ir-remote-and-its-map-on-the-hy310.patch

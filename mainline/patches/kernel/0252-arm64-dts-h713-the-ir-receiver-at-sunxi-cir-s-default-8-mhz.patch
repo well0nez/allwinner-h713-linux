@@ -1,0 +1,41 @@
+arm64: dts: h713: the IR receiver at sunxi-cir's default 8 MHz
+
+clock-frequency = <24000000> made sunxi-cir compute rx_resolution =
+1000000 / (24000000 / 64) = 2 us in integer arithmetic for a real 2.667 us
+sample, so every duration reached rc-core at 0.75 of its length and NEC
+never decoded (measured 02.10.2026: leader 6752/3348 us instead of
+9000/4500; doku/138). The clock itself was right: mux 01 is dcxo24M on the
+R_CCU. Without the property the driver asks for 8 MHz = hosc / 3, and the
+resolution is an exact 8 us.
+
+The sleep state for PL9 and the re-apply of the pin after the ARISC start
+in the package of 03.10. are not taken: they answered the vendor's ARISC
+firmware, which disabled PL8/PL9 when it started. crust leaves PL9 to
+Linux and takes it only for a standby or the power off, restoring it on
+the wake (measured 11.10.2026 on the HY310 with crust: PL9 function 3,
+s_cir).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+index 0b9dae9..2c196ce 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1949,7 +1949,13 @@
+ 			clocks = <&r_ccu CLK_BUS_R_IR_RX>,
+ 				 <&r_ccu CLK_R_IR_RX>;
+ 			clock-names = "apb", "ir";
+-			clock-frequency = <24000000>;
++			/*
++			 * No clock-frequency: the driver's default 8 MHz is hosc / 3
++			 * and gives exactly 8 us per sample. At 24 MHz sunxi-cir's
++			 * integer rx_resolution is 2 us for a real 2.667 us, every
++			 * duration reached rc-core at 0.75 of its length and NEC
++			 * never decoded.
++			 */
+ 			resets = <&r_ccu RST_BUS_R_IR_RX>;
+ 			pinctrl-names = "default";
+ 			pinctrl-0 = <&r_ir_rx_pin>;

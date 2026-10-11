@@ -1,0 +1,15 @@
+[Unit]
+Description=h713-keys - the stock remote's keys: volume, mute, focus, HDMI input
+Documentation=file:/usr/local/share/doc/h713-keys/README.md
+After=h713-features.service
+
+[Service]
+ExecStart=/usr/local/sbin/h713-keys run
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

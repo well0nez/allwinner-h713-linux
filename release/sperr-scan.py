@@ -119,7 +119,7 @@ def main() -> int:
     # unverfolgte, die nicht ignoriert sind. Was .gitignore ausschliesst (Bauausgaben,
     # der Tarball-Cache), kann gar nicht veroeffentlicht werden und ist nur Rauschen.
     erlaubte = None
-    if os.path.isdir(os.path.join(wurzel, ".git")):
+    if os.path.exists(os.path.join(wurzel, ".git")):     # im Worktree ist .git eine Datei, kein Ordner
         import subprocess
         r = subprocess.run(["git", "-C", wurzel, "ls-files", "-c", "-o", "--exclude-standard", "-z"],
                            capture_output=True, text=True)

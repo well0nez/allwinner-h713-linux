@@ -1,0 +1,128 @@
+media: rc: keymaps: the H713 projectors' stock IR remote, and its map on the HY310
+
+The stock remote of the HY310 and the HY300PRO-G-EU sends NEC with the
+customer code 0xfd02; the table is the vendor's customer_ir_fd02.kl. Until
+now the receiver had rc-empty, so no IR key reached the input layer (TODO
+2.35); with this map h713-power sees KEY_POWER from the remote as from the
+key on the device, and the volume, mute, focus and navigation keys reach
+userspace (h713-keys). The Linux names follow the Bluetooth side of the
+same remote (0169): Home KEY_HOMEPAGE, focus up KEY_F4, focus down KEY_F5.
+Seven navigation keys were checked on the HY300PRO-G-EU (doku/138); the
+HY310's tree names the map, which the HY200 QZ713DF A1's tree includes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun50i-h713-hy310.dts  |  2 +
+ drivers/media/rc/keymaps/Makefile             |  1 +
+ drivers/media/rc/keymaps/rc-h713-fd02.c       | 64 +++++++++++++++++++
+ include/media/rc-map.h                        |  1 +
+ 4 files changed, 68 insertions(+)
+ create mode 100644 drivers/media/rc/keymaps/rc-h713-fd02.c
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+index 06886f4..f0d5ba6 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+@@ -54,6 +54,8 @@
+ /* the restart of the display MIPS brought the picture back here (08.10.2026) */
+ &mips { status = "okay"; };
+ &motor_ctr { status = "okay"; };	/* range gate PH14 measured 12.09., see doku/94 */
++/* the stock IR remote, NEC customer code 0xfd02 (the HY200 QZ713DF A1's too) */
++&r_ir { linux,rc-map-name = "rc-h713-fd02"; };
+ &adc_keys { status = "disabled"; };
+ &board_mgr { status = "okay"; };	/* temperature + fan speed, see doku/60 */
+ 
+diff --git a/drivers/media/rc/keymaps/Makefile b/drivers/media/rc/keymaps/Makefile
+index d045726..941b985 100644
+--- a/drivers/media/rc/keymaps/Makefile
++++ b/drivers/media/rc/keymaps/Makefile
+@@ -56,6 +56,7 @@ obj-$(CONFIG_RC_MAP) += \
+ 			rc-geekbox.o \
+ 			rc-genius-tvgo-a11mce.o \
+ 			rc-gotview7135.o \
++			rc-h713-fd02.o \
+ 			rc-hauppauge.o \
+ 			rc-hisi-poplar.o \
+ 			rc-hisi-tv-demo.o \
+diff --git a/drivers/media/rc/keymaps/rc-h713-fd02.c b/drivers/media/rc/keymaps/rc-h713-fd02.c
+new file mode 100644
+index 0000000..cdb9a4b
+--- /dev/null
++++ b/drivers/media/rc/keymaps/rc-h713-fd02.c
+@@ -0,0 +1,64 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * The stock IR remote of the H713 projectors HY310 and HY300PRO-G-EU: NEC,
++ * customer code 0xfd02 (address 0x02), scancode = address << 8 | command.
++ *
++ * The table is the vendor's customer_ir_fd02.kl; the Linux names follow the
++ * Bluetooth side of the same remote (hid-h713-remote): Home is KEY_HOMEPAGE,
++ * focus up KEY_F4, focus down KEY_F5. Measured on the HY310 (doku/134): all
++ * keys decode; the mouse and the microphone key both send 0x66, which the
++ * vendor names PRJ_BRC_PAIR - over IR they ask for the Bluetooth pairing,
++ * their own functions run over Bluetooth only - and 0x45 (MOUSE in the
++ * table) never came. Measured again on 11.10.2026: both keys 0x66, and a
++ * second later the remote offered itself for pairing. Not KEY_BLUETOOTH:
++ * the rfkill input handler would read that as "switch Bluetooth on/off".
++ * Which of 0x50/0x51 is focus up was measured both ways (02.10. and
++ * 03.10.); the table's naming is kept until it is settled.
++ */
++
++#include <linux/module.h>
++#include <media/rc-map.h>
++
++static struct rc_map_table h713_fd02[] = {
++	{ 0x021d, KEY_POWER },
++	{ 0x0202, KEY_MUTE },
++	{ 0x0215, KEY_VOLUMEUP },
++	{ 0x0211, KEY_VOLUMEDOWN },
++	{ 0x0209, KEY_UP },
++	{ 0x0201, KEY_DOWN },
++	{ 0x020a, KEY_LEFT },
++	{ 0x0208, KEY_RIGHT },
++	{ 0x020b, KEY_OK },
++	{ 0x021f, KEY_BACK },
++	{ 0x021e, KEY_MENU },		/* SETTINGS */
++	{ 0x020d, KEY_HOMEPAGE },
++	{ 0x0245, KEY_F3 },		/* MOUSE in the table, never seen */
++	{ 0x0266, KEY_F6 },		/* PRJ_BRC_PAIR: mouse and microphone */
++	{ 0x0251, KEY_F4 },		/* PRJ_FOCUS_UP */
++	{ 0x0250, KEY_F5 },		/* PRJ_FOCUS_DN */
++};
++
++static struct rc_map_list h713_fd02_map = {
++	.map = {
++		.scan	  = h713_fd02,
++		.size	  = ARRAY_SIZE(h713_fd02),
++		.rc_proto = RC_PROTO_NEC,
++		.name	  = RC_MAP_H713_FD02,
++	}
++};
++
++static int __init init_rc_map_h713_fd02(void)
++{
++	return rc_map_register(&h713_fd02_map);
++}
++
++static void __exit exit_rc_map_h713_fd02(void)
++{
++	rc_map_unregister(&h713_fd02_map);
++}
++
++module_init(init_rc_map_h713_fd02)
++module_exit(exit_rc_map_h713_fd02)
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("H713 projectors' stock IR remote (NEC 0xfd02) keytable");
+diff --git a/include/media/rc-map.h b/include/media/rc-map.h
+index d90e461..0495dbf 100644
+--- a/include/media/rc-map.h
++++ b/include/media/rc-map.h
+@@ -261,6 +261,7 @@ struct rc_map *rc_map_get(const char *name);
+ #define RC_MAP_GEEKBOX                   "rc-geekbox"
+ #define RC_MAP_GENIUS_TVGO_A11MCE        "rc-genius-tvgo-a11mce"
+ #define RC_MAP_GOTVIEW7135               "rc-gotview7135"
++#define RC_MAP_H713_FD02                 "rc-h713-fd02"
+ #define RC_MAP_HAUPPAUGE                 "rc-hauppauge"
+ #define RC_MAP_HAUPPAUGE_NEW             "rc-hauppauge"
+ #define RC_MAP_HISI_POPLAR               "rc-hisi-poplar"

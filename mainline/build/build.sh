@@ -264,9 +264,11 @@ prepare_kernel() {
   note "applied $n series patches + arm64 defconfig" >&2
   echo "$tree"
 }
-# locate a mkimage: prefer one the U-Boot stage already built, else build tools-only
+# locate a mkimage: MKIMAGE= if given (a worktree without the U-Boot submodule, e.g. the container's
+# /usr/bin/mkimage), else one the U-Boot stage already built, else build tools-only
 find_mkimage() {
   local m
+  [ -n "${MKIMAGE:-}" ] && { [ -x "$MKIMAGE" ] && echo "$MKIMAGE"; return; }
   for m in "$ROOT"/build/uboot-*/tools/mkimage; do [ -x "$m" ] && { echo "$m"; return; }; done
   m="$ROOT/build/uboot-tools/tools/mkimage"
   if [ ! -x "$m" ]; then

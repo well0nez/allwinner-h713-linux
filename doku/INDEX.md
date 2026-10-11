@@ -49,6 +49,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-fel.md` | `doku/20`, `doku/nachtlog/S48-fel-aus-uboot` |
 | `docs/tools/h713-focus.md` | `doku/94` |
 | `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
+| `docs/tools/h713-keys.md` | `doku/138`, `doku/192`, `doku/94` |
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mips-restart.md` | `doku/172`, `doku/173`, `doku/174`, `doku/177` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
@@ -182,7 +183,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`135-handoff-20261002.md`](135-handoff-20261002.md) | Handoff | 2026-10-02 | Handoff 135 - Verifikation der Fable-Welle am Geraet (02./03.10.2026, Stand 00:15) | - |
 | [`136-handoff-hy300pro-g-eu-20261003.md`](136-handoff-hy300pro-g-eu-20261003.md) | Handoff | 2026-10-03 | 136 - Handoff HY300PRO-G-EU (Marcos eigener HY300 Pro), Stand 03.10.2026 ~01:30 | 3 |
 | [`137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md`](137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md) | Handoff | 2026-10-03 | 137 – Handoff: HY300PRO-G-EU, Bildfehler durch falsche LVDS-Farbtiefe | 1 |
-| [`138-handoff-mips-ir-20261003.md`](138-handoff-mips-ir-20261003.md) | Handoff | 2026-10-03 | Handoff: MIPS-Reload und IR am HY300PRO-G-EU | 1 |
+| [`138-handoff-mips-ir-20261003.md`](138-handoff-mips-ir-20261003.md) | Handoff | 2026-10-03 | Handoff: MIPS-Reload und IR am HY300PRO-G-EU | 2 |
 | [`139-handoff-standby-geparkt-20261003.md`](139-handoff-standby-geparkt-20261003.md) | Handoff | 2026-10-03 | Standby C2 — geparkt, 03.10.2026 | 1 |
 | [`140-handoff-20261003.md`](140-handoff-20261003.md) | Handoff | 2026-10-03 | Handoff 140 - Fernbedienung/WLAN-BT am HY310 integriert, IR geparkt (03.10.2026 abends) | - |
 | [`141-plan-integration-release-20261003.md`](141-plan-integration-release-20261003.md) | Plan | 2026-10-03 | Plan 141 - Fable-Welle nach main, Kleinkram, Boards, dann Release (03.10.2026) | - |
@@ -236,7 +237,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`189-handoff-20261010-abends.md`](189-handoff-20261010-abends.md) | Handoff | 2026-10-10 | 189 - Handoff 10.10.2026 abends: das Aus über crust ist in `main`; als Nächstes das Aus am HY310 messen und mit Marco das Kaltstart-Gate besprechen; OSD und Konsole im Warp laufen als eigenes Paket | - |
 | [`190-aus-ueber-crust-am-hy310-20261010.md`](190-aus-ueber-crust-am-hy310-20261010.md) | Analyse | 2026-10-10 | 190 - "Aus" über crust am HY310 gemessen: Selbstwecken, Power-Taste und IR-Fernbedienung (10.10.2026) | 4 |
 | [`191-kaltstart-gate-ueber-crust-20261010.md`](191-kaltstart-gate-ueber-crust-20261010.md) | Analyse | 2026-10-10 | 191 - Kaltstart-Gate über crust: nach dem Einstecken wartet crust statt U-Boot, 0,3-0,6 W, die Fernbedienung weckt (10.10.2026) | 2 |
-| [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 2 |
+| [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 3 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -276,7 +277,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`91-plan-drei-punkte.md`](91-plan-drei-punkte.md) | Plan |  | Plan: die drei offenen Punkte des Umschalters | - |
 | [`92-plan-de-scaler.md`](92-plan-de-scaler.md) | Plan |  | Plan - DE-Scaler und Auflösungsunterstützung | - |
 | [`93-todo-scaler-und-720p.md`](93-todo-scaler-und-720p.md) | Analyse |  | TODO - Scaler und 720p | - |
-| [`94-fokusmotor-endschalter.md`](94-fokusmotor-endschalter.md) | Analyse |  | Fokusmotor und der Bereichswächter auf PH14 - Stand 12.09.2026 | 5 |
+| [`94-fokusmotor-endschalter.md`](94-fokusmotor-endschalter.md) | Analyse |  | Fokusmotor und der Bereichswächter auf PH14 - Stand 12.09.2026 | 6 |
 | [`95-netboot.md`](95-netboot.md) | Analyse |  | Netboot: Kernel per TFTP, Wurzelverzeichnis per NFS | - |
 | [`96-anzeigekette.md`](96-anzeigekette.md) | Analyse |  | Die Anzeigekette des H713 - wie sie wirklich funktioniert | 6 |
 | [`97-handoff-20260908.md`](97-handoff-20260908.md) | Handoff | 2026-09-08 | Handoff 08.09.2026 - Grünstich und Kippen gelöst, Scaler läuft, Restpunkte abgearbeitet | - |
