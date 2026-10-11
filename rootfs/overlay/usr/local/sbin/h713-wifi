@@ -156,6 +156,10 @@ lade_modul() {
 		sleep 1
 	done
 	rfkill unblock wifi 2>/dev/null || true
+	# cfg80211 is built in and looks for regulatory.db before the root file
+	# system is mounted (-2 at boot); without a reload "reg set" stays at the
+	# world domain 00 without a word (TODO 2.24, measured 11.10.2026)
+	iw reg reload 2>/dev/null || true
 	iw reg set "$country" 2>/dev/null || true
 }
 

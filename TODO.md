@@ -51,6 +51,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10.: läuft `main` 8f2c992 + Einblendungsfix als Schnell-Deploy; IR, Bluetooth, Einblendungen, Standby per RTC (Bild nach
         6,5 s, DSP im 2. Versuch) gemessen (`doku/195`). Offen bleiben: Watt im Standby, `h713-bt-reset`, ob die Variante `verified`
         heißt (Marco)
+      - **11.10. abends (Marco):** der G-EU (`projector05061226`) wird **verified**
 - [ ] 1.6 Forks pushen (Stand 09.10. 20:xx, nach der HDCP-Härtung `doku/180`): U-Boot `h713-hy310` +11 (Kopf `7b1ea388da0d`, lokal
       Zweig `versuch/hdcp-haertung-uboot`: 0096 crust-Ablage, 0097 Gate-Zeile, 0098-0100 HDCP), TF-A `sun50i-h713` +25 (Kopf
       `5a7806892`, lokal `versuch/hdcp-haertung-tfa`: 0007-0027 Standby, 0028-0030 HDCP und Kommentar), sunxi-tools gleich;
@@ -70,7 +71,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       gewollt, `doku/160`)
       Beim selben Push den alten GitHub-Branch `origin/hy300-pro-ab` loeschen (Marco 06.10.: ja; Inhalt ist in `main`, 7.8)
       - **10.10. abends:** TF-A `sun50i-h713` Kopf `1dd0373449df` (0031 Aus über crust), crust `h713` Kopf `d8a8d56f8c46`
-        (0082-0087); U-Boot unverändert `7b1ea388da0d`. Spiegel `tfa-h713/` und `crust-h713/` stehen auf diesen Köpfen
+        (0082-0087); U-Boot unverändert `7b1ea388da0d` (*überholt:* seit 10.10. später abends `61ea018712c8`, 0101 Kaltstart über crust, `doku/191`). Spiegel `tfa-h713/` und `crust-h713/` stehen auf diesen Köpfen
       - **10.10. später abends:** crust `h713` Kopf `54e4a08ab9f3` (0088 Aus am HY310, `doku/190`), Spiegel `crust-h713/` 88 Patches,
         Baum `4ac41f6b88ee` am Fork-Kopf geprüft. Aufgeräumt: alle Paket-Worktrees und -Klone weg (Inhalt in `main` bzw. den Fork-Köpfen geprüft,
         Klone mit eigenen Commits als Bundle im Paketordner, `referenz/pakete.md`); Zweige `versuch/mips-drop`, `release-v5` (crust),
@@ -113,24 +114,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
 - [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
       Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
-- [ ] 2.10 EDID: 1080p100/120 weiter hinter `ctl edid block1` (Entscheidung offen). **Geklärt 05.10.:** 1600×900,
-      1920×1200, 1600×1200, 2560×1600 und 1024×768i rasten nicht, weil die Firmware-Tabelle sie nicht kennt —
-      unsere EDID bietet sie auch nicht an (der i915 generiert sie selbst); kein Fehler unsererseits
 - [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
       100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
 - [ ] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
       Plattenzugriff (ls /boot, dmesg ueber Shell, Konsolen-Login), ssh/uptime antworten - Kernel 0184 frisch gebootet,
-      Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten; Journal ist persistent
-- [ ] 2.24 Kleinkram aus `61`: `regulatory.db` load failed -2; `r8152` will `rtl8153b-2.fw` - Marco 05.10.: **nicht
-      jetzt**, Pakete `wireless-regdb`/`firmware-realtek` erst, wenn jemand sie braucht
+      Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten. *Überholt (11.10.):* "Journal ist persistent" - stimmt nicht, `10-h713.conf` hat `Storage=volatile`, siehe 1.2a
 - [ ] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
       bleibt er auf `Desired`; 2 s später angefordert steht `Enabled` nach 5 s. Mit der Hersteller-ARISC-Firmware und dem
       Fire-TV-Stick vergleichen (Auflösungswechsel), erst dann entscheiden, ob der Empfänger früher bereit sein muss
       - 10.10. (G-EU, crust, `doku/184`): auch nach Neustart und Standby der Box fragt i915 nicht von selbst neu an (`Desired`),
         mit neuer Anfrage sofort `Enabled`; der Fire-TV-Stick (2.2) verhandelte nach jedem Neustecken von selbst neu
-- [ ] 2.27 **`h713-tv ctl off` hält nicht** (08.10., r1test2): Status zeigt `console` etwa 1 s, dann wieder `warped`, ohne
-      `ctl auto` und bei stehendem Signal (Belege `arbeit/crust-release-20261007/geraet-20261008/kamera/`). Laut Hilfe gilt
-      `off` "until auto". Ursache klären (Signal-Ereignis der Quelle? `start=last`?), dann beheben (Marco 08.10.)
 - [ ] 2.28 **Physische Adresse im HDMI-VSDB** (war 2.26 auf `versuch/crust-release`, Commit 9d95b89): crust schreibt für Port 0/1/2 1.0.0.0 / 2.0.0.0 / 3.0.0.0, der Blob 0.0.0.0 /
       2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
       Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
@@ -158,6 +151,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **11.10.: überholt** - die Einblendungen laufen über `h713-osd` auf Kanal 2 (2.43, `doku/193`), nicht im Warp. Für dieses
         Element fehlen noch: Text (eine Schrift für "Ausschalten in 15 s"), eine Auswahl (links/rechts, OK) in `libh713osd`, und
         die Zwischenstufe in h713-power; die IR-Belegung (2.35) ist da
+      - **11.10. abends entschieden (Marco):** Standby **und** Aus werden angeboten, Auswahl links/rechts, OK bestätigt, Zurück
+        bricht ab, ein zweiter Druck führt die Auswahl sofort aus, 3 s halten = aus ohne Einblendung; nach 15 s gilt die Vorgabe
+        `default = poweroff|standby` in `power.conf` (ersetzt `short`, Vorgabe poweroff). Standby nur, wo er gerade geht (crust
+        bereit); ohne Signal sofort wie heute. h713-power kommt auf jedes Abbild. Erst 2-3 Mockups (`osd-mockup`), Text vorerst nicht
 - [ ] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
       über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
       Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
@@ -180,48 +177,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Terminal im Desktop (ersetzt 2.7a, sobald der Desktop kommt)
       - 11.10.: vorbereitet - Zeichnen (`libh713osd`) und Ausgabe (`h713-osd` + Kanal in `h713-tv`) sind getrennt, die Matrix eine
         Bibliothek (`libh713geom`); `docs/architecture.md` "The display stack". Der Desktop selbst steht aus
-- [x] 2.47 **Warp sparsamer** - eigenes Paket, erst messen (`doku/192` §5.6): `sugov:0` kostet 14,6 % eines Kerns, so viel wie der
-      Warp (14 %). Ansätze: fester Takt oder `rate_limit_us`; `-O3 -mcpu=cortex-a53`, LTO, NEON; der Warp committet selbst statt
-      über den `h713-tv`-Socket; EGLImage je Slot einmal; GPU-Fences statt Abfragen; gleiche Bilder überspringen; Luma/Chroma in
-      einem Durchgang; GPU-Takt
-      - **11.10. G-EU** (`doku/195` §4): nach dem Start aus dem Bypass lief der Warp mit ~50-56 fps (7-9 verspätete Bilder/s),
-        ohne Wärmedrosselung; nach einem Aus/An 59,3 fps. Momentaufnahme davor GPU 600 statt 696 MHz, `sugov:0` 13 % - Verdacht
-        GPU-Regler, nicht gemessen. Erste Messung des Pakets: Warp aus dem Bypass starten und `devfreq` mitschreiben
-      - **11.10. nachts gemessen und zum Teil erledigt** (`doku/196`, Paket `arbeit/warp-sparsam-20261011/`): CPU-Last mit Warp
-        **halbiert** (alle Kerne 5,9 → 2,9-3,1 %) - schedutil `rate_limit_us` 462 µs → 20 ms per tmpfiles (`179ba83`), h713-tv
-        zählt verspätete Bilder statt je Bild eine Journalzeile (`d6574fa`). Compilerflags: kein Effekt. GPU-Regler: unauffällig.
-        Die fehlenden Bilder (30-41 fps) setzt die Aufnahme selbst, am Flip-Zeiger gemessen, auch ohne Warp; ein afbd-Versuch
-        dagegen ist widerlegt. **Offen:** (a) mit bewegtem Bild messen, ob die Aufnahme dann 60 liefert (`zeiger.py` im
-        Bypass und mit Warp) - bei stehendem Bild fallen vermutlich nur Wiederholungen weg; (b) ein Render-Durchgang je Bild
-        statt zwei (NV12-Ziel als ein R8-Bild Breite × 1,5 Höhe): ~250 µs CPU je Bild weniger, braucht Augen an der Wand
-      - **11.10. früh:** (a) mit kreisendem Mauszeiger am gesperrten ThinkPad weiter ~40 Bilder/s, auch ohne Warp - die
-        Aufnahme verliert also wirklich Bilder (gültig nur, wenn der Zeiger auf der Wand zu sehen war; mit Video
-        wiederholen); Gegenprobe am HY310 (1080p-Panel, dort 59,5 fps) steht aus. (b) **gebaut, gemessen, verworfen**
-        (Zweig `versuch/warp-einpass`, Test T1e: gleich den zwei Durchgängen bis 2 LSB): 14 % weniger Warp-CPU, aber die GPU
-        meist auf Höchsttakt und ~1 Bild/s `busy` verworfen - die zwei Durchgänge bleiben
-      - **11.10. früh: Ursache der fehlenden Bilder gemessen** (`doku/196`): ThinkPad-Ausgang kurz auf 1280×720 @ 60 -
-        Aufnahme am G-EU **59,8 Bilder/s**, jeder Abstand eine Bildzeit, still wie bewegt; zurück auf 1920×1080 @ 60 - 30-53/s.
-        Die Firmware verliert Bilder beim **Herunterskalieren 1080p → 720p** in der Aufnahme, nicht der Warp, nicht der
-        Treiber, nicht der Takt, nicht der Bildinhalt (der HY310 mit 1080p-Panel skaliert nicht: 59,5 fps). Weiter in 2.56
-      - **11.10. abends erledigt** (`doku/201`, Paket `arbeit/warp-zeichnen-20261011/`, Marco: "wirklich alles in Betracht ziehen"):
-        **GPU-Zeit je Bild 6,05 → 1,78 ms** (Soft-Edge als eigener Ring-Durchgang; die G31 versteckt keine Texturlatenz hinter
-        Rechnung), GPU-Regler parkt bei 288-432 statt 600-696; **CPU-Regler:** die Panfrost-IRQ-Threads (SCHED_FIFO) trieben
-        schedutil 40×/s auf 1296 MHz - `h713-cpufreq.service` setzt sie auf SCHED_OTHER und das 20-ms-Limit (tmpfiles griff beim
-        Boot nicht): Takt 98 % bei 480 MHz, sugov 0,1 %; **Latenz:** `hold off` Vorgabe (mit 0255 ist der Slot fertig; `hold on`
-        wäre jetzt riskant); `ctl trace N gpu` zeigt CPU je Schritt und GPU-Zeit aus der Fence. Warp-CPU je Bild bleibt ~0,8 ms
-        bei 1296 MHz (Mesa/Panfrost je Batch, Compute-Dispatch gemessen und verworfen). Offen → 2.60, 2.61
 
 - [ ] 2.60 **CONFIG_UCLAMP_TASK statt chrt** (11.10. abends, `doku/201`): der Kernel-Weg gegen den RT-Takt-Boost ist
       `CONFIG_UCLAMP_TASK` + `kernel.sched_util_clamp_min_rt_default` (dann bleiben die Panfrost-IRQ-Threads FIFO und schedutil
       ignoriert sie trotzdem). Kernelconfig im Patchspiegel, Bau, Messung wie `h713-cpufreq` (m30/m31), dann das chrt im Skript weg
-- [ ] 2.61 **Warp-CPU je Bild: ein Batch statt zwei** (11.10. abends): 2 × ~125 µs Batch-Aufbau + 4 GPU-Jobs je Bild; Luma und
-      Chroma in einem R8-FBO (Höhe 1,5) als zwei Draws (nicht T1e's einer), Chroma-Fragment je Byte mit dFdx-Snap auf die Paarmitte;
-      ~−150 µs CPU, +25 % GPU (1,8 → ~2,3 ms). Nur mit Augen an der Wand und T1-Tests; vorher 2.60
-- [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
-      59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
-      (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
-      `doku/197` §3) oder ob 62 MHz anders erreichbar ist; Messung mit `anzeige.py` (Sprünge/s → ~0,02). Nur mit Augen an der Wand
-      (`doku/199`: Timing-Änderungen können flackern/abdunkeln)
+- [ ] 2.62 **HY310 mit 0255 und dem Warp aus `doku/201` nachmessen** (11.10., Handoff `doku/201` §7; HY310 offline, Marco: nach
+      hinten): `anzeige.py`, `ctl trace 30 gpu`, `messe-warp.py`; dazu die Panel-Hz des HY310 (nie gemessen) und 2.49 dort
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
@@ -230,15 +191,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       ist zurzeit **keine Fernbedienung gekoppelt** (`h713-remote-pair status`: no remote bonded) - 11.10. neu gekoppelt (der erste
       Versuch kam im Scan nicht vor, der zweite klappte; `doku/193` §3)
       - 11.10. G-EU (`doku/195`): kein HCI-Fehler im dmesg eines Boots mit Kopplung, Tasten, Maus und Mikro-Ton
-- [ ] 2.50 **Lüfter-Notaus (Paket FB-SAFETY 0001/0002)**, geparkt seit 02.10. und beim Umzug nach `TODO.md` am 05.10. verloren
-      gegangen, wiedergefunden im Patch-Abgleich 11.10.: `hy310-board-mgr` schaltet nach einem Lüfterstillstand als Rückfall hart aus,
-      und der Stillstand-Poweroff greift erst, wenn der Tacho einmal Drehung gemeldet hat. Am Gerät nie gemessen (Test B7, `doku/134`:
-      Lüfterstecker unzugänglich). Neu auf die Serie setzen und einen Weg finden, den Stillstand ohne Stecker vorzutäuschen
+      - 11.10. abends (Marco): im Betrieb Timeouts, nach dem Boot kommt Bluetooth nicht immer hoch. Verdacht (nicht gemessen):
+        8250_dw ohne `UART_CAP_AFE` - RTS/CTS nur in Software. Erst lesen: MCR +0x10 Bit 5, CPR +0xF4, `/proc/tty/driver/serial`
 - [ ] 2.51 **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
       (60-Byte-HID-Berichte, ~63/s, ~3,8 kB/s), Format unbekannt - kein IMA-ADPCM, kein fester Kopf, komprimiert. Codec aus der
       Sprach-App/dem Audio-HAL der Stock-Firmware bestimmen, dann `CONFIG_HIDRAW` und ein Dekoder in Userspace. Nicht dringend
       - 11.10. G-EU (`doku/195`): ~125 Pakete/s (≈7,5 kB/s), doppelt so viele wie am HY310 - vielleicht eine andere Abtastrate;
         Nutzdaten in `arbeit/einblendungen-geu-20261011/laeufe/mikro-geu/handle34.txt`
+      - 11.10. abends: der HY310 liefert ebenfalls ~125 Pakete/s (die ~63/s zählten die Pause mit); 60 Byte je 8 ms passen genau
+        auf SBC mono 8 Subbänder/16 Blöcke/Bitpool 26 bei 16 kHz. Marco: Mikro und Maus jetzt interpretieren und vorbereiten, die
+        Maus bedient später Desktop/Apps; Codec in den Stock-Bibliotheken suchen (lesend) erlaubt
 - [ ] 2.52 **Tasten, Reste aus 2.46** (11.10.): welche Taste die Eingangsumschaltung HDMI/Konsole bekommt (Marco; `keys.conf`
       `input_keys`, leer); welche Richtung "Fokus hoch" an der Wand fährt (beide Lesarten gesehen); ob die BLE-Fernbedienung beim
       Halten wiederholt (dann fährt der Fokus durch wie per IR)
@@ -260,6 +222,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **am G-EU 11.10. 02:40 so gemessen** (forget → gekoppelt und verbunden in Sekunden, `arbeit/einblendungen-geu-20261011/`).
       Dabei mitnehmen: `h713-remote-pair` schreibt unter systemd die Erfolgszeilen ("found", "ok paired") gepuffert und damit nicht
       ins Journal (nur die Fehler, stderr) - Zeilenpuffer setzen (**11.10. nachts erledigt**, `71e0fd0`)
+      - **11.10. abends (Marco):** dazu alles, was heute nur per Kommandozeile geht, ins Panel - **WLAN eingeschlossen** (UART ist
+        der Rückweg); nicht: SSH-Schlüssel, `focus_command`, `rpc`. Der Knopf zeigt auch auf dem Gerät ~10 s einen Hinweis.
+        Lautstärke/Stumm bleiben **ungespeichert** (Marco: auf keinen Fall)
 - [ ] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
       Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
       tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
@@ -268,6 +233,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Login-Feld selbst ist nicht gemessen (braucht eine gedrückte Taste)
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
+- [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
+      59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
+      (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
+      `doku/197` §3) oder ob 62 MHz anders erreichbar ist; Messung mit `anzeige.py` (Sprünge/s → ~0,02). Nur mit Augen an der Wand
+      (`doku/199`: Timing-Änderungen können flackern/abdunkeln)
+      - **11.10. geparkt:** Marco: Sinn fraglich (ein Bild in 200, Risiko Panel-Timing) - nach dem Release, wenn überhaupt; genau 62 MHz geht mit ganzzahliger PLL nicht, Ausweg wären feste Totale (1357×758 → 59,998 Hz)
+- [ ] 2.61 **Warp-CPU je Bild: ein Batch statt zwei** (11.10. abends): 2 × ~125 µs Batch-Aufbau + 4 GPU-Jobs je Bild; Luma und
+      Chroma in einem R8-FBO (Höhe 1,5) als zwei Draws (nicht T1e's einer), Chroma-Fragment je Byte mit dFdx-Snap auf die Paarmitte;
+      ~−150 µs CPU, +25 % GPU (1,8 → ~2,3 ms). Nur mit Augen an der Wand und T1-Tests; vorher 2.60
+      - **11.10. geparkt:** nach 2.60 läuft die CPU fast immer bei 480 MHz, Gewinn ~0,5 Prozentpunkte gegen mehr GPU-Last und das Kantenrisiko von `versuch/warp-einpass`; wieder aufmachen, wenn die Warp-CPU nachweislich stört
 - [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
 
 ## 4 Boards und Fremdgeräte
@@ -340,6 +315,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Host-Schlüssel sichern). Namen je Board mit Marco festlegen (Packungsname, z. B. `hy300pro`, statt
       `hy200-qz713df-a1`). Getrennt davon, nicht in diesem Zug: die Partitionsnamen `hy310-boot`/`hy310-rootfs` gelten
       für alle Boards (Layout v4, `root=PARTLABEL=…`) - umbenennen wäre eine Layout-Änderung
+      - **11.10. abends (Marco):** Namen `hy310`, `hy300pro` (G-EU), `hy300proplus`, sonst der Board-Ordner; im Panel änderbar
 - [ ] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
       `repo-neu` liegen die vom 05.10. (vor crust), daher am 10.10. zwei falsche FAILs (hy310, hy200-qz713df-a1 "device tree
       names h713-arisc.bin"); im frisch gebauten Worktree grün. Den DTB nur mit passendem Kernelbaum-Stempel werten, sonst "note"
@@ -1020,3 +996,49 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
 - [x] 5.22 **Kernel-Patchordner aufräumen:** die zurückgenommene `0011-misc-add-sunxi-nsi.patch` liegt noch in `patches/kernel/`
       statt in `zurueckgenommen/`; `mainline/patches/README.md` nennt veraltet "0001 ... 0161, 149"
       - **11.10. geschlossen:** erledigt 11.10. nachts (`647ad00`): 0011 liegt in `zurueckgenommen/`, der Serien-Index zählt 278 (0001 … 0254); `series` und Eingabe-Hash unverändert
+- [x] 2.47 **Warp sparsamer** - eigenes Paket, erst messen (`doku/192` §5.6): `sugov:0` kostet 14,6 % eines Kerns, so viel wie der
+      Warp (14 %). Ansätze: fester Takt oder `rate_limit_us`; `-O3 -mcpu=cortex-a53`, LTO, NEON; der Warp committet selbst statt
+      über den `h713-tv`-Socket; EGLImage je Slot einmal; GPU-Fences statt Abfragen; gleiche Bilder überspringen; Luma/Chroma in
+      einem Durchgang; GPU-Takt
+      - **11.10. G-EU** (`doku/195` §4): nach dem Start aus dem Bypass lief der Warp mit ~50-56 fps (7-9 verspätete Bilder/s),
+        ohne Wärmedrosselung; nach einem Aus/An 59,3 fps. Momentaufnahme davor GPU 600 statt 696 MHz, `sugov:0` 13 % - Verdacht
+        GPU-Regler, nicht gemessen. Erste Messung des Pakets: Warp aus dem Bypass starten und `devfreq` mitschreiben
+      - **11.10. nachts gemessen und zum Teil erledigt** (`doku/196`, Paket `arbeit/warp-sparsam-20261011/`): CPU-Last mit Warp
+        **halbiert** (alle Kerne 5,9 → 2,9-3,1 %) - schedutil `rate_limit_us` 462 µs → 20 ms per tmpfiles (`179ba83`), h713-tv
+        zählt verspätete Bilder statt je Bild eine Journalzeile (`d6574fa`). Compilerflags: kein Effekt. GPU-Regler: unauffällig.
+        Die fehlenden Bilder (30-41 fps) setzt die Aufnahme selbst, am Flip-Zeiger gemessen, auch ohne Warp; ein afbd-Versuch
+        dagegen ist widerlegt. **Offen:** (a) mit bewegtem Bild messen, ob die Aufnahme dann 60 liefert (`zeiger.py` im
+        Bypass und mit Warp) - bei stehendem Bild fallen vermutlich nur Wiederholungen weg; (b) ein Render-Durchgang je Bild
+        statt zwei (NV12-Ziel als ein R8-Bild Breite × 1,5 Höhe): ~250 µs CPU je Bild weniger, braucht Augen an der Wand
+      - **11.10. früh:** (a) mit kreisendem Mauszeiger am gesperrten ThinkPad weiter ~40 Bilder/s, auch ohne Warp - die
+        Aufnahme verliert also wirklich Bilder (gültig nur, wenn der Zeiger auf der Wand zu sehen war; mit Video
+        wiederholen); Gegenprobe am HY310 (1080p-Panel, dort 59,5 fps) steht aus. (b) **gebaut, gemessen, verworfen**
+        (Zweig `versuch/warp-einpass`, Test T1e: gleich den zwei Durchgängen bis 2 LSB): 14 % weniger Warp-CPU, aber die GPU
+        meist auf Höchsttakt und ~1 Bild/s `busy` verworfen - die zwei Durchgänge bleiben
+      - **11.10. früh: Ursache der fehlenden Bilder gemessen** (`doku/196`): ThinkPad-Ausgang kurz auf 1280×720 @ 60 -
+        Aufnahme am G-EU **59,8 Bilder/s**, jeder Abstand eine Bildzeit, still wie bewegt; zurück auf 1920×1080 @ 60 - 30-53/s.
+        Die Firmware verliert Bilder beim **Herunterskalieren 1080p → 720p** in der Aufnahme, nicht der Warp, nicht der
+        Treiber, nicht der Takt, nicht der Bildinhalt (der HY310 mit 1080p-Panel skaliert nicht: 59,5 fps). Weiter in 2.56
+      - **11.10. abends erledigt** (`doku/201`, Paket `arbeit/warp-zeichnen-20261011/`, Marco: "wirklich alles in Betracht ziehen"):
+        **GPU-Zeit je Bild 6,05 → 1,78 ms** (Soft-Edge als eigener Ring-Durchgang; die G31 versteckt keine Texturlatenz hinter
+        Rechnung), GPU-Regler parkt bei 288-432 statt 600-696; **CPU-Regler:** die Panfrost-IRQ-Threads (SCHED_FIFO) trieben
+        schedutil 40×/s auf 1296 MHz - `h713-cpufreq.service` setzt sie auf SCHED_OTHER und das 20-ms-Limit (tmpfiles griff beim
+        Boot nicht): Takt 98 % bei 480 MHz, sugov 0,1 %; **Latenz:** `hold off` Vorgabe (mit 0255 ist der Slot fertig; `hold on`
+        wäre jetzt riskant); `ctl trace N gpu` zeigt CPU je Schritt und GPU-Zeit aus der Fence. Warp-CPU je Bild bleibt ~0,8 ms
+        bei 1296 MHz (Mesa/Panfrost je Batch, Compute-Dispatch gemessen und verworfen). Offen → 2.60, 2.61
+- [x] 2.10 EDID: 1080p100/120 weiter hinter `ctl edid block1` (Entscheidung offen). **Geklärt 05.10.:** 1600×900,
+      1920×1200, 1600×1200, 2560×1600 und 1024×768i rasten nicht, weil die Firmware-Tabelle sie nicht kennt —
+      unsere EDID bietet sie auch nicht an (der i915 generiert sie selbst); kein Fehler unsererseits
+      - **11.10. geschlossen (Marco):** nein - 1080p100/120 bleibt hinter `ctl edid block1`, "braucht keiner"
+- [x] 2.24 Kleinkram aus `61`: `regulatory.db` load failed -2; `r8152` will `rtl8153b-2.fw` - Marco 05.10.: **nicht
+      jetzt**, Pakete `wireless-regdb`/`firmware-realtek` erst, wenn jemand sie braucht
+      - **11.10. geschlossen:** `regulatory.db` lag längst im Rootfs (`wireless-regdb`); cfg80211 ist eingebaut und sucht sie, bevor das Rootfs hängt. `h713-wifi` macht jetzt `iw reg reload` vor `iw reg set`, damit das Land aus `wifi.env` (`country=`) gilt statt still 00 - am G-EU gemessen (00 → DE). r8152: Marco benutzt keinen USB-LAN-Adapter mehr, Meldung bleibt (keine Firmware-Blobs)
+- [x] 2.27 **`h713-tv ctl off` hält nicht** (08.10., r1test2): Status zeigt `console` etwa 1 s, dann wieder `warped`, ohne
+      `ctl auto` und bei stehendem Signal (Belege `arbeit/crust-release-20261007/geraet-20261008/kamera/`). Laut Hilfe gilt
+      `off` "until auto". Ursache klären (Signal-Ereignis der Quelle? `start=last`?), dann beheben (Marco 08.10.)
+      - **11.10. geschlossen:** Ursache: `warp claim` prüfte `POLICY_OFF` nicht, der Warp fragt jede Sekunde und bekam das Bild zurück. h713-tv lehnt den Claim bei `off` jetzt ab. G-EU, Trapez an: vorher nach 2 s wieder `warped`, nachher 8/8 s `console`, `ctl auto` → `warped` nach 2 s
+- [x] 2.50 **Lüfter-Notaus (Paket FB-SAFETY 0001/0002)**, geparkt seit 02.10. und beim Umzug nach `TODO.md` am 05.10. verloren
+      gegangen, wiedergefunden im Patch-Abgleich 11.10.: `hy310-board-mgr` schaltet nach einem Lüfterstillstand als Rückfall hart aus,
+      und der Stillstand-Poweroff greift erst, wenn der Tacho einmal Drehung gemeldet hat. Am Gerät nie gemessen (Test B7, `doku/134`:
+      Lüfterstecker unzugänglich). Neu auf die Serie setzen und einen Weg finden, den Stillstand ohne Stecker vorzutäuschen
+      - **11.10. geschlossen (Marco):** der Stillstand-Poweroff (0159/0159a/0211) ist verifiziert und gilt als funktionierend; die zwei FB-SAFETY-Extras (harter Rückfall, erst nach gesehener Drehung scharf) entfallen

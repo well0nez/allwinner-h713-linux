@@ -4928,6 +4928,8 @@ static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
 	return true;
 }
 
+static struct control ctl;	/* defined with the control socket below */
+
 /* "warp claim" (A2): the three targets, their fds with the answer. The video
  * plane goes down first and the master is taken for the whole warp; the
  * answer goes out here, because the fds have to travel with that line.
@@ -4949,6 +4951,13 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	}
 	if (!d->plane_id || !prop_id(&d->plane_props, "IN_FENCE_FD")) {
 		reply_fail(r, "no video plane with IN_FENCE_FD on CRTC %u", d->crtc_id);
+		return;
+	}
+	/* "off" holds until "auto": without this the warp, asking once a second,
+	 * took the picture back about a second after "off" (TODO 2.27)
+	 */
+	if (ctl.policy == POLICY_OFF) {
+		reply_fail(r, "console forced (\"ctl off\") -- ask again");
 		return;
 	}
 	if (cap->last_sig != 1) {
