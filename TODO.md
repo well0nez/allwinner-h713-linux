@@ -199,6 +199,15 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         wiederholen); Gegenprobe am HY310 (1080p-Panel, dort 59,5 fps) steht aus. (b) **gebaut, gemessen, verworfen**
         (Zweig `versuch/warp-einpass`, Test T1e: gleich den zwei Durchgängen bis 2 LSB): 14 % weniger Warp-CPU, aber die GPU
         meist auf Höchsttakt und ~1 Bild/s `busy` verworfen - die zwei Durchgänge bleiben
+      - **11.10. früh: Ursache der fehlenden Bilder gemessen** (`doku/196`): ThinkPad-Ausgang kurz auf 1280×720 @ 60 -
+        Aufnahme am G-EU **59,8 Bilder/s**, jeder Abstand eine Bildzeit, still wie bewegt; zurück auf 1920×1080 @ 60 - 30-53/s.
+        Die Firmware verliert Bilder beim **Herunterskalieren 1080p → 720p** in der Aufnahme, nicht der Warp, nicht der
+        Treiber, nicht der Takt, nicht der Bildinhalt (der HY310 mit 1080p-Panel skaliert nicht: 59,5 fps). Weiter in 2.56
+- [ ] 2.56 **720p-Boards: 720p als bevorzugten Modus anbieten? [Marco]** (11.10., `doku/196`): der HY300PRO-G-EU dient die EDID des
+      HY310 (`hy310-edid.bin`, 1080p bevorzugt); eine 1080p-Quelle wird in der Aufnahme auf das 720p-Panel skaliert und verliert
+      dabei 10-50 % der Bilder, eine 720p-Quelle kommt mit 60 an. Mit 720p als bevorzugtem Modus in der EDID der 720p-Boards
+      schicken Quellen von selbst 720p (weniger Speicherlast, keine Verluste); 1080p bliebe wählbar. Vorher: was dient Stock auf
+      dem G-EU (`re/`, Abzug), und ob die Skalier-Verluste mit einer Einstellung der Firmware zu beheben sind
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der

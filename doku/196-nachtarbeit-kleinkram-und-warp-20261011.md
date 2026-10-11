@@ -65,7 +65,11 @@ wiederholen, am HY310 gegenmessen. (3) Ein Render-Durchgang gebaut (`versuch/war
 entscheidet je Byte, ob es im Trapez liegt) gab an schrägen Kanten Paare mit einem farbigen und einem grauen Byte (neuer
 Test T1e am Gerät: 89 Bytes bis 110 daneben); der zweite rechnet die Paarmitte über die inverse Abbildung und ist gleich
 den zwei Durchgängen bis 2 LSB. A/B/A/B bei festem Takt: 14 % weniger Warp-CPU, aber die GPU 66-87 % der Zeit auf 696 MHz
-(vorher 21-25 %) und ~1 Bild/s `busy` verworfen - verworfen, die zwei Durchgänge bleiben.
+(vorher 21-25 %) und ~1 Bild/s `busy` verworfen - verworfen, die zwei Durchgänge bleiben. (4) **Ursache der fehlenden
+Bilder:** ThinkPad-Ausgang per `xrandr` kurz auf 1280×720 @ 60 - Zeiger 59,8 Wechsel/s, jeder Abstand eine Bildzeit, still und
+mit kreisendem Zeiger; zurück auf 1920×1080 @ 60 - 53/s (die Nacht über 30-41). Die Firmware verliert Bilder beim Herunter-
+skalieren 1080p → 720p in der Aufnahme; der HY310 (1080p-Panel) skaliert nicht. Entscheidung offen: 720p als bevorzugter
+Modus in der EDID der 720p-Boards (TODO 2.56).
 
 ## 3 Nebenbefunde
 

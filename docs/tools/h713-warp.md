@@ -156,9 +156,10 @@ per frame ... not done yet".
 The warp draws every slot the capture hands on: it wakes 0.1 ms after the slot's timestamp and is done 1.5 ms later.
 How many slots there are is decided before it, in the firmware's capture: read straight from the flip pointer pair
 (AFBD +0x320 through `/dev/mem`), the pair moved 30-35 times a second with the warp on, with it off and with either
-afbd module, while the source showed a still, locked screen (11.10.2026; the night before, with a desktop, the warp got
-52-59 a second). Whether the capture leaves out only repeated frames there is still to be measured with a moving
-picture.
+afbd module (11.10.2026, HY300PRO-G-EU, 720p panel, 1080p60 source). With the source switched to 720p60 it moved 59.8
+times, every gap one frame, still or moving: the firmware loses frames when the capture scales 1080p down to the 720p
+panel, not the warp and not the content (TODO 2.56). The HY310's 1080p panel needs no scaling and gets 59.5. *Superseded
+11.10.2026:* "Whether the capture leaves out only repeated frames there is still to be measured with a moving picture".
 
 Where the CPU went besides the warp, and what changed: the kernel let schedutil change the clock every 462 µs, and
 under the warp's 60 Hz load the `sugov:0` thread that carries out each change (a PWM regulator ramp, then the PLL)
