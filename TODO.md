@@ -251,6 +251,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **11.10. abends (Marco):** dazu alles, was heute nur per Kommandozeile geht, ins Panel - **WLAN eingeschlossen** (UART ist
         der Rückweg); nicht: SSH-Schlüssel, `focus_command`, `rpc`. Der Knopf zeigt auch auf dem Gerät ~10 s einen Hinweis.
         Lautstärke/Stumm bleiben **ungespeichert** (Marco: auf keinen Fall)
+      - **11.10. nachts: verworfen (Marco: "extrem unübersichtlich", "debug optionen ... einfach so direkt mit allem
+        vermischt")** - ein Agent baute alle Einstellungen in Reiter mit langen Listen, Diagnose und Expertenwerte zwischen den
+        Alltagsreglern; am G-EU gesehen und sofort zurückgespielt (`/root/sicherung-panel-einstellungen/`). Geparkt, lokal:
+        Zweig `versuch/panel-einstellungen` (`arbeit/panel-20261011/`, 72 Tests, WLAN mit 120-s-Rückfall, Hostname über
+        hostnamectl - die Technik ist brauchbar, die Seite nicht). Neu nur mit **Mockup zuerst**: Alltagsregler vorn, Debug und
+        Expertenwerte getrennt, Gefährliches (WLAN, Aus) mit Rückfrage
 - [ ] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
       Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
       tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
