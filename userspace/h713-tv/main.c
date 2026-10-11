@@ -3278,6 +3278,11 @@ enum policy { POLICY_AUTO, POLICY_OFF };
  *       calculator = PATH|none  h713-pq; none = do not compute anything
  *       edid = block0 | block1  which half of the EDID file port 0 serves
  *                               (FB-EDID); absent: the driver's default, block 0
+ *       edid_prefer = panel | file  panel (the default): a panel smaller than the
+ *                               file's first detailed timing gets its own CTA
+ *                               timing put first, so a source that follows the
+ *                               EDID sends the panel's resolution (doku/197/198);
+ *                               file: the file's order as it is
  *
  * The keys are the file format, and since v0.8-beta they speak English like
  * the values. Their German spellings ("zustand", "daten", "rechner") and the
@@ -3331,6 +3336,7 @@ struct conf {
 	char data[160];	/* data = DIR; "none" = do not use vendor data */
 	char calculator[160];	/* calculator = PATH; "none" = do not compute */
 	int edid;		/* edid = block0 | block1; -1 = not said */
+	bool edid_panel;	/* edid_prefer = panel (true) | file */
 	char input[24];	/* --input; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
@@ -3382,6 +3388,7 @@ static void conf_read(struct conf *c)
 	snprintf(c->state_path, sizeof(c->state_path), "%s", STATE_FILE);
 	c->preset[0] = '\0';
 	c->edid = -1;
+	c->edid_panel = true;
 	snprintf(c->data, sizeof(c->data), "%s", PQ_DATA);
 	snprintf(c->calculator, sizeof(c->calculator), "%s", PQ_BIN);
 	snprintf(c->input, sizeof(c->input), "%s", PQ_INPUT);
@@ -3478,8 +3485,16 @@ static void conf_read(struct conf *c)
 			else
 				warn("%s:%u: edid = \"%s\" unknown (block0 block1) -- the driver's default stays",
 				     c->path, n, val);
+		} else if (!strcasecmp(key, "edid_prefer")) {
+			if (!strcasecmp(val, "panel"))
+				c->edid_panel = true;
+			else if (!strcasecmp(val, "file"))
+				c->edid_panel = false;
+			else
+				warn("%s:%u: edid_prefer = \"%s\" unknown (panel file) -- panel stays",
+				     c->path, n, val);
 		} else {
-			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid, edid_prefer)",
 			     c->path, n, key);
 		}
 	}
@@ -4342,7 +4357,75 @@ static unsigned int edid_prune(uint8_t *edid, const uint8_t have[16], char *list
 	return dropped;
 }
 
-/* half `half` of the file as this program publishes it: without the modes the table lacks */
+/*
+ * The panel's own timing first.
+ *
+ * A source follows the EDID's first detailed timing. The vendor's file puts
+ * 1920x1080p60 there on every board, the 1280x720 panels included, and a
+ * 1080p60 picture on a 720p panel goes through the firmware's downscaler --
+ * where the capture ring's three slots lose every fourth to fifth frame
+ * (measured 11.10.2026 on the HY300PRO-G-EU: 43..57 of 60 shown, doku/197;
+ * the mechanism, doku/198). A 720p60 source on the same panel is shown
+ * frame for frame (59.7 of 60). So, unless tv.conf says edid_prefer = file,
+ * a panel smaller than the file's first timing gets the CTA timing of its
+ * own size as the first detailed timing; the file's first timing moves down
+ * to the second slot (the second timing of the file goes, it stays listed as
+ * a VIC), and the image size, borders and sync flags are the file's. The
+ * extension block with its VIC list is not touched: 1080p stays selectable.
+ *
+ * Only the two panel sizes this project has met are in the table. A panel
+ * without a CTA timing of its own size keeps the file's order.
+ */
+static const struct {
+	unsigned int w, h;
+	uint8_t dtd[12];	/* pixel clock .. sync widths of the CTA timing */
+} edid_panel_timings[] = {
+	/* CTA VIC 4: 1280x720p60, 74.25 MHz, hblank 370, vblank 30, +H +V */
+	{ 1280, 720, { 0x01, 0x1d, 0x00, 0x72, 0x51, 0xd0, 0x1e, 0x20, 0x6e, 0x28, 0x55, 0x00 } },
+	/* CTA VIC 16: 1920x1080p60, 148.5 MHz, hblank 280, vblank 45, +H +V */
+	{ 1920, 1080, { 0x02, 0x3a, 0x80, 0x18, 0x71, 0x38, 0x2d, 0x40, 0x58, 0x2c, 0x45, 0x00 } },
+};
+
+static unsigned int edid_dtd_w(const uint8_t *t) { return t[2] | (unsigned int)(t[4] >> 4) << 8; }
+static unsigned int edid_dtd_h(const uint8_t *t) { return t[5] | (unsigned int)(t[7] >> 4) << 8; }
+
+static bool edid_prefer_panel = true;		/* tv.conf edid_prefer */
+static unsigned int edid_panel_w, edid_panel_h;	/* the panel, once the display knows it */
+static char edid_panel_note[96];		/* what edid_panel_first did to the half published last */
+
+static bool edid_panel_first(uint8_t *edid, unsigned int w, unsigned int h, char *what, size_t n)
+{
+	uint8_t *d1 = edid + 54, *d2 = edid + 72, old[18];
+	const uint8_t *tim = NULL;
+	unsigned int i, sum = 0;
+
+	if (what && n)
+		what[0] = '\0';
+	if (!w || !h || !(d1[0] | d1[1]))	/* no panel known, or no timing in the first slot */
+		return false;
+	if (edid_dtd_w(d1) <= w && edid_dtd_h(d1) <= h)
+		return false;			/* the file's first choice fits the panel */
+	for (i = 0; i < sizeof(edid_panel_timings) / sizeof(edid_panel_timings[0]); i++)
+		if (edid_panel_timings[i].w == w && edid_panel_timings[i].h == h)
+			tim = edid_panel_timings[i].dtd;
+	if (!tim)
+		return false;
+	memcpy(old, d1, sizeof(old));
+	memcpy(d1, tim, 12);
+	memcpy(d1 + 12, old + 12, 6);		/* image size, borders, sync flags: the file's */
+	if (d2[0] | d2[1])			/* a second timing: the file's first takes its slot */
+		memcpy(d2, old, sizeof(old));
+	for (i = 0; i < 127; i++)
+		sum += edid[i];
+	edid[127] = (uint8_t)(-(int)sum);
+	if (what && n)
+		snprintf(what, n, "%ux%u first for the %ux%u panel (the file puts %ux%u first)",
+			 w, h, w, h, edid_dtd_w(old), edid_dtd_h(old));
+
+	return true;
+}
+
+/* half `half` of the file as this program publishes it: the panel's timing first, without the modes the table lacks */
 static bool edid_file_half(struct capture *cap, int half, uint8_t *out, unsigned int *dropped,
 			   char *list, size_t n, char *why, size_t wn)
 {
@@ -4351,6 +4434,9 @@ static bool edid_file_half(struct capture *cap, int half, uint8_t *out, unsigned
 	if (!edid_from_file(EDID_FILE, file, why, wn))
 		return false;
 	memcpy(out, file + half * (EDID_BYTES / 2), EDID_BYTES / 2);
+	edid_panel_note[0] = '\0';
+	if (edid_prefer_panel)
+		edid_panel_first(out, edid_panel_w, edid_panel_h, edid_panel_note, sizeof(edid_panel_note));
 	edid_table_have(cap, have);
 	*dropped = edid_prune(out, have, list, n);
 
@@ -4374,6 +4460,10 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	bool copy = false;
 	unsigned int dropped = 0;
 
+	if (d->width && d->height) {
+		edid_panel_w = d->width;
+		edid_panel_h = d->height;
+	}
 	if (half >= 0 && !edid_file_half(cap, half, pub, &dropped, list, sizeof(list), why, sizeof(why))) {
 		reply_fail(r, "%s -- nothing to publish, HPD is not touched", why);
 		return false;
@@ -4431,10 +4521,12 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 		e.blocks = EDID_BLOCKS / 2;
 		e.edid = pub;
 		if (dropped)
-			snprintf(what, sizeof(what), "block %d of %s published without %u VIC%s the firmware's table lacks (%s)",
-				 half, EDID_FILE, dropped, dropped == 1 ? "" : "s", list + 1);
+			snprintf(what, sizeof(what), "block %d of %s published without %u VIC%s the firmware's table lacks (%s)%s%s",
+				 half, EDID_FILE, dropped, dropped == 1 ? "" : "s", list + 1,
+				 edid_panel_note[0] ? ", " : "", edid_panel_note);
 		else
-			snprintf(what, sizeof(what), "block %d of %s published", half, EDID_FILE);
+			snprintf(what, sizeof(what), "block %d of %s published%s%s", half, EDID_FILE,
+				 edid_panel_note[0] ? ", " : "", edid_panel_note);
 		origin = "";
 	}
 	if (ioctl(cap->fd, VIDIOC_S_EDID, &e)) {
@@ -4580,6 +4672,8 @@ static void cmd_status_edid(struct reply *r, struct capture *cap)
 		snprintf(which, sizeof(which), "block %d of %s", half, EDID_FILE);
 	reply_add(r, "edid            %s served (%u VICs offered, %s%s)\n", which, n,
 		  miss ? "not in the firmware's table: VIC" : "all in the firmware's table", list);
+	if (half >= 0 && edid_panel_note[0])
+		reply_add(r, "                %s\n", edid_panel_note);
 }
 
 /*
@@ -4594,6 +4688,11 @@ static void edid_apply_start(const struct conf *cf, struct capture *cap,
 	uint8_t served[EDID_BYTES / 2];
 	struct reply r;
 
+	edid_prefer_panel = cf->edid_panel;
+	if (d->width && d->height) {
+		edid_panel_w = d->width;
+		edid_panel_h = d->height;
+	}
 	if (cf->edid < 0) {
 		/*
 		 * No half asked for: the driver's default is the raw file, and if
@@ -4603,18 +4702,24 @@ static void edid_apply_start(const struct conf *cf, struct capture *cap,
 		 * served and does nothing.
 		 */
 		uint8_t have[16];
-		char list[64];
+		char list[64], first[96] = "";
 		int half = edid_served_known(cap, served);
+		bool moved;
 
 		if (half < 0)
 			return;
+		moved = edid_prefer_panel && edid_panel_first(served, edid_panel_w, edid_panel_h, first, sizeof(first));
 		edid_table_have(cap, have);
-		if (!edid_prune(served, have, list, sizeof(list))) {
-			info("edid            block %d of %s is served, all of it in the firmware's table", half, EDID_FILE);
+		if (!edid_prune(served, have, list, sizeof(list)) && !moved) {
+			info("edid            block %d of %s is served, all of it in the firmware's table%s", half, EDID_FILE,
+			     edid_panel_w && edid_panel_h ? ", its first timing fits the panel" : "");
 			return;
 		}
-		info("edid            block %d of %s offers VIC%s the firmware's table lacks -- published again without them",
-		     half, EDID_FILE, list);
+		if (moved)
+			info("edid            block %d of %s is served -- %s: published again", half, EDID_FILE, first);
+		if (list[0])
+			info("edid            block %d of %s offers VIC%s the firmware's table lacks -- published again without them",
+			     half, EDID_FILE, list);
 		memset(&r, 0, sizeof(r));
 		cmd_replug(&r, cap, d, rt, half);
 		r.buf[strcspn(r.buf, "\n")] = '\0';

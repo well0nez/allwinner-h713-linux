@@ -693,6 +693,13 @@ edid       = block0 | block1 # which half of /lib/firmware/hy310-edid.bin port 0
                              # replug, about a second of console; `ctl status` says which half is up
                              # driver's default. Absent, the served half is still published once at start
                              # without the VICs the table lacks, if there are any (one HPD pulse)
+edid_prefer = panel | file   # panel (default): a panel smaller than the file's first detailed timing gets
+                             # the CTA timing of its own size as the first timing, so a source that follows
+                             # the EDID sends the panel's resolution; the file's first timing moves to the
+                             # second slot, the VIC list is untouched (1080p stays selectable). Reason: a
+                             # 1080p60 source on a 720p panel loses every fourth to fifth frame in the
+                             # firmware's downscaling ring, a 720p60 source none (doku/197, doku/198).
+                             # file: the file's order as it is
 ```
 
 The German key names of the releases up to v0.8-beta - `zustand`, `daten`, `rechner` - are still accepted
