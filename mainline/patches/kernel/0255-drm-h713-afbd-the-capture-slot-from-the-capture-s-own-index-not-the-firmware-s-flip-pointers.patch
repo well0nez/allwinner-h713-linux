@@ -1,0 +1,414 @@
+drm: h713: afbd: the capture slot from the capture's own index, not the firmware's flip pointers
+
+The video plane in passthrough and the flip notifier (the capture driver,
+and through it the warp) took the slot to show from the firmware's flip
+pointers at AFBD +0x320/+0x324, sampled on every vsync. With a source at the
+panel's size that works: the pointers name the slot being filled, a few
+hundred lines behind the capture, and every frame reaches the panel. With a
+1080p60 source scaled down to a 720p panel they do not: the pointer names a
+slot finished one to three frames earlier, holds it for two vsyncs every
+fourth or fifth frame and skips the next - 43 to 57 of 60 frames shown, and
+the loss grows over hours (doku/197, 198). Measured against the slots'
+contents with a moving picture, the capture itself writes every frame, in
+strict rotation A, B, C, and a finished slot stays untouched for two more
+frame periods; only the publisher fails (doku/200).
+
+The capture says where it is: INCAP +0xa0c is the index of the slot it is
+writing, it steps at every source frame boundary in the order of the slot
+table at +0x8f0 (luma) / +0x930 (chroma, addresses >> 4). So the driver
+chooses the slot from that index, through the read-only INCAP syscon the
+capture driver already reads its geometry from (allwinner,incap, new on the
+display node; by compatible for a tree from before the property):
+
+  - the notifier gets the slot finished last (index - 1), whole now and
+    for two more frame periods; its consumer reads within milliseconds;
+  - the plane gets the slot being written now: addresses queued during a
+    frame are fetched from the next vsync on, by when it is finished, and
+    the capture returns to it two frame periods later with the fetch at
+    the bottom. The finished slot would tear here - in every beat of the
+    two clocks there is a stretch of vsyncs where its fetch would start
+    just as the capture starts overwriting it, and the capture is faster;
+  - a slow source (30 Hz into the 60 Hz panel) turns that around: the slot
+    being written is not finished by the next vsync, the finished one stays
+    whole for three of its periods. The ratio of source frames to vsyncs
+    over 32 vsyncs decides, threshold 0.8.
+
+ring_select (module parameter, 0644) keeps the pointers reachable: 0 is the
+old behaviour, 1 the index, the default where the syscon is there.
+
+Measured 11.10.2026 on the HY300PRO-G-EU (720p panel, module swapped,
+arbeit/aufnahme-takt-20261011 anzeige.py: the plane's address register,
+the INCAP frame counter and the slot order over /dev/mem): a moving 1080p60
+source, before 32.9 frames a second shown with 25.2 skips, after 59.70 shown
+with 0.30 skips over 60 s - the one frame in 200 that a 59.71 Hz panel
+cannot show of a 60.00 Hz source; the warp 59.7 fps with none dropped
+(before 57.9 on a fresh boot, 30-41 after hours). 1080p30 shows 30.00,
+1080p50 50.00 (the pointers: 26), 720p60 59.75, each frame once. Picture
+clean under motion (owner's eyes). The pointers still move only 41-47 times
+a second beside it.
+
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -56,6 +56,7 @@
+ #include <linux/io.h>
+ #include <linux/iopoll.h>
+ #include <linux/math64.h>
++#include <linux/mfd/syscon.h>
+ #include <linux/mm.h>
+ #include <linux/module.h>
+ #include <linux/notifier.h>
+@@ -63,6 +64,7 @@
+ #include <linux/of_address.h>
+ #include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
++#include <linux/regmap.h>
+ #include <linux/spinlock.h>
+ #include <linux/suspend.h>
+ 
+@@ -120,6 +122,31 @@
+ #define AFBD_RING_Y		0x320
+ #define AFBD_RING_C		0x324
+ 
++/*
++ * The capture's own bookkeeping, four words of INCAP (0x06940000), reached
++ * through the read-only syscon the capture driver reads its geometry from:
++ *
++ *   +0x104  (frame << 16) | line of the source, as the capture writes it
++ *   +0x8f0  the luma slot table, six words, physical address >> 4; entries
++ *           0..2 are the three ring slots the firmware's pointers rotate over
++ *   +0x930  the chroma table, same shape, same order
++ *   +0xa0c  the index (0..2) of the slot the capture is writing right now
++ *
++ * Measured 11.10.2026 on the HY300 Pro with a moving 1080p60 source scaled to
++ * the 720p panel (arbeit/aufnahme-takt-20261011, zeitleiste2.py, reading the
++ * slots' contents beside the registers): at every source frame boundary the
++ * index steps by one in the order of the table, the capture starts writing
++ * that slot 1.6 ms later, top to bottom, and finishes just before the next
++ * boundary. A, B, C, A, B, C -- no slot is written twice in a row, so a slot
++ * that has just been finished stays whole for two more frame periods.
++ */
++#define H713_INCAP_FRAME	0x104
++#define H713_INCAP_SLOT_Y	0x8f0
++#define H713_INCAP_SLOT_C	0x930
++#define H713_INCAP_WRITING	0xa0c
++#define H713_INCAP_RING_SLOTS	3
++#define H713_INCAP_ADDR_SHIFT	4
++
+ /* AFBD channel 1 block. Offsets from the 0x05600000 window. */
+ #define AFBD_IRQ_STATUS		0x0c0	/* byte, bit 0, write-1-to-clear */
+ #define AFBD_IRQ_ENABLE		0x0c4	/* byte, bit 0 */
+@@ -311,6 +338,18 @@
+ 	bool ring_follow;
+ 	bool ring_vblank_ref;
+ 	u32 ring_y;
++	/*
++	 * The capture's bookkeeping (H713_INCAP_WRITING and friends), NULL
++	 * when the device tree offers no INCAP syscon; then the slot to show
++	 * comes from the firmware's flip pointers alone. The three counters
++	 * below measure the source's rate against the panel's, under
++	 * ring_lock; see h713_afbd_pick_slots().
++	 */
++	struct regmap *incap;
++	u32 ring_frame;
++	u32 ring_rate_sum;
++	u8 ring_rate_n;
++	bool ring_slow;
+ 	/* Under h713_afbd_flip_lock: it gates the same interrupt bit. */
+ 	bool vblank_on;
+ 	bool vsync_irq_on;	/* what the last update wrote to that bit */
+@@ -909,51 +948,153 @@
+ EXPORT_SYMBOL_GPL(h713_afbd_read_flip);
+ 
+ /*
++ * Which word names the slot to show: the firmware's flip pointers (0), or the
++ * capture's own index of the slot it is writing (1, the default wherever the
++ * INCAP syscon is reachable).
++ *
++ * The pointers are what stock's channel follows, and with a source at the
++ * panel's size they name the slot being filled, a few hundred lines behind the
++ * capture, and every frame reaches the panel. With a 1080p60 source scaled
++ * down to a 720p panel they do not: the pointer then names a slot finished one
++ * to three frames earlier, holds it for two vsyncs every fourth or fifth frame
++ * and skips the next -- 43 to 57 of 60 frames shown, and the loss grows over
++ * hours (doku/197, 198). The capture itself writes all 60 frames in strict
++ * rotation, so the slot can be chosen from its index instead, with no help
++ * from the firmware's publisher (doku/200).
++ */
++static unsigned int ring_select = 1;
++module_param(ring_select, uint, 0644);
++MODULE_PARM_DESC(ring_select,
++		 "capture slot to show: 0 the firmware's flip pointers, 1 the capture's own write index (default)");
++
++/* One entry of the capture's slot table, as a flip pair, checked against the ring. */
++static bool h713_afbd_slot_pair(struct h713_afbd *h, unsigned int slot,
++				struct h713_afbd_flip *f)
++{
++	u32 y, c;
++
++	if (regmap_read(h->incap, H713_INCAP_SLOT_Y + 4 * slot, &y) ||
++	    regmap_read(h->incap, H713_INCAP_SLOT_C + 4 * slot, &c))
++		return false;
++	f->y = y << H713_INCAP_ADDR_SHIFT;
++	f->c = c << H713_INCAP_ADDR_SHIFT;
++
++	return h713_afbd_in_ring(h, f->y) && h713_afbd_in_ring(h, f->c);
++}
++
++/*
++ * Choose the slots from the capture's index. Two answers, because the two
++ * consumers read at different times:
++ *
++ *   @done  the slot the capture finished at the last frame boundary, the
++ *          index minus one. Whole now, and the capture does not come back to
++ *          it for two more frame periods. This is what the notifier gets: its
++ *          consumer (the warp, through the capture driver) reads the slot
++ *          within a few milliseconds.
++ *
++ *   @next  the slot for the plane. Addresses written into the pool-1 queue
++ *          during a frame are fetched from the next vsync on, and the fetch
++ *          then takes a whole panel period. For a source at least about as
++ *          fast as the panel that is the slot being written NOW: it is
++ *          finished by the next vsync -- at worst the fetch starts a few lines
++ *          behind the capture, which it never overtakes -- and the capture
++ *          returns to it two frame periods later, when the fetch is at the
++ *          bottom. The finished slot would be wrong here: for a stretch of
++ *          vsyncs in every beat of the two clocks its fetch would start just
++ *          as the capture starts overwriting it, and the faster capture would
++ *          tear it. For a slow source (30 Hz into a 60 Hz panel) it is the
++ *          other way round: the slot being written is not finished by the
++ *          next vsync and the fetch overtakes the capture, while the finished
++ *          one stays whole for three of its periods.
++ *
++ * The rate test: source frames against vsyncs, accumulated over 32 vsyncs;
++ * below 0.8 the source counts as slow. Until the first window is complete the
++ * source is taken as fast -- the common case, and the one with the worse
++ * failure when got wrong. The caller holds ring_lock.
++ */
++static bool h713_afbd_pick_slots(struct h713_afbd *h,
++				 struct h713_afbd_flip *done,
++				 struct h713_afbd_flip *next)
++{
++	unsigned int idx, prev;
++	u32 frame;
++
++	if (regmap_read(h->incap, H713_INCAP_WRITING, &idx) ||
++	    regmap_read(h->incap, H713_INCAP_FRAME, &frame))
++		return false;
++	if (idx >= H713_INCAP_RING_SLOTS)
++		return false;
++
++	frame >>= 16;
++	h->ring_rate_sum += (frame - h->ring_frame) & 0xffff;
++	h->ring_frame = frame;
++	if (++h->ring_rate_n == 32) {
++		h->ring_slow = h->ring_rate_sum * 5 < 32 * 4;
++		h->ring_rate_n = 0;
++		h->ring_rate_sum = 0;
++	}
++
++	prev = (idx + H713_INCAP_RING_SLOTS - 1) % H713_INCAP_RING_SLOTS;
++	if (!h713_afbd_slot_pair(h, prev, done))
++		return false;
++	if (h->ring_slow) {
++		*next = *done;
++		return true;
++	}
++
++	return h713_afbd_slot_pair(h, idx, next);
++}
++
++/*
+  * The vsync handler's look at the capture ring. Stock points its own channel
+- * at exactly these two registers (channel 1's bit 31 means "use the page flip
+- * pointers", doku/64), so they name a slot the capture has finished, not the
+- * one it is filling.
++ * at the two pointer registers (channel 1's bit 31 means "use the page flip
++ * pointers", doku/64); this driver takes the slot from the capture's own index
++ * where it can (h713_afbd_pick_slots()) and from those pointers otherwise.
+  *
+- * The pair is sampled once, here, and then serves both of its users: the plane
++ * The slot is chosen once, here, and then serves both of its users: the plane
+  * in passthrough, and whoever registered a flip notifier. That is the whole
+- * point of the notifier -- the torn-pair handling and the "has it moved" test
+- * exist once, in the driver that owns the window, and no consumer repeats
+- * them.
++ * point of the notifier -- the slot choice, the torn-pair handling and the
++ * "has it moved" test exist once, in the driver that owns the window, and no
++ * consumer repeats them.
+  *
+  * Runs in hard interrupt context. The chain is atomic, the payload is on this
+- * stack, and nothing on the path allocates, sleeps or takes a mutex; a handler
+- * is held to the same rules (see the header). With nobody following the ring
+- * and nobody registered, not even the register pair is read, so an idle system
+- * pays exactly what it paid before.
++ * stack, and nothing on the path allocates, sleeps or takes a mutex (the
++ * syscon's regmap is MMIO with a spinlock); a handler is held to the same
++ * rules (see the header). With nobody following the ring and nobody
++ * registered, not a register is read, so an idle system pays exactly what it
++ * paid before.
+  */
+ static void h713_afbd_vsync_flip(struct h713_afbd *h)
+ {
+-	struct h713_afbd_flip flip;
++	struct h713_afbd_flip done, next;
+ 	unsigned long flags;
+-	bool notify;
+-	u32 y, c;
++	bool notify, ok;
+ 
+ 	if (!h->ring_follow && !READ_ONCE(h713_afbd_flip_users))
+ 		return;
+ 
+ 	spin_lock_irqsave(&h->ring_lock, flags);
+-	if (!h713_afbd_read_ring(h, &y, &c) || y == h->ring_y) {
++	if (h->incap && READ_ONCE(ring_select) == 1) {
++		ok = h713_afbd_pick_slots(h, &done, &next);
++	} else {
++		ok = h713_afbd_read_ring(h, &done.y, &done.c);
++		next = done;
++	}
++	if (!ok || next.y == h->ring_y) {
+ 		spin_unlock_irqrestore(&h->ring_lock, flags);
+ 		return;
+ 	}
+-	h->ring_y = y;
++	h->ring_y = next.y;
+ 	if (h->ring_follow)
+-		h713_afbd_queue_pair(h, y, c);
++		h713_afbd_queue_pair(h, next.y, next.c);
+ 	notify = READ_ONCE(h713_afbd_flip_users) != 0;
+ 	spin_unlock_irqrestore(&h->ring_lock, flags);
+ 
+ 	if (!notify)
+ 		return;
+ 
+-	flip.y = y;
+-	flip.c = c;
+ 	atomic_notifier_call_chain(&h713_afbd_flip_chain,
+-				   H713_AFBD_EVENT_FLIP, &flip);
++				   H713_AFBD_EVENT_FLIP, &done);
+ }
+ 
+ /*
+@@ -2286,6 +2427,24 @@
+ 	}
+ 
+ 	/*
++	 * The capture's own bookkeeping (H713_INCAP_WRITING and the slot
++	 * table), through the read-only syscon the capture driver reads its
++	 * geometry from -- by phandle, as that driver does, and by compatible
++	 * for a device tree from before the property, which has the node but
++	 * not the reference. Without it the slot to show comes from the
++	 * firmware's flip pointers, as it did before (ring_select).
++	 */
++	h->incap = syscon_regmap_lookup_by_phandle(dev->of_node,
++						   "allwinner,incap");
++	if (IS_ERR(h->incap))
++		h->incap = syscon_regmap_lookup_by_compatible("allwinner,sun50i-h713-incap");
++	if (IS_ERR(h->incap)) {
++		dev_info(dev, "no INCAP syscon (%pe): capture slots from the firmware's flip pointers\n",
++			 h->incap);
++		h->incap = NULL;
++	}
++
++	/*
+ 	 * Source 0's VideoInfo record is fetched by the same 32-bit DMA master
+ 	 * as its Y/C planes. When the display is later attached to an IOMMU,
+ 	 * video_info_dma and the framebuffer DMA addresses naturally become
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2181,6 +2181,16 @@
+ 			memory-region = <&mips_framebuf>, <&viddec_info>;
+ 			memory-region-names = "hdmi-ring", "viddec-info";
+ 			/*
++			 * The capture's own bookkeeping, read only: which ring
++			 * slot it is writing (INCAP +0xa0c) and the slot table
++			 * (+0x8f0/+0x930). The driver chooses the slot to show
++			 * from it instead of from the firmware's flip pointers,
++			 * which skip frames when the firmware scales a 60 Hz
++			 * source down (doku/200). Optional: without it the
++			 * pointers are used, as before.
++			 */
++			allwinner,incap = <&incap>;
++			/*
+ 			 * Optional: allwinner,handoff-state = <ctrl
+ 			 * video_ctrl selector>, the three register words the
+ 			 * boot loader must have left behind before this
+--- a/include/linux/soc/sunxi/h713-afbd.h
++++ b/include/linux/soc/sunxi/h713-afbd.h
+@@ -2,22 +2,34 @@
+ /*
+  * Capture-ring flip notifier of the H713 display engine.
+  *
+- * The MIPS co-processor captures HDMI into a ring of slots and rotates a pair
+- * of pointers at AFBD +0x320/+0x324 through them. A change of that pair is the
+- * hardware saying "this slot is finished", and it is the only capture event
+- * the ARM can observe at all: three independent searches of the firmware image
+- * found the frame-done interrupt inside the MIPS interrupt controller only,
+- * and the stock device tree wires no capture interrupt to the ARM (doku/84, RE
+- * question K2).
++ * The MIPS co-processor captures HDMI into a ring of three slots. Two things
++ * say where it is: a pair of pointers at AFBD +0x320/+0x324 that the firmware
++ * rotates through the slots -- its idea of "show this one now" -- and the
++ * capture's own index of the slot it is writing (INCAP +0xa0c, with the slot
++ * table at +0x8f0/+0x930). No capture interrupt reaches the ARM: three
++ * independent searches of the firmware image found the frame-done interrupt
++ * inside the MIPS interrupt controller only, and the stock device tree wires
++ * none (doku/84, RE question K2). So the event is sampled on the display's
++ * vsync.
+  *
+- * The pair lives inside the register window of display@5600000, which
++ * Which word names the slot is the display driver's business. The pointers
++ * are what stock's channel follows, and with a source at the panel's size
++ * they name the slot being filled, a few hundred lines behind the capture;
++ * with a 60 Hz source scaled down they hold and skip (43..57 of 60 frames,
++ * doku/197). The capture itself writes every frame in strict rotation, so
++ * where the INCAP syscon is reachable the driver takes the slot from the
++ * capture's index -- the one finished at the last frame boundary, whole for
++ * two more frame periods -- and the pointers are the fallback (doku/200).
++ *
++ * The pointers live inside the register window of display@5600000, which
+  * sun50i-h713-afbd owns, clocks, and already reads on every vsync (GIC 142)
+  * for its own passthrough plane. A second driver mapping the same two words
+  * would be a second owner of one register pair -- and it does not even work,
+  * because the region is claimed and devm_ioremap_resource() on it returns
+- * -EBUSY. So the display driver hands the pair out instead: the read, with the
+- * torn-pair handling that belongs to it, stays in one place, and a consumer
+- * gets the event phase-correct on the vsync interrupt that is serviced anyway.
++ * -EBUSY. So the display driver hands the slot out instead: the choice, the
++ * torn-pair handling and the "has it moved" test stay in one place, and a
++ * consumer gets the event phase-correct on the vsync interrupt that is
++ * serviced anyway.
+  *
+  * This header sits next to h713-cpu-comm.h and h713-arisc.h because that is
+  * where this SoC's cross-driver interfaces are collected. That the producer
+@@ -38,18 +50,19 @@
+ #define H713_AFBD_EVENT_DESCRIPTOR	2
+ 
+ /**
+- * struct h713_afbd_flip - the capture ring flip pointers, sampled at one vsync
+- * @y: AFBD +0x320, physical address of the luma slot the capture just finished
+- * @c: AFBD +0x324, physical address of the matching chroma slot
++ * struct h713_afbd_flip - the capture ring slot finished last, sampled at one vsync
++ * @y: physical address of the luma slot the capture finished last
++ * @c: physical address of the matching chroma slot
+  *
+  * The pair names the finished slot by its address, which is why there is no
+- * index in here: the slot table is measured knowledge of the capture, not of
+- * the display, and the display driver knows only the bounds of the reserved
+- * region the ring lives in. Y and C always name the same index.
+- *
+- * Both words are guaranteed to belong to the same sample: the producer reads Y
+- * twice around C and discards the sample if Y moved, so a consumer never sees
+- * a Y from one slot with a C from the next.
++ * index in here: a consumer matches it against the slot addresses it knows,
++ * and the display driver checks it against the bounds of the reserved region
++ * the ring lives in. Y and C always name the same slot.
++ *
++ * Both words belong to the same slot: taken from the capture's slot table
++ * they are two entries of one row, and taken from the firmware's pointers the
++ * producer reads Y twice around C and discards the sample if Y moved, so a
++ * consumer never sees a Y from one slot with a C from the next.
+  */
+ struct h713_afbd_flip {
+ 	u32 y;

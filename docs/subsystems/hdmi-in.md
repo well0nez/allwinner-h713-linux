@@ -29,14 +29,18 @@ against what the table locks.
 
 The first detailed timing of that EDID is 1920x1080p60 on every board, the 1280x720 panels included,
 and that is what a source sends unless told otherwise. On a 720p panel the firmware then downscales in
-its capture path, and that path loses frames: its ring has three slots, and when the display is told a
-frame ahead which slot it will read next, the writer is left one free slot and overwrites every fourth to
-fifth frame before anyone has read it (43..57 of 60 shown, measured 11.10.2026 on the HY300PRO-G-EU,
-`doku/197`, `doku/198`); the unscaled path shows every frame. So since 11.10.2026 `h713-tv` puts the
-panel's own CTA timing first in every EDID it publishes, at start included (`edid_prefer = panel`, the
-default): a 720p panel offers 1280x720p60 first and 1920x1080p60 second, the VIC list stays, and a
-source that follows the EDID is shown frame for frame (59.7 of 60 measured). `edid_prefer = file` keeps
-the file's order.
+its capture path, and there its publisher loses frames: the capture writes every frame into its ring of
+three slots, in strict rotation, but the flip pointers the firmware rotates for the display name a slot
+finished one to three frames earlier, hold it every fourth to fifth frame and skip the next (43..57 of
+60 shown, measured 11.10.2026 on the HY300PRO-G-EU, `doku/197`, `doku/198`, `doku/200`); the unscaled
+path shows every frame. Two answers, both in since 11.10.2026. `h713-tv` puts the panel's own CTA
+timing first in every EDID it publishes, at start included (`edid_prefer = panel`, the default): a 720p
+panel offers 1280x720p60 first and 1920x1080p60 second, the VIC list stays, and a source that follows the
+EDID sends what the panel shows; `edid_prefer = file` keeps the file's order. And the display driver no
+longer follows the firmware's pointers at all: it takes the slot from the capture's own write index
+(`INCAP +0xa0c`, kernel patch 0255, `ring_select`), so a source that insists on 1080p60 is shown frame
+for frame as well - 59.70 of 60 over a minute, the missing one being what a 59.71 Hz panel cannot show
+of a 60.00 Hz source; 1080p50 and 1080p30 each frame once ([display.md](display.md)).
 
 ## Signal, timings, source switch
 

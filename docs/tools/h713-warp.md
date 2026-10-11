@@ -154,7 +154,10 @@ came back busy and was dropped - the two passes stay. *Superseded 11.10.2026:* "
 per frame ... not done yet".
 
 The warp draws every slot the capture hands on: it wakes 0.1 ms after the slot's timestamp and is done 1.5 ms later.
-How many slots there are is decided before it, in the firmware's capture: read straight from the flip pointer pair
+Since 11.10.2026 (evening, kernel patch 0255, `doku/200`) the slot it is handed comes from the capture's own write
+index and not from the firmware's flip pointers: on the HY300PRO-G-EU with a moving 1080p60 source the warp draws
+59.7 fps with none dropped, where the pointers gave it 30-58. The paragraph below is the measurement that led there.
+How many slots there are *was* decided before it, in the firmware's publisher: read straight from the flip pointer pair
 (AFBD +0x320 through `/dev/mem`), the pair moved 30-35 times a second with the warp on, with it off and with either
 afbd module (11.10.2026, HY300PRO-G-EU, 720p panel, 1080p60 source). With the source switched to 720p60 it moved 59.8
 times, every gap one frame, still or moving. The capture itself writes every frame (`INCAP 0x06940104` counts source frames

@@ -203,41 +203,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Aufnahme am G-EU **59,8 Bilder/s**, jeder Abstand eine Bildzeit, still wie bewegt; zurück auf 1920×1080 @ 60 - 30-53/s.
         Die Firmware verliert Bilder beim **Herunterskalieren 1080p → 720p** in der Aufnahme, nicht der Warp, nicht der
         Treiber, nicht der Takt, nicht der Bildinhalt (der HY310 mit 1080p-Panel skaliert nicht: 59,5 fps). Weiter in 2.56
-- [ ] 2.57 **VidDec-Deskriptor meldet 30 Bilder/s - echte Quellrate eintragen und messen** (11.10. vormittags,
-      `arbeit/aufnahme-takt-20261011/`): am G-EU mit 1080p-Quelle zeigt das Panel starr 3 von 4 Bildern (60 Hz → ~45, 50 Hz → ~37),
-      unabhängig von Phase und Takt; die Aufnahme liefert alle (INCAP +0x104 = Bildnummer/Zeile). Kein Kopplungsproblem: Stock läuft
-      auch frei (`PanelTimingWorkMode = 2`), und eine 50-Hz-Quelle an einem schnelleren Panel verliert genauso. Verdacht: afbd
-      schreibt fest `rec[13] = rec[14] = 30000` (`frame_rate_before/after_frame_rate_change`, 1/1000) - der Wert eines 30-fps-Videos
-      aus dem Stock-Mitschnitt, kein "Rezept für 60 Hz"; die Firmware plant ihre Bildratenwandlung danach (`Signal_Framerate 30`,
-      `crtc set_signal_frame_rate`). Versuch in einer Kopie: Wort 13/14 aus den DV-Timings (60000/50000/…), afbd-Modul, Sicherung,
-      Neustart, `phase6.py` mit 1080p60 und 1080p50, Gegenprobe 720p. Offen: warum 720p heute schon jedes Bild zeigt
-      - **11.10. vormittags gemessen, widerlegt** (`arbeit/aufnahme-takt-20261011/BERICHT.md` §7): 60000 im Deskriptor kommt an
-        (hdmirx hält den Satz dann für den echten → "not locked", Bild bleibt), aber 46,9 Wechsel/s gegen 47,0/47,9 mit dem Original
-        nach ebenso frischem Neustart. Auch TNR aus ändert nichts. Die Rate sinkt über Stunden Laufzeit (frisch ~47, nach 4 h ~43,
-        nachts 30-41). Weiter offen: was im Skalierpfad jedes 4.-5. Bild zurückhält (Firmware-FRC, Stock-Vergleich, 1080p-Ring + GPU)
-      - **11.10. mittags (`doku/197`):** nur 60 Hz + Verkleinern verliert (1080p30/4K30 → 720: kein Sprung; 720p60: keiner);
-        frisch nach Moduswechsel 1-4 Sprünge/s, nach Stunden bis 17. Widerlegt: MIPS-Takt (400 MHz wie Stock), Kopplung (Regler
-        bei uns und Stock aus), Bus/NSI/DRAM (identisch mit der Stock-HY350), Bildverbesserer (~2/s). Langzeit-Mitschnitt läuft
-        (`h713-ratelog` am G-EU). Nächster Schritt: Firmware-RE am Skalierpfad bei 60 Hz; die G-EU-Firmware-Shell einrichten
-        (`crtc dump_cfg`, elog), Adressen fehlen
-      - **11.10. mittags (`doku/198`): Mechanismus geklärt, Ring nicht vergrößerbar.** Dreier-Ring der Aufnahme, beim
-        Verkleinern schreibt der Schreiber Bildpaare in denselben Platz (Modell `sim-ring.py` = Messung; 4 Plätze wären verlustfrei).
-        Widerlegt: Tabelleneinträge/Zähler live, 6 Puffer über den TSE-Speicherplan (Firmware programmiert sie, Hardware nutzt 3,
-        NR liest die Alias-Einträge → verzerrtes Bild), `0x069408d0`, Low Latency, unsere Ebenen-Programmierung (echter Warp gleich).
-        **Produktlösung in `main`:** `h713-tv` nennt in der EDID das Panel-Timing zuerst (2.56). Hier bleibt nur noch Forschung:
-        warum die Rate über Stunden fällt, und Stock auf einem 720p-Panel mit 1080p60
-      - **11.10. nachmittags (`doku/199`): Panel-Kopplung läuft.** Mit `work_mode 0`, `vtotal 755..765`, `pclk 74250000` in
-        `display_cfg.xml` (am G-EU installiert, Original gesichert) rastet die Firmware-Frequenznachführung ein (Panel = Eingangs-
-        periode); die Phase ist je Einrasten zufällig und bestimmt den Rest: 1,3 (Zeile ~815) bis 9,5 Sprünge/s. Nächster Schritt:
-        **Phasen-Stellglied auf der ARM-Seite** (VTotal ein Bild lang ±, nur 755..765, nach dem afbd-Vsync; erster Versuch mit 739
-        hielt das Panel an). Dann die Verlustkurve über die Phase; Ziel 0 Sprünge bei fester Phase. Entscheidung Marco: Kopplungs-
-        Werte in den Installer für 720p-Boards?
-      - **12:1x UTC: Kopplung flackert** (VTotal-Dither 755/756 je Bild + `pwm vs_lock=1`), Marco am Gerät; Original-`display_cfg.xml`
-        zurück, G-EU wieder ohne Kopplung. Vor einem neuen Versuch: `pwm vs_lock='0'` testen (nur mit Marco, Augen an der Wand) oder
-        den Dither der Firmware-Nachführung verstehen. Bis dahin ist der 1080p60-Verlust am 720p-Panel offen; produktreif ist nur 2.56
-      - **12:3x UTC: Kopplung verworfen** (`doku/199` §7): VTotal-Dither flackert auch mit freier PWM, HTotal-Dither macht das Bild
-        stetig dunkler (Marco am Gerät); exakter Gleichlauf braucht nicht-ganzzahlige Zeilen, Pixeltakt nicht trimmbar. Damit
-        bleiben für 1080p60 am 720p-Panel: Firmware-Patch (Marcos allerletzte Option) oder 1080p-Ring + GPU-Verkleinern, oder akzeptieren
+- [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
+      59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
+      (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
+      `doku/197` §3) oder ob 62 MHz anders erreichbar ist; Messung mit `anzeige.py` (Sprünge/s → ~0,02). Nur mit Augen an der Wand
+      (`doku/199`: Timing-Änderungen können flackern/abdunkeln)
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
@@ -490,6 +460,13 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
       Vorgabe; `file` = Dateireihenfolge). Gemessen G-EU: Quelle folgt der EDID → 720p60 → 59,7 von 60 Bildern (vorher 35-57)
 - [x] 2.58 **Low Latency gesondert ansehen** - 11.10. mittags gemessen: an/aus ohne Wirkung auf die Sprünge (54,1 → 54,3/55,2 → 54,8/s);
       bleibt als V4L2-Control vorhanden (`doku/198`)
+- [x] 2.57 **1080p60 am 720p-Panel verliert jedes 4.-5. Bild** - erledigt 11.10. abends (Kernel-Patch `0255`, `doku/200`;
+      Paket `arbeit/aufnahme-takt-20261011/`). Weg: Deskriptor-Bildrate (widerlegt, §7), Firmware-Takt/Kopplung/Bus/TNR (widerlegt,
+      `doku/197`), vierter Ringplatz (nicht möglich, `doku/198`), Panel-Kopplung (rastet ein, flackert/dunkelt, `doku/199`). Lösung:
+      die Aufnahme schreibt alle Bilder strikt rotierend und nennt ihren Schreibindex in `INCAP +0xa0c`; afbd wählt den Ringplatz
+      daraus statt aus dem Firmware-Zeiger (`ring_select`, Vorgabe 1; Ebene = Platz in Arbeit, Notifier = zuletzt fertiger; langsame
+      Quellen Platz−1). Gemessen G-EU: 1080p60 59,70 von 60 (vorher 32,9), Warp 59,7 fps, 1080p30/50 und 720p60 jedes Bild; Bild
+      sauber. Rest 0,3/s = Takt (→ 2.59). Offen daraus: dasselbe am HY310 messen (1.x Test mit Marco)
 
 **1 Release — in dieser Reihenfolge**
 

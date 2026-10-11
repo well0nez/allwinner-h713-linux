@@ -578,3 +578,4 @@
 0252-arm64-dts-h713-the-ir-receiver-at-sunxi-cir-s-default-8-mhz.patch
 0253-media-sunxi-cir-h713-drop-0021-s-vendor-register-values.patch
 0254-media-rc-keymaps-the-h713-projectors-stock-ir-remote-and-its-map-on-the-hy310.patch
+0255-drm-h713-afbd-the-capture-slot-from-the-capture-s-own-index-not-the-firmware-s-flip-pointers.patch
