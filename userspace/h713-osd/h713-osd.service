@@ -1,0 +1,16 @@
+[Unit]
+Description=h713-osd - the overlays over the picture: volume, mute, focus, input
+Documentation=file:/usr/local/share/doc/h713-osd/README.md
+After=h713-features.service
+
+[Service]
+ExecStart=/usr/local/sbin/h713-osd run
+RuntimeDirectory=h713-osd
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

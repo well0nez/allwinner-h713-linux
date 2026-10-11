@@ -139,7 +139,7 @@ int main(int argc, char **argv)
 		if (demo)
 			it.value = step <= 20 ? step * 5 : (40 - step) * 5;
 		t0 = now_ms();
-		osd_clear(&c);
+		osd_clear_box(&c, last[n ^ 1]);	/* what the canvas got last time; the rest is still clear */
 		osd_draw(&c, &st, &it, box);
 		if (it.kind == OSD_MUTE) {	/* the badge comes with it and stays: one rectangle over both */
 			struct osd_item badge = { OSD_MUTE_BADGE, 0, 0, 1.0f };

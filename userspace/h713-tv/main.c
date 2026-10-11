@@ -1188,6 +1188,8 @@ static void window_blobs_free(const struct display *d, uint32_t a, uint32_t b)
 
 static void osd_drop(struct display *d);	/* the overlay off the panel: before every release of the master */
 static void osd_resume(struct display *d);	/* ... and back when the picture is */
+static bool osd_ride(drmModeAtomicReq *req, const struct display *d);	/* a queued change into the warp's commit */
+static void osd_rode(bool committed);
 
 static bool display_show(struct display *d)
 {
@@ -1440,8 +1442,12 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy)
 	 */
 	if (ok && d->has_windows)
 		ok = add(req, d, "src-window", 0) && add(req, d, "dst-window", 0);
+	/* an overlay change waiting for this frame goes with it: one commit, no EBUSY between the two (6h) */
+	bool rides = ok && osd_ride(req, d);
 	ret = ok ? drmModeAtomicCommit(d->fd, req, flags, NULL) : -EINVAL;
 	drmModeAtomicFree(req);
+	if (rides)
+		osd_rode(!ret);
 	if (!ret) {
 		warp.commits++;
 		return true;
@@ -1510,6 +1516,7 @@ struct osd {
 	bool claimed;
 	bool shown;			/* our buffer is on the plane at zpos 2 */
 	int want;			/* the buffer h713-osd wants shown, -1: none */
+	bool queued;			/* while the warp draws: the change goes with its next frame */
 	uint32_t plane_id;		/* the primary plane of our CRTC */
 	struct props props;
 	uint32_t console_fb;		/* the plane's framebuffer at the claim: the console's */
@@ -1604,11 +1611,8 @@ static bool osd_alloc(struct display *d, int *fds)
 	return true;
 }
 
-/* One commit of the primary plane: framebuffer fb at zpos z, the whole
- * panel. Non-blocking first, so a warp frame in flight is not waited for in
- * the common case; on EBUSY once more blocking - an overlay changes a few
- * times a second at most, one vsync of waiting is the price. */
-static bool osd_commit(struct display *d, uint32_t fb, uint64_t z)
+/* the primary plane's eleven properties: framebuffer fb at zpos z, the whole panel */
+static bool osd_props(drmModeAtomicReq *req, const struct display *d, uint32_t fb, uint64_t z)
 {
 	static const char *const name[] = {
 		"FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
@@ -1618,16 +1622,45 @@ static bool osd_commit(struct display *d, uint32_t fb, uint64_t z)
 		fb, d->crtc_id, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16,
 		0, 0, d->width, d->height, z,
 	};
-	drmModeAtomicReq *req = drmModeAtomicAlloc();
-	bool ok = req != NULL;
 	unsigned int i;
-	int ret = -1;
 
-	for (i = 0; ok && i < 11; i++) {
+	for (i = 0; i < 11; i++) {
 		uint32_t id = prop_id(&osd.props, name[i]);
 
-		ok = id && drmModeAtomicAddProperty(req, osd.plane_id, id, val[i]) >= 0;
+		if (!id || drmModeAtomicAddProperty(req, osd.plane_id, id, val[i]) < 0)
+			return false;
 	}
+	return true;
+}
+
+/* While the warp draws, a change of the overlay waits for its next frame and goes in the same commit
+ * (warp_commit): the warp's non-blocking commits would otherwise meet ours (EBUSY) and a blocking retry
+ * held the loop 45 ms (11.10.2026). */
+static bool osd_ride(drmModeAtomicReq *req, const struct display *d)
+{
+	if (!osd.claimed || !osd.queued)
+		return false;
+	return osd_props(req, d, osd.want >= 0 ? osd.fb_id[osd.want] : osd.console_fb, osd.want >= 0 ? 2 : 0);
+}
+
+static void osd_rode(bool committed)
+{
+	if (!committed)
+		return;		/* the frame was dropped: the change waits for the next one */
+	osd.queued = false;
+	osd.shown = osd.want >= 0;
+	if (osd.shown)
+		osd.shows++;
+}
+
+/* One commit of the primary plane on its own (no warp, or the master is about to go): non-blocking
+ * first; on EBUSY once more blocking - nothing else commits then but a page flip in flight. */
+static bool osd_commit(struct display *d, uint32_t fb, uint64_t z)
+{
+	drmModeAtomicReq *req = drmModeAtomicAlloc();
+	bool ok = req != NULL && osd_props(req, d, fb, z);
+	int ret = -1;
+
 	if (ok) {
 		ret = drmModeAtomicCommit(d->fd, req, DRM_MODE_ATOMIC_NONBLOCK, NULL);
 		if (ret && errno == EBUSY) {
@@ -1649,6 +1682,7 @@ static bool osd_commit(struct display *d, uint32_t fb, uint64_t z)
  * master; the overlay stays wanted and comes back with the picture */
 static void osd_drop(struct display *d)
 {
+	osd.queued = false;
 	if (!osd.shown)
 		return;
 	if (osd_commit(d, osd.console_fb, 0))
@@ -1660,6 +1694,10 @@ static void osd_resume(struct display *d)
 {
 	if (!osd.claimed || osd.want < 0 || !(d->on || d->warped) || !d->master)
 		return;
+	if (d->warped) {		/* with the warp's next frame */
+		osd.queued = true;
+		return;
+	}
 	if (osd_commit(d, osd.fb_id[osd.want], 2)) {
 		osd.shown = true;
 		osd.shows++;
@@ -1686,7 +1724,7 @@ static void osd_release(struct display *d)
 static void osd_serve(struct display *d)
 {
 	char buf[64];
-	const char *answer = "error unknown (osd show N | osd hide | osd release)\n";
+	const char *answer = "error unknown (osd show N | osd hide | osd picture | osd release)\n";
 	ssize_t got;
 	int n = -1;
 
@@ -1707,6 +1745,9 @@ static void osd_serve(struct display *d)
 		osd.want = n;
 		if (!(d->on || d->warped)) {
 			answer = "ok waiting -- no picture to lay it over, it comes with the picture\n";
+		} else if (d->warped) {
+			osd_resume(d);		/* queued: the warp's next frame carries it */
+			answer = "ok\n";
 		} else {
 			osd.shown = false;
 			osd_resume(d);
@@ -1714,8 +1755,16 @@ static void osd_serve(struct display *d)
 		}
 	} else if (!strcmp(buf, "osd hide")) {
 		osd.want = -1;
-		osd_drop(d);
-		answer = osd.shown ? "error the console framebuffer could not go back\n" : "ok\n";
+		if (d->warped && osd.shown) {
+			osd.queued = true;	/* the console's framebuffer back with the next frame */
+			answer = "ok\n";
+		} else {
+			osd_drop(d);
+			answer = osd.shown ? "error the console framebuffer could not go back\n" : "ok\n";
+		}
+	} else if (!strcmp(buf, "osd picture")) {
+		/* what lies under the overlay: h713-osd pre-distorts only over the warp */
+		answer = d->warped ? "ok warped\n" : d->on ? "ok ring\n" : "ok none\n";
 	}
 	if (send(osd.peer, answer, strlen(answer), MSG_NOSIGNAL) < 0) {
 		warn("osd             answering \"%s\": %s", buf, strerror(errno));

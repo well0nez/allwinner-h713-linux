@@ -37,6 +37,18 @@ legible on a bright picture. A square card in the middle was tried and rejected 
 that are completely rectangular do not work"). Places: `OSD_BOTTOM` (centred above the lower edge, where the stock
 firmware shows its volume), `OSD_TOP_RIGHT`, `OSD_CENTER` (the same strip in the middle).
 
+## Speed
+
+Measured on the HY310 (11.10.2026, `-DOSD_PROFILE` splits `osd_draw` into the work buffer's fill, the
+primitives and the mixing): the volume strip 568 x 104 px took 209 ms in the first draft; now 5.2 ms (fill 0.4,
+primitives 1.2, mixing 3.5), focus 1.6 ms, the badge 1.2 ms. Each primitive is evaluated only within its own
+rectangle (beyond its reach it adds nothing); the layers are mixed premultiplied in one pass; `sqrt` instead of
+`hypot`, two cross products instead of `atan2` for arcs; per row the stretch where a pill covers fully or not at
+all is known from its shape, and a pixel with nothing but the pill over a clear canvas gets its value directly.
+Every step was compared with the pictures before it (`osd-mockup`): bit for bit, or - the one-pass mixing - at
+most one level of rounding. `osd_clear_box()` clears a rectangle (what `osd_draw` returned) instead of the whole
+canvas. `osd_draw` keeps one static work buffer: not reentrant.
+
 ## Building
 
 In the container `h713-build`: `make host` builds `osd-mockup`; `make mockup DIR=...` renders every case as PAM

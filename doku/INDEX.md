@@ -49,7 +49,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-fel.md` | `doku/20`, `doku/nachtlog/S48-fel-aus-uboot` |
 | `docs/tools/h713-focus.md` | `doku/94` |
 | `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
-| `docs/tools/h713-keys.md` | `doku/138`, `doku/192`, `doku/94` |
+| `docs/tools/h713-keys.md` | `doku/138`, `doku/94` |
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mips-restart.md` | `doku/172`, `doku/173`, `doku/174`, `doku/177` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
@@ -238,7 +238,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`189-handoff-20261010-abends.md`](189-handoff-20261010-abends.md) | Handoff | 2026-10-10 | 189 - Handoff 10.10.2026 abends: das Aus über crust ist in `main`; als Nächstes das Aus am HY310 messen und mit Marco das Kaltstart-Gate besprechen; OSD und Konsole im Warp laufen als eigenes Paket | - |
 | [`190-aus-ueber-crust-am-hy310-20261010.md`](190-aus-ueber-crust-am-hy310-20261010.md) | Analyse | 2026-10-10 | 190 - "Aus" über crust am HY310 gemessen: Selbstwecken, Power-Taste und IR-Fernbedienung (10.10.2026) | 4 |
 | [`191-kaltstart-gate-ueber-crust-20261010.md`](191-kaltstart-gate-ueber-crust-20261010.md) | Analyse | 2026-10-10 | 191 - Kaltstart-Gate über crust: nach dem Einstecken wartet crust statt U-Boot, 0,3-0,6 W, die Fernbedienung weckt (10.10.2026) | 2 |
-| [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 4 |
+| [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 3 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |

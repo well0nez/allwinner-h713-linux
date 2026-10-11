@@ -33,8 +33,8 @@ devices: the power key on the same nodes stays with logind or `h713-power`.
 
 ## The overlay
 
-After each action one line goes to `/run/h713-osd/ctl`, the control socket of the overlay daemon `h713-osd`
-(planned, TODO 2.43-2.46, `doku/192`): `volume N`, `mute on N` / `mute off N`, `focus up|down [edge]`,
+After each action one line goes to `/run/h713-osd/ctl`, the control socket of the overlay daemon
+[h713-osd](h713-osd.md): `volume N`, `mute on N` / `mute off N`, `focus up|down [edge]`,
 `input console|hdmi`. When the socket is not there, nothing is sent and nothing is logged; the action never
 waits for the overlay.
 

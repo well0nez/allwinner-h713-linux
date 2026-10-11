@@ -10,6 +10,8 @@
  * anew with arcs, because straight strokes looked crude.
  */
 #include <math.h>
+#include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "osd.h"
@@ -24,7 +26,7 @@ enum { P_SEG, P_ARC, P_RRECT_LINE };
 
 struct prim {
 	int type, tone;
-	double a[5];		/* the shape's numbers, see prim_dist */
+	double a[10];		/* the shape's numbers, see prim_dist */
 };
 
 struct scene {
@@ -45,29 +47,39 @@ static double seg_dist(double x, double y, double ax, double ay, double bx, doub
 	double abx = bx - ax, aby = by - ay, apx = x - ax, apy = y - ay;
 	double t = clampd((apx * abx + apy * aby) / (abx * abx + aby * aby + 1e-12), 0, 1);
 
-	return hypot(apx - abx * t, apy - aby * t);
+	apx -= abx * t, apy -= aby * t;
+	return sqrt(apx * apx + apy * apy);	/* not hypot(): it guards against overflow nobody needs here, slowly */
 }
 
-/* the distance to an arc of radius r around (cx, cy) from angle a0 to a1 (degrees, y down: 0 right,
- * 90 below), a1 > a0 */
-static double arc_dist(double x, double y, double cx, double cy, double r, double a0, double a1)
+/* the distance to an arc (arc() below: a[0..2] centre and radius, a[5..8] the unit vectors of its start and end,
+ * a[9] its span in degrees). Whether a point lies within the arc's angle is decided with two cross products
+ * against the start and the end - no atan2 per pixel: within a span of up to 180 degrees means "after the start
+ * and before the end"; for a larger span, "not strictly inside the complement", which is smaller than 180. */
+static double arc_dist(double x, double y, const double *a)
 {
-	double ang = atan2(y - cy, x - cx) * 180 / M_PI;
-	double r0 = a0 * M_PI / 180, r1 = a1 * M_PI / 180;
+	double px = x - a[0], py = y - a[1], ex0, ey0, ex1, ey1;
+	bool in;
 
-	while (ang < a0)
-		ang += 360;
-	if (ang <= a1)
-		return fabs(hypot(x - cx, y - cy) - r);
-	return fmin(hypot(x - cx - r * cos(r0), y - cy - r * sin(r0)),
-		    hypot(x - cx - r * cos(r1), y - cy - r * sin(r1)));
+	if (a[9] >= 360)
+		in = true;
+	else if (a[9] <= 180)
+		in = a[5] * py - a[6] * px >= 0 && px * a[8] - py * a[7] >= 0;
+	else
+		in = !(a[7] * py - a[8] * px > 0 && px * a[6] - py * a[5] > 0);
+	if (in)
+		return fabs(sqrt(px * px + py * py) - a[2]);
+	ex0 = px - a[2] * a[5], ey0 = py - a[2] * a[6];
+	ex1 = px - a[2] * a[7], ey1 = py - a[2] * a[8];
+	return sqrt(fmin(ex0 * ex0 + ey0 * ey0, ex1 * ex1 + ey1 * ey1));
 }
 
 static double rrect_sd(double x, double y, double cx, double cy, double hw, double hh, double r)
 {
 	double qx = fabs(x - cx) - hw + r, qy = fabs(y - cy) - hh + r;
 
-	return hypot(fmax(qx, 0), fmax(qy, 0)) + fmin(fmax(qx, qy), 0) - r;
+	double ox = fmax(qx, 0), oy = fmax(qy, 0);
+
+	return sqrt(ox * ox + oy * oy) + fmin(fmax(qx, qy), 0) - r;
 }
 
 /* signed distance of one primitive, negative inside */
@@ -79,11 +91,32 @@ static double prim_dist(const struct prim *p, double x, double y, double lw)
 	case P_SEG:
 		return seg_dist(x, y, a[0], a[1], a[2], a[3]) - lw;
 	case P_ARC:
-		return arc_dist(x, y, a[0], a[1], a[2], a[3], a[4]) - lw;
+		return arc_dist(x, y, a) - lw;
 	case P_RRECT_LINE:
 		return fabs(rrect_sd(x, y, a[0], a[1], a[2], a[3], a[4])) - lw;
 	}
 	return 1e9;
+}
+
+/* the rectangle outside which the primitive is more than m px away (m includes its half line width) */
+static void prim_bbox(const struct prim *p, double m, double b[4])
+{
+	const double *a = p->a;
+
+	switch (p->type) {
+	case P_SEG:
+		b[0] = fmin(a[0], a[2]) - m, b[1] = fmin(a[1], a[3]) - m;
+		b[2] = fmax(a[0], a[2]) + m, b[3] = fmax(a[1], a[3]) + m;
+		break;
+	case P_ARC:	/* the whole circle: simple, and never too small */
+		b[0] = a[0] - a[2] - m, b[1] = a[1] - a[2] - m;
+		b[2] = a[0] + a[2] + m, b[3] = a[1] + a[2] + m;
+		break;
+	default:	/* P_RRECT_LINE */
+		b[0] = a[0] - a[2] - m, b[1] = a[1] - a[3] - m;
+		b[2] = a[0] + a[2] + m, b[3] = a[1] + a[3] + m;
+		break;
+	}
 }
 
 static struct prim *add(struct scene *s, int type, int tone)
@@ -108,6 +141,9 @@ static void arc(struct scene *s, double cx, double cy, double r, double a0, doub
 	struct prim *p = add(s, P_ARC, tone);
 
 	p->a[0] = cx, p->a[1] = cy, p->a[2] = r, p->a[3] = a0, p->a[4] = a1;
+	p->a[5] = cos(a0 * M_PI / 180), p->a[6] = sin(a0 * M_PI / 180);
+	p->a[7] = cos(a1 * M_PI / 180), p->a[8] = sin(a1 * M_PI / 180);
+	p->a[9] = a1 - a0;
 }
 
 static void rrect(struct scene *s, int type, double cx, double cy, double hw, double hh, double r, int tone)
@@ -310,33 +346,46 @@ static double cover(double d, double aa)
 	return clampd(0.5 - d / aa, 0, 1);
 }
 
-/* straight-alpha "over": colour (r, g, b) with alpha a onto the pixel */
-static void over(uint32_t *px, double r, double g, double b, double a)
-{
-	double da = (*px >> 24) / 255.0, dr = (*px >> 16 & 255), dg = (*px >> 8 & 255), db = (*px & 255);
-	double oa = a + da * (1 - a);
-
-	if (a <= 0 || oa <= 0)
-		return;
-	r = (r * a + dr * da * (1 - a)) / oa;
-	g = (g * a + dg * da * (1 - a)) / oa;
-	b = (b * a + db * da * (1 - a)) / oa;
-	*px = (uint32_t)(oa * 255 + 0.5) << 24 | (uint32_t)(r + 0.5) << 16 | (uint32_t)(g + 0.5) << 8 |
-	      (uint32_t)(b + 0.5);
-}
-
 void osd_clear(struct osd_canvas *c)
 {
 	for (int y = 0; y < c->h; y++)
 		memset(c->px + (size_t)y * c->stride, 0, (size_t)c->w * 4);
 }
 
+void osd_clear_box(struct osd_canvas *c, const int box[4])
+{
+	for (int y = box[1]; y < box[1] + box[3] && y < c->h; y++)
+		if (y >= 0 && box[0] >= 0 && box[0] + box[2] <= c->w)
+			memset(c->px + (size_t)y * c->stride + box[0], 0, (size_t)box[2] * 4);
+}
+
+#ifdef OSD_PROFILE
+#include <time.h>
+double osd_prof[3];	/* seconds in: the work buffer's fill, the primitives, the mixing */
+static double prof_now(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return t.tv_sec + t.tv_nsec / 1e9;
+}
+#define PROF(i, t) (osd_prof[i] += prof_now() - (t), (t) = prof_now())
+#else
+#define PROF(i, t) ((void)0)
+#endif
+
 void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd_item *it, int box[4])
 {
+#ifdef OSD_PROFILE
+	double pt = prof_now();
+#endif
 	static struct scene s;
+	static double *dist;	/* the nearest edge per tone and pixel of the item's rectangle */
+	static size_t dcap;
 	double u = c->h / 1080.0 * (st->scale > 0 ? st->scale : 1), shadow = 14 * u;
-	double fade = clampd(it->alpha, 0, 1);
-	int x0, y0, x1, y1;
+	double fade = clampd(it->alpha, 0, 1), reach;
+	int x0, y0, x1, y1, bw, bh;
+	size_t n;
 
 	layout(&s, c, st, it);
 	x0 = (int)floor(s.px - shadow), y0 = (int)floor(s.py - shadow);
@@ -345,28 +394,127 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 	x1 = x1 > c->w ? c->w : x1, y1 = y1 > c->h ? c->h : y1;
 	if (box)
 		box[0] = x0, box[1] = y0, box[2] = x1 - x0, box[3] = y1 - y0;
+	bw = x1 - x0, bh = y1 - y0;
+	if (bw <= 0 || bh <= 0)
+		return;
+	n = (size_t)bw * bh;
+	if (3 * n > dcap) {
+		double *nd = realloc(dist, 3 * n * sizeof(*dist));
 
-	for (int y = y0; y < y1; y++)
-		for (int x = x0; x < x1; x++) {
-			double fx = x + 0.5, fy = y + 0.5, t[3] = { 1e9, 1e9, 1e9 }, all;
-			uint32_t *px = c->px + (size_t)y * c->stride + x;
+		if (!nd)
+			return;
+		dist = nd, dcap = 3 * n;
+	}
+	for (size_t i = 0; i < 3 * n; i++)
+		dist[i] = 1e9;
+	PROF(0, pt);
+	/*
+	 * Each primitive only within its own rectangle: beyond `reach` it adds nothing - no coverage, no shadow -
+	 * so the picture is the same as with every primitive at every pixel (osd-mockup compared, bit for bit),
+	 * at a fraction of the work (11.10.2026 on the board: the volume strip from 209 ms).
+	 */
+	reach = AA + (s.panel ? 0 : 3 * u + shadow) + 1;
+	for (int i = 0; i < s.n; i++) {
+		double *t = dist + (size_t)s.p[i].tone * n, b[4];
+		int bx0, by0, bx1, by1;
 
-			for (int i = 0; i < s.n; i++) {
-				double d = prim_dist(&s.p[i], fx, fy, s.lw);
+		prim_bbox(&s.p[i], reach + s.lw, b);
+		bx0 = (int)floor(b[0]), by0 = (int)floor(b[1]), bx1 = (int)ceil(b[2]), by1 = (int)ceil(b[3]);
+		bx0 = bx0 < x0 ? x0 : bx0, by0 = by0 < y0 ? y0 : by0;
+		bx1 = bx1 > x1 ? x1 : bx1, by1 = by1 > y1 ? y1 : by1;
+		for (int y = by0; y < by1; y++)
+			for (int x = bx0; x < bx1; x++) {
+				double *q = t + (size_t)(y - y0) * bw + (x - x0);
 
-				t[s.p[i].tone] = fmin(t[s.p[i].tone], d);
+				*q = fmin(*q, prim_dist(&s.p[i], x + 0.5, y + 0.5, s.lw));
 			}
-			all = fmin(t[T_BRIGHT], fmin(t[T_DIM], t[T_RED]));
-			if (s.panel == 1)	/* the pill: its ends are half circles (radius = half the height) */
-				over(px, 10, 12, 16, 0.46 * fade * cover(rrect_sd(fx, fy, s.px + s.pw / 2, s.py + s.ph / 2,
-									   s.pw / 2, s.ph / 2, s.ph / 2), AA));
-			else if (s.panel == 2)
-				over(px, 10, 12, 16, 0.38 * fade *
-				     cover(hypot(fx - s.px - s.pw / 2, fy - s.py - s.ph / 2) - s.pw / 2, AA));
-			else	/* the bare look: a soft shadow around every line keeps it legible on a bright picture */
-				over(px, 0, 0, 0, 0.62 * fade * cover(all - 3 * u, shadow) *
-				     (t[T_DIM] < fmin(t[T_BRIGHT], t[T_RED]) ? 0.7 : 1));
-			over(px, 250, 250, 250, 0.94 * fade * fmax(cover(t[T_BRIGHT], AA), DIM * cover(t[T_DIM], AA)));
-			over(px, 255, 72, 64, 0.96 * fade * cover(t[T_RED], AA));
+	}
+
+	PROF(1, pt);
+	/*
+	 * The layers - the panel or the shadow, the white lines, the red ones - are mixed premultiplied onto what
+	 * the canvas holds, in one pass, and turned back into straight alpha once at the end: one division per
+	 * pixel instead of three per layer. Most pixels of a pill are its plain inside: per row the stretch where
+	 * the pill covers fully and the one where it does not reach are known from its shape (a stadium: half
+	 * circles of radius h/2 on a straight middle), a line counts only nearer than half the anti-aliasing, and a
+	 * pixel with nothing but the panel over a clear canvas gets its value without mixing (11.10.2026 on the
+	 * board: the volume strip's mixing from 12 ms).
+	 */
+	const double half = AA / 2, pill_a = 0.46 * fade;
+	const uint32_t pill_px = (uint32_t)(pill_a * 255 + 0.5) << 24 | 10u << 16 | 12u << 8 | 16u;
+
+	for (int y = y0; y < y1; y++) {
+		double fy = y + 0.5, cx = s.px + s.pw / 2, inner = -1, outer = 1e9;
+
+		if (s.panel == 1) {	/* |x - cx| <= inner: covered fully; >= outer: not at all */
+			double r = s.ph / 2, dy = fabs(fy - (s.py + r)), L = s.pw / 2 - r;
+
+			inner = dy <= r - half ? L + sqrt((r - half) * (r - half) - dy * dy) : -1;
+			outer = dy < r + half ? L + sqrt((r + half) * (r + half) - dy * dy) : -1;
 		}
+		for (int x = x0; x < x1; x++) {
+			size_t k = (size_t)(y - y0) * bw + (x - x0);
+			double fx = x + 0.5, t[3] = { dist[k], dist[n + k], dist[2 * n + k] }, la[3], lc0, A, R, G, B, inv;
+			uint32_t *px = c->px + (size_t)y * c->stride + x, v;
+			bool lines = t[T_BRIGHT] < half || t[T_DIM] < half || t[T_RED] < half;
+
+			if (s.panel == 1) {
+				double ax = fabs(fx - cx);
+
+				la[0] = ax <= inner ? pill_a : ax >= outer ? 0 :
+					pill_a * cover(rrect_sd(fx, fy, cx, s.py + s.ph / 2, s.pw / 2, s.ph / 2, s.ph / 2), AA);
+				lc0 = 1;
+			} else if (s.panel == 2) {
+				double dx = fx - s.px - s.pw / 2, dy = fy - s.py - s.ph / 2;
+
+				la[0] = 0.38 * fade * cover(sqrt(dx * dx + dy * dy) - s.pw / 2, AA);
+				lc0 = 1;
+			} else {	/* the bare look: a soft shadow around every line keeps it legible on a bright picture */
+				double all = fmin(t[T_BRIGHT], fmin(t[T_DIM], t[T_RED]));
+
+				la[0] = all - 3 * u >= shadow / 2 ? 0 : 0.62 * fade * cover(all - 3 * u, shadow) *
+					(t[T_DIM] < fmin(t[T_BRIGHT], t[T_RED]) ? 0.7 : 1);
+				lc0 = 0;
+			}
+			if (!lines) {
+				if (la[0] <= 0)
+					continue;
+				if (!*px && s.panel == 1 && la[0] == pill_a) {
+					*px = pill_px;		/* the plain inside of the pill */
+					continue;
+				}
+				la[1] = la[2] = 0;
+			} else {
+				la[1] = 0.94 * fade * fmax(cover(t[T_BRIGHT], AA), DIM * cover(t[T_DIM], AA));
+				la[2] = 0.96 * fade * cover(t[T_RED], AA);
+				if (la[0] <= 0 && la[1] <= 0 && la[2] <= 0)
+					continue;
+			}
+			v = *px;
+			A = (v >> 24) / 255.0;
+			R = (v >> 16 & 255) * A, G = (v >> 8 & 255) * A, B = (v & 255) * A;
+			if (la[0] > 0) {	/* the panel's colour (10, 12, 16), or the shadow's black */
+				R = 10 * lc0 * la[0] + R * (1 - la[0]);
+				G = 12 * lc0 * la[0] + G * (1 - la[0]);
+				B = 16 * lc0 * la[0] + B * (1 - la[0]);
+				A = la[0] + A * (1 - la[0]);
+			}
+			if (la[1] > 0) {
+				R = 250 * la[1] + R * (1 - la[1]), G = 250 * la[1] + G * (1 - la[1]);
+				B = 250 * la[1] + B * (1 - la[1]), A = la[1] + A * (1 - la[1]);
+			}
+			if (la[2] > 0) {
+				R = 255 * la[2] + R * (1 - la[2]), G = 72 * la[2] + G * (1 - la[2]);
+				B = 64 * la[2] + B * (1 - la[2]), A = la[2] + A * (1 - la[2]);
+			}
+			if (A <= 0) {
+				*px = 0;
+				continue;
+			}
+			inv = 1 / A;
+			*px = (uint32_t)(A * 255 + 0.5) << 24 | (uint32_t)fmin(R * inv + 0.5, 255) << 16 |
+			      (uint32_t)fmin(G * inv + 0.5, 255) << 8 | (uint32_t)fmin(B * inv + 0.5, 255);
+		}
+	}
+	PROF(2, pt);
 }

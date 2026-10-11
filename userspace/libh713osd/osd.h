@@ -54,10 +54,12 @@ struct osd_item {
 
 /* everything transparent */
 void osd_clear(struct osd_canvas *c);
+/* one rectangle (x, y, w, h, as osd_draw returns it) transparent: cheaper than a whole panel */
+void osd_clear_box(struct osd_canvas *c, const int box[4]);
 
 /* draw one item where the style puts it (a badge always goes to its corner); returns the touched rectangle in
  * box[4] = x, y, w, h, so a caller can copy or pre-distort only that part. Items drawn one after another stack
- * (the later one over the earlier one). */
+ * (the later one over the earlier one). Not reentrant: one static work buffer. */
 void osd_draw(struct osd_canvas *c, const struct osd_style *s, const struct osd_item *it, int box[4]);
 
 #endif

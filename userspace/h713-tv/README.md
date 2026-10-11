@@ -746,17 +746,21 @@ warp's pattern, on its own control socket, the file descriptors in `SCM_RIGHTS`:
 1080p), which the peer maps and draws into (with `DMA_BUF_IOCTL_SYNC` around the writes);
 `osd show N` lays buffer N over the picture - `ok`, or `ok waiting` when there is no picture: the overlay stays
 wanted and comes back by itself with the picture (ring or warp);
-`osd hide` takes it away; `osd release` frees the buffers. The connection is the lifetime: a peer that dies
-leaves a hangup and the overlay goes with it.
+`osd hide` takes it away; `osd picture` answers what lies under the overlay - `warped`, `ring` or `none` (h713-osd
+pre-distorts only over the warp); `osd release` frees the buffers. The connection is the lifetime: a peer that
+dies leaves a hangup and the overlay goes with it.
+
+**Over the warp the change rides along.** While h713-warp draws, a show or hide is not committed on its own: it
+waits for the warp's next frame and goes into the same atomic commit (`osd_ride`). A separate commit met the warp's
+non-blocking one (EBUSY), and the blocking retry once held this program's loop 45 ms; riding along, 0 busy in the
+measurements since. Without the warp (the ring) the overlay is committed at once.
 
 **The console comes back without the overlay.** At the claim this program remembers the primary plane's
 framebuffer - the console's - and puts it back at `zpos` 0 before it lets the master go, on every way the picture
 leaves: `display_hide` (signal lost, `ctl off`), `warp_release`, the exit. Measured on the HY310 (11.10.2026):
 mute overlay over the warp, `ctl off` -> console, `ctl osd` says "waiting for a picture"; `ctl auto` -> the warp
-claims again and the overlay is back by itself. The overlay over the warp shows in 23-27 ms; the first
-non-blocking commit usually meets a warp frame in flight (EBUSY) and is repeated blocking, which once held the
-loop 45 ms when the overlay came back over the warp (to be made non-blocking, TODO 2.43). Without the overlay
-nothing changes: no claim, no commit, the primary plane stays the console's.
+claims again and the overlay is back by itself. Without the overlay nothing changes: no claim, no commit, the
+primary plane stays the console's.
 
 `userspace/libh713osd/osd-show` puts one overlay on the panel through this channel (a test tool, not in the
 image). An overlay over the console - no signal - is the next step (TODO 2.46, P5 of the plan).
