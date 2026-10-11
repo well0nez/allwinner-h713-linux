@@ -22,7 +22,9 @@ The last release is `v0.96-beta`; the last test image for the HY300 Pro of issue
   **Bluetooth** with the stock remote, the box's own sounds mixed into HDMI, the projection modes, EDID block 1
   with 1080p100/120, and the optional hardware of other boards (the rows below say where and when).
 - **Missing:** AV1 decode, the IR receiver, any desktop -
-  and nothing acts on the remote's keys yet except Power.
+  and nothing acts on the remote's keys yet except Power. **In `main` since 11.10.2026, not released yet:** the IR
+  receiver (all 14 keys), the keys acting (volume, mute, focus) and overlays over the picture, pre-distorted under the
+  keystone (`doku/193`).
 - **Not re-tested by us:** hardware video decode and the IOMMU - these come from cstenger's tree. The Mali GPU
   did too; since 22.09. it is measured here and since `v0.95-beta` it is in the image, under the keystone.
 
@@ -76,6 +78,7 @@ owner reports a green run of a build of ours, with a date - see [BUILDING.md](BU
 | Mali-G31 GPU (Panfrost) | works, in `v0.95-beta` | `panfrost.ko` plus our own mesa under `/usr/local` (panfrost driver only, 15 MiB), operating points from kernel `0024e` | 22.09.: `h713-gpu-probe render 3000` - 0 CRC mismatches, 236 fps, GPU zone 58 C, runtime-PM suspended afterwards; ten minutes of load with devfreq - 16,089 frames at 26.8 fps, 0 mismatches, 58.4 C, `dmesg` clean (working journal `keystone-20260922`) |
 | Video decode, IOMMU | unverified here | cstenger's patches, in our series | verified in his tree, not in this image |
 | Bluetooth and the stock remote | works, since `v0.96-beta` | `h713-bluetooth` (hciattach + bluez on UART1), `h713-bt-reset`, `h713-remote-pair`, kernel `0169` | 03.10.: 16 keys and the mouse as input events, 97 of 97 pings beside it, cold start and reconnect; three warm reboots in a row with `hci0` UP at 10.1 - 10.7 s ([docs/subsystems/wifi.md](docs/subsystems/wifi.md#bluetooth)). Nothing acts on the keys yet except Power (shuts down). The IR receiver is parked |
+| IR receiver, the remote's keys, overlays | works **in `main`** (11.10.2026), not in a release yet | kernel `0252`-`0254` (sunxi-cir at 8 MHz, keymap `rc-h713-fd02`), [`h713-keys`](docs/tools/h713-keys.md), [`h713-osd`](docs/tools/h713-osd.md) with `libh713osd`/`libh713geom`, the overlay channel in `h713-tv` | 11.10. on the HY310: all 14 IR keys, volume/mute/focus act, overlays 7-15 ms, 0 warp frames lost, signal loss and standby clean (`doku/193`); the HY300PRO-G-EU not yet |
 | HDCP 1.4 | works, device-local, since 05.10. | the boot loader reads the 288-byte key set out of *your* device's secure storage; our own EL3 service lets the crypto engine put it into the receiver's sink. No vendor code in the image | the open question of 03./04.10. is answered: the engine refuses key-select 3 towards readable memory **by design** (`ESR 0x11`) and accepts it only with the sink as destination **and** the DMA source inside the protected window - which is why it looked refused, and why the eFuse flag was never what it went by. Proven at the picture with a cleared sink as the control: `Desired` -> push -> `Enabled`, three times ([`docs/subsystems/hdcp.md`](docs/subsystems/hdcp.md)) |
 | HDCP 2.2 | works, device-local; session unproven | key read from *your* device at boot, never shipped. Unlike the 1.4 set this one **differs per device** (measured on two boards), so a foreign secure-storage region must never be restored onto a device | `h713-hdcp-key.service`; 02.10.: `h713-tv ctl hdcp` shows the key handed over and advertised; no 2.2 source has been on the input |
 

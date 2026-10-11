@@ -70,11 +70,15 @@ The same chip, the same module family, one more UART. What ships:
   Details and the device log: working journal `FB-BTRESET/REPORT.txt` in the working tree, not in this repo.
 
 Known and open: after a warm reboot the first HCI command sometimes goes unanswered (the helper retries;
-the cause is not found). The IR receiver is not used: the same remote sends the same NEC code for the
-mouse key and the microphone key, so the infrared path is parked. On the HY300PRO-G-EU the first attach after
+the cause is not found). **In `main` since 11.10.2026** the IR receiver works too (kernel `0252`-`0254`, `doku/193`): all 14
+keys; the mouse key and the microphone key both send `0x66` over IR because over IR they only ask for the Bluetooth
+pairing - their own functions (the air mouse, the voice stream) run over Bluetooth only. *Superseded 11.10.2026:* "The IR
+receiver is not used: the same remote sends the same NEC code for the mouse key and the microphone key, so the infrared
+path is parked." On the HY300PRO-G-EU the first attach after
 a cold start stalled at HCI command 0x1003 before `h713-bt-reset` existed; with it, that board has not been
-tried yet. The remote's keys arrive as input events, but nothing in the image acts on them except Power,
-which logind turns into a shutdown.
+tried yet. The remote's keys arrive as input events; in `v0.96-beta` nothing acts on them except Power, which logind turns
+into a shutdown - in `main` [h713-keys](../tools/h713-keys.md) does (volume, mute, focus) and [h713-osd](../tools/h713-osd.md)
+shows it.
 
 ## Using it
 

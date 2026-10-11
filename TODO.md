@@ -135,6 +135,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Warp liest `fb0` als Textur und zeichnet die Konsole mit (wie Stock, eigenes Paket)
       - **10.10. später abends (`doku/192`):** überholt durch den Gesamtplan - Einblendungen über Kanal 2 (2.43), die Konsole
         wird ein Terminal im Desktop (2.45), fbcon bleibt unverzerrte Notfallkonsole
+      - 11.10.: dazu entschieden (Marco): **keine Einblendung auf der Konsole** - ohne Signal wartet h713-osd auf das Bild (`doku/193`)
       - **10.10. abends:** Weg entschieden - der Warp liest `fb0` als Textur und zeichnet die Konsole durch Trapez und Modus,
         zusammen mit dem OSD (2.38, 9.9). Paket `arbeit/warp-konsole-20261010/` für eine eigene Sitzung (`doku/189` §5)
 - [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
@@ -183,6 +184,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       9.9). h713-power bekommt dafür eine Zwischenstufe "Aus angefordert" mit Schnittstelle zum Wählen und Abbrechen
       - 10.10. abends: der OSD-Weg (Texturen im Warp, `osd = on`) entsteht im Paket `arbeit/warp-konsole-20261010/` - Version 1
         nur Lautstärke, Stumm, Fokus; die Bauweise muss dieses Element später ohne Umbau aufnehmen (`doku/189` §5)
+      - **11.10.: überholt** - die Einblendungen laufen über `h713-osd` auf Kanal 2 (2.43, `doku/193`), nicht im Warp. Für dieses
+        Element fehlen noch: Text (eine Schrift für "Ausschalten in 15 s"), eine Auswahl (links/rechts, OK) in `libh713osd`, und
+        die Zwischenstufe in h713-power; die IR-Belegung (2.35) ist da
 - [ ] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
       über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
       Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung

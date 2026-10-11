@@ -48,7 +48,9 @@ Verified on hardware, with the date and the log in [STATUS.md](STATUS.md).
 | **Autofocus** | the vendor's search rebuilt: chessboard on the wall, the built-in camera, the focus motor - one command or one button, turns round at the ends of the travel ([guide](docs/guides/autofocus.md)) |
 | **Remote** | the stock Bluetooth remote: hold Left+Right to pair, all 16 keys and the mouse arrive as Linux input events, it reconnects on a key press after a reboot ([details](docs/subsystems/wifi.md#bluetooth)). Nothing in the image acts on the keys yet except Power, which shuts the projector down |
 
-Not there yet: the **IR receiver** (the same remote over infrared; parked, two keys share one code), **AV1 decode**,
+In `main`, for the next release: the **IR receiver**, the remote's keys acting (volume, mute, focus) and **overlays** over
+the picture, pre-distorted under the keystone ([h713-osd](docs/tools/h713-osd.md), [h713-keys](docs/tools/h713-keys.md)).
+Not there yet: **AV1 decode**,
 and there is **no desktop** in the
 shipped image - it runs `h713-tv`, not a compositor. Hardware video decode and the IOMMU come from cstenger's tree
 and are verified there, not re-tested in this image. Details and honest limits:
