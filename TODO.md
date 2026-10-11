@@ -23,29 +23,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **09.10. abends (Marco, 2.29):** mit `--standby` bauen, `power.conf` Vorgabe `short = poweroff` (Standby experimentell,
         per Schalter), Doku und Release-Text sagen "experimentell"; 2.30 ist gemessen und mit Kernel `0245` in `main`; die U-Boot-Zeile
         (`0097`) und der TF-A-Kommentar (`0030`) sind seit `doku/180` in den Forks
-- [ ] 1.1b **ARISC/crust: Taktik fürs Ausliefern, vor 1.1a besprechen** (Marco 10.10. nachts: "ich wollte crust eig zum
-      default machen"). Heute wählt der Gerätebaum je Board die Firmware (`firmware-name`): HY310 crust, jedes andere Board
-      die des Herstellers aus dem eigenen Abzug (`h713-arisc.bin`, `docs/subsystems/arisc.md`). Stand der zwei Modelle:
-      HY310 mit crust abgenommen (R1/R2, `doku/177`); HY300PRO-G-EU: crust läuft seit 09.10. (`doku/182`), Standby, HDCP
-      und Ton dort mit crust sind die offene Testmatrix aus 1.4 - **noch nicht gemessen**. Zu klären:
-      - crust als Vorgabe für welche Boards: die zwei mit eigener crust-Konfig (HY310, G-EU `projector05061226`); die andere
-        G-EU-Variante `projector09220931` (624 MHz) braucht eine eigene Konfig; Boards ohne gemessene Konfig (`hy300-pro`,
-        `hy300-t08`, `hy350`, `hy200-qz713-v2`) bekommen ohnehin kein Abbild, nur Testabbilder - dort crust mit
-        geliehener Konfig oder die Hersteller-Firmware?
-      - der Weg mit der Hersteller-Firmware (Treiber, `h713-extract`): als Rückfall behalten oder abbauen
-      - crust-Vorgabe ist nicht Standby-Vorgabe: Standby bleibt experimentell per Schalter (2.29)
-      - Voraussetzungen: crust-Fork veröffentlicht (1.6, mit der G-EU-Konfig `c5b536f`), crust als Submodul statt `CRUST_SRC`
-        (5.15), Spiegel `crust-h713/` neu
-      - im selben Gespräch: 2.32 (echtes Aus über crust statt U-Boot-Schleife, 2,4 W gegen 0,3 W Stock)
-      - **ENTSCHIEDEN 10.10. abends (Marco: "das klingt perfekt"):** **crust ist die Vorgabe auf jedem Board mit gemessener
-        crust-Konfiguration** (HY310, HY300PRO-G-EU `projector05061226`), weil nur damit Standby und das echte Aus (0,3 W,
-        `doku/188`) gehen. **Die Hersteller-Firmware bleibt als Rückfall** - immer aus dem eigenen Abzug mitinstalliert
-        (`h713-extract` -> `/lib/firmware/h713-arisc.bin`, wie heute) und **einen Befehl entfernt**, nicht abgebaut. Boards
-        ohne gemessene crust-Konfiguration (G-EU `projector09220931`, `hy300-pro`, `hy300-t08`, `hy350`, `hy200-qz713-v2`)
-        laufen weiter mit der Hersteller-Firmware; keine geliehene Konfiguration (PB5-Vorfall 19.09.). Standby ist nicht die
-        Vorgabe: `short = poweroff`, Standby per `h713-power set short standby` (2.29, 2.32). Umsetzung: **5.20**.
-        Vor dem Release außerdem: crust-Fork auf GitHub (1.6, Kopf `54e4a08`), crust als Submodul (5.15), Spiegel
-        `crust-h713/` auf dem Kopf (88 Patches); das Aus am HY310 ist seit `doku/190` gemessen (2.32)
 - [ ] 1.2a **Z4 zweiter Boot** (~80 s nach Strom-an, Ursache unbekannt, Journal war flüchtig - **06.10.: ist es im
       Abbild weiter**, `10-h713.conf` `Storage=volatile` schlägt `/var/log/journal`, `doku/155` §3): Journal im
       Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
@@ -69,6 +46,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         reproducible: yes, 273 Patches) und per FEL installiert (Bluetooth-Kopplung mitgesichert, Fernbedienung bleibt gekoppelt);
         bootet, 0 failed, crust läuft, PB5 beim Board-Manager. **Noch nicht** darauf gemessen: Ton (ThinkPad an HDMI), ein Standby
         mit Lüfter aus, ein Reload - als Kurztest beim nächsten Einschalten; dazu Watt im Standby
+      - 11.10.: läuft `main` 8f2c992 + Einblendungsfix als Schnell-Deploy; IR, Bluetooth, Einblendungen, Standby per RTC (Bild nach
+        6,5 s, DSP im 2. Versuch) gemessen (`doku/195`). Offen bleiben: Watt im Standby, `h713-bt-reset`, ob die Variante `verified`
+        heißt (Marco)
 - [ ] 1.6 Forks pushen (Stand 09.10. 20:xx, nach der HDCP-Härtung `doku/180`): U-Boot `h713-hy310` +11 (Kopf `7b1ea388da0d`, lokal
       Zweig `versuch/hdcp-haertung-uboot`: 0096 crust-Ablage, 0097 Gate-Zeile, 0098-0100 HDCP), TF-A `sun50i-h713` +25 (Kopf
       `5a7806892`, lokal `versuch/hdcp-haertung-tfa`: 0007-0027 Standby, 0028-0030 HDCP und Kommentar), sunxi-tools gleich;
@@ -113,7 +93,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (`uboot-h713/`, `tfa-h713/`, `crust-h713/`) und `mainline/patches/`. Gegen: private Adresse, Arbeitgeber-/Firmenname, Klarname
       (die Liste außerhalb des Repos, `sperr-scan.py` Regel 8), dazu Seriennummern/MACs. Nach dem Push gegen einen **frischen Klon**
       wiederholen (Gedächtnis "Identität in veröffentlichten Repos"). Erst dann gilt der Push als fertig
-- [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel
+- [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel - darin die Fernbedienung und die Einblendungen (`h713-keys`,
+      `h713-osd`, `doku/193`/`195`) statt "nothing acts on the remote's keys yet except Power" (7.18)
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
 
 ## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
@@ -128,23 +109,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (dokumentieren), Musterwechsel = Konsolenblitz, Client ohne Newline blockiert 500 ms,
       `evaluate()` gibt bei -ENOLCK sofort frei, Textreste „primary plane"
 - [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
-- [ ] 2.6 Audio: Abschalt-Plopp -> **9.11 (spaet)**, Messungen und widerlegte Hypothese dort
-- [ ] 2.7a **Konsole durch den Warp** (aus 2.7, Marco 06.10.: bleibt offen): ohne Signal zeigt h713-tv die Konsole auf
-      der primären Ebene, ohne Trapez und ohne Spiegelung - im ceiling-Modus steht sie auf dem Kopf. Wege: fbcon
-      `rotate_all = 2` für ceiling (nur Drehung, kein Spiegeln), Firmware-Spiegel per RPC (FB-MIRROR 2.3/F3) oder der
-      Warp liest `fb0` als Textur und zeichnet die Konsole mit (wie Stock, eigenes Paket)
-      - **10.10. später abends (`doku/192`):** überholt durch den Gesamtplan - Einblendungen über Kanal 2 (2.43), die Konsole
-        wird ein Terminal im Desktop (2.45), fbcon bleibt unverzerrte Notfallkonsole
-      - 11.10.: dazu entschieden (Marco): **keine Einblendung auf der Konsole** - ohne Signal wartet h713-osd auf das Bild (`doku/193`)
-      - **10.10. abends:** Weg entschieden - der Warp liest `fb0` als Textur und zeichnet die Konsole durch Trapez und Modus,
-        zusammen mit dem OSD (2.38, 9.9). Paket `arbeit/warp-konsole-20261010/` für eine eigene Sitzung (`doku/189` §5)
 - [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
       Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
 - [ ] 2.10 EDID: 1080p100/120 weiter hinter `ctl edid block1` (Entscheidung offen). **Geklärt 05.10.:** 1600×900,
       1920×1200, 1600×1200, 2560×1600 und 1024×768i rasten nicht, weil die Firmware-Tabelle sie nicht kennt —
       unsere EDID bietet sie auch nicht an (der i915 generiert sie selbst); kein Fehler unsererseits
-- [ ] 2.14 Reinstall setzt Einstellungen und Fernbedienungs-Pairing zurück — heute selbst erlebt (wifi.env → AP-Modus),
-      Lösung in **1.2b** (Installer übernimmt `/etc/h713`); Pairing bleibt zusätzlich offen
 - [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
       100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
 - [ ] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
@@ -198,6 +167,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **10.10. zu C1 (B):** der Stock-Kernel schaltet die **TVCAP-Domäne im Standby nie ab** (`tv303_pm_domains`: Eintrag
         `pd_tvcap` ganz Null, im ELF nachgelesen); MIPS-Park schon in `suspend`, ohne Wartezeiten. Versuch, wenn Standby wieder
         dran ist: TVCAP im Systemschlaf an lassen, dann prüfen, ob der INCAP-Stopp vor dem Suspend noch nötig ist
+      - 11.10. G-EU (`doku/195` Stufe 8): ein Standby, DSP im **2. Versuch**
 - [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
       im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
       über unser System oder über das Netzteil bei kleiner Last
@@ -215,16 +185,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **11.10. G-EU** (`doku/195` §4): nach dem Start aus dem Bypass lief der Warp mit ~50-56 fps (7-9 verspätete Bilder/s),
         ohne Wärmedrosselung; nach einem Aus/An 59,3 fps. Momentaufnahme davor GPU 600 statt 696 MHz, `sugov:0` 13 % - Verdacht
         GPU-Regler, nicht gemessen. Erste Messung des Pakets: Warp aus dem Bypass starten und `devfreq` mitschreiben
-- [ ] 2.48 **0251 nachmessen** (`doku/192` §3): Bildrate der Aufnahme mit 0251 während einer Einblendung bei laufendem Warp,
-      Farben genau, `premultiplied`/`coverage` (keine Blend-Mode-Eigenschaft), `zpos`-Wechsel bei laufendem Seitenwechsel,
-      Signalverlust/-rückkehr, Standby mit Einblendung, der G-EU
-      - **11.10. gemessen** (`doku/193` §5): 81 Wechsel in ~5 s über dem Warp - 0 verlorene Bilder; gerades Alpha (zwei Testbilder,
-        Marcos Augen); Signal weg/zurück und Standby sauber, die Einblendung kommt von selbst wieder. Farben: Marco "fühlt sich gut an".
-        Offen: der G-EU (720p, nur am Rechner gerendert); `zpos`-Wechsel bei laufendem Seitenwechsel ist mit dem Mitreisen im
-        Warp-Commit entfallen
-      - **11.10. G-EU gemessen** (`doku/195`): dieselben zehn Stufen auf 720p bestanden, Stufe 7 erst mit einem Fix in h713-osd
-        (das Stumm-Zeichen zieht nach, wenn der Warp nach dem Ring übernimmt). Offen nur noch: Farben genau gegen die Mock-ups
-        (bisher Marcos Auge)
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
@@ -280,11 +240,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Abzug mit `0600` anlegen, ihre Ordner `0700`. Die eigenen Sicherungsskripte schrieben das Archiv mit den privaten
         Host-Schlüsseln und `wifi.env` ebenso mit `0664` (behoben: `chmod 600`, `umask 077` im Installationsskript)
 - [ ] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
-- [ ] 5.13 `release/tor.sh` in einem gebauten Worktree: `sperr-scan` meldet die Bauerzeugnisse (`mainline/build/`, `*.img`) und
-      bricht an root-eigenen Dateien (`installer/tmp/`) ab; am 08.10. lief das Tor deshalb auf einer sauberen Kopie des
-      Commit-Stands. Entweder den Scan auf verfolgte Dateien plus Submodule begrenzen oder das Muster dokumentieren.
-      **09.10.:** Ursache gefunden - in einem Git-Worktree ist `.git` eine Datei, `sperr-scan.py` prüft `os.path.isdir` und
-      erkennt das Git nicht (Durchsicht B1); Behebung `os.path.exists`, eine Zeile. 09.10. abends bei 2.30 wieder getroffen. Bis dahin: Tore auf `git checkout-index`-Abzug
 - [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
       Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
       Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
@@ -374,6 +329,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 5.21 **`build/build.sh kernel` ohne U-Boot-Submodul:** `find_mkimage` baut `mkimage` aus dem U-Boot-Submodul und packt
       ohne es keinen FIT; Rückfall auf das `mkimage` des Systems (der Container hat `/usr/bin/mkimage` 2025.10). Gefunden im
       Paket `osd-a` (`doku/192` §6)
+      - 11.10.: `MKIMAGE=` als Handweg in `build.sh` (`8f2c992`, so im Container gebaut); offen: der Rückfall von selbst
 - [ ] 5.22 **Kernel-Patchordner aufräumen:** die zurückgenommene `0011-misc-add-sunxi-nsi.patch` liegt noch in `patches/kernel/`
       statt in `zurueckgenommen/`; `mainline/patches/README.md` nennt veraltet "0001 ... 0161, 149"
 
@@ -409,7 +365,6 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       `doku/182`/`184`/`185`). Nachziehen: README (Board-Liste: G-EU-Status), `docs/README.md`, `STATUS.md`, `ROADMAP.md`,
       `docs/known-issues.md` durchsehen, `boards/README.md`, `RELEASES.md`-Entwurf für 1.8; die Subsystem-Seiten sind schon
       nachgezogen (`e78eacd`, `4767f6f`). Vor 1.1a
-- [ ] 7.18 Release-Text: „nothing acts on the remote's keys yet except Power" so lassen? [M]
 
 ## 8 Lokale Werkzeuge
 
@@ -421,29 +376,6 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       entscheiden, ob `graphify label --backend claude-cli` erlaubt ist (schickt nur Symbolnamen)
 - [ ] 8.6 `settings.json.vor-mempalace-*` und `settings.json.vor-graphify-*` nach Probewoche löschen
 - [ ] 8.7 cognee gestrichen — in der Recherche-Datei vermerken
-- [ ] 8.8 HY310: seit 10.10. 00:30 per `poweroff` aus, steht im Gate (Marco), Sonoff an. Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.** Seit 09.10. abends `h713_gate=1`:
-      nach Netz-Ein wartet die Box auf die Taste, ein Fern-Hartreset kommt nur bis ins Gate (`referenz/geraete.md`)
-- [ ] 8.10 **Cloud-Guthaben für Offline-RE nutzen** (Marco 10.10.: ~100 $ Claude-Cloud, Sonnet; 2-3 Aufgaben). Ein privates
-      GitHub-Repo je Thema mit allem, was der Agent ohne unseren Tisch braucht: die Herstellerbinärdateien **ohne** Schlüssel,
-      Abzüge, Seriennummern/MACs, dazu von uns vorbereitete Disassemblies (OR1K über unser `or1k-elf-objdump`, AArch64 über
-      `llvm-objdump`, MIPS über capstone) und Ghidra-Exporte (Pseudo-C, Strings, Querverweise) - dann braucht der Agent kein
-      Ghidra, nur Python/capstone. Auftrag nach `~/.claude/AGENT-KONTEXT-VORLAGE.md` (Zweck, Rechtsrahmen Art. 6 RL 2009/24,
-      Ausgabe: ein BERICHT.md im Repo), Repos danach löschen. Heikles (TEE, HDCP) bleibt draußen. Themen:
-      - **A "Aus" wie Stock (2.32):** was tun Herstellerkernel, Stock-BL31 (SYSTEM_OFF) und die Hersteller-ARISC-Firmware
-        (`scp.bin`, OR1K) beim Ausschalten, dass das Gerät 0,3 W zieht - welche Schienen/Pins (Stock `standby_param`: vdd-cpu,
-        vdd-sys, vcc-pll, vcc-dram alle an PL6), PLLs, DRAM, wie die Taste weckt. Grundlage für "Aus über crust"
-      - **B Einschlafen ohne Hänger (C1):** wie der Herstellerkernel (tvcap/tvfe/INCAP-Module) die Aufnahme-DMA vor dem Suspend
-        anhält; dazu der Audio-DSP (msp) beim Aufwachen (2.37)
-      - **C klein: Log-Stufe der Display-Firmware (2.36):** in `display.bin` (MIPS) die Stelle, die `MsgHandle_SKE_SEND_EKS`
-        loggt, und welche elog-Stufe sie braucht; `display_cfg.xml`-Auswertung
-      - **Form (Marco 10.10.: "A B C sind perfekt"):** ein privates Repo, `main` mit Auftrag, Rechtsrahmen und gemeinsamen
-        Werkzeugen, je Thema ein Zweig (`a-aus`, `b-einschlafen`, `c-loglevel`) nur mit dessen Material; der Cloud-Agent arbeitet
-        auf seinem Zweig und liefert per PR (BERICHT.md, Notizen, ggf. Patch-Entwürfe). Lokal vorbereiten, dann anlegen
-      Repo anlegen und Hochladen = Veröffentlichen an einen Dienst -> nur mit Marcos Ja
-      - **10.10.: alle drei geliefert und ausgewertet** (`doku/187`; A und B direkt auf ihren Zweig, C als PR #1). Kernaussagen
-        gegen das Material nachgeprüft. Lokaler Klon mit allen Zweigen: `arbeit/cloud-re-20261010/repo`. Offen: Marco löscht das
-        Repo `well0nez/h713-offline-re` auf GitHub
-- [ ] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)
 
@@ -461,15 +393,9 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 9.5 Windows: Installer nie dort gelaufen; `sunxi-fel.exe` nach Rückmeldungen
 - [ ] 9.6 Zweites Augenpaar auf die Sicherheitspfade (Gate, Recovery, Installer-Verweigerungen)
 - [ ] 9.7 Recovery-Weg **von einer zweiten Person** gegangen; 20 Gate-Zyklen; HDMI-Modustabelle vollständig (aus `61` A.2)
-- [ ] 9.8 **Warp-Check: CPU-Last senken?** h713-warp hat heute 1 h 26 min CPU in ~10 h gebraucht (Prüfstand);
-      messen, wo die Zeit hingeht (Readback/`check`, Fence-Warten, Poll-Takt), und ob der GPU-Pfad bei
-      Identität ganz schlafen kann (Marco, 05.10.)
-- [ ] 9.9 Fernbedienung auswerten (war 2.2): 16 Tasten + Maus kommen als Events an, nur Power wirkt — braucht
-      einen Desktop/eine Oberfläche, die etwas damit anfängt (Marco 05.10.: spät)
-      - 10.10. abends: Lauter/Leiser, Stumm, Fokus (BLE: 115/114, 113, F4/F5) mit OSD im Paket `arbeit/warp-konsole-20261010/`
-        (neues `h713-keys`); Power bleibt bei `h713-power`
 - [ ] 9.10 Settings-Seite: PIN auf der Leinwand statt Passwort (wie Chromecast), Sitzungs-Cookie — braucht eine
       Einblendung im Warp/h713-tv (Marco 05.10.: später)
+      - 11.10.: Einblendungen gibt es jetzt (`h713-osd` über Kanal 2); für eine PIN fehlt noch Text in `libh713osd` (wie bei 2.38)
 - [ ] 9.11 **Abschalt-Plopp beim Poweroff** (aus 2.6). Gemessen 05.10. mit dem ThinkPad-Mikro
       (`arbeit/edid-sweep-20261005/plopp/`): Plopp 1 beim Stream-Ende (DAPM nimmt PL2) -> behoben, Kernel 0184.
       Plopp 2 am Poweroff-Ende, 42-54x Grundrauschen, immer +10,96 s nach dem Befehl; harter Netz-Cut mit PL2 an
@@ -942,3 +868,96 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
         (`0x66`, `doku/141`) - per IR nicht zu unterscheiden, per Bluetooth schon
       - **Erledigt 11.10.2026** in 2.35/2.46 (`doku/193`): 8 MHz und die Keymap ja, die PL9-Teile nein (sie antworteten auf die
         Hersteller-ARISC; mit crust PL9 Funktion 3, gemessen). Maus und Mikrofon `0x66` bestätigt
+- [x] 1.1b **ARISC/crust: Taktik fürs Ausliefern, vor 1.1a besprechen** (Marco 10.10. nachts: "ich wollte crust eig zum
+      default machen"). Heute wählt der Gerätebaum je Board die Firmware (`firmware-name`): HY310 crust, jedes andere Board
+      die des Herstellers aus dem eigenen Abzug (`h713-arisc.bin`, `docs/subsystems/arisc.md`). Stand der zwei Modelle:
+      HY310 mit crust abgenommen (R1/R2, `doku/177`); HY300PRO-G-EU: crust läuft seit 09.10. (`doku/182`), Standby, HDCP
+      und Ton dort mit crust sind die offene Testmatrix aus 1.4 - **noch nicht gemessen**. Zu klären:
+      - crust als Vorgabe für welche Boards: die zwei mit eigener crust-Konfig (HY310, G-EU `projector05061226`); die andere
+        G-EU-Variante `projector09220931` (624 MHz) braucht eine eigene Konfig; Boards ohne gemessene Konfig (`hy300-pro`,
+        `hy300-t08`, `hy350`, `hy200-qz713-v2`) bekommen ohnehin kein Abbild, nur Testabbilder - dort crust mit
+        geliehener Konfig oder die Hersteller-Firmware?
+      - der Weg mit der Hersteller-Firmware (Treiber, `h713-extract`): als Rückfall behalten oder abbauen
+      - crust-Vorgabe ist nicht Standby-Vorgabe: Standby bleibt experimentell per Schalter (2.29)
+      - Voraussetzungen: crust-Fork veröffentlicht (1.6, mit der G-EU-Konfig `c5b536f`), crust als Submodul statt `CRUST_SRC`
+        (5.15), Spiegel `crust-h713/` neu
+      - im selben Gespräch: 2.32 (echtes Aus über crust statt U-Boot-Schleife, 2,4 W gegen 0,3 W Stock)
+      - **ENTSCHIEDEN 10.10. abends (Marco: "das klingt perfekt"):** **crust ist die Vorgabe auf jedem Board mit gemessener
+        crust-Konfiguration** (HY310, HY300PRO-G-EU `projector05061226`), weil nur damit Standby und das echte Aus (0,3 W,
+        `doku/188`) gehen. **Die Hersteller-Firmware bleibt als Rückfall** - immer aus dem eigenen Abzug mitinstalliert
+        (`h713-extract` -> `/lib/firmware/h713-arisc.bin`, wie heute) und **einen Befehl entfernt**, nicht abgebaut. Boards
+        ohne gemessene crust-Konfiguration (G-EU `projector09220931`, `hy300-pro`, `hy300-t08`, `hy350`, `hy200-qz713-v2`)
+        laufen weiter mit der Hersteller-Firmware; keine geliehene Konfiguration (PB5-Vorfall 19.09.). Standby ist nicht die
+        Vorgabe: `short = poweroff`, Standby per `h713-power set short standby` (2.29, 2.32). Umsetzung: **5.20**.
+        Vor dem Release außerdem: crust-Fork auf GitHub (1.6, Kopf `54e4a08`), crust als Submodul (5.15), Spiegel
+        `crust-h713/` auf dem Kopf (88 Patches); das Aus am HY310 ist seit `doku/190` gemessen (2.32)
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): entschieden 10.10. abends (Marco: "das klingt perfekt"): crust Vorgabe auf gemessenen Boards, Hersteller-Firmware als Rückfall; Umsetzung **5.20**
+- [x] 2.6 Audio: Abschalt-Plopp -> **9.11 (spaet)**, Messungen und widerlegte Hypothese dort
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): war nur ein Verweis - der Abschalt-Plopp steht in **9.11**
+- [x] 2.7a **Konsole durch den Warp** (aus 2.7, Marco 06.10.: bleibt offen): ohne Signal zeigt h713-tv die Konsole auf
+      der primären Ebene, ohne Trapez und ohne Spiegelung - im ceiling-Modus steht sie auf dem Kopf. Wege: fbcon
+      `rotate_all = 2` für ceiling (nur Drehung, kein Spiegeln), Firmware-Spiegel per RPC (FB-MIRROR 2.3/F3) oder der
+      Warp liest `fb0` als Textur und zeichnet die Konsole mit (wie Stock, eigenes Paket)
+      - **10.10. später abends (`doku/192`):** überholt durch den Gesamtplan - Einblendungen über Kanal 2 (2.43), die Konsole
+        wird ein Terminal im Desktop (2.45), fbcon bleibt unverzerrte Notfallkonsole
+      - 11.10.: dazu entschieden (Marco): **keine Einblendung auf der Konsole** - ohne Signal wartet h713-osd auf das Bild (`doku/193`)
+      - **10.10. abends:** Weg entschieden - der Warp liest `fb0` als Textur und zeichnet die Konsole durch Trapez und Modus,
+        zusammen mit dem OSD (2.38, 9.9). Paket `arbeit/warp-konsole-20261010/` für eine eigene Sitzung (`doku/189` §5)
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): **wird nicht gemacht** (Marco): fbcon bleibt die unverzerrte Notfallkonsole (`doku/192`), keine Einblendung auf der Konsole (11.10., `doku/193`) - Einblendungen gibt es nur über dem HDMI-Bild. Das Paket `arbeit/warp-konsole-20261010/` (Warp zeichnet Konsole und OSD) ist damit überholt; Zweig `versuch/warp-konsole` bleibt als Beleg, Worktree entfernt
+- [x] 2.14 Reinstall setzt Einstellungen und Fernbedienungs-Pairing zurück — heute selbst erlebt (wifi.env → AP-Modus),
+      Lösung in **1.2b** (Installer übernimmt `/etc/h713`); Pairing bleibt zusätzlich offen
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): aufgegangen in **1.2b** (Einstellungen) und **2.54** (Kopplung)
+- [x] 2.48 **0251 nachmessen** (`doku/192` §3): Bildrate der Aufnahme mit 0251 während einer Einblendung bei laufendem Warp,
+      Farben genau, `premultiplied`/`coverage` (keine Blend-Mode-Eigenschaft), `zpos`-Wechsel bei laufendem Seitenwechsel,
+      Signalverlust/-rückkehr, Standby mit Einblendung, der G-EU
+      - **11.10. gemessen** (`doku/193` §5): 81 Wechsel in ~5 s über dem Warp - 0 verlorene Bilder; gerades Alpha (zwei Testbilder,
+        Marcos Augen); Signal weg/zurück und Standby sauber, die Einblendung kommt von selbst wieder. Farben: Marco "fühlt sich gut an".
+        Offen: der G-EU (720p, nur am Rechner gerendert); `zpos`-Wechsel bei laufendem Seitenwechsel ist mit dem Mitreisen im
+        Warp-Commit entfallen
+      - **11.10. G-EU gemessen** (`doku/195`): dieselben zehn Stufen auf 720p bestanden, Stufe 7 erst mit einem Fix in h713-osd
+        (das Stumm-Zeichen zieht nach, wenn der Warp nach dem Ring übernimmt). Offen nur noch: Farben genau gegen die Mock-ups
+        (bisher Marcos Auge)
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): gemessen am HY310 (`doku/193` §5) und am G-EU (`doku/195`); die Farben nach Marcos Auge ("fühlt sich gut an", "passt") - kein eigener Punkt mehr
+- [x] 5.13 `release/tor.sh` in einem gebauten Worktree: `sperr-scan` meldet die Bauerzeugnisse (`mainline/build/`, `*.img`) und
+      bricht an root-eigenen Dateien (`installer/tmp/`) ab; am 08.10. lief das Tor deshalb auf einer sauberen Kopie des
+      Commit-Stands. Entweder den Scan auf verfolgte Dateien plus Submodule begrenzen oder das Muster dokumentieren.
+      **09.10.:** Ursache gefunden - in einem Git-Worktree ist `.git` eine Datei, `sperr-scan.py` prüft `os.path.isdir` und
+      erkennt das Git nicht (Durchsicht B1); Behebung `os.path.exists`, eine Zeile. 09.10. abends bei 2.30 wieder getroffen. Bis dahin: Tore auf `git checkout-index`-Abzug
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): behoben 11.10. (`3bfdfa3`: `sperr-scan` erkennt die `.git`-Datei eines Worktrees und prüft nur verfolgte Dateien); das Tor lief am 11.10. im gebauten G-EU-Worktree grün
+- [x] 7.18 Release-Text: „nothing acts on the remote's keys yet except Power" so lassen? [M]
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): überholt: seit 11.10. wirken Lautstärke, Stumm und Fokus (`h713-keys`, `doku/193`); der Release-Text nennt das mit **1.8**
+- [x] 8.8 HY310: seit 10.10. 00:30 per `poweroff` aus, steht im Gate (Marco), Sonoff an. Nachtregel „herunterfahren" offen. **Vor Sonoff-aus USB ziehen.** Seit 09.10. abends `h713_gate=1`:
+      nach Netz-Ein wartet die Box auf die Taste, ein Fern-Hartreset kommt nur bis ins Gate (`referenz/geraete.md`)
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): Zustandsnotiz vom 10.10., überholt - der Stand der Geräte steht in `referenz/geraete.md`
+- [x] 8.10 **Cloud-Guthaben für Offline-RE nutzen** (Marco 10.10.: ~100 $ Claude-Cloud, Sonnet; 2-3 Aufgaben). Ein privates
+      GitHub-Repo je Thema mit allem, was der Agent ohne unseren Tisch braucht: die Herstellerbinärdateien **ohne** Schlüssel,
+      Abzüge, Seriennummern/MACs, dazu von uns vorbereitete Disassemblies (OR1K über unser `or1k-elf-objdump`, AArch64 über
+      `llvm-objdump`, MIPS über capstone) und Ghidra-Exporte (Pseudo-C, Strings, Querverweise) - dann braucht der Agent kein
+      Ghidra, nur Python/capstone. Auftrag nach `~/.claude/AGENT-KONTEXT-VORLAGE.md` (Zweck, Rechtsrahmen Art. 6 RL 2009/24,
+      Ausgabe: ein BERICHT.md im Repo), Repos danach löschen. Heikles (TEE, HDCP) bleibt draußen. Themen:
+      - **A "Aus" wie Stock (2.32):** was tun Herstellerkernel, Stock-BL31 (SYSTEM_OFF) und die Hersteller-ARISC-Firmware
+        (`scp.bin`, OR1K) beim Ausschalten, dass das Gerät 0,3 W zieht - welche Schienen/Pins (Stock `standby_param`: vdd-cpu,
+        vdd-sys, vcc-pll, vcc-dram alle an PL6), PLLs, DRAM, wie die Taste weckt. Grundlage für "Aus über crust"
+      - **B Einschlafen ohne Hänger (C1):** wie der Herstellerkernel (tvcap/tvfe/INCAP-Module) die Aufnahme-DMA vor dem Suspend
+        anhält; dazu der Audio-DSP (msp) beim Aufwachen (2.37)
+      - **C klein: Log-Stufe der Display-Firmware (2.36):** in `display.bin` (MIPS) die Stelle, die `MsgHandle_SKE_SEND_EKS`
+        loggt, und welche elog-Stufe sie braucht; `display_cfg.xml`-Auswertung
+      - **Form (Marco 10.10.: "A B C sind perfekt"):** ein privates Repo, `main` mit Auftrag, Rechtsrahmen und gemeinsamen
+        Werkzeugen, je Thema ein Zweig (`a-aus`, `b-einschlafen`, `c-loglevel`) nur mit dessen Material; der Cloud-Agent arbeitet
+        auf seinem Zweig und liefert per PR (BERICHT.md, Notizen, ggf. Patch-Entwürfe). Lokal vorbereiten, dann anlegen
+      Repo anlegen und Hochladen = Veröffentlichen an einen Dienst -> nur mit Marcos Ja
+      - **10.10.: alle drei geliefert und ausgewertet** (`doku/187`; A und B direkt auf ihren Zweig, C als PR #1). Kernaussagen
+        gegen das Material nachgeprüft. Lokaler Klon mit allen Zweigen: `arbeit/cloud-re-20261010/repo`. Offen: Marco löscht das
+        Repo `well0nez/h713-offline-re` auf GitHub
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): alle drei Aufgaben geliefert und ausgewertet (`doku/187`); übrig ist nur Marcos Löschen des Repos auf GitHub
+- [x] 8.9 L018 (`.127`) und HY350 (`.163`) heute nicht erreichbar
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): Tagesnotiz - die Adressen stehen in `referenz/geraete.md`
+- [x] 9.8 **Warp-Check: CPU-Last senken?** h713-warp hat heute 1 h 26 min CPU in ~10 h gebraucht (Prüfstand);
+      messen, wo die Zeit hingeht (Readback/`check`, Fence-Warten, Poll-Takt), und ob der GPU-Pfad bei
+      Identität ganz schlafen kann (Marco, 05.10.)
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): aufgegangen in **2.47** (Warp sparsamer)
+- [x] 9.9 Fernbedienung auswerten (war 2.2): 16 Tasten + Maus kommen als Events an, nur Power wirkt — braucht
+      einen Desktop/eine Oberfläche, die etwas damit anfängt (Marco 05.10.: spät)
+      - 10.10. abends: Lauter/Leiser, Stumm, Fokus (BLE: 115/114, 113, F4/F5) mit OSD im Paket `arbeit/warp-konsole-20261010/`
+        (neues `h713-keys`); Power bleibt bei `h713-power`
+      - **11.10. geschlossen** (Durchsicht der TODO mit Marco): erledigt mit 2.46 (`h713-keys`, 11.10.): Lautstärke, Stumm, Fokus wirken per IR und Bluetooth, Home/Menü/Zurück/Pfeile werden erkannt; was die Navigationstasten tun, gehört zur Oberfläche (9.4, 2.45)
