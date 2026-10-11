@@ -758,6 +758,7 @@ fi
 # h713-power on every image: the power key's countdown (TODO 2.38); standby in it only where allowed above
 t "h713-power linked"         test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
 t "h713-mips-restart"         test -x "$TREE/usr/local/sbin/h713-mips-restart"
+t "h713-tv-rescue"            test -f "$TREE/etc/systemd/system/h713-tv-rescue.service"
 if [[ -n "$CRUST_BIN" ]]; then
 	t "crust as $BOARD-crust.bin" cmp -s "$CRUST_BIN" "$TREE/lib/firmware/$BOARD-crust.bin"
 else
