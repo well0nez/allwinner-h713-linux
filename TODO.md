@@ -26,6 +26,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 1.2a **Z4 zweiter Boot** (~80 s nach Strom-an, Ursache unbekannt, Journal war flüchtig - **06.10.: ist es im
       Abbild weiter**, `10-h713.conf` `Storage=volatile` schlägt `/var/log/journal`, `doku/155` §3): Journal im
       Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
+      - 11.10. nachts: der G-EU startete um 04:57 ohne Zutun neu (UART-ESP gleichzeitig - eher Strom); das Journal davor war
+        weg, die Ursache nicht mehr feststellbar (`doku/196` §3) - ein weiterer Grund für das persistente Journal
 - [ ] 1.2b **Reinstall über unser Layout verwirft `/etc/h713`** (wifi.env → AP-Modus, warp.conf, keystone,
       tvconfig): der Installer soll die Nutzer-Einstellungen wie die 44 Herstellerdateien zurücklesen und
       übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
@@ -185,6 +187,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **11.10. G-EU** (`doku/195` §4): nach dem Start aus dem Bypass lief der Warp mit ~50-56 fps (7-9 verspätete Bilder/s),
         ohne Wärmedrosselung; nach einem Aus/An 59,3 fps. Momentaufnahme davor GPU 600 statt 696 MHz, `sugov:0` 13 % - Verdacht
         GPU-Regler, nicht gemessen. Erste Messung des Pakets: Warp aus dem Bypass starten und `devfreq` mitschreiben
+      - **11.10. nachts gemessen und zum Teil erledigt** (`doku/196`, Paket `arbeit/warp-sparsam-20261011/`): CPU-Last mit Warp
+        **halbiert** (alle Kerne 5,9 → 2,9-3,1 %) - schedutil `rate_limit_us` 462 µs → 20 ms per tmpfiles (`179ba83`), h713-tv
+        zählt verspätete Bilder statt je Bild eine Journalzeile (`d6574fa`). Compilerflags: kein Effekt. GPU-Regler: unauffällig.
+        Die fehlenden Bilder (30-41 fps) setzt die Aufnahme selbst, am Flip-Zeiger gemessen, auch ohne Warp; ein afbd-Versuch
+        dagegen ist widerlegt. **Offen:** (a) mit bewegtem Bild messen, ob die Aufnahme dann 60 liefert (`zeiger.py` im
+        Bypass und mit Warp) - bei stehendem Bild fallen vermutlich nur Wiederholungen weg; (b) ein Render-Durchgang je Bild
+        statt zwei (NV12-Ziel als ein R8-Bild Breite × 1,5 Höhe): ~250 µs CPU je Bild weniger, braucht Augen an der Wand
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
@@ -208,6 +217,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10. G-EU (`doku/195` §2): **ja, sie wiederholt** - aber alle ~40 ms (Softwarewiederholung des Kernels), per IR ~130 ms; die
         Lautstärke rast beim Halten. Angleichen: `EVIOCSREP` auf dem BLE-Gerät oder in h713-keys drosseln. Dazu: **OK kommt per
         Bluetooth als `KEY_SELECT`** (HID "Menu Pick", 353), per IR als `KEY_OK` - h713-keys soll beide als OK lesen
+      - 11.10. nachts gebaut (`doku/196` §1): `EVIOCSREP` 500/125 ms für die Bluetooth-Fernbedienung (wie IR), `KEY_SELECT` =
+        `KEY_OK`; Rechner-Tests 22/22. Zweig `versuch/nacht-b` (`3f620ad`), am G-EU aufgespielt - **Marco hält Lauter per
+        Bluetooth**, dann nach `main`
 - [ ] 2.53 **Einblendungen: Feinschliff, optional** (11.10.): Ausblenden in Stufen statt schlagartig; das Stumm-Zeichen in stark
       gestauchten Bildecken schärfer (Mehrfachabtastung beim Vorverzerren); die Einblendungen am G-EU (720p) am Gerät ansehen
       (**11.10. erledigt**, `doku/195`: Lage und Größe passen, Marco)
@@ -218,11 +230,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `h713-remote-pair forget`; der laufende Dienst sucht dann von selbst und koppelt, sobald Links+Rechts gehalten wird -
       **am G-EU 11.10. 02:40 so gemessen** (forget → gekoppelt und verbunden in Sekunden, `arbeit/einblendungen-geu-20261011/`).
       Dabei mitnehmen: `h713-remote-pair` schreibt unter systemd die Erfolgszeilen ("found", "ok paired") gepuffert und damit nicht
-      ins Journal (nur die Fehler, stderr) - Zeilenpuffer setzen
+      ins Journal (nur die Fehler, stderr) - Zeilenpuffer setzen (**11.10. nachts erledigt**, `71e0fd0`)
 - [ ] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
       Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
       tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
       die Fernbedienungs-Geräte vom VT fernhalten oder den getty auf tty1 ändern
+      - 11.10. nachts: `sunxi-ir` hängt am Handler `kbd` (`/proc/bus/input/devices`), die Tasten gehen also ans VT; der Weg ins
+        Login-Feld selbst ist nicht gemessen (braucht eine gedrückte Taste)
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
 - [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
@@ -255,6 +269,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       R_WDOG als Netz im Schlaf in `standby.md`. Aus dem Code gelesen, nicht gesehen: bricht ein Standby nach
       `msp_suspend`, aber vor dem Park ab, bleibt msp auf "error" und `h713-mips-restart` läuft nicht (nur bei "parked")
       - Ton bis zum Neustart weg; gehört zu 5.14.
+      - 11.10. nachts erledigt (`77c8920`): 720p+Warp in `known-issues` (durch 0183 behoben), Lüfterdrehzahl, ARISC-Größe; R_WDOG
+        stand schon in `standby.md`. Offen: die Commit-Texte (nächster Serienumbau), `docs/uboot/README.md` (nach 1.6)
 - [ ] 5.17 **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
       G-EU-Testbau 09.10. stieg in Schritt 7 (Rootfs) aus, nach ~25 min Kernel/Mesa/Sysroot; danach lief alles von vorn, und
       eine Kommentaränderung im Gerätebaum-Patch kostete den Kernel noch einmal. Heute gibt es `--skip-bl31/-uboot/-kernel/
@@ -326,12 +342,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       7. **Später (eigenes Paket, nur mit Besitzerbericht und Registerbeweis):** crust ohne Standby für fremde Boards - nur Aus
          und der HDMI-Vertrag, die Pins (PL6, PB5, PL3, Taste) aus `standby_param` des eigenen Stock-Gerätebaums; dann hätten
          auch sie 0,3 W im Aus, ohne dass wir ihr DRAM kennen
-- [ ] 5.21 **`build/build.sh kernel` ohne U-Boot-Submodul:** `find_mkimage` baut `mkimage` aus dem U-Boot-Submodul und packt
-      ohne es keinen FIT; Rückfall auf das `mkimage` des Systems (der Container hat `/usr/bin/mkimage` 2025.10). Gefunden im
-      Paket `osd-a` (`doku/192` §6)
-      - 11.10.: `MKIMAGE=` als Handweg in `build.sh` (`8f2c992`, so im Container gebaut); offen: der Rückfall von selbst
-- [ ] 5.22 **Kernel-Patchordner aufräumen:** die zurückgenommene `0011-misc-add-sunxi-nsi.patch` liegt noch in `patches/kernel/`
-      statt in `zurueckgenommen/`; `mainline/patches/README.md` nennt veraltet "0001 ... 0161, 149"
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
@@ -961,3 +971,11 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
       - 10.10. abends: Lauter/Leiser, Stumm, Fokus (BLE: 115/114, 113, F4/F5) mit OSD im Paket `arbeit/warp-konsole-20261010/`
         (neues `h713-keys`); Power bleibt bei `h713-power`
       - **11.10. geschlossen** (Durchsicht der TODO mit Marco): erledigt mit 2.46 (`h713-keys`, 11.10.): Lautstärke, Stumm, Fokus wirken per IR und Bluetooth, Home/Menü/Zurück/Pfeile werden erkannt; was die Navigationstasten tun, gehört zur Oberfläche (9.4, 2.45)
+- [x] 5.21 **`build/build.sh kernel` ohne U-Boot-Submodul:** `find_mkimage` baut `mkimage` aus dem U-Boot-Submodul und packt
+      ohne es keinen FIT; Rückfall auf das `mkimage` des Systems (der Container hat `/usr/bin/mkimage` 2025.10). Gefunden im
+      Paket `osd-a` (`doku/192` §6)
+      - 11.10.: `MKIMAGE=` als Handweg in `build.sh` (`8f2c992`, so im Container gebaut); offen: der Rückfall von selbst
+      - **11.10. geschlossen:** erledigt 11.10. nachts (`ee4b5b8`, `doku/196`): ohne U-Boot-Submodul packt das `mkimage` des Systems den FIT; ein vorhandenes, kaputtes Submodul bleibt ein Fehler. Im echten Kernelbau des Pakets `warp-sparsam` bestätigt (lief ohne `MKIMAGE=` durch)
+- [x] 5.22 **Kernel-Patchordner aufräumen:** die zurückgenommene `0011-misc-add-sunxi-nsi.patch` liegt noch in `patches/kernel/`
+      statt in `zurueckgenommen/`; `mainline/patches/README.md` nennt veraltet "0001 ... 0161, 149"
+      - **11.10. geschlossen:** erledigt 11.10. nachts (`647ad00`): 0011 liegt in `zurueckgenommen/`, der Serien-Index zählt 278 (0001 … 0254); `series` und Eingabe-Hash unverändert
