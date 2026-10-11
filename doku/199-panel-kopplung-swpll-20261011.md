@@ -57,3 +57,14 @@ Panel-zuerst, `main`). 1080p60 gekoppelt mit Zufallsphase: 53-59 von 60 (vorher 
   Phase sauber aufnehmen (erwartet: ein Fenster mit 0 Sprüngen).
 - Ob die Kopplungs-Werte in den Installer sollen (720p-Boards: `work_mode 0`, `vtotal ±5`, `pclk 74250000`) - Entscheidung Marco;
   `pclk` ist dort eine Rechengröße der Firmware, kein Takt.
+
+## 6 Nachtrag 12:1x UTC - die Kopplung flackert
+
+Marco (zurück am Gerät): "es flackert". Mit der Kopplung wechselt die Firmware VTotal **jedes Bild** zwischen 755 und 756
+(Frequenz-Dither der Nachführung in Zustand 1), und die Hintergrundbeleuchtung ist an den Vsync gekoppelt (`display_cfg.xml`:
+`pwm vs_lock='1'`) - die PWM-Periode springt mit. Original-`display_cfg.xml` zurück (`work_mode 2`, `vtotal 760` fest,
+`pclk 62000000`), Neustart 12:0x UTC, Kopplung aus (Modus 0, VTotal 760 fest). **Die Kopplung ist damit so nicht produktreif:**
+vor einem weiteren Versuch müsste entweder die PWM von der Vsync-Kopplung gelöst werden (`vs_lock='0'`, unsere Datei) oder das
+Dithern aufhören (Zustand 3 der Firmware, der nie erreicht wird) - beides offen, beides nur mit Marco am Gerät zu beurteilen.
+Die EDID-Regel (`doku/198`) bleibt die einzige produktreife Verbesserung; für Quellen, die auf 1080p60 bestehen, ist der Weg
+offen (TODO 2.57).
