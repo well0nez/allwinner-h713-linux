@@ -70,3 +70,15 @@ Kernel, afbd und h713-warp wie vor der Nacht; h713-tv mit gezählten timing-Zeil
 h713-remote-pair aus den Fixes (`7dff057e…`, `4dee9a7b…`), `/etc/tmpfiles.d/h713-cpufreq.conf` (20 ms); `warp.conf` wieder
 wie vorher (Bypass), Regler wieder schedutil, GPU-Mindesttakt wieder 288 MHz. Sicherungen `/root/sicherung-nacht-b/`,
 `/root/sicherung-warp-sparsam/`.
+
+## 5 Für den Morgen (mit Marco)
+
+1. **Bluetooth halten** (2.52): Lauter per Bluetooth gedrückt halten - steigt die Lautstärke jetzt so ruhig wie per IR (etwa 8
+   Schritte pro Sekunde nach einer halben Sekunde)? Journal: `listening on /dev/input/eventN, repeat 500/125 ms as over IR`.
+   Dann `versuch/nacht-b` (`3f620ad`) nach `main`.
+2. **Bewegtes Bild** (2.47 a): ein Video am ThinkPad, dann `zeiger.py 5 bypass` mit Warp aus und an
+   (`arbeit/warp-sparsam-20261011/zeiger.py`, nach `/run` kopieren). 60 Wechsel/s mit Bewegung = die Aufnahme lässt bei
+   stehendem Bild nur Wiederholungen weg, alles gut.
+3. **Ein Render-Durchgang** (2.47 b): erst bauen, wenn jemand auf die Wand schaut.
+4. **Frage:** Hat jemand den G-EU um 04:57 vom Strom genommen?
+5. Danach wie geplant: Push-Entscheidung (1.6/1.7), Release-Neubau 1.1a.
