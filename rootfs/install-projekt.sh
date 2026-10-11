@@ -624,6 +624,8 @@ install -m 0755 "$H713_POWER_SRC/h713-power" "$TREE/usr/local/sbin/h713-power"
 # this after the standby when sun50i-h713-mips says parked (docs/tools/h713-power.md).
 install -m 0755 "$H713_POWER_SRC/h713-mips-restart" "$TREE/usr/local/sbin/h713-mips-restart"
 install -m 0644 "$H713_POWER_SRC/h713-power.service" "$TREE/etc/systemd/system/h713-power.service"
+# h713-tv@.service names it as OnFailure: one MIPS reload per boot when h713-tv gave up (TODO 2.63)
+install -m 0644 "$H713_POWER_SRC/h713-tv-rescue.service" "$TREE/etc/systemd/system/h713-tv-rescue.service"
 ln -sfn ../h713-power.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
 [[ -f "$TREE/etc/h713/power.conf" ]] || install -m 0644 "$H713_POWER_SRC/power.conf" "$TREE/etc/h713/power.conf"
 info "/usr/local/sbin/h713-power, h713-power.service enabled, /etc/h713/power.conf"

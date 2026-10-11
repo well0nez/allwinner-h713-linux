@@ -26,6 +26,9 @@ After=dev-%i.device
 # that is the intention.
 StartLimitIntervalSec=60
 StartLimitBurst=3
+# ... and then the display MIPS is reloaded once (h713-tv-rescue.service, TODO 2.63): after a warm start the
+# MIPS can die while Linux registers its routines, and every open of the receiver is refused.
+OnFailure=h713-tv-rescue.service
 
 [Service]
 Type=exec

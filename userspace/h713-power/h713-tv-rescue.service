@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# The net under a dark wall after a warm start (TODO 2.63, doku/202 section 7). Sometimes the display MIPS,
+# started by U-Boot moments before, dies in its routine-table resync while Linux registers its routines; the
+# routine lock stays taken, the HDMI receiver refuses every open ("the callbacks cannot be registered (-16)"),
+# and h713-tv gives up after its three starts. h713-tv@.service names this unit as OnFailure: it reloads the
+# MIPS once - halt, load display.bin, start, receiver, h713-tv and the warp again (h713-mips-restart; by hand
+# it brought the picture back in 3.4 s on the HY300PRO-G-EU, 11.10.2026). Once per boot: the marker in /run
+# keeps a MIPS that dies again from a loop. The cause itself is still open.
+[Unit]
+Description=H713: reload the display MIPS once when h713-tv gave up (TODO 2.63)
+ConditionPathExists=!/run/h713-tv-rescued
+ConditionPathExists=/usr/local/sbin/h713-mips-restart
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/touch /run/h713-tv-rescued
+ExecStart=/usr/local/sbin/h713-mips-restart
