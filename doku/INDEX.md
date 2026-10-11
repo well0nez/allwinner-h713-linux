@@ -16,7 +16,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `README.md` | `doku/88` |
 | `RELEASES.md` | `doku/134`, `doku/142` |
 | `ROADMAP.md` | `doku/104`, `doku/134`, `doku/70`, `doku/71` |
-| `STATUS.md` | `doku/00`, `doku/104`, `doku/114`, `doku/121`, `doku/124`, `doku/125`, `doku/134`, `doku/136`, `doku/137`, `doku/139`, `doku/142`, `doku/181`, `doku/193`, `doku/61` |
+| `STATUS.md` | `doku/00`, `doku/104`, `doku/114`, `doku/121`, `doku/124`, `doku/125`, `doku/134`, `doku/136`, `doku/137`, `doku/139`, `doku/142`, `doku/181`, `doku/193`, `doku/195`, `doku/61` |
 | `boards/README.md` | `doku/121` |
 | `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184`, `doku/185` |
 | `boards/hy300-t08/README.md` | `doku/121` |
@@ -241,6 +241,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 4 |
 | [`193-einblendungen-tasten-und-h713-osd-20261011.md`](193-einblendungen-tasten-und-h713-osd-20261011.md) | Analyse | 2026-10-11 | 193 - Einblendungen über dem Bild: die Tasten per IR und Bluetooth, h713-osd vorverzerrt über dem Warp (11.10.2026) | 4 |
 | [`194-handoff-20261011-frueh.md`](194-handoff-20261011-frueh.md) | Handoff | 2026-10-11 | 194 - Handoff 11.10.2026 früh: Fernbedienung und Einblendungen sind in `main` (nicht gepusht); als Nächstes dieselben Prüfstufen am HY300PRO-G-EU | - |
+| [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 1 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -398,7 +399,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-45 von 253 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+45 von 254 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

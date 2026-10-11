@@ -212,6 +212,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Warp (14 %). Ansätze: fester Takt oder `rate_limit_us`; `-O3 -mcpu=cortex-a53`, LTO, NEON; der Warp committet selbst statt
       über den `h713-tv`-Socket; EGLImage je Slot einmal; GPU-Fences statt Abfragen; gleiche Bilder überspringen; Luma/Chroma in
       einem Durchgang; GPU-Takt
+      - **11.10. G-EU** (`doku/195` §4): nach dem Start aus dem Bypass lief der Warp mit ~50-56 fps (7-9 verspätete Bilder/s),
+        ohne Wärmedrosselung; nach einem Aus/An 59,3 fps. Momentaufnahme davor GPU 600 statt 696 MHz, `sugov:0` 13 % - Verdacht
+        GPU-Regler, nicht gemessen. Erste Messung des Pakets: Warp aus dem Bypass starten und `devfreq` mitschreiben
 - [ ] 2.48 **0251 nachmessen** (`doku/192` §3): Bildrate der Aufnahme mit 0251 während einer Einblendung bei laufendem Warp,
       Farben genau, `premultiplied`/`coverage` (keine Blend-Mode-Eigenschaft), `zpos`-Wechsel bei laufendem Seitenwechsel,
       Signalverlust/-rückkehr, Standby mit Einblendung, der G-EU
@@ -219,6 +222,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Marcos Augen); Signal weg/zurück und Standby sauber, die Einblendung kommt von selbst wieder. Farben: Marco "fühlt sich gut an".
         Offen: der G-EU (720p, nur am Rechner gerendert); `zpos`-Wechsel bei laufendem Seitenwechsel ist mit dem Mitreisen im
         Warp-Commit entfallen
+      - **11.10. G-EU gemessen** (`doku/195`): dieselben zehn Stufen auf 720p bestanden, Stufe 7 erst mit einem Fix in h713-osd
+        (das Stumm-Zeichen zieht nach, wenn der Warp nach dem Ring übernimmt). Offen nur noch: Farben genau gegen die Mock-ups
+        (bisher Marcos Auge)
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
@@ -226,6 +232,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       unvollständig, RTS/CTS?). Ursache offen; zuerst prüfen, ob es mit Last (Warp, WLAN) zusammenfällt. Dabei aufgefallen: am HY310
       ist zurzeit **keine Fernbedienung gekoppelt** (`h713-remote-pair status`: no remote bonded) - 11.10. neu gekoppelt (der erste
       Versuch kam im Scan nicht vor, der zweite klappte; `doku/193` §3)
+      - 11.10. G-EU (`doku/195`): kein HCI-Fehler im dmesg eines Boots mit Kopplung, Tasten, Maus und Mikro-Ton
 - [ ] 2.50 **Lüfter-Notaus (Paket FB-SAFETY 0001/0002)**, geparkt seit 02.10. und beim Umzug nach `TODO.md` am 05.10. verloren
       gegangen, wiedergefunden im Patch-Abgleich 11.10.: `hy310-board-mgr` schaltet nach einem Lüfterstillstand als Rückfall hart aus,
       und der Stillstand-Poweroff greift erst, wenn der Tacho einmal Drehung gemeldet hat. Am Gerät nie gemessen (Test B7, `doku/134`:
@@ -233,11 +240,25 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.51 **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
       (60-Byte-HID-Berichte, ~63/s, ~3,8 kB/s), Format unbekannt - kein IMA-ADPCM, kein fester Kopf, komprimiert. Codec aus der
       Sprach-App/dem Audio-HAL der Stock-Firmware bestimmen, dann `CONFIG_HIDRAW` und ein Dekoder in Userspace. Nicht dringend
+      - 11.10. G-EU (`doku/195`): ~125 Pakete/s (≈7,5 kB/s), doppelt so viele wie am HY310 - vielleicht eine andere Abtastrate;
+        Nutzdaten in `arbeit/einblendungen-geu-20261011/laeufe/mikro-geu/handle34.txt`
 - [ ] 2.52 **Tasten, Reste aus 2.46** (11.10.): welche Taste die Eingangsumschaltung HDMI/Konsole bekommt (Marco; `keys.conf`
       `input_keys`, leer); welche Richtung "Fokus hoch" an der Wand fährt (beide Lesarten gesehen); ob die BLE-Fernbedienung beim
       Halten wiederholt (dann fährt der Fokus durch wie per IR)
+      - 11.10. G-EU (`doku/195` §2): **ja, sie wiederholt** - aber alle ~40 ms (Softwarewiederholung des Kernels), per IR ~130 ms; die
+        Lautstärke rast beim Halten. Angleichen: `EVIOCSREP` auf dem BLE-Gerät oder in h713-keys drosseln. Dazu: **OK kommt per
+        Bluetooth als `KEY_SELECT`** (HID "Menu Pick", 353), per IR als `KEY_OK` - h713-keys soll beide als OK lesen
 - [ ] 2.53 **Einblendungen: Feinschliff, optional** (11.10.): Ausblenden in Stufen statt schlagartig; das Stumm-Zeichen in stark
       gestauchten Bildecken schärfer (Mehrfachabtastung beim Vorverzerren); die Einblendungen am G-EU (720p) am Gerät ansehen
+      (**11.10. erledigt**, `doku/195`: Lage und Größe passen, Marco)
+- [ ] 2.54 **Fernbedienung jederzeit neu koppeln** (Marco 11.10., `doku/195` §4): `h713-remote-pair watch` koppelt nur, wenn gar
+      keine Fernbedienung bekannt ist; ist der Bund veraltet (an einer anderen Box gekoppelt - die Fernbedienung merkt sich nur
+      eine), versucht es endlos neu zu verbinden, und Links+Rechts bewirkt nichts. Wie Stock: solange die bekannte nicht verbunden
+      ist, nebenher nach einer im Kopplungsmodus suchen und sie neu koppeln (den alten Bund ersetzen)
+- [ ] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
+      Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
+      tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
+      die Fernbedienungs-Geräte vom VT fernhalten oder den getty auf tty1 ändern
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
 - [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
