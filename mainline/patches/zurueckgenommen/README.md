@@ -16,3 +16,10 @@
   `sunxi_cedrus.stop_reset`: N gibt 9/9 bitexakt bei drei Clients, Y verklemmt in Runde 1. Sein Daseinsgrund, die
   Speicherkorruption unter Last, war der 1416-MHz-Betriebspunkt, den `0055` entfernt. Unser Exemplar war byteidentisch
   mit seinem; kein eigener Geraetetest, der Fehlermodus ist Kontextlogik, nicht Panelgeometrie.
+
+## 11.10.2026 (TODO 5.22): 0011, seit dem 22.09. aus der Serie, lag noch in patches/kernel/
+
+- `0011-misc-add-sunxi-nsi.patch` -- seit dem 22.09.2026 nicht mehr in der `series` (der Vermerk Q1 dort sagt warum:
+  `drivers/misc/sunxi-nsi.c` ist kein NSI-Treiber, er erfindet eine Registerkarte fuer `nsi-controller@2020000`). Die
+  Datei lag weiter neben der Serie; jetzt hier. Am Bau aendert das nichts: der Kernelbaum wird nur aus der `series`
+  gebaut, ihr Hash ist gleich.
