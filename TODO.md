@@ -235,6 +235,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12:1x UTC: Kopplung flackert** (VTotal-Dither 755/756 je Bild + `pwm vs_lock=1`), Marco am Gerät; Original-`display_cfg.xml`
         zurück, G-EU wieder ohne Kopplung. Vor einem neuen Versuch: `pwm vs_lock='0'` testen (nur mit Marco, Augen an der Wand) oder
         den Dither der Firmware-Nachführung verstehen. Bis dahin ist der 1080p60-Verlust am 720p-Panel offen; produktreif ist nur 2.56
+      - **12:3x UTC: Kopplung verworfen** (`doku/199` §7): VTotal-Dither flackert auch mit freier PWM, HTotal-Dither macht das Bild
+        stetig dunkler (Marco am Gerät); exakter Gleichlauf braucht nicht-ganzzahlige Zeilen, Pixeltakt nicht trimmbar. Damit
+        bleiben für 1080p60 am 720p-Panel: Firmware-Patch (Marcos allerletzte Option) oder 1080p-Ring + GPU-Verkleinern, oder akzeptieren
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der

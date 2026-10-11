@@ -68,3 +68,17 @@ vor einem weiteren Versuch müsste entweder die PWM von der Vsync-Kopplung gelö
 Dithern aufhören (Zustand 3 der Firmware, der nie erreicht wird) - beides offen, beides nur mit Marco am Gerät zu beurteilen.
 Die EDID-Regel (`doku/198`) bleibt die einzige produktreife Verbesserung; für Quellen, die auf 1080p60 bestehen, ist der Weg
 offen (TODO 2.57).
+
+## 7 Nachtrag 12:3x UTC - beide Kopplungsmodi sind auf diesem Panel sichtbar schädlich
+
+- VTotal-Modus mit **freier PWM** (`pwm vs_lock='0'`): flackert genauso (Marco) - also der ±1-Zeilen-Dither selbst (Bilddauer
+  springt je Bild um 0,13 %), nicht die Hintergrundbeleuchtung.
+- **HTotal-Modus** (`work_mode 1`, `htotal 1352..1368`, swpll-Modus 2, Register pendelt 1353/1357): "das Bild wird immer dunkler
+  und dunkler" (Marco) - das Panel verträgt die Zeilenlängen-Änderung je Bild nicht. Sofort zurück auf das Original, Neustart.
+- Ein exakter Gleichlauf braucht eine nicht-ganzzahlige Zeilenzahl je Bild (61,714 MHz / 60 Hz / 1360 = 756,3), also immer einen
+  Dither in Zeilen oder Pixeln; eine stufenlose Pixeltakt-Trimmung (`SW_PLL_CLOCK`) gibt es in dieser Hardware nicht
+  (Panel-PLL 24 MHz × N / 14, N ganzzahlig).
+
+**Ergebnis:** die Panel-Kopplung der Firmware ist auf dem HY300-Panel kein Weg - weder in Zeilen noch in Pixeln ohne sichtbare
+Störung. Der G-EU läuft wieder mit der Originalkonfiguration (`display_cfg.xml.orig`). Lehre: Panel-Timing nur mit Augen an
+der Wand ändern, und jede Änderung mit einem Satz Rückweg.
