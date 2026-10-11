@@ -264,19 +264,24 @@ prepare_kernel() {
   note "applied $n series patches + arm64 defconfig" >&2
   echo "$tree"
 }
-# locate a mkimage: MKIMAGE= if given (a worktree without the U-Boot submodule, e.g. the container's
-# /usr/bin/mkimage), else one the U-Boot stage already built, else build tools-only
+# locate a mkimage: MKIMAGE= if given, else one the U-Boot stage already built, else build tools-only from
+# the U-Boot submodule; a checkout without the submodule (a package worktree) takes the system's mkimage
+# (the container has /usr/bin/mkimage) - never the release path, which builds U-Boot first (TODO 5.21)
 find_mkimage() {
   local m
   [ -n "${MKIMAGE:-}" ] && { [ -x "$MKIMAGE" ] && echo "$MKIMAGE"; return; }
   for m in "$ROOT"/build/uboot-*/tools/mkimage; do [ -x "$m" ] && { echo "$m"; return; }; done
   m="$ROOT/build/uboot-tools/tools/mkimage"
-  if [ ! -x "$m" ]; then
+  if [ ! -x "$m" ] && [ -e "$UBOOT/Makefile" ]; then
     log "building mkimage (u-boot tools-only)" >&2
     make -C "$UBOOT" O="$ROOT/build/uboot-tools" HOSTCC=clang tools-only_defconfig >/dev/null 2>&1
     make -C "$UBOOT" O="$ROOT/build/uboot-tools" HOSTCC=clang -j"$JOBS" tools-only >/dev/null 2>&1
   fi
-  [ -x "$m" ] && echo "$m"
+  [ -x "$m" ] && { echo "$m"; return; }
+  [ -e "$UBOOT/Makefile" ] && return    # the submodule is there and did not build: that is an error, not a fallback
+  m=$(command -v mkimage) || return
+  note "no U-Boot submodule in this checkout: the system's $m packs the FIT" >&2
+  echo "$m"
 }
 
 build_kernel() {
