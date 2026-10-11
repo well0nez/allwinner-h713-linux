@@ -93,10 +93,12 @@ int main(int argc, char **argv)
 			demo = 1;
 		else if (!strcmp(argv[a], "--alpha"))
 			demo = 2;
+		else if (!strcmp(argv[a], "--alpha2"))
+			demo = 3;
 		else
 			break;
 	}
-	if (demo != 2 && !demo && argc - a < 2) {
+	if (demo < 2 && !demo && argc - a < 2) {
 		fprintf(stderr, "usage: osd-show [-s SOCKET] [-t SECONDS] [--demo] volume|mute|focus|input|badge VALUE [edge]\n");
 		return 2;
 	}
@@ -140,12 +142,16 @@ int main(int argc, char **argv)
 	if (!c.px)
 		return 1;
 
-	if (demo == 2) {	/* the alpha test: straight left, premultiplied right, 300 x 300 each */
+	if (demo >= 2) {	/* the alpha tests, 300 x 300 each: --alpha straight left, premultiplied right;
+				 * --alpha2 white at 25 % left, opaque white right - equal on the wall: the display
+				 * expects premultiplied alpha */
+		uint32_t left = demo == 2 ? 0x40FAFAFAu : 0x40FFFFFFu, right = demo == 2 ? 0x403E3E3Eu : 0xFFFFFFFFu;
+
 		sync_buf(fds[0], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
 		for (unsigned int y = h / 2 - 150; y < h / 2 + 150; y++)
 			for (unsigned int x = w / 2 - 340; x < w / 2 + 340; x++)
 				if (x < w / 2 - 40 || x >= w / 2 + 40)
-					map[0][(size_t)y * (pitch / 4) + x] = x < w / 2 ? 0x40FAFAFAu : 0x403E3E3Eu;
+					map[0][(size_t)y * (pitch / 4) + x] = x < w / 2 ? left : right;
 		sync_buf(fds[0], DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE);
 		printf("alpha test: %s\n", talk(fd, "osd show 0\n", answer, sizeof(answer)) ? answer : "shown");
 		sleep((unsigned int)seconds);

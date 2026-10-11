@@ -28,6 +28,8 @@
 #   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin; with
 #       H713_STANDBY=1 the standby sleep.conf.d and h713-power + unit (enabled) + power.conf,
 #       and h713-mips-restart, which h713-power runs after a standby to start the parked MIPS
+#   5i. h713-keys + unit (enabled) + keys.conf - the stock remote's keys (volume, mute, focus) -
+#       and h713-osd (cross-built) + unit (enabled) + osd.conf - the overlays over the picture
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -63,6 +65,9 @@ H713_AF_SRC=${H713_AF_SRC:-$PROJECT_ROOT/userspace/h713-autofocus}
 H713_REMOTE_SRC=${H713_REMOTE_SRC:-$PROJECT_ROOT/userspace/h713-remote-pair}
 H713_FEATURES_SRC=${H713_FEATURES_SRC:-$PROJECT_ROOT/userspace/h713-features}
 H713_POWER_SRC=${H713_POWER_SRC:-$PROJECT_ROOT/userspace/h713-power}
+H713_KEYS_SRC=${H713_KEYS_SRC:-$PROJECT_ROOT/userspace/h713-keys}
+H713_OSD_SRC=${H713_OSD_SRC:-$PROJECT_ROOT/userspace/h713-osd}
+H713_OSD_BIN=${H713_OSD_BIN:-$H713_OSD_SRC/h713-osd.aarch64-linux-gnu}
 # crust, built by release/build-all.sh from crust-h713/ - a build product of ours, not a vendor file,
 # so it is not in FORBIDDEN_NAMES. The name is the board's: the rootfs can be built without a board,
 # and a board's device tree names its own image (hy310-crust.bin). Standby only together with it.
@@ -185,6 +190,24 @@ check_sources() {
 	for f in h713-tv@.service 99-h713-tv.rules gamma-standard.bin; do
 		[[ -r "$H713_TV_SRC/$f" ]] || { warn "missing: $H713_TV_SRC/$f"; errors=1; }
 	done
+
+	if [[ -x "$H713_OSD_BIN" ]]; then
+		local okind; okind=$(file -b "$H713_OSD_BIN" 2>/dev/null || echo '?')
+		case "$okind" in
+		*aarch64*|*ARM\ aarch64*) : ;;
+		'?') warn "file(1) is missing -- the architecture of h713-osd is unchecked" ;;
+		*) warn "h713-osd is NOT aarch64: $okind"; errors=1 ;;
+		esac
+	else
+		warn "h713-osd is missing: $H713_OSD_BIN"
+		info "cross-build it:  make -C ${H713_OSD_SRC#"$PROJECT_ROOT"/} cross SYSROOT=..."
+		errors=1
+	fi
+	for f in "$H713_OSD_SRC/h713-osd.service" "$H713_OSD_SRC/osd.conf" "$H713_OSD_SRC/README.md" \
+		 "$H713_KEYS_SRC/h713-keys.service" "$H713_KEYS_SRC/keys.conf" "$H713_KEYS_SRC/README.md"; do
+		[[ -r "$f" ]] || { warn "missing: $f"; errors=1; }
+	done
+	[[ -x "$H713_KEYS_SRC/h713-keys" ]] || { warn "missing: $H713_KEYS_SRC/h713-keys"; errors=1; }
 
 	if [[ -d "$MODROOT/lib/modules" ]]; then
 		local rel
@@ -328,6 +351,11 @@ if ((DRY_RUN)); then
        ${H713_CRUST_BIN:-no crust image} -> /lib/firmware/${H713_BOARD:-<board>}-crust.bin
        standby: $( ((H713_STANDBY)) && echo "offered - sleep.conf.d mem/deep, h713-power enabled,
                 /usr/local/sbin/h713-mips-restart (the picture after a standby)" || echo "not offered - AllowSuspend=no (overlay)")
+    5i. h713-keys, h713-osd
+       h713-keys -> /usr/local/sbin/, h713-keys.service enabled, /etc/h713/keys.conf (if none)
+       ${H713_OSD_BIN#"$PROJECT_ROOT"/}
+           -> /usr/local/sbin/h713-osd, h713-osd.service enabled, /etc/h713/osd.conf (if none)
+       README.md of both -> /usr/local/share/doc/h713-keys/, /usr/local/share/doc/h713-osd/
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -588,6 +616,22 @@ if ((H713_STANDBY)); then
 	info "sleep.conf.d: mem, deep only; /usr/local/sbin/h713-power, h713-power.service enabled, /etc/h713/power.conf"
 	info "/usr/local/sbin/h713-mips-restart (h713-power starts the parked MIPS with it after a standby)"
 fi
+
+# --- 5i. h713-keys and h713-osd: the remote's keys, the overlays over the picture ------
+# h713-keys gives volume, mute and focus their meaning (Bluetooth and IR, kernel 0252-0254) and tells
+# h713-osd, which lays the overlay over the picture through h713-tv (TODO 2.43-2.46, docs/tools/).
+say "h713-keys, h713-osd"
+install -m 0755 "$H713_KEYS_SRC/h713-keys" "$TREE/usr/local/sbin/h713-keys"
+install -m 0644 "$H713_KEYS_SRC/h713-keys.service" "$TREE/etc/systemd/system/h713-keys.service"
+ln -sfn ../h713-keys.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-keys.service"
+[[ -f "$TREE/etc/h713/keys.conf" ]] || install -m 0644 "$H713_KEYS_SRC/keys.conf" "$TREE/etc/h713/keys.conf"
+install -D -m 0644 "$H713_KEYS_SRC/README.md" "$TREE/usr/local/share/doc/h713-keys/README.md"
+install -m 0755 "$H713_OSD_BIN" "$TREE/usr/local/sbin/h713-osd"
+install -m 0644 "$H713_OSD_SRC/h713-osd.service" "$TREE/etc/systemd/system/h713-osd.service"
+ln -sfn ../h713-osd.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-osd.service"
+[[ -f "$TREE/etc/h713/osd.conf" ]] || install -m 0644 "$H713_OSD_SRC/osd.conf" "$TREE/etc/h713/osd.conf"
+install -D -m 0644 "$H713_OSD_SRC/README.md" "$TREE/usr/local/share/doc/h713-osd/README.md"
+info "/usr/local/sbin/h713-keys and h713-osd, both units enabled, /etc/h713/keys.conf and osd.conf"
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"

@@ -32,7 +32,7 @@
 # Order (doku/116 P4):
 #   1 bl31  1b crust  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
 #   2b2 probe U-Boot (h713_probe)  2c sunxi-fel (trap door)  3 kernel (+ modules)
-#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv cross-built  7 rootfs
+#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv, h713-osd cross-built  7 rootfs
 #   8 ext4 inputs  9 image  10 check (with --vendor: the full self-test)  11 stamp
 #
 # Runs on the work machine and drives the container h713-build (doku/50 §Bauen);
@@ -444,7 +444,7 @@ fi
 info "$(basename "$KEYRING") ($(stat -c %s "$KEYRING") bytes) out of $(basename "$KEYRING_DEB_URL"), sha256 pinned"
 
 # --- 6. sysroot + h713-tv cross-built ---------------------------------------
-say "6/11 sysroot (arm64, development packages only) and h713-tv cross-built"
+say "6/11 sysroot (arm64, development packages only), h713-tv and h713-osd cross-built"
 SYSROOT="$MAINLINE/build/sysroot-arm64"
 # A sysroot is reused only if it was made from this very package list and suite: the stamp
 # carries their hash. Checking for one header let a sysroot from before the mesa stage
@@ -464,6 +464,11 @@ info "sysroot $SYSROOT ($(du -sh "$SYSROOT" 2>/dev/null | cut -f1))"
 in_container "cd $WORK/userspace/h713-tv && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-tv-cross.log" 2>&1 || { tail -20 "$OUT/h713-tv-cross.log"; die "cross-building h713-tv failed (log: $OUT/h713-tv-cross.log)"; }
 TV="$USERSPACE/h713-tv/h713-tv.aarch64-linux-gnu"; [[ -f "$TV" ]] || die "no $TV"
 info "h713-tv $(stat -c %s "$TV") bytes, $(file -b "$TV" 2>/dev/null | cut -d, -f1-2)"
+# The overlays over the picture (TODO 2.43-2.46): libc and libm only, with libh713osd and libh713geom
+# compiled in; install-projekt.sh (5i) wants the binary and refuses without it.
+in_container "cd $WORK/userspace/h713-osd && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-osd-cross.log" 2>&1 || { tail -20 "$OUT/h713-osd-cross.log"; die "cross-building h713-osd failed (log: $OUT/h713-osd-cross.log)"; }
+OSD="$USERSPACE/h713-osd/h713-osd.aarch64-linux-gnu"; [[ -f "$OSD" ]] || die "no $OSD"
+info "h713-osd $(stat -c %s "$OSD") bytes, $(file -b "$OSD" 2>/dev/null | cut -d, -f1-2)"
 # The autofocus metric in C (Q11): optional for the tool, which falls back to Python,
 # but the image should carry it - the fallback is ten times slower on the A53.
 in_container "cd $WORK/userspace/h713-autofocus && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-afmetric-cross.log" 2>&1 || { tail -20 "$OUT/h713-afmetric-cross.log"; die "cross-building h713-afmetric failed (log: $OUT/h713-afmetric-cross.log)"; }
