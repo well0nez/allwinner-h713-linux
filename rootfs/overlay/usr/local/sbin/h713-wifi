@@ -243,7 +243,7 @@ EOF
 	dnsmasq --pid-file="$LAUF/dnsmasq.pid" --dhcp-leasefile="$LAUF/leases" \
 		--interface=$IFACE --bind-interfaces --except-interface=lo \
 		--no-resolv --no-hosts \
-		--address=/h713/"$ap_ip" --address=/"$(cat /etc/hostname 2>/dev/null || echo hy310)"/"$ap_ip" \
+		--address=/h713/"$ap_ip" --address=/"$(cat /etc/hostname 2>/dev/null || echo h713)"/"$ap_ip" \
 		--dhcp-range="$ap_dhcp_start,$ap_dhcp_end,255.255.255.0,12h" \
 		--dhcp-authoritative \
 		|| fail "dnsmasq does not start"

@@ -56,6 +56,7 @@ Sourced as shell, so `KEY=value`, no spaces around `=`. Keys:
 | `VARIANTS` | optional: the stock firmwares of a board whose units left the factory with different ones, space-separated, each a directory `variants/<name>/` (see below) |
 | `CRUST_DEFCONFIG` | optional: the board runs crust, our ARISC firmware ([crust-h713/](../crust-h713/README.md)), built with this crust defconfig. `release/build-all.sh` builds it once for the release FIT and for the rootfs as `/lib/firmware/<id>-crust.bin`, the name the board's device tree must give the arisc node (`boards/check.sh` 9). On a `verified` board it also makes `--standby` possible (`STANDBY=sr`). Set it only together with the crust source, a device tree that names `<id>-crust.bin` and the U-Boot that stages `scp.bin` (crust-h713/README.md). Unset: the vendor ARISC firmware from the owner's dump |
 | `FEATURES` | optional: which of the HY310's optional hardware - `camera`, `accelerometer`, `focus-motor` - the board is known to have and its `KERNEL_DTB` drives, space-separated. A name left out is either absent or unknown; an unknown one may keep its node in the `KERNEL_DTB` so that the first boot's probe answers it. Empty: none confirmed; unset: not recorded. `build-rootfs.sh --board` (so `release/build-all.sh --board`) writes it into the image as `/etc/h713/features`. On the device the nodes decide: a unit or tool whose hardware is missing says "not present on this board" (exit 7), the settings page hides its controls, and `h713-features` warns once per boot about a listed name the board does not show. The board's README says which names are absent, which unknown, and where each answer comes from |
+| `HOSTNAME_BOARD` | optional: the device's name in the network, written by `build-rootfs.sh --board` into `/etc/hostname` and `/etc/hosts`; unset: `BOARD_ID`. Before 11.10.2026 every image was `hy310`, and two boxes in one network collided (TODO 5.18) |
 
 `STATUS` follows the vocabulary of the installer profiles
 (`installer/h713/profiles/__init__.py`, `STATUS_VALUES`):
@@ -81,6 +82,7 @@ has `variants/<name>/variant.env`, sourced after `board.env`; what it sets wins:
 | `IMAGE_NAME` | its own, so that images of two variants never share a name |
 | `DRAM_CLK` | the clock of this firmware's boot0 in MHz; the U-Boot builds merge it over the base (`build/uboot-build.sh`). It may not be below the base's, so a build without a variant never runs faster than a firmware does |
 | `FEATURES` | optional, what was measured on a unit with this firmware; `build-rootfs.sh --variant` (from `release/build-all.sh --variant`) writes it into `/etc/h713/features` |
+| `HOSTNAME_BOARD` | optional, wins over the board's (`hy300pro` for the HY300PRO-G-EU, `hy300proplus` for the Pro+) |
 
 `release/build-all.sh --board <id> --variant <name>` (required for such a board) and
 `BOARD=<id> VARIANT=<name> build/build.sh` read both files; the installer identifies a device as

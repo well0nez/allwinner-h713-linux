@@ -169,6 +169,18 @@ board_features() {
 	printf '%s' "$got"
 }
 
+# HOSTNAME of boards/$H713_BOARD (variant.env over board.env), else the board's id - every image
+# was "hy310" before, and two boxes in one network collided (TODO 5.18). RFC 1123 label, 1..63.
+board_hostname() {
+	local env="$PROJECT_ROOT/boards/$H713_BOARD/board.env" got
+	got=$( set +u; . "$env" >/dev/null 2>&1 || exit 1
+		[[ -z "$H713_VARIANT" ]] || . "${env%/board.env}/variants/$H713_VARIANT/variant.env" >/dev/null 2>&1 || exit 1
+		printf '%s' "${HOSTNAME_BOARD:-$BOARD_ID}" ) || { warn "boards/$H713_BOARD: board.env not sourceable"; return 1; }
+	[[ "$got" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || \
+		{ warn "boards/$H713_BOARD: HOSTNAME_BOARD '$got' is no host name (a-z 0-9 -, 1..63)"; return 1; }
+	printf '%s' "$got"
+}
+
 # ---------------------------------------------------------------------------
 # Check the sources
 # ---------------------------------------------------------------------------
@@ -251,6 +263,7 @@ check_sources() {
 	[[ -x "$H713_CPUFREQ_SRC/h713-cpufreq" && -f "$H713_CPUFREQ_SRC/h713-cpufreq.service" ]] || \
 		{ warn "missing: h713-cpufreq or h713-cpufreq.service in $H713_CPUFREQ_SRC"; errors=1; }
 	if [[ -n "$H713_BOARD" ]] && ! board_features >/dev/null; then errors=1; fi
+	if [[ -n "$H713_BOARD" ]] && ! board_hostname >/dev/null; then errors=1; fi
 	if [[ -n "$H713_CRUST_BIN" ]]; then
 		[[ -f "$H713_CRUST_BIN" && -n "$H713_BOARD" ]] || \
 			{ warn "H713_CRUST_BIN=$H713_CRUST_BIN: missing, or no H713_BOARD to name it after"; errors=1; }
@@ -595,6 +608,12 @@ if [[ -n "$H713_BOARD" ]]; then
 else
 	rm -f "$TREE/etc/h713/features"
 	info "no H713_BOARD: no /etc/h713/features, the nodes alone decide"
+fi
+if [[ -n "$H713_BOARD" ]]; then
+	NAME=$(board_hostname) || die "boards/$H713_BOARD: no usable host name (see above)"
+	printf '%s\n' "$NAME" > "$TREE/etc/hostname"
+	sed -i "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1\t$NAME/" "$TREE/etc/hosts"
+	info "/etc/hostname, /etc/hosts: $NAME"
 fi
 info "/usr/local/bin/h713-features, h713-features.service enabled"
 
