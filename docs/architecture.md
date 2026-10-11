@@ -86,6 +86,39 @@ A suspend to RAM ([standby.md](subsystems/standby.md)) hands the box over betwee
 
 Measured on the HY310: the picture back 3.9 - 5.3 s after the wake (`doku/172`, `doku/177`), wake by power key and by IR (`doku/174`); the standby draws 2.4 W, less than off with 2.9 W (`doku/181`).
 
+## The display stack: planes, the warp, the overlays
+
+The AFBD drives the panel with two DRM planes on one CRTC. The **video plane** (`video-0`, zpos 1) shows the
+HDMI capture ring directly (`hdmi-ring` mode) or the warp's NV12 frames; the firmware's nine picture controls act
+on it. The **primary plane** is the AFBD's RGB channel 2: normally the kernel console (fbcon); since kernel 0251 at
+zpos 2 with an ARGB8888 framebuffer it is mixed over the video plane with an alpha per pixel - straight alpha,
+measured on the wall 11.10.2026 (`doku/193`).
+
+```
+ remote (BLE, IR) -> h713-keys -> h713-tv ctl volume|mute      h713-focus up|down
+                         |
+                         +-> h713-osd: libh713osd draws, libh713geom pre-distorts (warp.conf -> the matrix)
+                                  |   two ARGB8888 buffers of h713-tv's (SCM_RIGHTS), "osd show N"
+ HDMI -> capture ring -> h713-warp (GPU, the same matrix) -> three NV12 buffers of h713-tv's, "warp frame N"
+                                  v
+                        h713-tv: the only DRM master, the only one that commits
+                        video plane (zpos 1): ring or warp      primary plane (zpos 2): overlay, else console
+```
+
+- **One owner of the display.** `h713-tv` holds the DRM master while a picture is up and makes every commit; the
+  warp and the overlay daemon draw into buffers it hands them and name the one to show. The connection is the
+  lifetime: a renderer that dies leaves a hangup and its part comes off the panel. Over the warp an overlay change
+  rides in the warp's next commit (no second commit to collide with it).
+- **One matrix.** `libh713geom` (`/etc/h713/warp.conf`, the vendor's keystone solve, projection modes, zoom) is
+  compiled into h713-warp, which draws the picture through it on the GPU, and into h713-osd, which pre-distorts
+  its overlays with the inverse on the CPU - so they sit in the picture like the picture. The rule behind it
+  (`doku/192`): whatever draws on channel 2 over a warped picture draws pre-distorted.
+- **The console is not warped and gets no overlay.** fbcon draws on channel 2 itself and cannot be distorted;
+  without a picture an overlay waits for the picture (decided 11.10.2026). h713-tv puts the console's framebuffer
+  back at zpos 0 before it lets the master go, on every way the picture leaves.
+- **Later, a desktop** takes channel 2 and the master; `libh713osd` draws there as well (drawing and the place
+  it goes are separate, TODO 2.45).
+
 ## What this means for software
 
 A driver for MIPS- or ARISC-owned hardware is an RPC client, not a register driver: it calls a named

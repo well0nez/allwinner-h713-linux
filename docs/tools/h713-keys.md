@@ -77,6 +77,6 @@ keys arrive, decode and act - volume, mute, focus, OK, Home, Menu, Back, the arr
 9.0/4.4 ms, bits 560-650 us). The noise filter of the vendor (`NTHR` about 100 us instead of mainline's 8 us) was
 tried and is not needed: 5/5 with either. Host tests: `make test` in `userspace/h713-keys`.
 
-Not measured yet: the Bluetooth side with this daemon, which way `KEY_F4` turns the focus on the wall (both
-readings were seen, 02.10. and 03.10.), and which key should switch the input. Not in the image yet
-(`rootfs/install-projekt.sh`).
+Not measured separately: the Bluetooth side with this daemon (the owner's presses on 11.10. came over IR, the
+remote reconnected over Bluetooth only at the end); which way `KEY_F4` turns the focus on the wall (both
+readings were seen, 02.10. and 03.10.), and which key should switch the input. In the image since 11.10.2026 (`rootfs/install-projekt.sh` 5i, enabled).

@@ -41,6 +41,7 @@ A refresh takes 7-15 ms on the HY310 over a strong keystone (measured 11.10.2026
 
 ## Not yet
 
-- No overlay on the console (no signal): it waits for the picture (TODO 2.46).
+- No overlay on the console (no signal): it waits for the picture - decided 11.10.2026 (the console cannot be
+  distorted, and an overlay over it would freeze it).
 - No fade-out.
-- Not in the image yet (`rootfs/install-projekt.sh`).
+- In the image since 11.10.2026 (`rootfs/install-projekt.sh` 5i, enabled); an image with it is not built and installed yet.

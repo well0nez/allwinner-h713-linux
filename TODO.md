@@ -167,15 +167,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
       Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
       bevor der erste Frame steht); nicht dringend
-- [ ] 2.35 **IR-Fernbedienung kann keinen Standby auslösen**: der IR-Empfänger hat unter Linux keine Tastenbelegung
-      (`rc-empty`, nur `lirc`), `h713-power` sieht kein `KEY_POWER` von dort. Gekoppelt per Bluetooth geht es (G-EU, `doku/184`),
-      Wecken per IR geht über crust. Vorschlag: eine Keymap (NEC, Power-Code der Stock-Fernbedienung, crust kennt die 19 Codes)
-      mit `KEY_POWER` im Abbild - dann geht die Fernbedienung auch ohne Kopplung (hilft, wo Bluetooth wackelt, 1.4)
-      - 10.10.: am HY310 genauso (keine IR-Belegung; dort geht Power über die gekoppelte BLE-Verbindung). Gleiche Fernbedienung an
-        beiden Boxen (Marco); am G-EU war sie nur noch nicht mit unserem System gekoppelt. Verbesserung für beide, nicht dringend
-      - 10.10. abends (Marco, Lauf k1 Kaltstart-Gate): Power auf der IR-Fernbedienung weckte den G-EU aus crusts Aus, der laufende
-        HY310 daneben blieb an - wie erwartet ohne IR-Belegung. Bedenken, wenn 2.35 kommt: beide Boxen hören denselben Code; ein
-        Druck würde dann die eine wecken und die andere ausschalten
 - [ ] 2.36 **HDCP-2.2-Beweis am G-EU ohne `SKE_SEND_EKS`-Zeile**: gleiche `display.bin` wie der HY310 (`16c74a28...`), aber im
       Firmware-Log (Abbild-Stufe, `h713_disp init` ohne `elog=`) nur "HDCP Process cost tick". Klären, ob die HY310-Zeile vom
       05.10. aus einer höheren Log-Stufe kam; `referenz/messregeln.md` HDCP 2.2 danach nachziehen. Bis dahin: Bit LINK 0x422 +
@@ -206,21 +197,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
       im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
       über unser System oder über das Netzteil bei kleiner Last
-- [ ] 2.43 **Ein Einblende-Zeichner auf Kanal 2** (Gesamtplan `doku/192` §5, Marco 10.10.: "überlebenswichtig"): alle
-      Einblendungen (Lautstärke, Stumm, Fokus, Ausschalten 2.38) gestapelt in **einem** ARGB-Bild auf Kanal 2 über dem Video
-      (Kernel 0251, Primär-Ebene `zpos` 2). Zeichnen aus Deepseeks `osd.c` (Paket `warp-konsole`) übernehmen, **die Optik neu**
-      (Marco: Ausführung ungenügend). Bei Trapez mit derselben Homographie wie der Warp vorverzerrt (gemessen K5), neu gerechnet
-      nur bei Änderung von Inhalt oder Ecken. Committen muss der DRM-Master: heute `h713-tv` (`ctl osd ...`, Zeichner als
-      Bibliothek) oder per DRM-Lease. Löst den Weg "OSD im Warp" (2.7a, Paket `warp-konsole`) ab - das Paket umlenken
-- [ ] 2.44 **Eine Matrix-Quelle für die Trapez-Geometrie** (`doku/192` §5.4a): Ecken, Zoom, Projektionsmodus an einer Stelle mit
-      Änderungsnachricht; Warp, Einblende-Zeichner (2.43) und später der Desktop-Compositor rechnen mit derselben Funktion
 - [ ] 2.45 **Regel: wer auf Kanal 2 zeichnet, zeichnet verzerrt - Vorplanung Desktop** (`doku/192` §5.3-5.4): ein späterer
       Compositor setzt die Trapez-Matrix als letzten Durchgang und zeichnet die Einblendung davor; Kanal 2 gehört dann dem Desktop
       (Alpha je Bildpunkt über der Video-Ebene); Zeichnen und Ausgabeort trennen; DRM-Master heute `h713-tv`, später der
       Compositor - nichts dauerhaft an `h713-tv` binden; fbcon bleibt unverzerrte Notfallkonsole, die Alltags-Konsole wird ein
       Terminal im Desktop (ersetzt 2.7a, sobald der Desktop kommt)
-- [ ] 2.46 **Tasten: `h713-keys` (IR + Bluetooth) erweitern** um Home, Menü, Maus, Record, Steuerkreuz (`doku/192` §5.5); dazu die
-      IR-Belegung 2.35 (beide Boxen hören denselben Code)
+      - 11.10.: vorbereitet - Zeichnen (`libh713osd`) und Ausgabe (`h713-osd` + Kanal in `h713-tv`) sind getrennt, die Matrix eine
+        Bibliothek (`libh713geom`); `docs/architecture.md` "The display stack". Der Desktop selbst steht aus
 - [ ] 2.47 **Warp sparsamer** - eigenes Paket, erst messen (`doku/192` §5.6): `sugov:0` kostet 14,6 % eines Kerns, so viel wie der
       Warp (14 %). Ansätze: fester Takt oder `rate_limit_us`; `-O3 -mcpu=cortex-a53`, LTO, NEON; der Warp committet selbst statt
       über den `h713-tv`-Socket; EGLImage je Slot einmal; GPU-Fences statt Abfragen; gleiche Bilder überspringen; Luma/Chroma in
@@ -228,25 +211,31 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.48 **0251 nachmessen** (`doku/192` §3): Bildrate der Aufnahme mit 0251 während einer Einblendung bei laufendem Warp,
       Farben genau, `premultiplied`/`coverage` (keine Blend-Mode-Eigenschaft), `zpos`-Wechsel bei laufendem Seitenwechsel,
       Signalverlust/-rückkehr, Standby mit Einblendung, der G-EU
+      - **11.10. gemessen** (`doku/193` §5): 81 Wechsel in ~5 s über dem Warp - 0 verlorene Bilder; gerades Alpha (zwei Testbilder,
+        Marcos Augen); Signal weg/zurück und Standby sauber, die Einblendung kommt von selbst wieder. Farben: Marco "fühlt sich gut an".
+        Offen: der G-EU (720p, nur am Rechner gerendert); `zpos`-Wechsel bei laufendem Seitenwechsel ist mit dem Mitreisen im
+        Warp-Commit entfallen
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
       H4-Datenstrom auf der UART (1,5 MBd, Flusssteuerung) kommt zerstückelt an. Dazu passt 1.4 (G-EU: 245-Byte-Schreibvorgänge
       unvollständig, RTS/CTS?). Ursache offen; zuerst prüfen, ob es mit Last (Warp, WLAN) zusammenfällt. Dabei aufgefallen: am HY310
-      ist zurzeit **keine Fernbedienung gekoppelt** (`h713-remote-pair status`: no remote bonded)
+      ist zurzeit **keine Fernbedienung gekoppelt** (`h713-remote-pair status`: no remote bonded) - 11.10. neu gekoppelt (der erste
+      Versuch kam im Scan nicht vor, der zweite klappte; `doku/193` §3)
 - [ ] 2.50 **Lüfter-Notaus (Paket FB-SAFETY 0001/0002)**, geparkt seit 02.10. und beim Umzug nach `TODO.md` am 05.10. verloren
       gegangen, wiedergefunden im Patch-Abgleich 11.10.: `hy310-board-mgr` schaltet nach einem Lüfterstillstand als Rückfall hart aus,
       und der Stillstand-Poweroff greift erst, wenn der Tacho einmal Drehung gemeldet hat. Am Gerät nie gemessen (Test B7, `doku/134`:
       Lüfterstecker unzugänglich). Neu auf die Serie setzen und einen Weg finden, den Stillstand ohne Stecker vorzutäuschen
-
+- [ ] 2.51 **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
+      (60-Byte-HID-Berichte, ~63/s, ~3,8 kB/s), Format unbekannt - kein IMA-ADPCM, kein fester Kopf, komprimiert. Codec aus der
+      Sprach-App/dem Audio-HAL der Stock-Firmware bestimmen, dann `CONFIG_HIDRAW` und ein Dekoder in Userspace. Nicht dringend
+- [ ] 2.52 **Tasten, Reste aus 2.46** (11.10.): welche Taste die Eingangsumschaltung HDMI/Konsole bekommt (Marco; `keys.conf`
+      `input_keys`, leer); welche Richtung "Fokus hoch" an der Wand fährt (beide Lesarten gesehen); ob die BLE-Fernbedienung beim
+      Halten wiederholt (dann fährt der Fokus durch wie per IR)
+- [ ] 2.53 **Einblendungen: Feinschliff, optional** (11.10.): Ausblenden in Stufen statt schlagartig; das Stumm-Zeichen in stark
+      gestauchten Bildecken schärfer (Mehrfachabtastung beim Vorverzerren); die Einblendungen am G-EU (720p) am Gerät ansehen
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
-- [ ] 3.4 IR FB-REMOTEb + fd02-Keymap — rein, wenn rx_resolution-Trunkierung / ARISC-Schreibpfad geklärt
-      - **11.10.:** wird Teil von 2.46 (Tasten, Paket `arbeit/einblendungen-20261011/`): die vier Empfangs-Patches des IR-Pakets vom 03.10.
-        (`doku/138`; 8 MHz, PL9 nach ARISC-Start und Resume) neu auf die Serie, die fd02-Belegung
-        (15 Tasten, sieben am G-EU geprüft) als Kernel-Keymap mit Power - ohne sie kommt unter Linux kein IR-Code an (11.10. am HY310
-        mit `nec` an: kein einziger Scancode). Damals offen geblieben: Maus- und Mikrofon-Taste senden per IR denselben Code
-        (`0x66`, `doku/141`) - per IR nicht zu unterscheiden, per Bluetooth schon
 - [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
 
 ## 4 Boards und Fremdgeräte
@@ -432,6 +421,10 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 9.0 **Nach dem Release (Marco 09.10.): schneller ans Bild nach dem Standby.** Vom Wecken bis zum Bild ~11 s, davon
       ~4-5 s, weil h713-tv nach dem MIPS-Neustart den HPD 300 ms auf low zieht und die Quelle (Laptop) neu synchronisiert
       (`doku/174` §1). Bei unveränderter EDID den Replug sparen; vorher messen, ob die Quelle ohne ihn wieder sendet
+- [ ] 9.0b **Stumm über den Standby** (Marco 11.10.: optional, nach dem Release): h713-tv startet nach jedem Standby neu und
+      vergisst die Stummschaltung; speichern wie die Lautstärke - das Stumm-Zeichen kommt dann von selbst mit (h713-osd fragt
+      h713-tv beim Neuverbinden)
+
 - [ ] 9.1 **AV1**: erst klären, ob RE-Stand oder lauffähig; H713 ist der erste Allwinner mit AV1
 - [ ] 9.2 Cedrus/GPU Testmatrix Decoder × Auflösung × Ausgabe; der KASAN-Fall steht
 - [ ] 9.3 Hardware-Video-Decode und IOMMU in **diesem** Image nachmessen (aus cstengers Baum übernommen)
@@ -881,3 +874,42 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
 - [x] 8.10 Worktrees aufräumen, sobald Marco die Testabbilder nicht mehr braucht - **erledigt 09.10. 16:56** (Marco), Referenzabbild
       `arbeit/r2-20261009/abbild-r2test4/` bleibt; auch der Worktree von 2.30 ist weg: `arbeit/crust-release-20261007/wp8-bau/repo`,
       `arbeit/r2-20261009/repo` (r2test1-3), `arbeit/r2-20261009/main-int` (r2test4, läuft auf der Box); Zweige bleiben
+- [x] 2.35 **IR-Fernbedienung kann keinen Standby auslösen**: der IR-Empfänger hat unter Linux keine Tastenbelegung
+      (`rc-empty`, nur `lirc`), `h713-power` sieht kein `KEY_POWER` von dort. Gekoppelt per Bluetooth geht es (G-EU, `doku/184`),
+      Wecken per IR geht über crust. Vorschlag: eine Keymap (NEC, Power-Code der Stock-Fernbedienung, crust kennt die 19 Codes)
+      mit `KEY_POWER` im Abbild - dann geht die Fernbedienung auch ohne Kopplung (hilft, wo Bluetooth wackelt, 1.4)
+      - 10.10.: am HY310 genauso (keine IR-Belegung; dort geht Power über die gekoppelte BLE-Verbindung). Gleiche Fernbedienung an
+        beiden Boxen (Marco); am G-EU war sie nur noch nicht mit unserem System gekoppelt. Verbesserung für beide, nicht dringend
+      - 10.10. abends (Marco, Lauf k1 Kaltstart-Gate): Power auf der IR-Fernbedienung weckte den G-EU aus crusts Aus, der laufende
+        HY310 daneben blieb an - wie erwartet ohne IR-Belegung. Bedenken, wenn 2.35 kommt: beide Boxen hören denselben Code; ein
+        Druck würde dann die eine wecken und die andere ausschalten
+      - **Erledigt 11.10.2026** (`doku/193`, Paket `arbeit/einblendungen-20261011/`): Kernel 0252-0254 - der Empfänger mit 8 MHz
+        statt 24 (die Ursache, dass NEC nie dekodierte), die Keymap `rc-h713-fd02` mit Power; am HY310 alle 14 Tasten, Power geht an
+        h713-power/logind. Das Bedenken bleibt: beide Boxen hören denselben Code
+- [x] 2.43 **Ein Einblende-Zeichner auf Kanal 2** (Gesamtplan `doku/192` §5, Marco 10.10.: "überlebenswichtig"): alle
+      Einblendungen (Lautstärke, Stumm, Fokus, Ausschalten 2.38) gestapelt in **einem** ARGB-Bild auf Kanal 2 über dem Video
+      (Kernel 0251, Primär-Ebene `zpos` 2). Zeichnen aus Deepseeks `osd.c` (Paket `warp-konsole`) übernehmen, **die Optik neu**
+      (Marco: Ausführung ungenügend). Bei Trapez mit derselben Homographie wie der Warp vorverzerrt (gemessen K5), neu gerechnet
+      nur bei Änderung von Inhalt oder Ecken. Committen muss der DRM-Master: heute `h713-tv` (`ctl osd ...`, Zeichner als
+      Bibliothek) oder per DRM-Lease. Löst den Weg "OSD im Warp" (2.7a, Paket `warp-konsole`) ab - das Paket umlenken
+      - **Erledigt 11.10.2026** (`doku/193`): `h713-osd` (Dienst) mit `libh713osd` (Zeichnen, SDF, eigene Optik nach Mock-ups:
+        Pille unten mittig, Stumm-Zeichen oben rechts, Fokus-Ende rot), vorverzerrt über dem Warp, Kanal in `h713-tv`
+        (`osd claim|show|hide|picture|release`, mitreisend im Warp-Commit); 7-15 ms je Einblendung, 0 verlorene Warp-Bilder.
+        Ohne Signal keine Einblendung (Marco: P5 gestrichen). Das Ausschalten 2.38 braucht noch Text (eine Schrift)
+- [x] 2.44 **Eine Matrix-Quelle für die Trapez-Geometrie** (`doku/192` §5.4a): Ecken, Zoom, Projektionsmodus an einer Stelle mit
+      Änderungsnachricht; Warp, Einblende-Zeichner (2.43) und später der Desktop-Compositor rechnen mit derselben Funktion
+      - **Erledigt 11.10.2026** (`doku/193`): `libh713geom` = `matrix.c` + `config.c` aus h713-warp (dessen Code und Daten bitgleich)
+        plus die Rückwärts-Abbildung (`inverse.c`); `/etc/h713/warp.conf` ist die Quelle, h713-osd liest sie per inotify
+- [x] 2.46 **Tasten: `h713-keys` (IR + Bluetooth) erweitern** um Home, Menü, Maus, Record, Steuerkreuz (`doku/192` §5.5); dazu die
+      IR-Belegung 2.35 (beide Boxen hören denselben Code)
+      - **Erledigt 11.10.2026** (`doku/193`): `h713-keys` - Lautstärke und Stumm über h713-tv (Lauter und Leiser heben Stumm auf),
+        Fokus 20 Schritte je Druck über h713-focus, Home/Menü/Zurück/Steuerkreuz/OK erkannt und vorgemerkt; Maus und Mikrofon senden per
+        IR nur `0x0266` (Kopplungswunsch, jetzt `KEY_F6`); Record gibt es nicht - die Eingangstaste bleibt leer (2.52)
+- [x] 3.4 IR FB-REMOTEb + fd02-Keymap — rein, wenn rx_resolution-Trunkierung / ARISC-Schreibpfad geklärt
+      - **11.10.:** wird Teil von 2.46 (Tasten, Paket `arbeit/einblendungen-20261011/`): die vier Empfangs-Patches des IR-Pakets vom 03.10.
+        (`doku/138`; 8 MHz, PL9 nach ARISC-Start und Resume) neu auf die Serie, die fd02-Belegung
+        (15 Tasten, sieben am G-EU geprüft) als Kernel-Keymap mit Power - ohne sie kommt unter Linux kein IR-Code an (11.10. am HY310
+        mit `nec` an: kein einziger Scancode). Damals offen geblieben: Maus- und Mikrofon-Taste senden per IR denselben Code
+        (`0x66`, `doku/141`) - per IR nicht zu unterscheiden, per Bluetooth schon
+      - **Erledigt 11.10.2026** in 2.35/2.46 (`doku/193`): 8 MHz und die Keymap ja, die PL9-Teile nein (sie antworteten auf die
+        Hersteller-ARISC; mit crust PL9 Funktion 3, gemessen). Maus und Mikrofon `0x66` bestätigt
