@@ -136,6 +136,24 @@ class Commands(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertIn("ok forgot AA:BB:CC:DD:EE:02", r.stdout)
 
+    def test_watch_says_each_line_while_it_runs(self):
+        """under systemd stdout is a pipe: the lines must come while watch keeps running, not at its end"""
+        import select, time
+        env = dict(os.environ, FAKE_SCENARIO="empty", H713_BLUETOOTHCTL=CTL)
+        p = subprocess.Popen([sys.executable, TOOL, "watch", "--interval", "30", "--timeout", "3"], env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        try:
+            got, end = "", time.monotonic() + 10
+            while "ok paired" not in got and time.monotonic() < end:
+                if select.select([p.stdout], [], [], 0.2)[0]:
+                    got += p.stdout.readline()
+            self.assertIsNone(p.poll(), "watch should still be running")
+            self.assertIn("found " + REMOTE, got)
+            self.assertIn("ok paired " + REMOTE, got)
+        finally:
+            p.kill()
+            p.wait()
+
     def test_watch_once_reconnects_a_bonded_remote(self):
         r = run(["watch", "--once", "--timeout", "5"], scenario="unconnected")
         self.assertEqual(r.returncode, 0, r.stderr)

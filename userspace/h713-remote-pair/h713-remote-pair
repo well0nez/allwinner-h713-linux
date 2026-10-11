@@ -235,6 +235,9 @@ def cmd_watch(ctl: Ctl, a) -> int:
 
 
 def main(argv=None) -> int:
+    # Under systemd stdout is a pipe and Python buffers it in blocks: "found" and "ok paired" of the
+    # unit's watch reached the journal late or never, only stderr did (11.10., G-EU). One line, one record.
+    sys.stdout.reconfigure(line_buffering=True)
     p = argparse.ArgumentParser(prog="h713-remote-pair", description=__doc__.split("\n\n")[1])
     p.add_argument("--ctl", default=os.environ.get("H713_BLUETOOTHCTL", "bluetoothctl"),
                    help="the bluetoothctl command (env H713_BLUETOOTHCTL)")
