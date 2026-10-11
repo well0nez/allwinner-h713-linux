@@ -219,6 +219,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       aus dem Stock-Mitschnitt, kein "Rezept für 60 Hz"; die Firmware plant ihre Bildratenwandlung danach (`Signal_Framerate 30`,
       `crtc set_signal_frame_rate`). Versuch in einer Kopie: Wort 13/14 aus den DV-Timings (60000/50000/…), afbd-Modul, Sicherung,
       Neustart, `phase6.py` mit 1080p60 und 1080p50, Gegenprobe 720p. Offen: warum 720p heute schon jedes Bild zeigt
+      - **11.10. vormittags gemessen, widerlegt** (`arbeit/aufnahme-takt-20261011/BERICHT.md` §7): 60000 im Deskriptor kommt an
+        (hdmirx hält den Satz dann für den echten → "not locked", Bild bleibt), aber 46,9 Wechsel/s gegen 47,0/47,9 mit dem Original
+        nach ebenso frischem Neustart. Auch TNR aus ändert nichts. Die Rate sinkt über Stunden Laufzeit (frisch ~47, nach 4 h ~43,
+        nachts 30-41). Weiter offen: was im Skalierpfad jedes 4.-5. Bild zurückhält (Firmware-FRC, Stock-Vergleich, 1080p-Ring + GPU)
 - [ ] 2.58 **Low Latency gesondert ansehen [Marco]** (11.10.): `THal_Vp_SetLowLatencyMode` (`c201c220`) ist als V4L2-Control da
       (Kernel 0101a, startet Off; die Hersteller-Software schickt es nie, ihre Get/Set sind Stubs). Was der Modus in der Firmware
       ändert (FRC-Puffer, Latenz, Fensterneubau; Bildmodi Spiel/Computer lösen `SetLowLatency` aus, `userspace/h713-tv/README.md`),
