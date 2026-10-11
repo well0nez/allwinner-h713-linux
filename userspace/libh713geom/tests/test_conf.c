@@ -12,16 +12,12 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../warp.h"
+#include "../geom.h"
 
 static int warnings;
 
-/* config.c wants the journal of main.c */
-void info(const char *fmt, ...) { (void)fmt; }
+/* config.c wants the program's journal line (geom.h) */
 void warn(const char *fmt, ...) { (void)fmt; warnings++; }
-void fail(const char *fmt, ...) { (void)fmt; exit(1); }
-void text_add(struct textbuf *t, const char *fmt, ...) { (void)t; (void)fmt; }
-double now_s(void) { return 0.0; }
 
 static int failed;
 
@@ -43,7 +39,7 @@ static void put(const char *path, const char *text)
 
 int main(void)
 {
-	char path[] = "conf-XXXXXX", why[WARP_WHY];
+	char path[] = "conf-XXXXXX", why[256];
 	struct warp_conf c, back;
 	int fd = mkstemp(path), mode, i;
 

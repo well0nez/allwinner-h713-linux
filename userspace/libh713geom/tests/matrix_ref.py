@@ -4,7 +4,7 @@ This script does not test anything by itself. It writes the test vectors and
 the expected numbers to stdout, computed by the AP2f reference
 userspace/h713-keystone/model/keystone_matrix.py (AP2f) -- the tested port of the vendor's
 getKeyStoneMatrix -- and the C driver test_matrix.c reads them and compares
-them with what h713-warp/matrix.c computes.
+them with what libh713geom/matrix.c (used by h713-warp) computes.
 
     python3 matrix_ref.py > vectors.txt && ./test_matrix < vectors.txt
 

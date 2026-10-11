@@ -19,19 +19,17 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define WARP_CONF	"/etc/h713/warp.conf"
+#include "geom.h"	/* the eight values, the matrix, warp.conf: ../libh713geom */
+
 #define WARP_SOCKET	"/run/h713-warp/ctl"
 #define TV_SOCKET	"/run/h713-tv/ctl"
 #define RENDER_NODE	"/dev/dri/renderD128"
 #define V4L2_NAME	"sun50i-h713-hdmirx"
 
-#define WARP_KEYS	8	/* four corners, x and y, per-mille inward */
 #define WARP_TARGETS	3	/* triple buffering on the panel side (M9) */
 #define WARP_SLOTS	3	/* capture ring slots (M5) */
 #define WARP_LINE	512	/* one control line, as h713-tv's CTL_MAXLINE */
 #define WARP_WHY	256	/* why something is off -- journal and status */
-#define EDGE_DEFAULT	4	/* the soft border in panel pixels: the vendor's alias.scale (gl.c) */
-#define EDGE_MAX	64
 
 /* ---------------- the journal, h713-tv's house style (main.c) ---------- */
 __attribute__((format(printf, 1, 2))) void info(const char *fmt, ...);
@@ -46,50 +44,6 @@ struct textbuf {
 
 __attribute__((format(printf, 2, 3)))
 void text_add(struct textbuf *t, const char *fmt, ...);
-
-/* ---------------- the eight values and the matrix (matrix.c) ----------- */
-/* our key order: the PHYSICAL corner on the wall, tl tr bl br, x before y.
- * The vendor's parcel order is a different one and lives in matrix.c alone.
- */
-enum warp_corner { CORNER_TL, CORNER_TR, CORNER_BL, CORNER_BR };
-/* the projection mode: how the picture is mirrored for the mount (matrix.c) */
-enum warp_mode { MODE_FRONT, MODE_REAR, MODE_CEILING, MODE_REAR_CEILING };
-
-extern const char *const warp_corner_name[4];
-extern const char *const warp_key_name[WARP_KEYS];	/* "tl_x" .. "br_y" */
-extern const char *const warp_mode_name[4];		/* "front" .. "rear-ceiling" */
-
-int warp_key(const char *corner, const char *axis);	/* 0..7, -1 unknown */
-int warp_key_by_name(const char *key);			/* "tl_x" -> 0..7 */
-void warp_clamp(int v[WARP_KEYS]);			/* all four, as the app does */
-int warp_clamp_key(int v[WARP_KEYS], int key, int want);	/* one, as a key press does */
-int warp_limit(const int v[WARP_KEYS], int key);		/* the most that key may take now */
-bool warp_identity(const int v[WARP_KEYS]);		/* all eight zero */
-bool warp_matrix(const int v[WARP_KEYS], double m[16]);	/* false: refused */
-int warp_mode_by_name(const char *name);			/* 0..3, -1 unknown */
-void warp_mirror(int mode, double m[16]);		/* m = flip(mode) * m */
-void warp_remount(int from, int to, int v[WARP_KEYS]);	/* the eight re-sorted for a new mode */
-void warp_point(const double m[16], double x, double y, double out[2]);
-void warp_corner_ndc(int corner, double out[2]);
-
-struct warp_conf {
-	const char *path;
-	bool present;			/* the file was there */
-	bool start_on;			/* "warp = on" */
-	int v[WARP_KEYS];
-	int zoom;			/* screen zoom in percent, 100 = none (S7) */
-	int edge;			/* the soft border in panel pixels, 0 = a hard edge */
-	int mode;			/* enum warp_mode, "mode =" in the file */
-};
-
-/* The eight the matrix sees: the keystone with the screen zoom in it (the
- * vendor's "Digital scaling", AP2i rows 6-8: the panel's square scaled about
- * its centre and carried through the keystone's homography), clamped the
- * vendor's way. */
-void warp_effective(const struct warp_conf *c, int out[WARP_KEYS]);
-
-void conf_read(struct warp_conf *c);
-bool conf_write(const struct warp_conf *c, char *why, size_t n);
 
 struct peer {
 	const char *path;

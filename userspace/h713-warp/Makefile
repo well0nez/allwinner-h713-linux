@@ -13,7 +13,8 @@
 #                       pkg-config lookup when the host has no -dev files, e.g.
 #                         make host HOST_CPPFLAGS="-I../tmp/hostinc -I/usr/include/drm" \
 #                                   HOST_LDLIBS="-l:libEGL.so.1 -l:libGLESv2.so.2"
-#   make test           build and run the host tests of ../tests (T1a, T1b, T2)
+#   make test           build and run the host test of tests/ (T1a, T1b); the matrix and
+#                       warp.conf tests (T2, T3, T4) are in ../libh713geom
 #   make install-cross  install the CROSS-built binary (DESTDIR=...)
 #   make clean
 #
@@ -47,8 +48,12 @@ HOST_CC       ?= cc
 HOST_CPPFLAGS ?= $(shell pkg-config --cflags egl glesv2 libdrm 2>/dev/null)
 HOST_LDLIBS   ?= $(shell pkg-config --libs egl glesv2 2>/dev/null || echo "$(LIBS)")
 
-SRC = main.c config.c ctl.c peer.c capture.c gl.c matrix.c loop.c
-HDR = warp.h
+# the keystone geometry and warp.conf live in ../libh713geom, shared with h713-osd (TODO 2.44); they are
+# compiled in here, in the order they always had, so the binary is the one it was before the move
+GEOM = ../libh713geom
+SRC = main.c $(GEOM)/config.c ctl.c peer.c capture.c gl.c $(GEOM)/matrix.c loop.c
+HDR = warp.h $(GEOM)/geom.h
+CFLAGS += -I$(GEOM)
 
 cross: h713-warp.$(TARGET)
 

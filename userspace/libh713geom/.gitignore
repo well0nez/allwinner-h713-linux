@@ -1,0 +1,4 @@
+tests/test_matrix
+tests/test_conf
+tests/test_inverse
+tests/vectors.txt

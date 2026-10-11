@@ -30,7 +30,7 @@
  */
 #include <string.h>
 
-#include "warp.h"
+#include "geom.h"
 
 const char *const warp_corner_name[4] = { "tl", "tr", "bl", "br" };
 const char *const warp_key_name[WARP_KEYS] = {

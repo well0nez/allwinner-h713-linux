@@ -9,7 +9,7 @@
  *
  * T1a identity geometry, BYTE-EXACT. A known RGBA8 pattern as the source, all
  *     eight insets 0, the daemon's own vertex shader with the matrix that
- *     h713-warp/matrix.c computes for that case, nearest sampling: every
+ *     libh713geom/matrix.c computes for that case, nearest sampling: every
  *     output byte must equal the input byte. This tests the matrix, the
  *     viewport, the vertex order and the sampler addressing, and it has an
  *     exact contract -- AP2d T1 refuses to promise that for the YUV path.

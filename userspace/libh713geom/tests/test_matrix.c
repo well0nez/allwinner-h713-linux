@@ -5,7 +5,7 @@
  * The driver reads the vectors and the expected numbers of matrix_ref.py --
  * which computes them with the AP2f reference model, the tested port of
  * getKeyStoneMatrix -- from stdin and compares them with what
- * h713-warp/matrix.c makes of the same eight per-mille values:
+ * libh713geom/matrix.c (h713-warp's matrix) makes of the same eight per-mille values:
  *
  *     python3 matrix_ref.py | ./test_matrix
  *
@@ -28,7 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../warp.h"
+#include "../geom.h"
 
 #define TOL_M	1e-6
 #define TOL_P	1e-5

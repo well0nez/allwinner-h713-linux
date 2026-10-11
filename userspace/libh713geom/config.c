@@ -23,7 +23,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-#include "warp.h"
+#include "geom.h"
 
 static char *trim(char *s)
 {

@@ -129,6 +129,11 @@ physical corner the vendor's slot 0 is has been derived from the framebuffer's o
 the wall with one nudge and one photo; if top and bottom ever come out exchanged, it is two lines in
 `matrix.c`.
 
+The matrix (`matrix.c`) and `warp.conf` (`config.c`) live in `userspace/libh713geom/` since 11.10.2026, shared
+with the overlay daemon `h713-osd`, which pre-distorts its overlays with the very same map so they stand in the
+picture like the picture (TODO 2.44). h713-warp compiles both files in as before; its code and data are
+bit-identical to the build before the move (only the build ID differs; compared section by section on 11.10.2026).
+
 Details: working journal `keystone/PLAN` (stage S5), working journal `AP2d/design-h713-warp` (modules M1-M11),
 working journal `AP2f/REPORT` (the matrix and its z trap), working journal `AP2/REPORT` (the vendor's units
 and clamp), docs/tools/h713-tv.md.
