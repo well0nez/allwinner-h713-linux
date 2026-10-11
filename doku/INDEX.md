@@ -42,7 +42,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
 | `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184`, `doku/185`, `doku/188`, `doku/190` |
 | `docs/subsystems/video.md` | `doku/62`, `doku/64`, `doku/76`, `doku/78` |
-| `docs/subsystems/wifi.md` | `doku/134`, `doku/193`, `doku/60` |
+| `docs/subsystems/wifi.md` | `doku/134`, `doku/193`, `doku/195`, `doku/60` |
 | `docs/tools/h713-autofocus.md` | `doku/134` |
 | `docs/tools/h713-cam.md` | `doku/61`, `doku/94` |
 | `docs/tools/h713-extract.md` | `doku/108`, `doku/121`, `doku/nachtlog/S42-r2-extract` |
@@ -241,7 +241,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 4 |
 | [`193-einblendungen-tasten-und-h713-osd-20261011.md`](193-einblendungen-tasten-und-h713-osd-20261011.md) | Analyse | 2026-10-11 | 193 - Einblendungen über dem Bild: die Tasten per IR und Bluetooth, h713-osd vorverzerrt über dem Warp (11.10.2026) | 4 |
 | [`194-handoff-20261011-frueh.md`](194-handoff-20261011-frueh.md) | Handoff | 2026-10-11 | 194 - Handoff 11.10.2026 früh: Fernbedienung und Einblendungen sind in `main` (nicht gepusht); als Nächstes dieselben Prüfstufen am HY300PRO-G-EU | - |
-| [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 1 |
+| [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 2 |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |

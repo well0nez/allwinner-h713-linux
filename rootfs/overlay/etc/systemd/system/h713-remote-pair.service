@@ -1,5 +1,5 @@
 [Unit]
-Description=H713 remote control: keep the stock BLE remote bonded (scans while none is connected, as stock does)
+Description=H713 remote control: keep the stock BLE remote bonded (reconnects it; scans only while none is bonded)
 After=bluetooth.service h713-bluetooth.service
 Requires=bluetooth.service
 

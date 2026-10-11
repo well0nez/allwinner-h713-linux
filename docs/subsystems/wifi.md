@@ -59,7 +59,9 @@ The same chip, the same module family, one more UART. What ships:
   the HY310 with the remote connected, 97 of 97 1400-byte pings and 8 MiB in 3.5 s over Wi-Fi.
 - **The stock remote.** BLE HID (`1d5a:c081`). `h713-remote-pair` pairs it: hold Left + Right until the
   LED blinks, the unit `h713-remote-pair.service` scans and bonds. After that it reconnects on any key
-  press, also after a reboot. The kernel's `hid-h713-remote` fixes the remote's consumer report (its
+  press, also after a reboot. It remembers one box only: paired with another box since, it no longer
+  reconnects here and its keys come over IR - `h713-remote-pair forget`, then Left + Right (measured on the
+  HY300PRO-G-EU, `doku/195`). The kernel's `hid-h713-remote` fixes the remote's consumer report (its
   report 3 is one byte shorter than the descriptor says) and maps Home and the two focus keys.
 - **`h713-bt-reset`.** The controller keeps its state across attaches: the kernel's `hci_uart` sends no
   HCI_Reset at init and its close-time reset never reaches the wire once `hciattach` has exited (that is

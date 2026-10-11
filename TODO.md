@@ -251,10 +251,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.53 **Einblendungen: Feinschliff, optional** (11.10.): Ausblenden in Stufen statt schlagartig; das Stumm-Zeichen in stark
       gestauchten Bildecken schärfer (Mehrfachabtastung beim Vorverzerren); die Einblendungen am G-EU (720p) am Gerät ansehen
       (**11.10. erledigt**, `doku/195`: Lage und Größe passen, Marco)
-- [ ] 2.54 **Fernbedienung jederzeit neu koppeln** (Marco 11.10., `doku/195` §4): `h713-remote-pair watch` koppelt nur, wenn gar
-      keine Fernbedienung bekannt ist; ist der Bund veraltet (an einer anderen Box gekoppelt - die Fernbedienung merkt sich nur
-      eine), versucht es endlos neu zu verbinden, und Links+Rechts bewirkt nichts. Wie Stock: solange die bekannte nicht verbunden
-      ist, nebenher nach einer im Kopplungsmodus suchen und sie neu koppeln (den alten Bund ersetzen)
+- [ ] 2.54 **Knopf im Panel: "Fernbedienung neu koppeln"** (Marco 11.10.: "kein Fehler, als TODO hinterlegen, Button ins Panel
+      re-pair remote - das reicht"; `doku/195` §4): `h713-remote-pair watch` koppelt nur, wenn gar keine Fernbedienung bekannt ist,
+      und löscht einen Bund mit Absicht nie (eine schlafende Fernbedienung soll ihn behalten). Ist er veraltet - die Fernbedienung
+      merkt sich nur eine Box, an einer anderen gekoppelt -, scheitert jedes Verbinden. Der Knopf in `h713-panel` ruft
+      `h713-remote-pair forget`; der laufende Dienst sucht dann von selbst und koppelt, sobald Links+Rechts gehalten wird -
+      **am G-EU 11.10. 02:40 so gemessen** (forget → gekoppelt und verbunden in Sekunden, `arbeit/einblendungen-geu-20261011/`).
+      Dabei mitnehmen: `h713-remote-pair` schreibt unter systemd die Erfolgszeilen ("found", "ok paired") gepuffert und damit nicht
+      ins Journal (nur die Fehler, stderr) - Zeilenpuffer setzen
 - [ ] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
       Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
       tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
