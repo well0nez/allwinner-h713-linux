@@ -78,3 +78,29 @@ gezeigt, Warp 59,7 fps, 0 Verwürfe. Lehre: erst die Quelle am Ringinhalt messen
 afbd 0255 (`10806bf3`), `h713-tv` d6134496 + `edid_prefer = file` in `tv.conf`, `h713-warp` Ring-Edge (`e65b25d5`, hold off),
 `h713-cpufreq` installiert und aktiv, Mess-Keystone `tl x 50`. Offen: 2.60 (UCLAMP), 2.61 (ein Batch), HY310 mit 0255 und
 diesem Warp nachmessen (Marco), Panel-Pixeltakt 2.59.
+
+## 7 Handoff (11.10.2026, ~20:00 UTC)
+
+**In `main` (nicht gepusht):** `dd3ed00` (Kernel-Patch 0255: Ringplatz aus `INCAP +0xa0c`, `doku/200`) und `48305cb` (dieses
+Paket). Beide Zweige (`versuch/viddec-bildrate`, `versuch/warp-zeichnen`) sind integriert, Worktrees entfernt, Zweige lokal.
+Push nur mit Marcos Ja; Reihenfolge `TODO.md` §1.
+
+**G-EU installiert und gemessen:** afbd `10806bf3` (0255, `ring_select=1`), `h713-tv` `fd90d1ef` (= main, `edid_prefer = file`
+Vorgabe; `/etc/h713/tv.conf` nennt es zusätzlich), `h713-warp` `e65b25d5` (= main: Ring-Edge, `hold off`, `ctl trace`),
+`h713-cpufreq` installiert und aktiv, `warp.conf` wieder Original (Keystone 0 → Bypass). Sicherungen: `/root/sicherung-viddec-bildrate/`
+(afbd Original `764ca830`, h713-tv `9212dcd6`/`d6134496`, TSE, EDID-Datei, display_cfg), `/root/sicherung-warp-zeichnen/`
+(h713-warp `15f5f062`, warp.conf, Regler- und Bildverbesserer-Stände). Rückwege: `sh /root/tausch-afbd.sh zurueck`;
+`mv /root/sicherung-warp-zeichnen/h713-warp.orig /usr/local/bin/h713-warp && systemctl restart h713-warp`. Bildverbesserer
+zurück auf Vorgabe (black_extension Low, TNR Middle, DCI Middle, SNR Low).
+
+**Quelle am HDMI:** Fire-TV-Stick (1080p60). Der ThinkPad (`rustdesk --server`) lieferte alle 11 s 330 ms identische Bilder -
+als Testquelle nur mit `kette.py` daneben.
+
+**Marco hat abgenommen:** 0255 (Bild sauber), Warp/Regler ("das passt").
+
+**Offen (TODO):** 2.59 Panel-Pixeltakt (Rest 0,3 Sprünge/s), 2.60 `CONFIG_UCLAMP_TASK` statt chrt, 2.61 ein Batch je Bild (Warp-CPU),
+HY310 mit 0255 und diesem Warp nachmessen (`anzeige.py`, `ctl trace 30 gpu`, `messe-warp.py`). Release: `TODO.md` §1.
+
+**Gelernt (für `referenz/` eingetragen):** GPU-Zeit nur über die Out-Fence; keine Rechnung hinter dem Texturabruf auf der G31;
+RT-Tasks treiben schedutil; tmpfiles trifft cpufreq-Sysfs nicht; Hänger am Ringinhalt (`kette.py`) und mit Quellenwechsel
+nachweisen, nicht am Zeiger und nicht am Player-Zähler; Marco glauben, wenn er sagt "es ist nicht die Quelle" - und trotzdem messen.
