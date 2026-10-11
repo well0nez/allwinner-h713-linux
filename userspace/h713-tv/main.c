@@ -1186,6 +1186,9 @@ static void window_blobs_free(const struct display *d, uint32_t a, uint32_t b)
 		drmModeDestroyPropertyBlob(d->fd, b);
 }
 
+static void osd_drop(struct display *d);	/* the overlay off the panel: before every release of the master */
+static void osd_resume(struct display *d);	/* ... and back when the picture is */
+
 static bool display_show(struct display *d)
 {
 	drmModeAtomicReq *req;
@@ -1254,6 +1257,7 @@ static bool display_show(struct display *d)
 	}
 
 	d->on = true;
+	osd_resume(d);
 	info("picture         plane %u on, %ux%u out of the capture ring at %u,%u %ux%u on the panel%s",
 	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h,
 	     d->zoom == ZOOM_IN ? ", zoomed in" :
@@ -1276,11 +1280,14 @@ static bool display_hide(struct display *d)
 	int ret;
 
 	if (!d->on) {
-		if (!d->warped)		/* the warp holds the master (A3) */
+		if (!d->warped) {	/* the warp holds the master (A3) */
+			osd_drop(d);
 			display_release_master(d);
+		}
 		return true;
 	}
 
+	osd_drop(d);		/* no overlay over a plane that goes: channel 2 alone would show it */
 	req = drmModeAtomicAlloc();
 	if (!req)
 		fail("out of memory");
@@ -1462,6 +1469,7 @@ static void warp_release(struct display *d)
 	warp.peer = -1;
 	if (!warp.claimed)
 		return;
+	osd_drop(d);
 	warp_free(d);
 	warp.claimed = false;
 	d->warped = false;
@@ -1471,6 +1479,250 @@ static void warp_release(struct display *d)
 	     warp.commits, warp.busy, warp.errors);
 	warp.commits = warp.busy = warp.errors = 0;
 }
+
+/* ------------------------------------------------------------------ *
+ * The overlay: h713-osd draws, this program shows (TODO 2.43-2.46)
+ *
+ * Volume, mute, focus and input go over the picture on the PRIMARY plane -
+ * the console's plane, the AFBD's channel 2. Since kernel 0251 that plane at
+ * zpos 2 with an ARGB8888 framebuffer is mixed over the video plane with an
+ * alpha per pixel, over the ring and over the warp alike (the warp draws on
+ * the video plane). h713-osd draws (libh713osd), this program stays the only
+ * DRM master and the only client that commits, as with the warp: "osd claim"
+ * makes two ARGB8888 buffers the size of the panel and hands their dma-bufs
+ * over (SCM_RIGHTS, with the answer), "osd show N" lays buffer N over the
+ * picture, "osd hide" takes it away, "osd release" frees the buffers; the
+ * connection is the lifetime.
+ *
+ * The console's own framebuffer is remembered at the claim and goes back
+ * onto the plane, at zpos 0, before this program lets the master go - on
+ * every way the picture leaves (display_hide, warp_release, the exit).
+ * Otherwise the console would come back under an overlay, or not at all.
+ * Without a picture (no signal, "off") there is nothing to lay the overlay
+ * over: "show" keeps it as wanted and shows it when the picture is back
+ * (an overlay over the console is the next step, P5 of the plan).
+ * ------------------------------------------------------------------ */
+
+#define OSD_BUFS	2
+
+struct osd {
+	int peer;			/* h713-osd's connection, -1: none */
+	bool claimed;
+	bool shown;			/* our buffer is on the plane at zpos 2 */
+	int want;			/* the buffer h713-osd wants shown, -1: none */
+	uint32_t plane_id;		/* the primary plane of our CRTC */
+	struct props props;
+	uint32_t console_fb;		/* the plane's framebuffer at the claim: the console's */
+	uint32_t handle[OSD_BUFS], fb_id[OSD_BUFS];
+	unsigned int pitch;
+	unsigned long shows, busy, errors;
+};
+
+static struct osd osd = { .peer = -1, .want = -1 };
+
+/* the primary plane of our CRTC with "zpos" (kernel 0251) and ARGB8888 */
+static bool osd_find_plane(struct display *d)
+{
+	drmModePlaneRes *planes;
+	unsigned int i, f;
+
+	if (osd.plane_id)
+		return true;
+	planes = drmModeGetPlaneResources(d->fd);
+	if (!planes)
+		return false;
+	for (i = 0; i < planes->count_planes && !osd.plane_id; i++) {
+		drmModePlane *p = drmModeGetPlane(d->fd, planes->planes[i]);
+		struct props pp = { 0 };
+		uint64_t type = 0;
+		bool argb = false;
+
+		if (!p)
+			continue;
+		if ((p->possible_crtcs & (1u << d->crtc_index)) &&
+		    props_get(d->fd, p->plane_id, DRM_MODE_OBJECT_PLANE, &pp)) {
+			prop_value(&pp, "type", &type);
+			for (f = 0; f < p->count_formats; f++)
+				if (p->formats[f] == DRM_FORMAT_ARGB8888)
+					argb = true;
+			if (type == DRM_PLANE_TYPE_PRIMARY && argb && prop_id(&pp, "zpos")) {
+				osd.plane_id = p->plane_id;
+				osd.props = pp;
+				memset(&pp, 0, sizeof(pp));
+			}
+			props_put(&pp);
+		}
+		drmModeFreePlane(p);
+	}
+	drmModeFreePlaneResources(planes);
+
+	return osd.plane_id != 0;
+}
+
+static void osd_free(struct display *d)
+{
+	struct drm_mode_destroy_dumb dreq;
+	int i;
+
+	for (i = 0; i < OSD_BUFS; i++) {
+		if (osd.fb_id[i])
+			drmModeRmFB(d->fd, osd.fb_id[i]);
+		if (osd.handle[i]) {
+			memset(&dreq, 0, sizeof(dreq));
+			dreq.handle = osd.handle[i];
+			drmIoctl(d->fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+		}
+		osd.fb_id[i] = 0;
+		osd.handle[i] = 0;
+	}
+}
+
+/* two buffers the size of the panel: 8 294 400 bytes each at 1080p */
+static bool osd_alloc(struct display *d, int *fds)
+{
+	struct drm_mode_create_dumb creq;
+	uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
+	int i;
+
+	for (i = 0; i < OSD_BUFS; i++) {
+		memset(&creq, 0, sizeof(creq));
+		creq.width = d->width;
+		creq.height = d->height;
+		creq.bpp = 32;
+		if (drmIoctl(d->fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq))
+			return false;
+		osd.handle[i] = creq.handle;
+		osd.pitch = creq.pitch;
+		handles[0] = creq.handle;
+		pitches[0] = creq.pitch;
+		if (drmModeAddFB2(d->fd, d->width, d->height, DRM_FORMAT_ARGB8888,
+				  handles, pitches, offsets, &osd.fb_id[i], 0) ||
+		    drmPrimeHandleToFD(d->fd, creq.handle, DRM_CLOEXEC | DRM_RDWR, &fds[i]))
+			return false;
+	}
+
+	return true;
+}
+
+/* One commit of the primary plane: framebuffer fb at zpos z, the whole
+ * panel. Non-blocking first, so a warp frame in flight is not waited for in
+ * the common case; on EBUSY once more blocking - an overlay changes a few
+ * times a second at most, one vsync of waiting is the price. */
+static bool osd_commit(struct display *d, uint32_t fb, uint64_t z)
+{
+	static const char *const name[] = {
+		"FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
+		"CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H", "zpos",
+	};
+	uint64_t val[11] = {
+		fb, d->crtc_id, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16,
+		0, 0, d->width, d->height, z,
+	};
+	drmModeAtomicReq *req = drmModeAtomicAlloc();
+	bool ok = req != NULL;
+	unsigned int i;
+	int ret = -1;
+
+	for (i = 0; ok && i < 11; i++) {
+		uint32_t id = prop_id(&osd.props, name[i]);
+
+		ok = id && drmModeAtomicAddProperty(req, osd.plane_id, id, val[i]) >= 0;
+	}
+	if (ok) {
+		ret = drmModeAtomicCommit(d->fd, req, DRM_MODE_ATOMIC_NONBLOCK, NULL);
+		if (ret && errno == EBUSY) {
+			osd.busy++;
+			ret = drmModeAtomicCommit(d->fd, req, 0, NULL);
+		}
+	}
+	drmModeAtomicFree(req);
+	if (!ret)
+		return true;
+	osd.errors++;
+	warn("osd             commit refused (framebuffer %u, zpos %llu): %s", fb,
+	     (unsigned long long)z, ok ? strerror(errno) : "a plane property is missing");
+
+	return false;
+}
+
+/* the console's framebuffer back at zpos 0 - before every release of the
+ * master; the overlay stays wanted and comes back with the picture */
+static void osd_drop(struct display *d)
+{
+	if (!osd.shown)
+		return;
+	if (osd_commit(d, osd.console_fb, 0))
+		osd.shown = false;
+}
+
+/* the wanted buffer over the picture, if there is a picture to lay it over */
+static void osd_resume(struct display *d)
+{
+	if (!osd.claimed || osd.want < 0 || !(d->on || d->warped) || !d->master)
+		return;
+	if (osd_commit(d, osd.fb_id[osd.want], 2)) {
+		osd.shown = true;
+		osd.shows++;
+	}
+}
+
+static void osd_release(struct display *d)
+{
+	if (osd.peer >= 0)
+		close(osd.peer);
+	osd.peer = -1;
+	if (!osd.claimed)
+		return;
+	osd.want = -1;
+	osd_drop(d);
+	osd_free(d);
+	osd.claimed = false;
+	info("osd             released: %lu shown, %lu busy, %lu refused", osd.shows, osd.busy,
+	     osd.errors);
+	osd.shows = osd.busy = osd.errors = 0;
+}
+
+/* The peer's connection, one line per message as with the warp. */
+static void osd_serve(struct display *d)
+{
+	char buf[64];
+	const char *answer = "error unknown (osd show N | osd hide | osd release)\n";
+	ssize_t got;
+	int n = -1;
+
+	got = recv(osd.peer, buf, sizeof(buf) - 1, MSG_DONTWAIT);
+	if (got <= 0) {			/* h713-osd is gone: the overlay goes with it */
+		osd_release(d);
+		return;
+	}
+	buf[got] = '\0';
+	buf[strcspn(buf, "\r\n")] = '\0';
+	if (!strcmp(buf, "osd release")) {
+		if (send(osd.peer, "ok\n", 3, MSG_NOSIGNAL) < 0)
+			warn("osd             answering the release: %s", strerror(errno));
+		osd_release(d);
+		return;
+	}
+	if (sscanf(buf, "osd show %d", &n) == 1 && n >= 0 && n < OSD_BUFS) {
+		osd.want = n;
+		if (!(d->on || d->warped)) {
+			answer = "ok waiting -- no picture to lay it over, it comes with the picture\n";
+		} else {
+			osd.shown = false;
+			osd_resume(d);
+			answer = osd.shown ? "ok\n" : "error the commit was refused\n";
+		}
+	} else if (!strcmp(buf, "osd hide")) {
+		osd.want = -1;
+		osd_drop(d);
+		answer = osd.shown ? "error the console framebuffer could not go back\n" : "ok\n";
+	}
+	if (send(osd.peer, answer, strlen(answer), MSG_NOSIGNAL) < 0) {
+		warn("osd             answering \"%s\": %s", buf, strerror(errno));
+		osd_release(d);
+	}
+}
+
 
 /* ------------------------------------------------------------------ *
  * The state machine
@@ -4655,6 +4907,76 @@ static void cmd_warp(struct reply *r, struct capture *cap, struct display *d, co
 			  warp.commits, warp.busy, warp.errors);
 }
 
+/* "osd claim": the two buffers, their fds with the answer */
+static void cmd_osd_claim(struct reply *r, struct display *d, int conn)
+{
+	char cbuf[CMSG_SPACE(sizeof(int) * OSD_BUFS)] = { 0 }, line[64];
+	int fds[OSD_BUFS] = { -1, -1 };
+	struct iovec io = { line, 0 };
+	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
+			      .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
+	struct cmsghdr *cm;
+	drmModePlane *p;
+	int i, bad;
+
+	if (osd.claimed || conn < 0) {
+		reply_fail(r, "%s", osd.claimed ? "the overlay is already claimed"
+			   : "\"osd claim\" needs the connection it is sent on");
+		return;
+	}
+	if (!osd_find_plane(d)) {
+		reply_fail(r, "no primary plane with zpos and ARGB8888 on CRTC %u -- kernel 0251?", d->crtc_id);
+		return;
+	}
+	p = drmModeGetPlane(d->fd, osd.plane_id);
+	osd.console_fb = p ? p->fb_id : 0;
+	if (p)
+		drmModeFreePlane(p);
+	bad = !osd_alloc(d, fds);
+	if (bad) {
+		reply_fail(r, "the two %ux%u ARGB8888 buffers could not be made: %s", d->width,
+			   d->height, strerror(errno));
+	} else {
+		io.iov_len = (size_t)snprintf(line, sizeof(line), "ok %u %u %u argb8888\n",
+					      d->width, d->height, osd.pitch);
+		cm = CMSG_FIRSTHDR(&msg);
+		cm->cmsg_level = SOL_SOCKET;
+		cm->cmsg_type = SCM_RIGHTS;
+		cm->cmsg_len = CMSG_LEN(sizeof(int) * OSD_BUFS);
+		memcpy(CMSG_DATA(cm), fds, sizeof(int) * OSD_BUFS);
+		bad = sendmsg(conn, &msg, MSG_NOSIGNAL) < 0;
+		if (bad)
+			reply_fail(r, "the buffers could not be handed over: %s", strerror(errno));
+	}
+	for (i = 0; i < OSD_BUFS; i++)
+		if (fds[i] >= 0)
+			close(fds[i]);	/* the peer has its own copies now */
+	if (bad) {
+		osd_free(d);
+		return;
+	}
+	osd.claimed = true;
+	osd.peer = conn;
+	osd.want = -1;
+	info("osd             claimed: two %ux%u ARGB8888 buffers, line pitch %u, primary plane %u, console framebuffer %u",
+	     d->width, d->height, osd.pitch, osd.plane_id, osd.console_fb);
+}
+
+/* osd [status] for the human; "claim" is h713-osd's */
+static void cmd_osd(struct reply *r, struct display *d, const char *what, int conn)
+{
+	if (what && !strcmp(what, "claim"))
+		cmd_osd_claim(r, d, conn);
+	else if (what && strcmp(what, "status"))
+		reply_fail(r, "osd knows \"status\" here; the overlays are h713-osd ctl");
+	else if (!osd.claimed)
+		reply_add(r, "ok osd off -- nothing claimed\n");
+	else
+		reply_add(r, "ok osd claimed -- %s, primary plane %u, %ux%u ARGB8888, %lu shown, %lu busy, %lu refused\n",
+			  osd.shown ? "shown" : osd.want >= 0 ? "waiting for a picture" : "hidden",
+			  osd.plane_id, d->width, d->height, osd.shows, osd.busy, osd.errors);
+}
+
 /*
  * The vendor's picture presets for the HDMI inputs, pq_picturemode.ini
  * [HDMI1] (= HDMI2 = HDMI3), keyed by the firmware's mode number
@@ -6053,6 +6375,7 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "  edid block0|block1    publish that half of " EDID_FILE " to the source (a replug\n"
 		  "                        with it); tv.conf \"edid =\" makes it the standing setting\n"
 		  "  warp [status]         has h713-warp the video plane? plus its counters\n"
+		  "  osd [status]          has h713-osd an overlay over the picture? plus its counters\n"
 		  "  hdcp                  HDCP: version negotiated, authenticated, the 1.4 and 2.2 keys and the\n"
 		  "                        firmware's last HDCP line (sysfs, kernel 0174; status shows the same)\n"
 	  "  rpc NAME [ARG...]     an RPC to the firmware, e.g. rpc THal_Vp_DisableBlackScreen\n"
@@ -6115,6 +6438,8 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		return cmd_zoom(r, d, a1, a2);
 	} else if (!strcmp(cmd, "warp")) {
 		cmd_warp(r, cap, d, a1, conn);
+	} else if (!strcmp(cmd, "osd")) {
+		cmd_osd(r, d, a1, conn);
 	} else if (!strcmp(cmd, "audio")) {
 		/*
 		 * The sound is decided here and not by the caller's
@@ -6228,7 +6553,7 @@ static bool control_serve(struct control *c, struct capture *cap,
 			break;
 		off += n;
 	}
-	if (fd != warp.peer)		/* the warp's connection lives on (A2) */
+	if (fd != warp.peer && fd != osd.peer)	/* the warp's and the overlay's connections live on (A2) */
 		close(fd);
 
 	return reevaluate;
@@ -6555,7 +6880,7 @@ int main(int argc, char **argv)
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
 	enum audio_policy apol;
-	struct pollfd fds[7];
+	struct pollfd fds[8];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
 	int sfd, arg, rc = 0;
@@ -6894,7 +7219,8 @@ int main(int argc, char **argv)
 
 	/*
 	 * Six sources, three of which may be absent: the control socket when
-	 * its bind failed, and the two audio timers with -a none. poll()
+	 * its bind failed, and the two audio timers with -a none; then the
+	 * warp's and the overlay's connections, set in the loop. poll()
 	 * ignores an entry with a negative fd and reports revents 0 for it, so
 	 * the table keeps its fixed indices instead of shifting.
 	 */
@@ -6916,6 +7242,8 @@ int main(int argc, char **argv)
 	for (;;) {
 		fds[6].fd = warp.peer;	/* only while the warp has claimed */
 		fds[6].events = POLLIN;
+		fds[7].fd = osd.peer;	/* only while h713-osd has claimed */
+		fds[7].events = POLLIN;
 		{
 			static struct timespec last_ret;
 			struct timespec now;
@@ -6988,7 +7316,11 @@ int main(int argc, char **argv)
 			LOOP_TIMED("the warp's frame", again = warp_serve(&d));
 			if (again)
 				LOOP_TIMED("the warp's re-evaluation", reevaluate(&cap, &d, &rt, &au));
+			else if (osd.want >= 0 && !osd.shown)	/* the warp's first frame is up: the overlay back over it */
+				LOOP_TIMED("the overlay over the warp", osd_resume(&d));
 		}
+		if (fds[7].fd >= 0 && fds[7].revents)
+			LOOP_TIMED("an overlay line", osd_serve(&d));
 		if (fds[3].revents & POLLIN) {
 			struct timespec t0, t1, t2;
 			bool again;

@@ -273,7 +273,7 @@ static void layout(struct scene *s, const struct osd_canvas *c, const struct osd
 		speaker(s, s->px + d / 2 - 4 * u, s->py + d / 2, 1.25 * u, 0, 1);
 		return;
 	}
-	w = it->kind == OSD_VOLUME || it->kind == OSD_MUTE ? 540 * u : it->kind == OSD_FOCUS ? 150 * u : 220 * u;
+	w = it->kind == OSD_VOLUME || it->kind == OSD_MUTE ? 540 * u : it->kind == OSD_FOCUS ? 196 * u : 220 * u;
 	place_box(s, c, st, u, w, 76 * u);
 	cy = s->py + 38 * u;		/* the icons: about 50 px high at 1080 lines */
 
@@ -291,8 +291,8 @@ static void layout(struct scene *s, const struct osd_canvas *c, const struct osd
 				s->p[i].tone = T_DIM;
 		break;
 	}
-	case OSD_FOCUS:
-		focus_icon(s, s->px + s->pw / 2, cy, k, it->value >= 0 ? 1 : -1, it->flags & OSD_EDGE);
+	case OSD_FOCUS:		/* larger than the other icons: it is the only content of its strip (Marco 11.10.) */
+		focus_icon(s, s->px + s->pw / 2 + 2 * u, cy, 1.95 * u, it->value >= 0 ? 1 : -1, it->flags & OSD_EDGE);
 		break;
 	case OSD_INPUT:
 		hdmi_icon(s, s->px + 60 * u, cy, k, it->value != 0);

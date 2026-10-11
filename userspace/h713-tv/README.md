@@ -339,6 +339,7 @@ h713-tv ctl edid block0|block1  a replug that publishes that half of /lib/firmwa
                                  does not carry (480i/576i, VICs 6 7 21 on the HY310): an offered mode that never
                                  locks is a black wall. The status line then says 'all in the firmware's table' (6g)
 h713-tv ctl warp [status]       whether h713-warp has the video plane, with its counters (6e)
+h713-tv ctl osd [status]        whether h713-osd has an overlay over the picture, with its counters (6h)
 h713-tv ctl hdcp                HDCP: the version negotiated, whether a session stands, the 1.4 and 2.2
                                  keys, the firmware's last HDCP log line - five lines out of the kernel (6f)
 h713-tv ctl rpc NAME [ARG…]     any RPC to the firmware through /sys/kernel/debug/cpu_comm/call
@@ -733,6 +734,32 @@ and the three counters (commits, busy, refused) without claiming anything.
 false and `d->warped` is true, so a source event during a warp - a player switching from 48 to 44.1 kHz - was
 evaluated as *no picture* and muted the path with a pop. All five call sites pass `d->on || d->warped` now. A
 warp must never mute the source.
+
+## 6h. The overlay: `h713-osd` draws, this program shows
+
+Volume, mute, focus and input appear **over** the picture on the **primary** plane - the console's plane, the
+AFBD's channel 2 - since kernel 0251: that plane at `zpos` 2 with an ARGB8888 framebuffer is mixed over the video
+plane with an alpha per pixel, over the ring and over the warp alike (the warp draws on the video plane, 6e).
+The drawing is `h713-osd`'s (`userspace/libh713osd`); this program stays the only DRM master and commits, in the
+warp's pattern, on its own control socket, the file descriptors in `SCM_RIGHTS`:
+`osd claim` answers `ok WIDTH HEIGHT PITCH argb8888` and two ARGB8888 dumb buffers of the mode (8.3 MB each at
+1080p), which the peer maps and draws into (with `DMA_BUF_IOCTL_SYNC` around the writes);
+`osd show N` lays buffer N over the picture - `ok`, or `ok waiting` when there is no picture: the overlay stays
+wanted and comes back by itself with the picture (ring or warp);
+`osd hide` takes it away; `osd release` frees the buffers. The connection is the lifetime: a peer that dies
+leaves a hangup and the overlay goes with it.
+
+**The console comes back without the overlay.** At the claim this program remembers the primary plane's
+framebuffer - the console's - and puts it back at `zpos` 0 before it lets the master go, on every way the picture
+leaves: `display_hide` (signal lost, `ctl off`), `warp_release`, the exit. Measured on the HY310 (11.10.2026):
+mute overlay over the warp, `ctl off` -> console, `ctl osd` says "waiting for a picture"; `ctl auto` -> the warp
+claims again and the overlay is back by itself. The overlay over the warp shows in 23-27 ms; the first
+non-blocking commit usually meets a warp frame in flight (EBUSY) and is repeated blocking, which once held the
+loop 45 ms when the overlay came back over the warp (to be made non-blocking, TODO 2.43). Without the overlay
+nothing changes: no claim, no commit, the primary plane stays the console's.
+
+`userspace/libh713osd/osd-show` puts one overlay on the panel through this channel (a test tool, not in the
+image). An overlay over the console - no signal - is the next step (TODO 2.46, P5 of the plan).
 
 ## 6f. HDCP: seeing the negotiation without a photo
 

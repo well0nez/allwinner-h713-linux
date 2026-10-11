@@ -1,3 +1,4 @@
 osd-mockup
 *.o
 *.a
+osd-show.*-linux-gnu
