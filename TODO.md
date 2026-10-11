@@ -194,6 +194,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         dagegen ist widerlegt. **Offen:** (a) mit bewegtem Bild messen, ob die Aufnahme dann 60 liefert (`zeiger.py` im
         Bypass und mit Warp) - bei stehendem Bild fallen vermutlich nur Wiederholungen weg; (b) ein Render-Durchgang je Bild
         statt zwei (NV12-Ziel als ein R8-Bild Breite × 1,5 Höhe): ~250 µs CPU je Bild weniger, braucht Augen an der Wand
+      - **11.10. früh:** (a) mit kreisendem Mauszeiger am gesperrten ThinkPad weiter ~40 Bilder/s, auch ohne Warp - die
+        Aufnahme verliert also wirklich Bilder (gültig nur, wenn der Zeiger auf der Wand zu sehen war; mit Video
+        wiederholen); Gegenprobe am HY310 (1080p-Panel, dort 59,5 fps) steht aus. (b) **gebaut, gemessen, verworfen**
+        (Zweig `versuch/warp-einpass`, Test T1e: gleich den zwei Durchgängen bis 2 LSB): 14 % weniger Warp-CPU, aber die GPU
+        meist auf Höchsttakt und ~1 Bild/s `busy` verworfen - die zwei Durchgänge bleiben
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der

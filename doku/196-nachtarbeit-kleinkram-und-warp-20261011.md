@@ -57,6 +57,16 @@ GPU-Auftrag an, gleich welcher Aufruf der erste ist (ohne `glClear` übernimmt d
 (Chroma direkt hinter Luma), als ein R8-Bild Breite × 1,5 Höhe in einem Auftrag zu beschreiben; ~250 µs/Bild weniger. Nicht
 nachts gebaut: braucht Augen an der Wand.
 
+**Nachtrag 11.10. früh (Marco wach):** (1) Bluetooth-Halten gemessen: erste Wiederholung nach ~510 ms, dann alle 132 ms
+wie per IR - B1 in `main` (`fc04088`). (2) Aufnahme mit Bewegung: ein Programm ließ den Mauszeiger am gesperrten ThinkPad
+kreisen (60 Schritte/s) - weiter ~40 Zeigerwechsel/s, ohne Warp 38,8 → 40,0. Fallen nicht nur Wiederholungen weg, verliert
+die Firmware-Kette am G-EU wirklich Bilder; gültig nur, wenn der Zeiger auf der Wand zu sehen war - mit einem Video
+wiederholen, am HY310 gegenmessen. (3) Ein Render-Durchgang gebaut (`versuch/warp-einpass`): der erste Ansatz (die GPU
+entscheidet je Byte, ob es im Trapez liegt) gab an schrägen Kanten Paare mit einem farbigen und einem grauen Byte (neuer
+Test T1e am Gerät: 89 Bytes bis 110 daneben); der zweite rechnet die Paarmitte über die inverse Abbildung und ist gleich
+den zwei Durchgängen bis 2 LSB. A/B/A/B bei festem Takt: 14 % weniger Warp-CPU, aber die GPU 66-87 % der Zeit auf 696 MHz
+(vorher 21-25 %) und ~1 Bild/s `busy` verworfen - verworfen, die zwei Durchgänge bleiben.
+
 ## 3 Nebenbefunde
 
 - Der G-EU **startete um 04:57 (Host) neu, ohne mein Zutun**; der UART-ESP lief danach erst 45 min, startete also etwa

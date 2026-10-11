@@ -146,9 +146,12 @@ round trip to `h713-tv` 64 µs, queueing the slot back 25 µs - about 0.77 ms. T
 size, chroma at half size), and each pass costs Mesa/Panfrost about 125 µs to set up a GPU batch whatever the first
 call is: without the `glClear` the draw call takes that time instead. Compiler flags make no difference (`-O3
 -mcpu=cortex-a53 -flto` against `-O2`, A/B/A/B at a fixed clock: the same CPU per frame) - the time is in Mesa and the
-kernel, not in this code. The next real step would be one pass per frame: the three NV12 targets are contiguous (the
-chroma follows the luma at `pitch × height`), so the whole buffer is one R8 image of width × 1.5 height - not done yet,
-it needs eyes on the wall (TODO 2.47).
+kernel, not in this code. One pass per frame was tried and measured (branch `versuch/warp-einpass`): the NV12 buffer
+as one R8 image of width × 1.5 height, the chroma rows a fragment per byte with the pair centre through the inverse
+map (host test T1e: equal to the two passes within 2 LSB). It saved 14 % of the warp's CPU, but the chroma then had
+twice the fragments, the GPU ran at its top clock 66-87 % of the time instead of 21-25 %, and about one frame a second
+came back busy and was dropped - the two passes stay. *Superseded 11.10.2026:* "the next real step would be one pass
+per frame ... not done yet".
 
 The warp draws every slot the capture hands on: it wakes 0.1 ms after the slot's timestamp and is done 1.5 ms later.
 How many slots there are is decided before it, in the firmware's capture: read straight from the flip pointer pair
