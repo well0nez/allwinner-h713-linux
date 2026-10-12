@@ -381,6 +381,7 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 
 - [ ] 7.14 Deutsch in Code → Englisch: Kommentare in Modulen/Patches ab `0146` (aus `61`; Nutzer-Sichtbares ist durch)
 - [ ] 7.15 Wissensdatenbank: `doku/` + `analyse/` je Teilsystem destillieren — **läuft** (referenz/, MemPalace, Graphify)
+      - 12.10. nachts: MemPalace und Graphify ausgebaut (8.2) - es bleiben `referenz/` und das Journal
 - [ ] 7.16 Testskripte veröffentlichen — Auswahl, was ohne unseren Tisch läuft (aus `61`)
 - [ ] 7.17 Fotos: Standbilder der projizierten Bilder (ROADMAP „Pictures")
 - [ ] 7.19 **Doku-Runde: die Neuerungen auf beiden Geräten** (Marco 10.10.): seit R2 kamen dazu - HY310: dunkles Gate nach
@@ -391,13 +392,10 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 
 ## 8 Lokale Werkzeuge
 
-- [ ] 8.2 **Bilanz 12.10.** für MemPalace *und* Graphify: findet eine neue Sitzung von selbst,
-      was sie braucht? Sonst raus, bevor es Gewohnheit wird
-- [ ] 8.4 Graphify-Doku-Extraktion nur bei Bedarf (geht an ein LLM) — Stand: nein, Doku bleibt
-      bei referenz/ + MemPalace
-- [ ] 8.5 Graphify-Gemeinschaften heißen „Community N" (ohne LLM keine Namen). Bei der Bilanz
-      entscheiden, ob `graphify label --backend claude-cli` erlaubt ist (schickt nur Symbolnamen)
 - [ ] 8.6 `settings.json.vor-mempalace-*` und `settings.json.vor-graphify-*` nach Probewoche löschen
+      - **12.10. nachts erweitert:** dazu die Daten der beiden ausgebauten Werkzeuge (8.2) - `~/.config/mempalace/` (2,9 G,
+        schlüsseltragend, `referenz/artefakte.md`), `repo-neu/graphify-out/`, die venvs und Binaries in `~/.local/`, die Sicherungen
+        `~/.claude/settings.json.vor-ausbau-mempalace-20261012` und `CLAUDE.md.vor-ausbau-mempalace-20261012`. Löschen: **Marco**
 - [ ] 8.7 cognee gestrichen — in der Recherche-Datei vermerken
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)
@@ -1279,3 +1277,14 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
         bereit); ohne Signal sofort wie heute. h713-power kommt auf jedes Abbild. Erst 2-3 Mockups (`osd-mockup`), Text vorerst nicht
       - **12.10. nachts erledigt (Marco):** der 15-s-Countdown mit Auswahl Standby/Aus ist seit 386ad38 auf jedem Abbild (h713-power,
         h713-osd), am G-EU am 11.10. benutzt; ein Text in der Einblendung wäre ein neuer Punkt
+- [x] 8.2 **Bilanz 12.10.** für MemPalace *und* Graphify: findet eine neue Sitzung von selbst,
+      was sie braucht? Sonst raus, bevor es Gewohnheit wird
+      - **12.10. nachts (Marco): beide raus.** Ausgebaut: Hooks aus `~/.claude/settings.json`, MCP `mempalace-light` abgemeldet,
+        Graphify-Git-Hooks umbenannt, Skill nach `~/.claude/skills-ausgebaut/`, `.graphifyignore` aus dem Repo; Anweisungen und
+        `referenz/` nachgezogen (`arbeitsregeln.md`, `werkzeuge.md`). Die Daten löscht Marco (8.6)
+- [x] 8.4 Graphify-Doku-Extraktion nur bei Bedarf (geht an ein LLM) — Stand: nein, Doku bleibt
+      bei referenz/ + MemPalace
+      - **12.10. nachts gestrichen:** Graphify ist ausgebaut (8.2)
+- [x] 8.5 Graphify-Gemeinschaften heißen „Community N" (ohne LLM keine Namen). Bei der Bilanz
+      entscheiden, ob `graphify label --backend claude-cli` erlaubt ist (schickt nur Symbolnamen)
+      - **12.10. nachts gestrichen:** Graphify ist ausgebaut (8.2)
