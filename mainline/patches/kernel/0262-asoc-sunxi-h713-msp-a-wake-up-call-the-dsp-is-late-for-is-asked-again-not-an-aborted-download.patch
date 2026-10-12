@@ -1,0 +1,128 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: ASoC: sunxi: h713-msp: a wake-up call the DSP is late for is asked again, not an aborted download
+
+After a standby the audio DSP is rebuilt (h713-mips-restart writes "reset"),
+and in 3 of 20 wakes that took a second or a third attempt (TODO 2.37). Measured 12.10.2026 with the selftest and the
+wake-up call instrumented (arbeit/wurzeln-20261012, 21 + 12 wakes): the
+island comes up and the selftest answers at once every time; what failed
+was the one read of 0x00EE at a block boundary of the patch download
+(msp_kick), which ran into the mailbox's 50 ms, and a timed-out read there
+aborted the whole download -- island reset, "attempt 2". With the read
+repeated, the DSP answered the next request at once, both times ("after
+50 ms and 1 timed-out read", blocks 0 and 4): at a block boundary it is
+busy with the block it was just given and sometimes takes longer than 50 ms
+to take a request.
+
+msp_kick() has its own deadline of 500 ms for exactly this -- a DSP that is
+slow to say 0x0180 -- but the single read inside it was not allowed to be
+slow. Now a read the DSP does not answer is asked again up to that deadline,
+quietly (not a mailbox timeout, not counted as one), with one line when it
+happened; a DSP that answers nothing in 500 ms is one that is not running,
+and that remains the error that resets the island. The three-attempt loop
+stays as the net.
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+--- a/sound/soc/sunxi/sun50i-h713-msp.c
++++ b/sound/soc/sunxi/sun50i-h713-msp.c
+@@ -582,7 +582,11 @@
+  * written again. Never during the download: there the one wake-up read per
+  * block must stay one read, so a dropped request is left to the timeout.
+  */
+-static int msp_dsp_read(struct h713_msp *msp, u16 addr, u16 *val)
++/*
++ * @quiet: a timeout is the caller's to judge -- not counted, not warned
++ * about. The wake-up call at a block boundary (msp_kick()) asks again.
++ */
++static int __msp_dsp_read(struct h713_msp *msp, u16 addr, u16 *val, bool quiet)
+ {
+ 	bool pending_seen = false;
+ 	unsigned int spins = 0, reissues = 0;
+@@ -591,7 +595,8 @@
+ 
+ 	ret = msp_wait_status(msp, MSP_ST_DSP1_WBUSY, false);
+ 	if (ret) {
+-		msp_note_timeout(msp, "read (busy)", addr);
++		if (!quiet)
++			msp_note_timeout(msp, "read (busy)", addr);
+ 		return ret;
+ 	}
+ 
+@@ -621,7 +626,8 @@
+ 		}
+ 
+ 		if (ktime_after(ktime_get(), deadline)) {
+-			msp_note_timeout(msp, "read", addr);
++			if (!quiet)
++				msp_note_timeout(msp, "read", addr);
+ 			return -ETIMEDOUT;
+ 		}
+ 
+@@ -639,6 +645,11 @@
+ 	}
+ }
+ 
++static int msp_dsp_read(struct h713_msp *msp, u16 addr, u16 *val)
++{
++	return __msp_dsp_read(msp, addr, val, false);
++}
++
+ static int msp_dsp_update(struct h713_msp *msp, u16 addr, u16 mask, u16 val)
+ {
+ 	u16 old;
+@@ -652,22 +663,46 @@
+ }
+ 
+ /*
+- * The wake-up call of plan section 3.3: exactly one read of 0x00EE at a
+- * block boundary, repeated until the monitor answers 0x0180. mbx.c -K notes
+- * a stubborn answer and carries on rather than aborting, and so does this --
+- * the download itself decides success, not this poll.
++ * The wake-up call of plan section 3.3: a read of 0x00EE at a block boundary,
++ * repeated until the monitor answers 0x0180. mbx.c -K notes a stubborn answer
++ * and carries on rather than aborting, and so does this -- the download
++ * itself decides success, not this poll.
++ *
++ * A read the DSP does not answer within the mailbox's 50 ms is asked again,
++ * up to this call's own deadline, and is no error here: at a block boundary
++ * the DSP is busy with the block it was just given, and in 3 of 20 wakes from
++ * standby (and 1 of 20 cold boots) it took longer than 50 ms to take the
++ * request -- the next request was answered at once every time (12.10.2026,
++ * arbeit/wurzeln-20261012: "after 50 ms and 1 timed-out read", blocks 0 and
++ * 4). Until then that one timeout aborted the whole download and the island
++ * was reset and rebuilt, the "attempt 2" and "attempt 3" of TODO 2.37 -- a
++ * failure this call's deadline was meant to absorb. A DSP that answers
++ * nothing within the deadline is one that is not running, and that is the
++ * error.
+  */
+ static int msp_kick(struct h713_msp *msp, int block)
+ {
+-	ktime_t deadline = ktime_add_ms(ktime_get(), MSP_KICK_TIMEOUT_MS);
+-	unsigned int reads = 0;
++	ktime_t t0 = ktime_get(), deadline = ktime_add_ms(t0, MSP_KICK_TIMEOUT_MS);
++	unsigned int reads = 0, late = 0;
+ 	u16 val;
+ 	int ret;
+ 
+ 	for (;;) {
+-		ret = msp_dsp_read(msp, DSP_CLOCK, &val);
+-		if (ret)
+-			return ret;
++		ret = __msp_dsp_read(msp, DSP_CLOCK, &val, true);
++		if (ret) {
++			late++;
++			if (ktime_after(ktime_get(), deadline)) {
++				dev_err(msp->dev,
++					"Wake-up call after block %d: 0x00EE not answered in %lld ms (%u requests)\n",
++					block, ktime_ms_delta(ktime_get(), t0), late);
++				return ret;
++			}
++			continue;
++		}
++		if (late)
++			dev_info(msp->dev,
++				 "Wake-up call after block %d: answered after %lld ms, %u request%s unanswered before\n",
++				 block, ktime_ms_delta(ktime_get(), t0), late, late == 1 ? "" : "s");
+ 		reads++;
+ 		if (val == DSP_ALIVE_ANSWER)
+ 			return 0;
