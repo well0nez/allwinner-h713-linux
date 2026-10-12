@@ -207,9 +207,9 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
 <!-- ============ projection ============ -->
 <section class="screen on" id="projection">
   <div class="card">
-    <h2>Picture shape</h2>
-    <p class="help">Make the projected picture square and as large as your wall allows. Drag a corner,
-      or move the picked corner with the arrows.</p>
+    <h2>Keystone</h2>
+    <p class="help">Keystone makes the projected picture square on the wall, however the projector stands.
+      Drag a corner, or move the picked corner with the arrows.</p>
     <p class="help" id="absent" hidden></p>
     <div id="keystone" onkeydown="padKey(event)">
       <svg id="quad" viewBox="0 0 360 216" role="group" aria-label="the four corners">
@@ -225,57 +225,59 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
             onclick="nudge('y', 1)" aria-label="down">&#9660;</button>
         </div>
         <div id="steps"></div>
-        <p class="help">How far one press moves the corner.</p>
+        <p class="help">Step per press, in per-mille of the panel (1 fine, 10 medium, 50 coarse).</p>
       </div>
     </div>
     <div id="corners" class="corners" aria-label="the corners' values"></div>
     <div class="btnrow">
-      <button onclick="maskToggle()" id="mask-toggle">Show alignment mask</button>
-      <button onclick="act('keystone_now')" data-needs="accelerometer">Straighten picture</button>
-      <button onclick="act('keystone_res')">Reset shape</button>
+      <button onclick="maskToggle()" id="mask-toggle">Calibration mask</button>
+      <button onclick="act('keystone_now')" data-needs="accelerometer">Auto keystone now</button>
+      <button onclick="act('keystone_res')">Reset keystone</button>
     </div>
     <details class="why">
-      <summary>What is the mask? What does "straighten" do?</summary>
-      <p>The mask puts a calibration picture on the wall (grey field, frame, circle) so you can aim a
-        corner with nothing plugged in. "Straighten picture" reads the projector's tilt sensor and
-        squares the picture once.</p>
+      <summary>What is the mask? What does "Auto keystone now" do?</summary>
+      <p>The calibration mask puts a test picture on the wall (grey field, frame, circle) so you can aim a
+        corner with no source plugged in. "Auto keystone now" reads the accelerometer (tilt sensor) and sets
+        the keystone once for the tilt the projector has right now.</p>
     </details>
-    <label for="zoom">Picture size on the wall <b id="zoom-v">100 %</b></label>
+    <label for="zoom">Zoom (the projection area) <b id="zoom-v">100 %</b></label>
     <input type="range" id="zoom" min="50" max="100" step="5" value="100" oninput="show_v('zoom', ' %')"
            onchange="act('screen_zoom', [+this.value])">
   </div>
 
   <div class="card">
-    <h2>Mounting</h2>
-    <p class="help">Where the projector stands. The picture is mirrored or flipped to suit - the corner
-      names above stay as the audience sees them.</p>
+    <h2>Projection mode</h2>
+    <p class="help">How the projector is installed (the vendor's installation mode): front, rear, ceiling or
+      rear ceiling. Rear mirrors the picture left-right, ceiling turns it over; the corner names above stay
+      as the audience sees them in every mode.</p>
     <div class="seg" id="modes"></div>
-    <h3 data-needs="accelerometer">After the projector was moved</h3>
+    <h3 data-needs="accelerometer">After a move</h3>
     <div class="seg" id="after" data-needs="accelerometer"></div>
-    <p class="help" data-needs="accelerometer">What to redo automatically after a move. This uses the
-      tilt sensor - and, for sharpening, the camera and the focus motor.</p>
+    <p class="help" data-needs="accelerometer">What the projector does once after it has been moved and stands still
+      again: nothing, the automatic keystone, or the keystone and then the autofocus. It uses the
+      accelerometer - and, for the autofocus, the camera and the focus motor.</p>
     <h3 data-needs="accelerometer">Level reference</h3>
     <button onclick="act('keystone_ref')" data-needs="accelerometer">Level reference</button>
     <details class="why" data-needs="accelerometer">
       <summary>What is a level reference?</summary>
-      <p>The straighten function already corrects against the ideal level pose (0, 0, 1 g), shown as
-        <b>ref ideal</b> in the header. Put the projector on a surface a spirit level has passed and press
+      <p>The automatic keystone already corrects against the ideal level pose (0, 0, 1 g), shown as
+        <b>ref ideal</b> in the status strip. Put the projector on a surface a spirit level has passed and press
         the button: it stores the pose the sensor reads there, which refines the ideal by the sensor's own
-        mounting offset - the header then says <b>ref set</b>. <b>ref refused</b> means the stored file no
-        longer matches the axis map; the ideal applies until the button is pressed again.</p>
+        mounting offset - the status strip then says <b>ref set</b>. <b>ref refused</b> means the stored file no
+        longer matches the axis map in keystone.conf; the ideal applies until the button is pressed again.</p>
     </details>
   </div>
 
   <div class="card">
-    <h2>Sharpness</h2>
-    <p class="help" data-needs="focus-motor">Moves the lens in small steps. Try the small ones first;
-      the motor is slow on purpose.</p>
+    <h2>Focus</h2>
+    <p class="help" data-needs="focus-motor">Manual focus: moves the focus motor in microsteps. Try the small
+      ones first; the motor is slow on purpose.</p>
     <div class="row">
       <button class="mini" onclick="act('focus', ['down', '20'])" data-needs="focus-motor">-20</button><button
         class="mini" onclick="act('focus', ['down', '5'])" data-needs="focus-motor">-5</button>
       <button class="mini" onclick="act('focus', ['up', '5'])" data-needs="focus-motor">+5</button><button
         class="mini" onclick="act('focus', ['up', '20'])" data-needs="focus-motor">+20</button>
-      <button onclick="act('autofocus')" data-needs="camera focus-motor">Find focus automatically</button>
+      <button onclick="act('autofocus')" data-needs="camera focus-motor">Autofocus now</button>
     </div>
   </div>
 
@@ -286,11 +288,12 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
       <button onclick="act('warp', [ST.warp === 'on' ? 'off' : 'on'])" id="warp-toggle">GPU warp</button>
       <button onclick="act('pattern', ['grid'])" id="pat-grid">Grid</button>
       <button onclick="act('pattern', ['border'])" id="pat-border">Border</button>
-      <button onclick="mask(false)" id="pat-off">Test off</button>
+      <button onclick="mask(false)" id="pat-off">Pattern off</button>
     </div>
-    <p class="help">GPU warp is the engine behind picture shape and size - leave it on. Grid and border
-      put a test pattern on the wall.</p>
-    <label for="edge">Soft edge (fade out the frame border) <b id="edge-v">0</b></label>
+    <p class="help">The GPU warp is the engine behind keystone, zoom and the calibration mask - leave it on.
+      Grid and Border draw a test pattern on the wall instead of the source; Pattern off goes back to the
+      picture.</p>
+    <label for="edge">Edge blend (soft border of the picture, in panel pixels; 0 = hard edge) <b id="edge-v">0</b></label>
     <input type="range" id="edge" min="0" max="64" step="1" value="0" oninput="show_v('edge', '')"
            onchange="act('edge', [+this.value])">
   </div>
@@ -300,24 +303,26 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
 <section class="screen" id="picture">
   <div class="card">
     <h2>Picture</h2>
-    <p class="help">The look of the picture: brightness, colours, motion smoothing.</p>
+    <p class="help">The picture controls: brightness, contrast, saturation, hue, sharpness and the noise
+      reduction and contrast enhancements.</p>
     <h3>Preset</h3>
     <div class="seg" id="presets"></div>
-    <p class="help">One tap sets several values at once. Use cinema for movies, game for consoles.</p>
+    <p class="help">A preset is the vendor's picture mode: one tap sets the mode and the nine controls at
+      once. Use cinema for movies, game for consoles.</p>
     <h3>Controls</h3>
     <div id="sliders" class="sliders"></div>
     <div id="quality"></div>
     <h3>Aspect</h3>
     <div class="seg" id="aspects"></div>
-    <p class="help">How the source is fitted onto the panel. Leave it on auto unless the picture is
-      distorted.</p>
+    <p class="help">Aspect ratio: how the source is fitted onto the panel. Leave it on auto unless the
+      picture is distorted.</p>
     <div class="btnrow">
       <button class="primary" onclick="act('save')">Save picture settings</button>
-      <button onclick="ask('Revert the picture to the last saved settings?', 'save_off')">Revert to saved</button>
+      <button onclick="ask('Forget the saved picture settings? They will not come back after a reboot.', 'save_off')">Forget saved settings</button>
     </div>
     <details class="why">
       <summary>What exactly is saved? What does brightness do?</summary>
-      <p>Save writes the nine values, the preset and the aspect to the device, so they come back after a
+      <p>Save writes the nine values, the preset, the aspect and the zoom to the device, so they come back after a
         reboot. Nothing here is written until you press it. <b>Brightness</b> is the black level on this
         hardware, not a lamp control - on bright content you will see nothing move; the lamp is not
         adjustable.</p>
@@ -335,16 +340,17 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
            onchange="act('volume', [+this.value])">
     <h3>Mute</h3>
     <div class="seg" role="group" aria-label="mute">
-      <button onclick="act('mute', ['on'])" id="m-on">On</button>
-      <button onclick="act('mute', ['off'])" id="m-off">Off</button>
+      <button onclick="act('mute', ['on'])" id="m-on">Mute on</button>
+      <button onclick="act('mute', ['off'])" id="m-off">Mute off</button>
     </div>
-    <h3>When does the speaker play?</h3>
+    <h3>Audio</h3>
     <div class="seg" role="group" aria-label="audio policy">
-      <button onclick="act('audio', ['auto'])" id="a-auto">with the picture</button>
-      <button onclick="act('audio', ['on'])" id="a-on">always on</button>
-      <button onclick="act('audio', ['off'])" id="a-off">never</button>
+      <button onclick="act('audio', ['auto'])" id="a-auto">Auto</button>
+      <button onclick="act('audio', ['on'])" id="a-on">On</button>
+      <button onclick="act('audio', ['off'])" id="a-off">Off</button>
     </div>
-    <p class="help">"with the picture" follows the source: sound when a picture is shown.</p>
+    <p class="help">Auto follows the picture: sound when a picture is shown. On forces the speaker, Off keeps
+      it quiet while the picture stays.</p>
   </div>
 </section>
 
@@ -366,7 +372,7 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
     <p class="help">What one press of the remote's volume rocker and focus keys is worth.</p>
   </div>
   <div class="card">
-    <h2>On the wall</h2>
+    <h2>On-screen display (OSD)</h2>
     <p class="help">What the projector draws on the wall while you use the remote - for example the
       volume bar.</p>
     <div id="conf-osd"></div>
@@ -505,11 +511,9 @@ var ROW = {tl: "tr", tr: "tl", bl: "br", br: "bl"};   /* the x partner */
 var COL = {tl: "bl", bl: "tl", tr: "br", br: "tr"};   /* and the y partner */
 /* plain words for the values the tools speak in code */
 var CORNER_NAME = {tl: "Top left", tr: "Top right", bl: "Bottom left", br: "Bottom right"};
-var STEP_NAME = {1: "fine", 10: "medium", 50: "coarse"};
-var MODE_NAME = {front: "on a shelf", rear: "from behind a screen",
-                 ceiling: "at the ceiling", "rear-ceiling": "at the ceiling, from behind"};
-var AFTER_NAME = {off: "do nothing", keystone: "straighten the picture",
-                  "keystone+focus": "straighten + sharpen"};
+var STEP_NAME = {1: "1", 10: "10", 50: "50"};
+var MODE_NAME = {front: "Front", rear: "Rear", ceiling: "Ceiling", "rear-ceiling": "Rear ceiling"};
+var AFTER_NAME = {off: "Off", keystone: "Keystone", "keystone+focus": "Keystone + autofocus"};
 var ST = {}, KS = {}, CORNER = "tl", STEP = 10, BUSY = false;
 var DRAG = null, LAST = 0, FLYING = false, PENDING = null;
 var FEAT = {};      /* h713-features through "controls": false = not present on this board */
@@ -768,10 +772,10 @@ function refresh() {
 
 /* One `key = value` form of keys.conf, osd.conf or tv.conf, drawn from the
    checks' own specs and filled from "settings".  Keys get plain words. */
-var CONF_LABELS = {start: "picture at boot", preset: "preset at boot",
-                   edid_prefer: "EDID source", place: "position", look: "style",
+var CONF_LABELS = {start: "startup mode", preset: "startup preset",
+                   edid_prefer: "EDID preferred timing", place: "position", look: "style",
                    scale: "size", seconds: "show for (seconds)",
-                   volume_step: "volume step", focus_steps: "focus step"};
+                   volume_step: "volume step", focus_steps: "focus step (msteps)"};
 function confCard(file, mount) {
   var specs = (CONF[file] || {}), values = (CUR.conf || {})[file] || {};
   var html = '<div class="form-grid">';
@@ -895,7 +899,7 @@ function build() {     /* the page draws itself from the tool's own lists */
     }).join("");
     /* tnr snr dci black: one tight row each, Off Low Middle High */
     id("quality").innerHTML = (c.quality || []).length
-      ? "<h3>Enhancement</h3>" + (c.quality || []).map(function (t) {
+      ? "<h3>Noise reduction and contrast (tnr, snr, dci, black)</h3>" + (c.quality || []).map(function (t) {
           return '<div class="qrow"><span class="qname">' + esc(t.name) + '</span><div class="row">' +
             [0, 1, 2, 3].map(function (i) {
               return '<button class="mini" id="q-' + t.name + '-' + i +
