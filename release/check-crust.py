@@ -8,7 +8,7 @@ crust and the standby in the ARTEFACTS. release/build-all.sh runs it in step 10 
       --release-fit uboot-proper-release.bin --empty-fit u-boot-installer.bin --empty-fit u-boot-h713-probe.bin
       --uboot-config <release O>/.config --dtb sun50i-h713-hy310.dtb --rootfs hy310-rootfs.tar --bl31 bl31.bin
       [--standby]
-  release/check-crust.py --dt-firmware FILE.dtb     prints the arisc node's firmware-name[0] (boards/check.sh)
+  release/check-crust.py --dt-firmware FILE.dtb     prints the arisc node's firmware-name[0]
 
 Without --crust the board has none: no scp in a FIT, no *-crust.bin in the rootfs or the device tree. A
 check whose input is missing is named as skipped. Exit 0 = may be released, 1 = do not release.
