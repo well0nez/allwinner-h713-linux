@@ -646,13 +646,38 @@ class HdcpKey(Base):
         self.assertEqual(rc, 0, ev)
         self.assertTrue(any("hdmi-rx bound without the HDCP 2.2 key" in e and "user.warning" in e for e in ev))
 
-    def test_a_failed_bind_through_the_key_tool_is_3(self):
+    def test_a_key_tool_that_fails_before_the_bind_gets_a_plain_bind_and_the_picture(self):
+        # TODO 5.14 U5: the picture without the HDCP 2.2 key rather than none until the next boot
+        b = self.box(keytool="new")
+        b.put("key-rc", "1")                             # the stand-in fails without binding
+        rc, _, _ = b.run()
+        ev = b.events()
+        self.assertEqual(rc, 0, ev)
+        self.clean(ev)
+        self.ordered(ev, "hdcp-key --bind hdmi-rx", "kernel bind hdmi-rx", "kernel node video2",
+                     "systemctl start h713-warp.service")
+        self.assertTrue(any("h713-hdcp-key --bind: exit 1: hdmi-rx bound without the HDCP 2.2 key" in e
+                            and "user.warning" in e for e in ev), ev)
+
+    def test_a_key_tool_that_fails_after_its_bind_is_not_bound_twice(self):
+        b = self.box(keytool="new")
+        b.put("key-rc", "2")                             # the stand-in binds, then fails
+        rc, _, _ = b.run()
+        ev = b.events()
+        self.assertEqual(rc, 0, ev)
+        self.assertEqual(ev.count("kernel bind hdmi-rx"), 1, ev)
+        self.assertTrue(any("exit 2: hdmi-rx bound without the HDCP 2.2 key" in e for e in ev), ev)
+
+    def test_when_the_plain_bind_fails_too_it_is_3(self):
         b = self.box(keytool="new")
         b.put("key-rc", "1")
+        os.remove(b.p(RXD + "/bind"))
+        os.symlink("/dev/full", b.p(RXD + "/bind"))      # the write fails like a probe that returns an error
         rc, _, _ = b.run()
         ev = b.events()
         self.assertEqual(rc, 3, ev)
-        self.assertTrue(any("binding hdmi-rx failed (h713-hdcp-key --bind: exit 1)" in e for e in ev), ev)
+        self.assertTrue(any("binding hdmi-rx failed" in e for e in ev), ev)
+        self.assertNotIn("kernel bind hdmi-rx", ev)
         self.assertIn("systemctl start h713-warp.service", ev)
 
     def test_a_key_tool_without_bind_is_not_called(self):

@@ -67,7 +67,10 @@ journalctl -t h713-mips-restart
 key: `h713-hdcp-key.service` deletes it after the boot, so the step `THal_Vp_SetHDCP22Key` is
 skipped. The tool therefore binds through `h713-hdcp-key --bind hdmi-rx`, which puts the key into the
 tmpfs for exactly that bind (exit 3 of the key tool: bound without the key, a warning). Where the
-installed key tool has no `--bind`, it falls back to the plain bind. Whether a source gets HDCP 2.2
+installed key tool has no `--bind`, it falls back to the plain bind. When the key tool fails in any other
+way (a read error, a broken tool), the receiver is bound plainly if the tool did not bind it: the picture
+without the HDCP 2.2 key rather than none until the next boot, logged as a warning with the tool's exit
+(TODO 5.14, review U5). Only a plain bind that fails too ends in exit 3. Whether a source gets HDCP 2.2
 after a restart is not measured (`doku/172` §5, `doku/174` §3).
 
 **The audio DSP.** The DSP sits in TVFE and loses its power in the sleep; the `msp` driver then

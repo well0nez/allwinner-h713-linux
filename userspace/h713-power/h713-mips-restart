@@ -32,10 +32,11 @@ say() {	# LEVEL TEXT - a journal line (-t h713-mips-restart); run by hand also o
 state() { set -- $(cat "$ST" 2>/dev/null); echo "$*"; }
 ms() { echo $(( $(date +%s%N) / 1000000 )); }
 put() { out=$(trap '' INT TERM HUP; env printf '%s\n' "$1" 2>&1 > "$2"); }	# VALUE FILE; error text in $out
-bind() {	# the receiver; through h713-hdcp-key --bind with the HDCP 2.2 key (its exit 3: bound without)
+bind() {	# the receiver, through h713-hdcp-key --bind with the HDCP 2.2 key; if it fails, a plain bind (TODO 5.14 U5)
 	grep -qs -e --bind "$R$KEY" || { put "$RX" "$RXD/bind"; return; }
 	(trap '' INT TERM HUP; exec "$R$KEY" --bind "$RX") >&2; out="h713-hdcp-key --bind: exit $?"
-	case $out in *" 0") ;; *" 3") say warning "$RX bound without the HDCP 2.2 key" ;; *) return 1 ;; esac
+	case $out in *" 0") ;; *" 3") say warning "$RX bound without the HDCP 2.2 key" ;;
+	*) k=$out; [ -e "$RXD/$RX" ] || put "$RX" "$RXD/bind" || return 1; say warning "$k: $RX bound without the HDCP 2.2 key" ;; esac
 }
 node() {	# the receiver's videoN, by the name 99-h713-tv.rules matches
 	for f in "$R"/sys/class/video4linux/video*/name; do
