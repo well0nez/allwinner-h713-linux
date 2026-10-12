@@ -749,6 +749,14 @@ t "regulatory.db upstream"    test "$(readlink "$TREE/etc/alternatives/regulator
 # Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which
 # would fall back to s2idle; with it suspend to RAM through crust and h713-power on the key.
 SLEEP_CONF="$TREE/etc/systemd/sleep.conf.d/10-h713.conf"
+# ...and only that file decides: no other sleep.conf drop-in, and no main sleep.conf with a setting of its own
+# (Debian's has [Sleep] and comments). Else a later drop-in from a package could allow s2idle unseen (review
+# 09.10., B4); release/check-crust.py works out what systemd ends up with on the finished tar as well.
+sleep_others() {
+	find "$TREE"/{etc,run,usr/local/lib,usr/lib}/systemd/sleep.conf.d -name '*.conf' ! -path "$SLEEP_CONF" 2>/dev/null
+	grep -lvE '^[[:space:]]*([#;].*|\[Sleep\])?[[:space:]]*$' "$TREE"/{etc,run,usr/local/lib,usr/lib}/systemd/sleep.conf 2>/dev/null
+}
+t "sleep: 10-h713.conf alone" test -z "$(sleep_others)"
 if ((STANDBY)); then
 	t "standby: mem, deep only"   grep -qx 'MemorySleepMode=deep' "$SLEEP_CONF"
 	t "standby: suspend allowed"  grep -qx 'AllowSuspend=yes' "$SLEEP_CONF"

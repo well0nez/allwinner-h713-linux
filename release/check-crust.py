@@ -42,7 +42,7 @@ WDT_LAYOUT = b"allwinner,sun55i-a523-wdt"                # the SoC watchdog boun
 SUSPEND_MARKS = (b"PSCI: system suspend refused (", b"not usable by the ARISC", b"PSCI: msgbox port 3 keeps the request",
                  b"PSCI: system suspend, cpu op req sent", b"PSCI: msgbox port 3 stays full",
                  b"PSCI: system counter restored", b"PSCI: back from system suspend")
-# systemd's system.conf: the first main file of these directories, then every drop-in by name, a name in an earlier
+# systemd's system.conf and sleep.conf (effective()): the first main file of these directories, then every drop-in by name, a name in an earlier
 # directory hiding the same name in a later one; the last setting wins (systemd-system.conf(5)). /run is a tmpfs
 # at boot, a file there in the tar is never read. RebootWatchdogSec's built-in 10min needs no file and never arms:
 # sunxi_wdt stops at 16 s, and systemd-shutdown logs "Failed to set watchdog hardware timeout to 10min: Invalid
@@ -137,7 +137,8 @@ def kconfig(path):
 def rootfs(path):
     """The parts of the rootfs tar this gate reads, by path without ./ and with usr/lib -> lib."""
     want = re.compile(r"(usr/)?lib/firmware/[^/]+-crust\.bin|(etc|(usr/)?lib|usr/local/lib)/systemd/system\.conf(\.d/[^/]+\.conf)?|"
-                      r"etc/systemd/(sleep\.conf\.d/10-h713\.conf|system/multi-user\.target\.wants/h713-power\.service)")
+                      r"(etc|(usr/)?lib|usr/local/lib)/systemd/sleep\.conf(\.d/[^/]+\.conf)?|"
+                      r"etc/systemd/system/multi-user\.target\.wants/h713-power\.service")
     out = {}
     with tarfile.open(path) as t:
         for m in t:
@@ -148,18 +149,27 @@ def rootfs(path):
     return out
 
 
-def watchdog(parts):
-    """The settings systemd ends up with that arm the watchdog: ["RuntimeWatchdogSec=16s (file)", ...]."""
-    main = next((d + "/systemd/system.conf" for d in WD_DIRS if d + "/systemd/system.conf" in parts), None)
+def effective(parts, conf, keys):
+    """{key: (value, file)} as systemd ends up with them for <conf> (system.conf, sleep.conf): the first main
+    file of WD_DIRS, then every drop-in of <conf>.d by name, a name in an earlier directory hiding the same name
+    in a later one; the last setting wins (systemd-system.conf(5), systemd-sleep.conf(5))."""
+    main = next((d + "/systemd/" + conf for d in WD_DIRS if d + "/systemd/" + conf in parts), None)
     drops = {}
     for d in reversed(WD_DIRS):
-        drops.update({os.path.basename(k): k for k in parts if k.startswith(d + "/systemd/system.conf.d/")})
+        drops.update({os.path.basename(k): k for k in parts if k.startswith(d + "/systemd/" + conf + ".d/")})
     val = {}
     for f in [main] * bool(main) + [drops[n] for n in sorted(drops)]:
         for line in parts[f].decode(errors="replace").splitlines():
             k, eq, v = (x.strip() for x in line.partition("="))
-            if eq and k in ("RuntimeWatchdogSec", "RebootWatchdogSec"):
-                val[k] = ("%s=%s (%s)" % (k, v, f), v.lower())
+            if eq and k in keys:
+                val[k] = (v, f)
+    return val
+
+
+def watchdog(parts):
+    """The settings systemd ends up with that arm the watchdog: ["RuntimeWatchdogSec=16s (file)", ...]."""
+    val = {k: ("%s=%s (%s)" % (k, v, f), v.lower())
+           for k, (v, f) in effective(parts, "system.conf", ("RuntimeWatchdogSec", "RebootWatchdogSec")).items()}
     # off, 0, 0s, 0min and an empty value (back to the default) do not arm it; "default" and any time do
     return [s for s, v in val.values() if not re.fullmatch(r"off|(0+(\.0*)?\s*[a-z]*\s*)*", v)]
 
@@ -287,15 +297,21 @@ def main(argv=None):
             fail("the device tree binds the SoC watchdog with its real layout, BL31 has no reset that feeds it first: "
                  "a reboot after anything armed it would hang")
     if parts is not None:
-        sleep = parts.get("etc/systemd/sleep.conf.d/10-h713.conf", b"")
+        # What systemd ends up with over every sleep.conf and drop-in, not one file: a later drop-in from a package
+        # or the overlay could allow s2idle unseen (review 09.10., B4). h713-power is on every image (TODO 2.38);
+        # only the standby needs it, so only the standby asks for it.
+        sleep = effective(parts, "sleep.conf", ("AllowSuspend", "SuspendState", "MemorySleepMode"))
+        got = ", ".join("%s=%s (%s)" % (k, v, f) for k, (v, f) in sorted(sleep.items())) or "nothing set"
+        allow = sleep.get("AllowSuspend", ("yes",))[0].lower() in ("yes", "true", "on", "1")
         if o.standby:
-            good = all(x in sleep.split(b"\n") for x in (b"AllowSuspend=yes", b"SuspendState=mem", b"MemorySleepMode=deep")) \
+            good = allow and sleep.get("SuspendState", ("",))[0].split() == ["mem"] \
+                and sleep.get("MemorySleepMode", ("",))[0].split() == ["deep"] \
                 and "etc/systemd/system/multi-user.target.wants/h713-power.service" in parts
         else:
-            good = b"AllowSuspend=no" in sleep.split(b"\n") and "etc/systemd/system/multi-user.target.wants/h713-power.service" not in parts
+            good = not allow
         mode = "--standby" if o.standby else "no standby"
-        check(good, "rootfs sleep.conf.d and h713-power fit " + mode,
-              "rootfs sleep.conf.d/h713-power do not fit %s - a rootfs of another build?" % mode)
+        check(good, "rootfs sleep settings and h713-power fit %s: %s" % (mode, got),
+              "rootfs sleep settings/h713-power do not fit %s - a rootfs of another build? (%s)" % (mode, got))
         wd = watchdog(parts)
         if wd and (bl31 is None or T1_MARK not in bl31):
             fail("rootfs arms the watchdog (%s), BL31 has no reset that feeds it first: every reboot would hang" % ", ".join(wd))
